@@ -165,8 +165,23 @@ function pressAttack(state) {
   }
 }
 
-/** ROM: loc_00_1944 - Up starts the bat-rope. */
+/**
+ * ROM: loc_00_1944 - Up starts the bat-rope.
+ *
+ * DISABLED until the rope state machine is ported. Arming it sets $C71E, and
+ * $C71E != 0 suppresses BOTH directional input ($181A) and attacks ($192F) --
+ * so with nothing to advance the rope through states 1->2->3 and clear it
+ * again, pressing Up permanently bricks the player. An unimplemented feature
+ * that does nothing beats one that softlocks the game.
+ *
+ * Everything the arm needs is already here; delete the guard when the rope
+ * flight, anchor test and climb land.
+ */
+const ROPE_IMPLEMENTED = false;
+
 function startRope(state) {
+  if (!ROPE_IMPLEMENTED) return;
+
   const p = state.player;
   requestSound(state, 0x10);
   p.action = 1;                                 // $194A: $C71E rope-fire
