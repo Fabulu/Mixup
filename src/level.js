@@ -95,6 +95,12 @@ export function resetPlayer(state, info) {
   p.ropeLength = 0;
   p.ropeSegments = 0;
 
+  state.rope.flip = 0;
+  state.rope.delay = 0;
+  state.rope.dx = 0;
+  state.rope.dy = 0;
+  for (const s of state.rope.slots) { s.x = 0; s.y = 0; }
+
   state.flow.ammo = 0;                 // $C759 starts empty each level
   for (const b of state.batarangs) { b.active = false; b.flags = 0; }
   for (const s of state.breakables) s.timer = 0;

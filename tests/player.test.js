@@ -650,7 +650,11 @@ test('a standing player next to a wall is positionally stable', () => {
 // ---------------------------------------------------------------------------
 
 test('a conveyor carry is applied on the frame after the floor probe queued it', () => {
-  // ROM: $C72F/$C730 are consumed at the end of the player update.
+  // ROM: loc_00_170A consumes $C72F/$C730 as the FIRST thing the player update
+  // does, and everything that writes them (conveyors, platforms, the bat-rope)
+  // runs later in the frame. So a carry is always a frame late, by design --
+  // consuming it at the end of the same update would double the conveyor's
+  // effective speed on the frame you step on.
   const g = grid(16);
   for (let c = 0; c < 16; c++) g[14][c] = '>';
   const state = makeState(g);
@@ -658,9 +662,13 @@ test('a conveyor carry is applied on the frame after the floor probe queued it',
   Object.assign(state.player, { air: FALLING, vy: -4, vx: 0 });
   setInput(state, 0);
   const x = state.player.x;
+
   step(state);
-  assert.equal(state.player.x, x + 4);
-  assert.equal(state.carry.x, 0, 'the carry is consumed');
+  assert.equal(state.player.x, x, 'not yet -- the probe only queued it');
+  assert.equal(state.carry.x, 4, 'queued for next frame');
+
+  step(state);
+  assert.equal(state.player.x, x + 4, 'applied at the top of the next update');
 });
 
 // ---------------------------------------------------------------------------

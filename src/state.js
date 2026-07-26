@@ -12,6 +12,7 @@
 
 import { DEFAULT_TUNABLES } from './tunables.js';
 import { createPool } from './batarang.js';
+import { createRope } from './rope.js';
 import { createActors } from './actors.js';
 import { createEnemies } from './enemies.js';
 
@@ -82,6 +83,7 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     // Pending platform-carry displacement, applied next frame ($C72F/$C730).
     carry: { x: 0, y: 0 },
 
+    rope: createRope(),                        // $C5EB chain + $C720-$C728
     batarangs: createPool(),                   // $C4B0, 3 x 9 B
     doors: { active: 0, col: 0, row: 0 },      // $C733-$C735 door sequencer
     // $C67B, 8 x 3 B {timer, col, row} -- breakable-tile restore queue.

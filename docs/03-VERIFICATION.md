@@ -179,6 +179,32 @@ run first, which costs ~20 subpixels of position. This is the single
    game logic runs — a port that only bumps its frame counter inside the main
    game tick leaves the cursor frozen on one tile.
 
+19. **The bat-rope's accumulate loops are seeded, so the multiplier is `e + 1`.**
+   `$3EDC` loads `HL` with the delta *and* `BC` with the delta, then adds `BC`
+   `E` more times — so slot `$FFB4 + n` moves by `delta * (n + 1)`, not
+   `delta * n`. Reading it as a plain `delta * E` multiply makes every link and
+   the player move at two-thirds speed, which still *looks* like a pendulum and
+   only shows up as an off-by-one in `$C730`. The same seeded-accumulate shape
+   is in the launch maths at `$3FEE` and `$4028`.
+20. **The rope moves the player through the platform-carry registers.** The
+   physics loop runs one slot *past* the end of the chain, and slot 6 writes
+   `$C72F`/`$C730` instead of a position. So Batman is carried by the rope the
+   same way a moving platform carries him — there is no rope-specific movement
+   code. X is `ADD`-ed but Y is `LD`-ed, and a `$C730` that is already negative
+   aborts the swing into the release path (`$3F80` → `$3FD3`).
+21. **`XOR A` at `$41B0` clears the turn counter as well as the phase.** `$41B4`
+   is a shared tail, so `$C720` receives the zero meant for `$C71F`. Every
+   swing extreme therefore costs exactly two frames. Storing the incremented
+   value instead makes the first turn correct and every later one instant, so
+   the swing gains a frame per half-cycle — invisible for about 50 frames, then
+   permanently out of step.
+22. **The carry is consumed at the TOP of the player update** (`loc_00_170A`),
+   not the bottom, and is zeroed there whether or not it was used. Everything
+   that writes it — conveyors, platforms, the rope — runs later in the frame,
+   so a carry is always applied one frame after it is queued. Consuming it at
+   the end of the same update doubles a conveyor's effect on the frame you
+   step onto it.
+
 ## Tools
 
 | tool | purpose |

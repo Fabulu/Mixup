@@ -16,6 +16,8 @@ const level = arg('level', '1');
 const only = arg('only', null);
 
 const ENEMY_FIELDS = ['en0f', 'en0s', 'en0x', 'en0hp', 'en1f', 'en2f'];
+const ROPE_FIELDS = ['action', 'ropeSeg', 'ropePh', 'ropeFlip', 'ropeDly',
+                     'rope0x', 'rope0y', 'rope5x', 'rope5y', 'carryY'];
 
 // Every entry is a permanent test. Scripts are tuned against the level-1
 // geometry (see the ASCII map in docs/03-VERIFICATION.md "Test suite"):
@@ -100,6 +102,22 @@ const SCRIPTS = [
     script: '40:,4:B,10:,4:B,10:,4:B,10:,4:B,118:',
     extra: ['atkTimer', 'atkPose', 'ammo', 'bat0', 'bat0x', 'bat0spd',
             'bat1', 'bat2'] },
+
+  // --- bat-rope -------------------------------------------------------------
+  // Walk right along the main floor, then fire the rope with UP. Covers the
+  // extension steps ($FFB4 counting 5 down to 0), whichever of "bites" or "runs
+  // out and retracts" the level-1 ceiling actually produces, and -- if it bites
+  // -- the pendulum, the facing flip at the extreme, and the carry that moves
+  // Batman. Ropes NOT firing at all would also show here as a flat ropeSeg.
+  { name: 'rope-fire-and-swing', level: 1, frames: 320,
+    script: '20:,60:R,1:U,239:',
+    extra: ROPE_FIELDS },
+  // Fire the rope and press A partway through the swing: the tangent launch at
+  // $3FD6, including the rule that there is no upward kick before the bottom of
+  // the arc.
+  { name: 'rope-release-launch', level: 1, frames: 320,
+    script: '20:,60:R,1:U,60:,1:A,178:',
+    extra: ROPE_FIELDS },
 
   // --- enemy AI (a scenario may carry its own `level:`) ---------------------
   // The enemy fields ride along on every one of these: slot-0 flags/state/

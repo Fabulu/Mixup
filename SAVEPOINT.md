@@ -112,6 +112,10 @@ Be suspicious of these; they are the likeliest source of a surprise.
   transcribed exactly, and `rLY` for the crit window is modelled from the frame
   counter because we do not emulate a scanline counter. No scenario covers
   either yet — **this is the first thing to verify next.**
+- **Bat-rope.** Ported and verified: `rope-fire-and-swing` and
+  `rope-release-launch` are both bit-exact over 320 frames, including the
+  pendulum, the two-frame turn at each extreme and the tangent launch. Up fires
+  it; A lets go.
 - **State-2's ranged attack and projectile flight.** Literal ports with unit
   tests, but no natural input script triggers them, so no frame-by-frame proof.
 - **Post-death behaviour.** The ROM shoves x −15 during its sequence and

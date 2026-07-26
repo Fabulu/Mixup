@@ -11,6 +11,7 @@ import { probeFloor, probeCeiling, resolveWall, probe } from './collision.js';
 import { findFreeSlot, throwBatarang } from './batarang.js';
 import { meleeHitTest } from './enemies.js';
 import { updateScriptedMove } from './scriptedmove.js';
+import { startRope } from './rope.js';
 
 // Joypad bits ($FFE1/$FFE2)
 export const BTN = {
@@ -21,6 +22,8 @@ export const BTN = {
 const AIR_GROUNDED = 0, AIR_RISING = 1, AIR_FALLING = 2;
 
 export function updatePlayer(state) {
+  applyCarry(state);
+
   // Death runs its own sequence and suppresses everything else.
   if (state.player.dead) { deathTick(state); return; }
 
@@ -43,7 +46,6 @@ export function updatePlayer(state) {
   if (checkExit(state)) return;         // $1740 -- runs BEFORE the death test
   checkDeath(state);                    // $1755
   selectAnim(state);
-  applyCarry(state);
 }
 
 // ---------------------------------------------------------------------------
@@ -204,32 +206,6 @@ function pressAttack(state) {
     p.attackTimer = 1;                          // $1A20
     p.attackPose = 1;                           // $1A24: 1 = batarang
   }
-}
-
-/**
- * ROM: loc_00_1944 - Up starts the bat-rope.
- *
- * DISABLED until the rope state machine is ported. Arming it sets $C71E, and
- * $C71E != 0 suppresses BOTH directional input ($181A) and attacks ($192F) --
- * so with nothing to advance the rope through states 1->2->3 and clear it
- * again, pressing Up permanently bricks the player. An unimplemented feature
- * that does nothing beats one that softlocks the game.
- *
- * Everything the arm needs is already here; delete the guard when the rope
- * flight, anchor test and climb land.
- */
-const ROPE_IMPLEMENTED = false;
-
-function startRope(state) {
-  if (!ROPE_IMPLEMENTED) return;
-
-  const p = state.player;
-  requestSound(state, 0x10);
-  p.action = 1;                                 // $194A: $C71E rope-fire
-  p.attackPose = 1;                             // $194F
-  p.attackTimer = 1;                            // $1952
-  p.ropeLength = 0;                             // $1955: $C71F
-  p.ropeSegments = state.tunables.ropeSegments; // $195D: $FFB4 = 5
 }
 
 /**
@@ -607,11 +583,26 @@ function floor(state) {
   }
 }
 
-/** ROM: $C72F/$C730 - conveyors and moving platforms displace the player. */
+/**
+ * ROM: loc_00_170A, the very first thing the player machine does.
+ *
+ * $C72F/$C730 are a displacement inbox: conveyors, moving platforms and the
+ * bat-rope all write into it and the player picks it up on the NEXT frame,
+ * because everything that writes it runs after this point in the loop. The pair
+ * is zeroed here ($1738) whether or not it was used, so a carry only ever
+ * applies once.
+ *
+ * The values are also copied to $C723/$C724 first, which the rope's draw pass
+ * reads so a rope in flight tracks a Batman who is riding a platform.
+ */
 function applyCarry(state) {
   const c = state.carry;
-  if (c.x) { state.player.x = (state.player.x + c.x) & 0xFFFF; c.x = 0; }
-  if (c.y) { state.player.y = (state.player.y + c.y) & 0xFFFF; c.y = 0; }
+  state.rope.saveX = c.x;                  // $170E
+  state.rope.saveY = c.y;                  // $1724
+  if (c.x) state.player.x = (state.player.x + c.x) & 0xFFFF;   // $171F
+  if (c.y) state.player.y = (state.player.y + c.y) & 0xFFFF;   // $1735
+  c.x = 0;                                 // $1738: cleared unconditionally
+  c.y = 0;
 }
 
 // ---------------------------------------------------------------------------

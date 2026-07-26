@@ -13,6 +13,7 @@ import { loadManifest, loadPlayerTiles } from './assets.js';
 import { createFramebuffer, renderFrame, SCREEN_W, SCREEN_H } from './render/renderer.js';
 import { drawPlayer, streamPlayerTiles, applyAnimHitbox } from './render/metasprite.js';
 import { updateBatarangs, drawBatarangs } from './batarang.js';
+import { updateRope } from './rope.js';
 import { drawHud } from './hud.js';
 import { updateBreakables } from './collision.js';
 import { updateActors } from './actors.js';
@@ -199,6 +200,7 @@ export function tick(state, manifest, playerTiles) {
   streamPlayerTiles(state, manifest, playerTiles);  // $2C13
   updateBatarangs(state);             // $3A35
   drawBatarangs(state, manifest);     // $3D15
+  updateRope(state, manifest);        // $3D5F -- the tail of the same routine
   updateEnemies(state);               // $05CF CALL 1:$4E0C
   drawEnemies(state, manifest);       // flush loc_01_5CA8's queued sprites
 
