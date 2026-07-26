@@ -1,6 +1,9 @@
 // Loads the data extracted from the ROM by tools/export_assets.py.
 
-const BASE = '../assets/';
+// Resolved against THIS MODULE's url, not the document's. A bare '../assets/'
+// is resolved relative to the page, so it only works when the page happens to
+// sit one level above src/ -- it breaks the moment the launcher moves.
+const BASE = new URL('../assets/', import.meta.url).href;
 
 let manifest = null;
 const levelCache = new Map();

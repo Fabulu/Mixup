@@ -117,8 +117,17 @@
   <div id="stage">
     <canvas id="screen" width="160" height="144"></canvas>
     <div class="keys">
-      <b>← →</b> walk · <b>X</b> jump · <b>Z</b> attack · <b>↑</b> bat-rope ·
-      <b>Enter</b> start &nbsp;&nbsp;<button id="back">◂ mod select</button>
+      <b>← →</b> or <b>A D</b> walk &nbsp;·&nbsp;
+      <b>X</b> or <b>Space</b> jump &nbsp;·&nbsp;
+      <b>Y</b> / <b>Z</b> / <b>C</b> attack &nbsp;·&nbsp;
+      <b>↑</b> bat-rope &nbsp;·&nbsp; <b>Enter</b> start
+      <div style="margin-top:.5rem">
+        <button id="full">⛶ Fullscreen</button>
+        <button id="back">◂ mod select</button>
+      </div>
+      <div style="margin-top:.5rem;font-size:11px">
+        Batarangs need ammo — find a pickup, or switch on <b>Batarang Storm</b>.
+      </div>
     </div>
     <div id="err"></div>
   </div>
@@ -248,7 +257,30 @@ document.getElementById('launch').addEventListener('click', async () => {
   }
 });
 
+// Fullscreen the stage, not the canvas: the canvas alone would be letterboxed
+// by the browser at its own aspect, and we want the black surround plus the
+// key hints to come along.
+const stage = document.getElementById('stage');
+document.getElementById('full').addEventListener('click', () => {
+  if (document.fullscreenElement) { document.exitFullscreen(); return; }
+  stage.requestFullscreen?.().catch((e) => console.warn('fullscreen refused:', e));
+});
+
+document.addEventListener('fullscreenchange', () => {
+  const on = !!document.fullscreenElement;
+  stage.style.background = on ? '#000' : '';
+  stage.style.display = on ? 'flex' : '';
+  stage.style.flexDirection = on ? 'column' : '';
+  stage.style.justifyContent = on ? 'center' : '';
+  stage.style.height = on ? '100%' : '';
+  document.getElementById('screen').style.width = on
+    ? 'min(100vw, calc(100vh * 160 / 144))' : '';
+  // Keyboard focus follows the fullscreen element, so make sure it lands here.
+  stage.focus?.();
+});
+
 document.getElementById('back').addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen();
   if (running) running.stop();
   running = null;
   document.getElementById('stage').classList.remove('on');

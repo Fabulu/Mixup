@@ -44,9 +44,22 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [] } = {})
   let last = performance.now();
   let running = true;
 
+  // Refocusing must not replay the missed time, and any key held when focus
+  // was lost never sends its keyup -- attachInput's blur handler clears those.
+  const resync = () => { last = performance.now(); acc = 0; };
+  window.addEventListener('focus', resync);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) resync(); });
+
   function step(now) {
     if (!running) return;
-    acc += now - last;
+
+    // Clamp the delta rather than trying to catch up. requestAnimationFrame
+    // stops entirely while the window is unfocused, so `now - last` comes back
+    // as seconds or minutes; feeding that into the accumulator with a 4-step
+    // cap per frame means it can never drain and the game runs at 4x forever.
+    // Dropping the missed time is the right call -- nobody wants a minute of
+    // fast-forward on refocus.
+    acc += Math.min(now - last, FRAME_MS * 4);
     last = now;
 
     // Fixed timestep, with a cap so a background tab does not spiral.
@@ -62,7 +75,6 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [] } = {})
       acc -= FRAME_MS;
       steps++;
     }
-    if (steps === 0 && acc > FRAME_MS * 8) acc = 0;
 
     runHook(loadout, 'onRenderFrame', state);
     renderFrame(state, fb);

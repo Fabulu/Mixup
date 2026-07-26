@@ -2,7 +2,8 @@
 // $1EF9 horizontal, addressing sub_00_11B9.
 
 import {
-  mapCollision, setMapCollision, mapCollisionByIndex, cellIndex, u8, u16,
+  mapCollision, setMapCollision, setMapCell, mapCollisionByIndex, cellIndex,
+  u8, u16,
 } from './state.js';
 import { armScriptedMove } from './scriptedmove.js';
 
@@ -524,23 +525,41 @@ export function probeCeiling(state) {
   return v;
 }
 
-/** ROM: loc_01_4D4E - consume a pickup cell and clear it. */
+/** ROM: loc_01_4D4E - consume a pickup cell and erase it. */
 function takePickup(state, hit) {
   const t = state.tunables;
   const p = state.player;
+
   switch (hit.value) {
-    case COLL.PICKUP_ENERGY:
+    case COLL.PICKUP_ENERGY:                       // $4DA6
+      requestSound(state, 0x13);
+      p.iframes = 0;                               // $4DAC: clears $C714
       p.hp = Math.min(p.hp + t.pickupEnergy, p.hpMax);
       break;
-    case COLL.PICKUP_AMMO:
+    case COLL.PICKUP_AMMO:                         // $4D96
+      requestSound(state, 0x14);
+      // $4D9F: ADD $0A with no cap at all -- ammo genuinely wraps past 255.
       state.flow.ammo = (state.flow.ammo + t.pickupBatarangs) & 0xFF;
       break;
-    case COLL.PICKUP_MAXHP:
+    case COLL.PICKUP_MAXHP:                        // $4D5C
+      requestSound(state, 0x15);
+      p.iframes = 0;                               // $4D63
       p.hpMax = Math.min(p.hpMax + t.pickupMaxHP, t.maxHPCap);
-      p.hp = p.hpMax;
+      p.hp = p.hpMax;                              // $4D72: also fully heals
       break;
     default:
       return;
   }
-  setMapCollision(state, hit.col, hit.row, COLL.AIR);
+
+  // $4DBD: the common tail zeroes BOTH bytes -- graphic as well as collision --
+  // and queues a tilemap update. Clearing only the collision leaves the item
+  // sitting there on screen, so it looks like nothing happened.
+  setMapCell(state, hit.col, hit.row, 0, COLL.AIR);
+}
+
+/** ROM: sub_00_0AE1 mailbox. */
+function requestSound(state, id, mask = 0x01) {
+  if (state.sound && state.sound.queue.length < 4) {
+    state.sound.queue.push({ id, mask });
+  }
 }

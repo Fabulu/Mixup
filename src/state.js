@@ -168,6 +168,16 @@ export function mapCollisionByIndex(state, idx) {
 
 export const cellIndex = (col, row) => col * 16 + (row & 0x0F);
 
+/** Write BOTH bytes of a cell -- graphic and collision. */
+export function setMapCell(state, col, row, graphic, collision) {
+  const { cells, width } = state.level;
+  if (!cells || col < 0 || col >= width) return;
+  const i = ((col * 16) + (row & 0x0F)) * 2;
+  if (i + 1 >= cells.length) return;
+  cells[i] = graphic;
+  cells[i + 1] = collision;
+}
+
 export function setMapCollision(state, col, row, value) {
   const { cells, width } = state.level;
   if (col < 0 || col >= width) return;

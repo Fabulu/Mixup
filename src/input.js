@@ -3,12 +3,19 @@
 
 import { BTN } from './player.js';
 
+// Keys are matched on e.code, i.e. PHYSICAL position, not the printed letter.
+// On a QWERTZ layout (Swiss/German) the key labelled Z sits where QWERTY has Y
+// and reports as `KeyY` -- so both are bound to attack, and the pair works out
+// the same on either layout. Space and C are accepted as alternates too.
 const KEYMAP = {
-  KeyX: BTN.A,        KeyZ: BTN.B,
+  KeyX: BTN.A,        Space: BTN.A,
+  KeyZ: BTN.B,        KeyY: BTN.B,        KeyC: BTN.B,
   ShiftRight: BTN.SELECT, ShiftLeft: BTN.SELECT,
   Enter: BTN.START,
   ArrowRight: BTN.RIGHT, ArrowLeft: BTN.LEFT,
   ArrowUp: BTN.UP,    ArrowDown: BTN.DOWN,
+  KeyD: BTN.RIGHT,    KeyA: BTN.LEFT,
+  KeyW: BTN.UP,       KeyS: BTN.DOWN,
 };
 
 let held = 0;

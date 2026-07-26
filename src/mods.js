@@ -39,25 +39,19 @@ export const MODS = {
   },
   'heavy-boots': {
     name: 'Heavy Boots',
-    blurb: 'Gravity took it personally.',
+    blurb: 'Heavier on the way down. Jumps still clear what they need to.',
     category: 'physics',
-    params: { gravityFalling: 8, terminalVelocity: -110, jumpVelocity: 0x1A },
+    // Tuned down from (8, -110, jump $1A): that combination made several of
+    // level 1's gaps geometrically impossible rather than merely hard. The
+    // jump is left at stock height and only the DESCENT is weighted, so every
+    // platform stays reachable -- it just punishes hanging in the air.
+    params: { gravityFalling: 5, terminalVelocity: -88 },
   },
   'sonic-bat': {
     name: 'Sonic Bat',
     blurb: 'Gotta go fast. Batman does not gotta stop.',
     category: 'physics',
     params: { walkSpeedMaxRight: 0x38, walkSpeedMaxLeft: -0x38, overspeedDecelStep: 1 },
-  },
-  'grounded': {
-    name: 'Grounded',
-    blurb: 'The jump button is a lie. Wall-jumps still count.',
-    category: 'physics',
-    hooks: {
-      // The JS twin of patching the jump branch at 0:$1A2D. Wall-cling is a
-      // separate path, so bouncing off walls still works.
-      onInput(state) { state.input.pressed &= ~0x01; },
-    },
   },
   'turbo': {
     name: 'Turbo Mode',
