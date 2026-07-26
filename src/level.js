@@ -4,6 +4,11 @@
 import { loadLevel, loadManifest, buildTileCache } from './assets.js';
 import { loadActors } from './actors.js';
 import { loadEnemies } from './enemies.js';
+import { loadWaterArt, applyWaterArt } from './water.js';
+
+// The window art is the same for both water levels, so load it once.
+let waterArt;
+let waterArtTried = false;
 import { createWater } from './water.js';
 
 /** Decode a base64 record blob from the manifest into bytes. */
@@ -62,6 +67,18 @@ export async function initLevel(state, n) {
   // COMPARED consumer of the raw counter.
   state.frame = 0x6D;
   state.parity = 1;
+
+  // Only levels 1 and 2 run the water subsystem, so only they need the window
+  // art. Best-effort: a missing capture must not stop the level loading.
+  if (n === 1 || n === 2) {
+    if (!waterArtTried) {
+      waterArtTried = true;
+      try { waterArt = await loadWaterArt(); } catch { waterArt = null; }
+    }
+    applyWaterArt(state, waterArt);
+  } else {
+    applyWaterArt(state, null);
+  }
 
   resetPlayer(state, info);
   return info;

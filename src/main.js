@@ -18,7 +18,7 @@ import { drawHud } from './hud.js';
 import { updateBreakables } from './collision.js';
 import { updateActors } from './actors.js';
 import { updateEnemies, drawEnemies } from './enemies.js';
-import { updateWater, updateSplashes } from './water.js';
+import { updateWater, updateSplashes, tickWaterArt } from './water.js';
 import { resolveLoadout, runHook } from './mods.js';
 import { loadTitle, showTitle, hideTitle, tickTitle } from './title.js';
 
@@ -199,6 +199,7 @@ export function tick(state, manifest, playerTiles) {
   applyAnimHitbox(state, manifest);   // $1D2C -- hitbox follows the animation
   drawPlayer(state, manifest);        // $1D0C
   updateWater(state);                 // $05C6 CALL $2CBE -- levels 1-2 water
+  tickWaterArt(state);                // loc_00_3127's tile flip-book (captured)
   streamPlayerTiles(state, manifest, playerTiles);  // $2C13
   updateBatarangs(state);             // $3A35
   drawBatarangs(state, manifest);     // $3D15

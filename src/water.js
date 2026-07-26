@@ -12,15 +12,66 @@
 // $C714 is zero, the player takes 1 damage and a $5A knockback stamp from
 // $2E8D -- no enemy involved.
 //
+// The window layer IS the water, and renderer.js draws it. What it draws comes
+// from loadWaterArt() below.
+//
 // Not modelled here, deliberately:
-//  - the VRAM water-tile flip-book re-arm at $2D3D-$2D5C ($C328/$C348 scripts
-//    consumed by the VBlank ISR) -- pure tile animation;
 //  - the burst effect at the waterfall trigger ($2D82-$2D98, $C744 pool) --
-//    the effect pool is not modelled (same stance as the enemy-death burst);
-//  - the WINDOW layer itself. windowY is computed and stored faithfully so
-//    the renderer can use it when the window lands.
+//    the effect pool is not modelled (same stance as the enemy-death burst).
 
 import { u8, u16, setMapCell } from './state.js';
+import { decodeTileBuf } from './assets.js';
+
+const BASE = new URL('../assets/', import.meta.url).href;
+
+/**
+ * The window tilemap and its animated surface tiles.
+ *
+ * PARTIAL, and worth being straight about: assets/water.json is a CAPTURE
+ * taken by tools/rip_water.py, not the output of running the game's code. The
+ * surface animation comes from a generic animated-tile streamer (loc_00_3127,
+ * driven by $C70F/$C710 against per-level tables at 2:$61A4, 0:$31EE, 0:$3246
+ * and 0:$3295) which feeds a VRAM write queue the VBlank ISR drains. Porting
+ * that means porting the queue too, so the frames are captured for now --
+ * exactly the trade already made for the title screen, and with the same
+ * escape route.
+ *
+ * What IS ported is the cadence: three variants, eight frames each, measured
+ * off the cartridge.
+ */
+export async function loadWaterArt() {
+  const json = await fetch(BASE + 'water.json').then((r) => r.json());
+  return {
+    map: Uint8Array.from(json.map),
+    ids: json.animIds,
+    hold: json.holdFrames || 8,
+    // frames[v] = { tileId: decoded 8x8 }
+    frames: json.frames.map((variant) => {
+      const byId = {};
+      variant.forEach((bytes, i) => {
+        byId[json.animIds[i]] = decodeTileBuf(Uint8Array.from(bytes), 0);
+      });
+      return byId;
+    }),
+  };
+}
+
+/** Point the renderer at this level's window art, or clear it. */
+export function applyWaterArt(state, art) {
+  state.video.windowMap = art ? art.map : null;
+  state.waterArt = art || null;
+}
+
+/**
+ * Pick this frame's surface bitmaps. Called once per rendered frame rather
+ * than per pixel; the renderer just indexes the result.
+ */
+export function tickWaterArt(state) {
+  const art = state.waterArt;
+  if (!art || !art.frames.length) { state.video.windowAnim = null; return; }
+  const phase = Math.floor(state.frame / art.hold) % art.frames.length;
+  state.video.windowAnim = art.frames[phase];
+}
 
 /**
  * $C70A-$C70D, $C713, $C755 and the $C6EF splash pool (4 x {timer, x}).

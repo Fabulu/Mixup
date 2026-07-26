@@ -418,17 +418,24 @@ test('the window covers everything below its Y and nothing above', () => {
   const fb = render(winState({ windowLatchY: 100 }));
   for (let y = 0; y < 100; y++) assert.equal(at(fb, 4, y), 0, `row ${y} above`);
 
-  let dark = 0;
-  for (let y = 100; y < SCREEN_H; y++) {
-    for (let x = 0; x < SCREEN_W; x++) if (at(fb, x, y)) dark++;
-  }
-  const area = (SCREEN_H - 100) * SCREEN_W;
-  assert.ok(dark > 0, 'the water is drawn at all');
-  // 50% because the alternation the hardware does in TIME is reproduced in
-  // SPACE -- see drawWindow. Anything near 100% means the dither was lost and
-  // the water became an opaque black slab.
-  assert.ok(Math.abs(dark / area - 0.5) < 0.02,
-            `expected ~50% coverage, got ${(dark / area * 100).toFixed(1)}%`);
+  const cover = (from, to) => {
+    let dark = 0;
+    for (let y = from; y < to; y++) {
+      for (let x = 0; x < SCREEN_W; x++) if (at(fb, x, y)) dark++;
+    }
+    return dark / ((to - from) * SCREEN_W);
+  };
+
+  // The first two map rows are the artwork SURFACE and draw solid -- dithering
+  // them would destroy the texture that makes the water read as water.
+  assert.equal(cover(100, 116), 1, 'the surface rows are solid');
+
+  // Below that is the flat body, at 50%: the alternation the hardware does in
+  // TIME is reproduced in SPACE (see drawWindow). Near 100% here would mean
+  // the dither was lost and the water became an opaque black slab.
+  const body = cover(116, SCREEN_H);
+  assert.ok(Math.abs(body - 0.5) < 0.02,
+            `expected ~50% body coverage, got ${(body * 100).toFixed(1)}%`);
 });
 
 test('the dither is static, so the water does not strobe', () => {
@@ -448,6 +455,25 @@ test('sprites draw over the water, background does not', () => {
   s.video.sprites.push({ x: 40, y: 110, tile: 0, attr: 0 });
   const fb = render(s);
   for (let x = 40; x < 48; x++) assert.equal(at(fb, x, 112), 1, 'sprite wins');
+});
+
+test('the window reads its tilemap, and the animation overrides a tile', () => {
+  // Rows 0-1 of $9C00 are the textured surface ($E0/$E2 over $E1/$E3); the
+  // rest is the flat body. tickWaterArt swaps the surface bitmaps each phase,
+  // which is the whole of the "flowing" effect.
+  const s = winState({ windowLatchY: 96 });
+  s.level.tiles.bg[0xE0] = flatTile(1);
+  const map = new Uint8Array(1024);
+  map.fill(0x01);
+  for (let c = 0; c < 32; c++) map[c] = 0xE0;      // row 0 all $E0
+  s.video.windowMap = map;
+
+  const before = render(s);
+  assert.equal(at(before, 4, 100), 1, 'drew tile $E0 from the map');
+
+  s.video.windowAnim = { 0xE0: flatTile(2) };
+  const after = render(s);
+  assert.equal(at(after, 4, 100), 2, 'the animation frame wins');
 });
 
 test('WX shifts the window right, and 7 means flush left', () => {

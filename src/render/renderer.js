@@ -72,20 +72,26 @@ export function renderFrame(state, fb) {
  * It draws OVER the background and UNDER sprites, which is why Batman stays
  * visible while he is in it.
  *
- * THE 50% DITHER IS DELIBERATE, and it is the one place this renderer departs
- * from the register stream. sub_00_2CBE only computes the window position on
- * EVEN frames; odd frames park rWY at $90 ($2D65). So the hardware alternates
- * "solid black slab" and "no slab" at 30 Hz, and a DMG's slow LCD integrates
- * that into a translucent wash -- it is the only transparency the machine can
- * do. A modern display has no such persistence, so reproducing the register
- * stream literally gives a violent 30 Hz strobe over a third of the screen:
- * wrong to look at, and a genuine problem for photosensitive players.
+ * The top two map rows are a textured SURFACE (tiles $E0/$E2 over $E1/$E3,
+ * alternating every 8 px) and the rest is the solid fill. The surface is
+ * animated -- the game rewrites those four tiles' bitmaps in place, cycling
+ * three variants every 8 frames, which is what makes the water look like it is
+ * flowing. See src/water.js for where the frames come from.
  *
- * So the alternation is reproduced SPATIALLY instead of temporally -- a static
- * checkerboard, every frame, from the latched surface position. Same 50%
- * coverage, same palette, no flicker. The simulation underneath is untouched:
- * state.video.windowY still carries the faithful per-frame register value, and
- * every oracle scenario still compares against the real $C755 latch.
+ * THE 50% DITHER ON THE BODY IS DELIBERATE, and it is the one place this
+ * renderer departs from the register stream. sub_00_2CBE only computes the
+ * window position on EVEN frames; odd frames park rWY at $90 ($2D65). So the
+ * hardware alternates "slab" and "no slab" at 30 Hz, and a DMG's slow LCD
+ * integrates that into a translucent wash -- the only transparency the machine
+ * can do. A modern display has no such persistence, so reproducing the
+ * register stream literally gives a violent 30 Hz strobe over a third of the
+ * screen: wrong to look at, and a real problem for photosensitive players. The
+ * alternation is reproduced SPATIALLY instead -- a static checkerboard, every
+ * frame, from the latched surface position.
+ *
+ * The animated SURFACE rows are drawn solid, not dithered: they are detailed
+ * artwork rather than a flat black slab, and dithering them destroys the
+ * texture that makes the water read as water.
  */
 function drawWindow(state, fb, bands) {
   const v = state.video;
@@ -97,18 +103,37 @@ function drawWindow(state, fb, bands) {
   // rWX is offset by 7: WX = 7 puts the window's left edge at screen x 0, and
   // anything below 7 still starts at 0 rather than wrapping.
   const left = Math.max(0, (v.windowX | 0) - 7);
-  const tile = state.level.tiles.bg[v.windowTile & 0xFF];
-  if (!tile) return;
+  const map = v.windowMap;
+  const anim = v.windowAnim;                           // id -> tile, this frame
+  const bgTiles = state.level.tiles.bg;
+  const fallback = bgTiles[v.windowTile & 0xFF];
+  if (!map && !fallback) return;
 
   const shades = fb.shades;
   for (let y = Math.max(0, wy); y < SCREEN_H; y++) {
     // The window runs its own line counter from 0 at its first visible line;
-    // it does NOT follow SCY. Invisible on a flat fill, but free to get right.
-    const tileY = (y - wy) & 7;
+    // it does NOT follow SCY.
+    const wline = y - wy;
+    const mapRow = (wline >> 3) & 31;
+    const tileY = wline & 7;
     const bgp = palMap(bandFor(bands, y).bgp);
     const rowBase = y * SCREEN_W;
-    for (let x = left + ((y ^ left) & 1); x < SCREEN_W; x += 2) {
-      shades[rowBase + x] = bgp[tile[tileY * 8 + ((x - left) & 7)]];
+
+    // Rows 0-1 are the artwork surface; everything below is the flat body, and
+    // only the body gets the transparency dither.
+    const solid = mapRow < 2;
+    const step = solid ? 1 : 2;
+    const start = solid ? left : left + ((y ^ left) & 1);
+
+    for (let x = start; x < SCREEN_W; x += step) {
+      const wx = x - left;
+      let tile = fallback;
+      if (map) {
+        const id = map[mapRow * 32 + ((wx >> 3) & 31)];
+        tile = (anim && anim[id]) || bgTiles[id] || fallback;
+      }
+      if (!tile) continue;
+      shades[rowBase + x] = bgp[tile[tileY * 8 + (wx & 7)]];
     }
   }
 }

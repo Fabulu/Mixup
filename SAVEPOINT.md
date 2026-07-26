@@ -49,6 +49,7 @@ pip install pyboy
 python tools/export_assets.py     # -> assets/
 python tools/gen_tunables.py      # -> src/tunables.js, read from the ROM
 python tools/rip_title.py         # -> assets/title.*
+python tools/rip_water.py         # -> assets/water.json (window map + anim)
 python -m http.server 8000        # module imports need a real origin
 ```
 
@@ -70,7 +71,7 @@ Deploy: `node tools/build-dist.mjs` then
 | Map objects `$C1E8` — types 3, 7, 9 | bit-exact |
 | Enemy AI — states 1, 2, 3, 11, 12 + drawing | bit-exact |
 | Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
-| Window layer (= the water body's graphics) | ported, 50% spatial dither — see renderer.js |
+| Window layer (= the water's graphics) | drawn; tilemap + surface animation are a **capture** — see below |
 | Levels-1/2 water body (`src/water.js`): rise/fall, waterfall stamp, `$FF95` slow mode, the 1-dmg `$5A` hit, enemy slow-fall bit, splash pool | bit-exact |
 | Level transitions, death/lives/respawn | ported |
 | HUD energy bar | ported |
@@ -130,6 +131,15 @@ Be suspicious of these; they are the likeliest source of a surprise.
   tests, but no natural input script triggers them, so no frame-by-frame proof.
 - **Post-death behaviour.** The ROM shoves x −15 during its sequence and
   returns to round-select; we restart the level in place instead. Deliberate.
+- **Water graphics.** `assets/water.json` is a *capture* (tools/rip_water.py)
+  of the `$9C00` window tilemap and the three animation variants of the four
+  surface tiles. The surface animates because a generic animated-tile streamer
+  (`loc_00_3127`, `$C70F`/`$C710`, tables `2:$61A4`, `0:$31EE`, `0:$3246`,
+  `0:$3295`) rewrites their bitmaps through a VRAM write queue; porting that
+  means porting the queue too. The *cadence* — 3 variants, 8 frames each — is
+  measured off the cartridge and reproduced. Same trade as the title screen.
+  Note the streamer is generic: porting it would also animate whatever other
+  levels use it, which nothing currently does.
 - **Title screen.** `assets/title.vram.bin` is a *capture* of what the real
   game builds, not the output of running its two VRAM scripts (5:`$5170`,
   1:`$7C44`). The loop behaviour — fade, the START/OPTION cursor, the
