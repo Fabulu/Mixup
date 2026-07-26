@@ -40,6 +40,7 @@ const { initLevel } = await imp('src/level.js');
 const { loadManifest, loadPlayerTiles } = await imp('src/assets.js');
 const { tick } = await imp('src/main.js');
 const R = await imp('src/render/renderer.js');
+const { resolveLoadout, runHook } = await imp('src/mods.js');
 
 const BTN = { A: 0x01, B: 0x02, R: 0x10, L: 0x20, U: 0x40, D: 0x80 };
 
@@ -107,7 +108,14 @@ function writePNG(file, w0, h0, rgba0) {
 }
 
 // --- run -------------------------------------------------------------------
-const state = createState(makeTunables());
+// --mods moon-gravity+super-jump  applies a mod loadout, same as the launcher.
+const modIds = (arg('mods', '') || '').split('+').filter(Boolean);
+const loadout = resolveLoadout(modIds);
+const state = createState(makeTunables(loadout.tunables));
+state.loadout = loadout;
+state.video.invert = loadout.render.invert;
+if (modIds.length) console.log(`mods: ${modIds.join(', ')}`);
+
 const manifest = await loadManifest();
 const playerTiles = await loadPlayerTiles();
 await initLevel(state, level);
@@ -129,7 +137,9 @@ for (let f = 1; f <= frames; f++) {
   state.input.held = held;
   state.input.prev = held;
 
+  runHook(loadout, 'onInput', state);
   tick(state, manifest, playerTiles);
+  runHook(loadout, 'onRenderFrame', state);
 
   const p = state.player;
   trace.push({

@@ -55,7 +55,7 @@ export function renderFrame(state, fb) {
   const bands = rasterBands(state);
   drawBackground(state, fb, bands);
   drawSprites(state, fb, bands);
-  toRGBA(fb);
+  toRGBA(fb, state.video);
 }
 
 function bandFor(bands, line) {
@@ -166,10 +166,26 @@ function drawSprites(state, fb, bands) {
   }
 }
 
-function toRGBA(fb) {
+/**
+ * Shade -> RGBA. Mods hook in here rather than at pixel-compose time, so
+ * `invert` and `paletteRotate` cost one LUT rebuild per frame instead of a
+ * branch per pixel.
+ */
+function toRGBA(fb, video) {
   const { shades, rgba } = fb;
+
+  let lut = DMG_PALETTE;
+  const rot = (video && video.paletteRotate) | 0;
+  const inv = video && video.invert;
+  if (inv || rot) {
+    lut = [0, 1, 2, 3].map((s) => {
+      const t = (inv ? 3 - s : s);
+      return DMG_PALETTE[(t + rot) & 3];
+    });
+  }
+
   for (let i = 0; i < shades.length; i++) {
-    const c = DMG_PALETTE[shades[i]];
+    const c = lut[shades[i]];
     const o = i * 4;
     rgba[o] = c[0]; rgba[o + 1] = c[1]; rgba[o + 2] = c[2]; rgba[o + 3] = 255;
   }

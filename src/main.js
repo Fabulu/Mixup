@@ -17,11 +17,17 @@ import { drawHud } from './hud.js';
 import { updateBreakables } from './collision.js';
 import { updateActors } from './actors.js';
 import { updateEnemies } from './enemies.js';
+import { resolveLoadout, runHook } from './mods.js';
 
 const FRAME_MS = 1000 / 59.73;      // DMG frame rate
 
-export async function boot(canvas, { level = 1, tunables = {} } = {}) {
-  const state = createState(makeTunables(tunables));
+export async function boot(canvas, { level = 1, tunables = {}, mods = [] } = {}) {
+  // Mod params override the ROM defaults before anything reads them; explicit
+  // `tunables` still wins last so a caller can force a single value.
+  const loadout = resolveLoadout(mods);
+  const state = createState(makeTunables({ ...loadout.tunables, ...tunables }));
+  state.loadout = loadout;
+  state.video.invert = loadout.render.invert;
   const manifest = await loadManifest();
   const playerTiles = await loadPlayerTiles();
   await initLevel(state, level);
@@ -44,15 +50,21 @@ export async function boot(canvas, { level = 1, tunables = {} } = {}) {
     last = now;
 
     // Fixed timestep, with a cap so a background tab does not spiral.
+    // Turbo Mode runs extra logic ticks per displayed frame.
+    const perFrame = Math.max(1, loadout.meta.ticksPerFrame | 0);
     let steps = 0;
     while (acc >= FRAME_MS && steps < 4) {
-      sampleInput(state);           // ROM: the joypad read lives in VBlank
-      tick(state, manifest, playerTiles);
+      for (let i = 0; i < perFrame; i++) {
+        sampleInput(state);         // ROM: the joypad read lives in VBlank
+        runHook(loadout, 'onInput', state);
+        tick(state, manifest, playerTiles);
+      }
       acc -= FRAME_MS;
       steps++;
     }
     if (steps === 0 && acc > FRAME_MS * 8) acc = 0;
 
+    runHook(loadout, 'onRenderFrame', state);
     renderFrame(state, fb);
     image.data.set(fb.rgba);
     ctx.putImageData(image, 0, 0);
@@ -70,6 +82,7 @@ export async function boot(canvas, { level = 1, tunables = {} } = {}) {
 /** One game frame. ROM: the $0567 main-loop body. */
 export function tick(state, manifest, playerTiles) {
   if (state.flow.paused) return;
+  runHook(state.loadout, 'onFrame', state);
 
   // $0567 order (P1 subset -- the omitted calls are enemies/actors/effects).
   state.video.sprites.length = 0;     // $0C1F clears unused shadow OAM

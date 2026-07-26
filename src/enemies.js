@@ -90,7 +90,13 @@ export function updateEnemies(state) {
     if (r[0x16] === 0) { kill(state, r); continue; }          // $4E75: HP gone
 
     dispatch(state, r);
-    contactPlayer(state, r);
+
+    // Contact only runs for states whose AI is actually ported. A stationary
+    // enemy (no state handler) sits at its spawn position forever, so testing
+    // contact against it damages the player at times the real game never
+    // would -- worse than not testing at all, and it corrupts the trace with
+    // no fidelity gain. This re-enables itself per state as handlers land.
+    if (!UNIMPLEMENTED_STATES.has(r[2])) contactPlayer(state, r);
   }
 }
 

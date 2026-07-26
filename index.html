@@ -3,55 +3,257 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Batman: Return of the Joker - JS port</title>
+<title>Batman: Return of the Joker — mod select</title>
 <style>
-  :root { --bg: #12141a; --fg: #d8dee9; --dim: #7a869a; }
+  :root {
+    --bg: #0d0f14; --panel: #161a22; --line: #262d3a;
+    --fg: #dfe5ef; --dim: #7c8799; --accent: #f2c14e; --on: #8bd450;
+    --dmg0: #e0f8d0; --dmg3: #081820;
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg);
-    font: 14px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 1.25rem; padding: 2rem 1rem;
+    font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    padding: 2rem 1rem 4rem;
   }
-  h1 { font-size: 1rem; font-weight: 600; margin: 0; letter-spacing: .04em; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 1rem; margin-bottom: 1.5rem; }
+  h1 { font-size: 1.15rem; margin: 0 0 .25rem; letter-spacing: .06em; }
   h1 span { color: var(--dim); font-weight: 400; }
+  .sub { color: var(--dim); font-size: 12px; }
+
+  h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .14em;
+       color: var(--dim); margin: 1.75rem 0 .6rem; font-weight: 600; }
+
+  .grid { display: grid; gap: .6rem; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: .7rem .8rem; cursor: pointer; text-align: left; color: inherit;
+    font: inherit; transition: border-color .12s, background .12s;
+  }
+  .card:hover { border-color: #3a4557; }
+  .card[aria-pressed="true"] { border-color: var(--on); background: #16211a; }
+  .card .nm { font-weight: 600; display: flex; justify-content: space-between; gap: .5rem; }
+  .card .nm i { font-style: normal; color: var(--on); opacity: 0; }
+  .card[aria-pressed="true"] .nm i { opacity: 1; }
+  .card .bl { color: var(--dim); font-size: 12px; margin-top: .2rem; }
+  .card .fx { margin-top: .45rem; font-size: 11px; color: #93a0b4;
+              border-top: 1px dashed var(--line); padding-top: .4rem; display: none; }
+  .card[aria-pressed="true"] .fx { display: block; }
+  .fx code { color: var(--accent); }
+
+  .presets .card { background: #1b1710; border-color: #3a3320; }
+  .card.original { background: #101820; border-color: #2c4a34; }
+  .card.original .nm i { color: var(--on); opacity: 0; }
+  .card.original[aria-pressed="true"] { border-color: var(--on); background: #16211a; }
+  .card.original[aria-pressed="true"] .nm i { opacity: 1; }
+
+  .bar {
+    position: sticky; bottom: 0; margin-top: 2rem; padding: .9rem 1rem;
+    background: #11151c; border: 1px solid var(--line); border-radius: 6px;
+    display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;
+  }
+  .bar .stack { flex: 1 1 320px; min-width: 0; color: var(--dim); font-size: 12px; }
+  .bar .stack b { color: var(--fg); font-weight: 600; }
+  .warn { color: var(--accent); }
+  label { color: var(--dim); font-size: 12px; }
+  select, button {
+    font: inherit; background: #1d232d; color: var(--fg);
+    border: 1px solid var(--line); border-radius: 4px; padding: .4rem .6rem;
+  }
+  button { cursor: pointer; }
+  #launch { background: var(--accent); color: #171208; border-color: var(--accent);
+            font-weight: 700; letter-spacing: .06em; padding: .5rem 1.4rem; }
+  #reset { color: var(--dim); }
+
+  #stage { display: none; text-align: center; }
+  #stage.on { display: block; }
   #screen {
-    image-rendering: pixelated;
-    width: 640px; height: 576px;   /* integer 4x of 160x144 */
-    max-width: 100%; height: auto; aspect-ratio: 160 / 144;
-    background: #0f380f;
-    border: 1px solid #2a2f3a; border-radius: 4px;
+    image-rendering: pixelated; width: min(96vw, 720px); height: auto;
+    aspect-ratio: 160 / 144; background: var(--dmg3);
+    border: 1px solid var(--line); border-radius: 4px;
   }
-  .keys { color: var(--dim); font-size: 12px; text-align: center; }
-  .keys b { color: var(--fg); font-weight: 600; }
-  #err {
-    display: none; max-width: 640px; padding: .75rem 1rem;
-    background: #2a1a1a; border: 1px solid #5a2a2a; border-radius: 4px;
-    color: #ffb4b4; white-space: pre-wrap;
-  }
+  .keys { color: var(--dim); font-size: 12px; margin-top: .8rem; }
+  .keys b { color: var(--fg); }
+  #err { display: none; margin-top: 1rem; padding: .8rem 1rem; text-align: left;
+         background: #2a1a1a; border: 1px solid #5a2a2a; border-radius: 4px;
+         color: #ffb4b4; white-space: pre-wrap; }
 </style>
 </head>
 <body>
-  <h1>Batman: Return of the Joker <span>— JavaScript port, phase 1</span></h1>
-  <canvas id="screen" width="160" height="144"></canvas>
-  <div class="keys">
-    <b>&larr; &rarr;</b> walk &nbsp;·&nbsp; <b>X</b> jump &nbsp;·&nbsp;
-    <b>Z</b> attack &nbsp;·&nbsp; <b>Enter</b> start
+<div class="wrap">
+
+  <div id="picker">
+    <header>
+      <h1>Batman: Return of the Joker <span>— mod select</span></h1>
+      <div class="sub">Game Boy, Sunsoft 1992 · hand-translated from disassembly · every
+        modifier below changes a constant read straight out of the original ROM</div>
+    </header>
+
+    <h2>Start here</h2>
+    <div class="grid presets" id="presets">
+      <button class="card original" type="button" id="vanilla">
+        <div class="nm"><span>Original Game</span><i>✓</i></div>
+        <div class="bl">The 1992 cartridge, untouched. Every constant exactly as Sunsoft
+          shipped it — verified bit-exact against the ROM.</div>
+      </button>
+    </div>
+
+    <h2>Physics</h2><div class="grid" data-cat="physics"></div>
+    <h2>Combat</h2><div class="grid" data-cat="combat"></div>
+    <h2>Chaos</h2><div class="grid" data-cat="chaos"></div>
+
+    <div class="bar">
+      <div class="stack" id="stack">No modifiers — <b>original game</b></div>
+      <label>Level
+        <select id="level"></select>
+      </label>
+      <button id="reset">Clear</button>
+      <button id="launch">LAUNCH ▸</button>
+    </div>
   </div>
-  <div id="err"></div>
+
+  <div id="stage">
+    <canvas id="screen" width="160" height="144"></canvas>
+    <div class="keys">
+      <b>← →</b> walk · <b>X</b> jump · <b>Z</b> attack · <b>↑</b> bat-rope ·
+      <b>Enter</b> start &nbsp;&nbsp;<button id="back">◂ mod select</button>
+    </div>
+    <div id="err"></div>
+  </div>
+
+</div>
 
 <script type="module">
-  import { boot } from './src/main.js';
+import { MODS, PRESETS, describeMod, resolveLoadout,
+         loadoutToHash, hashToLoadout } from './src/mods.js';
+import { boot } from './src/main.js';
 
+const selected = new Set();
+let running = null;
+
+// ---- build the cards -------------------------------------------------------
+for (const [id, mod] of Object.entries(MODS)) {
+  const host = document.querySelector(`.grid[data-cat="${mod.category}"]`);
+  if (!host) continue;
+  const b = document.createElement('button');
+  b.className = 'card';
+  b.type = 'button';
+  b.setAttribute('aria-pressed', 'false');
+  b.dataset.id = id;
+  b.innerHTML = `<div class="nm"><span></span><i>ON</i></div>
+                 <div class="bl"></div><div class="fx"></div>`;
+  b.querySelector('.nm span').textContent = mod.name;
+  b.querySelector('.bl').textContent = mod.blurb;
+  b.querySelector('.fx').innerHTML = describeMod(id).map((d) =>
+    d.from === null || d.from === undefined
+      ? `${d.key}: <code>${d.to}</code>`
+      : `${d.key}: <code>${d.from}</code> → <code>${d.to}</code>`).join('<br>');
+  b.addEventListener('click', () => { toggle(id); });
+  host.appendChild(b);
+}
+
+// "Original Game" is a real, selectable choice -- not merely the absence of a
+// selection. Clicking it clears the stack and it lights up whenever nothing
+// else is active, so the untouched cartridge is always one obvious click away.
+document.getElementById('vanilla').addEventListener('click', () => {
+  selected.clear();
+  sync();
+});
+
+for (const [pid, p] of Object.entries(PRESETS)) {
+  const b = document.createElement('button');
+  b.className = 'card';
+  b.type = 'button';
+  b.innerHTML = `<div class="nm"><span></span></div><div class="bl"></div>`;
+  b.querySelector('.nm span').textContent = p.name;
+  b.querySelector('.bl').textContent = p.mods.map((m) => MODS[m].name).join(' + ');
+  b.addEventListener('click', () => {
+    selected.clear();
+    p.mods.forEach((m) => selected.add(m));
+    sync();
+  });
+  document.getElementById('presets').appendChild(b);
+}
+
+const levelSel = document.getElementById('level');
+for (let i = 1; i <= 14; i++) {
+  const o = document.createElement('option');
+  o.value = String(i); o.textContent = String(i);
+  levelSel.appendChild(o);
+}
+
+function toggle(id) {
+  if (selected.has(id)) selected.delete(id); else selected.add(id);
+  sync();
+}
+
+function sync() {
+  for (const card of document.querySelectorAll('.card[data-id]')) {
+    card.setAttribute('aria-pressed', selected.has(card.dataset.id) ? 'true' : 'false');
+  }
+  const ids = [...selected];
+  const lo = resolveLoadout(ids);
+  const el = document.getElementById('stack');
+
+  // The Original card is lit exactly when nothing else is.
+  document.getElementById('vanilla')
+    .setAttribute('aria-pressed', ids.length ? 'false' : 'true');
+
+  if (!ids.length) {
+    el.innerHTML = '<b>Original Game</b> — unmodified, bit-exact';
+  } else {
+    const names = ids.map((i) => MODS[i].name).join(' · ');
+    const nParams = new Set(ids.flatMap((i) => Object.keys(MODS[i].params || {}))).size;
+    let txt = `<b>${ids.length}</b> active — ${names} &nbsp;·&nbsp; ${nParams} params changed`;
+    if (lo.conflicts.size) {
+      const keys = [...lo.conflicts.keys()].join(', ');
+      txt += ` &nbsp;<span class="warn">⚠ ${lo.conflicts.size} shared key(s): ${keys} — last wins</span>`;
+    }
+    el.innerHTML = txt;
+  }
+  location.hash = loadoutToHash(ids, parseInt(levelSel.value, 10));
+}
+
+// ---- restore from the URL --------------------------------------------------
+{
+  const { ids, level } = hashToLoadout(location.hash);
+  ids.forEach((i) => selected.add(i));
+  levelSel.value = String(level);
+}
+levelSel.addEventListener('change', sync);
+document.getElementById('reset').addEventListener('click', () => { selected.clear(); sync(); });
+sync();
+
+// ---- launch ----------------------------------------------------------------
+document.getElementById('launch').addEventListener('click', async () => {
+  document.getElementById('picker').style.display = 'none';
+  document.getElementById('stage').classList.add('on');
   const err = document.getElementById('err');
+  err.style.display = 'none';
   try {
-    const game = await boot(document.getElementById('screen'), { level: 1 });
-    window.game = game;          // handy in the console: game.state.player
+    running = await boot(document.getElementById('screen'), {
+      level: parseInt(levelSel.value, 10),
+      mods: [...selected],
+    });
+    window.game = running;
   } catch (e) {
     err.style.display = 'block';
-    err.textContent = `${e.message}\n\nServe this over HTTP (module imports and fetch do not work from file://):\n  python -m http.server 8000`;
+    err.textContent = `${e.message}\n\nAssets missing? Generate them from your own ROM:\n`
+      + `  python tools/export_assets.py\n\n`
+      + `Serve over HTTP (module imports and fetch do not work from file://):\n`
+      + `  python -m http.server 8000`;
     throw e;
   }
+});
+
+document.getElementById('back').addEventListener('click', () => {
+  if (running) running.stop();
+  running = null;
+  document.getElementById('stage').classList.remove('on');
+  document.getElementById('picker').style.display = '';
+});
 </script>
 </body>
 </html>
