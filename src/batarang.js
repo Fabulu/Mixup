@@ -191,7 +191,9 @@ function updateReturning(state, b) {
  * than each animating independently. It freezes while paused.
  */
 export function drawBatarangs(state, manifest) {
-  const table = state.tables && state.tables.batarangAnim;
+  // A mod may swap the spin cycle for any metasprite ids it likes.
+  const table = state.video.batarangAnim
+    || (state.tables && state.tables.batarangAnim);
   if (!table) return;
 
   const phase = state.flow.paused ? 0 : (state.frame & 0x1C) >> 2;   // $3D2A

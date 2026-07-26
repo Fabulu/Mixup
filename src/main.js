@@ -1,4 +1,4 @@
-// Boot and frame loop.  ROM: init $0150, main loop $0567-$0650.
+﻿// Boot and frame loop.  ROM: init $0150, main loop $0567-$0650.
 //
 // The main loop's CALL ORDER is deliberately preserved: it is what determines
 // OAM ordering (and therefore sprite priority) and platform-carry ordering.
@@ -29,6 +29,7 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [] } = {})
   state.loadout = loadout;
   state.video.invert = loadout.render.invert;
   state.video.spriteScale = loadout.render.spriteScale || 1;
+  state.video.batarangAnim = loadout.render.batarangAnim || null;
   state.hitboxScale = loadout.render.hitboxScale || 1;
   const manifest = await loadManifest();
   const playerTiles = await loadPlayerTiles();

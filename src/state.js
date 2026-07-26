@@ -92,6 +92,11 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     enemies: createEnemies(),        // $C268, 8 x 32 B
     currentActorSlot: 0,             // $C75A
     enemyCursor: 0,                  // $FFB3
+    // $FFBE/$FFBF -- the cell address the enemy probe's empty path stored.
+    // A true HRAM global: it persists across probes, slots AND frames, and
+    // 1:$640C reads it stale when the probe bailed early. Held as a cell
+    // index rather than an address.
+    enemyBesideIdx: 0,
     lagFrame: 0,                     // $C757
     sound: { queue: [] },                      // $C6FB, 4 x 2 B command ring
 

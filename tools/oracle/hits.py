@@ -35,6 +35,8 @@ def main():
     ap.add_argument('--from', dest='lo', type=int, default=102)
     ap.add_argument('--to', dest='hi', type=int, default=108)
     ap.add_argument('--addrs', nargs='+', required=True, help='HEXADDR:label ...')
+    ap.add_argument('--level', type=int, default=1,
+                    help='inject $FFB0 at loc_00_04BB, same as trace.py')
     args = ap.parse_args()
 
     labels = []
@@ -49,6 +51,10 @@ def main():
     started = {'v': False}
     order = []
 
+    if args.level != 1:
+        pyboy.hook_register(
+            0, 0x04BB,
+            lambda _: pyboy.memory.__setitem__(0xFFB0, args.level), None)
     pyboy.hook_register(0, MAIN_LOOP, lambda _: started.__setitem__('v', True), None)
     for addr, name in labels:
         def make(n):

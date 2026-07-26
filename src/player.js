@@ -629,12 +629,19 @@ function selectAnim(state) {
     p.animPrev = 0xFF;                      // force a full 3-column repaint
     p.animFrame = 0;
   }
-  // Metasprite index == facing, verified against the real shadow OAM with
-  // tools/oracle/checksprite.py: facing 0 (right) selects entry 0, whose attr
-  // is $30 (X-flipped); facing 1 (left) selects entry 1, attr $10.
+  // Metasprite index. Normally just `facing` -- verified against the real
+  // shadow OAM with tools/oracle/checksprite.py: facing 0 (right) selects
+  // entry 0, attr $30 (X-flipped); facing 1 selects entry 1, attr $10.
+  // ($1BA3 reads `XOR $01`, but that arm is not the one the walk/idle path
+  // takes; believing it draws Batman mirrored for his entire run.)
   //
-  // $1BA3 reads `LDH A,[$FF88] / XOR $01 / LDH [$FF8B],A`, which looks like
-  // facing XOR 1 -- but that arm is not the one the walk/idle path takes, and
-  // taking it at face value draws Batman mirrored for his whole run.
-  p.msIndex = p.facing;
+  // The exception is the extended-punch pose. Entries 0/1 are six sprites,
+  // 24 px wide, using OBJ tiles $00-$0B -- there is simply nowhere in them for
+  // the outstretched fist, so the game switches to entries 2/3, which carry a
+  // SEVENTH sprite at tile $10. Drawing the punch with 0/1 lops the arm off at
+  // the elbow.
+  p.msIndex = (p.attackTimer > 0 && id === 12) ? p.facing + 2 : p.facing;
+
+  // Anims 19/20 invert the mapping in the real game (msIndex = facing ^ 1).
+  // Those are bat-rope poses, which are not ported yet -- revisit with it.
 }

@@ -48,8 +48,12 @@ T_ENEMY_SPAWNS    = (5, 0x46EC)   # 14 x {src16, count}
 T_OBJECT_SPAWNS   = (5, 0x4716)
 T_ENEMY_DMG       = (1, 0x6BC1)   # 13 B, by enemy state
 T_LEVEL_DMG_BONUS = (1, 0x6BCE)   # 14 B
-T_BATARANG_ANIM   = (0, 0x41B8)   # loc_00_3D35: 8 metasprite ids, the spin
-                                  # cycle indexed by (frame & $1C) >> 2
+# loc_00_3D35 does `LD HL,$41B8`, which lands in the BANKED $4000-$7FFF window
+# -- so this is 1:$41B8, not bank 0. Reading it from bank 0 yields garbage that
+# happens to be valid metasprite indices, which renders spinning Batmen instead
+# of batarangs.
+T_BATARANG_ANIM   = (1, 0x41B8)   # 8 metasprite ids, spin cycle indexed by
+                                  # (frame & $1C) >> 2
 T_SCRIPT_PTRS     = (0, 0x27E6)   # loc_00_164A: 3 LE pointers to move scripts
 T_SCRIPT_BLOCK    = (0, 0x27E6)   # the scripts themselves live just past them
 T_SCRIPT_BLOCK_N  = 0x1E          # $27E6-$2803

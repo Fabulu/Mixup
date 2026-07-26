@@ -122,6 +122,16 @@ export const MODS = {
       },
     },
   },
+  'bat-clones': {
+    name: 'Clone Wars',
+    blurb: 'Throw Batmen instead of batarangs. Spinning, flickering Batmen.',
+    category: 'chaos',
+    // Born as a bug: loc_00_3D35's spin table lives at 1:$41B8, in the banked
+    // window, and reading it from bank 0 gave garbage that happened to be
+    // valid metasprite ids -- so batarangs came out as tumbling Batmen. Too
+    // good to just delete, so here it is on purpose.
+    render: { batarangAnim: [0, 1, 0, 1, 0, 1, 0, 1] },
+  },
   'wide-load': {
     name: 'Wide Load',
     blurb: 'Batman at double size. He does not fit through everything.',

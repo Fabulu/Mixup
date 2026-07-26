@@ -1,4 +1,4 @@
-// Headless harness: runs the REAL port modules for N frames with scripted
+﻿// Headless harness: runs the REAL port modules for N frames with scripted
 // input and writes PNGs, so rendering and physics can be verified without a
 // browser.  This is also the seed of the regression corpus.
 //
@@ -115,6 +115,7 @@ const state = createState(makeTunables(loadout.tunables));
 state.loadout = loadout;
 state.video.invert = loadout.render.invert;
 state.video.spriteScale = loadout.render.spriteScale || 1;
+state.video.batarangAnim = loadout.render.batarangAnim || null;
 state.hitboxScale = loadout.render.hitboxScale || 1;
 if (modIds.length) console.log(`mods: ${modIds.join(', ')}`);
 
