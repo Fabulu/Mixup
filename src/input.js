@@ -19,6 +19,19 @@ const KEYMAP = {
 };
 
 let held = 0;
+let touchHeld = 0;
+
+/**
+ * Press or release a button from an on-screen control. Kept separate from the
+ * keyboard mask so a touch that never sends its "up" (finger dragged off the
+ * button, browser stealing the gesture) cannot be cleared by a key event, and
+ * vice versa.
+ */
+export function setTouchButton(bit, down) {
+  if (down) touchHeld |= bit; else touchHeld &= ~bit;
+}
+
+export function clearTouchButtons() { touchHeld = 0; }
 
 export function attachInput(target = (typeof window !== 'undefined' ? window : null)) {
   if (!target) return;             // headless harness drives state.input directly
@@ -36,7 +49,7 @@ export function attachInput(target = (typeof window !== 'undefined' ? window : n
 /** Call once per frame, before the game update. */
 export function sampleInput(state) {
   const gp = readGamepad();
-  const now = (held | gp) & 0xFF;
+  const now = (held | gp | touchHeld) & 0xFF;
   state.input.pressed = now & ~state.input.prev;   // $FFE2
   state.input.held = now;                          // $FFE1
   state.input.prev = now;
