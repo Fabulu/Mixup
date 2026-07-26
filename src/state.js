@@ -145,6 +145,14 @@ export function createState(tunables = DEFAULT_TUNABLES) {
       scx: 0, scy: 0,  // $FFA9/$FFAA
       bgp: 0xE4, obp0: 0xE4, obp1: 0xC4,
       sprites: [],     // replaces shadow OAM; drawn in push order
+      // Window layer. LCDC is $E7 at every write site, so the window is always
+      // ENABLED and reads the $9C00 tilemap -- which level init fills entirely
+      // with tile $01 ($04C9 and $0E0C). It is only ever used for the water
+      // body, so it is off-screen ($90) unless water.js pulls it up.
+      windowY: 0x90,      // $FFAC -> rWY, the faithful per-frame register
+      windowLatchY: 0x90, // $C755, which survives the odd frames rWY does not
+      windowX: 0x07,      // $FFAB -> rWX; 7 means "start at screen x 0"
+      windowTile: 0x01,
     },
   };
 }

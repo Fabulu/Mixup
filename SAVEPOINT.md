@@ -70,6 +70,7 @@ Deploy: `node tools/build-dist.mjs` then
 | Map objects `$C1E8` — types 3, 7, 9 | bit-exact |
 | Enemy AI — states 1, 2, 3, 11, 12 + drawing | bit-exact |
 | Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
+| Window layer (= the water body's graphics) | ported, 50% spatial dither — see renderer.js |
 | Levels-1/2 water body (`src/water.js`): rise/fall, waterfall stamp, `$FF95` slow mode, the 1-dmg `$5A` hit, enemy slow-fall bit, splash pool | bit-exact |
 | Level transitions, death/lives/respawn | ported |
 | HUD energy bar | ported |
@@ -100,9 +101,9 @@ Roughly in order of how much each would change the game:
    destructible cells and no way to open them.
 4. **Map-object types 1, 4, 5, 6, 8, 11.** Types 2 and 10 are never placed in
    shipped data. (3, 7 and 9 are ported and bit-exact.)
-5. **Window layer and raster effects.** The largest remaining *visual* gap —
-   the window is ~56% of the pixel delta on level 1. Note this is the window
-   LAYER; the water body it draws is now simulated (`src/water.js`).
+5. **Raster effects** (the `$0857` STAT program): per-scanline SCX/SCY/palette
+   bands. `rasterBands()` still emits a single band. The window LAYER itself is
+   now drawn (`drawWindow` in renderer.js) — that was the level-1/2 water.
 6. **Conveyor carry** is applied (`loc_00_170A`), but levels 6/7/11/12/13 each
    have their own `sub_00_2CBE` branch and only the levels-1/2 water branch is
    ported.

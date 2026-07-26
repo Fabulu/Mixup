@@ -54,8 +54,63 @@ export function rasterBands(state) {
 export function renderFrame(state, fb) {
   const bands = rasterBands(state);
   drawBackground(state, fb, bands);
+  drawWindow(state, fb, bands);
   drawSprites(state, fb, bands);
   toRGBA(fb, state.video);
+}
+
+/**
+ * The window layer -- which, in this game, IS the water.
+ *
+ * ROM: rWY/rWX from $FFAC/$FFAB ($080D), tilemap $9C00, enabled by LCDC bit 5
+ * -- and LCDC is $E7 at every single write site, so the window is never
+ * actually switched off. It is parked off-screen at $90 instead. Level init
+ * fills the entire $9C00 map with tile $01 ($04C9 covers $9C40-$9FFF, $0E0C
+ * the first two rows) and nothing ever writes another value, so the layer is a
+ * flat slab of one tile. Tile $01 is `FF` sixteen times: solid darkest shade.
+ *
+ * It draws OVER the background and UNDER sprites, which is why Batman stays
+ * visible while he is in it.
+ *
+ * THE 50% DITHER IS DELIBERATE, and it is the one place this renderer departs
+ * from the register stream. sub_00_2CBE only computes the window position on
+ * EVEN frames; odd frames park rWY at $90 ($2D65). So the hardware alternates
+ * "solid black slab" and "no slab" at 30 Hz, and a DMG's slow LCD integrates
+ * that into a translucent wash -- it is the only transparency the machine can
+ * do. A modern display has no such persistence, so reproducing the register
+ * stream literally gives a violent 30 Hz strobe over a third of the screen:
+ * wrong to look at, and a genuine problem for photosensitive players.
+ *
+ * So the alternation is reproduced SPATIALLY instead of temporally -- a static
+ * checkerboard, every frame, from the latched surface position. Same 50%
+ * coverage, same palette, no flicker. The simulation underneath is untouched:
+ * state.video.windowY still carries the faithful per-frame register value, and
+ * every oracle scenario still compares against the real $C755 latch.
+ */
+function drawWindow(state, fb, bands) {
+  const v = state.video;
+  // The LATCH, not the register: the register is $90 on odd frames and the
+  // surface must not jump about between them.
+  const wy = v.windowLatchY;
+  if (wy === undefined || wy >= SCREEN_H) return;      // parked off-screen
+
+  // rWX is offset by 7: WX = 7 puts the window's left edge at screen x 0, and
+  // anything below 7 still starts at 0 rather than wrapping.
+  const left = Math.max(0, (v.windowX | 0) - 7);
+  const tile = state.level.tiles.bg[v.windowTile & 0xFF];
+  if (!tile) return;
+
+  const shades = fb.shades;
+  for (let y = Math.max(0, wy); y < SCREEN_H; y++) {
+    // The window runs its own line counter from 0 at its first visible line;
+    // it does NOT follow SCY. Invisible on a flat fill, but free to get right.
+    const tileY = (y - wy) & 7;
+    const bgp = palMap(bandFor(bands, y).bgp);
+    const rowBase = y * SCREEN_W;
+    for (let x = left + ((y ^ left) & 1); x < SCREEN_W; x += 2) {
+      shades[rowBase + x] = bgp[tile[tileY * 8 + ((x - left) & 7)]];
+    }
+  }
 }
 
 function bandFor(bands, line) {

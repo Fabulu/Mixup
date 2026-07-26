@@ -73,7 +73,11 @@ export function updateWater(state) {
   // only the $C755 latch (windowY); the odd-frame $FFAC write becomes real
   // when the renderer grows a window layer. state.frame carries the $FFB1
   // boot phase (level.js seeds $6D), so the raw parity test is faithful.
-  if ((state.frame & 1) !== 0) return;              // $2D63: $FFAC=$90 only
+  if ((state.frame & 1) !== 0) {                    // $2D63
+    state.video.windowY = 0x90;                     // $2D65: window OFF
+    return;
+  }
+  state.video.windowOn = true;
 
   if (w.phase === 0) {                              // $2D68
     if (w.stampStep === 0) {                        // $2D6F: $C713
@@ -136,7 +140,16 @@ function tail(state, w) {
   const a = (d << 4 >> 8) & 0xFF;                   // 4x SLA E / RLA
   if (a < 0x90) w.windowY = a;                      // $2E53
   else w.windowY = (state.camera.y >> 8) < (w.level >> 8) ? 0x90 : 0;  // $2E57
-  // ($2E65/$2E68 store to $C755 AND $FFAC; the latch is the one modelled.)
+  // $2E65/$2E68 store to BOTH $C755 (the latch other code reads) and $FFAC
+  // (the shadow the VBlank handler pushes to rWY at $080D). Only even frames
+  // reach here, and odd frames park $FFAC at $90 -- so the water body is drawn
+  // every OTHER frame. That 30 Hz strobe is not a bug: on a DMG's slow LCD it
+  // reads as a translucent wash over the level behind it, and it is the only
+  // transparency the hardware can do.
+  state.video.windowY = w.windowY;                  // $2E68
+  // The renderer draws from the LATCH, not the register, so the surface holds
+  // its position through the odd frames when the register is parked at $90.
+  state.video.windowLatchY = w.windowY;
 
   // $2E6A: player row vs surface row, HIGH BYTES only.
   const prow = p.y >> 8;

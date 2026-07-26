@@ -111,6 +111,13 @@ export function resetPlayer(state, info) {
   p.ropeLength = 0;
   p.ropeSegments = 0;
 
+  // $021B/$0F25/$02A9: level init parks rWY off-screen. Only the levels-1/2
+  // water code ever pulls the window back on, so every other level must start
+  // here or the window's flat tile-$01 fill covers the whole screen.
+  state.video.windowY = 0x90;
+  state.video.windowLatchY = 0x90;
+  state.video.windowX = 0x07;
+
   state.rope.flip = 0;
   state.rope.delay = 0;
   state.rope.dx = 0;

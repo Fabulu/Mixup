@@ -39,6 +39,7 @@ function tileFn(fn) {
 function makeState({
   width = 24, scx = 0, scy = 0, bgp = 0xE4, obp0 = 0xE4, obp1 = 0xE4,
   metatiles = [[0, 0, 0, 0]], mapId = 0, bg = [], obj = [], sprites = [],
+  windowLatchY = 0x90, windowX = 0x07, windowTile = 0x01,
 } = {}) {
   const cells = new Uint8Array(width * 16 * 2);
   for (let c = 0; c < width; c++) {
@@ -52,7 +53,8 @@ function makeState({
   return {
     camera: { x: scx << 4, y: (scy + 0x100) << 4 },
     level: { number: 3, width, height: 16, cells, metatiles, tiles: { bg: bgTiles, obj: objTiles } },
-    video: { scx, scy, bgp, obp0, obp1, sprites },
+    video: { scx, scy, bgp, obp0, obp1, sprites,
+             windowLatchY, windowX, windowTile },
   };
 }
 
@@ -389,4 +391,80 @@ test('drawMetasprite stops at the 40-entry cap and drops the rest silently', () 
   assert.equal(s.video.sprites.length, 40, 'clamped at 40, no throw');
   assert.equal(s.video.sprites[38].tile, 0);
   assert.equal(s.video.sprites[39].tile, 1);
+});
+
+// ---------------------------------------------------------------------------
+// the window layer -- which in this game is the water
+// ---------------------------------------------------------------------------
+
+/** A world of light BG (index 0) with a solid dark window tile, like tile $01. */
+function winState(opts = {}) {
+  return makeState({
+    bg: (() => { const t = new Array(256).fill(null);
+                 t[0] = flatTile(0); t[1] = flatTile(3); return t; })(),
+    metatiles: [[0, 0, 0, 0]],
+    ...opts,
+  });
+}
+
+test('the window is invisible while parked off-screen', () => {
+  // $021B/$0F25 leave rWY at $90 for every level that is not 1 or 2. If this
+  // regressed, a flat slab of tile $01 would cover every level in the game.
+  const fb = render(winState({ windowLatchY: 0x90 }));
+  for (let y = 0; y < SCREEN_H; y++) assert.equal(at(fb, 4, y), 0);
+});
+
+test('the window covers everything below its Y and nothing above', () => {
+  const fb = render(winState({ windowLatchY: 100 }));
+  for (let y = 0; y < 100; y++) assert.equal(at(fb, 4, y), 0, `row ${y} above`);
+
+  let dark = 0;
+  for (let y = 100; y < SCREEN_H; y++) {
+    for (let x = 0; x < SCREEN_W; x++) if (at(fb, x, y)) dark++;
+  }
+  const area = (SCREEN_H - 100) * SCREEN_W;
+  assert.ok(dark > 0, 'the water is drawn at all');
+  // 50% because the alternation the hardware does in TIME is reproduced in
+  // SPACE -- see drawWindow. Anything near 100% means the dither was lost and
+  // the water became an opaque black slab.
+  assert.ok(Math.abs(dark / area - 0.5) < 0.02,
+            `expected ~50% coverage, got ${(dark / area * 100).toFixed(1)}%`);
+});
+
+test('the dither is static, so the water does not strobe', () => {
+  // The pattern must not depend on the frame counter. A temporal dither would
+  // be closer to the register stream and far worse to look at.
+  const a = render(winState({ windowLatchY: 100 }));
+  const b = render(winState({ windowLatchY: 100 }));
+  assert.deepEqual(Array.from(a.shades), Array.from(b.shades));
+});
+
+test('sprites draw over the water, background does not', () => {
+  // Window sits above BG and below OBJ, which is what keeps Batman visible
+  // while he is swimming.
+  const s = winState({ windowLatchY: 100 });
+  s.level.tiles.obj[0] = flatTile(1);
+  s.level.tiles.obj[1] = flatTile(1);
+  s.video.sprites.push({ x: 40, y: 110, tile: 0, attr: 0 });
+  const fb = render(s);
+  for (let x = 40; x < 48; x++) assert.equal(at(fb, x, 112), 1, 'sprite wins');
+});
+
+test('WX shifts the window right, and 7 means flush left', () => {
+  // rWX is offset by 7 on hardware.
+  const flush = render(winState({ windowLatchY: 100, windowX: 0x07 }));
+  let leftEdge = 0;
+  for (let x = 0; x < 8; x++) if (at(flush, x, 100) || at(flush, x, 101)) leftEdge++;
+  assert.ok(leftEdge > 0, 'starts at x 0');
+
+  const shifted = render(winState({ windowLatchY: 100, windowX: 0x07 + 40 }));
+  for (let y = 100; y < SCREEN_H; y++) {
+    for (let x = 0; x < 40; x++) assert.equal(at(shifted, x, y), 0);
+  }
+});
+
+test('a missing window tile is a no-op rather than a crash', () => {
+  const s = winState({ windowLatchY: 100 });
+  s.video.windowTile = 0x42;                    // nothing decoded there
+  assert.doesNotThrow(() => render(s));
 });
