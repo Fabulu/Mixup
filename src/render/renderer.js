@@ -73,10 +73,10 @@ export function renderFrame(state, fb) {
  * visible while he is in it.
  *
  * The top two map rows are a textured SURFACE (tiles $E0/$E2 over $E1/$E3,
- * alternating every 8 px) and the rest is the solid fill. The surface is
- * animated -- the game rewrites those four tiles' bitmaps in place, cycling
- * three variants every 8 frames, which is what makes the water look like it is
- * flowing. See src/water.js for where the frames come from.
+ * alternating every 8 px) and the rest is the solid fill. The surface tiles
+ * are animated, but nothing here has to know that: water.js patches the
+ * animated bitmaps straight into the level's tile cache, exactly as the
+ * hardware streamer patches VRAM, so this reads them like any other tile.
  *
  * THE 50% DITHER ON THE BODY IS DELIBERATE, and it is the one place this
  * renderer departs from the register stream. sub_00_2CBE only computes the
@@ -104,7 +104,6 @@ function drawWindow(state, fb, bands) {
   // anything below 7 still starts at 0 rather than wrapping.
   const left = Math.max(0, (v.windowX | 0) - 7);
   const map = v.windowMap;
-  const anim = v.windowAnim;                           // id -> tile, this frame
   const bgTiles = state.level.tiles.bg;
   const fallback = bgTiles[v.windowTile & 0xFF];
   if (!map && !fallback) return;
@@ -128,10 +127,7 @@ function drawWindow(state, fb, bands) {
     for (let x = start; x < SCREEN_W; x += step) {
       const wx = x - left;
       let tile = fallback;
-      if (map) {
-        const id = map[mapRow * 32 + ((wx >> 3) & 31)];
-        tile = (anim && anim[id]) || bgTiles[id] || fallback;
-      }
+      if (map) tile = bgTiles[map[mapRow * 32 + ((wx >> 3) & 31)]] || fallback;
       if (!tile) continue;
       shades[rowBase + x] = bgp[tile[tileY * 8 + (wx & 7)]];
     }

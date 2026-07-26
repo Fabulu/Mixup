@@ -50,6 +50,7 @@ python tools/export_assets.py     # -> assets/
 python tools/gen_tunables.py      # -> src/tunables.js, read from the ROM
 python tools/rip_title.py         # -> assets/title.*
 python tools/rip_water.py         # -> assets/water.json (window map + anim)
+python tools/export_sound.py      # -> assets/sound.json (bank-7 sound data)
 python -m http.server 8000        # module imports need a real origin
 ```
 
@@ -91,9 +92,10 @@ Roughly in order of how much each would change the game:
    code writes to. `tools/oracle/sound.py` records the real driver's NR write
    stream tick by tick, to diff a port against. Missing is `7:$412B` itself:
    8 track slots at `$C82D`, 56 opcodes via `7:$43CE`, pitch table `7:$46D5`,
-   song table `7:$477D`. Master-ref §8 documents all of it and
-   `tools/dumpsong.py` already round-trips all 47 songs, so this is
-   well-scoped work, not research.
+   song table `7:$477D`. Master-ref §8 documents all of it,
+   `tools/dumpsong.py` round-trips all 47 songs, and `tools/export_sound.py`
+   now lifts the data into `assets/sound.json` — so this is well-scoped work,
+   not research.
 2. **Enemy states 4–10 and 13** — all bosses, the level-6 vehicle, the level-12
    enemy, plus the level-14 boss reroute at `1:$77BD`. The only one reachable
    in levels 1–5 is state 10 (Boss 1, level 4).
@@ -131,15 +133,22 @@ Be suspicious of these; they are the likeliest source of a surprise.
   tests, but no natural input script triggers them, so no frame-by-frame proof.
 - **Post-death behaviour.** The ROM shoves x −15 during its sequence and
   returns to round-select; we restart the level in place instead. Deliberate.
-- **Water graphics.** `assets/water.json` is a *capture* (tools/rip_water.py)
-  of the `$9C00` window tilemap and the three animation variants of the four
-  surface tiles. The surface animates because a generic animated-tile streamer
-  (`loc_00_3127`, `$C70F`/`$C710`, tables `2:$61A4`, `0:$31EE`, `0:$3246`,
-  `0:$3295`) rewrites their bitmaps through a VRAM write queue; porting that
-  means porting the queue too. The *cadence* — 3 variants, 8 frames each — is
-  measured off the cartridge and reproduced. Same trade as the title screen.
-  Note the streamer is generic: porting it would also animate whatever other
-  levels use it, which nothing currently does.
+- **Animated tiles** (`assets/water.json`, tools/rip_water.py). Two things are
+  captured rather than translated, and neither is in the exported level VRAM.
+  (1) The `$9C00` window tilemap: level init fills it flat, then a VRAM script
+  at `$0E24` paints its textured surface — *after* the export snapshot, which
+  is why the export shows only tile `$01`. (2) The tile animation: a generic
+  streamer (`loc_00_3127`, `$C70F`/`$C710`, tables `2:$61A4`, `0:$31EE`,
+  `0:$3246`, `0:$3295`) rewrites bitmaps in place through a VRAM write queue.
+  In level 1 that is **fourteen** tiles — the falling water `$74-$7B`, the
+  surface `$E0-$E3`, and `$F1`/`$F3`. Tilemaps never change; only bitmaps do.
+  Porting the streamer means porting its queue as well. The *cadence* is
+  measured, not assumed. Which levels animate is knowable without guessing:
+  `0:$31EE` is `$FFFF` for levels 4, 8–11 and 14, and a real pointer for
+  1, 2, 3, 5, 6, 7, 12, 13.
+  `water.js` patches the frames straight into `level.tiles.bg`, exactly as the
+  streamer patches VRAM — so background and window animate by one mechanism
+  and the renderer has no special case.
 - **Title screen.** `assets/title.vram.bin` is a *capture* of what the real
   game builds, not the output of running its two VRAM scripts (5:`$5170`,
   1:`$7C44`). The loop behaviour — fade, the START/OPTION cursor, the

@@ -68,17 +68,13 @@ export async function initLevel(state, n) {
   state.frame = 0x6D;
   state.parity = 1;
 
-  // Only levels 1 and 2 run the water subsystem, so only they need the window
-  // art. Best-effort: a missing capture must not stop the level loading.
-  if (n === 1 || n === 2) {
-    if (!waterArtTried) {
-      waterArtTried = true;
-      try { waterArt = await loadWaterArt(); } catch { waterArt = null; }
-    }
-    applyWaterArt(state, waterArt);
-  } else {
-    applyWaterArt(state, null);
+  // Captured window tilemap + tile animation, per level. Best-effort: a
+  // missing capture must not stop the level loading.
+  if (!waterArtTried) {
+    waterArtTried = true;
+    try { waterArt = await loadWaterArt(); } catch { waterArt = null; }
   }
+  applyWaterArt(state, waterArt && waterArt[String(n)]);
 
   resetPlayer(state, info);
   return info;

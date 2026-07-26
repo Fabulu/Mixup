@@ -25,52 +25,75 @@ import { decodeTileBuf } from './assets.js';
 const BASE = new URL('../assets/', import.meta.url).href;
 
 /**
- * The window tilemap and its animated surface tiles.
+ * A level's animated tiles, and the window tilemap where there is one.
  *
  * PARTIAL, and worth being straight about: assets/water.json is a CAPTURE
- * taken by tools/rip_water.py, not the output of running the game's code. The
- * surface animation comes from a generic animated-tile streamer (loc_00_3127,
- * driven by $C70F/$C710 against per-level tables at 2:$61A4, 0:$31EE, 0:$3246
- * and 0:$3295) which feeds a VRAM write queue the VBlank ISR drains. Porting
- * that means porting the queue too, so the frames are captured for now --
- * exactly the trade already made for the title screen, and with the same
- * escape route.
+ * taken by tools/rip_water.py, not the output of running the game's code.
  *
- * What IS ported is the cadence: three variants, eight frames each, measured
- * off the cartridge.
+ * Two things are captured, and neither is in the exported level VRAM. The
+ * window tilemap, because the VRAM script at $0E24 that paints its textured
+ * surface runs AFTER the export snapshot is taken. And the tile animation,
+ * which comes from a generic animated-tile streamer (loc_00_3127, driven by
+ * $C70F/$C710 against per-level tables at 2:$61A4, 0:$31EE, 0:$3246 and
+ * 0:$3295) feeding a VRAM write queue the VBlank ISR drains. In level 1 that
+ * is fourteen tiles: the falling water ($74-$7B), the surface ($E0-$E3) and
+ * $F1/$F3. The tilemaps never change; only the bitmaps do.
+ *
+ * Porting the streamer means porting the write queue too. Same trade as the
+ * title screen, same escape route. What IS ported is the cadence, measured off
+ * the cartridge rather than assumed.
  */
 export async function loadWaterArt() {
   const json = await fetch(BASE + 'water.json').then((r) => r.json());
-  return {
-    map: Uint8Array.from(json.map),
-    ids: json.animIds,
-    hold: json.holdFrames || 8,
-    // frames[v] = { tileId: decoded 8x8 }
-    frames: json.frames.map((variant) => {
-      const byId = {};
-      variant.forEach((bytes, i) => {
-        byId[json.animIds[i]] = decodeTileBuf(Uint8Array.from(bytes), 0);
-      });
-      return byId;
-    }),
-  };
+  const out = {};
+  for (const [lvl, d] of Object.entries(json.levels || {})) {
+    out[lvl] = {
+      map: Uint8Array.from(d.map),
+      ids: d.animIds,
+      hold: d.holdFrames || 8,
+      // frames[v] = { tileId: decoded 8x8 }
+      frames: (d.frames || []).map((variant) => {
+        const byId = {};
+        variant.forEach((bytes, i) => {
+          byId[d.animIds[i]] = decodeTileBuf(Uint8Array.from(bytes), 0);
+        });
+        return byId;
+      }),
+    };
+  }
+  return out;
 }
 
-/** Point the renderer at this level's window art, or clear it. */
+/** Point this level at its captured art, or clear it. */
 export function applyWaterArt(state, art) {
-  state.video.windowMap = art ? art.map : null;
   state.waterArt = art || null;
+  state.video.windowMap = art ? art.map : null;
+  state.waterArtPhase = -1;
 }
 
 /**
- * Pick this frame's surface bitmaps. Called once per rendered frame rather
- * than per pixel; the renderer just indexes the result.
+ * Advance the tile flip-book.  ROM: loc_00_3127's effect, not its mechanism.
+ *
+ * The animated ids are patched straight into the level's decoded tile cache,
+ * which is exactly what the streamer does to VRAM. That means the background
+ * AND the window both pick them up with no per-pixel work and no special case
+ * in the renderer -- the falling water animates because its metatiles point at
+ * tiles $74-$7B, the same way it does on hardware.
+ *
+ * The cache is rebuilt by initLevel for every level, so the patch cannot leak.
  */
 export function tickWaterArt(state) {
   const art = state.waterArt;
-  if (!art || !art.frames.length) { state.video.windowAnim = null; return; }
+  if (!art || !art.frames.length) return;
+
   const phase = Math.floor(state.frame / art.hold) % art.frames.length;
-  state.video.windowAnim = art.frames[phase];
+  if (phase === state.waterArtPhase) return;          // only on a change
+  state.waterArtPhase = phase;
+
+  const bg = state.level.tiles && state.level.tiles.bg;
+  if (!bg) return;
+  const frame = art.frames[phase];
+  for (const id of art.ids) bg[id] = frame[id];
 }
 
 /**

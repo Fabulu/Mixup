@@ -8,7 +8,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { grid, makeState, placePlayer } from './helpers.js';
-import { updateWater, updateSplashes } from '../src/water.js';
+import { updateWater, updateSplashes, applyWaterArt, tickWaterArt }
+  from '../src/water.js';
 import { mapCollision, mapTile } from '../src/state.js';
 
 /** A wide-enough level-1 state (the waterfall stamps columns $37/$38). */
@@ -295,4 +296,71 @@ test('the ticker only runs on levels 1 and 2', () => {
   updateSplashes(state);
   assert.equal(state.water.splashes[0].timer, 5);
   assert.equal(state.enemyDraws.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// the tile flip-book (loc_00_3127's effect)
+// ---------------------------------------------------------------------------
+
+/** Stand-in for a captured level: two animated ids, three variants. */
+function fakeArt() {
+  const t = (v) => new Uint8Array(64).fill(v);
+  return {
+    map: new Uint8Array(1024),
+    ids: [0x74, 0xE0],
+    hold: 8,
+    frames: [
+      { 0x74: t(1), 0xE0: t(1) },
+      { 0x74: t(2), 0xE0: t(2) },
+      { 0x74: t(3), 0xE0: t(3) },
+    ],
+  };
+}
+
+test('the flip-book patches the tile cache, so BG and window both follow', () => {
+  // The falling water is BACKGROUND -- its metatiles point at $74-$7B. Patching
+  // level.tiles.bg is what the hardware streamer does to VRAM, and it is why
+  // the renderer needs no special case for either layer.
+  const s = waterState();
+  s.level.tiles = { bg: new Array(256).fill(null), obj: [] };
+  applyWaterArt(s, fakeArt());
+
+  s.frame = 0;
+  tickWaterArt(s);
+  assert.equal(s.level.tiles.bg[0x74][0], 1);
+  assert.equal(s.level.tiles.bg[0xE0][0], 1);
+
+  s.frame = 8;
+  tickWaterArt(s);
+  assert.equal(s.level.tiles.bg[0x74][0], 2, 'advanced with the frame counter');
+
+  s.frame = 24;
+  tickWaterArt(s);
+  assert.equal(s.level.tiles.bg[0x74][0], 1, 'and wraps');
+});
+
+test('the flip-book holds each variant for its measured frame count', () => {
+  const s = waterState();
+  s.level.tiles = { bg: new Array(256).fill(null), obj: [] };
+  applyWaterArt(s, fakeArt());
+  const seen = [];
+  for (let f = 0; f < 24; f++) {
+    s.frame = f;
+    tickWaterArt(s);
+    seen.push(s.level.tiles.bg[0x74][0]);
+  }
+  assert.deepEqual(seen, [1, 1, 1, 1, 1, 1, 1, 1,
+                          2, 2, 2, 2, 2, 2, 2, 2,
+                          3, 3, 3, 3, 3, 3, 3, 3]);
+});
+
+test('a level with no captured art is left alone', () => {
+  // Most levels have no animated tiles at all; they must not be touched.
+  const s = waterState();
+  s.level.tiles = { bg: new Array(256).fill(null), obj: [] };
+  applyWaterArt(s, null);
+  s.frame = 40;
+  assert.doesNotThrow(() => tickWaterArt(s));
+  assert.equal(s.level.tiles.bg[0x74], null);
+  assert.equal(s.video.windowMap, null);
 });

@@ -457,10 +457,10 @@ test('sprites draw over the water, background does not', () => {
   for (let x = 40; x < 48; x++) assert.equal(at(fb, x, 112), 1, 'sprite wins');
 });
 
-test('the window reads its tilemap, and the animation overrides a tile', () => {
+test('the window reads its tilemap rather than assuming one tile', () => {
   // Rows 0-1 of $9C00 are the textured surface ($E0/$E2 over $E1/$E3); the
-  // rest is the flat body. tickWaterArt swaps the surface bitmaps each phase,
-  // which is the whole of the "flowing" effect.
+  // rest is the flat body. Assuming a uniform fill is exactly the bug that
+  // made the water a black slab.
   const s = winState({ windowLatchY: 96 });
   s.level.tiles.bg[0xE0] = flatTile(1);
   const map = new Uint8Array(1024);
@@ -468,12 +468,25 @@ test('the window reads its tilemap, and the animation overrides a tile', () => {
   for (let c = 0; c < 32; c++) map[c] = 0xE0;      // row 0 all $E0
   s.video.windowMap = map;
 
-  const before = render(s);
-  assert.equal(at(before, 4, 100), 1, 'drew tile $E0 from the map');
+  const fb = render(s);
+  assert.equal(at(fb, 4, 100), 1, 'drew tile $E0 from the map');
+  assert.equal(at(fb, 4, 110), 3, 'and the body tile below it');
+});
 
-  s.video.windowAnim = { 0xE0: flatTile(2) };
-  const after = render(s);
-  assert.equal(at(after, 4, 100), 2, 'the animation frame wins');
+test('the tile animation reaches the window through the tile cache', () => {
+  // water.js patches animated bitmaps into level.tiles.bg, the way the
+  // hardware streamer patches VRAM -- so the renderer needs no special case,
+  // and the falling water in the BACKGROUND animates by the same mechanism.
+  const s = winState({ windowLatchY: 96 });
+  const map = new Uint8Array(1024);
+  map.fill(0x01);
+  for (let c = 0; c < 32; c++) map[c] = 0xE0;
+  s.video.windowMap = map;
+
+  s.level.tiles.bg[0xE0] = flatTile(1);
+  assert.equal(at(render(s), 4, 100), 1);
+  s.level.tiles.bg[0xE0] = flatTile(2);
+  assert.equal(at(render(s), 4, 100), 2, 'the new frame is picked up');
 });
 
 test('WX shifts the window right, and 7 means flush left', () => {
