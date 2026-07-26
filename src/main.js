@@ -81,17 +81,14 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     // Turbo Mode runs extra logic ticks per displayed frame.
     const perFrame = Math.max(1, loadout.meta.ticksPerFrame | 0);
     let steps = 0;
+    let startPressed = false;
     while (acc >= FRAME_MS && steps < 4) {
       for (let i = 0; i < perFrame; i++) {
         sampleInput(state);         // ROM: the joypad read lives in VBlank
         runHook(loadout, 'onInput', state);
         if (state.title) {
           // loc_00_02C4: the title has its own loop; no game logic runs.
-          if (tickTitle(state) === 'start') {
-            hideTitle(state);
-            state.video.bgp = 0xE4;
-            initLevel(state, level);
-          }
+          if (tickTitle(state) === 'start') startPressed = true;
         } else {
           tick(state, manifest, playerTiles);
         }
@@ -104,6 +101,21 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     renderFrame(state, fb);
     image.data.set(fb.rgba);
     ctx.putImageData(image, 0, 0);
+
+    // Leaving the title reloads the level, because showTitle swapped the tile
+    // cache out from under it. That is async, so the loop has to stop and
+    // resume -- firing it and carrying on renders the level with the title's
+    // tiles until the promise lands.
+    if (startPressed) {
+      hideTitle(state);
+      state.video.bgp = 0xE4;
+      initLevel(state, level).then(() => {
+        last = performance.now();
+        acc = 0;
+        requestAnimationFrame(step);
+      });
+      return;
+    }
 
     // The death sequence ends by asking for a level reload, which is async and
     // so cannot happen inside tick(). Without this, falling off the map just

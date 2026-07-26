@@ -215,16 +215,18 @@ export function describeMod(id) {
 
 // ---- loadout <-> URL hash --------------------------------------------------
 
-export function loadoutToHash(ids, level = 1) {
+export function loadoutToHash(ids, level = 0) {
   const p = new URLSearchParams();
   if (ids.length) p.set('mods', ids.join('+'));
-  if (level !== 1) p.set('level', String(level));
+  if (level !== 0) p.set('level', String(level));
   return p.toString();
 }
 
 export function hashToLoadout(hash = '') {
   const p = new URLSearchParams(hash.replace(/^#/, ''));
   const ids = (p.get('mods') || '').split('+').filter((s) => s && MODS[s]);
-  const level = Math.min(14, Math.max(1, parseInt(p.get('level') || '1', 10) || 1));
+  // 0 is a real value here: it means "start at the title screen".
+  const raw = parseInt(p.get('level') ?? '0', 10);
+  const level = Number.isNaN(raw) ? 0 : Math.min(14, Math.max(0, raw));
   return { ids, level };
 }

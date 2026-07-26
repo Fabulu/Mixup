@@ -91,7 +91,10 @@
   .tbtn:active, .tbtn[data-on="1"] { background: var(--accent); color: #171208; }
   .dpad .sp { visibility: hidden; }
   .abtns { display: flex; gap: .9rem; }
+  .abtns { align-items: center; }
   .abtns .tbtn { width: 74px; height: 74px; border-radius: 50%; font-size: 20px; }
+  /* START has to exist on touch or the title screen is a dead end. */
+  .abtns .tbtn.sml { width: 62px; height: 34px; border-radius: 6px; font-size: 11px; }
 
   #err { display: none; margin-top: 1rem; padding: .8rem 1rem; text-align: left;
          background: #2a1a1a; border: 1px solid #5a2a2a; border-radius: 4px;
@@ -159,6 +162,7 @@
         <div class="sp"></div>
       </div>
       <div class="abtns">
+        <button class="tbtn sml" data-btn="8">START</button>
         <button class="tbtn" data-btn="2">B</button>
         <button class="tbtn" data-btn="1">A</button>
       </div>
@@ -273,12 +277,22 @@ const LEVEL_NOTE = {
   14: 'final boss — not ported',
 };
 const levelSel = document.getElementById('level');
+// 0 = start at the title screen (the default). Any other value boots straight
+// into that level and skips the title entirely, so direct level access still
+// works exactly as it did.
+{
+  const o = document.createElement('option');
+  o.value = '0';
+  o.textContent = 'Title screen';
+  levelSel.appendChild(o);
+}
 for (let i = 1; i <= 14; i++) {
   const o = document.createElement('option');
   o.value = String(i);
   o.textContent = `${i} — ${LEVEL_NOTE[i]}`;
   levelSel.appendChild(o);
 }
+levelSel.value = '0';
 
 function toggle(id) {
   if (selected.has(id)) selected.delete(id); else selected.add(id);
@@ -329,8 +343,10 @@ document.getElementById('launch').addEventListener('click', async () => {
   const err = document.getElementById('err');
   err.style.display = 'none';
   try {
+    const pick = parseInt(levelSel.value, 10);
     running = await boot(document.getElementById('screen'), {
-      level: parseInt(levelSel.value, 10),
+      level: pick === 0 ? 1 : pick,
+      title: pick === 0,
       mods: [...selected],
     });
     window.game = running;
