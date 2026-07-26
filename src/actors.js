@@ -144,35 +144,58 @@ function moveActorY(r, delta) {
 }
 
 /**
- * Type 9 -- a retracting spike trap.  ROM: jt_01_464F.
+ * Type 9 -- a descending spike trap.  ROM: jt_01_464F.
  *
  * A wait timer at +$0C, then a counter at +$0B ticks up to $10 and latches at
- * $FF, at which point a 2x2 block of spike tiles is STAMPED INTO THE MAP:
- * graphics $2D/$2E/$2F/$30 with collision $FD across (col-1,row)..(col,row+1).
- * The trap is terrain, not a sprite -- which is why it is invisible to a
- * sprite-only model of the actor array.
+ * $FF. From then on the trap is a two-column spike STAMPED INTO THE MAP, two
+ * cells per step: +$0B holds the phase ($FF extending, $FE retracting) and +3
+ * the current row. Extending writes shaft tiles $2D/$2E at the row and tip
+ * tiles $2F/$30 one row below, every 2 frames, until the row reaches $1D --
+ * then it waits $10 frames and retracts (clear the row, move the tips up)
+ * every $0C frames back to row $17, waits ($20 frames, or 8 above difficulty
+ * 0) and repeats. The trap is terrain, not a sprite -- which is why it is
+ * invisible to a sprite-only model of the actor array, and why the player's
+ * CEILING probe is what it fights (see probeCeiling's level-5 spike rule).
  */
 function actorType9(state, r) {
   if (r[0x0C] !== 0) { r[0x0C]--; return; }         // $4656: wait
-
-  let a = r[0x0B];
-  if (a !== 0xFF && a !== 0xFE) {                   // $4660/$4664
-    a = u8(a + 1);                                  // $4668
-    if (a < 0x10) { r[0x0B] = a; return; }          // $466B
-    a = 0xFF;                                       // $4671
-    r[0x0B] = a;
+  let phase = r[0x0B];
+  if (phase !== 0xFF && phase !== 0xFE) {           // $4660/$4664: arming
+    const a = u8(phase + 1);                        // $4668
+    if (a < 0x10) { r[0x0B] = a; return; }          // $4669
+    phase = 0xFF;                                   // $4671
+    r[0x0B] = 0xFF;
   }
 
-  const col = r[1];                                 // $467B
-  const row = r[3];                                 // $467E
-  const clearing = a === 0xFE;                      // $4686
+  const col = r[1];                                 // $467B: X hi
+  const row = r[3];                                 // $467E: current Y hi
+  if (phase !== 0xFE) {                             // $468A: extend downward
+    stamp(state, col, row, 0x2E, 0xFD);
+    stamp(state, col - 1, row, 0x2D, 0xFD);
+    stamp(state, col - 1, row + 1, 0x2F, 0xFD);     // $46A7: the tips
+    stamp(state, col, row + 1, 0x30, 0xFD);
+  } else {                                          // $469C: retract upward
+    stamp(state, col, row, 0, 0);
+    stamp(state, col - 1, row, 0, 0);
+    stamp(state, col - 1, row - 1, 0x2F, 0xFD);
+    stamp(state, col, row - 1, 0x30, 0xFD);
+  }
+  r[0x0C] = phase !== 0xFE ? 2 : 0x0C;              // $4711 / $4715
 
-  // $468A / $469C: stamp or clear the 2x2 block. Column stride is 32 bytes
-  // ($0020), i.e. one map column; row stride is 2.
-  stamp(state, col - 1, row, clearing ? 0 : 0x2D, clearing ? 0 : 0xFD);
-  stamp(state, col, row, clearing ? 0 : 0x2E, clearing ? 0 : 0xFD);
-  stamp(state, col - 1, row + 1, clearing ? 0 : 0x2F, clearing ? 0 : 0xFD);
-  stamp(state, col, row + 1, clearing ? 0 : 0x30, clearing ? 0 : 0xFD);
+  if (phase !== 0xFE) {                             // $4723
+    const next = u8(row + 1);
+    if (next < 0x1D) { r[3] = next; return; }       // $4725
+    r[0x0B] = 0xFE;                                 // $472D: full length
+    r[0x0C] = 0x10;
+    requestSound(state, 0x24);                      // $4733
+    r[3] = 0x1D;                                    // $473D
+    return;
+  }
+  const next = u8(row - 1);                         // $4743
+  if (next >= 0x18) { r[3] = next; return; }        // $4745
+  r[0x0B] = 0xFF;                                   // $474D: rearm
+  r[0x0C] = state.flow.difficulty !== 0 ? 8 : 0x20; // $4750
+  r[3] = 0x17;                                      // $4761
 }
 
 function stamp(state, col, row, graphic, collision) {

@@ -512,17 +512,54 @@ export function resolveWall(state, side) {
   return 1;
 }
 
-/** Ceiling probe. ROM: sub_00_1EA6. */
+/**
+ * Ceiling probe. ROM: sub_00_1EA6.
+ *
+ * Quirks kept:
+ * - The probe offset is -(half-WIDTH << 4) -- $1EAB reads $FF8C, not $FF8D.
+ *   Same asymmetry as the horizontal sweep's up-test.
+ * - Spikes overhead ($1ECE -> loc_00_1EE9): on LEVEL 5 ONLY, while airborne,
+ *   they are a plain solid ceiling -- the descending trap pushes the player
+ *   down a row instead of hurting him. Grounded (the trap reaching his head
+ *   row), or on any other level, they deal spike damage and are NOT solid.
+ * - Every other solid returns exactly 1 and cancels the bat-rope ($1EE2);
+ *   only $FF keeps its value, which is what skips the row snap at $1AA5.
+ * - The ceiling probe collects pickups ($1ED9 -> 1:$4D4E).
+ */
 export function probeCeiling(state) {
   const p = state.player;
-  const hit = probe(state, 0, -(p.halfH << 4));
+  const hit = probe(state, 0, -(p.halfW << 4));      // $1EAB: $FF8C
   const v = hit.value;
-  // $1EA6: same ordering as the horizontal probe -- the actor-owned door mask
-  // is tested before the pickup range.
-  if ((v & 0x1F) === COLL.DOOR && v !== 0) return v;
-  if (v === COLL.AIR || v === COLL.WATER || v === COLL.SPIKE) return 0;
-  if (v >= COLL.PICKUP_ENERGY && v !== COLL.SOLID_RUNTIME) return 0;
-  return v;
+  if (v === COLL.AIR) return 0;                      // $1EC9
+  if (v === COLL.SOLID_RUNTIME) return 0xFF;         // $1ECB
+  if (v === COLL.SPIKE) {                            // $1ECE -> loc_00_1EE9
+    if (state.level.number === 5 && p.air !== 0) return 1;   // $1EF6
+    spikeDamage(state);                              // loc_00_1E14
+    return 0;
+  }
+  if ((v & 0x1F) === COLL.DOOR) { p.action = 0; return 1; }  // $1ED2 -> $1EE2
+  if (v >= COLL.PICKUP_ENERGY) {                     // $1ED9 -> 1:$4D4E
+    takePickup(state, hit);
+    return 0;
+  }
+  if (v === COLL.WATER) { p.attrMask = 0x80; return 0; }     // $1EDE -> $1EA0
+  p.action = 0;                                      // $1EE2
+  return 1;
+}
+
+/** ROM: loc_00_1E14 - 4 damage, knockback away from the current facing. */
+function spikeDamage(state) {
+  const p = state.player;
+  if (p.dead) return;                                // $1E14: $C715
+  if (p.iframes !== 0) return;                       // $1E1A
+  p.hp = Math.max(0, p.hp - state.tunables.spikeDamage);   // $1E20 -> sub_00_2777
+  if (state.sound && state.sound.queue.length < 4) {
+    state.sound.queue.push({ id: 0x12, mask: 0x01 });      // $277F
+  }
+  // $1E25: facing right stamps the knockback-left bit.
+  p.iframes = p.facing === 0
+    ? (state.tunables.invulnFrames | 0x80)
+    : state.tunables.invulnFrames;
 }
 
 /** ROM: loc_01_4D4E - consume a pickup cell and erase it. */

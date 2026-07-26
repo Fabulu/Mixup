@@ -267,10 +267,12 @@ function ceilingFixture(ch) {
   return state;
 }
 
-test('probeCeiling probes one hitbox-height above and returns the collision byte', () => {
-  // ROM: sub_00_1EA6, BC = -$FF8D.
-  assert.equal(probeCeiling(ceilingFixture('#')), COLL.SOLID);
-  assert.equal(probeCeiling(ceilingFixture('S')), COLL.SOLID2);
+test('probeCeiling probes one half-WIDTH above and flattens solids to 1', () => {
+  // ROM: sub_00_1EA6, BC = -$FF8C (the half-width, not height), and every
+  // solid funnels into $1EE2 which returns exactly 1 -- only $FF survives
+  // with its own value, so the caller can skip the row snap at $1AA5.
+  assert.equal(probeCeiling(ceilingFixture('#')), 1);
+  assert.equal(probeCeiling(ceilingFixture('S')), 1);
   assert.equal(probeCeiling(ceilingFixture('X')), COLL.SOLID_RUNTIME);
 });
 

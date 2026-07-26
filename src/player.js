@@ -39,6 +39,7 @@ export function updatePlayer(state) {
   horizontal(state);
   attack(state);                        // $18FB, between horizontal and vertical
   vertical(state);
+  if (checkExit(state)) return;         // $1740 -- runs BEFORE the death test
   checkDeath(state);                    // $1755
   selectAnim(state);
   applyCarry(state);
@@ -48,6 +49,45 @@ export function updatePlayer(state) {
 // Death.  ROM: loc_00_1755 (the pit test), sub_00_29E7 (the sequence),
 //         loc_00_2AAD (lives and respawn).
 // ---------------------------------------------------------------------------
+
+/**
+ * ROM: loc_00_1740 -> loc_00_2820. Walking off an edge changes level.
+ *
+ * Two edges only: past the camera clamp on the right, or above row $11 at the
+ * top. The destination comes from the 14 x 2 table at 0:$286D, and two values
+ * are special -- $FE means "no exit this way", which drops you back in from
+ * the top of the SAME level rather than doing nothing, and $FF (boss levels)
+ * has no walk-off exit at all; those end through the clear sequencer.
+ *
+ * @returns true if the player update should stop here this frame
+ */
+function checkExit(state) {
+  const p = state.player;
+  const lvl = state.level;
+
+  let dest;
+  if ((p.x >> 8) >= state.camera.clampRight) {        // $1740: CP B
+    dest = lvl.exitRight;
+  } else if ((p.y >> 8) < 0x11) {                     // $174C: CP $11
+    dest = lvl.exitTop;
+  } else {
+    return false;
+  }
+
+  if (dest === undefined || dest === 0xFF) return false;   // no exit that way
+
+  if (dest === 0xFE) {                                // $285B: teleport-fall
+    p.y = 0x1100;                                     // $285D/$2860
+    p.vy = 0;                                         // $2862
+    p.airThrottle = 0;                                // $2864
+    p.air = AIR_FALLING;                              // $2866
+    return true;
+  }
+
+  // main.js performs the reload; initLevel is async.
+  state.flow.nextLevel = dest;                        // $2834: $FFB0
+  return true;
+}
 
 /** ROM: loc_00_1755 - fall past the death row, or run out of HP. */
 function checkDeath(state) {
@@ -431,10 +471,16 @@ function vertical(state) {
     p.springArmed = 0;                      // $1A54
   }
 
-  if (p.air === AIR_RISING) {
-    rising(state);
-    ceiling(state);
-  }
+  // $1A57: a bat-rope action with bit 0 clear skips the rise integrate but
+  // still falls through to the ceiling probe.
+  const ropeSkip = p.action !== 0 && (p.action & 1) === 0;
+  if (p.air === AIR_RISING && !ropeSkip) rising(state);   // $1A63
+
+  // $1A9D is NOT rising-only: every path through the vertical block passes it
+  // -- grounded and falling included. That is how the level-5 descending
+  // spike trap pushes a falling player down a row, and how it hurts him once
+  // he is standing and the spikes reach his head row.
+  ceiling(state);
 
   falling(state);
   floor(state);

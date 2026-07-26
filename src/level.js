@@ -33,6 +33,10 @@ export async function initLevel(state, n) {
 
   // $C732: camera clamp for this level (0:$103F).
   state.camera.clampRight = info.cameraClamp;
+  // 0:$286D -- where each edge leads. $FE = no exit (fall back in from the
+  // top), $FF = no walk-off exit at all (boss levels).
+  state.level.exitRight = info.exitRight;
+  state.level.exitTop = info.exitTop;
   // $C73E: low nibble of 0:$1015 -- 1-4 are bosses, 5 the level-6 vehicle.
   // The camera pins itself low whenever this is non-zero.
   state.level.bossId = info.subtype & 0x0F;

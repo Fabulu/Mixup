@@ -87,6 +87,24 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [] } = {})
     // The death sequence ends by asking for a level reload, which is async and
     // so cannot happen inside tick(). Without this, falling off the map just
     // leaves the player below the world with nothing to bring them back.
+    // Walking off an edge changes level; like respawn, the reload is async.
+    if (state.flow.nextLevel) {
+      const next = state.flow.nextLevel;
+      state.flow.nextLevel = 0;
+      const carried = { lives: state.flow.lives, hp: state.player.hp,
+                        hpMax: state.player.hpMax, ammo: state.flow.ammo };
+      initLevel(state, next).then(() => {
+        // $2820 does not reset the run: HP, lives and ammo all carry across.
+        Object.assign(state.flow, { lives: carried.lives, ammo: carried.ammo });
+        state.player.hp = carried.hp;
+        state.player.hpMax = carried.hpMax;
+        last = performance.now();
+        acc = 0;
+        requestAnimationFrame(step);
+      });
+      return;
+    }
+
     if (state.flow.respawnPending) {
       state.flow.respawnPending = false;
       const lives = state.flow.lives;
