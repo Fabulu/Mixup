@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# Nothing derived from the ROM is committed.
+#
+# The cartridge is copyrighted Sunsoft material. This repository holds only our
+# own code: the JavaScript port, the extraction tools, the docs and the tests.
+# Everything below is REGENERATED from a ROM you legally own -- see README.md.
+# ---------------------------------------------------------------------------
+
+# The ROM itself, in any of the usual forms
+*.gb
+*.gbc
+*.sav
+*.sym
+Vimm's Lair.txt
+
+# Extracted ROM data: level maps, tile graphics, metasprites, song streams
+assets/
+
+# Disassembly listings
+disasm/
+disasm2/
+
+# Ripped graphics, rendered frames, oracle traces (all scratch, all derived)
+rip/
+
+# Golden frames are rendered game imagery; hashes and PNGs alike are
+# regenerated with `node tools/golden.mjs --update`
+tests/visual/golden/
+tests/visual/diff/
+
+# ---------------------------------------------------------------------------
+# Ordinary noise
+# ---------------------------------------------------------------------------
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+*.log

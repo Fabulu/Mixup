@@ -1,0 +1,17 @@
+{
+  "name": "batman-roj-js",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Batman: Return of the Joker (GB, Sunsoft 1992) hand-translated from disassembly into JavaScript.",
+  "scripts": {
+    "test": "node --test tests/",
+    "serve": "node --run-if-present serve || python -m http.server 8000",
+    "assets": "python tools/export_assets.py && python tools/gen_tunables.py",
+    "check-tunables": "python tools/gen_tunables.py --check",
+    "verify-assets": "python tools/verify_assets.py",
+    "regress": "node tools/oracle/regress.mjs",
+    "test-all": "node tools/test-all.mjs",
+    "frame": "node tools/render-frame.mjs"
+  }
+}
