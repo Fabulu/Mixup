@@ -71,39 +71,15 @@ export function updateActors(state) {
 
     r[0] |= 0x80;                                   // $426B: SET 7
     dispatch(state, r, type);
-    contactPlayer(state, r);
   }
 }
 
-/**
- * Player contact.  ROM: the $15BA overlap test -> loc_00_15D5.
- *
- * Box is $0C14 = 12 x 20 around the player's screen position. On a hit the
- * object is REMOVED (its type byte is zeroed) and, if +7 bit 0 is set, it
- * deals 2 damage and stamps the invulnerability timer with the knockback
- * direction encoded in bit 7 -- $DA when facing right, $5A when facing left,
- * i.e. you are always thrown away from the way you were looking.
- */
-function contactPlayer(state, r) {
-  const p = state.player;
-  const t = state.tunables;
-
-  const px = p.x >> 4, py = p.y >> 4;
-  const ax = (((r[1] << 8) | r[2]) & 0xFFFF) >> 4;
-  const ay = (((r[3] << 8) | r[4]) & 0xFFFF) >> 4;
-  if (Math.abs(ax - px) > 0x0C || Math.abs(ay - py) > 0x14) return;   // $15C4
-
-  r[0] = 0;                                        // $15CF: the object is gone
-  if ((r[7] & 0x01) === 0) return;                 // $15D5: harmless
-
-  if (p.dead) return;                              // $15D9
-  if (p.iframes !== 0) return;                     // $15DF
-
-  p.hp = Math.max(0, p.hp - t.objectContactDamage);   // $15E5 -> sub_00_2777
-  requestSound(state, 0x12);                          // $277F
-  // $15EA: facing right stamps the knockback-left bit.
-  p.iframes = p.facing === 0 ? (t.invulnFrames | 0x80) : t.invulnFrames;
-}
+// NOTE: an earlier version ran a "$15BA contact" test here that removed the
+// object and dealt 2 damage on overlap. That routine (loc_00_1444..$1626)
+// walks the $C6CF PICKUP-DROP array, not $C1E8 -- the oracle caught it
+// deleting the level-5 spike trap the moment the player walked under it. Map
+// objects have no generic player contact; anything that hurts does so through
+// its own handler or the cells it stamps. The $C6CF drops are not ported yet.
 
 /** ROM: sub_00_0AE1 mailbox. */
 function requestSound(state, id, mask = 0x01) {

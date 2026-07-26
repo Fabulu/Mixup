@@ -529,7 +529,14 @@ export function resolveWall(state, side) {
 export function probeCeiling(state) {
   const p = state.player;
   const hit = probe(state, 0, -(p.halfW << 4));      // $1EAB: $FF8C
-  const v = hit.value;
+  let v = hit.value;
+  // $20FF -> $210C: an empty cell falls into the SAME neighbour/slope lookup
+  // as the floor probe -- mode 3 and mode 4 share it. Near a metatile edge
+  // the diagonally adjacent cell is the ceiling; this is how the level-5
+  // spike trap's column catches a player hugging its edge.
+  if (v === COLL.AIR) {
+    v = slopeProbe(state, hit.col, hit.row, hit.row);
+  }
   if (v === COLL.AIR) return 0;                      // $1EC9
   if (v === COLL.SOLID_RUNTIME) return 0xFF;         // $1ECB
   if (v === COLL.SPIKE) {                            // $1ECE -> loc_00_1EE9
