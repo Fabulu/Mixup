@@ -216,6 +216,22 @@ run first, which costs ~20 subpixels of position. This is the single
    clean sweep. The target row only changes every 16 px, so a velocity that
    accelerates through zero oscillates forever.
 
+24. **Level 1's "water" is terrain, not sprites, and not water collision.**
+   The map has no `$08` cells at all. The four type-7 objects at columns
+   99–112 (`jt_01_4447`) stamp graphic `$47` / collision `$FD` one cell at a
+   time straight down their own column from row `$13` to `$1F`, erase the same
+   column on the way back up, pause, and repeat — so the falling streams are
+   drawn by the tilemap and hurt like spikes. Both the per-row gate and the gap
+   between pulses scale with difficulty (`$50`/`$28`/`$10`). This is also why
+   the rope has a level-1 special case for `$FD` (`$3DF1`): without it the
+   grapple would catch on a column of water.
+25. **`--warp` exists because late-level content is unreachable by input.**
+   Nothing can walk from level 1's start to column 99 without a solved route,
+   so both harnesses take `--warp COL[,ROW]`. trace.py can only write it after
+   the oracle's first sample (taken during boot), so render-frame.mjs applies
+   it after frame 1's trace row too — otherwise every warped scenario is
+   permanently one frame out of step.
+
 ## Tools
 
 | tool | purpose |

@@ -35,7 +35,7 @@ const ACTIVATION = [0, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x08, 0x0
  *   1 $488D  2 $48E4*  3 $499B  4 $4940  5 $4291  6 $42E3
  *   7 $4447  8 $4525   9 $464F 10 $4765* 11 $483C      (* never placed)
  */
-export const UNIMPLEMENTED_TYPES = new Set([1, 2, 4, 5, 6, 7, 8, 10, 11]);
+export const UNIMPLEMENTED_TYPES = new Set([1, 2, 4, 5, 6, 8, 10, 11]);
 
 export function createActors() {
   return Array.from({ length: SLOTS }, () => new Uint8Array(RECORD));
@@ -91,9 +91,80 @@ function requestSound(state, id, mask = 0x01) {
 function dispatch(state, r, type) {
   switch (type) {
     case 3: actorType3(state, r); break;
+    case 7: actorType7(state, r); break;
     case 9: actorType9(state, r); break;
     default: break;                                 // see UNIMPLEMENTED_TYPES
   }
+}
+
+/**
+ * Type 7 -- a pulsing water spout.  ROM: jt_01_4447.
+ *
+ * Level 1's only object, four of them strung across the pit at columns 99-112.
+ * Like the type-9 spike trap it is TERRAIN, not a sprite: it stamps graphic
+ * $47 / collision $FD one cell at a time straight down its own column from row
+ * $13, then erases the same column on the way back up, waits, and repeats. So
+ * the falling water is drawn by the tilemap and hurts on contact like spikes.
+ *
+ * It stays dormant until the player is within 5 metatiles horizontally, and
+ * both the step rate and the pause between pulses scale with difficulty -- on
+ * hard the streams come roughly five times as often.
+ *
+ * Note the rope deliberately passes THROUGH $FD on level 1 ($3DF1): these
+ * cells are exactly why that special case exists, so the grapple cannot catch
+ * on a column of water.
+ */
+function actorType7(state, r) {
+  const hard = state.flow.difficulty !== 0;
+
+  if (r[0x0C] !== 0) {                              // $444E: pulse gate
+    if (--r[0x0C] !== 0) return;                    // $4453
+    // $4457: the pause between pulses ended -- announce the next one. Only
+    // when idle; the timer also gates each row step mid-pulse.
+    if (r[0x0B] === 0) requestSound(state, 0x20);   // $445D
+    return;
+  }
+
+  let phase = r[0x0B];
+
+  if (phase === 0) {                                // $4466: dormant
+    // $4470: a plain distance test on the HIGH bytes, tighter than the
+    // activation window the driver already applied.
+    const dist = Math.abs((state.player.x >> 8) - r[1]);
+    if (dist >= 5) return;                          // $4477
+    r[0x0B] = 1;                                    // $4480
+    return;
+  }
+
+  if (phase !== 0xFF && phase !== 0xFE) {           // $4486: arming, 1 -> 2 -> $FF
+    const a = u8(phase + 1);
+    if (a < 3) { r[0x0B] = a; return; }             // $448F
+    phase = 0xFF;                                   // $4497
+    r[0x0B] = 0xFF;
+  }
+
+  // $449A: one cell per step -- draw on the way down, erase on the way back.
+  const col = r[1];
+  const row = r[3];
+  if (phase !== 0xFE) stamp(state, col, row, 0x47, 0xFD);   // $44B0
+  else stamp(state, col, row, 0, 0);                        // $44B8
+
+  r[0x0C] = hard ? 1 : 2;                           // $44D6: step rate
+
+  const next = u8(row + 1);                         // $44E7
+  if (next < 0x20) { r[3] = next; return; }         // $44E9
+
+  // $44ED: the column reached the floor. Extending flips to erasing; erasing
+  // goes fully idle and waits out the gap before the next pulse.
+  if (phase !== 0xFE) {
+    r[0x0B] = 0xFE;                                 // $44F8
+  } else {
+    r[0x0B] = 0;                                    // $44FE
+    r[0x0C] = state.flow.difficulty === 0 ? 0x50    // $4511
+      : state.flow.difficulty === 1 ? 0x28          // $450D
+      : 0x10;                                       // $4509
+  }
+  r[3] = r[0x0F];                                   // $4518: back to the top
 }
 
 /**

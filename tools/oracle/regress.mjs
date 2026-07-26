@@ -136,6 +136,22 @@ const SCRIPTS = [
     script: '20:,60:R,1:U,60:,1:A,178:',
     extra: ROPE_FIELDS },
 
+  // --- map objects ----------------------------------------------------------
+  // Level 1's four type-7 water spouts, at columns 99-112 over the pit. Warped
+  // in because nothing can walk there yet. The spouts are TERRAIN: they stamp a
+  // column of $FD one cell at a time, erase it, pause, repeat -- so what is
+  // being checked here is the phase machine and the row cursor.
+  //
+  // Capped at 260 frames on purpose. There is no column within the spout's
+  // 5-metatile trigger range that is also clear of level 1's enemies, and at
+  // frame 265 the walker at column 95 lands a hit the port does not reproduce
+  // -- an enemy gap (see UNIMPLEMENTED_STATES), not a spout one. 260 frames is
+  // still a full extend/erase/pause cycle plus the start of the next.
+  { name: 'l1-water-spouts', level: 1, frames: 260, warp: '95,27',
+    script: '260:',
+    extra: ['ob0t', 'ob0y', 'ob0st', 'ob0w', 'ob1t', 'ob1st', 'ob1w',
+            ...ENEMY_FIELDS] },
+
   // --- enemy AI (a scenario may carry its own `level:`) ---------------------
   // The enemy fields ride along on every one of these: slot-0 flags/state/
   // world-X/HP plus the slot-1/2 flag bytes.
@@ -174,11 +190,14 @@ for (const s of SCRIPTS) {
   if (only && s.name !== only) continue;
   process.stderr.write('running ' + s.name + ' ... ');
   const ammo = s.ammo === undefined ? [] : ['--ammo', String(s.ammo)];
+  // Late-level content is unreachable from a scripted input, so a scenario may
+  // ask both harnesses to place the player directly.
+  const warp = s.warp === undefined ? [] : ['--warp', String(s.warp)];
   const lvl = String(s.level ?? level);       // per-scenario level wins
   run('python', ['tools/oracle/trace.py', '--frames', String(s.frames),
-                 '--script', s.script, '--level', lvl, ...ammo]);
+                 '--script', s.script, '--level', lvl, ...ammo, ...warp]);
   run('node', ['tools/render-frame.mjs', '--frames', String(s.frames),
-               '--script', s.script, '--level', lvl, ...ammo]);
+               '--script', s.script, '--level', lvl, ...ammo, ...warp]);
 
   const o = JSON.parse(fs.readFileSync(
     path.join(ROOT, 'rip/oracle/trace_L' + lvl.padStart(2, '0') + '.json'),

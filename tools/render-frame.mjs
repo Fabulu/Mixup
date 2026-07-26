@@ -128,6 +128,19 @@ await initLevel(state, level);
 const ammo = arg('ammo', null);
 if (ammo !== null) state.flow.ammo = parseInt(ammo, 10) & 0xFF;
 
+// Mirrors trace.py --warp: drop the player at a metatile column (and optional
+// row), because late-level content is unreachable from a scripted input alone.
+// Applied AFTER frame 1, because trace.py cannot write it any earlier -- the
+// oracle's first sample is taken during boot. Both harnesses therefore see an
+// identical un-warped frame 1 and an identical warped frame 2 onward.
+const warp = arg('warp', null);
+function applyWarp() {
+  if (warp === null) return;
+  const [c, r] = warp.split(',').map((v) => parseInt(v, 10));
+  state.player.x = ((c & 0xFF) << 8) | 0x80;
+  if (!Number.isNaN(r)) state.player.y = (r & 0xFF) << 8;
+}
+
 const fb = R.createFramebuffer();
 
 const trace = [];
@@ -168,11 +181,16 @@ for (let f = 1; f <= frames; f++) {
     bk0t: state.breakables[0].timer, bk0c: state.breakables[0].col,
     bk0r: state.breakables[0].row,
     bk1t: state.breakables[1].timer, bk2t: state.breakables[2].timer,
+    ob0t: state.actors[0][0], ob0y: state.actors[0][3],
+    ob0st: state.actors[0][0x0B], ob0w: state.actors[0][0x0C],
+    ob1t: state.actors[1][0], ob1st: state.actors[1][0x0B],
+    ob1w: state.actors[1][0x0C],
     en0f: state.enemies[0][0], en0s: state.enemies[0][2],
     en0x: (state.enemies[0][0x0E] << 8) | state.enemies[0][0x0F],
     en0hp: state.enemies[0][0x16],
     en1f: state.enemies[1][0], en2f: state.enemies[2][0],
   });
+  if (f === 1) applyWarp();
 
   if (snapshots.has(f)) {
     R.renderFrame(state, fb);

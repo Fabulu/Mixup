@@ -43,6 +43,9 @@ A = dict(air=0xFF80, xhi=0xFF81, xlo=0xFF82, yhi=0xFF83, ylo=0xFF84,
          rope0x=0xC5EB, rope0y=0xC5ED, rope5x=0xC5FF, rope5y=0xC601,
          carryy=0xC730,
          bk0t=0xC67B, bk0c=0xC67C, bk0r=0xC67D, bk1t=0xC67E, bk2t=0xC681,
+         # map objects: slot 0 and 1 type/phase/row/wait ($C1E8, 16 B stride)
+         ob0t=0xC1E8, ob0y=0xC1EB, ob0st=0xC1F3, ob0w=0xC1F4,
+         ob1t=0xC1F8, ob1st=0xC203, ob1w=0xC204,
          en0f=0xC268, en0s=0xC26A, en0x=0xC276, en0hp=0xC27E,
          en1f=0xC288, en2f=0xC2A8)
 
@@ -140,6 +143,9 @@ def sample(mem):
         'rope5y': (m[A['rope5y']] << 8) | m[A['rope5y'] + 1],
         'bk0t': m[A['bk0t']], 'bk0c': m[A['bk0c']], 'bk0r': m[A['bk0r']],
         'bk1t': m[A['bk1t']], 'bk2t': m[A['bk2t']],
+        'ob0t': m[A['ob0t']], 'ob0y': m[A['ob0y']],
+        'ob0st': m[A['ob0st']], 'ob0w': m[A['ob0w']],
+        'ob1t': m[A['ob1t']], 'ob1st': m[A['ob1st']], 'ob1w': m[A['ob1w']],
         'en0f': m[A['en0f']], 'en0s': m[A['en0s']],
         'en0x': (m[A['en0x']] << 8) | m[A['en0x'] + 1],
         'en0hp': m[A['en0hp']],
@@ -158,6 +164,10 @@ def main():
     ap.add_argument('--ammo', type=int, default=None,
                     help='inject batarang ammo ($C759) once gameplay starts, so '
                          'the throw path can be tested without walking to a pickup')
+    ap.add_argument('--warp', default=None, metavar='COL[,ROW]',
+                    help='place the player at a metatile column (and optional '
+                         'row) once gameplay starts. Late-level content is '
+                         'otherwise unreachable from a scripted input alone.')
     args = ap.parse_args()
 
     script = args.script or f'{args.frames}:R'
@@ -191,6 +201,14 @@ def main():
 
     if args.ammo is not None:
         pyboy.memory[0xC759] = args.ammo & 0xFF
+
+    if args.warp is not None:
+        parts = args.warp.split(',')
+        pyboy.memory[0xFF81] = int(parts[0]) & 0xFF          # X hi
+        pyboy.memory[0xFF82] = 0x80                          # X lo, as level init does
+        if len(parts) > 1:
+            pyboy.memory[0xFF83] = int(parts[1]) & 0xFF      # Y hi
+            pyboy.memory[0xFF84] = 0x00
 
     # Input lead. The game reads the joypad in its VBlank ISR, and the main
     # loop that consumes it runs immediately after -- i.e. during PyBoy's NEXT
