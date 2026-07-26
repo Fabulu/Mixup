@@ -37,3 +37,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 *.log
+
+# Deployable bundle -- contains ROM-derived assets, regenerate with tools/build-dist.mjs
+dist/

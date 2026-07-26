@@ -21,8 +21,13 @@ import { u8, cellIndex } from './state.js';
 export const SLOTS = 8;
 export const RECORD = 16;
 
-/** Activation half-width by type. ROM: table 1:$4BA5. */
-const ACTIVATION = [0, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0xFA];
+/**
+ * Activation half-width by type. ROM: table 1:$4BA5, indexed by the RAW type.
+ * Types 9 and 10 use narrower windows ($08/$09); type 11 reads one byte past
+ * the table's end -- $FA, the first opcode of sub_01_4BB0 -- so it is always
+ * active.
+ */
+const ACTIVATION = [0, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x08, 0x09, 0xFA];
 
 /**
  * Types whose handler is not ported yet. Listing them explicitly (rather than
@@ -59,7 +64,10 @@ export function updateActors(state) {
     const width = ACTIVATION[type] ?? 0x0B;
     const camCol = u8((state.camera.x >> 8) + 5);   // $425D
     const dist = Math.abs(camCol - r[1]);           // $4261
-    if (dist >= width) continue;                    // $4267: off-screen
+    if (dist >= width) {                            // $4267 -> loc_01_4A51
+      r[0] &= 0x7F;                                 // drifting out clears bit 7
+      continue;
+    }
 
     r[0] |= 0x80;                                   // $426B: SET 7
     dispatch(state, r, type);
