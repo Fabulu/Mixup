@@ -186,10 +186,29 @@ for (const [pid, p] of Object.entries(PRESETS)) {
   document.getElementById('presets').appendChild(b);
 }
 
+// Honest per-level status. Several levels lean on systems that are not ported
+// yet (map-object handlers, the door/gate sequencer, the effect and ballistic
+// pools, enemy AI), and without them their barriers cannot be opened at all --
+// better to say so than to let someone hunt for a way through that does not
+// exist yet.
+const LEVEL_NOTE = {
+  1: 'playable', 2: 'playable',
+  3: 'partial — some barriers need map objects',
+  4: 'boss level — not ported',
+  5: 'partial — conveyors/water missing',
+  6: 'vehicle level — not ported',
+  7: 'partial', 8: 'boss level — not ported',
+  9: 'partial', 10: 'partial',
+  11: 'boss level — not ported',
+  12: 'partial',
+  13: 'BLOCKED — barriers need the door sequencer',
+  14: 'final boss — not ported',
+};
 const levelSel = document.getElementById('level');
 for (let i = 1; i <= 14; i++) {
   const o = document.createElement('option');
-  o.value = String(i); o.textContent = String(i);
+  o.value = String(i);
+  o.textContent = `${i} — ${LEVEL_NOTE[i]}`;
   levelSel.appendChild(o);
 }
 
