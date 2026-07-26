@@ -31,6 +31,7 @@
 //   +$1E/+$1F attack-probe offset X (facing-signed) / Y (signed), in px
 
 import { u8, i8, u16, mapCollisionByIndex } from './state.js';
+import { drawMetasprite } from './render/metasprite.js';
 
 export const SLOTS = 8;
 export const RECORD = 32;
@@ -81,6 +82,8 @@ export function loadEnemies(state, records, count) {
  * projectile spawned into slot 6 acts on its spawn frame or the next.
  */
 export function updateEnemies(state) {
+  if (!state.enemyDraws) state.enemyDraws = [];
+  state.enemyDraws.length = 0;
   if (state.flow.bossMode) return;                  // $4E0C: $C750 -> 1:$77BD
 
   const descending = state.parity !== 0;            // $4E13
@@ -996,7 +999,7 @@ function fallTail(state, r) {
 }
 
 /**
- * ROM: loc_01_5CA8 plus the animation half of the draw path ($5DDD-$6063).
+ * ROM: loc_01_5CA8 plus the draw path ($5CD3-$6063).
  *
  * Every handler funnels through here. It recomputes the stored screen
  * coordinates (which next frame's distance checks read -- they are one frame
@@ -1004,8 +1007,8 @@ function fallTail(state, r) {
  * cosmetic: the turn animation's expiry is what actually launches the wall
  * jump. The machine is skipped -- jumps delayed! -- whenever the enemy is
  * outside the 7-row vertical window, on the dark frames of the hit blink, or
- * while paused. Metasprite selection itself (r[6] and the id tables at
- * 1:$6891+) is visual-only and not ported yet.
+ * while paused. The selected metasprite id lands in r[6] ($6063) and the draw
+ * is queued for drawEnemies(), preserving the ROM's OAM push order.
  */
 function screenTail(state, r) {
   const x = (r[0x0E] << 8) | r[0x0F];
@@ -1014,39 +1017,159 @@ function screenTail(state, r) {
   r[8] = u8((u16((y & 0x0FFF) - state.camera.y) >> 4) + 0x10);
 
   if (absDiff8(u8((state.camera.y >> 8) + 4), r[0x10]) >= 7) return;   // $5CCA
-  if (r[2] === 0x0B) return;                        // $5CD4: projectile draw only
+  const lvl = state.level.number;
+  if (r[2] === 0x0B) {                              // $5CD4: projectile draw
+    const base = [0x6AF3, 0x6AF5, 0x6AF7, 0x6AF9][r[6] - 1] ?? 0x6AFB;  // $5CDD
+    queueDraw(state, ar(base + r[5]), r, 0,         // $5D13 / $5D1A
+              lvl === 0x0B || lvl === 0x0E);
+    return;
+  }
   // $5D20 / $5D4A: boss-2 / boss-1 special draws ($C741) -- boss levels only.
   if ((r[0] & 0x04) && (state.frame & 0x08) === 0) return;   // $5DE1: blink
-  if (state.flow.paused) return;                    // $5DF1: draw, no anim tick
-
-  if (r[0] & 0x3B) return;   // $5E05-$5E1B: attack/rise/fall/idle poses are
-  //                            derived from live timers; nothing to advance.
-  if (r[1] & 0x20) {                                // $5E61: landing animation
-    if (r[0x19] === 0) r[1] &= ~0x20;               // $5E90
-    else r[0x19]--;
+  const alt = lvl === 4 || lvl === 0x0B || lvl === 0x0E;     // $6078 -> 0BAF
+  if (state.flow.paused) {                          // $5DF1: draw, no anim tick
+    queueDraw(state, r[6], r, r[9], alt);
     return;
+  }
+  const id = animTick(state, r);
+  r[6] = id;                                        // $6063
+  // ($606D: sub_00_0F56 bobs the DRAWN Y of a grounded enemy by -2/-3 every
+  //  8th frame on levels 6/9/10/11 -- draw-only, not modelled.)
+  queueDraw(state, id, r, r[9], alt);
+}
+
+/**
+ * ROM: $5DFF-$6063 - the animation state machine and metasprite selection.
+ * The pose tables live in the ANIM_ROM blob (1:$6891-$6BC0); pointers are
+ * per-state, indexed on state-1. Returns the metasprite id.
+ */
+function animTick(state, r) {
+  const st = r[2];
+  const facing = r[5];
+  const f0 = r[0];
+  if (f0 & 0x10) {                                  // $5F39: ranged-attack pose
+    // ($5F5B: $C73F swaps in $6B7D for boss 3 -- boss levels, not modelled.)
+    const base = st === 2 ? 0x6AFD : st === 7 ? 0x6B1D : st === 8 ? 0x6B3D : 0x6B5D;
+    return ar(base + ((r[0x14] & 0x3F) >> 2) + (facing << 4));
+  }
+  if (f0 & 0x08) {                                  // $5F85: melee pose
+    const ptr = arw(0x691B + (st - 1) * 2);
+    if ((ptr >> 8) !== 0xFF) {                      // $5F98
+      // ($5F9D-$5FC0: +$10 offsets under $C73E/$C73F -- boss levels.)
+      return ar(ptr + ((r[0x14] & 0x1F) >> 2) + (facing << 3));
+    }
+    return walkCycle(state, r, facing);             // $5FDB
+  }
+  if (f0 & 0x01) {                                  // $5F24: rising pose
+    return ar(arw(0x68EF + (st - 1) * 2) + facing);
+  }
+  if (f0 & 0x02) {                                  // $5F0A: falling pose
+    if (st === 7) return ar(0x6B9D + facing);
+    if (st === 1) return ar(0x6B9F + facing);
+    return ar(arw(0x68EF + (st - 1) * 2) + facing);
+  }
+  if (f0 & 0x20) {                                  // $5E2B: idle sway
+    // ($5E3E: level-14 chaser variant -- boss level.)
+    return ar(arw(0x6A97 + (st - 1) * 2) + ((state.frame & 0x18) >> 3) + facing * 4);
+  }
+  if (r[1] & 0x20) {                                // $5E61: landing animation
+    if (r[0x19] === 0) { r[1] &= ~0x20; return r[6]; }     // $5E90
+    r[0x19]--;
+    return ar(arw(0x69F3 + (st - 1) * 2) + ((r[0x19] & 0x0C) >> 2) + facing * 4);
   }
   if (r[1] & 0x40) {                                // $5EA0: turn animation
     if (r[0x18] === 0) {
       r[1] &= ~0x40;                                // $5ECF
       r[0] |= 0x01;                                 // the jump launches NOW
-      // $5ED8: level 4 rolls a rLY-based crit that adds $10 -- boss level,
-      // unported (rLY is not modelled).
+      // ($5ED8: level 4 rolls a rLY-based crit adding $10 -- boss level,
+      //  unported; rLY is not modelled.)
       r[0x13] = r[0x1C];                            // $5EF6: jump velocity
-    } else {
-      r[0x18]--;
+      return r[6];
     }
-    return;
+    r[0x18]--;
+    return ar(arw(0x6A53 + (st - 1) * 2) + ((r[0x18] & 0x0C) >> 2) + facing * 4);
   }
-  // $5FE6: walk cycle. r[3] = period<<4|subtimer, r[4] = (frames-1)<<4|frame.
+  return walkCycle(state, r, facing);
+}
+
+/** ROM: loc_01_5FE6 - r[3] = period<<4|subtimer, r[4] = (frames-1)<<4|frame. */
+function walkCycle(state, r, facing) {
   const period = r[3] >> 4;
   const sub = (r[3] & 0x0F) + 1;
-  if (sub < period) { r[3] = (period << 4) | sub; return; }  // $5FF5
-  r[3] = period << 4;                               // $5FF9
+  let frame;
   const hi = r[4] >> 4;
-  const frame = (r[4] & 0x0F) + 1;
-  r[4] = frame < hi + 1 ? (hi << 4) | frame : hi << 4;   // $6007 / $6009
+  if (sub < period) {                               // $5FF5 -> $601C
+    r[3] = (period << 4) | sub;
+    frame = r[4] & 0x0F;
+  } else {
+    r[3] = period << 4;                             // $5FF9
+    frame = (r[4] & 0x0F) + 1;
+    if (frame < hi + 1) r[4] = (hi << 4) | frame;   // $6013
+    else { frame = 0; r[4] = hi << 4; }             // $6009
+  }
+  // $602A: offset = facing * frames + frame (the ADD loop), frames = hi+1.
+  return ar(arw(0x6891 + (r[2] - 1) * 2) + facing * (hi + 1) + frame);
 }
+
+function queueDraw(state, id, r, attr, alt) {
+  if (!state.enemyDraws) state.enemyDraws = [];
+  state.enemyDraws.push({ id, x: r[7], y: r[8], attr, alt });
+}
+
+/**
+ * Flush the frame's queued enemy sprites. ROM: sub_00_0BC6 pushes during the
+ * enemy driver itself; queueing keeps that OAM order (parity-alternating slot
+ * order included) while letting main.js own the manifest. Levels $04/$0B/$0E
+ * draw from the alternate table 5:$736B (sub_00_0BAF), the rest from 5:$5F5C.
+ */
+export function drawEnemies(state, manifest) {
+  const q = state.enemyDraws;
+  if (!q || !manifest.metasprites) return;
+  for (const d of q) {
+    const table = d.alt ? manifest.metasprites.table2 : manifest.metasprites.table1;
+    // r[7]/r[8] are OAM coordinates (+8, +16); the sprite queue is in screen
+    // coordinates, so the hardware offsets come back off here.
+    drawMetasprite(state, table, d.id, d.x - 8, d.y - 16, d.attr);
+  }
+  q.length = 0;
+}
+
+/**
+ * Metasprite-id tables, 1:$6891-$6BC0: per-state pointer rows (walk $6891,
+ * rise/fall $68EF, melee $691B, landing $69F3, turn $6A53, idle $6A97,
+ * projectile variants $6AF3, ranged poses $6AFD+). Byte-verified against the
+ * ROM. `ar`/`arw` read a byte / little-endian pointer by ROM address.
+ */
+const ANIM_ROM = hexBytes(
+  'a568ad68b568c168cd68d168d968dd68e168e9684f5051524b4c4d4e63646566' +
+  '5f6061622223242526271c1d1e1f20213a393b393c393a393b393c39b3b3b3b3' +
+  'bcbdbebfb8b9babbd1d3d0d201010000292a292a2c2e2b2d4042443f41430769' +
+  '09690b6907690d690f69116913691569176907691969565464602829b3b3c5c2' +
+  'e7e60d0c201f52515b5b33694369ffff33695369636973699369b369c369ffff' +
+  'e3695a5a5a59595959595858585757575757787a7c7b7a797870737577767574' +
+  '736db2b2b1b1b0b0afafaeaeadadacacababc3c3c4c4c4c4c3c3c0c0c1c1c1c1' +
+  'c0c0d9d9d9d9d7d7d5d5d8d8d8d8d6d6d4d4ededebebe9e9e9e7ececeaeae8e8' +
+  'e8e6151413131313131315141313131313131212121212121210111111111111' +
+  '110f282828262624242427272725252323234a4a4a4848464640494949474745' +
+  '453f5050504e4e4c4c404f4f4f4d4d4b4b3f9595959594949494959595959494' +
+  '94940b6a136a1b6a0b6a0b6a236a2b6a336a3b6a436a0b6a4b6a555555555353' +
+  '53536c6c706469696d60492749494a214a4ac5c5c5c5c2c2c2c2d1d1ededd0d0' +
+  'ecec0d0d0d0d0c0c0c0c2222222221212121404444443f4343435c5c5c5c5c5c' +
+  '5c5c0b6a676a6f6a0b6a0b6a776a7f6a0b6a876a8f6a70706c6c6d6d69692827' +
+  '494929214a4ac5c5c5c5c2c2c2c2e7e7d1d1e6e6d0d022222222212121215244' +
+  '44405143433fab6ab36affffab6abb6ac36acb6ad36adb6aeb6a5c5c5e5e5c5c' +
+  '5e5e7e6a7e6a7d677d67b3b3b3b3b3b3b3b3c5c5c5c5c2c2c2c2cfcfcfcfcece' +
+  'cece17171717161616162c2c2c2c2b2b2b2b3838383837373737444442404343' +
+  '413f807fc7c6f1f00e0e3e3d7271707070707070ffffffffffffffff6f6e6d6d' +
+  '6d6d6d6dffffffffffffffffdfdfdfdddddbdbdbffffffffffffffffdedededc' +
+  'dcdadadaffffffffffffffff0b0b090705030101ffffffffffffffff0a0a0806' +
+  '04020000ffffffffffffffff30303032321a1b19ffffffffffffffff2f2f2f31' +
+  '311a1b19ffffffffffffffff363636363636363636343434341a1b1935353535' +
+  '3535353535333333331a1b19edec5d5be1e0efee585656545454545755555353' +
+  '53535a5a5c5e5e606259595b5d5d5f61');
+const ANIM_BASE = 0x6891;
+const ar = (addr) => ANIM_ROM[addr - ANIM_BASE] ?? 0;
+const arw = (addr) => ar(addr) | (ar(addr + 1) << 8);
 
 // ---------------------------------------------------------------------------
 // The enemy's own collision probe.  ROM: sub_01_6666 and its mode wrappers.

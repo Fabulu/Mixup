@@ -97,6 +97,8 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     // 1:$640C reads it stale when the probe bailed early. Held as a cell
     // index rather than an address.
     enemyBesideIdx: 0,
+    // Sprites loc_01_5CA8 queued this frame; drawEnemies() flushes them.
+    enemyDraws: [],
     lagFrame: 0,                     // $C757
     sound: { queue: [] },                      // $C6FB, 4 x 2 B command ring
 

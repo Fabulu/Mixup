@@ -16,7 +16,7 @@ import { updateBatarangs, drawBatarangs } from './batarang.js';
 import { drawHud } from './hud.js';
 import { updateBreakables } from './collision.js';
 import { updateActors } from './actors.js';
-import { updateEnemies } from './enemies.js';
+import { updateEnemies, drawEnemies } from './enemies.js';
 import { resolveLoadout, runHook } from './mods.js';
 
 const FRAME_MS = 1000 / 59.73;      // DMG frame rate
@@ -161,6 +161,7 @@ export function tick(state, manifest, playerTiles) {
   updateBatarangs(state);             // $3A35
   drawBatarangs(state, manifest);     // $3D15
   updateEnemies(state);               // $05CF CALL 1:$4E0C
+  drawEnemies(state, manifest);       // flush loc_01_5CA8's queued sprites
 
   // Level transitions additionally run the sub_00_104E camera variant
   // mid-frame (the $F0-masked / SUB $15 one). That belongs in the transition

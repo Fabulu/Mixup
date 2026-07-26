@@ -129,6 +129,41 @@ run first, which costs ~20 subpixels of position. This is the single
    wrong pixels. `tools/oracle/animmap.mjs` derives the real mapping from a
    trace: walk cycle `$00-$03`, idle `$06`, land `$07`, rising `$08`,
    fall-entry `$09`, falling `$0A`.
+11. **The enemy wall jump is fired by the ANIMATION system, not the AI.** A
+   walker turning at a wall/ledge (`1:$5262`) only sets r[1] bit 6 and an
+   animation timer at +$18; it is the DRAW path (`$5EA0 -> $5ECF`) that, when
+   that timer expires, sets the rising bit and loads the +$1C jump velocity.
+   Consequently a jump is *delayed* whenever the draw is skipped — outside the
+   7-row vertical window, on dark hit-blink frames, or while paused. Modelling
+   the animation counters is mandatory for state fidelity.
+12. **The enemy contact damage is an attack probe, not a bounding box.**
+   `sub_01_6666` mode 5 (from `sub_01_6616` at the record's +$1E/+$1F offsets)
+   only tests the player when the probed CELL IS EMPTY, in screen space, with
+   an 8 px X window and — quirk — the player's half-**width** (`$FF8C`) as the
+   Y window. The knockback direction comes from the ENEMY's facing.
+13. **The ceiling probe offset is the half-width too** (`$1EAB` reads `$FF8C`,
+   not `$FF8D`), it runs on EVERY vertical path — grounded and falling
+   included, not just rising (`$1A63` falls into `$1A9D`) — and its empty cell
+   falls into the same neighbour/slope lookup as the floor probe (`$20FF ->
+   $210C` serves modes 3 AND 4). On level 5 only, spikes overhead are a solid
+   ceiling while airborne (`loc_00_1EE9`): that is how the descending spike
+   trap shoves a falling player down a row instead of shredding him.
+14. **The `$15BA` "object contact" routine walks the `$C6CF` pickup-drop
+   array, not `$C1E8`.** An earlier port ran it against the map objects; the
+   oracle caught it deleting the level-5 spike trap the moment the player
+   walked under it. Map objects have no generic contact test at all.
+15. **The type-9 spike trap is terrain that grows.** `jt_01_464F` stamps a
+   two-column spike into the map two cells per step (every 3rd frame down to
+   row `$1D`, every 13th frame back up to `$17`), with `$FA`-past-the-end
+   style hardcoded row bounds. Its activation half-width is `$08`, not the
+   `$0B` most objects use — `1:$4BA5` is indexed by RAW type and types 9/10/11
+   read `$08/$09/$FA` — and drifting out of the window clears bit 7
+   (`loc_01_4A51`), which an early port skipped.
+16. **The ROM's 16-bit negate idiom is broken for lo = `$FF`.** The CPL/CPL/+1
+   pair at `$6639`/`$6C68`/`$5B30` skips the +1 when the complemented low byte
+   is zero, so `-(x)` comes out `$100` short. Unreachable with shipped data
+   (the negated quantities are multiples of 16) but reproduced anyway
+   (`neg16q` in enemies.js).
 
 ## Tools
 

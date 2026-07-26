@@ -1,0 +1,212 @@
+// Enemy AI internals -- the probe layer and shared machinery of 1:$50D3.
+// Everything here runs against synthetic ASCII maps; no assets, no ROM.
+// Run: node --test tests/
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { grid, put, fillRow, makeState } from './helpers.js';
+import { _internals } from '../src/enemies.js';
+
+const {
+  probeCore, probeUp, probeDown, probeRight, probeLeft,
+  gapLeap, neg16q, spawnProjectile, screenTail,
+} = _internals;
+
+/**
+ * An enemy record shaped like the level-5 walker+jump blob entries:
+ * hitbox 8/9/15/16, HP 6, jump vel $20, speed cap $10.
+ */
+function makeEnemy(state, { col = 4, row = 6, xlo = 0x80, ylo = 0x00 } = {}) {
+  const r = state.enemies[0];
+  r.fill(0);
+  r[0] = 0x80;
+  r[2] = 2;
+  r[0x0A] = 0x08; r[0x0B] = 0x09;      // halfW right / left
+  r[0x0C] = 0x0F; r[0x0D] = 0x10;      // halfH up / down
+  r[0x0E] = col & 0xFF; r[0x0F] = xlo;
+  r[0x10] = (0x10 + row) & 0xFF; r[0x11] = ylo;
+  r[0x16] = 6;
+  r[0x1C] = 0x20;                      // jump velocity
+  r[0x1D] = 0x10;                      // walk speed cap
+  return r;
+}
+
+// ---------------------------------------------------------------------------
+// probeCore -- sub_01_6666
+// ---------------------------------------------------------------------------
+
+test('horizontal probe: empty edge cell sweeps above and below within the hitbox', () => {
+  // ROM: $66EA-$673F. The up test uses halfH-UP - 2, the down test halfH-DOWN
+  // - 2, and both read the RECORD Y-lo, not the probe point's.
+  const g = grid(8);
+  put(g, 5, 5, '#');                           // above the probed cell
+  const state = makeState(g);
+  const r = makeEnemy(state, { col: 4, row: 6, ylo: 0x00 });
+  // subY = 0 < halfHup-2 = 13 -> the above cell is consulted and returned.
+  assert.equal(probeCore(state, r, r[0x0A] << 4, 0, 1), 0x01);
+
+  // With the sub-row too low in the metatile the above test is skipped.
+  r[0x11] = 0xF0;                              // subY = 15, not < 13
+  assert.equal(probeCore(state, r, r[0x0A] << 4, 0, 1), 0);
+
+  // Below: subY + halfHdown-2 >= 16 consults the cell below.
+  const g2 = grid(8);
+  put(g2, 5, 7, '#');
+  const s2 = makeState(g2);
+  const r2 = makeEnemy(s2, { col: 4, row: 6, ylo: 0x20 });   // subY 2, 2+14 = 16
+  assert.equal(probeCore(s2, r2, r2[0x0A] << 4, 0, 1), 0x01);
+  r2[0x11] = 0x10;                             // subY 1, 1+14 = 15 -> skipped
+  assert.equal(probeCore(s2, r2, r2[0x0A] << 4, 0, 1), 0);
+});
+
+test('vertical probe: empty cell sweeps west/east within the hitbox', () => {
+  // ROM: $66AF-$66D7 -- mirrors the horizontal sweep with the halfW pair.
+  const g = grid(8);
+  put(g, 3, 8, '#');                           // west of the probed cell
+  const state = makeState(g);
+  const r = makeEnemy(state, { col: 4, row: 7, xlo: 0x00 }); // subX 0 < halfWL-2
+  assert.equal(probeCore(state, r, 0, r[0x0D] << 4, 4), 0x01);
+  r[0x0F] = 0x80;                              // centred: neither side pokes out
+  assert.equal(probeCore(state, r, 0, r[0x0D] << 4, 4), 0);
+});
+
+// ---------------------------------------------------------------------------
+// Floor / ceiling wrappers -- sub_01_656A / sub_01_64FA
+// ---------------------------------------------------------------------------
+
+test('probeDown snaps the feet exactly onto the probed row', () => {
+  // ROM: loc_01_65C0 -- Y = row*256 - halfHdown*16.
+  const state = makeState(fillRow(grid(8), 8, '#'));
+  const r = makeEnemy(state, { col: 4, row: 7, ylo: 0x30 });
+  assert.equal(probeDown(state, r), 1);
+  assert.equal((r[0x10] << 8) | r[0x11], 0x1800 - 0x100);
+});
+
+test('probeDown: enemies stand on spikes unharmed', () => {
+  // ROM: $65AA routes $FD into the same floor snap as ordinary ground.
+  const state = makeState(fillRow(grid(8), 8, '^'));
+  const r = makeEnemy(state, { col: 4, row: 7, ylo: 0x30 });
+  assert.equal(probeDown(state, r), 1);
+  assert.equal(r[0x16], 6, 'no HP loss');
+});
+
+test('probeUp into spikes stuns and costs 1 HP, once', () => {
+  // ROM: $6542 -> loc_01_6552.
+  const state = makeState(put(grid(8), 4, 5, '^'));
+  const r = makeEnemy(state, { col: 4, row: 6, ylo: 0x00 });
+  assert.equal(probeUp(state, r), 0);
+  assert.equal(r[0] & 0x04, 0x04);
+  assert.equal(r[0x17], 0x3C);
+  assert.equal(r[0x16], 5);
+  probeUp(state, r);                           // bit 2 already set: no re-hit
+  assert.equal(r[0x16], 5);
+});
+
+// ---------------------------------------------------------------------------
+// The wall-ahead jump assist -- loc_01_6415 via the horizontal probes
+// ---------------------------------------------------------------------------
+
+test('wall one column past an empty edge cell makes the walker JUMP, alternating', () => {
+  // ROM: $640C reads $FFBE (the beside-cell the empty path stored) and 6415
+  // launches with the +$1C velocity -- but only on alternate encounters,
+  // gated by the r[1] bit-7 latch.
+  const g = grid(8);
+  put(g, 6, 6, '#');                           // one column past the right edge
+  const state = makeState(g);
+  const r = makeEnemy(state, { col: 4, row: 6, xlo: 0x80 });
+
+  assert.equal(probeRight(state, r), 0, 'reported as no wall');
+  assert.equal(r[0] & 0x01, 0x01, 'rising');
+  assert.equal(r[0x13], 0x20, 'jump velocity from +$1C');
+  assert.equal(r[0x12], 0x0C, 'launch speed +$0C');
+  assert.equal(r[1] & 0x80, 0x80, 'latch set');
+
+  r[0] = 0x80;                                 // grounded again
+  assert.equal(probeRight(state, r), 0);
+  assert.equal(r[0] & 0x01, 0, 'second encounter does not jump');
+  assert.equal(r[1] & 0x80, 0, 'latch cleared');
+});
+
+test('the beside-cell index is a stale global when the probe bails early', () => {
+  // ROM: $FFBE is HRAM -- a probe that returns before the empty path keeps
+  // whatever an earlier probe stored there.
+  const g = grid(8);
+  put(g, 6, 6, '#');
+  const state = makeState(g);
+  const r = makeEnemy(state, { col: 4, row: 6 });
+  probeRight(state, r);                        // stores besideIdx = (6,6)
+  const stale = state.enemyBesideIdx;
+  r[0x10] = 0x21;                              // off the bottom: probe bails at $6680
+  probeLeft(state, r);
+  assert.equal(state.enemyBesideIdx, stale);
+});
+
+// ---------------------------------------------------------------------------
+// Gap leaps -- sub_01_7D09
+// ---------------------------------------------------------------------------
+
+test('gapLeap: level-5 table entry, nibble select and facing sign', () => {
+  // ROM: table 1:$7EB7. Xhi $26 = even -> high nibble of byte $13 ($EA) = leap
+  // 14 {yv $18, xv $10}; Xhi $27 = odd -> low nibble = leap 10 {yv 8, xv 4}.
+  const state = makeState(grid(8), { level: 5 });
+  const r = makeEnemy(state, { col: 0x26 });
+  assert.equal(gapLeap(state, r), true);
+  assert.equal(r[0x13], 0x18);
+  assert.equal(r[0x12], 0x10);
+  assert.equal(r[0] & 0x01, 0x01, 'launches immediately');
+
+  const r2 = makeEnemy(state, { col: 0x27 });
+  r2[5] = 1;                                   // facing left negates X
+  assert.equal(gapLeap(state, r2), true);
+  assert.equal(r2[0x13], 0x08);
+  assert.equal(r2[0x12], 0xFC);
+
+  const r3 = makeEnemy(state, { col: 0x4A });  // $7D44: past the level-5 bound
+  assert.equal(gapLeap(state, r3), false);
+});
+
+// ---------------------------------------------------------------------------
+// Odds and ends
+// ---------------------------------------------------------------------------
+
+test('neg16q reproduces the CPL/CPL/+1 idiom, including the lo=$FF short-by-$100', () => {
+  // ROM: $6639 / $6C68 / $5B30 -- the +1 is skipped when the complemented low
+  // byte is already zero, so -(x) comes out $100 short for lo = $FF.
+  assert.equal(neg16q(0x0100), 0xFF00);
+  assert.equal(neg16q(0x0060), 0xFFA0);
+  assert.equal(neg16q(0x12FF), 0xED00, 'quirk: true negation would be $ED01');
+});
+
+test('walk cycle advances the r[3]/r[4] nibble counters like $5FE6', () => {
+  const state = makeState(fillRow(grid(8), 8, '#'), { level: 5 });
+  const r = makeEnemy(state, { col: 4, row: 6 });
+  r[3] = 0x80;                                 // period 8, subtimer 0
+  r[4] = 0x30;                                 // 4 frames, frame 0
+  state.camera.y = 0x1000;                     // keep the vertical window open
+  screenTail(state, r);
+  assert.equal(r[3], 0x81, 'subtimer ticks');
+  assert.equal(r[4], 0x30, 'frame holds until the period wraps');
+  for (let i = 0; i < 7; i++) screenTail(state, r);
+  assert.equal(r[3], 0x80, 'subtimer wrapped');
+  assert.equal(r[4], 0x31, 'frame advanced');
+});
+
+test('spawnProjectile copies the mode-1 template into slot 6 and offsets it', () => {
+  // ROM: sub_01_6BDC + template 1:$6CEA. X +$100 toward the facing, Y +$20.
+  const state = makeState(grid(8), { level: 5 });
+  const spawner = makeEnemy(state, { col: 4, row: 6 });
+  assert.equal(spawnProjectile(state, spawner, 1), 0);
+  const t = state.enemies[6];
+  assert.equal(t[0], 0x80);
+  assert.equal(t[2], 0x0B, 'state 11');
+  assert.equal(t[0x16], 0xFF, 'HP $FF');
+  assert.equal((t[0x0E] << 8) | t[0x0F], 0x0580);
+  assert.equal((t[0x10] << 8) | t[0x11], 0x1620);
+
+  spawner[5] = 1;                              // facing left: slot 7, X negated
+  assert.equal(spawnProjectile(state, spawner, 1), 0);
+  assert.equal((state.enemies[7][0x0E] << 8) | state.enemies[7][0x0F], 0x0380);
+
+  assert.equal(spawnProjectile(state, spawner, 1), 1, 'both slots busy');
+});

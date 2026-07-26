@@ -15,6 +15,8 @@ const arg = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i
 const level = arg('level', '1');
 const only = arg('only', null);
 
+const ENEMY_FIELDS = ['en0f', 'en0s', 'en0x', 'en0hp', 'en1f', 'en2f'];
+
 // Every entry is a permanent test. Scripts are tuned against the level-1
 // geometry (see the ASCII map in docs/03-VERIFICATION.md "Test suite"):
 // the spawn platform is cols 0-3 with its top at row 8, the main floor is row
@@ -98,6 +100,35 @@ const SCRIPTS = [
     script: '40:,4:B,10:,4:B,10:,4:B,10:,4:B,118:',
     extra: ['atkTimer', 'atkPose', 'ammo', 'bat0', 'bat0x', 'bat0spd',
             'bat1', 'bat2'] },
+
+  // --- enemy AI (a scenario may carry its own `level:`) ---------------------
+  // The enemy fields ride along on every one of these: slot-0 flags/state/
+  // world-X/HP plus the slot-1/2 flag bytes.
+
+  // Level 1, state 1 (walker, 1:$50ED): activation at f119, the far-idle bit,
+  // approach, the $14/$30 distance bands, melee ($13 frames) and the
+  // player-mirroring face-pause quirk at $51DB.
+  { name: 'l1-walker-approach', level: 1, frames: 620, script: '20:,600:R',
+    extra: ENEMY_FIELDS },
+  // Level 5, state 2 (walker+jump, 1:$5399): idle -> chase across two ledges
+  // (falls, landings, the ledge scan at $5288), melee lunge at f216 (the
+  // attack probe hits the player: knockback + iframes), post-attack committed
+  // walk, and the turn-anim-expiry wall jumps at f257/f388.
+  { name: 'l5-walkerjump-approach', level: 5, frames: 620, script: '20:,600:R',
+    extra: ENEMY_FIELDS },
+  // Level 9, state 3 (flyer, 1:$55AA): slow-sink gravity, committed flight,
+  // wall hops via the turn-anim jump, and the dive attack.
+  { name: 'l9-flyer-dive', level: 9, frames: 620, script: '20:,600:R',
+    extra: ENEMY_FIELDS },
+  // Level 5 gauntlet: four jumps deep into the level, under the descending
+  // type-9 spike traps. Covers the trap's extend/retract map stamping, the
+  // ceiling probe pushing a falling player down a row ($1AA7 via the level-5
+  // spike-ceiling rule at $1EE9), grounded spike damage, two enemy melees and
+  // enemy knockback. Capped at 578: the player dies there, and the port's
+  // post-death respawn deliberately deviates from the ROM's round-select.
+  { name: 'l5-spike-trap-gauntlet', level: 5, frames: 578,
+    script: '20:,140:R,20:RA,120:R,20:RA,120:R,20:RA,120:R,20:RA,320:R',
+    extra: ENEMY_FIELDS },
 ];
 
 const FIELDS = ['x', 'y', 'vx', 'vy', 'air', 'facing', 'camX', 'camY'];
@@ -108,13 +139,14 @@ for (const s of SCRIPTS) {
   if (only && s.name !== only) continue;
   process.stderr.write('running ' + s.name + ' ... ');
   const ammo = s.ammo === undefined ? [] : ['--ammo', String(s.ammo)];
+  const lvl = String(s.level ?? level);       // per-scenario level wins
   run('python', ['tools/oracle/trace.py', '--frames', String(s.frames),
-                 '--script', s.script, '--level', level, ...ammo]);
+                 '--script', s.script, '--level', lvl, ...ammo]);
   run('node', ['tools/render-frame.mjs', '--frames', String(s.frames),
-               '--script', s.script, '--level', level, ...ammo]);
+               '--script', s.script, '--level', lvl, ...ammo]);
 
   const o = JSON.parse(fs.readFileSync(
-    path.join(ROOT, 'rip/oracle/trace_L' + String(level).padStart(2, '0') + '.json'),
+    path.join(ROOT, 'rip/oracle/trace_L' + lvl.padStart(2, '0') + '.json'),
     'utf8')).frames;
   const p = JSON.parse(fs.readFileSync(path.join(ROOT, 'rip/port/trace.json'), 'utf8'));
   const n = Math.min(o.length, p.length);
