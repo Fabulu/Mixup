@@ -75,6 +75,7 @@ function bandFor(bands, line) {
 function drawBackground(state, fb, bands) {
   const { tiles, width } = state.level;
   const shades = fb.shades;
+  const bgMap = state.video.bgMap;
 
   for (let y = 0; y < SCREEN_H; y++) {
     const band = bandFor(bands, y);
@@ -92,7 +93,12 @@ function drawBackground(state, fb, bands) {
       const tileX = worldX & 7;
 
       let tile;
-      if (col < 0 || col >= width) {
+      if (bgMap) {
+        // Menu/title screens have no level map -- they are a plain 32x32 VRAM
+        // tilemap at $9800, wrapping in both axes exactly as the hardware does.
+        const t = bgMap[((worldY >> 3) & 31) * 32 + ((worldX >> 3) & 31)];
+        tile = tiles.bg[t];
+      } else if (col < 0 || col >= width) {
         tile = null;
       } else {
         const mid = mapTile(state, col, row);

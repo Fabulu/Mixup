@@ -18,10 +18,12 @@ import { updateBreakables } from './collision.js';
 import { updateActors } from './actors.js';
 import { updateEnemies, drawEnemies } from './enemies.js';
 import { resolveLoadout, runHook } from './mods.js';
+import { loadTitle, showTitle, hideTitle, tickTitle } from './title.js';
 
 const FRAME_MS = 1000 / 59.73;      // DMG frame rate
 
-export async function boot(canvas, { level = 1, tunables = {}, mods = [] } = {}) {
+export async function boot(canvas, { level = 1, tunables = {}, mods = [],
+                                     title = true } = {}) {
   // Mod params override the ROM defaults before anything reads them; explicit
   // `tunables` still wins last so a caller can force a single value.
   const loadout = resolveLoadout(mods);
@@ -34,6 +36,16 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [] } = {})
   const manifest = await loadManifest();
   const playerTiles = await loadPlayerTiles();
   await initLevel(state, level);
+
+  // The title runs before the level, as it does on the cartridge. Loading it
+  // is best-effort: a missing capture must not stop the game booting.
+  let titleArt = null;
+  if (title) {
+    try {
+      titleArt = await loadTitle();
+      showTitle(state, titleArt);
+    } catch { titleArt = null; }
+  }
 
   const fb = createFramebuffer();
   const ctx = canvas.getContext('2d');
@@ -73,7 +85,16 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [] } = {})
       for (let i = 0; i < perFrame; i++) {
         sampleInput(state);         // ROM: the joypad read lives in VBlank
         runHook(loadout, 'onInput', state);
-        tick(state, manifest, playerTiles);
+        if (state.title) {
+          // loc_00_02C4: the title has its own loop; no game logic runs.
+          if (tickTitle(state) === 'start') {
+            hideTitle(state);
+            state.video.bgp = 0xE4;
+            initLevel(state, level);
+          }
+        } else {
+          tick(state, manifest, playerTiles);
+        }
       }
       acc -= FRAME_MS;
       steps++;

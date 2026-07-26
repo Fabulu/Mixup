@@ -9,6 +9,7 @@
 import { u8, i8 } from './state.js';
 import { probeFloor, probeCeiling, resolveWall, probe } from './collision.js';
 import { findFreeSlot, throwBatarang } from './batarang.js';
+import { meleeHitTest } from './enemies.js';
 import { updateScriptedMove } from './scriptedmove.js';
 
 // Joypad bits ($FFE1/$FFE2)
@@ -243,6 +244,10 @@ function punchHitTest(state) {
   const p = state.player;
   const dx = p.facing === 0 ? 0x00E0 : -0x00E0;         // $2024 / $2029
   const dy = (state.input.held & BTN.DOWN) ? 0x0050 : -0x0050;   // $202C
+
+  // $2654: the swing also tests every active enemy, which is what makes them
+  // killable at all.
+  meleeHitTest(state);
 
   const hit = probe(state, dx, dy);
   if (hit.value === 0xFF) return;                       // $203D

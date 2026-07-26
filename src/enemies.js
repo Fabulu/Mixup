@@ -57,6 +57,58 @@ export const UNIMPLEMENTED_STATES = new Set([4, 5, 6, 7, 8, 9, 10, 13]);
 
 const hexBytes = (s) => Uint8Array.from(s.match(/.{2}/g), (b) => parseInt(b, 16));
 
+/**
+ * Player melee lands on an enemy.  ROM: the $26B6 arm of the $2654 hit test.
+ *
+ * Two outcomes. Normally 2 damage plus a $3C stun and the hit-flash bit. But
+ * if `(rLY ^ frameCounter) < 8` -- roughly a 3% window -- it is a CRIT and
+ * deals the enemy's ENTIRE remaining HP, i.e. an instant kill, with its own
+ * sound ($18 rather than $21). Bosses are excluded from crits ($26D7).
+ *
+ * APPROXIMATE, and flagged as such: the overlap box is derived from the
+ * player's hitbox plus reach rather than the ROM's exact screen-space windows,
+ * and rLY is modelled from the frame counter because we do not emulate a
+ * scanline counter. No oracle scenario covers melee-on-enemy yet, so none of
+ * this is bit-verified -- unlike the enemy AI itself.
+ *
+ * @returns true if something was hit
+ */
+export function meleeHitTest(state) {
+  const p = state.player;
+  const t = state.tunables;
+  let hitAny = false;
+
+  const reach = 0x18;                               // ~24 px in front
+  const faceX = p.facing === 0 ? reach : -reach;
+
+  for (const r of state.enemies) {
+    if ((r[0] & F_ACTIVE) === 0) continue;
+    if (r[0x16] === 0) continue;                    // already dead
+
+    const ex = (((r[0x0E] << 8) | r[0x0F]) & 0xFFFF) >> 4;
+    const ey = (((r[0x10] << 8) | r[0x11]) & 0xFFFF) >> 4;
+    const px = (p.x >> 4) + (faceX >> 1);
+    const py = p.y >> 4;
+
+    if (Math.abs(ex - px) > p.halfW + 8) continue;
+    if (Math.abs(ey - py) > p.halfH) continue;
+
+    r[0] |= 0x04;                                   // $26C4: hit-flash
+    r[0x17] = t.enemyStunFrames;                    // $26CA: $3C
+
+    // $26CD: the crit window. rLY is modelled, not emulated.
+    const ly = (state.frame * 7) & 0x7F;
+    const crit = ((ly ^ state.frame) & 0xFF) < t.critWindow
+                 && state.level.bossId === 0;
+
+    const dmg = crit ? r[0x16] : t.meleeDamage;     // $26E3 vs $26F0
+    r[0x16] = Math.max(0, r[0x16] - dmg);           // $26F6
+    requestSound(state, crit ? 0x18 : 0x21);
+    hitAny = true;
+  }
+  return hitAny;
+}
+
 export function createEnemies() {
   return Array.from({ length: SLOTS }, () => new Uint8Array(RECORD));
 }

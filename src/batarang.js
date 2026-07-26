@@ -77,7 +77,40 @@ export function updateBatarangs(state) {
     // the test uses those fresh coordinates. Testing against the previous
     // frame's screen position instead makes the catch land two frames late.
     updateScreenPos(state, b);
+    batarangHitTest(state, b);          // $3C1B
     if (b.flags & FLAG_RETURNING) catchTest(state, b);
+  }
+}
+
+/**
+ * A batarang in flight hits an enemy.  ROM: loc_00_3C1B.
+ *
+ * The real routine walks all 8 enemy slots with a $1216 box (18 x 22), skips
+ * inactive and already-disabled ones, and deals 1 damage ($3D0B is a DEC)
+ * plus the $3C stun. It does NOT consume the batarang -- it flies on.
+ *
+ * APPROXIMATE: the box is transcribed but the surrounding state checks are
+ * not, and no oracle scenario covers it yet.
+ */
+function batarangHitTest(state, b) {
+  const t = state.tunables;
+  const bx = b.x >> 4, by = b.y >> 4;
+
+  for (const r of state.enemies) {
+    if ((r[0] & 0x80) === 0 || (r[0] & 0x40) !== 0) continue;   // $3C27/$3C2C
+    if (r[0x16] === 0) continue;
+
+    const ex = (((r[0x0E] << 8) | r[0x0F]) & 0xFFFF) >> 4;
+    const ey = (((r[0x10] << 8) | r[0x11]) & 0xFFFF) >> 4;
+    if (Math.abs(ex - bx) > 0x12 || Math.abs(ey - by) > 0x16) continue;  // $3C43
+
+    if (r[0] & 0x04) continue;                       // $3CF4: already flashing
+    r[0] |= 0x04;                                    // $3CFE
+    r[0x17] = t.enemyStunFrames;                     // $3D04: $3C
+    r[0x16] = Math.max(0, r[0x16] - 1);              // $3D0B: DEC
+    if (state.sound && state.sound.queue.length < 4) {
+      state.sound.queue.push({ id: 0x19, mask: 1 }); // $3CF8
+    }
   }
 }
 
