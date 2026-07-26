@@ -15,6 +15,7 @@ import { createPool } from './batarang.js';
 import { createRope } from './rope.js';
 import { createActors } from './actors.js';
 import { createEnemies } from './enemies.js';
+import { createWater } from './water.js';
 
 export const SUBPX_PER_PX = 16;
 export const SUBPX_PER_METATILE = 256;
@@ -102,6 +103,9 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     // Sprites loc_01_5CA8 queued this frame; drawEnemies() flushes them.
     enemyDraws: [],
     lagFrame: 0,                     // $C757
+    // $C70A-$C70D, $C713, $C755 + the $C6EF splash pool -- the level-1/2
+    // rising water body (src/water.js).
+    water: createWater(),
     sound: { queue: [] },                      // $C6FB, 4 x 2 B command ring
 
     level: {

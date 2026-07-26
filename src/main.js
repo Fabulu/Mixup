@@ -18,6 +18,7 @@ import { drawHud } from './hud.js';
 import { updateBreakables } from './collision.js';
 import { updateActors } from './actors.js';
 import { updateEnemies, drawEnemies } from './enemies.js';
+import { updateWater, updateSplashes } from './water.js';
 import { resolveLoadout, runHook } from './mods.js';
 import { loadTitle, showTitle, hideTitle, tickTitle } from './title.js';
 
@@ -197,11 +198,14 @@ export function tick(state, manifest, playerTiles) {
   updatePlayer(state);                // $170A-$1D0B
   applyAnimHitbox(state, manifest);   // $1D2C -- hitbox follows the animation
   drawPlayer(state, manifest);        // $1D0C
+  updateWater(state);                 // $05C6 CALL $2CBE -- levels 1-2 water
   streamPlayerTiles(state, manifest, playerTiles);  // $2C13
   updateBatarangs(state);             // $3A35
   drawBatarangs(state, manifest);     // $3D15
   updateRope(state, manifest);        // $3D5F -- the tail of the same routine
   updateEnemies(state);               // $05CF CALL 1:$4E0C
+  updateSplashes(state);              // $05EF CALL 1:$7AD3 -- queues onto the
+                                      // enemy draw list, so OAM order holds
   drawEnemies(state, manifest);       // flush loc_01_5CA8's queued sprites
 
   // Level transitions additionally run the sub_00_104E camera variant

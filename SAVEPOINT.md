@@ -32,7 +32,7 @@ node   tools/oracle/regress.mjs         # the whole corpus
 npm run test-all                        # 4 stages, the gate for everything
 ```
 
-**Current state: 21/21 oracle scenarios bit-exact, 4/4 test stages green.**
+**Current state: 28/28 oracle scenarios bit-exact, 4/4 test stages green.**
 Levels 1, 5 and 9 match the cartridge exactly over 620 frames each.
 
 If you change gameplay code and `test-all` goes red, you broke something real.
@@ -67,8 +67,10 @@ Deploy: `node tools/build-dist.mjs` then
 | Wall-cling / wall-jump | bit-exact |
 | Punch, batarangs (throw, flight, return) | bit-exact |
 | Scripted door moves, breakables, pickups | bit-exact |
-| Map objects `$C1E8` — types 3, 9 | bit-exact |
+| Map objects `$C1E8` — types 3, 7, 9 | bit-exact |
 | Enemy AI — states 1, 2, 3, 11, 12 + drawing | bit-exact |
+| Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
+| Levels-1/2 water body (`src/water.js`): rise/fall, waterfall stamp, `$FF95` slow mode, the 1-dmg `$5A` hit, enemy slow-fall bit, splash pool | bit-exact |
 | Level transitions, death/lives/respawn | ported |
 | HUD energy bar | ported |
 | Mod system + launcher, touch controls, fullscreen | ported |
@@ -80,26 +82,37 @@ Deploy: `node tools/build-dist.mjs` then
 
 Roughly in order of how much each would change the game:
 
-1. **Audio.** Nothing at all. The 56-opcode bank-7 sequencer is fully
-   documented in master-ref §8 and `tools/dumpsong.py` round-trips all 47
-   songs — this is well-scoped, just unbuilt. Research says hand-port
-   `minigb_apu.c` (MIT) and run the sequencer inside an AudioWorklet.
-2. **Bat-rope.** Real feature (Up fires a 5-segment grapple, `$C71E` states
-   1→2→3). **Currently disabled behind `ROPE_IMPLEMENTED = false` in
-   player.js** because arming it without the state machine permanently bricks
-   the player: `$C71E != 0` suppresses both input and attacks.
-3. **Enemy states 4–10 and 13** — all bosses, the level-6 vehicle, the level-12
-   enemy, plus the level-14 boss reroute at `1:$77BD`.
-4. **The door/gate sequencer** (`$C733-$C735`) plus the effect and ballistic
+1. **The sound DRIVER and music.** Nothing is audible yet. What exists:
+   `src/sound/apu.js` is a complete, unit-tested DMG APU (both squares with
+   sweep, wave, noise LFSR incl. width mode, envelopes, length, frame
+   sequencer, panning) — it is not a code translation, it is the hardware the
+   code writes to. `tools/oracle/sound.py` records the real driver's NR write
+   stream tick by tick, to diff a port against. Missing is `7:$412B` itself:
+   8 track slots at `$C82D`, 56 opcodes via `7:$43CE`, pitch table `7:$46D5`,
+   song table `7:$477D`. Master-ref §8 documents all of it and
+   `tools/dumpsong.py` already round-trips all 47 songs, so this is
+   well-scoped work, not research.
+2. **Enemy states 4–10 and 13** — all bosses, the level-6 vehicle, the level-12
+   enemy, plus the level-14 boss reroute at `1:$77BD`. The only one reachable
+   in levels 1–5 is state 10 (Boss 1, level 4).
+3. **The door/gate sequencer** (`$C733-$C735`) plus the effect and ballistic
    pools it spawns. **This is what blocks level 13**, which has 88 actor-owned
    destructible cells and no way to open them.
-5. **Map-object types 1, 4, 5, 6, 7, 8, 11.** Types 2 and 10 are never placed
-   in shipped data.
-6. **Window layer and raster effects.** The largest remaining *visual* gap —
-   the window is ~56% of the pixel delta on level 1 (the water body).
-7. **Conveyor carry, the water-surface subsystem** that arms `$FF95`.
-8. **VRAM script interpreter** `sub_00_0A0E` — needed for menus, stage intros
-   and the ending. Format is documented in master-ref §7.6.
+4. **Map-object types 1, 4, 5, 6, 8, 11.** Types 2 and 10 are never placed in
+   shipped data. (3, 7 and 9 are ported and bit-exact.)
+5. **Window layer and raster effects.** The largest remaining *visual* gap —
+   the window is ~56% of the pixel delta on level 1. Note this is the window
+   LAYER; the water body it draws is now simulated (`src/water.js`).
+6. **Conveyor carry** is applied (`loc_00_170A`), but levels 6/7/11/12/13 each
+   have their own `sub_00_2CBE` branch and only the levels-1/2 water branch is
+   ported.
+7. **VRAM script interpreter** `sub_00_0A0E` — needed for the options menu,
+   the Joker stage select, the per-stage intro cards and the ending. Format is
+   documented in master-ref §7.6. This one routine gates four screens.
+8. **Lag frames.** `$C757` is set when VBlank fires before the main loop
+   finishes, and the actor/enemy drivers skip that iteration. That is
+   instruction-level timing, so it is out of scope by definition — see
+   docs/03-VERIFICATION.md §28.
 
 ---
 
@@ -112,10 +125,6 @@ Be suspicious of these; they are the likeliest source of a surprise.
   transcribed exactly, and `rLY` for the crit window is modelled from the frame
   counter because we do not emulate a scanline counter. No scenario covers
   either yet — **this is the first thing to verify next.**
-- **Bat-rope.** Ported and verified: `rope-fire-and-swing` and
-  `rope-release-launch` are both bit-exact over 320 frames, including the
-  pendulum, the two-frame turn at each extreme and the tangent launch. Up fires
-  it; A lets go.
 - **State-2's ranged attack and projectile flight.** Literal ports with unit
   tests, but no natural input script triggers them, so no frame-by-frame proof.
 - **Post-death behaviour.** The ROM shoves x −15 during its sequence and

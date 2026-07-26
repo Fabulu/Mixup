@@ -34,12 +34,11 @@ buttons from `R L U D A B`. `20:,40:R` = 20 idle frames then 40 holding right.
    *next* tick. Buttons are therefore held one tick early so the real game acts
    on them on the same numbered frame as the port.
 
-## Current fidelity — level 1
+## Current fidelity
 
-`node tools/oracle/regress.mjs` runs the whole corpus: **14 of 15 scenarios
-(2535 frames) are bit-exact on every field, camera included.** The 15th is a
-known, diagnosed xfail — see "Open gap" below. See **## Test suite** for the
-per-scenario table.
+`node tools/oracle/regress.mjs` runs the whole corpus: **28 of 28 scenarios
+(7693 frames, levels 1/5/9) are bit-exact on every field, camera included.**
+See **## Test suite** for the per-scenario table.
 
 Attacks are verified separately. Both harnesses take `--ammo`, which injects
 batarang ammo so the throw path can be exercised without walking to a pickup;
@@ -65,14 +64,14 @@ Sampling at the `$0A4F` VBlank-wait hook made every camera field exact. Worth
 remembering: when one field refuses to converge while everything around it is
 perfect, suspect the measurement.
 
-### Open gap: slope X-snap on horizontal probes
+### Closed gap: slope X-snap on horizontal probes (kept for the method)
 
 `horizontalCell()` now passes *through* slope graphics rather than treating
 them as walls (`$22C6` falls through to `$22C9`, which dispatches on the probe
-mode into `loc_00_2348` / `loc_00_22F5` and ends at `loc_00_23B6` = no wall).
-But it does not yet apply the X-snap tables at `0:$23B8-$2408` that those paths
-run first, which costs ~20 subpixels of position. This is the single
-`walljump-chain-both-walls` xfail.
+mode into `loc_00_2348` / `loc_00_22F5` and ends at `loc_00_23B6` = no wall),
+and applies the X-snap tables at `0:$23B8-$2408` those paths run first. The
+`walljump-chain-both-walls` scenario that pinned this as an xfail is bit-exact
+now — the fix narrative lives on its entry in `regress.mjs`.
 
 ## Bugs the oracle caught that inspection had missed
 
@@ -232,6 +231,62 @@ run first, which costs ~20 subpixels of position. This is the single
    it after frame 1's trace row too — otherwise every warped scenario is
    permanently one frame out of step.
 
+26. **The level-1 "enemy hit the port missed" was the water.** The
+   l1-water-spouts divergence at f265 (vx=16, vy=23, air=1) looked exactly
+   like a melee from the walker at column 95 — but that walker's melee lands
+   at f174 and was already bit-exact. The real source is `sub_00_2CBE`
+   (`$05C6`) → `loc_00_2D3D`, the levels-1/2 **water body**: a 16-bit surface
+   level in `$C70A/$C70B` that rises/falls between rows `$16` and `$1F`,
+   8 units per even frame. When the surface reaches the player's row
+   (`$2E6A`, HIGH bytes only, equal counts as submerged) it arms `$FF95` —
+   the ONLY writer of the water slow mode, ever — and, on difficulty ≥ 1 with
+   `$C714` expired, deals 1 damage and stamps `$C714 = $5A` (`$2E8D`), always
+   knockback-RIGHT, no facing test. The launch itself is the ordinary `$1776`
+   head of the player update, one frame later. Quirks: the 7-cell waterfall
+   stamp (`$2DDC` table, cols `$37/$38`) runs one cell per even frame and
+   those frames `RET` at `$2DDB` **without** the window-Y/player/enemy tail
+   (only the 7th falls through); `$C713` never stores 8; and once the surface
+   bottoms out while the player is at column ≥ `$5A` it parks at `$1F00`
+   forever (`$2E2D`). The `$2E9C` tail also sweeps all 8 enemy slots setting/
+   clearing r[1] bit 1 (the `$F8` slow-fall terminal) against the surface —
+   that bit doubles as the edge detector for the one-shot surface splash
+   (`1:$7A99`, slots 1-3 of the `$C6EF` pool; slot 0 is the player's).
+
+27. **`$FFB1` and `$FFA7` are free-running and read RAW — boot phase is
+   load-bearing.** The water logic gates on `$FFB1 & 1` (`$2D5D`), the
+   in-water fall gravity on `$FFB1 & 7 == 0` (`$1AE4`), the enemy loop
+   direction on `$FFA7` (`$4E13`). Neither counter ever resets, so their
+   phase at gameplay start comes from the boot path: the fixed
+   logo→title→round-select route lands **every** level at `$FFB1 = $6D`,
+   `$FFA7 = 1` on the first gameplay iteration (measured for 1/5/9/12 — level
+   load never costs an extra frame). The port seeded its counter at 0, which
+   put every `& 7` cadence 5 frames out; invisible for 27 scenarios because
+   nothing COMPARED consumed the raw phase until the water gravity did.
+   level.js now seeds `$6D`/1 at level init.
+
+28. **The cartridge drops actor/enemy updates on real lag frames.** When the
+   VBlank ISR fires while `$FFE7` is still 0 — the main loop had not finished
+   its iteration — it sets `$C757` (`$065C`), and both the actor driver
+   (`$424D`) and the enemy driver (`$4E39`) skip that iteration's updates
+   (screen-tail only). Activation still runs (`$4E27` tests bit 7 *before*
+   the gate). The warped l1-water-spouts run hits real lag at f2, f6 and
+   f226; f226 freezes the column-95 walker for one frame, after which it runs
+   permanently one frame behind a port that never lags. `$FFB1`-per-iteration
+   alignment survives (the loop catches back up within the frame), so only
+   the skipped updates are observable. **This is instruction-level timing and
+   is out of scope by the project's own definition** — the en3 harness fields
+   exist in trace.py/render-frame.mjs for diagnosis but are deliberately not
+   compared in any scenario.
+
+29. **`$C714` is decremented at the HEAD of the player update, the port at
+   tick end.** Same behaviour, different sampling point: the oracle's `$0A4F`
+   sample always reads one more than the port's end-of-tick value while a
+   count runs. Comparing `iframes` directly would flag a phantom permanent
+   divergence — compare `hp` and the knockback launch frame instead. (Same
+   class of artifact as the camera sampling in the section above: when a
+   field refuses to converge while its consequences all match, suspect the
+   measurement.)
+
 ## Tools
 
 | tool | purpose |
@@ -380,10 +435,11 @@ never sees the press. Drive `button_press`/`button_release` by hand.)
 
 ### Oracle regression corpus — `tools/oracle/regress.mjs`
 
-17 scenarios, 2895 frames, ~30 s. Every field compared frame by frame against
+28 scenarios, 7693 frames, ~2 min. Every field compared frame by frame against
 the ROM; **camera included**, since the `$0A4F` sampling fix made it exact too.
 A scenario may add fields beyond the core eight via `extra:` (attack timer,
-ammo, batarang slots) and may pass `ammo:` through to both harnesses.
+ammo, batarang slots, enemy records, water state) and may pass `ammo:` /
+`warp:` through to both harnesses.
 
 | scenario | frames | covers |
 |---|---|---|
@@ -404,6 +460,17 @@ ammo, batarang slots) and may pass `ammo:` through to both harnesses.
 | `reverse-at-full-speed` | 220 | two full-speed reversals; `$1881` brakes 1 subpx/frame and never accelerates |
 | `punch-standing-no-ammo` | 160 | B with no ammo = punch; `$1A1B` refuses to restart the swing mid-animation. `extra`: action, atkTimer, atkPose, ammo |
 | `batarang-fill-all-slots` | 200 | `ammo: 5`, four throws: all three slots fill, then the fourth press spends ammo **and** punches — the deliberate `$1990-$19AD` ordering quirk. `extra`: atkTimer, atkPose, ammo, bat0/bat0x/bat0spd, bat1, bat2 |
+| `batarang-full-return` | 220 | one standing throw, the whole out-and-back: the return-leg homing and its asymmetric braking |
+| `batarang-throw-on-the-run` | 240 | thrown mid-run; the return homes on a moving player |
+| `batarang-arc-throw-in-air` | 240 | airborne Up-throw (the `$1A08` arc flag), landing mid-flight |
+| `rope-fire-and-swing` | 320 | Up fires the rope: extension, bite, pendulum, the two-frame turn at each extreme, the platform-carry that moves Batman |
+| `rope-release-launch` | 320 | A mid-swing: the `$3FD6` tangent launch |
+| `l1-water-spouts` | 400 | warped to col 95: the type-7 spout phase machines, the level-1 water body (trigger, waterfall stamp, rise), the `$2E8D` water hit + `$1776` knockback, and a walker's full activation/leap/melee. `extra`: objects, enemies, hp, slow, water state |
+| `l1-water-rising-hits` | 620 | warped to col 74 (outside every enemy window): six water hit/knockback cycles (hp 10→4), in-water walking, the `$FFB1 & 7` water fall gravity |
+| `l1-walker-approach` | 620 | dormant level-1 records staying dormant while the player grinds the col-13/14 wall (no walker activates — the wall stops the camera short) |
+| `l5-walkerjump-approach` | 620 | state 2: idle → chase across ledges, melee lunge, committed walk, turn-anim wall jumps |
+| `l9-flyer-dive` | 620 | state 3: slow sink, committed flight, wall hops, the dive |
+| `l5-spike-trap-gauntlet` | 578 | four jumps deep into level 5 under the type-9 spike traps; enemy melees, knockback, spike damage, player death at f578 |
 
 Scripts are tuned against the level-1 geometry. `#` = solid, `.` = air,
 `B` = batarang pickup; the player spawns at metatile (1, 2):
@@ -436,8 +503,10 @@ It is allowed to diverge (`xfail`) but not allowed to start passing silently —
 an `XPASS` fails the run and tells you to delete the annotation. This keeps a
 known bug documented and pinned instead of deleted or quietly tolerated.
 
-**Open: the below-cell branch of the horizontal sweep skips the slope X-snap**
-(`walljump-chain-both-walls`). When the probed cell is empty and the one below
+**Closed (kept as a worked example): the below-cell branch of the horizontal
+sweep skipped the slope X-snap**
+(`walljump-chain-both-walls`, since fixed and bit-exact). When the probed cell
+is empty and the one below
 is solid, `$22C6` falls through to `$22C9`, which dispatches on the probe mode
 (`$C72B`) into `loc_00_2348` (mode 1, rightward) or `loc_00_22F5` (mode 2,
 leftward), and each tests the below cell's **graphic** id against its own slope
@@ -448,14 +517,12 @@ splits them by probe direction.) On a match it indexes the X-snap tables at
 `$FF81`/`$FF82`** to push the player out along the slope face or ends at
 `loc_00_23B6` = `XOR A / RET`, i.e. no wall.
 
-`horizontalCell()` now reproduces the "no wall" outcome but never the position
-rewrite. Frame 125 of the scenario: flying left past the spawn platform, the
-cell below the probe is col 3 row 8, graphic id `$36` — a slope — and the ROM
-snaps x to 928 while the port leaves it at 1036, ~7 px out, which then moves
-where the landing happens. Slopes are handled for the floor/ceiling probes
-(`$210C` → `$21A6`/`$216A`) but not for the horizontal ones. Confirmed with a
-PyBoy hook on `$1FBD` reading register A: the ROM's leftward probe returns 0 on
-that frame.
+While open, the symptom was: frame 125 of the scenario, flying left past the
+spawn platform, the cell below the probe is col 3 row 8, graphic id `$36` — a
+slope — and the ROM snaps x to 928 while the port left it at 1036, ~7 px out,
+which then moved where the landing happens. Confirmed with a PyBoy hook on
+`$1FBD` reading register A: the ROM's leftward probe returns 0 on that frame.
+`horizontalCell()` now performs the rewrite too and the scenario is bit-exact.
 
 **`skipFrames`.** One scenario drops frame 1 from the comparison, and only for
 this reason: `trace.py` injects `--ammo` *after* frame 1 has already been

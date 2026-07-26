@@ -189,6 +189,19 @@ for (let f = 1; f <= frames; f++) {
     en0x: (state.enemies[0][0x0E] << 8) | state.enemies[0][0x0F],
     en0hp: state.enemies[0][0x16],
     en1f: state.enemies[1][0], en2f: state.enemies[2][0],
+    en3f: state.enemies[3][0], en3f1: state.enemies[3][1],
+    en3s: state.enemies[3][2], en3d: state.enemies[3][5],
+    en3x: (state.enemies[3][0x0E] << 8) | state.enemies[3][0x0F],
+    en3y: (state.enemies[3][0x10] << 8) | state.enemies[3][0x11],
+    en3vx: state.enemies[3][0x12], en3vy: state.enemies[3][0x13],
+    en3at: state.enemies[3][0x14], en3ms: state.enemies[3][6],
+    // The player's iframes are deliberately NOT traced: the ROM decrements
+    // $C714 at the head of the player update while the port decrements at
+    // tick end, so the sampled value sits one lower here for the same
+    // behaviour. Compare `hp` and the knockback launch instead.
+    hp: p.hp, slow: p.slowMode,
+    watLv: state.water.level, watPh: state.water.phase,
+    watSt: state.water.stampStep, watWy: state.water.windowY,
   });
   if (f === 1) applyWarp();
 

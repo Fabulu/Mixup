@@ -136,29 +136,50 @@ const SCRIPTS = [
     script: '20:,60:R,1:U,60:,1:A,178:',
     extra: ROPE_FIELDS },
 
-  // --- map objects ----------------------------------------------------------
+  // --- map objects + the water body -----------------------------------------
   // Level 1's four type-7 water spouts, at columns 99-112 over the pit. Warped
   // in because nothing can walk there yet. The spouts are TERRAIN: they stamp a
   // column of $FD one cell at a time, erase it, pause, repeat -- so what is
   // being checked here is the phase machine and the row cursor.
   //
-  // Capped at 260 frames on purpose. There is no column within the spout's
-  // 5-metatile trigger range that is also clear of level 1's enemies, and at
-  // frame 265 the walker at column 95 lands a hit the port does not reproduce
-  // -- an enemy gap (see UNIMPLEMENTED_STATES), not a spout one. 260 frames is
-  // still a full extend/erase/pause cycle plus the start of the next.
-  { name: 'l1-water-spouts', level: 1, frames: 260, warp: '95,27',
-    script: '260:',
+  // The 400-frame window also covers the level-1/2 WATER BODY (src/water.js):
+  // the waterfall trigger + 7-cell stamp, the surface rising through the
+  // player's row, and -- at f264/f265 -- the $2E8D water hit (1 dmg, $5A) and
+  // its $1776 knockback launch, which an earlier note misattributed to the
+  // walker at column 95. That walker melees at f174 (bit-exact) and then runs
+  // ONE frame behind the ROM from f226 on: f226 is a real lag frame ($C757 --
+  // the VBlank fired before the main loop finished, so the cartridge's enemy
+  // driver skipped one update). Instruction-level timing is out of scope for
+  // the port, so the en3 slot is traced by the harnesses but deliberately NOT
+  // compared here; nothing the walker does after f226 touches a compared
+  // field within 400 frames.
+  { name: 'l1-water-spouts', level: 1, frames: 400, warp: '95,27',
+    script: '400:',
     extra: ['ob0t', 'ob0y', 'ob0st', 'ob0w', 'ob1t', 'ob1st', 'ob1w',
+            ...ENEMY_FIELDS,
+            'hp', 'slow', 'watLv', 'watPh', 'watSt', 'watWy'] },
+  // The water body alone: column 74 is the one deep shaft outside EVERY
+  // enemy activation window (the col-67 walker misses by exactly one column)
+  // and far from the spouts. Six full hit cycles -- surface reaches the
+  // player, $2E8D hit, $1776 knockback, 90-frame invulnerability, repeat
+  // (hp 10 -> 4) -- plus walking both ways in slow mode ($FF95 speed caps)
+  // and the 1-in-8 $FFB1-phased water fall gravity, which is what pinned the
+  // port's frame counter to the cartridge's $6D boot phase.
+  { name: 'l1-water-rising-hits', level: 1, frames: 620, warp: '74,28',
+    script: '300:,40:R,40:L,240:',
+    extra: ['hp', 'slow', 'watLv', 'watPh', 'watSt', 'watWy',
             ...ENEMY_FIELDS] },
 
   // --- enemy AI (a scenario may carry its own `level:`) ---------------------
   // The enemy fields ride along on every one of these: slot-0 flags/state/
   // world-X/HP plus the slot-1/2 flag bytes.
 
-  // Level 1, state 1 (walker, 1:$50ED): activation at f119, the far-idle bit,
-  // approach, the $14/$30 distance bands, melee ($13 frames) and the
-  // player-mirroring face-pause quirk at $51DB.
+  // Level 1: holding RIGHT stops at the col-13/14 wall, which keeps the camera
+  // short of every walker's activation window -- NO level-1 enemy activates
+  // here (an earlier comment claimed otherwise; verified false). What this
+  // protects is 620 frames of dormant records staying dormant while the
+  // player grinds a wall. Real level-1 walker coverage -- activation, the
+  // distance bands, a gap leap, the f174 melee -- lives in l1-water-spouts.
   { name: 'l1-walker-approach', level: 1, frames: 620, script: '20:,600:R',
     extra: ENEMY_FIELDS },
   // Level 5, state 2 (walker+jump, 1:$5399): idle -> chase across two ledges

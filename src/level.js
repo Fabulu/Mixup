@@ -4,6 +4,7 @@
 import { loadLevel, loadManifest, buildTileCache } from './assets.js';
 import { loadActors } from './actors.js';
 import { loadEnemies } from './enemies.js';
+import { createWater } from './water.js';
 
 /** Decode a base64 record blob from the manifest into bytes. */
 function b64(s) {
@@ -46,6 +47,21 @@ export async function initLevel(state, n) {
   loadActors(state, b64(os.records), os.count);
   const es = info.enemySpawns;
   loadEnemies(state, b64(es.records), es.count);
+
+  // $04FD/$0503/$0534-$053F: the water body re-seeds at $1F00 on level entry.
+  state.water = createWater();
+
+  // $FFB1/$FFA7 are free-running VBlank counters that NEVER reset -- their
+  // phase at gameplay start comes from the boot path, and the game reads them
+  // raw: the water-gravity gate is `$FFB1 & 7` ($1AE4), the water parity gate
+  // `$FFB1 & 1` ($2D5D), the enemy loop direction `$FFA7` ($4E13). The
+  // cartridge's fixed logo->title->round-select path lands every level at
+  // $FFB1 = $6D, $FFA7 = 1 on the first gameplay iteration (measured for
+  // levels 1/5/9/12), so the port adopts that phase. Starting at 0 put every
+  // `& 7` cadence 5 frames out -- caught by the water fall cadence, the first
+  // COMPARED consumer of the raw counter.
+  state.frame = 0x6D;
+  state.parity = 1;
 
   resetPlayer(state, info);
   return info;

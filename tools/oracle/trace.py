@@ -47,7 +47,17 @@ A = dict(air=0xFF80, xhi=0xFF81, xlo=0xFF82, yhi=0xFF83, ylo=0xFF84,
          ob0t=0xC1E8, ob0y=0xC1EB, ob0st=0xC1F3, ob0w=0xC1F4,
          ob1t=0xC1F8, ob1st=0xC203, ob1w=0xC204,
          en0f=0xC268, en0s=0xC26A, en0x=0xC276, en0hp=0xC27E,
-         en1f=0xC288, en2f=0xC2A8)
+         en1f=0xC288, en2f=0xC2A8,
+         # enemy slot 3 in depth ($C268 + 3*$20): flags/sub-flags/state/facing,
+         # world position, velocities and the attack timer.
+         en3f=0xC2C8, en3f1=0xC2C9, en3s=0xC2CA, en3d=0xC2CD,
+         en3ms=0xC2CE,
+         en3x=0xC2D6, en3y=0xC2D8, en3vx=0xC2DA, en3vy=0xC2DB,
+         en3at=0xC2DC,
+         # levels 1-2 water body: surface level, phase, waterfall stamp
+         # cursor and the $C755 window-line latch (src/water.js).
+         wathi=0xC70A, watlo=0xC70B, watph=0xC70D, watst=0xC713,
+         watwy=0xC755)
 
 BUTTONS = {'R': 'right', 'L': 'left', 'U': 'up', 'D': 'down',
            'A': 'a', 'B': 'b'}
@@ -150,6 +160,15 @@ def sample(mem):
         'en0x': (m[A['en0x']] << 8) | m[A['en0x'] + 1],
         'en0hp': m[A['en0hp']],
         'en1f': m[A['en1f']], 'en2f': m[A['en2f']],
+        'en3f': m[A['en3f']], 'en3f1': m[A['en3f1']], 'en3s': m[A['en3s']],
+        'en3d': m[A['en3d']],
+        'en3x': (m[A['en3x']] << 8) | m[A['en3x'] + 1],
+        'en3y': (m[A['en3y']] << 8) | m[A['en3y'] + 1],
+        'en3vx': m[A['en3vx']], 'en3vy': m[A['en3vy']],
+        'en3at': m[A['en3at']], 'en3ms': m[A['en3ms']],
+        'watLv': (m[A['wathi']] << 8) | m[A['watlo']],
+        'watPh': m[A['watph']], 'watSt': m[A['watst']],
+        'watWy': m[A['watwy']],
     }
 
 
