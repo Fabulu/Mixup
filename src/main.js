@@ -12,7 +12,7 @@ import { updateCamera } from './camera.js';
 import { loadManifest, loadPlayerTiles } from './assets.js';
 import { createFramebuffer, renderFrame, SCREEN_W, SCREEN_H } from './render/renderer.js';
 import { drawPlayer, streamPlayerTiles, applyAnimHitbox } from './render/metasprite.js';
-import { updateBatarangs } from './batarang.js';
+import { updateBatarangs, drawBatarangs } from './batarang.js';
 import { drawHud } from './hud.js';
 import { updateBreakables } from './collision.js';
 import { updateActors } from './actors.js';
@@ -28,6 +28,8 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [] } = {})
   const state = createState(makeTunables({ ...loadout.tunables, ...tunables }));
   state.loadout = loadout;
   state.video.invert = loadout.render.invert;
+  state.video.spriteScale = loadout.render.spriteScale || 1;
+  state.hitboxScale = loadout.render.hitboxScale || 1;
   const manifest = await loadManifest();
   const playerTiles = await loadPlayerTiles();
   await initLevel(state, level);
@@ -81,6 +83,23 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [] } = {})
     image.data.set(fb.rgba);
     ctx.putImageData(image, 0, 0);
 
+    // The death sequence ends by asking for a level reload, which is async and
+    // so cannot happen inside tick(). Without this, falling off the map just
+    // leaves the player below the world with nothing to bring them back.
+    if (state.flow.respawnPending) {
+      state.flow.respawnPending = false;
+      const lives = state.flow.lives;
+      initLevel(state, state.level.number).then(() => {
+        state.flow.lives = lives;
+        state.player.dead = 0;
+        state.deathTimer = 0;
+        last = performance.now();
+        acc = 0;
+        requestAnimationFrame(step);
+      });
+      return;
+    }
+
     requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
@@ -121,6 +140,7 @@ export function tick(state, manifest, playerTiles) {
   drawPlayer(state, manifest);        // $1D0C
   streamPlayerTiles(state, manifest, playerTiles);  // $2C13
   updateBatarangs(state);             // $3A35
+  drawBatarangs(state, manifest);     // $3D15
   updateEnemies(state);               // $05CF CALL 1:$4E0C
 
   // Level transitions additionally run the sub_00_104E camera variant

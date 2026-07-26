@@ -346,8 +346,21 @@ test('metasprite records decode as {dy, dx, tile, attr} relative to a screen poi
   const s = msState();
   drawMetasprite(s, table, 0, 100, 50, 0x00);
   assert.deepEqual(s.video.sprites, [
-    { x: 88, y: 34, tile: 0x00, attr: 0x10 },
-    { x: 104, y: 50, tile: 0x0A, attr: 0x00 },
+    { x: 88, y: 34, tile: 0x00, attr: 0x10, scale: 1 },
+    { x: 104, y: 50, tile: 0x0A, attr: 0x00, scale: 1 },
+  ]);
+});
+
+test('a scale factor magnifies the metasprite about its own origin', () => {
+  // Mod-only magnification (Wide Load). Offsets scale with the sprite so the
+  // metasprite grows as one piece rather than coming apart; callers that must
+  // stay 1:1, such as the HUD, simply omit the argument.
+  const table = [{ sprites: [[-16, -12, 0x00, 0x10], [0, 4, 0x0A, 0x00]] }];
+  const s = msState();
+  drawMetasprite(s, table, 0, 100, 50, 0x00, 2);
+  assert.deepEqual(s.video.sprites, [
+    { x: 76, y: 18, tile: 0x00, attr: 0x10, scale: 2 },
+    { x: 108, y: 50, tile: 0x0A, attr: 0x00, scale: 2 },
   ]);
 });
 

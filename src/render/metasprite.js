@@ -13,17 +13,22 @@ import { cameraPixels } from '../camera.js';
  * Because our sprite queue is in screen coordinates, the two hardware offsets
  * cancel and we can add dy/dx to the plain screen position.
  */
-export function drawMetasprite(state, table, index, screenX, screenY, attrMask) {
+export function drawMetasprite(state, table, index, screenX, screenY, attrMask,
+                               scale = 1) {
   const entry = table[index];
   if (!entry) return;
   const q = state.video.sprites;
   for (const [dy, dx, tile, attr] of entry.sprites) {
     if (q.length >= 40) return;           // $0BE5: CP $A0 -- hard cap, silent drop
     q.push({
-      x: screenX + dx,
-      y: screenY + dy,
+      // Offsets scale with the sprite so the metasprite grows about its own
+      // origin instead of coming apart. Callers that must stay 1:1 (the HUD)
+      // simply leave scale at 1.
+      x: screenX + dx * scale,
+      y: screenY + dy * scale,
       tile,
       attr: attr | attrMask,              // $0BF7: OR with $FF9E
+      scale,
     });
   }
 }
@@ -42,7 +47,7 @@ export function drawPlayer(state, manifest) {
   const screenY = ((p.y >> 4) - 0x100) - cam.y;   // remove the $10-row bias
 
   drawMetasprite(state, manifest.metasprites.table1, p.msIndex ?? 1,
-                 screenX, screenY, p.attrMask);
+                 screenX, screenY, p.attrMask, state.video.spriteScale || 1);
 }
 
 /**
@@ -73,9 +78,18 @@ export function streamPlayerTiles(state, manifest, playerTiles) {
   p.animFrame = (p.animFrame + 1) % 3;
 }
 
-/** Hitbox for the current animation. ROM: table 0:$27A8, applied at $1D2C. */
+/**
+ * Hitbox for the current animation. ROM: table 0:$27A8, applied at $1D2C.
+ *
+ * NOTE this runs EVERY frame and overwrites whatever the hitbox was, which is
+ * why setting hitboxHalfWidth/Height as a plain tunable has no lasting effect.
+ * Mods scale the table value instead.
+ */
 export function applyAnimHitbox(state, manifest) {
   const p = state.player;
   const hb = manifest.player.hitboxes[p.anim];
-  if (hb) { p.halfW = hb[0]; p.halfH = hb[1]; }
+  if (!hb) return;
+  const s = state.hitboxScale || 1;
+  p.halfW = Math.min(0x7F, Math.round(hb[0] * s));
+  p.halfH = Math.min(0x7F, Math.round(hb[1] * s));
 }

@@ -20,6 +20,9 @@ export const BTN = {
 const AIR_GROUNDED = 0, AIR_RISING = 1, AIR_FALLING = 2;
 
 export function updatePlayer(state) {
+  // Death runs its own sequence and suppresses everything else.
+  if (state.player.dead) { deathTick(state); return; }
+
   if (clingLocked(state)) {
     // ROM: $17FB jumps to loc_00_1865, which runs both wall probes and
     // nothing else -- no input, no movement, no gravity.
@@ -36,8 +39,66 @@ export function updatePlayer(state) {
   horizontal(state);
   attack(state);                        // $18FB, between horizontal and vertical
   vertical(state);
+  checkDeath(state);                    // $1755
   selectAnim(state);
   applyCarry(state);
+}
+
+// ---------------------------------------------------------------------------
+// Death.  ROM: loc_00_1755 (the pit test), sub_00_29E7 (the sequence),
+//         loc_00_2AAD (lives and respawn).
+// ---------------------------------------------------------------------------
+
+/** ROM: loc_00_1755 - fall past the death row, or run out of HP. */
+function checkDeath(state) {
+  const p = state.player;
+  if (p.dead) return;
+
+  // $1756: level $0B's floor is higher than everywhere else, so it dies at
+  // row $1B instead of $21.
+  const row = state.level.number === 0x0B ? 0x1B : state.tunables.deathPitRow;
+
+  if ((p.y >> 8) >= row || p.hp === 0) {
+    p.action = 0;                       // $1769
+    p.hp = 0;                           // $176C
+    startDeath(state);                  // $1773
+  }
+}
+
+/** ROM: sub_00_29E7 */
+function startDeath(state) {
+  const p = state.player;
+  if (p.dead) return;                   // $29EB: already dying
+  p.dead = 1;                           // $29FD: $C715
+  state.deathTimer = state.tunables.deathSequenceFrames;   // $2A00: $78
+  p.vx = 0;
+  p.vy = 0;
+  requestSound(state, 0x09);            // $2A05: the death jingle
+}
+
+/**
+ * ROM: loc_00_2A0D ticks the particle burst; loc_00_2AAD then decrements
+ * lives and either restarts or ends the run.
+ *
+ * The original returns to the round-select screen here. Restarting the level
+ * in place is the closer fit for a single-level build, and it is what stops a
+ * fall off the map being a softlock.
+ */
+function deathTick(state) {
+  // Fire exactly once. Without this the timer sits at zero and every
+  // subsequent frame takes another life, draining the lot in a fifth of a
+  // second while the async reload is still in flight.
+  if (state.flow.respawnPending) return;
+  if (state.deathTimer > 0) { state.deathTimer--; return; }
+
+  const flow = state.flow;
+  flow.lives = (flow.lives - 1) & 0xFF;          // $2AB6
+  if (flow.lives === 0 || flow.lives > 200) {    // wrapped past zero
+    flow.lives = state.tunables.startingLives;   // game over -> fresh run
+    flow.gameOver = (flow.gameOver || 0) + 1;
+  }
+  // main.js picks this up and re-runs initLevel, which is async.
+  flow.respawnPending = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -511,11 +572,26 @@ export const ANIM = {
   CLING_A: 0x11, CLING_B: 0x12,            // wall-cling hold poses
 };
 
+/**
+ * Attack poses by attack-timer value, read off the real game with the oracle.
+ * Index 0 is unused (timer 0 means "not attacking").
+ *
+ * Without these the attack still fires -- damage, ammo, batarangs all work --
+ * but Batman never changes pose, so pressing the button looks like it does
+ * nothing at all.
+ */
+const PUNCH_ANIM = [0, 11, 11, 11, 12, 12, 12, 12, 12, 12, 12, 12, 11, 11, 11, 11];
+const THROW_ANIM = [0, 21, 21, 21, 22, 22, 22, 22, 12, 12, 12, 12, 12, 12, 12, 12];
+
 function selectAnim(state) {
   const p = state.player;
 
   let id;
-  if (p.turnTimer > 0) {
+  if (p.attackTimer > 0) {
+    // An attack in progress overrides every other pose.
+    const table = p.attackPose ? THROW_ANIM : PUNCH_ANIM;
+    id = table[p.attackTimer] ?? table[table.length - 1];
+  } else if (p.turnTimer > 0) {
     // $1BAC: alternate two skid frames off bit 3 of the countdown.
     p.turnTimer--;
     id = (p.turnTimer & 0x08) ? ANIM.TURN_A : ANIM.TURN_B;

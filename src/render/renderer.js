@@ -138,24 +138,29 @@ function drawSprites(state, fb, bands) {
     const topTile = tiles.obj[s.tile & 0xFE];
     const botTile = tiles.obj[s.tile | 0x01];
 
-    for (let py = 0; py < 16; py++) {
+    // Sprites are 8x16 on hardware; `scale` is a mod-only magnification that
+    // plots each source pixel as a scale x scale block.
+    const sc = s.scale || 1;
+    const H = 16 * sc, W = 8 * sc;
+
+    for (let py = 0; py < H; py++) {
       const sy = s.y + py;
       if (sy < 0 || sy >= SCREEN_H) continue;
 
       const band = bandFor(bands, sy);
       const pal = palMap((s.attr & 0x10) ? band.obp1 : band.obp0);
-      const srcY = flipY ? 15 - py : py;
-      const tile = srcY < 8 ? topTile : botTile;
-      const ty = srcY & 7;
+      const srcYs = ((flipY ? H - 1 - py : py) / sc) | 0;
+      const tile = srcYs < 8 ? topTile : botTile;
+      const ty = srcYs & 7;
       if (!tile) continue;
 
-      for (let px = 0; px < 8; px++) {
+      for (let px = 0; px < W; px++) {
         const sx = s.x + px;
         if (sx < 0 || sx >= SCREEN_W) continue;
         const idx = sy * SCREEN_W + sx;
         if (claimed[idx]) continue;
 
-        const srcX = flipX ? 7 - px : px;
+        const srcX = ((flipX ? W - 1 - px : px) / sc) | 0;
         const ci = tile[ty * 8 + srcX];
         if (ci === 0) continue;              // colour 0 is transparent for OBJ
         claimed[idx] = 1;

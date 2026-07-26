@@ -70,6 +70,7 @@ export function createState(tunables = DEFAULT_TUNABLES) {
       slowMode: 0,     // $FF95  $80 in water: halves speed and gravity
       attrMask: 0,     // $FF96  $80 = draw behind BG
       springArmed: 0,  // $C751  next jump uses springJumpVelocity
+      dead: 0,         // $C715  death sequence active
 
       // --- hitbox (re-read per animation from 0:$27A8) ---
       halfW: 0x0F,     // $FF8C

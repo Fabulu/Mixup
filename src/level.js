@@ -83,6 +83,9 @@ export function resetPlayer(state, info) {
   p.springArmed = 0;
   p.iframes = 0;
   p.msIndex = 1;
+  p.dead = 0;
+  state.deathTimer = 0;
+  state.flow.respawnPending = false;
   p.attackTimer = 0;
   p.attackPose = 0;
   p.ropeLength = 0;

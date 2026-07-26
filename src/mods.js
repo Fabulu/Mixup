@@ -122,11 +122,18 @@ export const MODS = {
       },
     },
   },
-  'big-head': {
+  'wide-load': {
     name: 'Wide Load',
-    blurb: 'A considerably larger Batman. Hitbox included.',
+    blurb: 'Batman at double size. He does not fit through everything.',
     category: 'chaos',
-    params: { hitboxHalfWidth: 0x18, hitboxHalfHeight: 0x18 },
+    // Purely cosmetic. Scaling the hitbox to match wedges him in doorways and
+    // softlocks the level -- the geometry is built around a 15x16 half-box and
+    // there is nowhere for a 30x32 one to fit. So the sprite doubles and the
+    // collision box stays stock.
+    //
+    // (Setting hitboxHalfWidth/Height as plain params would do nothing anyway:
+    // $1D2C rewrites the hitbox from the per-animation table every frame.)
+    render: { spriteScale: 2, hitboxScale: 1 },
   },
 };
 

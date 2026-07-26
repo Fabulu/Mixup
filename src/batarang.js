@@ -10,6 +10,7 @@
 
 import { u16 } from './state.js';
 import { cameraPixels } from './camera.js';
+import { drawMetasprite } from './render/metasprite.js';
 
 export const POOL_SIZE = 3;
 export const FLAG_RETURNING = 0x80;
@@ -180,6 +181,29 @@ function updateReturning(state, b) {
     b.x = u16(b.x + sv(b.speed));
   }
 
+}
+
+/**
+ * ROM: loc_00_3D15. Draw every live batarang.
+ *
+ * The metasprite is picked from an 8-entry spin table at 0:$41B8, indexed by
+ * (frame & $1C) >> 2 -- so all batarangs share one global spin phase rather
+ * than each animating independently. It freezes while paused.
+ */
+export function drawBatarangs(state, manifest) {
+  const table = state.tables && state.tables.batarangAnim;
+  if (!table) return;
+
+  const phase = state.flow.paused ? 0 : (state.frame & 0x1C) >> 2;   // $3D2A
+  const id = table[phase];
+  if (id === undefined) return;
+
+  for (const b of state.batarangs) {
+    if (!b.active) continue;
+    // $3D21: B/C come from the record's stored screen coords (+7/+8).
+    drawMetasprite(state, manifest.metasprites.table1, id,
+                   b.screenX, b.screenY, 0);
+  }
 }
 
 /** ROM: $3BD1 - world -> screen via sub_00_1172, stored at +7/+8. */

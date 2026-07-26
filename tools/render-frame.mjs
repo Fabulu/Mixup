@@ -114,6 +114,8 @@ const loadout = resolveLoadout(modIds);
 const state = createState(makeTunables(loadout.tunables));
 state.loadout = loadout;
 state.video.invert = loadout.render.invert;
+state.video.spriteScale = loadout.render.spriteScale || 1;
+state.hitboxScale = loadout.render.hitboxScale || 1;
 if (modIds.length) console.log(`mods: ${modIds.join(', ')}`);
 
 const manifest = await loadManifest();

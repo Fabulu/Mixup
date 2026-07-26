@@ -48,6 +48,8 @@ T_ENEMY_SPAWNS    = (5, 0x46EC)   # 14 x {src16, count}
 T_OBJECT_SPAWNS   = (5, 0x4716)
 T_ENEMY_DMG       = (1, 0x6BC1)   # 13 B, by enemy state
 T_LEVEL_DMG_BONUS = (1, 0x6BCE)   # 14 B
+T_BATARANG_ANIM   = (0, 0x41B8)   # loc_00_3D35: 8 metasprite ids, the spin
+                                  # cycle indexed by (frame & $1C) >> 2
 T_SCRIPT_PTRS     = (0, 0x27E6)   # loc_00_164A: 3 LE pointers to move scripts
 T_SCRIPT_BLOCK    = (0, 0x27E6)   # the scripts themselves live just past them
 T_SCRIPT_BLOCK_N  = 0x1E          # $27E6-$2803
@@ -227,6 +229,7 @@ def main():
         'slopeY': read_table(rom, T_SLOPE_Y, T_SLOPE_Y_END[1] - T_SLOPE_Y[1]),
         'slopeX': read_table(rom, T_SLOPE_X, T_SLOPE_X_END[1] - T_SLOPE_X[1]),
         'hudBar2': read_table(rom, T_HUD_BAR2, 10),   # $100C-$1015
+        'batarangAnim': read_table(rom, T_BATARANG_ANIM, 8),
         # Scripted door/exit moves. Pointers are absolute; the loader below
         # rebases them onto scriptData, whose index 0 is $27E6.
         'scriptPtrs': [rom.u16(0, T_SCRIPT_PTRS[1] + i * 2) - 0x27E6
