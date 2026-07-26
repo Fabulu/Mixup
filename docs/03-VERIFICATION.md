@@ -205,6 +205,17 @@ run first, which costs ~20 subpixels of position. This is the single
    the end of the same update doubles a conveyor's effect on the frame you
    step onto it.
 
+23. **The batarang brakes twice as hard as it accelerates, and stops dead.**
+   The return leg's four steering branches are not symmetric: when the velocity
+   already points the right way it eases by 2 toward a ±64 cap (`$3A9A`,
+   `$3B0B`, `$3ABA`, `$3B2E`), but when it points the *wrong* way it changes by
+   **4** and clamps to zero rather than crossing (`$3B52`, `$3B79`, `$3B41`,
+   `$3B6B`). Missing the braking branches is invisible on the X axis of a
+   standing throw — that stayed 100% for 220 frames — and only shows up when
+   the player moves during the return, as a long vertical zigzag instead of one
+   clean sweep. The target row only changes every 16 px, so a velocity that
+   accelerates through zero oscillates forever.
+
 ## Tools
 
 | tool | purpose |

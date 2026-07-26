@@ -153,7 +153,11 @@ for (let f = 1; f <= frames; f++) {
     atkTimer: p.attackTimer, atkPose: p.attackPose, ammo: state.flow.ammo,
     bat0: state.batarangs[0].active ? state.batarangs[0].flags : 0,
     bat0x: state.batarangs[0].active ? state.batarangs[0].x : 0,
-    bat0spd: state.batarangs[0].active ? state.batarangs[0].speed : 0,
+    bat0y: state.batarangs[0].active ? state.batarangs[0].y : 0,
+    // The ROM keeps both as raw bytes; the port lets them go signed, so
+    // normalise here rather than comparing two different encodings.
+    bat0spd: state.batarangs[0].active ? (state.batarangs[0].speed & 0xFF) : 0,
+    bat0arc: state.batarangs[0].active ? ((state.batarangs[0].arc << 24) >> 24) : 0,
     bat1: state.batarangs[1].active ? state.batarangs[1].flags : 0,
     bat2: state.batarangs[2].active ? state.batarangs[2].flags : 0,
     carryY: state.carry.y,

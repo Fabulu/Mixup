@@ -146,28 +146,43 @@ function updateOutbound(state, b) {
 }
 
 // Direction-hysteresis bits in slot+0. Once an axis starts moving one way it
-// keeps that bit until the comparison flips, which is what makes the return
-// leg a damped oscillation rather than a snap.
+// keeps that bit until the comparison flips.
 const F_RIGHT = 0x01, F_LEFT = 0x02, F_DOWN = 0x04, F_UP = 0x08;
 const VEL_CAP_POS = 0x40;     // $3A9C / $3B0D
 const VEL_CAP_NEG = 0xC0;     // $3ABC / -64
 
-/** Accelerate a velocity byte by +2, capped. ROM: $3A9A / $3B0B. */
-const accelPos = (v) => Math.min(v + 2, VEL_CAP_POS);
-/** Accelerate by -2 in wrapped byte space, clamped at $C0. ROM: $3ABA. */
+// Velocity bytes are stored UNSIGNED here, exactly as the ROM keeps them, and
+// only widened when they are added to a position. Letting them go negative in
+// JS breaks the `& 0x80` sign tests these four helpers are selected by.
+const sv = (v) => (v << 24) >> 24;
+
+/** Accelerate by +2, capped at +64. ROM: $3A9A / $3B0B. */
+const accelPos = (v) => Math.min((v + 2) & 0xFF, VEL_CAP_POS);
+/** Accelerate by -2 in byte space, floored at -64. ROM: $3ABA / $3B2E. */
 function accelNeg(v) {
   const a = (v - 2) & 0xFF;
   return a >= VEL_CAP_NEG ? a : VEL_CAP_NEG;   // unsigned CP $C0 / JR NC
 }
-const sv = (v) => (v << 24) >> 24;             // velocity bytes are signed
+
+// Braking -- the velocity currently points the WRONG way. ROM: $3B52 / $3B79
+// (rightward/downward) and $3B41 / $3B6B (leftward/upward).
+//
+// This is the shape of the whole return leg: braking is 4 per frame, twice the
+// acceleration, and it STOPS DEAD at zero instead of crossing. That is what
+// makes the real batarang come back in one clean sweep. Accelerating through
+// zero at 2 instead turns the return into a long visible zigzag, because the
+// target row only changes every 16 px while the velocity keeps overshooting.
+const brakePos = (v) => (v + 4 > 0xFF ? 0 : v + 4);   // ADD $04 / JR NC
+const brakeNeg = (v) => (v >= 4 ? v - 4 : 0);         // SUB $04 / JR NC
 
 /**
  * ROM: the bit-7 branch at $3A5C.
  *
  * Two independent axes, each comparing the batarang's HIGH byte against the
- * player's and accelerating a velocity toward it. The Y target is the player's
- * row MINUS ONE ($3A78: DEC A) -- the batarang returns to chest height, not to
- * the origin.
+ * player's and steering a velocity toward it. The Y target is the player's row
+ * MINUS ONE ($3A78: DEC A) -- the batarang returns to chest height, not to the
+ * origin. On level $0E above easy the targets come from $C296/$C298 (the boss)
+ * rather than the player; that variant is not ported.
  */
 function updateReturning(state, b) {
   const p = state.player;
@@ -183,11 +198,13 @@ function updateReturning(state, b) {
   }
   if (dirY === 'down') {                       // $3A8C
     b.flags = (b.flags & ~F_UP) | F_DOWN;
-    b.arc = accelPos(b.arc & 0x80 ? sv(b.arc) : b.arc);
+    // $3A95: already heading up? brake instead of accelerating.
+    b.arc = (b.arc & 0x80) ? brakePos(b.arc) : accelPos(b.arc);
     b.y = u16(b.y + sv(b.arc));
   } else if (dirY === 'up') {                  // $3AA9
     b.flags = (b.flags & ~F_DOWN) | F_UP;
-    b.arc = accelNeg(b.arc);
+    // $3AB2: zero accelerates; a positive value is heading down, so brake.
+    b.arc = (b.arc !== 0 && !(b.arc & 0x80)) ? brakeNeg(b.arc) : accelNeg(b.arc);
     b.y = u16(b.y + sv(b.arc));
   }
 
@@ -206,14 +223,14 @@ function updateReturning(state, b) {
   }
   if (dirX === 'right') {                      // $3AFE
     b.flags = (b.flags & ~F_LEFT) | F_RIGHT;
-    b.speed = accelPos(b.speed & 0x80 ? sv(b.speed) : b.speed);
+    b.speed = (b.speed & 0x80) ? brakePos(b.speed) : accelPos(b.speed);   // $3B07
     b.x = u16(b.x + sv(b.speed));
   } else if (dirX === 'left') {                // $3B1E
     b.flags = (b.flags & ~F_RIGHT) | F_LEFT;
-    b.speed = accelNeg(b.speed);
+    b.speed = (b.speed !== 0 && !(b.speed & 0x80))                        // $3B27
+      ? brakeNeg(b.speed) : accelNeg(b.speed);
     b.x = u16(b.x + sv(b.speed));
   }
-
 }
 
 /**

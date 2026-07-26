@@ -100,8 +100,25 @@ const SCRIPTS = [
   // $1990-$19AD ordering quirk. Tracks the flight of slot 0 too.
   { name: 'batarang-fill-all-slots', frames: 200, ammo: 5, skipFrames: 1,
     script: '40:,4:B,10:,4:B,10:,4:B,10:,4:B,118:',
-    extra: ['atkTimer', 'atkPose', 'ammo', 'bat0', 'bat0x', 'bat0spd',
-            'bat1', 'bat2'] },
+    extra: ['atkTimer', 'atkPose', 'ammo', 'bat0', 'bat0x', 'bat0y', 'bat0spd',
+            'bat0arc', 'bat1', 'bat2'] },
+  // Throw one batarang and stand still for the whole out-and-back. The catch is
+  // the assertion: the return leg is where the homing lives, and X alone looked
+  // fine while the vertical axis was wrong.
+  { name: 'batarang-full-return', frames: 220, ammo: 5, skipFrames: 1,
+    script: '40:,4:B,176:',
+    extra: ['bat0', 'bat0x', 'bat0y', 'bat0spd', 'bat0arc'] },
+  // The way it is actually played: throw on the run and keep running. The
+  // return leg homes on a player who has moved, which is where the vertical
+  // hysteresis in slot+0 earns its keep.
+  { name: 'batarang-throw-on-the-run', frames: 240, ammo: 5, skipFrames: 1,
+    script: '20:,30:R,4:RB,186:R',
+    extra: ['bat0', 'bat0x', 'bat0y', 'bat0spd', 'bat0arc'] },
+  // Thrown while airborne and holding Up (the arc flag at $1A08), landing
+  // mid-flight so the return target moves vertically as well as horizontally.
+  { name: 'batarang-arc-throw-in-air', frames: 240, ammo: 5, skipFrames: 1,
+    script: '20:,20:R,10:RA,4:RUB,186:R',
+    extra: ['bat0', 'bat0x', 'bat0y', 'bat0spd', 'bat0arc'] },
 
   // --- bat-rope -------------------------------------------------------------
   // Walk right along the main floor, then fire the rope with UP. Covers the
