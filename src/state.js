@@ -121,6 +121,7 @@ export function createState(tunables = DEFAULT_TUNABLES) {
       routeMask: 0,    // $C753
       paused: false,   // $C716
       bossMode: 0,     // $C750 -- level $0E reroutes the enemy loop to 1:$77BD
+      rescueCheat: 0,  // $C75C -- set by the title's B+SELECT+LEFT combo
     },
 
     // Code-adjacent ROM tables (slope heights 0:$221C, sine 0:$09A2, scripted

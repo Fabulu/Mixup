@@ -164,6 +164,20 @@ run first, which costs ~20 subpixels of position. This is the single
    is zero, so `-(x)` comes out `$100` short. Unreachable with shipped data
    (the negated quantities are multiples of 16) but reproduced anyway
    (`neg16q` in enemies.js).
+17. **The title's UP and DOWN are the same button.** `$02DB` tests bits 6 and 7
+   in one `AND`, and `$02F9` acts with `XOR $01` on `$C712` — there is no
+   per-direction handling, so from OPTION a *second* DOWN goes back up to
+   START. Reading it as a conventional two-way menu gives clamped behaviour
+   that the cartridge does not have. Verified live: `$C712` 0 → DOWN → 1 →
+   UP → 0, with cursor OAM moving `$64` ↔ `$74`.
+18. **The title cursor is drawn from the metasprite table, not fixed tiles.**
+   `sub_00_0FCC` cycles ids `19 C9 CA CB` (table `0:$3337`) on
+   `(frame & $18) >> 3` — an eight-frame band each, so a full blink is 32
+   frames. Each id is two 8×16 sprites at dx `-8`/`0`, the right one X-flipped
+   (`attr $20`); real OAM reads x `$20`/`$28`, y `$64` or `$74`. The frame
+   counter `$FFB1` ticks in VBlank, so it advances on the title even though no
+   game logic runs — a port that only bumps its frame counter inside the main
+   game tick leaves the cursor frozen on one tile.
 
 ## Tools
 

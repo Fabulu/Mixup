@@ -118,8 +118,12 @@ Be suspicious of these; they are the likeliest source of a surprise.
   returns to round-select; we restart the level in place instead. Deliberate.
 - **Title screen.** `assets/title.vram.bin` is a *capture* of what the real
   game builds, not the output of running its two VRAM scripts (5:`$5170`,
-  1:`$7C44`). The loop behaviour (fade, START, the B+Select+Left cheat) *is*
-  ported. When `sub_00_0A0E` lands, the capture can go.
+  1:`$7C44`). The loop behaviour — fade, the START/OPTION cursor, the
+  B+Select+Left cheat — *is* ported, and the cursor's positions, tile cycle and
+  XOR-toggle selection were read back off the cartridge's OAM and `$C712`
+  (docs/03-VERIFICATION.md §17–18). When `sub_00_0A0E` lands, the capture can
+  go. **OPTION (`loc_00_3893`) is not ported** — picking it returns to the
+  launcher, which already covers level, difficulty and mods. Deliberate.
 
 ---
 

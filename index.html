@@ -80,9 +80,9 @@
   #pad { display: none; margin-top: .9rem; user-select: none; -webkit-user-select: none;
          touch-action: none; }
   #pad.on { display: flex; justify-content: space-between; align-items: center;
-            gap: 1rem; max-width: 640px; margin-inline: auto; }
-  .dpad { display: grid; grid-template-columns: repeat(3, 56px);
-          grid-template-rows: repeat(3, 56px); }
+            gap: .5rem; max-width: 640px; margin-inline: auto; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 52px);
+          grid-template-rows: repeat(3, 52px); }
   .tbtn {
     background: #1d232d; border: 1px solid #37404f; border-radius: 8px;
     color: var(--fg); font: 600 17px ui-monospace, monospace; touch-action: none;
@@ -90,11 +90,14 @@
   }
   .tbtn:active, .tbtn[data-on="1"] { background: var(--accent); color: #171208; }
   .dpad .sp { visibility: hidden; }
-  .abtns { display: flex; gap: .9rem; }
-  .abtns { align-items: center; }
-  .abtns .tbtn { width: 74px; height: 74px; border-radius: 50%; font-size: 20px; }
+  /* START stacks ABOVE A/B rather than sitting inline with them. Inline, the
+     three buttons made the cluster wider than the space left beside the d-pad
+     and A was pushed off the right edge on narrow phones. */
+  .abtns { display: flex; flex-direction: column; align-items: center; gap: .5rem; }
+  .ab-row { display: flex; gap: .9rem; align-items: center; }
+  .abtns .tbtn { width: 68px; height: 68px; border-radius: 50%; font-size: 20px; }
   /* START has to exist on touch or the title screen is a dead end. */
-  .abtns .tbtn.sml { width: 62px; height: 34px; border-radius: 6px; font-size: 11px; }
+  .abtns .tbtn.sml { width: 78px; height: 30px; border-radius: 6px; font-size: 11px; }
 
   #err { display: none; margin-top: 1rem; padding: .8rem 1rem; text-align: left;
          background: #2a1a1a; border: 1px solid #5a2a2a; border-radius: 4px;
@@ -162,9 +165,11 @@
         <div class="sp"></div>
       </div>
       <div class="abtns">
-        <button class="tbtn sml" data-btn="8">START</button>
-        <button class="tbtn" data-btn="2">B</button>
-        <button class="tbtn" data-btn="1">A</button>
+        <div class="ab-row"><button class="tbtn sml" data-btn="8">START</button></div>
+        <div class="ab-row">
+          <button class="tbtn" data-btn="2">B</button>
+          <button class="tbtn" data-btn="1">A</button>
+        </div>
       </div>
     </div>
 
@@ -348,6 +353,7 @@ document.getElementById('launch').addEventListener('click', async () => {
       level: pick === 0 ? 1 : pick,
       title: pick === 0,
       mods: [...selected],
+      onOptions: backToPicker,        // OPTION on the title returns here
     });
     window.game = running;
   } catch (e) {
@@ -382,13 +388,15 @@ document.addEventListener('fullscreenchange', () => {
   stage.focus?.();
 });
 
-document.getElementById('back').addEventListener('click', () => {
-  if (document.fullscreenElement) document.exitFullscreen();
+function backToPicker() {
   if (running) running.stop();
   running = null;
+  if (document.fullscreenElement) document.exitFullscreen();
   document.getElementById('stage').classList.remove('on');
   document.getElementById('picker').style.display = '';
-});
+}
+
+document.getElementById('back').addEventListener('click', backToPicker);
 </script>
 </body>
 </html>

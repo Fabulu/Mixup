@@ -23,7 +23,7 @@ import { loadTitle, showTitle, hideTitle, tickTitle } from './title.js';
 const FRAME_MS = 1000 / 59.73;      // DMG frame rate
 
 export async function boot(canvas, { level = 1, tunables = {}, mods = [],
-                                     title = true } = {}) {
+                                     title = true, onOptions = null } = {}) {
   // Mod params override the ROM defaults before anything reads them; explicit
   // `tunables` still wins last so a caller can force a single value.
   const loadout = resolveLoadout(mods);
@@ -43,6 +43,7 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
   if (title) {
     try {
       titleArt = await loadTitle();
+      state.titleManifest = manifest;      // the cursor draws from table1
       showTitle(state, titleArt);
     } catch { titleArt = null; }
   }
@@ -88,7 +89,12 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
         runHook(loadout, 'onInput', state);
         if (state.title) {
           // loc_00_02C4: the title has its own loop; no game logic runs.
-          if (tickTitle(state) === 'start') startPressed = true;
+          const r = tickTitle(state);
+          if (r === 'start') startPressed = true;
+          // $3893, the options/sound-test screen, is not ported. The launcher
+          // already offers difficulty, level and mods, so OPTION returns there
+          // rather than pretending or doing nothing. Documented deviation.
+          else if (r === 'options' && onOptions) { running = false; onOptions(); return; }
         } else {
           tick(state, manifest, playerTiles);
         }
