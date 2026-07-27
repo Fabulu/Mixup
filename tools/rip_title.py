@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Capture the title screen's VRAM and BG tilemap.
+"""Capture the title screen's LCD register state.
 
-The title is drawn by two VRAM scripts (5:$5170 and 1:$7C44) run through
-sub_00_0A0E over a tilemap cleared to $2F. Rather than port the script
-interpreter AND work out which tile resources the boot path loads, this halts
-at the title loop ($02C4) and snapshots what the real game built.
+The VRAM capture this used to take is gone. sub_00_0A0E is ported, and the
+title image is now BUILT from its ingredients -- see src/vram.js
+buildTitleVram(), proved byte-for-byte by tools/oracle/titlediff.mjs.
 
-Honest about what it is: a capture, not a translation. The scripts themselves
-are still unported; when the interpreter lands this file can go.
+What is left is the eight LCD registers, and they are captured rather than
+derived for a specific reason: they are read 40 frames into the title loop, so
+the palette values are the state AFTER sub_00_0A7F's fade has finished, not the
+immediates the code writes ($34C6 sets BOTH object palettes to $E4; the
+captured OBP1 is $C4). Deriving them means running the fade, which is a
+separate job from building the screen.
 
 Usage:  python tools/rip_title.py
 """
@@ -37,11 +40,8 @@ def main():
         raise RuntimeError('never reached the title loop')
 
     m = pyboy.memory
-    vram = bytes(m[0x8000:0xA000])
     out = os.path.join(ROOT, 'assets')
     os.makedirs(out, exist_ok=True)
-    with open(os.path.join(out, 'title.vram.bin'), 'wb') as f:
-        f.write(vram)
 
     meta = {
         'scx': m[0xFF43], 'scy': m[0xFF42],
@@ -51,13 +51,8 @@ def main():
     with open(os.path.join(out, 'title.json'), 'w', encoding='utf-8') as f:
         json.dump(meta, f)
 
-    tilemap = vram[0x1800:0x1C00]
-    used = sorted({b for b in tilemap})
-    print(f'title captured after {hit["n"]} title-loop frames')
-    print(f'  vram      : {len(vram)} bytes -> assets/title.vram.bin')
-    print(f'  registers : {meta}')
-    print(f'  tilemap   : {len(used)} distinct tiles, '
-          f'first row {" ".join(f"{b:02X}" for b in tilemap[:20])}')
+    print(f'title registers captured after {hit["n"]} title-loop frames')
+    print(f'  {meta} -> assets/title.json')
     pyboy.stop(save=False)
 
 

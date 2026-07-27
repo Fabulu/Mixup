@@ -113,3 +113,40 @@ test('writes outside the VRAM window are reported but not stored', () => {
   assert.equal(vram[0x1FE0], 1);
   assert.deepEqual(writes[1], [0xA000, 2]);   // past the window, still reported
 });
+
+// ---------------------------------------------------------------------------
+// The VRAM builders.  ROM: $01AB-$022C boot clear, sub_00_34A4 tilemap fill.
+// ---------------------------------------------------------------------------
+
+import { fillTilemap, bootClearVram, blockCopy, VRAM_BASE } from '../src/vram.js';
+
+const at = (a) => a - VRAM_BASE;
+
+test('sub_00_34A4 fills $9800-$9A3E and deliberately misses $9A3F', () => {
+  // SP = $9A3F, 287 x PUSH DE covers $9801-$9A3E, then $34B7 stores $9800 by
+  // hand. A 32x18 visible screen is 576 bytes; this writes 575. Filling the
+  // tidy 576 puts one wrong tile in the bottom-right corner.
+  const vram = new Uint8Array(0x2000).fill(0xAA);
+  fillTilemap(vram, 0x2F);
+  assert.equal(vram[at(0x9800)], 0x2F);
+  assert.equal(vram[at(0x9A3E)], 0x2F);
+  assert.equal(vram[at(0x9A3F)], 0xAA, '$9A3F is never written');
+  assert.equal(vram[at(0x9A40)], 0xAA);
+});
+
+test('the boot clear fills $9800-$9FFE and deliberately misses $9FFF', () => {
+  // The same stack trick one size up ($01AB: SP = $9FFF, 1023 x PUSH $2F2F),
+  // and the same off-by-one at the other end of the map.
+  const vram = new Uint8Array(0x2000).fill(0xAA);
+  bootClearVram(vram);
+  assert.equal(vram[at(0x9800)], 0x2F);
+  assert.equal(vram[at(0x9FFE)], 0x2F);
+  assert.equal(vram[at(0x9FFF)], 0xAA, '$9FFF is never written');
+  assert.equal(vram[at(0x8000)], 0x00, 'tile area zeroed by $01C1');
+  assert.equal(vram[at(0x97FF)], 0x00);
+});
+
+test('a block copy that would leave VRAM is a loud failure', () => {
+  const vram = new Uint8Array(0x2000);
+  assert.throws(() => blockCopy(vram, 0x9FF0, new Uint8Array(32)), /leaves VRAM/);
+});

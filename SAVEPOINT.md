@@ -30,10 +30,10 @@ python tools/oracle/trace.py  --frames 620 --script "20:,600:R" --level 5
 node   tools/render-frame.mjs --frames 620 --script "20:,600:R" --level 5
 node   tools/oracle/regress.mjs         # the whole corpus
 node   tools/oracle/vramdiff.mjs --record   # sub_00_0A0E, write for write
-npm run test-all                        # 5 stages, the gate for everything
+npm run test-all                        # 6 stages, the gate for everything
 ```
 
-**Current state: 30/30 oracle scenarios bit-exact, 304 unit tests, 5/5 stages
+**Current state: 30/30 oracle scenarios bit-exact, 307 unit tests, 6/6 stages
 green.** Levels 1, 5 and 9 match the cartridge exactly over 620 frames each.
 
 If you change gameplay code and `test-all` goes red, you broke something real.
@@ -58,7 +58,7 @@ Two harness flags worth knowing, both taken by `trace.py` *and*
 pip install pyboy
 python tools/export_assets.py     # -> assets/
 python tools/gen_tunables.py      # -> src/tunables.js, read from the ROM
-python tools/rip_title.py         # -> assets/title.*
+python tools/rip_title.py         # -> assets/title.json (LCD registers only)
 python tools/rip_water.py         # -> assets/water.json (window map + anim)
 python tools/export_sound.py      # -> assets/sound.json (bank-7 sound data)
 python -m http.server 8000        # module imports need a real origin
@@ -82,6 +82,7 @@ Deploy: `node tools/build-dist.mjs` then
 | Map objects `$C1E8` — types 3, 7, 8, 9 | bit-exact |
 | Map-object collision (`loc_00_2426`, all four probe modes) | bit-exact |
 | VRAM script interpreter `sub_00_0A0E` | bit-exact (write stream: address, value AND order) |
+| Title VRAM build (boot clear, block copies, `sub_00_34A4` fill) | bit-exact |
 | Enemy AI — states 1, 2, 3, 11, 12 + drawing | bit-exact |
 | Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
 | Window layer (= the water's graphics) | drawn; tilemap + surface animation are a **capture** — see below |
@@ -91,7 +92,7 @@ Deploy: `node tools/build-dist.mjs` then
 | Mod system + launcher, touch controls, fullscreen | ported |
 | Difficulty `$C756` (launcher control; every read catalogued in master-ref §8b) | ported |
 | Sound driver + DMG APU, music and SFX | plays; **not** bit-exact — see "Sound" |
-| Title screen | **captured, not translated** — see below |
+| Title screen | **built from ROM data**, 8192/8192 B against the cartridge |
 
 ---
 
@@ -171,17 +172,20 @@ Be suspicious of these; they are the likeliest source of a surprise.
   `water.js` patches the frames straight into `level.tiles.bg`, exactly as the
   streamer patches VRAM — so background and window animate by one mechanism
   and the renderer has no special case.
-- **Title screen.** `assets/title.vram.bin` is a *capture* of what the real
-  game builds, not the output of running its two VRAM scripts (5:`$5170`,
-  1:`$7C44`). The loop behaviour — fade, the START/OPTION cursor, the
-  B+Select+Left cheat — *is* ported, and the cursor's positions, tile cycle and
-  XOR-toggle selection were read back off the cartridge's OAM and `$C712`
-  (docs/03-VERIFICATION.md §17–18). When `sub_00_0A0E` lands, the capture can
-  go. **OPTION (`loc_00_3893`) is not ported** — picking it returns to the
-  launcher, which already covers level, difficulty and mods. That is a
-  **temporary stopgap, not a design decision.** The launcher stands in only
-  until the menu graphics are ported; the real options screen and the Joker
-  stage select are both meant to land.
+- **Title screen — the 8 KB capture is GONE.** `assets/title.vram.bin` and the
+  half of `tools/rip_title.py` that produced it are deleted. The screen is now
+  built the way the cartridge builds it: the boot clear (`$01AB`), two bank-6
+  tile blobs through `sub_00_09FB`, `sub_00_34A4`'s tilemap fill, and three
+  VRAM scripts (`5:$52F5` copyright, `5:$5170` artwork, `1:$7C44` text). See
+  `buildTitleVram` in src/vram.js; `tools/oracle/titlediff.mjs` is a gate stage
+  and checks BOTH the replay and the shipped manifest path against the
+  cartridge's own VRAM — 8192/8192 bytes.
+
+  What is still captured is 91 bytes: `assets/title.json`, the eight LCD
+  registers. Those are read 40 frames into the title loop, so the palettes are
+  the state *after* `sub_00_0A7F`'s fade, not the immediates the code writes
+  (`$34C6` sets BOTH object palettes to `$E4`; the captured OBP1 is `$C4`).
+  Deriving them means porting the fade's palette ramp, which is its own job.
 
 ---
 
@@ -358,13 +362,13 @@ both frequency bytes and the trigger. Open:
 3. **Verify melee/batarang enemy damage against the oracle** — add a scenario
    that kills an enemy on level 1 and compare `en0hp`. Biggest *unverified*
    gap in gameplay.
-4. **The screens on top of `sub_00_0A0E`.** The interpreter is done and
-   bit-exact; what is left is the resource loading that fills VRAM with the
-   right tiles, then the options-menu and stage-select logic. Retiring the
-   title capture is the natural first target — its three scripts are already
-   proven — followed by the `$0E24` window surface, which kills the
-   `water.json` tilemap capture. The launcher standing in for OPTION and the
-   in-place respawn both go away at the end of this, together with the raster
+4. **The remaining screens on top of `sub_00_0A0E`.** The interpreter and the
+   title are done. Next is the `$0E24` window surface, which kills the
+   `water.json` tilemap capture and follows exactly the title's shape — find
+   the ingredients with `tools/oracle/titlebuild.py`, replay, diff. Then the
+   options menu (`loc_00_3893`) and the Joker stage select, which need menu
+   LOGIC on top of the drawing. The launcher standing in for OPTION and the
+   in-place respawn go away at the end of that, together with the raster
    bands: debt, not the intended design.
 5. **The door sequencer**, which unblocks level 13.
 

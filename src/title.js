@@ -4,15 +4,15 @@
 // sub_00_0A0E (5:$5170 for the artwork, 1:$7C44 for the text), starts the
 // title music, then fades in with sub_00_0A7F.
 //
-// PARTIAL, and worth being straight about: the script interpreter is NOT
-// ported. assets/title.vram.bin is a CAPTURE of what the real game builds,
-// taken by tools/rip_title.py, and we simply present it. What IS ported is the
-// loop's behaviour -- the fade, the START handler, and the hidden cheat.
-//
-// When sub_00_0A0E lands, the capture can be replaced by running the two
-// scripts for real and the tilemap will build itself.
+// The VRAM is now BUILT, not captured: two bank-6 tile blobs, the boot clear,
+// and the three scripts, all out of the manifest. assets/title.vram.bin and
+// tools/rip_title.py are gone. tools/oracle/titlediff.mjs is what earned that
+// -- it holds the built image against the cartridge's own and all 8192 bytes
+// agree.
 
-import { buildTileCache } from './assets.js';
+import { buildTileCache, loadManifest } from './assets.js';
+import { buildTitleVram } from './vram.js';
+import { runVramScript } from './vramscript.js';
 import { BTN } from './player.js';
 import { drawMetasprite } from './render/metasprite.js';
 
@@ -21,12 +21,28 @@ const BASE = new URL('../assets/', import.meta.url).href;
 /** Frames the fade takes. ROM: $02BF loads C = $80 into sub_00_0A7F. */
 const FADE_FRAMES = 48;
 
+/** Decode one base64 blob from the manifest. */
+function b64(s) {
+  const bin = typeof atob === 'function'
+    ? atob(s) : Buffer.from(s, 'base64').toString('binary');
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
 export async function loadTitle() {
-  const [vramBuf, meta] = await Promise.all([
-    fetch(BASE + 'title.vram.bin').then((r) => r.arrayBuffer()),
+  const [manifest, meta] = await Promise.all([
+    loadManifest(),
     fetch(BASE + 'title.json').then((r) => r.json()),
   ]);
-  const vram = new Uint8Array(vramBuf);
+  const spec = manifest.title;
+  if (!spec) throw new Error('manifest has no title section - re-run export_assets.py');
+
+  const vram = buildTitleVram({
+    tiles: spec.tiles.map((t) => ({ dest: t.dest, bytes: b64(t.bytes) })),
+    scripts: spec.scripts.map(b64),
+    fill: spec.fill,
+  }, (v, script) => runVramScript(v, script));
   return {
     vram,
     tiles: buildTileCache(vram),

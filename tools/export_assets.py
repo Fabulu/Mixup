@@ -61,6 +61,19 @@ T_BATARANG_ANIM   = (1, 0x41B8)   # 8 metasprite ids, spin cycle indexed by
 # table begins at $4BA5.
 T_OBJ_SCRIPTS     = (1, 0x4B43)
 T_OBJ_SCRIPTS_N   = 0x4BA5 - 0x4B43
+# Title screen ingredients. The boot path builds it from two bank-6 tile blobs
+# and three VRAM scripts; tools/oracle/titlediff.mjs proves those plus the boot
+# clear reproduce the old assets/title.vram.bin capture byte for byte.
+# Sources and destinations are immediates in the boot code, not a table.
+T_TITLE_TILES = [
+    ((6, 0x54B4), 1136, 0x8800),      # 00:01xx -> sub_00_09FB
+    ((6, 0x5928), 1680, 0x8C70),
+]
+T_TITLE_SCRIPTS = [
+    (5, 0x52F5),                      # 00:0238, the Sunsoft copyright screen
+    (5, 0x5170),                      # 00:0291, the title artwork
+    (1, 0x7C44),                      # 00:02AB, the title text
+]
 T_SCRIPT_PTRS     = (0, 0x27E6)   # loc_00_164A: 3 LE pointers to move scripts
 T_SCRIPT_BLOCK    = (0, 0x27E6)   # the scripts themselves live just past them
 T_SCRIPT_BLOCK_N  = 0x1E          # $27E6-$2803
@@ -107,6 +120,22 @@ def s8(v):
 
 def read_table(rom, loc, n):
     return list(rom.rd(loc[0], loc[1], n))
+
+
+def vram_script(rom, loc):
+    """Bytes of a sub_00_0A0E script, walked to its $00 terminator.
+
+    Record = {destHi, destLo, ctrl}; ctrl is mode<<6 | count, and the RLE modes
+    (1 and 3) carry a single payload byte where the copy modes carry `count`.
+    A count of 0 means 256 -- the loops are DEC B / JR NZ.
+    """
+    bank, addr = loc
+    p = addr
+    while rom.u8(bank, p) != 0x00:
+        ctrl = rom.u8(bank, p + 2)
+        count = (ctrl & 0x3F) or 0x100
+        p += 3 + (1 if (ctrl >> 6) in (1, 3) else count)
+    return list(rom.rd(bank, addr, p - addr + 1))
 
 
 def export_metasprites(rom, loc, count):
@@ -250,6 +279,16 @@ def main():
         'objectScripts': read_table(rom, T_OBJ_SCRIPTS, T_OBJ_SCRIPTS_N),
         'enemyContactDamage': read_table(rom, T_ENEMY_DMG, 13),
         'levelDamageBonus': read_table(rom, T_LEVEL_DMG_BONUS, 14),
+    }
+
+    # ---- title screen: the ingredients, not a snapshot of the result ------
+    manifest['title'] = {
+        'tiles': [{'dest': dest, 'bytes': base64.b64encode(
+            bytes(read_table(rom, loc, n))).decode('ascii')}
+            for loc, n, dest in T_TITLE_TILES],
+        'scripts': [base64.b64encode(bytes(vram_script(rom, loc))).decode('ascii')
+                    for loc in T_TITLE_SCRIPTS],
+        'fill': 0x2F,                 # 00:027D, LD D,$2F -> sub_00_34A4
     }
 
     with open(os.path.join(OUT, 'manifest.json'), 'w', encoding='utf-8') as f:
