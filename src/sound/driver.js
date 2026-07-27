@@ -69,11 +69,18 @@ const OPERANDS = {
 /** Opcodes whose effect this port does not implement. Kept explicit. */
 export const UNIMPLEMENTED_OPS = new Set([
   0xC8, 0xC9, 0xCA,                                      // channel-mask ops
-  0xCB, 0xCC, 0xCD, 0xCE, 0xCF, 0xD0, 0xD1, 0xD2,        // drum presets
-  0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9,                    // slide presets
-  0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF,
+  0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9,                    // play slide 5..0
+  0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF,                    // define slide 5..0
   0xF5,                                                  // release envelope
 ]);
+
+// DRUM/DEFDRUM. These are how the NOISE channel plays at all -- it has no
+// notes of its own, so stubbing them out leaves the percussion silent.
+// A preset is three bytes: {NR42, NR43, NR43-again}. The drum triggers with
+// the first NR43 and RE-triggers on the next tick with the second, and that
+// two-stage pitch drop is what makes it read as a hit rather than a beep.
+const DRUM_PLAY = { 0xCB: 3, 0xCC: 2, 0xCD: 1, 0xCE: 0 };
+const DRUM_DEF = { 0xCF: 3, 0xD0: 2, 0xD1: 1, 0xD2: 0 };
 
 export async function loadSoundData() {
   const j = await fetch(BASE + 'sound.json').then((r) => r.json());
@@ -117,6 +124,8 @@ function makeTrack() {
     loopA: 0, loopAPtr: 0,
     loopB: 0, loopBPtr: 0,
     wavePtr: 0,
+    drums: [null, null, null, null],
+    drumNR42: 0, drumNext: 0, drumStage: 0,
   };
 }
 
@@ -197,6 +206,15 @@ export function tick(drv) {
 
 /** ROM: $415B-$41EE. Advance one track's sequence and envelopes. */
 function stepTrack(drv, t) {
+  // A drum's second NR43 lands on the tick AFTER the hit, with its own
+  // retrigger. That drop is the whole character of the sound, and it has to
+  // happen before this tick's events so a fresh drum is not consumed by it.
+  if (t.drumStage === 1) {
+    t.freq = t.drumNext;
+    t.retrigger = true;
+    t.drumStage = 0;
+  }
+
   // $415F: the duration counter gates everything. Only when it expires does
   // the track read another byte.
   t.dur = u8(t.dur - 1);
@@ -206,12 +224,14 @@ function stepTrack(drv, t) {
     // stream (or an unimplemented op that fails to consume) spinning forever.
     while (t.active && t.dur === 0 && guard++ < 64) readEvent(drv, t);
     if (t.dur === 0) t.dur = 1;
-  } else if (t.gate > 0 && --t.gate === 0 && !t.legato) {
-    // $41F1: the gate counter releases a note early -- staccato without any
-    // note-off event. It switches to the release envelope if one is armed,
-    // rather than cutting the channel dead.
+  } else if (t.gate !== 0 && t.dur === t.gate && !t.legato) {
+    // $41F1: `CP (HL)` compares the REMAINING duration against the gate, so
+    // the gate is a threshold, not a countdown -- the release fires when the
+    // note has that many ticks left. Treating it as a countdown releases
+    // almost immediately and drops the whole song onto its release envelope
+    // after one tick, which is exactly what it sounded like.
     if (t.keyOffEnv) {
-      t.volEnvPtr = t.keyOffEnv;
+      t.volEnvPtr = t.keyOffEnv;                // $41F9: swap in the release
       t.volEnvTimer = 0;
     } else {
       t.keyOn = false;
@@ -287,9 +307,26 @@ function opcode(drv, t, op) {
     else if (k === 'D' || k === 'S') args.push(duration(drv, t));
   }
 
+  if (DRUM_DEF[op] !== undefined) {                       // $CF-$D2
+    t.drums[DRUM_DEF[op]] = args;
+    return;
+  }
+  if (DRUM_PLAY[op] !== undefined) {                      // $CB-$CE
+    const p = t.drums[DRUM_PLAY[op]];
+    t.dur = args[0] || 1;
+    if (!p) { t.keyOn = false; return; }
+    t.drumNR42 = p[0];
+    t.freq = p[1];                                        // NR43 stage 1
+    t.drumNext = p[2];                                    // NR43 stage 2
+    t.drumStage = 1;
+    t.keyOn = true;
+    t.retrigger = true;
+    return;
+  }
+
   if (UNIMPLEMENTED_OPS.has(op)) {
-    // Drums and slides still consume a duration, so the timing stays right
-    // even though the timbre does not.
+    // Slides still consume a duration, so the timing stays right even though
+    // the pitch ramp does not happen.
     if (shape.includes('D') || shape.includes('S')) { t.dur = args[0] || 1; t.keyOn = false; }
     return;
   }
@@ -297,7 +334,10 @@ function opcode(drv, t, op) {
   switch (op) {
     case 0xD3: t.fixdur = 0; break;                       // FIXDUR off
     case 0xE0: t.pitchEnv = 0; t.pitchBend = 0; break;
-    case 0xE1: t.pitchEnvDelay = 0; break;                // pitch-env delay 0
+    // $E1 "delay 0" leaves the envelope idle rather than starting it: with it
+    // armed, channel 1 holds a flat $73 on the cartridge while an accumulating
+    // envelope would walk it up to $83 within five ticks. $E2/$E3 arm it.
+    case 0xE1: t.pitchEnv = 0; t.pitchBend = 0; break;
     case 0xE2: t.pitchEnvDelay = 1; break;                // delay 1
     case 0xE3: t.pitchEnvDelay = 1; t.gateLimit = 0; break;
     case 0xE4: t.gateLimit = 0; break;                    // GATE off
@@ -361,7 +401,10 @@ function opcode(drv, t, op) {
  */
 function stepVolEnv(drv, t) {
   if (!t.volEnv) return;
-  if (t.volEnvTimer > 0) { t.volEnvTimer--; return; }
+  // Decrement THEN test: the pair's byte is how many ticks the step lasts in
+  // total, counting the tick it was read on. Testing first holds every step
+  // one tick too long, and the error compounds down the envelope.
+  if (t.volEnvTimer > 0 && --t.volEnvTimer > 0) return;
 
   let p = t.volEnvPtr;
   for (let guard = 0; guard < 8; guard++) {
@@ -433,9 +476,10 @@ function emit(drv) {
     const freq = (t.freq & 0xFF00) | u8(t.freq + t.pitchBend);
 
     if (c === 3) {
-      // Noise: the note byte IS NR43, and there is no frequency word.
+      // Noise: the value IS NR43, and there is no frequency word. Drums carry
+      // their own NR42 rather than using the track's volume envelope.
       write(drv, 0xFF20, 0x00);
-      write(drv, 0xFF21, nrx2);
+      write(drv, 0xFF21, t.drumNR42 || nrx2);
       write(drv, 0xFF22, t.freq & 0xFF);
       if (trig) write(drv, 0xFF23, 0x80);
       continue;
@@ -458,10 +502,18 @@ function emit(drv) {
     }
 
     // Squares. Length counters are never enabled, so NRx1 is duty only.
+    //
+    // NRx4 is written ONLY on a retrigger ($431C) or when the frequency's high
+    // bits changed ($4315) -- never unconditionally. Writing it every tick is
+    // audibly harmless, since the trigger bit is write-only, but it is not
+    // what the cartridge does and it makes every register comparison diverge.
     write(drv, base + 1, t.duty << 6);
     write(drv, base + 2, nrx2);
     write(drv, base + 3, freq & 0xFF);
-    write(drv, base + 4, (trig ? 0x80 : 0) | ((freq >> 8) & 7));
+    const hi = (freq >> 8) & 7;
+    if (trig) write(drv, base + 4, 0x80 | hi);
+    else if (hi !== t.lastHi) write(drv, base + 4, hi);
+    t.lastHi = hi;
   }
 
   write(drv, 0xFF24, 0x77);                     // master volume, as $4058
