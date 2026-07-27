@@ -32,10 +32,19 @@ node   tools/oracle/regress.mjs         # the whole corpus
 npm run test-all                        # 4 stages, the gate for everything
 ```
 
-**Current state: 28/28 oracle scenarios bit-exact, 4/4 test stages green.**
-Levels 1, 5 and 9 match the cartridge exactly over 620 frames each.
+**Current state: 28/28 oracle scenarios bit-exact, 286 unit tests, 4/4 stages
+green.** Levels 1, 5 and 9 match the cartridge exactly over 620 frames each.
 
 If you change gameplay code and `test-all` goes red, you broke something real.
+
+Two harness flags worth knowing, both taken by `trace.py` *and*
+`render-frame.mjs` so scenarios stay comparable:
+
+- `--ammo N` — inject batarangs without walking to a pickup.
+- `--warp COL[,ROW]` — place the player directly. Late-level content is
+  otherwise unreachable from a scripted input. It is applied **after frame 1**
+  in both harnesses, because the oracle's first sample is taken during boot;
+  get that wrong and every warped scenario sits permanently one frame skewed.
 
 ---
 
@@ -77,6 +86,8 @@ Deploy: `node tools/build-dist.mjs` then
 | Level transitions, death/lives/respawn | ported |
 | HUD energy bar | ported |
 | Mod system + launcher, touch controls, fullscreen | ported |
+| Difficulty `$C756` (launcher control; every read catalogued in master-ref §8b) | ported |
+| Sound driver + DMG APU, music and SFX | plays; **not** bit-exact — see "Sound" |
 | Title screen | **captured, not translated** — see below |
 
 ---
@@ -85,28 +96,8 @@ Deploy: `node tools/build-dist.mjs` then
 
 Roughly in order of how much each would change the game:
 
-0. **Sound is AUDIBLE but NOT VERIFIED.** `src/sound/driver.js` ports `7:$412B`
-   — eight track slots, the note/duration/gate machine, volume and pitch
-   envelopes, and the opcode dispatch — and `src/sound/index.js` runs it on the
-   audio clock at 59.36 Hz feeding `apu.js`. Music plays. What is *not* done is
-   the proof: `tools/oracle/sound.py` hooks the driver's store instructions to
-   record the real NR stream, and that recorder is **contaminated** — it
-   attributes one `LD [HL+], A` to two consecutive registers, so `$FF12` and
-   `$FF13` both come back `$F1`. Until that is fixed, `sounddiff.mjs` cannot
-   confirm anything. Also unported: the drum and slide presets and the release
-   envelope (listed in `UNIMPLEMENTED_OPS`); their operands ARE consumed, so
-   the byte stream stays in sync.
-1. **The sound driver's remaining gaps.** What exists:
-   `src/sound/apu.js` is a complete, unit-tested DMG APU (both squares with
-   sweep, wave, noise LFSR incl. width mode, envelopes, length, frame
-   sequencer, panning) — it is not a code translation, it is the hardware the
-   code writes to. `tools/oracle/sound.py` records the real driver's NR write
-   stream tick by tick, to diff a port against. Missing is `7:$412B` itself:
-   8 track slots at `$C82D`, 56 opcodes via `7:$43CE`, pitch table `7:$46D5`,
-   song table `7:$477D`. Master-ref §8 documents all of it,
-   `tools/dumpsong.py` round-trips all 47 songs, and `tools/export_sound.py`
-   now lifts the data into `assets/sound.json` — so this is well-scoped work,
-   not research.
+1. **Sound: playing well, two known bugs, not yet bit-exact.** See the
+   "Sound" section below — it has its own tooling and its own open list.
 2. **Enemy states 4–10 and 13** — all bosses, the level-6 vehicle, the level-12
    enemy, plus the level-14 boss reroute at `1:$77BD`. The only one reachable
    in levels 1–5 is state 10 (Boss 1, level 4).
@@ -171,6 +162,58 @@ Be suspicious of these; they are the likeliest source of a surprise.
 
 ---
 
+## Sound
+
+Music and effects both play and sound close to right. It is **not** bit-exact
+yet, and it has its own oracle loop, separate from the frame oracle:
+
+```
+python tools/oracle/sound.py --id 2 --mask 3 --ticks 120   # record the cartridge
+node   tools/oracle/sounddiff.mjs --id 2 [--show 8]        # diff, per register
+node   tools/rendersong.mjs --id 2 --seconds 15            # -> a WAV to listen to
+node   tools/rendersong.mjs --id 0x10 --dump 6             # per-tick writes
+```
+
+- `src/sound/apu.js` — the DMG chip. The one piece here that is *not* a code
+  translation, because it is not code. Register writes in, samples out, no Web
+  Audio dependency, unit-tested under node.
+- `src/sound/driver.js` — `7:$412B`. Eight track slots, channel ownership in
+  `$C800-$C803` (higher index wins, so SFX pre-empt music), the note/duration/
+  gate machine, volume and pitch envelopes, drums, slides, opcode dispatch.
+- `src/sound/index.js` — runs the driver on the **audio** clock at 4096/69 =
+  59.36 Hz. It is a timer-interrupt routine, not VBlank; driving it from
+  `requestAnimationFrame` would tie tempo to the display refresh.
+
+Current diff for song `$02` over 120 ticks: channels 1 and 2 match on duty,
+both frequency bytes and the trigger. Open:
+
+- **The slide's starting frequency** is wrong (`$91` against the cartridge's
+  `$1d`). The bass ramps from the wrong place but settles correctly.
+- **The volume envelope drifts from tick 5.** The cartridge holds `c0` for two
+  ticks even though its own duration byte reads `3`, and the values `$a0` and
+  `$90` in the table are never heard at all. Some rule governs that table that
+  is not yet understood — this is a real puzzle, not an oversight.
+- `UNIMPLEMENTED_OPS`: the channel-mask ops and the release envelope. Their
+  operands ARE consumed, so the byte stream stays in sync.
+
+---
+
+## Open bugs with a known reproduction
+
+- **Level 2 → 3 arrival kills you.** Level 1 exits right → 2; level 2 exits
+  **up** → 3. Arriving in level 3 you fall straight out of the world. The
+  manifest says level 3 starts at column 1 row 30, which has no floor under it,
+  but booting level 3 *directly* spawns at row 19 and lands safely — so the
+  transition path and the direct-load path **disagree**, and one of them is
+  reading the wrong entry. Note `sub_00_2889` already contains a per-level hack
+  of exactly this shape (`$2983`: level `$0A` writes X from `1:$7CED` but
+  deliberately SKIPS Y), so a special case for level 3 elsewhere in the chain
+  (`$2836`, `$2845`, `$2848`) is plausible. **Decisive test:** hook the real ROM
+  at the end of the 2 → 3 transition and read `$FF81`-`$FF84`. Do that before
+  changing anything.
+
+---
+
 ## Hard-won lessons (the full list is docs/03-VERIFICATION.md)
 
 - **Keep integer/byte math.** Terminal velocity is an *unsigned byte* compare
@@ -192,18 +235,39 @@ Be suspicious of these; they are the likeliest source of a surprise.
   an enemy is off-window or blinking.
 - **Reproduce quirks, don't fix them.** Ammo is spent before the free-slot
   search, so throwing with a full pool costs a batarang *and* punches.
+- **Look at the running machine, not just the listing.** The exported level
+  VRAM is a snapshot taken at level init, *before* the VRAM scripts that paint
+  the water surface run. Trusting it said "the window is one flat black tile",
+  and produced a black slab. Fourteen animated tiles were sitting there.
+- **When a hook reads a register, hook the STORE, not the load that feeds it.**
+  The sound recorder hooked `$431F`/`$4324` instead of `$4320`/`$4325`, so one
+  value was attributed to two consecutive registers and every recording was
+  quietly wrong. A bad oracle is worse than no oracle.
+- **Never mark a mutable asset `immutable`.** `dist` served `/assets/*` with a
+  one-year immutable cache while exporters rewrite those files in place. When
+  `water.json` changed shape, browsers kept the old one and the water rendered
+  as black squares — intermittently, depending on cache state. Assets now
+  revalidate; if long caching is ever wanted, the URLs need a content hash.
+- **Prefer a loud failure to a plausible-looking one.** That same bug looked
+  like a *rendering* fault because the window layer painted its fill tile when
+  it had no tilemap. It now draws nothing, and the loader throws.
 
 ---
 
 ## Suggested next steps
 
-1. **Verify melee/batarang enemy damage against the oracle** — add a scenario
-   that kills an enemy on level 1 and compare `en0hp`. Closes the biggest
-   unverified gap.
-2. **Audio.** Biggest experiential gap, well-scoped, fully documented.
-3. **The door sequencer**, which unblocks level 13.
-4. **The window layer**, the biggest visual gap.
-5. **Bat-rope**, then delete the `ROPE_IMPLEMENTED` guard.
+1. **The level 2 → 3 arrival** (see "Open bugs" above). It is a hard blocker on
+   playing past the first stage, and the decisive experiment is one hook.
+2. **The two sound bugs** (see "Sound"). Both are precisely located.
+3. **Verify melee/batarang enemy damage against the oracle** — add a scenario
+   that kills an enemy on level 1 and compare `en0hp`. Biggest *unverified*
+   gap in gameplay.
+4. **The VRAM script interpreter `sub_00_0A0E`.** Best ratio of work to result
+   left: master-ref §7.6 documents it as four modes (copy/RLE × horizontal/
+   vertical, `$00` terminator), and it gates the options menu, the Joker stage
+   select, the per-stage intro cards and the ending — *and* retires both the
+   title-screen and the window-tilemap captures.
+5. **The door sequencer**, which unblocks level 13.
 
 ---
 
