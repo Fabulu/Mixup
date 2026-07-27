@@ -76,6 +76,14 @@ export async function initLevel(state, n) {
   }
   applyWaterArt(state, waterArt && waterArt[String(n)]);
 
+  // ROM: sub_00_0F39 picks the level's theme and requests it with mask $03
+  // (play + stop-all), so the new song replaces whatever was running. $FF is
+  // "keep playing", used where a level continues its predecessor's music.
+  if (info.musicFresh !== undefined && info.musicFresh !== 0xFF
+      && state.sound && state.sound.queue.length < 4) {
+    state.sound.queue.push({ id: info.musicFresh, mask: 0x03 });
+  }
+
   resetPlayer(state, info);
   return info;
 }

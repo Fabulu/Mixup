@@ -85,7 +85,18 @@ Deploy: `node tools/build-dist.mjs` then
 
 Roughly in order of how much each would change the game:
 
-1. **The sound DRIVER and music.** Nothing is audible yet. What exists:
+0. **Sound is AUDIBLE but NOT VERIFIED.** `src/sound/driver.js` ports `7:$412B`
+   — eight track slots, the note/duration/gate machine, volume and pitch
+   envelopes, and the opcode dispatch — and `src/sound/index.js` runs it on the
+   audio clock at 59.36 Hz feeding `apu.js`. Music plays. What is *not* done is
+   the proof: `tools/oracle/sound.py` hooks the driver's store instructions to
+   record the real NR stream, and that recorder is **contaminated** — it
+   attributes one `LD [HL+], A` to two consecutive registers, so `$FF12` and
+   `$FF13` both come back `$F1`. Until that is fixed, `sounddiff.mjs` cannot
+   confirm anything. Also unported: the drum and slide presets and the release
+   envelope (listed in `UNIMPLEMENTED_OPS`); their operands ARE consumed, so
+   the byte stream stays in sync.
+1. **The sound driver's remaining gaps.** What exists:
    `src/sound/apu.js` is a complete, unit-tested DMG APU (both squares with
    sweep, wave, noise LFSR incl. width mode, envelopes, length, frame
    sequencer, panning) — it is not a code translation, it is the hardware the

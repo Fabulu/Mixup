@@ -21,6 +21,7 @@ import { updateEnemies, drawEnemies } from './enemies.js';
 import { updateWater, updateSplashes, tickWaterArt } from './water.js';
 import { resolveLoadout, runHook } from './mods.js';
 import { loadTitle, showTitle, hideTitle, tickTitle } from './title.js';
+import { Sound } from './sound/index.js';
 
 const FRAME_MS = 1000 / 59.73;      // DMG frame rate
 
@@ -57,6 +58,18 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
   const image = ctx.createImageData(SCREEN_W, SCREEN_H);
 
   attachInput();
+
+  // Audio cannot start without a user gesture, so arm it on the first one.
+  // The driver runs on its own clock inside the audio callback, not here --
+  // it is on the timer interrupt at 59.36 Hz, not VBlank.
+  const sound = new Sound();
+  const armAudio = () => {
+    sound.start();
+    window.removeEventListener('keydown', armAudio);
+    window.removeEventListener('pointerdown', armAudio);
+  };
+  window.addEventListener('keydown', armAudio);
+  window.addEventListener('pointerdown', armAudio);
 
   let acc = 0;
   let last = performance.now();
@@ -104,6 +117,10 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
       acc -= FRAME_MS;
       steps++;
     }
+
+    // Hand the game's $C6FB queue to the driver. Anything not consumed here
+    // would otherwise pile up, since nothing else drains it.
+    sound.pump(state);
 
     runHook(loadout, 'onRenderFrame', state);
     renderFrame(state, fb);
@@ -166,7 +183,8 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
 
   return {
     state,
-    stop() { running = false; },
+    sound,
+    stop() { running = false; sound.stop(); sound.setEnabled(false); },
   };
 }
 
