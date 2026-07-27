@@ -111,8 +111,17 @@ Roughly in order of how much each would change the game:
    is solid, just frozen at its spawn state. Where each still appears: 3 (`$01
    $05 $06`), 6 (`$0B`), 7 (`$04`), 12 (`$05 $06`), 13 (`$03 $05 $06`).
 5. **Raster effects** (the `$0857` STAT program): per-scanline SCX/SCY/palette
-   bands. `rasterBands()` still emits a single band. The window LAYER itself is
-   now drawn (`drawWindow` in renderer.js) — that was the level-1/2 water.
+   bands, with fraction accumulators at `$C763-$C766`. `rasterBands()` still
+   emits a single band. The window LAYER itself is now drawn (`drawWindow` in
+   renderer.js) — that was the level-1/2 water.
+
+   This is also what the **snaking pseudo-3D game-over / continue lettering**
+   is built from: text that ripples and skews across the screen is per-scanline
+   SCX modulation, not animated tiles. Not yet located precisely in the ROM —
+   note that game over itself is just `$2ABA: JP Z,$0150`, a hard reset to the
+   boot vector, so the effect belongs to a screen reached *before* that, not to
+   a game-over state in the flow map. Worth pinning down with the oracle
+   (record `rSCX` per scanline across the sequence) before writing any code.
 6. **Conveyor carry** is applied (`loc_00_170A`), but levels 6/7/11/12/13 each
    have their own `sub_00_2CBE` branch and only the levels-1/2 water branch is
    ported.
@@ -138,7 +147,9 @@ Be suspicious of these; they are the likeliest source of a surprise.
 - **State-2's ranged attack and projectile flight.** Literal ports with unit
   tests, but no natural input script triggers them, so no frame-by-frame proof.
 - **Post-death behaviour.** The ROM shoves x −15 during its sequence and
-  returns to round-select; we restart the level in place instead. Deliberate.
+  returns to round-select; we restart the level in place instead. This is a
+  **temporary stopgap, not a design decision** — it stands only until the menu
+  graphics are ported, and then the real round-select path should come back.
 - **Animated tiles** (`assets/water.json`, tools/rip_water.py). Two things are
   captured rather than translated, and neither is in the exported level VRAM.
   (1) The `$9C00` window tilemap: level init fills it flat, then a VRAM script
@@ -162,7 +173,10 @@ Be suspicious of these; they are the likeliest source of a surprise.
   XOR-toggle selection were read back off the cartridge's OAM and `$C712`
   (docs/03-VERIFICATION.md §17–18). When `sub_00_0A0E` lands, the capture can
   go. **OPTION (`loc_00_3893`) is not ported** — picking it returns to the
-  launcher, which already covers level, difficulty and mods. Deliberate.
+  launcher, which already covers level, difficulty and mods. That is a
+  **temporary stopgap, not a design decision.** The launcher stands in only
+  until the menu graphics are ported; the real options screen and the Joker
+  stage select are both meant to land.
 
 ---
 
@@ -340,10 +354,13 @@ both frequency bytes and the trigger. Open:
    that kills an enemy on level 1 and compare `en0hp`. Biggest *unverified*
    gap in gameplay.
 4. **The VRAM script interpreter `sub_00_0A0E`.** Best ratio of work to result
-   left: master-ref §7.6 documents it as four modes (copy/RLE × horizontal/
-   vertical, `$00` terminator), and it gates the options menu, the Joker stage
-   select, the per-stage intro cards and the ending — *and* retires both the
-   title-screen and the window-tilemap captures.
+   left, and the gate on retiring the stopgaps: master-ref §7.6 documents it as
+   four modes (copy/RLE × horizontal/vertical, `$00` terminator). It unlocks the
+   options menu, the Joker stage select, the per-stage intro cards and the
+   ending, *and* retires both the title-screen and window-tilemap captures.
+   The launcher standing in for OPTION and the in-place respawn are both meant
+   to go away once this and the raster bands land — treat them as debt, not as
+   the intended design.
 5. **The door sequencer**, which unblocks level 13.
 
 ---
