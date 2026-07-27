@@ -12,6 +12,7 @@
 //   asset-integrity   tools/verify_assets.py        assets/ vs the real ROM, all 14 levels  [PyBoy]
 //   vram-scripts      tools/oracle/vramdiff.mjs     sub_00_0A0E write stream vs the ROM      [PyBoy]
 //   title-build       tools/oracle/titlediff.mjs    title + round select built, not captured [PyBoy]
+//   round-select      tools/oracle/roundseldiff.mjs menu cursor logic vs the ROM             [PyBoy]
 //   oracle-regression tools/oracle/regress.mjs      port vs ROM, frame-exact, whole corpus  [PyBoy]
 //
 // Exits non-zero if any stage fails, and names the stage. Stages that cannot
@@ -82,6 +83,14 @@ const STAGES = [
     what: 'title + round-select VRAM built from ROM data, all 8192 B each',
     cmd: process.execPath,
     args: ['tools/oracle/titlediff.mjs', '--record'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
+    name: 'round-select',
+    what: 'route/mode cursor logic vs the ROM, three $C753/$FFB5 states',
+    cmd: process.execPath,
+    args: ['tools/oracle/roundseldiff.mjs', '--record'],
     pyboy: true,
     skip: hasAssets ? null : 'assets/manifest.json missing',
   },

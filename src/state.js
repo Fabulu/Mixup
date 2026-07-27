@@ -130,6 +130,9 @@ export function createState(tunables = DEFAULT_TUNABLES) {
       difficulty: 1,   // $C756
       ammo: 0,         // $C759
       routeMask: 0,    // $C753
+      // $FFB5 -- set once a level has been reached, which is what makes
+      // CONTINUE appear on the round-select screen and start selected.
+      continueAvailable: 0,
       paused: false,   // $C716
       bossMode: 0,     // $C750 -- level $0E reroutes the enemy loop to 1:$77BD
       rescueCheat: 0,  // $C75C -- set by the title's B+SELECT+LEFT combo
