@@ -106,7 +106,10 @@ function drawWindow(state, fb, bands) {
   const map = v.windowMap;
   const bgTiles = state.level.tiles.bg;
   const fallback = bgTiles[v.windowTile & 0xFF];
-  if (!map && !fallback) return;
+  // No captured tilemap means no water art. Painting the flat fill tile
+  // anyway gives an opaque black slab -- worse than drawing nothing, and it
+  // hides the real problem. Bail instead.
+  if (!map || !fallback) return;
 
   const shades = fb.shades;
   for (let y = Math.max(0, wy); y < SCREEN_H; y++) {

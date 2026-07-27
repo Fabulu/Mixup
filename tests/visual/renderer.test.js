@@ -397,14 +397,21 @@ test('drawMetasprite stops at the 40-entry cap and drops the rest silently', () 
 // the window layer -- which in this game is the water
 // ---------------------------------------------------------------------------
 
-/** A world of light BG (index 0) with a solid dark window tile, like tile $01. */
+/**
+ * A world of light BG (index 0) with a solid dark window tile, like tile $01,
+ * and a window tilemap of that tile throughout. The map is not optional: with
+ * no captured tilemap the layer deliberately draws nothing at all, because
+ * painting the flat fill anyway is an opaque slab that hides the failure.
+ */
 function winState(opts = {}) {
-  return makeState({
+  const s = makeState({
     bg: (() => { const t = new Array(256).fill(null);
                  t[0] = flatTile(0); t[1] = flatTile(3); return t; })(),
     metatiles: [[0, 0, 0, 0]],
     ...opts,
   });
+  if (!s.video.windowMap) s.video.windowMap = new Uint8Array(1024).fill(0x01);
+  return s;
 }
 
 test('the window is invisible while parked off-screen', () => {
@@ -506,4 +513,16 @@ test('a missing window tile is a no-op rather than a crash', () => {
   const s = winState({ windowLatchY: 100 });
   s.video.windowTile = 0x42;                    // nothing decoded there
   assert.doesNotThrow(() => render(s));
+});
+
+test('no captured tilemap draws nothing at all', () => {
+  // The failure mode that shipped: a stale cached water.json left the map
+  // undefined, the layer painted its flat fill anyway, and the water came out
+  // as opaque black squares. Drawing nothing is the honest fallback.
+  const s = winState({ windowLatchY: 100 });
+  s.video.windowMap = null;
+  const fb = render(s);
+  for (let y = 100; y < SCREEN_H; y++) {
+    for (let x = 0; x < SCREEN_W; x++) assert.equal(at(fb, x, y), 0);
+  }
 });

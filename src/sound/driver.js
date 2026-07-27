@@ -138,6 +138,7 @@ function makeTrack() {
     drumNR42: 0, drumNext: 0, drumStage: 0,
     slides: [null, null, null, null, null, null],
     bendPerTick: 0,                // +$19, added to the frequency each tick
+    slidePending: false, slideNote: 0, slideDur: 0,
   };
 }
 
@@ -230,6 +231,14 @@ function stepTrack(drv, t) {
   // $415F: the duration counter gates everything. Only when it expires does
   // the track read another byte.
   t.dur = u8(t.dur - 1);
+  if (t.dur === 0 && t.slidePending) {
+    // $4389: flags bit 3 diverts this expiry into a replay of the slide's own
+    // note, rather than a read from the sequence.
+    t.slidePending = false;
+    t.bendPerTick = 0;                          // $4396
+    if (t.slideDur) note(drv, t, t.slideNote, t.slideDur);
+  }
+
   if (t.dur === 0) {
     let guard = 0;
     // A run of opcodes can precede the next note; the guard stops a malformed
@@ -334,6 +343,13 @@ function opcode(drv, t, op) {
     note(drv, t, args[0], args[1]);
     // $44F3: the preset's first byte becomes the per-tick frequency delta.
     t.bendPerTick = p ? ((p[0] << 24) >> 24) : 0;
+    // $44EF sets flags bit 3, which makes the NEXT duration expiry replay
+    // this same note from $C80B/$C80C instead of reading the stream, with the
+    // bend cleared ($4396). So a slide is two events: the pitch ramp, then the
+    // note settling at its true frequency and holding there.
+    t.slidePending = true;
+    t.slideNote = args[0];
+    t.slideDur = args[1];
     return;
   }
 

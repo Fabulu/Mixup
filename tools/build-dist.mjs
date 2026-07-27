@@ -40,10 +40,21 @@ for (const item of INCLUDE) {
   copy(src, path.join(DIST, item));
 }
 
-// Long-cache the immutable asset blobs; never cache the launcher itself.
+// Assets must REVALIDATE, not be treated as immutable.
+//
+// They were served `max-age=31536000, immutable`, which is only safe if a
+// file's contents never change under a fixed URL -- and ours do: re-running an
+// exporter rewrites them in place. assets/water.json gained a per-level shape
+// and every browser that had already cached the old one kept it for a year,
+// silently losing the window tilemap and the tile animation. The water then
+// rendered as black squares, intermittently, depending purely on cache state.
+//
+// Cloudflare Pages sends ETags, so revalidation is a 304 in the normal case.
+// If these ever need long caching again, the URLs have to carry a content
+// hash first.
 fs.writeFileSync(path.join(DIST, '_headers'), [
   '/assets/*',
-  '  Cache-Control: public, max-age=31536000, immutable',
+  '  Cache-Control: no-cache',
   '',
   '/src/*',
   '  Cache-Control: no-cache',

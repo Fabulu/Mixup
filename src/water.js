@@ -45,8 +45,15 @@ const BASE = new URL('../assets/', import.meta.url).href;
  */
 export async function loadWaterArt() {
   const json = await fetch(BASE + 'water.json').then((r) => r.json());
+  if (!json.levels) {
+    // A pre-per-level capture. Returning nothing quietly is what made the
+    // water render as black squares for anyone holding a stale cached copy,
+    // so this is loud instead.
+    throw new Error('assets/water.json is an old single-level capture -- '
+                    + 're-run tools/rip_water.py');
+  }
   const out = {};
-  for (const [lvl, d] of Object.entries(json.levels || {})) {
+  for (const [lvl, d] of Object.entries(json.levels)) {
     out[lvl] = {
       map: Uint8Array.from(d.map),
       ids: d.animIds,
