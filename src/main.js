@@ -44,15 +44,19 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
   const playerTiles = await loadPlayerTiles();
   await initLevel(state, level);
 
-  // The title runs before the level, as it does on the cartridge. Loading it
-  // is best-effort: a missing capture must not stop the game booting.
+  // The title runs before the level, as it does on the cartridge.
+  //
+  // This used to swallow every error, on the reasoning that a missing capture
+  // must not stop the game booting. That reasoning is gone with the capture:
+  // the title is BUILT from assets/manifest.json now, so a failure here is a
+  // real fault in a required asset, and silently dropping into the level is
+  // indistinguishable from "the title screen does nothing". Let it throw --
+  // index.html already has an error panel that shows the message.
   let titleArt = null;
   if (title) {
-    try {
-      titleArt = await loadTitle();
-      state.titleManifest = manifest;      // the cursor draws from table1
-      showTitle(state, titleArt);
-    } catch { titleArt = null; }
+    titleArt = await loadTitle();
+    state.titleManifest = manifest;        // the cursor draws from table1
+    showTitle(state, titleArt);
   }
 
   const fb = createFramebuffer();
@@ -63,17 +67,27 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
 
   attachInput();
 
-  // Audio cannot start without a user gesture, so arm it on the first one.
-  // The driver runs on its own clock inside the audio callback, not here --
-  // it is on the timer interrupt at 59.36 Hz, not VBlank.
+  // Audio cannot start without a user gesture. boot() is CALLED from one --
+  // the launcher's LAUNCH click -- so try immediately: browsers keep transient
+  // activation alive for a few seconds, which comfortably covers the awaits
+  // above. Waiting for the *next* gesture instead is why the music used to
+  // come in several seconds late, after whatever the player happened to press
+  // first.
+  //
+  // The listeners stay as the fallback for when that window has closed (a slow
+  // asset load) or when boot() was not reached from a gesture at all.
   const sound = new Sound();
   const armAudio = () => {
     sound.start();
     window.removeEventListener('keydown', armAudio);
     window.removeEventListener('pointerdown', armAudio);
   };
-  window.addEventListener('keydown', armAudio);
-  window.addEventListener('pointerdown', armAudio);
+  try {
+    sound.start();
+  } catch {
+    window.addEventListener('keydown', armAudio);
+    window.addEventListener('pointerdown', armAudio);
+  }
 
   let acc = 0;
   let last = performance.now();

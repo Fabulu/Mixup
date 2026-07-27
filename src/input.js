@@ -19,6 +19,14 @@ const KEYMAP = {
 };
 
 let held = 0;
+// Keys we have seen a real (non-repeat) keydown for. Anything absent here that
+// arrives as a repeat was already down before attachInput() ran -- see the
+// keydown handler.
+let seen = 0;
+// The first sample seeds `prev` from whatever is already down, so a button
+// held across the boot boundary needs a release before it counts as pressed.
+// Covers the gamepad and touch paths, which have no repeat flag to test.
+let firstSample = true;
 let touchHeld = 0;
 
 /**
@@ -37,19 +45,33 @@ export function attachInput(target = (typeof window !== 'undefined' ? window : n
   if (!target) return;             // headless harness drives state.input directly
   target.addEventListener('keydown', (e) => {
     const b = KEYMAP[e.code];
-    if (b) { held |= b; e.preventDefault(); }
+    if (!b) return;
+    e.preventDefault();
+    // A key still down from BEFORE we attached only ever reaches us as an
+    // auto-repeat -- its real keydown went to the launcher. Taking those at
+    // face value turns the Enter that clicked LAUNCH into a START press, and
+    // since Enter is BTN.START the title screen is dismissed on frame 1 and
+    // the player drops straight into the level having seen nothing.
+    //
+    // Whether that happens is a race against how long boot() takes, which is
+    // why it looked like a caching problem: a warm cache boots fast enough to
+    // catch the key still down, and opening devtools slows it enough to miss.
+    if (e.repeat && !(seen & b)) return;
+    seen |= b;
+    held |= b;
   });
   target.addEventListener('keyup', (e) => {
     const b = KEYMAP[e.code];
-    if (b) { held &= ~b; e.preventDefault(); }
+    if (b) { held &= ~b; seen &= ~b; e.preventDefault(); }
   });
-  target.addEventListener('blur', () => { held = 0; });
+  target.addEventListener('blur', () => { held = 0; seen = 0; firstSample = true; });
 }
 
 /** Call once per frame, before the game update. */
 export function sampleInput(state) {
   const gp = readGamepad();
   const now = (held | gp | touchHeld) & 0xFF;
+  if (firstSample) { state.input.prev = now; firstSample = false; }
   state.input.pressed = now & ~state.input.prev;   // $FFE2
   state.input.held = now;                          // $FFE1
   state.input.prev = now;
