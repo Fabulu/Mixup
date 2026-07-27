@@ -125,7 +125,7 @@ function makeTrack() {
     // Pitch envelope: one SIGNED byte per tick added to the frequency's low
     // byte, terminated by $80 + a 16-bit loop address.
     pitchEnv: 0, pitchEnvPtr: 0, pitchEnvDelay: 0, pitchBend: 0,
-    volume: 0x0F,
+    volume: 0xF0,                  // a raw NRx2: full level, no sweep
     duty: 2,
     pan: 0xFF,
     legato: false,
@@ -431,7 +431,10 @@ function opcode(drv, t, op) {
       t.volEnvTimer = 0;
       break;
     case 0xFD: t.pan = args[0]; break;
-    case 0xFE: t.volume = args[0] & 0x0F; break;
+    // $FE sets a RAW NRx2, not a 0-15 level: SFX $10 (punch/batarang) opens
+    // with $E0, i.e. volume 14 with no sweep. Masking it to the low nibble
+    // reads that as volume 0 and the sound never happens at all.
+    case 0xFE: t.volume = args[0] & 0xFF; break;
     case 0xFF: t.active = false; t.keyOn = false; break;  // END
     default: break;
   }
@@ -508,7 +511,9 @@ function emit(drv) {
     }
     const t = drv.tracks[o - 1];
     // The envelope byte IS NRx2. Silence is a zero envelope, not a mute flag.
-    const nrx2 = t.keyOn ? (t.volEnv ? t.volEnvVal : (t.volume << 4)) : 0x00;
+    // Both sources are raw NRx2 bytes: the envelope's current step, or $FE's
+    // fixed value when no envelope is armed.
+    const nrx2 = t.keyOn ? (t.volEnv ? t.volEnvVal : t.volume) : 0x00;
     // A new envelope step only takes effect on a retrigger.
     const trig = t.keyOn && (t.retrigger || t.envChanged);
     t.retrigger = false;
