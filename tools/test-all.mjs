@@ -10,6 +10,7 @@
 //   unit-tests        node --test tests/            TEST-A's unit tests for src/*.js
 //   tunables-check    tools/gen_tunables.py --check 44 constants still match the ROM bytes
 //   asset-integrity   tools/verify_assets.py        assets/ vs the real ROM, all 14 levels  [PyBoy]
+//   vram-scripts      tools/oracle/vramdiff.mjs     sub_00_0A0E write stream vs the ROM      [PyBoy]
 //   oracle-regression tools/oracle/regress.mjs      port vs ROM, frame-exact, whole corpus  [PyBoy]
 //
 // Exits non-zero if any stage fails, and names the stage. Stages that cannot
@@ -66,6 +67,14 @@ const STAGES = [
     pyboy: true,
     skip: hasAssets ? null : 'assets/manifest.json missing - run: ' +
                              `${PY} tools/export_assets.py`,
+  },
+  {
+    name: 'vram-scripts',
+    what: 'sub_00_0A0E write stream vs the ROM, address+value+order',
+    cmd: process.execPath,
+    args: ['tools/oracle/vramdiff.mjs', '--record'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
   },
   {
     name: 'oracle-regression',

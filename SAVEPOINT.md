@@ -29,10 +29,11 @@ reading the listing:
 python tools/oracle/trace.py  --frames 620 --script "20:,600:R" --level 5
 node   tools/render-frame.mjs --frames 620 --script "20:,600:R" --level 5
 node   tools/oracle/regress.mjs         # the whole corpus
-npm run test-all                        # 4 stages, the gate for everything
+node   tools/oracle/vramdiff.mjs --record   # sub_00_0A0E, write for write
+npm run test-all                        # 5 stages, the gate for everything
 ```
 
-**Current state: 30/30 oracle scenarios bit-exact, 293 unit tests, 4/4 stages
+**Current state: 30/30 oracle scenarios bit-exact, 304 unit tests, 5/5 stages
 green.** Levels 1, 5 and 9 match the cartridge exactly over 620 frames each.
 
 If you change gameplay code and `test-all` goes red, you broke something real.
@@ -80,6 +81,7 @@ Deploy: `node tools/build-dist.mjs` then
 | Scripted door moves, breakables, pickups | bit-exact |
 | Map objects `$C1E8` — types 3, 7, 8, 9 | bit-exact |
 | Map-object collision (`loc_00_2426`, all four probe modes) | bit-exact |
+| VRAM script interpreter `sub_00_0A0E` | bit-exact (write stream: address, value AND order) |
 | Enemy AI — states 1, 2, 3, 11, 12 + drawing | bit-exact |
 | Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
 | Window layer (= the water's graphics) | drawn; tilemap + surface animation are a **capture** — see below |
@@ -125,9 +127,12 @@ Roughly in order of how much each would change the game:
 6. **Conveyor carry** is applied (`loc_00_170A`), but levels 6/7/11/12/13 each
    have their own `sub_00_2CBE` branch and only the levels-1/2 water branch is
    ported.
-7. **VRAM script interpreter** `sub_00_0A0E` — needed for the options menu,
-   the Joker stage select, the per-stage intro cards and the ending. Format is
-   documented in master-ref §7.6. This one routine gates four screens.
+7. **The screens `sub_00_0A0E` feeds.** The interpreter ITSELF is now ported
+   and bit-exact (`src/vramscript.js`) — what is still missing is the rest of
+   each screen around it: the resource loads that put the tiles in VRAM, and
+   the menu logic for the options screen and the Joker stage select. The hard,
+   easy-to-get-wrong part is done; the remaining work is plumbing plus the
+   raster bands (item 5) for the lettering effects.
 8. **Lag frames.** `$C757` is set when VBlank fires before the main loop
    finishes, and the actor/enemy drivers skip that iteration. That is
    instruction-level timing, so it is out of scope by definition — see
@@ -353,14 +358,14 @@ both frequency bytes and the trigger. Open:
 3. **Verify melee/batarang enemy damage against the oracle** — add a scenario
    that kills an enemy on level 1 and compare `en0hp`. Biggest *unverified*
    gap in gameplay.
-4. **The VRAM script interpreter `sub_00_0A0E`.** Best ratio of work to result
-   left, and the gate on retiring the stopgaps: master-ref §7.6 documents it as
-   four modes (copy/RLE × horizontal/vertical, `$00` terminator). It unlocks the
-   options menu, the Joker stage select, the per-stage intro cards and the
-   ending, *and* retires both the title-screen and window-tilemap captures.
-   The launcher standing in for OPTION and the in-place respawn are both meant
-   to go away once this and the raster bands land — treat them as debt, not as
-   the intended design.
+4. **The screens on top of `sub_00_0A0E`.** The interpreter is done and
+   bit-exact; what is left is the resource loading that fills VRAM with the
+   right tiles, then the options-menu and stage-select logic. Retiring the
+   title capture is the natural first target — its three scripts are already
+   proven — followed by the `$0E24` window surface, which kills the
+   `water.json` tilemap capture. The launcher standing in for OPTION and the
+   in-place respawn both go away at the end of this, together with the raster
+   bands: debt, not the intended design.
 5. **The door sequencer**, which unblocks level 13.
 
 ---
