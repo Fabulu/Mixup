@@ -54,6 +54,13 @@ T_LEVEL_DMG_BONUS = (1, 0x6BCE)   # 14 B
 # of batarangs.
 T_BATARANG_ANIM   = (1, 0x41B8)   # 8 metasprite ids, spin cycle indexed by
                                   # (frame & $1C) >> 2
+# Map-object movement scripts, 1:$4B43-$4BA4. One byte per step:
+# 0 = +X, 1 = -X, 2 = -Y, 3 = +Y (jt_01_4525 $459E). The seven entry points are
+# immediates in the handler, not a pointer table, so the offsets live in
+# src/actors.js next to the code that selects them. Ends where the activation
+# table begins at $4BA5.
+T_OBJ_SCRIPTS     = (1, 0x4B43)
+T_OBJ_SCRIPTS_N   = 0x4BA5 - 0x4B43
 T_SCRIPT_PTRS     = (0, 0x27E6)   # loc_00_164A: 3 LE pointers to move scripts
 T_SCRIPT_BLOCK    = (0, 0x27E6)   # the scripts themselves live just past them
 T_SCRIPT_BLOCK_N  = 0x1E          # $27E6-$2803
@@ -240,6 +247,7 @@ def main():
                        for i in range(3)],
         'scriptData': read_table(rom, T_SCRIPT_BLOCK, T_SCRIPT_BLOCK_N),
         'scriptSteps': read_table(rom, T_SCRIPT_STEPS, 3),
+        'objectScripts': read_table(rom, T_OBJ_SCRIPTS, T_OBJ_SCRIPTS_N),
         'enemyContactDamage': read_table(rom, T_ENEMY_DMG, 13),
         'levelDamageBonus': read_table(rom, T_LEVEL_DMG_BONUS, 14),
     }

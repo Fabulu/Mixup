@@ -222,6 +222,19 @@ const SCRIPTS = [
   // excluded, which would hide the divergence rather than bound it.
   { name: 'l3-object-floor', level: 3, frames: 317,
     script: '20:,120:R,20:RA,120:R,20:RA,180:R', extra: ENEMY_FIELDS },
+  // Level 3 slot 7 is the type-8 platform that actually MOVES -- slot 0, the
+  // arrival ledge, ships with +$0B = $FE and is retired before it ever runs.
+  // Warping onto slot 7 rides it down, across and back up (player Y 5888 ->
+  // 7168 -> 5728, X 12928 -> 13696), which exercises the script cursor, the
+  // travel limit and the $C72F/$C730 carry inbox that keeps the player glued
+  // to it.
+  //
+  // Also capped at 317: frame 318 is the same lag frame as above, and it is
+  // phase-locked rather than input-dependent -- $C757 is set there with
+  // $FFB1 = 144 under both this script and the walking one. Past it the
+  // platform sits exactly one $10 step ahead of the cartridge's.
+  { name: 'l3-platform-ride', level: 3, frames: 317, warp: '50,21',
+    script: '317:', extra: ['carryY', 'ob0t', 'ob1t'] },
 ];
 
 const FIELDS = ['x', 'y', 'vx', 'vy', 'air', 'facing', 'camX', 'camY'];

@@ -8,20 +8,23 @@
 //   +0     type 1-11, bit 7 = currently on-screen
 //   +1/+2  X world 12.4 (hi, lo)
 //   +3/+4  Y world 12.4 (hi, lo)
-//   +5     X velocity
-//   +6     Y velocity; bit 7 also lets the object override a solid map cell
-//          in the collision scan ($2525)
+//   +5     travel accumulator -- subpixel steps pile up here until they carry
+//          a whole byte, which advances a movement script ($45D0)
+//   +6     Y velocity for type 3; for type 8 the handler latches $FF here, and
+//          bit 7 is what lets the object override a solid map cell in the
+//          collision scan ($2525)
 //   +7     collision half-WIDTH, in screen pixels  ($2465 -> $C75A)
 //   +8     collision half-HEIGHT, in screen pixels ($2469 -> $C72E)
 //   +9/+$0A  cached SCREEN x, y -- recomputed each update from the world
 //          position and the camera (1:$4852), and the only coordinates the
 //          overlap scan ever compares against
-//   +$0B   state counter
-//   +$0C   wait timer
-//   +$0D   player-riding flag
-//   +$0F   travel limit
+//   +$0B   state counter ($FE = retired, $FF = running)
+//   +$0C   wait timer, and the movement-script cursor for type 8
+//   +$0D   player-riding flag, set by the collision scan at $2534
+//   +$0E   movement-script selector (type 8)
+//   +$0F   travel limit -- script steps before the object retires
 
-import { u8, cellIndex } from './state.js';
+import { u8, i8, cellIndex } from './state.js';
 
 export const SLOTS = 8;
 export const RECORD = 16;
@@ -40,7 +43,7 @@ const ACTIVATION = [0, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x08, 0x0
  *   1 $488D  2 $48E4*  3 $499B  4 $4940  5 $4291  6 $42E3
  *   7 $4447  8 $4525   9 $464F 10 $4765* 11 $483C      (* never placed)
  */
-export const UNIMPLEMENTED_TYPES = new Set([1, 2, 4, 5, 6, 8, 10, 11]);
+export const UNIMPLEMENTED_TYPES = new Set([1, 2, 4, 5, 6, 10, 11]);
 
 export function createActors() {
   return Array.from({ length: SLOTS }, () => new Uint8Array(RECORD));
@@ -126,6 +129,7 @@ function dispatch(state, r, type) {
   switch (type) {
     case 3: actorType3(state, r); break;
     case 7: actorType7(state, r); break;
+    case 8: actorType8(state, r); break;
     case 9: actorType9(state, r); break;
     default: break;                                 // see UNIMPLEMENTED_TYPES
   }
@@ -223,6 +227,131 @@ function actorType3(state, r) {
   if (a < 0xF0) a = 0xF0;                           // $49BE: unsigned CP $F0
   r[6] = a;
   moveActorY(r, (a << 24) >> 24);                   // $49C8 -> sub_01_4A79
+}
+
+// ---------------------------------------------------------------------------
+// Type 8 -- a rideable moving platform.  ROM: jt_01_4525.
+//
+// Inert until the player stands on it (+$0D, set by the collision scan at
+// loc_00_2534). Four ticks later it latches +$0B = $FF and writes $FF into +6,
+// whose bit 7 is what lets it hold the player up even over a solid map cell
+// ($2525) -- the handler and the collision scan meet at exactly that byte.
+//
+// From then on it walks a per-object movement script: one byte per step,
+// 0 = +X, 1 = -X, 2 = -Y, 3 = +Y, moving $10 subpixels a frame. +5 accumulates
+// those until it carries a whole byte, which advances the script cursor (+$0C)
+// and snaps the moved coordinate's low byte. Running the cursor past the travel
+// limit at +$0F parks the object at +$0B = $FE, permanently done -- which is
+// how level 3's slot 0 ships: $FE straight from the spawn blob, so it never
+// moves at all and is simply a static ledge. That is why the level 2 -> 3
+// arrival is already correct without this handler.
+// ---------------------------------------------------------------------------
+
+/**
+ * Script entry offsets, rebased onto tables.objectScripts (index 0 = 1:$4B43).
+ * These are immediates in the handler ($457E-$4597), not a ROM pointer table,
+ * so they belong next to the code that selects them.
+ */
+const OBJ_SCRIPT = { 1: 0x00, 3: 0x32, 4: 0x37, 5: 0x3C, 6: 0x48, 7: 0x55 };
+const OBJ_SCRIPT_DEFAULT = 0x5C;                    // $4579: $4B9F
+
+function actorType8(state, r) {
+  const st = r[0x0B];
+
+  if (st === 0x00) {                                // $452E
+    if (r[0x0D] === 0) return;                      // $4534: wait for a rider
+    r[0x0B] = 0x01;                                 // $453A
+    return;
+  }
+  if (st === 0xFE) return;                          // $4540: finished for good
+
+  if (st !== 0xFF) {                                // $4545: still arming
+    const a = u8(st + 1);
+    if (a < 0x04) { r[0x0B] = a; return; }          // $454A
+    r[0x0B] = 0xFF;                                 // $4550
+    r[6] = 0xFF;                                    // $4559: +6, the override bit
+  }
+
+  const scripts = state.tables.objectScripts;
+  if (!scripts) return;
+  const base = OBJ_SCRIPT[r[0x0E]] ?? OBJ_SCRIPT_DEFAULT;   // $455C-$4597
+  const op = scripts[base + r[0x0C]];               // $459A: cursor at +$0C
+  if (op === undefined) return;
+
+  // $459E: two X opcodes and two Y opcodes, $10 subpixels either way.
+  const delta = (op === 1 || op === 2) ? 0xFFF0 : 0x0010;
+  if (op >= 2) moveObjectY(state, r, delta);        // $45BC
+  else moveObjectX(state, r, delta);                // $4606
+}
+
+/**
+ * ROM: sub_01_4A5C -- X += BC, then hand the same displacement to the player
+ * if they are riding. A rope flight ($C71E == 2) is never carried.
+ */
+function objectAddX(state, r, delta) {
+  const x = (((r[1] << 8) | r[2]) + delta) & 0xFFFF;
+  r[1] = x >> 8; r[2] = x & 0xFF;
+  if (r[0x0D] === 0) return;                        // $4A6A
+  if (state.player.action === 2) return;            // $4A70
+  state.carry.x = i8(u8(state.carry.x + (delta & 0xFF)));   // $4A71: $C72F
+}
+
+/** ROM: sub_01_4A79 -- the Y twin, which also cancels a rope flight. */
+function objectAddY(state, r, delta) {
+  const y = (((r[3] << 8) | r[4]) + delta) & 0xFFFF;
+  r[3] = y >> 8; r[4] = y & 0xFF;
+  if (r[0x0D] === 0) return;                        // $4A89
+  if (state.player.action === 2) {                  // $4A8F
+    // $4A91: a platform moving DOWN under a swinging player is left alone; one
+    // moving up cuts the rope first and then carries.
+    if ((delta & 0x80) === 0) return;
+    state.player.action = 0;                        // $4A95
+  }
+  state.carry.y = i8(u8(state.carry.y + (delta & 0xFF)));   // $4A98: $C730
+}
+
+/**
+ * The shared tail of both movement paths ($45C0 and $4611): accumulate this
+ * step into +5 and, when it carries a whole byte, advance the script.
+ *
+ * @param loIndex  record byte holding the moved coordinate's low half
+ * @param snapTo   what that byte is pinned to -- $80 for Y ($45FE), $00 for X
+ *                 ($4647). The asymmetry is the original's.
+ */
+function advanceObjectScript(state, r, delta, loIndex, snapTo, axis) {
+  const step = u8(delta & 0xFF);
+  const mag = (step & 0x80) ? u8(-step) : step;     // $45C9 / $4613
+  const acc = r[5] + mag;                           // $45D0 / $461A
+
+  if (acc <= 0xFF) { r[5] = acc; return; }          // $4602 / $464B
+
+  // $45D3 / $461D: a full byte of travel -- step the cursor, or retire.
+  const next = u8(r[0x0C] + 1);
+  if (next >= r[0x0F]) {                            // $45DF / $4629
+    r[0x0B] = 0xFE;
+    return;
+  }
+  r[0x0C] = next;
+
+  // $45EF / $4639: the gap between here and the snap goes to the player as
+  // carry, so riding stays seamless across a script step.
+  const residual = u8(snapTo - r[loIndex]);
+  if (r[0x0D] & 0x80) {                             // $45F3 / $463C: BIT 7
+    if (axis === 'y') state.carry.y = i8(u8(state.carry.y + residual));
+    else state.carry.x = i8(u8(state.carry.x + residual));
+  }
+  r[loIndex] = snapTo;
+  r[5] = 0;
+}
+
+function moveObjectX(state, r, delta) {
+  objectAddX(state, r, delta);                      // $460A
+  advanceObjectScript(state, r, delta, 2, 0x00, 'x');
+}
+
+function moveObjectY(state, r, delta) {
+  objectAddY(state, r, delta);                      // $45C0
+  advanceObjectScript(state, r, delta, 4, 0x80, 'y');
 }
 
 /** 16-bit Y add on the record. ROM: sub_01_4A79 / loc_01_4943. */

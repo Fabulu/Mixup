@@ -32,7 +32,7 @@ node   tools/oracle/regress.mjs         # the whole corpus
 npm run test-all                        # 4 stages, the gate for everything
 ```
 
-**Current state: 29/29 oracle scenarios bit-exact, 292 unit tests, 4/4 stages
+**Current state: 30/30 oracle scenarios bit-exact, 293 unit tests, 4/4 stages
 green.** Levels 1, 5 and 9 match the cartridge exactly over 620 frames each.
 
 If you change gameplay code and `test-all` goes red, you broke something real.
@@ -78,7 +78,7 @@ Deploy: `node tools/build-dist.mjs` then
 | Wall-cling / wall-jump | bit-exact |
 | Punch, batarangs (throw, flight, return) | bit-exact |
 | Scripted door moves, breakables, pickups | bit-exact |
-| Map objects `$C1E8` — types 3, 7, 9 | bit-exact |
+| Map objects `$C1E8` — types 3, 7, 8, 9 | bit-exact |
 | Map-object collision (`loc_00_2426`, all four probe modes) | bit-exact |
 | Enemy AI — states 1, 2, 3, 11, 12 + drawing | bit-exact |
 | Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
@@ -105,11 +105,11 @@ Roughly in order of how much each would change the game:
 3. **The door/gate sequencer** (`$C733-$C735`) plus the effect and ballistic
    pools it spawns. **This is what blocks level 13**, which has 88 actor-owned
    destructible cells and no way to open them.
-4. **Map-object HANDLERS for types 1, 4, 5, 6, 8, 11.** Types 2 and 10 are
-   never placed in shipped data. (3, 7 and 9 are ported and bit-exact.) Their
-   *collision* now works — the `loc_00_2426` scan is ported — so an unported
-   object is solid, just frozen at its spawn state. That is right for the two
-   static ones on level 3 and wrong for anything meant to move.
+4. **Map-object HANDLERS for types 1, 4, 5, 6, 11.** Types 2 and 10 are never
+   placed in shipped data. (3, 7, 8 and 9 are ported and bit-exact.) Their
+   *collision* works — the `loc_00_2426` scan is ported — so an unported object
+   is solid, just frozen at its spawn state. Where each still appears: 3 (`$01
+   $05 $06`), 6 (`$0B`), 7 (`$04`), 12 (`$05 $06`), 13 (`$03 $05 $06`).
 5. **Raster effects** (the `$0857` STAT program): per-scanline SCX/SCY/palette
    bands. `rasterBands()` still emits a single band. The window LAYER itself is
    now drawn (`drawWindow` in renderer.js) — that was the level-1/2 water.
@@ -252,12 +252,10 @@ both frequency bytes and the trigger. Open:
     snaps the Y low byte. The scan has already placed the player exactly; the
     snap would drag him to metatile alignment.
 
-  **Still open (the same routine, different objects):** the scan now makes
-  every live object solid, but types `$01 $04 $05 $06 $08 $0B` still have no
-  handler, so they sit at their spawn state. On level 3 that happens to be
-  harmless — the cartridge's two live objects there are static too, measured —
-  but it will not be elsewhere. Levels holding unported types: 3 (`$01 $05
-  $06 $08`), 6 (`$0B`), 7 (`$04`), 12 (`$05 $06 $08`), 13 (`$03 $05 $06 $08`).
+  Type `$08` has since been ported too (`jt_01_4525`), and with it the reason
+  the arrival was already correct without a handler: level 3's slot 0 ships
+  with `+$0B = $FE`, the retired state, so the platform never moves and is a
+  plain static ledge. The moving one is slot 7, covered by `l3-platform-ride`.
 
 - ~~Level 3 diverges at frame 358~~ — **closed, and it was a lag frame.** The
   port took a knockback the cartridge did not. Chasing `$C714` would have been
@@ -331,14 +329,13 @@ both frequency bytes and the trigger. Open:
 
 ## Suggested next steps
 
-1. **Map-object handlers for types `$01 $04 $05 $06 $08 $0B`** (1:`$488D`,
-   `$4940`, `$4291`, `$42E3`, `$4525`, `$483C`). The overlap scan is in and
-   makes them solid; without handlers they are solid *in the wrong place* as
-   soon as one is meant to move. Type `$08` first — level 3 has two, and
-   `l3-object-floor` is the scenario to extend.
-2. **The level-3 frame-358 knockback** (see "Open bugs"). Small, well-located,
-   and it is what caps the level-3 scenario at 350 frames.
-3. **The two sound bugs** (see "Sound"). Both are precisely located.
+1. **Map-object handlers for types `$01 $04 $05 $06 $0B`** (1:`$488D`,
+   `$4940`, `$4291`, `$42E3`, `$483C`). The overlap scan is in and makes them
+   solid; without handlers they are solid *in the wrong place* as soon as one is
+   meant to move. Type `$08` is done and is the worked example to copy —
+   `actorType8` in actors.js, verified by `l3-platform-ride`. Types `$05` and
+   `$06` next: between them they cover levels 3, 12 and 13.
+2. **The two sound bugs** (see "Sound"). Both are precisely located.
 3. **Verify melee/batarang enemy damage against the oracle** — add a scenario
    that kills an enemy on level 1 and compare `en0hp`. Biggest *unverified*
    gap in gameplay.
