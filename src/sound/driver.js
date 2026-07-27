@@ -47,7 +47,9 @@ const OPERANDS = {
   0xCB: 'D', 0xCC: 'D', 0xCD: 'D', 0xCE: 'D',            // drums 3..0
   0xCF: 'bbb', 0xD0: 'bbb', 0xD1: 'bbb', 0xD2: 'bbb',    // define drum
   0xD3: '',                                              // FIXDUR off
-  0xD4: 'S', 0xD5: 'S', 0xD6: 'S', 0xD7: 'S', 0xD8: 'S', 0xD9: 'S',
+  // A slide is note + duration ($44DF/$44E6 read one byte then, unless FIXDUR
+  // is armed, a second).
+  0xD4: 'nD', 0xD5: 'nD', 0xD6: 'nD', 0xD7: 'nD', 0xD8: 'nD', 0xD9: 'nD',
   0xDA: 'bbb', 0xDB: 'bbb', 0xDC: 'bbb',
   0xDD: 'bbb', 0xDE: 'bbb', 0xDF: 'bbb',
   0xE0: '', 0xE1: '', 0xE2: '', 0xE3: '', 0xE4: '',
@@ -69,10 +71,18 @@ const OPERANDS = {
 /** Opcodes whose effect this port does not implement. Kept explicit. */
 export const UNIMPLEMENTED_OPS = new Set([
   0xC8, 0xC9, 0xCA,                                      // channel-mask ops
-  0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9,                    // play slide 5..0
-  0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF,                    // define slide 5..0
   0xF5,                                                  // release envelope
 ]);
+
+// SLIDE/DEFSLIDE. These are how the WAVE channel plays -- like drums on the
+// noise channel, stubbing them out leaves the bass line silent.
+//
+// $44D3: a SLIDE reads a NOTE byte and then a duration (or FIXDUR), so it is a
+// note with extra state, not a bare duration. $44F3 copies the preset's first
+// byte into +$19, which $420A adds to the frequency every tick -- that is the
+// slide itself. The presets live at $C80F + n*3.
+const SLIDE_PLAY = { 0xD4: 5, 0xD5: 4, 0xD6: 3, 0xD7: 2, 0xD8: 1, 0xD9: 0 };
+const SLIDE_DEF = { 0xDA: 5, 0xDB: 4, 0xDC: 3, 0xDD: 2, 0xDE: 1, 0xDF: 0 };
 
 // DRUM/DEFDRUM. These are how the NOISE channel plays at all -- it has no
 // notes of its own, so stubbing them out leaves the percussion silent.
@@ -126,6 +136,8 @@ function makeTrack() {
     wavePtr: 0,
     drums: [null, null, null, null],
     drumNR42: 0, drumNext: 0, drumStage: 0,
+    slides: [null, null, null, null, null, null],
+    bendPerTick: 0,                // +$19, added to the frequency each tick
   };
 }
 
@@ -238,6 +250,10 @@ function stepTrack(drv, t) {
     }
   }
 
+  // $420A: +$19 is added into the frequency word every tick. This is the slide
+  // (and the vibrato op writes the same field).
+  if (t.bendPerTick) t.freq = u16(t.freq + t.bendPerTick);
+
   stepVolEnv(drv, t);
   stepPitchEnv(drv, t);
 }
@@ -258,10 +274,11 @@ function duration(drv, t) {
   return d;
 }
 
-/** ROM: $4182-$41CA. */
-function note(drv, t, n) {
-  const dur = duration(drv, t);
+/** ROM: $4182-$41CA. `fixedDur` is supplied by SLIDE, which read it already. */
+function note(drv, t, n, fixedDur) {
+  const dur = fixedDur !== undefined ? fixedDur : duration(drv, t);
   t.dur = dur || 1;
+  t.bendPerTick = 0;                            // a plain note does not slide
 
   // $4191: the gate is min(duration, gateLimit), halved and less one -- so a
   // note sounds for a bit under half its slot unless GATE says otherwise.
@@ -302,9 +319,22 @@ function opcode(drv, t, op) {
   // effect: everything after it decodes as garbage.
   const args = [];
   for (const k of shape) {
-    if (k === 'b') { args.push(rd(drv, t.ptr)); t.ptr = u16(t.ptr + 1); }
+    if (k === 'b' || k === 'n') { args.push(rd(drv, t.ptr)); t.ptr = u16(t.ptr + 1); }
     else if (k === 'w') { args.push(rdw(drv, t.ptr)); t.ptr = u16(t.ptr + 2); }
     else if (k === 'D' || k === 'S') args.push(duration(drv, t));
+  }
+
+  if (SLIDE_DEF[op] !== undefined) {                      // $DA-$DF
+    t.slides[SLIDE_DEF[op]] = args;
+    return;
+  }
+  if (SLIDE_PLAY[op] !== undefined) {                     // $D4-$D9
+    const p = t.slides[SLIDE_PLAY[op]];
+    // The note is a real note: same pitch table, transpose and detune path.
+    note(drv, t, args[0], args[1]);
+    // $44F3: the preset's first byte becomes the per-tick frequency delta.
+    t.bendPerTick = p ? ((p[0] << 24) >> 24) : 0;
+    return;
   }
 
   if (DRUM_DEF[op] !== undefined) {                       // $CF-$D2
@@ -493,9 +523,13 @@ function emit(drv) {
         for (let i = 0; i < 16; i++) write(drv, 0xFF30 + i, rd(drv, t.wavePtr + i));
         drv.waveLoaded = t.wavePtr;
       }
+      // $42E5 copies the SAME staging byte the squares send to NRx2 into
+      // NR32 instead. The wave channel has no envelope register, so that byte
+      // is read as the 2-bit output shift -- the envelope still shapes the
+      // level, just coarsely.
       const on = nrx2 !== 0;
       write(drv, 0xFF1A, on ? 0x80 : 0x00);
-      write(drv, 0xFF1C, on ? 0x20 : 0x00);
+      write(drv, 0xFF1C, on ? (nrx2 & 0x60) : 0x00);
       write(drv, 0xFF1D, freq & 0xFF);
       write(drv, 0xFF1E, (trig ? 0x80 : 0) | ((freq >> 8) & 7));
       continue;
