@@ -149,13 +149,26 @@ test('probeFloor: spikes hurt but do NOT stop the fall', () => {
   assert.equal(state.player.vy, -20);
 });
 
-test('probeFloor: SOLID2 and runtime-solid land', () => {
-  // ROM: the loc_00_1E35 arms. $FF routes via the $1F-mask door arm.
-  for (const ch of ['#', 'S', 'X', 'T']) {
+test('probeFloor: SOLID2 lands via the loc_00_1E35 arms', () => {
+  for (const ch of ['#', 'S', 'T']) {
     const state = floorFixture(ch);
     assert.equal(probeFloor(state).landed, true, `char ${ch}`);
     assert.equal(state.player.vy, 0, `char ${ch}`);
   }
+});
+
+test('probeFloor: runtime-solid ($FF) lands WITHOUT snapping Y or VelY', () => {
+  // $1DDE `CP $FF / RET Z` fires before the `AND $1F` at $1DE1, so $FF never
+  // reaches the door arm and never runs loc_00_1E35. That matters now that the
+  // object-overlap scan can return $FF: the scan has already placed the player
+  // on the object's surface, and $1E35 would drag him to metatile alignment.
+  // VelY is cleared a step later by the caller, at loc_00_1B41.
+  const state = floorFixture('X');
+  const before = state.player.y;
+  const r = probeFloor(state);
+  assert.equal(r.landed, true);
+  assert.equal(state.player.y, before, 'Y untouched by the probe');
+  assert.equal(state.player.vy, -20, 'VelY untouched by the probe');
 });
 
 test('probeFloor: an actor-owned destructible ($1F in the low 5 bits) is solid', () => {
@@ -636,4 +649,97 @@ test('a fixture corridor has ground under the player and open air around him', (
   assert.equal(horizontalCell(state, PROBE_DX_RIGHT), 0);
   assert.equal(horizontalCell(state, PROBE_DX_LEFT), 0);
   assert.equal(probeFloor(state).landed, true);
+});
+
+// ---------------------------------------------------------------------------
+// Map-object overlap.  ROM: loc_00_2426 - loc_00_2643.
+// ---------------------------------------------------------------------------
+
+/**
+ * Level 3's actual arrival: an empty map column with $C1E8 slot 0, a live
+ * type $08, parked underneath. Numbers are the cartridge's, read off $C1E8
+ * with tools/oracle/arrival.py.
+ */
+function objectFloorFixture({ type = 0x88, halfW = 0x10, halfH = 0x09 } = {}) {
+  const state = makeState(grid(8));            // all air
+  // World row 30, column 1 -- set directly, because placePlayer() takes a MAP
+  // row and biases it, and the whole point here is the un-biased world row the
+  // cartridge actually spawns at.
+  state.player.x = 0x0180;
+  state.player.y = 0x1E00;
+  state.player.halfW = 0x0F;                   // $FF8C
+  state.player.halfH = 0x10;                   // $FF8D
+  state.camera.x = 256;
+  state.camera.y = 5888;
+  const r = state.actors[0];
+  r[0] = type;
+  r[1] = 0x02; r[2] = 0x00;                    // world X $0200
+  r[3] = 0x1F; r[4] = 0x80;                    // world Y $1F80
+  r[7] = halfW;
+  r[8] = halfH;
+  r[9] = 0x18;                                 // cached screen X, as $4852 writes
+  r[10] = 0x98;                                // cached screen Y
+  return state;
+}
+
+test('a live map object is a floor where the map has none', () => {
+  const state = objectFloorFixture();
+  const r = probeFloor(state);
+  assert.equal(r.value, COLL.SOLID_RUNTIME);
+  assert.equal(r.landed, true);
+  // $253A-$2559: objY - ((playerHalfH + objHalfH - 1) << 4).
+  // 8064 - ((16 + 9 - 1) << 4) = 8064 - 384 = 7680. Measured on the cartridge.
+  assert.equal(state.player.y, 7680);
+  assert.equal(state.actors[0][13], 1, 'the riding flag is set');
+  assert.equal(state.standingOnActor, 1, '$FFC6');
+});
+
+test('an object with bit 7 clear is not live and holds nobody up', () => {
+  const state = objectFloorFixture({ type: 0x08 });   // $244D
+  assert.equal(probeFloor(state).landed, false);
+});
+
+test('object types $07 and $09 are skipped by the scan', () => {
+  // $2454 / $2459 -- which is exactly why levels 1, 5 and 7 stayed bit-exact
+  // for so long without the scan existing at all.
+  for (const t of [0x87, 0x89]) {
+    const state = objectFloorFixture({ type: t });
+    assert.equal(probeFloor(state).landed, false, `type $${t.toString(16)}`);
+  }
+});
+
+test('the object scan misses once the player is beyond its half-width', () => {
+  const state = objectFloorFixture({ halfW: 0x02 });
+  assert.equal(probeFloor(state).landed, false);
+});
+
+/** The same fixture, but with real ground under the feet as well. */
+function objectOverCellFixture(velY) {
+  const g = grid(8);
+  put(g, 1, 15, '#');                          // solid at the probed row
+  const state = makeState(g);
+  state.player.x = 0x0180;
+  state.player.y = 0x1E30;
+  state.player.halfW = 0x0F;
+  state.player.halfH = 0x10;
+  state.camera.x = 256;
+  state.camera.y = 5888;
+  state.actors[0].set(
+    [0x88, 0x02, 0x00, 0x1F, 0x80, 0x00, velY, 0x10, 0x09, 0x18, 0x98, 0, 0, 0, 0, 0]);
+  return state;
+}
+
+test('a real map cell beats an object', () => {
+  // $2520: $FFBA is non-zero and +6 bit 7 is clear, so $2529 hands back the
+  // map's own byte and the object never gets to move anybody.
+  const state = objectOverCellFixture(0x00);
+  assert.equal(probeFloor(state).value, COLL.SOLID);
+});
+
+test('...unless the object`s +6 bit 7 says it overrides', () => {
+  // $2525: BIT 7,(HL) -> loc_00_2534, the object wins over solid ground.
+  const state = objectOverCellFixture(0x80);
+  const r = probeFloor(state);
+  assert.equal(r.value, COLL.SOLID_RUNTIME);
+  assert.equal(state.player.y, 7680);
 });

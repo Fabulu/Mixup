@@ -7,7 +7,7 @@
 // byte $BE and the clamp is `CP C / JR NC`.
 
 import { u8, i8 } from './state.js';
-import { probeFloor, probeCeiling, resolveWall, probe } from './collision.js';
+import { probeFloor, probeCeiling, resolveWall, probe, MODE_PUNCH } from './collision.js';
 import { findFreeSlot, throwBatarang } from './batarang.js';
 import { meleeHitTest } from './enemies.js';
 import { updateScriptedMove } from './scriptedmove.js';
@@ -225,7 +225,7 @@ function punchHitTest(state) {
   // killable at all.
   meleeHitTest(state);
 
-  const hit = probe(state, dx, dy);
+  const hit = probe(state, dx, dy, MODE_PUNCH);
   if (hit.value === 0xFF) return;                       // $203D
   if ((hit.value & 0x1F) !== 0x1F) return;              // $2041: doors only
   if (state.doors.active) return;                       // $2046: $C733 busy

@@ -201,6 +201,19 @@ const SCRIPTS = [
   { name: 'l5-spike-trap-gauntlet', level: 5, frames: 578,
     script: '20:,140:R,20:RA,120:R,20:RA,120:R,20:RA,120:R,20:RA,320:R',
     extra: ENEMY_FIELDS },
+  // Level 3 exists to pin the map-object overlap scan (loc_00_2426). The
+  // level's start column has no floor in the map at all: what the player lands
+  // on is $C1E8 slot 0, a type $08, and the scan is the only thing that finds
+  // it. Before the scan was ported he fell straight to the death row, which is
+  // what the "level 2 -> 3 arrival kills you" bug actually was.
+  //
+  // Capped at 350. The first divergence is frame 358, where the port takes a
+  // knockback the cartridge does not. That is NOT the scan -- it reproduces
+  // identically with the scan restricted to slot 0 -- but a separate, older
+  // gap that was simply unreachable while the player died on arrival. Raise
+  // this cap once that is found.
+  { name: 'l3-object-floor', level: 3, frames: 350,
+    script: '20:,120:R,20:RA,120:R,20:RA,180:R' },
 ];
 
 const FIELDS = ['x', 'y', 'vx', 'vy', 'air', 'facing', 'camX', 'camY'];

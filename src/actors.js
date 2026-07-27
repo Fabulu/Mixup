@@ -9,8 +9,13 @@
 //   +1/+2  X world 12.4 (hi, lo)
 //   +3/+4  Y world 12.4 (hi, lo)
 //   +5     X velocity
-//   +6     Y velocity
-//   +7     flags; bit 0 = hurts the player
+//   +6     Y velocity; bit 7 also lets the object override a solid map cell
+//          in the collision scan ($2525)
+//   +7     collision half-WIDTH, in screen pixels  ($2465 -> $C75A)
+//   +8     collision half-HEIGHT, in screen pixels ($2469 -> $C72E)
+//   +9/+$0A  cached SCREEN x, y -- recomputed each update from the world
+//          position and the camera (1:$4852), and the only coordinates the
+//          overlap scan ever compares against
 //   +$0B   state counter
 //   +$0C   wait timer
 //   +$0D   player-riding flag
@@ -71,8 +76,37 @@ export function updateActors(state) {
 
     r[0] |= 0x80;                                   // $426B: SET 7
     dispatch(state, r, type);
+    cacheScreenPos(state, r);
   }
 }
+
+/**
+ * ROM: 1:$4849-$485D, and the same six instructions in every other handler.
+ *
+ * Each type handler converts its own world position to screen pixels through
+ * sub_00_1172 and parks the result at +9/+$0A. The collision scan at
+ * loc_00_2426 compares ONLY against those cached bytes -- it never re-derives
+ * them -- so an object that fails to write them is invisible to collision even
+ * while it draws correctly.
+ *
+ * Doing it here rather than inside each handler is equivalent as long as the
+ * camera is fixed for the frame, which it is: the camera routine runs once,
+ * ahead of the actor driver.
+ */
+function cacheScreenPos(state, r) {
+  const wx = (r[1] << 8) | r[2];
+  const wy = (r[3] << 8) | r[4];
+  r[9] = screenX(state, wx);
+  r[10] = screenY(state, wy);
+}
+
+// sub_00_1172. The four SLA/RLA pairs are a 16-bit `<< 4` whose top nibble
+// falls off the end, which is just `>> 4` of the difference; the $08/$10
+// addends are the OAM origin offsets.
+export const screenX = (state, worldX) =>
+  u8((((worldX - state.camera.x) & 0xFFFF) >> 4) + 0x08);
+export const screenY = (state, worldY) =>
+  u8((((worldY - state.camera.y) & 0xFFFF) >> 4) + 0x10);
 
 // NOTE: an earlier version ran a "$15BA contact" test here that removed the
 // object and dealt 2 damage on overlap. That routine (loc_00_1444..$1626)

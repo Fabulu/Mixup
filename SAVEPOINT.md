@@ -32,7 +32,7 @@ node   tools/oracle/regress.mjs         # the whole corpus
 npm run test-all                        # 4 stages, the gate for everything
 ```
 
-**Current state: 28/28 oracle scenarios bit-exact, 286 unit tests, 4/4 stages
+**Current state: 29/29 oracle scenarios bit-exact, 292 unit tests, 4/4 stages
 green.** Levels 1, 5 and 9 match the cartridge exactly over 620 frames each.
 
 If you change gameplay code and `test-all` goes red, you broke something real.
@@ -79,6 +79,7 @@ Deploy: `node tools/build-dist.mjs` then
 | Punch, batarangs (throw, flight, return) | bit-exact |
 | Scripted door moves, breakables, pickups | bit-exact |
 | Map objects `$C1E8` — types 3, 7, 9 | bit-exact |
+| Map-object collision (`loc_00_2426`, all four probe modes) | bit-exact |
 | Enemy AI — states 1, 2, 3, 11, 12 + drawing | bit-exact |
 | Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
 | Window layer (= the water's graphics) | drawn; tilemap + surface animation are a **capture** — see below |
@@ -104,8 +105,11 @@ Roughly in order of how much each would change the game:
 3. **The door/gate sequencer** (`$C733-$C735`) plus the effect and ballistic
    pools it spawns. **This is what blocks level 13**, which has 88 actor-owned
    destructible cells and no way to open them.
-4. **Map-object types 1, 4, 5, 6, 8, 11.** Types 2 and 10 are never placed in
-   shipped data. (3, 7 and 9 are ported and bit-exact.)
+4. **Map-object HANDLERS for types 1, 4, 5, 6, 8, 11.** Types 2 and 10 are
+   never placed in shipped data. (3, 7 and 9 are ported and bit-exact.) Their
+   *collision* now works — the `loc_00_2426` scan is ported — so an unported
+   object is solid, just frozen at its spawn state. That is right for the two
+   static ones on level 3 and wrong for anything meant to move.
 5. **Raster effects** (the `$0857` STAT program): per-scanline SCX/SCY/palette
    bands. `rasterBands()` still emits a single band. The window LAYER itself is
    now drawn (`drawWindow` in renderer.js) — that was the level-1/2 water.
@@ -200,9 +204,10 @@ both frequency bytes and the trigger. Open:
 
 ## Open bugs with a known reproduction
 
-- **Level 2 → 3 arrival kills you — DIAGNOSED, and it is not a transition bug.**
-  The decisive test has been run (`tools/oracle/arrival.py`). Findings, all
-  measured on the cartridge:
+- **Level 2 → 3 arrival — FIXED.** It was never a transition bug. The scan at
+  `loc_00_2426` is now ported (`actorOverlap` in collision.js) and level 3 is
+  bit-exact for 350 frames (`l3-object-floor`). What follows is the diagnosis,
+  kept because the reasoning is the useful part:
 
   1. The transition path and the direct-load path **agree**. Both reach
      `sub_00_2889`, whose tail at `$2973` writes `$FF81`/`$FF83` from
@@ -223,10 +228,10 @@ both frequency bytes and the trigger. Open:
      (`SOLID_RUNTIME`). Verified by hooking the return of `sub_00_20BA`: it
      returns `$FF`, and Y snaps 7683 → 7680 inside the call, every frame.
 
-  **The port implements none of `$2426`-`$2643`.** `slopeProbe` in
-  collision.js treats `$2418`/`$2423` as "return the neighbour's collision" and
-  "return 0", but both of those labels *fall into* the object scan. So every
-  map object in the port is intangible, and level 3 starts you on one.
+  **The port implemented none of `$2426`-`$2643`.** `slopeProbe` treated
+  `$2418`/`$2423` as "return the neighbour's collision" and "return 0", but both
+  of those labels *fall into* the object scan. So every map object was
+  intangible, and level 3 starts you on one.
 
   Why this stayed hidden: the scan skips masked types `$07` and `$09`
   outright (`$2454`, `$2459`) and ignores anything with bit 7 clear — and
@@ -234,10 +239,32 @@ both frequency bytes and the trigger. Open:
   those; 2, 4, 8, 9, 10, 11, 14 have no objects at all. Level 3 is the first
   level that uses a type outside that set.
 
-  **The fix is a port, not a patch:** `loc_00_2426`-`$2643` (the object
-  overlap stage of `sub_00_20BA`) plus object type `$08`. That also unblocks
-  the other levels holding unported types — 3 (`$01 $05 $06 $08`),
-  6 (`$0B`), 7 (`$04`), 12 (`$05 $06 $08`), 13 (`$03 $05 $06 $08`).
+  **What landed:** the whole scan, all four probe-mode arms, plus the screen
+  position cache at `+9/+$0A` that every handler writes (1:`$4852`) and the
+  scan compares against — an object that never writes those is invisible to
+  collision while still drawing correctly. Two traps worth keeping in mind:
+
+  - Only the FLOOR probe reaches the slope tables and the scan from a
+    *non-empty* neighbour. `$2155`/`$2138` test the mode and every other one
+    takes `LD A,B / RET` at `$215C`/`$213F`. Routing mode 3 into the scan there
+    broke the level-5 gauntlet, and the cartridge is what settled it.
+  - `$FF` returns from `sub_00_1DB9` at `$1DDE`, BEFORE the `$1E35` arm that
+    snaps the Y low byte. The scan has already placed the player exactly; the
+    snap would drag him to metatile alignment.
+
+  **Still open (the same routine, different objects):** the scan now makes
+  every live object solid, but types `$01 $04 $05 $06 $08 $0B` still have no
+  handler, so they sit at their spawn state. On level 3 that happens to be
+  harmless — the cartridge's two live objects there are static too, measured —
+  but it will not be elsewhere. Levels holding unported types: 3 (`$01 $05
+  $06 $08`), 6 (`$0B`), 7 (`$04`), 12 (`$05 $06 $08`), 13 (`$03 $05 $06 $08`).
+
+- **Level 3 diverges at frame 358** on `20:,120:R,20:RA,120:R,20:RA,180:R`:
+  the port takes a knockback (`air` 1, `vy` 24 from `$17B2`) that the cartridge
+  does not. This is **not** the object scan — it reproduces identically with the
+  scan restricted to slot 0 — but an older gap that was simply unreachable while
+  the player died on arrival. `l3-object-floor` is capped at 350 because of it.
+  Start by finding what sets `$C714` (iframes) at that frame.
 
 ---
 
@@ -297,16 +324,14 @@ both frequency bytes and the trigger. Open:
 
 ## Suggested next steps
 
-1. **The map-object overlap stage of the collision probe** —
-   `loc_00_2426`-`$2643` — plus object type `$08`. This is the level 2 → 3
-   blocker, now fully diagnosed (see "Open bugs"), and it is the same routine
-   that makes every map object solid, so it pays for itself across levels 3, 6,
-   7, 12 and 13. Port it against `arrival.py` and a new level-3 oracle
-   scenario; the geometry is an AABB test with the half-extents at object
-   bytes +6/+7, and the landing arm at `$2610` rewrites the player's Y.
-   Note `$2617` picks `$FD` vs `$FF` off `$FF80` — settle that branch against
-   the cartridge rather than from the listing.
-2. **The two sound bugs** (see "Sound"). Both are precisely located.
+1. **Map-object handlers for types `$01 $04 $05 $06 $08 $0B`** (1:`$488D`,
+   `$4940`, `$4291`, `$42E3`, `$4525`, `$483C`). The overlap scan is in and
+   makes them solid; without handlers they are solid *in the wrong place* as
+   soon as one is meant to move. Type `$08` first — level 3 has two, and
+   `l3-object-floor` is the scenario to extend.
+2. **The level-3 frame-358 knockback** (see "Open bugs"). Small, well-located,
+   and it is what caps the level-3 scenario at 350 frames.
+3. **The two sound bugs** (see "Sound"). Both are precisely located.
 3. **Verify melee/batarang enemy damage against the oracle** — add a scenario
    that kills an enemy on level 1 and compare `en0hp`. Biggest *unverified*
    gap in gameplay.

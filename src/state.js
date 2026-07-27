@@ -94,6 +94,11 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     actors: createActors(),          // $C1E8, 8 x 16 B map objects
     enemies: createEnemies(),        // $C268, 8 x 32 B
     currentActorSlot: 0,             // $C75A
+    // $FFC6 -- "the player is resting on a map object". Set by the overlap
+    // scan (loc_00_2534/$2566/$25B3) and read back by it on the NEXT slot to
+    // decide whether to clear that slot's own riding flag ($248B), so it
+    // deliberately carries across slots and frames.
+    standingOnActor: 0,              // $FFC6
     enemyCursor: 0,                  // $FFB3
     // $FFBE/$FFBF -- the cell address the enemy probe's empty path stored.
     // A true HRAM global: it persists across probes, slots AND frames, and

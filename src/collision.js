@@ -6,6 +6,7 @@ import {
   u8, u16,
 } from './state.js';
 import { armScriptedMove } from './scriptedmove.js';
+import { SLOTS, screenX, screenY } from './actors.js';
 
 /** Probe modes, as written to $C72B. */
 export const MODE_HORIZONTAL = 1;
@@ -46,26 +47,33 @@ const LANDABLE = new Set([
  * @returns {{value:number, col:number, row:number, subX:number}}
  *          value 0 when the probe leaves the world vertically.
  */
-export function probe(state, dxSub, dySub) {
+export function probe(state, dxSub, dySub, mode) {
   const p = state.player;
 
   // $20BA-$20C7: probe Y first; bail out if below the world.
   const py = (p.y + dySub) & 0xFFFF;
   const row = py >> 8;
   if (row >= 0x20) {
-    return { value: 0, col: 0, row, subX: 0 };
+    return { value: 0, col: 0, row, subX: 0, px: 0, py };
   }
 
   // $20D3-$20E7: probe X, then read the cell's collision byte.
   const px = (p.x + dxSub) & 0xFFFF;
   const col = px >> 8;
 
-  return {
-    value: mapCollision(state, col, row),
-    col,
-    row,
-    subX: (px >> 4) & 0x0F,   // pixel within the metatile, feeds slope tables
-  };
+  const cell = mapCollision(state, col, row);
+  const subX = (px >> 4) & 0x0F;   // pixel within the metatile, feeds slope tables
+
+  // $20EC: a non-empty cell settles it for every probe EXCEPT the floor, which
+  // still runs the object scan so a platform can override solid ground.
+  let value = cell;
+  if (cell !== 0) {
+    value = mode === MODE_FLOOR
+      ? actorOverlap(state, mode, px, py, cell)      // $20F1 -> $2418
+      : cell;                                        // $20FD
+  }
+
+  return { value, col, row, subX, px, py };
 }
 
 /**
@@ -79,13 +87,14 @@ export function probe(state, dxSub, dySub) {
  */
 export function probeFloor(state) {
   const p = state.player;
-  const hit = probe(state, 0, p.halfH << 4);
+  const hit = probe(state, 0, p.halfH << 4, MODE_FLOOR);
   let v = hit.value;
 
   // $20EA: an empty cell under the feet is not the end of it -- the floor
-  // probe then looks sideways for a slope in the neighbouring column.
+  // probe then looks sideways for a slope in the neighbouring column, and
+  // failing that at the map objects.
   if (v === COLL.AIR) {
-    v = slopeProbe(state, hit.col, hit.row, hit.row);
+    v = slopeProbe(state, hit.col, hit.row, hit.row, MODE_FLOOR, hit.px, hit.py);
   }
 
   const out = { landed: false, value: v, col: hit.col, row: hit.row };
@@ -94,6 +103,15 @@ export function probeFloor(state) {
 
   // $1DDA: spikes hurt but do NOT stop the fall.
   if (v === COLL.SPIKE) return out;
+
+  // $1DDE: `CP $FF / RET Z` -- an object floor returns immediately, BEFORE the
+  // $1E35 arm that snaps the Y low byte to the metatile boundary. The scan has
+  // already placed the player on the object's surface, and re-snapping would
+  // drag him to whole-metatile alignment the cartridge never applies here.
+  if (v === COLL.SOLID_RUNTIME) {
+    out.landed = true;
+    return out;
+  }
 
   // $1DE1: an actor-owned destructible cell ($1F in the low 5 bits) is solid.
   if ((v & 0x1F) === COLL.DOOR) {
@@ -254,7 +272,7 @@ function applySlope(state, base, offset, probeRowHi) {
  * metatile: near the left edge look left, near the right edge look right, and
  * in the middle band (pixelX 6-10) there is no slope at all.
  */
-function slopeProbe(state, col, row, probeRowHi) {
+function slopeProbe(state, col, row, probeRowHi, mode, px, py) {
   const p = state.player;
   const pixelX = (p.x & 0xF0) >> 4;                   // $210C
 
@@ -264,14 +282,19 @@ function slopeProbe(state, col, row, probeRowHi) {
     const nIdx = cellIndex(col - 1, row);
     const nv = mapCollisionByIndex(state, nIdx);
     if (nv !== 0) {                                   // $2150
+      // $2155: ONLY the floor probe goes on to the slope tables and the object
+      // scan. Every other mode takes $215C -- `LD A,B / RET` -- and reports the
+      // neighbour's collision as-is. Standing near the edge of a metatile, that
+      // diagonally adjacent cell is what holds the player up.
+      if (mode !== MODE_FLOOR) return nv;             // $215C
       const gid = state.level.cells[nIdx * 2];        // $216C: DEC HL -> graphic id
       const base = slopeBase(state, gid, false);
+      // loc_00_21FD ends in a plain RET ($2217/$221A), so a slope short-circuits
+      // the object scan entirely.
       if (base !== undefined) return applySlope(state, base, off, probeRowHi);
       // $2175: not a slope (or a level with none) -> JP loc_00_2418, which
-      // returns the NEIGHBOUR's collision. Standing near the edge of a
-      // metatile, the diagonally adjacent cell holds the player up. Returning
-      // "no floor" here drops him through every such ledge.
-      return nv;
+      // carries the neighbour's collision into the object scan.
+      return actorOverlap(state, mode, px, py, nv);
     }
     // $215E: nothing to the left -- fall through and try the right instead.
   }
@@ -281,13 +304,143 @@ function slopeProbe(state, col, row, probeRowHi) {
     const off = (pixelX + 5) & 0x0F;                  // $2125
     const nIdx = cellIndex(col + 1, row);
     const nv = mapCollisionByIndex(state, nIdx);
-    if (nv === 0) return 0;                           // $2134
+    if (nv === 0) {                                   // $2134 -> loc_00_2423
+      return actorOverlap(state, mode, px, py, 0);
+    }
+    if (mode !== MODE_FLOOR) return nv;               // $213F, as $215C above
     const gid = state.level.cells[nIdx * 2];          // $21A8
     const base = slopeBase(state, gid, true);
     if (base !== undefined) return applySlope(state, base, off, probeRowHi);
-    return nv;                                        // $21B3 -> loc_00_2418
+    return actorOverlap(state, mode, px, py, nv);     // $21B3 -> loc_00_2418
   }
-  return 0;                                           // $2122
+  // $2122: the middle band has no neighbour to consult -- straight to the
+  // object scan with nothing from the map.
+  return actorOverlap(state, mode, px, py, 0);        // -> loc_00_2423
+}
+
+// ---------------------------------------------------------------------------
+// Map-object overlap.  ROM: loc_00_2426 - loc_00_2643.
+//
+// The last stage of every probe, and the one that makes map objects solid.
+// Both loc_00_2418 and loc_00_2423 look like return sites -- they set $FFBA
+// and stop -- but neither returns: both fall into loc_00_2426, which converts
+// the probe point to SCREEN space and box-tests it against all 8 $C1E8 slots.
+//
+// It runs for the floor probe always (a live object with +6 bit 7 can override
+// even a solid map cell), and for the other probes only once the map itself has
+// come up empty.
+//
+// On a hit the routine REPOSITIONS the player -- Y onto the object's surface
+// for the floor and ceiling probes, X out to its side for the horizontal ones
+// -- and reports $FF, or $FD when the object is one of the two hurting types.
+// ---------------------------------------------------------------------------
+
+/** 8-bit |a - b|, the `SUB / JR NC / CPL / INC A` idiom at $24A1 and friends. */
+const absDiff = (a, b) => (a >= b ? a - b : b - a);
+
+/**
+ * ROM: loc_00_2426. Returns the collision value the whole probe resolves to.
+ *
+ * @param mode       $C72B
+ * @param probeX/Y   the probe point in world 12.4 ($FFB6/$FFB8 before $1172)
+ * @param mapResult  what the map decided ($FFBA): 0, or the cell's own byte
+ */
+function actorOverlap(state, mode, probeX, probeY, mapResult) {
+  const p = state.player;
+
+  // $2643 is the punch probe's own scan, which is not ported. Leaving the
+  // map's answer alone is what the port did before this routine existed.
+  if (mode === MODE_PUNCH) return mapResult;
+
+  const probeSX = screenX(state, probeX);            // $2430 -> $FFB6
+  const probeSY = screenY(state, probeY);            // $2430 -> $FFB8
+
+  for (let slot = 0; slot < SLOTS; slot++) {
+    const r = state.actors[slot];
+
+    if ((r[0] & 0x80) === 0) continue;               // $244D: not live
+    const type = r[0] & 0x7F;
+    if (type === 0x07 || type === 0x09) continue;    // $2454 / $2459
+
+    // $2478: an object outside world rows $10-$20 is not testable at all.
+    if (r[3] < 0x10 || r[3] >= 0x21) continue;
+
+    const halfW = r[7];                              // $2465 -> $C75A
+    const halfH = r[8];                              // $2469 -> $C72E
+    const objX = (r[1] << 8) | r[2];                 // $246F
+    const objY = (r[3] << 8) | r[4];                 // $2474
+    const objSX = r[9];                              // $2485
+    const objSY = r[10];                             // $2486
+
+    // $248B: the riding flag is cleared unless $FFC6 is already set, so the
+    // first slot to claim the player keeps the claim for the rest of the scan.
+    if (state.standingOnActor === 0) r[13] = 0;      // $2490
+
+    // --- X axis ($24A1) ------------------------------------------------
+    // The floor and ceiling probes retest at the player's foot span, -7 then
+    // +6 px; the horizontal probes get a single sample.
+    if (absDiff(objSX, probeSX) >= halfW) {
+      if (mode < MODE_CEILING) continue;             // $24AF
+      let d = u8(probeSX + 0xF9);                    // $24B2: -7
+      if (absDiff(objSX, d) >= halfW) {
+        d = u8(d + 0x0D);                            // $24BF: +6 from the start
+        if (absDiff(objSX, d) >= halfW) continue;    // $24CA
+      }
+    }
+
+    // --- Y axis ($24CD) ------------------------------------------------
+    // Mirror image: the horizontal probes sweep the hitbox height, the
+    // vertical ones do not.
+    if (absDiff(objSY, probeSY) >= halfH) {
+      if (mode >= MODE_CEILING) continue;            // $24DB
+      let e = u8(probeSY - u8(p.halfW - 2));         // $24DE
+      if (absDiff(objSY, e) >= halfH) {
+        e = u8(e + u8(p.halfW - 2) + u8(p.halfH - 2));  // $24EF
+        if (absDiff(objSY, e) >= halfH) continue;    // $2502
+      }
+    }
+
+    // --- hit ($2505) ---------------------------------------------------
+    if (mode === MODE_HORIZONTAL || mode === 2) {    // $2563 / $25AA
+      // $2566: only a clinging player is registered as riding a wall object.
+      if (p.clingLock & 0x1F) {
+        r[13] = 1;
+        state.standingOnActor = 1;
+      }
+      if (type === 0x06 || type === 0x0A) return COLL.SPIKE;   // $257A / $25C1
+      // Right-probe pushes out to the object's left face and vice versa; the
+      // left face is one pixel tighter ($2587 DEC A).
+      const off = mode === MODE_HORIZONTAL ? u8(halfW - 1 + 8) : u8(halfW + 8);
+      p.x = mode === MODE_HORIZONTAL
+        ? u16(objX - (off << 4))                     // $2584-$25A6
+        : u16(objX + (off << 4));                    // $25C9-$25DF
+      return COLL.SOLID_RUNTIME;                     // $2622
+    }
+
+    if (mode === MODE_CEILING) {                     // $25E3
+      if (type === 0x06 || type === 0x0A) return COLL.SPIKE;   // $25EF / $25F3
+      if (type === 0x0B) continue;                   // $25F7: skip, keep scanning
+      const push = u8(u8(p.halfW + 2) + halfH);      // $25FB-$2604
+      p.y = u16(objY + (push << 4));                 // $2605-$2615
+      // $2617: a grounded player who bumps his head on one of these is hurt
+      // by it; an airborne one is merely stopped.
+      return p.air === 0 ? COLL.SPIKE : COLL.SOLID_RUNTIME;
+    }
+
+    // --- floor ($2516) -------------------------------------------------
+    // $2520: a real map cell wins unless the object's +6 bit 7 says otherwise.
+    if (mapResult !== 0 && (r[6] & 0x80) === 0) return mapResult;   // $2529
+
+    r[13] = 1;                                       // $2534
+    state.standingOnActor = 1;                       // $2537: $FFC6
+    const drop = u8(u8(p.halfH + halfH) - 1);        // $253A-$2542
+    p.y = u16(objY - (drop << 4));                   // $2543-$255E
+    return COLL.SOLID_RUNTIME;                       // $2622
+  }
+
+  // $2631: the floor probe reports whatever the map had; everything else
+  // reports "nothing", discarding it.
+  return mode === MODE_FLOOR ? mapResult : 0;        // $263E / $2641
 }
 
 /**
@@ -399,8 +552,10 @@ export function horizontalCell(state, dxSub, right = dxSub > 0) {
   const row = py >> 8;
   if (row >= 0x20) return 0;                          // $20CB: below the world
 
-  const col = ((p.x + dxSub) & 0xFFFF) >> 8;
+  const px = (p.x + dxSub) & 0xFFFF;
+  const col = px >> 8;
   const idx = cellIndex(col, row);
+  const mode = right ? MODE_HORIZONTAL : 2;
 
   const own = mapCollisionByIndex(state, idx);
   if (own !== 0) return own;                          // $20E9 / $20FD
@@ -418,7 +573,9 @@ export function horizontalCell(state, dxSub, right = dxSub > 0) {
   if (pixelY + (p.halfH - 3) >= 0x10) {
     if (row + 1 >= 0x20) return 0;                    // $22B9
     const below = mapCollisionByIndex(state, idx + 1);   // $22C3
-    if (below === 0) return 0;
+    if (below === 0) {                                // $22C6 -> loc_00_2423
+      return actorOverlap(state, mode, px, py, 0);
+    }
 
     // $22C6 does NOT return here -- it falls through to $22C9, which
     // dispatches on the probe mode into loc_00_2348 (rightward) or
@@ -434,13 +591,14 @@ export function horizontalCell(state, dxSub, right = dxSub > 0) {
       // within the metatile, not the horizontal one -- how far the hitbox
       // pokes below decides how far along the slope you are.
       const offset = (pixelY + p.halfH) & 0x0F;
-      const probeXhi = ((p.x + dxSub) & 0xFFFF) >> 8;
-      return applySlopeSnap(state, base, offset, probeXhi, right);
+      return applySlopeSnap(state, base, offset, col, right);
     }
 
     return below;
   }
-  return 0;                                           // $229A -> $2423
+  // $229A: the hitbox pokes past neither edge, so the map has nothing more to
+  // say -- hand the probe point to the object scan.
+  return actorOverlap(state, mode, px, py, 0);        // -> loc_00_2423
 }
 
 /**
@@ -528,14 +686,14 @@ export function resolveWall(state, side) {
  */
 export function probeCeiling(state) {
   const p = state.player;
-  const hit = probe(state, 0, -(p.halfW << 4));      // $1EAB: $FF8C
+  const hit = probe(state, 0, -(p.halfW << 4), MODE_CEILING);   // $1EAB: $FF8C
   let v = hit.value;
   // $20FF -> $210C: an empty cell falls into the SAME neighbour/slope lookup
   // as the floor probe -- mode 3 and mode 4 share it. Near a metatile edge
   // the diagonally adjacent cell is the ceiling; this is how the level-5
   // spike trap's column catches a player hugging its edge.
   if (v === COLL.AIR) {
-    v = slopeProbe(state, hit.col, hit.row, hit.row);
+    v = slopeProbe(state, hit.col, hit.row, hit.row, MODE_CEILING, hit.px, hit.py);
   }
   if (v === COLL.AIR) return 0;                      // $1EC9
   if (v === COLL.SOLID_RUNTIME) return 0xFF;         // $1ECB
