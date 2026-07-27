@@ -1,16 +1,19 @@
-// Rebuild the title screen's VRAM from its ingredients and diff it against
+// Rebuild the non-level screens from their ingredients and diff each against
 // what the cartridge actually produced.
 //
-// assets/title.vram.bin is a CAPTURE. The point of this is to show the capture
-// can be regenerated from ROM data plus ported code, at which point it can be
-// deleted. Three mechanisms build it, and all three are replayed here:
+// Both used to be, or would have been, 8 KB captures. The point of this is to
+// show they regenerate from ROM data plus ported code. Mechanisms:
 //
 //   $01AB-$022C   the boot clear: maps to $2F, tiles to $00
 //   sub_00_34A4   stack-based tilemap fill -- SP = $9A3F, 287 x PUSH DE
-//   sub_00_09FB   two block copies out of bank 6 (the tile bitmaps)
-//   sub_00_0A0E   three VRAM scripts (copyright, title, title text)
+//   sub_00_09FB   block copies out of bank 6 (the tile bitmaps)
+//   sub_00_0A0E   the VRAM scripts
 //
-// Usage:  node tools/oracle/titlediff.mjs
+// TITLE is three scripts over the boot clear. ROUND SELECT is built ON TOP of
+// the finished title -- the cartridge never reclears the tile area between
+// them -- and its order differs: fill FIRST, then copies, then one script.
+//
+// Usage:  node tools/oracle/titlediff.mjs [--record]
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,7 +21,8 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { runVramScript } from '../../src/vramscript.js';
-import { fillTilemap, blockCopy, bootClearVram, buildTitleVram } from '../../src/vram.js';
+import { fillTilemap, blockCopy, bootClearVram, buildTitleVram,
+  buildRoundSelectVram } from '../../src/vram.js';
 
 const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const REF = path.join(ROOT, 'rip', 'titlebuild.json');
@@ -26,6 +30,12 @@ const PY = process.env.PYTHON || 'python';
 
 if (process.argv.includes('--record') || !fs.existsSync(REF)) {
   execFileSync(PY, ['tools/oracle/titlebuild.py'], { cwd: ROOT, stdio: 'ignore' });
+  // Round select is the same probe walked one screen further: tap START at the
+  // title, then snapshot at the FIRST hit of the loop head, before the loop
+  // starts repainting the cursor cell over the build.
+  execFileSync(PY, ['tools/oracle/titlebuild.py', '--until-pc', '03DC',
+    '--press-start', '--until', '3000', '--out', 'rip/roundselect.json'],
+    { cwd: ROOT, stdio: 'ignore' });
 }
 
 const ref = JSON.parse(fs.readFileSync(REF, 'utf8'));
@@ -95,7 +105,42 @@ if (bad === 0) {
   }
   console.log('buildTitleVram() from assets/manifest.json: '
     + `${want.length}/${want.length} bytes match`);
-  console.log('\nEXACT MATCH -- the title is built from ROM data, not captured.');
+
+  // Round select, when its recording is present. It is built ON TOP of the
+  // title, so passing here also confirms the title image a second way.
+  const rsFile = path.join(ROOT, 'rip', 'roundselect.json');
+  if (fs.existsSync(rsFile) && manifest.roundSelect) {
+    const rs = JSON.parse(fs.readFileSync(rsFile, 'utf8'));
+    const rsWant = Uint8Array.from(rs.vram);
+    const rsBuilt = buildRoundSelectVram({
+      fill: manifest.roundSelect.fill,
+      tiles: manifest.roundSelect.tiles.map((t) => ({ dest: t.dest, bytes: b64(t.bytes) })),
+      scripts: manifest.roundSelect.scripts.map(b64),
+    }, (v, script) => runVramScript(v, script), built);
+
+    // $99CD is the route cursor cell, and it is NOT part of the static build.
+    // loc_00_0450 assembles a one-record VRAM script in WRAM every frame --
+    // LD HL,$C61B then $99, $CD, $01, <tile>, $00 -- and paints that single
+    // tile from $C712. So the builder legitimately does not produce it; the
+    // cursor logic will, and gets checked on its own once it lands.
+    const CURSOR_CELL = 0x99CD - 0x8000;
+    let n = 0;
+    let firstBad = -1;
+    for (let i = 0; i < rsWant.length; i++) {
+      if (i === CURSOR_CELL) continue;
+      if (rsBuilt[i] !== rsWant[i]) { n++; if (firstBad < 0) firstBad = i; }
+    }
+    if (n) {
+      console.log(`\nbuildRoundSelectVram() differs in ${n} bytes, first at `
+        + `$${(0x8000 + firstBad).toString(16)}`);
+      console.log('ROUND SELECT REGRESSION');
+      process.exit(1);
+    }
+    console.log('buildRoundSelectVram() over the title: '
+      + `${rsWant.length}/${rsWant.length} bytes match`);
+  }
+
+  console.log('\nEXACT MATCH -- screens built from ROM data, not captured.');
   process.exit(0);
 }
 

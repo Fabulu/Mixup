@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record everything that writes VRAM while the cartridge builds the title.
+"""Record everything that writes VRAM while the cartridge builds a screen.
 
 assets/title.vram.bin is a capture of the result. To retire it we have to know
 what PRODUCED it, which is three different mechanisms: block copies through
@@ -29,6 +29,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--until', type=int, default=1500)
     ap.add_argument('--out', default='rip/titlebuild.json')
+    ap.add_argument('--until-pc', default=None,
+                    help='hex PC to stop at instead of the title loop, e.g. '
+                         '035B for round select')
+    ap.add_argument('--stop-hits', type=int, default=1,
+                    help='how many times --until-pc must be reached. 1 (the '
+                         'default) snapshots VRAM right after the build, before '
+                         'the screen loop starts repainting over it')
+    ap.add_argument('--press-start', action='store_true',
+                    help='tap START once the title loop is reached, to walk on '
+                         'into the next screen')
     args = ap.parse_args()
 
     pyboy = PyBoy(ROM, window='null', sound_emulated=False)
@@ -98,9 +108,22 @@ def main():
     pyboy.hook_register(0, TITLE_LOOP,
                         lambda _: hit.__setitem__('n', hit['n'] + 1), None)
 
+    stop = {'n': 0}
+    if args.until_pc:
+        pyboy.hook_register(0, int(args.until_pc, 16),
+                            lambda _: stop.__setitem__('n', stop['n'] + 1), None)
+
+    tapped = {'v': False}
     for _ in range(args.until):
         pyboy.tick(1, False)
-        if hit['n'] > 40:
+        if args.until_pc:
+            if hit['n'] > 40 and args.press_start and not tapped['v']:
+                tapped['v'] = True
+                events.append({'kind': 'mark', 'note': 'START pressed at title'})
+                pyboy.button('start', delay=4)
+            if stop['n'] >= args.stop_hits:
+                break
+        elif hit['n'] > 40:
             break
 
     vram = list(m[0x8000:0xA000])

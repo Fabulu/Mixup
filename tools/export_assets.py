@@ -74,6 +74,16 @@ T_TITLE_SCRIPTS = [
     (5, 0x5170),                      # 00:0291, the title artwork
     (1, 0x7C44),                      # 00:02AB, the title text
 ]
+# Round select / continue (state 5). Built ON TOP of the title's VRAM -- the
+# cartridge never re-clears the tiles, it just refills the BG map and adds its
+# own artwork. Ingredients found with tools/oracle/titlebuild.py, which shows
+# the whole screen is four events.
+T_ROUNDSEL_FILL = 0x00            # 00:0361 -> sub_00_34A4 with D = $00
+T_ROUNDSEL_TILES = [
+    ((6, 0x54B4), 1136, 0x8800),  # the shared font blob, copied again
+    ((6, 0x6E74), 2048, 0x9000),  # the round-select artwork
+]
+T_ROUNDSEL_SCRIPT = (6, 0x7674)
 T_SCRIPT_PTRS     = (0, 0x27E6)   # loc_00_164A: 3 LE pointers to move scripts
 T_SCRIPT_BLOCK    = (0, 0x27E6)   # the scripts themselves live just past them
 T_SCRIPT_BLOCK_N  = 0x1E          # $27E6-$2803
@@ -279,6 +289,16 @@ def main():
         'objectScripts': read_table(rom, T_OBJ_SCRIPTS, T_OBJ_SCRIPTS_N),
         'enemyContactDamage': read_table(rom, T_ENEMY_DMG, 13),
         'levelDamageBonus': read_table(rom, T_LEVEL_DMG_BONUS, 14),
+    }
+
+    # ---- round select: applied over the title's VRAM ---------------------
+    manifest['roundSelect'] = {
+        'fill': T_ROUNDSEL_FILL,
+        'tiles': [{'dest': dest, 'bytes': base64.b64encode(
+            bytes(read_table(rom, loc, n))).decode('ascii')}
+            for loc, n, dest in T_ROUNDSEL_TILES],
+        'scripts': [base64.b64encode(
+            bytes(vram_script(rom, T_ROUNDSEL_SCRIPT))).decode('ascii')],
     }
 
     # ---- title screen: the ingredients, not a snapshot of the result ------

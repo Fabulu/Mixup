@@ -11,7 +11,7 @@
 //   tunables-check    tools/gen_tunables.py --check 44 constants still match the ROM bytes
 //   asset-integrity   tools/verify_assets.py        assets/ vs the real ROM, all 14 levels  [PyBoy]
 //   vram-scripts      tools/oracle/vramdiff.mjs     sub_00_0A0E write stream vs the ROM      [PyBoy]
-//   title-build       tools/oracle/titlediff.mjs    title VRAM built, not captured           [PyBoy]
+//   title-build       tools/oracle/titlediff.mjs    title + round select built, not captured [PyBoy]
 //   oracle-regression tools/oracle/regress.mjs      port vs ROM, frame-exact, whole corpus  [PyBoy]
 //
 // Exits non-zero if any stage fails, and names the stage. Stages that cannot
@@ -79,7 +79,7 @@ const STAGES = [
   },
   {
     name: 'title-build',
-    what: 'title VRAM built from ROM data matches the cartridge, all 8192 B',
+    what: 'title + round-select VRAM built from ROM data, all 8192 B each',
     cmd: process.execPath,
     args: ['tools/oracle/titlediff.mjs', '--record'],
     pyboy: true,

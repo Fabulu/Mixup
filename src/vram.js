@@ -84,3 +84,24 @@ export function buildTitleVram(spec, run) {
   run(vram, spec.scripts[2]);
   return vram;
 }
+
+/**
+ * Build the round-select / continue screen.  ROM: $035B-$0372.
+ *
+ * Applied ON TOP of the title's VRAM -- the cartridge never reclears the tile
+ * area between the two, it refills the BG map to $00 and adds its own artwork
+ * over what the title left. Starting from a blank buffer instead leaves the
+ * shared font blob half-missing, because only part of it is recopied.
+ *
+ * Order matters and is not the title's: the fill comes FIRST here, before the
+ * copies and the single script.
+ *
+ * @param titleVram  the finished title image; copied, not mutated
+ */
+export function buildRoundSelectVram(spec, run, titleVram) {
+  const vram = Uint8Array.from(titleVram);
+  fillTilemap(vram, spec.fill);                 // $0361: D = $00
+  for (const t of spec.tiles) blockCopy(vram, t.dest, t.bytes);
+  for (const s of spec.scripts) run(vram, s);
+  return vram;
+}
