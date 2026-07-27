@@ -167,3 +167,17 @@ test('hideTitle hands the screen back to the level renderer', () => {
   assert.equal(s.title, null);
   assert.equal(s.video.bgMap, null);
 });
+
+test('showTitle asks for the title theme, not the level it was booted with', () => {
+  // $02A1: LD BC,$0003 -- song $00, mask $03 (play + stop-all).
+  //
+  // boot() calls initLevel() BEFORE showing the title, so the level's own
+  // musicFresh is already queued by then ($02 for level 1). Without this
+  // request the title plays the first level's theme and the two are literally
+  // the same song.
+  const s = createState(makeTunables());
+  s.titleManifest = fakeManifest();
+  s.sound = { queue: [{ id: 0x02, mask: 0x03 }] };   // what initLevel left
+  showTitle(s, fakeArt());
+  assert.deepEqual(s.sound.queue.at(-1), { id: 0x00, mask: 0x03 });
+});

@@ -63,6 +63,15 @@ export function showTitle(state, title) {
   state.camera.x = 0;
   state.camera.y = 0x1000;             // cameraPixels subtracts the $10 bias
   state.title = { frame: 0, cheat: 0, cursor: 0 };   // $C712: 0 START, 1 OPTION
+
+  // $02A1: LD BC,$0003 -> sub_00_0AE1. Song $00 is the title theme, and mask
+  // $03 is play + stop-all, so it replaces whatever was running.
+  //
+  // This is not optional tidying: boot() runs initLevel() BEFORE the title is
+  // shown, which has already queued the level's own musicFresh ($02 for level
+  // 1). Without this the title screen plays the first level's theme, and the
+  // two sound identical because they are.
+  requestSound(state, 0x00, 0x03);
 }
 
 export function hideTitle(state) {
