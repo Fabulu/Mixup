@@ -132,6 +132,9 @@
       <label>Level
         <select id="level"></select>
       </label>
+      <label>Difficulty
+        <select id="difficulty"></select>
+      </label>
       <button id="reset">Clear</button>
       <button id="launch">LAUNCH ▸</button>
     </div>
@@ -299,6 +302,24 @@ for (let i = 1; i <= 14; i++) {
 }
 levelSel.value = '0';
 
+// $C756. The cartridge boots at 1 -- read off the real machine at gameplay
+// start, not assumed -- so that is the default here too. It is NOT cosmetic:
+// 0 turns off water damage entirely and stretches level 1's water-spout pause
+// from $10 to $50 frames, and 2 gives bosses +5 HP.
+const DIFFICULTY = [
+  [0, 'Easy — no water damage, slow spouts'],
+  [1, 'Normal — the cartridge default'],
+  [2, 'Hard — +5 boss HP, fastest spouts'],
+];
+const diffSel = document.getElementById('difficulty');
+for (const [v, label] of DIFFICULTY) {
+  const o = document.createElement('option');
+  o.value = String(v);
+  o.textContent = label;
+  diffSel.appendChild(o);
+}
+diffSel.value = '1';
+
 function toggle(id) {
   if (selected.has(id)) selected.delete(id); else selected.add(id);
   sync();
@@ -353,6 +374,7 @@ document.getElementById('launch').addEventListener('click', async () => {
       level: pick === 0 ? 1 : pick,
       title: pick === 0,
       mods: [...selected],
+      difficulty: parseInt(diffSel.value, 10),
       onOptions: backToPicker,        // OPTION on the title returns here
     });
     window.game = running;

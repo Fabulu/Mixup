@@ -296,9 +296,11 @@ function opcode(drv, t, op) {
 
   switch (op) {
     case 0xD3: t.fixdur = 0; break;                       // FIXDUR off
-    case 0xE0: t.pitchEnv = 0; break;
-    case 0xE1: case 0xE2: break;                          // pitch-env delay
-    case 0xE3: case 0xE4: t.gateLimit = 0; break;         // GATE off
+    case 0xE0: t.pitchEnv = 0; t.pitchBend = 0; break;
+    case 0xE1: t.pitchEnvDelay = 0; break;                // pitch-env delay 0
+    case 0xE2: t.pitchEnvDelay = 1; break;                // delay 1
+    case 0xE3: t.pitchEnvDelay = 1; t.gateLimit = 0; break;
+    case 0xE4: t.gateLimit = 0; break;                    // GATE off
     case 0xE5: t.pan = 0xF0; break;                       // left
     case 0xE6: t.pan = 0x0F; break;                       // right
     case 0xE7: t.pan = 0xFF; break;                       // centre
@@ -424,7 +426,11 @@ function emit(drv) {
     t.envChanged = false;
     panning |= t.pan & (0x11 << c);
 
-    const freq = u16(t.freq + t.pitchBend);
+    // Master-ref §8: the pitch envelope "clamps at the LO byte" -- the bend is
+    // added to the low byte and does NOT carry into the high byte, so a sweep
+    // wraps within its octave instead of climbing out of it. (Vibrato is the
+    // one that does carry.)
+    const freq = (t.freq & 0xFF00) | u8(t.freq + t.pitchBend);
 
     if (c === 3) {
       // Noise: the note byte IS NR43, and there is no frequency word.

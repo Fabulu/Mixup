@@ -61,9 +61,15 @@ def main():
     pending = []
     counting = {'n': 0}
 
+    # Recording only starts once the request has actually been picked up out of
+    # the queue. Before that the driver is still running whatever the game was
+    # already playing, and those ticks would be compared against a port that
+    # starts from silence.
+    armed = {'v': False}
+
     def on_driver(_):
         # The hook fires on ENTRY, so close off the previous tick first.
-        if counting['n'] > 0:
+        if armed['v'] and counting['n'] > 0:
             ticks.append(pending.copy())
         pending.clear()
         counting['n'] += 1
@@ -80,7 +86,17 @@ def main():
     # a handful of `LD [HL+], A` sites; the rest are `LDH [C], A` or direct.
     # Hooking liberally and filtering on the address range is safer than
     # trying to prove which sites can reach the APU.
-    HL_SITES = [0x4307, 0x4311, 0x4319, 0x431D, 0x431F, 0x4324,
+    # These must be the STORE instructions, not the loads that feed them.
+    # Hooking $431F/$4324 (`LDH A,[C]` / `OR $80`) instead of $4320/$4325 reads
+    # A before it has been reloaded, so one value gets attributed to two
+    # consecutive registers -- which showed up as $FF12 and $FF13 both reading
+    # $F1 and made the whole recording useless.
+    #
+    # The output stage stages NRx1/NRx2/NRx3/NRx4 in $FFD8-$FFDB and copies
+    # them to $FF11 + chan*5: $4307 always writes NRx1; flags bit 0 (retrigger)
+    # takes the $431C arm and writes NRx2, NRx3 and NRx4|$80; otherwise NRx3
+    # goes out at $4311 and NRx4 only if flags bit 4 (frequency changed).
+    HL_SITES = [0x4307, 0x4311, 0x4319, 0x431D, 0x4320, 0x4325,
                 0x42EB, 0x42EE, 0x42F6]
     C_SITES = [0x42D1, 0x42D4, 0x42A4, 0x4003, 0x4006, 0x400D, 0x4012,
                0x405A, 0x421B, 0x4228, 0x4233, 0x425E]
@@ -108,13 +124,33 @@ def main():
     for pc, addr in DIRECT.items():
         pyboy.hook_register(7, pc, (lambda a: lambda _: record(a, pyboy.register_file.A))(addr), None)
 
-    # Queue the request exactly as sub_00_0AE1 would.
+    # Silence whatever the game is already playing, and wait for that to land,
+    # so the recording starts from the same nothing the port starts from.
     m = pyboy.memory
-    for slot in range(4):
-        if m[QUEUE + slot * 2] == 0 and m[QUEUE + slot * 2 + 1] == 0:
-            m[QUEUE + slot * 2] = sound_id
-            m[QUEUE + slot * 2 + 1] = mask
+
+    def queue(b, c):
+        for slot in range(4):
+            if m[QUEUE + slot * 2] == 0 and m[QUEUE + slot * 2 + 1] == 0:
+                m[QUEUE + slot * 2] = b
+                m[QUEUE + slot * 2 + 1] = c
+                return slot
+        return None
+
+    slot = queue(0, 0x02)                       # stop-all
+    for _ in range(400):
+        pyboy.tick(1, False)
+        if slot is None or m[QUEUE + slot * 2 + 1] == 0:
             break
+    for _ in range(120):
+        pyboy.tick(1, False)
+
+    slot = queue(sound_id, mask)
+    guard = 0
+    while not armed['v'] and guard < 4000:
+        guard += 1
+        pyboy.tick(1, False)
+        if slot is None or m[QUEUE + slot * 2 + 1] == 0:
+            armed['v'] = True
 
     guard = 0
     while len(ticks) < args.ticks and guard < args.ticks * 40 + 2000:

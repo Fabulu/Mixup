@@ -26,7 +26,8 @@ import { Sound } from './sound/index.js';
 const FRAME_MS = 1000 / 59.73;      // DMG frame rate
 
 export async function boot(canvas, { level = 1, tunables = {}, mods = [],
-                                     title = true, onOptions = null } = {}) {
+                                     title = true, onOptions = null,
+                                     difficulty = 1 } = {}) {
   // Mod params override the ROM defaults before anything reads them; explicit
   // `tunables` still wins last so a caller can force a single value.
   const loadout = resolveLoadout(mods);
@@ -36,6 +37,9 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
   state.video.spriteScale = loadout.render.spriteScale || 1;
   state.video.batarangAnim = loadout.render.batarangAnim || null;
   state.hitboxScale = loadout.render.hitboxScale || 1;
+  // $C756. Not cosmetic: it gates water damage, the water-spout rate, spike
+  // invulnerability, boss HP and several enemy behaviours. See docs §9.
+  state.flow.difficulty = Math.max(0, Math.min(2, difficulty | 0));
   const manifest = await loadManifest();
   const playerTiles = await loadPlayerTiles();
   await initLevel(state, level);

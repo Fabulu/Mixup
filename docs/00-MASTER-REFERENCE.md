@@ -498,6 +498,32 @@ track-start deliberately does NOT clear duty/pan/gate/wave/envelope pointers
 
 ---
 
+## 8b. DIFFICULTY (`$C756`)
+
+Three values, cycled 0→1→2 by the options screen (`$3980`/`$3991`). **The
+cartridge boots at 1**, measured on the real machine at gameplay start — not
+0, despite the RAM clear. Every read, so the setting can be reasoned about:
+
+| site | effect |
+|---|---|
+| `0:$2E81` | water damage only happens when **≠ 0**. Easy takes none at all. |
+| `1:$44D6` | type-7 water-spout step gate: 1 frame when ≠ 0, else 2 |
+| `1:$44FF` | spout pause between pulses: `$50` / `$28` / `$10` — hard pulses 5× as often as easy |
+| `0:$1E78` | hazard invulnerability window: `$40` / `$0C` / `$04` |
+| `0:$0D79` | **== 2 only**: enemy HP (`$C27E`) += 5 |
+| `1:$4FCD` | **== 2 only**: sets bit 3 on an enemy flag (extra behaviour) |
+| `0:$0E01` | **== 0 only**: seeds `$C288` = `$40` |
+| `0:$19C6`, `0:$19FE` | ≠ 0 changes two bytes in the batarang throw record |
+| `0:$3A6B`, `0:$3ADE`, `0:$3BF5` | ≠ 0 makes the batarang home on the BOSS (`$C296`/`$C298`/`$C28F`) instead of the player |
+| `1:$6D9B`, `1:$706C`, `1:$759C` | ≠ 0 sets `$C73D` = 1 in three enemy handlers |
+| `1:$4750` | type-10 handler constant |
+| `0:$39E4` | the options screen's own label lookup |
+
+So it is far from a damage multiplier: it changes hazard timing, boss HP,
+projectile targeting and enemy behaviour.
+
+---
+
 ## 9. GAME FLOW
 
 ### 9.1 State machine
