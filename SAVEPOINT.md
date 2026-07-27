@@ -200,17 +200,44 @@ both frequency bytes and the trigger. Open:
 
 ## Open bugs with a known reproduction
 
-- **Level 2 → 3 arrival kills you.** Level 1 exits right → 2; level 2 exits
-  **up** → 3. Arriving in level 3 you fall straight out of the world. The
-  manifest says level 3 starts at column 1 row 30, which has no floor under it,
-  but booting level 3 *directly* spawns at row 19 and lands safely — so the
-  transition path and the direct-load path **disagree**, and one of them is
-  reading the wrong entry. Note `sub_00_2889` already contains a per-level hack
-  of exactly this shape (`$2983`: level `$0A` writes X from `1:$7CED` but
-  deliberately SKIPS Y), so a special case for level 3 elsewhere in the chain
-  (`$2836`, `$2845`, `$2848`) is plausible. **Decisive test:** hook the real ROM
-  at the end of the 2 → 3 transition and read `$FF81`-`$FF84`. Do that before
-  changing anything.
+- **Level 2 → 3 arrival kills you — DIAGNOSED, and it is not a transition bug.**
+  The decisive test has been run (`tools/oracle/arrival.py`). Findings, all
+  measured on the cartridge:
+
+  1. The transition path and the direct-load path **agree**. Both reach
+     `sub_00_2889`, whose tail at `$2973` writes `$FF81`/`$FF83` from
+     `1:$7CED`, and both land the player at **column 1, row 30** — exactly what
+     the manifest says. There is no level-3 special case, and the earlier
+     "direct load spawns at row 19" claim was wrong; the port dies on a direct
+     boot into level 3 too. Nothing in `$2820`-`$285A` touches the player
+     position at all.
+  2. Row 30 in level 3 genuinely has **no map cell** under it. Col 1 is air
+     from row 1 down, on the cartridge and in our export alike
+     (`checkmap.py --level 3` is now an EXACT MATCH).
+  3. What holds the player up is a **map object**. `$C1E8` slot 0 is a type
+     `$08` that activates to `$88` (bit 7 = live) at level init. The floor
+     probe finds air in the map, falls through the slope look, and reaches
+     `loc_00_2426` — a scan over all 8 `$C1E8` slots that AABB-tests the probe
+     point against each live object's box. On a hit `$2610` rewrites the
+     player's Y to the object's surface and `$2622` returns `$FF`
+     (`SOLID_RUNTIME`). Verified by hooking the return of `sub_00_20BA`: it
+     returns `$FF`, and Y snaps 7683 → 7680 inside the call, every frame.
+
+  **The port implements none of `$2426`-`$2643`.** `slopeProbe` in
+  collision.js treats `$2418`/`$2423` as "return the neighbour's collision" and
+  "return 0", but both of those labels *fall into* the object scan. So every
+  map object in the port is intangible, and level 3 starts you on one.
+
+  Why this stayed hidden: the scan skips masked types `$07` and `$09`
+  outright (`$2454`, `$2459`) and ignores anything with bit 7 clear — and
+  types 3, 7, 9 are precisely the three the port has. Levels 1, 5, 7 use only
+  those; 2, 4, 8, 9, 10, 11, 14 have no objects at all. Level 3 is the first
+  level that uses a type outside that set.
+
+  **The fix is a port, not a patch:** `loc_00_2426`-`$2643` (the object
+  overlap stage of `sub_00_20BA`) plus object type `$08`. That also unblocks
+  the other levels holding unported types — 3 (`$01 $05 $06 $08`),
+  6 (`$0B`), 7 (`$04`), 12 (`$05 $06 $08`), 13 (`$03 $05 $06 $08`).
 
 ---
 
@@ -251,13 +278,34 @@ both frequency bytes and the trigger. Open:
 - **Prefer a loud failure to a plausible-looking one.** That same bug looked
   like a *rendering* fault because the window layer painted its fill tile when
   it had no tilemap. It now draws nothing, and the loader throws.
+- **A `--level` flag that does not reach the cartridge is a lie.**
+  `checkmap.py` and `probecells.py` both took `--level` and used it only to
+  pick which of OUR files to read — neither injected `$FFB0`, so the cartridge
+  always booted level 1. `checkmap.py --level 3` therefore diffed our level-3
+  export against level 1's `$D000` and reported 1707 bytes wrong. It sent this
+  investigation chasing a non-existent map-export bug until level 5 and 9 —
+  known bit-exact over 620 frames — also came back "wrong", which is what
+  exposed the tool. Both now inject at `$04BB` like `trace.py`, and all maps
+  are EXACT MATCH. When a trusted-good subject fails a new check, suspect the
+  check.
+- **Follow the label to where it *falls through*.** `$2418` and `$2423` read
+  like return sites — set `$FFBA` and done. They are not: both fall into
+  `loc_00_2426`, the map-object overlap scan. Stopping at the label is what
+  left every map object in the port intangible.
 
 ---
 
 ## Suggested next steps
 
-1. **The level 2 → 3 arrival** (see "Open bugs" above). It is a hard blocker on
-   playing past the first stage, and the decisive experiment is one hook.
+1. **The map-object overlap stage of the collision probe** —
+   `loc_00_2426`-`$2643` — plus object type `$08`. This is the level 2 → 3
+   blocker, now fully diagnosed (see "Open bugs"), and it is the same routine
+   that makes every map object solid, so it pays for itself across levels 3, 6,
+   7, 12 and 13. Port it against `arrival.py` and a new level-3 oracle
+   scenario; the geometry is an AABB test with the half-extents at object
+   bytes +6/+7, and the landing arm at `$2610` rewrites the player's Y.
+   Note `$2617` picks `$FD` vs `$FF` off `$FF80` — settle that branch against
+   the cartridge rather than from the listing.
 2. **The two sound bugs** (see "Sound"). Both are precisely located.
 3. **Verify melee/batarang enemy damage against the oracle** — add a scenario
    that kills an enemy on level 1 and compare `en0hp`. Biggest *unverified*

@@ -16,6 +16,7 @@ from pyboy import PyBoy
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ROM = os.path.join(ROOT, 'Batman - Return of the Joker (USA, Europe).gb')
 MAIN_LOOP = 0x0567
+LEVEL_INIT = 0x04BB   # one instruction after the route dispatcher writes $FFB0
 
 
 def main():
@@ -30,6 +31,14 @@ def main():
     pyboy.set_emulation_speed(0)
 
     started = {'v': False}
+    # $FFB0 must be injected at the dispatcher, exactly as trace.py does it.
+    # Without this the cartridge simply boots level 1, and every --level other
+    # than 1 silently compares our export against level 1's $D000 -- which
+    # reports a huge mismatch for maps that are in fact byte-perfect.
+    if args.level != 1:
+        pyboy.hook_register(
+            0, LEVEL_INIT,
+            lambda _: pyboy.memory.__setitem__(0xFFB0, args.level), None)
     pyboy.hook_register(0, MAIN_LOOP, lambda _: started.__setitem__('v', True), None)
     for f in range(2000):
         if started['v']:

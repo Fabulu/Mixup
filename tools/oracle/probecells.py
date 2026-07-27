@@ -16,6 +16,7 @@ ROM = os.path.join(ROOT, 'Batman - Return of the Joker (USA, Europe).gb')
 MAIN_LOOP = 0x0567
 CELL_FETCH = 0x20E7          # `LD A,(HL)` -- HL is the collision byte address
 PROBE_ENTRY = 0x20BA
+LEVEL_INIT = 0x04BB          # route dispatcher has just written $FFB0
 BUTTONS = {'R': 'right', 'L': 'left', 'U': 'up', 'D': 'down', 'A': 'a', 'B': 'b'}
 
 
@@ -34,6 +35,7 @@ def main():
     ap.add_argument('--frames', type=int, default=120)
     ap.add_argument('--from', dest='lo', type=int, default=100)
     ap.add_argument('--to', dest='hi', type=int, default=110)
+    ap.add_argument('--level', type=int, default=1)
     args = ap.parse_args()
 
     timeline = parse_script(args.script)
@@ -43,6 +45,12 @@ def main():
     started = {'v': False}
     events = []
 
+    # Inject $FFB0 at the dispatcher (see trace.py). Without it --level is a
+    # no-op and every probe is recorded against level 1.
+    if args.level != 1:
+        pyboy.hook_register(
+            0, LEVEL_INIT,
+            lambda _: pyboy.memory.__setitem__(0xFFB0, args.level), None)
     pyboy.hook_register(0, MAIN_LOOP, lambda _: started.__setitem__('v', True), None)
 
     def on_probe(_):
