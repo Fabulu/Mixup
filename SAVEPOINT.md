@@ -259,12 +259,19 @@ both frequency bytes and the trigger. Open:
   but it will not be elsewhere. Levels holding unported types: 3 (`$01 $05
   $06 $08`), 6 (`$0B`), 7 (`$04`), 12 (`$05 $06 $08`), 13 (`$03 $05 $06 $08`).
 
-- **Level 3 diverges at frame 358** on `20:,120:R,20:RA,120:R,20:RA,180:R`:
-  the port takes a knockback (`air` 1, `vy` 24 from `$17B2`) that the cartridge
-  does not. This is **not** the object scan — it reproduces identically with the
-  scan restricted to slot 0 — but an older gap that was simply unreachable while
-  the player died on arrival. `l3-object-floor` is capped at 350 because of it.
-  Start by finding what sets `$C714` (iframes) at that frame.
+- ~~Level 3 diverges at frame 358~~ — **closed, and it was a lag frame.** The
+  port took a knockback the cartridge did not. Chasing `$C714` would have been
+  the wrong thread: enemy 0's X actually diverges at **318**, where `$C757` is
+  set — the only lag frame in the run, measured. The enemy driver skips that
+  iteration, the cartridge's enemy stalls one step, and every later X sits 21
+  world units behind the port's. 21 units is enough to put the enemy in contact
+  range one frame early, which is the knockback at 357.
+
+  This is instruction-level timing and out of scope by definition (§28), not a
+  porting bug. `l3-object-floor` is now capped at **317** — one frame short of
+  the lag — specifically so enemy fields can be compared as well. A longer run
+  would only have passed by excluding them, which hides a divergence instead of
+  bounding it.
 
 ---
 

@@ -207,13 +207,21 @@ const SCRIPTS = [
   // it. Before the scan was ported he fell straight to the death row, which is
   // what the "level 2 -> 3 arrival kills you" bug actually was.
   //
-  // Capped at 350. The first divergence is frame 358, where the port takes a
-  // knockback the cartridge does not. That is NOT the scan -- it reproduces
-  // identically with the scan restricted to slot 0 -- but a separate, older
-  // gap that was simply unreachable while the player died on arrival. Raise
-  // this cap once that is found.
-  { name: 'l3-object-floor', level: 3, frames: 350,
-    script: '20:,120:R,20:RA,120:R,20:RA,180:R' },
+  // Capped at 317 because frame 318 is a LAG FRAME -- $C757 is set there, the
+  // only one in the run, measured. The enemy driver skips that iteration, so
+  // the cartridge's enemy 0 stalls one step and every later enemy X sits 21
+  // world units behind the port's. That is instruction-level timing and out of
+  // scope by definition (see docs/03-VERIFICATION.md §28), not a porting bug.
+  //
+  // Downstream, it is also the whole explanation for the "port takes a
+  // knockback at 358 that the cartridge does not": 21 units is enough to put
+  // the enemy in contact range one frame early. Nothing to fix.
+  //
+  // 317 is deliberately chosen so ENEMY_FIELDS can be compared too -- the
+  // alternative was a longer run that only passes because enemy fields are
+  // excluded, which would hide the divergence rather than bound it.
+  { name: 'l3-object-floor', level: 3, frames: 317,
+    script: '20:,120:R,20:RA,120:R,20:RA,180:R', extra: ENEMY_FIELDS },
 ];
 
 const FIELDS = ['x', 'y', 'vx', 'vy', 'air', 'facing', 'camX', 'camY'];
