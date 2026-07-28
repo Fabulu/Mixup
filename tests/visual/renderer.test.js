@@ -40,6 +40,7 @@ function makeState({
   width = 24, scx = 0, scy = 0, bgp = 0xE4, obp0 = 0xE4, obp1 = 0xE4,
   metatiles = [[0, 0, 0, 0]], mapId = 0, bg = [], obj = [], sprites = [],
   windowLatchY = 0x90, windowX = 0x07, windowTile = 0x01,
+  windowDither = false,
 } = {}) {
   const cells = new Uint8Array(width * 16 * 2);
   for (let c = 0; c < width; c++) {
@@ -54,7 +55,7 @@ function makeState({
     camera: { x: scx << 4, y: (scy + 0x100) << 4 },
     level: { number: 3, width, height: 16, cells, metatiles, tiles: { bg: bgTiles, obj: objTiles } },
     video: { scx, scy, bgp, obp0, obp1, sprites,
-             windowLatchY, windowX, windowTile },
+             windowLatchY, windowX, windowTile, windowDither },
   };
 }
 
@@ -414,6 +415,18 @@ function winState(opts = {}) {
   return s;
 }
 
+test('an opaque window user gets no dither', () => {
+  // The options panel ($3893) drives the same window with windowDither unset.
+  // Leaving the water's 50% alternation on stripes the background straight
+  // through the menu.
+  const fb = render(winState({ windowLatchY: 100 }));
+  let dark = 0;
+  for (let y = 120; y < SCREEN_H; y++) {
+    for (let x = 0; x < SCREEN_W; x++) if (at(fb, x, y)) dark++;
+  }
+  assert.equal(dark / ((SCREEN_H - 120) * SCREEN_W), 1, 'fully opaque');
+});
+
 test('the window is invisible while parked off-screen', () => {
   // $021B/$0F25 leave rWY at $90 for every level that is not 1 or 2. If this
   // regressed, a flat slab of tile $01 would cover every level in the game.
@@ -422,7 +435,11 @@ test('the window is invisible while parked off-screen', () => {
 });
 
 test('the window covers everything below its Y and nothing above', () => {
-  const fb = render(winState({ windowLatchY: 100 }));
+  // windowDither marks this as the WATER's use of the window. The dither is an
+  // approximation of the water body, not a property of the window itself, and
+  // the options panel needs the window opaque -- so the flag has to be set for
+  // the behaviour below to be the one under test.
+  const fb = render(winState({ windowLatchY: 100, windowDither: true }));
   for (let y = 0; y < 100; y++) assert.equal(at(fb, 4, y), 0, `row ${y} above`);
 
   const cover = (from, to) => {

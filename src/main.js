@@ -140,13 +140,17 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
           if (r === 'start') startPressed = true;
           // $0312 -> loc_00_3893. The options screen is drawn INTO the title's
           // own window tilemap, which is why titleArt has to still be in hand.
-          // $0312 -> loc_00_3893. src/options.js and src/raster.js are written
-          // and the SQUASH is verified working, but the screen is NOT wired up:
-          // I had the panel's source wrong (see the header of options.js), so
-          // enabling it renders a broken screen. Until that is settled OPTION
-          // still returns to the launcher, which is the same stopgap as before
-          // -- a wrong-looking screen is worse than an honest placeholder.
-          else if (r === 'options' && onOptions) { running = false; onOptions(); return; }
+          // $0312 -> loc_00_3893. NOT hideTitle(): options is drawn OVER the
+          // title, and the title's BG map and tile cache stay put. Nulling them
+          // drops the renderer back to the LEVEL map and the squash chews
+          // through level-1 tiles.
+          else if (r === 'options') {
+            state.title = null;
+            state.raster.mode = 7;              // $38AB: $FFC7 = 7
+            state.raster.closing = 0;
+            state.raster.delta = 0;
+            showOptions(state, titleArt.windowMap);
+          }
         } else if (state.options) {
           // loc_00_38D5. tickRaster is the VBlank half of the squash and has
           // to run every frame the mode is active, not just on input.

@@ -137,9 +137,14 @@ function drawWindow(state, fb, bands) {
     const bgp = palMap(bandFor(bands, y).bgp);
     const rowBase = y * SCREEN_W;
 
-    // Rows 0-1 are the artwork surface; everything below is the flat body, and
-    // only the body gets the transparency dither.
-    const solid = mapRow < 2;
+    // The dither is a WATER approximation, not a property of the window: on
+    // hardware the window is always opaque. Rows 0-1 are the water's artwork
+    // surface and stay solid; the body below is drawn on alternating pixels so
+    // the background reads through it.
+    //
+    // Any other window user -- the OPTIONS panel -- must NOT get it, or the
+    // background stripes straight through the menu.
+    const solid = !v.windowDither || mapRow < 2;
     const step = solid ? 1 : 2;
     const start = solid ? left : left + ((y ^ left) & 1);
 

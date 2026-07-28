@@ -83,6 +83,9 @@ export async function loadWaterArt() {
 export function applyWaterArt(state, art) {
   state.waterArt = art || null;
   state.video.windowMap = art ? art.map : null;
+  // The window's transparency dither belongs to the WATER, not to the window.
+  // Other window users (the options panel) need it opaque.
+  state.video.windowDither = !!art;
   state.waterArtPhase = -1;
 }
 

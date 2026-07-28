@@ -4,24 +4,23 @@
 // Three rows: GAME LEVEL (difficulty $C756), SOUND TEST ($FF80 index, $C713 the
 // BCD number shown) and EXIT.
 //
-// NOT WIRED UP YET, and the reason is worth reading before you finish it.
+// The PANEL IS NOT DRAWN HERE. The title's own VRAM scripts already wrote
+// "OPTION MODE / GAME LEVEL / SOUND TEST / EXIT" into the WINDOW tilemap, where
+// it sits off-screen at rWY $90; this screen slides the window down to $45 and
+// patches two dynamic fields into it. What LOOKS like a screen being drawn is a
+// window slide plus the raster squash in raster.js.
 //
-// The panel text "OPTION MODE / GAME LEVEL / SOUND TEST / EXIT" IS present in
-// our built title VRAM at $9C00 (rows 0/2/5/8 -- decode it and they are simply
-// there), which made "the panel is pre-drawn in the window map, the screen just
-// slides it down" look obviously right. Driving it proves that is wrong: the
-// difficulty word lands at $9C00 and overwrites "OPTION MODE", because the
-// blob's dest really is $00 $00 with only the HIGH byte patched to $9C ($3A05).
-// A dest of $9C00 cannot be where NORMAL belongs on a screen that shows it
-// beside GAME LEVEL, so the panel this code paints into is not the surface the
-// cartridge paints into.
+// MEASURED on the cartridge inside the options loop (211 hits at $38D5, rWY
+// confirmed $45 before reading anything -- an earlier probe that skipped that
+// check was still on the title and produced two entirely fictitious dumps):
 //
-// I could not settle where it IS: my probe's title->OPTION navigation never
-// actually entered the screen (rWY stayed $90), so every window-map reading I
-// took of "the options screen" was really the title. Settle THAT first -- drive
-// the cartridge into $38D5 and confirm it with rWY before trusting any dump.
+//   window row 0  OPTION MODE      row 3  NORMAL   at col 14 -> $9C6E
+//   window row 2  GAME LEVEL       row 6  00       at col 16 -> $9CD0
+//   window row 5  SOUND TEST       row 8  EXIT
 //
-// What IS verified: the raster squash in raster.js. Measured and seen working.
+// The difficulty blob ships with dest $00 $00 and sub_00_39E4 patches BOTH
+// bytes -- $3A05 writes $9C into $C61B and $3A0A writes $6E into $C61C. Reading
+// only the first patch gives $9C00, which lands NORMAL on top of OPTION MODE.
 
 import { BTN } from './player.js';
 import { runVramScript } from './vramscript.js';
@@ -56,7 +55,8 @@ function paintDifficulty(state, o) {
   const blob = state.tables?.optionsDifficulty?.[state.flow.difficulty];
   if (!blob || !o.windowMap) return;
   const script = Uint8Array.from(blob);
-  script[0] = 0x9C;                             // $3A05: patch the dest bank
+  script[0] = 0x9C;                             // $3A05: LD [$C61B],A
+  script[1] = 0x6E;                             // $3A0A: LD [$C61C],A -- BOTH
   runVramScript(o.windowMap, script, { base: 0x9C00 });
 }
 
@@ -117,6 +117,7 @@ export function showOptions(state, windowMap) {
   };
   setWindowY(state, WY_PARKED);
   state.video.windowMap = windowMap;
+  state.video.windowDither = false;   // the panel is opaque, unlike the water
   // $38A5: OBP1's shadow goes to $1B for this screen only. BGP is left alone
   // here -- the raster arm sets it to $1B per scanline once the squash starts.
   state.video.obp1 = 0x1B;
