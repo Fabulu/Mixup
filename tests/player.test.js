@@ -10,7 +10,7 @@ import { updatePlayer, BTN, ANIM } from '../src/player.js';
 import { i8, u8 } from '../src/state.js';
 
 import {
-  makeState, grid, fillCol, floorFrom, placePlayer, setInput, step, corridor,
+  makeState, grid, put, fillCol, floorFrom, placePlayer, setInput, step, corridor,
 } from './helpers.js';
 
 const GROUNDED = 0, RISING = 1, FALLING = 2;
@@ -711,4 +711,190 @@ test('the metasprite index equals facing (NOT facing XOR 1)', () => {
   setInput(left, 0);
   step(left);
   assert.equal(left.player.msIndex, 1, 'facing left -> entry 1 (attr $10)');
+});
+
+// ---------------------------------------------------------------------------
+// The punch.  ROM: sub_00_201A -- probe mode 5 fired on attack frame 8, then
+// the recoil tail at $20A7.  The enemy scan it dispatches to is pinned in
+// enemies.test.js; what is pinned here is which cells let the fist through.
+// ---------------------------------------------------------------------------
+
+/**
+ * One frame before the hit test fires ($1915: the timer steps 7 -> 8), in open
+ * air so nothing else in the update moves the player first. `cell` is written
+ * where the mode-5 probe lands: 14 px ahead ($2024) and 5 px up ($2032).
+ */
+function punchScene({ facing = 0, cell = null } = {}) {
+  const g = grid(32);
+  if (cell) put(g, facing === 0 ? 6 : 4, 12, cell);
+  // critWindow 0 keeps the scan on its ordinary 2-damage arm: $26D0 reads rLY
+  // mid-frame, so the port's crit is a model and cannot be asserted (docs/03
+  // par.28). At frame 0 the model DOES fire, which is worth knowing.
+  const state = makeState(g, { tunables: { critWindow: 0 } });
+  placePlayer(state, 5, 13, 0x80, 0x00);
+  Object.assign(state.player,
+                { air: FALLING, vx: 0, vy: 0, facing, attackTimer: 7 });
+  setInput(state, 0);
+  return state;
+}
+
+/** An enemy sitting exactly on the probe point, in the SCREEN space $2430 uses. */
+function enemyAtProbe(state) {
+  const p = state.player;
+  const px = (p.x + (p.facing === 0 ? 0x00E0 : -0x00E0)) & 0xFFFF;
+  const py = (p.y - 0x0050) & 0xFFFF;
+  const r = state.enemies[0];
+  r[0] = 0x80;                                 // active
+  r[2] = 1;                                    // walker
+  r[7] = ((px >> 4) + 8) & 0xFF;               // sub_00_1172, camera at the origin
+  r[8] = (((py & 0x0FFF) >> 4) + 0x10) & 0xFF;
+  r[0x0B] = 7; r[0x0C] = 15;                   // the level-3 walker's box
+  r[0x16] = 6;
+  return r;
+}
+
+test('a punch into a wall never reaches the enemy scan -- but water is see-through', () => {
+  // ROM: $20EC-$20FD. For mode 5 a non-empty cell IS the answer and $20FD
+  // returns it, so an enemy standing inside solid geometry cannot be punched.
+  // $20F8 is the single exception: the cell is compared against $08 and water
+  // jumps to the empty path at $20FF, which is what makes the enemies wading
+  // through the level-1/2 sewers hittable at all.
+  const wall = punchScene({ cell: '#' });
+  const walled = enemyAtProbe(wall);
+  step(wall);
+  assert.equal(walled[0x16], 6, 'the cell answered for the whole probe');
+  assert.equal(walled[0x17], 0, 'and the scan never ran');
+  assert.equal(wall.player.vx, 0, '$2041: a non-door cell goes home without recoil');
+
+  const water = punchScene({ cell: '~' });
+  const soaked = enemyAtProbe(water);
+  step(water);
+  assert.equal(soaked[0x16], 4, 'water counts as empty for the fist');
+});
+
+test('a connecting punch recoils the player 4 subpx AWAY from his facing', () => {
+  // ROM: $20A7-$20B7, reached only when the probe came back $FF. $FC facing
+  // right, $04 facing left -- landing a punch shoves you backwards. MEASURED
+  // with the level-3 punch scenario; the earlier port had no recoil at all.
+  const right = punchScene();
+  enemyAtProbe(right);
+  step(right);
+  assert.equal(right.player.vx, -4);
+
+  const left = punchScene({ facing: 1 });
+  enemyAtProbe(left);
+  step(left);
+  assert.equal(left.player.vx, 4);
+});
+
+test('the recoil is skipped mid bat-rope, and a whiff never reaches it', () => {
+  // ROM: $20A7 `LD A,[$C71E] / AND A / RET NZ`, and $203D/$2041 -- only $FF
+  // (an enemy) or a cell whose low 5 bits are $1F (a door) gets that far.
+  const rope = punchScene();
+  enemyAtProbe(rope);
+  rope.player.action = 2;                      // rope flight
+  step(rope);
+  assert.equal(rope.player.vx, 0);
+
+  const whiff = punchScene();                  // no enemy, empty cell
+  step(whiff);
+  assert.equal(whiff.player.vx, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Death.  ROM: loc_00_1755 (the pit), loc_00_17B6 (hp), sub_00_29E7 (the
+// sequence itself).  Two separate tests at two different points of the update,
+// with different rules -- they are not variants of one death check.
+// ---------------------------------------------------------------------------
+
+test('the pit test runs at the TOP of the update and eats the rest of the frame', () => {
+  // ROM: $1755 sits ahead of the knockback block, and $1773 is a JP into
+  // sub_00_29E7, not a CALL -- input, movement, gravity and anim select never
+  // run on the death frame. Testing after vertical() instead reaches the death
+  // row one frame early (MEASURED: level-3 pit, the port's f117 against the
+  // cartridge's f118).
+  const state = sky({ vx: -2, vy: -66 });
+  state.player.y = 0x2100;                     // $FF83 = $21, the death row
+  const { x, y } = state.player;
+  step(state);
+
+  assert.equal(state.player.dead, 1);
+  assert.equal(state.player.hp, 0);            // $176C
+  assert.equal(state.player.action, 0);        // $1769
+  assert.equal(state.player.y, y, 'no gravity, no integration');
+  assert.equal(state.player.x, x);
+  assert.equal(state.deathTimer, 120);         // $2A00: $78
+  // $2A05 is `LD BC,$0903` -- id $09 on channel mask $03. The port queues mask
+  // $01, so only the id is asserted here; see the report.
+  assert.equal(state.sound.queue.at(-1).id, 0x09);
+});
+
+test('sub_00_29E7 does NOT zero VelX or VelY', () => {
+  // ROM: $29E7-$2A0B copies the $C1C0 particle table, writes $C715 and $C712
+  // and queues the jingle. It never touches $FF86/$FF87. MEASURED: a pit death
+  // mid-fall keeps vx = -2 and vy = -66 frozen in the trace for the whole
+  // sequence. Zeroing them here was a port invention, and it diverged from the
+  // frame after the death onwards.
+  const state = sky({ vx: -2, vy: -66 });
+  state.player.y = 0x2100;
+  step(state);
+  assert.equal(state.player.vx, -2);
+  assert.equal(state.player.vy, -66);
+
+  step(state, 10);
+  assert.equal(state.player.vx, -2, 'and the sequence never touches them either');
+  assert.equal(state.player.vy, -66);
+  assert.equal(state.deathTimer, 110, 'the timer is the only thing moving');
+});
+
+test('level $0B dies a metatile and a half higher than everywhere else', () => {
+  // ROM: $1756 -- $FFB0 == $0B takes the `CP $1B` arm instead of `CP $21`.
+  // Its floor really is higher up; sharing the row lets you fall through it.
+  const deep = makeState(grid(8), { level: 0x0B });
+  placePlayer(deep, 3, 0, 0x80, 0x00);
+  deep.player.y = 0x1B00;
+  step(deep);
+  assert.equal(deep.player.dead, 1);
+
+  const other = makeState(grid(8));
+  placePlayer(other, 3, 0, 0x80, 0x00);
+  other.player.y = 0x1B00;
+  step(other);
+  assert.equal(other.player.dead, 0, 'the same row is survivable elsewhere');
+});
+
+test('empty hp does NOT kill an airborne player -- unless he is in rope flight', () => {
+  // ROM: $17C4-$17CE, a gate the pit arm does not have. The fatal hit's own
+  // knockback sets $FF80 = 1 ($179A), so the launch always plays out and the
+  // death starts from the landing. $C71E == 2 is the one airborne state that
+  // dies where it is.
+  const airborne = sky();
+  airborne.player.hp = 0;
+  step(airborne);
+  assert.equal(airborne.player.dead, 0);
+
+  const rope = sky({ action: 2 });
+  rope.player.hp = 0;
+  step(rope);
+  assert.equal(rope.player.dead, 1);
+  assert.equal(rope.player.action, 0, '$17DF clears the action');
+
+  const grounded = ground();
+  grounded.player.hp = 0;
+  step(grounded);
+  assert.equal(grounded.player.dead, 1);
+});
+
+test('the hp death sits AFTER the knockback, so the killing blow still throws you', () => {
+  // ROM: $1776 knockback, then $17B6 death -- and the knockback writes the very
+  // byte the death test reads two instructions later ($1798 `LD A,$01 /
+  // LDH [$FF80],A`). So the frame that empties the energy bar launches instead
+  // of killing. Run the death test first and the throw is lost entirely.
+  const state = ground();
+  state.player.hp = 0;
+  state.player.iframes = 0x5A;                 // a fresh stamp, thrown right
+  step(state);
+  assert.equal(state.player.air, RISING, 'the knockback ran');
+  assert.equal(state.player.vx, 16);
+  assert.equal(state.player.dead, 0, 'and the death did not');
 });

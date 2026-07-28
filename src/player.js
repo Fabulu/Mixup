@@ -7,7 +7,7 @@
 // byte $BE and the clamp is `CP C / JR NC`.
 
 import { u8, i8 } from './state.js';
-import { probeFloor, probeCeiling, resolveWall, probe, MODE_PUNCH } from './collision.js';
+import { probeFloor, probeCeiling, resolveWall, probe, MODE_PUNCH, COLL } from './collision.js';
 import { findFreeSlot, throwBatarang } from './batarang.js';
 import { meleeHitTest } from './enemies.js';
 import { updateScriptedMove } from './scriptedmove.js';
@@ -27,24 +27,45 @@ export function updatePlayer(state) {
   // Death runs its own sequence and suppresses everything else.
   if (state.player.dead) { deathTick(state); return; }
 
+  // $1643: a scripted door/exit walk-through replaces the entire player
+  // update while it runs -- no input, no physics, no collision.
+  if (updateScriptedMove(state)) { selectAnim(state); return; }
+
+  // $173C-$1773: the exit tests and the PIT death test run at the TOP of the
+  // player update, on the position the PREVIOUS frame left behind -- before
+  // knockback, input and movement. Testing after vertical() instead reached
+  // the death row one frame before the cartridge (MEASURED: level-3 pit,
+  // port hp hit 0 at f117 where the cartridge waits for f118's update).
+  // On the frame the pit test fires, $1773 is a JP, not a CALL: the rest of
+  // the update -- movement, anim select, all of it -- never runs.
+  //
+  // The $FE exit is NOT like that. $286A is `JP loc_00_1776`: after the
+  // teleport it re-enters this very chain at knockback and the whole rest of
+  // the frame still runs. Returning out of the update there froze X for a
+  // frame -- and $FE is the TOP exit on 12 of the 14 levels (table 0:$286D),
+  // so it is the ordinary "walk off the top, fall back in" path, not an edge.
+  const exit = checkExit(state);        // $173C / $174A
+  if (exit === 'reload') return;
+  if (checkPitDeath(state)) return;     // $1755
+  knockback(state);                     // $1776, before the input dispatch
+  if (checkHpDeath(state)) return;      // $17B6
+
+  // $17EA/$17FB: the cling freeze sits AFTER all four of those, not before.
+  // Putting it first skipped knockback for the 16 frames of a wall freeze,
+  // and since main.js decrements $C714 every frame regardless, a $5A stamp
+  // could decay past the >= $59 window at $1782 and lose its launch entirely.
   if (clingLocked(state)) {
-    // ROM: $17FB jumps to loc_00_1865, which runs both wall probes and
-    // nothing else -- no input, no movement, no gravity.
+    // $17FB jumps to loc_00_1865, which runs both wall probes and nothing
+    // else -- no input, no movement, no gravity.
     resolveWall(state, 'right');
     resolveWall(state, 'left');
     selectAnim(state);
     return;
   }
-  // $1643: a scripted door/exit walk-through replaces the entire player
-  // update while it runs -- no input, no physics, no collision.
-  if (updateScriptedMove(state)) { selectAnim(state); return; }
 
-  knockback(state);                     // $1780, before the input dispatch
   horizontal(state);
   attack(state);                        // $18FB, between horizontal and vertical
   vertical(state);
-  if (checkExit(state)) return;         // $1740 -- runs BEFORE the death test
-  checkDeath(state);                    // $1755
   selectAnim(state);
 }
 
@@ -84,39 +105,77 @@ function checkExit(state) {
     p.vy = 0;                                         // $2862
     p.airThrottle = 0;                                // $2864
     p.air = AIR_FALLING;                              // $2866
-    return true;
+    // $286A: JP loc_00_1776 -- the update CONTINUES from knockback.
+    return 'teleport';
   }
 
   // main.js performs the reload; initLevel is async.
   state.flow.nextLevel = dest;                        // $2834: $FFB0
-  return true;
+  return 'reload';
 }
 
-/** ROM: loc_00_1755 - fall past the death row, or run out of HP. */
-function checkDeath(state) {
+/**
+ * ROM: loc_00_1755 - fall past the death row.
+ *
+ * @returns true when the rest of the player update must be skipped -- BOTH
+ * arms end it: $1772 RET when already dying, $1773 JP into the sequence.
+ */
+function checkPitDeath(state) {
   const p = state.player;
-  if (p.dead) return;
 
   // $1756: level $0B's floor is higher than everywhere else, so it dies at
   // row $1B instead of $21.
   const row = state.level.number === 0x0B ? 0x1B : state.tunables.deathPitRow;
+  if ((p.y >> 8) < row) return false;
 
-  if ((p.y >> 8) >= row || p.hp === 0) {
-    p.action = 0;                       // $1769
-    p.hp = 0;                           // $176C
-    startDeath(state);                  // $1773
-  }
+  p.action = 0;                         // $1769
+  p.hp = 0;                             // $176C
+  if (p.dead) return true;              // $1772: already dying, still ends here
+  startDeath(state);                    // $1773
+  return true;
 }
 
-/** ROM: sub_00_29E7 */
+/**
+ * ROM: loc_00_17B6-$17E7 - the hp == 0 death, tested AFTER the knockback
+ * block, with a gate the pit test does not have: an AIRBORNE player does not
+ * die of empty hp unless he is in rope flight ($C71E == 2). The fatal hit's
+ * own knockback sets air = 1 ($179A), so the launch plays out and the death
+ * starts from the landing. (Level 14 gates on enemy slot 0 +1 bit 7 instead,
+ * $17BD -- boss states are unported, not modelled.)
+ *
+ * @returns true when the death starts here, which ends the update ($17E7 is
+ * a JP). An ALREADY dying player falls through and keeps updating -- unlike
+ * the pit arm.
+ */
+function checkHpDeath(state) {
+  const p = state.player;
+  if (p.air !== 0 && p.action !== 2) return false;   // $17C4-$17CE
+  if (p.hp !== 0) return false;         // $17D0
+  if (p.dead) return false;             // $17D5
+  p.springArmed = 0;                    // $17DC: $C751
+  p.action = 0;                         // $17DF
+  // $17E2: $C717 = $FF (a sequencer latch) -- not modelled.
+  startDeath(state);                    // $17E7
+  return true;
+}
+
+/**
+ * ROM: sub_00_29E7. Sets the dying flag, the $78-frame timer, the jingle,
+ * and the $C1C0 particle burst (not modelled). It does NOT touch vx or vy --
+ * MEASURED: a pit death mid-fall keeps vx = -2, vy = -66 frozen in the
+ * trace for the whole sequence. Zeroing them here was a port invention and
+ * diverged from f-death+1 on.
+ */
 function startDeath(state) {
   const p = state.player;
   if (p.dead) return;                   // $29EB: already dying
   p.dead = 1;                           // $29FD: $C715
   state.deathTimer = state.tunables.deathSequenceFrames;   // $2A00: $78
-  p.vx = 0;
-  p.vy = 0;
-  requestSound(state, 0x09);            // $2A05: the death jingle
+  // $2A05 is LD BC,$0903 -- sub_00_0AE1 takes B as the id and C as the mask,
+  // so this is song $09 with mask $03 (play + stop-all), not the $01 every
+  // SFX site uses. It is music: the death jingle has to silence the level
+  // theme, and mask $01 would leave both playing.
+  requestSound(state, 0x09, 0x03);
 }
 
 /**
@@ -211,27 +270,45 @@ function pressAttack(state) {
 /**
  * ROM: sub_00_201A. Probe mode 5, fired on attack frame 8.
  *
- * Reaches 14 px ahead and 5 px up (or down if Down is held). Only cells whose
- * low 5 bits are $1F -- doors and actor-owned destructibles -- respond; a
- * punch does not break ordinary terrain. Enemy damage is a separate test that
- * arrives with the enemy array.
+ * Reaches 14 px ahead and 5 px up (or down if Down is held). The probe
+ * settles in this order, and the order is load-bearing:
+ *
+ *   1. $20C9: probe row >= $20 -> nothing at all, not even the enemy scan.
+ *   2. $20EC-$20FD: a non-empty map cell answers for the whole probe --
+ *      EXCEPT water ($08), which the punch treats as empty ($20F8). So a
+ *      punch "into a wall" can never hit an enemy standing inside it.
+ *   3. Empty (or water): loc_00_2423 -> $2426 -> the SCREEN-SPACE enemy scan
+ *      at $2643 (meleeHitTest). That scan is what makes enemies punchable.
+ *
+ * Of the map cells, only ones whose low 5 bits are $1F -- doors and
+ * actor-owned destructibles -- respond; a punch does not break terrain.
+ *
+ * $20A7 tail, MEASURED with the level-3 punch scenario: a punch that
+ * connects (enemy, or arming a door break) recoils the player, vx = -4 away
+ * from facing -- unless a bat-rope action is running ($C71E).
  */
 function punchHitTest(state) {
   const p = state.player;
   const dx = p.facing === 0 ? 0x00E0 : -0x00E0;         // $2024 / $2029
   const dy = (state.input.held & BTN.DOWN) ? 0x0050 : -0x0050;   // $202C
 
-  // $2654: the swing also tests every active enemy, which is what makes them
-  // killable at all.
-  meleeHitTest(state);
-
   const hit = probe(state, dx, dy, MODE_PUNCH);
-  if (hit.value === 0xFF) return;                       // $203D
-  if ((hit.value & 0x1F) !== 0x1F) return;              // $2041: doors only
-  if (state.doors.active) return;                       // $2046: $C733 busy
-  state.doors.active = 1;                               // $204D
-  state.doors.col = hit.col;
-  state.doors.row = hit.row;
+  let value = hit.value;
+  if ((hit.py >> 8) < 0x20 && (value === 0 || value === COLL.WATER)) {
+    value = meleeHitTest(state, hit.px, hit.py);        // $2423 -> $2643
+  }
+
+  if (value !== 0xFF) {                                 // $203D
+    if ((value & 0x1F) !== 0x1F) return;                // $2041: doors only
+    if (state.doors.active) return;                     // $2046: $C733 busy
+    state.doors.active = 1;                             // $204D
+    state.doors.col = hit.col;
+    state.doors.row = hit.row;
+  }
+
+  // $20A7: punch recoil. Skipped mid-rope; NOT skipped by anything else.
+  if (p.action !== 0) return;                           // $C71E
+  p.vx = p.facing === 0 ? -4 : 4;                       // $20B1 ($FC) / $20B5
 }
 
 /**

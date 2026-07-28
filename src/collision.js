@@ -348,8 +348,13 @@ const absDiff = (a, b) => (a >= b ? a - b : b - a);
 function actorOverlap(state, mode, probeX, probeY, mapResult) {
   const p = state.player;
 
-  // $2643 is the punch probe's own scan, which is not ported. Leaving the
-  // map's answer alone is what the port did before this routine existed.
+  // $2643 is the punch probe's own scan over the ENEMY array -- ported as
+  // meleeHitTest in enemies.js and dispatched by punchHitTest in player.js,
+  // which owns the whole mode-5 flow. It never comes through here.
+  // Unreachable as it stands: actorOverlap is only called from MODE_FLOOR and
+  // the two horizontal paths, because the punch never routes through $2418 or
+  // $2423 at all ($20EC/$2104 send mode 5 straight to $2643, the enemy scan).
+  // Kept as the ROM's own answer for the mode, not as live code.
   if (mode === MODE_PUNCH) return mapResult;
 
   const probeSX = screenX(state, probeX);            // $2430 -> $FFB6

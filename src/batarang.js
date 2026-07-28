@@ -77,41 +77,102 @@ export function updateBatarangs(state) {
     // the test uses those fresh coordinates. Testing against the previous
     // frame's screen position instead makes the catch land two frames late.
     updateScreenPos(state, b);
-    batarangHitTest(state, b);          // $3C1B
-    if (b.flags & FLAG_RETURNING) catchTest(state, b);
+
+    // $3BE9: order matters -- a RETURNING batarang runs the catch test FIRST
+    // ($3C0B) and, if caught, is cleared on the spot ($3D40) and never reaches
+    // the enemy scan that frame. Hit-testing before the catch dealt damage on
+    // the catch frame that the cartridge never deals.
+    if (b.flags & FLAG_RETURNING) {
+      catchTest(state, b);
+      if (!b.active) continue;
+    }
+    batarangHitTest(state, b);          // $3C17
   }
 }
 
 /**
- * A batarang in flight hits an enemy.  ROM: loc_00_3C1B.
+ * A batarang in flight hits an enemy.  ROM: loc_00_3C17-$3D14, all 8 slots,
+ * every flight frame, outbound AND returning.
  *
- * The real routine walks all 8 enemy slots with a $1216 box (18 x 22), skips
- * inactive and already-disabled ones, and deals 1 damage ($3D0B is a DEC)
- * plus the $3C stun. It does NOT consume the batarang -- it flies on.
+ * The test is in SCREEN space: the batarang's cached +7/+8 (recomputed at
+ * $3BD1 just before this) against the enemy's cached +7/+8 (one frame stale,
+ * written by the last enemy-driver pass), through sub_00_0C88 with a $1216
+ * box -- and $0C88's compares are INCLUSIVE (`JR Z` accepts equality),
+ * unlike the melee scan's strict ones. The old world-space version was
+ * close, but compared the enemy's CURRENT position -- half a frame ahead of
+ * what the cartridge sees -- and skipped every state check around the box:
  *
- * APPROXIMATE: the box is transcribed but the surrounding state checks are
- * not, and no oracle scenario covers it yet.
+ *   - states 4/$0B/$0D are immune ($3C79-$3C85): a batarang cannot shoot
+ *     down an enemy projectile ($0B);
+ *   - states 2/7/$0A are ARMORED ($3C6F-$3C77 -> $3C8A): sound $1D, no
+ *     damage; the enemy turns away and enters its attack state (bit 3 + a
+ *     timer), and the batarang BOUNCES home with forced velocities;
+ *   - everything else is the damage arm at $3CF4: skip if already flashing
+ *     (BIT 2), else sound $19, hit-flash, $3C stun, and 1 damage -- the DEC
+ *     at $3D0B fires only if HP was non-zero. The batarang flies on.
+ *
+ * $C740 must be $FF exactly as in the melee scan (level 14's init writes 1),
+ * and the level-14 Joker phase gate ($C73E == 4 && $C73D >= 2 at $3C56) is
+ * not modelled -- unreachable until the boss states are ported.
  */
 function batarangHitTest(state, b) {
   const t = state.tunables;
-  const bx = b.x >> 4, by = b.y >> 4;
+  // $3BD1 / sub_00_1172 convention: +8/+16 OAM offsets, u8 wrap. b.screenX
+  // holds the drawing convention, so derive the ROM pair from world space.
+  const bsx = (((u16(b.x - state.camera.x) >> 4) + 8) & 0xFF);
+  const bsy = (((u16((b.y & 0x0FFF) - state.camera.y) >> 4) + 0x10) & 0xFF);
 
   for (const r of state.enemies) {
     if ((r[0] & 0x80) === 0 || (r[0] & 0x40) !== 0) continue;   // $3C27/$3C2C
-    if (r[0x16] === 0) continue;
 
-    const ex = (((r[0x0E] << 8) | r[0x0F]) & 0xFFFF) >> 4;
-    const ey = (((r[0x10] << 8) | r[0x11]) & 0xFFFF) >> 4;
-    if (Math.abs(ex - bx) > 0x12 || Math.abs(ey - by) > 0x16) continue;  // $3C43
+    // $3C43: sub_00_0C88, box 18 x 22, inclusive on both axes.
+    if (absDiff8(r[7], bsx) > 0x12) continue;
+    if (absDiff8(r[8], bsy) > 0x16) continue;
+
+    // $3C4E: $C750, not $C740. Identical today -- $0DC5/$0DCA set both per level and
+    // $0DE0/$0DE3 override both on level $0E -- but they part after a boss
+    // dies: 1:$4EF1 writes $C740 = $FE, which permanently disables ALL melee
+    // and batarang damage while $C750 stays 0. Revisit when bosses land.
+    if (state.flow.bossMode) continue;
+
+    const st = r[2];
+    if (st === 0x04 || st === 0x0B || st === 0x0D) continue;    // immune
+
+    if (st === 0x02 || st === 0x07 || st === 0x0A) { // $3C8A: armored bounce
+      requestSound(state, 0x1D);
+      if ((r[0] & 0x08) === 0) {                     // $3C90: not already hit
+        // $3C94: bossId 2 splits on the flag bits instead -- level 8,
+        // unreachable until state 7 is ported. The generic arm:
+        r[0] |= 0x08;                                // $3CA7: attack state
+        // $3CB0: bossId 1 (level 4) also sets $C73F, which is not modelled;
+        // the timer split is kept.
+        r[0x14] = state.level.bossId === 1 ? 0x10 : 0x1F;   // $3CB4 / $3CBD
+      }
+      r[5] = (((b.flags & 0x03) ^ 0x03) - 1) & 0xFF; // $3CC9: face away
+      b.flags = (b.flags ^ 0x0F) | 0x80;             // $3CD1: flip + return
+      b.speed = (b.flags & 0x01) ? 0x40 : 0xC0;      // $3CDB
+      b.arc = (b.flags & 0x04) ? 0xC0 : 0x40;        // $3CE7
+      continue;                                      // $3CF2 -> next slot
+    }
 
     if (r[0] & 0x04) continue;                       // $3CF4: already flashing
+    requestSound(state, 0x19);                       // $3CF8
     r[0] |= 0x04;                                    // $3CFE
     r[0x17] = t.enemyStunFrames;                     // $3D04: $3C
-    r[0x16] = Math.max(0, r[0x16] - 1);              // $3D0B: DEC
-    if (state.sound && state.sound.queue.length < 4) {
-      state.sound.queue.push({ id: 0x19, mask: 1 }); // $3CF8
-    }
+    if (r[0x16] !== 0) r[0x16]--;                    // $3D07/$3D0B
   }
+}
+
+/** ROM: sub_00_0AE1 -- the same four-slot ring the player code feeds. */
+function requestSound(state, id, mask = 0x01) {
+  if (state.sound && state.sound.queue.length < 4) {
+    state.sound.queue.push({ id, mask });
+  }
+}
+
+/** 8-bit |a-b|, the SUB / JR NC / CPL / INC A idiom. */
+function absDiff8(a, b) {
+  return (a & 0xFF) >= (b & 0xFF) ? (a - b) & 0xFF : (b - a) & 0xFF;
 }
 
 /** ROM: $3C0B - sub_00_0C88 with HL = $0C10, a 12 x 16 overlap box. */

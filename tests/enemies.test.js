@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { grid, put, fillRow, makeState } from './helpers.js';
-import { _internals } from '../src/enemies.js';
+import { meleeHitTest, _internals } from '../src/enemies.js';
 
 const {
   probeCore, probeUp, probeDown, probeRight, probeLeft,
@@ -209,4 +209,153 @@ test('spawnProjectile copies the mode-1 template into slot 6 and offsets it', ()
   assert.equal((state.enemies[7][0x0E] << 8) | state.enemies[7][0x0F], 0x0380);
 
   assert.equal(spawnProjectile(state, spawner, 1), 1, 'both slots busy');
+});
+
+// ---------------------------------------------------------------------------
+// The punch's enemy scan -- loc_00_2643-$272B.
+//
+// This is the tail of the mode-5 probe: $2423 falls into $2426, which converts
+// the probe point to SCREEN space at $2430 and, for mode 5 only, jumps here
+// instead of scanning the map objects.  The dispatch around it -- which cells
+// let the fist through, and the recoil -- is pinned in player.test.js.
+// ---------------------------------------------------------------------------
+
+// Camera at the origin, so sub_00_1172 reduces to (world >> 4) + 8 for X and
+// ((world & $0FFF) >> 4) + $10 for Y.  These are the probe point handed to
+// meleeHitTest and the screen pair $2687 compares against.
+const PROBE_X = 0x0600, PROBE_Y = 0x1500;
+const PROBE_SX = 0x68, PROBE_SY = 0x60;        // 104, 96
+
+/**
+ * One enemy whose CACHED +7/+8 sit (dsx, dsy) screen pixels from the probe
+ * point.  Box bytes 7/15 are the level-3 walker's, the pair the cartridge
+ * measurements below were taken with.
+ *
+ * critWindow 0 disables the crit arm on purpose: $26D0 reads rLY mid-frame, so
+ * the port models it and can never agree punch-for-punch (docs/03 par.28).
+ * Everything here is the ordinary damage arm at loc_00_26EA.
+ */
+function melee({
+  dsx = 0, dsy = 0, facing = 0, st = 1, flags = 0x80, box = [7, 15], hp = 6,
+} = {}) {
+  const state = makeState(grid(8), { tunables: { critWindow: 0 } });
+  state.player.facing = facing;
+  const r = state.enemies[0];
+  r[0] = flags;
+  r[2] = st;
+  r[7] = (PROBE_SX + dsx) & 0xFF;
+  r[8] = (PROBE_SY + dsy) & 0xFF;
+  r[0x0B] = box[0];
+  r[0x0C] = box[1];
+  r[0x0E] = 0x40; r[0x10] = 0x18;              // world position, deliberately elsewhere
+  r[0x16] = hp;
+  return state;
+}
+
+const punch = (state) => meleeHitTest(state, PROBE_X, PROBE_Y);
+
+test('the punch scan compares CACHED screen bytes, not live world coordinates', () => {
+  // ROM: $2677-$2684 reads +7/+8 -- what loc_01_5CA8 wrote at the END of last
+  // frame's enemy driver, one frame stale by design -- and $2687 reads the
+  // probe point $2430 already converted. The world bytes at +$0E-+$11 are not
+  // read by this routine at all.
+  assert.equal(punch(melee()), 0xFF);
+
+  // Same enemy parked exactly on the probe point in WORLD space, with screen
+  // bytes from somewhere else: the fist goes straight through it.
+  const stale = melee({ dsx: 40 });
+  const r = stale.enemies[0];
+  r[0x0E] = PROBE_X >> 8; r[0x0F] = PROBE_X & 0xFF;
+  r[0x10] = PROBE_Y >> 8; r[0x11] = PROBE_Y & 0xFF;
+  assert.equal(punch(stale), 0);
+  assert.equal(r[0x16], 6, 'untouched');
+});
+
+test('the X window is the ENEMY box byte +$0B MINUS ONE, compared strictly', () => {
+  // ROM: $2685 `DEC A` then $2693 `CP H / JR C`. Box byte 7 admits 6 px of
+  // separation EXCLUSIVE: 5 hits, 6 misses. Losing the DEC, or relaxing the
+  // compare to <=, widens every enemy's punchable box by a pixel a side --
+  // and the batarang's box next door really is inclusive, so "consistency" is
+  // exactly the wrong instinct here.
+  assert.equal(punch(melee({ dsx: 5 })), 0xFF);
+  assert.equal(punch(melee({ dsx: 6 })), 0);
+});
+
+test('the Y window is +$0C, also strict, and gets no second sample', () => {
+  // ROM: $26AD-$26B4 `CP L / JR NC`. Box byte 15: 14 hits, 15 misses. Unlike
+  // the X axis there is no retry to rescue a near miss.
+  assert.equal(punch(melee({ dsy: 14 })), 0xFF);
+  assert.equal(punch(melee({ dsy: -14 })), 0xFF);
+  assert.equal(punch(melee({ dsy: 15 })), 0);
+  assert.equal(punch(melee({ dsy: -15 })), 0);
+});
+
+test('the X retry pulls the probe 8 px BACK toward the player, never forward', () => {
+  // ROM: $2696-$26A3 -- facing right subtracts 8 from the probe X, facing left
+  // adds 8, and the same window is retested from there. The reach is therefore
+  // 13 px behind the fist and only 5 px in front of it. MEASURED on the
+  // cartridge (level 3, slot-3 walker, box 7/15): probe 102 vs enemy 100 hits;
+  // probe 94 vs enemy 86 -- 8 px further along the punch -- misses. That
+  // asymmetry is why level-3 walkers cannot be hit until they have closed in:
+  // the narrow forward window never sweeps over them in time.
+  assert.equal(punch(melee({ facing: 0, dsx: -8 })), 0xFF, 'between fist and player');
+  assert.equal(punch(melee({ facing: 0, dsx: 8 })), 0, 'past the fist');
+  assert.equal(punch(melee({ facing: 1, dsx: 8 })), 0xFF, 'mirrored by $FF88');
+  assert.equal(punch(melee({ facing: 1, dsx: -8 })), 0);
+
+  // The exact edge of the two windows' union, facing right.
+  assert.equal(punch(melee({ facing: 0, dsx: -13 })), 0xFF);
+  assert.equal(punch(melee({ facing: 0, dsx: -14 })), 0);
+});
+
+test('states 4, $0B and $0D are transparent to the fist', () => {
+  // ROM: $2667-$2673. $0B is the enemy projectile and $0D a boss part, so a
+  // punch cannot swat a shot out of the air. $2660 tests bit 7 only -- the
+  // permanently-dead bit 6 is NOT checked here, unlike the batarang's $3C2C.
+  for (const st of [0x04, 0x0B, 0x0D]) {
+    assert.equal(punch(melee({ st })), 0, `state $${st.toString(16)}`);
+  }
+  assert.equal(punch(melee({ flags: 0x00 })), 0, 'an inactive slot');
+});
+
+test('only the FIRST overlapping slot is hit', () => {
+  // ROM: $271F `LD A,$FF / RET` returns from inside the loop. The scan also
+  // always walks 0 -> 7 ($2654 / $2724), with none of the enemy driver's
+  // frame-parity reversal, so slot order alone decides who takes it.
+  const state = melee();
+  const second = state.enemies[1];
+  second.set(state.enemies[0]);                // same place, same box
+  assert.equal(punch(state), 0xFF);
+  assert.equal(state.enemies[0][0x16], 4);
+  assert.equal(second[0x16], 6, 'the second slot is never reached');
+  assert.equal(second[0x17], 0, 'not even stunned');
+});
+
+test('a connecting punch: hit-flash, a $3C stun, 2 damage, clamped at zero', () => {
+  // ROM: $26C4 SET 2, $26CA $3C, $26F0 B = $02, $26F6 `SUB B / JR NC / XOR A`.
+  // Two sounds go out: $19 on contact ($26BE) and $21 from the damage arm.
+  const state = melee({ hp: 6 });
+  const r = state.enemies[0];
+  assert.equal(punch(state), 0xFF);
+  assert.equal(r[0] & 0x04, 0x04);
+  assert.equal(r[0x17], 0x3C);
+  assert.equal(r[0x16], 4);
+  assert.deepEqual(state.sound.queue,
+                   [{ id: 0x19, mask: 1 }, { id: 0x21, mask: 1 }]);
+
+  const low = melee({ hp: 1 });
+  punch(low);
+  assert.equal(low.enemies[0][0x16], 0, 'the SUB clamps; it must not wrap to 255');
+});
+
+test('an enemy that is ALREADY flashing can be punched again', () => {
+  // ROM: the melee damage arm at $26BE has no `BIT 2` guard; the batarang's at
+  // $3CF4 does. Two punches inside one $3C stun land twice, two batarangs do
+  // not -- see the matching test in batarang.test.js.
+  const state = melee({ hp: 6 });
+  const r = state.enemies[0];
+  punch(state);
+  assert.equal(r[0x16], 4);
+  assert.equal(punch(state), 0xFF, 'still hittable while stunned');
+  assert.equal(r[0x16], 2);
 });

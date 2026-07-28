@@ -167,3 +167,147 @@ test('the pool holds three and then reports full', () => {
   }
   assert.equal(findFreeSlot(s.batarangs), -1);
 });
+
+// ---------------------------------------------------------------------------
+// The enemy scan -- loc_00_3C17-$3D14, run on every flight frame, outbound and
+// returning alike.  Only reachable through updateBatarangs(), which is how the
+// ROM reaches it too ($3BE9 falls into it).
+// ---------------------------------------------------------------------------
+
+// Camera at the origin, so sub_00_1172 is (world >> 4) + 8 for X and
+// ((world & $0FFF) >> 4) + $10 for Y -- the pair $3BD1 caches at +7/+8 and
+// $3C36 reads back one instruction later.
+const BAT_X = 0x0600, BAT_Y = 0x1500;
+const BAT_SX = 0x68, BAT_SY = 0x60;            // 104, 96
+
+/**
+ * A live outbound batarang with an enemy whose CACHED +7/+8 sit (dsx, dsy)
+ * screen pixels away.
+ *
+ * speed 4 is chosen so the outbound step ($3B9A: SUB $02) leaves 2 and moves X
+ * by 2 SUBpixels -- under the >> 4, so the screen position the hit test sees is
+ * exactly the one set up here. The player is parked 80 px away so the catch
+ * test at $3C0B can never fire first.
+ */
+function batScene({ dsx = 0, dsy = 0, st = 1, flags = 0x80, hp = 6 } = {}) {
+  const s = makeState(grid(24));
+  s.player.x = 0x0100;
+  s.player.y = BAT_Y;
+  const b = s.batarangs[0];
+  b.active = true;
+  b.flags = 0x01;                              // outbound, facing right
+  b.speed = 4;
+  b.arc = 0;
+  b.x = BAT_X;
+  b.y = BAT_Y;
+  const r = s.enemies[0];
+  r[0] = flags;
+  r[2] = st;
+  r[7] = (BAT_SX + dsx) & 0xFF;
+  r[8] = (BAT_SY + dsy) & 0xFF;
+  r[0x16] = hp;
+  return s;
+}
+
+/** One flight frame; report what is left of the enemy's HP. */
+function flyHp(s) {
+  updateBatarangs(s);
+  return s.enemies[0][0x16];
+}
+
+test('the batarang box is INCLUSIVE, where the melee scan is strict', () => {
+  // ROM: sub_00_0C88 tests `CP H / JR Z` BEFORE `JR NC` on both axes, so exact
+  // equality passes; loc_00_2643's own compares are bare `JR C` / `JR NC` and
+  // equality fails there. Box $1216 = 18 x 22, half-extents, and it is fixed --
+  // the batarang does not consult the enemy's own hitbox bytes at all.
+  // The two scans read almost identically and sit 600 bytes apart. Do not tidy
+  // them into agreement; this pair of tests is the reason not to.
+  assert.equal(flyHp(batScene({ dsx: 0x12 })), 5, '18 px hits');
+  assert.equal(flyHp(batScene({ dsx: 0x13 })), 6, '19 px does not');
+  assert.equal(flyHp(batScene({ dsy: 0x16 })), 5, '22 px hits');
+  assert.equal(flyHp(batScene({ dsy: 0x17 })), 6, '23 px does not');
+});
+
+test('a hit is 1 damage, a $3C stun and the flash bit -- and never wraps', () => {
+  // ROM: loc_00_3CF4-$3D0B. The damage is a single `DEC (HL)` guarded by
+  // `AND A / JR Z`, not a SUB: half the melee's 2, and an enemy already at zero
+  // stays at zero instead of wrapping to 255 and becoming unkillable.
+  const s = batScene({ hp: 6 });
+  const r = s.enemies[0];
+  updateBatarangs(s);
+  assert.equal(r[0x16], 5);
+  assert.equal(r[0x17], 0x3C);
+  assert.equal(r[0] & 0x04, 0x04);
+  assert.deepEqual(s.sound.queue, [{ id: 0x19, mask: 1 }]);
+
+  assert.equal(flyHp(batScene({ hp: 0 })), 0);
+});
+
+test('a batarang damages EVERY overlapping enemy in one pass', () => {
+  // ROM: the damage arm falls through to loc_00_3D0C, the next slot -- there is
+  // no early return anywhere in $3C1B's loop. The melee scan does return from
+  // inside its loop ($271F), so one punch is one enemy and one batarang is all
+  // of them.
+  const s = batScene();
+  s.enemies[1].set(s.enemies[0]);
+  s.enemies[2].set(s.enemies[0]);
+  updateBatarangs(s);
+  for (const i of [0, 1, 2]) assert.equal(s.enemies[i][0x16], 5, `slot ${i}`);
+});
+
+test('an enemy already flashing takes no second batarang hit', () => {
+  // ROM: $3CF4 `BIT 2,(HL) / JR NZ` -- the guard the melee arm does not have.
+  // Without it a batarang hovering inside an enemy drains it a point a frame.
+  const s = batScene({ hp: 6 });
+  assert.equal(flyHp(s), 5);
+  assert.equal(flyHp(s), 5, 'still overlapping, still stunned, no second hit');
+});
+
+test('states 4, $0B and $0D are immune to a batarang', () => {
+  // ROM: $3C79-$3C85. $0B is the enemy projectile: batarangs cannot shoot down
+  // incoming fire, and they do not bounce off it either -- the slot is simply
+  // skipped, so the batarang flies on unchanged.
+  for (const st of [0x04, 0x0B, 0x0D]) {
+    const s = batScene({ st });
+    assert.equal(flyHp(s), 6, `state $${st.toString(16)}`);
+    assert.equal(s.batarangs[0].flags & FLAG_RETURNING, 0, 'still outbound');
+  }
+});
+
+test('states 2, 7 and $0A are ARMOURED: no damage, they turn, the batarang bounces', () => {
+  // ROM: $3C6F-$3C77 -> loc_00_3C8A. Sound $1D instead of $19, no HP change at
+  // all, the attack bit 3 and its $1F timer ($3CBD; boss 1 uses $10), the
+  // enemy's facing rewritten from the BATARANG's direction bits ($3CC9), and
+  // the batarang forced home with $3CD1's `XOR $0F / OR $80` and the fixed
+  // $40/$C0 velocity pair.
+  for (const st of [0x02, 0x07, 0x0A]) {
+    assert.equal(flyHp(batScene({ st })), 6, `state $${st.toString(16)} takes no damage`);
+  }
+
+  const s = batScene({ st: 2 });
+  const r = s.enemies[0];
+  const b = s.batarangs[0];
+  updateBatarangs(s);
+  assert.equal(r[0] & 0x08, 0x08, 'attack state armed');
+  assert.equal(r[0x14], 0x1F);
+  assert.equal(r[5], 1, 'turned away from the batarang');
+  assert.deepEqual(s.sound.queue, [{ id: 0x1D, mask: 1 }]);
+
+  assert.equal(b.flags, 0x8E, '(1 ^ $0F) | $80 -- returning, with all four axis bits');
+  assert.equal(b.speed, 0xC0, 'bit 0 clear -> -64');
+  assert.equal(b.arc, 0xC0, 'bit 2 set -> -64');
+});
+
+test('a second armoured hit does not re-arm the attack timer', () => {
+  // ROM: $3C90 `BIT 3,(HL) / JR NZ, loc_00_3CC4` -- the sound and the bounce
+  // still happen, the state change does not.
+  const s = batScene({ st: 2 });
+  updateBatarangs(s);
+  const r = s.enemies[0];
+  r[0x14] = 3;                                 // let the timer run down a little
+  s.batarangs[0].flags = 0x01;                 // and send the batarang back in
+  s.batarangs[0].speed = 4;
+  updateBatarangs(s);
+  assert.equal(r[0x14], 3, 'timer untouched');
+  assert.equal(s.batarangs[0].flags & FLAG_RETURNING, FLAG_RETURNING, 'still bounced');
+});

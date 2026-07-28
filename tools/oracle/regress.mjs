@@ -215,8 +215,9 @@ const SCRIPTS = [
   // port never sets state.lagFrame at all -- see the comment on it in state.js.
   //
   // The death->refill loop is the same bit-6 test + copy as the init refill
-  // covered here; killing an enemy on script is blocked on melee damage being
-  // verified first.
+  // covered here; melee/batarang damage is now verified (the l3-punch-* and
+  // l3-batarang-kill scenarios below), so a kill-and-respawn script is
+  // unblocked if anyone wants the refill arm pinned too.
   { name: 'l1-sewer-respawner-emerge', level: 1, frames: 72, warp: '43,27',
     script: '72:', extra: [...ENEMY_FIELDS, ...RESPAWN_FIELDS] },
 
@@ -258,6 +259,17 @@ const SCRIPTS = [
   // 317 is deliberately chosen so ENEMY_FIELDS can be compared too -- the
   // alternative was a longer run that only passes because enemy fields are
   // excluded, which would hide the divergence rather than bound it.
+  // The $FE "no exit this way" arm, which is the TOP exit on 12 of the 14
+  // levels (table 0:$286D) -- ordinary "walk off the top and fall back in from
+  // the top", not an edge case. $285B parks Y at $1100 and then $286A is
+  // `JP loc_00_1776`: the update RE-ENTERS at knockback and the whole rest of
+  // the frame still runs. Returning out of the player update there instead
+  // froze X and lost the fall: this scenario went 39/40 frames wrong on Y and
+  // 22/40 on VelY before it was fixed. skipFrames 1 is the documented warp
+  // skew -- --warp lands after the oracle's first sample.
+  { name: 'l1-top-exit-teleport', level: 1, frames: 60, warp: '5,16',
+    skipFrames: 1, script: '60:R' },
+
   { name: 'l3-object-floor', level: 3, frames: 317,
     script: '20:,120:R,20:RA,120:R,20:RA,180:R', extra: ENEMY_FIELDS },
   // Level 3 slot 7 is the type-8 platform that actually MOVES -- slot 0, the
@@ -273,6 +285,55 @@ const SCRIPTS = [
   // platform sits exactly one $10 step ahead of the cartridge's.
   { name: 'l3-platform-ride', level: 3, frames: 317, warp: '50,21',
     script: '317:', extra: ['carryY', 'ob0t', 'ob1t'] },
+
+  // --- melee and batarang damage TO enemies (loc_00_2643 / loc_00_3C17) ----
+  // The slot-3 walker at level-3 col ~48 is the target in all three. These
+  // pinned the SCREEN-SPACE hit tests: probe/batarang cached +7/+8 bytes
+  // against the enemy's cached +7/+8, enemy-owned half-extents, and -- for
+  // the $53 boot levels -- the per-level $FFB1 phase that gates the hit-blink.
+
+  // The user-reported bug, verbatim: walk at the walker and punch three
+  // times. Every punch MISSES on the cartridge -- by swing frame 8 the enemy
+  // has already walked ~8 px behind the fist, and the melee window
+  // (halfW-left - 1, strict, forward-shifted) does not reach backward. The
+  // old derived box hit here, took hp 4 -> 2 and knocked the enemy back.
+  { name: 'l3-punch-miss-behind', level: 3, frames: 170, warp: '46,23', ammo: 0,
+    script: '20:,40:R,6:B,20:,6:B,20:,6:B,40:',
+    extra: ['hp', 'atkTimer', 'atkPose', 'ammo', 'en3hp', 'en3f', 'en3f1',
+            'en3s', 'en3x', 'en3y', 'en3vx', 'en3vy', 'en3at', 'en3d',
+            'en3ms'] },
+  // A punch that CONNECTS (swing timed so the walker is still 2 px in front
+  // at frame 8): sound path aside, this pins the 2-damage arm, the $3C stun,
+  // the knockback ($4F4B rising + landing), the player recoil vx = -4
+  // ($20A7), and the hit-blink's $FFB1 & 8 cadence through the landing
+  // animation -- which is what exposed the flat $6D frame-counter seed.
+  { name: 'l3-punch-connect', level: 3, frames: 172, warp: '46,23', ammo: 0,
+    script: '20:,32:R,6:RB,2:R,20:,6:B,20:,6:B,60:',
+    extra: ['hp', 'atkTimer', 'atkPose', 'ammo', 'action', 'en3hp', 'en3f',
+            'en3f1', 'en3s', 'en3x', 'en3y', 'en3vx', 'en3vy', 'en3at',
+            'en3d', 'en3ms'] },
+  // Same walk with ammo: three thrown batarangs. Covers the $1216 inclusive
+  // box on cached screen bytes, 1 damage with the BIT-2 re-hit lockout, a
+  // hit landing on the RETURN leg, the enemy dying of it (hp 4 -> 0, the
+  // $40 disable latch), and the catch-before-hit-test ordering at $3BE9.
+  { name: 'l3-batarang-kill', level: 3, frames: 170, warp: '46,23', ammo: 5,
+    skipFrames: 1,
+    script: '20:,40:R,6:B,20:,6:B,20:,6:B,40:',
+    extra: ['hp', 'atkTimer', 'atkPose', 'ammo', 'bat0', 'bat0x', 'bat0y',
+            'bat0spd', 'bat0arc', 'bat1', 'bat2', 'en3hp', 'en3f', 'en3f1',
+            'en3s', 'en3x', 'en3y', 'en3vx', 'en3vy', 'en3at', 'en3d',
+            'en3ms'] },
+
+  // Walk LEFT off the start ledge into the pit. The player crosses row $21
+  // during f117's movement; the cartridge's pit test at loc_00_1755 runs at
+  // the TOP of the NEXT update, so hp hits 0 at f118 with the fall's
+  // vx = -2 / vy = -66 left frozen in place -- sub_00_29E7 never touches
+  // them. The port used to test after vertical() (death one frame early)
+  // AND zero both velocities. Runs 12 frames into the death sequence; the
+  // full sequence/respawn is deliberately not compared (the port's
+  // restart-in-place stopgap).
+  { name: 'l3-pit-death-exact-frame', level: 3, frames: 130, warp: '46,23',
+    ammo: 0, script: '20:,110:L', extra: ['hp', 'action', 'en3f', 'en3hp'] },
 ];
 
 const FIELDS = ['x', 'y', 'vx', 'vy', 'air', 'facing', 'camX', 'camY'];

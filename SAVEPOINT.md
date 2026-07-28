@@ -33,7 +33,7 @@ node   tools/oracle/vramdiff.mjs --record   # sub_00_0A0E, write for write
 npm run test-all                        # 7 stages, the gate for everything
 ```
 
-**Current state: 31/31 oracle scenarios bit-exact, 337 unit tests, 7/7 stages
+**Current state: 36/36 oracle scenarios bit-exact, 360 unit tests, 7/7 stages
 green.** Levels 1, 5 and 9 match the cartridge exactly over 620 frames each.
 
 If you change gameplay code and `test-all` goes red, you broke something real.
@@ -152,11 +152,29 @@ Roughly in order of how much each would change the game:
 
 Be suspicious of these; they are the likeliest source of a surprise.
 
-- **Melee and batarang damage to enemies** (`meleeHitTest` in enemies.js,
-  `batarangHitTest` in batarang.js). Overlap boxes are derived rather than
-  transcribed exactly, and `rLY` for the crit window is modelled from the frame
-  counter because we do not emulate a scanline counter. No scenario covers
-  either yet — **this is the first thing to verify next.**
+- **The melee CRIT window, and every arm the scenarios do not reach**
+  (`meleeHitTest` in enemies.js). Both hit tests are exact transcriptions, and
+  their ORDINARY paths are oracle-verified (`l3-punch-miss-behind`,
+  `l3-punch-connect`, `l3-batarang-kill`): SCREEN-space scans over cached
+  `+7/+8` bytes — melee off the mode-5 probe (`loc_00_2643`, enemy-owned
+  half-extents, strict compares, player recoil vx = −4), batarang at
+  `loc_00_3C17` (`$1216` box, inclusive, catch-tested BEFORE the hit test).
+
+  Be precise about what "verified" covers, because it is less than it looks.
+  Hooking the ROM arms across all four scenarios shows these NEVER execute:
+  `$26A0` (the facing-left retry), `$26DD` (crit), `$3C8A` (the whole armored
+  2/7/`$0A` bounce), `$20FB` (a punch treating water as empty), and
+  `$3C7B`/`$3C80`/`$3C85` (the immune states — no non-state-1 enemy is present
+  in any of them). `$271F` fires twice but never with a second candidate in
+  range, so "first hit only" is unit-tested and not oracle-tested. And the
+  retry arm runs seven times and FAILS all seven — its succeeding branch is
+  never taken. Those are transcriptions with unit tests, not measured
+  behaviour. What remains approximate on top of all that is the crit: `$26D0`
+  reads **rLY
+  mid-frame** (measured 44 on the one connecting punch — instruction-level
+  timing, out of scope by §28), so the port's rLY model is pseudo-random at
+  the right ~3% rate but can never agree punch-for-punch. If a scenario ever
+  trips it, widen the scenario, don't chase the model.
 - **State-2's ranged attack and projectile flight.** Literal ports with unit
   tests, but no natural input script triggers them, so no frame-by-frame proof.
 - **Post-death behaviour.** The ROM shoves x −15 during its sequence and
@@ -355,6 +373,22 @@ both frequency bytes and the trigger. Open:
   like return sites — set `$FFBA` and done. They are not: both fall into
   `loc_00_2426`, the map-object overlap scan. Stopping at the label is what
   left every map object in the port intangible.
+- **A "constant" measured on one level may be a per-level value — and may not
+  be a constant at all.** The `$FFB1` boot phase was measured on levels
+  1/5/9/12 (all `$6D`) and adopted flat; under the oracle's boot path levels
+  2/3/6/7/10/13 come up at `$53` instead, and nothing on a `$53` level read the
+  counter until the enemy hit-blink did, drifting the landing animation by
+  exactly the phase difference.
+
+  But the second half of the lesson is sharper, and this bullet said it wrong
+  for a while: `$FFB1` is not a per-LEVEL property, it is a per-BOOT-PATH one.
+  Change how many frames the harness spends tapping START and every value moves
+  — level 1 gives `$6D`, `$64`, `$74` or `$CB` under four different cadences,
+  and the level-to-level delta is not stable either. `$FFA7` is 1 under our
+  cadence and 0 under others. Adopting the oracle's phase is a defensible
+  choice because it makes the corpus reproducible; calling it what the
+  cartridge does is not. A free-running counter has no boot value to be right
+  about.
 
 ---
 
@@ -377,9 +411,11 @@ both frequency bytes and the trigger. Open:
    `actorType8` in actors.js, verified by `l3-platform-ride`. Types `$05` and
    `$06` next: between them they cover levels 3, 12 and 13.
 4. **The two sound bugs** (see "Sound"). Both are precisely located.
-5. **Verify melee/batarang enemy damage against the oracle** — add a scenario
-   that kills an enemy on level 1 and compare `en0hp`. Biggest *unverified*
-   gap in gameplay.
+5. **Verify melee/batarang enemy damage against the oracle** — DONE. Three
+   level-3 scenarios cover miss, connect and a batarang kill; the death-pit
+   frame is pinned too (`l3-pit-death-exact-frame`). Two findings worth
+   keeping: `$FFB1`'s boot phase is **per level** ($6D or $53 — measured for
+   all 14, table in level.js), and `sub_00_29E7` does NOT zero vx/vy.
 6. **The `$0E24` window surface** — the last screen on top of `sub_00_0A0E`,
    and the one that kills the `water.json` tilemap capture. Exactly the title's
    shape: find the ingredients, replay, diff.

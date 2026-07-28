@@ -63,13 +63,16 @@ export async function initLevel(state, n) {
   // $FFB1/$FFA7 are free-running VBlank counters that NEVER reset -- their
   // phase at gameplay start comes from the boot path, and the game reads them
   // raw: the water-gravity gate is `$FFB1 & 7` ($1AE4), the water parity gate
-  // `$FFB1 & 1` ($2D5D), the enemy loop direction `$FFA7` ($4E13). The
-  // cartridge's fixed logo->title->round-select path lands every level at
-  // $FFB1 = $6D, $FFA7 = 1 on the first gameplay iteration (measured for
-  // levels 1/5/9/12), so the port adopts that phase. Starting at 0 put every
-  // `& 7` cadence 5 frames out -- caught by the water fall cadence, the first
-  // COMPARED consumer of the raw counter.
-  state.frame = 0x6D;
+  // `$FFB1 & 1` ($2D5D), the enemy hit-blink `$FFB1 & 8` ($5DE1), the enemy
+  // loop direction `$FFA7` ($4E13). The phase is NOT the same for every
+  // level: MEASURED at the first $0567 iteration under the oracle's boot
+  // path, levels 1/4/5/8/9/11/12/14 land at $FFB1 = $6D and levels
+  // 2/3/6/7/10/13 at $53 -- their loads spend a different number of frames
+  // with the counter ticking. $FFA7 is 1 for all fourteen. The old flat $6D
+  // stayed hidden on the $53 levels until the hit-blink gate (the first
+  // $FFB1 consumer an enemy ever reaches on level 3) drifted the landing
+  // animation by exactly the phase difference.
+  state.frame = [2, 3, 6, 7, 10, 13].includes(n) ? 0x53 : 0x6D;
   state.parity = 1;
 
   // Captured window tilemap + tile animation, per level. Best-effort: a

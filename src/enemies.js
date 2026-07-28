@@ -58,55 +58,100 @@ export const UNIMPLEMENTED_STATES = new Set([4, 5, 6, 7, 8, 9, 10, 13]);
 const hexBytes = (s) => Uint8Array.from(s.match(/.{2}/g), (b) => parseInt(b, 16));
 
 /**
- * Player melee lands on an enemy.  ROM: the $26B6 arm of the $2654 hit test.
+ * Player melee lands on an enemy.  ROM: loc_00_2643-$272B, the punch probe's
+ * ($C72B = 5) enemy scan -- reached from sub_00_20BA only when the probe row
+ * is above $20 and the map cell at the probe point is empty or water.
+ *
+ * The whole test is in SCREEN space, like the map-object scan next door: the
+ * probe point goes through sub_00_1172 at $2430 and is compared against each
+ * slot's CACHED screen bytes at +7/+8 -- which were written by loc_01_5CA8 at
+ * the end of LAST frame's enemy driver, one frame stale by design. The box is
+ * the ENEMY's, not the player's: half-width r[+$0B] MINUS ONE ($2685 DEC A,
+ * strict <), half-height r[+$0C] (strict <). A failed X test retries once with
+ * the probe pulled 8 px back toward the player ($269B/$26A0 -- facing right
+ * SUBTRACTS, facing left ADDS), which widens the window on the NEAR side only.
+ *
+ * Work the geometry through, because the direction is easy to state backwards:
+ * the fist is 14 px ahead of the player ($201F loads +$00E0), and the union of
+ * the two tests covers probe-14 through probe+6. So facing right the window
+ * runs from the player's OWN CENTRE to about 20 px ahead of him -- generous
+ * behind the fist, and barely reaching past it.
+ *
+ * MEASURED on the cartridge (level 3, slot-3 walker, box bytes 7/15): probe
+ * screen 102 vs enemy 100 hits; probe 102 vs enemy 86 misses on both the first
+ * test and the retry at 94. With the player's centre at 88, that enemy was 2 px
+ * behind HIM, not behind the fist. The short forward reach is why "level-3
+ * enemies cannot be punched first" was reported: you have to let them come
+ * most of the way in before the window covers them at all.
+ *
+ * Only the FIRST overlapping slot is hit -- $271F returns $FF immediately.
+ * States 4/$0B/$0D are transparent to the fist ($2667-$2673). $C740 must be
+ * $FF, which holds everywhere except level 14's boss mode ($0DE3 writes 1).
  *
  * Two outcomes. Normally 2 damage plus a $3C stun and the hit-flash bit. But
- * if `(rLY ^ frameCounter) < 8` -- roughly a 3% window -- it is a CRIT and
- * deals the enemy's ENTIRE remaining HP, i.e. an instant kill, with its own
- * sound ($18 rather than $21). Bosses are excluded from crits ($26D7).
+ * if `(rLY ^ $FFB1) < 8` it is a CRIT: sound $18 instead of $21 and the
+ * enemy's ENTIRE remaining HP as damage. Non-boss levels only ($26D7).
  *
- * APPROXIMATE, and flagged as such: the overlap box is derived from the
- * player's hitbox plus reach rather than the ROM's exact screen-space windows,
- * and rLY is modelled from the frame counter because we do not emulate a
- * scanline counter. No oracle scenario covers melee-on-enemy yet, so none of
- * this is bit-verified -- unlike the enemy AI itself.
+ * THE CRIT WINDOW CANNOT BE BIT-EXACT. $26D0 reads the live scanline counter
+ * mid-frame: measured under PyBoy, the one connecting punch in the level-3
+ * scenario read rLY = 44 -- not a VBlank value, but "how many scanlines this
+ * frame's logic had consumed when the scan ran", i.e. instruction-level
+ * timing, out of scope by definition (docs/03-VERIFICATION.md par.28). The
+ * port keeps the feature with a modelled rLY; it is pseudo-random at the
+ * cartridge's ~3% rate but will never agree with it punch for punch. If an
+ * oracle scenario ever trips it, widen the scenario, don't chase the model.
  *
- * @returns true if something was hit
+ * @param probeX/probeY  the punch probe point in world 12.4 ($FFB6-$FFB9)
+ * @returns 0xFF on a hit (the probe's own return value), else 0
  */
-export function meleeHitTest(state) {
+export function meleeHitTest(state, probeX, probeY) {
   const p = state.player;
   const t = state.tunables;
-  let hitAny = false;
 
-  const reach = 0x18;                               // ~24 px in front
-  const faceX = p.facing === 0 ? reach : -reach;
+  // $2430 / sub_00_1172: world -> screen, same formula as screenTail below.
+  const probeSX = u8((u16(probeX - state.camera.x) >> 4) + 8);
+  const probeSY = u8((u16((probeY & 0x0FFF) - state.camera.y) >> 4) + 0x10);
 
-  for (const r of state.enemies) {
-    if ((r[0] & F_ACTIVE) === 0) continue;
-    if (r[0x16] === 0) continue;                    // already dead
+  for (let slot = 0; slot < SLOTS; slot++) {
+    const r = state.enemies[slot];
+    if ((r[0] & F_ACTIVE) === 0) continue;          // $2660
+    const st = r[2];
+    if (st === 0x0D || st === 0x0B || st === 0x04) continue;   // $2667-$2673
 
-    const ex = (((r[0x0E] << 8) | r[0x0F]) & 0xFFFF) >> 4;
-    const ey = (((r[0x10] << 8) | r[0x11]) & 0xFFFF) >> 4;
-    const px = (p.x >> 4) + (faceX >> 1);
-    const py = p.y >> 4;
+    const halfW = u8(r[0x0B] - 1);                  // $2685: DEC A
+    const halfH = r[0x0C];
 
-    if (Math.abs(ex - px) > p.halfW + 8) continue;
-    if (Math.abs(ey - py) > p.halfH) continue;
+    // --- X ($268D): strict <, then one retry 8 px back toward the player.
+    if (absDiff8(r[7], probeSX) >= halfW) {
+      const back = u8(p.facing === 0 ? probeSX - 8 : probeSX + 8);  // $269B/$26A0
+      if (absDiff8(r[7], back) >= halfW) continue;  // $26AA
+    }
+    // --- Y ($26AD): strict <, no retry.
+    if (absDiff8(r[8], probeSY) >= halfH) continue; // $26B3
 
+    // $26B7: $C750, not $C740. Identical today -- $0DC5/$0DCA set both per level and
+    // $0DE0/$0DE3 override both on level $0E -- but they part after a boss
+    // dies: 1:$4EF1 writes $C740 = $FE, which permanently disables ALL melee
+    // and batarang damage while $C750 stays 0. Revisit when bosses land.
+    if (state.flow.bossMode) continue;
+
+    requestSound(state, 0x19);                      // $26BE
     r[0] |= 0x04;                                   // $26C4: hit-flash
     r[0x17] = t.enemyStunFrames;                    // $26CA: $3C
 
-    // $26CD: the crit window. rLY is modelled, not emulated.
+    // $26CD: the crit window -- rLY is MODELLED, see the header comment.
     const ly = (state.frame * 7) & 0x7F;
     const crit = ((ly ^ state.frame) & 0xFF) < t.critWindow
-                 && state.level.bossId === 0;
+                 && state.level.bossId === 0;       // $26D7: $C73E == 0
 
     const dmg = crit ? r[0x16] : t.meleeDamage;     // $26E3 vs $26F0
-    r[0x16] = Math.max(0, r[0x16] - dmg);           // $26F6
+    r[0x16] = Math.max(0, r[0x16] - dmg);           // $26F6: SUB, clamp 0
     requestSound(state, crit ? 0x18 : 0x21);
-    hitAny = true;
+    // $2708-$271B: the hit-spark effect ($C744-$C747 + sub_00_0CC2) is not
+    // modelled -- same stance as the $4E84 death explosion.
+    return 0xFF;                                    // $271F: first hit only
   }
-  return hitAny;
+  return 0;                                         // $272A
 }
 
 export function createEnemies() {
@@ -217,6 +262,10 @@ function primaryDispatch(state, r) {
     case 3: return stFlyer(state, r);               // 1:$55AA
     case 0x0B: return stProjectile(state, r);       // 1:$59E0
     case 0x0C: return stDormant(state, r);          // 1:$5B95
+    // NOTE: no screenTail here, so an enemy in one of the unported states
+    // keeps STALE +7/+8 screen bytes indefinitely -- and both hit scans now
+    // compare against exactly those. The old world-space tests were immune to
+    // this. Latent (boss levels only) until states 4-10/13 land.
     default: return;                                // see UNIMPLEMENTED_STATES
   }
 }
