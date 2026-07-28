@@ -53,7 +53,7 @@ A = dict(air=0xFF80, xhi=0xFF81, xlo=0xFF82, yhi=0xFF83, ylo=0xFF84,
          en3f=0xC2C8, en3f1=0xC2C9, en3s=0xC2CA, en3d=0xC2CD,
          en3ms=0xC2CE,
          en3x=0xC2D6, en3y=0xC2D8, en3vx=0xC2DA, en3vy=0xC2DB,
-         en3at=0xC2DC,
+         en3at=0xC2DC, en3hp=0xC2DE,
          # enemy slots 6/7: on levels 1-2 these are the RESPAWNING sewer
          # enemies loc_00_2D3D refills from 0:$32F8/0:$32D8 -- never part of
          # the 5:$46EC blob. Elsewhere they are the projectile slots.
@@ -173,6 +173,7 @@ def sample(mem):
         'en3y': (m[A['en3y']] << 8) | m[A['en3y'] + 1],
         'en3vx': m[A['en3vx']], 'en3vy': m[A['en3vy']],
         'en3at': m[A['en3at']], 'en3ms': m[A['en3ms']],
+        'en3hp': m[A['en3hp']],
         'en6f': m[A['en6f']], 'en6s': m[A['en6s']], 'en6d': m[A['en6d']],
         'en6ms': m[A['en6ms']],
         'en6x': (m[A['en6x']] << 8) | m[A['en6x'] + 1],

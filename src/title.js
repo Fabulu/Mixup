@@ -11,7 +11,7 @@
 // agree.
 
 import { buildTileCache, loadManifest } from './assets.js';
-import { buildTitleVram } from './vram.js';
+import { buildTitleVram, requireScreenSpec } from './vram.js';
 import { runVramScript } from './vramscript.js';
 import { BTN } from './player.js';
 import { drawMetasprite } from './render/metasprite.js';
@@ -35,8 +35,7 @@ export async function loadTitle() {
     loadManifest(),
     fetch(BASE + 'title.json').then((r) => r.json()),
   ]);
-  const spec = manifest.title;
-  if (!spec) throw new Error('manifest has no title section - re-run export_assets.py');
+  const spec = requireScreenSpec(manifest.title, 'title');
 
   const vram = buildTitleVram({
     tiles: spec.tiles.map((t) => ({ dest: t.dest, bytes: b64(t.bytes) })),

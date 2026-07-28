@@ -9,7 +9,7 @@
 // tile area between the two screens (src/vram.js buildRoundSelectVram).
 
 import { buildTileCache } from './assets.js';
-import { buildRoundSelectVram } from './vram.js';
+import { buildRoundSelectVram, requireScreenSpec } from './vram.js';
 import { runVramScript } from './vramscript.js';
 import { BTN } from './player.js';
 import { GAMEPLAY_PALETTES } from './state.js';
@@ -50,8 +50,7 @@ function firstOpenRoute(mask) {
 }
 
 export async function loadRoundSelect(manifest, titleVram) {
-  const spec = manifest.roundSelect;
-  if (!spec) throw new Error('manifest has no roundSelect section - re-run export_assets.py');
+  const spec = requireScreenSpec(manifest.roundSelect, 'roundSelect');
   const b64 = (s) => {
     const bin = typeof atob === 'function'
       ? atob(s) : Buffer.from(s, 'base64').toString('binary');

@@ -46,6 +46,27 @@ export function bootClearVram(vram) {
   vram.fill(0x2F, 0x9C00 - VRAM_BASE, 0x9CE0 - VRAM_BASE);   // $0223: redundant
 }
 
+/**
+ * Check a manifest screen block before indexing into it.
+ *
+ * Without this a stale cached manifest -- one that has `title` but predates
+ * `tiles`, say -- surfaces as "cannot read properties of undefined (reading
+ * 'map')", which names neither the file nor the field and sends you looking at
+ * the code rather than at the cache. Reported from a phone that had a mixed
+ * copy while the same build was fine on desktop.
+ */
+export function requireScreenSpec(spec, name) {
+  const missing = ['tiles', 'scripts', 'fill'].filter((k) => spec?.[k] === undefined);
+  if (!spec || missing.length) {
+    throw new Error(
+      `assets/manifest.json ${!spec ? 'has no "' + name + '" section'
+        : '"' + name + '" is missing: ' + missing.join(', ')}. `
+      + 'Most likely a stale cached copy -- hard-reload the page. '
+      + 'If that does not help, re-run: python tools/export_assets.py');
+  }
+  return spec;
+}
+
 /** ROM: sub_00_09FB, the byte-at-a-time block copier. */
 export function blockCopy(vram, dest, bytes) {
   const at = dest - VRAM_BASE;

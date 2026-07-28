@@ -194,7 +194,7 @@ for (let f = 1; f <= frames; f++) {
     en3x: (state.enemies[3][0x0E] << 8) | state.enemies[3][0x0F],
     en3y: (state.enemies[3][0x10] << 8) | state.enemies[3][0x11],
     en3vx: state.enemies[3][0x12], en3vy: state.enemies[3][0x13],
-    en3at: state.enemies[3][0x14], en3ms: state.enemies[3][6],
+    en3at: state.enemies[3][0x14], en3hp: state.enemies[3][0x16], en3ms: state.enemies[3][6],
     // Slots 6/7: the levels-1/2 respawning sewer enemies (water.js,
     // loc_00_2D3D); the projectile slots everywhere else.
     en6f: state.enemies[6][0], en6s: state.enemies[6][2],
