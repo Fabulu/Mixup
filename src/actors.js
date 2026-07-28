@@ -25,6 +25,7 @@
 //   +$0F   travel limit -- script steps before the object retires
 
 import { u8, i8, cellIndex } from './state.js';
+import { drawMetasprite } from './render/metasprite.js';
 
 export const SLOTS = 8;
 export const RECORD = 16;
@@ -58,7 +59,7 @@ export function loadActors(state, records, count) {
 }
 
 /** ROM: sub_01_4230 */
-export function updateActors(state) {
+export function updateActors(state, manifest) {
   for (let slot = 0; slot < SLOTS; slot++) {
     const r = state.actors[slot];
     if (r[0] === 0) continue;                       // $4240: empty
@@ -79,8 +80,50 @@ export function updateActors(state) {
 
     r[0] |= 0x80;                                   // $426B: SET 7
     dispatch(state, r, type);
-    cacheScreenPos(state, r);
+    drawActor(state, r, type, manifest);
   }
+}
+
+/**
+ * Cache the screen position AND draw the object.  ROM: loc_01_49F6-$4A4F, the
+ * common tail EVERY slot reaches -- retired ones included, since jt_01_4525's
+ * $FE arm exits through $4443 into $49F6.
+ *
+ * The port had no draw pass at all, which is why level 3's start platform was
+ * invisible and Batman appeared to stand on air. MEASURED on the cartridge
+ * (level 3, frame 60): shadow OAM slots 0-3 hold a 4-tile platform at y=$90,
+ * x=$08/$10/$18/$20, directly under the player -- $C1E8 slot 0, the type-$08
+ * whose COLLISION we had already ported.
+ *
+ * Three gates, in the ROM's order:
+ *   $49F7  masked types $07/$09/$0B never draw -- they are terrain stampers
+ *          (water spouts, spike traps) with no sprite of their own
+ *   $4A21  sub_00_11A7: |camX_hi + 5 - objX_hi| >= 9 is off-screen
+ *   $4A29  an object above world row $11 does not draw
+ */
+function drawActor(state, r, type, manifest) {
+  cacheScreenPos(state, r);                       // $4A16: the +9/+$0A cache
+
+  if (type === 0x07 || type === 0x09 || type === 0x0B) return;   // $49F9-$4A03
+
+  const camCol = u8((state.camera.x >> 8) + 5);   // $11A7
+  if (Math.abs(camCol - r[1]) >= 9) return;       // $11B0: CP $09
+  if (r[3] < 0x11) return;                        // $4A29: CP $11 / JR C
+
+  // $4A37-$4A4A: a per-level, per-type table at 1:$4AB7, indexed
+  // (level-1)*10 + (type-1). Both indices are 1-based in the ROM.
+  const ids = state.tables?.objectMetasprites;
+  if (!ids || !manifest?.metasprites) return;
+  const id = ids[(state.level.number - 1) * 10 + (type - 1)];
+  if (id === undefined) return;
+
+  // r[9]/r[10] are OAM coordinates (+8/+16 from sub_00_1172); the sprite queue
+  // is in screen space, so the hardware offsets come back off -- same as
+  // drawEnemies does with r[7]/r[8].
+  // VERIFIED against the cartridge's shadow OAM: level 3 slot 0 queues four
+  // sprites, tiles $E8/$EA/$EC/$EE, at screen (0,128) (8,128) (16,128)
+  // (24,128) -- exactly the OAM y=144, x=8/16/24/32 the ROM writes.
+  drawMetasprite(state, manifest.metasprites.table1, id, r[9] - 8, r[10] - 16, 0);
 }
 
 /**

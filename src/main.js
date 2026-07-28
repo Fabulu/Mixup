@@ -278,7 +278,7 @@ export function tick(state, manifest, playerTiles) {
   // frame. drawPlayer therefore draws against last frame's camera, as the ROM
   // does.
   updateCamera(state);                // $121F
-  updateActors(state);                // $05BA CALL 1:$4230
+  updateActors(state, manifest);      // $05BA CALL 1:$4230
 
   // $05BD CALL $1336: the player state machine is not a call target -- it is
   // the fall-through TAIL of sub_00_1336, reached via $1640 -> $170A after

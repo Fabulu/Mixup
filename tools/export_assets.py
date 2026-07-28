@@ -95,6 +95,12 @@ T_RESPAWN_ENEMIES = [(0, 0x32F8), (0, 0x32D8)]     # slot 6 (col $2B), 7 ($27)
 #   1:$7C5F  3 x 10 B VRAM scripts, one per difficulty, chosen at $39E4. Their
 #            dest high byte is patched to $9C at $3A05 -- they write the
 #            window map, not the BG.
+# Map-object metasprite ids, 1:$4AB7 -- 14 levels x 10 types, indexed
+# (level-1)*10 + (type-1) at loc_01_4A37. Every drawable object's sprite comes
+# from here; loc_01_49F6 is the common tail EVERY object reaches, retired ones
+# included, and it skips only types $07/$09/$0B (terrain stampers, no sprite).
+T_OBJ_METASPRITES = (1, 0x4AB7)
+T_OBJ_METASPRITES_N = 14 * 10
 T_OPT_CURSOR_Y    = (1, 0x7C5C)
 T_OPT_DIFFICULTY  = (1, 0x7C5F)
 T_SCRIPT_PTRS     = (0, 0x27E6)   # loc_00_164A: 3 LE pointers to move scripts
@@ -301,6 +307,8 @@ def main():
         'scriptSteps': read_table(rom, T_SCRIPT_STEPS, 3),
         'objectScripts': read_table(rom, T_OBJ_SCRIPTS, T_OBJ_SCRIPTS_N),
         'respawnEnemies': [read_table(rom, loc, 32) for loc in T_RESPAWN_ENEMIES],
+        'objectMetasprites': read_table(rom, T_OBJ_METASPRITES,
+                                        T_OBJ_METASPRITES_N),
         'optionsCursorY': read_table(rom, T_OPT_CURSOR_Y, 3),
         # Indexed BY DIFFICULTY, which is NOT address order: sub_00_39E4
         # dispatches $C756 == 1 -> $7C5F (NORMAL), == 2 -> $7C73 (HARD), and
