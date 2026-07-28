@@ -30,10 +30,10 @@ python tools/oracle/trace.py  --frames 620 --script "20:,600:R" --level 5
 node   tools/render-frame.mjs --frames 620 --script "20:,600:R" --level 5
 node   tools/oracle/regress.mjs         # the whole corpus
 node   tools/oracle/vramdiff.mjs --record   # sub_00_0A0E, write for write
-npm run test-all                        # 6 stages, the gate for everything
+npm run test-all                        # 7 stages, the gate for everything
 ```
 
-**Current state: 30/30 oracle scenarios bit-exact, 307 unit tests, 6/6 stages
+**Current state: 30/30 oracle scenarios bit-exact, 327 unit tests, 7/7 stages
 green.** Levels 1, 5 and 9 match the cartridge exactly over 620 frames each.
 
 If you change gameplay code and `test-all` goes red, you broke something real.
@@ -93,6 +93,7 @@ Deploy: `node tools/build-dist.mjs` then
 | Difficulty `$C756` (launcher control; every read catalogued in master-ref §8b) | ported |
 | Sound driver + DMG APU, music and SFX | plays; **not** bit-exact — see "Sound" |
 | Title screen | **built from ROM data**, 8192/8192 B against the cartridge |
+| Round select / continue (`0:$035B`) | build bit-exact; cursor logic verified against the ROM over three `$C753`/`$FFB5` states |
 
 ---
 
@@ -153,9 +154,10 @@ Be suspicious of these; they are the likeliest source of a surprise.
 - **State-2's ranged attack and projectile flight.** Literal ports with unit
   tests, but no natural input script triggers them, so no frame-by-frame proof.
 - **Post-death behaviour.** The ROM shoves x −15 during its sequence and
-  returns to round-select; we restart the level in place instead. This is a
-  **temporary stopgap, not a design decision** — it stands only until the menu
-  graphics are ported, and then the real round-select path should come back.
+  returns to round-select; we restart the level in place instead. Still a
+  **temporary stopgap** — but round select now exists, so wiring death back to
+  it is no longer blocked on anything. That plus `$FFB5`/`$C753` bookkeeping is
+  what turns CONTINUE from ported-but-unreachable into something you can use.
 - **Animated tiles** (`assets/water.json`, tools/rip_water.py). Two things are
   captured rather than translated, and neither is in the exported level VRAM.
   (1) The `$9C00` window tilemap: level init fills it flat, then a VRAM script
@@ -352,25 +354,30 @@ both frequency bytes and the trigger. Open:
 
 ## Suggested next steps
 
-1. **Map-object handlers for types `$01 $04 $05 $06 $0B`** (1:`$488D`,
+1. **The OPTIONS menu (`loc_00_3893`)** — the last menu stopgap. Same drawing
+   pattern as the title and round select (find its ingredients with
+   `tools/oracle/titlebuild.py --until-pc`, replay, diff), then difficulty,
+   the sound test and exit. Note it is the BIGGER routine of the two: 334 bytes
+   against round select's 286, and the sound test is a BCD counter over 70
+   entries. Retiring it removes the launcher standing in for OPTION.
+2. **Feed round select from the game**: set `$FFB5` when a level is reached and
+   maintain `$C753` on clear, so CONTINUE and the cleared-route skipping — both
+   ported and both verified — stop being unreachable. Then send death back to
+   round select instead of restarting in place.
+3. **Map-object handlers for types `$01 $04 $05 $06 $0B`** (1:`$488D`,
    `$4940`, `$4291`, `$42E3`, `$483C`). The overlap scan is in and makes them
    solid; without handlers they are solid *in the wrong place* as soon as one is
    meant to move. Type `$08` is done and is the worked example to copy —
    `actorType8` in actors.js, verified by `l3-platform-ride`. Types `$05` and
    `$06` next: between them they cover levels 3, 12 and 13.
-2. **The two sound bugs** (see "Sound"). Both are precisely located.
-3. **Verify melee/batarang enemy damage against the oracle** — add a scenario
+4. **The two sound bugs** (see "Sound"). Both are precisely located.
+5. **Verify melee/batarang enemy damage against the oracle** — add a scenario
    that kills an enemy on level 1 and compare `en0hp`. Biggest *unverified*
    gap in gameplay.
-4. **The remaining screens on top of `sub_00_0A0E`.** The interpreter and the
-   title are done. Next is the `$0E24` window surface, which kills the
-   `water.json` tilemap capture and follows exactly the title's shape — find
-   the ingredients with `tools/oracle/titlebuild.py`, replay, diff. Then the
-   options menu (`loc_00_3893`) and the Joker stage select, which need menu
-   LOGIC on top of the drawing. The launcher standing in for OPTION and the
-   in-place respawn go away at the end of that, together with the raster
-   bands: debt, not the intended design.
-5. **The door sequencer**, which unblocks level 13.
+6. **The `$0E24` window surface** — the last screen on top of `sub_00_0A0E`,
+   and the one that kills the `water.json` tilemap capture. Exactly the title's
+   shape: find the ingredients, replay, diff.
+7. **The door sequencer**, which unblocks level 13.
 
 ---
 
