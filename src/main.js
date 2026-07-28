@@ -11,7 +11,8 @@ import { updatePlayer } from './player.js';
 import { updateCamera } from './camera.js';
 import { loadManifest, loadPlayerTiles } from './assets.js';
 import { createFramebuffer, renderFrame, SCREEN_W, SCREEN_H } from './render/renderer.js';
-import { drawPlayer, streamPlayerTiles, applyAnimHitbox } from './render/metasprite.js';
+import { drawPlayer, streamPlayerTiles, applyAnimHitbox,
+         cachePlayerScreen } from './render/metasprite.js';
 import { updateBatarangs, drawBatarangs } from './batarang.js';
 import { updateRope } from './rope.js';
 import { drawHud } from './hud.js';
@@ -20,6 +21,8 @@ import { updateActors } from './actors.js';
 import { updateEnemies, drawEnemies } from './enemies.js';
 import { updateWater, updateSplashes, tickWaterArt } from './water.js';
 import { updateDrops } from './drops.js';
+import { updateDoors } from './doors.js';
+import { updateVictoryHold } from './effects.js';
 import { resolveLoadout, runHook } from './mods.js';
 import { loadTitle, showTitle, hideTitle, tickTitle } from './title.js';
 import {
@@ -368,6 +371,11 @@ export function afterDeath(state, wasGameOver) {
 
 /** One game frame. ROM: the $0567 main-loop body. */
 export function tick(state, manifest, playerTiles) {
+  // loc_00_3566/$35D0: the victory fanfare BLOCKS the main loop -- it is a
+  // wait routine the clear path calls, not a state the loop drives. While it
+  // holds, no camera, no player, no enemies. It raises flow.levelCleared at
+  // loc_00_35E8 about 632 frames after the boss dies.
+  if (updateVictoryHold(state)) return;
   if (state.flow.paused) return;
   runHook(state.loadout, 'onFrame', state);
 
@@ -395,14 +403,19 @@ export function tick(state, manifest, playerTiles) {
   // that routine's tile-restore, effect-pool and ballistics work.
   // $05BD CALL $1336 begins with the delayed tile restores at $1349, before
   // falling through into the player state machine.
-  updateBreakables(state);            // $1349
+  // $1349 tile restores, then loc_00_1391's effect pool -- the next third of
+  // the same routine, which is why it lives behind the same call.
+  updateBreakables(state, manifest);
   // $1444: the ballistic pool -- the hearts enemies drop. It sits between the
   // tile restores and the player state machine, and BEHIND the $1438 gate,
   // which skips the entire rest of the chain while $C750 is set. That gate
   // lives at the top of updatePlayer (see the note there); repeating its
   // condition here is what keeps the two in the right order.
   if (!state.flow.bossMode) updateDrops(state, manifest);
-  updatePlayer(state);                // $170A-$1D0B
+  updatePlayer(state, manifest);      // $170A-$1D0B
+  // $1B58, the tail of the player update: stash the screen position that the
+  // NEXT frame's $1444 ballistic pass will read.
+  cachePlayerScreen(state);
   applyAnimHitbox(state, manifest);   // $1D2C -- hitbox follows the animation
   drawPlayer(state, manifest);        // $1D0C
   updateWater(state);                 // $05C6 CALL $2CBE -- levels 1-2 water
@@ -412,6 +425,9 @@ export function tick(state, manifest, playerTiles) {
   drawBatarangs(state, manifest);     // $3D15
   updateRope(state, manifest);        // $3D5F -- the tail of the same routine
   updateEnemies(state);               // $05CF CALL 1:$4E0C
+  // $05D2: LD A,[$C733] / AND A / CALL NZ,1:$4BB0 -- the door a punch opened,
+  // its four erases and the debris it throws.
+  updateDoors(state, manifest);
   updateSplashes(state);              // $05EF CALL 1:$7AD3 -- queues onto the
                                       // enemy draw list, so OAM order holds
   drawEnemies(state, manifest);       // flush loc_01_5CA8's queued sprites

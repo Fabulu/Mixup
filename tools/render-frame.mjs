@@ -160,7 +160,8 @@ for (let f = 1; f <= frames; f++) {
   const p = state.player;
   trace.push({
     f, x: p.x, y: p.y, vx: p.vx, vy: p.vy, air: p.air,
-    facing: p.facing, anim: p.anim, camX: state.camera.x, camY: state.camera.y,
+    facing: p.facing, anim: p.anim, animFrame: p.animFrame,
+    camX: state.camera.x, camY: state.camera.y,
     throttle: p.airThrottle, halfW: p.halfW, halfH: p.halfH,
     turn: p.turnTimer, cling: p.clingLock, action: p.action,
     atkTimer: p.attackTimer, atkPose: p.attackPose, ammo: state.flow.ammo,

@@ -26,6 +26,7 @@
 
 import { u8, i8, cellIndex } from './state.js';
 import { drawMetasprite } from './render/metasprite.js';
+import { actorTypeA } from './conveyor.js';
 
 export const SLOTS = 8;
 export const RECORD = 16;
@@ -42,14 +43,15 @@ const ACTIVATION = [0, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x08, 0x0
  * Types whose handler is not ported yet. Listing them explicitly (rather than
  * silently doing nothing) keeps the gap honest and greppable.
  *   1 $488D  2 $48E4*  3 $499B  4 $4940  5 $4291  6 $42E3
- *   7 $4447  8 $4525   9 $464F 10 $4765* 11 $483C      (* never placed)
+ *   7 $4447  8 $4525   9 $464F 10 $4765* 11 $483C      (* not in any blob)
  *
- * Type $0A is the only one left. Type $0B's HANDLER is ported, but the level-6
- * track it reads ($FFCA/$FFCB/$FFC9, written by loc_00_2EF4 -- the level-6
- * sub_00_2CBE branch) is not, so on level 6 it rides a frozen track. See
- * actorTypeB.
+ * All eleven are ported. The asterisks mean "no level's spawn blob contains
+ * one", which is NOT the same as "never happens": sub_01_4AA0 reverses an
+ * oscillator by rewriting its own type byte (1<->2, 3<->4), and the level-7
+ * and level-13 sub_00_2CBE branches stamp type $0A records into $C1E8 at
+ * runtime. Both types occur; neither is ever loaded.
  */
-export const UNIMPLEMENTED_TYPES = new Set([10]);
+export const UNIMPLEMENTED_TYPES = new Set([]);
 
 export function createActors() {
   return Array.from({ length: SLOTS }, () => new Uint8Array(RECORD));
@@ -202,8 +204,11 @@ function dispatch(state, r, type) {
     case 7: actorType7(state, r); return false;     // $4447
     case 8: actorType8(state, r); return false;     // $4525
     case 9: actorType9(state, r); return false;     // $464F
+    // $4765. Spawned only by the level-7 and level-13 sub_00_2CBE branches,
+    // which is why it lives in src/conveyor.js next to the code that makes it.
+    case 0x0A: return actorTypeA(state, r);         // $4765
     case 0x0B: actorTypeB(state, r); return true;   // $483C -- own cache, no tail
-    default: return false;                          // see UNIMPLEMENTED_TYPES
+    default: return false;                          // nothing left unported
   }
 }
 

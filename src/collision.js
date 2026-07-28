@@ -7,6 +7,7 @@ import {
 } from './state.js';
 import { armScriptedMove } from './scriptedmove.js';
 import { SLOTS, screenX, screenY } from './actors.js';
+import { updateEffects } from './doors.js';
 
 /** Probe modes, as written to $C72B. */
 export const MODE_HORIZONTAL = 1;
@@ -538,15 +539,30 @@ export function breakCell(state, col, row) {
  * subpixels of extra fall per frame, and death by f97 in a run where the
  * cartridge's player is unharmed.
  */
-export function updateBreakables(state) {
+export function updateBreakables(state, manifest) {
   state.standingOnActor = 0;                      // $1336: XOR A / LDH [$FFC6]
 
   // $1339-$1347: the queue only ticks on levels 5, 7 and $0C. Everywhere else
-  // sub_00_1336 jumps straight to loc_00_1391, so a cell that has been stepped
-  // on stays SOLID for the rest of the level -- there is no restore at all.
+  // sub_00_1336 jumps straight to loc_00_1391 -- so a cell that has been
+  // stepped on stays SOLID for the rest of the level (there is no restore at
+  // all), but loc_00_1391 STILL RUNS. That label is not an exit, it is the
+  // next third of the same routine, and skipping to a `return` here would have
+  // frozen the effect pool on all eleven other levels.
   const lv = state.level.number;
-  if (lv !== 5 && lv !== 7 && lv !== 0x0C) return;
+  if (lv === 5 || lv === 7 || lv === 0x0C) restoreTimers(state);
 
+  // $1391: the $C693 effect pool, ported in doors.js because the door
+  // sequencer is currently its only wired spawner. It is called from here
+  // rather than from main.js because it IS this routine -- sub_00_1336 runs
+  // $1349 and $1391 back to back, ahead of the $1438 boss gate and the player
+  // state machine, and an effect spawned by the punch at $2099 must therefore
+  // NOT be ticked on the frame it is created. (MEASURED: the door's $97 effect
+  // still reads $97 at the end of its own spawn frame and only starts counting
+  // on the next one.)
+  updateEffects(state, manifest);
+}
+
+function restoreTimers(state) {
   for (const s of state.breakables) {
     if (s.timer === 0) continue;
     // $1364: the expiring cell is ERASED -- graphic AND collision both zeroed

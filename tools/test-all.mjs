@@ -119,6 +119,30 @@ const STAGES = [
     skip: hasAssets ? null : 'assets/manifest.json missing',
   },
   {
+    name: 'door-sequencer',
+    what: 'punch-opened doors, the debris pool and the $C693 effect pool',
+    cmd: process.execPath,
+    args: ['tools/oracle/doordiff.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
+    name: 'subsystems',
+    what: 'the six sub_00_2CBE branches: conveyor, respawner, freeze, collapse',
+    cmd: process.execPath,
+    args: ['tools/oracle/subsysdiff.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
+    name: 'death-sequences',
+    what: 'the boss countdown into the fanfare, and the 452-frame player death',
+    cmd: process.execPath,
+    args: ['tools/oracle/deathdiff.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
     // No PyBoy: it replays recordings already on disk, so it is cheap enough
     // to run every time and still covers all 47 ROM sound ids.
     name: 'sound-driver',

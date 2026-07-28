@@ -88,6 +88,21 @@ T_ROUNDSEL_SCRIPT = (6, 0x7674)
 # dead by loc_00_2D3D. 32-byte $C268 records, fixed data in bank 0. They are NOT
 # in the level's enemy blob -- 5:$46EC says count 6 while the cartridge runs 8.
 T_RESPAWN_ENEMIES = [(0, 0x32F8), (0, 0x32D8)]     # slot 6 (col $2B), 7 ($27)
+# --- the per-level sub_00_2CBE subsystems (src/conveyor.js) ---------------
+# Level 7's loc_00_2F5F refills $C1E8 slots 4/5/6 from these three 16-byte
+# records, up to ten times, whenever all three are free again.  Level $0D's
+# loc_00_301E stamps ONE record into slots 0/1/2 and then overwrites each
+# slot's Xhi with $58/$5B/$5C.  Both are map objects of type $0A -- which is
+# how a type "never placed in any level's spawn data" still reaches the game.
+T_SUBSYS_OBJ_L7 = [(5, 0x4FB0), (5, 0x4FC0), (5, 0x4FD0)]
+T_SUBSYS_OBJ_L13 = (0, 0x3318)
+# Level $0C's collapsing floor, loc_00_2FB7: 72 x {col, row}, one cell erased
+# per frame while the player is within 6 columns of the screen centre.
+T_COLLAPSE_CELLS = (1, 0x7BB4)
+T_COLLAPSE_CELLS_N = 0x48 * 2      # $7BB4-$7C43, ending where 1:$7C44 begins
+# loc_00_3050's entry height, indexed by $C73E - 1 -- i.e. one byte per BOSS
+# (levels 4, 8, $0B, $0E).  4 B, ending where sub_00_333F begins.
+T_RESCUE_ENTRY_Y = (0, 0x333B)
 # OPTIONS menu (state 6, loc_00_3893). Its PANEL is not drawn here at all --
 # the title's own scripts already put it in the WINDOW tilemap, hidden at
 # rWY $90, and the screen just slides the window down to $45. What IS dynamic:
@@ -119,6 +134,59 @@ T_GAP_LEAPS       = (1, 0x7DBC)
 T_GAP_LEAPS_N     = 14
 T_OPT_CURSOR_Y    = (1, 0x7C5C)
 T_OPT_DIFFICULTY  = (1, 0x7C5F)
+# --- the door/gate sequencer, sub_01_4BB0 (src/doors.js) -------------------
+# 1:$4D00  4 x {rowDelta, colDelta}: which of the door's four cells phase
+#          $C733 = 1..4 erases, relative to the BOTTOM-LEFT cell in
+#          $C734/$C735.  Read low byte first ($4BC0: LD A,[HL+] / LD B,(HL)),
+#          so the pair is (row, col), not (col, row).
+# 1:$4D08  35 x {xStep, yStep}: the debris arc, indexed by $C733 - 6.  xStep
+#          is a MAGNITUDE -- pieces 0/1 negate it ($4C69 CPL/INC A) -- and
+#          yStep is signed and ADDED to the position, so $C0 is 4 px up.
+#          35 entries exactly: $C733 runs 6..$28 and wraps at $29 ($4CEB).
+# 1:$4CF4  the level-3 debris sprites, one per PIECE (loc_01_4CCC).
+# 1:$4CF8  everyone else's, one per animation phase (($C733-6) & $0E) >> 1.
+#          Levels $0C/$0D read no table at all -- $4CD1 hard-codes id $42.
+T_DOOR_STEPS      = (1, 0x4D00)
+T_DOOR_DEBRIS_VEL = (1, 0x4D08)
+T_DOOR_DEBRIS_VEL_N = 35 * 2       # $4D08-$4D4D, ending where loc_01_4D4E begins
+T_DOOR_SPRITES_L3 = (1, 0x4CF4)
+T_DOOR_SPRITES    = (1, 0x4CF8)
+# The $C693 effect pool's animation table, 0:$2807: five LE pointers, one per
+# subtype byte (+5 of the record), each naming a run of metasprite ids indexed
+# by (counter & $18) >> 3 -- so 0..3, even though the entries are only THREE
+# bytes apart and index 3 therefore reads the next entry's first byte (the
+# fifth reads $2820, the first byte of loc_00_2820).  Resolved to 5 x 4 here
+# rather than shipped as pointers, so the port never carries a ROM address.
+T_EFFECT_SPRITES  = (0, 0x2807)
+T_EFFECT_SPRITES_N = 5
+# --- the two death sequences (src/effects.js) ------------------------------
+# Batman's death, the $C1C0 burst.  sub_00_29E7 seeds 8 x 5 B from 0:$2AD7 and
+# loc_00_2A0D drives it; 0:$2ACF names one metasprite per slot and 0:$2AFF is
+# the shared flight path, one byte per step packing {dy:dx} as signed nibbles.
+#
+# The path's LENGTH is not a guess.  A slot sets its "parked" bit the moment
+# its 16-bit counter reaches $113 ($2A31: hi nonzero AND lo >= $13), and
+# $2AFF + $113 = $2C12, the last byte before sub_00_2C13 -- so the table is
+# exactly as long as the walk that reads it.  Summing its signed nibbles over
+# 1..$113 gives dx -79 / dy +24, which takes slot 0 from ($88,$38) to
+# ($39,$50) -- byte for byte the state the cartridge ends the sequence in.
+T_BURST_SPRITES   = (0, 0x2ACF)
+T_BURST_INIT      = (0, 0x2AD7)
+T_BURST_PATH      = (0, 0x2AFF)
+T_BURST_PATH_N    = 0x2C13 - 0x2AFF        # 276
+# The boss death, 1:$78CC / 1:$7936.  $7A73 is 16 explosion offsets indexed by
+# $C713, packed the same way (high nibble X, low nibble Y, both signed, both in
+# whole metatiles).  The pose tables are picked by the enemy's STATE byte:
+#   $7A1D  states 7 / $0A, facing * 8 + (($C740 & $70) >> 4)
+#   $7A2D  the same index, but only when $C73E == 2 (boss 2 draws through
+#          sub_00_0BC6 where everyone else uses sub_00_0BAF)
+#   $7A3D  the default arm (boss 3, state 8), by facing
+#   $7A3F  state 9, by facing
+T_BOSS_EXPLOSIONS = (1, 0x7A73)
+T_BOSS_POSE_1     = (1, 0x7A1D)
+T_BOSS_POSE_2     = (1, 0x7A2D)
+T_BOSS_POSE_WALK  = (1, 0x7A3D)
+T_BOSS_POSE_B4    = (1, 0x7A3F)
 T_SCRIPT_PTRS     = (0, 0x27E6)   # loc_00_164A: 3 LE pointers to move scripts
 T_SCRIPT_BLOCK    = (0, 0x27E6)   # the scripts themselves live just past them
 T_SCRIPT_BLOCK_N  = 0x1E          # $27E6-$2803
@@ -165,6 +233,21 @@ def s8(v):
 
 def read_table(rom, loc, n):
     return list(rom.rd(loc[0], loc[1], n))
+
+
+def read_effect_sprites(rom, loc, count):
+    """Resolve 0:$2807's pointer table into `count` runs of 4 metasprite ids.
+
+    loc_00_1411 does `A = subtype * 2`, `HL = $2807 + A`, dereferences the LE
+    word and then adds the 0..3 animation index. The entries are packed three
+    bytes apart, so index 3 legitimately reads into the next entry -- that is
+    the cartridge's own arithmetic and is reproduced rather than clamped.
+    """
+    out = []
+    for i in range(count):
+        ptr = rom.u16(loc[0], loc[1] + i * 2)
+        out.append(list(rom.rd(loc[0], ptr, 4)))
+    return out
 
 
 def read_gap_leaps(rom, loc, count):
@@ -350,6 +433,13 @@ def main():
         'scriptSteps': read_table(rom, T_SCRIPT_STEPS, 3),
         'objectScripts': read_table(rom, T_OBJ_SCRIPTS, T_OBJ_SCRIPTS_N),
         'respawnEnemies': [read_table(rom, loc, 32) for loc in T_RESPAWN_ENEMIES],
+        # sub_00_2CBE's per-level subsystems -- see src/conveyor.js.
+        'subsysObjects': {
+            'level7': [read_table(rom, loc, 16) for loc in T_SUBSYS_OBJ_L7],
+            'level13': read_table(rom, T_SUBSYS_OBJ_L13, 16),
+        },
+        'collapseCells': read_table(rom, T_COLLAPSE_CELLS, T_COLLAPSE_CELLS_N),
+        'rescueEntryY': read_table(rom, T_RESCUE_ENTRY_Y, 4),
         'objectMetasprites': read_table(rom, T_OBJ_METASPRITES,
                                         T_OBJ_METASPRITES_N),
         'optionsCursorY': read_table(rom, T_OPT_CURSOR_Y, 3),
@@ -363,6 +453,23 @@ def main():
         'gapLeaps': read_gap_leaps(rom, T_GAP_LEAPS, T_GAP_LEAPS_N),
         'enemyContactDamage': read_table(rom, T_ENEMY_DMG, 13),
         'levelDamageBonus': read_table(rom, T_LEVEL_DMG_BONUS, 14),
+        # --- door/gate sequencer + the $C693 effect pool (src/doors.js) ----
+        'doorSteps': read_table(rom, T_DOOR_STEPS, 8),
+        'doorDebrisVel': read_table(rom, T_DOOR_DEBRIS_VEL,
+                                    T_DOOR_DEBRIS_VEL_N),
+        'doorSpritesL3': read_table(rom, T_DOOR_SPRITES_L3, 4),
+        'doorSprites': read_table(rom, T_DOOR_SPRITES, 8),
+        'effectSprites': read_effect_sprites(rom, T_EFFECT_SPRITES,
+                                             T_EFFECT_SPRITES_N),
+        # --- the two death sequences (src/effects.js) ----------------------
+        'deathBurstSprites': read_table(rom, T_BURST_SPRITES, 8),
+        'deathBurstInit': read_table(rom, T_BURST_INIT, 8 * 5),
+        'deathBurstPath': read_table(rom, T_BURST_PATH, T_BURST_PATH_N),
+        'bossExplosionOffsets': read_table(rom, T_BOSS_EXPLOSIONS, 16),
+        'bossDeathPose1': read_table(rom, T_BOSS_POSE_1, 16),
+        'bossDeathPose2': read_table(rom, T_BOSS_POSE_2, 16),
+        'bossDeathPoseWalk': read_table(rom, T_BOSS_POSE_WALK, 2),
+        'bossDeathPoseB4': read_table(rom, T_BOSS_POSE_B4, 2),
     }
 
     # ---- round select: applied over the title's VRAM ---------------------

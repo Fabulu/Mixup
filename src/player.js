@@ -12,6 +12,8 @@ import { findFreeSlot, throwBatarang } from './batarang.js';
 import { meleeHitTest } from './enemies.js';
 import { updateScriptedMove } from './scriptedmove.js';
 import { startRope } from './rope.js';
+import { armDoor } from './doors.js';
+import { effects, startDeathBurst, deathBurstTick } from './effects.js';
 
 // Joypad bits ($FFE1/$FFE2)
 export const BTN = {
@@ -21,7 +23,7 @@ export const BTN = {
 
 const AIR_GROUNDED = 0, AIR_RISING = 1, AIR_FALLING = 2;
 
-export function updatePlayer(state) {
+export function updatePlayer(state, manifest = null) {
   // $1438: while $C750 is nonzero -- set ONLY by $0DE0, guarded on level $0E --
   // the HELD-input byte is cleared and the whole player chain is skipped to the
   // $1B4A draw tail: no scripted move, no carry, no exits, no pit test, no
@@ -49,7 +51,7 @@ export function updatePlayer(state) {
   applyCarry(state);
 
   // Death runs its own sequence and suppresses everything else.
-  if (state.player.dead) { deathTick(state); return; }
+  if (state.player.dead) { deathTick(state, manifest); return; }
 
   // $1643: a scripted door/exit walk-through replaces the entire player
   // update while it runs -- no input, no physics, no collision.
@@ -184,17 +186,26 @@ function checkHpDeath(state) {
 }
 
 /**
- * ROM: sub_00_29E7. Sets the dying flag, the $78-frame timer, the jingle,
- * and the $C1C0 particle burst (not modelled). It does NOT touch vx or vy --
+ * ROM: sub_00_29E7. Seeds the $C1C0 particle burst from 0:$2AD7, sets the
+ * dying flag, the $78 counter and the jingle. It does NOT touch vx or vy --
  * MEASURED: a pit death mid-fall keeps vx = -2, vy = -66 frozen in the
  * trace for the whole sequence. Zeroing them here was a port invention and
  * diverged from f-death+1 on.
+ *
+ * The $78 is NOT the length of the sequence. Nothing decrements it until slot
+ * 7 of the burst has finished its scripted flight, which takes 332 frames --
+ * see deathBurstTick. MEASURED end to end on levels 1, 3 and 4: 452 frames
+ * from here to loc_00_2AAD.
  */
 function startDeath(state) {
   const p = state.player;
   if (p.dead) return;                   // $29EB: already dying
+  // $29ED-$2A02: the 40-byte seed and $C712 = $78 in one go.
+  startDeathBurst(state, state.tunables.deathSequenceFrames);
   p.dead = 1;                           // $29FD: $C715
-  state.deathTimer = state.tunables.deathSequenceFrames;   // $2A00: $78
+  // state.deathTimer stays a MIRROR of $C712 -- main.js clears it on respawn
+  // and the unit tests read it, but the burst is what owns the byte now.
+  state.deathTimer = state.tunables.deathSequenceFrames;
   // $2A05 is LD BC,$0903 -- sub_00_0AE1 takes B as the id and C as the mask,
   // so this is song $09 with mask $03 (play + stop-all), not the $01 every
   // SFX site uses. It is music: the death jingle has to silence the level
@@ -206,16 +217,29 @@ function startDeath(state) {
  * ROM: loc_00_2A0D ticks the particle burst; loc_00_2AAD then decrements
  * lives and either restarts or ends the run.
  *
- * The original returns to the round-select screen here. Restarting the level
- * in place is the closer fit for a single-level build, and it is what stops a
- * fall off the map being a softlock.
+ * The burst is the sequence. $C712 -- what the port used to run down on its
+ * own as `deathTimer` -- is not touched until slot 7 of the burst reaches the
+ * end of its scripted path on frame 332, so the real length is 332 + 120 =
+ * 452 frames, MEASURED identically on levels 1, 3 and 4. The old timer-only
+ * version took 122.
+ *
+ * FAITHFUL CALL SITE: on the cartridge this runs from the MAIN LOOP, at $057A
+ * on even frames and $05EC on odd -- once a frame either way, right after the
+ * HUD draw and before the camera, and NOT gated on the pause. Running it here
+ * instead only moves the burst's sprites later in OAM. See REPORT.
  */
-function deathTick(state) {
+function deathTick(state, manifest = null) {
   // Fire exactly once. Without this the timer sits at zero and every
   // subsequent frame takes another life, draining the lot in a fifth of a
   // second while the async reload is still in flight.
   if (state.flow.respawnPending) return;
-  if (state.deathTimer > 0) { state.deathTimer--; return; }
+
+  const landed = deathBurstTick(state, manifest);   // loc_00_2A0D
+  state.deathTimer = effects(state).deathTicks;     // keep the mirror honest
+  if (!landed) return;                              // $2A9E: not yet zero
+
+  // $2AC6: BC = $2E03 -- id $2E, mask $03, on the way out to loc_00_035B.
+  requestSound(state, 0x2E, 0x03);
 
   const flow = state.flow;
   flow.lives = (flow.lives - 1) & 0xFF;          // $2AB6
@@ -324,10 +348,15 @@ function punchHitTest(state) {
 
   if (value !== 0xFF) {                                 // $203D
     if ((value & 0x1F) !== 0x1F) return;                // $2041: doors only
-    if (state.doors.active) return;                     // $2046: $C733 busy
-    state.doors.active = 1;                             // $204D
-    state.doors.col = hit.col;
-    state.doors.row = hit.row;
+    // $2046-$20A4. This used to latch the PROBE cell straight into $C733/4/5,
+    // which is wrong twice over: the sequencer wants the block's BOTTOM-LEFT
+    // cell, and which cell that is depends on the GRAPHIC id (all four of a
+    // door's cells carry the identical collision byte, so the collision cannot
+    // tell you). It also skipped the debris spawn entirely. Both live in
+    // armDoor, which returns false on the busy refusal at $2046 -- and note
+    // that refusal skips the recoil below too, because $2046's RET NZ leaves
+    // before the fall-through into $20A7.
+    if (!armDoor(state, hit.col, hit.row)) return;
   }
 
   // $20A7: punch recoil. Skipped mid-rope; NOT skipped by anything else.
@@ -387,14 +416,17 @@ function horizontal(state) {
   // $182D: `AND $F0 / CP $10` -- ONLY Right, with no other d-pad bit set.
   // Diagonals deliberately do not walk (Up is the bat-rope, Down the low throw).
   //
-  // Three things suppress directional input entirely, all falling through to
+  // FOUR things suppress directional input entirely, all falling through to
   // the friction path at $183B:
   //   $1813  a wall jump's locked direction
   //   $1815  an attack in progress ($FF97) -- you cannot steer mid-swing
   //   $181A  a bat-rope action in progress ($C71E)
+  //   $1820  $C751, the armed spring jump -- this one was missing, and it is
+  //          what freezes the player through level 11's entrance cutscene
   const blocked = inputBlockedByCling(state)
     || p.attackTimer !== 0
-    || p.action !== 0;
+    || p.action !== 0
+    || p.springArmed !== 0;
   const dir = blocked ? -1 : (state.input.held & 0xF0);
 
   if (dir === BTN.RIGHT) {
@@ -564,7 +596,9 @@ function vertical(state) {
   // he is standing and the spikes reach his head row.
   ceiling(state);
 
-  falling(state);
+  // $1ABF's arm jumps past the floor check; every other exit from falling()
+  // falls through to it.
+  if (falling(state)) return;
   floor(state);
 }
 
@@ -608,22 +642,44 @@ function ceiling(state) {
   p.action = 0;
 }
 
-/** ROM: loc_00_1ABB - gravity while not rising, with the unsigned clamp. */
+/**
+ * ROM: loc_00_1ABB - gravity while not rising, with the unsigned clamp.
+ *
+ * @returns true if the chain ended at loc_00_1B41 and the caller must NOT run
+ *          the floor probe. Only the $1ABF arm does that.
+ */
 function falling(state) {
   const p = state.player;
   const t = state.tunables;
 
-  if (p.springArmed) return;                       // $1ABF
-  if (p.clingLock & 0x1F) return;                  // $1AC2
-  if (p.action !== 0 && (p.action & 1) === 0) return;  // $1AC8
-  if (p.air === AIR_RISING) return;                // $1AD4
+  // $1ABF is `JP NZ, loc_00_1B41` -- the LANDING tail, and it lands PAST the
+  // floor check at $1B1B. That distinction is the whole bug: the other three
+  // early exits below ($1AC2/$1AC8/$1AD4) all fall through to $1B1B and still
+  // get their floor probe, but this one does not. Returning here and letting
+  // vertical() run floor() anyway re-derives air from the ground the player is
+  // NOT standing on, and puts him straight back to falling -- so `true` means
+  // "the chain ended, skip the floor probe".
+  //
+  // Only reachable where $C751 is set, and the whole ROM sets it in exactly
+  // one place ($2D0B), so the "spring jump" tunable is really "the jump that
+  // ends level 11's entrance cutscene" -- which is what caught this.
+  if (p.springArmed) {
+    p.air = AIR_GROUNDED;                          // $1B42: $FF80 = 0
+    p.vy = 0;                                      // $1B44: $FF87 = 0
+    p.clingLock = 0;                               // $1B46: $FFB2 = 0
+    p.jumpReleased = 0;                            // $1B48: $FFC2 = 0
+    return true;
+  }
+  if (p.clingLock & 0x1F) return false;            // $1AC2
+  if (p.action !== 0 && (p.action & 1) === 0) return false;  // $1AC8
+  if (p.air === AIR_RISING) return false;          // $1AD4
 
   if (!(state.input.held & BTN.A)) p.jumpReleased = 1;   // $1AE0
 
   // $1AE4: in water gravity is applied only 1 frame in 8.
   let g;
   if (p.slowMode) {
-    if ((state.frame & 0x07) !== 0) { integrateFall(state); return; }
+    if ((state.frame & 0x07) !== 0) { integrateFall(state); return false; }
     g = t.waterGravity;
   } else {
     g = t.gravityFalling;
@@ -637,6 +693,7 @@ function falling(state) {
   p.vy = i8(a >= terminal ? a : terminal);
 
   integrateFall(state);
+  return false;
 }
 
 function integrateFall(state) {

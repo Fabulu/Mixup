@@ -6,6 +6,8 @@ import { loadActors } from './actors.js';
 import { loadEnemies } from './enemies.js';
 import { loadWaterArt, applyWaterArt, armEnemyRespawn } from './water.js';
 import { clearDrops } from './drops.js';
+import { clearEffects } from './doors.js';
+import { createSubsys } from './conveyor.js';
 
 // The window art is the same for both water levels, so load it once.
 let waterArt;
@@ -106,6 +108,18 @@ export async function initLevel(state, n) {
 
   // $04FD/$0503/$0534-$053F: the water body re-seeds at $1F00 on level entry.
   state.water = createWater();
+
+  // $050D-$0516 / $0EAB / sub_00_29C3: the per-level sub_00_2CBE subsystem
+  // state -- level 7's respawn counter, level 11's freeze timer, level 12's
+  // collapse cursor, level 13's one-shot latch and loc_00_3050's rescue drop.
+  state.subsys = createSubsys();
+
+  // $0F08-$0F0F, guarded on `CP $06 / JR NZ` at $0EEA: the conveyor track is
+  // seeded on LEVEL 6 ONLY. MEASURED 0 on the first gameplay frame of levels
+  // 4, 7, 11, 12 and 13, which is why state.js no longer defaults it to $0700.
+  state.flow.parallaxTrack = n === 0x06 ? 0x0700 : 0;
+  state.flow.conveyorDir = 0;                   // $FFC9
+  state.flow.parallaxScx = 0;                   // $FFCC
 
   // $FFB1/$FFA7 are free-running VBlank counters that NEVER reset -- their
   // phase at gameplay start comes from the boot path, and the game reads them
@@ -208,7 +222,10 @@ export function resetPlayer(state, info) {
   for (const b of state.batarangs) { b.active = false; b.flags = 0; }
   for (const s of state.breakables) s.timer = 0;
   clearDrops(state);            // $C6CF: a heart must not survive the level
-  state.doors.active = 0;
+  clearEffects(state);          // $29A5: 60 bytes of $C693
+  // NOT state.doors.active, and NOT the debris pool. The cartridge clears
+  // neither on a level load -- sub_00_2889 wipes $C6CF/$C67B/$C693/$C4B0 and
+  // nothing else, and $C733 has no clearing writer anywhere in the ROM.
 }
 
 /**

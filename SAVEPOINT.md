@@ -89,7 +89,11 @@ Deploy: `node tools/build-dist.mjs` then
 | Wall-cling / wall-jump | bit-exact |
 | Punch, batarangs (throw, flight, return) | bit-exact |
 | Scripted door moves, breakables, pickups | bit-exact |
-| Map objects `$C1E8` — types 1, 2, 3, 4, 5, 6, 7, 8, 9, 11 | bit-exact (8 scenarios, all 16 record bytes + stamped cells) |
+| Map objects `$C1E8` — **all eleven types** | bit-exact (8 scenarios, all 16 record bytes + stamped cells) |
+| Door/gate sequencer (`$C733-$C735`) + debris + the `$C693` effect pool | bit-exact, 8 scenarios — **level 13 is unblocked** |
+| The six `sub_00_2CBE` branches (levels 1/2, 6, 7, 11, 12, 13 + the boss default) | bit-exact, 5 scenarios |
+| Boss death: the `$C740` countdown, all four per-boss arms, the fanfare's timing | bit-exact, 3 scenarios |
+| Player death: the `$C1C0` burst, 452 frames to the handoff | bit-exact on levels 1, 3 and 4 |
 | Map-object collision (`loc_00_2426`, all four probe modes) | bit-exact |
 | VRAM script interpreter `sub_00_0A0E` | bit-exact (write stream: address, value AND order) |
 | Title VRAM build (boot clear, block copies, `sub_00_34A4` fill) | bit-exact |
@@ -114,22 +118,15 @@ Deploy: `node tools/build-dist.mjs` then
 
 Roughly in order of how much each would change the game:
 
-1. **The boss DEATH sequence** (`loc_01_78CC` → `loc_00_34D0`). The `$4EB8`
-   arm that latches a dead boss is ported and raises the level clear, but the
-   254-frame explosion burst and the victory fanfare are not, so a cleared
-   level hands over on the frame the boss dies rather than ~630 frames later.
-   The player-death sequence has the same shape of gap: 452 frames on the
-   cartridge against 122 in the port, the difference being the `$C1C0`
-   particle burst's staggered warm-up.
-2. **The door/gate sequencer** (`$C733-$C735`) plus the effect and ballistic
-   pools it spawns. **This is what blocks level 13**, which has 88 actor-owned
-   destructible cells and no way to open them.
-3. **Map-object type `$0A`** — the last unported handler, and it is never
-   placed in any level's spawn data. Types 1-9 and 11 are all ported and
-   bit-exact. Note that type 2 and type 4 *do* occur at runtime even though no
-   blob contains them: `sub_01_4AA0` rewrites an object's own type byte to
-   reverse it (1↔2, 3↔4).
-4. **Raster effects** (the `$0857` STAT program): per-scanline SCX/SCY/palette
+1. **The victory fanfare's PICTURE.** Its timing is exact — a cleared boss
+   level now takes the cartridge's 632 frames — but `loc_00_34D0`'s 23 bank-6
+   VRAM blocks, `$3566`'s two block copies and the `$35B2`-`$35C9` STAT/LYC
+   program are not ported, so those frames show the level standing still
+   instead of a STAGE CLEAR screen. `$FFAC`'s ramp is kept in
+   `effects.windowRamp` rather than written to `state.video.windowY` on
+   purpose: pulling the real window up without the copies would paint the
+   level's fill tile over the screen.
+2. **Raster effects** (the `$0857` STAT program): per-scanline SCX/SCY/palette
    bands, with fraction accumulators at `$C763-$C766`. `rasterBands()` still
    emits a single band. The window LAYER itself is now drawn (`drawWindow` in
    renderer.js) — that was the level-1/2 water.
@@ -141,21 +138,20 @@ Roughly in order of how much each would change the game:
    boot vector, so the effect belongs to a screen reached *before* that, not to
    a game-over state in the flow map. Worth pinning down with the oracle
    (record `rSCX` per scanline across the sequence) before writing any code.
-5. **Conveyor carry** is applied (`loc_00_170A`), but levels 6/7/11/12/13 each
-   have their own `sub_00_2CBE` branch and only the levels-1/2 branch is
-   ported. Warning learned the hard way: a `sub_00_2CBE` branch can hide more
-   than its headline subsystem — the levels-1/2 branch's ENTRY (`$2D3D-$2D5C`)
-   was an enemy respawner that fell through into the water code, and skipping
-   to the water label silently deleted the two respawning sewer enemies.
-   Read each remaining branch from its entry label, not from where the
-   interesting-looking code starts.
-6. **The screens `sub_00_0A0E` feeds.** The interpreter ITSELF is now ported
+3. ~~**Conveyor carry**~~ — DONE, and the warning that got it there is worth
+   keeping: a `sub_00_2CBE` branch hides more than its headline subsystem. The
+   levels-1/2 branch's ENTRY (`$2D3D-$2D5C`) was an enemy respawner that fell
+   through into the water code. Level 7's "conveyor" branch turned out to be a
+   map-object respawner, level 11's a 240-frame entrance freeze, and level
+   13's a one-shot spawn. **Read each branch from its entry label**, not from
+   where the interesting-looking code starts.
+4. **The screens `sub_00_0A0E` feeds.** The interpreter ITSELF is now ported
    and bit-exact (`src/vramscript.js`) — what is still missing is the rest of
    each screen around it: the resource loads that put the tiles in VRAM, and
    the menu logic for the options screen and the Joker stage select. The hard,
    easy-to-get-wrong part is done; the remaining work is plumbing plus the
    raster bands (item 5) for the lettering effects.
-7. **Lag frames.** `$C757` is set when VBlank fires before the main loop
+5. **Lag frames.** `$C757` is set when VBlank fires before the main loop
    finishes, and the actor/enemy drivers skip that iteration. That is
    instruction-level timing, so it is out of scope by definition — see
    docs/03-VERIFICATION.md §28.
@@ -422,16 +418,17 @@ comparison will ever catch it.
 
 ## Suggested next steps
 
-1. **The boss death sequence** (`loc_01_78CC`) and the victory fanfare
-   (`loc_00_34D0`). `$4EB8` is ported — a dead boss latches, `$C740` goes to
-   `$FE`, and main.js raises the clear — but the 254-frame explosion burst in
-   between is not, so a cleared level hands over instantly. Same shape of gap
-   as the player death sequence (452 frames on the cartridge, 122 here).
-2. **The door sequencer**, which unblocks level 13.
-3. **The remaining conveyor branches.** `loc_00_2EF4` (level 6) is the one to
-   do first: it drives `$FFC9`/`$FFCA`/`$FFCB`, which the type-`$0B` conveyor
-   deck reads, and until it lands `l6-conveyor-deck` has to inject the
-   cartridge's own track. Delete that `inject` flag the day it does.
+1. **The raster/STAT program** (`$0857`), which is now the biggest visible
+   gap and covers three things at once: the levels-9/10/11 parallax sky (mode
+   2 is written but was unverifiable until `$FFCC` existed — it does now), the
+   levels-1/2 water band at `$08F0` (mode 6), and the snaking pseudo-3D
+   game-over lettering, which is per-scanline SCX modulation rather than
+   animated tiles. Record `rSCX` per scanline across the sequence before
+   writing any code.
+2. **The victory fanfare's picture** — the timing is exact, the 23 VRAM blocks
+   and the `$35B2` STAT program are not. See item 1 under "What is NOT ported".
+3. **Retire the last two captures**: the `$0E24` window surface
+   (`assets/water.json`) and `assets/title.json`'s LCD registers.
 4. **Verify melee/batarang enemy damage against the oracle** — DONE. Three
    level-3 scenarios cover miss, connect and a batarang kill; the death-pit
    frame is pinned too (`l3-pit-death-exact-frame`). Two findings worth

@@ -226,10 +226,14 @@ function contactOrDraw(state, r, manifest) {
   const sx = u8((u16(((r[1] << 8) | r[2]) - state.camera.x) >> 4) + 8);
   const sy = u8((u16(((((r[3] << 8) | r[4]) & 0x0FFF)) - state.camera.y) >> 4) + 0x10);
 
-  // $FF93/$FF94, recomputed the same way enemies.js does -- the original
-  // stores them once a frame before this pass runs.
-  const px = u8((u16(state.player.x - state.camera.x) >> 4) + 8);
-  const py = u8((u16((state.player.y & 0x0FFF) - state.camera.y) >> 4) + 0x10);
+  // $FF93/$FF94 -- READ, not recomputed. This pass runs at $1444, ahead of the
+  // player update whose tail ($1B58) writes them, so the correct value is LAST
+  // frame's. Recomputing here pairs last frame's player with this frame's
+  // camera and lands up to 2 px out; measured on a moving camera, that is the
+  // difference between taking a heart and sailing past it, because $0C88's
+  // compare accepts equality at exactly 12. See cachePlayerScreen().
+  const px = u8(state.video.playerScreenX ?? 0);
+  const py = u8(state.video.playerScreenY ?? 0);
   const dx = sx >= px ? sx - px : px - sx;
   const dy = sy >= py ? sy - py : py - sy;
 

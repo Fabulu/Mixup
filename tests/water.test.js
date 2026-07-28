@@ -87,7 +87,15 @@ const junk = (flag) => [flag, ...new Array(31).fill(0xFF)];
  */
 function respawnState({ flag6 = 0x00, flag7 = 0x00, ...opts } = {}) {
   const state = waterState(opts);
-  state.tables = { respawnEnemies: fakeTemplates() };
+  // updateWater IS sub_00_2CBE, so on a non-1/2 level it now dispatches into
+  // src/conveyor.js. The level-7 arm demands its own templates and THROWS
+  // without them, which is the point of that throw -- so the levels-other-than
+  // -1/2 case below has to supply one, or it would be asserting on a crash.
+  state.tables = {
+    respawnEnemies: fakeTemplates(),
+    subsysObjects: { level7: [new Array(16).fill(0), new Array(16).fill(0),
+                              new Array(16).fill(0)] },
+  };
   state.frame = 0x6D;
   placePlayer(state, 0x10, 2);                 // nowhere near the waterfall
   state.enemies[6].set(junk(flag6));

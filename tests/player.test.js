@@ -15,9 +15,29 @@ import {
 
 const GROUNDED = 0, RISING = 1, FALLING = 2;
 
+/**
+ * Stand-in $C1C0 tables for the death sequence.
+ *
+ * Deliberately NOT the cartridge's -- nothing ROM-derived is committed, and
+ * these tests are about WHEN the machine does things, not what the sparks look
+ * like. The shapes and the one value that matters are real:
+ *   deathBurstInit    8 x {flags, ctrLo, ctrHi, X, Y}, all dormant, as 0:$2AD7
+ *   deathBurstPath    $114 entries so index $113 -- the parking index -- exists
+ *   $22 packs dy = +2, dx = +2, so a slot's position is its own step count and
+ *   the arithmetic stays checkable by hand.
+ * src/effects.js REFUSES to run without them, which is the point: a missing
+ * table has to throw, not silently produce a death with no burst.
+ */
+const BURST_TABLES = {
+  deathBurstSprites: [0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x15, 0x18],
+  deathBurstInit: Array.from({ length: 40 }, (_, i) =>
+    (i % 5 === 3 ? 0x40 + (i / 5 | 0) * 8 : i % 5 === 4 ? 0x38 : 0)),
+  deathBurstPath: new Array(0x114).fill(0x22),
+};
+
 /** Player standing on flat ground in an open corridor. */
 function ground(patch = {}, opts = {}) {
-  const state = makeState(corridor(32, 14), opts);
+  const state = makeState(corridor(32, 14), { tables: BURST_TABLES, ...opts });
   placePlayer(state, 5, 13, 0x80, 0x00);
   Object.assign(state.player, { air: GROUNDED, vx: 0, vy: 0, facing: 0 }, patch);
   return state;
@@ -25,7 +45,7 @@ function ground(patch = {}, opts = {}) {
 
 /** Player in an endless open shaft: nothing to land on, nothing to hit. */
 function sky(patch = {}, opts = {}) {
-  const state = makeState(grid(32), opts);
+  const state = makeState(grid(32), { tables: BURST_TABLES, ...opts });
   placePlayer(state, 5, 2, 0x80, 0x00);
   Object.assign(state.player, { air: FALLING, vx: 0, vy: 0, facing: 0 }, patch);
   return state;
@@ -844,19 +864,22 @@ test('sub_00_29E7 does NOT zero VelX or VelY', () => {
   step(state, 10);
   assert.equal(state.player.vx, -2, 'and the sequence never touches them either');
   assert.equal(state.player.vy, -66);
-  assert.equal(state.deathTimer, 110, 'the timer is the only thing moving');
+  // $C712 is NOT a per-frame timer. loc_00_2A0D only decrements it from the
+  // $2A89 arm, and only for SLOT 7 -- which has not even armed yet at f10.
+  // MEASURED: it sits at $78 for 332 frames and then runs down in 120 more.
+  assert.equal(state.deathTimer, 120, 'nothing has touched $C712 yet');
 });
 
 test('level $0B dies a metatile and a half higher than everywhere else', () => {
   // ROM: $1756 -- $FFB0 == $0B takes the `CP $1B` arm instead of `CP $21`.
   // Its floor really is higher up; sharing the row lets you fall through it.
-  const deep = makeState(grid(8), { level: 0x0B });
+  const deep = makeState(grid(8), { level: 0x0B, tables: BURST_TABLES });
   placePlayer(deep, 3, 0, 0x80, 0x00);
   deep.player.y = 0x1B00;
   step(deep);
   assert.equal(deep.player.dead, 1);
 
-  const other = makeState(grid(8));
+  const other = makeState(grid(8), { tables: BURST_TABLES });
   placePlayer(other, 3, 0, 0x80, 0x00);
   other.player.y = 0x1B00;
   step(other);

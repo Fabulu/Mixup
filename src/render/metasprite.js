@@ -36,6 +36,33 @@ export function drawMetasprite(state, table, index, screenX, screenY, attrMask,
 /**
  * ROM: loc_00_1D0C.  Draws Batman, honouring the invulnerability blink.
  */
+/**
+ * ROM: $1B58, the tail of sub_00_1B4A -- the player update stores its own
+ * screen position into $FF93/$FF94 ONCE a frame, and everything downstream
+ * reads those bytes rather than recomputing.
+ *
+ * That distinction is not cosmetic. Anything running BEFORE the player update
+ * -- the $1444 ballistic pool is the one that matters -- reads last frame's
+ * value, while the camera has already moved this frame ($05B7). Recomputing
+ * from live state there mixes last frame's player with this frame's camera and
+ * lands up to 2 px out, which is enough to miss a pickup whose box test
+ * accepts equality at 12. Measured on the cartridge: the ROM sees screen X 86
+ * against a heart at 74 and takes it; recomputing gives 88 and misses.
+ *
+ * Consumers running AFTER the player update (the enemy driver at $05CF) may
+ * recompute safely, and enemies.js does.
+ */
+export function cachePlayerScreen(state) {
+  const p = state.player;
+  // sub_00_1172's own arithmetic, NOT drawPlayer's local screenX/screenY.
+  // $FF93/$FF94 are OAM coordinates and carry the +8/+16 origin offsets;
+  // drawPlayer subtracts them back out through the metasprite records. Caching
+  // the un-offset pair here puts every consumer 8 px and 16 px out.
+  state.video.playerScreenX = (((p.x - state.camera.x) & 0xFFFF) >> 4) + 8 & 0xFF;
+  state.video.playerScreenY =
+    ((((p.y & 0x0FFF) - state.camera.y) & 0xFFFF) >> 4) + 0x10 & 0xFF;
+}
+
 export function drawPlayer(state, manifest) {
   const p = state.player;
 

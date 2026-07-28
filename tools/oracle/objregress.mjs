@@ -121,16 +121,14 @@ const SCENARIOS = [
     script: '90:', slots: [0, 1, 2, 3] },
 
   // --- type $0B: the level-6 conveyor deck (jt_01_483C) --------------------
-  // The handler is exact; its INPUT is not ported. loc_00_2EF4 (the level-6
-  // branch of sub_00_2CBE) walks $FFCA/$FFCB and sets $FFC9, and the port has
-  // neither -- so this scenario feeds the port the cartridge's own measured
-  // track and direction each frame and then compares the record. That isolates
-  // exactly what this file owns: the +1/+2 copy, the hand-written +9/+$0A
-  // cache (the tail refuses masked type $0B, so nothing else writes it) and
-  // the $C72F carry. Delete `inject` the day loc_00_2EF4 lands; if the
-  // scenario still passes, the whole object is done.
+  // This used to inject the cartridge's own $FFCA/$FFCB/$FFC9 because the
+  // handler's INPUT -- loc_00_2EF4, the level-6 branch of sub_00_2CBE -- was
+  // unported. It is ported now (src/conveyor.js), the injection is gone, and
+  // the scenario still passes: the +1/+2 copy, the hand-written +9/+$0A cache
+  // (the shared tail refuses masked type $0B, so nothing else writes it), the
+  // $C72F carry AND the track that drives them are all bit-exact.
   { name: 'l6-conveyor-deck', level: 6, frames: 120, script: '120:',
-    slots: [0], inject: true },
+    slots: [0] },
 ];
 
 const run = (cmd, args) => execFileSync(cmd, args, { cwd: ROOT, encoding: 'utf8' });
@@ -149,18 +147,16 @@ for (const s of SCENARIOS) {
     path.join(ROOT, `rip/oracle/objtrace_L${String(s.level).padStart(2, '0')}.json`),
     'utf8')).frames;
 
-  // The one legitimate use of `inject`: hand the port a subsystem it does not
-  // own yet, so the subsystem under test is the only variable. Never use it
-  // for anything a scenario is supposed to be proving.
+  // `inject` hands the port a subsystem it does not own yet, so the subsystem
+  // under test is the only variable. NOTHING uses it today -- every input is
+  // ported -- but the mechanism stays for the next handler that lands before
+  // its feed does. Never use it for anything a scenario is supposed to prove.
   //
-  // Shifted by one frame ON PURPOSE, and the shift is the interesting part:
-  // the actor driver is $05BA and sub_00_2CBE is $05C6, so a handler reads the
-  // track LAST frame's branch left behind, while objtrace.py samples at $0A4F
-  // after this frame's branch has already moved it. Frame 1 therefore gets the
-  // level-init value ($0700 / dir 0, written at $0F08-$0F0F) and frame N gets
-  // the oracle's frame N-1. Feeding the same-frame value puts the deck 8
-  // subpixels left of the cartridge's from frame 1 -- which is how the shift
-  // was found.
+  // If you do use it, shift it by one frame: the actor driver is $05BA and
+  // sub_00_2CBE is $05C6, so a handler reads what LAST frame's branch left
+  // behind, while objtrace.py samples at $0A4F after this frame's branch has
+  // already moved it. Feeding the same-frame value put the deck 8 subpixels
+  // left of the cartridge's from frame 1 -- which is how the shift was found.
   const inject = s.inject
     ? ['--inject', JSON.stringify([[0x0700, 0],
                                    ...o.slice(0, -1).map((f) => [f.track, f.dir])])]

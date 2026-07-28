@@ -29,6 +29,7 @@
 
 import { u8, u16, setMapCell } from './state.js';
 import { decodeTileBuf } from './assets.js';
+import { updateSubsystem } from './conveyor.js';
 
 const BASE = new URL('../assets/', import.meta.url).href;
 
@@ -219,9 +220,10 @@ const STAMPS = [
 export function updateWater(state) {
   if (state.flow.paused) return;                    // $2CBE: $C716
   const lvl = state.level.number;
-  if (lvl !== 1 && lvl !== 2) return;               // $2CC3-$2CE4: levels 6/7/
-                                                    // $0B/$0C/$0D have their own
-                                                    // subsystems, unported
+  // $2CC3-$2CE9: the dispatch. Levels 1/2 fall through into the water body
+  // below; every other level has its own subsystem in src/conveyor.js, and
+  // the "no branch" case is itself a branch (the boss levels' rescue drop).
+  if (lvl !== 1 && lvl !== 2) return updateSubsystem(state);
   const w = state.water;
 
   // $2D3D: the enemy respawner runs BEFORE the parity test -- every frame.

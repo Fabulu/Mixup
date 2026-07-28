@@ -12,6 +12,19 @@ import { grid, makeState, floorFrom, placePlayer } from './helpers.js';
 import {
   spawnDrop, updateDrops, clearDrops, createDrops, SLOTS,
 } from '../src/drops.js';
+import { cachePlayerScreen } from '../src/render/metasprite.js';
+
+/**
+ * Put the player somewhere AND publish the screen position the pool reads.
+ *
+ * updateDrops runs at $1444, ahead of the player update whose tail ($1B58)
+ * writes $FF93/$FF94 -- so the pool always reads what the PREVIOUS frame left.
+ * Seeding it here is what the previous frame would have done.
+ */
+function playerAt(state, col, row) {
+  placePlayer(state, col, row);
+  cachePlayerScreen(state);
+}
 
 /** A level with solid ground, and the drop pool wired in. */
 function dropState(opts = {}) {
@@ -158,7 +171,7 @@ test('gravity clamps at -96 only once the velocity is negative', () => {
 
 test('walking onto a drop is +1 HP, capped, and frees the slot', () => {
   const state = dropState();
-  placePlayer(state, 2, 3);
+  playerAt(state, 2, 3);
   state.player.hp = 3;
   state.player.hpMax = 10;
   // At rest, exactly on the player.
@@ -176,7 +189,7 @@ test('a drop taken at full HP is still consumed', () => {
   // $1608 CP B / JR NC skips the increment but the slot was already cleared at
   // $15CF -- which is why the probe at full health showed nothing happening.
   const state = dropState();
-  placePlayer(state, 2, 3);
+  playerAt(state, 2, 3);
   state.player.hp = 10;
   state.player.hpMax = 10;
   state.drops[0].set([0xFF, 0x02, 0x00, 0x13, 0x00, 0x00, 0x00, 0x00]);
@@ -187,7 +200,7 @@ test('a drop taken at full HP is still consumed', () => {
 
 test('a hazard drop damages 2 and stamps knockback by facing', () => {
   const state = dropState();
-  placePlayer(state, 2, 3);
+  playerAt(state, 2, 3);
   state.player.hp = 8;
   state.player.facing = 0;
   state.drops[0].set([0xFF, 0x02, 0x00, 0x13, 0x00, 0x00, 0x00, 0x01]);
@@ -205,7 +218,7 @@ test('a hazard drop damages 2 and stamps knockback by facing', () => {
 
 test('a hazard cannot hit while knockback or death is still running', () => {
   const state = dropState();
-  placePlayer(state, 2, 3);
+  playerAt(state, 2, 3);
   state.player.hp = 8;
   state.player.iframes = 0x40;                 // $15DF: $C714 still counting
   state.drops[0].set([0xFF, 0x02, 0x00, 0x13, 0x00, 0x00, 0x00, 0x01]);
@@ -216,7 +229,7 @@ test('a hazard cannot hit while knockback or death is still running', () => {
 
 test('the resting counter steps every OTHER frame and then frees the slot', () => {
   const state = dropState();
-  placePlayer(state, 20, 3);                   // far from the drop
+  playerAt(state, 20, 3);                   // far from the drop
   const r = state.drops[0];
   // Row 4, i.e. ON the floor -- a resting drop over air takes the $156F arm
   // and starts falling again instead of counting down.
@@ -238,7 +251,7 @@ test('the resting counter steps every OTHER frame and then frees the slot', () =
 
 test('a resting drop falls again if the ground under it disappears', () => {
   const state = dropState();
-  placePlayer(state, 20, 3);
+  playerAt(state, 20, 3);
   const r = state.drops[0];
   r.set([0xC0, 0x02, 0x00, 0x13, 0x00, 0x00, 0x00, 0x00]);
   // Row 3 is air in this fixture -- the floor starts at 4 -- so $156F fires.
@@ -254,7 +267,7 @@ test('a resting drop rides a conveyor', () => {
   state.drops = createDrops();
   state.sound = { queue: [] };
   state.camera.x = 0; state.camera.y = 0;
-  placePlayer(state, 20, 3);
+  playerAt(state, 20, 3);
   const r = state.drops[0];
   r.set([0xC0, 0x02, 0x00, 0x13, 0x00, 0x00, 0x00, 0x00]);
   state.frame = 1;

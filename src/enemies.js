@@ -33,6 +33,10 @@
 import { u8, i8, u16, mapCollisionByIndex } from './state.js';
 import { drawMetasprite } from './render/metasprite.js';
 import { spawnDrop } from './drops.js';
+import {
+  effects, resetEffects, bossCountdownTick, victoryStep,
+  COUNTDOWN_IDLE, COUNTDOWN_START,
+} from './effects.js';
 
 export const SLOTS = 8;
 export const RECORD = 32;
@@ -165,6 +169,11 @@ export function loadEnemies(state, records, count) {
     state.enemies[i].fill(0);
     if (i < count) state.enemies[i].set(records.subarray(i * RECORD, (i + 1) * RECORD));
   }
+  // $0DC8-$0DCA rearms $C740 = $FF beside $C73E, and sub_00_29A5 wipes $C693
+  // and the rest of the effect RAM, at exactly this point in level init. The
+  // port hangs it off the enemy load because that is the level-init hook this
+  // file already owns; src/level.js needs no change for it (see REPORT).
+  resetEffects(state);
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +191,7 @@ export function loadEnemies(state, records, count) {
 export function updateEnemies(state) {
   if (!state.enemyDraws) state.enemyDraws = [];
   state.enemyDraws.length = 0;
+
   if (state.flow.bossMode) return bossIntroTick(state);   // $4E0C -> 1:$77BD
 
   const descending = state.parity !== 0;            // $4E13
@@ -203,7 +213,7 @@ export function updateEnemies(state) {
 
     r[9] = 0;                                       // $4E60: attr rebuilt per frame
     if (r[0x10] >= DEATH_ROW) {                     // $4E69: fell out
-      if (kill(state, r) === 'dispatch') primaryDispatch(state, r);
+      if (killTail(state, r) === 'stop') return;
       continue;
     }
     if (r[0x16] === 0) {                            // $4E75: HP gone
@@ -219,13 +229,13 @@ export function updateEnemies(state) {
         spawnDrop(state, (r[0x0E] << 8) | r[0x0F], (r[0x10] << 8) | r[0x11],
                   0xFF, 0x00, 0x00);                // $4EAC/$4EB1: dir $FF, DE = 0
       }
-      if (kill(state, r) === 'dispatch') primaryDispatch(state, r);
+      if (killTail(state, r) === 'stop') return;
       continue;
     }
 
     // loc_01_4F0E: hit-state prelude before the type dispatch.
     if (r[0] & F_DISABLED) {                                  // $4F11: BIT 6
-      if (kill(state, r) === 'dispatch') primaryDispatch(state, r);
+      if (killTail(state, r) === 'stop') return;
       continue;
     }
     if (r[0] & 0x04) { stunnedTick(state, r); continue; }     // $4F15: BIT 2
@@ -398,14 +408,15 @@ function shouldDespawn(state, r) {
  * machine again -- the death does not "take" until it lands. Short-circuiting
  * there leaves a dead boss latched airborne and the clear never fires.
  *
- * @returns 'done' | 'dispatch' -- what the caller should do next.
+ * @returns 'done' | 'dispatch' | 'countdown' -- what the caller should do next.
  */
 function kill(state, r) {
-  // $4EB8: while the countdown is running, every enemy reroutes into it. The
-  // countdown itself (1:$78CC: 254 frames of scripted explosions, then
-  // loc_00_34D0's fanfare) is not ported -- see SAVEPOINT. Until it is, a
-  // level already flagged clear just stops driving its corpses.
-  if (state.flow.levelCleared) return 'done';
+  // $4EB8: `LD A,[$C740] / CP $FF / JP NZ, loc_01_78CC`. Once a boss has died
+  // EVERY enemy that reaches the kill path reroutes into the countdown -- and
+  // the countdown decrements $C740 once per enemy that gets there, which is
+  // why the measured trace shows exactly one step per frame on the boss levels
+  // (the boss is the only record that ever arrives).
+  if (effects(state).countdown !== COUNTDOWN_IDLE) return 'countdown';
 
   r[0] = (r[0] & 0x43) | F_DISABLED;                // $4EC0
 
@@ -422,17 +433,44 @@ function kill(state, r) {
   // music does not stop, it fades. Level 6 is excluded ($4EE2: CP $06).
   if (state.level.number !== 0x06) requestSound(state, 0x01, 0x04);
   r[0] = 0x81;                                      // $4EEC
-  state.flow.levelCleared = 1;                      // $4EF1: $C740 = $FE
+  // $4EF1: $C740 = $FE. NOT the level clear -- that is another ~630 frames
+  // away, through 1:$78CC's 254-frame explosion burst and loc_00_34D0's
+  // fanfare. flow.levelCleared is raised at the far end of both, in
+  // effects.js's updateVictoryHold, which is the port's loc_00_35E8.
+  effects(state).countdown = COUNTDOWN_START;
+  effects(state).explosion = 0;                     // $4EF8: $C713 = 0
   state.player.iframes = 0;                         // $4EF5: $C714
-  // $4EF8 also clears $C713. The port has no standing home for that byte --
-  // round select derives its CONTINUE mode from flow.continueAvailable when
-  // the screen opens, and $C713's other life is the explosion index inside
-  // the unported $78CC countdown. Nothing to write, so nothing is written.
   if (state.level.bossId === 0x02) {                // $4EFB: boss 2's two parts
     state.enemies[1][0] = 0x40;                     // $4F05: $C288
     state.enemies[2][0] = 0x40;                     // $4F08: $C2A8
   }
   return 'done';
+}
+
+/**
+ * The three $4E69/$4E75/$4F11 arms all end in the same `JP loc_01_4EB8`, so
+ * they share this tail.
+ *
+ * The countdown's two halves do NOT end the same way, and it matters:
+ * 1:$78CC's first half falls out at `JP loc_01_5CA8` (the screen tail, so the
+ * cached +7/+8 keep tracking), while 1:$7936's second half ends at
+ * `JP loc_01_60C7` (the loop continuation) and leaves them stale. And when the
+ * countdown hits zero it jumps into loc_00_34D0, whose `RET` unwinds past the
+ * whole driver -- no further slot is walked that frame.
+ *
+ * @returns 'stop' when the enemy loop must end for this frame
+ */
+function killTail(state, r) {
+  const what = kill(state, r);
+  if (what === 'dispatch') { primaryDispatch(state, r); return 'next'; }
+  if (what !== 'countdown') return 'next';
+  const where = bossCountdownTick(state, r);
+  if (where === 'victory') {
+    victoryStep(state);                             // $793A / $7959
+    return 'stop';                                  // loc_00_34D0 ends in RET
+  }
+  if (where === 'screen') screenTail(state, r);     // $78E0 / $7933
+  return 'next';                                    // $7981/$799F/$79D8
 }
 
 /** ROM: loc_01_50C3, table 1:$50D3, indexed on state-1. */

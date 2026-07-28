@@ -18,6 +18,8 @@ import { createEnemies } from './enemies.js';
 import { createRaster } from './raster.js';
 import { createWater } from './water.js';
 import { createDrops } from './drops.js';
+import { createDoorState } from './doors.js';
+import { createEffects } from './effects.js';
 
 export const SUBPX_PER_PX = 16;
 export const SUBPX_PER_METATILE = 256;
@@ -97,7 +99,8 @@ export function createState(tunables = DEFAULT_TUNABLES) {
 
     rope: createRope(),                        // $C5EB chain + $C720-$C728
     batarangs: createPool(),                   // $C4B0, 3 x 9 B
-    doors: { active: 0, col: 0, row: 0 },      // $C733-$C735 door sequencer
+    // $C733-$C735 plus the debris and $C693 effect pools. See src/doors.js.
+    doors: createDoorState(),
     // $C67B, 8 x 3 B {timer, col, row} -- breakable-tile restore queue.
     breakables: Array.from({ length: 8 }, () => ({ timer: 0, col: 0, row: 0 })),
     // $C737-$C73A -- scripted door/exit walk-through.
@@ -109,6 +112,8 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     enemies: createEnemies(),        // $C268, 8 x 32 B
     // $C6CF, 4 x 8 B -- the ballistic pool a dying enemy drops its heart into.
     drops: createDrops(),
+    // $C1C0 death burst + the $C740 boss countdown + loc_00_34D0's stages.
+    effects: createEffects(),
     currentActorSlot: 0,             // $C75A
     // $FFC6 -- "the player is resting on a map object". Set by the overlap
     // scan (loc_00_2534/$2566/$25B3) and read back by it on the NEXT slot to
@@ -162,10 +167,21 @@ export function createState(tunables = DEFAULT_TUNABLES) {
       bossRage: 0,     // $C73D -- boss 1/4 enrage latch (HP < $10 on non-easy)
       bossCrit: 0,     // $C73F -- attack-crit flag (rLY roll at 1:$7662)
       bossHop: 0,      // $C741 -- boss-1 high-hop / boss-2 special-draw flag
-      // $FFCA/$FFCB as one word. Init writes $0700 ($0F08); on level 6 the
-      // (unported) sub_00_2CBE branch scrolls it (MEASURED: $06F8 counting
-      // down to $01F8 over ~160 frames) and state 5 slaves its X to it.
-      parallaxTrack: 0x0700,
+      // $FFCA/$FFCB as one word, plus its direction and derived scroll.
+      //
+      // $0EEA guards the seed on `CP $06 / JR NZ`, so ONLY level 6 gets
+      // $0700 -- MEASURED 0 on the first gameplay frame of levels 4, 7, 11,
+      // 12 and 13. Seeding it unconditionally here (which this used to do)
+      // gave every other level a phantom track. initLevel sets the level-6
+      // value; the default is what the other thirteen actually have.
+      //
+      // The track is a CHASE, not an oscillator: with $FFC8 == 0 it walks 8
+      // subpixels a frame toward the player's column and stops dead on it,
+      // and the arrival stop at $2F48 writes only $FFC8 -- so $FFC9 keeps
+      // whatever direction it arrived with. See src/conveyor.js.
+      parallaxTrack: 0,
+      conveyorDir: 0,   // $FFC9 -- 1 right, 2 left; read by map-object type $0B
+      parallaxScx: 0,   // $FFCC -- the derived scroll, recomputed every frame
       // $FFBA-$FFBD during the level-14 entrance (1:$77BD): the Joker's
       // balloon position. The same HRAM bytes are the enemy probe's scratch,
       // but the driver is rerouted while the entrance runs, so they never
