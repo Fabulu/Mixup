@@ -88,6 +88,15 @@ T_ROUNDSEL_SCRIPT = (6, 0x7674)
 # dead by loc_00_2D3D. 32-byte $C268 records, fixed data in bank 0. They are NOT
 # in the level's enemy blob -- 5:$46EC says count 6 while the cartridge runs 8.
 T_RESPAWN_ENEMIES = [(0, 0x32F8), (0, 0x32D8)]     # slot 6 (col $2B), 7 ($27)
+# OPTIONS menu (state 6, loc_00_3893). Its PANEL is not drawn here at all --
+# the title's own scripts already put it in the WINDOW tilemap, hidden at
+# rWY $90, and the screen just slides the window down to $45. What IS dynamic:
+#   1:$7C5C  3 B, cursor Y per row (GAME LEVEL / SOUND TEST / EXIT), $39D4
+#   1:$7C5F  3 x 10 B VRAM scripts, one per difficulty, chosen at $39E4. Their
+#            dest high byte is patched to $9C at $3A05 -- they write the
+#            window map, not the BG.
+T_OPT_CURSOR_Y    = (1, 0x7C5C)
+T_OPT_DIFFICULTY  = (1, 0x7C5F)
 T_SCRIPT_PTRS     = (0, 0x27E6)   # loc_00_164A: 3 LE pointers to move scripts
 T_SCRIPT_BLOCK    = (0, 0x27E6)   # the scripts themselves live just past them
 T_SCRIPT_BLOCK_N  = 0x1E          # $27E6-$2803
@@ -292,6 +301,13 @@ def main():
         'scriptSteps': read_table(rom, T_SCRIPT_STEPS, 3),
         'objectScripts': read_table(rom, T_OBJ_SCRIPTS, T_OBJ_SCRIPTS_N),
         'respawnEnemies': [read_table(rom, loc, 32) for loc in T_RESPAWN_ENEMIES],
+        'optionsCursorY': read_table(rom, T_OPT_CURSOR_Y, 3),
+        # Indexed BY DIFFICULTY, which is NOT address order: sub_00_39E4
+        # dispatches $C756 == 1 -> $7C5F (NORMAL), == 2 -> $7C73 (HARD), and
+        # anything else -> $7C69 (EASY). Exporting them in address order gives
+        # NORMAL, EASY, HARD and silently swaps the first two.
+        'optionsDifficulty': [read_table(rom, (1, a), 10)
+                              for a in (0x7C69, 0x7C5F, 0x7C73)],
         'enemyContactDamage': read_table(rom, T_ENEMY_DMG, 13),
         'levelDamageBonus': read_table(rom, T_LEVEL_DMG_BONUS, 14),
     }

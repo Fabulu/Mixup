@@ -27,6 +27,9 @@ def main():
     ap.add_argument('--shot', default='rip/rom-screen.png')
     ap.add_argument('--press-start', action='store_true',
                     help='tap START at the title to walk on to round select')
+    ap.add_argument('--level', type=int, default=None,
+                    help='boot into this level instead of stopping at a menu')
+    ap.add_argument('--warp', default=None, metavar='COL[,ROW]')
     ap.add_argument('--title-keys', default=None,
                     help='buttons to tap at the title before START, comma '
                          'separated -- "down" moves the cursor to OPTION')
@@ -46,11 +49,37 @@ def main():
     pyboy.hook_register(0, TITLE_LOOP,
                         lambda _: hit.__setitem__('n', hit['n'] + 1), None)
 
-    for _ in range(3000):
-        pyboy.tick(1, False)
-        if hit['n'] > 40:
-            break
-    at_title = len(songs)
+    if args.level is not None:
+        inj = {'d': False}
+        def on_init(_):
+            if not inj['d']:
+                inj['d'] = True
+                pyboy.memory[0xFFB0] = args.level
+        if args.level != 1:
+            pyboy.hook_register(0, 0x04BB, on_init, None)
+        started = {'v': False}
+        pyboy.hook_register(0, 0x0567,
+                            lambda _: started.__setitem__('v', True), None)
+        for f in range(3000):
+            if started['v']:
+                break
+            if f % 30 == 0:
+                pyboy.button('start', delay=3)
+            pyboy.tick(1, False)
+        for b in ('right', 'left', 'up', 'down', 'a', 'b'):
+            pyboy.button_release(b)
+        if args.warp:
+            parts = args.warp.split(',')
+            pyboy.memory[0xFF81] = int(parts[0]); pyboy.memory[0xFF82] = 0x80
+            if len(parts) > 1:
+                pyboy.memory[0xFF83] = int(parts[1]); pyboy.memory[0xFF84] = 0
+        at_title = len(songs)
+    else:
+        for _ in range(3000):
+            pyboy.tick(1, False)
+            if hit['n'] > 40:
+                break
+        at_title = len(songs)
 
     if args.press_start:
         if args.title_keys:
