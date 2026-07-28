@@ -27,6 +27,15 @@ export const u8 = (v) => v & 0xFF;
 /** unsigned 16-bit wrap */
 export const u16 = (v) => v & 0xFFFF;
 
+/**
+ * The palettes gameplay runs with: $FF47/$FF48/$FF49 via the $FFAB/$FFAD/$FFAE
+ * shadows. Exported because the menu screens overwrite them -- round select
+ * zeroes BOTH object palettes at $0365 -- and whatever leaves a menu has to put
+ * them back. A zeroed OBP maps every shade to colour 0, so sprites are still
+ * drawn, still in shadow OAM, and completely invisible.
+ */
+export const GAMEPLAY_PALETTES = { bgp: 0xE4, obp0: 0xE4, obp1: 0xC4 };
+
 export function createState(tunables = DEFAULT_TUNABLES) {
   return {
     tunables,
@@ -151,7 +160,9 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     // Renderer inputs the ISRs would have written.
     video: {
       scx: 0, scy: 0,  // $FFA9/$FFAA
-      bgp: 0xE4, obp0: 0xE4, obp1: 0xC4,
+      bgp: GAMEPLAY_PALETTES.bgp,
+      obp0: GAMEPLAY_PALETTES.obp0,
+      obp1: GAMEPLAY_PALETTES.obp1,
       sprites: [],     // replaces shadow OAM; drawn in push order
       // Window layer. LCDC is $E7 at every write site, so the window is always
       // ENABLED and reads the $9C00 tilemap -- which level init fills entirely

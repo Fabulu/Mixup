@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createState } from '../src/state.js';
+import { createState, GAMEPLAY_PALETTES } from '../src/state.js';
 import { makeTunables } from '../src/tunables.js';
 import {
   showRoundSelect, tickRoundSelect, hideRoundSelect, routeIfOpen,
@@ -151,4 +151,16 @@ test('hideRoundSelect drops the map so the level can take it back', () => {
   hideRoundSelect(s);
   assert.equal(s.video.bgMap, null);
   assert.equal(s.roundSelect, null);
+});
+
+test('leaving round select must restore the OBJ palettes it zeroed', () => {
+  // $0365 zeroes both object palette shadows for the menu. A zeroed OBP maps
+  // every shade to colour 0, so sprites keep being drawn and stay completely
+  // invisible -- which reads as "the level did not load", not as a palette.
+  // main.js puts GAMEPLAY_PALETTES back; this pins the precondition.
+  const s = makeScreen();
+  assert.equal(s.video.obp0, 0, 'the menu really does zero them');
+  assert.equal(s.video.obp1, 0);
+  assert.notEqual(GAMEPLAY_PALETTES.obp0, 0, 'and gameplay really needs them back');
+  assert.notEqual(GAMEPLAY_PALETTES.obp1, 0);
 });

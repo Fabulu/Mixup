@@ -3,7 +3,7 @@
 // The main loop's CALL ORDER is deliberately preserved: it is what determines
 // OAM ordering (and therefore sprite priority) and platform-carry ordering.
 
-import { createState } from './state.js';
+import { createState, GAMEPLAY_PALETTES } from './state.js';
 import { makeTunables } from './tunables.js';
 import { attachInput, sampleInput } from './input.js';
 import { initLevel } from './level.js';
@@ -182,7 +182,11 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     if (routeChosen >= 0) {
       const chosen = ROUTE_LEVEL[routeChosen] ?? ROUTE_LEVEL[3];
       hideRoundSelect(state);
-      state.video.bgp = 0xE4;
+      // Round select zeroes both OBJ palettes ($0365). Restoring only BGP
+      // leaves every sprite -- Batman, the enemies, the whole HUD -- drawn in
+      // colour 0 and invisible against the background, which looks like the
+      // level failed to load rather than like a palette.
+      Object.assign(state.video, GAMEPLAY_PALETTES);
       initLevel(state, chosen).then(() => {
         last = performance.now();
         acc = 0;
