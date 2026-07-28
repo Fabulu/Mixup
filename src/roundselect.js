@@ -12,6 +12,7 @@ import { buildTileCache } from './assets.js';
 import { buildRoundSelectVram } from './vram.js';
 import { runVramScript } from './vramscript.js';
 import { BTN } from './player.js';
+import { GAMEPLAY_PALETTES } from './state.js';
 import { drawMetasprite } from './render/metasprite.js';
 
 /**
@@ -75,8 +76,17 @@ export function showRoundSelect(state, art) {
   state.video.scx = 0;
   state.video.scy = 0;
   state.video.bgp = 0xE4;
-  state.video.obp0 = 0;                       // $0365: both shadows cleared
-  state.video.obp1 = 0;
+  // $0365 zeroes both OBJ palette shadows -- but they do NOT stay zero, and
+  // reproducing the write literally is wrong. Measured on the cartridge while
+  // the screen is up: rOBP0 = $E4, rOBP1 = $C4, shadows $E4. Something in the
+  // resource loads restores them before anything is drawn.
+  //
+  // Getting this wrong hid the bat cursor, because a zeroed OBP maps every
+  // shade to colour 0 -- the sprite is still in OAM and still drawn, just
+  // invisible. The cartridge's OAM here is two 8x8 sprites, tile $AA at
+  // x $10 and $18, the second X-flipped.
+  state.video.obp0 = GAMEPLAY_PALETTES.obp0;
+  state.video.obp1 = GAMEPLAY_PALETTES.obp1;
   state.camera.x = 0;
   state.camera.y = 0x1000;
 
@@ -90,6 +100,12 @@ export function showRoundSelect(state, art) {
 
   state.roundSelect = { cursor, mode: canContinue ? 1 : 0, canContinue };
   paintRouteCursor(state, cursor);
+
+  // Song $01 is the round-select theme, mask $03 = play + stop-all. Measured
+  // by hooking sub_00_0AE1 across the transition: the cartridge asks for $0D
+  // (the confirm blip, which title.js already sends) and then $01. Without
+  // this the screen keeps playing whatever the title left running.
+  requestSound(state, 0x01, 0x03);
 }
 
 /**

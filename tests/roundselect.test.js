@@ -153,14 +153,23 @@ test('hideRoundSelect drops the map so the level can take it back', () => {
   assert.equal(s.roundSelect, null);
 });
 
-test('leaving round select must restore the OBJ palettes it zeroed', () => {
-  // $0365 zeroes both object palette shadows for the menu. A zeroed OBP maps
-  // every shade to colour 0, so sprites keep being drawn and stay completely
-  // invisible -- which reads as "the level did not load", not as a palette.
-  // main.js puts GAMEPLAY_PALETTES back; this pins the precondition.
+test('the OBJ palettes stay live, whatever $0365 appears to say', () => {
+  // $0365 zeroes both shadows, but they do not STAY zero -- measured on the
+  // cartridge mid-screen: rOBP0 $E4, rOBP1 $C4. Transcribing the write
+  // literally makes the bat cursor invisible, because a zeroed OBP maps every
+  // shade to colour 0: the sprite is still in OAM and still drawn.
   const s = makeScreen();
-  assert.equal(s.video.obp0, 0, 'the menu really does zero them');
-  assert.equal(s.video.obp1, 0);
-  assert.notEqual(GAMEPLAY_PALETTES.obp0, 0, 'and gameplay really needs them back');
-  assert.notEqual(GAMEPLAY_PALETTES.obp1, 0);
+  assert.equal(s.video.obp0, GAMEPLAY_PALETTES.obp0);
+  assert.equal(s.video.obp1, GAMEPLAY_PALETTES.obp1);
+});
+
+test('the screen asks for its own theme, song $01', () => {
+  // Measured by hooking sub_00_0AE1 across the transition: $0D (confirm blip,
+  // sent by title.js) then $01 mask $03. Without it the screen keeps playing
+  // whatever the title left running.
+  const s = createState(makeTunables());
+  s.sound = { queue: [] };
+  s.titleManifest = null;
+  showRoundSelect(s, fakeArt());
+  assert.deepEqual(s.sound.queue.at(-1), { id: 0x01, mask: 0x03 });
 });
