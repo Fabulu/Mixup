@@ -1,15 +1,18 @@
 // The level-1/2 water-surface subsystem -- src/water.js.
 // ROM: sub_00_2CBE -> loc_00_2D3D, splash pool 1:$7A83/$7A99/$7AD3.
-// Synthetic maps only; the oracle scenarios l1-water-spouts and
-// l1-water-rising-hits carry the frame-exact proof.
+// The branch's ENTRY ($2D3D-$2D5C) is not water at all: it is the sewer-enemy
+// respawner, and the water code at $2D5D is its fall-through.
+// Synthetic maps only; the oracle scenarios l1-water-spouts,
+// l1-water-rising-hits and l1-sewer-respawner-emerge carry the frame-exact
+// proof.
 // Run: node --test tests/
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { grid, makeState, placePlayer } from './helpers.js';
-import { updateWater, updateSplashes, applyWaterArt, tickWaterArt }
-  from '../src/water.js';
+import { updateWater, updateSplashes, applyWaterArt, tickWaterArt,
+         armEnemyRespawn } from '../src/water.js';
 import { mapCollision, mapTile } from '../src/state.js';
 
 /** A wide-enough level-1 state (the waterfall stamps columns $37/$38). */
@@ -27,8 +30,12 @@ function sounds(state) {
 // Gates
 // ---------------------------------------------------------------------------
 
-test('odd $FFB1 frames do nothing at all', () => {
-  // ROM: $2D5D -- odd frames only park the window register, no logic.
+test('odd $FFB1 frames do not advance the water BODY', () => {
+  // ROM: $2D5D -- odd frames only park the window register, no water logic.
+  //
+  // "Nothing at all" would be wrong now: the parity test is at $2D5D, and the
+  // enemy respawner at $2D3D runs BEFORE it, on both parities. This fixture
+  // has no latched slots, so it exercises the water body alone.
   const state = waterState();
   placePlayer(state, 0x40, 12);
   state.frame = 0x6D;                          // odd
@@ -46,6 +53,172 @@ test('levels other than 1 and 2 have no water body', () => {
   updateWater(state);
   assert.equal(state.water.level, 0x1F00);
   assert.equal(state.player.slowMode, 0);
+});
+
+// ---------------------------------------------------------------------------
+// The sewer-enemy respawner -- $0EC3 arms it, $2D3D-$2D5C refills.
+//
+// Slots 6 and 7 are OUTSIDE the level's 6-record spawn blob, so sub_00_2889
+// leaves them zero. The two enemies that crawl out of the wall holes exist
+// only because level init latches them "dead" and this respawner then fills
+// them from two 32-byte bank-0 records. Reading the branch from the
+// interesting-looking water label instead of from its entry deletes both.
+// ---------------------------------------------------------------------------
+
+/**
+ * Stand-ins for the records at 0:$32F8 (slot 6) and 0:$32D8 (slot 7).
+ * Deliberately NOT the cartridge's bytes -- those live in assets/manifest.json
+ * and nothing ROM-derived is committed. What has to hold structurally: 32
+ * bytes, distinguishable from each other, and a flag byte with bit 6 CLEAR,
+ * because that byte lands on top of the latch that triggered the copy.
+ */
+function fakeTemplates() {
+  const rec = (tag) => { const r = new Array(32).fill(tag); r[0] = 0x02; return r; };
+  return [rec(0x11), rec(0x22)];
+}
+
+/** A record full of junk with a chosen flag byte -- a corpse, or a live enemy. */
+const junk = (flag) => [flag, ...new Array(31).fill(0xFF)];
+
+/**
+ * Level 1 with the templates in place and both sewer slots full of junk.
+ * The frame is ODD on purpose: updateWater then returns at $2D67, so the
+ * respawner is the only thing that ran.
+ */
+function respawnState({ flag6 = 0x00, flag7 = 0x00, ...opts } = {}) {
+  const state = waterState(opts);
+  state.tables = { respawnEnemies: fakeTemplates() };
+  state.frame = 0x6D;
+  placePlayer(state, 0x10, 2);                 // nowhere near the waterfall
+  state.enemies[6].set(junk(flag6));
+  state.enemies[7].set(junk(flag7));
+  return state;
+}
+
+test('level init latches slots 6 and 7 dead, on levels 1 and 2 only', () => {
+  // ROM: $0E74 dispatches on $FFB0 -- CP $01 / CP $02 both jump to loc_00_0EC3;
+  // 9, $0A and $0B take a different arm at $0E8A and everything else falls out
+  // at $0E88. The $40 latch is the ONLY thing that ever creates these two
+  // enemies, so getting the level test wrong either deletes them or spawns two
+  // sewer enemies into a level that has no sewer.
+  for (const n of [1, 2]) {
+    const state = makeState(grid(8), { level: n });
+    armEnemyRespawn(state);
+    assert.equal(state.enemies[6][0], 0x40, `level ${n}`);
+    assert.equal(state.enemies[7][0], 0x40, `level ${n}`);
+  }
+  for (const n of [3, 5, 9, 10, 11, 14]) {
+    const state = makeState(grid(8), { level: n });
+    armEnemyRespawn(state);
+    assert.equal(state.enemies[6][0], 0x00, `level ${n}`);
+    assert.equal(state.enemies[7][0], 0x00, `level ${n}`);
+  }
+});
+
+test('the arm STORES the flag byte and touches nothing else in either record', () => {
+  // ROM: $0EC3-$0EC8 is `LD A,$40` plus two absolute stores -- one byte each,
+  // and a store, not a set-bit. A slot that was live ($80) comes out $40, not
+  // $C0: the latch replaces the state rather than joining it.
+  const state = makeState(grid(8), { level: 1 });
+  state.enemies[6].fill(0xFF);
+  state.enemies[7].fill(0x80);
+  armEnemyRespawn(state);
+  assert.equal(state.enemies[6][0], 0x40);
+  assert.equal(state.enemies[7][0], 0x40);
+  assert.deepEqual(state.enemies[6].slice(1), new Uint8Array(31).fill(0xFF));
+  assert.deepEqual(state.enemies[7].slice(1), new Uint8Array(31).fill(0x80));
+});
+
+test('a latched slot 6 is refilled from its record, and the refill clears the latch', () => {
+  // ROM: $2D3D-$2D49. HL is $C328 -- the FLAG byte -- for BOTH the `BIT 6,(HL)`
+  // and the `LD [HL+],A` loop, so the copy starts on the byte that triggered
+  // it and the record's own flag (bit 6 clear) is what disarms the latch.
+  // Start the copy one byte in and slot 6 respawns every frame forever, and
+  // slot 7 never gets a turn at all.
+  const state = respawnState({ flag6: 0x40 });
+  updateWater(state);
+  assert.deepEqual(Array.from(state.enemies[6]), state.tables.respawnEnemies[0]);
+  assert.equal(state.enemies[6][0] & 0x40, 0, 'the dead latch is gone');
+});
+
+test('slot 6 has priority: the init arm fills 6 this frame and 7 the next', () => {
+  // ROM: $2D42 -- slot 7's `BIT 6` at $2D4E is only reached when slot 6's bit
+  // is CLEAR, and slot 6's copy at $2D57 falls straight through to $2D5D. One
+  // record per frame, by construction. This is also the real level-start
+  // sequence: $0EC3 latches both, then frames 1 and 2 create them.
+  const state = respawnState();
+  state.enemies[6].fill(0);
+  state.enemies[7].fill(0);
+  armEnemyRespawn(state);
+  const [t6, t7] = state.tables.respawnEnemies;
+
+  updateWater(state);
+  assert.deepEqual(Array.from(state.enemies[6]), t6);
+  assert.deepEqual(Array.from(state.enemies[7]), [0x40, ...new Array(31).fill(0)],
+                   'slot 7 still waits its turn');
+
+  state.frame += 2;
+  updateWater(state);
+  assert.deepEqual(Array.from(state.enemies[7]), t7, 'and each slot has its OWN record');
+  assert.deepEqual(Array.from(state.enemies[6]), t6, 'slot 6 is not refilled twice');
+});
+
+test('with neither latch set the respawner copies nothing', () => {
+  // ROM: $2D50 `JR Z, loc_00_2D5D` -- straight into the water code. A live
+  // sewer enemy walking around must not be reset to its dormant record.
+  const state = respawnState({ flag6: 0x80, flag7: 0x80 });
+  const before = [Array.from(state.enemies[6]), Array.from(state.enemies[7])];
+  updateWater(state);
+  assert.deepEqual(Array.from(state.enemies[6]), before[0]);
+  assert.deepEqual(Array.from(state.enemies[7]), before[1]);
+});
+
+test('the refill overwrites all 32 bytes, whatever the slot held before', () => {
+  // ROM: $2D47 `LD B,$20`. A killed enemy leaves position, animation, timers
+  // and the state byte behind; carrying any of them over respawns the sewer
+  // enemy where it died instead of dormant back in its wall hole.
+  const a = respawnState({ flag6: 0x40 });
+  updateWater(a);
+
+  const b = respawnState({ flag6: 0x40 });
+  b.enemies[6].fill(0x5A);                     // a completely different corpse
+  b.enemies[6][0] = 0x40;
+  updateWater(b);
+
+  assert.equal(a.enemies[6].length, 32);
+  assert.deepEqual(Array.from(a.enemies[6]), Array.from(b.enemies[6]),
+                   'the result depends on the record alone, not on the corpse');
+});
+
+test('the respawner runs on BOTH $FFB1 parities -- it sits ahead of the parity test', () => {
+  // ROM: $2D3D-$2D5C comes before the `LDH A,[$FFB1] / AND $01` at $2D5D, so
+  // an odd frame refills and only THEN returns at $2D67. Hanging the respawner
+  // off the even-frame water logic halves the respawn rate and shifts every
+  // later sewer-enemy frame.
+  for (const frame of [0x6C, 0x6D]) {
+    const state = respawnState({ flag6: 0x40 });
+    state.frame = frame;
+    updateWater(state);
+    assert.equal(state.enemies[6][0] & 0x40, 0, `frame $${frame.toString(16)}`);
+  }
+});
+
+test('the respawner is behind the pause gate and the levels-1/2 gate', () => {
+  // ROM: sub_00_2CBE tests $C716 (`RET NZ`) at $2CBE and the level at
+  // $2CC3-$2CE4, both BEFORE loc_00_2D3D. Every other level's branch has its
+  // own entry and none of them fills slots 6/7 -- an unguarded respawner would
+  // stamp two sewer enemies into levels that never placed them.
+  for (const level of [3, 5, 6, 7, 11, 12, 13]) {
+    const state = respawnState({ level, flag6: 0x40, flag7: 0x40 });
+    updateWater(state);
+    assert.deepEqual(Array.from(state.enemies[6]), junk(0x40), `level ${level}`);
+    assert.deepEqual(Array.from(state.enemies[7]), junk(0x40), `level ${level}`);
+  }
+
+  const paused = respawnState({ flag6: 0x40 });
+  paused.flow.paused = true;
+  updateWater(paused);
+  assert.deepEqual(Array.from(paused.enemies[6]), junk(0x40));
 });
 
 // ---------------------------------------------------------------------------

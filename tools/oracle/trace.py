@@ -54,6 +54,13 @@ A = dict(air=0xFF80, xhi=0xFF81, xlo=0xFF82, yhi=0xFF83, ylo=0xFF84,
          en3ms=0xC2CE,
          en3x=0xC2D6, en3y=0xC2D8, en3vx=0xC2DA, en3vy=0xC2DB,
          en3at=0xC2DC,
+         # enemy slots 6/7: on levels 1-2 these are the RESPAWNING sewer
+         # enemies loc_00_2D3D refills from 0:$32F8/0:$32D8 -- never part of
+         # the 5:$46EC blob. Elsewhere they are the projectile slots.
+         en6f=0xC328, en6s=0xC32A, en6d=0xC32D, en6ms=0xC32E,
+         en6x=0xC336, en6y=0xC338, en6at=0xC33C, en6hp=0xC33E,
+         en7f=0xC348, en7s=0xC34A, en7ms=0xC34E, en7x=0xC356, en7y=0xC358,
+         en7at=0xC35C, en7hp=0xC35E,
          # levels 1-2 water body: surface level, phase, waterfall stamp
          # cursor and the $C755 window-line latch (src/water.js).
          wathi=0xC70A, watlo=0xC70B, watph=0xC70D, watst=0xC713,
@@ -166,6 +173,16 @@ def sample(mem):
         'en3y': (m[A['en3y']] << 8) | m[A['en3y'] + 1],
         'en3vx': m[A['en3vx']], 'en3vy': m[A['en3vy']],
         'en3at': m[A['en3at']], 'en3ms': m[A['en3ms']],
+        'en6f': m[A['en6f']], 'en6s': m[A['en6s']], 'en6d': m[A['en6d']],
+        'en6ms': m[A['en6ms']],
+        'en6x': (m[A['en6x']] << 8) | m[A['en6x'] + 1],
+        'en6y': (m[A['en6y']] << 8) | m[A['en6y'] + 1],
+        'en6at': m[A['en6at']], 'en6hp': m[A['en6hp']],
+        'en7f': m[A['en7f']], 'en7s': m[A['en7s']],
+        'en7ms': m[A['en7ms']], 'en7at': m[A['en7at']],
+        'en7x': (m[A['en7x']] << 8) | m[A['en7x'] + 1],
+        'en7y': (m[A['en7y']] << 8) | m[A['en7y'] + 1],
+        'en7hp': m[A['en7hp']],
         'watLv': (m[A['wathi']] << 8) | m[A['watlo']],
         'watPh': m[A['watph']], 'watSt': m[A['watst']],
         'watWy': m[A['watwy']],

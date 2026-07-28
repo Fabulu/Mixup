@@ -84,6 +84,10 @@ T_ROUNDSEL_TILES = [
     ((6, 0x6E74), 2048, 0x9000),  # the round-select artwork
 ]
 T_ROUNDSEL_SCRIPT = (6, 0x7674)
+# The two respawning sewer enemies of levels 1-2, refilled every frame they are
+# dead by loc_00_2D3D. 32-byte $C268 records, fixed data in bank 0. They are NOT
+# in the level's enemy blob -- 5:$46EC says count 6 while the cartridge runs 8.
+T_RESPAWN_ENEMIES = [(0, 0x32F8), (0, 0x32D8)]     # slot 6 (col $2B), 7 ($27)
 T_SCRIPT_PTRS     = (0, 0x27E6)   # loc_00_164A: 3 LE pointers to move scripts
 T_SCRIPT_BLOCK    = (0, 0x27E6)   # the scripts themselves live just past them
 T_SCRIPT_BLOCK_N  = 0x1E          # $27E6-$2803
@@ -287,6 +291,7 @@ def main():
         'scriptData': read_table(rom, T_SCRIPT_BLOCK, T_SCRIPT_BLOCK_N),
         'scriptSteps': read_table(rom, T_SCRIPT_STEPS, 3),
         'objectScripts': read_table(rom, T_OBJ_SCRIPTS, T_OBJ_SCRIPTS_N),
+        'respawnEnemies': [read_table(rom, loc, 32) for loc in T_RESPAWN_ENEMIES],
         'enemyContactDamage': read_table(rom, T_ENEMY_DMG, 13),
         'levelDamageBonus': read_table(rom, T_LEVEL_DMG_BONUS, 14),
     }

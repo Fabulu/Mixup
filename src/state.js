@@ -116,7 +116,14 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     enemyBesideIdx: 0,
     // Sprites loc_01_5CA8 queued this frame; drawEnemies() flushes them.
     enemyDraws: [],
-    lagFrame: 0,                     // $C757
+    // $C757. READ by the actor and enemy drivers ($424D, $4E39) and NEVER
+    // WRITTEN -- lag frames are instruction-level timing and out of scope by
+    // definition (docs/03-VERIFICATION.md §28). Kept, rather than deleted, so
+    // both skip sites still carry their ROM citation; but do not mistake the
+    // field's existence for the behaviour being modelled. Scenarios that cross
+    // a real lag frame diverge, which is why several are capped just short of
+    // one (l3-object-floor, l3-platform-ride, l1-sewer-respawner-emerge).
+    lagFrame: 0,
     // $C70A-$C70D, $C713, $C755 + the $C6EF splash pool -- the level-1/2
     // rising water body (src/water.js).
     water: createWater(),

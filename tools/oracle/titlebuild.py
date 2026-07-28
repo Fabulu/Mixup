@@ -39,6 +39,10 @@ def main():
     ap.add_argument('--press-start', action='store_true',
                     help='tap START once the title loop is reached, to walk on '
                          'into the next screen')
+    ap.add_argument('--title-keys', default=None,
+                    help='buttons to tap at the title BEFORE start, comma '
+                         'separated -- e.g. "down" to move the cursor from '
+                         'START to OPTION ($C712, toggled by up OR down)')
     args = ap.parse_args()
 
     pyboy = PyBoy(ROM, window='null', sound_emulated=False)
@@ -119,6 +123,11 @@ def main():
         if args.until_pc:
             if hit['n'] > 40 and args.press_start and not tapped['v']:
                 tapped['v'] = True
+                if args.title_keys:
+                    for k in args.title_keys.split(','):
+                        pyboy.button(k.strip(), delay=4)
+                        for _ in range(12):
+                            pyboy.tick(1, False)
                 events.append({'kind': 'mark', 'note': 'START pressed at title'})
                 pyboy.button('start', delay=4)
             if stop['n'] >= args.stop_hits:

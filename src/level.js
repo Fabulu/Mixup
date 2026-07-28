@@ -4,7 +4,7 @@
 import { loadLevel, loadManifest, buildTileCache } from './assets.js';
 import { loadActors } from './actors.js';
 import { loadEnemies } from './enemies.js';
-import { loadWaterArt, applyWaterArt } from './water.js';
+import { loadWaterArt, applyWaterArt, armEnemyRespawn } from './water.js';
 
 // The window art is the same for both water levels, so load it once.
 let waterArt;
@@ -52,6 +52,10 @@ export async function initLevel(state, n) {
   loadActors(state, b64(os.records), os.count);
   const es = info.enemySpawns;
   loadEnemies(state, b64(es.records), es.count);
+  // $0EC3 (sub_00_0D50): levels 1-2 arm slots 6/7 with the $40 dead latch, so
+  // the respawner in water.js fills them with the sewer-enemy templates on the
+  // first two frames. Runs AFTER the blob load, exactly the ROM's order.
+  armEnemyRespawn(state);
 
   // $04FD/$0503/$0534-$053F: the water body re-seeds at $1F00 on level entry.
   state.water = createWater();

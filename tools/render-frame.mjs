@@ -195,6 +195,18 @@ for (let f = 1; f <= frames; f++) {
     en3y: (state.enemies[3][0x10] << 8) | state.enemies[3][0x11],
     en3vx: state.enemies[3][0x12], en3vy: state.enemies[3][0x13],
     en3at: state.enemies[3][0x14], en3ms: state.enemies[3][6],
+    // Slots 6/7: the levels-1/2 respawning sewer enemies (water.js,
+    // loc_00_2D3D); the projectile slots everywhere else.
+    en6f: state.enemies[6][0], en6s: state.enemies[6][2],
+    en6d: state.enemies[6][5], en6ms: state.enemies[6][6],
+    en6x: (state.enemies[6][0x0E] << 8) | state.enemies[6][0x0F],
+    en6y: (state.enemies[6][0x10] << 8) | state.enemies[6][0x11],
+    en6at: state.enemies[6][0x14], en6hp: state.enemies[6][0x16],
+    en7f: state.enemies[7][0], en7s: state.enemies[7][2],
+    en7ms: state.enemies[7][0x06], en7at: state.enemies[7][0x14],
+    en7x: (state.enemies[7][0x0E] << 8) | state.enemies[7][0x0F],
+    en7y: (state.enemies[7][0x10] << 8) | state.enemies[7][0x11],
+    en7hp: state.enemies[7][0x16],
     // The player's iframes are deliberately NOT traced: the ROM decrements
     // $C714 at the head of the player update while the port decrements at
     // tick end, so the sampled value sits one lower here for the same

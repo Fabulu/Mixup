@@ -16,6 +16,11 @@ const level = arg('level', '1');
 const only = arg('only', null);
 
 const ENEMY_FIELDS = ['en0f', 'en0s', 'en0x', 'en0hp', 'en1f', 'en2f'];
+// Slots 6/7 -- on levels 1-2 the respawning sewer enemies (water.js's
+// loc_00_2D3D refill), elsewhere the projectile slots.
+const RESPAWN_FIELDS = ['en6f', 'en6s', 'en6d', 'en6ms', 'en6x', 'en6y',
+                        'en6at', 'en6hp', 'en7f', 'en7s', 'en7ms', 'en7x',
+                        'en7y', 'en7at', 'en7hp'];
 const ROPE_FIELDS = ['action', 'ropeSeg', 'ropePh', 'ropeFlip', 'ropeDly',
                      'rope0x', 'rope0y', 'rope5x', 'rope5y', 'carryY'];
 
@@ -182,6 +187,39 @@ const SCRIPTS = [
   // distance bands, a gap leap, the f174 melee -- lives in l1-water-spouts.
   { name: 'l1-walker-approach', level: 1, frames: 620, script: '20:,600:R',
     extra: ENEMY_FIELDS },
+  // Levels 1-2 sewer-enemy RESPAWNER (loc_00_2D3D + the loc_00_0EC3 init arm):
+  // slots 6/7 are NOT in the 5:$46EC blob -- level init stamps $40 into their
+  // flag bytes and the head of the water branch refills them from the ROM
+  // templates at 0:$32F8/0:$32D8, one slot per frame, slot 6 first. These are
+  // the enemies that emerge from the wall holes at columns $2B/$27 in the
+  // sewer: state $0C, flags $0A, so activation runs the $1F-frame emerge
+  // animation (jt_01_637F), then a fall, the landing, and the wake-up into a
+  // state-1 walker. The record does NOT move during the emerge -- x/y are
+  // pinned until the fall starts at f34; it is a pose change, not a crawl.
+  // Warp 43,27 puts the camera window on both holes at once: f1/f2 are the two
+  // refills, f2 activates both, the emerge pose runs to ~f33, slot 6 lands at
+  // ~f56, wakes at f69, walks from f70.
+  //
+  // Capped at 72 because frame 73 is a LAG FRAME -- $C757 measured set there,
+  // firing the 1:$4E3F skip. Extending to 100 frames and diffing all 27 fields
+  // shows exactly two divergences, en6x and en7x at f73, the one-step stall
+  // signature: the cartridge holds f72's value and the port advances. So the
+  // cap bounds a real lag divergence at its first frame rather than masking an
+  // earlier porting bug.
+  //
+  // TWO lag frames actually fire in this run, at f2 and f73. f2 is warp-induced
+  // (the camera jump), which is why an unwarped level-1 run has none and
+  // l1-water-spouts lags at f2 as well. It is harmless HERE only because both
+  // slots are being activated then, and tryActivate ($4E27) sits ahead of the
+  // lag test ($4E39), so the driver would have skipped them anyway. Note the
+  // port never sets state.lagFrame at all -- see the comment on it in state.js.
+  //
+  // The death->refill loop is the same bit-6 test + copy as the init refill
+  // covered here; killing an enemy on script is blocked on melee damage being
+  // verified first.
+  { name: 'l1-sewer-respawner-emerge', level: 1, frames: 72, warp: '43,27',
+    script: '72:', extra: [...ENEMY_FIELDS, ...RESPAWN_FIELDS] },
+
   // Level 5, state 2 (walker+jump, 1:$5399): idle -> chase across two ledges
   // (falls, landings, the ledge scan at $5288), melee lunge at f216 (the
   // attack probe hits the player: knockback + iframes), post-attack committed

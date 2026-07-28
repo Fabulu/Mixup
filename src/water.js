@@ -7,6 +7,14 @@
 // into $C755/$FFAC). It is the only thing in the game that arms the player's
 // water slow mode $FF95 -- touching a water CELL never does (collision.js).
 //
+// The SAME branch also owns the levels-1/2 ENEMY RESPAWNER ($2D3D-$2D5C): the
+// two sewer enemies that emerge from the wall holes at columns $27/$2B live in
+// slots 6/7, OUTSIDE the level's spawn blob -- 5:$46EC gives level 1 six
+// records and level 2 three, and loc_00_28DD zero-fills the remainder of the
+// eight -- and are refilled from ROM templates every time they die. See
+// enemyRespawnTick below: $2D3D is the branch's ENTRY, and the water code at
+// $2D5D is its fall-through.
+//
 // This is what the l1-water-spouts regression called "an enemy hit the port
 // does not reproduce": at the frame the surface reaches the player's row while
 // $C714 is zero, the player takes 1 damage and a $5A knockback stamp from
@@ -121,6 +129,71 @@ export function createWater() {
 }
 
 /**
+ * The two respawning sewer enemies' 32-byte records, bank-0 fixed data at
+ * 0:$32F8 (slot 6, column $2B) and 0:$32D8 (slot 7, column $27).
+ *
+ * Read from the manifest, NOT inlined here: these are verbatim cartridge bytes,
+ * and nothing ROM-derived is committed (see .gitignore's header). Every other
+ * ROM table in the port travels the same way -- slopeY, objectScripts, the
+ * title tile blobs.
+ *
+ * Both records are state $0C (dormant shell) with flags $0A -- attack bit 3
+ * plus falling bit 1 -- and a $1F attack timer, so activation runs the state-12
+ * hit-dispatch arm (jt_01_637F): $1F frames of the emerge pose, then a fall to
+ * the sewer floor, the landing animation, and the wake to a state-1 walker.
+ *
+ * The pose is metasprites $94 then $95, from the row at 1:$69E3 -- 1:$691B is
+ * the POINTER table those arrive through (1:$5F85 computes $691B + (state-1)*2,
+ * so state $0C lands on $6931 -> $69E3), not the row itself. And the record does
+ * not move during the emerge: x/y are pinned until the fall begins, so it is a
+ * pose change rather than a crawl.
+ *
+ * All of that machinery was already ported in enemies.js; what was missing was
+ * these records ever existing.
+ */
+const respawnTemplate = (state, i) => state.tables?.respawnEnemies?.[i];
+
+/**
+ * ROM: loc_00_0EC3 (inside sub_00_0D50, level init, levels 1-2 arm only).
+ * Slots 6/7 are zero-filled by the blob load (loc_00_28DD), then this stamps
+ * $40 -- the dead latch -- into both flag bytes, which is what makes the
+ * frame-1 respawn check below fill them for the first time. Measured with a
+ * PC-bracket probe: flags are 00 after sub_00_2889 and 40/40 by $055D.
+ */
+export function armEnemyRespawn(state) {
+  const n = state.level.number;
+  if (n !== 1 && n !== 2) return;                   // $0E76/$0E7A
+  state.enemies[6][0] = 0x40;                       // $0EC5
+  state.enemies[7][0] = 0x40;                       // $0EC8
+}
+
+/**
+ * ROM: loc_00_2D3D-$2D5C, the head of the levels-1/2 branch, EVERY frame
+ * (both parities -- the $FFB1 test comes after). One slot per frame, slot 6
+ * first: only if slot 6 does NOT need a refill is slot 7 even looked at. Bit
+ * 6 is the dead latch (kill, fell out of the world, or the init arm above),
+ * so a killed sewer enemy is whole again on the very next frame -- dormant in
+ * its hole, waiting for the camera window. Infinite respawns, by design.
+ */
+export function enemyRespawnTick(state) {
+  const slot = (state.enemies[6][0] & 0x40) ? 6      // $2D40
+    : (state.enemies[7][0] & 0x40) ? 7               // $2D4E
+    : -1;                                            // $2D50: JR Z, neither
+  if (slot < 0) return;
+
+  // Fail loudly. Skipping the refill when the templates are missing would
+  // leave the latch armed forever and the two sewer enemies simply never
+  // appearing -- which is exactly the bug this routine exists to fix, and
+  // indistinguishable from it never having been ported.
+  const t = respawnTemplate(state, slot - 6);
+  if (!t) {
+    throw new Error('tables.respawnEnemies is missing - re-run '
+      + 'tools/export_assets.py');
+  }
+  state.enemies[slot].set(t);        // $2D44 / $2D52: DE = $32F8 / $32D8
+}
+
+/**
  * The waterfall column stamped into the map when the player first passes
  * column $36: {col, worldRow, graphic, collision}, one cell per (even) frame.
  * ROM: table 0:$2DDC. Row $19 col $38 and rows $1D/$1E are stamped SOLID;
@@ -147,6 +220,9 @@ export function updateWater(state) {
                                                     // $0B/$0C/$0D have their own
                                                     // subsystems, unported
   const w = state.water;
+
+  // $2D3D: the enemy respawner runs BEFORE the parity test -- every frame.
+  enemyRespawnTick(state);
 
   // $2D5D: the logic runs on EVEN $FFB1 frames only; odd frames just park the
   // window register off-screen ($FFAC=$90, NOT the $C755 latch) -- the water

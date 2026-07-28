@@ -27,6 +27,9 @@ def main():
     ap.add_argument('--shot', default='rip/rom-screen.png')
     ap.add_argument('--press-start', action='store_true',
                     help='tap START at the title to walk on to round select')
+    ap.add_argument('--title-keys', default=None,
+                    help='buttons to tap at the title before START, comma '
+                         'separated -- "down" moves the cursor to OPTION')
     ap.add_argument('--settle', type=int, default=60,
                     help='frames to run after arriving, before the shot')
     args = ap.parse_args()
@@ -50,6 +53,11 @@ def main():
     at_title = len(songs)
 
     if args.press_start:
+        if args.title_keys:
+            for k in args.title_keys.split(','):
+                pyboy.button(k.strip(), delay=4)
+                for _ in range(12):
+                    pyboy.tick(1, False)
         pyboy.button('start', delay=4)
         # State 4, loc_00_031B, is a 120-frame flash before round select.
         for _ in range(300):

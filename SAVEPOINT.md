@@ -33,7 +33,7 @@ node   tools/oracle/vramdiff.mjs --record   # sub_00_0A0E, write for write
 npm run test-all                        # 7 stages, the gate for everything
 ```
 
-**Current state: 30/30 oracle scenarios bit-exact, 327 unit tests, 7/7 stages
+**Current state: 31/31 oracle scenarios bit-exact, 337 unit tests, 7/7 stages
 green.** Levels 1, 5 and 9 match the cartridge exactly over 620 frames each.
 
 If you change gameplay code and `test-all` goes red, you broke something real.
@@ -87,6 +87,7 @@ Deploy: `node tools/build-dist.mjs` then
 | Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
 | Window layer (= the water's graphics) | drawn; tilemap + surface animation are a **capture** — see below |
 | Levels-1/2 water body (`src/water.js`): rise/fall, waterfall stamp, `$FF95` slow mode, the 1-dmg `$5A` hit, enemy slow-fall bit, splash pool | bit-exact |
+| Levels-1/2 sewer-enemy respawner (`loc_00_2D3D` head + `loc_00_0EC3` init arm): slots 6/7 refilled from `0:$32F8`/`0:$32D8`, the crawl-out-of-the-wall-hole spawns | bit-exact to the f73 lag frame (`l1-sewer-respawner-emerge`) |
 | Level transitions, death/lives/respawn | ported |
 | HUD energy bar | ported |
 | Mod system + launcher, touch controls, fullscreen | ported |
@@ -127,8 +128,13 @@ Roughly in order of how much each would change the game:
    a game-over state in the flow map. Worth pinning down with the oracle
    (record `rSCX` per scanline across the sequence) before writing any code.
 6. **Conveyor carry** is applied (`loc_00_170A`), but levels 6/7/11/12/13 each
-   have their own `sub_00_2CBE` branch and only the levels-1/2 water branch is
-   ported.
+   have their own `sub_00_2CBE` branch and only the levels-1/2 branch is
+   ported. Warning learned the hard way: a `sub_00_2CBE` branch can hide more
+   than its headline subsystem — the levels-1/2 branch's ENTRY (`$2D3D-$2D5C`)
+   was an enemy respawner that fell through into the water code, and skipping
+   to the water label silently deleted the two respawning sewer enemies.
+   Read each remaining branch from its entry label, not from where the
+   interesting-looking code starts.
 7. **The screens `sub_00_0A0E` feeds.** The interpreter ITSELF is now ported
    and bit-exact (`src/vramscript.js`) — what is still missing is the rest of
    each screen around it: the resource loads that put the tiles in VRAM, and
