@@ -678,7 +678,7 @@ SONG $0B  header $6E4B..$6E4F  1 track(s)
 | claim | how to settle |
 |---|---|
 | meaning of SFX ids `$1A $1B $1C $1E $1F $20 $24 $27-$2D` | breakpoint each `$0AE1` call site and watch the screen |
-| whether any track relies on field inheritance across `$40B8` (§3.6) | log NRx1/NRx2 on the 1st vs 2nd play of each SFX |
+| ~~whether any track relies on field inheritance across `$40B8`~~ | **SETTLED: yes.** `$40B8` leaves the frequency word loaded, and song `$00` opens with a `REST`, which retriggers without writing a pitch -- so it audibly plays the previous song's note. `tools/oracle/sound.py` now snapshots `$C800-$C94C` at the song-start tick and `sounddiff.mjs` seeds the port from it. |
 | `$FFD4` reader | none exists in the ROM; confirm with a read-watchpoint |
 | flag bit 2 of `ch[+$00]` | preserved by `AND $EC` but never set — likely a removed feature |
 | why `7:$47EA` (wave A) is dead | possibly used by a cut track; nothing references it |

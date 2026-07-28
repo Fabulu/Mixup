@@ -102,6 +102,32 @@ const STAGES = [
     pyboy: true,
     skip: hasAssets ? null : 'assets/manifest.json missing',
   },
+  {
+    name: 'map-objects',
+    what: 'the $C1E8 handlers, all 16 record bytes plus stamped map cells',
+    cmd: process.execPath,
+    args: ['tools/oracle/objregress.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
+    name: 'progress-flow',
+    what: 'route clears, death, CONTINUE and game over vs $C753/$FFB5',
+    cmd: process.execPath,
+    args: ['tools/oracle/flowdiff.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
+    // No PyBoy: it replays recordings already on disk, so it is cheap enough
+    // to run every time and still covers all 47 ROM sound ids.
+    name: 'sound-driver',
+    what: 'every recorded sound id, all four channels plus NR50/NR51',
+    cmd: process.execPath,
+    args: ['tools/oracle/sounddiff.mjs', '--all'],
+    pyboy: false,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
 ];
 
 const results = [];

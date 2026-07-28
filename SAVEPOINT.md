@@ -70,6 +70,16 @@ Deploy: `node tools/build-dist.mjs` then
 
 ---
 
+### The newer probes
+
+| tool | what it settles |
+|---|---|
+| `tools/oracle/drops.py` | the `$C6CF` pool from the instant an enemy dies -- kills a live enemy by zeroing its HP byte and dumps all four slots, player HP and the knockback timers per frame. `--hp` matters: at full health the pickup is consumed with `$FF8A` never moving, so the effect is invisible. |
+| `tools/oracle/objtrace.py` + `objregress.mjs` | map objects: all 8 records x 16 bytes including the `+9/+$0A` screen cache, plus the `$D000` cells a type-6 block stamps. |
+| `tools/oracle/flowscen.py` + `flowdiff.mjs` | route clears, death, CONTINUE and game over. **Event-capped, not frame-capped** -- each recording stops when the ROM's own sequencer lands (`$361E`/`$2AAD`/`$0150`) plus 90 settling frames, so a lag frame cannot skew it. |
+
+---
+
 ## What is ported and verified
 
 | system | state |
@@ -79,20 +89,22 @@ Deploy: `node tools/build-dist.mjs` then
 | Wall-cling / wall-jump | bit-exact |
 | Punch, batarangs (throw, flight, return) | bit-exact |
 | Scripted door moves, breakables, pickups | bit-exact |
-| Map objects `$C1E8` — types 3, 7, 8, 9 | bit-exact |
+| Map objects `$C1E8` — types 1, 2, 3, 4, 5, 6, 7, 8, 9, 11 | bit-exact (8 scenarios, all 16 record bytes + stamped cells) |
 | Map-object collision (`loc_00_2426`, all four probe modes) | bit-exact |
 | VRAM script interpreter `sub_00_0A0E` | bit-exact (write stream: address, value AND order) |
 | Title VRAM build (boot clear, block copies, `sub_00_34A4` fill) | bit-exact |
-| Enemy AI — states 1, 2, 3, 11, 12 + drawing | bit-exact |
+| Enemy AI — all states + drawing | bit-exact |
+| Enemy death drops (`$C6CF`, `sub_00_0CF3` + `loc_00_1444`) | bit-exact — arc, both bounces and the rest latch |
 | Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
 | Window layer (= the water's graphics) | drawn; tilemap + surface animation are a **capture** — see below |
 | Levels-1/2 water body (`src/water.js`): rise/fall, waterfall stamp, `$FF95` slow mode, the 1-dmg `$5A` hit, enemy slow-fall bit, splash pool | bit-exact |
 | Levels-1/2 sewer-enemy respawner (`loc_00_2D3D` head + `loc_00_0EC3` init arm): slots 6/7 refilled from `0:$32F8`/`0:$32D8`, the crawl-out-of-the-wall-hole spawns | bit-exact to the f73 lag frame (`l1-sewer-respawner-emerge`) |
 | Level transitions, death/lives/respawn | ported |
+| Route clears, CONTINUE, game over (`$C753`/`$FFB5`) | verified against the ROM, 8 progress-flow scenarios |
 | HUD energy bar | ported |
 | Mod system + launcher, touch controls, fullscreen | ported |
 | Difficulty `$C756` (launcher control; every read catalogued in master-ref §8b) | ported |
-| Sound driver + DMG APU, music and SFX | plays; **not** bit-exact — see "Sound" |
+| Sound driver + DMG APU, music and SFX | **bit-exact** — all 47 ROM ids, SFX over live music, and the fader |
 | Title screen | **built from ROM data**, 8192/8192 B against the cartridge |
 | Round select / continue (`0:$035B`) | build bit-exact; cursor logic verified against the ROM over three `$C753`/`$FFB5` states |
 
@@ -102,20 +114,22 @@ Deploy: `node tools/build-dist.mjs` then
 
 Roughly in order of how much each would change the game:
 
-1. **Sound: playing well, two known bugs, not yet bit-exact.** See the
-   "Sound" section below — it has its own tooling and its own open list.
-2. **Enemy states 4–10 and 13** — all bosses, the level-6 vehicle, the level-12
-   enemy, plus the level-14 boss reroute at `1:$77BD`. The only one reachable
-   in levels 1–5 is state 10 (Boss 1, level 4).
-3. **The door/gate sequencer** (`$C733-$C735`) plus the effect and ballistic
+1. **The boss DEATH sequence** (`loc_01_78CC` → `loc_00_34D0`). The `$4EB8`
+   arm that latches a dead boss is ported and raises the level clear, but the
+   254-frame explosion burst and the victory fanfare are not, so a cleared
+   level hands over on the frame the boss dies rather than ~630 frames later.
+   The player-death sequence has the same shape of gap: 452 frames on the
+   cartridge against 122 in the port, the difference being the `$C1C0`
+   particle burst's staggered warm-up.
+2. **The door/gate sequencer** (`$C733-$C735`) plus the effect and ballistic
    pools it spawns. **This is what blocks level 13**, which has 88 actor-owned
    destructible cells and no way to open them.
-4. **Map-object HANDLERS for types 1, 4, 5, 6, 11.** Types 2 and 10 are never
-   placed in shipped data. (3, 7, 8 and 9 are ported and bit-exact.) Their
-   *collision* works — the `loc_00_2426` scan is ported — so an unported object
-   is solid, just frozen at its spawn state. Where each still appears: 3 (`$01
-   $05 $06`), 6 (`$0B`), 7 (`$04`), 12 (`$05 $06`), 13 (`$03 $05 $06`).
-5. **Raster effects** (the `$0857` STAT program): per-scanline SCX/SCY/palette
+3. **Map-object type `$0A`** — the last unported handler, and it is never
+   placed in any level's spawn data. Types 1-9 and 11 are all ported and
+   bit-exact. Note that type 2 and type 4 *do* occur at runtime even though no
+   blob contains them: `sub_01_4AA0` rewrites an object's own type byte to
+   reverse it (1↔2, 3↔4).
+4. **Raster effects** (the `$0857` STAT program): per-scanline SCX/SCY/palette
    bands, with fraction accumulators at `$C763-$C766`. `rasterBands()` still
    emits a single band. The window LAYER itself is now drawn (`drawWindow` in
    renderer.js) — that was the level-1/2 water.
@@ -127,7 +141,7 @@ Roughly in order of how much each would change the game:
    boot vector, so the effect belongs to a screen reached *before* that, not to
    a game-over state in the flow map. Worth pinning down with the oracle
    (record `rSCX` per scanline across the sequence) before writing any code.
-6. **Conveyor carry** is applied (`loc_00_170A`), but levels 6/7/11/12/13 each
+5. **Conveyor carry** is applied (`loc_00_170A`), but levels 6/7/11/12/13 each
    have their own `sub_00_2CBE` branch and only the levels-1/2 branch is
    ported. Warning learned the hard way: a `sub_00_2CBE` branch can hide more
    than its headline subsystem — the levels-1/2 branch's ENTRY (`$2D3D-$2D5C`)
@@ -135,13 +149,13 @@ Roughly in order of how much each would change the game:
    to the water label silently deleted the two respawning sewer enemies.
    Read each remaining branch from its entry label, not from where the
    interesting-looking code starts.
-7. **The screens `sub_00_0A0E` feeds.** The interpreter ITSELF is now ported
+6. **The screens `sub_00_0A0E` feeds.** The interpreter ITSELF is now ported
    and bit-exact (`src/vramscript.js`) — what is still missing is the rest of
    each screen around it: the resource loads that put the tiles in VRAM, and
    the menu logic for the options screen and the Joker stage select. The hard,
    easy-to-get-wrong part is done; the remaining work is plumbing plus the
    raster bands (item 5) for the lettering effects.
-8. **Lag frames.** `$C757` is set when VBlank fires before the main loop
+7. **Lag frames.** `$C757` is set when VBlank fires before the main loop
    finishes, and the actor/enemy drivers skip that iteration. That is
    instruction-level timing, so it is out of scope by definition — see
    docs/03-VERIFICATION.md §28.
@@ -222,6 +236,7 @@ yet, and it has its own oracle loop, separate from the frame oracle:
 
 ```
 python tools/oracle/sound.py --id 2 --mask 3 --ticks 120   # record the cartridge
+python tools/oracle/sound.py --under 0x10 --lead 60        # an SFX over live music
 node   tools/oracle/sounddiff.mjs --id 2 [--show 8]        # diff, per register
 node   tools/rendersong.mjs --id 2 --seconds 15            # -> a WAV to listen to
 node   tools/rendersong.mjs --id 0x10 --dump 6             # per-tick writes
@@ -237,17 +252,30 @@ node   tools/rendersong.mjs --id 0x10 --dump 6             # per-tick writes
   59.36 Hz. It is a timer-interrupt routine, not VBlank; driving it from
   `requestAnimationFrame` would tie tempo to the display refresh.
 
-Current diff for song `$02` over 120 ticks: channels 1 and 2 match on duty,
-both frequency bytes and the trigger. Open:
+**It is bit-exact.** `node tools/oracle/sounddiff.mjs --all` compares 52
+recordings / 29 800 ticks — all 47 ROM sound ids, SFX played *over* live music,
+and the fade-out — across all four channels plus NR50/NR51. `UNIMPLEMENTED_OPS`
+is empty. This is a gate stage (`sound-driver`) and needs no PyBoy, because it
+replays recordings already on disk.
 
-- **The slide's starting frequency** is wrong (`$91` against the cartridge's
-  `$1d`). The bass ramps from the wrong place but settles correctly.
-- **The volume envelope drifts from tick 5.** The cartridge holds `c0` for two
-  ticks even though its own duration byte reads `3`, and the values `$a0` and
-  `$90` in the table are never heard at all. Some rule governs that table that
-  is not yet understood — this is a real puzzle, not an oversight.
-- `UNIMPLEMENTED_OPS`: the channel-mask ops and the release envelope. Their
-  operands ARE consumed, so the byte stream stays in sync.
+Two rules were doing all the damage, and both are worth remembering:
+
+- **`DEFSLIDE`'s note is the ATTACK note; the byte in the stream is the
+  DESTINATION.** `7:$450D` plays the preset's own note for the preset's own
+  duration and subtracts it from the written one. Playing the destination from
+  tick one is why the target and rate looked right and only the origin was
+  wrong.
+- **`$F9 GATE` doubles its operand** (`ADD A,A` at `$468F`), and the gate is
+  `(min(dur, +$06) >> 1) - 1`. Undoubled, key-off fired one tick early and cut
+  the volume table short — which is the entire "mysterious envelope drift".
+  Nothing governs that table; it was simply never being heard to the end. With
+  `GATE_OFF` the ROM computes `$FF`, a value a duration counter can never
+  equal, so an ungated note runs to its full length; special-casing 0 released
+  every one of them halfway through.
+
+Note `sub_00_0AE1` takes **B as the sound id and C as the mask** — `LD BC,$1601`
+is id `$16`. Reversed, a cue still plays, just the wrong one, and no memory
+comparison will ever catch it.
 
 ---
 
@@ -394,24 +422,17 @@ both frequency bytes and the trigger. Open:
 
 ## Suggested next steps
 
-1. **The OPTIONS menu (`loc_00_3893`)** — the last menu stopgap. Same drawing
-   pattern as the title and round select (find its ingredients with
-   `tools/oracle/titlebuild.py --until-pc`, replay, diff), then difficulty,
-   the sound test and exit. Note it is the BIGGER routine of the two: 334 bytes
-   against round select's 286, and the sound test is a BCD counter over 70
-   entries. Retiring it removes the launcher standing in for OPTION.
-2. **Feed round select from the game**: set `$FFB5` when a level is reached and
-   maintain `$C753` on clear, so CONTINUE and the cleared-route skipping — both
-   ported and both verified — stop being unreachable. Then send death back to
-   round select instead of restarting in place.
-3. **Map-object handlers for types `$01 $04 $05 $06 $0B`** (1:`$488D`,
-   `$4940`, `$4291`, `$42E3`, `$483C`). The overlap scan is in and makes them
-   solid; without handlers they are solid *in the wrong place* as soon as one is
-   meant to move. Type `$08` is done and is the worked example to copy —
-   `actorType8` in actors.js, verified by `l3-platform-ride`. Types `$05` and
-   `$06` next: between them they cover levels 3, 12 and 13.
-4. **The two sound bugs** (see "Sound"). Both are precisely located.
-5. **Verify melee/batarang enemy damage against the oracle** — DONE. Three
+1. **The boss death sequence** (`loc_01_78CC`) and the victory fanfare
+   (`loc_00_34D0`). `$4EB8` is ported — a dead boss latches, `$C740` goes to
+   `$FE`, and main.js raises the clear — but the 254-frame explosion burst in
+   between is not, so a cleared level hands over instantly. Same shape of gap
+   as the player death sequence (452 frames on the cartridge, 122 here).
+2. **The door sequencer**, which unblocks level 13.
+3. **The remaining conveyor branches.** `loc_00_2EF4` (level 6) is the one to
+   do first: it drives `$FFC9`/`$FFCA`/`$FFCB`, which the type-`$0B` conveyor
+   deck reads, and until it lands `l6-conveyor-deck` has to inject the
+   cartridge's own track. Delete that `inject` flag the day it does.
+4. **Verify melee/batarang enemy damage against the oracle** — DONE. Three
    level-3 scenarios cover miss, connect and a batarang kill; the death-pit
    frame is pinned too (`l3-pit-death-exact-frame`). Two findings worth
    keeping: `$FFB1`'s boot phase is **per level** ($6D or $53 — measured for

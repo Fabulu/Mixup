@@ -146,10 +146,32 @@ test('the beside-cell index is a stale global when the probe bails early', () =>
 // Gap leaps -- sub_01_7D09
 // ---------------------------------------------------------------------------
 
-test('gapLeap: level-5 table entry, nibble select and facing sign', () => {
-  // ROM: table 1:$7EB7. Xhi $26 = even -> high nibble of byte $13 ($EA) = leap
-  // 14 {yv $18, xv $10}; Xhi $27 = odd -> low nibble = leap 10 {yv 8, xv 4}.
-  const state = makeState(grid(8), { level: 5 });
+// The real 1:$7E3F table and the fourteen velocity stubs now live in the
+// manifest, and this suite deliberately never touches assets/ -- it has to run
+// without the ROM. So the fixture below is SYNTHETIC, chosen so every field is
+// distinguishable: whether the exported bytes are the right ROM bytes is a
+// separate question, answered by `check_tables` in tools/verify_assets.py,
+// which re-reads them from the cartridge without going through the exporter.
+//
+// Level 5's base is $78 into the table, so byte $78+$13 = $8B is the one Xhi
+// $26/$27 selects. Leap ids 14 and 10 give the two velocity pairs.
+const GAP_FIXTURE = {
+  gapTable: (() => {
+    const t = new Array(0xEA).fill(0);
+    t[0x78 + 0x13] = 0xEA;                     // high nibble 14, low nibble 10
+    return t;
+  })(),
+  gapLeaps: [
+    [0x10, 0x12], [0x18, 0x13], [0x20, 0x13], [0x23, 0x1C], [0x12, 0x0C],
+    [0x23, 0x0F], [0x20, 0x13], [0x23, 0x16], [0x24, 0x20], [0x08, 0x04],
+    [0x08, 0x02], [0x10, 0x15], [0x10, 0x10], [0x18, 0x10],
+  ],
+};
+
+test('gapLeap: table entry, nibble select and facing sign', () => {
+  // Xhi $26 = even -> HIGH nibble of the byte = leap 14 {yv $18, xv $10};
+  // Xhi $27 = odd -> LOW nibble = leap 10 {yv 8, xv 4}.
+  const state = makeState(grid(8), { level: 5, tables: GAP_FIXTURE });
   const r = makeEnemy(state, { col: 0x26 });
   assert.equal(gapLeap(state, r), true);
   assert.equal(r[0x13], 0x18);
@@ -164,6 +186,34 @@ test('gapLeap: level-5 table entry, nibble select and facing sign', () => {
 
   const r3 = makeEnemy(state, { col: 0x4A });  // $7D44: past the level-5 bound
   assert.equal(gapLeap(state, r3), false);
+});
+
+test('gapLeap: the column guard is per level, and 7 and 13 share it', () => {
+  // $7D2E-$7D5F. Levels 1 and 2 have no guard at all; 3 stops at $43, 5 at
+  // $4A, and BOTH 7 and 13 at $4C -- they jump to the same arm ($7D4E has two
+  // xrefs). The unused sixth arm at $7D59 (guard $4E) has none, so no level
+  // may reach it.
+  const at = (level, col) => {
+    const state = makeState(grid(8), { level, tables: GAP_FIXTURE });
+    return gapLeap(state, makeEnemy(state, { col }));
+  };
+  assert.equal(at(3, 0x42), false, 'in range, but the fixture byte is zero');
+  assert.equal(at(3, 0x43), false, 'past the level-3 bound');
+  for (const lvl of [7, 0x0D]) {
+    const state = makeState(grid(8), { level: lvl, tables: GAP_FIXTURE });
+    // $9D + ($4B >> 1) = $C0, inside the table; make it leap so the guard,
+    // not an empty entry, is what the $4C case is proving.
+    state.tables.gapTable[0x9D + (0x4B >> 1)] = 0x0A;
+    assert.equal(gapLeap(state, makeEnemy(state, { col: 0x4B })), true);
+    assert.equal(gapLeap(state, makeEnemy(state, { col: 0x4C })), false);
+  }
+  assert.equal(at(4, 0x10), false, 'level 4 has no table at all -- $7D2B');
+});
+
+test('gapLeap: a missing manifest table throws rather than never leaping', () => {
+  const state = makeState(grid(8), { level: 5 });
+  assert.throws(() => gapLeap(state, makeEnemy(state, { col: 0x26 })),
+                /gapTable/);
 });
 
 // ---------------------------------------------------------------------------

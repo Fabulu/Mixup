@@ -22,6 +22,47 @@ import { drawMetasprite } from './render/metasprite.js';
 const ROUTE_TILE = [0x81, 0x82, 0x83, 0x84];
 const CURSOR_CELL = 0x99CD;
 
+/**
+ * The CONTINUE line, drawn only when `$FFB5` is set.
+ *
+ * ROM: $03B8 runs the VRAM script at 0:$3328 and $03BE-$03C3 writes the life
+ * count beside it. MEASURED rather than transcribed: the cartridge was taken
+ * to round select twice -- once from the title, once by dying on level 3 --
+ * and $8000-$9FFF dumped both times at $0472 (the menu loop's own VBlank
+ * wait, NOT the $03CB entry, which is far too early: sub_00_0B15 only QUEUES
+ * its resource loads and they drain over the following frames). Diffing the
+ * two:
+ *
+ *   - the script's entire ON-SCREEN effect is eight tiles at $9A04,
+ *     `8C 98 97 9D 92 97 9E 8E` = C O N T I N U E, and $80 + lives at $9A0E;
+ *   - every other differing map cell is at row >= 18, i.e. off the 18-row
+ *     screen -- level residue the column streamer left;
+ *   - and, the part worth having measured: all 141 tiles the screen
+ *     REFERENCES are byte-identical between the two paths (once read through
+ *     LCDC $E7's SIGNED $8800 addressing -- comparing at $8000 says 116 of
+ *     them differ and is simply the wrong window). That is what makes it
+ *     legitimate to keep building this screen on the title's VRAM after a
+ *     death: the resource loads cover everything the map points at.
+ *
+ * Hardcoded because assets/manifest.json's `roundSelect` spec carries only
+ * 6:$7674. Exporting 0:$3328 alongside it (tools/export_assets.py) would
+ * retire these constants.
+ */
+const CONTINUE_CELL = 0x9A04;
+const CONTINUE_TILES = [0x8C, 0x98, 0x97, 0x9D, 0x92, 0x97, 0x9E, 0x8E];
+const LIVES_CELL = 0x9A0E;
+const FONT_DIGIT_0 = 0x80;
+
+/**
+ * Which level each route starts at. ROM: loc_00_049D -- cursor 0/1/2 pick
+ * levels $01/$05/$09, and anything else (only reachable once $C753 == $07)
+ * picks $0C, the Joker warp.
+ */
+export const ROUTE_LEVEL = [1, 5, 9, 12];
+
+/** The four levels that end a route, and so step back one on CONTINUE. */
+const ROUTE_ENDS = [0x04, 0x08, 0x0B, 0x0E];
+
 /** The blinking bat, same metasprite cycle the title uses (table 0:$3337). */
 const CURSOR_IDS = [0x19, 0xC9, 0xCA, 0xCB];
 const CURSOR_X = 0x18 - 8;                    // $046D: C = $18
@@ -99,6 +140,7 @@ export function showRoundSelect(state, art) {
 
   state.roundSelect = { cursor, mode: canContinue ? 1 : 0, canContinue };
   paintRouteCursor(state, cursor);
+  if (canContinue) paintContinue(state);        // $03B8-$03C3
 
   // Song $01 is the round-select theme, mask $03 = play + stop-all. Measured
   // by hooking sub_00_0AE1 across the transition: the cartridge asks for $0D
@@ -116,6 +158,39 @@ export function showRoundSelect(state, art) {
 function paintRouteCursor(state, cursor) {
   const map = state.video.bgMap;
   if (map) map[CURSOR_CELL - 0x9800] = ROUTE_TILE[cursor & 0xFF] ?? ROUTE_TILE[0];
+}
+
+/** ROM: $03B8 (script 0:$3328) + $03BE-$03C3 (the life count). */
+function paintContinue(state) {
+  const map = state.video.bgMap;
+  if (!map) return;
+  for (let i = 0; i < CONTINUE_TILES.length; i++) {
+    map[CONTINUE_CELL - 0x9800 + i] = CONTINUE_TILES[i];
+  }
+  // $03C1: ADD A,$80 -- the font's digits start at $80, and the count is not
+  // clamped, so a run with more than 9 lives draws a letter. Reproduced.
+  map[LIVES_CELL - 0x9800] = (FONT_DIGIT_0 + state.flow.lives) & 0xFF;
+}
+
+/**
+ * ROM: $047C-$049B. START pressed with CONTINUE selected ($C713 != 0).
+ *
+ * The route cursor is IGNORED on this arm -- $0480 jumps past loc_00_049D
+ * entirely, so `$FFB0` keeps the level you died on. The one adjustment is
+ * $0486-$0499: levels 4, 8, $0B and $0E each END something, so continuing on
+ * one of them steps back to the level before it rather than dropping you
+ * straight back into the boss.
+ *
+ * MEASURED: dying on level 3 and pressing START reaches loc_00_04BB with
+ * $FFB0 = 3; dying on level 4 reaches it with $FFB0 = 3 as well.
+ *
+ * @returns the level to load.
+ */
+export function continueLevel(state) {
+  const p = state.player;
+  p.hp = p.hpMax;                       // $0482: $FF8A <- $FF8E
+  const n = state.level.number;         // $FFB0 survived the death sequence
+  return ROUTE_ENDS.includes(n) ? n - 1 : n;      // $0498: DEC A
 }
 
 function requestSound(state, id, mask = 0x01) {

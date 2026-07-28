@@ -9,9 +9,9 @@ import assert from 'node:assert/strict';
 import {
   probe, probeFloor, probeCeiling, horizontalCell, resolveWall,
   COLL, PROBE_DX_RIGHT, PROBE_DX_LEFT,
-  MODE_HORIZONTAL, MODE_CEILING, MODE_FLOOR, MODE_PUNCH,
+  MODE_HORIZONTAL, MODE_CEILING, MODE_FLOOR, MODE_PUNCH, updateBreakables,
 } from '../src/collision.js';
-import { mapCollision } from '../src/state.js';
+import { mapCollision, mapTile } from '../src/state.js';
 import { BTN } from '../src/player.js';
 
 import {
@@ -214,11 +214,56 @@ test('probeFloor: a conveyor does not carry you mid rope-flight ($C71E == 2)', (
   assert.equal(state.carry.x, 0);
 });
 
-test('probeFloor: breakable lands', () => {
-  // ROM: $1E65 -- becomes solid with a restore timer at $C67B.
+test('probeFloor: breakable lands, turns solid, and does NOT snap Y or VelY', () => {
+  // ROM: $1E65 -- `LD (HL),$01` plus a timer at $C67B, then `LD A,$01 / RET`.
+  // Like the step-solid arm below it never reaches loc_00_1E35, so $FF84 and
+  // $FF87 are left alone; the caller's $1B44 is what zeroes vy on the landing
+  // transition. MEASURED on level 7 (the col-16 floor is a $06 cell): the
+  // cartridge lands at y = 6668 with its low byte intact, and a port that
+  // snapped here landed a whole frame early.
   const state = floorFixture('B');
-  assert.equal(probeFloor(state).landed, true);
-  assert.equal(state.player.vy, 0);
+  const r = probeFloor(state);
+  assert.equal(r.landed, true);
+  assert.equal(mapCollision(state, 3, 14), COLL.SOLID, 'the cell went solid');
+  assert.equal(state.player.y & 0xFF, 0x30, 'no Y snap on this arm');
+  assert.equal(state.player.vy, -20, 'no VelY reset on this arm');
+});
+
+test('a broken cell is ERASED when its timer expires, not restored', () => {
+  // ROM: $1364 -- `XOR A / LD [HL+],A / LD (HL),A` clears the graphic AND the
+  // collision byte. The cell crumbles away and leaves a hole; putting $06 back
+  // (the port's old behaviour) leaves a floor the cartridge does not have.
+  const state = floorFixture('B');
+  state.level.number = 7;
+  state.flow.difficulty = 1;                        // $1E8A: a $0C timer
+  probeFloor(state);
+  for (let i = 0; i < 0x0C; i++) updateBreakables(state);
+  assert.equal(mapCollision(state, 3, 14), 0, 'collision cleared');
+  assert.equal(mapTile(state, 3, 14), 0, 'graphic cleared too');
+});
+
+test('the restore queue only ticks on levels 5, 7 and $0C', () => {
+  // ROM: $1339-$1347. Everywhere else sub_00_1336 jumps past loc_00_1349, so
+  // a stepped-on breakable stays solid for the rest of the level. Consistent
+  // with the data: levels 5, 7 and 12 are the ONLY ones whose maps contain a
+  // $06 cell at all.
+  const state = floorFixture('B');
+  state.level.number = 3;
+  state.flow.difficulty = 1;
+  probeFloor(state);
+  for (let i = 0; i < 0x40; i++) updateBreakables(state);
+  assert.equal(mapCollision(state, 3, 14), COLL.SOLID, 'still solid');
+});
+
+test('$FFC6 is cleared at the head of the player update', () => {
+  // ROM: $1336-$1338, `XOR A / LDH [$FFC6],A`, before anything else in
+  // sub_00_1336 -- and nothing else in the game ever zeroes it. The overlap
+  // scan rebuilds it, and every object's +$0D riding flag hangs off it, so a
+  // latched $FFC6 means a platform keeps carrying a player who stepped off.
+  const state = floorFixture('#');
+  state.standingOnActor = 1;
+  updateBreakables(state);
+  assert.equal(state.standingOnActor, 0);
 });
 
 test('probeFloor: step-solid ($09) reports landed but does NOT snap Y or VelY', () => {

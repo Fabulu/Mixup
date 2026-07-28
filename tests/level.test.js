@@ -4,7 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { metatileTile, resetPlayer } from '../src/level.js';
+import { metatileTile, resetPlayer, clearLevel } from '../src/level.js';
+import { afterDeath } from '../src/main.js';
 import { DEFAULT_TUNABLES } from '../src/tunables.js';
 import { makeState, grid } from './helpers.js';
 
@@ -110,4 +111,85 @@ test('resetPlayer clears every modal timer and flag', () => {
   }
   assert.equal(p.animPrev, 0xFF, 'forces a full repaint');
   assert.equal(p.msIndex, 1, 'facing XOR 1');
+});
+
+// ---------------------------------------------------------------------------
+// clearLevel.  ROM: loc_00_35E8-$363A.
+//
+// All three route bits are MEASURED end to end on the cartridge, by zeroing
+// the boss's own HP byte (record +$16) and letting the ROM run its own death
+// and clear sequence: level 4 with $C753 = $00 -> $01 then loc_00_035B,
+// level 8 with $00 -> $02, level 11 with $03 -> $07 then $FFB0 = $0C.
+// tools/oracle/flowdiff.mjs is the standing regression.
+// ---------------------------------------------------------------------------
+
+function flowState(level, mask) {
+  const s = makeState(grid(4));
+  s.level.number = level;
+  s.level.bossId = 1;
+  s.flow.routeMask = mask;
+  return s;
+}
+
+test('clearing a route boss sets that route bit and returns to the menu', () => {
+  for (const [level, bit] of [[0x04, 0x01], [0x08, 0x02], [0x0B, 0x04]]) {
+    const s = flowState(level, 0);
+    assert.deepEqual(clearLevel(s), { to: 'roundselect' }, `level ${level}`);
+    assert.equal(s.flow.routeMask, bit, `level ${level}`);
+    // $362C: $C73E goes back to 0 on the way out.
+    assert.equal(s.level.bossId, 0);
+  }
+});
+
+test('the bit is OR-ed, so clearing a route twice is a no-op', () => {
+  const s = flowState(0x08, 0x03);
+  clearLevel(s);
+  assert.equal(s.flow.routeMask, 0x03);
+});
+
+test('the third route completing the mask warps to level $0C, no menu', () => {
+  // $361E: CP $07 -> POP HL / $FFB0 = $0C / JP loc_00_04BB.
+  const s = flowState(0x0B, 0x03);
+  assert.deepEqual(clearLevel(s), { to: 'level', level: 0x0C });
+  assert.equal(s.flow.routeMask, 0x07);
+});
+
+test('every other level takes the ordinary walk-off handoff', () => {
+  // $35FA-$3605 falls through to JP loc_00_2820 -- $C753 is not touched at
+  // all. It has exactly one writer in the cartridge ($361B).
+  for (const level of [1, 2, 3, 5, 6, 7, 9, 10, 0x0C, 0x0D]) {
+    const s = flowState(level, 0x02);
+    assert.deepEqual(clearLevel(s), { to: 'transition' }, `level ${level}`);
+    assert.equal(s.flow.routeMask, 0x02, `level ${level}`);
+  }
+});
+
+test('level $0E ends the game rather than touching the mask', () => {
+  const s = flowState(0x0E, 0x07);
+  assert.deepEqual(clearLevel(s), { to: 'ending' });
+  assert.equal(s.flow.routeMask, 0x07);
+});
+
+// ---------------------------------------------------------------------------
+// afterDeath.  ROM: loc_00_2AAD.
+// ---------------------------------------------------------------------------
+
+test('an ordinary death latches $FFB5 so CONTINUE exists', () => {
+  // $2AAF, one instruction before the lives decrement. MEASURED: dying on
+  // level 3 reaches $035B with $FFB5 = 1 and $C753 untouched.
+  const s = flowState(3, 0x03);
+  assert.equal(afterDeath(s, false), 'roundselect');
+  assert.equal(s.flow.continueAvailable, 1);
+  assert.equal(s.flow.routeMask, 0x03);
+});
+
+test('the last life wipes the run, cleared routes included', () => {
+  // $2ABA is `JP Z, loc_00_0150` -- the BOOT VECTOR, which clears HRAM and
+  // $C000-$DFFE. MEASURED with $C753 = $03 and one life: the machine comes
+  // back with $C753 = 0, $FFB5 = 0, five lives, level 1.
+  const s = flowState(3, 0x03);
+  s.flow.continueAvailable = 1;
+  assert.equal(afterDeath(s, true), 'gameover');
+  assert.equal(s.flow.routeMask, 0);
+  assert.equal(s.flow.continueAvailable, 0);
 });

@@ -43,8 +43,13 @@ const ACTIVATION = [0, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x0B, 0x08, 0x0
  * silently doing nothing) keeps the gap honest and greppable.
  *   1 $488D  2 $48E4*  3 $499B  4 $4940  5 $4291  6 $42E3
  *   7 $4447  8 $4525   9 $464F 10 $4765* 11 $483C      (* never placed)
+ *
+ * Type $0A is the only one left. Type $0B's HANDLER is ported, but the level-6
+ * track it reads ($FFCA/$FFCB/$FFC9, written by loc_00_2EF4 -- the level-6
+ * sub_00_2CBE branch) is not, so on level 6 it rides a frozen track. See
+ * actorTypeB.
  */
-export const UNIMPLEMENTED_TYPES = new Set([1, 2, 4, 5, 6, 10, 11]);
+export const UNIMPLEMENTED_TYPES = new Set([10]);
 
 export function createActors() {
   return Array.from({ length: SLOTS }, () => new Uint8Array(RECORD));
@@ -62,11 +67,16 @@ export function loadActors(state, records, count) {
 export function updateActors(state, manifest) {
   for (let slot = 0; slot < SLOTS; slot++) {
     const r = state.actors[slot];
-    if (r[0] === 0) continue;                       // $4240: empty
+    if (r[0] === 0) continue;                       // $4240: empty -> $4A53
 
     state.currentActorSlot = slot;                  // $4234: $C75A
-    if (state.flow.paused) continue;                // $4246: $C716
-    if (state.lagFrame) continue;                   // $424D: $C757
+    // $424A / $4251: a paused or lag frame skips the UPDATE but still runs the
+    // screen tail. The port used to `continue` here, which also skipped the
+    // +9/+$0A cache and the draw -- not what the ROM does.
+    if (state.flow.paused || state.lagFrame) {      // $4246 / $424D
+      screenTail(state, r, manifest);               // $424A/$4251 -> loc_01_49F6
+      continue;
+    }
 
     // $4257: activation is a pure camera-distance test on the HIGH bytes.
     const type = r[0] & 0x7F;
@@ -79,15 +89,18 @@ export function updateActors(state, manifest) {
     }
 
     r[0] |= 0x80;                                   // $426B: SET 7
-    dispatch(state, r, type);
-    drawActor(state, r, type, manifest);
+    // A handler returns true when it took one of the `JP loc_01_4A53` exits --
+    // straight to the next slot, WITHOUT the screen tail. That is not a detail:
+    // a type $06 that has just landed leaves +9/+$0A holding its last airborne
+    // screen position for one frame, and a type $05 that has fallen out of the
+    // world keeps its final cache forever. Both are measured on the cartridge.
+    if (dispatch(state, r, type)) continue;
+    screenTail(state, r, manifest);                 // loc_01_49F5 -> $49F6
   }
 }
 
 /**
- * Cache the screen position AND draw the object.  ROM: loc_01_49F6-$4A4F, the
- * common tail EVERY slot reaches -- retired ones included, since jt_01_4525's
- * $FE arm exits through $4443 into $49F6.
+ * Cache the screen position AND draw the object.  ROM: loc_01_49F6-$4A4F.
  *
  * The port had no draw pass at all, which is why level 3's start platform was
  * invisible and Batman appeared to stand on air. MEASURED on the cartridge
@@ -96,15 +109,21 @@ export function updateActors(state, manifest) {
  * whose COLLISION we had already ported.
  *
  * Three gates, in the ROM's order:
- *   $49F7  masked types $07/$09/$0B never draw -- they are terrain stampers
- *          (water spouts, spike traps) with no sprite of their own
+ *   $49F7  masked types $07/$09/$0B leave at once -- and note this is BEFORE
+ *          the cache write at $4A05, so those three never get a screen cache
+ *          from the tail at all. (MEASURED: level 5's three type-9 traps hold
+ *          +9/+$0A = 0 for their whole run, spike stamping included. The scan
+ *          skips masked 7 and 9 outright ($2454/$2459), and type $0B writes
+ *          its own cache at 1:$4852, so nothing is lost -- but an earlier port
+ *          cached here first and that is a state divergence, not a nicety.)
  *   $4A21  sub_00_11A7: |camX_hi + 5 - objX_hi| >= 9 is off-screen
  *   $4A29  an object above world row $11 does not draw
  */
-function drawActor(state, r, type, manifest) {
-  cacheScreenPos(state, r);                       // $4A16: the +9/+$0A cache
-
+function screenTail(state, r, manifest) {
+  const type = r[0] & 0x7F;                       // $49F6: LD A,(HL) / AND $7F
   if (type === 0x07 || type === 0x09 || type === 0x0B) return;   // $49F9-$4A03
+
+  cacheScreenPos(state, r);                       // $4A05-$4A19: +9/+$0A
 
   const camCol = u8((state.camera.x >> 8) + 5);   // $11A7
   if (Math.abs(camCol - r[1]) >= 9) return;       // $11B0: CP $09
@@ -129,15 +148,14 @@ function drawActor(state, r, type, manifest) {
 /**
  * ROM: 1:$4849-$485D, and the same six instructions in every other handler.
  *
- * Each type handler converts its own world position to screen pixels through
- * sub_00_1172 and parks the result at +9/+$0A. The collision scan at
+ * The shared tail converts the object's world position to screen pixels
+ * through sub_00_1172 and parks the result at +9/+$0A. The collision scan at
  * loc_00_2426 compares ONLY against those cached bytes -- it never re-derives
  * them -- so an object that fails to write them is invisible to collision even
  * while it draws correctly.
  *
- * Doing it here rather than inside each handler is equivalent as long as the
- * camera is fixed for the frame, which it is: the camera routine runs once,
- * ahead of the actor driver.
+ * Type $0B is the one handler that does this itself (1:$4849-$485D, the six
+ * instructions this mirrors), because the tail refuses to serve it.
  */
 function cacheScreenPos(state, r) {
   const wx = (r[1] << 8) | r[2];
@@ -168,15 +186,137 @@ function requestSound(state, id, mask = 0x01) {
   }
 }
 
+/**
+ * ROM: the jump table at 1:$427B, indexed by (type - 1) * 2.
+ * @returns true if the handler exited straight to loc_01_4A53, i.e. skipping
+ *          the screen tail. Everything that ends at loc_01_49F5/$4443 is false.
+ */
 function dispatch(state, r, type) {
   switch (type) {
-    case 3: actorType3(state, r); break;
-    case 7: actorType7(state, r); break;
-    case 8: actorType8(state, r); break;
-    case 9: actorType9(state, r); break;
-    default: break;                                 // see UNIMPLEMENTED_TYPES
+    case 1: actorTypeXOscillator(state, r, true); return false;   // $488D
+    case 2: actorTypeXOscillator(state, r, false); return false;  // $48E4
+    case 3: actorTypeYOscillator(state, r, false); return false;  // $499B
+    case 4: actorTypeYOscillator(state, r, true); return false;   // $4940
+    case 5: return actorType5(state, r);            // $4291
+    case 6: return actorType6(state, r);            // $42E3
+    case 7: actorType7(state, r); return false;     // $4447
+    case 8: actorType8(state, r); return false;     // $4525
+    case 9: actorType9(state, r); return false;     // $464F
+    case 0x0B: actorTypeB(state, r); return true;   // $483C -- own cache, no tail
+    default: return false;                          // see UNIMPLEMENTED_TYPES
   }
 }
+
+// ---------------------------------------------------------------------------
+// Types 1/2 (X) and 3/4 (Y) -- ONE oscillator, four entry points.
+//
+// This is the trap the listing sets. jt_01_488D, jt_01_48E4, jt_01_499B and
+// jt_01_4940 look like four handlers; they are two, each with a positive and a
+// negative entry that JUMP INTO EACH OTHER. Reading any one of them alone gets
+// the arithmetic wrong.
+//
+//   1 ($4890) accelerate +X      2 ($48E7) accelerate -X    velocity at +5
+//   4 ($4943) accelerate +Y      3 ($499E) accelerate -Y    velocity at +6
+//
+// The "accelerate" half is entered with the velocity already pointing its way:
+// step it by 1 toward the cap ($10 / $F0) and move by the NEW value. The other
+// half first brakes a velocity pointing the wrong way by 2 and then jumps to
+// the accelerating half, which adds its 1 back -- so a reversal bleeds off at
+// exactly 1 per frame and the step taken is v-1, not v-2. MEASURED on level 7
+// (slot 1, type 4 -> 3 at f33): velocity $10 -> $0F with a $0F step, then
+// $0E/$0D/... A port that stored v-2 and moved by v-2 is a frame ahead from
+// the first reversal onward and never recovers.
+//
+// The reversal itself REWRITES THE TYPE BYTE (sub_01_4AA0): 1<->2, 3<->4. That
+// is why no level's spawn blob contains a type 2 -- a type 2 is what a type 1
+// becomes on its first bounce. Each direction owns its own limit test, and a
+// routine that
+// arrived through the other entry point skips it entirely ($48BF/$4919/$4972/
+// $49CF all re-read the type byte first), so an object reverses on the frame
+// AFTER the bounce rather than during it.
+// ---------------------------------------------------------------------------
+
+/** ROM: sub_01_4AA0 + the table at 1:$4AB3. Only types 1-4 are ever passed. */
+const FLIP_TYPE = { 1: 2, 2: 1, 3: 4, 4: 3 };
+function flipObjectType(r) {
+  r[0] = (r[0] & 0x80) | FLIP_TYPE[r[0] & 0x7F];    // $4AA2-$4AB1
+}
+
+/** ROM: loc_01_4890 (positive) / loc_01_48E7 (negative), velocity at +5. */
+function actorTypeXOscillator(state, r, positive) {
+  const v = r[5];
+  if (positive) {                                   // $4890
+    if (v & 0x80) {                                 // $4895: pointing left
+      const a = v + 2;                              // $4899
+      if (a > 0xFF) { r[5] = 0; return; }           // $489D: crossed zero
+      r[5] = a;
+      return actorTypeXOscillator(state, r, false); // $48A7: JP loc_01_48E7
+    }
+    r[5] = Math.min(v + 1, 0x10);                   // $48AB-$48B2
+    objectAddX(state, r, r[5]);                     // $48BB: sub_01_4A5C, B = 0
+    // $48BF: only a type 1 owns this limit test.
+    if ((r[0] & 0x7F) !== 0x01) return;
+    const d = r[1] - r[0x0E];                       // $48D5: X hi - origin
+    if (d < 0 || d < r[0x0B]) return;               // $48D7 / $48DB
+    flipObjectType(r);                              // $48DE
+    return;
+  }
+  // $48E7
+  if (v !== 0 && (v & 0x80) === 0) {                // $48EC/$48EF: pointing right
+    const a = v - 2;                                // $48F3
+    if (a < 0) { r[5] = 0; return; }                // $48F7
+    r[5] = a;
+    return actorTypeXOscillator(state, r, true);    // $4901: JP loc_01_4890
+  }
+  r[5] = clampLow(v);                               // $4904-$490C
+  objectAddX(state, r, 0xFF00 | r[5]);              // $4915: sub_01_4A5C, B = $FF
+  if ((r[0] & 0x7F) !== 0x02) return;               // $4919
+  const d = r[1] - r[0x0E];                         // $492F
+  if (d >= 0) return;                               // $4931
+  if (-d < r[0x0B]) return;                         // $4936
+  flipObjectType(r);                                // $493A
+}
+
+/** ROM: loc_01_4943 (positive) / loc_01_499E (negative), velocity at +6. */
+function actorTypeYOscillator(state, r, positive) {
+  const v = r[6];
+  if (positive) {                                   // $4943
+    if (v & 0x80) {                                 // $4948
+      const a = v + 2;                              // $494C
+      if (a > 0xFF) { r[6] = 0; return; }           // $4950
+      r[6] = a;
+      return actorTypeYOscillator(state, r, false); // $495A: JP loc_01_499E
+    }
+    r[6] = Math.min(v + 1, 0x10);                   // $495E-$4965
+    objectAddY(state, r, r[6]);                     // $496E: sub_01_4A79, B = 0
+    if ((r[0] & 0x7F) !== 0x04) return;             // $4972
+    const d = r[3] - r[0x0F];                       // $4988: Y hi - origin
+    if (d < 0 || d < r[0x0C]) return;               // $498A / $498E
+    flipObjectType(r);                              // $4995
+    return;
+  }
+  // $499E
+  if (v !== 0 && (v & 0x80) === 0) {                // $49A3/$49A6
+    const a = v - 2;                                // $49AA
+    if (a < 0) { r[6] = 0; return; }                // $49AE
+    r[6] = a;
+    return actorTypeYOscillator(state, r, true);    // $49B7: JP loc_01_4943
+  }
+  r[6] = clampLow(v);                               // $49BB-$49C2
+  objectAddY(state, r, 0xFF00 | r[6]);              // $49CB: sub_01_4A79, B = $FF
+  if ((r[0] & 0x7F) !== 0x03) return;               // $49CF
+  const d = r[3] - r[0x0F];                         // $49E6
+  if (d >= 0) return;                               // $49E7
+  if (-d < r[0x0C]) return;                         // $49EC
+  flipObjectType(r);                                // $49F2
+}
+
+/**
+ * DEC A then an UNSIGNED `CP $F0` floor. ROM: $4904-$490C / $49BB-$49C2.
+ * v = 0 gives $FF (-1), and the compare is unsigned so anything below $F0
+ * pins there -- which is also what stops the wrap at $EF from running away.
+ */
+const clampLow = (v) => (u8(v - 1) < 0xF0 ? 0xF0 : u8(v - 1));
 
 /**
  * Type 7 -- a pulsing water spout.  ROM: jt_01_4447.
@@ -249,27 +389,200 @@ function actorType7(state, r) {
 }
 
 /**
- * Type 3 -- a vertically oscillating object.  ROM: jt_01_499B.
+ * Type 5 -- a platform that gives way under you.  ROM: jt_01_4291.
  *
- * +6 is a signed Y velocity: positive values are bled off 2 per frame, and
- * once it reaches zero (or is already negative) it accelerates downward by 1
- * per frame, clamped at $F0 (-16).
+ * Inert until the player stands on it (+$0D, written by the collision scan at
+ * $2534), then a seven-frame arming count and it drops: +6 is a downward speed
+ * that grows 1 per frame to a cap of $30, moving the object -- and, through
+ * sub_01_4A79's carry tail, the rider with it. Once its Y high byte reaches
+ * $21 it has left the world and the slot is ZEROED outright ($42DE), not
+ * retired: the record is gone and the scan will never see it again.
+ *
+ * MEASURED (level 3 slot 5, warp 19,22): rider at f19, +$0B 1..7 across
+ * f20-f26, $FF and the first 1-subpixel step at f27, speed pinned at $30 from
+ * f74, slot cleared at f85 with its +9/+$0A frozen at f84's values -- the
+ * clearing arm is a `JP loc_01_4A53`, so the screen tail never runs again.
+ *
+ * @returns true (skip the screen tail) only on the frame it clears the slot.
  */
-function actorType3(state, r) {
-  const v = r[6];
+function actorType5(state, r) {
+  const st = r[0x0B];
 
-  if (v !== 0 && (v & 0x80) === 0) {                // $49A2/$49A6
-    const next = v - 2;                             // $49AA
-    r[6] = next < 0 ? 0 : next;                     // $49AE / $49B2
-    if (next >= 0) moveActorY(r, next);             // $49B7 -> $4943
-    return;
+  if (st === 0) {                                   // $4299
+    if (r[0x0D] === 0) return false;                // $429E: wait for a rider
+    r[0x0B] = 1;                                    // $42A4
+    return false;
   }
 
-  // $49BA: accelerate downward, clamped.
-  let a = u8(v - 1);
-  if (a < 0xF0) a = 0xF0;                           // $49BE: unsigned CP $F0
-  r[6] = a;
-  moveActorY(r, (a << 24) >> 24);                   // $49C8 -> sub_01_4A79
+  if (st !== 0xFF) {                                // $42AA
+    const a = u8(st + 1);                           // $42AE
+    if (a < 0x08) { r[0x0B] = a; return false; }    // $42AF
+    r[0x0B] = 0xFF;                                 // $42B7, then falls into $42BA
+  }
+
+  // $42BA: accelerate downward, capped at $30.
+  const v = Math.min(r[6] + 1, 0x30);               // $42BE-$42C4
+  r[6] = v;
+  objectAddY(state, r, v);                          // $42CF: sub_01_4A79, B = 0
+
+  if (r[3] < 0x21) return false;                    // $42D8: still in the world
+  r[0] = 0;                                         // $42DE: the slot is emptied
+  return true;                                      // $42E0: JP loc_01_4A53
+}
+
+// ---------------------------------------------------------------------------
+// Type 6 -- a falling block that BECOMES TERRAIN.  ROM: jt_01_42E3.
+//
+// Dormant until the player's X high byte is within 5 columns, then one arming
+// frame and it falls: +6 grows by 3 per frame to a cap of $50. Below world row
+// $11 it starts probing the two map cells directly under its 2x2 footprint
+// (columns col-1 and col, row+1), and the first solid one lands it:
+//
+//   * the record parks (+4 = 0, +6 = 0, +$0B = $FE) and plays sound $21;
+//   * a 2x2 block of MAP CELLS is stamped with graphics $3E $3F $40 $41 and,
+//     in all four, collision `slot * 32 | $1F` -- the object's own slot index
+//     encoded into the terrain. That is what makes level 13's destructible
+//     cells "actor-owned": the door sequencer finds its object by the slot
+//     number written in the collision byte.
+//
+// A landed block keeps probing. If whatever held it up disappears, it wipes
+// its own four cells again and resumes falling ($4377). While landed it also
+// pins +9/+$0A to $FF/$FF ($431B) so the overlap scan cannot find it -- it is
+// terrain now, and being BOTH would make it solid twice.
+//
+// MEASURED (level 3 slots 1-4, warp 96,26): armed f2, falling f3, speed capped
+// $50 by f29, slot 1 lands f60 at row $1D and stamps (97,28)=$3E/$3F,
+// (98,28)=$3F/$3F, (97,29)=$40/$3F, (98,29)=$41/$3F -- collision $3F = slot
+// 1 * 32 | $1F. Slots 2, 3 and 4 then STACK on top of it at f67/f70/f73,
+// each landing one row higher because the block below it is now solid map.
+// The +9/+$0A pin appears one frame after each landing (f61, f68, f71, f74),
+// because the landing frame itself exits at $443B without the tail.
+// ---------------------------------------------------------------------------
+
+/** Graphic ids the landed block stamps, ROM order. $43D5/$43E4/$43EB/$43F0. */
+const TYPE6_TILES = { br: 0x41, tr: 0x3F, tl: 0x3E, bl: 0x40 };
+
+function actorType6(state, r) {
+  const st = r[0x0B];
+
+  if (st === 0) {                                   // $42EA
+    // $42F4: a plain distance test on the HIGH bytes, tighter than the
+    // driver's own activation window.
+    if (Math.abs((state.player.x >> 8) - r[1]) >= 5) return false;   // $42FB
+    r[0x0B] = 1;                                    // $4304
+    return false;
+  }
+
+  if (st === 0xFE) {                                // $430E
+    // $431B: landed. Park the screen cache off-screen, then re-probe.
+    r[0x0A] = 0xFF;
+    r[9] = 0xFF;
+  } else {
+    if (st !== 0xFF) {                              // $430A
+      const a = u8(st + 1);                         // $4312
+      if (a < 0x02) { r[0x0B] = a; return false; }  // $4313
+      r[0x0B] = 0xFF;                               // $4324, then falls into $4327
+    }
+    // $4327: accelerate downward, capped at $50.
+    const v = Math.min(r[6] + 3, 0x50);             // $432B-$4332
+    r[6] = v;
+    objectAddY(state, r, v);                        // $433D: sub_01_4A79, B = 0
+  }
+
+  // $4341: the ground probe, shared by both arms.
+  const col = r[1];
+  const row = r[3];
+  if (row < 0x11) return false;                     // $434A: too high to probe
+
+  const supported = solidCell(state, col, row + 1)  // $4354
+                 || solidCell(state, col - 1, row + 1);   // $435F
+
+  if (!supported) {
+    if (r[0x0B] !== 0xFE) return false;             // $436E: still falling
+    // $4377: the ground went away -- wipe the four cells and fall again.
+    stampBlock(state, col, row, 0, 0);
+    r[0x0B] = 0xFF;                                 // $43BE
+    return false;
+  }
+
+  if (r[0x0B] === 0xFE) return true;                // $43CF -> loc_01_443E
+
+  // $43D1: land. The collision byte carries the owning slot in its top bits.
+  stampBlock(state, col, row, null, u8((state.currentActorSlot << 5) | 0x1F));
+  r[4] = 0;                                         // $4425: Y lo
+  r[6] = 0;                                         // $442B: velocity
+  r[0x0B] = 0xFE;                                   // $4431
+  requestSound(state, 0x21);                        // $4438: BC = $2101
+  return true;                                      // $443B: JP loc_01_4A53
+}
+
+/**
+ * The 2x2 footprint, in the ROM's own write order ($437D-$438A / $43D5-$43F3):
+ * (col,row) then (col,row-1) then (col-1,row-1) then (col-1,row).
+ *
+ * The port stamps map cells only. The ROM ALSO queues four sub_00_11F1
+ * metatile writes into the $C130 VRAM queue, but our renderer derives the
+ * background straight from level.cells through the metatile table, so the two
+ * are the same picture -- exactly the stance type 9's spike stamp already
+ * takes.
+ *
+ * @param graphic null = use the four landed tile ids; 0 = erase.
+ */
+function stampBlock(state, col, row, graphic, collision) {
+  const g = graphic === null ? TYPE6_TILES : { br: 0, tr: 0, tl: 0, bl: 0 };
+  stamp(state, col, row, g.br, collision);
+  stamp(state, col, row - 1, g.tr, collision);
+  stamp(state, col - 1, row - 1, g.tl, collision);
+  stamp(state, col - 1, row, g.bl, collision);
+}
+
+/** ROM: sub_00_11B9 + `INC HL / BIT 0,(HL)` -- bit 0 of the collision byte. */
+function solidCell(state, col, row) {
+  const cells = state.level.cells;
+  if (!cells || col < 0 || col >= state.level.width) return false;
+  return (cells[cellIndex(col, row) * 2 + 1] & 1) !== 0;
+}
+
+/**
+ * Type $0B -- the level-6 conveyor deck.  ROM: jt_01_483C.
+ *
+ * The one object with no position of its own: every frame it copies the
+ * level-6 track ($FFCA/$FFCB, +5 on the high byte) into its own +1/+2, writes
+ * its screen cache by hand (1:$4852 -- the tail at $49F6 refuses masked type
+ * $0B, so nothing else would), and then, if the player is standing on it,
+ * shoves him 8 subpixels a frame in the track's direction ($FFC9: 1 = right
+ * $08, 2 = left $F8) through the ordinary platform-carry inbox $C72F.
+ *
+ * Its box is enormous -- +7 = $40, +8 = $11 from the level-6 spawn blob -- so
+ * "standing on it" means standing anywhere on the deck.
+ *
+ * NOT VERIFIABLE END-TO-END YET, and the reason is outside this file: the
+ * track is written by loc_00_2EF4, the level-6 branch of sub_00_2CBE, which is
+ * not ported (SAVEPOINT "What is NOT ported", item 6). MEASURED on the
+ * cartridge (level 6, idle): $FFC9 is already 2 on frame 1 and the track walks
+ * $06F8 -> $06F0 -> $06E8 ... 8 units a frame, so the port's frozen $0700
+ * puts the deck one column right of the cartridge's within two frames. The
+ * handler below is exact against an injected track (see
+ * tools/oracle/objregress.mjs, scenario l6-conveyor-deck); what is missing is
+ * the driver that moves it.
+ */
+function actorTypeB(state, r) {
+  const track = state.flow.parallaxTrack;           // $483F: $FFCA/$FFCB
+  r[1] = u8((track >> 8) + 5);                      // $4841
+  r[2] = track & 0xFF;                              // $4844
+
+  cacheScreenPos(state, r);                         // $4849-$485D
+
+  if (r[0x0D] === 0) return;                        // $4862: nobody riding
+  // $4867: $C740 must be $FF. The port models that byte through flow.bossMode
+  // exactly as meleeHitTest does -- 0 means "$FF, normal play".
+  if (state.flow.bossMode) return;
+  if (state.player.action === 2) return;            // $486F: $C71E, rope flight
+  // $FFC9. Written only by loc_00_2EF4, which is not ported -- so this reads
+  // undefined today and the deck never carries. Deliberate: see the header.
+  const dir = state.flow.conveyorDir ?? 0;          // $4877
+  if (dir === 0) return;                            // $487A
+  state.carry.x = i8(dir === 2 ? 0xF8 : 0x08);      // $4881/$4885 -> $C72F
 }
 
 // ---------------------------------------------------------------------------
@@ -395,13 +708,6 @@ function moveObjectX(state, r, delta) {
 function moveObjectY(state, r, delta) {
   objectAddY(state, r, delta);                      // $45C0
   advanceObjectScript(state, r, delta, 4, 0x80, 'y');
-}
-
-/** 16-bit Y add on the record. ROM: sub_01_4A79 / loc_01_4943. */
-function moveActorY(r, delta) {
-  const y = (((r[3] << 8) | r[4]) + delta) & 0xFFFF;
-  r[3] = (y >> 8) & 0xFF;
-  r[4] = y & 0xFF;
 }
 
 /**

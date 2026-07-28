@@ -40,7 +40,8 @@ request(drv, id, 0x03);
 if (dump) {
   for (let i = 0; i < dump; i++) {
     const w = tick(drv);
-    const live = drv.tracks.map((t, n) => (t.active ? n : null)).filter((v) => v !== null);
+    // +$00 bit 7 is the track-active flag; there is no separate boolean.
+    const live = drv.tracks.map((t, n) => ((t.flags & 0x80) ? n : null)).filter((v) => v !== null);
     console.log(String(i).padStart(3), 'tracks[' + live.join(',') + ']',
       w.map(([a, v]) => '$' + a.toString(16) + '=' + v.toString(16).padStart(2, '0')).join(' '));
   }

@@ -6,9 +6,18 @@ per 4096/69 Hz tick. This drives it the way the game does -- by queueing a
 request through sub_00_0AE1 -- and captures every NR write it produces, tick by
 tick, so the ported driver can be diffed against it.
 
+It also snapshots the driver's own RAM ($C800-$C94C) at the instant the song
+starts, because sub_07_40B8 does NOT clear a whole track record -- a song
+inherits the previous one's gate, duty, pan and frequency word, and song $00's
+opening REST goes out at whatever pitch was left behind. Without that snapshot
+the diff measures the recorder's boot history rather than the driver.
+
 Usage:
   python tools/oracle/sound.py --id 0x10 --ticks 300
   python tools/oracle/sound.py --id 2 --ticks 900 --out rip/oracle/sfx02.json
+  # an SFX pre-empting live music, which is the only way the arbitration and
+  # the hand-back at END get exercised at all:
+  python tools/oracle/sound.py --id 0x10 --mask 1 --under 2 --out rip/oracle/sound_U10.json
 """
 import argparse
 import json
@@ -22,6 +31,8 @@ ROM = os.path.join(ROOT, 'Batman - Return of the Joker (USA, Europe).gb')
 MAIN_LOOP = 0x0567
 DRIVER = 0x412B      # bank 7 -- one tick of the sound engine
 QUEUE = 0xC6FB       # 4 request slots, 2 bytes each
+DRIVER_RAM = 0xC800  # globals + 8 x $24-byte track records
+DRIVER_RAM_LEN = 0x14D
 NR_LO, NR_HI = 0xFF10, 0xFF3F
 
 
@@ -44,6 +55,12 @@ def main():
     ap.add_argument('--mask', default='0x01', help='the C value (request kind)')
     ap.add_argument('--ticks', type=int, default=300,
                     help='driver ticks to record after the request')
+    ap.add_argument('--under', default=None,
+                    help='music id to start (mask $03) and let run for --lead '
+                         'ticks BEFORE the request, so an SFX is recorded '
+                         'pre-empting live music rather than silence')
+    ap.add_argument('--lead', type=int, default=120,
+                    help='frames of --under music before the request')
     ap.add_argument('--out', default=None)
     args = ap.parse_args()
 
@@ -60,6 +77,18 @@ def main():
     ticks = []
     pending = []
     counting = {'n': 0}
+    # $C800-$C94C: the four ownership bytes, the driver globals (drum and slide
+    # presets, the auto-note latches) and all eight 36-byte track records.
+    #
+    # This has to be captured, not assumed. sub_07_40B8 clears only part of a
+    # track record -- +$06, +$07, +$0A..+$10, +$13..+$18 and +$1A..+$20 all
+    # survive a song change -- so a song's first tick can output the PREVIOUS
+    # song's frequency. Song $00 does exactly that: its first event is a REST,
+    # which writes NRx2 and retriggers without touching the pitch, so tick 0
+    # goes out at whatever was in +$0A/+$0B. A port starting from zeroes cannot
+    # reproduce that from the sequence data alone, and diffing against it would
+    # be comparing boot history rather than the driver.
+    state = {'ram': None}
 
     # Recording only starts once the request has actually been picked up out of
     # the queue. Before that the driver is still running whatever the game was
@@ -71,6 +100,11 @@ def main():
         # The hook fires on ENTRY, so close off the previous tick first.
         if armed['v'] and counting['n'] > 0:
             ticks.append(pending.copy())
+        else:
+            # Still pre-roll: keep overwriting, so what survives is the state
+            # at the ENTRY of the tick that starts the song -- before the
+            # driver reads $FFD2 and before any of this recording's writes.
+            state['ram'] = list(pyboy.memory[DRIVER_RAM:DRIVER_RAM + DRIVER_RAM_LEN])
         pending.clear()
         counting['n'] += 1
 
@@ -98,8 +132,17 @@ def main():
     # goes out at $4311 and NRx4 only if flags bit 4 (frequency changed).
     HL_SITES = [0x4307, 0x4311, 0x4319, 0x431D, 0x4320, 0x4325,
                 0x42EB, 0x42EE, 0x42F6]
+    #
+    # $434A is the one that is easy to miss and the one that matters most:
+    # step 4 of the tick writes NRx2 = 0 for every channel nobody owns, which
+    # is the ONLY note-off this engine has. Without it a recording keeps the
+    # last value a dead channel wrote and the fold shows a note ringing after
+    # the song ended -- so a port that correctly silences the channel is
+    # reported as diverging. $4358/$435F are NR50/NR51, recorded for
+    # completeness even though the diff excludes them.
     C_SITES = [0x42D1, 0x42D4, 0x42A4, 0x4003, 0x4006, 0x400D, 0x4012,
-               0x405A, 0x421B, 0x4228, 0x4233, 0x425E]
+               0x405A, 0x421B, 0x4228, 0x4233, 0x425E,
+               0x434A, 0x4358, 0x435F]
     DIRECT = {0x42CA: 0xFF1A, 0x42DF: 0xFF1A, 0x4015: 0xFF1C,
               0x4019: 0xFF1A, 0x401B: 0xFF1E, 0x401F: 0xFF10}
 
@@ -144,6 +187,20 @@ def main():
     for _ in range(120):
         pyboy.tick(1, False)
 
+    # Optionally get music going first. Channel arbitration ($42AA) is a
+    # comparison against $C800+hwchan, not a stack, and nothing lowers that
+    # byte except END -- so "SFX over silence" never exercises either the
+    # pre-emption or the hand-back. The seeded state carries the music tracks
+    # mid-phrase, which is what makes the comparison meaningful.
+    if args.under is not None:
+        slot = queue(int(args.under, 0), 0x03)
+        for _ in range(400):
+            pyboy.tick(1, False)
+            if slot is None or m[QUEUE + slot * 2 + 1] == 0:
+                break
+        for _ in range(args.lead):
+            pyboy.tick(1, False)
+
     slot = queue(sound_id, mask)
     guard = 0
     while not armed['v'] and guard < 4000:
@@ -161,7 +218,8 @@ def main():
                                    f'sound_{sound_id:02X}.json')
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, 'w') as f:
-        json.dump({'id': sound_id, 'mask': mask, 'ticks': ticks}, f)
+        json.dump({'id': sound_id, 'mask': mask, 'ticks': ticks,
+                   'ramBase': DRIVER_RAM, 'ram': state['ram']}, f)
 
     nonempty = sum(1 for t in ticks if t)
     total = sum(len(t) for t in ticks)

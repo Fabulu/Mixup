@@ -7,6 +7,7 @@ import { createState, GAMEPLAY_PALETTES } from '../src/state.js';
 import { makeTunables } from '../src/tunables.js';
 import {
   showRoundSelect, tickRoundSelect, hideRoundSelect, routeIfOpen,
+  continueLevel, ROUTE_LEVEL,
 } from '../src/roundselect.js';
 
 const UP = 0x40, DOWN = 0x80, LEFT = 0x20, RIGHT = 0x10, START = 0x08;
@@ -172,4 +173,77 @@ test('the screen asks for its own theme, song $01', () => {
   s.titleManifest = null;
   showRoundSelect(s, fakeArt());
   assert.deepEqual(s.sound.queue.at(-1), { id: 0x01, mask: 0x03 });
+});
+
+// ---------------------------------------------------------------------------
+// CONTINUE.  ROM: $03B8-$03C3 (drawn) and $047C-$049B (taken).
+//
+// The values here are MEASURED, not read off the listing: the cartridge was
+// taken to round select twice -- once from the title, once by dying on level
+// 3 -- and $8000-$9FFF dumped at $0472 both times. The whole on-screen
+// difference is eight tiles at $9A04 and the life count at $9A0E.
+// (tools/oracle/flowdiff.mjs holds the ROM against the port end to end.)
+// ---------------------------------------------------------------------------
+
+const CONTINUE_ROW = [0x8C, 0x98, 0x97, 0x9D, 0x92, 0x97, 0x9E, 0x8E];
+const readRow = (s) => Array.from({ length: 8 },
+                                  (_, i) => s.video.bgMap[0x9A04 - 0x9800 + i]);
+
+test('the CONTINUE line is drawn only when $FFB5 is set', () => {
+  const off = makeScreen({ canContinue: 0 });
+  assert.deepEqual(readRow(off), [0, 0, 0, 0, 0, 0, 0, 0]);
+  assert.equal(off.video.bgMap[0x9A0E - 0x9800], 0);
+
+  const on = makeScreen({ canContinue: 1 });
+  assert.deepEqual(readRow(on), CONTINUE_ROW);
+});
+
+test('the life count is drawn as $80 + lives, unclamped', () => {
+  // $03BE-$03C3: LD A,[$C767] / ADD A,$80. Nothing bounds it, so a run with
+  // more than nine lives draws a letter. Reproduced rather than fixed.
+  const s = createState(makeTunables());
+  s.flow.continueAvailable = 1;
+  s.flow.lives = 4;
+  s.titleManifest = null;
+  showRoundSelect(s, fakeArt());
+  assert.equal(s.video.bgMap[0x9A0E - 0x9800], 0x84);
+
+  s.flow.lives = 12;
+  showRoundSelect(s, fakeArt());
+  assert.equal(s.video.bgMap[0x9A0E - 0x9800], 0x8C);
+});
+
+test('CONTINUE keeps the level you died on and ignores the route cursor', () => {
+  // $0480 jumps PAST loc_00_049D, so the route the cursor sits on is not
+  // consulted at all. MEASURED: dying on level 3 and pressing START reaches
+  // loc_00_04BB with $FFB0 = 3.
+  const s = makeScreen({ canContinue: 1 });
+  s.level.number = 3;
+  s.roundSelect.cursor = 2;                 // would be level 9 on the START arm
+  assert.equal(continueLevel(s), 3);
+});
+
+test('CONTINUE on a level that ENDS something steps back one', () => {
+  // $0486-$0499: 4, 8, $0B and $0E each take the DEC A. MEASURED: dying on
+  // level 4 continues at level 3.
+  const s = makeScreen({ canContinue: 1 });
+  for (const [died, resumed] of [[4, 3], [8, 7], [0x0B, 0x0A], [0x0E, 0x0D],
+                                 [3, 3], [5, 5], [0x0C, 0x0C]]) {
+    s.level.number = died;
+    assert.equal(continueLevel(s), resumed, `level ${died}`);
+  }
+});
+
+test('CONTINUE restores HP from the maximum', () => {
+  const s = makeScreen({ canContinue: 1 });
+  s.player.hp = 1;
+  s.player.hpMax = 10;
+  continueLevel(s);                          // $0482: $FF8A <- $FF8E
+  assert.equal(s.player.hp, 10);
+});
+
+test('the routes map to levels 1/5/9 and the Joker warp', () => {
+  // loc_00_049D. Route 3 only becomes reachable once $C753 reads $07, which
+  // is the same condition $361E uses to jump straight into level $0C.
+  assert.deepEqual(ROUTE_LEVEL, [1, 5, 9, 12]);
 });

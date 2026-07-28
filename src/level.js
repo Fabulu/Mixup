@@ -5,6 +5,7 @@ import { loadLevel, loadManifest, buildTileCache } from './assets.js';
 import { loadActors } from './actors.js';
 import { loadEnemies } from './enemies.js';
 import { loadWaterArt, applyWaterArt, armEnemyRespawn } from './water.js';
+import { clearDrops } from './drops.js';
 
 // The window art is the same for both water levels, so load it once.
 let waterArt;
@@ -47,11 +48,36 @@ export async function initLevel(state, n) {
   // The camera pins itself low whenever this is non-zero.
   state.level.bossId = info.subtype & 0x0F;
 
+  // $0519: level init clears $FFB5.
+  //
+  // MEASURED (tools/oracle/flow.py --mode boot / --mode death), because the
+  // obvious reading of the listing is wrong: the tail of sub_00_0D50
+  // ($0EC0/$0EE7/$0F36) sets $FFB5 = 1 at the END of every level load, which
+  // looks like "a level has been reached". It is not a latch. $0561's CALL
+  // falls straight through into loc_00_0564, which is `XOR A / LDH [$FFB5],A`
+  // -- so the flag is cleared before the first main-loop iteration ever
+  // finishes, every single time. Its real job there is the $05C0 test: a
+  // routine that rebuilt the screen mid-frame sets it, and the loop restarts
+  // the iteration instead of running the rest of the frame against a screen
+  // that just moved.
+  //
+  // The ONLY write that survives to be read by round select is the death
+  // sequence's, at $2AAF. So $FFB5 means "you got here by dying", which is
+  // exactly the condition CONTINUE should appear under -- and a route boss
+  // cleared normally reaches the same menu with $FFB5 = 0 (measured: level 4
+  // cleared, $035B entered with $FFB5 = 00, $C753 = 01).
+  state.flow.continueAvailable = 0;
+
   // $0DBA-$0DC5: the boss-fight globals reset on every level entry.
   state.flow.bossRage = 0;                      // $C73D
   state.flow.bossCrit = 0;                      // $C73F
   state.flow.bossHop = 0;                       // $C741
   state.flow.bossMode = 0;                      // $C750
+  // $0DC8-$0DCA: $C740 = $FF, right beside them. On the cartridge that byte
+  // is the boss-death countdown AND the melee/batarang damage gate; here it
+  // is only the clear request main.js raises and consumes, but it has to be
+  // rearmed on the same instruction the ROM rearms it on.
+  state.flow.levelCleared = 0;                  // $C740
   if (n === 0x0E) {
     // $0DD9-$0DF8: level 14 boots INSIDE the 1:$77BD entrance -- $C750 = 1
     // reroutes the whole enemy driver there ($C740 = 1 also disables melee
@@ -181,7 +207,58 @@ export function resetPlayer(state, info) {
   state.flow.ammo = 0;                 // $C759 starts empty each level
   for (const b of state.batarangs) { b.active = false; b.flags = 0; }
   for (const s of state.breakables) s.timer = 0;
+  clearDrops(state);            // $C6CF: a heart must not survive the level
   state.doors.active = 0;
+}
+
+/**
+ * Which `$C753` bit each route's LAST level owns. ROM: loc_00_35E8's dispatch
+ * -- `CP $04 -> SET 0`, `CP $08 -> SET 1`, `CP $0B -> SET 2` ($360F, $3616,
+ * $3608). Route 0 is levels 1-4, route 1 is 5-8, route 2 is 9-11, so the bit
+ * goes up when that route's boss dies and never at any other time.
+ *
+ * MEASURED end to end on the cartridge for all three, by zeroing the boss's
+ * own HP byte (enemy record +$16 -- the state the last punch leaves) and
+ * letting the ROM run its own death and clear sequence:
+ *   level 4  with $C753 = $00 -> $01, then loc_00_035B
+ *   level 8  with $C753 = $00 -> $02, then loc_00_035B
+ *   level 11 with $C753 = $03 -> $07, then $FFB0 = $0C and loc_00_04BB
+ */
+const ROUTE_BIT = { 0x04: 0x01, 0x08: 0x02, 0x0B: 0x04 };
+
+/**
+ * ROM: loc_00_35E8-$363A. What finishing a level does to the run.
+ *
+ * `$C753` has exactly ONE writer in the whole cartridge -- $361B -- and it is
+ * only ever OR-ed, never cleared; the only thing that resets it is the boot
+ * vector at $0150, which wipes WRAM (measured: a game over comes back with
+ * $C753 = 0 and five lives).
+ *
+ * @returns where the game goes next. `transition` means the ordinary walk-off
+ *          handoff at loc_00_2820, which every non-route-ending level takes.
+ */
+export function clearLevel(state, n = state.level.number) {
+  const flow = state.flow;
+
+  if (n === 0x0E) return { to: 'ending' };       // $35F8 -> loc_00_3652
+
+  const bit = ROUTE_BIT[n];
+  if (bit === undefined) {
+    state.level.bossId = 0;                      // $35FB: $C73E
+    return { to: 'transition' };                 // $3605: JP loc_00_2820
+  }
+
+  flow.routeMask = (flow.routeMask | bit) & 0xFF;   // $361B
+
+  // $361E: the third bit completing the set skips the menu entirely and drops
+  // straight into level $0C -- which is also the only way route 3 ever becomes
+  // selectable, since $038E pins the cursor there when the mask reads $07.
+  if (flow.routeMask === 0x07) return { to: 'level', level: 0x0C };
+
+  state.level.bossId = 0;                        // $362C: $C73E
+  // $3634 asks for song $01 mask $03 on the way; showRoundSelect already
+  // sends exactly that, so requesting it here would double the command.
+  return { to: 'roundselect' };                  // $363A: JP loc_00_035B
 }
 
 /**

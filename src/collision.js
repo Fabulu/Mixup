@@ -148,10 +148,18 @@ export function probeFloor(state) {
     return out;
   }
 
-  // $1E65: breakable.
+  // $1E65: breakable. NOTE what this arm does NOT do -- unlike $1E35, $1E3D
+  // and $1E51 it never writes $FF84 or $FF87, so landing on a breakable
+  // leaves the Y low byte exactly where the fall put it. Only vy is zeroed,
+  // and that is the CALLER's $1B44, not this routine.
+  //
+  // MEASURED on level 7 (warp 16,20, the col-16 floor is a $06 cell): the
+  // cartridge lands at y = 6668 with ylo = $0C intact; a port that snapped
+  // here landed at 6656 one frame early and shifted camY, which showed up as
+  // "the map objects' cached screen Y is off by one" in the type-3/4
+  // oscillator scenario -- the objects were exact, the player was not.
   if (v === COLL.BREAKABLE) {
     breakCell(state, hit.col, hit.row);
-    land(state);
     out.landed = true;
     return out;
   }
@@ -515,13 +523,42 @@ export function breakCell(state, col, row) {
 }
 
 /**
- * ROM: the delayed tile-restore pass inside sub_00_1336 ($1349).
- * Ticks every queued timer and puts the cell back to $06 when it expires.
+ * ROM: the delayed tile pass inside sub_00_1336 ($1349). Ticks every queued
+ * timer and ERASES the cell when it expires -- see the note below; the routine
+ * used to be called a "restore" and that was the bug.
+ *
+ * It also carries sub_00_1336's own first instruction, `XOR A / LDH [$FFC6],A`
+ * at $1336-$1338, because this is the routine main.js calls at that entry
+ * point. $FFC6 -- "some object has claimed the player this frame" -- is
+ * CLEARED PER FRAME and rebuilt by the overlap scan; nothing else ever zeroes
+ * it. Leaving it latched leaves every +$0D riding flag latched with it, which
+ * MEASURED as a real divergence: level 3's type-5 platform outruns the falling
+ * player at f82, the cartridge drops his ride flag on that frame, and a port
+ * that keeps it goes on applying the platform's $30-per-frame carry -- 48
+ * subpixels of extra fall per frame, and death by f97 in a run where the
+ * cartridge's player is unharmed.
  */
 export function updateBreakables(state) {
+  state.standingOnActor = 0;                      // $1336: XOR A / LDH [$FFC6]
+
+  // $1339-$1347: the queue only ticks on levels 5, 7 and $0C. Everywhere else
+  // sub_00_1336 jumps straight to loc_00_1391, so a cell that has been stepped
+  // on stays SOLID for the rest of the level -- there is no restore at all.
+  const lv = state.level.number;
+  if (lv !== 5 && lv !== 7 && lv !== 0x0C) return;
+
   for (const s of state.breakables) {
     if (s.timer === 0) continue;
-    if (--s.timer === 0) setMapCollision(state, s.col, s.row, COLL.BREAKABLE);
+    // $1364: the expiring cell is ERASED -- graphic AND collision both zeroed
+    // -- not put back to $06. It crumbles away and leaves a hole; the ROM also
+    // spawns a puff through $C744-$C747 + sub_00_0CC2 ($97/$01), effect-pool
+    // work the port does not model.
+    //
+    // MEASURED on level 7 (warp 16,20, difficulty 1 -> a $0C timer): the
+    // player breaks the col-16 floor at f34 and falls through the hole at f46,
+    // exactly 12 frames later. A port that restored $06 left him standing
+    // there for the whole run.
+    if (--s.timer === 0) setMapCell(state, s.col, s.row, 0, 0);
   }
 }
 

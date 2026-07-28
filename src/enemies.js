@@ -32,6 +32,7 @@
 
 import { u8, i8, u16, mapCollisionByIndex } from './state.js';
 import { drawMetasprite } from './render/metasprite.js';
+import { spawnDrop } from './drops.js';
 
 export const SLOTS = 8;
 export const RECORD = 32;
@@ -201,16 +202,32 @@ export function updateEnemies(state) {
     }
 
     r[9] = 0;                                       // $4E60: attr rebuilt per frame
-    if (r[0x10] >= DEATH_ROW) { kill(state, r); continue; }   // $4E69: fell out
+    if (r[0x10] >= DEATH_ROW) {                     // $4E69: fell out
+      if (kill(state, r) === 'dispatch') primaryDispatch(state, r);
+      continue;
+    }
     if (r[0x16] === 0) {                            // $4E75: HP gone
-      // $4E84: on non-boss levels the death also spawns the explosion effect
-      // ($C744-$C74C + sub_00_0CC2/0CF3). The effect pool is not modelled.
-      kill(state, r);
+      // $4E7A: boss levels take the branch at $4E82 and spawn NOTHING. Only
+      // an ordinary level drops anything, and only from HP reaching zero --
+      // the fell-out-of-the-world arm above jumps straight past this.
+      // MEASURED: levels 4, 8 and 11 leave the pool empty when their enemies
+      // die; level 3 fills slot 0 the same frame.
+      if (state.level.bossId === 0) {
+        // $4E88: the drop copies the enemy's live position out of +$0E..+$11.
+        // The explosion effect that $4EA9 spawns alongside it (pool $C693)
+        // is still not modelled -- it is purely visual.
+        spawnDrop(state, (r[0x0E] << 8) | r[0x0F], (r[0x10] << 8) | r[0x11],
+                  0xFF, 0x00, 0x00);                // $4EAC/$4EB1: dir $FF, DE = 0
+      }
+      if (kill(state, r) === 'dispatch') primaryDispatch(state, r);
       continue;
     }
 
     // loc_01_4F0E: hit-state prelude before the type dispatch.
-    if (r[0] & F_DISABLED) { kill(state, r); continue; }      // $4F11: BIT 6
+    if (r[0] & F_DISABLED) {                                  // $4F11: BIT 6
+      if (kill(state, r) === 'dispatch') primaryDispatch(state, r);
+      continue;
+    }
     if (r[0] & 0x04) { stunnedTick(state, r); continue; }     // $4F15: BIT 2
     if (r[0] & 0x18) { hitDispatch(state, r); continue; }     // $4F19 -> $60DD
     primaryDispatch(state, r);                                // $4F1E -> $50C3
@@ -361,9 +378,61 @@ function shouldDespawn(state, r) {
   return absDiff8(camCol, r[0x0E]) >= DESPAWN_RANGE;
 }
 
-/** ROM: loc_01_4EB8 - keep bits 6, 1, 0; drop active/attack/idle; latch dead. */
+/**
+ * ROM: loc_01_4EB8 -- every death funnels through here, and it is NOT just a
+ * flag write. The port treated it as one for a long time, which is why no
+ * boss death ever raised a level clear.
+ *
+ * The arm, in the cartridge's order:
+ *
+ *   $4EB8  $C740 != $FF        -> JP $78CC, the post-death countdown
+ *   $4EC0  flags = (f & $43) | $40
+ *   $4EC8  state == $0B        -> done (a projectile just disappears)
+ *   $4ECE  $C73E == 0          -> done (ordinary level: nothing more to do)
+ *   $4ED5  flags & $03         -> re-ACTIVATE and keep dispatching
+ *   $4EE0  otherwise: this was the boss, and the level is over
+ *
+ * The `flags & $03` arm is the subtle one and it is why the old level-clear
+ * stopgap had to warn about it: a boss killed in mid-air still has its
+ * rising/falling bit set, so the cartridge puts bit 7 back and runs the state
+ * machine again -- the death does not "take" until it lands. Short-circuiting
+ * there leaves a dead boss latched airborne and the clear never fires.
+ *
+ * @returns 'done' | 'dispatch' -- what the caller should do next.
+ */
 function kill(state, r) {
-  r[0] = (r[0] & 0x43) | F_DISABLED;
+  // $4EB8: while the countdown is running, every enemy reroutes into it. The
+  // countdown itself (1:$78CC: 254 frames of scripted explosions, then
+  // loc_00_34D0's fanfare) is not ported -- see SAVEPOINT. Until it is, a
+  // level already flagged clear just stops driving its corpses.
+  if (state.flow.levelCleared) return 'done';
+
+  r[0] = (r[0] & 0x43) | F_DISABLED;                // $4EC0
+
+  if (r[2] === 0x0B) return 'done';                 // $4EC8: projectiles
+  if (state.level.bossId === 0) return 'done';      // $4ECE: $C73E
+
+  if (r[0] & 0x03) {                                // $4ED5: still airborne
+    r[0] |= 0x80;                                   // $4EDA: back to active
+    return 'dispatch';                              // $4EDD: JP loc_01_50C3
+  }
+
+  // $4EE0 -- the boss is down.
+  // $4EE6: BC = $0104, so sound id $01 with mask $04, the FADE-OUT mask. The
+  // music does not stop, it fades. Level 6 is excluded ($4EE2: CP $06).
+  if (state.level.number !== 0x06) requestSound(state, 0x01, 0x04);
+  r[0] = 0x81;                                      // $4EEC
+  state.flow.levelCleared = 1;                      // $4EF1: $C740 = $FE
+  state.player.iframes = 0;                         // $4EF5: $C714
+  // $4EF8 also clears $C713. The port has no standing home for that byte --
+  // round select derives its CONTINUE mode from flow.continueAvailable when
+  // the screen opens, and $C713's other life is the explosion index inside
+  // the unported $78CC countdown. Nothing to write, so nothing is written.
+  if (state.level.bossId === 0x02) {                // $4EFB: boss 2's two parts
+    state.enemies[1][0] = 0x40;                     // $4F05: $C288
+    state.enemies[2][0] = 0x40;                     // $4F08: $C2A8
+  }
+  return 'done';
 }
 
 /** ROM: loc_01_50C3, table 1:$50D3, indexed on state-1. */
@@ -902,35 +971,38 @@ function ledgeCheck(state, r, dir) {
  * immediately (bit 0 set right here, unlike the wall jump which waits out the
  * turn animation).
  */
-const GAP_TABLE = hexBytes(
-  '0000000000000000000000000002002000000000000000000000000000000000' + // $7E3F L1
-  '000000000000000000000000000000000700c060b60100010100000000000000' +
-  '0000e0000090000000000000000000000000000000700c00100a0520022002b0' + // $7E7F L2 / $7E8F L3
-  '6020022002000000000000000000000005000000000000000000000000000000' +
-  '0000000000000000000000ea0500000010101010000000000000002002000000' + // $7EB7 L5
-  '000c00700000000000000000000000004200240000300030400004002052c000' + // $7EDC L7/L13
-  '00800d000000000000000000000000000050a000000000000004000041000000' +
-  'a9000e9003e0d038d008');
+/**
+ * Per-level base offsets into `gapTable`, plus the column guard each is paired
+ * with. These are IMMEDIATES in the dispatch at $7D2E-$7D5F, not a pointer
+ * table, so they belong next to the code rather than in the manifest.
+ *
+ * Levels 7 and 13 share $7EDC and the same $4C guard -- that is not a typo.
+ * There is a sixth arm at $7D59 (guard $4E, table $7F02) that nothing jumps
+ * to: the JR at $7D57 steps over it, and the disassembler finds no xref. It
+ * is dead on the cartridge, so no level maps to it here either.
+ */
 const GAP_BASE = { 1: 0x00, 2: 0x40, 3: 0x50, 5: 0x78, 7: 0x9D, 0x0D: 0x9D };
-/** {Yvel, Xvel} pairs, leap ids 1-14. ROM: $7DBC-$7E25. */
-const GAP_LEAPS = [
-  [0x10, 0x12], [0x18, 0x13], [0x20, 0x13], [0x23, 0x1C], [0x12, 0x0C],
-  [0x23, 0x0F], [0x20, 0x13], [0x23, 0x16], [0x24, 0x20], [0x08, 0x04],
-  [0x08, 0x02], [0x10, 0x15], [0x10, 0x10], [0x18, 0x10],
-];
+/** Column past which each guarded level stops leaping. $7D39/$7D44/$7D4F. */
+const GAP_GUARD = { 3: 0x43, 5: 0x4A, 7: 0x4C, 0x0D: 0x4C };
 
 function gapLeap(state, r) {
   const lvl = state.level.number;
   const xhi = r[0x0E];
-  if (lvl === 3 && xhi >= 0x43) return false;       // $7D39
-  if (lvl === 5 && xhi >= 0x4A) return false;       // $7D44
-  if ((lvl === 7 || lvl === 0x0D) && xhi >= 0x4C) return false;   // $7D4F
+  if (xhi >= (GAP_GUARD[lvl] ?? 0x100)) return false;
   const base = GAP_BASE[lvl];
   if (base === undefined) return false;             // $7D2B
-  const byte = GAP_TABLE[base + (xhi >> 1)] ?? 0;
+  const table = state.tables?.gapTable;
+  const leaps = state.tables?.gapLeaps;
+  // Levels 1, 2, 3, 5, 7 and 13 all reach this. A missing table would silently
+  // turn every scripted leap into a turn-around, which looks like plausible
+  // enemy behaviour -- so refuse to guess.
+  if (!table || !leaps) {
+    throw new Error('gapLeap: tables.gapTable/gapLeaps missing from the manifest');
+  }
+  const byte = table[base + (xhi >> 1)] ?? 0;
   const id = (xhi & 1) ? (byte & 0x0F) : (byte >> 4);   // $7D63
   if (id === 0 || id > 14) return false;            // $7D71 / $7DB9
-  const [yv, xv] = GAP_LEAPS[id - 1];
+  const [yv, xv] = leaps[id - 1];
   r[0x13] = yv;                                     // per-leap launch velocity
   r[0x12] = (r[5] & 1) ? u8(-xv) : xv;              // $7E26: signed by facing
   r[0] |= 0x01;                                     // $7E31: rising, NOW

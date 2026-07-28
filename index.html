@@ -271,18 +271,23 @@ for (const [pid, p] of Object.entries(PRESETS)) {
 // pools, enemy AI), and without them their barriers cannot be opened at all --
 // better to say so than to let someone hunt for a way through that does not
 // exist yet.
+// Kept honest by hand. Every "not ported" here has been true at some point and
+// then quietly stopped being true -- the bosses were all listed as missing for
+// a while after they landed. If you port something, fix its line.
 const LEVEL_NOTE = {
   1: 'playable', 2: 'playable',
-  3: 'partial — some barriers need map objects',
-  4: 'boss level — not ported',
-  5: 'partial — conveyors/water missing',
-  6: 'vehicle level — not ported',
-  7: 'partial', 8: 'boss level — not ported',
-  9: 'partial', 10: 'partial',
-  11: 'boss level — not ported',
-  12: 'partial',
+  3: 'playable — some map objects still sit where they spawn',
+  4: 'Boss 1 — playable',
+  5: 'partial — the level-5 conveyor branch is not ported',
+  6: 'partial — the vehicle rides an unported scroll register',
+  7: 'partial',
+  8: 'Boss 2 — playable',
+  9: 'partial — the parallax sky is missing',
+  10: 'partial — the parallax sky is missing',
+  11: 'Boss 3 — playable',
+  12: 'partial — the collapsing floor is not ported',
   13: 'BLOCKED — barriers need the door sequencer',
-  14: 'final boss — not ported',
+  14: 'Boss 4 / Joker — playable; entrance renders on the wrong background',
 };
 const levelSel = document.getElementById('level');
 // 0 = start at the title screen (the default). Any other value boots straight

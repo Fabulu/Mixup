@@ -101,6 +101,7 @@ export function makeState(g, opts = {}) {
   // $C73E: 0 outside boss/vehicle levels. createState() does not define this.
   state.level.bossId = opts.bossId ?? 0;
   state.camera.clampRight = opts.clampRight ?? (width - 1);   // $C732
+  if (opts.tables) state.tables = { ...(state.tables || {}), ...opts.tables };
   return state;
 }
 

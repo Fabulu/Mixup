@@ -101,6 +101,22 @@ T_RESPAWN_ENEMIES = [(0, 0x32F8), (0, 0x32D8)]     # slot 6 (col $2B), 7 ($27)
 # included, and it skips only types $07/$09/$0B (terrain stampers, no sprite).
 T_OBJ_METASPRITES = (1, 0x4AB7)
 T_OBJ_METASPRITES_N = 14 * 10
+# Scripted pit leaps, sub_01_7D09. A per-level nibble table indexed by Xhi>>1
+# (even column = high nibble) names one of 14 canned {Yvel, Xvel} pairs.
+#
+# The BASES are immediates in the dispatch, not a pointer table, so they live
+# in src/enemies.js next to the guards they pair with. Measured at 1:$7D2E
+# onward: L1 $7E3F, L2 $7E7F, L3 $7E8F, L5 $7EB7, L7 and L13 BOTH $7EDC.
+# There is a sixth arm at $7D59 (guard $4E, table $7F02) with NO xref -- the
+# JR at $7D57 jumps over it. Dead code on the cartridge; the span below still
+# covers it so that stays visible rather than looking like a short read.
+T_GAP_TABLE       = (1, 0x7E3F)
+T_GAP_TABLE_N     = 0x7F29 - 0x7E3F
+# The 14 leap velocities are NOT a table -- they are immediates in 14 code
+# stubs at 1:$7DBC, each `LD A,Yvel / LD [HL-],A / LD A,Xvel` followed by a
+# jump (or, for the last one, a fall-through) into the common tail at $7E26.
+T_GAP_LEAPS       = (1, 0x7DBC)
+T_GAP_LEAPS_N     = 14
 T_OPT_CURSOR_Y    = (1, 0x7C5C)
 T_OPT_DIFFICULTY  = (1, 0x7C5F)
 T_SCRIPT_PTRS     = (0, 0x27E6)   # loc_00_164A: 3 LE pointers to move scripts
@@ -149,6 +165,33 @@ def s8(v):
 
 def read_table(rom, loc, n):
     return list(rom.rd(loc[0], loc[1], n))
+
+
+def read_gap_leaps(rom, loc, count):
+    """Decode the 14 pit-leap velocity stubs at 1:$7DBC into {Yvel, Xvel} pairs.
+
+    Each stub is `3E yy` `32` `3E xx` then a terminator -- JP $7E26, JR to it,
+    or (the last one) nothing at all, falling straight through. Asserting the
+    opcode shape is the whole point: it means a wrong address produces a loud
+    failure here instead of fourteen plausible-looking velocities.
+    """
+    pairs = []
+    off = rom.off(loc[0], loc[1])
+    for i in range(count):
+        ld_y, yv, ldd, ld_x, xv = rom.data[off:off + 5]
+        if (ld_y, ldd, ld_x) != (0x3E, 0x32, 0x3E):
+            raise SystemExit(f'gap leap {i} at {off:#x} is not LD A,n/LD [HL-],A/'
+                             f'LD A,n -- got {ld_y:02X} {ldd:02X} {ld_x:02X}')
+        pairs.append([yv, xv])
+        off += 5
+        op = rom.data[off] if i < count - 1 else None
+        if op == 0xC3:                       # JP $7E26
+            off += 3
+        elif op == 0x18:                     # JR to the same tail
+            off += 2
+        elif op is not None:
+            raise SystemExit(f'gap leap {i} ends with {op:02X}, not a jump')
+    return pairs
 
 
 def vram_script(rom, loc):
@@ -316,6 +359,8 @@ def main():
         # NORMAL, EASY, HARD and silently swaps the first two.
         'optionsDifficulty': [read_table(rom, (1, a), 10)
                               for a in (0x7C69, 0x7C5F, 0x7C73)],
+        'gapTable': read_table(rom, T_GAP_TABLE, T_GAP_TABLE_N),
+        'gapLeaps': read_gap_leaps(rom, T_GAP_LEAPS, T_GAP_LEAPS_N),
         'enemyContactDamage': read_table(rom, T_ENEMY_DMG, 13),
         'levelDamageBonus': read_table(rom, T_LEVEL_DMG_BONUS, 14),
     }

@@ -287,6 +287,50 @@ now — the fix narrative lives on its entry in `regress.mjs`.
    field refuses to converge while its consequences all match, suspect the
    measurement.)
 
+30. **A missing hook makes a CORRECT silence look like a divergence.**
+    `tools/oracle/sound.py` never hooked `$434A` — step 4's `NRx2 = 0` sweep
+    over unowned channels, which is the engine's only note-off. Recordings
+    therefore showed a channel still ringing after the ROM had silenced it, and
+    a port that correctly silenced it was reported as wrong. The general shape:
+    when the oracle and the port disagree about something *stopping*, check
+    that the recorder can see the stop at all. (Same class as the `$431F`/
+    `$4324` gap already logged.)
+
+31. **A partial init means one screen can inherit the last one's state, and
+    something does rely on it.** `$40B8` does not clear the whole track block,
+    so a song can start with the previous song's frequency word still loaded.
+    Song `$00`'s first event is a `REST`, which retriggers WITHOUT writing a
+    pitch — so it audibly plays whatever was there before. The recorder now
+    snapshots `$C800-$C94C` at the song-start tick and the diff seeds the port
+    from it. Two songs "diverged at tick 0" for months purely because the port
+    started from zeroes and the cartridge did not. `recon-4` §9 listed this as
+    an open question; it is answered, and the answer is yes.
+
+32. **`sub_00_0AE1` takes B as the sound id and C as the mask.** `LD BC,$1601`
+    is id `$16`, mask `$01`. Reversing them is the worst kind of bug: a cue
+    still plays, so nothing crashes and no memory comparison flags it — the
+    game just makes the wrong noise. Caught only because someone said the
+    pickup chime sounded off. Every `LD BC,$xxyy` feeding `$0AE1` reads
+    high-byte-first.
+
+33. **Four routines can be two routines with two entry points each.**
+    `$488D`/`$48E4`/`$499B`/`$4940` look like four map-object handlers; they
+    are two oscillators whose halves `JP` into one another (`$48A7 → $48E7`,
+    `$48FD → $4890`, ...). The brake half subtracts 2 and then falls into the
+    accelerate half, which adds 1 back — so the real step is v−1, not v−2, and
+    a reversal bleeds 1 per frame. `actorType3` had already shipped with the
+    v−2 reading. This is the fall-through lesson again, in its nastiest form:
+    the label you land on is not where the routine ends.
+
+34. **A flag named for a milestone can mean something else entirely.**
+    `$FFB5` is set at the end of every level load, which reads as "a level has
+    been reached". It is not: `$0561`'s CALL falls straight through into
+    `loc_00_0564`, `XOR A / LDH [$FFB5],A`, so the flag is cleared before the
+    first main-loop iteration finishes, every time. Its job there is the
+    `$05C0` restart test. The only write that survives to be read by round
+    select is the death sequence's at `$2AAF` — so `$FFB5` actually means
+    "you got here by dying". Measured, not deduced.
+
 ## Tools
 
 | tool | purpose |

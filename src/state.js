@@ -17,6 +17,7 @@ import { createActors } from './actors.js';
 import { createEnemies } from './enemies.js';
 import { createRaster } from './raster.js';
 import { createWater } from './water.js';
+import { createDrops } from './drops.js';
 
 export const SUBPX_PER_PX = 16;
 export const SUBPX_PER_METATILE = 256;
@@ -106,6 +107,8 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     // accumulator. See src/raster.js.
     raster: createRaster(),
     enemies: createEnemies(),        // $C268, 8 x 32 B
+    // $C6CF, 4 x 8 B -- the ballistic pool a dying enemy drops its heart into.
+    drops: createDrops(),
     currentActorSlot: 0,             // $C75A
     // $FFC6 -- "the player is resting on a map object". Set by the overlap
     // scan (loc_00_2534/$2566/$25B3) and read back by it on the NEXT slot to

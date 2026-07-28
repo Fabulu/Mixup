@@ -294,6 +294,44 @@ class Report:
         return [r for r in self.rows if not r[3]]
 
 
+def check_tables(rom, manifest, rep):
+    """Level-independent manifest tables, re-read straight from the file.
+
+    Raw file offsets on purpose -- no gbrom helper, no export_assets constant --
+    so a wrong address in the exporter cannot verify itself. Recorded against
+    level 0, which the report prints as `global`.
+
+    The pit-leap velocities are the interesting case: they are not a table at
+    all but immediates inside fourteen code stubs at 1:$7DBC, each
+    `LD A,Yvel / LD [HL-],A / LD A,Xvel` followed by a jump into the shared
+    tail (the last one falls through). The exporter decodes them; this reads
+    them a second way -- fixed 5-byte strides from the known stub starts --
+    and the two have to agree.
+    """
+    base = 1 * 0x4000                      # bank 1 starts here in the file
+
+    want = list(rom.data[base + 0x3E3F:base + 0x3F29])       # 1:$7E3F-$7F28
+    got = manifest['tables'].get('gapTable', [])
+    rep.add(0, 'manifest', 'tables.gapTable == 1:$7E3F (234 B)', got == want,
+            f'len {len(got)} vs {len(want)}; ' + ', '.join(first_diff(got, want)))
+
+    # Stub starts: ten 8-byte stubs (JP tail), three 7-byte (JR tail), then a
+    # 5-byte one that falls through. Walking the strides rather than decoding
+    # the terminator is the independent half of this check.
+    starts, off = [], 0x3DBC
+    for i in range(14):
+        starts.append(off)
+        off += 8 if i < 10 else 7
+    want = [[rom.data[base + s + 1], rom.data[base + s + 4]] for s in starts]
+    shapes_ok = all(rom.data[base + s] == 0x3E and rom.data[base + s + 2] == 0x32
+                    and rom.data[base + s + 3] == 0x3E for s in starts)
+    rep.add(0, 'manifest', 'pit-leap stubs at 1:$7DBC are LD A,n/LD [HL-],A/LD A,n',
+            shapes_ok, 'stub shape changed -- the addresses are wrong')
+    got = [list(p) for p in manifest['tables'].get('gapLeaps', [])]
+    rep.add(0, 'manifest', 'tables.gapLeaps == the 14 stub immediates',
+            got == want, f'{got} vs {want}')
+
+
 def first_diff(a, b, limit=6):
     out = []
     for i in range(min(len(a), len(b))):
@@ -481,6 +519,11 @@ def main():
     rep = Report()
     how = {}
 
+    # Needs no emulator, so it runs before the slow part and fails fast.
+    check_tables(rom, manifest, rep)
+    how[0] = 'file'
+    reported = [0] + levels     # what the table prints; `levels` is what we boot
+
     runner = Runner(verbose=args.verbose)
     try:
         for lvl in levels:
@@ -516,7 +559,7 @@ def main():
     print(f'{"level":>5} {"how":>7} ' + ''.join(f'{f:>11}' for f in families) +
           f'{"result":>9}')
     print('-' * (13 + 11 * len(families) + 9))
-    for lvl in levels:
+    for lvl in reported:
         cells = []
         for fam in families:
             rows = [r for r in rep.rows if r[0] == lvl and r[1] == fam]
@@ -527,7 +570,8 @@ def main():
                 cells.append(f'{len(rows) - nbad}/{len(rows)}' if nbad
                              else f'PASS {len(rows)}')
         bad = sum(1 for r in rep.rows if r[0] == lvl and not r[3])
-        print(f'{lvl:5d} {how.get(lvl, "-"):>7} ' +
+        label = 'global' if lvl == 0 else f'{lvl:d}'
+        print(f'{label:>5} {how.get(lvl, "-"):>7} ' +
               ''.join(f'{c:>11}' for c in cells) +
               f'{"PASS" if not bad else "FAIL":>9}')
 
