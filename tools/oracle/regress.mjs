@@ -23,6 +23,11 @@ const RESPAWN_FIELDS = ['en6f', 'en6s', 'en6d', 'en6ms', 'en6x', 'en6y',
                         'en7y', 'en7at', 'en7hp'];
 const ROPE_FIELDS = ['action', 'ropeSeg', 'ropePh', 'ropeFlip', 'ropeDly',
                      'rope0x', 'rope0y', 'rope5x', 'rope5y', 'carryY'];
+// Slot 0 in depth plus the boss-fight globals ($C73D/$C73F/$C741) -- what the
+// boss scenarios compare.
+const BOSS_FIELDS = ['hp', 'en0f', 'en0f1', 'en0s', 'en0d', 'en0ms', 'en0x',
+                     'en0y', 'en0vx', 'en0vy', 'en0at', 'en0hp',
+                     'bossRage', 'bossCrit', 'bossHop'];
 
 // Every entry is a permanent test. Scripts are tuned against the level-1
 // geometry (see the ASCII map in docs/03-VERIFICATION.md "Test suite"):
@@ -331,6 +336,137 @@ const SCRIPTS = [
             'bat0spd', 'bat0arc', 'bat1', 'bat2', 'en3hp', 'en3f', 'en3f1',
             'en3s', 'en3x', 'en3y', 'en3vx', 'en3vy', 'en3at', 'en3d',
             'en3ms'] },
+
+  // --- Boss 1 (level 4, state 10, jt_01_7591) -------------------------------
+  // Idle for 400 frames: the boss crosses the arena in full hop-chase cycles
+  // (grounded wind-up ~16f -> rising -> falling, hop launches measured at
+  // f0/f96/f181/f277), takes both the crit high hop ($C741, $FFB1 < $80 at
+  // the $5ED8 roll -- rLY measured mid-frame every time, so the roll is
+  // deterministic) and the plain hop, runs the DEAD-ZONE band only: hooking 1:$7627 gives 6 hits but $75F7 (chase) and $7604 (far-idle) get ZERO here. Adding the punch scenario buys one chase hit at f165; far-idle is still never reached, and neither is $636B, the crit +$12 probe reach, and
+  // attacks at f362 (the $7662 attack-crit roll + the late-armed $634F probe
+  // reaching the player: contact damage + iframes). No lag frame in the run --
+  // every field is bit-exact over all 400.
+  { name: 'l4-boss1-hop-chase', level: 4, frames: 400, script: '400:',
+    extra: BOSS_FIELDS },
+  // The same fight with punches: the first burst lands at ~f100 as the boss
+  // comes down from its first hop (hp 32 -> 30), covering meleeHitTest on a
+  // boss record, the $3C stun + blink, and the boss knockback arm at $4F84
+  // (arena-wall X-hi checks). Melee CRITS are impossible here -- $26D7 gates
+  // the crit on $C73E == 0 and level 4 is boss 1 -- so damage is
+  // deterministic.
+  { name: 'l4-boss1-punch-knockback', level: 4, frames: 400, ammo: 0,
+    script: '97:,6:B,24:,6:B,24:,6:B,24:,6:B,219:',
+    extra: BOSS_FIELDS },
+
+  // --- Level 14: the entrance reroute + Boss 4 / the chaser -----------------
+  // Level 14 boots INSIDE 1:$77BD ($C750 = 1 from init): the whole enemy
+  // driver and the whole player logic chain ($1438 -> $1B4A) are bypassed
+  // while the Joker's balloon flies its scripted path (tables 1:$7A41/$7A5A,
+  // position in $FFBA-$FFBD, the player's OWN vy register reused as the
+  // vertical step counter -- vy jumps to 16 at f120 with the player
+  // grounded). The path completes at ~f729, $C740 flips back to $FF, and the
+  // fight opens: the Joker (state 9) runs its close band off the stale blob
+  // screen bytes at f731, goes far-band idle from f732, and the chaser
+  // (state 4) slides 4/frame toward the player. Bit-exact over
+  // 900 frames, entrance timing included -- but that is the SCENARIO, not the
+  // states. Hooked across the 171 post-entrance frames: state 9 only ever
+  // reaches $7354 (far-idle); its phase-2 stagger, both throws, the walk,
+  // mirror, hop and attack tick NEVER execute. State 4 only runs its slide --
+  // $778D (the grab latch) and $77AE (the hoist), the half that writes
+  // player.slowMode/air/vy, are untested.
+  //
+  // KNOWN NIT, not covered here: walking immediately after the entrance ends
+  // diverges the player's walk-ANIMATION phase by ~8 frames (physics stay
+  // exact) -- the anim counters seed differently across the 730 gated
+  // frames. Fix that before adding a post-entrance input scenario.
+  { name: 'l14-entrance-and-fight-open', level: 14, frames: 900, script: '900:',
+    extra: [...BOSS_FIELDS, 'en0sx', 'en0sy', 'en1f', 'en1s', 'en1x', 'en1y'] },
+
+  // --- Boss 2 (level 8, state 7, jt_01_6D8A) --------------------------------
+  // Walk into the arena and stand there. Covers activation, the distance
+  // bands, the mirror-pause dead zone, walk acceleration, the wall-hop
+  // launcher (8-frame wind-up via the turn-anim machinery), the swing at
+  // ~f86 whose first probe CONNECTS (hp 10 -> 9 with enemy-facing iframes),
+  // and the missed-probe re-arm ($61FB: r[1] bit 4 + the +$15 committed
+  // timer -- NOT the attack timer; that mistake diverged this scenario at
+  // f88 before the store target was measured).
+  //
+  // Capped at 558: f559 is a LAG FRAME -- 1:$4E3F measured skipping slot 0
+  // there, the only skip in 600 frames -- after which the cartridge's boss
+  // runs one $FA step behind the port forever.
+  { name: 'l8-boss2-engage', level: 8, frames: 558,
+    script: '20:,110:R,438:', extra: BOSS_FIELDS },
+  // One batarang at the grounded boss: the armored bounce ($3C8A), the $C741
+  // spin-freeze ($3CA2, counted down by the handler head and drawn by the
+  // $5D20 special), the throw's own punch probe connecting mid-spin at f137
+  // (2 damage + stun), and the knockback's $4FCA write zeroing the spin --
+  // which is what pinned that store as live rather than "not modelled". The
+  // skipFrames-1 is the usual --ammo harness skew.
+  { name: 'l8-boss2-batarang-spin', level: 8, frames: 300, ammo: 5,
+    skipFrames: 1, script: '20:,110:R,4:B,166:',
+    extra: [...BOSS_FIELDS, 'bat0', 'bat0x', 'bat0y', 'bat0spd', 'bat0arc',
+            'ammo'] },
+
+  // --- Boss 3 (level 11, state 8, jt_01_7061) -------------------------------
+  // Idle for 700 frames: the immediate first dash (attack timer 11 at f2),
+  // the far-band idle with the $C741 patience counter climbing on odd $FFB1
+  // frames, the counter tripping $B4 at ~f400 (crit lunge, decaying velocity,
+  // arena-edge ricochet), the chained $30-speed dashes and player contact
+  // damage (hp 10 -> 8 by f601). No lag frame in the run.
+  { name: 'l11-boss3-patience-lunge', level: 11, frames: 700, script: '700:',
+    extra: BOSS_FIELDS },
+  // Walk in and punch three times: meleeHitTest on the boss, the boss-3
+  // knockback variant ($4FF5, X-hi >= 9 wall test), and the bid-3 stun expiry
+  // at $5080 -- whose $50B0 write IS the crit-lunge trigger ($C73F): before
+  // that write was modelled this scenario diverged at f188 on exactly
+  // bossCrit, and the retaliation vx read $CD = $CC + one $6280 step.
+  { name: 'l11-boss3-punch', level: 11, frames: 500, ammo: 0,
+    script: '20:,100:R,6:B,20:,6:B,20:,6:B,328:',
+    extra: BOSS_FIELDS },
+
+  // --- State 6 (level 12, the pacing shooter, jt_01_57D6) -------------------
+  // Level 12 is dense with unported NON-enemy machinery, so each scenario is
+  // placed to stay clear of it. Measured hazards, for whoever comes next:
+  //  - the collapsing floor (loc_00_2FB7, table 1:$7BB4) erases cols 3-14
+  //    once the player passes col 6 -- slot 0 lives inside it;
+  //  - type-5/6 map objects (cols 28/30/44/46/56/61/86) hold enemies and the
+  //    player up on the cartridge but are handler-less in the port -- slot 3
+  //    at col 56 stands on the type-6 at $C1E8 slot 4;
+  //  - the shooter's own shot BREAKS class-$06 cells through the EFFECT POOL
+  //    (measured: fire at f5, $C67B queue entry {12,91,28} at f7, cell zeroed
+  //    at f19), which the port does not model;
+  //  - chronic lag frames near multi-enemy warps (slot skips measured at
+  //    1:$4E3F on the warp-38 run: f9-f59, hitting slot 1 at f32/f36).
+  //
+  // Slot 4 (col 73) is the one record clear of ALL of that: 400 frames of
+  // activation, mid-band chase, committed pauses and the bit-7 walk-away
+  // inversion, bit-exact on every field.
+  { name: 'l12-shooter-approach', level: 12, frames: 400, warp: '71,26',
+    skipFrames: 1, script: '400:',
+    extra: ['hp', 'en4f', 'en4f1', 'en4s', 'en4d', 'en4ms', 'en4x', 'en4y',
+            'en4vx', 'en4vy', 'en4at', 'en4hp'] },
+  // Slot 5 (col 92): walks left into the wall at f4 (snap $B0 + the pacing
+  // latch flip), fires on the pacing column test at f5, holds the $0F attack
+  // tick, and launches the mode-2 projectile. CAPPED AT 21: at f5 the shot's
+  // muzzle effect breaks the breakable at (91,12) on the cartridge -- the
+  // effect pool is not modelled -- so from f22 the cartridge's enemy walks
+  // through a wall the port still sees. First divergent frame measured: f22
+  // (en5f1/en5x/en5vx).
+  { name: 'l12-shooter-fire', level: 12, frames: 21, warp: '90,27',
+    skipFrames: 1, script: '21:',
+    extra: ['hp', 'en5f', 'en5f1', 'en5s', 'en5d', 'en5ms', 'en5x', 'en5y',
+            'en5vx', 'en5vy', 'en5at', 'en5hp', 'en6f', 'en6s', 'en6d',
+            'en6ms', 'en6x', 'en6y', 'en6at', 'en6hp'] },
+  // The same run followed to f29 for the PROJECTILE alone: full flight, the
+  // wall hit at f28 and the variant-2 explode/disable ($5B12 -> $5B89) --
+  // en5's own fields are deliberately NOT compared here because of the
+  // breakable divergence the previous scenario documents; the projectile
+  // slot stays exact through f29 (its first divergence is the SECOND shot at
+  // f63, which the broken wall reschedules).
+  { name: 'l12-projectile-explode', level: 12, frames: 29, warp: '90,27',
+    skipFrames: 1, script: '29:',
+    extra: ['en6f', 'en6s', 'en6d', 'en6ms', 'en6x', 'en6y', 'en6at',
+            'en6hp'] },
 
   // Walk LEFT off the start ledge into the pit. The player crosses row $21
   // during f117's movement; the cartridge's pit test at loc_00_1755 runs at

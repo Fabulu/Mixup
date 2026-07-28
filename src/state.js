@@ -155,6 +155,23 @@ export function createState(tunables = DEFAULT_TUNABLES) {
       continueAvailable: 0,
       paused: false,   // $C716
       bossMode: 0,     // $C750 -- level $0E reroutes the enemy loop to 1:$77BD
+      // Boss-fight globals, all zeroed by level init ($0DBA-$0DC5):
+      bossRage: 0,     // $C73D -- boss 1/4 enrage latch (HP < $10 on non-easy)
+      bossCrit: 0,     // $C73F -- attack-crit flag (rLY roll at 1:$7662)
+      bossHop: 0,      // $C741 -- boss-1 high-hop / boss-2 special-draw flag
+      // $FFCA/$FFCB as one word. Init writes $0700 ($0F08); on level 6 the
+      // (unported) sub_00_2CBE branch scrolls it (MEASURED: $06F8 counting
+      // down to $01F8 over ~160 frames) and state 5 slaves its X to it.
+      parallaxTrack: 0x0700,
+      // $FFBA-$FFBD during the level-14 entrance (1:$77BD): the Joker's
+      // balloon position. The same HRAM bytes are the enemy probe's scratch,
+      // but the driver is rerouted while the entrance runs, so they never
+      // collide. Seeded by initLevel on level $0E.
+      balloonX: 0, balloonY: 0,
+      // NOTE: the entrance reuses $C741 (bossHop) as its wait counter and
+      // $C73F (bossCrit) as its path cursor -- the SAME flow fields the
+      // boss fights use, exactly as the ROM multiplexes those bytes. Both
+      // are zeroed when the entrance ends ($77FF).
       rescueCheat: 0,  // $C75C -- set by the title's B+SELECT+LEFT combo
     },
 

@@ -47,6 +47,27 @@ export async function initLevel(state, n) {
   // The camera pins itself low whenever this is non-zero.
   state.level.bossId = info.subtype & 0x0F;
 
+  // $0DBA-$0DC5: the boss-fight globals reset on every level entry.
+  state.flow.bossRage = 0;                      // $C73D
+  state.flow.bossCrit = 0;                      // $C73F
+  state.flow.bossHop = 0;                       // $C741
+  state.flow.bossMode = 0;                      // $C750
+  if (n === 0x0E) {
+    // $0DD9-$0DF8: level 14 boots INSIDE the 1:$77BD entrance -- $C750 = 1
+    // reroutes the whole enemy driver there ($C740 = 1 also disables melee
+    // and batarang damage until the entrance ends and $77FF restores $FF).
+    // $C741 = $78 is the phase-1 countdown; $FFBA-$FFBD seed the Joker's
+    // balloon at world ($0880, $1E00). MEASURED: C741 119 at the first
+    // sampled frame, C750 1 -> 2 at f120 with the player's vy register
+    // stamped $10.
+    state.flow.bossMode = 1;                    // $0DE0
+    state.flow.bossHop = 0x78;                  // $0DE8
+    state.flow.balloonX = 0x0880;               // $0DEB-$0DF1
+    state.flow.balloonY = 0x1E00;               // $0DF3-$0DF8
+    // (The player-side counterpart lives in resetPlayer: p.air stays 0 on
+    // this level because the gated update never runs the landing.)
+  }
+
   // ROM: sub_00_2889 block-copies the object blob straight into $C1E8.
   const os = info.objectSpawns;
   loadActors(state, b64(os.records), os.count);
@@ -111,7 +132,12 @@ export function resetPlayer(state, info) {
   }
   p.vx = 0;
   p.vy = 0;
-  p.air = 2;              // start falling onto the ground
+  // The usual spawn shortcut: start falling, and the first update's floor
+  // probe lands him before the first trace sample. On level 14 that update
+  // never runs -- $1438 skips the player logic while $C750 (the entrance)
+  // holds -- so the shortcut would leak into every sampled frame. The
+  // cartridge's init leaves $FF80 = 0 there (MEASURED at f1).
+  p.air = state.level.number === 0x0E ? 0 : 2;
   p.facing = 0;
   p.hp = t.startingMaxHP;
   p.hpMax = t.startingMaxHP;

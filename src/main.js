@@ -278,6 +278,11 @@ export function tick(state, manifest, playerTiles) {
   // frame. drawPlayer therefore draws against last frame's camera, as the ROM
   // does.
   updateCamera(state);                // $121F
+  // $057D-$058B: levels 9/10/11 run the parallax raster chain. Set here rather
+  // than in initLevel so this stays out of the level loader's way.
+  state.raster.mode = [9, 10, 11].includes(state.level.number) ? 2 : 0;
+  tickRaster(state);
+
   updateActors(state, manifest);      // $05BA CALL 1:$4230
 
   // $05BD CALL $1336: the player state machine is not a call target -- it is

@@ -113,7 +113,7 @@ export function updateBatarangs(state) {
  *
  * $C740 must be $FF exactly as in the melee scan (level 14's init writes 1),
  * and the level-14 Joker phase gate ($C73E == 4 && $C73D >= 2 at $3C56) is
- * not modelled -- unreachable until the boss states are ported.
+ * NOT MODELLED, and no longer unreachable: stBoss4 sets bossRage = $EF counting down, which satisfies $C73D >= 2 for ~238 frames, so a batarang thrown at the staggering Joker should do nothing and currently damages him.
  */
 function batarangHitTest(state, b) {
   const t = state.tunables;
@@ -138,21 +138,35 @@ function batarangHitTest(state, b) {
     const st = r[2];
     if (st === 0x04 || st === 0x0B || st === 0x0D) continue;    // immune
 
+    let armoredDamage = false;                       // the $3C9E exception
     if (st === 0x02 || st === 0x07 || st === 0x0A) { // $3C8A: armored bounce
       requestSound(state, 0x1D);
       if ((r[0] & 0x08) === 0) {                     // $3C90: not already hit
-        // $3C94: bossId 2 splits on the flag bits instead -- level 8,
-        // unreachable until state 7 is ported. The generic arm:
-        r[0] |= 0x08;                                // $3CA7: attack state
-        // $3CB0: bossId 1 (level 4) also sets $C73F, which is not modelled;
-        // the timer split is kept.
-        r[0x14] = state.level.bossId === 1 ? 0x10 : 0x1F;   // $3CB4 / $3CBD
+        if (state.level.bossId === 2) {              // $3C94: boss 2 splits
+          if (r[0] & 0x03) {
+            // $3C9E: an AIRBORNE boss 2 takes the ordinary damage arm --
+            // the armor only works grounded. No bounce in this case.
+            armoredDamage = true;
+          } else {
+            state.flow.bossHop = 0x1E;               // $3CA2: the $C741 spin
+          }
+        } else {
+          r[0] |= 0x08;                              // $3CA7: attack state
+          if (state.level.bossId === 1) {            // $3CB0
+            state.flow.bossCrit = 1;                 // $3CB6: $C73F -- reads
+            r[0x14] = 0x10;                          // back as the close-in
+          } else {                                   // $12 probe offset
+            r[0x14] = 0x1F;                          // $3CBD
+          }
+        }
       }
-      r[5] = (((b.flags & 0x03) ^ 0x03) - 1) & 0xFF; // $3CC9: face away
-      b.flags = (b.flags ^ 0x0F) | 0x80;             // $3CD1: flip + return
-      b.speed = (b.flags & 0x01) ? 0x40 : 0xC0;      // $3CDB
-      b.arc = (b.flags & 0x04) ? 0xC0 : 0x40;        // $3CE7
-      continue;                                      // $3CF2 -> next slot
+      if (!armoredDamage) {
+        r[5] = (((b.flags & 0x03) ^ 0x03) - 1) & 0xFF; // $3CC9: face away
+        b.flags = (b.flags ^ 0x0F) | 0x80;             // $3CD1: flip + return
+        b.speed = (b.flags & 0x01) ? 0x40 : 0xC0;      // $3CDB
+        b.arc = (b.flags & 0x04) ? 0xC0 : 0x40;        // $3CE7
+        continue;                                      // $3CF2 -> next slot
+      }
     }
 
     if (r[0] & 0x04) continue;                       // $3CF4: already flashing

@@ -22,6 +22,30 @@ export const BTN = {
 const AIR_GROUNDED = 0, AIR_RISING = 1, AIR_FALLING = 2;
 
 export function updatePlayer(state) {
+  // $1438: while $C750 is nonzero -- set ONLY by $0DE0, guarded on level $0E --
+  // the HELD-input byte is cleared and the whole player chain is skipped to the
+  // $1B4A draw tail: no scripted move, no carry, no exits, no pit test, no
+  // knockback, no physics. MEASURED: hooks on $1755 and $1B42 count ZERO hits
+  // across the entire level-14 intro, and the reroute's $FF87 stamp survives
+  // precisely because the landing arm never runs to zero it.
+  //
+  // It sits HERE, at the very top, because the ROM's chain is
+  // $1438 -> $1444 -> $1626 -> $1640 -> $1643 -> $170A -> $173C: ahead of BOTH
+  // the scripted-move block and the conveyor-carry apply. Running those first
+  // would let a door script or a pending carry move the player on a frame the
+  // cartridge freezes him. Unreachable today -- level 14's entrance has
+  // neither -- but this file has now been bitten twice by exactly this kind of
+  // ordering, so it is placed correctly rather than conveniently.
+  //
+  // NOT the boss-death sequence, whatever an earlier comment said: every write
+  // to $C750 is $0DC5 (=0), $0DE0 (=1, level $0E only), 1:$77D2 (=2) and
+  // 1:$7808 (=0). Boss death writes $C740.
+  if (state.flow.bossMode) {
+    state.input.held = 0;               // $143F: $FFE1 = 0
+    selectAnim(state);                  // $1441 -> loc_00_1B4A
+    return;
+  }
+
   applyCarry(state);
 
   // Death runs its own sequence and suppresses everything else.

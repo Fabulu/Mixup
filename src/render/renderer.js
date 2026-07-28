@@ -5,7 +5,7 @@
 // per-scanline SCX/SCY/BGP/OBP bands (the STAT raster program at $0857), and
 // sub_00_0BC6's sprite ordering (OAM order = call order, cap 40, no sorting).
 
-import { squashBands } from '../raster.js';
+import { squashBands, parallaxBands } from '../raster.js';
 import { cameraPixels } from '../camera.js';
 import { metatileTile } from '../level.js';
 import { mapTile } from '../state.js';
@@ -64,6 +64,7 @@ export function rasterBands(state) {
     }
     return bands;
   }
+  if (state.raster && state.raster.mode === 2) return parallaxBands(state, base);
   return [base];
 }
 

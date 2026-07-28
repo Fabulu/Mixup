@@ -48,12 +48,12 @@ const DEATH_ROW = 0x21;
  * outside the boss levels; 11/12 are the projectile and the dormant shell the
  * ported states spawn into / wake from.
  *
- *   4 $7750 L14 chaser          8 $7061 BOSS 3 (L11)
- *   5 $575C L6 vehicle target   9 $7288 BOSS 4 Joker (L14)
- *   6 $57D6 L12 enemy          10 $7591 BOSS 1 (L4)
- *   7 $6D8A BOSS 2 (L8)        13 $78A7 boss-2 parts
+ * All 13 states are now ported. State 5 (the level-6 vehicle target) is a
+ * TRANSCRIPTION ONLY -- see its header -- because its X rides $FFCA/$FFCB,
+ * which only level 6's unported sub_00_2CBE branch scrolls. The set is kept
+ * (empty) because unit tests import it.
  */
-export const UNIMPLEMENTED_STATES = new Set([4, 5, 6, 7, 8, 9, 10, 13]);
+export const UNIMPLEMENTED_STATES = new Set([]);
 
 const hexBytes = (s) => Uint8Array.from(s.match(/.{2}/g), (b) => parseInt(b, 16));
 
@@ -181,7 +181,7 @@ export function loadEnemies(state, records, count) {
 export function updateEnemies(state) {
   if (!state.enemyDraws) state.enemyDraws = [];
   state.enemyDraws.length = 0;
-  if (state.flow.bossMode) return;                  // $4E0C: $C750 -> 1:$77BD
+  if (state.flow.bossMode) return bossIntroTick(state);   // $4E0C -> 1:$77BD
 
   const descending = state.parity !== 0;            // $4E13
   for (let n = 0; n < SLOTS; n++) {
@@ -215,6 +215,118 @@ export function updateEnemies(state) {
     if (r[0] & 0x18) { hitDispatch(state, r); continue; }     // $4F19 -> $60DD
     primaryDispatch(state, r);                                // $4F1E -> $50C3
   }
+}
+
+/**
+ * ROM: loc_01_77BD - the level-14 ENTRANCE. While $C750 is nonzero the whole
+ * enemy driver reroutes here, so the Joker and the chaser stay parked (their
+ * blob flags are 0; tryActivate never runs). Three stages, all MEASURED on
+ * the cartridge over a 400-frame idle boot of level 14:
+ *
+ *  - $C750 == 1: count $C741 down from $78; at 1, re-arm it to $3F, set
+ *    $C750 = 2, park the window ($FFAD = $E4, $FFAC = 0) and stamp the
+ *    PLAYER'S vy register with $10 -- the balloon reuses $FF87 as its
+ *    vertical step counter, which is why the trace shows vy jump to 16 at
+ *    f120 with the player still grounded.
+ *  - $C750 == 2: a small path interpreter. START ($FFE2 bit 3 -- the
+ *    NEWLY-PRESSED byte, so it is a press, not a hold) skips it. While
+ *    vy != $10 every frame runs the RISE arm: balloon Y -= vy, vy--, wait 1.
+ *    Otherwise, when the $C741 wait expires, the cursor ($C73F, the same
+ *    byte the fights use as the crit flag) steps through 1:$7A41: top bits
+ *    00 = wait (low6+4 frames), $40 = X += $40, $80 = X -= $40, $C0 = enter
+ *    the rise arm. Cursor $19 or the START press ends it: $C750/$C741/
+ *    $C73F/vy = 0, $C740 = $FF (damage re-enabled), window off ($FFAC=$90).
+ *  - Each non-skip frame draws the balloon: world -> screen via sub_00_1172,
+ *    pose 1:$7A5A[cursor] through the ALT table (sub_00_0BAF, attr 0), and
+ *    when its screen X passes $80 the rise ends (vy = $10, Y-lo = 0).
+ */
+const INTRO_PATH = hexBytes('3f1828909008080808d018505008080808d01890905050183f');   // 1:$7A41
+const INTRO_POSES = hexBytes('181d1e292a191b1a1c1f21292a1a1b191c1f21292a292a1d1e');  // 1:$7A5A
+
+function bossIntroTick(state) {
+  const f = state.flow;
+  if (f.bossMode !== 2) {                           // $77BD: CP $02
+    if (f.bossHop - 1 === 0) {                      // $77C4: DEC hits 1
+      f.bossHop = 0x3F;                             // $77CB
+      f.bossMode = 2;                               // $77D2
+      // $77D5-$77DA: $FFAD = $E4, $FFAC = 0. $FFAD is rBGP's shadow, NOT an
+      // object palette -- $0806-$0816 settles the mapping ($FFAB->rWX,
+      // $FFAC->rWY, $FFAD->rBGP, $FFAE->rOBP0, $FFAF->rOBP1). Only the $FFAC
+      // half is modelled. The consequence is visible: $0DFD sets BGP = $FF on
+      // level-14 init, blacking the background out for the entrance, and this
+      // is what restores $E4 when phase 2 starts. The port does neither, so
+      // level 14's entrance renders on a normal background.
+      state.video.windowY = 0;
+      state.player.vy = 0x10;                       // $77DC: $FF87
+    } else {
+      f.bossHop--;                                  // $77C7
+      return;
+    }
+  }
+  // $77E0: phase 2.
+  if (state.input.pressed & 0x08) return bossIntroEnd(state);   // START skips
+  if ((state.player.vy & 0xFF) !== 0x10) return introRise(state);   // $77E8
+  f.bossHop = u8(f.bossHop - 1);                    // $77ED
+  if (f.bossHop !== 0) return introDraw(state);     // $77F4
+  const cur = u8(f.bossCrit + 1);                   // $77F7: $C73F++
+  if (cur >= 0x19) return bossIntroEnd(state);      // $77FB: path done
+  f.bossCrit = cur;                                 // $7815
+  const op = INTRO_PATH[cur] & 0xC0;                // $781F
+  if (op === 0xC0) return introRise(state);         // $782C (the else of $7828)
+  if (op === 0x80) f.balloonX = u16(f.balloonX - 0x40);        // $785D
+  else if (op === 0x40) f.balloonX = u16(f.balloonX + 0x40);   // $7858
+  f.bossHop = (INTRO_PATH[cur] & 0x3F) + 4;         // $7871 (the moves fall in)
+  return introDraw(state);                          // $7879
+}
+
+/**
+ * ROM: loc_01_782C - the ballistic arc: Y += -(vy), vy--, wait 1. The
+ * negate is CPL/INC with the RESULT's bit 7 deciding the sign extension, so
+ * vy counting down through 0 into $FF/$FE... turns the rise into an
+ * accelerating descent by pure byte wraparound (and vy exactly $80 would
+ * extend "negative": kept faithfully).
+ */
+function introRise(state) {
+  const vy = state.player.vy & 0xFF;
+  const n = u8(~vy + 1);                            // $782C-$782F
+  const delta = (n & 0x80) ? (0xFF00 | n) : n;      // $7831-$7839
+  state.flow.balloonY = u16(state.flow.balloonY + delta);   // $783D-$7848
+  // The port keeps p.vy signed while $FF87 is a raw byte; store the signed
+  // reading so the traces compare (the & 0xFF at every read restores it).
+  state.player.vy = i8(u8(vy - 1));                 // $784C: $FF87--
+  state.flow.bossHop = 1;                           // $7851
+  return introDraw(state);
+}
+
+/** ROM: loc_01_7879 - convert, edge-test, draw through the alt table. */
+function introDraw(state) {
+  const f = state.flow;
+  const sx = u8((u16(f.balloonX - state.camera.x) >> 4) + 8);       // $7885
+  const sy = u8((u16((f.balloonY & 0x0FFF) - state.camera.y) >> 4) + 0x10);
+  // $7888: LD A,B -- and sub_00_1172 returns B = screen Y (the same store
+  // order screenTail uses at $5CB8). When the ballistic arc brings the
+  // balloon down past screen Y $81, the bob restarts: vy back to $10, Y-lo
+  // zeroed. Testing screen X here instead diverged the 900-frame run at
+  // f375 on exactly vy.
+  if (sy >= 0x81) {                                 // $7889
+    state.player.vy = 0x10;                         // $788D
+    f.balloonY = f.balloonY & 0xFF00;               // $7892: $FFBD = 0
+  }
+  state.enemyDraws.push({ id: INTRO_POSES[f.bossCrit], x: sx, y: sy,
+                          attr: 0, alt: true });    // $7894-$78A0: 0BAF
+  state.video.windowY = 0;                          // $78A4: $FFAC = 0
+}
+
+/** ROM: loc_01_77FF - the entrance (or its skip) hands control to gameplay. */
+function bossIntroEnd(state) {
+  const f = state.flow;
+  state.video.windowY = 0x90;                       // $7810-$7812: window off
+  f.bossHop = 0;                                    // $7802: $C741
+  f.bossCrit = 0;                                   // $7805: $C73F
+  f.bossMode = 0;                                   // $7808: $C750
+  state.player.vy = 0;                              // $7800: $FF87
+  // $780B: $C740 = $FF -- melee/batarang damage re-enabled. The port models
+  // $C740's gate through flow.bossMode, which just went 0.
 }
 
 /**
@@ -260,12 +372,20 @@ function primaryDispatch(state, r) {
     case 1: return stWalker(state, r);              // 1:$50ED
     case 2: return stWalkerJump(state, r);          // 1:$5399
     case 3: return stFlyer(state, r);               // 1:$55AA
+    case 4: return stChaser(state, r);              // 1:$7750
+    case 5: return stL6Vehicle(state, r);           // 1:$575C
+    case 6: return stL12(state, r);                 // 1:$57D6
+    case 7: return stBoss2(state, r);               // 1:$6D8A
+    case 8: return stBoss3(state, r);               // 1:$7061
+    case 9: return stBoss4(state, r);               // 1:$7288
+    case 0x0A: return stBoss1(state, r);            // 1:$7591
     case 0x0B: return stProjectile(state, r);       // 1:$59E0
     case 0x0C: return stDormant(state, r);          // 1:$5B95
+    case 0x0D: return stBoss2Part(state, r);        // 1:$78A7
     // NOTE: no screenTail here, so an enemy in one of the unported states
     // keeps STALE +7/+8 screen bytes indefinitely -- and both hit scans now
     // compare against exactly those. The old world-space tests were immune to
-    // this. Latent (boss levels only) until states 4-10/13 land.
+    // this. Latent (boss levels only) until states 4-9/13 land.
     default: return;                                // see UNIMPLEMENTED_STATES
   }
 }
@@ -313,7 +433,10 @@ function bossKnockback(state, r) {
   else r[0x12] = playerScreenX(state) >= r[7] ? 0xF0 : 0x10;
   r[0] = (r[0] & 0xC5) | 0x01;
   r[1] &= 0x9F;
-  // $4FCA: $C741 = 0 -- boss crit flag, not modelled.
+  // $4FCA: the knockback cancels the $C741 spin/patience counter. Verified
+  // by l8-boss2-batarang-spin: a punch landing mid-spin zeroes it instantly
+  // on the cartridge (f138), it does not run down.
+  state.flow.bossHop = 0;
   if (state.flow.difficulty === 2) {                // $4FCD: retaliate on hard
     r[0] |= 0x08;
     r[5] = playerScreenX(state) < r[7] ? 1 : 0;     // $4FDE
@@ -348,7 +471,11 @@ function stunExpired(state, r) {
     r[5] = playerScreenX(state) < r[7] ? 1 : 0;     // $508E (SUB-based, same test)
     r[0x12] = (r[5] & 1) ? 0xCC : 0x34;             // $50A1
     r[0] = (r[0] & 0xC3) | 0x08;
-    // $50B0: $C73F = 1 -- not modelled.
+    // $50B0: the retaliation IS the crit lunge -- attackTickBoss3 reads this
+    // and runs the decaying-velocity dash. Verified by l11-boss3-punch: the
+    // f188 divergence before this write was modelled was exactly bossCrit,
+    // and the observed vx $CD is $CC plus one $6280 increment.
+    state.flow.bossCrit = 1;
     requestSound(state, 0x2D);
     return primaryDispatch(state, r);               // $50BB
   }
@@ -362,9 +489,14 @@ function hitDispatch(state, r) {
     case 1: case 4: case 0x0B: return attackTickBasic(state, r);   // jt_01_6107
     case 2: return attackTickWalkerJump(state, r);                 // jt_01_612E
     case 3: return attackTickFlyer(state, r);                      // jt_01_6169
+    case 5: return attackTickL6(state, r);                         // jt_01_6398
     case 6: return attackTickL12(state, r);                        // jt_01_61B3
+    case 7: return attackTickBoss2(state, r);                      // jt_01_61DD
+    case 8: return attackTickBoss3(state, r);                      // jt_01_621F
+    case 9: return attackTickBoss4(state, r);                      // jt_01_6300
+    case 0x0A: return attackTickBoss1(state, r);                   // jt_01_634F
     case 0x0C: return attackTickDormant(state, r);                 // jt_01_637F
-    default: return;   // 5 -> $6398, 7-10 boss variants: unported
+    default: return;
   }
 }
 
@@ -375,9 +507,31 @@ function attackTickBasic(state, r) {
     attackProbe(state, r);                          // $6118 -> sub_01_6616
     return riseTail(state, r);
   }
-  // $6121: $C73F = 0 -- not modelled.
+  state.flow.bossCrit = 0;                          // $6121: $C73F = 0
   r[0] &= 0xC7;
   return riseTail(state, r);
+}
+
+/**
+ * ROM: jt_01_634F - boss 1 holds the swing but only ARMS it late: the probe
+ * runs on the last $0C frames of the $1F timer, and its reach depends on the
+ * crit roll taken when the attack started ($C73F: offset $12 instead of $1A,
+ * i.e. the crit punch lands CLOSER, not further). Unlike the basic tick this
+ * one falls through into the full state handler ($637C -> jt_01_7591), so an
+ * attacking boss still runs its distance logic every frame.
+ */
+function attackTickBoss1(state, r) {
+  if (r[0x14] === 0) {                              // $6357 -> loc_01_6121
+    state.flow.bossCrit = 0;
+    r[0] &= 0xC7;
+    return riseTail(state, r);
+  }
+  r[0x14]--;                                        // $635A
+  if (r[0x14] < 0x0C) {                             // $635C: last 12 frames
+    r[0x1E] = state.flow.bossCrit ? 0x12 : 0x1A;    // $636B / $636F
+    attackProbe(state, r);                          // $6376
+  }
+  return stBoss1(state, r);                         // $637C
 }
 
 /** ROM: jt_01_612E - state 2 turns AWAY after the lunge and commits to it. */
@@ -1040,6 +1194,1011 @@ function stDormant(state, r) {
 }
 
 // ---------------------------------------------------------------------------
+// State 6 -- the level-12 pacing shooter.  ROM: jt_01_57D6.
+//
+// Distance bands like the walkers, but the signature move is the PACING mode:
+// r[1] bits 2/3 latch a fixed walk direction, flipped on every wall contact
+// ($596F / $59CC), and while pacing the enemy fires whenever its world COLUMN
+// (X hi byte, not screen X) comes within 3 of the player's. The shot sets the
+// MELEE bit ($5856 SET 3), which is why hitDispatch routes state 6 through
+// jt_01_61B3 rather than the ranged tick.
+// ---------------------------------------------------------------------------
+
+function stL12(state, r) {
+  if (r[0] & 0x04) return l12Drift(state, r);       // $57D8: stunned -- drift
+  const f1 = r[1];                                  // $57F7
+  if (f1 & 0x20) {                                  // $57F9: landing anim
+    r[0] &= ~0x20;                                  // $5838
+    return l12Drift(state, r);                      // $583A -> $57DC
+  }
+  if (f1 & 0x10) {                                  // $57FE: committed pause
+    if (r[0x15] === 0) { r[1] &= ~0x10; return riseTail(state, r); }  // $58EF
+    r[0x15]--;                                      // $58DF
+    return r[5] === 0 ? l12WalkRight(state, r) : l12WalkLeft(state, r);
+  }
+  if (f1 & 0x04) {                                  // $5803: pacing right
+    if (absDiff8(state.player.x >> 8, r[0x0E]) < 3) return l12Fire(state, r);
+    return l12WalkRight(state, r);                  // $591C -> $5935
+  }
+  if (f1 & 0x08) {                                  // $5808: pacing left
+    if (absDiff8(state.player.x >> 8, r[0x0E]) < 3) return l12Fire(state, r);
+    return l12WalkLeft(state, r);                   // $592F -> $5989
+  }
+
+  const psx = playerScreenX(state);
+  const diff = u8(psx - r[7]);                      // $5812
+  const playerLeft = psx < r[7];
+  const ad = playerLeft ? u8(-diff) : diff;
+  if (ad >= 0x40) {                                 // $581A: far band
+    if (absDiff8(playerScreenY(state), r[8]) < 0x20) {   // $5829
+      return l12Fire(state, r);                     // $583D -> $583E
+    }
+    r[0] |= 0x20;                                   // $5832: idle
+    return riseTail(state, r);
+  }
+  if (ad < 8) {                                     // $58B2: too close
+    r[1] = (r[1] & 0xF3) | 0x10;                    // $58FA: commit the pause
+    r[0x15] = 0x20;                                 // $5906
+    return riseTail(state, r);
+  }
+  // $58BA: mid band. Walk toward the player -- or AWAY while r[1] bit 7 (the
+  // wall-jump latch, reused here) is set ($58C1 inverts the choice).
+  r[0] &= ~0x20;                                    // $58BE
+  const goLeft = (r[1] & 0x80) ? !playerLeft : playerLeft;   // $58C7 / $58D0
+  return goLeft ? l12WalkLeft(state, r) : l12WalkRight(state, r);
+}
+
+/**
+ * ROM: loc_01_583E - fire: spawn the mode-2 projectile (result IGNORED,
+ * unlike state 2's zero test) and hold the attack pose $0F frames with the
+ * MELEE bit. The two muzzle-flash effects ($5860-$58AE, $C744-$C747 +
+ * sub_00_0CC2 D=$D7) are not modelled -- same stance as $4E84.
+ */
+function l12Fire(state, r) {
+  if (r[0] & 0x08) return riseTail(state, r);       // $583F: already firing
+  spawnProjectile(state, r, 2);                     // $584B: $C72C = 2
+  r[0] = (r[0] & ~0x20) | 0x08;                     // $5854 / $5856
+  r[0x14] = 0x0F;                                   // $585C
+  return riseTail(state, r);
+}
+
+/** ROM: loc_01_57DC - stunned / landing: keep moving at the +$12 velocity. */
+function l12Drift(state, r) {
+  const v = r[0x12];
+  return (v & 0x80) ? l12MoveLeft(state, r, v) : l12MoveRight(state, r, v);
+}
+
+/** ROM: loc_01_5935 - accelerate right toward the +$1D cap (walker idiom). */
+function l12WalkRight(state, r) {
+  r[5] = 0;                                         // $5939
+  let v = r[0x12];
+  if (v & 0x80) {                                   // $593F: moving left still
+    v = u8(v + 2);                                  // $5977: brake by 2
+    r[0x12] = v;
+    return (v & 0x80) ? l12MoveLeft(state, r, v) : l12MoveRight(state, r, v);
+  }
+  const max = r[0x1D];                              // $5944-$5951
+  v = v + 1 < max ? v + 1 : max;
+  r[0x12] = v;
+  return l12MoveRight(state, r, v);
+}
+
+/** ROM: loc_01_5989 - mirror. */
+function l12WalkLeft(state, r) {
+  r[5] = 1;                                         // $598C
+  let v = r[0x12];
+  if (v !== 0 && (v & 0x80) === 0) {                // $5995 / $5997
+    v = u8(v - 2);                                  // $59D4
+    r[0x12] = v;
+    return (v & 0x80) ? l12MoveLeft(state, r, v) : l12MoveRight(state, r, v);
+  }
+  const min = u8(-r[0x1D]);                         // $599C-$59AF
+  v = u8(v - 1);
+  if (v < min) v = min;                             // unsigned clamp
+  r[0x12] = v;
+  return l12MoveLeft(state, r, v);
+}
+
+/** ROM: loc_01_595A - a wall stops it dead (snap $40, the FLYER's point, not
+ *  the walkers' $80) and flips the pacing mode to leftward. */
+function l12MoveRight(state, r, v) {
+  addX(r, i8(v));
+  if (probeRight(state, r) !== 0) {                 // $595D
+    r[0x0F] = 0x40;                                 // $5964
+    r[0x12] = 0;                                    // $596A
+    r[1] = (r[1] & ~0x04) | 0x08;                   // $596F / $5971
+  }
+  return riseTail(state, r);                        // $5974 / $5982
+}
+
+/** ROM: loc_01_59B7 - mirror: snap $B0, mode flips to rightward. */
+function l12MoveLeft(state, r, v) {
+  addX(r, i8(v));
+  if (probeLeft(state, r) !== 0) {                  // $59BA
+    r[0x0F] = 0xB0;                                 // $59C1
+    r[0x12] = 0;
+    r[1] = (r[1] & ~0x08) | 0x04;                   // $59CC / $59CE
+  }
+  return riseTail(state, r);
+}
+
+// ---------------------------------------------------------------------------
+// State 5 -- the level-6 vehicle target.  ROM: jt_01_575C.
+//
+// TRANSCRIPTION ONLY, not oracle-verified: its X is slaved to $FFCA/$FFCB
+// (flow.parallaxTrack), which on level 6 is scrolled by the level's own
+// UNPORTED sub_00_2CBE branch (loc_00_2EF4) -- measured live on the
+// cartridge counting $06F8 down to $01F8 -- so until that branch lands the
+// port's record rides a frozen track. Every frame it re-faces the player by
+// WORLD X hi (not screen X), re-pins its position, and re-arms the melee
+// attack; the muzzle effects ($57B5-$57CE, $C749-$C74C + sub_00_0CF3
+// $0100) and the $C74D facing mirror are effect-pool territory, not
+// modelled. It DOES run screenTail every frame, so the hit scans see fresh
+// +7/+8 bytes.
+// ---------------------------------------------------------------------------
+
+function stL6Vehicle(state, r) {
+  r[0] |= 0x20;                                     // $575E: SET 5
+  r[5] = (state.player.x >> 8) < r[0x0E] ? 1 : 0;   // $5764-$5774 ($FF81 vs +$0E)
+  // $5775: $C74D = facing (effect pool) -- not modelled.
+  const t = state.flow.parallaxTrack;               // $577A: $FFCA/$FFCB
+  const x = u16(((u8((t >> 8) + 5) << 8) | (t & 0xFF)) + 0xC0);
+  r[0x0E] = x >> 8;                                 // $578A-$578D
+  r[0x0F] = x & 0xFF;
+  if (r[0] & 0x08) return screenTail(state, r);     // $5794: mid-attack
+  if (r[0] & 0x04) return screenTail(state, r);     // $579D: stunned
+  requestSound(state, 0x22);                        // $57A6
+  r[0] |= 0x08;                                     // $57AC
+  r[0x14] = 0x1F;                                   // $57B2
+  // $57B5-$57CE: r[0..3] -> $C749-$C74C + sub_00_0CF3($0100) -- the shot
+  // effect, not modelled (same stance as $4E84).
+  return screenTail(state, r);                      // $57D3
+}
+
+/** ROM: jt_01_6398 - the state-5 attack tick just counts and re-enters. */
+function attackTickL6(state, r) {
+  if (r[0x14] !== 0) r[0x14]--;                     // $63A0-$63A2
+  else r[0] &= 0xC7;                                // $63A6-$63A9
+  return stL6Vehicle(state, r);                     // $63A3 / $63AA
+}
+
+// ---------------------------------------------------------------------------
+// State 7 -- Boss 2 (level 8).  ROM: jt_01_6D8A.
+//
+// A walker-shaped boss with boss 1's hop launcher (shorter wind-up: 8 frames
+// against $0F) and a sustained swing: the attack tick re-arms its own timer
+// to $28 on every MISSED probe, so the attack holds until it connects. The
+// enrage at HP < $0E is the show piece -- it boosts the jump velocity/walk
+// cap to $38/$14 and turns slots 1/2 into state-13 AFTERIMAGES, fed a
+// snapshot of the boss's +6/+7/+8 draw bytes every 8th frame through a
+// two-stage history chain, drawn on alternating parity frames.
+//
+// A batarang on a GROUNDED boss 2 does no damage but starts the $C741 spin
+// (batarang.js $3CA0); the handler head counts it down and the $5D20 special
+// draw shows the spin pose. Airborne, the same batarang takes the ordinary
+// 1-damage arm -- the armor only works with feet on the ground.
+// ---------------------------------------------------------------------------
+
+function stBoss2(state, r) {
+  if (!state.flow.bossRage) {                       // $6D8C
+    if (r[0x16] < 0x0E && state.flow.difficulty !== 0) {   // $6D97-$6D9F
+      state.flow.bossRage = 1;                      // $6DA3
+      r[0x1C] = 0x38;                               // $6DAC: jump velocity
+      r[0x1D] = 0x14;                               // $6DAF: walk cap
+      state.enemies[1][0] = 0x80;                   // $6DB4
+      state.enemies[2][0] = 0x81;                   // $6DB9
+      state.enemies[1][2] = 0x0D;                   // $6DBE: state 13
+      state.enemies[2][2] = 0x0D;
+      state.enemies[1][0x16] = 0xFF;                // $6DC6
+      state.enemies[2][0x16] = 0xFF;
+    }
+  } else if ((state.frame & 0x07) === 0) {          // $6DCC: afterimage chain
+    const s1 = state.enemies[1], s2 = state.enemies[2];
+    s2[6] = s1[6]; s2[7] = s1[7]; s2[8] = s1[8];    // $6DD2-$6DE1
+    s1[6] = r[6]; s1[7] = r[7]; s1[8] = r[8];       // $6DE4-$6DF1
+  }
+  if (state.flow.bossHop !== 0) {                   // $6DF4: the spin-freeze
+    state.flow.bossHop--;
+    return fallTail(state, r);                      // $6E00
+  }
+  if (r[0] & 0x07) {                                // $6E05-$6E0F
+    const v = r[0x12];
+    return (v & 0x80) ? boss2MoveLeft(state, r, v) : boss2MoveRight(state, r, v);
+  }
+  if (r[0] & 0x18) return riseTail(state, r);       // $6E2D
+  if (r[1] & 0x10) {                                // $6E34: committed walk
+    if (r[0x15] === 0) { r[1] &= ~0x10; return riseTail(state, r); }  // $6F51
+    r[0x15]--;                                      // $6F41
+    return r[5] === 0 ? boss2WalkRight(state, r) : boss2WalkLeft(state, r);
+  }
+  if (r[1] & 0x60) {                                // $6E39/$6E3E: mid-anim
+    r[0] &= ~0x20;                                  // $6F34
+    return riseTail(state, r);
+  }
+  return boss2Bands(state, r);                      // $6E43
+}
+
+/**
+ * ROM: loc_01_6E43. Also RE-ENTERED IN THE AIR: an unobstructed airborne
+ * step comes back here ($7048 -> $7057), which is how the hop can turn into
+ * the swing mid-flight; the ad >= $1F arm bails to the tails while airborne
+ * ($6E5C -> $705D), so only the close band acts then.
+ */
+function boss2Bands(state, r) {
+  const psx = playerScreenX(state);                 // $6E48
+  const diff = u8(psx - r[7]);
+  if (diff === 0) return boss2MirrorPause(state, r);   // $6E4B -> $6F5C
+  const playerLeft = psx < r[7];
+  const ad = playerLeft ? u8(-diff) : diff;
+
+  if (ad >= 0x1F) {                                 // $6E53
+    if (r[0] & 0x03) return riseTail(state, r);     // $6E5C-$6E63 -> $705D
+    if (ad < 0x30) return boss2Walk(state, r, playerLeft);   // $6E6A
+    if (ad >= 0x70 && !state.flow.bossRage) {       // $6E6E-$6E76: far idle
+      r[5] = playerLeft ? 1 : 0;                    // $6E78-$6E82
+      r[0] |= 0x20;                                 // $6E87
+      return fallTail(state, r);                    // $6E89
+    }
+    if (ad < 0x50) {                                // $6E8C: [$30,$50)
+      if (!state.flow.bossRage) return boss2Walk(state, r, playerLeft);  // $6E94
+      return boss2Hop(state, r);                    // $6E97 -> $6FC4
+    }
+    // [$50,$70), or >= $70 enraged ($6E9F):
+    if (!state.flow.bossRage) return boss2Walk(state, r, playerLeft);    // $6EA3
+    r[5] = playerLeft ? 1 : 0;                      // $6EA5-$6EAF: the throw
+    if ((r[0] & 0x10) === 0) {                      // $6EB1
+      r[0] = (r[0] & ~0x20) | 0x10;                 // $6EB7/$6EB9
+      r[0x14] = 0x1F;                               // $6EBE
+    }
+    return fallTail(state, r);                      // $6EC4
+  }
+  // Close band, ad < $1F:
+  if (ad < 8) return boss2MirrorPause(state, r);    // $6ED8
+  if (absDiff8(playerScreenY(state), r[8]) >= 0x20) {   // $6EE0-$6EEA
+    if (r[0] & 0x03) return riseTail(state, r);     // $6EEE-$6EF5
+    return boss2Walk(state, r, playerLeft);         // $6EF7 -> $6EC7
+  }
+  if (state.player.iframes !== 0) return boss2MirrorPause(state, r);   // $6EFF
+  if (r[0] & 0x18) return riseTail(state, r);       // $6F09-$6F0C
+  requestSound(state, 0x1C);                        // $6F10
+  r[0] |= 0x08;                                     // $6F16
+  r[5] = playerLeft ? 1 : 0;                        // $6F1C-$6F24
+  r[0x14] = 0x1F;                                   // $6F29
+  r[0] &= ~0x20;                                    // $6F2E
+  return riseTail(state, r);                        // $6F30
+}
+
+/** ROM: loc_01_6EC7 - clear idle, walk toward the player. */
+function boss2Walk(state, r, playerLeft) {
+  r[0] &= ~0x20;                                    // $6ECB
+  return playerLeft ? boss2WalkLeft(state, r) : boss2WalkRight(state, r);
+}
+
+/** ROM: loc_01_6F5C - dead zone: commit for $30 frames, facing the player's
+ *  mirror ($FF88 XOR 1). Airborne it just runs the tails. */
+function boss2MirrorPause(state, r) {
+  if (r[0] & 0x03) return riseTail(state, r);       // $6F5D-$6F63
+  r[1] = (r[1] & 0xF3) | 0x10;                      // $6F6E-$6F72
+  r[5] = state.player.facing ^ 1;                   // $6F76
+  r[0x15] = 0x30;                                   // $6F7F
+  return riseTail(state, r);
+}
+
+/** ROM: loc_01_6F87/$6F8C - walker-idiom acceleration toward the +$1D cap. */
+function boss2WalkRight(state, r) {
+  r[5] = 0;                                         // $6F8A
+  let v = r[0x12];
+  if (v & 0x80) {                                   // $6F91 -> $6FEA
+    v = u8(v + 2);
+    r[0x12] = v;
+    return (v & 0x80) ? boss2MoveLeft(state, r, v) : boss2MoveRight(state, r, v);
+  }
+  const max = r[0x1D];                              // $6F98-$6FA4
+  v = v + 1 < max ? v + 1 : max;
+  r[0x12] = v;
+  return boss2MoveRight(state, r, v);
+}
+
+/** ROM: loc_01_6FF5/$6FFB - mirror. */
+function boss2WalkLeft(state, r) {
+  r[5] = 1;                                         // $6FF8
+  let v = r[0x12];
+  if (v !== 0 && (v & 0x80) === 0) {                // $7000-$7005
+    v = u8(v - 2);                                  // $703D
+    r[0x12] = v;
+    return (v & 0x80) ? boss2MoveLeft(state, r, v) : boss2MoveRight(state, r, v);
+  }
+  const min = u8(-r[0x1D]);                         // $7008-$701B
+  v = u8(v - 1);
+  if (v < min) v = min;
+  r[0x12] = v;
+  return boss2MoveLeft(state, r, v);
+}
+
+/** ROM: loc_01_6FAC - a wall makes it JUMP (snap $80, vel 0, hop launcher);
+ *  an open airborne step re-enters the band logic. */
+function boss2MoveRight(state, r, v) {
+  addX(r, i8(v));
+  if (probeRight(state, r) !== 0) {                 // $6FAF
+    r[0x0F] = 0x80;                                 // $6FB7
+    r[0x12] = 0;                                    // $6FBF
+    return boss2Hop(state, r);                      // falls into $6FC4
+  }
+  return boss2AirRecheck(state, r);                 // $7048
+}
+
+/** ROM: loc_01_7023 - mirror (same $80 snap). */
+function boss2MoveLeft(state, r, v) {
+  addX(r, i8(v));
+  if (probeLeft(state, r) !== 0) {                  // $7026
+    r[0x0F] = 0x80;                                 // $702E
+    r[0x12] = 0;
+    return boss2Hop(state, r);
+  }
+  return boss2AirRecheck(state, r);
+}
+
+/** ROM: loc_01_7048 - the airborne band re-entry. */
+function boss2AirRecheck(state, r) {
+  if (r[0] & 0x03) return boss2Bands(state, r);     // $704C-$7052 -> $6E43
+  return riseTail(state, r);                        // $7054
+}
+
+/** ROM: loc_01_6FC4 - boss 1's hop launcher with an 8-frame wind-up. */
+function boss2Hop(state, r) {
+  r[0] &= ~0x18;                                    // $6FC6/$6FC8
+  if (r[0] & 0x01) return riseTail(state, r);       // $6FCA
+  if (r[0] & 0x02) return fallTail(state, r);       // $6FCF
+  r[1] |= 0x40;                                     // $6FD5
+  boss1Aim(state, r);                               // $6FDC -> sub_01_79DB
+  r[0x18] = 0x08;                                   // $6FE3
+  return riseTail(state, r);
+}
+
+/**
+ * ROM: jt_01_61DD - boss 2's attack tick. Every tick whose timer is not 7
+ * probes, and a MISS queues a $28-frame COMMITTED walk for afterwards --
+ * r[1] bit 4 plus the +$15 timer ($61FB adds $14 to HL at +1, so the store
+ * at $6206 lands on +$15, NOT the attack timer; MEASURED on the cartridge:
+ * the re-arm hook fires every missed frame while +$14 keeps counting 30, 29,
+ * 28...). Timer 7 fires the mode-3 projectile if the ranged bit is up.
+ * Falls through to the full handler like the others.
+ */
+function attackTickBoss2(state, r) {
+  if (r[0x14] === 0) {                              // $61E5 -> loc_01_6121
+    state.flow.bossCrit = 0;
+    r[0] &= 0xC7;
+    return riseTail(state, r);
+  }
+  r[0x14]--;                                        // $61E8
+  if (r[0x14] === 7) {                              // $61EA
+    if (r[0] & 0x10) spawnProjectile(state, r, 3);  // $620E-$6219
+  } else if (attackProbe(state, r) !== 0xFF) {      // $61F3-$61F9
+    r[1] |= 0x10;                                   // $61FF
+    r[0x15] = 0x28;                                 // $6206: +$15, see above
+  }
+  return stBoss2(state, r);                         // $6209 -> $6D8A
+}
+
+// ---------------------------------------------------------------------------
+// State 13 -- boss 2's afterimages (slots 1/2).  ROM: jt_01_78A7.
+//
+// No physics at all: the record's +6/+7/+8 are written by stBoss2's history
+// chain, and this handler only draws them -- slot flags bit 0 picks which
+// PARITY of frames the image appears on, which is the flicker. Note the draw
+// does NOT go through screenTail, so nothing here recomputes +7/+8.
+// ---------------------------------------------------------------------------
+
+function stBoss2Part(state, r) {
+  const odd = state.parity !== 0;                   // $FFA7
+  if ((r[0] & 0x01) === 0 ? odd : !odd) return;     // $78A9-$78B8
+  queueDraw(state, r[6], r, 0, false);              // $78BB-$78C6: sub_00_0BC6
+}
+
+// ---------------------------------------------------------------------------
+// State 9 -- Boss 4, the Joker (level 14).  ROM: jt_01_7288.
+//
+// Boss 2's walker skeleton with a two-PHASE fight driven by $C73D (the same
+// byte the other bosses use as the enrage latch): phase 1 until HP < $18,
+// then a one-shot stagger -- music stopped (sound 1 mask 4), pose forced
+// idle, $C73D loaded as a ~$EF-frame countdown -- and at its end sound 6
+// mask 3 (the phase-2 theme) with $C73D parked at 1 for the rest of the
+// fight. Phase 2 throws (bit 4) from most bands and even mid-air whenever
+// the PLAYER is airborne ($72EB reads $FF80). The walk rewrites its own
+// speed cap by distance ($14 close, 6 far) and mirrors the L14 chaser
+// through r[1] bit 7: latched, it walks AWAY, laughing every 16th frame
+// (sound $2A). $C741 doubles as a per-band pose flag here (0/1), which is
+// safe -- level 14 has no $C741 special draw.
+// ---------------------------------------------------------------------------
+
+function stBoss4(state, r) {
+  const f = state.flow;
+  if (f.bossRage >= 2) {                            // $728D: mid-stagger
+    const a = u8(f.bossRage - 1);                   // $72BB
+    if (a !== 1) { f.bossRage = a; return riseTail(state, r); }   // $72C0
+    f.bossRage = 1;                                 // $72C8: phase 2 begins
+    requestSound(state, 0x06, 0x03);                // $72CB
+    return boss4Throw(state, r, playerScreenX(state) < r[7]);   // $72D1
+  }
+  if (r[0x16] < 0x18 && f.bossRage === 0) {         // $7296-$729E: the stagger
+    requestSound(state, 0x01, 0x04);                // $72A0: stop the music
+    r[0] = (r[0] & 0xE3) | 0x20;                    // $72A9-$72AD
+    r[0x14] = 0;                                    // $72B2
+    // $72B6 stores $F0 and FALLS INTO $72BB, whose DEC runs the same frame.
+    f.bossRage = 0xEF;
+    return riseTail(state, r);
+  }
+  if (r[0] & 0x07) {                                // $72DF-$72E9
+    // $72EB: phase 2, player airborne, own attack bits clear: throw NOW.
+    if (f.bossRage === 1 && state.player.air !== 0 && (r[0] & 0x18) === 0) {
+      return boss4Throw(state, r, playerScreenX(state) < r[7]);   // $72FC
+    }
+    const v = r[0x12];                              // $7308
+    return (v & 0x80) ? boss4MoveLeft(state, r, v) : boss4MoveRight(state, r, v);
+  }
+  if (r[0] & 0x18) return riseTail(state, r);       // $7324
+  if (r[1] & 0x10) {                                // $732B: committed walk
+    if (r[0x15] === 0) { r[1] &= ~0x10; return riseTail(state, r); }  // $74A5
+    r[0x15]--;                                      // $7495
+    return r[5] === 0 ? boss4WalkRightAccel(state, r) : boss4WalkLeftAccel(state, r);
+  }
+  if (r[1] & 0x60) {                                // $7330/$7335: mid-anim
+    r[0] &= ~0x20;                                  // $7488
+    return riseTail(state, r);
+  }
+
+  const psx = playerScreenX(state);                 // $733E
+  const diff = u8(psx - r[7]);
+  if (diff === 0) return boss4MirrorPause(state, r);   // $7342 -> $74B0
+  const playerLeft = psx < r[7];
+  const ad = playerLeft ? u8(-diff) : diff;
+
+  if (ad < 0x18) {                                  // $734A: close band
+    if (ad < 8) return boss4MirrorPause(state, r);  // $7437-$743C
+    if (absDiff8(playerScreenY(state), r[8]) >= 0x20) {   // $7442-$7449
+      return riseTail(state, r);                    // $744D (no walk!)
+    }
+    if (state.player.iframes !== 0) return boss4MirrorPause(state, r);  // $7453
+    if (r[0] & 0x18) return riseTail(state, r);     // $745F
+    requestSound(state, 0x1C);                      // $7464
+    r[0] |= 0x08;                                   // $746A
+    r[5] = playerLeft ? 1 : 0;                      // $7470-$7478
+    r[0x14] = 0x1F;                                 // $747D
+    r[0] &= ~0x20;                                  // $7482
+    return riseTail(state, r);
+  }
+  if (ad < 0x30) return boss4Walk(state, r, playerLeft, ad);   // $734F
+  if (ad >= 0x60 && !f.bossRage) {                  // $7354-$735C: far idle
+    r[5] = playerLeft ? 1 : 0;                      // $735E-$7368
+    r[0] |= 0x20;                                   // $736D
+    return fallTail(state, r);                      // $736F
+  }
+  if (ad < 0x40) {                                  // $7372: [$30,$40)
+    if (!f.bossRage) return boss4Walk(state, r, playerLeft, ad);  // $7376
+    return boss4Hop(state, r);                      // $737D -> $7506
+  }
+  if (ad < 0x50) {                                  // $7385: [$40,$50)
+    if (f.bossRage) return boss4Throw(state, r, playerLeft);      // $73AB
+    return boss4Walk(state, r, playerLeft, ad);
+  }
+  // [$50,$60), or >= $60 in phase 2 ($7389):
+  if (f.bossRage) return boss4Throw(state, r, playerLeft);        // $738D
+  f.bossHop = 1;                                    // $738F: $C741
+  r[0] &= 0xDF;                                     // $7398-$739B
+  if (playerLeft) {                                 // $739C: RETREAT at 6
+    r[0x12] = 0x06;                                 // $739F
+    return boss4MoveRight(state, r, 0x06);          // $73A2 -> $74E9
+  }
+  r[0x12] = 0xFA;                                   // $73A5
+  return boss4MoveLeft(state, r, 0xFA);             // $73A8 -> $755E
+}
+
+/** ROM: loc_01_73B1 - the throw: face the player, roll the rLY crit exactly
+ *  like boss 1's hop (measured reduction: crit <=> $FFB1 < $80), and hold
+ *  the ranged pose $3F (crit, sound $29) or $1F frames. */
+function boss4Throw(state, r, playerLeft) {
+  r[5] = playerLeft ? 1 : 0;                        // $73B3-$73BB
+  if (state.frame < 0x80) state.flow.bossCrit = 1;  // $73BC-$73C8: rLY roll
+  r[0] = (r[0] & ~0x20) | 0x10;                     // $73CD/$73CF
+  if (state.flow.bossCrit) {                        // $73D5
+    requestSound(state, 0x29);                      // $73DB
+    r[0x14] = 0x3F;                                 // $73E1
+  } else {
+    r[0x14] = 0x1F;                                 // $73E5
+  }
+  return riseTail(state, r);                        // $73EA
+}
+
+/** ROM: loc_01_73ED - walk toward (or away on the r[1] bit-7 latch), with
+ *  the distance-dependent speed cap and the $C741 pose flag. */
+function boss4Walk(state, r, playerLeft, ad) {
+  if (ad >= 0x30) { r[0x1D] = 0x06; state.flow.bossHop = 0; }  // $73F3-$73FF
+  else { r[0x1D] = 0x14; state.flow.bossHop = 1; }             // $7401-$7408
+  r[0] &= ~0x20;                                    // $7411
+  if (r[1] & 0x80) {                                // $7413-$741B: walk AWAY
+    if ((state.frame & 0x0F) === 0) requestSound(state, 0x2A); // $741D-$7426
+    return playerLeft ? boss4WalkRightAccel(state, r)          // $7429-$742D
+      : boss4WalkLeftAccel(state, r);               // (facing NOT stored)
+  }
+  return playerLeft ? boss4WalkLeftStore(state, r)  // $7430-$7434
+    : boss4WalkRightStore(state, r);
+}
+
+/** ROM: loc_01_74B0 - dead zone: commit $30 frames at the player's mirror. */
+function boss4MirrorPause(state, r) {
+  r[1] = (r[1] & 0xF3) | 0x10;                      // $74B0-$74B6
+  r[5] = state.player.facing ^ 1;                   // $74BA
+  r[0x15] = 0x30;                                   // $74C3
+  return riseTail(state, r);
+}
+
+/** ROM: loc_01_74CB / loc_01_74D0 - walker-idiom acceleration. */
+function boss4WalkRightStore(state, r) {
+  r[5] = 0;                                         // $74CB-$74CF
+  return boss4WalkRightAccel(state, r);
+}
+
+function boss4WalkRightAccel(state, r) {            // $74D0
+  let v = r[0x12];
+  if (v & 0x80) {                                   // $74D5 -> $752C
+    v = u8(v + 2);
+    r[0x12] = v;
+    return (v & 0x80) ? boss4MoveLeft(state, r, v) : boss4MoveRight(state, r, v);
+  }
+  const max = r[0x1D];                              // $74DC-$74E8
+  v = v + 1 < max ? v + 1 : max;
+  r[0x12] = v;
+  return boss4MoveRight(state, r, v);
+}
+
+/** ROM: loc_01_7537 / loc_01_753D - mirror. */
+function boss4WalkLeftStore(state, r) {
+  r[5] = 1;                                         // $7537-$753C
+  return boss4WalkLeftAccel(state, r);
+}
+
+function boss4WalkLeftAccel(state, r) {             // $753D
+  let v = r[0x12];
+  if (v !== 0 && (v & 0x80) === 0) {                // $7541-$7547 -> $757E
+    v = u8(v - 2);
+    r[0x12] = v;
+    return (v & 0x80) ? boss4MoveLeft(state, r, v) : boss4MoveRight(state, r, v);
+  }
+  const min = u8(-r[0x1D]);                         // $754A-$755D
+  v = u8(v - 1);
+  if (v < min) v = min;
+  r[0x12] = v;
+  return boss4MoveLeft(state, r, v);
+}
+
+/** ROM: loc_01_74F0 - a wall makes it jump (snap $80, hop launcher). */
+function boss4MoveRight(state, r, v) {
+  addX(r, i8(v));
+  if (probeRight(state, r) !== 0) {                 // $74F3
+    r[0x0F] = 0x80;                                 // $74FB
+    r[0x12] = 0;                                    // $7500
+    return boss4Hop(state, r);                      // falls into $7506
+  }
+  return riseTail(state, r);                        // $758A
+}
+
+/** ROM: loc_01_7565 - mirror. */
+function boss4MoveLeft(state, r, v) {
+  addX(r, i8(v));
+  if (probeLeft(state, r) !== 0) {                  // $7568
+    r[0x0F] = 0x80;                                 // $7570
+    r[0x12] = 0;
+    return boss4Hop(state, r);
+  }
+  return riseTail(state, r);
+}
+
+/** ROM: loc_01_7506 - boss 2's hop launcher shape, 8-frame wind-up. */
+function boss4Hop(state, r) {
+  r[0] &= ~0x18;                                    // $7508/$750A
+  if (r[0] & 0x01) return riseTail(state, r);       // $750C
+  if (r[0] & 0x02) return fallTail(state, r);       // $7511
+  r[1] |= 0x40;                                     // $7517
+  boss1Aim(state, r);                               // $751E -> sub_01_79DB
+  r[0x18] = 0x08;                                   // $7525
+  return riseTail(state, r);
+}
+
+/**
+ * ROM: jt_01_6300 - boss 4's attack tick: boss 2's shape, except the timer-7
+ * projectile (the thrown mode-5 bomb) fires only on a NON-crit throw
+ * ($6330 tests $C73F first), and the crit throw's damage comes from the
+ * probes alone.
+ */
+function attackTickBoss4(state, r) {
+  if (r[0x14] === 0) {                              // $6308 -> loc_01_6121
+    state.flow.bossCrit = 0;
+    r[0] &= 0xC7;
+    return riseTail(state, r);
+  }
+  r[0x14]--;                                        // $630B
+  if (r[0x14] === 7) {                              // $630D
+    if (!state.flow.bossCrit && (r[0] & 0x10)) {    // $6330-$633A
+      spawnProjectile(state, r, 5);                 // $633E-$6343
+    }
+  } else if (attackProbe(state, r) !== 0xFF) {      // $6316-$631C
+    r[1] |= 0x10;                                   // $6323
+    r[0x15] = 0x28;                                 // $632A: +$15 -- HL sits
+  }                                                 // at +1 before the +$14
+  return stBoss4(state, r);                         // add, exactly like
+}                                                   // boss 2's $6206
+
+// ---------------------------------------------------------------------------
+// State 4 -- the level-14 chaser.  ROM: jt_01_7750.
+//
+// The Joker's grab-balloon: no physics, no probes -- it just slides 4 units
+// per frame toward the player's cached screen X. Within $10 px it latches
+// slot 0's r[1] bit 7 (sending the Joker into his walk-away taunt) and takes
+// the PLAYER over: slow mode on, and -- once he is low on the screen --
+// $FF87 = 8 with the rising state, hoisting him upward. Outside the window
+// it releases everything.
+// ---------------------------------------------------------------------------
+
+function stChaser(state, r) {
+  const psx = playerScreenX(state);                 // $775B vs cached +7
+  const diff = u8(psx - r[7]);
+  const playerLeft = psx < r[7];
+  const ad = playerLeft ? u8(-diff) : diff;
+  if (ad >= 0x10) {                                 // $7764
+    r[5] = playerLeft ? 1 : 0;                      // $776C-$7777
+    addX(r, playerLeft ? -4 : 4);                   // $777C
+    state.player.slowMode = 0;                      // $777F-$7780: $FF95
+    state.enemies[0][1] &= 0x7F;                    // $7782-$7787: $C269
+    return screenTail(state, r);                    // $778A
+  }
+  state.enemies[0][1] |= 0x80;                      // $778D-$7792
+  state.player.slowMode = 1;                        // $779B / $77AA
+  if (playerScreenY(state) < 0x60) {                // $7795: $FF94
+    state.player.air = 2;                           // $779F-$77A1: $FF80
+    return screenTail(state, r);                    // $77A7
+  }
+  state.player.vy = 8;                              // $77AE-$77B0: $FF87
+  state.player.air = 1;                             // $77B2-$77B4: rising
+  return screenTail(state, r);                      // $77BA
+}
+
+// ---------------------------------------------------------------------------
+// State 8 -- Boss 3 (level 11).  ROM: jt_01_7061.
+//
+// A dash fighter with two attacks off one melee bit. NORMAL ($C73F clear):
+// an $0B-frame pose that probes (and, with bit 4, shoots) at timer 7 and
+// CHAINS -- expiry re-launches a $30-speed dash while the player stays in the
+// $0C-$60 band. CRIT ($C73F set): a $2C-speed lunge whose velocity decays 1
+// per frame, ricocheting off the arena edges (X hi < 2 or >= $0A flips the
+// facing and re-arms). The crit flag is raised point-blank (< $0C px), by the
+// far-band patience counter ($C741 ticking on ODD $FFB1 frames to $B4), or by
+// the ricochet itself. Enraged (HP < $0E, non-easy) the mid band swaps the
+// chase for the ranged bit-4 attack.
+// ---------------------------------------------------------------------------
+
+function stBoss3(state, r) {
+  if (r[0x16] < 0x0E && state.flow.difficulty !== 0) {
+    state.flow.bossRage = 1;                        // $7068-$7074: $C73D
+  }
+  if (r[0] & 0x07) {                                // $7079-$7083
+    const v = r[0x12];
+    return (v & 0x80) ? boss3MoveLeft(state, r, v) : boss3MoveRight(state, r, v);
+  }
+  if (r[0] & 0x18) return riseTail(state, r);       // $70A1
+  if (r[1] & 0x20) {                                // $70A8: landing anim
+    r[0] &= ~0x20;                                  // $7186
+    return riseTail(state, r);
+  }
+
+  const psx = playerScreenX(state);                 // $70B1 vs the cached +7
+  const diff = u8(psx - r[7]);                      // (no dead-zone special
+  const playerLeft = psx < r[7];                    //  case in this handler)
+  const ad = playerLeft ? u8(-diff) : diff;
+
+  if (ad < 0x28) {                                  // $70BA: close band
+    if (ad < 0x0C) state.flow.bossCrit = 1;         // $711C-$7122: point-blank
+    return boss3Attack(state, r, playerLeft);       // $7125
+  }
+  if (ad < 0x60) {                                  // $70C0: mid band
+    state.flow.bossHop = 0;                         // $70F0: patience reset
+    if (!state.flow.bossRage) {                     // $70F4
+      return boss3Attack(state, r, playerLeft);
+    }
+    r[5] = playerLeft ? 1 : 0;                      // $70FA-$7104
+    if ((r[0] & 0x18) === 0) {                      // $7105 (always true here)
+      r[0] = (r[0] & ~0x20) | 0x10;                 // $710C/$710E: ranged
+      r[0x14] = 0x1F;                               // $7114
+    }
+    return riseTail(state, r);                      // $7119
+  }
+  // $70C2: far band -- idle, with the patience counter ticking at 30 Hz.
+  r[5] = playerLeft ? 1 : 0;                        // $70C6-$70CD
+  r[0] |= 0x20;                                     // $70D2
+  if (state.frame & 0x01) {                         // $70D4: odd frames only
+    const c = u8(state.flow.bossHop + 1);           // $70DA: $C741
+    if (c >= 0xB4) {                                // $70DE: 180 ticks
+      state.flow.bossCrit = 1;                      // $70E4
+      return boss3Attack(state, r, playerLeft);     // $70E7 -> $7125
+    }
+    state.flow.bossHop = c;                         // $70E9
+  }
+  return fallTail(state, r);                        // $70ED
+}
+
+/** ROM: loc_01_7125 - launch an attack toward the player (both kinds). */
+function boss3Attack(state, r, playerLeft) {
+  state.flow.bossHop = 0;                           // $7125: $C741 = 0
+  if (r[0] & 0x18) return riseTail(state, r);       // $712C: already attacking
+  r[0] |= 0x08;                                     // $7134
+  r[5] = playerLeft ? 1 : 0;                        // $713A-$7142
+  return boss3Arm(state, r);                        // falls into $7143
+}
+
+/** ROM: loc_01_7143 - arm the timer/sound, and the crit lunge's velocity.
+ *  Entered separately by the ricochet ($725B). */
+function boss3Arm(state, r) {
+  if (state.flow.bossCrit) {                        // $7147
+    requestSound(state, 0x2D);                      // $714D
+    r[0x14] = 0x1F;                                 // $7153
+  } else {
+    requestSound(state, 0x27);                      // $7157
+    r[0x14] = 0x0B;                                 // $715D
+  }
+  r[0] &= ~0x20;                                    // $7162: RES 5
+  if (state.flow.bossCrit) {                        // $7164
+    r[0x12] = (r[5] & 1) ? 0xD4 : 0x2C;             // $7171-$717F: +-$2C
+  }
+  return riseTail(state, r);                        // $7182
+}
+
+/** ROM: loc_01_71B0 - move right; a wall kills the whole attack ($C73F too). */
+function boss3MoveRight(state, r, v) {
+  addX(r, i8(v));
+  if (probeRight(state, r) !== 0) {                 // $71B3
+    r[0x0F] = 0x40;                                 // $71BB
+    r[0x12] = 0;                                    // $71C1
+    state.flow.bossCrit = 0;                        // $71C2
+    r[0] &= 0xC7;                                   // $71CA
+    return riseTail(state, r);
+  }
+  return boss3EdgeCheck(state, r);                  // $7235
+}
+
+/** ROM: loc_01_7209 - mirror (snap $B0). */
+function boss3MoveLeft(state, r, v) {
+  addX(r, i8(v));
+  if (probeLeft(state, r) !== 0) {                  // $720C
+    r[0x0F] = 0xB0;
+    r[0x12] = 0;
+    state.flow.bossCrit = 0;
+    r[0] &= 0xC7;
+    return riseTail(state, r);
+  }
+  return boss3EdgeCheck(state, r);
+}
+
+/**
+ * ROM: loc_01_7235 - after an unobstructed step. At the arena edges (X hi
+ * < 2 or >= $0A) an un-stunned boss RICOCHETS: turn, set $C73F, re-arm
+ * ($725B -> $7143); a stunned one just stops. In the open, a crit lunge
+ * probes at +$1F = 7 (downward) each frame and leaves $F6 behind in the
+ * offset -- the value the ROM stores after the probe, kept faithfully.
+ */
+function boss3EdgeCheck(state, r) {
+  const xhi = r[0x0E];
+  if (xhi < 2 || xhi >= 0x0A) {                     // $7236 / $723A
+    if ((r[0] & 0x04) === 0) {                      // $7242
+      r[0] = (r[0] & 0xC7) | 0x08;                  // $7248-$724D
+      r[5] ^= 1;                                    // $7253
+      state.flow.bossCrit = 1;                      // $7258
+      return boss3Arm(state, r);                    // $725B
+    }
+    r[0x12] = 0;                                    // $7263: stunned -- stop
+  }
+  if (state.flow.bossCrit) {                        // $7268
+    r[0x1F] = 0x07;                                 // $7277
+    attackProbe(state, r);                          // $727A
+    r[0x1F] = 0xF6;                                 // $727E
+  }
+  return riseTail(state, r);                        // $7285
+}
+
+/**
+ * ROM: jt_01_621F - boss 3's attack tick. The crit branch IS the lunge: the
+ * velocity decays toward 0 by 1 each frame and the movement runs through the
+ * $71B0/$7209 arms (edge ricochet included); reaching 0 ends it. The normal
+ * branch holds the pose, probing -- and with bit 4, firing the mode-4
+ * projectile -- exactly when the timer passes 7, then falls through to the
+ * full state handler ($62FB -> $7061) like boss 1's tick does.
+ */
+function attackTickBoss3(state, r) {
+  if (state.flow.bossCrit) {                        // $6221 -> $6253
+    if (r[0x14] !== 0) r[0x14]--;                   // $6257-$625C
+    let v;
+    if ((r[5] & 0x01) === 0) v = u8(r[0x12] - 1);   // $6261-$626A
+    else v = u8(r[0x12] + 1);                       // $627C-$6281
+    if (v === 0) {                                  // $626B / $6282 -> $6293
+      state.flow.bossCrit = 0;
+      r[0] &= 0xC7;
+      return riseTail(state, r);
+    }
+    r[0x12] = v;
+    return (v & 0x80) ? boss3MoveLeft(state, r, v) : boss3MoveRight(state, r, v);
+  }
+  if (r[0x14] === 0) return boss3AttackExpiry(state, r);   // $622D
+  r[0x14]--;
+  if (r[0x14] === 7) {                              // $6232
+    attackProbe(state, r);                          // $623C
+    if (r[0] & 0x10) spawnProjectile(state, r, 4);  // $6241-$624C
+  }
+  return stBoss3(state, r);                         // $62FB -> $7061
+}
+
+/** ROM: loc_01_62A0 - normal-attack expiry: chain a dash while the player
+ *  stays in range, upgrade to the crit lunge point-blank. */
+function boss3AttackExpiry(state, r) {
+  const wasMelee = (r[0] & 0x08) !== 0;             // $62A1/$62A7
+  r[0] &= 0xC7;                                     // $62A2
+  if (!wasMelee) return riseTail(state, r);         // $62A9: the ranged one
+  const psx = playerScreenX(state);                 // $62B1
+  const diff = u8(psx - r[7]);
+  const playerLeft = psx < r[7];
+  const ad = playerLeft ? u8(-diff) : diff;
+  if (ad < 0x0C) {                                  // $62B9
+    state.flow.bossCrit = 1;                        // $62BD
+    return boss3Attack(state, r, playerLeft);       // $62C2 -> $7125
+  }
+  if (ad >= 0x60) return riseTail(state, r);        // $62C5
+  requestSound(state, 0x27);                        // $62CF: chained dash
+  r[0] |= 0x08;                                     // $62D6
+  r[0x14] = 0x0B;                                   // $62E0
+  r[5] = playerLeft ? 1 : 0;                        // $62E6/$62EC
+  const v = playerLeft ? 0xD0 : 0x30;               // $62E8/$62EF
+  r[0x12] = v;
+  return (v & 0x80) ? boss3MoveLeft(state, r, v) : boss3MoveRight(state, r, v);
+}
+
+// ---------------------------------------------------------------------------
+// State 10 -- Boss 1 (level 4).  ROM: jt_01_7591.
+//
+// The whole fight is a hop-chase: on the ground the boss reads the player's
+// cached screen X, picks a band, and either idles (far), hops toward the
+// player (medium / dead-zone), or swings (8..$1B px). The hop is launched
+// through the TURN-ANIMATION machinery -- loc_01_76C5 sets r[1] bit 6 with a
+// $0F timer and animTick's expiry fires the actual jump -- which is why the
+// grounded phase measures ~16 frames on the cartridge (flags $80 f0-f15,
+// then $81 rising; hop launch f0/f96/f181/f277, rolls at f15/f111/f196/f292,
+// all MEASURED on the 400-frame idle run).
+// ---------------------------------------------------------------------------
+
+function stBoss1(state, r) {
+  // $7597: below $10 HP on any non-easy difficulty the boss enrages -- the
+  // far band stops idling and chases ($75FB reads it back).
+  if (r[0x16] < 0x10 && state.flow.difficulty !== 0) {
+    state.flow.bossRage = 1;                        // $75A4: $C73D
+  }
+  if (r[0] & 0x07) {                                // $75A9-$75B3: stunned or
+    const v = r[0x12];                              // airborne -- move at +$12
+    return (v & 0x80) ? boss1MoveLeft(state, r, v) : boss1MoveRight(state, r, v);
+  }
+  if (r[0] & 0x18) return riseTail(state, r);       // $75D1: mid-attack
+  if (r[1] & 0x60) {                                // $75D8/$75DD: mid-anim
+    r[0] &= ~0x20;                                  // $7678: RES 5
+    return riseTail(state, r);
+  }
+
+  const psx = playerScreenX(state);                 // $75E7 vs the cached +7
+  const diff = u8(psx - r[7]);
+  if (diff === 0) return boss1MirrorHop(state, r);  // $75EB -> $767D
+  const playerLeft = psx < r[7];
+  const ad = playerLeft ? u8(-diff) : diff;
+
+  if (ad < 0x1C) {                                  // $75F2: close band
+    if (ad < 8) return boss1MirrorHop(state, r);    // $7627: dead zone
+    if (absDiff8(playerScreenY(state), r[8]) >= 0x20) {   // $7636
+      return boss1MirrorHop(state, r);
+    }
+    if (state.player.iframes !== 0) return boss1MirrorHop(state, r);  // $763A
+    requestSound(state, 0x2B);                      // $7645
+    r[0] |= 0x08;                                   // $7648: melee attack
+    r[5] = playerLeft ? 1 : 0;                      // $7656
+    r[0x14] = 0x1F;                                 // $765D
+    r[0] &= ~0x20;                                  // $7660: RES 5
+    // $7662: the attack-crit roll, (rLY ^ $FFB1) < $70.
+    //
+    // APPROXIMATE, and do not let the constant fool you. rLY here is "how many
+    // scanlines this frame's logic has burned" -- instruction-level timing, the
+    // same thing that makes the $26D0 melee crit unmodellable (§28). An earlier
+    // note claimed rLY read "EXACTLY 42 on both measured rolls" and treated it
+    // as determinism; hooking 1:$7665 over 3000 frames of level 4 gives SEVEN
+    // rolls at FOUR values -- 42, 42, 42, 53, 42, 39, 46.
+    //
+    // That matters more here than at $5ED8, because the compare is CP $70, not
+    // CP $80: `< $70` means the high nibble of (rLY ^ $FFB1) must be <= 6, so
+    // ALL FOUR high bits are load-bearing, not just bit 7. $2A is only right
+    // while rLY lands in $20-$2F, and the $35 sample already left that band.
+    //
+    // The constant is kept because it reproduces all seven measured outcomes
+    // and nothing better exists without a scanline counter -- but that is luck,
+    // not correctness. If a scenario ever diverges HERE, this is why.
+    state.flow.bossCrit = ((0x2A ^ state.frame) & 0xFF) < 0x70 ? 1 : 0;
+    return riseTail(state, r);                      // $7674
+  }
+  if (ad < 0x60 || state.flow.bossRage) {           // $75F7 / $75FB: chase
+    r[5] = playerLeft ? 1 : 0;                      // $7619-$761F
+    return boss1Hop(state, r);                      // $7624 -> $76C5
+  }
+  r[5] = playerLeft ? 1 : 0;                        // $7604-$760B: far -- idle
+  r[0] |= 0x20;                                     // $7610: SET 5
+  return fallTail(state, r);                        // $7612 (vx NOT zeroed)
+}
+
+/** ROM: loc_01_767D - dead zone / same column: face the player's mirror
+ *  (the walkerFacePause quirk again: $FF88 XOR 1, not relative position). */
+function boss1MirrorHop(state, r) {
+  r[5] = state.player.facing ^ 1;                   // $767F
+  return boss1Hop(state, r);                        // $7687
+}
+
+/**
+ * ROM: loc_01_76C5 - the hop launcher. Clears the attack bits; if already
+ * airborne just runs the tails. Grounded it starts the turn animation as a
+ * $0F-frame wind-up (animTick's expiry is what actually jumps, exactly like
+ * the walkers' wall jump -- and on level 4 that expiry rolls the high-hop
+ * crit, see animTick) and aims the horizontal velocity at the player.
+ */
+function boss1Hop(state, r) {
+  r[0] &= ~0x18;                                    // $76C7/$76C9
+  if (r[0] & 0x01) return riseTail(state, r);       // $76CB
+  if (r[0] & 0x02) return fallTail(state, r);       // $76D0
+  r[1] |= 0x40;                                     // $76D6: wind-up
+  boss1Aim(state, r);                               // $76DD -> sub_01_79DB
+  r[0x18] = 0x0F;                                   // $76E4: turn timer
+  return riseTail(state, r);
+}
+
+/**
+ * ROM: sub_01_79DB - hop aim: r[$12] = floor(|enemyX - playerX| / $4A),
+ * negated when the player is left of (or exactly at) the enemy. The negate
+ * here is the PROPER 16-bit one (ADD 1 with carry into the high byte), not
+ * the neg16q idiom -- do not "fix" one to match the other.
+ */
+function boss1Aim(state, r) {
+  const ex = (r[0x0E] << 8) | r[0x0F];
+  const sum = ex + ((0x10000 - (state.player.x & 0xFFFF)) & 0xFFFF);
+  const carry = sum > 0xFFFF;                       // $79EF: ADD HL,BC
+  let d = sum & 0xFFFF;
+  if (!carry) d = (0x10000 - d) & 0xFFFF;           // $79F2: negate, E = 0
+  let n = 0;
+  while (d >= 0x4A) { d -= 0x4A; n++; }             // $7A05: repeated -$4A
+  r[0x12] = carry ? u8(-n) : u8(n);                 // $7A11-$7A17
+}
+
+/** ROM: loc_01_76AF - airborne rightward move. A wall snaps X-lo to centre
+ *  and ZEROES the velocity (unlike the walkers), then re-enters the hop
+ *  launcher -- which, still airborne, just routes to the tails. */
+function boss1MoveRight(state, r, v) {
+  addX(r, i8(v));                                   // $76AF
+  if (probeRight(state, r) !== 0) {                 // $76B2
+    r[0x0F] = 0x80;                                 // $76BA
+    r[0x12] = 0;                                    // $76BF
+    return boss1Hop(state, r);                      // falls into $76C5
+  }
+  return riseTail(state, r);                        // $7749
+}
+
+/** ROM: loc_01_7724 - mirror. */
+function boss1MoveLeft(state, r, v) {
+  addX(r, i8(v));
+  if (probeLeft(state, r) !== 0) {                  // $7727
+    r[0x0F] = 0x80;
+    r[0x12] = 0;
+    return boss1Hop(state, r);
+  }
+  return riseTail(state, r);
+}
+
+// ---------------------------------------------------------------------------
 // Shared physics tails: rise -> fall -> land -> screen/anim.
 // ---------------------------------------------------------------------------
 
@@ -1125,7 +2284,38 @@ function screenTail(state, r) {
               lvl === 0x0B || lvl === 0x0E);
     return;
   }
-  // $5D20 / $5D4A: boss-2 / boss-1 special draws ($C741) -- boss levels only.
+  // $5D20: boss 2's batarang-spin draw. While $C741 holds (the handler head
+  // counts it down), the metasprite is $6BA3[facing] with attr 0 via the
+  // table-1 path -- the animation machine and blink are skipped entirely.
+  if (state.level.bossId === 2 && state.flow.bossHop) {
+    queueDraw(state, ar(0x6BA3 + (r[5] & 1)), r, 0, false);   // $5D2D-$5D47
+    return;
+  }
+  // $5D4A: boss 1's crit-hop draw. While $C741 holds, the metasprite comes
+  // from a HEIGHT-indexed pose table -- $6BA5 rising, $6BB3 otherwise,
+  // indexed |$18 - Yhi| -- instead of the animation machine, and r[6] is NOT
+  // updated. On the falling half the spin also attacks BOTH sides: probe at
+  // +$10 ahead, facing flipped +$10 behind, then offset 0 at its own centre,
+  // facing restored ($5D8D-$5DC2). Landing anim or a stun clears the flag.
+  if (state.level.bossId === 1 && state.flow.bossHop) {
+    if ((r[1] & 0x20) || (r[0] & 0x04)) {           // $5D5B / $5D61
+      state.flow.bossHop = 0;                       // $5DD7
+    } else {
+      const id = ar(((r[0] & 0x01) ? 0x6BA5 : 0x6BB3)      // $5D6B-$5D74
+                    + absDiff8(0x18, r[0x10]));            // $5D77-$5D84
+      if (r[0] & 0x02) {                            // $5D8D: falling
+        r[0x1E] = 0x10;                             // $5D95
+        attackProbe(state, r);                      // $5D9C
+        r[5] ^= 1;                                  // $5DA6
+        attackProbe(state, r);                      // $5DAB
+        r[0x1E] = 0;                                // $5DB4
+        attackProbe(state, r);                      // $5DB8
+        r[5] ^= 1;                                  // $5DC0
+      }
+      queueDraw(state, id, r, r[9], true);          // $5DD1: sub_00_0BAF
+      return;
+    }
+  }
   if ((r[0] & 0x04) && (state.frame & 0x08) === 0) return;   // $5DE1: blink
   const alt = lvl === 4 || lvl === 0x0B || lvl === 0x0E;     // $6078 -> 0BAF
   if (state.flow.paused) {                          // $5DF1: draw, no anim tick
@@ -1149,14 +2339,23 @@ function animTick(state, r) {
   const facing = r[5];
   const f0 = r[0];
   if (f0 & 0x10) {                                  // $5F39: ranged-attack pose
-    // ($5F5B: $C73F swaps in $6B7D for boss 3 -- boss levels, not modelled.)
-    const base = st === 2 ? 0x6AFD : st === 7 ? 0x6B1D : st === 8 ? 0x6B3D : 0x6B5D;
+    // $5F4F-$5F75: 2/7/8 have fixed tables; the DEFAULT arm (state 9) is the
+    // one $C73F swaps to $6B7D -- not state 8, as an older comment claimed.
+    const base = st === 2 ? 0x6AFD : st === 7 ? 0x6B1D : st === 8 ? 0x6B3D
+      : (state.flow.bossCrit ? 0x6B7D : 0x6B5D);    // $5F5B
     return ar(base + ((r[0x14] & 0x3F) >> 2) + (facing << 4));
   }
   if (f0 & 0x08) {                                  // $5F85: melee pose
-    const ptr = arw(0x691B + (st - 1) * 2);
+    let ptr = arw(0x691B + (st - 1) * 2);
     if ((ptr >> 8) !== 0xFF) {                      // $5F98
-      // ($5F9D-$5FC0: +$10 offsets under $C73E/$C73F -- boss levels.)
+      // $5F9D-$5FC0: the boss arms shift the pose row by $10. Airborne
+      // (bit 0 or 1) it is boss 2's spin; grounded it is the CRIT swing,
+      // gated on $C73F and skipped on level 14 ($C73E == 4).
+      if (f0 & 0x03) {
+        if (state.level.bossId === 2) ptr += 0x10;  // $5FBE
+      } else if (state.flow.bossCrit && state.level.bossId !== 4) {
+        ptr += 0x10;                                // $5FB2
+      }
       return ar(ptr + ((r[0x14] & 0x1F) >> 2) + (facing << 3));
     }
     return walkCycle(state, r, facing);             // $5FDB
@@ -1170,8 +2369,11 @@ function animTick(state, r) {
     return ar(arw(0x68EF + (st - 1) * 2) + facing);
   }
   if (f0 & 0x20) {                                  // $5E2B: idle sway
-    // ($5E3E: level-14 chaser variant -- boss level.)
-    return ar(arw(0x6A97 + (st - 1) * 2) + ((state.frame & 0x18) >> 3) + facing * 4);
+    let ptr = arw(0x6A97 + (st - 1) * 2);
+    // $5E3E-$5E4E: the STAGGERED Joker (bossId 4, $C73D still counting,
+    // i.e. >= 2) sways from a row 8 further on -- the reeling poses.
+    if (state.level.bossId === 4 && state.flow.bossRage >= 2) ptr += 8;
+    return ar(ptr + ((state.frame & 0x18) >> 3) + facing * 4);
   }
   if (r[1] & 0x20) {                                // $5E61: landing animation
     if (r[0x19] === 0) { r[1] &= ~0x20; return r[6]; }     // $5E90
@@ -1182,8 +2384,19 @@ function animTick(state, r) {
     if (r[0x18] === 0) {
       r[1] &= ~0x40;                                // $5ECF
       r[0] |= 0x01;                                 // the jump launches NOW
-      // ($5ED8: level 4 rolls a rLY-based crit adding $10 -- boss level,
-      //  unported; rLY is not modelled.)
+      // $5ED8: on LEVEL 4 (the $FFB0 number, not $C73E) the expiry rolls a
+      // crit: (rLY ^ $FFB1) < $80 sets $C741 and adds $10 to the launch
+      // velocity -- boss 1's high spinning hop. rLY at this roll MEASURED
+      // mid-frame every time (43/45/43/59 over four hops on the 400-frame
+      // level-4 idle run), always < $80, so the XOR's high bit is $FFB1's
+      // high bit and the roll reduces EXACTLY to `$FFB1 < $80`: a coin flip
+      // that flips every 128 frames, deterministic given the frame counter.
+      // All four measured outcomes agree (125/50 -> crit, 221/146 -> plain).
+      if (state.level.number === 4 && state.frame < 0x80) {
+        state.flow.bossHop = 1;                     // $5EEA: $C741
+        r[0x13] = u8(r[0x1C] + 0x10);               // $5EF2
+        return r[6];
+      }
       r[0x13] = r[0x1C];                            // $5EF6: jump velocity
       return r[6];
     }
@@ -1209,7 +2422,14 @@ function walkCycle(state, r, facing) {
     else { frame = 0; r[4] = hi << 4; }             // $6009
   }
   // $602A: offset = facing * frames + frame (the ADD loop), frames = hi+1.
-  return ar(arw(0x6891 + (r[2] - 1) * 2) + facing * (hi + 1) + frame);
+  let idx = arw(0x6891 + (r[2] - 1) * 2) + facing * (hi + 1) + frame;
+  // $6046-$605A: on level 14, a state-9 record with $C741 set reads its walk
+  // poses 4 further on -- the Joker's cane-out row. $C741 here is the band
+  // flag boss4Walk/the retreat maintain, not the boss-1/2 meaning.
+  if (state.level.number === 0x0E && state.flow.bossHop !== 0 && r[2] === 9) {
+    idx += 4;
+  }
+  return ar(idx);
 }
 
 function queueDraw(state, id, r, attr, alt) {

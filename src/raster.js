@@ -29,9 +29,26 @@ const WINDOW_HANDOFF = 0x44;
 /** ROM: $094F -- the palette the squashed region is drawn with. */
 const SQUASH_BGP = 0x1B;
 
+/**
+ * MODE 2, the levels 9/10/11 PARALLAX ($08A9 -> $08BC -> $08DD, then rLYC = 0
+ * to start again). Three bands per frame, at fixed scanlines:
+ *
+ *   lines  0-$2F   SCX = $C742     far layer
+ *   lines $30-$3F  SCX = $C743     mid layer
+ *   lines $40+     SCX = $FFA9     the camera itself
+ *
+ * The two layers drift on their own ($058B, skipped while paused): $C742 gains
+ * 1 every 4th frame and $C743 gains 3 EVERY frame, which is what makes the sky
+ * move without the camera moving.
+ */
+const PARALLAX_MID_LINE = 0x30;
+const PARALLAX_NEAR_LINE = 0x40;
+
 export function createRaster() {
   return {
     mode: 0,        // $FFC7
+    far: 0,         // $C742
+    mid: 0,         // $C743
     delta: 0,       // $C763, per-scanline SCY step
     accInt: 0,      // $C764
     accFrac: 0,     // $C765
@@ -49,6 +66,13 @@ export function createRaster() {
  */
 export function tickRaster(state) {
   const r = state.raster;
+
+  // $058B: the parallax layers advance on their own, and stop while paused.
+  if (r.mode === 2 && !state.flow.paused) {
+    if ((state.frame & 0x03) === 0) r.far = (r.far + 1) & 0xFF;   // $0597
+    r.mid = (r.mid + 3) & 0xFF;                                   // $059E
+  }
+
   r.accInt = 0;
   r.accFrac = 0;
   if (r.mode !== 7) return;
@@ -59,6 +83,19 @@ export function tickRaster(state) {
   } else {
     r.delta = Math.min(DELTA_MAX, r.delta + 1);  // $084A/$084B
   }
+}
+
+/** ROM: $08A9/$08BC/$08DD. Three bands, fixed lines, per-layer SCX. */
+export function parallaxBands(state, base) {
+  const r = state.raster;
+  // $08CD: from line $30 down, SCY gains 3 -- but only every 8th frame, so it
+  // is a periodic judder rather than a constant offset. Reproduced as measured.
+  const midScy = (state.frame & 0x07) === 0 ? base.scy + 3 : base.scy;
+  return [
+    { ...base, from: 0, scx: r.far },
+    { ...base, from: PARALLAX_MID_LINE, scx: r.mid, scy: midScy },
+    { ...base, from: PARALLAX_NEAR_LINE, scx: base.scx, scy: midScy },
+  ];
 }
 
 /**
