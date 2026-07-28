@@ -5,6 +5,7 @@
 // per-scanline SCX/SCY/BGP/OBP bands (the STAT raster program at $0857), and
 // sub_00_0BC6's sprite ordering (OAM order = call order, cap 40, no sorting).
 
+import { squashBands } from '../raster.js';
 import { cameraPixels } from '../camera.js';
 import { metatileTile } from '../level.js';
 import { mapTile } from '../state.js';
@@ -41,14 +42,29 @@ export function createFramebuffer() {
  */
 export function rasterBands(state) {
   const cam = cameraPixels(state);
-  return [{
+  const base = {
     from: 0,
     scx: cam.x,
     scy: cam.y,
     bgp: state.video.bgp,
     obp0: state.video.obp0,
     obp1: state.video.obp1,
-  }];
+  };
+  // Mode 7 (loc_00_0935) is the OPTIONS squash: one band PER SCANLINE, each
+  // scrolled a little further than the last. The loop below already resolves
+  // bandFor(bands, y) per scanline, so this needs nothing else -- and the same
+  // door is open for modes 1-6 when the level raster bands land.
+  if (state.raster && state.raster.mode === 7) {
+    const { bands, handoff } = squashBands(state, base, SCREEN_H);
+    // $0953: where the squash reaches $44 the window takes over, and the
+    // options panel starts on exactly that line.
+    if (handoff !== null) {
+      state.video.windowY = handoff;
+      state.video.windowLatchY = handoff;   // the field drawWindow reads
+    }
+    return bands;
+  }
+  return [base];
 }
 
 export function renderFrame(state, fb) {

@@ -46,6 +46,10 @@ export async function loadTitle() {
     vram,
     tiles: buildTileCache(vram),
     bgMap: vram.slice(0x1800, 0x1C00),   // $9800, 32x32
+    // $9C00, the WINDOW map -- a VIEW, not a copy, because the options screen
+    // paints its difficulty word and sound number straight into it. The panel
+    // text is already there: the title's own scripts wrote it.
+    windowMap: vram.subarray(0x1C00, 0x2000),
     meta,
   };
 }

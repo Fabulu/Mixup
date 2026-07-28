@@ -24,6 +24,8 @@ import { loadTitle, showTitle, hideTitle, tickTitle } from './title.js';
 import {
   loadRoundSelect, showRoundSelect, hideRoundSelect, tickRoundSelect,
 } from './roundselect.js';
+import { showOptions, hideOptions, tickOptions } from './options.js';
+import { tickRaster } from './raster.js';
 
 import { Sound } from './sound/index.js';
 
@@ -136,10 +138,24 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
           // loc_00_02C4: the title has its own loop; no game logic runs.
           const r = tickTitle(state);
           if (r === 'start') startPressed = true;
-          // $3893, the options/sound-test screen, is not ported. The launcher
-          // already offers difficulty, level and mods, so OPTION returns there
-          // rather than pretending or doing nothing. Documented deviation.
+          // $0312 -> loc_00_3893. The options screen is drawn INTO the title's
+          // own window tilemap, which is why titleArt has to still be in hand.
+          // $0312 -> loc_00_3893. src/options.js and src/raster.js are written
+          // and the SQUASH is verified working, but the screen is NOT wired up:
+          // I had the panel's source wrong (see the header of options.js), so
+          // enabling it renders a broken screen. Until that is settled OPTION
+          // still returns to the launcher, which is the same stopgap as before
+          // -- a wrong-looking screen is worse than an honest placeholder.
           else if (r === 'options' && onOptions) { running = false; onOptions(); return; }
+        } else if (state.options) {
+          // loc_00_38D5. tickRaster is the VBlank half of the squash and has
+          // to run every frame the mode is active, not just on input.
+          tickRaster(state);
+          if (tickOptions(state) === 'title') {
+            hideOptions(state);
+            state.raster.mode = 0;
+            showTitle(state, titleArt);
+          }
         } else if (state.roundSelect) {
           // loc_00_03DC: round select has its own loop too.
           if (tickRoundSelect(state) === 'start') {

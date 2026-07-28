@@ -15,6 +15,7 @@ import { createPool } from './batarang.js';
 import { createRope } from './rope.js';
 import { createActors } from './actors.js';
 import { createEnemies } from './enemies.js';
+import { createRaster } from './raster.js';
 import { createWater } from './water.js';
 
 export const SUBPX_PER_PX = 16;
@@ -101,6 +102,9 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     // $C737-$C73A -- scripted door/exit walk-through.
     script: { mode: 0, steps: 0, accX: 0, accY: 0 },
     actors: createActors(),          // $C1E8, 8 x 16 B map objects
+    // $FFC7 + $C763-$C766: the STAT program's mode and its scanline
+    // accumulator. See src/raster.js.
+    raster: createRaster(),
     enemies: createEnemies(),        // $C268, 8 x 32 B
     currentActorSlot: 0,             // $C75A
     // $FFC6 -- "the player is resting on a map object". Set by the overlap
