@@ -40,3 +40,6 @@ Thumbs.db
 
 # Deployable bundle -- contains ROM-derived assets, regenerate with tools/build-dist.mjs
 dist/
+
+# Wrangler's local deploy cache
+.wrangler/
