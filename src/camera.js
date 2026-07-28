@@ -30,10 +30,18 @@ export function updateCamera(state) {
   const py = p.y >> 8;
   const pylo = p.y & 0xFF;
 
-  if (lvl === 0x06 || state.level.bossId !== 0) {
-    cam.y = 0x17 << 8;                   // $1279: fixed low camera
+  // $124D-$1263, and the ORDER is the whole point. Level 6 is checked first,
+  // then 9/10/11, and only THEN $C73E. Level 11 is both a parallax level and
+  // Boss 3 ($C73E = $03, measured), so testing the boss flag at level 6's
+  // priority pins its camera low and the player starts above the view --
+  // reported as "a broken level where I start off screen at the top".
+  // MEASURED: level 11 camY is 4096 on the cartridge, not 5888.
+  if (lvl === 0x06) {
+    cam.y = 0x17 << 8;                   // $1251 -> $1279: fixed low camera
   } else if (lvl === 0x09 || lvl === 0x0A || lvl === 0x0B) {
-    cam.y = 0x10 << 8;                   // $126D: parallax levels pin the top
+    cam.y = 0x10 << 8;                   // $1255/$1259/$125D -> $126D
+  } else if (state.level.bossId !== 0) {
+    cam.y = 0x17 << 8;                   // $1263 -> $1279
   } else if (py < 0x15) {                // $1269
     cam.y = 0x10 << 8;
   } else if (py < 0x1C) {                // $1275

@@ -270,6 +270,14 @@ const SCRIPTS = [
   { name: 'l1-top-exit-teleport', level: 1, frames: 60, warp: '5,16',
     skipFrames: 1, script: '60:R' },
 
+  // Level 11 is BOTH a parallax level and Boss 3 ($C73E = $03, measured), and
+  // the camera dispatch at $124D checks 9/10/11 BEFORE $C73E. Testing the boss
+  // flag at level 6's priority pinned camY to $17 instead of $10, putting the
+  // player 7 rows above the view -- "a broken level where I start off screen
+  // at the top". Only camY was ever wrong; x, y and camX all matched, which is
+  // why no existing scenario caught it.
+  { name: 'l11-boss-parallax-camera', level: 11, frames: 90, script: '90:' },
+
   { name: 'l3-object-floor', level: 3, frames: 317,
     script: '20:,120:R,20:RA,120:R,20:RA,180:R', extra: ENEMY_FIELDS },
   // Level 3 slot 7 is the type-8 platform that actually MOVES -- slot 0, the
