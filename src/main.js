@@ -21,9 +21,20 @@ import { updateEnemies, drawEnemies } from './enemies.js';
 import { updateWater, updateSplashes, tickWaterArt } from './water.js';
 import { resolveLoadout, runHook } from './mods.js';
 import { loadTitle, showTitle, hideTitle, tickTitle } from './title.js';
+import {
+  loadRoundSelect, showRoundSelect, hideRoundSelect, tickRoundSelect,
+} from './roundselect.js';
+
 import { Sound } from './sound/index.js';
 
 const FRAME_MS = 1000 / 59.73;      // DMG frame rate
+
+/**
+ * Which level each route starts at. ROM: loc_00_049D -- cursor 0/1/2 pick
+ * levels $01/$05/$09, and anything else (only reachable once $C753 == $07)
+ * picks $0C, the Joker warp.
+ */
+const ROUTE_LEVEL = [1, 5, 9, 12];
 
 export async function boot(canvas, { level = 1, tunables = {}, mods = [],
                                      title = true, onOptions = null,
@@ -115,7 +126,8 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     // Turbo Mode runs extra logic ticks per displayed frame.
     const perFrame = Math.max(1, loadout.meta.ticksPerFrame | 0);
     let steps = 0;
-    let startPressed = false;
+    let startPressed = false;      // title -> round select
+    let routeChosen = -1;          // round select -> level
     while (acc >= FRAME_MS && steps < 4) {
       for (let i = 0; i < perFrame; i++) {
         sampleInput(state);         // ROM: the joypad read lives in VBlank
@@ -128,6 +140,11 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
           // already offers difficulty, level and mods, so OPTION returns there
           // rather than pretending or doing nothing. Documented deviation.
           else if (r === 'options' && onOptions) { running = false; onOptions(); return; }
+        } else if (state.roundSelect) {
+          // loc_00_03DC: round select has its own loop too.
+          if (tickRoundSelect(state) === 'start') {
+            routeChosen = state.roundSelect.cursor;
+          }
         } else {
           tick(state, manifest, playerTiles);
         }
@@ -145,14 +162,28 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     image.data.set(fb.rgba);
     ctx.putImageData(image, 0, 0);
 
-    // Leaving the title reloads the level, because showTitle swapped the tile
-    // cache out from under it. That is async, so the loop has to stop and
-    // resume -- firing it and carrying on renders the level with the title's
-    // tiles until the promise lands.
+    // START on the title goes to ROUND SELECT, not to a level -- $0312 walks
+    // through state 4's flash into loc_00_035B. Round select is built on top
+    // of the title's VRAM, so the title image has to still be around here.
     if (startPressed) {
       hideTitle(state);
+      loadRoundSelect(manifest, titleArt.vram).then((art) => {
+        showRoundSelect(state, art);
+        last = performance.now();
+        acc = 0;
+        requestAnimationFrame(step);
+      });
+      return;
+    }
+
+    // loc_00_049D: the route picks the level. Leaving either menu reloads,
+    // because showTitle/showRoundSelect swapped the tile cache out from under
+    // it -- and that is async, so the loop stops and resumes.
+    if (routeChosen >= 0) {
+      const chosen = ROUTE_LEVEL[routeChosen] ?? ROUTE_LEVEL[3];
+      hideRoundSelect(state);
       state.video.bgp = 0xE4;
-      initLevel(state, level).then(() => {
+      initLevel(state, chosen).then(() => {
         last = performance.now();
         acc = 0;
         requestAnimationFrame(step);
