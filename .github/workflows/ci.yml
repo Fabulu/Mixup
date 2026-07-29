@@ -1,0 +1,45 @@
+# CI runs the ROM-independent half of the suite.
+#
+# The oracle stages need a cartridge and PyBoy, and CI has neither -- so they
+# cannot run here and must be run locally before a PR. That is a real limit,
+# not an oversight: it is why the unit suite is deliberately built to run
+# WITHOUT assets/, on synthetic fixtures.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Unit tests (no ROM required)
+        run: node --test tests/
+
+  no-rom-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse ROM images and extracted assets
+        run: |
+          if git ls-files | grep -Ei '\.(gb|gbc|sav|sym)$'; then
+            echo "::error::a ROM image is committed"; exit 1
+          fi
+          if git ls-files | grep -E '^(assets|disasm|rip|dist)/'; then
+            echo "::error::extracted ROM data is committed"; exit 1
+          fi
+          echo "clean: no ROM image, no extracted data"
+      - name: Refuse bulk ROM literals in src/
+        run: |
+          # Long hex strings and long byte arrays are how ROM tables used to
+          # sneak into source. They belong in assets/manifest.json.
+          if grep -rnoE "'[0-9a-f]{24,}'" src/; then
+            echo "::error::a long hex literal in src/ -- export it instead"; exit 1
+          fi
+          echo "clean: no bulk ROM literals in src/"

@@ -12,7 +12,12 @@ A hand translation of **Batman: Return of the Joker** (Game Boy, Sunsoft 1992)
 from its disassembly into readable JavaScript. **Not an emulator** — every
 routine becomes a JS function we own, so the game can be retuned and modded.
 
-Live: **https://gbtman.pages.dev** · Repo: **https://github.com/Fabulu/batman-roj-js**
+Repo: **https://github.com/Fabulu/Mixup** (public, MIT — see `NOTICE.md`)
+
+The project is called **Mixup**; Batman is phase 1. There is also a private
+demo build at gbtman.pages.dev — it ships extracted assets, so it is
+deliberately NOT linked from the public README. The public site, when it
+exists, will take an uploaded ROM and extract in the browser instead.
 
 Nothing ROM-derived is committed. `assets/`, `disasm/`, `rip/`, `dist/` and the
 ROM itself are gitignored and regenerated from your own cartridge — and as of

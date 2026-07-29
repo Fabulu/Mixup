@@ -1,14 +1,17 @@
-# Batman: Return of the Joker — JavaScript port
+# Mixup
 
-A hand translation of the Game Boy game (Sunsoft, 1992) from its disassembly
-into readable, modifiable JavaScript — **not** an emulator. Every routine
-becomes a JS function we own, so the game can be retuned and modded freely.
+Hand-translating console games from their disassembly into readable, modifiable
+JavaScript — **not** emulation. Every ROM routine becomes a JS function you own,
+so the game can be read, retuned and modded like any other source code.
+
+## Phase 1 — Batman: Return of the Joker
+
+Game Boy, Sunsoft 1992. **Complete**, and the reason the rest of this exists:
+it is where the method was worked out. Everything below describes it.
 
 Verified **bit-exact against the original cartridge**, frame by frame — and in
 places pixel by pixel. The game is playable start to finish, title screen to
 end credits.
-
-Play it: **https://gbtman.pages.dev**
 
 ## No ROM in this repository
 
@@ -31,8 +34,7 @@ The No-Intro copy this was built against is CRC `5124bbec`, SHA-1
 
 ## Running it
 
-The hosted build at **https://gbtman.pages.dev** needs nothing. To run your own,
-export the assets first (see above), then:
+Export the assets from your own cartridge first (see above), then:
 
 ```sh
 python -m http.server 8000     # module imports and fetch need a real server
@@ -128,3 +130,28 @@ it.
 cross-references every routine the disassembler finds an xref to against every
 address the port cites. It currently reports **no region of the ROM the port
 has never touched**.
+
+## Contributing
+
+`CONTRIBUTING.md` has the rules that actually matter. The short version:
+**measure it against the cartridge, or don't change it.** There is a correct
+answer to every question in this repository and it is available — a PyBoy
+oracle runs the real ROM and diffs our state against it — so "I think it works
+like this" is never the standard.
+
+Two habits that are not optional:
+
+- **Cite the ROM address** on every non-obvious line. It is how the next person
+  checks your work without re-deriving it.
+- **A new check must be seen to fail.** Revert the fix, watch it go red,
+  restore. Two checks here sat green through the bug they were written for.
+
+## Licence
+
+MIT — see `LICENSE`. That covers this repository's own work: the port, the
+tooling, the tests and the docs.
+
+It grants nothing over *Batman: Return of the Joker*, which remains Sunsoft's.
+No ROM, listing or extracted asset is distributed here, and nothing runs without
+a cartridge image you supply yourself. `NOTICE.md` sets out exactly what is and
+is not included, and what this project is legally.
