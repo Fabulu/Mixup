@@ -107,6 +107,38 @@ T_WINDOW_FILL = 0x01
 T_WINDOW_L14_SCRIPT = (5, 0x5276)
 T_WINDOW_L14_FILL_DEST = 0x9C00
 T_WINDOW_L14_FILL_LEN = 0x0040
+
+# ---- STATIC BACKGROUND ART, painted straight into the $9800 tilemap --------
+#
+# Two init-time VRAM scripts that the column streamer never overwrites, so they
+# are part of the picture on every frame of their levels and are invisible to a
+# renderer that samples the level map through the metatile table.
+#
+#   loc_00_0E8A ($0E94)  levels 9/$0A/$0B   7:$7A5E  256 writes, $9800-$98FF
+#                        = tilemap rows 0-7, the city skyline behind the sky.
+#   loc_00_0EEA ($0EF8)  level 6 only       7:$7B77  105 writes, $9A6D-$9B70
+#                        = tilemap rows 19-27, the train's track band.
+#
+# Why the streamer leaves them alone, measured rather than assumed:
+#   * The VBlank column flush at loc_00_0664 tests $FFB0 and, on 9 and $0A,
+#     forces H = $99 and skips its first eight unrolled writes ($0688-$068D) --
+#     so a streamed column starts at tilemap ROW 8.  Level $0B is not in that
+#     test, but its camera clamp is 12 on a 13-wide arena, so the reachable
+#     travel is two tile columns; tools/oracle/tilemapdump.py over a full
+#     left-right-left sweep shows rows 0-7 still byte-identical to the script.
+#   * Level 6 never reaches the column flush at all: $066B is `CP $06 /
+#     JP Z, loc_00_0714`.
+# Both verified with tilemapdump.py after 300 scrolled frames: rows 0-7 (9/10)
+# and rows 19-27 (6) equal the decoded script exactly.
+#
+# These ship as the SCRIPT BYTES, not as a decoded 32x32 image, for the same
+# reason every other screen does: src/vramscript.js is the ROM's own
+# interpreter and is already bit-exact, so decoding in the port keeps one
+# implementation instead of two.
+T_BG_ART = [
+    {'levels': [0x09, 0x0A, 0x0B], 'rom': '7:$7A5E', 'loc': (7, 0x7A5E)},
+    {'levels': [0x06],             'rom': '7:$7B77', 'loc': (7, 0x7B77)},
+]
 # sub_00_0A7F's palette ramp -- the fade every screen enters and leaves through.
 # $0B09 is EIGHT bytes: [0..3] is the ramp both BGP and OBP0 walk, [4..7] a
 # second ramp BGP alone uses when the caller passes C & $7F == 3 ($0AA0).
@@ -850,6 +882,16 @@ def main():
             'script': b64(vram_script(rom, T_WINDOW_L14_SCRIPT)),
         },
     }
+    # ---- static BG art the column streamer never touches ------------------
+    # See T_BG_ART.  Levels 9/$0A/$0B get the skyline into tilemap rows 0-7,
+    # level 6 the track band into rows 19-27.  Shipped as script bytes so the
+    # port decodes them through its own sub_00_0A0E.
+    manifest['bgArt'] = [
+        {'levels': e['levels'], 'rom': e['rom'],
+         'script': b64(vram_script(rom, e['loc']))}
+        for e in T_BG_ART
+    ]
+
     # loc_00_3127, resolved per level.  '6alt' is the 2:$625E source table the
     # $3151 arm picks when $FFC9 == 1; on level 6 $FFC9 == 0 disables the
     # streamer outright ($314B), which is why the key can be absent.

@@ -34,9 +34,10 @@ import { u8, i8, u16, mapCollisionByIndex } from './state.js';
 import { drawMetasprite } from './render/metasprite.js';
 import { spawnDrop } from './drops.js';
 import {
-  effects, resetEffects, bossCountdownTick, victoryStep,
+  effects, resetEffects, bossCountdownTick, victoryStep, c740Idle,
   COUNTDOWN_IDLE, COUNTDOWN_START,
 } from './effects.js';
+import { spawnEffect } from './doors.js';
 
 export const SLOTS = 8;
 export const RECORD = 32;
@@ -139,11 +140,14 @@ export function meleeHitTest(state, probeX, probeY) {
     // --- Y ($26AD): strict <, no retry.
     if (absDiff8(r[8], probeSY) >= halfH) continue; // $26B3
 
-    // $26B7: $C750, not $C740. Identical today -- $0DC5/$0DCA set both per level and
-    // $0DE0/$0DE3 override both on level $0E -- but they part after a boss
-    // dies: 1:$4EF1 writes $C740 = $FE, which permanently disables ALL melee
-    // and batarang damage while $C750 stays 0. Revisit when bosses land.
-    if (state.flow.bossMode) continue;
+    // $26B7: `LD A,[$C740] / CP $FF / JR NZ` -- $C740, and it is NOT $C750.
+    // This used to read flow.bossMode with a note saying "revisit when bosses
+    // land". They have. The two bytes agree on level 14's entrance and nowhere
+    // else: 1:$4EF1 stamps $C740 = $FE when a boss dies and 1:$78CC/$7936 walk
+    // it down to 0, so for 255 fully-controllable frames after the kill the
+    // cartridge's punch does NOTHING -- no $19, no hit-flash, no damage --
+    // while $C750 sits at 0 and the port's punch still connected.
+    if (!c740Idle(state)) continue;
 
     requestSound(state, 0x19);                      // $26BE
     r[0] |= 0x04;                                   // $26C4: hit-flash
@@ -228,11 +232,19 @@ export function updateEnemies(state) {
       // MEASURED: levels 4, 8 and 11 leave the pool empty when their enemies
       // die; level 3 fills slot 0 the same frame.
       if (state.level.bossId === 0) {
-        // $4E88: the drop copies the enemy's live position out of +$0E..+$11.
-        // The explosion effect that $4EA9 spawns alongside it (pool $C693)
-        // is still not modelled -- it is purely visual.
-        spawnDrop(state, (r[0x0E] << 8) | r[0x0F], (r[0x10] << 8) | r[0x11],
-                  0xFF, 0x00, 0x00);                // $4EAC/$4EB1: dir $FF, DE = 0
+        // $4E88: both spawners read the enemy's live position out of
+        // +$0E..+$11 -- the copy at $4E88 stages it in $C744-$C747 for the
+        // effect pool AND $C749-$C74C for the ballistic pool, so they land on
+        // the same point.
+        const ex = (r[0x0E] << 8) | r[0x0F], ey = (r[0x10] << 8) | r[0x11];
+        // $4EA5: D = $97, E = $03. The old comment here said "purely visual",
+        // and that was measured WRONG: $97 has bit 7 set and counter $17, so
+        // doors.js's tickEffect fires the $13E6 one-shot -- cue $17 -- on the
+        // effect's first tick. MEASURED (cuediff l3-heart, l3-batarang-kill):
+        // the cartridge asks for 11 cues per run and the port asked for 10,
+        // and the missing one is the explosion every kill makes.
+        spawnEffect(state, ex, ey, 0x97, 0x03);     // $4EA9
+        spawnDrop(state, ex, ey, 0xFF, 0x00, 0x00); // $4EAC/$4EB1: dir $FF, DE = 0
       }
       if (killTail(state, r) === 'stop') return;
       continue;
@@ -289,12 +301,16 @@ function bossIntroTick(state) {
       f.bossMode = 2;                               // $77D2
       // $77D5-$77DA: $FFAD = $E4, $FFAC = 0. $FFAD is rBGP's shadow, NOT an
       // object palette -- $0806-$0816 settles the mapping ($FFAB->rWX,
-      // $FFAC->rWY, $FFAD->rBGP, $FFAE->rOBP0, $FFAF->rOBP1). Only the $FFAC
-      // half is modelled. The consequence is visible: $0DFD sets BGP = $FF on
-      // level-14 init, blacking the background out for the entrance, and this
-      // is what restores $E4 when phase 2 starts. The port does neither, so
-      // level 14's entrance renders on a normal background.
-      state.video.windowY = 0;
+      // $FFAC->rWY, $FFAD->rBGP, $FFAE->rOBP0, $FFAF->rOBP1). Both halves are
+      // modelled now. $0DFD sets BGP = $FF on level-14 init, blacking the
+      // background out for the entrance (level.js's half), and THIS is what
+      // restores $E4 when phase 2 starts.
+      state.video.bgp = 0xE4;                       // $77D5: $FFAD
+      state.video.windowY = 0;                      // $77D8: $FFAC
+      // ...and the latch with it. drawWindow reads windowLatchY, never
+      // windowY, so writing only the register left the shaft mask parked at
+      // $90 and the renderer bailed on every frame of the entrance.
+      state.video.windowLatchY = 0;
       state.player.vy = 0x10;                       // $77DC: $FF87
     } else {
       f.bossHop--;                                  // $77C7
@@ -353,18 +369,22 @@ function introDraw(state) {
   state.enemyDraws.push({ id: introTable(state, 'introPoses')[f.bossCrit], x: sx, y: sy,
                           attr: 0, alt: true });    // $7894-$78A0: 0BAF
   state.video.windowY = 0;                          // $78A4: $FFAC = 0
+  state.video.windowLatchY = 0;                     // the field drawWindow reads
 }
 
 /** ROM: loc_01_77FF - the entrance (or its skip) hands control to gameplay. */
 function bossIntroEnd(state) {
   const f = state.flow;
   state.video.windowY = 0x90;                       // $7810-$7812: window off
+  state.video.windowLatchY = 0x90;
   f.bossHop = 0;                                    // $7802: $C741
   f.bossCrit = 0;                                   // $7805: $C73F
   f.bossMode = 0;                                   // $7808: $C750
   state.player.vy = 0;                              // $7800: $FF87
-  // $780B: $C740 = $FF -- melee/batarang damage re-enabled. The port models
-  // $C740's gate through flow.bossMode, which just went 0.
+  // $780B: $C740 = $FF. That re-enables melee and batarang damage AND brings
+  // the HUD back -- both main-loop arms open with `CP $FF` ($0567/$05D9) --
+  // so it has to clear the entrance latch itself rather than lean on $C750.
+  effects(state).entranceHold = 0;                  // $780B
 }
 
 /**
@@ -1256,8 +1276,19 @@ function projDisable(state, r) {
   r[0x0E] = 0;
 }
 
-/** ROM: loc_01_5B68 - explosion effect ($C744 + sub_00_0CC2, not modelled). */
+/**
+ * ROM: loc_01_5B68 - the projectile's own burst, at its live +$0E..+$11
+ * position ($5B6C-$5B79 stage all four bytes), and only THEN the disable.
+ *
+ * Audible: $97 has bit 6 clear, so the $13E6 one-shot fires. MEASURED
+ * (cuediff l12-shooter-fire): the cartridge asks for cue $17 twice on f29 --
+ * once for the collapsing floor and once for this -- and its own 4-deep
+ * mailbox drops the second. The slot it takes is not dropped, which is why
+ * the port's next floor burst ran one cell longer than the cartridge's.
+ */
 function projExplode(state, r) {
+  spawnEffect(state, (r[0x0E] << 8) | r[0x0F],
+              (r[0x10] << 8) | r[0x11], 0x97, 0x01);   // $5B7C-$5B81
   return projDisable(state, r);
 }
 
@@ -1370,14 +1401,29 @@ function stL12(state, r) {
 /**
  * ROM: loc_01_583E - fire: spawn the mode-2 projectile (result IGNORED,
  * unlike state 2's zero test) and hold the attack pose $0F frames with the
- * MELEE bit. The two muzzle-flash effects ($5860-$58AE, $C744-$C747 +
- * sub_00_0CC2 D=$D7) are not modelled -- same stance as $4E84.
+ * MELEE bit, then throw TWO muzzle flashes into the $C693 pool.
+ *
+ * $D7, not $97, and the difference is bit 6: doors.js's tickEffect suppresses
+ * the $13DC one-shot when it is set, so these two are SILENT. They still
+ * occupy pool slots for their $17 ticks, and that is exactly how they were
+ * caught -- with only 10 slots, two silent tenants change how many of level
+ * 12's collapsing-floor bursts find a slot at all. MEASURED (cuediff
+ * l12-shooter-fire): the cartridge lands 8 floor cues in its first burst and
+ * the port, two slots richer, landed 10.
  */
 function l12Fire(state, r) {
   if (r[0] & 0x08) return riseTail(state, r);       // $583F: already firing
   spawnProjectile(state, r, 2);                     // $584B: $C72C = 2
   r[0] = (r[0] & ~0x20) | 0x08;                     // $5854 / $5856
   r[0x14] = 0x0F;                                   // $585C
+  // $5860-$587E: X + ($FE80 facing left, $FF40 facing right), and $5884-$5894
+  // Y - $80. $589F then adds 2 to the HIGH byte alone for the second flash,
+  // which is one whole column to the right.
+  const fx = u16(((r[0x0E] << 8) | r[0x0F])
+                 + ((r[5] & 1) ? 0xFE80 : 0xFF40));  // $586C-$5878
+  const fy = u16(((r[0x10] << 8) | r[0x11]) + 0xFF80);
+  spawnEffect(state, fx, fy, 0xD7, 0x00);            // $589C
+  spawnEffect(state, u16(fx + 0x0200), fy, 0xD7, 0x00);   // $58AB
   return riseTail(state, r);
 }
 
@@ -1444,22 +1490,29 @@ function l12MoveLeft(state, r, v) {
 // ---------------------------------------------------------------------------
 // State 5 -- the level-6 vehicle target.  ROM: jt_01_575C.
 //
-// TRANSCRIPTION ONLY, not oracle-verified: its X is slaved to $FFCA/$FFCB
-// (flow.parallaxTrack), which on level 6 is scrolled by the level's own
-// UNPORTED sub_00_2CBE branch (loc_00_2EF4) -- measured live on the
-// cartridge counting $06F8 down to $01F8 -- so until that branch lands the
-// port's record rides a frozen track. Every frame it re-faces the player by
-// WORLD X hi (not screen X), re-pins its position, and re-arms the melee
-// attack; the muzzle effects ($57B5-$57CE, $C749-$C74C + sub_00_0CF3
-// $0100) and the $C74D facing mirror are effect-pool territory, not
-// modelled. It DOES run screenTail every frame, so the hit scans see fresh
-// +7/+8 bytes.
+// Its X is slaved to $FFCA/$FFCB (flow.parallaxTrack). That used to be the
+// blocker on verifying any of this -- the header said the level-6 branch of
+// sub_00_2CBE (loc_00_2EF4) was unported and the record rode a frozen track.
+// It IS ported (src/conveyor.js level6Track) and state 5 measures bit-exact,
+// so the caveat is retired.
+//
+// Every frame it re-faces the player by WORLD X hi (not screen X), re-pins its
+// position from the track, and re-arms the attack. The attack is not just a
+// pose: $57C7-$57CB fires a SHOT into the ballistic pool with DE = $0100, i.e.
+// kind $01, drift +-8 by facing ($C74D), vy $38 and subtype $01 -- a HAZARD,
+// two damage through $15E5, drawn as metasprite $B7. MEASURED
+// (tools/oracle/poolwatch.py --level 6): 13 spawns in 400 frames, one hazard on
+// screen essentially all the time, and the port's pool stayed empty. The shots
+// land about two columns from the truck, so the missing DAMAGE is unobservable
+// in the shipped level; the missing SPRITE is not.
+//
+// It DOES run screenTail every frame, so the hit scans see fresh +7/+8 bytes.
 // ---------------------------------------------------------------------------
 
 function stL6Vehicle(state, r) {
   r[0] |= 0x20;                                     // $575E: SET 5
   r[5] = (state.player.x >> 8) < r[0x0E] ? 1 : 0;   // $5764-$5774 ($FF81 vs +$0E)
-  // $5775: $C74D = facing (effect pool) -- not modelled.
+  // $5775: $C74D = the same facing byte -- it is the shot's drift selector.
   const t = state.flow.parallaxTrack;               // $577A: $FFCA/$FFCB
   const x = u16(((u8((t >> 8) + 5) << 8) | (t & 0xFF)) + 0xC0);
   r[0x0E] = x >> 8;                                 // $578A-$578D
@@ -1469,8 +1522,11 @@ function stL6Vehicle(state, r) {
   requestSound(state, 0x22);                        // $57A6
   r[0] |= 0x08;                                     // $57AC
   r[0x14] = 0x1F;                                   // $57B2
-  // $57B5-$57CE: r[0..3] -> $C749-$C74C + sub_00_0CF3($0100) -- the shot
-  // effect, not modelled (same stance as $4E84).
+  // $57B5-$57CB: +$0E..+$11 -> $C749-$C74C, then sub_00_0CF3 with DE = $0100.
+  // The facing byte staged at $5775 is $C74D, which the allocator turns into
+  // the drift: 1 -> $F8, 0 -> $08 ($0D25-$0D32).
+  spawnDrop(state, (r[0x0E] << 8) | r[0x0F], (r[0x10] << 8) | r[0x11],
+            r[5], 0x01, 0x00);                      // $57C7-$57CB
   return screenTail(state, r);                      // $57D3
 }
 
@@ -1553,16 +1609,28 @@ function boss2Bands(state, r) {
   if (ad >= 0x1F) {                                 // $6E53
     if (r[0] & 0x03) return riseTail(state, r);     // $6E5C-$6E63 -> $705D
     if (ad < 0x30) return boss2Walk(state, r, playerLeft);   // $6E6A
-    if (ad >= 0x70 && !state.flow.bossRage) {       // $6E6E-$6E76: far idle
-      r[5] = playerLeft ? 1 : 0;                    // $6E78-$6E82
-      r[0] |= 0x20;                                 // $6E87
-      return fallTail(state, r);                    // $6E89
+    // $6E6E-$6E76 is a REGISTER CLOBBER, reproduced rather than fixed. A is the
+    // absolute distance every CP in this ladder reads, and $6E72 overwrites it
+    // with the $C73D byte. When that byte is non-zero, $6E76's `JR NZ` re-enters
+    // the ladder at $6E8C carrying a 1 -- so `CP $50` sets carry, $6E8E's
+    // `JR NC` is never taken, and the enraged FAR band falls to the HOP. The
+    // throw at $6E9F is reachable ONLY from ad in [$50,$70). MEASURED
+    // (armhits.py, l8-boss2-engage @ $C756=2): $6E78 far-idle 0x, $6E97 hop-arm
+    // fires, and every $6EA5 throw comes from the legitimate band.
+    let band = ad;
+    if (ad >= 0x70) {
+      if (!state.flow.bossRage) {                   // $6E76: JR NZ not taken
+        r[5] = playerLeft ? 1 : 0;                  // $6E78-$6E82: far idle
+        r[0] |= 0x20;                               // $6E87
+        return fallTail(state, r);                  // $6E89
+      }
+      band = u8(state.flow.bossRage);               // $6E72: A := [$C73D]
     }
-    if (ad < 0x50) {                                // $6E8C: [$30,$50)
+    if (band < 0x50) {                              // $6E8C: [$30,$50), or far
       if (!state.flow.bossRage) return boss2Walk(state, r, playerLeft);  // $6E94
       return boss2Hop(state, r);                    // $6E97 -> $6FC4
     }
-    // [$50,$70), or >= $70 enraged ($6E9F):
+    // $6E9F: [$50,$70) and nothing else.
     if (!state.flow.bossRage) return boss2Walk(state, r, playerLeft);    // $6EA3
     r[5] = playerLeft ? 1 : 0;                      // $6EA5-$6EAF: the throw
     if ((r[0] & 0x10) === 0) {                      // $6EB1
@@ -1787,20 +1855,32 @@ function stBoss4(state, r) {
     return riseTail(state, r);
   }
   if (ad < 0x30) return boss4Walk(state, r, playerLeft, ad);   // $734F
-  if (ad >= 0x60 && !f.bossRage) {                  // $7354-$735C: far idle
-    r[5] = playerLeft ? 1 : 0;                      // $735E-$7368
-    r[0] |= 0x20;                                   // $736D
-    return fallTail(state, r);                      // $736F
+  // $7354-$735C is the SAME clobber as boss 2's $6E6E-$6E76, and phase 2 has no
+  // difficulty gate ($7296), so this is ordinary endgame play rather than a
+  // hard-mode corner. $7358 replaces the distance in A with the $C73D byte --
+  // which $72C8 parks at exactly 1 for the whole of phase 2 -- and $735C's
+  // `JR NZ` enters the ladder at $7372 with it. `CP $40` therefore carries,
+  // $7374's `JR NC` is not taken, $7376's rage test passes, and the far band
+  // HOPS. MEASURED (boss4phase2.py): $7354 -> $735C -> $7372 -> $737D -> $7506
+  // at ad = $61, with every throw arm ($7385/$73AB/$738D) 0x from this entry.
+  let band = ad;
+  if (ad >= 0x60) {
+    if (!f.bossRage) {                              // $735C: JR NZ not taken
+      r[5] = playerLeft ? 1 : 0;                    // $735E-$7368: far idle
+      r[0] |= 0x20;                                 // $736D
+      return fallTail(state, r);                    // $736F
+    }
+    band = u8(f.bossRage);                          // $7358: A := [$C73D]
   }
-  if (ad < 0x40) {                                  // $7372: [$30,$40)
+  if (band < 0x40) {                                // $7372: [$30,$40), or far
     if (!f.bossRage) return boss4Walk(state, r, playerLeft, ad);  // $7376
     return boss4Hop(state, r);                      // $737D -> $7506
   }
-  if (ad < 0x50) {                                  // $7385: [$40,$50)
+  if (band < 0x50) {                                // $7385: [$40,$50)
     if (f.bossRage) return boss4Throw(state, r, playerLeft);      // $73AB
     return boss4Walk(state, r, playerLeft, ad);
   }
-  // [$50,$60), or >= $60 in phase 2 ($7389):
+  // $7389: [$50,$60) and nothing else.
   if (f.bossRage) return boss4Throw(state, r, playerLeft);        // $738D
   f.bossHop = 1;                                    // $738F: $C741
   r[0] &= 0xDF;                                     // $7398-$739B

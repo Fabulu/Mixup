@@ -77,6 +77,34 @@ export function blockCopy(vram, dest, bytes) {
 }
 
 /**
+ * Build the SUNSOFT copyright screen -- flow state 1, the first thing the
+ * machine shows.  ROM: the boot path through $01AB, then $01FC-$023B.
+ *
+ * $01FC-$0212 loads resources $02 and $1B (the two tile blobs), $0223-$022C
+ * refills $9C00-$9CDF with $2F (redundant -- the big boot fill already
+ * covered it, but it is what runs), and $0238 runs the VRAM script at
+ * 5:$52F5, which is `scripts[0]` of the manifest's title block.
+ *
+ * This is the same image the title is built ON TOP of, which is why
+ * buildTitleVram continues from here rather than starting over.
+ *
+ * @param spec  manifest.title -- {tiles: [{dest, bytes}], scripts: []}
+ * @param run   the VRAM script interpreter (passed in to keep this module free
+ *              of a cycle back through vramscript.js)
+ */
+export function buildCopyrightVram(spec, run) {
+  const vram = new Uint8Array(0x2000);
+  bootClearVram(vram);
+
+  // The tile bitmaps land first: the boot path copies them before the
+  // copyright screen, and $01C1's clear has already run by then.
+  for (const t of spec.tiles) blockCopy(vram, t.dest, t.bytes);
+
+  run(vram, spec.scripts[0]);                   // $0238: 5:$52F5
+  return vram;
+}
+
+/**
  * Build the title screen's VRAM the way the cartridge does.
  * ROM: the boot path through $01AB, then $022E / $027D / $0291 / $02AB.
  *
@@ -85,21 +113,15 @@ export function blockCopy(vram, dest, bytes) {
  * other: all 8192 bytes agree.
  *
  * @param spec  manifest.title -- {tiles: [{dest, bytes}], scripts: [], fill}
- * @param run   the VRAM script interpreter (passed in to keep this module free
- *              of a cycle back through vramscript.js)
+ * @param run   the VRAM script interpreter
  */
 export function buildTitleVram(spec, run) {
-  const vram = new Uint8Array(0x2000);
-  bootClearVram(vram);
-
-  // The tile bitmaps land first: the boot path copies them before the
-  // copyright screen, and $01C1's clear has already run by then.
-  for (const t of spec.tiles) blockCopy(vram, t.dest, t.bytes);
-
-  // $022E runs the copyright script, then $027D re-clears the BG map before
-  // the title's own two scripts. Order matters -- the fill would erase the
-  // copyright text if it came second, which is exactly what it is for.
-  run(vram, spec.scripts[0]);
+  // $027D re-clears the BG map over the finished COPYRIGHT screen before the
+  // title's own two scripts. Order matters -- the fill would erase the
+  // copyright text if it came second, which is exactly what it is for. And
+  // the tile area is NOT recleared, which is why starting from a blank buffer
+  // here would drop the glyphs the copyright screen's resources brought in.
+  const vram = buildCopyrightVram(spec, run);
   fillTilemap(vram, spec.fill);
   run(vram, spec.scripts[1]);
   run(vram, spec.scripts[2]);

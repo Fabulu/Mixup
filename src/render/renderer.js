@@ -11,10 +11,18 @@ import { squashBands, parallaxBands, trackBands, waterBands,
 import { cameraPixels } from '../camera.js';
 import { metatileTile } from '../level.js';
 import { mapTile } from '../state.js';
+import { bgArtForLevel } from '../assets.js';
 
 export const SCREEN_W = 160;
 export const SCREEN_H = 144;
 export const MAX_SPRITES = 40;
+/**
+ * DMG OAM scan: at most TEN sprites are fetched per scanline, in OAM order,
+ * and everything after the tenth is DROPPED for that line only.  The selection
+ * is made on Y alone -- an entry parked off the left edge or drawing nothing
+ * but colour 0 still spends a slot.
+ */
+export const MAX_SPRITES_PER_LINE = 10;
 
 // Classic DMG green, as RGBA. Shade 0 is lightest.
 export const DMG_PALETTE = [
@@ -34,6 +42,11 @@ export function createFramebuffer() {
     rgba: new Uint8ClampedArray(SCREEN_W * SCREEN_H * 4),
     // Scratch for sprite priority; hoisted so the frame loop allocates nothing.
     claimed: new Uint8Array(SCREEN_W * SCREEN_H),
+    // The BG/window COLOUR INDEX (0-3) before BGP was applied.  OBJ attr bit 7
+    // compares against this, not against the resolved shade -- see drawSprites.
+    bgIndex: new Uint8Array(SCREEN_W * SCREEN_H),
+    // Per-scanline OAM budget, for the hardware ten-sprite cut.
+    lineCount: new Uint8Array(SCREEN_H),
   };
 }
 
@@ -80,8 +93,8 @@ export function rasterBands(state) {
   // rIE = $05, masking the STAT vector off, and it runs BEFORE level init --
   // so without it here the card inherits the previous level's arm and tries
   // to run, say, the levels-1/2 water band over a menu screen.
-  if (state.title || state.options || state.roundSelect || state.stageIntro
-      || state.ending) {
+  if (state.copyright || state.title || state.options || state.roundSelect
+      || state.stageIntro || state.ending) {
     return [base];
   }
 
@@ -108,11 +121,17 @@ function windowSuppressed(state) {
   return !!state.raster && state.raster.mode === RASTER_WINDOW_OFF;
 }
 
-export function renderFrame(state, fb) {
+/**
+ * @param opts.spritesPerLine  overrides the DMG ten-per-line cut.  It exists so
+ *   tools/oracle/spritelimit.mjs can render the SAME frame with the rule off
+ *   and watch the comparison go red -- a check nobody has made fail is a
+ *   decoration.  Nothing in the game passes it.
+ */
+export function renderFrame(state, fb, opts) {
   const bands = rasterBands(state);
   drawBackground(state, fb, bands);
   drawWindow(state, fb, bands);
-  drawSprites(state, fb, bands);
+  drawSprites(state, fb, bands, opts);
   toRGBA(fb, state.video);
 }
 
@@ -180,6 +199,7 @@ function drawWindow(state, fb, bands) {
     : Math.min(SCREEN_H, v.windowEndY);
 
   const shades = fb.shades;
+  const bgIndex = fb.bgIndex;
   for (let y = Math.max(0, wy); y < end; y++) {
     // The window runs its own line counter from 0 at its first visible line;
     // it does NOT follow SCY.
@@ -205,7 +225,11 @@ function drawWindow(state, fb, bands) {
       let tile = fallback;
       if (map) tile = bgTiles[map[mapRow * 32 + ((wx >> 3) & 31)]] || fallback;
       if (!tile) continue;
-      shades[rowBase + x] = bgp[tile[tileY * 8 + (wx & 7)]];
+      // The window IS background as far as OBJ priority is concerned, so the
+      // colour index it leaves behind is what attr bit 7 compares against.
+      const ci = tile[tileY * 8 + (wx & 7)];
+      bgIndex[rowBase + x] = ci;
+      shades[rowBase + x] = bgp[ci];
     }
   }
 }
@@ -219,52 +243,91 @@ function bandFor(bands, line) {
 }
 
 /**
+ * The overlay a level's init-time VRAM scripts leave in the $9800 tilemap, or
+ * null.  Menus and title screens carry their own whole tilemap in `bgMap`, so
+ * the overlay is a LEVEL-only thing and must not follow $FFB0's leftovers into
+ * one of them.  `state.level.bgArt`, if something upstream has attached it,
+ * wins -- including an explicit null, which is how a mod switches it off.
+ */
+export function bgArtFor(state) {
+  if (state.video.bgMap) return null;
+  if (state.level.bgArt !== undefined) return state.level.bgArt;
+  return bgArtForLevel(state.level.number);
+}
+
+/**
+ * WHICH TILE ID a screen pixel's 8x8 cell comes from -- the single place that
+ * decision is made, so tools/oracle/bgartdiff.mjs can compare the real one
+ * against the cartridge's $9800 rather than against a second copy of this rule.
+ * Returns -1 for "off the map, draw colour 0".
+ */
+export function bgTileIdAt(state, worldX, worldY, art) {
+  // The overlay is a TILEMAP cell, so it is looked up in tilemap space -- the
+  // same ((worldY >> 3) & 31, (worldX >> 3) & 31) the hardware indexes $9800
+  // with -- and it wins over the streamed column, because on the cartridge it
+  // is what is physically in that cell.  On level 6 that distinction is the
+  // whole fix: the track band is displayed through the mode-0/1 arm at
+  // SCX = $FFCC, so a world-space lookup would slide it sideways.
+  const cell = ((worldY >> 3) & 31) * 32 + ((worldX >> 3) & 31);
+  if (art) {
+    const t = art[cell];
+    if (t >= 0) return t;
+  }
+  // Menu/title screens have no level map -- they are a plain 32x32 VRAM
+  // tilemap at $9800, wrapping in both axes exactly as the hardware does.
+  const bgMap = state.video.bgMap;
+  if (bgMap) return bgMap[cell];
+
+  const col = worldX >> 4;
+  if (col < 0 || col >= state.level.width) return -1;
+  const mid = mapTile(state, col, (worldY >> 4) & 0x0F);
+  return metatileTile(state, mid, (worldX >> 3) & 1, (worldY >> 3) & 1) & 0xFF;
+}
+
+/**
  * Background.  Reads the level map directly rather than a 32x32 VRAM tilemap:
  * the game streams metatile columns into VRAM as the camera moves, and
  * sampling the map is the same picture without the streaming bookkeeping.
- * (The VRAM tilemap path returns in P4 for the menu/VRAM-script screens.)
+ * (The VRAM tilemap path serves the menu/VRAM-script screens.)
+ *
+ * The one place that equivalence breaks is a cell the streamer never wrote,
+ * which is what bgArtFor() supplies -- see bgTileIdAt.
  */
 function drawBackground(state, fb, bands) {
-  const { tiles, width } = state.level;
+  const { tiles } = state.level;
   const shades = fb.shades;
-  const bgMap = state.video.bgMap;
+  const bgIndex = fb.bgIndex;
+  const art = bgArtFor(state);
 
   for (let y = 0; y < SCREEN_H; y++) {
     const band = bandFor(bands, y);
     const bgp = palMap(band.bgp);
     const worldY = band.scy + y;
-    const row = (worldY >> 4) & 0x0F;
-    const subRow = (worldY >> 3) & 1;
     const tileY = worldY & 7;
     let x = 0;
 
     while (x < SCREEN_W) {
       const worldX = band.scx + x;
-      const col = worldX >> 4;
-      const subCol = (worldX >> 3) & 1;
       const tileX = worldX & 7;
 
-      let tile;
-      if (bgMap) {
-        // Menu/title screens have no level map -- they are a plain 32x32 VRAM
-        // tilemap at $9800, wrapping in both axes exactly as the hardware does.
-        const t = bgMap[((worldY >> 3) & 31) * 32 + ((worldX >> 3) & 31)];
-        tile = tiles.bg[t];
-      } else if (col < 0 || col >= width) {
-        tile = null;
-      } else {
-        const mid = mapTile(state, col, row);
-        tile = tiles.bg[metatileTile(state, mid, subCol, subRow) & 0xFF];
-      }
+      const id = bgTileIdAt(state, worldX, worldY, art);
+      const tile = id < 0 ? null : tiles.bg[id];
 
       // Emit the rest of this 8-pixel tile run in one go.
       const run = Math.min(8 - tileX, SCREEN_W - x);
       const base = y * SCREEN_W + x;
       if (tile) {
         const rowBase = tileY * 8 + tileX;
-        for (let i = 0; i < run; i++) shades[base + i] = bgp[tile[rowBase + i]];
+        for (let i = 0; i < run; i++) {
+          const ci = tile[rowBase + i];
+          bgIndex[base + i] = ci;
+          shades[base + i] = bgp[ci];
+        }
       } else {
-        for (let i = 0; i < run; i++) shades[base + i] = bgp[0];
+        for (let i = 0; i < run; i++) {
+          bgIndex[base + i] = 0;
+          shades[base + i] = bgp[0];
+        }
       }
       x += run;
     }
@@ -276,10 +339,41 @@ function drawBackground(state, fb, bands) {
  * 40; DMG priority is lowest-OAM-index-wins, and attr bit 7 puts the sprite
  * behind non-zero BG pixels.  OBJ is 8x16 at every LCDC write site, so each
  * entry draws tile&$FE on top of tile|$01.
+ *
+ * TWO HARDWARE RULES THE OBVIOUS COMPOSITOR GETS WRONG:
+ *
+ * 1. **Attr bit 7 compares the BG COLOUR INDEX, not the resolved shade.** The
+ *    PPU's priority mux runs before the palette: the sprite loses only where
+ *    the BG pixel's index is non-zero.  `shades[idx] !== 0` agrees with that
+ *    for as long as BGP maps index 0 to shade 0 -- which BGP = $E4 does, and
+ *    $E4 is what every level runs.  It stops agreeing the moment a screen
+ *    changes BGP: level 14's blackout writes BGP = $FF, every index resolves
+ *    to shade 3, and a shade-based test hides every behind-BG sprite on the
+ *    screen.
+ *
+ *    Be honest about what is PROVEN here, because no pixel comparison in the
+ *    tree can tell the two rules apart today: across every rip/oracle/pix
+ *    recording, BGP only ever takes $E4 or $FF, 180 of 5508 OAM entries carry
+ *    bit 7 -- and all 180 are level 10, where BGP is $E4.  The two frames that
+ *    do run BGP = $FF (level 14, blacked out) contain six OAM entries and not
+ *    one of them has bit 7 set.  So this change is measured to COST nothing
+ *    and is a hardware fact rather than a measured difference.  It is here
+ *    because the coincidence propping the old test up is one BGP write away
+ *    from ending.
+ *
+ * 2. **Ten sprites per scanline, in OAM order.** The DMG's OAM scan takes the
+ *    first ten entries whose Y covers the line and drops the rest FOR THAT
+ *    LINE.  It is not a frame-level cap and it is not a rendering nicety: the
+ *    dropped set changes as OAM order changes, which is exactly the flicker
+ *    the cartridge shows when a line is crowded (measured: level 12 f119-122
+ *    puts 21 sprites on one line, 11 of them dropped, and the drop set
+ *    alternates with $FFA7 because $0567 alternates the queue order).
  */
-function drawSprites(state, fb, bands) {
+function drawSprites(state, fb, bands, opts) {
+  const perLine = (opts && opts.spritesPerLine) || MAX_SPRITES_PER_LINE;
   const { tiles } = state.level;
   const shades = fb.shades;
+  const bgIndex = fb.bgIndex;
   const list = state.video.sprites;
   const n = Math.min(list.length, MAX_SPRITES);
 
@@ -287,6 +381,8 @@ function drawSprites(state, fb, bands) {
   // wins on overlap (DMG priority).
   const claimed = fb.claimed;
   claimed.fill(0);
+  const lineCount = fb.lineCount;
+  lineCount.fill(0);
 
   for (let i = 0; i < n; i++) {
     const s = list[i];
@@ -305,6 +401,12 @@ function drawSprites(state, fb, bands) {
       const sy = s.y + py;
       if (sy < 0 || sy >= SCREEN_H) continue;
 
+      // The ten-per-line cut, taken BEFORE anything about the tile is known:
+      // hardware spends the slot on Y alone, so a fully transparent row and a
+      // missing tile both still cost one.
+      if (lineCount[sy] >= perLine) continue;
+      lineCount[sy]++;
+
       const band = bandFor(bands, sy);
       const pal = palMap((s.attr & 0x10) ? band.obp1 : band.obp0);
       const srcYs = ((flipY ? H - 1 - py : py) / sc) | 0;
@@ -322,7 +424,8 @@ function drawSprites(state, fb, bands) {
         const ci = tile[ty * 8 + srcX];
         if (ci === 0) continue;              // colour 0 is transparent for OBJ
         claimed[idx] = 1;
-        if (behind && shades[idx] !== 0) continue;
+        // Rule 1 above: the INDEX, pre-palette.
+        if (behind && bgIndex[idx] !== 0) continue;
         shades[idx] = pal[ci];
       }
     }

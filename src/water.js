@@ -31,6 +31,7 @@ import { u8, u16, setMapCell } from './state.js';
 import { decodeTileBuf } from './assets.js';
 import { runVramScript } from './vramscript.js';
 import { updateSubsystem } from './conveyor.js';
+import { spawnEffect } from './doors.js';
 
 /** Decode one base64 blob from the manifest. */
 function b64(s) {
@@ -395,8 +396,13 @@ export function updateWater(state) {
     if (w.stampStep === 0) {                        // $2D6F: $C713
       if ((state.player.x >> 8) < 0x36) return tail(state, w);   // $2D77
       requestSound(state, 0x17);                    // $2D7C
-      // $2D82-$2D98: the $C744 burst effect at the waterfall base -- the
-      // effect pool is not modelled.
+      // $2D82-$2D98: the crash at the waterfall's base, at the fixed world
+      // point ($3880, $1980) the three literal stores build -- $C744/$C745 the
+      // X pair and $C746/$C747 the Y pair, both low bytes taken from the one
+      // $80 at $2D8C. $97/$01, so it asks for cue $17 a SECOND time on its
+      // first tick. MEASURED (cuediff l1-water-spouts): the cartridge fires
+      // $17 twice, at f1 from $2D7F and f2 from $13E9; the port fired once.
+      spawnEffect(state, 0x3880, 0x1980, 0x97, 0x01);   // $2D94-$2D98
       w.stampStep = 1;                              // $2D9B
       return stampTick(state, w);                   // falls into loc_00_2DA0
     }

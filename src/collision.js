@@ -7,7 +7,38 @@ import {
 } from './state.js';
 import { armScriptedMove } from './scriptedmove.js';
 import { SLOTS, screenX, screenY } from './actors.js';
-import { updateEffects } from './doors.js';
+import { updateEffects, spawnEffect } from './doors.js';
+
+// ---------------------------------------------------------------------------
+// $FFC0 / $FFC1 -- the cell a probe RESOLVED TO, which is not always the cell
+// it sampled.
+//
+// sub_00_20BA seeds them from the probe point ($20C4 / $20DD), and then every
+// neighbour lookup REWRITES them before handing the value on:
+//
+//   $2129-$212C  floor/ceiling, right neighbour   INC $FFC0
+//   $2147-$214A  floor/ceiling, left neighbour    DEC $FFC0
+//   $2162-$2165  left came up empty, try right    INC $FFC0 (back to own)
+//   $229D-$22A0  horizontal, the cell ABOVE       DEC $FFC1  (NOT restored on
+//                                                  the $22A6 RET NZ)
+//   $22B6-$22BF  horizontal, the cell BELOW       INC $FFC1
+//
+// Both consumers read them and not the probe point: loc_00_1E65 stores them
+// into the $C67B restore slot at $1E8D/$1E90, and 1:$4D4E erases the pickup
+// cell through them at $4DBD. A port that hands the OWN cell to either one
+// breaks a cell of empty air one column over and leaves the real breakable
+// standing -- MEASURED on level 12 (breakcells.py --warp 50,18 --hold left):
+// the cartridge breaks (48,20) on f31 and the port stamped SOLID into (49,20).
+//
+// They are module state rather than fields on `state` because that is what
+// they are on the hardware: two HRAM scratch bytes, written by the probe and
+// read by its own tail, within one synchronous call.
+// ---------------------------------------------------------------------------
+let probeCol = 0;
+let probeRow = 0;
+
+/** The cell the last probe resolved to ($FFC0/$FFC1). Test/diagnostic hook. */
+export const lastProbeCell = () => ({ col: probeCol, row: probeRow });
 
 /** Probe modes, as written to $C72B. */
 export const MODE_HORIZONTAL = 1;
@@ -54,6 +85,7 @@ export function probe(state, dxSub, dySub, mode) {
   // $20BA-$20C7: probe Y first; bail out if below the world.
   const py = (p.y + dySub) & 0xFFFF;
   const row = py >> 8;
+  probeRow = row;                  // $20C4: LDH [$FFC1] -- BEFORE the bail-out
   if (row >= 0x20) {
     return { value: 0, col: 0, row, subX: 0, px: 0, py };
   }
@@ -61,6 +93,7 @@ export function probe(state, dxSub, dySub, mode) {
   // $20D3-$20E7: probe X, then read the cell's collision byte.
   const px = (p.x + dxSub) & 0xFFFF;
   const col = px >> 8;
+  probeCol = col;                  // $20DD: LDH [$FFC0]
 
   const cell = mapCollision(state, col, row);
   const subX = (px >> 4) & 0x0F;   // pixel within the metatile, feeds slope tables
@@ -121,9 +154,15 @@ export function probeFloor(state) {
     return out;
   }
 
-  // $1DE7: >= $20 routes to the pickup handler in bank 1 ($4D4E).
+  // $1DE7: >= $20 routes to the pickup handler in bank 1 ($4D4E) -- with B,
+  // the RESOLVED value, and $FFC0/$FFC1, the RESOLVED cell. When the value
+  // came out of the neighbouring column the port used to hand $4D4E the OWN
+  // cell instead, whose byte is 0, so the switch fell straight to `default`
+  // and the pickup was never collected at all (MEASURED, probeunit.mjs:
+  // floor probe at x=$4EB0 on level 5 resolves 32 from (79,19) and changed
+  // nothing -- hp stayed 4, the cell stayed put).
   if (v >= COLL.PICKUP_ENERGY && v !== COLL.SPIKE && v !== COLL.SOLID_RUNTIME) {
-    takePickup(state, hit);
+    takePickup(state, v, probeCol, probeRow);
     return out;
   }
 
@@ -160,7 +199,7 @@ export function probeFloor(state) {
   // "the map objects' cached screen Y is off by one" in the type-3/4
   // oscillator scenario -- the objects were exact, the player was not.
   if (v === COLL.BREAKABLE) {
-    breakCell(state, hit.col, hit.row);
+    breakCell(state, probeCol, probeRow);      // $1E65 writes (HL), $1E8D/$1E90
     out.landed = true;
     return out;
   }
@@ -288,6 +327,7 @@ function slopeProbe(state, col, row, probeRowHi, mode, px, py) {
   // $2141: left neighbour. The index is negative, walking the table backwards.
   if (pixelX - 6 < 0) {
     const off = -(((pixelX - 6) & 0xFF) & 0x0F);      // AND $0F / CPL / INC A
+    probeCol = u8(col - 1);                           // $2147-$214A: DEC $FFC0
     const nIdx = cellIndex(col - 1, row);
     const nv = mapCollisionByIndex(state, nIdx);
     if (nv !== 0) {                                   // $2150
@@ -305,12 +345,14 @@ function slopeProbe(state, col, row, probeRowHi, mode, px, py) {
       // carries the neighbour's collision into the object scan.
       return actorOverlap(state, mode, px, py, nv);
     }
-    // $215E: nothing to the left -- fall through and try the right instead.
+    // $215E: nothing to the left -- put $FFC0 back and try the right instead.
+    probeCol = col;                                   // $2162-$2165: INC $FFC0
   }
 
   // $2116: right neighbour, forward index.
   if (pixelX + 5 >= 0x10) {
     const off = (pixelX + 5) & 0x0F;                  // $2125
+    probeCol = u8(col + 1);                           // $2129-$212C: INC $FFC0
     const nIdx = cellIndex(col + 1, row);
     const nv = mapCollisionByIndex(state, nIdx);
     if (nv === 0) {                                   // $2134 -> loc_00_2423
@@ -574,7 +616,14 @@ function restoreTimers(state) {
     // player breaks the col-16 floor at f34 and falls through the hole at f46,
     // exactly 12 frames later. A port that restored $06 left him standing
     // there for the whole run.
-    if (--s.timer === 0) setMapCell(state, s.col, s.row, 0, 0);
+    if (--s.timer !== 0) continue;
+    setMapCell(state, s.col, s.row, 0, 0);            // $1364-$1366
+    // $1374-$1388: the crumble puff. B/C are the slot's own col/row, the low
+    // bytes are both forced to $80 ($137C-$1381), and the request is
+    // `LD D,$97 / LD E,$01 / CALL sub_00_0CC2` -- the same allocator and the
+    // same sprite the door break uses, one subtype along. The receiver at
+    // $13D9-$13E9 is what turns it into debris and the $17 cue.
+    spawnEffect(state, (s.col << 8) | 0x80, (s.row << 8) | 0x80, 0x97, 0x01);
   }
 }
 
@@ -614,6 +663,8 @@ export function horizontalCell(state, dxSub, right = dxSub > 0) {
   const col = px >> 8;
   const idx = cellIndex(col, row);
   const mode = right ? MODE_HORIZONTAL : 2;
+  probeCol = col;                                     // $20DD / $20C4: the
+  probeRow = row;                                     // probe's own cell
 
   const own = mapCollisionByIndex(state, idx);
   if (own !== 0) return own;                          // $20E9 / $20FD
@@ -623,13 +674,21 @@ export function horizontalCell(state, dxSub, right = dxSub > 0) {
 
   // $2287: SUB (halfW - 3); a borrow means the hitbox pokes above this cell.
   if (pixelY - (p.halfW - 3) < 0) {
+    probeRow = u8(row - 1);                           // $229D-$22A0: DEC $FFC1
     const above = mapCollisionByIndex(state, idx - 1);
-    if (above !== 0) return above;                    // $22A6: RET NZ
+    // $22A6 is a bare `RET NZ`: it leaves $FFC1 DECREMENTED, which is how the
+    // break/pickup tails learn they are being handed the cell overhead.
+    if (above !== 0) return above;
+    probeRow = row;                                   // $22A9-$22AC: INC $FFC1
   }
 
   // $228A: ADD (halfH - 3); >= 16 means it pokes below.
   if (pixelY + (p.halfH - 3) >= 0x10) {
+    // $22B6-$22BE: the INC happens first and $FFC1 is only STORED when the
+    // result is still inside the world -- an out-of-range row RETs 0 with the
+    // byte untouched.
     if (row + 1 >= 0x20) return 0;                    // $22B9
+    probeRow = row + 1;                               // $22BF
     const below = mapCollisionByIndex(state, idx + 1);   // $22C3
     if (below === 0) {                                // $22C6 -> loc_00_2423
       return actorOverlap(state, mode, px, py, 0);
@@ -693,20 +752,57 @@ export function resolveWall(state, side) {
   // Arms that divert to their own handler and do not stop movement:
   // $1F20 exit trigger, $1F2E water, $1F1B pickups.
   if (!isDoor) {
-    // $1F20: the horizontal probe's trigger cell arms the same script.
-    if (v === COLL.TRIGGER) return armScriptedMove(state);
-    // $1EA0 sets $FF96 (the behind-BG OAM attribute) and returns 0. It does NOT
-  // set $FF95 -- slow/water movement mode is armed by the water-surface
-  // subsystem, not by touching a water cell.
-  if (v === COLL.WATER) { p.attrMask = 0x80; return 0; }
+    // $1F1A: `LD A,B` -- the RESOLVED value, and $4D4E erases through
+    // $FFC0/$FFC1. The port used to RE-PROBE here, which threw the neighbour
+    // retarget away and read the own cell's zero, so a pickup reached from a
+    // metatile edge or from the row above was never consumed.
     if (v >= COLL.PICKUP_ENERGY && v < COLL.SPIKE) {
-      takePickup(state, probe(state, right ? PROBE_DX_RIGHT : PROBE_DX_LEFT, 0));
+      takePickup(state, v, probeCol, probeRow);
       return 0;
     }
+    // $1F20: the horizontal probe's trigger cell arms the same script.
+    if (v === COLL.TRIGGER) return armScriptedMove(state);
+    // $1F25 / $1FDB: `JP Z, loc_00_1E65` -- a breakable is BROKEN by walking
+    // into it. That arm returns 1 (blocked) with NO push and NO $80 snap, and
+    // it never touches $C71E, so it is not the cling entry's tail either.
+    // MEASURED (breakcells.py, level 5 warp 36,27 hold right): the cartridge
+    // breaks (37,29)/(37,30)/(37,31) at f13/f22/f26 with 12-frame restores
+    // where the port left all three $06 for the whole run.
+    if (v === COLL.BREAKABLE) {
+      breakCell(state, probeCol, probeRow);
+      return 1;                                       // $1E94: LD A,$01
+    }
+    // $1F2A / $1FE0: `CP $07 / JR Z, loc_00_1F61` -- $07 goes STRAIGHT to the
+    // push handler, skipping the cling entries at $1F33/$1FE9 outright. This
+    // is not a detail: $07 is column 0 of all fourteen levels and both walls
+    // of every boss arena, so a port that lets it cling lets the player climb
+    // out of every level boundary and every boss fight. MEASURED (playerhunt
+    // arms, level 1, script "40:,3:A,6:L,71:LA"): $1FE0 executes 99 times and
+    // routes to $1F87 all 99; the cling entry $1FE9 executes ZERO times.
+    if (v === COLL.SOLID2) return pushOutOfWall(state, right, v);
+    // $1EA0 sets $FF96 (the behind-BG OAM attribute) and returns 0. It does NOT
+    // set $FF95 -- slow/water movement mode is armed by the water-surface
+    // subsystem, not by touching a water cell.
+    if (v === COLL.WATER) { p.attrMask = 0x80; return 0; }
   }
 
   // $1F33 / $1FE9: before pushing, see whether this becomes a wall cling.
   if (tryWallCling(state, right)) return 0;   // $1F60 returns A = 0
+
+  return pushOutOfWall(state, right, v);      // every guard falls to $1F61
+}
+
+/**
+ * ROM: loc_00_1F61 (right probe) / loc_00_1F87 (left probe).
+ *
+ * The shared tail of the cling entry AND the direct destination of the $07
+ * arm. `XOR A / LD [$C71E],A` is the FIRST instruction of both, so reaching it
+ * cancels a bat-rope whether or not a cling was attempted.
+ */
+function pushOutOfWall(state, right, v) {
+  const p = state.player;
+
+  p.action = 0;                                       // $1F62 / $1F88
 
   // $1F65 / $1F8B: these two are blocking but produce no push.
   if (v === COLL.SOLID_RUNTIME || v === COLL.SPIKE) return 1;
@@ -761,8 +857,8 @@ export function probeCeiling(state) {
     return 0;
   }
   if ((v & 0x1F) === COLL.DOOR) { p.action = 0; return 1; }  // $1ED2 -> $1EE2
-  if (v >= COLL.PICKUP_ENERGY) {                     // $1ED9 -> 1:$4D4E
-    takePickup(state, hit);
+  if (v >= COLL.PICKUP_ENERGY) {                     // $1ED8 -> 1:$4D4E
+    takePickup(state, v, probeCol, probeRow);        // B, and $FFC0/$FFC1
     return 0;
   }
   if (v === COLL.WATER) { p.attrMask = 0x80; return 0; }     // $1EDE -> $1EA0
@@ -802,12 +898,19 @@ export const MAX_HP_CELL = {
   0x0D: { col: 38, row: 13 },
 };
 
-/** ROM: loc_01_4D4E - consume a pickup cell and erase it. */
-function takePickup(state, hit) {
+/**
+ * ROM: loc_01_4D4E - consume a pickup cell and erase it.
+ *
+ * @param value  register A on entry, i.e. B at the call site: the collision
+ *               byte the probe RESOLVED to, which may have come from a
+ *               neighbouring column or the row above/below.
+ * @param col/row  $FFC0/$FFC1 as $4DBD reads them -- the same resolved cell.
+ */
+function takePickup(state, value, col, row) {
   const t = state.tunables;
   const p = state.player;
 
-  switch (hit.value) {
+  switch (value) {
     case COLL.PICKUP_ENERGY:                       // $4DA6
       requestSound(state, 0x13);
       p.iframes = 0;                               // $4DAC: clears $C714
@@ -834,8 +937,9 @@ function takePickup(state, hit) {
 
   // $4DBD: the common tail zeroes BOTH bytes -- graphic as well as collision --
   // and queues a tilemap update. Clearing only the collision leaves the item
-  // sitting there on screen, so it looks like nothing happened.
-  setMapCell(state, hit.col, hit.row, 0, COLL.AIR);
+  // sitting there on screen, so it looks like nothing happened. It addresses
+  // the cell through $FFC0/$FFC1, NOT through the probe point.
+  setMapCell(state, col, row, 0, COLL.AIR);
 }
 
 /** ROM: sub_00_0AE1 mailbox. */

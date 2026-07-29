@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 
 import { grid, floorFrom, makeState, placePlayer, setInput, step } from './helpers.js';
 import { updateEnemies, _internals } from '../src/enemies.js';
+import { effects, c740Idle, COUNTDOWN_START } from '../src/effects.js';
 import { updateBatarangs, FLAG_RETURNING } from '../src/batarang.js';
 import { BTN } from '../src/player.js';
 
@@ -506,4 +507,163 @@ test('the $C750 gate clears the held input and skips the WHOLE player update', (
   assert.equal(free.input.held, BTN.RIGHT, 'untouched with $C750 clear');
   assert.ok(free.player.y > ((0x16 << 8) | 0x00), 'gravity ran');
   assert.ok(free.player.x > ((5 << 8) | 0x80), 'and so did the input');
+});
+
+// ---------------------------------------------------------------------------
+// $6E6E-$6E76 / $7354-$735C -- the FAR-BAND REGISTER CLOBBER.
+//
+// The same bug, twice, and it is not a bug in the port: it is the cartridge's.
+// A is the absolute distance every `CP` in the ladder reads, and the enrage
+// test overwrites it with the $C73D byte -- so once the boss is enraged the
+// far band re-enters the ladder carrying a 1, `CP $50` (or `CP $40`) carries,
+// and the arm the addresses suggest is unreachable.
+//
+// A port that reads the ladder as written gives the enraged boss a THROW where
+// the cartridge gives it a HOP, at every distance past the far threshold.
+// ---------------------------------------------------------------------------
+
+test('boss 2, enraged and FAR: the ladder re-enters with $C73D and lands on the HOP', () => {
+  // MEASURED (tools/oracle/armhits.py, l8-boss2-engage @ $C756=2): $6E78
+  // far-idle 0x, $6E94 2x, $6E97 hop-arm reached, $6FC4 36x, and every $6EA5
+  // throw arriving from the legitimate [$50,$70) band. diffhunt went from 16
+  // fields diverging at f3 to bit-exact on all 39 for 399 frames.
+  const { state, r } = boss2({ rage: 1 });
+  r[7] = 0x10;                                 // player screen X $90 -> ad = $80
+  primaryDispatch(state, r);
+  assert.equal(r[1] & 0x40, 0x40, '$6FD5: the hop arms its turn animation');
+  assert.equal(r[0x14], 0, 'and the throw timer was never loaded');
+  assert.equal(r[0] & 0x10, 0, '$6EB7 was not reached');
+});
+
+test('boss 2, NOT enraged and far: $6E78 idles instead', () => {
+  // The `JR NZ` at $6E76 is what skips this arm, so with $C73D = 0 the far
+  // band is the idle it looks like. Without this control the test above could
+  // be passing for the wrong reason.
+  const { state, r } = boss2({ rage: 0 });
+  r[7] = 0x10;
+  primaryDispatch(state, r);
+  assert.equal(r[0] & 0x20, 0x20, '$6E87: the far-idle latch');
+  assert.equal(r[1] & 0x40, 0, 'no hop');
+});
+
+test('boss 2s THROW is reachable only from the legitimate [$50,$70) band', () => {
+  // ad $60 is below $70, so the clobber never happens and `band` really is the
+  // distance -- $6E9F. This is the arm the enraged far band was stealing.
+  const { state, r } = boss2({ rage: 1 });
+  r[7] = 0x30;                                 // ad = $60
+  primaryDispatch(state, r);
+  assert.equal(r[0x14], 0x1F, '$6EBE: the throw timer');
+  assert.equal(r[0] & 0x10, 0x10, '$6EB7/$6EB9');
+  assert.equal(r[1] & 0x40, 0, 'and it is NOT a hop');
+});
+
+test('boss 4 phase 2, far: the identical clobber at $7358, and no difficulty gate', () => {
+  // $7296's stagger is the only difficulty-sensitive part of boss 4, and phase
+  // 2 is past it -- $72C8 parks $C73D at exactly 1 for the whole of it. So
+  // this is ordinary endgame play, not a hard-mode corner.
+  //
+  // MEASURED (tools/oracle/boss4phase2.py): the hook order is $7354 -> $735C
+  // -> $7372 -> $737D -> $7506 at ad = $61, with $7385/$73AB/$738D all 0x.
+  // boss4port.mjs reproduces flags $81/$80/$82 and at = $00 at all five
+  // checkpoints -- a throw would show at = $1F.
+  const state = arena({ level: 0x0E, bossId: 4 });
+  state.flow.bossRage = 1;                     // phase 2
+  state.flow.difficulty = 1;
+  const r = boss(state, 9, { hp: 0x30 });
+  r[7] = 0x2F;                                 // player screen X $90 -> ad = $61
+  primaryDispatch(state, r);
+  assert.equal(r[1] & 0x40, 0x40, '$7517: the hop arms its turn animation');
+  assert.equal(r[0x14], 0, 'no throw timer -- $73E1/$73E5 were never reached');
+});
+
+test('boss 4 phase 2, close-ish: $7385 IS reachable, so the ladder is not dead', () => {
+  // ad $45 is below $60, so no clobber: `band` is the distance and the
+  // [$40,$50) arm throws. The point of the pair is that the clobber removes
+  // ONE arm rather than the whole ladder.
+  const state = arena({ level: 0x0E, bossId: 4 });
+  state.flow.bossRage = 1;
+  state.flow.difficulty = 1;
+  state.frame = 0x80;                          // above the crit roll
+  const r = boss(state, 9, { hp: 0x30 });
+  r[7] = 0x4B;                                 // ad = $45
+  primaryDispatch(state, r);
+  assert.equal(r[0x14], 0x1F, '$73E5: an ordinary throw');
+  assert.equal(r[1] & 0x40, 0, 'not a hop');
+});
+
+
+// ---------------------------------------------------------------------------
+// 1:$77BD -- the level-14 entrance, and the two registers it owns.
+// ---------------------------------------------------------------------------
+
+/** Level 14 mid-entrance, one frame before $C750 steps 1 -> 2. */
+function entrance() {
+  const state = arena({ level: 0x0E, bossId: 4, tables: {
+    introPath: new Array(25).fill(0x00),      // "wait", so nothing moves
+    introPoses: new Array(25).fill(0x20),
+  } });
+  state.flow.bossMode = 1;                     // $0DE0
+  state.flow.bossHop = 1;                      // $77C4: DEC hits 1 this frame
+  effects(state).entranceHold = 1;             // $0DE3
+  state.video.bgp = 0xFF;                      // $0DFD: the blackout
+  state.video.windowY = 0x90;
+  state.video.windowLatchY = 0x90;
+  state.enemyDraws.length = 0;
+  return state;
+}
+
+test('$77D5 restores BGP $E4 and drops the window -- register AND latch', () => {
+  // $77D5-$77DA writes $FFAD = $E4 and $FFAC = 0. $FFAD is rBGP's shadow, NOT
+  // an object palette ($0806-$0816 settles the mapping), and this write is the
+  // RESTORE half of $0DFD's `LD A,$FF / LDH [$FFAD],A` at level-14 init.
+  //
+  // The window half is the one that cost pixels: drawWindow reads
+  // windowLatchY, never windowY, so writing only the register left the shaft
+  // mask parked at $90 and the renderer bailed every frame. MEASURED
+  // (pixeldiff l14-walk): f120/f160/f200 went 14104 wrong pixels -> 0.
+  const s = entrance();
+  updateEnemies(s);
+  assert.equal(s.flow.bossMode, 2, '$77D2');
+  // $77CB loads $3F and FALLS THROUGH into phase 2, whose $77ED decrements it
+  // on the very same frame -- the same shape as $72B6 falling into $72BB.
+  assert.equal(s.flow.bossHop, 0x3E, '$77CB, already ticked once by $77ED');
+  assert.equal(s.video.bgp, 0xE4, '$77D5');
+  assert.equal(s.video.windowY, 0, '$77D8');
+  // NOTE, so nobody over-reads this line: $77D8's own latch write is not
+  // independently observable, because $77D5 falls through into phase 2 and
+  // $78A4 writes the same field again on the same frame. The test below is the
+  // one that actually pins the latch; this asserts the frame's net effect.
+  assert.equal(s.video.windowLatchY, 0, 'and the field drawWindow actually reads');
+  assert.equal(s.player.vy, 0x10, '$77DC: the balloon reuses $FF87');
+});
+
+test('every drawn entrance frame re-drops the window ($78A4), latch included', () => {
+  const s = entrance();
+  updateEnemies(s);                            // -> phase 2
+  s.video.windowY = 0x90;
+  s.video.windowLatchY = 0x90;
+  s.player.vy = 0x10;                          // hold the path arm
+  s.flow.bossHop = 5;
+  updateEnemies(s);
+  assert.equal(s.video.windowLatchY, 0);
+});
+
+test('$77FF ends the entrance: window off, $C740 back to $FF', () => {
+  // $780B is `LD A,$FF / LD [$C740],A`, which re-enables melee and batarang
+  // damage AND brings the HUD back -- both main-loop arms open with `CP $FF`
+  // -- so the entrance latch has to clear itself rather than lean on $C750.
+  // MEASURED (armhits on 1:$780B/$7810): the cartridge's write lands at f729
+  // and the port's entranceHold goes 1 -> 0 at f729 with windowLatchY $90.
+  const s = entrance();
+  updateEnemies(s);                            // phase 2
+  s.input.pressed = 0x08;                      // START skips the rest
+  updateEnemies(s);
+  assert.equal(s.flow.bossMode, 0, '$7808');
+  assert.equal(s.flow.bossHop, 0, '$7802');
+  assert.equal(s.flow.bossCrit, 0, '$7805');
+  assert.equal(s.player.vy, 0, '$7800');
+  assert.equal(s.video.windowY, 0x90, '$7810');
+  assert.equal(s.video.windowLatchY, 0x90);
+  assert.equal(effects(s).entranceHold, 0, '$780B: $C740 = $FF');
+  assert.equal(c740Idle(s), true, 'so damage and the HUD are live again');
 });

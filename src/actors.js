@@ -27,6 +27,7 @@
 import { u8, i8, cellIndex } from './state.js';
 import { drawMetasprite } from './render/metasprite.js';
 import { actorTypeA } from './conveyor.js';
+import { c740Idle } from './effects.js';
 
 export const SLOTS = 8;
 export const RECORD = 16;
@@ -579,9 +580,12 @@ function actorTypeB(state, r) {
   cacheScreenPos(state, r);                         // $4849-$485D
 
   if (r[0x0D] === 0) return;                        // $4862: nobody riding
-  // $4867: $C740 must be $FF. The port models that byte through flow.bossMode
-  // exactly as meleeHitTest does -- 0 means "$FF, normal play".
-  if (state.flow.bossMode) return;
+  // $4867: $C740 must be $FF. Not $C750 -- the same correction the melee and
+  // batarang gates needed. It is unobservable here (level 6 has no boss, so
+  // $C740 never leaves $FF on the only level a type-$0B exists on) and is
+  // transcribed anyway, because "unreachable today" is a property of the level
+  // data, not of the routine.
+  if (!c740Idle(state)) return;
   if (state.player.action === 2) return;            // $486F: $C71E, rope flight
   // $FFC9. Written only by loc_00_2EF4, which is not ported -- so this reads
   // undefined today and the deck never carries. Deliberate: see the header.

@@ -55,6 +55,13 @@ def sample(m, screen):
         'cursor': m[0xC712],                # $C712
         'mode': m[0xC713],                  # $C713
         'hp': m[0xFF8A],                    # $FF8A
+        # $FF8E and $C754 are the reason fixes 6 and 7 were invisible for so
+        # long. The 'game-over-wipes-progress' scenario checked $C753 and never
+        # looked at $C754, two bytes away, and every recording ran at the stock
+        # $FF8E = $0A -- so "max HP is reset on every level load" and "the +2
+        # latch survives the boot vector" both passed 8/8.
+        'hpMax': m[0xFF8E],                 # $FF8E
+        'maxHpTaken': m[0xC754],            # $C754
         'cursorTile': m[CURSOR_CELL],
         'continueRow': [m[CONTINUE_CELL + i] for i in range(8)],
         'livesDigit': m[LIVES_CELL],
@@ -67,6 +74,15 @@ def main():
     ap.add_argument('--level', type=int, required=True)
     ap.add_argument('--mask', default='00', help='hex $C753 before the event')
     ap.add_argument('--lives', type=int, default=None, help='force $C767')
+    # Both are values the ROM writes itself: 1:$4D70 stamps $FF8E and 1:$4D91
+    # sets the $C754 bit, together, when the +2 heart is taken. Every earlier
+    # recording ran at the stock $0A/$00, so nothing in the corpus could ever
+    # have noticed a level load resetting max HP or a game over failing to
+    # clear the latch.
+    ap.add_argument('--max-hp', type=lambda s: int(s, 16), default=None,
+                    help='hex $FF8E before the event (the +2 pickup value)')
+    ap.add_argument('--max-hp-taken', type=lambda s: int(s, 16), default=None,
+                    help='hex $C754 before the event')
     ap.add_argument('--press-start', action='store_true',
                     help='tap START on the menu the event lands on')
     ap.add_argument('--poke-at', type=int, default=40)
@@ -137,6 +153,11 @@ def main():
     m[0xC753] = int(args.mask, 16)
     if args.lives is not None:
         m[0xC767] = args.lives
+    if args.max_hp is not None:
+        m[0xFF8E] = args.max_hp
+        m[0xFF8A] = args.max_hp             # 1:$4D72 heals as it upgrades
+    if args.max_hp_taken is not None:
+        m[0xC754] = args.max_hp_taken
     start = sample(m, 'level')
 
     # Everything so far is the BOOT path -- one $0150, one $035B, one $04BB

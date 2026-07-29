@@ -136,6 +136,14 @@ export const SYNTHETIC_TABLES = {
                   0, 4, 4, 0, 1, 5, 5, 1, 0, 0, 4, 4, 1, 1, 5, 5],
   ropeLinks: new Array(10).fill(0),
   ropeHooks: new Array(2).fill(0),
+  // 0:$13FE, 5 subtypes x 4 metasprite ids, indexed by the effect record's
+  // +5 and then by `(counter & $18) >> 3`. Shaped like the real block; the
+  // VALUES are zeros for the usual reason (see the header) -- what matters
+  // here is that the table EXISTS, because doors.js's tickEffect throws on a
+  // missing one and any test that leaves a live record in the $C693 pool now
+  // reaches it. collision.js's breakable-restore puff (0:$1374-$1388) is the
+  // spawner that made that reachable from a fixture that had never had one.
+  effectSprites: Array.from({ length: 5 }, () => new Array(4).fill(0)),
   // A valid but empty sub_00_0A0E script: the bare terminator.
   continueScript: [0x00],
 };

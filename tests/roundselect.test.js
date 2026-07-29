@@ -10,9 +10,25 @@ import {
   showRoundSelect, tickRoundSelect, hideRoundSelect, routeIfOpen,
   continueLevel, ROUTE_LEVEL,
 } from '../src/roundselect.js';
+import { FADE_FRAMES } from '../src/title.js';
+import { clearLevel } from '../src/level.js';
+import { readFileSync } from 'node:fs';
 
 const UP = 0x40, DOWN = 0x80, LEFT = 0x20, RIGHT = 0x10, START = 0x08;
 
+/**
+ * 0:$0B09 and 0:$0B11, the two GLOBAL fade ramps -- every fade in the game
+ * reads the same twelve bytes. loadRoundSelect() hangs them off the art object
+ * so showRoundSelect stays self-contained.
+ */
+const FADE_BGP = [0xE4, 0x90, 0x40, 0x00, 0x1B, 0x06, 0x01, 0x00];
+const FADE_OBP1 = [0xC4, 0x80, 0x00, 0x00];
+
+/**
+ * No ramps on purpose: the cursor tests are testing loc_00_03DC and the fade
+ * would only postpone it by 33 ticks. The one test that IS about the fade
+ * passes its own.
+ */
 function fakeArt() {
   return { bgMap: new Uint8Array(0x400), tiles: {}, vram: new Uint8Array(0x2000) };
 }
@@ -156,26 +172,121 @@ test('hideRoundSelect drops the map so the level can take it back', () => {
   assert.equal(s.roundSelect, null);
 });
 
-test('the OBJ palettes stay live, whatever $0365 appears to say', () => {
-  // $0365 zeroes both shadows, but they do not STAY zero -- measured on the
-  // cartridge mid-screen: rOBP0 $E4, rOBP1 $C4. Transcribing the write
-  // literally makes the bat cursor invisible, because a zeroed OBP maps every
-  // shade to colour 0: the sprite is still in OAM and still drawn.
+test('the screen is built BLACK and $03D7 fades it up', () => {
+  // $0365-$0368 zeroes BGP and OBP0 -- two stores, not three -- and $03D7's
+  // `LD C,$80 / CALL sub_00_0A7F` is a 33-frame fade IN which is what brings
+  // them back to $E4/$E4/$C4. The old belief here was that "something in the
+  // resource loads restores them", which is what a probe that only samples the
+  // SETTLED screen concludes; the fade is the restorer.
+  //
+  // MEASURED (tools/oracle/menushot.py, trace `flash` tail): $FFAD holds $00
+  // through the build, then steps $00 -> $40 -> $90 -> $E4 eight frames apart,
+  // with the first $03DC input iteration 8 frames after the last step.
+  // tools/oracle/menuflow.mjs holds the whole cadence against the cartridge.
   const s = makeScreen();
-  assert.equal(s.video.obp0, GAMEPLAY_PALETTES.obp0);
+  assert.equal(s.video.bgp, 0x00);
+  assert.equal(s.video.obp0, 0x00);
+  // $FFAF is not written here at all -- the state's default survives. Forcing
+  // $C4 made the port's OBP1 disagree with the cartridge's for the first 16
+  // frames of the fade; every entry path arrives with it already zero and the
+  // fade rewrites it on the way back up ($00, $00, $80, $C4).
   assert.equal(s.video.obp1, GAMEPLAY_PALETTES.obp1);
 });
 
-test('the screen asks for its own theme, song $01', () => {
-  // Measured by hooking sub_00_0AE1 across the transition: $0D (confirm blip,
-  // sent by title.js) then $01 mask $03. Without it the screen keeps playing
-  // whatever the title left running.
+test('the fade BLOCKS: no input, no cursor, for 33 frames', () => {
+  // $03D7 sits between the build and the loop head, so $03DC is not reached
+  // until sub_00_0A7F returns. A port that ran the loop during the fade let
+  // START through 33 frames early and drew a cursor onto a black screen.
+  //
+  // fakeArt() deliberately carries no ramps -- the cursor tests want the loop
+  // -- so this one supplies them, which is also what loadRoundSelect() does.
+  const s = createState(makeTunables());
+  s.tables = { ...SYNTHETIC_TABLES, ...CONTINUE_FIXTURE };
+  s.titleManifest = null;
+  showRoundSelect(s, { ...fakeArt(), fadeBgp: FADE_BGP, fadeObp1: FADE_OBP1 });
+  assert.ok(s.roundSelect.fade, '$03D7 armed the fade');
+
+  const steps = [];              // the frame each palette CHANGE lands on
+  const snap = () => [s.video.bgp, s.video.obp0, s.video.obp1].join(',');
+  let prev = snap();
+  for (let i = 0; i < FADE_FRAMES; i++) {
+    press(s, START);
+    assert.equal(tickRoundSelect(s), 'roundselect', `frame ${i} must not hand over`);
+    assert.equal(s.video.sprites.length, 0, `frame ${i} draws no cursor`);
+    if (snap() !== prev) { steps.push([i, snap()]); prev = snap(); }
+  }
+  // sub_00_0A7F steps on `(B & 7) == 0` with B counting DOWN from $21, so the
+  // first step lands one frame in and the rest every eighth after it. bgp and
+  // obp0 walk 0:$0B09 together (mode $80 -> C = 0, so $0A95 and $0AB4 both
+  // pass); obp1 walks 0:$0B11, which is $00 $00 $80 $C4 read backwards.
+  assert.deepEqual(steps, [[1, '0,0,0'], [9, '64,64,0'],
+                           [17, '144,144,128'], [25, '228,228,196']]);
+  assert.equal(s.roundSelect.fade, null, 'and then the loop head is reached');
+  press(s, START);
+  assert.equal(tickRoundSelect(s), 'start');
+});
+
+test('the screen asks for NO music -- every caller already has', () => {
+  // loc_00_035B-$03DC contains no `CALL sub_00_0AE1` at all. The three ways in
+  // each send their own cue FIRST:
+  //   $0355  $01/$03  the title flash          (src/title.js)
+  //   $2AC6  $2E/$03  the death sequence       (src/player.js)
+  //   $3634  $01/$03  a route clear            (src/level.js clearLevel)
+  //
+  // MEASURED (menushot.py `songs`, which stamps every $0AE1 hit with the loop
+  // counters): the last request on the title walk is $01/$03 at flash=120 and
+  // there is nothing at rs >= 1. Sending $01 here restarted the theme a second
+  // time on that path and -- worse -- OVERRODE the death path's $2E, so the
+  // port played the round-select theme where the cartridge plays the
+  // after-death one. No memory comparison can ever catch that (docs 03, 32).
   const s = createState(makeTunables());
   s.tables = { ...SYNTHETIC_TABLES, ...CONTINUE_FIXTURE };
   s.sound = { queue: [] };
   s.titleManifest = null;
   showRoundSelect(s, fakeArt());
-  assert.deepEqual(s.sound.queue.at(-1), { id: 0x01, mask: 0x03 });
+  assert.deepEqual(s.sound.queue, []);
+});
+
+test('WIRING GAP (level.js): a route clear must send $01/$03 on its way here', () => {
+  // The paired half of the test above. loc_00_035B makes no request, so the
+  // THREE callers must each make their own, and $3634 -- `LD BC,$0103 / CALL
+  // sub_00_0AE1`, three instructions before `JP loc_00_035B` at $363A -- is
+  // the route-clear one. src/level.js's clearLevel still carries the old
+  // comment ("showRoundSelect already sends exactly that, so requesting it
+  // here would double the command"), which is now inverted: nobody sends it,
+  // and clearing a route reaches round select SILENT.
+  //
+  // No memory comparison can catch this class of bug (docs/03-VERIFICATION.md
+  // 32) -- the screen builds identically either way. Only a cue trace can, and
+  // tools/oracle/menuflow.mjs already holds the title walk's list.
+  //
+  // THE FIX (src/level.js clearLevel, ~line 452, just before the
+  // `return { to: 'roundselect' }`):
+  //     if (state.sound && state.sound.queue.length < 4) {
+  //       state.sound.queue.push({ id: 0x01, mask: 0x03 });
+  //     }
+  const s = createState(makeTunables());
+  s.tables = { ...SYNTHETIC_TABLES };
+  s.sound = { queue: [] };
+  s.level.number = 0x04;
+  s.level.bossId = 1;
+  s.flow.routeMask = 0;
+  assert.deepEqual(clearLevel(s), { to: 'roundselect' });
+  assert.deepEqual(s.sound.queue, [{ id: 0x01, mask: 0x03 }],
+    '$3634 is the only place the round-select theme is asked for on this path');
+});
+
+test('the OTHER two ways into round select do send their own cue', () => {
+  // Kept beside the gap so "nobody sends it" is a measurement of this tree and
+  // not an assumption: title.js's $0355 fires on the flash handover, and
+  // player.js's $2AC6 sends $2E -- the after-death theme, which the old
+  // showRoundSelect request used to OVERRIDE with $01.
+  const title = readFileSync(new URL('../src/title.js', import.meta.url), 'utf8');
+  assert.match(title, /requestSound\(state, 0x01, 0x03\)/,
+    'title.js $0355 still sends $01/$03');
+  const player = readFileSync(new URL('../src/player.js', import.meta.url), 'utf8');
+  assert.match(player, /requestSound\(state, 0x2E, 0x03\)/,
+    'player.js $2AC6 still sends $2E/$03, and nothing may replace it with $01');
 });
 
 // ---------------------------------------------------------------------------

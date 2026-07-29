@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 
 import { updatePlayer, BTN, ANIM } from '../src/player.js';
 import { i8, u8 } from '../src/state.js';
+import { effects, COUNTDOWN_START } from '../src/effects.js';
 
 import {
   makeState, grid, put, fillCol, floorFrom, placePlayer, setInput, step, corridor,
@@ -995,4 +996,350 @@ test('the hp death sits AFTER the knockback, so the killing blow still throws yo
   assert.equal(state.player.air, RISING, 'the knockback ran');
   assert.equal(state.player.vx, 16);
   assert.equal(state.player.dead, 0, 'and the death did not');
+});
+
+// ---------------------------------------------------------------------------
+// The jump cue.  ROM: $1A35, one instruction before the air flag.
+// ---------------------------------------------------------------------------
+
+test('a jump asks for sound $0F mask $01, on the jump frame itself', () => {
+  // `LD BC,$0F01 / CALL sub_00_0AE1` at $1A35 -- between the grounded test at
+  // $1A30 and $1A3B's `LD A,$01 / LDH [$FF80],A`. This was simply MISSING, so
+  // every jump in the game was silent, and it hid because the other two $0F
+  // sites ARE ported (the wall-jump lock expiring at $17FF, and the rope's) --
+  // the cue itself was never suspect.
+  //
+  // MEASURED: playerhunt sound on script "40:,4:A,46:" queues exactly one
+  // $0F/$01 on frame 40 and portsound.mjs queued nothing at all; cuediff
+  // l1-walk-jump-punch went from "$0F/$01 13 vs 0" to 13 vs 13, all from site
+  // 00:1A38.
+  const state = ground();
+  state.sound = { queue: [] };
+  setInput(state, BTN.A, BTN.A);
+  step(state);
+  assert.equal(state.player.air, RISING);
+  assert.deepEqual(state.sound.queue, [{ id: 0x0F, mask: 0x01 }]);
+});
+
+test('a REFUSED jump is silent -- the cue is inside the guards, not before them', () => {
+  // $1A2B (A newly pressed) and $1A30 (grounded) both return before $1A35.
+  // Queueing on the button press instead would chirp once a frame while the
+  // player holds A in mid-air.
+  const airborne = sky({ air: FALLING });
+  airborne.sound = { queue: [] };
+  setInput(airborne, BTN.A, BTN.A);
+  step(airborne);
+  assert.deepEqual(airborne.sound.queue, [], 'airborne: no jump, no cue');
+
+  const held = ground();
+  held.sound = { queue: [] };
+  setInput(held, BTN.A, 0);              // held, not NEWLY pressed
+  step(held);
+  assert.equal(held.player.air, GROUNDED);
+  assert.deepEqual(held.sound.queue, []);
+});
+
+// ---------------------------------------------------------------------------
+// A dead player keeps his physics.  ROM: $1826 / $18FF / $1909.
+// ---------------------------------------------------------------------------
+
+test('a dead player still falls -- the update is not short-circuited', () => {
+  // The port used to run `if (dead) { deathTick; return; }`, which froze a
+  // corpse wherever it died. The cartridge does not: $1826 leaves the
+  // HORIZONTAL block only, $18FF skips the jump start only, and the ceiling,
+  // gravity and floor probes all still run.
+  //
+  // MEASURED (tools/oracle/deadphys.py --level 3 --warp 7,28 --kill 10, 452
+  // frames against deadport.mjs): x, y, vx, vy, air, hp and the carry inbox
+  // are identical subpixel for subpixel, and the cartridge's own hook counts
+  // are ceiling x1, floor x1, wall probe x0 per frame from f11. The port was
+  // frozen at $07A8 with carry 0.
+  const state = sky({ air: FALLING, vy: 0 });
+  state.player.dead = 1;
+  const y0 = state.player.y;
+  step(state, 5);
+  assert.ok(state.player.y > y0, 'gravity still applies to the corpse');
+  assert.equal(state.player.air, FALLING);
+});
+
+test('a dead player takes NO horizontal input and runs NO wall probe', () => {
+  // $1826: `LD A,[$C715] / AND A / JP NZ, loc_00_1A57` -- past the facing, the
+  // acceleration, move() AND the $1865 probe pair. The corpse keeps whatever
+  // velocity it had (that is how it rides a conveyor) but the input is inert.
+  //
+  // Put a wall one probe-width to the right: a live player is stopped by it, a
+  // dead one is not, which is the observable form of "wall probe x0".
+  const g = floorFrom(grid(16), 14);
+  fillCol(g, 6, '#');
+  const mk = (dead) => {
+    const s = makeState(g, { tables: BURST_TABLES });
+    placePlayer(s, 5, 13, 0xF0, 0x00);
+    Object.assign(s.player, { air: GROUNDED, vx: 0x10, vy: 0, facing: 0, dead });
+    setInput(s, BTN.RIGHT);
+    return s;
+  };
+  const alive = mk(0);
+  step(alive);
+  assert.equal(alive.player.vx, 0, 'the live player is stopped by the wall');
+
+  const corpse = mk(1);
+  step(corpse);
+  assert.equal(corpse.player.vx, 0x10, 'the corpse keeps its velocity');
+  assert.equal(corpse.player.x, (5 << 8) | 0xF0, 'and does not move on input');
+});
+
+test('a dead player who took the friction path DOES still get his wall probes', () => {
+  // The ORDER matters: the four "blocked" tests ($1813/$1815/$181A/$1820) are
+  // UPSTREAM of $1826, so a player who dies mid-swing takes $183B and reaches
+  // $1865 like anyone else. Reproduced rather than tidied.
+  const g = floorFrom(grid(16), 14);
+  fillCol(g, 6, '#');
+  const s = makeState(g, { tables: BURST_TABLES });
+  placePlayer(s, 5, 13, 0xF0, 0x00);
+  Object.assign(s.player, { air: GROUNDED, vx: 0x10, vy: 0, facing: 0,
+                            dead: 1, attackTimer: 4 });
+  setInput(s, BTN.RIGHT);
+  const x0 = s.player.x;
+  step(s);
+  assert.notEqual(s.player.x, x0, 'the friction path moved and probed');
+});
+
+// ---------------------------------------------------------------------------
+// The cling lock still probes.  ROM: $1909 -> $1A9D, $1AC2 -> $1B1B.
+// ---------------------------------------------------------------------------
+
+test('the frozen cling frames still run the ceiling AND floor probes', () => {
+  // $1909 jumps to $1A9D, NOT to $1A57: a lock skips the jump start and the
+  // RISE INTEGRATE (which is what freezes y) and nothing else. The port used
+  // to return from the top of vertical(), which made falling()'s own $1AC2 arm
+  // dead code.
+  //
+  // MEASURED (playerhunt cling, walljump-launch-off-right-wall): ceilProbes 1
+  // and floorProbes 1 on all 16 lock frames. Nothing observable changes THERE
+  // -- which is why this needs a fixture that makes the probe visible: an
+  // energy pickup in the cell the floor probe reads is consumed on a locked
+  // frame exactly as it would be on a live one.
+  const g = floorFrom(grid(8), 14);
+  fillCol(g, 4, '#');
+  const s = makeState(g);
+  placePlayer(s, 3, 6, 0x80, 0x00);
+  Object.assign(s.player, { air: FALLING, vy: -10, vx: 0, facing: 0, jumpReleased: 1 });
+  setInput(s, BTN.A);
+  step(s);                                   // the cling itself
+  assert.equal(s.player.clingLock & 0x1F, 0x10, 'locked');
+
+  // One hitbox-height below the frozen player, i.e. the cell probeFloor reads.
+  const p = s.player;
+  const row = ((p.y + (p.halfH << 4)) >> 8) & 0x0F;
+  const col = p.x >> 8;
+  const idx = (col * 16 + row) * 2;
+  s.level.cells[idx] = 'e'.charCodeAt(0);
+  s.level.cells[idx + 1] = 0x20;             // COLL.PICKUP_ENERGY
+  p.hp = 4;
+
+  step(s);                                   // a LOCKED frame
+  assert.equal(p.hp, 10, 'the floor probe ran and took the pickup');
+  assert.equal(s.level.cells[idx + 1], 0, 'and erased the cell');
+  assert.equal(p.clingLock & 0x1F, 0x0F, 'still locked -- this was not a live frame');
+});
+
+// ---------------------------------------------------------------------------
+// $1643 -- the carry is the ELSE of the scripted-move test.
+// ---------------------------------------------------------------------------
+
+test('a scripted move NEITHER consumes nor clears the $C72F carry inbox', () => {
+  // $1643 is `LD A,[$C737] / AND A / JP Z, loc_00_170A`, so applyCarry is the
+  // else-branch. While a script runs, $C72F/$C730 are not applied, not
+  // mirrored into $C723/$C724, and not zeroed -- a displacement queued on the
+  // arming frame stays pending for the WHOLE walk-through and lands on the
+  // first frame after it ends. The port applied it unconditionally, ahead of
+  // the test.
+  //
+  // MEASURED (tools/oracle/carrygate.py --level 5 --warp 3,20): $C737 = 1 for
+  // f43-f81 with the $170A hook at 0 hits and $C72F holding 4 throughout; then
+  // f82 has $170A x1, $C723 = 4 and $C72F = 0. tools/oracle/carryport.mjs is
+  // the executable form of that against the port, and it exits non-zero.
+  // A one-mode script table: mode 1, direction 0 = walk right. Synthetic --
+  // 0:$1673's real table is manifest data -- but it drives the shipped
+  // loc_00_164A, so what is under test is the ROUTING, not the fixture.
+  const s = ground({}, { tables: { ...BURST_TABLES, scriptPtrs: [0], scriptData: [0] } });
+  s.script.mode = 1;
+  s.script.steps = 8;
+  s.carry.x = 4;
+  const x0 = s.player.x;
+
+  for (let i = 0; i < 6; i++) {
+    step(s);
+    assert.equal(s.script.mode, 1, 'script frame ' + i + ': still running');
+    assert.equal(s.carry.x, 4, 'script frame ' + i + ': the inbox is untouched');
+    assert.equal(s.rope.saveX, 0, 'script frame ' + i + ': $C723 is not written');
+  }
+
+  s.script.mode = 0;                          // the script ends
+  const x1 = s.player.x;
+  step(s);
+  assert.equal(s.carry.x, 0, '$1738 clears it unconditionally, once');
+  assert.equal(s.rope.saveX, 4, '$170E mirrors it into $C723 on the way');
+  assert.equal(s.player.x, (x1 + 4) & 0xFFFF, 'and NOW it moves the player');
+  assert.ok(x0 !== undefined);
+});
+
+// ---------------------------------------------------------------------------
+// $17A0-$17B0 -- the level-4 crit knockback.
+// ---------------------------------------------------------------------------
+
+test('level 4 + $C73F launches at $40, everywhere else at $18', () => {
+  // $17A2 reads $FFB0 -- the LEVEL -- not $C73E, and they are not the same
+  // byte even though they agree on level 4. $C73F is boss 1's crit flag,
+  // written by $3CB6 and by the crit dash at $62BF.
+  //
+  // The port always took $17B2, which is a 40-unit error on EVERY knockback in
+  // the boss-1 fight. MEASURED (playerhunt kb4): level 4 + crit -> vy 60 via
+  // arm $17AC, level 4 without -> 20 via $17B2, level 5 + crit -> 20. Live:
+  // reverting it reproduces `vy first f445 oracle=62 port=22` on
+  // enemyhunt l4-batarang-boss1 and cascades over 56 frames.
+  const kb = (level, crit) => {
+    const s = ground({ iframes: 0x5A }, { level });
+    s.flow.bossCrit = crit;
+    step(s);
+    return s.player.vy;
+  };
+  // vertical() has already taken one rising-gravity step by the end of the
+  // frame, so a trace reads $40 - 2 = 62 and $18 - 2 = 22 -- which is exactly
+  // the pair enemyhunt reported (`oracle=62 port=22`).
+  assert.equal(kb(4, 1), 0x40 - 2, 'level 4 + $C73F: $17AC');
+  assert.equal(kb(4, 0), 0x18 - 2, 'level 4 alone: $17B2');
+  assert.equal(kb(5, 1), 0x18 - 2, '$C73F alone: $17B2');
+  assert.equal(kb(0x08, 1), 0x18 - 2, 'and it really is the level, not "a boss level"');
+  assert.equal(kb(4, 1) - kb(4, 0), 0x40 - 0x18, '40 units on every boss-1 knockback');
+});
+
+// ---------------------------------------------------------------------------
+// $1888 / $18C8 -- the zero-velocity asymmetry.
+// ---------------------------------------------------------------------------
+
+test('a ZERO velocity still probes RIGHT ($188A is BIT 7) but not LEFT ($18CA is JP Z)', () => {
+  // $186E and $18A9 fall THROUGH into $1888 and $18C8, so those labels receive
+  // a velocity accelerate() may have left at zero -- and their guards are not
+  // symmetric. The port routed every "vx == 0" case to $1865 (both probes)
+  // instead, which pushed the player out of a wall one frame early on every
+  // other frame for as long as he held a direction.
+  //
+  // MEASURED with pyboy hooks on $1FAF/$1F87 (level 12, warp 50,18, hold
+  // left): the cartridge runs the left probe on f50/f52/f54 and NOT on
+  // f51/f53/f55 -- exactly the frames the air throttle leaves VelX at 0.
+  // Without this the level-12 break sequence could not be made frame-exact.
+  //
+  // The probe is made visible by putting a wall one probe-width away and
+  // watching for the 1 px push $1F61/$1F87 applies.
+  const scene = (wallCol, facing, dir, xlo) => {
+    const g = floorFrom(grid(16), 14);
+    fillCol(g, wallCol, '#');
+    const s = makeState(g);
+    placePlayer(s, 5, 13, xlo, 0x00);
+    // Airborne with the throttle armed: accelerate() returns having done
+    // nothing, so move*() is entered with vx still 0. That is the cartridge's
+    // own route into these labels, not a contrivance.
+    Object.assign(s.player, { air: FALLING, vx: 0, vy: 0, facing, airThrottle: 1 });
+    setInput(s, dir);
+    return s;
+  };
+
+  // RIGHT: $1888's guard skips only a NEGATIVE velocity, so the probe runs and
+  // the 1 px push moves X.
+  const right = scene(6, 0, BTN.RIGHT, 0xF0);
+  const rx = right.player.x;
+  step(right);
+  assert.equal(right.player.vx, 0, 'the air throttle ate this frame');
+  assert.notEqual(right.player.x, rx, '$1888 probed anyway and pushed');
+
+  // LEFT: $18C8's guard skips a ZERO velocity too, so nothing probes at all.
+  const left = scene(4, 1, BTN.LEFT, 0x10);
+  const lx = left.player.x;
+  step(left);
+  assert.equal(left.player.vx, 0);
+  assert.equal(left.player.x, lx, '$18C8 ran no probe, so no push');
+});
+
+test('$1888 probes RIGHT then LEFT-only-if-unblocked; $1865 always probes both', () => {
+  // The other half of the same fall-through, and the one that a `vx == 0 ->
+  // $1865` shortcut gets wrong even on the RIGHT side: $1888 runs the leading
+  // probe and RETURNS on contact ($189B -> $18A3), while $1865 runs both
+  // unconditionally. Reachable with vx = 0 because $186E falls into $1888.
+  //
+  // Made observable with a wall that blocks WITHOUT pushing ($FF, $1F65's
+  // arm) on the right and an ordinary one on the left: the correct path leaves
+  // X exactly where it was, the both-probes one takes the left wall's 1 px
+  // push and its $80 snap.
+  const g = floorFrom(grid(16), 14);
+  fillCol(g, 6, 'X');                 // COLL.SOLID_RUNTIME -- blocks, no push
+  fillCol(g, 4, '#');
+  const s = makeState(g);
+  placePlayer(s, 5, 13, 0x8F, 0x00);
+  Object.assign(s.player, { air: FALLING, vx: 0, vy: 0, facing: 0, airThrottle: 1 });
+  setInput(s, BTN.RIGHT);
+  step(s);
+  assert.equal(s.player.x, (5 << 8) | 0x8F,
+    'the right probe blocked and the left one never ran');
+});
+
+test('...and the frames the throttle does NOT eat probe on both sides', () => {
+  // The other half, so the asymmetry above is a rule rather than a fixture
+  // accident: with airThrottle 0 the acceleration lands, vx is non-zero, and
+  // the left label moves and probes like the right one.
+  const g = floorFrom(grid(16), 14);
+  fillCol(g, 2, '#');                 // far enough that nothing blocks
+  const s = makeState(g);
+  placePlayer(s, 5, 13, 0x10, 0x00);
+  Object.assign(s.player, { air: FALLING, vx: 0, vy: 0, facing: 1, airThrottle: 0 });
+  setInput(s, BTN.LEFT);
+  const x0 = s.player.x;
+  step(s);
+  assert.ok(s.player.vx < 0, 'accelerate() ran this frame');
+  assert.notEqual(s.player.x, x0);
+});
+
+// ---------------------------------------------------------------------------
+// $26B7 / $3C4E / $4867 -- the damage gate is $C740, not $C750.
+// ---------------------------------------------------------------------------
+
+test('a dead-boss countdown makes melee and batarangs INERT for the whole 255 frames', () => {
+  // `LD A,[$C740] / CP $FF / JR NZ`, at three sites. The two bytes agree on
+  // level 14's entrance and NOWHERE else: 1:$4EF1 stamps $C740 = $FE when a
+  // boss dies and 1:$78CC/$7936 walk it down to 0, so for 255 fully
+  // controllable frames after the kill the cartridge's punch does NOTHING --
+  // no $19, no hit flash, no damage -- while $C750 sits at 0.
+  //
+  // MEASURED (tools/oracle/dmggate.py, level 4, boss HP zeroed at f40 with a
+  // fake enemy planted on the probe point): $C740 non-$FF for 315 frames, 8
+  // melee candidates and 63 batarang candidates REACHING the gate, and 0
+  // damage arms past it. dmggateport.mjs drives the port both ways: with
+  // $C740 = $FF, 56 hits and 56 $19 cues; with $FE, 0 and 0.
+  const live = punchScene();
+  const target = enemyAtProbe(live);
+  live.sound = { queue: [] };
+  step(live);
+  assert.equal(target[0x16], 4, 'the control: an ordinary punch damages');
+  assert.ok(live.sound.queue.some((q) => q.id === 0x19), 'and asks for $19');
+
+  const dying = punchScene();
+  const spared = enemyAtProbe(dying);
+  dying.sound = { queue: [] };
+  effects(dying).countdown = COUNTDOWN_START;          // 1:$4EF1
+  step(dying);
+  assert.equal(spared[0x16], 6, 'HP untouched');
+  assert.equal(spared[0x17], 0, 'no stun -- $26CA was never reached');
+  assert.equal(spared[0] & 0x04, 0, 'and no hit flash');
+  assert.deepEqual(dying.sound.queue.filter((q) => q.id === 0x19), []);
+});
+
+test('level 14s $C740 == 1 gates damage exactly the same way', () => {
+  // The entrance latch is a different VALUE of the same byte, so it must reach
+  // the same gate. c740Idle() is the single reader precisely so these cannot
+  // drift apart.
+  const s = punchScene();
+  const target = enemyAtProbe(s);
+  effects(s).entranceHold = 1;                          // $0DE3
+  step(s);
+  assert.equal(target[0x16], 6);
 });

@@ -118,9 +118,17 @@ export function showOptions(state, windowMap) {
   setWindowY(state, WY_PARKED);
   state.video.windowMap = windowMap;
   state.video.windowDither = false;   // the panel is opaque, unlike the water
-  // $38A5: OBP1's shadow goes to $1B for this screen only. BGP is left alone
-  // here -- the raster arm sets it to $1B per scanline once the squash starts.
-  state.video.obp1 = 0x1B;
+  // $38A5: `LD A,$1B / LDH [$FFAE],A`. **$FFAE is OBP0**, not OBP1 -- the
+  // shadow trio is $FFAD/$FFAE/$FFAF = BGP/OBP0/OBP1 (same order sub_00_0A7F
+  // writes them at $0AAE/$0AC3/$0ACA). BGP is left alone here; the raster arm
+  // at $094F sets it to $1B per scanline once the squash starts.
+  //
+  // MEASURED in the options loop (tools/oracle/menushot.py, snap `options`):
+  // bgp/obp0/obp1 = $E4/$1B/$C4. Writing OBP1 instead left the bat cursor on
+  // the port's OBP0 = $E4 -- the NORMAL ramp, i.e. dark -- where the
+  // cartridge draws it through $1B, the inverted one, i.e. light. 72 wrong
+  // pixels on rows 83-91, which is the whole cursor.
+  state.video.obp0 = 0x1B;
 
   requestSound(state, 0x25, 0x03);              // $3893: LD BC,$2503
   paintDifficulty(state, state.options);        // $3899
@@ -131,7 +139,7 @@ export function showOptions(state, windowMap) {
 export function hideOptions(state) {
   setWindowY(state, WY_PARKED);
   state.video.windowMap = null;
-  state.video.obp1 = GAMEPLAY_PALETTES.obp1;    // $390C: back to $E4
+  state.video.obp0 = GAMEPLAY_PALETTES.obp0;    // $390C: $FFAE back to $E4
   state.options = null;
 }
 
@@ -200,7 +208,7 @@ export function tickOptions(state) {
       o.closing = true;                         // $3905 onward
       o.cursor = ROW_DIFFICULTY;
       o.soundBcd = 0;
-      state.video.obp1 = GAMEPLAY_PALETTES.obp1;   // $390C
+      state.video.obp0 = GAMEPLAY_PALETTES.obp0;   // $390C: $FFAE, not $FFAF
       state.raster.closing = 1;                 // $3910: $C766 = 1
       requestSound(state, 0x25, 0x03);          // $3915
       return 'options';

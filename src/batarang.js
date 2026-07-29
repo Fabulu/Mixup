@@ -11,6 +11,7 @@
 import { u16 } from './state.js';
 import { cameraPixels } from './camera.js';
 import { drawMetasprite } from './render/metasprite.js';
+import { c740Idle } from './effects.js';
 
 export const POOL_SIZE = 3;
 export const FLAG_RETURNING = 0x80;
@@ -47,7 +48,7 @@ export function throwBatarang(state, slot) {
   // return path and, with the $3A6B/$3ADE/$3BF5 retarget below, home on the
   // CHASER rather than on Batman. Default difficulty is 1, so this is the
   // ordinary experience of the final fight, not an edge case.
-  const jokerThrow = state.level.number === 0x0E && state.flow.difficulty !== 0;
+  const jokerThrow = jokerSeek(state);
 
   b.active = true;
   b.flags = (p.facing + 1) | (jokerThrow ? 0x80 : 0);   // $19CE: OR B
@@ -132,8 +133,7 @@ function batarangHitTest(state, b) {
   if (state.level.bossId === 4 && state.flow.bossRage >= 2) return;
   // $3BD1 / sub_00_1172 convention: +8/+16 OAM offsets, u8 wrap. b.screenX
   // holds the drawing convention, so derive the ROM pair from world space.
-  const bsx = (((u16(b.x - state.camera.x) >> 4) + 8) & 0xFF);
-  const bsy = (((u16((b.y & 0x0FFF) - state.camera.y) >> 4) + 0x10) & 0xFF);
+  const { x: bsx, y: bsy } = romScreenPair(state, b);
 
   for (const r of state.enemies) {
     if ((r[0] & 0x80) === 0 || (r[0] & 0x40) !== 0) continue;   // $3C27/$3C2C
@@ -142,11 +142,11 @@ function batarangHitTest(state, b) {
     if (absDiff8(r[7], bsx) > 0x12) continue;
     if (absDiff8(r[8], bsy) > 0x16) continue;
 
-    // $3C4E: $C750, not $C740. Identical today -- $0DC5/$0DCA set both per level and
-    // $0DE0/$0DE3 override both on level $0E -- but they part after a boss
-    // dies: 1:$4EF1 writes $C740 = $FE, which permanently disables ALL melee
-    // and batarang damage while $C750 stays 0. Revisit when bosses land.
-    if (state.flow.bossMode) continue;
+    // $3C4E: `LD A,[$C740] / CP $FF / JP NZ` -- the same gate the melee scan
+    // has at $26B7, on the same byte, and it is NOT $C750. See enemies.js: a
+    // boss dying stamps $C740 = $FE and the countdown holds it non-$FF for 255
+    // frames of ordinary, controllable play in which a thrown batarang is inert.
+    if (!c740Idle(state)) continue;
 
     const st = r[2];
     if (st === 0x04 || st === 0x0B || st === 0x0D) continue;    // immune
@@ -202,8 +202,65 @@ function absDiff8(a, b) {
   return (a & 0xFF) >= (b & 0xFF) ? (a - b) & 0xFF : (b - a) & 0xFF;
 }
 
-/** ROM: $3C0B - sub_00_0C88 with HL = $0C10, a 12 x 16 overlap box. */
+/**
+ * `CP $0E` then `$C756 != 0` -- the level-14 arm, written out once because the
+ * ROM tests it in THREE separate places for three separate swaps and they must
+ * agree: $19C0 (throw sets bit 7 + speed 8), $3A65/$3AD1 (home on the chaser),
+ * $3BF1 (the chaser, not Batman, catches it). Splitting them is how the
+ * regression happened -- the throw arm was ported without the catch arm.
+ */
+function jokerSeek(state) {
+  return state.level.number === 0x0E && state.flow.difficulty !== 0;
+}
+
+/**
+ * ROM: sub_00_1172, the pair cached at record +7/+8 -- the +8/+16 OAM offsets
+ * over world-minus-camera, u8 wrapped. Enemy records hold their pair in this
+ * same convention, so anything compared against r[7]/r[8] must use this and
+ * NOT the bare drawing pair updateScreenPos stores.
+ */
+function romScreenPair(state, b) {
+  return {
+    x: (((u16(b.x - state.camera.x) >> 4) + 8) & 0xFF),
+    y: (((u16((b.y & 0x0FFF) - state.camera.y) >> 4) + 0x10) & 0xFF),
+  };
+}
+
+/**
+ * ROM: $3BED-$3C14 - sub_00_0C88 with HL = $0C10, a 12 x 16 overlap box.
+ *
+ * WHO CATCHES IT IS NOT ALWAYS BATMAN. $3BF5 swaps the target pair for
+ * $C28F/$C290 -- enemy slot 1's cached screen coords, the CHASER -- under the
+ * same level-$0E/non-easy test that swaps the homing target. So the Joker
+ * fight's batarang is a slow seeker that flies to the chaser and is ABSORBED
+ * by it; the player never catches one.
+ *
+ * MEASURED (tools/oracle/jokerbat.py, normal difficulty, throw at f740): the
+ * pair the ROM loads into B/C equals $C28F/$C290 on all 25 frames of flight
+ * and never equals $FF93/$FF94, and the throw lives f740-f764 travelling from
+ * screen ($10,$7B) to the chaser at ($47,$40).
+ *
+ * Testing the PLAYER here regressed level 14 to "no batarang ever appears":
+ * the throw spawns at the player's own X and $40 above him, i.e. inside the
+ * catch box, so with bit 7 already set at throw time every batarang was caught
+ * and its slot freed on its first frame -- ammo spent, nothing drawn.
+ */
 function catchTest(state, b) {
+  if (jokerSeek(state)) {
+    // $C28F/$C290 are enemy slot 1's +7/+8. Those come from sub_00_1172 and so
+    // carry the +8/+16 OAM offsets (MEASURED: jokerbat.py's convention table
+    // matches +8/+16 on every frame and the bare drawing pair on none) -- the
+    // batarang side must be the same pair the hit test builds, not the
+    // drawing-convention screenX/screenY.
+    const chaser = state.enemies[1];
+    const { x: bsx, y: bsy } = romScreenPair(state, b);
+    if (absDiff8(chaser[7], bsx) <= 0x0C && absDiff8(chaser[8], bsy) <= 0x10) {
+      b.active = false;
+      b.flags = 0;
+    }
+    return;
+  }
+
   const p = state.player;
   const cam = cameraPixels(state);
   const px = (p.x >> 4) - cam.x;                      // $FF93
@@ -279,7 +336,7 @@ const brakeNeg = (v) => (v >= 4 ? v - 4 : 0);         // SUB $04 / JR NC
  */
 function homingTarget(state) {
   // $3A65/$3AD1: CP $0E, then $C756 != 0.
-  if (state.level.number === 0x0E && state.flow.difficulty !== 0) {
+  if (jokerSeek(state)) {
     const chaser = state.enemies[1];
     return { xhi: chaser[0x0E], yhi: chaser[0x10] };   // $C296 / $C298
   }

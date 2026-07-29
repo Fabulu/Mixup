@@ -62,7 +62,15 @@ export class Sound {
     return true;
   }
 
-  /** Queue a ROM sound id. Works before start(); the request is held. */
+  /**
+   * Post a ROM sound id.  ROM: sub_00_0AE1.
+   *
+   * There is exactly ONE buffer once the driver exists -- the $C6FB mailbox
+   * inside it -- and `request` drops when all four slots are taken, which is
+   * what the cartridge does. `pending` is not a second stage: it only exists
+   * before start(), i.e. before a browser has given us an AudioContext, and it
+   * is flushed into the mailbox the instant one arrives.
+   */
   play(id, mask = REQ_PLAY) {
     if (!this.drv) {
       if (this.pending.length < 4) this.pending.push({ id, mask });
@@ -81,16 +89,27 @@ export class Sound {
   }
 
   /**
-   * Drain the game's sound queue into the driver. Called once per game frame;
-   * the driver itself is NOT stepped here -- that happens on the audio clock.
+   * Hand the game's requests to sub_00_0AE1. Called once per game frame; the
+   * driver itself is NOT stepped here -- that happens on the audio clock.
+   *
+   * `state.sound.queue` is NOT a buffer, it is a per-frame staging list: the
+   * cartridge calls $0AE1 synchronously from wherever the cue is raised, and
+   * the port cannot, because game code runs on the display clock and the
+   * mailbox is read on the timer's. So every request the frame raised is
+   * posted here and the list is emptied unconditionally -- anything the
+   * mailbox has no room for is DROPPED, exactly as $0B07 drops it, rather
+   * than carried into the next frame.
+   *
+   * Carrying it over is what the port used to do (a `while (q.length)` into a
+   * second 4-deep FIFO inside the driver = 8 buffered where the cartridge
+   * holds 4), and it is why the port could never lose a cue the cartridge
+   * loses -- level 12's nine-frame $17 spam being the case that matters.
    */
   pump(state) {
     if (!state.sound) return;
     const q = state.sound.queue;
-    while (q.length) {
-      const r = q.shift();
-      this.play(r.id, r.mask ?? REQ_PLAY);
-    }
+    for (const r of q) this.play(r.id, r.mask ?? REQ_PLAY);
+    q.length = 0;
   }
 
   render(e) {

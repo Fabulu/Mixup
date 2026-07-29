@@ -190,6 +190,14 @@ export function createEffects() {
   return {
     burst: Array.from({ length: BURST_SLOTS }, () => new Uint8Array(BURST_RECORD)),
     countdown: COUNTDOWN_IDLE,   // $C740
+    // $C740 again -- level 14's entrance value. $0DE3 writes 1 there, three
+    // instructions after $0DE0 writes $C750 = 1, and 1:$77FF puts $FF back
+    // when the entrance ends. It is the SAME byte as `countdown`, but the two
+    // ranges never overlap ($FE..$00 vs 1) and modelling the entrance inside a
+    // countdown that also drives explosions and pose walks would fire all of
+    // that on level 14's first frame. Keep them apart and read them together
+    // through c740Idle().
+    entranceHold: 0,             // $C740 == 1
     explosion: 0,                // $C713, the 1:$7A73 cursor
     deathTicks: 0,               // $C712 while the burst runs
     // loc_00_34D0's own state. `phase` is $C712 on the boss side; the ROM
@@ -232,6 +240,7 @@ export function resetEffects(state) {
   clearEffects(state);                              // $29A5: 60 B of $C693
   for (const r of e.burst) r.fill(0);
   e.countdown = COUNTDOWN_IDLE;
+  e.entranceHold = 0;                               // $0DC8-$0DCA, before $0DE3
   e.explosion = 0;
   e.deathTicks = 0;
   e.phase = 0;
@@ -781,6 +790,30 @@ export function updateVictoryHold(state) {
   if (st.ramp) rampWindowBand(state, u8(WINDOW_OFF_Y - 2 * done));
 
   return true;
+}
+
+/**
+ * `$C740 == $FF` -- the idle value, and the condition BOTH main-loop HUD arms
+ * open with (`$0567` and `$05D9`: `LD A,[$C740] / CP $FF / JR NZ`).
+ *
+ * The byte leaves $FF in exactly two places, and the port models each with its
+ * own field because they behave nothing alike:
+ *
+ *   1:$4EF1  a boss dies      -> $FE, counted down to 0 by 1:$78CC/$7936, and
+ *                               left at 0 through the whole loc_00_34D0
+ *                               fanfare until $35FA/$3631 rearms $FF
+ *   0:$0DE3  level 14 loads   -> 1, until 1:$77FF ends the entrance
+ *
+ * MEASURED (tools/oracle/hudgateprobe.py): on level 4, from the frame after
+ * the boss's HP byte is zeroed the cartridge holds NO energy-bar entries in
+ * shadow OAM for the whole ~630-frame countdown and fanfare; on level 14 it
+ * holds none for the entire entrance. The port drew the bar throughout both.
+ *
+ * Also the melee/batarang damage gate (bundle C owns those call sites).
+ */
+export function c740Idle(state) {
+  const e = effects(state);
+  return e.countdown === COUNTDOWN_IDLE && !e.entranceHold;
 }
 
 /** True while any part of the boss death sequence owns the frame. */

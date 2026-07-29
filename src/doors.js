@@ -123,20 +123,28 @@ export function ensureDoorState(state) {
  * callers feed and others do not is worse than one nobody feeds, because a
  * scenario then passes or fails on which spawner it happened to trip.
  *
- *   $1388     a breakable tile finishing its restore timer   ($97/$01)
- *   $14F9     a hazard drop shattering on the ground         ($97/$00)
  *   $271B     a melee hit landing: $10/$01 normally, $97/$04 on a crit
- *   $2D98     the levels-1/2 water surface splash
- *   $2FFA     the level-$0C collapsing floor
- *   1:$4EA9   an enemy dying                                 ($97/$03)
- *   1:$589C   / 1:$58AB / 1:$5B81 / 1:$7922  boss + splash effects
+ *
+ * NINE entries have come off this list, and the reason is worth keeping: the
+ * comment above used to justify the whole thing as "a pool some callers feed
+ * and others do not is worse than one nobody feeds". That was true right up to
+ * the point where nobody-feeds became measurably wrong -- the $97 spawners
+ * carry the debris SPRITE and, because $97's counter is $17, the audible $17
+ * cue as well, so an unfed pool is a silent kill and an empty level 12.
+ *
+ * $1388 (collision.js) and 1:$7922 (effects.js) were already ported and simply
+ * never struck off. $14F9 (drops.js), $2D98 (water.js), $2FFA (conveyor.js),
+ * 1:$4EA9, 1:$589C, 1:$58AB and 1:$5B81 (enemies.js) landed with this note --
+ * the last three because the pool is only ten slots deep and SILENT tenants
+ * ($D7 has bit 6 set) still decide who else gets in.
+ *
+ * $271B is the last one, and it is a different job: the crit arm draws a
+ * different sprite ($97/$04 against $10/$01) and no scenario has ever reached
+ * a crit, so porting it would be a transcription with no way to check it.
  *
  * Kept as data rather than prose so `grep UNPORTED_EFFECT_SPAWNS` finds it.
  */
-export const UNPORTED_EFFECT_SPAWNS = Object.freeze([
-  '00:1388', '00:14F9', '00:271B', '00:2D98', '00:2FFA',
-  '01:4EA9', '01:589C', '01:58AB', '01:5B81', '01:7922',
-]);
+export const UNPORTED_EFFECT_SPAWNS = Object.freeze(['00:271B']);
 
 /** A manifest table is never optional. ROM data missing = a loud failure. */
 function table(state, name) {
@@ -424,7 +432,10 @@ export function clearEffects(state) {
  */
 export function updateEffects(state, manifest) {
   const pool = state.doors.effects;
-  const descending = state.parity !== 0;            // $1391-$1396
+  // $1391-$1396: $FFA7. state.video.frameParity is the DRAW-side name for the
+  // same byte (state.js aliases it onto state.parity); `?? 0` keeps this
+  // working against a state object built before that alias existed.
+  const descending = (state.video?.frameParity ?? state.parity ?? 0) !== 0;
   let i = descending ? 9 : 0;
 
   for (;;) {

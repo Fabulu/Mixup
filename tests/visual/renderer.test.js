@@ -11,8 +11,8 @@ import assert from 'node:assert/strict';
 
 import { bgTileAddr, objTileAddr, decodeTile, buildTileCache } from '../../src/assets.js';
 import {
-  createFramebuffer, renderFrame, rasterBands,
-  SCREEN_W, SCREEN_H, MAX_SPRITES, DMG_PALETTE,
+  createFramebuffer, renderFrame, rasterBands, bgArtFor, bgTileIdAt,
+  SCREEN_W, SCREEN_H, MAX_SPRITES, MAX_SPRITES_PER_LINE, DMG_PALETTE,
 } from '../../src/render/renderer.js';
 import { drawMetasprite } from '../../src/render/metasprite.js';
 
@@ -252,25 +252,48 @@ test('a hidden behind-BG sprite still claims the pixel against later entries', (
   assert.equal(at(fb, 43, 22), 2, 'BG shows; the later sprite does not sneak in');
 });
 
-test('KNOWN DEVIATION: behind-BG tests the resolved SHADE, not the BG colour index', () => {
-  // Hardware compares the BG COLOUR INDEX; renderer.js line ~162 compares
-  // fb.shades, which BGP has already remapped. With an inverted BGP, BG colour
-  // 0 becomes shade 3 and wrongly occludes a behind-BG sprite.
-  // If the renderer is fixed to track the colour index, flip this to `3`.
+test('behind-BG compares the BG COLOUR INDEX, not the shade BGP resolved it to', () => {
+  // Hardware compares the BG's 2-bit COLOUR INDEX against 0, BEFORE BGP. The
+  // renderer used to compare fb.shades, which BGP has already remapped -- so
+  // under an inverted BGP ($1B: colour 0 -> shade 3) a BG pixel that is
+  // transparent to the priority rule read as opaque and hid the sprite.
+  //
+  // createFramebuffer() now carries `bgIndex`, one pre-palette byte per pixel,
+  // written by BOTH drawBackground and drawWindow (the window is BG for
+  // priority purposes).
+  //
+  // This test is worth its space only because it is NOT degenerate: with the
+  // default $E4 palette, OBJ colour 3 and shade 3 are the same number and both
+  // rules give the same answer. bgp $1B is what tells them apart.
   const obj = []; obj[0] = flatTile(3); obj[1] = flatTile(3);
   const bg = [flatTile(0)];
   const fb = render(makeState({
-    bg, obj, bgp: 0x1B,                       // colour 0 -> shade 3
+    bg, obj, bgp: 0x1B,                       // BG colour 0 -> shade 3
     sprites: [{ x: 40, y: 20, tile: 0, attr: 0x80 }],
   }));
-  assert.equal(at(fb, 43, 22), 3,
-    'current behaviour: BG colour 0 rendered as shade 3 occludes the sprite');
+  // OBJ colour 3 through OBP0 $E4 is shade 3; the sprite must win, because the
+  // BG COLOUR under it is 0 however dark BGP paints it.
+  assert.equal(at(fb, 43, 22), 3, 'BG colour 0 never occludes, whatever BGP says');
+
+  // ... and the other half, so the check can fail in both directions: a
+  // non-zero BG colour still hides it, even when BGP paints that colour white.
+  const overSolid = render(makeState({
+    bg: [flatTile(0), flatTile(1)], obj, bgp: 0x1B, metatiles: [[1, 1, 1, 1]], mapId: 0,
+    sprites: [{ x: 40, y: 20, tile: 0, attr: 0x80 }],
+  }));
+  assert.equal(at(overSolid, 43, 22), 2, 'BG colour 1 through $1B is shade 2, and it wins');
 });
 
 test('the 40-sprite cap drops later entries silently', () => {
+  // The cap is a QUEUE limit ($0BE5: `CP $A0`), not a scanline one, so this
+  // has to be isolated from the ten-per-line scan below or the two rules test
+  // each other. The first 39 entries are parked at y = -20: they spend an OAM
+  // slot and reach no scanline at all, which is exactly how the hardware
+  // counts them.
   const obj = []; obj[0] = flatTile(3); obj[1] = flatTile(3);
   const sprites = [];
-  for (let i = 0; i < 45; i++) sprites.push({ x: i * 3, y: 20, tile: 0, attr: 0 });
+  for (let i = 0; i < 39; i++) sprites.push({ x: 0, y: -20, tile: 0, attr: 0 });
+  for (let i = 39; i < 45; i++) sprites.push({ x: i * 3, y: 20, tile: 0, attr: 0 });
   const fb = render(makeState({ obj, sprites }));
 
   assert.equal(MAX_SPRITES, 40);
@@ -278,6 +301,178 @@ test('the 40-sprite cap drops later entries silently', () => {
   assert.equal(at(fb, 44 * 3 + 1, 22), 0, 'entry 44 is dropped');
   // No throw, no log: the ROM's $0BE5 `CP $A0` just stops appending.
   assert.equal(sprites.length, 45, 'the queue itself is not mutated by drawing');
+});
+
+test('only TEN sprites are drawn per scanline, in OAM order', () => {
+  // DMG hardware: the OAM scan admits ten objects per line and drops the rest,
+  // and it decides on Y ALONE -- before any tile fetch, so a fully transparent
+  // sprite still spends one of the ten.
+  //
+  // MEASURED (tools/oracle/spritelimit.mjs, rip/oracle/pix/l12-crowd.json):
+  // the cartridge has 21 sprites covering lines 78-94 on every frame from f117
+  // to f125, i.e. 11 hardware-dropped, and feeding the renderer that OAM gives
+  // 0 wrong pixels out of 23,040 on f119-f122 against 344/384/253/385 with the
+  // rule switched off.
+  const obj = []; obj[0] = flatTile(3); obj[1] = flatTile(3);
+  const sprites = [];
+  for (let i = 0; i < 14; i++) sprites.push({ x: i * 10, y: 20, tile: 0, attr: 0 });
+  const fb = render(makeState({ obj, sprites }));
+
+  assert.equal(MAX_SPRITES_PER_LINE, 10);
+  assert.equal(at(fb, 9 * 10 + 1, 22), 3, 'the tenth is drawn');
+  assert.equal(at(fb, 10 * 10 + 1, 22), 0, 'the eleventh is dropped');
+  assert.equal(at(fb, 13 * 10 + 1, 22), 0, 'and so is the fourteenth');
+});
+
+test('the ten-per-line budget is spent on Y alone, before the tile is looked at', () => {
+  // The hardware scan never sees pixels. Ten fully TRANSPARENT sprites on a
+  // line therefore consume the whole budget and the eleventh -- opaque -- is
+  // still dropped. A cut applied at the "did this pixel paint" test instead
+  // would draw it.
+  const obj = []; obj[0] = flatTile(0); obj[1] = flatTile(0);   // colour 0
+  obj[2] = flatTile(3); obj[3] = flatTile(3);
+  const sprites = [];
+  for (let i = 0; i < 10; i++) sprites.push({ x: 120, y: 20, tile: 0, attr: 0 });
+  sprites.push({ x: 40, y: 20, tile: 2, attr: 0 });
+  const fb = render(makeState({ obj, sprites }));
+  assert.equal(at(fb, 43, 22), 0, 'the eleventh entry never reaches the line');
+
+  // Nine transparent ones leave room, which is what makes the above a rule and
+  // not an accident of the fixture.
+  const nine = sprites.slice(1);
+  const fb2 = render(makeState({ obj, sprites: nine }));
+  assert.equal(at(fb2, 43, 22), 3);
+});
+
+test('the per-line cut is per LINE: a sprite pair 8 rows apart both draw', () => {
+  // Two ten-strong rows, offset vertically so they share no scanline. Both
+  // must survive -- a per-FRAME counter would drop the second row.
+  const obj = []; obj[0] = flatTile(3); obj[1] = flatTile(3);
+  const sprites = [];
+  for (let i = 0; i < 10; i++) sprites.push({ x: i * 8, y: 20, tile: 0, attr: 0 });
+  for (let i = 0; i < 10; i++) sprites.push({ x: i * 8, y: 40, tile: 0, attr: 0 });
+  const fb = render(makeState({ obj, sprites }));
+  assert.equal(at(fb, 9 * 8 + 1, 22), 3, 'row 1, tenth sprite');
+  assert.equal(at(fb, 9 * 8 + 1, 42), 3, 'row 2, tenth sprite');
+});
+
+test('opts.spritesPerLine lets the oracle render the same frame with the rule off', () => {
+  // tools/oracle/spritelimit.mjs renders every frame twice and FAILS if the
+  // rule is never exercised, so the escape hatch is part of the check rather
+  // than a debug leftover.
+  const obj = []; obj[0] = flatTile(3); obj[1] = flatTile(3);
+  const sprites = [];
+  for (let i = 0; i < 14; i++) sprites.push({ x: i * 10, y: 20, tile: 0, attr: 0 });
+  const state = makeState({ obj, sprites });
+  const fb = createFramebuffer();
+  renderFrame(state, fb, { spritesPerLine: 40 });
+  assert.equal(fb.shades[22 * SCREEN_W + 13 * 10 + 1], 3,
+    'with the cut lifted the fourteenth draws');
+});
+
+// ---------------------------------------------------------------------------
+// The $9800 BG-ART OVERLAY.  ROM: the init-time VRAM scripts 7:$7A5E (levels
+// 9/$0A/$0B, the skyline) and 7:$7B77 (level 6, the track band).
+//
+// These cells survive scrolling because the column streamer skips them:
+// loc_00_0664's $0688 forces `H = $99` and drops the first eight of its 32
+// unrolled writes when $FFB0 is 9 or $0A, and $066B sends level 6 to
+// loc_00_0714, which never runs the column flush at all.  So the tilemap cell
+// is genuinely what is on the hardware and the level map has nothing to say
+// about it.
+//
+// Nothing here reads assets/: `state.level.bgArt` is the documented override
+// hook and an Int16Array(1024) with -1 = "no cell" is exactly what
+// bgArtForLevel() produces.
+// ---------------------------------------------------------------------------
+
+/** An empty overlay; set cells with `art[row * 32 + col] = tileId`. */
+function emptyArt() {
+  const a = new Int16Array(1024);
+  a.fill(-1);
+  return a;
+}
+
+test('the overlay is indexed in TILEMAP space, the same cell the PPU reads $9800 with', () => {
+  // ((worldY >> 3) & 31) * 32 + ((worldX >> 3) & 31) -- NOT a world-space
+  // lookup. On level 6 that distinction is the whole fix: the track band is
+  // displayed through the mode-0/1 arm at SCX = $FFCC, so a world-space index
+  // would slide the artwork sideways relative to the cells the hardware reads.
+  const art = emptyArt();
+  art[3 * 32 + 5] = 0x77;
+  const s = makeState();
+  s.level.bgArt = art;
+
+  assert.equal(bgTileIdAt(s, 5 * 8, 3 * 8, art), 0x77);
+  assert.equal(bgTileIdAt(s, 5 * 8 + 7, 3 * 8 + 7, art), 0x77, 'the whole 8x8 cell');
+  // The tilemap is 32x32 and WRAPS, exactly as the hardware's does.
+  assert.equal(bgTileIdAt(s, (32 + 5) * 8, (32 + 3) * 8, art), 0x77,
+    'cell 261 aliases onto cell 5 -- 32 cells, not the level width');
+  assert.notEqual(bgTileIdAt(s, 6 * 8, 3 * 8, art), 0x77, 'and the next cell is not it');
+});
+
+test('a cell the script writes WINS over the streamed metatile', () => {
+  // The overlay is what is physically in $9800; the map is only a model of
+  // what the streamer would have put there. Where they disagree, the cartridge
+  // shows the overlay.
+  const art = emptyArt();
+  art[0] = 0x55;
+  const s = makeState({ metatiles: [[0x11, 0x11, 0x11, 0x11]], mapId: 0 });
+  s.level.bgArt = art;
+  assert.equal(bgTileIdAt(s, 0, 0, art), 0x55, 'the script cell');
+  assert.equal(bgTileIdAt(s, 0, 8 * 8, art), 0x11, 'a cell it does not write');
+});
+
+test('an overlay cell of -1 means "no cell", not tile $FF', () => {
+  // fill(-1) is the sentinel; a signed Int16Array is used precisely so 0 stays
+  // a legal tile id. Reading it as unsigned would paint tile $FF over the
+  // whole screen.
+  const art = emptyArt();
+  const s = makeState({ metatiles: [[0x22, 0x22, 0x22, 0x22]], mapId: 0 });
+  s.level.bgArt = art;
+  assert.equal(bgTileIdAt(s, 0, 0, art), 0x22);
+});
+
+test('bgArtFor refuses to follow $FFB0 into a menu', () => {
+  // Menus and title screens carry their own whole 32x32 tilemap in bgMap, and
+  // $FFB0 still holds whatever level was last loaded -- boot() runs
+  // initLevel(1) before the title is even shown. Inheriting the overlay there
+  // would stamp skyline tiles across the round-select screen.
+  const s = makeState();
+  s.level.number = 9;
+  s.video.bgMap = new Uint8Array(0x400);
+  assert.equal(bgArtFor(s), null);
+
+  // An explicitly attached overlay is how a mod overrides it, and an explicit
+  // null is how a mod switches it off -- both distinguishable from "not set".
+  const art = emptyArt();
+  const t = makeState();
+  t.level.bgArt = art;
+  assert.equal(bgArtFor(t), art);
+  const u = makeState();
+  u.level.bgArt = null;
+  assert.equal(bgArtFor(u), null);
+});
+
+test('drawBackground actually PAINTS the overlay cell', () => {
+  // The lookup being right is not the same as the picture being right -- twice
+  // in this project's history a byte-exact screen rendered wrong. This is the
+  // pixel half: level 6 went from 88.47/85.73/85.47/86.02/85.73% to 100.00% on
+  // all five pixeldiff frames when this landed.
+  const bg = [];
+  bg[0x40] = flatTile(1);          // the map's tile
+  bg[0x50] = flatTile(2);          // the script's tile
+  const art = emptyArt();
+  art[0] = 0x50;
+  const s = makeState({ bg, metatiles: [[0x40, 0x40, 0x40, 0x40]], mapId: 0 });
+  s.level.bgArt = art;
+  const fb = createFramebuffer();
+  renderFrame(s, fb);
+  assert.equal(at(fb, 3, 3), 2, 'cell (0,0) shows the script tile');
+  assert.equal(at(fb, 3, 8 * 8 + 3), 1, 'a cell below it still shows the map');
+  // ... and the priority buffer agrees, so a behind-BG sprite is occluded by
+  // the overlay exactly as it is by the map.
+  assert.equal(fb.bgIndex[3 * SCREEN_W + 3], 2);
 });
 
 // ---------------------------------------------------------------------------

@@ -52,6 +52,17 @@ const SCRIPTS = [
   // Same contact from the other side: walk LEFT into the level's left boundary
   // (loc_00_1F87 is the mirrored push) and hold.
   { name: 'wall-into-left-boundary', frames: 160, script: '20:,140:L' },
+  // Jump into the level's LEFT BOUNDARY, which is a $07 cell (column 0 of all
+  // fourteen levels, and both walls of every boss arena), holding A. $07 must
+  // route straight to loc_00_1F87's push -- `CP $07 / JR Z` at $1FE0, ahead of
+  // the cling entry at $1FE9 -- because a $07 that clings lets the player
+  // climb out of every level boundary and every boss fight.
+  //
+  // MEASURED (playerhunt arms on this exact script): $1FE0 executes 99 times
+  // and routes to $1F87 all 99; $1FE9 executes ZERO times. With the arm
+  // removed the port diverges from f50 on x/y/vx/vy/facing/anim, with anim 17
+  // (CLING_B) against the cartridge's 8 and vx 20 against 0.
+  { name: 'l1-boundary-no-cling', frames: 120, script: '40:,3:A,6:L,71:LA' },
 
   // --- leaving the ground ---
   // Walk off the right edge of the spawn platform, release everything mid-air,

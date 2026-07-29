@@ -46,17 +46,19 @@ const BYTE = ['type', 'xhi', 'xlo', 'yhi', 'ylo', 'accum', 'vel', 'halfW',
               'halfH', 'sx', 'sy', 'state', 'wait', 'ride', 'origX', 'origY'];
 // Player fields any of these branches can move, plus the ones that prove it
 // did not move anything it should not have.
+// `squat` ($FF90) is BACK IN. It was excluded because player.js only ever
+// wrote it while the ROM also DECREMENTS it at $1CB8-$1CCE, so the port sat at
+// 16 forever from the first landing -- 240 of 240 frames wrong on level 6 idle.
+// That countdown landed (player.js:$1CB8 arm) and the field now measures 0
+// mismatches over all 1218 compared frames, five of the six scenarios walking
+// the full $10 -> $01 countdown (l6 alone never leaves 0, on both sides), so
+// keeping the exclusion would only have hidden the NEXT regression in it.
+// Validated by deleting the $1CB8 decrement again: l13-oneshot-spawn then
+// reports `squat @ f14: oracle 15, port 16`. This is the shape
+// docs/03-VERIFICATION.md warns about twice: a field the harnesses sample and
+// the runner silently does not compare reads as "6/6 PASS" either way.
 const PLAYER = ['x', 'y', 'vx', 'vy', 'air', 'camX', 'camY', 'hp',
-                'facing', 'action', 'atk', 'cling', 'carryX', 'carryY'];
-// `squat` ($FF90) is sampled but NOT compared, and the reason is a pre-existing
-// port gap rather than anything this file owns. The ROM writes the landing
-// squat at $1B3F and DECREMENTS it at $1CB8-$1CCE; src/player.js only writes
-// it, so the port sits at 16 forever from the first landing while the
-// cartridge reads 0. Measured on level 6 idle: 240 frames of 240 mismatch,
-// every other player field bit-exact. The level-$0B freeze zeroes $FF90
-// ($2D1E) and conveyor.js reproduces that, so this exclusion hides nothing
-// this branch does -- but it does hide a real bug, and player.js should grow
-// the countdown.
+                'facing', 'action', 'atk', 'cling', 'carryX', 'carryY', 'squat'];
 
 // The subsystem bytes themselves.
 const SUBSYS =['park', 'dir', 'track', 'plx', 'seqTimer', 'spring',

@@ -248,6 +248,28 @@ test('the trigger arms only once the player passes column $36', () => {
   assert.ok(sounds(state).includes(0x17));     // $2D7C
 });
 
+test('the waterfall crash spawns $97/$01 at the fixed world point ($3880, $1980)', () => {
+  // $2D82-$2D98: three literal stores build $C744-$C747 -- $38/$80 and
+  // $19/$80, both low bytes taken from the single $80 at $2D8C -- and then
+  // `LD D,$97 / LD E,$01 / CALL sub_00_0CC2`. Subtype $01 matters: the pool's
+  // own $13DC one-shot fires at counter $17 with bit 6 clear, so this asks for
+  // cue $17 a SECOND time on its first tick.
+  //
+  // MEASURED (cuediff l1-water-spouts): the cartridge fires $17 twice -- f1
+  // from $2D7F and f2 from $13E9 -- and the port fired once. 13 -> 14.
+  const state = waterState();
+  placePlayer(state, 0x36, 12);
+  state.frame = 0x70;
+  updateWater(state);
+
+  const live = state.doors.effects.filter((r) => r[0] !== 0);
+  assert.equal(live.length, 1);
+  assert.equal(live[0][0], 0x97);
+  assert.equal(live[0][5], 0x01);
+  assert.equal((live[0][1] << 8) | live[0][2], 0x3880, '$C744/$C745');
+  assert.equal((live[0][3] << 8) | live[0][4], 0x1980, '$C746/$C747');
+});
+
 test('the column builds one cell per even frame and skips the tail while doing so', () => {
   const state = waterState();
   placePlayer(state, 0x40, 12);

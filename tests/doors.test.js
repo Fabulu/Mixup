@@ -323,3 +323,42 @@ test('doors survive a level change but the effect pool does not', () => {
   assert.equal(s.doors.active, seq, 'clearEffects leaves the sequencer alone');
   assert.equal(s.doors.effects[0][0], 0);
 });
+
+test('the pool ORDER, not just its coverage: 0..9 on even $FFA7, 9..0 on odd', () => {
+  // $1391-$1396 reads $FFA7 and $1424-$1435 is the two-way step. The test
+  // above only proved every slot is visited; this pins the DIRECTION, which is
+  // what decides who wins the last free slot when the pool is full.
+  //
+  // Made observable through the draw: each record carries a distinct X, and
+  // drawEffect pushes onto state.video.sprites in visit order.
+  //
+  // doors.js reads `state.video?.frameParity ?? state.parity ?? 0` -- the
+  // DRAW-side name for the same byte. state.js aliases the two onto one
+  // another (see tests/main.test.js), so this must hold whichever one is set.
+  const table1 = [];
+  table1[0x0F] = { sprites: [[0, 0, 0x0F, 0]] };   // EFFECT_PLAIN_SPRITE
+  const manifest = { metasprites: { table1 } };
+
+  const visitOrder = (set) => {
+    const s = effectState();
+    for (let i = 0; i < EFFECT_SLOTS; i++) {
+      // Bit 7 CLEAR: the plain arm, which draws a fixed sprite and cannot free
+      // its own slot, so all ten survive the pass.
+      s.doors.effects[i].set([0x40, i + 1, 0x00, 0x10, 0x00, 0]);
+    }
+    set(s);
+    s.video.sprites.length = 0;
+    updateEffects(s, manifest);
+    return s.video.sprites.map((q) => q.x);
+  };
+
+  const asc = visitOrder((s) => { s.parity = 0; });
+  const desc = visitOrder((s) => { s.parity = 1; });
+  assert.equal(asc.length, EFFECT_SLOTS);
+  assert.deepEqual(desc, [...asc].reverse(), 'odd frames walk the pool backwards');
+  assert.ok(asc[0] < asc[9], 'and even frames walk it forwards');
+
+  // The alias, driven from the other side.
+  assert.deepEqual(visitOrder((s) => { s.video.frameParity = 1; }), desc);
+  assert.deepEqual(visitOrder((s) => { s.video.frameParity = 0; }), asc);
+});

@@ -7,12 +7,12 @@ import { createState, GAMEPLAY_PALETTES } from './state.js';
 import { makeTunables } from './tunables.js';
 import { attachInput, sampleInput } from './input.js';
 import { initLevel, clearLevel } from './level.js';
-import { updatePlayer } from './player.js';
+import { updatePlayer, BTN } from './player.js';
 import { updateCamera } from './camera.js';
 import { loadManifest, loadPlayerTiles } from './assets.js';
 import { createFramebuffer, renderFrame, SCREEN_W, SCREEN_H } from './render/renderer.js';
 import { drawPlayer, streamPlayerTiles, applyAnimHitbox,
-         cachePlayerScreen } from './render/metasprite.js';
+         cachePlayerScreen, drawMetasprite } from './render/metasprite.js';
 import { updateBatarangs, drawBatarangs } from './batarang.js';
 import { updateRope } from './rope.js';
 import { drawHud } from './hud.js';
@@ -22,7 +22,7 @@ import { updateEnemies, drawEnemies } from './enemies.js';
 import { updateWater, updateSplashes, tickTileAnim } from './water.js';
 import { updateDrops } from './drops.js';
 import { updateDoors } from './doors.js';
-import { updateVictoryHold } from './effects.js';
+import { updateVictoryHold, c740Idle } from './effects.js';
 import { loadEnding, showEnding, tickEnding, hideEnding } from './ending.js';
 import {
   showsStageIntro, loadStageIntro, showStageIntro, tickStageIntro,
@@ -144,15 +144,22 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
   // sprites, live in the card's own resources $02/$1D/$05 -- so it is
   // byte-identical without modelling whatever VRAM preceded it, which is what
   // makes it safe on a boss level reached mid-route.
+  //
+  // `opts` reaches src/level.js's initLevel unchanged: `{ transition: true }`
+  // is loc_00_2820, the walk-off, which is a much smaller routine than
+  // loc_00_04BB. sub_00_333F sits in FRONT of both ($04BB's first instruction
+  // and $2836), so the card still shows on a walk-off into a card level.
   let pendingLevel = 0;
   let pendingAfter = null;
-  function enterLevel(n, after = null) {
+  let pendingOpts;
+  function enterLevel(n, after = null, opts = undefined) {
     if (!showsStageIntro(n)) {
-      initLevel(state, n).then(() => { if (after) after(); resume(); });
+      initLevel(state, n, opts).then(() => { if (after) after(); resume(); });
       return;
     }
     pendingLevel = n;
     pendingAfter = after;
+    pendingOpts = opts;
     showStageIntro(state, loadStageIntro(manifest, n, null));
     resume();
   }
@@ -272,10 +279,7 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
       Object.assign(state.video, GAMEPLAY_PALETTES);
       if (titleArt) {
         hideRoundSelect(state);
-        state.flow.lives = 5;
-        state.flow.routeMask = 0;
-        state.flow.continueAvailable = 0;
-        state.flow.maxHpTaken = 0;      // $C754 -- only the boot vector clears it
+        resetRun(state);                // $388E: JP loc_00_0150, the boot vector
         initLevel(state, 1).then(() => { showTitle(state, titleArt); resume(); });
         return;
       }
@@ -288,9 +292,11 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
       Object.assign(state.video, GAMEPLAY_PALETTES);
       const n = pendingLevel;
       const after = pendingAfter;
+      const opts = pendingOpts;
       pendingLevel = 0;
       pendingAfter = null;
-      initLevel(state, n).then(() => { if (after) after(); resume(); });
+      pendingOpts = undefined;
+      initLevel(state, n, opts).then(() => { if (after) after(); resume(); });
       return;
     }
 
@@ -326,10 +332,15 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
       // 2 = "$35E8 has already run for this level". The mask write is
       // idempotent but the routing is not. On the cartridge the $C740
       // countdown is what stops the driver re-raising this -- $4EB8's first
-      // instruction reroutes into $78CC the moment $C740 leaves $FF. That
-      // countdown is unported, so this latch stands in for it, and the driver
-      // reads the same flag ($4EB8's `if (state.flow.levelCleared)`).
-      // initLevel rearms it exactly where the ROM rearms $C740 ($0DCA).
+      // instruction reroutes into $78CC the moment $C740 leaves $FF.
+      //
+      // That countdown IS ported now (src/effects.js's bossCountdownTick, and
+      // the whole loc_00_34D0 fanfare behind it), so this latch is no longer
+      // standing in for a missing feature -- it is the asynchronous frame
+      // loop's own guard, because enterLevel and enterRoundSelect are promises
+      // and Turbo Mode can run several ticks before either settles. effects.js
+      // has its own `done` flag for the same reason. initLevel rearms this one
+      // exactly where the ROM rearms $C740 ($0DCA).
       state.flow.levelCleared = 2;
       const next = clearLevel(state);
       if (next.to === 'roundselect' && enterRoundSelect()) return;
@@ -346,10 +357,14 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
         return;
       }
       // `transition` means the ordinary walk-off handoff and falls through to
-      // the exit table below rather than inventing a screen.
-      if (state.level.exitRight !== undefined
-          && state.level.exitRight !== 0xFF && state.level.exitRight !== 0xFE) {
-        state.flow.nextLevel = state.level.exitRight;
+      // the exit table below rather than inventing a screen. clearLevel has
+      // already resolved WHICH column of 0:$286D it uses: $3603 loads C = 1,
+      // the TOP exit, not the right-hand one a walk-off takes. This guard used
+      // to test exitRight, which is $FF on the only level that reaches here
+      // (level 6), so flow.nextLevel was never written and the cleared vehicle
+      // stage ran forever -- the game could not be completed past level 6.
+      if (next.exit !== undefined && next.exit !== 0xFF && next.exit !== 0xFE) {
+        state.flow.nextLevel = next.exit;
       }
     }
 
@@ -360,14 +375,12 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     if (state.flow.nextLevel) {
       const next = state.flow.nextLevel;
       state.flow.nextLevel = 0;
-      const carried = { lives: state.flow.lives, hp: state.player.hp,
-                        hpMax: state.player.hpMax, ammo: state.flow.ammo };
-      enterLevel(next, () => {
-        // $2820 does not reset the run: HP, lives and ammo all carry across.
-        Object.assign(state.flow, { lives: carried.lives, ammo: carried.ammo });
-        state.player.hp = carried.hp;
-        state.player.hpMax = carried.hpMax;
-      });
+      // loc_00_2820, for real. This used to run a FULL initLevel and then
+      // hand-restore four fields on top; everything else $04BE-$053F clears --
+      // velocity, air state, facing, half-extents, i-frames, the animation
+      // triple, the water surface, $FFB1/$FFA7 -- was being reset behind the
+      // patch. src/level.js's initLevel owns the difference now.
+      enterLevel(next, null, { transition: true });
       return;
     }
 
@@ -392,9 +405,12 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
       }
 
       // No title art: a direct-level boot from the launcher has no menu to go
-      // back to, so keep the old restart-in-place rather than softlock.
+      // back to, so keep the old restart-in-place rather than softlock. It
+      // stands in for CONTINUE, so it does CONTINUE's own $0482 HP refill --
+      // level init writes neither $FF8A nor $FF8E.
       initLevel(state, state.level.number).then(() => {
         state.flow.lives = lives;
+        state.player.hp = state.player.hpMax;   // $0482
         state.player.dead = 0;
         state.deathTimer = 0;
         resume();
@@ -414,6 +430,41 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
 }
 
 /**
+ * ROM: loc_00_0150, as far as the RUN is concerned.
+ *
+ * $2ABA (`JP Z, loc_00_0150`) and $388E (the ending's `JP loc_00_0150`) are
+ * both hard resets, not screens. $0160-$0168 clears $FF80-$FFFE; $016A-$0177
+ * is a PUSH loop with SP = $DFFF and BC = $0FFF, i.e. 4095 pushes covering
+ * $C001-$DFFE, and $017A clears $C000 by hand -- so the whole of WRAM goes
+ * too. What is then re-seeded is $C756 = 1 ($01D1), $FFB0 = 1 ($01FE),
+ * $FF8E = $0A ($0202), $FF8A = $0A ($0204) and $C767 = 5 ($0208).
+ *
+ * MEASURED (tools/oracle/econgameover.py) with $C753 = $05, $C754 = $07,
+ * $C756 = $02, $FF8E = $10 and $C759 = $2A poked in and one life left: the
+ * machine comes back 00 / 00 / 01 / $0A / 00. The port kept $C754 and $C756,
+ * which permanently erased the three +2-max-HP pickups -- 1:$4DDA zeroes their
+ * map cells on re-entry whenever the latch bit is set, so levels 3, 5 and $0D
+ * would have started every subsequent run with the heart already gone.
+ *
+ * $C756 was previously left alone on the reasoning that difficulty is a
+ * launcher control here. It is not any more: src/options.js's GAME LEVEL row
+ * writes the same field, so the cartridge's own reset applies.
+ */
+function resetRun(state) {
+  const t = state.tunables;
+  const flow = state.flow;
+  flow.routeMask = 0;                    // $C753
+  flow.maxHpTaken = 0;                   // $C754
+  flow.difficulty = 1;                   // $01D1
+  flow.continueAvailable = 0;            // $FFB5, in the $0160 HRAM clear
+  flow.rescueCheat = 0;                  // $C75C
+  flow.ammo = 0;                         // $C759
+  flow.lives = t.startingLives;          // $0208 (player.js's deathTick agrees)
+  state.player.hpMax = t.startingMaxHP;  // $0202
+  state.player.hp = t.startingMaxHP;     // $0204
+}
+
+/**
  * ROM: loc_00_2AAD -- what the end of the death sequence does to the run.
  *
  * src/player.js's deathTick has already done the `$C767` decrement ($2AB6)
@@ -430,11 +481,7 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
  */
 export function afterDeath(state, wasGameOver) {
   if (wasGameOver) {
-    // $0150 is the BOOT VECTOR, not a game-over screen: it clears HRAM and
-    // all of $C000-$DFFE, so cleared routes go with it. (Difficulty is a
-    // launcher control in this port and is deliberately left alone.)
-    state.flow.routeMask = 0;
-    state.flow.continueAvailable = 0;
+    resetRun(state);
     state.player.dead = 0;
     state.deathTimer = 0;
     return 'gameover';
@@ -447,73 +494,188 @@ export function afterDeath(state, wasGameOver) {
   return 'roundselect';
 }
 
+/** $05A9: LD E,$34 -- the moon, the only fixed sprite the main loop draws. */
+const SKY_METASPRITE = 0x34;
+/** $05AB: LD A,$10 -- drawn through OBP1. */
+const SKY_ATTR = 0x10;
+/** $05A6: LD BC,$1880 -- B is OAM y, C is OAM x, so screen (120, 8). */
+const SKY_OAM_Y = 0x18, SKY_OAM_X = 0x80;
+
+/**
+ * ROM: $057D-$05AD. The MOON, on levels 9, $0A and $0B, every single frame.
+ *
+ * Three things about it are load-bearing and all three were missing:
+ *
+ *   - it is drawn BEFORE the camera ($05B7), so it sits at OAM index 0 on an
+ *     $FFA7 == 1 frame and immediately after the five HUD sprites on an
+ *     $FFA7 == 0 one;
+ *   - it is OUTSIDE the $05B0 pause branch, so it survives a pause when
+ *     almost nothing else does;
+ *   - the $058B layer advance behind it ($C742/$C743, src/raster.js) is the
+ *     part that IS gated on $C716, via its own test at $058E.
+ *
+ * MEASURED (tools/oracle/oamorder.py --level 9): shadow OAM leads with
+ * y=16 x=120 tile=$E0 attr=$10 and y=16 x=128 tile=$E2 attr=$10 on frame 1,
+ * and manifest.metasprites.table1[$34] reproduces exactly that pair.
+ */
+function drawSkySprite(state, manifest) {
+  const n = state.level.number;
+  if (n !== 0x09 && n !== 0x0A && n !== 0x0B) return;   // $057F-$0589
+  const table = manifest && manifest.metasprites && manifest.metasprites.table1;
+  if (!table) return;
+  // sub_00_0BC6 takes OAM coordinates; the sprite queue is in screen ones.
+  drawMetasprite(state, table, SKY_METASPRITE,
+                 SKY_OAM_X - 8, SKY_OAM_Y - 16, SKY_ATTR);
+}
+
+/**
+ * ROM: $05F2-$0649 -- the PAUSE toggle, the last thing the main loop body does
+ * before sub_00_0C1F and the VBlank wait.
+ *
+ *   $05F2  $C715 set (dying) forces $C716 = 0 and skips the rest
+ *   $05FE  bit 3 of $FFE2 -- START, NEWLY pressed, not held
+ *   $0604  $C750 non-zero (level 14's entrance) refuses the toggle outright
+ *   $060A  XOR $01, so it is a toggle; the branch is taken on the way OUT
+ *   $0614  pausing:   7:$405D ducks the music, then cue BC = $0B01
+ *   $0633  unpausing: 7:$4083 restores it, and no cue
+ *
+ * MEASURED (tools/oracle/econpause.py): walking right, START freezes the
+ * player's X at 1108 for 90 frames with RIGHT still held, and a second START
+ * resumes from exactly there. Nothing in the port wrote $C716 at all -- twenty
+ * sites read it and zero set it -- so the feature was simply absent.
+ *
+ * The music duck/restore has no port equivalent (src/sound/driver.js's note on
+ * flag bit 6); the cue does, and it is the sound the player actually hears.
+ */
+function updatePause(state) {
+  const flow = state.flow;
+  if (state.player.dead) { flow.paused = false; return; }   // $05F2-$05FC
+  if (!(state.input.pressed & BTN.START)) return;           // $05FE-$0602
+  if (flow.bossMode) return;                                // $0604-$0608
+  flow.paused = !flow.paused;                               // $060A-$060F
+  // $062B: LD BC,$0B01 -- id $0B, mask $01. On the PAUSE half only; $0633's
+  // unpause arm queues nothing.
+  if (flow.paused && state.sound && state.sound.queue.length < 4) {
+    state.sound.queue.push({ id: 0x0B, mask: 0x01 });
+  }
+}
+
 /** One game frame. ROM: the $0567 main-loop body. */
 export function tick(state, manifest, playerTiles) {
   // loc_00_3566/$35D0: the victory fanfare BLOCKS the main loop -- it is a
   // wait routine the clear path calls, not a state the loop drives. While it
   // holds, no camera, no player, no enemies. It raises flow.levelCleared at
   // loc_00_35E8 about 632 frames after the boss dies.
-  if (updateVictoryHold(state)) return;
-  if (state.flow.paused) return;
-  runHook(state.loadout, 'onFrame', state);
+  //
+  // Both blocking loops still call sub_00_0A4F once per iteration, so VBlank
+  // still runs and $FFB1/$FFA7 still tick straight through the fanfare. That
+  // only became observable once the walk-off transition stopped reseeding them
+  // (src/level.js) -- level 6 is the one level that clears into a transition.
+  if (updateVictoryHold(state)) {
+    state.frame = (state.frame + 1) & 0xFF;   // $FFB1
+    state.parity ^= 1;                        // $FFA7
+    return;
+  }
 
-  // $0567 order (P1 subset -- the omitted calls are enemies/actors/effects).
-  state.video.sprites.length = 0;     // $0C1F clears unused shadow OAM
+  // $05B0-$05B4: `LD A,[$C716] / AND A / JP NZ, loc_00_05D9`. A paused frame
+  // is NOT a skipped frame -- it JUMPS, and it lands past the camera and the
+  // player but IN FRONT of the second HUD arm, the splash pass, the pause
+  // toggle and $064A's shadow-OAM clear. So the screen is still rebuilt every
+  // frame, from almost nothing: MEASURED, a paused cartridge frame holds seven
+  // shadow-OAM entries -- the five energy-bar sprites and the two-sprite moon
+  // -- where the frame before it held 22. A bare `return` here froze the last
+  // frame instead, and would have blanked the screen outright once the OAM
+  // clear moved to the head of the tick.
+  const paused = !!state.flow.paused;
+  // No ROM analogue; it is the mod hook for "a live gameplay frame", and a
+  // paused frame is not one. Kept exactly where it was relative to the OAM
+  // clear so a mod that queues sprites still has them survive.
+  if (!paused) runHook(state.loadout, 'onFrame', state);
 
-  // $0573: the HUD is drawn FIRST so it takes the lowest OAM slots and wins
-  // sprite priority over the player and everything else.
-  drawHud(state, manifest);
+  // $064A CALL sub_00_0C1F, modelled at the head rather than the tail: it
+  // clears shadow OAM from the draw cursor up and resets the cursor, so an
+  // empty queue here is the same picture one frame earlier in the source.
+  state.video.sprites.length = 0;
 
-  // $05B7: the camera runs FIRST, reading the PREVIOUS iteration's player
-  // position -- so the visible camera intentionally lags the player by one
-  // frame. drawPlayer therefore draws against last frame's camera, as the ROM
-  // does.
-  updateCamera(state);                // $121F
+  // $056E vs $05E0: $FFA7 decides WHICH of two identical arms queues the HUD.
+  // 0 runs $0573, before everything, at OAM index 0; anything else runs $05E5,
+  // after the player, the enemies and the doors. OAM index is DMG sprite
+  // priority AND the ten-per-line cut, so the alternation is visible wherever
+  // the energy bar crosses another sprite -- MEASURED on all fourteen levels
+  // (tools/oracle/oamorder.py): bar at index 0 on even frames, index 6 of 11
+  // on level 1's odd frames, index 8 of 12 on level 9's.
+  const hudFirst = (state.parity & 1) === 0;
+  // $0567 / $05D9: both arms open `LD A,[$C740] / CP $FF / JR NZ`, so the
+  // energy bar is drawn only while $C740 is idle -- not during a boss death
+  // countdown or its fanfare, and not during level 14's entrance.
+  const hud = c740Idle(state);
+
+  if (hudFirst && hud) drawHud(state, manifest);      // $0573
+
+  // $057D-$05AD: the moon, and $058B's two sky layers behind it. Before the
+  // camera, and outside the pause branch.
+  drawSkySprite(state, manifest);
+
   // $0E74's own table, so there is one source of truth for it. Note that
   // "mode 0" on the eight levels with no arm does NOT mean level 6's track
   // parallax -- $0F1F writes rIE = $05 there, masking the STAT vector off
   // entirely, so nothing runs at all.
+  //
+  // The raster program is ISR code ($0805/$081E) and $058B's layer advance is
+  // main-loop code the pause branch jumps PAST rather than into -- $058E does
+  // its own $C716 test, which src/raster.js already carries. So this pair runs
+  // on a paused frame too.
   state.raster.mode = rasterModeForLevel(state.level.number);
   tickRaster(state);
 
-  updateActors(state, manifest);      // $05BA CALL 1:$4230
+  if (!paused) {
+    // $05B7: the camera runs FIRST, reading the PREVIOUS iteration's player
+    // position -- so the visible camera intentionally lags the player by one
+    // frame. drawPlayer therefore draws against last frame's camera, as the
+    // ROM does.
+    updateCamera(state);                // $121F
 
-  // $05BD CALL $1336: the player state machine is not a call target -- it is
-  // the fall-through TAIL of sub_00_1336, reached via $1640 -> $170A after
-  // that routine's tile-restore, effect-pool and ballistics work.
-  // $05BD CALL $1336 begins with the delayed tile restores at $1349, before
-  // falling through into the player state machine.
-  // $1349 tile restores, then loc_00_1391's effect pool -- the next third of
-  // the same routine, which is why it lives behind the same call.
-  updateBreakables(state, manifest);
-  // $1444: the ballistic pool -- the hearts enemies drop. It sits between the
-  // tile restores and the player state machine, and BEHIND the $1438 gate,
-  // which skips the entire rest of the chain while $C750 is set. That gate
-  // lives at the top of updatePlayer (see the note there); repeating its
-  // condition here is what keeps the two in the right order.
-  if (!state.flow.bossMode) updateDrops(state, manifest);
-  updatePlayer(state, manifest);      // $170A-$1D0B
-  // $1B58, the tail of the player update: stash the screen position that the
-  // NEXT frame's $1444 ballistic pass will read.
-  cachePlayerScreen(state);
-  applyAnimHitbox(state, manifest);   // $1D2C -- hitbox follows the animation
-  drawPlayer(state, manifest);        // $1D0C
-  updateWater(state);                 // $05C6 CALL $2CBE -- levels 1-2 water
-  streamPlayerTiles(state, manifest, playerTiles);  // $2C13
-  // loc_00_3127 is the TAIL of sub_00_2C13, not a separate call, so it belongs
-  // immediately after it -- it used to run one call too early. Built from the
-  // ROM tables now rather than replayed from a capture.
-  tickTileAnim(state);
-  updateBatarangs(state);             // $3A35
-  drawBatarangs(state, manifest);     // $3D15
-  updateRope(state, manifest);        // $3D5F -- the tail of the same routine
-  updateEnemies(state);               // $05CF CALL 1:$4E0C
-  // $05D2: LD A,[$C733] / AND A / CALL NZ,1:$4BB0 -- the door a punch opened,
-  // its four erases and the debris it throws.
-  updateDoors(state, manifest);
+    updateActors(state, manifest);      // $05BA CALL 1:$4230
+
+    // $05BD CALL $1336: the player state machine is not a call target -- it is
+    // the fall-through TAIL of sub_00_1336, reached via $1640 -> $170A after
+    // that routine's tile-restore, effect-pool and ballistics work.
+    // $1349 tile restores, then loc_00_1391's effect pool -- the next third of
+    // the same routine, which is why it lives behind the same call.
+    updateBreakables(state, manifest);
+    // $1444: the ballistic pool -- the hearts enemies drop. It sits between
+    // the tile restores and the player state machine, and BEHIND the $1438
+    // gate, which skips the entire rest of the chain while $C750 is set. That
+    // gate lives at the top of updatePlayer (see the note there); repeating
+    // its condition here is what keeps the two in the right order.
+    if (!state.flow.bossMode) updateDrops(state, manifest);
+    updatePlayer(state, manifest);      // $170A-$1D0B
+    // $1B58, the tail of the player update: stash the screen position that the
+    // NEXT frame's $1444 ballistic pass will read.
+    cachePlayerScreen(state);
+    applyAnimHitbox(state, manifest);   // $1D2C -- hitbox follows the animation
+    drawPlayer(state, manifest);        // $1D0C
+    updateWater(state);                 // $05C6 CALL $2CBE -- levels 1-2 water
+    streamPlayerTiles(state, manifest, playerTiles);  // $2C13
+    // loc_00_3127 is the TAIL of sub_00_2C13, not a separate call, so it
+    // belongs immediately after it -- it used to run one call too early.
+    tickTileAnim(state);
+    updateBatarangs(state);             // $3A35
+    drawBatarangs(state, manifest);     // $3D15
+    updateRope(state, manifest);        // $3D5F -- the tail of the same routine
+    updateEnemies(state);               // $05CF CALL 1:$4E0C
+    // $05D2: LD A,[$C733] / AND A / CALL NZ,1:$4BB0 -- the door a punch
+    // opened, its four erases and the debris it throws.
+    updateDoors(state, manifest);
+  }
+
+  if (!hudFirst && hud) drawHud(state, manifest);     // $05E5
+
   updateSplashes(state);              // $05EF CALL 1:$7AD3 -- queues onto the
                                       // enemy draw list, so OAM order holds
   drawEnemies(state, manifest);       // flush loc_01_5CA8's queued sprites
+
+  updatePause(state);                 // $05F2-$0649
 
   // Level transitions additionally run the sub_00_104E camera variant
   // mid-frame (the $F0-masked / SUB $15 one). That belongs in the transition

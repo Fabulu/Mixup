@@ -142,6 +142,16 @@ test('a hazard drop shatters on landing with sound $17', () => {
   updateDrops(state, null);
   assert.equal(r[0], 0, 'shattered, not bounced');
   assert.deepEqual(state.sound.queue, [{ id: 0x17, mask: 0x01 }]);
+
+  // $14E5-$14F2 stages the drop's own position and $14F5 spawns the debris
+  // effect BEFORE the cue at $14FC. Both are audible: the effect's counter is
+  // $17, so doors.js's $13E6 one-shot asks for cue $17 again on its first
+  // tick. MEASURED (cuediff l6-conveyor): 28 $17s in 480 frames, 14 from
+  // $14FF and 14 from $13E9 -- the port produced 14.
+  const live = state.doors.effects.filter((e) => e[0] !== 0);
+  assert.equal(live.length, 1, '$14F5 spawned the shatter');
+  assert.equal(live[0][0], 0x97, 'D = $97');
+  assert.equal(live[0][5], 0x01, 'E = $01');
 });
 
 test('a rising drop is never terrain-tested', () => {
@@ -286,4 +296,47 @@ test('clearDrops empties the pool', () => {
   spawnDrop(state, 0x0100, 0x1100);
   clearDrops(state);
   assert.ok(state.drops.every((r) => r[0] === 0));
+});
+
+test('the X drift is ADDED ($1499-$14B4), where the Y half SUBTRACTS ($147D/$1484)', () => {
+  // The contrast is the whole point. The Y half negates explicitly -- CPL/INC
+  // on both arms -- so its 16-bit ADD at $1491 is a subtract. The X half has
+  // NO negate at all: $1499-$14A4 only sign-EXTENDS r[5] into BC and $14AD
+  // adds it.
+  //
+  // The port subtracted, which sent every drifting drop the wrong way. It was
+  // latent because every shipped spawner passed $C74D = $FF, i.e. r[5] = 0 --
+  // the level-6 vehicle's shot is the first caller with a sign.
+  //
+  // MEASURED (tools/oracle/driftsign.py, which plants a drop with vy = $7F so
+  // it RISES for the whole window and no terrain test can ever fire): on the
+  // cartridge $F8 takes X from $0500 to $0400 over 32 frames, $08 to $0600 and
+  // $00 stays put. poolport.mjs --inject reproduces all three frame for frame.
+  const drift = (r5) => {
+    const state = dropState();
+    const r = state.drops[0];
+    //                 flags xhi  xlo  yhi  ylo  drift vy   kind
+    r.set([0x01, 0x05, 0x00, 0x10, 0x00, r5, 0x7F, 0x00]);
+    state.camera.x = 0x0400;
+    for (let i = 0; i < 32; i++) updateDrops(state, null);
+    return (r[1] << 8) | r[2];
+  };
+  assert.equal(drift(0xF8), 0x0400, '-8 per frame: LEFT');
+  assert.equal(drift(0x08), 0x0600, '+8 per frame: RIGHT');
+  assert.equal(drift(0x00), 0x0500, 'and no drift stays put');
+});
+
+test('the rise is up the screen, so the two axes really do disagree', () => {
+  // The control for the test above: same record, same 32 frames, and Y goes
+  // DOWN in value (up the screen) while X goes up. If both axes were ADDs the
+  // Y column would move the other way and the arc would be wrong instead.
+  const state = dropState();
+  const r = state.drops[0];
+  r.set([0x01, 0x05, 0x00, 0x10, 0x00, 0x08, 0x7F, 0x00]);
+  state.camera.x = 0x0400;
+  const y0 = (r[3] << 8) | r[4];
+  updateDrops(state, null);
+  const y1 = (r[3] << 8) | r[4];
+  assert.ok(y1 < y0, '$1491 subtracts a positive velocity');
+  assert.ok(((r[1] << 8) | r[2]) > 0x0500, 'while $14AD adds a positive drift');
 });

@@ -95,11 +95,31 @@ const SCENARIOS = [
   // whole run including cleared routes is wiped.
   { name: 'game-over-wipes-progress', event: 'death', level: 3, mask: '03',
     lives: 1 },
+  // The same event with the ECONOMY loaded, which no recording in this corpus
+  // ever had. $FF8E and $C754 sat at their stock $0A/$00 in all eight, so
+  // "level init resets max HP" and "the game over keeps the +2 latch" -- two
+  // real bugs, two bytes apart from fields that WERE compared -- both passed
+  // 8/8 for as long as they existed. 1:$4D70/$4D91 write exactly this pair
+  // when the heart is taken.
+  { name: 'game-over-wipes-max-hp', event: 'death', level: 3, mask: '03',
+    lives: 1, maxHp: '10', maxHpTaken: '07' },
+  // And the ordinary death, where the same two bytes must SURVIVE: $FF8E has
+  // no writer between here and CONTINUE's $0482, which reads it back into
+  // $FF8A. Without this the fix could have been "clear it everywhere".
+  { name: 'death-keeps-max-hp', event: 'death', level: 3, mask: '00',
+    maxHp: '10', maxHpTaken: '07', pressStart: true },
 ];
 
 // The run state, compared wherever the event lands.
+//
+// `hpMax` ($FF8E) and `maxHpTaken` ($C754) joined late, and their absence is a
+// worked example of a corpus that stopped covering something without ever
+// going red: $C753 was compared and $C754, two bytes away, was not, so a game
+// over that failed to clear the +2-max-HP latch passed. And $FF8E was $0A in
+// every recording, so a level init that reset max HP was indistinguishable
+// from one that carried it.
 const RUN_FIELDS = ['screen', 'level', 'routeMask', 'continueAvailable',
-                    'lives', 'hp'];
+                    'lives', 'hp', 'hpMax', 'maxHpTaken'];
 // Plus, ONLY when it lands on the menu, the menu's own state and the three
 // BG cells the menu paints: $99CD (route marker), $9A04 (CONTINUE) and
 // $9A0E (life count).
@@ -148,6 +168,8 @@ function sampleMenu(state, screen) {
     cursor: state.roundSelect ? state.roundSelect.cursor : 0,
     mode: state.roundSelect ? state.roundSelect.mode : 0,
     hp: state.player.hp,
+    hpMax: state.player.hpMax,             // $FF8E
+    maxHpTaken: state.flow.maxHpTaken,     // $C754
     cursorTile: cell(0x99CD),
     continueRow: Array.from({ length: 8 }, (_, i) => cell(0x9A04 + i)),
     livesDigit: cell(0x9A0E),
@@ -165,6 +187,12 @@ async function runPort(s) {
   await initLevel(state, s.level);
   state.flow.routeMask = parseInt(s.mask, 16);
   if (s.lives !== undefined) state.flow.lives = s.lives;
+  // Exactly what 1:$4D70/$4D72/$4D91 leave behind, and what flowscen.py pokes.
+  if (s.maxHp !== undefined) {
+    state.player.hpMax = parseInt(s.maxHp, 16);
+    state.player.hp = state.player.hpMax;
+  }
+  if (s.maxHpTaken !== undefined) state.flow.maxHpTaken = parseInt(s.maxHpTaken, 16);
 
   let landed = null;
   if (s.event === 'clear') {
@@ -230,6 +258,9 @@ for (const s of SCENARIOS) {
                             '--event', s.event, '--level', String(s.level),
                             '--mask', s.mask, '--out', out,
                             ...(s.lives !== undefined ? ['--lives', String(s.lives)] : []),
+                            ...(s.maxHp !== undefined ? ['--max-hp', s.maxHp] : []),
+                            ...(s.maxHpTaken !== undefined
+                              ? ['--max-hp-taken', s.maxHpTaken] : []),
                             ...(s.pressStart ? ['--press-start'] : [])],
                  { cwd: ROOT, encoding: 'utf8' });
     process.stderr.write('done\n');

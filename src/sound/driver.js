@@ -170,7 +170,16 @@ function makeTrack() {
 export function createDriver(data) {
   return {
     data,
-    queue: [],                                    // $C6FB, 4 x 2 B
+    // $C6FB, four slots of {id, mask}. FLAT, and a slot is EMPTY only when
+    // BOTH bytes are zero -- that is literally what $0AEE-$0AF4 tests, and it
+    // is why cue $00 (the title theme) can be requested at all: its mask $03
+    // is what makes the slot read as occupied.
+    mail: new Uint8Array(8),
+    // $FFA1, the timer ISR's read cursor. A BYTE OFFSET, not a slot index:
+    // $097D adds 2 and $097F wraps at 7, so it walks 0, 2, 4, 6 forever.
+    mailCursor: 0,
+    // Diagnostics only -- how many requests sub_00_0AE1 found no room for.
+    dropped: 0,
     tracks: Array.from({ length: TRACKS }, makeTrack),
     owner: [0, 0, 0, 0],                          // $C800-$C803, track+1
     nr51Mask: 0xFF,                               // $C806
@@ -195,9 +204,35 @@ export function createDriver(data) {
   };
 }
 
-/** ROM: sub_00_0AE1. Four slots; a full queue silently drops the request. */
+/**
+ * ROM: sub_00_0AE1. Post a request into the $C6FB mailbox.
+ *
+ * NOT a FIFO. $0AE5-$0B07 scans slots 0..3 in order and takes the FIRST one
+ * whose two bytes are both zero; if none is free the request is dropped on the
+ * floor, silently, with no return value. The consumer -- the timer ISR at
+ * $096C -- does not drain in insertion order either: it reads ONE slot per
+ * tick, round robin, so a request posted into a slot the cursor has just
+ * passed waits four ticks while a later request in a lower slot goes first.
+ *
+ * That is the whole reason this is not a queue. Modelling it as one made the
+ * port's cue latency ~1 tick against the cartridge's measured mean of 2.94
+ * (histogram {1:9, 2:7, 3:14, 4:22}), and -- the audible part -- made it
+ * impossible for the port to DROP a cue the cartridge drops, because a FIFO
+ * that is drained every tick never fills. Level 12 spams cue $17 on nine
+ * consecutive frames and the cartridge loses one of them.
+ *
+ * @returns the slot taken, or -1 if the mailbox was full.
+ */
 export function request(drv, id, mask = REQ_PLAY) {
-  if (drv.queue.length < 4) drv.queue.push({ id, mask });
+  for (let s = 0; s < 4; s++) {
+    const at = s * 2;
+    if (drv.mail[at] !== 0 || drv.mail[at + 1] !== 0) continue;   // $0AEE/$0AF2
+    drv.mail[at] = id & 0xFF;                    // $0AF7: LD A,B
+    drv.mail[at + 1] = mask & 0xFF;              // $0AF9: LD A,C
+    return s;
+  }
+  drv.dropped++;
+  return -1;
 }
 
 /** ROM: sub_07_4036 -- stop everything and release every channel. */
@@ -271,16 +306,31 @@ export function tick(drv) {
   drv.writes.length = 0;
   if (!drv.booted) { drv.booted = true; hwInit(drv); }
 
-  // $412B: the request byte is consumed before anything else, in a fixed
-  // order -- reset, start, fade in, fade out.
-  const req = drv.queue.shift();
-  if (req) {
-    if (req.mask & REQ_STOP) stopAll(drv);
-    if (req.mask & REQ_PLAY) play(drv, req.id);
-    if (req.mask & REQ_FADE_IN) {                // $40A0
+  // $096C-$0988, the timer ISR's half of the mailbox -- which runs BEFORE
+  // sub_07_412B and is the only reader $C6FB has.
+  //
+  // It takes ONE slot per tick, at $FFA1, and advances the cursor by 2 with a
+  // wrap at 7 EVERY tick, whether the slot held anything or not. So the four
+  // slots are served strictly round robin, not oldest-first, and an empty slot
+  // costs a tick just like a full one. Then it zeroes both bytes ($0986-$0988)
+  // -- again unconditionally -- which is what frees the slot for $0AE1.
+  const at = drv.mailCursor;
+  const id = drv.mail[at];                       // $0975 -> $FFD3
+  const mask = drv.mail[at + 1];                 // $0978 -> $FFD2
+  const next = at + 2;                           // $097D: ADD A,$02
+  drv.mailCursor = next < 7 ? next : 0;          // $097F: CP $07 / JR C
+  drv.mail[at] = 0;
+  drv.mail[at + 1] = 0;
+
+  // $412B: the mask is consumed in a fixed order -- reset, start, fade in,
+  // fade out. A zero mask is a no-op, which is what an empty slot produces.
+  if (mask) {
+    if (mask & REQ_STOP) stopAll(drv);
+    if (mask & REQ_PLAY) play(drv, id);
+    if (mask & REQ_FADE_IN) {                    // $40A0
       drv.fadeCount = 0x0A; drv.fadeIn = 0x0A; drv.fadeOut = 0;
     }
-    if (req.mask & REQ_FADE_OUT) {               // $40AC
+    if (mask & REQ_FADE_OUT) {                   // $40AC
       drv.fadeCount = 0; drv.fadeIn = 0; drv.fadeOut = 0x12;
     }
   }

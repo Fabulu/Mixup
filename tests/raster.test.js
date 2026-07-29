@@ -244,8 +244,21 @@ test('the delta only moves on every 8th frame, and $C766 reverses it', () => {
 
 test('squashBands reproduces the measured delta-11 frame exactly', () => {
   // rastersquash.py, frame 199 of the real transition: $C763 = 11, base
-  // rSCY = 0. Lines 0-22 stay at 0, then it climbs 1 per line to 67 on line
-  // 45, 2 per line after that, and hands off on line 68.
+  // rSCY = 0.
+  //
+  // THE LINE AN ARM RUNS ON IS NOT THE LINE ITS WRITE IS SEEN ON. $095A's
+  // `LD [BC],A` is the LAST instruction of the arm for line y, by which time
+  // the fetcher has already latched line y's scroll -- so the value lands from
+  // line y+1. Every other arm in $0857 re-arms rLYC several lines ahead and
+  // the distinction never shows; mode 7 re-arms EVERY line, so here it is the
+  // whole difference between right and wrong.
+  //
+  // MEASURED (tools/oracle/rastersquash.py, and now squashdiff.mjs over 240
+  // frames / 33,984 scanlines): for y = 23..67 without exception, cartridge
+  // scanline y carries the SCY the unshifted model computed for y-1. The value
+  // SEQUENCE was already byte-identical, which is exactly why nine green
+  // rasterdiff scenarios never saw it -- and why menuscreen.mjs `options` sat
+  // at 22004/23040 with the first bad pixel at (13,23).
   const s = mkState({ frame: 0, water: null });
   s.raster.mode = RASTER_SQUASH;
   s.raster.delta = 11;
@@ -253,17 +266,25 @@ test('squashBands reproduces the measured delta-11 frame exactly', () => {
   const { bands, handoff } = squashBands(s, flat, 144);
 
   assert.equal(bands[22].scy, 0);
-  assert.equal(bands[23].scy, 1);
-  assert.equal(bands[45].scy, 23);
-  assert.equal(bands[46].scy, 25);
-  assert.equal(bands[67].scy, 67);
-  // $094B crosses $44 here: rSCY is written 0, rBGP becomes $1B, chain stops.
-  assert.equal(bands[68].scy, 0);
-  assert.equal(bands[68].bgp, 0x1B);
+  assert.equal(bands[23].scy, 0, 'line 23 still shows what line 22 computed');
+  assert.equal(bands[24].scy, 1);
+  assert.equal(bands[45].scy, 22);
+  assert.equal(bands[46].scy, 23);
+  assert.equal(bands[47].scy, 25, 'the 2-per-line phase, one line later');
+  assert.equal(bands[67].scy, 65);
+  // $094B crosses $44 on line 68's arm: rSCY is written 0 ($0957 XOR A),
+  // rBGP becomes $1B, and the chain stops -- all of it visible from line 69.
+  assert.equal(bands[68].scy, 67, 'line 68 still shows line 67 arm output');
+  assert.equal(bands[68].bgp, 0xE4);
+  assert.equal(bands[69].scy, 0);
+  assert.equal(bands[69].bgp, 0x1B);
   assert.equal(bands[143].scy, 0);
   assert.equal(bands[143].bgp, 0x1B);
-  // $FFAC is rLYC AFTER $0937's INC, so the window starts one line lower.
+  // $FFAC is rLYC AFTER $0937's INC, so the window starts one line lower --
+  // and it lands on exactly the first line the $1B palette is seen on.
   assert.equal(handoff, 69);
+  assert.equal(bands[handoff].bgp, 0x1B,
+    'the window starts on the first line the squash palette actually shows');
 });
 
 test('squashBands reproduces the measured delta-7 frame too', () => {
@@ -272,9 +293,32 @@ test('squashBands reproduces the measured delta-7 frame too', () => {
   s.raster.delta = 7;
   const flat = { from: 0, scx: 0, scy: 0, bgp: 0xE4, obp0: 0xE4, obp1: 0xE4 };
   const { bands, handoff } = squashBands(s, flat, 144);
-  assert.equal(bands[88].bgp, 0x1B);
   assert.equal(bands[87].bgp, 0xE4);
+  assert.equal(bands[88].bgp, 0xE4, 'the arm runs on 88; the write shows on 89');
+  assert.equal(bands[89].bgp, 0x1B);
   assert.equal(handoff, 89);            // measured $FFAC on that frame
+});
+
+test('every squash band shows the PREVIOUS line arm output, on every delta', () => {
+  // The shift is a property of the arm, not of one recorded frame: band y is
+  // whatever band y-1's arm computed, for every delta $C763 can hold (0-$0B)
+  // and every line above the handoff. Stated as an invariant so a "tidy-up"
+  // that re-aligns one measured frame cannot pass by moving the other.
+  for (let delta = 0; delta <= 0x0B; delta++) {
+    const s = mkState({ frame: 0, water: null });
+    s.raster.mode = RASTER_SQUASH;
+    s.raster.delta = delta;
+    const flat = { from: 0, scx: 0, scy: 0, bgp: 0xE4, obp0: 0xE4, obp1: 0xE4 };
+    const { bands, handoff } = squashBands(s, flat, 144);
+    // Line 0 can never have been written by anything: no arm has run yet.
+    assert.equal(bands[0].scy, 0, `delta ${delta}: line 0 is the base scroll`);
+    assert.equal(bands[0].bgp, 0xE4, `delta ${delta}`);
+    if (handoff !== null) {
+      assert.equal(bands[handoff - 1].bgp, 0xE4,
+        `delta ${delta}: the handoff line itself still shows the old palette`);
+      assert.equal(bands[handoff].bgp, 0x1B, `delta ${delta}`);
+    }
+  }
 });
 
 test('a zero delta never hands off -- 144 flat bands', () => {

@@ -12,8 +12,8 @@ import { buildTileCache } from './assets.js';
 import { buildRoundSelectVram, requireScreenSpec } from './vram.js';
 import { runVramScript } from './vramscript.js';
 import { BTN } from './player.js';
-import { GAMEPLAY_PALETTES } from './state.js';
 import { drawMetasprite } from './render/metasprite.js';
+import { createFade, tickFade } from './title.js';
 
 /**
  * Cursor tile per route, table 0:$1008 -> $81 $82 $83 $84. Painted into the
@@ -103,7 +103,12 @@ export async function loadRoundSelect(manifest, titleVram) {
     scripts: spec.scripts.map(b64),
   }, (v, s) => runVramScript(v, s), titleVram);
 
-  return { vram, tiles: buildTileCache(vram), bgMap: vram.slice(0x1800, 0x1C00) };
+  // sub_00_0A7F's two ramps, 0:$0B09 and 0:$0B11. They are GLOBAL -- every
+  // fade in the game reads the same twelve bytes -- and the exporter happens
+  // to hang them off the title's manifest block. Carried on the art object so
+  // showRoundSelect stays self-contained and needs nothing from main.js.
+  return { vram, tiles: buildTileCache(vram), bgMap: vram.slice(0x1800, 0x1C00),
+           fadeBgp: manifest.title?.fadeBgp, fadeObp1: manifest.title?.fadeObp1 };
 }
 
 /** ROM: loc_00_035B, the setup before the loop. */
@@ -125,18 +130,34 @@ export function showRoundSelect(state, art) {
   state.video.windowLatchY = 0x90;
   state.video.windowMap = null;
   state.video.windowDither = false;
-  state.video.bgp = 0xE4;
-  // $0365 zeroes both OBJ palette shadows -- but they do NOT stay zero, and
-  // reproducing the write literally is wrong. Measured on the cartridge while
-  // the screen is up: rOBP0 = $E4, rOBP1 = $C4, shadows $E4. Something in the
-  // resource loads restores them before anything is drawn.
+  // $0365-$0368: `XOR A / LDH [$FFAD] / LDH [$FFAE]` -- BGP and OBP0 go to
+  // ZERO, and the whole screen is assembled BLACK. What brings it back is not
+  // "something in the resource loads": it is $03D7's `LD C,$80` ->
+  // sub_00_0A7F, a 33-frame fade IN, which ends on ramp entry 0 = $E4/$E4/$C4.
+  // That is why the settled screen reads $E4/$E4/$C4 and why an earlier probe
+  // that only sampled the settled screen concluded the zeroes were undone by
+  // magic.
   //
-  // Getting this wrong hid the bat cursor, because a zeroed OBP maps every
-  // shade to colour 0 -- the sprite is still in OAM and still drawn, just
-  // invisible. The cartridge's OAM here is two 8x8 sprites, tile $AA at
-  // x $10 and $18, the second X-flipped.
-  state.video.obp0 = GAMEPLAY_PALETTES.obp0;
-  state.video.obp1 = GAMEPLAY_PALETTES.obp1;
+  // MEASURED (tools/oracle/menushot.py, trace `roundselect`): $FFAD is $00
+  // while the screen builds, then steps $00 -> $40 -> $90 -> $E4 eight frames
+  // apart, and the first $03DC input iteration is 8 frames after the last
+  // step. The port used to sit at $E4 from frame 1, so the menu popped in
+  // from black instead of fading up.
+  //
+  // Getting the OBJ palette wrong hid the bat cursor once, because a zeroed
+  // OBP maps every shade to colour 0 -- the sprite is still in OAM and still
+  // drawn, just invisible. Nothing is drawn during the fade at all ($03DC is
+  // not reached until it returns), so the zero is only ever on screen with an
+  // empty sprite queue. The cartridge's OAM here is two 8x8 sprites, tile $AA
+  // at x $10 and $18, the second X-flipped.
+  state.video.bgp = 0x00;
+  state.video.obp0 = 0x00;
+  // $FFAF is deliberately NOT written -- $0365-$0368 is two stores, not three.
+  // Every entry path arrives with it already zero (the title flash's own fade
+  // OUT ends on ramp entry 3 = $00, $2AC2 zeroes it on death, the ending's
+  // fade does the same), and the fade IN rewrites it on its way back up:
+  // $00, $00, $80, $C4. Forcing $C4 here made the port's OBP1 disagree with
+  // the cartridge's for the first 16 frames of the fade.
   state.camera.x = 0;
   state.camera.y = 0x1000;
 
@@ -148,15 +169,38 @@ export function showRoundSelect(state, art) {
   // cursor STARTS on it ($03C6) rather than on START.
   const canContinue = !!state.flow.continueAvailable;
 
-  state.roundSelect = { cursor, mode: canContinue ? 1 : 0, canContinue };
+  // $03D7: `LD C,$80 / CALL sub_00_0A7F` -- 33 frames, and it BLOCKS. The
+  // loop head at $03DC is not reached until it returns, so the screen ignores
+  // input and draws no cursor for the whole fade, exactly like the title's.
+  //
+  // Conditional on the ramps being present: the unit tests, flowdiff.mjs and
+  // roundseldiff.mjs all drive this with a stub art object and are testing the
+  // CURSOR logic, which the fade would simply postpone by 33 ticks. Real art
+  // always carries them (loadRoundSelect above). If a landmark ever needs the
+  // fade proven, tools/oracle/menufade.mjs holds it against the cartridge's
+  // own $FFAD trace.
+  state.roundSelect = {
+    cursor, mode: canContinue ? 1 : 0, canContinue,
+    fade: art.fadeBgp ? createFade({ fadeBgp: art.fadeBgp, fadeObp1: art.fadeObp1 },
+                                   0x80) : null,
+  };
   paintRouteCursor(state, cursor);
   if (canContinue) paintContinue(state);        // $03B8-$03C3
 
-  // Song $01 is the round-select theme, mask $03 = play + stop-all. Measured
-  // by hooking sub_00_0AE1 across the transition: the cartridge asks for $0D
-  // (the confirm blip, which title.js already sends) and then $01. Without
-  // this the screen keeps playing whatever the title left running.
-  requestSound(state, 0x01, 0x03);
+  // NO MUSIC REQUEST. loc_00_035B-$03DC contains no `CALL sub_00_0AE1` at all
+  // -- every one of the three ways in asks for its own cue first and then
+  // jumps here:
+  //
+  //   title    $0355  BC = $0103   (src/title.js tickFlash, already sent)
+  //   death    $2AC6  BC = $2E03   (src/player.js, already sent) -> $2ACC
+  //   clear    $3634  BC = $0103   -> $363A
+  //
+  // MEASURED (tools/oracle/menushot.py `songs`, which stamps every $0AE1 hit
+  // with the loop counters): the complete list for the title walk is
+  // ... $0D/$01 at title=183, $01/$03 at flash=120, and NOTHING at rs>=1.
+  // Sending $01 here restarted the theme a second time on that path, and --
+  // worse -- overrode the DEATH path's $2E, so the port played the round
+  // select's own theme where the cartridge plays the after-death one.
 }
 
 /**
@@ -218,6 +262,14 @@ export function tickRoundSelect(state) {
   const r = state.roundSelect;
   state.frame = (state.frame + 1) & 0xFF;      // $FFB1 still ticks in VBlank
   state.video.sprites.length = 0;
+
+  // $03D7's fade sits between the build and the loop head, so nothing below
+  // runs for 33 frames -- no input, no cursor. $FFB1 keeps ticking because
+  // sub_00_0A7F waits on sub_00_0A4F, which is where the VBlank ISR lands.
+  if (r.fade) {
+    if (!tickFade(r.fade, state.video)) r.fade = null;
+    return 'roundselect';
+  }
 
   const p = state.input.pressed;
   const mask = state.flow.routeMask & 0xFF;

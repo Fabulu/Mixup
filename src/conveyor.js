@@ -38,6 +38,7 @@
 
 import { u8, u16, setMapCell } from './state.js';
 import { spawnDrop } from './drops.js';
+import { spawnEffect } from './doors.js';
 
 /**
  * $FFC8, $C717, $C736, $C73B and the $C75B-$C762 rescue-drop block.
@@ -299,8 +300,13 @@ function level11Entrance(state) {
  * f171. The player's Y leaves $1400 at f104 and he is at $1B00 by f166 -- he
  * falls through the floor he was standing on, which is the point.
  *
- * The $C744-$C747 burst spawned at $2FF9 is the effect pool, which the port
- * does not model (same stance as the waterfall trigger in water.js).
+ * The burst at $2FF9 is the $C693 effect pool, and it is not decoration: with
+ * one spawn per erased cell the pool RUNS FULL. MEASURED (tools/oracle/
+ * oamwho.py, level 12 frame 121): ten pool draw calls fill shadow OAM entries
+ * 0-19 ahead of the player, the cartridge's OAM hits 40/40, and the cap drops
+ * the HUD's fifth sprite. The port drew none of it -- 550 px wrong across rows
+ * 80-94 -- and cuediff l12-shooter-approach counted 33 $17 cues on the
+ * cartridge against 0 here.
  */
 function level12Floor(state) {
   const s = subsys(state);
@@ -325,6 +331,10 @@ function level12Floor(state) {
   const i = (s.cursor - 1) * 2;                               // $2FDA: DEC/ADD
   const c = t[i];                                             // $2FE3: $C744
   const r = t[i + 1];                                         // $2FE8: $C746
+  // $2FED-$2FFA: both low bytes are $80, so the debris sits in the middle of
+  // the cell that is about to vanish -- and it spawns BEFORE the cell is
+  // erased. $97/$00, the same animated shape the door puff uses.
+  spawnEffect(state, (c << 8) | 0x80, (r << 8) | 0x80, 0x97, 0x00);
   // $2FFF-$300D: graphic AND collision to zero, then the VRAM queue. The port
   // renderer reads the map directly, so setMapCell is both writes.
   setMapCell(state, c, r, 0, 0);

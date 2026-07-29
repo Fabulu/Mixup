@@ -12,6 +12,7 @@ import { makeTunables } from '../src/tunables.js';
 import { throwBatarang, updateBatarangs, findFreeSlot, FLAG_RETURNING }
   from '../src/batarang.js';
 import { makeState, grid } from './helpers.js';
+import { effects, COUNTDOWN_START } from '../src/effects.js';
 
 function makeWorld() {
   const g = grid(24);
@@ -310,4 +311,123 @@ test('a second armoured hit does not re-arm the attack timer', () => {
   updateBatarangs(s);
   assert.equal(r[0x14], 3, 'timer untouched');
   assert.equal(s.batarangs[0].flags & FLAG_RETURNING, FLAG_RETURNING, 'still bounced');
+});
+
+test('$3C4E: a batarang is INERT while $C740 is not $FF', () => {
+  // `LD A,[$C740] / CP $FF / JP NZ` -- the same gate the melee scan has at
+  // $26B7, on the same byte, and it is NOT $C750. A boss dying stamps
+  // $C740 = $FE and the countdown holds it non-$FF for 255 frames of ordinary,
+  // controllable play in which a thrown batarang does nothing at all.
+  //
+  // MEASURED (tools/oracle/dmggate.py, level 4, boss HP zeroed at f40 with a
+  // fake enemy planted on the probe point): 63 batarang candidates REACH the
+  // gate and 0 damage arms run past it. dmggateport.mjs drives the port both
+  // ways -- $C740 = $FF gives 56 hits and 56 $19 cues, $FE gives 0 and 0.
+  const dying = batScene({ hp: 6 });
+  effects(dying).countdown = COUNTDOWN_START;          // 1:$4EF1
+  updateBatarangs(dying);
+  const r = dying.enemies[0];
+  assert.equal(r[0x16], 6, 'HP untouched');
+  assert.equal(r[0x17], 0, 'no stun');
+  assert.equal(r[0] & 0x04, 0, 'no hit flash');
+  assert.deepEqual(dying.sound.queue, [], 'and no $19');
+
+  // Level 14's entrance uses a different VALUE of the same byte and must reach
+  // the same gate; c740Idle() is the single reader so they cannot drift.
+  const entrance = batScene({ hp: 6 });
+  effects(entrance).entranceHold = 1;                  // $0DE3
+  updateBatarangs(entrance);
+  assert.equal(entrance.enemies[0][0x16], 6);
+});
+
+// ---------------------------------------------------------------------------
+// Level 14: the CHASER catches it, not Batman.  ROM: $3BED-$3C14.
+// ---------------------------------------------------------------------------
+
+/**
+ * A level-14 scene set up the way the fight really starts one: the throw
+ * happens AT the player, which is the whole reason the catch target matters.
+ */
+function jokerScene({ difficulty = 1, chaserSX = 0x20, chaserSY = 0x20 } = {}) {
+  const s = makeState(grid(24));
+  s.level.number = 0x0E;
+  s.flow.difficulty = difficulty;
+  s.flow.ammo = 5;
+  s.player.x = BAT_X;
+  s.player.y = BAT_Y;
+  const chaser = s.enemies[1];
+  chaser[0] = 0x80;
+  chaser[7] = chaserSX & 0xFF;
+  chaser[8] = chaserSY & 0xFF;
+  chaser[0x0E] = 0x20;                         // $C296 -- far to the right, so
+  chaser[0x10] = BAT_Y >> 8;                   // $C298 -- the homing pulls out
+  return s;
+}
+
+test('$3BF5: on level 14 above easy the CHASER catches the batarang', () => {
+  // This is the regression that made the final boss unwinnable. $19C0 sets the
+  // RETURNING bit at throw time, and a returning batarang runs the catch test
+  // FIRST -- so a throw that spawns at the player's own X, $40 above him, is
+  // inside the $0C10 box on its very first frame. Testing the PLAYER here
+  // freed the slot before anything was ever drawn: ammo spent, no batarang,
+  // and Batarang Storm could not help because ammo was never the problem.
+  //
+  // $3BF5-$3C02 loads B/C from $C28F/$C290 -- enemy slot 1's cached +7/+8 --
+  // instead of the player's $FF93/$FF94, under the same level-$0E/non-easy
+  // test that swaps the homing target.
+  //
+  // MEASURED (tools/oracle/jokerbat.py, difficulty 1, throw at f740): the pair
+  // the ROM loads into B/C equals $C28F/$C290 on all 25 frames of flight and
+  // $FF93/$FF94 on none of them. The throw lives f740-f764 and diffhunt's
+  // l14-batarang scenario is bit-exact against the cartridge over 800 frames
+  // on both difficulty 0 and 2.
+  const s = jokerScene();
+  assert.equal(findFreeSlot(s.batarangs), 0);
+  throwBatarang(s, 0);
+  assert.equal(s.batarangs[0].flags & FLAG_RETURNING, FLAG_RETURNING,
+               '$19C0 set bit 7 at throw time');
+
+  // Pin the PREMISE, not just the outcome: the throw really is sitting inside
+  // the player's own catch box on frame one. Without this the test could go
+  // green because the fixture drifted the batarang out of reach instead of
+  // because the target was swapped.
+  const b0 = s.batarangs[0];
+  assert.ok(Math.abs((b0.x >> 4) - (s.player.x >> 4)) <= 0x0C
+            && Math.abs((b0.y >> 4) - (s.player.y >> 4)) <= 0x10,
+            'the throw spawns INSIDE the player catch box -- that is the trap');
+
+  updateBatarangs(s);
+  assert.ok(s.batarangs[0].active,
+            'the batarang must SURVIVE its first frame -- the player does not '
+            + 'catch it on level 14, the chaser does');
+});
+
+test('and it IS caught once it reaches the chaser', () => {
+  // The other half: the swap is a different target, not a disabled test. Park
+  // the chaser's cached +7/+8 exactly on the batarang's own ROM-convention
+  // pair and the slot must be freed on the spot ($3C14 -> loc_00_3D40).
+  const s = jokerScene();
+  throwBatarang(s, 0);
+  const b = s.batarangs[0];
+  // The +7/+8 convention carries sub_00_1172's +8/+16 OAM offsets -- MEASURED
+  // by jokerbat.py's convention table, which matches +8/+16 on every frame and
+  // the bare drawing pair on none. Using the drawing pair here would put the
+  // chaser 8/16 px off and the catch would silently never fire.
+  s.enemies[1][7] = (((b.x - s.camera.x) >> 4) + 8) & 0xFF;
+  s.enemies[1][8] = ((((b.y & 0x0FFF) - s.camera.y) >> 4) + 0x10) & 0xFF;
+  updateBatarangs(s);
+  assert.equal(b.active, false, 'absorbed by the chaser');
+  assert.equal(b.flags, 0, '$3D40 zeroes the whole 9-byte slot');
+});
+
+test('on EASY level 14 is the ordinary path -- Batman catches his own', () => {
+  // $3BF9 tests $C756 and falls through to $3C05 when it is zero, so easy gets
+  // the normal outbound throw and the normal player catch. Guarding this is
+  // what stops a fix for the arm above from leaking into every other level.
+  const s = jokerScene({ difficulty: 0 });
+  throwBatarang(s, 0);
+  assert.equal(s.batarangs[0].flags & FLAG_RETURNING, 0,
+               'no bit 7 at throw time on easy');
+  updateBatarangs(s);
+  assert.ok(s.batarangs[0].active, 'and it flies out normally');
 });

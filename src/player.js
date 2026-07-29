@@ -48,10 +48,16 @@ export function updatePlayer(state, manifest = null) {
     return;
   }
 
-  applyCarry(state);
-
-  // Death runs its own sequence and suppresses everything else.
-  if (state.player.dead) { deathTick(state, manifest); return; }
+  // The GAME OVER burst. On the cartridge this is a MAIN-LOOP call ($057A on
+  // even frames, $05EC on odd) and NOT part of the player update at all, so it
+  // cannot live inside the chain below: $1772 ends a dying player's update
+  // outright whenever he is past the death row, and a burst that stopped
+  // ticking there would never reach loc_00_2AAD. It runs here, first, for that
+  // reason -- see the header of deathTick for what the call site costs.
+  if (state.player.dead) {
+    deathTick(state, manifest);
+    if (state.flow.respawnPending) return;
+  }
 
   // $1643: a scripted door/exit walk-through replaces the entire player
   // update while it runs -- no input, no physics, no collision.
@@ -67,7 +73,16 @@ export function updatePlayer(state, manifest = null) {
   // update's tail. MEASURED on l5-walkerjump-approach f119, the frame a script
   // ends: the cartridge holds anim $0A / $FF89 = 4 / $FF90 = $0A while the port
   // stepped the walk cycle, and every walk frame after that ran one ahead.
+  //
+  // $1643 is `LD A,[$C737] / AND A / JP Z, loc_00_170A`, so the carry apply is
+  // the ELSE of this branch, not something that runs before it: while a script
+  // is running the $C72F/$C730 inbox is neither consumed, mirrored into
+  // $C723/$C724, nor zeroed. A displacement queued on the frame a script arms
+  // therefore stays pending for the whole walk-through and lands on the first
+  // frame after it ends. The port used to apply it unconditionally, ahead of
+  // this test.
   if (updateScriptedMove(state)) return;
+  applyCarry(state);                    // $1647 -> loc_00_170A
 
   // $173C-$1773: the exit tests and the PIT death test run at the TOP of the
   // player update, on the position the PREVIOUS frame left behind -- before
@@ -93,10 +108,21 @@ export function updatePlayer(state, manifest = null) {
   // and since main.js decrements $C714 every frame regardless, a $5A stamp
   // could decay past the >= $59 window at $1782 and lose its launch entirely.
   if (clingLocked(state)) {
-    // $17FB jumps to loc_00_1865, which runs both wall probes and nothing
-    // else -- no input, no movement, no gravity.
-    resolveWall(state, 'right');
-    resolveWall(state, 'left');
+    // $17FB jumps to loc_00_1865 -- and $1865 is NOT a dead end. It runs the
+    // two wall probes and then `JP loc_00_18FB`, where $1909 sees the lock and
+    // jumps to $1A9D: the ceiling probe, then $1AC2 into $1B1B, the floor
+    // probe. A lock skips the MOVEMENT arms and the attack block; it does not
+    // skip the probes. MEASURED with playerhunt cling over the 16 lock frames
+    // of walljump-launch-off-right-wall: ceilProbes 1 and floorProbes 1 on
+    // every one of them. (Nothing observable changes on those 16 frames --
+    // the floor is far away and $1B38 ignores a catch while rising -- but the
+    // port's version made falling()'s own $1AC2 arm dead code, which is the
+    // kind of gap that only shows up somewhere else entirely.)
+    resolveWall(state, 'right');        // $1865
+    resolveWall(state, 'left');         // $1868
+    verticalProbes(state);              // $1909 -> $1A9D, NOT $1A57: the rise
+                                        // integrate is one of the arms a lock
+                                        // does skip, which is what freezes y.
     selectAnim(state);
     return;
   }
@@ -283,8 +309,9 @@ function deathTick(state, manifest = null) {
 function attack(state) {
   const p = state.player;
 
-  if (p.springArmed) return;                    // $1902
-  if (p.clingLock & 0x1F) return;               // $1909
+  if (p.dead) return;                           // $18FF: JP NZ, loc_00_1A57
+  if (p.springArmed) return;                    // $1902 -> loc_00_1A29
+  if (p.clingLock & 0x1F) return;               // $1909 -> loc_00_1A9D
 
   // $1910: an attack already in flight advances its counter. The counter runs
   // 1..15 and wraps to 0; the hit test fires on exactly frame 8, and frames
@@ -450,24 +477,41 @@ function horizontal(state) {
     || p.attackTimer !== 0
     || p.action !== 0
     || p.springArmed !== 0;
+
+  // $1826: `LD A,[$C715] / AND A / JP NZ, loc_00_1A57`. A dead player who has
+  // not already been diverted to the friction path leaves the horizontal block
+  // ENTIRELY -- no facing, no acceleration, no move(), and not even the pair of
+  // wall probes at $1865. MEASURED (deadphys.py, level 3, warp 7,28, HP zeroed
+  // at f10): from f11 on the cartridge runs the ceiling probe once and the
+  // floor probe once per frame and the wall probe ZERO times, while the corpse
+  // rides the conveyor at 4 subpixels a frame for the rest of the sequence.
+  // Note the ORDER -- the four `blocked` tests are upstream of this one, so a
+  // player who dies mid-swing still takes $183B and still gets his wall probes.
+  if (!blocked && p.dead) return;
+
   const dir = blocked ? -1 : (state.input.held & 0xF0);
 
-  if (dir === BTN.RIGHT) {
+  if (dir === BTN.RIGHT) {                      // $1833 -> loc_00_186E
     faceRight(state);
     // $1881: BIT 7 / JR NZ -> loc_00_1840. Pressing right while still moving
     // LEFT does not accelerate -- it bleeds speed off by 1 per frame until the
     // direction actually reverses. This applies in the air too.
-    if (p.vx < 0) friction(state); else accelerate(state);
-  } else if (dir === BTN.LEFT) {
-    faceLeft(state);
-    if (p.vx > 0) friction(state); else accelerate(state);   // $18C0
-  } else if (p.air === AIR_GROUNDED) {
-    // $183B -> $1840: grounded with no input decays toward zero.
-    friction(state);
+    if (p.vx < 0) { frictionPath(state); return; }
+    accelerate(state);                          // $1885
+    moveRight(state);                           // $186E falls INTO $1888
+    return;
   }
-  // $1859: airborne with no input keeps its velocity -- no air friction.
+  if (dir === BTN.LEFT) {                       // $1838 -> loc_00_18A9
+    faceLeft(state);
+    if (p.vx > 0) { frictionPath(state); return; }           // $18C2
+    accelerate(state);                          // $18C5
+    moveLeft(state);                            // $18A9 falls INTO $18C8
+    return;
+  }
 
-  move(state);
+  // $183B: no usable direction.
+  if (p.air !== AIR_GROUNDED) { coast(state); return; }      // $1859
+  frictionPath(state);                          // $1840
 }
 
 /**
@@ -500,13 +544,56 @@ function knockback(state) {
   p.vx = dirBit ? -t.knockbackX : t.knockbackX;    // $1790 / $1794
   p.air = AIR_RISING;                              // $1798
   p.action = 0;                                    // $179C
-  p.vy = t.knockbackY;                             // $17B2: $18
+
+  // $17A0-$17B0: level 4 has its own launch. If $C73F is set -- boss 1's crit
+  // flag, written by $3CB6 and by the crit dash at $62BF, both of which are
+  // already ported -- the vertical kick is $40 instead of $17B2's $18. The
+  // port always took $17B2, which is a 40-unit error on EVERY knockback in the
+  // boss-1 fight: enemyhunt l4-boss1-punch counts $17AC once and $17B2 never.
+  // MEASURED (playerhunt kb4): level 4 + $C73F=1 -> vy 60 two frames later;
+  // level 4 + $C73F=0 -> 20; level 5 + $C73F=1 -> 20.
+  //
+  // $17A2 reads $FFB0 (the LEVEL), not $C73E (the boss id) -- they agree on
+  // level 4 but they are not the same byte, and only one of them is what the
+  // ROM tests here. `knockbackCritY` is not a tunable yet; $40 is the literal
+  // at $017AD and the `??` is there so wiring one up later just works.
+  const crit = state.level.number === 4 && (state.flow.bossCrit || 0) !== 0;
+  p.vy = crit ? (t.knockbackCritY ?? 0x40) : t.knockbackY;   // $17AC / $17B2
 }
 
-/** ROM: loc_00_1840 - bleed 1 subpx/frame toward zero. */
-function friction(state) {
+/**
+ * ROM: loc_00_1840 - bleed 1 subpx/frame toward zero, then DISPATCH.
+ *
+ * The bleed is only half of this label. Where it goes afterwards is the other
+ * half, and it is not "carry on to the move": a velocity that is zero, or that
+ * reaches zero on this frame, jumps to $1865 (both probes, unconditionally),
+ * while a surviving one jumps to $1888 or $18C8 by sign.
+ */
+function frictionPath(state) {
   const p = state.player;
-  if (p.vx !== 0) p.vx = i8(u8(p.vx + (p.vx < 0 ? 1 : -1)));
+  if (p.vx === 0) { bothWallProbes(state); return; }         // $1843
+  if (p.vx < 0) {
+    p.vx = i8(u8(p.vx + 1));                                 // $1851
+    if (p.vx === 0) { bothWallProbes(state); return; }       // $1854
+    moveLeft(state);                                         // $1856
+    return;
+  }
+  p.vx = i8(u8(p.vx - 1));                                   // $184A
+  if (p.vx === 0) { bothWallProbes(state); return; }         // $184D
+  moveRight(state);                                          // $184F
+}
+
+/** ROM: loc_00_1859 - airborne with no input keeps its velocity, no friction. */
+function coast(state) {
+  const p = state.player;
+  if (p.vx === 0) { bothWallProbes(state); return; }         // $185C
+  if (p.vx < 0) moveLeft(state); else moveRight(state);      // $1860 / $1863
+}
+
+/** ROM: loc_00_1865 - both probes, in that order, neither conditional. */
+function bothWallProbes(state) {
+  resolveWall(state, 'right');          // $1865
+  resolveWall(state, 'left');           // $1868
 }
 
 /** ROM: loc_00_186E */
@@ -563,36 +650,44 @@ function accelerate(state) {
 }
 
 /**
- * ROM: loc_00_1888 (right) / loc_00_18C8 (left) / loc_00_1865 (stationary).
+ * ROM: loc_00_1888 (right) / loc_00_18C8 (left).
  *
- * Both probes run every frame, in an order that depends on the direction of
- * travel: the LEADING probe decides whether to stop, and the trailing one runs
- * only if the leading one did not block. When standing still, both run
- * unconditionally. The trailing probe still applies its 1 px push, which is
- * how the game keeps the player nudged clear of walls.
+ * The LEADING probe decides whether to stop, and the trailing one runs only if
+ * the leading one did not block. The trailing probe still applies its 1 px
+ * push, which is how the game keeps the player nudged clear of walls.
+ *
+ * The guard at the head of each is NOT a redundant sign check, and this is the
+ * fall-through trap in its usual shape: $1888 and $18C8 are jumped INTO from
+ * $186E/$18A9 as well as from $1840/$1859, so they receive a velocity that
+ * accelerate() may have left at zero -- and they are not symmetric about it.
+ * $188A tests `BIT 7` and skips only a NEGATIVE velocity, so a zero one still
+ * moves by zero and still probes; $18CA tests `JP Z` and skips a zero one too,
+ * so it runs NO probe at all. That asymmetry is observable: MEASURED on level
+ * 12 (breakcells.py --warp 50,18 --hold left, hooks on $1FAF/$1F87), the
+ * cartridge runs the left probe on f50, f52 and f54 and NOT on f51/f53/f55 --
+ * exactly the frames the air throttle leaves VelX at 0 while LEFT is held. A
+ * port that routed "vx == 0" to $1865 instead pushed the player out of the
+ * wall one frame early, every other frame, for as long as he held the
+ * direction.
  */
-function move(state) {
+function moveRight(state) {
   const p = state.player;
+  if (p.vx < 0) return;                 // $188A: BIT 7 / JP NZ loc_00_18FB
+  p.x = (p.x + p.vx) & 0xFFFF;          // $1894: sub_00_18E7, B = 0
 
-  if (p.vx === 0) {
-    resolveWall(state, 'right');        // $1865: both, unconditionally
-    resolveWall(state, 'left');
-    return;
-  }
+  // $189A: on contact, zero the velocity. The original does not back the move
+  // out -- the probe sits 8-9 px ahead while top speed is 1.5 px per frame, so
+  // contact is seen long before anything overlaps.
+  if (resolveWall(state, 'right')) { p.vx = 0; return; }     // $189B -> $18A3
+  resolveWall(state, 'left');           // $189D
+}
 
-  p.x = (p.x + p.vx) & 0xFFFF;          // sub_00_18E7
-
-  const lead = p.vx > 0 ? 'right' : 'left';
-  const trail = p.vx > 0 ? 'left' : 'right';
-
-  // $189A / $18DE: on contact, zero the velocity. The original does not back
-  // the move out -- the probe sits 8-9 px ahead while top speed is 1.5 px per
-  // frame, so contact is seen long before anything overlaps.
-  if (resolveWall(state, lead)) {
-    p.vx = 0;                           // $18A3
-  } else {
-    resolveWall(state, trail);          // $189D / $18E1
-  }
+function moveLeft(state) {
+  const p = state.player;
+  if (p.vx >= 0) return;                // $18CA / $18D2: JP Z loc_00_18FB
+  p.x = (p.x + p.vx) & 0xFFFF;          // $18D8: sub_00_18E7, B = $FF
+  if (resolveWall(state, 'left')) { p.vx = 0; return; }      // $18DF -> $18A3
+  resolveWall(state, 'right');          // $18E1
 }
 
 // ---------------------------------------------------------------------------
@@ -602,26 +697,67 @@ function move(state) {
 
 function vertical(state) {
   const p = state.player;
+
+  // $1909 / $18FF: BOTH of the arms that skip the jump start land INSIDE the
+  // vertical block, not past it. A cling set by this frame's own wall probe
+  // goes to $1A9D (the ceiling probe) and a dead player to $1A57, so each
+  // one skips the jump and the rise integrate -- and nothing else. The port
+  // used to return from the top of this function on a cling, which silently
+  // deleted the ceiling and floor probes for all 16 frames of the freeze;
+  // MEASURED with playerhunt cling (walljump-launch-off-right-wall): the
+  // cartridge runs both, once each, on every one of those frames.
+  if (p.clingLock & 0x1F) { verticalProbes(state); return; }   // $1909 -> $1A9D
+  if (!p.dead) jumpStart(state);                               // $1902/$1941
+  verticalTail(state);                                         // $18FF -> $1A57
+}
+
+/**
+ * ROM: loc_00_1A29-$1A54. Reached from $1902 (armed spring), $1926/$192C (an
+ * attack in flight) and $1941 (B and Up both unpressed) -- i.e. from every
+ * tail of the attack block that is not a rope start.
+ */
+function jumpStart(state) {
+  const p = state.player;
   const t = state.tunables;
 
-  // A cling established during THIS frame's horizontal pass already froze the
-  // player; no gravity or integration runs on the cling frame either.
-  if ((p.clingLock & 0x1F) !== 0) return;
+  if (!(state.input.pressed & BTN.A)) return;   // $1A2B: BIT 0 of $FFE2
+  if (p.air !== AIR_GROUNDED) return;           // $1A30
+  if (p.action !== 0) return;                   // upstream, $192F
 
-  // --- jump start ($1A43) --------------------------------------------------
-  if ((state.input.pressed & BTN.A) && p.air === AIR_GROUNDED && p.action === 0) {
-    p.air = AIR_RISING;                     // $1A3B
-    p.airThrottle = 1;                      // $1A3F: LD A,$01 -- ONE, not zero
-    p.vy = p.springArmed ? t.springJumpVelocity : t.jumpVelocity;
-    p.jumpReleased = 0;                     // $1A51
-    p.springArmed = 0;                      // $1A54
-  }
+  // $1A35: LD BC,$0F01 / CALL sub_00_0AE1 -- one instruction before the air
+  // flag is set. This was simply MISSING from the port, so every jump in the
+  // game was silent. It hid because the other two $0F sites are ported (the
+  // wall-jump lock expiring at $17FF, and the rope's), so the cue itself was
+  // never suspect. MEASURED: playerhunt sound on "40:,4:A,46:" queues exactly
+  // one $0F/$01 on frame 40 and portsound.mjs queued nothing at all.
+  requestSound(state, 0x0F, 0x01);
+
+  p.air = AIR_RISING;                     // $1A3B
+  p.airThrottle = 1;                      // $1A3F: LD A,$01 -- ONE, not zero
+  p.vy = p.springArmed ? t.springJumpVelocity : t.jumpVelocity;
+  p.jumpReleased = 0;                     // $1A51
+  p.springArmed = 0;                      // $1A54
+}
+
+/** ROM: loc_00_1A57 to loc_00_1B4A -- the vertical chain minus the jump. */
+function verticalTail(state) {
+  const p = state.player;
 
   // $1A57: a bat-rope action with bit 0 clear skips the rise integrate but
   // still falls through to the ceiling probe.
   const ropeSkip = p.action !== 0 && (p.action & 1) === 0;
   if (p.air === AIR_RISING && !ropeSkip) rising(state);   // $1A63
 
+  verticalProbes(state);
+}
+
+/**
+ * ROM: loc_00_1A9D to loc_00_1B4A -- the ceiling probe, gravity and the floor
+ * probe. A separate entry point because three arms jump straight HERE rather
+ * than to $1A57: $1909 (cling lock), $1A61 (a rope with bit 0 clear) and
+ * $1A67 (not rising).
+ */
+function verticalProbes(state) {
   // $1A9D is NOT rising-only: every path through the vertical block passes it
   // -- grounded and falling included. That is how the level-5 descending
   // spike trap pushes a falling player down a row, and how it hurts him once

@@ -137,6 +137,13 @@ export function showTitle(state, title, withFade = true) {
   state.video.obp0 = lcd.obp0;
   state.video.obp1 = lcd.obp1;
   state.video.bgp = lcd.bgp;
+  // $0283-$0285: `XOR A / LDH [$FFAD] / LDH [$FFAE]`, i.e. the build happens
+  // BLACK and $02C1's fade is what raises it. Without this the first frame
+  // after the copyright screen's fade-out came up at full $E4 for one frame --
+  // a white flash between two black screens. Not on the OPTIONS return
+  // ($3934 jumps straight to the loop, past the build and the fade), which is
+  // the only path that reaches this with `withFade` false.
+  if (withFade) { state.video.bgp = 0x00; state.video.obp0 = 0x00; }
   state.level.tiles = title.tiles;
   state.video.sprites.length = 0;
   // The derived LCD state has rWY = $90: the window is parked. Setting it
@@ -168,7 +175,15 @@ export function showTitle(state, title, withFade = true) {
   // shown, which has already queued the level's own musicFresh ($02 for level
   // 1). Without this the title screen plays the first level's theme, and the
   // two sound identical because they are.
-  requestSound(state, 0x00, 0x03);
+  //
+  // But it belongs to the BUILD at $027D-$02C1, not to the loop. The OPTIONS
+  // return is `$3934: JP loc_00_02C4` -- past the build, past the request,
+  // past the fade -- and the cartridge's complete request list for that walk
+  // is one entry, the $25/$03 that $3915 already sent (MEASURED, menushot.py
+  // `songs`: ... $25/$03 at opt=131, then $0D/$01 at title=183, with no
+  // $00/$03 anywhere between). Sending it here cut $25 off mid-blip and
+  // restarted the title theme from the top every time you left OPTIONS.
+  if (withFade) requestSound(state, 0x00, 0x03);
 }
 
 export function hideTitle(state) {
@@ -219,9 +234,18 @@ export function tickTitle(state) {
   }
 
   // $02DB: UP or DOWN (either one) flips the selection and plays $0E.
+  //
+  // FOLLOW THE FALL-THROUGH. Both arms `JR NZ, loc_00_02F0`, and $02F0 ends at
+  // $02FE -> $0307 -> `JR loc_00_02C4`: it never reaches the START test at
+  // $02E7. So a frame carrying UP-or-DOWN *and* START moves the cursor and
+  // EATS the START -- taking both arms (which is what this used to do) starts
+  // the game on a frame the cartridge only moves the cursor on, and worse,
+  // starts it on the cursor's NEW value.
   if (state.input.pressed & (BTN.UP | BTN.DOWN)) {
     t.cursor ^= 1;                              // $02F9: XOR $01 on $C712
     requestSound(state, 0x0E);
+    drawCursor(state, t);                       // $0307
+    return 'title';                             // $030C
   }
 
   drawCursor(state, t);

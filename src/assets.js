@@ -1,5 +1,7 @@
 // Loads the data extracted from the ROM by tools/export_assets.py.
 
+import { runVramScript } from './vramscript.js';
+
 // Resolved against THIS MODULE's url, not the document's. A bare '../assets/'
 // is resolved relative to the page, so it only works when the page happens to
 // sit one level above src/ -- it breaks the moment the launcher moves.
@@ -110,6 +112,64 @@ export function decodeTileBuf(buf, offset) {
       out[y * 8 + x] = ((lo >> b) & 1) | (((hi >> b) & 1) << 1);
     }
   }
+  return out;
+}
+
+/**
+ * STATIC BG ART: the two init-time VRAM scripts that paint straight into the
+ * $9800 tilemap and are never streamed over.
+ *
+ *   $0E94  levels 9/$0A/$0B  7:$7A5E  -> $9800-$98FF, tilemap rows 0-7
+ *          the city skyline the parallax sky scrolls behind.
+ *   $0EF8  level 6 only      7:$7B77  -> $9A6D-$9B70, tilemap rows 19-27
+ *          the train's track band.
+ *
+ * renderer.js samples the level map through the metatile table rather than
+ * modelling the column streamer, which is exactly equivalent for every cell the
+ * streamer wrote and blind to every cell it did not.  These are the cells it
+ * did not: measured with tools/oracle/tilemapdump.py, 168 of 378 visible cells
+ * on each of 9/10/11 and 103 of 378 on level 6.
+ *
+ * The result is indexed in TILEMAP space -- (row, col) of the 32x32 $9800 map,
+ * i.e. ((worldY >> 3) & 31) * 32 + ((worldX >> 3) & 31).  That is not a detail:
+ * on level 6 the band is displayed through the mode-0/1 raster arm, whose SCX
+ * is $FFCC rather than the camera, so a world-space lookup would slide the
+ * track sideways relative to the cells the hardware actually reads.
+ *
+ * @returns Int16Array(1024), -1 where the script writes nothing, or null.
+ */
+const bgArtCache = new Map();
+export function bgArtForLevel(n) {
+  if (bgArtCache.has(n)) return bgArtCache.get(n);
+  // Do not cache a miss taken before loadManifest() resolved: every render
+  // path awaits initLevel first, but a caller that does not must not be
+  // permanently poisoned into "this level has no art".
+  if (!manifest) return null;
+  let out = null;
+  const entries = manifest.bgArt || [];
+  for (const e of entries) {
+    if (!e.levels.includes(n)) continue;
+    if (!out) { out = new Int16Array(1024); out.fill(-1); }
+    // A full 8 KB window so a script that writes outside $9800-$9BFF (none
+    // does today) is dropped by the range test below rather than aliased in.
+    const vram = new Uint8Array(0x2000);
+    runVramScript(vram, decodeB64(e.script), {
+      onWrite: (addr, v) => {
+        const i = addr - 0x9800;
+        if (i >= 0 && i < 1024) out[i] = v;
+      },
+    });
+  }
+  bgArtCache.set(n, out);
+  return out;
+}
+
+function decodeB64(s) {
+  const bin = typeof atob === 'function'
+    ? atob(s)
+    : Buffer.from(s, 'base64').toString('binary');
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
 

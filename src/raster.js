@@ -293,6 +293,12 @@ export function waterBands(state, base, height) {
  *   * $FFAC is rLYC read at $0953, and $0937 has ALREADY incremented it -- so
  *     the window starts one line BELOW the handoff line. Measured: delta 11
  *     hands off on line 68 with $FFAC = 69; delta 7 on line 88 with $FFAC = 89.
+ *   * and a third, added later and worth as much as the other two: the line an
+ *     arm RUNS on is not the line its write is SEEN on. See the body -- every
+ *     value above lands one scanline lower than the arm that wrote it.
+ *
+ * Covered by tools/oracle/squashdiff.mjs (33,984 scanlines, every $C763 value
+ * 0-11) because rasterdiff.mjs structurally cannot reach a screen-owned arm.
  *
  * @param base    the flat band the screen would otherwise use
  * @param height  scanlines to cover
@@ -304,15 +310,31 @@ export function squashBands(state, base, height) {
   let accInt = 0;
   let accFrac = 0;
   let scy = base.scy & 0xFF;
+  let bgp = base.bgp;
   let handoff = null;
+  let stopped = false;
 
   for (let y = 0; y < height; y++) {
-    if (handoff !== null) {
-      // The chain has stopped. rSCY and rBGP hold what the handoff line left.
-      bands.push({ from: y, scx: base.scx, scy: 0, bgp: SQUASH_BGP,
-                   obp0: base.obp0, obp1: base.obp1 });
-      continue;
-    }
+    // WHICH LINE A WRITE LANDS ON, and it is one below where the arm runs.
+    //
+    // The arm for line y fires ON line y ($0937 has re-armed rLYC to y) and
+    // its `LD [BC],A` at $095A is the LAST thing it does -- by which time the
+    // fetcher has long since latched line y's scroll. So the value it stores
+    // is displayed from line y+1. Every other arm in this file re-arms rLYC
+    // several lines ahead and the distinction never shows; mode 7 re-arms
+    // EVERY line, so here it is the whole difference between right and wrong.
+    //
+    // MEASURED, not deduced: for y = 23..67 without exception, cartridge
+    // scanline y carries the SCY the unshifted model computes for y-1 (line 23
+    // shows 0 where the model said 1, ... line 67 shows 65 where it said 67).
+    // The value SEQUENCE was already byte-identical; only its line assignment
+    // was off, which is why the register-stream comparison in rasterdiff was
+    // never going to catch it and 1036 pixels of menuscreen.mjs were.
+    //
+    // So: emit the state the previous line's arm left, THEN run this line's.
+    bands.push({ from: y, scx: base.scx, scy, bgp,
+                 obp0: base.obp0, obp1: base.obp1 });
+    if (stopped) continue;                  // rLYC = 0 can no longer match
 
     // $0941-$0948: the 16-bit add, fraction first.
     accFrac += r.delta;
@@ -326,13 +348,12 @@ export function squashBands(state, base, height) {
 
     if (next >= WINDOW_HANDOFF) {           // $094B: CP $44 / JR C
       handoff = y + 1;                      // $0953: rLYC, post-$0937 INC
-      bands.push({ from: y, scx: base.scx, scy: 0, bgp: SQUASH_BGP,
-                   obp0: base.obp0, obp1: base.obp1 });
+      scy = 0;                              // $0957/$095A: XOR A, then store
+      bgp = SQUASH_BGP;                     // $094F
+      stopped = true;
       continue;
     }
     scy = next;
-    bands.push({ from: y, scx: base.scx, scy,
-                 bgp: base.bgp, obp0: base.obp0, obp1: base.obp1 });
   }
   return { bands, handoff };
 }

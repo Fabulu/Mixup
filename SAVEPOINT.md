@@ -1,68 +1,72 @@
 # SAVEPOINT — where this project is, and how to pick it up
 
-> ## ⚠ RESUME HERE — the tree is mid-flight
+> ## RESUME HERE — the sweep is committed and green
 >
-> **A 17-agent sweep landed and its work is UNCOMMITTED.** ~22 files under
-> `src/` are modified, in five bundles. Nothing is broken, but nothing is
-> gated either. Read this whole box before touching anything.
+> The 17-agent sweep is **committed and gated**: `npm run test-all` is
+> **21/21 stages green**, 686 unit tests, nothing failing on purpose any more.
+> The two `WIRING GAP` tests are wired and the level-14 batarang regression is
+> fixed. Start from a clean tree.
 >
-> ### State
+> ### What landed
 >
-> - `node --test tests/` → **683 tests, 2 failing ON PURPOSE.** Both are named
->   `WIRING GAP` and were written to fail until the two chokepoint files get
->   wired. They are the to-do list, not a regression:
->   - `renderer.js`: the copyright screen must take the FLAT raster arm
->     ("a menu screen is one flat band; more than one means a level raster arm ran")
->   - `level.js`: a route clear must send cue `$01`/`$03` ("$3634 is the only
->     place the round-select theme is asked for on this path")
-> - `npm run test-all` has **not** been run since the sweep landed.
-> - The LIVE build at gbtman.pages.dev is stale and carries three known
->   defects listed below. Do not treat it as evidence of anything.
+> - **Both wiring gaps closed.** `renderer.js`'s screen guard now lists
+>   `state.copyright` (the copyright screen was inheriting the levels-1/2 WATER
+>   raster arm), and `level.js`'s `clearLevel` sends cue `$01`/`$03` on the
+>   route-clear path (`$3634` — `loc_00_035B` asks for nothing itself, so all
+>   three callers must). `menuflow.mjs` measures the copyright screen at
+>   **23040/23040 pixels** with the real guard and no forced-level-0 workaround.
+> - **The level-14 batarang is fixed, and the handover's diagnosis was wrong.**
+>   It was never about update order. `$3BF5` swaps the CATCH TARGET to
+>   `$C28F`/`$C290` — the chaser's cached screen pair — under the same
+>   level-14/non-easy test that swaps the homing target. The chaser absorbs the
+>   batarang; the player never catches one. See docs/03 lesson 35 and
+>   `tools/oracle/jokerbat.py`. New scenario `diffhunt l14-batarang` is
+>   bit-exact over 800 frames on difficulty 0 and 2, and was validated by
+>   reverting the fix and watching all 25 flight frames disappear.
 >
-> ### Do these in order
+> ### Do these next
 >
-> 1. **Wire the two gaps.** The failing tests name exactly what is needed.
-> 2. **Fix the level-14 batarang regression — this one is ours and it blocks
->    the final boss.** `$19C0-$19CC` sets the RETURNING bit at throw time on
->    level 14 above easy, and `src/batarang.js` reproduces that. But our
->    batarang spawns AT the player, and a returning batarang inside the catch
->    box (`$3C0B`, box `$0C10`) is caught and its slot freed — so every throw
->    dies on its first frame. Reported from play: no batarang appears, no ammo
->    is spent, and Batarang Storm cannot help because ammo was never the
->    problem. It worked before the homing change.
->    **MEASURE why the cartridge's throw survives frame one** — most likely the
->    catch test runs after the homing step has already moved it toward the
->    chaser, or the update order differs. Do not guess.
-> 3. **Run the full gate**, then commit and publish. The sweep's fixes are
->    worth getting out: the level-6 softlock and the blank sky especially.
-> 4. **Level 8, boss phase 2 — unmeasured.** Reported as invincible in phase 2.
->    Hypothesis to test, not a diagnosis: the `$C73D >= 2` stagger gate at
->    `$2643`/`$3C56` was recently wired for the Joker; if `bossRage` sticks
->    high on level 8 he would be permanently immune.
-> 5. **Level 6 sprites.** The cartridge draws **18** sprites there; the port
+> 1. **Level 8, boss phase 2 — still unmeasured.** Reported as invincible in
+>    phase 2. Hypothesis to test, not a diagnosis: the `$C73D >= 2` stagger gate
+>    at `$2643`/`$3C56` was wired for the Joker; if `bossRage` sticks high on
+>    level 8 he would be permanently immune.
+> 2. **Level 6 sprites.** The cartridge draws **18** sprites there; the port
 >    draws far fewer. Enemy state 5 (the vehicle, HP 8, 4 sprites) plus map
 >    object slot 0 type 11 (the deck). State 5 has NO oracle coverage at all.
 >    Played symptom: "a floating guy I can hit and an invisible thing that
 >    blocks me and moves left and right".
+> 3. **Boss 1's melee is worth a look.** Measured but not chased: 60 scripted
+>    punches over 600 frames on level 4 never once reached the melee scan's
+>    damage arm (`cuetrace.py` shows only the `$10` swing cue, never `$19`).
+>    Either the script never lines up with a hopping state-$0A boss, or landing
+>    a fist on him needs something the port has not modelled. Unresolved — do
+>    not assume it is a bug without measuring.
 >
 > ### Measured facts about the Joker fight, so nobody re-derives them
 >
 > - The entrance runs **727 frames** before `$C740` goes `$FF`; until then
 >   nothing can damage anything. `$C750` steps 1 → 2 at f118, and both the
 >   Joker and the chaser activate at f728.
-> - Ammo **is** consumed normally on level 14 (measured 10 → 6 over four
->   throws once the gate opens). There are no infinite batarangs.
+> - Ammo **is** consumed normally on level 14 (measured 10 → 9 per throw once
+>   the gate opens). There are no infinite batarangs.
 > - The Joker has **48 HP** (`$30`), and the level-14 batarang homes on
 >   `$C296`/`$C298` — enemy slot 1, the CHASER — not on him. So batarangs are
 >   probably not the intended damage source; melee against him is unmeasured.
 > - A direct launcher boot into level 14 starts with **0 ammo**; a real
 >   playthrough carries ammo in. That makes the launcher's level 14 harder
 >   than the cartridge's.
+> - **There is exactly one real lag frame in level 14's first 800** (f764,
+>   measured by hooking `$065C`). The cartridge drops that iteration's enemy
+>   update and the port never lags, so the chaser's X runs one 4-unit step
+>   ahead from f765 on. That is docs/03 lesson 28, out of scope, and it is
+>   tagged `knownLag` in `diffhunt.mjs` rather than hidden.
 >
 > ### Ground rules that keep being re-learned
 >
 > - **Measure; do not infer from the listing.** Eight fall-through incidents,
->   one of which invalidated shipped code.
+>   one of which invalidated shipped code. The batarang fix above is the ninth:
+>   the listing named the swap, but only a register hook on `$3C0F` proved
+>   which pair the ROM actually loads.
 > - **Byte-exact data is not a correct picture.** It has bitten twice.
 > - **Validate a new check by making it fail** — revert, watch it go red,
 >   restore.

@@ -65,12 +65,14 @@ for (const item of INCLUDE) {
 // document that names them is guaranteed fresh. Both `/` and `/index.html` are
 // listed because a rule for one does not necessarily match the other, and the
 // `/*` fallback catches anything added later.
+// ORDER MATTERS AND IT IS NOT "MOST SPECIFIC WINS". Cloudflare Pages applies
+// every matching rule in file order and later ones override earlier ones, so
+// the broad `/*` fallback has to come FIRST. Written the other way round it
+// silently reverted the entry document to no-cache -- verified by reading
+// Cache-Control off the live response, which is the only way to know.
 fs.writeFileSync(path.join(DIST, '_headers'), [
-  '/',
-  '  Cache-Control: no-store, must-revalidate',
-  '',
-  '/index.html',
-  '  Cache-Control: no-store, must-revalidate',
+  '/*',
+  '  Cache-Control: no-cache',
   '',
   '/assets/*',
   '  Cache-Control: no-cache',
@@ -78,8 +80,11 @@ fs.writeFileSync(path.join(DIST, '_headers'), [
   '/src/*',
   '  Cache-Control: no-cache',
   '',
-  '/*',
-  '  Cache-Control: no-cache',
+  '/',
+  '  Cache-Control: no-store, must-revalidate',
+  '',
+  '/index.html',
+  '  Cache-Control: no-store, must-revalidate',
   '',
 ].join('\n'));
 

@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { grid, put, fillRow, makeState } from './helpers.js';
-import { meleeHitTest, _internals } from '../src/enemies.js';
+import { meleeHitTest, updateEnemies, _internals } from '../src/enemies.js';
 
 const {
   probeCore, probeUp, probeDown, probeRight, probeLeft,
@@ -423,4 +423,97 @@ test('an enemy that is ALREADY flashing can be punched again', () => {
   assert.equal(r[0x16], 4);
   assert.equal(punch(state), 0xFF, 'still hittable while stunned');
   assert.equal(r[0x16], 2);
+});
+
+// ---------------------------------------------------------------------------
+// The $C693 effect-pool SPAWNERS.  ROM: 1:$4EA5, 1:$589C/$58AB, 1:$5B81.
+//
+// The pool is TEN slots and every spawner competes for them, so a MISSING
+// spawner is not just an invisible puff -- it leaves spare slots that let some
+// other spawner win one it should have lost. MEASURED (cuediff
+// l12-shooter-fire): with the shooter's muzzle pair absent the port had two
+// spare slots and level 12's collapsing-floor burst ran two cells longer than
+// the cartridge's, 30 cues against 28.
+// ---------------------------------------------------------------------------
+
+test('a killed enemy spawns $97/$03 at its own position, and drops a heart there', () => {
+  // $4EA5: `LD D,$97 / LD E,$03` then $4EAC/$4EB1's sub_00_0CF3 with dir $FF
+  // and DE = 0. The old comment on this arm said "purely visual"; it is not,
+  // because of the slot competition above.
+  const state = makeState(fillRow(grid(16), 15, '#'));
+  const r = makeEnemy(state, { col: 6, row: 6 });
+  r[0x16] = 0;                                 // $4E75: zero HP kills it
+  updateEnemies(state);
+
+  const live = state.doors.effects.filter((e) => e[0] !== 0);
+  assert.equal(live.length, 1, 'one explosion');
+  assert.equal(live[0][0], 0x97, 'D = $97');
+  assert.equal(live[0][5], 0x03, 'E = $03 -- a different subtype from the puffs');
+  assert.equal(live[0][1], 6, 'at the record own +$0E');
+  assert.equal(live[0][3], 0x16, 'and +$10');
+
+  const drop = state.drops.filter((d) => d[0] !== 0);
+  assert.equal(drop.length, 1, '$4EAC also drops the heart');
+});
+
+// ---------------------------------------------------------------------------
+// 1:$57C7 -- the level-6 vehicle's shot.
+// ---------------------------------------------------------------------------
+
+/** The level-6 truck: state 5, with the parallax track parked. */
+function vehicle(state, { col = 0x0A, playerCol = 0x20 } = {}) {
+  const r = makeEnemy(state, { col, row: 6 });
+  r[2] = 5;
+  r[0] = 0x80;
+  state.level.number = 6;
+  state.level.bossId = 5;
+  state.flow.parallaxTrack = 0x0000;
+  state.player.x = (playerCol << 8) | 0x80;
+  // 1:$6094's activation is a camera-distance test on the HIGH bytes, so the
+  // truck has to be inside the window before the driver will dispatch it.
+  state.camera.x = Math.max(0, (col - 5)) << 8;
+  return r;
+}
+
+test('the level-6 vehicle FIRES into the ballistic pool, with the facing as drift', () => {
+  // $57B5-$57CB stages the record's own +$0E..+$11 into $C749-$C74C and calls
+  // sub_00_0CF3 with DE = $0100: kind $01, vy $38, subtype $01 -- a HAZARD,
+  // two damage through $15E5, drawn as metasprite $B7. The drift comes from
+  // $C74D, the facing byte $5775 stages, which $0D25-$0D32 turns into $F8 or
+  // $08.
+  //
+  // MEASURED (tools/oracle/poolwatch.py --level 6, 400 frames, against
+  // poolport.mjs): 13 spawn events, byte-identical on every x/y/vx/vy/sub.
+  // The port's pool stayed EMPTY -- the branch's header called itself
+  // "transcription only, blocked on the unported loc_00_2EF4", and that
+  // routine has been ported for some time.
+  const right = makeState(fillRow(grid(64), 15, '#'));
+  const r = vehicle(right, { col: 0x0A, playerCol: 0x20 });   // player to the RIGHT
+  updateEnemies(right);
+  assert.equal(r[5], 0, '$5764: facing right');
+  const shot = right.drops.filter((d) => d[0] !== 0);
+  assert.equal(shot.length, 1, 'one shot');
+  assert.equal(shot[0][5], 0x08, '$0D2E: drift +8, i.e. to the RIGHT');
+  assert.equal(shot[0][6], 0x38, '$0D33: D bit 0 launches at $38');
+  assert.equal(shot[0][7], 0x01, 'subtype $01 -- a hazard, not a heart');
+  assert.equal(r[0x14], 0x1F, '$57B2: the attack timer');
+  assert.ok(right.sound.queue.some((q) => q.id === 0x22), '$57A6');
+
+  const left = makeState(fillRow(grid(64), 15, '#'));
+  const rl = vehicle(left, { col: 0x20, playerCol: 0x0A });    // player to the LEFT
+  updateEnemies(left);
+  assert.equal(rl[5], 1, '$5764: facing left');
+  assert.equal(left.drops.filter((d) => d[0] !== 0)[0][5], 0xF8, 'drift -8');
+});
+
+test('a vehicle already mid-attack does not fire again', () => {
+  // $5794 / $579D: bit 3 (attacking) and bit 2 (stunned) both return through
+  // screenTail before $57A6. Without this the truck would spawn a shot every
+  // single frame and fill the four-slot pool instantly.
+  const s = makeState(fillRow(grid(64), 15, '#'));
+  const r = vehicle(s);
+  r[0] |= 0x08;
+  r[0x14] = 0x10;              // still counting; jt_01_6398 keeps bit 3 up
+  updateEnemies(s);
+  assert.equal(s.drops.filter((d) => d[0] !== 0).length, 0);
 });

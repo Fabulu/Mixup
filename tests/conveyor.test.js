@@ -266,6 +266,35 @@ test('the cursor latches $FF after the 72nd cell', () => {
   assert.equal(state.subsys.cursor, 0xFF);      // $2FD9: RET Z, spent
 });
 
+test('each collapsing cell spawns a $97/$00 puff BEFORE it is erased', () => {
+  // $2FED-$2FFA stages $C744-$C747 from the cell's own col/row with BOTH low
+  // bytes forced to $80 -- the middle of the cell that is about to vanish --
+  // and $2FF5 is `LD D,$97 / LD E,$00 / CALL sub_00_0CC2`. The spawn happens
+  // BEFORE $2FFF's erase, which is the ordering the addresses give.
+  //
+  // The pool is TEN slots and every spawner competes for them. That is not
+  // cosmetic bookkeeping: with this and the level-12 shooter's muzzle pair
+  // missing, the port had two spare slots and level 12's floor burst ran two
+  // cells longer than the cartridge's. MEASURED (cuediff l12-shooter-fire):
+  // 30 -> 28 -> exact as each landed.
+  const state = l12State();
+  state.subsys.cursor = 1;
+  placePlayer(state, 0x06, 0x05);
+  state.camera.x = 0x0100;
+  updateSubsystem(state);
+
+  const live = state.doors.effects.filter((r) => r[0] !== 0);
+  assert.equal(live.length, 1);
+  assert.equal(live[0][0], 0x97, 'D = $97');
+  assert.equal(live[0][5], 0x00, 'E = $00');
+  assert.equal(live[0][1], L12_CELLS[0], 'col from the table');
+  assert.equal(live[0][2], 0x80, '$2FED');
+  assert.equal(live[0][3], L12_CELLS[1], 'row from the table');
+  assert.equal(live[0][4], 0x80, '$2FF2');
+  assert.equal(mapCollision(state, L12_CELLS[0], L12_CELLS[1]), 0,
+    'and the cell went afterwards');
+});
+
 test('a missing collapse table THROWS', () => {
   const state = subState(0x0C);
   state.subsys.cursor = 1;

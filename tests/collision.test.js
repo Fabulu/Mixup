@@ -788,3 +788,213 @@ test('...unless the object`s +6 bit 7 says it overrides', () => {
   assert.equal(r.value, COLL.SOLID_RUNTIME);
   assert.equal(state.player.y, 7680);
 });
+
+// ---------------------------------------------------------------------------
+// $1F2A / $1FE0 -- $07 goes STRAIGHT to the push handler.
+// ---------------------------------------------------------------------------
+
+
+/** clingFixture, but with the wall's collision byte chosen by the caller. */
+function clingFixtureCh(side, ch) {
+  const right = side === 'right';
+  const state = wallFixture(ch, { xlo: 0x80, vx: 0, col: right ? 4 : 2 });
+  const p = state.player;
+  p.air = 2;
+  p.facing = right ? 0 : 1;
+  p.jumpReleased = 1;
+  p.vy = -10;
+  setInput(state, BTN.A);
+  return state;
+}
+
+test('$07 must NEVER cling: it jumps past the cling entry to $1F61/$1F87', () => {
+  // `CP $07 / JR Z, loc_00_1F61`. This is not a detail: $07 is column 0 of all
+  // fourteen levels and BOTH walls of every boss arena, so a port that lets it
+  // cling lets the player climb out of every level boundary and every boss
+  // fight.
+  //
+  // MEASURED (playerhunt arms, level 1, script "40:,3:A,6:L,71:LA"): $1FE0
+  // executes 99 times and routes to $1F87 all 99; the cling entry $1FE9
+  // executes ZERO times. Reverting the arm makes the port diverge at f50 with
+  // anim 17 (CLING_B) and vx 20 where the cartridge holds anim 8 and vx 0.
+  for (const side of ['right', 'left']) {
+    const state = clingFixtureCh(side, 'S');    // 'S' is COLL.SOLID2, $07
+    const p = state.player;
+    assert.equal(resolveWall(state, side), 1, `${side}: $07 BLOCKS`);
+    assert.equal(p.clingLock, 0, `${side}: and never arms a cling`);
+    assert.equal(p.vx, 0, `${side}: no wall-jump launch`);
+    assert.equal(p.air, 2, `${side}: still falling, not rising`);
+  }
+});
+
+test('...and $07 still gets the push handler head: $C71E is cancelled', () => {
+  // `XOR A / LD [$C71E],A` is the FIRST instruction of $1F61/$1F87, so the
+  // direct $07 arm cancels a bat-rope even though it skipped the cling entry
+  // that used to supply that write.
+  const state = clingFixtureCh('right', 'S');
+  state.player.action = 3;
+  resolveWall(state, 'right');
+  assert.equal(state.player.action, 0);
+});
+
+test('an ordinary $01 wall in the same fixture DOES cling', () => {
+  // The control: without it "$07 does not cling" could just mean the fixture
+  // never clings at all.
+  const state = clingFixture('right');
+  assert.equal(resolveWall(state, 'right'), 0);
+  assert.equal(state.player.clingLock, 0x50);
+});
+
+// ---------------------------------------------------------------------------
+// $1F25 / $1FDB -> loc_00_1E65 -- walking into a breakable breaks it.
+// ---------------------------------------------------------------------------
+
+test('a horizontal probe BREAKS a $06 cell: blocked, no push, no $80 snap', () => {
+  // `JP Z, loc_00_1E65`. That arm returns 1 (blocked) via $1E94, and note what
+  // it does NOT do -- no 1 px push, no xlo snap, and no `LD [$C71E],A` either,
+  // because $1E65 has no such instruction. The port simply had no horizontal
+  // break arm at all.
+  //
+  // MEASURED frame-exact (tools/oracle/breakcells.py, level 5 warp 36,27 hold
+  // right): the cartridge breaks (37,29), (37,30) and (37,31) at f13/f22/f26
+  // with 12-frame restores and erases at f25/f34/f38, where the port left all
+  // three $06 for the whole run.
+  const state = wallFixture('B', { xlo: 0x8F, vx: 0x10 });
+  state.player.action = 3;
+  const x = state.player.x;
+  assert.equal(resolveWall(state, 'right'), 1, 'blocked');
+  assert.equal(state.player.x, x, 'no push and no snap');
+  assert.equal(mapCollision(state, 4, 6), COLL.SOLID, '$1E65: (HL) = $01');
+  assert.equal(state.player.action, 3, '$1E65 does not touch $C71E');
+  assert.equal(state.breakables[0].col, 4, 'and it queued a restore timer');
+  // $FFC1 is the probe's Y HIGH BYTE, which runs $10-$1F in play -- the slot
+  // stores it raw and sub_00_11B9 masks it back down.
+  assert.equal(state.breakables[0].row, 0x16);
+});
+
+test('the LEFT probe breaks too, at its own cell', () => {
+  const state = wallFixture('B', { xlo: 0x10, vx: -0x10, col: 2 });
+  assert.equal(resolveWall(state, 'left'), 1);
+  assert.equal(mapCollision(state, 2, 6), COLL.SOLID);
+  assert.equal(state.breakables[0].col, 2);
+});
+
+// ---------------------------------------------------------------------------
+// $FFC0 / $FFC1 -- the RESOLVED cell, not the probe's own one.
+// ---------------------------------------------------------------------------
+
+test('the horizontal sweep hands the BELOW cell to the break arm, not its own', () => {
+  // $22B6-$22BF: the sweep's third arm stores the incremented row into $FFC1
+  // and falls through with it. loc_00_1E65 then writes (HL) -- the cell $FFC0/
+  // $FFC1 point at -- so a breakable found one row DOWN is the one that goes
+  // solid. The port used to stamp its own (empty) cell instead, i.e. put SOLID
+  // into thin air and leave the real breakable alone.
+  //
+  // MEASURED (breakcells.py, level 12 warp 50,18 hold left): the cartridge
+  // breaks (48,20) at f31 and (46,20) at f50; the port stamped (49,20) and
+  // (47,20). Frame-exact now, slot table included.
+  const g = grid(8);
+  put(g, 4, 7, 'B');                          // one row BELOW the probe row
+  const state = makeState(g);
+  // ylo $30 -> pixelY 3, so `pixelY + (halfH - 3) >= $10` and the sweep
+  // reaches its below arm (the same fixture the arm-3 tests above use).
+  placePlayer(state, 3, 6, 0x8F, 0x30);
+  assert.equal(resolveWall(state, 'right'), 1);
+  assert.equal(mapCollision(state, 4, 7), COLL.SOLID, 'the BELOW cell broke');
+  assert.equal(mapCollision(state, 4, 6), 0, 'and the probe own cell is untouched');
+  assert.deepEqual({ col: state.breakables[0].col, row: state.breakables[0].row },
+                   { col: 4, row: 0x17 });
+});
+
+test('the horizontal sweep hands the ABOVE cell over, and $22A6 leaves $FFC1 decremented', () => {
+  // `RET NZ` at $22A6 returns with the row still DECREMENTED -- that is how
+  // the break and pickup tails learn they are being handed the cell overhead.
+  const g = grid(8);
+  put(g, 4, 5, 'B');                          // one row ABOVE the probe row
+  const state = makeState(g);
+  placePlayer(state, 3, 6, 0x8F, 0x00);              // pixelY 0 -> pokes above
+  assert.equal(resolveWall(state, 'right'), 1);
+  assert.equal(mapCollision(state, 4, 5), COLL.SOLID, 'the ABOVE cell broke');
+  assert.equal(state.breakables[0].row, 0x15, '$FFC1 came back DECREMENTED');
+});
+
+test('a pickup reached through the sweep is CONSUMED and erased at its own cell', () => {
+  // $1F1A is `LD A,B` -- the RESOLVED value -- and 1:$4D4E erases through
+  // $FFC0/$FFC1. The port used to RE-PROBE here, which threw the retarget away
+  // and read the own cell's zero, so the switch fell straight to `default`:
+  // a pickup reached from a metatile edge or from the row above was never
+  // collected at all.
+  //
+  // MEASURED (probeunit.mjs, five cases, all previously no-ops): floor
+  // right-neighbour, ceiling right-neighbour, horizontal-below, and level 3's
+  // ammo at (6,19) which took ammo 0 -> 10.
+  const g = grid(8);
+  put(g, 4, 7, 'a');                          // +10 batarangs, one row below
+  const state = makeState(g);
+  placePlayer(state, 3, 6, 0x8F, 0x30);              // pixelY 3 -> the below arm
+  state.flow.ammo = 0;
+  assert.equal(resolveWall(state, 'right'), 0, 'a pickup does not block');
+  assert.equal(state.flow.ammo, 10, 'it was taken');
+  assert.equal(mapCollision(state, 4, 7), 0, 'and erased at the RESOLVED cell');
+  assert.equal(mapTile(state, 4, 7), 0);
+});
+
+test('the FLOOR probe retargets to the neighbouring column and consumes there', () => {
+  // $2129-$212C / $2147-$214A: the slope look walks $FFC0 one column across
+  // and leaves it there. $1DE7's pickup call then reads that column, not the
+  // probe's own.
+  const g = grid(8);
+  put(g, 4, 14, 'e');                         // +6 HP, in the RIGHT neighbour
+  const state = makeState(g);
+  // pixelX $0B: `pixelX + 5 >= $10`, so $2116 takes the right neighbour.
+  placePlayer(state, 3, 13, 0xB0, 0x00);
+  state.player.hp = 4;
+  probeFloor(state);
+  assert.equal(state.player.hp, 10, 'the neighbour cell was consumed');
+  assert.equal(mapCollision(state, 4, 14), 0, 'and erased there');
+  assert.equal(mapCollision(state, 3, 14), 0, 'the own column was always empty');
+});
+
+// ---------------------------------------------------------------------------
+// $1374-$1388 -- the crumble puff.
+// ---------------------------------------------------------------------------
+
+test('an expiring breakable spawns the $97/$01 puff into the $C693 pool', () => {
+  // `LD B,col / LD C,row`, both low bytes forced to $80 ($137C-$1381), then
+  // `LD D,$97 / LD E,$01 / CALL sub_00_0CC2` -- the same allocator and the
+  // same sprite the door break uses, one subtype along. The receiver at
+  // $13D9-$13E9 is what turns it into debris and the $17 cue, which is why
+  // cuediff counts $17s from two sites ($14FF and $13E9) rather than one.
+  const state = floorFixture('B');
+  state.level.number = 7;
+  state.flow.difficulty = 1;                        // a $0C timer
+  probeFloor(state);
+  const pool = state.doors.effects;
+  assert.ok(pool.every((r) => r[0] === 0), 'the pool starts empty');
+
+  for (let i = 0; i < 0x0C; i++) updateBreakables(state);
+  const live = pool.filter((r) => r[0] !== 0);
+  assert.equal(live.length, 1, 'exactly one record');
+  assert.equal(live[0][0] & 0xC0, 0x80, 'animated');
+  assert.equal(live[0][5], 0x01, 'subtype $01');
+  assert.equal(live[0][1], 3, 'col from the slot');
+  assert.equal(live[0][2], 0x80, '$137C forces the X low byte');
+  assert.equal(live[0][3], 0x1E, 'row from the slot, the raw $FFC1 high byte');
+  assert.equal(live[0][4], 0x80, '$1381 forces the Y low byte');
+});
+
+test('the pool record survives its own spawn frame ($1349 runs before $1391)', () => {
+  // sub_00_1336 runs the tile-restore pass and the effect pool BACK TO BACK,
+  // and the pool walk is downstream, so an effect spawned by the restore pass
+  // IS ticked on the frame it is created. (The door's $2099 spawn is the other
+  // way round -- it happens after $1391 -- which is why doors.js documents the
+  // opposite. Both are the same rule: position in sub_00_1336.)
+  const state = floorFixture('B');
+  state.level.number = 7;
+  state.flow.difficulty = 1;
+  probeFloor(state);
+  for (let i = 0; i < 0x0C; i++) updateBreakables(state);
+  const live = state.doors.effects.find((r) => r[0] !== 0);
+  assert.ok(live, 'still live at the end of its spawn frame');
+  assert.ok((live[0] & 0x3F) <= 0x17, 'and already counting down from $97');
+});

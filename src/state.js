@@ -41,7 +41,7 @@ export const u16 = (v) => v & 0xFFFF;
 export const GAMEPLAY_PALETTES = { bgp: 0xE4, obp0: 0xE4, obp1: 0xC4 };
 
 export function createState(tunables = DEFAULT_TUNABLES) {
-  return {
+  const state = {
     tunables,
 
     frame: 0,          // $FFB1
@@ -59,8 +59,16 @@ export function createState(tunables = DEFAULT_TUNABLES) {
       facing: 0,       // $FF88  0 right, 1 left
 
       // --- combat / status ---
-      hp: 10,          // $FF8A
-      hpMax: 10,       // $FF8E
+      //
+      // $0200-$0204: the BOOT VECTOR is where these come from, and $FF8E has
+      // exactly two writers in the whole cartridge -- that one and the +2
+      // pickup at 1:$4D70. Level init writes NEITHER, so max HP is a RUN-long
+      // value seeded here and nowhere else; see the note on resetPlayer in
+      // src/level.js. MEASURED (tools/oracle/econmaxhp.py): upgrade to $10 on
+      // level 3, die, and both CONTINUE and "START a route instead" come back
+      // with $FF8E = 16.
+      hp: tunables.startingMaxHP ?? 10,     // $FF8A
+      hpMax: tunables.startingMaxHP ?? 10,  // $FF8E
       iframes: 0,      // $C714  bit7 = knockback direction
       action: 0,       // $C71E  0 free, 1-3 bat-rope
 
@@ -160,7 +168,12 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     },
 
     flow: {
-      lives: 5,        // $C767
+      // $0206-$0208 is the ONLY initialiser of $C767 in the cartridge, so the
+      // starting count belongs to the boot vector and to nothing else. It used
+      // to be a literal 5 here, which meant the One Life mod handed out five
+      // lives on the first run and only took effect from the first game over
+      // (player.js's deathTick already reads the tunable).
+      lives: tunables.startingLives ?? 5,   // $C767
       difficulty: 1,   // $C756
       ammo: 0,         // $C759
       routeMask: 0,    // $C753
@@ -234,6 +247,25 @@ export function createState(tunables = DEFAULT_TUNABLES) {
       windowTile: 0x01,
     },
   };
+
+  // `video.frameParity` is $FFA7 seen from the DRAW side, and it is an ALIAS,
+  // not a copy: the byte already lives at `state.parity` (the enemy loop reads
+  // it there) and one byte must not have two homes. $FFA7 decides which of the
+  // two identical main-loop arms queues the HUD -- $0573 when it is 0, $05E5
+  // when it is not -- so it is OAM ORDER, i.e. DMG sprite priority and the
+  // 10-per-line cut, which is why the renderer side wants a name for it.
+  //
+  // MEASURED (tools/oracle/oamorder.py --level 1 / --level 9): the energy bar
+  // sits at OAM index 0 on every $FFA7 == 0 frame and at index 6 of 11 (level
+  // 1) or 8 of 12 (level 9) on every $FFA7 == 1 frame, alternating frame by
+  // frame with nothing else about the scene changing.
+  Object.defineProperty(state.video, 'frameParity', {
+    enumerable: true,
+    get: () => state.parity & 1,
+    set: (v) => { state.parity = v & 1; },
+  });
+
+  return state;
 }
 
 // ---- map access ------------------------------------------------------------

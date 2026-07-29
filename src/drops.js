@@ -38,6 +38,7 @@
 
 import { u8, i8, u16, mapCollision } from './state.js';
 import { drawMetasprite } from './render/metasprite.js';
+import { spawnEffect } from './doors.js';
 
 export const SLOTS = 4;
 export const RECORD = 8;
@@ -155,10 +156,18 @@ function flyTick(state, r) {
   if ((vy & 0x80) && vy < TERMINAL) vy = TERMINAL;  // $146F/$1473
   r[6] = vy;
 
-  // $1477-$14B4: position -= velocity, both axes, sign-extended to 16 bits.
+  // $1477-$1498: Y -= velocity. The negate is explicit -- CPL/INC on both
+  // arms ($147D and $1484) -- so the 16-bit ADD at $1491 is a SUBTRACT.
   const y = u16(((r[3] << 8) | r[4]) - i8(vy));
   r[3] = y >> 8; r[4] = y & 0xFF;
-  const x = u16(((r[1] << 8) | r[2]) - i8(r[5]));
+  // $1499-$14B4: X += drift, and the contrast with the Y half above is the
+  // whole point. There is NO CPL/INC here: $1499-$14A4 only sign-EXTENDS r[5]
+  // into BC and $14AD adds it. The port subtracted, which sent every drifting
+  // drop the wrong way. Latent until now only because every shipped spawner
+  // passed $C74D = $FF, i.e. r[5] = 0; the level-6 vehicle's shot is the first
+  // caller with a sign. MEASURED (poolwatch.py --level 6): r[5] = $F8 moves X
+  // by -$100 per 32 frames and $08 by +$100, both matching ADD.
+  const x = u16(((r[1] << 8) | r[2]) + i8(r[5]));
   r[1] = x >> 8; r[2] = x & 0xFF;
 
   // $14B9: BIT 7 of the VELOCITY byte -- while it is still rising there is no
@@ -170,6 +179,12 @@ function flyTick(state, r) {
 
   if (r[7] !== 0) {                                 // $14DC: a hazard shatters
     r[0] = 0;                                       // $14E3
+    // $14E5-$14F2 stages the drop's own position, then $14F5 spawns the
+    // debris effect ($97/$01) BEFORE the cue at $14FC. Both are audible: the
+    // effect's counter is $17, so doors.js's $13E6 one-shot asks for cue $17
+    // again on its first tick. MEASURED (cuediff l6-conveyor): 28 $17s in
+    // 480 frames, 14 from $14FF and 14 from $13E9.
+    spawnEffect(state, (r[1] << 8) | r[2], (r[3] << 8) | r[4], 0x97, 0x01);
     requestSound(state, 0x17, 0x01);                // $14FC: BC = $1701
     return false;
   }

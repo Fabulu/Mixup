@@ -331,6 +331,32 @@ now — the fix narrative lives on its entry in `regress.mjs`.
     select is the death sequence's at `$2AAF` — so `$FFB5` actually means
     "you got here by dying". Measured, not deduced.
 
+35. **One ROM condition can gate THREE swaps, and porting two of them is worse
+    than porting none.** `CP $0E` + `$C756 != 0` (level 14 above easy) appears
+    at `$19C0` (the throw sets the RETURNING bit at once and drops the speed to
+    8), at `$3A6B`/`$3ADE` (the flight homes on `$C296`/`$C298`, enemy slot 1 —
+    the CHASER, not Batman) **and** at `$3BF5` (the catch test's target pair
+    becomes `$C28F`/`$C290`, the chaser's cached screen coords, instead of the
+    player's `$FF93`/`$FF94`). The Joker fight's batarang is a slow seeker that
+    flies to the chaser and is ABSORBED by it; the player never catches one.
+    Porting the first two without the third made every throw die on its own
+    first frame — the throw spawns at the player's X and `$40` above him, i.e.
+    already inside the `$0C10` catch box, so the slot was freed before anything
+    was drawn: ammo spent, no batarang, final boss unwinnable. The symptom
+    ("no batarang appears and no ammo is spent") pointed at the throw, and the
+    hypothesis in the handover was about update ORDER; both were wrong.
+    `tools/oracle/jokerbat.py` settled it by hooking `$3C0F` and reading B/C —
+    the pair the ROM chose equals `$C28F`/`$C290` on all 25 flight frames and
+    `$FF93`/`$FF94` on none. `jokerSeek()` in `batarang.js` now spells the
+    condition once so the three arms cannot drift again.
+
+    Corollary measured on the way: **the `+7/+8` screen pair carries
+    sub_00_1172's `+8/+16` OAM offsets**, so anything compared against an enemy
+    record's `r[7]`/`r[8]` must use that convention and not the bare drawing
+    pair `updateScreenPos` stores. The two differ by a constant, which cancels
+    when both sides of a test share it — so the player-catch path was correct
+    by accident and the chaser-catch path would have been silently 8/16 px off.
+
 ## Tools
 
 | tool | purpose |
