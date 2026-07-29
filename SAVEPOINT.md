@@ -112,7 +112,7 @@ Deploy: `node tools/build-dist.mjs` then
 | Route clears, CONTINUE, game over (`$C753`/`$FFB5`) | verified against the ROM, 8 progress-flow scenarios |
 | HUD energy bar | ported |
 | Mod system + launcher, touch controls, fullscreen | ported |
-| Difficulty `$C756` (launcher control; every read catalogued in master-ref §8b) | ported |
+| Difficulty `$C756` — **all 14 read sites**, including the hard-mode boss buffs (`$0D73`), the easy-mode level-14 chaser (`$0E01`) and the level-14 homing batarangs | ported |
 | Sound driver + DMG APU, music and SFX | **bit-exact** — all 47 ROM ids, SFX over live music, and the fader |
 | Title screen, its 8 LCD registers, and state 4's press-start flash | **built from ROM data** — 8192/8192 B, and all 120 flash iterations |
 | STAGE CLEAR (`loc_00_34D0`) | **byte-exact**, 8192/8192 VRAM on all three boss levels |

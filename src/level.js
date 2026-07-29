@@ -1,8 +1,11 @@
 // Level loading.  ROM: sub_00_0C34 (map -> $D000), sub_00_2889 (metatiles,
 // graphics, spawns), $04BB-$0563 (level init), 1:$7CED (player start).
 
+import { u8 } from './state.js';
 import { loadLevel, loadManifest, buildTileCache } from './assets.js';
 import { loadActors } from './actors.js';
+import { MAX_HP_BIT, MAX_HP_CELL } from './collision.js';
+import { setMapCell } from './state.js';
 import { loadEnemies } from './enemies.js';
 import { applyLevelArt, armEnemyRespawn } from './water.js';
 import { clearDrops } from './drops.js';
@@ -67,8 +70,14 @@ export async function initLevel(state, n) {
   // cleared, $035B entered with $FFB5 = 00, $C753 = 01).
   state.flow.continueAvailable = 0;
 
-  // $0DBA-$0DC5: the boss-fight globals reset on every level entry.
-  state.flow.bossRage = 0;                      // $C73D
+  // $0D79-$0DB8: on HARD ($C756 == 2) a subtype level buffs its boss, and on
+  // level 8 it does considerably more than that. Applied after loadEnemies so
+  // it patches the loaded records, which is the ROM's order ($0D73 runs inside
+  // the same init that has already block-copied the blob).
+  //
+  // $C73D is seeded to 1 on hard and 0 otherwise, so the $2643/$3C56 stagger
+  // gate is one step from firing before the Joker has even moved.
+  state.flow.bossRage = 0;                      // $0DBB: $C73D
   state.flow.bossCrit = 0;                      // $C73F
   state.flow.bossHop = 0;                       // $C741
   state.flow.bossMode = 0;                      // $C750
@@ -102,6 +111,19 @@ export async function initLevel(state, n) {
   // the respawner in water.js fills them with the sewer-enemy templates on the
   // first two frames. Runs AFTER the blob load, exactly the ROM's order.
   armEnemyRespawn(state);
+
+  // $0D73-$0DB8 / $0E01: the two DIFFICULTY arms of level init. Both were
+  // missing, and the first one is not a nicety -- it changes what boss 2 IS.
+  applyDifficultyInit(state, n);
+
+  // 1:$4DDA: the +2-max-HP pickup is once per GAME, not once per visit. If
+  // this level's $C754 bit is already set, its cell is erased before the
+  // player can reach it again.
+  const bit = MAX_HP_BIT[n];
+  const cell = MAX_HP_CELL[n];
+  if (bit && cell && (state.flow.maxHpTaken & bit)) {
+    setMapCell(state, cell.col, cell.row, 0, 0);
+  }
 
   // $04FD/$0503/$0534-$053F: the water body re-seeds at $1F00 on level entry.
   state.water = createWater();
@@ -153,6 +175,43 @@ export async function initLevel(state, n) {
 
   resetPlayer(state, info);
   return info;
+}
+
+/**
+ * ROM: $0D73-$0DB8 and $0E01. Level init's difficulty arms, applied after the
+ * enemy blob has been copied in because they PATCH the loaded records.
+ *
+ * HARD ($C756 == 2) on any subtype level: the boss gains 5 HP and $C73D is
+ * seeded to 1. On level 8 specifically it then conscripts slots 1 and 2 as
+ * live state-13 boss PARTS with $FF HP, and retunes the boss's own jump
+ * velocity and speed cap. Hard-mode boss 2 is a different fight, not a
+ * tougher one.
+ *
+ * EASY ($C756 == 0) on level 14: the chaser is switched off outright.
+ */
+function applyDifficultyInit(state, n) {
+  const boss = state.level.bossId;              // $C73E
+  const diff = state.flow.difficulty;           // $C756
+
+  if (n === 0x0E && diff === 0) {
+    state.enemies[1][0] = 0x40;                 // $0E07: $C288 -- chaser off
+    return;
+  }
+  if (boss === 0 || diff !== 2) return;         // $0D77 / $0D7E
+
+  state.enemies[0][0x16] = u8(state.enemies[0][0x16]
+    + state.tunables.bossHPBonusHard);          // $0D83: $C27E += 5
+  state.flow.bossRage = 1;                      // $0D8A: $C73D = 1
+
+  if (boss !== 2) return;                       // $0D92
+  state.enemies[0][0x1C] = 0x38;                // $0D96: $C284 jump velocity
+  state.enemies[0][0x1D] = 0x14;                // $0D9B: $C285 speed cap
+  state.enemies[1][0] = 0x80;                   // $0DA0: $C288
+  state.enemies[2][0] = 0x81;                   // $0DA5: $C2A8
+  state.enemies[1][2] = 0x0D;                   // $0DAA: $C28A -- state 13
+  state.enemies[2][2] = 0x0D;                   // $0DAD: $C2AA
+  state.enemies[1][0x16] = 0xFF;                // $0DB2: $C29E
+  state.enemies[2][0x16] = 0xFF;                // $0DB5: $C2BE
 }
 
 /** ROM: level init at $04BB - player start from 1:$7CED, X low forced to $80. */

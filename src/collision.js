@@ -785,6 +785,23 @@ function spikeDamage(state) {
     : state.tunables.invulnFrames;
 }
 
+/**
+ * ROM: $4D7A-$4D8E. Only three levels carry a +2-max-HP pickup, and each has
+ * its own bit in $C754.
+ */
+export const MAX_HP_BIT = { 3: 0x01, 5: 0x02, 0x0D: 0x04 };
+
+/**
+ * ROM: 1:$4DDA. The cell each of those pickups occupies, as {col, row}, read
+ * off the $D000 addresses the routine writes ($DB84 level 3, $D4DC level 5,
+ * $D4DA level $0D -- two bytes each, graphic and collision).
+ */
+export const MAX_HP_CELL = {
+  3: { col: 92, row: 2 },
+  5: { col: 38, row: 14 },
+  0x0D: { col: 38, row: 13 },
+};
+
 /** ROM: loc_01_4D4E - consume a pickup cell and erase it. */
 function takePickup(state, hit) {
   const t = state.tunables;
@@ -804,6 +821,10 @@ function takePickup(state, hit) {
     case COLL.PICKUP_MAXHP:                        // $4D5C
       requestSound(state, 0x15);
       p.iframes = 0;                               // $4D63
+      // $4D74-$4D91: latch it, so 1:$4DDA can erase this cell if the level is
+      // ever re-entered. Bits 0/1/2 for levels 3/5/$0D; any other level falls
+      // straight through at $4D84 and latches nothing.
+      state.flow.maxHpTaken |= MAX_HP_BIT[state.level.number] ?? 0;
       p.hpMax = Math.min(p.hpMax + t.pickupMaxHP, t.maxHPCap);
       p.hp = p.hpMax;                              // $4D72: also fully heals
       break;

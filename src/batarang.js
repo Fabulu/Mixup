@@ -41,14 +41,24 @@ export function throwBatarang(state, slot) {
   const t = state.tunables;
   const held = state.input.held;
 
+  // $19C0-$19CC: on LEVEL 14, and only off EASY, the throw sets bit 7 -- the
+  // RETURNING flag -- before the batarang has gone anywhere. So the Joker
+  // fight's batarangs never have an outbound leg at all: they start on the
+  // return path and, with the $3A6B/$3ADE/$3BF5 retarget below, home on the
+  // CHASER rather than on Batman. Default difficulty is 1, so this is the
+  // ordinary experience of the final fight, not an edge case.
+  const jokerThrow = state.level.number === 0x0E && state.flow.difficulty !== 0;
+
   b.active = true;
-  b.flags = p.facing + 1;                    // $19CE: facing+1, 1 = right
+  b.flags = (p.facing + 1) | (jokerThrow ? 0x80 : 0);   // $19CE: OR B
   b.x = p.x;                                 // $19D3/$19D6
 
   // $19E0: BIT 7 = Down held.
   b.y = u16(p.y + ((held & 0x80) ? 0x0060 : -0x0040));
 
-  b.speed = t.batarangSpeed;                 // $19F6: $50
+  // $19F6 loads $50, then $19F8-$1A04 replaces it with 8 under the same
+  // level-14/non-easy test. A slow seeker, not a thrown weapon.
+  b.speed = jokerThrow ? 0x08 : t.batarangSpeed;        // $19F6 / $1A04
   b.arc = (held & 0x40) ? 0x40 : 0;          // $1A08: BIT 6 = Up held
   b.screenX = 0;
   b.screenY = 0;
@@ -111,12 +121,15 @@ export function updateBatarangs(state) {
  *     (BIT 2), else sound $19, hit-flash, $3C stun, and 1 damage -- the DEC
  *     at $3D0B fires only if HP was non-zero. The batarang flies on.
  *
- * $C740 must be $FF exactly as in the melee scan (level 14's init writes 1),
- * and the level-14 Joker phase gate ($C73E == 4 && $C73D >= 2 at $3C56) is
- * NOT MODELLED, and no longer unreachable: stBoss4 sets bossRage = $EF counting down, which satisfies $C73D >= 2 for ~238 frames, so a batarang thrown at the staggering Joker should do nothing and currently damages him.
+ * $C740 must be $FF exactly as in the melee scan (level 14's init writes 1).
  */
 function batarangHitTest(state, b) {
   const t = state.tunables;
+  // $3C56: the Joker is immune while he is STAGGERING. stBoss4 runs $C73D
+  // down from $EF, so `>= 2` holds for about 238 frames after each stagger
+  // and everything thrown at him in that window does nothing. The same gate
+  // heads the melee scan at $2643.
+  if (state.level.bossId === 4 && state.flow.bossRage >= 2) return;
   // $3BD1 / sub_00_1172 convention: +8/+16 OAM offsets, u8 wrap. b.screenX
   // holds the drawing convention, so derive the ROM pair from world space.
   const bsx = (((u16(b.x - state.camera.x) >> 4) + 8) & 0xFF);
@@ -254,17 +267,31 @@ const brakeNeg = (v) => (v >= 4 ? v - 4 : 0);         // SUB $04 / JR NC
  * ROM: the bit-7 branch at $3A5C.
  *
  * Two independent axes, each comparing the batarang's HIGH byte against the
- * player's and steering a velocity toward it. The Y target is the player's row
- * MINUS ONE ($3A78: DEC A) -- the batarang returns to chest height, not to the
- * origin. On level $0E above easy the targets come from $C296/$C298 (the boss)
- * rather than the player; that variant is not ported.
+ * player's and steering a velocity toward it. The Y target is the target's row
+ * MINUS ONE ($3A78: DEC A, on BOTH paths) -- the batarang returns to chest
+ * height, not to the origin.
+ *
+ * ON LEVEL $0E ABOVE EASY IT DOES NOT COME BACK TO YOU. $3A6B and $3ADE swap
+ * the targets for $C298 and $C296 -- enemy slot 1's Y hi and X hi, the chaser.
+ * Together with the throw setting bit 7 immediately and the speed dropping to
+ * 8, the final fight's batarangs are slow seekers seeking the BOSS. Default
+ * difficulty is 1, so this is how the fight normally plays.
  */
+function homingTarget(state) {
+  // $3A65/$3AD1: CP $0E, then $C756 != 0.
+  if (state.level.number === 0x0E && state.flow.difficulty !== 0) {
+    const chaser = state.enemies[1];
+    return { xhi: chaser[0x0E], yhi: chaser[0x10] };   // $C296 / $C298
+  }
+  return { xhi: state.player.x >> 8, yhi: state.player.y >> 8 };
+}
+
 function updateReturning(state, b) {
-  const p = state.player;
+  const tgt = homingTarget(state);
 
   // --- Y axis ($3A65-$3ACC) ---
   const batYhi = b.y >> 8;
-  const tgtY = ((p.y >> 8) - 1) & 0xFF;        // $3A76/$3A78
+  const tgtY = (tgt.yhi - 1) & 0xFF;           // $3A76/$3A78
   let dirY;
   if (tgtY === batYhi) {                       // $3A81: hold the current bias
     dirY = (b.flags & F_DOWN) ? 'down' : (b.flags & F_UP) ? 'up' : null;
@@ -289,7 +316,7 @@ function updateReturning(state, b) {
   if (batXhi >= 0xA0) {                        // $3AD4: off-map guard
     dirX = 'right';
   } else {
-    const tgtX = p.x >> 8;                     // $3AE9
+    const tgtX = tgt.xhi;                      // $3AE9 / $3AE3
     if (tgtX === batXhi) {                     // $3AF2
       dirX = (b.flags & F_RIGHT) ? 'right' : (b.flags & F_LEFT) ? 'left' : null;
     } else {

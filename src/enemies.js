@@ -112,6 +112,12 @@ export function meleeHitTest(state, probeX, probeY) {
   const p = state.player;
   const t = state.tunables;
 
+  // $2643, the scan's HEAD -- mode 5 enters here via $243E, so this guard runs
+  // before a single slot is looked at. The Joker is immune while staggering:
+  // stBoss4 runs $C73D down from $EF, so `>= 2` holds for roughly 238 frames
+  // after each stagger. The batarang has the identical gate at $3C56.
+  if (state.level.bossId === 4 && state.flow.bossRage >= 2) return 0;
+
   // $2430 / sub_00_1172: world -> screen, same formula as screenTail below.
   const probeSX = u8((u16(probeX - state.camera.x) >> 4) + 8);
   const probeSY = u8((u16((probeY & 0x0FFF) - state.camera.y) >> 4) + 0x10);

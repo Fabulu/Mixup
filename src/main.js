@@ -275,6 +275,7 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
         state.flow.lives = 5;
         state.flow.routeMask = 0;
         state.flow.continueAvailable = 0;
+        state.flow.maxHpTaken = 0;      // $C754 -- only the boot vector clears it
         initLevel(state, 1).then(() => { showTitle(state, titleArt); resume(); });
         return;
       }

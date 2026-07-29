@@ -164,6 +164,13 @@ export function createState(tunables = DEFAULT_TUNABLES) {
       difficulty: 1,   // $C756
       ammo: 0,         // $C759
       routeMask: 0,    // $C753
+      // $C754 -- which levels' +2-max-HP pickup has been taken, bits 0/1/2 for
+      // levels 3/5/$0D. A run-long latch: level init does NOT clear it (only
+      // the boot vector does), and 1:$4DDA zeroes the pickup's map cell on
+      // re-entry, so each of the three is once per GAME rather than once per
+      // visit. Max HP is capped at $10 either way, so the port was bounded
+      // without it -- just wrong.
+      maxHpTaken: 0,
       // $FFB5 -- set once a level has been reached, which is what makes
       // CONTINUE appear on the round-select screen and start selected.
       continueAvailable: 0,

@@ -19,7 +19,12 @@
 //   * a scenario that diverges prints the first bad frame per field -- that
 //     frame is the bug.
 //   * `knownFail` marks a DIAGNOSED, unfixed gap: it may diverge (xfail) but
-//     may not start passing silently (an XPASS fails the run).
+//     may not start passing silently (an XPASS fails the run). There are NONE
+//     outstanding -- both the annotations this corpus shipped with (the type
+//     $0A dispatch and the two $C751 arms) named a specific fix, the fixes
+//     landed in src/actors.js and src/player.js, and the scenarios went green.
+//     Their diagnoses are kept in the comments below because they are the
+//     reason those scenarios are shaped the way they are.
 //
 // $C740 is deliberately not compared. The cartridge holds $FF there for a live
 // level and the port carries the same byte as flow.levelCleared with the sense
@@ -52,8 +57,9 @@ const PLAYER = ['x', 'y', 'vx', 'vy', 'air', 'camX', 'camY', 'hp',
 // ($2D1E) and conveyor.js reproduces that, so this exclusion hides nothing
 // this branch does -- but it does hide a real bug, and player.js should grow
 // the countdown.
+
 // The subsystem bytes themselves.
-const SUBSYS = ['park', 'dir', 'track', 'plx', 'seqTimer', 'spring',
+const SUBSYS =['park', 'dir', 'track', 'plx', 'seqTimer', 'spring',
                 'cursor', 'respawns', 'cheat'];
 const DROP = ['$C75B', '$C75C', '$C75D', '$C75E', '$C75F',
               '$C760', '$C761', '$C762'];
@@ -94,24 +100,68 @@ const SCENARIOS = [
   // 460 frames, no lag anywhere in the window (measured: none in 500).
   //
   // It is also the scenario that found two src/player.js bugs, both of them
-  // $C751 arms the port only half-implemented. The branch itself is exact --
-  // x, y, vx, vy, $C717 and $C751 are bit-exact for all 460 frames, arm frame
-  // and release frame included -- and the two fields that diverge are
-  // consequences one frame later:
-  //   $1820  `LD A,[$C751] / AND A / JR NZ loc_00_183B` is missing from
-  //          horizontal()'s `blocked`, so RIGHT still turns the player. Add
-  //          `|| p.springArmed !== 0` beside the $FF97 and $C71E tests.
-  //   $1ABF  `JP NZ, loc_00_1B41` is ported as a bare `return` in falling().
+  // $C751 arms the port had only half-implemented. The branch itself was exact
+  // from the first run -- x, y, vx, vy, $C717 and $C751 bit-exact for all 460
+  // frames, arm frame and release frame included -- and the two fields that
+  // diverged were consequences one frame later:
+  //   $1820  `LD A,[$C751] / AND A / JR NZ loc_00_183B` was missing from
+  //          horizontal()'s `blocked`, so RIGHT still turned the player.
+  //   $1ABF  `JP NZ, loc_00_1B41` was ported as a bare `return` in falling().
   //          $1B41 is not a return site: it is the landing tail, so a frozen
   //          player is re-grounded every frame (air = 0, vy = 0, $FFB2 = 0,
-  //          $FFC2 = 0). Without it the port goes airborne at f198 and stays
+  //          $FFC2 = 0). Without it the port went airborne at f198 and stayed
   //          there for the whole freeze.
-  // Both are safe to make: $C751's ONLY setter in the entire ROM is $2D0B,
-  // this branch, so the "spring jump" is really "the jump that ends level
-  // $0B's cutscene" and nothing else can observe either change.
+  // Both were safe to make because $C751's ONLY setter in the entire ROM is
+  // $2D0B, this branch -- so the "spring jump" is really "the jump that ends
+  // level $0B's cutscene" and nothing else can observe either change. Both
+  // landed in src/player.js and this scenario is bit-exact; it carried a
+  // knownFail while they were outstanding and must never grow one again
+  // without a diagnosis this specific.
   { name: 'l11-entrance-freeze', level: 0x0B, frames: 460,
-    script: '20:,440:R', slots: [],
-    script: '45:', slots: [0, 1, 2],
+    script: '20:,440:R', slots: [] },
+
+  // --- level $0C: loc_00_2FB7, the collapsing floor -----------------------
+  // The player walks right; at column $06 (f99) the cursor arms and 72 map
+  // cells are erased one per frame from the table at 1:$7BB4, in its own
+  // scrambled order. He falls through the floor at f104 and the cursor
+  // latches $FF at f171. Ten of the erased cells are compared as MAP CELLS,
+  // not just as a cursor value: this subsystem's real output is terrain, and
+  // a cursor that counts correctly while writing the wrong cell would look
+  // perfect without them.
+  //
+  // 300 frames, no lag anywhere in the window (measured: none in 300).
+  { name: 'l12-collapsing-floor', level: 0x0C, frames: 300,
+    script: '40:,260:R', slots: [],
+    cells: '11,21;4,21;9,21;6,21;13,21;8,21;5,21;10,21;3,21;9,31' },
+
+  // --- level $0D: loc_00_301E, the one-shot spawn -------------------------
+  // Warped to column $54, two columns clear of the nearest spawned object at
+  // $58 so jt_01_4765's level-$0D arming window ($4784, |dx| < 2) stays shut
+  // and the records hold still. $C736 goes 0 -> 1 at f2 and the three type-$0A
+  // records appear in slots 0/1/2 -- overwriting the level's own type-8
+  // platform and two type-6 blocks, which is why slot 0 is compared too.
+  //
+  // Capped at 45: f46 is the run's only lag frame ($C757, measured) -- and it
+  // is the frame the cartridge finally writes those records a screen cache,
+  // because the lag path runs the screen tail the handler otherwise skips.
+  //
+  // This scenario is what pinned type $0A down. It carried a knownFail while
+  // src/actors.js still routed the type to `default: return false`, which runs
+  // the generic screen tail; the ROM's dormant arm exits through
+  // loc_01_4521 -> loc_01_4A53 and skips it, so the port wrote a +9/+$0A cache
+  // into all three records that the cartridge leaves at zero. With `case 0x0A`
+  // dispatched to actorTypeA() the six bytes agree and the annotation is gone.
+  { name: 'l13-oneshot-spawn', level: 0x0D, frames: 45, warp: '84,22',
+    script: '45:', slots: [0, 1, 2] },
+
+  // --- the default arm: loc_00_3050 on a boss level -----------------------
+  // Level 4 is subtype 1, so $2CE9 sends it here every frame. The rescue drop
+  // is CHEAT-GATED ($C75C, written only by the title's B+SELECT+LEFT combo)
+  // and this run proves the negative that matters: $C75B-$C762 stay zero on a
+  // normal boot, so the branch is inert. Kept because it is the only coverage
+  // the default arm can have without the cheat, and because a port that armed
+  // the carrier anyway would light this up immediately.
+  { name: 'l4-boss-default-arm', level: 4, frames: 120, script: '120:',
     slots: [] },
 ];
 
@@ -198,8 +248,12 @@ for (const r of rows) {
 
 const ok = rows.every((r) => verdict(r) === 'ok' || verdict(r) === 'xfail')
   && rows.every((r) => !r.lag.length);
+const xfails = rows.filter((r) => r.knownFail).length;
 console.log('\n' + (ok
-  ? `PASS - ${rows.length}/${rows.length} sub_00_2CBE scenarios accounted for ` +
-    `(${rows.filter((r) => r.knownFail).length} xfail)`
+  ? (xfails
+    ? `PASS - ${rows.length}/${rows.length} sub_00_2CBE scenarios accounted ` +
+      `for (${xfails} xfail)`
+    : `PASS - ${rows.length}/${rows.length} sub_00_2CBE scenarios bit-exact ` +
+      'against the ROM')
   : 'FAIL - a sub_00_2CBE field diverged from the ROM'));
 process.exit(ok ? 0 : 1);
