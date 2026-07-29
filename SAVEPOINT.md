@@ -15,7 +15,18 @@ routine becomes a JS function we own, so the game can be retuned and modded.
 Live: **https://gbtman.pages.dev** · Repo: **https://github.com/Fabulu/batman-roj-js**
 
 Nothing ROM-derived is committed. `assets/`, `disasm/`, `rip/`, `dist/` and the
-ROM itself are gitignored and regenerated from your own cartridge.
+ROM itself are gitignored and regenerated from your own cartridge — and as of
+now that is true of `src/` too: no ROM table, sprite list or script survives as
+a literal anywhere in the port. Every one travels through
+`assets/manifest.json`, and `tools/verify_assets.py` re-reads each from raw
+file offsets so the exporter cannot verify itself.
+
+**STATE: feature complete.** All fourteen levels play, every boss included,
+title screen through to end credits. 21 gate stages green — 581 unit tests, 47
+frame-exact input scenarios, all 47 sound ids, and two stages that compare
+PIXELS rather than memory. Nothing is captured: every screen is built from ROM
+data and diffed against the cartridge's own VRAM. The four remaining gaps are
+listed under "What is NOT ported" and none of them blocks play.
 
 ---
 
@@ -76,6 +87,8 @@ Deploy: `node tools/build-dist.mjs` then
 | `tools/oracle/objtrace.py` + `objregress.mjs` | map objects: all 8 records x 16 bytes including the `+9/+$0A` screen cache, plus the `$D000` cells a type-6 block stamps. |
 | `tools/audit_coverage.py` | **"what have we missed?", measured.** Cross-references every routine gbdis finds an xref to against every address any comment in `src/` cites, then ranks the gap by distance to the nearest citation. This is how the stage-intro screen (`sub_00_333F`) was found after sitting unported AND uncatalogued through the entire project. Run it after any big porting wave: `python tools/gbdis.py "<rom>" --all --outdir /tmp/dis` then `python tools/audit_coverage.py . /tmp/dis`. |
 | `tools/oracle/flowscen.py` + `flowdiff.mjs` | route clears, death, CONTINUE and game over. **Event-capped, not frame-capped** -- each recording stops when the ROM's own sequencer lands (`$361E`/`$2AAD`/`$0150`) plus 90 settling frames, so a lag frame cannot skew it. |
+| `tools/oracle/introscreen.mjs`, `endingshot.mjs` | **PIXELS, not memory.** Compare the 160x144 shade indices the renderer produces against the ones the cartridge actually displayed. They exist because a screen can be byte-exact on VRAM and still render wrong -- twice now. Copy this shape before trusting any new screen. |
+| `tools/oracle/punchreach.py` + `punchreach.mjs` | the melee envelope, by disabling every real enemy and planting a fake record at a chosen offset at the instant the scan runs. Sweeping distance with a LIVE enemy is worthless -- it walks into range during the sample window and "hits" at every offset. |
 
 ---
 
@@ -122,41 +135,37 @@ Deploy: `node tools/build-dist.mjs` then
 
 ## What is NOT ported
 
-Roughly in order of how much each would change the game:
+**The game is feature complete.** All fourteen levels are playable, every boss
+included, and it runs from the title screen through to the end credits. What
+is left is four small things and one definitional exclusion.
 
-1. ~~**The victory fanfare's PICTURE.**~~ — DONE and byte-exact. `loc_00_34D0`'s
-   23 bank-6 blocks, `$3566`'s two window-map scripts, the `$35B2`-`$35C9`
-   STAT/LYC program and `sub_00_0A7F`'s palette ramp are all in `src/effects.js`
-   now, and `$FFAC` is written through to `state.video.windowY` — the old
-   `effects.windowRamp` indirection is gone. `tools/oracle/stageclear.py`
-   records the cartridge's whole VRAM either side of the fanfare and
-   `tools/oracle/deathdiff.mjs` rebuilds the difference from the manifest:
-   **8192/8192** bytes with the pre-fanfare image underneath and **836/836**
-   over the two spans the fanfare writes (`$8800-$8ADF`, `$9C00-$9C93`), on
-   levels 4, 8 and 11 alike.
+1. **`sub_00_0F56`** (`$1D24`, grounded only) — a 2-3 px draw-Y bob every 8th
+   frame on levels 6/9/10/11. Purely a sprite offset; it never touches
+   `$FF93`/`$FF94`. Cosmetic, but a real gap in `$1D0C`.
+2. **The melee hit-spark effect** (`$2708-$271B`) is not spawned, including the
+   crit's different sprite (`$97` against `$10`).
+3. **OAM draw ORDER during the GAME OVER lettering.** `$0567` runs the pair
+   `sub_00_0F7B` (HUD) + `sub_00_29E7` at `$0573`/`$057A` when `$FFA7 == 0`,
+   and the SAME pair at `$05E5`/`$05EC` when it does not — so the cartridge
+   queues the letters before the player on even frames and after the player,
+   enemies and doors on odd ones. Measured: the burst's first OAM cursor
+   alternates 20/44 on level 1, 20/60 on level 3, 20/88 on level 9. The port
+   always produces the `$057A` ordering. OAM index is DMG sprite priority and
+   the 10-per-line cut, so it is occasionally visible where the letters cross
+   the energy bar or the dying Batman.
+4. **Level 6's `$FFC9 == 1` alternate tile-animation table** (`2:$625E`) is
+   exported but never exercised — the conveyor came up 2 on every recorded
+   frame, so that arm is a transcription with a unit test rather than a
+   measurement.
 
-   **One renderer line is still missing** and until it lands the band is not
-   clipped: `drawWindow` must stop at `state.video.windowEndY` (null = draw to
-   the bottom, as now). Without it the window's rows 5+ — tile `$01`, solid
-   black on every level — paint from line `rWY + 32` down.
+**Lag frames** (`$C757`) are out of scope by definition, not undone: they are
+instruction-level timing. See docs/03-VERIFICATION.md §28.
 
-3. ~~**Conveyor carry**~~ — DONE, and the warning that got it there is worth
-   keeping: a `sub_00_2CBE` branch hides more than its headline subsystem. The
-   levels-1/2 branch's ENTRY (`$2D3D-$2D5C`) was an enemy respawner that fell
-   through into the water code. Level 7's "conveyor" branch turned out to be a
-   map-object respawner, level 11's a 240-frame entrance freeze, and level
-   13's a one-shot spawn. **Read each branch from its entry label**, not from
-   where the interesting-looking code starts.
-4. **The screens `sub_00_0A0E` feeds.** The interpreter ITSELF is now ported
-   and bit-exact (`src/vramscript.js`) — what is still missing is the rest of
-   each screen around it: the resource loads that put the tiles in VRAM, and
-   the menu logic for the options screen and the Joker stage select. The hard,
-   easy-to-get-wrong part is done; the remaining work is plumbing plus the
-   raster bands (item 5) for the lettering effects.
-5. **Lag frames.** `$C757` is set when VBlank fires before the main loop
-   finishes, and the actor/enemy drivers skip that iteration. That is
-   instruction-level timing, so it is out of scope by definition — see
-   docs/03-VERIFICATION.md §28.
+One deliberate deviation, documented at `drawWindow`: the water's 50% dither is
+reproduced SPATIALLY rather than as the hardware's 30 Hz alternation between
+"slab" and "no slab". A DMG's slow LCD integrates that into translucency; a
+modern display turns it into a violent strobe over a third of the screen, which
+is a photosensitivity hazard. Do not "fix" it back.
 
 ---
 
@@ -172,12 +181,20 @@ Be suspicious of these; they are the likeliest source of a surprise.
   half-extents, strict compares, player recoil vx = −4), batarang at
   `loc_00_3C17` (`$1216` box, inclusive, catch-tested BEFORE the hit test).
 
-  Be precise about what "verified" covers, because it is less than it looks.
-  Hooking the ROM arms across all four scenarios shows these NEVER execute:
-  `$26A0` (the facing-left retry), `$26DD` (crit), `$3C8A` (the whole armored
-  2/7/`$0A` bounce), `$20FB` (a punch treating water as empty), and
-  `$3C7B`/`$3C80`/`$3C85` (the immune states — no non-state-1 enemy is present
-  in any of them). `$271F` fires twice but never with a second candidate in
+  Be precise about what "verified" covers. Hooking the ROM arms across the four
+  scenarios showed several never executing — and a later sweep
+  (`tools/oracle/punchreach.py`, which disables every real enemy and plants a
+  fake record at a chosen offset at the instant the scan runs) has since
+  measured the whole envelope over 218 sweep points, with the port agreeing at
+  every one. That exercised `$26A0`, the facing-left retry, **and its
+  succeeding branch**, which no scenario had ever reached. Measured: the punch
+  probe sits +14 px ahead and 5 px up; the X window is probe-relative
+  [−13, +5] facing right and mirrored facing left; the Y window is ±14 px
+  (strict < 15).
+
+  Still never reached by any scenario: `$26DD` (crit), `$3C8A` (the whole
+  armored 2/7/`$0A` bounce), `$20FB` (a punch treating water as empty), and
+  `$3C7B`/`$3C80`/`$3C85` (the immune states). `$271F` fires twice but never with a second candidate in
   range, so "first hit only" is unit-tested and not oracle-tested. And the
   retry arm runs seven times and FAILS all seven — its succeeding branch is
   never taken. Those are transcriptions with unit tests, not measured
@@ -189,11 +206,10 @@ Be suspicious of these; they are the likeliest source of a surprise.
   trips it, widen the scenario, don't chase the model.
 - **State-2's ranged attack and projectile flight.** Literal ports with unit
   tests, but no natural input script triggers them, so no frame-by-frame proof.
-- **Post-death behaviour.** The ROM shoves x −15 during its sequence and
-  returns to round-select; we restart the level in place instead. Still a
-  **temporary stopgap** — but round select now exists, so wiring death back to
-  it is no longer blocked on anything. That plus `$FFB5`/`$C753` bookkeeping is
-  what turns CONTINUE from ported-but-unreachable into something you can use.
+- ~~**Post-death behaviour**~~ — DONE. Death routes back to round select, the
+  sequence runs its real 452 frames, and `$FFB5`/`$C753` are maintained, so
+  CONTINUE and the cleared-route skipping both work. Covered by the
+  `progress-flow` and `death-sequences` gate stages.
 - **NOTHING is captured any more.** Both remaining captures are retired and
   `tools/rip_water.py` / `tools/rip_title.py` are deleted along with them.
 
@@ -273,7 +289,11 @@ comparison will ever catch it.
 
 ---
 
-## Open bugs with a known reproduction
+## Diagnosis archive — bugs that WERE open, and how each was cornered
+
+Every entry here is fixed. They are kept because the reasoning is the reusable
+part: each one is a worked example of cornering a bug against the cartridge
+rather than against the listing.
 
 - **Level 2 → 3 arrival — FIXED.** It was never a transition bug. The scan at
   `loc_00_2426` is now ported (`actorOverlap` in collision.js) and level 3 is
@@ -416,31 +436,33 @@ comparison will ever catch it.
 
 ## Suggested next steps
 
-Every task on the original list is done. What remains was found on the way,
-mostly by `tools/audit_coverage.py`:
+**Every task on the original list is done, and so is everything found on the
+way.** The four items still open are listed under "What is NOT ported" above;
+all four are small and none blocks play.
 
-1. **The ENDING (`loc_00_3652`)** — four picture screens and a text crawl,
-   the last unported screen in the game. See item 2 under "What is NOT ported".
-2. **OAM draw ORDER during the GAME OVER lettering.** `$0567` runs the pair
-   `sub_00_0F7B` (HUD) + `sub_00_29E7` at `$0573`/`$057A` when `$FFA7 == 0`
-   and the SAME pair at `$05E5`/`$05EC` when it does not — so the cartridge
-   queues the letters before the player on even frames and after the player,
-   enemies and doors on odd ones. Measured: the burst's first OAM cursor
-   alternates 20/44 on level 1, 20/60 on level 3, 20/88 on level 9. The port
-   always produces the `$057A` ordering. OAM index is DMG sprite priority and
-   the 10-per-line cut, and the letters do cross the energy bar's row and the
-   dying Batman, so it is occasionally visible. `gameoverdiff.mjs` reports it
-   and does not fail on it.
-3. **`applyAnimHitbox` is not gated on the invulnerability blink**, and the
-   ROM's is (`$1D1B RET Z` leaves before `$1D2C`). Deliberately not
-   reproduced: main.js decrements `$C714` at tick end while the ROM does it at
-   the head of the player update (§29), so gating now would pick the wrong
-   eight frames. **Fix the `$C714` sampling point first.**
-4. **`sub_00_0F56`** (`$1D24`, grounded only) — a 2-3 px draw-Y bob every 8th
-   frame on levels 6/9/10/11. Cosmetic, but a real gap in `$1D0C`.
-5. **Level 6's `$FFC9 == 1` alternate tile-animation table** (`2:$625E`) is
-   exported but never exercised — the conveyor came up 2 on every recorded
-   frame, so that arm is a transcription with a unit test, not a measurement.
+If you are picking this up cold, the useful work now is not porting — it is
+proving. Two of the last three real bugs were invisible to every memory
+comparison in the suite and only appeared when someone rendered a frame or
+drove the game. So:
+
+1. **Extend pixel comparison beyond the two screens that have it.**
+   `tools/oracle/introscreen.mjs` and `endingshot.mjs` are the worked examples;
+   gameplay has nothing equivalent. A per-frame shade diff against PyBoy over a
+   route playthrough would be the single highest-value harness left.
+2. **Validate any check you add by making it fail.** Revert the fix, watch the
+   check go red, restore. Two checks in this project's history sat green
+   through the bug they were written for. This is not optional diligence; it is
+   the difference between a test and a decoration.
+3. **Re-run `tools/audit_coverage.py` after any porting wave.** It answers
+   "what have we missed" with a number, and it is how the stage-intro screen
+   was found after sitting unported *and* uncatalogued for the whole project.
+   It currently reports no untouched region.
+
+Known limits of that audit, so you do not over-trust it: its bare-`$XXXX`
+citation rule is deliberately generous, and a routine the disassembler decodes
+as DATA (no xref) is invisible to it — that is how `1:$4D74`'s once-per-game
+max-HP latch hid, and it was eventually found by byte-scanning the ROM for
+`$C754` accesses instead.
 
 ---
 
