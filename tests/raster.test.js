@@ -1,0 +1,288 @@
+// The $0857 STAT program: mode selection, and each arm's band list.
+//
+// The frame-exact proof lives in tools/oracle/rasterdiff.mjs, which compares
+// 335 664 scanlines of (SCX, SCY, BGP, OBP0, OBP1) against the cartridge.
+// What is pinned HERE is the handful of numbers that come straight off the
+// machine, so that a later edit that quietly changes one is caught without a
+// PyBoy run:
+//
+//   * the mode table at loc_00_0E74, including the eight levels that get NO
+//     raster at all because $0F1F masks the STAT interrupt off;
+//   * the fixed handoff lines (0 / $30 / $40, and $22 / $70), MEASURED;
+//   * the water chain's 4-line step and its $8F stop;
+//   * mode 7's $C763 ceiling of $0B and the handoff line's SCY-0 / $FFAC+1,
+//     all four measured with tools/oracle/rastersquash.py.
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  createRaster, tickRaster, rasterModeForLevel,
+  parallaxBands, trackBands, waterBands, squashBands,
+  RASTER_OFF, RASTER_TRACK, RASTER_PARALLAX, RASTER_WATER, RASTER_SQUASH,
+} from '../src/raster.js';
+
+// 0:$09A2, 32 signed bytes. The real one comes from assets/manifest.json
+// (`tables.sine`); this copy exists only so the unit tests do not need the
+// export, and waterBands is asserted to THROW when it is absent.
+const SINE = [0, 0, 3, 5, 6, 8, 9, 10, 10, 10, 9, 8, 6, 5, 3, 0,
+              0, 0, -3, -5, -6, -8, -9, -10, -10, -10, -9, -8, -6, -5, -3, 0];
+
+const BASE = { from: 0, scx: 88, scy: 112, bgp: 0xE4, obp0: 0xE4, obp1: 0xC4 };
+
+function mkState(over = {}) {
+  return {
+    raster: createRaster(),
+    frame: 0x6D,
+    flow: { paused: false, parallaxScx: 0 },
+    water: { windowY: 0x90 },
+    tables: { sine: SINE },
+    ...over,
+  };
+}
+
+// --------------------------------------------------------------------------
+// loc_00_0E74 -- which level gets which arm
+// --------------------------------------------------------------------------
+
+test('rasterModeForLevel is loc_00_0E74, including the levels with no raster', () => {
+  assert.equal(rasterModeForLevel(1), RASTER_WATER);      // $0EC3
+  assert.equal(rasterModeForLevel(2), RASTER_WATER);
+  assert.equal(rasterModeForLevel(6), RASTER_TRACK);      // $0EEA -> $0F11
+  assert.equal(rasterModeForLevel(9), RASTER_PARALLAX);   // $0E8A
+  assert.equal(rasterModeForLevel(10), RASTER_PARALLAX);
+  assert.equal(rasterModeForLevel(11), RASTER_PARALLAX);
+  // $0F1F writes rIE = $05 instead of $07, so the STAT vector never fires --
+  // "mode 0" on these levels means nothing runs, not the level-6 parallax.
+  for (const n of [3, 4, 5, 7, 8, 12, 13, 14]) {
+    assert.equal(rasterModeForLevel(n), RASTER_OFF, `level ${n}`);
+  }
+});
+
+// --------------------------------------------------------------------------
+// $058B -- the two sky layers
+// --------------------------------------------------------------------------
+
+test('$058B: $C742 gains 1 every 4th frame, $C743 gains 3 every frame', () => {
+  const s = mkState();
+  s.raster.mode = RASTER_PARALLAX;
+  s.frame = 0x6C;                       // 0x6C & 3 == 0
+  tickRaster(s);
+  assert.equal(s.raster.far, 1);
+  assert.equal(s.raster.mid, 3);
+  s.frame = 0x6D;
+  tickRaster(s);
+  assert.equal(s.raster.far, 1);        // not a multiple of 4
+  assert.equal(s.raster.mid, 6);
+});
+
+test('$058E: a paused frame ($C716) advances neither layer', () => {
+  const s = mkState();
+  s.raster.mode = RASTER_PARALLAX;
+  s.flow.paused = true;
+  s.frame = 0x6C;
+  tickRaster(s);
+  assert.equal(s.raster.far, 0);
+  assert.equal(s.raster.mid, 0);
+});
+
+test('the layers only advance on the levels that run the arm', () => {
+  const s = mkState();
+  s.raster.mode = RASTER_WATER;
+  s.frame = 0x6C;
+  tickRaster(s);
+  assert.equal(s.raster.mid, 0);
+});
+
+// --------------------------------------------------------------------------
+// modes 2/3/4 -- the parallax sky
+// --------------------------------------------------------------------------
+
+test('parallaxBands fires at lines 0 / $30 / $40 (measured)', () => {
+  const s = mkState();
+  s.raster.mode = RASTER_PARALLAX;
+  const b = parallaxBands(s, BASE);
+  assert.deepEqual(b.map((x) => x.from), [0, 0x30, 0x40]);
+});
+
+test('parallaxBands applies one MORE $058B step than the state carries', () => {
+  // Measured on level 9: the $0A4F sample of iteration 1 reads $C743 = 3 and
+  // the mode-3 arm of the frame it produced reads 6, because the main loop
+  // body runs above scanline $30.
+  const s = mkState();
+  s.raster.mode = RASTER_PARALLAX;
+  s.raster.far = 27;
+  s.raster.mid = 74;
+  s.frame = 0x70;                       // & 3 == 0, so far steps too
+  const b = parallaxBands(s, BASE);
+  assert.equal(b[0].scx, 88 + (((28 - 88) & 0xFF) - 0x100));   // congruent to 28
+  assert.equal(b[0].scx & 0xFF, 28);
+  assert.equal(b[1].scx & 0xFF, 77);
+  assert.equal(b[2].scx, BASE.scx);     // $08DD writes $FFA9 back
+});
+
+test('the mode-3 SCY step is a one-in-eight judder that carries to the bottom', () => {
+  const s = mkState();
+  s.raster.mode = RASTER_PARALLAX;
+  s.frame = 0x70;                       // & 7 == 0
+  let b = parallaxBands(s, BASE);
+  assert.equal(b[0].scy, BASE.scy);
+  assert.equal(b[1].scy, BASE.scy + 3);
+  assert.equal(b[2].scy, BASE.scy + 3, '$08DD never writes rSCY');
+
+  s.frame = 0x71;
+  b = parallaxBands(s, BASE);
+  assert.equal(b[1].scy, BASE.scy);
+});
+
+// --------------------------------------------------------------------------
+// modes 0/1 -- the level-6 track
+// --------------------------------------------------------------------------
+
+test('trackBands fires at lines $22 and $70 (measured: exactly 2 a frame)', () => {
+  const s = mkState();
+  s.flow.parallaxScx = 193;
+  const b = trackBands(s, BASE);
+  assert.deepEqual(b.map((x) => x.from), [0, 0x22, 0x70]);
+  assert.equal(b[0].scx, BASE.scx);
+  assert.equal(b[1].scx & 0xFF, 193);
+  assert.equal(b[2].scx, BASE.scx);
+});
+
+test('the level-6 SCY -2 is the same one-in-eight judder', () => {
+  const s = mkState();
+  s.frame = 0x70;
+  assert.equal(trackBands(s, BASE)[1].scy, BASE.scy - 2);
+  s.frame = 0x71;
+  assert.equal(trackBands(s, BASE)[1].scy, BASE.scy);
+  s.frame = 0x70;
+  s.flow.paused = true;
+  assert.equal(trackBands(s, BASE)[1].scy, BASE.scy, '$0882 gates on $C716');
+});
+
+// --------------------------------------------------------------------------
+// mode 6 -- the water band
+// --------------------------------------------------------------------------
+
+test('a surface at or below $90 produces no bands at all ($08FE)', () => {
+  const s = mkState();
+  s.water.windowY = 0x90;
+  assert.deepEqual(waterBands(s, BASE, 144), [BASE]);
+});
+
+test('the water chain steps 4 lines and stops before $8F ($091E-$0924)', () => {
+  const s = mkState();
+  s.water.windowY = 0x80;
+  const b = waterBands(s, BASE, 144);
+  // rLYC $80 -> $84 -> $88 -> $8C, and $8C + 4 = $90 >= $8F, so it re-arms.
+  assert.deepEqual(b.slice(1).map((x) => x.from), [0x80, 0x84, 0x88, 0x8C]);
+});
+
+test('the wobble is sine[($FFB1 + LY>>1) & $1F] added to $FFA9', () => {
+  const s = mkState();
+  s.frame = 0xFE;                       // the value the ARM reads (post-VBlank)
+  s.water.windowY = 95;
+  const b = waterBands(s, BASE, 144);
+  // Measured on the cartridge at level 1 f145: $FFB1 = 254, first band on
+  // line 95, and SCX comes out $FFA9 + 5.
+  assert.equal(b[1].from, 95);
+  assert.equal(b[1].scx - BASE.scx, SINE[(0xFE + (95 >> 1)) & 0x1F]);
+  assert.equal(b[1].scx - BASE.scx, 5);
+});
+
+test('every water band forces OBP0 $90 / OBP1 $80 and leaves SCY alone', () => {
+  const s = mkState();
+  s.water.windowY = 0x50;
+  const b = waterBands(s, BASE, 144);
+  for (const x of b.slice(1)) {
+    assert.equal(x.obp0, 0x90);         // $091A
+    assert.equal(x.obp1, 0x80);         // $0916
+    assert.equal(x.scy, BASE.scy);      // mode 6 never touches rSCY
+    assert.equal(x.bgp, BASE.bgp);
+  }
+  assert.equal(b[0].obp0, BASE.obp0, 'lines above the surface keep the base');
+});
+
+test('a missing sine table THROWS rather than degrading to a flat band', () => {
+  const s = mkState({ tables: {} });
+  s.water.windowY = 0x50;
+  assert.throws(() => waterBands(s, BASE, 144), /tables\.sine/);
+});
+
+// --------------------------------------------------------------------------
+// mode 7 -- the OPTIONS squash
+// --------------------------------------------------------------------------
+
+test('$084B/$084F: the delta ceiling is $0B, not the $0C it compares against', () => {
+  // MEASURED: tools/oracle/rastersquash.py over 200 frames of the real
+  // transition sees $C763 take every value 0..11 and never 12.
+  const s = mkState();
+  s.raster.mode = RASTER_SQUASH;
+  s.raster.delta = 0x0A;
+  s.frame = 0x08;                       // & 7 == 0
+  tickRaster(s);
+  assert.equal(s.raster.delta, 0x0B);
+  tickRaster(s);
+  assert.equal(s.raster.delta, 0x0B);
+});
+
+test('the delta only moves on every 8th frame, and $C766 reverses it', () => {
+  const s = mkState();
+  s.raster.mode = RASTER_SQUASH;
+  s.frame = 0x09;
+  tickRaster(s);
+  assert.equal(s.raster.delta, 0);
+  s.frame = 0x08;
+  tickRaster(s);
+  assert.equal(s.raster.delta, 1);
+  s.raster.closing = 1;
+  tickRaster(s);
+  assert.equal(s.raster.delta, 0);
+  tickRaster(s);
+  assert.equal(s.raster.delta, 0, '$0846 floors at zero');
+});
+
+test('squashBands reproduces the measured delta-11 frame exactly', () => {
+  // rastersquash.py, frame 199 of the real transition: $C763 = 11, base
+  // rSCY = 0. Lines 0-22 stay at 0, then it climbs 1 per line to 67 on line
+  // 45, 2 per line after that, and hands off on line 68.
+  const s = mkState({ frame: 0, water: null });
+  s.raster.mode = RASTER_SQUASH;
+  s.raster.delta = 11;
+  const flat = { from: 0, scx: 0, scy: 0, bgp: 0xE4, obp0: 0xE4, obp1: 0xE4 };
+  const { bands, handoff } = squashBands(s, flat, 144);
+
+  assert.equal(bands[22].scy, 0);
+  assert.equal(bands[23].scy, 1);
+  assert.equal(bands[45].scy, 23);
+  assert.equal(bands[46].scy, 25);
+  assert.equal(bands[67].scy, 67);
+  // $094B crosses $44 here: rSCY is written 0, rBGP becomes $1B, chain stops.
+  assert.equal(bands[68].scy, 0);
+  assert.equal(bands[68].bgp, 0x1B);
+  assert.equal(bands[143].scy, 0);
+  assert.equal(bands[143].bgp, 0x1B);
+  // $FFAC is rLYC AFTER $0937's INC, so the window starts one line lower.
+  assert.equal(handoff, 69);
+});
+
+test('squashBands reproduces the measured delta-7 frame too', () => {
+  const s = mkState({ frame: 0, water: null });
+  s.raster.mode = RASTER_SQUASH;
+  s.raster.delta = 7;
+  const flat = { from: 0, scx: 0, scy: 0, bgp: 0xE4, obp0: 0xE4, obp1: 0xE4 };
+  const { bands, handoff } = squashBands(s, flat, 144);
+  assert.equal(bands[88].bgp, 0x1B);
+  assert.equal(bands[87].bgp, 0xE4);
+  assert.equal(handoff, 89);            // measured $FFAC on that frame
+});
+
+test('a zero delta never hands off -- 144 flat bands', () => {
+  const s = mkState({ frame: 0, water: null });
+  s.raster.mode = RASTER_SQUASH;
+  const flat = { from: 0, scx: 0, scy: 0, bgp: 0xE4, obp0: 0xE4, obp1: 0xE4 };
+  const { bands, handoff } = squashBands(s, flat, 144);
+  assert.equal(handoff, null);
+  assert.equal(bands.length, 144);
+  assert.ok(bands.every((b) => b.scy === 0 && b.bgp === 0xE4));
+});

@@ -101,6 +101,8 @@ Deploy: `node tools/build-dist.mjs` then
 | Enemy death drops (`$C6CF`, `sub_00_0CF3` + `loc_00_1444`) | bit-exact — arc, both bounces and the rest latch |
 | Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
 | Window layer: map + animated tiles | **built from ROM data**, 13376/13376 B across 11 levels |
+| Raster/STAT program (`$0857`), all eight arms | bit-exact, 9 scenarios / 335,664 scanlines |
+| Levels 9/10/11 parallax sky, levels 1/2 water band, level 6 track | bit-exact |
 | Levels-1/2 water body (`src/water.js`): rise/fall, waterfall stamp, `$FF95` slow mode, the 1-dmg `$5A` hit, enemy slow-fall bit, splash pool | bit-exact |
 | Levels-1/2 sewer-enemy respawner (`loc_00_2D3D` head + `loc_00_0EC3` init arm): slots 6/7 refilled from `0:$32F8`/`0:$32D8`, the crawl-out-of-the-wall-hole spawns | bit-exact to the f73 lag frame (`l1-sewer-respawner-emerge`) |
 | Level transitions, death/lives/respawn | ported |
@@ -134,18 +136,22 @@ Roughly in order of how much each would change the game:
    clipped: `drawWindow` must stop at `state.video.windowEndY` (null = draw to
    the bottom, as now). Without it the window's rows 5+ — tile `$01`, solid
    black on every level — paint from line `rWY + 32` down.
-2. **Raster effects** (the `$0857` STAT program): per-scanline SCX/SCY/palette
-   bands, with fraction accumulators at `$C763-$C766`. `rasterBands()` still
-   emits a single band. The window LAYER itself is now drawn (`drawWindow` in
-   renderer.js) — that was the level-1/2 water.
+2. **The snaking pseudo-3D game-over / continue lettering.** This bullet used
+   to claim it was per-scanline SCX modulation, filed under the raster
+   program. **That premise is measurably wrong.** `$0857` is reachable only
+   through the `$0048` vector, gated by `rIE` bit 1, and every menu path
+   (`$025E`, `$02B8`, `$03D0`, `$3388`, `$3691`, `$36F2`, `$3732`, `$3773`,
+   `$3870`, `$3932`) writes `rIE = $05` — the vector is masked off. Only the
+   three level loads plus `$35C7` and `$38C3` write `$07`.
+   `tools/oracle/rasterhunt.py` drives a real death → CONTINUE → game over and
+   counts STAT fires per frame: **zero fires and zero modulated registers
+   across 388 frames** of those screens, against 972 of 973 on a level. So it
+   is sprites or animated tiles, and it needs finding from scratch.
 
-   This is also what the **snaking pseudo-3D game-over / continue lettering**
-   is built from: text that ripples and skews across the screen is per-scanline
-   SCX modulation, not animated tiles. Not yet located precisely in the ROM —
-   note that game over itself is just `$2ABA: JP Z,$0150`, a hard reset to the
-   boot vector, so the effect belongs to a screen reached *before* that, not to
-   a game-over state in the flow map. Worth pinning down with the oracle
-   (record `rSCX` per scanline across the sequence) before writing any code.
+   The raster program ITSELF is done — all eight arms, 9/9 scenarios bit-exact
+   over 335,664 scanlines (`raster-bands` gate stage).
+
+
 3. ~~**Conveyor carry**~~ — DONE, and the warning that got it there is worth
    keeping: a `sub_00_2CBE` branch hides more than its headline subsystem. The
    levels-1/2 branch's ENTRY (`$2D3D-$2D5C`) was an enemy respawner that fell

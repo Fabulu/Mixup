@@ -5,7 +5,9 @@
 // per-scanline SCX/SCY/BGP/OBP bands (the STAT raster program at $0857), and
 // sub_00_0BC6's sprite ordering (OAM order = call order, cap 40, no sorting).
 
-import { squashBands, parallaxBands } from '../raster.js';
+import { squashBands, parallaxBands, trackBands, waterBands,
+         rasterModeForLevel, RASTER_TRACK, RASTER_PARALLAX, RASTER_WINDOW_OFF,
+         RASTER_WATER, RASTER_SQUASH } from '../raster.js';
 import { cameraPixels } from '../camera.js';
 import { metatileTile } from '../level.js';
 import { mapTile } from '../state.js';
@@ -50,11 +52,20 @@ export function rasterBands(state) {
     obp0: state.video.obp0,
     obp1: state.video.obp1,
   };
-  // Mode 7 (loc_00_0935) is the OPTIONS squash: one band PER SCANLINE, each
-  // scrolled a little further than the last. The loop below already resolves
-  // bandFor(bands, y) per scanline, so this needs nothing else -- and the same
-  // door is open for modes 1-6 when the level raster bands land.
-  if (state.raster && state.raster.mode === 7) {
+  // $0857's eight-way dispatch.  Every arm resolves to a band list; the loop
+  // below already resolves bandFor(bands, y) per scanline, so even the
+  // 144-band arms need no renderer change.
+  //
+  // WHERE THE MODE COMES FROM, and why it is two places.  Modes 5 and 7 belong
+  // to SCREENS (the stage-clear picture, the options transition) and are
+  // written by those screens, so they are read from state.raster.mode.  Modes
+  // 0, 2 and 6 belong to LEVELS, and on the cartridge they are a pure function
+  // of $FFB0 decided once at $0E74 -- so they are derived from the level
+  // number here, which is the same rule and cannot be got half-right by a
+  // frame loop that has not been taught about them.
+  const mode = state.raster ? state.raster.mode : RASTER_TRACK;
+
+  if (mode === RASTER_SQUASH) {
     const { bands, handoff } = squashBands(state, base, SCREEN_H);
     // $0953: where the squash reaches $44 the window takes over, and the
     // options panel starts on exactly that line.
@@ -64,8 +75,31 @@ export function rasterBands(state) {
     }
     return bands;
   }
-  if (state.raster && state.raster.mode === 2) return parallaxBands(state, base);
-  return [base];
+  // The menus are not levels; $0E74 never ran for them and $FFB0 still holds
+  // whatever the last level was.
+  if (state.title || state.options || state.roundSelect) return [base];
+
+  switch (rasterModeForLevel(state.level ? state.level.number : 0)) {
+    case RASTER_PARALLAX: return parallaxBands(state, base);
+    case RASTER_TRACK: return trackBands(state, base);
+    case RASTER_WATER: return waterBands(state, base, SCREEN_H);
+    default: return [base];          // $0F1F: rIE = $05, STAT masked off
+  }
+}
+
+/**
+ * MODE 5 (loc_00_08EA) is the whole of one arm: `rWX = $A8`, and it never
+ * re-arms rLYC.  Its rLYC is $90 ($35BA), i.e. VBlank -- and the VBlank ISR
+ * pushes $FFAB to rWX first ($080A), so the STAT write always wins and holds
+ * for the entire visible frame.  The net effect is not per-scanline at all:
+ * it is "the window is off, whatever $FFAB says".
+ *
+ * That is the stage-clear picture's arm.  The picture itself (loc_00_34D0's
+ * bank-6 VRAM blocks) is not ported, so this is here to keep the arm honest
+ * rather than because anything reaches it yet.
+ */
+function windowSuppressed(state) {
+  return !!state.raster && state.raster.mode === RASTER_WINDOW_OFF;
 }
 
 export function renderFrame(state, fb) {
@@ -116,6 +150,7 @@ function drawWindow(state, fb, bands) {
   // surface must not jump about between them.
   const wy = v.windowLatchY;
   if (wy === undefined || wy >= SCREEN_H) return;      // parked off-screen
+  if (windowSuppressed(state)) return;                 // $08EA: rWX = $A8
 
   // rWX is offset by 7: WX = 7 puts the window's left edge at screen x 0, and
   // anything below 7 still starts at 0 rather than wrapping.
@@ -128,8 +163,18 @@ function drawWindow(state, fb, bands) {
   // hides the real problem. Bail instead.
   if (!map || !fallback) return;
 
+  // $FFC7 = 5 is loc_00_08EA, whose whole body is `rWX = $A8` -- the LYC
+  // interrupt switches the window OFF partway down rather than moving it. So
+  // rWY is the TOP of a band and rLYC is its BOTTOM, and the STAGE CLEAR
+  // banner is a band, not a slab. null/undefined means "no cut": the water
+  // surface and the options panel both run to the bottom of the screen, and
+  // without that distinction they would be clipped to nothing.
+  const end = v.windowEndY == null
+    ? SCREEN_H
+    : Math.min(SCREEN_H, v.windowEndY);
+
   const shades = fb.shades;
-  for (let y = Math.max(0, wy); y < SCREEN_H; y++) {
+  for (let y = Math.max(0, wy); y < end; y++) {
     // The window runs its own line counter from 0 at its first visible line;
     // it does NOT follow SCY.
     const wline = y - wy;

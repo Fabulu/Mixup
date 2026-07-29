@@ -30,7 +30,7 @@ import {
   continueLevel, ROUTE_LEVEL,
 } from './roundselect.js';
 import { showOptions, hideOptions, tickOptions } from './options.js';
-import { tickRaster } from './raster.js';
+import { tickRaster, rasterModeForLevel } from './raster.js';
 
 import { Sound } from './sound/index.js';
 
@@ -393,9 +393,11 @@ export function tick(state, manifest, playerTiles) {
   // frame. drawPlayer therefore draws against last frame's camera, as the ROM
   // does.
   updateCamera(state);                // $121F
-  // $057D-$058B: levels 9/10/11 run the parallax raster chain. Set here rather
-  // than in initLevel so this stays out of the level loader's way.
-  state.raster.mode = [9, 10, 11].includes(state.level.number) ? 2 : 0;
+  // $0E74's own table, so there is one source of truth for it. Note that
+  // "mode 0" on the eight levels with no arm does NOT mean level 6's track
+  // parallax -- $0F1F writes rIE = $05 there, masking the STAT vector off
+  // entirely, so nothing runs at all.
+  state.raster.mode = rasterModeForLevel(state.level.number);
   tickRaster(state);
 
   updateActors(state, manifest);      // $05BA CALL 1:$4230

@@ -135,6 +135,14 @@ const STAGES = [
     skip: hasAssets ? null : 'assets/manifest.json missing',
   },
   {
+    name: 'raster-bands',
+    what: 'the $0857 STAT program per SCANLINE: SCX/SCY/BGP/OBP0/OBP1',
+    cmd: process.execPath,
+    args: ['tools/oracle/rasterdiff.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
     name: 'door-sequencer',
     what: 'punch-opened doors, the debris pool and the $C693 effect pool',
     cmd: process.execPath,
