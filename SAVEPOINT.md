@@ -27,9 +27,20 @@
 > ### Do these next
 >
 > 1. **Level 8, boss phase 2 — still unmeasured.** Reported as invincible in
->    phase 2. Hypothesis to test, not a diagnosis: the `$C73D >= 2` stagger gate
->    at `$2643`/`$3C56` was wired for the Joker; if `bossRage` sticks high on
->    level 8 he would be permanently immune.
+>    phase 2. TWO hypotheses to test, neither a diagnosis:
+>    - the `$C73D >= 2` stagger gate at `$2643`/`$3C56` was wired for the
+>      Joker; if `bossRage` sticks high on level 8 he would be permanently
+>      immune to melee AND batarangs;
+>    - or he is not immune at all and the report is the ARMOR working as
+>      designed. `$3C8A` bounces a batarang off states 2/7/`$0A` with sound
+>      `$1D` and no damage, and `$3C94`/`$3C9E` make boss 2 special: the armor
+>      only holds while he is GROUNDED (`r[0] & 0x03` clear → `$C741` spin,
+>      batarang swatted back). Airborne he takes the ordinary damage arm. So a
+>      player throwing batarangs at a grounded boss 2 sees him shrug off every
+>      hit while being perfectly damageable in the air. Both arms are ported,
+>      unit-tested (`tests/bosses.test.js`) and bit-exact in the corpus
+>      (`regress l8-boss2-batarang-spin`) — so check the report against the
+>      armor before assuming a bug.
 > 2. **Level 6 sprites.** The cartridge draws **18** sprites there; the port
 >    draws far fewer. Enemy state 5 (the vehicle, HP 8, 4 sprites) plus map
 >    object slot 0 type 11 (the deck). State 5 has NO oracle coverage at all.
