@@ -122,6 +122,22 @@ const STAGES = [
     skip: hasAssets ? null : 'assets/manifest.json missing',
   },
   {
+    name: 'ending',
+    what: 'loc_00_3652: 4 pictures, the 13-line crawl and THE END',
+    cmd: process.execPath,
+    args: ['tools/oracle/endingdiff.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
+    name: 'ending-screen',
+    what: "the ending's pixels vs the cartridge's own framebuffer",
+    cmd: process.execPath,
+    args: ['tools/oracle/endingshot.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
     name: 'game-over-lettering',
     what: "the $C1C0 GAME OVER letters: shadow OAM and records, 4 levels",
     cmd: process.execPath,

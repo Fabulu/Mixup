@@ -57,7 +57,7 @@ const rel = (p) => path.relative(ROOT, p).replace(/\\/g, '/');
 if (record || !fs.existsSync(REF)) rec([], rel(REF));
 if (record || !fs.existsSync(MASH)) rec(['--mash-start', '--no-vram'], rel(MASH));
 if (record || !fs.existsSync(QUIT)) {
-  rec(['--start-at', '4145', '--no-vram', '--settle', '20'], rel(QUIT));
+  rec(['--start-at', '4145', '--no-vram', '--settle', '30'], rel(QUIT));
 }
 
 const manifest = JSON.parse(

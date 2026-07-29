@@ -80,7 +80,8 @@ export function rasterBands(state) {
   // rIE = $05, masking the STAT vector off, and it runs BEFORE level init --
   // so without it here the card inherits the previous level's arm and tries
   // to run, say, the levels-1/2 water band over a menu screen.
-  if (state.title || state.options || state.roundSelect || state.stageIntro) {
+  if (state.title || state.options || state.roundSelect || state.stageIntro
+      || state.ending) {
     return [base];
   }
 

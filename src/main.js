@@ -23,6 +23,7 @@ import { updateWater, updateSplashes, tickTileAnim } from './water.js';
 import { updateDrops } from './drops.js';
 import { updateDoors } from './doors.js';
 import { updateVictoryHold } from './effects.js';
+import { loadEnding, showEnding, tickEnding, hideEnding } from './ending.js';
 import {
   showsStageIntro, loadStageIntro, showStageIntro, tickStageIntro,
   hideStageIntro,
@@ -192,6 +193,7 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     let steps = 0;
     let startPressed = false;      // title -> round select
     let introDone = false;         // the stage-intro card has finished
+    let endingDone = false;        // the ending has reached $3887
     // { cursor, mode } captured at the press: mode 1 is CONTINUE ($C713),
     // which takes a completely different arm at $047C and never looks at the
     // route cursor at all.
@@ -234,6 +236,11 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
             menuChoice = { cursor: state.roundSelect.cursor,
                            mode: state.roundSelect.mode };
           }
+        } else if (state.ending) {
+          // loc_00_3652. Blocking, like the card: nothing else runs while it
+          // holds, and START skips nothing (measured -- mashing it for all
+          // 4137 frames lands on $3887 at exactly the same frame).
+          if (tickEnding(state) === 'done') endingDone = true;
         } else if (state.stageIntro) {
           // sub_00_333F blocks: 60 blank frames, three painting frames, 180
           // held, then a 33-frame fade -- 276 in all, and START skips both
@@ -255,6 +262,23 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     renderFrame(state, fb);
     image.data.set(fb.rgba);
     ctx.putImageData(image, 0, 0);
+
+    // $388E: `JP loc_00_0150` -- the ending does not RETURN anywhere, it
+    // resets the machine. The nearest honest equivalent here is the same path
+    // a game over takes: wipe the run and go back to the title.
+    if (endingDone) {
+      endingDone = false;
+      hideEnding(state);
+      Object.assign(state.video, GAMEPLAY_PALETTES);
+      if (titleArt) {
+        hideRoundSelect(state);
+        state.flow.lives = 5;
+        state.flow.routeMask = 0;
+        state.flow.continueAvailable = 0;
+        initLevel(state, 1).then(() => { showTitle(state, titleArt); resume(); });
+        return;
+      }
+    }
 
     // The card is done: drop it and load the level it was announcing. The
     // fade ends on black, so the gameplay palettes have to go back.
@@ -313,9 +337,15 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
         enterLevel(next.level);
         return;
       }
-      // `ending` (level $0E, loc_00_3652) is not ported, and `transition`
-      // means the ordinary walk-off handoff -- both fall through to the
-      // exit table below rather than inventing a screen.
+      // $35F6: clearing level $0E runs the ending -- four picture screens, a
+      // 13-line credit crawl and THE END, 4137 frames in all.
+      if (next.to === 'ending') {
+        showEnding(state, loadEnding(manifest, null));
+        resume();
+        return;
+      }
+      // `transition` means the ordinary walk-off handoff and falls through to
+      // the exit table below rather than inventing a screen.
       if (state.level.exitRight !== undefined
           && state.level.exitRight !== 0xFF && state.level.exitRight !== 0xFE) {
         state.flow.nextLevel = state.level.exitRight;

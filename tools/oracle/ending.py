@@ -56,6 +56,7 @@ Landmarks are counted per sub_00_0A4F, never per pyboy.tick: the ending has no
 main loop at all and $0A4F is the only thing in it that waits for a frame.
 """
 import argparse
+import importlib.util
 import json
 import os
 
@@ -77,6 +78,19 @@ OAMCLR = 0x0A61            # sub_00_0A61, the shadow-OAM wipe
 FADE = 0x0A7F              # sub_00_0A7F: C=mode
 SOUND = 0x0AE1             # sub_00_0AE1: B=id, C=mask
 LAG = 0x065C               # the ISR's "$FFE7 still 0" arm -> $C757
+
+def _screenshot_helpers():
+    """compare_screen.py's indexed-PNG writer and shade mapping, not a copy.
+
+    Importing it by path rather than restating it means the ending's shots and
+    the gameplay ones can never disagree about what a shade index is.
+    """
+    path = os.path.join(ROOT, 'tools', 'compare_screen.py')
+    spec = importlib.util.spec_from_file_location('_cmpscreen', path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 
 DISPATCH = 0x35E8          # loc_00_35E8, the cleared-level dispatch
 ENDING = 0x3652
@@ -141,7 +155,14 @@ def main():
                          'prove nothing but $3887 reads it')
     ap.add_argument('--no-vram', action='store_true',
                     help='skip the 8 KB snapshots (a much smaller file)')
+    ap.add_argument('--shots', default=None,
+                    help='comma-separated ending-relative frames to screenshot')
+    ap.add_argument('--shot-dir', default='rip/oracle/endingshots')
     args = ap.parse_args()
+
+    shot_frames = [int(x) for x in args.shots.split(',')] if args.shots else []
+    shot_at = set(shot_frames)
+    shots = _screenshot_helpers() if args.shots else None
 
     pyboy = PyBoy(ROM, window='null', sound_emulated=False)
     pyboy.set_emulation_speed(0)
@@ -366,7 +387,20 @@ def main():
                 pyboy.button_press('start')
             elif pressed['v'] and rel >= pressed['at'] + 4:
                 pyboy.button_release('start')
-        pyboy.tick(1, False)
+        # `render=False` is the fast path everywhere else in this tree -- but it
+        # leaves pyboy.screen holding a STALE buffer, so a screenshot taken
+        # after one is a picture of some earlier frame. With --shots the whole
+        # run renders; it costs a few seconds and it is the difference between
+        # a real comparison and a fictitious one.
+        pyboy.tick(1, shots is not None)
+        # PyBoy has just finished one hardware frame, so `screen` holds it.
+        if shots is not None and ctr['inside']:
+            f = ctr['n'] - marks['ending']
+            if f in shot_at:
+                shot_at.discard(f)
+                shots.write_indexed_png(
+                    os.path.join(ROOT, args.shot_dir, f'f{f:04d}.png'),
+                    160, 144, shots.screen_shades(pyboy), shots.DMG_PALETTE)
         if hits['reset']:
             break
         # EVENT-CAPPED: the ROM's own landmark plus settling frames.
@@ -404,7 +438,7 @@ def main():
 
     out = {'lagFrames': ctr['lag'], 'hits': hits, 'marks': rel,
            'bossHpWas': poked['hp'], 'startAt': args.start_at,
-           'mashStart': args.mash_start,
+           'mashStart': args.mash_start, 'shotFrames': shot_frames,
            'events': events, 'snaps': snaps, 'maps': maps, 'samples': samples,
            'totalFrames': ctr['n'] - base}
     path = os.path.join(ROOT, args.out)

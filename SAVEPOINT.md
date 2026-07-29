@@ -102,7 +102,8 @@ Deploy: `node tools/build-dist.mjs` then
 | Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
 | Window layer: map + animated tiles | **built from ROM data**, 13376/13376 B across 11 levels |
 | Raster/STAT program (`$0857`), all eight arms | bit-exact, 9 scenarios / 335,664 scanlines |
-| Stage-intro card (`sub_00_333F`) | **built from ROM data**, 327680/327680 B across 8 levels |
+| Stage-intro card (`sub_00_333F`) | **built from ROM data**, 327680/327680 B; and PIXEL-exact, 184320 px |
+| The ENDING (`loc_00_3652`) | 115712/115712 B and PIXEL-exact, 483840 px — the last screen |
 | GAME OVER lettering (`$C1C0`) | bit-exact — 13504/13504 shadow-OAM bytes over 4 levels |
 | Levels 9/10/11 parallax sky, levels 1/2 water band, level 6 track | bit-exact |
 | Levels-1/2 water body (`src/water.js`): rise/fall, waterfall stamp, `$FF95` slow mode, the 1-dmg `$5A` hit, enemy slow-fall bit, splash pool | bit-exact |
@@ -138,12 +139,6 @@ Roughly in order of how much each would change the game:
    clipped: `drawWindow` must stop at `state.video.windowEndY` (null = draw to
    the bottom, as now). Without it the window's rows 5+ — tile `$01`, solid
    black on every level — paint from line `rWY + 32` down.
-2. **The ENDING (`loc_00_3652`).** Clearing level 14 runs four blocking
-   picture screens (`$3691`, `$36F2`, `$3732`, `$3773`, each built from
-   bank-7 VRAM scripts) and then a text crawl at `$3781+` that copies 21-byte
-   strings from `7:$7B34`. Cited nowhere in `src/`; `clearLevel()` returns
-   `'ending'` and main.js falls through to the exit table.
-
 
 3. ~~**Conveyor carry**~~ — DONE, and the warning that got it there is worth
    keeping: a `sub_00_2CBE` branch hides more than its headline subsystem. The
