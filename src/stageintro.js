@@ -165,6 +165,12 @@ export function loadStageIntro(manifest, level, base = null) {
     // A VIEW, not a copy: the scripts run against the map through this and the
     // renderer has to see the result.
     bgMap: vram.subarray(0x1800, 0x1C00),
+    // The card's own metasprite table. This used to be read off
+    // state.titleManifest at draw time, which is set ONLY on the title boot
+    // path -- so launching straight into a level silently dropped all 40
+    // sprites, and with them the soft dithered ring around the oval. The card
+    // is handed a manifest; it should use that one.
+    metasprites: manifest.metasprites.table1,
   };
 }
 
@@ -302,11 +308,13 @@ function applyStage(s) {
 
 /** $3463-$3468: metasprite $F2 at BC = $5858, attr mask 0. 40 records. */
 function drawEmblem(state, s) {
-  const manifest = state.titleManifest;
-  if (!manifest) return;
+  const table = s.art.metasprites;
+  if (!table) {
+    throw new Error('stageIntro: no metasprite table -- loadStageIntro must '
+                    + 'carry manifest.metasprites.table1');
+  }
   const sp = s.art.spec.sprite;
-  drawMetasprite(state, manifest.metasprites.table1, sp.id,
-                 sp.x - 8, sp.y - 16, 0);
+  drawMetasprite(state, table, sp.id, sp.x - 8, sp.y - 16, 0);
 }
 
 export function hideStageIntro(state) {

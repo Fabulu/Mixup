@@ -491,7 +491,9 @@ export function tick(state, manifest, playerTiles) {
   // The level clear is raised inside updateEnemies now (loc_01_4EB8's boss
   // arm), so there is nothing to poll for here. step() reads flow.levelCleared.
 
-  if (state.player.iframes > 0) state.player.iframes--;
+  // $C714 is decremented at the HEAD of the player update ($177C), inside
+  // knockback() -- not here. Doing it at tick end left every mid-frame reader
+  // one count high.
 
   state.frame = (state.frame + 1) & 0xFF;   // $FFB1
   state.parity ^= 1;                        // $FFA7

@@ -167,6 +167,61 @@ T_INTRO_LEVEL_PTRS = (3, 0x7BF9)
 # a terminator. Decoded with the round-select font ($8A = 'A') it is BATMAN / VS.
 T_INTRO_BOSS_SCRIPT = (0, 0x3485)
 T_INTRO_BOSS_SCRIPT_N = 0x1F
+# --- the ENDING, loc_00_3652 (src/ending.js) -------------------------------
+#
+# Reached from loc_00_35E8's dispatch: `$35F6 CP $0E / JR Z`, i.e. by clearing
+# level 14 and nothing else.  MEASURED end to end by tools/oracle/ending.py:
+# 4137 frames from $3652 to the START wait at $3887.
+#
+# Every constant below is read at the address of the IMMEDIATE that produces
+# it, so a wrong transcription is a wrong byte rather than a plausible one.
+#
+# BANKS.  $3675/$36DD/$371D/$3758 run with bank 7 mapped and $3787/$37A2/
+# $3815/$3827/$3865 with bank 1 -- $375F switches back to 1 and only the credit
+# lookup ($37BD-$37DF) leaves it.  1:$7B34 and 7:$7B34 are both plausible-
+# looking data; only the first is a valid VRAM script, and $C703 says 1.
+T_END_FILL        = (0, 0x3653)   # LD D,$7E -- pictures 1/2/3 and THE END
+T_END_FILL4       = (0, 0x374A)   # LD D,$6E -- the credits screen, alone
+T_END_LCDC        = (0, 0x3695)   # LD A,$E7 -> rLCDC, at all four builds
+T_END_RES_IDS     = [(0, 0x3658), (0, 0x365D), (0, 0x3662), (0, 0x3667)]
+# The four picture scripts, run DIRECTLY through sub_00_0A0E with the LCD off
+# -- not queued through $C61B like the crawl's.  Read the LD DE immediate.
+T_END_PIC_PTRS    = [(0, 0x3676), (0, 0x36DE), (0, 0x371E), (0, 0x3759)]
+T_END_PIC_BANK    = 7
+T_END_THEEND_PTR  = (0, 0x3866)   # LD DE,$7B88 -- bank 1
+T_END_TEXT_BANK   = 1
+# $3787/$37A2 paint the credit box in tile $7E, $3815/$3827 repaint it in $6E
+# and so erase the line.  All four are FIXED 21-byte copies ($378E's LD BC).
+T_END_BOX_ON_PTRS  = [(0, 0x3788), (0, 0x37A3)]
+T_END_BOX_OFF_PTRS = [(0, 0x3816), (0, 0x3828)]
+T_END_BOX_N        = (0, 0x378E)  # LD BC,$0015
+# $37CE: 13 LE pointers in bank 7, indexed by $C712 * 2, each -> {len, script}.
+T_END_CREDIT_PTRS  = (0, 0x37CF)
+T_END_CREDIT_BANK  = 7
+T_END_CREDIT_COUNT = (0, 0x3841)  # CP $0D -- $C712 counts 0 .. $0C
+T_END_BLACK_BGP    = (0, 0x3686)  # LD A,$FF -> $FFAD, before picture 1
+# $36B0's ramp: NOT sub_00_0A7F's $0B09 table.  Four BGP bytes walked into
+# $FFAD on the frames where B & 7 == 0, over the $21 frames $36A6 counts.
+T_END_RAMP         = (0, 0x3A31)
+T_END_RAMP_N       = 4
+T_END_RAMP_FRAMES  = (0, 0x36A7)  # LD B,$21
+T_END_BLANK_FRAMES = (0, 0x3699)  # LD B,$B4 -- 180 frames of a black screen
+T_END_HOLD_C       = (0, 0x36BF)  # LD BC,$01B0, C is the low operand byte
+T_END_HOLD_B       = (0, 0x36C0)
+T_END_CRAWL_FIRST  = (0, 0x3780)  # LD B,$3C -- the gap before the first line
+T_END_CRAWL_WAIT   = (0, 0x3845)  # LD B,$20 -- and before every later one
+T_END_TEXT_HOLD    = (0, 0x37F9)  # LD A,$80 -> $C713, the line's own hold
+T_END_TAIL_FRAMES  = (0, 0x384A)  # LD B,$78
+T_END_END_FRAMES   = (0, 0x3878)  # LD B,$68
+# The seven sub_00_0A7F calls, in order.  Note $370E follows picture 3 with NO
+# fade out at all -- the cut to the credits screen happens with the LCD off.
+T_END_FADES = [(0, 0x36CA), (0, 0x36FA), (0, 0x370A), (0, 0x373A),
+               (0, 0x377B), (0, 0x3852), (0, 0x3880)]
+T_END_SPRITE_C  = (0, 0x3794)     # LD BC,$3838 -- C is x
+T_END_SPRITE_B  = (0, 0x3795)     # ... B is y
+T_END_SPRITE_ID = (0, 0x3797)     # LD E,$F2
+T_END_SOUND_C   = (0, 0x36A1)     # LD BC,$0A03 -> sub_00_0AE1 (B id, C mask)
+T_END_SOUND_B   = (0, 0x36A2)
 T_TITLE_WX   = (0, 0x0216)
 T_TITLE_WY   = (0, 0x02A8)
 T_TITLE_LCDC = (0, 0x02BC)
@@ -482,6 +537,25 @@ def intro_level_script(rom, level):
     return list(rom.rd(bank, p + 1, n))
 
 
+def ending_credit_scripts(rom):
+    """$37C7's per-line record: 7:$7BFC[$C712] -> {len, script[len]}.
+
+    Read by LENGTH like the stage-intro's, not walked to a terminator -- though
+    unlike the intro's these all happen to carry their own $00. $3840's `CP $0D`
+    is the loop bound, so entry $0D is not a pointer and must not be read: the
+    word there is $9821, which is a tilemap address, not ROM.
+    """
+    bank, base = T_END_CREDIT_PTRS
+    table = rom.u16(bank, base)
+    n = rom.u8(*T_END_CREDIT_COUNT)
+    out = []
+    for i in range(n):
+        p = rom.u16(T_END_CREDIT_BANK, table + i * 2)
+        ln = rom.u8(T_END_CREDIT_BANK, p)
+        out.append(list(rom.rd(T_END_CREDIT_BANK, p + 1, ln)))
+    return out
+
+
 def export_metasprites(rom, loc, count):
     """Each pointer -> N x 4-B OAM records {dy, dx, tile, attr}, $FF-terminated.
 
@@ -716,6 +790,49 @@ def main():
                    'y': rom.u8(*T_INTRO_SPRITE_B)},
         'sound': {'id': rom.u8(*T_INTRO_SOUND_B),
                   'mask': rom.u8(*T_INTRO_SOUND_C)},
+    }
+
+    # ---- the ENDING (loc_00_3652), src/ending.js -------------------------
+    # Built on top of the STAGE CLEAR screen level 14 leaves behind, exactly
+    # like the stage-intro card is built on round select's. The four resources
+    # are the ONLY tile loads in the whole 4137-frame sequence; every screen
+    # after the first re-fills the BG map and repaints it with a script, and
+    # nothing touches $8000-$97FF again.
+    _b64 = lambda bs: base64.b64encode(bytes(bs)).decode('ascii')
+    manifest['ending'] = {
+        'fill': rom.u8(*T_END_FILL),                 # $7E
+        'fill4': rom.u8(*T_END_FILL4),               # $6E, the credits screen
+        'lcdc': rom.u8(*T_END_LCDC),                 # $E7
+        'resources': [rom.u8(*loc) for loc in T_END_RES_IDS],
+        'tiles': [resource_blob(rom, rom.u8(*loc)) for loc in T_END_RES_IDS],
+        'pictures': [_b64(vram_script(rom, (T_END_PIC_BANK, rom.u16(*loc))))
+                     for loc in T_END_PIC_PTRS],
+        'theEnd': _b64(vram_script(
+            rom, (T_END_TEXT_BANK, rom.u16(*T_END_THEEND_PTR)))),
+        'boxOn': [_b64(read_table(rom, (T_END_TEXT_BANK, rom.u16(*loc)),
+                                  rom.u8(*T_END_BOX_N)))
+                  for loc in T_END_BOX_ON_PTRS],
+        'boxOff': [_b64(read_table(rom, (T_END_TEXT_BANK, rom.u16(*loc)),
+                                   rom.u8(*T_END_BOX_N)))
+                   for loc in T_END_BOX_OFF_PTRS],
+        'credits': [_b64(s) for s in ending_credit_scripts(rom)],
+        'blackBgp': rom.u8(*T_END_BLACK_BGP),        # $FF
+        'ramp': read_table(rom, T_END_RAMP, T_END_RAMP_N),   # FF AB 5B 1B
+        'rampFrames': rom.u8(*T_END_RAMP_FRAMES),    # $21, the same 33 as $0A7F
+        'blankFrames': rom.u8(*T_END_BLANK_FRAMES),  # $B4
+        'holdFrames': rom.u8(*T_END_HOLD_C) | (rom.u8(*T_END_HOLD_B) << 8),
+        'crawlFirstWait': rom.u8(*T_END_CRAWL_FIRST),   # $3C
+        'crawlWait': rom.u8(*T_END_CRAWL_WAIT),         # $20
+        'textHold': rom.u8(*T_END_TEXT_HOLD),           # $80
+        'crawlCount': rom.u8(*T_END_CREDIT_COUNT),      # $0D
+        'tailFrames': rom.u8(*T_END_TAIL_FRAMES),       # $78
+        'endFrames': rom.u8(*T_END_END_FRAMES),         # $68
+        'fades': [rom.u8(*loc) for loc in T_END_FADES],
+        'sprite': {'id': rom.u8(*T_END_SPRITE_ID),
+                   'x': rom.u8(*T_END_SPRITE_C),
+                   'y': rom.u8(*T_END_SPRITE_B)},
+        'sound': {'id': rom.u8(*T_END_SOUND_B),
+                  'mask': rom.u8(*T_END_SOUND_C)},
     }
 
     # ---- the window tilemap, and the animated-tile streamer ---------------

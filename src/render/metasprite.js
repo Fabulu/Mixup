@@ -133,20 +133,23 @@ export function streamPlayerTiles(state, manifest, playerTiles) {
  * why setting hitboxHalfWidth/Height as a plain tunable has no lasting effect.
  * Mods scale the table value instead.
  *
- * KNOWN DEVIATION, deliberate and bounded. On the cartridge $1D2C is the tail
- * of loc_00_1D0C, and $1D1B `RET Z` leaves BEFORE it on invulnerability-blink
- * frames -- so while $C714 runs, the hitbox is reloaded on only 8 frames in 16
- * and holds the previous pose's extents on the other 8. Reproducing that here
- * would need the blink phase to be right, and it is not: $1776 decrements
- * $C714 at the HEAD of the player update while main.js decrements at the end
- * of the tick (docs/03-VERIFICATION.md §29), so `p.iframes & 8` reads one
- * higher than the ROM's at this point in the frame. Gating on it would swap a
- * hitbox that is always fresh for one that is stale on the WRONG eight frames.
- * The whole corpus is bit-exact with it ungated; fix the $C714 sampling point
- * first, then gate.
+ * $1D2C is the TAIL of loc_00_1D0C, so $1D1B's `RET Z` leaves before it: while
+ * $C714 runs, the hitbox is reloaded on only 8 frames in 16 and holds the
+ * previous pose's extents on the other 8. That is reproduced here now.
+ *
+ * It could not be until recently, and the reason is worth keeping. The gate
+ * tests bit 3 of $C714, and the port used to decrement that byte at the END of
+ * the tick while the ROM does it at the HEAD of the player update ($177C) --
+ * so `p.iframes & 8` read one higher than the cartridge's at exactly this
+ * point in the frame, and gating on it would have swapped an always-fresh
+ * hitbox for one stale on the WRONG eight frames. The decrement moved to
+ * knockback() where it belongs, which is what unblocked this.
  */
 export function applyAnimHitbox(state, manifest) {
   const p = state.player;
+  // $1D13-$1D1B, the same test drawPlayer makes: mid-blink, this whole tail
+  // is skipped and the hitbox keeps the previous pose's extents.
+  if (p.iframes !== 0 && (p.iframes & 0x08) === 0) return;
   const hb = manifest.player.hitboxes[p.anim];
   if (!hb) return;
   const s = state.hitboxScale || 1;

@@ -162,8 +162,15 @@ def main():
     def snap(tag):
         if tag in snaps:
             return
+        # The SCREEN, not just the data behind it. Byte-exact VRAM proved the
+        # tiles and the map; it did NOT catch the card losing all 40 of its
+        # ring sprites, because that lives in OAM and in whether anything
+        # draws it. 160x144 shade indices, 0 = lightest.
+        px = pyboy.screen.ndarray[:, :, 0]
+        shades = [3 - min(3, int(v) * 4 // 256) for row in px for v in row]
         snaps[tag] = {'frame': ctr['n'], 'vram': list(m[0x8000:0xA000]),
-                      'oam': list(m[0xC000:0xC0A0]), 'regs': regs()}
+                      'oam': list(m[0xC000:0xC0A0]), 'regs': regs(),
+                      'screen': shades}
 
     def mark(name):
         def cb(_):
@@ -249,7 +256,7 @@ def main():
             break
         if f % 30 == 0:
             pyboy.button('start', delay=3)
-        pyboy.tick(1, False)
+        pyboy.tick(1, True)   # render=True: snap() reads pyboy.screen
     for n in ('right', 'left', 'up', 'down', 'a', 'b', 'start'):
         pyboy.button_release(n)
 
@@ -272,7 +279,7 @@ def main():
             pressed['v'] = True
             events.append({'kind': 'mark', 'frame': ctr['n'], 'note': 'START'})
             pyboy.button_press('start')
-        pyboy.tick(1, False)
+        pyboy.tick(1, True)   # render=True: snap() reads pyboy.screen
         if pressed['v'] and ctr['n'] - base >= args.start_at + 4:
             pyboy.button_release('start')
         if hits['returned'] or hits['reset'] or ctr['started']:

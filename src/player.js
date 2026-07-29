@@ -187,7 +187,16 @@ function checkPitDeath(state) {
  */
 function checkHpDeath(state) {
   const p = state.player;
-  if (p.air !== 0 && p.action !== 2) return false;   // $17C4-$17CE
+  // $17B6: level 14 alone can bypass the airborne gate -- if the Joker's own
+  // record ($C269, slot 0's +1) has bit 7 set, a 0-HP player dies in mid-air
+  // instead of surviving until he lands. Everywhere else $17C4 applies, and
+  // that gate is why taking lethal damage in water does not kill you: you stay
+  // airborne, and the death fires the frame after you touch down. MEASURED on
+  // the cartridge -- HP zeroed at air = 1, dying flag still 0 twenty-nine
+  // frames later, set on the frame after landing.
+  const jokerOverride = state.level.bossId === 4
+    && (state.enemies[0][1] & 0x80) !== 0;
+  if (!jokerOverride && p.air !== 0 && p.action !== 2) return false;  // $17C4-$17CE
   if (p.hp !== 0) return false;         // $17D0
   if (p.dead) return false;             // $17D5
   p.springArmed = 0;                    // $17DC: $C751
@@ -474,7 +483,16 @@ function knockback(state) {
   const p = state.player;
   const t = state.tunables;
 
+  // $177C: the DECREMENT lives HERE, at the head of the player update, not at
+  // the end of the frame. main.js used to do it after everything had run,
+  // which left every mid-frame reader of $C714 one count high -- documented as
+  // an artifact in docs/03-VERIFICATION.md section 29 and worked around rather
+  // than fixed. It is fixed now, which is what lets applyAnimHitbox honour the
+  // $1D1B blink gate: that gate tests bit 3 of this byte, so an off-by-one
+  // picks the wrong eight frames out of every sixteen.
   if (p.iframes === 0) return;                     // $177A
+  p.iframes = u8(p.iframes - 1);                   // $177C-$177D
+  if (p.iframes === 0) return;                     // $1780
   if ((p.iframes & 0xFF) < 0x59) return;           // $1782: only a fresh stamp
 
   const dirBit = p.iframes & 0x80;                 // $178C

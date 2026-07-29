@@ -111,6 +111,17 @@ const STAGES = [
     skip: hasAssets ? null : 'assets/manifest.json missing',
   },
   {
+    // The PICTURE, not the data. stage-intro proves the VRAM; this proves what
+    // the renderer makes of it, and it exists because the card was
+    // 327680/327680 on VRAM and still rendered wrong.
+    name: 'stage-intro-screen',
+    what: "the card's 160x144 pixels vs what the cartridge displayed",
+    cmd: process.execPath,
+    args: ['tools/oracle/introscreen.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
     name: 'game-over-lettering',
     what: "the $C1C0 GAME OVER letters: shadow OAM and records, 4 levels",
     cmd: process.execPath,
