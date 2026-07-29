@@ -1,5 +1,76 @@
 # SAVEPOINT — where this project is, and how to pick it up
 
+> ## ⚠ RESUME HERE — the tree is mid-flight
+>
+> **A 17-agent sweep landed and its work is UNCOMMITTED.** ~22 files under
+> `src/` are modified, in five bundles. Nothing is broken, but nothing is
+> gated either. Read this whole box before touching anything.
+>
+> ### State
+>
+> - `node --test tests/` → **683 tests, 2 failing ON PURPOSE.** Both are named
+>   `WIRING GAP` and were written to fail until the two chokepoint files get
+>   wired. They are the to-do list, not a regression:
+>   - `renderer.js`: the copyright screen must take the FLAT raster arm
+>     ("a menu screen is one flat band; more than one means a level raster arm ran")
+>   - `level.js`: a route clear must send cue `$01`/`$03` ("$3634 is the only
+>     place the round-select theme is asked for on this path")
+> - `npm run test-all` has **not** been run since the sweep landed.
+> - The LIVE build at gbtman.pages.dev is stale and carries three known
+>   defects listed below. Do not treat it as evidence of anything.
+>
+> ### Do these in order
+>
+> 1. **Wire the two gaps.** The failing tests name exactly what is needed.
+> 2. **Fix the level-14 batarang regression — this one is ours and it blocks
+>    the final boss.** `$19C0-$19CC` sets the RETURNING bit at throw time on
+>    level 14 above easy, and `src/batarang.js` reproduces that. But our
+>    batarang spawns AT the player, and a returning batarang inside the catch
+>    box (`$3C0B`, box `$0C10`) is caught and its slot freed — so every throw
+>    dies on its first frame. Reported from play: no batarang appears, no ammo
+>    is spent, and Batarang Storm cannot help because ammo was never the
+>    problem. It worked before the homing change.
+>    **MEASURE why the cartridge's throw survives frame one** — most likely the
+>    catch test runs after the homing step has already moved it toward the
+>    chaser, or the update order differs. Do not guess.
+> 3. **Run the full gate**, then commit and publish. The sweep's fixes are
+>    worth getting out: the level-6 softlock and the blank sky especially.
+> 4. **Level 8, boss phase 2 — unmeasured.** Reported as invincible in phase 2.
+>    Hypothesis to test, not a diagnosis: the `$C73D >= 2` stagger gate at
+>    `$2643`/`$3C56` was recently wired for the Joker; if `bossRage` sticks
+>    high on level 8 he would be permanently immune.
+> 5. **Level 6 sprites.** The cartridge draws **18** sprites there; the port
+>    draws far fewer. Enemy state 5 (the vehicle, HP 8, 4 sprites) plus map
+>    object slot 0 type 11 (the deck). State 5 has NO oracle coverage at all.
+>    Played symptom: "a floating guy I can hit and an invisible thing that
+>    blocks me and moves left and right".
+>
+> ### Measured facts about the Joker fight, so nobody re-derives them
+>
+> - The entrance runs **727 frames** before `$C740` goes `$FF`; until then
+>   nothing can damage anything. `$C750` steps 1 → 2 at f118, and both the
+>   Joker and the chaser activate at f728.
+> - Ammo **is** consumed normally on level 14 (measured 10 → 6 over four
+>   throws once the gate opens). There are no infinite batarangs.
+> - The Joker has **48 HP** (`$30`), and the level-14 batarang homes on
+>   `$C296`/`$C298` — enemy slot 1, the CHASER — not on him. So batarangs are
+>   probably not the intended damage source; melee against him is unmeasured.
+> - A direct launcher boot into level 14 starts with **0 ammo**; a real
+>   playthrough carries ammo in. That makes the launcher's level 14 harder
+>   than the cartridge's.
+>
+> ### Ground rules that keep being re-learned
+>
+> - **Measure; do not infer from the listing.** Eight fall-through incidents,
+>   one of which invalidated shipped code.
+> - **Byte-exact data is not a correct picture.** It has bitten twice.
+> - **Validate a new check by making it fail** — revert, watch it go red,
+>   restore.
+> - **Never regex a structured file.** A `re.S` edit silently deleted three
+>   oracle scenarios in this repo and the stage still reported PASS.
+> - **`git add -A` will sweep up other agents' in-flight work.** Stage by name.
+
+
 Read this first after any break. `docs/00-MASTER-REFERENCE.md` is the technical
 spec; `docs/03-VERIFICATION.md` is how we prove correctness and carries the
 running list of ROM behaviours that caused real bugs. This file is the map.
