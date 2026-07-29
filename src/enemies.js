@@ -2365,7 +2365,14 @@ function fallTail(state, r) {
       r[0x19] = 0x0C;
     }
     r[0] &= ~0x03;                                  // $5C87
-    // $5C8F: level 10's lower half is water -- draw behind the surface.
+    // $5C8F: `CP $0A` -- level 10 ONLY. Its lower half is water and enemies
+    // below row $14 draw behind the surface.
+    //
+    // Levels 5 and 13 have water collision too and do NOT get this, which
+    // looks like an omission and is not. MEASURED on the cartridge over a
+    // 700-frame walk: level 5's live enemy holds attr 0 for the whole run
+    // while level 10's flip between 0 and $80. So an enemy standing in
+    // level-5 water really does draw IN FRONT of it on the real hardware.
     if (state.level.number === 0x0A && r[0x10] >= 0x14) r[9] = 0x80;
   }
   return screenTail(state, r);

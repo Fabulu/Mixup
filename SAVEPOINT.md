@@ -76,6 +76,7 @@ Deploy: `node tools/build-dist.mjs` then
 |---|---|
 | `tools/oracle/drops.py` | the `$C6CF` pool from the instant an enemy dies -- kills a live enemy by zeroing its HP byte and dumps all four slots, player HP and the knockback timers per frame. `--hp` matters: at full health the pickup is consumed with `$FF8A` never moving, so the effect is invisible. |
 | `tools/oracle/objtrace.py` + `objregress.mjs` | map objects: all 8 records x 16 bytes including the `+9/+$0A` screen cache, plus the `$D000` cells a type-6 block stamps. |
+| `tools/audit_coverage.py` | **"what have we missed?", measured.** Cross-references every routine gbdis finds an xref to against every address any comment in `src/` cites, then ranks the gap by distance to the nearest citation. This is how the stage-intro screen (`sub_00_333F`) was found after sitting unported AND uncatalogued through the entire project. Run it after any big porting wave: `python tools/gbdis.py "<rom>" --all --outdir /tmp/dis` then `python tools/audit_coverage.py . /tmp/dis`. |
 | `tools/oracle/flowscen.py` + `flowdiff.mjs` | route clears, death, CONTINUE and game over. **Event-capped, not frame-capped** -- each recording stops when the ROM's own sequencer lands (`$361E`/`$2AAD`/`$0150`) plus 90 settling frames, so a lag frame cannot skew it. |
 
 ---
@@ -93,6 +94,7 @@ Deploy: `node tools/build-dist.mjs` then
 | Door/gate sequencer (`$C733-$C735`) + debris + the `$C693` effect pool | bit-exact, 8 scenarios — **level 13 is unblocked** |
 | The six `sub_00_2CBE` branches (levels 1/2, 6, 7, 11, 12, 13 + the boss default) | bit-exact, 5 scenarios |
 | Boss death: the `$C740` countdown, all four per-boss arms, the fanfare's timing | bit-exact, 3 scenarios |
+| STAGE CLEAR screen (`loc_00_350F` blocks, `$3566` scripts, `$35B2` STAT/LYC) | **built from ROM data**, 8192/8192 B against the cartridge on levels 4/8/11 |
 | Player death: the `$C1C0` burst, 452 frames to the handoff | bit-exact on levels 1, 3 and 4 |
 | Map-object collision (`loc_00_2426`, all four probe modes) | bit-exact |
 | VRAM script interpreter `sub_00_0A0E` | bit-exact (write stream: address, value AND order) |
@@ -118,14 +120,21 @@ Deploy: `node tools/build-dist.mjs` then
 
 Roughly in order of how much each would change the game:
 
-1. **The victory fanfare's PICTURE.** Its timing is exact — a cleared boss
-   level now takes the cartridge's 632 frames — but `loc_00_34D0`'s 23 bank-6
-   VRAM blocks, `$3566`'s two block copies and the `$35B2`-`$35C9` STAT/LYC
-   program are not ported, so those frames show the level standing still
-   instead of a STAGE CLEAR screen. `$FFAC`'s ramp is kept in
-   `effects.windowRamp` rather than written to `state.video.windowY` on
-   purpose: pulling the real window up without the copies would paint the
-   level's fill tile over the screen.
+1. ~~**The victory fanfare's PICTURE.**~~ — DONE and byte-exact. `loc_00_34D0`'s
+   23 bank-6 blocks, `$3566`'s two window-map scripts, the `$35B2`-`$35C9`
+   STAT/LYC program and `sub_00_0A7F`'s palette ramp are all in `src/effects.js`
+   now, and `$FFAC` is written through to `state.video.windowY` — the old
+   `effects.windowRamp` indirection is gone. `tools/oracle/stageclear.py`
+   records the cartridge's whole VRAM either side of the fanfare and
+   `tools/oracle/deathdiff.mjs` rebuilds the difference from the manifest:
+   **8192/8192** bytes with the pre-fanfare image underneath and **836/836**
+   over the two spans the fanfare writes (`$8800-$8ADF`, `$9C00-$9C93`), on
+   levels 4, 8 and 11 alike.
+
+   **One renderer line is still missing** and until it lands the band is not
+   clipped: `drawWindow` must stop at `state.video.windowEndY` (null = draw to
+   the bottom, as now). Without it the window's rows 5+ — tile `$01`, solid
+   black on every level — paint from line `rWY + 32` down.
 2. **Raster effects** (the `$0857` STAT program): per-scanline SCX/SCY/palette
    bands, with fraction accumulators at `$C763-$C766`. `rasterBands()` still
    emits a single band. The window LAYER itself is now drawn (`drawWindow` in
@@ -425,8 +434,9 @@ comparison will ever catch it.
    game-over lettering, which is per-scanline SCX modulation rather than
    animated tiles. Record `rSCX` per scanline across the sequence before
    writing any code.
-2. **The victory fanfare's picture** — the timing is exact, the 23 VRAM blocks
-   and the `$35B2` STAT program are not. See item 1 under "What is NOT ported".
+2. ~~**The victory fanfare's picture**~~ — DONE, byte-exact against the
+   cartridge. All that is left is the one `drawWindow` clip line described in
+   item 1 under "What is NOT ported".
 3. **Retire the last two captures**: the `$0E24` window surface
    (`assets/water.json`) and `assets/title.json`'s LCD registers.
 4. **Verify melee/batarang enemy damage against the oracle** — DONE. Three
