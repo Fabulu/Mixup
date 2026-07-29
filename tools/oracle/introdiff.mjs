@@ -369,12 +369,20 @@ console.log('\ntiming');
   ok('held frames', want.fade - want.text, spec.holdFrames);
   ok('fade frames', want.done - want.fade, 0x21);
 
-  // Every frame but the fade draws the 40-record emblem and nothing else.
-  const drawn = log.sprites.slice(0, want.fade);
+  // The emblem is 40 records on EVERY frame, the fade included.
+  //
+  // This used to assert that the fade frames queue ZERO sprites, because
+  // sub_00_0A7F contains no sub_00_0BC6. It does not redraw -- but it does
+  // not clear shadow OAM either, and the hardware keeps displaying what is
+  // there. MEASURED: 40 live OAM entries on every frame of the fade while
+  // BGP and OBP0 step E4 -> 90 -> 40 -> 00. Our shadow OAM is a queue rebuilt
+  // per tick, so "does not redraw" would mean "vanishes", and it did: the
+  // ring disappeared the moment the fade started, leaving the card's hard BG
+  // edge bare for 33 frames. introscreen.mjs now compares a fade frame's
+  // PIXELS as well, which is the check that would have caught it.
+  const drawn = log.sprites;
   if (drawn.some((n) => n !== 40)) fail('the emblem is not 40 sprites every frame');
   else console.log(`  ${'emblem sprites per frame'.padEnd(34)} 40 x ${drawn.length}`);
-  const faded = log.sprites.slice(want.fade);
-  if (faded.some((n) => n !== 0)) fail('sub_00_0A7F draws sprites (it does not)');
 
   // The palette the fade leaves, against the cartridge's own $FFAD/$FFAE/$FFAF.
   const samples = new Map(r.samples.map((s) => [s.frame, s]));

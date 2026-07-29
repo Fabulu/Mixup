@@ -54,19 +54,24 @@ for (const level of LEVELS) {
                  { cwd: ROOT, stdio: 'inherit' });
   }
   const ref = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const want = ref.snaps?.held?.screen;
-  if (!want) {
-    console.error(`intro-l${level}.json has no screen capture -- re-record with `
-                  + `--record (tools/oracle/stageintro.py must tick render=True)`);
-    process.exit(2);
+  // 'held' is the settled card; 'fading' is 12 frames into the 33-frame fade.
+  // The second one exists because the first cannot see the fade at all, and
+  // that is where the ring used to vanish.
+  for (const tag of ['held', 'fading']) {
+    if (!ref.snaps?.[tag]?.screen) continue;
+    rows.push(compare(level, tag, ref.snaps[tag]));
   }
+  continue;
+}
 
-  // Drive the card to the same landmark the recorder snapped at: the hold.
+function compare(level, tag, snap) {
+  const want = snap.screen;
+  // Drive the card to the same landmark the recorder snapped at.
   const state = createState(makeTunables(resolveLoadout([]).tunables));
   state.loadout = resolveLoadout([]);
   state.tables = manifest.tables;
   SI.showStageIntro(state, SI.loadStageIntro(manifest, level, null));
-  for (let i = 0; i < ref.snaps.held.frame; i++) SI.tickStageIntro(state);
+  for (let i = 0; i < snap.frame; i++) SI.tickStageIntro(state);
 
   const fb = R.createFramebuffer();
   R.renderFrame(state, fb);
@@ -81,12 +86,12 @@ for (const level of LEVELS) {
     }
   }
   if (bad) failed = true;
-  rows.push({ level, total: want.length, bad, first });
+  return { level, tag, total: want.length, bad, first };
 }
 
 console.log(`\n${'level'.padStart(5)}${'pixels'.padStart(12)}${'verdict'.padStart(9)}`);
 for (const r of rows) {
-  console.log(`${String(r.level).padStart(5)}`
+  console.log(`${String(r.level).padStart(5)}${r.tag.padStart(9)}`
     + `${`${r.total - r.bad}/${r.total}`.padStart(12)}`
     + `${(r.bad ? 'FAIL' : 'ok').padStart(9)}`
     + (r.first ? `   first (${r.first.x},${r.first.y}) rom=${r.first.rom} `

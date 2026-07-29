@@ -139,6 +139,14 @@ export function showTitle(state, title, withFade = true) {
   state.video.bgp = lcd.bgp;
   state.level.tiles = title.tiles;
   state.video.sprites.length = 0;
+  // The derived LCD state has rWY = $90: the window is parked. Setting it
+  // matters because the title is reachable FROM a level -- a game over on a
+  // water level would otherwise carry the water's window latch and its
+  // tilemap straight onto the title screen. (The window map is assigned
+  // below; the options panel lives in it, hidden off-screen at $90.)
+  state.video.windowY = lcd.wy;
+  state.video.windowLatchY = lcd.wy;
+  state.video.windowDither = false;
   state.camera.x = 0;
   state.camera.y = 0x1000;             // cameraPixels subtracts the $10 bias
   state.title = {

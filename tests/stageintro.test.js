@@ -163,10 +163,17 @@ test('the card is 60 blank + 3 painting + 180 held + 33 fading = 276', () => {
   assert.deepEqual(painted, [61, 62, 63]);        // $33A6 / $33D5 / $3404
   const fading = h.frames.filter((x) => x.fading).map((x) => x.f);
   assert.equal(fading[0], 243);                   // armed at the end of 243
-  // The emblem is drawn on every frame that is not one of sub_00_0A7F's --
-  // 60 + 3 + 180. The fade has no sub_00_0BC6 in it at all.
-  assert.equal(h.frames.filter((x) => x.sprites > 0).length, 243);
-  assert.ok(h.frames.slice(243).every((x) => x.sprites === 0));
+  // The emblem is on screen for ALL 276 frames, the fade included.
+  //
+  // This used to assert 243 and stop at the fade, on the reasoning that
+  // sub_00_0A7F contains no sub_00_0BC6 -- true, it does not REDRAW. But it
+  // does not CLEAR shadow OAM either, and the hardware keeps displaying what
+  // is in there. MEASURED on the cartridge: 40 live OAM entries on every
+  // frame of the fade, while BGP and OBP0 step E4 -> 90 -> 40 -> 00 together.
+  // Our shadow OAM is a queue rebuilt per tick, so not redrawing meant the
+  // ring VANISHED the instant the fade began and left the card's hard BG edge
+  // bare for 33 frames -- which is exactly what it looked like in the game.
+  assert.equal(h.frames.filter((x) => x.sprites > 0).length, 276);
 });
 
 test('START leaves the blank hold, and the earliest exit is frame 1', () => {

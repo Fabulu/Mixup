@@ -233,9 +233,21 @@ export function tickStageIntro(state) {
   state.video.sprites.length = 0;
   s.frame++;
 
-  // $347F: sub_00_0A7F, C = 0. Reached only by running the hold out; it is not
-  // cancellable and it does not draw ($0A7F has no sub_00_0BC6 in it).
+  // $347F: sub_00_0A7F, C = 0. Reached only by running the hold out, and not
+  // cancellable.
+  //
+  // It contains no sub_00_0BC6, so it does not REDRAW the emblem -- but it
+  // does not CLEAR shadow OAM either, and the hardware keeps displaying
+  // whatever is in there. MEASURED: all 40 sprites stay live for every frame
+  // of the fade while BGP and OBP0 step E4 -> 90 -> 40 -> 00 together, so the
+  // ring fades WITH the card.
+  //
+  // Our shadow OAM is a queue rebuilt each tick, so "does not redraw" would
+  // mean "vanishes". Redrawing is what reproduces the hardware here: without
+  // it the ring disappears the instant the fade starts and the card's hard
+  // BG edge is left exposed for 33 frames.
   if (s.fade) {
+    drawEmblem(state, s);
     if (!tickFade(s.fade, state.video)) {
       s.fade = null;
       return 'done';                                   // $3484

@@ -209,6 +209,12 @@ def main():
         hits['fade'] += 1
         marks.setdefault('fade', ctr['n'])
         snap('held')
+        # Snap again PART WAY THROUGH the fade. 'held' is taken on the frame
+        # $347F is entered, i.e. before a single palette step, so it cannot see
+        # anything the fade does. That blind spot let the port drop all 40 ring
+        # sprites for the whole 33-frame fade -- the card's hard BG edge left
+        # bare -- while every recorded state stayed byte-exact.
+        ctr['fadeSnapAt'] = ctr['n'] + 12
 
     def on_return(_):
         hits['returned'] += 1
@@ -257,6 +263,8 @@ def main():
         if f % 30 == 0:
             pyboy.button('start', delay=3)
         pyboy.tick(1, True)   # render=True: snap() reads pyboy.screen
+        if ctr.get('fadeSnapAt') == ctr['n']:
+            snap('fading')
     for n in ('right', 'left', 'up', 'down', 'a', 'b', 'start'):
         pyboy.button_release(n)
 
@@ -280,6 +288,8 @@ def main():
             events.append({'kind': 'mark', 'frame': ctr['n'], 'note': 'START'})
             pyboy.button_press('start')
         pyboy.tick(1, True)   # render=True: snap() reads pyboy.screen
+        if ctr.get('fadeSnapAt') == ctr['n']:
+            snap('fading')
         if pressed['v'] and ctr['n'] - base >= args.start_at + 4:
             pyboy.button_release('start')
         if hits['returned'] or hits['reset'] or ctr['started']:

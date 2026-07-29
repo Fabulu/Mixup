@@ -113,6 +113,18 @@ export function showRoundSelect(state, art) {
   state.video.sprites.length = 0;
   state.video.scx = 0;
   state.video.scy = 0;
+  // PARK THE WINDOW. MEASURED at loc_00_035B after dying on level 1: rWY and
+  // $FFAC are both $90, off-screen. The port used to carry the level's window
+  // straight in -- and with it the WATER, because windowLatchY is water.js's
+  // own latch and windowMap still pointed at the water's tilemap. Dying at
+  // the bottom of the sewer therefore painted a slab of water over the menu,
+  // reaching exactly as high as the water had risen. Nothing else clears it:
+  // the latch exists precisely so the surface does not flicker between the
+  // odd frames on which the ROM parks rWY.
+  state.video.windowY = 0x90;
+  state.video.windowLatchY = 0x90;
+  state.video.windowMap = null;
+  state.video.windowDither = false;
   state.video.bgp = 0xE4;
   // $0365 zeroes both OBJ palette shadows -- but they do NOT stay zero, and
   // reproducing the write literally is wrong. Measured on the cartridge while
