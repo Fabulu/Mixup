@@ -171,12 +171,17 @@ export function resetPlayer(state, info) {
   }
   p.vx = 0;
   p.vy = 0;
-  // The usual spawn shortcut: start falling, and the first update's floor
-  // probe lands him before the first trace sample. On level 14 that update
-  // never runs -- $1438 skips the player logic while $C750 (the entrance)
-  // holds -- so the shortcut would leak into every sampled frame. The
-  // cartridge's init leaves $FF80 = 0 there (MEASURED at f1).
-  p.air = state.level.number === 0x0E ? 0 : 2;
+  // $04F3: the cartridge writes $FF80 = 0, in the same XOR A run that clears
+  // $FFC3/$FFC4/$FFC5. This used to spawn the player already FALLING on every
+  // level but 14, as a "shortcut" so the first update's floor probe would land
+  // him before the first trace sample. It was not needed -- with 0 the first
+  // update still applies gravity ($1ABB only skips it while RISING) and still
+  // runs the floor probe -- and it was wrong in a way nothing could see until
+  // `anim` entered the compared set: $1B34 stamps the 16-frame landing squat
+  // only when $FF80 was 2 on arrival, so anywhere the player spawns on solid
+  // ground the port landed on frame 1 and played a squat the cartridge never
+  // plays. That was the sole cause of 8 of 47 scenarios failing on anim.
+  p.air = 0;
   p.facing = 0;
   p.hp = t.startingMaxHP;
   p.hpMax = t.startingMaxHP;

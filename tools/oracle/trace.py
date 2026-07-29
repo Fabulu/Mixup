@@ -29,6 +29,11 @@ LEVEL_INIT = 0x04BB  # one instruction after the route dispatcher writes $FFB0
 A = dict(air=0xFF80, xhi=0xFF81, xlo=0xFF82, yhi=0xFF83, ylo=0xFF84,
          vx=0xFF86, vy=0xFF87, facing=0xFF88, hp=0xFF8A,
          turn=0xFF8F, throttle=0xFF98,
+         # loc_00_1B4A's own scratch: the landing/stand-up squat, the walk
+         # cycle's frame timer, last frame's VelX and the crouch latch. All
+         # four are read and written by NOTHING outside that routine, which is
+         # why they are only worth sampling while porting it.
+         squat=0xFF90, animtimer=0xFF89, prevvx=0xFF91, crouch=0xFF92,
          camxhi=0xFFA2, camxlo=0xFFA3, camyhi=0xFFA4, camylo=0xFFA5,
          level=0xFFB0, frame=0xFFB1, anim=0xFFC3, animframe=0xFFC4,
          cling=0xFFB2, jumprel=0xFFC2, slow=0xFF95,
@@ -153,6 +158,10 @@ def sample(mem):
         'anim': m[A['anim']],
         'animFrame': m[A['animframe']],
         'turn': m[A['turn']],
+        'squat': m[A['squat']],
+        'animTimer': m[A['animtimer']],
+        'prevVx': s8(m[A['prevvx']]),
+        'crouch': m[A['crouch']],
         'throttle': m[A['throttle']],
         'camX': (m[A['camxhi']] << 8) | m[A['camxlo']],
         'camY': (m[A['camyhi']] << 8) | m[A['camylo']],

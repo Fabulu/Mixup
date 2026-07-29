@@ -164,6 +164,11 @@ for (let f = 1; f <= frames; f++) {
     camX: state.camera.x, camY: state.camera.y,
     throttle: p.airThrottle, halfW: p.halfW, halfH: p.halfH,
     turn: p.turnTimer, cling: p.clingLock, action: p.action,
+    // loc_00_1B4A's scratch, mirrored from trace.py so the anim work is
+    // diffable: $FF90 squat, $FF89 walk timer, $FF91 last VelX, $FF92 crouch.
+    squat: p.squatTimer, animTimer: p.animTimer,
+    prevVx: ((p.prevVx ?? 0) << 24) >> 24, crouch: p.crouching ?? 0,
+    msIndex: p.msIndex,
     atkTimer: p.attackTimer, atkPose: p.attackPose, ammo: state.flow.ammo,
     bat0: state.batarangs[0].active ? state.batarangs[0].flags : 0,
     bat0x: state.batarangs[0].active ? state.batarangs[0].x : 0,

@@ -77,6 +77,12 @@ export function createState(tunables = DEFAULT_TUNABLES) {
       animTimer: 0,    // $FF89
 
       // --- timers / modal flags ---
+      // $FF91/$FF92 -- loc_00_1B4A's private scratch: last frame's VelX, and
+      // the crouch latch. Nothing outside the animation selector reads either,
+      // and the ROM does NOT clear them at level init, so resetPlayer leaves
+      // them alone on purpose.
+      prevVx: 0,       // $FF91
+      crouching: 0,    // $FF92
       turnTimer: 0,    // $FF8F  turn-around stall
       squatTimer: 0,   // $FF90  landing squat
       airThrottle: 0,  // $FF98  air-control: accelerate every other frame

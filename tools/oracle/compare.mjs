@@ -36,13 +36,20 @@ const port = JSON.parse(fs.readFileSync(portPath, 'utf8'));
 
 // Fields the port currently models.
 //
-// `anim` is NOT in this list and never was, despite a comment here that said
-// for a long time that it "is compared but not enforced". It was compared by
-// nothing at all. It has since been measured: across the full regress.mjs
-// corpus anim diverges in 26 of 28 scenarios and animFrame in all 28, because
-// selectAnim is a reimplementation rather than a port of loc_00_1B4A. Pass
-// --fields to compare them deliberately; do not quietly add them here.
-const DEFAULT_FIELDS = ['x', 'y', 'vx', 'vy', 'air', 'facing', 'camX', 'camY'];
+// `anim` and `animFrame` are here now. They were not, for a long time, and a
+// comment claiming they were "compared but not enforced" was simply false --
+// nothing compared them at all, and when they finally were, anim diverged in
+// 26 of 28 corpus scenarios and animFrame in all 28. loc_00_1B4A (pose select)
+// and sub_00_2C13 (the tile streamer that owns $FFC4) are now translated and
+// both are bit-exact, so they belong in the default set like any other field.
+//
+// trace.py additionally samples $FF89/$FF90/$FF91/$FF92 as `animTimer`,
+// `squat`, `prevVx` and `crouch` -- loc_00_1B4A's private scratch. They are not
+// compared by default because nothing outside that routine reads them, but
+// `--fields ...,animTimer,squat` is the fastest way to localise a pose bug: the
+// pose is a consequence, those four are the cause.
+const DEFAULT_FIELDS = ['x', 'y', 'vx', 'vy', 'air', 'facing', 'camX', 'camY',
+                        'anim', 'animFrame'];
 const fields = (arg('fields', '') || '').trim()
   ? arg('fields').split(',').map((s) => s.trim())
   : DEFAULT_FIELDS;

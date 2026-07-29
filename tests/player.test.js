@@ -238,7 +238,7 @@ test('turning on the ground arms the 15-frame turn stall (animation only)', () =
   step(state);
   assert.equal(state.player.facing, 1);
   assert.ok(state.player.turnTimer > 0);
-  assert.ok(state.player.anim === ANIM.TURN_A || state.player.anim === ANIM.TURN_B);
+  assert.ok(ANIM.TURN.includes(state.player.anim));
   assert.equal(state.player.vx, -1, 'the stall does not block movement');
 });
 
@@ -487,7 +487,11 @@ test('landing snaps the Y low byte to 0, zeroes VelY and clears the cling + jump
   assert.equal(p.vy, 0);
   assert.equal(p.clingLock, 0, 'landing clears the locked direction bits too');
   assert.equal(p.jumpReleased, 0);
-  assert.equal(p.squatTimer, 0x10);        // ROM: $1B3D
+  // $1B3D stamps $10 -- and the SAME frame's draw pass spends one tick of it:
+  // $1B41 falls into loc_00_1B4A, whose idle arm reaches $1CCD, `DEC A /
+  // LDH [$FF90],A`. So the landing squat is 16 stamped, 15 observable.
+  assert.equal(p.squatTimer, 0x0F);
+  assert.equal(p.anim, ANIM.LAND);
 });
 
 test('landing from the grounded state does not re-arm the squat timer', () => {
@@ -695,24 +699,95 @@ test('a conveyor carry is applied on the frame after the floor probe queued it',
 // animation ids (they drive the hitbox, master reference §7.4)
 // ---------------------------------------------------------------------------
 
-test('animation ids match the oracle-derived mapping', () => {
-  // tools/oracle/animmap.mjs; docs/03-VERIFICATION §7.
-  assert.deepEqual(ANIM.WALK_CYCLE, [0x00, 0x01, 0x02, 0x03]);
+test('animation ids match the ROM', () => {
+  // 0:$1C43-$1D03; verified frame-for-frame against the cartridge by the
+  // `anim` column of tools/oracle/regress.mjs.
+  //
+  // The walk cycle is SIX frames, not four: $1CFB reads $FFC3, increments it
+  // and wraps on `CP $06`. A four-entry cycle was the old port's invention.
+  assert.deepEqual(ANIM.WALK_CYCLE, [0x00, 0x01, 0x02, 0x03, 0x04, 0x05]);
+  assert.equal(ANIM.WALK_WRAP, 0x06);
   assert.equal(ANIM.IDLE, 0x06);
   assert.equal(ANIM.LAND, 0x07);
   assert.equal(ANIM.RISING, 0x08);
   assert.equal(ANIM.FALL_START, 0x09);
   assert.equal(ANIM.FALL, 0x0A);
+  assert.equal(ANIM.CROUCH, 0x0D);
+  // $1BD3, in ROM order: index 0 = $14, and bit 3 of the countdown picks 1.
+  assert.deepEqual(ANIM.TURN, [0x14, 0x13]);
+  assert.equal(ANIM.DEAD, 0x1E);
 });
 
-test('a changed animation forces a full 3-column repaint', () => {
-  // ROM: $1B9x writes $FFC3 and the streamer at sub_00_32D2 reads $FFC5.
+test('selectAnim never touches animFrame or animPrev', () => {
+  // Those two bytes ($FFC4/$FFC5) belong to the tile streamer, sub_00_2C13,
+  // which runs LATER in the main loop ($05C9). loc_00_1B4A only READS $FFC4,
+  // as the "a repaint is in flight, hold the pose" gate. The old port reset
+  // both from here on every pose change, which is exactly the feedback loop
+  // that made animFrame diverge in all 28 oracle scenarios.
   const state = ground({ vx: 0 });
+  state.player.animPrev = 0x5A;
+  state.player.animFrame = 2;
   setInput(state, 0);
   step(state);
-  assert.equal(state.player.anim, ANIM.IDLE);
-  assert.equal(state.player.animPrev, 0xFF);
-  assert.equal(state.player.animFrame, 0);
+  assert.equal(state.player.animPrev, 0x5A);
+  assert.equal(state.player.animFrame, 2);
+});
+
+test('a repaint in flight ($FFC4 != 0) pins the pose', () => {
+  // $1C45 / $1C53 / $1CB5: the airborne and idle arms all bail to loc_00_1D08
+  // (or $1D0C) without writing $FFC3 while the streamer still owes columns.
+  const state = sky({ vx: 0, vy: -8 });
+  state.player.anim = ANIM.RISING;
+  state.player.animFrame = 1;
+  setInput(state, 0);
+  step(state);
+  assert.equal(state.player.anim, ANIM.RISING, 'falling did not override it');
+
+  const free = sky({ vx: 0, vy: -8 });
+  free.player.anim = ANIM.RISING;
+  free.player.animFrame = 0;
+  setInput(free, 0);
+  step(free);
+  assert.notEqual(free.player.anim, ANIM.RISING);
+});
+
+test('the fall pose is a SPEED band, not a frame count', () => {
+  // $1C58: `LDH A,[$FF87] / CP $E6 / JR C`. Falling velocities wrap into the
+  // high byte range, so unsigned >= $E6 means "not yet faster than -26".
+  const slow = sky({ vx: 0, vy: -8 });
+  setInput(slow, 0);
+  step(slow);
+  assert.equal(slow.player.anim, ANIM.FALL_START);
+
+  const fast = sky({ vx: 0, vy: -40 });
+  setInput(fast, 0);
+  step(fast);
+  assert.equal(fast.player.anim, ANIM.FALL);
+});
+
+test('the walk step time is a speed band re-read every frame', () => {
+  // loc_00_1CD6: 13 frames per step below |vx| 9, 7 below $20, 5 above.
+  const state = ground({ vx: 4, facing: 0 });
+  state.player.anim = 0x00;
+  state.player.animTimer = 0;
+  setInput(state, 0);
+  // Hold the speed inside the slowest band; friction would otherwise bleed it
+  // to zero in four frames and hand the pose to the idle arm.
+  const hold = (s) => { s.player.vx = 4; };
+  step(state, 12, hold);
+  assert.equal(state.player.anim, 0x00, '13 frames per step at |vx| < 9');
+  step(state, 1, hold);
+  assert.equal(state.player.anim, 0x01);
+});
+
+test('the walk cycle wraps 5 -> 0, not 3 -> 0', () => {
+  // $1CFD-$1D02: INC A / CP $06 / XOR A.
+  const state = ground({ vx: 0x30, facing: 0 });
+  state.player.anim = 0x05;
+  state.player.animTimer = 4;    // |vx| >= $20 -> band 5, so this frame trips
+  setInput(state, BTN.RIGHT);
+  step(state);
+  assert.equal(state.player.anim, 0x00);
 });
 
 test('the metasprite index equals facing (NOT facing XOR 1)', () => {

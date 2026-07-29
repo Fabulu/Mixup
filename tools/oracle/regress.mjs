@@ -480,14 +480,49 @@ const SCRIPTS = [
     ammo: 0, script: '20:,110:L', extra: ['hp', 'action', 'en3f', 'en3hp'] },
 ];
 
-// `anim`/`animFrame` are NOT here, and that is a known hole rather than an
-// oversight -- see the task filed against loc_00_1B4A. MEASURED across this
-// whole corpus: anim diverges in 26 of 28 scenarios and animFrame in all 28.
-// src/player.js's selectAnim is a reimplementation, not a translation: it
-// invents fallTicks/walkTicks/walkStep and carries an admittedly "empirical"
-// cling switch point. Adding these two fields before that is fixed would turn
-// the gate red for a reason the gate cannot act on. Add them the day it is.
-const FIELDS = ['x', 'y', 'vx', 'vy', 'air', 'facing', 'camX', 'camY'];
+// ===========================================================================
+// ONE KNOWN BLOCKER, and it is a ONE-LINE FIX IN A FILE THIS CHANGE DID NOT
+// OWN. Until it lands, 8 of the 47 scenarios below report FAIL on `anim`:
+//
+//   src/level.js, resetPlayer():
+//       p.air = state.level.number === 0x0E ? 0 : 2;   // <- wrong
+//       p.air = 0;                                     // <- $04F3
+//
+// The cartridge's level init writes $FF80 = 0 (`$04F3`, inside the same
+// XOR A run that clears $FFC3/$FFC4/$FFC5). The port instead spawns the
+// player already FALLING, as "the usual spawn shortcut", and the shortcut is
+// not needed: with $FF80 = 0 the first update still applies gravity ($1ABB
+// only skips it while RISING) and still runs the floor probe, so on level 1
+// the two are indistinguishable.
+//
+// They are NOT indistinguishable anywhere the player spawns on solid ground.
+// $1B34 stamps the 16-frame landing squat only when $FF80 was 2 on arrival, so
+// a port that starts falling lands on frame 1 and plays a squat the cartridge
+// never plays: anim 7 for 18 frames instead of anim 6, which then drags
+// animFrame with it. Every one of the 8 failures is that, and only that --
+// each one's first divergence is `anim @ frame 1: oracle 6, port 7`.
+//
+// MEASURED: with that single line changed, all 47 scenarios are bit-exact on
+// every field including anim, animFrame and msIndex. Nothing else is needed,
+// and physics is already 100% on all 47 either way.
+// ===========================================================================
+//
+// `anim` and `animFrame` are core fields, not extras. They were held out while
+// selectAnim was a reimplementation (anim diverged in 26 of 28 scenarios,
+// animFrame in all 28); loc_00_1B4A and its partner sub_00_2C13 are now
+// translated routine-for-routine and both are bit-exact across the corpus.
+//
+// They belong HERE rather than in a per-scenario `extra` because the pose is
+// not cosmetic: $1D2C reloads the hitbox from 0:$27A8 BY ANIMATION ID every
+// frame, so a wrong pose is a wrong half-width and hitboxes feed collision.
+// `msIndex` ($FF8B, the metasprite table entry) rides along because
+// loc_00_1B4A picks it on four different rules -- `facing` on the $1D08 tail,
+// `facing ^ 1` on the cling and turn arms, the 0:$2786/$2796 tables on the
+// attack arms, and UNCHANGED on the $1CB6 idle bail -- and getting it wrong is
+// exactly the "Batman ran mirrored for his entire run" bug in §7, which no
+// state field could ever have caught.
+const FIELDS = ['x', 'y', 'vx', 'vy', 'air', 'facing', 'camX', 'camY',
+                'anim', 'animFrame', 'msIndex'];
 const run = (cmd, args) => execFileSync(cmd, args, { cwd: ROOT, encoding: 'utf8' });
 
 const rows = [];

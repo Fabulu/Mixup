@@ -60,14 +60,21 @@ test('every sub-cell of every metatile is reachable exactly once', () => {
 // resetPlayer.  ROM: level init at $04BB, start position from 1:$7CED.
 // ---------------------------------------------------------------------------
 
-test('resetPlayer forces the X low byte to $80 and drops the player in falling', () => {
+test('resetPlayer forces the X low byte to $80 and spawns GROUNDED', () => {
   // ROM: $04BB -- 1:$7CED stores {Xhi, Yhi} only; $FF82 is written with $80.
+  //
+  // $04F3 writes $FF80 = 0, in the same XOR A run that clears $FFC3/4/5. This
+  // used to assert 2, matching a "spawn falling" shortcut the port carried;
+  // the cartridge does not do that, and $1B34 stamps a 16-frame landing squat
+  // only when $FF80 was 2 on arrival, so the shortcut played a squat on frame
+  // 1 that the cartridge never plays. Invisible until `anim` joined the
+  // compared set, then responsible for 8 of 47 scenarios failing.
   const state = makeState(grid(8));
   resetPlayer(state, { startX: 7, startY: 0x12 });
   const p = state.player;
   assert.equal(p.x, (7 << 8) | 0x80);
   assert.equal(p.y, 0x12 << 8);
-  assert.equal(p.air, 2, 'starts falling onto the ground');
+  assert.equal(p.air, 0, '$04F3: grounded, not falling');
   assert.equal(p.facing, 0);
   assert.equal(p.vx, 0);
   assert.equal(p.vy, 0);
