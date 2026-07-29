@@ -113,10 +113,10 @@ a literal anywhere in the port. Every one travels through
 file offsets so the exporter cannot verify itself.
 
 **STATE: feature complete.** All fourteen levels play, every boss included,
-title screen through to end credits. 21 gate stages green — 581 unit tests, 47
+title screen through to end credits. 21 gate stages green — 686 unit tests, 48
 frame-exact input scenarios, all 47 sound ids, and two stages that compare
 PIXELS rather than memory. Nothing is captured: every screen is built from ROM
-data and diffed against the cartridge's own VRAM. The four remaining gaps are
+data and diffed against the cartridge's own VRAM. The remaining gaps are
 listed under "What is NOT ported" and none of them blocks play.
 
 ---
@@ -132,11 +132,12 @@ python tools/oracle/trace.py  --frames 620 --script "20:,600:R" --level 5
 node   tools/render-frame.mjs --frames 620 --script "20:,600:R" --level 5
 node   tools/oracle/regress.mjs         # the whole corpus
 node   tools/oracle/vramdiff.mjs --record   # sub_00_0A0E, write for write
-npm run test-all                        # 7 stages, the gate for everything
+npm run test-all                        # 21 stages, the gate for everything
 ```
 
-**Current state: 36/36 oracle scenarios bit-exact, 360 unit tests, 7/7 stages
-green.** Levels 1, 5 and 9 match the cartridge exactly over 620 frames each.
+**Current state: 48/48 oracle scenarios bit-exact, 686 unit tests, 21/21 stages
+green.** The corpus covers levels 1, 3, 4, 5, 8, 9, 11, 12 and 14 over 13,519
+frames.
 
 If you change gameplay code and `test-all` goes red, you broke something real.
 
@@ -229,9 +230,9 @@ Deploy: `node tools/build-dist.mjs` then
 **The game is feature complete.** All fourteen levels are playable, every boss
 included, and it runs from the title screen through to the end credits.
 
-What follows is the honest remainder. It grew rather than shrank the last time
-anyone looked hard: items 5-7 were found by measuring the OAM head and the
-frame loop rather than the game state, and item 4's long-standing "unreachable"
+What follows is the honest remainder. It grew before it shrank: three items were
+found by measuring the OAM head and the frame loop rather than the game state,
+and have since been closed (below), while item 4's long-standing "unreachable"
 claim turned out to be an artifact of idle recordings. Treat "we checked that"
 as a claim with a date on it.
 
@@ -240,15 +241,16 @@ as a claim with a date on it.
    `$FF93`/`$FF94`. Cosmetic, but a real gap in `$1D0C`.
 2. **The melee hit-spark effect** (`$2708-$271B`) is not spawned, including the
    crit's different sprite (`$97` against `$10`).
-3. **OAM draw ORDER during the GAME OVER lettering.** `$0567` runs the pair
-   `sub_00_0F7B` (HUD) + `sub_00_29E7` at `$0573`/`$057A` when `$FFA7 == 0`,
-   and the SAME pair at `$05E5`/`$05EC` when it does not — so the cartridge
-   queues the letters before the player on even frames and after the player,
-   enemies and doors on odd ones. Measured: the burst's first OAM cursor
-   alternates 20/44 on level 1, 20/60 on level 3, 20/88 on level 9. The port
-   always produces the `$057A` ordering. OAM index is DMG sprite priority and
-   the 10-per-line cut, so it is occasionally visible where the letters cross
-   the energy bar or the dying Batman.
+3. **OAM draw order for the GAME OVER lettering's own burst.** `$0567` runs
+   the pair `sub_00_0F7B` (HUD) + `sub_00_29E7` at `$0573`/`$057A` when
+   `$FFA7 == 0`, and the SAME pair at `$05E5`/`$05EC` when it does not. **The
+   HUD half of that alternation IS ported now** — `src/main.js` `hudFirst` and
+   the two `drawHud` call sites. What is still unported is the BURST half: the
+   death burst draws from inside `deathTick`/`updatePlayer` mid-frame and so
+   does not move with the HUD. Measured: the burst's first OAM cursor
+   alternates 20/44 on level 1, 20/60 on level 3, 20/88 on level 9. OAM index
+   is DMG sprite priority and the 10-per-line cut, so it is occasionally
+   visible where the letters cross the energy bar or the dying Batman.
 4. **Level 6's `$FFC9 == 1` alternate tile-animation table** (`2:$625E`) has no
    COVERAGE. It was listed here for months as "never exercised, the conveyor
    came up 2 on every recorded frame". **That was wrong, and the way it was
@@ -266,27 +268,21 @@ as a claim with a date on it.
    **Do not conclude "unreachable" from idle recordings.** Ask what the input
    script was before believing a coverage claim.
 
-5. **The MOON is not drawn at all.** `$05A6` draws metasprite `$34` (tiles
-   `$E0`/`$E2`, attr `$10`) at OAM (128, 24) — screen (112,0)-(128,16) — on
-   levels 9/10/11, EVERY frame, even paused, outside the `$C740` gate. Nothing
-   in `src/` draws it. A permanently visible missing sprite on three levels,
-   found only because someone measured the OAM head rather than the game state.
+### Closed since this list was written (kept so nobody re-opens them)
 
-6. **The HUD is gated on `$C740 == $FF`** and the port ignores that. MEASURED
-   on level 4: from the frame after the boss dies the cartridge draws NO energy
-   bar for the whole countdown and fanfare (~350 frames); the port keeps
-   drawing it. Level 14 runs `$C740 = 1` from init and shows no bar for at
-   least 600 idle frames. Careful porting this: the port's `effects.countdown`
-   doubles as the death latch, so level 14 needs its own "HUD hidden"
-   condition rather than `countdown = 1`.
+Three items that stood here for months are DONE, and every one was found by
+measuring OAM or the frame loop rather than the game state:
 
-7. **Pause freezes `$FFB1`/`$FFA7` in the port; on the cartridge they keep
-   ticking** (the VBlank ISR owns them, and `$C716` gates the main loop, not
-   VBlank). So any odd-length pause permanently desyncs every phase consumer
-   after it — the water gravity gate, the hit-blink, the enemy loop direction.
-   No scenario pauses, which is exactly why this has never bitten. A paused
-   cartridge frame also contains only the HUD and the moon (OAM 22 → 7); the
-   port freezes the entire previous frame.
+- **The moon.** `$05A6` draws metasprite `$34` at OAM (128, 24) on levels
+  9/10/11, every frame, even paused, outside the `$C740` gate. `src/main.js`
+  `drawSkySprite` draws it.
+- **The `$C740 == $FF` HUD gate.** From the frame after a boss dies the
+  cartridge draws no energy bar for the whole countdown and fanfare (~350
+  frames), and level 14 shows none for its whole entrance. Both `drawHud`
+  calls are gated on `c740Idle(state)`.
+- **`$FFB1`/`$FFA7` across a pause and across the victory fanfare.** The
+  VBlank ISR owns them and `$C716` gates only the main loop, so they keep
+  ticking. Both blocking paths in `src/main.js` tick them now.
 
 **Lag frames** (`$C757`) are out of scope by definition, not undone: they are
 instruction-level timing. See docs/03-VERIFICATION.md §28.
@@ -567,7 +563,7 @@ rather than against the listing.
 ## Suggested next steps
 
 **Every task on the original list is done, and so is everything found on the
-way.** The four items still open are listed under "What is NOT ported" above;
+way.** The items still open are listed under "What is NOT ported" above;
 all four are small and none blocks play.
 
 If you are picking this up cold, the useful work now is not porting — it is

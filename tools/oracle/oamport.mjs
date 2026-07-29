@@ -48,7 +48,7 @@ if (warp) {
 for (let f = 1; f <= frames; f++) {
   tick(state, manifest, playerTiles);
   const s = state.video.sprites;
-  const head = s.slice(0, 12).map((e, i) =>
+  const head = s.slice(0, Number(arg('entries', 12))).map((e, i) =>
     `${i}:${e.x},${e.y}#${(e.tile & 0xFF).toString(16).toUpperCase().padStart(2, '0')}a${(e.attr & 0xFF).toString(16).toUpperCase().padStart(2, '0')}`).join(' | ');
   console.log(`f${String(f).padStart(3)} par=${state.parity ^ 1} n=${s.length}`);
   console.log('        ' + head);

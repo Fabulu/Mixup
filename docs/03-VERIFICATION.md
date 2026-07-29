@@ -36,8 +36,9 @@ buttons from `R L U D A B`. `20:,40:R` = 20 idle frames then 40 holding right.
 
 ## Current fidelity
 
-`node tools/oracle/regress.mjs` runs the whole corpus: **28 of 28 scenarios
-(7693 frames, levels 1/5/9) are bit-exact on every field, camera included.**
+`node tools/oracle/regress.mjs` runs the whole corpus: **48 of 48 scenarios
+(13,519 frames, levels 1/3/4/5/8/9/11/12/14) are bit-exact on every field,
+camera included.**
 See **## Test suite** for the per-scenario table.
 
 Attacks are verified separately. Both harnesses take `--ammo`, which injects
@@ -391,7 +392,7 @@ spends half a minute inside an emulator.
 
 ```
 npm run test-all                 # everything
-npm run test-all -- --fast       # skip the two PyBoy stages
+npm run test-all -- --fast       # skip the 18 PyBoy stages
 npm run test-all -- --keep-going # do not stop at the first failing stage
 node tools/test-all.mjs --only asset-integrity
 ```
@@ -400,8 +401,25 @@ node tools/test-all.mjs --only asset-integrity
 |---|---|---|---|
 | `unit-tests` | `node --test tests/` | each `src/*.js` routine in isolation | no |
 | `tunables-check` | `python tools/gen_tunables.py --check` | all 44 constants still equal the ROM bytes at their cited file offsets | no |
+| `sound-driver` | `node tools/oracle/sounddiff.mjs --all` | every recorded sound id, all four channels plus NR50/NR51 | no |
 | `asset-integrity` | `python tools/verify_assets.py` | `assets/` is what the real game loads, for all 14 levels | **yes** |
+| `vram-scripts` | `node tools/oracle/vramdiff.mjs --record` | `sub_00_0A0E`'s write stream: address, value AND order | **yes** |
+| `title-build` | `node tools/oracle/titlediff.mjs --record` | title + round-select VRAM built from ROM data, all 8192 B each | **yes** |
+| `level-art` | `node tools/oracle/waterdiff.mjs` | the window map + animated tiles built from ROM data, 11 levels | **yes** |
+| `title-state` | `node tools/oracle/titlestatediff.mjs` | the title's 8 LCD registers and state 4's press-start flash | **yes** |
+| `stage-intro` | `node tools/oracle/introdiff.mjs` | `sub_00_333F` built from ROM data, 8 levels x 5 states of VRAM | **yes** |
+| `stage-intro-screen` | `node tools/oracle/introscreen.mjs` | the card's 160x144 PIXELS vs what the cartridge displayed | **yes** |
+| `ending` | `node tools/oracle/endingdiff.mjs` | `loc_00_3652`: 4 pictures, the 13-line crawl and THE END | **yes** |
+| `ending-screen` | `node tools/oracle/endingshot.mjs` | the ending's PIXELS vs the cartridge's own framebuffer | **yes** |
+| `game-over-lettering` | `node tools/oracle/gameoverdiff.mjs` | the `$C1C0` GAME OVER letters: shadow OAM and records, 4 levels | **yes** |
+| `round-select` | `node tools/oracle/roundseldiff.mjs --record` | route/mode cursor logic, three `$C753`/`$FFB5` states | **yes** |
 | `oracle-regression` | `node tools/oracle/regress.mjs` | the port is frame-exact against the ROM on the whole input corpus | **yes** |
+| `map-objects` | `node tools/oracle/objregress.mjs` | the `$C1E8` handlers, all 16 record bytes plus stamped map cells | **yes** |
+| `progress-flow` | `node tools/oracle/flowdiff.mjs` | route clears, death, CONTINUE and game over vs `$C753`/`$FFB5` | **yes** |
+| `raster-bands` | `node tools/oracle/rasterdiff.mjs` | the `$0857` STAT program per SCANLINE: SCX/SCY/BGP/OBP0/OBP1 | **yes** |
+| `door-sequencer` | `node tools/oracle/doordiff.mjs` | punch-opened doors, the debris pool and the `$C693` effect pool | **yes** |
+| `subsystems` | `node tools/oracle/subsysdiff.mjs` | the six `sub_00_2CBE` branches: conveyor, respawner, freeze, collapse | **yes** |
+| `death-sequences` | `node tools/oracle/deathdiff.mjs` | the boss countdown into the fanfare, and the 452-frame player death | **yes** |
 
 The runner exits non-zero and names the stage that failed. Stages that *cannot*
 run (no `tests/*.test.js`, no `assets/manifest.json`) are reported `SKIP` and do
@@ -505,7 +523,9 @@ never sees the press. Drive `button_press`/`button_release` by hand.)
 
 ### Oracle regression corpus — `tools/oracle/regress.mjs`
 
-28 scenarios, 7693 frames, ~2 min. Every field compared frame by frame against
+48 scenarios, 13,519 frames, ~2.5 min. The table below lists the 28 the
+corpus started with; the other 20 (bosses 1-4, the level-3 object and punch
+set, the level-12 shooter, the level-14 entrance) are read from the file. Every field compared frame by frame against
 the ROM; **camera included**, since the `$0A4F` sampling fix made it exact too.
 A scenario may add fields beyond the core eight via `extra:` (attack timer,
 ammo, batarang slots, enemy records, water state) and may pass `ammo:` /

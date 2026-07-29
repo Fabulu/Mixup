@@ -29,7 +29,7 @@ project's history came from a plausible reading nobody checked. Two specific
 traps, both of which have bitten repeatedly:
 
 - **Follow the fall-through, not the label.** A routine that looks like it
-  returns often falls straight into the next one. Eight incidents, one of which
+  returns often falls straight into the next one. Nine incidents, one of which
   invalidated an already-shipped handler.
 - **Byte-exact data is not a correct picture.** A screen matched the
   cartridge's VRAM to the byte and rendered wrong, because nothing drew its

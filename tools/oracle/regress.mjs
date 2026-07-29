@@ -492,30 +492,25 @@ const SCRIPTS = [
 ];
 
 // ===========================================================================
-// ONE KNOWN BLOCKER, and it is a ONE-LINE FIX IN A FILE THIS CHANGE DID NOT
-// OWN. Until it lands, 8 of the 47 scenarios below report FAIL on `anim`:
+// CLOSED (kept for the method -- this note used to say "ONE KNOWN BLOCKER" and
+// claim 8 of the scenarios below were RED. They are not, and have not been for
+// a while: src/level.js resetPlayer() reads `p.air = 0;` today. A stale
+// BLOCKER is worse than no note -- it tells whoever reads it next that the
+// corpus is failing when it is green, which is the same failure mode as the
+// level picker's stale "BLOCKED" lines.)
 //
-//   src/level.js, resetPlayer():
-//       p.air = state.level.number === 0x0E ? 0 : 2;   // <- wrong
-//       p.air = 0;                                     // <- $04F3
-//
-// The cartridge's level init writes $FF80 = 0 (`$04F3`, inside the same
-// XOR A run that clears $FFC3/$FFC4/$FFC5). The port instead spawns the
-// player already FALLING, as "the usual spawn shortcut", and the shortcut is
-// not needed: with $FF80 = 0 the first update still applies gravity ($1ABB
-// only skips it while RISING) and still runs the floor probe, so on level 1
-// the two are indistinguishable.
+// What it was: the port spawned the player already FALLING as "the usual spawn
+// shortcut", where the cartridge's level init writes $FF80 = 0 ($04F3, inside
+// the same XOR A run that clears $FFC3/$FFC4/$FFC5). On level 1 the two are
+// indistinguishable -- with $FF80 = 0 the first update still applies gravity
+// ($1ABB only skips it while RISING) and still runs the floor probe.
 //
 // They are NOT indistinguishable anywhere the player spawns on solid ground.
 // $1B34 stamps the 16-frame landing squat only when $FF80 was 2 on arrival, so
 // a port that starts falling lands on frame 1 and plays a squat the cartridge
-// never plays: anim 7 for 18 frames instead of anim 6, which then drags
-// animFrame with it. Every one of the 8 failures is that, and only that --
-// each one's first divergence is `anim @ frame 1: oracle 6, port 7`.
-//
-// MEASURED: with that single line changed, all 47 scenarios are bit-exact on
-// every field including anim, animFrame and msIndex. Nothing else is needed,
-// and physics is already 100% on all 47 either way.
+// never plays: anim 7 for 18 frames instead of anim 6, dragging animFrame with
+// it. Every one of the 8 failures was that and only that -- each one's first
+// divergence was `anim @ frame 1: oracle 6, port 7`.
 // ===========================================================================
 //
 // `anim` and `animFrame` are core fields, not extras. They were held out while

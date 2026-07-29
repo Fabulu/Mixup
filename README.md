@@ -62,7 +62,7 @@ running list of ROM behaviours counter-intuitive enough to have caused real
 bugs. Two are worth knowing before reading any of this code:
 
 - **Follow the fall-through, not the label.** A routine that looks like it
-  returns often falls straight into the next one. This has cost real work eight
+  returns often falls straight into the next one. This has cost real work nine
   separate times, once invalidating an already-shipped handler.
 - **Byte-exact data is not a correct picture.** A screen can match the
   cartridge's VRAM to the byte and still render wrong, because what is missing
@@ -78,7 +78,7 @@ npm run test-all -- --only raster-bands     # one stage
 npm test                      # unit tests only
 ```
 
-21 stages, all green: 581 unit tests, 47 frame-exact input scenarios, and
+21 stages, all green: 686 unit tests, 48 frame-exact input scenarios, and
 dedicated oracles for map objects, doors, the per-level subsystems, both death
 sequences, the raster program, progress flow, every screen, and all 47 sound
 ids. Two of them compare **pixels** rather than memory — added after two real
@@ -108,8 +108,9 @@ Bit-exact and covered by the gate:
   band, level 6's track
 - the sound driver and DMG APU: **all 47 ROM sound ids**, SFX over live music,
   and the fader, across 52 recordings and 29 800 ticks
-- every screen — title, press-start flash, round select, options and its
-  squash, the stage-intro card, STAGE CLEAR, and the ending
+- every screen — the SUNSOFT copyright screen, title, press-start flash, round
+  select, options and its squash, the stage-intro card, STAGE CLEAR, and the
+  ending
 
 **Nothing is captured.** Every screen is BUILT from ROM data and diffed against
 the cartridge's own VRAM; the two screen captures this project once carried are
@@ -118,9 +119,12 @@ every table travels through `assets/manifest.json`, and `tools/verify_assets.py`
 re-reads each one from raw file offsets so the exporter cannot verify itself.
 
 Known remaining gaps, all small and all documented in `SAVEPOINT.md`: a 2–3 px
-sprite bob on four levels (`sub_00_0F56`), the melee hit-spark effect, OAM
-ordering during the GAME OVER lettering, and level 6's alternate tile-animation
-table, which no recorded frame reaches. One deliberate deviation is documented
+sprite bob on four levels (`sub_00_0F56`), the melee hit-spark effect, the OAM
+ordering of the GAME OVER lettering's own burst (the HUD half of that
+alternation is ported), and coverage — not code — for level 6's alternate
+tile-animation table, which is in fact the DOMINANT arm once the player moves
+(measured: 732 of 800 frames), not the unreachable one this sentence used to
+claim. One deliberate deviation is documented
 in `drawWindow`: the water's 50% dither is reproduced spatially rather than as
 the hardware's 30 Hz alternation, because on a modern display that is a
 photosensitivity hazard rather than the translucency a DMG's slow LCD made of

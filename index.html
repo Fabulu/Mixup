@@ -288,10 +288,16 @@ for (const [pid, p] of Object.entries(PRESETS)) {
 //       $C73E default, and 5 is not among them.
 //    3  'some map objects still sit where they spawn'. All eleven $C1E8 types
 //       are bit-exact, all sixteen record bytes plus the stamped cells.
-//  9/10 'the parallax sky is missing'. The scroll program is ported and
-//       verified ($0857's eight arms, 335,664 scanlines), and the moon the
-//       main loop draws at $05A6 is now drawn too. What is still wrong is the
-//       sky ARTWORK, not the movement.
+//  9/10 'the parallax sky is missing', then 'the artwork is still wrong'.
+//       Both are now measured FALSE: bgartdiff.mjs reports 0 wrong background
+//       cells on 9 and 10, and every l9-sky/l10-sky frame in pixeldiff is
+//       100%. The scroll program is verified too ($0857's eight arms, 335,664
+//       scanlines, 0 bad). The note outlived its defect by a whole fix.
+//   11  the sky defect that IS left is here, not on 9/10: pixeldiff
+//       l11-sky f80 = 82.04%, a dx=-1 shift on rows 66/68 and 116-119.
+//       Levels 2 and 5 are worth knowing about too: they are the two
+//       bgartdiff CANNOT measure (it skips them on a camera mismatch), so
+//       'playable' there rests on less evidence than it does elsewhere.
 const LEVEL_NOTE = {
   1: 'playable', 2: 'playable',
   3: 'playable',
@@ -300,9 +306,9 @@ const LEVEL_NOTE = {
   6: 'playable',
   7: 'playable',
   8: 'Boss 2 — playable',
-  9: 'playable — the sky layers scroll, but their artwork is still wrong',
-  10: 'playable — the sky layers scroll, but their artwork is still wrong',
-  11: 'Boss 3 — playable',
+  9: 'playable',
+  10: 'playable',
+  11: 'Boss 3 — playable; one sky band sits a pixel off',
   12: 'playable',
   13: 'playable',
   14: 'Boss 4 / Joker — playable; entrance renders on the wrong background',
