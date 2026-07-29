@@ -141,8 +141,13 @@ Deploy: `node tools/build-dist.mjs` then
 ## What is NOT ported
 
 **The game is feature complete.** All fourteen levels are playable, every boss
-included, and it runs from the title screen through to the end credits. What
-is left is four small things and one definitional exclusion.
+included, and it runs from the title screen through to the end credits.
+
+What follows is the honest remainder. It grew rather than shrank the last time
+anyone looked hard: items 5-7 were found by measuring the OAM head and the
+frame loop rather than the game state, and item 4's long-standing "unreachable"
+claim turned out to be an artifact of idle recordings. Treat "we checked that"
+as a claim with a date on it.
 
 1. **`sub_00_0F56`** (`$1D24`, grounded only) — a 2-3 px draw-Y bob every 8th
    frame on levels 6/9/10/11. Purely a sprite offset; it never touches
@@ -158,10 +163,44 @@ is left is four small things and one definitional exclusion.
    always produces the `$057A` ordering. OAM index is DMG sprite priority and
    the 10-per-line cut, so it is occasionally visible where the letters cross
    the energy bar or the dying Batman.
-4. **Level 6's `$FFC9 == 1` alternate tile-animation table** (`2:$625E`) is
-   exported but never exercised — the conveyor came up 2 on every recorded
-   frame, so that arm is a transcription with a unit test rather than a
-   measurement.
+4. **Level 6's `$FFC9 == 1` alternate tile-animation table** (`2:$625E`) has no
+   COVERAGE. It was listed here for months as "never exercised, the conveyor
+   came up 2 on every recorded frame". **That was wrong, and the way it was
+   wrong is the lesson.** Every recording behind that claim was an IDLE one,
+   and an idle player parks the track via the `$2F48` equal-column stop with
+   whatever direction it arrived with — 2. MEASURED with the player actually
+   moving (`tools/oracle/conveyordir.py`, script `20:,780:R`): the direction
+   flips 2 → 1 at gameplay frame 68 and the `$3151` alt-table arm runs on
+   **732 of 800 frames**. It is the DOMINANT arm, not a dead one. Anyone who
+   plays level 6 is in it almost the whole time.
+
+   The port already implements all three arms; what is missing is only the
+   proof, and it is now cheap — `conveyordir.py` has the recording.
+
+   **Do not conclude "unreachable" from idle recordings.** Ask what the input
+   script was before believing a coverage claim.
+
+5. **The MOON is not drawn at all.** `$05A6` draws metasprite `$34` (tiles
+   `$E0`/`$E2`, attr `$10`) at OAM (128, 24) — screen (112,0)-(128,16) — on
+   levels 9/10/11, EVERY frame, even paused, outside the `$C740` gate. Nothing
+   in `src/` draws it. A permanently visible missing sprite on three levels,
+   found only because someone measured the OAM head rather than the game state.
+
+6. **The HUD is gated on `$C740 == $FF`** and the port ignores that. MEASURED
+   on level 4: from the frame after the boss dies the cartridge draws NO energy
+   bar for the whole countdown and fanfare (~350 frames); the port keeps
+   drawing it. Level 14 runs `$C740 = 1` from init and shows no bar for at
+   least 600 idle frames. Careful porting this: the port's `effects.countdown`
+   doubles as the death latch, so level 14 needs its own "HUD hidden"
+   condition rather than `countdown = 1`.
+
+7. **Pause freezes `$FFB1`/`$FFA7` in the port; on the cartridge they keep
+   ticking** (the VBlank ISR owns them, and `$C716` gates the main loop, not
+   VBlank). So any odd-length pause permanently desyncs every phase consumer
+   after it — the water gravity gate, the hit-blink, the enemy loop direction.
+   No scenario pauses, which is exactly why this has never bitten. A paused
+   cartridge frame also contains only the HUD and the moon (OAM 22 → 7); the
+   port freezes the entire previous frame.
 
 **Lag frames** (`$C757`) are out of scope by definition, not undone: they are
 instruction-level timing. See docs/03-VERIFICATION.md §28.
