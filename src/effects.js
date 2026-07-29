@@ -7,10 +7,35 @@
 // victory fanfare. Together that is ~632 frames between the last hit and the
 // level actually ending; the port used to hand over on the frame the boss died.
 //
-// PLAYER.  $C1C0, 8 x 5 B {flags, counterLo, counterHi, screenX, screenY},
-// seeded from 0:$2AD7 by sub_00_29E7 and driven by loc_00_2A0D. Eight sparks
-// on one scripted path, armed one after another. This is why a death takes
-// 452 frames and not the $78 that `deathSequenceFrames` alone gives.
+// PLAYER -- and this is the GAME OVER lettering, not "eight sparks". Calling
+// it a particle burst is what kept it on the unported list for months while
+// it sat here working: someone searching for the snaking pseudo-3D font would
+// never have looked at a comment about sparks.
+//
+// $C1C0, 8 x 5 B {flags, counterLo, counterHi, screenX, screenY}, seeded from
+// 0:$2AD7 by sub_00_29E7 and driven by loc_00_2A0D. The eight "particles" are
+// the eight LETTERS of GAME OVER: metasprite ids 0:$2ACF = $12 $13 $14 $15
+// $16 $17 $15 $18, single 8x16 sprites on OBJ tiles $1C-$28, and $15 repeats
+// at slots 4 and 7 because that is the E. Rendered out of live VRAM during a
+// real death, they are bevelled three-shade capitals. The initial X values
+// $88 $90 $98 $A0 | $B0 $B8 $C0 $C8 are the 16 px word gap.
+//
+// The SNAKE is the arming rule: slot n arms only once slot n-1's counter has
+// reached 8 ($2A7A), so the letters trail 8 frames apart along one shared
+// 276-entry path (0:$2AFF, a packed pair of sign-extended nibbles per frame,
+// low = dX, high = dY). Slot 0 walks 451 steps in a long double loop across
+// the whole screen, wrapping off both edges, and the eight settle into
+// GAME OVER centred at y = 64. The "3D" is the bevel plus the trailing.
+//
+// It plays on EVERY death, over the live level -- there is no game-over
+// screen in the flow map at all, because $2ABA is `JP Z, loc_00_0150`, a hard
+// reset. This is also why a death takes 452 frames and not the $78 that
+// `deathSequenceFrames` alone gives.
+//
+// VERIFIED byte-exact by tools/oracle/gameoverdiff.mjs: 13504/13504 shadow-OAM
+// bytes and 18040/18040 $C1C0 record bytes over levels 1, 3, 5 and 9, with the
+// arm frames [42,50,58,66,74,82,90,98] and park frames
+// [317,325,333,341,349,357,365,373] matching exactly.
 //
 // The $C693 effect pool the boss explosions spawn into is NOT here -- it is
 // src/doors.js's, ported alongside the door sequencer that also feeds it.

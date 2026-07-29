@@ -102,6 +102,8 @@ Deploy: `node tools/build-dist.mjs` then
 | Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
 | Window layer: map + animated tiles | **built from ROM data**, 13376/13376 B across 11 levels |
 | Raster/STAT program (`$0857`), all eight arms | bit-exact, 9 scenarios / 335,664 scanlines |
+| Stage-intro card (`sub_00_333F`) | **built from ROM data**, 327680/327680 B across 8 levels |
+| GAME OVER lettering (`$C1C0`) | bit-exact — 13504/13504 shadow-OAM bytes over 4 levels |
 | Levels 9/10/11 parallax sky, levels 1/2 water band, level 6 track | bit-exact |
 | Levels-1/2 water body (`src/water.js`): rise/fall, waterfall stamp, `$FF95` slow mode, the 1-dmg `$5A` hit, enemy slow-fall bit, splash pool | bit-exact |
 | Levels-1/2 sewer-enemy respawner (`loc_00_2D3D` head + `loc_00_0EC3` init arm): slots 6/7 refilled from `0:$32F8`/`0:$32D8`, the crawl-out-of-the-wall-hole spawns | bit-exact to the f73 lag frame (`l1-sewer-respawner-emerge`) |
@@ -136,20 +138,11 @@ Roughly in order of how much each would change the game:
    clipped: `drawWindow` must stop at `state.video.windowEndY` (null = draw to
    the bottom, as now). Without it the window's rows 5+ — tile `$01`, solid
    black on every level — paint from line `rWY + 32` down.
-2. **The snaking pseudo-3D game-over / continue lettering.** This bullet used
-   to claim it was per-scanline SCX modulation, filed under the raster
-   program. **That premise is measurably wrong.** `$0857` is reachable only
-   through the `$0048` vector, gated by `rIE` bit 1, and every menu path
-   (`$025E`, `$02B8`, `$03D0`, `$3388`, `$3691`, `$36F2`, `$3732`, `$3773`,
-   `$3870`, `$3932`) writes `rIE = $05` — the vector is masked off. Only the
-   three level loads plus `$35C7` and `$38C3` write `$07`.
-   `tools/oracle/rasterhunt.py` drives a real death → CONTINUE → game over and
-   counts STAT fires per frame: **zero fires and zero modulated registers
-   across 388 frames** of those screens, against 972 of 973 on a level. So it
-   is sprites or animated tiles, and it needs finding from scratch.
-
-   The raster program ITSELF is done — all eight arms, 9/9 scenarios bit-exact
-   over 335,664 scanlines (`raster-bands` gate stage).
+2. **The ENDING (`loc_00_3652`).** Clearing level 14 runs four blocking
+   picture screens (`$3691`, `$36F2`, `$3732`, `$3773`, each built from
+   bank-7 VRAM scripts) and then a text crawl at `$3781+` that copies 21-byte
+   strings from `7:$7B34`. Cited nowhere in `src/`; `clearLevel()` returns
+   `'ending'` and main.js falls through to the exit table.
 
 
 3. ~~**Conveyor carry**~~ — DONE, and the warning that got it there is worth
@@ -428,30 +421,31 @@ comparison will ever catch it.
 
 ## Suggested next steps
 
-1. **The raster/STAT program** (`$0857`), which is now the biggest visible
-   gap and covers three things at once: the levels-9/10/11 parallax sky (mode
-   2 is written but was unverifiable until `$FFCC` existed — it does now), the
-   levels-1/2 water band at `$08F0` (mode 6), and the snaking pseudo-3D
-   game-over lettering, which is per-scanline SCX modulation rather than
-   animated tiles. Record `rSCX` per scanline across the sequence before
-   writing any code.
-2. ~~**The victory fanfare's picture**~~ — DONE, byte-exact against the
-   cartridge. All that is left is the one `drawWindow` clip line described in
-   item 1 under "What is NOT ported".
-3. ~~**Retire the last two captures**~~ — DONE. Nothing in this project is
-   captured any more; see "Known-approximate" above for the two traps.
-4. **The stage-intro screen (`sub_00_333F`)**, found by
-   `tools/audit_coverage.py` after sitting unported AND uncatalogued for the
-   whole project. It runs on 8 of the 14 levels.
-5. **`selectAnim` (`loc_00_1B4A`)** is a reimplementation, not a translation —
-   it invents `fallTicks`/`walkTicks`/`walkStep` and carries an "empirical"
-   constant. MEASURED: `anim` diverges in 26 of 28 scenarios. It drives
-   `applyAnimHitbox`, so a wrong pose is a wrong hitbox.
-6. **Verify melee/batarang enemy damage against the oracle** — DONE. Three
-   level-3 scenarios cover miss, connect and a batarang kill; the death-pit
-   frame is pinned too (`l3-pit-death-exact-frame`). Two findings worth
-   keeping: `$FFB1`'s boot phase is **per level** ($6D or $53 — measured for
-   all 14, table in level.js), and `sub_00_29E7` does NOT zero vx/vy.
+Every task on the original list is done. What remains was found on the way,
+mostly by `tools/audit_coverage.py`:
+
+1. **The ENDING (`loc_00_3652`)** — four picture screens and a text crawl,
+   the last unported screen in the game. See item 2 under "What is NOT ported".
+2. **OAM draw ORDER during the GAME OVER lettering.** `$0567` runs the pair
+   `sub_00_0F7B` (HUD) + `sub_00_29E7` at `$0573`/`$057A` when `$FFA7 == 0`
+   and the SAME pair at `$05E5`/`$05EC` when it does not — so the cartridge
+   queues the letters before the player on even frames and after the player,
+   enemies and doors on odd ones. Measured: the burst's first OAM cursor
+   alternates 20/44 on level 1, 20/60 on level 3, 20/88 on level 9. The port
+   always produces the `$057A` ordering. OAM index is DMG sprite priority and
+   the 10-per-line cut, and the letters do cross the energy bar's row and the
+   dying Batman, so it is occasionally visible. `gameoverdiff.mjs` reports it
+   and does not fail on it.
+3. **`applyAnimHitbox` is not gated on the invulnerability blink**, and the
+   ROM's is (`$1D1B RET Z` leaves before `$1D2C`). Deliberately not
+   reproduced: main.js decrements `$C714` at tick end while the ROM does it at
+   the head of the player update (§29), so gating now would pick the wrong
+   eight frames. **Fix the `$C714` sampling point first.**
+4. **`sub_00_0F56`** (`$1D24`, grounded only) — a 2-3 px draw-Y bob every 8th
+   frame on levels 6/9/10/11. Cosmetic, but a real gap in `$1D0C`.
+5. **Level 6's `$FFC9 == 1` alternate tile-animation table** (`2:$625E`) is
+   exported but never exercised — the conveyor came up 2 on every recorded
+   frame, so that arm is a transcription with a unit test, not a measurement.
 
 ---
 

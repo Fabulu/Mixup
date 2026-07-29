@@ -76,8 +76,13 @@ export function rasterBands(state) {
     return bands;
   }
   // The menus are not levels; $0E74 never ran for them and $FFB0 still holds
-  // whatever the last level was.
-  if (state.title || state.options || state.roundSelect) return [base];
+  // whatever the last level was. The stage-intro card counts: $3386 writes
+  // rIE = $05, masking the STAT vector off, and it runs BEFORE level init --
+  // so without it here the card inherits the previous level's arm and tries
+  // to run, say, the levels-1/2 water band over a menu screen.
+  if (state.title || state.options || state.roundSelect || state.stageIntro) {
+    return [base];
+  }
 
   switch (rasterModeForLevel(state.level ? state.level.number : 0)) {
     case RASTER_PARALLAX: return parallaxBands(state, base);

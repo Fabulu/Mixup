@@ -23,6 +23,10 @@ import { updateWater, updateSplashes, tickTileAnim } from './water.js';
 import { updateDrops } from './drops.js';
 import { updateDoors } from './doors.js';
 import { updateVictoryHold } from './effects.js';
+import {
+  showsStageIntro, loadStageIntro, showStageIntro, tickStageIntro,
+  hideStageIntro,
+} from './stageintro.js';
 import { resolveLoadout, runHook } from './mods.js';
 import { loadTitle, showTitle, hideTitle, tickTitle } from './title.js';
 import {
@@ -129,6 +133,29 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
    * @returns false when there is no title art -- a direct-level boot from the
    *          launcher has no menu to go back to, and callers fall back.
    */
+  // sub_00_333F is the FIRST instruction of loc_00_04BB and of $2836, so the
+  // stage-intro card sits in front of every level load, not beside them. It
+  // shows on the four route starts and the four bosses; everywhere else
+  // showsStageIntro is false and this is a straight initLevel.
+  //
+  // The card is built over a BLANK 8 KB buffer on purpose. Measured: every
+  // tile the visible 20x18 window uses, and both halves of all 40 emblem
+  // sprites, live in the card's own resources $02/$1D/$05 -- so it is
+  // byte-identical without modelling whatever VRAM preceded it, which is what
+  // makes it safe on a boss level reached mid-route.
+  let pendingLevel = 0;
+  let pendingAfter = null;
+  function enterLevel(n, after = null) {
+    if (!showsStageIntro(n)) {
+      initLevel(state, n).then(() => { if (after) after(); resume(); });
+      return;
+    }
+    pendingLevel = n;
+    pendingAfter = after;
+    showStageIntro(state, loadStageIntro(manifest, n, null));
+    resume();
+  }
+
   function enterRoundSelect() {
     if (!titleArt) return false;
     hideTitle(state);
@@ -164,6 +191,7 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     const perFrame = Math.max(1, loadout.meta.ticksPerFrame | 0);
     let steps = 0;
     let startPressed = false;      // title -> round select
+    let introDone = false;         // the stage-intro card has finished
     // { cursor, mode } captured at the press: mode 1 is CONTINUE ($C713),
     // which takes a completely different arm at $047C and never looks at the
     // route cursor at all.
@@ -206,6 +234,11 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
             menuChoice = { cursor: state.roundSelect.cursor,
                            mode: state.roundSelect.mode };
           }
+        } else if (state.stageIntro) {
+          // sub_00_333F blocks: 60 blank frames, three painting frames, 180
+          // held, then a 33-frame fade -- 276 in all, and START skips both
+          // waits AND the fade.
+          if (tickStageIntro(state) === 'done') introDone = true;
         } else {
           tick(state, manifest, playerTiles);
         }
@@ -222,6 +255,19 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     renderFrame(state, fb);
     image.data.set(fb.rgba);
     ctx.putImageData(image, 0, 0);
+
+    // The card is done: drop it and load the level it was announcing. The
+    // fade ends on black, so the gameplay palettes have to go back.
+    if (introDone) {
+      hideStageIntro(state);
+      Object.assign(state.video, GAMEPLAY_PALETTES);
+      const n = pendingLevel;
+      const after = pendingAfter;
+      pendingLevel = 0;
+      pendingAfter = null;
+      initLevel(state, n).then(() => { if (after) after(); resume(); });
+      return;
+    }
 
     // START on the title goes to ROUND SELECT, not to a level -- $0312 walks
     // through state 4's flash into loc_00_035B. Round select is built on top
@@ -243,7 +289,7 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
       // colour 0 and invisible against the background, which looks like the
       // level failed to load rather than like a palette.
       Object.assign(state.video, GAMEPLAY_PALETTES);
-      initLevel(state, chosen).then(resume);
+      enterLevel(chosen);
       return;
     }
 
@@ -264,7 +310,7 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
       if (next.to === 'roundselect' && enterRoundSelect()) return;
       if (next.to === 'level') {
         Object.assign(state.video, GAMEPLAY_PALETTES);
-        initLevel(state, next.level).then(resume);
+        enterLevel(next.level);
         return;
       }
       // `ending` (level $0E, loc_00_3652) is not ported, and `transition`
@@ -285,12 +331,11 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
       state.flow.nextLevel = 0;
       const carried = { lives: state.flow.lives, hp: state.player.hp,
                         hpMax: state.player.hpMax, ammo: state.flow.ammo };
-      initLevel(state, next).then(() => {
+      enterLevel(next, () => {
         // $2820 does not reset the run: HP, lives and ammo all carry across.
         Object.assign(state.flow, { lives: carried.lives, ammo: carried.ammo });
         state.player.hp = carried.hp;
         state.player.hpMax = carried.hpMax;
-        resume();
       });
       return;
     }

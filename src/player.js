@@ -198,7 +198,9 @@ function checkHpDeath(state) {
 }
 
 /**
- * ROM: sub_00_29E7. Seeds the $C1C0 particle burst from 0:$2AD7, sets the
+ * ROM: sub_00_29E7. Seeds the $C1C0 GAME OVER lettering from 0:$2AD7 -- eight
+ * letters on one shared path, each trailing the last by 8 frames, which is
+ * the snake. See the header of src/effects.js. Sets the
  * dying flag, the $78 counter and the jingle. It does NOT touch vx or vy --
  * MEASURED: a pit death mid-fall keeps vx = -2, vy = -66 frozen in the
  * trace for the whole sequence. Zeroing them here was a port invention and
@@ -226,7 +228,7 @@ function startDeath(state) {
 }
 
 /**
- * ROM: loc_00_2A0D ticks the particle burst; loc_00_2AAD then decrements
+ * ROM: loc_00_2A0D ticks the GAME OVER lettering; loc_00_2AAD then decrements
  * lives and either restarts or ends the run.
  *
  * The burst is the sequence. $C712 -- what the port used to run down on its

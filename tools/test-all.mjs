@@ -103,6 +103,22 @@ const STAGES = [
     skip: hasAssets ? null : 'assets/manifest.json missing',
   },
   {
+    name: 'stage-intro',
+    what: 'sub_00_333F built from ROM data, 8 levels x 5 states of VRAM',
+    cmd: process.execPath,
+    args: ['tools/oracle/introdiff.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
+    name: 'game-over-lettering',
+    what: "the $C1C0 GAME OVER letters: shadow OAM and records, 4 levels",
+    cmd: process.execPath,
+    args: ['tools/oracle/gameoverdiff.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
     name: 'round-select',
     what: 'route/mode cursor logic vs the ROM, three $C753/$FFB5 states',
     cmd: process.execPath,
