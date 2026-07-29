@@ -825,11 +825,6 @@ export const ANIM = {
  *
  * $1C27 is not a separate table: it is 0:$1C1F + 8. Kept split for legibility.
  */
-const ATTACK_ANIM = {
-  ground: [0x0B, 0x0C, 0x0C, 0x0B, 0x15, 0x16, 0x0C, 0x0C],   // $1C1F
-  crouch: [0x0D, 0x0E, 0x0E, 0x0D, 0x19, 0x1A, 0x0E, 0x0E],   // $1C27
-  air:    [0x0F, 0x10, 0x10, 0x0F, 0x17, 0x18, 0x10, 0x10],   // $1C2F
-};
 
 /**
  * Metasprite indices for the attack poses, ROM tables 0:$2786 and 0:$2796,
@@ -841,10 +836,6 @@ const ATTACK_ANIM = {
  * outstretched fist, so the extended frames switch to 2/3 (or 4/5 for the
  * crouching set, which the heuristic had no notion of).
  */
-const ATTACK_MSINDEX = {
-  ground: [0, 2, 2, 0, 1, 3, 3, 1, 0, 0, 2, 2, 1, 1, 3, 3],   // $2786
-  crouch: [0, 4, 4, 0, 1, 5, 5, 1, 0, 0, 4, 4, 1, 1, 5, 5],   // $2796
-};
 
 /**
  * ROM: the tail of loc_00_1B4A, from $1B5D (the screen-position cache at
@@ -906,9 +897,20 @@ function selectAnim(state) {
     const pose = p.attackPose & 0xFF;                  // $C71D
     // $1C04: a nonzero pose steps the anim table by 4 and the msIndex table
     // by 8 -- two different strides for the same selector.
-    p.anim = ATTACK_ANIM[set][(pose * 4 + quarter) & 0x07];
-    p.msIndex = ATTACK_MSINDEX[crouch ? 'crouch' : 'ground'][
-      (p.facing * 4 + (pose !== 0 ? 8 : 0) + quarter) & 0x0F];
+    // Both tables are ONE contiguous block in the ROM: 0:$1C1F is 24 bytes
+    // (ground, crouch, air) and 0:$2786 is 32 (ground, crouch), so the "set"
+    // is just an offset. They throw when absent -- animation id 0 and
+    // metasprite index 0 are both valid, so a default draws the wrong Batman
+    // rather than failing.
+    const anims = state.tables?.attackAnim;
+    const msIdx = state.tables?.attackMsIndex;
+    if (!anims || !msIdx) {
+      throw new Error('player: tables.attackAnim/attackMsIndex missing');
+    }
+    const animBase = set === 'air' ? 16 : (set === 'crouch' ? 8 : 0);
+    p.anim = anims[animBase + ((pose * 4 + quarter) & 0x07)];
+    p.msIndex = msIdx[(crouch ? 16 : 0)
+      + ((p.facing * 4 + (pose !== 0 ? 8 : 0) + quarter) & 0x0F)];
     return;                                            // $1C1C: JP $1D0C
   }
 

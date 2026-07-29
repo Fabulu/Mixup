@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createState, GAMEPLAY_PALETTES } from '../src/state.js';
+import { SYNTHETIC_TABLES } from './helpers.js';
 import { makeTunables } from '../src/tunables.js';
 import {
   showRoundSelect, tickRoundSelect, hideRoundSelect, routeIfOpen,
@@ -18,6 +19,7 @@ function fakeArt() {
 
 function makeScreen({ mask = 0, canContinue = 0 } = {}) {
   const s = createState(makeTunables());
+  s.tables = { ...SYNTHETIC_TABLES, ...CONTINUE_FIXTURE };
   s.flow.routeMask = mask;
   s.flow.continueAvailable = canContinue;
   s.titleManifest = null;                 // cursor sprite is not under test
@@ -169,6 +171,7 @@ test('the screen asks for its own theme, song $01', () => {
   // sent by title.js) then $01 mask $03. Without it the screen keeps playing
   // whatever the title left running.
   const s = createState(makeTunables());
+  s.tables = { ...SYNTHETIC_TABLES, ...CONTINUE_FIXTURE };
   s.sound = { queue: [] };
   s.titleManifest = null;
   showRoundSelect(s, fakeArt());
@@ -185,7 +188,15 @@ test('the screen asks for its own theme, song $01', () => {
 // (tools/oracle/flowdiff.mjs holds the ROM against the port end to end.)
 // ---------------------------------------------------------------------------
 
+// The CONTINUE line, as a sub_00_0A0E script: {dest $9A04, count 8, tiles}.
+// Synthetic and declared here -- this suite never reads assets/ -- but shaped
+// exactly like 0:$3328 so it exercises the real interpreter path. That the
+// SHIPPED script is the cartridge's is checked by check_tables in
+// tools/verify_assets.py, which re-reads 0:$3328 from the ROM file.
 const CONTINUE_ROW = [0x8C, 0x98, 0x97, 0x9D, 0x92, 0x97, 0x9E, 0x8E];
+const CONTINUE_FIXTURE = {
+  continueScript: [0x9A, 0x04, 0x08, ...CONTINUE_ROW, 0x00],
+};
 const readRow = (s) => Array.from({ length: 8 },
                                   (_, i) => s.video.bgMap[0x9A04 - 0x9800 + i]);
 
@@ -202,6 +213,7 @@ test('the life count is drawn as $80 + lives, unclamped', () => {
   // $03BE-$03C3: LD A,[$C767] / ADD A,$80. Nothing bounds it, so a run with
   // more than nine lives draws a letter. Reproduced rather than fixed.
   const s = createState(makeTunables());
+  s.tables = { ...SYNTHETIC_TABLES, ...CONTINUE_FIXTURE };
   s.flow.continueAvailable = 1;
   s.flow.lives = 4;
   s.titleManifest = null;

@@ -347,6 +347,21 @@ def check_tables(rom, manifest, rep):
             'enemies.js indexes enemyAnim by ROM ADDRESS -- a wrong base '
             'silently shifts every metasprite id')
 
+    # The bat-rope chain, round select's CONTINUE script, and the player's two
+    # attack-pose tables -- each a contiguous block despite reading as several.
+    for name, bank, addr, n in (('ropeLinks', 1, 0x0224, 10),
+                                ('ropeHooks', 1, 0x022E, 2),
+                                ('continueScript', 0, 0x3328, 12),
+                                ('attackAnim', 0, 0x1C1F, 24),
+                                ('attackMsIndex', 0, 0x2786, 32)):
+        off = (bank * 0x4000 + addr) if bank else addr
+        want = list(rom.data[off:off + n])
+        got = manifest['tables'].get(name, [])
+        rep.add(0, 'manifest',
+                f'tables.{name} == {bank}:${(addr | 0x4000) if bank else addr:04X}'
+                f' ({n} B)', got == want,
+                f'len {len(got)} vs {len(want)}; ' + ', '.join(first_diff(got, want)))
+
     # 1:$6CEA, five 32-byte prefab enemy records.
     want = [list(rom.data[base + 0x2CEA + i * 32:base + 0x2CEA + i * 32 + 32])
             for i in range(5)]

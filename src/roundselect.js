@@ -48,8 +48,6 @@ const CURSOR_CELL = 0x99CD;
  * 6:$7674. Exporting 0:$3328 alongside it (tools/export_assets.py) would
  * retire these constants.
  */
-const CONTINUE_CELL = 0x9A04;
-const CONTINUE_TILES = [0x8C, 0x98, 0x97, 0x9D, 0x92, 0x97, 0x9E, 0x8E];
 const LIVES_CELL = 0x9A0E;
 const FONT_DIGIT_0 = 0x80;
 
@@ -164,9 +162,12 @@ function paintRouteCursor(state, cursor) {
 function paintContinue(state) {
   const map = state.video.bgMap;
   if (!map) return;
-  for (let i = 0; i < CONTINUE_TILES.length; i++) {
-    map[CONTINUE_CELL - 0x9800 + i] = CONTINUE_TILES[i];
-  }
+  // 0:$3328 is a sub_00_0A0E script, so RUN it rather than transcribing its
+  // eight tiles -- that way the destination travels with the data and the
+  // already-ported interpreter is what draws the line.
+  const script = state.tables?.continueScript;
+  if (!script) throw new Error('roundselect: tables.continueScript missing');
+  runVramScript(map, Uint8Array.from(script), { base: 0x9800 });
   // $03C1: ADD A,$80 -- the font's digits start at $80, and the count is not
   // clamped, so a run with more than 9 lives draws a letter. Reproduced.
   map[LIVES_CELL - 0x9800] = (FONT_DIGIT_0 + state.flow.lives) & 0xFF;

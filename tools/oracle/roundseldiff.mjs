@@ -15,6 +15,12 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { createState } from '../../src/state.js';
+// The CONTINUE line is drawn by running 0:$3328 through sub_00_0A0E, so this
+// harness needs the real manifest tables rather than a bare createState --
+// and it SHOULD, because it is diffing against the cartridge.
+const MANIFEST = JSON.parse(fs.readFileSync(
+  path.join(path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url)))),
+            'assets', 'manifest.json'), 'utf8'));
 import { makeTunables } from '../../src/tunables.js';
 import { showRoundSelect, tickRoundSelect } from '../../src/roundselect.js';
 
@@ -46,6 +52,7 @@ for (const run of RUNS) {
   const ref = JSON.parse(fs.readFileSync(path.join(ROOT, run.out), 'utf8'));
 
   const state = createState(makeTunables());
+  state.tables = MANIFEST.tables;
   state.flow.routeMask = ref.routeMask;
   state.flow.continueAvailable = ref.continueAvailable;
   state.titleManifest = null;                     // the sprite is not the point

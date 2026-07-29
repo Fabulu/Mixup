@@ -21,7 +21,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 'oracle'))
 from gbrom import (Rom, ROOT, build_level_vram, level_map, level_collision_lut,
-                   level_metatiles, level_resource_indices, NUM_LEVELS)
+                   level_metatiles, level_resource_indices, load_resource,
+                   NUM_LEVELS)
 import animtables
 
 OUT = os.path.join(ROOT, 'assets')
@@ -130,6 +131,42 @@ T_FADE_OBP1 = (0, 0x0B11)
 # START and OPTIONS both, terminator included); only the eraser is new.  It is
 # a single RLE record: $2F over the five cells at $9967, i.e. START alone.
 T_TITLE_FLASH_OFF = (1, 0x7C57)
+# --- the stage-intro card, sub_00_333F (src/stageintro.js) -----------------
+#
+# Everything here is read at the address of the IMMEDIATE that produces it, so
+# a wrong transcription is a wrong byte rather than a plausible constant.
+# MEASURED end to end by tools/oracle/stageintro.py: 60 blank frames, three
+# build frames, 180 held, 33 of fade -- 276 on all eight levels that show it.
+#
+#   $3370  LD D,$DC   -> sub_00_34A4, the BG fill
+#   $3375/$337A/$337F  the three sub_00_0B15 resource ids ($02/$1D/$05)
+#   $338C  LD A,$E7   -> rLCDC
+#   $3390  LD B,$3C   -- the blank hold before anything is painted
+#   $345E  LD A,$B4   -> $C712, the held count
+#   $3463/$3464 LD BC,$5858 and $3466 LD E,$F2 -- the emblem, drawn every frame
+#   $336A/$336B LD BC,$0104 -> sub_00_0AE1 (B = id, C = mask, §32)
+T_INTRO_FILL      = (0, 0x3370)
+T_INTRO_RES_IDS   = [(0, 0x3375), (0, 0x337A), (0, 0x337F)]
+T_INTRO_LCDC      = (0, 0x338C)
+T_INTRO_BLANK     = (0, 0x3390)
+T_INTRO_HOLD      = (0, 0x345E)
+T_INTRO_SPRITE_C  = (0, 0x3463)   # LD BC,$5858 -- C is the low operand byte
+T_INTRO_SPRITE_B  = (0, 0x3464)
+T_INTRO_SPRITE_ID = (0, 0x3466)   # LD E,$F2
+T_INTRO_SOUND_C   = (0, 0x336A)
+T_INTRO_SOUND_B   = (0, 0x336B)
+# The two halves of the frame decoration, $33A6 and $33D5. Fixed 55-byte copies
+# into $C61B, one per frame -- NOT walked to a terminator, because the length is
+# the `LD BC,$0037` immediate and that is what the cartridge copies.
+T_INTRO_SCRIPTS   = [(3, 0x7C15), (3, 0x7C4C)]
+T_INTRO_SCRIPT_N  = 0x37
+# $340B: 14 LE pointers, each to {len, script[len]}. len also goes to $FFA0.
+T_INTRO_LEVEL_PTRS = (3, 0x7BF9)
+# loc_00_343A, boss levels ONLY (4/8/$0B/$0E -- $3428-$3438): 31 bytes appended
+# at $C61B + $FFA0, i.e. exactly where the boss levels' own scripts stop without
+# a terminator. Decoded with the round-select font ($8A = 'A') it is BATMAN / VS.
+T_INTRO_BOSS_SCRIPT = (0, 0x3485)
+T_INTRO_BOSS_SCRIPT_N = 0x1F
 T_TITLE_WX   = (0, 0x0216)
 T_TITLE_WY   = (0, 0x02A8)
 T_TITLE_LCDC = (0, 0x02BC)
@@ -198,6 +235,26 @@ T_INTRO_N         = 25
 # sub_01_6BDC's five 32-byte prefab enemy records, copied whole into a slot.
 T_PROJECTILES     = (1, 0x6CEA)
 T_PROJECTILES_N   = 5
+# The bat-rope's chain. 1:$4224 is 5 link metasprite ids per facing (the
+# second five are the first five reversed, which is the ROM's data and not an
+# optimisation to make here); 1:$422E is the hook head, one id per facing.
+T_ROPE_LINKS      = (1, 0x4224)
+T_ROPE_LINKS_N    = 10
+T_ROPE_HOOKS      = (1, 0x422E)
+T_ROPE_HOOKS_N    = 2
+# Round select's CONTINUE line. 0:$3328 is a sub_00_0A0E SCRIPT, not a tile
+# list: {dest $9A04, ctrl $08, eight tiles, $00}. Exporting the script rather
+# than the eight bytes means the destination travels with the data and the
+# already-ported interpreter draws it.
+T_CONTINUE_SCRIPT = (0, 0x3328)
+# The player's attack poses, loc_00_1B4A's two tables. 0:$1C1F is 24
+# CONTIGUOUS bytes -- the "three tables" at $1C1F/$1C27/$1C2F are one block
+# indexed by (attackTimer & $0C) >> 2 plus $C71D * 4 -- and 0:$2786 is 32,
+# likewise contiguous with the $2796 half.
+T_ATTACK_ANIM     = (0, 0x1C1F)
+T_ATTACK_ANIM_N   = 24
+T_ATTACK_MSINDEX  = (0, 0x2786)
+T_ATTACK_MSINDEX_N = 32
 T_OPT_CURSOR_Y    = (1, 0x7C5C)
 T_OPT_DIFFICULTY  = (1, 0x7C5F)
 # --- the door/gate sequencer, sub_01_4BB0 (src/doors.js) -------------------
@@ -396,6 +453,35 @@ def stage_clear_tiles(rom):
     return out
 
 
+def resource_blob(rom, idx):
+    """sub_00_0B15's payload for one resource id -> {dest, bytes}.
+
+    The header at the table pointer is {dest16, len16} and the data follows it
+    inline ($0B2D-$0B35), so this is the same read the cartridge does.
+    """
+    got = load_resource(rom, None, idx)
+    if got is None:
+        raise SystemExit(f'resource ${idx:02X} is the $FFFF hole in 0:$0B43')
+    bank, src, dest, length = got
+    if not 0x8000 <= dest < 0xA000:
+        raise SystemExit(f'resource ${idx:02X} lands at ${dest:04X}, not VRAM')
+    return {'dest': dest, 'bytes': base64.b64encode(
+        bytes(rom.rd(bank, src + 4, length))).decode('ascii')}
+
+
+def intro_level_script(rom, level):
+    """$3404's per-level record: 3:$7BF9[level-1] -> {len, script[len]}.
+
+    Read by LENGTH, never walked to a terminator. The four BOSS levels' records
+    genuinely have no $00 at the end -- loc_00_343A appends 0:$3485 over exactly
+    that gap -- so a terminator walk runs off into the next record's data.
+    """
+    bank, base = T_INTRO_LEVEL_PTRS
+    p = rom.u16(bank, base + (level - 1) * 2)
+    n = rom.u8(bank, p)
+    return list(rom.rd(bank, p + 1, n))
+
+
 def export_metasprites(rom, loc, count):
     """Each pointer -> N x 4-B OAM records {dy, dx, tile, attr}, $FF-terminated.
 
@@ -552,6 +638,11 @@ def main():
         # NORMAL, EASY, HARD and silently swaps the first two.
         'optionsDifficulty': [read_table(rom, (1, a), 10)
                               for a in (0x7C69, 0x7C5F, 0x7C73)],
+        'attackAnim': read_table(rom, T_ATTACK_ANIM, T_ATTACK_ANIM_N),
+        'attackMsIndex': read_table(rom, T_ATTACK_MSINDEX, T_ATTACK_MSINDEX_N),
+        'ropeLinks': read_table(rom, T_ROPE_LINKS, T_ROPE_LINKS_N),
+        'ropeHooks': read_table(rom, T_ROPE_HOOKS, T_ROPE_HOOKS_N),
+        'continueScript': vram_script(rom, T_CONTINUE_SCRIPT),
         'enemyAnim': read_table(rom, T_ENEMY_ANIM, T_ENEMY_ANIM_N),
         'enemyAnimBase': T_ENEMY_ANIM[1],
         'introPath': read_table(rom, T_INTRO_PATH, T_INTRO_N),
@@ -597,6 +688,34 @@ def main():
             for loc, n, dest in T_ROUNDSEL_TILES],
         'scripts': [base64.b64encode(
             bytes(vram_script(rom, T_ROUNDSEL_SCRIPT))).decode('ascii')],
+    }
+
+    # ---- the stage-intro card (sub_00_333F), src/stageintro.js ------------
+    # Built ON TOP of whatever screen came before, exactly like round select:
+    # sub_00_333F is the FIRST thing loc_00_04BB does, so nothing has cleared
+    # the tile area. Resource $02 is the same 6:$54B4 font blob the title and
+    # round select both copy, which is why $8800-$8C7F comes out unchanged.
+    manifest['stageIntro'] = {
+        'fill': rom.u8(*T_INTRO_FILL),
+        'tiles': [resource_blob(rom, rom.u8(*loc)) for loc in T_INTRO_RES_IDS],
+        'resources': [rom.u8(*loc) for loc in T_INTRO_RES_IDS],
+        'scripts': [base64.b64encode(bytes(read_table(
+            rom, loc, T_INTRO_SCRIPT_N))).decode('ascii')
+            for loc in T_INTRO_SCRIPTS],
+        'levelScripts': {
+            str(l): base64.b64encode(
+                bytes(intro_level_script(rom, l))).decode('ascii')
+            for l in range(1, NUM_LEVELS + 1)},
+        'bossScript': base64.b64encode(bytes(read_table(
+            rom, T_INTRO_BOSS_SCRIPT, T_INTRO_BOSS_SCRIPT_N))).decode('ascii'),
+        'blankFrames': rom.u8(*T_INTRO_BLANK),      # $3C
+        'holdFrames': rom.u8(*T_INTRO_HOLD),        # $B4
+        'lcdc': rom.u8(*T_INTRO_LCDC),              # $E7
+        'sprite': {'id': rom.u8(*T_INTRO_SPRITE_ID),
+                   'x': rom.u8(*T_INTRO_SPRITE_C),
+                   'y': rom.u8(*T_INTRO_SPRITE_B)},
+        'sound': {'id': rom.u8(*T_INTRO_SOUND_B),
+                  'mask': rom.u8(*T_INTRO_SOUND_C)},
     }
 
     # ---- the window tilemap, and the animated-tile streamer ---------------

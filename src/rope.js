@@ -49,11 +49,16 @@ const Y_TABLE = [
   0xDA, 0xDC, 0xDE, 0xE0, 0xE3, 0xE6, 0xE9, 0xEC, 0xF0, 0xF3,
 ];
 
-/** Link metasprites, 5 per facing.  ROM: 1:$4224. */
-const LINK_IDS = [0x2A, 0x2B, 0x2C, 0x2E, 0x2D,
-                  0x2D, 0x2E, 0x2C, 0x2B, 0x2A];
-/** Hook head, by facing.  ROM: 1:$422E. */
-const HOOK_IDS = [0x0A, 0x0B];
+/**
+ * Link metasprites (1:$4224, 5 per facing) and the hook head (1:$422E, one per
+ * facing). Throws when absent: metasprite id 0 is a real sprite, so defaulting
+ * would draw a rope made of the wrong thing rather than fail.
+ */
+function ropeTable(state, name) {
+  const t = state.tables?.[name];
+  if (!t) throw new Error(`rope: tables.${name} missing from the manifest`);
+  return t;
+}
 
 const PHASE_END = 0x32;             // $4188
 const REACH = 0x0060;               // $3DB5 -- 6 px per extension step
@@ -352,11 +357,11 @@ function drawRope(state, manifest) {
     const ph = p.ropeLength;
     const k = ph < 0x0D ? 0 : ph < 0x14 ? 1 : ph < 0x1E ? 2 : ph < 0x25 ? 3 : 4;
     drawMetasprite(state, manifest.metasprites.table1,
-                   LINK_IDS[p.facing * 5 + k], sx, sy, 0);
+                   ropeTable(state, 'ropeLinks')[p.facing * 5 + k], sx, sy, 0);
 
     // $412C: the tip carries the hook head on top of the link.
     if (travelling && i === p.ropeSegments) {
-      drawMetasprite(state, manifest.metasprites.table1, HOOK_IDS[p.facing],
+      drawMetasprite(state, manifest.metasprites.table1, ropeTable(state, 'ropeHooks')[p.facing],
                      sx + (p.facing === 0 ? 8 : 0), sy, 0);
     }
 

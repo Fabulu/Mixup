@@ -127,6 +127,17 @@ export const SYNTHETIC_TABLES = {
   introPath: new Array(25).fill(0),
   introPoses: new Array(25).fill(0),
   projectileTemplates: Array.from({ length: 5 }, () => new Array(32).fill(0)),
+  // Shaped like the real 0:$1C1F / 0:$2786 blocks, with distinguishable
+  // values -- the attack tests assert specific poses.
+  attackAnim: [0x0B, 0x0C, 0x0C, 0x0B, 0x15, 0x16, 0x0C, 0x0C,
+               0x0D, 0x0E, 0x0E, 0x0D, 0x19, 0x1A, 0x0E, 0x0E,
+               0x0F, 0x10, 0x10, 0x0F, 0x17, 0x18, 0x10, 0x10],
+  attackMsIndex: [0, 2, 2, 0, 1, 3, 3, 1, 0, 0, 2, 2, 1, 1, 3, 3,
+                  0, 4, 4, 0, 1, 5, 5, 1, 0, 0, 4, 4, 1, 1, 5, 5],
+  ropeLinks: new Array(10).fill(0),
+  ropeHooks: new Array(2).fill(0),
+  // A valid but empty sub_00_0A0E script: the bare terminator.
+  continueScript: [0x00],
 };
 
 /** Open sky, width `w`, solid from map row `floorRow` down. */

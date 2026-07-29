@@ -14,9 +14,20 @@ import { startRope, updateRope } from '../src/rope.js';
 import { makeState, grid } from './helpers.js';
 
 /** Metasprite ids the rope draws; only their presence matters here. */
+/**
+ * The chain's metasprite ids. Synthetic, and declared HERE rather than read
+ * from assets/ -- this suite runs without the ROM. They only have to be
+ * distinguishable and to exist in fakeManifest below; whether the shipped ids
+ * are the right ROM ids is settled by check_tables in tools/verify_assets.py.
+ */
+const ROPE_FIXTURE = {
+  ropeLinks: [0x30, 0x31, 0x32, 0x33, 0x34, 0x34, 0x33, 0x32, 0x31, 0x30],
+  ropeHooks: [0x35, 0x36],
+};
+
 function fakeManifest() {
   const table1 = [];
-  for (const id of [0x0A, 0x0B, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E]) {
+  for (const id of [...ROPE_FIXTURE.ropeLinks, ...ROPE_FIXTURE.ropeHooks]) {
     table1[id] = { sprites: [[0, 0, id, 0]] };
   }
   return { metasprites: { table1 } };
@@ -29,7 +40,7 @@ function makeShaft(ceilRow) {
     g[14][c] = '#';
     if (ceilRow !== undefined) g[ceilRow][c] = '#';
   }
-  const state = makeState(g);
+  const state = makeState(g, { tables: ROPE_FIXTURE });
   state.player.x = 5 * 0x100 + 0x80;
   state.player.y = 13 * 0x100;
   return state;
@@ -91,7 +102,7 @@ test('collision values 0 and 7 are not anchors', () => {
   // $3DE9/$3DEC: empty space and collision 7 read straight through.
   const g = grid(16);
   for (let c = 0; c < 16; c++) { g[14][c] = '#'; g[11][c] = 'S'; }   // 'S' -> 7
-  const s = makeState(g);
+  const s = makeState(g, { tables: ROPE_FIXTURE });
   s.player.x = 5 * 0x100 + 0x80;
   s.player.y = 13 * 0x100;
   startRope(s);
