@@ -60,7 +60,6 @@ const DEATH_ROW = 0x21;
  */
 export const UNIMPLEMENTED_STATES = new Set([]);
 
-const hexBytes = (s) => Uint8Array.from(s.match(/.{2}/g), (b) => parseInt(b, 16));
 
 /**
  * Player melee lands on an enemy.  ROM: loc_00_2643-$272B, the punch probe's
@@ -267,8 +266,14 @@ export function updateEnemies(state) {
  *    pose 1:$7A5A[cursor] through the ALT table (sub_00_0BAF, attr 0), and
  *    when its screen X passes $80 the rise ends (vy = $10, Y-lo = 0).
  */
-const INTRO_PATH = hexBytes('3f1828909008080808d018505008080808d01890905050183f');   // 1:$7A41
-const INTRO_POSES = hexBytes('181d1e292a191b1a1c1f21292a1a1b191c1f21292a292a1d1e');  // 1:$7A5A
+// 1:$7A41 and 1:$7A5A, 25 bytes each and adjacent in the ROM. Both throw
+// rather than default: an empty path would park the balloon at the origin and
+// an empty pose list would draw metasprite 0, neither of which looks broken.
+function introTable(state, name) {
+  const t = state.tables?.[name];
+  if (!t) throw new Error(`enemies: tables.${name} missing from the manifest`);
+  return t;
+}
 
 function bossIntroTick(state) {
   const f = state.flow;
@@ -298,11 +303,11 @@ function bossIntroTick(state) {
   const cur = u8(f.bossCrit + 1);                   // $77F7: $C73F++
   if (cur >= 0x19) return bossIntroEnd(state);      // $77FB: path done
   f.bossCrit = cur;                                 // $7815
-  const op = INTRO_PATH[cur] & 0xC0;                // $781F
+  const op = introTable(state, 'introPath')[cur] & 0xC0;                // $781F
   if (op === 0xC0) return introRise(state);         // $782C (the else of $7828)
   if (op === 0x80) f.balloonX = u16(f.balloonX - 0x40);        // $785D
   else if (op === 0x40) f.balloonX = u16(f.balloonX + 0x40);   // $7858
-  f.bossHop = (INTRO_PATH[cur] & 0x3F) + 4;         // $7871 (the moves fall in)
+  f.bossHop = (introTable(state, 'introPath')[cur] & 0x3F) + 4;         // $7871 (the moves fall in)
   return introDraw(state);                          // $7879
 }
 
@@ -339,7 +344,7 @@ function introDraw(state) {
     state.player.vy = 0x10;                         // $788D
     f.balloonY = f.balloonY & 0xFF00;               // $7892: $FFBD = 0
   }
-  state.enemyDraws.push({ id: INTRO_POSES[f.bossCrit], x: sx, y: sy,
+  state.enemyDraws.push({ id: introTable(state, 'introPoses')[f.bossCrit], x: sx, y: sy,
                           attr: 0, alt: true });    // $7894-$78A0: 0BAF
   state.video.windowY = 0;                          // $78A4: $FFAC = 0
 }
@@ -1257,19 +1262,17 @@ function projExplode(state, r) {
  * to the spawner by mode and stamps the spawner's facing. Returns 0 on success
  * like the original (callers test for zero).
  */
-const PROJECTILE_TEMPLATES = [
-  '80000b00000001000000040402020000000030000000ff000000000000000400',
-  '80000b00000002000000040402020000000040000000ff000000000000000400',
-  '80000b00000003000000070702020000000030000000ff000000000000000700',
-  '80000b00000004000000040404040000000038000000ff000000000000000400',
-  '80000b00000005000000080808080000000038000000ff000000000000000805',
-].map(hexBytes);
 
 function spawnProjectile(state, spawner, mode) {
   for (let slot = 6; slot < SLOTS; slot++) {        // $6BDC / $6CDF
     const t = state.enemies[slot];
     if (t[0] & F_ACTIVE) continue;
-    t.set(PROJECTILE_TEMPLATES[(mode >= 1 && mode <= 5 ? mode : 5) - 1]);
+    // 1:$6CEA, 5 x 32 B. Throws rather than defaulting: an all-zero record
+    // is an INACTIVE enemy, so a missing table would silently mean "the boss
+    // fires nothing" instead of failing.
+    const tpl = state.tables?.projectileTemplates;
+    if (!tpl) throw new Error('enemies: tables.projectileTemplates missing');
+    t.set(tpl[(mode >= 1 && mode <= 5 ? mode : 5) - 1]);
     const facing = spawner[5];
     t[5] = facing;                                  // $6C2B
     let dxm = mode === 1 ? 0x100
@@ -2390,7 +2393,7 @@ function screenTail(state, r) {
   const lvl = state.level.number;
   if (r[2] === 0x0B) {                              // $5CD4: projectile draw
     const base = [0x6AF3, 0x6AF5, 0x6AF7, 0x6AF9][r[6] - 1] ?? 0x6AFB;  // $5CDD
-    queueDraw(state, ar(base + r[5]), r, 0,         // $5D13 / $5D1A
+    queueDraw(state, ar(state, base + r[5]), r, 0,         // $5D13 / $5D1A
               lvl === 0x0B || lvl === 0x0E);
     return;
   }
@@ -2398,7 +2401,7 @@ function screenTail(state, r) {
   // counts it down), the metasprite is $6BA3[facing] with attr 0 via the
   // table-1 path -- the animation machine and blink are skipped entirely.
   if (state.level.bossId === 2 && state.flow.bossHop) {
-    queueDraw(state, ar(0x6BA3 + (r[5] & 1)), r, 0, false);   // $5D2D-$5D47
+    queueDraw(state, ar(state, 0x6BA3 + (r[5] & 1)), r, 0, false);   // $5D2D-$5D47
     return;
   }
   // $5D4A: boss 1's crit-hop draw. While $C741 holds, the metasprite comes
@@ -2411,7 +2414,7 @@ function screenTail(state, r) {
     if ((r[1] & 0x20) || (r[0] & 0x04)) {           // $5D5B / $5D61
       state.flow.bossHop = 0;                       // $5DD7
     } else {
-      const id = ar(((r[0] & 0x01) ? 0x6BA5 : 0x6BB3)      // $5D6B-$5D74
+      const id = ar(state, ((r[0] & 0x01) ? 0x6BA5 : 0x6BB3)      // $5D6B-$5D74
                     + absDiff8(0x18, r[0x10]));            // $5D77-$5D84
       if (r[0] & 0x02) {                            // $5D8D: falling
         r[0x1E] = 0x10;                             // $5D95
@@ -2453,10 +2456,10 @@ function animTick(state, r) {
     // one $C73F swaps to $6B7D -- not state 8, as an older comment claimed.
     const base = st === 2 ? 0x6AFD : st === 7 ? 0x6B1D : st === 8 ? 0x6B3D
       : (state.flow.bossCrit ? 0x6B7D : 0x6B5D);    // $5F5B
-    return ar(base + ((r[0x14] & 0x3F) >> 2) + (facing << 4));
+    return ar(state, base + ((r[0x14] & 0x3F) >> 2) + (facing << 4));
   }
   if (f0 & 0x08) {                                  // $5F85: melee pose
-    let ptr = arw(0x691B + (st - 1) * 2);
+    let ptr = arw(state, 0x691B + (st - 1) * 2);
     if ((ptr >> 8) !== 0xFF) {                      // $5F98
       // $5F9D-$5FC0: the boss arms shift the pose row by $10. Airborne
       // (bit 0 or 1) it is boss 2's spin; grounded it is the CRIT swing,
@@ -2466,29 +2469,29 @@ function animTick(state, r) {
       } else if (state.flow.bossCrit && state.level.bossId !== 4) {
         ptr += 0x10;                                // $5FB2
       }
-      return ar(ptr + ((r[0x14] & 0x1F) >> 2) + (facing << 3));
+      return ar(state, ptr + ((r[0x14] & 0x1F) >> 2) + (facing << 3));
     }
     return walkCycle(state, r, facing);             // $5FDB
   }
   if (f0 & 0x01) {                                  // $5F24: rising pose
-    return ar(arw(0x68EF + (st - 1) * 2) + facing);
+    return ar(state, arw(state, 0x68EF + (st - 1) * 2) + facing);
   }
   if (f0 & 0x02) {                                  // $5F0A: falling pose
-    if (st === 7) return ar(0x6B9D + facing);
-    if (st === 1) return ar(0x6B9F + facing);
-    return ar(arw(0x68EF + (st - 1) * 2) + facing);
+    if (st === 7) return ar(state, 0x6B9D + facing);
+    if (st === 1) return ar(state, 0x6B9F + facing);
+    return ar(state, arw(state, 0x68EF + (st - 1) * 2) + facing);
   }
   if (f0 & 0x20) {                                  // $5E2B: idle sway
-    let ptr = arw(0x6A97 + (st - 1) * 2);
+    let ptr = arw(state, 0x6A97 + (st - 1) * 2);
     // $5E3E-$5E4E: the STAGGERED Joker (bossId 4, $C73D still counting,
     // i.e. >= 2) sways from a row 8 further on -- the reeling poses.
     if (state.level.bossId === 4 && state.flow.bossRage >= 2) ptr += 8;
-    return ar(ptr + ((state.frame & 0x18) >> 3) + facing * 4);
+    return ar(state, ptr + ((state.frame & 0x18) >> 3) + facing * 4);
   }
   if (r[1] & 0x20) {                                // $5E61: landing animation
     if (r[0x19] === 0) { r[1] &= ~0x20; return r[6]; }     // $5E90
     r[0x19]--;
-    return ar(arw(0x69F3 + (st - 1) * 2) + ((r[0x19] & 0x0C) >> 2) + facing * 4);
+    return ar(state, arw(state, 0x69F3 + (st - 1) * 2) + ((r[0x19] & 0x0C) >> 2) + facing * 4);
   }
   if (r[1] & 0x40) {                                // $5EA0: turn animation
     if (r[0x18] === 0) {
@@ -2511,7 +2514,7 @@ function animTick(state, r) {
       return r[6];
     }
     r[0x18]--;
-    return ar(arw(0x6A53 + (st - 1) * 2) + ((r[0x18] & 0x0C) >> 2) + facing * 4);
+    return ar(state, arw(state, 0x6A53 + (st - 1) * 2) + ((r[0x18] & 0x0C) >> 2) + facing * 4);
   }
   return walkCycle(state, r, facing);
 }
@@ -2532,14 +2535,14 @@ function walkCycle(state, r, facing) {
     else { frame = 0; r[4] = hi << 4; }             // $6009
   }
   // $602A: offset = facing * frames + frame (the ADD loop), frames = hi+1.
-  let idx = arw(0x6891 + (r[2] - 1) * 2) + facing * (hi + 1) + frame;
+  let idx = arw(state, 0x6891 + (r[2] - 1) * 2) + facing * (hi + 1) + frame;
   // $6046-$605A: on level 14, a state-9 record with $C741 set reads its walk
   // poses 4 further on -- the Joker's cane-out row. $C741 here is the band
   // flag boss4Walk/the retreat maintain, not the boss-1/2 meaning.
   if (state.level.number === 0x0E && state.flow.bossHop !== 0 && r[2] === 9) {
     idx += 4;
   }
-  return ar(idx);
+  return ar(state, idx);
 }
 
 function queueDraw(state, id, r, attr, alt) {
@@ -2571,36 +2574,17 @@ export function drawEnemies(state, manifest) {
  * projectile variants $6AF3, ranged poses $6AFD+). Byte-verified against the
  * ROM. `ar`/`arw` read a byte / little-endian pointer by ROM address.
  */
-const ANIM_ROM = hexBytes(
-  'a568ad68b568c168cd68d168d968dd68e168e9684f5051524b4c4d4e63646566' +
-  '5f6061622223242526271c1d1e1f20213a393b393c393a393b393c39b3b3b3b3' +
-  'bcbdbebfb8b9babbd1d3d0d201010000292a292a2c2e2b2d4042443f41430769' +
-  '09690b6907690d690f69116913691569176907691969565464602829b3b3c5c2' +
-  'e7e60d0c201f52515b5b33694369ffff33695369636973699369b369c369ffff' +
-  'e3695a5a5a59595959595858585757575757787a7c7b7a797870737577767574' +
-  '736db2b2b1b1b0b0afafaeaeadadacacababc3c3c4c4c4c4c3c3c0c0c1c1c1c1' +
-  'c0c0d9d9d9d9d7d7d5d5d8d8d8d8d6d6d4d4ededebebe9e9e9e7ececeaeae8e8' +
-  'e8e6151413131313131315141313131313131212121212121210111111111111' +
-  '110f282828262624242427272725252323234a4a4a4848464640494949474745' +
-  '453f5050504e4e4c4c404f4f4f4d4d4b4b3f9595959594949494959595959494' +
-  '94940b6a136a1b6a0b6a0b6a236a2b6a336a3b6a436a0b6a4b6a555555555353' +
-  '53536c6c706469696d60492749494a214a4ac5c5c5c5c2c2c2c2d1d1ededd0d0' +
-  'ecec0d0d0d0d0c0c0c0c2222222221212121404444443f4343435c5c5c5c5c5c' +
-  '5c5c0b6a676a6f6a0b6a0b6a776a7f6a0b6a876a8f6a70706c6c6d6d69692827' +
-  '494929214a4ac5c5c5c5c2c2c2c2e7e7d1d1e6e6d0d022222222212121215244' +
-  '44405143433fab6ab36affffab6abb6ac36acb6ad36adb6aeb6a5c5c5e5e5c5c' +
-  '5e5e7e6a7e6a7d677d67b3b3b3b3b3b3b3b3c5c5c5c5c2c2c2c2cfcfcfcfcece' +
-  'cece17171717161616162c2c2c2c2b2b2b2b3838383837373737444442404343' +
-  '413f807fc7c6f1f00e0e3e3d7271707070707070ffffffffffffffff6f6e6d6d' +
-  '6d6d6d6dffffffffffffffffdfdfdfdddddbdbdbffffffffffffffffdedededc' +
-  'dcdadadaffffffffffffffff0b0b090705030101ffffffffffffffff0a0a0806' +
-  '04020000ffffffffffffffff30303032321a1b19ffffffffffffffff2f2f2f31' +
-  '311a1b19ffffffffffffffff363636363636363636343434341a1b1935353535' +
-  '3535353535333333331a1b19edec5d5be1e0efee585656545454545755555353' +
-  '53535a5a5c5e5e606259595b5d5d5f61');
-const ANIM_BASE = 0x6891;
-const ar = (addr) => ANIM_ROM[addr - ANIM_BASE] ?? 0;
-const arw = (addr) => ar(addr) | (ar(addr + 1) << 8);
+// Indexed by ROM ADDRESS, which is why the base travels with the table.
+// A missing table would make every `ar(state, )` return 0, and 0 is a valid
+// metasprite id -- so every enemy would draw pose 0 and look plausible.
+// Refuse to guess instead.
+function animTable(state) {
+  const t = state.tables?.enemyAnim;
+  if (!t) throw new Error('enemies: tables.enemyAnim missing from the manifest');
+  return t;
+}
+const ar = (state, addr) => animTable(state)[addr - state.tables.enemyAnimBase] ?? 0;
+const arw = (state, addr) => ar(state, addr) | (ar(state, addr + 1) << 8);
 
 // ---------------------------------------------------------------------------
 // The enemy's own collision probe.  ROM: sub_01_6666 and its mode wrappers.

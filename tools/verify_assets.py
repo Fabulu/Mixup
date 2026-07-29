@@ -331,6 +331,29 @@ def check_tables(rom, manifest, rep):
     rep.add(0, 'manifest', 'tables.gapLeaps == the 14 stub immediates',
             got == want, f'{got} vs {want}')
 
+    # The four blobs that used to be hex literals in src/enemies.js. Same raw
+    # file-offset reads, same reason: an exporter cannot verify its own address.
+    for name, addr, n in (('enemyAnim', 0x2891, 0x6BC1 - 0x6891),
+                          ('introPath', 0x3A41, 25),
+                          ('introPoses', 0x3A5A, 25)):
+        want = list(rom.data[base + addr:base + addr + n])
+        got = manifest['tables'].get(name, [])
+        rep.add(0, 'manifest', f'tables.{name} == 1:${addr + 0x4000:04X} ({n} B)',
+                got == want,
+                f'len {len(got)} vs {len(want)}; ' + ', '.join(first_diff(got, want)))
+
+    rep.add(0, 'manifest', 'tables.enemyAnimBase == $6891',
+            manifest['tables'].get('enemyAnimBase') == 0x6891,
+            'enemies.js indexes enemyAnim by ROM ADDRESS -- a wrong base '
+            'silently shifts every metasprite id')
+
+    # 1:$6CEA, five 32-byte prefab enemy records.
+    want = [list(rom.data[base + 0x2CEA + i * 32:base + 0x2CEA + i * 32 + 32])
+            for i in range(5)]
+    got = [list(r) for r in manifest['tables'].get('projectileTemplates', [])]
+    rep.add(0, 'manifest', 'tables.projectileTemplates == 1:$6CEA (5 x 32 B)',
+            got == want, f'{len(got)} records vs {len(want)}')
+
 
 def first_diff(a, b, limit=6):
     out = []

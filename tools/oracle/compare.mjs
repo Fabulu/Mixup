@@ -34,8 +34,14 @@ for (const [p, hint] of [[oraclePath, 'python tools/oracle/trace.py'],
 const oracle = JSON.parse(fs.readFileSync(oraclePath, 'utf8'));
 const port = JSON.parse(fs.readFileSync(portPath, 'utf8'));
 
-// Fields the port currently models. `anim` is compared but not enforced --
-// the port's animation ids are its own until P2 maps them to the ROM's.
+// Fields the port currently models.
+//
+// `anim` is NOT in this list and never was, despite a comment here that said
+// for a long time that it "is compared but not enforced". It was compared by
+// nothing at all. It has since been measured: across the full regress.mjs
+// corpus anim diverges in 26 of 28 scenarios and animFrame in all 28, because
+// selectAnim is a reimplementation rather than a port of loc_00_1B4A. Pass
+// --fields to compare them deliberately; do not quietly add them here.
 const DEFAULT_FIELDS = ['x', 'y', 'vx', 'vy', 'air', 'facing', 'camX', 'camY'];
 const fields = (arg('fields', '') || '').trim()
   ? arg('fields').split(',').map((s) => s.trim())

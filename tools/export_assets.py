@@ -18,8 +18,11 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                'oracle'))
 from gbrom import (Rom, ROOT, build_level_vram, level_map, level_collision_lut,
                    level_metatiles, level_resource_indices, NUM_LEVELS)
+import animtables
 
 OUT = os.path.join(ROOT, 'assets')
 
@@ -84,6 +87,45 @@ T_ROUNDSEL_TILES = [
     ((6, 0x6E74), 2048, 0x9000),  # the round-select artwork
 ]
 T_ROUNDSEL_SCRIPT = (6, 0x7674)
+# The WINDOW tilemap, $9C00-$9FFF, built at level init for EVERY level.
+#
+# Not the $0E24 script the old notes named: that one sits behind
+# `$0DD9: CP $0E / JP NZ, loc_00_0E74` and runs on level 14 alone -- measured,
+# tools/oracle/waterbuild.py raises if $0E24 fires on any other level.  What
+# actually runs is loc_00_04BB's own pair, three instructions apart:
+#   $04C9  LD HL,$9C40 / LD BC,$03C0  -- 960 cells of tile $01
+#   $04D7  LD DE,$32A3 -> sub_00_0A0E -- two 20-cell rows at $9C00/$9C20
+# $9C14-$9C1F and $9C34-$9C3F are written by NEITHER, and keep the $2F the boot
+# clear at $0223 left there.  They are off the right edge of the 20-tile window,
+# so they are never seen; they are still part of the byte-exact image.
+T_WINDOW_SCRIPT = (0, 0x32A3)
+T_WINDOW_FILL_DEST = 0x9C40
+T_WINDOW_FILL_LEN = 0x03C0
+T_WINDOW_FILL = 0x01
+# Level 14 only ($0DDB): $0E0C refills $9C00-$9C3F with $01 and $0E24 paints it.
+T_WINDOW_L14_SCRIPT = (5, 0x5276)
+T_WINDOW_L14_FILL_DEST = 0x9C00
+T_WINDOW_L14_FILL_LEN = 0x0040
+# sub_00_0A7F's palette ramp -- the fade every screen enters and leaves through.
+# $0B09 is EIGHT bytes: [0..3] is the ramp both BGP and OBP0 walk, [4..7] a
+# second ramp BGP alone uses when the caller passes C & $7F == 3 ($0AA0).
+# $0B11 is OBP1's four.  $C70E is the step: a fade-IN (C bit 7 set) starts at 3
+# and counts DOWN to 0, a fade-out starts at 0 and counts up.
+T_FADE_BGP  = (0, 0x0B09)
+T_FADE_OBP1 = (0, 0x0B11)
+# The title's LCD registers, each read at the address of the immediate that
+# writes it -- not captured off a running emulator.  The shadow bytes
+# $FFA9-$FFAF are pushed to rSCX/rSCY/rWX/rWY/rBGP/rOBP0/rOBP1 in the VBlank
+# ISR at $0806-$0817, so writing the shadow IS writing the register.
+#   $0216  LD A,$07 -> $FFAB (rWX)
+#   $02A8  LD A,$90 -> $FFAC (rWY), re-armed just before the title's text script
+#   $02BC  LD A,$E7 -> rLCDC directly
+# rSCY is $021D's XOR A -> $FFAA; rSCX is never written at all on this path and
+# keeps the 0 that $0160's HRAM clear left.  BGP/OBP0/OBP1 come out of the fade
+# tables above at step 0, which is where $02C1's C = $80 fade ends.
+T_TITLE_WX   = (0, 0x0216)
+T_TITLE_WY   = (0, 0x02A8)
+T_TITLE_LCDC = (0, 0x02BC)
 # The two respawning sewer enemies of levels 1-2, refilled every frame they are
 # dead by loc_00_2D3D. 32-byte $C268 records, fixed data in bank 0. They are NOT
 # in the level's enemy blob -- 5:$46EC says count 6 while the cartridge runs 8.
@@ -132,6 +174,23 @@ T_GAP_TABLE_N     = 0x7F29 - 0x7E3F
 # jump (or, for the last one, a fall-through) into the common tail at $7E26.
 T_GAP_LEAPS       = (1, 0x7DBC)
 T_GAP_LEAPS_N     = 14
+# --- enemy blobs that used to be hex literals in src/enemies.js -------------
+# All four verified byte-identical to the cartridge before they moved.
+#
+# 1:$6891-$6BC0 is the metasprite-id table BLOCK: per-state pointer rows (walk
+# $6891, rise/fall $68EF, melee $691B, landing $69F3, turn $6A53, idle $6A97,
+# projectile variants $6AF3, ranged poses $6AFD+). enemies.js indexes it by ROM
+# ADDRESS through `ar`/`arw`, so the base has to travel with it.
+T_ENEMY_ANIM      = (1, 0x6891)
+T_ENEMY_ANIM_N    = 0x6BC1 - 0x6891
+# The level-14 Joker balloon entrance, 1:$77BD. Path bytes and pose ids, 25
+# each, and they are ADJACENT -- $7A41 + $19 is exactly $7A5A.
+T_INTRO_PATH      = (1, 0x7A41)
+T_INTRO_POSES     = (1, 0x7A5A)
+T_INTRO_N         = 25
+# sub_01_6BDC's five 32-byte prefab enemy records, copied whole into a slot.
+T_PROJECTILES     = (1, 0x6CEA)
+T_PROJECTILES_N   = 5
 T_OPT_CURSOR_Y    = (1, 0x7C5C)
 T_OPT_DIFFICULTY  = (1, 0x7C5F)
 # --- the door/gate sequencer, sub_01_4BB0 (src/doors.js) -------------------
@@ -187,6 +246,27 @@ T_BOSS_POSE_1     = (1, 0x7A1D)
 T_BOSS_POSE_2     = (1, 0x7A2D)
 T_BOSS_POSE_WALK  = (1, 0x7A3D)
 T_BOSS_POSE_B4    = (1, 0x7A3F)
+# STAGE CLEAR -- the victory fanfare's picture, loc_00_34D0 (src/effects.js).
+#   6:$611C  23 LE pointers, indexed by $C70F * 2 at $3520.  Each names a $20 B
+#            block that loc_00_350F hands to the VBlank block queue ($FF9B /
+#            $C5CB), one per frame, landing at $8800 + n * $20 -- 46 tiles,
+#            ids $80-$AD in the bg cache's addressing.  MEASURED contiguous
+#            ($614A..$6429), but the pointers are followed anyway so a
+#            non-contiguous cartridge revision could not silently shift.
+#   6:$642A  two sub_00_0A0E scripts, copied into $C61B by loc_00_3566 and run
+#   6:$6459  by the ISR at $0714.  They paint the WINDOW map at $9C00, five
+#            rows of 20 tiles -- the fifth deliberately blank, which is why the
+#            $35B2 LYC clip can land on either side of it.
+T_STAGECLEAR_PTRS    = (6, 0x611C)
+T_STAGECLEAR_BLOCKS  = 0x17
+T_STAGECLEAR_BLOCK_N = 0x20
+T_STAGECLEAR_SCRIPTS = [(6, 0x642A), (6, 0x6459)]
+# sub_00_0A7F's palette ramp, 0:$0B09 and 0:$0B11 back to back.  $0AAA indexes
+# the first with $C70E (+4 when C & $7F == 3) for rBGP/rOBP0 and $0AC5 the
+# second with $C70E for rOBP1.  Five stops per fade, one every eighth of the
+# routine's 33 frames.
+T_FADE_PALETTES   = (0, 0x0B09)
+T_FADE_PALETTES_N = 16
 T_SCRIPT_PTRS     = (0, 0x27E6)   # loc_00_164A: 3 LE pointers to move scripts
 T_SCRIPT_BLOCK    = (0, 0x27E6)   # the scripts themselves live just past them
 T_SCRIPT_BLOCK_N  = 0x1E          # $27E6-$2803
@@ -291,6 +371,22 @@ def vram_script(rom, loc):
         count = (ctrl & 0x3F) or 0x100
         p += 3 + (1 if (ctrl >> 6) in (1, 3) else count)
     return list(rom.rd(bank, addr, p - addr + 1))
+
+
+def stage_clear_tiles(rom):
+    """loc_00_350F's 23 blocks, concatenated in $C70F order.
+
+    $3520-$3526 reads a LITTLE-endian pointer out of 6:$611C indexed by
+    $C70F * 2 -- unlike the VRAM scripts, whose destinations are big-endian --
+    and copies $20 bytes from it.  Block n lands at $8800 + n * $20, so the
+    concatenation in table order IS the VRAM image.
+    """
+    bank, base = T_STAGECLEAR_PTRS
+    out = []
+    for i in range(T_STAGECLEAR_BLOCKS):
+        lo, hi = rom.rd(bank, base + i * 2, 2)
+        out += list(rom.rd(bank, lo | (hi << 8), T_STAGECLEAR_BLOCK_N))
+    return out
 
 
 def export_metasprites(rom, loc, count):
@@ -449,6 +545,12 @@ def main():
         # NORMAL, EASY, HARD and silently swaps the first two.
         'optionsDifficulty': [read_table(rom, (1, a), 10)
                               for a in (0x7C69, 0x7C5F, 0x7C73)],
+        'enemyAnim': read_table(rom, T_ENEMY_ANIM, T_ENEMY_ANIM_N),
+        'enemyAnimBase': T_ENEMY_ANIM[1],
+        'introPath': read_table(rom, T_INTRO_PATH, T_INTRO_N),
+        'introPoses': read_table(rom, T_INTRO_POSES, T_INTRO_N),
+        'projectileTemplates': [read_table(rom, (1, T_PROJECTILES[1] + i * 32), 32)
+                                for i in range(T_PROJECTILES_N)],
         'gapTable': read_table(rom, T_GAP_TABLE, T_GAP_TABLE_N),
         'gapLeaps': read_gap_leaps(rom, T_GAP_LEAPS, T_GAP_LEAPS_N),
         'enemyContactDamage': read_table(rom, T_ENEMY_DMG, 13),
@@ -470,6 +572,14 @@ def main():
         'bossDeathPose2': read_table(rom, T_BOSS_POSE_2, 16),
         'bossDeathPoseWalk': read_table(rom, T_BOSS_POSE_WALK, 2),
         'bossDeathPoseB4': read_table(rom, T_BOSS_POSE_B4, 2),
+        # STAGE CLEAR. These ride in `tables` rather than in a section of their
+        # own because src/level.js does `state.tables = manifest.tables`, so
+        # effects.js can reach them with no new wiring -- and effects.js's
+        # need() turns a missing one into a throw rather than a blank screen.
+        'stageClearTiles': stage_clear_tiles(rom),
+        'stageClearScriptA': vram_script(rom, T_STAGECLEAR_SCRIPTS[0]),
+        'stageClearScriptB': vram_script(rom, T_STAGECLEAR_SCRIPTS[1]),
+        'fadePalettes': read_table(rom, T_FADE_PALETTES, T_FADE_PALETTES_N),
     }
 
     # ---- round select: applied over the title's VRAM ---------------------
@@ -482,6 +592,30 @@ def main():
             bytes(vram_script(rom, T_ROUNDSEL_SCRIPT))).decode('ascii')],
     }
 
+    # ---- the window tilemap, and the animated-tile streamer ---------------
+    b64 = lambda bs: base64.b64encode(bytes(bs)).decode('ascii')
+    manifest['window'] = {
+        'boot': 0x2F,                              # $0223, what nothing rewrites
+        'fill': T_WINDOW_FILL,
+        'fillDest': T_WINDOW_FILL_DEST,
+        'fillLen': T_WINDOW_FILL_LEN,
+        'script': b64(vram_script(rom, T_WINDOW_SCRIPT)),
+        'level14': {
+            'fill': T_WINDOW_FILL,
+            'fillDest': T_WINDOW_L14_FILL_DEST,
+            'fillLen': T_WINDOW_L14_FILL_LEN,
+            'script': b64(vram_script(rom, T_WINDOW_L14_SCRIPT)),
+        },
+    }
+    # loc_00_3127, resolved per level.  '6alt' is the 2:$625E source table the
+    # $3151 arm picks when $FFC9 == 1; on level 6 $FFC9 == 0 disables the
+    # streamer outright ($314B), which is why the key can be absent.
+    manifest['tileAnim'] = {
+        str(k): {'dests': v['dests'], 'steps': v['steps'],
+                 'blocks': [b64(b) for b in v['blocks']]}
+        for k, v in animtables.resolve_all(rom).items()
+    }
+
     # ---- title screen: the ingredients, not a snapshot of the result ------
     manifest['title'] = {
         'tiles': [{'dest': dest, 'bytes': base64.b64encode(
@@ -490,6 +624,21 @@ def main():
         'scripts': [base64.b64encode(bytes(vram_script(rom, loc))).decode('ascii')
                     for loc in T_TITLE_SCRIPTS],
         'fill': 0x2F,                 # 00:027D, LD D,$2F -> sub_00_34A4
+        # What used to be assets/title.json, derived instead of captured.
+        'lcd': {
+            'lcdc': rom.u8(*T_TITLE_LCDC),
+            'scx': 0x00,              # $0160's HRAM clear; nothing rewrites $FFA9
+            'scy': 0x00,              # $021D XOR A -> $FFAA
+            'wx': rom.u8(*T_TITLE_WX),
+            'wy': rom.u8(*T_TITLE_WY),
+            # $02C1: LD C,$80 -> sub_00_0A7F, a fade IN, so $C70E ends at 0.
+            'bgp': rom.u8(T_FADE_BGP[0], T_FADE_BGP[1]),
+            'obp0': rom.u8(T_FADE_BGP[0], T_FADE_BGP[1]),
+            'obp1': rom.u8(T_FADE_OBP1[0], T_FADE_OBP1[1]),
+        },
+        # The whole ramp, so the fade can be played rather than jumped.
+        'fadeBgp': read_table(rom, T_FADE_BGP, 8),
+        'fadeObp1': read_table(rom, T_FADE_OBP1, 4),
     }
 
     with open(os.path.join(OUT, 'manifest.json'), 'w', encoding='utf-8') as f:

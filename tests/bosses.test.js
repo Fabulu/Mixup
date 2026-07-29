@@ -23,8 +23,26 @@ const { primaryDispatch, screenTail } = _internals;
  * $14 sits inside loc_01_5CA8's 7-row draw window ($5CCA) -- without that the
  * animation machine never ticks and the hop never launches.
  */
+/**
+ * The three prefab fields any test here asserts. Synthetic on purpose -- this
+ * suite never reads assets/ -- and set to values no default could produce, so
+ * a missing table fails loudly instead of quietly spawning an inert record.
+ * Whether the shipped bytes are the right ROM bytes is settled by check_tables
+ * in tools/verify_assets.py.
+ */
+const PROJECTILE_FIXTURE = Array.from({ length: 5 }, () => {
+  const r = new Array(32).fill(0);
+  r[0] = 0x80;                                 // +0    active
+  r[2] = 0x0B;                                 // +2    state 11
+  r[0x16] = 0xFF;                              // +$16  HP
+  return r;
+});
+
 function arena(opts = {}) {
-  const state = makeState(floorFrom(grid(32), 5, '#'), opts);
+  const state = makeState(floorFrom(grid(32), 5, '#'), {
+    ...opts,
+    tables: { projectileTemplates: PROJECTILE_FIXTURE, ...(opts.tables || {}) },
+  });
   state.camera.x = 0;
   state.camera.y = 0x1000;
   state.player.x = 0x0880;                     // screen X $90

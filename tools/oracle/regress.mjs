@@ -480,6 +480,13 @@ const SCRIPTS = [
     ammo: 0, script: '20:,110:L', extra: ['hp', 'action', 'en3f', 'en3hp'] },
 ];
 
+// `anim`/`animFrame` are NOT here, and that is a known hole rather than an
+// oversight -- see the task filed against loc_00_1B4A. MEASURED across this
+// whole corpus: anim diverges in 26 of 28 scenarios and animFrame in all 28.
+// src/player.js's selectAnim is a reimplementation, not a translation: it
+// invents fallTicks/walkTicks/walkStep and carries an admittedly "empirical"
+// cling switch point. Adding these two fields before that is fixed would turn
+// the gate red for a reason the gate cannot act on. Add them the day it is.
 const FIELDS = ['x', 'y', 'vx', 'vy', 'air', 'facing', 'camX', 'camY'];
 const run = (cmd, args) => execFileSync(cmd, args, { cwd: ROOT, encoding: 'utf8' });
 

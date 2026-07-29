@@ -101,9 +101,33 @@ export function makeState(g, opts = {}) {
   // $C73E: 0 outside boss/vehicle levels. createState() does not define this.
   state.level.bossId = opts.bossId ?? 0;
   state.camera.clampRight = opts.clampRight ?? (width - 1);   // $C732
-  if (opts.tables) state.tables = { ...(state.tables || {}), ...opts.tables };
+  state.tables = { ...(state.tables || {}), ...SYNTHETIC_TABLES, ...(opts.tables || {}) };
   return state;
 }
+
+/**
+ * Structurally valid, semantically meaningless stand-ins for the ROM tables
+ * that src/enemies.js used to carry as hex literals.
+ *
+ * This suite deliberately never touches assets/ -- it has to run without the
+ * ROM -- but the real code now THROWS on a missing table rather than quietly
+ * returning 0, because 0 is a valid metasprite id and a valid record byte, so
+ * a silent default would make every enemy draw pose 0 and look plausible.
+ * These keep that throw honest while letting the movement tests run.
+ *
+ * They are ZEROS on purpose. A test that actually cares which sprite or which
+ * prefab comes out must pass its own `tables` fixture and say what it expects;
+ * whether the shipped bytes are the RIGHT bytes is settled separately, by
+ * `check_tables` in tools/verify_assets.py, which re-reads them from the
+ * cartridge without going through the exporter.
+ */
+export const SYNTHETIC_TABLES = {
+  enemyAnim: new Array(0x6BC1 - 0x6891).fill(0),
+  enemyAnimBase: 0x6891,
+  introPath: new Array(25).fill(0),
+  introPoses: new Array(25).fill(0),
+  projectileTemplates: Array.from({ length: 5 }, () => new Array(32).fill(0)),
+};
 
 /** Open sky, width `w`, solid from map row `floorRow` down. */
 export function corridor(w = 32, floorRow = 14) {

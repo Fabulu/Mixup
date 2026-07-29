@@ -242,9 +242,24 @@ test('walk cycle advances the r[3]/r[4] nibble counters like $5FE6', () => {
   assert.equal(r[4], 0x31, 'frame advanced');
 });
 
+// The two tests below are the only ones that care what a prefab CONTAINS, so
+// they bring their own. Synthetic on purpose (the suite never reads assets/):
+// only the fields each test asserts are set, and they are set to values that
+// could not be mistaken for a default. Whether the shipped bytes are the right
+// ROM bytes is settled by check_tables in tools/verify_assets.py.
+function projectileFixture() {
+  const t = Array.from({ length: 5 }, () => new Array(32).fill(0));
+  for (const r of t) {
+    r[0] = 0x80;          // +0  active
+    r[2] = 0x0B;          // +2  state 11, the projectile
+    r[0x16] = 0xFF;       // +$16 HP
+  }
+  return { projectileTemplates: t };
+}
+
 test('spawnProjectile copies the mode-1 template into slot 6 and offsets it', () => {
   // ROM: sub_01_6BDC + template 1:$6CEA. X +$100 toward the facing, Y +$20.
-  const state = makeState(grid(8), { level: 5 });
+  const state = makeState(grid(8), { level: 5, tables: projectileFixture() });
   const spawner = makeEnemy(state, { col: 4, row: 6 });
   assert.equal(spawnProjectile(state, spawner, 1), 0);
   const t = state.enemies[6];
