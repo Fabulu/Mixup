@@ -17,9 +17,10 @@ import assert from 'node:assert/strict';
 
 import {
   effects, resetEffects, startDeathBurst, deathBurstTick,
-  bossCountdownTick, victoryStep, updateVictoryHold,
+  bossCountdownTick, victoryStep, updateVictoryHold, applyStageClearVram,
   COUNTDOWN_IDLE, COUNTDOWN_START, BURST_SLOTS,
 } from '../src/effects.js';
+import { decodeTileBuf } from '../src/assets.js';
 import { makeState, grid } from './helpers.js';
 
 // ---------------------------------------------------------------------------
@@ -56,8 +57,30 @@ const BOSS_TABLES = {
                   [4, 4, 4, 4]],
 };
 
+// ---------------------------------------------------------------------------
+// STAGE CLEAR stand-ins. Shapes are the cartridge's, values are not:
+//   stageClearTiles    23 x $20 B. Byte i = i & $FF, so "which block ended up
+//                      where" is answerable by arithmetic.
+//   stageClearScriptA  the real script's SHAPE -- two mode-0 rows of $14 at
+//                      $9C00/$9C20 -- with recognisable payloads.
+//   stageClearScriptB  two more rows plus the mode-1 RLE row the real one ends
+//                      with, so the RLE path is exercised too.
+//   fadePalettes       0:$0B09 + 0:$0B11, 8 + 8. Distinct per index and per
+//                      table so a swapped pair cannot pass.
+// ---------------------------------------------------------------------------
+const STAGE_TABLES = {
+  stageClearTiles: Array.from({ length: 23 * 0x20 }, (_, i) => i & 0xFF),
+  stageClearScriptA: [0x9C, 0x00, 0x14, ...new Array(0x14).fill(0xA1),
+                      0x9C, 0x20, 0x14, ...new Array(0x14).fill(0xA2), 0x00],
+  stageClearScriptB: [0x9C, 0x40, 0x14, ...new Array(0x14).fill(0xA3),
+                      0x9C, 0x60, 0x14, ...new Array(0x14).fill(0xA4),
+                      0x9C, 0x80, 0x54, 0xA5, 0x00],
+  fadePalettes: [0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+                 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28],
+};
+
 const bare = (opts = {}) => makeState(grid(16),
-  { tables: { ...BURST_TABLES, ...BOSS_TABLES }, ...opts });
+  { tables: { ...BURST_TABLES, ...BOSS_TABLES, ...STAGE_TABLES }, ...opts });
 
 // ---------------------------------------------------------------------------
 // $C1C0 -- Batman's death
@@ -347,6 +370,159 @@ test('level 6 skips the fanfare and takes one fade', () => {
   }
   assert.equal(cleared, 35, '1 entry + 33 fade + the $35E8 frame');
   assert.equal(e.phase, 0, '$34EB never leaves $C712 at 1');
+});
+
+// ---------------------------------------------------------------------------
+// The STAGE CLEAR picture
+//
+// Whether these are the RIGHT bytes is settled by tools/oracle/deathdiff.mjs,
+// which rebuilds the screen from assets/manifest.json and diffs it against the
+// cartridge's own VRAM (8192/8192 with the pre-fanfare image underneath,
+// 836/836 over the spans the fanfare writes). What is here is the plumbing:
+// which block lands on which tile id, what the LYC clip computes, and the
+// refusal to draw a blank banner when the manifest is short.
+// ---------------------------------------------------------------------------
+
+/** A tile cache the fanfare can decode into, as buildTileCache would give. */
+function withTileCache(state) {
+  state.level.tiles = { bg: new Array(256).fill(null), obj: new Array(256) };
+  return state;
+}
+
+test('the 23 phase-1 blocks land as BG tiles $80-$AD, two per block', () => {
+  // ROM: $3520-$3551. Block n is copied and THEN the cursor moves, so block n
+  // is the one that ends up at $8800 + n * $20 -- and src/assets.js puts BG
+  // tile $80 at $8800, which makes it tiles $80 + 2n and $81 + 2n.
+  const state = withTileCache(bare({ level: 4, bossId: 1 }));
+  runFanfare(state);
+  const blob = Uint8Array.from(STAGE_TABLES.stageClearTiles);
+  for (let n = 0; n < 23; n++) {
+    for (let half = 0; half < 2; half++) {
+      assert.deepEqual(
+        Array.from(state.level.tiles.bg[0x80 + n * 2 + half]),
+        Array.from(decodeTileBuf(blob, n * 0x20 + half * 16)),
+        `block ${n} half ${half}`);
+    }
+  }
+  assert.equal(state.level.tiles.bg[0xAE], null, 'nothing past $AD is touched');
+});
+
+test('loc_00_3566 runs both scripts and hands the map to the renderer', () => {
+  // ROM: $3579 and $359C copy into $C61B; the VBlank ISR at $0714 is what
+  // actually runs them. Five rows of $14 in the WINDOW map at $9C00 -- the
+  // fifth an RLE the real script uses to blank the row the LYC clip may or may
+  // not reach.
+  const state = withTileCache(bare({ level: 4, bossId: 1 }));
+  runFanfare(state);
+  const map = state.video.windowMap;
+  assert.ok(map, 'the window map is live');
+  for (const [row, want] of [[0, 0xA1], [1, 0xA2], [2, 0xA3], [3, 0xA4], [4, 0xA5]]) {
+    for (let c = 0; c < 0x14; c++) assert.equal(map[row * 32 + c], want, `row ${row}`);
+    assert.equal(map[row * 32 + 0x14], 0x01, 'col $14 keeps the level fill');
+  }
+  assert.equal(state.video.windowDither, false, 'the band is opaque artwork');
+});
+
+test('$35B2 makes the window a 32-line band, clamped at $8F', () => {
+  // ROM: $35B8 parks rWY/rLYC at $90; $363D then writes $FFAC and rLYC =
+  // min($FFAC + $20, $8F). $FFC7 = 5 is loc_00_08EA, whose whole body is
+  // rWX = $A8 -- the LYC interrupt switches the window OFF rather than moving
+  // it, which is what turns rWY into the TOP of a band.
+  const state = withTileCache(bare({ level: 4, bossId: 1 }));
+  const e = effects(state);
+  const seen = [];
+  const r = { 2: 0x0A, 5: 0, 6: 0, 7: 0, 8: 0, 0x0E: 2, 0x10: 0x1E };
+  e.countdown = 0;
+  for (let n = 1; n <= 500; n++) {
+    if (!updateVictoryHold(state)) {
+      if (bossCountdownTick(state, r) === 'victory') victoryStep(state);
+    }
+    if (e.phase === 3) {
+      seen.push([state.video.windowY, state.video.windowEndY, state.raster.mode]);
+    }
+    if (state.flow.levelCleared === 1) break;
+  }
+  // Before the ramp: parked off-screen, so no cut at all.
+  assert.deepEqual(seen[0], [0x90, null, 5]);
+  const ramp = seen.filter((s) => s[0] !== 0x90);
+  assert.deepEqual(ramp[0], [0x8E, 0x8F, 5], 'the clamp bites immediately');
+  assert.deepEqual(ramp[1], [0x8C, 0x8F, 5]);
+  // $6F + $20 = $8F is the last value the clamp and the sum agree on.
+  assert.deepEqual(ramp.find((s) => s[0] === 0x6E), [0x6E, 0x8E, 5]);
+  assert.deepEqual(ramp[ramp.length - 1], [0x32, 0x52, 5], 'the hold: 32 lines');
+  for (const [wy, end] of ramp) {
+    assert.equal(end, Math.min(wy + 0x20, 0x8F), `band at rWY $${wy.toString(16)}`);
+  }
+});
+
+test('sub_00_0A7F writes its palettes on frames 2, 10, 18 and 26', () => {
+  // MEASURED on level 4: rOBP0 leaves $E4 at f374, f382 and f390 out of a fade
+  // that starts at f365 -- B & 7 == 0 for B = $20, $18, $10, $08 of a $21-frame
+  // loop. C = 2 touches only the OBJ palettes ($0A97 jumps past rBGP); C = 1
+  // only rBGP ($0AB6 jumps past the rest).
+  const state = withTileCache(bare({ level: 4, bossId: 1 }));
+  const e = effects(state);
+  const bgp0 = state.video.bgp;
+  const r = { 2: 0x0A, 5: 0, 6: 0, 7: 0, 8: 0, 0x0E: 2, 0x10: 0x1E };
+  e.countdown = 0;
+  const objSteps = [], bgSteps = [];
+  let prevObj = null, prevBg = null;
+  for (let n = 1; n <= 500; n++) {
+    if (!updateVictoryHold(state)) {
+      if (bossCountdownTick(state, r) === 'victory') victoryStep(state);
+    }
+    const o = [state.video.obp0, state.video.obp1];
+    if (prevObj && (o[0] !== prevObj[0] || o[1] !== prevObj[1])) objSteps.push([n, ...o]);
+    prevObj = o;
+    if (prevBg !== null && state.video.bgp !== prevBg) bgSteps.push([n, state.video.bgp]);
+    prevBg = state.video.bgp;
+    if (state.flow.levelCleared === 1) break;
+  }
+  // The fade-in stage starts at frame 25 (phase 3's first frame), so its
+  // writing frames are 25 + 1, + 9, + 17, + 25 -- and the first of them writes
+  // index 0, which the ROM's own table makes equal to the gameplay palette.
+  assert.deepEqual(objSteps, [[26, 0x11, 0x21], [34, 0x12, 0x22],
+                              [42, 0x13, 0x23], [50, 0x14, 0x24]]);
+  assert.equal(e.fade, 4, '$C70E ends at 4, as MEASURED');
+  // C = 2 never touched rBGP; the fade-OUT at $35E3 (C = 1) is the only one
+  // that does, and it is 33 frames before the clear.
+  // The clear lands on frame 379, so the fade-out runs 346-378 and its first
+  // write is its own frame 2.
+  assert.equal(bgSteps[0][0], 379 - 33 + 1);
+  assert.deepEqual(bgSteps.map((s) => s[1]), [0x11, 0x12, 0x13, 0x14]);
+  assert.notEqual(bgp0, 0x11, 'the stand-in table is not the default palette');
+});
+
+test('applyStageClearVram writes $8800-$8ADF and the five window rows', () => {
+  // The oracle path. Nothing else in the 8 KB may move: MEASURED, the
+  // cartridge changes 802 bytes between loc_00_34D0 and loc_00_35D8 and every
+  // one of them is inside these two spans.
+  const state = bare();
+  const vram = applyStageClearVram(new Uint8Array(0x2000), state.tables);
+  for (let i = 0; i < 23 * 0x20; i++) {
+    assert.equal(vram[0x0800 + i], i & 0xFF, `tile byte ${i}`);
+  }
+  assert.equal(vram[0x07FF], 0, 'nothing below $8800');
+  assert.equal(vram[0x0AE0], 0, 'nothing above $8ADF');
+  for (const [row, want] of [[0, 0xA1], [1, 0xA2], [2, 0xA3], [3, 0xA4], [4, 0xA5]]) {
+    for (let c = 0; c < 0x14; c++) assert.equal(vram[0x1C00 + row * 32 + c], want);
+    assert.equal(vram[0x1C00 + row * 32 + 0x14], 0, 'only $14 cells per row');
+  }
+  assert.equal(vram[0x1CA0], 0, 'nothing past the fifth row');
+});
+
+test('the fanfare refuses to draw without its manifest tables', () => {
+  // "Prefer a loud failure to a plausible-looking one" -- a missing blob would
+  // otherwise be an empty banner nobody notices until it ships.
+  const state = withTileCache(makeState(grid(16),
+    { level: 4, bossId: 1, tables: { ...BURST_TABLES, ...BOSS_TABLES } }));
+  assert.throws(() => runFanfare(state), /stageClearTiles missing/);
+  assert.throws(() => applyStageClearVram(new Uint8Array(0x2000), {}),
+                /stageClearTiles missing/);
+  assert.throws(
+    () => applyStageClearVram(new Uint8Array(0x2000),
+                              { ...STAGE_TABLES, stageClearScriptB: [0, 0] }),
+    /stageClearScriptB missing/);
 });
 
 // ---------------------------------------------------------------------------

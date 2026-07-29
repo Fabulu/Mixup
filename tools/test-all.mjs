@@ -87,6 +87,22 @@ const STAGES = [
     skip: hasAssets ? null : 'assets/manifest.json missing',
   },
   {
+    name: 'level-art',
+    what: 'the window map + animated tiles BUILT from ROM data, 11 levels',
+    cmd: process.execPath,
+    args: ['tools/oracle/waterdiff.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
+    name: 'title-state',
+    what: "the title's 8 LCD registers and state 4's press-start flash",
+    cmd: process.execPath,
+    args: ['tools/oracle/titlestatediff.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
     name: 'round-select',
     what: 'route/mode cursor logic vs the ROM, three $C753/$FFB5 states',
     cmd: process.execPath,

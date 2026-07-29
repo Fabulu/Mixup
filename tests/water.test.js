@@ -11,8 +11,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { grid, makeState, placePlayer } from './helpers.js';
-import { updateWater, updateSplashes, applyWaterArt, tickWaterArt,
-         armEnemyRespawn } from '../src/water.js';
+import { updateWater, updateSplashes, armEnemyRespawn,
+         buildWindowMap, createTileAnim, tileAnimSpec, tickTileAnim,
+         replayTileAnim } from '../src/water.js';
 import { mapCollision, mapTile } from '../src/state.js';
 
 /** A wide-enough level-1 state (the waterfall stamps columns $37/$38). */
@@ -480,68 +481,173 @@ test('the ticker only runs on levels 1 and 2', () => {
 });
 
 // ---------------------------------------------------------------------------
-// the tile flip-book (loc_00_3127's effect)
+// the WINDOW tilemap, and the animated-tile streamer (loc_00_3127)
+//
+// Both used to be assets/water.json, a capture. tools/oracle/waterdiff.mjs is
+// what retired it: the built window map and the streamer's own destinations
+// are byte-exact against the cartridge's live VRAM on eleven levels, 13376
+// bytes. These are the unit-level counterparts -- the branches the corpus
+// happens not to walk.
 // ---------------------------------------------------------------------------
 
-/** Stand-in for a captured level: two animated ids, three variants. */
-function fakeArt() {
-  const t = (v) => new Uint8Array(64).fill(v);
+const b64enc = (bytes) => Buffer.from(Uint8Array.from(bytes)).toString('base64');
+
+/**
+ * A stand-in for manifest.window. The shape is the cartridge's:
+ * boot value $2F, a fill of $01 from $9C40 for $3C0 cells, and a script that
+ * paints the two rows the fill does not reach.
+ */
+function windowSpec() {
   return {
-    map: new Uint8Array(1024),
-    ids: [0x74, 0xE0],
-    hold: 8,
-    frames: [
-      { 0x74: t(1), 0xE0: t(1) },
-      { 0x74: t(2), 0xE0: t(2) },
-      { 0x74: t(3), 0xE0: t(3) },
-    ],
+    boot: 0x2F,
+    fill: 0x01,
+    fillDest: 0x9C40,
+    fillLen: 0x03C0,
+    // Two copy-horizontal records of 4 cells each, then the terminator.
+    script: b64enc([0x9C, 0x00, 0x04, 0xE0, 0xE2, 0xE0, 0xE2,
+                    0x9C, 0x20, 0x04, 0xE1, 0xE3, 0xE1, 0xE3, 0x00]),
+    level14: {
+      fill: 0x01, fillDest: 0x9C00, fillLen: 0x40,
+      script: b64enc([0x9C, 0x00, 0x42, 0x55, 0x00]),   // RLE $55 x 2
+    },
   };
 }
 
-test('the flip-book patches the tile cache, so BG and window both follow', () => {
-  // The falling water is BACKGROUND -- its metatiles point at $74-$7B. Patching
-  // level.tiles.bg is what the hardware streamer does to VRAM, and it is why
-  // the renderer needs no special case for either layer.
-  const s = waterState();
-  s.level.tiles = { bg: new Array(256).fill(null), obj: [] };
-  applyWaterArt(s, fakeArt());
-
-  s.frame = 0;
-  tickWaterArt(s);
-  assert.equal(s.level.tiles.bg[0x74][0], 1);
-  assert.equal(s.level.tiles.bg[0xE0][0], 1);
-
-  s.frame = 8;
-  tickWaterArt(s);
-  assert.equal(s.level.tiles.bg[0x74][0], 2, 'advanced with the frame counter');
-
-  s.frame = 24;
-  tickWaterArt(s);
-  assert.equal(s.level.tiles.bg[0x74][0], 1, 'and wraps');
+test('the window map is the $04C9 fill plus the 0:$32A3 script', () => {
+  const map = buildWindowMap(windowSpec(), 1);
+  // Row 0 and row 1 are the script's; everything from $9C40 down is the fill.
+  assert.deepEqual([...map.slice(0, 4)], [0xE0, 0xE2, 0xE0, 0xE2]);
+  assert.deepEqual([...map.slice(0x20, 0x24)], [0xE1, 0xE3, 0xE1, 0xE3]);
+  assert.equal(map[0x40], 0x01);
+  assert.equal(map[0x3FF], 0x01);
 });
 
-test('the flip-book holds each variant for its measured frame count', () => {
-  const s = waterState();
-  s.level.tiles = { bg: new Array(256).fill(null), obj: [] };
-  applyWaterArt(s, fakeArt());
-  const seen = [];
-  for (let f = 0; f < 24; f++) {
-    s.frame = f;
-    tickWaterArt(s);
-    seen.push(s.level.tiles.bg[0x74][0]);
+test('the cells neither the fill nor the script writes keep the boot $2F', () => {
+  // $04C9 starts at $9C40 and the script only covers 20 cells of each of the
+  // two rows above it, so $9C14-$9C1F and $9C34-$9C3F are written by NEITHER.
+  // They are off the right edge of a 20-tile window and never drawn -- but
+  // they are part of the byte-exact image, and $0223's boot clear is what put
+  // the $2F there.
+  const map = buildWindowMap(windowSpec(), 1);
+  assert.equal(map[0x04], 0x2F, 'past the stand-in script, row 0');
+  assert.equal(map[0x24], 0x2F, 'past the stand-in script, row 1');
+});
+
+test('level 14 refills and repaints the top rows, and no other level does', () => {
+  // $0DD9: CP $0E / JP NZ, loc_00_0E74. The $0E24 script the project notes
+  // used to name as "the water surface" is level 14's alone -- measured, and
+  // tools/oracle/waterbuild.py aborts if it fires anywhere else.
+  const spec = windowSpec();
+  assert.equal(buildWindowMap(spec, 14)[0], 0x55);
+  assert.equal(buildWindowMap(spec, 14)[2], 0x01, 'the $0E0C refill shows '
+    + 'through where the level-14 script does not reach');
+  for (const lvl of [1, 2, 6, 13]) {
+    assert.equal(buildWindowMap(spec, lvl)[0], 0xE0, `level ${lvl}`);
   }
-  assert.deepEqual(seen, [1, 1, 1, 1, 1, 1, 1, 1,
-                          2, 2, 2, 2, 2, 2, 2, 2,
-                          3, 3, 3, 3, 3, 3, 3, 3]);
 });
 
-test('a level with no captured art is left alone', () => {
-  // Most levels have no animated tiles at all; they must not be touched.
-  const s = waterState();
+/**
+ * A stand-in for manifest.tileAnim: two destination groups, three steps.
+ * Every block is filled with a distinguishable byte so the diff is readable.
+ */
+function animTable() {
+  const blk = (v) => b64enc(new Array(32).fill(v));
+  const spec = {
+    dests: [0x9740, 0x9760, 0x8E00, 0x8E20],   // group 0 -> $74/$76, 1 -> $E0/$E2
+    steps: [0, 1, 0],
+    blocks: [blk(1), blk(2), blk(3), blk(4), blk(5), blk(6)],
+  };
+  return { 1: spec, 6: spec, '6alt': { ...spec, blocks: [blk(9), blk(9),
+    blk(9), blk(9), blk(9), blk(9)] } };
+}
+
+function animState(level = 1) {
+  const s = waterState({ level });
   s.level.tiles = { bg: new Array(256).fill(null), obj: [] };
-  applyWaterArt(s, null);
-  s.frame = 40;
-  assert.doesNotThrow(() => tickWaterArt(s));
+  s.tileAnim = createTileAnim(animTable(), level);
+  return s;
+}
+
+test('one 32-byte block per frame, two tiles at a time', () => {
+  // $3186-$318A stages 32 bytes; $074E writes them as two consecutive tiles.
+  const s = animState();
+  tickTileAnim(s);
+  assert.equal(s.level.tiles.bg[0x74][0], 0, 'block byte 1 -> tile $74');
+  assert.ok(s.level.tiles.bg[0x75], 'and its neighbour $75');
+  assert.equal(s.level.tiles.bg[0x76], null, 'but not the next destination');
+});
+
+test('the source strides by STEP and the destination by GROUP', () => {
+  // $3174 adds $C70F*4 + $C710*2 to the source table; $31A5 adds
+  // $C710*2 + $C711*4 to the destination table. Reading either index off the
+  // other animates the wrong tiles at the right rate, which looks fine.
+  const s = animState();
+  const seen = [];
+  for (let i = 0; i < 6; i++) {
+    const a = s.tileAnim;
+    seen.push([a.step, a.half, a.group]);
+    tickTileAnim(s);
+  }
+  assert.deepEqual(seen, [[0, 0, 0], [0, 1, 0],
+                          [1, 0, 1], [1, 1, 1],
+                          [2, 0, 0], [2, 1, 0]]);
+});
+
+test('$C70F wraps at the 0:$3295 count and reloads $C711 from the NEW step', () => {
+  const s = animState();
+  for (let i = 0; i < 6; i++) tickTileAnim(s);      // three steps = one cycle
+  assert.deepEqual([s.tileAnim.step, s.tileAnim.half, s.tileAnim.group],
+                   [0, 0, 0]);
+});
+
+test('a level with no entry animates nothing', () => {
+  const s = waterState({ level: 9 });
+  s.level.tiles = { bg: new Array(256).fill(null), obj: [] };
+  s.tileAnim = createTileAnim(animTable(), 9);
+  assert.equal(s.tileAnim, null);
+  assert.doesNotThrow(() => tickTileAnim(s));
   assert.equal(s.level.tiles.bg[0x74], null);
-  assert.equal(s.video.windowMap, null);
+});
+
+test('level 6 reads $FFC9 every frame, not at level init', () => {
+  // $0F0F zeroes $FFC9 during the level-6 load and loc_00_2F00 rewrites it at
+  // $05C6, one call before the streamer at $05C9. Caching the choice at init
+  // picks up the zero and animates nothing -- measured, $FFC9 is 2 on every
+  // one of level 6's first 121 gameplay frames.
+  const s = animState(6);
+  s.flow.conveyorDir = 0;                          // $314B
+  tickTileAnim(s);
+  assert.equal(s.level.tiles.bg[0x74], null, 'no write');
+  assert.deepEqual([s.tileAnim.step, s.tileAnim.half], [0, 0],
+                   '$3169 returns before the cursors advance');
+
+  s.flow.conveyorDir = 2;                          // the ordinary table
+  tickTileAnim(s);
+  assert.equal(s.level.tiles.bg[0x74][0], 0);
+  assert.deepEqual([s.tileAnim.step, s.tileAnim.half], [0, 1]);
+});
+
+test('$FFC9 == 1 swaps the source table for 2:$625E', () => {
+  const s = animState(6);
+  s.flow.conveyorDir = 1;                          // $3151
+  const spec = tileAnimSpec(s.tileAnim, 1);
+  assert.equal(spec, s.tileAnim.table['6alt']);
+});
+
+test('a paused game freezes the streamer', () => {
+  const s = animState();
+  s.flow.paused = 1;                               // $3127: $C716
+  tickTileAnim(s);
+  assert.equal(s.level.tiles.bg[0x74], null);
+});
+
+test('replayTileAnim and the shipped tick share one cursor', () => {
+  // The oracle's replay must not be a second implementation -- if it were, a
+  // cadence bug could pass the diff and still ship.
+  const table = animTable();
+  const vram = new Uint8Array(0x2000);
+  replayTileAnim(vram, table[1], 3);
+  assert.equal(vram[0x9740 - 0x8000], 1);
+  assert.equal(vram[0x9760 - 0x8000], 2);
+  assert.equal(vram[0x8E00 - 0x8000], 3);
 });

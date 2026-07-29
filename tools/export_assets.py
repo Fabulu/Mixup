@@ -123,6 +123,13 @@ T_FADE_OBP1 = (0, 0x0B11)
 # rSCY is $021D's XOR A -> $FFAA; rSCX is never written at all on this path and
 # keeps the 0 that $0160's HRAM clear left.  BGP/OBP0/OBP1 come out of the fade
 # tables above at step 0, which is where $02C1's C = $80 fade ends.
+# State 4, loc_00_031B: the press-start flash.  $0333 assembles a VRAM script
+# in WRAM at $C61B and lets the VBlank ISR at $0714 run it -- 19 bytes from
+# 1:$7C44 when `B & $08` is set, 5 from 1:$7C57 when it is clear.  The first is
+# byte-for-byte T_TITLE_SCRIPTS' third entry (the whole title-text script,
+# START and OPTIONS both, terminator included); only the eraser is new.  It is
+# a single RLE record: $2F over the five cells at $9967, i.e. START alone.
+T_TITLE_FLASH_OFF = (1, 0x7C57)
 T_TITLE_WX   = (0, 0x0216)
 T_TITLE_WY   = (0, 0x02A8)
 T_TITLE_LCDC = (0, 0x02BC)
@@ -639,6 +646,9 @@ def main():
         # The whole ramp, so the fade can be played rather than jumped.
         'fadeBgp': read_table(rom, T_FADE_BGP, 8),
         'fadeObp1': read_table(rom, T_FADE_OBP1, 4),
+        # loc_00_031B's eraser. Its counterpart is scripts[2], unchanged.
+        'flashOff': base64.b64encode(
+            bytes(vram_script(rom, T_TITLE_FLASH_OFF))).decode('ascii'),
     }
 
     with open(os.path.join(OUT, 'manifest.json'), 'w', encoding='utf-8') as f:

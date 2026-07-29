@@ -4,14 +4,11 @@
 import { loadLevel, loadManifest, buildTileCache } from './assets.js';
 import { loadActors } from './actors.js';
 import { loadEnemies } from './enemies.js';
-import { loadWaterArt, applyWaterArt, armEnemyRespawn } from './water.js';
+import { applyLevelArt, armEnemyRespawn } from './water.js';
 import { clearDrops } from './drops.js';
 import { clearEffects } from './doors.js';
 import { createSubsys } from './conveyor.js';
 
-// The window art is the same for both water levels, so load it once.
-let waterArt;
-let waterArtTried = false;
 import { createWater } from './water.js';
 
 /** Decode a base64 record blob from the manifest into bytes. */
@@ -136,13 +133,15 @@ export async function initLevel(state, n) {
   state.frame = [2, 3, 6, 7, 10, 13].includes(n) ? 0x53 : 0x6D;
   state.parity = 1;
 
-  // Captured window tilemap + tile animation, per level. Best-effort: a
-  // missing capture must not stop the level loading.
-  if (!waterArtTried) {
-    waterArtTried = true;
-    try { waterArt = await loadWaterArt(); } catch { waterArt = null; }
-  }
-  applyWaterArt(state, waterArt && waterArt[String(n)]);
+  // $04C9 + $04D7: the window map, BUILT from ROM data rather than captured.
+  //
+  // Worth recording why this took so long to land. The task was filed against
+  // "$0E24, the window surface" -- but $0E24 sits behind `$0DD9: CP $0E /
+  // JP NZ`, so it runs on LEVEL 14 and nowhere else. What paints the window on
+  // every other level is a pair of instructions three apart inside level init
+  // itself: a 960-cell fill of tile $01 at $9C40, then a 47-byte script at
+  // 0:$32A3. Chasing the filed address would never have found it.
+  applyLevelArt(state, manifest, n);
 
   // ROM: sub_00_0F39 picks the level's theme and requests it with mask $03
   // (play + stop-all), so the new song replaces whatever was running. $FF is

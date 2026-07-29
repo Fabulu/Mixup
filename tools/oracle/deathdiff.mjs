@@ -26,6 +26,20 @@
 // Both counts are printed either way, so a run that starts lagging is visible
 // rather than silent.
 //
+// THE PICTURE, for the boss scenarios. Timing alone would let a STAGE CLEAR
+// screen that is 632 frames of nothing pass, so tools/oracle/stageclear.py
+// records the cartridge's whole $8000-$9FFF either side of the fanfare and this
+// rebuilds the difference from assets/manifest.json -- the same "find the
+// ingredients, replay them, diff" shape titlediff.mjs uses. Three checks, and
+// they fail independently on purpose:
+//   vram.replay   the cartridge's PRE-fanfare image + the ported mechanisms
+//                 must equal its POST-fanfare image, all 8192 bytes
+//   vram.spans    the manifest alone, on a blank image, over the 836 bytes the
+//                 fanfare writes -- so a wrong table cannot hide under a seed
+//   picture.*     the RUNTIME path: the decoded tile cache and the $9C00 map
+//                 the renderer is actually handed, plus the $35B2 registers and
+//                 the whole phase-3 register stream, transition by transition
+//
 // Usage: node tools/oracle/deathdiff.mjs [--only <name>] [--record]
 
 import fs from 'node:fs';
@@ -60,7 +74,8 @@ const { makeTunables } = await imp('src/tunables.js');
 const { initLevel, clearLevel } = await imp('src/level.js');
 const { loadManifest, loadPlayerTiles } = await imp('src/assets.js');
 const { tick } = await imp('src/main.js');
-const { effects, updateVictoryHold } = await imp('src/effects.js');
+const { effects, updateVictoryHold, applyStageClearVram } = await imp('src/effects.js');
+const { decodeTile } = await imp('src/assets.js');
 const { ensureDoorState } = await imp('src/doors.js');
 const { resolveLoadout } = await imp('src/mods.js');
 
@@ -81,9 +96,9 @@ const { resolveLoadout } = await imp('src/mods.js');
 // not be reading.
 // ---------------------------------------------------------------------------
 const SCENARIOS = [
-  { name: 'l4-boss1-death-to-route-bit-0', event: 'boss', level: 4, mask: '00' },
-  { name: 'l8-boss2-death-to-route-bit-1', event: 'boss', level: 8, mask: '00' },
-  { name: 'l11-boss3-death-completes-mask', event: 'boss', level: 11, mask: '03' },
+  { name: 'l4-boss1-death-to-route-bit-0', event: 'boss', level: 4, mask: '00', vram: true },
+  { name: 'l8-boss2-death-to-route-bit-1', event: 'boss', level: 8, mask: '00', vram: true },
+  { name: 'l11-boss3-death-completes-mask', event: 'boss', level: 11, mask: '03', vram: true },
 
   { name: 'l3-player-death-452-frames', event: 'player', level: 3, mask: '00' },
   { name: 'l1-player-death-452-frames', event: 'player', level: 1, mask: '00' },
@@ -99,6 +114,26 @@ const loadout = resolveLoadout([]);
 
 const arrEq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const live = (pool) => pool.filter((r) => r[0] !== 0).map((r) => Array.from(r));
+
+/**
+ * The RUNTIME picture, as the renderer would read it: the 46 decoded BG tiles
+ * loc_00_350F streamed and the $9C00 window map loc_00_3566's scripts painted,
+ * plus the window registers the $35B2 program set. Deliberately not a replay of
+ * the manifest -- that is what applyStageClearVram is checked for separately.
+ */
+function snapPicture(state, e) {
+  const bg = state.level.tiles && state.level.tiles.bg;
+  return {
+    map: e.art ? Array.from(e.art.map) : null,
+    scripted: e.art ? e.art.scripted : 0,
+    bg: bg ? Array.from({ length: 46 },
+                        (_, k) => Array.from(bg[0x80 + k])) : null,
+    mapIsLive: !!(e.art && state.video.windowMap === e.art.map),
+    windowEndY: state.video.windowEndY,
+    windowY: state.video.windowY,
+    windowX: state.video.windowX,
+  };
+}
 
 /**
  * One port frame, in the main loop's own order. The only thing here that is
@@ -118,7 +153,7 @@ async function runBoss(s) {
 
   const e = effects(state);
   const pool = ensureDoorState(state).effects;
-  const out = { timeline: {}, explosions: [], end: {} };
+  const out = { timeline: {}, explosions: [], end: {}, samples: [] };
   const mark = (k, n) => { if (!(k in out.timeline)) out.timeline[k] = n; };
 
   let seenC740 = 0xFF, seenC713 = 0, seenPhase = 0, poked = false;
@@ -148,11 +183,27 @@ async function runBoss(s) {
       seenPhase = e.phase;
     }
     if (e.windowRamp !== 0x90) mark('windowRampStart', n);
-    if (e.windowRamp === 0x32) mark('windowRampEnd', n);
+    if (e.windowRamp === 0x32 && !('windowRampEnd' in out.timeline)) {
+      mark('windowRampEnd', n);
+      // The cartridge's own snapshot point: loc_00_35D8, the frame the ramp
+      // finishes on. Everything the fanfare draws is on screen and nothing
+      // moves again until $35E8 (MEASURED: 8192/8192 identical between them).
+      out.picture = snapPicture(state, e);
+    }
+
+    // The picture's register stream, from loc_00_34D0's first frame on. Same
+    // fields tools/oracle/stageclear.py samples at $0A4F, same order.
+    if (e.phase !== 0 || e.stage >= 0) {
+      out.samples.push({ frame: n, FFAC: e.windowRamp, rLYC: e.windowLyc,
+                         FFC7: state.raster.mode, C712: e.phase,
+                         FFAD: state.video.bgp, FFAE: state.video.obp0,
+                         FFAF: state.video.obp1 });
+    }
 
     if (state.flow.levelCleared === 1) { mark('routeWrite', n); break; }
   }
   if (!('routeWrite' in out.timeline)) throw new Error('port never cleared the level');
+
 
   // main.js's step() consumes the latch and lets level.js route it -- the same
   // two lines flowdiff.mjs runs, and the ROM's own loc_00_35E8.
@@ -226,6 +277,129 @@ function bossSpans(tl, stalls) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// The PICTURE. tools/oracle/stageclear.py records the cartridge's whole VRAM
+// either side of the fanfare; this rebuilds the fanfare's contribution from
+// assets/manifest.json and diffs it, the same shape titlediff.mjs uses.
+//
+// MEASURED (level 4): between loc_00_34D0's first frame and loc_00_35D8 the
+// cartridge changes 802 bytes, every one inside $8800-$8ADF or $9C00-$9C93,
+// and nothing at all changes between $35D8 and $35E8. So the fanfare's own
+// footprint is exactly the spans below, and seeding a replay with the BEFORE
+// image has to reproduce the AFTER image in all 8192 bytes.
+const TILE_SPAN = [0x0800, 0x0ADF];          // $8800-$8ADF, the 23 blocks
+const MAP_ROWS = [0, 1, 2, 3, 4];            // $9C00/$20/$40/$60/$80
+const MAP_COLS = 20;                         // each script record is $14 long
+const MAP_BASE = 0x1C00;
+
+function stageClearRef(level) {
+  const out = path.join('rip/oracle', `stageclear-l${level}.json`);
+  const abs = path.join(ROOT, out);
+  if (record || !fs.existsSync(abs)) {
+    process.stderr.write(`recording stage-clear VRAM, level ${level} ... `);
+    execFileSync('python', ['tools/oracle/stageclear.py', '--level', String(level),
+                            '--poke-at', String(POKE_AT), '--out', out],
+                 { cwd: ROOT, encoding: 'utf8' });
+    process.stderr.write('done\n');
+  }
+  return JSON.parse(fs.readFileSync(abs, 'utf8'));
+}
+
+/** Only the bytes the fanfare itself writes, as flat indices into $8000. */
+function footprint() {
+  const idx = [];
+  for (let i = TILE_SPAN[0]; i <= TILE_SPAN[1]; i++) idx.push(i);
+  for (const r of MAP_ROWS) for (let c = 0; c < MAP_COLS; c++) idx.push(MAP_BASE + r * 32 + c);
+  return idx;
+}
+
+function vramCheck(s, port, cmp, bytes) {
+  const ref = stageClearRef(s.level);
+  const want = Uint8Array.from(ref.snaps.hold.vram);
+  const before = Uint8Array.from(ref.snaps.before.vram);
+
+  // 1. REPLAY. Seed with the cartridge's own pre-fanfare VRAM (the level's
+  //    streamed tilemap is not modelled by the port at all) and let the ported
+  //    mechanisms write over it. Every one of the 8192 bytes must agree.
+  const replay = applyStageClearVram(before.slice(), manifest.tables);
+  let bad = 0, first = -1;
+  for (let i = 0; i < 0x2000; i++) {
+    if (replay[i] !== want[i]) { bad++; if (first < 0) first = i; }
+  }
+  bytes.replay = [0x2000 - bad, 0x2000];
+  if (bad) {
+    cmp('vram.replay', `8192/8192`, `${0x2000 - bad}/8192, first at `
+        + `$${(0x8000 + first).toString(16)}`);
+  }
+
+  // 2. The manifest ALONE, with no capture underneath it: build onto a blank
+  //    image and check the spans the fanfare writes. This is the part that
+  //    would still fail if the exported tables were wrong but the seed hid it.
+  const blank = applyStageClearVram(new Uint8Array(0x2000), manifest.tables);
+  const idx = footprint();
+  let sbad = 0, sfirst = -1;
+  for (const i of idx) {
+    if (blank[i] !== want[i]) { sbad++; if (sfirst < 0) sfirst = i; }
+  }
+  bytes.spans = [idx.length - sbad, idx.length];
+  if (sbad) {
+    cmp('vram.spans', `${idx.length}/${idx.length}`,
+        `${idx.length - sbad}/${idx.length}, first at $${(0x8000 + sfirst).toString(16)}`);
+  }
+
+  // 3. The RUNTIME path -- what the renderer is actually handed. The tile cache
+  //    is decoded, so it is compared against the cartridge's VRAM decoded the
+  //    same way; the window map is compared raw.
+  const pic = port.picture;
+  if (!pic) { cmp('picture', 'present', 'the port never reached the hold'); return; }
+  cmp('picture.scriptsRun', 2, pic.scripted);
+  cmp('picture.mapIsLive', true, pic.mapIsLive);
+  let tbad = 0;
+  for (let k = 0; k < 46; k++) {
+    const romTile = Array.from(decodeTile(want, 0x8800 + k * 16));
+    if (!arrEq(romTile, pic.bg[k])) { tbad++; if (tbad === 1) cmp(`picture.tile[$${(0x80 + k).toString(16)}]`, romTile, pic.bg[k]); }
+  }
+  if (tbad > 1) cmp('picture.tilesWrong', 0, tbad);
+  let mbad = 0;
+  for (const r of MAP_ROWS) {
+    for (let c = 0; c < MAP_COLS; c++) {
+      const a = want[MAP_BASE + r * 32 + c], b = pic.map[r * 32 + c];
+      if (a !== b) { mbad++; if (mbad === 1) cmp(`picture.map[${r}][${c}]`, a, b); }
+    }
+  }
+  if (mbad > 1) cmp('picture.mapCellsWrong', 0, mbad);
+
+  // 4. The $35B2 program's registers, at the cartridge's own $35D8 snapshot.
+  const hr = ref.snaps.hold.regs;
+  cmp('picture.rWY', hr.FFAC, pic.windowY);
+  cmp('picture.rWX', hr.FFAB, pic.windowX);
+  cmp('picture.windowEndY', hr.rLYC, pic.windowEndY);
+
+  // 5. The whole register stream of phase 3, transition by transition, aligned
+  //    on the frame $C712 becomes 3 so neither side has to know the other's
+  //    absolute frame numbering. loc_00_3566 and loc_00_35D0 never return to
+  //    the main loop, so no driver stall can grow inside this window -- the
+  //    recording's own `stalls` column is asserted flat below.
+  const romPhase3 = ref.samples.filter((x) => x.C712 === 3);
+  const portPhase3 = port.samples.filter((x) => x.C712 === 3);
+  if (!romPhase3.length || !portPhase3.length) {
+    cmp('picture.phase3Samples', romPhase3.length, portPhase3.length);
+    return;
+  }
+  cmp('picture.stallsFlat', true,
+      romPhase3[0].stalls === romPhase3[romPhase3.length - 1].stalls);
+  const trans = (list, keys) => {
+    const o = []; let prev = null;
+    for (const x of list) {
+      const k = keys.map((f) => x[f]);
+      if (!prev || !arrEq(prev, k)) { o.push([x.frame - list[0].frame, ...k]); prev = k; }
+    }
+    return o;
+  };
+  const KEYS = ['FFAC', 'rLYC', 'FFC7', 'FFAD', 'FFAE', 'FFAF'];
+  cmp('picture.registerStream', trans(romPhase3, KEYS), trans(portPhase3, KEYS));
+}
+
 const rows = [];
 for (const s of SCENARIOS) {
   if (only && s.name !== only) continue;
@@ -243,6 +417,7 @@ for (const s of SCENARIOS) {
   const rom = JSON.parse(fs.readFileSync(abs, 'utf8'));
   const port = s.event === 'boss' ? await runBoss(s) : await runPlayer(s);
   const bad = [];
+  const bytes = {};
   const cmp = (label, a, b) => { if (!arrEq(a, b)) bad.push(
     `${label}: rom ${JSON.stringify(a)}, port ${JSON.stringify(b)}`); };
 
@@ -274,6 +449,7 @@ for (const s of SCENARIOS) {
       cmp('end.' + k, rom.end[k], port.end[k]);
     }
     cmp('end.pool', rom.end.pool, port.end.pool);
+    if (s.vram) vramCheck(s, port, cmp, bytes);
   } else {
     cmp('span.seedToHandoff', rom.spans.seedToHandoff,
         port.timeline.handoff - port.timeline.burstSeeded);
@@ -294,7 +470,7 @@ for (const s of SCENARIOS) {
     cmp('end.burst', rom.end.burst, port.end.burst);
     cmp('end.lives', rom.end.lives, port.end.lives);
   }
-  rows.push({ name: s.name, bad, lag: rom.lagFrames, stalls: rom.driverStalls });
+  rows.push({ name: s.name, bad, bytes, lag: rom.lagFrames, stalls: rom.driverStalls });
   if (verbose) {
     console.log(s.name, JSON.stringify(s.event === 'boss'
       ? { rom: bossSpans(rom.timeline, rom.stalls), port: bossSpans(port.timeline, null) }
@@ -303,10 +479,12 @@ for (const s of SCENARIOS) {
 }
 
 const NAMEW = Math.max(24, ...rows.map((r) => r.name.length + 1));
-console.log('\n' + 'scenario'.padEnd(NAMEW) + 'lag stall  verdict');
+console.log('\n' + 'scenario'.padEnd(NAMEW) + 'lag stall  VRAM replay      spans  verdict');
 for (const r of rows) {
+  const f = (p) => (p ? `${p[0]}/${p[1]}`.padStart(11) : ''.padStart(11));
   console.log(r.name.padEnd(NAMEW) + String(r.lag).padStart(3)
-              + String(r.stalls).padStart(6) + '  ' + (r.bad.length ? 'FAIL' : 'ok'));
+              + String(r.stalls).padStart(6) + f(r.bytes.replay) + f(r.bytes.spans)
+              + '  ' + (r.bad.length ? 'FAIL' : 'ok'));
 }
 const failed = rows.filter((r) => r.bad.length);
 for (const r of failed) {

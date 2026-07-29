@@ -21,7 +21,7 @@
 // $2E8D -- no enemy involved.
 //
 // The window layer IS the water, and renderer.js draws it. What it draws comes
-// from loadWaterArt() below.
+// from buildWindowMap() below -- built from ROM data, not captured.
 //
 // Not modelled here, deliberately:
 //  - the burst effect at the waterfall trigger ($2D82-$2D98, $C744 pool) --
@@ -29,90 +29,240 @@
 
 import { u8, u16, setMapCell } from './state.js';
 import { decodeTileBuf } from './assets.js';
+import { runVramScript } from './vramscript.js';
 import { updateSubsystem } from './conveyor.js';
 
-const BASE = new URL('../assets/', import.meta.url).href;
-
-/**
- * A level's animated tiles, and the window tilemap where there is one.
- *
- * PARTIAL, and worth being straight about: assets/water.json is a CAPTURE
- * taken by tools/rip_water.py, not the output of running the game's code.
- *
- * Two things are captured, and neither is in the exported level VRAM. The
- * window tilemap, because the VRAM script at $0E24 that paints its textured
- * surface runs AFTER the export snapshot is taken. And the tile animation,
- * which comes from a generic animated-tile streamer (loc_00_3127, driven by
- * $C70F/$C710 against per-level tables at 2:$61A4, 0:$31EE, 0:$3246 and
- * 0:$3295) feeding a VRAM write queue the VBlank ISR drains. In level 1 that
- * is fourteen tiles: the falling water ($74-$7B), the surface ($E0-$E3) and
- * $F1/$F3. The tilemaps never change; only the bitmaps do.
- *
- * Porting the streamer means porting the write queue too. Same trade as the
- * title screen, same escape route. What IS ported is the cadence, measured off
- * the cartridge rather than assumed.
- */
-export async function loadWaterArt() {
-  const json = await fetch(BASE + 'water.json').then((r) => r.json());
-  if (!json.levels) {
-    // A pre-per-level capture. Returning nothing quietly is what made the
-    // water render as black squares for anyone holding a stale cached copy,
-    // so this is loud instead.
-    throw new Error('assets/water.json is an old single-level capture -- '
-                    + 're-run tools/rip_water.py');
-  }
-  const out = {};
-  for (const [lvl, d] of Object.entries(json.levels)) {
-    out[lvl] = {
-      map: Uint8Array.from(d.map),
-      ids: d.animIds,
-      hold: d.holdFrames || 8,
-      // frames[v] = { tileId: decoded 8x8 }
-      frames: (d.frames || []).map((variant) => {
-        const byId = {};
-        variant.forEach((bytes, i) => {
-          byId[d.animIds[i]] = decodeTileBuf(Uint8Array.from(bytes), 0);
-        });
-        return byId;
-      }),
-    };
-  }
+/** Decode one base64 blob from the manifest. */
+function b64(s) {
+  const bin = typeof atob === 'function'
+    ? atob(s) : Buffer.from(s, 'base64').toString('binary');
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
 
-/** Point this level at its captured art, or clear it. */
-export function applyWaterArt(state, art) {
-  state.waterArt = art || null;
-  state.video.windowMap = art ? art.map : null;
-  // The window's transparency dither belongs to the WATER, not to the window.
-  // Other window users (the options panel) need it opaque.
-  state.video.windowDither = !!art;
-  state.waterArtPhase = -1;
+/**
+ * Build the WINDOW tilemap, $9C00-$9FFF.  ROM: loc_00_04BB, every level.
+ *
+ * This replaces the `map` half of assets/water.json, and the project's own
+ * notes had the ingredient wrong. The `$0E24` script is NOT it: `$0DD9` reads
+ * `CP $0E / JP NZ, loc_00_0E74`, so that arm runs on level 14 and nowhere
+ * else -- measured, tools/oracle/waterbuild.py aborts if $0E24 fires on any
+ * other level. The universal pair is three instructions apart inside level
+ * init itself:
+ *
+ *   $04C9  LD HL,$9C40 / LD BC,$03C0   960 cells of tile $01
+ *   $04D7  LD DE,$32A3 -> sub_00_0A0E  rows 0 and 1, 20 cells each
+ *
+ * So the surface is `$E0 $E2` repeated across row 0 and `$E1 $E3` across row 1,
+ * and everything below is the flat fill -- which is why the export snapshot,
+ * taken at level init, shows only tile $01 for the body and nothing for the
+ * two rows the script writes after it.
+ *
+ * $9C14-$9C1F and $9C34-$9C3F are written by NEITHER the fill nor the script.
+ * They keep the $2F that the boot clear at $0223 left, which `spec.boot`
+ * carries; they sit off the right edge of the 20-tile-wide window and are
+ * never drawn, but they are part of the byte-exact image.
+ */
+export function buildWindowMap(spec, level) {
+  const map = new Uint8Array(0x400);
+  map.fill(spec.boot);                                     // $0223
+  const at = spec.fillDest - 0x9C00;
+  map.fill(spec.fill, at, at + spec.fillLen);              // $04C9
+  runVramScript(map, b64(spec.script), { base: 0x9C00 });  // $04D7
+  // $0E0C/$0E24: level 14 refills the top two rows and repaints them.
+  if (level === 14 && spec.level14) {
+    const l = spec.level14;
+    const a = l.fillDest - 0x9C00;
+    map.fill(l.fill, a, a + l.fillLen);
+    runVramScript(map, b64(l.script), { base: 0x9C00 });
+  }
+  return map;
 }
 
 /**
- * Advance the tile flip-book.  ROM: loc_00_3127's effect, not its mechanism.
+ * loc_00_3127's three cursors, or null where the level has no animation.
+ * ROM: $0523-$0529 zero $C70F/$C710/$C711 at level init.
  *
- * The animated ids are patched straight into the level's decoded tile cache,
- * which is exactly what the streamer does to VRAM. That means the background
- * AND the window both pick them up with no per-pixel work and no special case
- * in the renderer -- the falling water animates because its metatiles point at
- * tiles $74-$7B, the same way it does on hardware.
+ * `table` is manifest.tileAnim whole -- the per-level tables resolved out of
+ * the ROM by tools/oracle/animtables.py, keyed by level number:
  *
+ *   dests[]   0:$31EE -> a destination table; index is $C710 + $C711*2
+ *   blocks[]  2:$61A4 -> 32-byte tile pairs; index is $C70F*2 + $C710
+ *   steps[]   0:$3246 -> the $C711 to adopt at each $C70F, and its LENGTH is
+ *                        0:$3295, the value $C70F wraps at
+ *
+ * Level 6 is the one special case ($3142-$3154): $FFC9 == 1 swaps the SOURCE
+ * table for 2:$625E (manifest key '6alt'), and $FFC9 == 0 disables the
+ * streamer entirely.
+ */
+export function createTileAnim(table, level) {
+  if (!table) return null;
+  // Every level's entry is resolved up front, but which one is USED is decided
+  // per frame -- see tileAnimSpec.
+  const has = table[String(level)] || (level === 6 && table['6alt']);
+  return has ? { table, level, step: 0, half: 0, group: 0 } : null;
+}
+
+/**
+ * Which table this FRAME uses.  ROM: $3142-$3167.
+ *
+ * Level 6 alone consults $FFC9, and it does so every frame, not at level init:
+ * `$0F0F` zeroes it during the level-6 load and loc_00_2F00's conveyor rewrites
+ * it at $05C6, one call before the streamer at $05C9. So caching the choice at
+ * init picks the level's zero and animates nothing -- measured, $FFC9 is 2 on
+ * every one of level 6's first 121 gameplay frames.
+ *
+ *   0 -> no animation at all this frame, and the cursors do NOT advance ($3169
+ *        returns before $3174)
+ *   1 -> the alternate source table 2:$625E ($3151)
+ *   2 -> the ordinary 2:$61A4 row, same as every other level
+ */
+export function tileAnimSpec(a, conveyorDir) {
+  if (a.level === 6) {
+    if (conveyorDir === 0) return null;                    // $314B
+    if (conveyorDir === 1) return a.table['6alt'] || null;  // $3151
+  }
+  return a.table[String(a.level)] || null;
+}
+
+/**
+ * Point a level at its window map and its animated tiles.
+ * Replaces applyWaterArt(); one call, from initLevel.
+ */
+export function applyLevelArt(state, manifest, level) {
+  state.video.windowMap = manifest.window
+    ? buildWindowMap(manifest.window, level) : null;
+  // The window's transparency dither belongs to the WATER, not to the window:
+  // it is the levels-1/2 water body, not "this level has a window map".
+  // Other window users (the options panel) need it opaque.
+  state.video.windowDither = level === 1 || level === 2;
+  state.tileAnim = createTileAnim(manifest.tileAnim, level);
+}
+
+/* ---------------------------------------------------------------------------
+ * COMPATIBILITY SHIMS. src/level.js and src/main.js still call the three names
+ * the capture used, and they belong to another agent. They now do the built
+ * thing; the three call sites simplify to
+ *
+ *   level.js  applyLevelArt(state, manifest, n);   // drops loadWaterArt and
+ *                                                  // its two module globals
+ *   main.js   tickTileAnim(state);                 // and MOVE it to just after
+ *                                                  // streamPlayerTiles, since
+ *                                                  // loc_00_3127 is the TAIL
+ *                                                  // of sub_00_2C13, not a
+ *                                                  // separate call
+ * ------------------------------------------------------------------------- */
+
+/** @deprecated call applyLevelArt(state, manifest, level) instead. */
+export async function loadWaterArt() {
+  const { loadManifest } = await import('./assets.js');
+  const manifest = await loadManifest();
+  const out = {};
+  for (let n = 1; n <= 14; n++) out[String(n)] = { manifest, level: n };
+  return out;
+}
+
+/** @deprecated call applyLevelArt(state, manifest, level) instead. */
+export function applyWaterArt(state, entry) {
+  if (!entry) {
+    state.video.windowMap = null;
+    state.video.windowDither = false;
+    state.tileAnim = null;
+    return;
+  }
+  applyLevelArt(state, entry.manifest, entry.level);
+}
+
+/** @deprecated call tickTileAnim(state) instead. */
+export function tickWaterArt(state) {
+  tickTileAnim(state);
+}
+
+/** $9740 -> BG tile $74, $8E00 -> $E0. The inverse of assets.js bgTileAddr. */
+function bgTileId(addr) {
+  return addr >= 0x9000 ? (addr - 0x9000) >> 4 : 0x80 + ((addr - 0x8800) >> 4);
+}
+
+/**
+ * One frame of the animated-tile streamer.  ROM: loc_00_3127, reached as the
+ * TAIL of sub_00_2C13 ($05C9) -- both of that routine's exits `JP loc_00_3127`,
+ * so it runs after the player's own tile stream, every frame.
+ *
+ * The cartridge stages 32 bytes (two consecutive tiles) at $C5CB and arms the
+ * VBlank write queue $FF9B/$FF9C, which $074E drains into VRAM. The port has
+ * no VBlank, so the block is applied here -- and that is not a shortcut being
+ * waved through: $312C's `LDH A,[$FF9B] / RET NZ` would stall the streamer on
+ * any frame the queue had not been drained, and the drain is itself pre-empted
+ * by the $C61B WRAM script and the $C130 tilemap queue ($0714/$0727 both jump
+ * past it). MEASURED over 1400 gameplay frames across all ten levels that
+ * animate: zero stalls, zero pre-emptions, one block per frame with no gaps.
+ *
+ * The 32 bytes go straight into the level's decoded tile cache, which is
+ * exactly where the streamer puts them on hardware. Background and window both
+ * pick them up with no per-pixel work and no special case in the renderer --
+ * the falling water animates because its metatiles point at tiles $74-$7B.
  * The cache is rebuilt by initLevel for every level, so the patch cannot leak.
  */
-export function tickWaterArt(state) {
-  const art = state.waterArt;
-  if (!art || !art.frames.length) return;
-
-  const phase = Math.floor(state.frame / art.hold) % art.frames.length;
-  if (phase === state.waterArtPhase) return;          // only on a change
-  state.waterArtPhase = phase;
-
+export function tickTileAnim(state) {
+  const a = state.tileAnim;
+  if (!a) return;
+  if (state.flow.paused) return;                    // $3127: $C716
+  const spec = tileAnimSpec(a, state.flow.conveyorDir);
+  if (!spec) return;                                // $3169, cursors untouched
   const bg = state.level.tiles && state.level.tiles.bg;
   if (!bg) return;
-  const frame = art.frames[phase];
-  for (const id of art.ids) bg[id] = frame[id];
+
+  const { dest, block } = tileAnimWrite(a, spec);
+  const id = bgTileId(dest);
+  bg[id & 0xFF] = decodeTileBuf(block, 0);
+  bg[(id + 1) & 0xFF] = decodeTileBuf(block, 16);
+  advanceTileAnim(a, spec);
+}
+
+/**
+ * What this frame's cursors name.  ROM: $3174-$3180 for the source and
+ * $31A5-$31AE for the destination.
+ *
+ * Note the cursors swap roles between the two -- the source strides by STEP
+ * ($C70F*4 + $C710*2 over words) and the destination by GROUP ($C710*2 +
+ * $C711*4). Reading either index off the other produces a plausible animation
+ * on the wrong tiles.
+ */
+export function tileAnimWrite(a, spec) {
+  if (!spec.decoded) spec.decoded = spec.blocks.map(b64);
+  return { dest: spec.dests[a.half + a.group * 2],
+           block: spec.decoded[a.step * 2 + a.half] };
+}
+
+/**
+ * ROM: $31B5-$31EA. $C710 counts 0,1; on its wrap $C70F advances (wrapping at
+ * steps.length, which is the 0:$3295 byte) and $C711 is reloaded from
+ * steps[$C70F] -- the NEW $C70F, not the old one.
+ */
+export function advanceTileAnim(a, spec) {
+  if (a.half + 1 < 2) {                             // $31B9: CP 2 / JR C
+    a.half += 1;
+    return;
+  }
+  a.half = 0;
+  a.step = a.step + 1 < spec.steps.length ? a.step + 1 : 0;   // $31CC
+  a.group = spec.steps[a.step];                     // $31E5
+}
+
+/**
+ * Replay `frames` frames of the streamer straight into a raw $8000-$9FFF
+ * image, for tools/oracle/waterdiff.mjs. Uses the same two helpers the shipped
+ * path does, so the two cannot drift apart.
+ */
+export function replayTileAnim(vram, spec, frames) {
+  const a = { step: 0, half: 0, group: 0 };
+  for (let f = 0; f < frames; f++) {
+    const { dest, block } = tileAnimWrite(a, spec);
+    vram.set(block, dest - 0x8000);
+    advanceTileAnim(a, spec);
+  }
+  return vram;
 }
 
 /**

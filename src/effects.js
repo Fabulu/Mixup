@@ -41,10 +41,28 @@
 // The $2AFF path table is its own proof: summing its signed nibbles over
 // indices 1..$113 gives dx = -79, dy = +24, which takes slot 0 from ($88,$38)
 // to ($39,$50) -- byte for byte the final state the cartridge lands in.
+//
+// THE PICTURE.  The fanfare's STAGE CLEAR screen is here too, and it is
+// byte-exact: tools/oracle/stageclear.py records the cartridge's whole VRAM
+// either side of loc_00_34D0 and tools/oracle/deathdiff.mjs rebuilds the
+// difference from assets/manifest.json -- 8192/8192 bytes with the pre-fanfare
+// image underneath, 836/836 over the two spans the fanfare writes, on levels
+// 4, 8 and 11 alike. MEASURED, those spans are the whole footprint:
+//
+//     $8800-$8ADF   loc_00_350F's 23 x $20 B, one block a frame, 46 tiles
+//     $9C00-$9C93   loc_00_3566's two VRAM scripts, five window rows of $14
+//
+// and nothing else in the 8 KB moves between $34D0 and $35E8. What makes the
+// band a band is $35B2's STAT program: $FFC7 = 5 is loc_00_08EA, whose whole
+// body is `rWX = $A8`, so the LYC interrupt switches the window OFF rather
+// than moving it -- rWY is the TOP of a 32-line window and rLYC = min(rWY +
+// $20, $8F) is the bottom.
 
 import { u8, u16 } from './state.js';
 import { drawMetasprite } from './render/metasprite.js';
 import { spawnEffect, clearEffects } from './doors.js';
+import { runVramScript } from './vramscript.js';
+import { decodeTileBuf } from './assets.js';
 
 export const BURST_SLOTS = 8, BURST_RECORD = 5;     // $C1C0
 
@@ -61,6 +79,26 @@ const PHASE1_STEPS = 0x17;          // $3558: CP $17 -- 23 one-frame steps
 const FADE_FRAMES = 0x21;           // sub_00_0A7F: LD B,$21, one $0A4F each
 const RAMP_FRAMES = 47;             // $35D0/$363D: $FFAC $8E..$32, step -2
 const HOLD_FRAMES = 0xF0;           // $35D8: LD B,$F0
+
+// --- the picture --------------------------------------------------------
+/** $350F: each phase-1 step hands the ISR $20 bytes = two BG tiles. */
+const BLOCK_BYTES = 0x20;
+/** $8800 is BG tile $80 in src/assets.js's `bgTileAddr` addressing. */
+const BLOCK_FIRST_TILE = 0x80;
+/** $04C9's window-map fill: the level leaves tile $01 everywhere. */
+const WINDOW_FILL_TILE = 0x01;
+/** The window tilemap the scripts paint. LCDC is $E7, so bit 6 picks $9C00. */
+const WINDOW_MAP_BASE = 0x9C00;
+const WINDOW_MAP_BYTES = 0x400;
+/** $35AE: $FFC7 = 5, i.e. loc_00_08EA -- "rWX = $A8", the window's OFF switch. */
+const STAT_MODE_WINDOW_CLIP = 0x05;
+/** $35C0: $FFAB = 7 -> rWX, which puts the window's left edge at screen x 0. */
+const WINDOW_X = 0x07;
+/** $34BF/$35BC: rWY parked below the screen. */
+const WINDOW_OFF_Y = 0x90;
+/** $363F/$3641/$3645: rLYC = min($FFAC + $20, $8F) -- a 32-line band. */
+const WINDOW_BAND = 0x20;
+const WINDOW_BAND_LAST = 0x8F;
 
 /**
  * loc_00_34D0 after phase 1, as the sequence of whole frames it actually
@@ -85,12 +123,14 @@ const HOLD_FRAMES = 0xF0;           // $35D8: LD B,$F0
  * and ending 46 frames later, exactly.
  */
 const FANFARE_STAGES = [
-  { c712: 2, n: 1 },
-  { c712: 3, n: FADE_FRAMES, fade: true },
+  // $3579's copy has already gone into $C61B; the ISR runs it on THIS frame.
+  { c712: 2, n: 1, script: 'A' },
+  // $359C's copy, then $35A9-$35C9: $C712 = 3 and the STAT/LYC program.
+  { c712: 3, n: FADE_FRAMES, fade: 2, script: 'B', stat: true },
   { c712: 3, n: 1 },
-  { c712: 3, n: RAMP_FRAMES, ramp: true },
-  { c712: 3, n: HOLD_FRAMES },
-  { c712: 3, n: FADE_FRAMES, fade: true },
+  { c712: 3, n: RAMP_FRAMES, ramp: true, clearOam: true },
+  { c712: 3, n: HOLD_FRAMES, clearOam: true },
+  { c712: 3, n: FADE_FRAMES, fade: 1, clearOam: true },
   // sub_00_0A7F's loop body is {maybe step the palette; CALL sub_00_0A4F}, so
   // the wait is the LAST thing each of its 33 frames does and $35E8 runs after
   // the 33rd wait -- one frame further on. MEASURED: the last fade tick is
@@ -106,7 +146,7 @@ const FANFARE_STAGES = [
 const ROUTE_BIT = { 4: 0x01, 8: 0x02, 0x0B: 0x04 };
 
 /** loc_00_34E7: level 6 has no fanfare, just sub_00_0A7F(C = 0) and out. */
-const FANFARE_STAGES_L6 = [{ c712: 0, n: FADE_FRAMES, fade: true },
+const FANFARE_STAGES_L6 = [{ c712: 0, n: FADE_FRAMES, fade: 0 },
                            { c712: 0, n: 1, finish: true }];
 
 /** $34FC-$3507: the fanfare's VRAM cursor starts here and steps by $20. */
@@ -140,7 +180,12 @@ export function createEffects() {
     hold: 0,                     // frames left in the current blocking stage
     fade: 0,                     // $C70E, so the fade is observable
     done: false,                 // the fanfare has already handed over
-    windowRamp: 0x90,            // $FFAC during phase 3 -- see updateVictoryHold
+    windowRamp: WINDOW_OFF_Y,    // $FFAC -- written through to video.windowY
+    windowLyc: 0,                // rLYC, i.e. the line the band is cut off at
+    // The STAGE CLEAR picture: the 46 decoded tiles and the $9C00 window map
+    // the fanfare paints. Built on demand from the manifest, then handed to the
+    // renderer through state.level.tiles.bg and state.video.windowMap.
+    art: null,
   };
 }
 
@@ -171,8 +216,14 @@ export function resetEffects(state) {
   e.stage = -1;
   e.stages = FANFARE_STAGES;
   e.fade = 0;
-  e.windowRamp = 0x90;
+  e.windowRamp = WINDOW_OFF_Y;
+  e.windowLyc = 0;
+  e.art = null;
   e.done = false;
+  // $FFC7's window-clip arm belongs to the fanfare and to nothing else, so the
+  // level loader has no reason to know about it. Null = "no LYC cut", which is
+  // every other screen the window is used on.
+  state.video.windowEndY = null;
 }
 
 /** ROM: sub_00_0AE1 -- B is the id, C the mask (docs/03-VERIFICATION.md 32). */
@@ -398,9 +449,167 @@ function queue(state, r, alt, visible) {
 // ---------------------------------------------------------------------------
 
 /**
+ * The picture's ingredients, built once per fanfare.
+ *
+ * `tiles` is loc_00_350F's 23 blocks concatenated -- 736 bytes that ARE the
+ * $8800-$8ADF image, because the destination steps by exactly the block size.
+ * `map` is a full 32 x 32 window tilemap seeded with the fill tile the level
+ * loader left there ($04C9) and then painted by loc_00_3566's two scripts.
+ *
+ * Both are manifest data, so a missing table throws here rather than turning
+ * into a blank banner nobody notices.
+ */
+function stageClearArt(state) {
+  const e = effects(state);
+  if (e.art) return e.art;
+  const tiles = need(state, 'stageClearTiles', PHASE1_STEPS * BLOCK_BYTES);
+  // Seed from whatever the level left in $9C00 -- the scripts only repaint five
+  // rows of twenty and the rest of the page is inherited, exactly as on the
+  // cartridge. A COPY, so a level's own window art is not scribbled on.
+  const map = new Uint8Array(WINDOW_MAP_BYTES);
+  const live = state.video.windowMap;
+  if (live && live.length >= WINDOW_MAP_BYTES) map.set(live.subarray(0, WINDOW_MAP_BYTES));
+  else map.fill(WINDOW_FILL_TILE);                  // $04C9's own fill
+  e.art = { tiles: Uint8Array.from(tiles), map, scripted: 0 };
+  return e.art;
+}
+
+/**
+ * The fanfare's VRAM footprint, as an $8000-$9FFF image.
+ *
+ * This is the shape tools/oracle/titlediff.mjs proved the title screen with,
+ * and the reason it exists separately from the runtime path above: the runtime
+ * never builds a VRAM image (it decodes into the tile cache and a tilemap
+ * array), so without this there would be nothing to diff against the cartridge
+ * byte for byte. Both read the SAME manifest tables, so a wrong table fails
+ * both.
+ *
+ * MEASURED (tools/oracle/stageclear.py, level 4): between loc_00_34D0's first
+ * frame and loc_00_35D8 the cartridge changes 802 bytes of VRAM and every one
+ * of them is inside $8800-$8ADF or $9C00-$9C93. Nothing else moves at all.
+ *
+ * @param vram   Uint8Array(0x2000) for $8000-$9FFF, seeded however the caller
+ *               likes -- the fanfare only ever writes over its own two spans
+ * @param tables manifest.tables (or state.tables)
+ */
+export function applyStageClearVram(vram, tables) {
+  const t = (name, n) => {
+    const v = tables && tables[name];
+    if (!v || v.length < n) {
+      throw new Error(`effects: tables.${name} missing from the manifest `
+                      + `(need ${n} bytes) -- run tools/export_assets.py`);
+    }
+    return v;
+  };
+  const tiles = t('stageClearTiles', PHASE1_STEPS * BLOCK_BYTES);
+  // $350F: block n -> $8800 + n * $20, one per frame for 23 frames.
+  for (let n = 0; n < PHASE1_STEPS; n++) {
+    const dest = VRAM_DEST_START + (n + 1) * BLOCK_BYTES - 0x8000;
+    for (let i = 0; i < BLOCK_BYTES; i++) vram[dest + i] = tiles[n * BLOCK_BYTES + i];
+  }
+  runVramScript(vram, Uint8Array.from(t('stageClearScriptA', 8)));
+  runVramScript(vram, Uint8Array.from(t('stageClearScriptB', 8)));
+  return vram;
+}
+
+/**
+ * loc_00_3566's copies, as the ISR at $0714 finally executes them.
+ *
+ * The block copy at $3579/$359C lands in $C61B -- WRAM, not VRAM -- and it is
+ * the VBlank ISR that notices $C61B is non-zero and runs the bytes through
+ * sub_00_0A0E. So these are VRAM SCRIPTS with a one-frame delivery van, and
+ * what they paint is the WINDOW map at $9C00, five rows of 20 tiles.
+ *
+ * The array IS the $9C00 page, so `base` lines the interpreter's addresses up
+ * with the indices the renderer reads (`map[row * 32 + col]`) for free.
+ */
+function runStageClearScript(state, which) {
+  const art = stageClearArt(state);
+  const name = which === 'A' ? 'stageClearScriptA' : 'stageClearScriptB';
+  runVramScript(art.map, need(state, name, 8), { base: WINDOW_MAP_BASE });
+  art.scripted += 1;
+  state.video.windowMap = art.map;
+  // The 50% dither in renderer.js is the WATER's approximation, never the
+  // window's own behaviour. This band is opaque artwork.
+  state.video.windowDither = false;
+}
+
+/**
+ * One phase-1 block, decoded straight into the level's BG tile cache.
+ *
+ * The cartridge queues 32 bytes at $FF9B/$C5CB and the next VBlank copies them
+ * to $8800 + n * $20 ($074E-$07BA). src/assets.js's `bgTileAddr` puts BG tile
+ * $80 at $8800, so block n is simply tiles $80 + 2n and $81 + 2n -- the same
+ * trick water.js uses to animate tiles without a VRAM image.
+ */
+function stageClearBlock(state, n) {
+  const art = stageClearArt(state);
+  const bg = state.level.tiles && state.level.tiles.bg;
+  if (!bg) return;                                  // headless harness, no art
+  for (let half = 0; half < 2; half++) {
+    bg[BLOCK_FIRST_TILE + n * 2 + half] =
+      decodeTileBuf(art.tiles, n * BLOCK_BYTES + half * 16);
+  }
+}
+
+/**
+ * $35B2-$35C9, and $363D's half of it.
+ *
+ * $FFC7 = 5 selects loc_00_08EA, whose entire body is `rWX = $A8` -- i.e. the
+ * LYC interrupt does not move the window, it SWITCHES IT OFF for the rest of
+ * the frame. Together with rLYC = min($FFAC + $20, $8F) that turns rWY into the
+ * top of a 32-scanline band: exactly the four tile rows the scripts painted.
+ * (The fifth row is RLE'd blank, which is the ROM hedging its own clip.)
+ *
+ * `windowEndY` is the one new field the renderer needs; null means "no cut",
+ * which is what every other window user wants.
+ */
+function armWindowBand(state, wy, lyc) {
+  const e = effects(state);
+  e.windowRamp = wy;                                // $FFAC
+  e.windowLyc = lyc;                                // rLYC
+  state.video.windowY = wy;                         // $080D: $FFAC -> rWY
+  state.video.windowLatchY = wy;
+  state.video.windowX = WINDOW_X;                   // $080A: $FFAB -> rWX
+  state.video.windowEndY = wy >= WINDOW_OFF_Y ? null : lyc;
+}
+
+/**
+ * $363D-$3647, the ramp's own write: $FFAC takes the new top and rLYC follows
+ * it $20 lines down, CLAMPED at $8F. $35B8 does NOT do this -- it writes rLYC
+ * = $90 flat, which is why arming and ramping are two calls and not one.
+ * MEASURED: rLYC reads $90 for every frame of the fade-in and $8F from the
+ * first ramp frame, so the clamp bites immediately.
+ */
+function rampWindowBand(state, wy) {
+  armWindowBand(state, wy, Math.min(u8(wy + WINDOW_BAND), WINDOW_BAND_LAST));
+}
+
+/**
+ * sub_00_0A7F's palette ramp, on the one frame of the fade that writes it.
+ *
+ * C's low bits pick which registers move: 1 = rBGP only ($0AB6 skips the rest),
+ * 2 = the two OBJ palettes only ($0A97 jumps straight to $0AB8), anything else
+ * = all three. C bit 7 would count $C70E down from 3 instead of up from 0; no
+ * fanfare caller sets it.
+ */
+function fadeStep(state, e, c) {
+  const tbl = need(state, 'fadePalettes', 16);
+  const low = c & 0x7F;
+  const i = e.fade;
+  if (low !== 2) {                                  // $0A99-$0AAF
+    state.video.bgp = tbl[i + (low === 3 ? 4 : 0)];
+  }
+  if (low !== 1) {                                  // $0AB8-$0ACA
+    state.video.obp0 = tbl[i];
+    state.video.obp1 = tbl[8 + i];
+  }
+  e.fade = (c & 0x80) ? u8(i - 1) : u8(i + 1);      // $0ACC-$0AD7
+}
+
+/**
  * ROM: loc_00_34D0, called from 1:$7936 once $C740 reaches 0.
  *
- * What the port reproduces is the STATE and the DURATION, not the picture:
  *   $34F6  sound $08 mask $03 (the fanfare replaces the level theme), $C70F 0,
  *          $C74E:$C74F = $87E0, $C712 = 1, then falls straight into phase 1 --
  *          the entry frame IS phase 1's first step.
@@ -409,11 +618,6 @@ function queue(state, r, alt, visible) {
  *   $35D0  the window ramp, the hold and a fade-out -- FANFARE_STAGES
  *   $35E8  the level-clear dispatch, which src/level.js's clearLevel already
  *          owns, so all that happens here is raising flow.levelCleared.
- *
- * The bank-6 tile stream and the raster/LYC program are deliberately NOT
- * modelled: they are the fanfare's artwork, and the port has nothing to show.
- * What IS modelled is every byte the oracle can see move -- $C712, $C70F,
- * $C74E:$C74F, $C70E and $FFAC.
  */
 export function victoryStep(state) {
   const e = effects(state);
@@ -426,7 +630,7 @@ export function victoryStep(state) {
       e.vramStep = 0;                               // $34E8
       e.phase = 0;                                  // $34EB
       e.stages = FANFARE_STAGES_L6;
-      enterStage(e, 0);                             // $34F0: sub_00_0A7F, C = 0
+      enterStage(state, 0);                         // $34F0: sub_00_0A7F, C = 0
       return false;
     }
     requestSound(state, 0x08, 0x03);                // $34F6: BC = $0803
@@ -437,24 +641,38 @@ export function victoryStep(state) {
 
   if (e.phase !== 1) return false;
 
-  e.vramDest = u16(e.vramDest + 0x20);              // $3544-$3551
+  // $3520-$3530 reads the block BEFORE the cursor moves, so block n is the one
+  // that lands at $8800 + n * $20 -- which is the cursor's value after $3544.
+  stageClearBlock(state, e.vramStep);
+  e.vramDest = u16(e.vramDest + BLOCK_BYTES);       // $3544-$3551
   const n = e.vramStep + 1;                         // $3554: INC A
   if (n < PHASE1_STEPS) {                           // $3558: CP $17 / JR C
     e.vramStep = n;
     return false;
   }
   e.vramStep = 0;                                   // $3561
-  enterStage(e, 0);                                 // $355C: $C712 = 2, and go
+  enterStage(state, 0);                             // $355C: $C712 = 2, and go
   return false;
 }
 
 /** Arm FANFARE_STAGES[i] (or the level-6 list) and adopt its $C712 value. */
-function enterStage(e, i) {
+function enterStage(state, i) {
+  const e = effects(state);
   const list = e.stages;
+  const st = list[i];
   e.stage = i;
-  e.hold = list[i].n;
-  e.phase = list[i].c712;
-  if (list[i].fade) e.fade = 0;                     // $0A88: $C70E = 0 or 3
+  e.hold = st.n;
+  e.phase = st.c712;
+  // $0A88: $C70E = 0, or 3 when C bit 7 is set. `fade` is a C VALUE here, so
+  // level 6's C = 0 has to be tested for presence, not for truth.
+  if (st.fade !== undefined) e.fade = (st.fade & 0x80) ? 3 : 0;
+  // The ISR runs whatever loc_00_3566 last dropped in $C61B on this frame.
+  if (st.script) runStageClearScript(state, st.script);
+  if (st.stat) {                                    // $35AE-$35C9
+    state.raster.mode = STAT_MODE_WINDOW_CLIP;      // $FFC7 = 5
+    // $35B8-$35BC: rLYC = $90 AND $FFAC = $90, both flat immediates.
+    armWindowBand(state, WINDOW_OFF_Y, WINDOW_OFF_Y);
+  }
 }
 
 /**
@@ -477,7 +695,7 @@ export function updateVictoryHold(state) {
   // $C753 is written on f718, the last frame of the fade rather than the one
   // after it. Advancing both ends the same way is wrong by one at one end or
   // the other, whichever way you pick.
-  if (e.hold === 0) enterStage(e, e.stage + 1);
+  if (e.hold === 0) enterStage(state, e.stage + 1);
   const st = e.stages[e.stage];
   if (st.finish) {
     // $35E8. src/level.js's clearLevel owns the ROUTING; the one thing that
@@ -498,7 +716,11 @@ export function updateVictoryHold(state) {
     // 1:$4EF8 already zeroes it at the START of the next boss death.
     e.stage = -1;
     e.phase = 0;
-    e.windowRamp = 0x90;
+    // The next screen re-parks the window itself ($021B/$0F25/$02A9 -> level.js
+    // resetPlayer), but leaving a live band here would show it for the frames
+    // between the latch and the load.
+    armWindowBand(state, WINDOW_OFF_Y, WINDOW_OFF_Y);
+    state.raster.mode = 0;
     // On the cartridge $35E8 never comes back -- every arm leaves for
     // loc_00_04BB, loc_00_035B or loc_00_2820. main.js's step() does the same
     // thing asynchronously, but its Turbo Mode runs several ticks per rAF, so
@@ -512,19 +734,26 @@ export function updateVictoryHold(state) {
   e.hold -= 1;
   const done = st.n - e.hold;                       // 1-based frame in the stage
 
-  // $C70E, the fade cursor. sub_00_0A7F runs B = $21 down to 1 and steps the
-  // cursor on the four iterations where B & 7 == 0 -- so it reads 0 on the
-  // first frame, 1 on the second and +1 every eighth after that. Modelled
-  // because it is the only handle anything has on the fade's real length.
-  if (st.fade && done > 1) e.fade = Math.min(4, ((done - 2) >> 3) + 1);
+  // $C70E, the fade cursor. sub_00_0A7F counts B from $21 down to 1 and does
+  // its palette write on the four iterations where B & 7 == 0 -- BEFORE that
+  // iteration's $0A4F, so the value is on screen for the same frame.
+  // MEASURED on level 4: rOBP0 leaves $E4 at f374, f382, f390, i.e. frames 10,
+  // 18 and 26 of a stage that begins at f365, and $C70E ends at 4.
+  if (st.fade !== undefined && ((st.n + 1 - done) & 7) === 0) {   // B = $21 - n
+    fadeStep(state, e, st.fade);
+  }
 
-  // $363D: the window slides up two scanlines a frame, $8E down to $32, and
-  // then parks there for the hold. NOT written through to state.video.windowY:
-  // the layer it reveals is built by loc_00_3566's bank-6 copies, which the
-  // port does not model, so pulling the real window up would paint the level's
-  // fill tile over the screen. Kept as memory the oracle can compare instead
-  // of a picture that would be wrong.
-  if (st.ramp) e.windowRamp = u8(0x90 - 2 * done);
+  // $3649 / $35DA: both blocking loops call sub_00_0C1F, which clears shadow
+  // OAM from the draw cursor up and resets the cursor -- so from the ramp on,
+  // nothing is drawn and OAM empties out. The fade-in stage does NOT (0A7F has
+  // no such call), which is why the boss corpse is still on screen for it.
+  if (st.clearOam) state.video.sprites.length = 0;
+
+  // $35D0-$363D: the window slides up two scanlines a frame, $8E down to $32,
+  // and parks there for the hold. This IS state.video.windowY now -- the block
+  // copies that give it something to show have landed, so the old indirection
+  // through `windowRamp` alone is gone.
+  if (st.ramp) rampWindowBand(state, u8(WINDOW_OFF_Y - 2 * done));
 
   return true;
 }

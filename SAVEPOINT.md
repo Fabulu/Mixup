@@ -58,8 +58,6 @@ Two harness flags worth knowing, both taken by `trace.py` *and*
 pip install pyboy
 python tools/export_assets.py     # -> assets/
 python tools/gen_tunables.py      # -> src/tunables.js, read from the ROM
-python tools/rip_title.py         # -> assets/title.json (LCD registers only)
-python tools/rip_water.py         # -> assets/water.json (window map + anim)
 python tools/export_sound.py      # -> assets/sound.json (bank-7 sound data)
 python -m http.server 8000        # module imports need a real origin
 ```
@@ -102,7 +100,7 @@ Deploy: `node tools/build-dist.mjs` then
 | Enemy AI — all states + drawing | bit-exact |
 | Enemy death drops (`$C6CF`, `sub_00_0CF3` + `loc_00_1444`) | bit-exact — arc, both bounces and the rest latch |
 | Bat-rope — extend, anchor, swing, tangent launch | bit-exact |
-| Window layer (= the water's graphics) | drawn; tilemap + surface animation are a **capture** — see below |
+| Window layer: map + animated tiles | **built from ROM data**, 13376/13376 B across 11 levels |
 | Levels-1/2 water body (`src/water.js`): rise/fall, waterfall stamp, `$FF95` slow mode, the 1-dmg `$5A` hit, enemy slow-fall bit, splash pool | bit-exact |
 | Levels-1/2 sewer-enemy respawner (`loc_00_2D3D` head + `loc_00_0EC3` init arm): slots 6/7 refilled from `0:$32F8`/`0:$32D8`, the crawl-out-of-the-wall-hole spawns | bit-exact to the f73 lag frame (`l1-sewer-respawner-emerge`) |
 | Level transitions, death/lives/respawn | ported |
@@ -111,7 +109,8 @@ Deploy: `node tools/build-dist.mjs` then
 | Mod system + launcher, touch controls, fullscreen | ported |
 | Difficulty `$C756` (launcher control; every read catalogued in master-ref §8b) | ported |
 | Sound driver + DMG APU, music and SFX | **bit-exact** — all 47 ROM ids, SFX over live music, and the fader |
-| Title screen | **built from ROM data**, 8192/8192 B against the cartridge |
+| Title screen, its 8 LCD registers, and state 4's press-start flash | **built from ROM data** — 8192/8192 B, and all 120 flash iterations |
+| STAGE CLEAR (`loc_00_34D0`) | **byte-exact**, 8192/8192 VRAM on all three boss levels |
 | Round select / continue (`0:$035B`) | build bit-exact; cursor logic verified against the ROM over three `$C753`/`$FFB5` states |
 
 ---
@@ -201,36 +200,32 @@ Be suspicious of these; they are the likeliest source of a surprise.
   **temporary stopgap** — but round select now exists, so wiring death back to
   it is no longer blocked on anything. That plus `$FFB5`/`$C753` bookkeeping is
   what turns CONTINUE from ported-but-unreachable into something you can use.
-- **Animated tiles** (`assets/water.json`, tools/rip_water.py). Two things are
-  captured rather than translated, and neither is in the exported level VRAM.
-  (1) The `$9C00` window tilemap: level init fills it flat, then a VRAM script
-  at `$0E24` paints its textured surface — *after* the export snapshot, which
-  is why the export shows only tile `$01`. (2) The tile animation: a generic
-  streamer (`loc_00_3127`, `$C70F`/`$C710`, tables `2:$61A4`, `0:$31EE`,
-  `0:$3246`, `0:$3295`) rewrites bitmaps in place through a VRAM write queue.
-  In level 1 that is **fourteen** tiles — the falling water `$74-$7B`, the
-  surface `$E0-$E3`, and `$F1`/`$F3`. Tilemaps never change; only bitmaps do.
-  Porting the streamer means porting its queue as well. The *cadence* is
-  measured, not assumed. Which levels animate is knowable without guessing:
-  `0:$31EE` is `$FFFF` for levels 4, 8–11 and 14, and a real pointer for
-  1, 2, 3, 5, 6, 7, 12, 13.
-  `water.js` patches the frames straight into `level.tiles.bg`, exactly as the
-  streamer patches VRAM — so background and window animate by one mechanism
-  and the renderer has no special case.
-- **Title screen — the 8 KB capture is GONE.** `assets/title.vram.bin` and the
-  half of `tools/rip_title.py` that produced it are deleted. The screen is now
-  built the way the cartridge builds it: the boot clear (`$01AB`), two bank-6
-  tile blobs through `sub_00_09FB`, `sub_00_34A4`'s tilemap fill, and three
-  VRAM scripts (`5:$52F5` copyright, `5:$5170` artwork, `1:$7C44` text). See
-  `buildTitleVram` in src/vram.js; `tools/oracle/titlediff.mjs` is a gate stage
-  and checks BOTH the replay and the shipped manifest path against the
-  cartridge's own VRAM — 8192/8192 bytes.
+- **NOTHING is captured any more.** Both remaining captures are retired and
+  `tools/rip_water.py` / `tools/rip_title.py` are deleted along with them.
 
-  What is still captured is 91 bytes: `assets/title.json`, the eight LCD
-  registers. Those are read 40 frames into the title loop, so the palettes are
-  the state *after* `sub_00_0A7F`'s fade, not the immediates the code writes
-  (`$34C6` sets BOTH object palettes to `$E4`; the captured OBP1 is `$C4`).
-  Deriving them means porting the fade's palette ramp, which is its own job.
+  The window map and the animated tiles are BUILT (`applyLevelArt` /
+  `tickTileAnim` in water.js), verified 13376/13376 bytes across 11 levels by
+  the `level-art` gate stage. The title's eight LCD registers are DERIVED
+  (`title-state` stage), as is state 4's press-start flash.
+
+  Two lessons are worth keeping from how long that took:
+
+  1. **The task was filed against the wrong address for months.** `$0E24` is
+     not the window-surface script — it sits behind `$0DD9: CP $0E / JP NZ`,
+     so it runs on level 14 and nowhere else. What paints the window on every
+     other level is a pair of instructions three apart inside level init:
+     `$04C9` fills 960 cells with tile `$01`, `$04D7` runs a 47-byte script at
+     `0:$32A3`. Chasing the filed address would never have found it. The
+     fall-through rule applies to task descriptions too.
+  2. **`$3148` reads `$FFC9` every frame, not at init.** Level 6's conveyor
+     rewrites it at `$05C6`, one call before the streamer, so caching the
+     choice at level load picks up the zero `$0F0F` left there and animates
+     nothing.
+
+  Applying each 32-byte block on its staging frame rather than modelling the
+  `$FF9B` VBlank queue is measured-correct — one block per frame, gap set
+  exactly `{1}` over ~1400 gameplay frames across ten levels — and
+  `waterdiff.mjs` fails loudly if a recording ever shows a gap of 2.
 
 ---
 
@@ -437,17 +432,20 @@ comparison will ever catch it.
 2. ~~**The victory fanfare's picture**~~ — DONE, byte-exact against the
    cartridge. All that is left is the one `drawWindow` clip line described in
    item 1 under "What is NOT ported".
-3. **Retire the last two captures**: the `$0E24` window surface
-   (`assets/water.json`) and `assets/title.json`'s LCD registers.
-4. **Verify melee/batarang enemy damage against the oracle** — DONE. Three
+3. ~~**Retire the last two captures**~~ — DONE. Nothing in this project is
+   captured any more; see "Known-approximate" above for the two traps.
+4. **The stage-intro screen (`sub_00_333F`)**, found by
+   `tools/audit_coverage.py` after sitting unported AND uncatalogued for the
+   whole project. It runs on 8 of the 14 levels.
+5. **`selectAnim` (`loc_00_1B4A`)** is a reimplementation, not a translation —
+   it invents `fallTicks`/`walkTicks`/`walkStep` and carries an "empirical"
+   constant. MEASURED: `anim` diverges in 26 of 28 scenarios. It drives
+   `applyAnimHitbox`, so a wrong pose is a wrong hitbox.
+6. **Verify melee/batarang enemy damage against the oracle** — DONE. Three
    level-3 scenarios cover miss, connect and a batarang kill; the death-pit
    frame is pinned too (`l3-pit-death-exact-frame`). Two findings worth
    keeping: `$FFB1`'s boot phase is **per level** ($6D or $53 — measured for
    all 14, table in level.js), and `sub_00_29E7` does NOT zero vx/vy.
-6. **The `$0E24` window surface** — the last screen on top of `sub_00_0A0E`,
-   and the one that kills the `water.json` tilemap capture. Exactly the title's
-   shape: find the ingredients, replay, diff.
-7. **The door sequencer**, which unblocks level 13.
 
 ---
 

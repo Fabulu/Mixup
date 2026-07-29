@@ -19,7 +19,7 @@ import { drawHud } from './hud.js';
 import { updateBreakables } from './collision.js';
 import { updateActors } from './actors.js';
 import { updateEnemies, drawEnemies } from './enemies.js';
-import { updateWater, updateSplashes, tickWaterArt } from './water.js';
+import { updateWater, updateSplashes, tickTileAnim } from './water.js';
 import { updateDrops } from './drops.js';
 import { updateDoors } from './doors.js';
 import { updateVictoryHold } from './effects.js';
@@ -196,7 +196,9 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
           if (tickOptions(state) === 'title') {
             hideOptions(state);
             state.raster.mode = 0;
-            showTitle(state, titleArt);
+            // $3934 is a bare `JP loc_00_02C4`: coming back from OPTIONS
+            // re-runs neither the build nor the fade.
+            showTitle(state, titleArt, false);
           }
         } else if (state.roundSelect) {
           // loc_00_03DC: round select has its own loop too.
@@ -419,8 +421,11 @@ export function tick(state, manifest, playerTiles) {
   applyAnimHitbox(state, manifest);   // $1D2C -- hitbox follows the animation
   drawPlayer(state, manifest);        // $1D0C
   updateWater(state);                 // $05C6 CALL $2CBE -- levels 1-2 water
-  tickWaterArt(state);                // loc_00_3127's tile flip-book (captured)
   streamPlayerTiles(state, manifest, playerTiles);  // $2C13
+  // loc_00_3127 is the TAIL of sub_00_2C13, not a separate call, so it belongs
+  // immediately after it -- it used to run one call too early. Built from the
+  // ROM tables now rather than replayed from a capture.
+  tickTileAnim(state);
   updateBatarangs(state);             // $3A35
   drawBatarangs(state, manifest);     // $3D15
   updateRope(state, manifest);        // $3D5F -- the tail of the same routine

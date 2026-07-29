@@ -1,25 +1,23 @@
-// Title screen.  ROM: built at $027D, looped at loc_00_02C4.
+// Title screen.  ROM: built at $027D, looped at loc_00_02C4, left through
+// loc_00_030E -> loc_00_031B.
 //
 // The real thing clears the tilemap to $2F, runs two VRAM scripts through
 // sub_00_0A0E (5:$5170 for the artwork, 1:$7C44 for the text), starts the
 // title music, then fades in with sub_00_0A7F.
 //
-// The VRAM is now BUILT, not captured: two bank-6 tile blobs, the boot clear,
-// and the three scripts, all out of the manifest. assets/title.vram.bin and
-// tools/rip_title.py are gone. tools/oracle/titlediff.mjs is what earned that
-// -- it holds the built image against the cartridge's own and all 8192 bytes
-// agree.
+// NOTHING here is captured any more. The VRAM is BUILT: two bank-6 tile blobs,
+// the boot clear, and the three scripts, all out of the manifest --
+// tools/oracle/titlediff.mjs holds the built image against the cartridge's own
+// and all 8192 bytes agree. And assets/title.json, the eight LCD registers, is
+// gone too: every one of them is an immediate in the boot path or an entry in
+// sub_00_0A7F's own palette ramp, and tools/oracle/titleflash.py reads all
+// eight off the running cartridge to prove the derivation.
 
 import { buildTileCache, loadManifest } from './assets.js';
 import { buildTitleVram, requireScreenSpec } from './vram.js';
 import { runVramScript } from './vramscript.js';
 import { BTN } from './player.js';
 import { drawMetasprite } from './render/metasprite.js';
-
-const BASE = new URL('../assets/', import.meta.url).href;
-
-/** Frames the fade takes. ROM: $02BF loads C = $80 into sub_00_0A7F. */
-const FADE_FRAMES = 48;
 
 /** Decode one base64 blob from the manifest. */
 function b64(s) {
@@ -30,12 +28,63 @@ function b64(s) {
   return out;
 }
 
+/* ---------------------------------------------------------------------------
+ * sub_00_0A7F -- the palette fade, and the only reason title.json existed
+ * ------------------------------------------------------------------------- */
+
+/**
+ * B counts $21 down to $01, so a fade is exactly 33 frames, and a palette step
+ * happens on the four iterations where `B & 7 == 0` -- $20, $18, $10 and $08.
+ * MEASURED on the fade OUT of the title (tools/oracle/titleflash.py): the
+ * shadows change at frame offsets 10, 18 and 26 from $0350, which is those
+ * iterations exactly; the step at iteration 2 writes the value already there.
+ *
+ * $C70E is the ramp index. A fade IN (C bit 7 set, i.e. $02C1's `LD C,$80`)
+ * starts at 3 and counts DOWN, so it ends on entry 0 -- $E4/$E4/$C4, which is
+ * precisely what the old capture recorded.
+ */
+export const FADE_FRAMES = 0x21;
+
+export function createFade(spec, mode) {
+  return { b: FADE_FRAMES, step: (mode & 0x80) ? 3 : 0, mode, spec };
+}
+
+/**
+ * One frame of sub_00_0A7F. Returns true while the fade is still running.
+ *
+ * The low bits of C select which palettes move, and the branch structure is
+ * not a switch -- `CP 2` at $0A95 jumps INTO the middle of the routine and
+ * `CP 1` at $0AB4 jumps past its tail:
+ *   0  everything            1  BG only         2  OBJ only
+ *   3  everything, but BGP reads the SECOND ramp at $0B09+4 ($0AA4)
+ */
+export function tickFade(f, video) {
+  if (f.b === 0) return false;
+  if ((f.b & 7) === 0) {
+    const c = f.mode & 0x7F;
+    const e = f.step;
+    if (c !== 2) {                                  // $0A95
+      video.bgp = f.spec.fadeBgp[c === 3 ? e + 4 : e];        // $0AAE -> $FFAD
+    }
+    if (c !== 1) {                                  // $0AB4
+      video.obp0 = f.spec.fadeBgp[e];               // $0AC3 -> $FFAE
+      video.obp1 = f.spec.fadeObp1[e];              // $0ACA -> $FFAF
+    }
+    f.step += (f.mode & 0x80) ? -1 : 1;             // $0ACC-$0AD7
+  }
+  f.b -= 1;                                         // $0ADD
+  return f.b !== 0;
+}
+
+/* ------------------------------------------------------------------------- */
+
 export async function loadTitle() {
-  const [manifest, meta] = await Promise.all([
-    loadManifest(),
-    fetch(BASE + 'title.json').then((r) => r.json()),
-  ]);
+  const manifest = await loadManifest();
   const spec = requireScreenSpec(manifest.title, 'title');
+  if (!spec.lcd) {
+    throw new Error('assets/manifest.json title section has no "lcd" block '
+      + '-- re-run: python tools/export_assets.py');
+  }
 
   const vram = buildTitleVram({
     tiles: spec.tiles.map((t) => ({ dest: t.dest, bytes: b64(t.bytes) })),
@@ -50,22 +99,59 @@ export async function loadTitle() {
     // paints its difficulty word and sound number straight into it. The panel
     // text is already there: the title's own scripts wrote it.
     windowMap: vram.subarray(0x1C00, 0x2000),
-    meta,
+    // loc_00_031B's two scripts. The "on" one IS the title's own text script,
+    // re-run whole; only the eraser is separate ROM data.
+    flashOn: b64(spec.scripts[2]),
+    flashOff: b64(spec.flashOff),
+    fadeBgp: spec.fadeBgp,
+    fadeObp1: spec.fadeObp1,
+    lcd: spec.lcd,
   };
 }
 
-/** Point the renderer at the title instead of a level. */
-export function showTitle(state, title) {
+/**
+ * Point the renderer at the title instead of a level.
+ *
+ * The eight LCD registers are the manifest's now, and every one is derived:
+ *   rLCDC  $02BC's `LD A,$E7`, written straight to the register at $02BD
+ *   rSCX   never written on this path at all -- the 0 that $0160's HRAM clear
+ *          left in the $FFA9 shadow
+ *   rSCY   $021D's `XOR A` -> $FFAA
+ *   rWX    $0216's `LD A,$07` -> $FFAB
+ *   rWY    $02A8's `LD A,$90` -> $FFAC, re-armed just before the text script
+ *   rBGP/rOBP0/rOBP1  the end of $02C1's fade IN, i.e. entry 0 of the ramps at
+ *          0:$0B09 and 0:$0B11
+ * The shadows are pushed to the hardware registers in the VBlank ISR at
+ * $0806-$0817, so writing the shadow IS writing the register.
+ */
+export function showTitle(state, title, withFade = true) {
+  const lcd = title.lcd;
+  // $02AB, re-run. The press-start flash leaves START ERASED -- its last
+  // iteration is B = 1, and `1 & 8` is 0 -- and the cartridge only ever
+  // returns here through $027D, which rebuilds the whole screen. Without this
+  // the word is missing the second time the title is shown.
+  runVramScript(title.bgMap, title.flashOn, { base: 0x9800 });
   state.video.bgMap = title.bgMap;
-  state.video.scx = title.meta.scx;
-  state.video.scy = title.meta.scy;
-  state.video.obp0 = title.meta.obp0;
-  state.video.obp1 = title.meta.obp1;
+  state.video.scx = lcd.scx;
+  state.video.scy = lcd.scy;
+  state.video.obp0 = lcd.obp0;
+  state.video.obp1 = lcd.obp1;
+  state.video.bgp = lcd.bgp;
   state.level.tiles = title.tiles;
   state.video.sprites.length = 0;
   state.camera.x = 0;
   state.camera.y = 0x1000;             // cameraPixels subtracts the $10 bias
-  state.title = { frame: 0, cheat: 0, cursor: 0 };   // $C712: 0 START, 1 OPTION
+  state.title = {
+    frame: 0, cheat: 0, cursor: 0,     // $C712: 0 START, 1 OPTION
+    art: title,
+    // $02C1: LD C,$80 -> sub_00_0A7F. The loop at $02C4 is not reached until
+    // this returns, so the title genuinely ignores input for 33 frames.
+    //
+    // `withFade` false is the OPTIONS return: $3934 is a bare `JP loc_00_02C4`
+    // and re-runs neither the build nor the fade.
+    fade: withFade ? createFade(title, 0x80) : null,
+    flash: null,
+  };
 
   // $02A1: LD BC,$0003 -> sub_00_0AE1. Song $00 is the title theme, and mask
   // $03 is play + stop-all, so it replaces whatever was running.
@@ -83,9 +169,13 @@ export function hideTitle(state) {
 }
 
 /**
- * One title frame.  ROM: loc_00_02C4.
+ * One title frame.  ROM: loc_00_02C4, and the two states that hang off it.
  *
- * @returns 'title' while it should keep running, or 'start' once START is hit.
+ * @returns 'title' while it should keep running, 'options' for $3893, or
+ *          'start' once the whole press-start sequence has finished. That is
+ *          NOT the frame START is pressed: $030E falls into loc_00_031B, 120
+ *          frames of blinking, then a 33-frame fade -- 153 frames before
+ *          $035B, measured.
  */
 export function tickTitle(state) {
   const t = state.title;
@@ -97,19 +187,27 @@ export function tickTitle(state) {
   state.frame = (state.frame + 1) & 0xFF;
   state.video.sprites.length = 0;
 
-  // $02BF -> sub_00_0A7F: fade the palette up from black over the first frames.
-  // BGP is $E4 once faded; before that the shades are pushed toward 0.
-  const f = Math.min(FADE_FRAMES, t.frame);
-  const k = f / FADE_FRAMES;
-  state.video.bgp = fadeBgp(0xE4, k);
+  // $02C1's fade blocks before the loop head is ever reached: no cursor, no
+  // input, nothing but sub_00_0A4F for 33 frames.
+  if (t.fade) {
+    if (!tickFade(t.fade, state.video)) t.fade = null;
+    return 'title';
+  }
+
+  // loc_00_031B: state 4, reached from START at $030E and from the cheat at
+  // $02D8. The title loop does not run during it.
+  if (t.flash) return tickFlash(state, t);
 
   // $02C7: the hidden cheat is an exact match on the newly-pressed byte --
   // B + SELECT + LEFT together and nothing else. Sets $C75C, which later
-  // spawns the rescue helper during boss fights.
+  // spawns the rescue helper during boss fights -- and then `JP loc_00_031B`,
+  // so the cheat STARTS THE GAME. It is not a toggle you press and stay.
   if (state.input.pressed === 0x26) {
     t.cheat = 1;
     state.flow.rescueCheat = 1;
-    requestSound(state, 0x13);
+    requestSound(state, 0x13);                  // $02D2
+    t.flash = { b: 0x78, fade: null };           // $02D8 -> loc_00_031B
+    return 'title';
   }
 
   // $02DB: UP or DOWN (either one) flips the selection and plays $0E.
@@ -122,14 +220,54 @@ export function tickTitle(state) {
 
   // $02E7 -> $030E: START acts on the selection.
   if (state.input.pressed & BTN.START) {
+    if (t.cursor !== 0) return 'options';       // $0312 -> loc_00_3893
     requestSound(state, 0x0D);                  // $0315
-    return t.cursor === 0 ? 'start' : 'options';   // $0312 -> loc_00_3893
+    t.flash = { b: 0x78, fade: null };          // falls into loc_00_031B
   }
   return 'title';
 }
 
 /**
- * ROM: sub_00_0FCC, called from $0309 with the row picked at $02FE.
+ * State 4, one frame.  ROM: loc_00_031D-$0358.
+ *
+ * MEASURED (tools/oracle/titleflash.py): $031D runs exactly 120 times, then
+ * $0350's fade takes 33 more, then $035B. The blink is `B & $08` over a B that
+ * counts DOWN from $78, so the word START is on for one frame, off for eight,
+ * on for eight, and so on -- and the recorded $9967 tile id is $9C/$2F in
+ * exactly that pattern.
+ *
+ * The "on" script is 1:$7C44 whole, all 19 bytes: it repaints OPTIONS as well,
+ * unchanged, every time. The "off" script is a single RLE record covering the
+ * five cells of START alone, which is why OPTIONS never blinks.
+ *
+ * Neither is CALLed here -- $0333 copies the bytes into the WRAM buffer at
+ * $C61B and the VBlank ISR at $0714 runs them. Same mechanism as round
+ * select's route digit and the options panel's difficulty word.
+ */
+function tickFlash(state, t) {
+  const f = t.flash;
+
+  if (f.fade) {                                 // $0350: LD C,$00
+    if (tickFade(f.fade, state.video)) return 'title';
+    requestSound(state, 0x01, 0x03);            // $0355: LD BC,$0103
+    t.flash = null;
+    return 'start';                             // $035B
+  }
+
+  drawCursor(state, t);                         // $031E-$032C, every frame
+
+  // $0336: LD A,B / AND $08.
+  const script = (f.b & 0x08) ? t.art.flashOn : t.art.flashOff;
+  runVramScript(state.video.bgMap, script, { base: 0x9800 });
+
+  f.b = (f.b - 1) & 0xFF;                       // $034D
+  if (f.b === 0) f.fade = createFade(t.art, 0x00);
+  return 'title';
+}
+
+/**
+ * ROM: sub_00_0FCC, called from $0309 with the row picked at $02FE -- and from
+ * $032C during the flash, with the row picked the same way.
  *
  * A 4-frame blink cycling metasprites $19/$C9/$CA/$CB from the table at
  * 0:$3337, indexed by (frame & $18) >> 3. The two rows are OAM Y $64 and $74
@@ -146,20 +284,6 @@ function drawCursor(state, t) {
   const id = CURSOR_IDS[(state.frame & 0x18) >> 3];
   drawMetasprite(state, manifest.metasprites.table1, id,
                  CURSOR_X, CURSOR_Y[t.cursor], 0);
-}
-
-/**
- * Blend a DMG palette register toward black. Each 2-bit field is a shade, and
- * fading means walking every field up toward 3 (darkest) as k goes to 0.
- */
-function fadeBgp(reg, k) {
-  let out = 0;
-  for (let i = 0; i < 4; i++) {
-    const shade = (reg >> (i * 2)) & 3;
-    const faded = Math.round(shade + (3 - shade) * (1 - k));
-    out |= (faded & 3) << (i * 2);
-  }
-  return out;
 }
 
 function requestSound(state, id, mask = 0x01) {
