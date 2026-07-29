@@ -266,27 +266,45 @@ for (const [pid, p] of Object.entries(PRESETS)) {
   document.getElementById('presets').appendChild(b);
 }
 
-// Honest per-level status. Several levels lean on systems that are not ported
-// yet (map-object handlers, the door/gate sequencer, the effect and ballistic
-// pools, enemy AI), and without them their barriers cannot be opened at all --
-// better to say so than to let someone hunt for a way through that does not
-// exist yet.
-// Kept honest by hand. Every "not ported" here has been true at some point and
-// then quietly stopped being true -- the bosses were all listed as missing for
-// a while after they landed. If you port something, fix its line.
+// Honest per-level status.
+//
+// This header used to warn that several levels leaned on unported systems --
+// map-object handlers, the door sequencer, the effect and ballistic pools,
+// enemy AI -- and that their barriers could not be opened at all. Every one of
+// those is now ported and covered by the gate, so the warning was itself the
+// stale thing. Every level is playable.
+//
+// The rule that matters: if you port something, fix its line. Five of these
+// were measured FALSE and had been for months, which is worse than no note at
+// all -- a stale "BLOCKED" tells a player not to try a level that works.
+//
+//   13  'BLOCKED — barriers need the door sequencer'. The $C733-$C735
+//       sequencer, its debris and the $C693 pool are bit-exact over eight
+//       scenarios; level 13 is unblocked.
+//   12  'the collapsing floor is not ported'. It is loc_00_2FB7, one of the
+//       six sub_00_2CBE branches, all bit-exact.
+//    5  'the level-5 conveyor branch is not ported'. There is no such branch:
+//       $2CC3-$2CE2 dispatches levels 1, 2, 6, 7, $0B, $0C, $0D and the
+//       $C73E default, and 5 is not among them.
+//    3  'some map objects still sit where they spawn'. All eleven $C1E8 types
+//       are bit-exact, all sixteen record bytes plus the stamped cells.
+//  9/10 'the parallax sky is missing'. The scroll program is ported and
+//       verified ($0857's eight arms, 335,664 scanlines), and the moon the
+//       main loop draws at $05A6 is now drawn too. What is still wrong is the
+//       sky ARTWORK, not the movement.
 const LEVEL_NOTE = {
   1: 'playable', 2: 'playable',
-  3: 'playable — some map objects still sit where they spawn',
+  3: 'playable',
   4: 'Boss 1 — playable',
-  5: 'partial — the level-5 conveyor branch is not ported',
-  6: 'partial — the vehicle rides an unported scroll register',
-  7: 'partial',
+  5: 'playable',
+  6: 'playable',
+  7: 'playable',
   8: 'Boss 2 — playable',
-  9: 'partial — the parallax sky is missing',
-  10: 'partial — the parallax sky is missing',
+  9: 'playable — the sky layers scroll, but their artwork is still wrong',
+  10: 'playable — the sky layers scroll, but their artwork is still wrong',
   11: 'Boss 3 — playable',
-  12: 'partial — the collapsing floor is not ported',
-  13: 'BLOCKED — barriers need the door sequencer',
+  12: 'playable',
+  13: 'playable',
   14: 'Boss 4 / Joker — playable; entrance renders on the wrong background',
 };
 const levelSel = document.getElementById('level');

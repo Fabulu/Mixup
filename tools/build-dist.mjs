@@ -52,14 +52,33 @@ for (const item of INCLUDE) {
 // Cloudflare Pages sends ETags, so revalidation is a 304 in the normal case.
 // If these ever need long caching again, the URLs have to carry a content
 // hash first.
+//
+// THE ENTRY DOCUMENT IS `no-store`, NOT `no-cache`, and the distinction is the
+// whole point. `no-cache` means "keep it, but revalidate" -- phones treat that
+// loosely for the top-level document, and Safari's back-forward cache will
+// hand back a stored page without asking anyone. That has looked like a game
+// bug three separate times in this project. `no-store` leaves nothing to serve
+// stale.
+//
+// Only the HTML pays that cost; everything it references stays on `no-cache`
+// and revalidates to a 304 via ETag, which is cheap and correct once the
+// document that names them is guaranteed fresh. Both `/` and `/index.html` are
+// listed because a rule for one does not necessarily match the other, and the
+// `/*` fallback catches anything added later.
 fs.writeFileSync(path.join(DIST, '_headers'), [
+  '/',
+  '  Cache-Control: no-store, must-revalidate',
+  '',
+  '/index.html',
+  '  Cache-Control: no-store, must-revalidate',
+  '',
   '/assets/*',
   '  Cache-Control: no-cache',
   '',
   '/src/*',
   '  Cache-Control: no-cache',
   '',
-  '/',
+  '/*',
   '  Cache-Control: no-cache',
   '',
 ].join('\n'));
