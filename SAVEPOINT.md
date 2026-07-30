@@ -35,30 +35,31 @@
 >
 > ### Do these next
 >
-> 1. **Level 6's tank — the reported softlock could NOT be reproduced.** Level 6
->    is bit-exact against the cartridge for 400 frames (player, camera, tank
->    position and HP), and the cartridge ALSO leaves a hold-right player stuck
->    at x = 1424 with the tank out of reach, so that part is faithful. Forcing
->    the kill hands over to level 7 correctly. What WAS wrong was structural:
->    six async handoffs in `main.js` had `.then()` and no `.catch()`, so a
->    rejected load froze the loop forever with the music still playing — exactly
->    the reported symptom. That is fixed, the sound now stops, the launcher shows
->    the error, and a 5 s watchdog names any handoff that stalls without
->    rejecting. **The next occurrence self-reports: ask what the red panel says.**
-> 2. **Level 6 sprites.** The cartridge draws **18** there; check the current
+> 1. **Level 6 sprites.** The cartridge draws **18** there; check the current
 >    count now that the vehicle draws (the port queues 16-23 in play). Enemy
 >    state 5 (the vehicle, HP 8) still has NO oracle coverage, and the player
 >    cannot damage it from the ground in either the port OR the cartridge.
-> 3. **Boss 1's melee is unresolved.** 60 scripted punches over 600 frames on
+> 2. **Boss 1's melee is unresolved.** 60 scripted punches over 600 frames on
 >    level 4 never reached the melee scan's damage arm (`cuetrace.py` shows only
 >    the `$10` swing cue, never `$19`). Either the script never lines up with a
 >    hopping state-`$0A` boss, or landing a fist on him needs something the port
 >    has not modelled. Do not assume it is a bug without measuring.
-> 4. **Level 8's boss phase 2** — see the two hypotheses below; the armour one
+> 3. **Level 8's boss phase 2** — see the two hypotheses below; the armour one
 >    needs no bug at all.
 >
 > ### Answered in play, so nobody re-opens them
 >
+> - **Level 6's "softlock" on finishing the level. FIXED.** It was never a
+>   freeze or a crash: the transition arm in `main.js` did not restore the
+>   palettes, and level 6's fanfare fades them to white, so level 7 loaded and
+>   ran INVISIBLY. Level 6 is the only clear that leaves through a transition,
+>   which is why nothing else showed it. See docs/03 lesson 37 -- including why
+>   three harnesses called it PASS. Guarded by the `level6-clear` gate stage.
+> - **The ending's "giant superpixels" on the credit circle.** Not the render:
+>   pixel-exact against the cartridge over 88 frames of the whole crawl
+>   (2,027,520 px). It was the canvas being shown at a fractional scale
+>   (720/160 = 4.5), which `image-rendering: pixelated` rounds unevenly per
+>   pixel. `fitScreen()` in index.html now scales by whole DEVICE pixels.
 > - **Boss 3's "stuck between train and a wall that isn't there".** FAITHFUL.
 >   Level 11's map is byte-exact against `$D000`, and over 500 frames every core
 >   field, the camera and boss slot 0 are bit-exact: the ROM itself pins the

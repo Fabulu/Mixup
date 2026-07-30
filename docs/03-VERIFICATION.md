@@ -384,6 +384,36 @@ now — the fix narrative lives on its entry in `regress.mjs`.
     `rasterdiff.mjs`'s 100-frame cap on the parallax scenarios sits just below
     the first flip for this reason.
 
+37. **"Renders without throwing" is not "renders a picture" -- and that is how
+    a softlock shipped.** Level 6's clear is the only one that leaves through a
+    TRANSITION (`$3605`), and its fanfare is a 33-frame fade to white: measured
+    on the cartridge, `$FFAD`/`$FFAE`/`$FFAF` walk `E4 -> 90 -> 40 -> 00`,
+    `$FFB0` becomes `07` at f181, and on **that same frame** the three are
+    rewritten `E4`/`E4`/`C4`. The port's transition arm never restored them.
+    Every other arm out of a clear did -- `to: 'level'`, the stage-intro
+    handover, the ending -- so this was the one path that could lose them.
+
+    The result was not a freeze and not a crash. Level 7 loaded, ran and
+    accepted input; every pixel was the same shade. Reported from play as "the
+    boss explodes, the screen fades to white, and then we softlock", which is
+    exactly what an invisible running game looks like.
+
+    **THREE harnesses drove this handover and all three said PASS**, because
+    each one asked whether frames rendered and none asked whether they rendered
+    anything. Two did not call `renderFrame` at all; the one that did only
+    checked that it did not throw. This is `byte-exact data is not a correct
+    picture` (§ above) wearing a new hat, and the general rule it earns is:
+    **a render check must assert on the OUTPUT, not on the absence of an
+    exception.** `l6clear.mjs` now counts distinct shades in the framebuffer and
+    is a gate stage (`level6-clear`); validated by removing the restore and
+    watching it go red with the diagnosis.
+
+    Second-order lesson: chasing this cost several rounds of wrong hypotheses
+    (a missing asset, a rejected promise, a sync throw, the victory hold never
+    finishing) because the symptom word was "softlock". The report that cracked
+    it was the one that described what the SCREEN did -- "fades out to white" --
+    not what the game failed to do. Ask what it looked like.
+
 ## Tools
 
 | tool | purpose |

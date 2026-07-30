@@ -39,6 +39,8 @@ const { loadManifest, loadPlayerTiles } = await imp('src/assets.js');
 const { tick } = await imp('src/main.js');
 const { resolveLoadout } = await imp('src/mods.js');
 const { effects } = await imp('src/effects.js');
+const { GAMEPLAY_PALETTES } = await imp('src/state.js');
+const { createFramebuffer, renderFrame } = await imp('src/render/renderer.js');
 
 const argv = process.argv.slice(2);
 const arg = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i + 1] : d; };
@@ -91,11 +93,46 @@ if (!handoff) {
     + 'written, so the empty level 6 keeps running');
   process.exit(1);
 }
-// The frame loop then loads it: enterLevel(next, null, { transition: true }).
+// The frame loop then loads it. BOTH lines, in main.js's order -- the palette
+// restore is not decoration: level 6's fanfare is a 33-frame fade to WHITE
+// ($FFAD/$FFAE/$FFAF walk E4 -> 90 -> 40 -> 00) and this is the only clear that
+// leaves through a transition, so without it level 7 plays under a blank
+// screen. MEASURED on the cartridge: $FFB0 becomes 07 at f181 and E4/E4/C4 are
+// rewritten on that same frame.
+Object.assign(state.video, GAMEPLAY_PALETTES);
 await initLevel(state, handoff, { transition: true });
 console.log(`\nflow.nextLevel = ${handoff}; after the transition load,`
   + ` level = ${state.level.number}`);
-console.log(handoff === 7 && state.level.number === 7
-  ? 'PASS - clearing level 6 hands over to level 7 through the TOP exit'
-  : 'FAIL - wrong destination');
-process.exit(handoff === 7 ? 0 : 1);
+
+// AND THE SCREEN HAS TO SHOW SOMETHING.
+//
+// This check exists because three separate harnesses drove this exact handover
+// and every one reported PASS while the game rendered a solid white frame. They
+// asked whether frames RENDERED, never whether they rendered a PICTURE -- which
+// is docs/03's "byte-exact data is not a correct picture" in a new costume. The
+// reported symptom was "the boss explodes, the screen fades to white, and then
+// we softlock": nothing froze and nothing threw, the game was just invisible.
+const fb = createFramebuffer();
+for (let i = 0; i < 30; i++) {
+  state.input.held = 0;
+  state.input.pressed = 0;
+  tick(state, manifest, playerTiles);
+  renderFrame(state, fb);
+}
+const shades = new Set(fb.shades);
+console.log(`palettes: bgp=$${state.video.bgp.toString(16).toUpperCase()}`
+  + ` obp0=$${state.video.obp0.toString(16).toUpperCase()}`
+  + ` obp1=$${state.video.obp1.toString(16).toUpperCase()}`
+  + `   framebuffer shades: ${[...shades].sort().join(',')}`);
+
+const ok = handoff === 7 && state.level.number === 7 && shades.size > 1;
+if (shades.size <= 1) {
+  console.log('\nFAIL: SOFTLOCK -- level 7 loaded and is running, but every pixel'
+    + ' is one shade.\n      The fade-out palette was never restored, so the game'
+    + ' is invisible.\n      main.js step(): the flow.nextLevel arm must'
+    + ' Object.assign(state.video, GAMEPLAY_PALETTES).');
+}
+console.log(ok
+  ? 'PASS - level 6 hands over to level 7 AND the screen is visible'
+  : 'FAIL');
+process.exit(ok ? 0 : 1);

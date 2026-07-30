@@ -476,6 +476,30 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
       // velocity, air state, facing, half-extents, i-frames, the animation
       // triple, the water surface, $FFB1/$FFA7 -- was being reset behind the
       // patch. src/level.js's initLevel owns the difference now.
+      //
+      // RESTORE THE PALETTES. This is the level-6 softlock, and it was neither
+      // a freeze nor a crash: the game ran perfectly and was INVISIBLE.
+      //
+      // Level 6 is the only level that clears into a transition (see the $3605
+      // comment above), and its fanfare is a 33-frame fade to WHITE -- $FFAD /
+      // $FFAE / $FFAF walk E4 -> 90 -> 40 -> 00. Every other arm out of a clear
+      // already put them back: the `to: 'level'` arm above, the stage-intro
+      // arm, the ending arm. This one did not, so level 7 loaded and played
+      // underneath a blank white screen forever, music and all.
+      //
+      // MEASURED on the cartridge (vehicle killed by zeroing $C268+$16): the
+      // fade reaches 00 at f174, $FFB0 becomes 07 at f181, and on THAT SAME
+      // FRAME $FFAD/$FFAE/$FFAF are rewritten E4/E4/C4 -- which is exactly
+      // GAMEPLAY_PALETTES. The restore belongs to the level entry, not to the
+      // fanfare, so it goes here where the entry is.
+      //
+      // Why no harness caught it: three of them drove this handover and all
+      // reported PASS, because they only checked that frames RENDERED, never
+      // that they rendered anything visible. "Renders without throwing" is not
+      // "renders a picture" -- the same shape as docs/03's "byte-exact data is
+      // not a correct picture". l6clear.mjs now asserts the framebuffer has
+      // more than one shade after the handover.
+      Object.assign(state.video, GAMEPLAY_PALETTES);
       enterLevel(next, null, { transition: true });
       return;
     }

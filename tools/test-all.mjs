@@ -210,6 +210,21 @@ const STAGES = [
     skip: hasAssets ? null : 'assets/manifest.json missing',
   },
   {
+    // No PyBoy: pure port, and it guards a SOFTLOCK that shipped. Level 6 is
+    // the only level whose clear leaves through a transition, and its fanfare
+    // fades the palette to white -- so a transition arm that forgets to restore
+    // it loads level 7 into a blank screen and the game plays on, invisible.
+    // Reported from play as "the boss explodes, the screen fades to white, and
+    // then we softlock". The stage asserts the handover AND that the
+    // framebuffer has more than one shade.
+    name: 'level6-clear',
+    what: 'clearing level 6 reaches level 7 and the screen is still visible',
+    cmd: process.execPath,
+    args: ['tools/oracle/l6clear.mjs'],
+    pyboy: false,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
     // No PyBoy: it replays recordings already on disk, so it is cheap enough
     // to run every time and still covers all 47 ROM sound ids.
     name: 'sound-driver',
