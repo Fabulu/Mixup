@@ -148,7 +148,6 @@
   "enemiesPendingNote": "THE LEDGER FOR THE SPLIT IN FLIGHT. Phase 9 lands one module per commit, easiest first, driver last -- so between the first commit and the last, some of the modules named above exist and some do not. This array is the manifest's own statement of WHICH, and tests/registry.test.js asserts it equals the set of enemies[] `module`/`shared` paths that are not on disk, exactly. Two things follow: a commit that creates a module without striking it from this list fails the gate, and so does a list that claims a file is pending when it is already there. When it is empty the split is complete and the test is asserting that every module the manifest names exists. It replaced an all-or-nothing check that passed both when every module was missing and when every one was present, and could not be satisfied by any commit in between.",
   "enemiesPending": [
     "src/enemies/states/walker.js",
-    "src/enemies/states/walkershared.js",
     "src/enemies/bosses/boss1.js",
     "src/enemies/bosses/boss2.js",
     "src/enemies/bosses/boss3.js",
