@@ -13,10 +13,11 @@ Gradius is the rehearsal. Everything we learn about timing there is preparation.
 
 ---
 
-## The two things both called "lag", which are not the same thing
+## The THREE things all called "lag", which are not the same thing
 
 Getting these confused will produce a port that is wrong in a way no field comparison
-catches. Name which one you are dealing with before you model anything.
+catches. Name which one you are dealing with before you model anything. They are not
+mutually exclusive: one machine can do (A) to some subsystems and (C) to others.
 
 ### A. Dropped updates — "the frame the game gave up on"
 
@@ -36,9 +37,36 @@ updates — it is doing all of them, half as often.
 
 This is the arcade case, and it is the one that matters for DaiOuJou.
 
+### C. Partial completion — "the loop got through 19 of 32 objects"
+
+The scheduler walks its object table in order and **runs out of time partway through**.
+Objects 0..k update this frame; k+1..31 do not. Next frame it may get further, or less
+far.
+
+This is neither of the above and it is the **most consequential of the three**, because it
+does not merely change *when* things happen — it changes **which things happen and in what
+order**. Bullet timing, which enemy fires first, which death resolves first, whether a
+pickup spawns before the slot it needed was taken. Slowdown stops being a presentation
+property and becomes a *gameplay* property.
+
+The shape to look for:
+
+```js
+for (let slot = 0; slot < objectLimit; slot++) {
+  if (!budget.canAfford(costOf(slot))) break;   // <-- the whole question
+  updateObject(slot);
+}
+```
+
+**If a game does this, slowdown cannot be retrofitted.** A port that always updates all 32
+slots and then dilates time is not a slower version of the original — it is a *different
+game* that happens to run slowly. Find out which of the three you have **before** writing
+the object driver, not after.
+
 **Why the difference is load-bearing:** under (A) you must know *which* subsystems skip
-and in what order they are gated. Under (B) you must know *how long the work took*, which
-is a fundamentally harder question — it is cycle accounting, and it presses directly
+and in what order they are gated. Under (C) you must know the per-object cost and the
+budget, and the *order of the table becomes semantics*. Under (B) you must know *how long
+the work took*, which is a fundamentally harder question — it is cycle accounting, and it presses directly
 against this project's founding premise that we write a JS function per ROM routine
 rather than emulate. A faithful (B) requires knowing the cost of code we have replaced.
 **That tension is real and unsolved; do not let it be discovered late.**
@@ -94,7 +122,7 @@ hits) and expensive to misattribute.
 
 ---
 
-## What Gradius must teach us (case A again, on the NES)
+## What Gradius must teach us (see games/gradius/NOTES-lag.md for the plan)
 
 Already measured statically in the ROM (`games/gradius/NOTES-rom.md`):
 
@@ -181,15 +209,46 @@ port built without it is a rewrite, not a fix.
 
 ---
 
+## Instrument the signals separately — one flag is not enough
+
+**Do not trust an emulator's generic "lag frame" flag.** A game can poll input, advance
+music and update *some* state on a frame its main logic did not complete. One boolean
+cannot distinguish (A), (B) and (C), and the flag is usually the emulator's opinion about
+the CPU, not the game's opinion about its own work.
+
+Instrument these **separately**, per frame, and compare them as distinct fields:
+
+| signal | what it answers |
+|---|---|
+| video frame advanced | did the display change |
+| input sampled | did the game read the controller |
+| main logic advanced | did the top-level update run at all |
+| script / scheduler advanced | did stage or wave logic step |
+| player advanced | did the player object update |
+| **object slots processed: 0..N** | **how far down the table did it get** — the (C) detector |
+| sprites prepared / OAM written | did the display list get rebuilt |
+| audio advanced | did the sound driver step |
+
+The object-slot count is the one most likely to be missing from any tooling you inherit,
+and it is the one that distinguishes the model that can be retrofitted from the model that
+cannot. **Get it into the state vector before the port has an object driver.**
+
+Track both the *emulator's* frame number and one or more counters **inside the game's own
+loop**. When those two disagree, that disagreement is the measurement you want.
+
 ## The rules, distilled
 
-1. **Decide which kind of lag you have — dropped updates or time dilation — before
-   modelling anything.**
+1. **Decide which of the THREE kinds you have — dropped updates, partial completion, or
+   time dilation — before modelling anything.** Partial completion changes outcomes, not
+   just pace, and cannot be retrofitted.
 2. **Census it from day one.** Hook the flag, count per scenario, print it always.
 3. **Never diagnose a timing-shaped divergence without checking the lag census first.**
 4. **Tag, do not hide.** A scenario trimmed to avoid a lag frame has stopped testing the
    thing that mattered.
 5. **A single dropped frame diverges permanently.** Treat it as a discrete event with
    downstream consequences, not as noise.
-6. **If slowdown is a mechanic, it is a requirement** — and it must be in the state
+6. **Never model slowdown as a global speed multiplier.** `gameSpeed = 0.7` makes
+   everything uniformly sluggish and reproduces none of the three mechanisms.
+7. **Instrument the signals separately.** One "lag frame" boolean cannot tell them apart.
+8. **If slowdown is a mechanic, it is a requirement** — and it must be in the state
    vector, in the definition of done, and in the harness design from the start.
