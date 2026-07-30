@@ -329,6 +329,15 @@ for (let i = 1; i <= 14; i++) {
   o.textContent = `${i} — ${LEVEL_NOTE[i]}`;
   levelSel.appendChild(o);
 }
+// 99 = the ending. It is only reachable in play by beating the Joker, and it is
+// pixel-verified against the cartridge either way, so being able to WATCH it
+// should not depend on being able to WIN.
+{
+  const o = document.createElement('option');
+  o.value = '99';
+  o.textContent = 'Ending — 4 pictures, the credit crawl and THE END';
+  levelSel.appendChild(o);
+}
 levelSel.value = '0';
 
 // $C756. The cartridge boots at 1 -- read off the real machine at gameplay
@@ -399,12 +408,23 @@ document.getElementById('launch').addEventListener('click', async () => {
   err.style.display = 'none';
   try {
     const pick = parseInt(levelSel.value, 10);
+    const wantsEnding = pick === 99;
     running = await boot(document.getElementById('screen'), {
-      level: pick === 0 ? 1 : pick,
+      level: wantsEnding ? 14 : (pick === 0 ? 1 : pick),
       title: pick === 0,
+      ending: wantsEnding,
       mods: [...selected],
       difficulty: parseInt(diffSel.value, 10),
       onOptions: backToPicker,        // OPTION on the title returns here
+      // An async screen swap that rejects used to leave the frame loop dead
+      // with the music still playing, and nothing on screen said so. boot()
+      // has already resolved by then, so the try/catch below cannot see it --
+      // it needs its own channel.
+      onError: (msg) => {
+        err.style.display = 'block';
+        err.textContent = `${msg}\n\nThe game loop has stopped. `
+          + `Reload to start again.`;
+      },
     });
     window.game = running;
   } catch (e) {

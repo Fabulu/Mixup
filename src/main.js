@@ -43,6 +43,7 @@ const FRAME_MS = 1000 / 59.73;      // DMG frame rate
 
 export async function boot(canvas, { level = 1, tunables = {}, mods = [],
                                      title = true, onOptions = null,
+                                     onError = null, ending = false,
                                      difficulty = 1 } = {}) {
   // Mod params override the ROM defaults before anything reads them; explicit
   // `tunables` still wins last so a caller can force a single value.
@@ -74,6 +75,13 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     state.titleManifest = manifest;        // the cursor draws from table1
     showTitle(state, titleArt);
   }
+
+  // The ending is only reachable by clearing level $0E, which means beating the
+  // Joker. It is pixel-verified against the cartridge (two gate stages), so
+  // "can I see it" should not depend on "can I win" -- the launcher can ask for
+  // it directly. Same state the clear path enters, so it runs the real
+  // loc_00_3652 and not a preview of it.
+  if (ending) showEnding(state, loadEnding(manifest, null));
 
   const fb = createFramebuffer();
   const ctx = canvas.getContext('2d');
@@ -115,8 +123,62 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
   window.addEventListener('focus', resync);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) resync(); });
 
+  // --- the suspended-loop watchdog ------------------------------------------
+  //
+  // step() hands off to an async load by RETURNING without rescheduling; only
+  // resume() restarts it. Every such handoff is therefore a window in which the
+  // game is, correctly, frozen -- and an incorrectly frozen game looks exactly
+  // the same. A player sees one thing either way: everything vanishes and the
+  // music keeps playing.
+  //
+  // So make the difference observable. Arm a timer at each handoff and disarm
+  // it in resume(); if it ever fires, the loop was suspended and never came
+  // back, and we can say WHICH handoff did it instead of guessing from a
+  // description. This exists because a reported level-6 softlock could not be
+  // reproduced from any scripted input -- the level itself is bit-exact against
+  // the cartridge for 400 frames -- so the next occurrence has to report itself.
+  let watchdog = null;
+  const WATCHDOG_MS = 5000;
+  const arm = (where) => {
+    if (watchdog !== null) clearTimeout(watchdog);
+    watchdog = setTimeout(() => {
+      watchdog = null;
+      fail(`the frame loop was suspended by "${where}" and never resumed`)(
+        new Error(`no resume() within ${WATCHDOG_MS} ms`));
+    }, WATCHDOG_MS);
+  };
+
   /** Restart the rAF loop after an async screen swap. */
-  const resume = () => { last = performance.now(); acc = 0; requestAnimationFrame(step); };
+  const resume = () => {
+    if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
+    last = performance.now();
+    acc = 0;
+    requestAnimationFrame(step);
+  };
+
+  /**
+   * Every async screen swap below suspends the rAF loop: step() `return`s
+   * WITHOUT rescheduling, and only resume() restarts it. So a rejected load
+   * left the loop dead forever while the audio worklet carried on -- a silent
+   * freeze with the music still playing, and nothing in the console unless you
+   * happened to be watching for an unhandled rejection.
+   *
+   * REPORTED FROM PLAY on level 6, whose clear is the one handoff that goes
+   * through a transition rather than a screen. The level-6 simulation itself
+   * is bit-exact against the cartridge for 400 frames, so the fault was never
+   * in the game code -- it was that a failure here had no way to be seen.
+   *
+   * Stop the sound too: a dead game that keeps playing music reads as a game
+   * bug rather than a load failure, which is what sent the last investigation
+   * looking in the wrong place.
+   */
+  const fail = (where) => (err) => {
+    running = false;
+    try { sound.stop(); } catch { /* the driver may never have started */ }
+    const msg = `${where} failed: ${(err && err.message) || err}`;
+    if (onError) onError(msg, err);
+    else console.error('[mixup] ' + msg, err);
+  };
 
   /**
    * loc_00_035B, from all three of its callers: the title walk-through
@@ -154,7 +216,9 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
   let pendingOpts;
   function enterLevel(n, after = null, opts = undefined) {
     if (!showsStageIntro(n)) {
-      initLevel(state, n, opts).then(() => { if (after) after(); resume(); });
+      arm(`level ${n}`);
+      initLevel(state, n, opts).then(() => { if (after) after(); resume(); })
+        .catch(fail(`level ${n}`));
       return;
     }
     pendingLevel = n;
@@ -168,10 +232,11 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     if (!titleArt) return false;
     hideTitle(state);
     hideRoundSelect(state);
+    arm('round select');
     loadRoundSelect(manifest, titleArt.vram).then((art) => {
       showRoundSelect(state, art);
       resume();
-    });
+    }).catch(fail('round select'));
     return true;
   }
 
@@ -280,7 +345,9 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
       if (titleArt) {
         hideRoundSelect(state);
         resetRun(state);                // $388E: JP loc_00_0150, the boot vector
-        initLevel(state, 1).then(() => { showTitle(state, titleArt); resume(); });
+        arm('title');
+        initLevel(state, 1).then(() => { showTitle(state, titleArt); resume(); })
+          .catch(fail('title'));
         return;
       }
     }
@@ -296,7 +363,9 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
       pendingLevel = 0;
       pendingAfter = null;
       pendingOpts = undefined;
-      initLevel(state, n, opts).then(() => { if (after) after(); resume(); });
+      arm(`level ${n}`);
+      initLevel(state, n, opts).then(() => { if (after) after(); resume(); })
+        .catch(fail(`level ${n}`));
       return;
     }
 
@@ -397,7 +466,9 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
         if (titleArt) {
           hideRoundSelect(state);
           Object.assign(state.video, GAMEPLAY_PALETTES);
-          initLevel(state, 1).then(() => { showTitle(state, titleArt); resume(); });
+          arm('title');
+          initLevel(state, 1).then(() => { showTitle(state, titleArt); resume(); })
+            .catch(fail('title'));
           return;
         }
       } else if (enterRoundSelect()) {
@@ -408,13 +479,14 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
       // back to, so keep the old restart-in-place rather than softlock. It
       // stands in for CONTINUE, so it does CONTINUE's own $0482 HP refill --
       // level init writes neither $FF8A nor $FF8E.
+      arm(`respawn on level ${state.level.number}`);
       initLevel(state, state.level.number).then(() => {
         state.flow.lives = lives;
         state.player.hp = state.player.hpMax;   // $0482
         state.player.dead = 0;
         state.deathTimer = 0;
         resume();
-      });
+      }).catch(fail(`respawn on level ${state.level.number}`));
       return;
     }
 
