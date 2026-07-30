@@ -203,19 +203,42 @@ test('characters[] and enemies[] are declared, and honest about it', () => {
   }
 });
 
-// The enemies[] modules are the one set of paths in the manifest that do NOT
-// exist yet -- they name files Phase 9 of the restructure will create. That is
-// deliberate, and the manifest says so; this test pins the claim so nobody
-// mistakes it for rot, and it will start asserting existence the moment the
-// files land.
-test('enemies[] modules are a forward declaration, and the manifest says so', () => {
+// The enemies[] modules are the one set of paths in the manifest that may not
+// exist yet -- they name the files Phase 9 of the restructure creates, ONE PER
+// COMMIT, easiest first and the driver last. So for the length of that phase
+// the set is genuinely split, and the manifest has to say which half is which.
+//
+// THIS REPLACED AN ALL-OR-NOTHING CHECK, and the replacement is strictly
+// stronger. The old assertion was `missing.length === 0 || missing.length ===
+// modules.length`: it passed when every module was missing, passed when every
+// module was present, and could not be satisfied by ANY commit in between --
+// which made the one-module-per-commit protocol impossible to keep green. It
+// also never asserted that a landed module still exists, because the
+// all-missing arm stayed available forever. What is asserted now is exact:
+// game.json's `enemiesPending` must equal, element for element, the set of
+// paths enemies[] names that are not on disk. A module that lands without
+// being struck from the ledger fails. A ledger entry for a file that is
+// already there fails. And when the ledger is empty -- the end state of Phase
+// 9 -- this test is asserting that every module the manifest names exists,
+// which the check it replaced never did.
+test('enemiesPending is exactly the set of enemy modules not on disk', () => {
   assert.match(BAT.enemiesNote, /WIRED TO NOTHING/,
     'enemiesNote states that these entries drive nothing yet');
-  const modules = [...new Set(BAT.enemies.map((e) => e.module))];
+
+  // `shared` (walkershared.js) is a real path in the manifest too, and it is
+  // tracked here for the same reason the `module` paths are.
+  const modules = [...new Set(BAT.enemies.flatMap((e) => [e.module, e.shared])
+    .filter((p) => p !== undefined))];
+  assert.ok(Array.isArray(BAT.enemiesPending), 'enemiesPending is an array');
+  for (const p of BAT.enemiesPending) {
+    assert.ok(modules.includes(p),
+      `enemiesPending names ${p}, which no enemies[] entry lists`);
+  }
+
   const missing = modules.filter((p) => !onDisk(new URL(`batman/${p}`, GAMES_DIR)));
-  assert.ok(missing.length === 0 || missing.length === modules.length,
-    'the enemy split is either entirely pending or entirely landed -- a manifest '
-    + `naming ${modules.length - missing.length} real modules and `
-    + `${missing.length} missing ones is a half-applied split, which is the `
-    + 'state this restructure exists to avoid');
+  assert.deepEqual([...BAT.enemiesPending].sort(), [...missing].sort(),
+    'game.json enemiesPending must be EXACTLY the enemies[] modules that do not '
+    + 'exist on disk. If a module just landed, strike it from the ledger in the '
+    + 'same commit; if the ledger names a file that is already there, the split '
+    + 'moved without the manifest.');
 });
