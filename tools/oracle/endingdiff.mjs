@@ -165,7 +165,10 @@ console.log('\nbuilt from assets/manifest.json');
 function drive(opts = {}) {
   const { startAt = null, max = 4400, base = before, want = new Set() } = opts;
   const state = createState();
-  state.titleManifest = manifest;
+  // NOT set: main.js only assigns state.titleManifest when the game boots
+// through the title screen, so a harness that assigns it here is testing a
+// state the app may not have. It masked the missing credit-circle sprite
+// for as long as this line existed (docs/03 lesson 38).
   state.sound = { queue: [] };
   // Three values the ending INHERITS and never initialises, seeded from the
   // cartridge's own $3652 snapshot so the comparison is honest rather than

@@ -47,6 +47,10 @@ export function createFramebuffer() {
     bgIndex: new Uint8Array(SCREEN_W * SCREEN_H),
     // Per-scanline OAM budget, for the hardware ten-sprite cut.
     lineCount: new Uint8Array(SCREEN_H),
+    // Which OAM entries won each scanline's budget, in OAM order. The paint
+    // pass re-orders these by X (see drawSprites), so selection and priority
+    // stay the two separate rules the hardware actually has.
+    lineSel: new Int16Array(SCREEN_H * MAX_SPRITES),
   };
 }
 
@@ -384,28 +388,64 @@ function drawSprites(state, fb, bands, opts) {
   const lineCount = fb.lineCount;
   lineCount.fill(0);
 
+  // --- PHASE 1: selection, in OAM order ------------------------------------
+  //
+  // The ten-per-line cut is taken BEFORE anything about the tile is known:
+  // hardware spends the slot on Y alone, so a fully transparent row and a
+  // missing tile both still cost one. This pass must stay in OAM order -- that
+  // is the order the hardware's OAM scan uses to fill the ten slots.
+  const sel = fb.lineSel;
   for (let i = 0; i < n; i++) {
     const s = list[i];
-    const flipX = (s.attr & 0x20) !== 0;
-    const flipY = (s.attr & 0x40) !== 0;
-    const behind = (s.attr & 0x80) !== 0;
-    const topTile = tiles.obj[s.tile & 0xFE];
-    const botTile = tiles.obj[s.tile | 0x01];
-
-    // Sprites are 8x16 on hardware; `scale` is a mod-only magnification that
-    // plots each source pixel as a scale x scale block.
     const sc = s.scale || 1;
-    const H = 16 * sc, W = 8 * sc;
-
+    const H = 16 * sc;
     for (let py = 0; py < H; py++) {
       const sy = s.y + py;
       if (sy < 0 || sy >= SCREEN_H) continue;
-
-      // The ten-per-line cut, taken BEFORE anything about the tile is known:
-      // hardware spends the slot on Y alone, so a fully transparent row and a
-      // missing tile both still cost one.
       if (lineCount[sy] >= perLine) continue;
+      sel[sy * MAX_SPRITES + lineCount[sy]] = i;
       lineCount[sy]++;
+    }
+  }
+
+  // --- PHASE 2: paint, in X order ------------------------------------------
+  //
+  // DMG object-to-object priority is decided by the smaller OAM X FIRST, and
+  // only ties are broken by the lower OAM index. Resolving overlaps by index
+  // alone -- which this did, and which the comment above used to assert -- puts
+  // the wrong sprite on top wherever two objects overlap and the later OAM
+  // entry sits further left.
+  //
+  // MEASURED: on level 9 the HUD's 5th bar segment (OAM index 4, x = 48) and an
+  // enemy metasprite (OAM index 7, x = 46) overlap at rows 17-23. 46 < 48, so
+  // the cartridge draws the ENEMY over the bar and the port drew the bar. That
+  // is pixeldiff l9-sky f80's 14 wrong pixels; it also accounts for f160's
+  // 2868. Substituting the cartridge's own captured OAM into our renderer
+  // reproduced the same 14 pixels, which is what ruled out position, tile data
+  // and capture lag and left only the compositing rule.
+  //
+  // The two rules are genuinely separate: sorting the whole queue by X and then
+  // taking ten per line breaks the level-12 f120 case (21 sprites on one line,
+  // 0 -> 361 wrong). Selection stays index-ordered above; only the paint order
+  // changes here.
+  const order = [];
+  for (let sy = 0; sy < SCREEN_H; sy++) {
+    const cnt = lineCount[sy];
+    if (cnt === 0) continue;
+    order.length = 0;
+    for (let k = 0; k < cnt; k++) order.push(sel[sy * MAX_SPRITES + k]);
+    order.sort((a, b) => (list[a].x - list[b].x) || (a - b));
+
+    for (const i of order) {
+      const s = list[i];
+      const flipX = (s.attr & 0x20) !== 0;
+      const flipY = (s.attr & 0x40) !== 0;
+      const behind = (s.attr & 0x80) !== 0;
+      const topTile = tiles.obj[s.tile & 0xFE];
+      const botTile = tiles.obj[s.tile | 0x01];
+      const sc = s.scale || 1;
+      const H = 16 * sc, W = 8 * sc;
+      const py = sy - s.y;
 
       const band = bandFor(bands, sy);
       const pal = palMap((s.attr & 0x10) ? band.obp1 : band.obp0);

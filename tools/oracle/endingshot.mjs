@@ -67,7 +67,10 @@ for (const f of frames) for (const l of LAGS) keep.add(f - l);
 
 // --- drive the port once and keep every frame we have a screenshot for ------
 const state = createState();
-state.titleManifest = manifest;
+// NOT set: main.js only assigns state.titleManifest when the game boots
+// through the title screen, so a harness that assigns it here is testing a
+// state the app may not have. It masked the missing credit-circle sprite
+// for as long as this line existed (docs/03 lesson 38).
 state.sound = { queue: [] };
 state.video.obp1 = r.snaps.before.regs.FFAF;    // inherited; see endingdiff.mjs
 // Level 14 is what state.level.number holds when the ending is entered, and
@@ -97,7 +100,18 @@ const totals = new Map(LAGS.map((l) => [l, { bad: 0, n: 0 }]));
 console.log('frame   best-lag   wrong px   %');
 const rows = [];
 for (const f of frames) {
-  const real = readIndexedPNG(path.join(SHOTS, `f${String(f).padStart(4, '0')}.png`));
+  const shotFile = path.join(SHOTS, `f${String(f).padStart(4, '0')}.png`);
+  if (!fs.existsSync(shotFile)) {
+    // ending.py's ctr['n'] skips a frame whenever two $0A4F calls land inside
+    // one hardware frame (f1674, f1868, f2033 are the known ones), so a
+    // requested shot can simply never be written. Say so instead of dying on
+    // ENOENT three levels down in the PNG reader.
+    console.log(`${String(f).padStart(5)}   the recorder never wrote this shot `
+      + '-- ctr[n] skipped it; drop it from the list');
+    failed = 1;
+    continue;
+  }
+  const real = readIndexedPNG(shotFile);
   if (real.w !== W || real.h !== H) throw new Error(`f${f}: ${real.w}x${real.h}`);
   let best = null;
   for (const lag of LAGS) {

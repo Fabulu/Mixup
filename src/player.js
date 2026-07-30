@@ -45,7 +45,7 @@ export function updatePlayer(state, manifest = null) {
   if (state.flow.bossMode) {
     state.input.held = 0;               // $143F: $FFE1 = 0
     selectAnim(state);                  // $1441 -> loc_00_1B4A
-    return;
+    return true;                        // $1B4A falls through to the draw
   }
 
   // The GAME OVER burst. On the cartridge this is a MAIN-LOOP call ($057A on
@@ -56,7 +56,7 @@ export function updatePlayer(state, manifest = null) {
   // reason -- see the header of deathTick for what the call site costs.
   if (state.player.dead) {
     deathTick(state, manifest);
-    if (state.flow.respawnPending) return;
+    if (state.flow.respawnPending) return false;
   }
 
   // $1643: a scripted door/exit walk-through replaces the entire player
@@ -81,7 +81,14 @@ export function updatePlayer(state, manifest = null) {
   // therefore stays pending for the whole walk-through and lands on the first
   // frame after it ends. The port used to apply it unconditionally, ahead of
   // this test.
-  if (updateScriptedMove(state)) return;
+  // $1643: `LD A,[$C737] / AND A / JP Z, loc_00_170A`. While a script runs the
+  // ROM takes the $164A arm instead, and EVERY path out of it ends at $1702 or
+  // $1706 with a bare RET -- so loc_00_1D0C is never reached and Batman is NOT
+  // DRAWN for the whole walk-through. MEASURED on level 5 (hooks on $170A /
+  // $1B4A / $1D0C, script "20:,180:R"): $1D0C fires every frame to f73, then
+  // not once from f74 to f118 while $C737 = 1, then resumes at f120. The
+  // cartridge's OAM over that span holds the 5 HUD sprites and nothing else.
+  if (updateScriptedMove(state)) return false;
   applyCarry(state);                    // $1647 -> loc_00_170A
 
   // $173C-$1773: the exit tests and the PIT death test run at the TOP of the
@@ -98,10 +105,10 @@ export function updatePlayer(state, manifest = null) {
   // frame -- and $FE is the TOP exit on 12 of the 14 levels (table 0:$286D),
   // so it is the ordinary "walk off the top, fall back in" path, not an edge.
   const exit = checkExit(state);        // $173C / $174A
-  if (exit === 'reload') return;
-  if (checkPitDeath(state)) return;     // $1755
+  if (exit === 'reload') return false;
+  if (checkPitDeath(state)) return false;   // $1755 -> $1773 JP sub_00_29E7
   knockback(state);                     // $1776, before the input dispatch
-  if (checkHpDeath(state)) return;      // $17B6
+  if (checkHpDeath(state)) return false;    // $17B6
 
   // $17EA/$17FB: the cling freeze sits AFTER all four of those, not before.
   // Putting it first skipped knockback for the 16 frames of a wall freeze,
@@ -124,13 +131,14 @@ export function updatePlayer(state, manifest = null) {
                                         // integrate is one of the arms a lock
                                         // does skip, which is what freezes y.
     selectAnim(state);
-    return;
+    return true;
   }
 
   horizontal(state);
   attack(state);                        // $18FB, between horizontal and vertical
   vertical(state);
   selectAnim(state);
+  return true;
 }
 
 // ---------------------------------------------------------------------------

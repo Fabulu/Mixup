@@ -223,6 +223,10 @@ export function loadEnding(manifest, base = null) {
   return {
     spec,
     vram,
+    // The credit circle's metasprite table. Carried HERE rather than read from
+    // state.titleManifest at draw time, because that field only exists when the
+    // game booted through the title screen -- see drawEmblem.
+    metasprites: manifest.metasprites,
     // sub_00_0A7F reads its ramps from 0:$0B09/$0B11, which manifest.title
     // already carries -- the same two tables, not a second copy of them.
     fadeSpec: requireFadeRamps(manifest),
@@ -436,13 +440,37 @@ function applyScript(s, step) {
   runVramScript(s.art.vram, b64(spec[name][i]));
 }
 
-/** $3793-$3799: metasprite $F2 at BC = $3838, attr mask 0. 40 records. */
+/**
+ * $3793-$3799: `LD BC,$3838 / LD E,$F2 / XOR A / CALL sub_00_0BC6` -- metasprite
+ * $F2 at OAM (56, 56), attr mask 0, 40 records.
+ *
+ * THIS IS THE CREDIT CIRCLE. The box scripts at 1:$7B34/$7B49 only fill a flat
+ * RECTANGLE of tile $7E into the BG map (measured: five run-fills each, every
+ * one a single repeated tile id). The smooth dithered oval is this metasprite
+ * drawn on top of that rectangle. Without it you get the bare rectangle, with
+ * hard 8-pixel stepped corners -- reported from play as "giant pixels at the
+ * corners, more like tetris pieces than pixels".
+ *
+ * It used to read the table out of `state.titleManifest`, which is set ONLY
+ * inside `if (title)` in main.js -- i.e. only when the game was booted through
+ * the title screen. Boot straight into a level (or straight into the ending
+ * from the launcher) and it was null, so this returned early and the whole
+ * sprite layer silently vanished.
+ *
+ * Both oracle harnesses assigned `state.titleManifest` themselves, so both
+ * always drew it and both reported the ending PIXEL-EXACT while the shipped
+ * app rendered a bare rectangle. A harness that sets up state the application
+ * does not have will pass while the application is broken -- see docs/03
+ * lesson 38. They no longer set it.
+ *
+ * The manifest is carried on the art object now, which loadEnding already has
+ * in hand, so the draw cannot depend on how the game was entered.
+ */
 function drawEmblem(state, s) {
-  const manifest = state.titleManifest;
-  if (!manifest) return;
+  const table = s.art.metasprites || state.titleManifest?.metasprites;
+  if (!table) return;
   const sp = s.art.spec.sprite;
-  drawMetasprite(state, manifest.metasprites.table1, sp.id,
-                 sp.x - 8, sp.y - 16, 0);
+  drawMetasprite(state, table.table1, sp.id, sp.x - 8, sp.y - 16, 0);
 }
 
 /**

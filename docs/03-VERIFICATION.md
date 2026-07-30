@@ -414,6 +414,74 @@ now — the fix narrative lives on its entry in `regress.mjs`.
     it was the one that described what the SCREEN did -- "fades out to white" --
     not what the game failed to do. Ask what it looked like.
 
+38. **A harness that sets up state the APPLICATION does not have will pass
+    while the application is broken.** The ending's credit circle is a flat
+    rectangle of tile `$7E` stamped into the BG map by the scripts at
+    `1:$7B34`/`$7B49` (measured: five run-fills each, every one a single
+    repeated tile id) with a METASPRITE drawn over it -- `$3793`'s
+    `LD BC,$3838 / LD E,$F2 / XOR A / CALL sub_00_0BC6`, id `$F2` at OAM
+    (56, 56). That sprite is the smooth dithered oval. Without it you see the
+    bare rectangle with hard 8-pixel stepped corners.
+
+    `drawEmblem` read its metasprite table from `state.titleManifest`, which
+    `main.js` assigns ONLY inside `if (title)` -- i.e. only when the game was
+    booted through the title screen. Boot straight into a level, or straight
+    into the ending, and it was null, the function returned early, and the
+    entire sprite layer vanished silently.
+
+    **Both oracle harnesses assigned `state.titleManifest` themselves.** So both
+    always drew the oval, and `endingshot.mjs` reported the ending PIXEL-EXACT
+    over 88 frames and 2,027,520 pixels while the shipped game rendered a bare
+    rectangle. The number was real; it just measured a configuration no player
+    could reach. Removing that one line from each harness turns the same run
+    into **59 of 88 frames wrong**, ~1470 pixels each.
+
+    The rule: a harness may only set up state the application itself sets up on
+    the path being tested. Anything else is the test writing the answer down
+    for itself. When a player reports something the suite says is perfect,
+    suspect the SETUP before suspecting the player -- and diff what the harness
+    assigns against what `boot()` assigns.
+
+    (Related trap on the way in: the port's own frame counter and
+    `ending.py`'s shot numbering are different clocks -- the recorder counts
+    `$0A4F` hits and silently skips requested frames -- so "frame 1730" meant
+    two different pictures in the two tools, and every comparison landed on a
+    full-size frame. Pin the numbering before trusting a frame-indexed diff.)
+
+39. **A scripted walk-through does not draw Batman at all.** `$1643` is
+    `LD A,[$C737] / AND A / JP Z, loc_00_170A`; while a script runs the ROM
+    takes the `$164A` arm instead, and every path out of it ends at `$1702` or
+    `$1706` with a bare `RET`. `loc_00_1D0C` is never reached, so no player
+    metasprite is queued, `$FF93`/`$FF94` are not refreshed (`$1B58` is on the
+    skipped path) and the `$27A8` hitbox is not reloaded (`$1D2C` is the draw's
+    tail). MEASURED on level 5 with hooks on `$170A`/`$1B4A`/`$1D0C`: the draw
+    fires every frame to f73, then not once from f74 to f118 while
+    `$C737 = 1`, and the cartridge's OAM over that span holds the five HUD
+    sprites and nothing else.
+
+    The port ran `cachePlayerScreen` / `applyAnimHitbox` / `drawPlayer`
+    unconditionally after `updatePlayer` — the fall-through trap in its usual
+    shape, where an arm that "skips the update" quietly borrows the update's
+    tail. `updatePlayer` returns a boolean now and main.js gates all three on
+    it, which also covers the pit death (`$1773` is a `JP` into `sub_00_29E7`,
+    not a `CALL`), the HP death and an exit reload. `pixeldiff l5-walk` f80 went
+    315 wrong pixels to 0 and no other frame in any scenario moved.
+
+40. **DMG object priority is smallest OAM X first, index only on ties.** The
+    renderer resolved overlaps purely by OAM index, and said so in a comment.
+    MEASURED on level 9: the HUD's fifth bar segment (OAM index 4, x = 48) and
+    an enemy metasprite (OAM index 7, x = 46) overlap at rows 17-23; 46 < 48,
+    so the cartridge draws the ENEMY over the bar and the port drew the bar.
+    Substituting the cartridge's own captured OAM into our renderer reproduced
+    the identical 14 wrong pixels, which is what ruled out position, tile data
+    and capture lag and left only the compositing rule.
+
+    The two rules are separate and must stay separate. The ten-per-line CUT is
+    an OAM-order scan — hardware fills the ten slots by index — while PRIORITY
+    among the survivors is by X. `drawSprites` is two phases for that reason:
+    sorting the whole queue by X and then taking ten per line regresses the
+    level-12 f120 case (21 sprites on one line) from 0 to 361 wrong pixels.
+
 ## Tools
 
 | tool | purpose |

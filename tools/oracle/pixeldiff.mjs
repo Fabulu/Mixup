@@ -32,8 +32,11 @@
 //      band mismatches most of the pixels in its rows. Instruction-level
 //      timing, measured both ways, out of scope by docs/03 §28 and §36.
 //
-// What that leaves genuinely open is small: l5-walk f80 (315 px) and l9-sky f80
-// (14 px). Everything else in the suite is 100%.
+// Both of the small ones that used to sit outside those families are CLOSED:
+// l5-walk f80 (315 px) was the port drawing Batman during a scripted move the
+// ROM does not draw at all (docs/03 lesson 39), and l9-sky f80 (14 px) was
+// DMG object priority being resolved by OAM index instead of by X (lesson 40).
+// What is left is l12-walk f200 (15 px, row 0) and the two families above.
 
 import fs from 'node:fs';
 import path from 'node:path';

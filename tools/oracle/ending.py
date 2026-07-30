@@ -170,7 +170,18 @@ def main():
     # and mean it.
     PRESETS = {
         'landmarks': [100, 300, 900, 1400, 1700, 1800, 3800, 4130],
-        'crawl': list(range(1500, 4131, 30)),
+        # The every-30 sweep plus the box's own TRANSITION frames. Without
+        # those the list is vacuous for the credit circle: during a 130-frame
+        # hold the port's output does not change, so every candidate lag scores
+        # zero and the "one lag must be exact on every frame" invariant proves
+        # nothing. MEASURED at 1-frame resolution: the box paints in over TWO
+        # frames (1736 top half via 1:$7B34, 1737 full via 1:$7B49) and erases
+        # over two (1866, 1867) -- visually instant, never blocky.
+        'crawl': sorted(set(list(range(1500, 4131, 30))
+                            + [1736, 1737, 1738, 1866, 1867])),
+        # (1868 is deliberately absent: ctr['n'] SKIPS it -- two $0A4F calls
+        #  land inside one hardware frame there, so the recorder never writes
+        #  that shot. Same for 1674 and 2033.)
     }
     if args.shots in PRESETS:
         shot_frames = PRESETS[args.shots]

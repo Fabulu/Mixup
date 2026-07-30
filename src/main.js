@@ -817,12 +817,28 @@ export function tick(state, manifest, playerTiles) {
     // gate lives at the top of updatePlayer (see the note there); repeating
     // its condition here is what keeps the two in the right order.
     if (!state.flow.bossMode) updateDrops(state, manifest);
-    updatePlayer(state, manifest);      // $170A-$1D0B
-    // $1B58, the tail of the player update: stash the screen position that the
-    // NEXT frame's $1444 ballistic pass will read.
-    cachePlayerScreen(state);
-    applyAnimHitbox(state, manifest);   // $1D2C -- hitbox follows the animation
-    drawPlayer(state, manifest);        // $1D0C
+    // updatePlayer reports whether the ROM's chain actually REACHED
+    // loc_00_1B4A/loc_00_1D0C this frame. Several arms RET before it -- a
+    // scripted door walk-through ($1702/$1706), the pit death ($1773 is a JP
+    // into sub_00_29E7, not a CALL), the HP death, an exit reload -- and on
+    // those frames the cartridge draws no Batman at all and leaves $FF93/$FF94
+    // and the $27A8 hitbox exactly as the previous frame left them.
+    //
+    // Running the three tails unconditionally was a fall-through of our own:
+    // the arm looked like "skip the update", so it borrowed the update's tail.
+    // MEASURED on level 5 (pixeldiff l5-walk f80, the one capture frame in the
+    // whole suite that lands during a script): the cartridge's OAM holds the 5
+    // HUD sprites and the port drew 11, an extra player metasprite worth 315
+    // wrong pixels. Gating on the return value takes that to 0 and moves no
+    // other frame in any scenario.
+    const drew = updatePlayer(state, manifest);      // $170A-$1D0B
+    if (drew) {
+      // $1B58, the tail of the player update: stash the screen position that
+      // the NEXT frame's $1444 ballistic pass will read.
+      cachePlayerScreen(state);
+      applyAnimHitbox(state, manifest); // $1D2C -- hitbox follows the animation
+      drawPlayer(state, manifest);      // $1D0C
+    }
     updateWater(state);                 // $05C6 CALL $2CBE -- levels 1-2 water
     streamPlayerTiles(state, manifest, playerTiles);  // $2C13
     // loc_00_3127 is the TAIL of sub_00_2C13, not a separate call, so it
