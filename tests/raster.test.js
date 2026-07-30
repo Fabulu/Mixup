@@ -15,6 +15,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { drawYBob } from '../src/render/metasprite.js';
 import { createState } from '../src/state.js';
@@ -373,4 +374,29 @@ test('the draw-Y bob fires on levels 6/9/10/11 only, one frame in eight', () => 
 
   // $1D22 / 1:$606D: both call sites skip it unless GROUNDED.
   assert.equal(at(0x09, 0x70, false), 0, 'airborne does not bob');
+});
+
+test('the enemy bob gate reads r[0], the AIR bits -- not r[1]', () => {
+  // ROM: 1:$6069 is `LD DE,$FFFA / ADD HL,DE`, then $606A `LD A,(HL) / AND $03
+  // / JR NZ` skips sub_00_0F56. MEASURED by hooking 1:$606A over 600 frames of
+  // level 9: HL lands on record offset +0 on 289 of 289 calls. Offset +0 is the
+  // flags byte whose bits 0-1 are the air state -- the same `r[0] & 0x03` that
+  // batarang.js tests for an airborne boss 2.
+  //
+  // The port shipped `r[1] & 0x03`, which is almost always 0, so it bobbed
+  // AIRBORNE enemies the cartridge exempts. Reported from play as the train
+  // levels flickering "up and down like crazy" while the real game looked
+  // calmer: on level 9 the diving flyer glides on the cartridge and popped 3 px
+  // every 8th frame here. MEASURED: 19 frames of a 600-frame run had the flyer
+  // at port Y = cart Y - 3, all on $FFB1 & 7 == 0 frames; at f76 the block was
+  // 9 OAM entries wrong and is 0 now.
+  //
+  // This asserts the OPERAND, which drawYBob's own tests cannot see -- they
+  // pass `grounded` in directly, so they stayed green through the whole bug.
+  const src = readFileSync(new URL('../src/enemies.js', import.meta.url), 'utf8');
+  const call = src.match(/drawYBob\(state,\s*\(r\[(\d)\]\s*&\s*0x03\)\s*===\s*0\)/);
+  assert.ok(call, 'queueDraw still gates drawYBob on a record byte & 0x03');
+  assert.equal(call[1], '0',
+    '1:$606A reads record offset +0 (the air bits), not +1 -- reading r[1] '
+    + 'bobs airborne enemies the cartridge leaves alone');
 });

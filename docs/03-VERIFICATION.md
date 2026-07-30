@@ -482,6 +482,38 @@ now — the fix narrative lives on its entry in `regress.mjs`.
     sorting the whole queue by X and then taking ten per line regresses the
     level-12 f120 case (21 sprites on one line) from 0 to 361 wrong pixels.
 
+41. **The bob gate reads r[0], and a unit test that takes the answer as an
+    argument cannot see the difference.** `1:$6069` is
+    `LD DE,$FFFA / ADD HL,DE`, and `$606A` reads `(HL)`. MEASURED by hooking
+    `1:$606A` over 600 frames of level 9: HL lands on record offset **+0 on 289
+    of 289 calls**. Offset +0 is the flags byte whose bits 0-1 are the air
+    state -- the same `r[0] & 0x03` `batarang.js` already tests for an airborne
+    boss 2. The port shipped `r[1] & 0x03`, which is almost always 0, so it
+    bobbed AIRBORNE enemies the cartridge exempts.
+
+    Reported from play as the train levels flickering "up and down like crazy"
+    while the real game looked calmer -- and the player was right to compare
+    against a longplay rather than trust the port. On level 9 the most-watched
+    sprite is the diving flyer: the cartridge glides it, the port popped it 3 px
+    every eighth frame. MEASURED: 19 frames of a 600-frame run had one 3x3 enemy
+    block at port Y = cart Y - 3, every one on a `$FFB1 & 7 == 0` frame, with
+    the enemy records byte-identical on both sides; at f76 that was 9 wrong OAM
+    entries, and 0 after.
+
+    Why the existing tests could not catch it: `drawYBob`'s own unit tests pass
+    `grounded` in **as an argument**, so they exercise the function's arithmetic
+    and never the CALL SITE's operand. They stayed green through the whole bug.
+    A test that supplies the very value under suspicion is testing itself. The
+    replacement asserts the operand at the call site.
+
+    Ruled out on the way, and worth keeping so it is not re-run: the bob CADENCE
+    and amplitude were already exact (3 px, only on `$FFB1 & 7 == 0`, both
+    sides); the ten-per-line cut dropped ZERO sprites on either side across the
+    whole run; and frame pacing cannot double the rate -- the default loadout is
+    `ticksPerFrame: 1` and the accumulator UNDERRUNS on a 60 Hz display (one
+    0-tick frame every ~222), so a 2-tick frame only ever appears paired with a
+    0-tick one and the average logic rate stays 59.73 Hz.
+
 ## Tools
 
 | tool | purpose |

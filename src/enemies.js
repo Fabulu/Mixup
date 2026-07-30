@@ -2671,10 +2671,27 @@ function walkCycle(state, r, facing) {
 function queueDraw(state, id, r, attr, alt) {
   if (!state.enemyDraws) state.enemyDraws = [];
   // 1:$6063-$6071 writes the record's cached Y and THEN, when the enemy is
-  // grounded ((r[1] & 3) == 0), calls sub_00_0F56 on the copy heading for the
-  // draw. So the bob rides on the queued sprite and NOT on r[8] -- r[8] stays
-  // the value every hit test compares against.
-  const bob = drawYBob(state, (r[1] & 0x03) === 0);
+  // GROUNDED, calls sub_00_0F56 on the copy heading for the draw. So the bob
+  // rides on the queued sprite and NOT on r[8] -- r[8] stays the value every
+  // hit test compares against.
+  //
+  // THE GATE BYTE IS r[0], NOT r[1]. $6069 is `LD DE,$FFFA / ADD HL,DE` and
+  // $606A reads (HL): MEASURED by hooking 1:$606A over 600 frames of level 9,
+  // HL lands on record offset +0 on 289 of 289 calls. Offset +0 is the flags
+  // byte whose bits 0-1 are the air state -- the same `r[0] & 0x03` that
+  // batarang.js tests for an airborne boss 2.
+  //
+  // Reading r[1] instead made the test almost always true, so the port bobbed
+  // AIRBORNE enemies that the cartridge exempts. Reported from play as the
+  // train levels flickering "up and down like crazy" while the real game looked
+  // calmer -- on level 9 the most-watched sprite is the diving flyer, which the
+  // cartridge glides smoothly and the port popped 3 px every 8th frame.
+  // MEASURED cost: 19 frames of a 600-frame level-9 run had one 3x3 enemy block
+  // at port Y = cart Y - 3, every one of them on a $FFB1 & 7 == 0 frame, with
+  // the enemy records byte-identical on both sides (f76 slot 0 flags $81 -> &3
+  // = 1 -> the cartridge skips). Zero frames where the cartridge bobbed and the
+  // port did not.
+  const bob = drawYBob(state, (r[0] & 0x03) === 0);
   state.enemyDraws.push({ id, x: r[7], y: u8(r[8] + bob), attr, alt });
 }
 
