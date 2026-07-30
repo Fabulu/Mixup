@@ -37,6 +37,8 @@
 //   enemies/states/shooter12.js state 6:  jt_01_57D6 + jt_01_61B3
 //   enemies/states/walkershared.js  the step, the two wall stops, the
 //                               ledge scan and sub_01_7D09's pit leaps
+//   enemies/states/walker.js    states 1 and 2: jt_01_50ED, jt_01_5399
+//                               and jt_01_612E
 // THIS file keeps the driver, the ten-arm hit ladder, the two dispatch tables
 // and the remaining state and boss handlers -- i.e. everything that has an
 // ORDER.
@@ -68,10 +70,10 @@ import { stL6Vehicle, attackTickL6 } from './enemies/states/vehicle6.js';
 import { stFlyer, attackTickFlyer } from './enemies/states/flyer.js';
 import { stProjectile, spawnProjectile } from './enemies/states/projectile.js';
 import { stL12, attackTickL12 } from './enemies/states/shooter12.js';
+import { gapLeap, ledgeCheck } from './enemies/states/walkershared.js';
 import {
-  walkerMoveRight, walkerMoveLeft, wallStopWalker, wallStopWalkerJump,
-  gapLeap, ledgeCheck,
-} from './enemies/states/walkershared.js';
+  stWalker, stWalkerJump, attackTickWalkerJump,
+} from './enemies/states/walker.js';
 
 // The barrel's export surface, unchanged from before the split.
 export { SLOTS, RECORD };
@@ -597,227 +599,6 @@ function attackTickBoss1(state, r) {
     attackProbe(state, r);                          // $6376
   }
   return stBoss1(state, r);                         // $637C
-}
-
-/** ROM: jt_01_612E - state 2 turns AWAY after the lunge and commits to it. */
-function attackTickWalkerJump(state, r) {
-  if (r[0x14] !== 0) {
-    r[0x14]--;
-    attackProbe(state, r);
-    return riseTail(state, r);
-  }
-  r[E_FLAGS] &= 0xC7;                               // $6148
-  r[1] = (r[1] & 0xF3) | 0x10;                      // committed walk
-  r[E_FACING] ^= 1;                                 // $615A
-  r[0x15] = 0x18;                                   // $6161
-  return riseTail(state, r);
-}
-
-// ---------------------------------------------------------------------------
-// State 1 -- walker (levels 1-3).  ROM: jt_01_50ED.
-// ---------------------------------------------------------------------------
-
-function stWalker(state, r) {
-  if (r[E_FLAGS] & 0x03) return walkerAirMove(state, r);  // $50EF: airborne
-  const f1 = r[1];                                  // $5113
-  if (f1 & 0x60) {                                  // $5114: turn/landing anim
-    r[E_FLAGS] &= ~0x20;                            // $51B4
-    return walkerAirMove(state, r);                 // move at r[$12] regardless
-  }
-  if (f1 & 0x10) {                                  // $511E: committed walk
-    if (r[0x15] === 0) { r[1] &= ~0x10; return riseTail(state, r); }  // $51D0
-    r[0x15]--;                                      // $51C0
-    return r[E_FACING] === 0 ? walkerWalkRight(state, r) : walkerWalkLeft(state, r);
-  }
-
-  const psx = playerScreenX(state);                 // $FF93
-  const diff = u8(psx - r[E_SCREEN_X]);             // $5128: vs the STORED screen X
-  if (diff === 0) return walkerFacePause(state, r); // $512B
-  const playerLeft = psx < r[E_SCREEN_X];
-  const ad = playerLeft ? u8(-diff) : diff;
-
-  if (ad < 0x14) {                                  // $5133
-    if (ad < 8) return walkerFacePause(state, r);   // $516E: too close
-    if (absDiff8(playerScreenY(state), r[E_SCREEN_Y]) >= 0x18) {   // $5180
-      return walkerWalkToward(state, r, playerLeft);
-    }
-    if (state.player.iframes !== 0) return walkerFacePause(state, r);  // $5184
-    requestSound(state, 0x1A);                      // $518F: melee attack
-    r[E_FLAGS] |= 0x08;                             // $5195
-    r[E_FACING] = playerLeft ? 1 : 0;               // $519C
-    r[0x14] = 0x13;                                 // $51A8
-    r[E_FLAGS] &= ~0x20;
-    return fallTail(state, r);
-  }
-  if (ad < 0x30) return walkerWalkToward(state, r, playerLeft);   // $5137
-  if (absDiff8(playerScreenY(state), r[E_SCREEN_Y]) < 0x30) {     // $5145
-    return walkerWalkToward(state, r, playerLeft);
-  }
-  r[E_FLAGS] |= 0x20;                               // $514E: idle, player far
-  r[E_VX] = 0;
-  return fallTail(state, r);
-}
-
-/** ROM: loc_01_515D */
-function walkerWalkToward(state, r, playerLeft) {
-  r[E_FLAGS] &= ~0x20;
-  return playerLeft ? walkerWalkLeft(state, r) : walkerWalkRight(state, r);
-}
-
-/**
- * ROM: loc_01_51DB. Directly under/over the player (or in the dead zone): stop
- * and commit for $20 frames. Quirk: the facing MIRRORS THE PLAYER'S ($FF88
- * XOR 1) rather than being computed from relative position.
- */
-function walkerFacePause(state, r) {
-  r[1] = (r[1] & 0xF3) | 0x10;
-  r[E_FACING] = state.player.facing ^ 1;            // $51E5
-  r[0x15] = 0x20;
-  return riseTail(state, r);
-}
-
-/** ROM: loc_01_51F6 - accelerate right by 1/frame toward the +$1D cap. */
-function walkerWalkRight(state, r) {
-  r[E_FACING] = 0;                                  // $51F9
-  let v = r[E_VX];
-  if (v & 0x80) {                                   // $5200: still moving left
-    v = u8(v + 2);                                  // $52F0: brake by 2
-    r[E_VX] = v;
-    return (v & 0x80) ? walkerMoveLeft(state, r, v, wallStopWalker)
-      : walkerMoveRight(state, r, v, wallStopWalker);
-  }
-  const max = r[E_SPEED_CAP];                       // $520B
-  v = v + 1 < max ? v + 1 : max;
-  r[E_VX] = v;
-  return walkerMoveRight(state, r, v, wallStopWalker);
-}
-
-/** ROM: loc_01_52FB - mirror. */
-function walkerWalkLeft(state, r) {
-  r[E_FACING] = 1;                                  // $52FE
-  let v = r[E_VX];
-  if (v !== 0 && (v & 0x80) === 0) {                // $5306/$5309: moving right
-    v = u8(v - 2);                                  // $538D
-    r[E_VX] = v;
-    return (v & 0x80) ? walkerMoveLeft(state, r, v, wallStopWalker)
-      : walkerMoveRight(state, r, v, wallStopWalker);
-  }
-  const min = u8(-r[E_SPEED_CAP]);                  // $5315
-  v = u8(v - 1);
-  if (v < min) v = min;                             // $531D: unsigned clamp
-  r[E_VX] = v;
-  return walkerMoveLeft(state, r, v, wallStopWalker);
-}
-
-/** ROM: loc_01_50F7 - airborne (or mid-anim): move at r[$12], sign-split. */
-function walkerAirMove(state, r) {
-  const v = r[E_VX];
-  return (v & 0x80) ? walkerMoveLeft(state, r, v, wallStopWalker)
-    : walkerMoveRight(state, r, v, wallStopWalker);
-}
-
-// ---------------------------------------------------------------------------
-// State 2 -- walker+jump (levels 5, 7, 13).  ROM: jt_01_5399.
-// ---------------------------------------------------------------------------
-
-function stWalkerJump(state, r) {
-  if (r[E_FLAGS] & 0x03) return wjAirMove(state, r);      // $539B
-  const f1 = r[1];
-  if (f1 & 0x60) {                                  // $53C0
-    r[E_FLAGS] &= ~0x20;                            // $5484
-    return wjAirMove(state, r);
-  }
-  if (f1 & 0x10) {                                  // $53CA: committed walk
-    if (r[0x15] === 0) { r[1] &= ~0x10; return riseTail(state, r); }  // $54A1
-    r[0x15]--;
-    return r[E_FACING] === 0 ? wjWalkRight(state, r) : wjWalkLeft(state, r);
-  }
-
-  const psx = playerScreenX(state);
-  const diff = u8(psx - r[E_SCREEN_X]);             // $53D4
-  if (diff === 0) return wjPause(state, r);         // $53D7
-  const playerLeft = psx < r[E_SCREEN_X];
-  const ad = playerLeft ? u8(-diff) : diff;
-
-  if (ad < 0x18) {                                  // $53DF
-    if (ad < 8) return wjPause(state, r);           // $5448
-    if (absDiff8(playerScreenY(state), r[E_SCREEN_Y]) >= 0x20) {   // $545A
-      return wjWalkToward(state, r, playerLeft);
-    }
-    requestSound(state, 0x1C);                      // $5460: melee lunge
-    r[E_FLAGS] |= 0x08;                             // $5466
-    r[E_FACING] = playerLeft ? 1 : 0;               // $546D
-    r[0x14] = 0x1F;                                 // $5479
-    r[E_FLAGS] &= ~0x20;
-    return fallTail(state, r);
-  }
-  if (ad < 0x30) return wjWalkToward(state, r, playerLeft);   // $53E3
-  // Far band:
-  if (playerScreenY(state) === r[E_SCREEN_Y]) {     // $53EC: EXACT row match
-    r[E_FACING] = playerLeft ? 1 : 0;               // $540F
-    if (spawnProjectile(state, r, 1) === 0) {       // $541E: sub_01_6BDC mode 1
-      r[E_FLAGS] = (r[E_FLAGS] & ~0x20) | 0x10;     // $5427: ranged attack
-      r[0x14] = 0x0F;                               // $542F
-    }
-    return fallTail(state, r);
-  }
-  r[E_FACING] = playerLeft ? 1 : 0;                 // $53F1: idle facing player
-  r[E_FLAGS] |= 0x20;                               // $53FE
-  r[E_VX] = 0;
-  return fallTail(state, r);
-}
-
-/** ROM: loc_01_54AC - commit to the current facing for $28 frames (no turn). */
-function wjPause(state, r) {
-  r[1] = (r[1] & 0xF3) | 0x10;
-  r[0x15] = 0x28;                                   // $54B8
-  return riseTail(state, r);
-}
-
-/** ROM: loc_01_5437 */
-function wjWalkToward(state, r, playerLeft) {
-  r[E_FLAGS] &= ~0x20;
-  return playerLeft ? wjWalkLeft(state, r) : wjWalkRight(state, r);
-}
-
-/** ROM: loc_01_54C0 - identical accel to state 1, different wall behaviour. */
-function wjWalkRight(state, r) {
-  r[E_FACING] = 0;
-  let v = r[E_VX];
-  if (v & 0x80) {
-    v = u8(v + 2);                                  // $5554
-    r[E_VX] = v;
-    return (v & 0x80) ? walkerMoveLeft(state, r, v, wallStopWalkerJump)
-      : walkerMoveRight(state, r, v, wallStopWalkerJump);
-  }
-  const max = r[E_SPEED_CAP];
-  v = v + 1 < max ? v + 1 : max;
-  r[E_VX] = v;
-  return walkerMoveRight(state, r, v, wallStopWalkerJump);
-}
-
-/** ROM: loc_01_555F */
-function wjWalkLeft(state, r) {
-  r[E_FACING] = 1;
-  let v = r[E_VX];
-  if (v !== 0 && (v & 0x80) === 0) {
-    v = u8(v - 2);                                  // $559E
-    r[E_VX] = v;
-    return (v & 0x80) ? walkerMoveLeft(state, r, v, wallStopWalkerJump)
-      : walkerMoveRight(state, r, v, wallStopWalkerJump);
-  }
-  const min = u8(-r[E_SPEED_CAP]);
-  v = u8(v - 1);
-  if (v < min) v = min;
-  r[E_VX] = v;
-  return walkerMoveLeft(state, r, v, wallStopWalkerJump);
-}
-
-/** ROM: loc_01_53A3 */
-function wjAirMove(state, r) {
-  const v = r[E_VX];
-  return (v & 0x80) ? walkerMoveLeft(state, r, v, wallStopWalkerJump)
-    : walkerMoveRight(state, r, v, wallStopWalkerJump);
 }
 
 // ---------------------------------------------------------------------------
