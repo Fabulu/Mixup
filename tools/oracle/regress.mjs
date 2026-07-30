@@ -368,6 +368,34 @@ const SCRIPTS = [
   { name: 'l4-boss1-punch-knockback', level: 4, frames: 400, ammo: 0,
     script: '97:,6:B,24:,6:B,24:,6:B,24:,6:B,219:',
     extra: BOSS_FIELDS },
+  // A THIRD level-4 entry, and it is not redundant: l4-boss1-punch-knockback's
+  // four presses land ONE connect, dead-centre on a boss that is coming
+  // straight down, so the probe geometry is never actually interrogated -- a
+  // port with the $202C dy sign inverted still lands that hit and the scenario
+  // stays green. This one throws 36 punches on a 16-frame cadence across the
+  // boss's whole hop cycle, connects on 4 of them at different relative
+  // heights, and the misses are as load-bearing as the hits.
+  //
+  // MEASURED, cartridge side: 36 punch starts, 4 connects, en0hp 32 -> 30 -> 28
+  // -> 26 -> 24 at f86/f230/f358/f502, and the port matches every field of all
+  // 600 frames.
+  //
+  // TEETH, executed: flip the dy sign at src/player.js's punchHitTest ($202C,
+  // `-0x0050` -> `0x0050`) and this scenario goes red -- the f358 connect is
+  // missed, so en0hp reads oracle 26 against port 28 and ten fields follow it
+  // -- while l4-boss1-punch-knockback above stays 100% bit-exact under the same
+  // mutation. That asymmetry is the whole reason this entry exists.
+  //
+  // 16, not 12, because 16 is the attack counter's own period ($1910-$1916
+  // runs it 1..15 and wraps to 0, locking out a new action on 1-7), so every
+  // press starts a punch instead of being swallowed. A claim that a 12-frame
+  // cadence crosses a lag frame at f110 on this level was checked and is FALSE:
+  // $C757 out of trace.py is clear for all 200 frames of a 12-cadence run, all
+  // 640 of a longer one, and all 600 of this one. Level 4 has no lag frame in
+  // any punch run measured here.
+  { name: 'l4-boss1-melee-sweep', level: 4, frames: 600, ammo: 0,
+    script: '30:' + ',2:B,14:'.repeat(40),
+    extra: BOSS_FIELDS },
 
   // --- Level 14: the entrance reroute + Boss 4 / the chaser -----------------
   // Level 14 boots INSIDE 1:$77BD ($C750 = 1 from init): the whole enemy
@@ -489,6 +517,37 @@ const SCRIPTS = [
   // restart-in-place stopgap).
   { name: 'l3-pit-death-exact-frame', level: 3, frames: 130, warp: '46,23',
     ammo: 0, script: '20:,110:L', extra: ['hp', 'action', 'en3f', 'en3hp'] },
+
+  // --- enemy STATE 5, the level-6 vehicle (jt_01_575C) ---------------------
+  // The last unrepresented enemy state in this corpus: level 6 had no entry at
+  // all, so the one state-5 record in the whole game (slot 0, HP 8) was
+  // compared by nothing. It is not reachable by a punch -- the cartridge, on
+  // this exact script, also parks a hold-right player at x = $0590 with the
+  // truck undamaged -- so what the run proves is the HANDLER, not a kill:
+  //
+  //   * +$0E/+$0F re-pinned every frame from the track ($577A: $FFCA + $0500
+  //     + $C0), which walks $0700 -> $0500 and then stops. MEASURED: the world
+  //     X moves through 32 distinct low bytes and 4 high bytes.
+  //   * +$14, the $1F attack countdown, and the +$00 bit-3 latch it arms:
+  //     +$00 alternates $80/$A8 and the attack re-arms 13 times in 400 frames.
+  //   * +$06, the 4-pose metasprite cycle ($AB-$AE).
+  //   * +$07/+$08, the screen cache -- state 5 runs the screen tail on EVERY
+  //     arm, so a stale cache here is invisible in position and fatal to the
+  //     next frame's hit scans. 34 distinct values of +$07 over the run.
+  //   * ob0*, the type-$0B deck riding the same track (objregress.mjs's
+  //     l6-conveyor-deck owns the full record; these four bytes are here so a
+  //     track regression fails in BOTH corpora rather than only the quiet one).
+  //
+  // No lag frames in the window ($C757 clear for all 400, measured).
+  //
+  // TEETH: pinning flow.parallaxTrack at $0700 -- the state this level was in
+  // before src/conveyor.js level6Track landed -- takes en0sx red at f3
+  // (194 vs 195), en0x red at f25 and ob0* red at f2. Without this scenario
+  // that regression is caught by nothing in regress.mjs.
+  { name: 'l6-vehicle-target', level: 6, frames: 400, script: '20:,380:R',
+    extra: ['hp', 'en0f', 'en0f1', 'en0s', 'en0d', 'en0ms', 'en0sx', 'en0sy',
+            'en0x', 'en0y', 'en0vx', 'en0vy', 'en0at', 'en0hp',
+            'ob0t', 'ob0y', 'ob0st', 'ob0w'] },
 ];
 
 // ===========================================================================

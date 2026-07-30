@@ -108,6 +108,46 @@ const SCENARIOS = [
 const POKE_AT = 40;
 const GUARD = 2000;
 
+// The port driver's kill lands one iteration LATER than deathscen.py's.
+//
+// Both harnesses count "frames" from their own start line and both poke at 40,
+// but they do not agree on which cartridge iteration frame 1 is: deathscen.py
+// takes base = ctr['n'] at the start line, after boot_to_gameplay, and the port
+// counts from its first tick() after initLevel. The two are one iteration out of
+// phase -- the same lag-1 relationship tools/oracle/deathpix.mjs measures and
+// documents at length ("the panel shows iteration N's work during N+1").
+//
+// It never mattered until the GAME OVER burst was moved to its real call sites.
+// sub_00_29E7 is TWO routines behind one address: with $C715 == 0 it SEEDS and
+// RETs without ticking, and only with $C715 != 0 does it fall to loc_00_2A0D and
+// tick. So whether the burst advances on the frame the player dies depends on
+// which side of the player update the call sits, i.e. on $FFA7:
+//
+//   MEASURED on the cartridge, level 3, by running deathscen.py itself at four
+//   consecutive pokes and reading burstSeeded / seedParity / armFrames[0]:
+//     poke 39 -> seed f40, $FFA7 = 1, slot 0 armed f40 (seed+0)
+//     poke 40 -> seed f41, $FFA7 = 0, slot 0 armed f42 (seed+1)
+//     poke 41 -> seed f42, $FFA7 = 1, slot 0 armed f42 (seed+0)
+//     poke 42 -> seed f43, $FFA7 = 0, slot 0 armed f44 (seed+1)
+//   i.e. $FFA7 = 1 on the seed frame means $05EC runs AFTER $05BD, the burst
+//   gets its 8 ticks that same frame and slot 0 arms immediately; $FFA7 = 0
+//   means $057A already ran BEFORE $05BD, so the seed frame does not tick and
+//   slot 0 arms on the next one.
+//
+// The recording on disk is POKE_AT = 40, and it carries seedParity 0 with
+// armFrames starting at seed+1 -- the second line of that table. The port must
+// therefore seed on a parity-0 frame too, or the two runs are comparing
+// different cartridge behaviours. The old port drove the burst from the head of
+// updatePlayer, which is parity-blind, and the skew was invisible.
+//
+// (An earlier version of this block had the parity of each poke the wrong way
+// round and called the recording "the second of those" while quoting the first
+// line's poke. The constant it justifies was right; the evidence was not.)
+//
+// seedParity is compared as a field below, so this stays honest: if the phase
+// ever moves again the run says so instead of quietly re-aligning.
+const POKE_PHASE = 1;
+
 const manifest = await loadManifest();
 const playerTiles = await loadPlayerTiles();
 const loadout = resolveLoadout([]);
@@ -234,12 +274,20 @@ async function runPlayer(s) {
   let poked = false, seeded = false;
   const flags = new Array(8).fill(0);
   for (let n = 1; n <= GUARD; n++) {
-    if (!poked && n > POKE_AT) { poked = true; state.player.hp = 0; }
+    // POKE_PHASE, and it is not a fudge factor -- see the note beside its
+    // definition. The kill has to land on the same $FFA7 PARITY as the ROM
+    // recording's, because the cartridge's own burst behaviour depends on it.
+    if (!poked && n > POKE_AT + POKE_PHASE) { poked = true; state.player.hp = 0; }
+    // $FFA7 as $056E/$05D9 read it for THIS iteration. main.js flips
+    // state.parity at the END of tick(), so it has to be sampled before the
+    // call, not after.
+    const parityIn = state.parity & 1;
     portFrame(state);
 
     if (!seeded && state.player.dead) {
       seeded = true;
       mark('burstSeeded', n);
+      out.seedParity = parityIn;
       out.checkpoints[String(n)] = snap();
     }
     if (seeded) {
@@ -249,7 +297,16 @@ async function runPlayer(s) {
         if ((b[i][0] & 1) && !(flags[i] & 1)) out.parkFrames[i] = n;
         flags[i] = b[i][0];
       }
-      if (n % 64 === 0) out.checkpoints[String(n)] = snap();
+      // EVERY frame, not `n % 64 === 0`. The ROM records at ITS OWN
+      // `idx % 64 === 0`, and the comparison below maps a rom key to a port key
+      // by re-basing on each side's seed frame. The two seeds do not have to
+      // coincide -- POKE_PHASE deliberately makes them differ by one -- so an
+      // absolute `n % 64` port key landed one short of every mapped key and the
+      // lookup missed 7 of the 8 checkpoints, silently. Snapshotting every
+      // frame makes the mapped key exist whatever the phase is; 452 frames of
+      // an 8 x 5 record is nothing, and these checkpoints are the only thing
+      // here that checks the burst's mid-flight trajectory at all.
+      out.checkpoints[String(n)] = snap();
     }
     if (state.flow.respawnPending) { mark('handoff', n); break; }
   }
@@ -451,6 +508,13 @@ for (const s of SCENARIOS) {
     cmp('end.pool', rom.end.pool, port.end.pool);
     if (s.vram) vramCheck(s, port, cmp, bytes);
   } else {
+    // FIRST, because everything below it is meaningless if it fails: the two
+    // runs must have killed the player on the same $FFA7 parity. sub_00_29E7
+    // seeds without ticking and only ticks once $C715 is set, so the seed frame
+    // itself advances the burst on one parity and not the other -- see
+    // POKE_PHASE. A recording made on one parity compared against a run on the
+    // other is off by a frame everywhere and nothing else here would say why.
+    cmp('seedParity', rom.seedParity, port.seedParity);
     cmp('span.seedToHandoff', rom.spans.seedToHandoff,
         port.timeline.handoff - port.timeline.burstSeeded);
     // The staggered warm-up, relative to the seed so the two sides do not have
@@ -464,7 +528,15 @@ for (const s of SCENARIOS) {
     for (const k of Object.keys(rom.checkpoints)) {
       const rk = Number(k) - rom.timeline.burstSeeded;
       const pk = String(rk + port.timeline.burstSeeded);
-      if (!(pk in port.checkpoints)) continue;
+      // A missing key is a FAILURE, not a skip. It used to `continue`, which is
+      // how the phase change above went unnoticed: 7 of the 8 checkpoints
+      // stopped being compared and the stage still reported ok.
+      if (!(pk in port.checkpoints)) {
+        cmp(`burst@+${rk}`, rom.checkpoints[k],
+            `MISSING port checkpoint at frame ${pk} (rom frame ${k}) -- the `
+            + 'port never recorded it, so this burst frame went unchecked');
+        continue;
+      }
       cmp(`burst@+${rk}`, rom.checkpoints[k], port.checkpoints[pk]);
     }
     cmp('end.burst', rom.end.burst, port.end.burst);

@@ -238,8 +238,10 @@ export const goldenPNGPath = (name, frame) =>
 // ---------------------------------------------------------------------------
 // Diff sheet: [golden | current | diff], nearest-neighbour scaled.
 // ---------------------------------------------------------------------------
+// Exported so the oracle tools can write the SAME sheet rather than growing a
+// second one that drifts (tools/oracle/pixeldiff.mjs --dump uses it).
 const SEP = 4;
-function diffSheet(golden, current, scale) {
+export function diffSheet(golden, current, scale) {
   const pw = SCREEN_W, ph = SCREEN_H;
   const w0 = pw * 3 + SEP * 2, h0 = ph;
   const src = new Uint8ClampedArray(w0 * h0 * 4);

@@ -117,20 +117,16 @@ export function ensureDoorState(state) {
 }
 
 /**
- * The $C693 spawners this port does NOT wire yet. Every one of them is a
- * `LD D,id / LD E,sub / CALL sub_00_0CC2`, so adding one is a single line --
- * but each lives in a file this change does not own, and a pool that some
- * callers feed and others do not is worse than one nobody feeds, because a
- * scenario then passes or fails on which spawner it happened to trip.
+ * The $C693 spawners this port does not wire. The list is EMPTY, and it stays
+ * as data rather than prose so `grep UNPORTED_EFFECT_SPAWNS` still finds the
+ * ledger and the reasoning behind it.
  *
- *   $271B     a melee hit landing: $10/$01 normally, $97/$04 on a crit
- *
- * NINE entries have come off this list, and the reason is worth keeping: the
- * comment above used to justify the whole thing as "a pool some callers feed
- * and others do not is worse than one nobody feeds". That was true right up to
- * the point where nobody-feeds became measurably wrong -- the $97 spawners
- * carry the debris SPRITE and, because $97's counter is $17, the audible $17
- * cue as well, so an unfed pool is a silent kill and an empty level 12.
+ * TEN entries came off it. The original note justified the whole thing as "a
+ * pool some callers feed and others do not is worse than one nobody feeds",
+ * which was true right up to the point where nobody-feeds became measurably
+ * wrong -- the $97 spawners carry the debris SPRITE and, because $97's counter
+ * is $17, the audible $17 cue as well, so an unfed pool is a silent kill and an
+ * empty level 12.
  *
  * $1388 (collision.js) and 1:$7922 (effects.js) were already ported and simply
  * never struck off. $14F9 (drops.js), $2D98 (water.js), $2FFA (conveyor.js),
@@ -138,13 +134,19 @@ export function ensureDoorState(state) {
  * the last three because the pool is only ten slots deep and SILENT tenants
  * ($D7 has bit 6 set) still decide who else gets in.
  *
- * $271B is the last one, and it is a different job: the crit arm draws a
- * different sprite ($97/$04 against $10/$01) and no scenario has ever reached
- * a crit, so porting it would be a transcription with no way to check it.
+ * $271B, a melee hit landing, was the last and is now in src/enemies.js. It is
+ * TWO arms and only one of them is checkable:
  *
- * Kept as data rather than prose so `grep UNPORTED_EFFECT_SPAWNS` finds it.
+ *   normal  $10/$01, and doordiff.mjs's l3-punch-enemy scenario compares it
+ *           against the cartridge frame by frame -- slot 0 = 10 2F 67 18 00 01
+ *           at f60, counting 0F..01 through f75, free again at f76
+ *   crit    $97/$04, hanging off the $26CD crit window, which rides the port's
+ *           MODELLED rLY. No scenario can reach it on both sides, so it is
+ *           transcribed from $26E4/$26E6 and unverified BY CONSTRUCTION. Said
+ *           out loud here because an empty ledger otherwise reads as "all of
+ *           this is checked".
  */
-export const UNPORTED_EFFECT_SPAWNS = Object.freeze(['00:271B']);
+export const UNPORTED_EFFECT_SPAWNS = Object.freeze([]);
 
 /** A manifest table is never optional. ROM data missing = a loud failure. */
 function table(state, name) {

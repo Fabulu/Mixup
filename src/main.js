@@ -7,7 +7,7 @@ import { createState, GAMEPLAY_PALETTES } from './state.js';
 import { makeTunables } from './tunables.js';
 import { attachInput, sampleInput } from './input.js';
 import { initLevel, clearLevel } from './level.js';
-import { updatePlayer, BTN } from './player.js';
+import { updatePlayer, deathTick, BTN } from './player.js';
 import { updateCamera } from './camera.js';
 import { loadManifest, loadPlayerTiles } from './assets.js';
 import { createFramebuffer, renderFrame, SCREEN_W, SCREEN_H } from './render/renderer.js';
@@ -776,9 +776,31 @@ export function tick(state, manifest, playerTiles) {
   // $0567 / $05D9: both arms open `LD A,[$C740] / CP $FF / JR NZ`, so the
   // energy bar is drawn only while $C740 is idle -- not during a boss death
   // countdown or its fanfare, and not during level 14's entrance.
+  //
+  // READ ONCE, HERE, for both arms -- which is not quite what the ROM does:
+  // $05D9 re-reads $C740 after $05CF, and 1:$4EF1 writes $C740 = $FE from
+  // inside the enemy driver, so in principle the odd arm can see a value the
+  // even arm did not. MEASURED (hooks on $05CF, $05D9 and 1:$4EF1; levels 1, 6,
+  // 9 and 4; 400 frames each): 1:$4EF1 never executed, $C740 held $FF on all
+  // 1600 frames, and the two read sites never disagreed once. So the hoist is
+  // latent fragility rather than a live fault -- it would only bite on a frame
+  // where a boss death starts between $05CF and $05D9. Left as one read because
+  // moving it means splitting the gate across both arms; noted so the next
+  // person does not have to re-measure it.
   const hud = c740Idle(state);
 
-  if (hudFirst && hud) drawHud(state, manifest);      // $0573
+  // $0573 draws the bar, $057A CALLs sub_00_29E7 -- the GAME OVER burst -- and
+  // $0567's `LD A,[$C740] / CP $FF / JR NZ` covers BOTH, so the burst freezes
+  // for as long as the energy bar is withheld. $05E5/$05EC is the same pair on
+  // the other parity. The port used to drive the burst from the head of
+  // updatePlayer instead, which queued its sprites ahead of the enemies and the
+  // doors on odd frames: MEASURED (deathpix.mjs) death-l1 f441 = 68 wrong px
+  // and death-l9 f441 = 135, both reported EXACT in the $05EC order.
+  // state.player.dead is the $C715 test at $29E7.
+  if (hudFirst && hud) {
+    drawHud(state, manifest);                         // $0573
+    if (state.player.dead) deathTick(state, manifest); // $057A
+  }
 
   // $057D-$05AD: the moon, and $058B's two sky layers behind it. Before the
   // camera, and outside the pause branch.
@@ -832,7 +854,21 @@ export function tick(state, manifest, playerTiles) {
     // wrong pixels. Gating on the return value takes that to 0 and moves no
     // other frame in any scenario.
     const drew = updatePlayer(state, manifest);      // $170A-$1D0B
-    if (drew) {
+    // loc_00_2AAD, the frame the death burst lands, does NOT return into the
+    // main loop: `POP AF / POP HL` throws away sub_00_29E7's return address and
+    // $2ACC is `JP loc_00_035B`, so the cartridge abandons the rest of that
+    // iteration -- nothing from $057D onward runs and the player is not drawn.
+    //
+    // This guard used to live at the head of updatePlayer, next to the burst
+    // call that was there. Moving the burst to its real main-loop call sites
+    // left the guard behind, and on the EVEN arm ($057A, where deathTick now
+    // runs BEFORE the player update) the handoff frame started drawing a player
+    // the cartridge does not. MEASURED (levels 1, 3 and 4, poke at 41): exactly
+    // one handoff frame each, all on parity 0, all `drew = true`.
+    //
+    // Skipping only the draw is still not the whole of what $2AAD abandons, but
+    // it is what the port did before and it is strictly closer than drawing him.
+    if (drew && !state.flow.respawnPending) {
       // $1B58, the tail of the player update: stash the screen position that
       // the NEXT frame's $1444 ballistic pass will read.
       cachePlayerScreen(state);
@@ -848,16 +884,49 @@ export function tick(state, manifest, playerTiles) {
     drawBatarangs(state, manifest);     // $3D15
     updateRope(state, manifest);        // $3D5F -- the tail of the same routine
     updateEnemies(state);               // $05CF CALL 1:$4E0C
+    // 1:$5CA8 appends to shadow OAM from INSIDE the enemy driver, so the flush
+    // belongs HERE -- between $05CF and $05D2 -- and not at the end of the
+    // frame where it used to sit. That ordering is the listing's: $05CF calls
+    // the driver, which appends through 1:$5CA8, and only then does $05D2 test
+    // $C733 and let the door routine append after it.
+    //
+    // MEASURED on the cartridge ($FF9D read on ENTRY to $05CF and $05D2, as an
+    // entry index, level 6, "20:,380:R", 400 frames): the cursor stands at 7-9
+    // when the enemy driver is called and at 10-22 when the door check is
+    // reached, i.e. the driver's own entries are already in shadow OAM before
+    // $05D2 -- which is what forces the flush between the two.
+    //
+    // Level 6 is NOT evidence about the door routine itself: hooking 1:$4BB0
+    // over that same run gives 0 calls and $C733 == 0 on all 400 frames (a
+    // door only opens to a punch). The door side of the order is the listing's
+    // alone; tools/oracle/doordiff.mjs is what exercises it.
+    //
+    // The port pushed door sprites immediately but held the enemies in
+    // state.enemyDraws until after the HUD, so on ODD frames -- the $05E5 arm,
+    // where the energy bar is queued LAST -- every enemy sat behind the bar
+    // instead of in front of it. MEASURED (scratch l6cart.py/l6port.mjs, 400
+    // frames of level 6): 201/400 frames exact, and all 199 misses were on
+    // $FFA7 = 1, with the multiset identical on all 400 -- an ORDER fault and
+    // nothing else. OAM index is DMG sprite priority AND the ten-per-line cut,
+    // so it is visible wherever a bar crosses an enemy.
+    drawEnemies(state, manifest);       // flush loc_01_5CA8's queued sprites
     // $05D2: LD A,[$C733] / AND A / CALL NZ,1:$4BB0 -- the door a punch
     // opened, its four erases and the debris it throws.
     updateDoors(state, manifest);
   }
 
-  if (!hudFirst && hud) drawHud(state, manifest);     // $05E5
+  if (!hudFirst && hud) {
+    drawHud(state, manifest);                          // $05E5
+    if (state.player.dead) deathTick(state, manifest); // $05EC
+  }
 
   updateSplashes(state);              // $05EF CALL 1:$7AD3 -- queues onto the
                                       // enemy draw list, so OAM order holds
-  drawEnemies(state, manifest);       // flush loc_01_5CA8's queued sprites
+  // The SECOND flush, and it stays. src/water.js:567 pushes the splash onto the
+  // same queue from $05EF -- legitimately after the HUD -- and drawEnemies
+  // empties the queue when it flushes, so on every frame that queued nothing
+  // here this call is a no-op.
+  drawEnemies(state, manifest);       // flush $05EF's splash
 
   updatePause(state);                 // $05F2-$0649
 

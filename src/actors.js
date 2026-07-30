@@ -562,15 +562,13 @@ function solidCell(state, col, row) {
  * Its box is enormous -- +7 = $40, +8 = $11 from the level-6 spawn blob -- so
  * "standing on it" means standing anywhere on the deck.
  *
- * NOT VERIFIABLE END-TO-END YET, and the reason is outside this file: the
- * track is written by loc_00_2EF4, the level-6 branch of sub_00_2CBE, which is
- * not ported (SAVEPOINT "What is NOT ported", item 6). MEASURED on the
- * cartridge (level 6, idle): $FFC9 is already 2 on frame 1 and the track walks
- * $06F8 -> $06F0 -> $06E8 ... 8 units a frame, so the port's frozen $0700
- * puts the deck one column right of the cartridge's within two frames. The
- * handler below is exact against an injected track (see
- * tools/oracle/objregress.mjs, scenario l6-conveyor-deck); what is missing is
- * the driver that moves it.
+ * VERIFIABLE END-TO-END, and this note used to say the opposite. The missing
+ * piece was loc_00_2EF4, the level-6 branch of sub_00_2CBE that writes the
+ * track; src/conveyor.js's level6Track ports it, and the injection that
+ * tools/oracle/objregress.mjs's l6-conveyor-deck once needed is gone. That
+ * scenario now walks the player right for 400 frames and compares all 16 bytes
+ * of the record against the cartridge with nothing seeded: bit-exact, through
+ * the track's descent, the reversal at f69 and the park at $0500.
  */
 function actorTypeB(state, r) {
   const track = state.flow.parallaxTrack;           // $483F: $FFCA/$FFCB
@@ -587,8 +585,14 @@ function actorTypeB(state, r) {
   // data, not of the routine.
   if (!c740Idle(state)) return;
   if (state.player.action === 2) return;            // $486F: $C71E, rope flight
-  // $FFC9. Written only by loc_00_2EF4, which is not ported -- so this reads
-  // undefined today and the deck never carries. Deliberate: see the header.
+  // $FFC9, written by loc_00_2EF4 -- src/conveyor.js's trackUp/trackDown. This
+  // comment used to say the byte "reads undefined today and the deck never
+  // carries"; that has been false since level6Track landed. MEASURED over 400
+  // frames of level 6 with the player walking right: $FFC9 holds 2 while the
+  // track descends, flips to 1 at f69 when it reverses, and the whole record is
+  // bit-exact against the cartridge on every one of those frames
+  // (tools/oracle/objregress.mjs, l6-conveyor-deck). The `?? 0` stays for the
+  // synthetic states in tests/, which never run the subsystem.
   const dir = state.flow.conveyorDir ?? 0;          // $4877
   if (dir === 0) return;                            // $487A
   state.carry.x = i8(dir === 2 ? 0xF8 : 0x08);      // $4881/$4885 -> $C72F

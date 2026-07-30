@@ -134,6 +134,27 @@ const SCENARIOS = [
   { name: 'l3-door-punch-actor-owned', level: 3, frames: 170, warp: '96,26',
     script: '70:,4:B,300:',
     cells: '97,28;98,28;97,29;98,29;97,26;98,26;97,27;98,27;97,25;98,25' },
+
+  // --- NO door: the $271B melee hit spark ----------------------------------
+  // The seven scenarios above all punch DOORS, and a punch that resolves to a
+  // solid tile never reaches loc_00_2643 at all -- so none of them allocates a
+  // $C693 slot from the melee path, and the spark could sit unported for as
+  // long as it did without a single one of them noticing.
+  //
+  // This one punches an ENEMY. Level 3, warped to col 46 row 23 and walked
+  // right into the first walker; --ammo 0 so B is a punch and not a throw.
+  // The hit lands at f60 and the cartridge writes slot 0 = 10 2F 67 18 00 01 --
+  // sprite $10, subtype $01, and the PLAYER's position with the x high byte
+  // nudged +1 for facing right ($26FC-$2708). Rows f61..f75 count byte 0 down
+  // 0F..01 (the plain $13B4 arm, 16 frames) and the slot reads 0 from f76,
+  // with bytes 1-5 left INTACT -- which is why the frames after the lifetime
+  // are inside the cap and not trimmed off it.
+  //
+  // `noDoor` swaps the "did the cartridge arm $C733" sanity guard for "did the
+  // cartridge put something in $C693": the guard must still prove the run did
+  // something, it is a different something.
+  { name: 'l3-punch-enemy', level: 3, frames: 90, warp: '46,23', ammo: 0,
+    script: '20:,32:R,6:RB,2:R,20:,6:B,20:,6:B,60:', noDoor: true },
 ];
 
 const run = (cmd, args) => execFileSync(cmd, args, { cwd: ROOT, encoding: 'utf8' });
@@ -146,6 +167,9 @@ for (const s of SCENARIOS) {
                   '--level', String(s.level), '--name', s.name];
   if (s.warp) common.push('--warp', s.warp);
   if (s.cells) common.push('--cells', s.cells);
+  // Both harnesses take --ammo ($C759 / state.flow.ammo). Without it B throws
+  // a batarang instead of punching and the melee scan never runs.
+  if (s.ammo != null) common.push('--ammo', String(s.ammo));
 
   run('python', ['tools/oracle/doortrace.py', ...common]);
   const o = JSON.parse(fs.readFileSync(
@@ -190,7 +214,13 @@ for (const s of SCENARIOS) {
   }
 
   const armed = o.filter((f) => f.seq).map((f) => f.f);
+  // Byte 0 of any of the ten $C693 slots going non-zero: the cartridge
+  // allocated an effect. This is what a noDoor scenario proves instead of
+  // $C733, and it is a real assertion, not a weakened guard -- a scenario that
+  // punches nothing reports NEVER here just as loudly.
+  const effLive = o.some((f) => f.eff.some((v, k) => k % 6 === 0 && v !== 0));
   rows.push({ name: s.name, frames: n, bad, knownFail: s.knownFail,
+              noDoor: s.noDoor, effLive,
               lag: o.filter((f) => f.lag).map((f) => f.f),
               armed: armed.length ? `${armed[0]}-${armed[armed.length - 1]}` : 'NEVER' });
   process.stderr.write('done\n');
@@ -211,7 +241,10 @@ for (const r of rows) {
               r.armed.padStart(8) + String(r.bad.length).padStart(8) + '  ' + verdict);
 }
 for (const r of rows) {
-  if (r.armed === 'NEVER') {
+  if (r.noDoor && !r.effLive) {
+    console.log(`\n  ${r.name}: the cartridge never put a byte in $C693 -- the ` +
+                'run proves nothing. Fix the script before reading the verdict.');
+  } else if (!r.noDoor && r.armed === 'NEVER') {
     console.log(`\n  ${r.name}: the cartridge NEVER armed $C733 -- the run ` +
                 'proves nothing. Fix the script before reading the verdict.');
   }
@@ -233,7 +266,8 @@ for (const r of xpasses) {
 }
 
 const ok = rows.every((r) => (!r.bad.length || r.knownFail)
-                             && !r.lag.length && r.armed !== 'NEVER')
+                             && !r.lag.length
+                             && (r.noDoor ? r.effLive : r.armed !== 'NEVER'))
            && !xpasses.length;
 const clean = rows.length - xfails.length;
 console.log('\n' + (ok

@@ -463,8 +463,21 @@ function rescueDrop(state) {
   }
 
   // $3113: sub_00_1172 then sub_00_0BAF with metasprite $68, attribute 0.
-  // Queued onto the enemy list, which sub_00_2CBE precedes -- so it takes the
-  // OAM slots ahead of every enemy, exactly as it does on the cartridge.
+  //
+  // KNOWN DEFECT, pre-existing and not currently reachable in normal play.
+  // This push is DISCARDED. rescueDrop runs from updateWater ($05C6,
+  // src/main.js), and updateEnemies ($05CF) opens with
+  // `state.enemyDraws.length = 0` (src/enemies.js), so the entry is cleared one
+  // call later and the carrier's sprite is never drawn. An earlier comment here
+  // claimed the opposite -- that it takes the OAM slots ahead of every enemy --
+  // which is not what the code does.
+  //
+  // It is invisible because the whole path is behind the $C75C rescue cheat
+  // (flow.rescueCheat), measured 0 in normal play, and no oamdiff scenario can
+  // reach a cheat frame. Fixing it means either drawing this metasprite
+  // immediately (it is at $3113, ahead of $05CF) or moving the queue clear out
+  // of updateEnemies into main.js where the frame owns it; both change an
+  // uncovered path, so neither is done here.
   const sx = u8((u16(r.x - state.camera.x) >> 4) + 8);
   const sy = u8((u16((r.y & 0x0FFF) - state.camera.y) >> 4) + 0x10);
   state.enemyDraws.push({ id: 0x68, x: sx, y: sy, attr: 0, alt: true });

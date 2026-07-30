@@ -65,7 +65,11 @@ for (const level of levels) {
       + `${(ref.regs.camXhi << 8 | ref.regs.camXlo) >> 4},${(ref.regs.camYhi << 8 | ref.regs.camYlo) >> 4}`);
     continue;
   }
-  const scx = ref.regs.SCX, scy = ref.regs.SCY;
+  // $FFA9/$FFAA, not rSCX/rSCY -- see bgartdiff.mjs. rSCX at the sample point
+  // holds the LAST raster arm of the previous frame, which on level 6 is the
+  // $FFCC track band ($C0 against $FFA9 = $10).
+  const scx = ref.regs.scxBase ?? ref.regs.SCX;
+  const scy = ref.regs.scyBase ?? ref.regs.SCY;
   // Rebuild scroll into world space the way raster.js regToWorld does.
   const wrap = (base, reg) => { let d = (reg - base) & 0xFF; if (d > 0x7F) d -= 0x100; return base + d; };
   const wx0 = wrap(camX, scx), wy0 = wrap(camY, scy);

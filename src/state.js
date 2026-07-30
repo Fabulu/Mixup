@@ -149,6 +149,15 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     // field's existence for the behaviour being modelled. Scenarios that cross
     // a real lag frame diverge, which is why several are capped just short of
     // one (l3-object-floor, l3-platform-ride, l1-sewer-respawner-emerge).
+    //
+    // Every cap in the corpus is MEASURED, never assumed, and the measurement
+    // is worth re-taking rather than inheriting: an earlier note here was going
+    // to record "level 4 lags at f110 of a punch-heavy run" and it does not.
+    // Hooked on this exact shape ($C757 read out of trace.py, level 4,
+    // --ammo 0, presses every 12 frames) the byte is clear for all 200 frames,
+    // for all 640, and for all 600 of regress.mjs's l4-boss1-melee-sweep at a
+    // 16-frame cadence. Level 4 has no lag frame in any punch run measured so
+    // far. The levels that DO are named on their own scenarios.
     lagFrame: 0,
     // $C70A-$C70D, $C713, $C755 + the $C6EF splash pool -- the level-1/2
     // rising water body (src/water.js).

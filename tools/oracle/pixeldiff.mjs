@@ -11,6 +11,16 @@
 //   node tools/oracle/pixeldiff.mjs                  every scenario, record if needed
 //   node tools/oracle/pixeldiff.mjs --only l9-sky --record
 //   node tools/oracle/pixeldiff.mjs --only l6-track
+//   node tools/oracle/pixeldiff.mjs --only l12-walk --dump [--scale 3]
+//
+// --dump writes one 3-panel sheet per compared frame to
+// rip/oracle/pix/dump/<scenario>-f<N>.png -- [CARTRIDGE | PORT | DIFF], the
+// same layout tools/golden.mjs --diff writes, magenta on every pixel that
+// differs.  It reuses golden.mjs's diffSheet() rather than growing a second
+// renderer of the same picture.  The magenta count is printed next to each
+// sheet and is asserted equal to the `bad px` column: a sheet whose magenta
+// count disagrees with the number in the table is a broken sheet, and the
+// tool says so instead of writing a plausible-looking lie.
 //
 // WHAT THE REMAINING NUMBERS ARE. Most of what is left is not a defect, and
 // reading this table without that is how "we are close to perfect" turns into
@@ -104,7 +114,29 @@ const has = (n) => argv.includes(`--${n}`);
 const arg = (n, d) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : d; };
 const only = arg('only', null);
 const record = has('record');
+const dump = has('dump');
+const scale = parseInt(arg('scale', '2'), 10);
+const DUMP_DIR = path.join(DIR, 'dump');
 const LAG = 1;                                    // panel shows iteration N at N+1
+
+// Loaded lazily: golden.mjs pulls in src/* again, and there is no reason to
+// pay for that on a plain measuring run.
+let sheet = null;
+if (dump) {
+  const g = await import(pathToFileURL(path.join(ROOT, 'tools/golden.mjs')).href);
+  sheet = (romShades, portShades, file) => {
+    const { w, h, rgba } = g.diffSheet(romShades, portShades, scale);
+    g.writeRGBAPNG(file, w, h, rgba);
+    // Count the magenta the sheet actually drew, in the SCALED buffer, and
+    // divide back out -- so a broken scaler or a swapped panel is caught here
+    // rather than believed.
+    let magenta = 0;
+    for (let i = 0; i < w * h; i++) {
+      if (rgba[i * 4] === 255 && rgba[i * 4 + 1] === 0 && rgba[i * 4 + 2] === 220) magenta++;
+    }
+    return { w, h, magenta: magenta / (scale * scale) };
+  };
+}
 
 const BTN = { A: 0x01, B: 0x02, R: 0x10, L: 0x20, U: 0x40, D: 0x80 };
 function expand(script) {
@@ -192,6 +224,17 @@ for (const sc of SCEN) {
     }
     const worst = [...perRow].map((v, y) => [y, v]).filter((r) => r[1])
       .sort((a, b) => b[1] - a[1]).slice(0, 6);
+    if (dump) {
+      const file = path.join(DUMP_DIR, `${sc.name}-f${f}.png`);
+      const { w, h, magenta } = sheet(want, o.shades, file);
+      if (magenta !== bad) {
+        console.error(`SHEET BROKEN ${path.relative(ROOT, file)}: `
+          + `${magenta} magenta cells but ${bad} wrong pixels`);
+        process.exitCode = 1;
+      }
+      console.log(`dumped ${path.relative(ROOT, file)}  ${w}x${h}  `
+        + `${magenta} magenta px (x${scale})`);
+    }
     rows.push({ sc: sc.name, f, bad, pct: (TOTAL - bad) / TOTAL,
                 best, bestDx, worst,
                 romOam: m.oam.filter((e) => e[0] !== 0).length,

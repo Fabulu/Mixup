@@ -210,6 +210,54 @@ const STAGES = [
     skip: hasAssets ? null : 'assets/manifest.json missing',
   },
   {
+    // The PICTURE of a death, and it is here because the tool existed, was RED,
+    // and nothing ran it -- which is exactly how the defect it now guards
+    // rotted. game-over-lettering above compares 13504/13504 shadow-OAM bytes
+    // and says itself that it "deliberately does not compare order"; it drives
+    // src/effects.js directly and is blind to main.js's call site by
+    // construction. The burst was driven from the head of updatePlayer instead
+    // of from $057A/$05EC, which put its letters at the wrong OAM index on odd
+    // frames -- 68 wrong pixels on death-l1 f441, invisible to every stage in
+    // this list.
+    //
+    // death-l9 is deliberately EXCLUDED, with both of its residuals named:
+    //   f321  75 px, the enemy-flush order component -- CLOSED by moving the
+    //         drawEnemies flush to $05CF, and now 0
+    //   f100  447 px, measured NOT to be an order error (the order-only delta
+    //         at f100 is 0 px) and otherwise undiagnosed
+    // Add death-l9 to this stage once f100 has an owner.
+    name: 'death-pixels',
+    what: 'a player death and the GAME OVER burst, on screen, levels 1 and 3',
+    cmd: process.execPath,
+    args: ['tools/oracle/deathpix.mjs', '--only', 'death-l1,death-l3'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
+    // No PyBoy: the $0BEA 8-bit shadow-OAM Y wrap, asserted on the queue AND on
+    // the pixels, against numbers written down in the tool. pixeldiff.mjs sees
+    // the same 15 pixels but compares against a RECORDED reference, so a
+    // re-record would silence it; this one cannot be re-recorded.
+    name: 'oam-wrap',
+    what: "sub_00_0BC6's 8-bit Y: level 12's banner is drawn on row 0",
+    cmd: process.execPath,
+    args: ['tools/oracle/oamwrap.mjs'],
+    pyboy: false,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
+    // No PyBoy on the port side, but it re-runs oamorder.py when the cartridge
+    // dumps are absent. Shadow-OAM ORDER, which is DMG sprite priority and the
+    // ten-per-line cut -- and which every byte-for-byte OAM comparison in this
+    // list is blind to by definition.
+    name: 'oam-order',
+    what: 'the sprite queue in CALL ORDER vs the cartridge, levels 6/1/9',
+    cmd: process.execPath,
+    args: ['tools/oracle/oamdiff.mjs'],
+    pyboy: true,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
     // No PyBoy: it asserts level 14's init block against the listing, value by
     // value. It was written months ago, was RED on all three difficulties the
     // whole time, and nothing ran it -- the $FFAD blackout seed was missing and

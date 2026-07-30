@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 
 import { grid, put, fillRow, makeState } from './helpers.js';
 import { meleeHitTest, updateEnemies, _internals } from '../src/enemies.js';
+import { updateEffects } from '../src/doors.js';
 
 const {
   probeCore, probeUp, probeDown, probeRight, probeLeft,
@@ -411,6 +412,59 @@ test('a connecting punch: hit-flash, a $3C stun, 2 damage, clamped at zero', () 
   const low = melee({ hp: 1 });
   punch(low);
   assert.equal(low.enemies[0][0x16], 0, 'the SUB clamps; it must not wrap to 255');
+});
+
+test('a connecting punch drops the $271B hit spark at the PLAYER, nudged by facing', () => {
+  // ROM: $26FC-$271B. The staging bytes take $FF81-$FF84 -- the player, not the
+  // enemy -- and only the X HIGH byte moves: `LDH A,[$FF81] / LD B,A`, then
+  // `LDH A,[$FF88] / AND A / JR NZ -> DEC B`, else `INC B`. INC B / DEC B is an
+  // 8-bit op on B alone, so the low byte rides along untouched.
+  //
+  // Sprite $10 subtype $01 is the ordinary arm at loc_00_26EA; the crit arm's
+  // $97/$04 hangs off the modelled rLY window and is unreachable here on
+  // purpose (melee() pins critWindow to 0).
+  //
+  // Checked against the cartridge by tools/oracle/doordiff.mjs's
+  // l3-punch-enemy: slot 0 = 10 2F 67 18 00 01 on the frame the hit lands.
+  const right = melee({ hp: 6, facing: 0 });
+  right.player.x = 0x2F67;
+  right.player.y = 0x1842;
+  assert.equal(punch(right), 0xFF);
+  assert.deepEqual([...right.doors.effects[0]], [0x10, 0x30, 0x67, 0x18, 0x42, 0x01]);
+
+  const left = melee({ hp: 6, facing: 1 });
+  left.player.x = 0x2F67;
+  left.player.y = 0x1842;
+  assert.equal(punch(left), 0xFF);
+  assert.deepEqual([...left.doors.effects[0]], [0x10, 0x2E, 0x67, 0x18, 0x42, 0x01]);
+
+  // The high byte wraps on its own: $FF + 1 is $00, and the low byte does NOT
+  // borrow into it, because the ROM never touches the 16-bit pair.
+  const wrap = melee({ hp: 6, facing: 0 });
+  wrap.player.x = 0xFF80;
+  wrap.player.y = 0x1000;
+  punch(wrap);
+  assert.equal(wrap.doors.effects[0][1], 0x00, 'INC B wraps $FF -> $00');
+  assert.equal(wrap.doors.effects[0][2], 0x80, 'the low byte is copied, not carried');
+
+  // Bit 7 of $10 is clear, so this is the PLAIN arm at $13B4: 16 frames, and
+  // then byte 0 alone is cleared. A port that wiped the whole record would
+  // agree with the cartridge for every frame inside the lifetime and diverge on
+  // four bytes for the rest of the level with nothing visible to show for it.
+  const r = right.doors.effects[0];
+  for (let i = 0; i < 16; i++) updateEffects(right);
+  assert.equal(r[0], 0x00, 'expired after 16 ticks');
+  assert.deepEqual([...r].slice(1), [0x30, 0x67, 0x18, 0x42, 0x01],
+                   'only byte 0 is cleared -- position and subtype survive');
+});
+
+test('a punch that MISSES allocates nothing', () => {
+  // $271B is inside the hit arm, past the $2722 continue. A spark on a miss
+  // would burn a pool slot on every swing -- and the pool is ten deep and
+  // shared with the doors, the drops, the water and the death explosions.
+  const state = melee({ dsx: 40 });
+  assert.equal(punch(state), 0);
+  assert.equal(state.doors.effects[0][0], 0);
 });
 
 test('an enemy that is ALREADY flashing can be punched again', () => {

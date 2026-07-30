@@ -127,7 +127,26 @@ const SCENARIOS = [
   // the scenario still passes: the +1/+2 copy, the hand-written +9/+$0A cache
   // (the shared tail refuses masked type $0B, so nothing else writes it), the
   // $C72F carry AND the track that drives them are all bit-exact.
-  { name: 'l6-conveyor-deck', level: 6, frames: 120, script: '120:',
+  //
+  // WALKING, and 400 frames, because idling reaches only ONE of loc_00_2EF4's
+  // three arms. MEASURED, port side, both scripts:
+  //
+  //   '120:'        the player never leaves column 1, so $2F23 (col < trackHi,
+  //                 falls into $2F26 trackDown) is the only arm taken. $FFC9
+  //                 holds 2 for all 120 frames and the track walks monotonically
+  //                 down from $0700 to $0340, still going when the run ends.
+  //   '20:,380:R'   the track undershoots to $04F8 at f65, the player's column
+  //                 catches it, and $2F0F/$2F12 (trackUp) runs -- $FFC9 flips
+  //                 2 -> 1 at f69 -- then $2F48 parks it at $0500 for the rest
+  //                 of the run.
+  //
+  // TEETH, and this is why the widening is not cosmetic. Delete the trackUp
+  // call in src/conveyor.js's level6Track `col > trackHi` arm: this scenario
+  // goes red at f70 on s0.xhi/xlo/sx (oracle 10 0 152, port 9 248 151) and at
+  // f74 on the player's own x/vx, while the OLD '120:' entry stays bit-exact
+  // and reports PASS. Both runs were executed. $C757 is clear for all 400
+  // frames, so the cap is measured rather than assumed.
+  { name: 'l6-conveyor-deck', level: 6, frames: 400, script: '20:,380:R',
     slots: [0] },
 ];
 

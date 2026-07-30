@@ -161,8 +161,33 @@ export function meleeHitTest(state, probeX, probeY) {
     const dmg = crit ? r[0x16] : t.meleeDamage;     // $26E3 vs $26F0
     r[0x16] = Math.max(0, r[0x16] - dmg);           // $26F6: SUB, clamp 0
     requestSound(state, crit ? 0x18 : 0x21);
-    // $2708-$271B: the hit-spark effect ($C744-$C747 + sub_00_0CC2) is not
-    // modelled -- same stance as the $4E84 death explosion.
+
+    // $26FC-$271B: the hit spark. The staging bytes take the PLAYER's position
+    // ($FF81-$FF84), not the enemy's, nudged one unit along the facing:
+    //
+    //   26FC  LDH A,[$FF81] / LD B,A     ; x HIGH byte only
+    //   26FF  LDH A,[$FF88] / AND A
+    //   2702  JR NZ,$2707 -> DEC B       ; facing left
+    //   2704  INC B                      ; facing right
+    //   2708  $C744 = B, $C745 = $FF82, $C746 = $FF83, $C747 = $FF84
+    //   271B  CALL sub_00_0CC2
+    //
+    // u8() on the HIGH byte alone: INC B / DEC B is an 8-bit op on B and the
+    // low byte is copied untouched, so $FF wraps to $00 without borrowing.
+    const sparkX = (u8((p.x >> 8) + (p.facing === 0 ? 1 : -1)) << 8) | (p.x & 0xFF);
+    // $97 vs $10 is not just a different picture. Bit 7 of byte 0 selects the
+    // ANIMATED arm at $13CC -- 22 drawn frames stepping $0F -> $CC -> $CD, and
+    // the $17 sound cue at $13E6 -- while $10 takes the plain arm at $13B4: 16
+    // frames, one sprite, silent. See the effect-pool header in src/doors.js.
+    //
+    // The normal arm is checked against the cartridge: doordiff.mjs's
+    // l3-punch-enemy records slot 0 = 10 2F 67 18 00 01 at f60 and the 0F..01
+    // countdown through f75. The CRIT arm is NOT, and cannot be: it hangs off
+    // the crit window a few lines up, which rides the port's MODELLED rLY
+    // (see the header of this file) -- so no scenario can be made to reach it
+    // on both sides. It is transcribed from $26E4/$26E6 and left unverified,
+    // and that is stated here rather than implied by its absence.
+    spawnEffect(state, sparkX, p.y, crit ? 0x97 : 0x10, crit ? 0x04 : 0x01);
     return 0xFF;                                    // $271F: first hit only
   }
   return 0;                                         // $272A
@@ -1502,9 +1527,14 @@ function l12MoveLeft(state, r, v) {
 // kind $01, drift +-8 by facing ($C74D), vy $38 and subtype $01 -- a HAZARD,
 // two damage through $15E5, drawn as metasprite $B7. MEASURED
 // (tools/oracle/poolwatch.py --level 6): 13 spawns in 400 frames, one hazard on
-// screen essentially all the time, and the port's pool stayed empty. The shots
-// land about two columns from the truck, so the missing DAMAGE is unobservable
-// in the shipped level; the missing SPRITE is not.
+// screen essentially all the time.
+//
+// The tail of that note used to read "and the port's pool stayed empty", which
+// was true when it was written and has not been since. MEASURED again over the
+// same 400 frames: the port fires the same 13 shots and $C6CF is byte-identical
+// to the cartridge's for all 612 slot-frames. The shots land about two columns
+// from the truck, so the DAMAGE would be unobservable in the shipped level
+// either way; the sprite is not, and it is there.
 //
 // It DOES run screenTail every frame, so the hit scans see fresh +7/+8 bytes.
 // ---------------------------------------------------------------------------

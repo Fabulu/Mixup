@@ -109,7 +109,23 @@ const SCEN = [
 const argv = process.argv.slice(2);
 const has = (n) => argv.includes(`--${n}`);
 const arg = (n, d) => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : d; };
-const only = arg('only', null);
+// Comma-separated, so the gate can ask for a SUBSET rather than all or one:
+// tools/test-all.mjs runs `--only death-l1,death-l3` and leaves death-l9 out.
+const only = arg('only', null) === null ? null : arg('only').split(',');
+// A name in --only that matches no scenario is a typo or a renamed scenario,
+// and silently running one fewer check is the worst possible response to it:
+// with the comma list the gate passes (`--only death-l1,death-l3`), one stale
+// name would drop that scenario and still report PASS. Checked here, before
+// any work, against the scenario table itself.
+if (only) {
+  const known = new Set(SCEN.map((s) => s.name));
+  const unknown = only.filter((n) => !known.has(n));
+  if (unknown.length) {
+    console.error(`--only names no such scenario: ${unknown.join(', ')}`);
+    console.error(`known: ${[...known].join(', ')}`);
+    process.exit(2);
+  }
+}
 const record = has('record');
 const dump = has('dump');
 const LAG = arg('lag', null) === null ? 1 : parseInt(arg('lag'), 10);
@@ -163,7 +179,7 @@ function writePGM(file, sh) {
 const rows = [];
 let fail = 0, parityFail = 0;
 for (const sc of SCEN) {
-  if (only && sc.name !== only) continue;
+  if (only && !only.includes(sc.name)) continue;
   const file = path.join(DIR, `${sc.name}.json`);
   if (record || !fs.existsSync(file)) {
     const a = ['tools/oracle/deathpix.py', '--level', String(sc.level),
@@ -217,6 +233,13 @@ console.log(`\n${rows.length} frames, ${tot} wrong pixels, `
 if (parityFail) {
   console.log(`${parityFail} of them are EXACT once the burst is drawn last -- `
     + 'that is $0567\'s $05E5/$05EC arm, which the port never takes.');
+}
+// Zero frames compared is not a pass. "0 wrong pixels" out of nothing read the
+// same as a clean run and exited 0, so a scenario table that stopped producing
+// capture frames would have retired this stage without saying so.
+if (rows.length === 0) {
+  console.log('FAIL - compared 0 frames; a pixel check that reads nothing is not a pass');
+  process.exit(1);
 }
 console.log(fail ? `FAIL (${fail}/${rows.length} frames)` : 'PASS');
 process.exit(fail ? 1 : 0);

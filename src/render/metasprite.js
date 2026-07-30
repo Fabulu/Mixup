@@ -18,14 +18,70 @@ export function drawMetasprite(state, table, index, screenX, screenY, attrMask,
   const entry = table[index];
   if (!entry) return;
   const q = state.video.sprites;
+  // The 8-bit shadow-OAM wrap below models a HARDWARE byte, and it only means
+  // anything while a queue entry corresponds 1:1 to an OAM entry -- that is,
+  // at scale 1, which is every faithful caller. src/mods.js ships
+  // `spriteScale: 2` and there is no sub_00_0BC6 for a scaled draw to be
+  // faithful to, so wrapping a composed `dy * scale` there would send the
+  // bottom rows of a big sprite round to the top of the screen (a tear) where
+  // the pre-existing behaviour simply clipped them. Wrap the faithful case,
+  // clip the synthetic one.
+  const wrap = scale === 1;
   for (const [dy, dx, tile, attr] of entry.sprites) {
     if (q.length >= 40) return;           // $0BE5: CP $A0 -- hard cap, silent drop
+    const rawX = screenX + dx * scale;
+    const rawY = screenY + dy * scale;
     q.push({
       // Offsets scale with the sprite so the metasprite grows about its own
       // origin instead of coming apart. Callers that must stay 1:1 (the HUD)
       // simply leave scale at 1.
-      x: screenX + dx * scale,
-      y: screenY + dy * scale,
+      //
+      // $0BED-$0BEF: `LD A,[HL+] / ADD A,C / LD [DE],A` -- the X byte, the
+      // SAME 8-bit construct as Y three lines below, into the same $C0xx
+      // shadow-OAM byte (DE is loaded `LD D,$C0` at $0BE2). X wraps for
+      // exactly the reason Y does; our x is the OAM byte minus 8, so the
+      // expressible range is -8..247.
+      //
+      // MEASURED (level 9, "20:,180:R", f127): the port queued x = 251 for
+      // tiles $BE/$C0/$C2 and the renderer's `sx >= SCREEN_W` test dropped all
+      // three, drawing nothing. The cartridge's own shadow OAM at that frame
+      // (scratch PyBoy run, $C000 block) holds X = 5 for those same three
+      // tiles, at screen y 22/38/54 -- wrapped to the left edge and drawn.
+      // (Cart X and port X differ by one frame's worth of movement here: the
+      // cart runs 8,6,5,3,2 over f125-129 and the port 6,5,3,2,0. That lag is
+      // the documented l9/l10/l11 parallax feeder race, a separate pre-existing
+      // fault; the WRAP is what this line is about, and both sides wrap.)
+      //
+      // Port sweep, 14 levels x 400 frames: 63 out-of-range X entries on L9,
+      // 135 on L10, 15 on L12, none elsewhere, and Y clean throughout. Of
+      // those, 24 sprite-frames cross from invisible to VISIBLE under the wrap
+      // and none cross the other way -- strictly toward the cartridge. None of
+      // pixeldiff's capture frames (40/80/120/160/200) lands on a wrap frame,
+      // so the corpus cannot see this; tools/oracle/oamwrap.mjs asserts the
+      // range on both axes and tools/oracle/oamdiff.mjs re-checks it on the
+      // unmasked values.
+      x: wrap ? (((rawX + 8) & 0xFF) - 8) : rawX,
+      // $0BE9-$0BEB: `LD A,[HL+] / ADD A,B / LD [DE],A` -- an 8-bit add into an
+      // 8-bit shadow-OAM byte. A record whose Y runs off the END of the 256-row
+      // OAM space therefore WRAPS round to the top; it does not sail on past
+      // 255 the way a JavaScript number does. Our y is the OAM byte minus 16
+      // (the two hardware origins cancel, see above), hence the +16/-16 round
+      // trip; the result lands in -16..239, exactly the range an OAM byte can
+      // express.
+      //
+      // MEASURED (tools/oracle/oamwrap.mjs, level 12, "20:,180:R", read at
+      // f200): the ceiling banner's four letter tiles come out of the record
+      // table at OAM Y = 257, which the cartridge stores as 1 -- one row of each
+      // letter along the very top edge. The port kept 257, i.e. y = 241, which
+      // is below a 144-row screen, and the renderer dropped all four. Worth 15
+      // wrong pixels, all on row 0 (pixeldiff l12-walk f200) -- the last residue
+      // in that corpus outside the two documented families.
+      //
+      // Here and not in renderer.js: this is the ONLY writer of
+      // state.video.sprites, the queue is render-only, and
+      // tests/visual/renderer.test.js injects sprite lists directly (y: -20)
+      // and must keep seeing the raw values it wrote.
+      y: wrap ? (((rawY + 16) & 0xFF) - 16) : rawY,
       tile,
       attr: attr | attrMask,              // $0BF7: OR with $FF9E
       scale,

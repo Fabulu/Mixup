@@ -48,16 +48,13 @@ export function updatePlayer(state, manifest = null) {
     return true;                        // $1B4A falls through to the draw
   }
 
-  // The GAME OVER burst. On the cartridge this is a MAIN-LOOP call ($057A on
-  // even frames, $05EC on odd) and NOT part of the player update at all, so it
-  // cannot live inside the chain below: $1772 ends a dying player's update
-  // outright whenever he is past the death row, and a burst that stopped
-  // ticking there would never reach loc_00_2AAD. It runs here, first, for that
-  // reason -- see the header of deathTick for what the call site costs.
-  if (state.player.dead) {
-    deathTick(state, manifest);
-    if (state.flow.respawnPending) return false;
-  }
+  // The GAME OVER burst used to be DRIVEN from here, first thing, because
+  // $1772 ends a dying player's update outright and a burst ticked from inside
+  // the chain would never reach loc_00_2AAD. That call site is now gone: on the
+  // cartridge sub_00_29E7 is a MAIN-LOOP call ($057A on even frames, $05EC on
+  // odd), immediately after the HUD arm and under the SAME $C740 test, so it
+  // lives in src/main.js beside the two drawHud calls. deathTick is exported
+  // for those two call sites and is not part of the player chain.
 
   // $1643: a scripted door/exit walk-through replaces the entire player
   // update while it runs -- no input, no physics, no collision.
@@ -280,12 +277,29 @@ function startDeath(state) {
  * 452 frames, MEASURED identically on levels 1, 3 and 4. The old timer-only
  * version took 122.
  *
- * FAITHFUL CALL SITE: on the cartridge this runs from the MAIN LOOP, at $057A
- * on even frames and $05EC on odd -- once a frame either way, right after the
- * HUD draw and before the camera, and NOT gated on the pause. Running it here
- * instead only moves the burst's sprites later in OAM. See REPORT.
+ * CALL SITE: the main loop, $057A on even frames and $05EC on odd -- once a
+ * frame either way, right after the HUD draw and before the camera, and NOT
+ * gated on the pause. src/main.js holds both arms. It used to be driven from
+ * the head of updatePlayer instead, which put the burst's sprites at the WRONG
+ * OAM index on odd frames: MEASURED (tools/oracle/deathpix.mjs) death-l1 f441
+ * = 68 wrong pixels and death-l9 f441 = 135, both flagged "EXACT in the $05EC
+ * order", i.e. the pixels come back byte-for-byte the moment the burst is
+ * queued after the enemies and the doors instead of before the camera.
+ *
+ * WHAT THE CALL SITE DOES NOT CARRY: on the frame the burst LANDS, the ROM
+ * goes to loc_00_2AAD, which is not a return -- `POP AF / POP HL` discards
+ * sub_00_29E7's return address and $2ACC is `JP loc_00_035B`, so the rest of
+ * that main-loop iteration never runs. The port finishes the frame and then
+ * lets src/main.js act on flow.respawnPending; the one visible consequence,
+ * the player being drawn on that frame, is gated there at the `drew` test.
+ * Everything else that iteration still runs, which $2AAD does not.
+ *
+ * $0567/$05D9 open `LD A,[$C740] / CP $FF / JR NZ` and the burst call is
+ * INSIDE that arm, so the burst does not advance while $C740 is busy -- a boss
+ * death countdown or level 14's entrance. MEASURED with an execution hook on
+ * sub_00_29E7: 0 hits across 60 frames with $C740 = $00, 60/60 with $FF.
  */
-function deathTick(state, manifest = null) {
+export function deathTick(state, manifest = null) {
   // Fire exactly once. Without this the timer sits at zero and every
   // subsequent frame takes another life, draining the lot in a fifth of a
   // second while the async reload is still in flight.

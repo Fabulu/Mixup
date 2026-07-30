@@ -18,6 +18,16 @@
 // of levels 9/10/11 and 103/378 on level 6 -- ~8000 and ~3000 wrong pixels a
 // frame, the largest deltas anywhere in the sweep.
 //
+// SAMPLE POINT (this used to cost two levels of coverage). The reference is
+// read inside the $0A4F hook, and the scroll comes from $FFA9/$FFAA, not from
+// rSCX/rSCY. Reading at the PyBoy tick boundary instead returned the NEXT
+// iteration's camera -- level 5 f80 gave 16,288 against the port's 16,284 and
+// level 2 f80 gave 17,326 against 16,325 -- so both reported CAMERA MISMATCH
+// and were SKIPPED. Reading rSCX instead of $FFA9 mis-placed the window on
+// level 6, whose last raster arm leaves $C0 in rSCX against $FFA9 = $10, and
+// invented 80 wrong cells. Neither was a port fault. All fourteen levels now
+// measure; 2 and 5 come out 380 visible cells, 0 wrong.
+//
 // Usage:
 //   node tools/oracle/bgartdiff.mjs
 //   node tools/oracle/bgartdiff.mjs --levels 6,9,10,11 --record
@@ -94,7 +104,14 @@ for (const level of levels) {
   // Rebuild the hardware scroll into world space the way raster.js regToWorld
   // does, so the cell indices below are the ones the PPU would have used.
   const wrap = (base, reg) => { let d = (reg - base) & 0xFF; if (d > 0x7F) d -= 0x100; return base + d; };
-  const wx0 = wrap(camX, ref.regs.SCX), wy0 = wrap(camY, ref.regs.SCY);
+  // $FFA9/$FFAA, not rSCX/rSCY. The hardware registers hold whatever the LAST
+  // raster arm of the previous frame left in them; on level 6 that is the
+  // $FFCC track band, so rSCX reads $C0 at the sample point while the top of
+  // the screen is drawn at $FFA9 = $10. Using rSCX there mis-places the whole
+  // sampling window by 22 tile columns and reports 80 phantom wrong cells.
+  const sx = ref.regs.scxBase ?? ref.regs.SCX;
+  const sy = ref.regs.scyBase ?? ref.regs.SCY;
+  const wx0 = wrap(camX, sx), wy0 = wrap(camY, sy);
   // --no-art is the make-it-fail switch: it renders the same comparison with
   // the overlay withheld, which is what the port did before it was exported.
   // A check nobody has watched go red is a decoration.

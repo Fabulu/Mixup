@@ -315,7 +315,13 @@ for (const level of LEVELS) {
 function drive(level, base, opts = {}) {
   const { startAt = null, max = 600 } = opts;
   const state = createState();
-  state.titleManifest = manifest;
+  // NOT set: state.titleManifest. main.js assigns it only on the title boot
+  // path, so a harness that assigns it is testing a state the app may not
+  // have (docs/03 lesson 38 -- that is the line that hid the ending's missing
+  // credit circle). The card gets its metasprite table from the manifest
+  // handed to loadStageIntro, not from state; MEASURED, deleting the
+  // assignment leaves this tool's result unchanged (EXACT MATCH,
+  // 327680/327680 VRAM bytes across 8 levels, and every timing landmark).
   state.sound = { queue: [] };
   state.player.hp = 3;
   state.player.hpMax = 10;

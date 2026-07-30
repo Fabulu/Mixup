@@ -234,6 +234,21 @@ def main():
             if not seen['burstSeeded'] and m[0xC715] != 0:
                 seen['burstSeeded'] = True
                 mark('burstSeeded', idx)
+                # $FFA7 on the SEED frame, and it is load-bearing.  sub_00_29E7
+                # seeds and RETs while $C715 is 0, and only ticks once it is
+                # set -- so the seed frame advances the burst when $05EC (odd)
+                # runs after the player update and does not when $057A (even)
+                # ran before it.  MEASURED on this cartridge, level 3, by
+                # running this script at four consecutive pokes: poke 39 ->
+                # seed f40, $FFA7 = 1, slot 0 armed the SAME frame; poke 40 ->
+                # seed f41, $FFA7 = 0, armed the NEXT; poke 41 -> seed f42,
+                # $FFA7 = 1, same frame; poke 42 -> seed f43, $FFA7 = 0, next.
+                # So parity 1 arms on the seed frame and parity 0 arms after it
+                # -- an earlier note here had that the wrong way round.
+                # deathdiff.mjs compares this so a
+                # harness whose phase has drifted fails loudly instead of
+                # reporting a one-frame burst error.
+                rec['seedParity'] = m[0xFFA7]
                 rec['checkpoints'][str(idx)] = burst(m)
             if seen['burstSeeded']:
                 b = burst(m)

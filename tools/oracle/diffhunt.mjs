@@ -26,6 +26,35 @@ const SCEN = [
     extra: [...E(0), ...BOSS], diffs: [0, 2] },
   { name: 'l8-boss2-engage', level: 8, frames: 558, script: '20:,110:R,428:',
     extra: [...E(0), ...E(1), ...E(2), ...BOSS], diffs: [0, 2] },
+  // Boss 2's ARMOUR FORK, which nothing else in this corpus reaches. $3C94 is
+  // the only place a batarang hit splits on the target's air state: with
+  // r[0] & 0x03 non-zero -- boss 2 off the ground -- $3C9E falls through to the
+  // ordinary damage arm and the armour does nothing; grounded, $3CA2 writes
+  // $C741 = $1E and he spins instead, unhurt, for 30 frames. The grounded half
+  // is covered by l8-boss2-engage; the airborne half was covered by nothing, so
+  // a port that always took the $1E branch would report GREEN everywhere and
+  // make boss 2 unkillable by batarang -- which is exactly how he behaves in
+  // play (82 connections, 0 damage, 2000 cartridge frames), so the symptom
+  // would not have looked like a bug either.
+  //
+  // The script closes the distance, then throws on a 20-frame cadence with a
+  // left tap first so the hop is in flight when the batarang arrives.
+  // 398 frames, not 400: 0:$065C lags at f399 on difficulty 2 (measured by
+  // hooking it over this exact script), so the cap sits below the lag frame the
+  // way every other entry's does.
+  //
+  // TEETH, executed: delete the `if (r[0] & 0x03) { armoredDamage = true; }
+  // else` fork at src/batarang.js and always take the bossHop = $1E branch.
+  // Difficulty 2 goes red at f179 -- en0hp oracle 32 port 33, bossHop oracle 0
+  // port 29, and bat0/bat0spd/bat0arc, 22 fields in all -- while difficulties 0
+  // and 1 stay CLEAN. That asymmetry is the point: 0 and 1 only ever reach the
+  // GROUNDED spin, which l8-boss2-engage already covers, so a scenario that
+  // went red on all three would not be evidence that the airborne arm is
+  // tested. It is the only entry here with diffs [0, 1, 2] for that reason.
+  { name: 'l8-boss2-batarang-armour', level: 8, frames: 398, ammo: 99,
+    skipFrames: 1,
+    script: '20:,110:R,20:' + ',3:L,3:,6:B,8:'.repeat(18),
+    extra: [...E(0), ...E(1), ...E(2), ...BOSS], diffs: [0, 1, 2] },
   { name: 'l11-boss3-patience', level: 11, frames: 700, script: '700:',
     extra: [...E(0), ...BOSS], diffs: [0, 2] },
   { name: 'l14-entrance', level: 14, frames: 900, script: '900:',
