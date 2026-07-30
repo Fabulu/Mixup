@@ -24,35 +24,62 @@
 >   bit-exact over 800 frames on difficulty 0 and 2, and was validated by
 >   reverting the fix and watching all 25 flight frames disappear.
 >
+> ### HOW YOU BEAT THE JOKER (asked in play, so it goes at the top)
+>
+> **With your FISTS.** Batarangs are not the damage source: on level 14 above
+> easy the throw sets the RETURNING bit immediately (`$19C0`), the flight homes
+> on `$C296`/`$C298` — enemy slot 1, the CHASER — and the chaser ABSORBS it
+> (`$3BF5`). A punch takes him for **2**, so his 48 HP is **24 connected
+> punches**. MEASURED on the cartridge (`diffhunt l14-joker-melee`): `en0hp`
+> 48 → 46 at f1368. Nothing can be damaged at all before f728.
+>
 > ### Do these next
 >
-> 1. **Level 8, boss phase 2 — still unmeasured.** Reported as invincible in
->    phase 2. TWO hypotheses to test, neither a diagnosis:
->    - the `$C73D >= 2` stagger gate at `$2643`/`$3C56` was wired for the
->      Joker; if `bossRage` sticks high on level 8 he would be permanently
->      immune to melee AND batarangs;
->    - or he is not immune at all and the report is the ARMOR working as
->      designed. `$3C8A` bounces a batarang off states 2/7/`$0A` with sound
->      `$1D` and no damage, and `$3C94`/`$3C9E` make boss 2 special: the armor
->      only holds while he is GROUNDED (`r[0] & 0x03` clear → `$C741` spin,
->      batarang swatted back). Airborne he takes the ordinary damage arm. So a
->      player throwing batarangs at a grounded boss 2 sees him shrug off every
->      hit while being perfectly damageable in the air. Both arms are ported,
->      unit-tested (`tests/bosses.test.js`) and bit-exact in the corpus
->      (`regress l8-boss2-batarang-spin`) — so check the report against the
->      armor before assuming a bug.
-> 2. **Level 6 sprites.** The cartridge draws **18** sprites there; the port
->    draws far fewer. Enemy state 5 (the vehicle, HP 8, 4 sprites) plus map
->    object slot 0 type 11 (the deck). State 5 has NO oracle coverage at all.
->    Played symptom: "a floating guy I can hit and an invisible thing that
->    blocks me and moves left and right".
-> 3. **Boss 1's melee is worth a look.** Measured but not chased: 60 scripted
->    punches over 600 frames on level 4 never once reached the melee scan's
->    damage arm (`cuetrace.py` shows only the `$10` swing cue, never `$19`).
->    Either the script never lines up with a hopping state-$0A boss, or landing
->    a fist on him needs something the port has not modelled. Unresolved — do
->    not assume it is a bug without measuring.
+> 1. **Level 6's tank — the reported softlock could NOT be reproduced.** Level 6
+>    is bit-exact against the cartridge for 400 frames (player, camera, tank
+>    position and HP), and the cartridge ALSO leaves a hold-right player stuck
+>    at x = 1424 with the tank out of reach, so that part is faithful. Forcing
+>    the kill hands over to level 7 correctly. What WAS wrong was structural:
+>    six async handoffs in `main.js` had `.then()` and no `.catch()`, so a
+>    rejected load froze the loop forever with the music still playing — exactly
+>    the reported symptom. That is fixed, the sound now stops, the launcher shows
+>    the error, and a 5 s watchdog names any handoff that stalls without
+>    rejecting. **The next occurrence self-reports: ask what the red panel says.**
+> 2. **Level 6 sprites.** The cartridge draws **18** there; check the current
+>    count now that the vehicle draws (the port queues 16-23 in play). Enemy
+>    state 5 (the vehicle, HP 8) still has NO oracle coverage, and the player
+>    cannot damage it from the ground in either the port OR the cartridge.
+> 3. **Boss 1's melee is unresolved.** 60 scripted punches over 600 frames on
+>    level 4 never reached the melee scan's damage arm (`cuetrace.py` shows only
+>    the `$10` swing cue, never `$19`). Either the script never lines up with a
+>    hopping state-`$0A` boss, or landing a fist on him needs something the port
+>    has not modelled. Do not assume it is a bug without measuring.
+> 4. **Level 8's boss phase 2** — see the two hypotheses below; the armour one
+>    needs no bug at all.
 >
+> ### Answered in play, so nobody re-opens them
+>
+> - **Boss 3's "stuck between train and a wall that isn't there".** FAITHFUL.
+>   Level 11's map is byte-exact against `$D000`, and over 500 frames every core
+>   field, the camera and boss slot 0 are bit-exact: the ROM itself pins the
+>   player at x = 2944 from f200 to f400 and then kills him. The "wall" is the
+>   level's own right edge and the gap is exactly the cartridge's. The sound
+>   glitch is real and also faithful — `$27` is requested EIGHT times, six at a
+>   flat 12-frame spacing, and the same cue retriggering six times a second is
+>   what reads as a glitch. Pinned as `cuescen l11-boss3-wedged-right`.
+> - **The train "flickering / moving up and down too crazy" on 9/10/11.** Half
+>   ours: `sub_00_0F56`'s draw-Y bob was unported and now is — the cartridge
+>   really does shift grounded sprites 3 px one frame in eight on those levels,
+>   so the port now judders MORE, faithfully. The other half is not a bug at
+>   all: see docs/03 lesson 36 for why levels 9/10 score ~87% in pixeldiff from
+>   f120 (the far sky band's SCX, 1 px, feeder ordering) when the sprites are
+>   identical entry for entry.
+> - **The sky on 9/10.** Fixed and the picker note was stale; 0 wrong background
+>   cells on both. The remaining sky defect is level **11**.
+> - **The ending.** Pixel-verified against the cartridge, and now reachable
+>   directly from the launcher (pick "Ending") instead of only by winning.
+>
+
 > ### Measured facts about the Joker fight, so nobody re-derives them
 >
 > - The entrance runs **727 frames** before `$C740` goes `$FF`; until then

@@ -57,6 +57,23 @@ SCEN = [
     ('l7-walk', ['--level', '7', '--frames', '480', '--script', '20:,460:R']),
     ('l2-walk', ['--level', '2', '--frames', '480', '--script', '20:,460:R']),
     ('l10-walk', ['--level', '10', '--frames', '480', '--script', '20:,460:R']),
+    # REPORTED FROM PLAY as a bug: "on boss 3 when you go down the side to the
+    # right you kinda get stuck between train and (nonexistent) wall, sometimes
+    # sound glitches out too, after a while you die or you walljump out".
+    #
+    # It is FAITHFUL, and this scenario is here so that stays proven. The
+    # cartridge does the same thing: level 11's map is byte-exact against $D000
+    # (checkmap.py), and over these 500 frames every core field, the camera and
+    # boss slot 0 are bit-exact -- the ROM pins the player at x = 2944 from f200
+    # to f400 and then kills him (hp 0 by f500). The "nonexistent wall" is the
+    # level's own right edge, and the space there is exactly the cartridge's.
+    #
+    # The sound half is this: $27 is requested EIGHT times, six of them at a
+    # flat 12-frame spacing (f64-f124, sites 1:$715A and 1:$62D2). The same cue
+    # retriggering six times a second is what reads as a glitch, and the
+    # cartridge asks for all eight.
+    ('l11-boss3-wedged-right', ['--level', '11', '--frames', '500',
+                                '--script', '20:,200:R,100:RD,180:R']),
 ]
 
 only = sys.argv[1:] or None

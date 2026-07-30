@@ -49,6 +49,31 @@ const SCEN = [
     knownLag: { en1x: 'the same f764 lag frame as l14-entrance -- it is in the '
                       + 'entrance with no throw at all, so it is not the '
                       + 'batarang.' } },
+  // MELEE is how the Joker is beaten -- measured, and it answers "how do I
+  // even hurt him": batarangs home on the CHASER ($3A6B/$3ADE) and the chaser
+  // ABSORBS them ($3BF5), so they are not the damage source. A punch takes him
+  // for 2, i.e. 24 punches for his 48 HP. MEASURED on the cartridge with this
+  // script: en0hp 48 -> 46 at f1368.
+  //
+  // Both sides are bit-exact for 1254 frames. Everything after is ONE REAL LAG
+  // FRAME, measured by hooking $065C over this exact script: the only hit in
+  // 1500 frames is f1254, and the first divergence in every field is f1255.
+  // The cartridge drops that iteration's actor/enemy updates (docs/03 §28) and
+  // the port never lags, so the Joker's vy reads 9 against 8 and the player's
+  // rising vy 7 against 8, and the missed punch at f1368 is downstream of that
+  // -- not a melee bug. Tagged rather than hidden so the tail stays visible.
+  //
+  // This scenario earns its place anyway: it is the only thing in the corpus
+  // that exercises a punch CONNECTING on the Joker, which is the one damage
+  // source that works on him.
+  { name: 'l14-joker-melee', level: 14, frames: 1500, ammo: 20, skipFrames: 1,
+    script: '730:' + ',10:R,6:B,4:'.repeat(40),
+    extra: [...E(0), ...E(1), ...BOSS], diffs: [1],
+    knownLag: Object.fromEntries([
+      'x', 'y', 'vx', 'vy', 'air', 'hp', 'en0f', 'en0f1', 'en0d', 'en0ms',
+      'en0x', 'en0y', 'en0vx', 'en0vy', 'en0at', 'en0hp', 'en1x', 'bossHop',
+    ].map((k) => [k, 'downstream of the f1254 lag frame ($065C, measured: the '
+                   + 'only hit in 1500 frames)'])) },
   { name: 'l5-walkerjump', level: 5, frames: 620, script: '20:,600:R',
     extra: [...E(0), ...E(1), ...E(3), ...E(4), ...E(5)], diffs: [0, 2] },
   { name: 'l9-flyer', level: 9, frames: 620, script: '20:,600:R',
