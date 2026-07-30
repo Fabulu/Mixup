@@ -31,7 +31,7 @@
 //   +$1E/+$1F attack-probe offset X (facing-signed) / Y (signed), in px
 
 import { u8, i8, u16, mapCollisionByIndex } from './state.js';
-import { drawMetasprite } from './render/metasprite.js';
+import { drawMetasprite, drawYBob } from './render/metasprite.js';
 import { spawnDrop } from './drops.js';
 import {
   effects, resetEffects, bossCountdownTick, victoryStep, c740Idle,
@@ -2640,7 +2640,12 @@ function walkCycle(state, r, facing) {
 
 function queueDraw(state, id, r, attr, alt) {
   if (!state.enemyDraws) state.enemyDraws = [];
-  state.enemyDraws.push({ id, x: r[7], y: r[8], attr, alt });
+  // 1:$6063-$6071 writes the record's cached Y and THEN, when the enemy is
+  // grounded ((r[1] & 3) == 0), calls sub_00_0F56 on the copy heading for the
+  // draw. So the bob rides on the queued sprite and NOT on r[8] -- r[8] stays
+  // the value every hit test compares against.
+  const bob = drawYBob(state, (r[1] & 0x03) === 0);
+  state.enemyDraws.push({ id, x: r[7], y: u8(r[8] + bob), attr, alt });
 }
 
 /**

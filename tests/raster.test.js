@@ -16,6 +16,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { drawYBob } from '../src/render/metasprite.js';
+import { createState } from '../src/state.js';
+import { makeTunables } from '../src/tunables.js';
+
 import {
   createRaster, tickRaster, rasterModeForLevel,
   parallaxBands, trackBands, waterBands, squashBands,
@@ -329,4 +333,44 @@ test('a zero delta never hands off -- 144 flat bands', () => {
   assert.equal(handoff, null);
   assert.equal(bands.length, 144);
   assert.ok(bands.every((b) => b.scy === 0 && b.bgp === 0xE4));
+});
+
+// ---------------------------------------------------------------------------
+// sub_00_0F56 -- the draw-Y bob.  ROM: $0F56-$0F7A, called from $1D24 (player)
+// and 1:$606F (enemies).
+// ---------------------------------------------------------------------------
+
+test('the draw-Y bob fires on levels 6/9/10/11 only, one frame in eight', () => {
+  // MEASURED (oamorder.py vs oamport.mjs on level 9, frames 1-5): the cartridge
+  // puts the 3x3 enemy block at OAM y = 48 on f3 and 45 on f4, and the port held
+  // 48 on both before this landed. f4 is the frame $FFB1 reaches $70, and
+  // $70 & 7 == 0 -- the phase comes from level.js seeding $6D (docs/03 §27).
+  const s = createState(makeTunables());
+  const at = (level, frame, grounded = true) => {
+    s.level.number = level;
+    s.frame = frame;
+    s.flow.paused = false;
+    return drawYBob(s, grounded);
+  };
+
+  // $0F6B: levels 9/$0A/$0B load D = $FD.
+  for (const lvl of [0x09, 0x0A, 0x0B]) assert.equal(at(lvl, 0x70), -3, `level ${lvl}`);
+  // $0F67: level 6 loads D = $FE instead.
+  assert.equal(at(0x06, 0x70), -2, 'level 6 bobs 2 px, not 3');
+  // $0F66: RET NZ -- every other level does not bob at all.
+  for (const lvl of [1, 2, 3, 4, 5, 7, 8, 0x0C, 0x0D, 0x0E]) {
+    assert.equal(at(lvl, 0x70), 0, `level ${lvl} must not bob`);
+  }
+
+  // $0F6F: AND $07 / RET NZ -- exactly one frame in eight.
+  const hits = [];
+  for (let f = 0x6D; f < 0x6D + 16; f++) if (at(0x09, f) !== 0) hits.push(f & 0xFF);
+  assert.deepEqual(hits, [0x70, 0x78], 'only $FFB1 & 7 == 0');
+
+  // $0F72: $C716 -- a paused frame does not bob.
+  s.level.number = 0x09; s.frame = 0x70; s.flow.paused = true;
+  assert.equal(drawYBob(s, true), 0, 'paused freezes the bob');
+
+  // $1D22 / 1:$606D: both call sites skip it unless GROUNDED.
+  assert.equal(at(0x09, 0x70, false), 0, 'airborne does not bob');
 });

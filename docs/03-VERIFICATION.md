@@ -358,6 +358,32 @@ now — the fix narrative lives on its entry in `regress.mjs`.
     when both sides of a test share it — so the player-catch path was correct
     by accident and the chaser-catch path would have been silently 8/16 px off.
 
+36. **The levels-9/10 pixel score sits at ~87% from f120 on, and it is the
+    feeder race -- not the background art.** Worth writing down because it
+    looks exactly like an art bug and is not one. `bgartdiff.mjs` reports **0
+    wrong background cells** on levels 9 and 10, and a full shadow-OAM diff at
+    level 9 frame 120 is **identical entry for entry, all 22 of them** (x, y,
+    tile AND attr). What is left is the FAR sky band's `SCX`, off by ONE pixel
+    on one frame in four -- and a 1 px shift of a detailed band mismatches most
+    of the pixels in its rows, which is how 1 px becomes ~3000 wrong pixels and
+    an 87% score.
+
+    The cause is the `layers` feeder ordering, measured frame by frame: the
+    port's `$C742` accumulator matches the cartridge's on EVERY frame, so the
+    divergence is entirely in `parallaxBands`'s one-step lookahead (TIMING FACT
+    2 in `src/raster.js`). The cartridge applies that lookahead at f103 and
+    f107 and then STOPS -- at f111, f115, f119 and f123 its band reads the
+    pre-increment `$C742`. The switch happens because the main loop's work per
+    iteration changes as the level gets busier, which moves `$058B` relative to
+    the STAT fire. That is instruction-level timing, out of scope by §28.
+
+    Both choices were measured over 200 frames, which is the useful part:
+    keeping the lookahead costs **6288** bad scanlines, dropping it costs
+    **8112** and breaks from f3. So the shipped behaviour is the better of the
+    two, not an oversight -- do not "fix" it by removing the lookahead.
+    `rasterdiff.mjs`'s 100-frame cap on the parallax scenarios sits just below
+    the first flip for this reason.
+
 ## Tools
 
 | tool | purpose |

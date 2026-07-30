@@ -63,6 +63,40 @@ export function cachePlayerScreen(state) {
     ((((p.y & 0x0FFF) - state.camera.y) & 0xFFFF) >> 4) + 0x10 & 0xFF;
 }
 
+/**
+ * ROM: sub_00_0F56 -- the draw-Y bob, and it is DRAW ONLY.
+ *
+ * `$0F56` returns immediately unless `$FFB0` is 6, 9, `$0A` or `$0B`, loads
+ * D = `$FE` (-2) for level 6 and `$FD` (-3) for 9/10/11, then returns again
+ * unless `$FFB1 & 7 == 0` and `$C716` (pause) is clear. Its whole effect is
+ * `B += D` on the sprite Y that goes to sub_00_0BC6 -- it never touches
+ * `$FF93`/`$FF94`, so collision and the cached screen pair are unaffected.
+ *
+ * Both call sites gate on being GROUNDED: `$1D22` skips it when `$FF80 != 0`
+ * (the player) and `1:$606D` when `(r[1] & 0x03) != 0` (an enemy).
+ *
+ * MEASURED on level 9 (oamorder.py vs oamport.mjs, frames 1-5): the cartridge
+ * puts the 3x3 enemy block at OAM y = 48 on f3 and y = 45 on f4, while the port
+ * held 48 on both. f4 is where `$FFB1` reaches `$70` -- and `$70 & 7 == 0`.
+ * `$FFB1` is seeded to `$6D` at level init (docs/03 lesson 27), which is what
+ * makes the phase land there rather than somewhere else.
+ *
+ * So this is a 3 px judder one frame in eight on the three train levels. It
+ * looks like a lot on a modern display; it is what the cartridge does.
+ *
+ * @returns the Y offset to add, or 0 when the bob does not apply.
+ */
+export function drawYBob(state, grounded) {
+  if (!grounded) return 0;                       // $1D22 / 1:$606D
+  const n = state.level ? state.level.number : 0;
+  const d = (n === 0x09 || n === 0x0A || n === 0x0B) ? -3     // $0F6B: $FD
+    : (n === 0x06 ? -2 : 0);                                  // $0F67: $FE
+  if (d === 0) return 0;                         // $0F66: RET NZ
+  if ((state.frame & 0x07) !== 0) return 0;      // $0F6F: AND $07 / RET NZ
+  if (state.flow && state.flow.paused) return 0; // $0F72: $C716
+  return d;
+}
+
 export function drawPlayer(state, manifest) {
   const p = state.player;
 
@@ -71,7 +105,9 @@ export function drawPlayer(state, manifest) {
 
   const cam = cameraPixels(state);
   const screenX = (p.x >> 4) - cam.x;
-  const screenY = ((p.y >> 4) - 0x100) - cam.y;   // remove the $10-row bias
+  // $1D24, between the cached pair and the draw: remove the $10-row bias, then
+  // apply the bob. p.air 0 is grounded, which is $FF80's own encoding.
+  const screenY = ((p.y >> 4) - 0x100) - cam.y + drawYBob(state, p.air === 0);
 
   drawMetasprite(state, manifest.metasprites.table1, p.msIndex ?? 1,
                  screenX, screenY, p.attrMask, state.video.spriteScale || 1);
