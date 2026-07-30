@@ -150,7 +150,6 @@
     "src/enemies/states/walker.js",
     "src/enemies/states/walkershared.js",
     "src/enemies/states/shooter12.js",
-    "src/enemies/states/projectile.js",
     "src/enemies/bosses/boss1.js",
     "src/enemies/bosses/boss2.js",
     "src/enemies/bosses/boss3.js",
