@@ -32,7 +32,12 @@ import {
   COUNTDOWN_IDLE, COUNTDOWN_START,
 } from './effects.js';
 import { spawnEffect } from './doors.js';
-import { SLOTS, RECORD, F_ACTIVE, F_DISABLED } from './enemies/record.js';
+import {
+  SLOTS, RECORD, F_ACTIVE, F_DISABLED,
+  E_FLAGS, E_STATE, E_ANIM_TIMER, E_FACING, E_SCREEN_X, E_SCREEN_Y, E_ATTR,
+  E_X_HI, E_X_LO, E_Y_HI, E_Y_LO, E_VX, E_HP, E_JUMP_VEL, E_SPEED_CAP,
+  E_PROBE_DX, E_PROBE_DY,
+} from './enemies/record.js';
 import {
   addX, addY, neg16q, absDiff8, playerScreenX, playerScreenY, requestSound,
 } from './enemies/util.js';
@@ -105,23 +110,23 @@ export function updateEnemies(state) {
     state.enemyCursor = slot;                       // $FFB3
     const r = state.enemies[slot];
 
-    if ((r[0] & F_ACTIVE) === 0) { tryActivate(state, r); continue; }   // $4E27
+    if ((r[E_FLAGS] & F_ACTIVE) === 0) { tryActivate(state, r); continue; }   // $4E27
     if (state.flow.paused || state.lagFrame) {      // $4E2C / $4E39
       screenTail(state, r);                         // -> loc_01_5CA8 directly
       continue;
     }
 
     if (shouldDespawn(state, r)) {                  // $4E4D -> sub_00_11A7
-      r[0] &= ~F_ACTIVE;                            // $4E55: RES 7 only
+      r[E_FLAGS] &= ~F_ACTIVE;                      // $4E55: RES 7 only
       continue;
     }
 
-    r[9] = 0;                                       // $4E60: attr rebuilt per frame
-    if (r[0x10] >= DEATH_ROW) {                     // $4E69: fell out
+    r[E_ATTR] = 0;                                  // $4E60: attr rebuilt per frame
+    if (r[E_Y_HI] >= DEATH_ROW) {                   // $4E69: fell out
       if (killTail(state, r) === 'stop') return;
       continue;
     }
-    if (r[0x16] === 0) {                            // $4E75: HP gone
+    if (r[E_HP] === 0) {                            // $4E75: HP gone
       // $4E7A: boss levels take the branch at $4E82 and spawn NOTHING. Only
       // an ordinary level drops anything, and only from HP reaching zero --
       // the fell-out-of-the-world arm above jumps straight past this.
@@ -132,7 +137,7 @@ export function updateEnemies(state) {
         // +$0E..+$11 -- the copy at $4E88 stages it in $C744-$C747 for the
         // effect pool AND $C749-$C74C for the ballistic pool, so they land on
         // the same point.
-        const ex = (r[0x0E] << 8) | r[0x0F], ey = (r[0x10] << 8) | r[0x11];
+        const ex = (r[E_X_HI] << 8) | r[E_X_LO], ey = (r[E_Y_HI] << 8) | r[E_Y_LO];
         // $4EA5: D = $97, E = $03. The old comment here said "purely visual",
         // and that was measured WRONG: $97 has bit 7 set and counter $17, so
         // doors.js's tickEffect fires the $13E6 one-shot -- cue $17 -- on the
@@ -147,12 +152,12 @@ export function updateEnemies(state) {
     }
 
     // loc_01_4F0E: hit-state prelude before the type dispatch.
-    if (r[0] & F_DISABLED) {                                  // $4F11: BIT 6
+    if (r[E_FLAGS] & F_DISABLED) {                            // $4F11: BIT 6
       if (killTail(state, r) === 'stop') return;
       continue;
     }
-    if (r[0] & 0x04) { stunnedTick(state, r); continue; }     // $4F15: BIT 2
-    if (r[0] & 0x18) { hitDispatch(state, r); continue; }     // $4F19 -> $60DD
+    if (r[E_FLAGS] & 0x04) { stunnedTick(state, r); continue; }     // $4F15: BIT 2
+    if (r[E_FLAGS] & 0x18) { hitDispatch(state, r); continue; }     // $4F19 -> $60DD
     primaryDispatch(state, r);                                // $4F1E -> $50C3
   }
 }
@@ -292,17 +297,17 @@ function bossIntroEnd(state) {
  * scroll position rather than anywhere in the window.
  */
 function tryActivate(state, r) {
-  const xhi = r[0x0E];
+  const xhi = r[E_X_HI];
   if (xhi === 0) return;                            // $609B
 
   const camCol = u8((state.camera.x >> 8) + 5);     // $60A0
   if (absDiff8(camCol, xhi) >= ACTIVATE_RANGE) return;    // $60A9
-  if (r[0] & F_DISABLED) return;                    // $60AF: BIT 6
+  if (r[E_FLAGS] & F_DISABLED) return;              // $60AF: BIT 6
   if (r[1] === 0x01) {                              // $60B5
     // $60BC: only when the enemy's column equals camera - 2, exactly.
     if (xhi !== u8((state.camera.x >> 8) - 2)) return;
   }
-  r[0] |= F_ACTIVE;                                 // $60C5: SET 7
+  r[E_FLAGS] |= F_ACTIVE;                           // $60C5: SET 7
 }
 
 /**
@@ -312,7 +317,7 @@ function tryActivate(state, r) {
  */
 function shouldDespawn(state, r) {
   const camCol = u8((state.camera.x >> 8) + 5);
-  return absDiff8(camCol, r[0x0E]) >= DESPAWN_RANGE;
+  return absDiff8(camCol, r[E_X_HI]) >= DESPAWN_RANGE;
 }
 
 /**
@@ -345,13 +350,13 @@ function kill(state, r) {
   // (the boss is the only record that ever arrives).
   if (effects(state).countdown !== COUNTDOWN_IDLE) return 'countdown';
 
-  r[0] = (r[0] & 0x43) | F_DISABLED;                // $4EC0
+  r[E_FLAGS] = (r[E_FLAGS] & 0x43) | F_DISABLED;    // $4EC0
 
-  if (r[2] === 0x0B) return 'done';                 // $4EC8: projectiles
+  if (r[E_STATE] === 0x0B) return 'done';           // $4EC8: projectiles
   if (state.level.bossId === 0) return 'done';      // $4ECE: $C73E
 
-  if (r[0] & 0x03) {                                // $4ED5: still airborne
-    r[0] |= 0x80;                                   // $4EDA: back to active
+  if (r[E_FLAGS] & 0x03) {                          // $4ED5: still airborne
+    r[E_FLAGS] |= 0x80;                             // $4EDA: back to active
     return 'dispatch';                              // $4EDD: JP loc_01_50C3
   }
 
@@ -359,7 +364,7 @@ function kill(state, r) {
   // $4EE6: BC = $0104, so sound id $01 with mask $04, the FADE-OUT mask. The
   // music does not stop, it fades. Level 6 is excluded ($4EE2: CP $06).
   if (state.level.number !== 0x06) requestSound(state, 0x01, 0x04);
-  r[0] = 0x81;                                      // $4EEC
+  r[E_FLAGS] = 0x81;                                // $4EEC
   // $4EF1: $C740 = $FE. NOT the level clear -- that is another ~630 frames
   // away, through 1:$78CC's 254-frame explosion burst and loc_00_34D0's
   // fanfare. flow.levelCleared is raised at the far end of both, in
@@ -402,7 +407,7 @@ function killTail(state, r) {
 
 /** ROM: loc_01_50C3, table 1:$50D3, indexed on state-1. */
 function primaryDispatch(state, r) {
-  switch (r[2]) {
+  switch (r[E_STATE]) {
     case 1: return stWalker(state, r);              // 1:$50ED
     case 2: return stWalkerJump(state, r);          // 1:$5399
     case 3: return stFlyer(state, r);               // 1:$55AA
@@ -439,20 +444,20 @@ function stunnedTick(state, r) {
   const t = u8(r[0x17] - 1);
   r[0x17] = t;
   if (t < 0x3A) {                                   // $4F2E -> loc_01_503D
-    if (r[0] & 0x18) return hitDispatch(state, r);
+    if (r[E_FLAGS] & 0x18) return hitDispatch(state, r);
     return primaryDispatch(state, r);
   }
-  const st = r[2];                                  // $4F35
+  const st = r[E_STATE];                            // $4F35
   if (st === 5) {                                   // $4F7C: vehicle target
-    r[0] &= 0xC5;
+    r[E_FLAGS] &= 0xC5;
     return primaryDispatch(state, r);
   }
   if (st === 7 || st === 9 || st === 0x0A) return bossKnockback(state, r); // $4F84
   if (st === 8) return boss3Knockback(state, r);    // $4FF5
   // $4F4B: walkers / flyers / projectiles bounce up and away from the player.
   r[0x13] = 0x18;
-  r[0x12] = playerScreenX(state) >= r[7] ? 0xF0 : 0x10;   // $4F59
-  r[0] = (r[0] & 0xC5) | 0x01;                      // $4F6A: rising
+  r[E_VX] = playerScreenX(state) >= r[E_SCREEN_X] ? 0xF0 : 0x10;   // $4F59
+  r[E_FLAGS] = (r[E_FLAGS] & 0xC5) | 0x01;          // $4F6A: rising
   r[1] &= 0x9F;                                     // $4F70
   // $4F76: $C73F (boss-3 helper flag) = 0 -- not modelled.
   return primaryDispatch(state, r);
@@ -461,19 +466,19 @@ function stunnedTick(state, r) {
 /** ROM: loc_01_4F84 - bosses 2/4/L14-chaser knockback (+ hard-mode counter). */
 function bossKnockback(state, r) {
   r[0x13] = 0x10;
-  const xhi = r[0x0E];                              // $4F91: arena walls
-  if (xhi === 0x0A) r[0x12] = 0xF0;
-  else if (xhi === 0x01) r[0x12] = 0x10;
-  else r[0x12] = playerScreenX(state) >= r[7] ? 0xF0 : 0x10;
-  r[0] = (r[0] & 0xC5) | 0x01;
+  const xhi = r[E_X_HI];                            // $4F91: arena walls
+  if (xhi === 0x0A) r[E_VX] = 0xF0;
+  else if (xhi === 0x01) r[E_VX] = 0x10;
+  else r[E_VX] = playerScreenX(state) >= r[E_SCREEN_X] ? 0xF0 : 0x10;
+  r[E_FLAGS] = (r[E_FLAGS] & 0xC5) | 0x01;
   r[1] &= 0x9F;
   // $4FCA: the knockback cancels the $C741 spin/patience counter. Verified
   // by l8-boss2-batarang-spin: a punch landing mid-spin zeroes it instantly
   // on the cartridge (f138), it does not run down.
   state.flow.bossHop = 0;
   if (state.flow.difficulty === 2) {                // $4FCD: retaliate on hard
-    r[0] |= 0x08;
-    r[5] = playerScreenX(state) < r[7] ? 1 : 0;     // $4FDE
+    r[E_FLAGS] |= 0x08;
+    r[E_FACING] = playerScreenX(state) < r[E_SCREEN_X] ? 1 : 0;     // $4FDE
     r[0x14] = 0x1F;                                 // $4FED
   }
   return primaryDispatch(state, r);
@@ -482,11 +487,11 @@ function bossKnockback(state, r) {
 /** ROM: loc_01_4FF5 - boss 3 variant (X hi >= 9 counts as the right wall). */
 function boss3Knockback(state, r) {
   r[0x13] = 0x10;
-  const xhi = r[0x0E];
-  if (xhi >= 0x09) r[0x12] = 0xF0;                  // $5003
-  else if (xhi === 0x01) r[0x12] = 0x10;
-  else r[0x12] = playerScreenX(state) >= r[7] ? 0xF0 : 0x10;
-  r[0] = (r[0] & 0xC5) | 0x01;
+  const xhi = r[E_X_HI];
+  if (xhi >= 0x09) r[E_VX] = 0xF0;                  // $5003
+  else if (xhi === 0x01) r[E_VX] = 0x10;
+  else r[E_VX] = playerScreenX(state) >= r[E_SCREEN_X] ? 0xF0 : 0x10;
+  r[E_FLAGS] = (r[E_FLAGS] & 0xC5) | 0x01;
   r[1] &= 0x9F;
   return primaryDispatch(state, r);
 }
@@ -495,16 +500,16 @@ function boss3Knockback(state, r) {
 function stunExpired(state, r) {
   const bid = state.level.bossId;                   // $C73E
   if (bid === 2 || bid === 4) {                     // $505A
-    r[5] = playerScreenX(state) < r[7] ? 1 : 0;
-    r[0] = (r[0] & 0xC3) | 0x10;
+    r[E_FACING] = playerScreenX(state) < r[E_SCREEN_X] ? 1 : 0;
+    r[E_FLAGS] = (r[E_FLAGS] & 0xC3) | 0x10;
     r[0x14] = 0x1F;
     return riseTail(state, r);
   }
   if (bid === 3) {                                  // $5080
     r[0x14] = 0x1F;
-    r[5] = playerScreenX(state) < r[7] ? 1 : 0;     // $508E (SUB-based, same test)
-    r[0x12] = (r[5] & 1) ? 0xCC : 0x34;             // $50A1
-    r[0] = (r[0] & 0xC3) | 0x08;
+    r[E_FACING] = playerScreenX(state) < r[E_SCREEN_X] ? 1 : 0;     // $508E (SUB-based, same test)
+    r[E_VX] = (r[E_FACING] & 1) ? 0xCC : 0x34;      // $50A1
+    r[E_FLAGS] = (r[E_FLAGS] & 0xC3) | 0x08;
     // $50B0: the retaliation IS the crit lunge -- attackTickBoss3 reads this
     // and runs the decaying-velocity dash. Verified by l11-boss3-punch: the
     // f188 divergence before this write was modelled was exactly bossCrit,
@@ -513,13 +518,13 @@ function stunExpired(state, r) {
     requestSound(state, 0x2D);
     return primaryDispatch(state, r);               // $50BB
   }
-  r[0] &= ~0x04;                                    // $50C1
+  r[E_FLAGS] &= ~0x04;                              // $50C1
   return primaryDispatch(state, r);
 }
 
 /** ROM: loc_01_60DD, table 1:$60EF -- runs while bits 3/4 (attack) are set. */
 function hitDispatch(state, r) {
-  switch (r[2]) {
+  switch (r[E_STATE]) {
     case 1: case 4: case 0x0B: return attackTickBasic(state, r);   // jt_01_6107
     case 2: return attackTickWalkerJump(state, r);                 // jt_01_612E
     case 3: return attackTickFlyer(state, r);                      // jt_01_6169
@@ -542,7 +547,7 @@ function attackTickBasic(state, r) {
     return riseTail(state, r);
   }
   state.flow.bossCrit = 0;                          // $6121: $C73F = 0
-  r[0] &= 0xC7;
+  r[E_FLAGS] &= 0xC7;
   return riseTail(state, r);
 }
 
@@ -557,12 +562,12 @@ function attackTickBasic(state, r) {
 function attackTickBoss1(state, r) {
   if (r[0x14] === 0) {                              // $6357 -> loc_01_6121
     state.flow.bossCrit = 0;
-    r[0] &= 0xC7;
+    r[E_FLAGS] &= 0xC7;
     return riseTail(state, r);
   }
   r[0x14]--;                                        // $635A
   if (r[0x14] < 0x0C) {                             // $635C: last 12 frames
-    r[0x1E] = state.flow.bossCrit ? 0x12 : 0x1A;    // $636B / $636F
+    r[E_PROBE_DX] = state.flow.bossCrit ? 0x12 : 0x1A;    // $636B / $636F
     attackProbe(state, r);                          // $6376
   }
   return stBoss1(state, r);                         // $637C
@@ -575,29 +580,29 @@ function attackTickWalkerJump(state, r) {
     attackProbe(state, r);
     return riseTail(state, r);
   }
-  r[0] &= 0xC7;                                     // $6148
+  r[E_FLAGS] &= 0xC7;                               // $6148
   r[1] = (r[1] & 0xF3) | 0x10;                      // committed walk
-  r[5] ^= 1;                                        // $615A
+  r[E_FACING] ^= 1;                                 // $615A
   r[0x15] = 0x18;                                   // $6161
   return riseTail(state, r);
 }
 
 /** ROM: jt_01_6169 - flyer dive/knockback: X speed decays 1/frame toward 0. */
 function attackTickFlyer(state, r) {
-  const v = u8((r[5] & 1) === 0 ? r[0x12] - 1 : r[0x12] + 1);   // $6177 / $618E
+  const v = u8((r[E_FACING] & 1) === 0 ? r[E_VX] - 1 : r[E_VX] + 1);   // $6177 / $618E
   if (v === 0) {                                    // $61A1: recovered
-    r[0] &= 0xC7;
-    r[3] = 0x50;
+    r[E_FLAGS] &= 0xC7;
+    r[E_ANIM_TIMER] = 0x50;
     return riseTail(state, r);
   }
-  r[0x12] = v;
+  r[E_VX] = v;
   return (v & 0x80) ? flyMoveLeft(state, r, v) : flyMoveRight(state, r, v);
 }
 
 /** ROM: jt_01_61B3 - state 6 pause after its attack. */
 function attackTickL12(state, r) {
   if (r[0x14] !== 0) { r[0x14]--; return riseTail(state, r); }
-  r[0] &= 0xC7;
+  r[E_FLAGS] &= 0xC7;
   r[1] = (r[1] & 0xF3) | 0x10;
   r[0x15] = 0x28;                                   // $61D5
   return riseTail(state, r);
@@ -606,7 +611,7 @@ function attackTickL12(state, r) {
 /** ROM: jt_01_637F - state 12 counts its timer down, then wakes. */
 function attackTickDormant(state, r) {
   if (r[0x14] !== 0) { r[0x14]--; return screenTail(state, r); }
-  r[0] &= 0xE7;                                     // $6392
+  r[E_FLAGS] &= 0xE7;                               // $6392
   return stDormant(state, r);
 }
 
@@ -615,49 +620,49 @@ function attackTickDormant(state, r) {
 // ---------------------------------------------------------------------------
 
 function stWalker(state, r) {
-  if (r[0] & 0x03) return walkerAirMove(state, r);  // $50EF: airborne
+  if (r[E_FLAGS] & 0x03) return walkerAirMove(state, r);  // $50EF: airborne
   const f1 = r[1];                                  // $5113
   if (f1 & 0x60) {                                  // $5114: turn/landing anim
-    r[0] &= ~0x20;                                  // $51B4
+    r[E_FLAGS] &= ~0x20;                            // $51B4
     return walkerAirMove(state, r);                 // move at r[$12] regardless
   }
   if (f1 & 0x10) {                                  // $511E: committed walk
     if (r[0x15] === 0) { r[1] &= ~0x10; return riseTail(state, r); }  // $51D0
     r[0x15]--;                                      // $51C0
-    return r[5] === 0 ? walkerWalkRight(state, r) : walkerWalkLeft(state, r);
+    return r[E_FACING] === 0 ? walkerWalkRight(state, r) : walkerWalkLeft(state, r);
   }
 
   const psx = playerScreenX(state);                 // $FF93
-  const diff = u8(psx - r[7]);                      // $5128: vs the STORED screen X
+  const diff = u8(psx - r[E_SCREEN_X]);             // $5128: vs the STORED screen X
   if (diff === 0) return walkerFacePause(state, r); // $512B
-  const playerLeft = psx < r[7];
+  const playerLeft = psx < r[E_SCREEN_X];
   const ad = playerLeft ? u8(-diff) : diff;
 
   if (ad < 0x14) {                                  // $5133
     if (ad < 8) return walkerFacePause(state, r);   // $516E: too close
-    if (absDiff8(playerScreenY(state), r[8]) >= 0x18) {   // $5180
+    if (absDiff8(playerScreenY(state), r[E_SCREEN_Y]) >= 0x18) {   // $5180
       return walkerWalkToward(state, r, playerLeft);
     }
     if (state.player.iframes !== 0) return walkerFacePause(state, r);  // $5184
     requestSound(state, 0x1A);                      // $518F: melee attack
-    r[0] |= 0x08;                                   // $5195
-    r[5] = playerLeft ? 1 : 0;                      // $519C
+    r[E_FLAGS] |= 0x08;                             // $5195
+    r[E_FACING] = playerLeft ? 1 : 0;               // $519C
     r[0x14] = 0x13;                                 // $51A8
-    r[0] &= ~0x20;
+    r[E_FLAGS] &= ~0x20;
     return fallTail(state, r);
   }
   if (ad < 0x30) return walkerWalkToward(state, r, playerLeft);   // $5137
-  if (absDiff8(playerScreenY(state), r[8]) < 0x30) {              // $5145
+  if (absDiff8(playerScreenY(state), r[E_SCREEN_Y]) < 0x30) {     // $5145
     return walkerWalkToward(state, r, playerLeft);
   }
-  r[0] |= 0x20;                                     // $514E: idle, player far
-  r[0x12] = 0;
+  r[E_FLAGS] |= 0x20;                               // $514E: idle, player far
+  r[E_VX] = 0;
   return fallTail(state, r);
 }
 
 /** ROM: loc_01_515D */
 function walkerWalkToward(state, r, playerLeft) {
-  r[0] &= ~0x20;
+  r[E_FLAGS] &= ~0x20;
   return playerLeft ? walkerWalkLeft(state, r) : walkerWalkRight(state, r);
 }
 
@@ -668,47 +673,47 @@ function walkerWalkToward(state, r, playerLeft) {
  */
 function walkerFacePause(state, r) {
   r[1] = (r[1] & 0xF3) | 0x10;
-  r[5] = state.player.facing ^ 1;                   // $51E5
+  r[E_FACING] = state.player.facing ^ 1;            // $51E5
   r[0x15] = 0x20;
   return riseTail(state, r);
 }
 
 /** ROM: loc_01_51F6 - accelerate right by 1/frame toward the +$1D cap. */
 function walkerWalkRight(state, r) {
-  r[5] = 0;                                         // $51F9
-  let v = r[0x12];
+  r[E_FACING] = 0;                                  // $51F9
+  let v = r[E_VX];
   if (v & 0x80) {                                   // $5200: still moving left
     v = u8(v + 2);                                  // $52F0: brake by 2
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? walkerMoveLeft(state, r, v, wallStopWalker)
       : walkerMoveRight(state, r, v, wallStopWalker);
   }
-  const max = r[0x1D];                              // $520B
+  const max = r[E_SPEED_CAP];                       // $520B
   v = v + 1 < max ? v + 1 : max;
-  r[0x12] = v;
+  r[E_VX] = v;
   return walkerMoveRight(state, r, v, wallStopWalker);
 }
 
 /** ROM: loc_01_52FB - mirror. */
 function walkerWalkLeft(state, r) {
-  r[5] = 1;                                         // $52FE
-  let v = r[0x12];
+  r[E_FACING] = 1;                                  // $52FE
+  let v = r[E_VX];
   if (v !== 0 && (v & 0x80) === 0) {                // $5306/$5309: moving right
     v = u8(v - 2);                                  // $538D
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? walkerMoveLeft(state, r, v, wallStopWalker)
       : walkerMoveRight(state, r, v, wallStopWalker);
   }
-  const min = u8(-r[0x1D]);                         // $5315
+  const min = u8(-r[E_SPEED_CAP]);                  // $5315
   v = u8(v - 1);
   if (v < min) v = min;                             // $531D: unsigned clamp
-  r[0x12] = v;
+  r[E_VX] = v;
   return walkerMoveLeft(state, r, v, wallStopWalker);
 }
 
 /** ROM: loc_01_50F7 - airborne (or mid-anim): move at r[$12], sign-split. */
 function walkerAirMove(state, r) {
-  const v = r[0x12];
+  const v = r[E_VX];
   return (v & 0x80) ? walkerMoveLeft(state, r, v, wallStopWalker)
     : walkerMoveRight(state, r, v, wallStopWalker);
 }
@@ -718,49 +723,49 @@ function walkerAirMove(state, r) {
 // ---------------------------------------------------------------------------
 
 function stWalkerJump(state, r) {
-  if (r[0] & 0x03) return wjAirMove(state, r);      // $539B
+  if (r[E_FLAGS] & 0x03) return wjAirMove(state, r);      // $539B
   const f1 = r[1];
   if (f1 & 0x60) {                                  // $53C0
-    r[0] &= ~0x20;                                  // $5484
+    r[E_FLAGS] &= ~0x20;                            // $5484
     return wjAirMove(state, r);
   }
   if (f1 & 0x10) {                                  // $53CA: committed walk
     if (r[0x15] === 0) { r[1] &= ~0x10; return riseTail(state, r); }  // $54A1
     r[0x15]--;
-    return r[5] === 0 ? wjWalkRight(state, r) : wjWalkLeft(state, r);
+    return r[E_FACING] === 0 ? wjWalkRight(state, r) : wjWalkLeft(state, r);
   }
 
   const psx = playerScreenX(state);
-  const diff = u8(psx - r[7]);                      // $53D4
+  const diff = u8(psx - r[E_SCREEN_X]);             // $53D4
   if (diff === 0) return wjPause(state, r);         // $53D7
-  const playerLeft = psx < r[7];
+  const playerLeft = psx < r[E_SCREEN_X];
   const ad = playerLeft ? u8(-diff) : diff;
 
   if (ad < 0x18) {                                  // $53DF
     if (ad < 8) return wjPause(state, r);           // $5448
-    if (absDiff8(playerScreenY(state), r[8]) >= 0x20) {   // $545A
+    if (absDiff8(playerScreenY(state), r[E_SCREEN_Y]) >= 0x20) {   // $545A
       return wjWalkToward(state, r, playerLeft);
     }
     requestSound(state, 0x1C);                      // $5460: melee lunge
-    r[0] |= 0x08;                                   // $5466
-    r[5] = playerLeft ? 1 : 0;                      // $546D
+    r[E_FLAGS] |= 0x08;                             // $5466
+    r[E_FACING] = playerLeft ? 1 : 0;               // $546D
     r[0x14] = 0x1F;                                 // $5479
-    r[0] &= ~0x20;
+    r[E_FLAGS] &= ~0x20;
     return fallTail(state, r);
   }
   if (ad < 0x30) return wjWalkToward(state, r, playerLeft);   // $53E3
   // Far band:
-  if (playerScreenY(state) === r[8]) {              // $53EC: EXACT row match
-    r[5] = playerLeft ? 1 : 0;                      // $540F
+  if (playerScreenY(state) === r[E_SCREEN_Y]) {     // $53EC: EXACT row match
+    r[E_FACING] = playerLeft ? 1 : 0;               // $540F
     if (spawnProjectile(state, r, 1) === 0) {       // $541E: sub_01_6BDC mode 1
-      r[0] = (r[0] & ~0x20) | 0x10;                 // $5427: ranged attack
+      r[E_FLAGS] = (r[E_FLAGS] & ~0x20) | 0x10;     // $5427: ranged attack
       r[0x14] = 0x0F;                               // $542F
     }
     return fallTail(state, r);
   }
-  r[5] = playerLeft ? 1 : 0;                        // $53F1: idle facing player
-  r[0] |= 0x20;                                     // $53FE
-  r[0x12] = 0;
+  r[E_FACING] = playerLeft ? 1 : 0;                 // $53F1: idle facing player
+  r[E_FLAGS] |= 0x20;                               // $53FE
+  r[E_VX] = 0;
   return fallTail(state, r);
 }
 
@@ -773,46 +778,46 @@ function wjPause(state, r) {
 
 /** ROM: loc_01_5437 */
 function wjWalkToward(state, r, playerLeft) {
-  r[0] &= ~0x20;
+  r[E_FLAGS] &= ~0x20;
   return playerLeft ? wjWalkLeft(state, r) : wjWalkRight(state, r);
 }
 
 /** ROM: loc_01_54C0 - identical accel to state 1, different wall behaviour. */
 function wjWalkRight(state, r) {
-  r[5] = 0;
-  let v = r[0x12];
+  r[E_FACING] = 0;
+  let v = r[E_VX];
   if (v & 0x80) {
     v = u8(v + 2);                                  // $5554
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? walkerMoveLeft(state, r, v, wallStopWalkerJump)
       : walkerMoveRight(state, r, v, wallStopWalkerJump);
   }
-  const max = r[0x1D];
+  const max = r[E_SPEED_CAP];
   v = v + 1 < max ? v + 1 : max;
-  r[0x12] = v;
+  r[E_VX] = v;
   return walkerMoveRight(state, r, v, wallStopWalkerJump);
 }
 
 /** ROM: loc_01_555F */
 function wjWalkLeft(state, r) {
-  r[5] = 1;
-  let v = r[0x12];
+  r[E_FACING] = 1;
+  let v = r[E_VX];
   if (v !== 0 && (v & 0x80) === 0) {
     v = u8(v - 2);                                  // $559E
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? walkerMoveLeft(state, r, v, wallStopWalkerJump)
       : walkerMoveRight(state, r, v, wallStopWalkerJump);
   }
-  const min = u8(-r[0x1D]);
+  const min = u8(-r[E_SPEED_CAP]);
   v = u8(v - 1);
   if (v < min) v = min;
-  r[0x12] = v;
+  r[E_VX] = v;
   return walkerMoveLeft(state, r, v, wallStopWalkerJump);
 }
 
 /** ROM: loc_01_53A3 */
 function wjAirMove(state, r) {
-  const v = r[0x12];
+  const v = r[E_VX];
   return (v & 0x80) ? walkerMoveLeft(state, r, v, wallStopWalkerJump)
     : walkerMoveRight(state, r, v, wallStopWalkerJump);
 }
@@ -825,7 +830,7 @@ function wjAirMove(state, r) {
 function walkerMoveRight(state, r, v, wallStop) {
   addX(r, i8(v));                                   // sub_01_63AD
   if (probeRight(state, r) !== 0) {                 // sub_01_63B4
-    r[0x0F] = 0x80;                                 // $5225: snap X-lo to centre
+    r[E_X_LO] = 0x80;                               // $5225: snap X-lo to centre
     return wallStop(state, r);
   }
   return ledgeCheck(state, r, +1);                  // loc_01_5288
@@ -835,7 +840,7 @@ function walkerMoveRight(state, r, v, wallStop) {
 function walkerMoveLeft(state, r, v, wallStop) {
   addX(r, i8(v));
   if (probeLeft(state, r) !== 0) {                  // sub_01_6499
-    r[0x0F] = 0x80;
+    r[E_X_LO] = 0x80;
     return wallStop(state, r);
   }
   return ledgeCheck(state, r, -1);                  // loc_01_5339
@@ -850,14 +855,14 @@ function walkerMoveLeft(state, r, v, wallStop) {
 function wallStopWalker(state, r) {
   r[0x15] = 0;                                      // $522C
   r[1] &= ~0x10;                                    // $5232
-  r[0] &= ~0x08;                                    // $5237
-  if (r[0] & 0x01) return riseTail(state, r);       // $5239
-  if (r[0] & 0x02) return fallTail(state, r);       // $523E
+  r[E_FLAGS] &= ~0x08;                              // $5237
+  if (r[E_FLAGS] & 0x01) return riseTail(state, r);       // $5239
+  if (r[E_FLAGS] & 0x02) return fallTail(state, r);       // $523E
   const f1 = r[1];                                  // $5244
   if (f1 & 0x60) return riseTail(state, r);         // $5245 -> $552B
   if (f1 & 0x80) {                                  // $524F: latched -- stop
     r[1] = f1 & 0x7F;
-    r[0x12] = 0;                                    // $525B
+    r[E_VX] = 0;                                    // $525B
     return riseTail(state, r);
   }
   turnHard(state, r, f1);                           // $5262
@@ -868,20 +873,20 @@ function wallStopWalker(state, r) {
 function wallStopWalkerJump(state, r) {
   r[0x15] = 0;
   r[1] &= ~0x10;
-  r[0] &= ~0x08;
-  if (r[0] & 0x01) return riseTail(state, r);
-  if (r[0] & 0x02) return fallTail(state, r);
+  r[E_FLAGS] &= ~0x08;
+  if (r[E_FLAGS] & 0x01) return riseTail(state, r);
+  if (r[E_FLAGS] & 0x02) return fallTail(state, r);
   const f1 = r[1];
   if (f1 & 0x60) return riseTail(state, r);
   if (f1 & 0x80) {                                  // $551C
     r[1] = f1 & 0x7F;
-    r[0x12] = 0;
+    r[E_VX] = 0;
     return riseTail(state, r);
   }
   // $5531: unlike state 1 this does NOT flip the facing -- it pushes on into
   // the wall at +-$12, relying on the wall-ahead jump assist to clear it.
   r[1] = f1 | 0xC0;
-  r[0x12] = r[5] === 0 ? 0x12 : 0xEE;               // $5540 / $5544
+  r[E_VX] = r[E_FACING] === 0 ? 0x12 : 0xEE;        // $5540 / $5544
   r[0x18] = 8;                                      // $554B
   return riseTail(state, r);
 }
@@ -889,8 +894,8 @@ function wallStopWalkerJump(state, r) {
 /** ROM: loc_01_5262 - flip facing, walk away at +-$10, start the turn anim. */
 function turnHard(state, r, f1) {
   r[1] = f1 | 0xC0;                                 // $5262
-  r[5] ^= 1;                                        // $526A
-  r[0x12] = r[5] === 0 ? 0x10 : 0xF0;               // $5274 / $5278
+  r[E_FACING] ^= 1;                                 // $526A
+  r[E_VX] = r[E_FACING] === 0 ? 0x10 : 0xF0;        // $5274 / $5278
   r[0x18] = 8;                                      // $527F
 }
 
@@ -908,10 +913,10 @@ function turnHard(state, r, f1) {
  * bottom into the top rows of the NEXT column.
  */
 function ledgeCheck(state, r, dir) {
-  if (r[0] & 0x03) return riseTail(state, r);       // $528F: airborne -- skip
-  const x = (r[0x0E] << 8) | r[0x0F];
+  if (r[E_FLAGS] & 0x03) return riseTail(state, r);       // $528F: airborne -- skip
+  const x = (r[E_X_HI] << 8) | r[E_X_LO];
   const col = u16(x + (dir > 0 ? 0x80 : -0x90)) >> 8;       // $529A / $534B
-  const rowBelow = u16(((r[0x10] << 8) | r[0x11]) + 0x100) >> 8;   // $52A6
+  const rowBelow = u16(((r[E_Y_HI] << 8) | r[E_Y_LO]) + 0x100) >> 8;   // $52A6
   let found = false;
   let idx = col * 16 + (rowBelow & 0x0F);           // sub_00_11B9
   for (let n = 0x20 - rowBelow; n > 0; n--, idx++) {
@@ -919,7 +924,7 @@ function ledgeCheck(state, r, dir) {
   }
   if (!found) found = gapLeap(state, r);            // $52C5 -> sub_01_7D09
   if (found) {                                      // $52E1 / $537D
-    r[5] = dir > 0 ? 0 : 1;
+    r[E_FACING] = dir > 0 ? 0 : 1;
     return riseTail(state, r);
   }
   const f1 = r[1];                                  // $52D4
@@ -952,7 +957,7 @@ const GAP_GUARD = { 3: 0x43, 5: 0x4A, 7: 0x4C, 0x0D: 0x4C };
 
 function gapLeap(state, r) {
   const lvl = state.level.number;
-  const xhi = r[0x0E];
+  const xhi = r[E_X_HI];
   if (xhi >= (GAP_GUARD[lvl] ?? 0x100)) return false;
   const base = GAP_BASE[lvl];
   if (base === undefined) return false;             // $7D2B
@@ -969,8 +974,8 @@ function gapLeap(state, r) {
   if (id === 0 || id > 14) return false;            // $7D71 / $7DB9
   const [yv, xv] = leaps[id - 1];
   r[0x13] = yv;                                     // per-leap launch velocity
-  r[0x12] = (r[5] & 1) ? u8(-xv) : xv;              // $7E26: signed by facing
-  r[0] |= 0x01;                                     // $7E31: rising, NOW
+  r[E_VX] = (r[E_FACING] & 1) ? u8(-xv) : xv;       // $7E26: signed by facing
+  r[E_FLAGS] |= 0x01;                               // $7E31: rising, NOW
   return true;
 }
 
@@ -979,29 +984,29 @@ function gapLeap(state, r) {
 // ---------------------------------------------------------------------------
 
 function stFlyer(state, r) {
-  if (r[0] & 0x03) return flyAirMove(state, r);     // $55AC
+  if (r[E_FLAGS] & 0x03) return flyAirMove(state, r);     // $55AC
   const f1 = r[1];
   if (f1 & 0x60) return flyAirMove(state, r);       // $55D1: keep momentum
   if (f1 & 0x10) {                                  // $55D9: committed flight
     if (r[0x15] === 0) { r[1] &= ~0x10; return riseTail(state, r); }  // $5648
     r[0x15]--;
-    return r[5] === 0 ? flyAccelRight(state, r) : flyAccelLeft(state, r);
+    return r[E_FACING] === 0 ? flyAccelRight(state, r) : flyAccelLeft(state, r);
   }
 
   const psx = playerScreenX(state);
-  const diff = u8(psx - r[7]);                      // $55E2
+  const diff = u8(psx - r[E_SCREEN_X]);             // $55E2
   if (diff === 0) {                                 // $55E5 -> $5653
     r[1] = (r[1] & 0xF3) | 0x10;
     r[0x15] = 0x10;
     return riseTail(state, r);
   }
-  const playerLeft = psx < r[7];
+  const playerLeft = psx < r[E_SCREEN_X];
   const ad = playerLeft ? u8(-diff) : diff;
-  if (ad < 0x30 && absDiff8(playerScreenY(state), r[8]) < 0x20) {   // $5606
+  if (ad < 0x30 && absDiff8(playerScreenY(state), r[E_SCREEN_Y]) < 0x20) {   // $5606
     // $560A: dive. The direction is the CURRENT facing, not the player side.
-    r[0] |= 0x08;
-    r[3] = 0x30;                                    // $5613: faster flapping
-    r[0x12] = r[5] === 0 ? 0x30 : 0xD0;             // $561F / $5624
+    r[E_FLAGS] |= 0x08;
+    r[E_ANIM_TIMER] = 0x30;                         // $5613: faster flapping
+    r[E_VX] = r[E_FACING] === 0 ? 0x30 : 0xD0;      // $561F / $5624
     return fallTail(state, r);
   }
   return playerLeft ? flyAccelLeft(state, r) : flyAccelRight(state, r);   // $55F1
@@ -1009,38 +1014,38 @@ function stFlyer(state, r) {
 
 /** ROM: loc_01_55B4 */
 function flyAirMove(state, r) {
-  const v = r[0x12];
+  const v = r[E_VX];
   return (v & 0x80) ? flyMoveLeft(state, r, v) : flyMoveRight(state, r, v);
 }
 
 /** ROM: loc_01_5667 */
 function flyAccelRight(state, r) {
-  r[5] = 0;
-  let v = r[0x12];
+  r[E_FACING] = 0;
+  let v = r[E_VX];
   if (v & 0x80) {
     v = u8(v + 2);                                  // $56DC
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? flyMoveLeft(state, r, v) : flyMoveRight(state, r, v);
   }
-  const max = r[0x1D];
+  const max = r[E_SPEED_CAP];
   v = v + 1 < max ? v + 1 : max;
-  r[0x12] = v;
+  r[E_VX] = v;
   return flyMoveRight(state, r, v);
 }
 
 /** ROM: loc_01_5712 */
 function flyAccelLeft(state, r) {
-  r[5] = 1;
-  let v = r[0x12];
+  r[E_FACING] = 1;
+  let v = r[E_VX];
   if (v !== 0 && (v & 0x80) === 0) {
     v = u8(v - 2);                                  // $5750
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? flyMoveLeft(state, r, v) : flyMoveRight(state, r, v);
   }
-  const min = u8(-r[0x1D]);
+  const min = u8(-r[E_SPEED_CAP]);
   v = u8(v - 1);
   if (v < min) v = min;
-  r[0x12] = v;
+  r[E_VX] = v;
   return flyMoveLeft(state, r, v);
 }
 
@@ -1048,7 +1053,7 @@ function flyAccelLeft(state, r) {
 function flyMoveRight(state, r, v) {
   addX(r, i8(v));
   if (probeRight(state, r) !== 0) {
-    r[0x0F] = 0x40;                                 // $5696: flyer snap point
+    r[E_X_LO] = 0x40;                               // $5696: flyer snap point
     return flyWallHit(state, r);
   }
   return flyFree(state, r);
@@ -1058,7 +1063,7 @@ function flyMoveRight(state, r, v) {
 function flyMoveLeft(state, r, v) {
   addX(r, i8(v));
   if (probeLeft(state, r) !== 0) {
-    r[0x0F] = 0xB0;                                 // $574A
+    r[E_X_LO] = 0xB0;                               // $574A
     return flyWallHit(state, r);
   }
   return flyFree(state, r);
@@ -1070,13 +1075,13 @@ function flyMoveLeft(state, r, v) {
  * fires the +$1C jump. That upward hop is how flyers regain altitude.
  */
 function flyWallHit(state, r) {
-  r[3] = 0x50;                                      // $569D
-  r[0] &= ~0x08;                                    // $56A6
-  if (r[0] & 0x01) return riseTail(state, r);
-  if (r[0] & 0x02) return fallTail(state, r);
+  r[E_ANIM_TIMER] = 0x50;                           // $569D
+  r[E_FLAGS] &= ~0x08;                              // $56A6
+  if (r[E_FLAGS] & 0x01) return riseTail(state, r);
+  if (r[E_FLAGS] & 0x02) return fallTail(state, r);
   if ((r[1] & 0x60) === 0) {                        // $56B3
     r[1] |= 0x40;                                   // $56BB
-    r[0x12] = r[5] === 0 ? 0x10 : 0xF0;             // $56C9 / $56CD
+    r[E_VX] = r[E_FACING] === 0 ? 0x10 : 0xF0;      // $56C9 / $56CD
     r[0x18] = 0x0C;                                 // $56D4
   }
   return riseTail(state, r);
@@ -1084,7 +1089,7 @@ function flyWallHit(state, r) {
 
 /** ROM: loc_01_56E7 - free flight; while diving, probe the player each frame. */
 function flyFree(state, r) {
-  if ((r[0] & 0x08) === 0) return riseTail(state, r);   // $56ED
+  if ((r[E_FLAGS] & 0x08) === 0) return riseTail(state, r);   // $56ED
   if ((state.frame & 0x07) === 0) requestSound(state, 0x1E);   // $56F2
   if (attackProbe(state, r) === 0xFF) return flyWallHit(state, r);   // $5703
   return riseTail(state, r);
@@ -1107,8 +1112,8 @@ function projHoming(state, r) {
   if (v > 8) v = 8;                                 // $5A95
   r[0x13] = v;
   addY(r, v);
-  const spd = r[0x12];
-  addX(r, (r[5] & 1) ? -spd : spd);                 // $5AAD
+  const spd = r[E_VX];
+  addX(r, (r[E_FACING] & 1) ? -spd : spd);          // $5AAD
   const res = attackProbe(state, r);                // $5AC2
   if (res === 0) return screenTail(state, r);
   if (res === 0xFF) return projHitPlayer(state, r); // $5AC9
@@ -1117,8 +1122,8 @@ function projHoming(state, r) {
 
 /** ROM: loc_01_5AD1 - flip, slow to +-$20, switch to the falling drop. */
 function projWallBounce(state, r) {
-  r[5] ^= 1;
-  r[0x12] = r[5] !== 0 ? 0xE0 : 0x20;               // $5AD7 / $5ADB
+  r[E_FACING] ^= 1;
+  r[E_VX] = r[E_FACING] !== 0 ? 0xE0 : 0x20;        // $5AD7 / $5ADB
   r[0x14] = 2;                                      // $5AE3
   const variant = r[6];                             // $5AEA
   if (variant === 2) return projExplode(state, r);
@@ -1133,10 +1138,10 @@ function projHitPlayer(state, r) {
   if (variant === 4 || variant === 5) return projWallBounce(state, r);  // $5B0A
   r[0x14] = 1;                                      // $5B22
   r[0x15] = 0x20;
-  const delta = u16(state.player.y + neg16q((r[0x10] << 8) | r[0x11]));  // $5B2C
+  const delta = u16(state.player.y + neg16q((r[E_Y_HI] << 8) | r[E_Y_LO]));  // $5B2C
   r[0x17] = delta >> 8;                             // $5B4B
   r[0x18] = delta & 0xFF;
-  r[0x19] = state.player.facing === r[5] ? 0 : 1;   // $5B58
+  r[0x19] = state.player.facing === r[E_FACING] ? 0 : 1;   // $5B58
   return screenTail(state, r);
 }
 
@@ -1147,10 +1152,10 @@ function projRehome(state, r) {
   const pf = state.player.facing;
   const dx = ((pf ^ r[0x19]) & 1) ? 0x60 : -0x60;   // $5A3A-$5A4C
   const x = u16(state.player.x + dx);
-  r[0x0E] = x >> 8; r[0x0F] = x & 0xFF;
+  r[E_X_HI] = x >> 8; r[E_X_LO] = x & 0xFF;
   const y = u16(state.player.y + neg16q((r[0x17] << 8) | r[0x18]));   // $5A6F
-  r[0x10] = y >> 8; r[0x11] = y & 0xFF;
-  r[5] = u8(pf ^ r[0x19]);                          // $5A87
+  r[E_Y_HI] = y >> 8; r[E_Y_LO] = y & 0xFF;
+  r[E_FACING] = u8(pf ^ r[0x19]);                   // $5A87
   return screenTail(state, r);
 }
 
@@ -1158,18 +1163,18 @@ function projRehome(state, r) {
 function projDrop(state, r) {
   r[0x13] = u8(r[0x13] + 1);                        // $59F0
   addY(r, r[0x13]);                                 // $59F6: UNSIGNED (B = 0)
-  let v = r[0x12];
+  let v = r[E_VX];
   if (v & 0x80) v = u8(v + 1); else v = u8(v - 1);  // $59FC-$5A09
   if (v === 0) return projDisable(state, r);        // $5A0C
-  r[0x12] = v;
+  r[E_VX] = v;
   addX(r, i8(v));                                   // $5A19
   return screenTail(state, r);
 }
 
 /** ROM: loc_01_5B89 - flags cleared to exactly $40, spawn column zeroed. */
 function projDisable(state, r) {
-  r[0] = 0x40;
-  r[0x0E] = 0;
+  r[E_FLAGS] = 0x40;
+  r[E_X_HI] = 0;
 }
 
 /**
@@ -1183,8 +1188,8 @@ function projDisable(state, r) {
  * the port's next floor burst ran one cell longer than the cartridge's.
  */
 function projExplode(state, r) {
-  spawnEffect(state, (r[0x0E] << 8) | r[0x0F],
-              (r[0x10] << 8) | r[0x11], 0x97, 0x01);   // $5B7C-$5B81
+  spawnEffect(state, (r[E_X_HI] << 8) | r[E_X_LO],
+              (r[E_Y_HI] << 8) | r[E_Y_LO], 0x97, 0x01);   // $5B7C-$5B81
   return projDisable(state, r);
 }
 
@@ -1199,25 +1204,25 @@ function projExplode(state, r) {
 function spawnProjectile(state, spawner, mode) {
   for (let slot = 6; slot < SLOTS; slot++) {        // $6BDC / $6CDF
     const t = state.enemies[slot];
-    if (t[0] & F_ACTIVE) continue;
+    if (t[E_FLAGS] & F_ACTIVE) continue;
     // 1:$6CEA, 5 x 32 B. Throws rather than defaulting: an all-zero record
     // is an INACTIVE enemy, so a missing table would silently mean "the boss
     // fires nothing" instead of failing.
     const tpl = state.tables?.projectileTemplates;
     if (!tpl) throw new Error('enemies: tables.projectileTemplates missing');
     t.set(tpl[(mode >= 1 && mode <= 5 ? mode : 5) - 1]);
-    const facing = spawner[5];
-    t[5] = facing;                                  // $6C2B
+    const facing = spawner[E_FACING];
+    t[E_FACING] = facing;                           // $6C2B
     let dxm = mode === 1 ? 0x100
       : (mode === 2 || mode === 3) ? 0x180
         : mode === 4 ? 0x100 : 0xC0;                // $6C3D-$6C5F
     if (facing !== 0) dxm = neg16q(dxm);            // $6C62
-    const x = u16(((spawner[0x0E] << 8) | spawner[0x0F]) + dxm);
-    t[0x0E] = x >> 8; t[0x0F] = x & 0xFF;
+    const x = u16(((spawner[E_X_HI] << 8) | spawner[E_X_LO]) + dxm);
+    t[E_X_HI] = x >> 8; t[E_X_LO] = x & 0xFF;
     const dym = mode === 1 ? 0x20
       : mode === 2 ? -0x60 : mode === 3 ? -0x40 : -0x80;   // $6C85-$6CA3
-    const y = u16(((spawner[0x10] << 8) | spawner[0x11]) + dym);
-    t[0x10] = y >> 8; t[0x11] = y & 0xFF;
+    const y = u16(((spawner[E_Y_HI] << 8) | spawner[E_Y_LO]) + dym);
+    t[E_Y_HI] = y >> 8; t[E_Y_LO] = y & 0xFF;
     const lvl = state.level.number;                 // $6CAF
     const id = (lvl === 5 || lvl === 7 || lvl === 8 || lvl === 0x0D) ? 0x1B
       : lvl === 0x0B ? 0x2C : lvl === 0x0C ? 0x1F : 0x28;
@@ -1232,10 +1237,10 @@ function spawnProjectile(state, spawner, mode) {
 // ---------------------------------------------------------------------------
 
 function stDormant(state, r) {
-  if (r[0] & 0x08) return screenTail(state, r);     // $5B97
-  if (r[0] & 0x02) return fallTail(state, r);       // $5B9B
+  if (r[E_FLAGS] & 0x08) return screenTail(state, r);     // $5B97
+  if (r[E_FLAGS] & 0x02) return fallTail(state, r);       // $5B9B
   if (r[1] & 0x20) return screenTail(state, r);     // $5BA0
-  r[2] = 0x01;                                      // $5BA7: wake as a walker
+  r[E_STATE] = 0x01;                                // $5BA7: wake as a walker
   return screenTail(state, r);
 }
 
@@ -1251,35 +1256,35 @@ function stDormant(state, r) {
 // ---------------------------------------------------------------------------
 
 function stL12(state, r) {
-  if (r[0] & 0x04) return l12Drift(state, r);       // $57D8: stunned -- drift
+  if (r[E_FLAGS] & 0x04) return l12Drift(state, r);       // $57D8: stunned -- drift
   const f1 = r[1];                                  // $57F7
   if (f1 & 0x20) {                                  // $57F9: landing anim
-    r[0] &= ~0x20;                                  // $5838
+    r[E_FLAGS] &= ~0x20;                            // $5838
     return l12Drift(state, r);                      // $583A -> $57DC
   }
   if (f1 & 0x10) {                                  // $57FE: committed pause
     if (r[0x15] === 0) { r[1] &= ~0x10; return riseTail(state, r); }  // $58EF
     r[0x15]--;                                      // $58DF
-    return r[5] === 0 ? l12WalkRight(state, r) : l12WalkLeft(state, r);
+    return r[E_FACING] === 0 ? l12WalkRight(state, r) : l12WalkLeft(state, r);
   }
   if (f1 & 0x04) {                                  // $5803: pacing right
-    if (absDiff8(state.player.x >> 8, r[0x0E]) < 3) return l12Fire(state, r);
+    if (absDiff8(state.player.x >> 8, r[E_X_HI]) < 3) return l12Fire(state, r);
     return l12WalkRight(state, r);                  // $591C -> $5935
   }
   if (f1 & 0x08) {                                  // $5808: pacing left
-    if (absDiff8(state.player.x >> 8, r[0x0E]) < 3) return l12Fire(state, r);
+    if (absDiff8(state.player.x >> 8, r[E_X_HI]) < 3) return l12Fire(state, r);
     return l12WalkLeft(state, r);                   // $592F -> $5989
   }
 
   const psx = playerScreenX(state);
-  const diff = u8(psx - r[7]);                      // $5812
-  const playerLeft = psx < r[7];
+  const diff = u8(psx - r[E_SCREEN_X]);             // $5812
+  const playerLeft = psx < r[E_SCREEN_X];
   const ad = playerLeft ? u8(-diff) : diff;
   if (ad >= 0x40) {                                 // $581A: far band
-    if (absDiff8(playerScreenY(state), r[8]) < 0x20) {   // $5829
+    if (absDiff8(playerScreenY(state), r[E_SCREEN_Y]) < 0x20) {   // $5829
       return l12Fire(state, r);                     // $583D -> $583E
     }
-    r[0] |= 0x20;                                   // $5832: idle
+    r[E_FLAGS] |= 0x20;                             // $5832: idle
     return riseTail(state, r);
   }
   if (ad < 8) {                                     // $58B2: too close
@@ -1289,7 +1294,7 @@ function stL12(state, r) {
   }
   // $58BA: mid band. Walk toward the player -- or AWAY while r[1] bit 7 (the
   // wall-jump latch, reused here) is set ($58C1 inverts the choice).
-  r[0] &= ~0x20;                                    // $58BE
+  r[E_FLAGS] &= ~0x20;                              // $58BE
   const goLeft = (r[1] & 0x80) ? !playerLeft : playerLeft;   // $58C7 / $58D0
   return goLeft ? l12WalkLeft(state, r) : l12WalkRight(state, r);
 }
@@ -1308,16 +1313,16 @@ function stL12(state, r) {
  * the port, two slots richer, landed 10.
  */
 function l12Fire(state, r) {
-  if (r[0] & 0x08) return riseTail(state, r);       // $583F: already firing
+  if (r[E_FLAGS] & 0x08) return riseTail(state, r);       // $583F: already firing
   spawnProjectile(state, r, 2);                     // $584B: $C72C = 2
-  r[0] = (r[0] & ~0x20) | 0x08;                     // $5854 / $5856
+  r[E_FLAGS] = (r[E_FLAGS] & ~0x20) | 0x08;         // $5854 / $5856
   r[0x14] = 0x0F;                                   // $585C
   // $5860-$587E: X + ($FE80 facing left, $FF40 facing right), and $5884-$5894
   // Y - $80. $589F then adds 2 to the HIGH byte alone for the second flash,
   // which is one whole column to the right.
-  const fx = u16(((r[0x0E] << 8) | r[0x0F])
-                 + ((r[5] & 1) ? 0xFE80 : 0xFF40));  // $586C-$5878
-  const fy = u16(((r[0x10] << 8) | r[0x11]) + 0xFF80);
+  const fx = u16(((r[E_X_HI] << 8) | r[E_X_LO])
+                 + ((r[E_FACING] & 1) ? 0xFE80 : 0xFF40));  // $586C-$5878
+  const fy = u16(((r[E_Y_HI] << 8) | r[E_Y_LO]) + 0xFF80);
   spawnEffect(state, fx, fy, 0xD7, 0x00);            // $589C
   spawnEffect(state, u16(fx + 0x0200), fy, 0xD7, 0x00);   // $58AB
   return riseTail(state, r);
@@ -1325,38 +1330,38 @@ function l12Fire(state, r) {
 
 /** ROM: loc_01_57DC - stunned / landing: keep moving at the +$12 velocity. */
 function l12Drift(state, r) {
-  const v = r[0x12];
+  const v = r[E_VX];
   return (v & 0x80) ? l12MoveLeft(state, r, v) : l12MoveRight(state, r, v);
 }
 
 /** ROM: loc_01_5935 - accelerate right toward the +$1D cap (walker idiom). */
 function l12WalkRight(state, r) {
-  r[5] = 0;                                         // $5939
-  let v = r[0x12];
+  r[E_FACING] = 0;                                  // $5939
+  let v = r[E_VX];
   if (v & 0x80) {                                   // $593F: moving left still
     v = u8(v + 2);                                  // $5977: brake by 2
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? l12MoveLeft(state, r, v) : l12MoveRight(state, r, v);
   }
-  const max = r[0x1D];                              // $5944-$5951
+  const max = r[E_SPEED_CAP];                       // $5944-$5951
   v = v + 1 < max ? v + 1 : max;
-  r[0x12] = v;
+  r[E_VX] = v;
   return l12MoveRight(state, r, v);
 }
 
 /** ROM: loc_01_5989 - mirror. */
 function l12WalkLeft(state, r) {
-  r[5] = 1;                                         // $598C
-  let v = r[0x12];
+  r[E_FACING] = 1;                                  // $598C
+  let v = r[E_VX];
   if (v !== 0 && (v & 0x80) === 0) {                // $5995 / $5997
     v = u8(v - 2);                                  // $59D4
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? l12MoveLeft(state, r, v) : l12MoveRight(state, r, v);
   }
-  const min = u8(-r[0x1D]);                         // $599C-$59AF
+  const min = u8(-r[E_SPEED_CAP]);                  // $599C-$59AF
   v = u8(v - 1);
   if (v < min) v = min;                             // unsigned clamp
-  r[0x12] = v;
+  r[E_VX] = v;
   return l12MoveLeft(state, r, v);
 }
 
@@ -1365,8 +1370,8 @@ function l12WalkLeft(state, r) {
 function l12MoveRight(state, r, v) {
   addX(r, i8(v));
   if (probeRight(state, r) !== 0) {                 // $595D
-    r[0x0F] = 0x40;                                 // $5964
-    r[0x12] = 0;                                    // $596A
+    r[E_X_LO] = 0x40;                               // $5964
+    r[E_VX] = 0;                                    // $596A
     r[1] = (r[1] & ~0x04) | 0x08;                   // $596F / $5971
   }
   return riseTail(state, r);                        // $5974 / $5982
@@ -1376,8 +1381,8 @@ function l12MoveRight(state, r, v) {
 function l12MoveLeft(state, r, v) {
   addX(r, i8(v));
   if (probeLeft(state, r) !== 0) {                  // $59BA
-    r[0x0F] = 0xB0;                                 // $59C1
-    r[0x12] = 0;
+    r[E_X_LO] = 0xB0;                               // $59C1
+    r[E_VX] = 0;
     r[1] = (r[1] & ~0x08) | 0x04;                   // $59CC / $59CE
   }
   return riseTail(state, r);
@@ -1411,30 +1416,30 @@ function l12MoveLeft(state, r, v) {
 // ---------------------------------------------------------------------------
 
 function stL6Vehicle(state, r) {
-  r[0] |= 0x20;                                     // $575E: SET 5
-  r[5] = (state.player.x >> 8) < r[0x0E] ? 1 : 0;   // $5764-$5774 ($FF81 vs +$0E)
+  r[E_FLAGS] |= 0x20;                               // $575E: SET 5
+  r[E_FACING] = (state.player.x >> 8) < r[E_X_HI] ? 1 : 0;   // $5764-$5774 ($FF81 vs +$0E)
   // $5775: $C74D = the same facing byte -- it is the shot's drift selector.
   const t = state.flow.parallaxTrack;               // $577A: $FFCA/$FFCB
   const x = u16(((u8((t >> 8) + 5) << 8) | (t & 0xFF)) + 0xC0);
-  r[0x0E] = x >> 8;                                 // $578A-$578D
-  r[0x0F] = x & 0xFF;
-  if (r[0] & 0x08) return screenTail(state, r);     // $5794: mid-attack
-  if (r[0] & 0x04) return screenTail(state, r);     // $579D: stunned
+  r[E_X_HI] = x >> 8;                               // $578A-$578D
+  r[E_X_LO] = x & 0xFF;
+  if (r[E_FLAGS] & 0x08) return screenTail(state, r);     // $5794: mid-attack
+  if (r[E_FLAGS] & 0x04) return screenTail(state, r);     // $579D: stunned
   requestSound(state, 0x22);                        // $57A6
-  r[0] |= 0x08;                                     // $57AC
+  r[E_FLAGS] |= 0x08;                               // $57AC
   r[0x14] = 0x1F;                                   // $57B2
   // $57B5-$57CB: +$0E..+$11 -> $C749-$C74C, then sub_00_0CF3 with DE = $0100.
   // The facing byte staged at $5775 is $C74D, which the allocator turns into
   // the drift: 1 -> $F8, 0 -> $08 ($0D25-$0D32).
-  spawnDrop(state, (r[0x0E] << 8) | r[0x0F], (r[0x10] << 8) | r[0x11],
-            r[5], 0x01, 0x00);                      // $57C7-$57CB
+  spawnDrop(state, (r[E_X_HI] << 8) | r[E_X_LO], (r[E_Y_HI] << 8) | r[E_Y_LO],
+            r[E_FACING], 0x01, 0x00);               // $57C7-$57CB
   return screenTail(state, r);                      // $57D3
 }
 
 /** ROM: jt_01_6398 - the state-5 attack tick just counts and re-enters. */
 function attackTickL6(state, r) {
   if (r[0x14] !== 0) r[0x14]--;                     // $63A0-$63A2
-  else r[0] &= 0xC7;                                // $63A6-$63A9
+  else r[E_FLAGS] &= 0xC7;                          // $63A6-$63A9
   return stL6Vehicle(state, r);                     // $63A3 / $63AA
 }
 
@@ -1457,10 +1462,10 @@ function attackTickL6(state, r) {
 
 function stBoss2(state, r) {
   if (!state.flow.bossRage) {                       // $6D8C
-    if (r[0x16] < 0x0E && state.flow.difficulty !== 0) {   // $6D97-$6D9F
+    if (r[E_HP] < 0x0E && state.flow.difficulty !== 0) {   // $6D97-$6D9F
       state.flow.bossRage = 1;                      // $6DA3
-      r[0x1C] = 0x38;                               // $6DAC: jump velocity
-      r[0x1D] = 0x14;                               // $6DAF: walk cap
+      r[E_JUMP_VEL] = 0x38;                         // $6DAC: jump velocity
+      r[E_SPEED_CAP] = 0x14;                        // $6DAF: walk cap
       state.enemies[1][0] = 0x80;                   // $6DB4
       state.enemies[2][0] = 0x81;                   // $6DB9
       state.enemies[1][2] = 0x0D;                   // $6DBE: state 13
@@ -1470,25 +1475,25 @@ function stBoss2(state, r) {
     }
   } else if ((state.frame & 0x07) === 0) {          // $6DCC: afterimage chain
     const s1 = state.enemies[1], s2 = state.enemies[2];
-    s2[6] = s1[6]; s2[7] = s1[7]; s2[8] = s1[8];    // $6DD2-$6DE1
-    s1[6] = r[6]; s1[7] = r[7]; s1[8] = r[8];       // $6DE4-$6DF1
+    s2[6] = s1[6]; s2[E_SCREEN_X] = s1[E_SCREEN_X]; s2[E_SCREEN_Y] = s1[E_SCREEN_Y];    // $6DD2-$6DE1
+    s1[6] = r[6]; s1[E_SCREEN_X] = r[E_SCREEN_X]; s1[E_SCREEN_Y] = r[E_SCREEN_Y];       // $6DE4-$6DF1
   }
   if (state.flow.bossHop !== 0) {                   // $6DF4: the spin-freeze
     state.flow.bossHop--;
     return fallTail(state, r);                      // $6E00
   }
-  if (r[0] & 0x07) {                                // $6E05-$6E0F
-    const v = r[0x12];
+  if (r[E_FLAGS] & 0x07) {                          // $6E05-$6E0F
+    const v = r[E_VX];
     return (v & 0x80) ? boss2MoveLeft(state, r, v) : boss2MoveRight(state, r, v);
   }
-  if (r[0] & 0x18) return riseTail(state, r);       // $6E2D
+  if (r[E_FLAGS] & 0x18) return riseTail(state, r);       // $6E2D
   if (r[1] & 0x10) {                                // $6E34: committed walk
     if (r[0x15] === 0) { r[1] &= ~0x10; return riseTail(state, r); }  // $6F51
     r[0x15]--;                                      // $6F41
-    return r[5] === 0 ? boss2WalkRight(state, r) : boss2WalkLeft(state, r);
+    return r[E_FACING] === 0 ? boss2WalkRight(state, r) : boss2WalkLeft(state, r);
   }
   if (r[1] & 0x60) {                                // $6E39/$6E3E: mid-anim
-    r[0] &= ~0x20;                                  // $6F34
+    r[E_FLAGS] &= ~0x20;                            // $6F34
     return riseTail(state, r);
   }
   return boss2Bands(state, r);                      // $6E43
@@ -1502,13 +1507,13 @@ function stBoss2(state, r) {
  */
 function boss2Bands(state, r) {
   const psx = playerScreenX(state);                 // $6E48
-  const diff = u8(psx - r[7]);
+  const diff = u8(psx - r[E_SCREEN_X]);
   if (diff === 0) return boss2MirrorPause(state, r);   // $6E4B -> $6F5C
-  const playerLeft = psx < r[7];
+  const playerLeft = psx < r[E_SCREEN_X];
   const ad = playerLeft ? u8(-diff) : diff;
 
   if (ad >= 0x1F) {                                 // $6E53
-    if (r[0] & 0x03) return riseTail(state, r);     // $6E5C-$6E63 -> $705D
+    if (r[E_FLAGS] & 0x03) return riseTail(state, r);     // $6E5C-$6E63 -> $705D
     if (ad < 0x30) return boss2Walk(state, r, playerLeft);   // $6E6A
     // $6E6E-$6E76 is a REGISTER CLOBBER, reproduced rather than fixed. A is the
     // absolute distance every CP in this ladder reads, and $6E72 overwrites it
@@ -1521,8 +1526,8 @@ function boss2Bands(state, r) {
     let band = ad;
     if (ad >= 0x70) {
       if (!state.flow.bossRage) {                   // $6E76: JR NZ not taken
-        r[5] = playerLeft ? 1 : 0;                  // $6E78-$6E82: far idle
-        r[0] |= 0x20;                               // $6E87
+        r[E_FACING] = playerLeft ? 1 : 0;           // $6E78-$6E82: far idle
+        r[E_FLAGS] |= 0x20;                         // $6E87
         return fallTail(state, r);                  // $6E89
       }
       band = u8(state.flow.bossRage);               // $6E72: A := [$C73D]
@@ -1533,73 +1538,73 @@ function boss2Bands(state, r) {
     }
     // $6E9F: [$50,$70) and nothing else.
     if (!state.flow.bossRage) return boss2Walk(state, r, playerLeft);    // $6EA3
-    r[5] = playerLeft ? 1 : 0;                      // $6EA5-$6EAF: the throw
-    if ((r[0] & 0x10) === 0) {                      // $6EB1
-      r[0] = (r[0] & ~0x20) | 0x10;                 // $6EB7/$6EB9
+    r[E_FACING] = playerLeft ? 1 : 0;               // $6EA5-$6EAF: the throw
+    if ((r[E_FLAGS] & 0x10) === 0) {                // $6EB1
+      r[E_FLAGS] = (r[E_FLAGS] & ~0x20) | 0x10;     // $6EB7/$6EB9
       r[0x14] = 0x1F;                               // $6EBE
     }
     return fallTail(state, r);                      // $6EC4
   }
   // Close band, ad < $1F:
   if (ad < 8) return boss2MirrorPause(state, r);    // $6ED8
-  if (absDiff8(playerScreenY(state), r[8]) >= 0x20) {   // $6EE0-$6EEA
-    if (r[0] & 0x03) return riseTail(state, r);     // $6EEE-$6EF5
+  if (absDiff8(playerScreenY(state), r[E_SCREEN_Y]) >= 0x20) {   // $6EE0-$6EEA
+    if (r[E_FLAGS] & 0x03) return riseTail(state, r);     // $6EEE-$6EF5
     return boss2Walk(state, r, playerLeft);         // $6EF7 -> $6EC7
   }
   if (state.player.iframes !== 0) return boss2MirrorPause(state, r);   // $6EFF
-  if (r[0] & 0x18) return riseTail(state, r);       // $6F09-$6F0C
+  if (r[E_FLAGS] & 0x18) return riseTail(state, r);       // $6F09-$6F0C
   requestSound(state, 0x1C);                        // $6F10
-  r[0] |= 0x08;                                     // $6F16
-  r[5] = playerLeft ? 1 : 0;                        // $6F1C-$6F24
+  r[E_FLAGS] |= 0x08;                               // $6F16
+  r[E_FACING] = playerLeft ? 1 : 0;                 // $6F1C-$6F24
   r[0x14] = 0x1F;                                   // $6F29
-  r[0] &= ~0x20;                                    // $6F2E
+  r[E_FLAGS] &= ~0x20;                              // $6F2E
   return riseTail(state, r);                        // $6F30
 }
 
 /** ROM: loc_01_6EC7 - clear idle, walk toward the player. */
 function boss2Walk(state, r, playerLeft) {
-  r[0] &= ~0x20;                                    // $6ECB
+  r[E_FLAGS] &= ~0x20;                              // $6ECB
   return playerLeft ? boss2WalkLeft(state, r) : boss2WalkRight(state, r);
 }
 
 /** ROM: loc_01_6F5C - dead zone: commit for $30 frames, facing the player's
  *  mirror ($FF88 XOR 1). Airborne it just runs the tails. */
 function boss2MirrorPause(state, r) {
-  if (r[0] & 0x03) return riseTail(state, r);       // $6F5D-$6F63
+  if (r[E_FLAGS] & 0x03) return riseTail(state, r);       // $6F5D-$6F63
   r[1] = (r[1] & 0xF3) | 0x10;                      // $6F6E-$6F72
-  r[5] = state.player.facing ^ 1;                   // $6F76
+  r[E_FACING] = state.player.facing ^ 1;            // $6F76
   r[0x15] = 0x30;                                   // $6F7F
   return riseTail(state, r);
 }
 
 /** ROM: loc_01_6F87/$6F8C - walker-idiom acceleration toward the +$1D cap. */
 function boss2WalkRight(state, r) {
-  r[5] = 0;                                         // $6F8A
-  let v = r[0x12];
+  r[E_FACING] = 0;                                  // $6F8A
+  let v = r[E_VX];
   if (v & 0x80) {                                   // $6F91 -> $6FEA
     v = u8(v + 2);
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? boss2MoveLeft(state, r, v) : boss2MoveRight(state, r, v);
   }
-  const max = r[0x1D];                              // $6F98-$6FA4
+  const max = r[E_SPEED_CAP];                       // $6F98-$6FA4
   v = v + 1 < max ? v + 1 : max;
-  r[0x12] = v;
+  r[E_VX] = v;
   return boss2MoveRight(state, r, v);
 }
 
 /** ROM: loc_01_6FF5/$6FFB - mirror. */
 function boss2WalkLeft(state, r) {
-  r[5] = 1;                                         // $6FF8
-  let v = r[0x12];
+  r[E_FACING] = 1;                                  // $6FF8
+  let v = r[E_VX];
   if (v !== 0 && (v & 0x80) === 0) {                // $7000-$7005
     v = u8(v - 2);                                  // $703D
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? boss2MoveLeft(state, r, v) : boss2MoveRight(state, r, v);
   }
-  const min = u8(-r[0x1D]);                         // $7008-$701B
+  const min = u8(-r[E_SPEED_CAP]);                  // $7008-$701B
   v = u8(v - 1);
   if (v < min) v = min;
-  r[0x12] = v;
+  r[E_VX] = v;
   return boss2MoveLeft(state, r, v);
 }
 
@@ -1608,8 +1613,8 @@ function boss2WalkLeft(state, r) {
 function boss2MoveRight(state, r, v) {
   addX(r, i8(v));
   if (probeRight(state, r) !== 0) {                 // $6FAF
-    r[0x0F] = 0x80;                                 // $6FB7
-    r[0x12] = 0;                                    // $6FBF
+    r[E_X_LO] = 0x80;                               // $6FB7
+    r[E_VX] = 0;                                    // $6FBF
     return boss2Hop(state, r);                      // falls into $6FC4
   }
   return boss2AirRecheck(state, r);                 // $7048
@@ -1619,8 +1624,8 @@ function boss2MoveRight(state, r, v) {
 function boss2MoveLeft(state, r, v) {
   addX(r, i8(v));
   if (probeLeft(state, r) !== 0) {                  // $7026
-    r[0x0F] = 0x80;                                 // $702E
-    r[0x12] = 0;
+    r[E_X_LO] = 0x80;                               // $702E
+    r[E_VX] = 0;
     return boss2Hop(state, r);
   }
   return boss2AirRecheck(state, r);
@@ -1628,15 +1633,15 @@ function boss2MoveLeft(state, r, v) {
 
 /** ROM: loc_01_7048 - the airborne band re-entry. */
 function boss2AirRecheck(state, r) {
-  if (r[0] & 0x03) return boss2Bands(state, r);     // $704C-$7052 -> $6E43
+  if (r[E_FLAGS] & 0x03) return boss2Bands(state, r);     // $704C-$7052 -> $6E43
   return riseTail(state, r);                        // $7054
 }
 
 /** ROM: loc_01_6FC4 - boss 1's hop launcher with an 8-frame wind-up. */
 function boss2Hop(state, r) {
-  r[0] &= ~0x18;                                    // $6FC6/$6FC8
-  if (r[0] & 0x01) return riseTail(state, r);       // $6FCA
-  if (r[0] & 0x02) return fallTail(state, r);       // $6FCF
+  r[E_FLAGS] &= ~0x18;                              // $6FC6/$6FC8
+  if (r[E_FLAGS] & 0x01) return riseTail(state, r);       // $6FCA
+  if (r[E_FLAGS] & 0x02) return fallTail(state, r);       // $6FCF
   r[1] |= 0x40;                                     // $6FD5
   boss1Aim(state, r);                               // $6FDC -> sub_01_79DB
   r[0x18] = 0x08;                                   // $6FE3
@@ -1655,12 +1660,12 @@ function boss2Hop(state, r) {
 function attackTickBoss2(state, r) {
   if (r[0x14] === 0) {                              // $61E5 -> loc_01_6121
     state.flow.bossCrit = 0;
-    r[0] &= 0xC7;
+    r[E_FLAGS] &= 0xC7;
     return riseTail(state, r);
   }
   r[0x14]--;                                        // $61E8
   if (r[0x14] === 7) {                              // $61EA
-    if (r[0] & 0x10) spawnProjectile(state, r, 3);  // $620E-$6219
+    if (r[E_FLAGS] & 0x10) spawnProjectile(state, r, 3);  // $620E-$6219
   } else if (attackProbe(state, r) !== 0xFF) {      // $61F3-$61F9
     r[1] |= 0x10;                                   // $61FF
     r[0x15] = 0x28;                                 // $6206: +$15, see above
@@ -1679,7 +1684,7 @@ function attackTickBoss2(state, r) {
 
 function stBoss2Part(state, r) {
   const odd = state.parity !== 0;                   // $FFA7
-  if ((r[0] & 0x01) === 0 ? odd : !odd) return;     // $78A9-$78B8
+  if ((r[E_FLAGS] & 0x01) === 0 ? odd : !odd) return;     // $78A9-$78B8
   queueDraw(state, r[6], r, 0, false);              // $78BB-$78C6: sub_00_0BC6
 }
 
@@ -1706,53 +1711,53 @@ function stBoss4(state, r) {
     if (a !== 1) { f.bossRage = a; return riseTail(state, r); }   // $72C0
     f.bossRage = 1;                                 // $72C8: phase 2 begins
     requestSound(state, 0x06, 0x03);                // $72CB
-    return boss4Throw(state, r, playerScreenX(state) < r[7]);   // $72D1
+    return boss4Throw(state, r, playerScreenX(state) < r[E_SCREEN_X]);   // $72D1
   }
-  if (r[0x16] < 0x18 && f.bossRage === 0) {         // $7296-$729E: the stagger
+  if (r[E_HP] < 0x18 && f.bossRage === 0) {         // $7296-$729E: the stagger
     requestSound(state, 0x01, 0x04);                // $72A0: stop the music
-    r[0] = (r[0] & 0xE3) | 0x20;                    // $72A9-$72AD
+    r[E_FLAGS] = (r[E_FLAGS] & 0xE3) | 0x20;        // $72A9-$72AD
     r[0x14] = 0;                                    // $72B2
     // $72B6 stores $F0 and FALLS INTO $72BB, whose DEC runs the same frame.
     f.bossRage = 0xEF;
     return riseTail(state, r);
   }
-  if (r[0] & 0x07) {                                // $72DF-$72E9
+  if (r[E_FLAGS] & 0x07) {                          // $72DF-$72E9
     // $72EB: phase 2, player airborne, own attack bits clear: throw NOW.
-    if (f.bossRage === 1 && state.player.air !== 0 && (r[0] & 0x18) === 0) {
-      return boss4Throw(state, r, playerScreenX(state) < r[7]);   // $72FC
+    if (f.bossRage === 1 && state.player.air !== 0 && (r[E_FLAGS] & 0x18) === 0) {
+      return boss4Throw(state, r, playerScreenX(state) < r[E_SCREEN_X]);   // $72FC
     }
-    const v = r[0x12];                              // $7308
+    const v = r[E_VX];                              // $7308
     return (v & 0x80) ? boss4MoveLeft(state, r, v) : boss4MoveRight(state, r, v);
   }
-  if (r[0] & 0x18) return riseTail(state, r);       // $7324
+  if (r[E_FLAGS] & 0x18) return riseTail(state, r);       // $7324
   if (r[1] & 0x10) {                                // $732B: committed walk
     if (r[0x15] === 0) { r[1] &= ~0x10; return riseTail(state, r); }  // $74A5
     r[0x15]--;                                      // $7495
-    return r[5] === 0 ? boss4WalkRightAccel(state, r) : boss4WalkLeftAccel(state, r);
+    return r[E_FACING] === 0 ? boss4WalkRightAccel(state, r) : boss4WalkLeftAccel(state, r);
   }
   if (r[1] & 0x60) {                                // $7330/$7335: mid-anim
-    r[0] &= ~0x20;                                  // $7488
+    r[E_FLAGS] &= ~0x20;                            // $7488
     return riseTail(state, r);
   }
 
   const psx = playerScreenX(state);                 // $733E
-  const diff = u8(psx - r[7]);
+  const diff = u8(psx - r[E_SCREEN_X]);
   if (diff === 0) return boss4MirrorPause(state, r);   // $7342 -> $74B0
-  const playerLeft = psx < r[7];
+  const playerLeft = psx < r[E_SCREEN_X];
   const ad = playerLeft ? u8(-diff) : diff;
 
   if (ad < 0x18) {                                  // $734A: close band
     if (ad < 8) return boss4MirrorPause(state, r);  // $7437-$743C
-    if (absDiff8(playerScreenY(state), r[8]) >= 0x20) {   // $7442-$7449
+    if (absDiff8(playerScreenY(state), r[E_SCREEN_Y]) >= 0x20) {   // $7442-$7449
       return riseTail(state, r);                    // $744D (no walk!)
     }
     if (state.player.iframes !== 0) return boss4MirrorPause(state, r);  // $7453
-    if (r[0] & 0x18) return riseTail(state, r);     // $745F
+    if (r[E_FLAGS] & 0x18) return riseTail(state, r);     // $745F
     requestSound(state, 0x1C);                      // $7464
-    r[0] |= 0x08;                                   // $746A
-    r[5] = playerLeft ? 1 : 0;                      // $7470-$7478
+    r[E_FLAGS] |= 0x08;                             // $746A
+    r[E_FACING] = playerLeft ? 1 : 0;               // $7470-$7478
     r[0x14] = 0x1F;                                 // $747D
-    r[0] &= ~0x20;                                  // $7482
+    r[E_FLAGS] &= ~0x20;                            // $7482
     return riseTail(state, r);
   }
   if (ad < 0x30) return boss4Walk(state, r, playerLeft, ad);   // $734F
@@ -1767,8 +1772,8 @@ function stBoss4(state, r) {
   let band = ad;
   if (ad >= 0x60) {
     if (!f.bossRage) {                              // $735C: JR NZ not taken
-      r[5] = playerLeft ? 1 : 0;                    // $735E-$7368: far idle
-      r[0] |= 0x20;                                 // $736D
+      r[E_FACING] = playerLeft ? 1 : 0;             // $735E-$7368: far idle
+      r[E_FLAGS] |= 0x20;                           // $736D
       return fallTail(state, r);                    // $736F
     }
     band = u8(f.bossRage);                          // $7358: A := [$C73D]
@@ -1784,12 +1789,12 @@ function stBoss4(state, r) {
   // $7389: [$50,$60) and nothing else.
   if (f.bossRage) return boss4Throw(state, r, playerLeft);        // $738D
   f.bossHop = 1;                                    // $738F: $C741
-  r[0] &= 0xDF;                                     // $7398-$739B
+  r[E_FLAGS] &= 0xDF;                               // $7398-$739B
   if (playerLeft) {                                 // $739C: RETREAT at 6
-    r[0x12] = 0x06;                                 // $739F
+    r[E_VX] = 0x06;                                 // $739F
     return boss4MoveRight(state, r, 0x06);          // $73A2 -> $74E9
   }
-  r[0x12] = 0xFA;                                   // $73A5
+  r[E_VX] = 0xFA;                                   // $73A5
   return boss4MoveLeft(state, r, 0xFA);             // $73A8 -> $755E
 }
 
@@ -1797,9 +1802,9 @@ function stBoss4(state, r) {
  *  like boss 1's hop (measured reduction: crit <=> $FFB1 < $80), and hold
  *  the ranged pose $3F (crit, sound $29) or $1F frames. */
 function boss4Throw(state, r, playerLeft) {
-  r[5] = playerLeft ? 1 : 0;                        // $73B3-$73BB
+  r[E_FACING] = playerLeft ? 1 : 0;                 // $73B3-$73BB
   if (state.frame < 0x80) state.flow.bossCrit = 1;  // $73BC-$73C8: rLY roll
-  r[0] = (r[0] & ~0x20) | 0x10;                     // $73CD/$73CF
+  r[E_FLAGS] = (r[E_FLAGS] & ~0x20) | 0x10;         // $73CD/$73CF
   if (state.flow.bossCrit) {                        // $73D5
     requestSound(state, 0x29);                      // $73DB
     r[0x14] = 0x3F;                                 // $73E1
@@ -1812,9 +1817,9 @@ function boss4Throw(state, r, playerLeft) {
 /** ROM: loc_01_73ED - walk toward (or away on the r[1] bit-7 latch), with
  *  the distance-dependent speed cap and the $C741 pose flag. */
 function boss4Walk(state, r, playerLeft, ad) {
-  if (ad >= 0x30) { r[0x1D] = 0x06; state.flow.bossHop = 0; }  // $73F3-$73FF
-  else { r[0x1D] = 0x14; state.flow.bossHop = 1; }             // $7401-$7408
-  r[0] &= ~0x20;                                    // $7411
+  if (ad >= 0x30) { r[E_SPEED_CAP] = 0x06; state.flow.bossHop = 0; }  // $73F3-$73FF
+  else { r[E_SPEED_CAP] = 0x14; state.flow.bossHop = 1; }      // $7401-$7408
+  r[E_FLAGS] &= ~0x20;                              // $7411
   if (r[1] & 0x80) {                                // $7413-$741B: walk AWAY
     if ((state.frame & 0x0F) === 0) requestSound(state, 0x2A); // $741D-$7426
     return playerLeft ? boss4WalkRightAccel(state, r)          // $7429-$742D
@@ -1827,47 +1832,47 @@ function boss4Walk(state, r, playerLeft, ad) {
 /** ROM: loc_01_74B0 - dead zone: commit $30 frames at the player's mirror. */
 function boss4MirrorPause(state, r) {
   r[1] = (r[1] & 0xF3) | 0x10;                      // $74B0-$74B6
-  r[5] = state.player.facing ^ 1;                   // $74BA
+  r[E_FACING] = state.player.facing ^ 1;            // $74BA
   r[0x15] = 0x30;                                   // $74C3
   return riseTail(state, r);
 }
 
 /** ROM: loc_01_74CB / loc_01_74D0 - walker-idiom acceleration. */
 function boss4WalkRightStore(state, r) {
-  r[5] = 0;                                         // $74CB-$74CF
+  r[E_FACING] = 0;                                  // $74CB-$74CF
   return boss4WalkRightAccel(state, r);
 }
 
 function boss4WalkRightAccel(state, r) {            // $74D0
-  let v = r[0x12];
+  let v = r[E_VX];
   if (v & 0x80) {                                   // $74D5 -> $752C
     v = u8(v + 2);
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? boss4MoveLeft(state, r, v) : boss4MoveRight(state, r, v);
   }
-  const max = r[0x1D];                              // $74DC-$74E8
+  const max = r[E_SPEED_CAP];                       // $74DC-$74E8
   v = v + 1 < max ? v + 1 : max;
-  r[0x12] = v;
+  r[E_VX] = v;
   return boss4MoveRight(state, r, v);
 }
 
 /** ROM: loc_01_7537 / loc_01_753D - mirror. */
 function boss4WalkLeftStore(state, r) {
-  r[5] = 1;                                         // $7537-$753C
+  r[E_FACING] = 1;                                  // $7537-$753C
   return boss4WalkLeftAccel(state, r);
 }
 
 function boss4WalkLeftAccel(state, r) {             // $753D
-  let v = r[0x12];
+  let v = r[E_VX];
   if (v !== 0 && (v & 0x80) === 0) {                // $7541-$7547 -> $757E
     v = u8(v - 2);
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? boss4MoveLeft(state, r, v) : boss4MoveRight(state, r, v);
   }
-  const min = u8(-r[0x1D]);                         // $754A-$755D
+  const min = u8(-r[E_SPEED_CAP]);                  // $754A-$755D
   v = u8(v - 1);
   if (v < min) v = min;
-  r[0x12] = v;
+  r[E_VX] = v;
   return boss4MoveLeft(state, r, v);
 }
 
@@ -1875,8 +1880,8 @@ function boss4WalkLeftAccel(state, r) {             // $753D
 function boss4MoveRight(state, r, v) {
   addX(r, i8(v));
   if (probeRight(state, r) !== 0) {                 // $74F3
-    r[0x0F] = 0x80;                                 // $74FB
-    r[0x12] = 0;                                    // $7500
+    r[E_X_LO] = 0x80;                               // $74FB
+    r[E_VX] = 0;                                    // $7500
     return boss4Hop(state, r);                      // falls into $7506
   }
   return riseTail(state, r);                        // $758A
@@ -1886,8 +1891,8 @@ function boss4MoveRight(state, r, v) {
 function boss4MoveLeft(state, r, v) {
   addX(r, i8(v));
   if (probeLeft(state, r) !== 0) {                  // $7568
-    r[0x0F] = 0x80;                                 // $7570
-    r[0x12] = 0;
+    r[E_X_LO] = 0x80;                               // $7570
+    r[E_VX] = 0;
     return boss4Hop(state, r);
   }
   return riseTail(state, r);
@@ -1895,9 +1900,9 @@ function boss4MoveLeft(state, r, v) {
 
 /** ROM: loc_01_7506 - boss 2's hop launcher shape, 8-frame wind-up. */
 function boss4Hop(state, r) {
-  r[0] &= ~0x18;                                    // $7508/$750A
-  if (r[0] & 0x01) return riseTail(state, r);       // $750C
-  if (r[0] & 0x02) return fallTail(state, r);       // $7511
+  r[E_FLAGS] &= ~0x18;                              // $7508/$750A
+  if (r[E_FLAGS] & 0x01) return riseTail(state, r);       // $750C
+  if (r[E_FLAGS] & 0x02) return fallTail(state, r);       // $7511
   r[1] |= 0x40;                                     // $7517
   boss1Aim(state, r);                               // $751E -> sub_01_79DB
   r[0x18] = 0x08;                                   // $7525
@@ -1913,12 +1918,12 @@ function boss4Hop(state, r) {
 function attackTickBoss4(state, r) {
   if (r[0x14] === 0) {                              // $6308 -> loc_01_6121
     state.flow.bossCrit = 0;
-    r[0] &= 0xC7;
+    r[E_FLAGS] &= 0xC7;
     return riseTail(state, r);
   }
   r[0x14]--;                                        // $630B
   if (r[0x14] === 7) {                              // $630D
-    if (!state.flow.bossCrit && (r[0] & 0x10)) {    // $6330-$633A
+    if (!state.flow.bossCrit && (r[E_FLAGS] & 0x10)) {    // $6330-$633A
       spawnProjectile(state, r, 5);                 // $633E-$6343
     }
   } else if (attackProbe(state, r) !== 0xFF) {      // $6316-$631C
@@ -1941,11 +1946,11 @@ function attackTickBoss4(state, r) {
 
 function stChaser(state, r) {
   const psx = playerScreenX(state);                 // $775B vs cached +7
-  const diff = u8(psx - r[7]);
-  const playerLeft = psx < r[7];
+  const diff = u8(psx - r[E_SCREEN_X]);
+  const playerLeft = psx < r[E_SCREEN_X];
   const ad = playerLeft ? u8(-diff) : diff;
   if (ad >= 0x10) {                                 // $7764
-    r[5] = playerLeft ? 1 : 0;                      // $776C-$7777
+    r[E_FACING] = playerLeft ? 1 : 0;               // $776C-$7777
     addX(r, playerLeft ? -4 : 4);                   // $777C
     state.player.slowMode = 0;                      // $777F-$7780: $FF95
     state.enemies[0][1] &= 0x7F;                    // $7782-$7787: $C269
@@ -1977,22 +1982,22 @@ function stChaser(state, r) {
 // ---------------------------------------------------------------------------
 
 function stBoss3(state, r) {
-  if (r[0x16] < 0x0E && state.flow.difficulty !== 0) {
+  if (r[E_HP] < 0x0E && state.flow.difficulty !== 0) {
     state.flow.bossRage = 1;                        // $7068-$7074: $C73D
   }
-  if (r[0] & 0x07) {                                // $7079-$7083
-    const v = r[0x12];
+  if (r[E_FLAGS] & 0x07) {                          // $7079-$7083
+    const v = r[E_VX];
     return (v & 0x80) ? boss3MoveLeft(state, r, v) : boss3MoveRight(state, r, v);
   }
-  if (r[0] & 0x18) return riseTail(state, r);       // $70A1
+  if (r[E_FLAGS] & 0x18) return riseTail(state, r);       // $70A1
   if (r[1] & 0x20) {                                // $70A8: landing anim
-    r[0] &= ~0x20;                                  // $7186
+    r[E_FLAGS] &= ~0x20;                            // $7186
     return riseTail(state, r);
   }
 
   const psx = playerScreenX(state);                 // $70B1 vs the cached +7
-  const diff = u8(psx - r[7]);                      // (no dead-zone special
-  const playerLeft = psx < r[7];                    //  case in this handler)
+  const diff = u8(psx - r[E_SCREEN_X]);             // (no dead-zone special
+  const playerLeft = psx < r[E_SCREEN_X];           //  case in this handler)
   const ad = playerLeft ? u8(-diff) : diff;
 
   if (ad < 0x28) {                                  // $70BA: close band
@@ -2004,16 +2009,16 @@ function stBoss3(state, r) {
     if (!state.flow.bossRage) {                     // $70F4
       return boss3Attack(state, r, playerLeft);
     }
-    r[5] = playerLeft ? 1 : 0;                      // $70FA-$7104
-    if ((r[0] & 0x18) === 0) {                      // $7105 (always true here)
-      r[0] = (r[0] & ~0x20) | 0x10;                 // $710C/$710E: ranged
+    r[E_FACING] = playerLeft ? 1 : 0;               // $70FA-$7104
+    if ((r[E_FLAGS] & 0x18) === 0) {                // $7105 (always true here)
+      r[E_FLAGS] = (r[E_FLAGS] & ~0x20) | 0x10;     // $710C/$710E: ranged
       r[0x14] = 0x1F;                               // $7114
     }
     return riseTail(state, r);                      // $7119
   }
   // $70C2: far band -- idle, with the patience counter ticking at 30 Hz.
-  r[5] = playerLeft ? 1 : 0;                        // $70C6-$70CD
-  r[0] |= 0x20;                                     // $70D2
+  r[E_FACING] = playerLeft ? 1 : 0;                 // $70C6-$70CD
+  r[E_FLAGS] |= 0x20;                               // $70D2
   if (state.frame & 0x01) {                         // $70D4: odd frames only
     const c = u8(state.flow.bossHop + 1);           // $70DA: $C741
     if (c >= 0xB4) {                                // $70DE: 180 ticks
@@ -2028,9 +2033,9 @@ function stBoss3(state, r) {
 /** ROM: loc_01_7125 - launch an attack toward the player (both kinds). */
 function boss3Attack(state, r, playerLeft) {
   state.flow.bossHop = 0;                           // $7125: $C741 = 0
-  if (r[0] & 0x18) return riseTail(state, r);       // $712C: already attacking
-  r[0] |= 0x08;                                     // $7134
-  r[5] = playerLeft ? 1 : 0;                        // $713A-$7142
+  if (r[E_FLAGS] & 0x18) return riseTail(state, r);       // $712C: already attacking
+  r[E_FLAGS] |= 0x08;                               // $7134
+  r[E_FACING] = playerLeft ? 1 : 0;                 // $713A-$7142
   return boss3Arm(state, r);                        // falls into $7143
 }
 
@@ -2044,9 +2049,9 @@ function boss3Arm(state, r) {
     requestSound(state, 0x27);                      // $7157
     r[0x14] = 0x0B;                                 // $715D
   }
-  r[0] &= ~0x20;                                    // $7162: RES 5
+  r[E_FLAGS] &= ~0x20;                              // $7162: RES 5
   if (state.flow.bossCrit) {                        // $7164
-    r[0x12] = (r[5] & 1) ? 0xD4 : 0x2C;             // $7171-$717F: +-$2C
+    r[E_VX] = (r[E_FACING] & 1) ? 0xD4 : 0x2C;      // $7171-$717F: +-$2C
   }
   return riseTail(state, r);                        // $7182
 }
@@ -2055,10 +2060,10 @@ function boss3Arm(state, r) {
 function boss3MoveRight(state, r, v) {
   addX(r, i8(v));
   if (probeRight(state, r) !== 0) {                 // $71B3
-    r[0x0F] = 0x40;                                 // $71BB
-    r[0x12] = 0;                                    // $71C1
+    r[E_X_LO] = 0x40;                               // $71BB
+    r[E_VX] = 0;                                    // $71C1
     state.flow.bossCrit = 0;                        // $71C2
-    r[0] &= 0xC7;                                   // $71CA
+    r[E_FLAGS] &= 0xC7;                             // $71CA
     return riseTail(state, r);
   }
   return boss3EdgeCheck(state, r);                  // $7235
@@ -2068,10 +2073,10 @@ function boss3MoveRight(state, r, v) {
 function boss3MoveLeft(state, r, v) {
   addX(r, i8(v));
   if (probeLeft(state, r) !== 0) {                  // $720C
-    r[0x0F] = 0xB0;
-    r[0x12] = 0;
+    r[E_X_LO] = 0xB0;
+    r[E_VX] = 0;
     state.flow.bossCrit = 0;
-    r[0] &= 0xC7;
+    r[E_FLAGS] &= 0xC7;
     return riseTail(state, r);
   }
   return boss3EdgeCheck(state, r);
@@ -2085,20 +2090,20 @@ function boss3MoveLeft(state, r, v) {
  * offset -- the value the ROM stores after the probe, kept faithfully.
  */
 function boss3EdgeCheck(state, r) {
-  const xhi = r[0x0E];
+  const xhi = r[E_X_HI];
   if (xhi < 2 || xhi >= 0x0A) {                     // $7236 / $723A
-    if ((r[0] & 0x04) === 0) {                      // $7242
-      r[0] = (r[0] & 0xC7) | 0x08;                  // $7248-$724D
-      r[5] ^= 1;                                    // $7253
+    if ((r[E_FLAGS] & 0x04) === 0) {                // $7242
+      r[E_FLAGS] = (r[E_FLAGS] & 0xC7) | 0x08;      // $7248-$724D
+      r[E_FACING] ^= 1;                             // $7253
       state.flow.bossCrit = 1;                      // $7258
       return boss3Arm(state, r);                    // $725B
     }
-    r[0x12] = 0;                                    // $7263: stunned -- stop
+    r[E_VX] = 0;                                    // $7263: stunned -- stop
   }
   if (state.flow.bossCrit) {                        // $7268
-    r[0x1F] = 0x07;                                 // $7277
+    r[E_PROBE_DY] = 0x07;                           // $7277
     attackProbe(state, r);                          // $727A
-    r[0x1F] = 0xF6;                                 // $727E
+    r[E_PROBE_DY] = 0xF6;                           // $727E
   }
   return riseTail(state, r);                        // $7285
 }
@@ -2115,21 +2120,21 @@ function attackTickBoss3(state, r) {
   if (state.flow.bossCrit) {                        // $6221 -> $6253
     if (r[0x14] !== 0) r[0x14]--;                   // $6257-$625C
     let v;
-    if ((r[5] & 0x01) === 0) v = u8(r[0x12] - 1);   // $6261-$626A
-    else v = u8(r[0x12] + 1);                       // $627C-$6281
+    if ((r[E_FACING] & 0x01) === 0) v = u8(r[E_VX] - 1);   // $6261-$626A
+    else v = u8(r[E_VX] + 1);                       // $627C-$6281
     if (v === 0) {                                  // $626B / $6282 -> $6293
       state.flow.bossCrit = 0;
-      r[0] &= 0xC7;
+      r[E_FLAGS] &= 0xC7;
       return riseTail(state, r);
     }
-    r[0x12] = v;
+    r[E_VX] = v;
     return (v & 0x80) ? boss3MoveLeft(state, r, v) : boss3MoveRight(state, r, v);
   }
   if (r[0x14] === 0) return boss3AttackExpiry(state, r);   // $622D
   r[0x14]--;
   if (r[0x14] === 7) {                              // $6232
     attackProbe(state, r);                          // $623C
-    if (r[0] & 0x10) spawnProjectile(state, r, 4);  // $6241-$624C
+    if (r[E_FLAGS] & 0x10) spawnProjectile(state, r, 4);  // $6241-$624C
   }
   return stBoss3(state, r);                         // $62FB -> $7061
 }
@@ -2137,12 +2142,12 @@ function attackTickBoss3(state, r) {
 /** ROM: loc_01_62A0 - normal-attack expiry: chain a dash while the player
  *  stays in range, upgrade to the crit lunge point-blank. */
 function boss3AttackExpiry(state, r) {
-  const wasMelee = (r[0] & 0x08) !== 0;             // $62A1/$62A7
-  r[0] &= 0xC7;                                     // $62A2
+  const wasMelee = (r[E_FLAGS] & 0x08) !== 0;       // $62A1/$62A7
+  r[E_FLAGS] &= 0xC7;                               // $62A2
   if (!wasMelee) return riseTail(state, r);         // $62A9: the ranged one
   const psx = playerScreenX(state);                 // $62B1
-  const diff = u8(psx - r[7]);
-  const playerLeft = psx < r[7];
+  const diff = u8(psx - r[E_SCREEN_X]);
+  const playerLeft = psx < r[E_SCREEN_X];
   const ad = playerLeft ? u8(-diff) : diff;
   if (ad < 0x0C) {                                  // $62B9
     state.flow.bossCrit = 1;                        // $62BD
@@ -2150,11 +2155,11 @@ function boss3AttackExpiry(state, r) {
   }
   if (ad >= 0x60) return riseTail(state, r);        // $62C5
   requestSound(state, 0x27);                        // $62CF: chained dash
-  r[0] |= 0x08;                                     // $62D6
+  r[E_FLAGS] |= 0x08;                               // $62D6
   r[0x14] = 0x0B;                                   // $62E0
-  r[5] = playerLeft ? 1 : 0;                        // $62E6/$62EC
+  r[E_FACING] = playerLeft ? 1 : 0;                 // $62E6/$62EC
   const v = playerLeft ? 0xD0 : 0x30;               // $62E8/$62EF
-  r[0x12] = v;
+  r[E_VX] = v;
   return (v & 0x80) ? boss3MoveLeft(state, r, v) : boss3MoveRight(state, r, v);
 }
 
@@ -2174,36 +2179,36 @@ function boss3AttackExpiry(state, r) {
 function stBoss1(state, r) {
   // $7597: below $10 HP on any non-easy difficulty the boss enrages -- the
   // far band stops idling and chases ($75FB reads it back).
-  if (r[0x16] < 0x10 && state.flow.difficulty !== 0) {
+  if (r[E_HP] < 0x10 && state.flow.difficulty !== 0) {
     state.flow.bossRage = 1;                        // $75A4: $C73D
   }
-  if (r[0] & 0x07) {                                // $75A9-$75B3: stunned or
-    const v = r[0x12];                              // airborne -- move at +$12
+  if (r[E_FLAGS] & 0x07) {                          // $75A9-$75B3: stunned or
+    const v = r[E_VX];                              // airborne -- move at +$12
     return (v & 0x80) ? boss1MoveLeft(state, r, v) : boss1MoveRight(state, r, v);
   }
-  if (r[0] & 0x18) return riseTail(state, r);       // $75D1: mid-attack
+  if (r[E_FLAGS] & 0x18) return riseTail(state, r);       // $75D1: mid-attack
   if (r[1] & 0x60) {                                // $75D8/$75DD: mid-anim
-    r[0] &= ~0x20;                                  // $7678: RES 5
+    r[E_FLAGS] &= ~0x20;                            // $7678: RES 5
     return riseTail(state, r);
   }
 
   const psx = playerScreenX(state);                 // $75E7 vs the cached +7
-  const diff = u8(psx - r[7]);
+  const diff = u8(psx - r[E_SCREEN_X]);
   if (diff === 0) return boss1MirrorHop(state, r);  // $75EB -> $767D
-  const playerLeft = psx < r[7];
+  const playerLeft = psx < r[E_SCREEN_X];
   const ad = playerLeft ? u8(-diff) : diff;
 
   if (ad < 0x1C) {                                  // $75F2: close band
     if (ad < 8) return boss1MirrorHop(state, r);    // $7627: dead zone
-    if (absDiff8(playerScreenY(state), r[8]) >= 0x20) {   // $7636
+    if (absDiff8(playerScreenY(state), r[E_SCREEN_Y]) >= 0x20) {   // $7636
       return boss1MirrorHop(state, r);
     }
     if (state.player.iframes !== 0) return boss1MirrorHop(state, r);  // $763A
     requestSound(state, 0x2B);                      // $7645
-    r[0] |= 0x08;                                   // $7648: melee attack
-    r[5] = playerLeft ? 1 : 0;                      // $7656
+    r[E_FLAGS] |= 0x08;                             // $7648: melee attack
+    r[E_FACING] = playerLeft ? 1 : 0;               // $7656
     r[0x14] = 0x1F;                                 // $765D
-    r[0] &= ~0x20;                                  // $7660: RES 5
+    r[E_FLAGS] &= ~0x20;                            // $7660: RES 5
     // $7662: the attack-crit roll, (rLY ^ $FFB1) < $70.
     //
     // APPROXIMATE, and do not let the constant fool you. rLY here is "how many
@@ -2225,18 +2230,18 @@ function stBoss1(state, r) {
     return riseTail(state, r);                      // $7674
   }
   if (ad < 0x60 || state.flow.bossRage) {           // $75F7 / $75FB: chase
-    r[5] = playerLeft ? 1 : 0;                      // $7619-$761F
+    r[E_FACING] = playerLeft ? 1 : 0;               // $7619-$761F
     return boss1Hop(state, r);                      // $7624 -> $76C5
   }
-  r[5] = playerLeft ? 1 : 0;                        // $7604-$760B: far -- idle
-  r[0] |= 0x20;                                     // $7610: SET 5
+  r[E_FACING] = playerLeft ? 1 : 0;                 // $7604-$760B: far -- idle
+  r[E_FLAGS] |= 0x20;                               // $7610: SET 5
   return fallTail(state, r);                        // $7612 (vx NOT zeroed)
 }
 
 /** ROM: loc_01_767D - dead zone / same column: face the player's mirror
  *  (the walkerFacePause quirk again: $FF88 XOR 1, not relative position). */
 function boss1MirrorHop(state, r) {
-  r[5] = state.player.facing ^ 1;                   // $767F
+  r[E_FACING] = state.player.facing ^ 1;            // $767F
   return boss1Hop(state, r);                        // $7687
 }
 
@@ -2248,9 +2253,9 @@ function boss1MirrorHop(state, r) {
  * crit, see animTick) and aims the horizontal velocity at the player.
  */
 function boss1Hop(state, r) {
-  r[0] &= ~0x18;                                    // $76C7/$76C9
-  if (r[0] & 0x01) return riseTail(state, r);       // $76CB
-  if (r[0] & 0x02) return fallTail(state, r);       // $76D0
+  r[E_FLAGS] &= ~0x18;                              // $76C7/$76C9
+  if (r[E_FLAGS] & 0x01) return riseTail(state, r);       // $76CB
+  if (r[E_FLAGS] & 0x02) return fallTail(state, r);       // $76D0
   r[1] |= 0x40;                                     // $76D6: wind-up
   boss1Aim(state, r);                               // $76DD -> sub_01_79DB
   r[0x18] = 0x0F;                                   // $76E4: turn timer
@@ -2264,14 +2269,14 @@ function boss1Hop(state, r) {
  * the neg16q idiom -- do not "fix" one to match the other.
  */
 function boss1Aim(state, r) {
-  const ex = (r[0x0E] << 8) | r[0x0F];
+  const ex = (r[E_X_HI] << 8) | r[E_X_LO];
   const sum = ex + ((0x10000 - (state.player.x & 0xFFFF)) & 0xFFFF);
   const carry = sum > 0xFFFF;                       // $79EF: ADD HL,BC
   let d = sum & 0xFFFF;
   if (!carry) d = (0x10000 - d) & 0xFFFF;           // $79F2: negate, E = 0
   let n = 0;
   while (d >= 0x4A) { d -= 0x4A; n++; }             // $7A05: repeated -$4A
-  r[0x12] = carry ? u8(-n) : u8(n);                 // $7A11-$7A17
+  r[E_VX] = carry ? u8(-n) : u8(n);                 // $7A11-$7A17
 }
 
 /** ROM: loc_01_76AF - airborne rightward move. A wall snaps X-lo to centre
@@ -2280,8 +2285,8 @@ function boss1Aim(state, r) {
 function boss1MoveRight(state, r, v) {
   addX(r, i8(v));                                   // $76AF
   if (probeRight(state, r) !== 0) {                 // $76B2
-    r[0x0F] = 0x80;                                 // $76BA
-    r[0x12] = 0;                                    // $76BF
+    r[E_X_LO] = 0x80;                               // $76BA
+    r[E_VX] = 0;                                    // $76BF
     return boss1Hop(state, r);                      // falls into $76C5
   }
   return riseTail(state, r);                        // $7749
@@ -2291,8 +2296,8 @@ function boss1MoveRight(state, r, v) {
 function boss1MoveLeft(state, r, v) {
   addX(r, i8(v));
   if (probeLeft(state, r) !== 0) {                  // $7727
-    r[0x0F] = 0x80;
-    r[0x12] = 0;
+    r[E_X_LO] = 0x80;
+    r[E_VX] = 0;
     return boss1Hop(state, r);
   }
   return riseTail(state, r);

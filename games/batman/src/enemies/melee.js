@@ -16,7 +16,10 @@
 // exists so it does not have to.
 
 import { u8, u16 } from '../state.js';
-import { SLOTS, F_ACTIVE } from './record.js';
+import {
+  SLOTS, F_ACTIVE,
+  E_FLAGS, E_STATE, E_SCREEN_X, E_SCREEN_Y, E_BOX_L, E_BOX_U, E_HP,
+} from './record.js';
 import { absDiff8, requestSound } from './util.js';
 import { c740Idle } from '../effects.js';
 import { spawnEffect } from '../doors.js';
@@ -84,20 +87,20 @@ export function meleeHitTest(state, probeX, probeY) {
 
   for (let slot = 0; slot < SLOTS; slot++) {
     const r = state.enemies[slot];
-    if ((r[0] & F_ACTIVE) === 0) continue;          // $2660
-    const st = r[2];
+    if ((r[E_FLAGS] & F_ACTIVE) === 0) continue;    // $2660
+    const st = r[E_STATE];
     if (st === 0x0D || st === 0x0B || st === 0x04) continue;   // $2667-$2673
 
-    const halfW = u8(r[0x0B] - 1);                  // $2685: DEC A
-    const halfH = r[0x0C];
+    const halfW = u8(r[E_BOX_L] - 1);               // $2685: DEC A
+    const halfH = r[E_BOX_U];
 
     // --- X ($268D): strict <, then one retry 8 px back toward the player.
-    if (absDiff8(r[7], probeSX) >= halfW) {
+    if (absDiff8(r[E_SCREEN_X], probeSX) >= halfW) {
       const back = u8(p.facing === 0 ? probeSX - 8 : probeSX + 8);  // $269B/$26A0
-      if (absDiff8(r[7], back) >= halfW) continue;  // $26AA
+      if (absDiff8(r[E_SCREEN_X], back) >= halfW) continue;  // $26AA
     }
     // --- Y ($26AD): strict <, no retry.
-    if (absDiff8(r[8], probeSY) >= halfH) continue; // $26B3
+    if (absDiff8(r[E_SCREEN_Y], probeSY) >= halfH) continue; // $26B3
 
     // $26B7: `LD A,[$C740] / CP $FF / JR NZ` -- $C740, and it is NOT $C750.
     // This used to read flow.bossMode with a note saying "revisit when bosses
@@ -109,7 +112,7 @@ export function meleeHitTest(state, probeX, probeY) {
     if (!c740Idle(state)) continue;
 
     requestSound(state, 0x19);                      // $26BE
-    r[0] |= 0x04;                                   // $26C4: hit-flash
+    r[E_FLAGS] |= 0x04;                             // $26C4: hit-flash
     r[0x17] = t.enemyStunFrames;                    // $26CA: $3C
 
     // $26CD: the crit window -- rLY is MODELLED, see the header comment.
@@ -117,8 +120,8 @@ export function meleeHitTest(state, probeX, probeY) {
     const crit = ((ly ^ state.frame) & 0xFF) < t.critWindow
                  && state.level.bossId === 0;       // $26D7: $C73E == 0
 
-    const dmg = crit ? r[0x16] : t.meleeDamage;     // $26E3 vs $26F0
-    r[0x16] = Math.max(0, r[0x16] - dmg);           // $26F6: SUB, clamp 0
+    const dmg = crit ? r[E_HP] : t.meleeDamage;     // $26E3 vs $26F0
+    r[E_HP] = Math.max(0, r[E_HP] - dmg);           // $26F6: SUB, clamp 0
     requestSound(state, crit ? 0x18 : 0x21);
 
     // $26FC-$271B: the hit spark. The staging bytes take the PLAYER's position

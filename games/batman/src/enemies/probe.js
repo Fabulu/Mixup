@@ -17,6 +17,11 @@
 
 import { u8, i8, u16, mapCollisionByIndex } from '../state.js';
 import {
+  E_FLAGS, E_STATE, E_FACING, E_ATTR, E_BOX_R, E_BOX_L, E_BOX_U, E_BOX_D,
+  E_X_HI, E_X_LO, E_Y_HI, E_Y_LO, E_VX, E_HP, E_FLOOR_SNAP, E_JUMP_VEL,
+  E_PROBE_DX, E_PROBE_DY,
+} from './record.js';
+import {
   addX, absDiff8, neg16q, playerScreenX, playerScreenY, requestSound,
 } from './util.js';
 
@@ -39,8 +44,8 @@ const collIdx = mapCollisionByIndex;
  * damage. Returns $FF on a player hit.
  */
 export function probeCore(state, r, dx, dy, mode) {
-  const px = u16(((r[0x0E] << 8) | r[0x0F]) + dx);  // $FFBA/$FFBB
-  const py = u16(((r[0x10] << 8) | r[0x11]) + dy);  // $FFBC/$FFBD
+  const px = u16(((r[E_X_HI] << 8) | r[E_X_LO]) + dx);  // $FFBA/$FFBB
+  const py = u16(((r[E_Y_HI] << 8) | r[E_Y_LO]) + dy);  // $FFBC/$FFBD
   if (py >> 8 >= 0x20) return 0;                    // $6680: below the world
   const idx = (px >> 8) * 16 + ((py >> 8) & 0x0F);  // sub_00_11B9
   const coll = collIdx(state, idx);
@@ -50,24 +55,24 @@ export function probeCore(state, r, dx, dy, mode) {
 
   if (mode <= 2) {                                  // $66EA: horizontal
     state.enemyBesideIdx = idx + (mode === 1 ? 16 : -16);          // $FFBE
-    const subY = r[0x11] >> 4;                      // $671B: the RECORD's Y-lo
-    if (subY < u8(r[0x0C] - 2)) {                   // $6716: pokes above
+    const subY = r[E_Y_LO] >> 4;                    // $671B: the RECORD's Y-lo
+    if (subY < u8(r[E_BOX_U] - 2)) {                // $6716: pokes above
       const above = collIdx(state, idx - 1);
       if (above !== 0) return above;                // $6735
     }
-    if (u8(subY + u8(r[0x0D] - 2)) >= 0x10) {       // $6723: pokes below
+    if (u8(subY + u8(r[E_BOX_D] - 2)) >= 0x10) {    // $6723: pokes below
       const below = collIdx(state, idx + 1);
       if (below !== 0) return below;                // $673F
     }
     return 0;
   }
 
-  const subX = r[0x0F] >> 4;                        // $66AF: vertical
-  if (subX < u8(r[0x0B] - 2)) {                     // $66B4: past the left edge
+  const subX = r[E_X_LO] >> 4;                      // $66AF: vertical
+  if (subX < u8(r[E_BOX_L] - 2)) {                  // $66B4: past the left edge
     const west = collIdx(state, idx - 16);
     if (west !== 0) return west;                    // $66DC
   }
-  if (u8(subX + u8(r[0x0A] - 2)) >= 0x10) {         // $66BF: right edge
+  if (u8(subX + u8(r[E_BOX_R] - 2)) >= 0x10) {      // $66BF: right edge
     const east = collIdx(state, idx + 16);
     if (east !== 0) return east;                    // $66D1
   }
@@ -92,13 +97,13 @@ function attackEmpty(state, r, px, py) {
   if (p.iframes !== 0) return 0;                    // $677D
 
   const t = state.tables;                           // $6790: 1:$6BC1[state]
-  let dmg = t.enemyContactDamage[r[2]] ?? 0;
+  let dmg = t.enemyContactDamage[r[E_STATE]] ?? 0;
   if (dmg & 0x80) {                                 // $6795: + 1:$6BCE[level-1]
     dmg = (dmg & 0x7F) + (t.levelDamageBonus[state.level.number - 1] ?? 0);
   }
   p.hp = Math.max(0, p.hp - dmg);                   // sub_00_2777
   requestSound(state, 0x12);
-  p.iframes = (r[5] & 0x01) ? 0xDA : 0x5A;          // $67AD: by ENEMY facing
+  p.iframes = (r[E_FACING] & 0x01) ? 0xDA : 0x5A;   // $67AD: by ENEMY facing
   return 0xFF;
 }
 
@@ -123,10 +128,10 @@ function objectPlatform(state, r, px, py) {
     if (!hit) hit = absDiff8(ox, u8(sx + 0x06)) < halfW;     // $6844: +6 px
     if (!hit) continue;
     if (absDiff8(oy, sy) >= halfH) continue;        // $684E
-    const c = u8(r[0x0D] + halfH - 1);              // $685C
+    const c = u8(r[E_BOX_D] + halfH - 1);           // $685C
     const ny = u16(((a[3] << 8) | a[4]) + neg16q((c << 4) & 0xFFFF));  // $6874
-    r[0x10] = ny >> 8;                              // $6879
-    r[0x11] = ny & 0xFF;
+    r[E_Y_HI] = ny >> 8;                            // $6879
+    r[E_Y_LO] = ny & 0xFF;
     return 0xFF;
   }
   return 0;
@@ -138,17 +143,17 @@ function objectPlatform(state, r, px, py) {
  * the NEXT column over is not -- run the wall-ahead assist.
  */
 export function probeRight(state, r) {
-  return wallResolve(state, r, probeCore(state, r, r[0x0A] << 4, 0, 1), 1);
+  return wallResolve(state, r, probeCore(state, r, r[E_BOX_R] << 4, 0, 1), 1);
 }
 
 export function probeLeft(state, r) {
-  return wallResolve(state, r, probeCore(state, r, -(r[0x0B] << 4), 0, 2), 2);
+  return wallResolve(state, r, probeCore(state, r, -(r[E_BOX_L] << 4), 0, 2), 2);
 }
 
 /** ROM: $63E8 / $64CF - shared tail of both horizontal probes. */
 function wallResolve(state, r, coll, mode) {
   if (coll === 0x02 || coll === 0x03) return 1;     // conveyors are walls
-  if (coll === 0x08) { r[9] = 0x80; return 0; }     // $648A: water
+  if (coll === 0x08) { r[E_ATTR] = 0x80; return 0; }     // $648A: water
   if (coll === 0xFD) return 1;                      // spikes
   if ((coll & 0x1F) === 0x1F) return 1;             // doors (catches $FF too)
   if (coll >= 0x20) return 0;                       // pickups pass through
@@ -169,32 +174,32 @@ function wallResolve(state, r, coll, mode) {
  * signature move, but it applies to every non-boss state.
  */
 export function wallAhead(state, r, mode) {
-  const st = r[2];
+  const st = r[E_STATE];
   if (st === 6 || st === 7 || st === 8) return;     // $641C
   if (r[1] & 0x60) return;                          // $6429: mid-animation
-  if (r[0] & 0x03) return;                          // $6431: airborne
+  if (r[E_FLAGS] & 0x03) return;                    // $6431: airborne
   const boss4 = state.level.bossId === 4;           // $643D: $C73E
   if (boss4 ? mode !== 2 : mode === 2) {            // $6444 / $644D
-    r[5] = 1; r[0x12] = 0xF4;                       // $645A
+    r[E_FACING] = 1; r[E_VX] = 0xF4;                // $645A
   } else {
-    r[5] = 0; r[0x12] = 0x0C;                       // $6454
+    r[E_FACING] = 0; r[E_VX] = 0x0C;                // $6454
   }
   if (r[1] & 0x80) { r[1] &= 0x7F; return; }        // $6468: latch alternates
   r[1] |= 0x80;                                     // $6470
-  r[0] = (r[0] & 0xC7) | 0x01;                      // rising
-  r[0x13] = r[0x1C];                                // $647D: jump velocity
+  r[E_FLAGS] = (r[E_FLAGS] & 0xC7) | 0x01;          // rising
+  r[0x13] = r[E_JUMP_VEL];                          // $647D: jump velocity
 }
 
 /** ROM: sub_01_64FA - ceiling probe (mode 3), offset -halfH-up. */
 export function probeUp(state, r) {
-  const coll = probeCore(state, r, 0, -(r[0x0C] << 4), 3);
+  const coll = probeCore(state, r, 0, -(r[E_BOX_U] << 4), 3);
   if (coll === 0x02 || coll === 0x03) return 1;
-  if (coll === 0x08) { r[9] = 0x80; return 0; }
+  if (coll === 0x08) { r[E_ATTR] = 0x80; return 0; }
   if (coll === 0xFD) {                              // $6542 -> $6552: spikes
-    if ((r[0] & 0x04) === 0) {
-      r[0] |= 0x04;                                 // stun + blink
+    if ((r[E_FLAGS] & 0x04) === 0) {
+      r[E_FLAGS] |= 0x04;                           // stun + blink
       r[0x17] = 0x3C;
-      r[0x16] = u8(r[0x16] - 1);                    // $6565: spikes cost 1 HP
+      r[E_HP] = u8(r[E_HP] - 1);                    // $6565: spikes cost 1 HP
     }
     return 0;
   }
@@ -210,14 +215,14 @@ export function probeUp(state, r) {
  * or the object-platform hit which snapped Y itself) lands WITHOUT the snap.
  */
 export function probeDown(state, r) {
-  const dy = r[0x0D] << 4;
+  const dy = r[E_BOX_D] << 4;
   const coll = probeCore(state, r, 0, dy, 4);
   if (coll === 0x02 || coll === 0x03) {             // $65EE / $6602: conveyor
-    r[0x11] = r[0x1B];                              // snap to the blob's foot line
+    r[E_Y_LO] = r[E_FLOOR_SNAP];                    // snap to the blob's foot line
     addX(r, coll === 0x02 ? 4 : -4);
     return 1;
   }
-  if (coll === 0x08) { r[9] = 0x80; return 0; }
+  if (coll === 0x08) { r[E_ATTR] = 0x80; return 0; }
   if (coll === 0xFD) return floorSnap(state, r, dy);   // $65AA -> $65C0
   if (coll === 0xFF) return 0xFF;                   // $65AE
   if ((coll & 0x1F) === 0x1F) return 1;
@@ -228,10 +233,10 @@ export function probeDown(state, r) {
 
 /** ROM: loc_01_65C0 - Y = probedRow*256 - halfH-down*16. */
 function floorSnap(state, r, dy) {
-  const row = u16(((r[0x10] << 8) | r[0x11]) + dy) >> 8;   // $FFBC
+  const row = u16(((r[E_Y_HI] << 8) | r[E_Y_LO]) + dy) >> 8;   // $FFBC
   const ny = u16((row << 8) - dy);
-  r[0x10] = ny >> 8;
-  r[0x11] = ny & 0xFF;
+  r[E_Y_HI] = ny >> 8;
+  r[E_Y_LO] = ny & 0xFF;
   return 1;
 }
 
@@ -240,8 +245,8 @@ function floorSnap(state, r, dy) {
  * offsets (X negated when facing left, Y sign-extended), both in pixels.
  */
 export function attackProbe(state, r) {
-  let dx = (r[0x1E] << 4) & 0xFFFF;
-  if (r[5] & 0x01) dx = neg16q(dx);                 // $6639
-  const dy = u16(i8(r[0x1F]) << 4);                 // $6648
+  let dx = (r[E_PROBE_DX] << 4) & 0xFFFF;
+  if (r[E_FACING] & 0x01) dx = neg16q(dx);          // $6639
+  const dy = u16(i8(r[E_PROBE_DY]) << 4);           // $6648
   return probeCore(state, r, dx, dy, 5);
 }

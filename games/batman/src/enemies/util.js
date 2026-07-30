@@ -11,18 +11,19 @@
 // which is why this block came out of src/enemies.js first.
 
 import { u8, u16 } from '../state.js';
+import { E_X_HI, E_X_LO, E_Y_HI, E_Y_LO } from './record.js';
 
 /** ROM: sub_01_63AD - 16-bit big-endian add on the record. */
 export function addX(r, d) {
-  const v = u16(((r[0x0E] << 8) | r[0x0F]) + d);
-  r[0x0E] = v >> 8;
-  r[0x0F] = v & 0xFF;
+  const v = u16(((r[E_X_HI] << 8) | r[E_X_LO]) + d);
+  r[E_X_HI] = v >> 8;
+  r[E_X_LO] = v & 0xFF;
 }
 
 export function addY(r, d) {
-  const v = u16(((r[0x10] << 8) | r[0x11]) + d);
-  r[0x10] = v >> 8;
-  r[0x11] = v & 0xFF;
+  const v = u16(((r[E_Y_HI] << 8) | r[E_Y_LO]) + d);
+  r[E_Y_HI] = v >> 8;
+  r[E_Y_LO] = v & 0xFF;
 }
 
 /**

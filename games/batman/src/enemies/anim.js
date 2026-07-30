@@ -15,6 +15,10 @@
 // queue.
 
 import { u8 } from '../state.js';
+import {
+  E_FLAGS, E_STATE, E_ANIM_TIMER, E_ANIM_FRAME, E_FACING, E_SCREEN_X,
+  E_SCREEN_Y, E_JUMP_VEL,
+} from './record.js';
 import { drawMetasprite, drawYBob } from '../render/metasprite.js';
 
 /**
@@ -23,9 +27,9 @@ import { drawMetasprite, drawYBob } from '../render/metasprite.js';
  * per-state, indexed on state-1. Returns the metasprite id.
  */
 export function animTick(state, r) {
-  const st = r[2];
-  const facing = r[5];
-  const f0 = r[0];
+  const st = r[E_STATE];
+  const facing = r[E_FACING];
+  const f0 = r[E_FLAGS];
   if (f0 & 0x10) {                                  // $5F39: ranged-attack pose
     // $5F4F-$5F75: 2/7/8 have fixed tables; the DEFAULT arm (state 9) is the
     // one $C73F swaps to $6B7D -- not state 8, as an older comment claimed.
@@ -71,7 +75,7 @@ export function animTick(state, r) {
   if (r[1] & 0x40) {                                // $5EA0: turn animation
     if (r[0x18] === 0) {
       r[1] &= ~0x40;                                // $5ECF
-      r[0] |= 0x01;                                 // the jump launches NOW
+      r[E_FLAGS] |= 0x01;                           // the jump launches NOW
       // $5ED8: on LEVEL 4 (the $FFB0 number, not $C73E) the expiry rolls a
       // crit: (rLY ^ $FFB1) < $80 sets $C741 and adds $10 to the launch
       // velocity -- boss 1's high spinning hop. rLY at this roll MEASURED
@@ -82,10 +86,10 @@ export function animTick(state, r) {
       // All four measured outcomes agree (125/50 -> crit, 221/146 -> plain).
       if (state.level.number === 4 && state.frame < 0x80) {
         state.flow.bossHop = 1;                     // $5EEA: $C741
-        r[0x13] = u8(r[0x1C] + 0x10);               // $5EF2
+        r[0x13] = u8(r[E_JUMP_VEL] + 0x10);         // $5EF2
         return r[6];
       }
-      r[0x13] = r[0x1C];                            // $5EF6: jump velocity
+      r[0x13] = r[E_JUMP_VEL];                      // $5EF6: jump velocity
       return r[6];
     }
     r[0x18]--;
@@ -96,25 +100,25 @@ export function animTick(state, r) {
 
 /** ROM: loc_01_5FE6 - r[3] = period<<4|subtimer, r[4] = (frames-1)<<4|frame. */
 function walkCycle(state, r, facing) {
-  const period = r[3] >> 4;
-  const sub = (r[3] & 0x0F) + 1;
+  const period = r[E_ANIM_TIMER] >> 4;
+  const sub = (r[E_ANIM_TIMER] & 0x0F) + 1;
   let frame;
-  const hi = r[4] >> 4;
+  const hi = r[E_ANIM_FRAME] >> 4;
   if (sub < period) {                               // $5FF5 -> $601C
-    r[3] = (period << 4) | sub;
-    frame = r[4] & 0x0F;
+    r[E_ANIM_TIMER] = (period << 4) | sub;
+    frame = r[E_ANIM_FRAME] & 0x0F;
   } else {
-    r[3] = period << 4;                             // $5FF9
-    frame = (r[4] & 0x0F) + 1;
-    if (frame < hi + 1) r[4] = (hi << 4) | frame;   // $6013
-    else { frame = 0; r[4] = hi << 4; }             // $6009
+    r[E_ANIM_TIMER] = period << 4;                  // $5FF9
+    frame = (r[E_ANIM_FRAME] & 0x0F) + 1;
+    if (frame < hi + 1) r[E_ANIM_FRAME] = (hi << 4) | frame;   // $6013
+    else { frame = 0; r[E_ANIM_FRAME] = hi << 4; }  // $6009
   }
   // $602A: offset = facing * frames + frame (the ADD loop), frames = hi+1.
-  let idx = arw(state, 0x6891 + (r[2] - 1) * 2) + facing * (hi + 1) + frame;
+  let idx = arw(state, 0x6891 + (r[E_STATE] - 1) * 2) + facing * (hi + 1) + frame;
   // $6046-$605A: on level 14, a state-9 record with $C741 set reads its walk
   // poses 4 further on -- the Joker's cane-out row. $C741 here is the band
   // flag boss4Walk/the retreat maintain, not the boss-1/2 meaning.
-  if (state.level.number === 0x0E && state.flow.bossHop !== 0 && r[2] === 9) {
+  if (state.level.number === 0x0E && state.flow.bossHop !== 0 && r[E_STATE] === 9) {
     idx += 4;
   }
   return ar(state, idx);
@@ -143,8 +147,15 @@ export function queueDraw(state, id, r, attr, alt) {
   // the enemy records byte-identical on both sides (f76 slot 0 flags $81 -> &3
   // = 1 -> the cartridge skips). Zero frames where the cartridge bobbed and the
   // port did not.
+  //
+  // LEFT AS THE RAW +0, and it is the ONLY site the Phase-8 sweep skipped.
+  // tests/raster.test.js greps this exact expression and asserts the operand
+  // digit is 0. Writing E_FLAGS here would force that test to accept the name
+  // instead of the number, which makes it agree with the code by construction
+  // -- and the whole reason it exists is that the port once shipped r[1] here
+  // while every drawYBob unit test stayed green.
   const bob = drawYBob(state, (r[0] & 0x03) === 0);
-  state.enemyDraws.push({ id, x: r[7], y: u8(r[8] + bob), attr, alt });
+  state.enemyDraws.push({ id, x: r[E_SCREEN_X], y: u8(r[E_SCREEN_Y] + bob), attr, alt });
 }
 
 /**

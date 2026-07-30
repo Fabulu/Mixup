@@ -571,3 +571,84 @@ test('a vehicle already mid-attack does not fire again', () => {
   updateEnemies(s);
   assert.equal(s.drops.filter((d) => d[0] !== 0).length, 0);
 });
+
+// ---------------------------------------------------------------------------
+// The record-offset constants (Phase 8).
+//
+// EVERY VALUE BELOW IS SPELLED AS A LITERAL, on purpose. These constants exist
+// so the handlers read as prose; the moment a name and its byte disagree, the
+// port silently addresses the wrong field and behaves plausibly. The ~278 raw
+// indices elsewhere in tests/ were deliberately NOT converted for the same
+// reason -- a test that takes the constant in as an argument checks nothing.
+// This is the one place tests/ and src/enemies/record.js are compared.
+// ---------------------------------------------------------------------------
+
+test('the record-offset constants are the bytes they name', async () => {
+  const R = await import('../src/enemies/record.js');
+
+  // Master reference §5.2, refined against the handlers -- the same table
+  // src/enemies/record.js carries as its module header.
+  const LAYOUT = {
+    E_FLAGS: 0x00,       // b7 active, b6 disabled, b5 idle, b4 ranged,
+                         // b3 melee, b2 hit-flash, b1 falling, b0 rising
+    E_STATE: 0x02,       // 1-13, the dispatch index at 1:$50D3
+    E_ANIM_TIMER: 0x03,  // period<<4 | subtimer      (loc_01_5FE6)
+    E_ANIM_FRAME: 0x04,  // (frames-1)<<4 | frame     (loc_01_5FE6)
+    E_FACING: 0x05,
+    E_SCREEN_X: 0x07,    // written by loc_01_5CA8, read one frame stale
+    E_SCREEN_Y: 0x08,
+    E_ATTR: 0x09,        // OAM attr; $80 = behind BG
+    E_BOX_R: 0x0A,
+    E_BOX_L: 0x0B,
+    E_BOX_U: 0x0C,
+    E_BOX_D: 0x0D,
+    E_X_HI: 0x0E,
+    E_X_LO: 0x0F,
+    E_Y_HI: 0x10,
+    E_Y_LO: 0x11,
+    E_VX: 0x12,
+    E_HP: 0x16,
+    E_CEIL_SNAP: 0x1A,   // $5C04
+    E_FLOOR_SNAP: 0x1B,  // $65EE / $6602
+    E_JUMP_VEL: 0x1C,    // $647D / $5EF6
+    E_SPEED_CAP: 0x1D,
+    E_PROBE_DX: 0x1E,    // sub_01_6616, facing-signed, px
+    E_PROBE_DY: 0x1F,    // sub_01_6616, sign-extended, px
+  };
+
+  for (const [name, value] of Object.entries(LAYOUT)) {
+    assert.equal(R[name], value,
+      `${name} must be +$${value.toString(16).toUpperCase().padStart(2, '0')}`);
+  }
+
+  // Exactly twenty-four, and not one more. The eight state-dependent bytes --
+  // +$01, +$06, +$13, +$14, +$15, +$17, +$18, +$19 -- must NOT gain a global
+  // name: state $0B re-purposes seven of them and tryActivate reads +$01 as a
+  // spawn subtype on records that are not yet active, so a global name there
+  // would read as a lie while behaving identically. See record.js.
+  const exported = Object.keys(R).filter((k) => k.startsWith('E_')).sort();
+  assert.deepEqual(exported, Object.keys(LAYOUT).sort());
+  assert.equal(exported.length, 24);
+
+  const FORBIDDEN = [0x01, 0x06, 0x13, 0x14, 0x15, 0x17, 0x18, 0x19];
+  const named = new Set(Object.values(LAYOUT));
+  for (const off of FORBIDDEN) {
+    assert.ok(!named.has(off),
+      `+$${off.toString(16)} is state-dependent and must stay unnamed`);
+  }
+  // 24 named + 8 forbidden = the whole 32-byte record, with none left over.
+  assert.equal(named.size + FORBIDDEN.length, 32);
+
+  // The flag bits are the byte-0 bit layout, not a second opinion on it.
+  assert.equal(R.F_ACTIVE, 0x80);
+  assert.equal(R.F_DISABLED, 0x40);
+  assert.equal(R.F_IDLE, 0x20);
+  assert.equal(R.F_RANGED, 0x10);
+  assert.equal(R.F_MELEE, 0x08);
+  assert.equal(R.F_FLASH, 0x04);
+  assert.equal(R.F_FALLING, 0x02);
+  assert.equal(R.F_RISING, 0x01);
+
+  assert.equal(R.SLOTS, 8);
+  assert.equal(R.RECORD, 32);
+});
