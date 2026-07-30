@@ -66,23 +66,24 @@ bugs. Two are worth knowing before reading any of this code:
   separate times, once invalidating an already-shipped handler.
 - **Byte-exact data is not a correct picture.** A screen can match the
   cartridge's VRAM to the byte and still render wrong, because what is missing
-  is not data but whether anything draws it. That is why two gate stages
+  is not data but whether anything draws it. That is why three gate stages
   compare pixels.
 
 ## Testing
 
 ```sh
-npm run test-all              # all 21 stages
+npm run test-all              # all 26 stages
 npm run test-all -- --fast    # skip every stage that needs PyBoy
 npm run test-all -- --only raster-bands     # one stage
 npm test                      # unit tests only
 ```
 
-23 stages, all green: 687 unit tests, 48 frame-exact input scenarios, and
+26 stages, all green: 691 unit tests, 50 frame-exact input scenarios, and
 dedicated oracles for map objects, doors, the per-level subsystems, both death
 sequences, the raster program, progress flow, every screen, and all 47 sound
-ids. Two of them compare **pixels** rather than memory — added after two real
-bugs turned out to be invisible to byte-exact VRAM comparison.
+ids. Three of them compare **pixels** rather than memory — the stage-intro
+card, the ending and the death sequence — each added after a real bug turned
+out to be invisible to byte-exact VRAM comparison.
 
 The oracle runs the real ROM headless under PyBoy and diffs our state against
 it frame by frame. It exists so "faithful" is a checkable property rather than
@@ -118,10 +119,9 @@ retired and their ripper scripts deleted. `src/` contains no ROM data at all —
 every table travels through `assets/manifest.json`, and `tools/verify_assets.py`
 re-reads each one from raw file offsets so the exporter cannot verify itself.
 
-Known remaining gaps, all small and all documented in `SAVEPOINT.md`: a 2–3 px
-sprite bob on four levels (`sub_00_0F56`), the melee hit-spark effect, the OAM
-ordering of the GAME OVER lettering's own burst (the HUD half of that
-alternation is ported), and coverage — not code — for level 6's alternate
+Known remaining gaps, all small and all documented in `SAVEPOINT.md`: the melee
+hit-spark effect, the OAM ordering of the GAME OVER lettering's own burst (the
+HUD half of that alternation is ported), and coverage — not code — for level 6's alternate
 tile-animation table, which is in fact the DOMINANT arm once the player moves
 (measured: 732 of 800 frames), not the unreachable one this sentence used to
 claim. One deliberate deviation is documented
@@ -148,7 +148,11 @@ Two habits that are not optional:
 - **Cite the ROM address** on every non-obvious line. It is how the next person
   checks your work without re-deriving it.
 - **A new check must be seen to fail.** Revert the fix, watch it go red,
-  restore. Two checks here sat green through the bug they were written for.
+  restore. Four checks here sat green through the very bug they were written
+  for, in four different ways: one asserted only that rendering did not throw,
+  one set up state the application never has, one sampled frames that never
+  changed, and one took the answer in as an argument. `docs/03-VERIFICATION.md`
+  lessons 37-41.
 
 ## Licence
 

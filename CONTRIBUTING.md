@@ -59,7 +59,7 @@ simply hard, or ugly, or strange. Do not invent a fix to match an expectation.
 
 ```sh
 npm test                       # unit tests — these run WITHOUT the ROM
-npm run test-all               # all 21 stages (needs PyBoy + your cartridge)
+npm run test-all               # all 26 stages (needs PyBoy + your cartridge)
 npm run test-all -- --fast     # skip everything that needs PyBoy
 npm run test-all -- --only raster-bands
 ```

@@ -36,8 +36,8 @@ buttons from `R L U D A B`. `20:,40:R` = 20 idle frames then 40 holding right.
 
 ## Current fidelity
 
-`node tools/oracle/regress.mjs` runs the whole corpus: **48 of 48 scenarios
-(13,519 frames, levels 1/3/4/5/8/9/11/12/14) are bit-exact on every field,
+`node tools/oracle/regress.mjs` runs the whole corpus: **50 of 50 scenarios
+(14,519 frames, levels 1/3/4/5/6/8/9/11/12/14) are bit-exact on every field,
 camera included.**
 See **## Test suite** for the per-scenario table.
 
@@ -548,7 +548,7 @@ spends half a minute inside an emulator.
 
 ```
 npm run test-all                 # everything
-npm run test-all -- --fast       # skip the 18 PyBoy stages
+npm run test-all -- --fast       # skip the 20 PyBoy stages
 npm run test-all -- --keep-going # do not stop at the first failing stage
 node tools/test-all.mjs --only asset-integrity
 ```
@@ -558,6 +558,9 @@ node tools/test-all.mjs --only asset-integrity
 | `unit-tests` | `node --test tests/` | each `src/*.js` routine in isolation | no |
 | `tunables-check` | `python tools/gen_tunables.py --check` | all 44 constants still equal the ROM bytes at their cited file offsets | no |
 | `sound-driver` | `node tools/oracle/sounddiff.mjs --all` | every recorded sound id, all four channels plus NR50/NR51 | no |
+| `oam-wrap` | `node tools/oracle/oamwrap.mjs` | every queued sprite coordinate stays inside the byte an OAM entry can hold | no |
+| `l14-init` | `node tools/oracle/l14init.mjs` | level 14's entrance block, value by value, on all three difficulties | no |
+| `level6-clear` | `node tools/oracle/l6clear.mjs` | clearing level 6 reaches level 7 AND the screen is still visible | no |
 | `asset-integrity` | `python tools/verify_assets.py` | `assets/` is what the real game loads, for all 14 levels | **yes** |
 | `vram-scripts` | `node tools/oracle/vramdiff.mjs --record` | `sub_00_0A0E`'s write stream: address, value AND order | **yes** |
 | `title-build` | `node tools/oracle/titlediff.mjs --record` | title + round-select VRAM built from ROM data, all 8192 B each | **yes** |
@@ -576,6 +579,8 @@ node tools/test-all.mjs --only asset-integrity
 | `door-sequencer` | `node tools/oracle/doordiff.mjs` | punch-opened doors, the debris pool and the `$C693` effect pool | **yes** |
 | `subsystems` | `node tools/oracle/subsysdiff.mjs` | the six `sub_00_2CBE` branches: conveyor, respawner, freeze, collapse | **yes** |
 | `death-sequences` | `node tools/oracle/deathdiff.mjs` | the boss countdown into the fanfare, and the 452-frame player death | **yes** |
+| `death-pixels` | `node tools/oracle/deathpix.mjs` | the death sequence's PIXELS, not just its records | **yes** |
+| `oam-order` | `node tools/oracle/oamdiff.mjs` | shadow-OAM ORDER against the cartridge, both parities | **yes** |
 
 The runner exits non-zero and names the stage that failed. Stages that *cannot*
 run (no `tests/*.test.js`, no `assets/manifest.json`) are reported `SKIP` and do
@@ -679,7 +684,7 @@ never sees the press. Drive `button_press`/`button_release` by hand.)
 
 ### Oracle regression corpus — `tools/oracle/regress.mjs`
 
-48 scenarios, 13,519 frames, ~2.5 min. The table below lists the 28 the
+50 scenarios, 14,519 frames, ~5 min. The table below lists the 28 the
 corpus started with; the other 20 (bosses 1-4, the level-3 object and punch
 set, the level-12 shooter, the level-14 entrance) are read from the file. Every field compared frame by frame against
 the ROM; **camera included**, since the `$0A4F` sampling fix made it exact too.

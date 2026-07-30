@@ -1,152 +1,88 @@
 # SAVEPOINT — where this project is, and how to pick it up
 
-> ## RESUME HERE — the sweep is committed and green
+> ## STATE: COMPLETE AND GREEN
 >
-> The 17-agent sweep is **committed and gated**: `npm run test-all` is
-> **23/23 stages green**, 687 unit tests, nothing failing on purpose any more.
-> The two `WIRING GAP` tests are wired and the level-14 batarang regression is
-> fixed. Start from a clean tree.
+> `npm run test-all` is **26/26 stages green** — 691 unit tests, 50/50 oracle
+> scenarios bit-exact over 14,519 frames, 96.023% mean pixel match across the
+> 73-frame visual suite. Tree clean, everything pushed, live at gbtman.pages.dev.
 >
-> ### What landed
+> There is no in-flight work and nothing failing on purpose. Start from here.
 >
-> - **Both wiring gaps closed.** `renderer.js`'s screen guard now lists
->   `state.copyright` (the copyright screen was inheriting the levels-1/2 WATER
->   raster arm), and `level.js`'s `clearLevel` sends cue `$01`/`$03` on the
->   route-clear path (`$3634` — `loc_00_035B` asks for nothing itself, so all
->   three callers must). `menuflow.mjs` measures the copyright screen at
->   **23040/23040 pixels** with the real guard and no forced-level-0 workaround.
-> - **The level-14 batarang is fixed, and the handover's diagnosis was wrong.**
->   It was never about update order. `$3BF5` swaps the CATCH TARGET to
->   `$C28F`/`$C290` — the chaser's cached screen pair — under the same
->   level-14/non-easy test that swaps the homing target. The chaser absorbs the
->   batarang; the player never catches one. See docs/03 lesson 35 and
->   `tools/oracle/jokerbat.py`. New scenario `diffhunt l14-batarang` is
->   bit-exact over 800 frames on difficulty 0 and 2, and was validated by
->   reverting the fix and watching all 25 flight frames disappear.
+> ### How you beat the bosses — asked in play, so it goes at the top
 >
-> ### HOW YOU BEAT THE JOKER (asked in play, so it goes at the top)
+> **All four are beaten with FISTS.** This is not obvious and cost real
+> playtesting to work out:
 >
-> **With your FISTS.** Batarangs are not the damage source: on level 14 above
-> easy the throw sets the RETURNING bit immediately (`$19C0`), the flight homes
-> on `$C296`/`$C298` — enemy slot 1, the CHASER — and the chaser ABSORBS it
-> (`$3BF5`). A punch takes him for **2**, so his 48 HP is **24 connected
-> punches**. MEASURED on the cartridge (`diffhunt l14-joker-melee`): `en0hp`
-> 48 → 46 at f1368. Nothing can be damaged at all before f728.
+> - **Boss 1 (level 4).** `$3C67-$3C77` routes states 2/7/`$0A` into the
+>   batarang ARMOUR arm at `$3C8A`, which plays cue `$1D` and never touches HP —
+>   batarangs can do nothing to him, ever. `$26F0` gives the fist 2 damage and
+>   `$26D7` forbids crits on any boss level, so **16 connecting punches**.
+> - **Boss 2 (level 8).** Worse than useless with batarangs: a hit on a GROUNDED
+>   boss 2 writes `$C741 = $1E` and `stBoss2` freezes him on the ground for those
+>   30 frames, so the next one bounces too — a **self-sustaining zero-damage
+>   lock** (measured: 82 connections, 0 damage, 2000 frames). Punch him, or
+>   throw only while he is AIRBORNE (`$3C9E`).
+> - **Boss 4, the Joker (level 14).** Batarangs home on `$C296`/`$C298` — enemy
+>   slot 1, the CHASER — and the chaser ABSORBS them (`$3BF5`). 48 HP at 2 a
+>   punch is **24 connecting punches**, and nothing can be damaged at all before
+>   f728.
 >
-> ### Do these next
+> ### What is left, and it is all deliberate
 >
-> 1. **Level 6 sprites.** The cartridge draws **18** there; check the current
->    count now that the vehicle draws (the port queues 16-23 in play). Enemy
->    state 5 (the vehicle, HP 8) still has NO oracle coverage, and the player
->    cannot damage it from the ground in either the port OR the cartridge.
-> 2. **Boss 1's melee is unresolved.** 60 scripted punches over 600 frames on
->    level 4 never reached the melee scan's damage arm (`cuetrace.py` shows only
->    the `$10` swing cue, never `$19`). Either the script never lines up with a
->    hopping state-`$0A` boss, or landing a fist on him needs something the port
->    has not modelled. Do not assume it is a bug without measuring.
-> 3. **Level 8's boss phase 2** — see the two hypotheses below; the armour one
->    needs no bug at all.
+> Two families in `pixeldiff`, both excluded on purpose — do NOT "fix" either:
 >
-> ### Answered in play, so nobody re-opens them
+> - **The water dither** (l1/l2-water, and l1-spouts at 50-70%, the worst number
+>   in the suite because it is warped to where the water column is tallest).
+>   Hardware alternates the slab at 30 Hz and a DMG's slow LCD blends it; a
+>   modern display turns that into a strobe over a third of the screen, so the
+>   port approximates it SPATIALLY. Documented at `drawWindow`.
+> - **The parallax feeder race** (l9/l10/l11 sky, ~87% from f120). One pixel of
+>   SCX on the far sky band. Instruction-level timing, out of scope by §28/§36,
+>   and BOTH options were measured over 200 frames — keeping the lookahead costs
+>   6288 bad scanlines, dropping it costs 8112 and breaks from f3.
 >
-> - **BOSS 1 AND BOSS 2 ARE BEATEN WITH FISTS.** Both were reported as
->   unkillable and neither is. Boss 1 (level 4): `$3C67-$3C77` routes states
->   2/7/`$0A` into the batarang ARMOUR arm at `$3C8A`, which plays cue `$1D`
->   and never touches HP — so batarangs can do nothing to him, ever. `$26F0`
->   gives the fist 2 damage and `$26D7` forbids crits on any boss level, so
->   **16 connecting punches** kill him. Boss 2 (level 8) is worse than useless
->   with batarangs: a hit on a GROUNDED boss 2 writes `$C741 = $1E` and
->   `stBoss2`'s head freezes him on the ground for those 30 frames, so the next
->   one bounces too — batarang spam is a SELF-SUSTAINING ZERO-DAMAGE LOCK
->   (measured on the cartridge: 82 connections, 0 damage, 2000 frames). He is
->   damageable throughout: a punch always connects, and a batarang connects
->   whenever he is AIRBORNE (`$3C9E` drops an airborne boss 2 into the ordinary
->   damage arm). Same answer as the Joker: melee.
-> - **Level 6 is faithful, and the old notes about it were stale.** Shadow-OAM
->   entry count matches the cartridge on 400/400 frames (mean 18.20 — the "18
->   sprites"), content matches as a multiset on 400/400, enemy state 5's 32
->   bytes and its `$C6CF` ballistic pool are byte-identical, and map object
->   type `$0B` matches on 400/400 and already had coverage in objregress.
->   Pixels 100.00%. New scenario `regress l6-vehicle-target`.
-> - **Boss 1's melee "never connecting" was my own probe.** It used `--warp 10`,
->   which parks the player at px=2688 with collision byte 7 in column 11, so the
->   fist was punching a WALL and `loc_00_2643` was never entered. From level 4's
->   real start the boss walks into range and it lands: 60 punches, 60 scan
->   entries, 5 hits. New scenario `regress l4-boss1-melee-sweep` (36 punches, 4
->   connects at different hop heights) because the shipped
->   `l4-boss1-punch-knockback` connects dead-centre once and stays green even
->   with the probe geometry mutated.
-> - **The Joker level's background. FIXED.** `$0DFD` seeds BGP = `$FF` -- the
->   entrance plays over a BLACKED-OUT background and `1:$77D5` writes `$E4` back
->   at phase 2. The seed was missing, so there was nothing to restore from.
->   `pixeldiff l14-walk` went 11.90% to **100% on every frame**, and the whole
->   pixel suite 93.561% -> 95.975%. `l14init.mjs` had been asserting this and
->   failing on all three difficulties for months with nothing running it -- it
->   is a gate stage now (`l14-init`). A check outside the gate is a check that
->   rots.
-> - **Level 6's "softlock" on finishing the level. FIXED.** It was never a
->   freeze or a crash: the transition arm in `main.js` did not restore the
->   palettes, and level 6's fanfare fades them to white, so level 7 loaded and
->   ran INVISIBLY. Level 6 is the only clear that leaves through a transition,
->   which is why nothing else showed it. See docs/03 lesson 37 -- including why
->   three harnesses called it PASS. Guarded by the `level6-clear` gate stage.
-> - **The ending's "giant superpixels" on the credit circle.** Not the render:
->   pixel-exact against the cartridge over 88 frames of the whole crawl
->   (2,027,520 px). It was the canvas being shown at a fractional scale
->   (720/160 = 4.5), which `image-rendering: pixelated` rounds unevenly per
->   pixel. `fitScreen()` in index.html now scales by whole DEVICE pixels.
-> - **Boss 3's "stuck between train and a wall that isn't there".** FAITHFUL.
->   Level 11's map is byte-exact against `$D000`, and over 500 frames every core
->   field, the camera and boss slot 0 are bit-exact: the ROM itself pins the
->   player at x = 2944 from f200 to f400 and then kills him. The "wall" is the
->   level's own right edge and the gap is exactly the cartridge's. The sound
->   glitch is real and also faithful — `$27` is requested EIGHT times, six at a
->   flat 12-frame spacing, and the same cue retriggering six times a second is
->   what reads as a glitch. Pinned as `cuescen l11-boss3-wedged-right`.
-> - **The train "flickering / moving up and down too crazy" on 9/10/11.** Half
->   ours: `sub_00_0F56`'s draw-Y bob was unported and now is — the cartridge
->   really does shift grounded sprites 3 px one frame in eight on those levels,
->   so the port now judders MORE, faithfully. The other half is not a bug at
->   all: see docs/03 lesson 36 for why levels 9/10 score ~87% in pixeldiff from
->   f120 (the far sky band's SCX, 1 px, feeder ordering) when the sprites are
->   identical entry for entry.
-> - **The sky on 9/10.** Fixed and the picker note was stale; 0 wrong background
->   cells on both. The remaining sky defect is level **11**.
-> - **The ending.** Pixel-verified against the cartridge, and now reachable
->   directly from the launcher (pick "Ending") instead of only by winning.
+> Genuinely unported, all small and none blocking play: the melee hit-spark
+> (`$2708-$271B`), the GAME OVER lettering's own death-burst OAM order (the HUD
+> half IS ported), and coverage — not code — for level 6's alternate
+> tile-animation table. See "What is NOT ported".
 >
-
-> ### Measured facts about the Joker fight, so nobody re-derives them
+> ### The four traps that produced most of the bugs found here
 >
-> - The entrance runs **727 frames** before `$C740` goes `$FF`; until then
->   nothing can damage anything. `$C750` steps 1 → 2 at f118, and both the
->   Joker and the chaser activate at f728.
-> - Ammo **is** consumed normally on level 14 (measured 10 → 9 per throw once
->   the gate opens). There are no infinite batarangs.
-> - The Joker has **48 HP** (`$30`), and the level-14 batarang homes on
->   `$C296`/`$C298` — enemy slot 1, the CHASER — not on him. So batarangs are
->   probably not the intended damage source; melee against him is unmeasured.
-> - A direct launcher boot into level 14 starts with **0 ammo**; a real
->   playthrough carries ammo in. That makes the launcher's level 14 harder
->   than the cartridge's.
-> - **There is exactly one real lag frame in level 14's first 800** (f764,
->   measured by hooking `$065C`). The cartridge drops that iteration's enemy
->   update and the port never lags, so the chaser's X runs one 4-unit step
->   ahead from f765 on. That is docs/03 lesson 28, out of scope, and it is
->   tagged `knownLag` in `diffhunt.mjs` rather than hidden.
+> Every one of these shipped a defect while the suite reported green. They are
+> written up as docs/03 lessons 37-41 and they are the most valuable thing in
+> this file:
+>
+> 1. **A render check that asserts on the absence of an exception.** Three
+>    harnesses drove level 6's clear and all said PASS while the game rendered a
+>    solid white frame. "Renders without throwing" is not "renders a picture".
+> 2. **A harness that sets up state the APPLICATION does not have.** Both ending
+>    harnesses assigned `state.titleManifest` themselves, so both reported the
+>    ending pixel-exact over 2,027,520 pixels while the shipped game drew a bare
+>    rectangle. Removing that one line turns the same run into 59 of 88 frames
+>    wrong.
+> 3. **A sampled frame list with no transitions.** During a 130-frame hold every
+>    candidate lag scores zero, so the "one lag must be exact on every frame"
+>    invariant proves nothing.
+> 4. **A unit test that takes the answer as an argument.** `drawYBob`'s tests
+>    pass `grounded` in directly, so they exercise the arithmetic and never the
+>    CALL SITE's operand — and stayed green through a bug that bobbed every
+>    airborne enemy on four levels.
 >
 > ### Ground rules that keep being re-learned
 >
-> - **Measure; do not infer from the listing.** Eight fall-through incidents,
->   one of which invalidated shipped code. The batarang fix above is the ninth:
->   the listing named the swap, but only a register hook on `$3C0F` proved
->   which pair the ROM actually loads.
-> - **Byte-exact data is not a correct picture.** It has bitten twice.
+> - **Measure; do not infer from the listing.** Nine fall-through incidents, one
+>   of which invalidated shipped code.
+> - **Byte-exact data is not a correct picture.**
 > - **Validate a new check by making it fail** — revert, watch it go red,
->   restore.
+>   restore. If it cannot go red it is not a check.
 > - **Never regex a structured file.** A `re.S` edit silently deleted three
->   oracle scenarios in this repo and the stage still reported PASS.
-> - **`git add -A` will sweep up other agents' in-flight work.** Stage by name.
+>   oracle scenarios and the stage still reported PASS.
+> - **`git add -A` sweeps up other agents' in-flight work.** Stage by name. And
+>   `git checkout -- <file>` on a dirty tree discards uncommitted work in that
+>   file, which is not a safe way to drop a probe.
+> - **A check outside the gate rots.** `l14init.mjs` asserted level 14's
+>   entrance block, by value, and was RED on all three difficulties for months
+>   because nothing ran it. It is a stage now; so is everything else.
 
 
 Read this first after any break. `docs/00-MASTER-REFERENCE.md` is the technical
@@ -176,7 +112,7 @@ a literal anywhere in the port. Every one travels through
 file offsets so the exporter cannot verify itself.
 
 **STATE: feature complete.** All fourteen levels play, every boss included,
-title screen through to end credits. 23 gate stages green — 687 unit tests, 48
+title screen through to end credits. 26 gate stages green — 691 unit tests, 50
 frame-exact input scenarios, all 47 sound ids, and two stages that compare
 PIXELS rather than memory. Nothing is captured: every screen is built from ROM
 data and diffed against the cartridge's own VRAM. The remaining gaps are
@@ -195,12 +131,12 @@ python tools/oracle/trace.py  --frames 620 --script "20:,600:R" --level 5
 node   tools/render-frame.mjs --frames 620 --script "20:,600:R" --level 5
 node   tools/oracle/regress.mjs         # the whole corpus
 node   tools/oracle/vramdiff.mjs --record   # sub_00_0A0E, write for write
-npm run test-all                        # 21 stages, the gate for everything
+npm run test-all                        # 26 stages, the gate for everything
 ```
 
-**Current state: 48/48 oracle scenarios bit-exact, 687 unit tests, 23/23 stages
-green.** The corpus covers levels 1, 3, 4, 5, 8, 9, 11, 12 and 14 over 13,519
-frames.
+**Current state: 50/50 oracle scenarios bit-exact, 691 unit tests, 26/26 stages
+green.** The corpus covers levels 1, 3, 4, 5, 6, 8, 9, 11, 12 and 14 over
+14,519 frames.
 
 If you change gameplay code and `test-all` goes red, you broke something real.
 
@@ -293,18 +229,16 @@ Deploy: `node tools/build-dist.mjs` then
 **The game is feature complete.** All fourteen levels are playable, every boss
 included, and it runs from the title screen through to the end credits.
 
-What follows is the honest remainder. It grew before it shrank: three items were
-found by measuring the OAM head and the frame loop rather than the game state,
-and have since been closed (below), while item 4's long-standing "unreachable"
-claim turned out to be an artifact of idle recordings. Treat "we checked that"
-as a claim with a date on it.
+What follows is the honest remainder, and it is three items. The list grew
+before it shrank: four things on it were found by measuring the OAM head and
+the frame loop rather than the game state, and all four have since been closed
+(below), while item 3's long-standing "unreachable" claim turned out to be an
+artifact of idle recordings. Treat "we checked that" as a claim with a date on
+it.
 
-1. **`sub_00_0F56`** (`$1D24`, grounded only) — a 2-3 px draw-Y bob every 8th
-   frame on levels 6/9/10/11. Purely a sprite offset; it never touches
-   `$FF93`/`$FF94`. Cosmetic, but a real gap in `$1D0C`.
-2. **The melee hit-spark effect** (`$2708-$271B`) is not spawned, including the
+1. **The melee hit-spark effect** (`$2708-$271B`) is not spawned, including the
    crit's different sprite (`$97` against `$10`).
-3. **OAM draw order for the GAME OVER lettering's own burst.** `$0567` runs
+2. **OAM draw order for the GAME OVER lettering's own burst.** `$0567` runs
    the pair `sub_00_0F7B` (HUD) + `sub_00_29E7` at `$0573`/`$057A` when
    `$FFA7 == 0`, and the SAME pair at `$05E5`/`$05EC` when it does not. **The
    HUD half of that alternation IS ported now** — `src/main.js` `hudFirst` and
@@ -314,7 +248,7 @@ as a claim with a date on it.
    alternates 20/44 on level 1, 20/60 on level 3, 20/88 on level 9. OAM index
    is DMG sprite priority and the 10-per-line cut, so it is occasionally
    visible where the letters cross the energy bar or the dying Batman.
-4. **Level 6's `$FFC9 == 1` alternate tile-animation table** (`2:$625E`) has no
+3. **Level 6's `$FFC9 == 1` alternate tile-animation table** (`2:$625E`) has no
    COVERAGE. It was listed here for months as "never exercised, the conveyor
    came up 2 on every recorded frame". **That was wrong, and the way it was
    wrong is the lesson.** Every recording behind that claim was an IDLE one,
@@ -343,6 +277,11 @@ measuring OAM or the frame loop rather than the game state:
   cartridge draws no energy bar for the whole countdown and fanfare (~350
   frames), and level 14 shows none for its whole entrance. Both `drawHud`
   calls are gated on `c740Idle(state)`.
+- **`sub_00_0F56`, the draw-Y bob** (`$1D24` for the player, `1:$606F` for
+  enemies). 2 px on level 6, 3 px on 9/10/11, one frame in eight, grounded
+  subjects only. Ported — and getting the enemy gate's operand wrong (`r[1]`
+  where the air bits are `r[0]`) is what made the train levels judder far
+  harder than the cartridge, docs/03 lesson 41.
 - **`$FFB1`/`$FFA7` across a pause and across the victory fanfare.** The
   VBlank ISR owns them and `$C716` gates only the main loop, so they keep
   ticking. Both blocking paths in `src/main.js` tick them now.
