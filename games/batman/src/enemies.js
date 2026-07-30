@@ -22,8 +22,15 @@
 //   enemies/tails.js   loc_01_5BB6 / loc_01_5C15 / loc_01_5CA8, the shared
 //                      rise -> fall -> land -> screen/anim fall-through
 //   enemies/melee.js   loc_00_2643-$272B, the player's punch scan
+//
+// AND, IN PHASE 9, one file per state and one per boss under enemies/states/
+// and enemies/bosses/ -- each carrying its st* handler AND its attackTick*
+// together, because several of those pairs FALL THROUGH into each other in
+// the ROM. game.json's enemies[] entries name those files.
+//   enemies/states/dormant.js   state 12: jt_01_5B95 + jt_01_637F
 // THIS file keeps the driver, the ten-arm hit ladder, the two dispatch tables
-// and every state and boss handler -- i.e. everything that has an ORDER.
+// and the remaining state and boss handlers -- i.e. everything that has an
+// ORDER.
 
 import { u8, i8, u16, mapCollisionByIndex } from './state.js';
 import { spawnDrop } from './drops.js';
@@ -46,6 +53,7 @@ import {
 } from './enemies/probe.js';
 import { queueDraw } from './enemies/anim.js';
 import { riseTail, fallTail, screenTail } from './enemies/tails.js';
+import { stDormant, attackTickDormant } from './enemies/states/dormant.js';
 
 // The barrel's export surface, unchanged from before the split.
 export { SLOTS, RECORD };
@@ -606,13 +614,6 @@ function attackTickL12(state, r) {
   r[1] = (r[1] & 0xF3) | 0x10;
   r[0x15] = 0x28;                                   // $61D5
   return riseTail(state, r);
-}
-
-/** ROM: jt_01_637F - state 12 counts its timer down, then wakes. */
-function attackTickDormant(state, r) {
-  if (r[0x14] !== 0) { r[0x14]--; return screenTail(state, r); }
-  r[E_FLAGS] &= 0xE7;                               // $6392
-  return stDormant(state, r);
 }
 
 // ---------------------------------------------------------------------------
@@ -1230,18 +1231,6 @@ function spawnProjectile(state, spawner, mode) {
     return 0;
   }
   return 1;
-}
-
-// ---------------------------------------------------------------------------
-// State 12 -- dormant shell.  ROM: jt_01_5B95.
-// ---------------------------------------------------------------------------
-
-function stDormant(state, r) {
-  if (r[E_FLAGS] & 0x08) return screenTail(state, r);     // $5B97
-  if (r[E_FLAGS] & 0x02) return fallTail(state, r);       // $5B9B
-  if (r[1] & 0x20) return screenTail(state, r);     // $5BA0
-  r[E_STATE] = 0x01;                                // $5BA7: wake as a walker
-  return screenTail(state, r);
 }
 
 // ---------------------------------------------------------------------------
