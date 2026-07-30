@@ -18,6 +18,15 @@ you change gameplay code and the gate goes red, you broke something real.
 
 - **Stage by name.** `git add -A` sweeps up whatever else is in flight — another session,
   another agent, a half-finished experiment. This bit us with agents running concurrently.
+- **Staging by name is NOT enough with a concurrent writer, and this cost a broken HEAD.**
+  `git commit` commits the **index**, not your files. Another agent had `git add`-ed a
+  65-file rename it was still writing the path fixes for; a commit of six unrelated doc
+  files swallowed that rename and shipped it without them. A fresh checkout then had no
+  `src/`, a `package.json` pointing at a directory that did not exist, and every oracle
+  tool broken. **Before committing, run `git diff --cached --name-only` and look for files
+  that are not yours** — or commit from a separate index (`GIT_INDEX_FILE`). Staging by
+  name protects you from *unstaged* work; nothing but checking protects you from work
+  someone else already staged.
 - **`git checkout -- <file>` on a dirty tree discards uncommitted work in that file.** It
   is not a safe way to drop a probe. Back up first, or use a scratch copy.
 - **Separate pure moves from content changes.** A commit that both relocates a file and
@@ -66,6 +75,10 @@ behaviour is naturally parallel. Three hazards, all encountered:
    scripts with their own emulator instance.
 2. **Concurrent writes to the source tree.** Exactly one agent should write to `src/` at a
    time. Reviewers read; implementers write; do not fan out implementation.
+   **And that includes YOU.** The most expensive incident here was not two agents
+   colliding — it was the human committing documentation while an agent had a rename
+   staged. If an agent is mid-restructure, do not commit anything from that repo, even
+   files it will never touch. Wait, or work in a worktree.
 3. **A confident wrong answer is worse than "unresolved".** Ask explicitly for the second.
    Investigations that reported what they ruled out were consistently more useful than
    ones that produced a tidy conclusion, and at least one tidy conclusion was wrong.

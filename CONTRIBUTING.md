@@ -88,6 +88,20 @@ Lag frames (`$C757`) are instruction-level timing and out of scope by
 definition — see `docs/03-VERIFICATION.md` §28. Cap scenarios below the first
 one rather than trying to model them.
 
+## Committing
+
+- **Stage by name.** `git add -A` sweeps up whatever else is in flight.
+- **Then check the index before you commit.** `git commit` commits the *index*, not the
+  files you named — so run `git diff --cached --name-only` and look for anything that is
+  not yours. This is not theoretical: a commit of six documentation files once swallowed a
+  65-file rename another writer had staged but not finished fixing up, and shipped a HEAD
+  where `npm test` pointed at a directory that no longer existed. Staging by name protects
+  you from *unstaged* work; only checking protects you from work someone else staged.
+- **If an automated restructure is running, do not commit from that repo at all** — even
+  files it will never touch. Wait, or use a separate worktree.
+- **`git checkout -- <file>` on a dirty tree discards uncommitted work in that file.** It
+  is not a safe way to drop a probe.
+
 ## Pull requests
 
 Say what you measured and what it said. A diff without evidence is a guess, and
