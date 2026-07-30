@@ -295,6 +295,10 @@ for (const [pid, p] of Object.entries(PRESETS)) {
 //       cells on 9 and 10, and every l9-sky/l10-sky frame in pixeldiff is
 //       100%. The scroll program is verified too ($0857's eight arms, 335,664
 //       scanlines, 0 bad). The note outlived its defect by a whole fix.
+//   14  'entrance renders on the wrong background'. Was TRUE, now fixed:
+//       $0DFD seeds BGP = $FF for the blacked-out entrance and 1:$77D5 puts
+//       $E4 back at phase 2. The seed was missing, so there was nothing to
+//       restore from. l14-walk went 11.90% -> 100% on every sampled frame.
 //   11  the sky defect that IS left is here, not on 9/10: pixeldiff
 //       l11-sky f80 = 82.04%, a dx=-1 shift on rows 66/68 and 116-119.
 //       Levels 2 and 5 are worth knowing about too: they are the two
@@ -313,7 +317,7 @@ const LEVEL_NOTE = {
   11: 'Boss 3 — playable; one sky band sits a pixel off',
   12: 'playable',
   13: 'playable',
-  14: 'Boss 4 / Joker — playable; entrance renders on the wrong background',
+  14: 'Boss 4 / Joker — playable',
 };
 const levelSel = document.getElementById('level');
 // 0 = start at the title screen (the default). Any other value boots straight
@@ -406,6 +410,7 @@ sync();
 document.getElementById('launch').addEventListener('click', async () => {
   document.getElementById('picker').style.display = 'none';
   document.getElementById('stage').classList.add('on');
+  fitScreen();                     // the stage was display:none until now
   const err = document.getElementById('err');
   err.style.display = 'none';
   try {
@@ -472,9 +477,15 @@ function fitScreen() {
   const availW = fs ? window.innerWidth : Math.min(document.documentElement.clientWidth * 0.96, 720);
   const availH = fs ? window.innerHeight : Infinity;
   // Largest whole device-pixel scale that fits both axes.
-  const scale = Math.max(1, Math.floor(Math.min(
+  const scale = Math.max(1, Math.min(8, Math.floor(Math.min(
     (availW * dpr) / 160,
-    Number.isFinite(availH) ? (availH * dpr) / 144 : Infinity)));
+    Number.isFinite(availH) ? (availH * dpr) / 144 : Infinity))));
+  // main.js reads this and makes the canvas BACKING STORE 160*scale x 144*scale,
+  // doing the nearest-neighbour blow-up itself. That is the part that has to be
+  // whole-pixel; once it is, the CSS size below only has to be close, because
+  // the browser is then resampling an already-correct image instead of deciding
+  // per source pixel how many device pixels it gets.
+  screenEl.dataset.scale = String(scale);
   screenEl.style.width = `${(160 * scale) / dpr}px`;
   screenEl.style.height = `${(144 * scale) / dpr}px`;
 }

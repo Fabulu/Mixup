@@ -3,7 +3,7 @@
 > ## RESUME HERE — the sweep is committed and green
 >
 > The 17-agent sweep is **committed and gated**: `npm run test-all` is
-> **21/21 stages green**, 686 unit tests, nothing failing on purpose any more.
+> **23/23 stages green**, 687 unit tests, nothing failing on purpose any more.
 > The two `WIRING GAP` tests are wired and the level-14 batarang regression is
 > fixed. Start from a clean tree.
 >
@@ -49,6 +49,14 @@
 >
 > ### Answered in play, so nobody re-opens them
 >
+> - **The Joker level's background. FIXED.** `$0DFD` seeds BGP = `$FF` -- the
+>   entrance plays over a BLACKED-OUT background and `1:$77D5` writes `$E4` back
+>   at phase 2. The seed was missing, so there was nothing to restore from.
+>   `pixeldiff l14-walk` went 11.90% to **100% on every frame**, and the whole
+>   pixel suite 93.561% -> 95.975%. `l14init.mjs` had been asserting this and
+>   failing on all three difficulties for months with nothing running it -- it
+>   is a gate stage now (`l14-init`). A check outside the gate is a check that
+>   rots.
 > - **Level 6's "softlock" on finishing the level. FIXED.** It was never a
 >   freeze or a crash: the transition arm in `main.js` did not restore the
 >   palettes, and level 6's fanfare fades them to white, so level 7 loaded and
@@ -141,7 +149,7 @@ a literal anywhere in the port. Every one travels through
 file offsets so the exporter cannot verify itself.
 
 **STATE: feature complete.** All fourteen levels play, every boss included,
-title screen through to end credits. 21 gate stages green — 686 unit tests, 48
+title screen through to end credits. 23 gate stages green — 687 unit tests, 48
 frame-exact input scenarios, all 47 sound ids, and two stages that compare
 PIXELS rather than memory. Nothing is captured: every screen is built from ROM
 data and diffed against the cartridge's own VRAM. The remaining gaps are
@@ -163,7 +171,7 @@ node   tools/oracle/vramdiff.mjs --record   # sub_00_0A0E, write for write
 npm run test-all                        # 21 stages, the gate for everything
 ```
 
-**Current state: 48/48 oracle scenarios bit-exact, 686 unit tests, 21/21 stages
+**Current state: 48/48 oracle scenarios bit-exact, 687 unit tests, 23/23 stages
 green.** The corpus covers levels 1, 3, 4, 5, 8, 9, 11, 12 and 14 over 13,519
 frames.
 

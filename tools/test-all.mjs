@@ -210,6 +210,20 @@ const STAGES = [
     skip: hasAssets ? null : 'assets/manifest.json missing',
   },
   {
+    // No PyBoy: it asserts level 14's init block against the listing, value by
+    // value. It was written months ago, was RED on all three difficulties the
+    // whole time, and nothing ran it -- the $FFAD blackout seed was missing and
+    // the Joker level rendered on the wrong background for the entire entrance
+    // (pixeldiff l14-walk: 11.90% at f40 and f80). A check outside the gate is
+    // a check that rots.
+    name: 'l14-init',
+    what: "level 14's entrance block: $C750/$C740/$C741/balloon/$C73D/BGP",
+    cmd: process.execPath,
+    args: ['tools/oracle/l14init.mjs'],
+    pyboy: false,
+    skip: hasAssets ? null : 'assets/manifest.json missing',
+  },
+  {
     // No PyBoy: pure port, and it guards a SOFTLOCK that shipped. Level 6 is
     // the only level whose clear leaves through a transition, and its fanfare
     // fades the palette to white -- so a transition arm that forgets to restore

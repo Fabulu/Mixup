@@ -78,7 +78,7 @@ npm run test-all -- --only raster-bands     # one stage
 npm test                      # unit tests only
 ```
 
-21 stages, all green: 686 unit tests, 48 frame-exact input scenarios, and
+23 stages, all green: 687 unit tests, 48 frame-exact input scenarios, and
 dedicated oracles for map objects, doors, the per-level subsystems, both death
 sequences, the raster program, progress flow, every screen, and all 47 sound
 ids. Two of them compare **pixels** rather than memory — added after two real

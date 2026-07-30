@@ -84,10 +84,51 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
   if (ending) showEnding(state, loadEnding(manifest, null));
 
   const fb = createFramebuffer();
+  // INTEGER UPSCALE, done here rather than left to CSS.
+  //
+  // The DMG frame is 160x144 and the page shows it several times larger. Handing
+  // that scale to the browser means trusting it to map one source pixel onto a
+  // whole number of device pixels -- and it does not always: a fractional CSS
+  // scale, a fractional devicePixelRatio, or an element whose left edge lands
+  // between device pixels all make some source pixels one device pixel wider
+  // than their neighbours. On flat art that is invisible. On a 50% DITHER it is
+  // not: the checkerboard beats against the sampling grid and reads as coarse
+  // irregular blocks.
+  //
+  // That is what the ending's credit circle is made of. Its edge is a dithered
+  // ring, and it was reported as "giant pixels at the corners, more like tetris
+  // pieces than pixels". The RENDER is not at fault -- the ending is pixel-exact
+  // against the cartridge over 88 frames of the whole crawl, and the cartridge
+  // runs no per-scanline program there at all (MEASURED: rIE = $05 with the STAT
+  // bit clear, and the STAT vector fires 0 times in 600 credit frames, so there
+  // is no smoothing layer to be missing). The fault is in how it is DISPLAYED.
+  //
+  // So blit the framebuffer into an offscreen 160x144 canvas and drawImage it
+  // onto a backing store that is an exact integer multiple, with smoothing off.
+  // The scale-up is then ours and always whole-pixel; whatever the browser does
+  // to fit the result is a smooth resample of an already-correct image rather
+  // than a per-pixel rounding decision.
   const ctx = canvas.getContext('2d');
-  canvas.width = SCREEN_W;
-  canvas.height = SCREEN_H;
-  const image = ctx.createImageData(SCREEN_W, SCREEN_H);
+  const src = document.createElement('canvas');
+  src.width = SCREEN_W;
+  src.height = SCREEN_H;
+  const srcCtx = src.getContext('2d');
+  const image = srcCtx.createImageData(SCREEN_W, SCREEN_H);
+  /** Re-read the integer scale the page asked for, clamped to something sane. */
+  const backingScale = () => {
+    const s = parseInt(canvas.dataset.scale || '0', 10);
+    return Number.isFinite(s) && s >= 1 ? Math.min(s, 8) : 1;
+  };
+  let scale = 0;
+  const sizeBacking = () => {
+    const s = backingScale();
+    if (s === scale) return;
+    scale = s;
+    canvas.width = SCREEN_W * s;
+    canvas.height = SCREEN_H * s;
+    ctx.imageSmoothingEnabled = false;
+  };
+  sizeBacking();
 
   attachInput();
 
@@ -360,7 +401,11 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
     runHook(loadout, 'onRenderFrame', state);
     renderFrame(state, fb);
     image.data.set(fb.rgba);
-    ctx.putImageData(image, 0, 0);
+    sizeBacking();                 // the page may have resized since last frame
+    srcCtx.putImageData(image, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(src, 0, 0, SCREEN_W, SCREEN_H,
+                  0, 0, SCREEN_W * scale, SCREEN_H * scale);
 
     // $388E: `JP loc_00_0150` -- the ending does not RETURN anywhere, it
     // resets the machine. The nearest honest equivalent here is the same path

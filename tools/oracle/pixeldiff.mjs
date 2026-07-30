@@ -10,7 +10,30 @@
 // Usage:
 //   node tools/oracle/pixeldiff.mjs                  every scenario, record if needed
 //   node tools/oracle/pixeldiff.mjs --only l9-sky --record
-//   node tools/oracle/pixeldiff.mjs --only l6-track --dump   (writes diff sheets)
+//   node tools/oracle/pixeldiff.mjs --only l6-track
+//
+// WHAT THE REMAINING NUMBERS ARE. Most of what is left is not a defect, and
+// reading this table without that is how "we are close to perfect" turns into
+// chasing ghosts. Two families cover nearly all of it:
+//
+//   1. THE WATER DITHER -- l1-water and l2-water (~94.5% from f120) and
+//      l1-spouts (50-70%, worst in the suite). Deliberate, and documented at
+//      drawWindow: on hardware the window is opaque and the ROM alternates the
+//      water slab at 30 Hz, which a DMG's slow LCD integrates into
+//      translucency. A modern display turns that into a violent strobe over a
+//      third of the screen, so the port approximates it SPATIALLY -- every
+//      other pixel -- instead. Against a single captured frame that is ~half
+//      the water rows "wrong" by construction. l1-spouts is warped to column 95
+//      where the water column is far taller, which is the whole reason its
+//      number is the biggest here. DO NOT "fix" this; see drawWindow.
+//
+//   2. THE PARALLAX FEEDER RACE -- l9-sky and l10-sky (~87% from f120) and
+//      l11-sky f80. One pixel of SCX on the far sky band, which on a detailed
+//      band mismatches most of the pixels in its rows. Instruction-level
+//      timing, measured both ways, out of scope by docs/03 §28 and §36.
+//
+// What that leaves genuinely open is small: l5-walk f80 (315 px) and l9-sky f80
+// (14 px). Everything else in the suite is 100%.
 
 import fs from 'node:fs';
 import path from 'node:path';

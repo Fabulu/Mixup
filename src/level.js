@@ -159,6 +159,17 @@ export async function initLevel(state, n, { transition = false } = {}) {
     state.flow.balloonX = 0x0880;               // $0DEB-$0DF1
     state.flow.balloonY = 0x1E00;               // $0DF3-$0DF8
     state.flow.bossRage = 0;                    // $0DFA: $C73D, after the hard arm
+    // $0DFD-$0DFF: `LD A,$FF / LDH [$FFAD],A`. BGP = $FF is every shade mapped
+    // to the darkest one -- the entrance plays over a BLACKED-OUT background,
+    // and 1:$77D5 writes $E4 back when phase 2 begins. Without the seed there is
+    // nothing for that restore to restore FROM, which is why it reads as "the
+    // Joker level renders on the wrong background".
+    //
+    // MEASURED cost while this was missing (pixeldiff l14-walk): f40 and f80
+    // were 20299 wrong pixels each, 11.90% match, rows 32-37 solid. The
+    // l14init.mjs stage has been asserting it on all three difficulties and
+    // failing on all three.
+    state.video.bgp = 0xFF;                     // $0DFD: $FFAD
     // (The player-side counterpart lives in resetPlayer: p.air stays 0 on
     // this level because the gated update never runs the landing.)
   }
