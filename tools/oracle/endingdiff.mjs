@@ -27,16 +27,16 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { runVramScript } from '../../src/vramscript.js';
-import { fillTilemap, blockCopy } from '../../src/vram.js';
+import { runVramScript } from '../../games/batman/src/vramscript.js';
+import { fillTilemap, blockCopy } from '../../games/batman/src/vram.js';
 import {
   buildEndingVram, buildEndingPicture, loadEnding, showEnding, tickEnding,
   endingProgram, endingLength, requireEndingSpec, FADE_FRAMES,
-} from '../../src/ending.js';
-import { createState } from '../../src/state.js';
-import { BTN } from '../../src/player.js';
+} from '../../games/batman/src/ending.js';
+import { createState } from '../../games/batman/src/state.js';
+import { BTN } from '../../games/batman/src/player.js';
+import { ROOT, gamePath } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const PY = process.env.PYTHON || 'python';
 const DIR = path.join(ROOT, 'rip', 'oracle');
 
@@ -61,7 +61,7 @@ if (record || !fs.existsSync(QUIT)) {
 }
 
 const manifest = JSON.parse(
-  fs.readFileSync(path.join(ROOT, 'assets', 'manifest.json'), 'utf8'));
+  fs.readFileSync(gamePath('assets/manifest.json'), 'utf8'));
 if (!manifest.ending) {
   console.error('manifest has no ending section - re-run export_assets.py');
   process.exit(1);

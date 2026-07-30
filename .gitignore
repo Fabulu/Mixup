@@ -30,8 +30,15 @@ rip/
 
 # Golden frames are rendered game imagery; hashes and PNGs alike are
 # regenerated with `node tools/golden.mjs --update`
-tests/visual/golden/
-tests/visual/diff/
+#
+# NOT anchored. A pattern containing a slash is matched from the REPOSITORY
+# ROOT, so plain `tests/visual/golden/` stopped covering the tree the moment
+# tests/ moved under games/<id>/ -- and ten golden PNGs would have become
+# committable with nothing in the diff or in CI to say so. `assets/` and `rip/`
+# above have no slash and were already unanchored, which is why they still
+# match at the new depth.
+**/tests/visual/golden/
+**/tests/visual/diff/
 
 # ---------------------------------------------------------------------------
 # Ordinary noise

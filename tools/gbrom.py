@@ -11,6 +11,12 @@ import zlib
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROM_NAME = "Batman - Return of the Joker (USA, Europe).gb"
 
+# The directory holding the game these tools export INTO -- its src/, tests/
+# and assets/. ROOT stays the repository: the ROM, rip/ and dist/ are repo
+# level, the exported assets are game level. Same seam as GAME_ROOT in
+# tools/oracle/_env.mjs, and it must agree with it.
+GAME_ROOT = os.path.join(ROOT, 'games', 'batman')
+
 # DMG greys for BGP/OBP colour indices 0..3
 DMG = [(0xE0, 0xF8, 0xD0), (0x88, 0xC0, 0x70), (0x34, 0x68, 0x56), (0x08, 0x18, 0x20)]
 

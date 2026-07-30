@@ -28,11 +28,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { ROOT, imp } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const REF = path.join(ROOT, 'rip', 'oracle', 'rastersquash.json');
 
-const imp = (p) => import(pathToFileURL(path.join(ROOT, p)).href);
 const { squashBands, RASTER_SQUASH } = await imp('src/raster.js');
 
 const argv = process.argv.slice(2);

@@ -53,6 +53,13 @@ export async function loadManifest() {
 export async function loadPlayerTiles() {
   if (!playerTiles) {
     const r = await fetch(BASE + 'player.tiles.bin');
+    // Only loadManifest above used to check r.ok. A 404 here yields an EMPTY
+    // ArrayBuffer, so the OBJ tile pool comes out zero-filled and the game
+    // draws a WRONG PICTURE rather than throwing -- which is exactly how a
+    // moved assets/ tree can stay bit-exact under every headless harness (they
+    // compare state, not the tile bytes they never loaded) and be broken in the
+    // browser. Fail loudly and name the file.
+    if (!r.ok) throw new Error(`assets/player.tiles.bin missing (${r.status}) - run: python tools/export_assets.py`);
     playerTiles = new Uint8Array(await r.arrayBuffer());
   }
   return playerTiles;
@@ -68,9 +75,17 @@ export async function loadLevel(n) {
   const m = await loadManifest();
   const pad = String(n).padStart(2, '0');
 
+  // Same as loadPlayerTiles: a 404 without this check gives a zero-filled
+  // $D000 image and a zero-filled $8000-$9FFF, i.e. an empty level that RENDERS
+  // instead of an error that names the file.
+  const grab = async (name) => {
+    const r = await fetch(`${BASE}levels/${name}`);
+    if (!r.ok) throw new Error(`assets/levels/${name} missing (${r.status}) - run: python tools/export_assets.py`);
+    return r.arrayBuffer();
+  };
   const [cellsBuf, vramBuf] = await Promise.all([
-    fetch(`${BASE}levels/${pad}.map.bin`).then((r) => r.arrayBuffer()),
-    fetch(`${BASE}levels/${pad}.vram.bin`).then((r) => r.arrayBuffer()),
+    grab(`${pad}.map.bin`),
+    grab(`${pad}.vram.bin`),
   ]);
 
   const out = {

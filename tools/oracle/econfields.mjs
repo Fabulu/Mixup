@@ -9,9 +9,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { ROOT, imp, gamePath } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
-const imp = (p) => import(pathToFileURL(path.join(ROOT, p)).href);
 const { createState } = await imp('src/state.js');
 
 const state = createState();
@@ -25,7 +24,7 @@ function files(dir) {
   }
   return out;
 }
-const srcs = files(path.join(ROOT, 'src'))
+const srcs = files(gamePath('src'))
   .map((f) => [path.relative(ROOT, f).replace(/\\/g, '/'), fs.readFileSync(f, 'utf8')]);
 
 // Strip line and block comments so a citation in prose is not a "read".

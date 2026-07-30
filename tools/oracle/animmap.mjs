@@ -7,8 +7,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ROOT, gamePath } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const argv = process.argv.slice(2);
 const arg = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i + 1] : d; };
 const lvl = String(parseInt(arg('level', '1'), 10)).padStart(2, '0');
@@ -16,7 +16,7 @@ const lvl = String(parseInt(arg('level', '1'), 10)).padStart(2, '0');
 const trace = JSON.parse(fs.readFileSync(
   path.join(ROOT, 'rip/oracle/trace_L' + lvl + '.json'), 'utf8')).frames;
 const manifest = JSON.parse(fs.readFileSync(
-  path.join(ROOT, 'assets/manifest.json'), 'utf8'));
+  gamePath('assets/manifest.json'), 'utf8'));
 
 const AIR = ['grounded', 'rising', 'falling'];
 const buckets = new Map();

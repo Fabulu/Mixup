@@ -8,8 +8,8 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ROOT } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const argv = process.argv.slice(2);
 const arg = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i + 1] : d; };
 const level = arg('level', '1');

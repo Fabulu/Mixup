@@ -21,10 +21,11 @@ false positives from banked addresses whose bank the comment leaves implicit.
 
 Usage:
     python tools/gbdis.py "<rom>" --all --outdir /tmp/dis
-    python tools/audit_coverage.py . /tmp/dis
+    python tools/audit_coverage.py games/batman /tmp/dis
 """
 import os, re, sys, glob
 
+# argv[1] is the GAME directory (the one holding src/), not the repo root.
 ROOT = sys.argv[1]
 DIS  = sys.argv[2]
 

@@ -22,9 +22,9 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { buildWindowMap, replayTileAnim } from '../../src/water.js';
+import { buildWindowMap, replayTileAnim } from '../../games/batman/src/water.js';
+import { ROOT, gamePath } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const PY = process.env.PYTHON || 'python';
 
 // Every level whose 0:$31EE entry is a real pointer, plus three that have no
@@ -39,7 +39,7 @@ const LEVELS = arg('--levels', '1,2,3,4,5,6,7,9,12,13,14')
 const FRAMES = Number(arg('--frames', 120));
 
 const manifest = JSON.parse(
-  fs.readFileSync(path.join(ROOT, 'assets', 'manifest.json'), 'utf8'));
+  fs.readFileSync(gamePath('assets/manifest.json'), 'utf8'));
 if (!manifest.window || !manifest.tileAnim) {
   console.error('manifest has no window/tileAnim section - re-run '
     + 'python tools/export_assets.py');

@@ -22,9 +22,9 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { createFade, tickFade } from '../../src/title.js';
+import { createFade, tickFade } from '../../games/batman/src/title.js';
+import { ROOT, gamePath } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const REF = path.join(ROOT, 'rip', 'titleflash.json');
 const PY = process.env.PYTHON || 'python';
 
@@ -34,7 +34,7 @@ if (process.argv.includes('--record') || !fs.existsSync(REF)) {
 
 const rec = JSON.parse(fs.readFileSync(REF, 'utf8'));
 const manifest = JSON.parse(
-  fs.readFileSync(path.join(ROOT, 'assets', 'manifest.json'), 'utf8'));
+  fs.readFileSync(gamePath('assets/manifest.json'), 'utf8'));
 const spec = manifest.title;
 if (!spec || !spec.lcd) {
   console.error('manifest.title.lcd missing - re-run tools/export_assets.py');

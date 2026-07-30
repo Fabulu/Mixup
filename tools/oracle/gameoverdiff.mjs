@@ -42,8 +42,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { ROOT, gamePath, imp } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const PY = process.env.PYTHON || 'python';
 
 const argv = process.argv.slice(2);
@@ -58,11 +58,10 @@ if (argv.includes('--record') || !fs.existsSync(REF)) {
 }
 const ref = JSON.parse(fs.readFileSync(REF, 'utf8'));
 
-const imp = (p) => import(pathToFileURL(path.join(ROOT, p)).href);
 const { createState } = await imp('src/state.js');
 const { startDeathBurst, deathBurstTick, effects } = await imp('src/effects.js');
 
-const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/manifest.json'), 'utf8'));
+const manifest = JSON.parse(fs.readFileSync(gamePath('assets/manifest.json'), 'utf8'));
 
 const state = createState();
 state.tables = manifest.tables;

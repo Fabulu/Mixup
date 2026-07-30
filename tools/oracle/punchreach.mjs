@@ -11,9 +11,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { meleeHitTest, _internals, createEnemies } from '../../src/enemies.js';
+import { meleeHitTest, _internals, createEnemies } from '../../games/batman/src/enemies.js';
+import { ROOT } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const rec = JSON.parse(fs.readFileSync(
   path.join(ROOT, 'rip', 'oracle', 'punchreach.json'), 'utf8'));
 

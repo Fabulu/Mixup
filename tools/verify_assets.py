@@ -65,12 +65,12 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from gbrom import Rom, ROOT, load_resource
+from gbrom import Rom, ROOT, GAME_ROOT, load_resource
 
 from pyboy import PyBoy
 
 ROM_PATH = os.path.join(ROOT, 'Batman - Return of the Joker (USA, Europe).gb')
-ASSETS = os.path.join(ROOT, 'assets')
+ASSETS = os.path.join(GAME_ROOT, 'assets')
 NUM_LEVELS = 14
 
 # --- code addresses (bank 0) -----------------------------------------------

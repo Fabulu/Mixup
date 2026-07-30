@@ -20,11 +20,11 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { runVramScript } from '../../src/vramscript.js';
+import { runVramScript } from '../../games/batman/src/vramscript.js';
+import { ROOT, gamePath } from './_env.mjs';
 import { fillTilemap, blockCopy, bootClearVram, buildTitleVram,
-  buildRoundSelectVram } from '../../src/vram.js';
+  buildRoundSelectVram } from '../../games/batman/src/vram.js';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const REF = path.join(ROOT, 'rip', 'titlebuild.json');
 const PY = process.env.PYTHON || 'python';
 
@@ -80,7 +80,7 @@ if (bad === 0) {
   // because that is what the game actually runs. Without this the replay could
   // pass while the exported ingredients were wrong.
   const manifest = JSON.parse(
-    fs.readFileSync(path.join(ROOT, 'assets', 'manifest.json'), 'utf8'));
+    fs.readFileSync(gamePath('assets/manifest.json'), 'utf8'));
   if (!manifest.title) {
     console.error('manifest has no title section - re-run export_assets.py');
     process.exit(1);

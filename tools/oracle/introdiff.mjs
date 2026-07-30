@@ -29,17 +29,17 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { runVramScript } from '../../src/vramscript.js';
+import { runVramScript } from '../../games/batman/src/vramscript.js';
 import { fillTilemap, blockCopy, buildTitleVram, buildRoundSelectVram }
-  from '../../src/vram.js';
+  from '../../games/batman/src/vram.js';
 import {
   buildStageIntroVram, loadStageIntro, showStageIntro, tickStageIntro,
   stageIntroTextScript, INTRO_ROUTE_LEVELS, INTRO_BOSS_LEVELS, showsStageIntro,
-} from '../../src/stageintro.js';
-import { createState } from '../../src/state.js';
-import { BTN } from '../../src/player.js';
+} from '../../games/batman/src/stageintro.js';
+import { createState } from '../../games/batman/src/state.js';
+import { BTN } from '../../games/batman/src/player.js';
+import { ROOT, gamePath } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const PY = process.env.PYTHON || 'python';
 const DIR = path.join(ROOT, 'rip', 'oracle');
 
@@ -78,7 +78,7 @@ if (record || !fs.existsSync(skipRef)) {
 }
 
 const manifest = JSON.parse(
-  fs.readFileSync(path.join(ROOT, 'assets', 'manifest.json'), 'utf8'));
+  fs.readFileSync(gamePath('assets/manifest.json'), 'utf8'));
 if (!manifest.stageIntro) {
   console.error('manifest has no stageIntro section - re-run export_assets.py');
   process.exit(1);

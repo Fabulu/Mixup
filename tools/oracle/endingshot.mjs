@@ -36,11 +36,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { readIndexedPNG, writeIndexedPNG, DMG_PALETTE } from '../golden.mjs';
-import { createState } from '../../src/state.js';
-import { renderFrame, createFramebuffer } from '../../src/render/renderer.js';
-import { loadEnding, showEnding, tickEnding } from '../../src/ending.js';
+import { createState } from '../../games/batman/src/state.js';
+import { renderFrame, createFramebuffer } from '../../games/batman/src/render/renderer.js';
+import { loadEnding, showEnding, tickEnding } from '../../games/batman/src/ending.js';
+import { ROOT, gamePath } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const SHOTS = path.join(ROOT, 'rip', 'oracle', 'endingshots');
 const REF = path.join(ROOT, 'rip', 'oracle', 'ending-shots.json');
 const OUT = path.join(ROOT, 'rip', 'endingvis');
@@ -50,7 +50,7 @@ const LAGS = [0, 1, 2, 3];
 const write = process.argv.includes('--write');
 
 const manifest = JSON.parse(
-  fs.readFileSync(path.join(ROOT, 'assets', 'manifest.json'), 'utf8'));
+  fs.readFileSync(gamePath('assets/manifest.json'), 'utf8'));
 const r = JSON.parse(fs.readFileSync(REF, 'utf8'));
 
 const frames = (r.shotFrames || []).slice().sort((a, b) => a - b);

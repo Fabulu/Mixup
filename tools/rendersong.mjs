@@ -11,15 +11,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { ROOT, imp, installFetchShim } from './oracle/_env.mjs';
 
-const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-globalThis.fetch = async (url) => {
-  const file = path.join(ROOT, String(url).replace(/^.*?assets\//, 'assets/'));
-  const buf = fs.readFileSync(file);
-  return { ok: true, json: async () => JSON.parse(buf.toString('utf8')),
-           arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) };
-};
-const imp = (p) => import(pathToFileURL(path.join(ROOT, p)).href);
+installFetchShim();
 
 const { APU, CPU_HZ } = await imp('src/sound/apu.js');
 const { loadSoundData, createDriver, request, tick } = await imp('src/sound/driver.js');

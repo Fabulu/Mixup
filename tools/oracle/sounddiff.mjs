@@ -14,14 +14,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { ROOT, imp, installFetchShim } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
-globalThis.fetch = async (url) => {
-  const buf = fs.readFileSync(path.join(ROOT, String(url).replace(/^.*?assets\//, 'assets/')));
-  return { ok: true, json: async () => JSON.parse(buf.toString('utf8')),
-           arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) };
-};
-const imp = (p) => import(pathToFileURL(path.join(ROOT, p)).href);
+installFetchShim();
 const { loadSoundData, createDriver, request, tick } = await imp('src/sound/driver.js');
 
 const argv = process.argv.slice(2);

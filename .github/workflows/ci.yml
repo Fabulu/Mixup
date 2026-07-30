@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: '20'
       - name: Unit tests (no ROM required)
-        run: node --test tests/
+        run: node --test games/batman/tests/
 
   no-rom-data:
     runs-on: ubuntu-latest
@@ -31,15 +31,39 @@ jobs:
           if git ls-files | grep -Ei '\.(gb|gbc|sav|sym)$'; then
             echo "::error::a ROM image is committed"; exit 1
           fi
-          if git ls-files | grep -E '^(assets|disasm|rip|dist)/'; then
+          # NOT anchored to the repo root: assets/ and rip/ live under
+          # games/<id>/ now, and a '^assets/' pattern stops seeing them the
+          # moment a game moves. Match the directory at ANY depth, the way
+          # .gitignore's own unanchored patterns do.
+          if git ls-files | grep -E '(^|/)(assets|disasm|rip|dist)/'; then
             echo "::error::extracted ROM data is committed"; exit 1
           fi
+          # Golden frames are rendered game imagery. .gitignore covers them at
+          # any depth via **/tests/visual/golden/, but a gitignore rule only
+          # stops an ACCIDENT -- `git add -f` still commits, and neither check
+          # above matches this path.
+          if git ls-files | grep -E '(^|/)tests/visual/(golden|diff)/'; then
+            echo "::error::rendered game imagery is committed"; exit 1
+          fi
           echo "clean: no ROM image, no extracted data"
-      - name: Refuse bulk ROM literals in src/
+      - name: Refuse bulk ROM literals in game source
         run: |
           # Long hex strings and long byte arrays are how ROM tables used to
           # sneak into source. They belong in assets/manifest.json.
-          if grep -rnoE "'[0-9a-f]{24,}'" src/; then
-            echo "::error::a long hex literal in src/ -- export it instead"; exit 1
+          #
+          # THE GUARD IS THE POINT. This used to run `grep -r ... src/`, which
+          # exits 2 -- not 1 -- when src/ does not exist. `if` reads a non-zero
+          # exit as false, so the step passed forever the moment src/ moved.
+          # A check that cannot fail is not a check.
+          dirs=$(git ls-files '*/src/*.js' 'src/*.js' | sed -E 's#(^|.*/)src/.*#\1src#' | sort -u)
+          if [ -z "$dirs" ]; then
+            echo "::error::no src/ tree found to scan -- this check has gone blind"; exit 1
           fi
-          echo "clean: no bulk ROM literals in src/"
+          echo "scanning: $dirs"
+          for d in $dirs; do
+            test -d "$d" || { echo "::error::$d is not a directory"; exit 1; }
+          done
+          if grep -rnoE "'[0-9a-f]{24,}'" $dirs; then
+            echo "::error::a long hex literal in game source -- export it instead"; exit 1
+          fi
+          echo "clean: no bulk ROM literals in $dirs"

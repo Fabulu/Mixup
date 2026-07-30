@@ -34,23 +34,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { ROOT, imp, installFetchShim } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const DIR = path.join(ROOT, 'rip', 'oracle', 'pix');
 
-globalThis.fetch = async (u) => {
-  const file = path.join(ROOT, String(u).replace(/^.*?(assets)/, '$1'));
-  if (!fs.existsSync(file)) {
-    return { ok: false, status: 404, json: async () => ({}),
-             arrayBuffer: async () => new ArrayBuffer(0) };
-  }
-  const buf = fs.readFileSync(file);
-  return { ok: true, status: 200,
-    json: async () => JSON.parse(buf.toString('utf8')),
-    arrayBuffer: async () => buf.buffer.slice(buf.byteOffset,
-                                              buf.byteOffset + buf.byteLength) };
-};
-const imp = (p) => import(pathToFileURL(path.join(ROOT, p)).href);
+installFetchShim();
 
 const { createState } = await imp('src/state.js');
 const { makeTunables } = await imp('src/tunables.js');

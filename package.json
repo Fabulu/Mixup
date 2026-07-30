@@ -6,7 +6,7 @@
   "type": "module",
   "description": "Batman: Return of the Joker (GB, Sunsoft 1992) hand-translated from disassembly into JavaScript.",
   "scripts": {
-    "test": "node --test tests/",
+    "test": "node --test games/batman/tests/",
     "serve": "node --run-if-present serve || python -m http.server 8000",
     "assets": "python tools/export_assets.py && python tools/gen_tunables.py",
     "check-tunables": "python tools/gen_tunables.py --check",

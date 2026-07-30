@@ -20,9 +20,9 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { runVramScript, vramScriptLength } from '../../src/vramscript.js';
+import { runVramScript, vramScriptLength } from '../../games/batman/src/vramscript.js';
+import { ROOT } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const PY = process.env.PYTHON || 'python';
 
 const argv = process.argv.slice(2);

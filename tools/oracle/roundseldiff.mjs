@@ -14,17 +14,15 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { createState } from '../../src/state.js';
+import { createState } from '../../games/batman/src/state.js';
 // The CONTINUE line is drawn by running 0:$3328 through sub_00_0A0E, so this
 // harness needs the real manifest tables rather than a bare createState --
 // and it SHOULD, because it is diffing against the cartridge.
-const MANIFEST = JSON.parse(fs.readFileSync(
-  path.join(path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url)))),
-            'assets', 'manifest.json'), 'utf8'));
-import { makeTunables } from '../../src/tunables.js';
-import { showRoundSelect, tickRoundSelect } from '../../src/roundselect.js';
+const MANIFEST = JSON.parse(fs.readFileSync(gamePath('assets/manifest.json'), 'utf8'));
+import { makeTunables } from '../../games/batman/src/tunables.js';
+import { showRoundSelect, tickRoundSelect } from '../../games/batman/src/roundselect.js';
+import { ROOT, gamePath } from './_env.mjs';
 
-const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const PY = process.env.PYTHON || 'python';
 
 // Three runs, because a fresh boot leaves $C753 = 0 and $FFB5 = 0 -- so the

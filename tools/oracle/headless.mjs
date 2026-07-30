@@ -24,8 +24,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { ROOT, gamePath, installFetchShim } from './_env.mjs';
+export { ROOT };
 
-export const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 export const FRAME_MS = 1000 / 59.73;      // must match src/main.js
 
 // ---------------------------------------------------------------- DOM shims
@@ -45,18 +46,7 @@ function installShims() {
   if (globalThis.__romHeadlessInstalled) return;
   globalThis.__romHeadlessInstalled = true;
 
-  globalThis.fetch = async (u) => {
-    const rel = String(u).replace(/^.*?(assets\/)/, '$1');
-    const file = path.join(ROOT, rel);
-    if (!fs.existsSync(file)) {
-      return { ok: false, status: 404, json: async () => ({}),
-               arrayBuffer: async () => new ArrayBuffer(0) };
-    }
-    const buf = fs.readFileSync(file);
-    return { ok: true, status: 200,
-      json: async () => JSON.parse(buf.toString('utf8')),
-      arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) };
-  };
+  installFetchShim();
 
   const win = {
     addEventListener() {}, removeEventListener() {},
@@ -127,9 +117,9 @@ export async function bootHeadless(opts = {}) {
   installShims();
   const { canvas, last } = fakeCanvas();
 
-  const main = await import(pathToFileURL(path.join(ROOT, 'src/main.js')).href);
-  const input = await import(pathToFileURL(path.join(ROOT, 'src/input.js')).href);
-  const R = await import(pathToFileURL(path.join(ROOT, 'src/render/renderer.js')).href);
+  const main = await import(pathToFileURL(gamePath('src/main.js')).href);
+  const input = await import(pathToFileURL(gamePath('src/input.js')).href);
+  const R = await import(pathToFileURL(gamePath('src/render/renderer.js')).href);
 
   if (!SHADE_OF_RGB.size) {
     R.DMG_PALETTE.forEach((c, i) =>

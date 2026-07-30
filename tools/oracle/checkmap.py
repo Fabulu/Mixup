@@ -14,6 +14,7 @@ import os
 from pyboy import PyBoy
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+GAME_ROOT = os.path.join(ROOT, 'games', 'batman')
 ROM = os.path.join(ROOT, 'Batman - Return of the Joker (USA, Europe).gb')
 MAIN_LOOP = 0x0567
 LEVEL_INIT = 0x04BB   # one instruction after the route dispatcher writes $FFB0
@@ -24,7 +25,7 @@ def main():
     ap.add_argument('--level', type=int, default=1)
     args = ap.parse_args()
 
-    ours = open(os.path.join(ROOT, f'assets/levels/{args.level:02d}.map.bin'), 'rb').read()
+    ours = open(os.path.join(GAME_ROOT, f'assets/levels/{args.level:02d}.map.bin'), 'rb').read()
     width = len(ours) // 32
 
     pyboy = PyBoy(ROM, window='null', sound_emulated=False)

@@ -20,10 +20,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { ROOT, imp, gamePath, installFetchShim } from './oracle/_env.mjs';
+export { ROOT };
 
-export const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-export const GOLDEN_DIR = path.join(ROOT, 'tests/visual/golden');
-export const DIFF_DIR = path.join(ROOT, 'tests/visual/diff');
+export const GOLDEN_DIR = gamePath('tests/visual/golden');
+export const DIFF_DIR = gamePath('tests/visual/diff');
 const HASH_FILE = path.join(GOLDEN_DIR, 'hashes.json');
 
 // --- make the browser-shaped asset loader work on the filesystem -----------
@@ -31,23 +32,8 @@ const HASH_FILE = path.join(GOLDEN_DIR, 'hashes.json');
 // this module can pull in src/* too)
 if (!globalThis.__goldenFetchShim) {
   globalThis.__goldenFetchShim = true;
-  globalThis.fetch = async (url) => {
-    const rel = String(url).replace(/^.*?assets\//, 'assets/');
-    const file = path.join(ROOT, rel);
-    if (!fs.existsSync(file)) {
-      return { ok: false, status: 404, json: async () => ({}), arrayBuffer: async () => new ArrayBuffer(0) };
-    }
-    const buf = fs.readFileSync(file);
-    return {
-      ok: true,
-      status: 200,
-      json: async () => JSON.parse(buf.toString('utf8')),
-      arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
-    };
-  };
+  installFetchShim();
 }
-
-const imp = (p) => import(pathToFileURL(path.join(ROOT, p)).href);
 
 const { createState } = await imp('src/state.js');
 const { makeTunables } = await imp('src/tunables.js');

@@ -6,10 +6,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import { ROOT, gamePath } from './oracle/_env.mjs';
 
-const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/manifest.json'), 'utf8'));
-const pool = fs.readFileSync(path.join(ROOT, 'assets/player.tiles.bin'));
+const manifest = JSON.parse(fs.readFileSync(gamePath('assets/manifest.json'), 'utf8'));
+const pool = fs.readFileSync(gamePath('assets/player.tiles.bin'));
 const animId = parseInt(process.argv[2] ?? '1', 10);
 
 const SHADES = [[0xE0, 0xF8, 0xD0], [0x88, 0xC0, 0x70], [0x34, 0x68, 0x56], [0x08, 0x18, 0x20]];

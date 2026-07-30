@@ -7,7 +7,7 @@
 // Stages run in cheapest-first order so a broken export or a bad constant is
 // reported before anything spends 30 s inside an emulator:
 //
-//   unit-tests        node --test tests/            TEST-A's unit tests for src/*.js
+//   unit-tests        node --test games/batman/tests/  the port's unit tests
 //   tunables-check    tools/gen_tunables.py --check 44 constants still match the ROM bytes
 //   asset-integrity   tools/verify_assets.py        assets/ vs the real ROM, all 14 levels  [PyBoy]
 //   vram-scripts      tools/oracle/vramdiff.mjs     sub_00_0A0E write stream vs the ROM      [PyBoy]
@@ -15,9 +15,20 @@
 //   round-select      tools/oracle/roundseldiff.mjs menu cursor logic vs the ROM             [PyBoy]
 //   oracle-regression tools/oracle/regress.mjs      port vs ROM, frame-exact, whole corpus  [PyBoy]
 //
-// Exits non-zero if any stage fails, and names the stage. Stages that cannot
-// run (no tests/ directory, no exported assets) are reported as SKIP and do
-// not fail the run; a stage that runs and fails always does.
+// Exits non-zero if any stage fails, and names the stage.
+//
+// A MISSING PATH IS A FAILURE, NOT A SKIP. This used to derive hasUnitTests
+// from <ROOT>/tests and hasAssets from <ROOT>/assets/manifest.json, hand 24 of
+// the 26 stages a `skip:` reason when the probe missed, and still print
+// ALL GREEN and exit 0 -- so a tree whose layout had moved under the runner
+// reported success having run two stages. assets/ is gitignored, so such a move
+// leaves no trace in a diff either. Now: if a probed path is missing the run
+// EXITS NON-ZERO and names the path it probed. `--allow-missing` restores the
+// old tolerance for someone who genuinely has no ROM-derived assets, and says
+// so loudly in the banner.
+//
+// --fast is unaffected: that is a DELIBERATE scope reduction, not a missing
+// path, and its skips are still skips.
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -36,23 +47,55 @@ const PY = process.env.PYTHON || 'python';
 
 if (has('help')) {
   console.log('usage: node tools/test-all.mjs [--fast] [--keep-going] [--only <stage>]\n' +
-              '  --fast          skip the PyBoy-dependent stages\n' +
-              '  --keep-going    run every stage even after one fails\n' +
-              '  --only <stage>  run one stage by name\n' +
-              '  PYTHON=<exe>    override the python interpreter');
+              '  --fast           skip the PyBoy-dependent stages\n' +
+              '  --keep-going     run every stage even after one fails\n' +
+              '  --only <stage>   run one stage by name\n' +
+              '  --allow-missing  a missing tests/ or assets/ SKIPs instead of failing\n' +
+              '  PYTHON=<exe>     override the python interpreter');
   process.exit(0);
 }
 
-const hasUnitTests = fs.existsSync(path.join(ROOT, 'tests')) &&
-  fs.readdirSync(path.join(ROOT, 'tests')).some((f) => f.endsWith('.test.js'));
-const hasAssets = fs.existsSync(path.join(ROOT, 'assets', 'manifest.json'));
+const allowMissing = has('allow-missing');
+
+// The two paths the whole gate hangs off. Spelled once, printed on every run,
+// and checked before a single stage starts -- because the failure they guard
+// against is a runner pointed at the wrong root, which is silent by
+// construction.
+// GAME_DIR is the one place this runner knows which game it is gating. It is
+// spelled here rather than imported from tools/oracle/_env.mjs so the gate
+// keeps working if the oracle preamble is broken -- a runner that cannot start
+// because the thing it tests is broken is a runner that cannot report it.
+const GAME_DIR = path.join(ROOT, 'games', 'batman');
+const TESTS_REL = 'games/batman/tests/';
+const TESTS_DIR = path.join(GAME_DIR, 'tests');
+const ASSET_MANIFEST = path.join(GAME_DIR, 'assets', 'manifest.json');
+
+const hasUnitTests = fs.existsSync(TESTS_DIR) &&
+  fs.readdirSync(TESTS_DIR).some((f) => f.endsWith('.test.js'));
+const hasAssets = fs.existsSync(ASSET_MANIFEST);
+
+console.log('root          ' + ROOT);
+console.log('unit tests    ' + TESTS_DIR + (hasUnitTests ? '' : '   *** MISSING ***'));
+console.log('asset manifest ' + ASSET_MANIFEST + (hasAssets ? '' : '   *** MISSING ***'));
+
+if (!allowMissing && (!hasUnitTests || !hasAssets)) {
+  const missing = [];
+  if (!hasUnitTests) missing.push(`${TESTS_DIR}  (no *.test.js found there)`);
+  if (!hasAssets) missing.push(`${ASSET_MANIFEST}  (run: ${PY} tools/export_assets.py)`);
+  console.error('\nREFUSING TO RUN: the gate cannot see its own inputs.\n' +
+                missing.map((m) => '  missing: ' + m).join('\n') +
+                '\n\nEvery stage that depends on these would have been reported SKIP and the\n' +
+                'run would have printed ALL GREEN having tested almost nothing. If that is\n' +
+                'genuinely what you want, pass --allow-missing.');
+  process.exit(1);
+}
 
 const STAGES = [
   {
     name: 'unit-tests',
-    what: "TEST-A's unit tests for src/*.js",
+    what: "TEST-A's unit tests for games/batman/src/*.js",
     cmd: process.execPath,
-    args: ['--test', 'tests/'],
+    args: ['--test', TESTS_REL],
     skip: hasUnitTests ? null : 'no tests/*.test.js yet',
   },
   {
@@ -358,5 +401,14 @@ if (failedStage) {
                             'pass --keep-going to run them anyway' : ''));
   process.exit(1);
 }
-console.log(`\nALL GREEN - ${passed} stage(s) passed` +
-            (skipped ? `, ${skipped} skipped` : ''));
+// The banner must not be readable charitably. "ALL GREEN, 2 passed, 24
+// skipped" is not a green run and must not look like one, so a run with any
+// skip at all says PARTIAL and names how many of the known stages actually
+// executed.
+const total = only ? 1 : STAGES.length;
+if (skipped) {
+  console.log(`\nPARTIAL - ${passed}/${total} stage(s) passed, ${skipped} SKIPPED ` +
+              `(nothing was tested by those). Reasons above.`);
+} else {
+  console.log(`\nALL GREEN - ${passed}/${total} stage(s) passed, 0 skipped`);
+}

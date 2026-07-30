@@ -17,6 +17,7 @@ import os
 from pyboy import PyBoy
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+GAME_ROOT = os.path.join(ROOT, 'games', 'batman')
 ROM = os.path.join(ROOT, 'Batman - Return of the Joker (USA, Europe).gb')
 
 MAIN_LOOP = 0x0567
@@ -71,7 +72,7 @@ def main():
 
     width = args.width
     if width is None:
-        with open(os.path.join(ROOT, 'assets', 'levels',
+        with open(os.path.join(GAME_ROOT, 'assets', 'levels',
                                f'{args.level:02d}.map.bin'), 'rb') as fh:
             width = len(fh.read()) // 32
 

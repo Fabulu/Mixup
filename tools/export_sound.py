@@ -21,6 +21,9 @@ import json
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Same seam as gbrom.GAME_ROOT and tools/oracle/_env.mjs's GAME_ROOT: the ROM
+# is repo level, the exported assets are game level.
+GAME_ROOT = os.path.join(ROOT, 'games', 'batman')
 ROM = os.path.join(ROOT, 'Batman - Return of the Joker (USA, Europe).gb')
 
 BANK = 7
@@ -50,7 +53,7 @@ class Bank:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--rom', default=ROM)
-    ap.add_argument('--out', default=os.path.join(ROOT, 'assets/sound.json'))
+    ap.add_argument('--out', default=os.path.join(GAME_ROOT, 'assets/sound.json'))
     args = ap.parse_args()
 
     rom = Bank(args.rom)

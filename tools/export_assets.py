@@ -20,12 +20,12 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 'oracle'))
-from gbrom import (Rom, ROOT, build_level_vram, level_map, level_collision_lut,
+from gbrom import (Rom, ROOT, GAME_ROOT, build_level_vram, level_map, level_collision_lut,
                    level_metatiles, level_resource_indices, load_resource,
                    NUM_LEVELS)
 import animtables
 
-OUT = os.path.join(ROOT, 'assets')
+OUT = os.path.join(GAME_ROOT, 'assets')
 
 # --- ROM table addresses (master reference §6.5, §7.3, §7.4, §10) -----------
 T_LEVEL_SUBTYPE   = (0, 0x1015)   # b7 reset physics, low nibble -> $C73E

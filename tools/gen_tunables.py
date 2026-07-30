@@ -13,7 +13,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from gbrom import Rom, ROOT
+from gbrom import Rom, ROOT, GAME_ROOT
 
 # name, file offset, expected value, signed?, unit/comment
 TUNABLES = [
@@ -127,7 +127,7 @@ def main():
               f'tunables match the ROM')
         return 0
 
-    out = os.path.join(ROOT, 'src', 'tunables.js')
+    out = os.path.join(GAME_ROOT, 'src', 'tunables.js')
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, 'w', encoding='utf-8') as f:
         f.write(HEADER + '\n'.join(lines) + '\n' + FOOTER)
