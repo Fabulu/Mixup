@@ -6,9 +6,14 @@
 # Everything below is REGENERATED from a ROM you legally own -- see README.md.
 # ---------------------------------------------------------------------------
 
-# The ROM itself, in any of the usual forms
+# The ROM itself, in any of the usual forms. Phase 2 is Gradius on the NES, so
+# the iNES/UNIF forms are here too -- a cartridge image never enters this repo
+# whatever console it came off.
 *.gb
 *.gbc
+*.nes
+*.unf
+*.unif
 *.sav
 *.sym
 Vimm's Lair.txt

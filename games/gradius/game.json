@@ -1,0 +1,36 @@
+{
+  "id": "gradius",
+  "title": "Gradius",
+  "platform": "nes",
+  "year": 1986,
+  "publisher": "Konami",
+  "blurb": "Horizontal shooter. The Vic Viper, the Options, and the power-up bar.",
+  "status": "not-started",
+  "rom": {
+    "file": "Gradius (USA).nes",
+    "sha1": "92645fe142861c3d3fda209bb906ad2b0e353988",
+    "crc32": "54f1af1f",
+    "bytes": 65552,
+    "ines": {
+      "prgKB": 32,
+      "chrKB": 32,
+      "mapper": 3,
+      "mapperName": "CNROM",
+      "mirroring": "vertical",
+      "battery": false
+    }
+  },
+  "display": {
+    "screen": {
+      "w": 256,
+      "h": 240
+    },
+    "frameHz": 60.0988
+  },
+  "code": {
+    "entry": null,
+    "mods": null
+  },
+  "entries": [],
+  "options": []
+}
