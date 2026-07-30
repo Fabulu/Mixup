@@ -15,10 +15,16 @@ import { ROOT } from './oracle/_env.mjs';
 
 const DIST = path.join(ROOT, 'dist');
 
-// Per game: src/ and assets/. tests/ is deliberately NOT copied.
+// Per game: game.json, src/ and assets/. tests/ is deliberately NOT copied.
+//
+// games/index.json is the FIRST thing the launcher fetches and game.json is the
+// second, before any game code is imported at all -- so a dist/ without them is
+// a site whose game select renders empty. They are cheap and they are load
+// bearing; the INCLUDE list is the only place that knows it.
 const GAMES = ['batman'];
-const INCLUDE = ['index.html',
-                 ...GAMES.flatMap((g) => [`games/${g}/src`, `games/${g}/assets`])];
+const INCLUDE = ['index.html', 'games/index.json',
+                 ...GAMES.flatMap((g) => [`games/${g}/game.json`,
+                                          `games/${g}/src`, `games/${g}/assets`])];
 
 function copy(src, dst) {
   const st = fs.statSync(src);

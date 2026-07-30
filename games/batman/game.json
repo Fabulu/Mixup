@@ -1,0 +1,148 @@
+{
+  "id": "batman",
+  "title": "Batman: Return of the Joker",
+  "platform": "gb",
+  "year": 1992,
+  "publisher": "Sunsoft",
+  "blurb": "Game Boy platformer. Hand-translated from the disassembly and verified bit-exact against the cartridge.",
+  "status": "complete",
+  "rom": {
+    "file": "Batman - Return of the Joker (USA, Europe).gb",
+    "sha1": "345a332175f58304f91111a13b770662e5ea92c3",
+    "crc32": "5124bbec",
+    "md5": "97bc907deba1e7d7c9bc72fca0310822",
+    "bytes": 131072,
+    "romNote": "The file stays at the repo root this workflow -- 54 python tools carry the filename as a literal. Recorded here so a second cartridge knows to put its ROM beside a manifest instead.",
+    "header": {
+      "title": "BATMAN ROJ",
+      "cartType": 1,
+      "cartTypeName": "MBC1",
+      "romSizeCode": 2,
+      "romBanks": 8,
+      "ramSizeCode": 0,
+      "cgb": false,
+      "sgb": false
+    }
+  },
+  "display": {
+    "screen": {
+      "w": 160,
+      "h": 144
+    },
+    "frameHz": 59.727501,
+    "frameHzNote": "Game Boy DMG: 4194304 Hz / 70224 cycles per frame = 59.7275006. Derived, not rounded -- see docs/knowledge/07-clocks-and-framerates.md. NOTE THE DEVIATION: the shipped loop uses FRAME_MS = 1000/59.73 (src/main.js), a rounded rate worth 0.7 us per frame. Everything in the corpus was verified against that constant and it is NOT changed by this manifest -- the exact value is recorded here so the next game does not inherit the shortcut."
+  },
+  "code": {
+    "entry": "src/main.js",
+    "mods": "src/mods.js",
+    "input": "src/input.js"
+  },
+  "entryNote": "boot(canvas, opts) is the host contract and its option names are still Batman-shaped ({level, title, ending, difficulty}). entries[] and options[] below are the generic shapes a later {entry, options} call will read; nothing converts between them yet.",
+  "input": {
+    "note": "Masks are the $FFE1/$FFE2 joypad bit layout read in the VBlank ISR at 0:$07CC-$07F6. They mirror BTN in src/player.js, and tests/registry.test.js asserts the two agree so this cannot drift.",
+    "buttons": [
+      { "id": "A", "mask": 1, "glyph": "A" },
+      { "id": "B", "mask": 2, "glyph": "B" },
+      { "id": "SELECT", "mask": 4, "glyph": "SELECT" },
+      { "id": "START", "mask": 8, "glyph": "START" },
+      { "id": "RIGHT", "mask": 16, "glyph": "▶" },
+      { "id": "LEFT", "mask": 32, "glyph": "◀" },
+      { "id": "UP", "mask": 64, "glyph": "▲" },
+      { "id": "DOWN", "mask": 128, "glyph": "▼" }
+    ],
+    "defaultKeymap": {
+      "KeyX": "A", "Space": "A",
+      "KeyZ": "B", "KeyY": "B", "KeyC": "B",
+      "ShiftRight": "SELECT", "ShiftLeft": "SELECT",
+      "Enter": "START",
+      "ArrowRight": "RIGHT", "ArrowLeft": "LEFT",
+      "ArrowUp": "UP", "ArrowDown": "DOWN",
+      "KeyD": "RIGHT", "KeyA": "LEFT",
+      "KeyW": "UP", "KeyS": "DOWN"
+    },
+    "keymapNote": "Keys are matched on e.code (physical position), which is why KeyZ and KeyY are both B -- see src/input.js. src/input.js still owns the live table; this is the written-down copy the launcher reads masks through.",
+    "touchLayout": {
+      "dpad": [null, "UP", null, "LEFT", null, "RIGHT", null, "DOWN", null],
+      "clusters": [
+        { "size": "sml", "buttons": ["START"] },
+        { "buttons": ["B", "A"] }
+      ]
+    }
+  },
+  "entries": [
+    { "id": 0, "kind": "title", "label": "Title screen",
+      "note": "The default. Any other value boots straight into that level and skips the title entirely." },
+    { "id": 1, "kind": "level", "label": "1", "note": "playable" },
+    { "id": 2, "kind": "level", "label": "2", "note": "playable" },
+    { "id": 3, "kind": "level", "label": "3", "note": "playable" },
+    { "id": 4, "kind": "level", "label": "4", "note": "Boss 1 — playable" },
+    { "id": 5, "kind": "level", "label": "5", "note": "playable" },
+    { "id": 6, "kind": "level", "label": "6", "note": "playable" },
+    { "id": 7, "kind": "level", "label": "7", "note": "playable" },
+    { "id": 8, "kind": "level", "label": "8", "note": "Boss 2 — playable" },
+    { "id": 9, "kind": "level", "label": "9", "note": "playable" },
+    { "id": 10, "kind": "level", "label": "10", "note": "playable" },
+    { "id": 11, "kind": "level", "label": "11", "note": "Boss 3 — playable; one sky band sits a pixel off" },
+    { "id": 12, "kind": "level", "label": "12", "note": "playable" },
+    { "id": 13, "kind": "level", "label": "13", "note": "playable" },
+    { "id": 14, "kind": "level", "label": "14", "note": "Boss 4 / Joker — playable" },
+    { "id": 99, "kind": "ending", "label": "Ending",
+      "note": "4 pictures, the credit crawl and THE END" }
+  ],
+  "entriesNote": "Lifted verbatim from index.html's LEVEL_NOTE, INCLUDING the two sentinels: 0 = start at the title screen, 99 = watch the ending without beating the Joker. The per-level notes are measured status, not aspiration -- five of them were once FALSE for months, and the rule is that porting something means fixing its line.",
+  "options": [
+    {
+      "key": "difficulty",
+      "label": "Difficulty",
+      "default": 1,
+      "note": "$C756. The cartridge boots at 1 -- read off the real machine at gameplay start, not assumed. NOT cosmetic: 0 turns off water damage entirely and stretches level 1's water-spout pause from $10 to $50 frames, and 2 gives bosses +5 HP.",
+      "values": [
+        { "value": 0, "label": "Easy — no water damage, slow spouts" },
+        { "value": 1, "label": "Normal — the cartridge default" },
+        { "value": 2, "label": "Hard — +5 boss HP, fastest spouts" }
+      ]
+    }
+  ],
+  "charactersNote": "DECLARED, WIRED TO NOTHING. The tile budget is the real constraint on ever having two protagonists on screen: the DMG shares 256 OBJ tiles, the player owns a fixed 12 ($00-$0B) streamed four per frame on a three-column ring, and the streamer's cursor is READ BACK by the pose selector as a repaint-in-flight gate (src/render/metasprite.js). This is here so a borrow system can reason before it loads a single module.",
+  "characters": [
+    {
+      "id": "batman",
+      "label": "Batman",
+      "module": "src/player.js",
+      "msRange": { "table": "table1", "rom": "5:$5F5C", "count": 243 },
+      "hitboxTable": { "rom": "0:$27A8", "count": 31, "shape": "halfW, halfH by anim id" },
+      "tilePool": { "rom": "2:$5074", "objTileBase": 0 },
+      "tileBudget": 12,
+      "tileBudgetNote": "OBJ tiles $00-$0B, streamed one 4-tile column per frame (sub_00_2C13), so a changed pose takes 3 frames to fully repaint."
+    }
+  ],
+  "enemiesNote": "DECLARED, WIRED TO NOTHING. One entry per driver state (loc_01_50C3, table 1:$50D3, indexed on state-1). `module` names the file Phase 9 of the restructure will create; today every one of them still lives in src/enemies.js. They are written down now so the split has to produce one file per unit rather than a single bosses.js.",
+  "enemies": [
+    { "id": 1, "state": 1, "label": "Walker (levels 1-3)", "rom": "1:$50ED",
+      "module": "src/enemies/states/walker.js", "shared": "src/enemies/states/walkershared.js" },
+    { "id": 2, "state": 2, "label": "Walker + jump (levels 5, 7, 13)", "rom": "1:$5399",
+      "module": "src/enemies/states/walker.js", "shared": "src/enemies/states/walkershared.js" },
+    { "id": 3, "state": 3, "label": "Flyer (levels 9, 10)", "rom": "1:$55AA",
+      "module": "src/enemies/states/flyer.js" },
+    { "id": 4, "state": 4, "label": "Chaser — the Joker's grab-balloon (level 14)", "rom": "1:$7750",
+      "module": "src/enemies/states/chaser14.js" },
+    { "id": 5, "state": 5, "label": "Vehicle (level 6 truck)", "rom": "1:$575C",
+      "module": "src/enemies/states/vehicle6.js" },
+    { "id": 6, "state": 6, "label": "Shooter (level 12)", "rom": "1:$57D6",
+      "module": "src/enemies/states/shooter12.js" },
+    { "id": 7, "state": 7, "label": "Boss 2", "rom": "1:$6D8A",
+      "module": "src/enemies/bosses/boss2.js" },
+    { "id": 8, "state": 8, "label": "Boss 3", "rom": "1:$7061",
+      "module": "src/enemies/bosses/boss3.js" },
+    { "id": 9, "state": 9, "label": "Boss 4 / Joker", "rom": "1:$7288",
+      "module": "src/enemies/bosses/boss4.js" },
+    { "id": 10, "state": 10, "label": "Boss 1", "rom": "1:$7591",
+      "module": "src/enemies/bosses/boss1.js" },
+    { "id": 11, "state": 11, "label": "Projectile (spawned by sub_01_6BDC)", "rom": "1:$59E0",
+      "module": "src/enemies/states/projectile.js" },
+    { "id": 12, "state": 12, "label": "Dormant shell", "rom": "1:$5B95",
+      "module": "src/enemies/states/dormant.js" },
+    { "id": 13, "state": 13, "label": "Boss 2 detached part", "rom": "1:$78A7",
+      "module": "src/enemies/bosses/boss2.js" }
+  ]
+}

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Batman: Return of the Joker — mod select</title>
+<title>Mixup — game select</title>
 <style>
   :root {
     --bg: #0d0f14; --panel: #161a22; --line: #262d3a;
@@ -49,6 +49,13 @@
   .card.original[aria-pressed="true"] { border-color: var(--on); background: #16211a; }
   .card.original[aria-pressed="true"] .nm i { opacity: 1; }
 
+  /* A game with no `code.entry` in its manifest is listed but not playable --
+     the registry is the honest inventory, not the playable subset. */
+  .card.game .meta { color: var(--dim); font-size: 11px; margin-top: .35rem;
+                     letter-spacing: .04em; }
+  .card.game[disabled] { cursor: not-allowed; opacity: .5; }
+  .card.game[disabled]:hover { border-color: var(--line); }
+
   .bar {
     position: sticky; bottom: 0; margin-top: 2rem; padding: .9rem 1rem;
     background: #11151c; border: 1px solid var(--line); border-radius: 6px;
@@ -65,14 +72,17 @@
   button { cursor: pointer; }
   #launch { background: var(--accent); color: #171208; border-color: var(--accent);
             font-weight: 700; letter-spacing: .06em; padding: .5rem 1.4rem; }
-  #reset { color: var(--dim); }
+  #reset, #togames { color: var(--dim); }
+
+  .gone { display: none !important; }
 
   #stage { display: none; text-align: center; }
   #stage.on { display: block; }
   #screen {
     image-rendering: pixelated; width: min(96vw, 720px); height: auto;
     /* fitScreen() overrides both with whole-device-pixel values on load,
-       resize and fullscreen change; these are the no-JS fallback. */
+       resize and fullscreen change; these are the no-JS fallback, and the
+       aspect is restated from the chosen game's manifest display.screen. */
     aspect-ratio: 160 / 144; background: var(--dmg3);
     border: 1px solid var(--line); border-radius: 4px;
   }
@@ -101,18 +111,32 @@
   /* START has to exist on touch or the title screen is a dead end. */
   .abtns .tbtn.sml { width: 78px; height: 30px; border-radius: 6px; font-size: 11px; }
 
-  #err { display: none; margin-top: 1rem; padding: .8rem 1rem; text-align: left;
-         background: #2a1a1a; border: 1px solid #5a2a2a; border-radius: 4px;
-         color: #ffb4b4; white-space: pre-wrap; }
+  #err, #boot-err {
+    display: none; margin-top: 1rem; padding: .8rem 1rem; text-align: left;
+    background: #2a1a1a; border: 1px solid #5a2a2a; border-radius: 4px;
+    color: #ffb4b4; white-space: pre-wrap;
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <div id="picker">
+  <div id="gamesel">
     <header>
-      <h1>Batman: Return of the Joker <span>— mod select</span></h1>
-      <div class="sub">Game Boy, Sunsoft 1992 · hand-translated from disassembly · every
+      <h1>Mixup <span>— game select</span></h1>
+      <div class="sub">Console games hand-translated from their disassembly and
+        verified against the original cartridge · pick one</div>
+    </header>
+
+    <h2>Games</h2>
+    <div class="grid" id="gamegrid"></div>
+    <div id="boot-err"></div>
+  </div>
+
+  <div id="picker" class="gone">
+    <header>
+      <h1><span id="gname"></span> <span>— mod select</span></h1>
+      <div class="sub"><span id="gmeta"></span> · hand-translated from disassembly · every
         modifier below changes a constant read straight out of the original ROM</div>
     </header>
 
@@ -134,9 +158,8 @@
       <label>Level
         <select id="level"></select>
       </label>
-      <label>Difficulty
-        <select id="difficulty"></select>
-      </label>
+      <span id="opts"></span>
+      <button id="togames">◂ games</button>
       <button id="reset">Clear</button>
       <button id="launch">LAUNCH ▸</button>
     </div>
@@ -157,23 +180,29 @@
         Batarangs need ammo — find a pickup, or switch on <b>Batarang Storm</b>.
       </div>
     </div>
+    <!-- The on-screen pad's LAYOUT is hand-written; only the joypad MASKS come
+         from the manifest. data-btn names a button id in game.json's
+         input.buttons[] and the mask is looked up there, so the $FFE1 bit
+         layout is spelled once per game and tests/registry.test.js asserts it
+         still agrees with BTN in src/player.js. game.json's input.touchLayout
+         is the written-down description of the arrangement below. -->
     <div id="pad">
       <div class="dpad">
         <div class="sp"></div>
-        <button class="tbtn" data-btn="64">▲</button>
+        <button class="tbtn" data-btn="UP">▲</button>
         <div class="sp"></div>
-        <button class="tbtn" data-btn="32">◀</button>
+        <button class="tbtn" data-btn="LEFT">◀</button>
         <div class="sp"></div>
-        <button class="tbtn" data-btn="16">▶</button>
+        <button class="tbtn" data-btn="RIGHT">▶</button>
         <div class="sp"></div>
-        <button class="tbtn" data-btn="128">▼</button>
+        <button class="tbtn" data-btn="DOWN">▼</button>
         <div class="sp"></div>
       </div>
       <div class="abtns">
-        <div class="ab-row"><button class="tbtn sml" data-btn="8">START</button></div>
+        <div class="ab-row"><button class="tbtn sml" data-btn="START">START</button></div>
         <div class="ab-row">
-          <button class="tbtn" data-btn="2">B</button>
-          <button class="tbtn" data-btn="1">A</button>
+          <button class="tbtn" data-btn="B">B</button>
+          <button class="tbtn" data-btn="A">A</button>
         </div>
       </div>
     </div>
@@ -184,31 +213,267 @@
 </div>
 
 <script type="module">
-import { MODS, PRESETS, describeMod, resolveLoadout,
-         loadoutToHash, hashToLoadout } from './games/batman/src/mods.js';
-import { boot } from './games/batman/src/main.js';
-import { setTouchButton, clearTouchButtons } from './games/batman/src/input.js';
+// The launcher shell. It knows about a REGISTRY of games and nothing about any
+// particular one.
+//
+// games/index.json and every games/<id>/game.json are static JSON, so the game
+// select renders with ZERO game modules imported -- picking a game is a decision
+// made before a single line of that game's code exists in the page. Everything
+// below that is game-specific (the mod tables, the level list, the option
+// selects, the joypad masks, the screen size) is read out of the chosen game's
+// manifest and its modules are import()ed only once it has been chosen.
+//
+// The shell deliberately stays ONE FILE this workflow. Nothing in the 26-stage
+// gate covers index.html -- tests/registry.test.js is the only automated check
+// it has ever had, and that checks the manifests, not this code -- so splitting
+// it into shared/launcher/ waits until a second game has shown which half is
+// actually generic.
+
+const el = (id) => document.getElementById(id);
+const screenEl = el('screen');
+
+// Platform ids are short and machine-facing (`gb`, `nes`); the human label is
+// the shell's business, not the manifest's.
+const PLATFORM = { gb: 'Game Boy', gbc: 'Game Boy Color', nes: 'NES', snes: 'SNES' };
+
+let game = null;        // { id, dir, manifest } once a game is chosen
+let modsMod = null;     // the chosen game's mods module
+let inputMod = null;    // the chosen game's input module
+let bootFn = null;      // the chosen game's boot()
+let running = null;
+
+const selected = new Set();
+
+// ---- the registry ----------------------------------------------------------
+let registry = [];
+const manifests = new Map();
+try {
+  registry = await (await fetchJson('./games/index.json')).json();
+  for (const g of registry) {
+    manifests.set(g.id, {
+      ...g,
+      manifest: await (await fetchJson(`./games/${g.dir}/game.json`)).json(),
+    });
+  }
+} catch (e) {
+  const b = el('boot-err');
+  b.style.display = 'block';
+  b.textContent = `${e.message}\n\n`
+    + `Serve over HTTP (module imports and fetch do not work from file://):\n`
+    + `  python -m http.server 8000`;
+  throw e;
+}
+
+// A 404 on a manifest must not read as an empty registry. src/assets.js learned
+// this the expensive way: a fetch whose r.ok is never checked turns a missing
+// file into zero-filled data and a wrong picture instead of an error.
+async function fetchJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url}: HTTP ${r.status} -- registry file missing`);
+  return r;
+}
+
+// ---- game select -----------------------------------------------------------
+for (const g of registry) {
+  const { manifest: m } = manifests.get(g.id);
+  const b = document.createElement('button');
+  b.className = 'card game';
+  b.type = 'button';
+  b.innerHTML = `<div class="nm"><span></span></div>
+                 <div class="meta"></div><div class="bl"></div>`;
+  b.querySelector('.nm span').textContent = m.title;
+  b.querySelector('.meta').textContent =
+    [PLATFORM[m.platform] || m.platform, m.publisher, m.year].filter(Boolean).join(' · ')
+    + (m.code?.entry ? '' : ' · not playable yet');
+  b.querySelector('.bl').textContent = m.blurb || '';
+  if (!m.code?.entry) b.disabled = true;
+  else b.addEventListener('click', () => { chooseGame(g.id); });
+  el('gamegrid').appendChild(b);
+}
+
+/**
+ * Load a game: its manifest is already in hand, so this is the first moment any
+ * of its CODE is fetched. Everything the picker draws comes from the manifest.
+ */
+async function chooseGame(id, restore = null) {
+  const g = manifests.get(id);
+  if (!g || !g.manifest.code?.entry) return;
+  game = g;
+  const m = g.manifest;
+
+  modsMod = await import(`./games/${g.dir}/${m.code.mods}`);
+  inputMod = await import(`./games/${g.dir}/${m.code.input}`);
+  ({ boot: bootFn } = await import(`./games/${g.dir}/${m.code.entry}`));
+
+  buildPicker(restore);
+  el('gamesel').classList.add('gone');
+  el('picker').classList.remove('gone');
+}
+
+// ---- build the picker from the manifest ------------------------------------
+function buildPicker(restore) {
+  const m = game.manifest;
+  el('gname').textContent = m.title;
+  el('gmeta').textContent =
+    `${PLATFORM[m.platform] || m.platform}, ${m.publisher} ${m.year}`;
+
+  // display.screen replaces the constants that used to be baked into the canvas
+  // element and into fitScreen(). boot() overwrites width/height with
+  // SCREEN_W*scale anyway; this is the pre-boot size and the no-JS aspect.
+  const scr = m.display.screen;
+  screenEl.width = scr.w;
+  screenEl.height = scr.h;
+  screenEl.style.aspectRatio = `${scr.w} / ${scr.h}`;
+
+  buildMods();
+  buildEntries(restore);
+  buildOptions();
+  sync();
+}
+
+// The mod CATEGORIES are still spelled as headings in the markup above. That is
+// the one Batman-shaped thing left in the shell, and it is deliberate: a second
+// game's categories are unknown, and inventing a categories[] field for a set of
+// one would be guessing. A game whose mods use other categories simply shows
+// empty sections until someone has two real examples to generalise from.
+function buildMods() {
+  const { MODS, PRESETS, describeMod } = modsMod;
+
+  for (const host of document.querySelectorAll('.grid[data-cat]')) host.innerHTML = '';
+  for (const [id, mod] of Object.entries(MODS)) {
+    const host = document.querySelector(`.grid[data-cat="${mod.category}"]`);
+    if (!host) continue;
+    const b = document.createElement('button');
+    b.className = 'card';
+    b.type = 'button';
+    b.setAttribute('aria-pressed', 'false');
+    b.dataset.id = id;
+    b.innerHTML = `<div class="nm"><span></span><i>ON</i></div>
+                   <div class="bl"></div><div class="fx"></div>`;
+    b.querySelector('.nm span').textContent = mod.name;
+    b.querySelector('.bl').textContent = mod.blurb;
+    b.querySelector('.fx').innerHTML = describeMod(id).map((d) =>
+      d.from === null || d.from === undefined
+        ? `${d.key}: <code>${d.to}</code>`
+        : `${d.key}: <code>${d.from}</code> → <code>${d.to}</code>`).join('<br>');
+    b.addEventListener('click', () => { toggle(id); });
+    host.appendChild(b);
+  }
+
+  for (const b of [...el('presets').children]) if (b.id !== 'vanilla') b.remove();
+  for (const [, p] of Object.entries(PRESETS)) {
+    const b = document.createElement('button');
+    b.className = 'card';
+    b.type = 'button';
+    b.innerHTML = `<div class="nm"><span></span></div><div class="bl"></div>`;
+    b.querySelector('.nm span').textContent = p.name;
+    b.querySelector('.bl').textContent = p.mods.map((mm) => MODS[mm].name).join(' + ');
+    b.addEventListener('click', () => {
+      selected.clear();
+      p.mods.forEach((mm) => selected.add(mm));
+      sync();
+    });
+    el('presets').appendChild(b);
+  }
+}
+
+// "Original Game" is a real, selectable choice -- not merely the absence of a
+// selection. Clicking it clears the stack and it lights up whenever nothing
+// else is active, so the untouched cartridge is always one obvious click away.
+el('vanilla').addEventListener('click', () => {
+  selected.clear();
+  sync();
+});
+
+// The level list, its two SENTINELS included, now comes from the manifest's
+// entries[] rather than from a table in this file.
+//
+// Honest per-level status lives in game.json's entries[].note, and the rule that
+// matters travels with it: if you port something, fix its line. Five of those
+// notes were measured FALSE and had been for months, which is worse than no note
+// at all -- a stale "BLOCKED" tells a player not to try a level that works.
+//
+// kind: 'title'  -- id 0, start at the title screen (the default). Any level
+//                   entry instead boots straight into that level.
+// kind: 'ending' -- id 99, reachable in play only by beating the Joker. It is
+//                   pixel-verified against the cartridge either way, so being
+//                   able to WATCH it should not depend on being able to WIN.
+function buildEntries(restore) {
+  const sel = el('level');
+  sel.innerHTML = '';
+  for (const e of game.manifest.entries) {
+    const o = document.createElement('option');
+    o.value = String(e.id);
+    o.textContent = e.note ? `${e.label} — ${e.note}` : e.label;
+    sel.appendChild(o);
+  }
+  const want = String(restore ?? 0);
+  sel.value = [...sel.options].some((o) => o.value === want) ? want : '0';
+}
+
+function entryFor(id) {
+  return game.manifest.entries.find((e) => e.id === id)
+      ?? game.manifest.entries[0];
+}
+
+// options[] replaces the hardcoded difficulty table. The KEY is whatever the
+// game calls it -- boot()'s option names are still game-shaped and this
+// workflow does not change them (see game.json's entryNote).
+function buildOptions() {
+  const host = el('opts');
+  host.innerHTML = '';
+  for (const opt of game.manifest.options || []) {
+    const lab = document.createElement('label');
+    lab.textContent = `${opt.label} `;
+    const sel = document.createElement('select');
+    sel.dataset.key = opt.key;
+    for (const v of opt.values) {
+      const o = document.createElement('option');
+      o.value = String(v.value);
+      o.textContent = v.label;
+      sel.appendChild(o);
+    }
+    sel.value = String(opt.default ?? opt.values[0].value);
+    lab.appendChild(sel);
+    host.appendChild(lab);
+  }
+}
+
+function optionValues() {
+  const out = {};
+  for (const sel of el('opts').querySelectorAll('select')) {
+    out[sel.dataset.key] = parseInt(sel.value, 10);
+  }
+  return out;
+}
 
 // ---- touch controls --------------------------------------------------------
 // Pointer events rather than touch events: one code path covers finger, pen
 // and mouse. setPointerCapture means a finger that slides off the button still
 // delivers its release to that button, which is the usual way on-screen pads
 // end up with a stuck direction.
-const pad = document.getElementById('pad');
+const pad = el('pad');
 if (matchMedia('(pointer: coarse)').matches) pad.classList.add('on');
 
+// The mask is resolved per press, not baked in at wiring time, because the
+// buttons the pad drives belong to whichever game is loaded.
+function maskFor(name) {
+  const b = game?.manifest.input.buttons.find((x) => x.id === name);
+  return b ? b.mask : 0;
+}
+
 for (const b of pad.querySelectorAll('.tbtn')) {
-  const bit = parseInt(b.dataset.btn, 10);
+  const name = b.dataset.btn;
   const press = (e) => {
     e.preventDefault();
     b.setPointerCapture?.(e.pointerId);
     b.dataset.on = '1';
-    setTouchButton(bit, true);
+    inputMod?.setTouchButton(maskFor(name), true);
   };
   const release = (e) => {
     e.preventDefault();
     delete b.dataset.on;
-    setTouchButton(bit, false);
+    inputMod?.setTouchButton(maskFor(name), false);
   };
   b.addEventListener('pointerdown', press);
   b.addEventListener('pointerup', release);
@@ -216,153 +481,11 @@ for (const b of pad.querySelectorAll('.tbtn')) {
   b.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 // Backstop: any interruption the buttons never see clears the whole mask.
-window.addEventListener('blur', clearTouchButtons);
+const clearTouch = () => inputMod?.clearTouchButtons();
+window.addEventListener('blur', clearTouch);
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) clearTouchButtons();
+  if (document.hidden) clearTouch();
 });
-
-const selected = new Set();
-let running = null;
-
-// ---- build the cards -------------------------------------------------------
-for (const [id, mod] of Object.entries(MODS)) {
-  const host = document.querySelector(`.grid[data-cat="${mod.category}"]`);
-  if (!host) continue;
-  const b = document.createElement('button');
-  b.className = 'card';
-  b.type = 'button';
-  b.setAttribute('aria-pressed', 'false');
-  b.dataset.id = id;
-  b.innerHTML = `<div class="nm"><span></span><i>ON</i></div>
-                 <div class="bl"></div><div class="fx"></div>`;
-  b.querySelector('.nm span').textContent = mod.name;
-  b.querySelector('.bl').textContent = mod.blurb;
-  b.querySelector('.fx').innerHTML = describeMod(id).map((d) =>
-    d.from === null || d.from === undefined
-      ? `${d.key}: <code>${d.to}</code>`
-      : `${d.key}: <code>${d.from}</code> → <code>${d.to}</code>`).join('<br>');
-  b.addEventListener('click', () => { toggle(id); });
-  host.appendChild(b);
-}
-
-// "Original Game" is a real, selectable choice -- not merely the absence of a
-// selection. Clicking it clears the stack and it lights up whenever nothing
-// else is active, so the untouched cartridge is always one obvious click away.
-document.getElementById('vanilla').addEventListener('click', () => {
-  selected.clear();
-  sync();
-});
-
-for (const [pid, p] of Object.entries(PRESETS)) {
-  const b = document.createElement('button');
-  b.className = 'card';
-  b.type = 'button';
-  b.innerHTML = `<div class="nm"><span></span></div><div class="bl"></div>`;
-  b.querySelector('.nm span').textContent = p.name;
-  b.querySelector('.bl').textContent = p.mods.map((m) => MODS[m].name).join(' + ');
-  b.addEventListener('click', () => {
-    selected.clear();
-    p.mods.forEach((m) => selected.add(m));
-    sync();
-  });
-  document.getElementById('presets').appendChild(b);
-}
-
-// Honest per-level status.
-//
-// This header used to warn that several levels leaned on unported systems --
-// map-object handlers, the door sequencer, the effect and ballistic pools,
-// enemy AI -- and that their barriers could not be opened at all. Every one of
-// those is now ported and covered by the gate, so the warning was itself the
-// stale thing. Every level is playable.
-//
-// The rule that matters: if you port something, fix its line. Five of these
-// were measured FALSE and had been for months, which is worse than no note at
-// all -- a stale "BLOCKED" tells a player not to try a level that works.
-//
-//   13  'BLOCKED — barriers need the door sequencer'. The $C733-$C735
-//       sequencer, its debris and the $C693 pool are bit-exact over eight
-//       scenarios; level 13 is unblocked.
-//   12  'the collapsing floor is not ported'. It is loc_00_2FB7, one of the
-//       six sub_00_2CBE branches, all bit-exact.
-//    5  'the level-5 conveyor branch is not ported'. There is no such branch:
-//       $2CC3-$2CE2 dispatches levels 1, 2, 6, 7, $0B, $0C, $0D and the
-//       $C73E default, and 5 is not among them.
-//    3  'some map objects still sit where they spawn'. All eleven $C1E8 types
-//       are bit-exact, all sixteen record bytes plus the stamped cells.
-//  9/10 'the parallax sky is missing', then 'the artwork is still wrong'.
-//       Both are now measured FALSE: bgartdiff.mjs reports 0 wrong background
-//       cells on 9 and 10, and every l9-sky/l10-sky frame in pixeldiff is
-//       100%. The scroll program is verified too ($0857's eight arms, 335,664
-//       scanlines, 0 bad). The note outlived its defect by a whole fix.
-//   14  'entrance renders on the wrong background'. Was TRUE, now fixed:
-//       $0DFD seeds BGP = $FF for the blacked-out entrance and 1:$77D5 puts
-//       $E4 back at phase 2. The seed was missing, so there was nothing to
-//       restore from. l14-walk went 11.90% -> 100% on every sampled frame.
-//   11  the sky defect that IS left is here, not on 9/10: pixeldiff
-//       l11-sky f80 = 82.04%, a dx=-1 shift on rows 66/68 and 116-119.
-//       Levels 2 and 5 are worth knowing about too: they are the two
-//       bgartdiff CANNOT measure (it skips them on a camera mismatch), so
-//       'playable' there rests on less evidence than it does elsewhere.
-const LEVEL_NOTE = {
-  1: 'playable', 2: 'playable',
-  3: 'playable',
-  4: 'Boss 1 — playable',
-  5: 'playable',
-  6: 'playable',
-  7: 'playable',
-  8: 'Boss 2 — playable',
-  9: 'playable',
-  10: 'playable',
-  11: 'Boss 3 — playable; one sky band sits a pixel off',
-  12: 'playable',
-  13: 'playable',
-  14: 'Boss 4 / Joker — playable',
-};
-const levelSel = document.getElementById('level');
-// 0 = start at the title screen (the default). Any other value boots straight
-// into that level and skips the title entirely, so direct level access still
-// works exactly as it did.
-{
-  const o = document.createElement('option');
-  o.value = '0';
-  o.textContent = 'Title screen';
-  levelSel.appendChild(o);
-}
-for (let i = 1; i <= 14; i++) {
-  const o = document.createElement('option');
-  o.value = String(i);
-  o.textContent = `${i} — ${LEVEL_NOTE[i]}`;
-  levelSel.appendChild(o);
-}
-// 99 = the ending. It is only reachable in play by beating the Joker, and it is
-// pixel-verified against the cartridge either way, so being able to WATCH it
-// should not depend on being able to WIN.
-{
-  const o = document.createElement('option');
-  o.value = '99';
-  o.textContent = 'Ending — 4 pictures, the credit crawl and THE END';
-  levelSel.appendChild(o);
-}
-levelSel.value = '0';
-
-// $C756. The cartridge boots at 1 -- read off the real machine at gameplay
-// start, not assumed -- so that is the default here too. It is NOT cosmetic:
-// 0 turns off water damage entirely and stretches level 1's water-spout pause
-// from $10 to $50 frames, and 2 gives bosses +5 HP.
-const DIFFICULTY = [
-  [0, 'Easy — no water damage, slow spouts'],
-  [1, 'Normal — the cartridge default'],
-  [2, 'Hard — +5 boss HP, fastest spouts'],
-];
-const diffSel = document.getElementById('difficulty');
-for (const [v, label] of DIFFICULTY) {
-  const o = document.createElement('option');
-  o.value = String(v);
-  o.textContent = label;
-  diffSel.appendChild(o);
-}
-diffSel.value = '1';
 
 function toggle(id) {
   if (selected.has(id)) selected.delete(id); else selected.add(id);
@@ -370,19 +493,19 @@ function toggle(id) {
 }
 
 function sync() {
+  const { MODS, resolveLoadout, loadoutToHash } = modsMod;
   for (const card of document.querySelectorAll('.card[data-id]')) {
     card.setAttribute('aria-pressed', selected.has(card.dataset.id) ? 'true' : 'false');
   }
   const ids = [...selected];
   const lo = resolveLoadout(ids);
-  const el = document.getElementById('stack');
+  const stack = el('stack');
 
   // The Original card is lit exactly when nothing else is.
-  document.getElementById('vanilla')
-    .setAttribute('aria-pressed', ids.length ? 'false' : 'true');
+  el('vanilla').setAttribute('aria-pressed', ids.length ? 'false' : 'true');
 
   if (!ids.length) {
-    el.innerHTML = '<b>Original Game</b> — unmodified, bit-exact';
+    stack.innerHTML = '<b>Original Game</b> — unmodified, bit-exact';
   } else {
     const names = ids.map((i) => MODS[i].name).join(' · ');
     const nParams = new Set(ids.flatMap((i) => Object.keys(MODS[i].params || {}))).size;
@@ -391,37 +514,77 @@ function sync() {
       const keys = [...lo.conflicts.keys()].join(', ');
       txt += ` &nbsp;<span class="warn">⚠ ${lo.conflicts.size} shared key(s): ${keys} — last wins</span>`;
     }
-    el.innerHTML = txt;
+    stack.innerHTML = txt;
   }
-  location.hash = loadoutToHash(ids, parseInt(levelSel.value, 10));
+  // #game=<id>&mods=…&level=… . The game field is written by the shell; the rest
+  // is the game's own mods module, so a game with a different mod vocabulary
+  // spells its own tail.
+  const tail = loadoutToHash(ids, parseInt(el('level').value, 10));
+  location.hash = `game=${game.id}${tail ? `&${tail}` : ''}`;
 }
 
 // ---- restore from the URL --------------------------------------------------
-{
-  const { ids, level } = hashToLoadout(location.hash);
-  ids.forEach((i) => selected.add(i));
-  levelSel.value = String(level);
+//
+// An EMPTY hash means "I just opened the page": show the game select, which is
+// the whole point of this step. A NON-EMPTY hash is a link someone kept, and it
+// goes straight through to that game's picker.
+//
+// A non-empty hash with no `game` field predates the registry, and every such
+// link means Batman, because Batman was the only game there was. Resolve that
+// explicitly by id rather than by position, so reordering games/index.json
+// cannot silently repoint years-old links.
+//
+// KNOWN, PRE-EXISTING, NOT FIXED HERE: hashToLoadout() clamps level to 0..14,
+// so the ending sentinel (99) does not survive a reload -- it comes back as 14.
+// The fix is one line in src/mods.js and this phase changes nothing under
+// games/<id>/src/, so it is written down instead of quietly repaired.
+if (location.hash.replace(/^#/, '')) {
+  const p = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const wanted = p.get('game')
+    ?? (manifests.has('batman') ? 'batman' : registry[0]?.id);
+  if (wanted && manifests.get(wanted)?.manifest.code?.entry) {
+    // The mods module is the thing that parses the tail, and it is game-owned,
+    // so the level has to be read after the game has loaded.
+    await chooseGame(wanted, null);
+    const { ids, level } = modsMod.hashToLoadout(location.hash);
+    ids.forEach((i) => selected.add(i));
+    el('level').value = String(level);
+    sync();
+  }
 }
-levelSel.addEventListener('change', sync);
-document.getElementById('reset').addEventListener('click', () => { selected.clear(); sync(); });
-sync();
+el('level').addEventListener('change', sync);
+el('reset').addEventListener('click', () => { selected.clear(); sync(); });
+
+el('togames').addEventListener('click', () => {
+  el('picker').classList.add('gone');
+  el('gamesel').classList.remove('gone');
+  // Drop the hash too, or a reload would walk straight back into the game the
+  // user just backed out of.
+  history.replaceState(null, '', location.pathname + location.search);
+});
 
 // ---- launch ----------------------------------------------------------------
-document.getElementById('launch').addEventListener('click', async () => {
-  document.getElementById('picker').style.display = 'none';
-  document.getElementById('stage').classList.add('on');
+el('launch').addEventListener('click', async () => {
+  el('picker').classList.add('gone');
+  el('stage').classList.add('on');
   fitScreen();                     // the stage was display:none until now
-  const err = document.getElementById('err');
+  const err = el('err');
   err.style.display = 'none';
   try {
-    const pick = parseInt(levelSel.value, 10);
-    const wantsEnding = pick === 99;
-    running = await boot(document.getElementById('screen'), {
-      level: wantsEnding ? 14 : (pick === 0 ? 1 : pick),
-      title: pick === 0,
-      ending: wantsEnding,
+    const pick = parseInt(el('level').value, 10);
+    const ent = entryFor(pick);
+    running = await bootFn(screenEl, {
+      // Option values go in FIRST so the shell's own translated fields always
+      // win a name collision -- a game that called an option `level` must not
+      // be able to overwrite the entry the player chose.
+      ...optionValues(),
+      // The three boot() flags are still game-shaped; entries[] carries the
+      // generic `kind` and the shell translates. Same three values as before:
+      // an ending boots level 14, the title boots level 1 with title:true.
+      level: ent.kind === 'ending' ? 14 : (ent.kind === 'title' ? 1 : ent.id),
+      title: ent.kind === 'title',
+      ending: ent.kind === 'ending',
       mods: [...selected],
-      difficulty: parseInt(diffSel.value, 10),
       onOptions: backToPicker,        // OPTION on the title returns here
       // An async screen swap that rejects used to leave the frame loop dead
       // with the music still playing, and nothing on screen said so. boot()
@@ -447,8 +610,8 @@ document.getElementById('launch').addEventListener('click', async () => {
 // Fullscreen the stage, not the canvas: the canvas alone would be letterboxed
 // by the browser at its own aspect, and we want the black surround plus the
 // key hints to come along.
-const stage = document.getElementById('stage');
-document.getElementById('full').addEventListener('click', () => {
+const stage = el('stage');
+el('full').addEventListener('click', () => {
   if (document.fullscreenElement) { document.exitFullscreen(); return; }
   stage.requestFullscreen?.().catch((e) => console.warn('fullscreen refused:', e));
 });
@@ -470,24 +633,28 @@ document.getElementById('full').addEventListener('click', () => {
 //
 // So pick the scale in DEVICE pixels and derive the CSS size from it. Every
 // source pixel then covers exactly N device pixels and the dither is clean.
-const screenEl = document.getElementById('screen');
+//
+// The 160x144 is now the CHOSEN GAME's display.screen, not a constant: NES is
+// 256x240 and would have been letterboxed by a hardcoded DMG aspect.
 function fitScreen() {
+  if (!game) return;                          // no game chosen, no screen size
+  const { w, h } = game.manifest.display.screen;
   const dpr = window.devicePixelRatio || 1;
   const fs = !!document.fullscreenElement;
   const availW = fs ? window.innerWidth : Math.min(document.documentElement.clientWidth * 0.96, 720);
   const availH = fs ? window.innerHeight : Infinity;
   // Largest whole device-pixel scale that fits both axes.
   const scale = Math.max(1, Math.min(8, Math.floor(Math.min(
-    (availW * dpr) / 160,
-    Number.isFinite(availH) ? (availH * dpr) / 144 : Infinity))));
-  // main.js reads this and makes the canvas BACKING STORE 160*scale x 144*scale,
+    (availW * dpr) / w,
+    Number.isFinite(availH) ? (availH * dpr) / h : Infinity))));
+  // main.js reads this and makes the canvas BACKING STORE w*scale x h*scale,
   // doing the nearest-neighbour blow-up itself. That is the part that has to be
   // whole-pixel; once it is, the CSS size below only has to be close, because
   // the browser is then resampling an already-correct image instead of deciding
   // per source pixel how many device pixels it gets.
   screenEl.dataset.scale = String(scale);
-  screenEl.style.width = `${(160 * scale) / dpr}px`;
-  screenEl.style.height = `${(144 * scale) / dpr}px`;
+  screenEl.style.width = `${(w * scale) / dpr}px`;
+  screenEl.style.height = `${(h * scale) / dpr}px`;
 }
 window.addEventListener('resize', fitScreen);
 fitScreen();
@@ -508,11 +675,11 @@ function backToPicker() {
   if (running) running.stop();
   running = null;
   if (document.fullscreenElement) document.exitFullscreen();
-  document.getElementById('stage').classList.remove('on');
-  document.getElementById('picker').style.display = '';
+  el('stage').classList.remove('on');
+  el('picker').classList.remove('gone');
 }
 
-document.getElementById('back').addEventListener('click', backToPicker);
+el('back').addEventListener('click', backToPicker);
 </script>
 </body>
 </html>
