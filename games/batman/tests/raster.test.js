@@ -393,7 +393,11 @@ test('the enemy bob gate reads r[0], the AIR bits -- not r[1]', () => {
   //
   // This asserts the OPERAND, which drawYBob's own tests cannot see -- they
   // pass `grounded` in directly, so they stayed green through the whole bug.
-  const src = readFileSync(new URL('../src/enemies.js', import.meta.url), 'utf8');
+  // PATH ONLY: queueDraw moved from src/enemies.js to src/enemies/anim.js in
+  // the Phase-7 split. One constant, so the next move is one line -- same
+  // shape as frameorder.test.js's TICK_SOURCE.
+  const QUEUEDRAW_SOURCE = '../src/enemies/anim.js';
+  const src = readFileSync(new URL(QUEUEDRAW_SOURCE, import.meta.url), 'utf8');
   const call = src.match(/drawYBob\(state,\s*\(r\[(\d)\]\s*&\s*0x03\)\s*===\s*0\)/);
   assert.ok(call, 'queueDraw still gates drawYBob on a record byte & 0x03');
   assert.equal(call[1], '0',
