@@ -514,6 +514,67 @@ now — the fix narrative lives on its entry in `regress.mjs`.
     0-tick frame every ~222), so a 2-tick frame only ever appears paired with a
     0-tick one and the average logic rate stays 59.73 Hz.
 
+42. **CALL ORDER WAS UNPROTECTED BY THE UNIT SUITE, AND THE ORACLE ONLY CAUGHT
+    HALF OF IT. Both halves were MEASURED, not assumed.** Five distinct order
+    mutations were applied one at a time and the whole gate re-run against each.
+    All five passed the 691-test unit suite. That is the finding: for two years
+    the only thing standing between a refactor and a reordered frame was a PyBoy
+    stage that needs the cartridge and covers four scenarios.
+
+    The two that were taken all the way to the ROM:
+
+    **M1, deleting the `$FFA7` slot-direction reversal in the enemy driver
+    (`1:$4E13`).** CAUGHT, but barely. `regress.mjs` goes **48/50** -- only
+    `l12-shooter-fire` (extra 15.0%) and `l12-projectile-explode` (extra 14.3%)
+    diverge, and only in the enemy-record columns, because those are the two
+    scenarios where a projectile is spawned into a higher slot than its spawner
+    and the direction decides whether it runs on its own spawn frame.
+    `oamdiff.mjs` also fails: `l9-walk` drops from 173 exact to 163 with **10
+    order-only frames, every one at `$FFA7 = 1`** (the report names f137, 139,
+    141, 143, 145, 147, 149 and 151, then truncates the list). Ten
+    frames out of a 14,519-frame corpus is what a whole reversed loop is worth
+    when almost every scenario has one enemy on screen.
+
+    **M4, moving `main.js`'s SECOND `drawEnemies` flush past `updateDoors`
+    (`$05D2`).** **INVISIBLE TO THE ENTIRE ORACLE.** `oamdiff.mjs` PASS with
+    identical per-scenario numbers, `pixeldiff.mjs` identical to the byte (73
+    frames, 66894 wrong px, 96.023%), `regress.mjs` 50/50 bit-exact. The reason
+    is in `main.js`'s own comment and nobody had joined it up: **a door only
+    opens to a punch**, `1:$4BB0` is called 0 times and `$C733` reads 0 on all
+    400 frames of the level-6 run, and no oracle scenario throws a punch at a
+    door at all. So the door side of that ordering rests on the listing alone --
+    it always did -- and the 199/400-frames-wrong measurement recorded next to
+    it is about the flush being after the **HUD**, which is a different fault.
+
+    The lesson is not "the oracle is weak". It is that **a corpus verifies the
+    situations it contains**, and an order only shows up when two producers are
+    on screen at once. `tests/frameorder.test.js` and `tests/enemy-order.test.js`
+    exist because of this measurement: they construct the contention the corpus
+    never happened to contain, they run in 30 ms with no ROM (so CI sees them),
+    and each of the five mutations turns a named one of them red. The full
+    matrix is in those files' headers.
+
+43. **A draw list can be reordered harmlessly; a contended allocation cannot --
+    so test the allocation.** Writing 42's tests turned up the sharper form of
+    trap (a). The obvious slot-order test asserts the order of the enemy DRAW
+    list, and it is a real test -- but a draw list is only observable through
+    OAM, and the moment a scenario has one enemy on screen, every permutation of
+    a one-element list agrees. The version that cannot be satisfied by accident
+    fills nine of the ten `$C693` effect slots, kills TWO enemies in the same
+    frame, and asserts WHICH of them gets the last slot: `sub_00_0CC2` takes the
+    first free slot and drops the request when the pool is full, so exactly one
+    mark is left and which one is a pure consequence of `$4E13`. Same for the
+    spawn-frame question -- `sub_01_6BDC` scans slots 6-7 ascending, so a
+    spawner in slot 0 hands its projectile a frame of life on even frames and
+    not on odd ones, and the projectile's own `+$13` sink counter says which
+    happened after ONE call.
+
+    Generalised: when you need to pin an ORDER, find the place where the order
+    decides who wins something scarce. If nothing is scarce, the order may be
+    genuinely unobservable -- and then the honest test is the source-order
+    CHANGE DETECTOR, labelled as such, which is the other half of
+    `tests/frameorder.test.js`.
+
 ## Tools
 
 | tool | purpose |
