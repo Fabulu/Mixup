@@ -150,7 +150,6 @@
     "src/enemies/states/walker.js",
     "src/enemies/states/walkershared.js",
     "src/enemies/states/flyer.js",
-    "src/enemies/states/chaser14.js",
     "src/enemies/states/vehicle6.js",
     "src/enemies/states/shooter12.js",
     "src/enemies/states/projectile.js",
