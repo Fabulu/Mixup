@@ -14,7 +14,8 @@ Read these before starting a new port. They are ordered by how much they will sa
 | [`03-checks-that-can-fail.md`](03-checks-that-can-fail.md) | how to build a check that is worth having. Transfers wholesale. |
 | [`04-platform-gameboy.md`](04-platform-gameboy.md) | DMG hardware facts we had to learn the hard way, each paired with the NES question it implies. Partly transfers. |
 | [`05-process.md`](05-process.md) | repo, gate and multi-agent working rules. Transfers wholesale. |
-| [`06-lag-and-slowdown.md`](06-lag-and-slowdown.md) | **read before designing any harness.** The two things called "lag", why one of them is a gameplay mechanic, and what that demands. |
+| [`06-lag-and-slowdown.md`](06-lag-and-slowdown.md) | **read before designing any harness.** The THREE things called "lag", why one of them is a gameplay mechanic, and why one of them cannot be retrofitted. |
+| [`07-clocks-and-framerates.md`](07-clocks-and-framerates.md) | no console runs at 60 Hz. Exact rates, and why a rounded one is larger than your slowdown signal. |
 
 ## What transfers to Gradius, and what does not
 

@@ -25,7 +25,8 @@
       "w": 256,
       "h": 240
     },
-    "frameHz": 60.0988
+    "frameHz": 60.098814,
+    "frameHzNote": "NES NTSC with rendering ENABLED: PPU 5369318.18 Hz / 89341.5 (frames alternate 89342/89341 -- one cycle is skipped on the pre-render line of odd frames). Blanked, it is 60.098478. Derived, not rounded -- see docs/knowledge/07."
   },
   "code": {
     "entry": null,
