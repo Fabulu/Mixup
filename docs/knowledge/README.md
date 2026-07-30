@@ -14,6 +14,7 @@ Read these before starting a new port. They are ordered by how much they will sa
 | [`03-checks-that-can-fail.md`](03-checks-that-can-fail.md) | how to build a check that is worth having. Transfers wholesale. |
 | [`04-platform-gameboy.md`](04-platform-gameboy.md) | DMG hardware facts we had to learn the hard way, each paired with the NES question it implies. Partly transfers. |
 | [`05-process.md`](05-process.md) | repo, gate and multi-agent working rules. Transfers wholesale. |
+| [`06-lag-and-slowdown.md`](06-lag-and-slowdown.md) | **read before designing any harness.** The two things called "lag", why one of them is a gameplay mechanic, and what that demands. |
 
 ## What transfers to Gradius, and what does not
 
@@ -45,6 +46,21 @@ Read these before starting a new port. They are ordered by how much they will sa
 widths, mid-frame register writes, free-running counters, lag frames. Do not assume the
 NES answer; go and measure it the same way. But **do** assume each of these categories
 exists and will bite you, because every one of them cost us real work on the Game Boy.
+
+## Where this is going
+
+Phase 1 was Batman (Game Boy). Phase 2 is Gradius (NES). The target after that is
+**DoDonPachi DaiOuJou**, a Cave bullet-hell shooter — and it changes one of the rules in
+this folder. On Batman we declared lag frames out of scope, correctly: they were single
+frames, minutes apart, on a platformer. In a Cave shooter **slowdown is a gameplay
+mechanic** — dense patterns are survivable because the machine slows down, and players
+time their movement against it.
+
+So [`06-lag-and-slowdown.md`](06-lag-and-slowdown.md) is not an appendix. It is the file
+that says which of this folder's defaults stop applying, and it presses on the founding
+premise: we translate *what* a routine computes, never *how long it took*, and faithful
+slowdown needs the second one. Read it before designing a harness for anything where
+timing is visible to the player.
 
 ## The one-line version
 

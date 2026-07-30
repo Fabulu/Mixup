@@ -74,7 +74,35 @@ assumed from the Game Boy answer:
   trap as the DMG palette shadows, which produced a "softlock" that was really an
   invisible running game.
 
-### 3. What the crossover actually needs
+### 3. LAG IS A PRIMARY TARGET HERE, not an artifact to tag
+
+Read `docs/knowledge/06-lag-and-slowdown.md` before writing any harness code.
+
+On Batman lag was declared out of scope and tagged. That was defensible there — single
+frames, minutes apart, on a platformer. **It is the wrong default here**, for two reasons:
+
+1. Gradius is famous for slowing down when the screen fills, and shooters are generally
+   *balanced* around that. If the difficulty depends on it, it has already crossed from
+   artifact to mechanic.
+2. The target after this is **DoDonPachi DaiOuJou**, where slowdown is unambiguously a
+   gameplay mechanic. Gradius is the rehearsal for getting timing right.
+
+The mechanism is already located (`NOTES-rom.md`): **`$04` is the lock.** The NMI at
+`$806A` reads it at `$8073` and bails immediately if non-zero, raises it at `$809F`,
+clears it at `$80B5`. Note what the bail skips — OAM DMA, the PPU register writes, every
+`JSR` in the handler — which means on the NES a lag frame is **visible**, unlike the Game
+Boy case where only internal updates were dropped. Confirm that by measurement.
+
+Requirements for the harness, from the first probe onward:
+
+- **Census lag in every run**, printed by default, not on request.
+- **Put it in the compared state vector**, so a port that cannot reproduce it is forced to
+  diverge visibly rather than quietly.
+- **Determine exactly what a lag frame skips**, subsystem by subsystem.
+- **Check the lag census before diagnosing any timing-shaped divergence.** On Batman two
+  separate "regressions" turned out to be a single lag frame one frame earlier.
+
+### 4. What the crossover actually needs
 
 The repo's goal is that Batman can appear in Gradius and the Vic Viper in Batman. Before
 designing that, note what the Batman port makes hard: a "playable character" there is a
@@ -86,7 +114,7 @@ borrowing an enemy means either translating its record or running two drivers.
 Gradius is the better place to design this, because it is being written *after* the
 requirement is known. Keep the character's data separable from the driver from day one.
 
-### 4. Coordinate and timing differences to encode once
+### 5. Coordinate and timing differences to encode once
 
 - Screen is **256 × 240**, not 160 × 144. The launcher already reads screen size from
   `game.json` rather than baking constants.
