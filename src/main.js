@@ -876,6 +876,24 @@ export function tick(state, manifest, playerTiles) {
       drawPlayer(state, manifest);      // $1D0C
     }
     updateWater(state);                 // $05C6 CALL $2CBE -- levels 1-2 water
+    // sub_00_2CBE's boss arm ends at loc_00_3050's $3113, which calls
+    // sub_00_0BAF IMMEDIATELY -- the rescue carrier's metasprite $68 goes into
+    // shadow OAM at $05C6, ahead of the batarangs ($3D15) and well ahead of the
+    // enemy driver ($05CF). src/conveyor.js queues it like everything else, so
+    // it has to be flushed HERE or not at all: updateEnemies opens by clearing
+    // state.enemyDraws, so the entry was being discarded one call later and the
+    // carrier was never drawn at all.
+    //
+    // Invisible until now because the whole path sits behind the $C75C rescue
+    // cheat, which measures 0 in normal play and which no oracle scenario can
+    // reach -- so the corpus cannot see this either way. tests/conveyor.test.js
+    // covers it instead, and goes red if this flush is removed.
+    //
+    // Safe to flush at this point: rescueDrop is the ONLY thing queued this
+    // early. The death burst draws immediately through drawMetasprite, the boss
+    // corpse queues from inside the enemy driver ($05CF, after this), and the
+    // splashes queue at $05EF with their own flush below.
+    drawEnemies(state, manifest);       // $3113's own sub_00_0BAF
     streamPlayerTiles(state, manifest, playerTiles);  // $2C13
     // loc_00_3127 is the TAIL of sub_00_2C13, not a separate call, so it
     // belongs immediately after it -- it used to run one call too early.

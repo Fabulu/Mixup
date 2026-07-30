@@ -49,6 +49,33 @@
 >
 > ### Answered in play, so nobody re-opens them
 >
+> - **BOSS 1 AND BOSS 2 ARE BEATEN WITH FISTS.** Both were reported as
+>   unkillable and neither is. Boss 1 (level 4): `$3C67-$3C77` routes states
+>   2/7/`$0A` into the batarang ARMOUR arm at `$3C8A`, which plays cue `$1D`
+>   and never touches HP — so batarangs can do nothing to him, ever. `$26F0`
+>   gives the fist 2 damage and `$26D7` forbids crits on any boss level, so
+>   **16 connecting punches** kill him. Boss 2 (level 8) is worse than useless
+>   with batarangs: a hit on a GROUNDED boss 2 writes `$C741 = $1E` and
+>   `stBoss2`'s head freezes him on the ground for those 30 frames, so the next
+>   one bounces too — batarang spam is a SELF-SUSTAINING ZERO-DAMAGE LOCK
+>   (measured on the cartridge: 82 connections, 0 damage, 2000 frames). He is
+>   damageable throughout: a punch always connects, and a batarang connects
+>   whenever he is AIRBORNE (`$3C9E` drops an airborne boss 2 into the ordinary
+>   damage arm). Same answer as the Joker: melee.
+> - **Level 6 is faithful, and the old notes about it were stale.** Shadow-OAM
+>   entry count matches the cartridge on 400/400 frames (mean 18.20 — the "18
+>   sprites"), content matches as a multiset on 400/400, enemy state 5's 32
+>   bytes and its `$C6CF` ballistic pool are byte-identical, and map object
+>   type `$0B` matches on 400/400 and already had coverage in objregress.
+>   Pixels 100.00%. New scenario `regress l6-vehicle-target`.
+> - **Boss 1's melee "never connecting" was my own probe.** It used `--warp 10`,
+>   which parks the player at px=2688 with collision byte 7 in column 11, so the
+>   fist was punching a WALL and `loc_00_2643` was never entered. From level 4's
+>   real start the boss walks into range and it lands: 60 punches, 60 scan
+>   entries, 5 hits. New scenario `regress l4-boss1-melee-sweep` (36 punches, 4
+>   connects at different hop heights) because the shipped
+>   `l4-boss1-punch-knockback` connects dead-centre once and stays green even
+>   with the probe geometry mutated.
 > - **The Joker level's background. FIXED.** `$0DFD` seeds BGP = `$FF` -- the
 >   entrance plays over a BLACKED-OUT background and `1:$77D5` writes `$E4` back
 >   at phase 2. The seed was missing, so there was nothing to restore from.

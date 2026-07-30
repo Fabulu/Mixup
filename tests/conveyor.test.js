@@ -10,6 +10,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { grid, makeState, placePlayer } from './helpers.js';
 import { updateSubsystem, createSubsys, actorTypeA } from '../src/conveyor.js';
@@ -486,4 +487,50 @@ test('type $0A lands on solid ground and turns the row above into terrain', () =
   assert.equal(mapCollision(state, 0x17, 0x13), 0x01);
   assert.equal(mapTile(state, 0x17, 0x13), 0x50);   // $481B, $30 on level $0D
   assert.deepEqual(state.sound.queue.map((s) => s.id), [0x21]);
+});
+
+test('the carrier is actually DRAWN: $3113 reaches shadow OAM', () => {
+  // ROM: $3113 is `sub_00_1172` then `sub_00_0BAF` with metasprite $68, attr 0
+  // -- an IMMEDIATE append, at $05C6, ahead of the batarangs ($3D15) and the
+  // enemy driver ($05CF).
+  //
+  // The port queues it onto state.enemyDraws like everything else, and
+  // updateEnemies ($05CF) opens by clearing that queue -- so for as long as the
+  // flush sat after the enemy driver, this entry was wiped one call later and
+  // the carrier was never drawn at all. src/main.js flushes immediately after
+  // updateWater now, which is where $3113 actually emits.
+  //
+  // This test exists because NOTHING ELSE CAN SEE IT: the whole path is behind
+  // the $C75C rescue cheat, which measures 0 on every frame of every recorded
+  // scenario, so no oracle comparison reaches it in either direction. Remove
+  // the flush in main.js and this goes red; that is the only thing that does.
+  const state = subState(4,
+    { bossId: 1, tables: { rescueEntryY: [0x1E, 0x1E, 0x16, 0x1F] } });
+  state.flow.rescueCheat = 1;
+  const r = state.subsys.rescue;
+  r.state = 1; r.x = 0x0B80; r.y = 0x1E80; r.vy = 0x38;
+  state.enemyDraws = [];
+
+  updateSubsystem(state);
+
+  // $3113 queues; the frame loop is what turns it into a sprite.
+  assert.equal(state.enemyDraws.length, 1, 'the carrier queued a draw');
+  const d = state.enemyDraws[0];
+  assert.equal(d.id, 0x68, 'metasprite $68');
+  assert.equal(d.attr, 0, '$3113 passes attr 0');
+  assert.equal(d.alt, true, 'sub_00_0BAF = table2, not table1');
+
+  // And the ORDER it has to keep. The queue is destructive and updateEnemies
+  // clears it, so the flush must sit BETWEEN updateWater and updateEnemies --
+  // not merely exist. Asserted against the frame loop's source, the same way
+  // roundselect.test.js pins title.js's cue: a unit test cannot run tick()
+  // without a manifest, but it can prove the call order that owns this queue.
+  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const water = main.indexOf('updateWater(state);');
+  const flush = main.indexOf('drawEnemies(state, manifest);', water);
+  const enemies = main.indexOf('updateEnemies(state);', water);
+  assert.ok(water > 0 && flush > 0 && enemies > 0, 'all three calls present');
+  assert.ok(flush < enemies,
+    'src/main.js must flush the enemy queue between updateWater ($05C6) and '
+    + 'updateEnemies ($05CF), or the $3113 carrier is cleared before it draws');
 });
