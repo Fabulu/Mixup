@@ -71,6 +71,8 @@
   #stage.on { display: block; }
   #screen {
     image-rendering: pixelated; width: min(96vw, 720px); height: auto;
+    /* fitScreen() overrides both with whole-device-pixel values on load,
+       resize and fullscreen change; these are the no-JS fallback. */
     aspect-ratio: 160 / 144; background: var(--dmg3);
     border: 1px solid var(--line); border-radius: 4px;
   }
@@ -446,6 +448,39 @@ document.getElementById('full').addEventListener('click', () => {
   stage.requestFullscreen?.().catch((e) => console.warn('fullscreen refused:', e));
 });
 
+// --- integer-scale the canvas -------------------------------------------------
+//
+// REPORTED FROM PLAY as "giant superpixels, not normal pixels" on the ending's
+// credit circle, and it is not a rendering bug: the ending is PIXEL-EXACT
+// against the cartridge over 88 frames spanning the whole crawl (2,027,520
+// pixels, endingshot.mjs), circle included. The fault was the DISPLAY.
+//
+// The canvas is 160x144 and was shown at `min(96vw, 720px)`. 720 / 160 = 4.5,
+// and `image-rendering: pixelated` at a fractional scale cannot split a source
+// pixel -- it rounds each one to a whole number of device pixels, so some come
+// out 4 wide and some 5. On flat areas that is invisible; on a dithered curve
+// like the credit circle's edge the uneven columns read as chunky, irregular
+// steps. Device pixel ratio compounds it: an integer CSS scale on a 1.25x or
+// 1.5x display still lands on fractional device pixels.
+//
+// So pick the scale in DEVICE pixels and derive the CSS size from it. Every
+// source pixel then covers exactly N device pixels and the dither is clean.
+const screenEl = document.getElementById('screen');
+function fitScreen() {
+  const dpr = window.devicePixelRatio || 1;
+  const fs = !!document.fullscreenElement;
+  const availW = fs ? window.innerWidth : Math.min(document.documentElement.clientWidth * 0.96, 720);
+  const availH = fs ? window.innerHeight : Infinity;
+  // Largest whole device-pixel scale that fits both axes.
+  const scale = Math.max(1, Math.floor(Math.min(
+    (availW * dpr) / 160,
+    Number.isFinite(availH) ? (availH * dpr) / 144 : Infinity)));
+  screenEl.style.width = `${(160 * scale) / dpr}px`;
+  screenEl.style.height = `${(144 * scale) / dpr}px`;
+}
+window.addEventListener('resize', fitScreen);
+fitScreen();
+
 document.addEventListener('fullscreenchange', () => {
   const on = !!document.fullscreenElement;
   stage.style.background = on ? '#000' : '';
@@ -453,8 +488,7 @@ document.addEventListener('fullscreenchange', () => {
   stage.style.flexDirection = on ? 'column' : '';
   stage.style.justifyContent = on ? 'center' : '';
   stage.style.height = on ? '100%' : '';
-  document.getElementById('screen').style.width = on
-    ? 'min(100vw, calc(100vh * 160 / 144))' : '';
+  fitScreen();
   // Keyboard focus follows the fullscreen element, so make sure it lands here.
   stage.focus?.();
 });

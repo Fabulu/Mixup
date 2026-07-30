@@ -8,10 +8,16 @@
 // amount of VRAM comparison can see. So this renders real frames and counts
 // wrong pixels.
 //
-//   python tools/oracle/ending.py --no-vram \
-//       --shots "100,300,900,1400,1700,1800,3800,4130" \
+//   python tools/oracle/ending.py --no-vram --shots crawl \
 //       --out rip/oracle/ending-shots.json
 //   node tools/oracle/endingshot.mjs [--write]
+//
+// `--shots crawl` is the standing list: every 30th frame from f1500 to f4110,
+// 88 frames, 2,027,520 pixels, all 100%. The old `landmarks` list was eight
+// frames, and that was fairly called out as nothing -- the sequence runs 4137
+// frames (~69 s) and the credit circles do not start until ~f1500, so eight
+// samples could not support any claim about them. They do now: the circle's
+// dithered edge is bit-for-bit the cartridge's on all 88 frames.
 //
 // The render LAG is pinned, not assumed. The port's tick N leaves the state the
 // VBlank at the end of frame N pushes to rBGP and OAM, and the recorder grabs

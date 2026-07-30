@@ -247,7 +247,34 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
   // already resets lives and counts the game over; this watches that count.
   let gameOversSeen = state.flow.gameOver || 0;
 
+  /**
+   * The rAF entry point exists only to catch SYNCHRONOUS throws.
+   *
+   * This is the other half of the silent freeze, and the half no `.catch()`
+   * could ever have covered. `step` is invoked by requestAnimationFrame, so a
+   * throw anywhere inside it -- tick(), renderFrame(), sound.pump(), a mod hook
+   * -- unwinds into the browser, the loop is never rescheduled, and the audio
+   * worklet keeps playing. Frozen picture, music continuing, nothing in the UI:
+   * indistinguishable from the async case, and from a game bug.
+   *
+   * REPORTED FROM PLAY on level 6, on finishing the level. Every reachable
+   * configuration of that clear was reproduced headlessly -- boss killed from
+   * the ground and while riding the deck, with renderFrame in the loop, driving
+   * main.js's own clear arm -- and all of them hand over to level 7 correctly.
+   * The level itself is bit-exact against the cartridge for 400 frames. So the
+   * remaining suspect is a fault at RUNTIME in the browser that nothing was
+   * reporting, and this makes the next occurrence name itself with a stack.
+   */
   function step(now) {
+    try {
+      stepBody(now);
+    } catch (err) {
+      fail('the frame loop')(err);
+      throw err;                    // keep it in the console with its stack
+    }
+  }
+
+  function stepBody(now) {
     if (!running) return;
 
     // Clamp the delta rather than trying to catch up. requestAnimationFrame

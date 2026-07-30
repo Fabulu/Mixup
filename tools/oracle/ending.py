@@ -156,11 +156,26 @@ def main():
     ap.add_argument('--no-vram', action='store_true',
                     help='skip the 8 KB snapshots (a much smaller file)')
     ap.add_argument('--shots', default=None,
-                    help='comma-separated ending-relative frames to screenshot')
+                    help='comma-separated ending-relative frames to screenshot, '
+                         "or 'crawl' for the standing 88-frame sweep, or "
+                         "'landmarks' for the original 8")
     ap.add_argument('--shot-dir', default='rip/oracle/endingshots')
     args = ap.parse_args()
 
-    shot_frames = [int(x) for x in args.shots.split(',')] if args.shots else []
+    # Named presets. 'landmarks' was the original list and it was too thin to
+    # answer a real complaint: eight frames out of 4137 is 0.2% of a 69-second
+    # sequence, and the credit circles do not even begin until ~f1500. 'crawl'
+    # sweeps the whole crawl every 30 frames instead -- 88 frames, 2,027,520
+    # pixels -- which is what it took to say "the circle is the cartridge's"
+    # and mean it.
+    PRESETS = {
+        'landmarks': [100, 300, 900, 1400, 1700, 1800, 3800, 4130],
+        'crawl': list(range(1500, 4131, 30)),
+    }
+    if args.shots in PRESETS:
+        shot_frames = PRESETS[args.shots]
+    else:
+        shot_frames = [int(x) for x in args.shots.split(',')] if args.shots else []
     shot_at = set(shot_frames)
     shots = _screenshot_helpers() if args.shots else None
 
