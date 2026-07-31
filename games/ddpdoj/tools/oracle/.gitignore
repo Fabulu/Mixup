@@ -7,3 +7,5 @@ __pycache__/
 *.bin
 *.sta
 *.tsv
+*.state
+*.json.tmp
