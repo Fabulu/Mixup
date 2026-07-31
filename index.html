@@ -284,10 +284,22 @@ for (const g of registry) {
   b.querySelector('.nm span').textContent = m.title;
   b.querySelector('.meta').textContent =
     [PLATFORM[m.platform] || m.platform, m.publisher, m.year].filter(Boolean).join(' · ')
-    + (m.code?.entry ? '' : ' · not playable yet');
+    + (m.code?.entry || m.code?.page ? '' : ' · not playable yet')
+    + (m.code?.page ? ' · own page' : '');
   b.querySelector('.bl').textContent = m.blurb || '';
-  if (!m.code?.entry) b.disabled = true;
-  else b.addEventListener('click', () => { chooseGame(g.id); });
+  // Three states, not two. A game can be (a) fully wired -- code.entry plus the
+  // mods and input modules the picker imports; (b) playable but NOT through this
+  // picker, which is Gradius today: it has boot() and no mods/input modules, so
+  // it ships its own page and this card is a link to it; or (c) neither, in
+  // which case it is listed and disabled so the roadmap is visible.
+  //
+  // Without (b) Gradius would render as "not playable yet" while actually being
+  // playable at its own URL, which is the stale-note failure this repo keeps
+  // relearning -- see docs/knowledge/05-process.md.
+  if (m.code?.entry) b.addEventListener('click', () => { chooseGame(g.id); });
+  else if (m.code?.page) {
+    b.addEventListener('click', () => { location.href = `./games/${g.dir}/${m.code.page}`; });
+  } else b.disabled = true;
   el('gamegrid').appendChild(b);
 }
 

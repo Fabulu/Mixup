@@ -21,10 +21,45 @@ const DIST = path.join(ROOT, 'dist');
 // second, before any game code is imported at all -- so a dist/ without them is
 // a site whose game select renders empty. They are cheap and they are load
 // bearing; the INCLUDE list is the only place that knows it.
-const GAMES = ['batman'];
+const GAMES = ['batman', 'gradius'];
+
+// Games that also ship their OWN page. Gradius cannot go through the launcher
+// yet: the picker imports code.entry, code.mods and code.input, and Gradius has
+// only the first of the three. Until it has the other two it is reachable at
+// /games/gradius/ and listed in the picker as a link, not booted inline.
+const PAGES = ['gradius'];
+
 const INCLUDE = ['index.html', 'games/index.json',
                  ...GAMES.flatMap((g) => [`games/${g}/game.json`,
-                                          `games/${g}/src`, `games/${g}/assets`])];
+                                          `games/${g}/src`, `games/${g}/assets`]),
+                 ...PAGES.map((g) => `games/${g}/index.html`)];
+
+// assets/ is ROM-DERIVED, and "derived" covers a range. games/batman/assets/
+// holds extracted tables -- decoded levels, a tile subset, a sound script. But
+// games/gradius/tools/export_assets.py also drops prg.bin and chr.bin there,
+// and those are the cartridge's two 32 KB halves BYTE-FOR-BYTE: together they
+// are the whole ROM. Gitignore keeps them out of the repo; it does NOT keep
+// them out of dist/, and dist/ gets published to a public URL.
+//
+// They are intermediates -- src/assets.js fetches manifest.json, chr/tiles.u8,
+// terrain/stages.json and metasprites.json, and never these -- so dropping them
+// costs the site nothing. The guard below is the part that matters: an
+// intermediate nobody remembers is exactly how this would come back.
+const NEVER_SHIP = new Set(['prg.bin', 'chr.bin', 'prg.asm']);
+
+// Files the guard below WILL find inside a ROM and that we ship anyway, each
+// with the reason written out. This list is deliberately awkward to add to.
+//
+// player.tiles.bin -- 6974 B, the player's animation tile pool from bank 2.
+//   src/assets.js:82 fetches it and the port cannot draw Batman without it, so
+//   there is no version of the site that works without shipping these bytes.
+//   It has been served publicly since the first deploy. Noted here so it is a
+//   decision on the record rather than an oversight nobody ever looked at.
+//
+// The Gradius chr/bank*.bin files are NOT here: the renderer fetches
+// chr/tiles.u8, a re-indexed one-byte-per-pixel sheet, and the raw banks are
+// just intermediates the exporter happened to leave behind.
+const SHIPPED_ANYWAY = new Set(['player.tiles.bin']);
 
 function copy(src, dst) {
   const st = fs.statSync(src);
@@ -32,6 +67,11 @@ function copy(src, dst) {
     fs.mkdirSync(dst, { recursive: true });
     for (const name of fs.readdirSync(src)) copy(path.join(src, name), path.join(dst, name));
   } else {
+    if (NEVER_SHIP.has(path.basename(src))) return;
+    // The Gradius exporter also leaves the four raw 8 KB CHR banks in assets/.
+    // chr/tiles.u8 is what the renderer actually fetches; these are verbatim
+    // cartridge graphics and the guard below rejects them.
+    if (/^bank\d+\.bin$/.test(path.basename(src))) return;
     fs.mkdirSync(path.dirname(dst), { recursive: true });
     fs.copyFileSync(src, dst);
   }
@@ -48,6 +88,65 @@ for (const item of INCLUDE) {
   }
   copy(src, path.join(DIST, item));
 }
+
+// THE GUARD. dist/ is published to a public URL, so "is this file a piece of the
+// cartridge?" has to be answered by measurement, not by remembering to add a
+// basename to NEVER_SHIP above.
+//
+// Every ROM in the repo root is read once, and every file about to be published
+// is checked for being a byte-identical contiguous slice of one. That is the
+// property that matters -- not the name, not the extension, not the directory.
+// prg.bin and chr.bin were caught by exactly this: each is 32768 bytes and each
+// matches its half of Gradius (USA).nes exactly.
+//
+// Legitimate extracted assets do not trip it. A decoded level table, a
+// re-indexed tile sheet and a transcribed sound script are all transformations;
+// none of them appears verbatim in the ROM. If something does trip it, the
+// export step is shipping an intermediate rather than a translation, and that
+// is the bug -- not this check.
+const roms = fs.readdirSync(ROOT)
+  // NOT `md` for Mega Drive: it also matches Markdown, and this happily loaded
+  // README.md as a cartridge. Use `gen`/`bin` under a roms/ dir if that console
+  // ever arrives -- a bare `.bin` at the repo root is too broad to guess at.
+  .filter((f) => /\.(gb|gbc|nes|sfc|smc|gen)$/i.test(f))
+  .map((f) => ({ name: f, data: fs.readFileSync(path.join(ROOT, f)) }));
+
+const shipped = [];
+(function walk(dir) {
+  for (const name of fs.readdirSync(dir)) {
+    const p = path.join(dir, name);
+    if (fs.statSync(p).isDirectory()) walk(p);
+    else shipped.push(p);
+  }
+})(DIST);
+
+const leaked = [];
+for (const file of shipped) {
+  const data = fs.readFileSync(file);
+  // Under 1 KB a coincidental match means nothing -- a run of zeroes or a short
+  // table can legitimately appear in both. The concern is bulk ROM content.
+  if (data.length < 1024) continue;
+  if (SHIPPED_ANYWAY.has(path.basename(file))) continue;
+  for (const rom of roms) {
+    if (rom.data.includes(data)) {
+      leaked.push(`${path.relative(DIST, file)}  (${data.length} B, verbatim inside ${rom.name})`);
+      break;
+    }
+  }
+}
+
+if (leaked.length) {
+  console.error('\nREFUSING TO BUILD: dist/ contains verbatim cartridge data.\n'
+    + leaked.map((l) => '  ' + l).join('\n')
+    + '\n\ndist/ is published publicly. A file that appears byte-for-byte inside a\n'
+    + 'ROM is the ROM, however it got there. Either the exporter is writing an\n'
+    + 'intermediate into assets/ (drop it, or add its basename to NEVER_SHIP),\n'
+    + 'or something that should be a translation is a copy.');
+  fs.rmSync(DIST, { recursive: true, force: true });
+  process.exit(1);
+}
+console.log(`rom-leak guard: ${shipped.length} files checked against `
+  + `${roms.length} ROM(s) [${roms.map((r) => r.name).join(', ') || 'none present'}] -- clean`);
 
 // Assets must REVALIDATE, not be treated as immutable.
 //

@@ -4,8 +4,8 @@
   "platform": "nes",
   "year": 1986,
   "publisher": "Konami",
-  "blurb": "Horizontal shooter. The Vic Viper, the Options, and the power-up bar.",
-  "status": "not-started",
+  "blurb": "Horizontal shooter. Stage 1 flies: the Vic Viper, the Options and the terrain, verified frame-exact. No enemies or sound yet.",
+  "status": "in-progress",
   "rom": {
     "file": "Gradius (USA).nes",
     "sha1": "92645fe142861c3d3fda209bb906ad2b0e353988",
@@ -30,7 +30,8 @@
   },
   "code": {
     "entry": null,
-    "mods": null
+    "mods": null,
+    "page": "index.html"
   },
   "entries": [],
   "options": []

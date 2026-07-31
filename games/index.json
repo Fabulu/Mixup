@@ -1,3 +1,10 @@
 [
-  { "id": "batman", "dir": "batman" }
+  {
+    "id": "batman",
+    "dir": "batman"
+  },
+  {
+    "id": "gradius",
+    "dir": "gradius"
+  }
 ]
