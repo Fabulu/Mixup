@@ -12,7 +12,7 @@ import {
   MODE_HORIZONTAL, MODE_CEILING, MODE_FLOOR, MODE_PUNCH, updateBreakables,
 } from '../src/collision.js';
 import { mapCollision, mapTile } from '../src/state.js';
-import { BTN } from '../src/player.js';
+import { BTN } from '../src/input.js';
 
 import {
   makeState, grid, put, fillCol, floorFrom, placePlayer, setInput, corridor,

@@ -22,7 +22,7 @@
 // bytes -- $3A05 writes $9C into $C61B and $3A0A writes $6E into $C61C. Reading
 // only the first patch gives $9C00, which lands NORMAL on top of OPTION MODE.
 
-import { BTN } from './player.js';
+import { BTN } from './input.js';
 import { runVramScript } from './vramscript.js';
 import { GAMEPLAY_PALETTES } from './state.js';
 import { drawMetasprite } from './render/metasprite.js';

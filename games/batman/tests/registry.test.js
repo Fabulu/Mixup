@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { BTN } from '../src/player.js';
+import { BTN } from '../src/input.js';
 
 // games/batman/tests/ -> games/
 const GAMES_DIR = new URL('../../', import.meta.url);
@@ -107,7 +107,7 @@ test('the joypad masks are the $FFE1 bit layout, not a second opinion', () => {
   const fromManifest = Object.fromEntries(
     BAT.input.buttons.map((b) => [b.id, b.mask]));
   assert.deepEqual(fromManifest, { ...BTN },
-    'game.json input.buttons must equal BTN in src/player.js -- the launcher '
+    'game.json input.buttons must equal BTN in src/input.js -- the launcher '
     + 'reads its touch masks from the manifest and the game reads $FFE1 from '
     + 'BTN, so a drift between them is a pad that presses the wrong button');
 });

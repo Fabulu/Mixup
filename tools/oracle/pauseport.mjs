@@ -20,7 +20,7 @@ const { initLevel } = await imp('src/level.js');
 const { loadManifest, loadPlayerTiles } = await imp('src/assets.js');
 const { tick } = await imp('src/main.js');
 const { resolveLoadout } = await imp('src/mods.js');
-const { BTN } = await imp('src/player.js');
+const { BTN } = await imp('src/input.js');
 
 const argv = process.argv.slice(2);
 const arg = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i + 1] : d; };

@@ -1,7 +1,16 @@
 // Input.  ROM: the joypad read inside the VBlank ISR, $07CC-$07F6.
 // Produces the same bit layout as $FFE1 (held) / $FFE2 (newly pressed).
+//
+// This module has NO imports on purpose.  BTN lived in src/player.js until
+// Phase 10, which meant the joypad module depended on the player state machine
+// -- backwards, and the reason fourteen of player.js's seventeen inbound edges
+// were modules that wanted nothing from it but eight bit masks.
 
-import { BTN } from './player.js';
+// Joypad bits ($FFE1/$FFE2)
+export const BTN = {
+  A: 0x01, B: 0x02, SELECT: 0x04, START: 0x08,
+  RIGHT: 0x10, LEFT: 0x20, UP: 0x40, DOWN: 0x80,
+};
 
 // Keys are matched on e.code, i.e. PHYSICAL position, not the printed letter.
 // On a QWERTZ layout (Swiss/German) the key labelled Z sits where QWERTY has Y

@@ -37,7 +37,7 @@ import {
   stageIntroTextScript, INTRO_ROUTE_LEVELS, INTRO_BOSS_LEVELS, showsStageIntro,
 } from '../../games/batman/src/stageintro.js';
 import { createState } from '../../games/batman/src/state.js';
-import { BTN } from '../../games/batman/src/player.js';
+import { BTN } from '../../games/batman/src/input.js';
 import { ROOT, gamePath } from './_env.mjs';
 
 const PY = process.env.PYTHON || 'python';

@@ -22,7 +22,7 @@ import {
   ENDING_LEVEL, FADE_FRAMES,
 } from '../src/ending.js';
 import { createState } from '../src/state.js';
-import { BTN } from '../src/player.js';
+import { BTN } from '../src/input.js';
 
 const b64 = (bytes) => Buffer.from(Uint8Array.from(bytes)).toString('base64');
 

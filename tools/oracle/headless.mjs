@@ -132,7 +132,7 @@ function fakeCanvas() {
 
 const SHADE_OF_RGB = new Map();   // packed RGB -> shade
 
-/** Button masks, matching src/player.js's BTN. */
+/** Button masks, matching src/input.js's BTN. */
 export const BTN = { A: 0x01, B: 0x02, SELECT: 0x04, START: 0x08,
                      RIGHT: 0x10, LEFT: 0x20, UP: 0x40, DOWN: 0x80 };
 

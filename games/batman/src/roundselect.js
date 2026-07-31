@@ -11,7 +11,7 @@
 import { buildTileCache } from './assets.js';
 import { buildRoundSelectVram, requireScreenSpec } from './vram.js';
 import { runVramScript } from './vramscript.js';
-import { BTN } from './player.js';
+import { BTN } from './input.js';
 import { drawMetasprite } from './render/metasprite.js';
 import { createFade, tickFade } from './title.js';
 

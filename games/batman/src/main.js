@@ -5,9 +5,9 @@
 
 import { createState, GAMEPLAY_PALETTES } from './state.js';
 import { makeTunables } from './tunables.js';
-import { attachInput, sampleInput } from './input.js';
+import { attachInput, sampleInput, BTN } from './input.js';
 import { initLevel, clearLevel } from './level.js';
-import { updatePlayer, deathTick, BTN } from './player.js';
+import { updatePlayer, deathTick } from './player.js';
 import { updateCamera } from './camera.js';
 import { loadManifest, loadPlayerTiles } from './assets.js';
 import { createFramebuffer, renderFrame, SCREEN_W, SCREEN_H } from './render/renderer.js';

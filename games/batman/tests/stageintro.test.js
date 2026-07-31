@@ -20,7 +20,7 @@ import {
 } from '../src/stageintro.js';
 import { runVramScript } from '../src/vramscript.js';
 import { createState } from '../src/state.js';
-import { BTN } from '../src/player.js';
+import { BTN } from '../src/input.js';
 
 const b64 = (bytes) => Buffer.from(Uint8Array.from(bytes)).toString('base64');
 

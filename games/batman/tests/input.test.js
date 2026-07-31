@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { attachInput, sampleInput } from '../src/input.js';
-import { BTN } from '../src/player.js';
+import { BTN } from '../src/input.js';
 
 /** The smallest thing attachInput() will bind to. */
 function fakeTarget() {

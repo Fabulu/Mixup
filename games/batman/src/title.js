@@ -16,7 +16,7 @@
 import { buildTileCache, loadManifest } from './assets.js';
 import { buildTitleVram, requireScreenSpec } from './vram.js';
 import { runVramScript } from './vramscript.js';
-import { BTN } from './player.js';
+import { BTN } from './input.js';
 import { drawMetasprite } from './render/metasprite.js';
 
 /** Decode one base64 blob from the manifest. */

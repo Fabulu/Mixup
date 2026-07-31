@@ -15,7 +15,7 @@ import { grid, floorFrom, makeState, placePlayer, setInput, step } from './helpe
 import { updateEnemies, _internals } from '../src/enemies.js';
 import { effects, c740Idle, COUNTDOWN_START } from '../src/effects.js';
 import { updateBatarangs, FLAG_RETURNING } from '../src/batarang.js';
-import { BTN } from '../src/player.js';
+import { BTN } from '../src/input.js';
 
 const { primaryDispatch, screenTail } = _internals;
 

@@ -30,7 +30,7 @@
 import { buildTileCache, loadManifest } from './assets.js';
 import { buildCopyrightVram, requireScreenSpec } from './vram.js';
 import { runVramScript } from './vramscript.js';
-import { BTN } from './player.js';
+import { BTN } from './input.js';
 import { createFade, tickFade } from './title.js';
 
 /** $026A: LD B,$F0. */

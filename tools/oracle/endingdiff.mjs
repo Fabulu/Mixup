@@ -34,7 +34,7 @@ import {
   endingProgram, endingLength, requireEndingSpec, FADE_FRAMES,
 } from '../../games/batman/src/ending.js';
 import { createState } from '../../games/batman/src/state.js';
-import { BTN } from '../../games/batman/src/player.js';
+import { BTN } from '../../games/batman/src/input.js';
 import { ROOT, gamePath } from './_env.mjs';
 
 const PY = process.env.PYTHON || 'python';

@@ -14,12 +14,7 @@ import { updateScriptedMove } from './scriptedmove.js';
 import { startRope } from './rope.js';
 import { armDoor } from './doors.js';
 import { effects, startDeathBurst, deathBurstTick } from './effects.js';
-
-// Joypad bits ($FFE1/$FFE2)
-export const BTN = {
-  A: 0x01, B: 0x02, SELECT: 0x04, START: 0x08,
-  RIGHT: 0x10, LEFT: 0x20, UP: 0x40, DOWN: 0x80,
-};
+import { BTN } from './input.js';
 
 const AIR_GROUNDED = 0, AIR_RISING = 1, AIR_FALLING = 2;
 
