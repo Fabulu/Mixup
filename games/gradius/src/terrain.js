@@ -67,7 +67,21 @@ const NT_PAGE = [0x20, 0x24];
 export function streamBlock(state, stage) {
   if (state.build.gate !== 0) return false;                 // $9D83/$9D85
   if (state.vram.cursor >= QUEUE_GATE_BYTES) return false;  // $9D87 CMP #$04
+  return buildBlock(state, stage);                          // $9D8B BCC $9D8E
+}
 
+/**
+ * `$9D8E` -- the block builder WITHOUT the two gates above it.
+ *
+ * It is a separate entry point on the cartridge, not a refactor: the stage
+ * intro's `$9C24` calls it four times a frame (`JSR $9D8E` x3 then
+ * `JMP $9D8E`) with no `$3A` test and no `$0E < 4` test at all, which is how
+ * the queue reaches 149 bytes on an intro frame while a played frame's own
+ * streamer is refused above 3. `$9D90 STA $57` is INSIDE this half, so a frame
+ * that never passes $9D83's gates leaves $57 alone -- see the $57 test in
+ * tests/frame-gates.test.js.
+ */
+export function buildBlock(state, stage) {
   const b = state.build;
   b.ahead = 0;                                              // $9D90 STA $57
 
@@ -218,16 +232,16 @@ export function probeCollision(state, screenX, screenY) {
   return (byte >> shift) & 3;
 }
 
-/**
- * The port's stand-in for the stage load. $9C24 calls the streamer four times
- * back to back and $8871 pushes a full-screen RLE image before that; NEITHER
- * has been measured, so this is NOT a translation of them -- it is the same
- * gate run to exhaustion, which fills the nametable ahead of the camera the
- * way the throttle in `streamBlock` would over the next ~84 frames.
- *
- * Labelled loudly because a reader has every right to ask which lines here are
- * the cartridge and which are the port, and this one is the port.
- */
-export function preloadTerrain(state, stage, drain) {
-  for (let i = 0; i < 4000 && streamBlock(state, stage); i++) drain(state);
-}
+// `preloadTerrain()` USED TO BE HERE and it is gone, in the commit that ported
+// the intro. It ran this file's gate to exhaustion (up to 4000 blocks) and said
+// of itself: "$9C24 calls the streamer four times back to back and $8871 pushes
+// a full-screen RLE image before that; NEITHER has been measured, so this is
+// NOT a translation of them". Both are measured now:
+//
+//   $9C24  four $9D8E calls per frame for 22 frames, then an exit that reads
+//          $57 -- 84 blocks, not 4 and not 4000 (src/flow.js introTerrain)
+//   $8871  six RLE chunks, 2304 $2007 writes from $2000, no literals
+//          (h_8871 = 6, h_888B = 2304 per stage load)
+//
+// so src/main.js boots into the real intro instead. The $8871 image is still
+// not drawn -- that gap is named at src/flow.js fullScreenLoad().

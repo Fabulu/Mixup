@@ -288,6 +288,18 @@ Tasks:
    data-dependent, NOT a fixed 28). The port side drives its intro machine
    from a seeded mode-4-entry state and compares those sequences per frame.
 
+   > **WAVE 4 CORRECTION (measured, both windows, per frame with exec hooks on
+   > all five handlers):** the two intros are **27 mode-5 frames each** — 283-309
+   > and 614-640, 23 of them in state 4 — not 28 and 26. Frame 282 is the mode-4
+   > handover (`$8165`, three instructions), not a mode-5 frame. The exit IS
+   > `$57`-driven with no counter anywhere, but it lands on the same number every
+   > time because `$9B3E` sets `$3F` and `$55` from the SAME byte and clears
+   > `$3E`/`$54`/`$58`, so the streamer's lead is 0 at every intro. **A 23-frame
+   > counter is GREEN on both recorded windows** — the test focus below cannot be
+   > satisfied by the corpus and is discharged by `tests/flow.test.js` instead,
+   > which starts the phase with a `$0100` lead. See
+   > `04-impl-flow-structure-the-1b-ladder-the-stage-i.md`.
+
 **Done when:** a new intro comparison (port intro trace vs `flowprobe.py`'s
 recorded boot AND respawn sequences: `$1B`, `$0D`, `$0E`, `$57`, camera, per
 frame) is green on both windows; a pause scenario (START at f450, START at

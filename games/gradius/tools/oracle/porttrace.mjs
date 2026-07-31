@@ -22,14 +22,16 @@
 //
 // ================================ SEEDING ====================================
 //
-// The port does not model the title screen, the mode-3 demo, or the 28-frame
-// stage-intro sub-state, so it cannot be booted cold and lined up with the
-// cartridge. The comparison therefore SEEDS the port from the cartridge's own
-// $0000-$07FF at the scenario's align frame and free-runs from there. Two
-// things follow and both are stated rather than buried:
+// The port does not model the title screen or the mode-3 demo, so it cannot be
+// booted cold and lined up with the cartridge. The comparison therefore SEEDS
+// the port from the cartridge's own $0000-$07FF at the scenario's align frame
+// and free-runs from there. Two things follow and both are stated rather than
+// buried:
 //
-//   * everything before the align frame is UNTESTED by this harness, including
-//     src/main.js's bootState();
+//   * everything before the align frame is UNTESTED by this harness;
+//     src/main.js's bootState() used to be on that list and is not any more --
+//     `intro-boot` aligns at the mode-4 handover (frame 282) and the port
+//     executes the stage intro itself from there (wave 4);
 //   * the seed is real machine state, not invented state -- the failure mode
 //     docs/knowledge/03 warns about ("a harness that sets up state the app
 //     never has") is inverted here: the risk is that seeding HIDES an
@@ -115,7 +117,14 @@ export function seedFromRam(state, ram) {
   state.ppu.scrollX = r(0x12);             // $12
   state.ppu.scrollY = r(0x13);             // $13
   state.zp15 = r(0x15);                    // $15
+  state.zp09 = r(0x09);                    // $09  the demo flag  ($9ADA gate)
+  state.zp16 = r(0x16);                    // $16                 ($9ADA gate)
   state.zp.player = r(0x18);               // $18
+  state.zp19 = r(0x19);                    // $19  the stage index (wave 4)
+  state.zp33 = r(0x33);                    // $33  the button-code match count
+  state.cheat[0] = r(0x3B);                // $3B,X
+  state.cheat[1] = r(0x3C);
+  state.zp4C = r(0x4C);                    // $4C  the death/intro countdown
   state.zp1A = r(0x1A);                    // $1A  ($BBBD LDA $19 / ORA $1A)
   state.substate = r(0x1B);                // $1B
   state.zp1E = r(0x1E);                    // $1E
@@ -144,7 +153,14 @@ export function seedFromRam(state, ram) {
   // output comparable at all. They are constants across every window this
   // corpus compares; see the SEEDED INPUTS note in src/state.js.
   state.lives[0] = r(0x20);                // $20
-  state.lives[1] = r(0x21);                // $21
+  state.lives[1] = r(0x21);
+  // $22/$24/$26/$28,X -- the per-player state $9B3E restores at every stage
+  // intro (src/flow.js introReset). Written only by $979D, which is wave 5, so
+  // like the lives above these are read-and-never-written by the port today.
+  state.save22[0] = r(0x22); state.save22[1] = r(0x23);
+  state.save24[0] = r(0x24); state.save24[1] = r(0x25);
+  state.save26[0] = r(0x26); state.save26[1] = r(0x27);
+  state.save28[0] = r(0x28); state.save28[1] = r(0x29);                // $21
   for (let i = 0; i < 12; i++) state.score[i] = r(0x07E0 + i);  // $07E0-$07EB
   state.build.lo = r(0x54);                // $54
   state.build.hi = r(0x55);                // $55
@@ -231,10 +247,7 @@ export const UNMODELLED = {
   // bytes now (src/oam.js ports $8B1A-$8B2B), because the split gate at
   // $9A8C/$9A90 reads both and a boolean cannot express the $1F == 1 handover
   // frame. Two fewer SKIPPED fields.
-  '0019': 'stage index. The port loads one stage\'s assets and has no $19; the '
-        + 'streamer\'s stage-4 collision skip ($9F4F CPY #$04) is carried as a '
-        + 'per-stage flag in assets/terrain/stages.json instead. Constant 0 '
-        + 'across this corpus. Wave 4 introduces the stage machinery.',
+  //
   // $0020 used to live here. It is MODELLED now, but only as a seeded byte:
   // the HUD's st_88B6 reads it ($88C1 LDA $20,X) and renders it, and nothing in
   // the port writes it. The comparison is therefore true and weak -- lives are
@@ -242,12 +255,14 @@ export const UNMODELLED = {
   // tests/hud.test.js, which drives the three DIFFERENT values the video
   // captures caught (3 at f400, 1 at f1200, 0 at f3500) through the producer
   // and checks the nametable row it writes. Wave 5's $979D makes it live.
-  '0024': 'checkpoint index for player $18 ($24,X). Set by $979D as '
-        + 'min($3F AND $0E, 8) at the death, read by the respawn. Wave 5.',
-  '004C': 'the death/dying countdown. $C1D6 loads it with $78 and $96EF counts '
-        + 'it out; the port has neither ($C1D6 is wave 5, the $1B ladder is '
-        + 'wave 4). Watched from now so waves 4-5 are judged against recorded '
-        + 'cartridge data rather than data recorded after the fact.',
+  //
+  // THE LIST IS EMPTY AS OF WAVE 4. It held three entries -- $19 (stage index),
+  // $24 (checkpoint) and $4C (the death countdown) -- and the $1B ladder needed
+  // all three: $9663 tests $19, $9B68 reads $24,X into $3F and $55, and $96EF
+  // counts $4C out. $19 and $24 are modelled the way $20 is (read by the port,
+  // written only by wave 5's $979D); $4C is written by the port, at $96F6.
+  // Three fewer SKIPPED fields. Do not re-add an entry here without the
+  // measurement that says the port cannot model it.
 };
 
 /**
@@ -275,8 +290,23 @@ export function peek(state, addr) {
     case 0x11: return state.ppu.mask;
     case 0x12: return state.ppu.scrollX;
     case 0x13: return state.ppu.scrollY;
+    case 0x09: return state.zp09;
     case 0x15: return state.zp15;
+    case 0x16: return state.zp16;
     case 0x18: return state.zp.player;
+    case 0x19: return state.zp19;          // $9B70 STA $19 -- wave 4
+    case 0x22: return state.save22[0];
+    case 0x23: return state.save22[1];
+    case 0x24: return state.save24[0];     // the CHECKPOINT, $9B68 LDA $24,X
+    case 0x25: return state.save24[1];
+    case 0x26: return state.save26[0];
+    case 0x27: return state.save26[1];
+    case 0x28: return state.save28[0];
+    case 0x29: return state.save28[1];
+    case 0x33: return state.zp33;          // $9782 STY $33 -- src/flow.js
+    case 0x3B: return state.cheat[0];
+    case 0x3C: return state.cheat[1];
+    case 0x4C: return state.zp4C;          // $96F6 DEC $4C
     case 0x1A: return state.zp1A;
     case 0x1B: return state.substate;
     case 0x1E: return state.zp1E;          // $8B2B STA $1E
@@ -388,14 +418,19 @@ export const POKEABLE = {
   0x45: (s, v) => { s.zp.options = v; },    // $45 Options,     $89D3 INC $45
   // $1F, the sprite-0 enable. NOT a power-up -- the second reason an address is
   // allowed here, and it is the same reason: the value is one the CARTRIDGE
-  // produces and a button script cannot reach. $9C38 `A9 01 85 1F` is the
-  // stage-intro handover, and it lives at frames 282-314 of a boot, i.e. before
-  // this corpus's align of 400 and inside a sub-state the port does not model.
+  // produces and a button script cannot reach FROM ALIGN 400. $9C38
+  // `A9 01 85 1F` is the stage-intro handover at game frame 309 of a boot.
+  //
+  // WAVE 4 NARROWED WHAT THIS IS FOR, and the note is corrected rather than
+  // left: the port models $9C38 now (src/flow.js introTerrain), and the
+  // `intro-boot` scenario compares the handover the port PRODUCES at frame 309
+  // -- no poke. `s0-handover` stays because it injects the value into a
+  // mid-play window, where the corpus otherwise has $1E = 1 and $1F = 2 on
+  // every frame and BOTH terms of the split gate at $9A8C/$9A90 can be deleted
+  // with the whole thing still green (measured, twice, by two agents).
   // It must be poked for ONE FRAME (`@+N`): $8B1A-$8B2B promotes 1 to 2 on the
   // very next display-list build, so a held 1 is a state no cartridge frame is
-  // ever in. Without it, $1E = 1 and $1F = 2 on all 3341 compared frames and
-  // BOTH terms of the split gate at $9A8C/$9A90 can be deleted with the whole
-  // corpus still green -- measured, twice, by two different agents.
+  // ever in.
   0x1F: (s, v) => { s.zp1F = v; },          // $1F sprite-0 enable, $9C38 STA $1F
 };
 
@@ -553,8 +588,17 @@ export function tracePort(o) {
     if (n === 'lead1') b = buttons[g - 1] ?? 0;   // the Game Boy's lead, wrongly
     const forceLag = lagAt ? Number(lagAt[1]) === g : false;
     const ran = nmi(state, b, res, forceLag);
-    if (!ran) lagCum++;
-    rows.push(sampleRow(state, g, o.watch, ran ? 0 : 1));
+    // `lagged` is DROPPED NMIs ATTRIBUTED TO THIS ROW, which is what objloop.lua
+    // counts: its gframe only advances at $80B5, so a drop caused by a frame
+    // whose own work overran is recorded against that frame, not against the
+    // row that never happened. Two sources, and they are different things:
+    //   ran === false   the port was TOLD to drop this NMI (the laginject
+    //                   neuter). The row then repeats the previous state.
+    //   state.frameDrops  the frame RAN and cost the next NMI -- $882C, once
+    //                   per stage load. src/flow.js fullScreenLoad().
+    const drops = ran ? state.frameDrops : 1;
+    if (drops) lagCum += drops;
+    rows.push(sampleRow(state, g, o.watch, drops));
     applyPokes(g);                                // same instant as probe.lua
   }
   return {

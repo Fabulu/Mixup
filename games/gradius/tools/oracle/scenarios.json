@@ -12,13 +12,14 @@
     "$1B=$80 (play), $0100=1 (alive), $0120=1, $40=0, $45=0, $18=0, $5C=0,",
     "$15=0, $5B=0, X=80, Y=96, $3E=43.",
     "",
-    "ALIGNMENT: the port does not model the title screen or the 28-frame stage",
-    "intro, so it cannot be booted cold and compared. The comparison SEEDS the",
-    "port from the cartridge's own RAM at frame `align` and free-runs from there.",
+    "ALIGNMENT: the port does not model the title screen or the attract demo, so",
+    "it cannot be booted cold and compared. The comparison SEEDS the port from",
+    "the cartridge's own RAM at frame `align` and free-runs from there.",
     "That is the same arrangement NOTES-player.md 11 used for playermodel.py.",
     "It is stated here because it bounds what the comparison proves: everything",
-    "BEFORE frame 400 is untested by this corpus, including src/main.js's",
-    "bootState().",
+    "BEFORE a scenario's align frame is untested by it. Wave 4 moved that bound:",
+    "`intro-boot` aligns at 282, the mode-4 handover, so the stage intro and",
+    "everything $9B3E computes ARE compared -- see the `_align` note above.",
     "",
     "POKE SYNTAX. `\"poke\": \"0040=6\"` holds a value for the whole compared",
     "window; `\"poke\": \"001F=1@+40\"` writes it at ONE frame, align+40. Both are",
@@ -31,6 +32,24 @@
   "align": 400,
   "bootPrefix": "200:,10:S,190:",
 
+  "_align": [
+    "A scenario may override `align`. WAVE 4 ADDED THAT because the port now",
+    "models the stage intro, and the intro happens at frames 283-309 of a boot",
+    "and 614-640 of a respawn -- i.e. before the corpus's own align of 400.",
+    "",
+    "`intro-boot` aligns at 282, which is the MODE-4 HANDOVER FRAME: $8165 is",
+    "`LDA #$00 / STA $1B / INC $00`, three instructions, so the sample at 282",
+    "reads mode 5 with $1B = 0 and mode 5's own handler has not run yet. The",
+    "first compared frame, 283, is therefore the port running $9B3E itself --",
+    "the ship's position, both position rings, $0100, $0120, $35, $3F and $55",
+    "are all COMPUTED on the port side rather than seeded, for the first time.",
+    "",
+    "`intro-respawn` aligns at 614, the frame the cartridge's $979D ran, and so",
+    "compares intro states 1-4 and the exit but NOT $9B3E. That is not a choice",
+    "of coverage: $979D jumps into $9B3E in the SAME frame, and $979D is wave",
+    "5. Seeding one frame earlier would put the port on an arm that throws."
+  ],
+
   "_watch": [
     "Extra RAM added to probe.lua's state vector through its own --watch",
     "mechanism, so the oracle is EXTENDED without being EDITED. Every address",
@@ -39,11 +58,10 @@
     "comparing $0361/$0362 alone would pass for a port that trailed the ship by",
     "the wrong number of ring entries on a straight-line hold.",
     "",
-    "ADDRESSES WATCHED AHEAD OF THE PORT: $19 $24 $4C (stage index, checkpoint,",
-    "the death countdown) are not modelled at all and carry a written reason in",
-    "porttrace.mjs UNMODELLED, so they are reported as SKIPPED, not as silent",
-    "nulls. They are here so that waves 4 and 5 are judged against cartridge",
-    "data recorded BEFORE the code that has to reproduce it was written.",
+    "ADDRESSES WATCHED AHEAD OF THE PORT: there are none left. $19, $24 and $4C",
+    "were the last three and wave 4 modelled all three; the mechanism worked as",
+    "designed -- they were recorded from the cartridge in wave 1, a wave before",
+    "any line existed that had to reproduce them. Use it again for wave 5.",
     "",
     "WAVE 2 ADDED THE HUD'S STATE AND ITS INPUTS: $48 (the four-phase rotation,",
     "$88A4 INC $48 -- real port state), and $20/$21 $42 $46 $07E0-$07EA, which",
@@ -72,6 +90,18 @@
     "across this corpus -- that is the POINT: the port must keep them zero, and",
     "wave 6's $BE93 is the first code that will make them move.",
     "",
+    "WAVE 4 ADDED THE FLOW MACHINE'S OWN BYTES. $09 and $16 (the two gates on",
+    "$9ADA that are not $0D), $22-$29 (the four per-player saved bytes $9B62-",
+    "$9B74 restores at every intro -- checkpoint, stage, meter, $1A), $33 (the",
+    "button-code match counter $9765 walks on EVERY paused frame) and $3B/$3C",
+    "(the per-player cheat counts $9AFF tests before running it).",
+    "",
+    "AND IT REMOVED THREE SKIPS. $19, $24 and $4C were watched-but-unmodelled",
+    "since wave 1 -- deliberately, so that the wave which had to reproduce them",
+    "would be judged against data recorded BEFORE it was written. All three are",
+    "modelled now ($9663 tests $19, $9B68 reads $24,X into $3F and $55, $96F6",
+    "DECs $4C) and the SKIPPED count in compare.mjs drops from 9 to 6.",
+    "",
     "$6A:$6B is the one to look at hardest. It is a REAL CPU POINTER into the",
     "ROM's wave lists, and comparing it is what makes the wave-record walk",
     "checkable rather than merely plausible: 00-recon-enemies.md 1 recorded it",
@@ -80,8 +110,9 @@
     "abstracted the wave list into an array index could not be held to that."
   ],
   "watch": [
-    "0000", "000D", "000E", "0015", "0018", "0019", "001A", "001B", "001E", "001F",
-    "0020", "0021", "0024",
+    "0000", "0009", "000D", "000E", "0015", "0016", "0018", "0019", "001A", "001B", "001E", "001F",
+    "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029",
+    "0033", "003B", "003C",
     "0035", "0036", "003A", "0040", "0041", "0042", "0044", "0045", "0046",
     "0048", "004C",
     "0054", "0055", "0057", "0058", "005B", "005C",
@@ -156,6 +187,24 @@
 
   "scenarios": [
     {
+      "name": "intro-boot",
+      "align": 282,
+      "tail": "240:",
+      "why": "THE STAGE INTRO, driven rather than seeded. Aligned at 282 -- the frame mode 4's three instructions ($8165 LDA #$00 / STA $1B / INC $00) hand mode 5 a $1B of 0 -- so the FIRST compared frame, 283, is the port executing $9B3E: the $3D-$97 wipe, the $0100/$0300/$0500-$06FF page clears, the per-player restore ($22->$42, $24->$3F and $55, $26->$19, $28->$1A), $882C's RAM side effects, and the start position out of $9BD4[$9BCC[$19] + ($3F>>1)]. Everything the other 18 scenarios take from the cartridge's RAM at align 400, this one computes.\n\nMEASURED with flowprobe.py on this exact script's boot prefix: $9B3E@283, $9BF0@284, $9C12@285, $9C1E@286, $9C24 on 287-309 (23 frames, 4 x $9D8E on each of 287-308 = 88 calls), $9C3C@309, first $982A@310. $0E reads 1, 49, 37, 40, then 149 for twenty-two frames -- the four ungated blocks plus $8641's terminator. $0D reads 6,3,3,3 then 5 for twenty-three frames then 4,3,2,1,0, and the sprite-0 split first fires on 314, the frame it reaches 0.\n\nTHE ONE LAG FRAME IN THE WHOLE CORPUS IS INSIDE THIS WINDOW. $882C writes 2304 bytes to $2007 in one NMI (h_8871 = 6 chunks, h_888B = 2304) and the frame overruns: probe.lua and objloop.lua both record lag.dropAtGameFrame = 283, and the same script with a death records 283 AND 614. It is attributed to the frame that was still running, so it belongs on row 283 -- which is what src/flow.js fullScreenLoad() reproduces and what makes `lagged` a field with teeth for the first time.",
+      "_": "240 idle frames after the boot prefix rather than 60: the tail is 325 frames of ordinary play whose ENTIRE state came from the port's own intro, so an error in anything $9B3E computes has 325 frames to show itself instead of being absorbed by the next seed."
+    },
+    {
+      "name": "intro-respawn",
+      "align": 614,
+      "tail": "300:R",
+      "why": "THE SECOND INTRO, which is the same five states reached from a completely different place: the ship dies at f493 ($C1D6, measured once), $96EF counts $4C from 120 down over f494-f613, and $979D runs on f614 and jumps into $9B3E in the SAME frame. Aligned at 614 because $979D is wave 5 -- seeding one frame earlier would put the port on the arm that throws.\n\nSo this compares intro states 1-4 and the exit, from a cartridge state the boot window cannot produce: lives already decremented to 2, the camera reset from 150 to 0, $5E cleared, and the queue starting from $0E = 1 after $882C. MEASURED: $1B steps 1,2,3,4 on 614-617, $9C24 runs on 618-640, $57 goes 0->1 on 639, $1B -> $80 on 640, and $0E is 1,49,37,40,149x22 exactly as on the boot.\n\nWHAT IT SETTLES. The plan carried 'respawn = 26 frames, boot = 28, so the exit is data-dependent'. Both are 27 mode-5 frames, measured twice each. The exit IS data-dependent -- $9C24 reads $57 and there is no counter anywhere -- but it lands on the same number every time because $9B3E sets $3F and $55 from the SAME byte and clears $3E/$54/$58, so the streamer's 16-bit lead is exactly 0 at every intro whatever the checkpoint. A 23-frame counter would pass both of these windows; tests/flow.test.js is what separates the two models, by starting the phase with a non-zero lead."
+    },
+    {
+      "name": "pause",
+      "tail": "50:,1:S,49:,1:S,139:",
+      "why": "PAUSE, START-pressed at game frame 450 and again at 500 -- the same two frames 00-recon-flow.md 8 measured, replayed as a per-frame comparison instead of a transition list. $9ADA toggles $15 on a START EDGE ($05, not $07) when $1B is $80-$8F and $09/$16/$0D are all 0; $9650's first branch then jumps the whole update to $9A8C, past the spawn engine, the enemy-bullet engine, THE PLAYER, the enemy update and the $3E->$12 scroll latch.\n\nWhat the window has to show, on both sides: $15 0->1 at 450 and 1->0 at 500; the camera $3D/$3E/$3F and the latched $12 frozen for exactly those 50 frames while $54/$55/$57/$58 keep moving (the streamer is PAST the pause jump and still runs); $0120/$0140/$0160 frozen (no player, no ring); the enemy slots frozen; and the split still running, because $15 skips $9AA0 and lands ON $9AA3.\n\nThis is the scenario wave 1's knownFail was waiting for: the port gated only advanceCamera() on $15 and so kept flying the ship while paused, and no scenario in the corpus could see it because nothing wrote $15."
+    },
+    {
       "name": "enemy-waves",
       "tail": "1466:RD",
       "why": "THE ENEMY SCENARIO. 1465 compared frames -- long enough for all ten of stage 1's chunk-0 wave records (fired at game frames 378 before the align, then 506, 634, 762, 890, 954, 1018, 1082, 1146, 1210), the $FF terminator, the CHUNK SWITCH at scroll $0200 (frame 1339, cursor $A858 -> $A85B), and chunk 1's first four records. Three enemy types are dispatched in the window: $05/$85 the fan ($B0AF, 4840 dispatches), $08/$88 the wavy one ($B26C, 3954) and $04/$84 the arc ($B205, 570, first at frame 1722). It also covers one natural ALLOCATION FAILURE at frame 1152, which is the behaviour that drops a member and collapses a squadron's spacing.\n\nWHY RD, AND WHY IT IS THE ONLY CHOICE. Without weapons the ship cannot kill anything, and every enemy in stage 1's opening homes on the player's Y, so it dies -- MEASURED, first death frame per 1460-frame hold: idle 1051, R 493, RU 445, U 1076, L ~1180. compare.mjs truncates at the death, and a death also RESETS THE CAMERA at the respawn (measured: after the L-run's death the spawn engine re-fired chunk 0's first record at scroll $0020, frame 1299), so the chunk switch never happens. RD parks the ship in the bottom-right corner at (240,192), where the fan's return leg and the wavy one's approach both miss: it survives to frame 1865 and dies at 1866, which is where this scenario stops. Nothing else in the corpus reaches past frame 640.\n\nThe cartridge's one lag frame in this run is at game frame 283, i.e. before the align -- so romLagInWindow is 0 and the lag comparison still has teeth via long-idle."
@@ -169,7 +218,7 @@
       "name": "s0-handover",
       "tail": "240:",
       "poke": "001F=1@+40",
-      "why": "THE SPRITE-0 HANDOVER, injected for exactly ONE frame (game 440). Added because two agents independently deleted `state.zp1E !== 0` and `state.zp1F !== 0` from the split gate in src/nmi.js and got byte-identical output from all 16 other scenarios: $1E = 1 and $1F = 2 on every one of their 3341 compared frames, so both terms of $9A8C/$9A90 were unfalsifiable -- docs/knowledge/03's third shape. $9C38 (`A9 01 85 1F`) is the cartridge writing this value itself, during the stage intro, which is before align 400 and inside a sub-state the port does not model; hence the injection. It is ONE frame because $8B1A-$8B2B promotes 1 to 2 on the next build, so a held 1 is a state the cartridge is never in. What the frame after the poke must show, on BOTH sides: $1F 1 -> 2, $1E still 0, the LIVE sprite-0 record in OAM, NO split, and the camera $3D/$3E/$3F held for that one frame because $9A8E branches past $9AA0 as well as past the split.",
+      "why": "THE SPRITE-0 HANDOVER, injected for exactly ONE frame (game 440). Added because two agents independently deleted `state.zp1E !== 0` and `state.zp1F !== 0` from the split gate in src/nmi.js and got byte-identical output from all 16 other scenarios: $1E = 1 and $1F = 2 on every one of their 3341 compared frames, so both terms of $9A8C/$9A90 were unfalsifiable -- docs/knowledge/03's third shape. $9C38 (`A9 01 85 1F`) is the cartridge writing this value itself, during the stage intro, which is before align 400; the port produces it there too since wave 4 (see `intro-boot`), and this scenario injects it into a MID-PLAY window instead, where nothing else can. It is ONE frame because $8B1A-$8B2B promotes 1 to 2 on the next build, so a held 1 is a state the cartridge is never in. What the frame after the poke must show, on BOTH sides: $1F 1 -> 2, $1E still 0, the LIVE sprite-0 record in OAM, NO split, and the camera $3D/$3E/$3F held for that one frame because $9A8E branches past $9AA0 as well as past the split.",
       "_": "Idle rather than moving on purpose: the ONLY difference between this scenario and `idle` is the one poked frame, so any divergence is that frame's or its consequences and cannot be confused with a player-input effect."
     },
     {

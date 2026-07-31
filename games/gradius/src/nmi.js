@@ -47,6 +47,11 @@
 // ($9AC4 JSR $9C45), the capsule apply ($9A73 JSR $8974), and every game mode
 // except 5.
 //
+// MODE 5 ITSELF IS NO LONGER "$1B = $80 ONLY" -- wave 4 ported the $96A5 ladder
+// below, the five stage-intro states and pause (src/flow.js). What is left
+// unported inside mode 5 is named at each arm, as a throw carrying the ROM
+// address the cartridge would have reached.
+//
 // The enemy spawn script and the enemy update ($9A64 JSR $A2C0 / $9A6D JSR
 // $ADAB) WERE on that list and are not any more -- src/enemies.js, wave 3.
 // $9A67 JSR $BBB7 (the enemy-bullet engine) went in with them, because it runs
@@ -63,7 +68,7 @@
 // packets", which sent the terrain knownFail's diagnosis at the wrong routine
 // for the port's whole life.
 
-import { MODE_STAGE } from './state.js';
+import { MODE_STAGE, u8 } from './state.js';
 import { readJoypad } from './input.js';
 import { drainQueue, queueTerminator } from './vram.js';
 import { hudTick } from './hud.js';
@@ -72,6 +77,7 @@ import { updatePlayer } from './player.js';
 import { advanceCamera, latchScroll } from './camera.js';
 import { streamBlock } from './terrain.js';
 import { spawnEngine, enemyBullets, updateEnemies } from './enemies.js';
+import { introStep, pauseCheck } from './flow.js';
 import { chrBank } from './render/ppu.js';
 
 /**
@@ -90,6 +96,20 @@ export function nmi(state, buttons, res, lag = false) {
     state.lagFrames++;
     return false;                       // $80B7: pull everything and RTI
   }
+  // The previous frame's overrun is HISTORY once this one starts. It is counted
+  // on the row of the frame that caused it, not on the row of the frame that
+  // was dropped -- objloop.lua attributes it the same way, because gframe only
+  // advances at $80B5 and a dropped NMI never gets there (src/state.js).
+  state.frameDrops = 0;
+  // ...and so is the enemy loop's iteration count. It is "$ADE5 entries THIS
+  // frame", so a frame that never reaches $9A6D must report 0, not the previous
+  // frame's 10. updateEnemies() zeroes it at its own top, which was enough
+  // while every mode-5 frame ran it; wave 4 gave the port frames that do not
+  // (the intro dispatch never reaches $9A5E, and a paused frame jumps past it).
+  // MEASURED: the `pause` scenario's cartridge rows read enemySlots 0 on all 50
+  // paused frames and the port read 10 -- the first divergence this field has
+  // ever produced.
+  state.work.enemySlots = 0;
 
   // $8085: LDY #$02 / $8087: STY $4014.
   // Shadow OAM $0200 -> the PPU. This copies the display list built at $80A7 of
@@ -103,11 +123,17 @@ export function nmi(state, buttons, res, lag = false) {
   //   8090  C6 0D  DEC $0D / 8092  F0 02  BEQ $8096 / 8094  A9 00  LDA #$00
   //
   // so the LAST frame of the countdown already shows the picture. $0D is 0 on
-  // all 3341 compared frames, but NOT "never non-zero in any measured run" as
-  // this comment used to claim: the boot intro runs it 6,3,3,3,5x23,4,3,2,1,0
-  // over frames 282-314 and a respawn runs it again (00-recon-flow.md 5). The
-  // port cannot yet reproduce screen blanking because it has no intro -- that
-  // is wave 4 -- but the arm itself is the cartridge's.
+  // every frame of the play corpus, but NOT "never non-zero in any measured
+  // run": the intro runs it and wave 4 made the port run the intro.
+  //
+  // MEASURED, boot script "200:,10:S,130:", $0D at the $80B5 sample:
+  //   f283  6            $9BC5, after $882C had set it to $10 twice
+  //   f284-f286  3       $96C0 re-arms it on every intro frame
+  //   f287-f309  5       $9C24 re-arms it higher, 23 frames
+  //   f310-f314  4,3,2,1,0    the countdown, once $1B = $80 stops re-arming it
+  // and the sprite-0 split first fires on f314, the frame it reaches 0, always
+  // at scanline 207. So the screen is blank for the whole intro AND for four
+  // frames after it, which is the arm below and the $9A94 gate in mode5Tail().
   if (state.ppu.blank !== 0 && --state.ppu.blank !== 0) state.bandA.mask = 0;
   else state.bandA.mask = state.ppu.mask;
 
@@ -147,19 +173,21 @@ export function nmi(state, buttons, res, lag = false) {
 }
 
 /**
- * Game mode 5, the stage-play path. ROM: $9650 -> ... -> $9A5E-$9ACE.
+ * Game mode 5. ROM: `$9650` -> the `$96A5` ladder -> five different arms.
  *
- * $96A5 is a bitfield ladder on $1B, not a single test: bit 4 next-stage
- * ($96CF), bit 5 dying ($96EF), bit 6 game over ($96FB), bit 7 play -> the
- * low-nibble dispatch at $982F; none set -> the stage-intro dispatch at $96C5.
- * The port implements only the bit-7 arm, so `$1B = $80` is the one value that
- * behaves. Measured: mode 5 at game frame 282, $0100 becomes 1 at 283, and the
- * split first fires at 314 -- the intro window in which the ship does not move
- * even though the player is holding a direction. That looked like a ten-frame
- * input lag until it was measured from three different start frames. The
- * window is NOT a fixed 28 frames: the boot intro ran 282-314 and a respawn
- * intro ran 614-640 (26 frames), because $9C24 exits on $57, not on a counter
- * (00-recon-flow.md 3 and 5). The ladder and the intro are wave 4.
+ * THIS USED TO BE THE WHOLE OF MODE 5 AND IT IS NOT ANY MORE. Before wave 4 the
+ * port implemented one value of $1B ($80) and returned early for every other,
+ * so the stage intro, the death countdown and pause were all "the frame does
+ * nothing". The ladder below is the cartridge's, in the cartridge's order, and
+ * the arms this wave does not port throw with the address they would have
+ * reached. src/flow.js is the intro and pause; the play and dying arms are here
+ * because both of them re-enter this file's own mode-5 body.
+ *
+ * Measured for wave 4 with flowprobe.py: the boot intro is mode-5 frames
+ * 283-309 and the respawn's is 614-640 -- 27 frames each, NOT the 28 and 26 the
+ * plan carried. $9C24 exits on $57 rather than on a counter and the counts
+ * agree only because $9B3E starts every intro from a zero streamer lead; see
+ * the header of src/flow.js for the derivation.
  */
 export function stagePlay(state, res) {
   // ---- $9650-$965A: the mode-5 entry. Four stores, run on EVERY mode-5 frame
@@ -173,7 +201,8 @@ export function stagePlay(state, res) {
   // $9658 a $5B set from anywhere freezes the camera and the streamer FOREVER
   // instead of for one frame, because $5B is a WITHIN-FRAME flag -- it is only
   // ever raised by arms that immediately jump into the middle of this body
-  // ($96A0, $98DD, $96FB), meaning "this frame's update already ran".
+  // ($96A0, $98DD, $96FB, and $9B25 on the unpause), meaning "this frame's
+  // update already ran".
   //
   // $9656 became load-bearing in wave 3: $BBB7 reads $5D ($9A67, seven
   // instructions after the spawn engine that INCs it), so a $5D that survived
@@ -183,12 +212,121 @@ export function stagePlay(state, res) {
   state.spawn.z5D = 0;                            // $9656 STA $5D
   state.zp5B = 0;                                 // $9658 STA $5B
   state.zp5C = 0;                                 // $965A STA $5C
-  // $965C LDA $15 / BEQ $9663 / $9660 JMP $9A8C -- the PAUSE jump, which skips
-  // the WHOLE body including the player and the scroll latch. NOT ported; it is
-  // pinned by a knownFail in tests/frame-gates.test.js and owned by wave 4.
-  // $9663 LDA $19 / CMP #$04 / BNE $96A5 -- only stage 5 computes $5C at all.
-  if (!(state.substate & 0x80)) return;           // $96B7 LDA $1B / BPL
 
+  // $965C LDA $15 / BEQ $9663 / $9660 JMP $9A8C -- THE PAUSE JUMP. It lands
+  // past $9663-$9A87, i.e. past the spawn engine, the enemy-bullet engine, THE
+  // PLAYER, the enemy update, the shot sweep, the capsule apply AND the
+  // $3E -> $12 scroll latch -- and past $9A88's own test of $1B bit 7. Wave 1
+  // pinned this as a knownFail in tests/frame-gates.test.js because the port
+  // only gated advanceCamera() on $15 and so kept flying the ship while paused;
+  // the annotation retires with this line.
+  if (state.zp15 !== 0) {                         // $965C/$965E
+    mode5Tail(state, res);                        // $9660 JMP $9A8C
+    return;
+  }
+
+  // $9663 LDA $19 / CMP #$04 / BNE $96A5 -- only stage 5 counts the four bytes
+  // at $0600/$0630/$0660/$0690 into $5C and only stage 5 can then take the
+  // half-rate arm at $9689. The port loads one stage's assets, so $19 == 4 is
+  // a state it cannot be in; it throws rather than skip the arm silently.
+  if (state.zp19 === 4) {
+    throw new Error('$9663: $19 = 4 (stage 5). The $5C census at $9669-$9683 '
+                  + 'and the half-rate arm at $9689-$96A2 are not ported.');
+  }
+
+  // ---- $96A5: the ladder. Order matters -- it is five tests in sequence, not
+  // a switch, so $1B = $30 takes the bit-4 arm and never sees bit 5.
+  const sub = state.substate;
+  if (sub & 0x10) {                               // $96A5-$96A9
+    throw new Error(`$96CF: $1B = $${sub.toString(16).toUpperCase()} has bit 4 `
+                  + `set (NEXT STAGE). INC $19, the $50-$70 clear, $55 = 1, `
+                  + `$9BF0 and $9C3C are not ported -- the port loads one `
+                  + `stage's assets.`);
+  }
+  if (sub & 0x20) { dyingArm(state, res); return; }        // $96AB-$96AF
+  if (sub & 0x40) {                               // $96B1-$96B5
+    throw new Error(`$96FB: $1B = $${sub.toString(16).toUpperCase()} has bit 6 `
+                  + `set (GAME OVER). $96FD gates both the timeout and START on `
+                  + `$B0, a sound-driver byte measured non-zero for 277 frames `
+                  + `and uncharacterised; the wave plan excludes it until $B0 is `
+                  + `the port's own state (wave 8).`);
+  }
+  if (sub & 0x80) { playArm(state, res); return; }         // $96B7-$96BB
+  introStep(state, res);                          // $96BE -> jt_96C5
+}
+
+/**
+ * `$982A` -- the play arm. `LDA $1B / JSR $83E4` into the 16-entry table at
+ * $982F, indexed by ($1B * 2) AND $FF, i.e. by the low nibble.
+ *
+ * Entry 0 is `st_9A4D`:
+ *
+ *   9A4D  A6 19 / A5 3F / DD 3D 9A / 90 05      $3F < $9A3D[$19] -> $9A5B
+ *   9A56  BD 45 9A / 85 1B                      else $1B := $9A45[$19] = $81
+ *   9A5B  20 57 83  JSR $8357                   the CHR bank + the BGM request
+ *
+ * $9A3D[0] = $0C, which assets/terrain/stages.json already carries as
+ * `bossPage` -- the same byte, read by the same instruction. Stage 1 therefore
+ * ends at world X >= 3072, which no scenario in this corpus reaches (the
+ * furthest is camera page 0).
+ *
+ * `$9A5B JSR $8357` is NOT ported and it is not silently absent either: its
+ * only non-sound effect is `LDY $19 / LDA $8346,Y / STA $2D`, and $8346[0] = 0,
+ * so $2D stays 0 for the whole of stage 1 -- which is exactly what the port
+ * holds it at and what w_002D has compared clean on all 18 scenarios. The rest
+ * of $8357 ($8363-$839D) is the background-music selector: it de-dupes on $1C
+ * and calls $EC1E. Wave 8.
+ */
+function playArm(state, res) {
+  if (state.substate !== 0x80) {                  // $982C -> jt_982F
+    throw new Error(`$982A: play sub-state $1B = $${state.substate.toString(16)
+      .toUpperCase()}. Only $80 (st_9A4D) is ported; $81-$8F are the `
+      + `end-of-stage and boss-approach chain ($9A0E, $99E9, $99C0, $9982, `
+      + `$997E, $9904, $988C, $98DD, $98E5, $984F) and the intro states the `
+      + `table shares with jt_96C5.`);
+  }
+  if (state.cam.hi >= res.stage.bossPage) {       // $9A4F-$9A54 CMP $9A3D,X
+    throw new Error(`$9A56 LDA $9A45,X: $3F reached ${state.cam.hi} `
+                  + `(>= $9A3D[${state.zp19}] = ${res.stage.bossPage}), so the `
+                  + `cartridge would set $1B = $81 and start the end-of-stage `
+                  + `chain. Not ported.`);
+  }
+  // $9A5B JSR $8357 -- see above. Falls through into $9A5E.
+  mode5Body(state, res);
+}
+
+/**
+ * `$96EF` -- the dying arm. Ported as STRUCTURE: nothing in the port can set
+ * $1B = $A0 yet, because $C1D6 (the collision that does it) is wave 5.
+ *
+ *   96EF  A5 4C / D0 03     $4C != 0 -> $96F6
+ *   96F3  4C 9D 97  JMP $979D        the respawn
+ *   96F6  C6 4C     DEC $4C
+ *   96F8  4C 5E 9A  JMP $9A5E        <- the FULL body, not the tail: a dying
+ *                                       frame still spawns and updates enemies
+ *                                       and still calls the player ($9FFC bails
+ *                                       at its own $0100 >= 2 gate)
+ *
+ * MEASURED on "200:,10:S,190:,300:R": $C1D6 fired once at f493, $4C stepped 120
+ * -> 0 over f494-f613, and $979D ran on f614 -- 120 frames exactly.
+ */
+function dyingArm(state, res) {
+  if (state.zp4C === 0) {                         // $96EF/$96F1
+    throw new Error('$96F3 JMP $979D: the death countdown reached 0 and the '
+                  + 'respawn is wave 5 (DEC $20,X; $22,X = $42 ? 1 : 0; '
+                  + '$24,X = min($3F AND $0E, 8); $26,X = $19; $28,X = $1A; '
+                  + 'then $97DD -> $9B3E in the SAME frame).');
+  }
+  state.zp4C = u8(state.zp4C - 1);                // $96F6 DEC $4C
+  mode5Body(state, res);                          // $96F8 JMP $9A5E
+}
+
+/**
+ * `$9A5E-$9A86`, then the fall-through into `$9A88`. Reached from the play arm,
+ * from the dying arm, and (on the cartridge) from six more tails that all
+ * `JMP $9A5E`.
+ */
+function mode5Body(state, res) {
   // $9A5E: LDA $5C / CMP #$02 / BCS $9A70 -- when $5C >= 2 the player update
   // is skipped ENTIRELY here and a different caller at $969A runs it on EVEN
   // frames only. UNREACHABLE ON STAGE 1, and that is now settled rather than
@@ -197,8 +335,8 @@ export function stagePlay(state, res) {
   // every other stage $5C stays 0 (00-recon-flow.md 3, which closes
   // NOTES-player.md 12 open question 1). The throw stays because the port has
   // no stage 5. It is UNREACHABLE from here now that $965A's clear is ported --
-  // only the $19 == 4 arm at $9683 can put a non-zero value back -- and it is
-  // kept as a tripwire for whoever ports that arm.
+  // only the $19 == 4 arm at $9683 can put a non-zero value back, and that arm
+  // now throws at $9663 -- and it is kept as a tripwire for whoever ports it.
   if (state.zp5C >= 2) throw new Error('$5C >= 2: the stage-5 half-rate player path is not ported ($9A5E/$969A)');
 
   // ---- $9A64-$9A6D: the enemies, in the cartridge's order -----------------
@@ -218,7 +356,7 @@ export function stagePlay(state, res) {
   // $9A76: JSR $C772 -- `LDA $19 / CMP #$04 / BNE / RTS`: stage 5 only.
 
   latchScroll(state);                             // $9A79  -> $12 / $10
-  mode5Tail(state, res);                          // falls through into $9A88
+  mode5Tail(state, res, true);                    // falls through into $9A88
 }
 
 /**
@@ -230,8 +368,15 @@ export function stagePlay(state, res) {
  * HERE with the body above already skipped or already run -- which is exactly
  * what makes `$5B` a within-frame flag. Calling it directly is therefore not
  * an invented entry point; it is the one three ROM arms use.
+ *
+ * `test1B` is the ONE instruction that separates the two entries: `$9A88
+ * LDA $1B / BPL $9AC4`. The fall-through from $9A79 executes it; the three
+ * `JMP $9A8C` arms do not. It is `false` by default because a direct call is by
+ * definition one of those arms -- a paused frame reaches here with $1B = $80
+ * anyway, so the two agree today and stop agreeing the moment anything jumps
+ * to $9A8C with bit 7 clear.
  */
-export function mode5Tail(state, res) {
+export function mode5Tail(state, res, test1B = false) {
   // ---- $9A88-$9AC1: the split, and the camera inside it -------------------
   //
   // THIS BLOCK WAS MODELLED BACKWARDS until wave 1. The port had
@@ -265,11 +410,7 @@ export function mode5Tail(state, res) {
   // exactly: a field that is constant in the corpus carries a wrong model
   // indefinitely. It is fixed here so waves 4-5 (pause, the intro's $0D blank,
   // death) inherit the right one.
-  // $9A88's own bit-7 test is redundant with stagePlay()'s early return TODAY,
-  // and stops being redundant in wave 4: on the cartridge this block is also
-  // reached from the stage-intro path, where bit 7 is clear and $9AC4 onward
-  // (including the streamer) still runs. Written out rather than folded away.
-  const split = (state.substate & 0x80) !== 0     // $9A88 LDA $1B / BPL $9AC4
+  const split = (!test1B || (state.substate & 0x80) !== 0)  // $9A88 / BPL $9AC4
              && state.zp1E !== 0                  // $9A8C LDA $1E / BEQ $9AC4
              && state.zp1F !== 0                  // $9A90 LDA $1F / BEQ $9AC4
              && state.ppu.blank === 0;            // $9A94 LDA $0D / BNE $9AC4
@@ -304,4 +445,9 @@ export function mode5Tail(state, res) {
   if (state.zp5B === 0) {                         // $9ACA / $9ACC
     streamBlock(state, res.stage);                // $9ACE JSR $9D83
   }
+
+  // $9AD1: the pause handler, and it is INSIDE the tail rather than after it --
+  // which is what lets an already-paused frame ($9660 JMP $9A8C) reach the
+  // START test that unpauses it. src/flow.js.
+  pauseCheck(state, res);                         // $9AD1 -> $9ADA / $9AFF
 }

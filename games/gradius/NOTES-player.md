@@ -477,11 +477,22 @@ Three consequences the port has to encode:
   **310**. The gate is `$96B7: LDA $1B / BPL $96BE` — while bit 7 of `$1B` is clear the
   mode-5 handler runs the stage-intro table at `$96C5` instead of `JMP $982A`. `$1B` was
   measured stepping `1,2,3,4` over frames 283-308 and reaching `$80` on 309.
-  **THE 28 IS NOT A CONSTANT** — this line used to say "the first 28 frames" and the
-  stage-flow recon measured a respawn intro of **26** frames (f614-f640) off the same
-  code. `$9C24` exits by watching `$57`, not by counting
-  (`docs/worklog/gradius/00-recon-flow.md` 5). Recorded here because it is the reason a
-  port that starts moving the ship on the first gameplay frame is wrong.
+  **THE 28 IS NOT A CONSTANT, and the 26 was wrong.** This line said "the first 28
+  frames"; the stage-flow recon replaced that with "a respawn intro of 26 frames
+  (f614-f640)". Wave 4 measured both windows again, per frame, with exec hooks on all
+  five intro handlers: **the boot intro is mode-5 frames 283-309 and the respawn's is
+  614-640 — 27 frames each, 23 of them in state 4**
+  (`docs/worklog/gradius/04-impl-flow-structure-the-1b-ladder-the-stage-i.md`,
+  MEASURED 1). Frame 282 is the MODE-4 handover (`$8165`, three instructions), not a
+  mode-5 frame, which is where the 28 came from.
+
+  `$9C24` really does exit by watching `$57` rather than by counting — but it lands on
+  the same number every time for a structural reason: `$9B3E` sets `$3F` and `$55` from
+  the same byte (`$24`, the checkpoint) and clears `$3E`/`$54`/`$58`, so the terrain
+  streamer's 16-bit lead is exactly 0 at every intro. A 23-frame counter is green on
+  both recorded windows; `games/gradius/tests/flow.test.js` is what separates the two
+  models. Recorded here because it is the reason a port that starts moving the ship on
+  the first gameplay frame is wrong.
 
 ## 11. The model, and how it was checked
 

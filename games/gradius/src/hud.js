@@ -62,6 +62,11 @@ import { u8 } from './state.js';
 import { QUEUE_GATE_BYTES, queueByte } from './vram.js';
 import { cannedPacket, copyPacket, queueFF } from './hudpackets.js';
 
+// THE FOUR PRODUCERS ARE EXPORTED, and that is the ROM's shape rather than a
+// convenience: the stage intro calls three of them at $9C12 and the fourth at
+// $9C1E, DIRECTLY, with none of $8898's three gates in front. So `hudTick` is
+// one caller of four routines, not a wrapper around them (src/flow.js).
+
 /** jt_88AD's four reachable entries, in order. $88B5's fifth is $A960. */
 export const HUD_PHASES = ['$88B6 lives', '$88F6 top score',
                            '$89E3 power bar', '$892C score'];
@@ -136,7 +141,7 @@ function playerIndex(state) {
  *   f3500 $20 = 0 -> .. 61 00 00 ..                      (units blank too)
  * and the emitted queue image at f572 was `01 23 A2 00 61 00 33 FF`, 8 bytes.
  */
-function stLives(state, packets) {
+export function stLives(state, packets) {
   cannedPacket(state, packets, 0x11);            // $88BA/$88BC
   let a = state.lives[playerIndex(state)];       // $88BF LDX $18 / $88C1 LDA $20,X
   if (a & 0x80) a = 0;                           // $88C3 BPL / $88C5 LDA #$00
@@ -196,7 +201,7 @@ function scoreTail(state) {
  * `01 23 B4 64 65 00 30 30 35 30 30 30 30 FF` -- $07E0-$07E2 = 00 50 00, i.e.
  * the 50000 the attract mode leaves on screen.
  */
-function stTopScore(state, packets) {
+export function stTopScore(state, packets) {
   cannedPacket(state, packets, 0x12);            // $88F6/$88F8
   for (let y = 2; y >= 0; y--) {                 // $88FB LDY #$02 / $8904 BPL
     bcdDigits(state, state.score[0x00 + y]);     // $88FD LDA $07E0,Y / $8900 JSR $8915
@@ -215,7 +220,7 @@ function stTopScore(state, packets) {
  *
  * MEASURED at f578: 14 bytes, `01 23 A8 31 66 00 30 30 30 30 30 30 30 FF`.
  */
-function stScore(state, packets) {
+export function stScore(state, packets) {
   const p = playerIndex(state);                  // $8936 LDA $18
   cannedPacket(state, packets, 0x13 + p);        // $892E CLC / $892F ADC $18
   for (let y = 2; y >= 0; y--) {                 // $8934 LDY #$02 / $8947 BPL
@@ -252,7 +257,7 @@ function stScore(state, packets) {
  * $1A -- `01 23 84 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14 15 16 17 18 19 1A 1B 1C
  * 1D 62 63 1F FF 01 23 F8 00 00 00 00 00 00 00 FF`.
  */
-function stPowerBar(state, packets) {
+export function stPowerBar(state, packets) {
   if (state.obj.status[0] >= 2) return;          // $89E3-$89EA, zero bytes
   cannedPacket(state, packets, 0x0F);            // $89EB/$89ED -- opens the run
   copyPacket(state, packets, state.zp.missile !== 0 ? 0x19 : 0x15);   // $89F0-$89F8

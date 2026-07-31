@@ -78,19 +78,40 @@ export function createState() {
     lock: 0,                 // $04
     frame: 0,                // $02   INC at $80BE, free-running
     lagFrames: 0,            // census, not a ROM byte
+    // NMIs the frame just finished caused to be DROPPED, because its own work
+    // overran the vblank and $8073 found $04 still set. Not a RAM byte -- it is
+    // the port's model of a cycle cost it does not otherwise have, and it
+    // exists because exactly one frame in every measured run pays it:
+    //
+    //   probe/objloop, boot "200:,10:S,190:"       lag.dropAtGameFrame = 283
+    //   the same script + ",300:R" (a death)       283 and 614
+    //
+    // 283 is the frame that runs $9B3E and 614 is the respawn's -- i.e. both
+    // are the frame that runs $882C, the full-screen RLE load, 2304 $2007
+    // writes in one NMI. objloop.lua attributes the drop to the frame that was
+    // still running, so it belongs on THAT frame's row and does not consume a
+    // row of its own (porttrace.mjs `lagged`). src/flow.js sets it; src/nmi.js
+    // clears it at the top of the next frame.
+    frameDrops: 0,
 
     mode: MODE_STAGE,        // $00   game mode; 5 = stage play
     substate: 0x80,          // $1B   mode-5 sub-state; see nmi.js on the gate
-    // Three gates that were 0 on every frame ever measured here. They are
-    // fields, not constants, because each one selects a path this port has
-    // never seen run.
+    // Three gates, one of which stopped being a constant in wave 4.
     //
     //   $5C >= 2  halves the player's update rate ($9A5E/$969A). Stage-5 only:
-    //             $9650 only computes it when $19 == 4 (00-recon-flow.md 3).
-    //   $15       PAUSE. $9ADA toggles it on a START edge; $9650's first branch
-    //             then jumps the whole update to $9A8C.
+    //             $9650 only computes it when $19 == 4 (00-recon-flow.md 3),
+    //             and src/nmi.js throws on $19 == 4 before it gets there.
+    //   $15       PAUSE, and LIVE PORT STATE since wave 4: $9ADA toggles it on
+    //             a START EDGE and $9650's first branch then jumps the whole
+    //             update to $9A8C (src/flow.js pauseCheck). The `pause`
+    //             scenario drives it 0 -> 1 at frame 450 and 1 -> 0 at 500 and
+    //             compares all 50 frozen frames against the cartridge.
     //   $5B       uncharacterised: eleven INC sites, three readers ($9A9C,
-    //             $9ACA, $AEDD), 0 on every frame of every measured run.
+    //             $9ACA, $AEDD), 0 at every sample point of every measured run.
+    //             The port writes it in exactly one place -- $9B25, on the
+    //             unpause -- and that value is provably dead: $9AD1 is the last
+    //             thing a mode-5 frame does and $9658 is the fourth instruction
+    //             of the next one.
     //
     // WHAT $15 AND $5B ACTUALLY DO, because this file said the wrong thing for
     // the port's whole life: they skip `JSR $98EE`, the CAMERA ADVANCE, and
@@ -108,6 +129,46 @@ export function createState() {
     zp5C: 0,                 // $5C
     zp15: 0,                 // $15
     zp5B: 0,                 // $5B
+
+    // ---- wave 4: the $96A5 ladder, the stage intro and pause ------------
+    // $19, the STAGE INDEX. It used to be "the port has no $19" (porttrace.mjs
+    // UNMODELLED), which was true while the only thing that read it was the
+    // streamer's stage-4 collision skip. Wave 4 gave it three more readers, all
+    // in src/flow.js: $9663 (`CMP #$04` -- the stage-5 half-rate arm), $9BF5
+    // (the intro's second canned packet is 8 + $19) and $9B88 (`LDY $19` into
+    // the start-position table). Nothing in the port WRITES it except $9B70,
+    // which restores it from $26,X; it is 0 on every frame of every measured
+    // run and the port throws rather than guess on anything else.
+    zp19: 0,                 // $19
+    // $4C, the general 16-bit timer's low byte. $C1D6 loads it with $78 at the
+    // death (wave 5) and $96EF counts it out one per frame -- THAT half is
+    // ported here, as structure, and reaching 0 throws with $979D's address.
+    // $4D (the high byte) is not modelled: every use on the mode-5 path is
+    // 8-bit ($96EF/$975B read $4C alone); $9A0E's 16-bit load is the
+    // end-of-stage chain, which throws.
+    zp4C: 0,                 // $4C
+    // $09 the demo/attract flag, $16 uncharacterised. Both are gates on the
+    // PAUSE handler ($9ADA `LDA $09 / ORA $16 / ORA $0D`) and nothing in the
+    // port writes either; measured 0 on every frame of every play run and 1 for
+    // $09 through the attract demo, which is not ported.
+    zp09: 0,                 // $09
+    zp16: 0,                 // $16
+    // $33, the button-code match counter $9765 walks, and $3B,X, the per-player
+    // count of cheat uses left. $9AFF runs the matcher on EVERY paused frame
+    // (unless $3B,X is negative), which is why $33 is real port state rather
+    // than a stub: see src/flow.js codeMatch().
+    zp33: 0,                 // $33
+    cheat: new Uint8Array(2),// $3B,X  ($9B15 DEC $3B,X, $B981 INC $3B,X)
+    // $22/$24/$26/$28, indexed by $18: the per-player state the respawn saves
+    // ($979D, wave 5) and the stage intro restores ($9B62-$9B74). The port
+    // READS all four and writes none of them yet -- the same honest-but-weak
+    // arrangement the lives byte $20 is in (see SEEDED INPUTS below), and for
+    // the same reason: they are constants across every window this corpus
+    // compares. $24 is the CHECKPOINT and is the one that will move first.
+    save22: new Uint8Array(2),   // $22,X  the meter cursor to restore
+    save24: new Uint8Array(2),   // $24,X  the checkpoint -> $3F and $55
+    save26: new Uint8Array(2),   // $26,X  the stage    -> $19
+    save28: new Uint8Array(2),   // $28,X  -> $1A
     // $1A: uncharacterised, and read by $BBBD (`LDA $19 / ORA $1A`) as half of
     // the test that decides how fast an enemy's shot countdown runs. Restored
     // at the respawn from $28,X ($979D). MEASURED 0 on every frame of every run
@@ -340,9 +401,12 @@ export function createState() {
     //                      the handover, and the only reason $1E is a separate
     //                      byte at all.
     //   $1F >= 2        -> $1E = 1, live record
-    // MEASURED: $1E = 1 and $1F = 2 on all 3341 compared frames of all 16
-    // scenarios; $1F steps 0 -> 1 -> 2 during the boot intro, which is outside
-    // this corpus and is wave 4's business.
+    // MEASURED: $1E = 1 and $1F = 2 on every compared frame of the eighteen
+    // PLAY scenarios. It is not outside the corpus any more: `intro-boot`
+    // compares frames 283-639, over which $1F is 0 for the whole intro
+    // ($882C's $883F STA $1F), 1 on frame 309 ($9C38, the handover) and 2 from
+    // 310 -- produced by the port, not poked. `s0-handover` still injects the 1
+    // into a mid-play window, where nothing else can.
     zp1E: 1,                 // $1E
     zp1F: 2,                 // $1F
 

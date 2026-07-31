@@ -99,7 +99,13 @@ def drops_from_stdout(run) -> list[int]:
 
 def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
     scn = next(s for s in defs["scenarios"] if s["name"] == name)
-    align = defs["align"]
+    # PER-SCENARIO ALIGN.  The corpus aligns at 400 because that is clear of the
+    # boot intro; wave 4 ported the intro, so the intro scenarios have to seed
+    # INSIDE it (at the mode-4 handover, and at the respawn's own $9B3E frame).
+    # It is an override rather than a second file so both harnesses still read
+    # one definition -- porttrace.mjs takes `align` out of the artifact and
+    # never resolves it itself.
+    align = scn.get("align", defs["align"])
     script = defs["bootPrefix"] + "," + scn["tail"]
     frames = script_frames(script)
     if frames <= align:

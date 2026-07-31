@@ -9,8 +9,6 @@ import { createState, MODE_STAGE } from './state.js';
 import { attachInput, currentButtons } from './input.js';
 import { loadResources, loadGameJson, gameplayPalette } from './assets.js';
 import { nmi } from './nmi.js';
-import { preloadTerrain } from './terrain.js';
-import { drainQueue } from './vram.js';
 import { renderFrame, frameFor, W, H, chrBank } from './render/ppu.js';
 
 /**
@@ -37,11 +35,17 @@ import { renderFrame, frameFor, W, H, chrBank } from './render/ppu.js';
  *   $07E4-$07EA = 0          both players' scores
  *   $42 = 0, $46 = 0         no capsule collected, no shield
  *
- * What is NOT modelled, and it is a real difference: the ROM spends 28 frames
- * in the stage-intro sub-state before any of this is live ($1B stepping
- * 1,2,3,4 then $80), and $8871 pushes a full-screen image at the stage load.
- * Neither has been reversed, so this port starts at $1B = $80 with an empty
- * nametable and lets the streamer fill it (see preloadTerrain).
+ * THE INTRO IS NOT MISSING ANY MORE and this function is no longer how the
+ * game starts -- `introEntryState()` below is, and it runs the cartridge's own
+ * $9B3E to produce the position, the rings, $0100 and $0120 rather than
+ * asserting them. What is left here is the SEED the unit suite uses: the state
+ * the cartridge is measured to be in at align frame 400, which is 90 frames of
+ * play after the intro ended and so is not the intro's output ($48 = $2E, the
+ * camera moved on, the queue phase is mid-rotation).
+ *
+ * tests/flow.test.js holds the two against each other: running the intro from
+ * introEntryState() must produce this function's position, ring, $0100, $0120,
+ * $35 and camera. That turns the constants below from claims into a check.
  */
 export function bootState(manifest) {
   const s = createState();
@@ -73,15 +77,45 @@ export function bootState(manifest) {
   return s;
 }
 
+/**
+ * The state mode 4 hands mode 5, i.e. what the cartridge has at the $80B5 of
+ * game frame 282 on the standard boot.
+ *
+ * `$8165` is the whole of mode 4 -- `LDA #$00 / STA $1B / INC $00`, three
+ * instructions -- so entering mode 5 with $1B = 0 is the cartridge's own
+ * handover and the intro does the rest. Everything $9B3E computes is left OUT
+ * of this function on purpose: the ship's position, both rings, $0100, $0120,
+ * $35, $3F, $55 and the whole $3D-$97 zero page are the intro's output, not
+ * boot constants.
+ *
+ * What IS here is the state $9B3E READS and mode 5 never writes: the lives and
+ * scores the title/attract path left ($20 = 3, TOP = 50000), and the four saved
+ * per-player bytes $22/$24/$26/$28, which are 0 at the first stage because
+ * $82C7 cleared RAM and only $979D (wave 5) ever writes them.
+ */
+export function introEntryState(manifest) {
+  const s = createState();
+  s.mode = MODE_STAGE;             // $00 -- $8167 INC $00 from mode 4
+  s.substate = 0;                  // $1B -- $8165 LDA #$00 / STA $1B
+  s.ppu.chrSel = 0;                // $2D
+  s.lives[0] = s.lives[1] = 3;     // $20/$21
+  s.score[0x00] = 0x00;            // $07E0  \
+  s.score[0x01] = 0x50;            // $07E1   > TOP = 50000, left by the attract
+  s.score[0x02] = 0x00;            // $07E2  /
+  // $22/$24/$26/$28 stay 0: stage 0, checkpoint 0, no meter to restore.
+  s.vram.pal.set(gameplayPalette(manifest));
+  s.bandA.chrBank = chrBank(0);
+  s.bandB.chrBank = chrBank(2);
+  return s;
+}
+
 export async function boot(canvas, opts = {}) {
   const [game, res] = await Promise.all([loadGameJson(), loadResources(0)]);
-  const state = bootState(res.manifest);
-
-  // The port's stand-in for the stage load. Loudly not a translation -- see
-  // terrain.js. Without it the first ~84 frames show an empty starfield while
-  // the streamer's 384 px lead builds up from nothing.
-  preloadTerrain(state, res.stage, drainQueue);
-  drainQueue(state);
+  // THE REAL STAGE INTRO, not a stand-in. preloadTerrain() used to run the
+  // streamer's gate to exhaustion here; the port now enters mode 5 at $1B = 0
+  // and plays out $9B3E, $9BF0, $9C12, $9C1E and $9C24's 84 blocks over the
+  // cartridge's own 27 frames, with the screen blanked by $0D throughout.
+  const state = introEntryState(res.manifest);
 
   attachInput(opts.target);
 

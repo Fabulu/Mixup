@@ -39,8 +39,28 @@ export function hudPacketTable(json) {
   return out;
 }
 
+/** assets/enemies/tables.json -> a byte reader. See romByteReader below. */
+export function enemyTables(json) {
+  return romByteReader(json, 'enemies/tables.json', 'enemy tables');
+}
+
 /**
- * assets/enemies/tables.json -> a byte reader addressed the way the 6502 is.
+ * assets/flow/tables.json -> the same byte reader for the mode-5 flow tables.
+ *
+ * Two ranges (wave 4): $9BCC-$9BEC, the stage-intro start positions, indexed
+ * `$9BD4[$9BCC[$19] + ($3F >> 1)]` by $9B88-$9BB8; and $9785-$979C, the two
+ * button-code strings $9765 matches, reached through pointers that are
+ * themselves inside the block. Both are read at their CPU addresses for the
+ * same reason the enemy tables are -- the second one is a POINTER TABLE the
+ * ROM dereferences, and a decoded shape cannot express that.
+ */
+export function flowTables(json) {
+  return romByteReader(json, 'flow/tables.json', 'flow tables');
+}
+
+/**
+ * A byte reader addressed the way the 6502 is, over a list of exported CPU
+ * ranges. Shared by the enemy and flow tables.
  *
  * WHY A BYTE READER AND NOT A DECODED STRUCTURE. The spawn engine's indexing is
  * 8-bit and WRAPS ($A36D `LDA $98 / ASL / ASL` is (cmd*4) AND $FF; $A3E6
@@ -48,14 +68,15 @@ export function hudPacketTable(json) {
  * a 16-bit pointer built by adding an offset to a table address ($A397), and it
  * walks the wave lists with a real CPU pointer in `$6A:$6B` -- which is a
  * COMPARED field against the cartridge. A pre-decoded "array of waves" can
- * express none of those three. So src/enemies.js reads bytes at CPU addresses.
+ * express none of those three. So src/enemies.js and src/flow.js read bytes at
+ * CPU addresses.
  *
  * A read outside the exported ranges THROWS with the address. It is not a
  * defensive nicety: the update loop's animator indexes $ADC1 with status*4, so
  * a status of 9 or more walks off the end of the nine groups into code, and the
  * ROM would happily return an instruction byte as a metasprite id.
  */
-export function enemyTables(json) {
+function romByteReader(json, file, label) {
   const blocks = json.blocks.map((b) => ({
     name: b.name,
     base: parseInt(b.rom.replace('$', ''), 16),
@@ -63,7 +84,7 @@ export function enemyTables(json) {
   }));
   for (const b of blocks) {
     if (b.bytes.length === 0) {
-      throw new Error(`assets/enemies/tables.json: block ${b.name} is empty`);
+      throw new Error(`assets/${file}: block ${b.name} is empty`);
     }
   }
   const hex = (a) => `$${a.toString(16).toUpperCase().padStart(4, '0')}`;
@@ -73,7 +94,7 @@ export function enemyTables(json) {
       if (i >= 0 && i < b.bytes.length) return b.bytes[i];
     }
     throw new Error(
-      `enemy tables: ${hex(addr)} is not in any exported range (`
+      `${label}: ${hex(addr)} is not in any exported range (`
       + blocks.map((b) => `${b.name} ${hex(b.base)}-${hex(b.base + b.bytes.length - 1)}`)
         .join(', ') + '). Either the port indexed a table out of bounds or '
       + 'export_assets.py needs to export the range.');
@@ -82,13 +103,14 @@ export function enemyTables(json) {
 }
 
 export async function loadResources(stageIndex = 0) {
-  const [manifest, tilesBuf, stages, ms, hud, enemies] = await Promise.all([
+  const [manifest, tilesBuf, stages, ms, hud, enemies, flow] = await Promise.all([
     fetchOrExplain('manifest.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('chr/tiles.u8', EXPORT).then((r) => r.arrayBuffer()),
     fetchOrExplain('terrain/stages.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('metasprites.json', EXPORT_MS).then((r) => r.json()),
     fetchOrExplain('hud/packets.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('enemies/tables.json', EXPORT).then((r) => r.json()),
+    fetchOrExplain('flow/tables.json', EXPORT).then((r) => r.json()),
   ]);
 
   const tiles = new Uint8Array(tilesBuf);
@@ -103,7 +125,8 @@ export async function loadResources(stageIndex = 0) {
   for (const [k, v] of Object.entries(ms.records)) metasprites[Number(k)] = v;
 
   return { manifest, tiles, metasprites, stage: stages.stages[stageIndex],
-           hudPackets: hudPacketTable(hud), enemyTables: enemyTables(enemies) };
+           hudPackets: hudPacketTable(hud), enemyTables: enemyTables(enemies),
+           flowTables: flowTables(flow) };
 }
 
 /** The frame rate, read from game.json. It is spelled ONCE, in that file. */

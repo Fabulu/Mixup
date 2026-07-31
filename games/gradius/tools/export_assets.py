@@ -576,6 +576,87 @@ def enemy_tables(rom: Rom) -> dict:
     }
 
 
+# ==========================================================================
+# FLOW.  The two byte ranges the mode-5 state machine reads (wave 4).
+#
+# Exported RAW and CPU-addressed for the same reason the enemy tables are: the
+# ROM indexes them with its own arithmetic and src/flow.js reproduces that
+# arithmetic rather than a decoded shape.
+#
+#   $9BCC-$9BEC  the stage-intro START POSITION.  $9B88-$9BB8 is
+#                  LDY $19 / LDA $3F / LSR A / CLC / ADC $9BCC,Y / TAY
+#                  LDA $9BD4,Y / AND #$F0 -> $0320/$0321/$0322 and all 32 bytes
+#                                            of the Y ring at $07C0
+#                  LDA $9BD4,Y / ASL x4    -> $0360/$0361/$0362 and the X ring
+#                so ONE byte carries both coordinates: the high nibble is Y,
+#                the low nibble is X/16.  $9BCC is the per-stage base index
+#                (8 bytes) and $9BD4 the 25 position bytes.
+#   $9785-$979C  the two BUTTON-CODE strings $9765 matches against, behind two
+#                pointers.  X = 0 is the game-over continue code and X = 2 the
+#                one the PAUSE screen runs on every paused frame ($9B05).
+#                src/flow.js ports $9765 because it writes $33 on every paused
+#                frame; the $33 == $0A arm ($9C5E) is a loud throw.
+FLOW_BLOCKS = [
+    ("startPos", 0x9BCC, 0x9BED,
+     "$9B8E ADC $9BCC,Y (Y = $19) / $9B92 and $9BA8 LDA $9BD4,Y",
+     "8 per-stage base indices then 25 packed start positions"),
+    ("codes", 0x9785, 0x979D,
+     "$9765 LDA $9785,X / $976A LDA $9786,X, then CMP ($98),Y with Y = $33",
+     "two pointers ($9789 game over, $9793 pause) and their 10-byte strings"),
+]
+
+
+def flow_tables(rom: Rom) -> dict:
+    """The mode-5 flow byte ranges, with the ends anchored on real opcodes.
+
+    A range cited one byte long runs into code and the code still looks like
+    data, so both ends are pinned to the instruction that follows them -- the
+    same guard shape CONSTANTS uses.
+    """
+    # $9BED is `JSR $83AB`, the first instruction of st_9BED (intro state 1).
+    if rom.slice(0x9BED, 3) != bytes((0x20, 0xAB, 0x83)):
+        raise SystemExit(f"ABORT: $9BED should be `JSR $83AB` (intro state 1) but "
+                         f"reads {rom.slice(0x9BED, 3).hex(' ')} -- the $9BD4 "
+                         f"position table does not end where this claims")
+    # $979D is `LDX $18`, the first instruction of the respawn at loc_979D.
+    if rom.slice(0x979D, 2) != bytes((0xA6, 0x18)):
+        raise SystemExit(f"ABORT: $979D should be `LDX $18` (the respawn) but "
+                         f"reads {rom.slice(0x979D, 2).hex(' ')}")
+
+    ptrs = {"gameOver": rom.w(0x9785), "pause": rom.w(0x9787)}
+    if ptrs["gameOver"] != 0x9789 or ptrs["pause"] != 0x9793:
+        raise SystemExit(f"ABORT: $9765's code pointers read "
+                         f"${ptrs['gameOver']:04X}/${ptrs['pause']:04X}, not "
+                         f"$9789/$9793")
+    # $9BCC[$19] + ($3F >> 1) must land inside $9BD4-$9BEC for every stage and
+    # every checkpoint.  The bound is 4, not 6, and that is a fact about the ROM
+    # rather than a convenience: $9B6A `LDA $24,X / STA $3F` runs BEFORE $9B8A
+    # reads $3F, so the index is always the CHECKPOINT, and $97B1-$97BB writes
+    # $24 = min($3F AND $0E, 8) -- five values {0,2,4,6,8}, i.e. ($3F >> 1) in
+    # 0..4.  With +6 stage 6 (base 20) would run one past the 25th byte; with +4
+    # it lands exactly on it.
+    n_pos = 0x9BED - 0x9BD4
+    for s in range(7):
+        base = rom.b(0x9BCC + s)
+        if base + 4 >= n_pos:
+            raise SystemExit(f"ABORT: $9BCC[{s}] = {base}; +4 (checkpoint $24 = 8) "
+                             f"runs off the end of the {n_pos}-byte $9BD4 table")
+
+    blocks = []
+    for name, a, end, read_by, note in FLOW_BLOCKS:
+        blocks.append({"name": name, "rom": f"${a:04X}", "end": f"${end:04X}",
+                       "fileOffset": rom.off(a), "len": end - a,
+                       "readBy": read_by, "note": note,
+                       "bytes": list(rom.slice(a, end - a))})
+    return {
+        "note": "CACHE. Rebuild with tools/export_assets.py; the authority is prg.bin.",
+        "why": "src/flow.js reads these at their CPU addresses; a read outside "
+               "them is a loud throw rather than a plausible byte.",
+        "codePtrs": {k: f"${v:04X}" for k, v in ptrs.items()},
+        "blocks": blocks,
+    }
+
+
 def expand_stage(rom: Rom, stage: int) -> dict:
     """One stage's terrain, expanded from the five tables.  A CACHE.
 
@@ -833,6 +914,11 @@ def main() -> int:
           "cache", "prg.bin, the ranges $A592-$ADAA / $ADC1-$ADE4 / $AE1C-$AE6F / "
                    "$AE71-$AE98", files)
 
+    flow = flow_tables(rom)
+    write(out, "flow/tables.json",
+          json.dumps(flow, separators=(",", ":")).encode("utf-8"),
+          "cache", "prg.bin, the ranges $9BCC-$9BEC / $9785-$979C", files)
+
     manifest = build_manifest(rom, files)
     (out / "manifest.json").write_text(
         json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
@@ -848,7 +934,9 @@ def main() -> int:
           f"hud/packets.json {len(hud['packets'])} canned packets "
           f"({sum(len(p['bytes']) for p in hud['packets'])} script bytes), "
           f"enemies/tables.json {sum(b['len'] for b in enemies['blocks'])} bytes "
-          f"in {len(enemies['blocks'])} ranges")
+          f"in {len(enemies['blocks'])} ranges, "
+          f"flow/tables.json {sum(b['len'] for b in flow['blocks'])} bytes "
+          f"in {len(flow['blocks'])} ranges")
     print(f"  manifest: {len(manifest['tables'])} tables, "
           f"{len(manifest['constants'])} instruction-anchored constants, "
           f"{len(manifest['palettes'])} palette blobs")

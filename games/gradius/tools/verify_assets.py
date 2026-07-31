@@ -198,6 +198,23 @@ EXPECT_ENEMY_DISPATCH = {0: 0xAE70, 4: 0xB205, 5: 0xB0AF, 8: 0xB26C, 31: 0xAE70}
 EXPECT_ENEMY_EXPL = {0: [0x26, 0x27, 0x28, 0x00],
                      1: [0x29, 0x2A, 0x2B, 0x2C, 0x00]}
 
+# ---- FLOW ($9BCC/$9BD4 start positions, $9785 button codes) -- wave 4 -------
+# 1. THE START POSITION, MEASURED TWICE ON THE CARTRIDGE and not read off the
+#    table: the boot intro's $9B3E (game frame 283 of "200:,10:S,190:") and the
+#    respawn's (frame 614 of "200:,10:S,190:,300:R", where $0360 stepped
+#    174 -> 80 on that single frame) both left $0360 = 80 and $0320 = 96 with
+#    $19 = 0 and $24 = 0.  $9B95 `AND #$F0` and $9BAB-$9BAE `ASL x4` mean ONE
+#    byte carries both, so 80/96 pins that byte to $65 exactly -- there is no
+#    other value that produces the pair.
+EXPECT_FLOW_START = {(0, 0): (80, 96)}      # ($19, $24) -> (X, Y)
+# 2. The pause screen's button string.  LISTING ONLY -- no run has entered it.
+#    Recorded so a shifted table cannot pass, and marked so nobody reads it as
+#    measured.  In this ROM's own button bits ($0005: RIGHT $01 LEFT $02 DOWN
+#    $04 UP $08 START $10 SELECT $20 B $40 A $80) it is UP UP DOWN DOWN LEFT
+#    RIGHT LEFT RIGHT B A -- the Konami code.
+EXPECT_FLOW_PAUSE_CODE = [0x08, 0x08, 0x04, 0x04, 0x02, 0x01, 0x02, 0x01,
+                          0x40, 0x80]
+
 # NOTES-terrain.md section 4, "Stage 1's shape" -- an end-to-end expectation on
 # the DECODED cache, not on any single table.
 EXPECT_STAGE1 = {
@@ -347,6 +364,7 @@ class State:
         self.stages = json.loads(self.blob["terrain/stages.json"].decode("utf-8"))
         self.hud = json.loads(self.blob["hud/packets.json"].decode("utf-8"))
         self.enemies = json.loads(self.blob["enemies/tables.json"].decode("utf-8"))
+        self.flow = json.loads(self.blob["flow/tables.json"].decode("utf-8"))
 
 
 def vals_at(rom: RawRom, off: int, n: int, unit: str) -> list[int]:
@@ -798,6 +816,84 @@ def check_enemies(st: State) -> list[str]:
     return bad
 
 
+def check_flow(st: State) -> list[str]:
+    """The two flow byte ranges, re-read and then walked the way $9B88 walks them.
+
+    Same three arms as check_enemies, in the same order of strength:
+
+    1. re-read from the raw .nes at the offset the JSON recorded (stale cache);
+    2. re-derive that offset from the CPU address a second way (wrong formula);
+    3. walk `$9BD4[$9BCC[$19] + ($3F >> 1)]` with the ROM's own arithmetic and
+       hold the unpacked pair against EXPECT_FLOW_START, which came off two
+       separate runs of the RUNNING CARTRIDGE.  That arm is the one a
+       CONSISTENTLY shifted block cannot survive.
+    """
+    bad = []
+    rom = st.rom
+    f = st.flow
+    blocks = {b["name"]: b for b in f["blocks"]}
+    for name in ("startPos", "codes"):
+        if name not in blocks:
+            bad.append(f"flow/tables.json has no block {name!r}")
+    if bad:
+        return bad
+
+    for b in f["blocks"]:
+        base = int(b["rom"].lstrip("$"), 16)
+        want_off = rom.off(base)
+        if b["fileOffset"] != want_off:
+            bad.append(f"block {b['name']} at {b['rom']} records fileOffset "
+                       f"{b['fileOffset']}, ${base:04X} is at {want_off}")
+            continue
+        if b["len"] != len(b["bytes"]):
+            bad.append(f"block {b['name']} claims len {b['len']} but carries "
+                       f"{len(b['bytes'])} bytes")
+            continue
+        got = list(rom.at(b["fileOffset"], b["len"]))
+        if got != b["bytes"]:
+            first = next(i for i in range(b["len"]) if got[i] != b["bytes"][i])
+            bad.append(f"block {b['name']}: byte {first} (${base + first:04X}) is "
+                       f"${b['bytes'][first]:02X} in the cache, ${got[first]:02X} "
+                       f"in the ROM")
+    if bad:
+        return bad
+
+    # -- from here on, read only the CACHE, indexed the way the 6502 does ------
+    pos = blocks["startPos"]
+    pbase = int(pos["rom"].lstrip("$"), 16)
+
+    def pbyte(addr):
+        i = addr - pbase
+        return pos["bytes"][i] if 0 <= i < len(pos["bytes"]) else None
+
+    for (stage, cp), (wx, wy) in EXPECT_FLOW_START.items():
+        y = pbyte(0x9BCC + stage)                       # $9B8E ADC $9BCC,Y
+        if y is None:
+            bad.append(f"$9BCC[{stage}] is outside the exported block")
+            continue
+        v = pbyte(0x9BD4 + ((y + (cp >> 1)) & 0xFF))    # $9B92 LDA $9BD4,Y
+        if v is None:
+            bad.append(f"$9BD4[{y} + {cp >> 1}] is outside the exported block")
+            continue
+        got = ((v << 4) & 0xFF, v & 0xF0)               # $9BAB ASL x4 / $9B95 AND
+        if got != (wx, wy):
+            bad.append(f"stage {stage} checkpoint {cp} starts at {got} "
+                       f"(${v:02X}), the cartridge put the ship at {(wx, wy)}")
+
+    codes = blocks["codes"]
+    cbase = int(codes["rom"].lstrip("$"), 16)
+    ptr = codes["bytes"][2] | (codes["bytes"][3] << 8)  # $976A LDA $9786,X, X=2
+    if f["codePtrs"]["pause"] != f"${ptr:04X}":
+        bad.append(f"flow/tables.json says the pause code is at "
+                   f"{f['codePtrs']['pause']}, $9787 points at ${ptr:04X}")
+    o = ptr - cbase
+    got = codes["bytes"][o:o + len(EXPECT_FLOW_PAUSE_CODE)] if o >= 0 else []
+    if got != EXPECT_FLOW_PAUSE_CODE:
+        bad.append(f"the pause button code at ${ptr:04X} reads {got}, the listing "
+                   f"says {EXPECT_FLOW_PAUSE_CODE} (LISTING ONLY -- unmeasured)")
+    return bad
+
+
 CHECKS = [
     ("rom", check_rom),
     ("files", check_files),
@@ -809,6 +905,7 @@ CHECKS = [
     ("terrain", check_terrain),
     ("hud", check_hud),
     ("enemies", check_enemies),
+    ("flow", check_flow),
 ]
 
 
@@ -920,6 +1017,27 @@ def _shift_enemy_block(st):
     b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
 
 
+def _flow_block(st, name):
+    return next(b for b in st.flow["blocks"] if b["name"] == name)
+
+
+def _shift_flow_block(st):
+    """Re-cite the start-position block at $9BCD and RE-READ it from there.
+
+    Consistent: address, file offset and bytes all move together, so the
+    byte-for-byte re-read and the offset re-derivation both still pass.  What
+    catches it is that the CHECK's own addresses ($9BCC, $9BD4) are the
+    cartridge's and do not move with it -- $9BCC then falls one byte below the
+    block.  The stronger arm is `flow-byte` below, which keeps every address and
+    length intact and is caught only by the position the cartridge measured.
+    """
+    b = _flow_block(st, "startPos")
+    base = int(b["rom"].lstrip("$"), 16) + 1
+    b["rom"] = f"${base:04X}"
+    b["fileOffset"] = st.rom.off(base)
+    b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
+
+
 MUTATIONS = [
     ("rom-sha", "rom",
      "claim the manifest came off a different cartridge",
@@ -1008,6 +1126,17 @@ MUTATIONS = [
     ("enemy-anim", "enemies",
      "shift the status-1 animation group by one metasprite",
      lambda st: _mut_enemy(st, "animGroups", 0xADC5, 0x0B)),
+    # --- flow (wave 4) -------------------------------------------------------
+    ("flow-shift", "flow",
+     "re-cite the start-position block at $9BCD -- one byte along, CONSISTENTLY",
+     _shift_flow_block),
+    ("flow-byte", "flow",
+     "change $9BD4[0] from $65 to $75: same length, same addresses, a ship that "
+     "starts 16 px lower than the one the cartridge was measured putting there",
+     lambda st: _flow_block(st, "startPos")["bytes"].__setitem__(8, 0x75)),
+    ("flow-code", "flow",
+     "flip the first button of the pause screen's code from UP to DOWN",
+     lambda st: _flow_block(st, "codes")["bytes"].__setitem__(14, 0x04)),
     ("chr-truncated", "chr",
      "truncate the decoded tile cache by one tile",
      lambda st: st.blob.__setitem__("chr/tiles.u8", st.blob["chr/tiles.u8"][:-64])),

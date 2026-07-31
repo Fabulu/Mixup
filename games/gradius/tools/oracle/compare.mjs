@@ -67,6 +67,19 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * $36 is 240, 52, 120, 188, 4, 72, ... -- exactly $2F's own +$44 rotation, not
  * the display list's end cursor at all.
  */
+/**
+ * The values of `$1B` src/nmi.js's `$96A5` ladder actually implements.
+ *
+ *   0-4  the five stage-intro states (jt_96C5 -> $9B3E $9BED $9C12 $9C1E $9C24)
+ *   $80  play sub-state 0 (jt_982F entry 0, st_9A4D)
+ *
+ * $A0 (dying) is deliberately NOT here even though $96EF is ported: the
+ * countdown runs but $C1D6 -- what sets $A0 -- is wave 5, so the port cannot
+ * enter the state on its own and a scenario that reaches it is one the port
+ * cannot follow. The $0100 test above fires on the same frame anyway.
+ */
+const MODELLED_1B = new Set([0, 1, 2, 3, 4, 0x80]);
+
 const INFO_FIELDS = new Map([
   ['w_0036', '$36 is re-walked by the BLANK PASS $8BAB at $80AD and stored back '
            + 'at $8BC0; how far depends on $9F, the sprite budget src/oam.js '
@@ -117,8 +130,10 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
   //                90 03 / 4C 6F A1 -- the dead gate ... ($A16F onward is not
   //                ported)". Nothing in src/nmi.js can ever make it happen: no
   //                enemy loop, and probeCollision() is never called.
-  //   $1B & $80    the mode-5 sub-state left the played state -- measured
-  //                $80 -> $A0 on the same frame the ship dies.
+  //   $1B         the sub-state left the set the $96A5 ladder ports. This USED
+  //                to be `!($1B & 0x80)`, i.e. "anything but play", which threw
+  //                the whole stage intro away -- wave 4 ported states 0-4, so
+  //                the rule is now a set and the intro scenarios compare.
   //
   // Truncating is not hiding: the stop frame and the reason are printed for
   // every scenario, and a corpus whose ships all die in the first 40 frames
@@ -136,11 +151,12 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
                  + `src/nmi.js runs no collision, so the port flies on`;
       break;
     }
-    if (o.w_001B !== undefined && !(o.w_001B & 0x80)) {
+    if (o.w_001B !== undefined && !MODELLED_1B.has(o.w_001B)) {
       stoppedAt = f;
-      stopReason = `the cartridge left the mode-5 PLAY sub-state `
-                 + `($1B = $${o.w_001B.toString(16).toUpperCase()}, bit 7 clear); `
-                 + `src/nmi.js's stagePlay() gate returns early there`;
+      stopReason = `the cartridge's $1B reached `
+                 + `$${o.w_001B.toString(16).toUpperCase()}, which src/nmi.js's `
+                 + `$96A5 ladder does not port (it throws with the ROM address `
+                 + `the arm would have reached)`;
       break;
     }
     frames.push(f);
@@ -203,8 +219,11 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
   const lastLive = frames[frames.length - 1];
   const romLagInWindow = oracle.lagDrops
     .filter((f) => f > oracle.align && f <= lastLive).length;
+  // The port's side is a SUM, not a count of rows, for the same reason the
+  // oracle's is: a frame can cost more than one NMI, and objloop.lua's own
+  // `lagged` is a per-frame count (scen.py expands it back into a drop list).
   const portLagInWindow = port.frames
-    .filter((r) => r.frame <= lastLive && r.lagged).length;
+    .filter((r) => r.frame <= lastLive).reduce((n, r) => n + r.lagged, 0);
   const xs = frames.map((f) => byFrameO.get(f).playerX);
   const ys = frames.map((f) => byFrameO.get(f).playerY);
   return {

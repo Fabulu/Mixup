@@ -3,11 +3,17 @@
 //
 // WHY THIS FILE EXISTS. Every fact checked here was, until wave 1, either
 // modelled backwards in src/ or not modelled at all, and NOT ONE of them cost
-// the 16-scenario corpus a single frame: $15, $5B and $0D are 0 on all 3341
-// compared frames and $1E/$1F are 1/2 on all of them. That is
+// the 16-scenario corpus a single frame: $15, $5B and $0D were 0 on all 3341
+// compared frames and $1E/$1F were 1/2 on all of them. That is
 // docs/knowledge/03's third shape exactly -- a field that never varies inside
 // the corpus can carry a wrong model forever. So these are unit tests with
-// hand-set gate bytes, deliberately, because the corpus cannot reach them.
+// hand-set gate bytes, deliberately, because the corpus could not reach them.
+//
+// WAVE 4 REACHED THREE OF THEM WITH REAL SCENARIOS -- $15 (`pause`), $0D and
+// $1F (`intro-boot`, where the blank runs for 27 frames and $1F steps 0 -> 1 ->
+// 2) -- and the tests below stay, because a unit test that drives a gate byte
+// directly is still the only thing that separates the cases the CARTRIDGE never
+// produces (a $5B raised inside the frame, $1E without $1F).
 //
 //   $80B0 JSR $8641      one $00 appended per non-lag frame       (was absent)
 //   $9D89 CMP #$04       the gate counts BYTES, not packets       (was packets)
@@ -24,7 +30,9 @@
 //   $9A9C / $9ACA        a $5B raised INSIDE the frame stops the camera and
 //                        the streamer, and is gone by the next one (wave 3;
 //                        this closes wave 1's written-down coverage debt)
-//   $965C-$9660          pause jumps the WHOLE body to $9A8C      [knownFail]
+//   $965C-$9660          pause jumps the WHOLE body to $9A8C  (was a knownFail
+//                        for three waves; wave 4 ported it and the wrapper came
+//                        off on the first run -- see the test)
 //   $864A INX            $0E is an 8-bit byte and wraps    (was a knownFail;
 //                        wave 2's byte-image $0700 fixed it and the wrapper
 //                        was removed the same commit -- a surprise PASS is a
@@ -53,7 +61,7 @@ import { streamBlock } from '../src/terrain.js';
 import { drainQueue, queuePacket, queueTerminator, scanQueue,
          QUEUE_GATE_BYTES } from '../src/vram.js';
 import { buildDisplayList, SPRITE0, SPRITE0_OFF } from '../src/oam.js';
-import { headlessResources, knownFail } from './helpers.js';
+import { headlessResources } from './helpers.js';
 
 const res = headlessResources(0);
 
@@ -299,41 +307,43 @@ test('$15 (pause) freezes the CAMERA, and takes neither the split nor the stream
   assert.notDeepStrictEqual(cam24(s), cam, 'the camera did not resume');
 });
 
-knownFail('$965C-$9660: a paused frame runs NO player and NO scroll latch',
-  'ROM re-dumped at $9650: A9 0C 85 13 A9 00 85 5D 85 5B 85 5C A5 15 F0 03 '
-  + '4C 8C 9A -> $965C LDA $15 / $965E BEQ $9663 / $9660 JMP $9A8C. The jump '
-  + 'lands PAST $9663-$9A87, i.e. past $9A64 JSR $A2C0, $9A67 JSR $BBB7, '
-  + '$9A6A JSR $9FFC (THE PLAYER), $9A6D JSR $ADAB, $9A70 JSR $BFE2, '
-  + '$9A73 JSR $8974, $9A76 JSR $C772 and $9A79-$9A86 (the $3E->$12 and '
-  + '$3F bit 0 -> $10 latch) -- and past $9A88\'s own test of $1B bit 7. '
-  + 'src/nmi.js gates only advanceCamera() on $15, so the port moves the ship '
-  + 'and re-latches the scroll while paused. Latent today (nothing in the port '
-  + 'writes $15; its only writer $9AEE is in the unported $9ADA block) but '
-  + 'wave 1 existed so that wave 4 inherits the right model. Owner: whoever '
-  + 'ports the $1B ladder and the START handler.',
-  () => {
-    const s = bootState(res.manifest);
-    // Settle, then stop on a frame where the latched $12 and the live $3E
-    // DISAGREE -- the camera carries into $3E every other frame, so one of the
-    // next two frames always leaves them one apart. Without that the latch is a
-    // no-op and re-running it would be unobservable.
-    nmi(s, 0, res);
-    for (let i = 0; i < 2 && s.ppu.scrollX === s.cam.lo; i++) nmi(s, 0, res);
-    assert.notStrictEqual(s.ppu.scrollX, s.cam.lo,
-      'test setup: $12 and $3E never disagreed, so the latch is unobservable');
+// WAS A knownFail FROM WAVE 1 AND RETIRED ITSELF IN WAVE 4, on the first run
+// after $965C-$9660 was ported: helpers.js reported SURPRISE PASS, and per its
+// own instructions the wrapper came off and the assertions stayed verbatim.
+//
+// The record of what the defect was, because it stood for three waves: ROM at
+// $9650 is A9 0C 85 13 A9 00 85 5D 85 5B 85 5C A5 15 F0 03 4C 8C 9A, i.e.
+// $965C LDA $15 / $965E BEQ $9663 / $9660 JMP $9A8C. The jump lands PAST
+// $9663-$9A87 -- past $9A64 JSR $A2C0, $9A67 JSR $BBB7, $9A6A JSR $9FFC (THE
+// PLAYER), $9A6D JSR $ADAB, $9A70 JSR $BFE2, $9A73 JSR $8974, $9A76 JSR $C772
+// and $9A79-$9A86 (the $3E -> $12 and $3F bit 0 -> $10 latch) -- and past
+// $9A88's own test of $1B bit 7. src/nmi.js gated only advanceCamera() on $15,
+// so the port moved the ship and re-latched the scroll while paused.
+// RED WHEN: the `if (state.zp15 !== 0) { mode5Tail(...); return; }` arm at the
+// top of stagePlay() is removed and only the camera gate is left.
+test('$965C-$9660: a paused frame runs NO player and NO scroll latch', () => {
+  const s = bootState(res.manifest);
+  // Settle, then stop on a frame where the latched $12 and the live $3E
+  // DISAGREE -- the camera carries into $3E every other frame, so one of the
+  // next two frames always leaves them one apart. Without that the latch is a
+  // no-op and re-running it would be unobservable.
+  nmi(s, 0, res);
+  for (let i = 0; i < 2 && s.ppu.scrollX === s.cam.lo; i++) nmi(s, 0, res);
+  assert.notStrictEqual(s.ppu.scrollX, s.cam.lo,
+    'test setup: $12 and $3E never disagreed, so the latch is unobservable');
 
-    s.zp15 = 1;
-    const x = s.obj.x[0], y = s.obj.y[0], xf = s.obj.xf[0];
-    const scrollX = s.ppu.scrollX, ring = s.ring.cursor;
-    for (let i = 0; i < 10; i++) nmi(s, BTN.RIGHT | BTN.DOWN, res);
+  s.zp15 = 1;
+  const x = s.obj.x[0], y = s.obj.y[0], xf = s.obj.xf[0];
+  const scrollX = s.ppu.scrollX, ring = s.ring.cursor;
+  for (let i = 0; i < 10; i++) nmi(s, BTN.RIGHT | BTN.DOWN, res);
 
-    assert.strictEqual(s.obj.x[0], x, '$9A6A JSR $9FFC ran on a paused frame: X moved');
-    assert.strictEqual(s.obj.y[0], y, '$9A6A JSR $9FFC ran on a paused frame: Y moved');
-    assert.strictEqual(s.obj.xf[0], xf, 'the sub-pixel accumulator moved while paused');
-    assert.strictEqual(s.ring.cursor, ring, 'the Option position ring advanced while paused');
-    assert.strictEqual(s.ppu.scrollX, scrollX,
-      '$9A79 STA $12 ran on a paused frame: the scroll shadow was re-latched');
-  });
+  assert.strictEqual(s.obj.x[0], x, '$9A6A JSR $9FFC ran on a paused frame: X moved');
+  assert.strictEqual(s.obj.y[0], y, '$9A6A JSR $9FFC ran on a paused frame: Y moved');
+  assert.strictEqual(s.obj.xf[0], xf, 'the sub-pixel accumulator moved while paused');
+  assert.strictEqual(s.ring.cursor, ring, 'the Option position ring advanced while paused');
+  assert.strictEqual(s.ppu.scrollX, scrollX,
+    '$9A79 STA $12 ran on a paused frame: the scroll shadow was re-latched');
+});
 
 // WAS A knownFail FROM WAVE 1, UNWRAPPED IN WAVE 3 -- and that is the
 // mechanism working exactly as it was designed to. Wave 3 ported the three

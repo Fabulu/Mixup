@@ -199,7 +199,31 @@ export function buildDisplayList(state, table) {
   state.oamCursor = cursor;                       // $8B95 STX $36
 }
 
-/** `$8087: LDY #$02 / STY $4014`. The DMA, at the TOP of the NMI. */
+/**
+ * `$8087: LDY #$02 / STY $4014`. The DMA, at the TOP of the NMI.
+ *
+ * BITS 2-4 OF EVERY ATTRIBUTE BYTE DO NOT EXIST IN HARDWARE OAM and read back
+ * as 0. That is not a detail the port could have invented a reason for -- it
+ * was MEASURED, by the intro comparison: the cartridge's `nesSpriteRam[2]` read
+ * $E0 on all 28 blanked intro frames of `intro-boot` and the port's read $F4.
+ * $F4 is the byte $8B08[0..3] stores to park sprite 0 ($8B2F LDA $8B08,X with
+ * X = 3), and $F4 AND $E3 = $E0.
+ *
+ * It had never cost a frame because the corpus's sprite 0 is always the LIVE
+ * record, whose attribute byte is $23 -- and $23 AND $E3 = $23. A parked
+ * sprite 0 only happens while $1F is 0, which before wave 4 was outside every
+ * compared window. docs/knowledge/03's third shape again.
+ *
+ * The mask is applied to the whole page, not just sprite 0: it is a property of
+ * the hardware's OAM, and hwOam is what `s0y/s0t/s0a/s0x` are read from. It
+ * cannot change the picture -- the renderer uses bits 0-1 (palette), 5
+ * (priority), 6 and 7 (flips) and none of 2-4.
+ */
 export function oamDma(state) {
-  state.hwOam.set(state.shadowOam);
+  for (let i = 0; i < 256; i += 4) {
+    state.hwOam[i] = state.shadowOam[i];
+    state.hwOam[i + 1] = state.shadowOam[i + 1];
+    state.hwOam[i + 2] = state.shadowOam[i + 2] & 0xE3;
+    state.hwOam[i + 3] = state.shadowOam[i + 3];
+  }
 }
