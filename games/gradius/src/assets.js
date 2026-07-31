@@ -73,6 +73,24 @@ export function collisionTables(json) {
 }
 
 /**
+ * assets/weapons/tables.json -> the same byte reader for wave 6.
+ *
+ * Five ranges, every one of them indexed by a RAM byte: $A0E0-$A0E8 (the three
+ * parameter tables, X = $44), $A1A4-$A1A9 (the missile's dy/dx, Y = 0 fly /
+ * 1 crawl), $BE6E-$BE8F (the kill sound by enemy type, X = type AND $7F),
+ * $BFCE-$BFD9 (the SHOT's hit box, Y = its subtype) and $BFC5-$BFCD (the
+ * type-$9A hit threshold, Y = the rank $17).
+ *
+ * The enemy boxes at $BFDA/$BFDE are NOT here -- they are collision/tables.json
+ * (wave 5), and the two blocks are deliberately adjacent in the ROM and
+ * deliberately separate here: $BFD2,Y is the SHOT's width and $BFDA,X is the
+ * ENEMY's, and the sweep at $BFFD/$C028 reads one of each.
+ */
+export function weaponTables(json) {
+  return romByteReader(json, 'weapons/tables.json', 'weapon tables');
+}
+
+/**
  * A byte reader addressed the way the 6502 is, over a list of exported CPU
  * ranges. Shared by the enemy and flow tables.
  *
@@ -117,7 +135,7 @@ function romByteReader(json, file, label) {
 }
 
 export async function loadResources(stageIndex = 0) {
-  const [manifest, tilesBuf, stages, ms, hud, enemies, flow, coll] = await Promise.all([
+  const [manifest, tilesBuf, stages, ms, hud, enemies, flow, coll, weap] = await Promise.all([
     fetchOrExplain('manifest.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('chr/tiles.u8', EXPORT).then((r) => r.arrayBuffer()),
     fetchOrExplain('terrain/stages.json', EXPORT).then((r) => r.json()),
@@ -126,6 +144,7 @@ export async function loadResources(stageIndex = 0) {
     fetchOrExplain('enemies/tables.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('flow/tables.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('collision/tables.json', EXPORT).then((r) => r.json()),
+    fetchOrExplain('weapons/tables.json', EXPORT).then((r) => r.json()),
   ]);
 
   const tiles = new Uint8Array(tilesBuf);
@@ -142,7 +161,8 @@ export async function loadResources(stageIndex = 0) {
   return { manifest, tiles, metasprites, stage: stages.stages[stageIndex],
            hudPackets: hudPacketTable(hud), enemyTables: enemyTables(enemies),
            flowTables: flowTables(flow),
-           collisionTables: collisionTables(coll) };
+           collisionTables: collisionTables(coll),
+           weaponTables: weaponTables(weap) };
 }
 
 /** The frame rate, read from game.json. It is spelled ONCE, in that file. */

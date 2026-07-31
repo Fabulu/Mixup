@@ -207,24 +207,44 @@ test('$C101/$C136: the sweep runs slot 9 DOWN to 0, and the first contact wins',
 });
 
 test('$BFE6/$C2C8/$C303: every slot loop starts at its TOP slot, not its bottom', () => {
-  // Three loops the port runs as "ten (or nine, or six) iterations of nothing",
-  // each of which reports the slot NUMBER it found occupied. That message is the
-  // only observable the loops have while their bodies are unported, and it pins
-  // the direction: $BFE2 is `LDX #$08 ... DEC $A8 / BPL`, $C2C4 is `LDX #$05`
-  // and $C2FF is `LDX #$09`, all descending.
-  // RED WHEN: any of the three loops counts up -- the throw then names the
-  // BOTTOM slot, and a future wave that ports the body would resolve the wrong
-  // shot or the wrong bullet first.
-  const swept = bootState(res.manifest);
-  swept.obj.anim[3 + 8] = 6; swept.obj.anim[3 + 0] = 6;  // $012B and $0123
-  assert.throws(() => shotSweep(swept, res), /\$BFE8: shot slot 11 /,
-    '$BFE2: LDX #$08, so the sweep meets object slot 3+8 = 11 first');
+  // $BFE2 is `LDX #$08 ... DEC $A8 / BPL`, $C2C4 is `LDX #$05` and $C2FF is
+  // `LDX #$09` -- all descending. Until wave 6 the only observable was the slot
+  // number in a throw; the bodies exist now, so the direction is witnessed by
+  // WHICH SHOT WINS instead.
+  //
+  // RED WHEN: any of the three loops counts up. For $BFE2 that swaps which of
+  // two overlapping shots is consumed by the same enemy, which is exactly the
+  // difference OAM order and the kill chain would show on a real frame.
+  const swept = withEnemy(4, { x: 100, y: 100 });
+  swept.obj.anim[3 + 8] = 0x0A;          // $012B -- object 11, a missile
+  swept.obj.animFrame[3 + 8] = 3;
+  // The missile's own box is the FOURTH entry of each $BFCE table (subtype 3):
+  // x offset $08, width $10, y offset $00 -- so it has to sit BELOW the enemy to
+  // overlap it, where a subtype-0 shot's y offset of $08 puts it above.
+  swept.obj.x[3 + 8] = 100; swept.obj.y[3 + 8] = 105;
+  swept.obj.anim[3 + 0] = 0x06;          // $0123 -- object 3, an ordinary shot
+  swept.obj.animFrame[3 + 0] = 0;
+  swept.obj.x[3 + 0] = 100; swept.obj.y[3 + 0] = 100;
+  shotSweep(swept, res);
+  assert.strictEqual(swept.obj.anim[3 + 8], 0, 'slot 11 was resolved FIRST and '
+    + 'was consumed by the enemy ($C0BD STA $0123,X)');
+  assert.strictEqual(swept.obj.anim[3 + 0], 0x06, '...and slot 3 met an enemy '
+    + 'that $BE93 had already turned into type 2, whose bit 7 is clear, so '
+    + '$C011 BPL skipped it and the shot flew on');
+  assert.strictEqual(swept.obj.type[4 + ENEMY_BASE], 2, '$BED3 STA $030C,Y');
 
+  // $C2C4: two shots at the SAME position over a poked BREAKABLE cell (field
+  // value 2), which is a loud throw naming the slot it resolved first.
   const terrain = bootState(res.manifest);
-  terrain.obj.anim[3 + 5] = 6; terrain.obj.anim[3 + 0] = 6;   // $0128 and $0123
-  assert.throws(() => collision(terrain, res), /\$C3AF: shot slot 8 /,
+  for (const x of [5, 0]) {
+    terrain.obj.anim[3 + x] = 6; terrain.obj.animFrame[3 + x] = 0;
+    terrain.obj.x[3 + x] = 80; terrain.obj.y[3 + x] = 96;
+  }
+  terrain.coll[0x5B] = 0x20;             // $055B, the cell under (80, 96): the
+                                         // 2-bit field at shift 4 reads 2
+  assert.throws(() => collision(terrain, res), /\$C2DC: shot slot 8 /,
     '$C2C4: LDX #$05, so object slot 3+5 = 8 first. collision() rather than '
-    + 'shotSweep() because $BFE2 would find the same slot one loop earlier');
+    + 'shotSweep() because $BFE2 sweeps the same slots one loop earlier');
 
   const bullet = bootState(res.manifest);
   bullet.obj.anim[22 + 9] = 9; bullet.obj.anim[22 + 0] = 9;
@@ -262,17 +282,21 @@ test('$C2B0: stage 3 probes the terrain on ODD $02 frames, and skips the shot lo
   assert.strictEqual(probed(11), true, 'odd $02: the LSR sets carry, no branch');
   assert.strictEqual(probed(10), false, 'even $02: $C2B0 BCC jumps to $C2FF');
 
-  // The branch TARGET, witnessed separately: a live shot slot makes $C2C4's loop
-  // throw, and on the even frame it must never be reached.
+  // The branch TARGET, witnessed separately: $C2C4's loop absorbs a shot that
+  // is standing on a solid cell, and on the even frame it must never run.
   const withShot = (frame) => {
     const s = bootState(res.manifest);
     s.zp19 = 2; s.frame = frame;
+    s.coll[CELL] = CELL_VALUE;
     s.obj.anim[5] = 6;                   // $0125 -- object slot 5, a shot
-    return s;
+    s.obj.animFrame[5] = 0;
+    s.obj.x[5] = 80; s.obj.y[5] = 96;    // the same cell the ship is over
+    collision(s, res);
+    return s.obj.anim[5];
   };
-  assert.throws(() => collision(withShot(11), res), /\$C3AF/,
-    'the odd frame falls through $C2B5 into $C2C4 and finds the shot');
-  assert.doesNotThrow(() => collision(withShot(10), res),
+  assert.strictEqual(withShot(11), 0,
+    'the odd frame falls through $C2B5 into $C2C4 and the shot is absorbed');
+  assert.strictEqual(withShot(10), 6,
     '$C2B0 BCC $C2FF jumps over the whole shot loop, not just the probe');
 });
 

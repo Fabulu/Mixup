@@ -12,7 +12,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { createState, ENEMY_BASE } from '../src/state.js';
 import { nmi } from '../src/nmi.js';
-import { collision, die, explosionWalk, playerVsEnemies } from '../src/collision.js';
+import { collision, die, explosionWalk, playerVsEnemies, shotSweep } from '../src/collision.js';
 import { respawn } from '../src/flow.js';
 import { bootState } from '../src/main.js';
 import { headlessResources } from './helpers.js';
@@ -405,17 +405,23 @@ test('$97DD: the respawn clears $3A/$5D/$33/$1B and $9C09 clears $57', () => {
 
 // --------------------------------------------- the loops, and what is absent --
 
-test('$BFE8/$C3AF: a live SHOT slot is a loud throw, not a silent skip', () => {
-  // The inner sweep, $C055's hit resolver and $BE93's kill chain are wave 6.
-  // Nothing in the port fires, so the only way a shot slot is occupied is a seed
-  // that carried one -- MEASURED 0 in $0123-$012B of all 23 scenario seeds.
-  // RED WHEN: the loop `continue`s on a non-zero slot instead of throwing.
+test('$BFE8: an EMPTY shot slot is skipped without touching an enemy', () => {
+  // Wave 5 asserted here that a live shot slot THREW, because the inner sweep
+  // was unported. Wave 6 ported it, so the assertion is inverted rather than
+  // deleted (rule 6): the empty slot must still be skipped at $BFE8, and the
+  // sweep must not resolve a hit for a slot whose $0123,X is 0 even when its
+  // POSITION arrays still hold the last shot's coordinates -- which is exactly
+  // the state $A201's free leaves ($0363,X is not cleared).
+  // RED WHEN: $BFE8's `BEQ $C047` is dropped.
   const s = bootState(res.manifest);
-  s.obj.anim[3] = 6;                            // $0123 -- shot A, player's
-  assert.throws(() => collision(s, res) || nmi(s, 0, res), /\$BFE8|\$C3AF/);
-  const t = bootState(res.manifest);
-  t.obj.anim[3] = 6;
-  assert.throws(() => nmi(t, 0, res), /\$BFE8/);
+  const i = 4 + ENEMY_BASE;
+  s.obj.type[i] = 0x85; s.obj.x[i] = 100; s.obj.y[i] = 100;   // a live fan
+  s.obj.anim[3] = 0;                            // $0123 -- FREE
+  s.obj.animFrame[3] = 0;
+  s.obj.x[3] = 100; s.obj.y[3] = 100;           // ...but still on top of it
+  shotSweep(s, res);
+  assert.strictEqual(s.obj.type[i], 0x85, 'the enemy survived an empty slot');
+  assert.deepStrictEqual([...s.score.slice(4, 7)], [0, 0, 0], 'and scored 0');
 });
 
 test('$C22A/$C305: a live ENEMY-BULLET slot is a loud throw', () => {

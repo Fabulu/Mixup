@@ -136,6 +136,10 @@ export function seedFromRam(state, ram) {
   state.ppu.chrSel = r(0x2D);              // $2D
   state.oamBase = r(0x2F);                 // $2F
   state.zp.autofire = r(0x35);             // $35
+  // $2A,X -- the next extra life's score threshold ($84D9). MEASURED $02 in the
+  // seed of every scenario; src/score.js reads it and $84EE writes it back.
+  state.extraLife[0] = r(0x2A);            // $2A,X
+  state.extraLife[1] = r(0x2B);
   state.oamCursor = r(0x36);               // $36
   state.build.gate = r(0x3A);              // $3A
   state.cam.sub = r(0x3D);                 // $3D
@@ -333,6 +337,8 @@ export function peek(state, addr) {
     case 0x1F: return state.zp1F;          // $8B25 STY $1F
     case 0x2D: return state.ppu.chrSel;
     case 0x2F: return state.oamBase;
+    case 0x2A: return state.extraLife[0];   // $2A,X  $84D9 CMP $2A,X
+    case 0x2B: return state.extraLife[1];
     case 0x35: return state.zp.autofire;
     case 0x36: return state.oamCursor;
     case 0x3A: return state.build.gate;

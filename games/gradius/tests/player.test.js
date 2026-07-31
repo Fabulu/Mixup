@@ -23,7 +23,14 @@ import { join } from 'node:path';
 
 import { createState, RING_LEN } from '../src/state.js';
 import { updatePlayer, speedStep } from '../src/player.js';
-import { GAME } from './helpers.js';
+import { GAME, headlessResources } from './helpers.js';
+
+// The weapon tables ($A0E0/$A1A4/$BFCE), because $A0CB's BMI falls out of the
+// Option animation INTO the firing block: updatePlayer() is $9FFC, all of it,
+// since wave 6. The free-run's button stream contains A presses, so the shots
+// below are real -- they just do not appear in `snapshot`, which is the
+// cartridge trace's own 15 fields.
+const res = headlessResources(0);
 
 const OUT = join(GAME, 'tools', 'oracle', 'out');
 const SEED = 325, LAST = 559;
@@ -107,7 +114,7 @@ function freeRun(tr, mutate) {
   for (let f = SEED + 1; f <= LAST; f++) {
     const held = tr.doc.frames[f].held;
     s.input.held = held;
-    updatePlayer(s);
+    updatePlayer(s, res);
     if (mutate) mutate(s, held);
     const want = snapshot(tr.at(f)), got = snapshotOf(s);
     for (const k of Object.keys(want)) {
@@ -180,10 +187,10 @@ test('the ring advances only while a direction is held', () => {
   const s = createState();
   s.obj.status[0] = 1; s.obj.x[0] = 100; s.obj.y[0] = 100;
   s.input.held = 0x80;                 // A button, no direction
-  updatePlayer(s);
+  updatePlayer(s, res);
   assert.strictEqual(s.ring.cursor, 0, 'A alone advanced the ring');
   s.input.held = 0x01;                 // RIGHT
-  updatePlayer(s);
+  updatePlayer(s, res);
   assert.strictEqual(s.ring.cursor, 1);
 });
 
@@ -194,14 +201,14 @@ test('DOWN loses to UP at the floor, because of the pre-check', () => {
   const s = createState();
   s.obj.status[0] = 1; s.obj.x[0] = 100; s.obj.y[0] = 0xC0;
   s.input.held = 0x04 | 0x08;          // DOWN + UP
-  updatePlayer(s);
+  updatePlayer(s, res);
   assert.strictEqual(s.obj.y[0], 0xBF, 'UP was not honoured at the floor');
   assert.strictEqual(s.zp.tilt, 3, 'tilt should be nose-up');
 
   const s2 = createState();
   s2.obj.status[0] = 1; s2.obj.x[0] = 100; s2.obj.y[0] = 100;
   s2.input.held = 0x04 | 0x08;
-  updatePlayer(s2);
+  updatePlayer(s2, res);
   assert.strictEqual(s2.obj.y[0], 101, 'away from the floor DOWN must win');
 });
 
@@ -212,7 +219,7 @@ test('a dead player still has its position frozen', () => {
   const s = createState();
   s.obj.status[0] = 3; s.obj.x[0] = 100; s.obj.y[0] = 100;
   s.input.held = 0x01;
-  assert.strictEqual(updatePlayer(s), false);
+  assert.strictEqual(updatePlayer(s, res), false);
   assert.strictEqual(s.obj.x[0], 100);
   assert.strictEqual(s.ring.cursor, 0);
 });

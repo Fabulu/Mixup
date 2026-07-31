@@ -123,6 +123,76 @@ function freeSlot(state, j) {
 }
 
 /**
+ * `$BE93` -- KILL an enemy. Wave 6. The only caller in this port is `$C0A9`,
+ * the shot sweep's hit resolver (src/collision.js); the cartridge also reaches
+ * it from `$C1D0` (the shield destroying what it absorbed, wave 7) and `$C19E`.
+ *
+ *   BE93  B9 0C 03  LDA $030C,Y / 29 7F AND #$7F / AA TAX
+ *   BE99  E0 22     CPX #$22 / B0 08 BCS $BEA5     types >= $22 are silent
+ *   BE9D  BD 6E BE  LDA $BE6E,X / F0 03 BEQ $BEA5  ...and so is a 0 entry
+ *   BEA2  20 1E EC  JSR $EC1E                      the death sound. Wave 8.
+ *   BEA5  B9 AC 03  LDA $03AC,Y / F0 10 BEQ $BEBA  not a squadron member
+ *   BEAA  C9 01     CMP #$01 / F0 07 BEQ $BEB5     already a CARRIER: stay one
+ *   BEAE  AA        TAX / A9 00 LDA #$00 / D6 48 DEC $48,X / D0 02 BNE $BEB7
+ *   BEB5  A9 01     LDA #$01
+ *   BEB7  99 AC 03  STA $03AC,Y
+ *   BEBA  A2 01     LDX #$01
+ *   BEBC  B9 0C 03  LDA $030C,Y / 29 1F AND #$1F
+ *   BEC1  C9 1A     CMP #$1A / D0 02 BNE $BEC7 / A2 03 LDX #$03
+ *   BEC7  C9 05     CMP #$05 / D0 02 BNE $BECD / A2 00 LDX #$00
+ *   BECD  8A        TXA / 99 6C 01 STA $016C,Y     the EXPLOSION SCRIPT index
+ *   BED1  A9 02     LDA #$02 / 99 0C 03 STA $030C,Y    type := 2 ($AE99)
+ *   BED6  A9 03     LDA #$03 / 99 4C 01 STA $014C,Y    timer := 3
+ *   BEDB  A9 00     LDA #$00
+ *   BEDD  99 8C 01  STA $018C,Y / 99 0C 01 STA $010C,Y / 99 2C 01 STA $012C,Y
+ *   BEE6  99 2C 04  STA $042C,Y                        the script cursor
+ *
+ * THE COUNTER `$0048,X` UNDERFLOWS AND THAT IS THE POINT. `$BEAE` DECs it and
+ * branches on the RESULT: non-zero -> A is still 0, so the carrier byte is
+ * CLEARED; zero -> `$BEB5 LDA #$01` and the enemy becomes the capsule carrier.
+ * Nothing tests it for 0 first, so killing a member of a squadron whose counter
+ * has already reached 0 takes it to 255 and the next 255 kills of that group id
+ * drop nothing. `$A400` seeds it (only for squadrons of >= 4, and only at the
+ * alternating id `$49` = 2 or 3), and it is a COMPARED field: w_0048-w_004B.
+ *
+ * The three explosion scripts are picked by `type AND $1F`, NOT by `AND $7F`:
+ * $1A -> script 3, $05 -> script 0, everything else -> script 1. So an
+ * INITIALISED fan ($85, AND $1F = 5) and an uninitialised one (5) pick the same
+ * script, which is why the AND is $1F and not $7F.
+ */
+export function killEnemy(state, res, j) {
+  const o = state.obj;
+  const i = j + ENEMY_BASE;
+  const type = o.type[i];                          // $BE93 LDA $030C,Y
+  const t7 = type & 0x7F;                          // $BE96 AND #$7F
+  if (t7 < 0x22) {                                 // $BE99 CPX #$22 / BCS
+    const id = res.weaponTables.read(0xBE6E + t7); // $BE9D LDA $BE6E,X
+    if (id !== 0) state.sfx.push(id);              // $BEA0 BEQ / $BEA2 JSR $EC1E
+  }
+  const carrier = o.carrier[i];                    // $BEA5 LDA $03AC,Y
+  if (carrier !== 0) {                             // $BEA8 BEQ $BEBA
+    if (carrier === 1) {                           // $BEAA CMP #$01 / BEQ $BEB5
+      o.carrier[i] = 1;                            // $BEB5/$BEB7 -- unchanged
+    } else {
+      const n = u8(state.squad[carrier] - 1);      // $BEB1 DEC $48,X
+      state.squad[carrier] = n;
+      o.carrier[i] = n === 0 ? 1 : 0;              // $BEB3 BNE $BEB7 (A = 0)
+    }
+  }
+  let script = 1;                                  // $BEBA LDX #$01
+  const t5 = type & 0x1F;                          // $BEBC/$BEBF AND #$1F
+  if (t5 === 0x1A) script = 3;                     // $BEC1/$BEC5
+  if (t5 === 0x05) script = 0;                     // $BEC7/$BECB
+  o.animFrame[i] = script;                         // $BECD/$BECE STA $016C,Y
+  o.type[i] = 2;                                   // $BED1/$BED3 -- handler 2
+  o.timer[i] = 3;                                  // $BED6/$BED8
+  o.attrMask[i] = 0;                               // $BEDD STA $018C,Y
+  o.status[i] = 0;                                 // $BEE0 STA $010C,Y
+  o.anim[i] = 0;                                   // $BEE3 STA $012C,Y
+  o.xvel[i] = 0;                                   // $BEE6 STA $042C,Y
+}
+
+/**
  * The free-slot search, in BOTH shapes the ROM has.
  *
  *   $A3B1 / $A415 / $A46F   `LDX #$09 / LDA $030C,X / BEQ ok / DEX / BPL`
@@ -313,8 +383,9 @@ function formationSetup(state, rom) {
   sp.z6F = b0 & 0x0F;                    // $A3EF STA $6F
   if ((b0 & 0x0F) >= 4) {                // $A3F1 CMP #$04 / BCC $A405
     // $A3F5: the group id alternates 2/3 per squadron, and the squadron's
-    // member count is seeded at $0048+id -- the counter $BE93 decrements on
-    // each kill and which underflows to 255 when it is already 0 (wave 6).
+    // member count is seeded at $0048+id -- the counter killEnemy() ($BE93,
+    // wave 6, above) decrements on each kill, which turns the LAST member into
+    // a capsule carrier and which UNDERFLOWS to 255 when it is already 0.
     state.zp49 = u8((u8(state.zp49 + 1) & 0x01) | 0x02);   // INC / AND / ORA
     state.squad[state.zp49] = sp.z69;    // $A400 LDA $69 / STA $0048,Y
   }
@@ -691,8 +762,10 @@ function h_AEE1(state) {
  * it into type 1 / status 6 -- metasprites 16, 17, 18 -- which then drifts left
  * under $AEE1 for 51 frames.
  *
- * Nothing in wave 3's corpus reaches it: it is entered only from $BE93 (the
- * kill routine, wave 6). It is ported here because the fall-through below IS
+ * Nothing in wave 3's corpus reached it: it is entered only from $BE93, the
+ * kill routine, which wave 6 ported above. `autofire-laser` is the scenario
+ * that drives it -- three capsule promotions ($AEC1) from f527 on, compared per
+ * frame. It is here rather than beside $BE93 because the fall-through below IS
  * handlers 1 and 3, and splitting them would misrepresent the control flow.
  */
 function h_AE99(state, rom, j) {

@@ -64,16 +64,20 @@ export function bootState(manifest) {
   s.ppu.scrollY = 0x0C;            // $13  -- $9650
   s.ppu.chrSel = 0;                // $2D
   // The HUD producers' inputs. Read off the cartridge at align frame 400 of
-  // every scenario in the corpus and identical in all 17 -- see the SEEDED
+  // every scenario in the corpus and identical in all 28 -- see the SEEDED
   // INPUTS note in src/state.js for what that does and does not prove.
   s.lives[0] = s.lives[1] = 3;     // $20/$21
   s.zp0A = 1;                      // $0A -- player 1 in, player 2 out. Read by
                                    // $97C7's respawn switch; MEASURED 1 in the
-                                   // seed of all 23 scenarios.
+                                   // seed of all 28 scenarios.
   s.zp48 = 0x2E;                   // $48
   s.score[0x00] = 0x00;            // $07E0  \
   s.score[0x01] = 0x50;            // $07E1   > TOP = 50000
   s.score[0x02] = 0x00;            // $07E2  /
+  // $2A,X -- the score at which the next extra life is granted ($84D9 CMP
+  // $2A,X). MEASURED $02 in the seed of all 28 scenarios; src/score.js reads it
+  // and $84EE writes it back, the first time a score reaches $02xxxx.
+  s.extraLife[0] = s.extraLife[1] = 0x02;
   s.vram.pal.set(gameplayPalette(manifest));
   s.bandA.chrBank = chrBank(0);
   s.bandB.chrBank = chrBank(2);
@@ -106,6 +110,7 @@ export function introEntryState(manifest) {
   s.score[0x00] = 0x00;            // $07E0  \
   s.score[0x01] = 0x50;            // $07E1   > TOP = 50000, left by the attract
   s.score[0x02] = 0x00;            // $07E2  /
+  s.extraLife[0] = s.extraLife[1] = 0x02;   // $2A,X -- see bootState()
   // $22/$24/$26/$28 stay 0: stage 0, checkpoint 0, no meter to restore.
   s.vram.pal.set(gameplayPalette(manifest));
   s.bandA.chrBank = chrBank(0);

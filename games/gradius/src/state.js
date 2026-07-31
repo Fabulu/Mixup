@@ -156,7 +156,7 @@ export function createState() {
     // $0A, the bitfield of players still in the game: bit 0 = player 1, bit 1 =
     // player 2. Read at $97C7 by the respawn's player switch (wave 5) and
     // written only at $97F9, the game-over arm, which is a throw. MEASURED 1 in
-    // the seed of all 21 scenarios, so the switch at $97C5-$97DB is a no-op and
+    // the seed of all 28 scenarios, so the switch at $97C5-$97DB is a no-op and
     // $18 stays 0 -- exactly the same read-and-never-written arrangement as the
     // lives byte $20 (see SEEDED INPUTS below). Watched (w_000A) so that the
     // wave which does write it is judged against data recorded before it.
@@ -279,8 +279,19 @@ export function createState() {
       yf: new Uint8Array(SLOTS),     // $0340+i  1/256 px
       x: new Uint8Array(SLOTS),      // $0360+i  integer pixels
       xf: new Uint8Array(SLOTS),     // $0380+i  1/256 px
-      carrier: new Uint8Array(SLOTS),// $03A0+i  0 none, 1 drops a capsule,
-                                     //          2/3 = squadron group id
+      // $03A0+i, and it means TWO different things in two different slot
+      // ranges, exactly as the ROM's addresses do:
+      //   i = 12..21  the CARRIER byte. 0 none, 1 drops a capsule, 2/3 = the
+      //               squadron group id $49, seeded at $A456 for squadrons of
+      //               >= 4 and turned into 1 by $BE93 when $0048+id reaches 0.
+      //   i = 3..8    the AUTOFIRE TIMERS. $03A3,X and $03A6,X (X = 0..$45) are
+      //               the per-object slot-A and slot-B reload counters the
+      //               firing block at $A113/$A131 reads and DECs -- see
+      //               src/weapons.js. They are FROZEN while the slot holds a
+      //               shot, which is why the cadence is lifetime + $35.
+      // One array, because $03A3 IS $03A0 + 3. A port that gives the timers
+      // their own array stops matching w_03A3-w_03A8.
+      carrier: new Uint8Array(SLOTS),// $03A0+i
       yvel: new Uint8Array(SLOTS),   // $03B0+i  Y velocity, integer
       yvelf: new Uint8Array(SLOTS),  // $03E0+i  Y velocity, fraction
       style: new Uint8Array(SLOTS),  // $0400+i  $A579's style AND $FE
@@ -304,21 +315,25 @@ export function createState() {
 
     // ---- the HUD ($8898 and its four producers, src/hud.js) -------------
     //
-    // SEEDED INPUTS, AND WHY THAT IS HONEST TODAY AND NOT TOMORROW.
-    // The producers read six things the port does not yet COMPUTE: the two
-    // lives bytes, the three BCD scores, $42 and $46. Every one of them is a
-    // constant across all 17 compared scenarios -- nothing in this corpus
-    // scores, dies or collects a capsule -- and each is seeded from the
-    // cartridge's own RAM (porttrace.mjs seedFromRam) or from the values the
-    // oracle read at the align frame (src/main.js bootState). So the HUD's
-    // OUTPUT is real and comparable while its INPUTS are borrowed.
+    // SEEDED INPUTS, AND HOW MUCH OF THAT IS LEFT.
+    // The producers read six things: the two lives bytes, the three BCD
+    // scores, $42 and $46. They were ALL seeded when wave 2 landed, because
+    // nothing in the corpus then scored, died or collected a capsule.
     //
-    // What that does NOT prove: that the port would produce the right digits
-    // once anything moves them. Wave 6 lands the BCD adder $845B (score), wave
-    // 5 the DEC at $979D (lives) and wave 7 $894B/$8974 ($42/$46). Until then
-    // the only teeth on these bytes are tests/hud.test.js, which drives three
-    // captured lives values (3, 1, 0) through st_88B6 because the cartridge's
-    // own captures happen to disagree with each other.
+    //   lives $20,X   COMPUTED since wave 5 ($979D's DEC, and $84F0's INC in
+    //                 src/score.js). tests/collision.test.js broke it and
+    //                 w_0706 -- a queue byte the lives producer wrote -- went
+    //                 red two frames after w_0020.
+    //   score $07E0+  COMPUTED since wave 6: $8463 adds $0010 per kill through
+    //                 src/score.js, and the three autofire scenarios compare
+    //                 w_07E4-w_07E6 AND the row-29 digits $892C draws from them
+    //                 on every frame of a window that contains 11 to 18 kills.
+    //   $42 / $46     still seeded. Wave 7 ($894B/$8974) is what moves them.
+    //
+    // The initial VALUES are still the cartridge's, out of the align frame's
+    // RAM (porttrace.mjs seedFromRam, src/main.js bootState) -- that is what
+    // makes the comparison absolute rather than relative, and it is the same
+    // arrangement the camera and the sub-pixel accumulators have.
     //
     // $48 is different: it is REAL STATE, incremented by $88A4 on every odd
     // frame, and it is watched (w_0048).
@@ -328,8 +343,21 @@ export function createState() {
     // $07E4 player 1, $07E8 player 2, each stored most-significant byte LAST
     // ($88FD reads $07E0,Y for Y = 2, 1, 0). MEASURED at align 400:
     // 00 50 00 = the 50000 the attract mode leaves as TOP, and zero for both
-    // players. $845B (wave 6) is the adder that will make them move.
+    // players. src/score.js ($845B/$8463/$8474) is the adder, live since wave 6.
     score: new Uint8Array(12),
+    // $2A,X -- the score at which player X gets an extra life, one BCD byte
+    // (the HIGH byte of the 3-byte score is what $84D9 compares it against).
+    // MEASURED $02 in the seed of every scenario, and the biggest score any
+    // window here reaches is $0110, so $84D3's arm is ported and unexercised.
+    // It is the only thing in the game that INCREASES $20,X.
+    extraLife: new Uint8Array(2),
+    // Sound requests THIS FRAME, in the order $EC1E was called. Not a RAM
+    // byte -- the driver is wave 8 -- and not a no-op either: `$A266 LDA $99 /
+    // JMP $EC1E` is the shared tail of BOTH shot spawns, so a DOUBLE volley
+    // with two Options requests six sounds in one frame, and $BE93, $C1D6 and
+    // $84F2 add their own. src/nmi.js clears it at the top of every frame;
+    // tests/weapons.test.js is what holds it.
+    sfx: [],
 
     // ---- the enemy spawn engine's zero page ($A2C0, src/enemies.js) -----
     //

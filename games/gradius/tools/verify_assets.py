@@ -235,6 +235,33 @@ EXPECT_COLL_EXPLOSION = [0x2D, 0x2E, 0x2F, 0x30, 0x30, 0x00]
 #    table to $10/$20/$30/$10 and $10/$20/$30/$02.
 EXPECT_COLL_BOX0 = {"dxRejected": 16, "dxAccepted": 14, "dyAccepted": 5}
 
+# ---- WEAPONS ($A0E0 params, $A1A4 missile step, $BFCE shot boxes) -- wave 6 --
+# 1. THE PARAMETER TABLES, MEASURED as a CONSEQUENCE.  The corpus's three
+#    autofire scenarios force $44 and hold A from game frame 400, and their
+#    artifacts record what the cartridge put in the shot slots ($0123/$0126 for
+#    the type and $0163/$0166 for the subtype, sampled at $80B5):
+#       $44 = 0   slot A type $06 sub 0   slot B type $06 sub 0
+#       $44 = 1   slot A type $07 sub 1   slot B type $07 sub 1
+#       $44 = 2   slot A type $06 sub 0   slot B type $24 sub 2, SAME frame
+#    ($44 = 0/1/2 is 0 normal / 1 LASER / 2 DOUBLE -- NOTES-player.md 9 had the
+#    last two the wrong way round and wave 1 corrected it.)
+EXPECT_WEAPON_TYPES = {0: (0x06, 0x06), 1: (0x07, 0x07), 2: (0x06, 0x24)}
+# 2. THE MISSILE STEP, MEASURED per frame with $41 forced to 1: the missile's
+#    $0329 goes up by exactly 2 a frame and its $0389 fraction alternates
+#    $80/$00 with $0369 stepping 1 every other frame, i.e. dy = 2 and
+#    dx = $0080 = 0.5 px.  The crawl row is UNEXERCISED -- the terrain probe
+#    returned 0 on all 916 calls of the weapons recon -- and is held only to the
+#    listing, which is why it is named separately here.
+EXPECT_MISSILE_FLY = {"dy": 2, "dxHi": 0, "dxLo": 0x80}
+EXPECT_MISSILE_CRAWL_LISTING = {"dy": 0, "dxHi": 2, "dxLo": 0}
+# 3. THE SHOT'S OWN BOX.  What the corpus pins is the SHAPE: the laser's width
+#    ($BFD3) is the one entry that differs between the three subtypes, and the
+#    hit point is offset by the same 8 px in Y for all three.  The laser's
+#    kills in `autofire-laser` happen at dx values an $10-wide box would reject,
+#    which is what makes the width byte compared rather than merely exported.
+EXPECT_SHOT_BOX = {"xoff": [0x08, 0x10, 0x08], "width": [0x10, 0x30, 0x10],
+                   "yoff": [0x08, 0x08, 0x08]}
+
 # NOTES-terrain.md section 4, "Stage 1's shape" -- an end-to-end expectation on
 # the DECODED cache, not on any single table.
 EXPECT_STAGE1 = {
@@ -386,6 +413,7 @@ class State:
         self.enemies = json.loads(self.blob["enemies/tables.json"].decode("utf-8"))
         self.flow = json.loads(self.blob["flow/tables.json"].decode("utf-8"))
         self.coll = json.loads(self.blob["collision/tables.json"].decode("utf-8"))
+        self.weap = json.loads(self.blob["weapons/tables.json"].decode("utf-8"))
 
 
 def vals_at(rom: RawRom, off: int, n: int, unit: str) -> list[int]:
@@ -993,6 +1021,108 @@ def check_collision(st: State) -> list[str]:
     return bad
 
 
+def check_weapons(st: State) -> list[str]:
+    """The five wave-6 tables: re-read, re-derive, then hold to the cartridge.
+
+    Same three arms as check_collision. Arm 3 is the interesting one: every
+    expectation below is a CONSEQUENCE the cartridge was seen to produce (the
+    shot types the three autofire scenarios recorded, the missile's measured 2
+    px/frame descent), not a re-typing of the bytes -- except where it says
+    LISTING ONLY, which is the crawl row and the rank thresholds, neither of
+    which any measured run has reached.
+    """
+    bad = []
+    rom = st.rom
+    w = st.weap
+    blocks = {b["name"]: b for b in w["blocks"]}
+    for name in ("params", "missileStep", "killSfx", "shotBoxes", "rankHits"):
+        if name not in blocks:
+            bad.append(f"weapons/tables.json has no block {name!r}")
+    if bad:
+        return bad
+
+    for b in w["blocks"]:
+        base = int(b["rom"].lstrip("$"), 16)
+        want_off = rom.off(base)
+        if b["fileOffset"] != want_off:
+            bad.append(f"block {b['name']} at {b['rom']} records fileOffset "
+                       f"{b['fileOffset']}, ${base:04X} is at {want_off}")
+            continue
+        if b["len"] != len(b["bytes"]):
+            bad.append(f"block {b['name']} claims len {b['len']} but carries "
+                       f"{len(b['bytes'])} bytes")
+            continue
+        got = list(rom.at(b["fileOffset"], b["len"]))
+        if got != b["bytes"]:
+            first = next(i for i in range(b["len"]) if got[i] != b["bytes"][i])
+            bad.append(f"block {b['name']}: byte {first} (${base + first:04X}) is "
+                       f"${b['bytes'][first]:02X} in the cache, ${got[first]:02X} "
+                       f"in the ROM")
+    if bad:
+        return bad
+
+    # -- from here on, read only the CACHE, indexed the way the 6502 does ------
+    def at(name, addr):
+        b = blocks[name]
+        i = addr - int(b["rom"].lstrip("$"), 16)
+        return b["bytes"][i] if 0 <= i < len(b["bytes"]) else None
+
+    hx = lambda v: "OUT OF RANGE" if v is None else f"${v:02X}"
+    for weapon, (ta, tb) in EXPECT_WEAPON_TYPES.items():
+        got_a = at("params", 0xA0E0 + weapon)          # $A0EB LDA $A0E0,X
+        got_b = at("params", 0xA0E3 + weapon)          # $A0F5 LDA $A0E3,X
+        if (got_a, got_b) != (ta, tb):
+            bad.append(f"$44 = {weapon}: $A0E0/$A0E3 give types "
+                       f"({hx(got_a)}, {hx(got_b)}); the cartridge put "
+                       f"(${ta:02X}, ${tb:02X}) into $0123/$0126")
+        if at("params", 0xA0E6 + weapon) == 0:         # $A0F0 LDA $A0E6,X
+            bad.append(f"$44 = {weapon}: the sfx id $A0E6[{weapon}] is 0, but "
+                       f"$A266 requests it on EVERY shot spawn")
+
+    fly, crawl = EXPECT_MISSILE_FLY, EXPECT_MISSILE_CRAWL_LISTING
+    got_fly = {"dy": at("missileStep", 0xA1A4), "dxHi": at("missileStep", 0xA1A6),
+               "dxLo": at("missileStep", 0xA1A8)}
+    got_crawl = {"dy": at("missileStep", 0xA1A5), "dxHi": at("missileStep", 0xA1A7),
+                 "dxLo": at("missileStep", 0xA1A9)}
+    if got_fly != fly:
+        bad.append(f"the missile FLY row reads {got_fly}; the cartridge was "
+                   f"measured stepping {fly} per frame")
+    if got_crawl != crawl:
+        bad.append(f"the missile CRAWL row reads {got_crawl}, the listing says "
+                   f"{crawl} (LISTING ONLY -- 0 of 916 probes took this arm)")
+
+    e = EXPECT_SHOT_BOX
+    for sub in range(3):
+        got = (at("shotBoxes", 0xBFCE + sub), at("shotBoxes", 0xBFD2 + sub),
+               at("shotBoxes", 0xBFD6 + sub))
+        want = (e["xoff"][sub], e["width"][sub], e["yoff"][sub])
+        if got != want:
+            bad.append(f"the shot box for subtype {sub} reads "
+                       f"{[hx(v) for v in got]}, the cartridge's is "
+                       f"{[f'${v:02X}' for v in want]}")
+    if not ((at("shotBoxes", 0xBFD3) or 0) > (at("shotBoxes", 0xBFD2) or 0)):
+        bad.append("$BFD3 (the LASER's width) is not wider than $BFD2 (an "
+                   "ordinary shot's) -- the whole of `a laser reaches further` "
+                   "is that one byte")
+
+    ks = blocks["killSfx"]
+    if ks["len"] != 0x22:                              # $BE99 CPX #$22 / BCS
+        bad.append(f"killSfx is {ks['len']} bytes; $BE99's CPX #$22 guards "
+                   f"exactly $22 of them")
+    if at("killSfx", 0xBE6E + 1) != 0:
+        bad.append("$BE6E[1] != 0: type 1 is the power-up capsule, and $BEA0's "
+                   "BEQ is what keeps its death SILENT")
+    if at("killSfx", 0xBE6E + 5) == 0:
+        bad.append("$BE6E[5] = 0: the fan (type 5) is what every kill in the "
+                   "corpus kills, and it is not silent")
+
+    rank = blocks["rankHits"]["bytes"]                 # $C0A1 CMP $BFC5,Y
+    if rank != sorted(rank):
+        bad.append(f"$BFC5 {rank} is not non-decreasing in the rank $17 "
+                   f"(LISTING ONLY -- $C099 fired 0 times in every run made here)")
+    return bad
+
+
 CHECKS = [
     ("rom", check_rom),
     ("files", check_files),
@@ -1006,6 +1136,7 @@ CHECKS = [
     ("enemies", check_enemies),
     ("flow", check_flow),
     ("collision", check_collision),
+    ("weapons", check_weapons),
 ]
 
 
@@ -1157,6 +1288,24 @@ def _shift_coll_block(st):
     b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
 
 
+def _weap_block(st, name):
+    return next(b for b in st.weap["blocks"] if b["name"] == name)
+
+
+def _shift_weap_params(st):
+    """Re-cite the $A0E0 parameter tables at $A0E1 and RE-READ them from there.
+
+    Consistent, so the byte-for-byte re-read and the offset re-derivation both
+    still pass.  What catches it is the cartridge: shifted, $44 = 0 hands slot A
+    type $07 and slot B $06, and the three autofire scenarios recorded $06/$06.
+    """
+    b = _weap_block(st, "params")
+    base = int(b["rom"].lstrip("$"), 16) + 1
+    b["rom"] = f"${base:04X}"
+    b["fileOffset"] = st.rom.off(base)
+    b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
+
+
 MUTATIONS = [
     ("rom-sha", "rom",
      "claim the manifest came off a different cartridge",
@@ -1268,6 +1417,23 @@ MUTATIONS = [
      "make $C0FA[4] $2F instead of $30 -- a fifth explosion frame the cartridge "
      "was measured NOT drawing at f534",
      lambda st: _coll_block(st, "explosion")["bytes"].__setitem__(4, 0x2F)),
+    # --- weapons (wave 6) ----------------------------------------------------
+    ("weap-shift", "weapons",
+     "re-cite the $A0E0 parameter tables at $A0E1 -- one byte along, "
+     "CONSISTENTLY, so only what the cartridge FIRED can tell",
+     _shift_weap_params),
+    ("weap-laser-width", "weapons",
+     "narrow the laser's box $BFD3 from $30 to $10: the one byte that makes a "
+     "laser reach further than a shot",
+     lambda st: _weap_block(st, "shotBoxes")["bytes"].__setitem__(5, 0x10)),
+    ("weap-missile-dy", "weapons",
+     "make the missile fall 4 px a frame instead of the 2 the cartridge was "
+     "measured falling",
+     lambda st: _weap_block(st, "missileStep")["bytes"].__setitem__(0, 0x04)),
+    ("weap-kill-sfx", "weapons",
+     "silence the fan's death sound $BE6E[5] -- the sound every kill in the "
+     "corpus requests",
+     lambda st: _weap_block(st, "killSfx")["bytes"].__setitem__(5, 0x00)),
     ("chr-truncated", "chr",
      "truncate the decoded tile cache by one tile",
      lambda st: st.blob.__setitem__("chr/tiles.u8", st.blob["chr/tiles.u8"][:-64])),

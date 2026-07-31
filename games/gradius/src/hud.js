@@ -50,13 +50,20 @@
 //
 // $18 (player), $20,X (lives), $07E0-$07EA (three BCD scores), $0100 (alive),
 // $41/$44/$45/$46 (missile/weapon/options/shield) and $42 (the meter cursor).
-// Every one of them is a CONSTANT across all 17 compared scenarios -- nothing
-// in this corpus scores, dies, or collects a capsule -- so they are seeded from
-// the cartridge's own RAM by porttrace.mjs and by src/main.js's bootState().
-// That is honest for today and it is a hole: see the note on `SEEDED INPUTS` in
-// src/state.js. Wave 6 makes $07E4-$07E6 a computed score ($845B) and wave 7
-// makes $42/$46 live; the moment either does, this file starts telling the
-// truth for a second reason.
+// TWO OF THEM HAVE STOPPED BEING CONSTANTS, and this paragraph used to claim
+// all six were (rule 6, the note goes with the code):
+//
+//   $20,X   MOVES since wave 5. $979D DECs it at every death and $84F0 INCs it
+//           at every extra life; seven scenarios take it 3 -> 2 in-window.
+//   $07E4+  MOVES since wave 6. src/score.js adds $0010 per kill, so the digits
+//           st_892C draws below are a value the PORT computed: `autofire-laser`
+//           ends its window at $0164 after 18 kills and `autofire-normal` at
+//           $0110 after 11, and both are compared byte for byte in $0700-$074F.
+//
+// $42 and $46 are still seeded (wave 7 is what moves them), and every one of
+// the six still takes its INITIAL value from the cartridge's own RAM, through
+// porttrace.mjs and src/main.js's bootState(). See `SEEDED INPUTS` in
+// src/state.js.
 
 import { u8 } from './state.js';
 import { QUEUE_GATE_BYTES, queueByte } from './vram.js';

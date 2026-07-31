@@ -132,6 +132,12 @@ export function nmi(state, buttons, res, lag = false) {
   // death scenarios would each report the wrong band for 27 frames on two TIER 1
   // fields. Pinned as a knownFail by wave 4's test pass; retired here.
   state.bandB.ran = false;
+  // ...and so are the frame's sound requests. `$EC1E` is called from six places
+  // this port reaches (both shot spawns, $BE93's kill, $C1D6's death, $84F2's
+  // extra life, and wave 7's power-ups); the driver that consumes them is wave
+  // 8, so the port records the LIST and clears it here rather than pretending
+  // the calls did not happen. See src/state.js sfx.
+  state.sfx.length = 0;
 
   // $8085: LDY #$02 / $8087: STY $4014.
   // Shadow OAM $0200 -> the PPU. This copies the display list built at $80A7 of
@@ -371,7 +377,7 @@ function mode5Body(state, res) {
   // for the one-frame-old positions the display list at $80A7 already used.
   spawnEngine(state, res);                        // $9A64 JSR $A2C0
   enemyBullets(state, res);                       // $9A67 JSR $BBB7
-  updatePlayer(state);                            // $9A6A JSR $9FFC
+  updatePlayer(state, res);                       // $9A6A JSR $9FFC
   updateEnemies(state, res);                      // $9A6D JSR $ADAB
 
   // $9A70: JSR $BFE2 -- and this is the whole collision subsystem, not just the

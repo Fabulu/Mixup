@@ -1,13 +1,19 @@
 // The Vic Viper. ROM: `sub_9FFC` ($9FFC-$A234), called once per game frame
 // from $9A6A inside the mode-5 stage handler.
 //
-// SCOPE OF THIS FILE, stated up front: $9FFC does six things -- speed, X, Y,
-// the position ring and the Options, the tilt latch, and firing plus the
-// missile/shot movement loops. This port implements the FIRST FIVE, i.e.
-// $A006-$A0DB, which is exactly what NOTES-player.md sections 3-8 proved with
-// a free-running model. Firing ($A0E9-$A234) is NOT here: the shot slot types
-// $0123/$0126/$0129 are opaque and were never reversed. `updatePlayer` returns
-// after the Option animation and says so; nothing pretends the rest ran.
+// SCOPE OF THIS FILE: $9FFC does six things -- speed, X, Y, the position ring
+// and the Options, the tilt latch, and firing plus the missile/shot movement
+// loops. This file is the FIRST FIVE, i.e. $A006-$A0DB, which is exactly what
+// NOTES-player.md sections 3-8 proved with a free-running model.
+//
+// THE SIXTH IS src/weapons.js -- WAVE 6, and this header used to say "firing
+// ($A0E9-$A234) is NOT here: the shot slot types $0123/$0126/$0129 are opaque
+// and were never reversed" (rule 6: the note goes with the code). They are the
+// three parameter tables at $A0E0/$A0E3/$A0E6 indexed by $44. There is no call
+// between the two halves: $A0CB's `BMI $A0E9` is the exit of the Option
+// animation loop below and the entry of the firing block, and $9FFC's own dead
+// gate `JMP $A16F` lands in the MIDDLE of weapons.js -- past firing, into the
+// two movement loops, which is why a shot keeps flying while the ship explodes.
 //
 // Everything below was measured on the running cartridge and then checked
 // against the PRG bytes, and the model this file is a transcription of was
@@ -16,6 +22,7 @@
 // (NOTES-player.md 11).
 
 import { u8, RING_LEN } from './state.js';
+import { weaponUpdate } from './weapons.js';
 
 // --- clamps, straight out of the compare instructions --------------------
 // $A028: C9 F0   X max  240   <-- PROBE.md's "[16, 220]" is WRONG. 220 was the
@@ -105,7 +112,7 @@ export function speedStep(speedLevel) {
  *
  * @returns {boolean} true if the movement half ran (i.e. the player is alive)
  */
-export function updatePlayer(state) {
+export function updatePlayer(state, res) {
   const o = state.obj;
   // $A01D: LDX $18 / $A01F: B5 07 -- the held byte is $0007 + $18, so player 2
   // reads $0008. $18 was 0 on every frame ever measured here and two-player is
@@ -120,7 +127,12 @@ export function updatePlayer(state) {
   // while the ship is exploding. PROVED BY INTERVENTION: forcing $0100 = 3
   // over 60 frames of an otherwise identical run produced ZERO writes to
   // $0360 from either of its two writers, and zero from $A095 to the ring.
-  if (o.status[0] >= 2) return false;        // ($A16F onward is not ported)
+  // Wave 6 gave the JMP its destination: the two loops run, the firing block
+  // does not.
+  if (o.status[0] >= 2) {
+    weaponUpdate(state, res, false);         // $A003 JMP $A16F
+    return false;
+  }
 
   const step = speedStep(state.zp.speed);    // $A006-$A01A  -> $99:$98
   state.zp.step = step;
@@ -250,7 +262,8 @@ export function updatePlayer(state) {
     o.anim[s] = (((o.timer[s] >> 3) & 1) + 4);    // $A0D0-$A0DB
   }
 
-  // $A0E9 onward -- the weapon table load, firing, and the missile/shot
-  // movement loops -- is deliberately not ported. See the header.
+  // $A0CB BMI $A0E9 -- the Option animation loop above exits INTO the firing
+  // block. src/weapons.js, and it is a fall-through, not a call.
+  weaponUpdate(state, res, true);            // $A0E9 -> $A16F -> $A1E6 -> $A234
   return true;
 }

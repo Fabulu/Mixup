@@ -40,6 +40,11 @@ Outputs (ALL ROM-DERIVED -- `assets/` is gitignored, none of it is committable)
     assets/terrain/stages.json  CACHE: the seven stages expanded from the tables
     assets/hud/packets.json     CACHE: the 39 canned VRAM packets at $864E
     assets/enemies/tables.json  CACHE: the four ROM byte ranges $A2C0/$ADAB read
+    assets/flow/tables.json     CACHE: the two ranges the $96A5 ladder reads
+    assets/collision/tables.json CACHE: the boxes and the explosion walk ($C0C7)
+    assets/weapons/tables.json  CACHE: the five ranges the firing block, the shot
+                                sweep and the kill chain read ($A0E0/$A1A4/$BE6E/
+                                $BFCE/$BFC5)
 
 Usage:
     python games/gradius/tools/export_assets.py
@@ -717,6 +722,92 @@ def collision_tables(rom: Rom) -> dict:
     }
 
 
+# ==========================================================================
+# WEAPONS.  The five byte ranges the firing block, the shot sweep and the kill
+# chain read (wave 6).  All five are indexed by a RAM byte, which is why they
+# are exported as BYTES at their CPU addresses rather than as decoded tables:
+# a wrong index has to be a loud throw, not a plausible-looking value.
+#
+#   $A0E0-$A0E8  three parallel 3-entry tables indexed by the weapon $44
+#                ($A0EB LDA $A0E0,X -> slot-A type, $A0F0 LDA $A0E6,X -> the
+#                sfx id, $A0F5 LDA $A0E3,X -> slot-B type).  MEASURED on the
+#                cartridge by forcing $44 (00-recon-weapons.md 0): $44 = 0 gives
+#                type $06 sub 0 in both slots, 1 gives $07 sub 1, and 2 gives
+#                $06 in slot A and $24 in slot B on the SAME frame.
+#   $A1A4-$A1A9  THREE 2-entry tables, not one 6-entry one ($A1AF LDA $A1A4,Y
+#                = dy, $A1BD LDA $A1A8,Y = dx low, $A1CA ADC $A1A6,Y = dx high),
+#                Y = 0 fly / 1 crawl.  fly = y += 2, x += 0.5; crawl = y += 0,
+#                x += 2.  MEASURED: 916 of 916 missile frames took the fly row.
+#   $BE6E-$BE8F  the kill sound by enemy type ($BE9D LDA $BE6E,X, X = type AND
+#                $7F, guarded by $BE99 CPX #$22).  Wave 8 plays it; wave 6
+#                records the request.
+#   $BFCE-$BFD9  the SHOT's own hit box, three 4-entry tables indexed by the
+#                shot's SUBTYPE $0163,X ($BFF4 ADC $BFCE,Y = the X offset of the
+#                hit point, $BFFD LDA $BFD2,Y = the WIDTH, $C006 ADC $BFD6,Y =
+#                the Y offset).  The laser (subtype 1) is $30 wide where the
+#                other two are $10 -- the one table entry that makes a laser
+#                different from a shot before $C0AE's "the laser survives".
+#   $BFC5-$BFCD  the type-$9A hit threshold by RANK $17 ($C0A1 CMP $BFC5,Y).
+#                UNEXERCISED: $C099 fired 0 times in every measured run, so this
+#                is exported to be indexed, not because a run has needed it.
+WEAPON_BLOCKS = [
+    ("params", 0xA0E0, 0xA0E9,
+     "$A0EB LDA $A0E0,X / $A0F5 LDA $A0E3,X / $A0F0 LDA $A0E6,X, X = $44",
+     "slot-A types, slot-B types, sfx ids -- three 3-entry tables"),
+    ("missileStep", 0xA1A4, 0xA1AA,
+     "$A1AF LDA $A1A4,Y / $A1CA ADC $A1A6,Y / $A1BD LDA $A1A8,Y, Y = 0 fly 1 crawl",
+     "dy, dx high, dx low -- three 2-entry tables"),
+    ("killSfx", 0xBE6E, 0xBE90,
+     "$BE9D LDA $BE6E,X, X = $030C,Y AND $7F (guarded by CPX #$22)",
+     "the sound $BE93 requests for the enemy it is killing; 0 = silent"),
+    ("shotBoxes", 0xBFCE, 0xBFDA,
+     "$BFF4 ADC $BFCE,Y / $BFFD LDA $BFD2,Y / $C006 ADC $BFD6,Y, Y = $0163,X",
+     "the shot's hit-point X offset, its WIDTH, its Y offset, by subtype"),
+    ("rankHits", 0xBFC5, 0xBFCE,
+     "$C0A1 CMP $BFC5,Y, Y = $17 (the power-up rank)",
+     "hits a type-$9A enemy takes before it dies, by rank"),
+]
+
+
+def weapon_tables(rom: Rom) -> dict:
+    """The wave-6 tables, with both ends anchored on real opcodes."""
+    # $A0E9 is `LDX $44`, the first instruction of the firing block, so the
+    # parameter tables end exactly where the code begins.
+    if rom.slice(0xA0E9, 2) != bytes((0xA6, 0x44)):
+        raise SystemExit(f"ABORT: $A0E9 should be `LDX $44` (the firing block) but "
+                         f"reads {rom.slice(0xA0E9, 2).hex(' ')} -- the $A0E0 "
+                         f"parameter tables do not end where this claims")
+    # $A1AA is `LDA #$0A`, the fly arm's metasprite id, immediately after the
+    # three step tables. $A1A4 is DATA sitting between two branches ($A1A2
+    # BNE $A1AC jumps over it), which is why it disassembles as garbage.
+    if rom.slice(0xA1AA, 2) != bytes((0xA9, 0x0A)):
+        raise SystemExit(f"ABORT: $A1AA should be `LDA #$0A` but reads "
+                         f"{rom.slice(0xA1AA, 2).hex(' ')}")
+    # $BFDA starts the ENEMY box tables collision/tables.json exports; the shot
+    # boxes must stop there or the two caches overlap and disagree.
+    if rom.slice(0xBFDA, 4) != bytes((0x10, 0x20, 0x30, 0x10)):
+        raise SystemExit(f"ABORT: $BFDA should be the enemy widths 10 20 30 10 but "
+                         f"reads {rom.slice(0xBFDA, 4).hex(' ')}")
+    # The laser is the only subtype whose width differs, and the whole of
+    # "a laser is wider" lives in that one byte.
+    if rom.slice(0xBFD3, 1)[0] != 0x30:
+        raise SystemExit(f"ABORT: $BFD3 (the laser's width) is "
+                         f"${rom.slice(0xBFD3, 1)[0]:02X}, not $30")
+    blocks = []
+    for name, a, end, read_by, note in WEAPON_BLOCKS:
+        blocks.append({"name": name, "rom": f"${a:04X}", "end": f"${end:04X}",
+                       "fileOffset": rom.off(a), "len": end - a,
+                       "readBy": read_by, "note": note,
+                       "bytes": list(rom.slice(a, end - a))})
+    return {
+        "note": "CACHE. Rebuild with tools/export_assets.py; the authority is prg.bin.",
+        "why": "src/weapons.js, src/collision.js and src/enemies.js read these at "
+               "their CPU addresses; a read outside them is a loud throw rather "
+               "than a plausible byte.",
+        "blocks": blocks,
+    }
+
+
 def expand_stage(rom: Rom, stage: int) -> dict:
     """One stage's terrain, expanded from the five tables.  A CACHE.
 
@@ -984,6 +1075,12 @@ def main() -> int:
           json.dumps(collision, separators=(",", ":")).encode("utf-8"),
           "cache", "prg.bin, the ranges $BFDA-$BFE1 / $C0FA-$C100", files)
 
+    weapons = weapon_tables(rom)
+    write(out, "weapons/tables.json",
+          json.dumps(weapons, separators=(",", ":")).encode("utf-8"),
+          "cache", "prg.bin, the ranges $A0E0-$A0E8 / $A1A4-$A1A9 / $BE6E-$BE8F / "
+                   "$BFCE-$BFD9 / $BFC5-$BFCD", files)
+
     manifest = build_manifest(rom, files)
     (out / "manifest.json").write_text(
         json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
@@ -1003,7 +1100,9 @@ def main() -> int:
           f"flow/tables.json {sum(b['len'] for b in flow['blocks'])} bytes "
           f"in {len(flow['blocks'])} ranges, "
           f"collision/tables.json {sum(b['len'] for b in collision['blocks'])} bytes "
-          f"in {len(collision['blocks'])} ranges")
+          f"in {len(collision['blocks'])} ranges, "
+          f"weapons/tables.json {sum(b['len'] for b in weapons['blocks'])} bytes "
+          f"in {len(weapons['blocks'])} ranges")
     print(f"  manifest: {len(manifest['tables'])} tables, "
           f"{len(manifest['constants'])} instruction-anchored constants, "
           f"{len(manifest['palettes'])} palette blobs")
