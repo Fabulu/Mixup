@@ -27,10 +27,14 @@ const only = onlyIdx === -1 ? null : args[onlyIdx + 1];
 const SITE = 'https://gbtman.pages.dev';
 const PROJECT = 'gbtman';
 
-function run(label, cmd, cmdArgs) {
+// `shell` is not decoration on Windows: npx is a .cmd shim, and execFileSync
+// without a shell cannot spawn it -- it fails ENOENT before wrangler is ever
+// reached. Node's own tools (process.execPath) are real executables and must
+// NOT get a shell, because then their arguments go through cmd.exe quoting.
+function run(label, cmd, cmdArgs, opts = {}) {
   process.stdout.write(`\n=== ${label}\n`);
   try {
-    const out = execFileSync(cmd, cmdArgs, { encoding: 'utf8', maxBuffer: 1 << 26 });
+    const out = execFileSync(cmd, cmdArgs, { encoding: 'utf8', maxBuffer: 1 << 26, ...opts });
     process.stdout.write(out.split('\n').slice(-14).join('\n') + '\n');
     return out;
   } catch (e) {
@@ -84,7 +88,7 @@ if (dry) { console.log('\n--dry: built and gated, not deployed.'); process.exit(
 
 // ---- 3. deploy ------------------------------------------------------------
 run('deploy', 'npx', ['wrangler', 'pages', 'deploy', 'dist',
-  `--project-name=${PROJECT}`, '--commit-dirty=true']);
+  `--project-name=${PROJECT}`, '--commit-dirty=true'], { shell: true });
 
 // ---- 4. CONFIRM IT LANDED -------------------------------------------------
 // Not optional, and not one poll. The edge can still be serving the previous
