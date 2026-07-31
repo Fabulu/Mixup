@@ -6,7 +6,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { updatePlayer, ANIM } from '../src/player.js';
+import { updatePlayer } from '../src/player.js';
+import { ANIM } from '../src/player/anim.js';
 import { BTN } from '../src/input.js';
 import { i8, u8 } from '../src/state.js';
 import { effects, COUNTDOWN_START } from '../src/effects.js';
