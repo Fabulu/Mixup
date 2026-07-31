@@ -1,6 +1,12 @@
 # Wave 6 test hardening — closing the breaks that passed in the kill chain
-status: IN PROGRESS
+status: DONE
 wave: 6   role: test   started: 2026-07-29
+
+Two commits: the tests, then the corpus fix (`missile-wall` /
+`missile-wall-miss`). The "CORPUS FIX, ready to record" section at the bottom of
+the first commit's version of this file said `status: BLOCKED`; it is recorded
+now and the section is rewritten with what actually happened, including the one
+thing the pair still cannot see.
 
 ## The task, as I understood it
 
@@ -257,10 +263,73 @@ FIELD-level and pre-existing (porttrace NOT_PRODUCED); stage skips are 0.
   written; a test would have to invent a state the game cannot be in
   (docs/knowledge/02 trap 4 shape 2).
 
+### THE CORPUS FIX — recorded, and it works
+
+Two scenarios added to `tools/oracle/scenarios.json` and recorded from the
+cartridge with `scen.py --only missile-wall missile-wall-miss`. **No existing
+scenario was changed and no address was added to `watch`** (521 before, 521
+after; structural diff of the file: +12 lines, all additions).
+
+```
+name  missile-wall        tail 120:DA,180:A   expectDying 82
+poke  0041=1,05EE=64@+210,05F6=16@+210
+name  missile-wall-miss   tail 120:DA,180:A   expectDying 82
+poke  0041=1,05F6=16@+210
+```
+
+The geometry (derived above, then CONFIRMED by the recording): the ship parks on
+the floor clamp at (80, `$C0`), `$A26B` re-fires a born-dead missile at
+(`$50`, `$C6`) every frame, `$C3AF` probes it at `Y + 4` = `$CA` and `$A18B`
+probes again at (`$58`, `$C2`). `(Y + $14) >> 3` puts `$CA` in row 27 and both
+`$C2` and the ship's own `$C0` in row 26, and `tileRow >> 2` puts rows 24-27 in
+ONE byte — so the missile's first probe and the SHIP's probe read the same byte
+in different 2-bit fields. `$05EE = $40` is field 3 set, field 2 clear: the
+missile hits, the ship does not die. `$05F6 = $10` is field 2 eight columns on:
+the second probe hits too, so `$A199`'s BNE takes the WALL arm and not the
+`$A19E` crawl, which is a loud throw.
+
+**What the cartridge did** (`tools/oracle/out/scen/missile-wall.json` vs
+`missile-wall-miss.json`, decoded by me):
+
+```
+frames where the two differ: 611..617, and the only game field is
+  w_0329:  200 -> 198       ($A1D6 frees the missile BEFORE $A1AF's fly step)
+```
+
+Both scenarios then die by terrain at f618 — the camera carries the ship's own
+column onto `$05F6` — identically, so the pair stays exact. 82 dying frames each,
+declared as `expectDying`.
+
+**The port matches the cartridge on both, 598 of 598 frames, all TIER 1 fields
+exact, first run, with no change to `src/`.** So `$A199`'s wall arm and both its
+offsets are now corpus-verified rather than merely unit-tested.
+
+**And the pair goes RED for six of QA's invisible breaks** (same driver method,
+`<scratchpad>/w6corpus.py`, `compare.mjs --only missile-wall,missile-wall-miss`):
+
+| mutation | old corpus (28 scen.) | new pair |
+|---|---|---|
+| M3 second probe offsets swapped | green | **RED** — the port throws `$A19E` |
+| M4 second probe drops the `-8` in Y | green | **RED** — throws `$A19E` |
+| M5 second probe drops the `+8` in X | green | **RED** — throws `$A19E` |
+| M6 wall arm does not free the missile | green | **RED**, 5 divergent fields |
+| M25 `freeMissile` drops `$0163,X` | green | **RED**, 16 divergent fields |
+| M26 `freeMissile` drops `$0123,X` | green | **RED**, 16 divergent fields |
+| M7 missile probes `Y + 3` | green | **still green** |
+| M8 missile probes `Y + 5` | green | **still green** |
+| control: no mutation | 0 failures | 0 failures |
+
+**M7/M8 are structurally invisible to this pair and no poke can fix it.** With
+the ship on the floor clamp the missile is always born at `$C6`, so the probe is
+at `$C9`/`$CA`/`$CB` — and `(Y + $14) >> 3` maps 196..203 to row **27** for every
+one of them. To separate `+3` from `+4` the probe's Y must cross a row boundary,
+i.e. the ship must sit at `Yp ≡ 2 (mod 8)`, which the floor clamp (`$C0`, 0 mod
+8) forbids. A future scenario would have to park the ship one or two pixels above
+the clamp with the missile still born dead. Until then the only check on that
+offset is the unit test `$C3BB: ... pinned from BOTH sides` (M7/M8 red there).
+
 ## What I could not do, and why
 
-* **THE CORPUS FIX FOR THE TERRAIN ARMS IS SPECIFIED BUT NOT RECORDED.** See the
-  next section — this is the one thing I would hand to the next agent first.
 * **`scen.py` was NOT re-run for the 28 existing scenarios.** I compared against
   the artifacts as the implementer left them. A regression here looks like
   `compare.mjs` green against stale artifacts.
@@ -275,7 +344,28 @@ FIELD-level and pre-existing (porttrace NOT_PRODUCED); stage skips are 0.
   shot-vs-bullet and the stage-5 arms are still loud throws**, and I did not
   reach any of them from a button script.
 
-## If someone picks this up cold — THE CORPUS FIX, ready to record
+## If someone picks this up cold
+
+The corpus fix is DONE (see above). What is left, in the order I would do it:
+
+1. **Fix `$2A`** in `src/main.js` (both sites) and delete the `knownFail`
+   wrapper — it will tell you loudly when you have.
+2. **`0017` into `watch`**, as wave 6's implementer, reviewer and QA all say.
+   All 28 seeds read 0; nothing can contradict a mid-window change today.
+3. **A scenario that parks the ship at `Yp ≡ 2 (mod 8)`** with `$41 = 1`, so the
+   missile's `Y + 4` crosses a tile-row boundary and the corpus can finally see
+   `$C3BB`'s carry. See the table above for why the floor clamp cannot.
+4. **A pixel/OAM-content layer.** `rendergate.py` and `rendercheck.py` are in the
+   tree and in nothing's path. Wave 6 is the first wave to put new sprites on
+   screen and it has no check on any of them beyond three counts and OAM entry 0.
+
+---
+
+## APPENDIX — the corpus fix as it was SPECIFIED before it was recorded
+
+Kept because the derivation is the reusable part, and because the numbers below
+were written down BEFORE the cartridge was asked, which is what makes the
+agreement worth anything.
 
 `terrain-death` proves the mechanism: a poked collision cell reaches both the
 cartridge and the port at the same instant, and `terrain-death-miss` is its
@@ -309,8 +399,22 @@ not from this note**, and record a `-miss` control one field lower exactly as
 `terrain-death-miss` does. Expected first divergence for a broken port:
 `w_0129`/`w_0169` (the missile slot) on the first frame the missile is at `$C6`.
 
-I did not record it because it needs `scen.py` + Mesen against the ROM and a
-matching negative control, and because getting the poked cell wrong silently
-produces a scenario that tests nothing — the failure mode `terrain-death-miss`
-exists to prevent. `status: BLOCKED` on that item beats a scenario nobody
-validated.
+HOW IT DIFFERED FROM WHAT WAS RECORDED, because the differences are the useful
+part:
+
+* the prediction "expected first divergence `w_0129`/`w_0169`" was **WRONG**, and
+  wrong for an interesting reason: those two are already 0 at the sample point on
+  every frame of this window, because the missile is born dead and freed by the
+  `$C8` floor test anyway. The field that actually moves is **`w_0329`**, the
+  missile's Y — `$A1D6` frees it BEFORE `$A1AF`'s step, so it reads `$C6` instead
+  of `$C8`. A scenario written to the prediction would have been recorded, would
+  have passed, and would have tested nothing observable.
+* the poke lasts **7 frames** (611-617), not one: the value is written once and
+  the terrain streamer does not rewrite that byte until f618.
+* both scenarios then **die by terrain at f618**, because the camera carries the
+  ship's own column onto the second poked cell. Not predicted, harmless (it is
+  identical in both, so the pair stays exact) and declared as `expectDying: 82`.
+* the `-miss` control is NOT "one block row lower" as `terrain-death-miss` is;
+  the row below is the field the SHIP reads, so that control would have killed
+  the ship instead of missing. It is "the second cell only", which isolates the
+  first probe.
