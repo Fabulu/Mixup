@@ -16,6 +16,7 @@ Read these before starting a new port. They are ordered by how much they will sa
 | [`05-process.md`](05-process.md) | repo, gate and multi-agent working rules. Transfers wholesale. |
 | [`06-lag-and-slowdown.md`](06-lag-and-slowdown.md) | **read before designing any harness.** The THREE things called "lag", why one of them is a gameplay mechanic, and why one of them cannot be retrofitted. |
 | [`07-clocks-and-framerates.md`](07-clocks-and-framerates.md) | no console runs at 60 Hz. Exact rates, and why a rounded one is larger than your slowdown signal. |
+| [`08-rank-and-dynamic-difficulty.md`](08-rank-and-dynamic-difficulty.md) | when the game watches the player back. Why a feedback loop breaks subsystem separation and first-divergence analysis — and the one place measurement is the WRONG tool. |
 
 ## What transfers to Gradius, and what does not
 

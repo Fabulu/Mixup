@@ -349,6 +349,30 @@ B — and carries the slowdown scaffolding from commit one (§5):
   numbers, including move-past-then-clamp order and per-button speed modes;
   options following.
 
+**REPLAY DETERMINISM IS AN ARCHITECTURAL REQUIREMENT OF THIS WAVE.** Added by
+the owner after this plan was written: the finished port must replay a recorded
+game with 100% accuracy. **Read `games/ddpdoj/NOTES-replay.md` before writing the
+skeleton.** Nothing has to be *built* here — a replay is just (initial state +
+one input word per logic frame), which is what the oracle scenarios already are
+— but four things must not be destroyed, and retrofitting any of them means
+rewriting the driver:
+
+1. No host clock, `Date.now()`, `performance.now()` or host frame rate reaches
+   game logic. The host decides WHEN a frame is shown, never WHAT is in it.
+2. No `Math.random()`. Port the board's RNG with its state in the state vector.
+3. Input is sampled once per **logic** frame at the board's own sample point
+   (lead ZERO, measured). Replays are indexed by logic frames, not video frames.
+4. **The work budget is COUNTED, NOT TIMED.** This is the one that will actually
+   bite. Deriving slowdown from how long the host took makes every replay
+   machine-dependent and the simulation irreproducible against itself. The
+   budget must be a deterministic function of the game's own state, with the
+   calibration constant fixed in the build and never sampled from the host.
+   `NOTES-slowdown-oracle.md` already argues for that shape for a different
+   reason; two independent reasons for one design is usually a sign it is right.
+
+Consequence to accept: if the port ever slows because the HOST is struggling,
+that shows up as dropped presentation, never as a change to the simulation.
+
 **Done when:** a `fly-around` scenario (≥2,000 logic frames from the seeded
 VERSION-B boot, scripted stick in all four directions + wall pins + each speed
 mode, both ship types if wave 2 measured both) compares **0 divergent frames**
@@ -356,6 +380,10 @@ between port and oracle on: player position words, option positions, input
 mirrors, `$80390A`, videoFrame/logicFrame, and the player's sprite-list
 entries. Red-validate by breaking the clamp order and watching the scenario
 fail. Misses (wall pins) are as load-bearing as moves.
+
+**AND** the same scenario, run twice from the same inputs in the same process
+and in two separate processes, produces byte-identical state digests. That is
+the replay property, tested at the point it is cheapest to keep.
 
 ### Wave 5 — enemies and the three weapons  (role: impl; hard-gated on wave 2 items 1/2/4)
 

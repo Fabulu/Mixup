@@ -1,5 +1,47 @@
 # Lag and slowdown
 
+## The rule that outranks everything else in this file
+
+**An emulator can be state-exact and timing-inaccurate at the same time, and
+those are separate claims that need separate evidence.**
+
+An emulator reproducing every value the game computes tells you nothing about
+whether it reproduces *when* the work finished. If the thing you are measuring
+IS the timing, the emulator is not a reference — it is a second opinion.
+
+Measured twice in this project, on two machines:
+
+- **NES.** Mesen and MAME agreed byte-for-byte on every value Gradius computed
+  across 388 NMIs, then **disagreed about whether a lag frame happened.** Skip
+  the disputed frame and they realign exactly for 110 more samples. The game's
+  computation never diverged; only the timing did.
+- **PGM / DoDonPachi DaiOuJou.** MAME's lag behaviour for this board is known to
+  be inaccurate. So MAME is authoritative for what DaiOuJou computes and **not**
+  for how much it slows down — on the one game where slowdown is a gameplay
+  mechanic rather than an artifact.
+
+**What to do about it, in order:**
+
+1. **Say which kind of claim you are making.** "State-exact against MAME" and
+   "timing-exact against the board" are different sentences. Label every
+   slowdown figure with the emulator that produced it and whether it is
+   calibrated — e.g. *"MAME-timed, uncalibrated"*. An unlabelled number becomes
+   a fact by repetition; that is how "about 54 fps" nearly survived.
+2. **Measure the GAME's work, not the emulator's clock.** A counter of the
+   game's own idle spins, or of objects processed, is a fact about the game's
+   frame budget and survives an inaccurate emulator. A wall-clock or
+   frame-duplicate measure does not. (The duplicate-framebuffer test was
+   measured useless anyway: 518 duplicates vs 4 real overrun events, and it
+   missed 2 of the 4.)
+3. **Put the calibration in ONE constant.** Model the work budget explicitly so
+   the pace has a single knob, tunable later against a better reference without
+   rewriting the object driver. Mechanism (C) below cannot be retrofitted;
+   build the budget in whether or not you can calibrate it yet.
+4. **Cross-check with an independent implementation** wherever one exists. Two
+   emulators disagreeing is not noise — it is the measurement. It is how the
+   NES lag frame above was found at all.
+
+
 **Read this before designing any harness for a game where timing matters.**
 
 On Batman we declared lag out of scope and tagged it. That was correct *there* and it is
