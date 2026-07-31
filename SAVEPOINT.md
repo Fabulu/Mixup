@@ -2,14 +2,14 @@
 
 > ## STATE: COMPLETE AND GREEN
 >
-> `npm run test-all` is **27/27 stages green, zero skipped** — 728 unit tests,
+> `npm run test-all` is **27/27 stages green, zero skipped** — 739 unit tests,
 > 50/50 oracle scenarios bit-exact over 14,519 frames, 96.023% mean pixel match
 > across the 73-frame visual suite. Tree clean, everything pushed, live at
 > gbtman.pages.dev.
 >
 > The tree is now `games/batman/{src,tests,assets}` under a `games/index.json`
 > registry, and the launcher picks a game before it loads one. 60 source files,
-> 18,069 lines, 32 test files. See "The layout" below.
+> 18,069 lines, 33 test files. See "The layout" below.
 >
 > There is no in-flight work and nothing failing on purpose. Start from here.
 >
@@ -109,6 +109,11 @@ demo build at gbtman.pages.dev — it ships extracted assets, so it is
 deliberately NOT linked from the public README. The public site, when it
 exists, will take an uploaded ROM and extract in the browser instead.
 
+What that build ships is now *derived* data only — decoded level tables, a
+built VRAM image, a transcribed sound script — and no longer any verbatim slice
+of the cartridge. The one that was left, the player's tile pool, is replaced at
+build time by original placeholder art; see "Deploy" below.
+
 Nothing ROM-derived is committed. `assets/`, `disasm/`, `rip/`, `dist/` and the
 ROM itself are gitignored and regenerated from your own cartridge — and as of
 now that is true of `src/` too: no ROM table, sprite list or script survives as
@@ -117,7 +122,7 @@ a literal anywhere in the port. Every one travels through
 file offsets so the exporter cannot verify itself.
 
 **STATE: feature complete.** All fourteen levels play, every boss included,
-title screen through to end credits. 27 gate stages green — 728 unit tests, 50
+title screen through to end credits. 27 gate stages green — 739 unit tests, 50
 frame-exact input scenarios, all 47 sound ids, a static typecheck, and two
 stages that compare PIXELS rather than memory. Nothing is captured: every screen is built from ROM
 data and diffed against the cartridge's own VRAM. The remaining gaps are
@@ -157,7 +162,7 @@ games/batman/
     player/               anim.js ($1B4A, a JP target) and death.js
                           (sub_00_29E7, driven by the main loop, not the chain).
     input.js              BTN lives here now, not in player.js.
-  tests/  32 files, 728 tests
+  tests/  33 files, 739 tests
   assets/                 untracked, regenerated from your own cartridge
 shared/  platform/gb/     named, deliberately EMPTY -- the second consumer does
                           not exist yet, and phase 2 is NES.
@@ -199,7 +204,7 @@ npm run test-all                        # 27 stages, the gate for everything
 npm run typecheck                       # tsc over games/batman/src/ (stage 2)
 ```
 
-**Current state: 50/50 oracle scenarios bit-exact, 728 unit tests, 27/27 stages
+**Current state: 50/50 oracle scenarios bit-exact, 739 unit tests, 27/27 stages
 green with zero skips.** The corpus covers levels 1, 3, 4, 5, 6, 8, 9, 11, 12
 and 14 over 14,519 frames.
 
@@ -232,6 +237,19 @@ python -m http.server 8000        # module imports need a real origin
 Deploy: `node tools/build-dist.mjs` then
 `npx wrangler@3 pages deploy dist --project-name=gbtman --branch=main`
 (wrangler@4 needs Node ≥22).
+
+`build-dist` reads every ROM in the repo root and refuses to publish any file
+that appears byte-for-byte inside one. **There is no allowlist.** There was one,
+holding `games/batman/assets/player.tiles.bin` — 6974 B of the player's tile
+pool, lifted verbatim out of bank 2, which every deploy since the first one
+served publicly. It is gone, and so is the mechanism. In its place
+`tools/make-placeholder-tiles.mjs` draws an ORIGINAL blocky-robot placeholder of
+the same 6974 bytes with the same tile indexing, and `build-dist` substitutes it
+**at the copy**: the local tree keeps the cartridge's real tiles, so the oracle
+and `pixeldiff.mjs` still measure against the real thing (73 frames / 66894
+wrong px / 96.023%, unchanged by the swap). The shipped file shares no run
+longer than 50 B with the ROM. `node tools/make-placeholder-tiles.mjs --png
+rip/placeholder/sheet.png` draws a contact sheet of all 31 poses.
 
 ---
 

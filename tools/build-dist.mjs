@@ -6,12 +6,18 @@
 // dist/ is gitignored -- it contains ROM-derived data and is regenerated from
 // your own cartridge with `python tools/export_assets.py` first.
 //
+// "ROM-derived" here means DERIVED: decoded tables, a built VRAM image, a
+// transcribed sound script. Nothing published is a verbatim slice of a
+// cartridge, the guard below measures that rather than trusting it, and there
+// is no allowlist -- see SUBSTITUTE and the note above the guard.
+//
 // Usage:  node tools/build-dist.mjs
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ROOT } from './oracle/_env.mjs';
+import { makePlaceholderPool } from './make-placeholder-tiles.mjs';
 
 const DIST = path.join(ROOT, 'dist');
 
@@ -47,19 +53,42 @@ const INCLUDE = ['index.html', 'games/index.json',
 // intermediate nobody remembers is exactly how this would come back.
 const NEVER_SHIP = new Set(['prg.bin', 'chr.bin', 'prg.asm']);
 
-// Files the guard below WILL find inside a ROM and that we ship anyway, each
-// with the reason written out. This list is deliberately awkward to add to.
+// THERE IS NO ALLOWLIST. There used to be one -- `SHIPPED_ANYWAY`, holding
+// exactly `player.tiles.bin`: 6974 B of the player's animation tile pool
+// lifted verbatim out of bank 2, which src/assets.js:82 fetches and without
+// which the port could not draw its player at all. So the guard found it,
+// named it, and was told to ship it anyway, on every deploy since the first.
 //
-// player.tiles.bin -- 6974 B, the player's animation tile pool from bank 2.
-//   src/assets.js:82 fetches it and the port cannot draw Batman without it, so
-//   there is no version of the site that works without shipping these bytes.
-//   It has been served publicly since the first deploy. Noted here so it is a
-//   decision on the record rather than an oversight nobody ever looked at.
+// It is gone, and so is the mechanism, deliberately: an allowlist is a hole
+// somebody can widen with one line and a plausible reason. What replaced it is
+// SUBSTITUTE below -- the shipped build gets ORIGINAL placeholder art of the
+// same length and the same tile indexing, and the guard checks it like
+// anything else. If a future file genuinely cannot be published, the answer is
+// to not publish it, or to draw a replacement, not to re-open this door.
 //
-// The Gradius chr/bank*.bin files are NOT here: the renderer fetches
+// The Gradius chr/bank*.bin files never needed an entry: the renderer fetches
 // chr/tiles.u8, a re-indexed one-byte-per-pixel sheet, and the raw banks are
 // just intermediates the exporter happened to leave behind.
-const SHIPPED_ANYWAY = new Set(['player.tiles.bin']);
+
+// Files REPLACED on the way into dist/. Key = repo-relative source path with
+// forward slashes; value = a function returning the bytes to publish instead.
+//
+// The local tree keeps the real cartridge tiles, and it must: regress.mjs,
+// pixeldiff.mjs and every oracle harness read games/batman/assets/ directly and
+// compare against the ROM frame by frame. Substituting here -- at the copy, not
+// in assets/ and not in src/ -- is what lets the published site be free of
+// cartridge graphics while the measurement the project runs on is untouched.
+// `node tools/oracle/pixeldiff.mjs` must still say 73 frames / 66894 wrong px /
+// 96.023% after this change; if it moves, the substitution has leaked into the
+// dev tree and that is the bug.
+const SUBSTITUTE = new Map([
+  ['games/batman/assets/player.tiles.bin', () => {
+    const mf = path.join(ROOT, 'games', 'batman', 'assets', 'manifest.json');
+    return makePlaceholderPool(JSON.parse(fs.readFileSync(mf, 'utf8')));
+  }],
+]);
+
+const substituted = [];
 
 function copy(src, dst) {
   const st = fs.statSync(src);
@@ -68,6 +97,22 @@ function copy(src, dst) {
     for (const name of fs.readdirSync(src)) copy(path.join(src, name), path.join(dst, name));
   } else {
     if (NEVER_SHIP.has(path.basename(src))) return;
+    const rel = path.relative(ROOT, src).split(path.sep).join('/');
+    const sub = SUBSTITUTE.get(rel);
+    if (sub) {
+      const bytes = sub();
+      // Same URL, same length, same indexing -- or the browser gets a pool the
+      // manifest's offsets do not fit, which draws garbage rather than failing.
+      const want = fs.statSync(src).size;
+      if (bytes.length !== want) {
+        console.error(`substitute for ${rel} is ${bytes.length} B, source is ${want} B`);
+        process.exit(1);
+      }
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.writeFileSync(dst, bytes);
+      substituted.push(`${rel}  (${bytes.length} B of original placeholder art)`);
+      return;
+    }
     // The Gradius exporter also leaves the four raw 8 KB CHR banks in assets/.
     // chr/tiles.u8 is what the renderer actually fetches; these are verbatim
     // cartridge graphics and the guard below rejects them.
@@ -126,7 +171,6 @@ for (const file of shipped) {
   // Under 1 KB a coincidental match means nothing -- a run of zeroes or a short
   // table can legitimately appear in both. The concern is bulk ROM content.
   if (data.length < 1024) continue;
-  if (SHIPPED_ANYWAY.has(path.basename(file))) continue;
   for (const rom of roms) {
     if (rom.data.includes(data)) {
       leaked.push(`${path.relative(DIST, file)}  (${data.length} B, verbatim inside ${rom.name})`);
@@ -139,14 +183,21 @@ if (leaked.length) {
   console.error('\nREFUSING TO BUILD: dist/ contains verbatim cartridge data.\n'
     + leaked.map((l) => '  ' + l).join('\n')
     + '\n\ndist/ is published publicly. A file that appears byte-for-byte inside a\n'
-    + 'ROM is the ROM, however it got there. Either the exporter is writing an\n'
-    + 'intermediate into assets/ (drop it, or add its basename to NEVER_SHIP),\n'
-    + 'or something that should be a translation is a copy.');
+    + 'ROM is the ROM, however it got there. There is no allowlist and there is\n'
+    + 'not going to be one. Three real answers:\n'
+    + '  - the exporter is writing an INTERMEDIATE into assets/ that the site\n'
+    + '    never fetches: drop it, or add its basename to NEVER_SHIP;\n'
+    + '  - something that should be a TRANSLATION is a copy: fix the exporter;\n'
+    + '  - the site genuinely needs bytes we cannot publish: draw an original\n'
+    + '    replacement of the same length and layout and add it to SUBSTITUTE,\n'
+    + '    the way tools/make-placeholder-tiles.mjs does for the player tiles.');
   fs.rmSync(DIST, { recursive: true, force: true });
   process.exit(1);
 }
+for (const s of substituted) console.log(`substituted: ${s}`);
 console.log(`rom-leak guard: ${shipped.length} files checked against `
-  + `${roms.length} ROM(s) [${roms.map((r) => r.name).join(', ') || 'none present'}] -- clean`);
+  + `${roms.length} ROM(s) [${roms.map((r) => r.name).join(', ') || 'none present'}] `
+  + `-- clean, no allowlist`);
 
 // Assets must REVALIDATE, not be treated as immutable.
 //

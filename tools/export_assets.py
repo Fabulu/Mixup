@@ -10,6 +10,15 @@ Outputs
     assets/levels/NN.vram.bin   8192 B VRAM image after the level's resource loads
     assets/player.tiles.bin     player animation tile pool (bank 2)
 
+player.tiles.bin is the one output that is a VERBATIM slice of the cartridge --
+`rom.data[pool_start:pool_end]`, 6974 B, no transformation at all.  That is
+fine locally (the oracle and pixeldiff compare against exactly these bytes) and
+NOT fine publicly: `tools/build-dist.mjs` refuses to publish it and substitutes
+original placeholder art from `tools/make-placeholder-tiles.mjs` instead.  If
+you ever change what this writes -- its length, or the offsets manifest.player
+.anims points at -- regenerate and eyeball the placeholder too, or the site
+ships a pool the manifest's offsets no longer fit.
+
 Usage:  python tools/export_assets.py
 """
 import base64

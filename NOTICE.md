@@ -16,6 +16,15 @@ this, and it is checked rather than assumed: `tools/verify_assets.py` and the
 `asset-integrity` gate stage both operate on files that only exist after *you*
 run the exporter against *your* cartridge.
 
+The same rule is enforced on anything we *publish*, not only on what we commit:
+`tools/build-dist.mjs` reads every ROM present and refuses to build a site
+containing a file that appears byte-for-byte inside one. It has no allowlist.
+The one file that used to be waved through — the player's 6974-byte animation
+tile pool, which the port cannot draw without — is now replaced at build time by
+original placeholder art of the same size and layout, drawn from scratch by
+`tools/make-placeholder-tiles.mjs`. A published build therefore carries derived
+tables, and no cartridge pixels.
+
 Everything derived is regenerated locally:
 
 ```sh

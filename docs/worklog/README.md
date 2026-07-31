@@ -57,7 +57,13 @@ reason beats a confident guess. Nobody is penalised for unresolved.
 
 1. **Nothing ROM-derived is ever committed.** `assets/`, `rip/`, `dist/`, and
    any ROM file. `tools/build-dist.mjs` has a guard that reads the ROMs and
-   refuses to publish anything appearing verbatim inside one — do not weaken it.
+   refuses to publish anything appearing verbatim inside one — do not weaken it,
+   and **do not re-introduce an allowlist**. It had exactly one entry
+   (`player.tiles.bin`) and that entry meant the site served cartridge graphics
+   for its whole life. The mechanism is gone. If the site needs bytes we cannot
+   publish, draw an original replacement of the same length and layout and add
+   it to `SUBSTITUTE` — `tools/make-placeholder-tiles.mjs` is the worked
+   example. The local tree keeps the real assets, so the oracle is unaffected.
 2. **Never `git add -A`.** Stage by name, then run
    `git diff --cached --name-only` and read it. Staging by name protects you
    from unstaged work; only looking protects you from what another agent

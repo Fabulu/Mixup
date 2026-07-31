@@ -72,6 +72,12 @@ if (only !== 'gradius') {
 // containing any file that appears verbatim inside one. It is the last thing
 // standing between an exporter intermediate and a public URL, so it runs on
 // every publish and is never skipped.
+//
+// It has NO allowlist. It used to have one, holding the player's 6974-byte tile
+// pool, which is why every build published before this one carried verbatim
+// cartridge graphics. The pool is now replaced at copy time by original
+// placeholder art (tools/make-placeholder-tiles.mjs); the local tree keeps the
+// real tiles so the oracle still measures against the cartridge.
 const built = run('build dist', process.execPath, ['tools/build-dist.mjs']);
 const buildId = (built.match(/build id\s+(\d{14})/) || [])[1]
   || execSync('node -e "const fs=require(\'fs\');const s=fs.readFileSync(\'dist/games/batman/src/buildid.js\',\'utf8\');process.stdout.write((s.match(/[0-9]{14}/)||[])[0]||\'\')"', { encoding: 'utf8' }).trim();

@@ -1,6 +1,12 @@
 // Debug: assemble one player animation from the extracted tiles and write it
 // as a PNG, so sprite-sheet problems can be told apart from placement bugs.
 //   node tools/dump-player-tiles.mjs [animId]
+//
+// This reads the LOCAL assets/player.tiles.bin, i.e. the cartridge's own tiles.
+// What the site publishes is not those bytes -- build-dist.mjs substitutes the
+// original placeholder art drawn by tools/make-placeholder-tiles.mjs, which has
+// its own contact sheet (`--png`). Use this tool when the question is about the
+// real sprite; use that one when the question is about what ships.
 
 import fs from 'node:fs';
 import path from 'node:path';
