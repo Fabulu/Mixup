@@ -21,7 +21,8 @@ import test from 'node:test';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { hudPacketTable, enemyTables, flowTables } from '../src/assets.js';
+import { hudPacketTable, enemyTables, flowTables,
+         collisionTables } from '../src/assets.js';
 
 export const GAME = dirname(dirname(fileURLToPath(import.meta.url)));
 export const ASSETS = join(GAME, 'assets');
@@ -100,6 +101,8 @@ export const loadEnemyTables = () =>
   enemyTables(JSON.parse(readFileSync(assetOrThrow('enemies/tables.json'), 'utf8')));
 export const loadFlowTables = () =>
   flowTables(JSON.parse(readFileSync(assetOrThrow('flow/tables.json'), 'utf8')));
+export const loadCollisionTables = () =>
+  collisionTables(JSON.parse(readFileSync(assetOrThrow('collision/tables.json'), 'utf8')));
 
 export function loadMetasprites() {
   const j = JSON.parse(readFileSync(assetOrThrow('metasprites.json'), 'utf8'));
@@ -195,6 +198,7 @@ export function headlessResources(stageIndex = 0) {
     hudPackets: loadHudPackets(),
     enemyTables: loadEnemyTables(),
     flowTables: loadFlowTables(),
+    collisionTables: loadCollisionTables(),
   };
 }
 

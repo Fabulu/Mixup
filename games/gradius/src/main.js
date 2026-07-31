@@ -67,6 +67,9 @@ export function bootState(manifest) {
   // every scenario in the corpus and identical in all 17 -- see the SEEDED
   // INPUTS note in src/state.js for what that does and does not prove.
   s.lives[0] = s.lives[1] = 3;     // $20/$21
+  s.zp0A = 1;                      // $0A -- player 1 in, player 2 out. Read by
+                                   // $97C7's respawn switch; MEASURED 1 in the
+                                   // seed of all 23 scenarios.
   s.zp48 = 0x2E;                   // $48
   s.score[0x00] = 0x00;            // $07E0  \
   s.score[0x01] = 0x50;            // $07E1   > TOP = 50000
@@ -99,6 +102,7 @@ export function introEntryState(manifest) {
   s.substate = 0;                  // $1B -- $8165 LDA #$00 / STA $1B
   s.ppu.chrSel = 0;                // $2D
   s.lives[0] = s.lives[1] = 3;     // $20/$21
+  s.zp0A = 1;                      // $0A -- see bootState()
   s.score[0x00] = 0x00;            // $07E0  \
   s.score[0x01] = 0x50;            // $07E1   > TOP = 50000, left by the attract
   s.score[0x02] = 0x00;            // $07E2  /

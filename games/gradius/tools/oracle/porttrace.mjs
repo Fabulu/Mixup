@@ -118,6 +118,7 @@ export function seedFromRam(state, ram) {
   state.ppu.scrollY = r(0x13);             // $13
   state.zp15 = r(0x15);                    // $15
   state.zp09 = r(0x09);                    // $09  the demo flag  ($9ADA gate)
+  state.zp0A = r(0x0A);                    // $0A  players still in ($97C7)
   state.zp16 = r(0x16);                    // $16                 ($9ADA gate)
   state.zp.player = r(0x18);               // $18
   state.zp19 = r(0x19);                    // $19  the stage index (wave 4)
@@ -155,8 +156,17 @@ export function seedFromRam(state, ram) {
   state.lives[0] = r(0x20);                // $20
   state.lives[1] = r(0x21);
   // $22/$24/$26/$28,X -- the per-player state $9B3E restores at every stage
-  // intro (src/flow.js introReset). Written only by $979D, which is wave 5, so
-  // like the lives above these are read-and-never-written by the port today.
+  // intro (src/flow.js introReset) and $979D saves at every death (src/flow.js
+  // respawn, wave 5). LIVE port state since that commit; still seeded, because a
+  // window that aligns mid-play starts from whatever the last respawn left.
+  //
+  // $0500-$06FF, THE TERRAIN COLLISION MAP, IS DELIBERATELY NOT SEEDED. The port
+  // builds it itself from the tiles its own streamer queues ($9F55), and that is
+  // the thing the terrain-death scenarios test. MEASURED all zero at align 400
+  // of every scenario -- stage 1's pages 0-3 contain no solid tiles at all --
+  // so seeding it would copy 512 zeros and hide the one initialisation the
+  // comparison wants to see. The `terrain-death` scenarios poke a cell into it
+  // on BOTH sides instead (see POKEABLE below).
   state.save22[0] = r(0x22); state.save22[1] = r(0x23);
   state.save24[0] = r(0x24); state.save24[1] = r(0x25);
   state.save26[0] = r(0x26); state.save26[1] = r(0x27);
@@ -300,6 +310,7 @@ export function peek(state, addr) {
     case 0x12: return state.ppu.scrollX;
     case 0x13: return state.ppu.scrollY;
     case 0x09: return state.zp09;
+    case 0x0A: return state.zp0A;          // $97C7 LDA $0A -- the respawn switch
     case 0x15: return state.zp15;
     case 0x16: return state.zp16;
     case 0x18: return state.zp.player;
@@ -459,6 +470,48 @@ export const POKEABLE = {
 };
 
 /**
+ * The SECOND kind of pokeable address: the terrain collision map at
+ * $0500-$06FF. Wave 5 added it and waves 6-7 reuse the same channel.
+ *
+ * Same admission rule as POKEABLE's: a value the CARTRIDGE ITSELF produces. The
+ * map is written by $9F55 from the tile indices the streamer just queued,
+ * thresholded at $9FB4[$19] -- solid cells are ordinary output of ordinary
+ * stage data. What a button script cannot do is REACH one: 00-recon-terrain.md
+ * measured stage 1's pages 0-3 as containing zero solid tile bits, and this
+ * corpus never gets past camera page 0, so `$C3A3` returns 0 on all 242 calls of
+ * every scenario and `$C2C1` -- one of the four routes into the death -- is
+ * unreachable. Poking one cell is the only way to exercise it.
+ *
+ * The ADDRESS is not computed here and must not be: the point of the
+ * `terrain-death` scenario is to prove that src/terrain.js's probeCollision()
+ * indexes the map the same way $C3D3 does, so the cell has to come from
+ * somewhere else. It comes from tools/oracle/kill.lua, which re-implements
+ * $C3D3 independently and then asserts on the cartridge that $C2C1 fires:
+ *
+ *   python games/gradius/tools/oracle/kill.py --frames 640 \
+ *       --script "200:,10:S,190:,240:" --at 500
+ *     mode=hit   poked=[0x5b3]  $C2C1 fired at 501, $1B -> $A0 at 501
+ *     mode=miss  poked=[0x5b4]  $C2C1 never fired
+ *     mode=none  poked=[]       $C2C1 never fired
+ *
+ * A port whose index arithmetic is off by anything reads a different cell, sees
+ * 0, and flies on -- which is a divergence on w_0100/w_001B/w_004C from the very
+ * next frame.
+ */
+export const POKEABLE_RANGES = [
+  { from: 0x0500, to: 0x06FF, why: 'the terrain collision map ($9F55 writes it, '
+      + '$C3D3 reads it)', set: (s, a, v) => { s.coll[a - 0x0500] = v; } },
+];
+
+function pokeFor(addr) {
+  if (POKEABLE[addr]) return (s, v) => POKEABLE[addr](s, v);
+  for (const r of POKEABLE_RANGES) {
+    if (addr >= r.from && addr <= r.to) return (s, v) => r.set(s, addr, v);
+  }
+  return null;
+}
+
+/**
  * `ADDR=VAL` (held for the whole compared window) or `ADDR=VAL@F-F` (absolute
  * game frames). scen.py turns a scenario's `@+N` into the absolute form so both
  * harnesses read the SAME string; probe.lua has always spoken it.
@@ -469,11 +522,15 @@ export function parsePokes(spec) {
     const m = /^\s*\$?([0-9A-Fa-f]+)\s*=\s*(\d+)\s*(?:@\s*(\d+)\s*-\s*(\d+)\s*)?$/.exec(seg);
     if (!m) throw new Error(`bad poke ${JSON.stringify(seg)} (want ADDR=VAL[@FROM-TO])`);
     const addr = parseInt(m[1], 16);
-    if (!POKEABLE[addr]) {
+    const set = pokeFor(addr);
+    if (!set) {
       throw new Error(`$${m[1]} is not pokeable: only values the cartridge itself `
-                    + `produces are (${Object.keys(POKEABLE).map((a) => '$' + Number(a).toString(16)).join(' ')})`);
+                    + `produces are (`
+                    + Object.keys(POKEABLE).map((a) => '$' + Number(a).toString(16)).join(' ')
+                    + POKEABLE_RANGES.map((r) => ` $${r.from.toString(16)}-$${r.to.toString(16)}`).join('')
+                    + ')');
     }
-    return { addr, val: Number(m[2]),
+    return { addr, set, val: Number(m[2]),
              from: m[3] === undefined ? null : Number(m[3]),
              to: m[4] === undefined ? null : Number(m[4]) };
   });
@@ -597,7 +654,7 @@ export function tracePort(o) {
   const applyPokes = (at) => {
     for (const p of pokes) {
       if (p.from !== null && (at < p.from || at > p.to)) continue;
-      POKEABLE[p.addr](state, p.val);
+      p.set(state, p.val);
     }
   };
   applyPokes(o.align);

@@ -59,6 +59,20 @@ export function flowTables(json) {
 }
 
 /**
+ * assets/collision/tables.json -> the same byte reader for `$C0C7` (wave 5).
+ *
+ * Two ranges: $BFDA-$BFE1, the four hit-box widths and four heights the sweep
+ * indexes with the enemy's own box class `$0460,Y` ($C127/$C131); and
+ * $C0FA-$C100, the death explosion's metasprite walk, indexed by `$0160`
+ * ($C0E3 `LDA $C0FA,X`). Both are read at their CPU addresses because both are
+ * indexed by a RAM byte -- a wrong index has to be a loud throw, not a
+ * plausible metasprite id (the seventh byte of $C0FA is `$C101`'s `A9` opcode).
+ */
+export function collisionTables(json) {
+  return romByteReader(json, 'collision/tables.json', 'collision tables');
+}
+
+/**
  * A byte reader addressed the way the 6502 is, over a list of exported CPU
  * ranges. Shared by the enemy and flow tables.
  *
@@ -103,7 +117,7 @@ function romByteReader(json, file, label) {
 }
 
 export async function loadResources(stageIndex = 0) {
-  const [manifest, tilesBuf, stages, ms, hud, enemies, flow] = await Promise.all([
+  const [manifest, tilesBuf, stages, ms, hud, enemies, flow, coll] = await Promise.all([
     fetchOrExplain('manifest.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('chr/tiles.u8', EXPORT).then((r) => r.arrayBuffer()),
     fetchOrExplain('terrain/stages.json', EXPORT).then((r) => r.json()),
@@ -111,6 +125,7 @@ export async function loadResources(stageIndex = 0) {
     fetchOrExplain('hud/packets.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('enemies/tables.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('flow/tables.json', EXPORT).then((r) => r.json()),
+    fetchOrExplain('collision/tables.json', EXPORT).then((r) => r.json()),
   ]);
 
   const tiles = new Uint8Array(tilesBuf);
@@ -126,7 +141,8 @@ export async function loadResources(stageIndex = 0) {
 
   return { manifest, tiles, metasprites, stage: stages.stages[stageIndex],
            hudPackets: hudPacketTable(hud), enemyTables: enemyTables(enemies),
-           flowTables: flowTables(flow) };
+           flowTables: flowTables(flow),
+           collisionTables: collisionTables(coll) };
 }
 
 /** The frame rate, read from game.json. It is spelled ONCE, in that file. */

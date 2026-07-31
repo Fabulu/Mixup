@@ -153,6 +153,14 @@ export function createState() {
     // $09 through the attract demo, which is not ported.
     zp09: 0,                 // $09
     zp16: 0,                 // $16
+    // $0A, the bitfield of players still in the game: bit 0 = player 1, bit 1 =
+    // player 2. Read at $97C7 by the respawn's player switch (wave 5) and
+    // written only at $97F9, the game-over arm, which is a throw. MEASURED 1 in
+    // the seed of all 21 scenarios, so the switch at $97C5-$97DB is a no-op and
+    // $18 stays 0 -- exactly the same read-and-never-written arrangement as the
+    // lives byte $20 (see SEEDED INPUTS below). Watched (w_000A) so that the
+    // wave which does write it is judged against data recorded before it.
+    zp0A: 0,                 // $0A
     // $33, the button-code match counter $9765 walks, and $3B,X, the per-player
     // count of cheat uses left. $9AFF runs the matcher on EVERY paused frame
     // (unless $3B,X is negative), which is why $33 is real port state rather
@@ -160,11 +168,14 @@ export function createState() {
     zp33: 0,                 // $33
     cheat: new Uint8Array(2),// $3B,X  ($9B15 DEC $3B,X, $B981 INC $3B,X)
     // $22/$24/$26/$28, indexed by $18: the per-player state the respawn saves
-    // ($979D, wave 5) and the stage intro restores ($9B62-$9B74). The port
-    // READS all four and writes none of them yet -- the same honest-but-weak
-    // arrangement the lives byte $20 is in (see SEEDED INPUTS below), and for
-    // the same reason: they are constants across every window this corpus
-    // compares. $24 is the CHECKPOINT and is the one that will move first.
+    // ($979D, src/flow.js respawn) and the stage intro restores ($9B62-$9B74).
+    // WAVE 5 MADE ALL FOUR LIVE: $97AB writes $22,X = ($42 ? 1 : 0), $97AF
+    // $26,X = $19, $97BB $24,X = min($3F AND $0E, 8) and $97BF $28,X = $1A, on
+    // the frame the death countdown reaches 0. They are still 0 on every frame
+    // of this corpus -- every death in it happens at $3F = 0 with no capsule
+    // collected -- so what has teeth on the checkpoint formula is
+    // tests/collision.test.js, which drives the recon's own three measured
+    // inputs ($3F = 3 -> 2, 7 -> 6, $14 -> 4).
     save22: new Uint8Array(2),   // $22,X  the meter cursor to restore
     save24: new Uint8Array(2),   // $24,X  the checkpoint -> $3F and $55
     save26: new Uint8Array(2),   // $26,X  the stage    -> $19

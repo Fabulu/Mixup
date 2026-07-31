@@ -1,10 +1,17 @@
 # Gradius (NES, Konami 1986) — phase 2
 
-**Status: stage 1 flies.** `src/` is a running port of the play path — the Vic Viper,
-the Options and the terrain streamer, verified frame-exact against the cartridge by
-`tools/test-all.mjs`. There are no enemies and no sound. The notes below are the
-cartridge facts and the decisions the port was built on; the header of each one says
-what is measured and what is not.
+**Status: stage 1 flies, and can be killed.** `src/` is a running port of the play
+path — the Vic Viper, the Options, the terrain streamer, the HUD, the enemy spawn
+engine and update loop, the `$1B` state machine with the stage intro and pause, and
+(wave 5) collision, death, the explosion and the checkpoint respawn — verified
+frame-exact against the cartridge by `tools/test-all.mjs`.
+
+**What is still absent, and it is named rather than left to be discovered:** weapons
+(firing, shots, missiles, the kill chain and the score adder), the power-up loop
+(capsule pickup, the meter, the shield), and all sound. Every unported arm in `src/`
+throws with the ROM address the cartridge would have reached; nothing is a silent
+no-op. The notes below are the cartridge facts and the decisions the port was built
+on; the header of each one says what is measured and what is not.
 
 **Playing it.** Serve the repo (`python -m http.server 8000`) and open
 `/games/gradius/` — a standalone page, not the root launcher, because the launcher

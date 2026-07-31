@@ -657,6 +657,66 @@ def flow_tables(rom: Rom) -> dict:
     }
 
 
+# ==========================================================================
+# COLLISION.  The two byte ranges the $C0C7 subsystem reads (wave 5).
+#
+#   $BFDA-$BFE1  the player/shot-vs-enemy BOXES, two parallel 4-byte tables
+#                indexed by $0460,Y (the enemy's own box class):
+#                  $C127  CMP $BFDA,X   width   10 20 30 10
+#                  $C131  CMP $BFDE,X   height  10 20 30 02
+#                MEASURED: $0460+0..9 is 0 on every frame of every scenario in
+#                the corpus, and the one death it contains ($C16E at f493 on
+#                right-wall) reports X = 0 -- so class 0, 16 x 16, is the only
+#                box this port has ever been held to.  Exported whole anyway,
+#                because a wrong INDEX is exactly what the other three entries
+#                would catch.
+#   $C0FA-$C100  the death explosion's metasprite walk, read as $C0FA,X with
+#                X = $0160 ($C0DD/$C0E3).  2D 2E 2F 30 30 00 00 -- the fifth
+#                entry repeats and the sixth is the $00 that ends the walk
+#                ($C0E9 BNE).  MEASURED on right-wall: $0120 steps 1 -> $2D at
+#                f494 and then $2E/$2F/$30 at f504/514/524, $30 again at 534
+#                (no visible change) and 0 at 544.
+COLLISION_BLOCKS = [
+    ("boxes", 0xBFDA, 0xBFE2,
+     "$C127 CMP $BFDA,X and $C131 CMP $BFDE,X, X = $0460,Y",
+     "four widths then four heights, indexed by the enemy's box class"),
+    ("explosion", 0xC0FA, 0xC101,
+     "$C0E3 LDA $C0FA,X, X = $0160 (the explosion cursor)",
+     "2D 2E 2F 30 30 00 00 -- metasprite ids, $00 ends the walk"),
+]
+
+
+def collision_tables(rom: Rom) -> dict:
+    """The $C0C7 collision tables, with both ends anchored on real opcodes."""
+    # $BFE2 is `LDX #$08`, the first instruction of the shot sweep.
+    if rom.slice(0xBFE2, 2) != bytes((0xA2, 0x08)):
+        raise SystemExit(f"ABORT: $BFE2 should be `LDX #$08` (the shot sweep) but "
+                         f"reads {rom.slice(0xBFE2, 2).hex(' ')} -- the $BFDA/$BFDE "
+                         f"box tables do not end where this claims")
+    # $C101 is `LDA #$09`, the first instruction of the player-vs-enemy sweep.
+    if rom.slice(0xC101, 2) != bytes((0xA9, 0x09)):
+        raise SystemExit(f"ABORT: $C101 should be `LDA #$09` (the player-vs-enemy "
+                         f"sweep) but reads {rom.slice(0xC101, 2).hex(' ')}")
+    # The explosion table MUST contain a terminating zero, or $C0E9's BNE never
+    # falls through and the walk reads $C101's opcodes as metasprite ids.
+    expl = rom.slice(0xC0FA, 7)
+    if 0 not in expl:
+        raise SystemExit(f"ABORT: $C0FA-$C100 = {expl.hex(' ')} has no $00; "
+                         f"$C0E9 would walk the walk off the end of the table")
+    blocks = []
+    for name, a, end, read_by, note in COLLISION_BLOCKS:
+        blocks.append({"name": name, "rom": f"${a:04X}", "end": f"${end:04X}",
+                       "fileOffset": rom.off(a), "len": end - a,
+                       "readBy": read_by, "note": note,
+                       "bytes": list(rom.slice(a, end - a))})
+    return {
+        "note": "CACHE. Rebuild with tools/export_assets.py; the authority is prg.bin.",
+        "why": "src/collision.js reads these at their CPU addresses; a read outside "
+               "them is a loud throw rather than a plausible byte.",
+        "blocks": blocks,
+    }
+
+
 def expand_stage(rom: Rom, stage: int) -> dict:
     """One stage's terrain, expanded from the five tables.  A CACHE.
 
@@ -919,6 +979,11 @@ def main() -> int:
           json.dumps(flow, separators=(",", ":")).encode("utf-8"),
           "cache", "prg.bin, the ranges $9BCC-$9BEC / $9785-$979C", files)
 
+    collision = collision_tables(rom)
+    write(out, "collision/tables.json",
+          json.dumps(collision, separators=(",", ":")).encode("utf-8"),
+          "cache", "prg.bin, the ranges $BFDA-$BFE1 / $C0FA-$C100", files)
+
     manifest = build_manifest(rom, files)
     (out / "manifest.json").write_text(
         json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
@@ -936,7 +1001,9 @@ def main() -> int:
           f"enemies/tables.json {sum(b['len'] for b in enemies['blocks'])} bytes "
           f"in {len(enemies['blocks'])} ranges, "
           f"flow/tables.json {sum(b['len'] for b in flow['blocks'])} bytes "
-          f"in {len(flow['blocks'])} ranges")
+          f"in {len(flow['blocks'])} ranges, "
+          f"collision/tables.json {sum(b['len'] for b in collision['blocks'])} bytes "
+          f"in {len(collision['blocks'])} ranges")
     print(f"  manifest: {len(manifest['tables'])} tables, "
           f"{len(manifest['constants'])} instruction-anchored constants, "
           f"{len(manifest['palettes'])} palette blobs")

@@ -51,7 +51,8 @@
 //   $96CF  next stage        (INC $19 -- the port loads one stage's assets)
 //   $96FB  game over         (gated on $B0, a sound byte nothing has
 //                             characterised -- 00-recon-flow.md 8)
-//   $979D  respawn           wave 5; $96EF's countdown reaching 0 lands here
+//   $97F1  lives went negative -- the game-over arm $979D branches to. Still a
+//          throw for the same $B0 reason; wave 5 ported everything above it.
 //   $9A0E..$9904  the end-of-stage / boss chain, play sub-states $81-$8F
 //   $9C5E  the pause-screen cheat, reached at $33 == $0A
 //   $882C's 2304 PPU writes -- only its RAM side effects are reproduced
@@ -101,6 +102,81 @@ export function introStep(state, res) {
       throw new Error(`$96C2 JSR $83E4: $1B = ${state.substate} is past `
                     + `jt_96C5's five entries`);
   }
+}
+
+/**
+ * `$979D` -- THE RESPAWN. Reached from `$96F3` when the death countdown `$4C`
+ * reaches 0, and it runs `$9B3E` IN THE SAME FRAME.
+ *
+ *   979D  A6 18 / D6 20              DEC $20,X          one life gone
+ *   97A1  A6 18 / A9 00              (LDX $18 again -- the ROM reloads it)
+ *   97A5  A4 42 / F0 02 / A9 01
+ *   97AB  95 22                      $22,X = ($42 ? 1 : 0)
+ *   97AD  A5 19 / 95 26              $26,X = $19
+ *   97B1  A5 3F / 29 0E / C9 08 / 90 02 / A9 08
+ *   97BB  95 24                      $24,X = min($3F AND $0E, 8)  THE CHECKPOINT
+ *   97BD  A5 1A / 95 28              $28,X = $1A
+ *   97C1  B5 20 / 30 2C              $20,X negative -> $97F1, GAME OVER
+ *   97C5  ...                        the two-player switch, on $0A
+ *   97DB  86 18     STX $18
+ *   97DD  A9 00 / 85 39 / 85 3A / 85 5D / 85 33 / 85 1B / 85 1C
+ *   97EB  20 09 9C  JSR $9C09        $57 = 0, $5E = #$3F (an IMMEDIATE, not $3F)
+ *   97EE  4C 3E 9B  JMP $9B3E        <- the stage intro, THIS frame
+ *
+ * MEASURED on "200:,10:S,190:,300:R", at the f614 sample: lives 3 -> 2,
+ * $1B $A0 -> 1 (i.e. $9B3E has already run and INC'd it), $0100 2 -> 1,
+ * $0D 6, $0120 1, $48 152 -> 0, playerX 174 -> 80, playerY 96, and
+ * $22 = $24 = $26 = $28 = 0. `lag.dropAtGameFrame` reads 283 AND 614 -- the
+ * respawn pays $882C's dropped NMI exactly like the boot does.
+ *
+ * THE CHECKPOINT FORMULA IS NOT EXERCISED BY THIS CORPUS: every death in it
+ * happens with $3F = 0, so `min($3F AND $0E, 8)` is 0 whatever it is. What holds
+ * it is tests/collision.test.js, replaying 00-recon-flow.md's own three
+ * intervention rows ($3F poked to 3, 7 and $14 gave $24 = 2, 6 and 4).
+ *
+ * `$39` and `$1C` are cleared by `$97DD` and are NOT modelled: `$39` has no
+ * reader on any path this port takes, and `$1C` is the background-music de-dupe
+ * byte `$8363` compares against (wave 8). Named here rather than left out
+ * silently. `$5E` is the same case -- `$9C09` writes it and the PRG contains no
+ * reader at all (grep: two writers, $99B5 and $9C0F, zero readers).
+ */
+export function respawn(state, res) {
+  const p = playerIndex(state);                     // $979D LDX $18
+  state.lives[p] = u8(state.lives[p] - 1);          // $979F DEC $20,X
+  // $97A3-$97AB: A is 0 or 1, NOT $42 itself. A meter cursor of 6 comes back as
+  // 1, which is why $9B66's restore never returns a real cursor position.
+  state.save22[p] = state.zp.meter !== 0 ? 1 : 0;   // $97A5/$97A7/$97A9/$97AB
+  state.save26[p] = state.zp19;                     // $97AD/$97AF
+  let cp = state.cam.hi & 0x0E;                     // $97B1/$97B3 AND #$0E
+  if (cp >= 8) cp = 8;                              // $97B5/$97B7/$97B9
+  state.save24[p] = cp;                             // $97BB STA $24,X
+  state.save28[p] = state.zp1A;                     // $97BD/$97BF
+  if (state.lives[p] & 0x80) {                      // $97C1/$97C3 BMI $97F1
+    throw new Error(`$97F1: $20,${p} went negative -- GAME OVER. $0A &= $FE, `
+                  + `$1B = $C0, the canned packet $1C and the $4C = 120 continue `
+                  + `window are not ported: $96FD gates both the timeout and `
+                  + `START on $B0, a sound-driver byte measured non-zero for 277 `
+                  + `frames and uncharacterised (wave 8).`);
+  }
+  // $97C5-$97DB, the two-player switch. With one player $0A = 1, so `AND #$02`
+  // is 0 and X -- and therefore $18 -- is unchanged. Ported as the ROM has it
+  // rather than skipped: playerIndex() above is what refuses a real switch.
+  let x = state.zp.player;                          // $97C5 LDX $18
+  const a = state.zp0A;                             // $97C7 LDA $0A
+  if (x === 1) {                                    // $97C9/$97CB CPX #$01
+    if (a & 0x01) x = 0;                            // $97CD/$97CF/$97D1
+  } else if (a & 0x02) {                            // $97D5/$97D7
+    x = 1;                                          // $97D9 LDX #$01
+  }
+  state.zp.player = x;                              // $97DB STX $18
+  // ---- $97DD: six zero stores, then the intro -----------------------------
+  // $39 and $1C are not modelled -- see the note above.
+  state.build.gate = 0;                             // $97E1 STA $3A
+  state.spawn.z5D = 0;                              // $97E3 STA $5D
+  state.zp33 = 0;                                   // $97E5 STA $33
+  state.substate = 0;                               // $97E7 STA $1B
+  clearAhead(state);                                // $97EB JSR $9C09
+  introReset(state, res);                           // $97EE JMP $9B3E
 }
 
 /**
@@ -285,9 +361,21 @@ function fullScreenLoad(state) {
  *   9BFD  A9 07 / 20 E8 85             packet 7
  *   9C02  A9 05 / 20 E8 85             packet 5   (the $FD arm: two packets)
  *   9C07  E6 1B                        INC $1B
+ *   9C09  A9 00 / 85 57                $57 = 0     <- FALL-THROUGH, see below
+ *   9C0D  A9 3F / 85 5E                $5E = #$3F
+ *   9C11  60
  *
  * MEASURED at the $80B5 sample of the frame this runs: $0E = 49 on the boot
  * (f284) and on the respawn (f615) -- 48 packet bytes plus $8641's terminator.
+ *
+ * THE FALL-THROUGH AT $9C07 IS REAL, and this file used to stop at INC $1B.
+ * tests/flow-unwitnessed.test.js dumped the 36 bytes from $9BED off the
+ * cartridge to prove it: the RTS is at $9C11, not $9C08. It was INERT while the
+ * port could only reach the intro from a cold state ($9B3E's wipe zeroes $57 one
+ * frame earlier and intro states 1-3 never call $9D8E), and wave 5 is exactly
+ * when it stops being inert -- `$97EB JSR $9C09` inside the respawn and
+ * `$980B JMP $9C09` on the game-over arm both enter sub_9C09 on their own, and
+ * on those paths this store is the only thing that clears $57.
  */
 export function introPackets(state, res) {
   const packets = res.hudPackets;
@@ -296,6 +384,23 @@ export function introPackets(state, res) {
   cannedPacket(state, packets, 0x07);               // $9BFD/$9BFF
   cannedPacket(state, packets, 0x05);               // $9C02/$9C04
   state.substate = u8(state.substate + 1);          // $9C07 INC $1B
+  clearAhead(state);                                // falls through into $9C09
+}
+
+/**
+ * `$9C09` -- `LDA #$00 / STA $57 / LDA #$3F / STA $5E / RTS`.
+ *
+ * A real subroutine with three entries: the fall-through above, `$97EB JSR
+ * $9C09` inside `$979D` (the respawn) and `$980B JMP $9C09` on the demo's
+ * game-over arm.
+ *
+ * `$5E` IS NOT MODELLED AND THAT IS NOT AN OVERSIGHT: `LDA #$3F` is an
+ * IMMEDIATE, not `LDA $3F`, and the PRG contains TWO writers of $5E ($99B5 and
+ * $9C0F) and ZERO readers. There is nothing for the port to keep it for.
+ */
+export function clearAhead(state) {
+  state.build.ahead = 0;                            // $9C09/$9C0B STA $57
+  // $9C0D LDA #$3F / $9C0F STA $5E -- see above.
 }
 
 /**

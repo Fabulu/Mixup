@@ -72,13 +72,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  *
  *   0-4  the five stage-intro states (jt_96C5 -> $9B3E $9BED $9C12 $9C1E $9C24)
  *   $80  play sub-state 0 (jt_982F entry 0, st_9A4D)
+ *   $A0  DYING (the $96EF arm) -- wave 5. $C1D6 sets it (src/collision.js), the
+ *        120-frame $4C countdown runs the full mode-5 body underneath it, and
+ *        $979D ends it by running the stage intro in the same frame.
  *
- * $A0 (dying) is deliberately NOT here even though $96EF is ported: the
- * countdown runs but $C1D6 -- what sets $A0 -- is wave 5, so the port cannot
- * enter the state on its own and a scenario that reaches it is one the port
- * cannot follow. The $0100 test above fires on the same frame anyway.
+ * What is still NOT here: $90 (next stage), $C0 (game over) and the play
+ * sub-states $81-$8F. All three are throws in src/nmi.js's ladder, and no
+ * scenario in the corpus reaches any of them.
  */
-const MODELLED_1B = new Set([0, 1, 2, 3, 4, 0x80]);
+const MODELLED_1B = new Set([0, 1, 2, 3, 4, 0x80, 0xA0]);
 
 const INFO_FIELDS = new Map([
   ['w_0036', '$36 is re-walked by the BLANK PASS $8BAB at $80AD and stored back '
@@ -123,17 +125,22 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
 
   // ---- THE LIVE WINDOW ------------------------------------------------------
   // The comparison runs for as long as the cartridge is in the state the port
-  // claims to model, and stops the instant it leaves it. Two exits, both of
-  // them subsystems src/ says outright are absent:
+  // claims to model, and stops the instant it leaves it. ONE exit is left:
   //
-  //   $0100 != 1   the ship is dying. src/player.js: "$9FFC: AD 00 01 / C9 02 /
-  //                90 03 / 4C 6F A1 -- the dead gate ... ($A16F onward is not
-  //                ported)". Nothing in src/nmi.js can ever make it happen: no
-  //                enemy loop, and probeCollision() is never called.
   //   $1B         the sub-state left the set the $96A5 ladder ports. This USED
   //                to be `!($1B & 0x80)`, i.e. "anything but play", which threw
   //                the whole stage intro away -- wave 4 ported states 0-4, so
   //                the rule is now a set and the intro scenarios compare.
+  //
+  // THE `$0100 != 1` EXIT IS GONE, and that is what wave 5 was for. It read
+  // "the cartridge's ship DIED ... src/player.js does not port the $A16F death
+  // path and src/nmi.js runs no collision, so the port flies on", and it cost
+  // the corpus 843 of 6569 frames across six scenarios. src/collision.js now
+  // runs $C0C7 from $9A70 on every mode-5 frame, $C1D6 sets $0100 = 2 and
+  // $1B = $A0, the explosion walks $C0FA, $96EF counts $4C out and $979D
+  // respawns -- so a dying cartridge is a state the port follows rather than one
+  // it has to be excused from. Do not re-add this exit to make a red run green:
+  // a death the port cannot follow is a FAILURE now, which is the point.
   //
   // Truncating is not hiding: the stop frame and the reason are printed for
   // every scenario, and a corpus whose ships all die in the first 40 frames
@@ -143,14 +150,6 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
   const frames = [];
   for (const f of all) {
     const o = byFrameO.get(f);
-    if (o.w_0100 !== undefined && o.w_0100 !== 1) {
-      stoppedAt = f;
-      stopReason = `the cartridge's ship DIED ($0100 = ${o.w_0100}, `
-                 + `$1B = $${o.w_001B.toString(16).toUpperCase()}); `
-                 + `src/player.js does not port the $A16F death path and `
-                 + `src/nmi.js runs no collision, so the port flies on`;
-      break;
-    }
     if (o.w_001B !== undefined && !MODELLED_1B.has(o.w_001B)) {
       stoppedAt = f;
       stopReason = `the cartridge's $1B reached `

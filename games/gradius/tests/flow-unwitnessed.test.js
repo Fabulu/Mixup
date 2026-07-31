@@ -471,28 +471,35 @@ test('introPackets() is $9BF0 alone: $9BED\'s JSR $83AB emits no queue bytes', (
 
 // =========================== the fall-through nobody has ====================
 
-knownFail(
+test(
   '$9BF0 falls through into sub_9C09: the routine ENDS with $57 := 0',
-  'docs/knowledge/02 trap 1, and the port has it. $9BF0 does not end at $9C07 '
-  + 'INC $1B -- it runs straight on into sub_9C09. I dumped the cartridge '
-  + 'myself (Gradius (USA).nes, file offset 16 + $9BED - $8000) and the 36 '
-  + 'bytes from $9BED are: 20 AB 83 | A9 10 20 E8 85 | A5 19 18 69 08 | 20 F3 '
-  + '85 | A9 07 20 E8 85 | A9 05 20 E8 85 | E6 1B | A9 00 85 57 | A9 3F 85 5E '
-  + '| 60. So the RTS is at $9C11, not $9C08, and TWO stores are between: '
-  + '$9C0B STA $57 (the terrain streamer\'s throttle flag) and $9C0F STA $5E '
-  + '(#$3F). src/flow.js introPackets() stops at INC $1B and its instruction '
-  + 'listing stops at $9C07, so the gap is not even named. '
-  + 'INERT TODAY, and I checked rather than assumed: $9B3E\'s $3D-$97 wipe has '
-  + 'already zeroed $57 one frame earlier and intro states 1-3 never call '
-  + '$9D8E, so $57 is provably 0 whenever the port reaches state 1; $5E has '
-  + 'two writers ($99B5, $9C0F) and ZERO readers in the whole PRG and the port '
-  + 'has no field for it. IT GOES LIVE IN WAVE 5: sub_9C09 has two more xrefs, '
-  + '$97EB `20 09 9C` JSR $9C09 inside $979D (the respawn, immediately before '
-  + '`4C 3E 9B` JMP $9B3E) and $980B `4C 09 9C` JMP $9C09 on the arm that sets '
-  + '$1B = $C0 and $0D = 5 WITHOUT going through $9B3E -- and on that path the '
-  + 'store is the only thing that clears $57. Owner: wave 5, in '
-  + 'src/flow.js introPackets(), which should end `state.build.ahead = 0;` and '
-  + 'be reachable as its own export for $979D/$980B to call.',
+  // RETIRED AS A knownFail BY WAVE 5, which is the wave the annotation named as
+  // its owner: src/flow.js introPackets() now ends by calling clearAhead(),
+  // which is $9C09 as its own export, and $979D's `$97EB JSR $9C09` calls the
+  // same function. The diagnosis below is kept verbatim because it is the
+  // evidence -- the 36 cartridge bytes are the reason the fall-through is not a
+  // reading of the listing.
+  //
+  // 'docs/knowledge/02 trap 1, and the port has it. $9BF0 does not end at $9C07 '
+  // + 'INC $1B -- it runs straight on into sub_9C09. I dumped the cartridge '
+  // + 'myself (Gradius (USA).nes, file offset 16 + $9BED - $8000) and the 36 '
+  // + 'bytes from $9BED are: 20 AB 83 | A9 10 20 E8 85 | A5 19 18 69 08 | 20 F3 '
+  // + '85 | A9 07 20 E8 85 | A9 05 20 E8 85 | E6 1B | A9 00 85 57 | A9 3F 85 5E '
+  // + '| 60. So the RTS is at $9C11, not $9C08, and TWO stores are between: '
+  // + '$9C0B STA $57 (the terrain streamer\'s throttle flag) and $9C0F STA $5E '
+  // + '(#$3F). src/flow.js introPackets() stops at INC $1B and its instruction '
+  // + 'listing stops at $9C07, so the gap is not even named. '
+  // + 'INERT TODAY, and I checked rather than assumed: $9B3E\'s $3D-$97 wipe has '
+  // + 'already zeroed $57 one frame earlier and intro states 1-3 never call '
+  // + '$9D8E, so $57 is provably 0 whenever the port reaches state 1; $5E has '
+  // + 'two writers ($99B5, $9C0F) and ZERO readers in the whole PRG and the port '
+  // + 'has no field for it. IT GOES LIVE IN WAVE 5: sub_9C09 has two more xrefs, '
+  // + '$97EB `20 09 9C` JSR $9C09 inside $979D (the respawn, immediately before '
+  // + '`4C 3E 9B` JMP $9B3E) and $980B `4C 09 9C` JMP $9C09 on the arm that sets '
+  // + '$1B = $C0 and $0D = 5 WITHOUT going through $9B3E -- and on that path the '
+  // + 'store is the only thing that clears $57. Owner: wave 5, in '
+  // + 'src/flow.js introPackets(), which should end `state.build.ahead = 0;` and '
+  // + 'be reachable as its own export for $979D/$980B to call.',
   () => {
     const s = introEntryState(res.manifest);
     nmi(s, 0, res);                               // $9B3E -> state 1
@@ -504,21 +511,27 @@ knownFail(
 
 // ============================ the split, on an intro =========================
 
-knownFail(
+test(
   'an intro frame does not inherit the previous play frame\'s split',
-  'MEASURED on the cartridge, tools/oracle/out/scen/intro-respawn.json, which I '
-  + 're-read for this test: frames 610-613 are played frames with chrOffset = '
-  + '8192 and sprite0Hit = 1, and frame 614 -- the first intro frame, $1B = 1, '
-  + '$0D = 6 -- reads chrOffset = 0 and sprite0Hit = 0, as do all 31 frames '
-  + '614-644. The port never clears state.bandB.ran on an intro frame: '
-  + 'mode5Tail() is its only writer and introStep() correctly never calls it '
-  + '($96C2\'s handlers RTS to $80AD), so the last played frame\'s record '
-  + 'stands. Both intro scenarios pass only because they enter the intro from '
-  + 'createState()\'s default false -- intro-boot from a cold state and '
-  + 'intro-respawn from an align of 614, PAST $9B3E. The moment wave 5\'s '
-  + '$979D lets the port reach the intro from a play frame, porttrace.mjs '
-  + 'sampleRow() reports chrOffset = 8192 and sprite0Hit = 1 for 27 frames on '
-  + 'two TIER 1 fields. Owner: wave 5, in src/flow.js introStep().',
+  // RETIRED AS A knownFail BY WAVE 5. The fix is in src/nmi.js rather than in
+  // introStep() as the annotation guessed: `bandB.ran` is cleared at the top of
+  // every non-lag frame, so it means "did $9AA3 fire on THIS frame" for every
+  // arm, not just for the intro. The measurement below is kept verbatim as the
+  // evidence.
+  //
+  // 'MEASURED on the cartridge, tools/oracle/out/scen/intro-respawn.json, which I '
+  // + 're-read for this test: frames 610-613 are played frames with chrOffset = '
+  // + '8192 and sprite0Hit = 1, and frame 614 -- the first intro frame, $1B = 1, '
+  // + '$0D = 6 -- reads chrOffset = 0 and sprite0Hit = 0, as do all 31 frames '
+  // + '614-644. The port never clears state.bandB.ran on an intro frame: '
+  // + 'mode5Tail() is its only writer and introStep() correctly never calls it '
+  // + '($96C2\'s handlers RTS to $80AD), so the last played frame\'s record '
+  // + 'stands. Both intro scenarios pass only because they enter the intro from '
+  // + 'createState()\'s default false -- intro-boot from a cold state and '
+  // + 'intro-respawn from an align of 614, PAST $9B3E. The moment wave 5\'s '
+  // + '$979D lets the port reach the intro from a play frame, porttrace.mjs '
+  // + 'sampleRow() reports chrOffset = 8192 and sprite0Hit = 1 for 27 frames on '
+  // + 'two TIER 1 fields. Owner: wave 5, in src/flow.js introStep().',
   () => {
     const s = introEntryState(res.manifest);
     while (s.substate !== 0x80) nmi(s, 0, res);   // through the intro into play

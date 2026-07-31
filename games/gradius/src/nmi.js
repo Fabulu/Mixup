@@ -43,9 +43,15 @@
 //     VISIBLE, unlike the Game Boy case where only internal updates dropped.
 //
 // WHAT IS NOT PORTED, named rather than silently absent: the sound driver
-// ($ED02), the shot-vs-enemy sweep ($9A70 JSR $BFE2), the power-up rank $17
-// ($9AC4 JSR $9C45), the capsule apply ($9A73 JSR $8974), and every game mode
-// except 5.
+// ($ED02), the power-up rank $17 ($9AC4 JSR $9C45), the capsule apply
+// ($9A73 JSR $8974), and every game mode except 5.
+//
+// $9A70 JSR $BFE2 WAS ON THAT LIST WITH THE WRONG DESCRIPTION and is not any
+// more -- src/collision.js, wave 5. The old comment called it "the shot-vs-enemy
+// sweep ... ten iterations of nothing"; it is NINE iterations (`LDX #$08`), and
+// `$C052 JMP $C0C7` at its tail is the ONLY route on stage 1 into the whole
+// collision subsystem, i.e. into the thing that kills the player. That is
+// docs/knowledge/02 trap 1: what the routine falls into, not what it is called.
 //
 // MODE 5 ITSELF IS NO LONGER "$1B = $80 ONLY" -- wave 4 ported the $96A5 ladder
 // below, the five stage-intro states and pause (src/flow.js). What is left
@@ -77,7 +83,8 @@ import { updatePlayer } from './player.js';
 import { advanceCamera, latchScroll } from './camera.js';
 import { streamBlock } from './terrain.js';
 import { spawnEngine, enemyBullets, updateEnemies } from './enemies.js';
-import { introStep, pauseCheck } from './flow.js';
+import { introStep, pauseCheck, respawn } from './flow.js';
+import { shotSweep } from './collision.js';
 import { chrBank } from './render/ppu.js';
 
 /**
@@ -110,6 +117,21 @@ export function nmi(state, buttons, res, lag = false) {
   // paused frames and the port read 10 -- the first divergence this field has
   // ever produced.
   state.work.enemySlots = 0;
+  // ...and so is the SPLIT. `bandB.ran` is "did $9AA3 fire on THIS frame", not a
+  // RAM byte, and mode5Tail() was its only writer -- so a frame that never
+  // reaches $9A88 used to inherit the last played frame's record. An intro frame
+  // is exactly that frame: $96C2's dispatcher pulls its own return address, so
+  // every handler RTSes to $80AD and the whole of $9A5E-$9ACE is skipped.
+  //
+  // MEASURED, tools/oracle/out/scen/intro-respawn.json: frames 610-613 are
+  // played frames with chrOffset 8192 and sprite0Hit 1, and frame 614 -- the
+  // first intro frame -- reads chrOffset 0 and sprite0Hit 0, as do all 27 intro
+  // frames. It could not bite while the port only entered the intro from a cold
+  // state (both intro scenarios start from `ran = false`); wave 5's $979D is
+  // what lets a PLAY frame become an intro frame, and without this line the six
+  // death scenarios would each report the wrong band for 27 frames on two TIER 1
+  // fields. Pinned as a knownFail by wave 4's test pass; retired here.
+  state.bandB.ran = false;
 
   // $8085: LDY #$02 / $8087: STY $4014.
   // Shadow OAM $0200 -> the PPU. This copies the display list built at $80A7 of
@@ -296,11 +318,13 @@ function playArm(state, res) {
 }
 
 /**
- * `$96EF` -- the dying arm. Ported as STRUCTURE: nothing in the port can set
- * $1B = $A0 yet, because $C1D6 (the collision that does it) is wave 5.
+ * `$96EF` -- the dying arm. LIVE since wave 5: `$C1D6` (src/collision.js) is
+ * what sets $1B = $A0, and `$979D` (src/flow.js respawn) is what ends it.
  *
  *   96EF  A5 4C / D0 03     $4C != 0 -> $96F6
- *   96F3  4C 9D 97  JMP $979D        the respawn
+ *   96F3  4C 9D 97  JMP $979D        the respawn -- and $979D ends `JMP $9B3E`,
+ *                                    so this arm runs the whole stage intro and
+ *                                    returns to $80AD WITHOUT touching $9A5E
  *   96F6  C6 4C     DEC $4C
  *   96F8  4C 5E 9A  JMP $9A5E        <- the FULL body, not the tail: a dying
  *                                       frame still spawns and updates enemies
@@ -308,14 +332,15 @@ function playArm(state, res) {
  *                                       at its own $0100 >= 2 gate)
  *
  * MEASURED on "200:,10:S,190:,300:R": $C1D6 fired once at f493, $4C stepped 120
- * -> 0 over f494-f613, and $979D ran on f614 -- 120 frames exactly.
+ * -> 0 over f494-f613, and $979D ran on f614 -- 120 frames exactly. Note the
+ * asymmetry the two JMPs encode: the 120 counting frames run the mode-5 BODY
+ * (so the camera keeps scrolling and the squadrons keep flying past the wreck,
+ * which the corpus compares frame by frame), and the 121st runs the INTRO.
  */
 function dyingArm(state, res) {
   if (state.zp4C === 0) {                         // $96EF/$96F1
-    throw new Error('$96F3 JMP $979D: the death countdown reached 0 and the '
-                  + 'respawn is wave 5 (DEC $20,X; $22,X = $42 ? 1 : 0; '
-                  + '$24,X = min($3F AND $0E, 8); $26,X = $19; $28,X = $1A; '
-                  + 'then $97DD -> $9B3E in the SAME frame).');
+    respawn(state, res);                          // $96F3 JMP $979D -> $9B3E
+    return;
   }
   state.zp4C = u8(state.zp4C - 1);                // $96F6 DEC $4C
   mode5Body(state, res);                          // $96F8 JMP $9A5E
@@ -349,9 +374,13 @@ function mode5Body(state, res) {
   updatePlayer(state);                            // $9A6A JSR $9FFC
   updateEnemies(state, res);                      // $9A6D JSR $ADAB
 
-  // $9A70: JSR $BFE2 -- the shot-vs-enemy sweep. Not ported (wave 6). Its outer
-  // loop is over $0123,X for slots 3-11 and every one of them is 0 here, so on
-  // the cartridge it is ten iterations of nothing.
+  // $9A70: JSR $BFE2 -- and this is the whole collision subsystem, not just the
+  // shot sweep. $BFE2's nine-iteration outer loop over $0123,X (object slots
+  // 3-11, all empty until wave 6) ends at $C04B/$C052 with `JMP $C0C7`, which is
+  // the player-vs-enemy sweep, the death, the explosion walk and the terrain
+  // probe. MEASURED: hook.BFE2 == hook.C052 == hook.C0C7 == 363 on a 700-frame
+  // boot-play-die-respawn run, and $BFE6 fired 3267 times = 363 x 9 exactly.
+  shotSweep(state, res);                          // $9A70 JSR $BFE2 -> $C0C7
   // $9A73: JSR $8974 -- the capsule apply. Not ported (wave 7).
   // $9A76: JSR $C772 -- `LDA $19 / CMP #$04 / BNE / RTS`: stage 5 only.
 

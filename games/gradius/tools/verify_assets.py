@@ -215,6 +215,26 @@ EXPECT_FLOW_START = {(0, 0): (80, 96)}      # ($19, $24) -> (X, Y)
 EXPECT_FLOW_PAUSE_CODE = [0x08, 0x08, 0x04, 0x04, 0x02, 0x01, 0x02, 0x01,
                           0x40, 0x80]
 
+# ---- COLLISION ($BFDA/$BFDE boxes, $C0FA explosion walk) -- wave 5 ----------
+# 1. THE EXPLOSION WALK, MEASURED per frame from the corpus's own right-wall
+#    artifact ($0120 at the $80B5 sample): $2D at f494, $2E at 504, $2F at 514,
+#    $30 at 524, $30 AGAIN at 534, and 0 at 544 -- at which frame $0140 read
+#    255, which is $C0F1's `STA $0140` falling through into $C0F4's `DEC`.  Six
+#    entries, one per ten frames; the seventh is never read because the $00
+#    stops the walk ($C0E9 BNE).
+EXPECT_COLL_EXPLOSION = [0x2D, 0x2E, 0x2F, 0x30, 0x30, 0x00]
+# 2. THE BOX, MEASURED as a CONSEQUENCE rather than read off the table.  The one
+#    death in the whole corpus is right-wall f493 and its own arghook reports
+#    box class $0460,Y = 0.  From the artifact:
+#       f492  player (173,96)  enemy (161,98)  dx = (173+4)-161 = 16  REJECTED
+#       f493  player (174,96)  enemy (164,98)  dx = (174+4)-164 = 14  ACCEPTED
+#       f493  dy = (96+8)-98-1 = 5  ACCEPTED   ($C16E's arghook reports a=05)
+#    `$C127 CMP $BFDA,X / BCS` rejects dx >= width, so the cartridge pins
+#    14 < width[0] <= 16 and height[0] > 5.  That is all the corpus can say and
+#    it is stated as such -- the byte-for-byte re-read above is what holds the
+#    table to $10/$20/$30/$10 and $10/$20/$30/$02.
+EXPECT_COLL_BOX0 = {"dxRejected": 16, "dxAccepted": 14, "dyAccepted": 5}
+
 # NOTES-terrain.md section 4, "Stage 1's shape" -- an end-to-end expectation on
 # the DECODED cache, not on any single table.
 EXPECT_STAGE1 = {
@@ -365,6 +385,7 @@ class State:
         self.hud = json.loads(self.blob["hud/packets.json"].decode("utf-8"))
         self.enemies = json.loads(self.blob["enemies/tables.json"].decode("utf-8"))
         self.flow = json.loads(self.blob["flow/tables.json"].decode("utf-8"))
+        self.coll = json.loads(self.blob["collision/tables.json"].decode("utf-8"))
 
 
 def vals_at(rom: RawRom, off: int, n: int, unit: str) -> list[int]:
@@ -894,6 +915,84 @@ def check_flow(st: State) -> list[str]:
     return bad
 
 
+def check_collision(st: State) -> list[str]:
+    """The two $C0C7 tables, re-read and then held to what the cartridge DID.
+
+    Same three arms as check_flow:
+
+    1. re-read from the raw .nes at the offset the JSON recorded (stale cache);
+    2. re-derive that offset from the CPU address a second way (wrong formula);
+    3. hold the cache against EXPECT_COLL_EXPLOSION and EXPECT_COLL_BOX0, both
+       of which came off the RUNNING CARTRIDGE (the right-wall death at f493 and
+       the explosion walk over f494-f544), not off the listing.
+    """
+    bad = []
+    rom = st.rom
+    c = st.coll
+    blocks = {b["name"]: b for b in c["blocks"]}
+    for name in ("boxes", "explosion"):
+        if name not in blocks:
+            bad.append(f"collision/tables.json has no block {name!r}")
+    if bad:
+        return bad
+
+    for b in c["blocks"]:
+        base = int(b["rom"].lstrip("$"), 16)
+        want_off = rom.off(base)
+        if b["fileOffset"] != want_off:
+            bad.append(f"block {b['name']} at {b['rom']} records fileOffset "
+                       f"{b['fileOffset']}, ${base:04X} is at {want_off}")
+            continue
+        if b["len"] != len(b["bytes"]):
+            bad.append(f"block {b['name']} claims len {b['len']} but carries "
+                       f"{len(b['bytes'])} bytes")
+            continue
+        got = list(rom.at(b["fileOffset"], b["len"]))
+        if got != b["bytes"]:
+            first = next(i for i in range(b["len"]) if got[i] != b["bytes"][i])
+            bad.append(f"block {b['name']}: byte {first} (${base + first:04X}) is "
+                       f"${b['bytes'][first]:02X} in the cache, ${got[first]:02X} "
+                       f"in the ROM")
+    if bad:
+        return bad
+
+    # -- from here on, read only the CACHE, indexed the way the 6502 does ------
+    ex = blocks["explosion"]
+    xbase = int(ex["rom"].lstrip("$"), 16)
+
+    def xbyte(addr):                                    # $C0E3 LDA $C0FA,X
+        i = addr - xbase
+        return ex["bytes"][i] if 0 <= i < len(ex["bytes"]) else None
+
+    walk = [xbyte(0xC0FA + i) for i in range(len(EXPECT_COLL_EXPLOSION))]
+    if walk != EXPECT_COLL_EXPLOSION:
+        bad.append(f"the explosion walk $C0FA[0..5] reads {walk}, the cartridge "
+                   f"put {EXPECT_COLL_EXPLOSION} into $0120 over f494-f544")
+
+    bx = blocks["boxes"]
+    bbase = int(bx["rom"].lstrip("$"), 16)
+
+    def bbyte(addr):
+        i = addr - bbase
+        return bx["bytes"][i] if 0 <= i < len(bx["bytes"]) else None
+
+    w0 = bbyte(0xBFDA)                                  # $C127 CMP $BFDA,X
+    h0 = bbyte(0xBFDE)                                  # $C131 CMP $BFDE,X
+    e = EXPECT_COLL_BOX0
+    if w0 is None or h0 is None:
+        bad.append("$BFDA[0] / $BFDE[0] are outside the exported block")
+    else:
+        if not (e["dxAccepted"] < w0 <= e["dxRejected"]):
+            bad.append(f"$BFDA[0] = ${w0:02X}: the cartridge REJECTED dx = "
+                       f"{e['dxRejected']} at right-wall f492 and ACCEPTED dx = "
+                       f"{e['dxAccepted']} at f493, which pins the width to "
+                       f"({e['dxAccepted']}, {e['dxRejected']}]")
+        if not h0 > e["dyAccepted"]:
+            bad.append(f"$BFDE[0] = ${h0:02X}: the cartridge ACCEPTED dy = "
+                       f"{e['dyAccepted']} at right-wall f493")
+    return bad
+
+
 CHECKS = [
     ("rom", check_rom),
     ("files", check_files),
@@ -906,6 +1005,7 @@ CHECKS = [
     ("hud", check_hud),
     ("enemies", check_enemies),
     ("flow", check_flow),
+    ("collision", check_collision),
 ]
 
 
@@ -1038,6 +1138,25 @@ def _shift_flow_block(st):
     b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
 
 
+def _coll_block(st, name):
+    return next(b for b in st.coll["blocks"] if b["name"] == name)
+
+
+def _shift_coll_block(st):
+    """Re-cite the explosion table at $C0FB and RE-READ it from there.
+
+    Consistent -- address, offset and bytes move together -- so the byte-for-byte
+    re-read and the offset re-derivation both still pass.  What catches it is
+    that the walk the CARTRIDGE was measured performing starts at $C0FA, so the
+    shifted block hands $0120 the sequence $2E $2F $30 $30 $00 $00.
+    """
+    b = _coll_block(st, "explosion")
+    base = int(b["rom"].lstrip("$"), 16) + 1
+    b["rom"] = f"${base:04X}"
+    b["fileOffset"] = st.rom.off(base)
+    b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
+
+
 MUTATIONS = [
     ("rom-sha", "rom",
      "claim the manifest came off a different cartridge",
@@ -1137,6 +1256,18 @@ MUTATIONS = [
     ("flow-code", "flow",
      "flip the first button of the pause screen's code from UP to DOWN",
      lambda st: _flow_block(st, "codes")["bytes"].__setitem__(14, 0x04)),
+    # --- collision (wave 5) --------------------------------------------------
+    ("coll-shift", "collision",
+     "re-cite the explosion table at $C0FB -- one byte along, CONSISTENTLY",
+     _shift_coll_block),
+    ("coll-box", "collision",
+     "widen the class-0 hit box from $10 to $11: the cartridge REJECTED dx = 16 "
+     "at right-wall f492, and a 17-wide box kills a frame early",
+     lambda st: _coll_block(st, "boxes")["bytes"].__setitem__(0, 0x11)),
+    ("coll-expl", "collision",
+     "make $C0FA[4] $2F instead of $30 -- a fifth explosion frame the cartridge "
+     "was measured NOT drawing at f534",
+     lambda st: _coll_block(st, "explosion")["bytes"].__setitem__(4, 0x2F)),
     ("chr-truncated", "chr",
      "truncate the decoded tile cache by one tile",
      lambda st: st.blob.__setitem__("chr/tiles.u8", st.blob["chr/tiles.u8"][:-64])),

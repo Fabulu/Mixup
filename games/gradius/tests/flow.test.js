@@ -293,19 +293,34 @@ test('$96A5: every unported arm throws with the ROM address it would reach', () 
   assert.throws(() => nmi(s6, 0, res), /\$96C2/);
 });
 
-test('$96EF: the dying arm DECs $4C and reaches $979D at zero', () => {
-  // Structure only -- $C1D6, which is what sets $1B = $A0, is wave 5. MEASURED
-  // on "200:,10:S,190:,300:R": $C1D6 fired once at f493, $4C stepped 120 -> 0
-  // over f494-f613, and $979D ran at f614. 120 frames exactly.
+test('$96EF: the dying arm DECs $4C and RESPAWNS at zero', () => {
+  // MEASURED on "200:,10:S,190:,300:R": $C1D6 fired once at f493, $4C stepped
+  // 120 -> 0 over f494-f613, and $979D ran at f614 -- 120 frames exactly, and
+  // the 121st is the respawn. That frame is $979D AND $9B3E: at its $80B5 the
+  // cartridge read lives 2, $1B 1 (already INC'd by $9B3E), $0100 1, $0120 1
+  // and the ship back at (80, 96).
   // RED WHEN: dyingArm() tests $4C AFTER decrementing it (the countdown then
-  // runs 121 frames and the respawn lands a frame late).
+  // runs 121 frames and the respawn lands a frame late), or respawn() forgets
+  // that $97EE is a JMP into $9B3E rather than a return.
   const s = bootState(res.manifest);
   s.substate = 0xA0;                                // $C1F1 STA $1B
   s.zp4C = 0x78;                                    // $C1E0 STA $4C
   s.obj.status[0] = 2;                              // $C1E4 -- $9FFC's dead gate
   for (let i = 0; i < 120; i++) nmi(s, 0, res);
   assert.strictEqual(s.zp4C, 0, '120 frames of $96F6 DEC $4C');
-  assert.throws(() => nmi(s, 0, res), /\$979D/);
+  assert.strictEqual(s.substate, 0xA0, 'still dying on the 120th frame');
+  assert.strictEqual(s.lives[0], 3, '$979D has not run yet');
+
+  nmi(s, 0, res);                                   // the 121st: $96F3 -> $979D
+  assert.strictEqual(s.lives[0], 2, '$979F DEC $20,X');
+  assert.strictEqual(s.substate, 1, '$97E7 STA $1B then $9B76 INC $1B');
+  assert.strictEqual(s.obj.status[0], 1, '$9BC0 STA $0100 -- alive again');
+  assert.strictEqual(s.obj.anim[0], 1, '$9B83 STA $0120');
+  assert.strictEqual(s.obj.x[0], 80, '$9BAF -- $9BD4[0] = $65 unpacks to X 80');
+  assert.strictEqual(s.obj.y[0], 96, '$9B97 -- ...and Y 96');
+  assert.strictEqual(s.zp.autofire, 0x14, '$9B5E LDA #$14 / STA $35');
+  assert.strictEqual(s.frameDrops, 1, '$882C overruns the vblank on a respawn '
+    + 'too: lag.dropAtGameFrame = 283 AND 614 on the measured run');
 });
 
 test('$96EF: a dying frame still runs the enemies and still streams', () => {
