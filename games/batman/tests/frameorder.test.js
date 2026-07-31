@@ -371,8 +371,14 @@ const FRAME_CALLS = [
 
 test('tick() calls its subsystems in the $0567 body\'s order (CHANGE DETECTOR)', () => {
   const src = readFileSync(TICK_SOURCE, 'utf8');
-  const body = src.slice(src.indexOf('export function tick('));
-  assert.ok(body.length > 0, 'tick() found in ' + TICK_SOURCE.pathname);
+  // NOT `slice(indexOf(...))` guarded by length > 0: a missing marker gives
+  // indexOf -1, slice(-1) returns the LAST CHARACTER, and the guard passes --
+  // so a wrongly repointed TICK_SOURCE would report "the shadow-OAM clear is
+  // missing from tick()" instead of "tick() is not in this file".
+  const start = src.indexOf('export function tick(');
+  assert.notEqual(start, -1, 'tick() is not in ' + TICK_SOURCE.pathname
+    + ' -- TICK_SOURCE has been repointed at a file that does not define it.');
+  const body = src.slice(start);
 
   let at = 0;
   let prev = null;
@@ -395,7 +401,9 @@ test('there are exactly THREE enemy-queue flushes, and no more', () => {
   // a fourth. Each flush empties the queue, so an extra one is a silent no-op
   // today and a reordering hazard forever.
   const src = readFileSync(TICK_SOURCE, 'utf8');
-  const body = src.slice(src.indexOf('export function tick('));
+  const start = src.indexOf('export function tick(');   // see the note above
+  assert.notEqual(start, -1, 'tick() is not in ' + TICK_SOURCE.pathname);
+  const body = src.slice(start);
   const n = body.split('drawEnemies(state, manifest);').length - 1;
   assert.equal(n, 3, '$05C6\'s rescue carrier, $05CF\'s driver, $05EF\'s splash');
 });

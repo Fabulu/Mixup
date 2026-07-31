@@ -236,6 +236,55 @@ cannot. **Get it into the state vector before the port has an object driver.**
 Track both the *emulator's* frame number and one or more counters **inside the game's own
 loop**. When those two disagree, that disagreement is the measurement you want.
 
+## Two emulators disagreed about a lag frame, and that is the whole problem in miniature
+
+The single most important measurement taken while preparing for DaiOuJou, and it was an
+accident. Gradius was run under **Mesen** and **MAME** with the same input, both hooking
+the same address and emitting the same per-NMI digest.
+
+**They were byte-identical for NMIs 1 through 388.** At 389, Mesen delivers one NMI that
+MAME does not. After skipping it, the sequences realign exactly for all 110 remaining
+samples — so **the game's computation never diverges**. The extra NMI has the frame lock
+already set on entry and a stack pointer 13 bytes deeper than usual: it is the re-entrant
+NMI that hits the lock test and bails. **A lag frame — the first one in the run.**
+
+So: two respected emulators, in perfect agreement about every value the game computes, and
+in disagreement about **whether a lag frame happened at all**. That is precisely the signal
+DaiOuJou depends on.
+
+**What this means for method:**
+
+1. **When the thing you are measuring IS the timing, one emulator is not a reference.**
+   Cross-validate. Two independent implementations agreeing is evidence; one asserted to be
+   accurate is an assumption.
+2. **Verify computation and delivery separately.** The digests agreeing proves the game's
+   logic matches. It says nothing about whether the interrupt arrived. Those are different
+   claims and a single comparison conflates them.
+3. **A realignment that works is itself data.** "Skip one event and everything after lines
+   up" localises the disagreement to exactly one frame, which is far more useful than a
+   divergence count.
+
+## What MAME can and cannot see, measured
+
+Established while proving MAME viable as the DaiOuJou oracle. Useful for any machine:
+
+- **Per-frame CPU cycles: yes**, two independent ways that agree to a constant 4 cycles —
+  the debugger's `totalcycles` expression, and `machine.time` read inside a callback (which
+  needs no debugger at all).
+- **Execution hooks: yes**, and via an unobvious route — `install_read_tap()` fires on
+  **opcode fetches**, so a read tap is an execution hook. Distinguish a fetch from a data
+  read by comparing the current PC against the tapped address.
+- **A game-agnostic frame detector: yes.** A tap on the CPU's **interrupt vector fetch**
+  fires exactly once per dispatched interrupt, with no knowledge of the game's code.
+- **Instrumentation is non-perturbing:** 10.4 million tap callbacks changed the cycle count
+  by **exactly zero**.
+- **The duplicate-framebuffer test is NOT a slowdown detector.** Measured over 2,400
+  frames: **518 duplicate frames against 4 real overrun events, and it missed 2 of the 4.**
+  A game can redraw an identical picture while advancing perfectly well, and can overrun
+  while the picture changes. If you were planning to detect slowdown by comparing
+  consecutive framebuffers — and it is the obvious first idea — this is the measurement
+  that says don't.
+
 ## The rules, distilled
 
 1. **Decide which of the THREE kinds you have — dropped updates, partial completion, or

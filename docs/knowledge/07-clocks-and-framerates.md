@@ -100,26 +100,49 @@ So:
 - The oracle runs headless with no host clock at all, which is one more reason the
   authoritative measurements come from there and not from the browser.
 
-## DoDonPachi DaiOuJou — unknown, and it must be read from the hardware
+## DoDonPachi DaiOuJou — DERIVED, and both guesses were wrong
 
-**We do not know DaiOuJou's frame rate and must not guess it.** Cave boards are well known
-for running noticeably below 60 Hz, and figures in the mid-to-high 50s circulate for
-various Cave titles — but this project's rule is that a number is not a fact until it is
-measured, and a rate that is wrong by even a few tenths would poison exactly the slowdown
-work DaiOuJou is being attempted for.
+**59.185606060606… Hz — exactly 15625/264, a frame period of exactly 16.896 ms.**
 
-The way to get it **exactly**, rather than from a wiki: MAME drivers declare video timing
-as a raw pixel clock plus horizontal and vertical totals. The refresh is then
+Derived from MAME's driver source by two independent agents, pinned to MAME 0.289. The
+"about 54" figure that was floated in conversation is **wrong by nearly five frames a
+second**, and this is precisely why it was never written down as fact.
+
+The second surprise is bigger: **DaiOuJou is not Cave hardware at all.** It is an **IGS
+PolyGameMaster (PGM)** board — 68000 @ 20 MHz, Z80 @ 8.4672 MHz, IGS023 custom video —
+defined in `src/mame/igs/pgm.cpp`, not in `atlus/cave.cpp`. (The 1997 *DoDonPachi* is the
+Cave one.) Every instinct carried over from "Cave board" reasoning needs re-checking
+against PGM instead.
+
+### The correction this forces to the advice above
+
+The section that follows used to say "read the driver's `set_raw(...)` or
+`set_refresh_hz(...)` and compute it", treating the two as equivalent. **They are not, and
+the difference matters:**
+
+- `screen.set_raw(pixclock, htotal, …, vtotal, …)` is a **derivation** from real hardware
+  numbers. Computing `pixclock / (htotal * vtotal)` gives the true rate.
+- `screen.set_refresh_hz(60.0988)` is **somebody's rounded literal**, typed into the
+  driver. MAME's own NES driver does exactly this (`nes.cpp:414`), and Lua's
+  `screen.refresh` faithfully reports the rounding rather than the truth.
+
+So "read it from MAME" is only sound when the driver uses `set_raw`. When it uses a
+literal, you have read someone's approximation and inherited their error. For the NES the
+difference is 0.0008 frames per minute and irrelevant; for a game whose slowdown you are
+trying to measure, inheriting a rounding is the exact failure this file exists to prevent.
+
+**Check which form the driver uses before trusting the number.**
+
+## How to derive it for any machine
 
 ```
-refresh = pixel_clock / (htotal * vtotal)
+refresh = pixel_clock / (htotal * vtotal)      # when the driver uses set_raw
 ```
 
-So read the driver's `set_raw(...)` (or `set_refresh_hz(...)`) parameters for the exact
-machine, and compute it. That is a checkable derivation with a source, which is the
-standard everything else here is held to.
+That is a checkable derivation with a source, which is the standard everything here is
+held to. Do it **before** any timing work on a game, not during — and confirm the driver
+is not just handing you a literal (above).
 
-Do this **before** any timing work on DaiOuJou, not during.
 
 ## The rule
 

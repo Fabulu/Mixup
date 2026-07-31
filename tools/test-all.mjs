@@ -73,15 +73,24 @@ const ASSET_MANIFEST = path.join(GAME_DIR, 'assets', 'manifest.json');
 const hasUnitTests = fs.existsSync(TESTS_DIR) &&
   fs.readdirSync(TESTS_DIR).some((f) => f.endsWith('.test.js'));
 const hasAssets = fs.existsSync(ASSET_MANIFEST);
+// typecheck's binary is a probed path like any other. It was originally given a
+// bare `skip:` reason, which meant `mv node_modules/typescript ...` produced
+// "PARTIAL - 26/27, 1 SKIPPED" and EXIT 0 -- the one static stage silently not
+// run, which is the exact shape the banner above forbids. Probe it here so a
+// missing tsc refuses the run and names itself.
+const TSC = path.join(ROOT, 'node_modules/typescript/bin/tsc');
+const hasTsc = fs.existsSync(TSC);
 
 console.log('root          ' + ROOT);
 console.log('unit tests    ' + TESTS_DIR + (hasUnitTests ? '' : '   *** MISSING ***'));
 console.log('asset manifest ' + ASSET_MANIFEST + (hasAssets ? '' : '   *** MISSING ***'));
+console.log('typescript    ' + TSC + (hasTsc ? '' : '   *** MISSING ***'));
 
-if (!allowMissing && (!hasUnitTests || !hasAssets)) {
+if (!allowMissing && (!hasUnitTests || !hasAssets || !hasTsc)) {
   const missing = [];
   if (!hasUnitTests) missing.push(`${TESTS_DIR}  (no *.test.js found there)`);
   if (!hasAssets) missing.push(`${ASSET_MANIFEST}  (run: ${PY} tools/export_assets.py)`);
+  if (!hasTsc) missing.push(`${TSC}  (run: npm install)`);
   console.error('\nREFUSING TO RUN: the gate cannot see its own inputs.\n' +
                 missing.map((m) => '  missing: ' + m).join('\n') +
                 '\n\nEvery stage that depends on these would have been reported SKIP and the\n' +
@@ -116,8 +125,9 @@ const STAGES = [
     what: 'tsc --checkJs over games/batman/src/ (noImplicitAny OFF -- see tsconfig.json)',
     cmd: process.execPath,
     args: ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json'],
-    skip: fs.existsSync(path.join(ROOT, 'node_modules/typescript/bin/tsc'))
-      ? null : 'typescript not installed - run: npm install',
+    // Reachable only under --allow-missing; without it the probe above already
+    // refused the run.
+    skip: hasTsc ? null : 'typescript not installed - run: npm install',
   },
   {
     name: 'tunables-check',
