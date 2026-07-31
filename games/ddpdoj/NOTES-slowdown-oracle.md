@@ -775,3 +775,61 @@ across a date change.** The game reads the calendar (`$23C53A: lea $C00006,A0`)
 and it lands in main RAM; two runs 26 hours apart differ in exactly ten bytes,
 all month/day. Bounded and carved into its own reported column — see
 `NOTES-oracle.md` §5.
+
+
+---
+
+## WAVE 2 ANSWERS THE HEADLINE QUESTION OF THIS FILE (2026-08-01)
+
+Measured on VERSION-B through `games/ddpdoj/tools/oracle/pgm.py overrun`.
+Evidence, with every command and its output:
+`docs/worklog/ddpdoj/02-impl-object-driver-and-overrun.md`.
+
+**§8.5, "does the game's own logic observe the slowdown" -- the question this
+file calls the single most important one in the folder: YES, MEASURED.**
+
+An overrun was forced for the first time (nobody had ever reached one). Over 696
+frames at 240,012 injected cycles against the 337,920-cycle budget:
+
+```
+PACE  695 logic frames over 1309 video frames = 0.5309 logic/video
+      $80390A advanced 695  (= logic frames: YES)
+cyc mean per logic frame: 676,980 = exactly 2 video frames (2 x 337,920)
+```
+
+**`$80390A` tracks LOGIC frames and fell 614 frames behind the display.** It is
+incremented at `$23BE8C` inside the main loop body, has 83 reference sites, and
+`$80390E` is read back by the frame sync itself. So animation phase, alternation
+and anything else driven by those counters **slows WITH the game, not with the
+display.** The port must delay the whole iteration, counters included -- never
+skip-and-catch-up, never a `gameSpeed` multiplier.
+
+### Which of the three mechanisms, now that an overrun exists
+
+| | verdict | evidence |
+|---|---|---|
+| **(B) time dilation** | **YES, the dominant mechanism**, at whole-video-frame granularity | 614 of 696 frames spanned 2 video frames; `cyc` = exactly 2 x 337,920 |
+| **(A) dropped updates** | **YES, inside IRQ6, 614 firings** | every missed vblank takes the `beq` at `$23C44C` and skips `$24133C $240CC0 $240F26 $287286` and the release -- **while the input read `$23D0F8` before the gate still runs.** There is a SECOND (A) gate inside the input read itself: `$23D10C tst.b $803940 / beq / jsr $25C60C` |
+| **(C) partial completion** | **NO, at the top-level object driver** | `object_slots_processed == object_slots_live` on **all 696 overrun frames**. The driver at `$2410C4` is `moveq #$13,D0 / ... / dbra` -- 20 slots, unconditional. **This is a statement about the TOP-LEVEL driver only**; the 20 per-type handlers walk their own sub-tables and those loops were not examined |
+
+**An overrun changes WHAT the game computes, not only when.** Against the
+0-nop control, `d_ram` diverges 3 frames after the injection starts and the
+framebuffer 100 frames in. That is the (A) half doing its work.
+
+### Two corrections to the instruments this file recommends
+
+1. **The `work` cycle counter was silently broken.** `attoseconds + seconds *
+   1e18` overflows int64 at 10 emulated seconds; `work` read 0 on 1,254 of 2,600
+   frames and `over_budget` on one run read 275 instead of 624. §2b of this file
+   recommends the `machine.time` route as "dependency-free" -- it is, but compute
+   cycles as `seconds*20000000 + attoseconds//50000000000`, never via a float
+   through a 1e18 product.
+2. **"the (A) gate fired" is `sum(irq6 - rel)`, not `count(rel == 0)`.** The
+   wave-1 census statistic reported 1 on a run with 614 gate firings.
+
+### The magnitude question is UNCHANGED and still blocked
+
+Every number above came from injected load. Injected load cannot tell you how
+often or by how much the real board slows -- only that when it does, this is
+what happens. **MAME-timed, uncalibrated.** The scroll-clock path in the banner
+above is still the only calibration route, and nothing in wave 2 advanced it.

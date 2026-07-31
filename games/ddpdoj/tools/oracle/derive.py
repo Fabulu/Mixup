@@ -283,7 +283,127 @@ def derive(data: bytes, build: str, verbose: bool) -> dict:
     ph = [a for a in find(data, b"\x4a\x79" + be32(PHASE3)) if in_build(a, build)]
     note(f"tst.w ${PHASE3:06X} (mod-3 phase read-back) sites: {[f'${a:06X}' for a in ph]}")
 
+    # 10. THE TOP-LEVEL OBJECT DRIVER  (wave 2 item 1).
+    #     Found by MEASUREMENT first, not by pattern-matching: phase.lua timed
+    #     the seven main-loop calls and attributed every main-RAM write to the
+    #     call it happened in; ALL the object work landed in call #2 and the
+    #     sprite-list build in call #4.  Disassembling call #2 gave the driver.
+    #     What follows re-derives it from the image so nobody has to trust that
+    #     paragraph, and ASSERTS the whole 0x2C-byte shape -- if a future set or
+    #     build does not match, this raises instead of returning a wrong number.
+    #
+    #     The table base is the same on both builds because build A and build B
+    #     share the RAM layout (00-recon-hard.md §9); the CODE addresses are not
+    #     related by any offset, which is why this is a search and not +0x100000.
+    OBJTAB = 0x80E240
+    drv = [a for a in find(data, b"\x4b\xf9" + be32(OBJTAB))       # lea $80E240,A5
+           if in_build(a, build)]
+    if len(drv) != 1:
+        raise SystemExit(f"build {build}: expected 1 `lea ${OBJTAB:06X},A5`, "
+                         f"got {[hex(a) for a in drv]}")
+    d0 = drv[0]
+    shape = [                      # offset, bytes, what it must be
+        (0x06, b"\x70", "moveq #imm,D0   (slot count - 1)"),
+        (0x08, b"\x32\x15", "move.w (A5),D1   slot type word"),
+        (0x0C, b"\x02\x41\x00\xff", "andi.w #$ff,D1"),
+        (0x10, b"\xe7\x49", "lsl.w #3,D1     (8-byte dispatch entries)"),
+        (0x12, b"\x2f\x0d", "move.l A5,-(A7) THE PER-SLOT EXECUTION HOOK"),
+        (0x14, b"\x3f\x00", "move.w D0,-(A7)"),
+        (0x16, b"\x41\xfa", "lea (d16,PC),A0 the dispatch table"),
+        (0x1A, b"\x20\x70\x10\x00", "movea.l (A0,D1.w),A0"),
+        (0x1E, b"\x4e\x90", "jsr (A0)        the per-slot handler call"),
+        (0x24, b"\x4b\xed", "lea (d16,A5),A5 the STRIDE"),
+        (0x28, b"\x51\xc8", "dbra D0,<loop top>"),
+    ]
+    for off, pat, what in shape:
+        if data[d0 + off:d0 + off + len(pat)] != pat:
+            raise SystemExit(
+                f"build {build}: object driver shape broken at ${d0 + off:06X}: "
+                f"expected {pat.hex()} ({what}), got "
+                f"{data[d0 + off:d0 + off + len(pat)].hex()}")
+    obj_slots = data[d0 + 7] + 1
+    obj_stride = struct.unpack(">H", data[d0 + 0x26:d0 + 0x28])[0]
+    disp_disp = struct.unpack(">h", data[d0 + 0x18:d0 + 0x1A])[0]
+    obj_disp = d0 + 0x16 + 2 + disp_disp
+    dbra_back = struct.unpack(">h", data[d0 + 0x2A:d0 + 0x2C])[0]
+    if d0 + 0x2A + dbra_back != d0 + 8:
+        raise SystemExit(f"build {build}: the dbra at ${d0 + 0x28:06X} does not "
+                         f"branch back to the loop top ${d0 + 8:06X}")
+    note(f"OBJECT DRIVER    ${d0:06X}  lea ${OBJTAB:06X},A5")
+    note(f"  slots          {obj_slots}   (moveq #${data[d0 + 7]:X},D0 then dbra)")
+    note(f"  stride         ${obj_stride:X} bytes  -> table ${OBJTAB:06X}"
+         f"..${OBJTAB + obj_slots * obj_stride - 1:06X}")
+    # THE HOOK IS THE WORD PUSH, NOT THE LONG PUSH.  $xx+0x12 is
+    # `move.l A5,-(A7)` and $xx+0x14 is `move.w D0,-(A7)`; both are writes, so
+    # both are real 68000 execution hooks (a READ tap would only prove
+    # prefetch).  But the program space is 16 BITS WIDE, so a longword write is
+    # TWO bus cycles and fires a write tap TWICE.  Measured: hooking +0x12 gave
+    # `object_slots_processed 10` against `object_slots_live 5` on 796 frames --
+    # exactly 2x, and it would have been read as "the driver processes twice as
+    # many slots as exist".  The word push fires once.  A5 still holds the slot
+    # address and D0 the dbra counter at +0x14.
+    note(f"  per-slot hook  ${d0 + 0x14:06X}  move.w D0,-(A7)  (a WORD write: "
+         f"one bus cycle = one execution; the move.l at ${d0 + 0x12:06X} fires "
+         f"a 16-bit-space write tap TWICE)")
+    note(f"  dispatch       ${d0 + 0x1E:06X}  jsr (A0), table at ${obj_disp:06X} "
+         f"(8-byte entries: handler long + priority word)")
+    note(f"  NO BUDGET TEST: the loop is `moveq #${data[d0 + 7]:X},D0 / ... / dbra`, "
+         f"unconditional -- {obj_slots} slots every frame")
+    # the dispatch table's own length: entries stay plausible while the handler
+    # pointer is inside the build and the pad word is zero.
+    ndisp = 0
+    while ndisp < 64:
+        e = obj_disp + ndisp * 8
+        ptr = struct.unpack(">I", data[e:e + 4])[0]
+        pad = struct.unpack(">H", data[e + 6:e + 8])[0]
+        if not in_build(ptr, build) or pad != 0:
+            break
+        ndisp += 1
+    note(f"  dispatch table has {ndisp} plausible entries "
+         f"(handler inside build {build}, pad word 0)")
+
+    # 11. THE ALLOCATOR and the ALLOCATION-FAILURE path (wave 2 item 3's real
+    #     question -- the sprite display list is a different, hardware cap).
+    #     `move.w $80DBAC.l,D2 / cmpi.w #$640,D2 / bge <fail>`: the pending-
+    #     CREATE staging queue is 20 records of $50; when it is full the
+    #     allocator returns a DUMMY record and the spawn is silently dropped.
+    PENDC, PENDK = 0x80DBAC, 0x80E23E
+    alloc_sp = [a for a in find(data, b"\x34\x39" + be32(PENDC)) if in_build(a, build)]
+    obj_alloc = obj_alloc_fail = obj_alloc_cap = None
+    for a in alloc_sp:
+        if data[a + 6:a + 8] == b"\x0c\x42":                  # cmpi.w #imm,D2
+            cap = struct.unpack(">H", data[a + 8:a + 10])[0]
+            if data[a + 10:a + 12] == b"\x6c\x00":            # bge.w <fail>
+                d = struct.unpack(">h", data[a + 12:a + 14])[0]
+                obj_alloc, obj_alloc_cap = a - 4, cap
+                obj_alloc_fail = a + 12 + d
+    if obj_alloc is None:
+        raise SystemExit(f"build {build}: no `move.w ${PENDC:06X},D2 / cmpi.w / bge` "
+                         f"allocator found")
+    dummy = None
+    for reg in range(8):
+        pat = bytes([0x41 | (reg << 1) & 0xFF, 0xF9])
+        _ = pat  # (kept explicit: only A0 is used by this routine)
+    if data[obj_alloc_fail:obj_alloc_fail + 2] == b"\x41\xf9":
+        dummy = struct.unpack(">I", data[obj_alloc_fail + 2:obj_alloc_fail + 6])[0]
+    note(f"OBJECT ALLOCATOR ${obj_alloc:06X}  pending-create queue at "
+         f"${PENDC:06X}, cap ${obj_alloc_cap:X} bytes = "
+         f"{obj_alloc_cap // obj_stride} records")
+    note(f"  FULL -> ${obj_alloc_fail:06X}: returns the DUMMY record at "
+         f"${(dummy or 0):06X} and D0=0 -- the spawn is SILENTLY DROPPED, "
+         f"nothing is evicted")
+    kill_sp = [a for a in find(data, b"\x04\x79\x00\x50" + be32(PENDK))
+               if in_build(a, build)]
+    note(f"  pending-KILL queue pointer ${PENDK:06X}, drained at "
+         f"{[f'${a:06X}' for a in kill_sp]}")
+
     return {
+        "objTable": OBJTAB, "objSlots": obj_slots, "objStride": obj_stride,
+        "objDriver": d0, "objSlotHook": d0 + 0x14, "objDispatchCall": d0 + 0x1E,
+        "objDispatchTable": obj_disp, "objDispatchEntries": ndisp,
+        "objAlloc": obj_alloc, "objAllocFail": obj_alloc_fail,
+        "objAllocCapBytes": obj_alloc_cap, "objAllocDummy": dummy,
+        "objPendCreateSP": PENDC, "objPendKillSP": PENDK,
         "counters": counters, "loopHead": loop_head, "loopTail": tail,
         "calls": calls, "frameSync": sync,
         "waitLoops": waits, "waitLoop": primary, "waitBne": primary + 6,

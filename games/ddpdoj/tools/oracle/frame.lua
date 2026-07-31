@@ -49,6 +49,9 @@
 --   PROBE_SAVEAT   "lf:path"  buffer_save at the game's OWN sample point
 --   PROBE_LOAD     "path"     buffer_load before the run
 --   PROBE_RTC      1 = census reads of $C00000-$C0000D (the V3021 RTC)
+--   PROBE_OBJ      "push,base,stride,slots" (hex,hex,hex,dec) -- the object
+--                  driver instrumentation; see THE OBJECT DRIVER below
+--   PROBE_INJECT   "nops[:fromLF]" -- ARTIFICIAL LOAD (a NOP sled), see below
 local TAG = "PROBE "
 local function p(...) print(TAG .. string.format(...)) end
 
@@ -72,6 +75,121 @@ local METER   = os.getenv("PROBE_METER") == "1"
 local RTCWATCH = os.getenv("PROBE_RTC") == "1"
 local SNAPTAG = os.getenv("PROBE_SNAPTAG") or "f"
 local WANT_BUILD = os.getenv("PROBE_REQUIRE_BUILD")
+
+-- ============================================================================
+-- THE OBJECT DRIVER  (wave 2 item 1 -- docs/knowledge/06's (C) detector)
+-- ============================================================================
+-- Located by measurement, not guessed: `phase.lua` timed the seven main-loop
+-- calls and attributed every main-RAM write to the call it happened in, which
+-- put ALL the object work in call #2 ($23BFE8 jsr $2410BC) and the sprite-list
+-- build in call #4 ($23BFF4 jsr $23D2AE).  Disassembling $2410BC gives the
+-- driver verbatim (build B; build A's identical shape is at $1413FE):
+--
+--   $2410C4 lea $80E240,A5      the object table
+--   $2410CA moveq #$13,D0       20 SLOTS  (dbra runs $13+1 times)
+--   $2410CC move.w (A5),D1      slot type word; 0 = empty
+--   $2410CE beq  $2410E8        ...skip
+--   $2410D0 andi.w #$ff,D1
+--   $2410D4 lsl.w #3,D1
+--   $2410D6 move.l A5,-(A7)     <-- THE HOOK.  A WRITE, so it is a real
+--   $2410D8 move.w D0,-(A7)         execution hook on the 68000 (a read tap
+--   $2410DA lea ($240F62,PC),A0     would only prove prefetch), and A5 is the
+--   $2410DE movea.l (A0,D1.w),A0    slot address and D0 the dbra counter AT
+--   $2410E2 jsr (A0)                that instant.
+--   $2410E4 move.w (A7)+,D0
+--   $2410E6 movea.l (A7)+,A5
+--   $2410E8 lea ($50,A5),A5     STRIDE $50 = 80 bytes
+--   $2410EC dbra D0,$2410CC
+--   $2410F0 rts
+--
+-- **THERE IS NO BUDGET TEST AND NO TIME TEST IN THAT LOOP.**  It is a plain
+-- `dbra` over exactly 20 slots, every frame, unconditionally.  That is the
+-- listing's answer to mechanism (C) at the top level; the runtime column below
+-- is what proves it under load, because only a measurement can do that.
+--
+-- `objn` = dispatches this logic frame (0..20) -- "object slots processed".
+-- `objord` = FNV-1a-64 over the ORDERED (slot index, type) sequence.  ORDER is
+--   semantics here and not decoration: the table is kept sorted by the +$4A
+--   priority word, insertion at $24111E memmoves the tail DOWN one slot (so the
+--   last slot is destroyed when the table is full) and deletion at $2411E2
+--   memmoves it UP (so slot indices are not stable identities).
+-- `objlive` = non-zero type words in the table, read at the sample point.
+local OBJ_PUSH, OBJ_BASE, OBJ_STRIDE, OBJ_SLOTS
+do
+  local s = os.getenv("PROBE_OBJ")
+  if s then
+    local a, b, c, d = s:match("^(%x+),(%x+),(%x+),(%d+)$")
+    if a then
+      OBJ_PUSH = tonumber(a, 16); OBJ_BASE = tonumber(b, 16)
+      OBJ_STRIDE = tonumber(c, 16); OBJ_SLOTS = tonumber(d)
+    else p("OBJ_SPEC_BAD [%s]", s) end
+  end
+end
+
+-- ============================================================================
+-- ARTIFICIAL LOAD -- how the overrun is forced  (wave 2 item 2)
+-- ============================================================================
+-- MAME's `-speed` is a HOST throttle: it changes how fast the host runs the
+-- emulation and leaves the emulated cycles per frame at exactly 337,920, so it
+-- produces NO in-game slowdown whatsoever.  The right tool would be a per-CPU
+-- clock scale (device_execute_interface::set_clock_scale, the internal UI's
+-- "Overclock CPU maincpu" slider).  MEASURED ON THIS MACHINE, MAME 0.288:
+-- that is NOT reachable.  The `device` usertype's metatable has 30 members and
+-- none is clock/clock_scale/set_clock_scale; `manager.ui` exposes no slider
+-- list; `-showusage` has no overclock option; and the binary has no `<slider>`
+-- cfg node, so the slider is not persisted either.  Evidence in
+-- docs/worklog/ddpdoj/02-impl-object-driver-and-overrun.md.
+--
+-- So the overrun is forced the other way the plan allows: INJECT ARTIFICIAL
+-- LOAD.  A NOP SLED is written into the decrypted :maincpu image at $340000 --
+-- inside the 68000's ROM window ($000000-$3FFFFF, cavepgm_mem) but past the end
+-- of the 2 MiB program ($100000..$2FFFFF), so it overwrites nothing the game can
+-- reach -- and one main-loop `jsr` operand is repointed at it:
+--
+--   $340000        4E71 x N          nop, nop, ... (4 cycles each)
+--   $340000+2N     4EF9 00xxxxxx     jmp <the call's original target>
+--
+-- WHY A NOP SLED AND NOT A COUNTED DELAY LOOP.  The first version was
+-- `move.l D0,-(A7) / move.l #N,D0 / subq / bne / move.l (A7)+,D0`.  It restores
+-- D0 exactly and touches no game variable -- and its ITERS=0 CONTROL STILL
+-- FAILED, on `d_ram`.  Diagnosed by dumping all 128 KiB at the injection frame
+-- in both runs: **18 bytes differed and every one was DEAD STACK**, $81FEE2 to
+-- $81FF57 -- residue the two pushes left below SP.  Two things came out of that
+-- and both are kept:
+--   (a) the sled, which pushes nothing, clobbers no register and sets no flag,
+--       so its control is byte-identical rather than nearly so;
+--   (b) THE STACK REACHES BELOW $81FF00.  wave 1 carved only the top page out
+--       as `d_top` "(dead stack)"; measured over a 2,600-frame gate run, 49
+--       writer PCs reach into the $81FE00 page and the deepest write seen is
+--       $81FE76.  So `d_ram` contains ~256 bytes of dead stack today.  That is
+--       recorded, not silently patched, because moving the boundary would
+--       change every digest in the corpus -- see the worklog.
+--
+-- The sled changes WHEN the frame runs out of time and nothing about WHAT the
+-- game does about it, which is exactly the split NOTES-slowdown-oracle.md's
+-- banner demands.  4 cycles per nop, 2 bytes per nop, ~1 MiB of pad available =
+-- up to ~2,000,000 injectable cycles against a 337,920-cycle frame budget.
+--
+-- CONTROL, and it is the reason to trust any of this: with NOPS=0 the patched
+-- run must be BYTE-IDENTICAL to the unpatched one (only the `jmp`'s 12 cycles
+-- are added, and 12 cycles must move no state).  `pgm.py overrun` runs it first
+-- and refuses to report a sweep if it fails.
+--
+-- EVERY NUMBER FROM THIS IS MAME-TIMED AND UNCALIBRATED, and it is a MECHANISM
+-- result only.  Injected load cannot tell you how often the real board overruns.
+local INJ_NOPS, INJ_FROM = 0, 0
+do
+  local s = os.getenv("PROBE_INJECT")
+  if s then
+    local a, b = s:match("^(%d+):?(%d*)$")
+    if a then
+      INJ_NOPS = tonumber(a)
+      INJ_FROM = tonumber(b) or 0
+    else p("INJECT_SPEC_BAD [%s]", s) end
+  end
+end
+local INJ_SITE = tonumber(os.getenv("PROBE_INJECT_SITE") or "23BFE8", 16)
+local INJ_PAD  = tonumber(os.getenv("PROBE_INJECT_PAD") or "340000", 16)
 
 -- ---------------------------------------------------------------- landmarks
 -- Addresses come in from pgm.py, which reads landmarks.json, which derive.py
@@ -142,7 +260,30 @@ end
 -- So the date is carved OUT of d_ram and reported as its own column d_date.
 -- It is bounded, named and visible, not hidden: a hole in a digest that nobody
 -- can see is how a real divergence gets excused later.
-local RAM_LEN   = 0x1ff00
+--
+-- THE DEAD-STACK BOUNDARY, corrected in wave 2 and it was one page too high.
+-- Wave 1 hashed $800000..$81FEFF as `d_ram` and carved only the TOP PAGE
+-- $81FF00..$81FFFF out as `d_top` "(dead stack)".  The stack goes deeper than
+-- that.  Found by the overrun control failing: an injected delay that provably
+-- touched no game variable still moved `d_ram`, and dumping all 128 KiB at the
+-- injection frame in both runs showed 18 differing bytes, $81FEE2..$81FF57 --
+-- one of them `$81FF37: 904000 vs 25F1F6`, and $0025F1F6 is a build-B code
+-- address, i.e. a PUSHED PC left below SP by an interrupt that landed 12 cycles
+-- later.  Dead stack, not state.
+--
+-- Then measured properly, 2,600-frame gate run, write tap on $81FE00-$81FEFF:
+-- 49 writer PCs, EVERY ONE a stack push -- including $000CA6/$000CBE, which are
+-- the BIOS IRQ4/IRQ6 trampolines (`move.l $801470,-(A7)`).  Deepest write seen:
+-- $81FE36 (from $13CEC8).  No data-shaped writer: the spans are 2/6/50 bytes
+-- (movem frames) and the busiest is active on 332 of 2,600 frames.
+--
+-- So the boundary moves to $81FE00 -- 54 bytes of headroom under the deepest
+-- observed push -- and a GUARD TAP on the 256 bytes below it FAILS the run
+-- loudly if the stack ever goes deeper, because a silent boundary is how a real
+-- divergence gets excused later.  THIS CHANGES EVERY DIGEST IN THE CORPUS
+-- against wave 1's numbers; that is recorded in the worklog, not hidden.
+local RAM_LEN   = 0x1fe00
+local STACK_GUARD_LO, STACK_GUARD_HI = 0x81FD00, 0x81FDFF
 local RAM_HOLES = {0x2098, 0x20A8, 0x2118, 0x2200, 0x22C8}   -- 8-byte aligned
 local RAM_SEGS = {}
 do
@@ -247,24 +388,44 @@ local out, done = nil, false
 -- census (the lag census the plan requires in EVERY scenario's output)
 local cen = { irq6hist = {}, relhist = {}, spinhist = {}, buildhist = {},
               armhist = {}, semhist = {}, maxspr = 0, halted = 0, rtcreads = 0,
-              minwork = math.huge, maxwork = 0, over = 0, spanned = 0 }
+              minwork = math.huge, maxwork = 0, over = 0, spanned = 0,
+              objhist = {}, objlivehist = {}, guard = 0, guardpcs = {} }
 local function bump(t, k) t[k] = (t[k] or 0) + 1 end
 
+-- object-driver accumulators, reset at every sample point
+local objn, objord = 0, 0xcbf29ce484222325
+
 local COLS = {"lf", "vf", "cyc", "work", "spin", "irq4", "irq6", "rel",
-              "build", "armpc", "sprites",
+              "build", "armpc", "sprites", "objn", "objord", "objlive",
               "d_spr", "d_ram", "d_date", "d_top", "d_pal", "d_spb", "d_bg", "d_tx", "pix"}
 for _, n in ipairs(NAMED) do COLS[#COLS + 1] = n[1] end
 
+-- THE MACHINE CLOCK, IN 68000 CYCLES, AND WHY IT IS NOT attoseconds.
+-- Wave 1 computed `t = M.time.attoseconds + M.time.seconds * 1e18`.  int64's
+-- maximum is 9.223e18, so that product OVERFLOWS once `seconds` reaches 10 and
+-- t goes negative -- roughly every 9.2 emulated seconds, i.e. every ~546 logic
+-- frames.  `cyc` survived because it is a difference and two's-complement
+-- subtraction wraps correctly, but `work` is guarded by `rel_t > 0`, which is
+-- FALSE for half of every run.  MEASURED on the wave-1 gate scenario: `work`
+-- is 0 on lf531-1058 and lf1603-2147 -- 1,254 of 2,600 frames -- and the
+-- `work_cycles min/max/over_budget` census line was therefore computed over
+-- whichever half of the run happened to have a positive clock.
+-- Cycles directly, exactly, with no float and no overflow: the 68000 is 20 MHz,
+-- so one cycle is 5e10 attoseconds.
+local function cycnow()
+  return M.time.seconds * 20000000 + (M.time.attoseconds // 50000000000)
+end
+
 local function emit(armpc)
-  local t = M.time.attoseconds + M.time.seconds * 1000000000000000000
+  local t = cycnow()
   -- 20 MHz 68000; the frame budget is exactly 337,920 cycles (16.896 ms, from
   -- pixclock 10 MHz / (640 x 264) = 15625/264 Hz).  Not a rounded literal.
-  local cyc = math.floor((t - prev_t) / 1e18 * 20000000 + 0.5)
+  local cyc = t - prev_t
   -- work = cycles from the ISR6 release that started this frame to the arm that
   -- ended it: the game's own frame budget consumption, with NO extra tap.  The
   -- spin meter measures the same thing from the other side and they must sum to
   -- roughly one frame; carrying both is the cross-check.
-  local work = rel_t > 0 and math.floor((t - rel_t) / 1e18 * 20000000 + 0.5) or 0
+  local work = rel_t > 0 and (t - rel_t) or 0
   prev_t = t
   if work > 0 then
     if work < cen.minwork then cen.minwork = work end
@@ -282,6 +443,17 @@ local function emit(armpc)
   end
   local spr = sprite_count()
   if spr > cen.maxspr then cen.maxspr = spr end
+  -- live slots, counted at the sample point straight out of the table
+  local objlive = 0
+  if OBJ_BASE then
+    for i = 0, OBJ_SLOTS - 1 do
+      if RAM:read_u16((OBJ_BASE - 0x800000) + i * OBJ_STRIDE) ~= 0 then
+        objlive = objlive + 1
+      end
+    end
+    bump(cen.objhist, objn)
+    bump(cen.objlivehist, objlive)
+  end
   local build = (armpc >> 20) & 0xf
   cen.lastbuild = build
   bump(cen.buildhist, build)
@@ -294,10 +466,11 @@ local function emit(armpc)
   local r = {
     lf, vf, cyc, work, spin, irq4, irq6, rel,
     build, string.format("%06X", armpc), spr,
+    objn, objord & 0x7fffffffffffffff, objlive,
     digest(RAM, 0, 0xa00),           -- the sprite display list
     digest_segs(RAM, RAM_SEGS),      -- main RAM, minus the RTC date words
     digest_segs(RAM, DATE_SEGS),     -- ...which are reported here instead
-    digest(RAM, RAM_LEN, 0x100),     -- the top page (dead stack), separately
+    digest(RAM, RAM_LEN, 0x200),     -- $81FE00-$81FFFF: dead stack, separately
     digest(PAL, 0, PAL.size), digest(SPB, 0, SPB.size),
     digest(BG, 0, BG.size), digest(TX, 0, TX.size), pix,
   }
@@ -305,6 +478,7 @@ local function emit(armpc)
   local line = table.concat(r, "\t")
   if out then out:write(line, "\n") else p("ROW %s", line) end
   irq4, irq6, rel, spin = 0, 0, 0, 0
+  objn, objord = 0, 0xcbf29ce484222325
 end
 
 -- ---------------------------------------------------------------- taps
@@ -323,8 +497,7 @@ end)
 --     MAME dies with "end address has low bits unset".
 TAPS[#TAPS + 1] = PROG:install_write_tap(0x803940, 0x803941, "sem", function(offset, data, mask)
   local pc = CPU.state["CURPC"].value & 0xffffff
-  local t = M.time.attoseconds + M.time.seconds * 1000000000000000000
-  if REL[pc] then rel = rel + 1; rel_t = t; return data end
+  if REL[pc] then rel = rel + 1; rel_t = cycnow(); return data end
   -- big-endian 16-bit space: the even byte $803940 lives in the HIGH lane
   local newv = ((mask & 0xff00) ~= 0) and ((data >> 8) & 0xff) or (data & 0xff)
   if RAM:read_u8(SEM) == 0 and newv ~= 0 then
@@ -371,6 +544,37 @@ if METER and LM.wait then
   TAPS[#TAPS + 1] = PROG:install_read_tap(LM.wait, LM.wait + 1, "meter",
     function(offset, data) spin = spin + 1; return data end)
 end
+
+-- (3b) THE OBJECT DRIVER's per-slot hook.  $2410D6 is `move.l A5,-(A7)`, the
+--      first instruction of the dispatch preamble -- a WRITE, and therefore a
+--      real execution hook on the 68000 rather than a prefetch.  The tap covers
+--      the stack region and filters by CURPC; the stack lives in $81FFxx
+--      (SP=$81FFFC at boot, ~1,714 writes/frame measured in
+--      00-recon-memmap.md §4) and $81F000 gives it 4 KiB of headroom.
+if OBJ_PUSH then
+  TAPS[#TAPS + 1] = PROG:install_write_tap(0x81F000, 0x81FFFF, "objslot",
+    function(offset, data, mask)
+      if (CPU.state["CURPC"].value & 0xffffff) ~= OBJ_PUSH then return data end
+      local a5 = CPU.state["A5"].value & 0xffffff
+      local slot = (a5 - OBJ_BASE) // OBJ_STRIDE
+      local ty = RAM:read_u16(a5 - 0x800000)
+      objn = objn + 1
+      -- ORDER is semantics: mix slot and type in sequence, never a set/sum.
+      objord = ((objord ~ ((slot << 16) | ty)) * 0x100000001b3) & 0xffffffffffffffff
+      return data
+    end)
+end
+
+-- (3c) THE DEAD-STACK GUARD.  d_ram stops at $81FE00 because everything above
+--      it was MEASURED to be stack (see the boundary note above).  If the stack
+--      ever reaches below that, part of d_ram becomes stack noise and every
+--      comparison in the corpus quietly weakens.  This tap normally never fires.
+TAPS[#TAPS + 1] = PROG:install_write_tap(STACK_GUARD_LO, STACK_GUARD_HI, "stkguard",
+  function(offset, data, mask)
+    cen.guard = cen.guard + 1
+    bump(cen.guardpcs, string.format("%06X", CPU.state["CURPC"].value & 0xffffff))
+    return data
+  end)
 
 -- (4) RTC census.  The board carries a V3021 that MAME feeds from the HOST
 --     clock, which is the one unclosed determinism risk in the corpus.  Count
@@ -445,6 +649,16 @@ local function finish()
     cen.minwork == math.huge and -1 or cen.minwork, cen.maxwork, cen.over)
   if METER then p("CENSUS spin_iters_bucketed500 %s", hist(cen.spinhist)) end
   p("CENSUS max_sprite_entries=%d", cen.maxspr)
+  p("CENSUS stack_guard_hits=%d below_$%06X %s", cen.guard, STACK_GUARD_LO,
+    hist(cen.guardpcs))
+  if OBJ_BASE then
+    -- THE (C) DETECTOR.  If object_slots_processed is the live-slot count on
+    -- every frame, the game does not truncate its object loop.  If it varies
+    -- with load INDEPENDENTLY of objlive, it does, and the port needs a budget
+    -- and an early exit in its first commit (docs/knowledge/06 rule 3).
+    p("CENSUS object_slots_processed %s", hist(cen.objhist))
+    p("CENSUS object_slots_live %s", hist(cen.objlivehist))
+  end
   p("CENSUS build_by_armpc_top_nibble %s", hist(cen.buildhist))
   p("CENSUS armpc %s", hist(cen.armhist))
   p("CENSUS halt_loop_interrupts=%d", cen.halted)
@@ -472,6 +686,11 @@ local function finish()
   end
   if cen.maxspr == 0 then
     fails[#fails + 1] = "the sprite display list was EMPTY on every frame"
+  end
+  if cen.guard > 0 then
+    fails[#fails + 1] = string.format(
+      "%d writes landed BELOW the dead-stack boundary $%06X: d_ram now contains "
+      .. "stack noise and the boundary must be re-measured", cen.guard, RAM_LEN + 0x800000)
   end
   if WANT_BUILD then
     local want = (WANT_BUILD == "B") and 2 or 1
@@ -504,7 +723,44 @@ end
 -- wave-6 pixel gate would pass on a blank screen.
 local NOSPRITES = os.getenv("PROBE_NOSPRITES") == "1"
 
+-- ---------------------------------------------------------------- injection
+-- Writing the trampoline into the DECRYPTED :maincpu region.  It is written
+-- once, before anything can execute it; the main loop's `jsr` operand is
+-- repointed only when logic frame INJ_FROM is reached, so every frame before
+-- that is bit-for-bit an unpatched run.  Nothing is written to the game's RAM.
+local REGION = M.memory.regions[":maincpu"]
+local inj_installed, inj_armed = false, false
+local inj_target = 0
+local function inj_write_trampoline()
+  inj_target = REGION:read_u32(INJ_SITE + 2)      -- the call's original target
+  if INJ_PAD + 2 * INJ_NOPS + 6 > 0x400000 then
+    p("FAIL injection sled runs past the ROM window $3FFFFF (nops=%d)", INJ_NOPS)
+    return
+  end
+  for i = 0, INJ_NOPS - 1 do
+    REGION:write_u16(INJ_PAD + 2 * i, 0x4E71)     -- nop, 4 cycles, no side effect
+  end
+  local j = INJ_PAD + 2 * INJ_NOPS
+  REGION:write_u16(j, 0x4EF9)                     -- jmp <original>.l
+  REGION:write_u16(j + 2, (inj_target >> 16) & 0xffff)
+  REGION:write_u16(j + 4, inj_target & 0xffff)
+  p("INJECT sled at $%06X nops=%d jmp_at=$%06X site=$%06X original_target=$%06X "
+    .. "added_cycles=%d budget=337920", INJ_PAD, INJ_NOPS, j, INJ_SITE,
+    inj_target, INJ_NOPS * 4 + 12)
+  inj_installed = true
+end
+local function inj_arm()
+  REGION:write_u32(INJ_SITE + 2, INJ_PAD)
+  inj_armed = true
+  p("INJECT armed at lf=%d vf=%d: $%06X now calls $%06X",
+    lf, SCR:frame_number(), INJ_SITE, INJ_PAD)
+end
+
 SUBS[#SUBS + 1] = emu.add_machine_frame_notifier(function()
+  if os.getenv("PROBE_INJECT") then
+    if not inj_installed then inj_write_trampoline() end
+    if not inj_armed and lf >= INJ_FROM then inj_arm() end
+  end
   if NOSPRITES then
     PROG:write_u16(0xb0e000, PROG:read_u16(0xb0e000) & 0xfffe)
   end

@@ -13,6 +13,9 @@ numbers were produced; nothing new should be built on them.
 games/ddpdoj/tools/oracle/
   pgm.py           THE entry point. Every command below.
   frame.lua        the per-frame state probe (the sample point, the census)
+  objhunt.lua      write map with CURPC attribution: stride, count/logic frame
+  phase.lua        times the seven main-loop calls; attributes writes to phases
+  xref.py          static xref / call search / unidasm over the decrypted image
   derive.py        re-derives the landmark table from the decrypted image
   dumpcpu.lua      dumps the DECRYPTED :maincpu region for derive.py/unidasm
   landmarks.json   the derived table, ADDRESSES ONLY, committed
@@ -33,6 +36,8 @@ python pgm.py inputlead    expect 0
 python pgm.py rtc          RTC census + determinism across a date change
 python pgm.py drc          -drc vs -nodrc
 python pgm.py pixred       red-validate the pixel column
+python pgm.py objdriver    THE OBJECT DRIVER: derived table + measured slots
+python pgm.py overrun      FORCE AN OVERRUN: the 0-nop control, then a sweep
 ```
 
 ## 1. THE TRAP THAT DEFINES THIS CARTRIDGE
@@ -240,3 +245,75 @@ useful independent check.
   completed every frame. Case **(C)** — a truncated per-object loop — remains
   completely unmeasured, and the top-level object driver is still not located.
   That is wave 2's job, and `docs/knowledge/06` says (C) cannot be retrofitted.
+
+
+---
+
+## WAVE 2 — the object driver, the overrun, and two defects in this harness
+
+Full evidence: `docs/worklog/ddpdoj/02-impl-object-driver-and-overrun.md`.
+
+### New compared columns (they are NOT optional)
+
+`objn`, `objord`, `objlive` are in the standard state vector on every run.
+`docs/knowledge/06` names "object slots processed" the field most likely to be
+missing from inherited tooling and the one that decides whether slowdown can be
+retrofitted, so it is in the vector before wave 4 has an object driver at all.
+
+* **The top-level object driver is main-loop call #2, `$2410BC`** (build A:
+  `$1413FE`), whose only caller is the loop head. **20 slots x $50 bytes at
+  `$80E240..$80E87F`**, type word at +$00 (0 = empty), priority at +$4A, unique
+  ID at +$4C, dispatch through a 20-entry 8-byte table at `$240F62`.
+  **The loop is `moveq #$13,D0 / ... / dbra`: no budget test, no time test.**
+* Allocation is a staged create queue (`$241182`, cap 20, **full = return a
+  DUMMY record at `$80D51C` and silently drop the spawn**) committed in priority
+  order by `$24111E`, whose insert **memmoves the tail DOWN and destroys the
+  last slot**. Deletion (`$2411E2`) memmoves it UP. **Slot indices are not
+  stable identities; the ORDER is semantics.** `objord` hashes the sequence.
+* `pgm.py objdriver` prints all of it, derived by `derive.py` from the image
+  with the whole 0x2C-byte driver shape asserted on both builds.
+
+### TWO DEFECTS IN THE WAVE-1 HARNESS, both found by the overrun control
+
+1. **`work` was 0 on half of every run.** `M.time.attoseconds + M.time.seconds *
+   1e18` overflows int64 at 10 emulated seconds, and `work` is guarded by
+   `rel_t > 0`. Measured: 1,254 of 2,600 frames. `over_budget` on the same
+   NOPS=60000 run read **275** before the fix and **624** after. Cycles are now
+   computed exactly: `seconds*20000000 + attoseconds//50000000000`.
+2. **The dead-stack boundary was one page too high.** Wave 1 carved only
+   `$81FF00..$81FFFF` out as `d_top`; measured, 49 writer PCs reach into the
+   `$81FE00` page (including the BIOS IRQ4/IRQ6 trampolines `$000CA6`/`$000CBE`)
+   and the deepest push seen is `$81FE36`. `d_ram` had been hashing ~256 bytes
+   of stack residue. `RAM_LEN` is now `$1FE00`, `d_top` is 512 bytes, and a
+   **guard tap on `$81FD00-$81FDFF` FAILS the run** if the stack goes deeper.
+
+**Both changes move every digest in the corpus.** The gate scenario's hash:
+
+```
+wave 1:  13f8ef743e0b3a53dbcf0ae36278dbe2defc4b514e0219fe1d8f834481841382
+wave 2:  635bb92f1a9dc81e968bab5e755f807e78c0c18538af5cfc8c29974520d84884
+         (still IDENTICAL across two runs; stack_guard_hits=0)
+```
+
+### And a correction to the lag census
+
+`gated_zero_release` counts logic frames with `rel == 0`. **That is not the
+(A)-gate firing count.** A dilated logic frame sees N vblanks and gets exactly
+ONE release; the other N-1 IRQ6s take the gate. The count is `sum(irq6 - rel)`.
+On the forced-overrun run `gated_zero_release` read **1** while the gate fired
+**614** times.
+
+### How the overrun is forced
+
+MAME's `-speed` is a HOST throttle and changes no emulated cycle. A per-CPU
+clock scale is **not reachable from MAME 0.288** (the Lua `device` usertype has
+no clock member, `manager.ui` has no slider list, there is no command-line
+option, and the binary has no `<slider>` cfg node -- the "Overclock CPU %s"
+slider is UI-only). So `PROBE_INJECT="nops:fromLF"` writes a **NOP sled** into
+the decrypted `:maincpu` image at `$340000` -- inside the 68000's ROM window,
+past the end of the 2 MiB program -- and repoints one main-loop `jsr` operand at
+it. A nop pushes nothing, clobbers no register, sets no flag.
+
+`pgm.py overrun` runs the **0-nop control first** and refuses to report a sweep
+unless the only columns that moved are `cyc`, `work`, `spin` and `d_top`.
+**Every number it prints is MAME-timed, UNCALIBRATED, and a MECHANISM result.**

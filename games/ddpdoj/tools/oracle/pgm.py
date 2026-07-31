@@ -56,6 +56,21 @@ Commands
   drc           -drc vs -nodrc, same scenario, diff
   seedstate     savestate taken at the game's own sample point, then resumed
   pixred        red-validate the pixel column by switching the sprite DMA off
+  objdriver     THE OBJECT DRIVER: the derived table + a measured slot census
+  overrun       FORCE AN OVERRUN: the 0-nop control, then an injected-load sweep
+
+ 7. THE OBJECT DRIVER IS MAIN-LOOP CALL #2, $2410BC (build A: $1413FE): 20 slots
+    of $50 bytes at $80E240, dispatched through a 20-entry table at $240F62,
+    walked by an UNCONDITIONAL `dbra`.  `objn`/`objord`/`objlive` are standard
+    compared columns, not options -- docs/knowledge/06 calls "object slots
+    processed" the field that cannot be retrofitted.
+
+ 8. THE CLOCK.  `machine.time.attoseconds + seconds * 1e18` OVERFLOWS int64 at
+    10 emulated seconds and silently zeroed `work` on half of every wave-1 run.
+    68000 cycles are `seconds*20000000 + attoseconds//50000000000`.
+
+ 9. THE DEAD-STACK BOUNDARY IS $81FE00, not $81FF00 -- the stack reaches
+    $81FE36.  A guard tap below it fails the run if that ever changes.
 """
 
 from __future__ import annotations
@@ -196,6 +211,17 @@ def lm_env(build: str = "B") -> str:
     ])
 
 
+def obj_env(build: str = "B") -> str:
+    """The object driver, as frame.lua's PROBE_OBJ: "push,base,stride,slots".
+
+    Derived, never typed in: `derive.py` asserts the whole 0x2C-byte shape of
+    the driver loop on both builds and refuses to emit a number if it changed.
+    """
+    b = landmarks()["builds"][build]
+    return (f"{b['objSlotHook']:x},{b['objTable']:x},"
+            f"{b['objStride']:x},{b['objSlots']}")
+
+
 # --------------------------------------------------------------------------- probe
 def trace(out_tsv: Path, *, frames: int = 600, buttons: str = BOOT_B,
           build: str = "B", machine: str = DEFAULT_SET, meter: bool = True,
@@ -210,6 +236,12 @@ def trace(out_tsv: Path, *, frames: int = 600, buttons: str = BOOT_B,
         "PROBE_OUT": str(out_tsv),
         "PROBE_INPUT": buttons,
         "PROBE_LM": lm_env(build),
+        # OBJECT SLOTS PROCESSED is a standard compared column, not an option:
+        # docs/knowledge/06 names it the field most likely to be missing from
+        # inherited tooling and the one that decides whether slowdown can be
+        # retrofitted at all. Wave 2 put it in the vector before wave 4 has an
+        # object driver to compare it against, which is the whole point.
+        "PROBE_OBJ": obj_env(build),
         "PROBE_REQUIRE_BUILD": build,
     }
     if meter:
@@ -399,6 +431,12 @@ def build_script(defs: dict, s: dict) -> str:
 def run_scenario(defs: dict, s: dict, *, out: Path, tag: str = "",
                  **kw) -> tuple[Run, Path]:
     tsv = out / f"{s['name']}{tag}.tsv"
+    if s.get("inject"):
+        # ARTIFICIAL LOAD. Scenario-level, so an overrun run is a PERMANENT
+        # member of the corpus rather than a one-off experiment.
+        ee = dict(kw.pop("extra_env", None) or {})
+        ee.setdefault("PROBE_INJECT", s["inject"])
+        kw["extra_env"] = ee
     r = trace(tsv, frames=s["frames"], buttons=build_script(defs, s),
               build=s.get("build", "B"), meter=s.get("meter", True),
               pixels=s.get("pixels", 0), snap=s.get("snap", ""), **kw)
@@ -686,11 +724,202 @@ def _cmd_drc(argv: list[str]) -> int:
     return 0
 
 
+def _cmd_objdriver(argv: list[str]) -> int:
+    """WAVE 2 ITEM 1 -- the top-level object driver, as derived and as measured.
+
+    Located by measurement, not by guessing: `phase.lua` timed the seven
+    main-loop calls and attributed every main-RAM write to the call it happened
+    in.  ALL the object work is in call #2 and the sprite-list build in call #4.
+    """
+    d = landmarks()
+    for bn in ("A", "B"):
+        b = d["builds"][bn]
+        tag = "MASTER (chooser default)" if bn == "A" else "BLACK VER -- THE TARGET"
+        print(f"\n=== build {bn}: {tag} ===")
+        print(f"  driver          ${b['objDriver']:06X}   "
+              f"(main-loop call #2, ${b['calls'][2]:06X}, whose only caller is "
+              f"the loop head)")
+        print(f"  table           ${b['objTable']:06X}..${b['objTable'] + b['objSlots'] * b['objStride'] - 1:06X}"
+              f"   {b['objSlots']} slots x ${b['objStride']:X} bytes")
+        print(f"  per-slot hook   ${b['objSlotHook']:06X}  move.l A5,-(A7) "
+              f"(a WRITE -> a real 68000 execution hook)")
+        print(f"  dispatch        ${b['objDispatchCall']:06X} jsr (A0), table "
+              f"${b['objDispatchTable']:06X}, {b['objDispatchEntries']} entries")
+        print(f"  allocator       ${b['objAlloc']:06X}   pending-create queue "
+              f"${b['objPendCreateSP']:06X}, cap ${b['objAllocCapBytes']:X} = "
+              f"{b['objAllocCapBytes'] // b['objStride']} records")
+        print(f"  ALLOC FAILS     ${b['objAllocFail']:06X} -> returns the dummy "
+              f"record ${b['objAllocDummy']:06X} and D0=0: the spawn is SILENTLY "
+              f"DROPPED and nothing is evicted")
+        print(f"  pending-kill SP ${b['objPendKillSP']:06X}")
+    print("\nNO BUDGET TEST EXISTS IN THAT LOOP -- `moveq #$13,D0 / ... / dbra`, "
+          "\nunconditional, 20 slots every frame.  That is the LISTING's answer "
+          "to \nmechanism (C) at the top level; `pgm.py overrun` is the "
+          "measurement.")
+    n = int(argv[0]) if argv else 2600
+    r, tsv = run_scenario(scenarios(),
+                          next(x for x in scenarios()["scenarios"]
+                               if x["name"] == scenarios()["gate"]),
+                          out=OUT, tag=".obj")
+    check(r, "objdriver")
+    for l in r.find("CENSUS object"):
+        print("  " + l)
+    print(f"  -> {tsv}")
+    return 0
+
+
+def _cmd_overrun(argv: list[str]) -> int:
+    """WAVE 2 ITEM 2 -- FORCE AN OVERRUN AND CHARACTERISE IT.
+
+    Nobody had ever reached one: wave 0's heaviest stage-1 frames ran to >90%
+    utilisation and stopped, and wave 1's 2,600-frame gate completed its loop on
+    every single frame.  Without an overrun, mechanism (C) is unmeasured, and
+    docs/knowledge/06 says (C) cannot be retrofitted.
+
+    THE TOOL.  MAME's `-speed` is a HOST throttle and leaves the emulated
+    337,920 cycles/frame untouched -- it produces no in-game slowdown at all.
+    The right tool would be a per-CPU clock scale; MEASURED, it is not reachable
+    from MAME 0.288 (see frame.lua's ARTIFICIAL LOAD header for the four places
+    I looked).  So the load is injected instead: a NOP SLED written into the
+    decrypted :maincpu image past the end of the program ($340000, inside the
+    68000's $000000-$3FFFFF ROM window), with one main-loop `jsr` operand
+    repointed at it.  A nop pushes nothing, clobbers no register and sets no
+    flag, so it changes WHEN the frame runs out of time and nothing about WHAT
+    the game does about it.  4 cycles each against a 337,920-cycle frame.
+
+    THE CONTROL comes first and it is not optional: with NOPS=0 the patched run
+    must be BYTE-IDENTICAL to the unpatched one.  If it is not, every number the
+    sweep produces is about the patch and not about the game.  (The first
+    version of this used a counted delay loop with a register saved on the
+    stack; its control failed on `d_ram`, and dumping all 128 KiB at the
+    injection frame showed 18 differing bytes, all of them dead stack. That is
+    why the sled exists and why the control is not decoration.)
+
+    EVERY FIGURE HERE IS MAME-TIMED AND UNCALIBRATED.  Injected load answers
+    MECHANISM.  It cannot answer how often or how much the real board slows.
+    """
+    defs = scenarios()
+    name = "overrun"
+    s = next((x for x in defs["scenarios"] if x["name"] == name), None)
+    if s is None:
+        raise SystemExit("scenarios.json has no 'overrun' scenario")
+    out = OUT / "overrun"
+    out.mkdir(parents=True, exist_ok=True)
+    start = s.get("injectFrom", 1900)
+
+    print("=== CONTROL: patch installed, ZERO iterations, vs no patch at all ===")
+    a, ta = run_scenario(defs, dict(s, inject=None), out=out, tag=".ctl-nopatch")
+    check(a, "overrun/control-nopatch")
+    b, tb = run_scenario(defs, dict(s, inject=f"0:{start}"), out=out, tag=".ctl-zero")
+    check(b, "overrun/control-zero", quiet=True)
+    msgs = first_divergence(ta, tb)
+    # WHAT THE CONTROL IS ALLOWED TO MOVE, and why exactly these four.
+    #   cyc / work / spin  -- the sled adds 12 cycles (the `jmp`) even at zero
+    #     nops.  Timing columns MUST move; if they did not, the patch was not
+    #     reached at all and the sweep would be measuring nothing.
+    #   d_top -- $81FE00-$81FFFF, dead stack.  A 12-cycle shift changes which
+    #     instruction an interrupt lands on, so the PC the 68000 pushes in the
+    #     exception frame differs, and after the RTE that is residue below SP.
+    #     Diagnosed byte-for-byte: 18 bytes at $81FEE2..$81FF57, one of them
+    #     $81FF37 = 904000 vs 25F1F6, and $0025F1F6 is a build-B code address.
+    # ANY OTHER COLUMN MOVING means the patch changed the game, and then every
+    # number in the sweep is about the patch.  d_ram in particular must not move.
+    ALLOWED = {"cyc", "work", "spin", "d_top"}
+    moved = {m.split(":")[0].replace("col ", "") for m in msgs}
+    if moved - ALLOWED:
+        print("CONTROL FAILED -- the inert patch changed GAME STATE, not just "
+              f"timing: {sorted(moved - ALLOWED)}")
+        for m in msgs:
+            print("  " + m)
+        return 1
+    print(f"CONTROL OK -- at 0 nops only {sorted(moved) or 'nothing'} moved; "
+          "every game-state digest (d_ram, d_spr, d_pal, d_spb, d_bg, d_tx) and "
+          "every counter is identical")
+    for m in msgs:
+        print("  " + m)
+
+    nops = [int(x) for x in argv] if argv else [10000, 25000, 50000, 75000, 100000]
+    print(f"\n=== SWEEP: injected busy-wait before ${landmarks()['builds']['B']['calls'][2]:06X} "
+          f"(the object driver), from logic frame {start} ===")
+    for n in nops:
+        r, tsv = run_scenario(defs, dict(s, inject=f"{n}:{start}"), out=out,
+                              tag=f".i{n}")
+        check(r, f"overrun/{n}", quiet=True)
+        print(f"\n-- ITERS={n}  (~{n * 18} added 68000 cycles/frame, "
+              f"budget 337,920)")
+        for l in r.find("INJECT "):
+            print("   " + l)
+        for key in ("CENSUS logicframes", "CENSUS irq6_per_logicframe",
+                    "CENSUS releases_per_logicframe", "CENSUS armed_vblanks",
+                    "CENSUS spanned_gt1_videoframe", "CENSUS work_cycles",
+                    "CENSUS object_slots_processed", "CENSUS object_slots_live",
+                    "CENSUS max_sprite_entries"):
+            for l in r.find(key):
+                print("   " + l)
+        _overrun_report(tsv, start)
+        # DOES AN OVERRUN CHANGE WHAT THE GAME COMPUTES, OR ONLY WHEN?
+        # The ISR6 (A) gate skips four subroutines on an overrun frame -- one of
+        # them uploads the palette, one writes the BG scroll registers -- so the
+        # answer should be "what", and this prints the evidence instead of
+        # asserting it. Compared against the ZERO-nop control, not the unpatched
+        # run, so the 12 `jmp` cycles are not what is being reported.
+        state = ("d_ram", "d_spr", "d_pal", "d_spb", "d_bg", "d_tx", "sprites",
+                 "objn", "objord", "objlive", "c390a", "c390e", "p1raw", "pix")
+        msgs = [m for m in first_divergence(tb, tsv)
+                if m.split(":")[0].replace("col ", "") in state]
+        print("   STATE vs the 0-nop control: "
+              + (f"{len(msgs)} of {len(state)} game-state columns diverge"
+                 if msgs else "IDENTICAL -- the overrun changed only timing"))
+        for m in msgs:
+            print("     " + m)
+    return 0
+
+
+def _overrun_report(tsv: Path, start: int) -> None:
+    """The four questions an overrun frame has to answer, read off the trace.
+
+    1. did the logic frame span more than one video frame          (case B)
+    2. did the IRQ6 (A) gate fire, skipping four ISR subroutines    (case A)
+    3. did OBJECT SLOTS PROCESSED fall below the live-slot count    (case C)
+    4. did the game's OWN counters fall behind the display -- $80390A advances
+       per MAIN LOOP ITERATION, so if the body does not complete they do not
+       advance, and everything driven by them slows WITH the game.
+    """
+    rows = [l.split("\t") for l in tsv.read_text().splitlines()]
+    c = {n: i for i, n in enumerate(rows[0])}
+    body = [r for r in rows[1:] if int(r[c["lf"]]) >= start + 5]
+    if not body:
+        print("   (no frames past the injection point)")
+        return
+    spanned = sum(1 for r in body if int(r[c["irq6"]]) > 1)
+    # THE (A) GATE FIRES ONCE PER MISSED VBLANK, NOT ONCE PER FRAME WITH NO
+    # RELEASE. A dilated logic frame sees N vblanks and exactly ONE release (the
+    # IRQ6 that found the semaphore armed); the other N-1 take the gate at
+    # $23C44C and skip $24133C/$240CC0/$240F26/$287286 and the release itself.
+    # So the count is sum(irq6 - rel). `rel == 0` -- which is what wave 1's
+    # `gated_zero_release` census counts -- is a much rarer case and would have
+    # reported 0 gate firings on a run with 614 of them.
+    gated = sum(int(r[c["irq6"]]) - int(r[c["rel"]]) for r in body)
+    trunc = sum(1 for r in body if int(r[c["objn"]]) < int(r[c["objlive"]]))
+    first, last = body[0], body[-1]
+    dlf = int(last[c["lf"]]) - int(first[c["lf"]])
+    dvf = int(last[c["vf"]]) - int(first[c["vf"]])
+    d390a = (int(last[c["c390a"]]) - int(first[c["c390a"]])) & 0xFFFF
+    print(f"   OVERRUN n={len(body)} frames after lf{start + 5}: "
+          f"spanned>1_videoframe={spanned}  isr6_A_gate_firings={gated}  "
+          f"objn<objlive={trunc}")
+    print(f"   PACE  logic frames {dlf} over {dvf} video frames "
+          f"= {dlf / max(dvf, 1):.4f} logic/video; "
+          f"$80390A advanced {d390a} (= logic frames: "
+          f"{'YES' if d390a == dlf else 'NO'})")
+
+
 COMMANDS = {
     "verify": _cmd_verify, "landmarks": _cmd_landmarks, "trace": _cmd_trace,
     "snap": _cmd_snap, "seed": _cmd_seed, "scen": _cmd_scen, "gate": _cmd_gate,
     "inputlead": _cmd_inputlead, "rtc": _cmd_rtc, "drc": _cmd_drc,
     "seedstate": _cmd_seedstate, "pixred": _cmd_pixred,
+    "objdriver": _cmd_objdriver, "overrun": _cmd_overrun,
 }
 
 if __name__ == "__main__":

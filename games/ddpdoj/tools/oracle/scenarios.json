@@ -45,6 +45,18 @@
       "snap": "3000,4000,4900",
       "pixels": 50,
       "meter": true
+    },
+    {
+      "name": "overrun",
+      "why": "WAVE 2 ITEM 2, PERMANENT. The only scenario in the corpus in which the game runs out of time. Nobody had ever reached an overrun -- wave 0's heaviest stage-1 frames stopped at >90% utilised and wave 1's gate completed its loop on all 2,600 frames -- so mechanism (C) was unmeasured, and docs/knowledge/06 says (C) cannot be retrofitted. MAME's -speed is a HOST throttle and changes no emulated cycle; a per-CPU clock scale is not reachable from MAME 0.288's Lua (measured). So a busy-wait trampoline is written into the decrypted image past the end of the program and one main-loop jsr operand is repointed at it: `inject` is NOPS:fromLogicFrame (a NOP sled: no register, no flag, no memory touched). It preserves D0, touches no game RAM, and changes WHEN the frame runs out of time, never WHAT the game does about it. `pgm.py overrun` runs the NOPS=0 control first, which MUST be byte-identical to the unpatched run. EVERY NUMBER FROM THIS SCENARIO IS MAME-TIMED, UNCALIBRATED, AND A MECHANISM RESULT ONLY.",
+      "frames": 2600,
+      "build": "B",
+      "tail": "1900=C;2000=CU;2060=C;2120=CL;2180=C;2240=CR;2300=C;2360=CD;2420=C;2480=CU;2540=C",
+      "inject": "60000:1900",
+      "injectFrom": 1900,
+      "snap": "2100,2400,2590",
+      "pixels": 20,
+      "meter": true
     }
   ]
 }
