@@ -24,6 +24,7 @@ import assert from 'node:assert';
 import { ENEMY_BASE, BTN } from '../src/state.js';
 import { pickupCapsule, applyCapsule, computeRank } from '../src/powerup.js';
 import { bootState } from '../src/main.js';
+import { respawn } from '../src/flow.js';
 import { headlessResources } from './helpers.js';
 
 const res = headlessResources(0);
@@ -253,13 +254,22 @@ test('$9C45 is the ONLY writer of $17, and $9B3E does not wipe it', () => {
   // measured in `capsule-shield`, where w_0017 goes 1 -> 0 at f647 (the shield
   // running out, still a played frame) and does NOT move again through the
   // death at f658, the 121 dying frames or the respawn intro.
-  // RED WHEN: a port recomputes the rank wherever $44/$45/$46 are written, which
-  // would zero it one frame early at the wipe.
+  // RED WHEN: a port recomputes the rank wherever $44/$45/$46 are written, or
+  // inside the respawn, which would zero $17 one frame early.
+  //
+  // THE WIPE IS THE REAL ONE. This test used to zero $44/$45/$46 by assignment
+  // and then assert $17 had not moved, which is true of every possible
+  // implementation of computeRank -- docs/knowledge/03's first shape, and QA
+  // caught it. `respawn()` is $979D/$9B3E itself, so the assertion below now
+  // depends on where the port calls computeRank from and can fail.
   const s = bootState(res.manifest);
   s.zp.weapon = 1; s.zp.options = 2; s.zp.shield = 5;
   computeRank(s);
   assert.strictEqual(s.zp17, 4);
-  s.zp.weapon = 0; s.zp.options = 0; s.zp.shield = 0;   // the $9B3E wipe
+  s.substate = 0xA0; s.obj.status[0] = 2; s.zp4C = 0;   // the death, spent
+  respawn(s, res);                                      // $979D -> $9B3E
+  assert.strictEqual(s.zp.weapon, 0, "$9B3E cleared $44, an input of $17");
+  assert.strictEqual(s.zp.shield, 0, '...and $46');
   assert.strictEqual(s.zp17, 4, '$17 is stale until the next $9AC4, by design');
   computeRank(s);
   assert.strictEqual(s.zp17, 0);
