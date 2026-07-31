@@ -371,3 +371,31 @@ Five things that will save you the hours they cost me:
 5. **Look at a PNG in every session.** `pgm.py snap`. This project has produced
    clean, plausible, entirely worthless numbers from a halted machine and from
    the INPUT TEST screen, twice.
+
+## Postscript — the shared-index hazard, seen live
+
+My work was committed as `ac60c4e` through a private index, correctly. The very
+next commit, `3761405` (another workflow, the rank/loops/replay recon), was built
+from an index that had been `read-tree`'d at a HEAD **predating** mine, so its
+tree carried the OLD `tools/oracle/` and **dropped all ten wave-1 paths**:
+
+```
+$ git show --numstat 3761405 | grep ddpdoj/tools/oracle
+0   336  games/ddpdoj/tools/oracle/derive.py
+0    45  games/ddpdoj/tools/oracle/dumpcpu.lua
+130 422  games/ddpdoj/tools/oracle/frame.lua
+0   246  games/ddpdoj/tools/oracle/landmarks.json
+...
+```
+
+Restored verbatim in `f552714` — re-applying `ac60c4e`'s ten paths on top of
+`3761405`, through a private index, touching nothing of theirs
+(`git diff ac60c4e HEAD -- <my paths>` is empty; `git diff 3761405 HEAD` is
+exactly my ten paths). `NOTES-slowdown-oracle.md` needed nothing: `3761405`
+committed a working tree that already contained wave 1's append to it.
+
+**The lesson is narrower than "use a private index" — I did use one.**
+`git read-tree HEAD` has to happen **immediately before** staging, not at the
+start of a session: an index read even a few minutes early silently reverts
+whatever landed in between, and `git commit` will not warn you. Worth checking
+`git log --oneline -3` after every commit, which is how this was caught.
