@@ -43,8 +43,12 @@
 //     VISIBLE, unlike the Game Boy case where only internal updates dropped.
 //
 // WHAT IS NOT PORTED, named rather than silently absent: the sound driver
-// ($ED02), the power-up rank $17 ($9AC4 JSR $9C45), the capsule apply
-// ($9A73 JSR $8974), and every game mode except 5.
+// ($ED02) and every game mode except 5.
+//
+// The power-up rank ($9AC4 JSR $9C45) and the capsule apply ($9A73 JSR $8974)
+// WERE on that list and are not any more -- src/powerup.js, wave 7. The apply
+// sits AFTER the collision sweep on purpose: $C1AF INCs $42 during $9A70 and
+// $8974 consumes it three instructions later, in the same frame.
 //
 // $9A70 JSR $BFE2 WAS ON THAT LIST WITH THE WRONG DESCRIPTION and is not any
 // more -- src/collision.js, wave 5. The old comment called it "the shot-vs-enemy
@@ -85,6 +89,7 @@ import { streamBlock } from './terrain.js';
 import { spawnEngine, enemyBullets, updateEnemies } from './enemies.js';
 import { introStep, pauseCheck, respawn } from './flow.js';
 import { shotSweep } from './collision.js';
+import { applyCapsule, computeRank } from './powerup.js';
 import { chrBank } from './render/ppu.js';
 
 /**
@@ -134,8 +139,9 @@ export function nmi(state, buttons, res, lag = false) {
   state.bandB.ran = false;
   // ...and so are the frame's sound requests. `$EC1E` is called from six places
   // this port reaches (both shot spawns, $BE93's kill, $C1D6's death, $84F2's
-  // extra life, and wave 7's power-ups); the driver that consumes them is wave
-  // 8, so the port records the LIST and clears it here rather than pretending
+  // extra life, $896C/$89DD/$C18F for the power-ups); the driver that consumes
+  // them is wave 8, so the port records the LIST and clears it here rather than
+  // pretending
   // the calls did not happen. See src/state.js sfx.
   state.sfx.length = 0;
 
@@ -387,7 +393,13 @@ function mode5Body(state, res) {
   // probe. MEASURED: hook.BFE2 == hook.C052 == hook.C0C7 == 363 on a 700-frame
   // boot-play-die-respawn run, and $BFE6 fired 3267 times = 363 x 9 exactly.
   shotSweep(state, res);                          // $9A70 JSR $BFE2 -> $C0C7
-  // $9A73: JSR $8974 -- the capsule apply. Not ported (wave 7).
+  // $9A73: JSR $8974 -- the capsule apply, and it is AFTER the sweep on purpose.
+  // The pickup at $C1AF INCs $42 during $9A70 and this consumes it in the same
+  // frame, which is the whole reason $8974 tests $07 (HELD) and not $05 (edge):
+  // touch a capsule with B down and the power-up lands on the touch frame.
+  // MEASURED, same capsule, two runs: "380:A" gives $42 = 1 at f627 and $40 = 0;
+  // "380:AB" gives $42 = 0 and $40 = 1 (src/powerup.js).
+  applyCapsule(state, res);                       // $9A73 JSR $8974
   // $9A76: JSR $C772 -- `LDA $19 / CMP #$04 / BNE / RTS`: stage 5 only.
 
   latchScroll(state);                             // $9A79  -> $12 / $10
@@ -461,7 +473,11 @@ export function mode5Tail(state, res, test1B = false) {
   }
   state.bandB.ran = split;
 
-  // $9AC4: JSR $9C45 -- the power-up rank $17. Not ported (wave 7).
+  // $9AC4: JSR $9C45 -- THE POWER-UP RANK. Recomputed from scratch here and
+  // nowhere else, which is what makes it drift-proof and what makes it survive
+  // a death: $9B3E wipes $3D-$97 and $17 is below that, and no intro state
+  // reaches this line, so $17 holds its last value across the whole respawn.
+  computeRank(state);                             // $9AC4 JSR $9C45
 
   // $9AC7: JSR $8898 -- THE HUD TICK, and the streamer's throttle. It shares
   // the $0E gate with $9D83 seven bytes below and runs FIRST, so on the odd

@@ -8,7 +8,7 @@
 //   $844F  LDA #$03 / BNE $8455           $9A = 3
 //   $8453  LDA #$01                       $9A = 1
 //   $8455  STA $9A / LDA #$00 / BEQ $8469 $99 = 0
-//   $845B  LDA #$00 / STA $9A / LDA #$50  $99 = $50    the CAPSULE (wave 7)
+//   $845B  LDA #$00 / STA $9A / LDA #$50  $99 = $50    the CAPSULE ($8969)
 //   $8463  LDA #$00 / STA $9A / LDA #$10  $99 = $10    THE KILL ($C0A6)
 //   $8469  STA $99 / LDA #$00 / STA $9B
 //   $846F  LDA $09 / BEQ $8474 / RTS      <- the ATTRACT DEMO scores nothing
@@ -82,6 +82,33 @@ export function bcdByte(existing, addend, carryIn) {
  */
 export function scoreKill(state) { addScore(state, 0x10, 0x00, 0x00); }   // $8463
 export function scoreCapsule(state) { addScore(state, 0x50, 0x00, 0x00); }// $845B
+
+/**
+ * `$8960 LDA #$10 / JSR $8455` -- the SEVENTH capsule's bonus, and the one
+ * caller of the `$8455` preamble this port has. `$8455` stores A into `$9A`, the
+ * MIDDLE byte, and then `LDA #$00 / BEQ $8469` zeroes `$99`: so it is +$001000,
+ * a hundred times the capsule's own +$0050 and rendered as 10000 by the HUD's
+ * trailing zero. Wave 7; reached only when `($07E5 & $0F) == 5` (src/powerup.js
+ * $894B, and 00-recon-powerups.md 2's six-poke table).
+ */
+export function scoreCapsuleBonus(state) { addScore(state, 0x00, 0x10, 0x00); }
+
+/**
+ * `$CE89` -- one digit of the CURRENT PLAYER's score, which is what `$894B`
+ * gates the seventh capsule's two bonuses on.
+ *
+ *   CE89  A5 18     LDA $18 / 0A ASL / 0A ASL / A8 TAY
+ *   CE8E  B9 E5 07  LDA $07E5,Y / 29 0F AND #$0F / 60 RTS
+ *
+ * `$18 * 4` is the same 4-byte stride `$8474` uses, so player 1 reads `$07E5`
+ * and player 2 `$07E9` -- the MIDDLE byte of each 3-byte BCD score, i.e. the
+ * hundreds digit of the displayed score. Why a score digit selects a power-up
+ * bonus is unexplained; 00-recon-powerups.md could not close it and neither
+ * could this wave. It is ported literally, with that said out loud.
+ */
+export function scoreDigit(state) {
+  return state.score[P1 + 4 * state.zp.player + 1] & 0x0F;   // $CE8E/$CE91
+}
 
 /**
  * `$846F`-`$850F` -- add `$9B:$9A:$99` to the current player's score, then the

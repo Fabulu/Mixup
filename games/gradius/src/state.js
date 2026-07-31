@@ -140,6 +140,15 @@ export function createState() {
     // which restores it from $26,X; it is 0 on every frame of every measured
     // run and the port throws rather than guess on anything else.
     zp19: 0,                 // $19
+    // $17, the POWER-UP RANK. `$9C45` recomputes it from scratch at $9AC4 every
+    // mode-5 tail: ($44 != 0) + $45 + ($46 != 0) + ($19 != 0), so 0..4 on stage
+    // 1 and 0..6 anywhere. It is NOT in $9B3E's $3D-$97 wipe, so after a death
+    // it holds its last computed value until the next $9AC4 -- the intro states
+    // never reach one. Watched (w_0017) since wave 7; `capsule-sweep` drives it
+    // 0,1,2,3,4. Its 23 readers are enemy-bullet aim/speed and hit points; the
+    // one the plan named, $BBE5, is UNREACHABLE on stage 1 ($BBC1 BEQ $BBEC
+    // when $19|$1A == 0) -- measured n=0 in the window where $17 = 4.
+    zp17: 0,                 // $17
     // $4C, the general 16-bit timer's low byte. $C1D6 loads it with $78 at the
     // death (wave 5) and $96EF counts it out one per frame -- THAT half is
     // ported here, as structure, and reaching 0 throws with $979D's address.
@@ -212,13 +221,20 @@ export function createState() {
       player: 0,             // $18  current player index; 0 or 1. Measured 0
       // $42, the power-up METER cursor: 0 = nothing selected, 1..6 = one of the
       // six cells, wrapped back to 1 at 7 by $894B. src/hud.js's $8A30 turns it
-      // into the attribute byte $55 that highlights the cell. Nothing in this
-      // corpus collects a capsule, so it is 0 on every compared frame; wave 7
-      // makes it live.
+      // into the attribute byte $55 that highlights the cell. LIVE since wave 7
+      // (src/powerup.js): $894B INCs it on a capsule and $8974's six arms clear
+      // it -- except on an already-owned refusal, which KEEPS it, which is the
+      // only way it is ever observable at the $80B5 sample point at all when B
+      // is held. `capsule-pickup` holds it at 1 from f626; `capsule-sweep` holds
+      // it at 2, 3, 4, 5 and 6 for twenty frames each.
       meter: 0,              // $42
-      // $46, the shield's remaining hits (5 when applied, one per collision at
-      // $C1C1). Read by $8A22 to pick the highlighted form of the last meter
-      // cell. Wave 7.
+      // $46, the shield's remaining hits: 5 when $8997 applies it, ONE PER
+      // COLLISION at $C1C1, and the sixth hit dies through $C1D6. Read by $8A22
+      // for the highlighted form of the last meter cell, by $9C45 for the rank,
+      // and by $8B6B -- the sprite emitter draws a force field around the ship
+      // on every shielded frame, which is an extra $8AAC and therefore moves the
+      // COMPARED work counters. MEASURED on `capsule-shield`: 5 -> 4 -> 3 -> 2
+      // -> 1 -> 0 at f493/509/526/542/647, and the sixth contact kills at f658.
       shield: 0,             // $46
       step: 0,               // $99:$98  the 16-bit sub-pixel step, scratch
       tilt: 1,               // $9B  tilt code for THIS frame, latched by $A0BE
@@ -315,7 +331,7 @@ export function createState() {
 
     // ---- the HUD ($8898 and its four producers, src/hud.js) -------------
     //
-    // SEEDED INPUTS, AND HOW MUCH OF THAT IS LEFT.
+    // SEEDED INPUTS, AND HOW MUCH OF THAT IS LEFT: NOTHING.
     // The producers read six things: the two lives bytes, the three BCD
     // scores, $42 and $46. They were ALL seeded when wave 2 landed, because
     // nothing in the corpus then scored, died or collected a capsule.
@@ -328,7 +344,10 @@ export function createState() {
     //                 src/score.js, and the three autofire scenarios compare
     //                 w_07E4-w_07E6 AND the row-29 digits $892C draws from them
     //                 on every frame of a window that contains 11 to 18 kills.
-    //   $42 / $46     still seeded. Wave 7 ($894B/$8974) is what moves them.
+    //   $42 / $46     COMPUTED since wave 7 (src/powerup.js $894B/$8974, and
+    //                 $C1C1's DEC in src/collision.js). Five scenarios move
+    //                 them; `capsule-die` also proves the death interaction --
+    //                 $35 lost, $42 restored from $22,X.
     //
     // The initial VALUES are still the cartridge's, out of the align frame's
     // RAM (porttrace.mjs seedFromRam, src/main.js bootState) -- that is what

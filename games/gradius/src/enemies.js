@@ -111,8 +111,14 @@ export function clearSlot(state, j) {
  * clears five bytes, not twenty-three: a freed slot keeps its position and its
  * velocities until the next $A527 overwrites them. That difference is
  * observable, so it is not folded into clearSlot().
+ *
+ * EXPORTED SINCE WAVE 7 because `$C1FD` is `TYA / TAX / JMP $AEF8` -- the
+ * collision arm's "destroy this object" is this routine reached with the enemy
+ * index moved from Y to X, and both the capsule pickup ($C1AF) and the
+ * every-16th item ($C18C) go through it. It is a JMP, not a JSR: $C1FD's caller
+ * gets $AEF8's RTS.
  */
-function freeSlot(state, j) {
+export function freeSlot(state, j) {
   const o = state.obj;
   const i = j + ENEMY_BASE;
   o.type[i] = 0;                       // $AEFA STA $030C,X
@@ -463,8 +469,11 @@ export function enemyBullets(state, res) {
   // $BBBB LDY #$01, and on stage 1 nothing touches Y again before $BBEC.
   // $BBBD LDA $19 / ORA $1A / BEQ $BBEC -- on stage 1 with $1A = 0 the whole
   // $02-parity / $1A / $46 / $17 ladder at $BBC3-$BBEB is jumped over and $98
-  // stays 1. The other arms are not ported: they read $46 (the shield, wave 7)
-  // and $17 (the power-up rank, wave 7) and no run here has entered them.
+  // stays 1. The other arms are not ported, and since wave 7 that is a stage
+  // gate rather than a missing byte: $46 and $17 are both live now, and
+  // `capsule-sweep` drives $17 to 4 with a shield up -- $BBE5 still ran ZERO
+  // times, because $BBC1's BEQ jumps the whole ladder while $19 | $1A is 0.
+  // Measured this wave; it is the plan's risk 5, answered NO for stage 1.
   if (res.stage.stage !== 0 || state.zp1A !== 0) {
     throw new Error(`$19 = ${res.stage.stage}, $1A = ${hex2(state.zp1A)}: `
                   + '$BBC3-$BBEB (the $02 parity, the $1A arms and the $17 >= 3 '

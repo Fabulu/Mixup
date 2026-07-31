@@ -87,7 +87,11 @@ export const SLOT_M = 9;          // $0129,X / $0169,X -- no timer at all
  *  3. `$A12F BNE $A15C` branches on $35, which is 20 in stage 1 and 4 after the
  *     rapid-fire bonus, so it is ALWAYS taken. It is written as the conditional
  *     the ROM holds because a $35 of 0 would fall into slot B, and $35 is a byte
- *     wave 7 can move.
+ *     that MOVES since wave 7: $8958 sets it to 4 on a seventh capsule collected
+ *     while ($07E5 & $0F) is 0, and `capsule-die` does exactly that at f635 --
+ *     after which this file's cadence is 4 + the shot's lifetime rather than 20 +
+ *     it, on every compared frame to the end of that window. Still never 0, so
+ *     the branch is still always taken.
  */
 export function fireWeapons(state, res) {
   const o = state.obj;
@@ -114,8 +118,8 @@ export function fireWeapons(state, res) {
           o.carrier[SLOT_B + x] = state.zp.autofire;   // $A12A STA $03A6,X
           if (state.zp.autofire !== 0) doB = false;    // $A12F BNE $A15C
           // $35 = 0 would fall into $A131 and DEC the timer it has just loaded
-          // to 0, i.e. to $FF, and then evaluate slot B. Unreachable today
-          // ($35 is $14, or 4 after wave 7's rapid-fire bonus) and written out
+          // to 0, i.e. to $FF, and then evaluate slot B. Unreachable ($35 is
+          // $14, or 4 after $8958's rapid-fire bonus) and written out
           // because the ROM's branch is on $35, not on a constant.
           else o.carrier[SLOT_A + x] = u8(o.carrier[SLOT_A + x] - 1);  // $A131
         }

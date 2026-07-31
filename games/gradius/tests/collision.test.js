@@ -443,21 +443,90 @@ test('$C22A/$C305: a live ENEMY-BULLET slot is a loud throw', () => {
   assert.throws(() => collision(t, res), /\$C305/);
 });
 
-test('$C1AF: touching a power-up capsule is wave 7, and says so', () => {
+// These two asserted a THROW until wave 7 ("$C1AF ... is wave 7, and says so").
+// Inverted rather than deleted, so the arm that replaced the throw is held to
+// what the throw's text promised (rule 6).
+
+test('$C1AF: touching a power-up capsule frees it, INCs $42 and scores $0050', () => {
   // type AND $7F == 1 with status 6. RED WHEN: the arm falls through into
-  // $C18C's "destroy everything" branch, or is a no-op.
+  // $C18C's "destroy everything" branch, forgets $C1FD, or ends the sweep.
   const s = withEnemy(9, { type: 0x81, x: 100, y: 100 });
   s.obj.status[9 + ENEMY_BASE] = 6;             // $010C,Y
+  s.obj.anim[9 + ENEMY_BASE] = 0x11;            // $012C,Y, so $AEF8's clear shows
   s.obj.x[0] = 100; s.obj.y[0] = 96;
-  assert.throws(() => playerVsEnemies(s, res), /\$C1AF/);
+  assert.strictEqual(playerVsEnemies(s, res), false,
+    '$C1B5 is JMP $C136 -- the sweep goes on, unlike $C18C and $C1D6');
+  assert.strictEqual(s.zp.meter, 1, '$894B INC $42');
+  assert.strictEqual(s.obj.type[9 + ENEMY_BASE], 0, '$C1FD -> $AEF8 STA $030C,X');
+  assert.strictEqual(s.obj.anim[9 + ENEMY_BASE], 0, '$AF00 STA $012C,X');
+  assert.deepStrictEqual([...s.score.slice(4, 7)], [0x50, 0, 0], '$8969 JSR $845B');
+  assert.deepStrictEqual(s.sfx, [0x0D], '$896C -- $0D, not $C18C\'s $0B');
+  assert.strictEqual(s.substate, 0x80, 'and the ship is very much alive');
 });
 
-test('$C1C1: a shield absorbing a hit is wave 7, and says so', () => {
-  // MEASURED (00-recon-weapons.md 7): with $46 forced to 5, $C1C1 fired five
-  // times and the sixth contact killed. The port cannot grant a shield yet, so
-  // the arm is a throw rather than a guess at $BE93.
+test('$C1C1: the shield absorbs the hit, DECs $46 and destroys what it hit', () => {
+  // MEASURED (00-recon-powerups.md 7, re-run this wave with `--poke 46=5@400`):
+  // $C1BD n=6, $C1C1 n=5, $C1D0 n=5, $BE93 n=5, and the sixth contact killed.
+  // RED WHEN: the DEC is missing (infinite shield), the kill is missing (the
+  // enemy survives and hits again next frame), or the arm dies anyway.
   const s = withEnemy(9, { x: 100, y: 100 });
   s.obj.x[0] = 100; s.obj.y[0] = 96;
   s.zp.shield = 5;
-  assert.throws(() => playerVsEnemies(s, res), /\$C1C1/);
+  assert.strictEqual(playerVsEnemies(s, res), false, '$C1D3 JMP $C136');
+  assert.strictEqual(s.zp.shield, 4, '$C1C1 DEC $46');
+  assert.strictEqual(s.obj.type[9 + ENEMY_BASE], 2, '$C1D0 JSR $BE93 -> $BED1');
+  assert.strictEqual(s.substate, 0x80, 'and NOT $A0');
+
+  // The armoured tail instead: bit 7 of $010C,Y sends $C1C6's BPL the other way,
+  // so the enemy takes damage into $046C,X and lives. Unexercised on the
+  // cartridge -- no stage-1 squadron sets the bit -- and one line either way.
+  const t = withEnemy(9, { x: 100, y: 100 });
+  t.obj.x[0] = 100; t.obj.y[0] = 96;
+  t.zp.shield = 5;
+  t.obj.status[9 + ENEMY_BASE] = 0x80;          // $010C,Y bit 7
+  assert.strictEqual(playerVsEnemies(t, res), false);
+  assert.strictEqual(t.zp.shield, 4, 'the DEC happens on both arms');
+  assert.strictEqual(t.obj.type[9 + ENEMY_BASE], 0x85, 'still alive: no $BE93');
+  assert.strictEqual(t.obj.s0460[9 + ENEMY_BASE], 1, '$C1CA INC $046C,X');
+
+  // ...and the sixth hit, with no shield left, is the death.
+  const u = withEnemy(9, { x: 100, y: 100 });
+  u.obj.x[0] = 100; u.obj.y[0] = 96;
+  u.zp.shield = 0;
+  assert.strictEqual(playerVsEnemies(u, res), true, '$C1BF BEQ $C1D6');
+  assert.strictEqual(u.substate, 0xA0);
+});
+
+test('$C18C: the every-16th item frees itself, sfx $0B, and clears the screen', () => {
+  // MEASURED (00-recon-powerups.md 1, `--poke 47=15@1000-1006`): the promoted
+  // object came out as status 7 rather than 6, $C18C ran once, $C1AF and $894B
+  // ran ZERO times, and all ten enemy slots went to class 2 in one frame.
+  // No scenario reaches this -- $47 must reach 16 promotions in one life and
+  // the corpus's best is 2 -- so this test is the only thing holding it.
+  //
+  // RED WHEN: the arm calls $894B (it must not: this pickup is not the meter),
+  // uses the capsule's sfx $0D, keeps sweeping instead of jumping to $C20A, or
+  // kills enemies it must skip.
+  const s = withEnemy(9, { type: 0x81, x: 100, y: 100 });
+  s.obj.status[9 + ENEMY_BASE] = 7;             // $010C,Y = 7, NOT 6
+  s.obj.x[0] = 100; s.obj.y[0] = 96;
+  // slot 8: an ordinary initialised enemy -> killed. slot 7: NOT initialised
+  // ($C19E BPL) -> skipped. slot 6: type 2, an explosion ($C1A4 BCC) -> skipped.
+  // slot 5: status bit 7 set ($C199 BMI) -> skipped even though it qualifies.
+  for (const [j, type, status] of [[8, 0x85, 0], [7, 0x05, 0],
+                                   [6, 0x82, 0], [5, 0x85, 0x80]]) {
+    s.obj.type[j + ENEMY_BASE] = type;
+    s.obj.status[j + ENEMY_BASE] = status;
+  }
+  assert.strictEqual(playerVsEnemies(s, res), false, '$C1AC JMP $C20A, not $C1D6');
+  assert.strictEqual(s.zp.meter, 0, '$C18C never reaches $894B');
+  assert.strictEqual(s.obj.type[9 + ENEMY_BASE], 0, '$C1FD freed the item');
+  assert.deepStrictEqual(s.sfx.slice(0, 1), [0x0B], '$C18F, not the capsule\'s $0D');
+  assert.strictEqual(s.obj.type[8 + ENEMY_BASE], 2, 'slot 8 killed -> class 2');
+  assert.strictEqual(s.obj.type[7 + ENEMY_BASE], 0x05, 'slot 7 not initialised');
+  assert.strictEqual(s.obj.type[6 + ENEMY_BASE], 0x82, 'slot 6 is an explosion');
+  assert.strictEqual(s.obj.type[5 + ENEMY_BASE], 0x85, 'slot 5 has $010C bit 7');
+  // $C1AC leaves $A8 where the touched slot put it, because $C194's loop walks
+  // Y. A port that reset it to $FF like $C136's failed DEC would be wrong here.
+  assert.strictEqual(s.spawn.zA8, 9, '$A8 is untouched by $C194-$C1A9');
 });

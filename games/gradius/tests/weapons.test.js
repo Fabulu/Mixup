@@ -493,8 +493,8 @@ test('$84A9: the BCD adder carries at 9 -> 10 and at $99 -> $00, in three bytes'
 });
 
 test('$8463: a kill is +$0010, and $846F makes the attract demo score nothing', () => {
-  // RED WHEN: $845B's $50 is used for the kill (the capsule's value -- wave 7
-  // uses that one), or the $09 gate is dropped.
+  // RED WHEN: $845B's $50 is used for the kill (that one is the capsule's, and
+  // src/powerup.js calls it from $8969), or the $09 gate is dropped.
   const s = ship();
   scoreKill(s);
   assert.deepStrictEqual([...s.score.slice(4, 7)], [0x10, 0, 0]);

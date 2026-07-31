@@ -122,6 +122,12 @@ export function seedFromRam(state, ram) {
   state.zp16 = r(0x16);                    // $16                 ($9ADA gate)
   state.zp.player = r(0x18);               // $18
   state.zp19 = r(0x19);                    // $19  the stage index (wave 4)
+  // $17, the power-up rank. SEEDED even though $9C45 recomputes it on every
+  // mode-5 tail, because the INTRO states never reach $9AC4 -- so on the two
+  // intro scenarios the port would otherwise carry 0 where the cartridge carries
+  // whatever the last played frame computed. $17 is BELOW $3D, so $9B3E's wipe
+  // does not clear it either: it survives a death untouched.
+  state.zp17 = r(0x17);                    // $17  the power-up rank (wave 7)
   state.zp33 = r(0x33);                    // $33  the button-code match count
   state.cheat[0] = r(0x3B);                // $3B,X
   state.cheat[1] = r(0x3C);
@@ -318,6 +324,7 @@ export function peek(state, addr) {
     case 0x15: return state.zp15;
     case 0x16: return state.zp16;
     case 0x18: return state.zp.player;
+    case 0x17: return state.zp17;          // $9C5B STY $17 -- wave 7
     case 0x19: return state.zp19;          // $9B70 STA $19 -- wave 4
     case 0x22: return state.save22[0];
     case 0x23: return state.save22[1];
@@ -457,6 +464,24 @@ export const POKEABLE = {
   0x41: (s, v) => { s.zp.missile = v; },    // $41 missile,     $89B3 INC $41
   0x44: (s, v) => { s.zp.weapon = v; },     // $44 weapon,      $89C7 STA $44
   0x45: (s, v) => { s.zp.options = v; },    // $45 Options,     $89D3 INC $45
+  // WAVE 7 ADDED $42 AND $46, and they are the same admission as the four above:
+  // values the CARTRIDGE ITSELF produces, that a button script cannot reach from
+  // align 400 inside a window short enough to compare.
+  //
+  //   $42  the meter cursor. $894B INCs it on every capsule, so cell 5 or 6 is
+  //        five or six capsules -- 00-recon-powerups.md needed a 2700-frame run
+  //        to collect TWO. `capsule-sweep` pokes it for ONE FRAME at a time
+  //        (`@+N`), thirteen times, which is exactly the shape the cartridge
+  //        holds it in while B is down: $9A73 consumes it on the very next
+  //        frame, so a HELD poke would be testing invented state. The six
+  //        already-owned refusals in that scenario do NOT need the poke held --
+  //        the arm itself keeps the value, which is what they are there to show.
+  //   $46  the shield, five hits. $8997 is the sixth meter cell. Poked ONCE
+  //        (`@+0`) it drains 5 -> 0 over 246 frames of ordinary play and the
+  //        sixth contact kills; that is `capsule-shield`, and it matches the
+  //        recon's own independent run of the same intervention.
+  0x42: (s, v) => { s.zp.meter = v; },      // $42 meter,       $894B INC $42
+  0x46: (s, v) => { s.zp.shield = v; },     // $46 shield,      $899D STA $46
   // $1F, the sprite-0 enable. NOT a power-up -- the second reason an address is
   // allowed here, and it is the same reason: the value is one the CARTRIDGE
   // produces and a button script cannot reach FROM ALIGN 400. $9C38

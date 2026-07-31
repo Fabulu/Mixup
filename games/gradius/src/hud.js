@@ -1,7 +1,7 @@
 // THE HUD TICK. ROM: $8898, called from the mode-5 body at $9AC7 -- seven bytes
 // above the terrain streamer's own JSR.
 //
-//   9AC4  20 45 9C  JSR $9C45     the power-up rank $17 (wave 7)
+//   9AC4  20 45 9C  JSR $9C45     the power-up rank $17 (src/powerup.js)
 //   9AC7  20 98 88  JSR $8898     <-- THIS FILE
 //   9ACA  A5 5B     LDA $5B
 //   9ACC  D0 03     BNE $9AD1
@@ -50,8 +50,8 @@
 //
 // $18 (player), $20,X (lives), $07E0-$07EA (three BCD scores), $0100 (alive),
 // $41/$44/$45/$46 (missile/weapon/options/shield) and $42 (the meter cursor).
-// TWO OF THEM HAVE STOPPED BEING CONSTANTS, and this paragraph used to claim
-// all six were (rule 6, the note goes with the code):
+// NONE OF THEM IS A SEEDED CONSTANT ANY MORE, and this paragraph has been
+// corrected once per wave since wave 2 (rule 6, the note goes with the code):
 //
 //   $20,X   MOVES since wave 5. $979D DECs it at every death and $84F0 INCs it
 //           at every extra life; seven scenarios take it 3 -> 2 in-window.
@@ -59,11 +59,14 @@
 //           st_892C draws below are a value the PORT computed: `autofire-laser`
 //           ends its window at $0164 after 18 kills and `autofire-normal` at
 //           $0110 after 11, and both are compared byte for byte in $0700-$074F.
+//   $41 $42 $44 $45 $46   MOVE since wave 7 (src/powerup.js $894B/$8974). The
+//           owned-forms below and $8A30's cursor patch are wired to live state:
+//           `capsule-sweep` drives all five inside one 300-frame window and
+//           `capsule-pickup` puts a cursor on the bar at f626 and leaves it
+//           there, so w_0700-w_074F compares the patched attribute byte.
 //
-// $42 and $46 are still seeded (wave 7 is what moves them), and every one of
-// the six still takes its INITIAL value from the cartridge's own RAM, through
-// porttrace.mjs and src/main.js's bootState(). See `SEEDED INPUTS` in
-// src/state.js.
+// Every one of them still takes its INITIAL value from the cartridge's own RAM,
+// through porttrace.mjs and src/main.js's bootState().
 
 import { u8 } from './state.js';
 import { QUEUE_GATE_BYTES, queueByte } from './vram.js';
@@ -242,7 +245,10 @@ export function stScore(state, packets) {
  * `$8A2D JSR $863D` is the last instruction of $89E3 and `$8A30` is the next
  * byte. loc_8A30 has its own callers ($8971 and $89AC, both in the capsule
  * code) so it looks like a routine; from here it is a continuation. Wave 7
- * needs it as both.
+ * needs it as both, which is why meterCursor() is exported: src/powerup.js
+ * calls it from $894B's tail and from the SPEED UP arm, and this producer falls
+ * into it. MEASURED on the cartridge over a 770-frame window: $8A30 n = 97,
+ * $89E3 n = 96 -- the one extra is the pickup's own JMP.
  *
  * ONE OPEN RUN, SIX COPIES. Packet $0F ends in $FF, which leaves the run open,
  * and the five cell packets ($15 $16 $17 $18 $1B) are appended through $85F3
@@ -290,11 +296,16 @@ export function stPowerBar(state, packets) {
  *   8A46  A9 55 / 9D 00 07     $55 = %01010101: palette 1 in all four quadrants
  *
  * $42 is capped at 6 by $894B's wrap, so the cursor walks the six meter cells
- * at tile columns 4-7, 8-11, ... 24-27. It is 0 on every frame of this corpus
- * (nothing collects a capsule), so the whole body below is unexercised by the
- * oracle and is covered only by tests/hud.test.js.
+ * at tile columns 4-7, 8-11, ... 24-27. IT IS LIVE IN THE ORACLE SINCE WAVE 7
+ * and this comment used to say the opposite ("0 on every frame of this corpus
+ * ... covered only by tests/hud.test.js"): `capsule-pickup` collects at f626
+ * and holds $42 = 1 for the rest of its window, and `capsule-sweep`'s five
+ * refusals hold $42 at 2, 3, 4, 5 and 6 for twenty frames each -- five of the
+ * six cells, compared through w_0700-w_074F. MEASURED on the cartridge: $8A39
+ * and $8A48 ran ONLY on the frames after $42 became non-zero, so the
+ * `LDA $42 / BEQ $8A4B` guard is real and an empty meter writes no tile at all.
  */
-function meterCursor(state, packets) {
+export function meterCursor(state, packets) {
   cannedPacket(state, packets, 0x1A);            // $8A30/$8A32
   const meter = state.zp.meter;                  // $8A35 LDA $42
   if (meter === 0) return;                       // $8A37 BEQ $8A4B

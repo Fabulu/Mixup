@@ -182,9 +182,15 @@ test('$C101/$C136: the sweep runs slot 9 DOWN to 0, and the first contact wins',
   // program for that frame.
   //
   // The two outcomes are made distinguishable by giving the slots DIFFERENT
-  // types: slot 9 is a capsule (type 1, status 6 -> $C1AF, a wave-7 throw) and
-  // slot 3 is an ordinary armed enemy (type >= 3 -> $C1BF -> death). Descending,
-  // the capsule is reached first and the ship never dies.
+  // types: slot 9 is a capsule (type 1, status 6 -> $C1AF, which COLLECTS and
+  // then `JMP $C136`s back into the loop) and slot 3 is an ordinary armed enemy
+  // (type >= 3 -> $C1BF -> death, which abandons it). Descending, BOTH happen in
+  // that order; ascending, the ship dies at slot 3 and the capsule is never
+  // reached, so `$42` stays 0.
+  //
+  // WAVE 7 CHANGED WHAT THIS ASSERTS AND NOT WHAT IT PROVES: until $C1AF was
+  // ported the capsule arm was a throw and "descending" meant "the throw wins".
+  // Now it means "$42 moves AND the ship still dies", which is strictly more.
   // RED WHEN: the loop counts up instead of down, or $C1D6 returns to the sweep
   // instead of leaving it.
   const both = () => {
@@ -197,8 +203,12 @@ test('$C101/$C136: the sweep runs slot 9 DOWN to 0, and the first contact wins',
     s.obj.status[9 + ENEMY_BASE] = 6;    // $010C,Y = 6 -> the capsule arm
     return s;
   };
-  assert.throws(() => playerVsEnemies(both(), res), /\$C1AF/,
-    'slot 9 is reached first, so the CAPSULE decides the frame');
+  const desc = both();
+  assert.strictEqual(playerVsEnemies(desc, res), true,
+    'slot 9 is reached FIRST and collected, then slot 3 kills the ship');
+  assert.strictEqual(desc.zp.meter, 1,
+    '...and an ascending sweep would die at slot 3 with $42 still 0');
+  assert.strictEqual(desc.substate, 0xA0, '$C1F3 STA $1B');
   const lower = both();
   lower.obj.type[9 + ENEMY_BASE] = 0;    // free the capsule's slot
   assert.strictEqual(playerVsEnemies(lower, res), true,

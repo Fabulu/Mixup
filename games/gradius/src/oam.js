@@ -186,17 +186,63 @@ export function buildDisplayList(state, table) {
     if (work) work.slotsVisited++;                // $8B4D, one per iteration
     const id = state.obj.anim[slot];              // $8B4D LDA $0120,X
     if (id === 0) continue;                       // $8B50 BEQ $8B89
+    // $8B52 LDA $0180,X / STA $9E -- the OR mask, and it is a ZERO-PAGE BYTE
+    // that survives the JSR below, which is what lets $8B79 change it for the
+    // second expansion only.
+    const orMask = state.obj.attrMask ? state.obj.attrMask[slot] : 0;
     cursor = drawMetasprite(
       oam, table, id,
       state.obj.x[slot],                          // $8B5C LDA $0360,X -> $9A
       state.obj.y[slot],                          // $8B57 LDA $0320,X -> $99
-      state.obj.attrMask ? state.obj.attrMask[slot] : 0,   // $8B52 $0180,X
+      orMask,                                     // $8B52 $0180,X -> $9E
       cursor, work);
-    // $8B67-$8B86: slot 0 additionally draws the shield ($46) as metasprite
-    // $5A + (($02 >> 2) & 3) when $1B & $70 is clear. Not ported -- $46 is
-    // always 0 here and the shield was never measured.
+    cursor = forceField(state, oam, table, slot, orMask, cursor, work);
   }
   state.oamCursor = cursor;                       // $8B95 STX $36
+}
+
+/**
+ * `$8B67-$8B86` -- the SHIELD's force field, drawn on top of slot 0.
+ *
+ *   8B67  A5 9D     LDA $9D / D0 1E BNE $8B89     slot 0 ONLY
+ *   8B6B  A4 46     LDY $46 / F0 1A BEQ $8B89     no shield -> nothing
+ *   8B6F  A5 1B     LDA $1B / 29 70 AND #$70 / D0 14 BNE $8B89
+ *   8B75  C0 01     CPY #$01 / D0 04 BNE $8B7D
+ *   8B79  A9 03     LDA #$03 / 85 9E STA $9E      THE LAST-HIT FLASH
+ *   8B7D  A5 02     LDA $02 / 4A / 4A / 29 03 AND #$03 / 18 / 69 5A ADC #$5A
+ *   8B86  20 AC 8A  JSR $8AAC                     a SECOND expansion, same $99/$9A
+ *
+ * THREE THINGS THAT MAKE THIS COMPARED STATE RATHER THAN DECORATION:
+ *
+ *  1. it is a SECOND `$8AAC` on a slot that already expanded one, so it moves
+ *     `msExpanded`, `spriteRecords` and `spritesStored` -- all three are fields
+ *     the oracle compares -- and it advances the OAM cursor, which re-orders
+ *     every sprite after it. MEASURED on `capsule-shield`'s script: `$8B86`
+ *     n = 247 over the frames the shield was up.
+ *  2. `$9E` is the OR mask `$8B52` loaded from `$0180,X`, still live across the
+ *     first JSR; `$8B79` overwrites it with 3 when `$46 == 1`, so the LAST hit
+ *     flashes the force field in a different palette and the ship itself is
+ *     unaffected (its own expansion already happened). MEASURED n = 105, which
+ *     is exactly the 105 frames that run spent at `$46 == 1` (f542-f646).
+ *  3. `$9E` IS NOT DURABLE STATE. `$8B55` rewrites it for every slot and the
+ *     expander consumes it inside the frame, so it reads 0 at the `$80B5` sample
+ *     point even on the 645 frames the recon saw it set. Do not put it in the
+ *     state vector; it is a parameter, and it is one here.
+ *
+ * `$1B AND #$70` suppresses the whole thing while the ship is dying ($A0) or in
+ * any of the $1B bit-4/5/6 phases -- so the wreck is never shielded.
+ */
+function forceField(state, oam, table, slot, orMask, cursor, work) {
+  if (slot !== 0) return cursor;                  // $8B67/$8B69 BNE $8B89
+  const y = state.zp.shield;                      // $8B6B LDY $46
+  if (y === 0) return cursor;                     // $8B6D BEQ $8B89
+  if ((state.substate & 0x70) !== 0) return cursor;   // $8B6F-$8B73 BNE $8B89
+  const mask = y === 1 ? 3 : orMask;              // $8B75/$8B77 CPY #$01, $8B79
+  const id = u8(((state.frame >> 2) & 3) + 0x5A); // $8B7D-$8B84 ADC #$5A
+  return drawMetasprite(oam, table, id,
+                        state.obj.x[0],           // $9A, unchanged since $8B5F
+                        state.obj.y[0],           // $99, unchanged since $8B5A
+                        mask, cursor, work);      // $8B86 JSR $8AAC
 }
 
 /**

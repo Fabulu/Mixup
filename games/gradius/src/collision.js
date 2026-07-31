@@ -52,9 +52,6 @@
 // Named rather than silently absent, each as a throw carrying its ROM address:
 //
 //   $C13D/$C159  the type $27 and $29 contact arms (1UP, $844B)   unmeasured
-//   $C18C        the type-1 "destroy everything" arm ($BE93)      wave 7
-//   $C1AF        the capsule pickup ($894B)                       wave 7
-//   $C1C1        the shield absorbing a hit                       wave 7
 //   $C20A body   player versus enemy bullets (slots 22-31)        excluded
 //   $C263-$C2A4  the stage-5 destructible-block sweep             stage 5
 //   $C2FF body   enemy bullets versus terrain                     excluded
@@ -66,11 +63,14 @@
 //
 // $BFE6-$C047 (the inner sweep), $C055 (the hit resolver) and $C2C4's body
 // (shots versus the terrain) WERE on that list and are ported here -- wave 6.
+// $C18C (the every-16th item), $C1AF (the capsule pickup) and $C1C1 (the shield)
+// were on it too, tagged "wave 7", and are ported here -- wave 7.
 
 import { u8, ENEMY_BASE, ENEMY_SLOTS } from './state.js';
 import { probeCollision } from './terrain.js';
-import { killEnemy } from './enemies.js';
+import { killEnemy, freeSlot } from './enemies.js';
 import { scoreKill } from './score.js';
+import { pickupCapsule } from './powerup.js';
 
 const hex2 = (v) => `$${v.toString(16).toUpperCase().padStart(2, '0')}`;
 
@@ -290,8 +290,9 @@ function hitEnemy(state, res, j, x) {
   if (o.type[e] === 0x9A) {                       // $C092/$C095 CMP #$9A
     throw new Error('$C099: a type-$9A enemy took a hit. The per-enemy hit '
                   + 'counter ($04AC,X) and its threshold $BFC5[$17] are not '
-                  + 'ported -- $C099 ran 0 times in every measured run, and $17 '
-                  + '(the power-up rank, $9C45) is wave 7.');
+                  + 'ported -- $C099 ran 0 times in every measured run. $17 '
+                  + '(the power-up rank) IS live since wave 7 (src/powerup.js '
+                  + '$9C45), so only $BFC5 and the counter are missing.');
   }
   scoreKill(state);                               // $C0A6 JSR $8463
   killEnemy(state, res, j);                       // $C0A9 JSR $BE93
@@ -408,6 +409,8 @@ export function explosionWalk(state, res) {
  *
  * TEN iterations, unconditionally, unless the sweep DIES -- which is a state
  * transition, not a work budget, and the compared fields $0100/$1B/$4C see it.
+ * `$C18C` also leaves early (`JMP $C20A`), and that is a state transition too:
+ * it has just destroyed every enemy on screen, so there is nothing left to sweep.
  *
  * @returns {boolean} true if the sweep ended at `$C1D6`
  */
@@ -429,7 +432,11 @@ export function playerVsEnemies(state, res) {
     if (dx >= box.read(0xBFDA + cls)) continue;   // $C127 CMP $BFDA,X / BCS
     const dy = u8(a1 - o.y[i] - 1);               // $C12C LDA $A1 / SBC $032C,Y
     if (dy >= box.read(0xBFDE + cls)) continue;   // $C131 CMP $BFDE,X / BCC
-    if (contact(state, res, j, type)) return true;      // $C16E ... $C1D6
+    const out = contact(state, res, j, type);     // $C16E ...
+    if (out === DIED) return true;                // $C1D6
+    // $C1AC JMP $C20A -- and note $A8 is NOT reset: $C18C's own loop walks Y,
+    // so the sweep's index is left pointing at the slot that was touched.
+    if (out === TO_BULLETS) return false;
   }
   state.spawn.zA8 = 0xFF;                         // $C136's DEC failed the BPL
   if (iters !== ENEMY_SLOTS) {
@@ -437,6 +444,11 @@ export function playerVsEnemies(state, res) {
   }
   return false;                                   // $C13A JMP $C20A
 }
+
+// The three places `$C16E`'s dispatch can end. They are the ROM's three jump
+// targets, not an abstraction: `$C136` is the loop tail, `$C1D6` the death, and
+// `$C1AC JMP $C20A` abandons the loop after $C18C has cleared the screen.
+const NEXT_SLOT = 'C136', DIED = 'C1D6', TO_BULLETS = 'C20A';
 
 /**
  * `$C16E-$C1B5` -- what the overlap MEANS, dispatched on the enemy's type.
@@ -450,7 +462,14 @@ export function playerVsEnemies(state, res) {
  *   C188  C9 06 / F0 23   status 6 -> $C1AF     the CAPSULE
  *   C18C  ...             otherwise: destroy every enemy on screen
  *
- * @returns {boolean} true if this contact ended at `$C1D6`
+ * STATUS 6 AND STATUS 7 ARE TWO DIFFERENT PICKUPS AND ONLY ONE IS THE METER.
+ * `$AEC8 INC $47 / AND #$0F` gives the promoted object status 7 on every 16th
+ * capsule; 7 falls PAST the `CMP #$06 / BEQ` into `$C18C`, which never calls
+ * `$894B` at all (00-recon-powerups.md 1, measured by poking `$47 = 15`: type 7,
+ * `$C18C` n=1, `$C1AF` n=0, `$894B` n=0, and every enemy on screen turned into an
+ * explosion in one frame).
+ *
+ * @returns {string} NEXT_SLOT ($C136), DIED ($C1D6) or TO_BULLETS ($C1AC)
  */
 function contact(state, res, j, type) {
   const o = state.obj;
@@ -468,19 +487,60 @@ function contact(state, res, j, type) {
                   + 'ported -- no measured run has spawned type $29.');
   }
   if (t >= 3) return armedEnemy(state, res, j);   // $C17D BCS $C1B8
-  if (t !== 1) return false;                      // $C181 BNE $C136 (type 2)
+  if (t !== 1) return NEXT_SLOT;                  // $C181 BNE $C136 (type 2)
   const status = o.status[i];                     // $C183 LDA $010C,Y
-  if (status === 0) return false;                 // $C186 BEQ $C136
+  if (status === 0) return NEXT_SLOT;             // $C186 BEQ $C136
   if (status === 6) {                             // $C188/$C18A CMP #$06
-    throw new Error('$C1AF: the ship touched a power-up CAPSULE (type 1, status '
-                  + '6). $C1FD (free the slot) and $894B (INC $42, the $CE89 '
-                  + 'seventh-capsule bonus, +$0050 score) are wave 7.');
+    // $C1AF  20 FD C1  JSR $C1FD / 20 4B 89 JSR $894B / 4C 36 C1 JMP $C136
+    freeSlot(state, j);                           // $C1FD TYA / TAX / JMP $AEF8
+    pickupCapsule(state, res);                    // $C1B2 JSR $894B
+    return NEXT_SLOT;                             // $C1B5 JMP $C136 -- keep going
   }
-  throw new Error(`$C18C: the ship touched a type-1 object with status ${status}. `
-                + 'The arm that frees it and then blows up every enemy on screen '
-                + '($C194-$C1AC, which calls the killEnemy() this wave ported) '
-                + 'is not ported: no measured run has put a type-1 object with a '
-                + 'status other than 6 in front of the ship.');
+  return everyEnemy(state, res, j);               // $C18C
+}
+
+/**
+ * `$C18C-$C1AC` -- the EVERY-16TH item: free it, and blow up the whole screen.
+ *
+ *   C18C  20 FD C1  JSR $C1FD              free the item itself
+ *   C18F  A9 0B     LDA #$0B / 20 1E EC    sfx $0B -- NOT the capsule's $0D
+ *   C194  A0 09     LDY #$09
+ *   C196  B9 0C 01  LDA $010C,Y / 30 0E BMI $C1A9    status bit 7 SET -> skip
+ *   C19B  B9 0C 03  LDA $030C,Y / 10 09 BPL $C1A9    NOT initialised -> skip
+ *   C1A0  29 7F     AND #$7F / C9 03 CMP #$03 / 90 03 BCC $C1A9
+ *   C1A6  20 93 BE  JSR $BE93
+ *   C1A9  88        DEY / 10 EA BPL $C196
+ *   C1AC  4C 0A C2  JMP $C20A     <- LEAVES THE PLAYER SWEEP ENTIRELY
+ *
+ * TWO THINGS A RE-IMPLEMENTATION GETS WRONG. First, `$C1AC` is `JMP $C20A`, not
+ * `JMP $C136`: unlike the capsule, this arm ABANDONS the remaining enemy slots
+ * and goes straight to the bullet sweep. Second, the loop uses Y from 9 down to
+ * 0 while the enclosing sweep's index lives in `$A8`, so `$A8` is left pointing
+ * at whatever slot was touched -- and `$C1C8` reads `$A8`.
+ *
+ * NO SCENARIO IN THE CORPUS REACHES THIS, and it is ported anyway rather than
+ * left a throw, for one reason written down so it is not undone: `$47` has to
+ * reach 16 promotions in a single life, the corpus's best is 2, and `$47` is not
+ * a pokeable address -- but a REAL PLAYER reaches it, and an unported throw here
+ * is a frozen game (docs/worklog/gradius/05-FINDING-enemy-bullets-reached-in-
+ * play.md is the same mistake, found the hard way). What holds it is
+ * tests/powerup.test.js, driven off 00-recon-powerups.md 1's `--poke 47=15` run:
+ * type 7, `$C18C` n=1, `$C1AF` n=0, `$894B` n=0, all ten enemy slots -> class 2.
+ *
+ * @returns {string} always TO_BULLETS -- $C1AC is `JMP $C20A`
+ */
+function everyEnemy(state, res, j) {
+  const o = state.obj;
+  freeSlot(state, j);                             // $C18C JSR $C1FD
+  state.sfx.push(0x0B);                           // $C18F/$C191 JSR $EC1E
+  for (let y = 9; y >= 0; y--) {                  // $C194 LDY #$09 / $C1A9 DEY
+    const i = y + ENEMY_BASE;
+    if (o.status[i] & 0x80) continue;             // $C199 BMI $C1A9
+    if (!(o.type[i] & 0x80)) continue;            // $C19E BPL $C1A9
+    if ((o.type[i] & 0x7F) < 3) continue;         // $C1A0-$C1A4 BCC $C1A9
+    killEnemy(state, res, y);                     // $C1A6 JSR $BE93
+  }
+  return TO_BULLETS;                              // $C1AC JMP $C20A
 }
 
 /**
@@ -497,17 +557,44 @@ function contact(state, res, j, type) {
  * `$C1B8`'s BPL is the SPAWN-FRAME INVULNERABILITY: bit 7 of `$030C,X` is the
  * "initialised" flag src/enemies.js sets on an enemy's first update, so an enemy
  * that has not moved yet cannot kill you (00-recon-enemies.md, wave 3).
+ *
+ * THE SHIELD IS FIVE HITS AND THE SIXTH KILLS, and both halves are one measured
+ * run (`--poke 46=5@400-400` on `600:R`, 00-recon-powerups.md 7 re-run here):
+ *
+ *   $46  5 (f401) -> 4 (f493) -> 3 (f509) -> 2 (f526) -> 1 (f542) -> 0 (f647)
+ *   $C1BD n=6   $C1C1 n=5   $C1D0 n=5   $BE93 n=5   $C1D6 n=1
+ *
+ * and `capsule-shield` -- the same intervention as a corpus scenario -- puts the
+ * death at f658, 165 frames after the contact that kills a SHIELDLESS ship at
+ * f493 in `right-wall`. Those two scenarios are the same script with one poked
+ * byte between them, which is what makes "absorbed" separable from "immune".
+ *
+ * DESTROY-WHAT-YOU-HIT IS THE DEFAULT ARM, not the exception: `$C1C6 BPL $C1D0`
+ * takes the kill when `$010C,Y`'s bit 7 is CLEAR, and bit 7 there is the armoured
+ * flag, which no stage-1 squadron sets ($C1D0 n=5 of 5 above). The armoured tail
+ * ($C1C8 INC $046C,X) is the same damage accumulator $C070 uses and is equally
+ * unexercised -- it is ported, in one line, because it is one line and because
+ * leaving it out would silently make an armoured enemy free.
+ *
+ * WHAT THE SHIELD DOES NOT PROTECT AGAINST: terrain. `$C2B5`-`$C2C1` probes the
+ * map and `JMP $C1D6` with no `$46` test anywhere (see terrainPart below). The
+ * recon could not reach it -- $C3A3 returned 0 on all 1746 calls -- so that is
+ * the listing read carefully, and `terrain-death` still kills a shieldless ship.
  */
 function armedEnemy(state, res, j) {
   const o = state.obj;
   const i = j + ENEMY_BASE;
-  if (!(o.type[i] & 0x80)) return false;          // $C1BB BPL $C1CD
-  if (state.zp.shield === 0) { die(state); return true; }  // $C1BF BEQ $C1D6
-  throw new Error(`$C1C1: the shield absorbed a hit ($46 = ${state.zp.shield}). `
-                + 'DEC $46 and the armoured branch ($C1C8 INC $046C,X) are wave '
-                + '7 -- nothing in the port can give the ship a shield yet. Its '
-                + 'other tail, $C1D0 JSR $BE93 (destroy what you hit), IS ported '
-                + 'as killEnemy() in src/enemies.js.');
+  if (!(o.type[i] & 0x80)) return NEXT_SLOT;      // $C1BB BPL $C1CD
+  if (state.zp.shield === 0) { die(state); return DIED; }   // $C1BF BEQ $C1D6
+  state.zp.shield = u8(state.zp.shield - 1);      // $C1C1 DEC $46
+  if (!(o.status[i] & 0x80)) {                    // $C1C6 BPL $C1D0
+    killEnemy(state, res, j);                     // $C1D0 JSR $BE93
+    return NEXT_SLOT;                             // $C1D3 JMP $C136
+  }
+  // $C1C8 LDX $A8 / INC $046C,X -- X is the sweep's own index, so this is
+  // $0460[j + 12] in the port's addressing (state.js: $046C = $0460 + 12).
+  o.s0460[i] = u8(o.s0460[i] + 1);                // $C1CA INC $046C,X
+  return NEXT_SLOT;                               // $C1CD JMP $C136
 }
 
 /**
