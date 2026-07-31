@@ -1,0 +1,4 @@
+# ROM-derived: probe reports, RAM dumps, disassembly, framebuffers taken off
+# the board image. NEVER committed. (docs/worklog/README.md rule 1)
+out/
+__pycache__/

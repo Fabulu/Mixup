@@ -1,0 +1,9 @@
+# ROM-derived. Probe traces, framebuffer dumps, savestates and PNGs are taken
+# off the board image; they must never be committed.
+out/
+__pycache__/
+*.ppm
+*.png
+*.bin
+*.sta
+*.tsv

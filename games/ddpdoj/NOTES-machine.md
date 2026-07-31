@@ -319,7 +319,13 @@ Sprites are **not** fixed-size tiles: each entry names a bit-address into the ma
 (`sprmask`) and a width in 16-pixel units and a height in pixels, with optional
 zoom/shrink through a 16-entry table in `zoomram`. Colour comes from the separate
 `sprcol` ROM. Drawing order is the list walked **backwards** (`draw_sprites`,
-line 585-591), so later entries are behind earlier ones.
+line 585-591) — and *(CORRECTED 2026-07-31 by the assets recon, measured)*:
+`pgm_draw_pix` sets `destpri |= 1` on every pixel it touches and refuses to
+write where that bit is set, so the FIRST sprite drawn owns the pixel, and the
+first drawn is the LAST list entry. **Higher list index draws IN FRONT, not
+behind.** The earlier sentence here ("later entries are behind earlier ones")
+was backwards; the corrected reading renders 100.0000% pixel-exact
+(`docs/worklog/ddpdoj/00-recon-assets.md` §3-4).
 
 **The hard cap is 256 sprite entries per frame, terminated early by a zero word 4.** For a
 bullet-hell port this is the object table whose ordering `06-lag-and-slowdown.md` warns
