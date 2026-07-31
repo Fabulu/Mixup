@@ -24,8 +24,8 @@ Everything derived is regenerated from a ROM **you** legally own:
 ```sh
 # put your own copy here, named exactly:
 #   Batman - Return of the Joker (USA, Europe).gb
-python tools/export_assets.py     # -> assets/   (maps, tiles, metasprites, spawns)
-python tools/gen_tunables.py      # -> src/tunables.js  (read from the ROM itself)
+python tools/export_assets.py     # -> games/batman/assets/  (maps, tiles, metasprites, spawns)
+python tools/gen_tunables.py      # -> games/batman/src/tunables.js  (read from the ROM itself)
 python tools/banktrace.py "Batman - Return of the Joker (USA, Europe).gb" --outdir disasm
 ```
 
@@ -48,12 +48,21 @@ the bat-rope, `Enter` is START. There are touch controls on phones.
 
 | path | what |
 |---|---|
-| `src/` | the port — player, enemies, collision, actors, doors, the subsystems, both death sequences, every screen, the renderer and the sound driver |
+| `games/index.json` | the registry the launcher reads before it loads any game code |
+| `games/batman/game.json` | the manifest: screen, frame rate, entry point, levels, options |
+| `games/batman/src/` | the port — 60 files, 18,069 lines: player, enemies, collision, actors, doors, the subsystems, both death sequences, every screen, the renderer and the sound driver |
+| `games/batman/tests/` | 32 files, 728 unit tests — they run **without** the ROM, on synthetic fixtures |
+| `games/batman/assets/` | extracted from your own cartridge; never committed |
 | `tools/` | ROM extractors, the disassembler, the coverage audit and the test runner |
 | `tools/oracle/` | the PyBoy-based reference oracle (a test tool; it never ships) |
-| `tests/` | unit tests — they run **without** the ROM, on synthetic fixtures |
 | `docs/` | the master reference and the port/verification plans |
 | `SAVEPOINT.md` | the working map: what is done, what is not, and the traps |
+
+Two files in `games/batman/src/` are load-bearing for ORDER and say so in their
+headers: `game/frame.js` (the `$0567` main-loop body — call order here is
+shadow-OAM order, which is DMG sprite priority and the ten-sprites-per-line cut)
+and `enemies/driver.js` (the `$FFA7` parity that reverses the slot walk). Each
+names the test that guards it.
 
 `docs/00-MASTER-REFERENCE.md` is the authoritative technical spec — memory map,
 level and metasprite formats, the sound engine, the game state machine.
@@ -72,14 +81,15 @@ bugs. Two are worth knowing before reading any of this code:
 ## Testing
 
 ```sh
-npm run test-all              # all 26 stages
+npm run test-all              # all 27 stages
 npm run test-all -- --fast    # skip every stage that needs PyBoy
 npm run test-all -- --only raster-bands     # one stage
 npm test                      # unit tests only
+npm run typecheck             # tsc over games/batman/src/ — no ROM needed
 ```
 
-26 stages, all green: 691 unit tests, 50 frame-exact input scenarios, and
-dedicated oracles for map objects, doors, the per-level subsystems, both death
+27 stages, all green with zero skips: 728 unit tests, a static typecheck, 50
+frame-exact input scenarios, and dedicated oracles for map objects, doors, the per-level subsystems, both death
 sequences, the raster program, progress flow, every screen, and all 47 sound
 ids. Three of them compare **pixels** rather than memory — the stage-intro
 card, the ending and the death sequence — each added after a real bug turned

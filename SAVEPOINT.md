@@ -2,9 +2,14 @@
 
 > ## STATE: COMPLETE AND GREEN
 >
-> `npm run test-all` is **26/26 stages green** — 691 unit tests, 50/50 oracle
-> scenarios bit-exact over 14,519 frames, 96.023% mean pixel match across the
-> 73-frame visual suite. Tree clean, everything pushed, live at gbtman.pages.dev.
+> `npm run test-all` is **27/27 stages green, zero skipped** — 728 unit tests,
+> 50/50 oracle scenarios bit-exact over 14,519 frames, 96.023% mean pixel match
+> across the 73-frame visual suite. Tree clean, everything pushed, live at
+> gbtman.pages.dev.
+>
+> The tree is now `games/batman/{src,tests,assets}` under a `games/index.json`
+> registry, and the launcher picks a game before it loads one. 60 source files,
+> 18,069 lines, 32 test files. See "The layout" below.
 >
 > There is no in-flight work and nothing failing on purpose. Start from here.
 >
@@ -112,11 +117,70 @@ a literal anywhere in the port. Every one travels through
 file offsets so the exporter cannot verify itself.
 
 **STATE: feature complete.** All fourteen levels play, every boss included,
-title screen through to end credits. 26 gate stages green — 691 unit tests, 50
-frame-exact input scenarios, all 47 sound ids, and two stages that compare
-PIXELS rather than memory. Nothing is captured: every screen is built from ROM
+title screen through to end credits. 27 gate stages green — 728 unit tests, 50
+frame-exact input scenarios, all 47 sound ids, a static typecheck, and two
+stages that compare PIXELS rather than memory. Nothing is captured: every screen is built from ROM
 data and diffed against the cartridge's own VRAM. The remaining gaps are
 listed under "What is NOT ported" and none of them blocks play.
+
+---
+
+## The layout
+
+Restructured in eleven phases so a second cartridge has somewhere to go. The
+move itself was mechanical and the four gate numbers did not shift by a digit.
+
+```
+games/index.json          THE REGISTRY: [{ id, dir }]. Static JSON, no code --
+                          the launcher renders the picker with zero game
+                          modules imported.
+games/batman/
+  game.json               THE MANIFEST: identity, display {screen, frameHz},
+                          code {entry, mods}, rom, entries[], options[],
+                          characters[], enemies[].
+  src/    60 files, 18,069 lines
+    gametypes.js          @typedef GameState. A LEAF with zero imports, so it
+                          can be imported by anything. The written-down
+                          inventory of the 51 LAZY fields createState() never
+                          declares -- the document a second game forks.
+    game/frame.js         $0567-$0650, the main-loop body. THE ORDER FILE: the
+                          sequence of calls here IS shadow-OAM order, which is
+                          DMG sprite priority and the ten-per-line cut.
+    host/runtime.js       The browser half. Zero ROM: canvas upscale, audio
+                          arm, watchdog, fail reporter.
+    main.js               boot(), the screen state machine, the async level
+                          hand-offs, and the fixed-timestep loop -- which stays
+                          here because it is fused to the screen dispatch.
+    enemies/              driver.js (the ONLY file that knows any order),
+                          states/ (8), bosses/ (4), plus record.js and the
+                          five leaves.
+    player/               anim.js ($1B4A, a JP target) and death.js
+                          (sub_00_29E7, driven by the main loop, not the chain).
+    input.js              BTN lives here now, not in player.js.
+  tests/  32 files, 728 tests
+  assets/                 untracked, regenerated from your own cartridge
+shared/  platform/gb/     named, deliberately EMPTY -- the second consumer does
+                          not exist yet, and phase 2 is NES.
+tools/                    stays at the root; tools/oracle/_env.mjs is the one
+                          place that decides where a game's files are.
+```
+
+**player.js and main.js were cut exactly three and two ways, and no further.**
+player.js keeps its ~700-line `$1438..$1B4A` region as ONE file because that
+region is a contiguous fall-through chain -- faceRight falls INTO moveRight,
+moveRight's guard INTO attack, all five attack tails INTO vertical -- and three
+shipped bugs are documented in that file as mis-modelled joins. Across files
+those joins become ordinary imports and the reason is lost. Nothing checks a
+wrong re-join: the oracle catches a behaviour change, not a refactor that
+preserves behaviour today and loses the reason tomorrow.
+
+**Order is now tested, and it was not before.** Five order mutations -- deleting
+the `$FFA7` parity reversal, hoisting the lag gate above tryActivate, swapping
+the stun and hit arms, moving the second `drawEnemies` flush past `updateDoors`,
+reversing the draw queue at flush -- ALL PASSED the unit suite before
+`tests/frameorder.test.js` and `tests/enemy-order.test.js` existed. They now
+fail 4, 2, 1, 5 and 2 tests respectively, re-measured against the relocated code
+after every move.
 
 ---
 
@@ -131,12 +195,13 @@ python tools/oracle/trace.py  --frames 620 --script "20:,600:R" --level 5
 node   tools/render-frame.mjs --frames 620 --script "20:,600:R" --level 5
 node   tools/oracle/regress.mjs         # the whole corpus
 node   tools/oracle/vramdiff.mjs --record   # sub_00_0A0E, write for write
-npm run test-all                        # 26 stages, the gate for everything
+npm run test-all                        # 27 stages, the gate for everything
+npm run typecheck                       # tsc over games/batman/src/ (stage 2)
 ```
 
-**Current state: 50/50 oracle scenarios bit-exact, 691 unit tests, 26/26 stages
-green.** The corpus covers levels 1, 3, 4, 5, 6, 8, 9, 11, 12 and 14 over
-14,519 frames.
+**Current state: 50/50 oracle scenarios bit-exact, 728 unit tests, 27/27 stages
+green with zero skips.** The corpus covers levels 1, 3, 4, 5, 6, 8, 9, 11, 12
+and 14 over 14,519 frames.
 
 If you change gameplay code and `test-all` goes red, you broke something real.
 
@@ -241,7 +306,7 @@ it.
 2. **OAM draw order for the GAME OVER lettering's own burst.** `$0567` runs
    the pair `sub_00_0F7B` (HUD) + `sub_00_29E7` at `$0573`/`$057A` when
    `$FFA7 == 0`, and the SAME pair at `$05E5`/`$05EC` when it does not. **The
-   HUD half of that alternation IS ported now** — `src/main.js` `hudFirst` and
+   HUD half of that alternation IS ported now** — `src/game/frame.js` `hudFirst` and
    the two `drawHud` call sites. What is still unported is the BURST half: the
    death burst draws from inside `deathTick`/`updatePlayer` mid-frame and so
    does not move with the HUD. Measured: the burst's first OAM cursor
@@ -271,7 +336,7 @@ Three items that stood here for months are DONE, and every one was found by
 measuring OAM or the frame loop rather than the game state:
 
 - **The moon.** `$05A6` draws metasprite `$34` at OAM (128, 24) on levels
-  9/10/11, every frame, even paused, outside the `$C740` gate. `src/main.js`
+  9/10/11, every frame, even paused, outside the `$C740` gate. `src/game/frame.js`
   `drawSkySprite` draws it.
 - **The `$C740 == $FF` HUD gate.** From the frame after a boss dies the
   cartridge draws no energy bar for the whole countdown and fanfare (~350
@@ -284,7 +349,7 @@ measuring OAM or the frame loop rather than the game state:
   harder than the cartridge, docs/03 lesson 41.
 - **`$FFB1`/`$FFA7` across a pause and across the victory fanfare.** The
   VBlank ISR owns them and `$C716` gates only the main loop, so they keep
-  ticking. Both blocking paths in `src/main.js` tick them now.
+  ticking. Both blocking paths in `src/game/frame.js` tick them now.
 
 **Lag frames** (`$C757`) are out of scope by definition, not undone: they are
 instruction-level timing. See docs/03-VERIFICATION.md §28.
@@ -559,6 +624,21 @@ rather than against the listing.
   choice because it makes the corpus reproducible; calling it what the
   cartridge does is not. A free-running counter has no boot value to be right
   about.
+- **A harness with no gate stage behind it is not a check.**
+  `tools/oracle/headless.mjs` is the ONLY thing that drives `boot()` -- the rAF
+  loop, the pacing accumulator, the canvas blit, the watchdog, the fail path and
+  every screen hand-off. It had been dead since `c7a1e22` moved the integer
+  upscale inside `boot()`, and nothing reported it because its one consumer,
+  `flowpix.mjs`, is not a stage. Which means the whole host half of `main.js`
+  had no automated cover at all. Repaired in Phase 10 and used to fingerprint
+  1072 displayed frames before anything there was allowed to move. See
+  `docs/03-VERIFICATION.md` §44.
+- **A checker catches the one thing a test cannot: a comment that has drifted
+  from its code.** `collision.js`'s `probe()` documented four return fields and
+  has always returned six; five call sites read the two it denied. Nine of the
+  twenty-eight baseline `tsc` errors were that one line, and no behavioural
+  check could ever have seen it, because the CODE was right. In a project whose
+  primary asset is its comments, a lying comment IS the defect. §45.
 
 ---
 
@@ -585,6 +665,32 @@ drove the game. So:
    "what have we missed" with a number, and it is how the stage-intro screen
    was found after sitting unported *and* uncatalogued for the whole project.
    It currently reports no untouched region.
+
+### Left open by the eleven-phase restructure, deliberately
+
+Nothing is half-applied — every phase landed with its gate green — but three
+things were scoped OUT with reasons, and they are the obvious next work:
+
+4. **`tools/golden.mjs` fails 9 of its scenarios and has since before the
+   restructure.** PROVED pre-existing, not caused by it: a worktree at
+   `00cb076` with the same untracked goldens and assets copied in produces a
+   BYTE-IDENTICAL failure list. It is not a gate stage. Do NOT re-record the
+   goldens to make it green -- work out which of the 55 frames changed and why,
+   then re-record deliberately. A re-baselined golden is a deleted bug report.
+5. **`tools/oracle/flowpix.mjs` still is not a gate stage**, and it is now the
+   only consumer of the repaired `bootHeadless`. §44 is the argument for
+   promoting it: a harness nothing runs goes stale silently. Its part 1 (screen
+   structure and shade histograms every frame) needs no cartridge.
+6. **The fixed-timestep accumulator is still in `src/main.js`.** Moving it into
+   `host/runtime.js` means inverting control -- the screen dispatch becomes a
+   callback and four post-frame flags come back out -- and `host/runtime.js`'s
+   header names the precondition: a harness that can advance the clock by an
+   ARBITRARY delta, so `due(now)` can be asserted at 0, 1, 4 and
+   4-after-a-missed-minute. Today's harness advances exactly one `FRAME_MS` per
+   callback and would green-light a rewritten clamp it never exercises.
+7. **`tools/oracle/punchreach.mjs` is broken at HEAD**, pre-existing:
+   `makeState()` at :24 builds a state with no `effects` field. Not a gate
+   stage. Untouched by the restructure, which was a move.
 
 Known limits of that audit, so you do not over-trust it: its bare-`$XXXX`
 citation rule is deliberately generous, and a routine the disassembler decodes

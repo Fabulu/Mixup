@@ -575,6 +575,65 @@ now — the fix narrative lives on its entry in `regress.mjs`.
     CHANGE DETECTOR, labelled as such, which is the other half of
     `tests/frameorder.test.js`.
 
+44. **A harness with no stage behind it is not a check -- it is a file that used
+    to work.** `tools/oracle/headless.mjs` is the only thing in this repo that
+    drives `boot()`: the real rAF loop, the fixed-timestep accumulator, the
+    canvas blit, the suspended-loop watchdog, the fail path and every screen
+    hand-off in `stepBody`. It had been throwing
+    `document.createElement is not a function` before its first frame ever since
+    `c7a1e22` moved the integer upscale inside `boot()` -- five days and several
+    phases. NOTHING REPORTED IT, because its only consumer,
+    `tools/oracle/flowpix.mjs`, is not one of the gate stages. MEASURED: a grep
+    for `.boot(` / `bootHeadless` across `tools/` returns exactly two hits, the
+    harness itself and that one non-stage tool.
+
+    The consequence is bigger than the outage. It means the entire host half of
+    `src/main.js` -- ~140 lines of browser plumbing -- was covered by no
+    automated check at all, and a restructure was about to move it. Phase 10
+    repaired the harness FIRST, used it to fingerprint 1072 displayed frames
+    across title, round select, level 1, a pit death and the ending, and then
+    moved only the pieces that fingerprint could see. The fixed-timestep
+    accumulator stayed put and `src/host/runtime.js` says why: the harness
+    advances a CONTROLLED clock exactly one `FRAME_MS` per callback, so it can
+    only ever exercise the one-step case, and the `Math.min(now - last,
+    FRAME_MS * 4)` clamp that exists for backgrounded tabs would have been
+    rewritten blind under a green harness. That is 38's shape again.
+
+    Generalised: for every harness, name the stage that runs it. If there is
+    none, it is documentation, and it should be either promoted or deleted --
+    because a broken one is indistinguishable from a passing one until the day
+    you need it.
+
+45. **A checker catches the one defect class a test never can: a comment that
+    has drifted from its code.** `src/collision.js`'s `probe()` documented
+    `@returns {{value, col, row, subX}}`. It has ALWAYS also returned `px` and
+    `py` -- emitted at both return sites, read at five call sites, two in that
+    file and three in `src/player.js`. Nine of the twenty-eight errors in the
+    first `tsc --checkJs` run over this port were that single line.
+
+    No behavioural check could ever have found it, and that is the whole point:
+    the CODE was right. Every unit test passed, all 50 oracle scenarios stayed
+    bit-exact, the pixel mean did not move. Only the documentation was wrong,
+    and in a project whose stated primary asset is its comments, a lying comment
+    is the defect. The same run found `renderFrame` declaring three required
+    parameters when its only in-game call site passes two, and then found an
+    error in the lazy-field inventory being written in the same commit -- a scan
+    that matched `state.tables.X` and missed `state.tables?.X`, and so reported
+    three lazy fields where there are seventeen.
+
+    What was NOT bought, deliberately: `noImplicitAny` measures 1,193 errors,
+    1,025 of them pure annotation labour and 384 the `state` parameter alone
+    across 34 files. Not one of the lessons above this line is a type error.
+    The stage is `tsc` with `checkJs` on and `noImplicitAny` off -- about 10% of
+    the available typing, chosen because it is the part that pays.
+
+    One trap worth naming, since it cost a measurement here:
+    `ReturnType<typeof createState>` does NOT work in this tree. `src/state.js`
+    sits in an eight-way import cycle and TypeScript silently degrades an
+    inferred return type in a cycle to `any` -- `createState().BOGUS_FIELD`
+    raises nothing. The escape hatch is an explicit typedef in a cycle-free leaf
+    (`src/gametypes.js`, zero imports) plus one `@type` cast at the return.
+
 ## Tools
 
 | tool | purpose |
@@ -610,13 +669,15 @@ spends half a minute inside an emulator.
 ```
 npm run test-all                 # everything
 npm run test-all -- --fast       # skip the 20 PyBoy stages
+npm run typecheck                # stage 2 on its own; needs no ROM
 npm run test-all -- --keep-going # do not stop at the first failing stage
 node tools/test-all.mjs --only asset-integrity
 ```
 
 | stage | command | what it proves | needs PyBoy |
 |---|---|---|---|
-| `unit-tests` | `node --test tests/` | each `src/*.js` routine in isolation | no |
+| `unit-tests` | `node --test games/batman/tests/` | each `src/*.js` routine in isolation, 728 of them | no |
+| `typecheck` | `node node_modules/typescript/bin/tsc -p tsconfig.json` | `checkJs` over `games/batman/src/` -- catches JSDoc that has drifted from the code it documents (see 45) | no |
 | `tunables-check` | `python tools/gen_tunables.py --check` | all 44 constants still equal the ROM bytes at their cited file offsets | no |
 | `sound-driver` | `node tools/oracle/sounddiff.mjs --all` | every recorded sound id, all four channels plus NR50/NR51 | no |
 | `oam-wrap` | `node tools/oracle/oamwrap.mjs` | every queued sprite coordinate stays inside the byte an OAM entry can hold | no |
@@ -643,11 +704,18 @@ node tools/test-all.mjs --only asset-integrity
 | `death-pixels` | `node tools/oracle/deathpix.mjs` | the death sequence's PIXELS, not just its records | **yes** |
 | `oam-order` | `node tools/oracle/oamdiff.mjs` | shadow-OAM ORDER against the cartridge, both parities | **yes** |
 
-The runner exits non-zero and names the stage that failed. Stages that *cannot*
-run (no `tests/*.test.js`, no `assets/manifest.json`) are reported `SKIP` and do
-not fail the run; a stage that runs and fails always does. Everything is
-reproducible from a clean checkout given the ROM and
-`python tools/export_assets.py`.
+The runner exits non-zero and names the stage that failed.
+
+**A MISSING PATH IS A FAILURE, NOT A SKIP.** This used to report `SKIP` for a
+missing `tests/` or `assets/manifest.json` and still print ALL GREEN with exit
+0 -- so a tree whose layout had moved under the runner announced success having
+run two stages of twenty-six, and `assets/` being gitignored meant the move left
+no trace in a diff either. The runner now prints the absolute paths it probed on
+every run and EXITS NON-ZERO naming the one it could not find.
+`--allow-missing` restores the old tolerance and says so loudly in the banner.
+`--fast` is unaffected: that is a deliberate scope reduction, not a missing
+path, and its skips are still skips. Everything is reproducible from a clean
+checkout given the ROM and `python tools/export_assets.py`.
 
 ### Asset integrity — `tools/verify_assets.py`
 

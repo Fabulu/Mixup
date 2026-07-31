@@ -12,9 +12,11 @@ works" is never the standard; "I hooked it and it does this" is.
 ```sh
 # your own cartridge, named exactly:
 #   Batman - Return of the Joker (USA, Europe).gb
-python tools/export_assets.py      # -> assets/
-python tools/gen_tunables.py       # -> src/tunables.js
+python tools/export_assets.py      # -> games/batman/assets/
+python tools/gen_tunables.py       # -> games/batman/src/tunables.js
 npm install                        # pyboy is a python dep: pip install pyboy
+                                   # npm install also brings in typescript,
+                                   # which gate stage 2 needs
 ```
 
 Read `SAVEPOINT.md` first — it is the map of what is done, what is not, and
@@ -58,19 +60,22 @@ simply hard, or ugly, or strange. Do not invent a fix to match an expectation.
 ## Verifying a change
 
 ```sh
-npm test                       # unit tests — these run WITHOUT the ROM
-npm run test-all               # all 26 stages (needs PyBoy + your cartridge)
+npm test                       # 728 unit tests — these run WITHOUT the ROM
+npm run typecheck              # tsc over games/batman/src/ — no ROM either
+npm run test-all               # all 27 stages (needs PyBoy + your cartridge)
 npm run test-all -- --fast     # skip everything that needs PyBoy
 npm run test-all -- --only raster-bands
 ```
 
 The unit suite deliberately never reads `assets/`, so it runs on a clean
 checkout and in CI. It uses synthetic fixtures — see `SYNTHETIC_TABLES` in
-`tests/helpers.js`. If your change makes a unit test need real ROM data, the
+`games/batman/tests/helpers.js`. If your change makes a unit test need real ROM
+data, the
 fixture is the thing to change, not the suite's independence.
 
 The PyBoy stages cannot run in CI, because CI has no cartridge. **Run them
-locally and say in your PR what they reported.**
+locally and say in your PR what they reported.** CI runs the two that need
+neither ROM nor assets: the unit suite and the typecheck.
 
 ## Writing an oracle harness
 
@@ -108,5 +113,9 @@ Say what you measured and what it said. A diff without evidence is a guess, and
 this project has no shortage of plausible guesses that turned out wrong.
 
 Small and cited beats large and sweeping. If you are touching the frame order
-in `src/main.js`, be aware it determines OAM priority and carry ordering, and
-has caused subtle bugs twice.
+in `games/batman/src/game/frame.js`, be aware it determines OAM priority and
+carry ordering, and has caused subtle bugs twice. That file and
+`src/enemies/driver.js` are the only two that know any order; both name the
+test that guards them (`tests/frameorder.test.js`,
+`tests/enemy-order.test.js`). Those tests exist because FIVE distinct order
+mutations passed the entire unit suite before they were written.
