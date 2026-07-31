@@ -21,6 +21,8 @@ import {
 } from './record.js';
 import { drawMetasprite, drawYBob } from '../render/metasprite.js';
 
+/** @typedef {import('../gametypes.js').GameState} GameState */
+
 /**
  * ROM: $5DFF-$6063 - the animation state machine and metasprite selection.
  * The pose tables live in the ANIM_ROM blob (1:$6891-$6BC0); pointers are
@@ -163,6 +165,7 @@ export function queueDraw(state, id, r, attr, alt) {
  * enemy driver itself; queueing keeps that OAM order (parity-alternating slot
  * order included) while letting main.js own the manifest. Levels $04/$0B/$0E
  * draw from the alternate table 5:$736B (sub_00_0BAF), the rest from 5:$5F5C.
+ * @param {GameState} state
  */
 export function drawEnemies(state, manifest) {
   const q = state.enemyDraws;

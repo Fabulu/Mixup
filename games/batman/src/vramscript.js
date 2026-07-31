@@ -26,9 +26,10 @@ const ROW_STRIDE = 0x20;
  *
  * @param vram    Uint8Array covering `base` upward (8 KB for $8000-$9FFF)
  * @param script  bytes of the script itself
- * @param opts.offset  where in `script` to start
- * @param opts.base    CPU address `vram[0]` corresponds to
- * @param opts.onWrite optional (addr, value) hook, in execution order --
+ * @param {object} [opts]
+ * @param {number} [opts.offset]  where in `script` to start
+ * @param {number} [opts.base]    CPU address `vram[0]` corresponds to
+ * @param {Function} [opts.onWrite] optional (addr, value) hook, in execution order --
  *                     the oracle compares this stream against the cartridge's
  * @returns the offset just past the terminator
  */

@@ -26,6 +26,8 @@ import { addY, absDiff8 } from './util.js';
 import { probeUp, probeDown, attackProbe } from './probe.js';
 import { animTick, queueDraw, ar } from './anim.js';
 
+/** @typedef {import('../gametypes.js').GameState} GameState */
+
 /**
  * ROM: loc_01_5BB6. Rising phase: gravity 1/frame, apex flips to falling,
  * ceiling probe can snap the head back down. Suspended while the turn

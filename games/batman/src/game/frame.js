@@ -51,6 +51,8 @@ import { updateVictoryHold, c740Idle } from '../effects.js';
 import { runHook } from '../mods.js';
 import { tickRaster, rasterModeForLevel } from '../raster.js';
 
+/** @typedef {import('../gametypes.js').GameState} GameState */
+
 /** $05A9: LD E,$34 -- the moon, the only fixed sprite the main loop draws. */
 const SKY_METASPRITE = 0x34;
 /** $05AB: LD A,$10 -- drawn through OBP1. */
@@ -117,7 +119,11 @@ function updatePause(state) {
   }
 }
 
-/** One game frame. ROM: the $0567 main-loop body. */
+/**
+ * One game frame. ROM: the $0567 main-loop body.
+ *
+ * @param {GameState} state
+ */
 export function tick(state, manifest, playerTiles) {
   // loc_00_3566/$35D0: the victory fanfare BLOCKS the main loop -- it is a
   // wait routine the clear path calls, not a state the loop drives. While it

@@ -13,6 +13,8 @@
 import { u8, u16 } from '../state.js';
 import { E_X_HI, E_X_LO, E_Y_HI, E_Y_LO } from './record.js';
 
+/** @typedef {import('../gametypes.js').GameState} GameState */
+
 /** ROM: sub_01_63AD - 16-bit big-endian add on the record. */
 export function addX(r, d) {
   const v = u16(((r[E_X_HI] << 8) | r[E_X_LO]) + d);

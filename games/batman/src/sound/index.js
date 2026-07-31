@@ -34,6 +34,8 @@ export class Sound {
       if (this.ctx.state === 'suspended') await this.ctx.resume();
       return true;
     }
+    // @ts-ignore -- webkitAudioContext is the legacy Safari prefix. It is not
+    // in lib.dom, and it is still the only AudioContext on older iOS.
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return false;
 

@@ -13,6 +13,11 @@
     "verify-assets": "python tools/verify_assets.py",
     "regress": "node tools/oracle/regress.mjs",
     "test-all": "node tools/test-all.mjs",
-    "frame": "node tools/render-frame.mjs"
+    "frame": "node tools/render-frame.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^7.0.2"
   }
 }

@@ -1,0 +1,41 @@
+{
+  // Type checking for a hand-translated ROM port, scoped deliberately small.
+  //
+  // WHAT THIS BUYS, and it is not "types everywhere".  Of the 41 numbered
+  // lessons in docs/03-VERIFICATION.md, NOT ONE is a type error -- every shipped
+  // defect in this project was ROM semantics or harness design.  So this is set
+  // up to catch the one thing a checker is genuinely better at than a test:
+  // documentation that has drifted away from the code it documents.  It found
+  // exactly that at src/collision.js's probe(), whose @returns had been lying
+  // about two of its own fields.
+  //
+  // noImplicitAny is OFF ON PURPOSE.  Turning it on measures 1,193 errors, of
+  // which 1,025 are pure annotation labour and 384 are the `state` parameter
+  // alone across 34 files.  That is a four-figure edit count against a defect
+  // class this port has never shipped, and every one of those edits is a chance
+  // to touch a file the 26-stage gate cannot fully see.  If someone wants it, it
+  // is additive and belongs in its own workflow.
+  //
+  // strict is OFF for the same reason, and because the port models 8-bit wrap
+  // semantics with `| 0`, `& 0xFF` and deliberately-lazy fields that are created
+  // on first use -- see src/gametypes.js, which writes that inventory down.
+  "compilerOptions": {
+    "checkJs": true,
+    "allowJs": true,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    // The port runs in BOTH environments and says so in the code: src/level.js's
+    // b64() is `typeof atob === 'function' ? atob(s) : Buffer.from(...)`, and
+    // seven other files carry the same guard. Without node's globals the checker
+    // models only half the world and reports eight false "Cannot find name
+    // 'Buffer'" errors on correct code.
+    "types": ["node"],
+    "skipLibCheck": true
+  },
+  "include": ["games/batman/src/**/*.js"]
+}

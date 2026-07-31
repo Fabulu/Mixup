@@ -99,6 +99,27 @@ const STAGES = [
     skip: hasUnitTests ? null : 'no tests/*.test.js yet',
   },
   {
+    // SECOND, not last, and deliberately: it is the cheapest stage in the run
+    // and it is static, so a drifted JSDoc should surface in five seconds
+    // rather than after two minutes of PyBoy.
+    //
+    // It is in the gate at all because the thing it caught cannot rot back in
+    // any other way. src/collision.js's probe() had an @returns that omitted
+    // two fields it has always returned and five call sites have always read;
+    // no behavioural test can see that, because the CODE was right and only the
+    // documentation was wrong. Nine of the twenty-eight baseline errors were
+    // that one line.
+    //
+    // Invoked through node rather than `npx tsc` so it does not depend on a
+    // shell or on npx resolving anything.
+    name: 'typecheck',
+    what: 'tsc --checkJs over games/batman/src/ (noImplicitAny OFF -- see tsconfig.json)',
+    cmd: process.execPath,
+    args: ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json'],
+    skip: fs.existsSync(path.join(ROOT, 'node_modules/typescript/bin/tsc'))
+      ? null : 'typescript not installed - run: npm install',
+  },
+  {
     name: 'tunables-check',
     what: '44 ROM constants still match their file offsets',
     cmd: PY,

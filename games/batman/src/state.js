@@ -274,7 +274,22 @@ export function createState(tunables = DEFAULT_TUNABLES) {
     set: (v) => { state.parity = v & 1; },
   });
 
-  return state;
+  // The cast is the defineProperty above, told to the checker.
+  //
+  // `frameParity` is installed with Object.defineProperty, and TypeScript cannot
+  // see that: it infers this function's return type from the object LITERAL, so
+  // the field it adds a line earlier is missing from the inferred shape and
+  // every annotated consumer of a GameState fails on it. Asserting here says
+  // exactly one thing -- "the property above exists" -- and nothing else.
+  //
+  // It also does the more useful half of the job. src/state.js sits in an
+  // eight-way import cycle, and TypeScript silently degrades an INFERRED return
+  // type in a cycle to `any` (MEASURED: `createState().TOTALLY_BOGUS_FIELD`
+  // raises nothing at all). An EXPLICIT type survives that, so this one line is
+  // what makes src/gametypes.js bind to the real tree instead of documenting it
+  // from a distance. gametypes.js is a leaf with zero imports, so naming it here
+  // adds no edge to that cycle.
+  return /** @type {import('./gametypes.js').GameState} */ (state);
 }
 
 // ---- map access ------------------------------------------------------------

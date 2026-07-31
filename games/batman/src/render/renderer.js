@@ -126,7 +126,11 @@ function windowSuppressed(state) {
 }
 
 /**
- * @param opts.spritesPerLine  overrides the DMG ten-per-line cut.  It exists so
+ * @param {object} [opts]  OPTIONAL, and the game always omits it -- src/main.js
+ *   calls renderFrame(state, fb). Declaring it required was the second thing
+ *   the Phase 11 checker found: a signature that disagreed with its only
+ *   in-game call site.
+ * @param {number} [opts.spritesPerLine]  overrides the DMG ten-per-line cut.  It exists so
  *   tools/oracle/spritelimit.mjs can render the SAME frame with the rule off
  *   and watch the comparison go red -- a check nobody has made fail is a
  *   decoration.  Nothing in the game passes it.

@@ -22,6 +22,8 @@ import {
   E_PROBE_DX, E_PROBE_DY,
 } from './record.js';
 import {
+
+/** @typedef {import('../gametypes.js').GameState} GameState */
   addX, absDiff8, neg16q, playerScreenX, playerScreenY, requestSound,
 } from './util.js';
 

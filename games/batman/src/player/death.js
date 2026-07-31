@@ -25,6 +25,8 @@
 import { effects, startDeathBurst, deathBurstTick } from '../effects.js';
 import { requestSound } from '../player.js';
 
+/** @typedef {import('../gametypes.js').GameState} GameState */
+
 /**
  * ROM: sub_00_29E7. Seeds the $C1C0 GAME OVER lettering from 0:$2AD7 -- eight
  * letters on one shared path, each trailing the last by 8 frames, which is
@@ -38,6 +40,7 @@ import { requestSound } from '../player.js';
  * 7 of the burst has finished its scripted flight, which takes 332 frames --
  * see deathBurstTick. MEASURED end to end on levels 1, 3 and 4: 452 frames
  * from here to loc_00_2AAD.
+ * @param {GameState} state
  */
 export function startDeath(state) {
   const p = state.player;
@@ -86,6 +89,7 @@ export function startDeath(state) {
  * INSIDE that arm, so the burst does not advance while $C740 is busy -- a boss
  * death countdown or level 14's entrance. MEASURED with an execution hook on
  * sub_00_29E7: 0 hits across 60 frames with $C740 = $00, 60/60 with $FF.
+ * @param {GameState} state
  */
 export function deathTick(state, manifest = null) {
   // Fire exactly once. Without this the timer sits at zero and every

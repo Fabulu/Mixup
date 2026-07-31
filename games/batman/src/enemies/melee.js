@@ -24,6 +24,8 @@ import { absDiff8, requestSound } from './util.js';
 import { c740Idle } from '../effects.js';
 import { spawnEffect } from '../doors.js';
 
+/** @typedef {import('../gametypes.js').GameState} GameState */
+
 /**
  * Player melee lands on an enemy.  ROM: loc_00_2643-$272B, the punch probe's
  * ($C72B = 5) enemy scan -- reached from sub_00_20BA only when the probe row
@@ -70,6 +72,7 @@ import { spawnEffect } from '../doors.js';
  *
  * @param probeX/probeY  the punch probe point in world 12.4 ($FFB6-$FFB9)
  * @returns 0xFF on a hit (the probe's own return value), else 0
+ * @param {GameState} state
  */
 export function meleeHitTest(state, probeX, probeY) {
   const p = state.player;

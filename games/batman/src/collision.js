@@ -76,8 +76,19 @@ const LANDABLE = new Set([
  *
  * @param dxSub  X offset in subpixels (the original's DE)
  * @param dySub  Y offset in subpixels (the original's BC)
- * @returns {{value:number, col:number, row:number, subX:number}}
+ * @returns {{value:number, col:number, row:number, subX:number,
+ *            px:number, py:number}}
  *          value 0 when the probe leaves the world vertically.
+ *          px/py are the ABSOLUTE probed position in subpixels, i.e. the
+ *          player position plus the offset, wrapped to 16 bits.
+ *
+ * THIS LINE WAS A LIE UNTIL PHASE 11, and it is the whole argument for having a
+ * checker at all. Both return sites have emitted px and py since they were
+ * written (:90 and :110), five call sites read them -- :131, :850 and three in
+ * src/player.js -- and the returns tag above claimed neither existed. Nine of
+ * twenty-eight baseline typecheck errors came from this one line. No test could
+ * have caught it: the code was right and only the documentation was wrong, so
+ * every behavioural check passed and every reader was misinformed.
  */
 export function probe(state, dxSub, dySub, mode) {
   const p = state.player;

@@ -22,6 +22,27 @@ jobs:
       - name: Unit tests (no ROM required)
         run: node --test games/batman/tests/
 
+  typecheck:
+    # tsc over games/batman/src/ with checkJs. Needs no ROM and no assets, so it
+    # is one of the two things CI can genuinely gate.
+    #
+    # It runs here as well as in tools/test-all.mjs because the whole point of
+    # the stage is that a drifted JSDoc cannot rot back in: the defect it was
+    # added for -- src/collision.js's probe() documenting a return shape two
+    # fields smaller than the one it returns -- is invisible to every
+    # behavioural test in the tree, so if this only ever ran locally it would be
+    # exactly as forgettable as the comment it checks.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (no ROM required)
+        run: npm run typecheck
+
   no-rom-data:
     runs-on: ubuntu-latest
     steps:

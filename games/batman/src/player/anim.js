@@ -27,6 +27,8 @@ import { u8 } from '../state.js';
 import { BTN } from '../input.js';
 import { AIR_GROUNDED, AIR_RISING, AIR_FALLING } from '../player.js';
 
+/** @typedef {import('../gametypes.js').GameState} GameState */
+
 // ---------------------------------------------------------------------------
 // Animation select.  ROM: loc_00_1B4A ($1B5D-$1D0B), a routine-for-routine
 // translation.  Every arm below cites the address it came from, and the ONE
@@ -92,6 +94,7 @@ export const ANIM = {
 /**
  * ROM: the tail of loc_00_1B4A, from $1B5D (the screen-position cache at
  * $1B4A-$1B5C is cachePlayerScreen in render/metasprite.js).
+ * @param {GameState} state
  */
 export function selectAnim(state) {
   const p = state.player;
