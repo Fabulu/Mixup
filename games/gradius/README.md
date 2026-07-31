@@ -6,6 +6,15 @@ have to be made before any port code is written. Nothing here runs yet.
 Read `docs/knowledge/` first — most of what Batman cost us was method, not Game Boy
 knowledge, and all of it applies here.
 
+| file | what is in it |
+|---|---|
+| [`NOTES-rom.md`](NOTES-rom.md) | vectors, the NMI, shadow OAM, where the split is |
+| [`NOTES-lag.md`](NOTES-lag.md) | the lag plan |
+| [`NOTES-render.md`](NOTES-render.md) | **the renderer, measured** — CHR banks, palettes, nametables, sprites, and the two raster bands, with a pixel-exact rebuild of real frames as the evidence |
+| [`NOTES-player.md`](NOTES-player.md) | the player actor (written by a parallel workstream) |
+| [`NOTES-terrain.md`](NOTES-terrain.md) | the stage data (written by a parallel workstream) |
+| [`tools/oracle/PROBE.md`](tools/oracle/PROBE.md) | the reference probe and the RAM map |
+
 ## The cartridge
 
 Measured from the ROM, not looked up:
@@ -34,23 +43,38 @@ last write to the mapper register. Track it the same way the GB port tracked `$F
 
 ## What has to be decided before writing code
 
-### 1. The reference emulator — this is the blocking decision
+### 1. The reference emulator — SETTLED: Mesen 2.1.1, headless via `--testRunner`
 
-The oracle method needs three things (`docs/knowledge/01-the-oracle-method.md`):
-execution hooks, direct memory access, deterministic stepping with a readable
-framebuffer. PyBoy gave us all three for the Game Boy. **Nothing is chosen for the NES
-yet.** Candidates to evaluate, in that order of importance:
+Measured, not assumed. Full evidence and the traps it hides in:
+[`tools/oracle/README.md`](tools/oracle/README.md).
 
-- Mesen — has a Lua scripting API with execution callbacks and memory access, and is the
-  accuracy reference. Question: can it be driven headless and deterministically from a
-  script, the way `PyBoy(rom, window='null')` can?
-- `nes-py` / other Python cores — easy to drive, but check whether they expose
-  *execution* hooks or only frame stepping and memory. Frame-stepping-only is a
-  significant downgrade; half the bugs in Batman were found by hooking one address and
-  reading a register at that instant.
+Mesen's `--testRunner` mode runs a Lua script against a ROM with **no window at
+all** (`MainWindowHandle : 0` on the live process) and exits with whatever code
+the script passes to `emu.stop(n)`. It gives all three capabilities:
 
-**Do not start the port until this is settled.** The whole method depends on it, and
-choosing wrong is expensive to undo.
+- **execution hooks** — `emu.addMemoryCallback(fn, emu.callbackType.exec, addr, addr,
+  emu.cpuType.nes, emu.memType.nesMemory)`, the direct counterpart of PyBoy's
+  `hook_register`. Proven by hooking `$806A` (the NMI vector, read out of PRG at
+  runtime) and reading CPU registers and zero page at that instruction.
+- **direct memory access** — CPU RAM, OAM, PPU memory, palette RAM, all readable
+  *and* writable mid-run, with side-effect-free `nesDebug`/raw memory types.
+- **deterministic headless stepping + framebuffer** — two separate processes
+  produced a byte-identical 256×240 dump (sha256 `8b74199b…`) and identical
+  values in every reported field. Savestates round-trip exactly, and scripted
+  input via `emu.setInput` is both effective and reproducible.
+
+Run it yourself:
+
+```
+python games/gradius/tools/oracle/setup_mesen.py          # unattended, no compiler
+python games/gradius/tools/oracle/capability_probe.py --twice
+python games/gradius/tools/oracle/input_probe.py
+```
+
+Rejected after being installed and run against the real cartridge: **nes-py**
+(refuses this ROM's NES 2.0 header; and no execution hooks, no registers, no OAM
+or PPU memory) and **jsnes** (no hook API, and 13.94% of its pixels disagree with
+Mesen on the same frame — useful as a second opinion, not as the reference).
 
 ### 2. The NES counterparts of the DMG rules that bit us
 

@@ -1,0 +1,8 @@
+# ROM-derived. Framebuffer dumps and probe reports are pixels and RAM taken off
+# the cartridge; they must never be committed.
+out/
+__pycache__/
+*.ppm
+*.png
+*.bin
+*.mst

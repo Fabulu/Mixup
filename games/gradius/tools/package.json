@@ -1,0 +1,17 @@
+{
+  "name": "gradius-hw-probes",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Headless NES measurement probes for the Gradius port. Runs the real cartridge under jsnes with CPU execution hooks and reports what the hardware actually did. Not part of the shipped game; not wired into the repo-root package.json on purpose.",
+  "scripts": {
+    "probe": "node probe.mjs \"../../../Gradius (USA).nes\" 1200 --press START@200-210",
+    "probe2": "node probe2.mjs \"../../../Gradius (USA).nes\" 1100 --press START@200-210 --settle 500",
+    "probe3": "node probe3.mjs \"../../../Gradius (USA).nes\" 1100",
+    "probe4": "node probe4.mjs \"../../../Gradius (USA).nes\" 1100",
+    "hwrules": "node hwrules.mjs \"../../../Gradius (USA).nes\" 600"
+  },
+  "dependencies": {
+    "jsnes": "^2.1.0"
+  }
+}

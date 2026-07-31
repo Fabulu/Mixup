@@ -1,0 +1,14 @@
+# Tooling working files. Nothing here belongs in the repo.
+node_modules/
+package-lock.json
+__pycache__/
+out/
+
+# ROM-derived output: disassembly listings, screenshots, traces, extracted CHR.
+*.asm
+*.lst
+*.png
+*.ppm
+*.bin
+*.chr
+*.log

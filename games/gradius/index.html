@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gradius (NES) - Mixup</title>
+<!--
+  STANDALONE. This page does not touch the repo's root launcher and does not
+  import anything from it; it exists so the port can be looked at while the
+  launcher is being rewritten elsewhere.
+
+  Serve the repo over HTTP (`python -m http.server 8000`) and open
+  /games/gradius/. The ES modules and the asset fetches both need a real origin;
+  file:// will fail on CORS before it gets anywhere near the game.
+-->
+<style>
+  :root { color-scheme: dark; }
+  html, body {
+    margin: 0; height: 100%; background: #000; color: #9aa;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    overscroll-behavior: none;
+  }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+  #stage { display: flex; align-items: center; justify-content: center; flex: 1 1 auto; width: 100%; min-height: 0; }
+  /*
+    image-rendering: pixelated AND an integer scale. Both are needed. On the
+    Batman port a fractional scale put the canvas's 1:1 pixels on non-integer
+    device pixels and the browser resampled them -- a dithered circle came out
+    looking like tetris pieces. main.js's fitCanvas() picks the integer.
+  */
+  canvas { image-rendering: pixelated; display: block; background: #000; }
+  #hud { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; padding: 0 12px 12px; }
+  #hud b { color: #cde; font-weight: 600; }
+  #err { color: #f88; max-width: 60ch; white-space: pre-wrap; padding: 0 12px; }
+  kbd { background: #222; border: 1px solid #444; border-radius: 3px; padding: 0 4px; color: #cde; }
+</style>
+</head>
+<body>
+  <div id="stage"><canvas id="screen" width="256" height="240"></canvas></div>
+  <div id="hud">
+    <span><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> move</span>
+    <span><kbd>Z</kbd> / <kbd>X</kbd> fire (not ported)</span>
+    <span id="stats"></span>
+  </div>
+  <div id="err"></div>
+
+<script type="module">
+import { boot, fitCanvas } from './src/main.js';
+
+const canvas = document.getElementById('screen');
+const stage = document.getElementById('stage');
+const stats = document.getElementById('stats');
+const err = document.getElementById('err');
+
+// Integer device-pixel scaling, recomputed on resize and on a DPR change (a
+// window dragged between a laptop screen and an external monitor changes
+// devicePixelRatio without firing anything else useful).
+const fit = () => fitCanvas(canvas, stage);
+addEventListener('resize', fit);
+fit();
+
+try {
+  const app = await boot(canvas);
+  // The frame rate is NOT spelled here. It comes from game.json via main.js:
+  // 60.098814 Hz, derived (NTSC PPU 5369318.18 / 89341.5) rather than rounded.
+  setInterval(() => {
+    const s = app.state;
+    stats.innerHTML = `<b>$0360</b> ${s.obj.x[0]} <b>$0320</b> ${s.obj.y[0]}`
+      + ` &nbsp; <b>cam</b> ${(s.cam.hi << 8) | s.cam.lo}px`
+      + ` &nbsp; <b>$0120</b> ${s.obj.anim[0]}`
+      + ` &nbsp; <b>lag</b> ${s.lagFrames}`;
+  }, 100);
+} catch (e) {
+  // Say what is missing and how to make it, rather than leaving a black canvas.
+  // A zero-filled tile sheet renders a perfectly plausible empty starfield.
+  err.textContent = String(e && e.message || e);
+  console.error(e);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,481 @@
+// porttrace.mjs -- the PORT side of the oracle comparison.
+//
+// This is the counterpart of tools/oracle/probe.lua: it runs games/gradius/src
+// for a scripted input and emits a per-frame state vector in EXACTLY the shape
+// probe.lua emits -- same field names, same key order, same integers -- so the
+// two can be diffed field by field without either side reformatting the other.
+//
+// ============================== THE SAMPLE POINT =============================
+//
+// probe.lua hooks $80B5 (`STA $04`), the last instruction of the NMI's work.
+// The port's `nmi()` IS that handler, so the equivalent instant is "immediately
+// after nmi() returns, before the frame lock is considered cleared". That is
+// why `guard` is emitted as 1 rather than read from `state.lock`: at $80B5 the
+// `INC $04` from $809F still stands and the `STA $04` has not executed. Getting
+// this backwards would be exactly the one-instruction slip PROBE.md caught with
+// its own guard assertion.
+//
+// Fields are read at that instant and nowhere else. In particular `scrollX`
+// ($12) is read AFTER $9A79 has latched it for the next frame, which is what
+// the oracle reads too -- the renderer's band A uses the PREVIOUS value and
+// that distinction is src/nmi.js's business, not this file's.
+//
+// ================================ SEEDING ====================================
+//
+// The port does not model the title screen, the mode-3 demo, or the 28-frame
+// stage-intro sub-state, so it cannot be booted cold and lined up with the
+// cartridge. The comparison therefore SEEDS the port from the cartridge's own
+// $0000-$07FF at the scenario's align frame and free-runs from there. Two
+// things follow and both are stated rather than buried:
+//
+//   * everything before the align frame is UNTESTED by this harness, including
+//     src/main.js's bootState();
+//   * the seed is real machine state, not invented state -- the failure mode
+//     docs/knowledge/03 warns about ("a harness that sets up state the app
+//     never has") is inverted here: the risk is that seeding HIDES an
+//     initialisation bug, not that it invents an impossible frame. That is why
+//     the compared windows are hundreds of frames long: an error in anything
+//     the seed set has to survive the whole run to stay hidden.
+//
+// ============================ WHAT IS NOT PRODUCED ===========================
+//
+// Five of probe.lua's fields have no port counterpart, and they are listed in
+// the output as `notProduced` rather than filled with a plausible zero:
+//
+//   scanline, cpuCycle   hardware timing; the port has no cycle model at all
+//   spriteOverflow       PPU state; not modelled
+//   oamBudget ($9F)      the sprite budget is explicitly not ported (oam.js)
+//   splitSpins           the count of $9AA3 busy-wait iterations; the port
+//                        models the split as two raster bands, not as a spin
+//   pad2 ($9D)           player 2's shift register; the port has one controller
+//
+// Three more are produced but DERIVED rather than stored, and are tagged so
+// that a match is not over-read: `pad1` (the port claims $9C's low bits are
+// $0007), `chrOffset` (bank x $2000) and `sprite0Hit`.
+
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { createState } from '../../src/state.js';
+import { nmi } from '../../src/nmi.js';
+import { chrBank } from '../../src/render/ppu.js';
+import { headlessResources } from '../../tests/helpers.js';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+export const SCEN_DEFS = join(HERE, 'scenarios.json');
+export const SCEN_OUT = join(HERE, 'out', 'scen');
+
+// ---------------------------------------------------------------- input -----
+// The same grammar probe.lua parses, and the same bit layout $0007 uses --
+// MEASURED (PROBE.md 4), not the NES standard order taken on faith:
+//   RIGHT $01  LEFT $02  DOWN $04  UP $08  START $10  SELECT $20  B $40  A $80
+const BIT = { R: 0x01, L: 0x02, D: 0x04, U: 0x08, S: 0x10, E: 0x20, B: 0x40, A: 0x80 };
+
+export function parseScript(s) {
+  const out = [];
+  for (const seg of s.split(',')) {
+    const m = /^\s*(\d+)\s*:\s*([A-Za-z]*)\s*$/.exec(seg);
+    if (!m) throw new Error(`bad script segment: ${JSON.stringify(seg)}`);
+    let mask = 0;
+    for (const c of m[2].toUpperCase()) {
+      if (!(c in BIT)) throw new Error(`unknown button '${c}' in ${seg}`);
+      mask |= BIT[c];
+    }
+    for (let i = 0; i < Number(m[1]); i++) out.push(mask);
+  }
+  return out;
+}
+
+// ------------------------------------------------------------- the seed -----
+/**
+ * Put the cartridge's RAM into the port's state tree.
+ *
+ * Every line cites the address it reads, and the addresses are the ones
+ * src/state.js already names -- this function invents no mapping of its own.
+ */
+export function seedFromRam(state, ram) {
+  const r = (a) => ram[a];
+
+  state.mode = r(0x00);                    // $00
+  state.frame = r(0x02);                   // $02
+  // $04 is 1 at the sample point ($809F's INC, $80B5 not yet run). The port's
+  // frame function expects to be entered with the lock CLEAR, i.e. one
+  // instruction later, so this is 0 on purpose.
+  state.lock = 0;                          // $04, one instruction after $80B5
+  state.input.pressed = r(0x05);           // $05
+  state.input.held = r(0x07);              // $07
+  // The ROM computes the edge against the PREVIOUS held byte, not a separate
+  // latch (src/input.js), so the shift register the port needs for frame N+1 is
+  // exactly $0007 as it stands at the end of frame N.
+  state.input.prev = r(0x07);
+
+  state.ppu.blank = r(0x0D);               // $0D
+  state.ppu.ctrl = r(0x10);                // $10
+  state.ppu.mask = r(0x11);                // $11
+  state.ppu.scrollX = r(0x12);             // $12
+  state.ppu.scrollY = r(0x13);             // $13
+  state.zp15 = r(0x15);                    // $15
+  state.zp.player = r(0x18);               // $18
+  state.substate = r(0x1B);                // $1B
+  state.ppu.spriteZeroOn = r(0x1F) !== 0;  // $1F -- the port models a boolean
+  state.ppu.chrSel = r(0x2D);              // $2D
+  state.oamBase = r(0x2F);                 // $2F
+  state.zp.autofire = r(0x35);             // $35
+  state.oamCursor = r(0x36);               // $36
+  state.build.gate = r(0x3A);              // $3A
+  state.cam.sub = r(0x3D);                 // $3D
+  state.cam.lo = r(0x3E);                  // $3E
+  state.cam.hi = r(0x3F);                  // $3F
+  state.zp.speed = r(0x40);                // $40
+  state.zp.missile = r(0x41);              // $41
+  state.zp.weapon = r(0x44);               // $44
+  state.zp.options = r(0x45);              // $45
+  state.build.lo = r(0x54);                // $54
+  state.build.hi = r(0x55);                // $55
+  state.build.ahead = r(0x57);             // $57
+  state.build.prog = r(0x58);              // $58
+  state.zp5B = r(0x5B);                    // $5B
+  state.zp5C = r(0x5C);                    // $5C
+  // $9B is NOT seeded. By the $80B5 sample point it no longer holds the tilt
+  // code -- $A100/$A106 have reused it for the A button (NOTES-player.md 2),
+  // and the port recomputes it at $A043 before anything reads it. Seeding it
+  // would import a value the ROM itself has already thrown away.
+  state.zp.tilt = 1;                       // $A043 LDA #$01
+
+  for (let i = 0; i < 32; i++) {
+    state.obj.status[i] = r(0x0100 + i);   // $0100+i
+    state.obj.anim[i] = r(0x0120 + i);     // $0120+i
+    state.obj.timer[i] = r(0x0140 + i);    // $0140+i
+    state.obj.attrMask[i] = r(0x0180 + i); // $0180+i
+    state.obj.y[i] = r(0x0320 + i);        // $0320+i
+    state.obj.yf[i] = r(0x0340 + i);       // $0340+i
+    state.obj.x[i] = r(0x0360 + i);        // $0360+i
+    state.obj.xf[i] = r(0x0380 + i);       // $0380+i
+  }
+  state.ring.cursor = r(0x0160);           // $0160
+  for (let i = 0; i < 0x18; i++) {
+    state.ring.x[i] = r(0x07A0 + i);       // $07A0-$07B7
+    state.ring.y[i] = r(0x07C0 + i);       // $07C0-$07D7
+  }
+  state.shadowOam.set(ram.subarray(0x0200, 0x0300));   // $0200-$02FF
+  // hwOam is deliberately NOT seeded: it is filled by the first ported frame's
+  // $8087 DMA from exactly this shadow, which is what the cartridge's hardware
+  // OAM holds at the next sample too.
+  return state;
+}
+
+/**
+ * Watched addresses the port deliberately does not model, and WHY. `peek`
+ * returning null is what marks a field unproduced; this table is what stops
+ * that null from being silent. A null with no entry here is a bug in the port
+ * or in the watch list, and compare.mjs says so.
+ */
+export const UNMODELLED = {
+  '001E': 'sprite-0 record selector. $8B1A-$8B2B derives it from $1F and it '
+        + 'reads 1 on every frame of this corpus; src/oam.js models the choice '
+        + 'as the boolean state.ppu.spriteZeroOn and stores no byte.',
+  '001F': 'sprite-0 enable/phase. Same routine; measured constant at 2 here, '
+        + 'so the boolean is faithful but the VALUE has no port field.',
+};
+
+/**
+ * Read one CPU address out of the port's state, or `null` when the port does
+ * not model it. This is what turns probe.lua's `--watch` list into compared
+ * fields without either side hand-maintaining a second mapping.
+ */
+export function peek(state, addr) {
+  switch (addr) {
+    case 0x00: return state.mode;
+    case 0x02: return state.frame;
+    case 0x04: return 1;                   // the value AT $80B5, see the header
+    case 0x05: return state.input.pressed;
+    case 0x07: return state.input.held;
+    case 0x0D: return state.ppu.blank;
+    // $0E is the $0700 queue's byte cursor. The port carries the queue as
+    // structured packets rather than as a byte image (src/vram.js), so the
+    // cursor is reconstructed the way $8645 would have left it: three header
+    // bytes plus the data plus the $FF terminator, per packet.
+    case 0x0E: return state.vram.queue.reduce((n, p) => n + 4 + p.bytes.length, 0);
+    case 0x10: return state.ppu.ctrl;
+    case 0x11: return state.ppu.mask;
+    case 0x12: return state.ppu.scrollX;
+    case 0x13: return state.ppu.scrollY;
+    case 0x15: return state.zp15;
+    case 0x18: return state.zp.player;
+    case 0x1B: return state.substate;
+    case 0x2D: return state.ppu.chrSel;
+    case 0x2F: return state.oamBase;
+    case 0x35: return state.zp.autofire;
+    case 0x36: return state.oamCursor;
+    case 0x3A: return state.build.gate;
+    case 0x3D: return state.cam.sub;
+    case 0x3E: return state.cam.lo;
+    case 0x3F: return state.cam.hi;
+    case 0x40: return state.zp.speed;
+    case 0x41: return state.zp.missile;
+    case 0x44: return state.zp.weapon;
+    case 0x45: return state.zp.options;
+    case 0x54: return state.build.lo;
+    case 0x55: return state.build.hi;
+    case 0x57: return state.build.ahead;
+    case 0x58: return state.build.prog;
+    case 0x5B: return state.zp5B;
+    case 0x5C: return state.zp5C;
+    case 0x0160: return state.ring.cursor;
+    default: break;
+  }
+  if (addr >= 0x0100 && addr < 0x0120) return state.obj.status[addr - 0x0100];
+  if (addr >= 0x0120 && addr < 0x0140) return state.obj.anim[addr - 0x0120];
+  if (addr >= 0x0140 && addr < 0x0160) return state.obj.timer[addr - 0x0140];
+  if (addr >= 0x0180 && addr < 0x01A0) return state.obj.attrMask[addr - 0x0180];
+  if (addr >= 0x0200 && addr < 0x0300) return state.shadowOam[addr - 0x0200];
+  if (addr >= 0x0320 && addr < 0x0340) return state.obj.y[addr - 0x0320];
+  if (addr >= 0x0340 && addr < 0x0360) return state.obj.yf[addr - 0x0340];
+  if (addr >= 0x0360 && addr < 0x0380) return state.obj.x[addr - 0x0360];
+  if (addr >= 0x0380 && addr < 0x03A0) return state.obj.xf[addr - 0x0380];
+  if (addr >= 0x07A0 && addr < 0x07B8) return state.ring.x[addr - 0x07A0];
+  if (addr >= 0x07C0 && addr < 0x07D8) return state.ring.y[addr - 0x07C0];
+  return null;                             // the port does not model it
+}
+
+/**
+ * The injection flags, and the reason they exist.
+ *
+ * docs/knowledge/01: "Late content is unreachable from a script. Add injection
+ * flags to BOTH harnesses so they stay comparable, and apply them at the SAME
+ * point on both sides."
+ *
+ * Gradius's power-ups are unreachable from a button script, because collecting
+ * one needs the firing code the port does not have. The consequence was
+ * measured, not guessed: over the whole button-only corpus $40 and $45 read 0
+ * on every frame, so `step` is exactly $0100, the low byte is zero, and BOTH
+ * sub-pixel accumulators stay 0 forever. A mutation that deleted the fraction
+ * add entirely (`no-subpixel`) left the gate GREEN on 2,860 frames -- the
+ * corpus reached the code and interrogated none of its parameters, which is
+ * exactly the failure docs/knowledge/03 describes.
+ *
+ * So a scenario may carry a `poke`, e.g. "0040=6". probe.lua writes it at
+ * $80B5 AFTER taking its sample; this does the same, at the same instant, so
+ * the two sides stay frame-aligned. Only addresses that are a POWER-UP RESULT
+ * are allowed -- these are values the cartridge itself produces at $89A1 etc.,
+ * not invented state.
+ */
+export const POKEABLE = {
+  0x40: (s, v) => { s.zp.speed = v; },      // $40 SPEED level, $89A1 INC $40
+  0x41: (s, v) => { s.zp.missile = v; },    // $41 missile,     $89B3 INC $41
+  0x44: (s, v) => { s.zp.weapon = v; },     // $44 weapon,      $89C7 STA $44
+  0x45: (s, v) => { s.zp.options = v; },    // $45 Options,     $89D3 INC $45
+};
+
+export function parsePokes(spec) {
+  if (!spec) return [];
+  return spec.split(',').filter(Boolean).map((seg) => {
+    const m = /^\s*\$?([0-9A-Fa-f]+)\s*=\s*(\d+)\s*$/.exec(seg);
+    if (!m) throw new Error(`bad poke ${JSON.stringify(seg)} (want ADDR=VAL)`);
+    const addr = parseInt(m[1], 16);
+    if (!POKEABLE[addr]) {
+      throw new Error(`$${m[1]} is not pokeable: only power-up results are `
+                    + `(${Object.keys(POKEABLE).map((a) => '$' + Number(a).toString(16)).join(' ')})`);
+    }
+    return { addr, val: Number(m[2]) };
+  });
+}
+
+/** probe.lua's KEYS, verbatim and in its order. */
+export const PROBE_KEYS = [
+  'frame', 'guard', 'mode', 'counter', 'pad1', 'pad2', 'pressed', 'held',
+  'playerX', 'playerY', 'opt1X', 'opt1Y', 'opt2X', 'opt2Y',
+  'ppuctrl', 'scrollX', 'scrollY', 'scrollLo', 'scrollHi',
+  'chrBank', 'oamBase', 'oamBudget', 'chrOffset',
+  'sprite0Hit', 'spriteOverflow', 'scanline', 'cpuCycle',
+  'splitSpins', 's0y', 's0t', 's0a', 's0x',
+];
+/** objloop.lua's counters, appended by scen.py in this order. */
+export const WORK_KEYS = ['slotsVisited', 'msExpanded', 'spriteRecords',
+                          'spritesStored', 'lagged'];
+
+export const NOT_PRODUCED = ['pad2', 'oamBudget', 'spriteOverflow',
+                             'scanline', 'cpuCycle', 'splitSpins'];
+export const DERIVED = ['pad1', 'chrOffset', 'sprite0Hit', 'guard'];
+
+function sampleRow(state, frame, watch, lagged) {
+  const bank = state.bandB.ran ? state.bandB.chrBank : state.bandA.chrBank;
+  const row = {
+    frame,
+    guard: 1,                                   // $04 at $80B5, see the header
+    mode: state.mode,                           // $00
+    counter: state.frame,                       // $02
+    pad1: state.input.held,                     // $9C -- DERIVED, see header
+    pad2: null,
+    pressed: state.input.pressed,               // $05
+    held: state.input.held,                     // $07
+    playerX: state.obj.x[0],                    // $0360
+    playerY: state.obj.y[0],                    // $0320
+    opt1X: state.obj.x[1], opt1Y: state.obj.y[1],   // $0361 / $0321
+    opt2X: state.obj.x[2], opt2Y: state.obj.y[2],   // $0362 / $0322
+    ppuctrl: state.ppu.ctrl,                    // $10
+    scrollX: state.ppu.scrollX,                 // $12
+    scrollY: state.ppu.scrollY,                 // $13
+    scrollLo: state.cam.lo,                     // $3E
+    scrollHi: state.cam.hi,                     // $3F
+    chrBank: state.ppu.chrSel,                  // $2D
+    oamBase: state.oamBase,                     // $2F
+    oamBudget: null,
+    // The mapper offset the emulator reports at the sample point. $80B5 is at
+    // scanline ~231, i.e. AFTER the split at $9AA3 has re-latched CHR, so the
+    // bank in force is band B's whenever the split ran.
+    chrOffset: bank * 0x2000,
+    // The split spins on sprite 0's hit and the sample is taken long after it,
+    // so the flag is set whenever the split ran with a live sprite 0.
+    sprite0Hit: (state.bandB.ran && state.ppu.spriteZeroOn) ? 1 : 0,
+    spriteOverflow: null,
+    scanline: null,
+    cpuCycle: null,
+    splitSpins: null,
+    // HARDWARE OAM, not the shadow: probe.lua reads nesSpriteRam, which holds
+    // what $8087 DMA'd at the top of this frame.
+    s0y: state.hwOam[0], s0t: state.hwOam[1],
+    s0a: state.hwOam[2], s0x: state.hwOam[3],
+    slotsVisited: state.work.slotsVisited,
+    msExpanded: state.work.msExpanded,
+    spriteRecords: state.work.spriteRecords,
+    spritesStored: state.work.spritesStored,
+    lagged,
+  };
+  for (const a of watch) row[`w_${a}`] = peek(state, parseInt(a, 16));
+  return row;
+}
+
+// ------------------------------------------------------------- the trace ----
+/**
+ * Run the port over one scenario.
+ *
+ * @param {object} o
+ *   o.script   the full input script, boot prefix included
+ *   o.frames   total game frames the oracle sampled
+ *   o.align    the frame the seed was taken at; tracing starts at align+1
+ *   o.seed     Uint8Array(2048) of the cartridge's RAM, or null for bootState
+ *   o.watch    array of 4-hex-digit address strings
+ *   o.neuter   a deliberate break, for red-validating the comparison
+ */
+export function tracePort(o) {
+  const res = o.res || headlessResources(0);
+  const buttons = parseScript(o.script);
+  const state = createState();
+  if (o.seed) seedFromRam(state, o.seed);
+  else throw new Error('tracePort needs a seed; cold boot is not comparable '
+                     + '(the port does not model frames 0-' + o.align + ')');
+
+  // --- the deliberate breaks. Harness-level only: things a port could get
+  // wrong that are NOT a line of src/. Source-level breaks are done by editing
+  // src/ and restoring, which is the house method (docs/knowledge/03).
+  //
+  // An UNKNOWN name is an error, not a no-op. Found by feeding the self-check
+  // stage a misspelt neuter: the comparison still exited non-zero (for an
+  // unrelated reason) and the stage reported "RED (good)". A break that does
+  // not break, validating a check that therefore is not validated -- the exact
+  // shape of a decorative test.
+  const n = o.neuter || '';
+  const lagAt = /^laginject=(\d+)$/.exec(n);
+  if (n && !lagAt && !['lead1', 'seed-x+1', 'seed-nosub'].includes(n)) {
+    throw new Error(`unknown neuter ${JSON.stringify(n)}; have: lead1, `
+                  + `seed-x+1, seed-nosub, laginject=<frame>`);
+  }
+  if (n === 'seed-x+1') state.obj.x[0] = (state.obj.x[0] + 1) & 0xFF;
+  if (n === 'seed-nosub') { state.obj.xf.fill(0); state.obj.yf.fill(0); }
+
+  // probe.lua applies its pokes at $80B5 AFTER writing the sample row, so the
+  // seed we were handed is the UNPOKED frame-`align` state and the first poked
+  // frame is align+1. Apply the align-frame poke here to match, then again
+  // after every row.
+  const pokes = parsePokes(o.poke);
+  const applyPokes = () => { for (const p of pokes) POKEABLE[p.addr](state, p.val); };
+  applyPokes();
+
+  const rows = [];
+  let lagCum = 0;
+  for (let g = o.align + 1; g < o.frames; g++) {
+    // probe.lua applies INPUT[gframe+1] at the inputPolled of the NMI that
+    // produces sample `gframe`, i.e. the 0-based script entry `g`. The lead is
+    // ZERO on this machine and this line is where that is encoded.
+    let b = buttons[g] ?? 0;
+    if (n === 'lead1') b = buttons[g - 1] ?? 0;   // the Game Boy's lead, wrongly
+    const forceLag = lagAt ? Number(lagAt[1]) === g : false;
+    const ran = nmi(state, b, res, forceLag);
+    if (!ran) lagCum++;
+    rows.push(sampleRow(state, g, o.watch, ran ? 0 : 1));
+    applyPokes();                                 // same instant as probe.lua
+  }
+  return {
+    tool: 'games/gradius/tools/oracle/porttrace.mjs',
+    port: 'games/gradius/src',
+    samplePoint: '$80B5',
+    scenario: o.name || null,
+    inputScript: o.script,
+    align: o.align,
+    gameFrames: rows.length,
+    lagFrames: lagCum,
+    poke: o.poke || null,
+    neuter: o.neuter || null,
+    fields: [...PROBE_KEYS, ...WORK_KEYS, ...o.watch.map((a) => `w_${a}`)],
+    notProduced: NOT_PRODUCED,
+    derived: DERIVED,
+    frames: rows,
+  };
+}
+
+/** Load a recorded oracle artifact and pull the seed out of it. */
+export function loadOracle(name) {
+  const p = join(SCEN_OUT, `${name}.json`);
+  if (!existsSync(p)) return null;
+  const doc = JSON.parse(readFileSync(p, 'utf8'));
+  doc.seed = Buffer.from(doc.seedRam, 'base64');
+  if (doc.seed.length !== 2048) {
+    throw new Error(`${name}: seedRam is ${doc.seed.length} bytes, want 2048`);
+  }
+  return doc;
+}
+
+// ------------------------------------------------------------------ CLI -----
+function main(argv) {
+  const args = new Map();
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i].startsWith('--')) args.set(argv[i].slice(2), argv[i + 1] ?? '1');
+  }
+  const name = args.get('scenario');
+  if (!name) {
+    console.log('usage: node porttrace.mjs --scenario <name> [--neuter X] [--out f.json]');
+    return 2;
+  }
+  const defs = JSON.parse(readFileSync(SCEN_DEFS, 'utf8'));
+  const oracle = loadOracle(name);
+  if (!oracle) {
+    console.error(`no oracle artifact for ${name}. Run:\n`
+                + `  python games/gradius/tools/oracle/scen.py --only ${name}`);
+    return 3;
+  }
+  const doc = tracePort({
+    name,
+    script: oracle.inputScript,
+    frames: oracle.gameFrames,
+    align: oracle.align,
+    seed: oracle.seed,
+    watch: defs.watch,
+    poke: oracle.poke,
+    neuter: args.get('neuter') || null,
+  });
+  const out = args.get('out') || join(SCEN_OUT, `${name}.port.json`);
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, JSON.stringify(doc));
+  const last = doc.frames[doc.frames.length - 1];
+  console.log(`  ${name}: ${doc.gameFrames} frames traced -> ${out}`);
+  console.log(`  final: X=${last.playerX} Y=${last.playerY} `
+            + `$3E=${last.scrollLo} $12=${last.scrollX} $2F=${last.oamBase} `
+            + `slots=${last.slotsVisited} stored=${last.spritesStored}`);
+  return 0;
+}
+
+if (import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`
+    || process.argv[1]?.endsWith('porttrace.mjs')) {
+  process.exit(main(process.argv.slice(2)));
+}

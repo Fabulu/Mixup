@@ -1,0 +1,154 @@
+{
+  "_": [
+    "The Gradius comparison corpus. ONE file, read by BOTH sides: scen.py drives",
+    "the cartridge with it and porttrace.mjs drives the port with it, so the two",
+    "cannot drift apart the way two hand-kept copies of a script do.",
+    "",
+    "Every script begins with the same 400-frame boot prefix, which is the one",
+    "PROBE.md already characterised: 200 idle frames, START, 190 more. Game mode",
+    "reaches 5 at frame 282, the ship's object becomes alive at 283, and the",
+    "stage-intro sub-state $1B holds the player frozen until frame ~310. Holds",
+    "therefore start at frame 400, clear of all three -- MEASURED at frame 400:",
+    "$1B=$80 (play), $0100=1 (alive), $0120=1, $40=0, $45=0, $18=0, $5C=0,",
+    "$15=0, $5B=0, X=80, Y=96, $3E=43.",
+    "",
+    "ALIGNMENT: the port does not model the title screen or the 28-frame stage",
+    "intro, so it cannot be booted cold and compared. The comparison SEEDS the",
+    "port from the cartridge's own RAM at frame `align` and free-runs from there.",
+    "That is the same arrangement NOTES-player.md 11 used for playermodel.py.",
+    "It is stated here because it bounds what the comparison proves: everything",
+    "BEFORE frame 400 is untested by this corpus, including src/main.js's",
+    "bootState()."
+  ],
+  "align": 400,
+  "bootPrefix": "200:,10:S,190:",
+
+  "_watch": [
+    "Extra RAM added to probe.lua's state vector through its own --watch",
+    "mechanism, so the oracle is EXTENDED without being EDITED. Every address",
+    "here is one the port claims to model; nothing is watched for decoration.",
+    "The 48 ring bytes are the reason the Option comparison is worth anything:",
+    "comparing $0361/$0362 alone would pass for a port that trailed the ship by",
+    "the wrong number of ring entries on a straight-line hold."
+  ],
+  "watch": [
+    "000D", "000E", "0015", "0018", "001B", "001E", "001F",
+    "0035", "0036", "003A", "0040", "0041", "0044", "0045",
+    "0054", "0055", "0057", "0058", "005B", "005C",
+    "0100", "0101", "0102",
+    "0120", "0121", "0122",
+    "0140", "0141", "0142",
+    "0160", "0180",
+    "0320", "0340", "0360", "0380",
+    "0321", "0341", "0361", "0381",
+    "07A0", "07A1", "07A2", "07A3", "07A4", "07A5", "07A6", "07A7",
+    "07A8", "07A9", "07AA", "07AB", "07AC", "07AD", "07AE", "07AF",
+    "07B0", "07B1", "07B2", "07B3", "07B4", "07B5", "07B6", "07B7",
+    "07C0", "07C1", "07C2", "07C3", "07C4", "07C5", "07C6", "07C7",
+    "07C8", "07C9", "07CA", "07CB", "07CC", "07CD", "07CE", "07CF",
+    "07D0", "07D1", "07D2", "07D3", "07D4", "07D5", "07D6", "07D7"
+  ],
+
+  "_knownFail": [
+    "docs/knowledge/01: annotate known-unfixable divergence rather than deleting",
+    "the scenario, and make an unexpected PASS fail the run so nobody forgets to",
+    "remove the annotation. Each entry names the fields, the mechanism, and the",
+    "measurement that established it. Nothing is listed here that has not been",
+    "traced to a specific instruction on the cartridge."
+  ],
+  "knownFail": [
+    {
+      "_note": "$0055 was in this list, the runner reported it as a SURPRISE PASS (no 240-frame window reaches the half-page roll-over), it was removed -- and then long-idle, at 599 compared frames, made it diverge at frame 854 and it was put back. Both directions of the annotation mechanism have now been exercised on this one field.",
+      "fields": ["w_000E", "w_0054", "w_0055", "w_0057", "w_0058"],
+      "name": "terrain-streams-at-double-rate",
+      "why": "The port streams one terrain block per frame; the cartridge streams one every OTHER frame. MEASURED with exec hooks on $9D83/$9D8E/$9DB2/$8645 over frames 566-578: the streamer's gate is $9D87 LDA $0E / CMP #$04 / BCC, i.e. it refuses to build when the SHARED $0700 queue already holds 4+ bytes, and at its entry the cartridge reads $0E = 0 on the frames it builds and 8, 14 or 39 on the frames it does not. Those bytes come from the canned-packet producer reached through $85F1, which runs inside the mode-5 handler BEFORE $9ACE and which src/nmi.js says outright is not ported ('$8641 HUD packets -- not ported'). So this is not a bug in src/terrain.js: it is the measurable consequence of an omission src/ already declares. $57 follows from the same instruction -- $9D8E STA $57 only executes on frames that get past the gate, which is why the cartridge's $57 sticks at 0 while the port's sticks at its seeded 1 (the port never writes $57 at all).",
+      "expect": "the port's $58 advances every frame, the cartridge's every second frame"
+    }
+  ],
+
+  "scenarios": [
+    {
+      "name": "long-idle",
+      "tail": "600:",
+      "why": "The same zero-load baseline, run for 600 frames instead of 240. Added for one reason and it is stated: the 240-frame scenarios contain three natural lag frames and every one of them falls AFTER its scenario's death truncation, so `lagged` was a compared field that could not fail on any live window. A longer live run is the only way to make the cartridge's own timing part of the comparison rather than a footnote."
+    },
+    {
+      "name": "idle",
+      "tail": "240:",
+      "why": "Nothing held. The zero-load baseline NOTES-lag.md experiment 1 asks for, and the one scenario in which the position ring must NOT advance ($A082: AND #$0F, no direction -> the whole Option chain freezes). A port that advanced the ring every frame passes every moving scenario and fails only this one."
+    },
+    {
+      "name": "right-wall",
+      "tail": "240:R",
+      "why": "80 -> 240 at 1 px/frame takes 160 frames, then 80 more frames sitting on the $A028 CMP #$F0 clamp. The tail is the point: there is NO pre-check on X, so at the wall the integer is re-clamped every frame while $0380 keeps accumulating."
+    },
+    {
+      "name": "left-wall",
+      "tail": "240:L",
+      "why": "80 -> 16 in 64 frames, then 176 frames on the $A03A CMP #$10 clamp. Long tail because the X sub-pixel byte $0380 keeps moving there and a port that freezes it drifts only slowly."
+    },
+    {
+      "name": "up-wall",
+      "tail": "240:U",
+      "why": "96 -> 16 in 80 frames, then 160 on the ceiling. UP's pre-check is $A06E BCC, i.e. it blocks only BELOW $10 -- so UP still RUNS at Y == $10 and still moves $0340. The asymmetry with DOWN is only visible here."
+    },
+    {
+      "name": "down-wall",
+      "tail": "240:D",
+      "why": "96 -> 192 in 96 frames, then 144 on the floor. DOWN's pre-check is $A054 BCS, which blocks AT $C0: at the floor DOWN writes nothing at all -- not the integer, not $0340, not the tilt -- and falls through into the UP test."
+    },
+    {
+      "name": "diag-rd-lu",
+      "tail": "120:RD,120:LU",
+      "why": "Two of the four diagonals. There is no diagonal arm in $9FFC: X is done, then Y is done, with the SAME $99:$98 step, so a diagonal covers step*sqrt(2). A port that normalised diagonal speed diverges here and nowhere else."
+    },
+    {
+      "name": "diag-ru-ld",
+      "tail": "120:RU,120:LD",
+      "why": "The other two diagonals, so all four are covered and the tilt latch is driven by both nose-up and nose-down inside one run."
+    },
+    {
+      "name": "corner-br",
+      "tail": "200:RD,40:",
+      "why": "Into the bottom-right corner and then let go. Both clamps at once, and the 40 idle frames at the end check that the ring stops advancing while the ship is parked somewhere other than its start position."
+    },
+    {
+      "name": "corner-tl",
+      "tail": "200:LU,40:",
+      "why": "Into the top-left corner, the other pair of clamps, with the UP-at-the-ceiling asymmetry active for 120 of the 200 frames."
+    },
+    {
+      "name": "lr-both",
+      "tail": "60:R,120:LR,60:L",
+      "why": "$A031 is a FALL-THROUGH target, not an else. LEFT+RIGHT runs BOTH arms: add, clamp, subtract, clamp. Away from a wall the net displacement is zero -- but the ring still advances, because $A082 tests AND #$0F and does not care that the ship did not move."
+    },
+    {
+      "name": "ud-both",
+      "tail": "100:D,100:UD,40:U",
+      "why": "UP+DOWN. DOWN is tested first so it normally wins, but the 100 DOWN frames park the ship on the floor first, where DOWN's pre-check declines and UP is honoured instead. A port that gave DOWN unconditional priority is green for the first 100 frames and red after."
+    },
+    {
+      "name": "speed6-right",
+      "tail": "240:R",
+      "poke": "0040=6",
+      "why": "SPEED level 6, i.e. step = min(6+2,16)*128 = $0400 = 4.0 px/frame. ADDED BECAUSE THE BUTTON-ONLY CORPUS WAS BLIND: $40 reads 0 on every frame the cartridge produces from a script, so `step` is exactly $0100, the low byte is zero, and both sub-pixel accumulators stay 0 forever. A mutation that deleted the fraction add from $A285 altogether left the comparison GREEN over 2,860 frames. $40 = 6 is a level the cartridge itself reaches ($89A1 INC $40) and it makes $0380 move on every frame."
+    },
+    {
+      "name": "speed3-diag",
+      "tail": "120:RD,120:LU",
+      "poke": "0040=3",
+      "why": "SPEED level 3: step = 5*128 = $0280, so the fraction byte is $80 and CARRIES every second frame. That is the case that separates a real 16-bit accumulator from an integer one -- an integer port is right on half the frames, which is exactly how this class of bug survives. Diagonal, so both $0340 and $0380 carry independently."
+    },
+    {
+      "name": "opt2-wiggle",
+      "tail": "20:R,10:,20:U,10:,20:L,10:,20:D,10:,15:RU,15:LD,10:,20:R,10:,20:D,30:",
+      "poke": "0045=2",
+      "why": "TWO OPTIONS. $45 is 0 in every button-only scenario, so $A0C8's loop (LDX $45 / DEX / BMI) never executes a single iteration and $0121/$0122/$0141/$0142 are 0 on every compared frame -- the Options track the player but are never DRAWN. With $45 = 2 the loop runs, the Options get metasprite ids 4 and 5 alternating every 8 frames, and they enter the display list."
+    },
+    {
+      "name": "wiggle",
+      "tail": "20:R,10:,20:U,10:,20:L,10:,20:D,10:,15:RU,15:LD,10:,20:R,10:,20:D,30:",
+      "why": "Taps and gaps. The tilt latch only samples $9B every 8 frames ($A0BA CMP #$08), so short holds and the gaps between them are the only thing that exercises which frame the latch lands on; and the ring's stop/start is what makes the Option lag a lag in RING ENTRIES rather than in frames."
+    }
+  ]
+}
