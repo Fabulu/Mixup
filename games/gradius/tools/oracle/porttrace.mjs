@@ -286,19 +286,37 @@ export const POKEABLE = {
   0x41: (s, v) => { s.zp.missile = v; },    // $41 missile,     $89B3 INC $41
   0x44: (s, v) => { s.zp.weapon = v; },     // $44 weapon,      $89C7 STA $44
   0x45: (s, v) => { s.zp.options = v; },    // $45 Options,     $89D3 INC $45
+  // $1F, the sprite-0 enable. NOT a power-up -- the second reason an address is
+  // allowed here, and it is the same reason: the value is one the CARTRIDGE
+  // produces and a button script cannot reach. $9C38 `A9 01 85 1F` is the
+  // stage-intro handover, and it lives at frames 282-314 of a boot, i.e. before
+  // this corpus's align of 400 and inside a sub-state the port does not model.
+  // It must be poked for ONE FRAME (`@+N`): $8B1A-$8B2B promotes 1 to 2 on the
+  // very next display-list build, so a held 1 is a state no cartridge frame is
+  // ever in. Without it, $1E = 1 and $1F = 2 on all 3341 compared frames and
+  // BOTH terms of the split gate at $9A8C/$9A90 can be deleted with the whole
+  // corpus still green -- measured, twice, by two different agents.
+  0x1F: (s, v) => { s.zp1F = v; },          // $1F sprite-0 enable, $9C38 STA $1F
 };
 
+/**
+ * `ADDR=VAL` (held for the whole compared window) or `ADDR=VAL@F-F` (absolute
+ * game frames). scen.py turns a scenario's `@+N` into the absolute form so both
+ * harnesses read the SAME string; probe.lua has always spoken it.
+ */
 export function parsePokes(spec) {
   if (!spec) return [];
   return spec.split(',').filter(Boolean).map((seg) => {
-    const m = /^\s*\$?([0-9A-Fa-f]+)\s*=\s*(\d+)\s*$/.exec(seg);
-    if (!m) throw new Error(`bad poke ${JSON.stringify(seg)} (want ADDR=VAL)`);
+    const m = /^\s*\$?([0-9A-Fa-f]+)\s*=\s*(\d+)\s*(?:@\s*(\d+)\s*-\s*(\d+)\s*)?$/.exec(seg);
+    if (!m) throw new Error(`bad poke ${JSON.stringify(seg)} (want ADDR=VAL[@FROM-TO])`);
     const addr = parseInt(m[1], 16);
     if (!POKEABLE[addr]) {
-      throw new Error(`$${m[1]} is not pokeable: only power-up results are `
-                    + `(${Object.keys(POKEABLE).map((a) => '$' + Number(a).toString(16)).join(' ')})`);
+      throw new Error(`$${m[1]} is not pokeable: only values the cartridge itself `
+                    + `produces are (${Object.keys(POKEABLE).map((a) => '$' + Number(a).toString(16)).join(' ')})`);
     }
-    return { addr, val: Number(m[2]) };
+    return { addr, val: Number(m[2]),
+             from: m[3] === undefined ? null : Number(m[3]),
+             to: m[4] === undefined ? null : Number(m[4]) };
   });
 }
 
@@ -409,9 +427,17 @@ export function tracePort(o) {
   // seed we were handed is the UNPOKED frame-`align` state and the first poked
   // frame is align+1. Apply the align-frame poke here to match, then again
   // after every row.
+  // A poke with a window applies only at $80B5 of the frames inside it, which is
+  // what probe.lua does with the same string. `at` is the game frame whose
+  // $80B5 this is -- the poke therefore first BITES on `at + 1`, on both sides.
   const pokes = parsePokes(o.poke);
-  const applyPokes = () => { for (const p of pokes) POKEABLE[p.addr](state, p.val); };
-  applyPokes();
+  const applyPokes = (at) => {
+    for (const p of pokes) {
+      if (p.from !== null && (at < p.from || at > p.to)) continue;
+      POKEABLE[p.addr](state, p.val);
+    }
+  };
+  applyPokes(o.align);
 
   const rows = [];
   let lagCum = 0;
@@ -425,7 +451,7 @@ export function tracePort(o) {
     const ran = nmi(state, b, res, forceLag);
     if (!ran) lagCum++;
     rows.push(sampleRow(state, g, o.watch, ran ? 0 : 1));
-    applyPokes();                                 // same instant as probe.lua
+    applyPokes(g);                                // same instant as probe.lua
   }
   return {
     tool: 'games/gradius/tools/oracle/porttrace.mjs',

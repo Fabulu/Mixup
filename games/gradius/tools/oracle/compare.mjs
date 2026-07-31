@@ -375,11 +375,19 @@ function main(argv) {
   const truncated = rows.filter((r) => r.stoppedAt !== null);
   const compared = rows.reduce((n, r) => n + r.frames, 0);
   const nominal = rows.reduce((n, r) => n + r.nominal, 0);
+  // THE SKIPPED FIELD COUNT BELONGS ON THE VERDICT LINE. The gate's "0 SKIPPED"
+  // counts STAGES; a commit that adds four UNMODELLED entries takes four fields
+  // out of the comparison and every headline number stays identical. That
+  // happened in wave 1 (8 skipped fields per scenario -> 10) and was invisible
+  // until somebody diffed the per-scenario output by hand. docs/knowledge/03:
+  // "if a check bounds its own coverage it must say so in its output".
+  const skippedFields = [...new Set(rows.flatMap((r) => r.skipped.map((s) => s.field)))];
   console.log(`\n  ${rows.length} scenarios, ${compared} of ${nominal} frames `
             + `compared (${truncated.length} truncated: `
             + (truncated.map((r) => `${r.name}@${r.stoppedAt}`).join(', ') || 'none')
             + `), ${fails} failures, ${uncovered} clamps uncovered, `
-            + `${stale} stale annotations.`);
+            + `${stale} stale annotations, `
+            + `${skippedFields.length} fields SKIPPED (${skippedFields.join(' ')}).`);
   return (fails || uncovered || stale) ? 1 : (rows.length === 0 ? 2 : 0);
 }
 

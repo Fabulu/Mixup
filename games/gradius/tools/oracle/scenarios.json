@@ -18,7 +18,15 @@
     "That is the same arrangement NOTES-player.md 11 used for playermodel.py.",
     "It is stated here because it bounds what the comparison proves: everything",
     "BEFORE frame 400 is untested by this corpus, including src/main.js's",
-    "bootState()."
+    "bootState().",
+    "",
+    "POKE SYNTAX. `\"poke\": \"0040=6\"` holds a value for the whole compared",
+    "window; `\"poke\": \"001F=1@+40\"` writes it at ONE frame, align+40. Both are",
+    "applied at $80B5 -- after the sample -- on BOTH sides, so the first frame",
+    "they affect is the next one. Use the one-frame form for any value the",
+    "cartridge itself only ever holds for one frame; holding such a value is",
+    "testing invented state. See porttrace.mjs POKEABLE for what may be poked",
+    "and why each address is allowed."
   ],
   "align": 400,
   "bootPrefix": "200:,10:S,190:",
@@ -80,6 +88,13 @@
       "name": "long-idle",
       "tail": "600:",
       "why": "The same zero-load baseline, run for 600 frames instead of 240. Added for one reason and it is stated: the 240-frame scenarios contain three natural lag frames and every one of them falls AFTER its scenario's death truncation, so `lagged` was a compared field that could not fail on any live window. A longer live run is the only way to make the cartridge's own timing part of the comparison rather than a footnote."
+    },
+    {
+      "name": "s0-handover",
+      "tail": "240:",
+      "poke": "001F=1@+40",
+      "why": "THE SPRITE-0 HANDOVER, injected for exactly ONE frame (game 440). Added because two agents independently deleted `state.zp1E !== 0` and `state.zp1F !== 0` from the split gate in src/nmi.js and got byte-identical output from all 16 other scenarios: $1E = 1 and $1F = 2 on every one of their 3341 compared frames, so both terms of $9A8C/$9A90 were unfalsifiable -- docs/knowledge/03's third shape. $9C38 (`A9 01 85 1F`) is the cartridge writing this value itself, during the stage intro, which is before align 400 and inside a sub-state the port does not model; hence the injection. It is ONE frame because $8B1A-$8B2B promotes 1 to 2 on the next build, so a held 1 is a state the cartridge is never in. What the frame after the poke must show, on BOTH sides: $1F 1 -> 2, $1E still 0, the LIVE sprite-0 record in OAM, NO split, and the camera $3D/$3E/$3F held for that one frame because $9A8E branches past $9AA0 as well as past the split.",
+      "_": "Idle rather than moving on purpose: the ONLY difference between this scenario and `idle` is the one poked frame, so any divergence is that frame's or its consequences and cannot be confused with a player-input effect."
     },
     {
       "name": "idle",

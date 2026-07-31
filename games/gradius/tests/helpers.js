@@ -17,6 +17,7 @@
 // is "does the port agree with the cartridge?", and only the second is
 // evidence.
 
+import test from 'node:test';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -24,6 +25,60 @@ import { dirname, join } from 'node:path';
 export const GAME = dirname(dirname(fileURLToPath(import.meta.url)));
 export const ASSETS = join(GAME, 'assets');
 export const CAPTURES = join(GAME, 'tools', 'oracle', 'out', 'video');
+
+/**
+ * A UNIT TEST THAT PINS THE CARTRIDGE AND IS EXPECTED TO FAIL, because the port
+ * is wrong and fixing it is not this agent's job.
+ *
+ * The oracle comparison has had this mechanism since wave 0
+ * (scenarios.json `knownFail`, tools/oracle/compare.mjs); the unit suite had
+ * nothing, so a test writer forbidden from touching src/ had exactly two bad
+ * options: write the assertion the PORT satisfies -- which is how wave 1 ended
+ * up with a test asserting that a $5B freeze is permanent, blessing the defect
+ * and BLOCKING the ROM-faithful fix -- or leave the defect unpinned.
+ *
+ * Semantics, deliberately the same as compare.mjs's:
+ *
+ *   the assertions FAIL  -> the test passes, and prints the diagnosis loudly
+ *   the assertions PASS  -> THE TEST FAILS: "SURPRISE PASS". Somebody fixed the
+ *                           port; unwrap the assertions and keep them.
+ *
+ * So the annotation retires itself and cannot rot. Every one of these carries
+ * the ROM bytes it was derived from -- an unproven `knownFail` is just a
+ * disabled test with a better name.
+ *
+ * @param {string} name  what the CARTRIDGE does (never what the port does)
+ * @param {string} why   the measurement, the addresses, and who should fix it
+ * @param {(t:any)=>void} fn  the assertions, written as if the port were right
+ */
+export function knownFail(name, why, fn) {
+  test(`[knownFail] ${name}`, (t) => {
+    let err = null;
+    try {
+      fn(t);
+    } catch (e) {
+      // A thrown TypeError/ReferenceError means the test itself is broken, not
+      // that the port is. Only an assertion counts as the expected failure.
+      if (!(e && (e.code === 'ERR_ASSERTION' || e instanceof RangeError))) throw e;
+      err = e;
+    }
+    if (err === null) {
+      throw new Error(
+        `SURPRISE PASS -- the port now satisfies this and the knownFail is STALE.\n`
+        + `  ${name}\n`
+        + `  Delete the knownFail() wrapper in this file and keep the assertions\n`
+        + `  as an ordinary test. Do not delete the assertions.\n`
+        + `  Why it was annotated: ${why}`);
+    }
+    t.diagnostic(`KNOWN FAIL (the PORT is wrong; the assertion above is the CARTRIDGE)`);
+    t.diagnostic(`  ${name}`);
+    t.diagnostic(`  first failing assertion: ${String(err.message).split('\n')[0]}`);
+    t.diagnostic(`  ${why.replace(/\n\s*/g, ' ')}`);
+    // stderr, not stdout: the TAP stream on stdout must stay parseable, and a
+    // knownFail has to be visible on a run nobody reads the diagnostics of.
+    process.stderr.write(`  [knownFail] ${name}\n`);
+  });
+}
 
 export function assetOrThrow(rel) {
   const p = join(ASSETS, rel);

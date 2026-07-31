@@ -117,8 +117,31 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
     # point on both sides or every warped scenario sits permanently one frame
     # skewed"). The window starts at `align`, so the seed is unpoked and the
     # first affected frame is align+1 on both sides.
-    poke = ",".join(f"{seg.strip()}@{align}-{frames - 1}"
-                    for seg in scn.get("poke", "").split(",") if seg.strip())
+    #
+    # A segment may carry `@+N` -- ONE frame, at align+N -- instead of taking the
+    # default whole-window hold. That is not a convenience: a value the cartridge
+    # itself only ever holds for one frame must be injected for one frame, or the
+    # scenario tests invented state. $1F is the case that forced it ($9C38
+    # `A9 01 85 1F`, the sprite-0 handover: the very next $8B1A promotes it to 2,
+    # so "held at 1" is a state no cartridge frame is ever in).
+    segs = []
+    for seg in scn.get("poke", "").split(","):
+        seg = seg.strip()
+        if not seg:
+            continue
+        if "@" in seg:
+            body, _, at = seg.partition("@")
+            if not at.startswith("+"):
+                raise SystemExit(f"{name}: poke window {at!r} must be '+N' "
+                                 f"(one frame at align+N)")
+            f = align + int(at[1:])
+            if not (align <= f <= frames - 1):
+                raise SystemExit(f"{name}: poke frame {f} is outside the compared "
+                                 f"window {align}..{frames - 1}")
+            segs.append(f"{body.strip()}@{f}-{f}")
+        else:
+            segs.append(f"{seg}@{align}-{frames - 1}")
+    poke = ",".join(segs)
 
     rp = probe.run(frames, script, pj, ramdump=ram, watch=watch, poke=poke,
                    timeout_s=300)
@@ -175,7 +198,12 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
         "scenario": name,
         "why": scn["why"],
         "inputScript": script,
-        "poke": scn.get("poke", ""),
+        # The EXPANDED poke, in absolute game frames -- not the scenario's `@+N`
+        # shorthand. porttrace.mjs reads this field and must apply the value at
+        # exactly the frames probe.lua did; handing it the shorthand would make
+        # the two harnesses resolve `align` independently, which is the drift
+        # this one-file corpus exists to prevent.
+        "poke": poke,
         "align": align,
         "gameFrames": len(merged),
         "lagFrames": pdoc["lagFrames"],
