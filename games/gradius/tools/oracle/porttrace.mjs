@@ -162,6 +162,15 @@ export function seedFromRam(state, ram) {
   state.save26[0] = r(0x26); state.save26[1] = r(0x27);
   state.save28[0] = r(0x28); state.save28[1] = r(0x29);                // $21
   for (let i = 0; i < 12; i++) state.score[i] = r(0x07E0 + i);  // $07E0-$07EB
+  // $0700-$079F, THE QUEUE PAGE ITSELF. Seeded for the same reason the camera
+  // and the sub-pixel accumulators are: the page is not rebuilt from scratch
+  // each frame -- a frame whose $0E is 1 leaves 39 bytes of the LAST frame's
+  // packets sitting behind the cursor, and the drain reads $0700 forward, so a
+  // port that started this page at zero would differ from the cartridge on
+  // every byte past the cursor from the very first compared frame. What is
+  // seeded is exactly what is watched (see scenarios.json `_watch`); $07A0 and
+  // up is the rings and the score, seeded above as their own fields.
+  for (let i = 0; i < 0xA0; i++) state.vram.q[i] = r(0x0700 + i);
   state.build.lo = r(0x54);                // $54
   state.build.hi = r(0x55);                // $55
   state.build.ahead = r(0x57);             // $57
@@ -383,6 +392,21 @@ export function peek(state, addr) {
   if (addr >= 0x04A0 && addr < 0x04C0) return state.obj.s04A0[addr - 0x04A0];
   if (addr >= 0x04C0 && addr < 0x04E0) return state.obj.s04C0[addr - 0x04C0];
   if (addr >= 0x04E0 && addr < 0x0500) return state.obj.s04E0[addr - 0x04E0];
+  // THE $0700 QUEUE AS AN IMAGE, not as a length. Until wave 4's test pass the
+  // only compared byte of the whole page was $0E -- so three separate content
+  // mutations (the $9C12 producers emitted in the wrong order, $9BFD/$9C02's
+  // canned packets swapped, and $9BF5's `$19 + 8` made `+ 9`) were GREEN on all
+  // 21 scenarios, because every one of them leaves the LENGTH alone. The page
+  // is a real 256-byte image on both sides (src/state.js vram.q) and probe.lua
+  // can read it, so it is compared as one. See scenarios.json `_watch` for why
+  // the watched prefix stops at $074F.
+  //
+  // $07A0 AND UP IS NOT THE QUEUE. The cartridge's page $07 carries the queue,
+  // the two 24-entry position rings ($07A0-$07D7) and the score ($07E0-$07EB)
+  // in one page, and the PORT keeps the last two as their own fields -- so
+  // vram.q[$A0..] is a hole in the port, not the ring. The bound is $079F and
+  // the three ranges below stay authoritative for what they own.
+  if (addr >= 0x0700 && addr < 0x07A0) return state.vram.q[addr - 0x0700];
   if (addr >= 0x07A0 && addr < 0x07B8) return state.ring.x[addr - 0x07A0];
   if (addr >= 0x07C0 && addr < 0x07D8) return state.ring.y[addr - 0x07C0];
   if (addr >= 0x07E0 && addr < 0x07EC) return state.score[addr - 0x07E0];
