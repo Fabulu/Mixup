@@ -61,6 +61,17 @@
     "cleared by $A527), plus the engine's own zero",
     "page: $47 $49 $4A $4B $5D $60 $61 $64-$67 $69 $6A $6B $6C $6D $6E $6F.",
     "",
+    "WAVE 3'S TEST PASS ADDED THE THREE $A527 ARRAYS THE COMPARISON COULD NOT",
+    "SEE. src/enemies.js clearSlot() justifies its reading of the two Y-indexed",
+    "stores with 'the watch list compares addresses' -- and for $0460+j",
+    "($A52E) and $0480+22+j ($A52B) it did not: neither range was watched, so",
+    "dropping either store was green over all 18 scenarios and caught only by",
+    "tests/enemies.test.js. $044C-$0455 (the X sub-pixel velocity $B154 adds)",
+    "was the one of the twenty-one X-indexed arrays that was missing too.",
+    "Watched now: $044C-$0455, $0460-$0469, $0496-$049F. They are constant zero",
+    "across this corpus -- that is the POINT: the port must keep them zero, and",
+    "wave 6's $BE93 is the first code that will make them move.",
+    "",
     "$6A:$6B is the one to look at hardest. It is a REAL CPU POINTER into the",
     "ROM's wave lists, and comparing it is what makes the wave-record walk",
     "checkable rather than merely plausible: 00-recon-enemies.md 1 recorded it",
@@ -107,7 +118,10 @@
     "040C", "040D", "040E", "040F", "0410", "0411", "0412", "0413", "0414", "0415",
     "04AC", "04AD", "04AE", "04AF", "04B0", "04B1", "04B2", "04B3", "04B4", "04B5",
     "04CC", "04CD", "04CE", "04CF", "04D0", "04D1", "04D2", "04D3", "04D4", "04D5",
-    "04EC", "04ED", "04EE", "04EF", "04F0", "04F1", "04F2", "04F3", "04F4", "04F5"
+    "04EC", "04ED", "04EE", "04EF", "04F0", "04F1", "04F2", "04F3", "04F4", "04F5",
+    "044C", "044D", "044E", "044F", "0450", "0451", "0452", "0453", "0454", "0455",
+    "0460", "0461", "0462", "0463", "0464", "0465", "0466", "0467", "0468", "0469",
+    "0496", "0497", "0498", "0499", "049A", "049B", "049C", "049D", "049E", "049F"
   ],
 
   "_knownFail": [

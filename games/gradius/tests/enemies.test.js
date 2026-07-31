@@ -348,14 +348,37 @@ test('$5B freezes handler 1 (the capsule) but NOT handler 3', () => {
   // not. Nothing in the corpus can tell them apart -- $5B is 0 on every
   // measured frame -- which is exactly why it is here.
   // RED WHEN: the $5B test is moved into $AEE1, or dropped.
-  for (const [type, moves] of [[0x81, false], [0x83, true]]) {
+  //
+  // THE SECOND HALF OF THIS TEST WAS MISSING and a reader caught it: as
+  // originally written it only ever set $5B = 1, so it exercised the FREEZE arm
+  // and never asserted that a capsule MOVES when $5B is clear. Deleting
+  // `h_AEE1(state)` from the end of $AEDD -- i.e. removing the fall-through the
+  // file headlines as its own trap-1 case -- left this test, the rest of the
+  // unit suite AND all 18 oracle scenarios green. That is docs/knowledge/03
+  // shape 4: the check takes the answer in as its argument. The `$5B = 0` rows
+  // below are the fix.
+  const cases = [
+    // $5B, type, must the object move this frame?
+    [1, 0x81, false],   // the capsule, frozen
+    [1, 0x83, true],    // the generic drift, which does not read $5B
+    [0, 0x81, true],    // <- THE FALL-THROUGH ITSELF: $AEDD runs on into $AEE1
+    [0, 0x83, true],
+  ];
+  for (const [zp5B, type, moves] of cases) {
     const s = running();
-    s.zp5B = 1;
+    s.zp5B = zp5B;
     s.obj.type[21] = type;
     s.obj.x[21] = 0x80; s.obj.xf[21] = 0;
     updateEnemies(s, res);
     assert.strictEqual(s.obj.xf[21] !== 0, moves,
-      `type $${type.toString(16)} with $5B set: expected ${moves ? 'movement' : 'a freeze'}`);
+      `type $${type.toString(16)} with $5B = ${zp5B}: expected `
+      + `${moves ? 'movement' : 'a freeze'}`);
+    if (moves) {
+      // and it is the SAME movement, byte for byte, that handler 3 makes: the
+      // fall-through shares $AEE1's body rather than reimplementing it.
+      assert.deepStrictEqual([s.obj.x[21], s.obj.xf[21]], [0x7F, 0x80],
+        `type $${type.toString(16)} with $5B = ${zp5B}: $AEE3 SEC / SBC #$80`);
+    }
   }
 });
 
