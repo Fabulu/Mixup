@@ -33,6 +33,36 @@
     "mods": null,
     "page": "index.html"
   },
+  "input": {
+    "note": "The $0007 (held) / $0005 (edge) bit layout, MEASURED by A/B RAM diff -- see tools/oracle/PROBE.md 4 and BTN in src/state.js, which this must equal (tests/input.test.js asserts it). The low nibble is direction: `AND #$0F` at $A082 is the ROM's own test for 'any direction held'.",
+    "buttons": [
+      { "id": "RIGHT", "mask": 1 },
+      { "id": "LEFT", "mask": 2 },
+      { "id": "DOWN", "mask": 4 },
+      { "id": "UP", "mask": 8 },
+      { "id": "START", "mask": 16 },
+      { "id": "SELECT", "mask": 32 },
+      { "id": "B", "mask": 64 },
+      { "id": "A", "mask": 128 }
+    ],
+    "defaultKeymap": {
+      "ArrowRight": "RIGHT", "ArrowLeft": "LEFT",
+      "ArrowDown": "DOWN", "ArrowUp": "UP",
+      "KeyD": "RIGHT", "KeyA": "LEFT", "KeyS": "DOWN", "KeyW": "UP",
+      "KeyX": "A", "Space": "A",
+      "KeyZ": "B", "KeyY": "B", "KeyC": "B",
+      "Enter": "START", "ShiftRight": "SELECT", "ShiftLeft": "SELECT"
+    },
+    "touchLayout": {
+      "note": "The on-screen pad in index.html. The d-pad is ONE pointer-capture surface hit-tested as a 3x3 grid, not four buttons: the corner cells report TWO bits, because updatePlayer() tests X and Y independently and a diagonal is nothing but two bits at once. The cluster is SELECT+START stacked ABOVE B+A -- inline with A/B the row is wider than the space beside the d-pad and A falls off a narrow phone (learned on the Game Boy port).",
+      "dpad": [
+        ["UP", "LEFT"], ["UP"], ["UP", "RIGHT"],
+        ["LEFT"], [], ["RIGHT"],
+        ["DOWN", "LEFT"], ["DOWN"], ["DOWN", "RIGHT"]
+      ],
+      "clusters": [["SELECT", "START"], ["B", "A"]]
+    }
+  },
   "entries": [],
   "options": []
 }

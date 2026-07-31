@@ -34,6 +34,80 @@ let held = 0;
 // value turns the Enter that launched the page into a START press.
 let seen = 0;
 
+// ---------------------------------------------------------------------------
+// On-screen controls (phones). The page owns the LAYOUT; this file owns the
+// BITS, so there is exactly one place where a control is attached to a joypad
+// bit and tests/input.test.js can hold it against the keyboard.
+//
+// The touch mask is SEPARATE from the keyboard mask and OR'd in
+// currentButtons(). Two masks and not one, the same split the Game Boy port
+// uses: the paths lose events in different ways -- a keyup missed while
+// something steals focus, a pointerup missed when the browser takes over the
+// gesture -- and each has its own recovery. Merged, the keyboard's blur reset
+// would wipe a finger that is still on the screen, and a stuck touch bit could
+// not be cleared without also clearing the keyboard.
+//
+// It is OR'd in BEFORE readJoypad(), so the touch path produces $0007 and
+// $0005 through the cartridge's own edge computation. There is deliberately no
+// second input route into state.input: a control that works in the DOM and
+// does nothing in the game is the failure this avoids.
+let touchHeld = 0;
+
+/** The button ids the on-screen pad uses (`data-btn`), in $0007's layout. */
+export const TOUCH_BUTTONS = Object.freeze({
+  UP: BTN.UP, DOWN: BTN.DOWN, LEFT: BTN.LEFT, RIGHT: BTN.RIGHT,
+  A: BTN.A, B: BTN.B, SELECT: BTN.SELECT, START: BTN.START,
+});
+
+/** The direction nibble. `AND #$0F` at $A082 is the ROM's own name for it. */
+export const DPAD_MASK = BTN.RIGHT | BTN.LEFT | BTN.DOWN | BTN.UP;
+
+/** Press (`down`) or release one on-screen button. */
+export function setTouchButton(bit, down) {
+  if (down) touchHeld |= u8(bit); else touchHeld &= u8(~bit);
+}
+
+/**
+ * Replace the whole direction nibble in one write, leaving A/B/START/SELECT
+ * alone. The d-pad is a single surface rather than four buttons (see
+ * dpadMask), so it hands over a mask, not an edge.
+ */
+export function setTouchDirections(mask) {
+  touchHeld = u8((touchHeld & ~DPAD_MASK) | (mask & DPAD_MASK));
+}
+
+/** The backstop. Any interruption the buttons never saw clears everything. */
+export function clearTouchButtons() { touchHeld = 0; }
+
+/**
+ * Which directions a point on the d-pad surface means. `u`,`v` are the pointer
+ * position relative to the pad's top-left corner and `w`,`h` its size, in any
+ * consistent unit.
+ *
+ * A 3x3 grid: the outer thirds are directions, the middle third is neutral on
+ * that axis. A finger in a CORNER third therefore reports TWO bits, which is
+ * not decoration -- updatePlayer() tests X ($A021/$A033) and Y ($A04B/$A065)
+ * independently and has no diagonal case, so two simultaneous bits are the
+ * only way the ship flies diagonally.
+ *
+ * Out-of-range coordinates land in the outer bands by construction, so a
+ * finger that has slid off the pad keeps the direction it slid towards instead
+ * of dropping to neutral. Its release still arrives, because the caller holds
+ * a pointer capture.
+ */
+export function dpadMask(u, v, w, h) {
+  let m = 0;
+  if (w > 0) {
+    const cx = u / w;
+    if (cx < 1 / 3) m |= BTN.LEFT; else if (cx >= 2 / 3) m |= BTN.RIGHT;
+  }
+  if (h > 0) {
+    const cy = v / h;
+    if (cy < 1 / 3) m |= BTN.UP; else if (cy >= 2 / 3) m |= BTN.DOWN;
+  }
+  return m;
+}
+
 export function attachInput(target = (typeof window !== 'undefined' ? window : null)) {
   if (!target) return;                    // headless: tests drive readJoypad()
   target.addEventListener('keydown', (e) => {
@@ -51,11 +125,18 @@ export function attachInput(target = (typeof window !== 'undefined' ? window : n
     held &= ~b;
     seen &= ~b;
   });
+  // Keyboard only. The touch mask's backstop lives with the buttons that set
+  // it (index.html binds blur, visibilitychange and pagehide to
+  // clearTouchButtons), so a lost keyup and a lost pointerup are recovered
+  // independently -- see the note on touchHeld.
   target.addEventListener('blur', () => { held = 0; seen = 0; });
 }
 
-/** The live keyboard mask, in $0007's bit layout. */
-export function currentButtons() { return held; }
+/**
+ * The live button mask, in $0007's bit layout: keyboard OR on-screen pad.
+ * main.js hands this to nmi() -> readJoypad() once per frame.
+ */
+export function currentButtons() { return u8(held | touchHeld); }
 
 /**
  * `$81BF` at $80A4. Given this frame's raw button mask, produce $0007 (held)

@@ -1,7 +1,20 @@
 # Gradius (NES, Konami 1986) — phase 2
 
-**Status: not started.** This folder holds the cartridge facts and the decisions that
-have to be made before any port code is written. Nothing here runs yet.
+**Status: stage 1 flies.** `src/` is a running port of the play path — the Vic Viper,
+the Options and the terrain streamer, verified frame-exact against the cartridge by
+`tools/test-all.mjs`. There are no enemies and no sound. The notes below are the
+cartridge facts and the decisions the port was built on; the header of each one says
+what is measured and what is not.
+
+**Playing it.** Serve the repo (`python -m http.server 8000`) and open
+`/games/gradius/` — a standalone page, not the root launcher, because the launcher
+imports `code.entry`/`code.mods`/`code.input` and this port has only `boot()`.
+Arrows or `W`/`A`/`S`/`D` fly, `Enter` is START, `Z`/`X` are B/A. **On a phone the
+page draws an on-screen pad** (coarse pointers only): a d-pad hit-tested as a 3x3
+grid, so a finger in a corner third reports two directions at once — the ship's mover
+tests X and Y independently and has no diagonal case, so a diagonal is exactly two
+bits. See `docs/worklog/gradius/00-touch-controls.md`, including the list of things
+only a human with a real phone can check.
 
 Read `docs/knowledge/` first — most of what Batman cost us was method, not Game Boy
 knowledge, and all of it applies here.

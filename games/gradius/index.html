@@ -33,30 +33,240 @@
   #hud b { color: #cde; font-weight: 600; }
   #err { color: #f88; max-width: 60ch; white-space: pre-wrap; padding: 0 12px; }
   kbd { background: #222; border: 1px solid #444; border-radius: 3px; padding: 0 4px; color: #cde; }
+
+  /* ---- the on-screen pad ------------------------------------------------
+     Shown only on a COARSE pointer. On a desktop it is display:none and the
+     keyboard path is exactly what it was.
+
+     Lessons carried over from the Game Boy port's pad, each of which cost
+     somebody an evening:
+       * pointer events, not touch events -- one path for finger, pen, mouse
+       * setPointerCapture on press, so a finger that slides off a control
+         still delivers its release to it. Without it you get a stuck button.
+       * touch-action: none and preventDefault, or the browser scrolls the page
+         and steals the gesture mid-press
+       * START is stacked ABOVE the face buttons. Inline, the cluster is wider
+         than the space beside the d-pad and the rightmost button is pushed off
+         the edge of a narrow phone.
+     What is NOT copied from there: the d-pad. Four captured buttons cannot
+     report a diagonal, and Gradius needs diagonals (src/player.js tests X and
+     Y independently -- there is no diagonal case, just two bits). So the d-pad
+     here is ONE capture target, hit-tested as a 3x3 grid by dpadMask(). */
+  #pad { display: none; }
+  body.touch #hud .keyhint { display: none; }
+  #pad.on {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; max-width: 620px; box-sizing: border-box;
+    gap: 10px; padding: 0 14px 16px;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .dpad {
+    display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px);
+    background: #10141a; border: 1px solid #2b3340; border-radius: 14px; padding: 3px;
+    touch-action: none;
+  }
+  .dpad i {
+    display: flex; align-items: center; justify-content: center;
+    font-style: normal; font-size: 15px; color: #6b7686;
+    border-radius: 9px; margin: 2px; background: #1a2028;
+  }
+  .dpad i[data-cell=""] { background: transparent; }
+  .dpad i[data-on] { background: #2f6ea8; color: #eaf3ff; }
+  .cluster { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .row { display: flex; gap: 14px; align-items: center; }
+  .tbtn {
+    background: #1d232d; border: 1px solid #37404f; color: #cde;
+    font: 600 18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    width: 62px; height: 62px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none; cursor: pointer; padding: 0;
+  }
+  .tbtn.sml { width: 68px; height: 28px; border-radius: 6px; font-size: 10px; }
+  .tbtn[data-on] { background: #2f6ea8; border-color: #4d92cf; color: #fff; }
+  /*
+    Landscape is how a phone gets held for a horizontal shooter, and there the
+    canvas is tall and narrow enough to leave real estate on both sides: put
+    the pad in the letterbox rather than under the picture, so #stage keeps the
+    full height and fitCanvas() can pick a bigger INTEGER scale.
+    pointer-events is off on the container and back on for the two clusters, so
+    the invisible strip across the middle cannot swallow a tap on the canvas.
+  */
+  @media (orientation: landscape) and (max-height: 560px) {
+    #pad.on {
+      position: fixed; left: 0; right: 0; bottom: 0; max-width: none;
+      padding: 0 12px 10px; pointer-events: none;
+    }
+    #pad.on .dpad, #pad.on .cluster { pointer-events: auto; }
+  }
 </style>
 </head>
 <body>
   <div id="stage"><canvas id="screen" width="256" height="240"></canvas></div>
   <div id="hud">
-    <span><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> move</span>
-    <span><kbd>Z</kbd> / <kbd>X</kbd> fire (not ported)</span>
+    <span class="keyhint"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> move</span>
+    <span class="keyhint"><kbd>Z</kbd> / <kbd>X</kbd> fire (not ported)</span>
     <span id="stats"></span>
+    <span class="touchnote" hidden>A / B / START / SELECT reach $0007, but no
+      shot, pause or power-up code is ported yet &mdash; the d-pad flies.</span>
   </div>
+
+  <!--
+    The pad's LAYOUT is here; the BITS are TOUCH_BUTTONS in src/input.js, looked
+    up through these data-* names. game.json's input.touchLayout is the written
+    description of this arrangement and tests/input.test.js holds all three
+    against each other, so a typo here is a red test and not a dead button.
+
+    The nine <i> cells are decoration -- they light up, they are not pointer
+    targets. The grid itself is the target (see the CSS note).
+  -->
+  <div id="pad">
+    <div class="dpad" id="dpad">
+      <i data-cell="UP LEFT">&#9700;</i><i data-cell="UP">&#9650;</i><i data-cell="UP RIGHT">&#9701;</i>
+      <i data-cell="LEFT">&#9664;</i><i data-cell="">&middot;</i><i data-cell="RIGHT">&#9654;</i>
+      <i data-cell="DOWN LEFT">&#9699;</i><i data-cell="DOWN">&#9660;</i><i data-cell="DOWN RIGHT">&#9698;</i>
+    </div>
+    <div class="cluster">
+      <div class="row">
+        <button class="tbtn sml" type="button" data-btn="SELECT">SELECT</button>
+        <button class="tbtn sml" type="button" data-btn="START">START</button>
+      </div>
+      <div class="row">
+        <button class="tbtn" type="button" data-btn="B">B</button>
+        <button class="tbtn" type="button" data-btn="A">A</button>
+      </div>
+    </div>
+  </div>
+
   <div id="err"></div>
 
 <script type="module">
 import { boot, fitCanvas } from './src/main.js';
+import {
+  TOUCH_BUTTONS, setTouchButton, setTouchDirections, clearTouchButtons, dpadMask,
+} from './src/input.js';
 
 const canvas = document.getElementById('screen');
 const stage = document.getElementById('stage');
 const stats = document.getElementById('stats');
 const err = document.getElementById('err');
 
+// ---- on-screen controls ----------------------------------------------------
+//
+// Shown on a COARSE pointer only. This runs BEFORE the first fit() so the pad
+// is already taking its space when fitCanvas() measures the stage -- otherwise
+// the first integer scale is computed against a height the canvas is about to
+// lose, and the picture is re-scaled a frame later.
+const pad = document.getElementById('pad');
+const dpadEl = document.getElementById('dpad');
+if (matchMedia('(pointer: coarse)').matches) {
+  pad.classList.add('on');
+  document.body.classList.add('touch');
+  for (const n of document.querySelectorAll('.touchnote')) n.hidden = false;
+}
+
+// Face buttons. One control, one bit, resolved through TOUCH_BUTTONS so the
+// bit layout is spelled once (in src/input.js) and this file only names
+// buttons.
+for (const b of pad.querySelectorAll('.tbtn')) {
+  const bit = TOUCH_BUTTONS[b.dataset.btn] ?? 0;
+  const press = (e) => {
+    e.preventDefault();
+    // The finger may slide off the button; the capture keeps its release ours.
+    b.setPointerCapture?.(e.pointerId);
+    b.dataset.on = '1';
+    setTouchButton(bit, true);
+  };
+  const release = (e) => {
+    e.preventDefault();
+    delete b.dataset.on;
+    setTouchButton(bit, false);
+  };
+  b.addEventListener('pointerdown', press);
+  b.addEventListener('pointerup', release);
+  b.addEventListener('pointercancel', release);
+  // Fires after a normal pointerup too (release is idempotent), and covers the
+  // case a normal pointerup never comes because the capture was taken away.
+  b.addEventListener('lostpointercapture', release);
+  b.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+// The d-pad: ONE capture target, hit-tested. Four separate captured buttons
+// cannot report a diagonal -- the capture that stops a stuck direction is also
+// what stops a second button ever seeing the finger -- and this game needs
+// diagonals to be flyable at all.
+const cells = [...dpadEl.querySelectorAll('i')].map((el) => ({
+  el,
+  mask: (el.dataset.cell || '').split(/\s+/).filter(Boolean)
+    .reduce((m, n) => m | (TOUCH_BUTTONS[n] ?? 0), 0),
+}));
+// One finger owns the pad at a time, so a second finger landing on it can
+// neither steal the direction nor clear it on ITS release.
+let padPointer = null;
+
+function paintDpad(mask) {
+  for (const c of cells) {
+    if (c.mask && (mask & c.mask) === c.mask) c.el.dataset.on = '1';
+    else delete c.el.dataset.on;
+  }
+}
+
+function applyDpad(e) {
+  const r = dpadEl.getBoundingClientRect();
+  const m = dpadMask(e.clientX - r.left, e.clientY - r.top, r.width, r.height);
+  setTouchDirections(m);
+  paintDpad(m);
+}
+
+dpadEl.addEventListener('pointerdown', (e) => {
+  if (padPointer !== null) return;
+  e.preventDefault();
+  padPointer = e.pointerId;
+  dpadEl.setPointerCapture?.(e.pointerId);
+  applyDpad(e);
+});
+dpadEl.addEventListener('pointermove', (e) => {
+  if (e.pointerId !== padPointer) return;
+  e.preventDefault();
+  applyDpad(e);        // slide from LEFT into UP+LEFT without lifting
+});
+const dpadEnd = (e) => {
+  if (e.pointerId !== padPointer) return;
+  e.preventDefault();
+  padPointer = null;
+  setTouchDirections(0);
+  paintDpad(0);
+};
+dpadEl.addEventListener('pointerup', dpadEnd);
+dpadEl.addEventListener('pointercancel', dpadEnd);
+dpadEl.addEventListener('lostpointercapture', dpadEnd);
+dpadEl.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// The backstop: anything the controls never see -- a call, the app switcher,
+// the browser deciding the gesture was a scroll -- clears the WHOLE mask.
+// Without it the last direction held stays held forever and the ship flies
+// into a wall while the phone is in a pocket.
+function clearTouch() {
+  clearTouchButtons();
+  padPointer = null;
+  paintDpad(0);
+  for (const b of pad.querySelectorAll('.tbtn')) delete b.dataset.on;
+}
+addEventListener('blur', clearTouch);
+addEventListener('pagehide', clearTouch);
+document.addEventListener('visibilitychange', () => { if (document.hidden) clearTouch(); });
+
 // Integer device-pixel scaling, recomputed on resize and on a DPR change (a
 // window dragged between a laptop screen and an external monitor changes
-// devicePixelRatio without firing anything else useful).
+// devicePixelRatio without firing anything else useful). A fractional scale
+// resamples the 1:1 pixels and visibly wrecks the dithering, so fitCanvas()
+// floors -- do not "fix" it into a percentage.
 const fit = () => fitCanvas(canvas, stage);
 addEventListener('resize', fit);
+// A phone rotating changes the stage's shape without a resize on some
+// browsers, and the URL bar sliding away only moves the visual viewport.
+addEventListener('orientationchange', fit);
+window.visualViewport?.addEventListener('resize', fit);
 fit();
 
 try {
