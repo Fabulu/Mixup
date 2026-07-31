@@ -14,25 +14,49 @@
 // arithmetic, and the collision derivation.
 
 import { u8 } from './state.js';
-import { queuePacket, QUEUE_LIMIT } from './vram.js';
+import { queuePacket, QUEUE_GATE_BYTES } from './vram.js';
 
 /** $9D6D,X = 05 06 20 24 -- collision page then nametable page, by $55 bit 0. */
 const COLL_PAGE = [0x05, 0x06];
 const NT_PAGE = [0x20, 0x24];
 
 /**
- * `$9D83` -- the gate, then `$9D8E` -- one block.
+ * `$9D83` -- the gate, then `$9D8E` -- one block. Byte for byte:
  *
- *   9D83  A5 3A  LDA $3A / BNE rts        not while $3A is set
- *   9D87  A5 0E  LDA $0E / CMP #$04       only if the queue is nearly empty
- *   9D8B  90 01  BCC $9D8E
+ *   9D83  A5 3A     LDA $3A
+ *   9D85  D0 06     BNE $9D8D           not while the stage-advance latch is up
+ *   9D87  A5 0E     LDA $0E
+ *   9D89  C9 04     CMP #$04            only if the queue holds < 4 BYTES
+ *   9D8B  90 01     BCC $9D8E
+ *   9D8D  60        RTS
+ *   9D8E  A9 00     LDA #$00
+ *   9D90  85 57     STA $57             cleared on EVERY gate pass
+ *   9D92  A5 58     LDA $58
+ *   9D94  D0 1C     BNE $9DB2           mid half-page -> always build
+ *   9D96  A5 54 38 E5 3E 85 98    $98 := $54 - $3E          (SEC, SBC)
+ *   9D9D  A5 55 E5 3F             A   := $55 - $3F - borrow
+ *   9DA1  30 0F     BMI $9DB2           lead is NEGATIVE -> BUILD
+ *   9DA3  C9 01     CMP #$01
+ *   9DA5  90 0B     BCC $9DB2           lead < $0100 -> build
+ *   9DA7  D0 06     BNE $9DAF           lead >= $0200 -> throttle
+ *   9DA9  A5 98 C9 80 90 03             lead low < $80 -> build
+ *   9DAF  E6 57     INC $57
+ *   9DB1  60        RTS
  *
- * and the throttle at $9D92-$9DB1: if $58 != 0 the half-page is in progress and
- * it keeps going; otherwise it compares the build cursor against the camera and
- * stops once the cursor is >= 384 px ($0180) ahead. Below $0100 it always
- * builds; between $0100 and $0180 only while the low byte is < $80.
+ * TWO THINGS THIS USED TO GET WRONG, both fixed here, both citing
+ * 00-recon-terrain.md 6:
  *
- * That throttle is why the streamer does NOT run every frame -- on one boot
+ *  1. The gate counted PACKETS (`queue.length >= 4`). `$0E` is a BYTE cursor;
+ *     four bytes is not even one packet header. Same answer today only because
+ *     the drainer zeroes $0E at $8099 and the streamer is the only producer, so
+ *     the gate always reads 0 -- which is exactly how a wrong constant survives.
+ *  2. `$9DA1 BMI` builds when the 16-bit lead is NEGATIVE, i.e. the camera has
+ *     overtaken the build cursor. The port compared an unsigned lead against
+ *     $0180, so a negative lead read as >= $8000 and was REFUSED -- the ROM's
+ *     "you are behind, catch up" arm became "you are miles ahead, stop". Not
+ *     reachable while the cursor stays in front, so it had never fired.
+ *
+ * The throttle is why the streamer does NOT run every frame -- on one boot
  * script it ran on frames 287-369 and then not again until 571. A negative
  * control aimed at a window with no block in it comes back green; that is a
  * trap this project has already stepped in once (NOTES-terrain.md 8).
@@ -41,15 +65,26 @@ const NT_PAGE = [0x20, 0x24];
  * @returns {boolean} whether a block was emitted
  */
 export function streamBlock(state, stage) {
-  if (state.build.gate !== 0) return false;                 // $9D83
-  if (state.vram.queue.length >= QUEUE_LIMIT) return false; // $9D87 CMP #$04
+  if (state.build.gate !== 0) return false;                 // $9D83/$9D85
+  if (state.vram.cursor >= QUEUE_GATE_BYTES) return false;  // $9D87 CMP #$04
 
   const b = state.build;
-  if (b.prog === 0) {                                       // $9D92
-    // lead = build cursor - camera, 16-bit, in world pixels
-    const lead = (((b.hi << 8) | b.lo) - ((state.cam.hi << 8) | state.cam.lo)) & 0xFFFF;
-    if (lead >= 0x0180) return false;                       // $9DA5 -- INC $57
-    if (lead >= 0x0100 && (lead & 0xFF) >= 0x80) return false;
+  b.ahead = 0;                                              // $9D90 STA $57
+
+  if (b.prog === 0) {                                       // $9D92/$9D94
+    // $9D96-$9DA0: a 16-bit SBC of the camera from the build cursor. $98 keeps
+    // the low byte; the accumulator holds the high byte, and the flags that
+    // follow are read off THAT byte.
+    const diff = (((b.hi << 8) | b.lo)
+                - ((state.cam.hi << 8) | state.cam.lo)) & 0xFFFF;
+    const hi = diff >> 8;                                   // A after $9D9F
+    const lo = diff & 0xFF;                                 // $98
+    let build;
+    if (hi & 0x80) build = true;                            // $9DA1 BMI $9DB2
+    else if (hi < 0x01) build = true;                       // $9DA3/$9DA5 BCC
+    else if (hi !== 0x01) build = false;                    // $9DA7 BNE $9DAF
+    else build = lo < 0x80;                                 // $9DA9-$9DAD
+    if (!build) { b.ahead = u8(b.ahead + 1); return false; } // $9DAF INC $57
   }
   emitBlock(state, stage);
   advanceProgress(state);

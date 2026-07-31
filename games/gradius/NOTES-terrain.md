@@ -125,9 +125,17 @@ read out of `$8A51-$8A9A`:
 * `$FF` ends a packet **unless** the following byte is `>= 3`, in which case
   `$8A86` emits a literal `$FF` and keeps going. That is the escape.
 * `$0E` is the write cursor; `$8A76` zeroes `$0700` and `$0E` when the queue is
-  drained.
+  drained. A packet costs `4 + n` bytes of it (3 header + data + `$FF`), so one
+  terrain block is `4*8 + 5 = 37` — checked against the cartridge, which reads
+  `$0E = 38` at `$80B5` on a block frame, the extra 1 being `$8641`'s.
 * `$8645`/`$8647` append; `$85E8`/`$85F3` push a canned packet from the 39-entry
   pointer table at `$864E` (score, power-up bar, "STAGE n" — the HUD).
+* **`$8641` is a one-byte routine and is NOT a HUD producer.** `LDA #$00 /
+  BEQ $8645 / LDX $0E / STA $0700,X / INX / STX $0E / RTS` — it appends the
+  drainer's mode-0 stop byte, and the NMI calls it at `$80B0`, last of all. The
+  real HUD tick is `$9AC7 JSR $8898`. Mislabelling `$8641` sent the terrain
+  knownFail's diagnosis at the wrong routine and hid a constant one-byte
+  divergence in `$0E` on every compared frame until wave 1.
 
 ---
 
@@ -137,9 +145,19 @@ Called once per frame from `$9ACE`. Gate at `$9D83`:
 
 ```
 9D83  A5 3A  LDA $3A / BNE rts      not while $3A is set
-9D87  A5 0E  LDA $0E / CMP #$04     only if the queue is nearly empty
+9D87  A5 0E  LDA $0E / CMP #$04     only if the queue holds fewer than 4 BYTES
 9D8B  90 01  BCC $9D8E
 ```
+
+**`$0E` is a BYTE cursor, so `CMP #$04` is four bytes — less than one packet's
+three-byte header.** The port compared a packet count against it until wave 1
+and got away with it because the drainer zeroes `$0E` at `$8099` and the
+streamer was the only producer, so the gate always read 0.
+
+`$3A` is the **stage-advance latch**, not an uncharacterised flag: written at
+`$96D7` and `$97E1` (`STA $3A`, A = 0, stage init) and `$993D` (`INC $3A`, in
+the stage-end block that also does `INC $19` and `$3F = 0`). Measured 0 on 700
+of 700 frames of a boot-and-play run — it never rises during stage 1.
 
 and four times back-to-back from `$9C24` during the stage load.
 
@@ -148,14 +166,33 @@ and four times back-to-back from `$9C24` during the stage load.
 ```
 $54/$55   16-bit world X of the 128 px half-page being built (pixels)
 $58       progress inside it
-$57       "far enough ahead" flag
+$57       result flag: 0 = this frame built (or is mid half-page),
+          1 = the 384 px lead throttled it
 ```
 
+`$9D8E` is `LDA #$00 / STA $57` — **`$57` is cleared on every pass of the gate
+above**, before the throttle is even evaluated, and `INC`'d at `$9DAF` only when
+the throttle refuses. It is a result, not an input, and a frame that does not
+get past the `$3A`/`$0E` gate does not write it at all.
+
 `$9D92-$9DB1`: if `$58 != 0` the half-page is in progress, keep going.
-Otherwise compute `($54/$55) - ($3E/$3F)` and stop (`INC $57`) once the build
-cursor is **>= 384 px (`$0180`) ahead of the camera**. Below `$0100` it always
-builds; between `$0100` and `$0180` it builds only while the low byte is
-`< $80`.
+Otherwise compute `($54/$55) - ($3E/$3F)` as a 16-bit `SBC` and branch on the
+flags of the **high byte**:
+
+```
+9DA1  30 0F  BMI $9DB2     the lead is NEGATIVE -- the camera has overtaken the
+                           build cursor -- BUILD, do not throttle
+9DA3  C9 01 90 0B          high byte 0, i.e. lead < $0100 -> build
+9DA7  D0 06                high byte >= 2, i.e. lead >= $0200 -> INC $57
+9DA9  A5 98 C9 80 90 03    high byte 1: build while the low byte is < $80
+9DAF  E6 57  INC $57
+```
+
+so it stops once the cursor is **>= 384 px (`$0180`) ahead of the camera** *and
+is ahead at all*. The `BMI` arm is easy to lose in translation — an unsigned
+lead compared against `$0180` turns "you are behind, catch up" into "you are
+miles ahead, stop", and then never recovers, because the cursor stays put while
+the camera keeps moving. That was live in `src/terrain.js` until wave 1.
 
 **`$58 = blockCol*32 + blockRow`**, `blockRow` 0..6 and `blockCol` 0..3.
 Proven by the advance at `$9F94`:
@@ -375,10 +412,15 @@ screen order is all zeros and it produces **0 solid tiles**.
 ## 7. What the port needs, in order
 
 1. `cam = {sub: $3D, x: $3E|$3F<<8}`, `cam += 0.5 px/frame` while the gameplay
-   gate holds; the PPU scroll and nametable bit are **last frame's** `cam`.
-2. A `Queue` of `{addr, inc, bytes[]}` packets, drained at the top of the next
-   frame. The streamer appends; the HUD appends; nothing else writes VRAM.
-3. `streamBlock()`: the gate (`$3A`, `$0E < 4`, the 384 px lead), the `$58`
+   gate holds — and that gate is **`$1B` bit 7, `$1E`, `$1F`, `$0D` and then
+   `$15`/`$5B`** (`$9A88-$9AA0`), not the sprite-0 split, which is reached
+   whether the camera advanced or not; the PPU scroll and nametable bit are
+   **last frame's** `cam`.
+2. A `Queue` of `{addr, inc, bytes[]}` packets plus the BYTE cursor `$0E`,
+   drained at the top of the next frame. The streamer appends; the HUD appends;
+   `$8641` appends one stop byte at `$80B0`; nothing else writes VRAM.
+3. `streamBlock()`: the gate (`$3A`, `$0E < 4` **bytes**, the signed 384 px
+   lead with its `BMI` catch-up arm, and `$57` written as a result), the `$58`
    walk, the address math of section 3, the RLE of section 4, then the
    collision derivation of section 5 **from the tiles it just produced** — not
    from a second table, and not precomputed, because the ROM's ordering is

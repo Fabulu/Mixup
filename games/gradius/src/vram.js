@@ -31,14 +31,62 @@
 /** PPUCTRL increment bit per queue mode. ROM: $8A4B = 60 00 04 00 04 00. */
 export const QUEUE_INC = [null, 1, 32, 1, 32, 1];
 
-/** $8A51 stops when the mode byte is 0, so the queue holds at most 4 packets
- *  before the streamer's own gate ($9D87: LDA $0E / CMP #$04) refuses to add
- *  more. Kept as a named number so the gate and the queue agree. */
-export const QUEUE_LIMIT = 4;
+/**
+ * `$9D87: LDA $0E / CMP #$04 / BCC` and `$889A: CMP #$04` -- the queue gate,
+ * shared by the terrain streamer and the HUD tick.
+ *
+ * IT COUNTS BYTES, NOT PACKETS. `$0E` is the byte cursor into $0700, so "4"
+ * means four BYTES -- less than one packet's three-byte header. The port used
+ * to compare `queue.length` (a packet count) against it and got the same answer
+ * only because both are 0 at the one instant the gate runs: the drainer at
+ * $8099 zeroes $0E at the top of every frame and the streamer is, today, the
+ * only producer. MEASURED at $9D83 over 700 frames: $0E = 0 on every frame that
+ * built and 8 / 14 / 39 on the frames that did not (00-recon-terrain.md 1).
+ */
+export const QUEUE_GATE_BYTES = 4;
 
-/** Append one packet. ROM: $8645/$8647 (append) and $85E8/$85F3 (canned). */
+/**
+ * Append one packet. ROM: $8645/$8647 (append) and $85E8/$85F3 (canned).
+ *
+ * `$0E` advances by the packet's WIRE length -- [mode][addrHi][addrLo] then the
+ * data then the [$FF] terminator, i.e. 4 + n. Cross-checked against the
+ * cartridge: one terrain block is 4 tile packets of 4 data bytes plus 1
+ * attribute packet of 1, = 4*8 + 5 = 37, and the cartridge's $0E reads 38 at
+ * $80B5 on a block frame -- 37 plus the one $00 that $8641 appends at $80B0.
+ */
 export function queuePacket(state, addr, inc, bytes) {
   state.vram.queue.push({ addr: addr & 0x3FFF, inc, bytes });
+  state.vram.cursor += 4 + bytes.length;         // $864B STX $0E
+}
+
+/**
+ * `$8641` -- the one-byte producer the NMI calls at $80B0, LAST of all.
+ *
+ *   8641  A9 00     LDA #$00
+ *   8643  F0 00     BEQ $8645        (a nop branch: $8645 is the next byte)
+ *   8645  A6 0E     LDX $0E
+ *   8647  9D 00 07  STA $0700,X
+ *   864A  E8        INX
+ *   864B  86 0E     STX $0E
+ *   864D  60        RTS
+ *
+ * That is the whole routine: it appends ONE $00 -- the drainer's mode-0 stop
+ * byte -- and bumps $0E. It is NOT a HUD producer, which is what src/nmi.js
+ * used to call it; the HUD is $8898 at $9AC7 and is wave 2's job.
+ *
+ * The byte cannot affect the streamer's gate, and that is worth stating because
+ * it looks like it should: $80B0 runs AFTER $9ACE, and $8A76 zeroes $0E at
+ * $8099 of the next frame, so the gate at $9D87 never sees it. What it does
+ * affect is $0E as sampled at $80B5 -- which is why the port read exactly one
+ * less than the cartridge on every compared frame (w_000E@401, the FIRST
+ * compared frame, 00-recon-terrain.md 9).
+ *
+ * The port carries packets as objects, so there is no $0700 image to store the
+ * $00 in; the cursor is bumped and the terminator is implicit in the queue's
+ * end. Nothing reads the byte: $8A51 stops ON it.
+ */
+export function queueTerminator(state) {
+  state.vram.cursor += 1;                        // $864A INX / $864B STX $0E
 }
 
 /**
@@ -73,4 +121,5 @@ export function drainQueue(state) {
     }
   }
   state.vram.queue.length = 0;                 // $8A76 zeroes $0700 and $0E
+  state.vram.cursor = 0;                       // $8A7B STA $0E
 }

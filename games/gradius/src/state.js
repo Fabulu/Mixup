@@ -62,9 +62,28 @@ export function createState() {
     substate: 0x80,          // $1B   mode-5 sub-state; see nmi.js on the gate
     // Three gates that were 0 on every frame ever measured here. They are
     // fields, not constants, because each one selects a path this port has
-    // never seen run: $5C >= 2 halves the player's update rate ($9A5E/$969A),
-    // and $15 or $5B non-zero suppresses the sprite-0 split so the frame has
-    // ONE band ($9A98).
+    // never seen run.
+    //
+    //   $5C >= 2  halves the player's update rate ($9A5E/$969A). Stage-5 only:
+    //             $9650 only computes it when $19 == 4 (00-recon-flow.md 3).
+    //   $15       PAUSE. $9ADA toggles it on a START edge; $9650's first branch
+    //             then jumps the whole update to $9A8C.
+    //   $5B       uncharacterised: eleven INC sites, three readers ($9A9C,
+    //             $9ACA, $AEDD), 0 on every frame of every measured run.
+    //
+    // WHAT $15 AND $5B ACTUALLY DO, because this file said the wrong thing for
+    // the port's whole life: they skip `JSR $98EE`, the CAMERA ADVANCE, and
+    // nothing else. The ROM is
+    //     9A98  A5 15     LDA $15
+    //     9A9A  D0 07     BNE $9AA3    -- lands PAST the JSR, ON the split
+    //     9A9C  A5 5B     LDA $5B
+    //     9A9E  D0 03     BNE $9AA3
+    //     9AA0  20 EE 98  JSR $98EE
+    //     9AA3  AD 02 20  LDA $2002    -- the split, reached either way
+    // so a paused frame still splits; it just does not scroll. That matches the
+    // measurement from the other side: START at f450 froze $3E at 68 for 50
+    // frames while the picture kept its two bands (00-recon-flow.md 8). What
+    // suppresses the SPLIT is $9A88/$9A8C/$9A90/$9A94 -- see nmi.js.
     zp5C: 0,                 // $5C
     zp15: 0,                 // $15
     zp5B: 0,                 // $5B
@@ -83,7 +102,12 @@ export function createState() {
     zp: {
       speed: 0,              // $40  SPEED level; INC $40 at $89A1
       missile: 0,            // $41  missile flag
-      weapon: 0,             // $44  0 normal / 1 double / 2 laser
+      // $44: 0 normal / 1 LASER / 2 DOUBLE. NOT "1 double / 2 laser", which is
+      // what this said and what NOTES-player.md 9 said: $89BB (the meter's
+      // DOUBLE arm) stores 2 and $89CF (LASER) stores 1, and forcing $44 on the
+      // cartridge gives type $06 sub 0 at 0, type $07 sub 1 at 1, and TWO
+      // simultaneous shots ($06 sub 0 + $24 sub 2) at 2 (00-recon-weapons.md 0).
+      weapon: 0,             // $44
       options: 0,            // $45  Option count, capped at 2 by $89D3
       autofire: 20,          // $35  autofire reload, MEASURED 20
       player: 0,             // $18  current player index; 0 or 1. Measured 0
@@ -136,11 +160,28 @@ export function createState() {
       scrollY: 0x0C,         // $13 -> $2005 (second). 12 during stage 1, $9650
       chrSel: 0,             // $2D  index into the CNROM table $8AA8
       blank: 0,              // $0D  blank-screen countdown, gates PPUMASK
-      // $1F. Non-zero puts the live sprite-0 record at $0200 ($8B2F takes
+      // Non-zero puts the live sprite-0 record at $0200 ($8B2F takes
       // $8B08+4 = CE 6D 23 F8); zero parks it off-screen at $F4. The split at
       // $9AA3 spins on that sprite's hit, so it is structural, not decoration.
+      // DERIVED from $1E/$1F by $8B1A-$8B2B (src/oam.js), not stored by the ROM.
       spriteZeroOn: true,
     },
+
+    // $1E and $1F, the sprite-0 pair. Both are REAL BYTES now (they used to be
+    // the single boolean above, which could not express $9A8C/$9A90 and left
+    // w_001E/w_001F permanently SKIPPED in the comparison). $8B1A-$8B2B writes
+    // them both every frame from $1F alone:
+    //   $1F == 0        -> $1E = 0, sprite 0 parked off-screen
+    //   $1F == 1        -> $1F := 2, $1E = 0, LIVE record copied. One frame of
+    //                      live sprite 0 with the split still suppressed --
+    //                      the handover, and the only reason $1E is a separate
+    //                      byte at all.
+    //   $1F >= 2        -> $1E = 1, live record
+    // MEASURED: $1E = 1 and $1F = 2 on all 3341 compared frames of all 16
+    // scenarios; $1F steps 0 -> 1 -> 2 during the boot intro, which is outside
+    // this corpus and is wave 4's business.
+    zp1E: 1,                 // $1E
+    zp1F: 2,                 // $1F
 
     // The registers as they were LATCHED for the frame just drawn. $8281's
     // write is what drew it; reading $12/$13/$10 at the $80B5 sample point
@@ -155,6 +196,12 @@ export function createState() {
     // proven by a census of every $2007 write over 600 frames.
     vram: {
       queue: [],                     // [{addr, inc, bytes}] packets at $0700
+      // $0E, the byte cursor into $0700. A real byte, not a derived one: the
+      // gate at $9D87 (and $889A) compares it against 4, the producers advance
+      // it by the WIRE length of what they append, and $8A7B zeroes it. The
+      // port's queue is a list of packet objects, so the cursor is maintained
+      // alongside it in src/vram.js rather than falling out of a $0700 image.
+      cursor: 0,                     // $0E
       nt: new Uint8Array(0x1000),    // PPU $2000-$2FFF (vertical mirroring)
       pal: new Uint8Array(32),       // PPU $3F00-$3F1F
     },
@@ -164,8 +211,18 @@ export function createState() {
       lo: 0,                 // $54  world X of the 128 px half-page being built
       hi: 0,                 // $55
       prog: 0,               // $58  = blockCol*32 + blockRow inside it
-      gate: 0,               // $3A  streamer gate; not characterised
-      ahead: 0,              // $57  "far enough ahead" flag
+      // $3A: the STAGE-ADVANCE LATCH, not an uncharacterised flag. Written in
+      // exactly three places -- $96D7 and $97E1 (STA $3A, A = 0, both stage
+      // init) and $993D (INC $3A, in the stage-end block that also does INC $19
+      // and $3F = 0). While it is up the streamer, the enemy spawner ($A2C0)
+      // and $C42D/$C68A/$C6B1 all stand down. MEASURED 0 on 700 of 700 frames
+      // of a boot-and-play run: it never rises during stage 1.
+      gate: 0,               // $3A
+      // $57: a RESULT flag, written by the streamer itself -- 0 at $9D90 on
+      // every frame that passes the queue gate, INC'd at $9DAF when the 384 px
+      // lead throttles the build. It used to be seeded and then frozen here,
+      // which is why w_0057 is in the knownFail list.
+      ahead: 0,              // $57
     },
 
     // The terrain collision map, $0500-$06FF. NOT a second table and NOT

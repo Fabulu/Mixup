@@ -134,10 +134,39 @@ export function buildDisplayList(state, table) {
               work.spriteRecords = 0; work.spritesStored = 0; }
   oam.fill(0xF4);                                 // what $8BAB leaves behind
 
-  // $8B2F: sprite 0 is copied straight from $8B08, not allocated. $1F non-zero
-  // selects the live record; zero parks it off-screen.
-  const s0 = state.ppu.spriteZeroOn === false ? SPRITE0_OFF : SPRITE0;
-  oam.set(s0, 0);
+  // $8B1A-$8B37 -- sprite 0, and the two bytes the split gate reads.
+  //
+  //   8B14  A9 00     LDA #$00        A = the value that will land in $1E
+  //   8B16  A2 03     LDX #$03        X = 3 -> copy $8B08+0..3 (parked)
+  //   8B1A  A4 1F     LDY $1F
+  //   8B1C  F0 0D     BEQ $8B2B       $1F == 0: $1E = 0, sprite 0 parked
+  //   8B1E  A2 07     LDX #$07        X = 7 -> copy $8B08+4..7 (live)
+  //   8B20  88        DEY
+  //   8B21  D0 06     BNE $8B29       $1F >= 2 -> A = 1
+  //   8B23  A0 02     LDY #$02
+  //   8B25  84 1F     STY $1F         $1F == 1 -> $1F := 2 and A STAYS 0
+  //   8B27  D0 02     BNE $8B2B
+  //   8B29  A9 01     LDA #$01
+  //   8B2B  85 1E     STA $1E
+  //   8B2D  A0 03     LDY #$03
+  //   8B2F  BD 08 8B  LDA $8B08,X / STA $0200,Y / DEX / DEY / BPL $8B2F
+  //
+  // The $1F == 1 arm is the whole reason $1E exists: for exactly one frame the
+  // LIVE sprite-0 record is written while $1E stays 0, so $9A8C refuses the
+  // split on the frame the sprite first appears. Not reachable inside this
+  // corpus ($1F = 2 on every compared frame) -- it is the intro's handover, and
+  // it is ported now because the split gate below reads both bytes.
+  let a = 0;                                      // $8B14 LDA #$00
+  let x = 3;                                      // $8B16 LDX #$03
+  if (state.zp1F !== 0) {                         // $8B1A / $8B1C
+    x = 7;                                        // $8B1E
+    if (state.zp1F - 1 !== 0) a = 1;              // $8B20 DEY / $8B21 BNE
+    else state.zp1F = 2;                          // $8B23/$8B25 STY $1F
+  }
+  state.zp1E = a;                                 // $8B2B STA $1E
+  // $8B2F: sprite 0 is copied straight from $8B08, not allocated.
+  state.ppu.spriteZeroOn = x === 7;               // which of the two records
+  oam.set(x === 7 ? SPRITE0 : SPRITE0_OFF, 0);
 
   state.oamBase = rotateBase(state.oamBase | 0);  // $8B39
   let cursor = state.oamBase;                     // $8B45 STA $9C

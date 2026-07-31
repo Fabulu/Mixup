@@ -77,7 +77,7 @@ Zero page:
 |---|---|---|
 | `$40` | **SPEED level**. Starts 0, `INC $40` per SPEED UP, no upper bound of its own | `$89A1: E6 40`, jump-table entry 1 of `jt_8989` |
 | `$41` | missile flag (0/1) | `$89B3: E6 41` |
-| `$44` | weapon: 0 normal, 1 double, 2 laser | `$89C7: 85 44` |
+| `$44` | weapon: **0 normal, 1 LASER, 2 DOUBLE** | `$89BB`/`$89CF`, see below |
 | `$45` | **Option count**, capped at 2 | `$89D3: A5 45 / C9 02 / B0 AA / E6 45` |
 | `$46` | shield/barrier, set to 5 | `$899D: 85 46` |
 | `$35` | autofire delay, measured **20** frames | `$A11F: A5 35` |
@@ -333,24 +333,63 @@ A102: B5 07      LDA $07,X / AND #$80 / STA $9B      ; A button, HELD
 A108: A6 45      LDX $45                             ; loop slot $45 .. 0
 ```
 
+**`$44` IS 0 NORMAL / 1 LASER / 2 DOUBLE**, which is the opposite of what this section
+said for most of the port's life. Proven twice independently in
+`docs/worklog/gradius/00-recon-weapons.md` 0: from the `$8989` meter jump table, where
+the arm labelled DOUBLE stores **2** (`$89BB: LDA #$02 / STA $98 / ... STA $44`) and the
+arm labelled LASER stores **1** (`$89CF: LDA #$01`); and from the cartridge, by forcing
+`$44` and watching the shots —
+
+| `$44` | slot A | slot B | behaviour |
+|---|---|---|---|
+| 0 | type `$06`, sub 0 | type `$06`, sub 0 | one shot per fire, `x += 7` |
+| 1 | type `$07`, sub 1 | type `$07`, sub 1 | one shot per fire, `x += $0C` |
+| 2 | type `$06`, sub 0 | type `$24`, sub **2** | **both slots on the same frame**; B goes `x += 4, y -= 4` |
+
 Per slot (player = 0, Options = 1..`$45`): if shot slot A is free (`$0123,X == 0`) and
 either A was just pressed **or** the autofire timer `$03A3,X` has run down while A is
 held, `$A235` spawns it — `$0363,X = $0360,X`, `$0323,X = $0320,X`,
 `$0123,X = $98`, `$0163,X = $44 & 1` — and `$03A3,X` is reloaded from `$35` (measured 20).
 Slot B is the same shape at `$A250`/`$0126,X`/`$0166,X`, and is **skipped when
-`$44 == 2`** (laser). If `$41` (missile) is set and `$0129,X` is free, `$A26B` spawns a
+`$44 != 2`** — also the opposite of what this said. The bytes:
+
+```
+A124  A5 44     LDA $44
+A126  C9 02     CMP #$02
+A128  F0 0A     BEQ $A134     <- the branch INTO the slot-B block is taken ON 2
+A12A  A5 35 9D A6 03          $44 != 2: cross-reload the OTHER slot's timer
+A12F  D0 2B     BNE $A15C     ... and jump PAST slot B entirely
+```
+
+If `$41` (missile) is set and `$0129,X` is free, `$A26B` spawns a
 missile at `$0369,X` / `$0329,X + 6`.
 
 **Two player bullets on screen at a time**, one per slot, throttled by a 20-frame timer.
-Measured: 90 frames of held A produced 3 shot spawns.
+This section used to claim 90 frames of held A produced **3** shot spawns. Measured with
+exec hooks on the two spawn routines over 300 frames of held A from game frame 400:
+
+```
+$A235 (slot A) frames = [400, 444, 488, 530, 574, 618, 660]
+$A250 (slot B) frames = [421, 465, 509, 551, 595, 639, 681]
+interleaved gaps      = [21, 23, 21, 23, 21, 21, 21, 23, 21, 23, 21, 21, 21]
+```
+
+Frames 400..489 contain **5** spawns, not 3. The gaps are not a constant either: the
+timers are FROZEN while a slot is occupied, so the cadence is the shot's lifetime plus
+`$35`, which alternates 21/23. Wave 6 ports this.
 
 The rest of `$9FFC`, in order:
 
 * `$A16F-$A234` — the missile/shot movement loops. These run **even when the player is
   dead**: `$9FFC`'s first act is `LDA $0100 / CMP #$02 / BCC $A006 / JMP $A16F`, which
   jumps *past* movement, ring, tilt and firing straight into them.
-* `$A173` loop: slots 8..6, the missiles (`+2` or `+8`/`$80` per frame from the table at
-  `$A1A4`, killed at `Y >= $C8` or `X >= $F8`).
+* `$A173` loop: slots 8..6, the missiles. This used to describe the table at `$A1A4` as
+  "`+2` or `+8`/`$80` per frame", which is a misreading of it. `$A1A4` = `02 00 | 00 02 |
+  80 00` is **three interleaved 2-entry tables** — `dy = {2, 0}`, `dxhi = {0, 2}`,
+  `dxlo = {$80, 0}` — indexed by `Y` (0 = fly, 1 = crawl). So fly is `y += 2, x += 0.5`
+  with sprite id `$0A`, and crawl is `y += 0, x += 2` with sprite id `$08`. Killed at
+  `Y >= $C8`, on an `x` carry, or at `X >= $F8`
+  (`docs/worklog/gradius/00-recon-weapons.md` 4).
 * `$A1EA` loop: slots 0..5, the shots (`X += 7`, or `X += 4` while `Y -= 4` for the
   upward laser variant; killed at `X >= $F8` / `X >= $F0` / `Y < $10`).
 
@@ -426,16 +465,22 @@ Three consequences the port has to encode:
   stage-play path is reached. Measured over 900 frames: 590 calls to `$9FFC`, 590 to
   `$9A6A`, **0** to the alternative call site at `$969A`.
 * `$969A` is the *other* caller (`JSR $9FFC` at `$969A`), reached when `$5C >= 2` and only
-  on **even** frames (`LDA $02 / LSR / BCC` at `$9689`). `$5C` measured 0 throughout stage
-  1's opening, so this path is unexercised and should be treated as unknown.
+  on **even** frames (`LDA $02 / LSR / BCC` at `$9689`). **It is stage-5-only, and that is
+  now settled rather than merely unobserved:** `$9650` computes `$5C` at all only when the
+  stage index `$19 == 4`, by counting the non-zero bytes at `$0600/$0630/$0660/$0690`
+  (`docs/worklog/gradius/00-recon-flow.md` 3). On every other stage `$5C` stays 0, so
+  stage 1 cannot reach the half-rate path.
 * `$9A5E` bails to `$9A70` when `$5C >= 2` — the player update is skipped entirely.
 * `$9FFC` skips movement/ring/tilt/firing when `$0100 >= 2`.
-* **Stage entry: the player update does not run for the first 28 frames of mode 5.**
+* **Stage entry: the player update does not run for the opening frames of mode 5.**
   Measured: mode 5 at game frame 282, `$0100` becomes 1 at 283, `$9FFC` first runs at
   **310**. The gate is `$96B7: LDA $1B / BPL $96BE` — while bit 7 of `$1B` is clear the
   mode-5 handler runs the stage-intro table at `$96C5` instead of `JMP $982A`. `$1B` was
-  measured stepping `1,2,3,4` over frames 283-308 and reaching `$80` on 309. This belongs
-  to the stage-flow investigation, not this one; recorded here because it is the reason a
+  measured stepping `1,2,3,4` over frames 283-308 and reaching `$80` on 309.
+  **THE 28 IS NOT A CONSTANT** — this line used to say "the first 28 frames" and the
+  stage-flow recon measured a respawn intro of **26** frames (f614-f640) off the same
+  code. `$9C24` exits by watching `$57`, not by counting
+  (`docs/worklog/gradius/00-recon-flow.md` 5). Recorded here because it is the reason a
   port that starts moving the ship on the first gameplay frame is wrong.
 
 ## 11. The model, and how it was checked
@@ -480,7 +525,8 @@ control broken if it stayed green in **both** runs.
 * Only stage 1's opening, `$40 ≤ 20` by injection, `$44 = 0`, `$45 ∈ {0, 2}` (2 by
   injection). Nothing here has been checked against a boss, a warp, or stages 2-6.
 * The `$969A` call site and the `$5C >= 2` path have **never been executed** in any run
-  here. Do not assume the player update is once-per-frame everywhere.
+  here, and now have a reason: `$5C` is only computed on stage 5 (`$19 == 4`). Do not
+  assume the player update is once-per-frame on stage 5.
 * `$0160` has a second writer, `$C0E3`, which only appeared while the player was dead. If
   it ever fires during live play the ring model breaks; it did not in 60 consecutive live
   frames.

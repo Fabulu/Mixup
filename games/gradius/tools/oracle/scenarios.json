@@ -29,11 +29,20 @@
     "here is one the port claims to model; nothing is watched for decoration.",
     "The 48 ring bytes are the reason the Option comparison is worth anything:",
     "comparing $0361/$0362 alone would pass for a port that trailed the ship by",
-    "the wrong number of ring entries on a straight-line hold."
+    "the wrong number of ring entries on a straight-line hold.",
+    "",
+    "FIVE ADDRESSES ARE WATCHED AHEAD OF THE PORT (wave 1): $00 (game mode, and",
+    "the port DOES model it), and $19 $20 $24 $4C, which it does not -- stage",
+    "index, lives, checkpoint, the death countdown. All four are constants in",
+    "every window this corpus compares and each carries a written reason in",
+    "porttrace.mjs UNMODELLED, so they are reported as SKIPPED, not as silent",
+    "nulls. They are here now so that waves 4 and 5 are judged against cartridge",
+    "data recorded BEFORE the code that has to reproduce it was written."
   ],
   "watch": [
-    "000D", "000E", "0015", "0018", "001B", "001E", "001F",
-    "0035", "0036", "003A", "0040", "0041", "0044", "0045",
+    "0000", "000D", "000E", "0015", "0018", "0019", "001B", "001E", "001F",
+    "0020", "0024",
+    "0035", "0036", "003A", "0040", "0041", "0044", "0045", "004C",
     "0054", "0055", "0057", "0058", "005B", "005C",
     "0100", "0101", "0102",
     "0120", "0121", "0122",
@@ -61,8 +70,8 @@
       "_note": "$0055 was in this list, the runner reported it as a SURPRISE PASS (no 240-frame window reaches the half-page roll-over), it was removed -- and then long-idle, at 599 compared frames, made it diverge at frame 854 and it was put back. Both directions of the annotation mechanism have now been exercised on this one field.",
       "fields": ["w_000E", "w_0054", "w_0055", "w_0057", "w_0058"],
       "name": "terrain-streams-at-double-rate",
-      "why": "The port streams one terrain block per frame; the cartridge streams one every OTHER frame. MEASURED with exec hooks on $9D83/$9D8E/$9DB2/$8645 over frames 566-578: the streamer's gate is $9D87 LDA $0E / CMP #$04 / BCC, i.e. it refuses to build when the SHARED $0700 queue already holds 4+ bytes, and at its entry the cartridge reads $0E = 0 on the frames it builds and 8, 14 or 39 on the frames it does not. Those bytes come from the canned-packet producer reached through $85F1, which runs inside the mode-5 handler BEFORE $9ACE and which src/nmi.js says outright is not ported ('$8641 HUD packets -- not ported'). So this is not a bug in src/terrain.js: it is the measurable consequence of an omission src/ already declares. $57 follows from the same instruction -- $9D8E STA $57 only executes on frames that get past the gate, which is why the cartridge's $57 sticks at 0 while the port's sticks at its seeded 1 (the port never writes $57 at all).",
-      "expect": "the port's $58 advances every frame, the cartridge's every second frame"
+      "why": "TWO CAUSES WERE MEASURED INSIDE THIS ONE ANNOTATION AND ONE OF THEM IS NOW FIXED (wave 1). Cause A, closed: $80B0 JSR $8641 appends ONE $00 byte -- the drainer's mode-0 stop byte -- to the queue on every non-lag frame, and the port did not, so w_000E read exactly one less than the cartridge on frame 401, the FIRST compared frame. src/nmi.js called that routine 'HUD packets -- not ported', which aimed the diagnosis at the wrong address; it is a one-line append and it is ported now (src/vram.js queueTerminator). Cause B, SOLE REMAINING CAUSE: $9AC7 JSR $8898, the HUD tick, seven bytes above the streamer's own JSR. It runs its four canned producers on ODD $02 frames only (measured with exec hooks: entered 390 times, past both gates 195, on $02 even 0 and odd 195, 0 exceptions) and leaves 8, 14, 39 or 5 bytes in $0E, which is what the streamer's gate at $9D87 (LDA $0E / CMP #$04 / BCC -- a BYTE count, not a packet count) then refuses to build against. The port has no HUD producer, so its queue is empty at the gate and it builds EVERY frame: build histograms {0:196, 1:195} on the cartridge against {0:1, 1:390} on the port. Proven by intervention rather than by correlation -- starving the cartridge's own gate ($0E forced to 0 at $9D83) reproduces the port's histogram exactly, and BOTH sides emit the same 140 blocks in the same order, so this is a phase error in $54/$55/$57/$58/$0E and not a content error in VRAM. w_000E therefore still diverges, but no longer on the first compared frame: it diverges on the first ODD frame in the window. $57 follows from the same gate -- $9D90 STA $57 only executes on frames that get past it, so the cartridge stops writing $57 on odd frames while the port writes it on every frame. Wave 2 ports $8898 and retires this entry.",
+      "expect": "the port's $58 advances every frame, the cartridge's every second frame; w_000E first diverges on an ODD frame (402), not on 401"
     }
   ],
 

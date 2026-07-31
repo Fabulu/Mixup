@@ -117,7 +117,11 @@ export function seedFromRam(state, ram) {
   state.zp15 = r(0x15);                    // $15
   state.zp.player = r(0x18);               // $18
   state.substate = r(0x1B);                // $1B
-  state.ppu.spriteZeroOn = r(0x1F) !== 0;  // $1F -- the port models a boolean
+  state.zp1E = r(0x1E);                    // $1E
+  state.zp1F = r(0x1F);                    // $1F
+  // Derived from $1F by $8B1A-$8B2B, and rewritten by the first buildDisplayList
+  // this run makes. Seeded anyway so the value is never briefly wrong.
+  state.ppu.spriteZeroOn = r(0x1F) !== 0;
   state.ppu.chrSel = r(0x2D);              // $2D
   state.oamBase = r(0x2F);                 // $2F
   state.zp.autofire = r(0x35);             // $35
@@ -171,11 +175,23 @@ export function seedFromRam(state, ram) {
  * or in the watch list, and compare.mjs says so.
  */
 export const UNMODELLED = {
-  '001E': 'sprite-0 record selector. $8B1A-$8B2B derives it from $1F and it '
-        + 'reads 1 on every frame of this corpus; src/oam.js models the choice '
-        + 'as the boolean state.ppu.spriteZeroOn and stores no byte.',
-  '001F': 'sprite-0 enable/phase. Same routine; measured constant at 2 here, '
-        + 'so the boolean is faithful but the VALUE has no port field.',
+  // $001E/$001F used to live here as "modelled as a boolean". They are real
+  // bytes now (src/oam.js ports $8B1A-$8B2B), because the split gate at
+  // $9A8C/$9A90 reads both and a boolean cannot express the $1F == 1 handover
+  // frame. Two fewer SKIPPED fields.
+  '0019': 'stage index. The port loads one stage\'s assets and has no $19; the '
+        + 'streamer\'s stage-4 collision skip ($9F4F CPY #$04) is carried as a '
+        + 'per-stage flag in assets/terrain/stages.json instead. Constant 0 '
+        + 'across this corpus. Wave 4 introduces the stage machinery.',
+  '0020': 'lives for player $18 ($20,X). Written by $9B3E\'s per-player restore '
+        + 'and DEC\'d by $979D on death -- both wave 5. Constant across every '
+        + 'compared window here because nothing dies inside one.',
+  '0024': 'checkpoint index for player $18 ($24,X). Set by $979D as '
+        + 'min($3F AND $0E, 8) at the death, read by the respawn. Wave 5.',
+  '004C': 'the death/dying countdown. $C1D6 loads it with $78 and $96EF counts '
+        + 'it out; the port has neither ($C1D6 is wave 5, the $1B ladder is '
+        + 'wave 4). Watched from now so waves 4-5 are judged against recorded '
+        + 'cartridge data rather than data recorded after the fact.',
 };
 
 /**
@@ -193,9 +209,12 @@ export function peek(state, addr) {
     case 0x0D: return state.ppu.blank;
     // $0E is the $0700 queue's byte cursor. The port carries the queue as
     // structured packets rather than as a byte image (src/vram.js), so the
-    // cursor is reconstructed the way $8645 would have left it: three header
-    // bytes plus the data plus the $FF terminator, per packet.
-    case 0x0E: return state.vram.queue.reduce((n, p) => n + 4 + p.bytes.length, 0);
+    // cursor is maintained alongside them: three header bytes plus the data
+    // plus the $FF terminator per packet, PLUS the one $00 that $8641 appends
+    // at $80B0 on every non-lag frame. Before that byte was ported the port
+    // read exactly one less than the cartridge on every frame -- the
+    // w_000E@401 divergence, which was the first compared frame.
+    case 0x0E: return state.vram.cursor;
     case 0x10: return state.ppu.ctrl;
     case 0x11: return state.ppu.mask;
     case 0x12: return state.ppu.scrollX;
@@ -203,6 +222,8 @@ export function peek(state, addr) {
     case 0x15: return state.zp15;
     case 0x18: return state.zp.player;
     case 0x1B: return state.substate;
+    case 0x1E: return state.zp1E;          // $8B2B STA $1E
+    case 0x1F: return state.zp1F;          // $8B25 STY $1F
     case 0x2D: return state.ppu.chrSel;
     case 0x2F: return state.oamBase;
     case 0x35: return state.zp.autofire;
