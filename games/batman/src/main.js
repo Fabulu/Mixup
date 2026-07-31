@@ -20,8 +20,10 @@ import { makeTunables } from './tunables.js';
 import { attachInput, sampleInput } from './input.js';
 import { initLevel, clearLevel } from './level.js';
 import { loadManifest, loadPlayerTiles } from './assets.js';
-import { createFramebuffer, renderFrame, SCREEN_W, SCREEN_H } from './render/renderer.js';
+import { renderFrame } from './render/renderer.js';
 import { tick } from './game/frame.js';
+import { createPresenter, armAudio, onRefocus, createWatchdog,
+         createFailReporter } from './host/runtime.js';
 import { loadEnding, showEnding, tickEnding, hideEnding } from './ending.js';
 import {
   showsStageIntro, loadStageIntro, showStageIntro, tickStageIntro,
@@ -85,143 +87,45 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
   // loc_00_3652 and not a preview of it.
   if (ending) showEnding(state, loadEnding(manifest, null));
 
-  const fb = createFramebuffer();
-  // INTEGER UPSCALE, done here rather than left to CSS.
-  //
-  // The DMG frame is 160x144 and the page shows it several times larger. Handing
-  // that scale to the browser means trusting it to map one source pixel onto a
-  // whole number of device pixels -- and it does not always: a fractional CSS
-  // scale, a fractional devicePixelRatio, or an element whose left edge lands
-  // between device pixels all make some source pixels one device pixel wider
-  // than their neighbours. On flat art that is invisible. On a 50% DITHER it is
-  // not: the checkerboard beats against the sampling grid and reads as coarse
-  // irregular blocks.
-  //
-  // That is what the ending's credit circle is made of. Its edge is a dithered
-  // ring, and it was reported as "giant pixels at the corners, more like tetris
-  // pieces than pixels". The RENDER is not at fault -- the ending is pixel-exact
-  // against the cartridge over 88 frames of the whole crawl, and the cartridge
-  // runs no per-scanline program there at all (MEASURED: rIE = $05 with the STAT
-  // bit clear, and the STAT vector fires 0 times in 600 credit frames, so there
-  // is no smoothing layer to be missing). The fault is in how it is DISPLAYED.
-  //
-  // So blit the framebuffer into an offscreen 160x144 canvas and drawImage it
-  // onto a backing store that is an exact integer multiple, with smoothing off.
-  // The scale-up is then ours and always whole-pixel; whatever the browser does
-  // to fit the result is a smooth resample of an already-correct image rather
-  // than a per-pixel rounding decision.
-  const ctx = canvas.getContext('2d');
-  const src = document.createElement('canvas');
-  src.width = SCREEN_W;
-  src.height = SCREEN_H;
-  const srcCtx = src.getContext('2d');
-  const image = srcCtx.createImageData(SCREEN_W, SCREEN_H);
-  /** Re-read the integer scale the page asked for, clamped to something sane. */
-  const backingScale = () => {
-    const s = parseInt(canvas.dataset.scale || '0', 10);
-    return Number.isFinite(s) && s >= 1 ? Math.min(s, 8) : 1;
-  };
-  let scale = 0;
-  const sizeBacking = () => {
-    const s = backingScale();
-    if (s === scale) return;
-    scale = s;
-    canvas.width = SCREEN_W * s;
-    canvas.height = SCREEN_H * s;
-    ctx.imageSmoothingEnabled = false;
-  };
-  sizeBacking();
+  // The canvas, the upscale and the blit: ./host/runtime.js. `fb` is the
+  // framebuffer renderFrame writes into; present() puts it on the page.
+  const { fb, present } = createPresenter(canvas);
 
   attachInput();
 
-  // Audio cannot start without a user gesture. boot() is CALLED from one --
-  // the launcher's LAUNCH click -- so try immediately: browsers keep transient
-  // activation alive for a few seconds, which comfortably covers the awaits
-  // above. Waiting for the *next* gesture instead is why the music used to
-  // come in several seconds late, after whatever the player happened to press
-  // first.
-  //
-  // The listeners stay as the fallback for when that window has closed (a slow
-  // asset load) or when boot() was not reached from a gesture at all.
   const sound = new Sound();
-  const armAudio = () => {
-    sound.start();
-    window.removeEventListener('keydown', armAudio);
-    window.removeEventListener('pointerdown', armAudio);
-  };
-  try {
-    sound.start();
-  } catch {
-    window.addEventListener('keydown', armAudio);
-    window.addEventListener('pointerdown', armAudio);
-  }
+  armAudio(sound);
 
   let acc = 0;
   let last = performance.now();
   let running = true;
 
-  // Refocusing must not replay the missed time, and any key held when focus
-  // was lost never sends its keyup -- attachInput's blur handler clears those.
+  // THE ACCUMULATOR STAYS HERE, and ./host/runtime.js's header says why at
+  // length: the fixed-timestep loop below wraps the per-screen dispatch and the
+  // post-frame transition arms read flags its body sets, so lifting it out is an
+  // inversion of control rather than a move -- and no stage of the 26 drives
+  // boot() at all, while the harness that does advances the clock exactly one
+  // FRAME_MS per callback and so can only ever exercise the one-step case.
   const resync = () => { last = performance.now(); acc = 0; };
-  window.addEventListener('focus', resync);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) resync(); });
+  onRefocus(resync);
 
-  // --- the suspended-loop watchdog ------------------------------------------
-  //
-  // step() hands off to an async load by RETURNING without rescheduling; only
-  // resume() restarts it. Every such handoff is therefore a window in which the
-  // game is, correctly, frozen -- and an incorrectly frozen game looks exactly
-  // the same. A player sees one thing either way: everything vanishes and the
-  // music keeps playing.
-  //
-  // So make the difference observable. Arm a timer at each handoff and disarm
-  // it in resume(); if it ever fires, the loop was suspended and never came
-  // back, and we can say WHICH handoff did it instead of guessing from a
-  // description. This exists because a reported level-6 softlock could not be
-  // reproduced from any scripted input -- the level itself is bit-exact against
-  // the cartridge for 400 frames -- so the next occurrence has to report itself.
-  let watchdog = null;
-  const WATCHDOG_MS = 5000;
-  const arm = (where) => {
-    if (watchdog !== null) clearTimeout(watchdog);
-    watchdog = setTimeout(() => {
-      watchdog = null;
-      fail(`the frame loop was suspended by "${where}" and never resumed`)(
-        new Error(`no resume() within ${WATCHDOG_MS} ms`));
-    }, WATCHDOG_MS);
-  };
+  // Arm on every async handoff, disarm in resume(); if it fires, the loop was
+  // suspended and never came back, and it can say WHICH handoff did it.
+  const watchdog = createWatchdog((where, err) =>
+    fail(`the frame loop was suspended by "${where}" and never resumed`)(err));
+  const arm = (where) => watchdog.arm(where);
 
   /** Restart the rAF loop after an async screen swap. */
   const resume = () => {
-    if (watchdog !== null) { clearTimeout(watchdog); watchdog = null; }
+    watchdog.disarm();
     last = performance.now();
     acc = 0;
     requestAnimationFrame(step);
   };
 
-  /**
-   * Every async screen swap below suspends the rAF loop: step() `return`s
-   * WITHOUT rescheduling, and only resume() restarts it. So a rejected load
-   * left the loop dead forever while the audio worklet carried on -- a silent
-   * freeze with the music still playing, and nothing in the console unless you
-   * happened to be watching for an unhandled rejection.
-   *
-   * REPORTED FROM PLAY on level 6, whose clear is the one handoff that goes
-   * through a transition rather than a screen. The level-6 simulation itself
-   * is bit-exact against the cartridge for 400 frames, so the fault was never
-   * in the game code -- it was that a failure here had no way to be seen.
-   *
-   * Stop the sound too: a dead game that keeps playing music reads as a game
-   * bug rather than a load failure, which is what sent the last investigation
-   * looking in the wrong place.
-   */
-  const fail = (where) => (err) => {
-    running = false;
-    try { sound.stop(); } catch { /* the driver may never have started */ }
-    const msg = `${where} failed: ${(err && err.message) || err}`;
-    if (onError) onError(msg, err);
-    else console.error('[mixup] ' + msg, err);
-  };
+  // `fail(where)(err)` -- the shape .catch() wants. Halting is this file's job
+  // because `running` belongs to the loop above.
+  const fail = createFailReporter({ sound, onError, halt: () => { running = false; } });
 
   /**
    * loc_00_035B, from all three of its callers: the title walk-through
@@ -402,12 +306,7 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
 
     runHook(loadout, 'onRenderFrame', state);
     renderFrame(state, fb);
-    image.data.set(fb.rgba);
-    sizeBacking();                 // the page may have resized since last frame
-    srcCtx.putImageData(image, 0, 0);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(src, 0, 0, SCREEN_W, SCREEN_H,
-                  0, 0, SCREEN_W * scale, SCREEN_H * scale);
+    present();
 
     // $388E: `JP loc_00_0150` -- the ending does not RETURN anywhere, it
     // resets the machine. The nearest honest equivalent here is the same path
