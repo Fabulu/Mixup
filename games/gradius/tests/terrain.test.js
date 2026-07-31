@@ -15,9 +15,12 @@
 // and the whole of rows 28-29 turns out to be exactly what they write: 24 bytes
 // at $2384 (row 28 columns 4-27, st_89E3's one open run) and 24 bytes across
 // row 29 ($23A2 lives, $23A8 score, $23B4 top score). So the comparison below
-// is over the FULL 4 KB, no rows held back -- and if a producer stops running
-// this test is what notices, on three captures with three different lives
-// counts ($20 = 3 / 1 / 0).
+// holds no rows back -- and if a producer stops running this test is what
+// notices, on three captures with three different lives counts ($20 = 3/1/0).
+//
+// "THE WHOLE 4 KB" IS NOW TRUE AND WAS NOT WHEN IT WAS FIRST WRITTEN: diffByRow
+// walked two 1 KB pages, i.e. bytes 0-0x7FF of a 4096-byte image, while the
+// header and the commit message both claimed 4 KB. See the note on diffByRow.
 
 import test from 'node:test';
 import assert from 'node:assert';
@@ -78,9 +81,20 @@ function drawStatusBar(s, ram) {
   }
 }
 
+/**
+ * Every byte of the 4 KB image, in four 1 KB pages.
+ *
+ * IT USED TO BE TWO PAGES, and the header above said "the FULL 4 KB" while
+ * comparing 0x000-0x7FF. Pages 2 and 3 are the vertical-mirroring aliases of 0
+ * and 1 -- byte-identical in the capture, checked: `lo != hi` on 0 of 4096
+ * bytes at f400, f1200 and f3500 -- but the port has to WRITE them (src/vram.js
+ * drainQueue), and src/render/ppu.js reads them whenever nty = 1, which the
+ * port's own $13 = $0C makes routine for screen scanlines 228-239. Deleting the
+ * mirror store left all 80 tests green. `nt < 4` is the whole fix.
+ */
 function diffByRow(mine, theirs) {
   const rows = new Map();
-  for (let nt = 0; nt < 2; nt++) {
+  for (let nt = 0; nt < 4; nt++) {
     for (let i = 0; i < 0x400; i++) {
       const o = nt * 0x400 + i;
       if (mine[o] === theirs[o]) continue;

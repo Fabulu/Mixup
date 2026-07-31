@@ -85,14 +85,34 @@ test('the four $8898 phases reproduce the cartridge\'s $0700 images, byte for by
   }
 });
 
-test('$0E after a whole frame is 1 / 9 / 15 / 40 -- the cartridge\'s own histogram', () => {
-  // The port driven through real NMIs, not through tick(). MEASURED on the
-  // cartridge over 1000 recorded frames of long-idle:
-  //   $0E histogram {1:339, 9:86, 13:79, 15:173, 38:84, 40:87, 45:128, ...}
-  // 1 = $8641 alone on an even frame; 9/15/40 = the HUD's 8/14/39 plus it;
-  // 38 = a terrain block's 37 plus it; 45 = a block plus the 8-byte lives
-  // packet. Here the streamer is held off ($3A) so only the HUD contributes.
-  // RED WHEN: the $889F/$88A2 parity gate is dropped (every frame produces).
+test('$0E after a whole frame is 1 / 9 / 15 / 40 -- the HUD\'s four sizes plus $8641', () => {
+  // The port driven through real NMIs, not through tick(). Here the streamer is
+  // held off ($3A) so only the HUD contributes, and the four phases show up as
+  // 8/14/39 bytes plus $80B0's one terminator: 9, 15, 15, 40.
+  //
+  // RE-MEASURED FOR THIS FILE, and the comment that used to be here was wrong
+  // in a way worth recording. It quoted the cartridge's whole-run $0E histogram
+  // and glossed "45 = a block plus the 8-byte lives packet" and "13" as if both
+  // were mode-5 numbers. Split by the recorded `mode` field, over all 1000
+  // frames of tools/oracle/out/scen/long-idle.json:
+  //
+  //   $0E=1   {mode1:71, mode3:2, mode4:1, mode5:265}
+  //   $0E=9   {mode5:86}          the lives phase
+  //   $0E=13  {mode3:79}          MODE 3 ONLY -- never during play
+  //   $0E=15  {mode5:173}         the two score phases
+  //   $0E=37  {mode5:1}    $0E=38 {mode5:84}    a terrain block (37) +/- $8641
+  //   $0E=40  {mode5:87}          the power bar
+  //   $0E=45  {mode0:127, mode1:1}   NEVER mode 5   $0E=49 {mode5:1}
+  //   $0E=90  {mode0:1}
+  //   $0E=149 {mode5:21}    frames 287-307: $9C2C-$9C35 calls $9D8E FOUR times
+  //                         with no $0E gate between them, 4*37 + 1
+  //
+  // so the mode-5 bucket set is {1, 9, 15, 37, 38, 40, 49, 149} and neither 13
+  // nor 45 is in it. This fixture can only produce {1, 9, 15, 40}, which is a
+  // subset of it -- said out loud rather than implied, because the previous
+  // wording read as though the fixture reproduced the cartridge's histogram.
+  // RED WHEN: the $889F/$88A2 parity gate is dropped (every frame produces),
+  // or the four-phase order changes.
   const s = bootState(res.manifest);
   s.build.gate = 1;                       // $3A up: $9D85 BNE, no streamer
   s.frame = 0x91;                         // the cartridge's $02 at align 400
@@ -100,6 +120,48 @@ test('$0E after a whole frame is 1 / 9 / 15 / 40 -- the cartridge\'s own histogr
   for (let i = 0; i < 8; i++) { nmi(s, 0, res); seen.push(s.vram.cursor); }
   assert.deepStrictEqual(seen, [1, 15, 1, 9, 1, 15, 1, 40],
     'the per-frame $0E sequence is not the cartridge\'s');
+});
+
+test('600 frames: the HUD takes exactly half of them, 75 per phase, as the cartridge does', (t) => {
+  // The counts, not the sequence -- and they are the CARTRIDGE'S counts. Its
+  // compared window (long-idle, frames 400-999, all game mode 5, 600 rows) has
+  //
+  //   $0E histogram {1:244, 9:75, 15:150, 38:56, 40:75}
+  //
+  // and 9 / 15 / 40 are the HUD's three sizes. 600 frames, 300 of them odd, a
+  // four-phase rotation: 75 lives + 75 top + 75 score + 75 bar, and the two
+  // score phases share the size 15, so {9:75, 15:150, 40:75} is forced. The
+  // port reproduces those three numbers EXACTLY on its own 600 frames.
+  //
+  // The other 300 are the streamer's and they are NOT compared here: the port
+  // builds a block on 168 of them against the cartridge's 56, because the
+  // cartridge's 384 px lead ($57/$9DAF) throttles builds this fixture does not
+  // reproduce. Saying so rather than asserting the whole histogram, because
+  // 38:168 vs 38:56 is a real difference and hiding it inside a green test is
+  // how a number stops meaning anything.
+  // RED WHEN: the parity gate goes, the rotation stops rotating, or any phase
+  // changes size by a byte.
+  const s = bootState(res.manifest);
+  s.frame = 0x91;
+  const h = new Map();
+  const hudSizes = [];
+  for (let i = 0; i < 600; i++) {
+    nmi(s, 0, res);
+    h.set(s.vram.cursor, (h.get(s.vram.cursor) || 0) + 1);
+    if ([9, 15, 40].includes(s.vram.cursor)) hudSizes.push(s.frame);
+  }
+  t.diagnostic(`port $0E histogram over 600 NMIs: ${JSON.stringify([...h].sort((a, b) => a[0] - b[0]))}`);
+  assert.strictEqual(h.get(9), 75, '$88B6 lives did not run on 75 frames');
+  assert.strictEqual(h.get(15), 150, '$88F6 + $892C did not run on 150 frames');
+  assert.strictEqual(h.get(40), 75, '$89E3 power bar did not run on 75 frames');
+  assert.strictEqual(hudSizes.length, 300, 'the HUD did not take exactly half the frames');
+  // and every frame it took was odd -- the scarce resource is the frame, and
+  // $02 bit 0 is the whole of the rule that decides who gets it.
+  assert.deepStrictEqual(hudSizes.filter((f) => (f & 1) === 0), [],
+    'the HUD produced on an EVEN $02 frame');
+  // the complement: nothing else may produce a HUD-sized queue.
+  assert.deepStrictEqual([...h.keys()].sort((a, b) => a - b), [1, 9, 15, 38, 40],
+    'a frame produced a queue size that is neither the HUD\'s nor a block\'s');
 });
 
 test('$8898 is the STREAMER\'S THROTTLE: no terrain block on an ODD $02 frame', (t) => {
@@ -220,6 +282,45 @@ test('$88BF LDX $18: the lives byte comes from $20,X, not from $20', () => {
   s.zp.player = 1;
   s.lives[0] = 3; s.lives[1] = 7;
   assert.strictEqual(tick(s), '01 23 A2 00 61 00 37 FF', '$20,X read the wrong byte');
+});
+
+test('$88D9 LDY $0E: the digit patch is CURSOR-RELATIVE, not at a fixed index', (t) => {
+  // $88E5 STA $06FE,Y, $88ED STA $06FD,Y and $88F2 STA $06FC,Y all index off
+  // Y = $0E as it stood AFTER $85E8 appended the packet, i.e. $0700 + $0E - 2,
+  // -3 and -4. Every other test in this file starts the tick on an EMPTY queue,
+  // where $0E - 2 is the constant 6 -- so replacing each of the three stores
+  // with its constant leaves the WHOLE SUITE GREEN. Measured, one at a time:
+  //   q[y-2] -> q[6]   80 pass 0 fail
+  //   q[y-4] -> q[4]   80 pass 0 fail
+  //
+  // A non-empty queue is not an invented state: $8898's own gate ADMITS one --
+  // `LDA $0E / CMP #$04 / BCC` lets 1, 2 and 3 bytes through and only refuses
+  // at 4 -- and elsewhere in the ROM the same four producers are called in
+  // sequence with no gate at all ($9C12/$9C15/$9C18/$9C1E), which is where the
+  // cartridge's game-mode-0 readings of $0E = 45 and 90 come from. This test
+  // stays inside what $889A permits: leads of 1, 2 and 3 bytes.
+  // BOTH LIVES VALUES ARE NEEDED and the first draft had only the first: with
+  // $20 = 3 the tens digit is suppressed, so `q[y-3] -> q[5]` stayed GREEN
+  // (measured, 95 pass 0 fail) until $20 = 12 was added. Three patch sites,
+  // three constants, three arms -- the suppressed one has to be un-suppressed
+  // before the check exists.
+  // RED WHEN: any of the three patch offsets is written as a constant.
+  const cases = [[3, '01 23 A2 00 61 00 33 FF'], [12, '01 23 A2 00 61 31 32 FF']];
+  for (const [lives, want] of cases) {
+    for (let lead = 1; lead <= 3; lead++) {
+      const s = seeded();
+      s.lives[0] = lives;
+      s.vram.cursor = 0;
+      s.frame |= 1;
+      for (let i = 0; i < lead; i++) queueTerminator(s);   // 1..3 bytes already there
+      hudTick(s, P);
+      const got = image(s);
+      t.diagnostic(`$20 = ${lives}, lead ${lead}: ${got}`);
+      assert.strictEqual(got, '00 '.repeat(lead) + want,
+        `$20 = ${lives} with ${lead} byte(s) already in $0E: the lives packet `
+        + `must still be patched at $0E-2 / $0E-3 / $0E-4, not at a fixed 6/5/4`);
+    }
+  }
 });
 
 // =========================== st_88F6 / st_892C ==============================
@@ -358,6 +459,40 @@ test('$8A30: the meter cursor is one attribute byte at $0E - (8 - $42)', (t) => 
   }
 });
 
+test('$8A40 LDA $0E / SBC $98: the cursor counts back from the END of the queue', (t) => {
+  // The companion to the $88D9 test above, on the other producer that patches
+  // bytes it has already written. `X := $0E - (8 - $42)` is relative to
+  // WHEREVER the 11-byte packet $1A ended, so a port that hard-codes the
+  // cursor's empty-queue value (39) puts the lit attribute byte three cells to
+  // the left the moment anything else is in the queue -- and the whole suite
+  // stays green, measured: `u8(state.vram.cursor - back)` -> `u8(39 - back)`,
+  // 80 pass 0 fail.
+  //
+  // Asserted on the last 11 bytes of the page (the packet $8A30 just appended)
+  // rather than through scanQueue(), because a queue that starts with the
+  // three-byte lead below has a $00 at index 0 and $8A56 BEQ stops there --
+  // which is itself the ROM's behaviour and not something to route around.
+  // RED WHEN: the cursor is replaced by a constant, or `8 - $42` shifts.
+  for (let lead = 0; lead <= 3; lead++) {
+    for (const meter of [1, 3, 6]) {
+      const s = seeded();
+      s.zp48 = 1;                                   // next tick is phase 2
+      s.zp.meter = meter;
+      s.vram.cursor = 0;
+      s.frame |= 1;
+      for (let i = 0; i < lead; i++) queueTerminator(s);
+      hudTick(s, P);
+      assert.strictEqual(s.vram.cursor, lead + 39, 'the phase did not emit 39 bytes');
+      const attr = s.vram.q.subarray(s.vram.cursor - 11, s.vram.cursor);
+      const want = [0x01, 0x23, 0xF8, 0, 0, 0, 0, 0, 0, 0, 0xFF];
+      want[3 + meter] = 0x55;                       // data byte $42, 1-based
+      t.diagnostic(`lead ${lead} $42 = ${meter}: ${hex(attr)}`);
+      assert.deepStrictEqual([...attr], want,
+        `lead ${lead}, $42 = ${meter}: the cursor landed on the wrong byte`);
+    }
+  }
+});
+
 // ============================== $85F3 itself ================================
 
 test('$860A vs $8629: $FF leaves the run OPEN, $FE closes it', () => {
@@ -398,21 +533,52 @@ test('$862D: control code $FD emits TWO more packets from ONE index', () => {
   assert.deepStrictEqual(q.map((p) => p.addr), [0x27D6, 0x27DE, 0x27E6]);
 });
 
-test('$8617-$8624: index bit 7 blanks everything after the first TWO bytes', () => {
+test('$8617-$8624: index bit 7 blanks everything after the first TWO bytes', (t) => {
   // The "erase this text" variant. $85F5 ASL A is 8-bit, so bit 7 never reaches
   // the table -- index $80|n and index n share a pointer -- and the two bytes
   // that survive are exactly the packet's own ADDRESS. UNEXERCISED on the
   // cartridge; transcribed from the listing and said so in src/hudpackets.js.
-  // RED WHEN: the $9B countdown starts at 1 or 3, or the lookup masks bit 7
-  // out of $9A as well as out of X.
-  const s = bootState(res.manifest);
-  cannedPacket(s, P, 0x80 | 0x11);
-  assert.strictEqual(image(s), '01 23 A2 00 00 00 00 FF',
-    'the blanked lives packet must keep $23 $A2 and zero the rest');
-  // the un-blanked form of the same index is the same length
-  const u = bootState(res.manifest);
-  cannedPacket(u, P, 0x11);
-  assert.strictEqual(image(u).length, image(s).length);
+  //
+  // A CHECK THAT COULD NOT SEE ITS OWN SUBJECT, and how it was found. This test
+  // used to drive index $80|$11, and packet $11 is `23 A2 00 00 00 00 FE` --
+  // every byte after the address is ALREADY $00, so the blanked and un-blanked
+  // images are IDENTICAL. Deleting the blanker outright, or starting the $9B
+  // countdown at 3, 4 or 9, left all 80 tests green. Measured over every packet
+  // the port can emit:
+  //
+  //   $0F $12 $13 $14 $15 $16 $17 $18 $19 $1B   blanked != plain   (10)
+  //   $11 $1A                                   blanked == plain   ( 2)
+  //
+  // and the old test had picked one of the two blind ones. So this one drives
+  // $0F, and the FIRST assertion is that the two images differ at all --
+  // without it the rest is 0 == 0 (docs/knowledge/03, "coverage must be
+  // proportional to the content").
+  // RED WHEN: the blanker is removed; the $9B countdown starts at 1, 3 or
+  // anything but 2; or the lookup masks bit 7 out of $9A as well as out of X.
+  const plain = (idx) => { const s = bootState(res.manifest); cannedPacket(s, P, idx); return image(s); };
+
+  const p0F = plain(0x0F), b0F = plain(0x80 | 0x0F);
+  t.diagnostic(`$0F plain "${p0F}" blanked "${b0F}"`);
+  assert.notStrictEqual(b0F, p0F,
+    'packet $0F cannot tell blanked from plain -- this test would be vacuous');
+  assert.strictEqual(p0F, '01 23 84 09 0A 0B 0C', 'packet $0F, un-blanked');
+  assert.strictEqual(b0F, '01 23 84 00 00 00 00',
+    'the blanked power-bar packet must keep $23 $84 and zero the four cells');
+
+  // Two more, so that "the first TWO bytes" is pinned by three packets whose
+  // surviving pair differs, not by one.
+  assert.strictEqual(plain(0x80 | 0x12), '01 23 B4 00 00 00', 'blanked TOP-score label');
+  assert.strictEqual(plain(0x80 | 0x13), '01 23 A8 00 00 00', 'blanked score label');
+  assert.strictEqual(plain(0x80 | 0x15), '01 0D 0E 00 00',
+    'a cell packet has no address: the two survivors are its first two TILES');
+
+  // ...and the countdown is a countdown, not a flag: the two survivors are the
+  // first two bytes COPIED, and everything from the third on is $00 however
+  // long the stream is.
+  assert.strictEqual(plain(0x80 | 0x1C).slice(0, 8), '01 23 84',
+    'the 25-byte packet $1C keeps its address');
+  assert.match(plain(0x80 | 0x1C), /^01 23 84( 00){24} FF$/,
+    'every byte after the first two must be $00');
 });
 
 test('$85F7 LDA $864E,X: an index with no packet throws by ROM address', () => {
