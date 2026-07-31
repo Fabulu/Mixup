@@ -81,11 +81,36 @@ const NEVER_SHIP = new Set(['prg.bin', 'chr.bin', 'prg.asm']);
 // `node tools/oracle/pixeldiff.mjs` must still say 73 frames / 66894 wrong px /
 // 96.023% after this change; if it moves, the substitution has leaked into the
 // dev tree and that is the bug.
-const SUBSTITUTE = new Map([
-  ['games/batman/assets/player.tiles.bin', () => {
-    const mf = path.join(ROOT, 'games', 'batman', 'assets', 'manifest.json');
-    return makePlaceholderPool(JSON.parse(fs.readFileSync(mf, 'utf8')));
-  }],
+// EMPTY ON PURPOSE, and the machinery stays. player.tiles.bin was in here and
+// was taken out by an explicit decision from the repo's owner: the PUBLISHED
+// SITE may serve real cartridge art, it is GITHUB that must stay clean. Those
+// are different questions and the placeholder swap answered the wrong one --
+// the site is the owner's own deployment of their own legally-owned cartridge,
+// while the repo is public source that anyone clones.
+//
+// So the site shows real Batman again (see PUBLISH_VERBATIM), and this stays as
+// working machinery plus tools/make-placeholder-tiles.mjs as a worked example,
+// for the next asset where substituting IS the right answer.
+const SUBSTITUTE = new Map([]);
+
+// Files that ARE verbatim cartridge data and are published anyway, deliberately,
+// one line of reasoning each. Not a general allowlist: it is enumerated, it is
+// printed on every single build, and the guard below still blocks everything
+// not named here.
+//
+// The distinction that matters, and the reason this is not the hole the old
+// SHIPPED_ANYWAY was: prg.bin and chr.bin are the WHOLE CARTRIDGE, 32768 bytes
+// each, and the site never fetches them -- publishing those is distributing the
+// game, by accident, for no benefit. player.tiles.bin is 6974 bytes of player
+// animation art that src/assets.js:82 fetches and without which the port cannot
+// draw its own protagonist. Blocking the first is the guard doing its job;
+// blocking the second only ever produced a site that looked broken.
+const PUBLISH_VERBATIM = new Map([
+  ['games/batman/assets/player.tiles.bin',
+   'the player animation tile pool, fetched by games/batman/src/assets.js:82 -- '
+   + 'the port cannot draw Batman without it. Owner decision: the live site may '
+   + 'serve real cartridge art; the repo may not, and does not (assets/ is '
+   + 'gitignored and nothing ROM-derived is ever committed).'],
 ]);
 
 const substituted = [];
@@ -166,11 +191,15 @@ const shipped = [];
 })(DIST);
 
 const leaked = [];
+const deliberate = [];
 for (const file of shipped) {
   const data = fs.readFileSync(file);
   // Under 1 KB a coincidental match means nothing -- a run of zeroes or a short
   // table can legitimately appear in both. The concern is bulk ROM content.
   if (data.length < 1024) continue;
+  const rel = path.relative(DIST, file).split(path.sep).join('/');
+  const why = PUBLISH_VERBATIM.get(rel);
+  if (why) { deliberate.push(`${rel} (${data.length} B) -- ${why}`); continue; }
   for (const rom of roms) {
     if (rom.data.includes(data)) {
       leaked.push(`${path.relative(DIST, file)}  (${data.length} B, verbatim inside ${rom.name})`);
@@ -183,21 +212,31 @@ if (leaked.length) {
   console.error('\nREFUSING TO BUILD: dist/ contains verbatim cartridge data.\n'
     + leaked.map((l) => '  ' + l).join('\n')
     + '\n\ndist/ is published publicly. A file that appears byte-for-byte inside a\n'
-    + 'ROM is the ROM, however it got there. There is no allowlist and there is\n'
-    + 'not going to be one. Three real answers:\n'
+    + 'ROM is the ROM, however it got there. Four real answers, in order of how\n'
+    + 'often they turn out to be the right one:\n'
     + '  - the exporter is writing an INTERMEDIATE into assets/ that the site\n'
-    + '    never fetches: drop it, or add its basename to NEVER_SHIP;\n'
+    + '    never fetches: drop it, or add its basename to NEVER_SHIP. This was\n'
+    + '    the answer for prg.bin, chr.bin and the four chr/bank*.bin files --\n'
+    + '    together the whole Gradius cartridge, none of it ever fetched;\n'
     + '  - something that should be a TRANSLATION is a copy: fix the exporter;\n'
-    + '  - the site genuinely needs bytes we cannot publish: draw an original\n'
-    + '    replacement of the same length and layout and add it to SUBSTITUTE,\n'
-    + '    the way tools/make-placeholder-tiles.mjs does for the player tiles.');
+    + '  - the site genuinely needs bytes we would rather not publish: draw an\n'
+    + '    original replacement of the same length and layout and add it to\n'
+    + '    SUBSTITUTE (tools/make-placeholder-tiles.mjs is the worked example);\n'
+    + '  - the owner has decided this asset SHOULD be published: add it to\n'
+    + '    PUBLISH_VERBATIM with the reason. That is a decision about the site,\n'
+    + '    not about the repo -- nothing ROM-derived is committed either way.\n'
+    + '    Do not reach for this one first.');
   fs.rmSync(DIST, { recursive: true, force: true });
   process.exit(1);
 }
 for (const s of substituted) console.log(`substituted: ${s}`);
+// Printed EVERY build, never folded into a count. A deliberate exception that
+// stops being mentioned is how the old allowlist survived unexamined from the
+// first deploy to the day someone finally read it.
+for (const d of deliberate) console.log(`published verbatim, deliberately: ${d}`);
 console.log(`rom-leak guard: ${shipped.length} files checked against `
   + `${roms.length} ROM(s) [${roms.map((r) => r.name).join(', ') || 'none present'}] `
-  + `-- clean, no allowlist`);
+  + `-- clean, ${deliberate.length} deliberate exception(s)`);
 
 // Assets must REVALIDATE, not be treated as immutable.
 //

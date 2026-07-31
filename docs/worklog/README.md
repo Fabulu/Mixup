@@ -56,14 +56,28 @@ reason beats a confident guess. Nobody is penalised for unresolved.
 ## The rules that are not negotiable
 
 1. **Nothing ROM-derived is ever committed.** `assets/`, `rip/`, `dist/`, and
-   any ROM file. `tools/build-dist.mjs` has a guard that reads the ROMs and
-   refuses to publish anything appearing verbatim inside one — do not weaken it,
-   and **do not re-introduce an allowlist**. It had exactly one entry
-   (`player.tiles.bin`) and that entry meant the site served cartridge graphics
-   for its whole life. The mechanism is gone. If the site needs bytes we cannot
-   publish, draw an original replacement of the same length and layout and add
-   it to `SUBSTITUTE` — `tools/make-placeholder-tiles.mjs` is the worked
-   example. The local tree keeps the real assets, so the oracle is unaffected.
+   any ROM file. This is absolute and it is about **the repo**, which is public
+   source anyone can clone.
+
+   **The published site is a separate question with a separate answer.** It is
+   the owner's own deployment of their own legally-owned cartridge, and the
+   owner has decided it may serve real cartridge art. `player.tiles.bin` — the
+   player animation pool, without which the port cannot draw its protagonist —
+   is published verbatim, deliberately, and is listed in `PUBLISH_VERBATIM` in
+   `tools/build-dist.mjs` with its reason. Do not "fix" that back to a
+   placeholder.
+
+   `tools/build-dist.mjs`'s ROM-leak guard still reads every ROM and blocks
+   anything verbatim that is **not** named there — **do not weaken it**. What it
+   exists to catch is bulk cartridge content nobody meant to ship: `prg.bin`,
+   `chr.bin` and four `chr/bank*.bin` files, together the whole Gradius
+   cartridge, none of which the site ever fetches. Every deliberate exception is
+   printed on every build, because an exception that stops being mentioned is
+   how the previous one survived unexamined from the first deploy onward. If the
+   site ever needs bytes that genuinely should not be published, draw an
+   original replacement of the same length and layout and add it to
+   `SUBSTITUTE` — `tools/make-placeholder-tiles.mjs` is the worked example, and
+   the local tree keeps the real assets either way, so the oracle is unaffected.
 2. **Never `git add -A`.** Stage by name, then run
    `git diff --cached --name-only` and read it. Staging by name protects you
    from unstaged work; only looking protects you from what another agent
