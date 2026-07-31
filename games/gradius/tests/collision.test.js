@@ -78,11 +78,30 @@ test('$C12C SBC: the dy is one SMALLER than the difference, because of the carry
 });
 
 test('$C127 vs $C131: the WIDTH is $BFDA and the HEIGHT is $BFDE, and the index is j', () => {
-  // WRITTEN BECAUSE TWO DELIBERATE BREAKS SURVIVED the test above. Class 0 is
-  // $10 x $10 -- the SAME byte in both tables -- and `$0460[j]` and
-  // `$0460[j+12]` are both 0 on every frame of every scenario, so swapping the
-  // two tables and swapping the two indices were BOTH green on the whole suite
-  // and on the whole corpus. docs/knowledge/03 shape 3, in miniature.
+  // WRITTEN BECAUSE A DELIBERATE BREAK SURVIVED the test above: class 0 is
+  // $10 x $10 -- the SAME byte in both tables -- so swapping $BFDA and $BFDE is
+  // green on the whole suite and the whole corpus. docs/knowledge/03 shape 3,
+  // in miniature.
+  //
+  // THE SECOND HALF OF THAT NOTE WAS WRONG AND IS CORRECTED HERE (rule 6). It
+  // read "`$0460[j]` and `$0460[j+12]` are both 0 on every frame of every
+  // scenario", and wave 5's reviewer called it. RE-MEASURED, this commit:
+  //   * $0460-$0469 (the box classes) IS 0 in all 23 scenario seeds -- census
+  //     over out/scen/*.json seedRam, which is the cartridge's own $0000-$07FF.
+  //   * $046C-$0475 is NOT. It is the enemy HANDLER-STATE array (scenarios.json
+  //     `_watch`, wave 3), nonzero in intro-respawn's seed
+  //     ([0,0,0,0,41,30,36,36,63,52] at $046C) and written to 1..64 during play
+  //     by src/enemies.js.
+  // So `$0460[j+12]` is not a silent alias, it is an out-of-bounds table index:
+  //   node tools/oracle/compare.mjs --only right-wall
+  //     Error: collision tables: $C01A is not in any exported range
+  //            (boxes $BFDA-$BFE1, explosion $C0FA-$C100)
+  //       at playerVsEnemies (src/collision.js:234)
+  // -- right-wall and enemy-waves both die that way. The break is CAUGHT, loudly
+  // and by design ($BFDA is exported as eight bytes precisely so that a wrong
+  // index cannot return a plausible width), and this test is what catches it in
+  // the unit suite. What remains genuinely uninterrogated is the CLASS, not the
+  // index: no measured run has ever given an enemy a box class other than 0.
   //
   // LISTING-DERIVED, NOT MEASURED, and labelled as such: the tables read
   //     $BFDA  10 20 30 10      widths
@@ -273,18 +292,34 @@ test('$C2B5: the terrain probe is skipped while the ship is already dying', () =
 
 // ------------------------------------------------------- $979D, the respawn --
 
-test('$97B1-$97BB: the checkpoint is min($3F AND $0E, 8) -- the recon\'s own table', () => {
-  // 00-recon-flow.md proved this BY INTERVENTION on the cartridge, poking $3F
-  // just before a death (an INPUT to the formula, not its output):
-  //     poked $3F |  3 |  7 | 20 ($14)
-  //     read  $24 |  2 |  6 |  4
-  // Replayed here because every death in the corpus happens at $3F = 0, so the
-  // comparison can only ever see the answer 0.
-  // RED WHEN: the mask is $0F (7 -> 7), the cap is applied before the mask, or
-  // the cap is `< 8` instead of `>= 8 -> 8` (which only $3F >= 8 can see).
-  // The last three are the cap and the mask pulling in opposite directions:
-  // $10 AND $0E is 0 (the bit the cap would look at is masked away first), $1F
-  // AND $0E is 14 and caps to 8, and 8 itself is the boundary the BCC uses.
+test('$97B1-$97BB: the checkpoint is min($3F AND $0E, 8) -- MEASURED, all seven rows', () => {
+  // RE-MEASURED BY INTERVENTION ON THE CARTRIDGE, wave 5's test pass. This test
+  // used to REPLAY 00-recon-flow.md's three rows; four of the seven values below
+  // -- the ones that separate the mask from the cap -- had never been put to the
+  // hardware at all. They have now:
+  //
+  //   for v in 0 3 7 8 16 20 31; do
+  //     python games/gradius/tools/oracle/flowprobe.py --frames 660 \
+  //       --script "200:,10:S,450:" --hooks 979D --fields st24,camHi \
+  //       --poke "001B=160@500-500,004C=120@500-500,0100=2@500-500,\
+  //               003F=$v@480-620"
+  //   done
+  //
+  // Every run reports `hook.979D = total 1 firstGameFrame 621`, and the $24
+  // transition on frame 621 is:
+  //
+  //     poked $3F |  0 |  3 |  7 |  8 | 16 ($10) | 20 ($14) | 31 ($1F)
+  //     read  $24 |  0 |  2 |  6 |  8 |        0 |        4 |        8
+  //
+  // (0 and 16 show as "no transition", with `camHi 16 -> 0` on the same frame
+  // proving $9B6A put a 0 back.) The three pokes at frame 500 are $C1D6's own
+  // stores by hand -- $1B = $A0, $4C = 120, $0100 = 2 -- so that the death lands
+  // on a known frame; $97B1-$97BB reads none of them.
+  //
+  // RED WHEN: the mask is $0F (3 -> 3, 7 -> 7), the cap is applied before the
+  // mask, or the cap is dropped ($1F AND $0E is 14, and the cartridge says 8).
+  // $10 -> 0 is the row where the two pull in opposite directions: the bit the
+  // cap would look at is masked away first.
   for (const [cam, want] of [[3, 2], [7, 6], [0x14, 4], [0, 0],
                              [0x10, 0], [0x1F, 8], [8, 8]]) {
     const s = bootState(res.manifest);

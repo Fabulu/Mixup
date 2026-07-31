@@ -228,6 +228,35 @@
   ],
   "knownFail": [],
 
+  "_expectDying": [
+    "How many frames of a scenario's COMPARED WINDOW the CARTRIDGE spends with",
+    "$0100 >= 2, i.e. dying. Optional; compare.mjs's DEATH COVERAGE block fails",
+    "the run when a scenario that carries one no longer matches it.",
+    "",
+    "WHY IT EXISTS. terrain-death and terrain-death-miss kill (and deliberately",
+    "fail to kill) by poking ONE collision-map cell, and which cell that is",
+    "depends on the camera at the poke frame -- kill.py derives $05B3 from",
+    "playerX 80, playerY 96 and $3E = 93. Change the script, the align frame or",
+    "the scroll rate and the poke lands where the ship is not: NOTHING fails.",
+    "Neither side dies, both sides still agree frame for frame, and the summary",
+    "still reads `0 failures` while terrain-death has quietly become a second",
+    "copy of terrain-death-miss. docs/knowledge/03's first shape exactly.",
+    "",
+    "MEASURED (node tools/oracle/compare.mjs, this commit): 823 dying frames",
+    "across 7 of the 23 scenarios -- terrain-death 121 (first at f501),",
+    "right-wall 121 (f493), diag-rd-lu 107 (f533), diag-ru-ld 121 (f445),",
+    "lr-both 121 (f482), speed6-right 121 (f515), speed3-diag 111 (f529).",
+    "terrain-death-miss carries an EXPLICIT 0: the control is as load-bearing as",
+    "the kill, because it is what proves the poke is what does the killing.",
+    "",
+    "The number comes off the ORACLE artifact, never the port, so a port that",
+    "cannot die is unable to satisfy it by agreeing with itself.",
+    "",
+    "SEEN RED: changing terrain-death's poke to the miss cell 05B4 and",
+    "re-recording ->  [FAIL] terrain-death 0 dying frames, expected 121, while",
+    "every field comparison stayed green (0 failures)."
+  ],
+
   "scenarios": [
     {
       "name": "intro-boot",
@@ -249,12 +278,14 @@
     },
     {
       "name": "terrain-death",
+      "expectDying": 121,
       "tail": "240:",
       "poke": "05B3=16@+100",
       "why": "TERRAIN DEATH, BY POKE -- and the only scenario in the corpus that reaches $C2C1, one of the four routes into $C1D6. It has to be poked: 00-recon-terrain.md measured stage 1's pages 0-3 as containing ZERO solid tile bits and nothing here gets past camera page 0, so $C3A3 returns 0 on all 242 of its calls in every other scenario and the whole terrain arm ($C2A5/$C2B5/$C2BC/$C2C1) is reached, checked, and never true.\n\nThe cell is $05B3 and it did NOT come from src/terrain.js. kill.lua re-implements $C3D3 independently and kill.py drove THIS script through the cartridge three ways:\n  python games/gradius/tools/oracle/kill.py --frames 640 \\\n      --script \"200:,10:S,190:,240:\" --at 500\n    mode=none  poked=[]        $C2C1: 0        $1B == $A0 first at: None\n    mode=hit   poked=[0x5b3]   $C2C1: [501]    $1B == $A0 first at: 501\n    mode=miss  poked=[0x5b4]   $C2C1: 0        $1B == $A0 first at: None\n    at the poke frame: playerX=80 playerY=96 page=5 idx=179 shift=4\n$10 is bits 4-5 of the cell, which is the field $C402/$C409 select for tile row 14 -- the row the ship's own Y of 96 lands in. So a port whose index arithmetic is off by ANYTHING reads a different byte, sees 0 and flies on, and w_0100/w_001B/w_004C diverge from frame 501.\n\nWhat the window then compares, on both sides: the death ($0100 1 -> 2, $1B $80 -> $A0, $4C 0 -> 120, $0140 and $0160 zeroed by $C1D6), the $C0FA explosion walk over $0120/$0140/$0160 for 120 frames INCLUDING the $0140 that goes to 255 at the table's $00, the $96EF countdown, and $979D's respawn at frame 622 running $9B3E in the same frame -- lives 3 -> 2, the camera reset and one dropped NMI from $882C. Frames 622-639 are the intro."
     },
     {
       "name": "terrain-death-miss",
+      "expectDying": 0,
       "tail": "240:",
       "poke": "05B4=255@+100",
       "why": "THE MISS CONTROL for terrain-death, and it is the reason that scenario is worth anything. Identical script, identical poke frame, ONE BLOCK ROW LOWER: $05B4 instead of $05B3, and $FF rather than $10 so it is not the value that saves it either. $C3F3's `LSR / LSR / CLC / ADC $A0` means +1 on the cell index is +4 on the tile row, i.e. 32 px down the screen from a ship that is not moving.\n\nMEASURED on the cartridge (kill.py mode=miss, above): $C2C1 never fires and $1B never reaches $A0 in 640 frames. So this window must be byte-identical to `idle` and the ship must live to the end. Without it, `terrain-death` is satisfied by a port that dies whenever ANY byte of the map is set -- which is docs/knowledge/03's first shape wearing a poke."
@@ -283,6 +314,7 @@
     },
     {
       "name": "right-wall",
+      "expectDying": 121,
       "tail": "240:R",
       "why": "80 -> 240 at 1 px/frame takes 160 frames, then 80 more frames sitting on the $A028 CMP #$F0 clamp. The tail is the point: there is NO pre-check on X, so at the wall the integer is re-clamped every frame while $0380 keeps accumulating."
     },
@@ -303,11 +335,13 @@
     },
     {
       "name": "diag-rd-lu",
+      "expectDying": 107,
       "tail": "120:RD,120:LU",
       "why": "Two of the four diagonals. There is no diagonal arm in $9FFC: X is done, then Y is done, with the SAME $99:$98 step, so a diagonal covers step*sqrt(2). A port that normalised diagonal speed diverges here and nowhere else."
     },
     {
       "name": "diag-ru-ld",
+      "expectDying": 121,
       "tail": "120:RU,120:LD",
       "why": "The other two diagonals, so all four are covered and the tilt latch is driven by both nose-up and nose-down inside one run."
     },
@@ -323,6 +357,7 @@
     },
     {
       "name": "lr-both",
+      "expectDying": 121,
       "tail": "60:R,120:LR,60:L",
       "why": "$A031 is a FALL-THROUGH target, not an else. LEFT+RIGHT runs BOTH arms: add, clamp, subtract, clamp. Away from a wall the net displacement is zero -- but the ring still advances, because $A082 tests AND #$0F and does not care that the ship did not move."
     },
@@ -333,12 +368,14 @@
     },
     {
       "name": "speed6-right",
+      "expectDying": 121,
       "tail": "240:R",
       "poke": "0040=6",
       "why": "SPEED level 6, i.e. step = min(6+2,16)*128 = $0400 = 4.0 px/frame. ADDED BECAUSE THE BUTTON-ONLY CORPUS WAS BLIND: $40 reads 0 on every frame the cartridge produces from a script, so `step` is exactly $0100, the low byte is zero, and both sub-pixel accumulators stay 0 forever. A mutation that deleted the fraction add from $A285 altogether left the comparison GREEN over 2,860 frames. $40 = 6 is a level the cartridge itself reaches ($89A1 INC $40) and it makes $0380 move on every frame."
     },
     {
       "name": "speed3-diag",
+      "expectDying": 111,
       "tail": "120:RD,120:LU",
       "poke": "0040=3",
       "why": "SPEED level 3: step = 5*128 = $0280, so the fraction byte is $80 and CARRIES every second frame. That is the case that separates a real 16-bit accumulator from an integer one -- an integer port is right on half the frames, which is exactly how this class of bug survives. Diagonal, so both $0340 and $0380 carry independently."

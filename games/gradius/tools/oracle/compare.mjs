@@ -225,11 +225,25 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
     .filter((r) => r.frame <= lastLive).reduce((n, r) => n + r.lagged, 0);
   const xs = frames.map((f) => byFrameO.get(f).playerX);
   const ys = frames.map((f) => byFrameO.get(f).playerY);
+  // THE CARTRIDGE'S OWN DEATHS, counted over the live window. $0100 >= 2 is a
+  // dying ship ($C1D6 STA $0100), and `deaths` counts the ENTRIES into that
+  // state, not the frames. Both come from the ORACLE side on purpose: this is a
+  // measurement of what the corpus contains, and a port that never dies must not
+  // be able to satisfy it. Consumed by DEATH COVERAGE in main().
+  const dyingAt = frames.filter((f) => (byFrameO.get(f).w_0100 ?? 0) >= 2);
+  let deaths = 0;
+  for (let i = 0; i < frames.length; i++) {
+    const now = byFrameO.get(frames[i]).w_0100 ?? 0;
+    const prev = i === 0 ? (byFrameO.get(frames[0]).w_0100 ?? 0)
+                         : (byFrameO.get(frames[i - 1]).w_0100 ?? 0);
+    if (now >= 2 && prev < 2) deaths++;
+  }
   return {
     name, why: oracle.why, script: oracle.inputScript, align: oracle.align,
     frames: frames.length, nominal: all.length, stoppedAt, stopReason, neuter,
     reach: { xMin: Math.min(...xs), xMax: Math.max(...xs),
-             yMin: Math.min(...ys), yMax: Math.max(...ys) },
+             yMin: Math.min(...ys), yMax: Math.max(...ys),
+             dying: dyingAt.length, deaths, diedAt: dyingAt[0] ?? null },
     results, skipped,
     romLagTotal: oracle.lagFrames, romLagInWindow, portLag: portLagInWindow,
     // A field that never varies across the whole run tells you nothing when it
@@ -259,7 +273,9 @@ export function printScenario(r) {
   console.log(`    script: ${r.script}`);
   console.log(`    ${r.why}`);
   console.log(`    reach: X ${r.reach.xMin}..${r.reach.xMax}  `
-            + `Y ${r.reach.yMin}..${r.reach.yMax}`);
+            + `Y ${r.reach.yMin}..${r.reach.yMax}  `
+            + `dying ${r.reach.dying} frames in ${r.reach.deaths} death(s)`
+            + (r.reach.diedAt === null ? '' : `, first at f${r.reach.diedAt}`));
   if (r.stoppedAt !== null) {
     console.log(`    TRUNCATED at frame ${r.stoppedAt} `
               + `(${r.nominal - r.frames} frames dropped): ${r.stopReason}`);
@@ -398,6 +414,46 @@ function main(argv) {
               + (hit.length ? hit.join(', ') : 'REACHED BY NO SCENARIO'));
   }
 
+  // ---- DEATH COVERAGE ------------------------------------------------------
+  // A SCENARIO CAN STOP TESTING WHAT IT WAS BUILT FOR WITHOUT FAILING. The two
+  // wave-5 terrain scenarios kill the ship by POKING one collision-map cell
+  // ($05B3 for terrain-death), and that cell's address is a function of the
+  // camera at the poke frame. Move the script, the align frame or the scroll
+  // rate and the poke lands where the ship is not: NEITHER side dies, both sides
+  // still agree, and the run prints `0 failures` while `terrain-death` has
+  // silently become a second copy of `terrain-death-miss`. Same shape as the
+  // CLAMP COVERAGE block above, and same reason it is a FAILURE and not a note.
+  //
+  // `expectDying` is measured from the ORACLE artifact -- the cartridge's own
+  // $0100 -- so the port cannot satisfy it by agreeing with itself, and the
+  // control (`terrain-death-miss`, expectDying 0) is as load-bearing as the
+  // kills: it is what proves the poke is what does the killing.
+  const expects = new Map(defs.scenarios
+    .filter((s) => s.expectDying !== undefined)
+    .map((s) => [s.name, s.expectDying]));
+  console.log('\n=== DEATH COVERAGE (the cartridge\'s $0100 >= 2, in-window) ===');
+  let deathBad = 0, deathTotal = 0, checked = 0, withDeaths = 0;
+  for (const r of rows) {
+    deathTotal += r.reach.dying;
+    if (r.reach.dying) withDeaths++;
+    const want = expects.get(r.name);
+    if (want === undefined) continue;
+    checked++;
+    const ok = r.reach.dying === want;
+    if (!ok) deathBad++;
+    console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${r.name.padEnd(19)} `
+              + `${String(r.reach.dying).padStart(3)} dying frames, expected `
+              + `${want}${ok ? '' : '  <-- this scenario is no longer testing '
+              + 'the death it was built for'}`);
+  }
+  const fullRun = names.length === defs.scenarios.length;
+  if (fullRun && !expects.size) {
+    console.log('  [FAIL] no scenario carries an expectDying at all');
+    deathBad++;
+  }
+  console.log(`  ${deathTotal} dying frames across ${withDeaths} scenario(s); `
+            + `${checked} of ${rows.length} carry an expectDying`);
+
   if (missing) {
     console.log(`\n  ${missing} scenario(s) had NO ORACLE ARTIFACT. That is an `
               + `environmental skip (Mesen + the ROM), not a pass.`);
@@ -416,9 +472,10 @@ function main(argv) {
             + `compared (${truncated.length} truncated: `
             + (truncated.map((r) => `${r.name}@${r.stoppedAt}`).join(', ') || 'none')
             + `), ${fails} failures, ${uncovered} clamps uncovered, `
+            + `${deathBad} death-coverage failures, `
             + `${stale} stale annotations, `
             + `${skippedFields.length} fields SKIPPED (${skippedFields.join(' ')}).`);
-  return (fails || uncovered || stale) ? 1 : (rows.length === 0 ? 2 : 0);
+  return (fails || uncovered || stale || deathBad) ? 1 : (rows.length === 0 ? 2 : 0);
 }
 
 if (process.argv[1]?.endsWith('compare.mjs')) process.exit(main(process.argv.slice(2)));
