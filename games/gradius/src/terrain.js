@@ -122,19 +122,32 @@ function emitBlock(state, stage) {
   const block = stage.blocks[`${stage.stage}:${blockId}`];
   if (!block) throw new Error(`terrain: no block ${blockId} in stages.json`);
 
-  // The four tile packets. Each is a COLUMN of four tiles written with PPU
-  // increment 32 -- which is not a guess about the queue's shape but the
-  // reading forced by the collision derivation below, whose `$A8 += 8` at
-  // $9F81 walks to the "next tile column" over packets 8 bytes apart.
-  for (let c = 0; c < 4; c++) {
-    queuePacket(state, ntAddr + c, 32, [
-      block.tiles[c], block.tiles[4 + c], block.tiles[8 + c], block.tiles[12 + c],
-    ]);
-  }
   // One attribute byte per 32x32 block -- which is exactly one attribute quad,
   // so the block and the attribute grid line up and no read-modify-write is
-  // needed. $9EAA reads it from attrTbl[blockId].
-  queuePacket(state, atAddr, 1, [block.attr]);
+  // needed. $9EAA reads it from attrTbl[blockId]. It is queued FIRST ($9E94,
+  // before $9EC2's loop), and $9EB6 STX $AF records where the tile packets
+  // start so the collision walk below can read them back out of $0700.
+  queuePacket(state, 1, atAddr, [block.attr]);          // $9E94 LDA #$01
+
+  // The four tile packets. Each is a ROW of four tiles, mode $01 = PPU
+  // increment 1, and $9ED8's `LDA #$20 / ADC $AA` moves the NEXT packet one
+  // tile row (32 bytes) down.
+  //
+  // THIS FILE USED TO SAY THE OPPOSITE -- four COLUMNS with increment 32 --
+  // and cited the collision derivation as forcing it. That was wrong about the
+  // ROM in a way the nametable could never show, because a 4x4 square written
+  // by rows and the same square written by columns are the same square: $9EC6
+  // is `A9 01`, i.e. mode 1, and $8A4B[1] is $00, i.e. increment 1. What the
+  // collision walk at $9F60 actually does is read the FIRST data byte of each
+  // of the four packets ($0703,Y with Y += 8), which with rows-on-the-wire is
+  // tile column 0 rows 0..3 -- one collision byte -- and then $9F88 INC $AF
+  // steps to the next byte within each packet, i.e. the next column. So the
+  // packets are rows and the collision bytes are columns, and the transpose is
+  // the ROM's, not the port's.
+  for (let r = 0; r < 4; r++) {
+    queuePacket(state, 1, ntAddr + 32 * r,               // $9ED8 ADC #$20
+      block.tiles.slice(4 * r, 4 * r + 4));              // $9F37 STA $0700,X
+  }
 
   // ---- collision. $9F55-$9F92 -----------------------------------------
   // SAME DATA AS THE VISUALS. This is the answer to the question that cost

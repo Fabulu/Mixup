@@ -21,6 +21,7 @@ import test from 'node:test';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { hudPacketTable } from '../src/assets.js';
 
 export const GAME = dirname(dirname(fileURLToPath(import.meta.url)));
 export const ASSETS = join(GAME, 'assets');
@@ -93,6 +94,8 @@ export function assetOrThrow(rel) {
 
 export const loadTiles = () => new Uint8Array(readFileSync(assetOrThrow('chr/tiles.u8')));
 export const loadStages = () => JSON.parse(readFileSync(assetOrThrow('terrain/stages.json'), 'utf8'));
+export const loadHudPackets = () =>
+  hudPacketTable(JSON.parse(readFileSync(assetOrThrow('hud/packets.json'), 'utf8')));
 
 export function loadMetasprites() {
   const j = JSON.parse(readFileSync(assetOrThrow('metasprites.json'), 'utf8'));
@@ -115,6 +118,32 @@ export function loadCapture(name) {
     ram: rd('ram.bin'),
     fb: rd('fb.bin'),             // 256*240 RGB, what Mesen actually produced
   };
+}
+
+/**
+ * The six inputs the $8898 producers read, out of a capture's own RAM image.
+ *
+ * Shared by tests/hud.test.js and tests/terrain.test.js because both need the
+ * status bar drawn with the values the CARTRIDGE had when its nametable was
+ * captured -- and those values differ between captures, which is the whole
+ * reason the lives producer's two suppression arms are covered at all
+ * ($20 = 3 at f400, 1 at f1200, 0 at f3500).
+ *
+ * This is a mirror of porttrace.mjs seedFromRam's HUD block. It is duplicated
+ * rather than imported because porttrace.mjs imports this file.
+ */
+export function seedHudInputs(state, ram) {
+  state.zp.player = ram[0x18];              // $18
+  state.lives[0] = ram[0x20];               // $20,X
+  state.lives[1] = ram[0x21];
+  state.zp.missile = ram[0x41];             // $41
+  state.zp.meter = ram[0x42];               // $42
+  state.zp.weapon = ram[0x44];              // $44
+  state.zp.options = ram[0x45];             // $45
+  state.zp.shield = ram[0x46];              // $46
+  state.obj.status[0] = ram[0x0100];        // $0100 -- $89E3's early exit
+  for (let i = 0; i < 12; i++) state.score[i] = ram[0x07E0 + i];   // $07E0-$07EB
+  return state;
 }
 
 export function captureSkipMessage(name) {
@@ -159,6 +188,7 @@ export function headlessResources(stageIndex = 0) {
     tiles: loadTiles(),
     metasprites: loadMetasprites(),
     stage: loadStages().stages[stageIndex],
+    hudPackets: loadHudPackets(),
   };
 }
 

@@ -111,6 +111,16 @@ export function createState() {
       options: 0,            // $45  Option count, capped at 2 by $89D3
       autofire: 20,          // $35  autofire reload, MEASURED 20
       player: 0,             // $18  current player index; 0 or 1. Measured 0
+      // $42, the power-up METER cursor: 0 = nothing selected, 1..6 = one of the
+      // six cells, wrapped back to 1 at 7 by $894B. src/hud.js's $8A30 turns it
+      // into the attribute byte $55 that highlights the cell. Nothing in this
+      // corpus collects a capsule, so it is 0 on every compared frame; wave 7
+      // makes it live.
+      meter: 0,              // $42
+      // $46, the shield's remaining hits (5 when applied, one per collision at
+      // $C1C1). Read by $8A22 to pick the highlighted form of the last meter
+      // cell. Wave 7.
+      shield: 0,             // $46
       step: 0,               // $99:$98  the 16-bit sub-pixel step, scratch
       tilt: 1,               // $9B  tilt code for THIS frame, latched by $A0BE
     },
@@ -139,6 +149,35 @@ export function createState() {
       x: new Uint8Array(RING_LEN),   // $07A0-$07B7
       y: new Uint8Array(RING_LEN),   // $07C0-$07D7
     },
+
+    // ---- the HUD ($8898 and its four producers, src/hud.js) -------------
+    //
+    // SEEDED INPUTS, AND WHY THAT IS HONEST TODAY AND NOT TOMORROW.
+    // The producers read six things the port does not yet COMPUTE: the two
+    // lives bytes, the three BCD scores, $42 and $46. Every one of them is a
+    // constant across all 17 compared scenarios -- nothing in this corpus
+    // scores, dies or collects a capsule -- and each is seeded from the
+    // cartridge's own RAM (porttrace.mjs seedFromRam) or from the values the
+    // oracle read at the align frame (src/main.js bootState). So the HUD's
+    // OUTPUT is real and comparable while its INPUTS are borrowed.
+    //
+    // What that does NOT prove: that the port would produce the right digits
+    // once anything moves them. Wave 6 lands the BCD adder $845B (score), wave
+    // 5 the DEC at $979D (lives) and wave 7 $894B/$8974 ($42/$46). Until then
+    // the only teeth on these bytes are tests/hud.test.js, which drives three
+    // captured lives values (3, 1, 0) through st_88B6 because the cartridge's
+    // own captures happen to disagree with each other.
+    //
+    // $48 is different: it is REAL STATE, incremented by $88A4 on every odd
+    // frame, and it is watched (w_0048).
+    zp48: 0,                 // $48   the four-phase HUD rotation, $88A4 INC $48
+    lives: new Uint8Array(2),// $20,X for player $18. MEASURED 3 at align 400
+    // $07E0-$07EB: three 3-byte BCD scores on a 4-byte stride -- $07E0 TOP,
+    // $07E4 player 1, $07E8 player 2, each stored most-significant byte LAST
+    // ($88FD reads $07E0,Y for Y = 2, 1, 0). MEASURED at align 400:
+    // 00 50 00 = the 50000 the attract mode leaves as TOP, and zero for both
+    // players. $845B (wave 6) is the adder that will make them move.
+    score: new Uint8Array(12),
 
     // ---- the camera ----------------------------------------------------
     // $98EE adds #$80 to $3D per frame and carries into $3E/$3F through the
@@ -195,12 +234,13 @@ export function createState() {
     // $8099. Exactly ONE routine writes the nametable during gameplay --
     // proven by a census of every $2007 write over 600 frames.
     vram: {
-      queue: [],                     // [{addr, inc, bytes}] packets at $0700
-      // $0E, the byte cursor into $0700. A real byte, not a derived one: the
-      // gate at $9D87 (and $889A) compares it against 4, the producers advance
-      // it by the WIRE length of what they append, and $8A7B zeroes it. The
-      // port's queue is a list of packet objects, so the cursor is maintained
-      // alongside it in src/vram.js rather than falling out of a $0700 image.
+      // $0700-$07FF, the queue page ITSELF -- a real 256-byte image, not a list
+      // of packet objects. It has to be: $8898's producers patch bytes they
+      // have already appended ($88E5 STA $06FE,Y, $8A48 STA $0700,X) and build
+      // one open run out of six separate $85F3 copies. See src/vram.js.
+      q: new Uint8Array(256),        // $0700-$07FF
+      // $0E, the byte cursor into it. An 8-BIT byte: X is 8-bit and $0700 is
+      // one page, so it wraps at 256 ($864A INX / $864B STX $0E).
       cursor: 0,                     // $0E
       nt: new Uint8Array(0x1000),    // PPU $2000-$2FFF (vertical mirroring)
       pal: new Uint8Array(32),       // PPU $3F00-$3F1F

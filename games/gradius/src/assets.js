@@ -21,12 +21,31 @@ async function fetchOrExplain(rel, how) {
 const EXPORT = 'python games/gradius/tools/export_assets.py';
 const EXPORT_MS = 'python games/gradius/tools/export_metasprites.py';
 
+/**
+ * assets/hud/packets.json -> the array src/hudpackets.js indexes.
+ *
+ * One Uint8Array per canned packet, RAW: the $FF/$FE/$FD control codes stay in,
+ * because $85F3 is what interprets them. Indexed by packet id, so the array is
+ * built by `index` rather than by position -- a table with a missing entry must
+ * come out as a hole that throws at $85F7, not as a silent shift.
+ */
+export function hudPacketTable(json) {
+  const out = [];
+  for (const p of json.packets) out[p.index] = Uint8Array.from(p.bytes);
+  if (out.length !== json.table.entries) {
+    throw new Error(`assets/hud/packets.json: ${out.length} packets for a `
+                  + `${json.table.entries}-entry table at ${json.table.rom}`);
+  }
+  return out;
+}
+
 export async function loadResources(stageIndex = 0) {
-  const [manifest, tilesBuf, stages, ms] = await Promise.all([
+  const [manifest, tilesBuf, stages, ms, hud] = await Promise.all([
     fetchOrExplain('manifest.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('chr/tiles.u8', EXPORT).then((r) => r.arrayBuffer()),
     fetchOrExplain('terrain/stages.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('metasprites.json', EXPORT_MS).then((r) => r.json()),
+    fetchOrExplain('hud/packets.json', EXPORT).then((r) => r.json()),
   ]);
 
   const tiles = new Uint8Array(tilesBuf);
@@ -40,7 +59,8 @@ export async function loadResources(stageIndex = 0) {
   const metasprites = {};
   for (const [k, v] of Object.entries(ms.records)) metasprites[Number(k)] = v;
 
-  return { manifest, tiles, metasprites, stage: stages.stages[stageIndex] };
+  return { manifest, tiles, metasprites, stage: stages.stages[stageIndex],
+           hudPackets: hudPacketTable(hud) };
 }
 
 /** The frame rate, read from game.json. It is spelled ONCE, in that file. */

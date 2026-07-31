@@ -39,18 +39,24 @@
     "comparing $0361/$0362 alone would pass for a port that trailed the ship by",
     "the wrong number of ring entries on a straight-line hold.",
     "",
-    "FIVE ADDRESSES ARE WATCHED AHEAD OF THE PORT (wave 1): $00 (game mode, and",
-    "the port DOES model it), and $19 $20 $24 $4C, which it does not -- stage",
-    "index, lives, checkpoint, the death countdown. All four are constants in",
-    "every window this corpus compares and each carries a written reason in",
+    "ADDRESSES WATCHED AHEAD OF THE PORT: $19 $24 $4C (stage index, checkpoint,",
+    "the death countdown) are not modelled at all and carry a written reason in",
     "porttrace.mjs UNMODELLED, so they are reported as SKIPPED, not as silent",
-    "nulls. They are here now so that waves 4 and 5 are judged against cartridge",
-    "data recorded BEFORE the code that has to reproduce it was written."
+    "nulls. They are here so that waves 4 and 5 are judged against cartridge",
+    "data recorded BEFORE the code that has to reproduce it was written.",
+    "",
+    "WAVE 2 ADDED THE HUD'S STATE AND ITS INPUTS: $48 (the four-phase rotation,",
+    "$88A4 INC $48 -- real port state), and $20/$21 $42 $46 $07E0-$07EA, which",
+    "src/hud.js READS and nothing in the port yet WRITES. Watching a seeded",
+    "constant proves little on its own; it is here so that the frame waves 5-7",
+    "make it move is compared against data recorded now. src/state.js says the",
+    "same thing under SEEDED INPUTS, at the code."
   ],
   "watch": [
     "0000", "000D", "000E", "0015", "0018", "0019", "001B", "001E", "001F",
-    "0020", "0024",
-    "0035", "0036", "003A", "0040", "0041", "0044", "0045", "004C",
+    "0020", "0021", "0024",
+    "0035", "0036", "003A", "0040", "0041", "0042", "0044", "0045", "0046",
+    "0048", "004C",
     "0054", "0055", "0057", "0058", "005B", "005C",
     "0100", "0101", "0102",
     "0120", "0121", "0122",
@@ -63,7 +69,8 @@
     "07B0", "07B1", "07B2", "07B3", "07B4", "07B5", "07B6", "07B7",
     "07C0", "07C1", "07C2", "07C3", "07C4", "07C5", "07C6", "07C7",
     "07C8", "07C9", "07CA", "07CB", "07CC", "07CD", "07CE", "07CF",
-    "07D0", "07D1", "07D2", "07D3", "07D4", "07D5", "07D6", "07D7"
+    "07D0", "07D1", "07D2", "07D3", "07D4", "07D5", "07D6", "07D7",
+    "07E0", "07E1", "07E2", "07E4", "07E5", "07E6", "07E8", "07E9", "07EA"
   ],
 
   "_knownFail": [
@@ -71,17 +78,30 @@
     "the scenario, and make an unexpected PASS fail the run so nobody forgets to",
     "remove the annotation. Each entry names the fields, the mechanism, and the",
     "measurement that established it. Nothing is listed here that has not been",
-    "traced to a specific instruction on the cartridge."
+    "traced to a specific instruction on the cartridge.",
+    "",
+    "THE LIST IS EMPTY, AND THAT IS THE POINT OF WAVE 2. It held exactly one",
+    "entry for the port's whole life -- `terrain-streams-at-double-rate`, over",
+    "w_000E w_0054 w_0055 w_0057 w_0058 -- and it was removed in the SAME commit",
+    "that ported $8898 (src/hud.js), because compare.mjs FAILS on a knownFail",
+    "that no longer diverges. Both measured causes are closed:",
+    "",
+    "  A ($8641, wave 1) $80B0 appends ONE $00 -- the drainer's mode-0 stop byte",
+    "    -- on every non-lag frame. Without it w_000E read one low on frame 401,",
+    "    the FIRST compared frame.",
+    "  B ($8898, wave 2) the HUD tick shares the terrain streamer's $0E gate and",
+    "    runs seven bytes above it ($9AC7 vs $9ACE), producing 8/14/39 bytes on",
+    "    ODD $02 frames. Measured: entered 390, past both gates 195, even 0 and",
+    "    odd 195; build histogram {0:196, 1:195} on the cartridge against",
+    "    {0:1, 1:390} on the port; and starving the cartridge's own gate turned",
+    "    it INTO the port while both sides still emitted the same 140 blocks.",
+    "",
+    "So the divergence was a phase error in $54/$55/$57/$58/$0E, never a content",
+    "error in VRAM. Those five fields are TIER 1 again. If one of them starts",
+    "diverging that is a REGRESSION in src/hud.js or src/terrain.js -- do not",
+    "re-annotate it here without a fresh measurement of its own."
   ],
-  "knownFail": [
-    {
-      "_note": "$0055 was in this list, the runner reported it as a SURPRISE PASS (no 240-frame window reaches the half-page roll-over), it was removed -- and then long-idle, at 599 compared frames, made it diverge at frame 854 and it was put back. Both directions of the annotation mechanism have now been exercised on this one field.",
-      "fields": ["w_000E", "w_0054", "w_0055", "w_0057", "w_0058"],
-      "name": "terrain-streams-at-double-rate",
-      "why": "TWO CAUSES WERE MEASURED INSIDE THIS ONE ANNOTATION AND ONE OF THEM IS NOW FIXED (wave 1). Cause A, closed: $80B0 JSR $8641 appends ONE $00 byte -- the drainer's mode-0 stop byte -- to the queue on every non-lag frame, and the port did not, so w_000E read exactly one less than the cartridge on frame 401, the FIRST compared frame. src/nmi.js called that routine 'HUD packets -- not ported', which aimed the diagnosis at the wrong address; it is a one-line append and it is ported now (src/vram.js queueTerminator). Cause B, SOLE REMAINING CAUSE: $9AC7 JSR $8898, the HUD tick, seven bytes above the streamer's own JSR. It runs its four canned producers on ODD $02 frames only (measured with exec hooks: entered 390 times, past both gates 195, on $02 even 0 and odd 195, 0 exceptions) and leaves 8, 14, 39 or 5 bytes in $0E, which is what the streamer's gate at $9D87 (LDA $0E / CMP #$04 / BCC -- a BYTE count, not a packet count) then refuses to build against. The port has no HUD producer, so its queue is empty at the gate and it builds EVERY frame: build histograms {0:196, 1:195} on the cartridge against {0:1, 1:390} on the port. Proven by intervention rather than by correlation -- starving the cartridge's own gate ($0E forced to 0 at $9D83) reproduces the port's histogram exactly, and BOTH sides emit the same 140 blocks in the same order, so this is a phase error in $54/$55/$57/$58/$0E and not a content error in VRAM. w_000E therefore still diverges, but no longer on the first compared frame: it diverges on the first ODD frame in the window. $57 follows from the same gate -- $9D90 STA $57 only executes on frames that get past it, so the cartridge stops writing $57 on odd frames while the port writes it on every frame. Wave 2 ports $8898 and retires this entry.",
-      "expect": "the port's $58 advances every frame, the cartridge's every second frame; w_000E first diverges on an ODD frame (402), not on 401"
-    }
-  ],
+  "knownFail": [],
 
   "scenarios": [
     {

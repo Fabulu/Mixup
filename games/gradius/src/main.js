@@ -26,6 +26,16 @@ import { renderFrame, frameFor, W, H, chrBank } from './render/ppu.js';
  *   $10   = $A8              NT $2000, bg pat $0000, spr pat $1000, 8x16
  *   $11   = $1E              bg + sprites on, leftmost 8 px shown
  *   $35   = 20               autofire reload
+ *   $20   = 3                lives (both players' bytes; $18 = 0 selects P1)
+ *   $48   = $2E              the HUD rotation phase. $2E AND 3 = 2, so the
+ *                            first tick after the align frame ran st_89E3 --
+ *                            and the cartridge's $0E at that sample point is
+ *                            $28 = 40, i.e. st_89E3's 39 bytes plus $8641's
+ *                            one. Cross-checked before a line of src/hud.js
+ *                            was written.
+ *   $07E0-$07E2 = 00 50 00   TOP score, the 50000 the attract mode leaves
+ *   $07E4-$07EA = 0          both players' scores
+ *   $42 = 0, $46 = 0         no capsule collected, no shield
  *
  * What is NOT modelled, and it is a real difference: the ROM spends 28 frames
  * in the stage-intro sub-state before any of this is live ($1B stepping
@@ -49,6 +59,14 @@ export function bootState(manifest) {
   s.ppu.mask = 0x1E;               // $11
   s.ppu.scrollY = 0x0C;            // $13  -- $9650
   s.ppu.chrSel = 0;                // $2D
+  // The HUD producers' inputs. Read off the cartridge at align frame 400 of
+  // every scenario in the corpus and identical in all 17 -- see the SEEDED
+  // INPUTS note in src/state.js for what that does and does not prove.
+  s.lives[0] = s.lives[1] = 3;     // $20/$21
+  s.zp48 = 0x2E;                   // $48
+  s.score[0x00] = 0x00;            // $07E0  \
+  s.score[0x01] = 0x50;            // $07E1   > TOP = 50000
+  s.score[0x02] = 0x00;            // $07E2  /
   s.vram.pal.set(gameplayPalette(manifest));
   s.bandA.chrBank = chrBank(0);
   s.bandB.chrBank = chrBank(2);

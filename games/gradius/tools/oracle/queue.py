@@ -215,6 +215,19 @@ def main():
     for (kk, ix), n in sorted(prod.items()):
         print(f"  {kk} idx=${ix:02X}  {n}")
 
+    # $0700 as the WHOLE FRAME left it. The dump at the streamer's gate is taken
+    # before $9ACE, so it can only ever show HUD bytes; this one is the only
+    # place a terrain packet is visible, and it is what pins the tile packets'
+    # shape (four rows, mode $01 = increment 1, addresses 32 apart) rather than
+    # the four-columns-with-increment-32 reading the port carried until wave 2.
+    qe = d.get("queueAtFrameEnd", [])
+    blocks = [q for q in qe if len(q["bytes"]) >= 38]
+    print(f"\n$0700 at $80B5: {len(qe)} frames dumped, {len(blocks)} of them >= 38 bytes")
+    for q in blocks[:6]:
+        print(f"  f{q['frame']}  $54={q['buildLo']:02X} $55={q['buildHi']:02X} "
+              f"$58={q['prog']:02X}  n={len(q['bytes'])}")
+        print("     " + " ".join(f"{b:02X}" for b in q["bytes"]))
+
     if a.packets:
         packets_report(d)
 

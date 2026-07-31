@@ -38,6 +38,7 @@ Outputs (ALL ROM-DERIVED -- `assets/` is gitignored, none of it is committable)
     assets/chr/bank{0..3}.bin   RAW: the same bytes, split as CNROM sees them
     assets/chr/tiles.u8         CACHE: 2048 tiles x 64 px, one byte 0..3 per px
     assets/terrain/stages.json  CACHE: the seven stages expanded from the tables
+    assets/hud/packets.json     CACHE: the 39 canned VRAM packets at $864E
 
 Usage:
     python games/gradius/tools/export_assets.py
@@ -304,10 +305,10 @@ NOT_EXPORTED = [
     "The title screen's nametable.  $8871 (the RLE full-screen loader) writes it "
     "at load time; its source table has not been identified. NOTES-render.md 9.",
     "Sound.  Untouched by any recon so far ($ED02 from the NMI).",
-    "The canned VRAM packets' CONTENTS.  The 39 pointers are exported; the "
-    "$FD/$FE/$FF script format at $85F6-$864D has not been transcribed, so the "
-    "packets are not decoded here.  The palette blobs above are pinned by "
-    "measurement, not by decoding the format.",
+    # The canned-packet contents USED to be listed here as not exported.  Wave 2
+    # transcribed $85F3-$864D and they are now in assets/hud/packets.json; the
+    # palette blobs above stay pinned by measurement as well, so the two routes
+    # to the same bytes can still disagree.
 ]
 
 
@@ -334,6 +335,64 @@ def decode_chr(chr_bytes: bytes) -> bytearray:
                 sh = 7 - x
                 out[dst + y * 8 + x] = ((p0 >> sh) & 1) | (((p1 >> sh) & 1) << 1)
     return out
+
+
+PKT_TABLE = 0x864E                 # $85F7 LDA $864E,X / $85FC LDA $864F,X
+PKT_COUNT = 39
+PKT_MAX_LEN = 128                  # a stream longer than this is not a packet
+
+
+def canned_packets(rom: Rom) -> dict:
+    """The 39 canned VRAM packet streams at `$864E`.  A CACHE.
+
+    The copier is `$85F3`, entered either directly or by falling through
+    `$85E8` (which appends the queue mode byte `$01` first -- `$85F1` is the
+    third byte of that prologue's `JSR $8645`, NOT a routine entry).  It reads
+    bytes at `($98),Y` and copies them into `$0700,X` until a control code:
+
+        $FF  end, append nothing                        ($860A -> $864B)
+        $FE  append $FF (the packet terminator) and end ($8629 -> $8647)
+        $FD  append $FF, $9B := 2, append $01 (a fresh mode byte), keep going
+             ($862D-$863B) -- one index emitting TWO packets
+
+    So the stream stored here is the RAW ROM script, terminator included.  It
+    is deliberately NOT pre-expanded: `src/hudpackets.js` is a transcription of
+    $85F3 and interprets the control codes itself, which is also the only way
+    the bit-7 "blank" variant ($8617-$8624: everything after the first two
+    copied bytes replaced by $00) can be expressed -- index `$80|n` and index
+    `n` share a pointer, because `$85F5 ASL A` is 8-bit and loses bit 7.
+    """
+    out = []
+    for i in range(PKT_COUNT):
+        ptr = rom.w(PKT_TABLE + 2 * i)
+        if not 0x8000 <= ptr <= 0xFFFF:
+            raise SystemExit(f"ABORT: canned packet {i} points outside PRG (${ptr:04X})")
+        b = []
+        a = ptr
+        while True:
+            if len(b) >= PKT_MAX_LEN:
+                # No terminator.  Either the pointer is wrong or the format is
+                # not what this claims; do not emit a truncated guess.
+                raise SystemExit(f"ABORT: canned packet {i} at ${ptr:04X} has no "
+                                 f"$FF/$FE within {PKT_MAX_LEN} bytes")
+            v = rom.b(a)
+            a += 1
+            b.append(v)
+            if v in (0xFF, 0xFE):
+                break
+        out.append({"index": i, "rom": f"${ptr:04X}", "fileOffset": rom.off(ptr),
+                    "bytes": b})
+    return {
+        "note": "CACHE. Rebuild with tools/export_assets.py; the authority is prg.bin.",
+        "table": {"rom": f"${PKT_TABLE:04X}", "fileOffset": rom.off(PKT_TABLE),
+                  "entries": PKT_COUNT,
+                  "readBy": "$85F7 LDA $864E,X / $85FC LDA $864F,X"},
+        "copier": "$85F3 (entered by fall-through from the $85E8 prologue, which "
+                  "appends the mode byte $01 first)",
+        "control": {"FF": "end, append nothing", "FE": "append $FF and end",
+                    "FD": "append $FF, reset the blank counter, append $01, continue"},
+        "packets": out,
+    }
 
 
 def expand_stage(rom: Rom, stage: int) -> dict:
@@ -582,6 +641,11 @@ def main() -> int:
           json.dumps(stages_doc, separators=(",", ":")).encode("utf-8"),
           "cache", "prg.bin via tables['stage.*']", files)
 
+    hud = canned_packets(rom)
+    write(out, "hud/packets.json",
+          json.dumps(hud, separators=(",", ":")).encode("utf-8"),
+          "cache", "prg.bin via tables['queue.cannedPackets']", files)
+
     manifest = build_manifest(rom, files)
     (out / "manifest.json").write_text(
         json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
@@ -593,7 +657,9 @@ def main() -> int:
     print(f"  raw    prg.bin {len(rom.prg)} B, chr.bin {len(rom.chr)} B "
           f"({len(rom.chr) // CHR_BANK} banks)")
     print(f"  cache  chr/tiles.u8 {CHR_BYTES // TILE_BYTES} tiles, "
-          f"terrain/stages.json {len(stages)} stages")
+          f"terrain/stages.json {len(stages)} stages, "
+          f"hud/packets.json {len(hud['packets'])} canned packets "
+          f"({sum(len(p['bytes']) for p in hud['packets'])} script bytes)")
     print(f"  manifest: {len(manifest['tables'])} tables, "
           f"{len(manifest['constants'])} instruction-anchored constants, "
           f"{len(manifest['palettes'])} palette blobs")

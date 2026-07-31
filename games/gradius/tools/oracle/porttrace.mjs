@@ -132,8 +132,19 @@ export function seedFromRam(state, ram) {
   state.cam.hi = r(0x3F);                  // $3F
   state.zp.speed = r(0x40);                // $40
   state.zp.missile = r(0x41);              // $41
+  state.zp.meter = r(0x42);                // $42
   state.zp.weapon = r(0x44);               // $44
   state.zp.options = r(0x45);              // $45
+  state.zp.shield = r(0x46);               // $46
+  state.zp48 = r(0x48);                    // $48  the HUD's four-phase rotation
+  // The HUD producers' inputs. $20,X is read by $88C1 and $07E0-$07EA by
+  // $88FD/$893A/$8940. The port does not yet COMPUTE any of them -- wave 5
+  // (lives), wave 6 (score) -- so seeding them is what makes src/hud.js's
+  // output comparable at all. They are constants across every window this
+  // corpus compares; see the SEEDED INPUTS note in src/state.js.
+  state.lives[0] = r(0x20);                // $20
+  state.lives[1] = r(0x21);                // $21
+  for (let i = 0; i < 12; i++) state.score[i] = r(0x07E0 + i);  // $07E0-$07EB
   state.build.lo = r(0x54);                // $54
   state.build.hi = r(0x55);                // $55
   state.build.ahead = r(0x57);             // $57
@@ -183,9 +194,13 @@ export const UNMODELLED = {
         + 'streamer\'s stage-4 collision skip ($9F4F CPY #$04) is carried as a '
         + 'per-stage flag in assets/terrain/stages.json instead. Constant 0 '
         + 'across this corpus. Wave 4 introduces the stage machinery.',
-  '0020': 'lives for player $18 ($20,X). Written by $9B3E\'s per-player restore '
-        + 'and DEC\'d by $979D on death -- both wave 5. Constant across every '
-        + 'compared window here because nothing dies inside one.',
+  // $0020 used to live here. It is MODELLED now, but only as a seeded byte:
+  // the HUD's st_88B6 reads it ($88C1 LDA $20,X) and renders it, and nothing in
+  // the port writes it. The comparison is therefore true and weak -- lives are
+  // 3 on every compared frame of all 17 scenarios. What gives it teeth is
+  // tests/hud.test.js, which drives the three DIFFERENT values the video
+  // captures caught (3 at f400, 1 at f1200, 0 at f3500) through the producer
+  // and checks the nametable row it writes. Wave 5's $979D makes it live.
   '0024': 'checkpoint index for player $18 ($24,X). Set by $979D as '
         + 'min($3F AND $0E, 8) at the death, read by the respawn. Wave 5.',
   '004C': 'the death/dying countdown. $C1D6 loads it with $78 and $96EF counts '
@@ -207,13 +222,13 @@ export function peek(state, addr) {
     case 0x05: return state.input.pressed;
     case 0x07: return state.input.held;
     case 0x0D: return state.ppu.blank;
-    // $0E is the $0700 queue's byte cursor. The port carries the queue as
-    // structured packets rather than as a byte image (src/vram.js), so the
-    // cursor is maintained alongside them: three header bytes plus the data
-    // plus the $FF terminator per packet, PLUS the one $00 that $8641 appends
-    // at $80B0 on every non-lag frame. Before that byte was ported the port
-    // read exactly one less than the cartridge on every frame -- the
-    // w_000E@401 divergence, which was the first compared frame.
+    // $0E is the $0700 queue's byte cursor, and $0700 is a real 256-byte image
+    // in the port too (src/vram.js). Its value at the $80B5 sample point is
+    // whatever the frame's producers appended plus the one $00 that $8641 adds
+    // at $80B0: 1 on an even frame, 9 / 15 / 40 on the odd frames the HUD's
+    // four phases run ($8898, src/hud.js), 38 on a frame that also streamed a
+    // terrain block. Both halves of the old w_000E divergence -- the missing
+    // $8641 byte (wave 1) and the missing HUD (wave 2) -- were visible here.
     case 0x0E: return state.vram.cursor;
     case 0x10: return state.ppu.ctrl;
     case 0x11: return state.ppu.mask;
@@ -232,10 +247,15 @@ export function peek(state, addr) {
     case 0x3D: return state.cam.sub;
     case 0x3E: return state.cam.lo;
     case 0x3F: return state.cam.hi;
+    case 0x20: return state.lives[0];      // $20,X -- $88C1, src/hud.js
+    case 0x21: return state.lives[1];
     case 0x40: return state.zp.speed;
     case 0x41: return state.zp.missile;
+    case 0x42: return state.zp.meter;      // $8A35, the meter cursor
     case 0x44: return state.zp.weapon;
     case 0x45: return state.zp.options;
+    case 0x46: return state.zp.shield;     // $8A24
+    case 0x48: return state.zp48;          // $88A4 INC $48 -- REAL port state
     case 0x54: return state.build.lo;
     case 0x55: return state.build.hi;
     case 0x57: return state.build.ahead;
@@ -256,6 +276,7 @@ export function peek(state, addr) {
   if (addr >= 0x0380 && addr < 0x03A0) return state.obj.xf[addr - 0x0380];
   if (addr >= 0x07A0 && addr < 0x07B8) return state.ring.x[addr - 0x07A0];
   if (addr >= 0x07C0 && addr < 0x07D8) return state.ring.y[addr - 0x07C0];
+  if (addr >= 0x07E0 && addr < 0x07EC) return state.score[addr - 0x07E0];
   return null;                             // the port does not model it
 }
 

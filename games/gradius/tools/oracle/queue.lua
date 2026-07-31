@@ -70,7 +70,7 @@ end
 local gframe, ef = 0, 0
 local done, failed, stopped = false, false, false
 local guard_bad = 0
-local frames, events, qdumps = {}, {}, {}
+local frames, events, qdumps, qends = {}, {}, {}, {}
 local ewrites = {}          -- census of writes to $000E, by PC
 local gate_calls, build_calls = 0, 0
 local f_gate, f_build = 0, 0
@@ -105,6 +105,20 @@ local K_EWRITE, K_HUD, K_HUDRUN = 10, 11, 12
 local function on_frame_end()
    if done then return end
    if rd(0x04) ~= 1 then guard_bad = guard_bad + 1 end
+   -- The queue AS THE WHOLE FRAME LEFT IT, at $80B5 -- i.e. after $9ACE's
+   -- terrain block AND after $80B0's $8641 stop byte. This is the only dump
+   -- point where a TERRAIN packet can be seen at all, because $9D83's dump is
+   -- taken BEFORE the streamer runs. Wave 2 added it because the port's
+   -- tile-packet shape (four ROWS with PPU increment 1 -- $9EC6 LDA #$01 and
+   -- $9ED8 ADC #$20 -- not four columns with increment 32) was otherwise
+   -- unfalsifiable: the two write the same 4x4 square and cost the same 37
+   -- bytes, so no nametable and no $0E comparison can tell them apart.
+   if gframe >= FROM and gframe <= TO then
+      local n, b = rd(0x0E), {}
+      for i = 0, n - 1 do b[#b + 1] = rd(0x0700 + i) end
+      qends[#qends + 1] = { frame = gframe, prog = rd(0x58),
+                            lo = rd(0x54), hi = rd(0x55), bytes = b }
+   end
    frames[#frames + 1] = {
       frame = gframe, mode = rd(0x00), sub = rd(0x1B), stage = rd(0x19),
       camLo = rd(0x3E), camHi = rd(0x3F), subpx = rd(0x3D),
@@ -210,6 +224,14 @@ local function write_json()
    for i, q in ipairs(qdumps) do
       w(f, ('    {"frame":%d,"bytes":[%s]}%s\n'):format(
          q.frame, table.concat(q.bytes, ","), i < #qdumps and "," or ""))
+   end
+   w(f, '  ],\n')
+
+   w(f, '  "queueAtFrameEnd": [\n')
+   for i, q in ipairs(qends) do
+      w(f, ('    {"frame":%d,"buildLo":%d,"buildHi":%d,"prog":%d,"bytes":[%s]}%s\n'):format(
+         q.frame, q.lo, q.hi, q.prog, table.concat(q.bytes, ","),
+         i < #qends and "," or ""))
    end
    w(f, '  ]\n}\n')
    f:close()

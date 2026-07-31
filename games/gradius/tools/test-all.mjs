@@ -91,6 +91,26 @@ stage('unit tests (node --test games/gradius/tests/)', () => {
     ? { status: 'PASS' } : { status: 'FAIL' };
 });
 
+// ---------------------------------------------------------------- stage 1b --
+// The assets are ROM-derived and every port fact that reads a table reads THEM,
+// not the ROM. verify_assets.py re-derives all nine check families by a second
+// route and its --self-test corrupts each one in turn to prove the check
+// notices. It had been sitting outside the gate since it was written, which is
+// docs/knowledge/02 trap 5 -- a check outside the gate rots -- and wave 2 added
+// a family to it ("hud", the 39 canned packets at $864E), so it goes in.
+//
+// It needs BOTH the ROM (it re-parses the .nes) and assets/, so ROM-absent is
+// an environmental SKIP and ROM-present-assets-absent is already a FAIL above.
+stage('assets == the cartridge (verify_assets.py --self-test)', () => {
+  if (!assetsPresent) return { status: 'SKIP', note: 'needs assets/' };
+  if (!romPresent) {
+    return { status: 'SKIP', note: 'verify_assets.py re-parses the .nes itself; '
+           + 'no cartridge at the repo root' };
+  }
+  return run('python', ['games/gradius/tools/verify_assets.py', '--self-test'])
+    ? { status: 'PASS' } : { status: 'FAIL' };
+});
+
 // ---------------------------------------------------------------- stage 2 ---
 // The port-side trace must be able to produce probe.lua's exact field list.
 // This is a shape check and it is cheap; it catches a renamed field before four

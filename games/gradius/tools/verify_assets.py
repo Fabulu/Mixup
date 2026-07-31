@@ -98,6 +98,47 @@ EXPECT_PAL = {
                   16: 0x0F, 17: 0x0C, 18: 0x26, 19: 0x30, 28: 0x0F, 29: 0x06, 30: 0x26,
                   31: 0x30},
 }
+# THE TEN CANNED PACKETS STAGE 1 ACTUALLY USES, transcribed BY HAND from the
+# $0700 images the CARTRIDGE produced -- not from the listing.
+#
+# Measured with tools/oracle/queue.py (queue.lua dumps $0700 at the streamer's
+# gate $9D83, after $9AC7 JSR $8898 has filled it):
+#
+#   python games/gradius/tools/oracle/queue.py --frames 700 \
+#       --script "200:,10:S,490:" --from 566 --to 578 --packets
+#
+#   f572  n= 8  01 23 A2 00 61 00 33 FF                 st_88B6, index $11
+#   f574  n=14  01 23 B4 64 65 00 30 30 35 30 30 30 30 FF    st_88F6, index $12
+#   f576  n=39  01 23 84 09 0A 0B 0C | 0D 0E 0F 10 | 11 12 13 14 | 15 16 17 18
+#               | 19 1A 1B 1C | 1D 62 63 1F | FF | 01 23 F8 00 00 00 00 00 00
+#               00 FF                st_89E3 chaining $0F,$15,$16,$17,$18,$1B,
+#                                    $863D's $FF, then $8A30's $1A
+#   f578  n=14  01 23 A8 31 66 00 30 30 30 30 30 30 30 FF    st_892C, index $13
+#
+# The leading $01 is $85E8's mode byte and the digits are st_88F6/st_892C's own
+# output, so what is transcribed below is the emitted run with those stripped
+# and the control code restored ($FF = the run stayed open, $FE = the emitter
+# appended the terminator).  A pointer table cited one entry out still decodes
+# into plausible bytes of the same LENGTH for six of these ten -- that is why
+# the check is on the bytes and why the recon's length-only version was weak.
+EXPECT_HUD_STREAMS = {
+    0x0F: [0x23, 0x84, 0x09, 0x0A, 0x0B, 0x0C, 0xFF],           # power-bar head
+    0x11: [0x23, 0xA2, 0x00, 0x00, 0x00, 0x00, 0xFE],           # lives
+    0x12: [0x23, 0xB4, 0x64, 0x65, 0x00, 0xFF],                 # TOP score label
+    0x13: [0x23, 0xA8, 0x31, 0x66, 0x00, 0xFF],                 # 1UP score label
+    0x15: [0x0D, 0x0E, 0x0F, 0x10, 0xFF],                       # MISSILE cell
+    0x16: [0x11, 0x12, 0x13, 0x14, 0xFF],                       # DOUBLE cell
+    0x17: [0x15, 0x16, 0x17, 0x18, 0xFF],                       # LASER cell
+    0x18: [0x19, 0x1A, 0x1B, 0x1C, 0xFF],                       # OPTION cell
+    0x1A: [0x23, 0xF8, 0x00, 0x00, 0x00, 0x00,                  # the attribute row
+           0x00, 0x00, 0x00, 0xFE],
+    0x1B: [0x1D, 0x62, 0x63, 0x1F, 0xFF],                       # ?/SHIELD cell
+}
+# $8A22 substitutes index $19 for whichever cell is OWNED, so it is the one
+# stage-1 packet whose bytes no measured frame of this corpus contains ($42 = 0
+# and $41/$44/$45/$46 all 0 throughout).  Listing-only, and said so.
+EXPECT_HUD_LISTING_ONLY = {0x19: [0x1D, 0x1E, 0x1E, 0x1F, 0xFF]}
+
 # NOTES-terrain.md section 4, "Stage 1's shape" -- an end-to-end expectation on
 # the DECODED cache, not on any single table.
 EXPECT_STAGE1 = {
@@ -245,6 +286,7 @@ class State:
         for f in self.man["files"]:
             self.blob[f["path"]] = (assets / f["path"]).read_bytes()
         self.stages = json.loads(self.blob["terrain/stages.json"].decode("utf-8"))
+        self.hud = json.loads(self.blob["hud/packets.json"].decode("utf-8"))
 
 
 def vals_at(rom: RawRom, off: int, n: int, unit: str) -> list[int]:
@@ -506,6 +548,68 @@ def check_terrain(st: State) -> list[str]:
     return bad
 
 
+def check_hud(st: State) -> list[str]:
+    """Re-walk the 39 canned packet streams at $864E, three independent ways.
+
+    1. the pointer is re-read from the ROM at the FILE OFFSET the JSON recorded
+       (the exporter only ever indexed the stripped PRG, so this is a second
+       route to the same word) and cross-checked against the manifest's own
+       `queue.cannedPackets` table;
+    2. the stream is re-decoded here with the terminator rule written out
+       (`$FF`/`$FE` end it, `$FD` does not) rather than reused;
+    3. the ten stage-1 packets are held against EXPECT_HUD_STREAMS, which was
+       transcribed by hand from the CARTRIDGE'S OWN $0700 images.  That is the
+       arm that survives the exporter and this file citing the same wrong
+       address, which is the failure two automated readers cannot see.
+    """
+    bad = []
+    rom = st.rom
+    h = st.hud
+    tbl = h["table"]
+    if tbl["fileOffset"] != rom.off(0x864E):
+        bad.append(f"packet table fileOffset {tbl['fileOffset']} != "
+                   f"{rom.off(0x864E)} for $864E")
+    if tbl["entries"] != len(h["packets"]):
+        bad.append(f"table claims {tbl['entries']} entries, {len(h['packets'])} emitted")
+    man_ptrs = st.man["tables"]["queue.cannedPackets"]["values"]
+    for i, p in enumerate(h["packets"]):
+        if p["index"] != i:
+            bad.append(f"packet {i} carries index {p['index']}")
+            continue
+        o = tbl["fileOffset"] + 2 * i
+        ptr = rom.data[o] | (rom.data[o + 1] << 8)
+        if p["rom"] != f"${ptr:04X}":
+            bad.append(f"packet {i} cites {p['rom']}, the table at $864E says ${ptr:04X}")
+            continue
+        if man_ptrs[i] != ptr:
+            bad.append(f"packet {i}: manifest queue.cannedPackets[{i}] = "
+                       f"${man_ptrs[i]:04X}, table says ${ptr:04X}")
+        if p["fileOffset"] != rom.off(ptr):
+            bad.append(f"packet {i} fileOffset {p['fileOffset']} != {rom.off(ptr)}")
+            continue
+        # re-decode: copy until $FF or $FE inclusive; $FD keeps going
+        got, a = [], p["fileOffset"]
+        while len(got) < 128:
+            v = rom.data[a]
+            a += 1
+            got.append(v)
+            if v in (0xFF, 0xFE):
+                break
+        else:
+            bad.append(f"packet {i} at ${ptr:04X} never terminates")
+            continue
+        if got != p["bytes"]:
+            bad.append(f"packet {i} at ${ptr:04X}: cache {p['bytes'][:6]}... "
+                       f"!= re-decoded {got[:6]}...")
+    by_index = {p["index"]: p["bytes"] for p in h["packets"]}
+    for idx, want in {**EXPECT_HUD_STREAMS, **EXPECT_HUD_LISTING_ONLY}.items():
+        got = by_index.get(idx)
+        if got != want:
+            bad.append(f"packet ${idx:02X} is {got}, the cartridge's own $0700 "
+                       f"images say {want}")
+    return bad
+
+
 CHECKS = [
     ("rom", check_rom),
     ("files", check_files),
@@ -515,6 +619,7 @@ CHECKS = [
     ("palettes", check_palettes),
     ("chr", check_chr),
     ("terrain", check_terrain),
+    ("hud", check_hud),
 ]
 
 
@@ -556,6 +661,43 @@ def _cite_const_elsewhere(st, name, addr):
     e["rom"] = f"${addr:04X}"
     e["fileOffset"] = st.rom.off(addr)
     e["value"] = st.rom.data[e["fileOffset"] + 1]
+
+
+def _shift_hud_table(st):
+    """Re-cite the canned-packet table at $8650 -- one entry along -- CONSISTENTLY.
+
+    The table citation, the manifest's copy of it, every packet's pointer, every
+    packet's file offset and every packet's bytes all move together, so the
+    cache stays internally consistent and re-decodable at its own recorded
+    offsets.  Only EXPECT_HUD_STREAMS -- the bytes the CARTRIDGE itself put in
+    $0700 -- can tell.  That is the point: 00-recon-terrain.md 4 ran this same
+    shift against a LENGTH check and could only redden 4 of 10 packets, because
+    six of stage 1's packets are 4 or 5 bytes long and so are their neighbours.
+    """
+    rom = st.rom
+    base = rom.off(0x8650)                       # $864E + one 2-byte entry
+    n = 38                                       # one fewer: the table is shorter
+    st.hud["table"]["rom"] = "$8650"
+    st.hud["table"]["fileOffset"] = base
+    st.hud["table"]["entries"] = n
+    pkts = []
+    for i in range(n):
+        ptr = rom.data[base + 2 * i] | (rom.data[base + 2 * i + 1] << 8)
+        o, b = rom.off(ptr), []
+        while len(b) < 128:
+            v = rom.data[o]
+            o += 1
+            b.append(v)
+            if v in (0xFF, 0xFE):
+                break
+        pkts.append({"index": i, "rom": f"${ptr:04X}",
+                     "fileOffset": rom.off(ptr), "bytes": b})
+    st.hud["packets"] = pkts
+    e = st.man["tables"]["queue.cannedPackets"]
+    e.update(rom="$8650", fileOffset=base, n=n,
+             values=[rom.data[base + 2 * i] | (rom.data[base + 2 * i + 1] << 8)
+                     for i in range(n)])
+    e["sha1"] = hashlib.sha1(rom.at(base, 2 * n)).hexdigest()
 
 
 MUTATIONS = [
@@ -622,6 +764,13 @@ MUTATIONS = [
      lambda st: st.stages["stages"][0]["blocks"].__setitem__(
          "0:255", {"rom": "$0000", "tiles": [0] * 16, "attr": 0,
                    "collision": [0, 0, 0, 0]})),
+    ("hud-shift", "hud",
+     "re-cite the whole canned-packet table at $8650 -- consistent everywhere, "
+     "so only the cartridge's own $0700 images can tell",
+     _shift_hud_table),
+    ("hud-byte", "hud",
+     "flip one byte of the lives packet $11 -- the length is unchanged",
+     lambda st: st.hud["packets"][0x11]["bytes"].__setitem__(1, 0xA3)),
     ("chr-truncated", "chr",
      "truncate the decoded tile cache by one tile",
      lambda st: st.blob.__setitem__("chr/tiles.u8", st.blob["chr/tiles.u8"][:-64])),

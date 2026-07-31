@@ -43,9 +43,14 @@
 //     VISIBLE, unlike the Game Boy case where only internal updates dropped.
 //
 // WHAT IS NOT PORTED, named rather than silently absent: the sound driver
-// ($ED02), the enemy spawn script and enemy update ($A2C0/$ADAB), the HUD tick
-// and its four canned-packet producers ($9AC7 JSR $8898 -> $88B6/$88F6/$89E3/
-// $892C), the shield, and every game mode except 5.
+// ($ED02), the enemy spawn script and enemy update ($A2C0/$ADAB), the power-up
+// rank $17 ($9AC4 JSR $9C45), the capsule apply ($9A73 JSR $8974), and every
+// game mode except 5.
+//
+// The HUD tick ($9AC7 JSR $8898 -> $88B6/$88F6/$89E3/$892C) WAS on that list
+// and is not any more -- src/hud.js. Its absence was the whole of the
+// terrain-streams-at-double-rate divergence, because it shares the streamer's
+// $0E gate and runs seven bytes above it.
 //
 // $8641 at $80B0 IS ported (it appends the queue's mode-0 terminator, one byte
 // -- see src/vram.js). The comment that used to sit there called it "HUD
@@ -55,6 +60,7 @@
 import { MODE_STAGE } from './state.js';
 import { readJoypad } from './input.js';
 import { drainQueue, queueTerminator } from './vram.js';
+import { hudTick } from './hud.js';
 import { buildDisplayList, oamDma } from './oam.js';
 import { updatePlayer } from './player.js';
 import { advanceCamera, latchScroll } from './camera.js';
@@ -221,13 +227,15 @@ function stagePlay(state, res) {
   state.bandB.ran = split;
 
   // $9AC4: JSR $9C45 -- the power-up rank $17. Not ported (wave 7).
-  // $9AC7: JSR $8898 -- THE HUD TICK. Not ported (wave 2). This is the routine
-  // that fills $0E on odd frames and so throttles the streamer below to one
-  // block every OTHER frame on the cartridge; its absence is the whole of the
-  // remaining terrain-streams-at-double-rate divergence. MEASURED: starving
-  // the cartridge's $0E gate turns its build histogram from {0:196, 1:195}
-  // into {0:1, 1:390} -- i.e. into this port -- while emitting the same 140
-  // blocks either way (00-recon-terrain.md 5).
+
+  // $9AC7: JSR $8898 -- THE HUD TICK, and the streamer's throttle. It shares
+  // the $0E gate with $9D83 seven bytes below and runs FIRST, so on the odd
+  // frames it produces 8/14/39 bytes the streamer is refused. Its absence was
+  // the whole of the remaining terrain-streams-at-double-rate divergence:
+  // starving the cartridge's own $0E gate turns its build histogram from
+  // {0:196, 1:195} into {0:1, 1:390} -- i.e. into the port as it was -- while
+  // emitting the same 140 blocks either way (00-recon-terrain.md 5).
+  hudTick(state, res.hudPackets);                 // $9AC7 JSR $8898
 
   // $9ACA: LDA $5B / BNE $9AD1 -- $5B suppresses the streamer as well as the
   // camera. ZERO BEHAVIOUR CHANGE TODAY: $5B is 0 on every frame of every

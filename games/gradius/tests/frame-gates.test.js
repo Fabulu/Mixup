@@ -19,13 +19,16 @@
 //   $8B1A-$8B2B          $1E/$1F are bytes, and $1F == 1 is a handover frame
 //   $9656-$965A          mode 5 CLEARS $5D/$5B/$5C at entry       [knownFail]
 //   $965C-$9660          pause jumps the WHOLE body to $9A8C      [knownFail]
-//   $864A INX            $0E is an 8-bit byte and wraps           [knownFail]
+//   $864A INX            $0E is an 8-bit byte and wraps    (was a knownFail;
+//                        wave 2's byte-image $0700 fixed it and the wrapper
+//                        was removed the same commit -- a surprise PASS is a
+//                        FAILURE, and this one surprised)
 //
 // EVERY TEST HERE HAS BEEN SEEN RED. The mutation that turns each one red is
 // named in its own comment, and the whole table is in
 // docs/worklog/gradius/01-test-hardening.md with the measured output.
 //
-// A NOTE ON THE THREE knownFail ENTRIES, because they are the point of this
+// A NOTE ON THE knownFail ENTRIES, because they are the point of this
 // file rather than an apology for it: wave 1 shipped a test asserting that a
 // $5B freeze is PERMANENT. The cartridge clears $5B at $9658 on every mode-5
 // frame, so that test blessed a defect and blocked the faithful fix. The
@@ -39,14 +42,17 @@ import { bootState } from '../src/main.js';
 import { nmi } from '../src/nmi.js';
 import { BTN } from '../src/state.js';
 import { streamBlock } from '../src/terrain.js';
-import { drainQueue, queuePacket, queueTerminator, QUEUE_GATE_BYTES } from '../src/vram.js';
+import { drainQueue, queuePacket, queueTerminator, scanQueue,
+         QUEUE_GATE_BYTES } from '../src/vram.js';
 import { buildDisplayList, SPRITE0, SPRITE0_OFF } from '../src/oam.js';
 import { headlessResources, knownFail } from './helpers.js';
 
 const res = headlessResources(0);
 
-/** Packet bytes as they would sit in $0700: [mode][hi][lo][data...][$FF]. */
-const packetBytes = (s) => s.vram.queue.reduce((n, p) => n + 4 + p.bytes.length, 0);
+/** The packets $8A51 would find in $0700 right now. */
+const packets = (s) => scanQueue(s.vram.q);
+/** Packet bytes as they sit in $0700: [mode][hi][lo][data...][$FF]. */
+const packetBytes = (s) => packets(s).reduce((n, p) => n + 4 + p.bytes.length, 0);
 /** The camera's three bytes, $3D/$3E/$3F, as one comparable value. */
 const cam24 = (s) => [s.cam.sub, s.cam.lo, s.cam.hi];
 
@@ -59,23 +65,30 @@ test('$80B0 JSR $8641 appends exactly one $00 to the queue every non-lag frame',
   // frame that also streamed a terrain block (37 packet bytes + this one), and
   // 9 / 15 / 40 on the frames the HUD tick also ran (8/14/39 + this one).
   // RED WHEN: queueTerminator's body is deleted -- assertion 1.
+  // $02 is set ODD before each call so that $80BE's INC leaves it EVEN when
+  // $889F reads it, and $88A2's BCC keeps the HUD out of a test about $8641.
+  // The HUD's own contribution to $0E is tests/hud.test.js's business.
   const s = bootState(res.manifest);
   s.build.gate = 1;                       // $3A up: the streamer stands down
+  s.frame = 1;
   nmi(s, 0, res);
-  assert.strictEqual(s.vram.queue.length, 0, 'nothing else should have produced');
+  assert.strictEqual(packets(s).length, 0, 'nothing else should have produced');
   assert.strictEqual(s.vram.cursor, 1, '$0E should be exactly the $8641 byte');
 
   // and on a frame that streams, the byte sits on top of the packets
   s.build.gate = 0;
+  s.frame = 1;
   nmi(s, 0, res);
-  assert.ok(s.vram.queue.length > 0, 'the streamer emitted nothing to check against');
+  assert.ok(packets(s).length > 0, 'the streamer emitted nothing to check against');
   assert.strictEqual(s.vram.cursor, packetBytes(s) + 1,
     '$0E is not the packet bytes plus the $8641 terminator');
   assert.strictEqual(s.vram.cursor, 38, 'one terrain block is 4*8 + 5 + 1 = 38 bytes');
 
   // A lag frame bails at $80B7, long before $80B0.
   const before = s.vram.cursor;
+  s.frame = 1;
   nmi(s, 0, res, true);
+  assert.strictEqual(s.frame, 1, 'a lag frame ran $80BE INC $02');
   assert.strictEqual(s.vram.cursor, before, 'a lag frame appended the terminator');
 });
 
@@ -111,7 +124,7 @@ test('$9D89 CMP #$04: THREE bare bytes in $0E build, FOUR refuse', () => {
   drainQueue(s);
   queueTerminator(s); queueTerminator(s); queueTerminator(s);        // $8641 x3
   assert.strictEqual(s.vram.cursor, 3);
-  assert.strictEqual(s.vram.queue.length, 0, 'zero packets, three bytes -- the point');
+  assert.strictEqual(packets(s).length, 0, 'zero packets, three bytes -- the point');
   assert.strictEqual(streamBlock(s, res.stage), true,
     '3 bytes is BELOW CMP #$04 and must build');
   assert.strictEqual(s.vram.cursor, 3 + 37,
@@ -120,7 +133,7 @@ test('$9D89 CMP #$04: THREE bare bytes in $0E build, FOUR refuse', () => {
   drainQueue(s);
   queueTerminator(s); queueTerminator(s); queueTerminator(s); queueTerminator(s);
   assert.strictEqual(s.vram.cursor, 4);
-  assert.strictEqual(s.vram.queue.length, 0, 'zero packets, four bytes -- the point');
+  assert.strictEqual(packets(s).length, 0, 'zero packets, four bytes -- the point');
   assert.strictEqual(streamBlock(s, res.stage), false,
     'the streamer built with 4 bytes in $0E');
 
@@ -130,23 +143,30 @@ test('$9D89 CMP #$04: THREE bare bytes in $0E build, FOUR refuse', () => {
   assert.strictEqual(QUEUE_GATE_BYTES, 4, '$9D8A holds C9 04, i.e. CMP #$04');
 });
 
-knownFail('$864A INX / $864B STX $0E: $0E is an 8-bit byte and wraps at 256',
-  'ROM $8641 = A9 00 F0 00 A6 0E 9D 00 07 E8 86 0E 60 -- re-dumped from '
-  + '"Gradius (USA).nes" at file offset 16 + $0641. X is an 8-bit register and '
-  + '$0700 is a 256-byte page, so the cursor wraps; src/vram.js keeps '
-  + 'state.vram.cursor as an unmasked JS number and porttrace.mjs hands it '
-  + 'straight to the comparison as w_000E. Cannot bite TODAY (the port has one '
-  + 'producer, max 38 per frame, and $8A7B zeroes it every frame) -- but the '
-  + 'cartridge\'s own $0E reaches 149 in the recorded stage-load window and '
-  + 'wave 2 adds the four $8898 producers. Fix is one u8() in queuePacket and '
-  + 'queueTerminator; owner = whoever ports $8898.',
-  () => {
-    const s = bootState(res.manifest);
-    drainQueue(s);
-    queuePacket(s, 0x2000, 1, new Uint8Array(252));   // 4 + 252 = 256 wire bytes
-    assert.strictEqual(s.vram.cursor, 0,
-      '$0E wrapped to 0 on the cartridge; the port kept counting');
-  });
+test('$864A INX / $864B STX $0E: $0E is an 8-bit byte and wraps at 256', () => {
+  // WAS A knownFail. ROM $8641 = A9 00 F0 00 A6 0E 9D 00 07 E8 86 0E 60,
+  // re-dumped from "Gradius (USA).nes" at file offset 16 + $0641. X is an
+  // 8-bit register and $0700 is a 256-byte page, so the cursor wraps -- and
+  // src/vram.js used to keep state.vram.cursor as an unmasked JS number, which
+  // porttrace.mjs handed straight to the comparison as w_000E. Wave 2 turned
+  // $0700 into a real Uint8Array(256) with an 8-bit cursor, so this is now an
+  // ordinary test and the annotation is gone (helpers.js knownFail(): a
+  // surprise PASS is a FAILURE, and this one surprised on the first run).
+  //
+  // Still unreachable from the corpus: the port's largest frame is 40 bytes and
+  // $8A7B zeroes the cursor every frame. The cartridge's own $0E reaches 149 in
+  // the recorded stage-load window, which is why it is worth pinning.
+  // RED WHEN: the `& 0xFF` comes off queueByte's INX.
+  const s = bootState(res.manifest);
+  drainQueue(s);
+  queuePacket(s, 1, 0x2000, new Uint8Array(252));   // 4 + 252 = 256 wire bytes
+  assert.strictEqual(s.vram.cursor, 0,
+    '$0E must wrap to 0 after 256 wire bytes');
+  queueTerminator(s);
+  assert.strictEqual(s.vram.cursor, 1, 'and keep counting from 0');
+  assert.strictEqual(s.vram.q[0], 0x00,
+    '$8647 STA $0700,X wrote past the end of the page instead of onto its start');
+});
 
 // ------------------------------------------------------------ the streamer --
 
