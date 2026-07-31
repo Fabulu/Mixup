@@ -50,10 +50,26 @@
     "src/hud.js READS and nothing in the port yet WRITES. Watching a seeded",
     "constant proves little on its own; it is here so that the frame waves 5-7",
     "make it move is compared against data recorded now. src/state.js says the",
-    "same thing under SEEDED INPUTS, at the code."
+    "same thing under SEEDED INPUTS, at the code.",
+    "",
+    "WAVE 3 ADDED THE ENEMY POOL AND THE SPAWN ENGINE. Sixteen arrays x the ten",
+    "enemy slots 12-21 ($010C-$0115 status, $012C metasprite, $014C anim timer,",
+    "$016C anim frame, $018C palette OR, $030C type, $032C/$034C Y, $036C/$038C",
+    "X, $03AC carrier, $03BC/$03EC Y velocity, $042C X velocity / explosion",
+    "cursor, $040C the shot countdown / $04EC its reload, $046C handler state,",
+    "$048C sub-state, $04AC the second phase counter, $04CC unidentified but",
+    "cleared by $A527), plus the engine's own zero",
+    "page: $47 $49 $4A $4B $5D $60 $61 $64-$67 $69 $6A $6B $6C $6D $6E $6F.",
+    "",
+    "$6A:$6B is the one to look at hardest. It is a REAL CPU POINTER into the",
+    "ROM's wave lists, and comparing it is what makes the wave-record walk",
+    "checkable rather than merely plausible: 00-recon-enemies.md 1 recorded it",
+    "stepping $A846 -> $A848 -> ... -> $A858 as each of chunk 0's ten records",
+    "fired, and $A85B after the chunk switch at scroll $0200. A port that",
+    "abstracted the wave list into an array index could not be held to that."
   ],
   "watch": [
-    "0000", "000D", "000E", "0015", "0018", "0019", "001B", "001E", "001F",
+    "0000", "000D", "000E", "0015", "0018", "0019", "001A", "001B", "001E", "001F",
     "0020", "0021", "0024",
     "0035", "0036", "003A", "0040", "0041", "0042", "0044", "0045", "0046",
     "0048", "004C",
@@ -70,7 +86,28 @@
     "07C0", "07C1", "07C2", "07C3", "07C4", "07C5", "07C6", "07C7",
     "07C8", "07C9", "07CA", "07CB", "07CC", "07CD", "07CE", "07CF",
     "07D0", "07D1", "07D2", "07D3", "07D4", "07D5", "07D6", "07D7",
-    "07E0", "07E1", "07E2", "07E4", "07E5", "07E6", "07E8", "07E9", "07EA"
+    "07E0", "07E1", "07E2", "07E4", "07E5", "07E6", "07E8", "07E9", "07EA",
+    "0047", "0049", "004A", "004B", "005D", "0060", "0061", "0064", "0065", "0066", "0067", "0069", "006A", "006B", "006C", "006D", "006E", "006F",
+    "010C", "010D", "010E", "010F", "0110", "0111", "0112", "0113", "0114", "0115",
+    "012C", "012D", "012E", "012F", "0130", "0131", "0132", "0133", "0134", "0135",
+    "014C", "014D", "014E", "014F", "0150", "0151", "0152", "0153", "0154", "0155",
+    "016C", "016D", "016E", "016F", "0170", "0171", "0172", "0173", "0174", "0175",
+    "018C", "018D", "018E", "018F", "0190", "0191", "0192", "0193", "0194", "0195",
+    "030C", "030D", "030E", "030F", "0310", "0311", "0312", "0313", "0314", "0315",
+    "032C", "032D", "032E", "032F", "0330", "0331", "0332", "0333", "0334", "0335",
+    "034C", "034D", "034E", "034F", "0350", "0351", "0352", "0353", "0354", "0355",
+    "036C", "036D", "036E", "036F", "0370", "0371", "0372", "0373", "0374", "0375",
+    "038C", "038D", "038E", "038F", "0390", "0391", "0392", "0393", "0394", "0395",
+    "03AC", "03AD", "03AE", "03AF", "03B0", "03B1", "03B2", "03B3", "03B4", "03B5",
+    "03BC", "03BD", "03BE", "03BF", "03C0", "03C1", "03C2", "03C3", "03C4", "03C5",
+    "03EC", "03ED", "03EE", "03EF", "03F0", "03F1", "03F2", "03F3", "03F4", "03F5",
+    "042C", "042D", "042E", "042F", "0430", "0431", "0432", "0433", "0434", "0435",
+    "046C", "046D", "046E", "046F", "0470", "0471", "0472", "0473", "0474", "0475",
+    "048C", "048D", "048E", "048F", "0490", "0491", "0492", "0493", "0494", "0495",
+    "040C", "040D", "040E", "040F", "0410", "0411", "0412", "0413", "0414", "0415",
+    "04AC", "04AD", "04AE", "04AF", "04B0", "04B1", "04B2", "04B3", "04B4", "04B5",
+    "04CC", "04CD", "04CE", "04CF", "04D0", "04D1", "04D2", "04D3", "04D4", "04D5",
+    "04EC", "04ED", "04EE", "04EF", "04F0", "04F1", "04F2", "04F3", "04F4", "04F5"
   ],
 
   "_knownFail": [
@@ -104,6 +141,11 @@
   "knownFail": [],
 
   "scenarios": [
+    {
+      "name": "enemy-waves",
+      "tail": "1466:RD",
+      "why": "THE ENEMY SCENARIO. 1465 compared frames -- long enough for all ten of stage 1's chunk-0 wave records (fired at game frames 378 before the align, then 506, 634, 762, 890, 954, 1018, 1082, 1146, 1210), the $FF terminator, the CHUNK SWITCH at scroll $0200 (frame 1339, cursor $A858 -> $A85B), and chunk 1's first four records. Three enemy types are dispatched in the window: $05/$85 the fan ($B0AF, 4840 dispatches), $08/$88 the wavy one ($B26C, 3954) and $04/$84 the arc ($B205, 570, first at frame 1722). It also covers one natural ALLOCATION FAILURE at frame 1152, which is the behaviour that drops a member and collapses a squadron's spacing.\n\nWHY RD, AND WHY IT IS THE ONLY CHOICE. Without weapons the ship cannot kill anything, and every enemy in stage 1's opening homes on the player's Y, so it dies -- MEASURED, first death frame per 1460-frame hold: idle 1051, R 493, RU 445, U 1076, L ~1180. compare.mjs truncates at the death, and a death also RESETS THE CAMERA at the respawn (measured: after the L-run's death the spawn engine re-fired chunk 0's first record at scroll $0020, frame 1299), so the chunk switch never happens. RD parks the ship in the bottom-right corner at (240,192), where the fan's return leg and the wavy one's approach both miss: it survives to frame 1865 and dies at 1866, which is where this scenario stops. Nothing else in the corpus reaches past frame 640.\n\nThe cartridge's one lag frame in this run is at game frame 283, i.e. before the align -- so romLagInWindow is 0 and the lag comparison still has teeth via long-idle."
+    },
     {
       "name": "long-idle",
       "tail": "600:",

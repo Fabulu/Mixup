@@ -39,6 +39,7 @@ Outputs (ALL ROM-DERIVED -- `assets/` is gitignored, none of it is committable)
     assets/chr/tiles.u8         CACHE: 2048 tiles x 64 px, one byte 0..3 per px
     assets/terrain/stages.json  CACHE: the seven stages expanded from the tables
     assets/hud/packets.json     CACHE: the 39 canned VRAM packets at $864E
+    assets/enemies/tables.json  CACHE: the four ROM byte ranges $A2C0/$ADAB read
 
 Usage:
     python games/gradius/tools/export_assets.py
@@ -257,6 +258,45 @@ CONSTANTS = [
      "band B ANDs the PPUCTRL shadow with this -- nametable bits cleared"),
     ("render.bandBChrSelector", 0x9ABF, 0xA0,
      "band B always LDY #$02 -> $8AA8[2] = $31 -> CHR bank 1"),
+    # ---- enemies, wave 3 (00-recon-enemies.md + this wave's own re-runs) ----
+    # Each one is a number src/enemies.js spells; pinning the OPCODE is what
+    # stops a re-cited address handing the port somebody else's operand.
+    ("enemy.slotBase", 0xA534, 0x69,
+     "$A527: X = $A8 + this -- an enemy's object slot is its index + 12"),
+    ("enemy.chunkMask", 0xA2E1, 0x29,
+     "$61 = $3F AND this -- the spawn stream is reloaded every 512 px"),
+    ("enemy.inlineCmd", 0xA34B, 0xC9,
+     "a wave record's cmd >= this is the 5-byte INLINE form ($A37A); NOT PORTED"),
+    ("enemy.recordLen", 0xA34F, 0xA9,
+     "$6A:$6B += this after every record read -- a wave record is 2 bytes"),
+    ("enemy.formMembers", 0xA3F1, 0xC9,
+     "a formation of >= this many members gets a squadron counter at $0048+$49"),
+    ("enemy.allocFirst", 0xA415, 0xA2,
+     "the formation allocator starts here and scans DOWN -- slot 21 fills first, "
+     "which is what fixes the OAM draw order ($8B47 walks slots 0->31)"),
+    ("enemy.updateSlots", 0xADB3, 0xA2,
+     "$ADAB: LDX #$09 / ... / DEC $A8 / BPL -- 10 slots every frame, occupied or "
+     "not. MEASURED 15900 $ADE5 entries over 1590 $ADAB calls = exactly 10.00"),
+    ("enemy.animReload", 0xADF1, 0xA9,
+     "$014C,X reload: the status animator steps once every this many frames"),
+    ("enemy.animMask", 0xAE03, 0x29,
+     "$016C,X AND this -- four metasprites per status group at $ADC1"),
+    ("enemy.explReload", 0xAE9E, 0xA9,
+     "$AE99's explosion script steps once every this many frames"),
+    ("enemy.driftStep", 0xAEE7, 0xE9,
+     "$AEE1 subtracts this from $038C,X every frame = 0.5 px/frame LEFT"),
+    ("enemy.driftFreeX", 0xAEF4, 0xC9,
+     "...and $AEF8 frees the slot once $036C,X drops below this"),
+    ("enemy.fanTurnX", 0xB0D2, 0xC9,
+     "$B0AF sub-state 0 ends when X drops below this"),
+    ("enemy.fanTurnTimer", 0xB0D6, 0xA9, "$046C,X, the fan's 64-frame curve"),
+    ("enemy.fanSplitY", 0xB0DE, 0xC9,
+     "Y >= this -> sub-state 2 (curve UP) instead of 1 (curve DOWN)"),
+    ("enemy.wavyAccel", 0xB271, 0xA9, "$B26C seeds $048C,X with this (0.5 px/f^2)"),
+    ("enemy.despawnXMin", 0xB256, 0xC9, "$B251 frees the slot below this X"),
+    ("enemy.despawnXMax", 0xB25A, 0xC9, "...and at or above this X"),
+    ("enemy.despawnYMin", 0xB261, 0xC9, "...and below this Y"),
+    ("enemy.despawnYMax", 0xB265, 0xC9, "...and at or above this Y"),
 ]
 
 # ==========================================================================
@@ -392,6 +432,147 @@ def canned_packets(rom: Rom) -> dict:
         "control": {"FF": "end, append nothing", "FE": "append $FF and end",
                     "FD": "append $FF, reset the blank counter, append $01, continue"},
         "packets": out,
+    }
+
+
+# ==========================================================================
+# ENEMIES.  Four contiguous ROM byte ranges, exported RAW rather than decoded.
+#
+# WHY RAW.  The spawn engine indexes its tables with 8-bit arithmetic that WRAPS
+# ($A36D `LDA $98 / ASL / ASL` is (cmd*4) AND $FF; $A3E6 `ASL / TAX` is
+# ($66*2) AND $FF) and it walks the wave lists through a real 16-bit pointer in
+# `$6A:$6B` that the port must keep byte-for-byte so `$6A`/`$6B` stay COMPARABLE
+# against the cartridge.  A pre-decoded "list of waves" cannot express either.
+# So src/enemies.js reads these bytes at their CPU addresses, exactly as the
+# 6502 does, and a read outside an exported range is a loud throw instead of a
+# plausible number.
+#
+# The ranges, and the fact that they are contiguous and complete:
+#
+#   $A592-$ADAA  every table the spawn engine touches, in one run:
+#                $A592 formation table (count/spawnX/firstY, 2 bytes)
+#                $A5BC pattern table   (delay/dY/style, 3 bytes)
+#                $A5FE/$A600 the two descriptor-table POINTERS
+#                $A602 table B (formation descriptors, 4 bytes)
+#                $A662 table A (single-spawn descriptors, stride 3)
+#                $A7D0 per-stage chunk-table pointers (7)
+#                $A7DE-$A843 the seven chunk tables
+#                $A844-$ADAA every wave list of every stage.
+#                It ENDS at $ADAB, which is the first instruction of the update
+#                loop -- asserted below, so the range cannot silently grow into
+#                code or stop short of the last stage's last wave.
+#   $AE1C-$AE6F  the 42-entry handler dispatch table ($AE19 JSR $83E4)
+#   $ADC1-$ADE4  the nine 4-byte status animation groups
+#   $AE71-$AE98  the six explosion-script pointers and their byte streams
+#
+# MEASURED, not read off the listing (00-recon-enemies.md 1, re-run for this
+# wave): stage 0 chunk 0's ten records fire at exactly ($61<<8)+trigger*2, ten
+# for ten, and the chunk switch to $A859 happens at scroll $0200.
+ENEMY_BLOCKS = [
+    ("spawnData", 0xA592, 0xADAB,
+     "$A2D5 LDA $A7D0,Y / $A2E6 LDA ($98),Y / $A33F LDA ($6A),Y / "
+     "$A397 LDA $A5FE,Y / $A3E8 LDA $A592,X / $A42F LDA $A5BC,Y",
+     "formation + pattern + descriptor tables, the per-stage chunk tables, and "
+     "every wave list"),
+    ("dispatch", 0xAE1C, 0xAE70,
+     "$AE19 JSR $83E4 -- $83E4 does ASL A (8-BIT, so type $85 and $05 land on "
+     "the SAME entry) and jumps through table_base + 2*(type AND $7F)",
+     "42 handler addresses; entries 0 and 31 both point at $AE70, the RTS that "
+     "is also the byte immediately after the table"),
+    ("animGroups", 0xADC1, 0xADE5,
+     "$AE09 LDA $ADC1,Y with Y = status*4 + ($016C,X AND 3)",
+     "nine 4-byte groups (status 0..8); a 0 byte means wrap and re-read, which "
+     "is how the 3-entry capsule groups (status 6 and 7) work"),
+    ("explosionScripts", 0xAE71, 0xAE99,
+     "$AEA8 LDA $AE71,Y with Y = $016C,X * 2, then ($98),Y with Y = $042C,X",
+     "six pointers at $AE71-$AE7C then their streams; a 0 byte ends the script"),
+]
+
+ENEMY_STAGE_PTRS = 0xA7D0          # $A2D5 LDA $A7D0,Y -- 7 stages, 2 bytes each
+ENEMY_STAGES = 7
+ENEMY_CHUNKS = 8                   # $61 = $3F AND $0E -> 8 even offsets
+ENEMY_DESC_PTRS = 0xA5FE           # $A397 LDA $A5FE,Y -- Y = 0 (table A), 2 (B)
+
+
+def enemy_tables(rom: Rom) -> dict:
+    """The enemy spawn/update byte ranges, with the structure asserted.
+
+    Every guard here is the same kind as the opcode guard on CONSTANTS: a range
+    cited one byte out still contains bytes, and they still look like a table.
+    """
+    # The end of the wave-list region is the START of the update loop.  If a
+    # future dump moved either, this stops the export dead instead of shipping a
+    # blob that runs off into code.
+    if rom.b(0xADAB) != 0xA9 or rom.b(0xADAC) != 0x80:
+        raise SystemExit(f"ABORT: $ADAB should be `LDA #$80` (the head of the "
+                         f"enemy update loop) but reads "
+                         f"${rom.b(0xADAB):02X} ${rom.b(0xADAC):02X}")
+    if rom.b(0xAE70) != 0x60:
+        raise SystemExit("ABORT: $AE70 is not an RTS -- dispatch entries 0 and 31 "
+                         "point at it and it is also the byte after the table")
+
+    roots = {
+        "tableA": rom.w(ENEMY_DESC_PTRS),          # $A5FE -> single-spawn
+        "tableB": rom.w(ENEMY_DESC_PTRS + 2),      # $A600 -> formation
+    }
+    if roots["tableA"] != 0xA662 or roots["tableB"] != 0xA602:
+        raise SystemExit(f"ABORT: the descriptor pointers at $A5FE/$A600 read "
+                         f"${roots['tableA']:04X}/${roots['tableB']:04X}, not "
+                         f"$A662/$A602")
+
+    lo, hi = 0xA592, 0xADAB
+    stages = []
+    for s in range(ENEMY_STAGES):
+        chunk_tbl = rom.w(ENEMY_STAGE_PTRS + 2 * s)
+        if not lo <= chunk_tbl < hi:
+            raise SystemExit(f"ABORT: stage {s}'s chunk table ${chunk_tbl:04X} is "
+                             f"outside the exported range ${lo:04X}-${hi - 1:04X}")
+        chunks = []
+        for c in range(ENEMY_CHUNKS):
+            p = rom.w(chunk_tbl + 2 * c)
+            if not lo <= p < hi:
+                # Stages 2-6 have SEVEN chunk pointers, not eight; entry 7 of
+                # their table is the first wave list's bytes.  $61 can only reach
+                # 14 = chunk 7 on a stage long enough to scroll 4096 px, which
+                # none of them is, so this is recorded and not treated as an
+                # error for c == 7.
+                if c == ENEMY_CHUNKS - 1:
+                    chunks.append(None)
+                    continue
+                raise SystemExit(f"ABORT: stage {s} chunk {c} -> ${p:04X}, outside "
+                                 f"${lo:04X}-${hi - 1:04X}")
+            # every wave list must terminate with $FF inside the range
+            a = p
+            while a < hi and rom.b(a) != 0xFF:
+                a += 2
+            if a >= hi:
+                raise SystemExit(f"ABORT: stage {s} chunk {c}'s wave list at "
+                                 f"${p:04X} has no $FF terminator before ${hi:04X}")
+            chunks.append(f"${p:04X}")
+        stages.append({"chunkTable": f"${chunk_tbl:04X}", "chunks": chunks})
+
+    for e in range(42):
+        t = rom.w(0xAE1C + 2 * e)
+        if not 0x8000 <= t <= 0xFFFF:
+            raise SystemExit(f"ABORT: dispatch entry {e} -> ${t:04X}, outside PRG")
+
+    blocks = []
+    for name, a, end, read_by, note in ENEMY_BLOCKS:
+        blocks.append({"name": name, "rom": f"${a:04X}", "end": f"${end:04X}",
+                       "fileOffset": rom.off(a), "len": end - a,
+                       "readBy": read_by, "note": note,
+                       "bytes": list(rom.slice(a, end - a))})
+    return {
+        "note": "CACHE. Rebuild with tools/export_assets.py; the authority is prg.bin.",
+        "why": "src/enemies.js reads these at their CPU addresses because the "
+               "ROM's own indexing is 8-bit-wrapping and its wave cursor $6A:$6B "
+               "is a compared field. A read outside them is a loud throw.",
+        "roots": {k: f"${v:04X}" for k, v in roots.items()},
+        "stagePtrTable": {"rom": f"${ENEMY_STAGE_PTRS:04X}", "stages": ENEMY_STAGES,
+                          "chunksPerStage": ENEMY_CHUNKS,
+                          "index": "$61 = $3F AND $0E, used as a BYTE offset"},
+        "stages": stages,
+        "blocks": blocks,
     }
 
 
@@ -646,6 +827,12 @@ def main() -> int:
           json.dumps(hud, separators=(",", ":")).encode("utf-8"),
           "cache", "prg.bin via tables['queue.cannedPackets']", files)
 
+    enemies = enemy_tables(rom)
+    write(out, "enemies/tables.json",
+          json.dumps(enemies, separators=(",", ":")).encode("utf-8"),
+          "cache", "prg.bin, the ranges $A592-$ADAA / $ADC1-$ADE4 / $AE1C-$AE6F / "
+                   "$AE71-$AE98", files)
+
     manifest = build_manifest(rom, files)
     (out / "manifest.json").write_text(
         json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
@@ -659,7 +846,9 @@ def main() -> int:
     print(f"  cache  chr/tiles.u8 {CHR_BYTES // TILE_BYTES} tiles, "
           f"terrain/stages.json {len(stages)} stages, "
           f"hud/packets.json {len(hud['packets'])} canned packets "
-          f"({sum(len(p['bytes']) for p in hud['packets'])} script bytes)")
+          f"({sum(len(p['bytes']) for p in hud['packets'])} script bytes), "
+          f"enemies/tables.json {sum(b['len'] for b in enemies['blocks'])} bytes "
+          f"in {len(enemies['blocks'])} ranges")
     print(f"  manifest: {len(manifest['tables'])} tables, "
           f"{len(manifest['constants'])} instruction-anchored constants, "
           f"{len(manifest['palettes'])} palette blobs")

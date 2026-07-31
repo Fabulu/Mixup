@@ -139,6 +139,65 @@ EXPECT_HUD_STREAMS = {
 # and $41/$44/$45/$46 all 0 throughout).  Listing-only, and said so.
 EXPECT_HUD_LISTING_ONLY = {0x19: [0x1D, 0x1E, 0x1E, 0x1F, 0xFF]}
 
+# ======================================================================
+# ENEMIES, TRANSCRIBED FROM MEASUREMENTS ON THE RUNNING CARTRIDGE.
+#
+# None of this is read off a listing.  Each entry names the run that produced
+# it, and every one of them is a fact an exporter citing a WRONG-BUT-PLAUSIBLE
+# address cannot satisfy -- which is the only failure mode two automated readers
+# share (docs/knowledge/03).
+#
+# 1. Stage 0, chunk 0's ten wave records.  00-recon-enemies.md section 1 hooked
+#    $A335 and recorded, ten for ten, the game frame, the 16-bit scroll and the
+#    wave cursor AFTER each record fired:
+#        f378 $0020 ->$A846   f506 $0060 ->$A848   f634 $00A0 ->$A84A
+#        f762 $00E0 ->$A84C   f890 $0120 ->$A84E   f954 $0140 ->$A850
+#       f1018 $0160 ->$A852  f1082 $0180 ->$A854  f1146 $01A0 ->$A856
+#       f1210 $01C0 ->$A858, then $FF.
+#    A record is [trigger, cmd] and fires at ($61<<8) + trigger*2, so the
+#    triggers below are those scrolls halved and the cursor steps prove the
+#    2-byte stride.  Re-measured for wave 3 on script "200:,10:S,190:,1500:RD"
+#    with the same ten frames.
+EXPECT_ENEMY_CHUNK0 = [0x10, 0x80, 0x30, 0x81, 0x50, 0x80, 0x70, 0x81,
+                       0x90, 0x80, 0xA0, 0x82, 0xB0, 0x82, 0xC0, 0x82,
+                       0xD0, 0x82, 0xE0, 0x80, 0xFF]
+# 2. Chunk 1 begins at $A859 and its first record fired at scroll $0200, game
+#    frame 1339 (both runs).  Its first two bytes are therefore [$00, $81].
+EXPECT_ENEMY_CHUNK1_HEAD = [0x00, 0x81]
+# 3. The formation descriptors, read out of $64-$67 by an exec hook ON $A3E4
+#    while the cartridge ran -- so these are the bytes the ROUTINE received, not
+#    bytes somebody indexed.  $80/$81/$82 from 00-recon-enemies.md section 3;
+#    $83/$84 from this wave's 1900-frame RD run (fired f1722 and f1786).
+EXPECT_ENEMY_DESCRIPTORS = {
+    0x80: [0x01, 0x05, 0x00, 0x00],
+    0x81: [0x01, 0x05, 0x01, 0x00],
+    0x82: [0x00, 0x08, 0x02, 0x04],
+    0x83: [0x05, 0x04, 0x03, 0x02],
+    0x84: [0x05, 0x04, 0x04, 0x03],
+}
+# 4. Formation 0 ($66 = 0): FOUR members, spawn X $F0, first Y $2A -- measured
+#    as four slots filling and as the X the slots held.  Pattern 0 ($67 = 0):
+#    delay 10, dY 0 -- measured as members appearing on frames 378, 389, 400,
+#    411, i.e. delay+1 apart, all at the same Y.
+EXPECT_ENEMY_FORM0 = [0xF4, 0x2A]          # (b0 AND $0F)=4 members, (b0 AND $F0)=$F0
+EXPECT_ENEMY_PATTERN0 = [0x0A, 0x00, 0xC8]  # delay, dY, style
+# 5. The status animation groups.  MEASURED as metasprite histograms per slot:
+#    status 1 produced 12/13/14/15 and status 5 produced 32/33/34/35
+#    (00-recon-enemies.md section 5, slotAnim.17).
+EXPECT_ENEMY_ANIM = {1: [0x0C, 0x0D, 0x0E, 0x0F], 5: [0x20, 0x21, 0x22, 0x23]}
+# 6. The dispatch table, at the three entries proved by COUNTING rather than by
+#    reading: hits on $B0AF equalled typeHist[$05]+typeHist[$85] exactly, ditto
+#    $B26C for $08/$88 and $B205 for $04/$84 (recon section 5; re-measured this
+#    wave: hdlr04 570 == 10+560, hdlr05 4840 == 32+4808, hdlr08 3954 == 20+3934).
+#    Entries 0 and 31 are the RTS at $AE70, which is also the byte after the
+#    table -- that is what makes the table exactly 42 entries long.
+EXPECT_ENEMY_DISPATCH = {0: 0xAE70, 4: 0xB205, 5: 0xB0AF, 8: 0xB26C, 31: 0xAE70}
+# 7. The explosion scripts.  Script 0 produced metasprites 38,39,40 for a type
+#    $85 kill and script 1 produced 41,42,43,44 for a type $88 kill -- both
+#    measured (recon section 7).  $26 = 38, $29 = 41.
+EXPECT_ENEMY_EXPL = {0: [0x26, 0x27, 0x28, 0x00],
+                     1: [0x29, 0x2A, 0x2B, 0x2C, 0x00]}
+
 # NOTES-terrain.md section 4, "Stage 1's shape" -- an end-to-end expectation on
 # the DECODED cache, not on any single table.
 EXPECT_STAGE1 = {
@@ -287,6 +346,7 @@ class State:
             self.blob[f["path"]] = (assets / f["path"]).read_bytes()
         self.stages = json.loads(self.blob["terrain/stages.json"].decode("utf-8"))
         self.hud = json.loads(self.blob["hud/packets.json"].decode("utf-8"))
+        self.enemies = json.loads(self.blob["enemies/tables.json"].decode("utf-8"))
 
 
 def vals_at(rom: RawRom, off: int, n: int, unit: str) -> list[int]:
@@ -610,6 +670,134 @@ def check_hud(st: State) -> list[str]:
     return bad
 
 
+def check_enemies(st: State) -> list[str]:
+    """The four enemy byte ranges, re-read and then held against MEASUREMENTS.
+
+    Three independent arms, in increasing strength:
+
+    1. every block is re-read from the raw .nes at the file offset the JSON
+       itself recorded, and compared byte for byte -- catches a stale cache;
+    2. the offset is re-derived from the CPU address a second way, so a wrong
+       offset formula cannot agree with itself;
+    3. the tables are then walked with the ROM's OWN index arithmetic
+       (`$A592 + 2*$66`, `$A5BC + 3*$67`, `$AE1C + 2*(type AND $7F)`,
+       `$A602 + ((4*cmd) AND $FF)`) and the results held against
+       EXPECT_ENEMY_*, which came off the RUNNING CARTRIDGE.  That is the arm
+       that survives the exporter and this file citing the same wrong address.
+    """
+    bad = []
+    rom = st.rom
+    e = st.enemies
+    blocks = {b["name"]: b for b in e["blocks"]}
+    for name in ("spawnData", "dispatch", "animGroups", "explosionScripts"):
+        if name not in blocks:
+            bad.append(f"enemies/tables.json has no block {name!r}")
+    if bad:
+        return bad
+
+    for b in e["blocks"]:
+        base = int(b["rom"].lstrip("$"), 16)
+        want_off = rom.off(base)
+        if b["fileOffset"] != want_off:
+            bad.append(f"block {b['name']} at {b['rom']} records fileOffset "
+                       f"{b['fileOffset']}, ${base:04X} is at {want_off}")
+            continue
+        if b["len"] != len(b["bytes"]):
+            bad.append(f"block {b['name']} claims len {b['len']} but carries "
+                       f"{len(b['bytes'])} bytes")
+            continue
+        got = list(rom.at(b["fileOffset"], b["len"]))
+        if got != b["bytes"]:
+            first = next(i for i in range(b["len"]) if got[i] != b["bytes"][i])
+            bad.append(f"block {b['name']}: byte {first} (${base + first:04X}) is "
+                       f"${b['bytes'][first]:02X} in the cache, ${got[first]:02X} "
+                       f"in the ROM")
+
+    # -- from here on, read only the CACHE, indexed the way the 6502 does ------
+    spawn = blocks["spawnData"]
+    sbase = int(spawn["rom"].lstrip("$"), 16)
+
+    def byte(addr: int) -> int | None:
+        i = addr - sbase
+        return spawn["bytes"][i] if 0 <= i < len(spawn["bytes"]) else None
+
+    def word(addr: int) -> int | None:
+        a, b2 = byte(addr), byte(addr + 1)
+        return None if a is None or b2 is None else a | (b2 << 8)
+
+    # $A2D5 LDA $A7D0,Y (Y = 2*$19) -> chunk table; $A2E6 LDA ($98),Y (Y = $61)
+    chunk_tbl = word(0xA7D0)
+    if chunk_tbl != 0xA7DE:
+        bad.append(f"stage 0's chunk table is ${chunk_tbl:04X}, the cartridge's "
+                   f"$A7D0 pair says $A7DE")
+    else:
+        for idx, want in ((0, EXPECT_ENEMY_CHUNK0), (1, EXPECT_ENEMY_CHUNK1_HEAD)):
+            p = word(chunk_tbl + 2 * idx)         # $61 = 0 and 2 -> byte offsets
+            if p is None:
+                bad.append(f"stage 0 chunk {idx} pointer is outside the block")
+                continue
+            got = [byte(p + k) for k in range(len(want))]
+            if got != want:
+                bad.append(f"stage 0 chunk {idx} at ${p:04X} reads {got}, the "
+                           f"cartridge's measured wave records say {want}")
+
+    # $A397: the descriptor tables live behind pointers at $A5FE/$A600
+    tab_b = word(0xA600)
+    if tab_b != 0xA602:
+        bad.append(f"$A600 -> ${tab_b:04X}, the formation table is at $A602")
+    else:
+        for cmd, want in EXPECT_ENEMY_DESCRIPTORS.items():
+            off = (4 * cmd) & 0xFF                # $A36D LDA $98 / ASL / ASL
+            got = [byte(tab_b + off + k) for k in range(4)]
+            if got != want:
+                bad.append(f"descriptor for cmd ${cmd:02X} (${tab_b + off:04X}) "
+                           f"reads {got}, the cartridge handed $A3E4 {want}")
+    if word(0xA5FE) != 0xA662:
+        bad.append(f"$A5FE -> ${word(0xA5FE):04X}, the single-spawn table is $A662")
+
+    got = [byte(0xA592 + k) for k in range(2)]    # $A3E8 LDA $A592,X, X = 2*$66
+    if got != EXPECT_ENEMY_FORM0:
+        bad.append(f"formation 0 at $A592 reads {got}, the cartridge spawned "
+                   f"{EXPECT_ENEMY_FORM0[0] & 0x0F} members at X "
+                   f"${EXPECT_ENEMY_FORM0[0] & 0xF0:02X}")
+    got = [byte(0xA5BC + k) for k in range(3)]    # $A42F LDA $A5BC,Y, Y = 3*$67
+    if got != EXPECT_ENEMY_PATTERN0:
+        bad.append(f"pattern 0 at $A5BC reads {got}, the cartridge spaced its "
+                   f"members {EXPECT_ENEMY_PATTERN0[0] + 1} frames apart")
+
+    anim = blocks["animGroups"]
+    abase = int(anim["rom"].lstrip("$"), 16)
+    for status, want in EXPECT_ENEMY_ANIM.items():
+        off = 4 * status                          # $ADF9 ASL / ASL
+        got = anim["bytes"][off:off + 4]
+        if got != want:
+            bad.append(f"animation group for status {status} (${abase + off:04X}) "
+                       f"is {got}, the cartridge drew metasprites {want}")
+
+    disp = blocks["dispatch"]
+    dbase = int(disp["rom"].lstrip("$"), 16)
+    if len(disp["bytes"]) != 84:
+        bad.append(f"the dispatch table is {len(disp['bytes'])} bytes, not 84 "
+                   f"(42 entries); $AE70 is the RTS immediately after it")
+    for entry, want in EXPECT_ENEMY_DISPATCH.items():
+        o = 2 * entry
+        got = disp["bytes"][o] | (disp["bytes"][o + 1] << 8)
+        if got != want:
+            bad.append(f"dispatch entry {entry} (${dbase + o:04X}) -> ${got:04X}, "
+                       f"the cartridge's execution counts pin it at ${want:04X}")
+
+    ex = blocks["explosionScripts"]
+    xbase = int(ex["rom"].lstrip("$"), 16)
+    for idx, want in EXPECT_ENEMY_EXPL.items():
+        p = ex["bytes"][2 * idx] | (ex["bytes"][2 * idx + 1] << 8)
+        o = p - xbase
+        got = ex["bytes"][o:o + len(want)] if 0 <= o else []
+        if got != want:
+            bad.append(f"explosion script {idx} at ${p:04X} reads {got}, the "
+                       f"cartridge drew metasprites {want}")
+    return bad
+
+
 CHECKS = [
     ("rom", check_rom),
     ("files", check_files),
@@ -620,6 +808,7 @@ CHECKS = [
     ("chr", check_chr),
     ("terrain", check_terrain),
     ("hud", check_hud),
+    ("enemies", check_enemies),
 ]
 
 
@@ -700,6 +889,37 @@ def _shift_hud_table(st):
     e["sha1"] = hashlib.sha1(rom.at(base, 2 * n)).hexdigest()
 
 
+def _enemy_block(st, name):
+    return next(b for b in st.enemies["blocks"] if b["name"] == name)
+
+
+def _mut_enemy(st, name, addr, value):
+    """Flip ONE byte of an enemy block, at a CPU address."""
+    b = _enemy_block(st, name)
+    b["bytes"][addr - int(b["rom"].lstrip("$"), 16)] = value
+
+
+def _swap_dispatch(st, a, b):
+    d = _enemy_block(st, "dispatch")["bytes"]
+    d[2 * a], d[2 * a + 1], d[2 * b], d[2 * b + 1] = \
+        d[2 * b], d[2 * b + 1], d[2 * a], d[2 * a + 1]
+
+
+def _shift_enemy_block(st):
+    """Re-cite the spawn-data block at $A593 and RE-READ it from there.
+
+    The internal cross-checks (offset re-derivation, byte-for-byte re-read) all
+    still pass afterwards, because the cache is consistent with itself and with
+    the ROM at its own recorded address.  Only EXPECT_ENEMY_* -- the wave
+    records the cartridge fired and the descriptors it handed $A3E4 -- notice.
+    """
+    b = _enemy_block(st, "spawnData")
+    base = int(b["rom"].lstrip("$"), 16) + 1
+    b["rom"] = f"${base:04X}"
+    b["fileOffset"] = st.rom.off(base)
+    b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
+
+
 MUTATIONS = [
     ("rom-sha", "rom",
      "claim the manifest came off a different cartridge",
@@ -771,6 +991,23 @@ MUTATIONS = [
     ("hud-byte", "hud",
      "flip one byte of the lives packet $11 -- the length is unchanged",
      lambda st: st.hud["packets"][0x11]["bytes"].__setitem__(1, 0xA3)),
+    # --- enemies -------------------------------------------------------------
+    ("enemy-shift", "enemies",
+     "re-cite the spawn-data block at $A593 -- one byte along, CONSISTENTLY: the "
+     "address, the file offset and the bytes all move together, so the cache is "
+     "still self-consistent and only the cartridge's own measured wave records "
+     "and descriptors can tell",
+     _shift_enemy_block),
+    ("enemy-byte", "enemies",
+     "flip the cmd of stage 0's FIRST wave record from $80 to $81 -- same length, "
+     "same trigger, a different squadron",
+     lambda st: _mut_enemy(st, "spawnData", 0xA845, 0x81)),
+    ("enemy-dispatch", "enemies",
+     "swap dispatch entries 4 and 5, so type $85 would run $B205",
+     lambda st: _swap_dispatch(st, 4, 5)),
+    ("enemy-anim", "enemies",
+     "shift the status-1 animation group by one metasprite",
+     lambda st: _mut_enemy(st, "animGroups", 0xADC5, 0x0B)),
     ("chr-truncated", "chr",
      "truncate the decoded tile cache by one tile",
      lambda st: st.blob.__setitem__("chr/tiles.u8", st.blob["chr/tiles.u8"][:-64])),

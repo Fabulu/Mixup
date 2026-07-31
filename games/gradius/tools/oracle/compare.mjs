@@ -23,11 +23,10 @@
 //   TIER 1  every field the port claims to reproduce. A single divergence here
 //           fails the run.
 //   INFO    fields that are downstream of a subsystem src/ says outright is not
-//           ported. There are exactly three, all of them sprite-work counts
-//           that the cartridge's ENEMIES contribute to (src/nmi.js: "$9A6D JSR
-//           $ADAB -- the enemies. Not ported."). They are measured, printed and
-//           NOT failed -- but the divergence is printed, because an INFO field
-//           that silently matched would mean the enemies had stopped existing.
+//           ported. There is exactly ONE left ($36, the OAM write cursor, which
+//           $8BAB re-walks using the unmodelled sprite budget $9F); the three
+//           sprite-work counters that used to sit here became TIER 1 in wave 3
+//           when the port grew enemies. See INFO_FIELDS below.
 //
 // Five probe.lua fields have no port counterpart at all (scanline, cpuCycle,
 // spriteOverflow, oamBudget, splitSpins) plus pad2. They are listed as SKIPPED
@@ -44,21 +43,34 @@ import { headlessResources } from '../../tests/helpers.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 /**
- * The fields the cartridge's ENEMIES contribute to. src/nmi.js does not run
- * $ADAB and src/oam.js does not model the $9F sprite budget, so the
- * cartridge's display list has records in it that the port's cannot.
+ * Fields that are downstream of a subsystem src/ says outright is not ported.
+ * They are measured, printed and NOT failed -- but the divergence is printed,
+ * because an INFO field that silently matched would mean the annotation was
+ * stale and nobody noticed.
  *
- * These are printed with their divergence counts and do not fail the run. The
- * printing is the point: an INFO field that suddenly MATCHED would mean the
- * enemies had stopped existing in the oracle run, which is a broken corpus, not
- * a fixed port.
+ * THREE OF THESE RETIRED IN WAVE 3, and that is the mechanism working:
+ * msExpanded, spriteRecords and spritesStored were INFO for the port's whole
+ * life because "the cartridge expands the ENEMIES' metasprites too and we do
+ * not have enemies". Wave 3 gave the port enemies, all three went to 0
+ * divergent frames on all 18 scenarios (5045 of 5045), and they are TIER 1
+ * from this commit -- a real check on the display list, not a footnote. If one
+ * of them starts diverging again that is a REGRESSION, not a known gap.
+ *
+ * `w_0036` stays, WITH A CORRECTED REASON. The old one -- "the cartridge walks
+ * it past the enemies' sprites" -- was wrong, and having enemies is what
+ * proved it: the three sprite counters match exactly and $36 still differs on
+ * every frame of every scenario. What actually moves it is $80AD JSR $8BAB,
+ * the BLANK PASS, which walks $36 across the slots it fills with $F4 and
+ * stores the walked cursor back at $8BC0. How many slots that is comes from
+ * $37, i.e. from $9F, the sprite budget src/oam.js does not model (it clears
+ * shadow OAM to $F4 in one go instead). Measured on `idle`: the cartridge's
+ * $36 is 240, 52, 120, 188, 4, 72, ... -- exactly $2F's own +$44 rotation, not
+ * the display list's end cursor at all.
  */
 const INFO_FIELDS = new Map([
-  ['msExpanded', 'the cartridge expands the enemies\' metasprites too ($ADAB not ported)'],
-  ['spriteRecords', 'ditto -- enemy metasprite records'],
-  ['spritesStored', 'ditto, and the $9F sprite budget is not modelled (src/oam.js)'],
-  ['w_0036', '$36 is the OAM write cursor AFTER the whole display list; the '
-           + 'cartridge walks it past the enemies\' sprites too ($8B95 STX $36)'],
+  ['w_0036', '$36 is re-walked by the BLANK PASS $8BAB at $80AD and stored back '
+           + 'at $8BC0; how far depends on $9F, the sprite budget src/oam.js '
+           + 'does not model. NOT about enemies -- see the note in compare.mjs'],
 ]);
 
 function windowRows(oracle, port, field, at, radius = 4) {

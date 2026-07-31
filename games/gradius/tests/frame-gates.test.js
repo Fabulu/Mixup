@@ -17,7 +17,13 @@
 //   $9A98/$9A9C          what $15/$5B suppress: the CAMERA        (was the split)
 //   $9ABA AND #$FC       band B is band A's $10, nametable masked
 //   $8B1A-$8B2B          $1E/$1F are bytes, and $1F == 1 is a handover frame
-//   $9656-$965A          mode 5 CLEARS $5D/$5B/$5C at entry       [knownFail]
+//   $9656-$965A          mode 5 CLEARS $5D/$5B/$5C at entry  (was a knownFail;
+//                        wave 3 ported the three stores because $BBB7 reads
+//                        $5D, the wrapper reported SURPRISE PASS, and the
+//                        assertions were kept -- see the test)
+//   $9A9C / $9ACA        a $5B raised INSIDE the frame stops the camera and
+//                        the streamer, and is gone by the next one (wave 3;
+//                        this closes wave 1's written-down coverage debt)
 //   $965C-$9660          pause jumps the WHOLE body to $9A8C      [knownFail]
 //   $864A INX            $0E is an 8-bit byte and wraps    (was a knownFail;
 //                        wave 2's byte-image $0700 fixed it and the wrapper
@@ -31,15 +37,17 @@
 // A NOTE ON THE knownFail ENTRIES, because they are the point of this
 // file rather than an apology for it: wave 1 shipped a test asserting that a
 // $5B freeze is PERMANENT. The cartridge clears $5B at $9658 on every mode-5
-// frame, so that test blessed a defect and blocked the faithful fix. The
-// replacement states what the ROM does, fails, and says so; see helpers.js
-// knownFail() for the mechanism (a surprise PASS is a FAILURE).
+// frame, so that test blessed a defect and blocked the faithful fix. Wave 1's
+// hardening replaced it with a knownFail stating what the ROM does; wave 3
+// ported the clear and the knownFail retired itself. That is TWO waves of a
+// defect surviving inside a green suite, and the only thing that ended it was
+// writing the cartridge's behaviour down as a failing assertion.
 
 import test from 'node:test';
 import assert from 'node:assert';
 
 import { bootState } from '../src/main.js';
-import { nmi } from '../src/nmi.js';
+import { nmi, mode5Tail } from '../src/nmi.js';
 import { BTN } from '../src/state.js';
 import { streamBlock } from '../src/terrain.js';
 import { drainQueue, queuePacket, queueTerminator, scanQueue,
@@ -56,6 +64,33 @@ const packetBytes = (s) => packets(s).reduce((n, p) => n + 4 + p.bytes.length, 0
 /** The camera's three bytes, $3D/$3E/$3F, as one comparable value. */
 const cam24 = (s) => [s.cam.sub, s.cam.lo, s.cam.hi];
 
+/**
+ * Hold the terrain streamer off for a whole NMI, WITHOUT using $3A.
+ *
+ * $3A used to be the lever here and it cannot be any more: wave 3 ported
+ * $A2C0, whose FIRST instruction is `LDA $3A / BEQ $A2C7 / JMP $C413`. So on
+ * the cartridge a frame with $3A up does not merely stand the streamer down --
+ * it diverts the whole enemy spawn path into $C413, which every fourth frame
+ * clears an enemy slot and jumps to the stage-end spawner at $C686. Setting
+ * $3A and running a full frame was therefore always a broader intervention
+ * than the tests that used it intended; src/enemies.js now says so out loud.
+ *
+ * This uses the streamer's OTHER measured refusal instead: $9D96-$9DAD, the
+ * 16-bit lead of the build cursor over the camera. A lead of $0200 lands in
+ * the "high byte is 2, neither negative nor below 1" arm at $9DA7, which
+ * refuses and INCs $57. It survives several frames because the camera only
+ * closes the gap by half a pixel each one.
+ *
+ * $3A's own effect on the streamer is still covered, directly and without an
+ * NMI, by the `$3A / $57` test further down this file.
+ */
+function holdStreamerOff(s) {
+  const lead = (((s.cam.hi << 8) | s.cam.lo) + 0x0200) & 0xFFFF;
+  s.build.hi = lead >> 8;                 // $55
+  s.build.lo = lead & 0xFF;               // $54
+  s.build.prog = 0;                       // $58 -- the lead is only tested at 0
+}
+
 // ---------------------------------------------------------------- the queue --
 
 test('$80B0 JSR $8641 appends exactly one $00 to the queue every non-lag frame', () => {
@@ -69,14 +104,14 @@ test('$80B0 JSR $8641 appends exactly one $00 to the queue every non-lag frame',
   // $889F reads it, and $88A2's BCC keeps the HUD out of a test about $8641.
   // The HUD's own contribution to $0E is tests/hud.test.js's business.
   const s = bootState(res.manifest);
-  s.build.gate = 1;                       // $3A up: the streamer stands down
+  holdStreamerOff(s);                     // NOT $3A any more -- see the helper
   s.frame = 1;
   nmi(s, 0, res);
   assert.strictEqual(packets(s).length, 0, 'nothing else should have produced');
   assert.strictEqual(s.vram.cursor, 1, '$0E should be exactly the $8641 byte');
 
   // and on a frame that streams, the byte sits on top of the packets
-  s.build.gate = 0;
+  s.build.lo = s.cam.lo; s.build.hi = s.cam.hi;   // lead 0 -> $9DA5 BCC, build
   s.frame = 1;
   nmi(s, 0, res);
   assert.ok(packets(s).length > 0, 'the streamer emitted nothing to check against');
@@ -300,48 +335,81 @@ knownFail('$965C-$9660: a paused frame runs NO player and NO scroll latch',
       '$9A79 STA $12 ran on a paused frame: the scroll shadow was re-latched');
   });
 
-knownFail('$9656-$965A: mode 5 clears $5D/$5B/$5C at entry, every single frame',
-  'ROM re-dumped at $9650: A9 0C 85 13 A9 00 85 5D 85 5B 85 5C ... -> $9656 '
-  + 'STA $5D / $9658 STA $5B / $965A STA $5C, at the TOP of the mode-5 handler, '
-  + 'BEFORE the $15 test, and $80D4+10 = 50 96 puts $9650 in the mode table at '
-  + 'index 5, so it runs on every mode-5 frame. $5B is therefore a WITHIN-FRAME '
-  + 'flag: it is raised only by arms that then jump into the middle of the body '
-  + '($96A0 INC $5B / $96A2 JMP $9A8C -- the stage-5 half-rate arm; $98DD INC '
-  + '$5B / $98E0 JSR $ADAB / $98E2 JMP $9A8C; $96FB INC $5B whose tail $9762 is '
-  + 'JMP $9A5E), which is exactly "this frame\'s update already ran -- do not '
-  + 'scroll and do not stream". src/nmi.js never clears it, so a $5B set from '
-  + 'outside freezes the camera and the streamer FOREVER. Wave 1 shipped a test '
-  + 'asserting that permanent freeze; this replaces it. Owner: the $9650 entry '
-  + 'is three stores -- port them with the $15 jump above.',
-  () => {
-    const s = bootState(res.manifest);
-    nmi(s, 0, res);
-    s.zp5B = 1;
-    s.zp5C = 0;                      // $5C >= 2 throws; the clear covers it too
-    const cam = cam24(s);
-    const prog = s.build.prog;
-    nmi(s, 0, res);
-    assert.strictEqual(s.zp5B, 0, '$9658 STA $5B did not run: $5B survived the frame');
-    assert.notDeepStrictEqual(cam24(s), cam,
-      'the camera stayed frozen: $5B was still set when $9A9C read it');
-    assert.notStrictEqual(s.build.prog, prog,
-      'the streamer stayed suppressed: $5B was still set when $9ACA read it');
-  });
+// WAS A knownFail FROM WAVE 1, UNWRAPPED IN WAVE 3 -- and that is the
+// mechanism working exactly as it was designed to. Wave 3 ported the three
+// stores because `$9656 STA $5D` became load-bearing ($BBB7 at $9A67 reads $5D
+// seven instructions after $A2C0 has INC'd it, and reading a stale non-zero
+// $5D sends the enemy-bullet engine down the wrong arm on every frame after
+// the first wave). helpers.js's wrapper then reported SURPRISE PASS, and per
+// its own instructions the assertions below are kept verbatim.
+//
+// The record of what the defect was, preserved because it stood for two waves:
+// ROM at $9650 is `A9 0C 85 13 A9 00 85 5D 85 5B 85 5C`, i.e. $9656 STA $5D /
+// $9658 STA $5B / $965A STA $5C, at the TOP of the mode-5 handler and BEFORE
+// the $15 test, and $80D4+10 = `50 96` puts $9650 in the mode table at index 5,
+// so it runs on every mode-5 frame. $5B is therefore a WITHIN-FRAME flag: it is
+// raised only by arms that then jump into the middle of the body ($96A0 INC $5B
+// / $96A2 JMP $9A8C, the stage-5 half-rate arm; $98DD INC $5B / $98E0 JSR $ADAB
+// / $98E2 JMP $9A8C; $96FB INC $5B whose tail $9762 is JMP $9A5E) -- exactly
+// "this frame's update already ran, do not scroll and do not stream". Wave 1
+// shipped a test asserting the port's PERMANENT freeze instead, which blessed
+// the defect and blocked the faithful fix.
+// RED WHEN: any of the three stores in src/nmi.js stagePlay() is deleted.
+test('$9656-$965A: mode 5 clears $5D/$5B/$5C at entry, every single frame', () => {
+  const s = bootState(res.manifest);
+  nmi(s, 0, res);
+  s.zp5B = 1;
+  s.zp5C = 0;                      // $5C >= 2 throws; the clear covers it too
+  s.spawn.z5D = 7;                 // $5D too, which is what forced the fix
+  const cam = cam24(s);
+  const prog = s.build.prog;
+  nmi(s, 0, res);
+  assert.strictEqual(s.zp5B, 0, '$9658 STA $5B did not run: $5B survived the frame');
+  assert.strictEqual(s.spawn.z5D, 0, '$9656 STA $5D did not run');
+  assert.notDeepStrictEqual(cam24(s), cam,
+    'the camera stayed frozen: $5B was still set when $9A9C read it');
+  assert.notStrictEqual(s.build.prog, prog,
+    'the streamer stayed suppressed: $5B was still set when $9ACA read it');
+});
 
-// COVERAGE DEBT, WRITTEN DOWN RATHER THAN LEFT TO BE REDISCOVERED.
+// The COVERAGE DEBT wave 1 wrote down here is CLOSED, by its own option 2.
 //
-// With the knownFail above honoured, NOTHING in this suite can reach the two
-// $5B readers at $9A9C and $9ACA any more: once mode-5 entry clears the byte,
-// the only way to have $5B set at $9A9C is to enter the body from $96A0/$98DD/
-// $96FB, and none of those arms is ported. QA's mutation `no-9aca` (delete the
-// $5B gate around streamBlock) is therefore UNGUARDED from the moment the clear
-// lands -- it is caught today only by a test that is itself wrong.
+// Its point was that once mode-5 entry clears $5B, nothing in the suite can
+// reach the two $5B readers at $9A9C and $9ACA through nmi() any more -- the
+// only arms that raise $5B ($96A0/$98DD/$96FB) jump into the MIDDLE of the
+// body, and none of them is ported. So QA's `no-9aca` mutation (delete the $5B
+// gate around streamBlock) would have been unguarded.
 //
-// The honest fixes, in order of preference:
-//   1. port the $96A0 arm (wave 4/5 owns $1B's ladder anyway) and drive it;
-//   2. failing that, export the mode-5 body from src/nmi.js so a test can call
-//      it with $5B already raised, the way $9A8C's callers do.
-// Do NOT close it by re-asserting that an externally set $5B survives.
+// src/nmi.js now exports mode5Tail(), the $9A88-$9ACE block. $9A8C is a real
+// jump target -- $96A2 (`INC $5B / JMP $9A8C`), $98E2 and $9660 all land there
+// -- so calling it with $5B raised is the state three ROM arms actually create,
+// not invented state.
+test('$9A9C / $9ACA: a $5B raised INSIDE the frame takes the camera and the streamer', () => {
+  // RED WHEN: either `state.zp5B === 0` term is deleted from src/nmi.js -- the
+  // camera gate at $9A98/$9A9C or the streamer gate at $9ACA.
+  const arm = (st) => {
+    st.frame = 2;                       // EVEN: $88A2's BCC keeps the HUD out,
+    st.vram.cursor = 0;                 // so $0E stays under $9D87's CMP #$04
+    st.build.prog = 0;                  // $58 = 0, so the lead gate is evaluated
+    st.build.lo = st.cam.lo;            // ...with a lead of 0, which builds
+    st.build.hi = st.cam.hi;
+  };
+  const s = bootState(res.manifest);
+  nmi(s, 0, res);
+
+  arm(s);
+  const cam = cam24(s);
+  mode5Tail(s, res);                    // baseline: $5B is 0, both should run
+  assert.notDeepStrictEqual(cam24(s), cam, 'baseline: the camera should advance');
+  assert.ok(s.vram.cursor > 0, 'baseline: the streamer should have queued a block');
+
+  arm(s);
+  const cam2 = cam24(s);
+  s.zp5B = 1;                           // $96A0 INC $5B, then JMP $9A8C
+  mode5Tail(s, res);
+  assert.deepStrictEqual(cam24(s), cam2, '$9A9C did not stop the camera');
+  assert.strictEqual(s.vram.cursor, 0, '$9ACA did not stop the streamer');
+});
 
 // ---------------------------------------------------- $0D, $1E, $1F, band B --
 

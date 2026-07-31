@@ -114,7 +114,15 @@ test('$0E after a whole frame is 1 / 9 / 15 / 40 -- the HUD\'s four sizes plus $
   // RED WHEN: the $889F/$88A2 parity gate is dropped (every frame produces),
   // or the four-phase order changes.
   const s = bootState(res.manifest);
-  s.build.gate = 1;                       // $3A up: $9D85 BNE, no streamer
+  // The streamer is held off by the 384-px LEAD gate ($9D96-$9DAD), not by $3A.
+  // $3A was the lever until wave 3 ported $A2C0, whose first instruction is
+  // `LDA $3A / BEQ / JMP $C413` -- so on the cartridge a frame with $3A up also
+  // diverts the enemy spawner into the stage-end path, which is a much larger
+  // intervention than "no terrain this frame". See the same note in
+  // tests/frame-gates.test.js holdStreamerOff().
+  const lead = (((s.cam.hi << 8) | s.cam.lo) + 0x0200) & 0xFFFF;
+  s.build.hi = lead >> 8;                 // $55
+  s.build.lo = lead & 0xFF;               // $54
   s.frame = 0x91;                         // the cartridge's $02 at align 400
   const seen = [];
   for (let i = 0; i < 8; i++) { nmi(s, 0, res); seen.push(s.vram.cursor); }

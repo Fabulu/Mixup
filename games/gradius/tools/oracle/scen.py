@@ -170,6 +170,13 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
         if not (r["msExpanded"] <= r["slotsVisited"] <= 32):
             raise SystemExit(f"{name} f{i}: msExpanded {r['msExpanded']}, "
                              f"slotsVisited {r['slotsVisited']} -- outside 0..32")
+        # The enemy loop ($ADB7) is `LDX $A8 / JSR $ADE5 / DEC $A8 / BPL` with
+        # no early exit, so it is 10 on every frame the state machine reaches
+        # $9A6D and 0 on every other one.  Anything else is docs/knowledge/06
+        # model (C) and would have to be modelled, not averaged away.
+        if r["enemySlots"] not in (0, 10):
+            raise SystemExit(f"{name} f{i}: $ADE5 ran {r['enemySlots']} times, "
+                             f"not 0 or 10 -- the enemy loop is not fixed-shape")
 
     pdrops = drops_from_stdout(rp)
     odrops = [r["frame"] for r in of for _ in range(r["lagged"])]
@@ -187,7 +194,7 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
     for a, b in zip(pf, of):
         row = dict(a)
         for k in ("slotsVisited", "msExpanded", "spriteRecords",
-                  "spritesStored", "lagged"):
+                  "spritesStored", "enemySlots", "lagged"):
             row[k] = b[k]
         merged.append(row)
 
@@ -210,7 +217,8 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
         "lagDrops": sorted(pdrops),
         "samplePoint": pdoc["samplePoint"],
         "fields": pdoc["fields"] + ["slotsVisited", "msExpanded",
-                                    "spriteRecords", "spritesStored", "lagged"],
+                                    "spriteRecords", "spritesStored",
+                                    "enemySlots", "lagged"],
         "seedRam": base64.b64encode(seed).decode("ascii"),
         "frames": merged,
     }

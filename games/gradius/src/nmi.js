@@ -43,9 +43,15 @@
 //     VISIBLE, unlike the Game Boy case where only internal updates dropped.
 //
 // WHAT IS NOT PORTED, named rather than silently absent: the sound driver
-// ($ED02), the enemy spawn script and enemy update ($A2C0/$ADAB), the power-up
-// rank $17 ($9AC4 JSR $9C45), the capsule apply ($9A73 JSR $8974), and every
-// game mode except 5.
+// ($ED02), the shot-vs-enemy sweep ($9A70 JSR $BFE2), the power-up rank $17
+// ($9AC4 JSR $9C45), the capsule apply ($9A73 JSR $8974), and every game mode
+// except 5.
+//
+// The enemy spawn script and the enemy update ($9A64 JSR $A2C0 / $9A6D JSR
+// $ADAB) WERE on that list and are not any more -- src/enemies.js, wave 3.
+// $9A67 JSR $BBB7 (the enemy-bullet engine) went in with them, because it runs
+// between the two on every frame and its $5D gate is the spawn engine's own
+// counter.
 //
 // The HUD tick ($9AC7 JSR $8898 -> $88B6/$88F6/$89E3/$892C) WAS on that list
 // and is not any more -- src/hud.js. Its absence was the whole of the
@@ -65,6 +71,7 @@ import { buildDisplayList, oamDma } from './oam.js';
 import { updatePlayer } from './player.js';
 import { advanceCamera, latchScroll } from './camera.js';
 import { streamBlock } from './terrain.js';
+import { spawnEngine, enemyBullets, updateEnemies } from './enemies.js';
 import { chrBank } from './render/ppu.js';
 
 /**
@@ -154,7 +161,32 @@ export function nmi(state, buttons, res, lag = false) {
  * intro ran 614-640 (26 frames), because $9C24 exits on $57, not on a counter
  * (00-recon-flow.md 3 and 5). The ladder and the intro are wave 4.
  */
-function stagePlay(state, res) {
+export function stagePlay(state, res) {
+  // ---- $9650-$965A: the mode-5 entry. Four stores, run on EVERY mode-5 frame
+  // before the $1B ladder is even looked at:
+  //
+  //   9650  A9 0C  LDA #$0C / 9652  85 13  STA $13
+  //   9654  A9 00  LDA #$00
+  //   9656  85 5D  STA $5D / 9658  85 5B  STA $5B / 965A  85 5C  STA $5C
+  //
+  // WAVE 1 LEFT THIS OUT AND IT WAS THE WAVE'S ONE BLOCKING DEFECT: without
+  // $9658 a $5B set from anywhere freezes the camera and the streamer FOREVER
+  // instead of for one frame, because $5B is a WITHIN-FRAME flag -- it is only
+  // ever raised by arms that immediately jump into the middle of this body
+  // ($96A0, $98DD, $96FB), meaning "this frame's update already ran".
+  //
+  // $9656 became load-bearing in wave 3: $BBB7 reads $5D ($9A67, seven
+  // instructions after the spawn engine that INCs it), so a $5D that survived
+  // the frame would send the enemy-bullet engine down the wrong arm on every
+  // frame after the first wave fires.
+  state.ppu.scrollY = 0x0C;                       // $9650 LDA #$0C / STA $13
+  state.spawn.z5D = 0;                            // $9656 STA $5D
+  state.zp5B = 0;                                 // $9658 STA $5B
+  state.zp5C = 0;                                 // $965A STA $5C
+  // $965C LDA $15 / BEQ $9663 / $9660 JMP $9A8C -- the PAUSE jump, which skips
+  // the WHOLE body including the player and the scroll latch. NOT ported; it is
+  // pinned by a knownFail in tests/frame-gates.test.js and owned by wave 4.
+  // $9663 LDA $19 / CMP #$04 / BNE $96A5 -- only stage 5 computes $5C at all.
   if (!(state.substate & 0x80)) return;           // $96B7 LDA $1B / BPL
 
   // $9A5E: LDA $5C / CMP #$02 / BCS $9A70 -- when $5C >= 2 the player update
@@ -164,15 +196,42 @@ function stagePlay(state, res) {
   // $19 == 4 (it counts the non-zero bytes at $0600/$0630/$0660/$0690), so on
   // every other stage $5C stays 0 (00-recon-flow.md 3, which closes
   // NOTES-player.md 12 open question 1). The throw stays because the port has
-  // no stage 5.
+  // no stage 5. It is UNREACHABLE from here now that $965A's clear is ported --
+  // only the $19 == 4 arm at $9683 can put a non-zero value back -- and it is
+  // kept as a tripwire for whoever ports that arm.
   if (state.zp5C >= 2) throw new Error('$5C >= 2: the stage-5 half-rate player path is not ported ($9A5E/$969A)');
 
-  // $9A64: JSR $A2C0 -- the enemy spawn script. Not ported.
+  // ---- $9A64-$9A6D: the enemies, in the cartridge's order -----------------
+  // The spawn engine runs BEFORE the player moves and the update loop AFTER,
+  // which matters for the fan ($B0AF sub-states 1 and 2 compare their own Y
+  // against $0320, the player's, so they see THIS frame's player position) and
+  // for the one-frame-old positions the display list at $80A7 already used.
+  spawnEngine(state, res);                        // $9A64 JSR $A2C0
+  enemyBullets(state, res);                       // $9A67 JSR $BBB7
   updatePlayer(state);                            // $9A6A JSR $9FFC
-  // $9A6D: JSR $ADAB -- the enemies. Not ported.
+  updateEnemies(state, res);                      // $9A6D JSR $ADAB
+
+  // $9A70: JSR $BFE2 -- the shot-vs-enemy sweep. Not ported (wave 6). Its outer
+  // loop is over $0123,X for slots 3-11 and every one of them is 0 here, so on
+  // the cartridge it is ten iterations of nothing.
+  // $9A73: JSR $8974 -- the capsule apply. Not ported (wave 7).
+  // $9A76: JSR $C772 -- `LDA $19 / CMP #$04 / BNE / RTS`: stage 5 only.
 
   latchScroll(state);                             // $9A79  -> $12 / $10
+  mode5Tail(state, res);                          // falls through into $9A88
+}
 
+/**
+ * `$9A88-$9ACE` -- the split, the camera inside it, the HUD and the streamer.
+ *
+ * SPLIT OUT AS ITS OWN FUNCTION BECAUSE THE ROM SPLITS IT OUT: `$9A8C` is a
+ * real jump target, reached from `$9660` (pause), `$96A2` (the stage-5
+ * half-rate arm, right after `INC $5B`) and `$98E2`. Every one of them enters
+ * HERE with the body above already skipped or already run -- which is exactly
+ * what makes `$5B` a within-frame flag. Calling it directly is therefore not
+ * an invented entry point; it is the one three ROM arms use.
+ */
+export function mode5Tail(state, res) {
   // ---- $9A88-$9AC1: the split, and the camera inside it -------------------
   //
   // THIS BLOCK WAS MODELLED BACKWARDS until wave 1. The port had

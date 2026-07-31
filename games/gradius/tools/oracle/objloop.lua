@@ -79,6 +79,11 @@ local LOOP_SLOT  = 0x8B4D   -- LDA $0120,X   -- one execution per slot visited
 local MS_EXPAND  = 0x8AAC   -- sub_8AAC entry -- one per metasprite expanded
 local MS_RECORD  = 0x8ACF   -- LDA ($A0),Y   -- one per sprite record considered
 local MS_STORED  = 0x8AF9   -- DEC $9F       -- one per sprite actually stored
+-- $ADE5 -- one execution per ENEMY slot updated.  The loop at $ADB7 is
+-- `LDX $A8 / JSR $ADE5 / DEC $A8 / BPL`, ten iterations with no early exit, and
+-- this counter is what turns "fixed shape" from a claim into a compared field
+-- (docs/knowledge/06, model C: partial completion of an object loop).
+local ENEMY_SLOT = 0xADE5
 
 local BUTTON = { U = "up", D = "down", L = "left", R = "right",
                  A = "a", B = "b", S = "start", E = "select" }
@@ -112,7 +117,7 @@ end
 
 local gframe = 0
 local rows = {}
-local c_slot, c_ms, c_rec, c_store, c_lag = 0, 0, 0, 0, 0
+local c_slot, c_ms, c_rec, c_store, c_lag, c_enemy = 0, 0, 0, 0, 0, 0
 local done, failed, stopped = false, false, false
 
 local function die(msg)
@@ -130,6 +135,7 @@ local function on_frame_end()
       msExpanded     = c_ms,
       spriteRecords  = c_rec,
       spritesStored  = c_store,
+      enemySlots     = c_enemy,
       lagged         = c_lag,
       -- carried purely so the merge can prove this process ran the same run as
       -- probe.lua's process. If these ever disagree the merge fails loudly
@@ -138,7 +144,7 @@ local function on_frame_end()
       playerY        = emu.read(0x320, CPU, false),
       counter        = emu.read(0x02, CPU, false),
    }
-   c_slot, c_ms, c_rec, c_store, c_lag = 0, 0, 0, 0, 0
+   c_slot, c_ms, c_rec, c_store, c_lag, c_enemy = 0, 0, 0, 0, 0, 0
    -- AFTER the row, exactly where probe.lua applies its own.
    for _, p in ipairs(POKES) do
       if gframe >= p.from and gframe <= p.to then
@@ -150,7 +156,8 @@ local function on_frame_end()
 end
 
 local KEYS = { "frame", "slotsVisited", "msExpanded", "spriteRecords",
-               "spritesStored", "lagged", "playerX", "playerY", "counter" }
+               "spritesStored", "enemySlots", "lagged", "playerX", "playerY",
+               "counter" }
 
 local function write_json()
    local f = assert(io.open(JSON_OUT, "wb"))
@@ -200,6 +207,7 @@ emu.addEventCallback(function()
          hook(MS_EXPAND, function() c_ms = c_ms + 1 end)
          hook(MS_RECORD, function() c_rec = c_rec + 1 end)
          hook(MS_STORED, function() c_store = c_store + 1 end)
+         hook(ENEMY_SLOT, function() c_enemy = c_enemy + 1 end)
          hook(NMI_ENTRY, function()
                  -- $8073: LDY $04 / $8075: BNE $80B7. Non-zero here means the
                  -- previous NMI has not cleared the lock, so THIS NMI bails

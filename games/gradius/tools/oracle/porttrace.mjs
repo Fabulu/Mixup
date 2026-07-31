@@ -116,6 +116,7 @@ export function seedFromRam(state, ram) {
   state.ppu.scrollY = r(0x13);             // $13
   state.zp15 = r(0x15);                    // $15
   state.zp.player = r(0x18);               // $18
+  state.zp1A = r(0x1A);                    // $1A  ($BBBD LDA $19 / ORA $1A)
   state.substate = r(0x1B);                // $1B
   state.zp1E = r(0x1E);                    // $1E
   state.zp1F = r(0x1F);                    // $1F
@@ -151,6 +152,33 @@ export function seedFromRam(state, ram) {
   state.build.prog = r(0x58);              // $58
   state.zp5B = r(0x5B);                    // $5B
   state.zp5C = r(0x5C);                    // $5C
+  // ---- the enemy spawn engine (wave 3, src/enemies.js) -------------------
+  // The corpus aligns at frame 400 and stage 1's first wave fires at 378, so
+  // the seed is ALWAYS mid-flight: $60 = 2, $6A:$6B somewhere inside $A844's
+  // list, and slot 21 already holding a fan enemy. That is the point -- the
+  // port has to pick up a squadron in motion, not just start one.
+  state.spawn.z5D = r(0x5D);               // $5D
+  state.spawn.z60 = r(0x60);               // $60
+  state.spawn.z61 = r(0x61);               // $61
+  state.spawn.z64 = r(0x64);               // $64
+  state.spawn.z65 = r(0x65);               // $65
+  state.spawn.z66 = r(0x66);               // $66
+  state.spawn.z67 = r(0x67);               // $67
+  state.spawn.z69 = r(0x69);               // $69
+  state.spawn.z6A = r(0x6A);               // $6A
+  state.spawn.z6B = r(0x6B);               // $6B
+  state.spawn.z6C = r(0x6C);               // $6C
+  state.spawn.z6D = r(0x6D);               // $6D
+  state.spawn.z6E = r(0x6E);               // $6E
+  state.spawn.z6F = r(0x6F);               // $6F
+  state.spawn.zA8 = r(0xA8);               // $A8
+  state.zp47 = r(0x47);                    // $47
+  state.zp49 = r(0x49);                    // $49
+  // $0048,Y is only ever written with Y = $49, and $A3FB forces $49 into {2,3}.
+  // Indices 0 and 1 are $48 (state.zp48, the HUD's rotation) and $49 itself,
+  // and are left alone rather than shadowed with a second copy of them.
+  state.squad[2] = r(0x004A);              // $4A
+  state.squad[3] = r(0x004B);              // $4B
   // $9B is NOT seeded. By the $80B5 sample point it no longer holds the tilt
   // code -- $A100/$A106 have reused it for the A button (NOTES-player.md 2),
   // and the port recomputes it at $A043 before anything reads it. Seeding it
@@ -161,11 +189,24 @@ export function seedFromRam(state, ram) {
     state.obj.status[i] = r(0x0100 + i);   // $0100+i
     state.obj.anim[i] = r(0x0120 + i);     // $0120+i
     state.obj.timer[i] = r(0x0140 + i);    // $0140+i
+    state.obj.animFrame[i] = r(0x0160 + i);// $0160+i (index 0 aliases the ring)
     state.obj.attrMask[i] = r(0x0180 + i); // $0180+i
+    state.obj.type[i] = r(0x0300 + i);     // $0300+i
     state.obj.y[i] = r(0x0320 + i);        // $0320+i
     state.obj.yf[i] = r(0x0340 + i);       // $0340+i
     state.obj.x[i] = r(0x0360 + i);        // $0360+i
     state.obj.xf[i] = r(0x0380 + i);       // $0380+i
+    state.obj.carrier[i] = r(0x03A0 + i);  // $03A0+i  -- overlaps $03B0 at 16..21
+    state.obj.yvel[i] = r(0x03B0 + i);     // $03B0+i  -- ...and at 0..5. See
+    state.obj.yvelf[i] = r(0x03E0 + i);    // $03E0+i     state.js on the overlap:
+    state.obj.style[i] = r(0x0400 + i);    // $0400+i     both are seeded from the
+    state.obj.xvel[i] = r(0x0420 + i);     // $0420+i     SAME RAM, which is what
+    state.obj.xvelf[i] = r(0x0440 + i);    // $0440+i     the cartridge has, and
+    state.obj.s0460[i] = r(0x0460 + i);    // $0460+i     only the enemy indices
+    state.obj.s0480[i] = r(0x0480 + i);    // $0480+i     12..21 are ever compared.
+    state.obj.s04A0[i] = r(0x04A0 + i);    // $04A0+i
+    state.obj.s04C0[i] = r(0x04C0 + i);    // $04C0+i
+    state.obj.s04E0[i] = r(0x04E0 + i);    // $04E0+i
   }
   state.ring.cursor = r(0x0160);           // $0160
   for (let i = 0; i < 0x18; i++) {
@@ -236,6 +277,7 @@ export function peek(state, addr) {
     case 0x13: return state.ppu.scrollY;
     case 0x15: return state.zp15;
     case 0x18: return state.zp.player;
+    case 0x1A: return state.zp1A;
     case 0x1B: return state.substate;
     case 0x1E: return state.zp1E;          // $8B2B STA $1E
     case 0x1F: return state.zp1F;          // $8B25 STY $1F
@@ -262,18 +304,55 @@ export function peek(state, addr) {
     case 0x58: return state.build.prog;
     case 0x5B: return state.zp5B;
     case 0x5C: return state.zp5C;
+    case 0x47: return state.zp47;          // $47  $AEC8 INC $47
+    case 0x49: return state.zp49;          // $49  $A3FB, the squadron group id
+    case 0x4A: return state.squad[2];      // $0048+$49, $49 = 2
+    case 0x4B: return state.squad[3];      // $0048+$49, $49 = 3
+    case 0x5D: return state.spawn.z5D;
+    case 0x60: return state.spawn.z60;
+    case 0x61: return state.spawn.z61;
+    case 0x64: return state.spawn.z64;
+    case 0x65: return state.spawn.z65;
+    case 0x66: return state.spawn.z66;
+    case 0x67: return state.spawn.z67;
+    case 0x69: return state.spawn.z69;
+    case 0x6A: return state.spawn.z6A;     // the wave cursor, low
+    case 0x6B: return state.spawn.z6B;     // ...and high
+    case 0x6C: return state.spawn.z6C;
+    case 0x6D: return state.spawn.z6D;
+    case 0x6E: return state.spawn.z6E;
+    case 0x6F: return state.spawn.z6F;
     case 0x0160: return state.ring.cursor;
     default: break;
   }
   if (addr >= 0x0100 && addr < 0x0120) return state.obj.status[addr - 0x0100];
   if (addr >= 0x0120 && addr < 0x0140) return state.obj.anim[addr - 0x0120];
   if (addr >= 0x0140 && addr < 0x0160) return state.obj.timer[addr - 0x0140];
+  if (addr >= 0x0161 && addr < 0x0180) return state.obj.animFrame[addr - 0x0160];
   if (addr >= 0x0180 && addr < 0x01A0) return state.obj.attrMask[addr - 0x0180];
   if (addr >= 0x0200 && addr < 0x0300) return state.shadowOam[addr - 0x0200];
+  if (addr >= 0x0300 && addr < 0x0320) return state.obj.type[addr - 0x0300];
   if (addr >= 0x0320 && addr < 0x0340) return state.obj.y[addr - 0x0320];
   if (addr >= 0x0340 && addr < 0x0360) return state.obj.yf[addr - 0x0340];
   if (addr >= 0x0360 && addr < 0x0380) return state.obj.x[addr - 0x0360];
   if (addr >= 0x0380 && addr < 0x03A0) return state.obj.xf[addr - 0x0380];
+  // $03A0 and $03B0 are only $10 apart, so their 32-entry arrays OVERLAP and
+  // an address in $03B0-$03B5 is ambiguous in the abstract. It is NOT ambiguous
+  // in the ROM: every writer of the $03B0 array folds in the +$0C ($03BC,X with
+  // X = 0..9), so $03B0-$03B5 is only ever the CARRIER byte of enemy slots
+  // 16..21. The ranges below say exactly that, address by address, instead of
+  // letting a `< 0x03C0` catch-all decide it (see state.js).
+  if (addr >= 0x03A0 && addr <= 0x03B5) return state.obj.carrier[addr - 0x03A0];
+  if (addr >= 0x03B6 && addr < 0x03D0) return state.obj.yvel[addr - 0x03B0];
+  if (addr >= 0x03E0 && addr < 0x0400) return state.obj.yvelf[addr - 0x03E0];
+  if (addr >= 0x0400 && addr < 0x0420) return state.obj.style[addr - 0x0400];
+  if (addr >= 0x0420 && addr < 0x0440) return state.obj.xvel[addr - 0x0420];
+  if (addr >= 0x0440 && addr < 0x0460) return state.obj.xvelf[addr - 0x0440];
+  if (addr >= 0x0460 && addr < 0x0480) return state.obj.s0460[addr - 0x0460];
+  if (addr >= 0x0480 && addr < 0x04A0) return state.obj.s0480[addr - 0x0480];
+  if (addr >= 0x04A0 && addr < 0x04C0) return state.obj.s04A0[addr - 0x04A0];
+  if (addr >= 0x04C0 && addr < 0x04E0) return state.obj.s04C0[addr - 0x04C0];
+  if (addr >= 0x04E0 && addr < 0x0500) return state.obj.s04E0[addr - 0x04E0];
   if (addr >= 0x07A0 && addr < 0x07B8) return state.ring.x[addr - 0x07A0];
   if (addr >= 0x07C0 && addr < 0x07D8) return state.ring.y[addr - 0x07C0];
   if (addr >= 0x07E0 && addr < 0x07EC) return state.score[addr - 0x07E0];
@@ -352,7 +431,7 @@ export const PROBE_KEYS = [
 ];
 /** objloop.lua's counters, appended by scen.py in this order. */
 export const WORK_KEYS = ['slotsVisited', 'msExpanded', 'spriteRecords',
-                          'spritesStored', 'lagged'];
+                          'spritesStored', 'enemySlots', 'lagged'];
 
 export const NOT_PRODUCED = ['pad2', 'oamBudget', 'spriteOverflow',
                              'scanline', 'cpuCycle', 'splitSpins'];
@@ -400,6 +479,10 @@ function sampleRow(state, frame, watch, lagged) {
     msExpanded: state.work.msExpanded,
     spriteRecords: state.work.spriteRecords,
     spritesStored: state.work.spritesStored,
+    // $ADE5 entries this frame. docs/knowledge/06 model (C): the enemy loop is
+    // fixed-shape, and this is the field that holds that claim to account
+    // rather than leaving it as a comment (src/state.js work.enemySlots).
+    enemySlots: state.work.enemySlots,
     lagged,
   };
   for (const a of watch) row[`w_${a}`] = peek(state, parseInt(a, 16));

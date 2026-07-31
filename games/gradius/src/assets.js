@@ -39,13 +39,56 @@ export function hudPacketTable(json) {
   return out;
 }
 
+/**
+ * assets/enemies/tables.json -> a byte reader addressed the way the 6502 is.
+ *
+ * WHY A BYTE READER AND NOT A DECODED STRUCTURE. The spawn engine's indexing is
+ * 8-bit and WRAPS ($A36D `LDA $98 / ASL / ASL` is (cmd*4) AND $FF; $A3E6
+ * `ASL A / TAX` is ($66*2) AND $FF), it reads its four descriptor bytes through
+ * a 16-bit pointer built by adding an offset to a table address ($A397), and it
+ * walks the wave lists with a real CPU pointer in `$6A:$6B` -- which is a
+ * COMPARED field against the cartridge. A pre-decoded "array of waves" can
+ * express none of those three. So src/enemies.js reads bytes at CPU addresses.
+ *
+ * A read outside the exported ranges THROWS with the address. It is not a
+ * defensive nicety: the update loop's animator indexes $ADC1 with status*4, so
+ * a status of 9 or more walks off the end of the nine groups into code, and the
+ * ROM would happily return an instruction byte as a metasprite id.
+ */
+export function enemyTables(json) {
+  const blocks = json.blocks.map((b) => ({
+    name: b.name,
+    base: parseInt(b.rom.replace('$', ''), 16),
+    bytes: Uint8Array.from(b.bytes),
+  }));
+  for (const b of blocks) {
+    if (b.bytes.length === 0) {
+      throw new Error(`assets/enemies/tables.json: block ${b.name} is empty`);
+    }
+  }
+  const hex = (a) => `$${a.toString(16).toUpperCase().padStart(4, '0')}`;
+  const read = (addr) => {
+    for (const b of blocks) {
+      const i = addr - b.base;
+      if (i >= 0 && i < b.bytes.length) return b.bytes[i];
+    }
+    throw new Error(
+      `enemy tables: ${hex(addr)} is not in any exported range (`
+      + blocks.map((b) => `${b.name} ${hex(b.base)}-${hex(b.base + b.bytes.length - 1)}`)
+        .join(', ') + '). Either the port indexed a table out of bounds or '
+      + 'export_assets.py needs to export the range.');
+  };
+  return { blocks, read, word: (a) => read(a) | (read(a + 1) << 8) };
+}
+
 export async function loadResources(stageIndex = 0) {
-  const [manifest, tilesBuf, stages, ms, hud] = await Promise.all([
+  const [manifest, tilesBuf, stages, ms, hud, enemies] = await Promise.all([
     fetchOrExplain('manifest.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('chr/tiles.u8', EXPORT).then((r) => r.arrayBuffer()),
     fetchOrExplain('terrain/stages.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('metasprites.json', EXPORT_MS).then((r) => r.json()),
     fetchOrExplain('hud/packets.json', EXPORT).then((r) => r.json()),
+    fetchOrExplain('enemies/tables.json', EXPORT).then((r) => r.json()),
   ]);
 
   const tiles = new Uint8Array(tilesBuf);
@@ -60,7 +103,7 @@ export async function loadResources(stageIndex = 0) {
   for (const [k, v] of Object.entries(ms.records)) metasprites[Number(k)] = v;
 
   return { manifest, tiles, metasprites, stage: stages.stages[stageIndex],
-           hudPackets: hudPacketTable(hud) };
+           hudPackets: hudPacketTable(hud), enemyTables: enemyTables(enemies) };
 }
 
 /** The frame rate, read from game.json. It is spelled ONCE, in that file. */

@@ -118,11 +118,22 @@ export function drawMetasprite(oam, table, id, baseX, baseY, orMask, cursor,
  * invisible until one is collected: `$45` is 0, so $A0C8's loop never writes
  * `$0121`/`$0122` and they read 0 here.
  *
- * NOT PORTED from $8B10: the sprite budget `$9F` (seeded #$3E at $8B12,
+ * NOT PORTED from $8B10: the sprite budget `$9F` (seeded #$3E = 62 at $8B12,
  * decremented per sprite) and the blank pass `$8BAB` that hides the slots past
- * the cursor. With four sprites on screen neither can bite; with a full stage
- * they both will. `state.shadowOam` is cleared to $F4 each pass instead, which
- * is what $8BAB would have left behind.
+ * the cursor. `state.shadowOam` is cleared to $F4 each pass instead, which is
+ * what $8BAB would have left behind IN OAM.
+ *
+ * WHAT IT DOES NOT LEAVE BEHIND IS `$36`, and wave 3 measured that rather than
+ * assuming it. $8BAB walks from $36, writes $F4 into `$37 + 1` slots at the
+ * usual -15-slot stride, and stores the WALKED cursor back ($8BC0 STX $36);
+ * `$37` comes from $9F at $8B97-$8BA8. So the cartridge's $36 at the $80B5
+ * sample point is not the display list's end cursor. Measured on `idle`:
+ * 240, 52, 120, 188, 4, 72, 140, 208 -- $2F's own +$44 rotation. That is the
+ * whole of the remaining `w_0036` divergence, and it is the LAST INFO field in
+ * the comparison; it stops being one when $9F is modelled.
+ *
+ * The budget itself is never close to biting in this corpus: measured `$9F` at
+ * the end of the busiest frame of the 1900-frame enemy run is 48 of 62.
  */
 export function buildDisplayList(state, table) {
   const oam = state.shadowOam;

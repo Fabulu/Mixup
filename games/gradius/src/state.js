@@ -35,8 +35,29 @@ export const BTN = {
   START: 0x10, SELECT: 0x20, B: 0x40, A: 0x80,
 };
 
-/** Object slots on page $0300. Slot 0 = player, 1-2 = the Options. */
+/**
+ * Object slots on page $0300, and WHO OWNS WHICH.
+ *
+ * Read straight off the allocators rather than inferred from what happened to
+ * be occupied (00-recon-enemies.md 0):
+ *
+ *   0      player                     NOTES-player.md
+ *   1-2    the two Options            NOTES-player.md
+ *   3-5    shot A  (player + 2 Options)   $0123,X with X = 0..2
+ *   6-8    shot B                         $0126,X
+ *   9-11   missiles                       $0129,X
+ *   12-21  ENEMIES                    $A527 `LDA $A8 / ADC #$0C / TAX`, and
+ *                                     $ADB3 `LDX #$09` -- ten of them
+ *   22-31  enemy bullets              $C327 `LDA #$0A / ADC $A8 / TAX`, the
+ *                                     SAME free routine at index + 10
+ *
+ * ENEMY_BASE is spelled once, here, because every enemy address in the ROM is
+ * written with the +$0C folded into it (`$030C,X`, `$032C,X`, ...) with X being
+ * the enemy INDEX 0..9, not the slot.
+ */
 export const SLOTS = 32;
+export const ENEMY_BASE = 0x0C;   // $A534 ADC #$0C
+export const ENEMY_SLOTS = 10;    // $ADB3 LDX #$09
 
 /** Ring length, from `CMP #$18` at $A08C. */
 export const RING_LEN = 0x18;
@@ -87,6 +108,12 @@ export function createState() {
     zp5C: 0,                 // $5C
     zp15: 0,                 // $15
     zp5B: 0,                 // $5B
+    // $1A: uncharacterised, and read by $BBBD (`LDA $19 / ORA $1A`) as half of
+    // the test that decides how fast an enemy's shot countdown runs. Restored
+    // at the respawn from $28,X ($979D). MEASURED 0 on every frame of every run
+    // made here; src/enemies.js throws if it is not, rather than guessing which
+    // of $BBC3-$BBEB's arms would run.
+    zp1A: 0,                 // $1A
 
     // ---- input --------------------------------------------------------
     // $81BF at $80A4 writes both. INPUT LEAD IS ZERO: the read happens at
@@ -129,18 +156,71 @@ export function createState() {
     // Proven by $A285/$A297: ONE add/subtract subroutine services both axes,
     // selected by the 6502 Y register -- Y=0 is the vertical axis, Y=$40 the
     // horizontal one, and $40 is exactly the distance between the arrays.
+    //
+    // WAVE 3 COMPLETED THE POOL. $A527 (`clearSlot`) is the authority on what
+    // an object slot IS: it clears TWENTY-ONE arrays at X = $A8 + $0C, plus two
+    // more at Y = $A8. All twenty-one are below, in $A527's own order.
+    //
+    // THE TWO "j-INDEXED ARRAYS" ARE NOT SEPARATE ARRAYS, and this is a
+    // correction to 00-recon-enemies.md 8, which called them `$0460+j` and
+    // `$0496+j` and warned that merging them with `$0460+j+12` would be wrong.
+    // It is right that the BYTES differ; it is the framing that misleads. Do
+    // the address arithmetic:
+    //
+    //     $A52B  STA $0496,Y   Y = j (0..9)  ->  $0496..$049F
+    //     $A52E  STA $0460,Y   Y = j (0..9)  ->  $0460..$0469
+    //     $A569  STA $0460,X   X = j+12      ->  $046C..$0475
+    //
+    // $0496 = $0480 + 22 and $0460 = $0460 + 0. So the first write is
+    // `s0480[22 + j]` -- the ENEMY-BULLET slots' entry in the $0480 array --
+    // and the second is `s0460[j]`, the SHOT slots' entry in the $0460 array.
+    // Two different indices of two arrays that already exist, not two extra
+    // arrays. Model them as extra arrays and the addresses stop matching the
+    // cartridge's, which is what the watch list compares.
+    //
+    // PAGE $0300 IS NOT EIGHT ARRAYS OF 32. $03A0 and $03B0 are $10 apart, so
+    // as 32-entry arrays they OVERLAP: carrier[16..21] ($03B0-$03B5) is the
+    // same RAM as yvel[0..5]. Harmless and left alone, because every writer of
+    // the $03B0 array in the ROM folds in the +$0C ($03BC,X, X = 0..9), so
+    // $03B0-$03B5 is only ever touched as carrier[16..21]. peek() in
+    // porttrace.mjs resolves the watched addresses explicitly for that reason.
     obj: {
+      status: new Uint8Array(SLOTS), // $0100+i  1 = alive, >= 2 = dying/dead;
+                                     //          for an ENEMY it is the $ADC1
+                                     //          animation group, bit 7 = armoured
+      anim: new Uint8Array(SLOTS),   // $0120+i  metasprite id; 0 = not drawn
+      timer: new Uint8Array(SLOTS),  // $0140+i  animation timer
+      // $0160+i, the animation frame / explosion-script selector. INDEX 0 IS
+      // THE SAME BYTE AS `ring.cursor` ($0160, $A092 STA $0160): the ROM
+      // overloads slot 0's animation-frame byte as the Options' position-ring
+      // cursor. The port keeps ring.cursor authoritative and nothing writes
+      // animFrame[0]; enemies only ever touch 12..21.
+      animFrame: new Uint8Array(SLOTS),
+      // $0180+i, OR'd into every OAM attribute byte at $8AE0. Read 0 for the
+      // player on the captured frames, which is why its records' own $20/$21
+      // reach OAM unchanged. $A579 sets it to 3 for a power-up carrier.
+      attrMask: new Uint8Array(SLOTS),
+      type: new Uint8Array(SLOTS),   // $0300+i  0 = FREE; bit 7 = initialised
+                                     //          and collidable; type AND $7F is
+                                     //          the $AE1C handler index
       y: new Uint8Array(SLOTS),      // $0320+i  integer pixels
       yf: new Uint8Array(SLOTS),     // $0340+i  1/256 px
       x: new Uint8Array(SLOTS),      // $0360+i  integer pixels
       xf: new Uint8Array(SLOTS),     // $0380+i  1/256 px
-      status: new Uint8Array(SLOTS), // $0100+i  1 = alive, >= 2 = dying/dead
-      anim: new Uint8Array(SLOTS),   // $0120+i  metasprite id; 0 = not drawn
-      timer: new Uint8Array(SLOTS),  // $0140+i  animation timer
-      // $0180+i, OR'd into every OAM attribute byte at $8AE0. Read 0 for the
-      // player on the captured frames, which is why its records' own $20/$21
-      // reach OAM unchanged.
-      attrMask: new Uint8Array(SLOTS),
+      carrier: new Uint8Array(SLOTS),// $03A0+i  0 none, 1 drops a capsule,
+                                     //          2/3 = squadron group id
+      yvel: new Uint8Array(SLOTS),   // $03B0+i  Y velocity, integer
+      yvelf: new Uint8Array(SLOTS),  // $03E0+i  Y velocity, fraction
+      style: new Uint8Array(SLOTS),  // $0400+i  $A579's style AND $FE
+      xvel: new Uint8Array(SLOTS),   // $0420+i  X velocity integer, OR the
+                                     //          explosion script's cursor ($AEB2)
+      xvelf: new Uint8Array(SLOTS),  // $0440+i  X velocity, fraction
+      s0460: new Uint8Array(SLOTS),  // $0460+i  per-handler state / damage count
+      s0480: new Uint8Array(SLOTS),  // $0480+i  sub-state / acceleration
+      s04A0: new Uint8Array(SLOTS),  // $04A0+i  script index / hit counter
+      s04C0: new Uint8Array(SLOTS),  // $04C0+i  UNIDENTIFIED: cleared by $A527
+                                     //          and no reader has been found
+      s04E0: new Uint8Array(SLOTS),  // $04E0+i  $A579's style AND $FE, again
     },
 
     // ---- the 24-entry position ring the Options trail through ---------
@@ -178,6 +258,50 @@ export function createState() {
     // 00 50 00 = the 50000 the attract mode leaves as TOP, and zero for both
     // players. $845B (wave 6) is the adder that will make them move.
     score: new Uint8Array(12),
+
+    // ---- the enemy spawn engine's zero page ($A2C0, src/enemies.js) -----
+    //
+    // Kept as the ROM's individual bytes, including the 16-bit wave cursor
+    // $6A:$6B, which is a REAL CPU POINTER into the wave lists and a compared
+    // field: 00-recon-enemies.md 1 recorded it stepping $A846 -> $A848 -> ...
+    // as each record fired, and this port reads its tables at CPU addresses so
+    // that stays true (src/assets.js enemyTables).
+    spawn: {
+      z5D: 0,     // $5D  INC at $A335 whenever a wave record fires. Also read by
+                  //      $BBB7: while it is 0 the enemy-bullet engine runs its
+                  //      $BBE5 arm instead. It is >= 1 from frame 378 of stage 1.
+      z60: 0,     // $60  engine state: 0 = idle, 1 = load the chunk table, 2 = run
+      z61: 0,     // $61  = $3F AND $0E ($A2E1), the 512-px chunk, used as a BYTE
+                  //      offset into the stage's chunk table
+      z64: 0,     // $64-$67, the four descriptor bytes $A397 copies out of table
+      z65: 0,     //      A or table B. For a formation: status, type, formation
+      z66: 0,     //      index ($A592), pattern index ($A5BC).
+      z67: 0,
+      z69: 0,     // $69  formation members still to emit
+      z6A: 0,     // $6A:$6B the wave-list cursor, advanced 2 at a time by $8402
+      z6B: 0,
+      z6C: 0,     // $6C  frames until the next member. Loaded at $A42F -- AFTER a
+                  //      successful allocation, which is why a squadron that
+                  //      cannot allocate burns its whole count in consecutive
+                  //      frames (00-recon-enemies.md 4, measured).
+      z6D: 0,     // $6D  the squadron's spawn X ($A592 b0 AND $F0)
+      z6E: 0,     // $6E  the running Y, += dY per member
+      z6F: 0,     // $6F  the member count, kept after $69 counts down
+      zA8: 0,     // $A8  THE INDEX. The spawn engine's allocators and the update
+                  //      loop both keep the enemy index 0..9 here, and $AEE1 /
+                  //      $B251 reload X from it rather than trusting the caller.
+      zAE: 0,     // $AE:$AF set to $0080 at $ADAB every frame. NO READER FOUND --
+      zAF: 0,     //      00-recon-enemies.md's open question; reproduced anyway.
+    },
+    // $47 and $49, and the squadron kill counters at $0048+$49.
+    //
+    // $0048,Y is written at $A400 with Y = $49, and $A3FB forces $49 = 2 or 3
+    // (`AND #$01 / ORA #$02`), so indices 0 and 1 of this array -- which would
+    // be $48, the HUD's four-phase rotation, and $49 itself -- are PROVABLY
+    // unreachable. They exist so the index arithmetic below is the ROM's.
+    zp47: 0,                    // $47  INC at $AEC8; every 16th capsule is gold
+    zp49: 0,                    // $49  the alternating squadron group id, 2 or 3
+    squad: new Uint8Array(4),   // $0048-$004B
 
     // ---- the camera ----------------------------------------------------
     // $98EE adds #$80 to $3D per frame and carries into $3E/$3F through the
@@ -292,6 +416,13 @@ export function createState() {
       msExpanded: 0,       // $8AAC entries    -- metasprites expanded
       spriteRecords: 0,    // $8ACF executions -- 4-byte records considered
       spritesStored: 0,    // $8AF9 executions -- records that reached OAM
+      // $ADE5 entries -- iterations of the ENEMY loop. docs/knowledge/06's
+      // mechanism (C), partial completion of an object loop, is answered NO for
+      // this loop and the answer is MEASURED, not assumed: 15900 $ADE5 entries
+      // over 1590 $ADAB calls on a 1900-frame stage-1 run = exactly 10.00, and
+      // 26630 over 2663 on the recon's 3000-frame run. The loop is
+      // `LDX #$09 / ... / DEC $A8 / BPL`, with no early exit at all.
+      enemySlots: 0,
     },
   };
 }
