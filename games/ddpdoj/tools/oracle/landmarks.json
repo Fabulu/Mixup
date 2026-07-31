@@ -1,0 +1,246 @@
+{
+  "_note": "ADDRESSES ONLY, derived by games/ddpdoj/tools/oracle/derive.py from the DECRYPTED :maincpu region of ddpdojblk. Two builds live in this ROM and share no code address; A = $13xxxx (2002.04.05 MASTER, the chooser's silent default), B = $23xxxx (2002.10.07 BLACK VER, the port target). Re-derive with derive.py; do not hand-edit.",
+  "set": "ddpdojblk",
+  "ram": {
+    "semaphore": 8403264,
+    "frameCounter": 8403210,
+    "phase3": 8403214,
+    "p1raw": 8403312,
+    "p1edge": 8403314,
+    "p1prev": 8403316,
+    "irq4Vector": 8393840,
+    "irq6Vector": 8393848,
+    "irq4Phase": 8452740,
+    "spriteList": [
+      8388608,
+      8391167
+    ]
+  },
+  "bios": {
+    "irq4Trampoline": 3238,
+    "irq6Trampoline": 3262
+  },
+  "builds": {
+    "A": {
+      "counters": 1293964,
+      "loopHead": 1295190,
+      "loopTail": 1295232,
+      "calls": [
+        1293964,
+        1401584,
+        1315830,
+        1335068,
+        1299994,
+        1295798,
+        1299606
+      ],
+      "frameSync": 1295798,
+      "waitLoops": [
+        1295788,
+        1296052,
+        1296070
+      ],
+      "waitLoop": 1296052,
+      "waitBne": 1296058,
+      "isr6Release": 1296390,
+      "isr6Gate": 1296358,
+      "isr6GateTarget": 1296396,
+      "isr6GateSkips": [
+        1316470,
+        1314814,
+        1315416,
+        1596868
+      ],
+      "semaphoreWrites": [
+        {
+          "pc": 1295760,
+          "value": 0,
+          "how": "clr.b"
+        },
+        {
+          "pc": 1295780,
+          "value": 1,
+          "how": "move.b #$1"
+        },
+        {
+          "pc": 1295798,
+          "value": 1,
+          "how": "move.b #$1"
+        },
+        {
+          "pc": 1296044,
+          "value": 2,
+          "how": "move.b #$2"
+        },
+        {
+          "pc": 1296062,
+          "value": 1,
+          "how": "move.b #$1"
+        }
+      ],
+      "armSites1": [
+        1295780,
+        1295798,
+        1296062
+      ],
+      "armSites2": [
+        1296044
+      ],
+      "inputLea": [
+        1299556
+      ],
+      "p1MirrorStore": [
+        1299592
+      ],
+      "phaseReads": [
+        1295806,
+        1718338
+      ],
+      "evidence": [
+        "counters routine  $13BE8C  (unique `addq.w #1,$80390A.l` in build A)",
+        "main loop head    $13C356  (its ONLY caller in the whole image)",
+        "loop tail         $13C380  bra -> $13C356  (7 calls in the body)",
+        "  call 0          $13BE8C",
+        "  call 1          $1562F0",
+        "  call 2          $1413F6",
+        "  call 3          $145F1C",
+        "  call 4          $13D61A",
+        "  call 5          $13C5B6",
+        "  call 6          $13D496",
+        "semaphore write   $13C590  clr.b,$803940",
+        "semaphore write   $13C5A4  move.b #$1,$803940   -> waits 1 vblank(s)",
+        "semaphore write   $13C5B6  move.b #$1,$803940   -> waits 1 vblank(s)",
+        "semaphore write   $13C6AC  move.b #$2,$803940   -> waits 2 vblank(s)",
+        "semaphore write   $13C6BE  move.b #$1,$803940   -> waits 1 vblank(s)",
+        "frame sync        $13C5B6  (main-loop call #5; arms $803940)",
+        "tst.b $803940 sites: ['$13C5AC', '$13C6B4', '$13C6C6', '$13C7E6', '$13D478']",
+        "wait loop         $13C5AC (tst.b) / $13C5B2 (bne -8)   [arm #1]",
+        "wait loop         $13C6B4 (tst.b) / $13C6BA (bne -8)   [arm #2]",
+        "wait loop         $13C6C6 (tst.b) / $13C6CC (bne -8)   [arm #1]",
+        "frame sync branches to a wait: $13C5C4 -> $13C6B4",
+        "frame sync branches to a wait: $13C5E2 -> $13C6B4",
+        "ISR6 release      $13C806  (subq.b #1,$803940)",
+        "IRQ6 (A) gate     $13C7E6  beq -> $13C80C  (skips everything up to and including the release at $13C806)",
+        "  gated subroutines: ['$141676', '$140FFE', '$141258', '$185DC4']",
+        "input port lea    ['$13D464']   P1 mirror store ['$13D488']",
+        "tst.w $80390E (mod-3 phase read-back) sites: ['$13C5BE', '$1A3842']"
+      ]
+    },
+    "B": {
+      "counters": 2342540,
+      "loopHead": 2342876,
+      "loopTail": 2342918,
+      "calls": [
+        2342540,
+        2452826,
+        2363580,
+        2385982,
+        2347694,
+        2343442,
+        2347306
+      ],
+      "frameSync": 2343442,
+      "waitLoops": [
+        2343432,
+        2343824,
+        2343868
+      ],
+      "waitLoop": 2343824,
+      "waitBne": 2343830,
+      "isr6Release": 2344044,
+      "isr6Gate": 2344012,
+      "isr6GateTarget": 2344050,
+      "isr6GateSkips": [
+        2364220,
+        2362560,
+        2363174,
+        2650758
+      ],
+      "semaphoreWrites": [
+        {
+          "pc": 2343404,
+          "value": 0,
+          "how": "clr.b"
+        },
+        {
+          "pc": 2343424,
+          "value": 1,
+          "how": "move.b #$1"
+        },
+        {
+          "pc": 2343442,
+          "value": 1,
+          "how": "move.b #$1"
+        },
+        {
+          "pc": 2343496,
+          "value": 2,
+          "how": "move.b #$2"
+        },
+        {
+          "pc": 2343516,
+          "value": 3,
+          "how": "move.b #$3"
+        },
+        {
+          "pc": 2343818,
+          "value": -1,
+          "how": "move.b D0"
+        },
+        {
+          "pc": 2343860,
+          "value": 1,
+          "how": "move.b #$1"
+        }
+      ],
+      "armSites1": [
+        2343424,
+        2343442,
+        2343860
+      ],
+      "armSites2": [
+        2343496
+      ],
+      "inputLea": [
+        2347256
+      ],
+      "p1MirrorStore": [
+        2347292
+      ],
+      "phaseReads": [
+        2343450,
+        2772260
+      ],
+      "evidence": [
+        "counters routine  $23BE8C  (unique `addq.w #1,$80390A.l` in build B)",
+        "main loop head    $23BFDC  (its ONLY caller in the whole image)",
+        "loop tail         $23C006  bra -> $23BFDC  (7 calls in the body)",
+        "  call 0          $23BE8C",
+        "  call 1          $256D5A",
+        "  call 2          $2410BC",
+        "  call 3          $24683E",
+        "  call 4          $23D2AE",
+        "  call 5          $23C212",
+        "  call 6          $23D12A",
+        "semaphore write   $23C1EC  clr.b,$803940",
+        "semaphore write   $23C200  move.b #$1,$803940   -> waits 1 vblank(s)",
+        "semaphore write   $23C212  move.b #$1,$803940   -> waits 1 vblank(s)",
+        "semaphore write   $23C248  move.b #$2,$803940   -> waits 2 vblank(s)",
+        "semaphore write   $23C25C  move.b #$3,$803940   -> waits 3 vblank(s)",
+        "semaphore write   $23C38A  move.b D0,$803940",
+        "semaphore write   $23C3B4  move.b #$1,$803940   -> waits 1 vblank(s)",
+        "frame sync        $23C212  (main-loop call #5; arms $803940)",
+        "tst.b $803940 sites: ['$23C208', '$23C390', '$23C3BC', '$23C44C', '$23D10C']",
+        "wait loop         $23C208 (tst.b) / $23C20E (bne -8)   [arm #1]",
+        "wait loop         $23C390 (tst.b) / $23C396 (bne -8)   [no arm at -8]",
+        "wait loop         $23C3BC (tst.b) / $23C3C2 (bne -8)   [arm #1]",
+        "frame sync branches to a wait: $23C220 -> $23C390",
+        "ISR6 release      $23C46C  (subq.b #1,$803940)",
+        "IRQ6 (A) gate     $23C44C  beq -> $23C472  (skips everything up to and including the release at $23C46C)",
+        "  gated subroutines: ['$24133C', '$240CC0', '$240F26', '$287286']",
+        "input port lea    ['$23D0F8']   P1 mirror store ['$23D11C']",
+        "tst.w $80390E (mod-3 phase read-back) sites: ['$23C21A', '$2A4D24']"
+      ]
+    }
+  }
+}

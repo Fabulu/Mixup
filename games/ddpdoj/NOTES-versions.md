@@ -171,3 +171,48 @@ share / screen inventory). Both were used for everything above.
 DIP change persists into later runs unless you pass `-cfg_directory`; and
 `emu.add_machine_frame_notifier` has the same dropped-handle GC trap as
 `install_read_tap` — keep the handle in a global or it silently stops firing.
+
+---
+
+## WAVE 1 — the version trap, closed by procedure (2026-07-31)
+
+Full evidence: `docs/worklog/ddpdoj/01-impl-oracle-pin-versionb.md`.
+Harness note: **`games/ddpdoj/NOTES-oracle.md`** — one harness, `pgm.py`.
+
+1. **The chooser trap is now a controlled pair of runs, not a warning.** Through
+   the same harness, with only the chooser input differing:
+   * no input, countdown expires → arm PC `$13C5B6` on 1600/1600 logic frames,
+     legal screen **`2002.04.05.MASTER VER`**;
+   * P1 Down @lf560 + P1 Button 1 @lf600 → arm PC `$23C212`, legal screen
+     **`2002.10.07.BLACK VER`**.
+   Every probe run now prints which build it is in and FAILS if it is the wrong
+   one — including on its LAST frame, because the chooser is build-A code and
+   "some frames were in B" would let a timeout fall-through pass.
+   **Assumption 3 of `PLAN-vertical-slice.md` is confirmed and captured.**
+
+2. **A seeded NVRAM makes VERSION-B the silent default.** Procedure, output and
+   caveats are in `NOTES-oracle.md` §7. The image is a snapshot of the board's
+   RAM, is ROM-derived and is never committed; produce it with
+   `python games/ddpdoj/tools/oracle/pgm.py seed`.
+
+   ```
+   sha256 3c4d8ef5818fbf8cfc0715ba91515f9399cc6255b579ceff6f4c56c9f5235e84
+   131072 bytes, 3244 non-zero, $01400..$1FFFF
+   ```
+
+3. **`$03810` is confirmed as the version flag** — the candidate this file
+   recorded as "a lead, not confirmed". It is `00` in `ddp3blk_defaults.nv` and
+   in main RAM at boot, and `01` in an image saved after choosing VERSION-B.
+   The `sram` file is word-swapped relative to main RAM (`region[i] ==
+   mainram[i^1]`), so which of `$803810`/`$803811` that is was not established.
+
+4. **`ddpdojblk` still verifies "best available" from `ddpdojblk.7z`**, and the
+   two bad zips are still renamed out of MAME's reach. The harness prints an
+   FNV-1a-64 of the DECRYPTED `:maincpu` region on every single run
+   (`maincpu_fnv64=D4C25CA9C91B9D47`, 6,291,456 bytes) so that a ROM directory
+   edited by another agent stops a cross-session number loudly.
+
+5. **A new determinism risk was found and bounded: the V3021 RTC.** The game
+   reads the calendar and it lands in main RAM; two runs 26 hours apart differ
+   in exactly ten bytes. See `NOTES-oracle.md` §5. It is carved out of the RAM
+   digest into its own reported column, not hidden.

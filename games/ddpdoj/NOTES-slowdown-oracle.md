@@ -1,5 +1,151 @@
 # Can an oracle SEE the slowdown? — MAME capability findings
 
+> ## ⚠ READ THIS BEFORE ANYTHING ELSE IN THIS FILE
+>
+> **MAME's lag/timing for this board is NOT ACCURATE.** Stated by the repo owner,
+> 2026-07-31, who has been right about this class of thing before. Nothing below
+> is retracted, but its SCOPE changes, and the change is fundamental:
+>
+> **MAME is authoritative for WHAT the game computes. It is NOT authoritative for
+> WHEN, and therefore not for HOW MUCH THE GAME SLOWS DOWN.**
+>
+> An emulator can be state-exact and timing-inaccurate at the same time. We have
+> already measured that exact shape once: Mesen and MAME agreed byte-for-byte on
+> every value Gradius computed across 388 NMIs and then **disagreed about whether
+> a lag frame had happened** (`docs/knowledge/06`). Same failure, now known to
+> apply here, on the board where slowdown is not an artifact but a
+> GAMEPLAY MECHANIC that players time their movement against.
+>
+> ### What this does and does not invalidate
+>
+> **Still good — this is most of the file:**
+> - Every capability finding: taps, hooks, determinism, headless operation.
+> - The game's logic, state, RAM, graphics and code structure. A port verified
+>   frame-by-frame against MAME is still verified for everything except timing.
+> - The load meter at `$13C6B4` as a measure of **work per frame**. It counts the
+>   game's own idle spins, which is a fact about the GAME's frame budget, not
+>   about MAME's clock. It remains the right instrument.
+>
+> **No longer safe to assume:**
+> - That the load meter's numbers are CALIBRATED to real hardware. It tells you
+>   truthfully which frames are heavier; it does not tell you that the real board
+>   would have overrun on the same frames, or by the same margin.
+> - That counting overruns under MAME yields the real board's slowdown pattern.
+> - Anything in §4/§8 that treats MAME's frame timing as ground truth.
+>
+> ### What follows for the port, and it is not fatal
+>
+> **Separate WHAT from WHEN in the architecture, from day one.** The port models
+> the game's work explicitly — a per-frame work budget with a calibration
+> constant — rather than inheriting whatever pace the host happens to produce.
+> Then the slowdown model has ONE knob, and that knob can be calibrated against a
+> better reference when one exists, without rewriting the object driver.
+>
+> This is the same conclusion `docs/knowledge/06` reaches by a different route:
+> mechanism (C), partial completion, cannot be retrofitted. Build the budget in
+> whether or not we can calibrate it yet.
+>
+> **What a real reference would be**, in rough order of cost: documented
+> measurements from people who own the board; frame-accurate capture from real
+> PGM hardware; a second emulator of this board to cross-check (the Gradius
+> Mesen/MAME cross-check is the precedent — two independent implementations
+> disagreeing is how the NES lag frame was found at all).
+>
+> **Until then, every slowdown number this project produces is labelled
+> "MAME-timed, uncalibrated".** Not doing that is how "about 54 fps" nearly
+> became a fact.
+>
+> ### MECHANISM vs MAGNITUDE — the split that rescues most of the work
+>
+> Two different questions got conflated, and only one of them is blocked:
+>
+> | question | who can answer it | blocked? |
+> |---|---|---|
+> | **MECHANISM** — WHAT does the board do when it runs out of time? Does it drop the sprite DMA, skip an update, truncate an object loop, stretch the frame? Which code path runs? | MAME. This is about the GAME'S CODE, and MAME executes that faithfully. | **NO** |
+> | **MAGNITUDE** — HOW OFTEN and HOW MUCH, on real hardware, for a given scene? | not MAME | **YES** |
+>
+> **So keep going.** Mechanism is the part that decides the port's architecture —
+> `docs/knowledge/06` says mechanism (C), partial completion, cannot be
+> retrofitted — and mechanism is exactly the part MAME can still tell us. Find
+> the overrun path, learn what the game does when the frame is gone, build the
+> object driver to express it. Magnitude is one calibration constant on top,
+> deliberately isolated so it can be set later.
+>
+> A specific thing to look for on THIS board: the sprite list is DMA'd to the
+> IGS023 at vblank, and the game's own frame counters (`$80390A`, `$80390D`
+> bit 0, `$80390E` mod 3) are incremented INSIDE the main loop body rather than
+> by an interrupt. If an overrun means the loop body does not complete, those
+> counters do not advance — and anything driven by them (animation phase,
+> alternation, RNG) slows with the game rather than with the display. That would
+> make slowdown observable to the game's own logic, which is the single most
+> important question in this folder, and it is answerable under MAME.
+>
+> The owner reports the real board's slowdown is a **distinctive kind** — not
+> generic frame-dropping. That is a hypothesis with a testable shape: find which
+> of the three mechanisms (or which combination) the code actually implements,
+> and see whether the distinctiveness falls out of it.
+>
+> ### On calibrating magnitude later
+>
+> The load meter gives a RELATIVE signal (which frames are heavy, and by how much
+> relative to each other). Calibration needs an absolute anchor: how many real
+> video frames a known, reproducible section takes on real hardware. That is a
+> coarse number, and coarse is enough to fit one constant. It requires a
+> trustworthy frame-accurate reference from the board itself. **Not available
+> today; do not fake it, and do not calibrate against another emulator and call
+> it hardware.**
+>
+> ### THE SCROLL-CLOCK METHOD — the one calibration path we have
+>
+> Owner's proposal, and it is sound in shape: **use recorded video of the real
+> board, and use the AUTOSCROLL as the shared clock.**
+>
+> The background advances with the game's own logic frames. So for any interval
+> between two identifiable scroll landmarks:
+>
+> ```
+> real_board:  N_video_frames  to cross scroll interval [A, B]
+> MAME:        M_video_frames  to cross the same interval
+> ratio N/M  =  how much more the real board slowed down over that stretch
+> ```
+>
+> **The player's inputs do not have to match**, which is what makes it usable at
+> all — the scroll timeline is common to any run of the stage. Find the intervals
+> where N/M departs from 1, then bisect within them to localise WHERE the extra
+> slowdown lives.
+>
+> **We can do this mechanically, not by eye.** `tools/pgmgfx.py` reconstructs a
+> frame pixel-exactly, so a scroll position can be IDENTIFIED from a video frame
+> by matching background tiles against the extracted tilemap. Frame extraction is
+> ffmpeg. No human has to watch anything, and nobody has to trust a judgement
+> call about "roughly here".
+>
+> **The confounds, each of which must be handled or declared:**
+>
+> 1. **PROVENANCE IS THE KILLER RISK.** A recording made from an emulator teaches
+>    us nothing and would silently launder MAME's timing into "hardware truth".
+>    There is no reliable way to tell from the pixels alone. Every recording used
+>    must have a stated, checkable origin, and a run whose origin is unknown is
+>    not evidence. This is the same rule as "do not calibrate against another
+>    emulator and call it hardware", and it is easier to violate by accident.
+> 2. **Frame-rate resampling.** The board is 59.1856 Hz; a 60 fps capture of it
+>    carries roughly 0.8 duplicated frames per second, and re-encoding can add
+>    more. Over a long interval this is systematic and can be modelled; per-frame
+>    precision cannot be recovered. Measure over LONG intervals, and report the
+>    residual.
+> 3. **Load depends on the run, not just the position.** Different player,
+>    different bullets on screen, different enemies killed early — so the same
+>    scroll interval can carry different load. Mitigate with many intervals and
+>    many runs, and prefer stretches dominated by scripted spawns.
+> 4. **RANK.** Now known to change bullet speed and density, which changes load
+>    directly. A recording by a strong player is at a different rank than ours.
+>    Rank must be estimated or controlled, or the comparison measures rank rather
+>    than hardware.
+>
+> **What it yields:** not a single constant, most likely, but a curve — extra
+> slowdown as a function of load. That is a better target anyway, because the
+> load meter already gives us the x-axis.
+
 **Status: the answer is YES, and the capability was measured, not inferred.**
 Every claim below marked **[MEASURED]** was produced by running a command on this machine;
 the command and its output are quoted. Claims marked **[DERIVED]** are arithmetic on
@@ -602,3 +748,30 @@ checked in.
 | `probe_state.lua` | `buffer_save` / `buffer_load` |
 | `signals.lua` | the full per-frame signal set of `06-lag-and-slowdown.md` |
 | `mk68ktest.py` | generates the 68000 test program |
+
+---
+
+## WAVE 1 CLOSES THREE OF §8'S "NOT PROVEN" ITEMS (2026-07-31)
+
+Measured on the real board image through `games/ddpdoj/tools/oracle/pgm.py`.
+Evidence: `docs/worklog/ddpdoj/01-impl-oracle-pin-versionb.md`. Harness note:
+`games/ddpdoj/NOTES-oracle.md`.
+
+* **§8.2 `-drc` vs `-nodrc` — TESTED.** Same 2,600-frame VERSION-B scenario,
+  byte-identical traces (`13f8ef743e0b3a53…` both ways). No pin needed.
+* **§8.4 savestates — RESOLVED, with a correction to the correction.** A save
+  taken in the frame notifier resumes: aligned on `$80390A`, 120 frames
+  compared, `d_ram` differs on 1 (the boundary frame), dead stack on 20,
+  `$80FA84` on 1, everything else identical. A save taken *inside a memory tap*
+  does **not** resume (it re-enters the core mid-instruction): `d_ram` and
+  `$80390E` differ on 120/120. Arm in the tap, save in the notifier.
+* **§8.5 "does the game's own logic observe the slowdown"** — the counters
+  advance per MAIN LOOP ITERATION at `$23BE8C` and `$80390E` is read back by the
+  frame sync itself (`$23C21A`), so yes, mechanically. **Still no overrun has
+  been forced**, so (C) remains unmeasured — wave 2.
+
+And one thing this file did not anticipate: **the V3021 RTC breaks determinism
+across a date change.** The game reads the calendar (`$23C53A: lea $C00006,A0`)
+and it lands in main RAM; two runs 26 hours apart differ in exactly ten bytes,
+all month/day. Bounded and carved into its own reported column — see
+`NOTES-oracle.md` §5.
