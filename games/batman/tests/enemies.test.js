@@ -6,7 +6,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { grid, put, fillRow, makeState } from './helpers.js';
-import { meleeHitTest, updateEnemies, _internals } from '../src/enemies.js';
+import {
+  meleeHitTest, updateEnemies, UNIMPLEMENTED_STATES, _internals,
+} from '../src/enemies.js';
 import { updateEffects } from '../src/doors.js';
 
 const {
@@ -651,4 +653,55 @@ test('the record-offset constants are the bytes they name', async () => {
 
   assert.equal(R.SLOTS, 8);
   assert.equal(R.RECORD, 32);
+});
+
+// ---------------------------------------------------------------------------
+// The two dispatch tables, after Phase 9 scattered their targets across
+// thirteen files.
+//
+// WHAT THIS IS: a CHANGE DETECTOR over the source of enemies/driver.js, in the
+// same idiom conveyor.test.js and frameorder.test.js already use. It cannot
+// tell you a case arm calls the RIGHT handler -- it can tell you an arm went
+// missing, which is the failure mode a botched split actually has. Both
+// switches end in `default: return`, so a state whose arm was dropped in the
+// move falls through SILENTLY: no throw, no draw, no screen-byte refresh, and
+// the enemy simply stops behaving while every other test stays green.
+//
+// The expected sets are written from the ROM tables (1:$50D3 indexed on
+// state-1, and 1:$60EF), not read back from the port.
+// ---------------------------------------------------------------------------
+
+test('primaryDispatch covers states 1..13 and hitDispatch its ten arms', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/enemies/driver.js', import.meta.url), 'utf8');
+
+  const arms = (fnName) => {
+    const at = src.indexOf(`function ${fnName}(`);
+    assert.ok(at > 0, `${fnName} is in enemies/driver.js`);
+    const open = src.indexOf('{', at);
+    let depth = 0, end = open;
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}' && --depth === 0) { end = i; break; }
+    }
+    const body = src.slice(open, end);
+    assert.match(body, /default: return;/, `${fnName} keeps its silent default`);
+    return [...body.matchAll(/case (0x[0-9A-Fa-f]+|\d+):/g)]
+      .map((m) => Number(m[1])).sort((a, b) => a - b);
+  };
+
+  // 1:$50D3 -- thirteen entries, one per state, indexed on state-1.
+  assert.deepEqual(arms('primaryDispatch'),
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0A, 0x0B, 0x0C, 0x0D],
+    'primaryDispatch must reach every one of the thirteen states');
+
+  // 1:$60EF -- ten arms. States 1, 4 and $0B share jt_01_6107, and $0D (the
+  // afterimage) has no attack tick at all because it has no physics.
+  assert.deepEqual(arms('hitDispatch'),
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0A, 0x0B, 0x0C],
+    'hitDispatch must reach every state that has an attack tick');
+
+  // And the claim the two defaults rest on: nothing is unported, so neither
+  // default is reachable through a state number the driver can see.
+  assert.equal(UNIMPLEMENTED_STATES.size, 0);
 });
