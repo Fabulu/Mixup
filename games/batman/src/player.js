@@ -13,12 +13,15 @@ import { meleeHitTest } from './enemies.js';
 import { updateScriptedMove } from './scriptedmove.js';
 import { startRope } from './rope.js';
 import { armDoor } from './doors.js';
-import { effects, startDeathBurst, deathBurstTick } from './effects.js';
 import { BTN } from './input.js';
 // loc_00_1B4A, the pose ladder, lives in ./player/anim.js. It is a JP TARGET:
 // this chain runs INTO it and nothing comes back out. See that file's header
 // for why it was safe to cut when the $1438..$1B4A region above was not.
 import { selectAnim } from './player/anim.js';
+// sub_00_29E7. Called from the pit arm ($1773) and the HP arm ($17E7) below --
+// both `JP`s, so the rest of the update never runs. Its partner deathTick is
+// NOT in this chain at all: src/main.js drives it from $057A/$05EC.
+import { startDeath } from './player/death.js';
 
 // $FF80. Written by the physics below; READ by the pose ladder in
 // ./player/anim.js ($1C43, $1C50), which is why these three are exported into
@@ -240,90 +243,6 @@ function checkHpDeath(state) {
   return true;
 }
 
-/**
- * ROM: sub_00_29E7. Seeds the $C1C0 GAME OVER lettering from 0:$2AD7 -- eight
- * letters on one shared path, each trailing the last by 8 frames, which is
- * the snake. See the header of src/effects.js. Sets the
- * dying flag, the $78 counter and the jingle. It does NOT touch vx or vy --
- * MEASURED: a pit death mid-fall keeps vx = -2, vy = -66 frozen in the
- * trace for the whole sequence. Zeroing them here was a port invention and
- * diverged from f-death+1 on.
- *
- * The $78 is NOT the length of the sequence. Nothing decrements it until slot
- * 7 of the burst has finished its scripted flight, which takes 332 frames --
- * see deathBurstTick. MEASURED end to end on levels 1, 3 and 4: 452 frames
- * from here to loc_00_2AAD.
- */
-function startDeath(state) {
-  const p = state.player;
-  if (p.dead) return;                   // $29EB: already dying
-  // $29ED-$2A02: the 40-byte seed and $C712 = $78 in one go.
-  startDeathBurst(state, state.tunables.deathSequenceFrames);
-  p.dead = 1;                           // $29FD: $C715
-  // state.deathTimer stays a MIRROR of $C712 -- main.js clears it on respawn
-  // and the unit tests read it, but the burst is what owns the byte now.
-  state.deathTimer = state.tunables.deathSequenceFrames;
-  // $2A05 is LD BC,$0903 -- sub_00_0AE1 takes B as the id and C as the mask,
-  // so this is song $09 with mask $03 (play + stop-all), not the $01 every
-  // SFX site uses. It is music: the death jingle has to silence the level
-  // theme, and mask $01 would leave both playing.
-  requestSound(state, 0x09, 0x03);
-}
-
-/**
- * ROM: loc_00_2A0D ticks the GAME OVER lettering; loc_00_2AAD then decrements
- * lives and either restarts or ends the run.
- *
- * The burst is the sequence. $C712 -- what the port used to run down on its
- * own as `deathTimer` -- is not touched until slot 7 of the burst reaches the
- * end of its scripted path on frame 332, so the real length is 332 + 120 =
- * 452 frames, MEASURED identically on levels 1, 3 and 4. The old timer-only
- * version took 122.
- *
- * CALL SITE: the main loop, $057A on even frames and $05EC on odd -- once a
- * frame either way, right after the HUD draw and before the camera, and NOT
- * gated on the pause. src/main.js holds both arms. It used to be driven from
- * the head of updatePlayer instead, which put the burst's sprites at the WRONG
- * OAM index on odd frames: MEASURED (tools/oracle/deathpix.mjs) death-l1 f441
- * = 68 wrong pixels and death-l9 f441 = 135, both flagged "EXACT in the $05EC
- * order", i.e. the pixels come back byte-for-byte the moment the burst is
- * queued after the enemies and the doors instead of before the camera.
- *
- * WHAT THE CALL SITE DOES NOT CARRY: on the frame the burst LANDS, the ROM
- * goes to loc_00_2AAD, which is not a return -- `POP AF / POP HL` discards
- * sub_00_29E7's return address and $2ACC is `JP loc_00_035B`, so the rest of
- * that main-loop iteration never runs. The port finishes the frame and then
- * lets src/main.js act on flow.respawnPending; the one visible consequence,
- * the player being drawn on that frame, is gated there at the `drew` test.
- * Everything else that iteration still runs, which $2AAD does not.
- *
- * $0567/$05D9 open `LD A,[$C740] / CP $FF / JR NZ` and the burst call is
- * INSIDE that arm, so the burst does not advance while $C740 is busy -- a boss
- * death countdown or level 14's entrance. MEASURED with an execution hook on
- * sub_00_29E7: 0 hits across 60 frames with $C740 = $00, 60/60 with $FF.
- */
-export function deathTick(state, manifest = null) {
-  // Fire exactly once. Without this the timer sits at zero and every
-  // subsequent frame takes another life, draining the lot in a fifth of a
-  // second while the async reload is still in flight.
-  if (state.flow.respawnPending) return;
-
-  const landed = deathBurstTick(state, manifest);   // loc_00_2A0D
-  state.deathTimer = effects(state).deathTicks;     // keep the mirror honest
-  if (!landed) return;                              // $2A9E: not yet zero
-
-  // $2AC6: BC = $2E03 -- id $2E, mask $03, on the way out to loc_00_035B.
-  requestSound(state, 0x2E, 0x03);
-
-  const flow = state.flow;
-  flow.lives = (flow.lives - 1) & 0xFF;          // $2AB6
-  if (flow.lives === 0 || flow.lives > 200) {    // wrapped past zero
-    flow.lives = state.tunables.startingLives;   // game over -> fresh run
-    flow.gameOver = (flow.gameOver || 0) + 1;
-  }
-  // main.js picks this up and re-runs initLevel, which is async.
-  flow.respawnPending = true;
-}
 
 // ---------------------------------------------------------------------------
 // Attacks.  ROM: loc_00_18FB (dispatch), loc_00_1990 (B button),
@@ -462,8 +381,14 @@ function clingLocked(state) {
   return false;
 }
 
-/** ROM: sub_00_0AE1 - four-slot command ring at $C6FB (wired up in P5). */
-function requestSound(state, id, mask = 0x01) {
+/**
+ * ROM: sub_00_0AE1 - four-slot command ring at $C6FB (wired up in P5).
+ *
+ * Exported for ./player/death.js only, which needs it for the $2A05 jingle and
+ * the $2AC6 after-death theme. That is the back half of a deliberate two-node
+ * cycle; see that file's header.
+ */
+export function requestSound(state, id, mask = 0x01) {
   if (state.sound && state.sound.queue.length < 4) {
     state.sound.queue.push({ id, mask });
   }

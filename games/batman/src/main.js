@@ -7,7 +7,10 @@ import { createState, GAMEPLAY_PALETTES } from './state.js';
 import { makeTunables } from './tunables.js';
 import { attachInput, sampleInput, BTN } from './input.js';
 import { initLevel, clearLevel } from './level.js';
-import { updatePlayer, deathTick } from './player.js';
+import { updatePlayer } from './player.js';
+// sub_00_29E7's tick. NOT part of the player chain -- the cartridge calls it
+// from the main loop at $057A and $05EC, and both arms are in this file.
+import { deathTick } from './player/death.js';
 import { updateCamera } from './camera.js';
 import { loadManifest, loadPlayerTiles } from './assets.js';
 import { createFramebuffer, renderFrame, SCREEN_W, SCREEN_H } from './render/renderer.js';

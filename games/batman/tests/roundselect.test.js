@@ -279,14 +279,15 @@ test('WIRING GAP (level.js): a route clear must send $01/$03 on its way here', (
 test('the OTHER two ways into round select do send their own cue', () => {
   // Kept beside the gap so "nobody sends it" is a measurement of this tree and
   // not an assumption: title.js's $0355 fires on the flash handover, and
-  // player.js's $2AC6 sends $2E -- the after-death theme, which the old
-  // showRoundSelect request used to OVERRIDE with $01.
+  // player/death.js's $2AC6 sends $2E -- the after-death theme, which the old
+  // showRoundSelect request used to OVERRIDE with $01.  Phase 10 moved
+  // sub_00_29E7 and loc_00_2A0D out of player.js; this path follows the code.
   const title = readFileSync(new URL('../src/title.js', import.meta.url), 'utf8');
   assert.match(title, /requestSound\(state, 0x01, 0x03\)/,
     'title.js $0355 still sends $01/$03');
-  const player = readFileSync(new URL('../src/player.js', import.meta.url), 'utf8');
-  assert.match(player, /requestSound\(state, 0x2E, 0x03\)/,
-    'player.js $2AC6 still sends $2E/$03, and nothing may replace it with $01');
+  const death = readFileSync(new URL('../src/player/death.js', import.meta.url), 'utf8');
+  assert.match(death, /requestSound\(state, 0x2E, 0x03\)/,
+    'player/death.js $2AC6 still sends $2E/$03, and nothing may replace it with $01');
 });
 
 // ---------------------------------------------------------------------------
