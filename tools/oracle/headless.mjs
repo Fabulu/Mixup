@@ -42,6 +42,16 @@ function fakeTarget() {
 let CLOCK = 0;
 let RAF = [];
 
+// The frame recorder the OFFSCREEN canvas writes into.  boot() no longer
+// putImageData's straight onto the canvas it was handed: c7a1e22 moved the
+// integer upscale inside the game, so the pixels now go
+//   image -> srcCtx.putImageData -> ctx.drawImage(src, ..., W*scale, H*scale)
+// where `src` comes from document.createElement('canvas').  The recorder
+// therefore has to live on the offscreen half, and this module-level handle is
+// how createElement -- which is global and installed once -- reaches the
+// per-boot recorder made by fakeCanvas().
+let RECORDER = null;
+
 function installShims() {
   if (globalThis.__romHeadlessInstalled) return;
   globalThis.__romHeadlessInstalled = true;
@@ -55,10 +65,40 @@ function installShims() {
     // this harness is about the picture.
   };
   globalThis.window = win;
-  globalThis.document = { addEventListener() {}, hidden: false };
+  globalThis.document = {
+    addEventListener() {}, hidden: false,
+    // src/main.js:112 builds a 160x144 offscreen canvas and blits THROUGH it.
+    // Without this, boot() threw `document.createElement is not a function`
+    // before its first frame and every consumer of bootHeadless was dead --
+    // which was invisible because the only one, tools/oracle/flowpix.mjs, is
+    // not a test-all stage.  See the note above RECORDER.
+    createElement: (tag) => {
+      if (String(tag).toLowerCase() !== 'canvas') {
+        throw new Error(`headless shim: document.createElement('${tag}')`);
+      }
+      return offscreenCanvas();
+    },
+  };
   globalThis.performance = { now: () => CLOCK };
   globalThis.requestAnimationFrame = (cb) => { RAF.push(cb); return RAF.length; };
   globalThis.cancelAnimationFrame = () => {};
+}
+
+/** The offscreen 160x144 canvas src/main.js draws the framebuffer into. */
+function offscreenCanvas() {
+  return {
+    width: 160, height: 144,
+    getContext() {
+      return {
+        imageSmoothingEnabled: false,
+        createImageData: (w, h) => ({ width: w, height: h,
+                                      data: new Uint8ClampedArray(w * h * 4) }),
+        putImageData: (img) => {
+          if (RECORDER) { RECORDER.data = img.data; RECORDER.n++; }
+        },
+      };
+    },
+  };
 }
 
 /** A 2D canvas that keeps the last blitted frame. */
@@ -67,11 +107,21 @@ function fakeCanvas() {
   const last = { data: null, n: 0 };
   const canvas = {
     width: W, height: H,
+    // backingScale() reads `canvas.dataset.scale` and clamps it; the page sets
+    // it from the fitted CSS size.  An empty dataset is the "page asked for
+    // nothing" case, which clamps to scale 1 -- so the drawImage below is a
+    // 1:1 blit and the recorded pixels are the framebuffer's own.
+    dataset: {},
     getContext() {
       return {
+        imageSmoothingEnabled: false,
         createImageData: (w, h) => ({ width: w, height: h,
                                       data: new Uint8ClampedArray(w * h * 4) }),
         putImageData: (img) => { last.data = img.data; last.n++; },
+        // The upscale blit.  At scale 1 it copies the offscreen canvas
+        // unchanged, and the offscreen putImageData above has already recorded
+        // exactly those bytes, so there is nothing left to do here.
+        drawImage() {},
       };
     },
   };
@@ -116,6 +166,7 @@ export function expand(script) {
 export async function bootHeadless(opts = {}) {
   installShims();
   const { canvas, last } = fakeCanvas();
+  RECORDER = last;                 // the offscreen canvas records into this run
 
   const main = await import(pathToFileURL(gamePath('src/main.js')).href);
   const input = await import(pathToFileURL(gamePath('src/input.js')).href);
