@@ -497,13 +497,14 @@ test('the carrier is actually DRAWN: $3113 reaches shadow OAM', () => {
   // The port queues it onto state.enemyDraws like everything else, and
   // updateEnemies ($05CF) opens by clearing that queue -- so for as long as the
   // flush sat after the enemy driver, this entry was wiped one call later and
-  // the carrier was never drawn at all. src/main.js flushes immediately after
-  // updateWater now, which is where $3113 actually emits.
+  // the carrier was never drawn at all. src/game/frame.js flushes immediately
+  // after updateWater now, which is where $3113 actually emits.
   //
   // This test exists because NOTHING ELSE CAN SEE IT: the whole path is behind
   // the $C75C rescue cheat, which measures 0 on every frame of every recorded
   // scenario, so no oracle comparison reaches it in either direction. Remove
-  // the flush in main.js and this goes red; that is the only thing that does.
+  // the flush in game/frame.js and this goes red; that is the only thing that
+  // does. Phase 10 moved $0567-$0650 out of src/main.js; this path followed it.
   const state = subState(4,
     { bossId: 1, tables: { rescueEntryY: [0x1E, 0x1E, 0x16, 0x1F] } });
   state.flow.rescueCheat = 1;
@@ -525,12 +526,12 @@ test('the carrier is actually DRAWN: $3113 reaches shadow OAM', () => {
   // not merely exist. Asserted against the frame loop's source, the same way
   // roundselect.test.js pins title.js's cue: a unit test cannot run tick()
   // without a manifest, but it can prove the call order that owns this queue.
-  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const main = readFileSync(new URL('../src/game/frame.js', import.meta.url), 'utf8');
   const water = main.indexOf('updateWater(state);');
   const flush = main.indexOf('drawEnemies(state, manifest);', water);
   const enemies = main.indexOf('updateEnemies(state);', water);
   assert.ok(water > 0 && flush > 0 && enemies > 0, 'all three calls present');
   assert.ok(flush < enemies,
-    'src/main.js must flush the enemy queue between updateWater ($05C6) and '
+    'src/game/frame.js must flush the enemy queue between updateWater ($05C6) and '
     + 'updateEnemies ($05CF), or the $3113 carrier is cleared before it draws');
 });

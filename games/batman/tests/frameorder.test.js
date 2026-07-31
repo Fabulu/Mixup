@@ -48,7 +48,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { tick } from '../src/main.js';
+import { tick } from '../src/game/frame.js';
 import { spawnDrop } from '../src/drops.js';
 import { makeState, corridor, placePlayer } from './helpers.js';
 
@@ -56,8 +56,17 @@ import { makeState, corridor, placePlayer } from './helpers.js';
  * The file that owns tick(). ONE constant, on purpose: when the frame body is
  * extracted into its own module this test is repointed in a single line, and
  * the mutation matrix is re-run against the new home to prove it still bites.
+ *
+ * Phase 10 did exactly that. $0567-$0650 moved out of src/main.js into
+ * src/game/frame.js in the same commit that changed this line, and M4 (the
+ * second drawEnemies flush moved past updateDoors) and M5 (the draw queue
+ * reversed at flush) were re-applied to the NEW file afterwards and both went
+ * red -- 5 failures and 2 failures respectively, the same counts as before the
+ * move. Importing tick from src/main.js still works, and deliberately so, but
+ * this constant must name the file the code is actually IN or the change
+ * detector below silently stops detecting anything.
  */
-const TICK_SOURCE = new URL('../src/main.js', import.meta.url);
+const TICK_SOURCE = new URL('../src/game/frame.js', import.meta.url);
 
 // ---------------------------------------------------------------------------
 // The fixture
