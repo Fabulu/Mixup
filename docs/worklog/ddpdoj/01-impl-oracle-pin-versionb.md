@@ -399,3 +399,24 @@ committed a working tree that already contained wave 1's append to it.
 start of a session: an index read even a few minutes early silently reverts
 whatever landed in between, and `git commit` will not warn you. Worth checking
 `git log --oneline -3` after every commit, which is how this was caught.
+
+### WARNING, live at the time of writing
+
+The **shared** index (`.git/index`) currently holds staged DELETIONS of all ten
+wave-1 paths, because it was read at a HEAD that predates them:
+
+```
+$ git status --porcelain games/ddpdoj
+D  games/ddpdoj/tools/oracle/derive.py
+D  games/ddpdoj/tools/oracle/landmarks.json
+D  games/ddpdoj/NOTES-oracle.md
+...
+```
+
+**If the next commit from that index goes in without a fresh `git read-tree
+HEAD`, wave 1 is reverted a second time.** I deliberately did not refresh it:
+it also holds staged state belonging to the other workflow
+(`D games/ddpdoj/NOTES-replay.md`), and touching another agent's index is how
+the first accident happened. Whoever commits next: `git read-tree HEAD`
+immediately before `git add`, then read `git diff --cached --name-only`, and
+`git log --oneline -3` afterwards.
