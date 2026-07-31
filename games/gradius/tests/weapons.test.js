@@ -84,19 +84,26 @@ test('$A0E0/$A0E3/$A0E6: $44 picks the two types and the sfx, and 1 is the LASER
   }
 });
 
-test('$A108 LDX $45: the Options fire on the same frame, from their own X, 2 first', () => {
+test('$A108 LDX $45: the Options fire on the same frame, each from its own $0360,X', () => {
   // MEASURED with $45 forced to 2: three shots on frame 400 at x = $82, $77,
   // $6C -- one per object, each from its own $0360,X -- and three timer pairs
   // all loaded with $14 on the same frame.
-  // RED WHEN: the loop runs 0..$45 instead of $45..0 (the SLOTS still all fill,
-  // so only the order is observable), or the shot's X is taken from the ship
-  // instead of from $0360,X.
+  // RED WHEN: the shot's X or Y is taken from the ship instead of from $0360,X /
+  // $0320,X, or the timer is written to one shared byte.
+  //
+  // THE ORDER IS NOT TESTED HERE AND THIS TEST USED TO CLAIM IT WAS. Its
+  // "RED WHEN: the loop runs 0..$45 instead of $45..0" was measurably false:
+  // the probe it relied on read `s.spawnOrderProbe`, which exists nowhere in
+  // games/gradius/src, so the array it filled was [undefined, undefined,
+  // undefined] and was never asserted on either. Reversing the loop was green
+  // here, on all 222 unit tests and on eight oracle scenarios (wave 6 QA).
+  // Corrected in the same commit as the test that DOES catch it:
+  // tests/weapons-unwitnessed.test.js, "$A108: Option 2 fires FIRST and the
+  // player LAST", which snapshots $0123-$0125 at each $EC1E request and was
+  // seen RED against exactly that reversal.
   const s = ship({ options: 2, held: A, edge: A });
   s.obj.x[1] = 0x77; s.obj.y[1] = 90;         // Option 1, trailing
   s.obj.x[2] = 0x6C; s.obj.y[2] = 84;         // Option 2, trailing further
-  const order = [];
-  const realPush = s.sfx.push.bind(s.sfx);
-  s.sfx.push = (id) => { order.push(s.spawnOrderProbe); return realPush(id); };
   fireWeapons(s, res);
   assert.deepStrictEqual([s.obj.x[3], s.obj.x[4], s.obj.x[5]], [80, 0x77, 0x6C],
     'each shot starts at ITS OWN owner\'s $0360,X');
@@ -347,16 +354,31 @@ test('$C0AE: the LASER survives its own hit and keeps sweeping; a shot does not'
     '$C0BB STA $A9 ended the inner sweep, so enemy 2 was never tested');
 });
 
-test('$C011 BPL: an enemy on its spawn frame absorbs the shot without dying', () => {
-  // Bit 7 of $030C is wave 3's INITIALISED flag. $C011 skips the enemy entirely
-  // (the shot flies on); $C055's own BPL, reached only when the box matched,
-  // CONSUMES the shot instead. Two different branches on the same bit.
-  // RED WHEN: either is dropped -- a shot then kills an enemy on the frame it
-  // spawns, which is one frame before the cartridge lets it.
+test('$C011 BPL: an enemy on its spawn frame is skipped, and the shot FLIES ON', () => {
+  // Bit 7 of $030C is wave 3's INITIALISED flag, and $C011 skips the enemy
+  // before the box is even computed: the shot is not consumed, no score is
+  // added, and the sweep carries on to the next slot.
+  // RED WHEN: the `o.type[e] & 0x80` filter is dropped -- a shot then kills an
+  // enemy on the frame it spawns, one frame before the cartridge lets it.
+  //
+  // THE TITLE OF THIS TEST USED TO SAY "absorbs the shot without dying", which
+  // its own second assertion contradicts, and its comment claimed `$C055`'s own
+  // `BPL $C0B7` was the live alternative that DOES consume the shot. IT IS NOT
+  // REACHABLE. Full PRG scan for JSR/JMP $C055 over $8000-$FFFF: one hit,
+  // `$C02D JSR $C055`, and $C02D is only reached when `$C011 LDA $030C,Y /
+  // $C014 BPL $C030` was NOT taken. Y is untouched in between ($C020 loads X),
+  // and $C055's first two instructions are `B9 0C 03 / 10 5D` -- the same byte,
+  // the same Y, the same test. So the port's first line of hitEnemy() is a
+  // faithful transcription of an arm the cartridge cannot enter, and deleting
+  // its freeShotSlot() is green on everything (wave 6 QA). Corrected here; the
+  // matching claim in src/collision.js's $C011 paragraph is a wave-6 finding
+  // that a test writer may not fix.
   const s = shotOnEnemy({ type: 0x05 });      // bit 7 CLEAR: not initialised
   shotSweep(s, res);
   assert.strictEqual(s.obj.type[ENEMY_BASE + 4], 0x05, 'still alive');
   assert.strictEqual(s.obj.anim[3], 6, '$C011 does not even consume the shot');
+  assert.deepStrictEqual([...s.score.slice(4, 7)], [0, 0, 0], '...and $8463 never ran');
+  assert.deepStrictEqual(s.sfx, [], '...and $BEA2 requested no death sound');
 });
 
 test('$BFD2: the laser is $30 wide where a shot is $10 -- the same enemy, twice', () => {
