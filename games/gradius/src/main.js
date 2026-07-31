@@ -139,15 +139,40 @@ export async function boot(canvas, opts = {}) {
     // back a delta of minutes, and simulating those is both pointless and slow.
     acc = Math.min(acc + (now - last), period * 8);
     last = now;
-    let stepped = false;
-    while (acc >= period) {
-      acc -= period;
-      nmi(state, currentButtons(), res);
-      stepped = true;
-    }
-    if (stepped) {
-      renderFrame(frameFor(state), res.tiles, px);
-      ctx.putImageData(img, 0, 0);
+    // EVERY UNPORTED PATH IN THIS PORT IS A THROW, and they are reached in
+    // ordinary play, not just in exotic states. Thrown from inside tick() they
+    // escape into requestAnimationFrame's callback, where NOTHING is listening:
+    // boot() resolved long ago, so the page's `await boot(canvas)` try/catch
+    // cannot see them. The loop simply stops being rescheduled and the canvas
+    // holds its last frame.
+    //
+    // REPORTED FROM PLAY as "softlocks and screen freezes" after 10-30 seconds
+    // of flying around. It was a named throw the whole time -- $BC59's enemy
+    // bullet allocator -- and the message was sitting in the console while the
+    // page showed a frozen picture and said nothing.
+    //
+    // This is the SAME defect Batman's launcher already carries a comment
+    // about: an async failure after boot() resolves "used to leave the frame
+    // loop dead with the music still playing, and nothing on screen said so."
+    // That fix never crossed over to this page. It does now.
+    try {
+      let stepped = false;
+      while (acc >= period) {
+        acc -= period;
+        nmi(state, currentButtons(), res);
+        stepped = true;
+      }
+      if (stepped) {
+        renderFrame(frameFor(state), res.tiles, px);
+        ctx.putImageData(img, 0, 0);
+      }
+    } catch (e) {
+      // Stop cleanly rather than throwing once per frame forever, and hand the
+      // error somewhere a human can see it. The message names the ROM address,
+      // which is the whole point of the throws being loud.
+      running = false;
+      if (opts.onError) opts.onError(e);
+      throw e;                       // keep the console trace intact
     }
     requestAnimationFrame(tick);
   }

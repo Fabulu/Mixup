@@ -269,8 +269,26 @@ addEventListener('orientationchange', fit);
 window.visualViewport?.addEventListener('resize', fit);
 fit();
 
+// showError is used by BOTH channels: the boot-time catch below, and onError,
+// which is the only way a mid-flight failure can reach this page at all. A
+// throw inside the frame loop happens long after boot() has resolved, so the
+// try/catch cannot see it -- the loop just stops and the canvas freezes. That
+// is what "softlocks and screen freezes" turned out to be.
+function showError(e, when) {
+  err.style.display = 'block';
+  err.textContent = `${when}\n\n${String(e && e.message || e)}\n\n`
+    + 'The frame loop has stopped. Reload to start again.\n'
+    + 'If the message names a ROM address, that path is not ported yet -- '
+    + 'this is the port telling you exactly where it ran out, not a mystery crash.';
+  console.error(e);
+}
+
 try {
-  const app = await boot(canvas);
+  const app = await boot(canvas, {
+    // The named throws are the port's most useful output. Losing them to a
+    // silent freeze wasted a real play session.
+    onError: (e) => showError(e, 'The port reached something it has not ported.'),
+  });
   // The frame rate is NOT spelled here. It comes from game.json via main.js:
   // 60.098814 Hz, derived (NTSC PPU 5369318.18 / 89341.5) rather than rounded.
   setInterval(() => {
@@ -283,8 +301,7 @@ try {
 } catch (e) {
   // Say what is missing and how to make it, rather than leaving a black canvas.
   // A zero-filled tile sheet renders a perfectly plausible empty starfield.
-  err.textContent = String(e && e.message || e);
-  console.error(e);
+  showError(e, 'The game could not start.');
 }
 </script>
 </body>
