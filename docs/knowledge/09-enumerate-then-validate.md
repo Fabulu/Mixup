@@ -71,6 +71,55 @@ Then "how far along are we" is a fraction with a known denominator, instead of
 "everything we have tried works". Those two sentences have felt the same all
 project and they are not remotely the same.
 
+## Intervention runs give you STATES, not a picture of the game
+
+Invulnerability, poked rank, seeded deep starts, forced counters — these are how
+this project reaches code a scripted run cannot. They are indispensable and they
+have a sharp edge, named by the owner when approving their use:
+
+> "Just know that it'll lead to impossible gamestates, particularly a lot of DoJ
+> would break. Bullets and enemy spawns will look different than they could in
+> normal gameplay. That said, they are a very good source of information, just
+> keep this in mind always."
+
+**An intervention run is off-distribution by construction.** An invulnerable
+player survives where a real one dies, so:
+
+- **rank keeps climbing** past what any real run at that point would hold, and
+  rank feeds aim, bullet speed, enemy HP and possibly spawns;
+- **the player occupies positions no survivor could**, so player-tracking
+  routines produce angles a real game never emits;
+- **nothing is ever cleared by death** — bullets, objects and slots accumulate,
+  so the sprite budget, the allocation-failure paths and the cap policy see
+  pressure that ordinary play would not produce;
+- **and the state may simply be unreachable**: a combination the game can enter
+  only because we forced it.
+
+### The rule this forces
+
+**An intervention run is valid evidence for "what does this code do GIVEN this
+state" and invalid evidence for "this is what the game does."**
+
+So:
+
+- Use them for COVERAGE — reaching a handler, a pattern, a boss, a late stage.
+  This is what they are for and they are excellent at it.
+- Use them for CORRECTNESS of a single routine, by comparing port and board
+  under the *same* forced state, poked at the same instant on both sides.
+- **Do NOT use them to characterise normal play** — spawn timing, bullet
+  density, difficulty pacing, what a stage "looks like". Those need a run the
+  game could actually produce.
+- **LABEL THE PROVENANCE OF EVERY NUMBER.** "9,500 frames, invulnerable" is a
+  different claim from "9,500 frames". A figure whose run conditions are not
+  recorded will be re-read later as if it were ordinary play, and this project
+  has already promoted a sampling fact into a claim about the cartridge twice.
+
+### Practical, from the owner
+
+For clearing enemies and bosses in a scripted run: sit bottom-centre, hold the
+shot or laser, and move left and right a little. That is enough to kill most of
+what appears without needing a route.
+
 ## What stays true about measurement
 
 Nothing here retires the oracle. It stays the arbiter of correctness, and the
