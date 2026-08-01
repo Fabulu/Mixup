@@ -4,9 +4,23 @@
 // counters on every frame of all 35 scenarios, which is a very strong check on
 // what the driver DOES from the state it is seeded with. What it cannot do is
 // reach anything the stage-1 BGM does not do in a 240-to-1866-frame window: no
-// scenario STARTS a track from silence, none reaches the $F0 fade (measured 0
-// in eleven scripted runs), none issues an illegal request, and none plays the
-// pause jingle for its whole length.
+// scenario STARTS a track from silence, none issues an illegal request, and
+// none plays the pause jingle for its whole length.
+//
+// THE FADE IS NOT ON THAT LIST ANY MORE. This file used to say the corpus never
+// reaches $F0; it does, IN PLAY and with no poke, and the correction is
+// measured off the cartridge's own recorded rows in
+// tools/oracle/out/scen/enemy-waves.json (w_00F0..w_00F3):
+//
+//     f1849  (0,0,0,0)
+//     f1850  (1,0,0,0)   <- $8398 INC $F0
+//     f1855  (1,5,0,15)  <- the $EEE6 pulse-2 fade arm runs
+//     f1865  (1,15,0,15) <- the compared window ends
+//
+// What it reaches is the first 15 frames of a ~530-frame fade, and $F1 needs 48
+// to move $F2 at all -- so everything downstream ($ED26, the $EEF0 clamp, the
+// triangle kill) is still unwitnessed, and lives in tests/sound-unwitnessed.
+// "Unreached" and "unreachable" are different claims and only the first is true.
 //
 // So this file drives the driver directly, from a known state, and every
 // assertion is against a number MEASURED on the cartridge by
@@ -154,10 +168,10 @@ test('$EC95: a request that TARGETS pulse 2 resets the fade, even when rejected'
   const s = silent();
   soundRequest(s, 0x93);                          // pulse 2 owner = $14
   s.snd[0xF0 - 0xB0] = 1; s.snd[0xF1 - 0xB0] = 9; s.snd[0xF2 - 0xB0] = 3;
-  // $7D = records $3D $3E: a STOP for pulse 2 and the triangle. It is INDEX $3D,
-  // which is >= $14, so it is accepted -- but the point is $EC95, which runs on
-  // the rejected path too.
-  soundRequest(s, 0x1D);                          // index $1D < $14? no: accepted
+  // $1D is record $1D, a PULSE 2 stream at $F77E (snddata.py --table), and $1D
+  // is >= the $13 the BGM stamped on pulse 2, so it is ACCEPTED. That is the
+  // easy half; the point is $EC95, which runs on the rejected path too.
+  soundRequest(s, 0x1D);
   assert.deepStrictEqual([rd(s, 0xF0), rd(s, 0xF1), rd(s, 0xF2)], [0, 0, 0],
     '$EC99-$EC9F must zero $F0/$F1/$F2 whenever X == $C1');
   // Now the rejected case: put a high owner on pulse 2 and send a low index.
@@ -325,16 +339,18 @@ test('$ED1A-$ED3C: the fade steps every 48 frames and then kills the triangle', 
   let last = 0;
   for (let f = 1; f <= 200; f++) {
     soundDriver(s, res);
-    if (rd(s, 0xF2) !== last) { steps.push(f - (steps.length ? 0 : 0)); last = rd(s, 0xF2); }
+    if (rd(s, 0xF2) !== last) { steps.push(f); last = rd(s, 0xF2); }
   }
   assert.deepStrictEqual(steps, [48, 96, 144, 192],
     '$F1 counts to $30 and only then INCs $F2 -- exactly 48 driver ticks apart');
-  // ...and $F2 is clamped at $0B ($EEF0 CMP #$0B).
+  // ...and the fade runs to its end and kills the triangle. The CONSTANTS it
+  // does that with ($EEF0's $0B clamp, $ED2E's threshold of 7) are pinned in
+  // tests/sound-unwitnessed.test.js: `>= 0x0B` here was one-sided and a clamp
+  // of $0C satisfied it.
   const t = silent();
   soundRequest(t, 0x93);
   t.snd[0xF0 - 0xB0] = 1;
   for (let f = 0; f < 48 * 20; f++) soundDriver(t, res);
-  assert.ok(rd(t, 0xF2) >= 0x0B, 'the fade runs its full range');
   assert.strictEqual(rd(t, TRIANGLE + OFF.OWNER), 0,
     '$ED32-$ED39: once pulse 2\'s faded volume $F3 drops below 7 the TRIANGLE '
     + 'is zeroed outright -- measured at f879 of the poked run');
@@ -381,7 +397,12 @@ test('the work counters are per-FRAME and start from zero every frame', () => {
   nmi(s, 0, res, false);
   assert.strictEqual(s.work.audioTicks, 1,
     'audioTicks is "this frame", not a running total');
-  assert.ok(s.work.apuWrites < 1000);
+  // The other three are held by tests/sound-unwitnessed.test.js ("the four
+  // audio counters are RESET each frame"), which runs the same frame twice with
+  // the counters poisoned in between. What used to be here was
+  // `assert.ok(s.work.apuWrites < 1000)`, which no mutation of anything can
+  // fail.
+  assert.ok(a.w > 0, 'the frame this asserts on must do some APU work at all');
 });
 
 // ===========================================================================

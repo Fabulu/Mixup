@@ -520,6 +520,29 @@ export const POKEABLE = {
   // very next display-list build, so a held 1 is a state no cartridge frame is
   // ever in.
   0x1F: (s, v) => { s.zp1F = v; },          // $1F sprite-0 enable, $9C38 STA $1F
+  // WAVE 8 ADDED $F0, THE MUSIC FADE, and it is the $1F admission again: a
+  // value the CARTRIDGE ITSELF produces, that no script can reach from align
+  // 400 inside a window that survives.
+  //
+  // $8398 `INC $F0` is the only writer in the whole PRG. It needs $3E == 0 AND
+  // $3F + 1 == $834F[$19] (camera page 3) AND $1B < $82, and the cartridge does
+  // exactly that IN PLAY -- MEASURED off enemy-waves' own recorded rows,
+  // w_00F0..w_00F3, with no poke of any kind:
+  //
+  //     f1849 (0,0,0,0)   f1850 (1,0,0,0)   f1855 (1,5,0,15)   f1865 (1,15,0,15)
+  //
+  // and then the run STOPS, because the ship dies at 1866 and compare.mjs
+  // truncates there. That death is not avoidable by choosing a better script:
+  // the corpus's own measurements put every other hold's first death between
+  // 445 and 1180, and RD -- the one that survives longest -- is what
+  // enemy-waves already is. So the cartridge reaches the fade and the corpus
+  // can only ever see its first 16 frames, of ~530.
+  //
+  // Poked for ONE frame (`@+0`), because $F0 is a LATCH: $8394 BNE $839A means
+  // $8398 never runs twice, and $EC95 (any request that targets pulse 2) is the
+  // only thing that clears it. A held poke would be re-arming a latch the
+  // cartridge sets once, which is invented state.
+  0xF0: (s, v) => { s.snd[0xF0 - 0xB0] = v & 0xFF; },   // $F0 fade, $8398 INC $F0
 };
 
 /**

@@ -418,11 +418,19 @@ export function soundDriver(state, res) {
   }
 
   // ---- $ED1A-$ED3C: the fade epilogue -------------------------------------
-  // MEASURED by intervention only ($F0 was 0 in all eleven scripted runs;
-  // SND_POKE="F0=1@400-400" is what reached it): $F1 counts to $30 -- 48
-  // frames -- then $F2++ and, once pulse 2's faded volume $F3 drops below 7,
-  // the TRIANGLE is killed outright. Every step landed exactly 48 frames apart
-  // (f447 495 543 591 639 ...) and the triangle's owner went to 0 at f879.
+  // $F1 counts to $30 -- 48 frames -- then $F2++ and, once pulse 2's faded
+  // volume $F3 drops below 7, the TRIANGLE is killed outright.
+  //
+  // MEASURED, and no longer by intervention alone. The cartridge arms this
+  // itself: enemy-waves' recorded rows read w_00F0 0 at game frame 1849 and 1
+  // at 1850, with the $EEE6 arm running at 1855 -- and then the ship dies at
+  // 1866 and the window ends, which is why 16 frames of a ~530-frame fade is
+  // all the corpus ever saw. The REST of it is the `fade-music` scenario
+  // (wave 8's test pass): the same one-frame $F0 poke the recon used, in
+  // long-idle's window, compared frame by frame against the cartridge --
+  //   f448 $F2=1, then 496 544 592 640 688 736 784 832 880 928 976, exactly 48
+  //   apart; $D4 (the triangle's own owner byte) goes to 0 at f880; $F2 is
+  //   INCed to 12 at 976 and pulled back to $0B at 991 by $EEF4.
   if (z(state, G.F0) === 0) return;               // $ED1A/$ED1C
   zw(state, G.F1, u8(z(state, G.F1) + 1));        // $ED1E INC $F1
   if (z(state, G.F1) !== 0x30) return;            // $ED20-$ED24
@@ -607,8 +615,16 @@ function loopCommand(T, y) {
     return;
   }
   // $ECF5 BMI $ECFA / $ECF7 SEC SBC #$01: a count that has somehow passed cnt
-  // steps BACK by one instead of wrapping. Reproduced; no measured stream
-  // reaches it.
+  // steps BACK by one instead of wrapping -- so the counter does not advance
+  // and does not wrap.
+  //
+  // NOTE CORRECTED BY WAVE 8's TEST PASS: this used to say "no measured stream
+  // reaches it". A REAL STREAM DOES. Arm counters on this line over the
+  // 8-scenario / 3,822-frame subset read loop_bmi = 70 and loop_sbc = 1, the
+  // one being in enemy-waves, and deleting the arm gives `1 failures:
+  // enemy-waves w_00D8@1848`. One field of one scenario on one frame is the
+  // whole of its corpus coverage, so it is also pinned by
+  // tests/sound-unwitnessed.test.js.
   const stored = (u8(a - cnt) & 0x80) !== 0 ? a : u8(a - 1);
   zw(state, base + OFF.LOOP, stored);             // $ECFA
   fetchPointer(T, y);                             // $ECFC JSR $ECC7
@@ -795,8 +811,14 @@ function dialectB(T, y) {
       if (z(state, G.F2) >= 0x0B) zw(state, G.F2, 0x0B);   // $EEEE-$EEF6
       zw(state, base + OFF.RELOFF, 6);            // $EEF8/$EEFA
       // $EEFC-$EF08: the release RATE depends on which sound owns pulse 2 --
-      // $13 is the stage-1 pulse-1 part's index, read here off $C3 (pulse 2's
-      // own owner byte). A cross-channel read, and the only one in the driver.
+      // $13 is the stage-1 pulse-1 part's index. It is spelled as an ABSOLUTE
+      // `LDA $C3` rather than `LDA $02,X`, but this arm only runs with X = $C1
+      // ($EEEA CPX #$C1 four instructions above), so $C3 is $02,X: pulse 2's
+      // OWN owner byte, not another channel's. (The note here used to call it a
+      // cross-channel read. Corrected in wave 8's test pass, which needed to
+      // know what to vary to reach the other arm -- and the answer is "give
+      // pulse 2 to a different sound", which is what
+      // tests/sound-unwitnessed.test.js does with request $19.)
       zw(state, base + OFF.RELRATE, z(state, 0xC3) === 0x13 ? 0x0D : 0x05);
       zw(state, base + OFF.REL,
          u8(z(state, base + OFF.DUR) + z(state, base + OFF.RELOFF)));  // $EF0A-$EF0F
@@ -996,9 +1018,18 @@ export function setBgm(state, res) {
 /**
  * `$838E-$8398` -- the fade, and it is the ONLY setter of `$F0` in the PRG.
  *
- * MEASURED: `$F0` was 0 in every one of eleven scripted runs, so what game
- * situation reaches it is not established -- what IS established is what it
- * then does, by intervention (soundDriver's epilogue above).
+ * NOTE CORRECTED BY WAVE 8's TEST PASS. This used to say the game situation
+ * that reaches it "is not established". IT IS: `$3E == 0` AND `$3F + 1 ==
+ * $834F[$19]` (stage 1: camera page 3) AND `$1B < $82`, and the cartridge does
+ * it in ordinary play -- MEASURED off the corpus's own enemy-waves rows,
+ * w_00F0 = 0 at game frame 1849 and 1 at 1850, with no poke of any kind. What
+ * the corpus cannot do is FOLLOW it: the ship dies at 1866 and the window is
+ * truncated there, 16 frames into a ~530-frame fade. See the `fade-music`
+ * scenario for the rest, and tests/sound-unwitnessed.test.js for the two
+ * constants ($EEF0's clamp, $ED2C's threshold) that only it can redden.
+ *
+ * `$F0` is a LATCH: $8394's BNE means $8398 never runs twice, and $EC95 -- any
+ * request that targets pulse 2 -- is the only thing that clears it.
  */
 function fadeStep(state) {
   if (state.substate >= 0x82) return;             // $838E-$8392 CMP #$82 / BCS
