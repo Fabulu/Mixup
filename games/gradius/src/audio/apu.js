@@ -661,13 +661,18 @@ export class NesApu {
     // frame counter clocks an envelope/length/sweep, and at ordinary music
     // periods that is a few thousand times a second, not 1.8 million.
     //
-    // MEASURED, tools/audiohash.mjs's 600-frame scripted run, third warm pass,
-    // against the 16.64 ms frame budget:
-    //     with the cache      0.608 ms/frame
-    //     `if (true)` instead 1.000 ms/frame
-    //     src/nmi.js itself   0.027-0.117 ms/frame (same run, for scale)
-    // and the sample hash is IDENTICAL either way, which is how the cache was
-    // checked rather than assumed: 68aa45aa23edb80e... before and after.
+    // MEASURED, tools/audiohash.mjs's 600-frame scripted run, best of five warm
+    // passes, against the 16.64 ms frame budget:
+    //     with the cache        1.075 ms/frame
+    //     `{ mixCache: false }`  1.807 ms/frame
+    //     src/nmi.js itself     0.031 ms/frame (same run, for scale)
+    // THE ABSOLUTE NUMBERS TRACK HOST LOAD -- an earlier run on a quieter
+    // machine read 0.608 / 1.000 / 0.027 -- so the stable measurement is the
+    // RATIO, about 1.7x, which came out the same on both. The sample hash is
+    // IDENTICAL either way (c75b7ab4d853a454...), which is how the cache is
+    // checked rather than assumed; tests/audio.test.js renders both and demands
+    // the same bits, on the cartridge's stream AND on a constructed envelope
+    // that the cartridge's own data can never produce.
     let dirty = true, mix = this.mix;
     const cache = this.mixCache;
 

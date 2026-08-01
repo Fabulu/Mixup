@@ -146,26 +146,35 @@ so "the driver still writes what the cartridge writes" is checked, not asserted.
 ever measured how long one logic frame takes in the browser. The gate measures
 CORRECTNESS, never COST."* This wave had to, because it was about to add work to
 the same loop. 600 frames of `tools/audiohash.mjs`'s scripted run, node 20 on the
-owner's machine, three passes (the first is JIT warm-up):
+owner's machine, five passes (the first is JIT warm-up):
 
 ```
-pass 0  logic 0.108 ms/frame   synth 1.079 ms/frame
-pass 1  logic 0.089 ms/frame   synth 0.772 ms/frame
-pass 2  logic 0.027 ms/frame   synth 0.608 ms/frame
+pass 0  logic 0.179   cache-on 1.659   cache-off 1.838   ms/frame
+pass 1  logic 0.113   cache-on 1.296   cache-off 1.971
+pass 2  logic 0.075   cache-on 1.075   cache-off 1.807
+pass 3  logic 0.043   cache-on 1.098   cache-off 2.325
+pass 4  logic 0.031   cache-on 1.504   cache-off 2.082
+BEST    logic 0.031   cache-on 1.075   cache-off 1.807   (budget 16.64)
 ```
 
 against a **16.64 ms** budget. So `nmi()` — every subsystem the port has, waves 1
 to 12 — costs well under a millisecond a frame headlessly, and the synthesiser
-costs about the same again. That does not settle the owner's report (the browser
-also renders 61,440 pixels a frame and node is not Chrome), but it does say the
+costs one to two. That does not settle the owner's report (the browser also
+renders 61,440 pixels a frame and node is not Chrome), but it does say the
 suspect is not `nmi()`.
+
+**And the absolute numbers move with host load, which is itself worth recording:
+an earlier run of the same benchmark, on a machine that was not also running
+Mesen for another agent, read `logic 0.027 / cache-on 0.608 / cache-off 1.000`.
+Nearly a 2x spread on the same code and the same input.** Anyone quoting a
+millisecond figure from this project should quote what else was running. The
+stable measurement is the RATIO between cache-on and cache-off, which came out
+~1.65x on the quiet machine and ~1.7x on the loaded one.
 
 The synthesiser's inner loop runs 1,789,773 times per second of audio, so the
 mixed level is CACHED and only recomputed when a sequencer steps, an LFSR shifts
-or the frame counter clocks. Measured both ways on the same run: **0.608 ms/frame
-with the cache, 1.000 ms/frame without**, and the sample hash is IDENTICAL either
-way (`68aa45aa23edb80e...`), which is how the cache was checked rather than
-assumed.
+or the frame counter clocks. The sample hash is IDENTICAL either way
+(`c75b7ab4d853a454...`), which is how the cache is checked rather than assumed.
 
 ### The gate, after
 
@@ -245,10 +254,18 @@ frames    600
 rate      48000 Hz
 writes    977
 samples   479210
-range     -0.268672 .. 0.270326
+range     -0.249782 .. 0.259569
 nonFinite 0
-sha256    68aa45aa23edb80efbd28c59282428d3210accdff6c0ff8ffb2dbadc36964b98
+sha256    c75b7ab4d853a454450b23782de94a2489307a80f4bee67db46d295fecc2022c
 ```
+
+**That hash is not the one this worklog carried an hour earlier, and the reason
+is a bug this wave's own tests found.** The first draft clocked the noise timer
+with the PULSE's convention (`period + 1` cycles); the shift-rate test read
+40,000 shifts in 200,000 cycles where 50,000 were wanted, and the fix moved
+every noise sample in the file. Quoted here because a hash that changes silently
+between a comment and a worklog is exactly the kind of stale number this repo
+keeps being bitten by.
 
 Two runs in one process agree; two separate `node` processes agree; and the
 separate process agrees with the in-process computation (so "deterministic" does
