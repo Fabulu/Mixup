@@ -24,8 +24,8 @@
 //
 // The port does not model the title screen or the mode-3 demo, so it cannot be
 // booted cold and lined up with the cartridge. The comparison therefore SEEDS
-// the port from the cartridge's own $0000-$07FF at the scenario's align frame
-// and free-runs from there. Two things follow and both are stated rather than
+// the port from the cartridge's own state at the scenario's align frame and
+// free-runs from there. Two things follow and both are stated rather than
 // buried:
 //
 //   * everything before the align frame is UNTESTED by this harness;
@@ -38,6 +38,40 @@
 //     initialisation bug, not that it invents an impossible frame. That is why
 //     the compared windows are hundreds of frames long: an error in anything
 //     the seed set has to survive the whole run to stay hidden.
+//
+// ===================== WAVE 10: SEEDING AT ANY FRAME =========================
+//
+// Until wave 10 the seed was $0000-$07FF and NOTHING ELSE, which is why every
+// align frame in the corpus was 282, 400 or 614 -- frames early enough that the
+// port could REBUILD the rest by running forward. Three things were missing and
+// all three are here now, each read off the cartridge at the same $80B5:
+//
+//   the PPU nametable    2 KB, PPU $2000-$27FF. The screen the terrain streamer
+//                        has spent N frames building. src/vram.js drainQueue
+//                        writes it and only it.
+//   palette RAM          32 B, $3F00-$3F1F.
+//   hardware OAM         256 B. See the note at the assignment -- this one is
+//                        provably redundant for the TRACE and is seeded anyway.
+//   the collision map    $0500-$06FF, which was already inside seedRam and was
+//                        deliberately NOT installed. See seedFromCartridge().
+//
+// WHAT IS NOT MISSING, measured rather than added:
+//
+//   the CHR bank         $2D is in seedRam and src/render/ppu.js chrBank()
+//                        derives the mapper offset from it. The artifact
+//                        carries `seedChrOffset` as an ASSERTION on that
+//                        derivation, not as an input.
+//   the build cursor     $54/$55/$57/$58 have been seeded since wave 1
+//                        (09-DECIDED-seed-anywhere.md lists deriving them as
+//                        work; they were already done). See the $54 block.
+//
+// THE COST, STATED: the deeper the align frame, the more the seed carries and
+// the less the port has to produce. On a deep scenario the nametable, the
+// palette and every collision cell written before the align frame are GIVEN.
+// What is still the port's own work is every frame after it, which is why the
+// deep scenario is compared over a window and not over one frame -- and why
+// docs/worklog/gradius/10-impl-seed-anywhere.md corrupts port fields the seed
+// also sets and shows the window still goes red.
 //
 // ============================ WHAT IS NOT PRODUCED ===========================
 //
@@ -90,12 +124,31 @@ export function parseScript(s) {
 
 // ------------------------------------------------------------- the seed -----
 /**
- * Put the cartridge's RAM into the port's state tree.
+ * Put the cartridge's state at the align frame into the port's state tree.
  *
  * Every line cites the address it reads, and the addresses are the ones
  * src/state.js already names -- this function invents no mapping of its own.
+ *
+ * @param {object} state  a fresh createState()
+ * @param {object} seed   { ram, vram, palette, oam, chrBank, chrOffset } as
+ *                        loadOracle() decodes it. `ram` is $0000-$07FF; the
+ *                        rest is the video state, wave 10.
+ *
+ * RENAMED from seedFromRam in wave 10, because it is no longer only RAM. The
+ * old name is not kept as an alias: a caller that still passes a bare
+ * Uint8Array must fail loudly rather than seed 2 KB of CPU RAM and silently no
+ * video, which on a deep align frame is a blank screen the comparison would
+ * never see (nothing compares the nametable) and a collision map full of zeros
+ * that would fly the ship through solid terrain.
  */
-export function seedFromRam(state, ram) {
+export function seedFromCartridge(state, seed) {
+  if (ArrayBuffer.isView(seed) || Array.isArray(seed)) {
+    throw new Error('seedFromCartridge(state, seed): `seed` is the object '
+                  + 'loadOracle() returns ({ ram, vram, palette, oam, '
+                  + 'chrBank, chrOffset }), not a bare RAM array. This used to '
+                  + 'be seedFromRam(state, ram) -- see the WAVE 10 header.');
+  }
+  const ram = seed.ram;
   const r = (a) => ram[a];
 
   state.mode = r(0x00);                    // $00
@@ -171,13 +224,30 @@ export function seedFromRam(state, ram) {
   // respawn, wave 5). LIVE port state since that commit; still seeded, because a
   // window that aligns mid-play starts from whatever the last respawn left.
   //
-  // $0500-$06FF, THE TERRAIN COLLISION MAP, IS DELIBERATELY NOT SEEDED. The port
-  // builds it itself from the tiles its own streamer queues ($9F55), and that is
-  // the thing the terrain-death scenarios test. MEASURED all zero at align 400
-  // of every scenario -- stage 1's pages 0-3 contain no solid tiles at all --
-  // so seeding it would copy 512 zeros and hide the one initialisation the
-  // comparison wants to see. The `terrain-death` scenarios poke a cell into it
-  // on BOTH sides instead (see POKEABLE below).
+  // $0500-$06FF, THE TERRAIN COLLISION MAP. WAVE 10 STARTED SEEDING IT and the
+  // old reasoning is corrected here rather than deleted, because the old
+  // reasoning was right about the corpus it was written for.
+  //
+  // It used to say: the port builds the map itself from the tiles its own
+  // streamer queues ($9F55), that is what the terrain-death scenarios test, and
+  // it is MEASURED all zero at align 400 of every scenario (stage 1's pages 0-3
+  // contain no solid tile bits at all) -- so seeding it would copy 512 zeros
+  // and hide the one initialisation the comparison wants to see.
+  //
+  // The measurement still holds and scen.py now PRINTS it per scenario
+  // (`coll N/512 non-zero`), so this line is a no-op on every align-400
+  // scenario and the terrain-death pokes still do all the work there. What
+  // changed is that align is no longer always 400: at a deep align frame the
+  // cartridge's map holds two camera pages of history the port cannot rebuild
+  // without replaying from the intro, and a port seeded with 512 zeros there
+  // flies through the ceiling. Seeding real machine state is the same
+  // arrangement the camera and the sub-pixel accumulators have had since wave 1.
+  //
+  // WHAT IT COSTS, and it is a real cost: on a deep scenario every cell written
+  // BEFORE the align frame is given to the port rather than derived by it.
+  // Cells written after it are still the port's own $9F55 output. $0500-$06FF
+  // is not in the watch list either way (99-final-verification.md 8.1).
+  for (let i = 0; i < 0x200; i++) state.coll[i] = r(0x0500 + i);   // $0500-$06FF
   state.save22[0] = r(0x22); state.save22[1] = r(0x23);
   state.save24[0] = r(0x24); state.save24[1] = r(0x25);
   state.save26[0] = r(0x26); state.save26[1] = r(0x27);
@@ -275,9 +345,67 @@ export function seedFromRam(state, ram) {
   // $01A0-$01B0, where $9AF0 parks pulse 1's struct across a pause.
   for (let i = 0; i < 0x11; i++) state.sndSave[i] = r(0x01A0 + i);
   state.shadowOam.set(ram.subarray(0x0200, 0x0300));   // $0200-$02FF
-  // hwOam is deliberately NOT seeded: it is filled by the first ported frame's
-  // $8087 DMA from exactly this shadow, which is what the cartridge's hardware
-  // OAM holds at the next sample too.
+
+  // ================= THE VIDEO SEED, wave 10 =============================
+  // Everything below comes from probe.lua's PROBE_VIDEO blob, taken at the same
+  // $80B5 as the RAM above. Nothing here is invented and nothing here is
+  // derived: it is read off the PPU.
+
+  // PPU $2000-$27FF -> state.vram.nt, which is a 4 KB image of $2000-$2FFF with
+  // $2800/$2C00 folded onto $2000/$2400. MIRRORING IS VERTICAL -- iNES flags6 =
+  // $31 and a live 4 KB read says $2000 == $2800 and $2400 == $2C00 while
+  // $2000 != $2400 (src/vram.js drainQueue writes exactly this arrangement), so
+  // the 2 KB blob IS the whole nametable and the mirror is written here rather
+  // than dumped twice. scen.py asserts the two halves differ, so a mirrored
+  // read cannot be seeded as if it were two screens.
+  state.vram.nt.set(seed.vram, 0x000);
+  state.vram.nt.set(seed.vram, 0x800);
+  // $3F00-$3F1F. $3F10/$14/$18/$1C mirror $3F00/$04/$08/$0C on hardware and the
+  // emulator's palette RAM already reports the folded values, so this is a
+  // straight copy -- unlike drainQueue, which sees the WRITE and has to fold.
+  state.vram.pal.set(seed.palette);
+  // HARDWARE OAM. STATED PLAINLY: this is REDUNDANT FOR THE TRACE and is seeded
+  // anyway. nmi()'s first act on frame align+1 is $8087's DMA (src/oam.js
+  // oamDma), which rewrites all 256 bytes from the shadow seeded above before
+  // anything reads them -- so no compared field can ever depend on this line.
+  // It is here so that seedFromCartridge() leaves a COMPLETE machine, for any
+  // consumer that wants to draw the align frame itself rather than step past
+  // it; and scen.py measures how far the hardware OAM lags the shadow at the
+  // sample point (`hwOAM vs shadow differs on N/256`), which is the two-frame
+  // pipeline $8B10/$80A7 creates, printed rather than assumed.
+  state.hwOam.set(seed.oam);
+
+  // The two render bands. REDUNDANT FOR THE TRACE like hwOam and seeded for the
+  // same reason: nmi() rebuilds all of bandA at $829D/$8293/$8298/$8A7D and
+  // resets bandB.ran at its top, every frame, before anything draws. src/main.js
+  // bootState() sets exactly these two, so a machine built by the seed and a
+  // machine built by bootState() differ in nothing a renderer reads.
+  state.bandA.chrBank = chrBank(state.ppu.chrSel);   // $8A9C LDY $2D
+  state.bandB.chrBank = chrBank(2);                  // $9ABF LDY #$02
+
+  // THE CHR BANK IS NOT SEEDED -- IT IS DERIVED, and this is the assertion that
+  // keeps the derivation honest. $2D is seeded above and src/render/ppu.js's
+  // chrBank() maps it through $8AA8 = `30 32 31 33`; the mapper offset is
+  // bank * $2000.
+  //
+  // WHICH BAND'S OFFSET THE CARTRIDGE REPORTS DEPENDS ON THE SPLIT, and getting
+  // that wrong is how the first version of this check failed: probe.lua samples
+  // at $80B5, scanline ~231, which is AFTER $9AA3's sprite-0 spin -- so on a
+  // frame whose split ran the emulator reports band B's bank ($9ABF LDY #$02 ->
+  // bank 1 -> 8192), not $2D's. MEASURED on `idle` at align 400: $2D = 0, which
+  // derives bank 0, and mapper.chrMemoryOffset0 = 8192. The artifact carries
+  // the split flag so the rule below is the one sampleRow() uses per frame,
+  // evaluated once at the seed against data neither side derived.
+  if (seed.chrOffset !== undefined) {
+    const bank = seed.splitRan ? chrBank(2) : chrBank(state.ppu.chrSel);
+    if (bank * 0x2000 !== seed.chrOffset) {
+      throw new Error(`seed: $2D = ${state.ppu.chrSel}, split `
+                    + `${seed.splitRan ? 'ran' : 'did not run'} -> CHR offset `
+                    + `${bank * 0x2000}, but the cartridge reported `
+                    + `${seed.chrOffset} at the align frame. Either $8AA8's `
+                    + `latch table ($30 $32 $31 $33) or the band model is wrong.`);
+    }
+  }
   return state;
 }
 
@@ -707,12 +835,14 @@ function sampleRow(state, frame, watch, lagged) {
  *   o.seed     Uint8Array(2048) of the cartridge's RAM, or null for bootState
  *   o.watch    array of 4-hex-digit address strings
  *   o.neuter   a deliberate break, for red-validating the comparison
+ *   o.stopOnThrow  catch an unported-path throw and return it as `threw`
+ *                  instead of propagating. compare.mjs's DEEP REACH block only.
  */
 export function tracePort(o) {
   const res = o.res || headlessResources(0);
   const buttons = parseScript(o.script);
   const state = createState();
-  if (o.seed) seedFromRam(state, o.seed);
+  if (o.seed) seedFromCartridge(state, o.seed);
   else throw new Error('tracePort needs a seed; cold boot is not comparable '
                      + '(the port does not model frames 0-' + o.align + ')');
 
@@ -725,14 +855,35 @@ export function tracePort(o) {
   // unrelated reason) and the stage reported "RED (good)". A break that does
   // not break, validating a check that therefore is not validated -- the exact
   // shape of a decorative test.
+  //
+  // WAVE 10 ADDED FOUR, and they exist for one reason: seeding INVERTS the
+  // usual trap. The normal risk is a harness inventing state the app never
+  // has; here the risk is that the seed HIDES a bug, because a wrong port value
+  // is overwritten by real machine state before anything reads it -- and the
+  // deeper the align frame, the more the seed carries and the less the port has
+  // to produce. These four DELETE or CORRUPT part of what the seed installs, so
+  // "is the comparison looking at this at all?" is a measurement instead of an
+  // argument. What each one is measured to do is in
+  // docs/worklog/gradius/10-impl-seed-anywhere.md.
   const n = o.neuter || '';
   const lagAt = /^laginject=(\d+)$/.exec(n);
-  if (n && !lagAt && !['lead1', 'seed-x+1', 'seed-nosub'].includes(n)) {
-    throw new Error(`unknown neuter ${JSON.stringify(n)}; have: lead1, `
-                  + `seed-x+1, seed-nosub, laginject=<frame>`);
+  const NEUTERS = ['lead1', 'seed-x+1', 'seed-nosub',
+                   'seed-nt+1', 'seed-pal+1', 'seed-coll0', 'seed-oam0'];
+  if (n && !lagAt && !NEUTERS.includes(n)) {
+    throw new Error(`unknown neuter ${JSON.stringify(n)}; have: `
+                  + `${NEUTERS.join(', ')}, laginject=<frame>`);
   }
   if (n === 'seed-x+1') state.obj.x[0] = (state.obj.x[0] + 1) & 0xFF;
   if (n === 'seed-nosub') { state.obj.xf.fill(0); state.obj.yf.fill(0); }
+  // ONE nametable byte, in the middle of the visible left screen. Not a fill:
+  // a single wrong tile is what a streamer bug actually looks like, and the
+  // VIDEO block has to catch that and not just a blanked screen.
+  if (n === 'seed-nt+1') state.vram.nt[0x123] = (state.vram.nt[0x123] + 1) & 0xFF;
+  if (n === 'seed-pal+1') state.vram.pal[5] = (state.vram.pal[5] + 1) & 0xFF;
+  // The collision map as it would be WITHOUT wave 10's seeding line -- 512
+  // zeros, which is what every pre-wave-10 trace started from.
+  if (n === 'seed-coll0') state.coll.fill(0);
+  if (n === 'seed-oam0') state.hwOam.fill(0);
 
   // probe.lua applies its pokes at $80B5 AFTER writing the sample row, so the
   // seed we were handed is the UNPOKED frame-`align` state and the first poked
@@ -752,6 +903,15 @@ export function tracePort(o) {
 
   const rows = [];
   let lagCum = 0;
+  // WAVE 10. `stopOnThrow` catches an unported-path throw and REPORTS it as
+  // data instead of propagating. It exists for exactly one caller -- the DEEP
+  // REACH block in compare.mjs, which asserts that a named ROM address is
+  // reached at a named frame -- and it is deliberately NOT the default:
+  // a scenario without an `expectThrow` annotation must still crash the run,
+  // because a throw the harness swallows is a port that stopped working while
+  // the gate stayed green. compare.mjs checks the message against the declared
+  // ROM address, so this cannot silence an unrelated error either.
+  let threw = null;
   for (let g = o.align + 1; g < o.frames; g++) {
     // probe.lua applies INPUT[gframe+1] at the inputPolled of the NMI that
     // produces sample `gframe`, i.e. the 0-based script entry `g`. The lead is
@@ -759,7 +919,14 @@ export function tracePort(o) {
     let b = buttons[g] ?? 0;
     if (n === 'lead1') b = buttons[g - 1] ?? 0;   // the Game Boy's lead, wrongly
     const forceLag = lagAt ? Number(lagAt[1]) === g : false;
-    const ran = nmi(state, b, res, forceLag);
+    let ran;
+    try {
+      ran = nmi(state, b, res, forceLag);
+    } catch (e) {
+      if (!o.stopOnThrow) throw e;
+      threw = { atFrame: g, message: String((e && e.message) || e) };
+      break;
+    }
     // `lagged` is DROPPED NMIs ATTRIBUTED TO THIS ROW, which is what objloop.lua
     // counts: its gframe only advances at $80B5, so a drop caused by a frame
     // whose own work overran is recorded against that frame, not against the
@@ -787,18 +954,77 @@ export function tracePort(o) {
     fields: [...PROBE_KEYS, ...WORK_KEYS, ...o.watch.map((a) => `w_${a}`)],
     notProduced: NOT_PRODUCED,
     derived: DERIVED,
+    // null unless stopOnThrow was set AND a throw was caught: { atFrame, message }
+    threw,
+    // THE VIDEO THE PORT ENDED UP WITH, at the last traced frame. Copies, not
+    // views: `state` keeps mutating if a caller runs another trace on it, and a
+    // comparison that silently followed the live arrays would compare a frame
+    // to itself. Only the 2 KB of real nametable is taken -- $2800-$2FFF is the
+    // vertical mirror src/vram.js writes and is not a second screen.
+    finalVideo: {
+      nt: Uint8Array.prototype.slice.call(state.vram.nt, 0, 0x800),
+      pal: Uint8Array.prototype.slice.call(state.vram.pal),
+      oam: Uint8Array.prototype.slice.call(state.hwOam),
+      // Not video, but the same argument: $0500-$06FF is seeded now and is in
+      // no watch list, so the only thing that can hold $9F55's derivation to
+      // account is the map the port ENDS the window with.
+      coll: Uint8Array.prototype.slice.call(state.coll),
+    },
     frames: rows,
   };
 }
 
-/** Load a recorded oracle artifact and pull the seed out of it. */
+/**
+ * Load a recorded oracle artifact and pull the seed out of it.
+ *
+ * A MISSING FIELD IS A HARD ERROR, NOT A DEFAULT. Wave 99 wrote this lesson
+ * down after the display-list block: an artifact recorded before a seed field
+ * existed would otherwise seed the port with nothing, and the comparison would
+ * go green over a port that had been handed less state than it should have. So
+ * a pre-wave-10 artifact fails here, naming the command that fixes it.
+ */
 export function loadOracle(name) {
   const p = join(SCEN_OUT, `${name}.json`);
   if (!existsSync(p)) return null;
   const doc = JSON.parse(readFileSync(p, 'utf8'));
-  doc.seed = Buffer.from(doc.seedRam, 'base64');
-  if (doc.seed.length !== 2048) {
-    throw new Error(`${name}: seedRam is ${doc.seed.length} bytes, want 2048`);
+  const b64 = (field, want) => {
+    if (doc[field] === undefined) {
+      throw new Error(`${name}: the artifact has no ${field}. It was recorded `
+                    + `before wave 10 added the video seed. Re-record it:\n`
+                    + `  python games/gradius/tools/oracle/scen.py --only ${name}`);
+    }
+    const buf = Buffer.from(doc[field], 'base64');
+    if (buf.length !== want) {
+      throw new Error(`${name}: ${field} is ${buf.length} bytes, want ${want}`);
+    }
+    return buf;
+  };
+  doc.seed = {
+    ram: b64('seedRam', 2048),          // $0000-$07FF
+    vram: b64('seedVram', 2048),        // PPU $2000-$27FF
+    palette: b64('seedPalette', 32),    // $3F00-$3F1F
+    oam: b64('seedOam', 256),           // hardware OAM
+    chrBank: doc.seedChrBank,           // $2D at the align frame
+    chrOffset: doc.seedChrOffset,       // mapper.chrMemoryOffset0
+    splitRan: doc.seedSplitRan,         // did $9AA3 fire on the align frame
+  };
+  // The END-OF-WINDOW video. NOT a seed -- it is what compare.mjs holds the
+  // port's own output against. Same missing-field rule: a pre-wave-10 artifact
+  // must fail here rather than quietly skip the check.
+  doc.final = {
+    frame: doc.finalFrame,
+    nt: b64('finalVram', 2048),
+    pal: b64('finalPalette', 32),
+    oam: b64('finalOam', 256),
+    ntChanged: doc.ntChanged,
+    ntHalvesDiffer: doc.ntHalvesDiffer,
+    coll: b64('finalColl', 512),        // $0500-$06FF at the same frame
+    collChanged: doc.collChanged,
+  };
+  if (doc.seedChrOffset === undefined) {
+    throw new Error(`${name}: the artifact has no seedChrOffset (wave 10). `
+                  + `Re-record: python games/gradius/tools/oracle/scen.py `
+                  + `--only ${name}`);
   }
   return doc;
 }

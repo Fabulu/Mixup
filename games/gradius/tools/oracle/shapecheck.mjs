@@ -14,8 +14,12 @@
 //   * every watched address is either readable from the port's state or listed
 //     in UNMODELLED with a reason.
 //
-// Runs without Mesen and without a recorded corpus -- it seeds the port from
-// 2048 zero bytes, which is a legal RAM image (game mode 0, nothing alive).
+// Runs without Mesen and without a recorded corpus -- it seeds the port from an
+// ALL-ZERO machine (2048 zero bytes of RAM, a blank nametable, a black palette,
+// an empty OAM), which is a legal state: game mode 0, nothing alive, CHR bank 0.
+// Wave 10 turned the seed from a bare array into an object; the zero seed is
+// built here rather than imported so that a shape change in seedFromCartridge
+// breaks this file loudly instead of being papered over by a shared helper.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -78,7 +82,16 @@ let doc = null, err = null;
 try {
   doc = tracePort({
     name: 'shapecheck', script: '12:', frames: 10, align: 0,
-    seed: new Uint8Array(2048), watch: defs.watch,
+    seed: {
+      ram: new Uint8Array(2048),        // $0000-$07FF
+      vram: new Uint8Array(2048),       // PPU $2000-$27FF
+      palette: new Uint8Array(32),      // $3F00-$3F1F
+      oam: new Uint8Array(256),         // hardware OAM
+      chrBank: 0,                       // $2D
+      chrOffset: 0,                     // $2D = 0 -> $8AA8[0] & 3 = 0 -> bank 0
+      splitRan: 0,                      // no split on a blank machine
+    },
+    watch: defs.watch,
     res: headlessResources(0),
   });
 } catch (e) { err = e; }

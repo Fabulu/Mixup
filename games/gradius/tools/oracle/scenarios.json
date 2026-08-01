@@ -29,7 +29,16 @@
   "testing invented state. See porttrace.mjs POKEABLE and POKEABLE_RANGES",
   "for what may be poked and why each address is allowed -- wave 5 added the",
   "terrain collision map $0500-$06FF, which is the only way in this corpus to",
-  "reach $C2C1, the terrain route into the death."
+  "reach $C2C1, the terrain route into the death.",
+  "",
+  "expectThrow. A scenario may declare that the port hits a NAMED unported ROM",
+  "address at a NAMED frame inside its window. It is then NOT field-compared --",
+  "there is nothing to compare after the throw -- and is graded by the DEEP",
+  "REACH block in compare.mjs instead. A surprise SUCCESS is a failure, the",
+  "same rule knownFail has: when the path is ported, the annotation must be",
+  "deleted and the scenario promoted to an ordinary comparison. A throw in a",
+  "scenario WITHOUT the annotation still crashes compare.mjs, which is the",
+  "point -- see porttrace.mjs stopOnThrow."
  ],
  "align": 400,
  "bootPrefix": "200:,10:S,190:",
@@ -48,7 +57,17 @@
   "`intro-respawn` aligns at 614, the frame the cartridge's $979D ran, and so",
   "compares intro states 1-4 and the exit but NOT $9B3E. That is not a choice",
   "of coverage: $979D jumps into $9B3E in the SAME frame, and $979D is wave",
-  "5. Seeding one frame earlier would put the port on an arm that throws."
+  "5. Seeding one frame earlier would put the port on an arm that throws.",
+  "",
+  "WAVE 10 REMOVED THE CEILING. Until wave 10 the seed was $0000-$07FF and",
+  "nothing else, so an align frame had to be early enough that the port could",
+  "REBUILD everything else by running forward -- which is why every align in",
+  "this file was 282, 400 or 614. The artifact now also carries the PPU",
+  "nametable, palette RAM, the hardware OAM and the CHR cross-check, and",
+  "porttrace.mjs installs the terrain collision map $0500-$06FF out of seedRam",
+  "instead of skipping it. `deep-page3` aligns at 1900 (camera $0319) and",
+  "`deep-page4` at 2300 (camera $03E1); nothing before wave 10 could compare a",
+  "single frame past camera $0308."
  ],
  "_watch": [
   "Extra RAM added to probe.lua's state vector through its own --watch",
@@ -1162,6 +1181,31 @@
    "align": 614,
    "tail": "300:R",
    "why": "THE SECOND INTRO, which is the same five states reached from a completely different place: the ship dies at f493 ($C1D6, measured once), $96EF counts $4C from 120 down over f494-f613, and $979D runs on f614 and jumps into $9B3E in the SAME frame. Aligned at 614 because $979D is wave 5 -- seeding one frame earlier would put the port on the arm that throws.\n\nSo this compares intro states 1-4 and the exit, from a cartridge state the boot window cannot produce: lives already decremented to 2, the camera reset from 150 to 0, $5E cleared, and the queue starting from $0E = 1 after $882C. MEASURED: $1B steps 1,2,3,4 on 614-617, $9C24 runs on 618-640, $57 goes 0->1 on 639, $1B -> $80 on 640, and $0E is 1,49,37,40,149x21 (618-638) exactly as on the boot.\n\nWHAT IT SETTLES. The plan carried 'respawn = 26 frames, boot = 28, so the exit is data-dependent'. Both are 27 mode-5 frames, measured twice each. The exit IS data-dependent -- $9C24 reads $57 and there is no counter anywhere -- but it lands on the same number every time because $9B3E sets $3F and $55 from the SAME byte and clears $3E/$54/$58, so the streamer's 16-bit lead is exactly 0 at every intro whatever the checkpoint. A 23-frame counter would pass both of these windows; tests/flow.test.js is what separates the two models, by starting the phase with a non-zero lead."
+  },
+  {
+   "name": "deep-page3",
+   "align": 1900,
+   "tail": "1350:RD,324:RU,32:RD",
+   "expectDying": 0,
+   "why": "THE FIRST SCENARIO THAT STARTS DEEP. Aligned at game frame 1900, where the cartridge's camera $3F:$3E reads $0319 -- 793 px into stage 1. Every other scenario in this corpus aligns at $0000 or $002B, and the deepest camera the corpus had ever COMPARED was $0308 (enemy-waves at frame 1865), reached by playing 1465 frames. This one is handed the machine and compares 205 frames of camera $0319..$0380 for the price of one recording.\n\nWHY THAT MATTERS is 06-FINDING-scroll-coverage.md: the corpus's coverage limit was SCROLL DISTANCE. ~240 frames at ~0.5 px/frame is ~120 px, and everything gated behind further scroll was unexercised while looking covered.\n\nWHAT THE SEED HAS TO CARRY HERE, and none of it was in the artifact before wave 10 -- MEASURED at align 1900 and printed by scen.py on every recording: the two nametables differ from each other on 233/1024 bytes (a mid-stage screen, not the blank one the port builds from boot), the hardware OAM lags the shadow on 54/256 bytes, and the terrain collision map $0500-$06FF is 65/512 non-zero. That last number is the one that would have been silent: align 400 measures 0/512, so seeding the map was a no-op for the whole original corpus and is load-bearing here.\n\nTHE SCRIPT IS NOT A CHOICE, it is what survives. Holding one direction from frame 210, first death: R 515, RU 445 (from frame 400), idle 1051 at camera $0171, D 1066, U 1076, L 1083, LD 1098, LU 1108, RD 1866 at camera $0302, RU 2106 at camera $0380. Stage 1's opening kills anything that is not in a corner; the bottom-right corner survives to camera $0302 and then the ground of screen 1 gets it, so the ship has to be moved to the top before that. RD to 1749, RU to 2073 (the ship is at Y=16 from 1926), then RD -- and this is the same trajectory deep-page4 uses, deliberately, so the two share one measured run.\n\nTHREE ENEMY TYPES ARE LIVE IN THE WINDOW and all three are ported: $84/$04 the arc ($B205) and $88 the wavy one ($B26C). The window ENDS at 2105 because frame 2106 is where the cartridge's camera reaches $0380 and the first wave command < $80 fires -- see deep-page4."
+  },
+  {
+   "name": "deep-page4",
+   "align": 2300,
+   "tail": "1350:RD,324:RU,80:RD,326:R",
+   "why": "ALIGNED PAST $0380, WHICH IS WHERE THE PORT RUNS OUT. Align 2300, camera $03E1 (993 px), window 2301..2479 -- and the port does not survive its first frame. That is the deliverable, not a failure: this scenario is the REPRODUCTION for the two findings that created this follow-up, pinned to a frame and a ROM address by the DEEP REACH block in compare.mjs.\n\nWHY $0380 IS THE WALL, read out of assets/enemies/tables.json rather than guessed: stage 1 chunk $61=2 is the wave list at $A859, and its records are [trigger, cmd] pairs firing at scroll ($61 + trigger>>7)*256 + (trigger*2 AND $FF). The first twelve are cmd $80..$84. The thirteenth, trigger $C0, fires at scroll $0380 with cmd $00 -- the FIRST command < $80 in the whole stage, which is $A3B1, the single-enemy spawn nobody ported. Wave 3 measured that boundary and put it inside the throw at src/enemies.js; this confirms it exactly.\n\nWHAT ACTUALLY THROWS FIRST is neither of the two known findings and that is a NEW result: the enemy that record spawns is TYPE $92, and $92 AND $7F = $12 indexes entry 18 of the 42-entry table at $AE1C, which is handler $B098 -- also unported. It is live on the cartridge from frame 2106 (camera $0380) onward, so it is already in the pool at the align frame and src/enemies.js dispatch() throws on frame 2301, the first frame the port runs. A second unported type, $86 -> $B198, joins it at frame 2234.\n\nTHE $A3B1 SPAWN ITSELF IS JUST OUT OF REACH, on purpose. The seed's wave cursor is already past chunk $61=2's terminator; the engine reloads chunk $61=4 ($A87A) when $3F reaches 4 (frame 2361), fires its cmd $82 records at $0400 and $0420, and would hit trigger $20 -> scroll $0440, cmd $03 next. The window's last camera is $043B -- five pixels short. So once $B098 and $B198 are ported, extending this tail by ~15 frames reaches $A3B1 and nothing else has to change.",
+   "expectThrow": {
+    "rom": "$B098",
+    "atFrame": 2301,
+    "why": "The port cannot execute this window and the exact reason is the point. src/enemies.js dispatch() throws on the FIRST frame it runs (2301) for enemy type $92 -> handler $B098, an entry of the $AE1C table that no measured run had ever dispatched before this scenario existed. A surprise SUCCESS fails this check, exactly like a stale knownFail: when $B098 is ported, delete this annotation and let deep-page4 be field-compared like every other scenario."
+   }
+  },
+  {
+   "name": "deep-ground",
+   "align": 1700,
+   "tail": "1550:RD",
+   "why": "THE SCENARIO THAT MAKES THE COLLISION-MAP SEED VISIBLE. Align 1700, camera $02B5 (693 px), window 1701..1949, the ship parked in the bottom-right corner at (240,192) for the whole run. The cartridge's ship dies on frame 1866 at camera $0308 and the map at $0500-$06FF is what kills it -- 32 of its 512 bytes are non-zero at the align frame, and NONE of them can be rebuilt by the port from here: the streamer wrote them hundreds of frames earlier.\n\nWHY IT EXISTS. Wave 10 started seeding $0500-$06FF out of seedRam, and a seeded value that nothing reads is exactly the trap seeding creates. Measured with the `seed-coll0` neuter, which zeroes the map after seeding -- i.e. the port as it was BEFORE wave 10:\n    deep-page3 + idle    seed-coll0 -> 0 failures   (INVISIBLE)\n    deep-ground          seed-coll0 -> 104 failures, 101 TIER 1 fields divergent, w_0100 and w_001B first at f1866\nThe port simply flies on through the ground. Without this scenario, the collision-map seed would be state handed to the port that no comparison in the corpus can see.\n\nIT ALSO PROVES THE DEATH IS TERRAIN AND NOT AN ENEMY, which nothing else here can: remove the map and the death disappears. The two `terrain-death` scenarios reach $C2C1 by POKING one cell into an all-zero map at align 400; this one reaches it with the cartridge's own map, at a place on stage 1 where there really is ground.",
+   "expectDying": 84
   },
   {
    "name": "pause",

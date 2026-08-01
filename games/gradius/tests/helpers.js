@@ -140,8 +140,8 @@ export function loadCapture(name) {
  * reason the lives producer's two suppression arms are covered at all
  * ($20 = 3 at f400, 1 at f1200, 0 at f3500).
  *
- * This is a mirror of porttrace.mjs seedFromRam's HUD block. It is duplicated
- * rather than imported because porttrace.mjs imports this file.
+ * This is a mirror of porttrace.mjs seedFromCartridge's HUD block. It is
+ * duplicated rather than imported because porttrace.mjs imports this file.
  */
 export function seedHudInputs(state, ram) {
   state.zp.player = ram[0x18];              // $18

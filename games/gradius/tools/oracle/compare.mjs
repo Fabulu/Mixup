@@ -169,6 +169,93 @@ function compareDisplayList(frames, byFrameO, byFrameP) {
   return { live, slotFrames, yBad, liveBad, hiddenDiff, examples: ex };
 }
 
+/**
+ * PPU $2000-$27FF, $3F00-$3F1F and hardware OAM at the last frame of the window.
+ *
+ * Returns { compared:false, why } when the window was truncated, so a scenario
+ * that stopped early cannot report a silent pass -- main()'s VIDEO COVERAGE
+ * block counts how many scenarios actually compared.
+ *
+ * `ntChanged` comes off the ORACLE artifact: it is how many of the 2048 bytes
+ * the CARTRIDGE rewrote between the align frame and this one, i.e. how much of
+ * the agreement is the port's own work and how much is the seed surviving
+ * untouched. On a deep scenario that number is the whole answer to "is the seed
+ * doing the work", so it is printed rather than left to be inferred.
+ */
+function compareVideo(name, oracle, port, stoppedAt, introInWindow) {
+  if (stoppedAt !== null) {
+    return { compared: false, why: `the window was truncated at f${stoppedAt}; `
+           + `the cartridge left the state the port models, so its screen is `
+           + `not something the port was asked to reproduce` };
+  }
+  const last = port.frames[port.frames.length - 1];
+  if (!last || last.frame !== oracle.final.frame) {
+    return { compared: false, why: `the port's last traced frame is `
+           + `${last ? last.frame : 'none'} but the cartridge's video dump is `
+           + `from f${oracle.final.frame}` };
+  }
+  const diff = (a, b) => {
+    let n = 0, at = null;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) { n++; if (at === null) at = i; }
+    }
+    return { n, at };
+  };
+  const nt = diff(oracle.final.nt, port.finalVideo.nt);
+  const pal = diff(oracle.final.pal, port.finalVideo.pal);
+  // THE HARDWARE OAM IS GRADED BY THE DISPLAY LIST'S RULE, not byte for byte,
+  // and this is measured rather than assumed: a straight comparison reported
+  // 129 of 256 bytes differing on `deep-page3` and 146 on `idle` while the
+  // nametable and palette were exact. The reason is the one src/oam.js already
+  // declares -- it fills hidden slots with $F4 in all four bytes, and $8BAB
+  // writes only the Y byte, leaving tile/attribute/X stale from whichever frame
+  // last used the slot. Failing on that would be failing on a divergence the
+  // port states in a comment (see the long DISPLAY LIST note above).
+  //
+  // So: the Y byte of all 64 slots, always; all four bytes of every slot the
+  // CARTRIDGE is showing. What this adds over the display-list block -- which
+  // already compares the SHADOW every frame -- is the DMA itself: $8087 copies
+  // the shadow into hardware OAM and byte 2 loses bits 2-4, which do not exist
+  // in OAM (src/oam.js oamDma `& $E3`). Nothing else tests that mask.
+  const oam = { n: 0, at: null };
+  for (let s = 0; s < 64; s++) {
+    const b = s * 4;
+    const live = oracle.final.oam[b] !== 0xF4;
+    for (let i = 0; i < 4; i++) {
+      if (i !== 0 && !live) continue;
+      if (oracle.final.oam[b + i] !== port.finalVideo.oam[b + i]) {
+        oam.n++;
+        if (oam.at === null) oam.at = b + i;
+      }
+    }
+  }
+  const coll = diff(oracle.final.coll, port.finalVideo.coll);
+  return {
+    compared: true, frame: oracle.final.frame,
+    ntChanged: oracle.final.ntChanged,
+    ntHalvesDiffer: oracle.final.ntHalvesDiffer,
+    collChanged: oracle.final.collChanged,
+    nt, pal, oam, coll,
+    // THE ONE EXCUSED DIVERGENCE, and it is knownFail's rule, not a new one.
+    // src/flow.js fullScreenLoad() says it in a comment at the code:
+    // "$8849-$886B: PPUADDR = $2000 and six JSR $8871 chunks. NOT PORTED."
+    // $882C rewrites 2304 bytes from $2000 on every stage load, so a window
+    // that contains one contains a screen the port never draws. MEASURED: the
+    // differing bytes are cells the CARTRIDGE blanked (rom 0) and the PORT left
+    // at the seed's star tiles (58..63) -- port == seed on 84/84, 69/69,
+    // 356/356, 179/179 of them, i.e. the port wrote nothing there at all.
+    //
+    // The excuse is DERIVED, not a list of scenario names: it applies exactly
+    // when the cartridge's $1B re-enters the intro set {1,2,3,4} inside the
+    // window. That is 10 of 37 scenarios, and three of those ten (intro-boot,
+    // intro-respawn, capsule-shield) are byte-exact anyway. The other 27 --
+    // including both deep scenarios and every long one -- are graded strictly.
+    ntKnown: introInWindow,
+    bad: ((nt.n && !introInWindow) ? 1 : 0) + (pal.n ? 1 : 0) + (oam.n ? 1 : 0)
+       + (coll.n ? 1 : 0),
+  };
+}
+
 function windowRows(oracle, port, field, at, radius = 4) {
   const out = [];
   for (let f = at - radius; f <= at + radius; f++) {
@@ -323,14 +410,41 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
                          : (byFrameO.get(frames[i - 1]).w_0100 ?? 0);
     if (now >= 2 && prev < 2) deaths++;
   }
+  // The cartridge's 16-bit camera $3F:$3E AT THE ALIGN FRAME. Read off the
+  // ORACLE row, never the port's, because DEEP REACH uses it to assert how far
+  // into the stage this corpus starts and a port could otherwise satisfy that
+  // by agreeing with itself.
+  const alignRow = byFrameO.get(oracle.align);
+  const alignScroll = alignRow ? alignRow.scrollHi * 256 + alignRow.scrollLo : null;
+
   return {
     name, why: oracle.why, script: oracle.inputScript, align: oracle.align,
+    alignScroll,
     frames: frames.length, nominal: all.length, stoppedAt, stopReason, neuter,
     reach: { xMin: Math.min(...xs), xMax: Math.max(...xs),
              yMin: Math.min(...ys), yMax: Math.max(...ys),
              dying: dyingAt.length, deaths, diedAt: dyingAt[0] ?? null },
     results, skipped,
     dlist: compareDisplayList(frames, byFrameO, byFrameP),
+    // ---- THE SCREEN, wave 10 -----------------------------------------------
+    // The port's nametable and palette at the END of the window against the
+    // cartridge's. Until wave 10 NOTHING compared them: src/vram.js's drainQueue
+    // is the only nametable writer in the game and the only check on its output
+    // was `$0E`, a byte cursor, plus the queue page's own bytes. The terrain
+    // streamer could have written every block to the wrong address and every
+    // recorded field would have agreed (rendergate.py rebuilds pictures from
+    // MESEN's video state and imports no src/, so it cannot see this either).
+    //
+    // ONLY WHEN THE WINDOW RAN TO THE END. If the cartridge left the modelled
+    // $1B set the port was never asked to follow it, so the screens are allowed
+    // to differ and comparing them would be inventing a failure.
+    // `introInWindow`: did the cartridge run a STAGE LOAD inside this window?
+    // Read off the ORACLE's own $1B -- states 1-4 are the five-step stage intro
+    // ($9B3E $9BED $9C12 $9C1E $9C24) and $9B78's `JSR $882C` is inside the
+    // first of them. See compareVideo() for what it excuses and what it does not.
+    video: compareVideo(name, oracle, port, stoppedAt,
+                        frames.some((f) => [1, 2, 3, 4]
+                          .includes(byFrameO.get(f).w_001B))),
     romLagTotal: oracle.lagFrames, romLagInWindow, portLag: portLagInWindow,
     // A field that never varies across the whole run tells you nothing when it
     // matches. Counted and printed, per docs/knowledge/03 trap 4.3.
@@ -414,6 +528,26 @@ export function printScenario(r) {
     console.log(`      ${d.hiddenDiff} hidden-slot byte1..3 differences -- `
               + `EXPECTED: src/oam.js fills $F4, $8BAB writes only the Y byte`);
   }
+  if (!r.video.compared) {
+    console.log(`    [VIDEO] not compared: ${r.video.why}`);
+  } else {
+    const v = r.video;
+    const ok = v.bad === 0;
+    console.log(`    [${ok ? (v.ntKnown && v.nt.n ? 'KNOWN' : 'PASS') : 'FAIL'}] `
+              + `VIDEO at f${v.frame}: `
+              + `nametable ${v.nt.n}/2048 bytes differ`
+              + (v.nt.at === null ? '' : ` (first PPU $${(0x2000 + v.nt.at).toString(16).toUpperCase()})`)
+              + `, palette ${v.pal.n}/32, hardware OAM ${v.oam.n}/256`
+              + (v.ntKnown ? '  -- a STAGE LOAD ran in this window, so the '
+                           + 'nametable is knownFail $8871' : ''));
+    console.log(`      the cartridge itself rewrote ${v.ntChanged}/2048 `
+              + `nametable bytes over this window -- that is how much of the `
+              + `agreement is the port's own $8A51 output rather than the seed`);
+    console.log(`    [${v.coll.n === 0 ? 'PASS' : 'FAIL'}] TERRAIN MAP `
+              + `($0500-$06FF) at f${v.frame}: ${v.coll.n}/512 bytes differ`
+              + (v.coll.at === null ? '' : ` (first $${(0x0500 + v.coll.at).toString(16).toUpperCase()})`)
+              + `; the cartridge rewrote ${v.collChanged}/512 over this window`);
+  }
   console.log(`    lag: cartridge ${r.romLagTotal} total, `
             + `${r.romLagInWindow} inside the compared window; port ${r.portLag}`
             + `  [${r.romLagInWindow === r.portLag ? 'PASS' : 'FAIL'}]`);
@@ -423,7 +557,10 @@ export function printScenario(r) {
             + `never changed value in this scenario`);
   const dlistFail = r.dlist === null ? 0
     : (r.dlist.yBad ? 1 : 0) + (r.dlist.liveBad ? 1 : 0);
-  return { fail: bad.length + (r.romLagInWindow === r.portLag ? 0 : 1) + dlistFail,
+  // The VIDEO block counts into `fail` like the display list does: a wrong
+  // screen is a wrong port, not a footnote.
+  return { fail: bad.length + (r.romLagInWindow === r.portLag ? 0 : 1)
+                 + dlistFail + (r.video.compared ? r.video.bad : 0),
            info: infoBad.length };
 }
 
@@ -438,6 +575,18 @@ function main(argv) {
   let names = defs.scenarios.map((s) => s.name);
   if (args.has('only')) names = String(args.get('only')).split(',');
   const neuter = args.get('neuter') || null;
+
+  // WAVE 10. A scenario carrying `expectThrow` is NOT field-compared: the port
+  // runs into a named unported path inside its window and there is nothing to
+  // compare after that. It is graded by the DEEP REACH block below instead, and
+  // taking it out of `names` here is what keeps the normal loop honest -- a
+  // throw in any OTHER scenario still crashes this file, which is the point.
+  const throwers = new Map(defs.scenarios
+    .filter((s) => s.expectThrow)
+    .map((s) => [s.name, s]));
+  const deepNames = names.filter((n) => throwers.has(n));
+  const requested = names.length;      // BEFORE the split -- `fullRun` below
+  names = names.filter((n) => !throwers.has(n));
 
   // One resource load for the whole run: the assets are ROM-derived and
   // identical for every scenario, and re-reading them 12 times only adds noise.
@@ -459,7 +608,11 @@ function main(argv) {
 
   // Whether this run covers the WHOLE corpus. Several coverage blocks below
   // only mean anything on a full run, and say so rather than failing a subset.
-  const fullRun = names.length === defs.scenarios.length;
+  // `requested` and not `names.length`: wave 10's expectThrow scenarios are
+  // split out of `names` above, and comparing the post-split count against the
+  // corpus size would make `fullRun` permanently false -- which would silently
+  // disable the DEATH and DEEP REACH corpus checks.
+  const fullRun = requested === defs.scenarios.length;
 
   console.log('\n=== SUMMARY ===');
   for (const r of rows) {
@@ -599,6 +752,188 @@ function main(argv) {
   console.log(`  ${deathTotal} dying frames across ${withDeaths} scenario(s); `
             + `${checked} of ${rows.length} carry an expectDying`);
 
+  // ---- VIDEO COVERAGE (wave 10) ---------------------------------------------
+  // Same family as CLAMP, DEATH and DISPLAY LIST coverage, and the same reason
+  // it is a failure rather than a note: this block can stop running without
+  // anything going red. Every scenario truncating, or every artifact predating
+  // the second video dump, would silently stop comparing 2 KB of screen while
+  // the summary still read `0 failures`.
+  console.log('\n=== VIDEO COVERAGE (PPU $2000-$27FF, $3F00-$3F1F, OAM) ===');
+  const vidRows = rows.filter((r) => r.video.compared);
+  let videoBad = 0;
+  const ntChangedTotal = vidRows.reduce((n, r) => n + r.video.ntChanged, 0);
+  const collChangedTotal = vidRows.reduce((n, r) => n + r.video.collChanged, 0);
+  const collBad = vidRows.reduce((n, r) => n + r.video.coll.n, 0);
+  const ntBad = vidRows.reduce((n, r) => n + r.video.nt.n, 0);
+  const palBad = vidRows.reduce((n, r) => n + r.video.pal.n, 0);
+  const oamBad = vidRows.reduce((n, r) => n + r.video.oam.n, 0);
+  if (rows.length && vidRows.length === 0) {
+    videoBad++;
+    console.log('  [FAIL] NO scenario compared its screen -- every window was '
+              + 'truncated, or every artifact predates the second video dump. '
+              + 'Re-record: python games/gradius/tools/oracle/scen.py');
+  }
+  // A corpus in which the cartridge never rewrites a nametable byte would make
+  // this check a comparison of two copies of the same seed (trap 4.3). Per
+  // scenario 0 is ordinary -- stage 1's screen 0 repeats every 256 px and the
+  // nametable is 512 px wide, so a short window rewrites the same tiles it
+  // already had. Corpus-wide 0 is not.
+  if (vidRows.length && ntChangedTotal === 0) {
+    videoBad++;
+    console.log('  [FAIL] the cartridge rewrote ZERO nametable bytes across the '
+              + 'whole corpus -- the screen comparison is comparing the seed to '
+              + 'itself');
+  }
+  // Is `seedVram` really PPU $2000-$27FF, or is it $2000-$23FF twice? Vertical
+  // mirroring makes $2800 an alias of $2000, so a dump that read the mirror
+  // would look plausible and be half a screen. A scenario whose two nametable
+  // halves are identical is NOT evidence of that -- `intro-respawn` is exactly
+  // that and it is real, because $8871 pushes 2304 bytes from $2000 and fills
+  // both halves with one image. Every scenario identical is what a mirrored
+  // read looks like, so the check is here and not in scen.py (where it was
+  // first written, and where it fired on a legitimate frame).
+  const halves = vidRows.reduce((n, r) => n + (r.video.ntHalvesDiffer > 0 ? 1 : 0), 0);
+  if (vidRows.length && halves === 0) {
+    videoBad++;
+    console.log('  [FAIL] every scenario\'s PPU $2000-$23FF equals its '
+              + '$2400-$27FF -- seedVram is a MIRRORED read, i.e. half a screen '
+              + 'recorded twice');
+  }
+  console.log(`  ${vidRows.length}/${rows.length} scenarios compared their screen; `
+            + `the cartridge rewrote ${ntChangedTotal} nametable bytes over `
+            + `those windows; ${halves} have two DIFFERENT nametables at their `
+            + `align frame`);
+  // $0500-$06FF is SEEDED from wave 10 on and is in no watch list, so if the
+  // cartridge never rewrote a cell over any window this check is the seed
+  // compared to itself -- and the two $9F55 breaks that motivated it would be
+  // green again with nothing saying so.
+  if (vidRows.length && collChangedTotal === 0) {
+    videoBad++;
+    console.log('  [FAIL] the cartridge rewrote ZERO collision-map bytes across '
+              + 'the whole corpus -- $9F55\'s derivation is not being compared '
+              + 'at all, only the seed is');
+  }
+  console.log(`  [${collBad === 0 ? 'PASS' : 'FAIL'}] TERRAIN MAP: ${collBad} of `
+            + `512 bytes differ; the cartridge rewrote ${collChangedTotal} over `
+            + `those windows`);
+  const strict = vidRows.filter((r) => !r.video.ntKnown);
+  const excused = vidRows.filter((r) => r.video.ntKnown);
+  const ntStrictBad = strict.reduce((n, r) => n + r.video.nt.n, 0);
+  console.log(`  [${ntStrictBad + palBad + oamBad === 0 ? 'PASS' : 'FAIL'}] `
+            + `${ntStrictBad} nametable (over ${strict.length} strictly graded `
+            + `scenarios), ${palBad} palette, ${oamBad} hardware-OAM bytes differ`);
+  // knownFail $8871, held to account at CORPUS level exactly like the field
+  // annotations above: an annotation that nothing diverges under is STALE and
+  // must be deleted, or the port has quietly grown the full-screen loader and
+  // 10 scenarios are being excused for nothing.
+  if (excused.length) {
+    const live = excused.filter((r) => r.video.nt.n > 0);
+    const ntKnownBad = excused.reduce((n, r) => n + r.video.nt.n, 0);
+    console.log(`  [${live.length ? 'STILL BROKEN' : 'FAIL -- STALE'}] `
+              + `knownFail $8871 (src/flow.js fullScreenLoad, "$8849-$886B ... `
+              + `six JSR $8871 chunks. NOT PORTED"): ${live.length} of `
+              + `${excused.length} windows with a stage load diverge, `
+              + `${ntKnownBad} bytes total`);
+    console.log(`      ${live.map((r) => `${r.name}:${r.video.nt.n}`).join(' ') || '(none)'}`);
+    if (!live.length) {
+      videoBad++;
+      console.log('      Nothing diverges any more. $8871 is drawn, or no '
+                + 'window contains a stage load -- DELETE the excuse in '
+                + 'compareVideo() and grade every scenario strictly.');
+    }
+  }
+  for (const r of rows.filter((x) => !x.video.compared)) {
+    console.log(`    (not compared) ${r.name}: ${r.video.why}`);
+  }
+
+  // ---- DEEP REACH (wave 10) -------------------------------------------------
+  // The corpus's real coverage limit was SCROLL DISTANCE, measured and written
+  // down in 06-FINDING-scroll-coverage.md: scenarios run ~240 frames at
+  // ~0.5 px/frame, so nothing past ~120 px of scroll had ever been compared,
+  // and everything gated behind further scroll LOOKED covered because the
+  // scenarios that did run were green. Wave 10 made align-anywhere work; this
+  // block is what stops the deliverable from rotting.
+  //
+  // TWO CHECKS, and the second one is the annotation discipline knownFail
+  // already uses -- a SURPRISE SUCCESS is a failure:
+  //
+  //   COVERAGE  at least one scenario's ALIGN-FRAME camera, read off the
+  //             ORACLE artifact ($3F:$3E, not the port's), is past scroll
+  //             $0380. Delete the deep scenarios and this goes red.
+  //   expectThrow  the port must still hit the declared ROM address at the
+  //             declared frame. If it stops throwing, the path has been ported
+  //             and the annotation must be retired and the scenario promoted to
+  //             a real comparison -- so that is a FAILURE, not a quiet pass.
+  //
+  // $0380 is not a round number chosen for effect. It is where stage 1's wave
+  // list first carries a command < $80 ($A859 + $18, trigger $C0 -> scroll
+  // $0380, cmd $00), i.e. the first record the port cannot execute, and it is
+  // the number wave 3 measured and put inside the throw at src/enemies.js.
+  const DEEP_SCROLL = 0x0380;
+  console.log('\n=== DEEP REACH (align-frame scroll, past $0380) ===');
+  let deepBad = 0;
+  const deepReached = [];
+  const hex4 = (v) => `$${v.toString(16).toUpperCase().padStart(4, '0')}`;
+  for (const r of rows) {
+    if (r.alignScroll !== null && r.alignScroll > DEEP_SCROLL) {
+      deepReached.push(`${r.name}@${hex4(r.alignScroll)}`);
+    }
+  }
+  for (const n of deepNames) {
+    const s = throwers.get(n);
+    const o = loadOracle(n);
+    if (!o) {
+      console.log(`  [SKIP] ${n}: no oracle artifact (Mesen + the ROM)`);
+      missing++;
+      continue;
+    }
+    const a = o.frames.find((x) => x.frame === o.align);
+    const scroll = a.scrollHi * 256 + a.scrollLo;
+    if (scroll > DEEP_SCROLL) deepReached.push(`${n}@${hex4(scroll)}`);
+    const doc = tracePort({
+      name: n, script: o.inputScript, frames: o.gameFrames, align: o.align,
+      seed: o.seed, watch: defs.watch, poke: o.poke, neuter, res,
+      stopOnThrow: true,
+    });
+    const want = s.expectThrow;
+    let ok = true, why = '';
+    if (!doc.threw) {
+      ok = false;
+      why = `the port did NOT throw over ${doc.gameFrames} frames. `
+          + `${want.rom} has been ported -- DELETE the expectThrow annotation `
+          + `and let this scenario be field-compared like every other one.`;
+    } else if (!doc.threw.message.includes(want.rom)) {
+      ok = false;
+      why = `threw at frame ${doc.threw.atFrame} but the message does not name `
+          + `${want.rom}: ${doc.threw.message}`;
+    } else if (doc.threw.atFrame !== want.atFrame) {
+      ok = false;
+      why = `threw at frame ${doc.threw.atFrame}, annotated ${want.atFrame} -- `
+          + `the reachability moved; re-measure before changing the number`;
+    }
+    if (!ok) deepBad++;
+    console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${n}: align ${o.align}, `
+              + `scroll ${hex4(scroll)}, `
+              + `port reaches ${want.rom} at frame `
+              + `${doc.threw ? doc.threw.atFrame : 'NEVER'}`);
+    if (doc.threw) console.log(`         ${doc.threw.message.split('.')[0]}.`);
+    if (!ok) console.log(`         ${why}`);
+  }
+  // Gated on fullRun: a `--only idle` subset is not evidence that the corpus
+  // has stopped reaching deep, and the self-check stage runs exactly such a
+  // subset. The DISPLAY LIST block is ungated for the opposite reason -- a
+  // stale artifact is stale whatever else is being run.
+  if (fullRun && deepReached.length === 0) {
+    deepBad++;
+    console.log(`  [FAIL] NO scenario aligns past scroll $${DEEP_SCROLL.toString(16)}. `
+              + `06-FINDING-scroll-coverage.md is back: everything past ~120 px `
+              + `of scroll is unexercised and looks covered.`);
+  } else {
+    console.log(`  [${deepReached.length ? 'PASS' : 'skip'}] `
+              + `${deepReached.length} scenario(s) align past $0380: `
+              + (deepReached.join(', ') || '(subset run)'));
+  }
+
   if (missing) {
     console.log(`\n  ${missing} scenario(s) had NO ORACLE ARTIFACT. That is an `
               + `environmental skip (Mesen + the ROM), not a pass.`);
@@ -620,8 +955,10 @@ function main(argv) {
             + `${deathBad} death-coverage failures, `
             + `${stale} stale annotations, `
             + `${dlistBad} display-list coverage failures, `
+            + `${videoBad} video-coverage failures, `
+            + `${deepBad} deep-reach failures, `
             + `${skippedFields.length} fields SKIPPED (${skippedFields.join(' ')}).`);
-  return (fails || uncovered || stale || deathBad || dlistBad)
+  return (fails || uncovered || stale || deathBad || dlistBad || videoBad || deepBad)
     ? 1 : (rows.length === 0 ? 2 : 0);
 }
 

@@ -14,6 +14,9 @@
 --                   buttons: U D L R A B S(tart) E(select). Empty = nothing held.
 --   PROBE_JSON      path to write the per-frame state vector JSON
 --   PROBE_RAMDUMP   optional path; raw $0000-$07FF, 2048 bytes per sampled frame
+--   PROBE_VIDEO     optional path; one 2336-byte blob PER FRAME listed in
+--                   PROBE_VIDEO_AT, concatenated in that order (wave 10)
+--   PROBE_VIDEO_AT  comma-separated game frames, e.g. "1900,2105"
 --   PROBE_WATCH     optional "8000,00A5" hex addresses added to the vector as w_XXXX
 --   PROBE_SHOT      optional PNG path, written at the last sampled frame
 --   PROBE_POKE      optional "0360=200@400-460,0320=60@400-460" -- force RAM at
@@ -63,6 +66,31 @@
 -- of the NMI, so it copies the shadow OAM the PREVIOUS frame built. The shadow
 -- OAM this probe reads at $80B5 is what the player will see on the NEXT frame.
 --
+-- ============================ THE VIDEO DUMPS (wave 10) ======================
+--
+-- `seedRam` carries $0000-$07FF and nothing else, which is why the comparison
+-- could only ever start where the port could REBUILD the video state by running
+-- from the beginning. PROBE_VIDEO dumps the rest, at each frame in
+-- PROBE_VIDEO_AT -- scen.py asks for two, the align frame (the SEED) and the
+-- last frame of the window (the CHECK). Each dump is:
+--
+--   offset 0      2048 B   PPU $2000-$27FF -- the two physical nametables.
+--                          Gradius is VERTICALLY mirrored (iNES flags6 = $31,
+--                          and a live 4 KB read says $2000 == $2800 and
+--                          $2400 == $2C00), so $2800-$2FFF is an alias and
+--                          dumping it would be dumping the same 2 KB twice.
+--                          src/vram.js's drainQueue writes exactly this
+--                          arrangement.
+--   offset 2048     32 B   palette RAM $3F00-$3F1F (src/state.js vram.pal)
+--   offset 2080    256 B   HARDWARE OAM -- what the PPU is showing right now,
+--                          i.e. what $8087 DMA'd at the top of THIS frame from
+--                          the shadow the PREVIOUS frame built. NOT the shadow;
+--                          the shadow is $0200-$02FF and is already in the RAM
+--                          dump.
+--
+-- Each is taken at $80B5, at the same instant as the RAM dump and the state
+-- row, and BEFORE the pokes -- so all three describe one instant of one frame.
+--
 -- ============================== THE INPUT ===================================
 --
 -- Buttons go in through emu.setInput() on the inputPolled event, which is the
@@ -104,10 +132,20 @@ local RAM_OUT  = os.getenv("PROBE_RAMDUMP")
 local WATCH_S  = os.getenv("PROBE_WATCH") or ""
 local SHOT_OUT = os.getenv("PROBE_SHOT")
 local POKE_S   = os.getenv("PROBE_POKE") or ""
+local VID_OUT  = os.getenv("PROBE_VIDEO")
+-- A LIST of game frames, in the order they must land in the file. Kept as a
+-- list rather than "first and last" so scen.py owns the policy and this file
+-- owns only the dumping.
+local VID_AT   = {}
+for f in string.gmatch(os.getenv("PROBE_VIDEO_AT") or "", "[^,]+") do
+   VID_AT[#VID_AT + 1] = tonumber(f)
+end
 
 local CPU = emu.memType.nesDebug          -- CPU space, side-effect free
 local RAM = emu.memType.nesInternalRam    -- $0000-$07FF, flat
 local OAM = emu.memType.nesSpriteRam
+local PAL = emu.memType.nesPaletteRam     -- $3F00-$3F1F, 32 bytes flat
+local PPU = emu.memType.nesPpuMemory      -- PPU space, mirroring applied
 
 local NMI_ENTRY = 0x806A   -- read back from $FFFA at frame 1 and asserted
 local POST_POLL = 0x80A7   -- the instruction after `JSR $81BF` -- joypad is fresh
@@ -165,6 +203,8 @@ local first_input_frame = nil     -- first game frame at which we forced a butto
 local pad1, pad2 = 0, 0           -- latched at $80A7, see the header
 local rows = {}
 local ramfile
+local videofile                   -- wave 10: PROBE_VIDEO, opened on first use
+local video_written = 0           -- how many of VID_AT's frames were dumped
 local done = false
 local failed = false
 local stopped = false       -- emu.stop() is ASYNCHRONOUS: without this the
@@ -252,6 +292,26 @@ local function on_frame_end_instruction()
       local buf = {}
       for a = 0, 0x7FF do buf[#buf + 1] = string.char(emu.read(a, RAM, false)) end
       ramfile:write(table.concat(buf))
+   end
+
+   -- THE VIDEO DUMPS (wave 10). One blob per listed frame, at the same instant
+   -- as the row and the RAM dump above -- see the header for the layout. They
+   -- are written HERE and not from the endFrame handler because the endFrame
+   -- handler runs at scanline 240 of the NEXT emulator frame, by which point
+   -- $8087 has already DMA'd a new OAM and $8A51 has drained a new queue.
+   if VID_OUT then
+      for _, at in ipairs(VID_AT) do
+         if gframe == at then
+            if not videofile then videofile = assert(io.open(VID_OUT, "wb")) end
+            local buf = {}
+            for a = 0x2000, 0x27FF do buf[#buf + 1] = string.char(emu.read(a, PPU, false)) end
+            for a = 0, 31 do buf[#buf + 1] = string.char(emu.read(a, PAL, false)) end
+            for a = 0, 255 do buf[#buf + 1] = string.char(emu.read(a, OAM, false)) end
+            videofile:write(table.concat(buf))
+            video_written = video_written + 1
+            say(("video.dumpedAtGameFrame = %d"):format(gframe))
+         end
+      end
    end
 
    -- Pokes go in AFTER the sample, so the recorded vector is what the ROM
@@ -398,6 +458,17 @@ emu.addEventCallback(function()
 
       if done then
          if ramfile then ramfile:close() end
+         if videofile then videofile:close() end
+         -- A video dump that was ASKED FOR and never taken is a hard error, not
+         -- a missing file the caller discovers later: scen.py would otherwise
+         -- write an artifact with no seedVram and porttrace.mjs would refuse it
+         -- with a message about a stale recording, which is the wrong diagnosis.
+         if VID_OUT and video_written ~= #VID_AT then
+            die(("PROBE_VIDEO_AT asked for %d frames, dumped %d "
+                 .. "(%d game frames sampled)")
+                :format(#VID_AT, video_written, #rows))
+            return
+         end
          if JSON_OUT then write_json() end
          local last = rows[#rows] or {}
          say("gameFrames = " .. #rows)

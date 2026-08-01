@@ -350,8 +350,8 @@ export function createState() {
     //                 $35 lost, $42 restored from $22,X.
     //
     // The initial VALUES are still the cartridge's, out of the align frame's
-    // RAM (porttrace.mjs seedFromRam, src/main.js bootState) -- that is what
-    // makes the comparison absolute rather than relative, and it is the same
+    // RAM (porttrace.mjs seedFromCartridge, src/main.js bootState) -- that is
+    // what makes the comparison absolute rather than relative, and it is the same
     // arrangement the camera and the sub-pixel accumulators have.
     //
     // $48 is different: it is REAL STATE, incremented by $88A4 on every odd

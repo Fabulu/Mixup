@@ -360,6 +360,25 @@ byte          = 4 tile rows, 2 bits each, row 0 in bits 0-1
 Cleared at stage end by `$994A` (`STA $0500/$0540/.../$06C0,X` for X = `$3F`
 down to 0, i.e. all 512 bytes), gated on `$3E >= $D0`.
 
+**How the map is compared, and what that cost to work out (wave 10).** The
+range is in no watch list — 512 addresses that read 0 on every frame of every
+align-400 scenario, because stage 1's camera pages 0-3 contain no solid tile
+bits. Wave 10 changed both halves of that. `porttrace.mjs` now SEEDS the map out
+of `seedRam`, because a window that starts at frame 1900 begins with 65 of the
+512 already written and the port cannot rebuild them; and `compare.mjs` compares
+the map the port ENDS each window with against the cartridge's, out of the RAM
+dump `scen.py` was already taking. Both were necessary and the order matters:
+
+* seeding it alone made the WRITE path invisible. MEASURED — `$9F7F`'s base
+  `u8($54 + $58)` made `+ 1`, and `$9F81`'s `c * 8` stride made `c * 4`, are
+  BOTH green across `deep-ground`, `terrain-death` and `deep-page3`, because
+  every cell that kills the ship was written before the align frame. The two
+  `terrain-death` scenarios cannot see it either: they POKE a cell into an
+  all-zero map and never run `$9F55` at all.
+* comparing the end-of-window map is what holds `$9F55-$9F92` to account, and
+  `compare.mjs` prints how many cells the CARTRIDGE rewrote over each window so
+  the check states its own coverage.
+
 ### And it is READ from there — `$C3D3`
 
 ```

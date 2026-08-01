@@ -64,8 +64,12 @@ OUT = HERE / "out"
 BOOT = "200:,10:S,90:"
 
 
+VIDEO_SEED_BYTES = 2048 + 32 + 256      # nametables + palette RAM + hardware OAM
+
+
 def run(frames: int, script: str, json_out: Path, *, ramdump: Path | None = None,
         watch: str = "", shot: Path | None = None, poke: str = "",
+        video: Path | None = None, video_at: list[int] | None = None,
         timeout_s: int = 300):
     # Mesen's cwd is not ours, so every path handed to the Lua side must be
     # absolute. A relative one fails inside io.open, which used to surface as a
@@ -87,6 +91,17 @@ def run(frames: int, script: str, json_out: Path, *, ramdump: Path | None = None
         shot = shot.resolve()
         shot.parent.mkdir(parents=True, exist_ok=True)
         env["PROBE_SHOT"] = str(shot)
+    # THE VIDEO DUMPS (wave 10). PPU $2000-$27FF + palette RAM + hardware OAM,
+    # one blob per requested frame: the state the port cannot rebuild when a
+    # scenario starts deep, and the state it must have PRODUCED by the end.
+    if video is not None:
+        if not video_at:
+            raise SystemExit("probe.run: video= needs a non-empty video_at=[...]")
+        video = video.resolve()
+        video.parent.mkdir(parents=True, exist_ok=True)
+        video.unlink(missing_ok=True)      # never re-read a previous run's blob
+        env["PROBE_VIDEO"] = str(video)
+        env["PROBE_VIDEO_AT"] = ",".join(str(f) for f in video_at)
     # Delete the target first: if the script dies, we must not silently read the
     # previous run's file and report it as this run's result.
     json_out.unlink(missing_ok=True)
@@ -101,6 +116,17 @@ def run(frames: int, script: str, json_out: Path, *, ramdump: Path | None = None
                          f"a missing END means the script died mid-callback")
     if not json_out.exists():
         raise SystemExit(f"probe.lua reported END but wrote no {json_out}")
+    if video is not None:
+        # probe.lua already dies if it never reached the frame; this catches the
+        # OTHER failure -- a short write -- rather than letting a truncated blob
+        # become a silently truncated nametable in every artifact downstream.
+        if not video.exists():
+            raise SystemExit(f"probe.lua reported END but wrote no {video}")
+        n = video.stat().st_size
+        want = VIDEO_SEED_BYTES * len(video_at)
+        if n != want:
+            raise SystemExit(f"{video} is {n} bytes, expected {want} "
+                             f"({len(video_at)} x {VIDEO_SEED_BYTES})")
     return r
 
 

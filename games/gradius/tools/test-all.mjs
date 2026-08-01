@@ -208,12 +208,26 @@ stage('self-check: the comparison goes red when the port is broken', () => {
   // -- was reported as "RED (good)". The stage was validating the comparison
   // using a signal the comparison produces for another reason entirely. Counted
   // failures cannot do that.
-  const subset = 'wiggle,corner-br,speed3-diag,opt2-wiggle';
+  // WAVE 10 ADDED `deep-ground`, and it is not padding. The subset was four
+  // align-400 scenarios, and on every one of them the collision map $0500-$06FF
+  // is 0/512 at the align frame -- so `seed-coll0` (delete the map the seed
+  // installs) is a NO-OP there and would have been reported as a break that
+  // does not break. `deep-ground` aligns at 1700 with 32/512 non-zero and the
+  // ship dies on the ground at f1866; without the map the port flies through
+  // it. It costs one 249-frame port trace.
+  const subset = 'wiggle,corner-br,speed3-diag,opt2-wiggle,deep-ground';
   const failures = (neuter) => {
     const argv = ['games/gradius/tools/oracle/compare.mjs', '--only', subset];
     if (neuter) argv.push('--neuter', neuter);
     const r = spawnSync(process.execPath, argv, { cwd: REPO, encoding: 'utf8' });
-    const m = /(\d+) failures/.exec(r.stdout);
+    // ANCHORED ON THE SUMMARY LINE, not on the first `N failures` anywhere in
+    // stdout. It used to be `/(\d+) failures/` and wave 10 walked straight into
+    // it: compare.mjs prints each scenario's `why` prose, and `deep-ground`'s
+    // why QUOTES a failure count ("seed-coll0 -> 104 failures") as its evidence.
+    // The stage then read that number instead of the run's, which is the exact
+    // shape of the bug this stage's own header already describes -- validating a
+    // check using a signal that means something else.
+    const m = /frames compared \([^)]*\), (\d+) failures/.exec(r.stdout);
     if (!m) return { n: null, err: (r.stderr || r.stdout).trim().split('\n')[0] };
     return { n: Number(m[1]) };
   };
@@ -224,7 +238,24 @@ stage('self-check: the comparison goes red when the port is broken', () => {
            + `(${base.n ?? 'crash: ' + base.err}) -- the self-check cannot mean `
            + `anything until it is` };
   }
-  const breaks = ['lead1', 'seed-x+1', 'laginject=450'];
+  // The three original breaks, plus three that WAVE 10 added because seeding
+  // inverts the usual trap: the risk is not that the harness invents state, it
+  // is that the seed HIDES a bug by handing the port a value it should have
+  // produced. Each of these deletes or corrupts one thing seedFromCartridge()
+  // installs, so "is anything looking at this?" is answered every gate run:
+  //
+  //   seed-nt+1    one nametable byte  -> the wave-10 VIDEO block, which is the
+  //                only thing in this repo that has ever compared the port's
+  //                screen against the cartridge's
+  //   seed-pal+1   one palette byte    -> same block
+  //   seed-coll0   the whole collision map -> needs `deep-ground`, see above
+  //
+  // `seed-oam0` exists too and is deliberately NOT here: it is MEASURED green,
+  // because $8087's DMA rewrites all 256 bytes of hardware OAM on the first
+  // ported frame. That is documented in porttrace.mjs at the assignment and in
+  // docs/worklog/gradius/10-impl-seed-anywhere.md, not hidden by omission.
+  const breaks = ['lead1', 'seed-x+1', 'laginject=450',
+                  'seed-nt+1', 'seed-pal+1', 'seed-coll0'];
   const survived = [];
   for (const b of breaks) {
     const r = failures(b);

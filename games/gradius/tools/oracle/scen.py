@@ -15,6 +15,18 @@ Each artifact carries:
     This is what `porttrace.mjs` starts the port from, and it is the reason the
     comparison can be absolute rather than relative -- the camera, the ring and
     the sub-pixel accumulators all begin from the machine's own values;
+  * `seedVram` / `seedPalette` / `seedOam` (WAVE 10): the VIDEO state at the
+    same instant -- PPU $2000-$27FF, palette RAM $3F00-$3F1F and the hardware
+    OAM. $0000-$07FF alone is only enough to start where the port can REBUILD
+    the screen by running from the beginning; these are what make an align
+    frame ANYWHERE in the stage comparable. See probe.lua's video-seed header
+    for the layout and porttrace.mjs seedFromCartridge() for what each one
+    lands in.
+  * `seedChrBank` / `seedChrOffset` (WAVE 10): $2D and the mapper offset the
+    EMULATOR reports at the align frame. Neither is an input -- $2D is already
+    in seedRam and the port derives the offset from it -- they are a CROSS-CHECK
+    the loader asserts, so that "the port's CHR latch table agrees with the
+    hardware" is a checked fact at the seed and not only a per-frame field;
   * `lagDrops`: the game frames at which an NMI found the $04 guard set and
     bailed, from BOTH scripts, independently.
 
@@ -114,6 +126,7 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
     watch = ",".join(defs["watch"])
     pj = OUT / f"{name}.probe.json"
     ram = OUT / f"{name}.ram"
+    vid = OUT / f"{name}.video"
     oj = OUT / f"{name}.objloop.json"
 
     # INJECTION. Power-ups are unreachable from a button script, so a scenario
@@ -149,8 +162,16 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
             segs.append(f"{seg}@{align}-{frames - 1}")
     poke = ",".join(segs)
 
+    # TWO video dumps, and the second one is the point. The first is the SEED at
+    # the align frame. The second is the CHECK at the last frame of the window:
+    # nothing in this corpus has ever compared the port's nametable or palette
+    # against the cartridge's, so 2 KB of screen -- everything the terrain
+    # streamer builds -- was produced by the port and looked at by nobody. That
+    # was tolerable while the port could be seeded only at frames 282/400/614
+    # and rebuilt the screen itself; it is not tolerable now that a deep seed
+    # HANDS it a screen. See compare.mjs's VIDEO block.
     rp = probe.run(frames, script, pj, ramdump=ram, watch=watch, poke=poke,
-                   timeout_s=300)
+                   video=vid, video_at=[align, frames - 1], timeout_s=300)
     ro = run_objloop(frames, script, oj, poke=poke)
 
     pdoc = json.loads(pj.read_text())
@@ -210,6 +231,62 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
         raise SystemExit(f"{name}: ram dump is {len(rambytes)} bytes, expected "
                          f"{2048 * len(pf)}")
     seed = rambytes[align * 2048:(align + 1) * 2048]
+    # $0500-$06FF AT THE LAST FRAME OF THE WINDOW -- the terrain collision map as
+    # the port must have BUILT it, not as it was handed it.
+    #
+    # WHY IT IS HERE. Wave 10 started seeding the map (porttrace.mjs), which is
+    # the only way a deep window can be right -- and it immediately made the
+    # WRITE path invisible: MEASURED with two deliberate breaks in
+    # src/terrain.js's $9F55 block, `$9F7F` base +1 and `$9F81` stride c*8 ->
+    # c*4, both GREEN across deep-ground + terrain-death + deep-page3, because
+    # every cell that kills the ship was written before the align frame and is
+    # now supplied by the seed. The two terrain-death scenarios cannot see it
+    # either: they POKE a cell into an all-zero map, bypassing $9F55 entirely.
+    # So this is the check that holds the derivation to account.
+    #
+    # It costs NO extra emulator time: the per-frame RAM dump is already taken
+    # for the seed and thrown away, so the last frame's 512 bytes are free.
+    last = frames - 1
+    fin_coll = rambytes[last * 2048 + 0x0500:last * 2048 + 0x0700]
+    coll_changed = sum(1 for i in range(0x200)
+                       if fin_coll[i] != seed[0x0500 + i])
+
+    # ---- the video seed (wave 10) ----------------------------------------
+    # probe.py has already asserted the length; splitting it here is the only
+    # place the layout is written down twice, so the two must agree.
+    vidbytes = vid.read_bytes()
+    n = probe.VIDEO_SEED_BYTES
+    if len(vidbytes) != 2 * n:
+        raise SystemExit(f"{name}: video dump is {len(vidbytes)} bytes, expected "
+                         f"{2 * n}")
+    seed_vram = vidbytes[0:2048]           # PPU $2000-$27FF, at `align`
+    seed_pal = vidbytes[2048:2080]         # $3F00-$3F1F
+    seed_oam = vidbytes[2080:2336]         # hardware OAM
+    fin_vram = vidbytes[n:n + 2048]        # ...and the same three at frames-1
+    fin_pal = vidbytes[n + 2048:n + 2080]
+    fin_oam = vidbytes[n + 2080:n + 2336]
+    # How far apart the two PHYSICAL nametables are. The reason to record it is
+    # that a mirrored read would make them identical: vertical mirroring makes
+    # $2800 an alias of $2000, and if this dump ever returned $2000-$23FF twice
+    # instead of $2000-$27FF, seedVram would silently be half a screen.
+    #
+    # THIS WAS A HARD ERROR HERE AND IT WAS WRONG. It fired on `intro-respawn`
+    # (align 614, ntdiff 0) -- and that is a REAL cartridge state, not a bad
+    # read: $882C's full-screen loader $8871 pushes 2304 bytes from $2000, which
+    # runs past $23FF and fills BOTH nametables with the same image, so during a
+    # stage load the two halves genuinely are identical. Being identical in ONE
+    # scenario proves nothing; being identical in EVERY scenario is what a
+    # mirrored read looks like, so the check belongs at corpus level and lives
+    # in compare.mjs's VIDEO COVERAGE block instead.
+    ntdiff = sum(1 for i in range(1024) if seed_vram[i] != seed_vram[1024 + i])
+    # The shadow OAM at $0200-$02FF was DMA'd to the hardware at $8087 of THIS
+    # frame from the shadow the PREVIOUS frame built, so at $80B5 the two are
+    # NOT expected to be equal -- the frame's own display-list build at $80A7
+    # has already overwritten the shadow. Recorded rather than asserted, because
+    # "how far apart they are" is the OAM phase the port has to reproduce.
+    oamlag = sum(1 for i in range(256) if seed_oam[i] != seed[0x0200 + i])
+
+    row_at_align = pf[align]
 
     merged = []
     for a, b in zip(pf, of):
@@ -243,6 +320,41 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
                                     "enemySlots", "lagged", "audioTicks",
                                     "audioChannels", "apuWrites", "apuDigest"],
         "seedRam": base64.b64encode(seed).decode("ascii"),
+        # ---- the video seed, wave 10 -------------------------------------
+        "seedVram": base64.b64encode(seed_vram).decode("ascii"),
+        "seedPalette": base64.b64encode(seed_pal).decode("ascii"),
+        "seedOam": base64.b64encode(seed_oam).decode("ascii"),
+        "seedChrBank": row_at_align["chrBank"],       # $2D at the align frame
+        "seedChrOffset": row_at_align["chrOffset"],   # mapper.chrMemoryOffset0
+        # Which BAND the mapper offset above belongs to. $80B5 is at scanline
+        # ~231, i.e. after $9AA3's sprite-0 spin, so on a frame whose split ran
+        # the offset in force is band B's ($9ABF LDY #$02) and NOT $2D's. Without
+        # this the seed-time cross-check on $8AA8 cannot be written down
+        # correctly -- and the first version of it was wrong for exactly this
+        # reason ($2D = 0 but chrOffset = 8192 on `idle`).
+        "seedSplitRan": row_at_align["sprite0Hit"],
+        # ---- the END-OF-WINDOW video, wave 10 ----------------------------
+        # Same three spaces at the LAST compared frame. This is not a seed --
+        # nothing installs it -- it is what the port has to have PRODUCED.
+        # `ntChanged` is how many of the 2048 nametable bytes the cartridge
+        # itself rewrote over the window, i.e. how much of the comparison is
+        # the port's own work rather than the seed surviving. A check that
+        # bounds its own coverage has to say so in its output
+        # (docs/knowledge/03); compare.mjs prints this number every run.
+        "finalFrame": frames - 1,
+        "finalVram": base64.b64encode(fin_vram).decode("ascii"),
+        "finalPalette": base64.b64encode(fin_pal).decode("ascii"),
+        "finalOam": base64.b64encode(fin_oam).decode("ascii"),
+        "ntChanged": sum(1 for i in range(2048) if fin_vram[i] != seed_vram[i]),
+        # ...and the terrain collision map at the same frame. `collChanged` is
+        # how many of the 512 the CARTRIDGE rewrote over the window, i.e. how
+        # much of the comparison is $9F55's own output rather than the seed.
+        "finalColl": base64.b64encode(fin_coll).decode("ascii"),
+        "collChanged": coll_changed,
+        # How far the two physical nametables are apart at the align frame. 0 is
+        # legal for ONE scenario (see above); 0 for all of them means the dump
+        # is a mirrored read. compare.mjs asserts that at corpus level.
+        "ntHalvesDiffer": ntdiff,
         "frames": merged,
     }
     (OUT / f"{name}.json").write_text(json.dumps(doc), encoding="utf8")
@@ -251,6 +363,7 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
         ram.unlink(missing_ok=True)      # 2 KB x frames, only the seed is kept
     pj.unlink(missing_ok=True)
     oj.unlink(missing_ok=True)
+    vid.unlink(missing_ok=True)          # it is inside the artifact now
 
     fo = ro.fields()
     if poke:
@@ -260,6 +373,17 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
           f"slotsVisited {fo['slotsVisitedMin']}..{fo['slotsVisitedMax']}  "
           f"msExpanded/f {int(fo['msExpandedTotal']) / len(merged):.2f}  "
           f"stored/f {int(fo['spritesStoredTotal']) / len(merged):.2f}")
+    # The video seed, measured rather than assumed present. `coll` is the
+    # terrain collision map $0500-$06FF inside seedRam: it is 0 of 512 at
+    # align 400 (every scenario of the original corpus) and NON-zero at any
+    # deep align, which is exactly why wave 10 has to seed it.
+    coll_nz = sum(1 for i in range(0x0500, 0x0700) if seed[i])
+    ntchanged = sum(1 for i in range(2048) if fin_vram[i] != seed_vram[i])
+    print(f"  {'':12s}   seed@{align}: nt halves differ on {ntdiff}/1024 bytes, "
+          f"hwOAM vs shadow differs on {oamlag}/256, coll {coll_nz}/512 non-zero, "
+          f"$2D={row_at_align['chrBank']} chrOffset={row_at_align['chrOffset']}; "
+          f"the cartridge rewrote {ntchanged}/2048 nametable and "
+          f"{coll_changed}/512 collision bytes by f{frames - 1}")
     return doc
 
 

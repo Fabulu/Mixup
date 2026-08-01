@@ -1,7 +1,16 @@
-# Wave 9 (DECIDED, not yet started) — seed the port at ANY cartridge frame
+# Wave 9 (DECIDED) — seed the port at ANY cartridge frame
 
-status: PLANNED
-wave: 9   role: plan   decided: 2026-07-31
+status: DONE — implemented as wave 10, see `10-impl-seed-anywhere.md`
+wave: 9   role: plan   decided: 2026-07-31   done: 2026-08-01
+
+**Read `10-impl-seed-anywhere.md` for what was actually built and measured.**
+Two items on the work list below turned out to be ALREADY DONE and are corrected
+here rather than left implying a gap: the terrain build cursor `$57`/`$58` has
+been seeded since wave 1 (`state.build.ahead` / `state.build.prog`, both watched
+fields), and the CHR bank is derived from `$2D`, which `seedRam` already carried
+— the artifact's `seedChrBank`/`seedChrOffset` are a cross-check, not an input.
+The caveat at the bottom of this file was the hard part and it was answered by
+measurement, not by argument: see §"proving the seed is not doing the work".
 
 **Owner decision: this runs AFTER wave 8**, and after the final full-corpus pass
 that audits waves 1-8. Firing (wave 6), power-ups (7) and sound (8) land first.
