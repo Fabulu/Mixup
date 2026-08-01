@@ -42,8 +42,12 @@
 //     $8073 reads $04 and bails at $80B7 if it is non-zero. On the NES that is
 //     VISIBLE, unlike the Game Boy case where only internal updates dropped.
 //
-// WHAT IS NOT PORTED, named rather than silently absent: the sound driver
-// ($ED02) and every game mode except 5.
+// WHAT IS NOT PORTED, named rather than silently absent: every game mode
+// except 5.
+//
+// THE SOUND DRIVER WAS ON THAT LIST AND IS NOT ANY MORE -- src/sound.js, wave
+// 8. $80A1 JSR $ED02 runs below, in its own place in the order: after the frame
+// lock and before the joypad.
 //
 // The power-up rank ($9AC4 JSR $9C45) and the capsule apply ($9A73 JSR $8974)
 // WERE on that list and are not any more -- src/powerup.js, wave 7. The apply
@@ -90,6 +94,7 @@ import { spawnEngine, enemyBullets, updateEnemies } from './enemies.js';
 import { introStep, pauseCheck, respawn } from './flow.js';
 import { shotSweep } from './collision.js';
 import { applyCapsule, computeRank } from './powerup.js';
+import { soundDriver, setBgm } from './sound.js';
 import { chrBank } from './render/ppu.js';
 
 /**
@@ -102,6 +107,20 @@ import { chrBank } from './render/ppu.js';
  * @param {boolean} lag     force the $8073 bail, for the lag census
  */
 export function nmi(state, buttons, res, lag = false) {
+  // THE SOUND DRIVER'S FOUR SIGNALS ARE CLEARED ABOVE THE LOCK, and every other
+  // per-frame counter in this function is cleared below it. That is deliberate.
+  // docs/knowledge/06 asks for "did the sound driver step" as its own per-frame
+  // signal, and on a frame the driver did not step the honest answer is 0 --
+  // not "whatever the last frame that did step reported". The other counters sit
+  // below the bail because a dropped NMI produces no sample on the cartridge at
+  // all (objloop.lua's gframe only advances at $80B5), so the two placements
+  // have never been distinguishable by measurement; this one is, through
+  // `laginject`, and through tests/sound.test.js.
+  state.work.audioTicks = 0;
+  state.work.audioChannels = 0;
+  state.work.apuWrites = 0;
+  state.work.apuDigest = 0;
+
   // $8070: LDA $2002 -- clear the vblank flag.
   // $8073: LDY $04 / $8075: BNE $80B7 -- THE LOCK.
   if (lag || state.lock !== 0) {
@@ -137,12 +156,15 @@ export function nmi(state, buttons, res, lag = false) {
   // death scenarios would each report the wrong band for 27 frames on two TIER 1
   // fields. Pinned as a knownFail by wave 4's test pass; retired here.
   state.bandB.ran = false;
-  // ...and so are the frame's sound requests. `$EC1E` is called from six places
-  // this port reaches (both shot spawns, $BE93's kill, $C1D6's death, $84F2's
-  // extra life, $896C/$89DD/$C18F for the power-ups); the driver that consumes
-  // them is wave 8, so the port records the LIST and clears it here rather than
-  // pretending
-  // the calls did not happen. See src/state.js sfx.
+  // ...and so are the frame's sound requests. `$EC1E` is called from nine
+  // places this port reaches (both shot spawns, $BE93's kill, $C1D6's death,
+  // $84F2's extra life, $896C/$89DD/$C18F for the power-ups, $9AFA's pause
+  // jingle, and $83A1/$83A6/$83AB for the BGM). The list is not the driver's
+  // state -- src/sound.js is, and it RUNS from $80A1 below since wave 8 -- it
+  // is the record the weapon and power-up tests hold the CALL SITES to, which
+  // matters more now than it did before: 73 of 83 shot requests are rejected on
+  // priority, so "the driver did nothing" is the correct outcome of a call that
+  // must still have happened. See src/state.js sfx.
   state.sfx.length = 0;
 
   // $8085: LDY #$02 / $8087: STY $4014.
@@ -186,7 +208,18 @@ export function nmi(state, buttons, res, lag = false) {
   state.bandA.chrBank = chrBank(state.ppu.chrSel);// $8A7D JSR $8A9C, LDY $2D
 
   state.lock = 1;                                 // $809F INC $04
-  // $80A1: JSR $ED02 -- the sound driver. Not ported.
+
+  // $80A1: JSR $ED02 -- THE SOUND DRIVER, and its position is the point. It
+  // runs after the frame lock goes up and BEFORE the joypad is read, so sound
+  // advances before input and before any game logic; a request made by game
+  // code later in this frame is not looked at until the NEXT tick, which is
+  // why $EC63 seeds a new channel's duration with 1 instead of 0.
+  //
+  // THE LAG RULE LIVES IN WHERE THIS LINE IS. $8073's bail is above it, so a
+  // dropped NMI drops a music tick -- the port returns at the top of this
+  // function without ever reaching here. MEASURED: driverCalls == nmiEntries -
+  // lagFrames (600 == 601 - 1 over 600 game frames).
+  soundDriver(state, res);                        // $80A1 JSR $ED02
 
   readJoypad(state, buttons);                     // $80A4 JSR $81BF
 
@@ -279,11 +312,17 @@ export function stagePlay(state, res) {
   }
   if (sub & 0x20) { dyingArm(state, res); return; }        // $96AB-$96AF
   if (sub & 0x40) {                               // $96B1-$96B5
+    // $B0 IS the port's own state as of wave 8 -- it is pulse 1's duration
+    // counter (src/sound.js), and "non-zero for 277 frames" is simply a channel
+    // that was playing. What is still not ported is $96FB itself: the wave plan
+    // excludes game over and continue, and nothing in this corpus reaches
+    // either. The reason has been corrected rather than left standing.
     throw new Error(`$96FB: $1B = $${sub.toString(16).toUpperCase()} has bit 6 `
                   + `set (GAME OVER). $96FD gates both the timeout and START on `
-                  + `$B0, a sound-driver byte measured non-zero for 277 frames `
-                  + `and uncharacterised; the wave plan excludes it until $B0 is `
-                  + `the port's own state (wave 8).`);
+                  + `$B0 -- pulse 1's duration counter, i.e. "wait until the `
+                  + `game-over jingle has finished" -- and neither the timeout `
+                  + `arm nor the continue screen is ported. Deliberately `
+                  + `excluded by docs/worklog/gradius/00-plan.md.`);
   }
   if (sub & 0x80) { playArm(state, res); return; }         // $96B7-$96BB
   introStep(state, res);                          // $96BE -> jt_96C5
@@ -304,12 +343,14 @@ export function stagePlay(state, res) {
  * ends at world X >= 3072, which no scenario in this corpus reaches (the
  * furthest is camera page 0).
  *
- * `$9A5B JSR $8357` is NOT ported and it is not silently absent either: its
- * only non-sound effect is `LDY $19 / LDA $8346,Y / STA $2D`, and $8346[0] = 0,
- * so $2D stays 0 for the whole of stage 1 -- which is exactly what the port
- * holds it at and what w_002D has compared clean on all 18 scenarios. The rest
- * of $8357 ($8363-$839D) is the background-music selector: it de-dupes on $1C
- * and calls $EC1E. Wave 8.
+ * `$9A5B JSR $8357` IS PORTED as of wave 8 (src/sound.js setBgm) and used to
+ * be on this file's not-ported list with the note "its only non-sound effect is
+ * $2D". That was true and it was not the whole routine: $8363-$839D is the
+ * background-music selector, gated on `$3E == 0` -- the two frames in every 512
+ * where the camera's low byte is zero, and the first play frame after any stage
+ * intro, because $9B3E zeroes $3E. That is where the stage BGM the recon
+ * measured starting at game frame 310 comes from, and without it the port's
+ * channel-owner bytes would never leave the values they were seeded with.
  */
 function playArm(state, res) {
   if (state.substate !== 0x80) {                  // $982C -> jt_982F
@@ -325,7 +366,8 @@ function playArm(state, res) {
                   + `cartridge would set $1B = $81 and start the end-of-stage `
                   + `chain. Not ported.`);
   }
-  // $9A5B JSR $8357 -- see above. Falls through into $9A5E.
+  setBgm(state, res);                             // $9A5B JSR $8357
+  // ...and $8357 falls through into $9A5E.
   mode5Body(state, res);
 }
 

@@ -59,7 +59,9 @@
 //   $C05F-$C08D  the ARMOURED branch of $C055                     unexercised
 //   $C099        the type-$9A hit counter and its $BFC5 threshold unexercised
 //   $C2DC        the wall-breaking VRAM patch ($C32F)             unexercised
-//   $EC1E        the sound requests are RECORDED, not played      wave 8
+//   $EC1E        PLAYED as of wave 8 (src/sound.js). The requests are still
+//                RECORDED in state.sfx as well, because most of them are
+//                REJECTED on priority and the call still has to have happened.
 //
 // $BFE6-$C047 (the inner sweep), $C055 (the hit resolver) and $C2C4's body
 // (shots versus the terrain) WERE on that list and are ported here -- wave 6.
@@ -71,6 +73,7 @@ import { probeCollision } from './terrain.js';
 import { killEnemy, freeSlot } from './enemies.js';
 import { scoreKill } from './score.js';
 import { pickupCapsule } from './powerup.js';
+import { soundRequest } from './sound.js';
 
 const hex2 = (v) => `$${v.toString(16).toUpperCase().padStart(2, '0')}`;
 
@@ -532,7 +535,7 @@ function contact(state, res, j, type) {
 function everyEnemy(state, res, j) {
   const o = state.obj;
   freeSlot(state, j);                             // $C18C JSR $C1FD
-  state.sfx.push(0x0B);                           // $C18F/$C191 JSR $EC1E
+  soundRequest(state, 0x0B);                      // $C18F/$C191 JSR $EC1E
   for (let y = 9; y >= 0; y--) {                  // $C194 LDY #$09 / $C1A9 DEY
     const i = y + ENEMY_BASE;
     if (o.status[i] & 0x80) continue;             // $C199 BMI $C1A9
@@ -606,7 +609,7 @@ function armedEnemy(state, res, j) {
  *   C1E4  A9 02 / 8D 00 01          $0100 = 2
  *   C1E9  A9 00 / 8D 60 01 / 8D 40 01   $0160 = $0140 = 0
  *   C1F1  A9 A0 / 85 1B             $1B = $A0
- *   C1F5  A9 F7 / 20 1E EC          sfx $F7. Wave 8.
+ *   C1F5  A9 F7 / 20 1E EC          sfx $F7 -- records $37-$3A, four channels
  *   C1FA  4C C4 C2  JMP $C2C4       <- NOT an RTS: the rest of the sweep is
  *                                      abandoned and the frame goes straight to
  *                                      the shot-vs-terrain loop
@@ -624,7 +627,7 @@ export function die(state) {
   state.ring.cursor = 0;                          // $C1E9/$C1EB STA $0160
   state.obj.timer[0] = 0;                         // $C1EE STA $0140
   state.substate = 0xA0;                          // $C1F1/$C1F3 STA $1B
-  state.sfx.push(0xF7);                           // $C1F5 LDA #$F7 / JSR $EC1E
+  soundRequest(state, 0xF7);                      // $C1F5 LDA #$F7 / JSR $EC1E
 }
 
 /**

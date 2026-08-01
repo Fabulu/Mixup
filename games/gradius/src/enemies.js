@@ -63,6 +63,7 @@
 //                            bullet slot throws: $BDD5 is not transcribed.
 
 import { u8, u16, ENEMY_BASE, ENEMY_SLOTS } from './state.js';
+import { soundRequest } from './sound.js';
 
 const hex2 = (v) => `$${v.toString(16).toUpperCase().padStart(2, '0')}`;
 const hex4 = (v) => `$${v.toString(16).toUpperCase().padStart(4, '0')}`;
@@ -136,7 +137,7 @@ export function freeSlot(state, j) {
  *   BE93  B9 0C 03  LDA $030C,Y / 29 7F AND #$7F / AA TAX
  *   BE99  E0 22     CPX #$22 / B0 08 BCS $BEA5     types >= $22 are silent
  *   BE9D  BD 6E BE  LDA $BE6E,X / F0 03 BEQ $BEA5  ...and so is a 0 entry
- *   BEA2  20 1E EC  JSR $EC1E                      the death sound. Wave 8.
+ *   BEA2  20 1E EC  JSR $EC1E                      the death sound (src/sound.js)
  *   BEA5  B9 AC 03  LDA $03AC,Y / F0 10 BEQ $BEBA  not a squadron member
  *   BEAA  C9 01     CMP #$01 / F0 07 BEQ $BEB5     already a CARRIER: stay one
  *   BEAE  AA        TAX / A9 00 LDA #$00 / D6 48 DEC $48,X / D0 02 BNE $BEB7
@@ -173,7 +174,7 @@ export function killEnemy(state, res, j) {
   const t7 = type & 0x7F;                          // $BE96 AND #$7F
   if (t7 < 0x22) {                                 // $BE99 CPX #$22 / BCS
     const id = res.weaponTables.read(0xBE6E + t7); // $BE9D LDA $BE6E,X
-    if (id !== 0) state.sfx.push(id);              // $BEA0 BEQ / $BEA2 JSR $EC1E
+    if (id !== 0) soundRequest(state, id);        // $BEA0 BEQ / $BEA2 JSR $EC1E
   }
   const carrier = o.carrier[i];                    // $BEA5 LDA $03AC,Y
   if (carrier !== 0) {                             // $BEA8 BEQ $BEBA

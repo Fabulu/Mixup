@@ -111,6 +111,28 @@ stage('assets == the cartridge (verify_assets.py --self-test)', () => {
     ? { status: 'PASS' } : { status: 'FAIL' };
 });
 
+// ---------------------------------------------------------------- stage 1c --
+// snddata.py --selfcheck: the sound data decoded PURELY from the ROM bytes says
+// index $13 (the stage-1 pulse-1 part) lasts 512 ticks, and the cartridge was
+// MEASURED holding $B2 = $13 for 513 game frames (310..822 inclusive) -- 1 setup
+// frame plus 512. Two independent derivations of one number
+// (docs/knowledge/03), and the recon watched it fail both ways:
+//
+//   dur = base << exp        (instead of base*(exp+1))  -> 768 ticks  [FAIL]
+//   loop while c == cnt + 1  (instead of c == cnt)       -> 640 ticks  [FAIL]
+//
+// It is exactly the two readings src/sound.js could plausibly have taken for
+// $EECE-$EED5 and $ECEB, so it guards the port and not just the recon. It reads
+// the .nes itself, hence the ROM-absent skip.
+stage('sound data == the measured ownership window (snddata.py --selfcheck)', () => {
+  if (!romPresent) {
+    return { status: 'SKIP', note: 'snddata.py reads the .nes itself; no '
+           + 'cartridge at the repo root' };
+  }
+  return run('python', ['games/gradius/tools/oracle/snddata.py', '--selfcheck'])
+    ? { status: 'PASS' } : { status: 'FAIL' };
+});
+
 // ---------------------------------------------------------------- stage 2 ---
 // The port-side trace must be able to produce probe.lua's exact field list.
 // This is a shape check and it is cheap; it catches a renamed field before four

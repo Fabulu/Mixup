@@ -84,6 +84,36 @@ local MS_STORED  = 0x8AF9   -- DEC $9F       -- one per sprite actually stored
 -- this counter is what turns "fixed shape" from a claim into a compared field
 -- (docs/knowledge/06, model C: partial completion of an object loop).
 local ENEMY_SLOT = 0xADE5
+-- ============================ SOUND, wave 8 ================================
+--
+-- $ED02 is the sound driver's ONLY entry (verified: dis6502 xref ED02 gives
+-- exactly one caller, $80A1) and $ED46 is its per-channel routine.  Two
+-- counters, because they answer different questions:
+--
+--   audioTicks     $ED02 executions.  THE LAG RULE: $8073's bail is upstream of
+--                  $80A1, so a dropped NMI drops a music tick.  It is 1 on every
+--                  sampled frame BY CONSTRUCTION -- a frame that never reached
+--                  $80B5 never produced a row -- which is exactly the claim the
+--                  port has to satisfy: tick once per non-dropped NMI, never
+--                  twice, never zero.
+--   audioChannels  $ED46 executions.  0..4 owned channels PLUS every control
+--                  command chained inside one tick, because $ECE5 re-enters
+--                  $ED46 with `BNE $ED46` rather than returning.  This one
+--                  VARIES, so it is the field with teeth.
+--
+-- And the register side, which probe.lua cannot see at all (APU registers are
+-- write-only, so a --watch cannot read them back):
+--
+--   apuWrites      writes to $4000-$400F.  $4014 (OAM DMA, once a frame) and
+--                  $4015/$4017 (once per RUN at $81AD/$81B2) are outside the
+--                  range deliberately -- they are not the driver's.
+--   apuDigest      a rolling hash of (offset, value) over those writes IN
+--                  ORDER: h = (h*31 + (off<<8) + v) & $FFFF.  The shadow itself
+--                  is not comparable (the port's starts at zero where the
+--                  machine's has history from before the align frame); the
+--                  writes made DURING the frame are, and this is how.
+local SND_DRIVER = 0xED02
+local SND_CHANNEL = 0xED46
 
 local BUTTON = { U = "up", D = "down", L = "left", R = "right",
                  A = "a", B = "b", S = "start", E = "select" }
@@ -118,6 +148,7 @@ end
 local gframe = 0
 local rows = {}
 local c_slot, c_ms, c_rec, c_store, c_lag, c_enemy = 0, 0, 0, 0, 0, 0
+local c_snd, c_sndch, c_apu, c_dig = 0, 0, 0, 0
 local done, failed, stopped = false, false, false
 
 local function die(msg)
@@ -137,6 +168,10 @@ local function on_frame_end()
       spritesStored  = c_store,
       enemySlots     = c_enemy,
       lagged         = c_lag,
+      audioTicks     = c_snd,
+      audioChannels  = c_sndch,
+      apuWrites      = c_apu,
+      apuDigest      = c_dig,
       -- carried purely so the merge can prove this process ran the same run as
       -- probe.lua's process. If these ever disagree the merge fails loudly
       -- rather than pairing two different games frame by frame.
@@ -145,6 +180,7 @@ local function on_frame_end()
       counter        = emu.read(0x02, CPU, false),
    }
    c_slot, c_ms, c_rec, c_store, c_lag, c_enemy = 0, 0, 0, 0, 0, 0
+   c_snd, c_sndch, c_apu, c_dig = 0, 0, 0, 0
    -- AFTER the row, exactly where probe.lua applies its own.
    for _, p in ipairs(POKES) do
       if gframe >= p.from and gframe <= p.to then
@@ -156,7 +192,8 @@ local function on_frame_end()
 end
 
 local KEYS = { "frame", "slotsVisited", "msExpanded", "spriteRecords",
-               "spritesStored", "enemySlots", "lagged", "playerX", "playerY",
+               "spritesStored", "enemySlots", "lagged", "audioTicks",
+               "audioChannels", "apuWrites", "apuDigest", "playerX", "playerY",
                "counter" }
 
 local function write_json()
@@ -208,6 +245,13 @@ emu.addEventCallback(function()
          hook(MS_RECORD, function() c_rec = c_rec + 1 end)
          hook(MS_STORED, function() c_store = c_store + 1 end)
          hook(ENEMY_SLOT, function() c_enemy = c_enemy + 1 end)
+         hook(SND_DRIVER, function() c_snd = c_snd + 1 end)
+         hook(SND_CHANNEL, function() c_sndch = c_sndch + 1 end)
+         emu.addMemoryCallback(function(addr, value)
+               c_apu = c_apu + 1
+               c_dig = ((c_dig * 31) + ((addr - 0x4000) * 256) + value) % 65536
+            end, emu.callbackType.write, 0x4000, 0x400F,
+            emu.cpuType.nes, emu.memType.nesMemory)
          hook(NMI_ENTRY, function()
                  -- $8073: LDY $04 / $8075: BNE $80B7. Non-zero here means the
                  -- previous NMI has not cleared the lock, so THIS NMI bails
@@ -234,6 +278,15 @@ emu.addEventCallback(function()
          say("spriteRecordsTotal = " .. tot_r)
          say("spritesStoredTotal = " .. tot_st)
          say("laggedTotal = " .. tot_l)
+         local tot_snd, tot_ch, tot_apu = 0, 0, 0
+         for _, r in ipairs(rows) do
+            tot_snd = tot_snd + r.audioTicks
+            tot_ch = tot_ch + r.audioChannels
+            tot_apu = tot_apu + r.apuWrites
+         end
+         say("audioTicksTotal = " .. tot_snd)
+         say("audioChannelsTotal = " .. tot_ch)
+         say("apuWritesTotal = " .. tot_apu)
          say("END")
          stopped = true          -- emu.stop() is ASYNCHRONOUS (PROBE.md 6)
          emu.stop(0)

@@ -6,6 +6,8 @@
 // resolves relative to the page, so it only works while the page happens to sit
 // one level above src/ and breaks the moment a launcher moves it.
 
+import { bindSoundRom } from './sound.js';
+
 const BASE = new URL('../assets/', import.meta.url).href;
 
 async function fetchOrExplain(rel, how) {
@@ -91,6 +93,29 @@ export function weaponTables(json) {
 }
 
 /**
+ * assets/sound/tables.json -> the same byte reader for the $EC1E/$ED02 driver
+ * (wave 8).
+ *
+ * Three ranges: $833F-$8355, the three interleaved 7-entry tables the BGM
+ * selector $8357 reads with Y = $19; $ECB2-$ECB5, the four channel bases
+ * ($EC42 LDX $ECB2,Y, and reading one past the end of THOSE FOUR BYTES is the
+ * whole of the index-0 crash); and $EFB8-$FFF9, which is the pitch table, the
+ * 64 3-byte sound records and every sequence stream IN ONE BLOCK, because
+ * $EFCD-$EFCF is simultaneously record 0 and the last two entries of the pitch
+ * table. The driver walks streams with a real 16-bit pointer and jumps around
+ * inside them with $FD/$FE, so bytes at CPU addresses is the only shape that
+ * can hold them.
+ */
+export function soundTables(json) {
+  const t = romByteReader(json, 'sound/tables.json', 'sound tables');
+  // Bound module-wide the moment the cartridge's sound ROM is decoded: the
+  // driver's nine callers reach $EFCD by address, not through `res`. See the
+  // note on bindSoundRom in src/sound.js.
+  bindSoundRom(t);
+  return t;
+}
+
+/**
  * A byte reader addressed the way the 6502 is, over a list of exported CPU
  * ranges. Shared by the enemy and flow tables.
  *
@@ -135,7 +160,7 @@ function romByteReader(json, file, label) {
 }
 
 export async function loadResources(stageIndex = 0) {
-  const [manifest, tilesBuf, stages, ms, hud, enemies, flow, coll, weap] = await Promise.all([
+  const [manifest, tilesBuf, stages, ms, hud, enemies, flow, coll, weap, snd] = await Promise.all([
     fetchOrExplain('manifest.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('chr/tiles.u8', EXPORT).then((r) => r.arrayBuffer()),
     fetchOrExplain('terrain/stages.json', EXPORT).then((r) => r.json()),
@@ -145,6 +170,7 @@ export async function loadResources(stageIndex = 0) {
     fetchOrExplain('flow/tables.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('collision/tables.json', EXPORT).then((r) => r.json()),
     fetchOrExplain('weapons/tables.json', EXPORT).then((r) => r.json()),
+    fetchOrExplain('sound/tables.json', EXPORT).then((r) => r.json()),
   ]);
 
   const tiles = new Uint8Array(tilesBuf);
@@ -162,7 +188,8 @@ export async function loadResources(stageIndex = 0) {
            hudPackets: hudPacketTable(hud), enemyTables: enemyTables(enemies),
            flowTables: flowTables(flow),
            collisionTables: collisionTables(coll),
-           weaponTables: weaponTables(weap) };
+           weaponTables: weaponTables(weap),
+           soundTables: soundTables(snd) };
 }
 
 /** The frame rate, read from game.json. It is spelled ONCE, in that file. */

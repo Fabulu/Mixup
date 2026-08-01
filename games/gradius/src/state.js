@@ -370,13 +370,54 @@ export function createState() {
     // window here reaches is $0110, so $84D3's arm is ported and unexercised.
     // It is the only thing in the game that INCREASES $20,X.
     extraLife: new Uint8Array(2),
-    // Sound requests THIS FRAME, in the order $EC1E was called. Not a RAM
-    // byte -- the driver is wave 8 -- and not a no-op either: `$A266 LDA $99 /
-    // JMP $EC1E` is the shared tail of BOTH shot spawns, so a DOUBLE volley
-    // with two Options requests six sounds in one frame, and $BE93, $C1D6 and
-    // $84F2 add their own. src/nmi.js clears it at the top of every frame;
-    // tests/weapons.test.js is what holds it.
+    // Sound requests THIS FRAME, in the order $EC1E was called. Not a RAM byte
+    // and not the driver's state either: `$A266 LDA $99 / JMP $EC1E` is the
+    // shared tail of BOTH shot spawns, so a DOUBLE volley with two Options
+    // requests six sounds in one frame, and $BE93, $C1D6 and $84F2 add their
+    // own. It stayed after wave 8 ported the driver, because it is what
+    // tests/weapons.test.js and tests/powerup.test.js hold the CALL SITES to,
+    // independently of whether the driver then accepts the request (73 of 83
+    // shot SFX are REJECTED on priority in the measured window -- see
+    // src/sound.js). src/nmi.js clears it at the top of every frame.
     sfx: [],
+
+    // ---- the sound driver, $EC1E / $ED02 (src/sound.js) ------------------
+    //
+    // $00B0-$00FF AS ONE FLAT ARRAY, indexed by address. Four 17-byte channel
+    // structs at $B0 $C1 $D2 $E3 ($ECB2), then the driver's own scratch -- and
+    // the structs DELIBERATELY OVERLAP the globals, which is why this is one
+    // array and not four objects plus some fields:
+    //
+    //   $DD/$DE  is $D2 + $0B and $D2 + $0C, the TRIANGLE's sweep and detune
+    //            bytes. The triangle never executes the $10/$11 commands
+    //            ($EDDD CPX #$D2), so the two bytes are reused as the ONE
+    //            GLOBAL sub-phrase return address, shared by all four channels.
+    //   $F0-$F3  is $E3 + $0D..$10, the NOISE struct's unused tail, reused as
+    //            the music-fade globals.
+    //
+    // MEASURED (00-recon-sound.md 8d, RAM taps gated on the $ED02..$80A4
+    // window): the driver's entire footprint is its own structs, $15 and the
+    // stack. It reads no object table, no sprite count and no collision state,
+    // which is why nothing else in this port has to know it exists.
+    snd: new Uint8Array(0x50),      // $00B0-$00FF
+
+    // $01A0-$01B0 -- where $9AF0 copies PULSE 1's whole struct on the pause and
+    // $9B33 copies it back on the resume. Only pulse 1, because only pulse 1 is
+    // overwritten: the pause jingle $3B's record targets it and the driver's
+    // freeze arm leaves the other three counters exactly where they were.
+    sndSave: new Uint8Array(0x11),
+
+    // $1C -- the background-music de-dupe byte. NOT a driver byte: $839B
+    // compares the code it is about to play against it and returns without
+    // requesting anything if they match, and $97DD (the respawn) clears it so
+    // the next intro's music starts again. Cleared by $97DD, written by $839F.
+    zp1C: 0,
+
+    // $4000-$4017 as a write-only shadow. It is NOT comparable against the
+    // cartridge (the registers cannot be read back, and this side starts from
+    // zero where the machine's has history) -- what IS compared is the count
+    // and the rolling digest of the writes MADE each frame, in work below.
+    apu: new Uint8Array(0x18),
 
     // ---- the enemy spawn engine's zero page ($A2C0, src/enemies.js) -----
     //
@@ -545,6 +586,32 @@ export function createState() {
       // 26630 over 2663 on the recon's 3000-frame run. The loop is
       // `LDX #$09 / ... / DEC $A8 / BPL`, with no early exit at all.
       enemySlots: 0,
+
+      // ---- the sound driver, wave 8 (src/sound.js) ----------------------
+      // docs/knowledge/06's rule that the signals are instrumented SEPARATELY
+      // rather than inferred from one "lag" boolean. All four are counted in
+      // the port's own code and compared per frame against the cartridge's own
+      // execution counts, taken by tools/oracle/objloop.lua.
+      //
+      //   audioTicks     $ED02 entries. THE LAG RULE: the frame lock's bail at
+      //                  $8073 is upstream of $80A1, so a dropped NMI drops a
+      //                  music tick. MEASURED, 600 game frames: nmiEntries 601,
+      //                  lagFrames 1, driverCalls 600 -- driverCalls ==
+      //                  nmiEntries - lagFrames.
+      //   audioChannels  $ED46 entries. 0..4 owned channels PLUS every control
+      //                  command chained inside the tick ($ECE5 re-enters $ED46
+      //                  by BNE, not by JSR), so it varies frame to frame.
+      //   apuWrites      writes to $4000-$400F. $4014 (OAM DMA) and
+      //                  $4015/$4017 (once per run, $81AD/$81B2) are outside
+      //                  the range on purpose.
+      //   apuDigest      a rolling hash of (offset, value) over those writes,
+      //                  in order: h = (h*31 + (off<<8) + v) & $FFFF. This is
+      //                  the register-level comparison -- the shadow itself
+      //                  cannot be compared, the writes can.
+      audioTicks: 0,
+      audioChannels: 0,
+      apuWrites: 0,
+      apuDigest: 0,
     },
   };
 }

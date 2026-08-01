@@ -49,19 +49,29 @@
 // Named rather than silently absent, each as a throw carrying its ROM address:
 //
 //   $96CF  next stage        (INC $19 -- the port loads one stage's assets)
-//   $96FB  game over         (gated on $B0, a sound byte nothing has
-//                             characterised -- 00-recon-flow.md 8)
+//   $96FB  game over.        $96FD gates both the timeout and START on $B0 --
+//                             which is CHARACTERISED as of wave 8: it is pulse
+//                             1's duration counter (src/sound.js), so the gate
+//                             means "wait until the game-over jingle finishes".
+//                             The arm is still a throw because the wave plan
+//                             excludes game over and continue, not because the
+//                             byte is a mystery.
 //   $97F1  lives went negative -- the game-over arm $979D branches to. Still a
-//          throw for the same $B0 reason; wave 5 ported everything above it.
+//          throw for the same reason; wave 5 ported everything above it.
 //   $9A0E..$9904  the end-of-stage / boss chain, play sub-states $81-$8F
 //   $9C5E  the pause-screen cheat, reached at $33 == $0A
 //   $882C's 2304 PPU writes -- only its RAM side effects are reproduced
-//   $83AB / $EC1E -- every sound request. Wave 8.
+//
+// $83AB / $EC1E WERE ON THAT LIST AND ARE NOT ANY MORE -- src/sound.js, wave 8.
+// Three of this file's routines make sound requests and all three now do:
+// $9BC9 and $9BED (stop all four channels), and $9AFA (the pause jingle $3B,
+// which is the ONE sound the driver keeps playing while $15 is set).
 
 import { u8, BTN } from './state.js';
 import { cannedPacket, copyPacket } from './hudpackets.js';
 import { stLives, stTopScore, stScore, stPowerBar } from './hud.js';
 import { buildBlock } from './terrain.js';
+import { stopAllSound, pauseSaveChannel, pauseRestoreChannel } from './sound.js';
 
 /** `$18`, with the range the per-player arrays assume made explicit. */
 function playerIndex(state) {
@@ -134,11 +144,14 @@ export function introStep(state, res) {
  * it is tests/collision.test.js, replaying 00-recon-flow.md's own three
  * intervention rows ($3F poked to 3, 7 and $14 gave $24 = 2, 6 and 4).
  *
- * `$39` and `$1C` are cleared by `$97DD` and are NOT modelled: `$39` has no
- * reader on any path this port takes, and `$1C` is the background-music de-dupe
- * byte `$8363` compares against (wave 8). Named here rather than left out
- * silently. `$5E` is the same case -- `$9C09` writes it and the PRG contains no
- * reader at all (grep: two writers, $99B5 and $9C0F, zero readers).
+ * `$39` is cleared by `$97DD` and is NOT modelled: it has no reader on any path
+ * this port takes. `$5E` is the same case -- `$9C09` writes it and the PRG
+ * contains no reader at all (grep: two writers, $99B5 and $9C0F, zero readers).
+ *
+ * `$1C` USED TO BE ON THAT LIST and is real port state as of wave 8: it is the
+ * background-music de-dupe byte `$839B` compares against, and clearing it HERE
+ * is what makes the respawn's stage intro request the BGM again instead of
+ * being de-duplicated into silence.
  */
 export function respawn(state, res) {
   const p = playerIndex(state);                     // $979D LDX $18
@@ -155,8 +168,9 @@ export function respawn(state, res) {
     throw new Error(`$97F1: $20,${p} went negative -- GAME OVER. $0A &= $FE, `
                   + `$1B = $C0, the canned packet $1C and the $4C = 120 continue `
                   + `window are not ported: $96FD gates both the timeout and `
-                  + `START on $B0, a sound-driver byte measured non-zero for 277 `
-                  + `frames and uncharacterised (wave 8).`);
+                  + `START on $B0 -- pulse 1's duration counter (src/sound.js), `
+                  + `i.e. "wait until the game-over jingle has finished". The `
+                  + `arm itself is excluded by docs/worklog/gradius/00-plan.md.`);
   }
   // $97C5-$97DB, the two-player switch. With one player $0A = 1, so `AND #$02`
   // is 0 and X -- and therefore $18 -- is unchanged. Ported as the ROM has it
@@ -175,6 +189,7 @@ export function respawn(state, res) {
   state.spawn.z5D = 0;                              // $97E3 STA $5D
   state.zp33 = 0;                                   // $97E5 STA $33
   state.substate = 0;                               // $97E7 STA $1B
+  state.zp1C = 0;                                   // $97E9 STA $1C
   clearAhead(state);                                // $97EB JSR $9C09
   introReset(state, res);                           // $97EE JMP $9B3E
 }
@@ -202,7 +217,7 @@ export function respawn(state, res) {
  *   9BB8  A2 1F / 9D A0 07 / CA / 10 FA                and all 32 of $07A0
  *   9BC0  A9 01 / 8D 00 01               $0100 = 1, the ship is alive again
  *   9BC5  A9 06 / 85 0D                  $0D = 6
- *   9BC9  4C AB 83  JMP $83AB            sound $FC -- not ported (wave 8)
+ *   9BC9  4C AB 83  JMP $83AB            sound $FC: stop all four channels
  *
  * THE CLEAR IS THE POWER-UP WIPE. $3D-$97 covers $40 (speed), $41, $44, $45,
  * $46 -- everything a capsule ever gave you -- plus the camera, the streamer's
@@ -263,7 +278,7 @@ export function introReset(state, res) {
   state.ring.x.fill(px);                            // $9BB8-$9BBE
   state.obj.status[0] = 1;                          // $9BC0/$9BC2 STA $0100
   state.ppu.blank = 6;                              // $9BC5/$9BC7 STA $0D
-  // $9BC9 JMP $83AB -- `LDA #$FC / JMP $EC1E`, stop all sound. Wave 8.
+  stopAllSound(state, res);                         // $9BC9 JMP $83AB
 }
 
 /**
@@ -353,7 +368,7 @@ function fullScreenLoad(state) {
  * `sub_9BF0`. `$96E6` (the next-stage arm) calls $9BF0 directly, which is why
  * the ROM has two labels and this has one function with a note.
  *
- *   9BED  20 AB 83  JSR $83AB          stop all sound. Wave 8.
+ *   9BED  20 AB 83  JSR $83AB          stop all four channels ($FC)
  *   9BF0  A9 10 / 20 E8 85  JSR $85E8  packet $10, WITH the mode-byte prologue
  *   9BF5  A5 19 / 18 / 69 08           A := $19 + 8
  *   9BFA  20 F3 85  JSR $85F3          <- $85F3, NOT $85E8: no mode byte, this
@@ -379,6 +394,7 @@ function fullScreenLoad(state) {
  */
 export function introPackets(state, res) {
   const packets = res.hudPackets;
+  stopAllSound(state, res);                         // $9BED JSR $83AB
   cannedPacket(state, packets, 0x10);               // $9BF0/$9BF2
   copyPacket(state, packets, u8(state.zp19 + 8));   // $9BF5-$9BFA
   cannedPacket(state, packets, 0x07);               // $9BFD/$9BFF
@@ -493,11 +509,11 @@ export function startPlay(state) {
  * MEASURED (00-recon-flow.md 8): START at f450 set $15 = 1 and $3E stuck at 68
  * for 50 frames; START at f500 cleared it and the camera resumed.
  *
- * The 17-byte struct save/restore and the three APU writes on the resume arm
- * are the SOUND DRIVER's ($B0-$C0 are its four channel structs) and are wave
- * 8's, which the plan says outright. They are not reproduced and nothing in the
- * port reads them; a $15 that toggles without them is the whole of what the
- * corpus can see.
+ * The 17-byte struct save and the `$3B` request at $9AFA ARE reproduced as of
+ * wave 8 (src/sound.js). $B0-$C0 is pulse 1's channel struct, and $3B's record
+ * targets pulse 1 -- so the save is what lets the music resume on exactly the
+ * tick it stopped on. MEASURED from the other side: the driver-cycle sequence
+ * for frames 491-499 and 562-570 of a pause run is byte-identical.
  */
 export function pauseCheck(state, res) {
   if (!(state.substate & 0x80)) return;             // $9AD1 LDA $1B / BPL $9AD9
@@ -508,7 +524,7 @@ export function pauseCheck(state, res) {
   if (state.zp15 !== 0) { resumeCheck(state, res); return; }  // $9AE4/$9AE6
   if (!(state.input.pressed & BTN.START)) return;   // $9AE8 AND #$10 / BEQ
   state.zp15 = 1;                                   // $9AEC/$9AEE STA $15
-  // $9AF0-$9AF8 the sound-struct save, $9AFA the sfx request. Wave 8.
+  pauseSaveChannel(state, res);                     // $9AF0-$9AFC
 }
 
 /**
@@ -522,8 +538,8 @@ export function pauseCheck(state, res) {
  *   9B1B  A5 05 / 29 10 / F0 1C      START not pressed -> RTS
  *   9B21  A9 00 / 85 15              UNPAUSE
  *   9B25  E6 5B                      INC $5B
- *   9B27  85 B2 / A9 30 / 8D 00 40 / A5 D7 / 8D 08 40   APU. Wave 8.
- *   9B33  A2 10 / BD A0 01 / 95 B0 / CA / 10 F8         restore. Wave 8.
+ *   9B27  85 B2 / A9 30 / 8D 00 40 / A5 D7 / 8D 08 40   the APU writes
+ *   9B33  A2 10 / BD A0 01 / 95 B0 / CA / 10 F8         the struct restore
  *
  * `$9B25 INC $5B` IS INERT AND IS PORTED ANYWAY. $9AD1 is the last thing the
  * mode-5 frame does, and $9658 `STA $5B` is the fourth instruction of the next
@@ -545,8 +561,7 @@ function resumeCheck(state, res) {
   if (!(state.input.pressed & BTN.START)) return;   // $9B1B/$9B1D/$9B1F
   state.zp15 = 0;                                   // $9B21/$9B23
   state.zp5B = u8(state.zp5B + 1);                  // $9B25 INC $5B -- inert
-  // $9B27-$9B3B: $B2 = 0, $4000 = $30, $4008 = $D7, and the struct restore.
-  // Wave 8 (the plan lists $9AE2/$9B21 save/restore under sound explicitly).
+  pauseRestoreChannel(state);                       // $9B27-$9B3B
 }
 
 /**

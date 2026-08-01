@@ -40,6 +40,7 @@
 
 import { u8, u16 } from './state.js';
 import { probeCollision } from './terrain.js';
+import { soundRequest } from './sound.js';
 
 const hex2 = (v) => `$${v.toString(16).toUpperCase().padStart(2, '0')}`;
 
@@ -240,17 +241,20 @@ export function spawnMissile(state, x) {
 }
 
 /**
- * `$EC1E` -- the sound request. WAVE 8.
+ * `$EC1E` -- the sound request. PLAYED as of wave 8 (src/sound.js), and still
+ * RECORDED in `state.sfx` as a list, which is not redundancy:
  *
- * Recorded, not played, and recorded as a LIST because the count per frame is
- * the interesting number: a DOUBLE volley with two Options calls $EC1E six
- * times in one frame ($A266 is the shared tail of both shot spawns), and the
- * driver's priority rule rejects most of them (00-recon-sound.md: 73 of 83 shot
- * requests rejected in the measured window). `state.sfx` is cleared at the top
- * of every frame by src/nmi.js.
+ * a DOUBLE volley with two Options calls $EC1E six times in one frame ($A266 is
+ * the shared tail of both shot spawns) and the driver's priority rule REJECTS
+ * most of them -- 73 of 83 shot requests in the measured window, because the
+ * stage-1 BGM's pulse-1 part owns $B2 = $13 for 513 frames from game frame 310.
+ * So "the driver did nothing" is the correct outcome of a call that must still
+ * have been made, and the list is what holds the call SITE to account
+ * independently of what the driver then decides. `state.sfx` is cleared at the
+ * top of every frame by src/nmi.js.
  */
 export function requestSfx(state, id) {
-  state.sfx.push(id);
+  soundRequest(state, id);
 }
 
 /**

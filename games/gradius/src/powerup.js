@@ -54,6 +54,7 @@
 import { u8 } from './state.js';
 import { meterCursor } from './hud.js';
 import { scoreCapsule, scoreCapsuleBonus, scoreDigit } from './score.js';
+import { soundRequest } from './sound.js';
 
 /**
  * `$894B` -- the meter takes a capsule. Reached from `$C1AF` only.
@@ -67,7 +68,7 @@ import { scoreCapsule, scoreCapsuleBonus, scoreDigit } from './score.js';
  *   8960  A9 10     LDA #$10 / 20 55 84 JSR $8455    +$001000 -- a score bonus
  *   8965  A9 01     LDA #$01 / 85 42 STA $42    <- WRAPS TO 1, NOT TO 0
  *   8969  20 5B 84  JSR $845B                  +$0050, every capsule
- *   896C  A9 0D     LDA #$0D / 20 1E EC JSR $EC1E   sfx $0D. Wave 8.
+ *   896C  A9 0D     LDA #$0D / 20 1E EC JSR $EC1E   sfx $0D (src/sound.js)
  *   8971  4C 30 8A  JMP $8A30                  redraw the meter cursor
  *
  * THE SEVENTH CAPSULE'S BONUS IS GATED ON A DIGIT OF THE SCORE, and that is
@@ -100,7 +101,7 @@ export function pickupCapsule(state, res) {
     zp.meter = 1;                                 // $8965/$8967 -- 1, not 0
   }
   scoreCapsule(state);                            // $8969 JSR $845B, +$0050
-  state.sfx.push(0x0D);                           // $896C LDA #$0D / JSR $EC1E
+  soundRequest(state, 0x0D);                      // $896C LDA #$0D / JSR $EC1E
   meterCursor(state, res.hudPackets);             // $8971 JMP $8A30
 }
 
@@ -134,7 +135,7 @@ export function applyCapsule(state, res) {
     case 1:                                               // $89A1 SPEED UP
       zp.speed = u8(zp.speed + 1);                // $89A1 INC $40 -- NO CAP
       zp.meter = 0;                               // $89A3/$89A5
-      state.sfx.push(0x0E);                       // $89A7/$89A9 JSR $EC1E
+      soundRequest(state, 0x0E);                  // $89A7/$89A9 JSR $EC1E
       meterCursor(state, res.hudPackets);         // $89AC JMP $8A30
       return;
     case 2:                                               // $89AF MISSILE
@@ -171,7 +172,7 @@ export function applyCapsule(state, res) {
   // $8A30 -- so after a MISSILE/DOUBLE/LASER/OPTION/SHIELD the bar keeps showing
   // the old cursor until $8898's rotation comes round to $89E3 again.
   state.zp.meter = 0;                             // $89B5/$89B7 or $89C9/$89CB
-  state.sfx.push(0x0E);                           // $89DD/$89DF JSR $EC1E
+  soundRequest(state, 0x0E);                      // $89DD/$89DF JSR $EC1E
 }
 
 /**

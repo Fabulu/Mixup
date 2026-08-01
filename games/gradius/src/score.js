@@ -25,6 +25,7 @@
 // `w_07E4`-`w_07E6`.
 
 import { u8 } from './state.js';
+import { soundRequest } from './sound.js';
 
 /** `$07E0` + this = the base of a 3-byte BCD score. $18 selects. */
 const TOP = 0, P1 = 4;
@@ -162,7 +163,7 @@ export function addScore(state, lo, mid, hi) {
  *   84E8  90 02     BCC $84EC / A9 FF LDA #$FF        it saturates at $FF
  *   84EC  A6 18     LDX $18 / 95 2A STA $2A,X
  *   84F0  F6 20     INC $20,X                          <- AN EXTRA LIFE
- *   84F2  A9 36     LDA #$36 / 20 1E EC JSR $EC1E      wave 8
+ *   84F2  A9 36     LDA #$36 / 20 1E EC JSR $EC1E      the extra-life jingle
  *
  * UNREACHED IN THIS CORPUS and ported anyway: `$2A` is $02 in the cartridge's
  * own seed (200000 points) and the biggest score any scenario here reaches is
@@ -176,7 +177,7 @@ function extraLife(state, base) {
   const r = bcdByte(state.extraLife[p], 1, false);          // $84E5 JSR $84A5
   state.extraLife[p] = r.carry ? 0xFF : r.byte;             // $84E8/$84EA/$84EE
   state.lives[p] = u8(state.lives[p] + 1);                  // $84F0 INC $20,X
-  state.sfx.push(0x36);                                     // $84F2 JSR $EC1E
+  soundRequest(state, 0x36);                                // $84F2 JSR $EC1E
 }
 
 /**

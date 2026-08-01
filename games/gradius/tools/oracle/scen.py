@@ -183,6 +183,21 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
         if r["enemySlots"] not in (0, 10):
             raise SystemExit(f"{name} f{i}: $ADE5 ran {r['enemySlots']} times, "
                              f"not 0 or 10 -- the enemy loop is not fixed-shape")
+        # THE LAG RULE, asserted on the ORACLE rather than trusted.  $ED02 has
+        # exactly one caller ($80A1) and it sits below the frame lock's bail, so
+        # every frame that reached the $80B5 sample point ticked the driver
+        # exactly once.  If this is ever not 1, either the driver gained a second
+        # caller or the sample point moved, and every audio number below it is
+        # meaningless (00-recon-sound.md 0: driverCalls == nmiEntries - lagFrames).
+        if r["audioTicks"] != 1:
+            raise SystemExit(f"{name} f{i}: $ED02 ran {r['audioTicks']} times on a "
+                             f"sampled frame, not exactly 1")
+        # $ED46 runs once per OWNED channel plus once per chained control
+        # command; four channels with no chaining is 4, and a chain can push it
+        # higher.  What it can never be is more than 4 + the commands, so the
+        # only bound worth asserting is that a frame with no owned channel is 0.
+        if r["audioChannels"] < 0:
+            raise SystemExit(f"{name} f{i}: $ED46 count is negative")
 
     pdrops = drops_from_stdout(rp)
     odrops = [r["frame"] for r in of for _ in range(r["lagged"])]
@@ -200,7 +215,8 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
     for a, b in zip(pf, of):
         row = dict(a)
         for k in ("slotsVisited", "msExpanded", "spriteRecords",
-                  "spritesStored", "enemySlots", "lagged"):
+                  "spritesStored", "enemySlots", "lagged", "audioTicks",
+                  "audioChannels", "apuWrites", "apuDigest"):
             row[k] = b[k]
         merged.append(row)
 
@@ -224,7 +240,8 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
         "samplePoint": pdoc["samplePoint"],
         "fields": pdoc["fields"] + ["slotsVisited", "msExpanded",
                                     "spriteRecords", "spritesStored",
-                                    "enemySlots", "lagged"],
+                                    "enemySlots", "lagged", "audioTicks",
+                                    "audioChannels", "apuWrites", "apuDigest"],
         "seedRam": base64.b64encode(seed).decode("ascii"),
         "frames": merged,
     }

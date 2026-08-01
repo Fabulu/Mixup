@@ -132,6 +132,7 @@ export function seedFromRam(state, ram) {
   state.cheat[0] = r(0x3B);                // $3B,X
   state.cheat[1] = r(0x3C);
   state.zp4C = r(0x4C);                    // $4C  the death/intro countdown
+  state.zp1C = r(0x1C);                    // $1C  the BGM de-dupe ($839B/$97E9)
   state.zp1A = r(0x1A);                    // $1A  ($BBBD LDA $19 / ORA $1A)
   state.substate = r(0x1B);                // $1B
   state.zp1E = r(0x1E);                    // $1E
@@ -258,6 +259,21 @@ export function seedFromRam(state, ram) {
     state.ring.x[i] = r(0x07A0 + i);       // $07A0-$07B7
     state.ring.y[i] = r(0x07C0 + i);       // $07C0-$07D7
   }
+  // ---- the sound driver (wave 8, src/sound.js) ---------------------------
+  // $00B0-$00FF: the four 17-byte channel structs and the driver's scratch, as
+  // ONE range, because that is what it is -- $DD/$DE is the triangle struct's
+  // +$B/+$C and $F0-$F3 is the noise struct's +$D..+$10.
+  //
+  // SEEDING IT IS THE WHOLE COMPARISON. The corpus aligns at frame 400, by
+  // which point the stage-1 BGM has been playing for ninety frames: the owner
+  // bytes hold $13/$14/$15, the stream pointers are somewhere in the middle of
+  // $F396/$F3B1/$F426, and the duration counters are mid-note. So the port does
+  // not start a track -- it PICKS ONE UP IN FLIGHT and has to stay in phase with
+  // it for hundreds of frames, which is a far stronger claim than starting from
+  // silence and agreeing.
+  for (let i = 0; i < 0x50; i++) state.snd[i] = r(0x00B0 + i);
+  // $01A0-$01B0, where $9AF0 parks pulse 1's struct across a pause.
+  for (let i = 0; i < 0x11; i++) state.sndSave[i] = r(0x01A0 + i);
   state.shadowOam.set(ram.subarray(0x0200, 0x0300));   // $0200-$02FF
   // hwOam is deliberately NOT seeded: it is filled by the first ported frame's
   // $8087 DMA from exactly this shadow, which is what the cartridge's hardware
@@ -338,6 +354,7 @@ export function peek(state, addr) {
     case 0x3B: return state.cheat[0];
     case 0x3C: return state.cheat[1];
     case 0x4C: return state.zp4C;          // $96F6 DEC $4C
+    case 0x1C: return state.zp1C;          // $839F STX $1C -- wave 8
     case 0x1A: return state.zp1A;
     case 0x1B: return state.substate;
     case 0x1E: return state.zp1E;          // $8B2B STA $1E
@@ -430,6 +447,11 @@ export function peek(state, addr) {
   // in one page, and the PORT keeps the last two as their own fields -- so
   // vram.q[$A0..] is a hole in the port, not the ring. The bound is $079F and
   // the three ranges below stay authoritative for what they own.
+  // $00B0-$00FF, the sound driver's whole zero page (src/sound.js). One range
+  // for the same reason it is one array: the structs and the globals overlap.
+  if (addr >= 0x00B0 && addr <= 0x00FF) return state.snd[addr - 0x00B0];
+  // $01A0-$01B0, the pause save area ($9AF0/$9B33).
+  if (addr >= 0x01A0 && addr <= 0x01B0) return state.sndSave[addr - 0x01A0];
   if (addr >= 0x0700 && addr < 0x07A0) return state.vram.q[addr - 0x0700];
   if (addr >= 0x07A0 && addr < 0x07B8) return state.ring.x[addr - 0x07A0];
   if (addr >= 0x07C0 && addr < 0x07D8) return state.ring.y[addr - 0x07C0];
@@ -578,7 +600,9 @@ export const PROBE_KEYS = [
 ];
 /** objloop.lua's counters, appended by scen.py in this order. */
 export const WORK_KEYS = ['slotsVisited', 'msExpanded', 'spriteRecords',
-                          'spritesStored', 'enemySlots', 'lagged'];
+                          'spritesStored', 'enemySlots', 'lagged',
+                          'audioTicks', 'audioChannels', 'apuWrites',
+                          'apuDigest'];
 
 export const NOT_PRODUCED = ['pad2', 'oamBudget', 'spriteOverflow',
                              'scanline', 'cpuCycle', 'splitSpins'];
@@ -630,6 +654,19 @@ function sampleRow(state, frame, watch, lagged) {
     // fixed-shape, and this is the field that holds that claim to account
     // rather than leaving it as a comment (src/state.js work.enemySlots).
     enemySlots: state.work.enemySlots,
+    // ---- the sound driver's four signals, wave 8 --------------------------
+    // docs/knowledge/06 asks for the signals to be instrumented SEPARATELY
+    // rather than inferred from one lag boolean. `audioTicks` is the lag rule
+    // ($ED02 runs below $8073's bail, so a dropped NMI drops a music tick);
+    // `audioChannels` is $ED46's own count, which varies with what is playing
+    // AND with control commands chained inside one tick; the two APU fields are
+    // the register-level comparison probe.lua cannot make, because the
+    // registers are write-only -- the writes MADE this frame are compared
+    // instead, by count and by an ordered digest of (offset, value).
+    audioTicks: state.work.audioTicks,
+    audioChannels: state.work.audioChannels,
+    apuWrites: state.work.apuWrites,
+    apuDigest: state.work.apuDigest,
     lagged,
   };
   for (const a of watch) row[`w_${a}`] = peek(state, parseInt(a, 16));

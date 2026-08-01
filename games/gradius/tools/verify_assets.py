@@ -414,6 +414,7 @@ class State:
         self.flow = json.loads(self.blob["flow/tables.json"].decode("utf-8"))
         self.coll = json.loads(self.blob["collision/tables.json"].decode("utf-8"))
         self.weap = json.loads(self.blob["weapons/tables.json"].decode("utf-8"))
+        self.snd = json.loads(self.blob["sound/tables.json"].decode("utf-8"))
 
 
 def vals_at(rom: RawRom, off: int, n: int, unit: str) -> list[int]:
@@ -1123,6 +1124,162 @@ def check_weapons(st: State) -> list[str]:
     return bad
 
 
+# ==========================================================================
+# SOUND (wave 8).  What the cartridge was MEASURED doing, not what the listing
+# reads.  Every number below came off a run:
+#
+#   $B2 held $13 for 513 game frames, 310..822 inclusive, and read 0 at 823 --
+#   so $EFCD[$13] is a real pulse-1 stream, and snddata.py's independent decode
+#   of it is 512 ticks = 513 minus the one setup frame $EC63 costs;
+#   the observed request codes across eleven scripted runs were
+#   $01 $06 $0D $3B $7D $90 $93 $F7 $FC, and NONE of them has low 6 bits 0 --
+#   which is what makes record 0 unreachable rather than merely wrong;
+#   $FC decomposed into records $3C $3D $3E $3F and silenced all four channels
+#   without ever parsing a byte of their streams, because $F08F starts with $00.
+EXPECT_SOUND_REQUESTS = [0x01, 0x06, 0x0D, 0x3B, 0x7D, 0x90, 0x93, 0xF7, 0xFC]
+EXPECT_SOUND_STAGE1 = {"pulse1": 0x13, "pulse2": 0x14, "triangle": 0x15}
+EXPECT_SOUND_BASES = [0xB0, 0xC1, 0xD2, 0xE3]
+
+
+def check_sound(st: State) -> list[str]:
+    """The three wave-8 blocks: re-read, re-derive, then hold to the cartridge.
+
+    Arm 3 is the one with teeth and every expectation in it is a CONSEQUENCE
+    something was seen to do.  The two that matter most: the four bases at
+    $ECB2 are the four struct addresses the driver's own RAM taps caught it
+    writing ($00B0-$00E5); and $93, the stage BGM the cartridge requests at game
+    frame ~310, must decompose into records whose channels are pulse1, pulse2
+    and triangle IN THAT ORDER, because those are the three owner bytes that
+    were then measured holding $13, $14 and $15.
+    """
+    bad = []
+    rom = st.rom
+    d = st.snd
+    blocks = {b["name"]: b for b in d["blocks"]}
+    for name in ("bgm", "chanBase", "data"):
+        if name not in blocks:
+            bad.append(f"sound/tables.json has no block {name!r}")
+    if bad:
+        return bad
+
+    for b in d["blocks"]:
+        base = int(b["rom"].lstrip("$"), 16)
+        want_off = rom.off(base)
+        if b["fileOffset"] != want_off:
+            bad.append(f"block {b['name']} at {b['rom']} records fileOffset "
+                       f"{b['fileOffset']}, ${base:04X} is at {want_off}")
+            continue
+        if b["len"] != len(b["bytes"]):
+            bad.append(f"block {b['name']} claims len {b['len']} but carries "
+                       f"{len(b['bytes'])} bytes")
+            continue
+        got = list(rom.at(b["fileOffset"], b["len"]))
+        if got != b["bytes"]:
+            first = next(i for i in range(b["len"]) if got[i] != b["bytes"][i])
+            bad.append(f"block {b['name']}: byte {first} (${base + first:04X}) is "
+                       f"${b['bytes'][first]:02X} in the cache, ${got[first]:02X} "
+                       f"in the ROM")
+    if bad:
+        return bad
+
+    # -- from here on, read only the CACHE, indexed the way the 6502 does ------
+    # An address the driver reads that the block does NOT cover is itself a
+    # failure -- src/sound.js would throw on it -- so it is recorded and read as
+    # 0 rather than returned as None. That is what lets a CONSISTENT re-citation
+    # of the block at $EFB9 be caught: every address below shifts by one, so the
+    # first one falls off the front AND the pitch table stops descending.
+    seen_missing = set()
+
+    def at(name, addr):
+        b = blocks[name]
+        i = addr - int(b["rom"].lstrip("$"), 16)
+        if 0 <= i < len(b["bytes"]):
+            return b["bytes"][i]
+        if (name, addr) not in seen_missing:
+            seen_missing.add((name, addr))
+            bad.append(f"${addr:04X} is outside the exported {name} block "
+                       f"({b['rom']}-{b['end']}), and the driver reads it")
+        return 0
+
+    bases = [at("chanBase", 0xECB2 + i) for i in range(4)]
+    if bases != EXPECT_SOUND_BASES:
+        bad.append(f"$ECB2 reads {bases}; the driver's RAM taps caught it writing "
+                   f"$00B0-$00E5, i.e. structs at {EXPECT_SOUND_BASES} stride $11")
+
+    # $EFCD is $EFB8 + 21, so record 0 IS the pitch table's last two entries.  A
+    # cartridge where they had stopped overlapping would make $EC1E's index-0
+    # crash -- and src/sound.js's throw for it -- descriptions of a ROM this is
+    # not.
+    pitch = [(at("data", 0xEFB8 + 2 * i) << 8) | at("data", 0xEFB8 + 2 * i + 1)
+             for i in range(12)]
+    rec0 = [at("data", 0xEFCD + i) for i in range(3)]
+    if rec0 != [pitch[10] & 0xFF, pitch[11] >> 8, pitch[11] & 0xFF]:
+        bad.append(f"record 0 {[hex(b) for b in rec0]} is not the tail of the "
+                   f"pitch table (A# ${pitch[10]:04X}, B ${pitch[11]:04X}) -- the "
+                   f"two tables no longer overlap")
+    if rec0[0] % 4 == 0 and rec0[0] // 4 < 4:
+        bad.append(f"record 0's apuOffset ${rec0[0]:02X} is a VALID channel "
+                   f"offset, so index 0 is no longer the crash-shaped request")
+    if pitch != sorted(pitch, reverse=True):
+        bad.append(f"the pitch table {[hex(p) for p in pitch]} is not strictly "
+                   f"descending C..B")
+
+    def record(i):
+        return (at("data", 0xEFCD + 3 * i),
+                at("data", 0xEFCE + 3 * i) | (at("data", 0xEFCF + 3 * i) << 8))
+
+    # Every request the cartridge was seen to issue must decompose into records
+    # that exist -- for every one of the (bits 6-7)+1 consecutive records.
+    for req in EXPECT_SOUND_REQUESTS:
+        idx, n = req & 0x3F, ((req >> 6) & 3) + 1
+        if idx == 0:
+            bad.append(f"request ${req:02X} has low 6 bits 0, which has no record")
+            continue
+        for k in range(n):
+            if idx + k > 0x3F:
+                bad.append(f"request ${req:02X} reaches record ${idx + k:02X}, "
+                           f"past the 63-record table")
+                continue
+            off, _ = record(idx + k)
+            if off not in (0, 4, 8, 0x0C):
+                bad.append(f"request ${req:02X} -> record ${idx + k:02X} has "
+                           f"apuOffset ${off:02X}, not a channel")
+
+    chan = ["pulse1", "pulse2", "triangle", "noise"]
+    for name, idx in EXPECT_SOUND_STAGE1.items():
+        off, ptr = record(idx)
+        if chan[off // 4] != name:
+            bad.append(f"record ${idx:02X} is on {chan[off // 4]}; the cartridge "
+                       f"was measured holding it in {name}'s owner byte")
+        if at("data", ptr) == 0:
+            bad.append(f"record ${idx:02X} points at a STOP stream (first byte 0), "
+                       f"but $B2 held $13 for 513 frames -- it is played, not a "
+                       f"silencer")
+
+    # $FC / $7D: the silencers.  Records $3C-$3F must ALL start with $00, which
+    # is what makes $EC74 force $DF to 0 and leave the owner byte free.
+    for idx in (0x3C, 0x3D, 0x3E, 0x3F):
+        _, ptr = record(idx)
+        if at("data", ptr) != 0:
+            bad.append(f"record ${idx:02X} at ${ptr:04X} does not start with $00, "
+                       f"so $FC would PARSE it instead of silencing the channel")
+
+    # $8346[0] -> $2D.  w_002D has compared clean at 0 on every scenario for the
+    # port's whole life, and $8357 is what writes it.
+    if at("bgm", 0x8346) != 0:
+        bad.append(f"$8346[0] = ${at('bgm', 0x8346):02X}: $8357 stores it into "
+                   f"$2D, and w_002D is 0 on every compared frame of the corpus")
+    # $834F[0] and $833F[0]: stage 1's area theme takes over at page 4, which is
+    # past every frame this corpus reaches -- so the arm the port takes is always
+    # the $93 one, and that is only true while these two hold.
+    if at("bgm", 0x834F) == 0:
+        bad.append("$834F[0] = 0: the area theme would replace the $93 stage BGM "
+                   "at page 0, i.e. from the first frame of stage 1")
+    if at("bgm", 0x833F) == 0:
+        bad.append("$833F[0] = 0: a request of 0 is the index-0 crash")
+    return bad
+
+
 CHECKS = [
     ("rom", check_rom),
     ("files", check_files),
@@ -1137,6 +1294,7 @@ CHECKS = [
     ("flow", check_flow),
     ("collision", check_collision),
     ("weapons", check_weapons),
+    ("sound", check_sound),
 ]
 
 
@@ -1282,6 +1440,31 @@ def _shift_coll_block(st):
     shifted block hands $0120 the sequence $2E $2F $30 $30 $00 $00.
     """
     b = _coll_block(st, "explosion")
+    base = int(b["rom"].lstrip("$"), 16) + 1
+    b["rom"] = f"${base:04X}"
+    b["fileOffset"] = st.rom.off(base)
+    b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
+
+
+def _snd_block(st, name):
+    return next(b for b in st.snd["blocks"] if b["name"] == name)
+
+
+def _snd_set(st, name, addr, value):
+    b = _snd_block(st, name)
+    b["bytes"][addr - int(b["rom"].lstrip("$"), 16)] = value
+
+
+def _shift_snd_data(st):
+    """Re-cite the $EFB8 data block at $EFB9 and RE-READ it from there.
+
+    Consistent, so the byte-for-byte re-read and the offset re-derivation both
+    still pass.  What catches it is the cartridge: shifted by one, the pitch
+    table stops being descending, record 0 stops being its tail, and record $13
+    stops landing on pulse 1 -- three independent measurements, any one of
+    which is enough.
+    """
+    b = _snd_block(st, "data")
     base = int(b["rom"].lstrip("$"), 16) + 1
     b["rom"] = f"${base:04X}"
     b["fileOffset"] = st.rom.off(base)
@@ -1434,6 +1617,24 @@ MUTATIONS = [
      "silence the fan's death sound $BE6E[5] -- the sound every kill in the "
      "corpus requests",
      lambda st: _weap_block(st, "killSfx")["bytes"].__setitem__(5, 0x00)),
+    # --- sound (wave 8) ------------------------------------------------------
+    ("snd-shift", "sound",
+     "re-cite the $EFB8 pitch/record/stream block at $EFB9 -- one byte along, "
+     "CONSISTENTLY, so only the cartridge's own measured ownership can tell",
+     _shift_snd_data),
+    ("snd-base", "sound",
+     "change the triangle's channel base $ECB2[2] from $D2 to $D3: every "
+     "CPX #$D2 in the driver stops matching and the triangle grows three "
+     "struct fields it must not have",
+     lambda st: _snd_set(st, "chanBase", 0xECB4, 0xD3)),
+    ("snd-stop", "sound",
+     "give the $3C-$3F silencer stream at $F08F a non-zero first byte: $FC "
+     "would then PARSE it instead of freeing the channel",
+     lambda st: _snd_set(st, "data", 0xF08F, 0x21)),
+    ("snd-chrsel", "sound",
+     "make $8346[0] non-zero -- $8357 stores it into $2D, which w_002D has "
+     "compared clean at 0 on every scenario the corpus has",
+     lambda st: _snd_set(st, "bgm", 0x8346, 1)),
     ("chr-truncated", "chr",
      "truncate the decoded tile cache by one tile",
      lambda st: st.blob.__setitem__("chr/tiles.u8", st.blob["chr/tiles.u8"][:-64])),

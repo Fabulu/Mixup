@@ -349,7 +349,12 @@ NOT_EXPORTED = [
     "claim a ROM address for it.",
     "The title screen's nametable.  $8871 (the RLE full-screen loader) writes it "
     "at load time; its source table has not been identified. NOTES-render.md 9.",
-    "Sound.  Untouched by any recon so far ($ED02 from the NMI).",
+    # Sound USED to be listed here as "untouched by any recon".  It is exported
+    # now -- assets/sound/tables.json, the $ECB2 channel bases and the one
+    # $EFB8-$FFC0 block that holds the pitch table, the 64 sound records and
+    # every sequence stream (wave 8, src/sound.js).  What is still NOT exported
+    # is any decoded FORM of a stream: the driver walks them with a real 16-bit
+    # pointer and jumps inside them, so the bytes are the only honest shape.
     # The canned-packet contents USED to be listed here as not exported.  Wave 2
     # transcribed $85F3-$864D and they are now in assets/hud/packets.json; the
     # palette blobs above stay pinned by measurement as well, so the two routes
@@ -739,8 +744,8 @@ def collision_tables(rom: Rom) -> dict:
 #                Y = 0 fly / 1 crawl.  fly = y += 2, x += 0.5; crawl = y += 0,
 #                x += 2.  MEASURED: 916 of 916 missile frames took the fly row.
 #   $BE6E-$BE8F  the kill sound by enemy type ($BE9D LDA $BE6E,X, X = type AND
-#                $7F, guarded by $BE99 CPX #$22).  Wave 8 plays it; wave 6
-#                records the request.
+#                $7F, guarded by $BE99 CPX #$22).  Wave 6 recorded the
+#                request; wave 8 plays it (src/sound.js).
 #   $BFCE-$BFD9  the SHOT's own hit box, three 4-entry tables indexed by the
 #                shot's SUBTYPE $0163,X ($BFF4 ADC $BFCE,Y = the X offset of the
 #                hit point, $BFFD LDA $BFD2,Y = the WIDTH, $C006 ADC $BFD6,Y =
@@ -804,6 +809,193 @@ def weapon_tables(rom: Rom) -> dict:
         "why": "src/weapons.js, src/collision.js and src/enemies.js read these at "
                "their CPU addresses; a read outside them is a loud throw rather "
                "than a plausible byte.",
+        "blocks": blocks,
+    }
+
+
+# ==========================================================================
+# SOUND (wave 8).  The $EC1E/$ED02 driver's tables and every sequence stream.
+#
+#   $833F-$8355  the three 7-entry tables the BGM selector $8357 reads with
+#                Y = $19: the AREA theme code ($833F), the CHR select that ends
+#                up in $2D ($8346), and the $3F page at which the area theme
+#                replaces the $93 stage BGM ($834F).  Not "sound data" in the
+#                narrow sense -- $8346 is a CHR bank -- but they are three
+#                interleaved tables read by one routine and splitting them
+#                would put two halves of one `LDY $19` in two files.
+#   $ECB2-$ECB5  the four CHANNEL BASES, $B0 $C1 $D2 $E3, read as
+#                `$EC42 LDX $ECB2,Y` with Y = record[0] / 4.  Four bytes, and
+#                they are the reason index 0 is a crash: record 0's first byte
+#                is $C0, so Y = 48 and the LDX runs 44 bytes off the end.
+#   $EFB8-$FFC0  ONE block, on purpose, because the two tables inside it
+#                OVERLAP and a port that split them would have to choose which
+#                copy of the shared bytes is real:
+#                  $EFB8-$EFCF  the 12 big-endian pitch periods, C..B
+#                  $EFCD-$F08C  the 64 3-byte sound records (index 0..$3F)
+#                  $F08D-$FFC0  the sequence streams themselves
+#                $EFCD is $EFB8 + 21, i.e. the LOW byte of pitch entry 10 (A#,
+#                $03C0) and the whole of entry 11 (B, $038A) ARE record 0.
+#
+# The driver reads streams through a 16-bit RAM pointer ($03/$04,X copied to
+# $FA/$FB) and jumps around inside them with $FD/$FE, so src/sound.js reads
+# bytes at CPU addresses exactly as $ED77 does -- a decoded "array of events"
+# could express neither the sub-phrase calls nor the two-byte table overlap.
+#
+# WHERE THE BLOCK ENDS, AND WHY IT IS NOT ANCHORED ON THE STREAMS.  The obvious
+# anchor is "walk every stream and stop at the highest byte any of them reads",
+# and it was written, run, and REJECTED -- twice, both ways:
+#
+#   * as a reachability search (explore both arms of every $FE and $FD) it is an
+#     over-approximation and walks into bytes the driver never parses as
+#     commands: the stream at $FC66 "reaches" $01E2.
+#   * as a simulation with a repeated-state test it desynchronises inside the
+#     SAME stream and lands at $01E2 again.
+#
+# That is not a bug in the loop shape; it is the open item 00-recon-sound.md
+# already records under "the $EF56 octave loop I could not close" -- a STATIC
+# decode of dialect B goes out of phase somewhere in the $2E-$34 group and no
+# run has been made that says where.  The PORT does not care, because it
+# EXECUTES $ED77 rather than pre-decoding it, but an exporter must not pretend
+# to a number it cannot derive.
+#
+# So the block is anchored on two things that ARE checkable without a decoder:
+# the CPU vectors at $FFFA (asserted to hold $806A, the NMI handler this whole
+# port is built around), and the run of $FF filler that starts at $FFC0 and
+# runs to them.  The exported range covers the filler as well, deliberately:
+# the last stream's terminating $FF IS the byte at $FFC0, so a block that
+# stopped at "the last data byte" would throw on the stream that reads it.
+SOUND_TABLE = 0xEFCD        # 3-byte records: apuOffset, ptrLo, ptrHi
+SOUND_PITCH = 0xEFB8        # 12 big-endian 11-bit periods
+SOUND_FILLER = 0xFFC0       # where the $FF run begins
+SOUND_DATA_END = 0xFFFA     # the NMI/RESET/IRQ vectors
+SOUND_CHANNEL_BASES = (0xB0, 0xC1, 0xD2, 0xE3)
+
+
+def sound_tables(rom: Rom) -> dict:
+    """The $EC1E/$ED02 driver's data, with every claim asserted on the bytes."""
+    # $ECB2 is DATA sitting between $ECB1's RTS and $ECB6's TYA.
+    bases = tuple(rom.slice(0xECB2, 4))
+    if bases != SOUND_CHANNEL_BASES:
+        raise SystemExit(f"ABORT: $ECB2 should be the channel bases "
+                         f"{[hex(b) for b in SOUND_CHANNEL_BASES]} but reads "
+                         f"{[hex(b) for b in bases]}")
+    # $EFA6-$EFB7 is sub_EFA6 (advance the stream pointer); $EFB7 is its RTS, so
+    # the pitch table starts exactly where the driver's code stops.
+    if rom.b(0xEFB7) != 0x60:
+        raise SystemExit(f"ABORT: $EFB7 should be sub_EFA6's RTS but reads "
+                         f"${rom.b(0xEFB7):02X} -- the pitch table does not start "
+                         f"where this claims")
+
+    # ---- THE OVERLAP, ASSERTED SO NOBODY 'FIXES' IT -----------------------
+    # $EFCD is $EFB8 + 21.  Pitch entry 10 (A#) is $EFCC-$EFCD and entry 11 (B)
+    # is $EFCE-$EFCF, so record 0's three bytes ARE A#'s low byte and the whole
+    # of B.  That is what makes any request with low 6 bits 0 a crash: $EC3A
+    # reads $C0 as an APU offset and $EC42 indexes a 4-byte table with 48.
+    rec0 = list(rom.slice(SOUND_TABLE, 3))
+    pitch = [rom.b(SOUND_PITCH + 2 * i) << 8 | rom.b(SOUND_PITCH + 2 * i + 1)
+             for i in range(12)]
+    if rec0 != [pitch[10] & 0xFF, pitch[11] >> 8, pitch[11] & 0xFF]:
+        raise SystemExit(f"ABORT: record 0 ${SOUND_TABLE:04X} reads "
+                         f"{[hex(b) for b in rec0]}, which is NOT the tail of the "
+                         f"pitch table (A# ${pitch[10]:04X}, B ${pitch[11]:04X}). "
+                         f"The two tables are supposed to overlap by two bytes; "
+                         f"if they no longer do, $EC1E's index-0 crash and "
+                         f"src/sound.js's guard for it are both describing a ROM "
+                         f"this is not.")
+    if rec0[0] % 4 == 0 and rec0[0] // 4 < 4:
+        raise SystemExit(f"ABORT: record 0's apuOffset ${rec0[0]:02X} is a VALID "
+                         f"channel offset -- index 0 would no longer be the "
+                         f"crash-shaped request $EC47 skips the priority test for")
+    if pitch != sorted(pitch, reverse=True):
+        raise SystemExit(f"ABORT: the pitch table {[hex(p) for p in pitch]} is not "
+                         f"strictly descending C..B")
+
+    # ---- the 63 real records ----------------------------------------------
+    records = []
+    for i in range(1, 0x40):
+        off = rom.b(SOUND_TABLE + 3 * i)
+        ptr = rom.w(SOUND_TABLE + 3 * i + 1)
+        if off not in (0, 4, 8, 0x0C):
+            raise SystemExit(f"ABORT: record ${i:02X}'s apuOffset is ${off:02X}; "
+                             f"$EC3F/$EC42 turn it into an index into the 4-entry "
+                             f"$ECB2 table, so only 0/4/8/$0C are reachable")
+        if not (SOUND_PITCH <= ptr < SOUND_DATA_END):
+            raise SystemExit(f"ABORT: record ${i:02X} points at ${ptr:04X}, "
+                             f"outside the exported ${SOUND_PITCH:04X}-"
+                             f"${SOUND_DATA_END - 1:04X}")
+        first = rom.b(ptr)
+        # $EC72-$EC7F: stream[0] == 0 forces $DF to 0, so $02,X stays 0 and the
+        # stream is NEVER parsed -- it is a STOP marker.  $EC7A picks the parser
+        # for the rest: high nibble $2 -> dialect A (raw periods), else B.
+        kind = "stop" if first == 0 else ("A" if (first & 0xF0) == 0x20 else "B")
+        records.append({"index": i, "apuOffset": off, "ptr": f"${ptr:04X}",
+                        "channel": off // 4, "dialect": kind})
+    stops = [r["index"] for r in records if r["dialect"] == "stop"]
+    if stops != [0x3C, 0x3D, 0x3E, 0x3F]:
+        raise SystemExit(f"ABORT: the STOP records are {stops}, not $3C-$3F -- "
+                         f"$FC (stop all four) and $7D (stop pulse2+triangle) are "
+                         f"requests for exactly those")
+
+    # ---- the two anchors on the END of the block ---------------------------
+    if rom.w(SOUND_DATA_END) != 0x806A:
+        raise SystemExit(f"ABORT: the NMI vector at ${SOUND_DATA_END:04X} reads "
+                         f"${rom.w(SOUND_DATA_END):04X}, not $806A -- the sound "
+                         f"block is exported right up to the vectors and this is "
+                         f"what says where they are")
+    filler = rom.slice(SOUND_FILLER, SOUND_DATA_END - SOUND_FILLER)
+    if set(filler) != {0xFF}:
+        raise SystemExit(f"ABORT: ${SOUND_FILLER:04X}-${SOUND_DATA_END - 1:04X} "
+                         f"is not $FF filler; the stream data does not stop where "
+                         f"this claims and the block's shape is not what it says")
+    if rom.b(SOUND_FILLER - 1) == 0xFF:
+        raise SystemExit(f"ABORT: ${SOUND_FILLER - 1:04X} is $FF too, so the filler "
+                         f"run starts earlier than ${SOUND_FILLER:04X}")
+
+    # ---- $833F-$8355, the three 7-entry tables $8357 reads ------------------
+    # $8357 is `LDY $19`, the first instruction of the BGM selector called from
+    # the play arm at $9A5B on EVERY mode-5 play frame, so the tables end
+    # exactly where the code begins.
+    if rom.slice(0x8357, 2) != bytes((0xA4, 0x19)):
+        raise SystemExit(f"ABORT: $8357 should be `LDY $19` (the BGM selector) but "
+                         f"reads {rom.slice(0x8357, 2).hex(' ')} -- the $833F/"
+                         f"$8346/$834F tables do not end where this claims")
+    if rom.b(0x8346) != 0:
+        raise SystemExit(f"ABORT: $8346[0] (stage 1's CHR select -> $2D) is "
+                         f"${rom.b(0x8346):02X}, not 0. w_002D has compared clean "
+                         f"at 0 on every scenario for the port's whole life.")
+
+    blocks = [
+        {"name": "bgm", "rom": "$833F", "end": "$8356",
+         "fileOffset": rom.off(0x833F), "len": 0x8356 - 0x833F,
+         "readBy": "$836F LDX $833F,Y / $8359 LDA $8346,Y / $8372 CMP $834F,Y, "
+                   "Y = $19",
+         "note": "three 7-entry tables: the per-stage AREA theme request code, "
+                 "the CHR select $2D, and the $3F page at which the area theme "
+                 "takes over from the $93 stage BGM",
+         "bytes": list(rom.slice(0x833F, 0x8356 - 0x833F))},
+        {"name": "chanBase", "rom": "$ECB2", "end": "$ECB6",
+         "fileOffset": rom.off(0xECB2), "len": 4,
+         "readBy": "$EC42 LDX $ECB2,Y, Y = record[0] / 4",
+         "note": "pulse1 $B0, pulse2 $C1, triangle $D2, noise $E3 -- stride $11",
+         "bytes": list(rom.slice(0xECB2, 4))},
+        {"name": "data", "rom": f"${SOUND_PITCH:04X}", "end": f"${SOUND_DATA_END:04X}",
+         "fileOffset": rom.off(SOUND_PITCH), "len": SOUND_DATA_END - SOUND_PITCH,
+         "readBy": "$EF49 LDA $EFB8,Y (pitch), $EC3A/$EC53/$EC5A LDA $EFCD,Y "
+                   "(records), $ED77/$EDBE/$EE82 LDA ($FA),Y (streams)",
+         "note": "pitch table, sound table and every sequence stream, ONE block "
+                 "because $EFCD-$EFCF is both record 0 and the pitch table's last "
+                 "two entries",
+         "bytes": list(rom.slice(SOUND_PITCH, SOUND_DATA_END - SOUND_PITCH))},
+    ]
+    return {
+        "note": "CACHE. Rebuild with tools/export_assets.py; the authority is prg.bin.",
+        "why": "src/sound.js reads these at their CPU addresses; the driver walks "
+               "streams with a real 16-bit pointer ($03/$04,X -> $FA/$FB) and "
+               "jumps inside them with $FD/$FE, so a decoded shape cannot hold it.",
+        "channelBases": [f"${b:02X}" for b in SOUND_CHANNEL_BASES],
+        "structStride": 0x11,
+        "pitch": [f"${p:04X}" for p in pitch],
+        "records": records,
         "blocks": blocks,
     }
 
@@ -1081,6 +1273,11 @@ def main() -> int:
           "cache", "prg.bin, the ranges $A0E0-$A0E8 / $A1A4-$A1A9 / $BE6E-$BE8F / "
                    "$BFCE-$BFD9 / $BFC5-$BFCD", files)
 
+    sound = sound_tables(rom)
+    write(out, "sound/tables.json",
+          json.dumps(sound, separators=(",", ":")).encode("utf-8"),
+          "cache", "prg.bin, the ranges $833F-$8355 / $ECB2-$ECB5 / $EFB8-$FFF9", files)
+
     manifest = build_manifest(rom, files)
     (out / "manifest.json").write_text(
         json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
@@ -1102,7 +1299,11 @@ def main() -> int:
           f"collision/tables.json {sum(b['len'] for b in collision['blocks'])} bytes "
           f"in {len(collision['blocks'])} ranges, "
           f"weapons/tables.json {sum(b['len'] for b in weapons['blocks'])} bytes "
-          f"in {len(weapons['blocks'])} ranges")
+          f"in {len(weapons['blocks'])} ranges, "
+          f"sound/tables.json {sum(b['len'] for b in sound['blocks'])} bytes "
+          f"in {len(sound['blocks'])} ranges "
+          f"({len(sound['records'])} records, "
+          f"{sum(1 for r in sound['records'] if r['dialect'] == 'stop')} of them STOP)")
     print(f"  manifest: {len(manifest['tables'])} tables, "
           f"{len(manifest['constants'])} instruction-anchored constants, "
           f"{len(manifest['palettes'])} palette blobs")
