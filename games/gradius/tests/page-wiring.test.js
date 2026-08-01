@@ -31,7 +31,9 @@ const PAD_BOX = { left: 0, top: 0, width: 144, height: 144 };   // 3x3 of 48px
 function mkEl(tag, attrs = {}) {
   return {
     tag, dataset: { ...attrs.dataset }, hidden: false, style: {}, _h: {},
-    cls: attrs.cls,
+    cls: attrs.cls, textContent: '', attrs: {},
+    setAttribute(k, v) { this.attrs[k] = v; },
+    blur() { this.blurred = (this.blurred || 0) + 1; },
     classList: {
       _s: new Set(),
       add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); },
@@ -49,8 +51,32 @@ function mkEl(tag, attrs = {}) {
 
 let loads = 0;
 
+/** The smallest AudioContext src/audio/output.js touches. See loadPage(). */
+class FakeAudioContext {
+  constructor() {
+    globalThis.__lastFakeCtx = this;
+    this.sampleRate = 44100;
+    this.currentTime = 0;
+    this.destination = { _in: [] };
+    this.resumes = 0;
+    this.gains = [];
+  }
+  createGain() {
+    const g = { gain: { value: 1 }, connect() {}, disconnect() {} };
+    this.gains.push(g);
+    return g;
+  }
+  createBuffer(ch, len) {
+    const d = new Float32Array(len);
+    return { length: len, getChannelData: () => d };
+  }
+  createBufferSource() { return { buffer: null, connect() {}, start() {} }; }
+  resume() { this.resumes++; }
+  close() { return Promise.resolve(); }
+}
+
 /** Build the page's DOM, run its script, hand back the handles. */
-async function loadPage({ coarse = true } = {}) {
+async function loadPage({ coarse = true, audioCtor } = {}) {
   const cellNames = [
     'UP LEFT', 'UP', 'UP RIGHT',
     'LEFT', '', 'RIGHT',
@@ -68,14 +94,20 @@ async function loadPage({ coarse = true } = {}) {
   pad.querySelectorAll = (sel) => (sel === '.tbtn' ? btnList : []);
   const note = mkEl('span', { cls: 'touchnote' });
   note.hidden = true;
+  const sound = mkEl('button', { dataset: { on: 'on' } });
+  sound.textContent = '♫ sound on';
+  const audionote = mkEl('span');
   const byId = {
     screen: mkEl('canvas'), stage: mkEl('div'), stats: mkEl('span'),
-    err: mkEl('div'), pad, dpad,
+    err: mkEl('div'), pad, dpad, sound, audionote,
   };
 
   const win = {
     _h: {},
     addEventListener(t, fn) { (this._h[t] ||= []).push(fn); },
+    removeEventListener(t, fn) {
+      const a = this._h[t]; if (a) this._h[t] = a.filter((f) => f !== fn);
+    },
     fire(t, ev) { for (const fn of this._h[t] || []) fn({ preventDefault() {}, ...ev }); },
     devicePixelRatio: 3,
     visualViewport: { addEventListener() {} },
@@ -98,15 +130,30 @@ async function loadPage({ coarse = true } = {}) {
   globalThis.window = win;
   globalThis.document = doc;
   globalThis.addEventListener = win.addEventListener.bind(win);
+  globalThis.removeEventListener = win.removeEventListener.bind(win);
   globalThis.matchMedia = win.matchMedia;
   globalThis.visualViewport = win.visualViewport;
   globalThis.requestAnimationFrame = () => {};
   globalThis.setInterval = () => {};
+  // WAVE 13. The smallest AudioContext src/audio/output.js touches. It is a
+  // FAKE and it proves nothing about how the browser sounds; what it proves is
+  // that the page's gesture handler reaches arm(), that the mute button reaches
+  // the gain node, and that a second gesture does not build a second context --
+  // which is exactly the class of wiring this file exists for. `audio: null`
+  // takes the no-Web-Audio branch instead.
+  globalThis.__lastFakeCtx = undefined;
+  if (audioCtor === null) delete globalThis.AudioContext;
+  else globalThis.AudioContext = audioCtor || FakeAudioContext;
 
   const html = readFileSync(new URL('index.html', GAME), 'utf8');
   const m = /<script type="module">([\s\S]*?)<\/script>/.exec(html);
   assert.ok(m, 'index.html has a module script');
   const inputUrl = pathToFileURL(new URL('src/input.js', GAME).pathname.slice(1)).href;
+  // A `data:` module cannot resolve a relative specifier, so every one of the
+  // page's imports has to be rewritten to an absolute URL or a stub. That is
+  // also a check: a NEW import added to index.html and not listed here fails
+  // this file loudly instead of being quietly ignored.
+  const audioUrl = pathToFileURL(new URL('src/audio/output.js', GAME).pathname.slice(1)).href;
   // boot() is stubbed: this test is about the pad, and the real one fetches.
   const stub = 'data:text/javascript,'
     + encodeURIComponent('export const fitCanvas = () => 4;\n'
@@ -120,14 +167,18 @@ async function loadPage({ coarse = true } = {}) {
   const patched = m[1]
     .replace("'./src/main.js'", JSON.stringify(stub))
     .replace("'./src/input.js'", JSON.stringify(inputUrl))
+    .replace("'./src/audio/output.js'", JSON.stringify(audioUrl))
     + `\n// instance ${loads++}\n`;
+  assert.ok(!/from '\.\//.test(patched),
+    'index.html imports a relative module this test does not rewrite: '
+    + (/from '(\.\/[^']+)'/.exec(patched) || [])[1]);
   assert.ok(patched.includes(inputUrl),
     'the page imports ./src/input.js -- if this fails the page stopped using '
     + 'the port\'s own input module, which is the whole point');
   await import('data:text/javascript,' + encodeURIComponent(patched));
 
   const input = await import(inputUrl);
-  return { pad, dpad, cells, buttons, note, win, doc, input,
+  return { pad, dpad, cells, buttons, note, win, doc, input, sound, audionote,
            mask: () => input.currentButtons(),
            litCells: () => cells.map((c, i) => ('on' in c.dataset ? i : -1)).filter((i) => i >= 0) };
 }
@@ -217,6 +268,63 @@ test('the backstops clear the WHOLE mask, buttons and lights included', async ()
     assert.equal(p.mask(), BTN.A, `${how}: the pad still works after the clear`);
     p.win.fire('blur', {});
   }
+});
+
+// ---- WAVE 13: the sound control and the autoplay gesture -------------------
+
+test('audio is NOT started before a gesture, and the page says what it waits for',
+  async () => {
+    const p = await loadPage({ coarse: false });
+    // The AudioContext is not constructed at all until arm() runs -- a
+    // suspended context created at load is the shape that ends in permanent
+    // silence with nothing on screen explaining it.
+    assert.equal(globalThis.__lastFakeCtx, undefined,
+      'the page built an AudioContext before any user gesture');
+    assert.equal(p.audionote.hidden, false, 'the "sound starts on..." note is up');
+    p.win.fire('blur', {});
+  });
+
+test('the first keydown arms the audio, hides the note, and unbinds itself', async () => {
+  const p = await loadPage({ coarse: false });
+  p.win.fire('keydown', { code: 'KeyX' });
+  assert.equal(p.audionote.hidden, true, 'the note goes away once sound is on');
+  const before = p.win._h.keydown.length;
+  p.win.fire('keydown', { code: 'KeyX' });
+  assert.equal(p.win._h.keydown.length, before,
+    'the arming listener removed itself; a second gesture must not re-arm');
+  p.win.fire('blur', {});
+});
+
+test('with no Web Audio the page says so and the game still runs', async () => {
+  const p = await loadPage({ coarse: false, audioCtor: null });
+  p.win.fire('keydown', { code: 'KeyX' });
+  assert.match(p.audionote.textContent, /no Web Audio/);
+  // ...and the joypad path is completely unaffected.
+  p.buttons.A.fire('pointerdown', { pointerId: 1 });
+  assert.equal(p.mask(), BTN.A);
+  p.win.fire('blur', {});
+});
+
+test('the mute button reaches the gain node and gives the keyboard back', async () => {
+  const p = await loadPage({ coarse: false });
+  p.win.fire('pointerdown', { pointerId: 1 });        // arm
+  const ctx = globalThis.__lastFakeCtx;
+  assert.ok(ctx, 'the page constructed an AudioContext on the gesture');
+  assert.equal(ctx.gains.length, 1, 'exactly one gain node');
+  const gain = ctx.gains[0];
+  assert.ok(gain.gain.value > 0, 'it starts audible');
+
+  p.sound.fire('click', {});
+  assert.equal(gain.gain.value, 0, 'muted means gain 0');
+  assert.equal(p.sound.dataset.on, 'off');
+  assert.equal(p.sound.attrs['aria-pressed'], 'true');
+  // Enter is START ($9ADA). A button that keeps focus eats it.
+  assert.ok(p.sound.blurred >= 1, 'the button blurs itself after a click');
+
+  p.sound.fire('click', {});
+  assert.ok(gain.gain.value > 0, 'unmuting restores the volume');
+  assert.equal(p.sound.dataset.on, 'on');
+  p.win.fire('blur', {});
 });
 
 test('on a fine pointer the pad stays hidden and nothing is bound to the game', async () => {

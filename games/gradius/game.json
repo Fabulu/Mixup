@@ -4,7 +4,7 @@
   "platform": "nes",
   "year": 1986,
   "publisher": "Konami",
-  "blurb": "Horizontal shooter. Stage 1 flies: the Vic Viper, the Options and the terrain, verified frame-exact. No enemies or sound yet.",
+  "blurb": "Horizontal shooter. Stage 1 plays and is audible: the Vic Viper, the Options, the terrain, the enemies and their bullets, the weapons, the power-up meter and the $ED02 sound driver, verified frame-exact against the cartridge.",
   "status": "in-progress",
   "rom": {
     "file": "Gradius (USA).nes",

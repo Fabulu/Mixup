@@ -1,27 +1,42 @@
 # Gradius (NES, Konami 1986) — phase 2
 
-**Status: stage 1 flies, and can be killed.** `src/` is a running port of the play
-path — the Vic Viper, the Options, the terrain streamer, the HUD, the enemy spawn
-engine and update loop, the `$1B` state machine with the stage intro and pause, and
-(wave 5) collision, death, the explosion and the checkpoint respawn — verified
+**Status: stage 1 plays, kills, is killed, and can be heard.** `src/` is a running
+port of the play path — the Vic Viper, the Options, the terrain streamer, the HUD,
+the enemy spawn engine and update loop, the `$1B` state machine with the stage intro
+and pause, collision, death, the explosion and the checkpoint respawn (wave 5), the
+weapons and the kill chain (wave 6), the power-up loop (wave 7), the `$ED02` sound
+driver (wave 8), the enemy bullets (wave 11) and, since wave 13, an NES APU
+synthesiser that turns the driver's register writes into sound — verified
 frame-exact against the cartridge by `tools/test-all.mjs`.
 
-**What is still absent, and it is named rather than left to be discovered:** weapons
-(firing, shots, missiles, the kill chain and the score adder), the power-up loop
-(capsule pickup, the meter, the shield), and all sound. Every unported arm in `src/`
-throws with the ROM address the cartridge would have reached; nothing is a silent
-no-op. The notes below are the cartridge facts and the decisions the port was built
-on; the header of each one says what is measured and what is not.
+**What is still absent, and it is named rather than left to be discovered:** the
+`$8871` full-screen RLE loader, game over / continue, the boss and the end of
+stage 1, stages 2-7, two-player, and the fifteen enemy handlers wave 12's audit
+found reachable. Every unported arm in `src/` throws with the ROM address the
+cartridge would have reached; nothing is a silent no-op. The notes below are the
+cartridge facts and the decisions the port was built on; the header of each one
+says what is measured and what is not.
+
+**The sound is honest about what it claims.** Wave 8 proves the REGISTER STREAM
+matches the cartridge, per frame, over the whole corpus. Wave 13's synthesiser
+(`src/audio/apu.js`) turns that stream into samples and is checked for
+determinism and for structural properties only — there is deliberately no gate
+comparing emitted PCM against an emulator's audio, because that claim would
+inherit the emulator's own guesses about the chip. See
+`docs/worklog/gradius/13-impl-audio-output.md` and `games/ddpdoj/NOTES-sound.md`.
 
 **Playing it.** Serve the repo (`python -m http.server 8000`) and open
 `/games/gradius/` — a standalone page, not the root launcher, because the launcher
 imports `code.entry`/`code.mods`/`code.input` and this port has only `boot()`.
-Arrows or `W`/`A`/`S`/`D` fly, `Enter` is START, `Z`/`X` are B/A. **On a phone the
-page draws an on-screen pad** (coarse pointers only): a d-pad hit-tested as a 3x3
-grid, so a finger in a corner third reports two directions at once — the ship's mover
-tests X and Y independently and has no diagonal case, so a diagonal is exactly two
-bits. See `docs/worklog/gradius/00-touch-controls.md`, including the list of things
-only a human with a real phone can check.
+Arrows or `W`/`A`/`S`/`D` fly, `Enter` is START, `Z`/`X` are B/A. **Sound starts on
+your first key or tap** — every browser refuses audio before a user gesture, so the
+page says what it is waiting for rather than being silently mute, and there is a
+mute button beside the stats. **On a phone the page draws an on-screen pad** (coarse
+pointers only): a d-pad hit-tested as a 3x3 grid, so a finger in a corner third
+reports two directions at once — the ship's mover tests X and Y independently and
+has no diagonal case, so a diagonal is exactly two bits. See
+`docs/worklog/gradius/00-touch-controls.md`, including the list of things only a
+human with a real phone can check.
 
 Read `docs/knowledge/` first — most of what Batman cost us was method, not Game Boy
 knowledge, and all of it applies here.

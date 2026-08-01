@@ -175,12 +175,33 @@ export async function boot(canvas, opts = {}) {
       while (acc >= period) {
         acc -= period;
         nmi(state, currentButtons(), res);
+        // ---- WAVE 13: ONE AUDIO BATCH PER LOGIC FRAME ----------------------
+        // Inside the catch-up loop, not after it, and that is the whole design.
+        // `state.apuLog` is this frame's $4000-$400F writes and src/nmi.js
+        // clears it at the top of the NEXT frame, so a burst of k frames must
+        // hand over k batches here or k-1 frames of music are lost. What the
+        // audio path then does with them is its own business and runs on the
+        // AudioContext's clock, never on this one (src/audio/output.js).
+        //
+        // NOTE FOR WAVE 14, which owns the input side of this same loop:
+        // `currentButtons()` above is still read k times per callback and all k
+        // reads return the same word, which is
+        // docs/worklog/gradius/13-FINDING-input-granularity-under-load.md. The
+        // fix has the same shape as this line -- one input word per LOGIC
+        // frame, taken from a queue rather than from the live mask -- and it
+        // belongs here, at the same seam. Audio does not depend on it and does
+        // not block it.
+        opts.audio?.frame(state.apuLog);
         stepped = true;
       }
       if (stepped) {
         renderFrame(frameFor(state), res.tiles, px);
         ctx.putImageData(img, 0, 0);
       }
+      // Outside the loop: turning batches into samples is per ANIMATION frame,
+      // and it is deliberately after the picture, so a slow audio pump delays
+      // sound rather than the display.
+      opts.audio?.pump();
     } catch (e) {
       // Stop cleanly rather than throwing once per frame forever, and hand the
       // error somewhere a human can see it. The message names the ROM address,

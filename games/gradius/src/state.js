@@ -419,6 +419,29 @@ export function createState() {
     // and the rolling digest of the writes MADE each frame, in work below.
     apu: new Uint8Array(0x18),
 
+    // ---- THE WRITE LOG: the same writes, in order, kept rather than hashed --
+    //
+    // A flat [off, value, off, value, ...] of this frame's $4000-$4017 writes,
+    // cleared by src/nmi.js at the top of every frame next to `apuWrites` and
+    // `apuDigest`, and appended by src/sound.js's `apu()`. It is the INPUT to
+    // the synthesiser in src/audio/apu.js.
+    //
+    // WHY A LOG AND NOT A REPLAY OF THE SHADOW. The shadow (`apu` above) is the
+    // last value written to each register; it loses the order and it loses
+    // repeated writes of the same value, and both of those are audible -- the
+    // whole point of the $EF85 retrigger guard is that writing $4003 AGAIN
+    // restarts the length counter. So the synthesiser has to eat the sequence,
+    // not the snapshot.
+    //
+    // WHY THIS IS THE SAME THING WAVE 8 VERIFIED. `apuDigest` is computed from
+    // exactly these pairs in exactly this order -- `h = h*31 + (off<<8) + v` --
+    // and it is a TIER 1 compared field on all 42 scenarios. So a test that
+    // recomputes the digest FROM THIS ARRAY and gets `work.apuDigest` proves the
+    // synthesiser is being fed the stream the cartridge was measured making,
+    // rather than a second, unverified copy of it. tests/audio.test.js does
+    // that per frame; it is the bridge between wave 8's claim and this one's.
+    apuLog: [],
+
     // ---- the enemy spawn engine's zero page ($A2C0, src/enemies.js) -----
     //
     // Kept as the ROM's individual bytes, including the 16-bit wave cursor

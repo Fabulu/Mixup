@@ -120,6 +120,11 @@ export function nmi(state, buttons, res, lag = false) {
   state.work.audioChannels = 0;
   state.work.apuWrites = 0;
   state.work.apuDigest = 0;
+  // ...and the register WRITE LOG (wave 13), cleared here for the same reason
+  // and in the same place: it is the frame's own writes, and a dropped NMI made
+  // none. src/main.js reads it immediately after this function returns, which is
+  // why it is cleared at the top rather than at the bottom.
+  state.apuLog.length = 0;
 
   // $8070: LDA $2002 -- clear the vblank flag.
   // $8073: LDY $04 / $8075: BNE $80B7 -- THE LOCK.

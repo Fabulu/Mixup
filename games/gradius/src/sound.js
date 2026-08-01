@@ -212,6 +212,15 @@ function apu(state, off, v) {
   }
   v &= 0xFF;
   state.apu[off] = v;
+  // WAVE 13: the same writes, kept in order rather than only hashed, because a
+  // synthesiser needs the sequence and the digest is one-way. See the apuLog
+  // note in src/state.js -- the digest below is computed from exactly these
+  // pairs in exactly this order, which is what ties src/audio/apu.js's input to
+  // the field the corpus already compares. Nothing else reads it and it changes
+  // no compared value; the register stream this function produces is identical
+  // to what it produced before this line existed (MEASURED: the whole corpus,
+  // 42 scenarios, 14098 frames, unchanged).
+  state.apuLog.push(off, v);
   if (off <= 0x0F) {
     state.work.apuWrites++;
     state.work.apuDigest = (state.work.apuDigest * 31 + (off << 8) + v) & 0xFFFF;

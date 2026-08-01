@@ -33,6 +33,15 @@
   #hud b { color: #cde; font-weight: 600; }
   #err { color: #f88; max-width: 60ch; white-space: pre-wrap; padding: 0 12px; }
   kbd { background: #222; border: 1px solid #444; border-radius: 3px; padding: 0 4px; color: #cde; }
+  /* The sound control. A real <button>, so it is reachable by keyboard and by
+     a screen reader -- but it BLURS ITSELF on click, because a focused button
+     swallows the Enter that the game reads as START. */
+  #sound {
+    background: #1d232d; border: 1px solid #37404f; color: #cde;
+    font: inherit; padding: 1px 8px; border-radius: 4px; cursor: pointer;
+  }
+  #sound[data-on="off"] { color: #889; }
+  #audionote { color: #7a8; }
 
   /* ---- the on-screen pad ------------------------------------------------
      Shown only on a COARSE pointer. On a desktop it is display:none and the
@@ -112,6 +121,14 @@
          page is the one piece of documentation a player reads. -->
     <span class="keyhint"><kbd>X</kbd> fire &middot; <kbd>Z</kbd> power-up
       &middot; <kbd>Enter</kbd> pause</span>
+    <!-- WAVE 13 ADDED THE SOUND. Wave 8 ported the $ED02 driver state-exact and
+         nothing listened to it; src/audio/apu.js is the chip it was writing to.
+         Browsers refuse to start audio before a user gesture, so the page says
+         what it is waiting for rather than being mysteriously silent. -->
+    <span id="audionote">Sound starts on your first key or tap.</span>
+    <button id="sound" type="button" data-on="on" aria-pressed="false"
+            title="Mute the sound. The synthesiser keeps running, so unmuting
+                   resumes exactly where the music got to.">&#9835; sound on</button>
     <span id="stats"></span>
     <span class="touchnote" hidden>A fires, B applies the meter's power-up and
       START pauses. SELECT reaches $0007 and nothing reads it.</span>
@@ -151,11 +168,60 @@ import { boot, fitCanvas } from './src/main.js';
 import {
   TOUCH_BUTTONS, setTouchButton, setTouchDirections, clearTouchButtons, dpadMask,
 } from './src/input.js';
+import { GradiusAudio } from './src/audio/output.js';
 
 const canvas = document.getElementById('screen');
 const stage = document.getElementById('stage');
 const stats = document.getElementById('stats');
 const err = document.getElementById('err');
+const soundBtn = document.getElementById('sound');
+const audioNote = document.getElementById('audionote');
+
+// ---- sound -----------------------------------------------------------------
+//
+// AUTOPLAY POLICY, and what this page actually does about it. Every browser
+// refuses to start an AudioContext outside a user gesture, and a page that
+// creates one anyway ends up permanently suspended and silent with nothing on
+// screen saying why. So the AudioContext is NOT created until the first
+// pointerdown or keydown, the note in the HUD says so until it happens, and the
+// game runs at full speed silently in the meantime -- audio never gates the
+// simulation (src/audio/output.js).
+//
+// The listeners are in the CAPTURE phase and on window, so they fire before the
+// pad's own handlers call preventDefault(); a prevented default does not stop
+// the event being a user gesture, but the arming must happen synchronously
+// inside the handler and capture is the cheapest way to be sure it does.
+const audio = new GradiusAudio((e) => {
+  // UNHIDDEN, not just rewritten: by the time this can fire the note has
+  // already been hidden by a successful arm(), and a message written into a
+  // hidden element is the silent failure this page keeps being bitten by.
+  // The picture keeps running -- only the sound has stopped.
+  audioNote.hidden = false;
+  audioNote.textContent = `Sound stopped: ${e.message}`;
+  console.error(e);
+});
+function armAudio() {
+  audio.arm();
+  if (audio.status === 'on') {
+    audioNote.hidden = true;
+    removeEventListener('pointerdown', armAudio, true);
+    removeEventListener('keydown', armAudio, true);
+  } else if (audio.status === 'unsupported') {
+    audioNote.textContent = 'This browser has no Web Audio; the port runs silent.';
+  }
+}
+addEventListener('pointerdown', armAudio, true);
+addEventListener('keydown', armAudio, true);
+
+soundBtn.addEventListener('click', () => {
+  audio.setMuted(!audio.muted);
+  soundBtn.dataset.on = audio.muted ? 'off' : 'on';
+  soundBtn.textContent = audio.muted ? '♫ muted' : '♫ sound on';
+  soundBtn.setAttribute('aria-pressed', String(audio.muted));
+  // A focused button eats the Enter key, and Enter is START ($9ADA). Give the
+  // keyboard back to the game.
+  soundBtn.blur();
+});
 
 // ---- on-screen controls ----------------------------------------------------
 //
@@ -294,15 +360,30 @@ try {
     // The named throws are the port's most useful output. Losing them to a
     // silent freeze wasted a real play session.
     onError: (e) => showError(e, 'The port reached something it has not ported.'),
+    // One batch of APU register writes per LOGIC frame, played back on the
+    // AudioContext's clock. Nothing here can affect what a frame computes.
+    audio,
   });
   // The frame rate is NOT spelled here. It comes from game.json via main.js:
   // 60.098814 Hz, derived (NTSC PPU 5369318.18 / 89341.5) rather than rounded.
   setInterval(() => {
     const s = app.state;
+    const a = audio.stats();
+    // The audio numbers are on the page on purpose. `drop` is logic frames
+    // whose samples were thrown away because the host stalled past the
+    // backlog ceiling, and `under` is times the scheduler ran dry -- both are
+    // quality losses that would otherwise be silent, which is how this repo
+    // has been bitten before.
+    const snd = a.rate
+      ? `${a.status} ${(a.rate / 1000).toFixed(1)}k q${a.backlog}`
+        + (a.dropped ? ` drop${a.dropped}` : '')
+        + (a.underruns ? ` under${a.underruns}` : '')
+      : a.status;
     stats.innerHTML = `<b>$0360</b> ${s.obj.x[0]} <b>$0320</b> ${s.obj.y[0]}`
       + ` &nbsp; <b>cam</b> ${(s.cam.hi << 8) | s.cam.lo}px`
       + ` &nbsp; <b>$0120</b> ${s.obj.anim[0]}`
-      + ` &nbsp; <b>lag</b> ${s.lagFrames}`;
+      + ` &nbsp; <b>lag</b> ${s.lagFrames}`
+      + ` &nbsp; <b>snd</b> ${snd}`;
   }, 100);
 } catch (e) {
   // Say what is missing and how to make it, rather than leaving a black canvas.
