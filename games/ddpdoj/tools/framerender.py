@@ -18,6 +18,15 @@ from pgmgfx import Roms, tx_tile, bg_tile, parse_sprite_list, save_png
 
 FILL = 0x3ff          # igs023_video.cpp:772
 
+# igs023_video.cpp:588-591 walks the display list BACKWARDS, and pgm_draw_pix
+# refuses to write a pixel whose priority bit 0 is already set -- so the FIRST
+# sprite drawn owns the pixel and the first sprite drawn is the LAST list entry.
+# **A HIGHER LIST INDEX THEREFORE DRAWS IN FRONT.** games/ddpdoj/NOTES-machine.md
+# had this backwards until 00-recon-assets.md §3 corrected it. It is a module
+# flag only so that gfxgate.py's red validation can flip it and watch the gate
+# fail; nothing else may change it.
+SPRITE_ORDER_REVERSED = True
+
 
 def be16(b):
     return np.frombuffer(b, dtype=">u2")
@@ -274,7 +283,8 @@ def render(roms, d, W=448, H=224, want_bg=True, want_spr=True, want_tx=True,
     if want_spr:
         sprites = parse_sprite_list(d["spritebuffer"], stride=8, limit=256)
         drawer = SpriteDrawer(roms, bitmap, pri, W, H)
-        for s in reversed(sprites):                 # igs023_video.cpp:588-591
+        order = list(reversed(sprites)) if SPRITE_ORDER_REVERSED else list(sprites)
+        for s in order:                             # igs023_video.cpp:588-591
             if (ctrl >> 13) & 1 and not s["pri"]:
                 continue
             drawer.draw(s, d["zoomram"])

@@ -58,6 +58,11 @@ Commands
   pixred        red-validate the pixel column by switching the sprite DMA off
   objdriver     THE OBJECT DRIVER: the derived table + a measured slot census
   overrun       FORCE AN OVERRUN: the 0-nop control, then an injected-load sweep
+  gfx           THE GFX GATE: >=12 frame pairs, our decoder vs MAME, 100.0000 %
+  zoomcov       ZOOM COVERAGE: all 16 table entries x grow/shrink x axes x flips
+  sprites       THE SPRITE HARVEST: every offs the game used, for the atlas
+  sound         THE SOUND MAP: mailbox -> keyon, the Z80 blob, ICS in order
+  check         THE CHECK RUNNER: every gate, cheapest first, skips counted
 
  7. THE OBJECT DRIVER IS MAIN-LOOP CALL #2, $2410BC (build A: $1413FE): 20 slots
     of $50 bytes at $80E240, dispatched through a 20-entry table at $240F62,
@@ -281,6 +286,13 @@ def check(r: Run, what: str, *, quiet: bool = False) -> None:
 
 def census(r: Run) -> None:
     for l in r.find("CENSUS "):
+        print("  " + l)
+    # WARN is a real result, not noise: the bg_scale watch reports the BIOS's
+    # non-100% boot writes here. A warning nobody prints is a watch nobody
+    # installed.
+    for l in r.find("WARN "):
+        print("  " + l)
+    for l in r.find("BGSCALE "):
         print("  " + l)
     for l in r.find("BUILD "):
         print("  " + l)
@@ -611,6 +623,456 @@ def _cmd_pixred(argv: list[str]) -> int:
     return 0 if ok else 1
 
 
+# --------------------------------------------------------------------------- gfx
+# Wave 3.  ROM-derived output only ever goes under games/ddpdoj/rip/, which is
+# gitignored twice over (the repo-root `rip/` rule, unanchored so it matches at
+# any depth, AND games/ddpdoj/rip/.gitignore containing `*`).
+RIP = HERE.parent.parent / "rip"
+TOOLS = HERE.parent
+ROMDIR = RIP / "rom"
+
+# Spread over BOOT and STAGE 1 both. A gate that only samples gameplay never
+# sees the TX-only screens; one that only samples boot never sees a 90-sprite
+# frame. 16 points, so the >=12 requirement has slack for a dropped dump.
+GFX_POINTS = "200,400,600,800,1000,1300,1600,1800,1900,2000,2100,2200,2300,2400,2500,2580"
+GFX_MIN_PAIRS = 12
+
+
+def _gfx_run(tag: str, points: str, frames: int, *, zoomcov: str = "",
+             zoomsynth: bool = False, buttons: str | None = None) -> Path:
+    """One MAME run that leaves IGS023 state+framebuffer pairs on disk."""
+    d = RIP / f"gfx-{tag}"
+    if d.exists():
+        shutil.rmtree(d)         # never let a previous run's dumps be counted
+    d.mkdir(parents=True, exist_ok=True)
+    defs = scenarios()
+    s = next(x for x in defs["scenarios"] if x["name"] == defs["gate"])
+    script = buttons if buttons is not None else build_script(defs, s)
+    env = {"PROBE_GFX": str(d), "PROBE_GFXAT": points}
+    if zoomcov:
+        env["PROBE_ZOOMCOV"] = zoomcov
+    if zoomsynth:
+        env["PROBE_ZOOMSYNTH"] = "1"
+    r = trace(OUT / f"gfx-{tag}.tsv", frames=frames, buttons=script,
+              meter=False, extra_env=env)
+    check(r, f"gfx/{tag}")
+    census(r)
+    for l in r.find("ZOOMCOV "):
+        print("  " + l)
+    n = len(r.find("GFXDUMP "))
+    print(f"  {n} state+framebuffer dumps in {d}")
+    return d
+
+
+def _cmd_gfx(argv: list[str]) -> int:
+    """THE GFX GATE (wave 3 item 1).
+
+    One command: run MAME with the VERSION-B script, dump >=12 frame pairs over
+    boot AND stage 1, re-render each with our own decoder, and FAIL on anything
+    that is not 100.0000 % -- or on too few pairs.
+
+      pgm.py gfx                 dump and gate
+      pgm.py gfx --reuse         gate the dumps already on disk
+      pgm.py gfx --mutate NAME   RED VALIDATION; the gate must go red
+      pgm.py gfx --mutate all    every mutation in turn; ALL must go red
+    """
+    import subprocess as sp
+    reuse = "--reuse" in argv
+    mut = None
+    for i, a in enumerate(argv):
+        if a == "--mutate" and i + 1 < len(argv):
+            mut = argv[i + 1]
+    d = RIP / "gfx-gate"
+    if not reuse and mut is None:
+        d = _gfx_run("gate", GFX_POINTS, 2600)
+    elif not d.exists():
+        d = _gfx_run("gate", GFX_POINTS, 2600)
+    if not ROMDIR.exists():
+        raise SystemExit(f"{ROMDIR} missing -- run `python "
+                         f"games/ddpdoj/tools/assets.py extract` first")
+
+    def gate(m: str | None) -> int:
+        cmd = [sys.executable, str(TOOLS / "gfxgate.py"), "--rom", str(ROMDIR),
+               "--dump", str(d), "--min-pairs", str(GFX_MIN_PAIRS)]
+        if m:
+            cmd += ["--mutate", m]
+        res = sp.run(cmd, capture_output=True, text=True)
+        sys.stdout.write(res.stdout)
+        sys.stderr.write(res.stderr)
+        return res.returncode
+
+    if mut == "all":
+        from importlib import util as _u
+        spec = _u.spec_from_file_location("gfxgate", TOOLS / "gfxgate.py")
+        mod = _u.module_from_spec(spec); spec.loader.exec_module(mod)
+        base = gate(None)
+        print(f"\nBASELINE: {'PASS' if base == 0 else 'FAIL'}")
+        bad = []
+        for name in mod.MUTATIONS:
+            print(f"\n--- mutation {name} (must go RED) ---")
+            rc = gate(name)
+            print(f"    {name}: {'RED (good)' if rc else 'STILL GREEN -- THE GATE IS FAKE'}")
+            if rc == 0:
+                bad.append(name)
+        print("\nRED VALIDATION: " + ("every mutation was caught"
+                                      if not bad and base == 0 else
+                                      f"BROKEN -- baseline={'ok' if base==0 else 'FAILED'} "
+                                      f"undetected={bad}"))
+        return 0 if (base == 0 and not bad) else 1
+    rc = gate(mut)
+    if mut:
+        print(f"EXPECTED-RED [{mut}]: " +
+              ("diverged, as it must" if rc else
+               "STILL 100 % -- the gate cannot see this mutation and is not a gate"))
+        return 0 if rc else 1
+    return rc
+
+
+def _cmd_sprites(argv: list[str]) -> int:
+    """THE SPRITE HARVEST (wave 3 item 3).
+
+    Sprites cannot be enumerated statically on this board -- there is no table
+    in ROM, only a word offset into a length-compressed stream.  So the atlas is
+    built from a MEASUREMENT: every `offs`/width/height the game handed to the
+    hardware, over the whole corpus, recorded at the sample point.  The policy
+    and its consequence go into the manifest; `assets.py export` reads these
+    TSVs.
+    """
+    hv = RIP / "harvest"
+    hv.mkdir(parents=True, exist_ok=True)
+    defs = scenarios()
+    names = argv or ["stage1-open", "stage1-deep"]
+    total = {}
+    for name in names:
+        s = next((x for x in defs["scenarios"] if x["name"] == name), None)
+        if s is None:
+            raise SystemExit(f"unknown scenario {name}")
+        tsv = hv / f"{name}.tsv"
+        tsv.unlink(missing_ok=True)
+        print(f"\n=== harvesting sprites over '{name}' ({s['frames']} logic frames)")
+        r, _ = run_scenario(defs, s, out=OUT, tag=".harv",
+                            extra_env={"PROBE_SPRHARVEST": str(tsv)})
+        check(r, f"sprites/{name}")
+        for l in r.find("CENSUS sprite_harvest"):
+            print("  " + l)
+        for line in tsv.read_text(encoding="utf8").splitlines()[1:]:
+            f = line.split("\t")
+            total[(f[0], f[1], f[2])] = total.get((f[0], f[1], f[2]), 0) + int(f[5])
+    print(f"\n{len(total)} distinct (offs,width,height) records over "
+          f"{len(names)} scenario(s); TSVs in {hv}")
+    print("NOTE: this is a PRESENCE measurement. Content the corpus never "
+          "reached is ABSENT from the atlas -- enlarge the corpus to enlarge it.")
+    return 0
+
+
+def _cmd_sound(argv: list[str]) -> int:
+    """THE SOUND MAP (wave 3 item 4).  Identification only -- audio PLAYBACK is
+    deliberately out of the slice (PLAN §6 item 2); this secures the map while
+    the tooling is warm, and closes three wave-0 open items:
+      * the 68k->Z80 mailbox (the doorbell carries no ID; the payload does),
+      * where the uploaded Z80 program lives inside the 68k ROM,
+      * the 17 samples whose end <= start, by logging the ICS register writes
+        IN ORDER instead of snapshotting them at keyon.
+    """
+    d = RIP / "sound"
+    d.mkdir(parents=True, exist_ok=True)
+    defs = scenarios()
+    name = argv[0] if argv else "stage1-deep"
+    s = next(x for x in defs["scenarios"] if x["name"] == name)
+    print(f"=== sound map over '{name}' ({s['frames']} logic frames)")
+    r, _ = run_scenario(defs, dict(s, meter=False), out=OUT, tag=".snd",
+                        extra_env={"PROBE_SOUND": str(d)})
+    check(r, "sound")
+    for l in r.find("CENSUS sound"):
+        print("  " + l)
+    _sound_report(d)
+    return 0
+
+
+def _sound_report(d: Path) -> None:
+    """Reduce the three logs to the tables the plan asks for."""
+    def rows(p: Path):
+        ls = p.read_text(encoding="utf8").splitlines()
+        cols = ls[0].split("\t")
+        return [dict(zip(cols, l.split("\t"))) for l in ls[1:]]
+
+    mail = rows(d / "mailbox.tsv")
+    key = rows(d / "keyon.tsv")
+    ics = rows(d / "ics.tsv")
+    print(f"\nMAILBOX: {len(mail)} doorbell(s)")
+    pcs = {}
+    for m in mail:
+        pcs[m["pc"]] = pcs.get(m["pc"], 0) + 1
+    print(f"  doorbell PCs: {pcs}")
+    dat = {}
+    for m in mail:
+        dat[m["data"]] = dat.get(m["data"], 0) + 1
+    print(f"  doorbell data values: {dat}  "
+          f"(wave 0 saw only 0001 -- a bell, not a message)")
+    # the command payload: which window offsets were written before each ring
+    offs = {}
+    for m in mail:
+        for tok in m["payload_since_last_door"].split():
+            o = tok.split("=")[0]
+            offs[o] = offs.get(o, 0) + 1
+    top = sorted(offs.items(), key=lambda kv: -kv[1])[:12]
+    print(f"  window offsets written before a ring (top 12): {top}")
+    # MAILBOX -> KEYON
+    bydoor: dict[str, list] = {}
+    for k in key:
+        bydoor.setdefault(k["after_door"], []).append(k)
+    print(f"\nMAILBOX -> KEYON: {len(key)} keyon(s), "
+          f"{len(bydoor)} distinct preceding doorbell(s)")
+    tbl = []
+    for m in mail:
+        ks = bydoor.get(m["door"], [])
+        tbl.append((m["door"], m["lf"], m["payload_since_last_door"][:44],
+                    len(ks), ",".join(sorted({x["start"] for x in ks}))[:60]))
+    for row in tbl[:24]:
+        print(f"  door {row[0]:>4s} lf{row[1]:>5s} payload[{row[2]}] "
+              f"-> {row[3]} keyon(s) starts={row[4]}")
+    if len(tbl) > 24:
+        print(f"  ... {len(tbl)-24} more in {d/'mailbox.tsv'}")
+    # THE 17 end<=start SAMPLES
+    bad = [k for k in key if int(k["end"], 16) <= int(k["start"], 16)]
+    print(f"\nend <= start keyons: {len(bad)} of {len(key)}")
+    if bad:
+        seen = {}
+        for k in bad:
+            seen[(k["start"], k["end"], k["saddr"])] = seen.get(
+                (k["start"], k["end"], k["saddr"]), 0) + 1
+        for kk, n in sorted(seen.items())[:12]:
+            print(f"  start={kk[0]} end={kk[1]} saddr={kk[2]} x{n}")
+        # WHY end <= start.  With every register write logged in order we can
+        # ask the question wave 0 could not: after such a keyon, does the driver
+        # go on to move the END registers ($04/$05) for that same voice? If it
+        # does, the keyon-time snapshot is simply reading a half-programmed
+        # voice, and the sample is not a 1 MiB bank wrap at all.
+        byrow = {}
+        for i, r in enumerate(ics):
+            byrow.setdefault(int(r["n"]), i)
+        fixed = 0
+        for k in bad[:200]:
+            i = byrow.get(int(k["ics_row"]))
+            if i is None:
+                continue
+            for r in ics[i + 1:i + 60]:
+                if r["voice"] == k["voice"] and r["reg"] in ("04", "05"):
+                    fixed += 1
+                    break
+        n = min(len(bad), 200)
+        print(f"  of the first {n}, {fixed} are followed within 60 ICS register "
+              f"writes by another write to the END registers ($04/$05) of the "
+              f"SAME voice")
+        saddrw = sum(1 for r in ics if r["reg"] == "11" and r["half"] == "hi")
+        samebank = sum(1 for k in bad
+                       if (int(k["start"], 16) >> 20) == (int(k["end"], 16) >> 20))
+        print(f"  saddr (register $11) high byte written {saddrw} time(s); "
+              f"{samebank}/{len(bad)} of the end<=start keyons have start and "
+              f"end in the SAME 1 MiB bank, so a bank wrap does not explain them")
+    _z80_blob(d)
+    print(f"\nlogs: {d}")
+
+
+def _z80_blob(d: Path) -> None:
+    """WHERE THE Z80 PROGRAM LIVES IN THE 68k ROM.
+
+    The Z80 has 64 KiB of RAM and NO ROM (pgm.cpp:29), so its whole program was
+    uploaded through the $C10000 window.  Searching the DECRYPTED :maincpu image
+    -- not the ROM file: init_ddp3() decrypts in place -- for a needle out of the
+    Z80's RAM finds it, but only under the right copy model.  Three are tried,
+    and the run length is reported rather than the address alone: an address is a
+    lead, a long verbatim run is a location.
+    """
+    z = (d / "z80ram.bin").read_bytes()
+    m = (d / "maincpu.bin").read_bytes()
+    # a needle out of the first stretch of 32 consecutive non-zero bytes
+    start = next((i for i in range(len(z) - 32)
+                  if all(z[i + k] for k in range(32))), None)
+    if start is None:
+        print("\nZ80 BLOB: the Z80's RAM has no 32-byte non-zero stretch")
+        return
+    needle = z[start:start + 32]
+    print(f"\nZ80 BLOB: needle = 32 bytes at z80 RAM ${start:04X}")
+    best = None
+    for name, lane in (("verbatim (stride 1)", None),
+                       ("even byte lane (stride 2, +0)", 0),
+                       ("odd byte lane (stride 2, +1)", 1)):
+        hay = m if lane is None else m[lane::2]
+        step = 1 if lane is None else 1
+        hits, i = [], 0
+        while len(hits) < 8:
+            j = hay.find(needle, i)
+            if j < 0:
+                break
+            hits.append(j)
+            i = j + 1
+        # Measure the run OUTWARD FROM THE NEEDLE, not from z80 $0000: the low
+        # bytes of Z80 RAM are runtime scratch by the time the run ends, so an
+        # anchor at 0 would score 6 bytes even on a perfect match further up.
+        runs = []
+        for j in hits:
+            f = 0
+            while (j + f < len(hay) and start + f < len(z)
+                   and hay[j + f] == z[start + f]):
+                f += 1
+            b = 0
+            while (j - b - 1 >= 0 and start - b - 1 >= 0
+                   and hay[j - b - 1] == z[start - b - 1]):
+                b += 1
+            runs.append((b + f, b, f))
+        addr = [f"${(h if lane is None else h*2+lane):06X}" for h in hits]
+        print(f"  {name:30s} hits={len(hits)} at {addr} "
+              f"run_around_needle(total,back,fwd)={runs}")
+        for h, r in zip(hits, runs):
+            a0 = (h if lane is None else h * 2 + lane) - r[1]
+            z0 = start - r[1]
+            build = {0x1: "A ($13xxxx, MASTER)", 0x2: "B ($23xxxx, BLACK -- "
+                     "the port target)"}.get((a0 >> 20) & 0xf, "?")
+            print(f"      matched region ${a0:06X}..${a0 + r[0] - 1:06X} "
+                  f"= z80 RAM ${z0:04X}..${z0 + r[0] - 1:04X}   build {build}")
+        for h, r in zip(hits, runs):
+            if best is None or r[0] > best[2]:
+                best = (name, (h if lane is None else h * 2 + lane), r[0], lane, r)
+    if best and best[2] > 4096:
+        print(f"  => THE Z80 PROGRAM IS COPIED AS '{best[0]}': "
+              f"{best[2]} contiguous bytes around the needle match at "
+              f"${best[1]:06X} in the decrypted :maincpu "
+              f"({best[4][1]} back, {best[4][2]} forward)")
+    else:
+        print(f"  => NO MODEL PRODUCED A LONG VERBATIM RUN (best {best[2] if best else 0}"
+              f" bytes). The needle is present but the surrounding bytes are not, "
+              f"so the upload is NOT a straight copy under any of these three "
+              f"models -- it is transformed (packed, or written through code "
+              f"rather than a block move). RECORDED AS UNRESOLVED: I did not "
+              f"find the blob's source, and I am not going to call a 32-byte "
+              f"coincidence a location.")
+
+
+def _cmd_zoomcov(argv: list[str]) -> int:
+    """ZOOM COVERAGE (wave 3 item 2).
+
+    Today's corpus contains zoom-table entries 1 and 0xa: presence, not
+    coverage.  This drives all 16 entries x grow/shrink x x-only/y-only/both x
+    4 flips, twice -- once against the game's own zoom table and once against a
+    synthetic one -- by switching the sprite DMA off and writing our own display
+    list into the post-DMA buffer.  Both sides then read the same dumped buffer,
+    so it is still our decoder against MAME's, not against itself.
+    """
+    import subprocess as sp
+    start = int(argv[0]) if argv and not argv[0].startswith("-") else 2000
+    per = 18
+    combos = 16 * 2 * 3 * 4
+    batches = -(-combos // per)
+    # each batch is HELD for two logic frames so that its own state frame and
+    # its own pixels frame form the pair (see frame.lua's zc.hold note)
+    frames = start + batches * 2 + 40
+    # TWO RUNS, one zoom table each.  A table change mid-run costs exactly one
+    # frame pair because the table reaching the draw is latched a frame ahead of
+    # the sprite buffer -- measured, see frame.lua's ZC_SYNTH note.  Rather than
+    # model an offset that could not be pinned, each run holds its table fixed.
+    dirs, rc = [], 0
+    for tag, synth in (("zoomcov-native", False), ("zoomcov-synth", True)):
+        print(f"\n=== zoom coverage run: {tag} "
+              f"({'synthetic zoom table' if synth else 'the GAME OWN zoom table'})")
+        d = _gfx_run(tag, "", frames, zoomcov=f"{start},{per}", zoomsynth=synth)
+        dirs.append(d)
+        rc |= sp.run([sys.executable, str(TOOLS / "gfxgate.py"), "--rom", str(ROMDIR),
+                      "--dump", str(d), "--min-pairs", str(batches),
+                      "--json", str(OUT / f"{tag}.json")]).returncode
+    dumpargs = [x for d in dirs for x in ("--dump", str(d))]
+    rc |= sp.run([sys.executable, str(TOOLS / "zoomcov.py"), "--rom", str(ROMDIR),
+                  *dumpargs]).returncode
+    print("\n--- RED VALIDATION: break the zoom loop (zoom_word -> 0) ---")
+    red = 0
+    for d in dirs:
+        red |= sp.run([sys.executable, str(TOOLS / "gfxgate.py"), "--rom", str(ROMDIR),
+                       "--dump", str(d), "--min-pairs", str(batches),
+                       "--mutate", "zoom-off"], stdout=sp.DEVNULL).returncode
+    print("EXPECTED-RED zoom-off: " +
+          ("diverged, as it must" if red else
+           "STILL 100 % -- the zoom corpus does not exercise the zoom loop"))
+    return rc or (0 if red else 1)
+
+
+def _cmd_check(argv: list[str]) -> int:
+    """THE ddpdoj CHECK RUNNER -- one command, every gate, cheapest first.
+
+    docs/knowledge/03: A SKIP IS NOT A PASS.  A stage that cannot run because a
+    path moved is a FAILURE, not a skip; only a genuinely environmental reason
+    (no MAME, no ROM directory) is a skip, and the skip count is printed on the
+    last line where it cannot be missed.
+    """
+    import subprocess as sp
+    results = []
+
+    def stage(name, fn):
+        print(f"\n---- {name} ----")
+        try:
+            st, note = fn()
+        except SystemExit as e:
+            st, note = "FAIL", str(e)
+        except Exception as e:                     # noqa: BLE001
+            st, note = "FAIL", f"{type(e).__name__}: {e}"
+        results.append((name, st, note))
+        print(f"  [{st}] {name}" + (f" -- {note}" if note else ""))
+
+    def _env():
+        try:
+            mame_exe()
+        except SystemExit as e:
+            return ("SKIP", str(e))
+        if not ROMDIR.exists():
+            return ("SKIP", f"{ROMDIR} missing -- `assets.py extract`")
+        return ("PASS", "")
+
+    stage("environment", _env)
+    if results[-1][1] == "SKIP":
+        print("\nSKIPPED EVERYTHING: no emulator or no extracted ROMs.")
+        print(f"VERDICT: SKIP (1 stage skipped)")
+        return 0
+
+    def sub(*cmd):
+        rc = sp.run([sys.executable, *[str(c) for c in cmd]]).returncode
+        return ("PASS" if rc == 0 else "FAIL", f"exit {rc}")
+
+    quick = "--quick" in argv
+    # SEE THE RUNNER RED.  `--break-decoder <mutation>` feeds the plain gfx
+    # stage a broken decoder, so the whole runner must report FAILURES. A
+    # runner that has only ever printed ALL GREEN is not a runner
+    # (docs/knowledge/03).
+    brk = None
+    for i, x in enumerate(argv):
+        if x == "--break-decoder" and i + 1 < len(argv):
+            brk = argv[i + 1]
+    if brk:
+        print(f"!! --break-decoder {brk}: the gfx gate stage MUST go red.")
+    stage("assets/integrity", lambda: sub(TOOLS / "assets.py", "check"))
+    for m in ("overlap", "tx-msb", "bg-planes", "rom-byte"):
+        stage(f"assets/integrity RED [{m}]",
+              lambda m=m: sub(TOOLS / "assets.py", "check", "--mutate", m))
+    if brk:
+        stage(f"gfx gate [DELIBERATELY BROKEN: {brk}]",
+              lambda: sub(TOOLS / "gfxgate.py", "--rom", ROMDIR,
+                          "--dump", RIP / "gfx-gate",
+                          "--min-pairs", GFX_MIN_PAIRS, "--mutate", brk))
+    else:
+        stage("gfx gate", lambda: sub(__file__, "gfx"))
+    stage("gfx gate RED (6 mutations)", lambda: sub(__file__, "gfx", "--mutate", "all"))
+    if not quick:
+        stage("zoom coverage (+ RED)", lambda: sub(__file__, "zoomcov"))
+        stage("determinism gate", lambda: sub(__file__, "gate"))
+
+    nf = sum(1 for _, s, _ in results if s == "FAIL")
+    ns = sum(1 for _, s, _ in results if s == "SKIP")
+    print("\n" + "=" * 60)
+    for n, s, note in results:
+        print(f"  [{s}] {n}" + (f" -- {note}" if note else ""))
+    print(f"VERDICT: {'ALL GREEN' if nf == 0 else 'FAILURES'} "
+          f"-- {len(results) - nf - ns} passed, {nf} failed, {ns} SKIPPED")
+    return 1 if nf else 0
+
+
 def _cmd_seedstate(argv: list[str]) -> int:
     """Wave-1 open item 5(b): take the savestate AT THE GAME'S OWN SAMPLE POINT
     rather than at a video-frame boundary, and see whether $80FA84 -- the IRQ4
@@ -920,6 +1382,8 @@ COMMANDS = {
     "inputlead": _cmd_inputlead, "rtc": _cmd_rtc, "drc": _cmd_drc,
     "seedstate": _cmd_seedstate, "pixred": _cmd_pixred,
     "objdriver": _cmd_objdriver, "overrun": _cmd_overrun,
+    "gfx": _cmd_gfx, "zoomcov": _cmd_zoomcov, "check": _cmd_check,
+    "sprites": _cmd_sprites, "sound": _cmd_sound,
 }
 
 if __name__ == "__main__":

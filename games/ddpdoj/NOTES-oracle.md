@@ -317,3 +317,66 @@ it. A nop pushes nothing, clobbers no register, sets no flag.
 `pgm.py overrun` runs the **0-nop control first** and refuses to report a sweep
 unless the only columns that moved are `cyc`, `work`, `spin` and `d_top`.
 **Every number it prints is MAME-timed, UNCALIBRATED, and a MECHANISM result.**
+
+---
+
+## WAVE 3 — the asset gates, and one finding that changes what an oracle frame means
+
+Full evidence: `docs/worklog/ddpdoj/03-impl-asset-export-with-teeth.md`.
+The asset pipeline has its own note: **`games/ddpdoj/NOTES-assets.md`**.
+
+### New commands (all through this same harness, VERSION-B, build-asserted)
+
+```
+python pgm.py gfx        THE GFX GATE: 16 state+framebuffer pairs over boot AND
+                         stage 1, our decoder vs MAME, 100.0000 % or FAIL --
+                         and FAIL, not skip, if fewer than 12 pairs were dumped
+python pgm.py gfx --mutate all    six mutations, every one must go RED
+python pgm.py zoomcov    ALL 16 zoom-table entries x grow/shrink x axes x flips
+python pgm.py sprites    harvest every sprite `offs` the game uses (the atlas)
+python pgm.py sound      the sound map: mailbox -> keyon, the Z80 blob, ICS in order
+python pgm.py check      THE CHECK RUNNER, cheapest first, SKIPS COUNTED
+python pgm.py check --break-decoder u19-at-200000     see the runner RED
+```
+
+`pgm.py check` measured, on a fresh extraction of the ROMs from `ddpdojblk.7z`:
+`ALL GREEN -- 10 passed, 0 failed, 0 SKIPPED`, and with `--break-decoder`:
+`FAILURES -- 7 passed, 1 failed, 0 SKIPPED`.
+
+### `bg_scale` is now watched on EVERY run, and it tripped immediately
+
+```
+CENSUS bg_scale writes=4 non_0210=2 values_written[0210:2 0610:2]
+                values_seen_per_frame[0210:2600]
+BGSCALE vf=0 lf=0 value=0610 pc=0065E2
+```
+
+`$0065E2` is in the PGM BIOS and both writes are at `lf=0`: **the BIOS programs a
+non-100 % background scale during boot**, and MAME does not implement the
+register (`igs023_video.cpp:193`). Those boot frames are rendered without a
+feature the hardware has. Nothing in the corpus compares them, so it is a WARN;
+a non-0x210 value **at a sample point**, or any non-0x210 write after the first
+logic frame, is a FAIL. `gfxgate.py` also fails any frame pair drawn with
+`bg_scale != 0x210` outright.
+
+### The one that matters beyond assets: what a "state dump" can and cannot be
+
+**MAME's `draw_sprites` does not re-read `:igs023:spritebuffer` at draw time.**
+Poking that share with the sprite DMA disabled put our list in the dump and left
+MAME drawing the game's sprites (92.64 %, and the framebuffer PNG showed the
+game's explosion, not our grid). The share is an OUTPUT of the DMA; the draw uses
+what the DMA parsed. On the natural corpus the two always agree — which is
+exactly why the decoder can be validated against the share — but any future
+intervention has to go into the game's own list in main RAM, at the sample point.
+
+And **the zoom table reaching the draw is latched one frame AHEAD of the sprite
+buffer**: a table changed mid-run costs exactly one frame pair (measured, 978
+pixels, and re-scoring that pair against the previous frame's table gives
+100352/100352). Where MAME latches it was not established, so the zoom-coverage
+runs hold the table constant and run twice instead of modelling the offset.
+
+### Sprite-list peak, again
+
+`CENSUS max_sprite_entries=122` on the gate scenario. Wave 0 saw 95, wave 1 saw
+133. **The 256 cap has still never been reached, and that still says nothing
+about what happens at it.**
