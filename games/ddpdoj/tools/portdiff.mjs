@@ -21,7 +21,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { Game } from '../src/main.js';
-import { stateVector, CLAIMED, OPTION_COLUMNS, MASKED } from '../src/state.js';
+import { stateVector, CLAIMED, OPTION_COLUMNS, MASKED, RAWDUMP_SPEC,
+  REPORTED_COLUMNS } from '../src/state.js';
 import { breakage } from './breakage.mjs';
 import { CLAMP_ORDER } from '../src/player.js';
 
@@ -91,6 +92,22 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
   // vblank COUNT, which is the quantity it actually models.
   let boardVf = Number(start.vf);
 
+  // WAVE 8.  THE SPRITE-REQUEST BUCKET IS SHARED, SO IT IS COMPARED BY
+  // CONTAINMENT AND NOT BY EQUALITY, and that is a deliberate weakening with a
+  // measured reason.  $808854 is appended to by every live player-shot record
+  // in slot order, and the OPTION PODS' shots occupy slots 7..12 -- earlier
+  // than the player's 14..17/21..24 -- through $24C096, one of the 22 unported
+  // subsystem calls in object type 5.  So the board's bucket is the port's
+  // records with other records interleaved BEFORE them, and equality would be
+  // red for a reason that is not a bug.  The claim this makes instead is
+  // falsifiable and worth something: EVERY 12-BYTE RECORD THE PORT EMITTED
+  // APPEARS VERBATIM IN THE BOARD'S OWN BUCKET FOR THAT FRAME.
+  const sprq = { frames: 0, records: 0, missing: [], other: 0, past: 0 };
+  const reported = REPORTED_COLUMNS.filter((c) => start[c] !== undefined);
+  const rep = new Map(reported.map((c) => [c, { n: 0, max: 0, first: null }]));
+  const sprqLen = (RAWDUMP_SPEC.find((r) => r[0] === 'sprq') ?? [, , 0])[2];
+  const hitEx = { frames: 0, total: 0, first: null, any: 0, anyFrames: 0 };
+
   for (let lf = seedLf + 1; ; lf++) {
     const row = byLf.get(lf);
     if (!row) break;
@@ -128,12 +145,51 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
         first.set(c, { lf, port: v[c], board: row[c] });
       }
     }
+    // THE SHOT-VS-ENEMY DAMAGE ROUTINE, counted on the BOARD.  $245044 is the
+    // only writer of bit 7 of a shot record's low byte, and that bit is the
+    // gate into a handler path the port refuses to translate.  If it ever fires
+    // inside the compared window the port's shot records are being compared
+    // against a board that took a branch the port cannot take, and the run is
+    // not evidence of anything.  This is a FAILURE, not a note.
+    if (row.hitex !== undefined && Number(row.hitex) > 0) {
+      hitEx.frames++;
+      hitEx.total += Number(row.hitex);
+      if (hitEx.first === null) hitEx.first = lf;
+    }
+    if (row.hitany !== undefined && Number(row.hitany) > 0) {
+      hitEx.anyFrames++;
+      hitEx.any += Number(row.hitany);
+    }
+    // Containment, per 12-byte record, over the records the port actually wrote
+    // this frame (its own $80AFD6 before the reset -- carried on the game).
+    if (row.sprq !== undefined) {
+      sprq.frames++;
+      sprq.other += game.frameRequestsOther.length;
+      const board = row.sprq;
+      for (const o of game.frameRequests) {
+        if (o + 12 > sprqLen) { sprq.past++; continue; }
+        const rec = v.sprq.slice(o * 2, o * 2 + 24);
+        sprq.records++;
+        if (!board.includes(rec)) sprq.missing.push({ lf, off: o, rec });
+      }
+    }
+    // REPORTED-not-claimed columns: traced, printed with their drift.
+    for (const c of reported) {
+      if (row[c] === undefined) continue;
+      if (String(v[c]) !== String(row[c])) {
+        rep.get(c).n++;
+        if (rep.get(c).first === null) rep.get(c).first = { lf, port: v[c], board: row[c] };
+        const d = Math.abs(Number(v[c]) - Number(row[c]));
+        if (d > rep.get(c).max) rep.get(c).max = d;
+      }
+    }
     if (Number(row.irq6) !== v.irq6) dilated.push(lf);
     compared++; last = lf;
   }
 
   return {
     seedLf, last, compared, seedBad, cols, optCols, first, dilated, vfSkew, game, pokes, maskHits, maskFirst,
+    sprq, hitEx, reported, rep,
     digest: digest.digest('hex'),
     optionFirst: new Map(optCols.map((c) => {
       for (let lf = seedLf + 1; lf <= last; lf++) {
@@ -161,6 +217,7 @@ function main() {
   }
   const tables = flag('tables',
     fileURLToPath(new URL('../rip/port/player.tables.json', import.meta.url)));
+  const sprqLenBytes = (RAWDUMP_SPEC.find((x) => x[0] === 'sprq') ?? [, , 0])[2];
   const r = run(pos[0], pos[1], tables, {
     seedLf: flag('seed-lf') !== undefined ? Number(flag('seed-lf')) : undefined,
     break: flag('break'),
@@ -198,6 +255,48 @@ function main() {
     + (r.game.allocEvents.size
       ? [...r.game.allocEvents].map(([k, n]) => `${k}=${n}`).join(' ')
       : 'none -- no object was created, evicted or killed in this window'));
+  // WAVE 8 -- the shot subsystem's three reports.  All three print even when
+  // they are empty: a counter that is only shown when it is non-zero cannot be
+  // told from a counter nobody installed.
+  console.log(`SHOTSPAWN ($249BFC/$24A222): `
+    + (r.game.shotSpawns.size
+      ? [...r.game.shotSpawns].map(([k, n]) => `${k}=${n}`).join(' ')
+      : 'none -- the player never fired in this window'));
+  for (const c of r.reported) {
+    const d = r.rep.get(c);
+    console.log(`REPORTED ${c} (traced, NOT claimed -- see src/state.js `
+      + `REPORTED_COLUMNS): differed on ${d.n} of ${r.compared} frames`
+      + (d.first ? `, first at lf${d.first.lf} port=${d.first.port} `
+        + `board=${d.first.board}, largest gap ${d.max}` : ''));
+  }
+  if (r.sprq.frames) {
+    console.log(`SPRQ CONTAINMENT ($23F3AE -> $808854): ${r.sprq.records} record(s) `
+      + `emitted by the port over ${r.sprq.frames} frames, `
+      + `${r.sprq.records - r.sprq.missing.length} found verbatim in the board's `
+      + `own bucket, ${r.sprq.missing.length} MISSING`
+      + (r.sprq.missing.length
+        ? ` (first at lf${r.sprq.missing[0].lf} offset ${r.sprq.missing[0].off}: `
+          + `${r.sprq.missing[0].rec})` : ''));
+    console.log(`  (CONTAINMENT, not equality: the option pods' shots share this `
+      + `bucket and are appended BEFORE the player's -- see src/state.js `
+      + `RAWDUMP_SPEC.  ${r.sprq.other} further record(s) came from slots the `
+      + `port cannot model and are excluded BY NAME; ${r.sprq.past} landed past `
+      + `the ${sprqLenBytes}-byte dumped prefix and are not checked.)`);
+  }
+  const hitAny = r.hitEx.any - r.hitEx.total;
+  if (r.hitEx.first !== null) {
+    console.log(`HITEX $245044 fired ${r.hitEx.total} time(s) on ${r.hitEx.frames} `
+      + `frame(s) inside the compared window, first at lf${r.hitEx.first}. That `
+      + `is the shot-vs-enemy damage routine: the board took a branch the port `
+      + `deliberately does not translate, so this window is NOT evidence.`);
+  } else {
+    console.log(`HITEX $245044 (shot-vs-enemy damage, the only writer of the `
+      + `shot HIT bit) fired 0 times on the TEN COMPARED RECORDS in the whole `
+      + `window -- so the untranslated hit path was never reached, MEASURED. `
+      + `On the rest of the 36-slot table (the OPTION PODS' shots, slots 7..11, `
+      + `an unported subsystem) it fired ${hitAny} time(s) on `
+      + `${r.hitEx.anyFrames} frame(s); those touch no compared byte.`);
+  }
   console.log(`WALLHITS ${r.game.wallHits.length} ($261126) `
     + `[${[...new Set(r.game.wallHits.map((w) => w.which))].join(', ')}]`);
   if (r.vfSkew.length) {
@@ -219,16 +318,23 @@ function main() {
       + `${r.maskFirst.get(c) ?? '-'} (see src/state.js MASKED for why)`);
   }
   console.log(`DIGEST ${r.digest}`);
-  if (r.first.size === 0 && r.seedBad.length === 0) {
+  const gateFail = r.hitEx.first !== null || r.sprq.missing.length > 0;
+  if (r.first.size === 0 && r.seedBad.length === 0 && !gateFail) {
     console.log(`RESULT 0 DIVERGENT FRAMES on ${r.cols.length} columns over `
       + `${r.compared} logic frames`);
     return 0;
   }
   for (const [c, d] of [...r.first].sort((a, b) => a[1].lf - b[1].lf)) {
+    const p = String(d.port), b = String(d.board);
     console.log(`DIVERGE ${c.padEnd(8)} first at lf=${d.lf}: `
-      + `port=${d.port} board=${d.board}`);
+      + (p.length > 40
+        ? `port=${p.slice(0, 40)}... board=${b.slice(0, 40)}...  `
+          + `(first differing byte ${[...p].findIndex((ch, i) => ch !== b[i]) >> 1})`
+        : `port=${p} board=${b}`));
   }
-  console.log(`RESULT ${r.first.size} of ${r.cols.length} columns diverged`);
+  console.log(`RESULT ${r.first.size} of ${r.cols.length} columns diverged`
+    + (gateFail ? `; and a wave-8 gate above (HITEX / SPRQ containment) FAILED`
+      : ''));
   return 1;
 }
 

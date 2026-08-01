@@ -36,12 +36,18 @@ import { runObjectDriver, ObjOrder } from './objdriver.js';
 import { updatePlayer, FROZEN_GLOBALS } from './player.js';
 import { UnportedLog, unreached } from './unported.js';
 import { MoveTables } from './vectors.js';
+import { RomWindows } from './rom.js';
+import { makeType5 } from './type5.js';
+import { PLAYER_SLOTS } from './shots.js';
+import { resetSpriteQueueCounters } from './spritequeue.js';
 
-/** The object dispatch table $240F62, as far as wave 4 implements it. */
-export function defaultHandlers() {
+/** The object dispatch table $240F62, as far as the port implements it.
+ *  Entry [5] is PARTIAL -- see type5.js: one of its 23 subsystem calls. */
+export function defaultHandlers(rom) {
   return new Map([
     [2, updatePlayer],    // $240F62[2] = $2491C0, P1
     [3, updatePlayer],    // $240F62[3] = $249246, P2
+    [5, makeType5(rom)],  // $240F62[5] = $28B5E0, PARTIAL: only $253A70 of 23
   ]);
 }
 
@@ -54,13 +60,17 @@ export class Game {
    */
   constructor(seed, tables, opts = {}) {
     this.ram = new Ram(seed);
-    this.tables = new MoveTables(tables);
+    // WAVE 8: the cartridge, as a set of declared windows.  The shot spawn
+    // follows pointers out of a ROM template, so the port reads ROM the way the
+    // 68000 does and throws BY ADDRESS on anything the exporter did not cover.
+    this.rom = new RomWindows(tables.rom);
+    this.tables = new MoveTables(tables, this.rom);
     this.gov = Object.fromEntries(
       Object.entries(tables.gov).map(([k, v]) => [k, v.words]));
     this.budget = new WorkBudget(opts.budgetUnits);
     this.unportedLog = new UnportedLog();
     this.order = new ObjOrder();
-    this.handlers = opts.handlers ?? defaultHandlers();
+    this.handlers = opts.handlers ?? defaultHandlers(this.rom);
     // Seeded, not counted from zero: the port starts mid-game, and a counter
     // that started at 0 would compare against nothing.
     this.logicFrame = opts.logicFrame ?? 0;
@@ -78,6 +88,11 @@ export class Game {
     this.ram.setU8(RAM.semaphore, this.armedVblanks);
     this.wallHits = [];
     this.allocEvents = new Map();
+    this.shotSpawns = new Map();
+    this.shotTableFull = 0;
+    this.frameRequests = [];        // bucket offsets from COMPARED slots
+    this.frameRequestsOther = [];   // ...and from the option pods'
+    this.shotRequests = 0;
     this.frozen = FROZEN_GLOBALS.map(([a, why]) => ({
       addr: a, value: this.ram.u16(a), why,
     }));
@@ -87,7 +102,33 @@ export class Game {
   #ctx() {
     return {
       tables: this.tables,
+      rom: this.rom,
       unportedLog: this.unportedLog,
+      // WAVE 8: every record the shot spawn creates, and every frame it could
+      // not.  Printed by the runner for the same reason `allocEvents` is: a
+      // spawn that silently did nothing is indistinguishable from a spawn that
+      // was never called.
+      shotSpawn: (kind, addr) => {
+        this.shotSpawns.set(kind, (this.shotSpawns.get(kind) ?? 0) + 1);
+        if (kind === 'secondary-full') this.shotTableFull++;
+        void addr;
+      },
+      // Bucket offsets appended by ONE shot slot, so the gate's containment
+      // check can be restricted to the ten records it also compares byte for
+      // byte.  Slots 0..12 are the OPTION PODS' shots -- created by $24D484,
+      // which is unported -- and the port's copies of them are stale the moment
+      // the board respawns one; including their requests would make the check
+      // red for a reason that is not a defect, and excluding them silently
+      // would make it meaningless.  So they are excluded BY NAME and counted.
+      shotRequests: (player, slot, from, to) => {
+        if (to === from) return;
+        const compared = player === 0
+          && ((slot >= PLAYER_SLOTS.primary[0] && slot <= PLAYER_SLOTS.primary[1])
+            || (slot >= PLAYER_SLOTS.secondary[0] && slot <= PLAYER_SLOTS.secondary[1]));
+        for (let o = from; o < to; o += 12) {
+          (compared ? this.frameRequests : this.frameRequestsOther).push(o);
+        }
+      },
       budget: this.budget,
       order: this.order,
       wallHit: (addr, which) => {
@@ -142,6 +183,7 @@ export class Game {
     const ctx = this.#ctx();
     this.budget.beginFrame();
     this.irq6Count = 0; this.releases = 0;
+    this.frameRequests = []; this.frameRequestsOther = [];
 
     // 1-3: the spin, the vblank(s) and the IRQ6(s).  `armedVblanks` of them:
     // the first armedVblanks-1 find the semaphore still non-zero and release
@@ -162,8 +204,19 @@ export class Game {
     this.unportedLog.note(ROM.call1, 'main-loop call #1 ($256D5A)');
     this.objn = runObjectDriver(this.ram, this.handlers, ctx);   // 7: $2410BC
     this.unportedLog.note(ROM.call3, 'main-loop call #3 ($24683E)');
+    // 9: call #4, $23D2AE, THE SPRITE LIST BUILD.  Still unported -- the
+    // 29-bucket sum, the guarded copy at $23D726 with its 251-record cap, and
+    // the emit at $23D624 -- EXCEPT for its very last loop, $23D70C..$23D71C,
+    // which zeroes all thirty bucket counters.  The port models that one loop
+    // because without it $80AFD6 would grow without bound and the shot
+    // enqueue's own output would stop being comparable after one frame.
     this.unportedLog.note(ROM.spriteBuild,
-      'main-loop call #4: THE SPRITE LIST BUILD ($23D2AE) -- wave 6');
+      'main-loop call #4: THE SPRITE LIST BUILD ($23D2AE) -- everything except '
+      + 'its $23D70C bucket-counter reset');
+    // How many 12-byte sprite REQUESTS the shot handlers appended this frame,
+    // read off $80AFD6 the instant before call #4's tail zeroes it.
+    this.shotRequests = this.ram.u16(0x80afd6) / 12;
+    resetSpriteQueueCounters(this.ram);               // $23D70C..$23D71C
     this.armedVblanks = this.#frameSync();            // 10: THE SAMPLE POINT
     this.logicFrame++;
     return this;

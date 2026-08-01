@@ -66,7 +66,85 @@ GOV_TABLES = {"t23C3EE": (0x23C3EE, 10), "t23C402": (0x23C402, 10),
 ANIM_A = 0x25533A
 ANIM_B = 0x2553CA
 TILT_MIN, TILT_MAX, TILT_STEP = -0x20, 0x20, 4
-SCAN_CAP = 64                 # see speed_levels(): a scan cap, not the table end
+SCAN_CAP = 512                # see speed_levels(): a scan cap, not the table end
+
+# --------------------------------------------------------------------- WAVE 8
+# THE SHOT SUBSYSTEM'S ROM.  Wave 4 exported hand-picked tables as JSON arrays.
+# The shot spawn ($249BFC -> $24A222) does not read TABLES, it copies a 38-byte
+# RECORD TEMPLATE and then follows three more pointers out of it, so the honest
+# export is a set of ROM WINDOWS the port reads the way the 68000 does -- with a
+# bounds check that THROWS BY ADDRESS on any read the export did not cover,
+# instead of an array index that would silently return undefined.
+#
+# Each window is here because an instruction reads inside it; the comment names
+# the instruction.  Windows are deliberately a little wider than the bytes we
+# know are used, because "wider than measured" fails loudly at the export and
+# "narrower than used" fails at runtime on the player's machine.
+SHOT_WINDOWS = [
+    # $249C3E lea $2554EA / $249C88 lea $255502 / $249D5E lea $25551A -- the
+    # per-FORMATION pointer tables, and the per-POWER tables they point at
+    # ($255532..$2555A9, five longs each at a TWO-byte stride, so the power word
+    # must be even -- the same trap as the ship selector).
+    (0x2554E0, 0x0100, "$2554EA/$255502/$25551A + the $255532.. power tables"),
+    # $249C1A `move.w (A2),D7` with A2 = the LONG at $8127E4 -- a ROM pointer
+    # the game stores in RAM at ship select.  MEASURED $25523C, holding 4.  The
+    # window is here because the port throws by address if $8127E4 ever points
+    # anywhere else, which is exactly what happened the first time it ran.
+    (0x255200, 0x0100, "the $8127E4 shot-count words at $25523C.."),
+    # $24A222's template: 38 bytes copied field by field into the shot record.
+    # $24DA20..$24DB9B is the ten SHOT templates (2 tables x 5 powers).
+    (0x24D8A0, 0x0360, "shot templates $24DA20.. + the $24D8AC/$24D918 anim tables"),
+    # ...and the LASER templates plus their anim tables.
+    (0x24E740, 0x0320, "laser templates $24E8BC.. + $24E744/$24E7D4"),
+    # The $25551A family's templates and anim tables ($24DFE8/$24E054 and
+    # $24EEA4/$24EF34).  Not reached by the player's own spawn; reached by a
+    # SEEDED option-pod shot, whose ($1a,A6) the handlers feed to $241D34.
+    (0x24DFE0, 0x0300, "$25551A[0] templates $24E15C.. + $24DFE8/$24E054"),
+    (0x24EEA0, 0x0360, "$25551A[1] templates $24F01C.. + $24EEA4/$24EF34"),
+    # The OPTION PODS' pointer tables and templates ($24D4E2's $24D2FC/$24D35C).
+    (0x24D2E0, 0x00E0, "$24D2FC/$24D35C + their per-power tables"),
+    (0x24F400, 0x0C00, "option-pod templates $24F8EC.. and every anim table they point at"),
+    (0x251100, 0x0300, "option-pod laser templates $251184.."),
+    # $253B72 lea $24DDD6 / $253C7A lea $24DEB2 -- the per-($26,A6) tables the
+    # handlers re-point the record's sprite fields from, and their structs.
+    (0x24DDD0, 0x01B0, "$24DDD6 and $24DEB2 + the structs they point at"),
+    # $253E5A lea $24FC8E
+    (0x24FC80, 0x0100, "$24FC8E + its structs"),
+    # $253F38 lea $25014C
+    (0x250140, 0x0100, "$25014C + its structs"),
+    # $241D46 lea ($241AF4,PC) -- the SECOND angle-fold table.  256 words,
+    # indexed by the WHOLE angle byte (D3 = D1*2), not by angle&$3f*4 like
+    # $2418B4.  Same triangle, different stride: do not alias the two.
+    (0x241AF4, 0x0200, "$241AF4 the shot vector's angle-fold table"),
+    # $2433C2 lea ($2433D0,PC) -- the 64-longword pseudo-random table.
+    (0x2433D0, 0x0100, "$2433D0 the $2433AE pseudo-random longword table"),
+]
+
+# $249C3E/$249C88: `lea $2554EA,A1 / movea.l (A1,D0.w),A1` with
+# D0 = ((form-2)*4) + 4 if laser.  Only formation 2 (MEASURED: ($5a,A6) = 2 on
+# every frame of stage1-open) and its laser twin are reachable without the
+# formation code, so the walk below covers entries 0 and 1 of each table and
+# says so rather than pretending to enumerate all formations.
+# $25551A is the THIRD table of the same shape.  The player's own spawn never
+# reads it ($249C3E/$249C88 use the first two), but the OPTION PODS' shots --
+# created by the unported $24D484 into slots 0..12 of the SAME 36-slot table --
+# are driven by the SAME four handlers, and a seeded pod shot carries a speed
+# index ($1a,A6) out of these templates.  MEASURED: the port threw
+# `speed index 68 was not exported` on the first pod shot in the seed.  So the
+# walk covers it, and the reason is here rather than in a widened constant.
+# ...and $24D2FC/$24D35C are the OPTION PODS' own pair, read at $24D4E2 with
+# the same (ship*4 [+4 laser]) index and the same power*2 sub-index.  Their
+# templates carry speed indices 68, 80, 88, 96, 120 and 168, none of which the
+# player's own templates use, and a seeded pod shot is driven by the SAME four
+# handlers this wave translated -- so the port needs those quadrant tables even
+# though it never creates a pod shot.  MEASURED: the port threw
+# `speed index 68 was not exported` twice before this line existed.
+SPAWN_PTR_TABLES = [0x2554EA, 0x255502, 0x25551A, 0x24D2FC, 0x24D35C]
+SPAWN_FORMATION_ENTRIES = 2      # entry 0 = shot, entry 1 = laser
+SPAWN_POWERS = 5                 # power word 0,2,4,6,8 -> byte index 0,4,8,12,16
+TEMPLATE_LEN = 0x26              # $24A222 consumes exactly 38 bytes from A1
+TEMPLATE_SPEED_OFF = 26          # ...and byte 26 lands in ($1a,A6), the speed index
+PLAYER_SPEED_LEVELS = 32         # the player's own range: floor 12, base 22, 28 held
 
 
 def u16(d: bytes, a: int) -> int:
@@ -85,12 +163,12 @@ def speed_levels(d: bytes) -> int:
     """How many speed levels the pointer table holds.
 
     NOT a guess: entry s must be exactly $200D20 + $208*s.  The count is where
-    that stops holding.  MEASURED: the pattern still holds at s = 64, so the
-    real table is at least that long and this is a SCAN CAP, not the end of the
-    table -- said out loud because "64 levels" would otherwise read as a fact
-    about the ROM.  The highest index the game was ever OBSERVED to use is 28
-    (Button 2 held, worklog 04); the cap is well clear of it and the port throws
-    by name on any index it did not export rather than reading past the array.
+    that stops holding.  WAVE 4 scanned to 64 and said so ("a SCAN CAP, not the
+    end of the table"); WAVE 8 needs index 232 (the laser template's ($1a,A6))
+    and re-ran the scan with the cap at 256.  MEASURED: the pattern holds for
+    EXACTLY 256 entries -- $200920+4*256 and the two longs after it are zero,
+    and the last table ends at $221520 -- so 256 is now the table's END and not
+    a cap.  The verifier below asserts both halves of that.
     """
     base = u32(d, SPEED_PTRS)
     n = 0
@@ -99,14 +177,45 @@ def speed_levels(d: bytes) -> int:
     return n
 
 
+def spawn_templates(d: bytes) -> dict:
+    """Walk $2554EA/$255502 exactly as $249BFC does and return the reachable
+    38-byte templates keyed by ROM address.  This is a MEASUREMENT of what the
+    spawn can read, not a guess at a table length: the walk is the ROM's own
+    indexing arithmetic."""
+    out = {}
+    for tbl in SPAWN_PTR_TABLES:
+        for form in range(SPAWN_FORMATION_ENTRIES):
+            per_power = u32(d, tbl + 4 * form)
+            for pw in range(SPAWN_POWERS):
+                # $249C48 `move.w ($20,A6),D0 / add.w D0,D0 / movea.l (A1,D0.w),A1`
+                # -- power word 0,2,4,6,8 becomes byte index 0,4,8,12,16.
+                t = u32(d, per_power + 4 * pw)
+                out[t] = list(d[t:t + TEMPLATE_LEN])
+    return out
+
+
+def speed_index_set(d: bytes) -> list[int]:
+    """The speed levels the port can actually reach: the player's own 0..31 plus
+    every ($1a,A6) byte in a reachable spawn template.  Exporting all 256 levels
+    would put 133 KiB of quadrant tables into the published bundle for levels
+    nothing reads; exporting a GUESSED subset would make the port read
+    `undefined`.  So the set is derived, listed in the JSON, and the port throws
+    by name on any index outside it."""
+    s = set(range(PLAYER_SPEED_LEVELS))
+    for t in spawn_templates(d).values():
+        s.add(t[TEMPLATE_SPEED_OFF])
+    return sorted(s)
+
+
 def build(d: bytes) -> dict:
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
-    quads = []
-    for s in range(n):
+    levels = speed_index_set(d)
+    quads = {}
+    for s in levels:
         a = base + QUAD_STRIDE * s
-        quads.append([[i32(d, a + 8 * i), i32(d, a + 8 * i + 4)]
-                      for i in range(QUAD_ENTRIES)])
+        quads[str(s)] = [[i32(d, a + 8 * i), i32(d, a + 8 * i + 4)]
+                         for i in range(QUAD_ENTRIES)]
 
     def anim(tbl: int, idx: int) -> list[list[int]]:
         # LITERALLY as the ROM addresses it: `move.w ($58,A6),D0 / add.w D0,D0 /
@@ -133,7 +242,18 @@ def build(d: bytes) -> dict:
                       "words": [u16(d, KNOCKBACK + 2 * i) for i in range(8)]},
         "speed": {"rom": f"${SPEED_PTRS:06X}", "levels": n,
                   "quadBase": f"${base:06X}", "quadStride": QUAD_STRIDE,
-                  "quadEntries": QUAD_ENTRIES, "quads": quads},
+                  "quadEntries": QUAD_ENTRIES, "exported": levels,
+                  "quads": quads},
+        # WAVE 8 -- the shot subsystem.  See SHOT_WINDOWS.
+        "rom": {"_note": ("ROM WINDOWS, read by src/rom.js the way the 68000 "
+                          "reads them.  A read outside every window is a LOUD "
+                          "NAMED THROW carrying the address, never undefined."),
+                "windows": [{"base": f"${a:06X}", "len": ln, "why": why,
+                             "hex": d[a:a + ln].hex()}
+                            for a, ln, why in SHOT_WINDOWS]},
+        "shot": {"spawnPtrTables": [f"${a:06X}" for a in SPAWN_PTR_TABLES],
+                 "templates": {f"${a:06X}": v
+                               for a, v in sorted(spawn_templates(d).items())}},
         "gov": {k: {"rom": f"${a:06X}",
                     "words": [u16(d, a + 2 * i) for i in range(n)]}
                 for k, (a, n) in GOV_TABLES.items()},
@@ -164,15 +284,41 @@ def verify(t: dict) -> list[str]:
     if sp["levels"] < 29:
         bad.append(f"only {sp['levels']} speed levels, but index 28 is MEASURED in "
                    f"use (Button 2 held; see 04-impl worklog)")
-    for s, q in enumerate(sp["quads"]):
+    if sp["levels"] >= SCAN_CAP:
+        bad.append(f"the $200920 pattern still holds at the scan cap {SCAN_CAP} -- "
+                   f"raise it; 'levels' is not the table's end")
+    for k, q in sp["quads"].items():
         if len(q) != QUAD_ENTRIES:
-            bad.append(f"speed {s}: {len(q)} entries, expected {QUAD_ENTRIES}")
+            bad.append(f"speed {k}: {len(q)} entries, expected {QUAD_ENTRIES}")
             continue
         if q[0][1] != 0 or q[-1][0] != 0:
-            bad.append(f"speed {s}: quadrant does not run (r,0)..(0,r): "
+            bad.append(f"speed {k}: quadrant does not run (r,0)..(0,r): "
                        f"{q[0]} .. {q[-1]}")
-    if sp["quads"][0] != [[0, 0]] * QUAD_ENTRIES:
+    if sp["quads"]["0"] != [[0, 0]] * QUAD_ENTRIES:
         bad.append("speed level 0 is not all zeros -- it is the game's 'do not move'")
+    for lv in sp["exported"]:
+        if str(lv) not in sp["quads"]:
+            bad.append(f"speed level {lv} is listed as exported and is not present")
+    # WAVE 8: the ROM windows must cover every template the spawn walk found,
+    # or the port would throw on its first shot on someone else's machine.
+    wins = [(int(w["base"].lstrip("$"), 16), w["len"]) for w in t["rom"]["windows"]]
+
+    def covered(a: int, n: int) -> bool:
+        return any(b <= a and a + n <= b + ln for b, ln in wins)
+
+    for k, v in t["shot"]["templates"].items():
+        a = int(k.lstrip("$"), 16)
+        if len(v) != TEMPLATE_LEN:
+            bad.append(f"template {k}: {len(v)} bytes, expected {TEMPLATE_LEN}")
+        if not covered(a, TEMPLATE_LEN):
+            bad.append(f"template {k} is not inside any exported ROM window")
+        if str(v[TEMPLATE_SPEED_OFF]) not in sp["quads"]:
+            bad.append(f"template {k} wants speed level {v[TEMPLATE_SPEED_OFF]}, "
+                       f"which was not exported")
+    for w in t["rom"]["windows"]:
+        if len(w["hex"]) != w["len"] * 2:
+            bad.append(f"ROM window {w['base']} is {len(w['hex']) // 2} bytes, "
+                       f"the manifest says {w['len']}")
     for k, (a, n) in GOV_TABLES.items():
         if len(t["gov"][k]["words"]) != n:
             bad.append(f"gov table {k} is not {n} words")
@@ -196,13 +342,18 @@ def main() -> int:
     print(f"  image sha256 {t['image_sha256']}")
     print(f"  dirTable   {' '.join(f'{b:02x}' for b in t['dirTable']['bytes'])}")
     print(f"  speed      {t['speed']['levels']} levels at {t['speed']['quadBase']}"
-          f" stride ${t['speed']['quadStride']:X}, {QUAD_ENTRIES} entries each")
-    for s in (0, 1, 22, 28):
-        if s < t["speed"]["levels"]:
-            q = t["speed"]["quads"][s]
-            print(f"    level {s:2d}: 0deg=({q[0][0] >> 4},{q[0][1] >> 4})"
+          f" stride ${t['speed']['quadStride']:X}, {QUAD_ENTRIES} entries each; "
+          f"{len(t['speed']['exported'])} EXPORTED "
+          f"{t['speed']['exported'][:34]}{' ...' if len(t['speed']['exported']) > 34 else ''}")
+    for s in (0, 1, 22, 28, 80, 232):
+        q = t["speed"]["quads"].get(str(s))
+        if q:
+            print(f"    level {s:3d}: 0deg=({q[0][0] >> 4},{q[0][1] >> 4})"
                   f"  45deg=({q[32][0] >> 4},{q[32][1] >> 4})"
                   f"  90deg=({q[64][0] >> 4},{q[64][1] >> 4})   [after asr.l #4]")
+    print(f"  shot       {len(t['shot']['templates'])} reachable spawn templates, "
+          f"{len(t['rom']['windows'])} ROM windows "
+          f"({sum(w['len'] for w in t['rom']['windows'])} bytes)")
     if "--verify" in sys.argv:
         print("  VERIFY OK")
         return 0

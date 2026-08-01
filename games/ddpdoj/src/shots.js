@@ -1,0 +1,382 @@
+// THE PLAYER'S SHOT: the spawn ($249BFC / $24A222) and the four handlers the
+// stage-1 opening reaches ($253B1E, $253BDA, $253E34, $253EC6).
+//
+// Wave 5 stopped at `$249BE2`'s two-entry jump table and named everything below
+// as the blocked chain.  This file is that chain, translated, with the parts
+// that are NOT reachable in a corpus frame left as loud named throws rather
+// than as unverified translations -- the wave-6 lesson: a rule no frame can see
+// is not verified by a green gate, so it must not be made to look verified.
+//
+// ---------------------------------------------------------------- THE RECORD
+// 36 slots x $30 at $810572 (P1).  $24A222 fills bytes $00..$2B from a 38-byte
+// ROM TEMPLATE plus six player fields; $2C..$2F are the per-frame velocity the
+// handlers write.  Offsets, with the instruction that writes each:
+//
+//   +$00 w  TYPE WORD.  Low nibble -> the $253ADE dispatch.  bit 15 = "slot in
+//           use": the spawn's free-slot scan is `tst.w (A0) / bpl`, bit 15, and
+//           a handler kills its record with `clr.w (A6)`.
+//   +$01 b  ...its LOW BYTE, and three separate bits live there:
+//             bit 6  set by every handler's first instruction ("I have run")
+//             bit 3  set by `ori.w #$8,(A6)` ("I have a velocity")
+//             bit 7  set by the COLLISION, $245044 `bset #$7,(-$3,A6)`
+//           while +$00 as a BYTE holds bits 8 and 9 of the word, set by
+//           `bset #$0,(A6)` / `bset #$1,(A6)` -- BYTE operations on a memory
+//           operand, so they touch the HIGH byte, not the low one.  Reading
+//           those three as one 16-bit state word is the easiest mistake here.
+//   +$02 w  Y, 1/64 px          +$04 w  X, 1/64 px
+//   +$06 l  the DRAW OFFSET pair the enqueue adds ($FC00,$FE00 = -16,-8 px)
+//   +$0a l  display-list words 2-3, re-pointed each frame from ($1e,A6)
+//   +$0e w  display-list word 4
+//   +$14 w / +$16 w  the collision box half-extents, read at $245008/$245010
+//   +$18 w  what $24504E subtracts the enemy's damage from
+//   +$1a b  SPEED INDEX        +$1b b  ANGLE   (both into $241D34)
+//   +$1c w  display-list word 5; its LOW byte is the player's ($56,A6)
+//   +$1e l  pointer to the animation longs, indexed by ($24,A6)
+//   +$24 w  ...that index, stepped -4 per frame and reloaded to 4 on borrow
+//   +$26 w  index into $24DDD6 / $24DEB2 / $24FC8E / $25014C
+//   +$28 w  the player's formation ($5a,A6)   +$2a w  the player's power ($20,A6)
+//   +$2c w / +$2e w  THIS FRAME'S velocity, from $241D34
+//
+// ------------------------------------------------- WHAT IS *NOT* TRANSLATED
+// THE HIT PATH.  `tst.b ($1,A6) / bmi` at $253B66 and $253E52, and the
+// `bset #$1,(A6)` blocks at $253BDE / $253ECA, are reachable only after
+// $245044 has set bit 7 of the record's low byte -- i.e. after a shot has hit
+// an enemy, which needs the enemy port that is still blocked.  They are LOUD
+// NAMED THROWS.  The gate installs an execution tap on $245044 and FAILS if it
+// fires inside the compared window, so "no shot hit anything" is a measurement
+// and not an assumption.
+
+import { P } from './machine.js';
+import { u16, i16 } from './ram.js';
+import { unreached } from './unported.js';
+import { enqueueShotSprite } from './spritequeue.js';
+import { SHOT } from './weapons.js';
+
+/** Record offsets, named once. */
+export const S = {
+  type: 0x00, lowByte: 0x01, posY: 0x02, posX: 0x04,
+  drawOff: 0x06, dlWord23: 0x0a, dlWord4: 0x0e,
+  boxY: 0x14, boxX: 0x16, hp: 0x18,
+  speedIdx: 0x1a, angle: 0x1b, dlWord5: 0x1c,
+  animPtr: 0x1e, anim2: 0x22, animIdx: 0x24, tableIdx: 0x26,
+  formation: 0x28, power: 0x2a, velY: 0x2c, velX: 0x2e,
+};
+
+/** Player-record fields the spawn reads that wave 4 did not name. */
+export const PS = {
+  power: 0x20,       // $249C48 / $249CA8 / $24A25E -- 0,2,4,6,8 (an EVEN word)
+  animPhase: 0x42,   // $24A238 move.w ($42,A6),D0 -- cycles 8,4,0
+  animIdx: 0x44,     // $24A254 -> the shot's ($24,A6)
+  powerByte: 0x56,   // $24A24A -> the LOW byte of the shot's ($1c,A6)
+  formation: 0x5a,   // $24A25A -> the shot's ($28,A6)
+  flags5b: 0x5b,     // $24A262 btst #$2 -> +2 on the stored power
+  soundGate: 0x3a,   // $249D04 tst.b / $249D0C move.b #$2 (the player's $24954E
+                     // countdown is what makes it a two-frame gate)
+};
+
+export const SPAWN = {
+  jumpTable: 0x249be2, ship0: 0x249bfc, ship2: 0x249d2c,
+  countPtrP1: 0x8127e4,            // $249C02 movea.l $8127E4,A2 -> (A2) = count
+  countPtrP2: 0x8127ec,
+  primaryOffset: 0x2a0,            // $249C5C lea ($2a0,A0),A0   -> slot 14
+  secondaryOffset: 0x2a0 + 0x150,  // $249C60 lea ($150,A0),A4   -> slot 21
+  ptrPrimary: 0x2554ea,            // $249C3E
+  ptrSecondary: 0x255502,          // $249C88
+  gate308c: 0x81308c,              // $249C64 tst.w $81308C  (a FROZEN global)
+  fill: 0x24a222,
+};
+
+/**
+ * THE TEN SLOTS THE PLAYER'S OWN SPAWN CAN REACH, and the measurement that
+ * bounds them.  $249C5C starts the primary scan at offset $2A0 = slot 14 and
+ * $249C60 the secondary at $2A0+$150 = slot 21.  The scan LENGTH is D7+1 where
+ * D7 = the ROM word behind $8127E4, MEASURED = 4 -- and $249C6C would cap it at
+ * 3 only if $81308C were zero, which it is NOT: the fly-around run prints
+ * `$81308C = $0001`.  So five slots each: 14..18 and 21..25.
+ *
+ * Slots 19 and 20 sit between the two runs and no spawn site reaches them; the
+ * OPTION pods use offset $150 ($24D4A0 `move.w #$150,D0`), i.e. slots 7..11,
+ * through $24C096 -- one of the 22 unported subsystem calls in object type 5.
+ * That is why the gate compares these ten records and not the whole table.
+ */
+export const PLAYER_SLOTS = { primary: [14, 18], secondary: [21, 25] };
+
+/** `subq.w #n` on a word: the 68000 sets carry on an unsigned BORROW.  Written
+ *  once because two places get it wrong by testing the sign bit instead. */
+function subqBorrow(v, n) { return { v: u16(v - n), borrow: u16(v) < n }; }
+
+/**
+ * $24A222 -- the record filler.  A1 walks the ROM template, A0 the record.
+ *
+ * THE THREE COPIES ARE NOT ALL THE SAME, and that cost a run to find out.
+ * $24A222 and $24A27C are byte-for-byte identical (90 bytes, verified against
+ * the image).  $24A2D6 -- the one the SECONDARY spawn calls -- shares the first
+ * 86 bytes and then, where the other two `rts`, carries four more instructions:
+ *
+ *   24a32e: subq.w #4,($44,A6)
+ *   24a332: bcc $24a33a
+ *   24a334: move.w #$4,($44,A6)
+ *   24a33a: rts
+ *
+ * So ($44,A6) cycles 4,0,4,0 once per SECONDARY spawn, and it is the value the
+ * NEXT spawn copies into the new record's ($24,A6).  A port that treats the
+ * three fillers as one routine leaves ($44,A6) frozen and every shot after the
+ * first draws with the wrong animation long.  MEASURED: `p44` was the first
+ * column to diverge, at the first spawn, and an objhunt on $81042A named
+ * $24A32E/$24A334 as its only per-frame writers.
+ *
+ * @param tail  `true` for $24A2D6, the SECONDARY filler with the extra block.
+ */
+function fillShotRecord(ram, rom, rec, tmpl, prec, tail = false) {
+  let a = tmpl;
+  const w = () => { const v = rom.u16(a); a += 2; return v; };
+  const l = () => { const v = rom.u32(a); a += 4; return v; };
+
+  ram.setU16(rec + 0x00, w());                                      // $24A222
+  ram.setU16(rec + 0x02, u16(w() + ram.u16(prec + P.posY)));        // $24A224
+  ram.setU16(rec + 0x04, u16(w() + ram.u16(prec + P.posX)));        // $24A22C
+  ram.setU32(rec + 0x06, l());                                      // $24A234
+  const a2 = l();                                                   // $24A236
+  // $24A238 `move.w ($42,A6),D0 / move.l (A2,D0.w),(A0)+` -- the PLAYER's own
+  // animation phase decides which of the pod's longs the new shot draws with.
+  ram.setU32(rec + 0x0a, rom.u32(a2 + i16(ram.u16(prec + PS.animPhase))));
+  ram.setU32(rec + 0x0e, l());                                      // $24A240
+  ram.setU32(rec + 0x12, l());                                      // $24A242
+  ram.setU32(rec + 0x16, l());                                      // $24A244
+  ram.setU16(rec + 0x1a, w());                                      // $24A246
+  ram.setU16(rec + 0x1c, w());                                      // $24A248
+  ram.setU8(rec + 0x1d, ram.u8(prec + PS.powerByte));               // $24A24A
+  ram.setU32(rec + 0x1e, l());                                      // $24A250
+  ram.setU16(rec + 0x22, w());                                      // $24A252
+  ram.setU16(rec + 0x24, ram.u16(prec + PS.animIdx));               // $24A254
+  ram.setU16(rec + 0x26, w());                                      // $24A258
+  ram.setU16(rec + 0x28, ram.u16(prec + PS.formation));             // $24A25A
+  let pw = u16(ram.u16(prec + PS.power));                           // $24A25E
+  if (ram.btst8(prec + PS.flags5b, 2)) pw = u16(pw + 2);            // $24A262
+  ram.setU16(rec + 0x2a, pw);                                       // $24A26C
+
+  // $24A26E `subq.w #4,($42,A6) / bcc / move.w #$8,($42,A6)`: 8,4,0,8,...
+  const ph = subqBorrow(ram.u16(prec + PS.animPhase), 4);
+  ram.setU16(prec + PS.animPhase, ph.borrow ? 8 : ph.v);
+  if (tail) {
+    // $24A32E, only in $24A2D6: ($44,A6) cycles 4,0,4,0.
+    const ix = subqBorrow(ram.u16(prec + PS.animIdx), 4);
+    ram.setU16(prec + PS.animIdx, ix.borrow ? 4 : ix.v);
+  }
+}
+
+/**
+ * $249BFC -- the ship-0 shot spawn, reached from `$249BE2`'s two-entry jump
+ * table at the end of the player's cadence machine.
+ */
+export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
+  if (player !== 0) {
+    unreached(0x249c0e, `the P2 shot spawn ($249C0E lea $810C32,A0 / `
+      + `movea.l $8127EC,A2). P2 is ported but no scenario has a second player`);
+  }
+  const base = SHOT.p1Table;                                        // $249BFC
+  const laser = ram.btst8(prec + P.flags1, 0) === 1;                // $249C1C
+
+  // $249C1A `move.w (A2),D7` -- the scan LENGTH, a ROM word behind a RAM
+  // pointer.  $249C24 overrides it with 6 for the laser.
+  const countPtr = ram.u32(SPAWN.countPtrP1);                       // $249C02
+  let d7 = laser ? 6 : rom.u16(countPtr);                           // $249C24
+
+  const form = u16(ram.u16(prec + PS.formation));                   // $249C28
+  let d0 = u16((form - 2) << 2);                                    // $249C2C
+  if (laser) d0 = u16(d0 + 4);                                      // $249C3A
+  const d5 = d0;                                                    // $249C3C
+
+  if (form === 4) {                                                 // $249C52
+    unreached(0x249cc8, `the ($5a,A6) == 4 formation branch ($249CC8 `
+      + `lea ($1b0,A0),A0 / addq.w #2,D7 -- ONE scan of five slots at offset `
+      + `$1B0 instead of the two-table shape). MEASURED: ($5a,A6) = 2 on every `
+      + `one of the 2,600 frames of stage1-open; formation 4 was never reached`);
+  }
+  if (laser) {
+    // The laser templates carry type word $8004 -> dispatch entry [4] =
+    // $254078, which wave 5 measured as NEVER REACHED in the opening (only
+    // nibbles 0,2,8,A occur) because its corpus only ever tapped the button.
+    unreached(0x254078, `the LASER. $249C3A picks $2554EA[1]/$255502[1], whose `
+      + `templates carry type word $8004 = dispatch entry [4] = $254078, and `
+      + `no frame in this project's corpus has ever run that handler. The `
+      + `spawn is translated; the handler is not, and a handler nothing can `
+      + `check is not one this wave ships`);
+  }
+
+  const primary = rom.u32(rom.u32(SPAWN.ptrPrimary + d0)            // $249C3E
+    + u16(ram.u16(prec + PS.power)) * 2);                           // $249C48
+
+  let a0 = base + SPAWN.primaryOffset;                              // $249C5C
+  let a4 = base + SPAWN.secondaryOffset;                            // $249C60
+  // $249C64 -- $81308C caps the scan at four slots.  A FROZEN global: the port
+  // reads the seed's value and never writes it.
+  if (ram.u16(SPAWN.gate308c) === 0 && d7 > 3) d7 = 3;              // $249C6C
+  const d6 = d7;                                                    // $249C74
+
+  let found = -1;                                                   // $249C76
+  for (let i = 0; i <= d7; i++) {
+    if ((ram.u16(a0) & 0x8000) === 0) { found = i; break; }
+    a0 += SHOT.stride;                                              // $249C7A
+  }
+  if (found >= 0) {
+    fillShotRecord(ram, rom, a0, primary, prec);                    // $249C84
+    ctx?.shotSpawn?.('primary', a0);
+  }
+
+  // $249C88 -- the SECOND table runs whether or not the first found a slot.
+  const secondary = rom.u32(rom.u32(SPAWN.ptrSecondary + d5)        // $249C88
+    + u16(ram.u16(prec + PS.power)) * 2);                           // $249C92
+  let found2 = -1;                                                  // $249C9C
+  for (let i = 0; i <= d6; i++) {
+    if ((ram.u16(a4) & 0x8000) === 0) { found2 = i; break; }
+    a4 += SHOT.stride;                                              // $249CA0
+  }
+  if (found2 >= 0) {
+    fillShotRecord(ram, rom, a4, secondary, prec, true);            // $249CC2
+    ctx?.shotSpawn?.('secondary', a4);
+  } else {
+    // $249CA8 -- THE FEEDBACK wave 5 named: no free secondary slot clears the
+    // cadence counter and bit 3, so the shot table's occupancy is an INPUT to
+    // the player record and not merely an effect of it.
+    if (u16(ram.u16(prec + PS.power)) !== 8) {                      // $249CA8
+      ram.setU8(prec + 0x2b, 0);                                    // $249CB0
+      ram.bclr8(prec + P.state, 3);                                 // $249CB4
+    }
+    ctx?.shotSpawn?.('secondary-full', a4);
+    if (found < 0) return;                     // $249CB8 tst.w D7 / bmi $249E4E
+  }
+
+  // $249D04..$249D26 -- the fire SOUND on a two-frame gate.  The request
+  // ($28C3BA / $28C3EE -> $28C02A) is UNPORTED: audio is outside the slice
+  // (PLAN 6.2).  The GATE BYTE is ported, because it is game state the
+  // comparison can see and the sound is not.
+  if (ram.u8(prec + PS.soundGate) !== 0) return;                    // $249D04
+  ram.setU8(prec + PS.soundGate, 2);                                // $249D0C
+  ctx?.unportedLog?.note(0x28c3ba,
+    'the shot fire SOUND ($249D26 jsr $28C3BA) -- audio is outside the slice');
+}
+
+// ---------------------------------------------------------------- handlers
+//
+// The four are ONE routine with four entry points: $253BDA and $253EC6 are
+// literally instructions inside $253B1E's and $253E34's bodies.  They are
+// written that way here too, with the ROM's own labels, so the control flow can
+// be checked against `xref.py dasm 253B1E 200` line for line.
+
+function hitPathThrow(site, rec) {
+  unreached(site, `the shot HIT path at $${site.toString(16).toUpperCase()}: `
+    + `bit 7 of the record's low byte is set, and the only thing that sets it `
+    + `is $245044 (bset #$7,(-$3,A6), the shot-vs-enemy damage routine, `
+    + `MEASURED firing on 182 frames of stage1-open). The enemy port is still `
+    + `blocked, so this path is deliberately NOT translated. Record `
+    + `$${rec.toString(16).toUpperCase()}`);
+}
+
+/** $253B94..$253BD8 -- $253B1E's move / clamp / re-point / enqueue tail. */
+function body253B94(ram, rom, rec) {
+  ram.setU16(rec + S.posY,                                          // $253B9A
+    u16(ram.u16(rec + S.posY) + ram.u16(rec + S.velY)));
+  // $253B9E `cmpi.w #-$8000,($2,A6) / bcc $253B90` -- an UNSIGNED compare, so
+  // the shot dies the instant Y's top bit sets.  $253B90 is `clr.w (A6)`.
+  if (u16(ram.u16(rec + S.posY)) >= 0x8000) { ram.setU16(rec, 0); return; }
+  ram.setU16(rec + S.posX,                                          // $253BA6
+    u16(ram.u16(rec + S.posX) + ram.u16(rec + S.velX)));
+  // $253BAA `addi.w #$400,D0 / addi.w #-$4000,D0 / bcs $253B90`: the SECOND
+  // add's carry is the test, and it carries exactly when (X + $400) >= $4000.
+  if (u16(ram.u16(rec + S.posX) + 0x400) >= 0x4000) {
+    ram.setU16(rec, 0); return;
+  }
+  const p = ram.u32(rec + S.animPtr);                               // $253BB8
+  ram.setU32(rec + S.dlWord23, rom.u32(p + i16(ram.u16(rec + S.animIdx))));
+  const n = subqBorrow(ram.u16(rec + S.animIdx), 4);                // $253BC6
+  ram.setU16(rec + S.animIdx, n.borrow ? 4 : n.v);                  // $253BCC
+  enqueueShotSprite(ram, rec);                                      // $253BD2
+}
+
+/** $253B1E -- dispatch entry [0]. */
+export function handler253B1E(ram, rom, rec, ctx, prec, d1) {
+  if (ram.bset8(rec + S.lowByte, 6) === 0) {                        // $253B1E
+    ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);     // $253B3A
+    return enqueueShotSprite(ram, rec);                             // $253B40
+  }
+  if (ram.bset8(rec + 0x00, 0) === 0) {                             // $253B26
+    // $253B2C `movem.w ($30,A4),D0-D1` -- A4 is the PLAYER record, so a
+    // one-frame-old shot is still carried by the ship's own velocity.
+    ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + ram.u16(prec + P.velY)));
+    ram.setU16(rec + S.posX, u16(ram.u16(rec + S.posX) + ram.u16(prec + P.velX)));
+    ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);     // $253B3A
+    return enqueueShotSprite(ram, rec);
+  }
+  // $253B4A
+  ram.setU16(rec, u16(ram.u16(rec) | 0x8));                         // ori.w #$8
+  const v = ctx.tables.shotVector(ram.u8(rec + S.speedIdx),         // $253B5A
+    ram.u8(rec + S.angle));
+  ram.setU16(rec + S.velY, u16(v.dy));                              // $253B60
+  ram.setU16(rec + S.velX, u16(v.dx));
+  if (ram.u8(rec + S.lowByte) & 0x80) hitPathThrow(0x253bde, rec);  // $253B66
+  const a0 = rom.u32(0x24ddd6 + i16(ram.u16(rec + S.tableIdx)));    // $253B72
+  ram.setU32(rec + S.drawOff, rom.u32(a0));                         // $253B7C
+  ram.setU16(rec + S.dlWord4, rom.u16(a0 + 4));                     // $253B80
+  ram.setU16(rec + S.posY,                                          // $253B84
+    u16(ram.u16(rec + S.posY) + rom.u16(a0 + 6)));
+  ram.bclr8(rec + 0x00, 0);                                         // $253B8A
+  body253B94(ram, rom, rec);                                        // $253B8E
+}
+
+/** $253BDA -- dispatch entry [8]: `tst.b D1 / bpl $253B94`. */
+export function handler253BDA(ram, rom, rec, ctx, prec, d1) {
+  if ((d1 & 0x80) === 0) return body253B94(ram, rom, rec);
+  hitPathThrow(0x253bde, rec);
+}
+
+/** $253E96..$253EC4 -- $253E34's OWN tail.  Not $253B94's: it clamps Y against
+ *  $7800 rather than $8000 and it never re-points ($a,A6). */
+function body253E96(ram, rec) {
+  ram.bset8(rec + 0x00, 0);                                         // $253E96
+  ram.setU16(rec + S.posY,                                          // $253EA0
+    u16(ram.u16(rec + S.posY) + ram.u16(rec + S.velY)));
+  if (u16(ram.u16(rec + S.posY)) >= 0x7800) { ram.setU16(rec, 0); return; }
+  ram.setU16(rec + S.posX,                                          // $253EAC
+    u16(ram.u16(rec + S.posX) + ram.u16(rec + S.velX)));
+  if (u16(ram.u16(rec + S.posX) + 0x400) >= 0x4000) {               // $253EB0
+    ram.setU16(rec, 0); return;
+  }
+  enqueueShotSprite(ram, rec);                                      // $253EBE
+}
+
+/** $253E34 -- dispatch entry [2]. */
+export function handler253E34(ram, rom, rec, ctx, prec, d1) {
+  if (ram.bset8(rec + S.lowByte, 6) === 0) {                        // $253E34
+    return enqueueShotSprite(ram, rec);                             // $253E42
+  }
+  ram.bset8(rec + 0x00, 0);                                         // $253E3C
+  ram.setU16(rec, u16(ram.u16(rec) | 0x8));                         // $253E4C
+  if (d1 & 0x80) hitPathThrow(0x253eca, rec);                       // $253E50
+  const a0 = rom.u32(0x24fc8e + i16(ram.u16(rec + S.tableIdx)));    // $253E5A
+  ram.setU32(rec + S.drawOff, rom.u32(a0));                         // $253E64
+  ram.setU16(rec + S.dlWord4, rom.u16(a0 + 4));                     // $253E68
+  const v = ctx.tables.shotVector(ram.u8(rec + S.speedIdx),         // $253E78
+    ram.u8(rec + S.angle));
+  ram.setU16(rec + S.velY, u16(v.dy));                              // $253E7E
+  ram.setU16(rec + S.velX, u16(v.dx));
+  ram.setU32(rec + S.dlWord23, rom.u32(ram.u32(rec + S.animPtr)));  // $253E84
+  ram.bclr8(rec + 0x00, 0);                                         // $253E8C
+  body253E96(ram, rec);                                             // $253E90
+}
+
+/** $253EC6 -- dispatch entry [10]: `tst.b D1 / bpl $253E96`. */
+export function handler253EC6(ram, rom, rec, ctx, prec, d1) {
+  if ((d1 & 0x80) === 0) return body253E96(ram, rec);
+  hitPathThrow(0x253eca, rec);
+}
+
+/** The dispatch map the shot driver is given, keyed by ROM address. */
+export function shotHandlers() {
+  return new Map([
+    [0x253b1e, handler253B1E],
+    [0x253bda, handler253BDA],
+    [0x253e34, handler253E34],
+    [0x253ec6, handler253EC6],
+  ]);
+}

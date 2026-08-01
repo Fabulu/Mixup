@@ -66,6 +66,14 @@
 --                  run without it produces byte-identical output to wave 3's
 --                  and `pgm.py gate`'s recorded hash still holds.  Wave 4 uses
 --                  it for the player record ($8103E6+) and the options.
+--   PROBE_RAWDUMP  "name=lo:len,..." -- EXTRA columns, each a HEX DUMP of a RAM
+--                  range at the sample point.  Wave 8 uses it for the eight
+--                  shot records the player's own spawn can reach and for the
+--                  sprite-request bucket at $808854, where the comparison is
+--                  byte-for-byte containment rather than a digest.  OPT-IN.
+--   PROBE_EXEC     "name=pc:lo:hi,..." -- EXTRA columns, each the per-LOGIC-
+--                  FRAME execution count of one instruction, hooked with a
+--                  WRITE tap over the range it writes.  OPT-IN.
 --   PROBE_PORTIN   1 = tap the 68000's reads of the input port $C08000 and
 --                  carry the LAST word read before each sample point as the
 --                  column `portin`.  THIS IS THE REPLAY INPUT WORD: the port
@@ -263,6 +271,49 @@ for kv in (os.getenv("PROBE_WATCH") or ""):gmatch("[^,]+") do
     WATCH[#WATCH + 1] = {k, a, (sz ~= "" and sz or "w")}
   else
     p("WATCH_UNPARSED [%s]", kv)
+  end
+end
+
+-- ---------------------------------------------------------------- PROBE_RAWDUMP
+-- WAVE 8.  A hex dump of one RAM range per logic frame, as an extra column:
+-- "name=lo:len".  Used for the sprite-request bucket at $808854, which the port
+-- writes INTO A SHARED BUFFER (the option pods' shots land in the same bucket
+-- through an unported subsystem), so the only honest comparison is CONTAINMENT
+-- -- "every record the port emitted appears verbatim in the board's bucket" --
+-- and containment needs the bytes, not a digest of them.
+local RAWDUMPS = {}
+for kv in (os.getenv("PROBE_RAWDUMP") or ""):gmatch("[^,]+") do
+  local k, lo, len = kv:match("^([%w_]+)=(%x+):(%x+)$")
+  if k then
+    local a = tonumber(lo, 16)
+    if a >= 0x800000 then a = a - 0x800000 end
+    RAWDUMPS[#RAWDUMPS + 1] = {k, a, tonumber(len, 16)}
+  else
+    p("RAWDUMP_UNPARSED [%s]", kv)
+  end
+end
+
+-- ---------------------------------------------------------------- PROBE_EXEC
+-- WAVE 8.  Per-logic-frame EXECUTION COUNT of an instruction, as a column:
+-- "name=pc:lo:hi", where lo..hi is a RAM range the instruction writes to.  A
+-- write tap is the reliable 68000 execution hook (a read tap only proves the
+-- prefetch), and CURPC inside a write tap is the instruction that issued the
+-- bus cycle, so this is an execution count and not a fetch count.
+--
+-- It exists for exactly one instruction: $245044 `bset #$7,(-$3,A6)`, the
+-- shot-vs-enemy damage routine.  It is the ONLY thing that sets bit 7 of a shot
+-- record's low byte, which is the gate into the shot handlers' HIT path -- a
+-- path the port deliberately does not translate.  The port's claim is "no shot
+-- hit anything inside the compared window", and this column is what turns that
+-- from an assumption into a measurement that can go red.
+local EXECS = {}
+for kv in (os.getenv("PROBE_EXEC") or ""):gmatch("[^,]+") do
+  local k, pc, lo, hi = kv:match("^([%w_]+)=(%x+):(%x+):(%x+)$")
+  if k then
+    EXECS[#EXECS + 1] = {k, tonumber(pc, 16), tonumber(lo, 16),
+                         tonumber(hi, 16), 0, 0}
+  else
+    p("EXEC_UNPARSED [%s]", kv)
   end
 end
 
@@ -865,6 +916,8 @@ local COLS = {"lf", "vf", "cyc", "work", "spin", "irq4", "irq6", "rel",
 for _, n in ipairs(NAMED) do COLS[#COLS + 1] = n[1] end
 if PORTIN then COLS[#COLS + 1] = "portin" end
 for _, w in ipairs(WATCH) do COLS[#COLS + 1] = w[1] end
+for _, w in ipairs(EXECS) do COLS[#COLS + 1] = w[1] end
+for _, w in ipairs(RAWDUMPS) do COLS[#COLS + 1] = w[1] end
 
 -- THE MACHINE CLOCK, IN 68000 CYCLES, AND WHY IT IS NOT attoseconds.
 -- Wave 1 computed `t = M.time.attoseconds + M.time.seconds * 1e18`.  int64's
@@ -950,6 +1003,12 @@ local function emit(armpc)
     if w[3] == "l" then r[#r + 1] = RAM:read_u32(w[2] & ~1)
     elseif w[3] == "b" then r[#r + 1] = RAM:read_u8(w[2])
     else r[#r + 1] = RAM:read_u16(w[2] & ~1) end
+  end
+  for _, w in ipairs(EXECS) do r[#r + 1] = w[5]; w[5] = 0 end
+  for _, w in ipairs(RAWDUMPS) do
+    local b = {}
+    for i = 0, w[3] - 1 do b[#b + 1] = string.format("%02x", RAM:read_u8(w[2] + i)) end
+    r[#r + 1] = table.concat(b)
   end
   local line = table.concat(r, "\t")
   if out then out:write(line, "\n") else p("ROW %s", line) end
@@ -1130,6 +1189,22 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x80AFC0, 0x80AFFB, "sprq",
     end
     return data
   end)
+
+-- (3c3) PROBE_EXEC -- per-instruction execution counts, wave 8.  One write tap
+--       per requested instruction, over the RAM range that instruction writes.
+--       Tap ranges must be word-aligned on this 16-bit space or MAME dies with
+--       "end address has low bits unset", so the low bit of lo/hi is forced.
+for _, w in ipairs(EXECS) do
+  local lo, hi = w[3] & ~1, w[4] | 1
+  TAPS[#TAPS + 1] = PROG:install_write_tap(lo, hi, "exec" .. w[1],
+    function(offset, data, mask)
+      if (CPU.state["CURPC"].value & 0xffffff) == w[2] then
+        w[5] = w[5] + 1
+        w[6] = w[6] + 1
+      end
+      return data
+    end)
+end
 
 -- (3d) THE bg_scale WATCH (wave 3 item 5).  $B04000 is the IGS023's background
 --      scale register.  MAME reads it and DOES NOTHING WITH IT
@@ -1375,6 +1450,9 @@ local function finish()
     cen.minwork == math.huge and -1 or cen.minwork, cen.maxwork, cen.over)
   if METER then p("CENSUS spin_iters_bucketed500 %s", hist(cen.spinhist)) end
   p("CENSUS max_sprite_entries=%d", cen.maxspr)
+  for _, w in ipairs(EXECS) do
+    p("CENSUS exec_%s pc=$%06X total=%d over %d logic frames", w[1], w[2], w[6], lf)
+  end
   -- THE CAP, MEASURED RATHER THAN ASSUMED.  sprite_queue_high_water is the
   -- largest value $23D73E ever wrote into $80AFC0, in BYTES; /12 is records
   -- against the 251-record cap ($BC4).  queue_full_events counts executions of

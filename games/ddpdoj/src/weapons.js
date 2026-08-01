@@ -56,12 +56,23 @@
 // ever reached in the opening.  Live shots peak at 20 per frame and are 0 on
 // 2,025 of the 2,600 frames.
 //
-// NONE OF THE FOUR IS TRANSLATED IN WAVE 5.  The walk, the scroll compensation
-// and the live count are, because they are shared by every shot; the dispatch
-// is a loud named throw carrying the handler's ROM address.  $253B1E's tail is
-// `jmp $23F3AE`, the sprite ENQUEUE -- so translating a shot handler pulls in
-// the sprite request pipeline, which is wave 6's job and is named here rather
-// than discovered later.
+// WAVE 8 TRANSLATES ALL FOUR (src/shots.js), and the enqueue with them: the
+// "sprite request pipeline" $253B1E's `jmp $23F3AE` pulls in turned out to be
+// fourteen instructions appending one 12-byte record to one bucket
+// (src/spritequeue.js), not main-loop call #4.  The other twelve dispatch
+// entries are still loud named throws carrying their ROM address.
+//
+// THE SCROLL, and the one thing this driver reads that the port cannot compute:
+// $253A76 `move.w $813176,D6` and $253AA6 `sub.w D6,($4,A6)` pull every live
+// shot left or right by the background's per-frame scroll delta.  $813176 is
+// written by $26151E -- `move.w D2,$813176` with D2 = (thisFrame's scroll in
+// whole pixels - lastFrame's) << 6 -- inside the BACKGROUND object, which is
+// unported.  MEASURED over the 2,600 frames of stage1-open: it is ZERO on
+// 2,559 of them and non-zero only on two short stretches while the ship crosses
+// the screen horizontally (lf2121..2153 and lf2292..2300).  The port reads the
+// seeded value and never writes it; `pgm.py shotgate` compares $813176 as its
+// own column and FAILS if the board ever moves it inside the compared window,
+// so the scroll-compensated path is UNTESTED and cannot quietly become tested.
 
 import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
@@ -95,12 +106,13 @@ export const SHOT_HANDLERS_SEEN = new Map([
  * $253A70 -- one pass of the player-shot driver, both players.
  * @param handlers Map from handler ROM address to fn(ram, rec, slot, player, ctx)
  */
-export function runShotDriver(ram, handlers, ctx) {
+export function runShotDriver(ram, rom, handlers, ctx) {
   ram.setU16(SHOT.liveCount, 0);                        // $253A7C
   const scroll = i16(ram.u16(SHOT.scrollDelta));        // $253A76
   let processed = 0;
   for (let pl = 0; pl < 2; pl++) {                      // $253AD4 dbra D6 (high)
     const base = pl === 0 ? SHOT.p1Table : SHOT.p2Table;
+    const prec = pl === 0 ? SHOT.p1Rec : SHOT.p2Rec;    // $253A86 / $253AC6, A4
     for (let i = 0; i < SHOT.slots; i++) {              // $253A9A / $253AC2
       const rec = base + i * SHOT.stride;               // $253ABE
       const t = ram.u16(rec);                           // $253A9C move.w (A6),D1
@@ -117,11 +129,21 @@ export function runShotDriver(ram, handlers, ctx) {
           + `at $${rec.toString(16).toUpperCase()} with type word `
           + `$${t.toString(16).toUpperCase()}. Wave 5 measured only FOUR of the `
           + `sixteen reached in the stage-1 opening ($253B1E $253E34 $253BDA `
-          + `$253EC6) and translated NONE; $253B1E ends in `
-          + `jmp $23F3AE, the sprite enqueue, so translating one pulls in the `
-          + `sprite request pipeline`);
+          + `$253EC6) and wave 8 translated exactly those four; the other `
+          + `twelve have never been executed by anything this project has run`);
       }
-      fn(ram, rec, i, pl, ctx);                         // $253ABC jsr (A0)
+      // $253ABC jsr (A0).  D1 is the type word AS READ AT $253A9C -- the
+      // handlers test its low byte with `tst.b D1` AFTER they have already
+      // modified the record, so passing the stale value is the translation.
+      //
+      // The bucket offsets this ONE slot appends are bracketed so the gate can
+      // tell the player's own sprite requests apart from the option pods',
+      // which land in the same bucket from slots 0..12.  Reading $80AFD6 is not
+      // an instrumentation hook the ROM lacks: it is the same word $23F3B4
+      // reads to find where to write.
+      const q0 = ram.u16(0x80afd6);
+      fn(ram, rom, rec, ctx, prec, t & 0xff);
+      ctx?.shotRequests?.(pl, i, q0, ram.u16(0x80afd6));
       processed++;
     }
   }

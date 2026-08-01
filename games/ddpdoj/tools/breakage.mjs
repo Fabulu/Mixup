@@ -73,6 +73,83 @@ export const MUTATIONS = {
       return orig(a, v);
     };
   },
+
+  // ------------------------------------------------------------------ WAVE 8
+  // Four mutations over the shot subsystem.  Each names the instruction it
+  // falsifies and the column that must move, because a mutation whose name is
+  // broader than what it breaks is the defect `05-review.md` filed against
+  // `clamp-first`.
+
+  // $24A32E, the four instructions that make $24A2D6 different from $24A222:
+  // `subq.w #4,($44,A6) / bcc / move.w #$4,($44,A6)`, run ONCE PER SECONDARY
+  // SPAWN.  This mutation is the port as it stood before the difference was
+  // measured -- treat the three fillers as one routine and leave ($44,A6)
+  // alone.  It must move `p44` on the first spawn and then `shot1`/`shot2` at
+  // byte 181 (the fourth record's ($24,A6)), and it must break the sprite-
+  // request containment, because ($24,A6) picks the record's ($a,A6).
+  'no-secondary-tail': (game) => {
+    const r = game.ram;
+    const orig = r.setU16.bind(r);
+    r.setU16 = (a, v) => {
+      if (a === RAM.player1 + 0x44) return orig(a, r.u16(a));
+      return orig(a, v);
+    };
+  },
+
+  // $23F3DE `move.l D0,(A0)+` -- the FIRST longword of the 12-byte sprite
+  // request, i.e. the drawn (y,x) the enqueue packs at $23F3C6..$23F3D8.
+  // Adding one to the Y word falsifies exactly the enqueue's output and
+  // nothing else in the port, so it must break SPRQ CONTAINMENT and leave the
+  // 52 compared columns green.  That separation is the point: it proves the
+  // containment check is a check and not decoration.
+  'enqueue-off-by-one': (game) => {
+    const r = game.ram;
+    const orig = r.setU16.bind(r);
+    r.setU16 = (a, v) => {
+      if (a >= 0x808854 && a < 0x808eb4 && ((a - 0x808854) % 12) === 0) {
+        return orig(a, (v + 1) & 0xffff);
+      }
+      return orig(a, v);
+    };
+  },
+
+  // $253BC6 `subq.w #4,($24,A6) / bcc / move.w #$4,($24,A6)` -- the animation
+  // index the handler steps every frame, which picks the record's ($a,A6) at
+  // $253BC0.  Freezing it must move `shot1`/`shot2` AND break containment.
+  'no-anim-step': (game) => {
+    const r = game.ram;
+    const orig = r.setU16.bind(r);
+    r.setU16 = (a, v) => {
+      const inShots = a >= 0x810572 && a < 0x810c32;
+      if (inShots && ((a - 0x810572) % 0x30) === 0x24) return orig(a, r.u16(a));
+      return orig(a, v);
+    };
+  },
+
+  // $253A7C/$253AA0 -- the LIVE SHOT COUNT $81295C.  It is a REPORTED column,
+  // not a claimed one (the option pods make the two sides differ by
+  // construction), so this mutation exists to prove the REPORTED channel is
+  // real rather than decorative: it must change the printed drift and it must
+  // NOT change the RESULT line.  A mutation expected to stay green is still a
+  // measurement, as long as the expectation is written down first -- and the
+  // runner reports it as EXPECTED-GREEN rather than as a pass.
+  'no-live-count': (game) => {
+    const r = game.ram;
+    const orig = r.setU16.bind(r);
+    r.setU16 = (a, v) => {
+      if (a === 0x81295c) return orig(a, 0);
+      return orig(a, v);
+    };
+  },
+};
+
+/** Mutations that are EXPECTED to leave the RESULT line green, with the reason.
+ *  Declared here, before the run, so "it passed" cannot be read after the fact
+ *  as "the gate is fine". */
+export const EXPECTED_GREEN = {
+  'no-live-count': 'the live-shot count $81295C is a REPORTED column, not a '
+    + 'claimed one -- this mutation must move its printed drift (measured: 106 '
+    + 'differing frames -> 124) and must NOT move the RESULT line',
 };
 
 export function breakage(name, game) {

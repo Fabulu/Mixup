@@ -30,12 +30,16 @@
   15,955,968/15,955,968 pixels against MAME.
 
   WHAT IS AND IS NOT SIMULATED IS PRINTED ON THE PAGE. Do not remove that
-  banner. Wave 5 came back BLOCKED -- no enemy handler, no shot handler and no
-  bomb is translated -- so "shooting", which the plan's wave-6 demo clause asks
-  for, HAS NO PORT BEHIND IT. Pressing fire moves the ported cadence machine
-  ($249B2C..$249BE2) and then hits a named throw at the ship-type jump table.
-  That is the honest state of the slice, and it is why the onError channel
-  below exists.
+  banner. WAVE 8 CHANGED HALF OF IT AND THE BANNER HAD TO CHANGE WITH IT: the
+  SHOT is now translated -- the spawn ($249BFC/$24A222), the 36-slot driver
+  ($253A70), the four handlers the opening reaches and the sprite ENQUEUE
+  ($23F3AE) -- and verified 0-divergent over 125 logic frames.  What is still
+  missing is the DRAWING of it: this page replays a captured display list and
+  splices only the ship's own records into it, and a shot's sprite stream is not
+  in the 363 KiB bundle, so a shot the port really computed is INVISIBLE here.
+  The bomb and the laser are still named throws ($249814, $254078).  Saying
+  "there are no weapons" would now be false and saying "you can shoot" would be
+  worse; the banner says exactly which half exists.
 -->
 <style>
   :root { color-scheme: dark; }
@@ -159,10 +163,17 @@ build the display list yet (main-loop call&nbsp;#4 <code>$23D2AE</code> is
 unported, and so are 18 of the 20 object handlers), so the background, the
 enemies and the HUD are 161 captured frames on a loop &mdash; the enemies are
 <b>not simulated</b> and cannot be hit.
-<b>There are no weapons and there is no sound.</b> Wave 5 came back BLOCKED: no
-enemy, shot or bomb handler is translated. Pressing fire drives the ported
-cadence machine and then reaches a <b>named throw carrying its ROM address</b>,
-which this page prints rather than freezing on.
+<b>The SHOT is simulated but not drawn; there is no bomb, no laser and no
+sound.</b> Pressing fire really does run the ported spawn, the 36-slot shot
+driver and the sprite-request enqueue &mdash; wave 8 compares ten shot records
+byte for byte against the board over 125 logic frames with <b>0 divergent
+frames on 52 columns</b>, and every one of the 574 sprite requests the port
+emitted appears verbatim in the board's own queue. <b>You will not SEE the
+shot</b>: this page replays a captured display list and only the ship's records
+are spliced into it, so a shot's sprite is simply absent. Bomb
+(<code>$249814</code>) and laser (<code>$254078</code>) still reach a <b>named
+throw carrying the ROM address</b>, which this page prints rather than freezing
+on.
 </div>
 
 <div id="stage"><canvas id="screen" width="224" height="448"></canvas></div>
@@ -201,7 +212,7 @@ which this page prints rather than freezing on.
     <kbd>X</kbd> bomb &nbsp; <kbd>C</kbd> auto &nbsp;
     <kbd>Enter</kbd> start
   </span>
-  <span class="dim">&mdash; the three fire buttons reach unported code and will stop the loop</span>
+  <span class="dim">&mdash; shot is simulated but invisible; bomb and laser reach unported code and will stop the loop</span>
   <span id="stats"></span>
 </div>
 

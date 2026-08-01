@@ -220,7 +220,7 @@ test('$253ADE has 16 entries and the driver indexes it with (A6) & $F', () => {
   r.setU16(SHOT.scrollDelta, 3);
   r.setU16(SHOT.p1Table, 0x814a);                   // low nibble $A -> entry 10
   r.setU16(SHOT.p1Table + 4, 500);
-  const e = grab(() => runShotDriver(r, new Map(), {}));
+  const e = grab(() => runShotDriver(r, null, new Map(), {}));
   assert.ok(e instanceof Unreached);
   assert.equal(e.romAddress, SHOT_HANDLERS[0xa]);
   assert.equal(e.romAddress, 0x253ec6);
@@ -234,10 +234,11 @@ test('the shot driver covers BOTH players: 36 slots each, P2 straight after P1',
     const r = new Ram();
     const seen = [];
     const h = new Map(SHOT_HANDLERS.map((a) => [a,
-      (ram, rec, i, pl) => seen.push([pl, i])]));
+      (ram, rom, rec, ctx, prec) => seen.push([prec === SHOT.p1Rec ? 0 : 1,
+        (rec - (prec === SHOT.p1Rec ? SHOT.p1Table : SHOT.p2Table)) / SHOT.stride])]));
     r.setU16(SHOT.p1Table + 2 * SHOT.stride, 0x8000);
     r.setU16(SHOT.p2Table + 5 * SHOT.stride, 0x8000);
-    assert.equal(runShotDriver(r, h, {}), 2);
+    assert.equal(runShotDriver(r, null, h, {}), 2);
     assert.deepEqual(seen, [[0, 2], [1, 5]]);
     assert.equal(r.u16(SHOT.liveCount), 2);
   });

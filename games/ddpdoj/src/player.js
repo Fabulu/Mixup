@@ -26,6 +26,7 @@
 import { P, RAM, CLAMP, ROM } from './machine.js';
 import { i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
+import { spawnShot } from './shots.js';
 
 // Globals the player reads and the port does not write.  Seeded once and
 // FROZEN for the run.  Listed by name so the runner can print them and a
@@ -262,7 +263,9 @@ function finish(ram, rec, d2, d3, ctx, skipClamps) {
   // $2497AA .. $249E4C -- bomb, hyper, shot and laser.
   // Wave 4 stopped at the FIRST instruction of the shot branch; wave 5 carries
   // the shot CADENCE MACHINE ($249B2C..$249BE2) and stops at the spawn.
-  bombAndShotGuards(ram, rec, unportedLog);
+  // ($57,A6) is written by $2494FA from ($7,A5); re-read here because
+  // `finish` is a separate function and the ROM's A5 is long gone.
+  bombAndShotGuards(ram, rec, ctx, ram.u8(rec + P.playerIdx) & 1);
 
   // $249E4E -- the tail.  Two animation records, indexed by the bank counter.
   const anim = ctx.tables.anim(ram.u16(rec + P.tilt));
@@ -287,7 +290,8 @@ function finish(ram, rec, d2, d3, ctx, skipClamps) {
  *     frames (`bchg #4,($1,A6)` then `bset #4,($19,A6)`).  So Button 3 is not a
  *     third weapon; it is Button 1 on a 2-frame cadence.
  */
-function bombAndShotGuards(ram, rec, unportedLog) {
+function bombAndShotGuards(ram, rec, ctx, playerIdx) {
+  const { unportedLog } = ctx;
   const dir = ram.u8(rec + P.dirByte);
   const btn = ram.u8(rec + P.btnByte);
   // $2497AA tst.b $80380F / beq $2497FE ; $2497B2 btst #6,($18,A6)
@@ -359,21 +363,15 @@ function bombAndShotGuards(ram, rec, unportedLog) {
 
   // $249BE2..$249BF8 -- a two-entry jump table on the SHIP TYPE ($58,A6):
   //   ship 0 -> $249BFC   ship 2 -> $249D2C
-  // Both are the SPAWN: they scan the 36-slot player-shot table at $810572 for
-  // a free record (`tst.w (A0) / bpl` -- a NEGATIVE type word means occupied),
-  // and on failure clear ($2b,A6) and bit 3 of (A6) so the shot is dropped and
-  // the cadence resets.  NOT PORTED: the spawn fills a record through $24A222 /
-  // $24A2D6 out of PC-relative pattern tables ($2554EA, $255502, $25551A,
-  // $255332...) indexed by ship, power ($20,A6) and formation ($5A,A6), and
-  // every record it creates is then driven by src/weapons.js's UNPORTED
-  // handlers.  A guess here would look finished and be wrong from the first
-  // shot.
-  const ship = ram.u16(rec + P.shipSel);
-  unreached(ship === 0 ? 0x249bfc : 0x249d2c,
-    `THE SHOT SPAWN for ship type ${ship} (dispatched by $249BE2's two-entry `
-    + `jump table at $249BF4). It scans the 36-slot shot table at `
-    + `$810572 (P1) / $810C32 (P2) for a free record and, when there is none, `
-    + `clears ($2b,A6) and bit 3 of (A6) at $249CA8/$249CEA -- so the table's `
-    + `occupancy feeds straight back into the player record. Wave 5 ports the `
-    + `shot DRIVER shell (src/weapons.js) and none of the four handlers`);
+  // Both are THE SPAWN.  Wave 8 translates ship 0 (src/shots.js); ship 2 is a
+  // named throw, because ($58,A6) was MEASURED 0 on every frame of every run
+  // and the exporter only exports selector 0's tables.
+  const ship = ram.u16(rec + P.shipSel);                 // $249BE2
+  if (ship !== 0) {
+    unreached(0x249d2c, `THE SHOT SPAWN for ship type ${ship} ($249BF8 bra `
+      + `$249D2C, the second entry of the $249BF4 jump table). TYPE-B was `
+      + `never exercised: ($58,A6) is 0 on every frame of every run in this `
+      + `corpus, and tools/export-tables.py exports selector 0 only`);
+  }
+  spawnShot(ram, ctx.rom, rec, ctx, { player: playerIdx });
 }

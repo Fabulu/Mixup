@@ -1481,6 +1481,101 @@ _W4_SYMS = {
 }
 
 
+def _state_js() -> str:
+    return (HERE.parent.parent / "src" / "state.js").read_text(encoding="utf8")
+
+
+def w8_rawdump() -> str:
+    """PROBE_RAWDUMP, read OUT OF src/state.js's RAWDUMP_SPEC -- same rule as
+    w4_watch(): the two sides of the comparison cannot be allowed to drift."""
+    body = _state_js().split("RAWDUMP_SPEC = [", 1)[1].split("];", 1)[0]
+    out = []
+    for m in re.finditer(r"\['(\w+)',\s*(0x[0-9a-fA-F]+),\s*([^,\]]+?)\]", body):
+        n = eval(m.group(3), {"__builtins__": {}}, {})
+        out.append(f"{m.group(1)}={int(m.group(2), 16):X}:{n:X}")
+    if not out:
+        raise SystemExit("could not read RAWDUMP_SPEC out of src/state.js")
+    return ",".join(out)
+
+
+def w8_exec() -> str:
+    body = _state_js().split("EXEC_SPEC = [", 1)[1].split("];", 1)[0]
+    out = []
+    for m in re.finditer(
+            r"\['(\w+)',\s*(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+)\]",
+            body):
+        out.append(f"{m.group(1)}={int(m.group(2), 16):X}:"
+                   f"{int(m.group(3), 16):X}:{int(m.group(4), 16):X}")
+    if not out:
+        raise SystemExit("could not read EXEC_SPEC out of src/state.js")
+    return ",".join(out)
+
+
+def _cmd_shotgate(argv: list[str]) -> int:
+    """WAVE 8.  THE SHOT GATE: the `stage1-shot` scenario with the shot
+    subsystem's columns -- the ten shot records the player's own spawn can
+    reach, the sprite-request bucket, the RNG word, the live-shot count, and
+    the per-frame execution count of $245044 (the shot-vs-enemy damage
+    routine).  --break NAME runs a mutation and MUST go red."""
+    defs = scenarios()
+    name = argv[0] if argv and not argv[0].startswith("--") else "stage1-shot"
+    s = next(x for x in defs["scenarios"] if x["name"] == name)
+    brk = argv[argv.index("--break") + 1] if "--break" in argv else None
+    out = OUT / "w8"
+    out.mkdir(parents=True, exist_ok=True)
+    seed_lf = s.get("seed", 2000)
+    seed_bin = out / f"{name}.seed{seed_lf}.bin"
+    tsv = out / f"{name}.tsv"
+    if "--reuse" not in argv or not (tsv.exists() and seed_bin.exists()):
+        r = trace(tsv, frames=s["frames"], buttons=build_script(defs, s),
+                  build=s.get("build", "B"), meter=s.get("meter", True),
+                  snap=s.get("snap", ""),
+                  extra_env={"PROBE_PORTIN": "1", "PROBE_WATCH": w4_watch(),
+                             "PROBE_RAWDUMP": w8_rawdump(),
+                             "PROBE_EXEC": w8_exec(),
+                             "PROBE_POKE": s.get("poke", ""),
+                             "PROBE_POKE_FROM": str(s.get("pokeFrom", 0)),
+                             "PROBE_RAMDUMP": f"{seed_lf}:{seed_bin}"})
+        check(r, name)
+        census(r)
+        for l in r.find("RAMDUMP"):
+            print("  " + l)
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("node not on PATH -- the port is JavaScript")
+    cmd = [node, str(HERE.parent.parent / "tools" / "portdiff.mjs"),
+           str(tsv), str(seed_bin), "--seed-lf", str(seed_lf),
+           "--tables", str(HERE.parent.parent / "rip" / "port" / "player.tables.json")]
+    if s.get("poke"):
+        cmd += ["--poke", s["poke"]]
+    if brk:
+        cmd += ["--break", brk]
+    print("\n$ " + " ".join(cmd[1:]))
+    res = subprocess.run(cmd, text=True)
+    if brk:
+        # EXPECTED-GREEN mutations are declared in tools/breakage.mjs BEFORE the
+        # run, with the reason.  Reading the declaration out of that file rather
+        # than duplicating it here is the two-sides rule w4_watch() follows.
+        body = (HERE.parent.parent / "tools" / "breakage.mjs").read_text(encoding="utf8")
+        blk = body.split("EXPECTED_GREEN = {", 1)[-1].split("};", 1)[0]
+        if f"'{brk}':" in blk:
+            if res.returncode != 0:
+                print(f"FAIL mutation '{brk}' is declared EXPECTED-GREEN in "
+                      f"tools/breakage.mjs and went RED -- one of the two is wrong")
+                return 1
+            print(f"EXPECTED-GREEN OK: '{brk}' left the RESULT line green, as "
+                  f"tools/breakage.mjs declares it must; the REPORTED line above "
+                  f"is where it had to move")
+            return 0
+        if res.returncode == 0:
+            print(f"FAIL mutation '{brk}' did NOT diverge -- the comparison "
+                  f"cannot see it")
+            return 1
+        print(f"RED OK: mutation '{brk}' diverged, as it must")
+        return 0
+    return res.returncode
+
+
 # --------------------------------------------------------------------------- wave 5
 def _cmd_spritecap(argv: list[str]) -> int:
     r"""WAVE 5 -- THE SPRITE-REQUEST QUEUE AT ITS CAP, BY INTERVENTION.
@@ -1872,6 +1967,7 @@ COMMANDS = {
     "gfx": _cmd_gfx, "zoomcov": _cmd_zoomcov, "check": _cmd_check,
     "sprites": _cmd_sprites, "sound": _cmd_sound,
     "flyaround": _cmd_flyaround, "spritecap": _cmd_spritecap,
+    "shotgate": _cmd_shotgate,
     "pixslice": _cmd_pixslice, "pixdemo": _cmd_pixdemo,
     "demogate": _cmd_demogate,
 }
