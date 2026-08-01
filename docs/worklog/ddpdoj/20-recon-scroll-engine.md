@@ -511,6 +511,27 @@ of map and locks into them after 14 seconds — a short arena stage.
 
 ## 9. WHAT I COULD NOT DO, AND WHAT IS STILL WRONG TO GUESS
 
+> **SUPERSEDED IN PART BY WAVE 17** (`17-impl-invuln-stage-run.md`, 2026-08-02,
+> one invulnerable 16,000-lf run). Items **1, 2, 3, 6, 7 and 8 are CLOSED** and
+> item **6's absence claim was WRONG**:
+> * **1** — the corpus now covers the whole stage: 10,431 frames, 0 divergent,
+>   57/57 records, 13/13 background elements, both cues, the boss lock.
+> * **2 + 3** — the lock is never *exited*. `$28D5D6 → $25FCFA → $25FD82` sets
+>   `$8130D2` and `jmp $241238` **destroys the background object**; the next
+>   stage builds a new one. The 24 tail columns are measured-dead.
+> * **6** — `$80B03C` **is** written by `$240C22`, at `$240C7C` (and `$80B03E`
+>   at `$240C9C`), once per logic frame. §9's "not written by `$240C22`" is
+>   wrong; the write is 90 bytes into the routine.
+> * **7** — the screen shake is **not** cold: `$813186 = 1` for 43 frames
+>   during the boss.
+> * **8** — `$8130DA` is written by the midboss: `$26B7D8` sets it, `$26B4C0`
+>   clears it.
+>
+> Also corrected there: **`$8130D2` is not only "every player is dead"** (§6) —
+> the stage-clear path raises it with every player alive — and **`$813192` /
+> `$8131AA` give a per-record execution ledger** via `$262092`, which is the
+> hook §3 needed and did not name.
+
 1. **The corpus stops at clock `$00D0`, frame 1,668 of 7,317 (22.8 %).** Every
    TSV on disk dies or resets there. §7's zero divergences cover the opening,
    the first repeat/freeze, and the whole speed ramp — and **nothing after

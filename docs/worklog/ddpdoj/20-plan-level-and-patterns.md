@@ -171,6 +171,29 @@ updater; unidentified). *Done when:* 0 divergent over the full stage, or the
 divergence named; each of the four taps yields a writer or a BLOCKED entry.
 *Removes:* nothing directly; converts every Phase A claim from "the opening"
 to "the stage".
+**DONE 2026-08-02 — `17-impl-invuln-stage-run.md`** (run out of order, per §9).
+10,431 lf compared, **0 divergent on all four columns**, plus a second gate
+(`w17ledger.py`) at **57/57 records and 13/13 background elements frame-exact**,
+five red mutations each, and a no-intervention control that reaches only 2,202
+frames. All four taps yielded writers: `$80B03C` ← `$240C7C` (inside `$240C22`
+— the recon's absence claim was WRONG); `$8130DA` ← `$26B7D8` set / `$26B4C0`
+clear (the midboss); `$813180/82/84` ← `$2610FE`, fired **once** at clock
+`$00F8` **and was a no-op because it pushed the speed the script had already
+set**; `$81317E` never written in 16,000 frames. **THE BOSS-LOCK EXIT: the lock
+is never exited — `$28D5D6 → $25FCFA` freezes and DESTROYS the background
+object, and the next stage builds a new one** (so §7 item 6 is closed and W15's
+24-column tail is measured-dead). Riders closed for later waves: `$812950` ←
+`$252C8E` (written every frame, value 0 throughout), `$813160` ← `$2608BC`,
+`$81B414/$81B416` ← `$2927D2/$2927DA` (the boss, at clock `$01E8`) and
+`$28D5AC..$28D5BE`, `$803910` ← `$23BEB2/$23BEBC`, `$80FA7E` ← `$244D7E` + the
+`$245Axx` family; **`$813098` still read 0 on every one of 16,000 frames**.
+**NEW BLOCKER FOR W15/W16/W18:** `$26C24A` writes 23 map columns × 9 rows
+*every frame for 271 frames* (lf4315..4585 = 64 % of the stage's whole BG-map
+write traffic) from tile base `$32A90000` — a SECOND tilemap writer nobody has
+read. Also measured: `$813092` is the stage index, not a loop counter
+(`$25FD0C` writes N/2N/4N into `$813092`/`$813094`/`$813096`); `$8130D2` is the
+background freeze rather than only "all players dead"; the screen shake is no
+longer cold (`$813186 = 1` for 43 frames during the boss).
 
 **W18 — the background elements.** Op `$10` + the 13 stage-1 handlers
 (`$26224A` — stage 1 uses each exactly once), the 8-slot driver `$26233A` /
@@ -458,13 +481,30 @@ repack exists.
 5. **Loop 2, the bees, TYPE-B ship, live P2, protection cross-check,
    slowdown magnitude, instruction-level timing** — unchanged from the old
    plan §5, still excluded, still named there.
-6. **The boss-lock exit until W17 measures it**; the 24-column tail rides on
-   it. Missing: the `$813180/$81317E` writer tap across a boss kill.
-7. **Bullet-vs-player hitbox fields** until W28's taps. Missing: `$80FA7E`
-   write tap; the `$245Axx` writer identification.
-8. **`$813160/$812950` (global speed biases), `$803910`, `$8130DA`,
+6. ~~**The boss-lock exit until W17 measures it**; the 24-column tail rides
+   on it.~~ **CLOSED 2026-08-02, W17.** Neither candidate ends it: `$81317E`
+   is never written in 16,000 frames and `$813180`'s single stage-1 arm
+   (`$2610FE`, clock `$00F8`) pushes the speed the script had already set.
+   The stage-clear path `$28D5D6 → $25FCFA` freezes (`$25FD82 → $8130D2`)
+   and **destroys the background object** (`jmp $241238`); the next stage
+   constructs a new one. The 24-column tail is measured-dead — still export
+   it (§5's reasoning is unchanged), but the reason is now a measurement.
+7. **Bullet-vs-player hitbox fields** until W28's taps. ~~Missing: `$80FA7E`
+   write tap; the `$245Axx` writer identification.~~ **W17 supplied both**:
+   `$80FA7E` ← `$244D7E` (7,016 writes) plus `$245A4A $245AB2 $245A7E
+   $245C1E $245BB6 $245AE6 $245BEA $245B1A $245B82 $245B4E …`. The FIELDS
+   inside the `$40`-byte record are still unfound — that half stays open.
+8. ~~**`$813160/$812950` (global speed biases), `$803910`, `$8130DA`,
    `$80B03C` writers** — each is one tap, each is assigned to a wave (W31,
-   W28, W17, W17), none may be guessed over.
+   W28, W17, W17), none may be guessed over.~~ **ALL FOUR CLOSED 2026-08-02,
+   W17**, which carried the three later waves' taps in the session it was
+   already paying for: `$813160` ← `$2608BC` (one write, stage init, 0);
+   `$812950` ← `$252C8E` (**every frame**, a clamp, value 0 throughout
+   stage 1 — do NOT compile the constant in); `$803910` ←
+   `$23BEB2`/`$23BEBC` (twice per logic frame); `$8130DA` ← `$26B7D8` set /
+   `$26B4C0` clear (the midboss); `$80B03C` ← `$240C7C` inside `$240C22`.
+9. **`$813098` ≠ 0 anywhere** — still nothing, now over a further 16,000
+   frames including a whole boss fight (W17). Item 2 stands, wider.
 
 ## 8. RISKS, AND HOW BIG THIS IS
 

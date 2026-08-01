@@ -22,6 +22,20 @@ returned to 0 is a RESET (death -> game over -> title) and ends the window.
 MEASURED RESULT, 2026-08-01, `out/bg-deep.tsv` (deep play, 7,000 lf, build B):
     window lf 1621..3288 (the run dies at 3289), 1,668 frames compared,
     0 divergent on all four columns.
+
+MEASURED RESULT, 2026-08-02, wave 17, `out/w17-stage1-invuln-p2.tsv`
+(16,000 lf, build B, **INVULNERABLE + AUTO-SHOT** -- see
+docs/worklog/ddpdoj/17-impl-invuln-stage-run.md for what that label forbids):
+    window lf 1621..12359, **10,431 frames compared, 308 handler-skipped,
+    0 divergent on all four columns** -- the WHOLE of stage 1 including all
+    13 background elements, both cues, the boss lock at $0344 and its exit.
+    The old claim covered frames 1..1,668 of 7,317 (22.8 %); this one covers
+    the stage and the 3,424-frame boss lock on top of it.
+    A no-intervention control (`out/w17-stage1-noinvuln-ctl.tsv`) reaches
+    clock $00E9 and 2,202 comparable frames before the run dies out.
+
+    python scrollgate.py out/w17-stage1-invuln-p2.tsv 0 1620 0
+    python scrollgate.py out/w17-stage1-invuln-p2.tsv 0 1620 0 --mutate clock-per-frame
 """
 from __future__ import annotations
 
@@ -48,9 +62,35 @@ def read_tsv(path):
     return rows
 
 
-def gate(tsv, stage=0, k=1620, entry=0):
+# --------------------------------------------------------------------------
+# THE RED SWITCHES.  A gate nobody has watched fail is not a gate (this project
+# has shipped four such).  Each of these is a MISREADING OF THE LISTING that a
+# careful person would plausibly make; all four must turn the four columns red.
+# 20-plan §2 names `clock-per-frame`, `loop-word-as-iterations` and
+# `cond-word-honoured` as W14/W16's required reds -- they live here so the gate
+# carries them BEFORE the port does.
+MUTATIONS = {
+    "none": "the model as translated",
+    "clock-per-frame": "$8130CE ticks once per frame instead of once per $200 "
+                       "of scroll -- it is an ODOMETER ($26132C), not a frame "
+                       "counter",
+    "loop-word-as-iterations": "op-$04's loop word read as EXTRA passes",
+    "len-not-lenplus1": "$261F76's countdown armed at len instead of len+1",
+    "cond-word-honoured": "the record's second word treated as a condition; "
+                          "$262082 is an unconditional addq.w #2,A1",
+    "commit-the-fraction": "$240B94 adds the whole accumulator instead of "
+                           "(acc & ~$3F), i.e. the sub-pixel fraction is "
+                           "committed to $80B012",
+}
+
+
+def gate(tsv, stage=0, k=1620, entry=0, mut="none"):
     """entry = ($6,A5), the object's ENTRY CLOCK.  0 for a stage start; the
     attract demo enters stage 1 at $0038 and runs $26200E's fast-forward."""
+    if mut not in MUTATIONS:
+        raise SystemExit("mutations: " + ", ".join(MUTATIONS))
+    if mut != "none":
+        print(f"  MUTATION {mut}: {MUTATIONS[mut]}")
     rows = read_tsv(tsv)
     _, s0, s1 = SM["stage_scripts"](stage)
     speed = 0x20
@@ -104,6 +144,8 @@ def gate(tsv, stage=0, k=1620, entry=0):
                 t = u16(a)
                 if t == 0xFFFF or t != clock:
                     break
+                if mut == "cond-word-honoured" and u16(a + 2) != 0:
+                    break
                 op = u16(a + 4)
                 sz = OPS[op][1]
                 args = [u16(a + 6 + 2 * j) for j in range(sz // 2)]
@@ -118,13 +160,23 @@ def gate(tsv, stage=0, k=1620, entry=0):
                         b["rew"] = colptr
                     else:
                         b["rew"] = 1
-                    b["rlen"], b["cnt"], b["loop"] = args[1], args[1] + 1, args[2]
+                    b["rlen"] = args[1]
+                    b["cnt"] = args[1] + (0 if mut == "len-not-lenplus1" else 1)
+                    b["loop"] = args[2] + (1 if mut == "loop-word-as-iterations"
+                                           and args[2] != 0xFFFF else 0)
                 b["cur"] = a + 6 + sz
         acc_tick += speed
         acc02a += speed
-        b012 += acc02a & ~0x3F                 # $240B94, the &~$3F / &$3F split
-        acc02a &= 0x3F
-        if acc_tick >= 0x200:
+        if mut == "commit-the-fraction":
+            b012 += acc02a
+            acc02a = 0
+        else:
+            b012 += acc02a & ~0x3F             # $240B94, the &~$3F / &$3F split
+            acc02a &= 0x3F
+        if mut == "clock-per-frame":
+            if not frozen:
+                clock = (clock + 1) & 0xFFFF
+        elif acc_tick >= 0x200:
             acc_tick -= 0x200
             if not frozen:
                 clock = (clock + 1) & 0xFFFF
@@ -181,4 +233,6 @@ if __name__ == "__main__":
     else:
         gate(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 0,
              int(sys.argv[3]) if len(sys.argv) > 3 else 1620,
-             int(sys.argv[4], 0) if len(sys.argv) > 4 else 0)
+             int(sys.argv[4], 0) if len(sys.argv) > 4 else 0,
+             sys.argv[sys.argv.index("--mutate") + 1]
+             if "--mutate" in sys.argv else "none")
