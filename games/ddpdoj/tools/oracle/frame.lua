@@ -55,6 +55,17 @@
 --   PROBE_GFX      directory for IGS023 state dumps (ROM-DERIVED -- gitignored)
 --   PROBE_GFXAT    "lf,lf,..." -- dump a frame PAIR at each of those logic frames
 --   PROBE_ZOOMCOV  "startLF[,perFrame]" -- THE ZOOM COVERAGE POKER, see below
+--   PROBE_WATCH    "name=hex[:w|:l],..." -- EXTRA compared columns, appended
+--                  after the standard ones.  OPT-IN and empty by default, so a
+--                  run without it produces byte-identical output to wave 3's
+--                  and `pgm.py gate`'s recorded hash still holds.  Wave 4 uses
+--                  it for the player record ($8103E6+) and the options.
+--   PROBE_PORTIN   1 = tap the 68000's reads of the input port $C08000 and
+--                  carry the LAST word read before each sample point as the
+--                  column `portin`.  THIS IS THE REPLAY INPUT WORD: the port
+--                  consumes it and derives $803970/72/74 itself, so the input
+--                  mirrors stay a genuinely compared field instead of being
+--                  fed in from the answer.  (NOTES-replay.md constraint 3.)
 local TAG = "PROBE "
 local function p(...) print(TAG .. string.format(...)) end
 
@@ -230,6 +241,49 @@ local NAMED = {
   {"p2raw", 0x3976}, {"p2edge", 0x3978},
   {"irq4ph", 0xfa84},  -- the ONE live byte a savestate resume gets wrong
 }
+
+-- ---------------------------------------------------------------- PROBE_WATCH
+-- Extra compared columns, opt-in.  `name=hex` is a word at that $8xxxxx address
+-- (the offset into :sram is derived, so the caller writes real addresses and
+-- cannot be one megabyte out); `:l` makes it a longword, `:b` a byte.  Nothing
+-- is emitted when the variable is unset, which is why every hash recorded by
+-- waves 1-3 survives this change -- re-verified with `pgm.py gate` after it.
+local WATCH = {}
+for kv in (os.getenv("PROBE_WATCH") or ""):gmatch("[^,]+") do
+  local k, v, sz = kv:match("^([%w_]+)=(%x+):?(%a*)$")
+  if k then
+    local a = tonumber(v, 16)
+    if a >= 0x800000 then a = a - 0x800000 end
+    WATCH[#WATCH + 1] = {k, a, (sz ~= "" and sz or "w")}
+  else
+    p("WATCH_UNPARSED [%s]", kv)
+  end
+end
+
+-- ---------------------------------------------------------------- PROBE_PORTIN
+-- The hardware input word at $C08000, read once per logic frame by the IRQ6
+-- input routine.  See the header: this is the replay input record.
+local PORTIN = os.getenv("PROBE_PORTIN") == "1"
+local portin, portin_reads = 0xffff, 0
+
+-- ---------------------------------------------------------------- PROBE_POKE
+-- An INTERVENTION, in the same spirit as wave 2's NOP sled and under the same
+-- rule: it must change WHEN or WHETHER something happens and never invent a
+-- value the game could not itself hold.  "hexaddr=hexbyte,..." written at every
+-- sample point AFTER emit(), so the TSV always records the game's own value and
+-- the poke is consumed by the NEXT logic frame.  The port applies the identical
+-- poke at the identical point, so the two sides stay one experiment.
+local POKES = {}
+for kv in (os.getenv("PROBE_POKE") or ""):gmatch("[^,]+") do
+  local a, v = kv:match("^(%x+)=(%x+)$")
+  if a then
+    a = tonumber(a, 16)
+    POKES[#POKES + 1] = {(a >= 0x800000) and (a - 0x800000) or a, tonumber(v, 16)}
+  else
+    p("POKE_UNPARSED [%s]", kv)
+  end
+end
+local POKE_FROM = tonumber(os.getenv("PROBE_POKE_FROM") or "0")
 
 -- ---------------------------------------------------------------- digests
 -- Mix 64 bits at a time.  The wave-0 probe hashed u32 with a four-byte FNV
@@ -692,7 +746,8 @@ local out, done = nil, false
 local cen = { irq6hist = {}, relhist = {}, spinhist = {}, buildhist = {},
               armhist = {}, semhist = {}, maxspr = 0, halted = 0, rtcreads = 0,
               minwork = math.huge, maxwork = 0, over = 0, spanned = 0,
-              objhist = {}, objlivehist = {}, guard = 0, guardpcs = {} }
+              objhist = {}, objlivehist = {}, guard = 0, guardpcs = {},
+              portinhist = {} }
 local function bump(t, k) t[k] = (t[k] or 0) + 1 end
 
 -- object-driver accumulators, reset at every sample point
@@ -702,6 +757,8 @@ local COLS = {"lf", "vf", "cyc", "work", "spin", "irq4", "irq6", "rel",
               "build", "armpc", "sprites", "objn", "objord", "objlive",
               "d_spr", "d_ram", "d_date", "d_top", "d_pal", "d_spb", "d_bg", "d_tx", "pix"}
 for _, n in ipairs(NAMED) do COLS[#COLS + 1] = n[1] end
+if PORTIN then COLS[#COLS + 1] = "portin" end
+for _, w in ipairs(WATCH) do COLS[#COLS + 1] = w[1] end
 
 -- THE MACHINE CLOCK, IN 68000 CYCLES, AND WHY IT IS NOT attoseconds.
 -- Wave 1 computed `t = M.time.attoseconds + M.time.seconds * 1e18`.  int64's
@@ -782,8 +839,15 @@ local function emit(armpc)
     digest(BG, 0, BG.size), digest(TX, 0, TX.size), pix,
   }
   for _, n in ipairs(NAMED) do r[#r + 1] = RAM:read_u16(n[2] & ~1) end
+  if PORTIN then r[#r + 1] = portin end
+  for _, w in ipairs(WATCH) do
+    if w[3] == "l" then r[#r + 1] = RAM:read_u32(w[2] & ~1)
+    elseif w[3] == "b" then r[#r + 1] = RAM:read_u8(w[2])
+    else r[#r + 1] = RAM:read_u16(w[2] & ~1) end
+  end
   local line = table.concat(r, "\t")
   if out then out:write(line, "\n") else p("ROW %s", line) end
+  if PORTIN then bump(cen.portinhist, portin_reads); portin_reads = 0 end
   irq4, irq6, rel, spin = 0, 0, 0, 0
   objn, objord = 0, 0xcbf29ce484222325
 end
@@ -854,6 +918,9 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x803940, 0x803941, "sem", function(off
     end
     local ok, e = pcall(emit, pc)
     if not ok then p("LUA_ERROR emit %s", tostring(e)) end
+    if lf >= POKE_FROM then
+      for _, k in ipairs(POKES) do RAM:write_u8(k[1], k[2]) end
+    end
     if DUMP_LF == lf then
       local fh = io.open(DUMP_PATH, "wb")
       if fh then
@@ -930,6 +997,22 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(STACK_GUARD_LO, STACK_GUARD_HI, "stkgua
 --      the REFERENCE, not a port bug, and it has to be loud: a non-0x210 value
 --      FAILS the run rather than quietly degrading every pixel comparison
 --      downstream of it.
+-- (6) THE INPUT PORT, $C08000.  A READ tap is the right hook here and the
+--     prefetch caveat does not apply: $C08000 is I/O, no instruction is ever
+--     fetched from it, so every hit is a genuine `move.w (A0),D0` data read.
+--     The value is carried to the sample point as the column `portin` and is
+--     the port's replay input word -- see the header.  `portin_reads` is
+--     censused because "read exactly once per logic frame" is a claim, and a
+--     claim in this project is measured before it is used.
+if PORTIN then
+  TAPS[#TAPS + 1] = PROG:install_read_tap(0xc08000, 0xc08001, "portin",
+    function(offset, data, mask)
+      portin = data & 0xffff
+      portin_reads = portin_reads + 1
+      return data
+    end)
+end
+
 TAPS[#TAPS + 1] = PROG:install_write_tap(0xb04000, 0xb04001, "bgscale",
   function(offset, data, mask)
     local v = data & 0xffff
@@ -1150,6 +1233,7 @@ local function finish()
     cen.minwork == math.huge and -1 or cen.minwork, cen.maxwork, cen.over)
   if METER then p("CENSUS spin_iters_bucketed500 %s", hist(cen.spinhist)) end
   p("CENSUS max_sprite_entries=%d", cen.maxspr)
+  if PORTIN then p("CENSUS input_port_reads_per_logicframe %s", hist(cen.portinhist)) end
   p("CENSUS stack_guard_hits=%d below_$%06X %s", cen.guard, STACK_GUARD_LO,
     hist(cen.guardpcs))
   if OBJ_BASE then

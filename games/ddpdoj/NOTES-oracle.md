@@ -380,3 +380,67 @@ runs hold the table constant and run twice instead of modelling the offset.
 `CENSUS max_sprite_entries=122` on the gate scenario. Wave 0 saw 95, wave 1 saw
 133. **The 256 cap has still never been reached, and that still says nothing
 about what happens at it.**
+
+---
+
+## WAVE 4 — the port's side of the comparison, and one census that was blind
+
+Full evidence: `docs/worklog/ddpdoj/04-impl-skeleton-and-player.md`.
+The port itself is `games/ddpdoj/src/`; its gate is
+`python pgm.py flyaround`.
+
+### New commands and columns
+
+```
+python pgm.py flyaround                    the fly-around scenario, then the
+                                           port, then a per-COLUMN first-
+                                           divergence report
+python pgm.py flyaround --reuse --break clamp-first   ...and it MUST go red
+node games/ddpdoj/tools/determinism.mjs <tsv> <seed.bin> --seed-lf 2000 --poke 810424=FF
+node --test games/ddpdoj/tests/
+python games/ddpdoj/tools/export-tables.py   ROM tables -> rip/port/ (gitignored)
+```
+
+Three new `frame.lua` env vars, **all opt-in and all off by default** — the
+wave-2 gate hash `635bb92f1a9dc81e968bab5e755f807e78c0c18538af5cfc8c29974520d84884`
+was re-run after these edits and is unchanged:
+
+* `PROBE_WATCH="name=hex[:w|:l|:b],..."` — extra compared columns. Wave 4 reads
+  the spec out of `src/state.js` so the two sides of the comparison cannot drift.
+* `PROBE_PORTIN=1` — the hardware input word at `$C08000`, one per LOGIC frame,
+  as the column `portin`. **This is the replay input record.** The port derives
+  `$803970/72/76` from it, which is what keeps the input mirrors a compared
+  field instead of one fed in from the answer.
+  `CENSUS input_port_reads_per_logicframe 1:4184 2:15 3:1`.
+* `PROBE_POKE="hexaddr=hexbyte,..."` + `PROBE_POKE_FROM=lf` — an intervention,
+  written at every sample point AFTER emit(), so the TSV records the game's own
+  value and the poke is consumed by the next logic frame. The port applies the
+  identical poke at the identical point.
+
+### `armed_vblanks` CANNOT SEE THE DIVIDER, and three waves quoted it
+
+`armed_vblanks 1:N` in every run has been read since wave 1 as "the 2- and
+3-vblank divider paths have never executed". **The census only counts the write
+that takes `$803940` from 0 to non-zero, and `$23C212` ALWAYS writes 1 first** —
+so the later `move.b #$2,$803940` at `$23C248` and `$23C38A` is a
+non-zero-to-non-zero write it never records. The column that actually bounds the
+divider is `irq6_per_logicframe` (1 on 4,184 of 4,200 fly-around frames: a
+2-vblank arm would show as 2). The conclusion survives; the statistic does not.
+Same shape as wave 2's correction to `gated_zero_release`.
+
+Related: `$23C212` is not an arm at all. It is a five-way decision ending in a
+DYNAMIC GOVERNOR at `$23C272` which sums `$81B40C + $81295C + 2*$81295E` against
+a table-built threshold and nudges a hysteresis counter at `$803932`. Ported in
+`src/framesync.js`.
+
+### Two sampling facts a future probe must not re-derive
+
+* **`PROBE_RAMDUMP` records the PRE-arm semaphore.** It runs inside the arm's
+  write tap and a 68000 write tap fires before the value lands, so `$803940` is
+  0 in the dump and 1 in the machine. A port seeded from it takes the ISR's (A)
+  gate on its first frame and reports `rel=0` against the board's 1.
+* **MAME's two video-frame measures disagree on ~0.3 % of frames.** `vf`
+  (`screen:frame_number()` at the arm) versus the interrupt-ack census: 6 of
+  2,200 frames, deltas 0 and 2. The game reads neither. `portdiff.mjs` compares
+  the port's videoFrame against the cumulative VBLANK COUNT and prints `VFSKEW`
+  for the rest.

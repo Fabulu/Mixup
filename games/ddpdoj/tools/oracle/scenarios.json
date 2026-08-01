@@ -47,6 +47,26 @@
       "meter": true
     },
     {
+      "name": "fly-around",
+      "why": "WAVE 4. THE PORT SCENARIO. Boot -> VERSION-B -> stage 1, then 2,200 logic frames of scripted stick from the seed at lf2000: each cardinal held long enough to PIN each of the four walls (vertical $800..$6500 = 23,808 units at 246/frame = 97 frames to cross; horizontal $300..$3500 = 12,800 at 163/frame = 79), all four diagonals, single-frame reversals, and the two conflicting-stick cases the $2552DC table answers with $FF. MISSES MATTER AS MUCH AS MOVES: the clamp is move-past-then-clamp with a compensating write to the velocity accumulator, so a port that clamps first is wrong ONLY at a wall. NO BUTTONS, and that is the whole design of this scenario: mirror bit 4 (Button 1) is the shot edge at $249B48, mirror bit 5 (Button 2) is the bomb at $2497FE, and mirror bit 6 (Button 3) is AUTO-SHOT -- $2497B2 finds the byte at $80380F set to $01 and synthesises a shot edge into ($19,A6) on alternate frames -- so every button drives wave 5's code. THE INTERVENTION: $810424 (the player's ($3e,A6) invulnerability timer) is held at $FF from lf1990, at the sample point, on BOTH SIDES of the comparison. Without it a button-free run of this script DIES at lf2469 (MEASURED: the player record goes blank and the object table drops a slot), because nothing is shooting the stage-1 opening. $FF is a value the game itself writes at $2495A2 and the branch that reads it ($249524 cmpi.b #$ff) is ported, so the poke changes WHETHER the ship dies and not WHAT any ported routine computes -- the same rule wave 2 applied to the NOP sled. With it the object table is static at 8 live slots from lf1969 to lf4200, so objn/objord/objlive are real compared columns rather than a tautology.",
+      "frames": 4200,
+      "build": "B",
+      "tail": "1980=;2000=U;2130=D;2280=;2320=L;2420=;2440=R;2540=;2560=UR;2660=;2680=DL;2780=;2800=UL;2900=;2920=DR;3020=;3040=U;3080=L;3120=D;3160=R;3200=;3240=U;3250=D;3260=U;3270=D;3280=;3320=LR;3350=UD;3380=;3400=L;3460=U;3520=R;3580=D;3640=;3700=U;3760=D;3820=;3900=L;3960=R;4020=;4060=U;4090=;4120=D;4180=",
+      "seed": 2000,
+      "poke": "810424=FF",
+      "pokeFrom": 1990,
+      "snap": "2000,3000,4190",
+      "meter": true
+    },
+    {
+      "name": "speedmodes",
+      "why": "WAVE 4 item: 'per-button speed modes'. The build-A memmap recon measured 246 units/frame vertical, 163 horizontal, and 313 WITH BUTTON 2 OR 3 HELD. This scenario holds each of the three buttons in turn while pushing the stick up, so the speed index ($8103E6+$1A) and the applied delta ($810416) are MEASURED on VERSION-B instead of inherited. It fires the weapons, so it is a measurement scenario, not a comparison scenario.",
+      "frames": 3400,
+      "build": "B",
+      "tail": "1980=;2200=U;2280=;2400=AU;2480=;2600=BU;2680=;2800=CU;2880=;3000=ABU;3080=;3200=BCU;3280=",
+      "meter": true
+    },
+    {
       "name": "overrun",
       "why": "WAVE 2 ITEM 2, PERMANENT. The only scenario in the corpus in which the game runs out of time. Nobody had ever reached an overrun -- wave 0's heaviest stage-1 frames stopped at >90% utilised and wave 1's gate completed its loop on all 2,600 frames -- so mechanism (C) was unmeasured, and docs/knowledge/06 says (C) cannot be retrofitted. MAME's -speed is a HOST throttle and changes no emulated cycle; a per-CPU clock scale is not reachable from MAME 0.288's Lua (measured). So a busy-wait trampoline is written into the decrypted image past the end of the program and one main-loop jsr operand is repointed at it: `inject` is NOPS:fromLogicFrame (a NOP sled: no register, no flag, no memory touched). It preserves D0, touches no game RAM, and changes WHEN the frame runs out of time, never WHAT the game does about it. `pgm.py overrun` runs the NOPS=0 control first, which MUST be byte-identical to the unpatched run. EVERY NUMBER FROM THIS SCENARIO IS MAME-TIMED, UNCALIBRATED, AND A MECHANISM RESULT ONLY.",
       "frames": 2600,
