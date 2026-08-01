@@ -143,6 +143,38 @@ stage('port trace shape == probe.lua state vector', () => {
     ? { status: 'PASS' } : { status: 'FAIL' };
 });
 
+// --------------------------------------------------------------- stage 2b ---
+// THE RENDERER GATE, wired in by the FINAL VERIFICATION pass (wave 99).
+//
+// It was in the tree and in NO runner from the day it was written, and
+// docs/knowledge/02 trap 5 says what happens to a check outside the gate: it
+// rots. This is not a hypothetical here -- it is measured. Waves 5, 6, 7 and 8
+// each recorded, in their own worklog, that they did not run it:
+//
+//   05-review-fidelity.md  "What I did NOT run is tools/oracle/rendergate.py"
+//   06-review-fidelity.md  "are in the tree and are in neither test-all.mjs nor
+//                           anything else"
+//   07-review-fidelity.md  "not run at all this review ... the highest-value hole"
+//   08-review-fidelity.md  "I did not run rendergate.py"
+//
+// Four consecutive waves is enough evidence. It rebuilds seven captured frames
+// from the model in NOTES-render.md and compares all 61,440 pixels of each,
+// and it runs its own eleven negative controls and fails if any is seen by no
+// frame. It needs Mesen and the cartridge (it captures the frames itself), so
+// ROM-absent is an environmental SKIP like the oracle stages.
+//
+// It is the slowest stage (~4 min: it drives the emulator to frame 2600 twice).
+// That is the price of it being run at all, and it is cheaper than the four
+// waves that skipped it.
+stage('the renderer rebuilds the cartridge pixel-exactly (rendergate.py)', () => {
+  if (!romPresent) {
+    return { status: 'SKIP', note: 'rendergate.py drives Mesen against the .nes '
+           + 'itself; no cartridge at the repo root' };
+  }
+  return run('python', ['games/gradius/tools/oracle/rendergate.py'])
+    ? { status: 'PASS' } : { status: 'FAIL' };
+});
+
 // ---------------------------------------------------------------- stage 3 ---
 const corpus = existsSync(SCEN)
   ? readdirSync(SCEN).filter((f) => f.endsWith('.json')

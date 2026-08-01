@@ -88,6 +88,87 @@ const INFO_FIELDS = new Map([
            + 'does not model. NOT about enemies -- see the note in compare.mjs'],
 ]);
 
+// ============================ THE DISPLAY LIST ==============================
+//
+// $0200-$02FF, the shadow OAM. Added to the watch list by the FINAL
+// VERIFICATION pass (wave 99). Until then page $02 had ZERO watched addresses
+// and every wave from 5 to 8 declared that as its largest blind spot in the
+// same words: "a shot, missile or explosion sprite drawn at the wrong OAM
+// slot, tile, attribute or Y while the counts all match -- green everywhere".
+// The port has modelled the page all along (`state.shadowOam`, and
+// porttrace.mjs's `peek` has mapped $0200-$02FF from the start); nothing ever
+// asked the cartridge for it.
+//
+// WHY THE PAGE IS NOT PLAIN TIER 1. src/oam.js does `oam.fill(0xF4)` and says
+// so: the cartridge's blank pass $8BAB writes $F4 into the Y BYTE ONLY of the
+// slots past the display-list cursor, leaving their tile/attribute/X bytes
+// stale from whichever frame last used that slot. The port clears all four.
+// So on a HIDDEN slot, bytes 1..3 differ by construction and always will --
+// 36,244 slot-frames of it on `idle` alone. Failing the run on that would be
+// failing it for a divergence src/ declares in a comment.
+//
+// WHAT IS COMPARED INSTEAD IS EXACT, AND IT IS NOT WEAKER:
+//
+//   (A) the Y byte of every one of the 64 slots, on every frame, always. That
+//       is the byte $8BAB actually writes, so nothing about the blank pass
+//       excuses it -- and Y is what decides whether a sprite is on screen at
+//       all and on which scanline.
+//   (B) all four bytes of every LIVE slot -- a slot whose Y byte on the
+//       CARTRIDGE is not $F4. Tile, attribute (palette, flips, priority) and X.
+//
+// So every sprite the cartridge actually draws is compared byte for byte, and
+// the only thing excused is the contents of slots the PPU is not showing.
+// The liveness test is taken from the ORACLE side on purpose: a port that drew
+// nothing at all would have zero live slots and could not satisfy (B) by
+// agreeing with itself -- which is why `live` is printed and why the corpus
+// total is asserted non-zero in main().
+//
+// SEEN RED. Measured with the breaks in docs/worklog/gradius/99-final-verification.md.
+const DLIST_BASE = 0x0200;
+const DLIST_SLOTS = 64;
+const DLIST_HIDDEN_Y = 0xF4;
+const dlistKey = (a) => `w_${a.toString(16).toUpperCase().padStart(4, '0')}`;
+
+/**
+ * Compare the shadow OAM over one scenario's live window. Returns null when
+ * page $02 is not in the watch list at all, which main() turns into a failure
+ * on a full run rather than a silent skip: an artifact recorded before the page
+ * was watched would otherwise make this whole block quietly stop running --
+ * exactly the regression shape wave 5 wrote down about $0A.
+ */
+function compareDisplayList(frames, byFrameO, byFrameP) {
+  const probe = byFrameO.get(frames[0]);
+  if (probe[dlistKey(DLIST_BASE)] === undefined) return null;
+  let live = 0, slotFrames = 0, yBad = 0, liveBad = 0, hiddenDiff = 0;
+  const ex = [];
+  for (const f of frames) {
+    const o = byFrameO.get(f), p = byFrameP.get(f);
+    for (let e = 0; e < DLIST_SLOTS; e++) {
+      const b = DLIST_BASE + e * 4;
+      slotFrames++;
+      const ry = o[dlistKey(b)], py = p[dlistKey(b)];
+      if (ry !== py) {
+        yBad++;
+        if (ex.length < 8) ex.push(`Y     f${f} slot ${e}: rom ${ry} port ${py}`);
+        continue;
+      }
+      const isLive = ry !== DLIST_HIDDEN_Y;
+      if (isLive) live++;
+      for (let i = 1; i < 4; i++) {
+        if (o[dlistKey(b + i)] === p[dlistKey(b + i)]) continue;
+        if (isLive) {
+          liveBad++;
+          if (ex.length < 8) {
+            ex.push(`${['', 'TILE', 'ATTR', 'X'][i].padEnd(5)} f${f} slot ${e}: `
+                  + `rom ${o[dlistKey(b + i)]} port ${p[dlistKey(b + i)]}`);
+          }
+        } else hiddenDiff++;
+      }
+    }
+  }
+  return { live, slotFrames, yBad, liveBad, hiddenDiff, examples: ex };
+}
+
 function windowRows(oracle, port, field, at, radius = 4) {
   const out = [];
   for (let f = at - radius; f <= at + radius; f++) {
@@ -181,6 +262,10 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
       skipped.push({ field: k, why: 'no port counterpart (see porttrace.mjs)' });
       continue;
     }
+    // Page $02 is graded by the DISPLAY LIST block, not field by field -- see
+    // the long note above compareDisplayList(). It is NOT skipped: every byte
+    // of it is compared there, under a rule the blank pass cannot excuse.
+    if (k.startsWith('w_02')) continue;
     // A watched address the port does not model at all: every sample is null.
     // It is SKIPPED rather than counted as 239 divergences -- but only with a
     // written reason, and an unexplained null is itself a failure.
@@ -245,6 +330,7 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
              yMin: Math.min(...ys), yMax: Math.max(...ys),
              dying: dyingAt.length, deaths, diedAt: dyingAt[0] ?? null },
     results, skipped,
+    dlist: compareDisplayList(frames, byFrameO, byFrameP),
     romLagTotal: oracle.lagFrames, romLagInWindow, portLag: portLagInWindow,
     // A field that never varies across the whole run tells you nothing when it
     // matches. Counted and printed, per docs/knowledge/03 trap 4.3.
@@ -314,6 +400,20 @@ export function printScenario(r) {
               + `${x.first === null ? '  (NONE -- suspicious, see below)' : `, first at ${x.first}`}`
               + `  -- ${x.why}`);
   }
+  if (r.dlist === null) {
+    console.log('    [DISPLAY LIST] page $02 is NOT in the watch list -- '
+              + 'not compared. Re-record: python games/gradius/tools/oracle/scen.py');
+  } else {
+    const d = r.dlist;
+    const ok = d.yBad === 0 && d.liveBad === 0;
+    console.log(`    [${ok ? 'PASS' : 'FAIL'}] DISPLAY LIST ($0200-$02FF): `
+              + `${d.slotFrames} slot-frames, ${d.live} live; `
+              + `${d.yBad} Y mismatches, ${d.liveBad} live-slot content `
+              + `mismatches (tile/attr/X)`);
+    for (const e of d.examples) console.log(`      ${e}`);
+    console.log(`      ${d.hiddenDiff} hidden-slot byte1..3 differences -- `
+              + `EXPECTED: src/oam.js fills $F4, $8BAB writes only the Y byte`);
+  }
   console.log(`    lag: cartridge ${r.romLagTotal} total, `
             + `${r.romLagInWindow} inside the compared window; port ${r.portLag}`
             + `  [${r.romLagInWindow === r.portLag ? 'PASS' : 'FAIL'}]`);
@@ -321,7 +421,9 @@ export function printScenario(r) {
   for (const s of r.skipped) console.log(`      ${s.field}: ${s.why}`);
   console.log(`    ${r.constantFields.length}/${r.results.length} compared fields `
             + `never changed value in this scenario`);
-  return { fail: bad.length + (r.romLagInWindow === r.portLag ? 0 : 1),
+  const dlistFail = r.dlist === null ? 0
+    : (r.dlist.yBad ? 1 : 0) + (r.dlist.liveBad ? 1 : 0);
+  return { fail: bad.length + (r.romLagInWindow === r.portLag ? 0 : 1) + dlistFail,
            info: infoBad.length };
 }
 
@@ -355,17 +457,61 @@ function main(argv) {
     rows.push(r);
   }
 
+  // Whether this run covers the WHOLE corpus. Several coverage blocks below
+  // only mean anything on a full run, and say so rather than failing a subset.
+  const fullRun = names.length === defs.scenarios.length;
+
   console.log('\n=== SUMMARY ===');
   for (const r of rows) {
     const bad = r.results.filter((x) => x.tier === 'TIER1' && x.first !== null);
     const lagOk = r.romLagInWindow === r.portLag;
-    const ok = bad.length === 0 && lagOk;
+    const dlOk = r.dlist === null || (!r.dlist.yBad && !r.dlist.liveBad);
+    const ok = bad.length === 0 && lagOk && dlOk;
     console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${r.name.padEnd(13)} `
               + `${String(r.frames).padStart(4)} frames  `
               + (bad.length === 0 ? 'all TIER 1 fields exact'
                  : bad.map((x) => `${x.field}@${x.first}`).join(' '))
-              + (lagOk ? '' : `  LAG rom ${r.romLagInWindow} port ${r.portLag}`));
+              + (lagOk ? '' : `  LAG rom ${r.romLagInWindow} port ${r.portLag}`)
+              + (dlOk ? '' : `  OAM Y${r.dlist.yBad}/live${r.dlist.liveBad}`));
   }
+
+  // ---- DISPLAY LIST COVERAGE ------------------------------------------------
+  // Same shape as CLAMP and DEATH coverage, and the same reason it is a
+  // failure rather than a note: this block can stop running without anything
+  // going red. If page $02 falls out of the watch list, or every artifact in
+  // out/scen predates it being added, `dlist` is null on every scenario and
+  // 12,294 frames of sprite content silently stop being compared. That is the
+  // precise failure wave 5 recorded about $0A and it is worth a check of its
+  // own. `live` being zero corpus-wide would mean the same thing one level
+  // down: the page is watched, and the cartridge is drawing nothing.
+  console.log('\n=== DISPLAY LIST COVERAGE ($0200-$02FF) ===');
+  const dlRows = rows.filter((r) => r.dlist !== null);
+  const dlLive = dlRows.reduce((n, r) => n + r.dlist.live, 0);
+  const dlSlots = dlRows.reduce((n, r) => n + r.dlist.slotFrames, 0);
+  const dlYBad = dlRows.reduce((n, r) => n + r.dlist.yBad, 0);
+  const dlLiveBad = dlRows.reduce((n, r) => n + r.dlist.liveBad, 0);
+  let dlistBad = 0;
+  // NOT gated on fullRun, deliberately. A stale artifact is a stale artifact
+  // whether one scenario is being run or all 36, and the subset run is exactly
+  // where somebody re-records one scenario and compares it against 35 others
+  // that still predate the watch-list change.
+  if (dlRows.length !== rows.length) {
+    dlistBad++;
+    console.log(`  [FAIL] ${rows.length - dlRows.length} of ${rows.length} `
+              + `scenarios have no watched page $02 -- their sprite content is `
+              + `NOT being compared. Re-record: `
+              + `python games/gradius/tools/oracle/scen.py`);
+  }
+  if (dlRows.length && dlLive === 0) {
+    dlistBad++;
+    console.log('  [FAIL] page $02 is watched but the cartridge has ZERO live '
+              + 'sprite slots in the entire corpus -- the check is vacuous');
+  }
+  console.log(`  ${dlRows.length}/${rows.length} scenarios compared, `
+            + `${dlSlots} slot-frames, ${dlLive} live (every byte of these `
+            + `compared: Y, tile, attribute, X)`);
+  console.log(`  [${dlYBad + dlLiveBad === 0 ? 'PASS' : 'FAIL'}] `
+            + `${dlYBad} Y mismatches, ${dlLiveBad} live-slot content mismatches`);
   // ---- knownFail, held to account at corpus level ---------------------------
   // docs/knowledge/01: an unexpected PASS must fail the run so nobody forgets
   // to delete the annotation. Scoped to the whole corpus, because a scenario
@@ -446,7 +592,6 @@ function main(argv) {
               + `${want}${ok ? '' : '  <-- this scenario is no longer testing '
               + 'the death it was built for'}`);
   }
-  const fullRun = names.length === defs.scenarios.length;
   if (fullRun && !expects.size) {
     console.log('  [FAIL] no scenario carries an expectDying at all');
     deathBad++;
@@ -474,8 +619,10 @@ function main(argv) {
             + `), ${fails} failures, ${uncovered} clamps uncovered, `
             + `${deathBad} death-coverage failures, `
             + `${stale} stale annotations, `
+            + `${dlistBad} display-list coverage failures, `
             + `${skippedFields.length} fields SKIPPED (${skippedFields.join(' ')}).`);
-  return (fails || uncovered || stale || deathBad) ? 1 : (rows.length === 0 ? 2 : 0);
+  return (fails || uncovered || stale || deathBad || dlistBad)
+    ? 1 : (rows.length === 0 ? 2 : 0);
 }
 
 if (process.argv[1]?.endsWith('compare.mjs')) process.exit(main(process.argv.slice(2)));
