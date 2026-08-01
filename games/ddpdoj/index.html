@@ -45,13 +45,16 @@
       tiny" was 1, not the orientation. See the worklog; that mattered, because
       rotating an already-rotated picture would have been the obvious fix and
       the wrong one.
-   3. THE SPLICE WAS INCOMPLETE, and this is the defect the play session was
-      really about. FIVE display-list records sit at a constant offset from the
-      board's ship -- the ship, two option pods and TWO EXHAUST records -- and
-      pixpack.mjs accepted only three, because the exhaust is drawn on
-      ALTERNATE frames and its 50% score fell under --min-hit 0.9. So the
-      player's own exhaust plume stayed on the recorded path and flew off on
-      its own. src/render/capture.js re-derives the set at load time.
+   3. THE MATCHER WAS ASKING THE WRONG QUESTION, and this is the defect the
+      play session was really about. EIGHT records are attached to the player
+      -- ship, 2 option pods, 2 exhaust sprites, 3 ground shadows -- and
+      pixpack.mjs took three. It scored PRESENCE ("at a constant offset in >=
+      90% of frames"), which cannot see a record drawn on alternate frames
+      (this hardware's transparency trick, hence exhaust AND shadows) and
+      cannot see a record on a ground plane at all. src/render/capture.js now
+      scores CONDITIONAL ON PRESENCE and PRINTS ITS REJECTS
+      (tools/attachreport.mjs) -- the old matcher's silence about what it
+      dropped is why this shipped broken for two waves.
       THE PODS WERE NEVER BROKEN; 07-review.md D1 is a WORDING defect (the
       banner said they were "computed live" and they are not) and the wording
       is what changed.
@@ -264,17 +267,32 @@ ship because they were aiming at the ship that flew this recording, and that
 ship is not the one you are moving. When enemy fire passes through you, nothing
 has gone wrong; there is no collision to run.</p>
 
-<p><b>Five records are moved to the port's ship each frame:</b> the ship, its
-two option pods and its two exhaust sprites. The pods and the exhaust are
-<b>not simulated</b> &mdash; the option object <code>$24C096</code> is one of 22
+<p><b>Eight records are moved to the port's ship each frame:</b> the ship, its
+two option pods, its two exhaust sprites and its three ground shadows (one for
+the ship, one under each pod). None of the seven that are not the ship is
+<b>simulated</b> &mdash; the option object <code>$24C096</code> is one of 22
 subsystem calls this port counts and does not run &mdash; they are the
-<em>recorded</em> sprites, relocated to sit at the same fixed offsets from your
-ship that the board puts them at. Until wave&nbsp;9 only three of the five were
-moved: the exhaust flickers on alternate frames, the packer accepts a record
-that holds on 90&nbsp;% of frames, and half of 100 is not 90. So the exhaust
-stayed on the recorded ship's path and flew off across the screen on its own
-&mdash; the "fireball", and at 1515 drawn pixels against the ship's 517 it was
-the biggest thing attached to the player.</p>
+<em>recorded</em> sprites, relocated to where your ship puts them.</p>
+
+<p>Until wave&nbsp;9 only three of the eight were moved, and a player found the
+other five by looking. The matcher was asking the wrong question: <em>"is this
+record at a constant offset from the ship in at least 90&nbsp;% of frames?"</em>
+The exhaust and the shadows are drawn on <b>alternate frames</b> &mdash; which
+is how this hardware faked transparency &mdash; so they can never score above
+half, and the shadows are not at a constant offset at all: they sit on a
+<b>ground plane</b>, halfway between the object and a fixed point, which is what
+<code>$249E7E</code> computes. The test now asks <em>"given the record is there
+at all, is it where the ship says?"</em> &mdash; eight records score
+100&nbsp;%, the best thing it rejects scores 58.6&nbsp;%, and it prints the
+rejects so the next person can see what it chose not to take.</p>
+
+<p><b>The exhaust and the shadow flicker, and that is the board.</b> The exhaust
+is drawn on odd frames, the shadow on even frames, and no frame carries both. On
+the arcade CRT that reads as translucency; on a 60&nbsp;Hz LCD it may read as
+strobing instead. This page reproduces it exactly rather than drawing them
+solidly at half opacity, because that would look better and be something the
+board never did. If it bothers you, that is a decision worth making
+deliberately &mdash; it is written up, not overlooked.</p>
 
 <p><b>Your ship does not bank.</b> The splice moves a record's position and
 nothing else, so the drawn image is whatever the recording held &mdash; and the
@@ -505,16 +523,20 @@ try {
   const m = app.bundle.manifest;
   const cj = app.bundle.cap.json;
   const sc = cj.shipCorrelation;
+  const rep = app.bundle.cap.attachmentReport();
   document.getElementById('provenance').textContent =
     `bundle: ${m.gfx.bg.tiles} BG + ${m.gfx.tx.tiles} TX tiles decoded, `
     + `${m.spr.streams.length} sprite streams re-based, ${m.frames} frames of `
     + `'${m.scenario}' from lf${cj.seedLf}; ship records identified at lag `
     + `${sc.lag}, conversion ${sc.conversion}, offsets `
     + sc.accepted.map((e) => `(${e.off})x${e.hits}`).join(' ')
-    + ` of ${m.frames} frames. This page re-derives that set at load and splices `
-    + `${app.bundle.cap.attachedOffsets()?.length ?? '?'} offsets, not `
-    + `${sc.accepted.length}: `
-    + (app.bundle.cap.attachedOffsets() ?? []).join('  ');
+    + ` of ${m.frames} frames. This page re-tests that at load, CONDITIONAL ON `
+    + `PRESENCE, and takes ${rep.filter((r) => r.verdict === 'ACCEPT').length} `
+    + `record classes rather than ${sc.accepted.length}: `
+    + rep.filter((r) => r.verdict === 'ACCEPT')
+      .map((r) => `${r.size} ${r.model}(${r.dx},${r.dy}) ${r.phase}`).join('; ')
+    + `. It considered and REJECTED ${rep.length - rep.filter((r) => r.verdict === 'ACCEPT').length}`
+    + ' other classes; run tools/attachreport.mjs to see them with their scores.';
 
   setInterval(() => {
     const s = app.stats();

@@ -31,16 +31,18 @@
 //     the `fly-around` scenario, the same window wave 4 compares -- and loop.
 //     The enemies are pixels: they do not see the ship and cannot be hit.
 //
-//   SPLICED:  FIVE display-list records are moved to the PORT's position each
-//     frame -- the ship, its two option pods and its two exhaust records.
-//     Wave 7 moved only three: `pixpack.mjs` accepts an offset that holds on
-//     >= 90 % of frames, and the exhaust appears on ALTERNATE frames, so it
-//     scored 50 % and was rejected.  The result was the "fireball" a player
-//     reported flying off across the screen on the RECORDED ship's path while
-//     the live ship stayed under his finger -- and it is the biggest
-//     player-attached thing on screen, 1515 drawn pixels against the ship's
-//     517.  `render/capture.js` re-derives the set at load time at 45 %; the
-//     measured gap is 80 frames accepted against 41 rejected.
+//   SPLICED:  EIGHT display-list records are moved to the PORT's position each
+//     frame -- the ship, its two option pods, its two exhaust records and its
+//     three ground shadows (one for the ship, one per pod).  Wave 7 moved
+//     three.  `pixpack.mjs` asks "is this record at a constant offset from the
+//     ship in >= 90 % of frames", and that question cannot see either of the
+//     other five: the exhaust and the shadows are drawn on ALTERNATE FRAMES
+//     (which is how this hardware faked transparency) so they can never score
+//     above ~50 %, and the shadows are not at a constant offset AT ALL -- they
+//     sit on a ground plane, halfway between the object and a fixed point,
+//     which is `$249E7E`'s own arithmetic.  `render/capture.js` re-derives the
+//     set at load time with a test that scores CONDITIONAL ON PRESENCE and
+//     reports every candidate it rejected; `tools/attachreport.mjs` prints it.
 //
 //   SPLICED ONLY IN POSITION:  the ship does NOT bank.  `splice` rewrites
 //     display-list words 0 and 1 and nothing else, so the drawn image is
@@ -241,9 +243,10 @@ class Demo {
     // `prevPos`, not the current position: the sprite buffer lags main RAM by
     // one frame, measured (`capture.js`).
     //
-    // WAVE 9: this now moves FIVE records, not three -- the ship, the two
-    // option pods and the two exhaust records the packer's 90 % threshold
-    // rejected for flickering.  See `render/capture.js`'s header.
+    // WAVE 9: this now moves EIGHT records, not three -- the ship, two option
+    // pods, two exhaust records and three ground shadows.  See
+    // `render/capture.js`'s header for the conditional matcher that finds them
+    // and `tools/attachreport.mjs` for what it rejected.
     this.spliced = this.cap.splice(st, fi, this.prevPos[0], this.prevPos[1]);
     const idx = this.renderer.renderIndexed(st);
     // The palette that applies is the NEXT frame's -- the measured sample-point
