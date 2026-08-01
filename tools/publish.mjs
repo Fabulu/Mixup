@@ -7,8 +7,9 @@
 // Gradius. So this polls until it sees the new build id repeatedly, and exits
 // non-zero if it never does.
 //
-//   node tools/publish.mjs                 gate both games, then publish
+//   node tools/publish.mjs                 gate every game, then publish
 //   node tools/publish.mjs --only gradius  gate only Gradius (the fast path)
+//   node tools/publish.mjs --only ddpdoj   gate only DaiOuJou
 //   node tools/publish.mjs --dry           gate and build, do not deploy
 //
 // THE GATE IS THE ARBITER. If a stage is red this refuses to deploy. That is
@@ -49,7 +50,7 @@ function run(label, cmd, cmdArgs, opts = {}) {
 // to be red, and a red stage should be reported before Batman's PyBoy stages
 // spend two minutes proving something nobody changed. Cheapest-likeliest first
 // is the same rule tools/test-all.mjs uses internally.
-if (only !== 'batman') {
+if (only === null || only === 'gradius') {
   run('gradius unit tests', process.execPath, ['--test', 'games/gradius/tests/']);
   const g = run('gradius gate', process.execPath, ['games/gradius/tools/test-all.mjs']);
   if (!/GREEN/.test(g) || !/0 SKIPPED/.test(g)) {
@@ -59,7 +60,36 @@ if (only !== 'batman') {
   }
 }
 
-if (only !== 'gradius') {
+// DaiOuJou. Two stages, and the second one is the reason this game can be
+// published at all: `bundlegate.mjs` renders the page's whole demo path off the
+// 363 KiB EXPORTED BUNDLE -- not off the 58 MiB of cartridge every other gate
+// in that game uses -- and compares it to MAME's own framebuffers. If the
+// exporter ever drops a tile or a sprite stream the picture stays plausible and
+// only this number moves, so it runs before every deploy.
+if (only === null || only === 'ddpdoj') {
+  run('ddpdoj unit tests', process.execPath, ['--test', 'games/ddpdoj/tests/']);
+  const d = run('ddpdoj bundle gate', process.execPath, [
+    'games/ddpdoj/tools/bundlegate.mjs',
+    '--assets', 'games/ddpdoj/assets',
+    '--dump', 'games/ddpdoj/rip/pix-demo',
+    '--tsv', 'games/ddpdoj/tools/oracle/out/w6/demo.tsv']);
+  if (!/^PASS/m.test(d) || !/100\.0000%/.test(d)) {
+    console.error('\nREFUSING TO PUBLISH: the DaiOuJou bundle gate is not 100.0000%.');
+    console.error('Rebuild the bundle: node games/ddpdoj/tools/export-web.mjs');
+    process.exit(1);
+  }
+  // And the FETCH path, over a real HTTP origin, through the same httpReader
+  // the page uses. Nobody in this project has a browser; this is the closest
+  // anything gets to opening the page.
+  const w = run('ddpdoj web fetch gate', process.execPath,
+    ['games/ddpdoj/tools/webgate.mjs', '--assets', 'games/ddpdoj/assets']);
+  if (!/^PASS/m.test(w)) {
+    console.error('\nREFUSING TO PUBLISH: the DaiOuJou fetch gate is red.');
+    process.exit(1);
+  }
+}
+
+if (only === null || only === 'batman') {
   const b = run('batman gate', process.execPath, ['tools/test-all.mjs']);
   if (!/ALL GREEN/.test(b) || !/0 skipped/.test(b)) {
     console.error('\nREFUSING TO PUBLISH: the Batman gate is not ALL GREEN with 0 skipped.');
@@ -112,9 +142,19 @@ for (let i = 1; i <= 20 && streak < 3; i++) {
     const live = (idTxt.match(/\d{14}/) || [])[0];
     const reg = await (await fetch(`${SITE}/games/index.json${q}`)).json();
     const grad = await fetch(`${SITE}/games/gradius/${q}`);
-    const ok = live === buildId && grad.status === 200 && reg.some((g) => g.id === 'gradius');
+    // DaiOuJou's page AND one of its assets. The page is static HTML and will
+    // 200 whether or not the bundle deployed; a bundle file that 404s yields an
+    // EMPTY buffer in the browser, and a zero-filled tile sheet renders a
+    // perfectly plausible empty starfield. So confirm a real asset URL, not
+    // just the document that references it.
+    const doj = await fetch(`${SITE}/games/ddpdoj/${q}`);
+    const dojAsset = await fetch(`${SITE}/games/ddpdoj/assets/manifest.json${q}`);
+    const ok = live === buildId && grad.status === 200
+      && doj.status === 200 && dojAsset.status === 200
+      && reg.some((g) => g.id === 'gradius') && reg.some((g) => g.id === 'ddpdoj');
     streak = ok ? streak + 1 : 0;
-    last = `live=${live} gradius=${grad.status} games=${reg.map((g) => g.id).join(',')}`;
+    last = `live=${live} gradius=${grad.status} ddpdoj=${doj.status}/${dojAsset.status}`
+      + ` games=${reg.map((g) => g.id).join(',')}`;
     console.log(`poll ${String(i).padStart(2)}  ${last}  ${ok ? `ok (${streak}/3)` : 'not yet'}`);
   } catch (e) {
     streak = 0;
@@ -133,3 +173,4 @@ if (streak < 3) {
 console.log(`\nPUBLISHED and confirmed: build ${buildId}`);
 console.log(`  ${SITE}/`);
 console.log(`  ${SITE}/games/gradius/`);
+console.log(`  ${SITE}/games/ddpdoj/`);

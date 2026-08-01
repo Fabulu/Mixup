@@ -234,7 +234,8 @@ const screenEl = el('screen');
 
 // Platform ids are short and machine-facing (`gb`, `nes`); the human label is
 // the shell's business, not the manifest's.
-const PLATFORM = { gb: 'Game Boy', gbc: 'Game Boy Color', nes: 'NES', snes: 'SNES' };
+const PLATFORM = { gb: 'Game Boy', gbc: 'Game Boy Color', nes: 'NES', snes: 'SNES',
+                   pgm: 'IGS PGM (arcade)' };
 
 let game = null;        // { id, dir, manifest } once a game is chosen
 let modsMod = null;     // the chosen game's mods module

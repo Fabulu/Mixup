@@ -1,0 +1,74 @@
+{
+  "id": "ddpdoj",
+  "title": "DoDonPachi DaiOuJou (Black Label)",
+  "platform": "pgm",
+  "year": 2002,
+  "publisher": "Cave / AMI",
+  "blurb": "Vertical shooter on IGS PGM hardware. The ship flies: position, tilt, clamps, speed modes and both option pods are computed live and match the board to the unit. The picture is pixel-exact against MAME. No enemies simulated yet, no weapons, no sound.",
+  "status": "in-progress",
+  "rom": {
+    "set": "ddpdojblk",
+    "note": "A MAME set, not a single file. The cartridge holds TWO COMPLETE GAMES and the boot menu defaults to VERSION-A (2002.04.05 MASTER VER) after ~5 s; this port targets VERSION-B (2002.10.07 BLACK VER), the $23xxxx-$28xxxx build. An address in the $13xxxx/$14xxxx range is a defect unless a comment says why -- except the interrupt handlers, which really are build A's on a VERSION-B run (measured three ways, 02-review.md).",
+    "maincpu_fnv64": "D4C25CA9C91B9D47",
+    "maincpu_bytes": 6291456,
+    "files": [
+      "ddb10_10_8_434f.u45", "ddp3_bios.u37", "ddp3blk_defaults.nv",
+      "pgm_t01s.rom", "cave_t04401w064.u19",
+      "cave_a04401w064.u7", "cave_a04402w064.u8", "cave_b04401w064.u1",
+      "pgm_m01s.rom", "cave_m04401b032.u17"
+    ]
+  },
+  "display": {
+    "screen": {
+      "w": 224,
+      "h": 448,
+      "note": "The cabinet is TATE. MAME's visible area is 448x224 and the port renders that, then rotates CCW for the canvas -- src/render/index.js rotateCCW(), the same rotation tools/framerender.py's np.rot90 performs, so the browser and the gate PNGs show the same picture the right way up."
+    },
+    "frameHz": 59.185606060606,
+    "frameHzNote": "15625/264 Hz EXACTLY, a set_raw derivation from pixclock 10 MHz / (640 x 264). Frame period exactly 16.896 ms; 337,920 68000 cycles per frame at 20 MHz. Confirmed from -listxml and from the running machine to the attosecond. DERIVED, not rounded -- and emphatically not the '~54 fps' of the first conversation. src/machine.js MACHINE.refreshHz is the same number computed rather than typed, and src/web/app.js refuses to boot if the two disagree."
+  },
+  "code": {
+    "entry": null,
+    "mods": null,
+    "input": null,
+    "page": "index.html",
+    "pageNote": "code.page, NOT code.entry. The root launcher's card imports entry + mods + input and boots the game inline; this port has none of the three (it is not a CPU emulator, it is a translated main loop plus a replayed capture), so the picker links to its own page instead."
+  },
+  "input": {
+    "note": "Bit POSITIONS in the P1 input mirror $803970, which is derived from the raw 68000 port word $C08000 by build A's $13D464 (one read per IRQ6, measured). The port takes the RAW PORT WORD as its input so the mirrors stay a genuinely compared field; src/input.js portWordFromBits() is the inverse, checked against the board: 1P Start alone -> $FFFE, P1 Button 3 held -> $FF7F. src/machine.js BIT is the authority and tests/web-input.test.js holds this table, BIT and src/web/input.js against each other.",
+    "buttons": [
+      { "id": "UP", "bit": 0, "mask": 1 },
+      { "id": "DOWN", "bit": 1, "mask": 2 },
+      { "id": "LEFT", "bit": 2, "mask": 4 },
+      { "id": "RIGHT", "bit": 3, "mask": 8 },
+      { "id": "SHOT", "bit": 4, "mask": 16 },
+      { "id": "BOMB", "bit": 5, "mask": 32 },
+      { "id": "AUTO", "bit": 6, "mask": 64 },
+      { "id": "START", "bit": 15, "mask": 32768 }
+    ],
+    "defaultKeymap": {
+      "ArrowUp": "UP", "ArrowDown": "DOWN", "ArrowLeft": "LEFT", "ArrowRight": "RIGHT",
+      "KeyW": "UP", "KeyS": "DOWN", "KeyA": "LEFT", "KeyD": "RIGHT",
+      "KeyZ": "SHOT", "KeyY": "SHOT", "Space": "SHOT",
+      "KeyX": "BOMB", "KeyC": "AUTO",
+      "Enter": "START"
+    },
+    "keymapNote": "Matched on e.code, i.e. PHYSICAL key position. KeyZ and KeyY are BOTH shot: on a Swiss QWERTZ keyboard the key printed Z sits where QWERTY has Y and reports KeyY. A standing requirement, asked for twice.",
+    "touchLayout": {
+      "note": "The on-screen pad in index.html. The d-pad is ONE pointer-capture surface hit-tested as a 3x3 grid, not four buttons: four captured buttons can never report a diagonal, because the capture that stops a stuck direction is also what stops a second button ever seeing the finger. A vertical shooter without diagonals is not playable. The corner cells report TWO bits, which is exactly what $803970 carries -- one bit per direction, tested independently by the mover at $141B2E. The face cluster is stacked, START above the three fire buttons: inline, the row is wider than the space beside the d-pad and the rightmost button falls off a narrow phone.",
+      "dpad": [
+        ["UP", "LEFT"], ["UP"], ["UP", "RIGHT"],
+        ["LEFT"], [], ["RIGHT"],
+        ["DOWN", "LEFT"], ["DOWN"], ["DOWN", "RIGHT"]
+      ],
+      "clusters": [["START"], ["AUTO", "BOMB", "SHOT"]]
+    }
+  },
+  "assets": {
+    "dir": "assets",
+    "build": "node games/ddpdoj/tools/export-web.mjs",
+    "note": "ROM-derived and gitignored, like every other game here. 363 KiB served, gzipped: BG and TX tiles DECODED to one byte per pixel, sprite streams RE-BASED into a compact address space, 161 frames of board capture, the seed RAM image and the player's tables. tools/bundlegate.mjs renders the whole demo off this bundle and must stay at 15955968/15955968 pixels against MAME."
+  },
+  "entries": [],
+  "options": []
+}

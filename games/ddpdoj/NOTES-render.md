@@ -128,7 +128,10 @@ caught by a gate that reported "about right".
 
 ## 5. The demo page, and exactly what it does not claim
 
-`games/ddpdoj/index.html` + `web/app.js`. The cadence is the board's —
+`games/ddpdoj/index.html` + `src/web/app.js` (wave 6 put it at `web/app.js`;
+wave 7 moved it under `src/` because `tools/build-dist.mjs` publishes
+`games/<id>/src` and would have left a module under `web/` behind — a black
+page and no message). The cadence is the board's —
 15625/264 Hz, 16.896 ms per logic frame — and the host clock decides only how
 many logic frames have come due, never what any of them computes
 (`NOTES-replay.md` constraint 1).
@@ -198,6 +201,19 @@ half has no port behind it and the page says so on its face.
 * **The browser page has never been executed.** No headless browser is installed
   and nothing may be downloaded. `demogate.mjs` runs everything except the
   fetch/assembly path, the canvas blit, the keyboard mapping and the
-  `requestAnimationFrame` cadence loop; those four are UNTESTED.
+  `requestAnimationFrame` cadence loop; those four were UNTESTED in wave 6.
+  **Wave 7 closed the first of the four** — `tools/webgate.mjs` starts a real
+  HTTP server over `assets/`, loads the bundle through the page's own
+  `httpReader` (same `r.ok` check, same `.gz` naming, same
+  `DecompressionStream`) and renders a frame from it, with three breaks that go
+  red. THE OTHER THREE ARE STILL UNTESTED: the canvas blit, the keyboard and
+  pointer events, and the `requestAnimationFrame` cadence. A human with a
+  browser has to look.
 * **Sprites the corpus never displayed**, and therefore stream shapes the
   drawer has never walked. Presence, not coverage.
+* **The published bundle vs. the cartridge.** `tools/bundlegate.mjs` proves the
+  363 KiB exported bundle renders the same 15,955,968/15,955,968 pixels the
+  58 MiB cartridge does — but only for THIS capture. Any new capture needs
+  `node tools/export-web.mjs` re-run; the bundle's boot-time coverage check
+  turns a stale bundle into a message naming the frame and the tile rather than
+  a blank tile, which is the only reason that is safe.

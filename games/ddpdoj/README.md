@@ -117,10 +117,33 @@ running it and needs no ROM either.
 
 ## Where this sits
 
-`games/ddpdoj/` per the multi-game layout. It is **still not** in
-`games/index.json`, and that is now a decision rather than a placeholder: the
-demo page cannot render a single pixel without 58 MiB of graphics ROM and a
-board capture, both of which live under the gitignored `rip/` and neither of
-which this repo will ever ship. A launcher tile that always fails is worse than
-no tile. Revisit when the port builds its own display list — main-loop call #4,
-`$23D2AE` — and stops needing the capture at all.
+`games/ddpdoj/` per the multi-game layout, and **it is now in
+`games/index.json`** (wave 7). That reverses the note that stood here before,
+and the reason it stood is worth keeping: the page used to fetch 58 MiB of
+graphics ROM plus a 4.0 MiB board capture straight out of the gitignored
+`rip/`, and a launcher tile that always fails is worse than no tile.
+
+What changed is that the assets got measured instead of guessed at. The page
+replays 161 captured frames with the ship spliced in, and the splice touches
+only the position fields, so the set of ROM bytes it can ever read is fixed and
+enumerable: 415 BG tiles, 159 TX tiles and 150 sprite streams — 0.13 % of each
+sprite region. `tools/export-web.mjs` exports exactly those, decoded (tiles) and
+re-based (sprite streams), into `assets/`:
+
+```
+node games/ddpdoj/tools/export-web.mjs      363 KiB served, gzipped
+node games/ddpdoj/tools/bundlegate.mjs      the bundle renders 15955968/15955968
+node games/ddpdoj/tools/webgate.mjs         the browser fetch path, over real HTTP
+node --test games/ddpdoj/tests/             77 pass, 0 skipped
+python -m http.server 8000                  then open /games/ddpdoj/
+```
+
+`assets/` is ROM-derived and gitignored like every other game's. The card in the
+picker carries `code.page`, not `code.entry`: the launcher boots a game by
+importing entry + mods + input modules and this port has none of the three — it
+is a translated 68000 main loop plus a replayed capture, not a CPU emulator.
+
+The page states on its own face what is simulated (the ship) and what is not
+(the enemies, every weapon, all sound). Revisit when the port builds its own
+display list — main-loop call #4, `$23D2AE` — and stops needing the capture at
+all.

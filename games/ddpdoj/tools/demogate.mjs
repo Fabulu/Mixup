@@ -4,7 +4,8 @@
 //     node tools/demogate.mjs --rom <romdir> --web <rip/web> --dump <rip/pix-demo>
 //                             --tsv <out/w6/demo.tsv>
 //
-// This runs EXACTLY what `web/app.js` runs -- the port's `Game`, the shared
+// This runs EXACTLY what `src/web/app.js` runs (wave 6 called it `web/app.js`;
+// wave 7 moved it under src/ so build-dist.mjs publishes it) -- the port's `Game`, the shared
 // `Capture`, the shared splice, the port's `Renderer` -- with the DOM and the
 // host clock removed, and then asks the one question a picture cannot answer:
 //
@@ -42,7 +43,8 @@
 //
 // I COULD NOT RUN A BROWSER FROM THIS ENVIRONMENT (no headless browser is
 // installed and nothing may be downloaded), so this is also the only execution
-// evidence for `web/app.js`'s pipeline that wave 6 has. What it does NOT cover
+// evidence for `src/web/app.js`'s pipeline that wave 6 had (wave 7 added
+// `tools/webgate.mjs`, which loads the published bundle over a real HTTP origin). What it does NOT cover
 // is stated in the worklog: the fetch/assembly path, the canvas blit, the
 // keyboard mapping and the requestAnimationFrame cadence loop.
 

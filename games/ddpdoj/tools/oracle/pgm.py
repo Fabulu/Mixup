@@ -1839,7 +1839,7 @@ def _cmd_pixdemo(argv: list[str]) -> int:
 
 
 def _cmd_demogate(argv: list[str]) -> int:
-    """THE DEMO PATH, GATED (wave 6).  Runs `web/app.js`'s pipeline headlessly:
+    """THE DEMO PATH, GATED (wave 6).  Runs `src/web/app.js`'s pipeline headlessly:
     the port's Game driven by the board's own recorded input words, the ship's
     display-list records moved to the PORT's position, rendered by the port's
     renderer, and compared pixel for pixel against MAME's framebuffer.

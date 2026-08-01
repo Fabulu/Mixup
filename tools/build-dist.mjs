@@ -15,6 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { ROOT } from './oracle/_env.mjs';
 import { makePlaceholderPool } from './make-placeholder-tiles.mjs';
@@ -27,13 +28,19 @@ const DIST = path.join(ROOT, 'dist');
 // second, before any game code is imported at all -- so a dist/ without them is
 // a site whose game select renders empty. They are cheap and they are load
 // bearing; the INCLUDE list is the only place that knows it.
-const GAMES = ['batman', 'gradius'];
+const GAMES = ['batman', 'gradius', 'ddpdoj'];
 
 // Games that also ship their OWN page. Gradius cannot go through the launcher
 // yet: the picker imports code.entry, code.mods and code.input, and Gradius has
 // only the first of the three. Until it has the other two it is reachable at
 // /games/gradius/ and listed in the picker as a link, not booted inline.
-const PAGES = ['gradius'];
+//
+// DaiOuJou is not on that road at all and is not expected to join it: it is not
+// a CPU emulator with a boot(state) the picker can drive, it is a translated
+// 68000 main loop plus a replayed board capture, and its page owns its own
+// cadence (15625/264 Hz) and its own asset bundle. It ships `code.page` and no
+// `code.entry`, deliberately.
+const PAGES = ['gradius', 'ddpdoj'];
 
 const INCLUDE = ['index.html', 'games/index.json',
                  ...GAMES.flatMap((g) => [`games/${g}/game.json`,
@@ -181,6 +188,24 @@ const roms = fs.readdirSync(ROOT)
   .filter((f) => /\.(gb|gbc|nes|sfc|smc|gen)$/i.test(f))
   .map((f) => ({ name: f, data: fs.readFileSync(path.join(ROOT, f)) }));
 
+// ...AND every ROM a game has extracted into `games/<id>/rip/rom/`. Arcade sets
+// are not one file with a console's extension: DaiOuJou's is ten files with
+// names like `cave_a04401w064.u7`, none of which the pattern above can match,
+// and 42 MiB of them sit in the tree. Without this the guard would have been
+// silently VACUOUS for that game -- it would have printed "clean" while never
+// having read a single byte of the cartridge it was supposed to be checking
+// against. rip/ is gitignored scratch, so this is best-effort by construction:
+// it strengthens the check where the data is present and can never weaken it.
+for (const g of GAMES) {
+  const dir = path.join(ROOT, 'games', g, 'rip', 'rom');
+  if (!fs.existsSync(dir)) continue;
+  for (const f of fs.readdirSync(dir)) {
+    const p = path.join(dir, f);
+    if (!fs.statSync(p).isFile()) continue;
+    roms.push({ name: `games/${g}/rip/rom/${f}`, data: fs.readFileSync(p) });
+  }
+}
+
 const shipped = [];
 (function walk(dir) {
   for (const name of fs.readdirSync(dir)) {
@@ -190,22 +215,85 @@ const shipped = [];
   }
 })(DIST);
 
+/**
+ * Is `body` a byte-identical contiguous slice of `rom`?
+ *
+ * Exactly what `rom.includes(body)` answers, and it WAS that -- but the corpus
+ * used to be two 64 KB cartridges and is now 42 MiB of arcade mask ROM, and the
+ * naive search took the build from under a second to over two minutes. A
+ * publish gate nobody is willing to wait for is a publish gate that gets an
+ * `--only` flag added to skip it.
+ *
+ * So: search for one 4 KB WINDOW taken from the middle of the body (the middle,
+ * not the start -- a header or a run of zeroes at offset 0 produces thousands of
+ * candidate positions), then memcmp the whole body at each candidate. Same
+ * answer, one small needle instead of one enormous one. If a body somehow still
+ * produces more candidates than the cap, fall back to the naive search rather
+ * than give up -- being slow is allowed, being wrong is not.
+ */
+function containsVerbatim(rom, body) {
+  if (body.length > rom.length) return false;
+  const win = Math.min(4096, body.length);
+  const at = Math.max(0, ((body.length - win) >> 1));
+  const needle = body.subarray(at, at + win);
+  let from = 0;
+  for (let tries = 0; tries < 100000; tries++) {
+    const i = rom.indexOf(needle, from);
+    if (i < 0) return false;
+    const start = i - at;
+    if (start >= 0 && start + body.length <= rom.length
+      && rom.compare(body, 0, body.length, start, start + body.length) === 0) {
+      return true;
+    }
+    from = i + 1;
+  }
+  return rom.includes(body);
+}
+
 const leaked = [];
 const deliberate = [];
+let inflated = 0;
 for (const file of shipped) {
-  const data = fs.readFileSync(file);
+  const raw = fs.readFileSync(file);
+  const rel = path.relative(DIST, file).split(path.sep).join('/');
   // Under 1 KB a coincidental match means nothing -- a run of zeroes or a short
   // table can legitimately appear in both. The concern is bulk ROM content.
-  if (data.length < 1024) continue;
-  const rel = path.relative(DIST, file).split(path.sep).join('/');
+  //
+  // THE SIZE TEST IS ON THE BODY, NOT ON THE FILE, and that distinction cost a
+  // red-validation run: a .gz of 64 KiB of mask ROM came to well under 1 KB on
+  // the wire, so the early-out here skipped it and the guard printed "clean"
+  // over a planted leak. A compressed file is small by definition; what matters
+  // is how much ROM comes OUT of it.
+  if (raw.length < 1024 && !rel.endsWith('.gz')) continue;
   const why = PUBLISH_VERBATIM.get(rel);
-  if (why) { deliberate.push(`${rel} (${data.length} B) -- ${why}`); continue; }
-  for (const rom of roms) {
-    if (rom.data.includes(data)) {
-      leaked.push(`${path.relative(DIST, file)}  (${data.length} B, verbatim inside ${rom.name})`);
-      break;
+  if (why) { deliberate.push(`${rel} (${raw.length} B) -- ${why}`); continue; }
+  // A COMPRESSED FILE HIDES ITS CONTENTS FROM THIS CHECK. DaiOuJou ships its
+  // bundle gzipped (a 4.0 MiB capture compresses 61:1, which is the difference
+  // between a phone-sized download and an unservable one), and gzip bytes never
+  // appear inside a ROM whatever they decompress to. So check what the browser
+  // will actually hold, not what the wire carries.
+  const bodies = [raw];
+  if (rel.endsWith('.gz')) {
+    try { bodies.push(zlib.gunzipSync(raw)); inflated++; } catch (e) {
+      console.error(`REFUSING TO BUILD: ${rel} is named .gz and did not `
+        + `inflate (${e.message}). The guard cannot see inside it.`);
+      fs.rmSync(DIST, { recursive: true, force: true });
+      process.exit(1);
     }
   }
+  let hit = null;
+  for (const body of bodies) {
+    if (body.length < 1024) continue;
+    for (const rom of roms) {
+      if (containsVerbatim(rom.data, body)) {
+        hit = `${rel}  (${body.length} B${body === raw ? '' : ', decompressed'}`
+          + `, verbatim inside ${rom.name})`;
+        break;
+      }
+    }
+    if (hit) break;
+  }
+  if (hit) leaked.push(hit);
 }
 
 if (leaked.length) {
@@ -234,8 +322,9 @@ for (const s of substituted) console.log(`substituted: ${s}`);
 // stops being mentioned is how the old allowlist survived unexamined from the
 // first deploy to the day someone finally read it.
 for (const d of deliberate) console.log(`published verbatim, deliberately: ${d}`);
-console.log(`rom-leak guard: ${shipped.length} files checked against `
-  + `${roms.length} ROM(s) [${roms.map((r) => r.name).join(', ') || 'none present'}] `
+console.log(`rom-leak guard: ${shipped.length} files checked (${inflated} also `
+  + `checked decompressed) against ${roms.length} ROM(s) `
+  + `[${roms.map((r) => r.name).join(', ') || 'none present'}] `
   + `-- clean, ${deliberate.length} deliberate exception(s)`);
 
 // Assets must REVALIDATE, not be treated as immutable.
