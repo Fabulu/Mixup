@@ -124,10 +124,13 @@ graphics ROM plus a 4.0 MiB board capture straight out of the gitignored
 `rip/`, and a launcher tile that always fails is worse than no tile.
 
 What changed is that the assets got measured instead of guessed at. The page
-replays 161 captured frames with the ship spliced in, and the splice touches
-only the position fields, so the set of ROM bytes it can ever read is fixed and
-enumerable: 415 BG tiles, 159 TX tiles and 150 sprite streams — 0.13 % of each
-sprite region. `tools/export-web.mjs` exports exactly those, decoded (tiles) and
+replays 161 captured frames with the ship's eight records written in from the
+port's own simulation (wave 12; before that they were relocated, position only),
+so the set of ROM bytes it can ever read is fixed and enumerable: 415 BG tiles,
+159 TX tiles and 166 sprite streams — 0.14 % of each sprite region. Sixteen of
+those streams are the ship's BANK FRAMES and are not in the recording at all:
+the recorded ship never tilted, so they are harvested from the sprite ROMs by
+address and shipped as `manifest.ship.pairs`. `tools/export-web.mjs` exports exactly those, decoded (tiles) and
 re-based (sprite streams), into `assets/`:
 
 ```

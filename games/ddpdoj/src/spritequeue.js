@@ -103,8 +103,25 @@ export const BUCKETS = Object.freeze([
  *  worklog -- never by "the callers live in this address range". */
 export const NAMED_BUCKETS = Object.freeze({
   shots: 14,     // max 20 records/frame == wave 5's independent shot census
-  options: 15,   // capacity 4 records, measured max 2, and there are two pods
-  player: 19,    // fed only from $24A5xx/$24A6xx inside the player's own block
+  options: 15,   // capacity 4 records, measured max 2, and there are two pods.
+                 // WAVE 12: its SEVEN feeders are all `jmp $23F2CA` and all
+                 // seven are inside the option object $24C096 -- $24C8B4,
+                 // $24CCC6, $24CDB6, $24CFB0, $24D17E, $24D1F8, $24D27A
+                 // (`xref.py callers 23F2CA`, re-run this wave)
+  player: 19,    // fed only from $24A5xx/$24A6xx inside the player's own block.
+                 // WAVE 12: the feeder census is $24A532 and $24A632 (the
+                 // register stub $23F1FA), $24A538 and $24A6C4 (the record stub
+                 // $23F104), and $24A700/$24A730/$24A756 (the saved-register
+                 // stub $23F294) -- SEVEN, of which fly-around reaches THREE
+  shadows: 5,    // WAVE 12 CORRECTS WAVE 11's LABEL. The ablation called this
+                 // "the ship's exhaust"; the LISTING says its only two writers
+                 // are $23EFC0 and $23EFEE, and the three callers reached in
+                 // fly-around are $249EE2 (the SHIP's ground-plane shadow,
+                 // $249EA0, D3=$0210) and $24C438/$24C470 (the two POD shadows,
+                 // $24C406, D3=$0208). MEASURED: 3 records on 1,116 frames, and
+                 // on EXACTLY the frames bucket 19 has only one -- the
+                 // alternation is $80390C, the counter word whose low byte
+                 // $23BE92 `bchg #0,$80390D` toggles
   bullets: [22, 23],  // the $281D9A bulk writer; $81B40C counts them
   bulk20: 20,    // $28A098's bulk writer -- THE FIRST PRE-EMPTIVE SACRIFICE
   sacrificedSecond: [6, 9],
@@ -186,6 +203,46 @@ export function enqueueRequest(ram, bucket, rec) {
   ram.setU16(at + 6, ram.u16(rec + 0x0c));
   ram.setU16(at + 8, ram.u16(rec + 0x0e));                   // $23D78E move.w
   ram.setU16(at + 10, ram.u16(rec + 0x1c));                  // $23D790 move.w
+  return off;
+}
+
+// 1b. THE REGISTER CONVENTION -- the same twelve bytes, but the producer has
+//     already built them in D1..D4 instead of in a record.  `$23EFC0` verbatim:
+//
+//   23efc0: lea $80862C,A0 / adda.w $80AFD0,A0 / addi.w #$c,$80AFD0
+//   23efd4: move.l D1,D0
+//   23efd6: asr.l  #6,D0            <-- the SAME single 32-bit shift
+//   23efd8: andi.l #$07FF03FF,D0
+//   23efde: ori.l  #$80008000,D0
+//   23efe4: move.l D0,(A0)+         words 0,1
+//   23efe6: move.l D2,(A0)+         words 2,3  -- the caller's sprite long
+//   23efe8: move.w D3,(A0)+         word 4     -- the size
+//   23efea: move.w D4,(A0)+         word 5     -- the flip/colour word
+//
+// `$23EFEE` is the identical routine wrapped in `move.l A0,-(A7) / move.l
+// D0,-(A7)` ... `move.l (A7)+,D0 / movea.l (A7)+,A0`, so it differs only in
+// which registers survive -- nothing a port can observe.  `$23F1FA` (bucket 19)
+// and `$23F34A` (bucket 15) are the same fourteen instructions on a different
+// (buffer, counter) pair, exactly as the per-record stub family is.
+//
+// D1 IS ALREADY PACKED: high word = long axis, low word = short axis, and the
+// caller has ALREADY added the position and any offset.  That is the difference
+// from `enqueueRequest`, which does the three `add.w`s itself.
+export function enqueueRegisters(ram, bucket, d1, d2, d3, d4) {
+  const b = BUCKETS[bucket];
+  if (!b) throw new RangeError(`no sprite bucket ${bucket}`);
+  const off = u16(ram.u16(b.counter));                        // $23EFC6 adda.w
+  const at = b.buffer + off;
+  ram.setU16(b.counter, u16(off + RECORD_BYTES));             // $23EFCC addi.w
+
+  const packed = (d1 | 0) >> 6;                               // $23EFD6 asr.l #6
+  const d0 = ((packed & ENQUEUE_MASK) | NO_ZOOM_OR) >>> 0;    // $23EFD8/$23EFDE
+  ram.setU16(at + 0, (d0 >>> 16) & 0xffff);
+  ram.setU16(at + 2, d0 & 0xffff);
+  ram.setU16(at + 4, (d2 >>> 16) & 0xffff);                   // $23EFE6 move.l D2
+  ram.setU16(at + 6, d2 & 0xffff);
+  ram.setU16(at + 8, d3 & 0xffff);                            // $23EFE8 move.w D3
+  ram.setU16(at + 10, d4 & 0xffff);                           // $23EFEA move.w D4
   return off;
 }
 
@@ -323,6 +380,25 @@ export function enqueueZoomedRequest(ram, rec, flags) {
 //    OVERWRITTEN, not advanced, so a bulk writer cannot share its bucket with a
 //    per-record producer inside one frame -- which is exactly why buckets 22 and
 //    23 have (almost) no `addi` stubs and bucket 23 has none at all.
+/**
+ * WAVE 12.  One bucket's staged bytes AT THE $23D382 SAMPLE POINT -- i.e. after
+ * every producer has run and before call #4 clears the counters.
+ *
+ * The counter is the length, so the snapshot is exactly what the board's own
+ * probe dumps at `$23D382` (`tools/oracle/w11dl.lua` §1), which is what makes
+ * `pgm.py shipgate` a comparison of two dumps of the same thing rather than of
+ * two different summaries.  It is a DIAGNOSTIC read, not a translation: nothing
+ * in the port's own path calls it.
+ */
+export function snapshotBucket(ram, bucket) {
+  const b = BUCKETS[bucket];
+  if (!b) throw new RangeError(`no sprite bucket ${bucket}`);
+  const n = u16(ram.u16(b.counter));
+  const bytes = new Uint8Array(n);
+  for (let k = 0; k < n; k++) bytes[k] = ram.u8(b.buffer + k);
+  return { i: bucket, buffer: b.buffer, count: n, bytes };
+}
+
 export function bulkWrite(ram, bucket, records) {
   const b = BUCKETS[bucket];
   if (!b) throw new RangeError(`no sprite bucket ${bucket}`);

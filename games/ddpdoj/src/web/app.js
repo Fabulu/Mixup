@@ -13,15 +13,18 @@
 //     frame counters and their three masks, the ISR model and its (A) gate, the
 //     input mirrors and edges, the frame-sync governor, the object driver with
 //     its work budget, and THE SHIP -- position, velocity, tilt, clamps and
-//     speed modes.  That is wave 4's port, which compares 0 divergent frames
-//     against the board over 2,200 logic frames on 34 columns.  NOT the option
-//     pods: the option OBJECT is $24C096, one of the 22 subsystem calls
-//     `type5.js` counts and does not run, and no line of `src/` writes
-//     $8104AA.  The 34 compared columns exclude `OPTION_COLUMNS` for exactly
-//     that reason (`state.js`).  The pods LOOK right because they are spliced
-//     at a fixed offset from the ship, which is where the board puts them --
-//     but "the port computes them" was never true and the page no longer
-//     says it (07-review.md D1).
+//     speed modes.  That is wave 4's port; wave 12 added THE OPTION OBJECT
+//     $24C096 and the ship's own draw block $24A482, so the two pods and the
+//     ship's five attached records are computed too.  MEASURED: 0 divergent
+//     frames over 2,200 logic frames of `fly-around` on 66 compared columns --
+//     `OPTION_COLUMNS` among them, which wave 4 had to exclude and said so.
+//     The four hitbox words $8103F6..$8103FD are compared for the first time
+//     as well; the port had been writing them under the name `animB` since
+//     wave 4, believing they were animation.
+//
+//     ONE COLUMN IS STILL RED AND IT IS NOT THIS WAVE'S: `scroll` ($813176)
+//     diverges at lf2321 because its writer is inside the unported background
+//     object -- verified pre-existing by 11-review.md §4b, and W14's.
 //
 //   REPLAYED, from a board capture:  everything else in the picture.  The port
 //     does not build the display list (main-loop call #4, $23D2AE, is unported)
@@ -31,35 +34,35 @@
 //     the `fly-around` scenario, the same window wave 4 compares -- and loop.
 //     The enemies are pixels: they do not see the ship and cannot be hit.
 //
-//   SPLICED:  EIGHT display-list records are moved to the PORT's position each
-//     frame -- the ship, its two option pods, its two exhaust records and its
-//     three ground shadows (one for the ship, one per pod).  Wave 7 moved
-//     three.  `pixpack.mjs` asks "is this record at a constant offset from the
-//     ship in >= 90 % of frames", and that question cannot see either of the
-//     other five: the exhaust and the shadows are drawn on ALTERNATE FRAMES
-//     (which is how this hardware faked transparency) so they can never score
-//     above ~50 %, and the shadows are not at a constant offset AT ALL -- they
-//     sit on a ground plane, halfway between the object and a fixed point,
-//     which is `$249E7E`'s own arithmetic.  `render/capture.js` re-derives the
-//     set at load time with a test that scores CONDITIONAL ON PRESENCE and
-//     reports every candidate it rejected; `tools/attachreport.mjs` prints it.
+//   PRODUCED (wave 12), and written into the replayed list:  EIGHT display-list
+//     records are now COMPUTED every frame rather than relocated -- the ship
+//     ($24A538), its invulnerability aura ($24A532), its exhaust glow
+//     ($24A632, which goes through the $500000 protection latch), the two
+//     option pods ($24D12E x2 out of $24C096) and the three ground shadows
+//     ($249EE2 for the ship, $24C438/$24C470 for the pods).  Every byte of all
+//     eight is gated by `pgm.py shipgate` against the board's own staged bucket
+//     bytes AND against the display-list entries they become: 0 divergent
+//     frames over 2,200 logic frames of `fly-around`, with ten red-validated
+//     mutations.  THE SHIP BANKS: `manifest.ship.pairs` is the 17 rebased
+//     animation pairs the exporter now emits, 16 of which are not in the
+//     capture at all because the recorded ship never tilted.
 //
-//   SPLICED ONLY IN POSITION:  the ship does NOT bank.  `splice` rewrites
-//     display-list words 0 and 1 and nothing else, so the drawn image is
-//     whatever the capture held -- and the recorded ship's X never moved
-//     (`frameList[].px` is 5312 on all 161 frames, ONE distinct value), so it
-//     never tilted and there is exactly one image to hold.  The port computes
-//     tilt and the tilt-indexed animation longs, which ARE words 2-3; what is
-//     missing is the map from ROM stream offsets to `export-web.mjs`'s rebased
-//     ones.  See `render/capture.js` for what a later wave has to add.
+//     WHAT THE RECORDING STILL SUPPLIES FOR THEM is WHICH SLOT each occupies.
+//     That is not a property of the ship: the port cannot build the whole list
+//     until the other 26 buckets have producers, so its records are written
+//     into the recorded one at the slots the wave-9 conditional matcher finds.
 //
 //   NOT THERE AT ALL:  enemies as SIMULATION, any DRAWN weapon, and sound.
 //     Pressing fire runs the ported cadence machine ($249B2C..$249BE2) and the
 //     ported spawn and driver, but no shot sprite stream is in the bundle, so
-//     what the port computes is INVISIBLE.  The bomb ($249814) and, since wave
-//     9, HOLDING fire (the laser speed ramp $24C8BE, inside the unported option
-//     object) reach loud named throws.  Those throws are the reason `onError`
-//     below is not optional.
+//     what the port computes is INVISIBLE.  The bomb ($249814) and HOLDING fire
+//     reach loud named throws.  WAVE 12 MOVED THE HELD-FIRE THROW to the board's
+//     own gate: $24C164 `btst #4,($40,A6)`, on the RAW HELD byte $24C134 copies
+//     out of the player, entered on the FIRST held frame with no speed-index
+//     condition.  Wave 9's throw fired on the fourth held frame and only when
+//     the ship was OFF its speed floor, so a player already at the floor held
+//     fire and still got silence -- the exact failure it existed to prevent.
+//     Those throws are the reason `onError` below is not optional.
 //
 // THE CADENCE IS THE BOARD'S: 15625/264 Hz = 59.185606060606..., frame period
 // exactly 16.896 ms, read from `game.json` where it is spelled once.  The host
@@ -183,6 +186,7 @@ class Demo {
       logicFrame: this.seedLf,
       videoFrame: this.cap.frames[0].vf,
     });
+    this.prevTilt = this.game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
     this.prevPos = [this.game.ram.u16(RAM.player1 + P.posY),
       this.game.ram.u16(RAM.player1 + P.posX)];
 
@@ -228,6 +232,7 @@ class Demo {
   step() {
     const g = this.game;
     this.prevPos = [g.ram.u16(RAM.player1 + P.posY), g.ram.u16(RAM.player1 + P.posX)];
+    this.prevTilt = g.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;   // ($4e,A6)
     g.ram.setU8(INVULN, 0xff);           // the scenario's intervention
     g.step(currentPortWord());
     this.stepsRun++;
@@ -247,7 +252,12 @@ class Demo {
     // pods, two exhaust records and three ground shadows.  See
     // `render/capture.js`'s header for the conditional matcher that finds them
     // and `tools/attachreport.mjs` for what it rejected.
-    this.spliced = this.cap.splice(st, fi, this.prevPos[0], this.prevPos[1]);
+    // WAVE 12: the tilt and the 17 REBASED animation pairs now go in with the
+    // position, so the ship BANKS.  `prevTilt`, not the current one, for the
+    // same measured reason the position is one frame behind: the sprite buffer
+    // lags main RAM by one frame.
+    this.spliced = this.cap.splice(st, fi, this.prevPos[0], this.prevPos[1],
+      { tilt: this.prevTilt, ship: this.bundle.manifest.ship ?? null });
     const idx = this.renderer.renderIndexed(st);
     // The palette that applies is the NEXT frame's -- the measured sample-point
     // offset (00-recon-assets.md §4).  On a looping capture the next frame is

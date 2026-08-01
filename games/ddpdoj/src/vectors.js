@@ -62,8 +62,13 @@ export class MoveTables {
     this.speedLevels = t.speed.levels;    // 256, the table's measured END
     this.exportedLevels = t.speed.exported;
     this.entries = t.speed.quadEntries;   // 65
-    this.animA = t.anim.a.shipSel0;       // $25533A
-    this.animB = t.anim.b.shipSel0;       // $2553CA
+    this.animA = t.anim.a.shipSel0;       // $25533A -> $255362, the IMAGE
+    // $2553CA -> $2553F2 is NOT a second animation table: it is the ship's X
+    // half-extents, indexed by the same tilt, and $2459D0 reads it as the
+    // hitbox (10-recon-combat §3).  The exporter still writes it under the key
+    // `anim.b` for one release so an old rip/ still loads; the port's name for
+    // it is `hitX` and `anim()` returns it under that name only.
+    this.hitX = t.anim.hitX?.shipSel0 ?? t.anim.b.shipSel0;
     this.tiltMin = t.anim.tiltMin;
     this.tiltStep = t.anim.tiltStep;
     this.imageSha256 = t.image_sha256;
@@ -149,7 +154,8 @@ export class MoveTables {
     return { dy: i16(dy), dx: i16(dx) };
   }
 
-  /** $249E4E: the two animation longs, indexed by tilt over [-$20,+$20] step 4. */
+  /** $249E4E: the tilt-indexed pair -- the ship's IMAGE long ($25533A) and its
+   *  X HALF-EXTENTS ($2553CA -> $2553F2).  Both over [-$20,+$20] step 4. */
   anim(tilt) {
     const i = (i16(tilt) - this.tiltMin) / this.tiltStep;
     if (!Number.isInteger(i) || i < 0 || i >= this.animA.length) {
@@ -158,6 +164,6 @@ export class MoveTables {
         + `animation table covers -- the ramp at $2495F6/$24962E can only reach `
         + `those values, so something else moved it`);
     }
-    return { a: this.animA[i], b: this.animB[i] };
+    return { a: this.animA[i], hitX: this.hitX[i] };
   }
 }

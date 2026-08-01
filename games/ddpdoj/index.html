@@ -271,12 +271,28 @@ ship because they were aiming at the ship that flew this recording, and that
 ship is not the one you are moving. When enemy fire passes through you, nothing
 has gone wrong; there is no collision to run.</p>
 
-<p><b>Eight records are moved to the port's ship each frame:</b> the ship, its
-two option pods, its two exhaust sprites and its three ground shadows (one for
-the ship, one under each pod). None of the seven that are not the ship is
-<b>simulated</b> &mdash; the option object <code>$24C096</code> is one of 22
-subsystem calls this port counts and does not run &mdash; they are the
-<em>recorded</em> sprites, relocated to where your ship puts them.</p>
+<p><b>The ship and everything attached to it are now PRODUCED, not relocated.</b>
+Wave&nbsp;12 ported the ship's own draw block <code>$24A482</code> and the whole
+option object <code>$24C096</code> as far as the laser, so the eight records are
+<em>computed</em> every frame: the ship, its two option pods, its
+invulnerability aura, its exhaust glow and the three ground shadows. Every byte
+of all eight &mdash; position, image, size, flip and colour &mdash; is compared
+against the board's own staged bucket bytes AND against the display-list entries
+they become, <b>0 divergent frames over 2,200 logic frames</b>
+(<code>pgm.py shipgate</code>), and ten deliberate mistakes were watched go red
+on that gate first. <b>The ship banks.</b> It has
+computed its own tilt since wave&nbsp;4 and could never draw it, because the
+bundle's sprite streams are re-based and the map was not shipped; the 17 rebased
+image pairs are in the manifest now, and 16 of them are not in the recording at
+all &mdash; the recorded ship never banked, so they were read out of the sprite
+ROMs by address.</p>
+
+<p class="warn">What the recording still supplies for these eight is <b>which
+display-list slot they occupy</b>, and nothing else. That is the last thread,
+and it is not a property of the ship: it is a property of the other twenty-six
+sprite buckets, which have no simulated source yet. Until they do, the page
+cannot build the whole list, so the port's records are written into the
+recorded one.</p>
 
 <p>Until wave&nbsp;9 only three of the eight were moved, and a player found the
 other five by looking. The matcher was asking the wrong question: <em>"is this
@@ -298,14 +314,17 @@ solidly at half opacity, because that would look better and be something the
 board never did. If it bothers you, that is a decision worth making
 deliberately &mdash; it is written up, not overlooked.</p>
 
-<p><b>Your ship does not bank.</b> The splice moves a record's position and
-nothing else, so the drawn image is whatever the recording held &mdash; and the
-recorded ship never moved sideways (its X is one single value on all 161
-frames), so it never tilted and there is exactly one image of it. The port
-really does compute the tilt, and the tilt-indexed animation words with it; what
-is missing is the map from the ROM's sprite-stream addresses to the packed ones
-the 363&nbsp;KiB bundle uses. Until that is shipped, the ship you steer is a
-still frame that moves.</p>
+<p><b>Your ship banks now, and here is why it did not before.</b> The port has
+computed the tilt and the tilt-indexed image words since wave&nbsp;4. What was
+missing was not the arithmetic: it was the <em>map</em>. The exporter re-bases
+every sprite stream into a packed 16-bit space to keep the bundle small, so the
+port's ROM-space image addresses pointed at nothing the page had &mdash; and
+sixteen of the seventeen bank images were not in the bundle at all, because the
+recorded ship's X never moved (one single value on all 161 frames) and the
+recording therefore contains only the level-flight image. Wave&nbsp;12 harvests
+the other sixteen out of the sprite ROMs by address and ships the 17 rebased
+pairs in <code>manifest.ship</code>. A limitation that looked like a missing
+feature was a missing table.</p>
 
 <p><b>No weapon is drawn and there is no sound at all.</b> What the fire buttons
 actually do, which is three different things:</p>

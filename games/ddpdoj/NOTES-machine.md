@@ -193,6 +193,16 @@ Two implications, both good news and bad news:
 
 - **Good:** the protection does no game logic. All game behaviour lives in the 68k ROM, so
   a hand-translation is not blocked by an undumped ARM ROM.
+  **WAVE 12 QUALIFIES THIS AND THE QUALIFICATION MATTERS.** "No game logic" is true and
+  "changes no number" is false: `$24A5B6`, on the SHIP'S OWN DRAW PATH, sets two slots,
+  issues the `$40` sum and reads the result back, and that result is the long-axis
+  coordinate of one of the ship's three sprite records. A port cannot route around it.
+  `src/protsim.js` implements the three wrappers (`$246D04` set, `$246EA4` sum, `$246CAC`
+  read) and its argument mapping is **derived from a MEASUREMENT of the board's own
+  bucket-19 bytes, not from the one-line summary above**: a naive reading of
+  `slot[a] = slot[b] + slot[c]` puts the result in the wrong slot and draws the record at
+  long-axis `$45` where the board draws it at `$27`. Read that file before quoting this
+  bullet.
 - **Bad:** the reference emulator is not running 100% of the original silicon on this set,
   and the 68k ROM the port would be read from is a **decrypted** image produced by
   `pgm_py2k2_decrypt` (`pgmcrypt.cpp:699`, commented *"and ddpdoj/ddpdojbl"*), not the raw

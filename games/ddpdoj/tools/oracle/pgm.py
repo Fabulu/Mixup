@@ -1487,7 +1487,15 @@ def _w4_assert_syms() -> None:
                                 "frameCounterMod8", "frameCounterMod16")),
                        ("P", ("posY", "posX", "velY", "velX", "tiltDelay", "tilt",
                               "speedIdx", "angle", "state", "flags1", "dirByte",
-                              "btnByte", "animA", "animB"))):
+                              "btnByte", "animA",
+                              # WAVE 12: `animB` is gone.  It was never an
+                              # animation -- it is the ship's X half-extents from
+                              # $2553F2 -- and this assertion is exactly the
+                              # thing that must notice a rename.
+                              "hitYPlus", "hitYMinus", "hitXPlus", "hitXMinus",
+                              "auraPhase", "glowPhase")),
+                       ("OPT", ("posY", "posX", "posY2", "raw", "edge",
+                                "animDelay", "animIdx", "anim"))):
         for n in names:
             m = re.search(rf"\b{n}:\s*(0x[0-9a-fA-F]+)", txt)
             if not m:
@@ -1509,7 +1517,18 @@ _W4_SYMS = {
                         "tiltDelay": 0x4C, "tilt": 0x4E, "speedIdx": 0x1A,
                         "angle": 0x1B, "state": 0x00, "flags1": 0x01,
                         "dirByte": 0x18, "btnByte": 0x19,
-                        "animA": 0x0A, "animB": 0x14})(),
+                        "animA": 0x0A,
+                        # WAVE 12 -- the ship's four hitbox half-extents.
+                        # $8103F6/$8103F8 (Y) and $8103FA/$8103FC (X, tilt-
+                        # indexed from $2553F2).  What wave 4 called `animB`
+                        # is `hitXPlus`.
+                        "hitYPlus": 0x10, "hitYMinus": 0x12,
+                        "hitXPlus": 0x14, "hitXMinus": 0x16,
+                        "auraPhase": 0x28, "glowPhase": 0x48})(),
+    # WAVE 12 -- the OPTION BLOCK, $64 bytes at $8104AA (machine.js `OPT`).
+    "OPT": type("O", (), {"posY": 0x02, "posX": 0x04, "posY2": 0x22,
+                          "raw": 0x40, "edge": 0x41, "animDelay": 0x42,
+                          "animIdx": 0x44, "anim": 0x0A})(),
 }
 
 
@@ -2293,6 +2312,106 @@ def _cmd_ablate(argv: list[str]) -> int:
     return 0
 
 
+W12_MUTATIONS = [
+    "no-aura", "aura-phase-flat", "no-glow", "glow-without-prot",
+    "pods-rigid", "no-shadow", "shadow-no-borrow", "pod-asr-toward-zero",
+    "ship-order-swapped", "no-option-object",
+]
+# Declared GREEN on THIS gate, BEFORE the run, with the reason in shipgate.mjs's
+# SHIP_EXPECTED_GREEN.  Both are RED on `pgm.py flyaround`, which is the point:
+# a difference the picture cannot see is still a difference, and it needs a
+# compared column rather than a pixel.
+W12_EXPECTED_GREEN = ["hitx-frozen"]
+
+
+def _cmd_shipgate(argv: list[str]) -> int:
+    """WAVE 12.  THE SHIP, ITS PODS AND THEIR SHADOWS, PRODUCED.
+
+      pgm.py shipgate                  fly-around, buckets 5/15/19
+      pgm.py shipgate --reuse          re-use the two dumps
+      pgm.py shipgate --break NAME     one mutation; it MUST go red
+      pgm.py shipgate --break all      every mutation, plus the expected-greens
+
+    TWO MAME RUNS, not one, and they are two different instruments on the same
+    scenario: `w11dl.lua` dumps the board's thirty staged bucket buffers at
+    `$23D382` and the display list at the arm; `frame.lua` dumps the input word
+    and the 128 KiB RAM seed.  `tools/shipgate.mjs` joins them.
+    """
+    defs = scenarios()
+    s = next(x for x in defs["scenarios"] if x["name"] == "fly-around")
+    script = build_script(defs, s)
+    out = OUT / "w12"
+    out.mkdir(parents=True, exist_ok=True)
+    pairs = out / "fly-around.pairs.bin"
+    tsv = out / "fly-around.tsv"
+    seed_lf = s.get("seed", 2000)
+    seed_bin = out / f"fly-around.seed{seed_lf}.bin"
+    reuse = "--reuse" in argv and pairs.exists() and tsv.exists() \
+        and seed_bin.exists()
+    if not reuse:
+        # (1) the staged bytes + the display list, from lf1900 so the seed frame
+        #     itself is present and the window starts before it.
+        _w11_run("w12-shipgate-pairs", frames=s["frames"], script=script,
+                 out_bin=pairs,
+                 extra={"W11_FROM": seed_lf - 100, "W11_POKE": s.get("poke", ""),
+                        "W11_POKE_FROM": s.get("pokeFrom", 0)})
+        # (2) the input words and the RAM seed -- the same invocation
+        #     `pgm.py flyaround` uses, so the two gates cannot drift apart.
+        r = trace(tsv, frames=s["frames"], buttons=script,
+                  build=s.get("build", "B"), meter=s.get("meter", True),
+                  snap=s.get("snap", ""),
+                  extra_env={"PROBE_PORTIN": "1", "PROBE_WATCH": w4_watch(),
+                             "PROBE_POKE": s.get("poke", ""),
+                             "PROBE_POKE_FROM": str(s.get("pokeFrom", 0)),
+                             "PROBE_RAMDUMP": f"{seed_lf}:{seed_bin}"})
+        check(r, "fly-around")
+        census(r)
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("node not on PATH -- the port is JavaScript")
+    base = [node, str(HERE.parent.parent / "tools" / "shipgate.mjs"),
+            str(pairs), str(tsv), str(seed_bin), "--seed-lf", str(seed_lf)]
+    if s.get("poke"):
+        base += ["--poke", s["poke"]]
+
+    def one(mut: str | None) -> int:
+        cmd = base + (["--break", mut] if mut else [])
+        print("\n$ " + " ".join(cmd[1:]))
+        return subprocess.run(cmd, text=True).returncode
+
+    if "--break" in argv and argv[argv.index("--break") + 1] == "all":
+        bad = []
+        for m in W12_MUTATIONS:
+            if one(m) == 0:
+                print(f"FAIL mutation '{m}' did NOT diverge -- the gate cannot "
+                      f"see it")
+                bad.append(m)
+            else:
+                print(f"RED OK: '{m}' diverged, as it must")
+        for m in W12_EXPECTED_GREEN:
+            rc = one(m)
+            print(f"{'EXPECTED-GREEN OK' if rc == 0 else 'FAIL'}: '{m}' "
+                  f"{'stayed green' if rc == 0 else 'went red'} -- it is "
+                  f"declared green on THIS gate and red on pgm.py flyaround")
+            if rc != 0:
+                bad.append(m)
+        print(f"\nRED VALIDATION: {len(W12_MUTATIONS)} mutations, "
+              f"{len(W12_MUTATIONS) - len([b for b in bad if b in W12_MUTATIONS])}"
+              f" red as declared; {len(bad)} behaved wrongly")
+        return 1 if bad else 0
+    if "--break" in argv:
+        m = argv[argv.index("--break") + 1]
+        rc = one(m)
+        if m in W12_EXPECTED_GREEN:
+            return 0 if rc == 0 else 1
+        if rc == 0:
+            print(f"FAIL mutation '{m}' did NOT diverge")
+            return 1
+        print(f"RED OK: mutation '{m}' diverged, as it must")
+        return 0
+    return one(None)
+
+
 COMMANDS = {
     "verify": _cmd_verify, "landmarks": _cmd_landmarks, "trace": _cmd_trace,
     "snap": _cmd_snap, "seed": _cmd_seed, "scen": _cmd_scen, "gate": _cmd_gate,
@@ -2306,6 +2425,7 @@ COMMANDS = {
     "pixslice": _cmd_pixslice, "pixdemo": _cmd_pixdemo,
     "demogate": _cmd_demogate,
     "dlgate": _cmd_dlgate, "ablate": _cmd_ablate,
+    "shipgate": _cmd_shipgate,
 }
 
 if __name__ == "__main__":

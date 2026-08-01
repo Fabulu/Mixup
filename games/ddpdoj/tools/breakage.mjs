@@ -12,6 +12,7 @@
 
 import { RAM, P } from '../src/machine.js';
 import { CLAMP_ORDER, updatePlayer } from '../src/player.js';
+import { SHIP_MUTATE } from '../src/shipsprite.js';
 
 export const MUTATIONS = {
   // THE ONE THE BRIEF ASKS FOR.  $2495CA moves first ($2417F4 adds the vector
@@ -141,6 +142,33 @@ export const MUTATIONS = {
       return orig(a, v);
     };
   },
+
+  // ----------------------------------------------------------------- WAVE 12
+  // $249E78 `move.l (A0,D0.w),($14,A6)` writes the ship's X HALF-EXTENTS from
+  // $2553F2, indexed by the tilt.  Wave 4 called that long `animB`, believed it
+  // was animation, and never compared it; the hitbox has been BLOCKED since
+  // wave 2 partly because of that.  This mutation banks the SPRITE correctly
+  // and freezes the HITBOX at the tilt-0 entry -- a port that looks perfect on
+  // screen and is wrong about every collision.  It must move `animb0`/`animb1`
+  // during the L/R sweeps of fly-around (lf2320-2420 and lf2440-2540) and it
+  // must leave every bucket-19 byte alone.
+  'hitx-frozen': () => { SHIP_MUTATE.value = 'hitx-frozen'; },
+  // $24C096 is RUN from wave 12 on.  Not running it is wave 11's behaviour, and
+  // it must move the four option columns and both bucket-15 records.
+  'no-option-object': () => { SHIP_MUTATE.value = 'no-option-object'; },
+  // $24D12E moves each pod off the ship by one frame of its own velocity.
+  // Skipping the move is EXACTLY WHAT THE PAGE'S SPLICE DID -- a rigid offset
+  // from the ship -- so this mutation is the old behaviour, and if it stayed
+  // green the gate would not be able to tell the two apart.
+  'pods-rigid': () => { SHIP_MUTATE.value = 'pods-rigid'; },
+  // $24D160/$24D164 `move.w D3,D0 / asr.w #2,D0`.  Rounding toward zero instead
+  // of toward -infinity moves pod 1 by ONE unit of 1/64 px -- MEASURED $0C9E
+  // against the board's $0C9D -- and the sprite enqueue's `asr.l #6` throws that
+  // unit away, so NO PICTURE CAN EVER SEE IT.  It is red on `o1x` here and
+  // declared EXPECTED-GREEN on `pgm.py shipgate`.  A real arithmetic difference
+  // that the framebuffer cannot show is the argument for compared columns in
+  // one line.
+  'pod-asr-toward-zero': () => { SHIP_MUTATE.value = 'pod-asr-toward-zero'; },
 };
 
 /** Mutations that are EXPECTED to leave the RESULT line green, with the reason.
@@ -154,6 +182,7 @@ export const EXPECTED_GREEN = {
 
 export function breakage(name, game) {
   CLAMP_ORDER.value = 'rom';   // never leak a mutation between runs
+  SHIP_MUTATE.value = null;    // ...and the same for wave 12's seam
   const m = MUTATIONS[name];
   if (!m) {
     throw new Error(`unknown mutation "${name}"; have: ${Object.keys(MUTATIONS).join(', ')}`);

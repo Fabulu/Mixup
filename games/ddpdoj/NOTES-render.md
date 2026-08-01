@@ -150,9 +150,19 @@ top-level object handlers are still unported. So the pipeline is real and empty:
 the background, the enemies and the HUD still come out of a 161-frame board
 capture.
 
-**Spliced:** the ship's and the two option pods' records are moved to the port's
-position. Which records those are was MEASURED by correlation, not chosen by
-eye, and the sweep could have refuted the inherited claim it confirms:
+**WAVE 12 CHANGED WHAT THIS PARAGRAPH MEANS.** The eight player-attached records
+are no longer MOVED; they are PRODUCED. `src/shipsprite.js` and
+`src/options.js` port `$24A482` and `$24C096`, so the port fills buckets 19, 15
+and 5 itself and `pgm.py shipgate` compares those bytes -- and the display-list
+entries they become -- against the board at 0 divergent frames over 2,200 logic
+frames. `splice` now writes each record's IMAGE (words 2-3) as well as its
+position, from `manifest.ship.pairs`, so the ship banks. What the capture still
+supplies is WHICH SLOT each record occupies, because the other 26 buckets have
+no producer and the port cannot build the whole list yet.
+
+The correlation sweep below is what FOUND the eight records, and it stays here
+because it is still how the page decides which slots to write. It is no longer
+how their contents are decided:
 
 ```
 lag=0 conv=shift  best offset holds on  74/161 frames;   0 accepted
@@ -182,7 +192,7 @@ PASS: the port drives the ship and the page's own render path is
 ```
 
 **What that gate cannot tell you**, and it must be said next to the 100 %:
-because the port agrees with the board to the unit, the spliced list is
+because the port agrees with the board to the unit, the written list is
 byte-identical to the board's own, so "the port drove the ship" and "nothing was
 spliced" produce the same picture. What is proved is the other direction — the
 pixels DO come from the number the port computed. Moving the port's `py` by one

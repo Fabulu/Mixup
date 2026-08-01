@@ -74,10 +74,33 @@
 // `stage1-shot` fires SINGLE-FRAME taps every 20 logic frames, so the gate
 // never trips it, and a player can still tap to run the ported spawn.
 
+// ------------------------------------------------------- WAVE 12: THE ANSWER
+//
+// Wave 9's throw was on the SPEED RAMP and the combat recon measured two things
+// wrong with it (10-recon-combat §2):
+//
+//   * it fired on the FOURTH held frame, whereas the board's laser gate
+//     `$24C164 btst #4,($40,A6)` is entered on the FIRST; and
+//   * `speedIdx !== laserFloor` meant A PLAYER ALREADY AT THE SPEED FLOOR COULD
+//     HOLD FIRE AND STILL GET SILENCE -- the exact failure the throw existed to
+//     prevent, narrowed instead of removed.
+//
+// The gate is now the board's own: the raw held bit, `RAM.p1raw & $10`, reaching
+// `$24C164` through `$24C134`'s byte copy, with NO speed-index condition.  The
+// throw lives in `src/options.js` where the instruction is, not here, because
+// the option object is now RUN rather than counted -- and running it is what
+// turns "the pods are spliced" into "the pods are computed".
+//
+// `laserRampWouldMove` survives as a PURE PREDICATE with no callers in the
+// shipped path: the ramp is real, `rampUp` in options.js ports its other half,
+// and tests still pin its shape.  It is no longer a gate on anything.
+
 import { unreached } from './unported.js';
 import { runShotDriver } from './weapons.js';
 import { shotHandlers } from './shots.js';
-import { RAM, BIT, P } from './machine.js';
+import { runOptionObject } from './options.js';
+import { drawShip, drawShipAlt, SHIP_MUTATE } from './shipsprite.js';
+import { RAM, ROM } from './machine.js';
 
 export const TYPE5 = {
   handler: 0x28b5e0,
@@ -112,57 +135,69 @@ export function laserRampWouldMove(held, speedIdx, laserFloor) {
   return held >= TYPE5.laserRampFrames && speedIdx !== laserFloor;
 }
 
+/** The five of the 23 `jsr` targets wave 12 RUNS, by their position in the
+ *  ROM's own call order.  Everything else is still counted.  The four ship-draw
+ *  entries come BEFORE the option object in that order and that matters: the
+ *  ship's records reach bucket 19 while the pods' reach bucket 15, and the two
+ *  buckets drain at different depths, so the ORDER WITHIN a bucket is what a
+ *  byte-for-byte gate can see. */
+export const TYPE5_PORTED = new Set([
+  0x253a70,   // #8  the player-shot driver (wave 8)
+  0x24c096,   // #9  THE OPTION OBJECT (wave 12)
+  0x24a458,   // #14 the ship's alt entry, P1 (wave 12)
+  0x24a46c,   // #15 ...P2
+  0x24a440,   // #16 the ship's draw, P1 (wave 12)
+  0x24a44c,   // #17 ...P2
+]);
+
 /** Handlers this module dispatches to, built once per Game. */
 export function makeType5(rom) {
   const handlers = shotHandlers();
-  // The port's stand-in for ($4b,A6), which lives in the OPTION record the port
-  // does not have.  It is a DIAGNOSTIC counter, not a translation: nothing
-  // reads it but the guard below, and no compared column can see it.
-  let heldFrames = 0;
   return function type5(ram, slot, index, ctx) {
     if (ram.u8(slot + 2) === 0) {                       // $28B5E0 tst.b ($2,A5)
       unreached(TYPE5.notStarted, `object type 5's "not started" branch `
         + `($28B5E0 tst.b ($2,A5) / beq $28B5A8) -- ($2,A5) is 0. MEASURED `
         + `non-zero on every frame of the compared window`);
     }
-    // $803970 bit 4 = P1 Button 1 HELD (the raw mirror, not the edge). P2 is
-    // not counted: its spawn already throws at $249C0E and no scenario has one.
-    const fireHeld = (ram.u16(RAM.p1raw) & (1 << BIT.b1)) !== 0;
-    heldFrames = fireHeld ? heldFrames + 1 : 0;
-
     for (const c of TYPE5.calls) {
-      if (c === TYPE5.shotDriver) {
-        ctx.shotsProcessed = runShotDriver(ram, rom, handlers, ctx);  // $28B610
-      } else {
-        if (c === TYPE5.optionObject
-          && laserRampWouldMove(heldFrames,
-            ram.u8(RAM.player1 + P.speedIdx), ram.u8(RAM.player1 + P.laserFloor))) {
-          unreached(TYPE5.laserRampDown, `THE LASER. Button 1 has been HELD for `
-            + `${heldFrames} logic frames, and on frame `
-            + `${TYPE5.laserRampFrames} the board's laser speed ramp `
-            + `($24C8BE, reached PC-relative from inside $24C096, which is one `
-            + `of the 22 subsystem calls of object type 5 that this port counts `
-            + `and does not run) executes $24C8CE subq.b #1,($1a,A4) and starts `
-            + `walking the ship's speed index from `
-            + `${ram.u8(RAM.player1 + P.speedIdx)} down to its ($38,A4) floor of `
-            + `${ram.u8(RAM.player1 + P.laserFloor)} -- MEASURED in wave 4 §4, `
-            + `scenario 'speedmodes': 22 to 12, one step every four frames, `
-            + `applied dY 246 down to 134, and back up one step per frame on `
-            + `release. NOTHING IN THIS PORT WRITES $8104AA, so from here on `
-            + `the ship would be faster than the board's and every frame after `
-            + `it would be wrong. TAPPING fire still runs the ported spawn and `
-            + `shot driver (wave 8); it is the HOLD that leaves the port. Until `
-            + `wave 9 this path returned silently, which is the one failure `
-            + `mode this project's named throws exist to prevent`);
-        }
-        ctx.unportedLog.note(c, `object type 5 ($28B5E0) subsystem call -- `
-          + `22 of its 23 jsr targets are unported; only $253A70, the `
-          + `player-shot driver, is`);
+      switch (c) {
+        case TYPE5.shotDriver:                          // $28B610
+          ctx.shotsProcessed = runShotDriver(ram, rom, handlers, ctx);
+          break;
+        case TYPE5.optionObject:                        // $28B616 -> $24C096
+          // The `no-option-object` mutation is wave 11's behaviour restored:
+          // count the call and do not run it.  It must move the four option
+          // columns and both bucket-15 records.
+          if (SHIP_MUTATE.value === 'no-option-object') {
+            ctx.unportedLog.note(c, 'MUTATION no-option-object');
+          } else {
+            runOptionObject(ram, ctx);
+          }
+          break;
+        case ROM.shipDrawAltP1:                         // $24A458
+          drawShipAlt(ram, RAM.player1);
+          break;
+        case ROM.shipDrawAltP2:                         // $24A46C
+          drawShipAlt(ram, RAM.player2);
+          break;
+        case ROM.shipDrawP1:                            // $24A440
+          drawShip(ram, RAM.player1, ctx);
+          break;
+        case ROM.shipDrawP2:                            // $24A44C
+          drawShip(ram, RAM.player2, ctx);
+          break;
+        default:
+          ctx.unportedLog.note(c, `object type 5 ($28B5E0) subsystem call -- `
+            + `${TYPE5.calls.length - TYPE5_PORTED.size} of its `
+            + `${TYPE5.calls.length} jsr targets are still unported`);
       }
     }
     // $28B670 `tst.w $81308c / beq $28B730` and everything after it -- the
-    // two-player shot/laser interaction block at $28B67A.  Counted, not run.
+    // two-player shot/laser interaction block at $28B67A, and the ONLY caller
+    // of $244D62, the player-vs-bullet collision.  Counted, not run; W23's.
     ctx.unportedLog.note(0x28b670, `object type 5's tail ($28B670 onwards, `
-      + `gated on $81308C)`);
+      + `gated on $81308C) -- and with it $244D62, the player's own collision, `
+      + `which has no other caller`);
+    void index;
   };
 }

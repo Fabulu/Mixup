@@ -9,7 +9,7 @@
 // Column names match `frame.lua`'s COLS and PROBE_WATCH names exactly, so the
 // diff is a name-for-name join and not a positional guess.
 
-import { RAM, P } from './machine.js';
+import { RAM, P, OPT } from './machine.js';
 
 /** The PROBE_WATCH spec the oracle must be run with for these columns to
  *  exist.  Kept HERE, next to the reader, so the two cannot drift. */
@@ -29,9 +29,31 @@ export const WATCH_SPEC = [
   ['pst', RAM.player1 + P.state], ['pf1', RAM.player1 + P.flags1, 'b'],
   ['pdir', RAM.player1 + P.dirByte, 'b'], ['pbtn', RAM.player1 + P.btnByte, 'b'],
   ['anima0', RAM.player1 + P.animA], ['anima1', RAM.player1 + P.animA + 2],
-  ['animb0', RAM.player1 + P.animB], ['animb1', RAM.player1 + P.animB + 2],
-  ['o0y', RAM.p1Options + 2], ['o0x', RAM.p1Options + 4],
-  ['o1y', RAM.p1Options + 0x22], ['o1x', RAM.p1Options + 0x24],
+  // WAVE 12 -- THE HITBOX, and the columns that were missing for eight waves.
+  // `animb0`/`animb1` kept their oracle names so old TSVs still join, but they
+  // are $8103FA/$8103FC, the ship's X half-extents from $2553F2 indexed by the
+  // tilt; the two Y half-extents beside them ($8103F6/$8103F8) were never
+  // compared at all.  All four are compared now, which is wave 5's rule 7: a
+  // compared column is the only thing that is checked, and until this wave the
+  // hitbox was in the port's RAM under an animation's name and checked by
+  // nothing.  MEASURED constant $0080/$0100 (Y) with X moving $0000..$0080
+  // across the tilt sweep.
+  ['hity0', RAM.player1 + P.hitYPlus], ['hity1', RAM.player1 + P.hitYMinus],
+  ['animb0', RAM.player1 + P.hitXPlus], ['animb1', RAM.player1 + P.hitXMinus],
+  ['o0y', RAM.p1Options + OPT.posY], ['o0x', RAM.p1Options + OPT.posX],
+  ['o1y', RAM.p1Options + OPT.posY2], ['o1x', RAM.p1Options + OPT.posY2 + 2],
+  // WAVE 12 -- the rest of what the option object writes, so that "the pods are
+  // computed" is a claim a column can refute.  ($40,A6) is the copied RAW HELD
+  // byte the laser gate reads; ($42,A6)/($44,A6) are the shared animation delay
+  // and index; ($1a,A6) is the PLAYER's speed index, which the option object --
+  // and nothing else in the port -- writes through $24C900's ramp.
+  ['ohold', RAM.p1Options + OPT.raw, 'b'],
+  ['oedge', RAM.p1Options + OPT.edge, 'b'],
+  ['oadel', RAM.p1Options + OPT.animDelay, 'b'],
+  ['oaidx', RAM.p1Options + OPT.animIdx],
+  ['oanim', RAM.p1Options + OPT.anim + 2],
+  ['optilt', RAM.player1 + P.auraPhase],
+  ['opglow', RAM.player1 + P.glowPhase],
 
   // ---------------------------------------------------------------- WAVE 8
   // THE SHOT SUBSYSTEM.  Named scalars first, because a digest tells you THAT
@@ -118,6 +140,22 @@ export const RAWDUMP_SPEC = [
   // frame two rather than never.  Wave 8 compared one of them (`q6`) for the
   // same reason; this is the other twenty-nine.
   ['sprctr', 0x80afc0, 0x3c],
+  // WAVE 12 -- the three staging buffers this wave produces, read at the ARM.
+  // Call #4 zeroes the thirty COUNTERS ($23D70C) and never touches the buffers,
+  // so at the sample point each buffer still holds the bytes the producers wrote
+  // this frame, followed by residue from earlier frames.  Comparing the WHOLE
+  // capacity rather than the live prefix is deliberate and is wave 11's lesson
+  // repeated: the residue is deterministic board state, both sides inherit it
+  // from the same seed, and a port that writes one record too few is caught by
+  // the stale bytes behind it rather than by nothing.
+  //
+  // This is the SECOND instrument on these bytes.  `pgm.py shipgate` compares
+  // them at $23D382, inside call #4, where the counters are still live; this
+  // compares them at the arm, through the same `frame.lua` that carries every
+  // other column.  Two instruments, two sample points, one claim.
+  ['b19', 0x808ee4, 0xc0],   // the ship, its aura and its glow ($23F104/$23F1FA)
+  ['b15', 0x808eb4, 0x30],   // the two option pods ($23F2CA)
+  ['b5', 0x80862c, 0x48],    // the ship's and the pods' shadows ($23EFC0/$23EFEE)
 ];
 
 /** PROBE_EXEC: instructions whose per-frame execution count is a column. */
@@ -218,6 +256,12 @@ export const CLAIMED = [
   'objn', 'objord', 'objlive',
   'py', 'px', 'paccy', 'paccx', 'ptc', 'ptilt', 'pspd', 'pang',
   'pst', 'pf1', 'pdir', 'pbtn', 'anima0', 'anima1', 'animb0', 'animb1',
+  // WAVE 12.  The four hitbox words, the option pods and everything the option
+  // object writes.  OPTION_COLUMNS joins CLAIMED here -- the one-line change
+  // wave 4 left the door open for -- because $24C096 is now RUN, not counted.
+  'hity0', 'hity1',
+  ...['o0y', 'o0x', 'o1y', 'o1x'],
+  'ohold', 'oedge', 'oadel', 'oaidx', 'oanim', 'optilt', 'opglow',
   // WAVE 8.  Present in a trace only when the scenario asked for them, and
   // `portdiff.mjs` compares whatever of CLAIMED the trace actually carries --
   // so `fly-around` keeps its 34 columns and `stage1-shot` gets 55.
@@ -225,6 +269,8 @@ export const CLAIMED = [
   'p2a', 'p2b', 'p3a', 'p3c', 'p42', 'p44',
   's14t', 's14y', 's14x', 's14a', 's14v', 's21t', 's21y', 's21x',
   'shot1', 'shot2',
+  // WAVE 12 -- the produced buckets, byte for byte.
+  'b19', 'b15', 'b5',
   // WAVE 11.  Claimed because the port computes them from state it HAS: the
   // two drop flags are cleared every frame and only set on an over-budget frame
   // (which never happens in a natural scenario -- and `pgm.py dlgate --cap`
@@ -249,10 +295,18 @@ export const CLAIMED = [
  *  written down instead of being inferred from an absence. */
 export const DISPLAYLIST_REPORTED = ['b000', 'affe', 'affc'];
 
-/** The option columns.  Separate because the option OBJECT is not ported in
- *  wave 4 -- see the worklog.  Listed here so that adding the handler is a
- *  one-line change to CLAIMED and not a change to the differ. */
+/** The option columns.  Wave 4 kept them separate because the option OBJECT was
+ *  not ported, and said so: "listed here so that adding the handler is a
+ *  one-line change to CLAIMED and not a change to the differ."  WAVE 12 MADE
+ *  THAT CHANGE -- they are spread into CLAIMED above and this list is now the
+ *  NAME of the set, kept so `pgm.py` and the tests can still speak of it. */
 export const OPTION_COLUMNS = ['o0y', 'o0x', 'o1y', 'o1x'];
+/** ...and the wider set the option object writes, claimed with them. */
+export const OPTION_COLUMNS_W12 = ['ohold', 'oedge', 'oadel', 'oaidx', 'oanim'];
+/** The ship's four hitbox half-extents, $8103F6..$8103FD.  BLOCKED since wave 2
+ *  (three waves read the LASER SEGMENT table's identical field layout instead --
+ *  10-recon-combat §8 item 3); compared from wave 12 on. */
+export const HITBOX_COLUMNS = ['hity0', 'hity1', 'animb0', 'animb1'];
 
 /** WAVE 8 -- traced, printed with its drift, and DELIBERATELY NOT CLAIMED.
  *

@@ -349,20 +349,59 @@ export class Capture {
    * offsets `capture.json` accepted -- and exists so a test can show that the
    * matcher's answer is a SUPERSET rather than a different one.
    */
-  splice(st, i, py, px, { records = 'attached' } = {}) {
+  splice(st, i, py, px, { records = 'attached', tilt = null, ship = null } = {}) {
     if (!this.spliceable) return 0;
     const recs = records === 'packer'
       ? (this.frames[i].player ?? []).map(([r, dx, dy]) => [r, 'rigid', dx, dy])
       : this.attached()[i];
     const at = { rigid: anchor('rigid', py, px), ground: anchor('ground', py, px) };
+    // WAVE 12 -- AND NOW THE SHIP BANKS.  `ship` is `manifest.ship`, the 17
+    // REBASED animation pairs `export-web.mjs` now emits; `tilt` is the port's
+    // own ($4e,A6), which it has computed since wave 4 and which nothing has
+    // ever been able to draw.  Words 2 and 3 of the ship's record are exactly
+    // what `$249E62 move.l (A0,D0.w),($a,A6)` writes into the record and the
+    // enqueue copies through, so writing them here is not decoration: it is the
+    // same field, produced instead of relocated.
+    //
+    // THE RECORD IS IDENTIFIED BY ITS SIZE WORD, not by an index: display-list
+    // slots are rebuilt from scratch every frame and index is not identity
+    // (`00-recon-memmap.md`).  `manifest.ship.size` is the MEASURED ($e,A6),
+    // $0620 = 3x32, and the wave-9 attach report's 3x32 class is the ship.
+    let banked = false;
+    const shipIdx = ship ? this.#shipRecord(st, recs, ship) : -1;
     let n = 0;
     for (const [idx, model, dx, dy] of recs) {
       const a = at[model] ?? at.rigid;
       const b = idx * 8;                      // post-DMA stride
       st.spritebuffer[b] = (st.spritebuffer[b] & 0xf800) | ((a.x + dx) & 0x07ff);
       st.spritebuffer[b + 1] = (st.spritebuffer[b + 1] & 0xfc00) | ((a.y + dy) & 0x03ff);
+      if (idx === shipIdx && tilt !== null) {
+        const k = (tilt - ship.tiltMin) / ship.tiltStep;
+        const pair = Number.isInteger(k) ? ship.pairs[k] : undefined;
+        if (pair) {
+          // Word 2's high byte is flip + colour + pri and is NOT touched: the
+          // pair carries only the offs bits, which the packed space says are
+          // all in word 3 (`export-web.mjs` asserts the base fits in 16 bits).
+          st.spritebuffer[b + 2] = (st.spritebuffer[b + 2] & 0xff80) | pair[0];
+          st.spritebuffer[b + 3] = pair[1];
+          banked = true;
+        }
+      }
       n++;
     }
+    this.lastBanked = banked;
     return n;
+  }
+
+  /** The 3x32 record among the attached set -- the ship, by its MEASURED size
+   *  word rather than by a slot index. */
+  #shipRecord(st, recs, ship) {
+    for (const [idx] of recs) {
+      const b = idx * 8;
+      const w4 = st.spritebuffer[b + 4];
+      const wide = (w4 >> 9) & 0x3f, high = w4 & 0x1ff;
+      if (wide === ship.wide && high === ship.high) return idx;
+    }
+    return -1;
   }
 }

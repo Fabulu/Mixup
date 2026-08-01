@@ -4,7 +4,7 @@
   "platform": "pgm",
   "year": 2002,
   "publisher": "Cave / AMI",
-  "blurb": "Vertical shooter on IGS PGM hardware. The ship flies: position, tilt, clamps, speed modes and both option pods are computed live and match the board to the unit. The picture is pixel-exact against MAME. No enemies simulated yet, no weapons, no sound.",
+  "blurb": "Vertical shooter on IGS PGM hardware. The ship is fully real: position, tilt, clamps, speed modes, both option pods, the shadows and the banking image are computed live and match the board byte for byte, in RAM and in the display list. The picture is pixel-exact against MAME. No enemies simulated yet, no weapons, no sound.",
   "status": "in-progress",
   "rom": {
     "set": "ddpdojblk",

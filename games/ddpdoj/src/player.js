@@ -27,6 +27,7 @@ import { P, RAM, CLAMP, ROM } from './machine.js';
 import { i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
 import { spawnShot } from './shots.js';
+import { drawShipShadow, SHIP_MUTATE } from './shipsprite.js';
 
 // Globals the player reads and the port does not write.  Seeded once and
 // FROZEN for the run.  Listed by name so the runner can print them and a
@@ -267,15 +268,42 @@ function finish(ram, rec, d2, d3, ctx, skipClamps) {
   // `finish` is a separate function and the ROM's A5 is long gone.
   bombAndShotGuards(ram, rec, ctx, ram.u8(rec + P.playerIdx) & 1);
 
-  // $249E4E -- the tail.  Two animation records, indexed by the bank counter.
-  const anim = ctx.tables.anim(ram.u16(rec + P.tilt));
-  ram.setU16(rec + P.animA, anim.a[0]);              // $249E62 move.l (A0,D0.w),($a,A6)
-  ram.setU16(rec + P.animA + 2, anim.a[1]);
-  ram.setU16(rec + P.animB, anim.b[0]);              // $249E78 ... ($14,A6)
-  ram.setU16(rec + P.animB + 2, anim.b[1]);
-  // $249E7E onward: the shadow-sprite emit ($23EFC0) and a BCD block.  Both
-  // write outside the compared set; counted, never silent.
-  unportedLog.note(0x249e7e, 'player tail: shadow emit $23EFC0 + the BCD block');
+  // $249E4E -- the tail.  TWO tilt-indexed longs, and WAVE 4 NAMED BOTH OF THEM
+  // WRONG.  Only the first is animation.
+  //
+  //   $249E62 move.l (A0,D0.w),($a,A6)   A0 = $25533A[shipType] = $255362
+  //                                      -> hardware words 2 and 3: THE IMAGE.
+  //                                      MEASURED $1200..$1840 in steps of $64.
+  //   $249E78 move.l (A0,D0.w),($14,A6)  A0 = $2553CA[0] = $2553F2
+  //                                      -> ($14,A6)/($16,A6), which $2459D0
+  //                                      reads as the X HALF-EXTENTS OF THE
+  //                                      SHIP'S HITBOX.  It is not an animation
+  //                                      at all; it is the number the whole game
+  //                                      is about, and the port has been writing
+  //                                      it under an animation's name since
+  //                                      wave 4 (10-recon-combat §3).
+  //
+  // MEASURED, $2553F2, all 17 entries (+X / -X): (0000,0080) at tilt -$20,
+  // (0080,0080) at 0, (0080,0000) at +$20 -- so banking left narrows the box on
+  // the right and vice versa.  Build A's twin table $1549AE holds $00C0 where
+  // this holds $0080: Black Label's horizontal hitbox is exactly 2/3 of the
+  // original's, 4 px against 6.
+  const t = ctx.tables.anim(ram.u16(rec + P.tilt));
+  ram.setU16(rec + P.animA, t.a[0]);                 // $249E62
+  ram.setU16(rec + P.animA + 2, t.a[1]);
+  // THE WRONG PORT, and it is deliberately separable from the image above: a
+  // port that banks the SPRITE and freezes the HITBOX looks completely right on
+  // screen and is wrong about every collision.  `hitx-frozen` is red on the
+  // hitbox columns and GREEN on bucket 19, which is exactly why the hitbox
+  // needed columns of its own rather than being trusted to the picture.
+  const h = SHIP_MUTATE.value === 'hitx-frozen' ? ctx.tables.anim(0) : t;
+  ram.setU16(rec + P.hitXPlus, h.hitX[0]);           // $249E78, the LONG at +$14
+  ram.setU16(rec + P.hitXMinus, h.hitX[1]);          // ...i.e. +$14 and +$16
+  // $249E7E onward: the ground-plane shadow emit ($249EA0 -> $23EFC0, bucket 5)
+  // and the score BCD block ($249F16).  WAVE 12 ports the shadow; the BCD block
+  // is W17's and is still counted rather than silent.
+  drawShipShadow(ram, rec, ctx);
+  unportedLog.note(0x249f16, 'player tail: the score BCD block ($249F16..$249F88)');
 }
 
 /**

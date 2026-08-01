@@ -354,20 +354,41 @@ test('records: "packer" reproduces wave 7 exactly', () => {
 // and they are here because THIS is the class of defect this page exists to
 // avoid, and a comment asking the next author to be careful has not worked.
 
-test('nothing claims the option pods are computed live', () => {
+// WAVE 12 INVERTS BOTH OF THEM, because $24C096 is now run and the claim is
+// true.  The DISCIPLINE does not invert: a claim on this page has to name the
+// gate that would catch it being wrong.  So the tests below do not check that
+// the page says the pods are computed -- they check that wherever it says so,
+// it names `shipgate`, and that `type5.js` really calls the routine.  That is
+// the check that would have caught 07-review.md D1 in the first place.
+
+test('if the page claims the pods are computed, it names the gate', () => {
   for (const rel of ['index.html', 'src/web/app.js']) {
     const text = read(rel);
-    assert.ok(!/option pods?[^.]{0,80}computed\s+live/i.test(text),
-      `${rel} still claims the option pods are computed live`);
+    if (/option (pods?|object)[^.]{0,120}(computed|PRODUCED|ported)/i.test(text)) {
+      assert.match(text, /shipgate/,
+        `${rel} claims the option pods are computed and does not name the gate `
+        + 'that proves it. 07-review.md D1 was exactly this, the other way up.');
+    }
   }
 });
 
-test('app.js\'s SIMULATED list does not contain the options', () => {
-  const text = read('src/web/app.js');
-  const sim = text.slice(text.indexOf('SIMULATED, live'), text.indexOf('REPLAYED, from'));
-  assert.ok(sim.length > 200, 'the SIMULATED block moved; fix this test with it');
-  assert.ok(!/\boptions\b/.test(sim),
-    'app.js lists "options" under SIMULATED and the option object is unported');
+test('the claim is backed by code: type5.js really calls $24C096', () => {
+  const text = read('src/type5.js');
+  assert.match(text, /runOptionObject\(ram, ctx\)/,
+    'object type 5 must actually run the option object, not count it');
+  assert.match(text, /TYPE5_PORTED/,
+    'the set of RUN calls must be named, so the count in the comment cannot rot');
+});
+
+test('nothing claims the ship cannot bank any more', () => {
+  // `render/capture.js` predicted the fix ("a one-field change to the exporter
+  // and a later wave's job"); wave 12 made it, so the prediction must not still
+  // be sitting on the page as a limitation.
+  const html = read('index.html');
+  assert.ok(!/ship does NOT bank/i.test(html));
+  assert.match(html, /The ship banks/i);
+  assert.match(html, /17 rebased/i,
+    'the page must say where the bank images come from, not just that they work');
 });
 
 test('the error box says NOT PORTED YET when the message names an address', () => {
@@ -390,21 +411,31 @@ test('the page says the enemies are a recording and cannot be hit', () => {
 // the board ALSO does on a hold is the laser speed ramp at $24C8BE, inside the
 // unported option object, and the port ran straight past it in silence.
 
-test('the laser ramp guard trips on the FOURTH held frame, not the first', () => {
-  assert.equal(TYPE5.laserRampFrames, 4);
-  for (let held = 0; held < 4; held++) {
-    assert.equal(laserRampWouldMove(held, 22, 12), false,
-      `a ${held}-frame tap must not trip it: the board's ($4b,A6) counter `
-      + 'reloads to 4 and a tap never moves ($1a,A4)');
-  }
-  assert.equal(laserRampWouldMove(4, 22, 12), true);
-  assert.equal(laserRampWouldMove(40, 22, 12), true);
-});
+// WAVE 12 MOVED THE HELD-FIRE TESTS TO `tests/ship.test.js`, where the option
+// object now lives, and DELETED the two that asserted the wrong gate.  The
+// deleted pair is quoted in `docs/worklog/ddpdoj/12-impl-ship-fully-real.md`
+// because it is what a wrong check looks like while it passes:
+//
+//   'the laser ramp guard trips on the FOURTH held frame, not the first'
+//   'the guard does not trip when the ramp is already at its floor'
+//
+// Both were true of the port and false of the board.  10-recon-combat §2
+// measured the board's own gate -- `$24C164 btst #4,($40,A6)` on the RAW HELD
+// byte `$24C134` copies in, entered on the FIRST held frame, with no
+// speed-index condition anywhere -- and the second test was an assertion that
+// the exact failure the throw existed to prevent WOULD happen.
 
-test('the guard does not trip when the ramp is already at its floor', () => {
-  // $24C8C2 `cmp.b ($38,A4),D0 / beq` -- the DOWN ramp is a no-op there, so a
-  // port sitting at the floor is not diverging by standing still.
-  assert.equal(laserRampWouldMove(40, 12, 12), false);
+test('the old wave-9 predicate is no longer a gate on anything', () => {
+  // Kept and pinned rather than deleted: the ramp it describes is real
+  // ($24C8BE down / $24C8E4 up, measured 22->12 one step per four frames), and
+  // options.js ports the UP half.  What is gone is its use as the laser's
+  // trigger -- so these two lines are a statement about the ramp, not about
+  // when the laser starts.
+  assert.equal(TYPE5.laserRampFrames, 4);
+  assert.equal(laserRampWouldMove(3, 22, 12), false);
+  assert.equal(laserRampWouldMove(4, 22, 12), true);
+  assert.equal(laserRampWouldMove(40, 12, 12), false,
+    'at the floor the DOWN ramp is a no-op ($24C8C2 cmp.b ($38,A4),D0 / beq)');
 });
 
 test('the option object is the call the guard is attached to', () => {

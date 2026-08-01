@@ -40,6 +40,18 @@ import { RomWindows } from './rom.js';
 import { makeType5 } from './type5.js';
 import { PLAYER_SLOTS } from './shots.js';
 import { buildDisplayList } from './displaylist.js';
+import { ProtLatch } from './protsim.js';
+import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
+
+/** The buckets the port has a PRODUCER for, in drain (= depth) order.  Every
+ *  other one of the thirty is still empty on the port's side, which is why
+ *  `pgm.py shipgate` substitutes only these into the board's staged set. */
+export const PRODUCED_BUCKETS = [
+  NAMED_BUCKETS.shadows,   // 5  -- the ship's and the pods' ground-plane shadows
+  NAMED_BUCKETS.shots,     // 14 -- wave 8
+  NAMED_BUCKETS.options,   // 15 -- the two option pods
+  NAMED_BUCKETS.player,    // 19 -- the ship, its aura and its glow
+];
 
 /** The object dispatch table $240F62, as far as the port implements it.
  *  Entry [5] is PARTIAL -- see type5.js: one of its 23 subsystem calls. */
@@ -68,6 +80,11 @@ export class Game {
     this.gov = Object.fromEntries(
       Object.entries(tables.gov).map(([k, v]) => [k, v.words]));
     this.budget = new WorkBudget(opts.budgetUnits);
+    // WAVE 12: the $500000 latch, PER GAME rather than per module.  A module
+    // global would be shared state between two replays and NOTES-replay.md §2
+    // forbids exactly that -- state derives from (initial state, input words)
+    // and nothing else.  See src/protsim.js for what it is and is not.
+    this.prot = new ProtLatch();
     this.unportedLog = new UnportedLog();
     this.order = new ObjOrder();
     this.handlers = opts.handlers ?? defaultHandlers(this.rom);
@@ -103,6 +120,8 @@ export class Game {
     return {
       tables: this.tables,
       rom: this.rom,
+      prot: this.prot,          // WAVE 12: the $500000 latch, on the ship's own
+                                // draw path through $24A5B6 (src/protsim.js)
       unportedLog: this.unportedLog,
       // WAVE 8: every record the shot spawn creates, and every frame it could
       // not.  Printed by the runner for the same reason `allocEvents` is: a
@@ -210,16 +229,22 @@ export class Game {
     // its 32-bit `asr.l`/`add.l` pair and the OR-ed flip byte, the terminator
     // and the thirty-counter reset.
     //
-    // WHAT IT DRAWS TODAY IS STILL ALMOST NOTHING, and that is the honest
-    // state: only bucket 14 (the shots) has a ported PRODUCER, so the list the
-    // port builds is the shots plus a terminator.  The transform itself is
-    // gated to the byte against the board by `pgm.py dlgate`, which feeds it the
-    // BOARD's staged bucket bytes -- the capture becomes the gate's INPUT
-    // instead of its output.  Every wave from 12 on adds producers, and each one
-    // is verified against its own bucket rather than against a moving frame.
+    // WHAT IT DRAWS TODAY: buckets 14 (the shots, wave 8), 19 (THE SHIP, its
+    // invulnerability aura and its glow), 15 (THE TWO OPTION PODS) and 5 (the
+    // ship's and the pods' ground-plane shadows) -- wave 12.  Twenty-six of the
+    // thirty buckets still have no producer, so the list the port builds is
+    // those four plus a terminator.  The transform itself is gated to the byte
+    // by `pgm.py dlgate` and the four producers by `pgm.py shipgate`, both of
+    // which feed the port the BOARD's staged bytes for everything they do not
+    // claim -- the capture is the gate's INPUT, never its output.
     // How many 12-byte sprite REQUESTS the shot handlers appended this frame,
     // read off $80AFD6 the instant before call #4's tail zeroes it.
     this.shotRequests = this.ram.u16(0x80afd6) / 12;
+    // WAVE 12: the four buckets this port has producers for, snapshotted at the
+    // board's own $23D382 sample point -- after every producer, before the
+    // counters are cleared.  `pgm.py shipgate` compares these against the
+    // board's dump of the same instant.  Diagnostic only; call #4 reads RAM.
+    this.staged = PRODUCED_BUCKETS.map((b) => snapshotBucket(this.ram, b));
     this.displayList = buildDisplayList(this.ram, {                  // $23D2AE
       // THE $80B054 WATCH, counted and printed like every other honest gap:
       // $23D6A6 is the `add.l $80B054,D1` whose behaviour changes if it moves.

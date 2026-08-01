@@ -170,11 +170,58 @@ for (let i = 0; i < cap.length; i++) {
   }
 }
 
+// ------------------------------------------------------------------- WAVE 12
+// THE SEVENTEEN SHIP IMAGES -- and the reason the ship has never banked.
+//
+// `render/capture.js` wrote this down and left it for a later wave: the port
+// DOES compute the tilt and DOES compute the tilt-indexed animation long
+// ($25533A -> $255362, `vectors.js` anim()), those longs ARE display-list words
+// 2-3, "and what stops it is that export-web.mjs RE-BASES every sprite stream
+// into a packed 16-bit space and does not ship the map".
+//
+// The map cannot be built from the capture, and that is the whole problem: the
+// recorded ship never moved on the short axis (`frameList[].px` is 5312 on all
+// 161 frames), so its tilt was 0 throughout and exactly ONE of the seventeen
+// streams -- $1520 -- appears in the coverage pass above.  The other sixteen are
+// not in the packed sheet, so there is nothing for a rebased map to point at.
+//
+// So they are HARVESTED HERE, by address, out of the same sprite ROMs every
+// other stream comes from.  The addresses are the ROM's own table (exported by
+// tools/export-tables.py, read the way $249E5A reads it) and the extents are the
+// ship record's ($e,A6), MEASURED $0620 = 3 x 32 on every one of the 2,233 drawn
+// frames of fly-around -- not a guess, and it is asserted below against the one
+// stream the capture does contain.
+const SHIP_SIZE = 0x0620;                   // MEASURED ($e,A6) on $8103E6
+const shipWide = (SHIP_SIZE >> 9) & 0x3f;   // spritelist.js: width bits 14..9
+const shipHigh = SHIP_SIZE & 0x1ff;         // ...height bits 8..0
+const shipTable = JSON.parse(tables.toString('utf8')).anim;
+const shipOffs = shipTable.a.shipSel0.map(([hi, lo]) => ((hi & 0x7f) << 16) | lo);
+if (shipOffs.length !== 17) {
+  throw new Error(`the $25533A ship animation table has ${shipOffs.length} tilt `
+    + 'entries, not 17 -- re-run tools/export-tables.py');
+}
+let shipHarvested = 0;
+for (const offs of shipOffs) {
+  const w = walkStream(offs, shipWide, shipHigh);
+  const prev = streams.get(offs);
+  if (!prev) { streams.set(offs, w); shipHarvested++; continue; }
+  // The tilt-0 image IS in the capture.  If the harvest disagrees with the
+  // capture's own record about the same stream, the extents above are wrong and
+  // this must stop rather than ship a sheet that is subtly short.
+  if (prev.colStart !== w.colStart) {
+    throw new Error(`ship stream $${offs.toString(16)}: the capture says colour `
+      + `base ${prev.colStart}, the $0620 extents say ${w.colStart}`);
+  }
+  prev.maskWords = Math.max(prev.maskWords, w.maskWords);
+  prev.colWords = Math.max(prev.colWords, w.colWords);
+}
+
 const bgList = [...bgUsed].sort((a, b) => a - b);
 const txList = [...txUsed].sort((a, b) => a - b);
 console.log(`coverage over ${cap.length} captured frames, ${records} records:`);
 console.log(`  BG tiles ${bgList.length}   TX tiles ${txList.length}   `
-  + `sprite streams ${streams.size}`);
+  + `sprite streams ${streams.size} (${shipHarvested} of them the ship's own `
+  + `bank frames, harvested by address because the recorded ship never banked)`);
 
 // ---------------------------------------------------------------------------
 // 2. THE TILE SHEETS.  Decoded, one byte per pixel, in ascending tile order.
@@ -382,6 +429,35 @@ const manifest = {
       + 'the packed colour addresses, and every capture.bin record\'s offs '
       + 'field rewritten to match. Array lengths are powers of two because '
       + 'SpriteDrawer indexes with & (len-1).',
+  },
+  // WAVE 12 -- THE ONE FIELD THAT MAKES THE SHIP BANK.  `render/capture.js`
+  // named this as "a one-field change to the exporter and a later wave's job";
+  // this is the field.  `pairs[i]` is the packed-space (word2, word3) the port
+  // must write into display-list words 2 and 3 for tilt `tiltMin + i*tiltStep`,
+  // i.e. the rebased form of the ROM long `$255362[tilt]` that `$249E62` writes
+  // into ($a,A6).  Without it the port's ROM-space longs cannot be translated
+  // into the bundle's address space and the ship is drawn with one image
+  // forever, which is what the owner reported.
+  ship: {
+    rom: '$25533A -> $255362', reads: '$249E62 move.l (A0,D0.w),($a,A6)',
+    tiltMin: shipTable.tiltMin, tiltStep: shipTable.tiltStep,
+    size: SHIP_SIZE, wide: shipWide, high: shipHigh,
+    pairs: shipOffs.map((o) => {
+      const nb = offsMap.get(o);
+      if (nb === undefined) {
+        throw new Error(`ship stream $${o.toString(16)} was harvested but not `
+          + 'rebased -- the packer and the harvest disagree');
+      }
+      // The capture stores word 2 bits 6..0 as `offs` bits 22..16 and word 3 as
+      // bits 15..0; the packed space is 16 bits wide (asserted above), so word 2
+      // keeps its flip/colour/pri bits and its offs bits are all zero.
+      return [0, nb & 0xffff];
+    }),
+    note: 'PACKED-SPACE (word2Low7, word3) per tilt step, 17 entries. The ROM '
+      + 'longs these came from are NOT usable directly: export-web.mjs re-bases '
+      + 'every stream. 16 of the 17 do not appear in capture.bin at all -- the '
+      + 'recorded ship never banked -- and were harvested from the sprite ROMs '
+      + 'by address.',
   },
   capture: { layout: capJson.layout, frameBytes: capJson.frameBytes },
   romsUsed: [...IGS023_LAYOUT, ...SPRCOL_LAYOUT, ...SPRMASK_LAYOUT].map(([n]) => n),

@@ -118,7 +118,94 @@ SHOT_WINDOWS = [
     (0x241AF4, 0x0200, "$241AF4 the shot vector's angle-fold table"),
     # $2433C2 lea ($2433D0,PC) -- the 64-longword pseudo-random table.
     (0x2433D0, 0x0100, "$2433D0 the $2433AE pseudo-random longword table"),
+    # ------------------------------------------------------------- WAVE 12
+    # THE SHIP'S OWN SPRITE BLOCK ($24A482) and the OPTION OBJECT ($24C096).
+    # One window covers every table both of them index, because they are packed
+    # together in $2553xx..$2559xx and splitting them would be a schema decision
+    # the ROM does not support.  Named individually so a reader can check any
+    # one of them:
+    #   $25533A the ship IMAGE pointer table (17 longs per ship, tilt-indexed)
+    #   $2553CA the ship's X HALF-EXTENTS -> $2553F2 (NOT animation; see below)
+    #   $25545A the ship SHADOW sprite table, read at $249ECE
+    #   $255672 the aura's flip/colour words, read at $24A4D0 with ($57,A6)*2
+    #   $25567A the aura's 16 sprite longs, read at $24A4BA with ($28,A6)
+    #   $2556BA/$255676 their ($1,A6)-bit-7 twins ($24A4F2/$24A510) -- UNREACHED
+    #   $2556E2 the glow's per-ship/per-tilt sprite tables ($24A55C)
+    #   $255882 ...and their stick-down variant ($24A576) -- UNREACHED
+    #   $255A22 the glow's {protection bias, dx, size} struct ($24A562)
+    #   $255A36 ...and its variant ($24A57C) -- UNREACHED
+    (0x255330, 0x0900, "WAVE 12: $25533A/$2553CA/$25545A/$255672/$25567A/"
+                       "$2556BA/$2556E2/$255882/$255A22/$255A36 -- every table "
+                       "the ship's draw block $24A482 and its shadow $249EA0 read"),
+    # $24C0D2 lea ($24BBAA,PC) / movea.l (A0,D0.w),A0 with D0 = (($5a,A4)-2)*2.
+    # MEASURED entries: $24BF6E, $24BFC8, $24C022, each 90 bytes of template.
+    # The window runs to $24C07C = $24C022 + 90.
+    (0x24BBA0, 0x04E0, "WAVE 12: $24BBAA + the three option TEMPLATES it points "
+                       "at ($24BF6E/$24BFC8/$24C022, 90 bytes each)"),
 ]
+
+# WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
+# speed index that comes out of the option template rather than out of the
+# player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
+# the port threw `speed index 224 was not exported` on the first pod move.  The
+# level set is DERIVED from the templates rather than widened by hand, exactly as
+# wave 8 derived the shot templates' levels.
+#
+# The copy at $24C0E8..$24C116 writes template bytes into record offsets +$06..
+# +$21 and +$26..+$63 with a FOUR-BYTE HOLE at +$22..+$25 ($24C0F6 addq.w #4,A1),
+# so the record offset a template byte lands at is:
+#     off < 0x22 : rec = off + 6          (the first 7 longs)
+#     off >= 0x22: rec = off + 10         (the 15 longs and the trailing word)
+# Pod 0's speed index is record +$1A and pod 1's is +$3A.
+OPT_TEMPLATES = 0x24BBAA
+OPT_FORMATIONS = (2, 4, 6)
+OPT_TEMPLATE_LEN = 90
+OPT_DEPLOY_TABLE = 0x24C928     # $24C94A lea ($24C928,PC),A0
+OPT_DEPLOY_ENTRIES = 6          # (formation-2) + (0 or 6), as a BYTE index
+
+
+def _tmpl_off(rec: int) -> int:
+    """Template byte offset for option-record offset `rec` (see above)."""
+    return rec - 6 if rec < 0x26 else rec - 10
+
+
+def option_templates(d: bytes) -> dict:
+    out = {}
+    for form in OPT_FORMATIONS:
+        # $24C0D6 move.w ($5a,A4),D0 / subi.w #$2,D0 / add.w D0,D0
+        a = u32(d, OPT_TEMPLATES + (form - 2) * 2)
+        out[a] = list(d[a:a + OPT_TEMPLATE_LEN])
+    return out
+
+
+def option_speed_indices(d: bytes) -> list[int]:
+    """Every ($1a,A6) an option pod can hold, derived from the ROM.
+
+    THE TEMPLATE IS NOT THE ANSWER, and finding that out is why this function
+    exists.  All three templates carry ($1a,A6) = 0; the LIVE value measured on
+    the board is $E0 = 224.  The difference is the DEPLOY RAMP at `$24C934`:
+
+      24c934: addq.b #8,($1a,A6)          <-- eight per frame, from 0
+      24c938: move.w ($58,A4),D1 / beq / moveq #$6,D1      ship 0 -> 0, else 6
+      24c940: move.w ($5a,A4),D0 / subi.w #$2,D0 / add.w D1,D0
+      24c94a: lea ($24C928,PC),A0 / move.w (A0,D0.w),D0    a BYTE index
+      24c952: cmp.b ($1a,A6),D0 / bne
+      24c958: move.b #$3,($1,A6)          <-- ...and bit 1 is "deployed"
+
+    so a pod's speed index visits 0, 8, 16, ... up to its formation's entry in
+    `$24C928` and then stops there.  MEASURED entries: $E0 $E0 $F0 $E8 $E8 $F8.
+    Ship 0 / formation 2 tops out at $E0 = 224, which is exactly the live value.
+    """
+    tops = [u16(d, OPT_DEPLOY_TABLE + 2 * i) for i in range(OPT_DEPLOY_ENTRIES)]
+    for v in tops:
+        if v % 8:
+            raise SystemExit(f"$24C928 entry ${v:04X} is not a multiple of 8, so "
+                             f"$24C934's `addq.b #8` ramp can never equal it and "
+                             f"the pod would never deploy -- re-read the table")
+    s = {t[_tmpl_off(rec)] for t in option_templates(d).values()
+         for rec in (0x1A, 0x3A)}
+    s.update(range(0, max(tops) + 1, 8))
+    return sorted(s)
 
 # $249C3E/$249C88: `lea $2554EA,A1 / movea.l (A1,D0.w),A1` with
 # D0 = ((form-2)*4) + 4 if laser.  Only formation 2 (MEASURED: ($5a,A6) = 2 on
@@ -204,6 +291,8 @@ def speed_index_set(d: bytes) -> list[int]:
     s = set(range(PLAYER_SPEED_LEVELS))
     for t in spawn_templates(d).values():
         s.add(t[TEMPLATE_SPEED_OFF])
+    # WAVE 12: and the OPTION PODS' own levels, from $24BBAA's templates.
+    s.update(option_speed_indices(d))
     return sorted(s)
 
 
@@ -257,9 +346,27 @@ def build(d: bytes) -> dict:
         "gov": {k: {"rom": f"${a:06X}",
                     "words": [u16(d, a + 2 * i) for i in range(n)]}
                 for k, (a, n) in GOV_TABLES.items()},
+        # WAVE 12 -- `b` KEPT ITS KEY AND LOST ITS NAME.  $2553CA -> $2553F2 is
+        # the ship's X HALF-EXTENTS indexed by the tilt (10-recon-combat §3,
+        # `$2459D0 add.w ($14,A4),D2 / sub.w ($16,A4),D3`), not a second
+        # animation table.  It is emitted TWICE for one release -- under the old
+        # `b` so an unregenerated rip/ still loads, and under `hitX`, which is
+        # what src/vectors.js reads -- and the verifier below asserts they are
+        # identical.  MEASURED, all 17 entries (+X/-X): (0000,0080) at tilt -$20,
+        # (0080,0080) at 0, (0080,0000) at +$20; build A's twin $1549AE holds
+        # $00C0 where this holds $0080, which is the Black Label 2/3 hitbox.
         "anim": {"tiltMin": TILT_MIN, "tiltStep": TILT_STEP,
                  "a": {"rom": f"${ANIM_A:06X}", "shipSel0": anim(ANIM_A, 0)},
-                 "b": {"rom": f"${ANIM_B:06X}", "shipSel0": anim(ANIM_B, 0)}},
+                 "b": {"rom": f"${ANIM_B:06X}", "shipSel0": anim(ANIM_B, 0)},
+                 "hitX": {"rom": f"${ANIM_B:06X}", "reads": "$2459E4/$2459E8",
+                          "shipSel0": anim(ANIM_B, 0)}},
+        # WAVE 12 -- the OPTION templates, walked the way $24C0D2 walks them.
+        "option": {"templateTable": f"${OPT_TEMPLATES:06X}",
+                   "formations": list(OPT_FORMATIONS),
+                   "templateLen": OPT_TEMPLATE_LEN,
+                   "speedIndices": option_speed_indices(d),
+                   "templates": {f"${a:06X}": v
+                                 for a, v in sorted(option_templates(d).items())}},
     }
 
 
@@ -322,10 +429,39 @@ def verify(t: dict) -> list[str]:
     for k, (a, n) in GOV_TABLES.items():
         if len(t["gov"][k]["words"]) != n:
             bad.append(f"gov table {k} is not {n} words")
-    for k in ("a", "b"):
+    for k in ("a", "b", "hitX"):
         n = len(t["anim"][k]["shipSel0"])
         if n != (TILT_MAX - TILT_MIN) // TILT_STEP + 1:
             bad.append(f"anim {k}: {n} tilt entries, expected 17")
+    if t["anim"]["hitX"]["shipSel0"] != t["anim"]["b"]["shipSel0"]:
+        bad.append("anim.hitX and the legacy anim.b disagree -- they are the "
+                   "same $2553F2 read twice and must stay byte-identical")
+    # WAVE 12: the ship's X half-extents are a MONOTONE pair over the tilt --
+    # +X grows from 0 to $80 as the tilt goes -$20..0 and -X shrinks $80..0 as it
+    # goes 0..+$20 -- and both are 0 at exactly one end.  This is the shape the
+    # port's `anim()` indexing depends on, and it is asserted rather than
+    # assumed: a table that changed shape must stop the export, not feed the
+    # collision test plausible numbers.
+    hx = t["anim"]["hitX"]["shipSel0"]
+    mid = len(hx) // 2
+    if hx[mid] != [0x80, 0x80]:
+        bad.append(f"anim.hitX at tilt 0 is {hx[mid]}, expected [128, 128] -- "
+                   f"the BLACK LABEL 4-px-wide box (build A's $1549AE has "
+                   f"[192, 192], the 6-px original)")
+    if hx[0][0] != 0 or hx[-1][1] != 0:
+        bad.append(f"anim.hitX ends are {hx[0]} .. {hx[-1]}, expected the +X "
+                   f"half to start at 0 and the -X half to end at 0")
+    # ...and the option templates must be inside a window, same rule as wave 8's.
+    for k, v in t["option"]["templates"].items():
+        a = int(k.lstrip("$"), 16)
+        if len(v) != OPT_TEMPLATE_LEN:
+            bad.append(f"option template {k}: {len(v)} bytes, expected "
+                       f"{OPT_TEMPLATE_LEN}")
+        if not covered(a, OPT_TEMPLATE_LEN):
+            bad.append(f"option template {k} is not inside any exported window")
+    for lv in t["option"]["speedIndices"]:
+        if str(lv) not in sp["quads"]:
+            bad.append(f"option template wants speed level {lv}, not exported")
     return bad
 
 

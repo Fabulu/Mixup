@@ -75,15 +75,50 @@ export const P = {
   posY: 0x02,      // word, 1/64 px. THE long axis. clamp [$800, $6500]
   posX: 0x04,      // word, 1/64 px. THE short axis. clamp [$300, $3500]
   knock: 0x06,     // word, moved by the $2552EC ramp -- UNPORTED path
-  animA: 0x0a,     // long, from $25533A[ship][tilt]  ($249E62)
-  animB: 0x14,     // long, from $2553CA[0][tilt]     ($249E78)
+  animA: 0x0a,     // long, from $25533A[ship][tilt]  ($249E62). It is hardware
+                   // words 2 and 3 of the ship's sprite record -- the IMAGE.
+                   // MEASURED: $25533A[0] = $255362 and the 17 tilt entries are
+                   // $1200,$1264,...,$1840 in steps of $64. THIS is what makes
+                   // the ship BANK.
+  size: 0x0e,      // word, hardware word 4 (width bits 14..9, height bits 8..0).
+                   // MEASURED $0620 = 3x32 on the P1 ship over fly-around
+  flipColour: 0x1c,// word; its TWO BYTES ARE OR-ED at emit into word 2's high
+                   // byte (spritequeue.js §the seven-field spec). MEASURED 0
+  offLong: 0x06,   // word added to posY before the shift ($23F118 lea ($2,A6),A1
+  offShort: 0x08,  // then three `add.w (A1)+`). MEASURED $FA00 / $FC00 on the
+                   // P1 ship, constant over all 2,233 drawn frames of fly-around
+
+  // THE HITBOX, and it is NOT ANIMATION.  10-recon-combat §3 corrected three
+  // waves of reading: `$2459D0` builds the player's box from ($10,A4)/($12,A4)
+  // on the long axis and ($14,A4)/($16,A4) on the short axis, so the LONG at
+  // +$14 that $249E78 writes from `$2553CA[0][tilt]` = `$2553F2` is the ship's
+  // X HALF-EXTENTS, tilt-indexed.  Wave 4 called it `animB` and the port has
+  // been writing the hitbox under an animation's name ever since.
+  //
+  // MEASURED, from the ROM, all 17 tilt entries of $2553F2 (+X / -X):
+  //   -32 0000/0080  -16 0040/0080  0 0080/0080  +16 0080/0040  +32 0080/0000
+  // and build A's $1549AE holds $00C0 where build B holds $0080 -- Black
+  // Label's horizontal hitbox is exactly 2/3 of the original's, 4 px vs 6 px.
+  hitYPlus: 0x10,  // $2459D6 add.w ($10,A4),D0   MEASURED $0080, constant
+  hitYMinus: 0x12, // $2459DA sub.w ($12,A4),D1   MEASURED $0100, constant
+  hitXPlus: 0x14,  // $2459E4 add.w ($14,A4),D2 } the LONG $249E78 writes,
+  hitXMinus: 0x16, // $2459E8 sub.w ($16,A4),D3 } indexed by the tilt ($4e,A6)
   dirByte: 0x18,   // byte = low byte of $803970 (RAW held)
   btnByte: 0x19,   // byte = low byte of $803972 (EDGE)
   speedIdx: 0x1a,  // byte, index into the $200920 speed tables
   angle: 0x1b,     // byte, from the $2552DC direction table; $FF = no move
   dirLatch: 0x1d,
-  laserFloor: 0x38,// byte, the index the laser ramp counts DOWN to
-  baseSpeed: 0x39, // byte, the index $24951E restores
+  laserFloor: 0x38,// byte, the index the laser ramp counts DOWN to ($24C8C2)
+  baseSpeed: 0x39, // byte, the index $24951E restores, and the ceiling the
+                   // option object's ramp-up stops at ($24C8FA cmp.b ($39,A4))
+  auraPhase: 0x28, // word, $24A4B6/$24A4D4: the index into $25567A, stepping
+                   // -4 per DRAWN frame and reloading at $3C
+  glowPhase: 0x48, // word, $24A58A/$24A626: the index into $2556E2's per-tilt
+                   // table, stepping -4 and reloading at 4
+  shadowBias: 0x5e,// word, $24A616 `sub.w ($5e,A6),D1`. MEASURED 0
+  optFormation: 0x5a, // word, the option FORMATION. MEASURED 2 for the whole
+                   // corpus; $24C34C and $24C0D6 both index tables with
+                   // (($5a,A4)-2)*2, so only EVEN formations land on an entry
   hitTimer: 0x3a,
   invuln: 0x3e,    // byte; $FF = "hold"
   dead: 0x3f,
@@ -96,6 +131,47 @@ export const P = {
   shipSel: 0x58,   // word. MEASURED 0 for TYPE-A over the whole corpus
   playerIdx: 0x57,
   stride: 0x62,    // player2 - player1
+};
+
+// THE OPTION RECORD -- `$8104AA` for P1, `$81050E` for P2, and it is $64 BYTES,
+// not $20.  MEASURED from `$24C0B0 lea $81050E,A6` minus `$24C096 lea $8104AA,A6`
+// = 100 bytes, and confirmed by the copy at `$24C0E8..$24C116`, which fills
+// +$06..+$21 (7 longs), SKIPS +$22..+$25 (`$24C0F6 addq.w #4,A1`), fills
+// +$26..+$61 (15 longs) and +$62..+$63 (1 word) -- exactly $64 bytes.
+//
+// The first $20 bytes are POD 0's sprite record and the next $20 are POD 1's:
+// `$24C3CC bsr $24D12E / $24C3D0 lea ($20,A6),A6 / $24C3D4 bsr $24D12E`.  Both
+// are the seven-field object-record shape `spritequeue.js` pins.  The control
+// block starts at +$40.
+export const OPT = {
+  stride: 0x64,
+  pod: 0x20,          // pod 1's sub-record base
+  state: 0x00,        // word; bit 15 = live ($24C0AA tst.w (A6) / bmi)
+  flags1: 0x01,       // byte = the state word's low half; bit 0 = "initialised"
+                      // ($24C0C8 bset #0,($1,A6)), bit 2 = THE LASER LATCH
+                      // ($24C1A8), bit 3/4 = the fire handshake ($24C498/$24C4A0)
+  posY: 0x02, posX: 0x04,
+  offLong: 0x06, offShort: 0x08,   // MEASURED $FC00 / $FE00 on both pods
+  anim: 0x0a,         // long -> hardware words 2,3. MEASURED $00003B08
+  size: 0x0e,         // MEASURED $0410 = 2x16, both pods
+  speedIdx: 0x1a,     // byte, read by $24D132 -- MEASURED $E0 = 224
+  angle: 0x1b,        // byte, `and.b ($1b,A6),D1` with D1 = $3F ($24D136).
+                      // MEASURED $10 (pod 0, +X) and $30 (pod 1, -X)
+  flipColour: 0x1c,   // word; pod 0 MEASURED $0000, pod 1 $4000 (the X flip)
+  posY2: 0x22,        // $24C342 `move.l D0,($22,A6)` -- pod 1's position, written
+                      // by the SAME instruction pair as pod 0's
+  raw: 0x40,          // byte, `$24C134 move.b ($18,A4),($40,A6)` -- THE PLAYER'S
+                      // RAW HELD INPUT, copied into the option record
+  edge: 0x41,         // byte, `$24C13A move.b ($19,A4),($41,A6)` -- the EDGE
+  animDelay: 0x42,    // byte, `$24C390 subq.b #1,($42,A6)`
+  animReload: 0x43,   // byte, `$24C396 move.b ($43,A6),($42,A6)`
+  animIdx: 0x44,      // word, `$24C39C`, stepping -4 and reloading from ($4c,A6)
+  animTable: 0x46,    // long, the pointer $24C3A0 reads
+  animIdxReload: 0x4c,// word, `$24C3C6 move.b/move.w ($4c,A6),($44,A6)`
+  reloadCount: 0x4b,  // byte, the laser ramp's own counter ($24C8C8)
+  shadowTable: 0x58,  // long, the pointer $24C3B0 reads
+  shadow0: 0x5c,      // long -> the shadow's hardware words 2,3 for pod 0
+  shadow1: 0x60,      // long -> ...and for pod 1
 };
 
 // ---------------------------------------------------------------- code addresses
@@ -132,6 +208,26 @@ export const ROM = {
   playerStore: 0x2496e8, playerTail: 0x249e4e,
   playerBomb: 0x2497aa, playerShot: 0x249b2c,
   laserRampDown: 0x24c8be, laserRampUp: 0x24c8e4,
+  // --- build B: WAVE 12, the ship's own sprite block and the option object
+  shipDrawP1: 0x24a440, shipDrawP2: 0x24a44c,   // type-5 calls #16 and #17
+  shipDrawAltP1: 0x24a458, shipDrawAltP2: 0x24a46c, // ...calls #14 and #15
+  shipDraw: 0x24a482,          // the body both entries branch into
+  shipKnocked: 0x24a4e2,       // ($1,A6) bit 7 -- the OTHER aura block
+  shipBit8: 0x24a6b4,          // ($0,A6) bit 8 -- the script-driven draw
+  shipClear60: 0x25370a,       // clr.w ($60,A4)
+  shipShadow: 0x249ea0,        // the ground-plane shadow, into bucket 5
+  optionObject: 0x24c096,
+  optionTemplates: 0x24bbaa,
+  optionLaser: 0x24c180,       // THE LASER -- W24
+  optionNoLaser: 0x24c29e,
+  optionFormation2: 0x24c390,
+  optionPodMove: 0x24d12e,
+  optionPodShadow: 0x24c406,
+  protSet: 0x246d04, protSum: 0x246ea4, protRead: 0x246cac,
+  // The four register-convention enqueues wave 12 needs, by bucket.
+  enqB5: 0x23efc0, enqB5Saved: 0x23efee,
+  enqB19rec: 0x23f104, enqB19reg: 0x23f1fa,
+  enqB15rec: 0x23f2ca,
 };
 
 // The clamps, read straight off the listing at $2495E2..$249698.  Written as

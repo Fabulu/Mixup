@@ -103,6 +103,7 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
   // falsifiable and worth something: EVERY 12-BYTE RECORD THE PORT EMITTED
   // APPEARS VERBATIM IN THE BOARD'S OWN BUCKET FOR THAT FRAME.
   const sprq = { frames: 0, records: 0, missing: [], other: 0, past: 0 };
+  let blocked = null;
   const reported = REPORTED_COLUMNS.filter((c) => start[c] !== undefined);
   const rep = new Map(reported.map((c) => [c, { n: 0, max: 0, first: null }]));
   const sprqLen = (RAWDUMP_SPEC.find((r) => r[0] === 'sprq') ?? [, , 0])[2];
@@ -126,7 +127,19 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
     // by the NEXT logic frame.  Applying it anywhere else here would make the
     // two sides different experiments.
     for (const [a, val] of pokes) game.ram.setU8(a, val);
-    game.step(Number(row.portin));
+    // WAVE 12.  A NAMED THROW IS A RESULT, NOT A CRASH.  Since the held-fire
+    // gate moved to the board's own `$24C164` (10-recon-combat §2), any scenario
+    // that presses Button 1 for even ONE frame reaches `$24C180` -- because the
+    // board really does start folding the pods in on that frame ($24C23E
+    // `sub.b D0,($1b,A6)`), so the port would be wrong from there on.  Letting
+    // that surface as a stack trace would hide WHICH gate stopped and WHERE.
+    try {
+      game.step(Number(row.portin));
+    } catch (e) {
+      if (e.name !== 'Unreached') throw e;
+      blocked = { lf, addr: e.romAddress, message: e.message };
+      break;
+    }
     const v = stateVector(game);
     digest.update(cols.map((c) => String(v[c])).join('\t') + '\n');
     for (const c of cols) {
@@ -188,7 +201,7 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
   }
 
   return {
-    seedLf, last, compared, seedBad, cols, optCols, first, dilated, vfSkew, game, pokes, maskHits, maskFirst,
+    seedLf, last, compared, seedBad, cols, optCols, first, dilated, vfSkew, game, pokes, maskHits, maskFirst, blocked,
     sprq, hitEx, reported, rep,
     digest: digest.digest('hex'),
     optionFirst: new Map(optCols.map((c) => {
@@ -227,11 +240,17 @@ function main() {
   console.log(`SEED   lf=${r.seedLf}  ${r.compared} logic frames compared `
     + `(lf ${r.seedLf + 1}..${r.last})`);
   console.log(`COLS   ${r.cols.length} compared: ${r.cols.join(' ')}`);
+  // WAVE 12: the option columns are now IN `CLAIMED`, because $24C096 is run
+  // (src/options.js).  The line below used to say "NOT COMPARED"; it now says
+  // where the board first moved them, which is the number that makes "compared"
+  // mean something -- a column the board never moves is compared for free.
   if (r.optCols.length) {
     const moved = [...r.optionFirst].filter(([, lf]) => lf !== null);
-    console.log(`NOT COMPARED (option object $24902A/$24C310 is UNPORTED): `
-      + `${r.optCols.join(' ')} -- the board moves them from lf `
-      + `${moved.length ? Math.min(...moved.map(([, lf]) => lf)) : 'never'}`);
+    const claimed = r.optCols.filter((c) => r.cols.includes(c));
+    console.log(`OPTION columns ${claimed.length === r.optCols.length
+      ? 'COMPARED (the option object $24C096 is ported, wave 12)'
+      : 'PARTIALLY compared'}: ${r.optCols.join(' ')} -- the board first moves `
+      + `them at lf ${moved.length ? Math.min(...moved.map(([, lf]) => lf)) : 'never'}`);
   }
   for (const s of r.seedBad) {
     console.log(`SEEDBAD ${s}: the port's seeded value already differs`);
@@ -318,7 +337,17 @@ function main() {
       + `${r.maskFirst.get(c) ?? '-'} (see src/state.js MASKED for why)`);
   }
   console.log(`DIGEST ${r.digest}`);
-  const gateFail = r.hitEx.first !== null || r.sprq.missing.length > 0;
+  if (r.blocked) {
+    // A named throw is a RESULT: it says the port stopped, where, and why, and
+    // it is not the same outcome as a divergence.  `pgm.py check` treats both as
+    // failures; a reader must be able to tell them apart at a glance.
+    console.log(`BLOCKED at lf${r.blocked.lf} by the named throw `
+      + `$${r.blocked.addr.toString(16).toUpperCase()} -- the port reached a `
+      + `path this wave does not translate. ${r.compared} frames were compared `
+      + `before it.\n  ${r.blocked.message}`);
+  }
+  const gateFail = r.hitEx.first !== null || r.sprq.missing.length > 0
+    || r.blocked !== null;
   if (r.first.size === 0 && r.seedBad.length === 0 && !gateFail) {
     console.log(`RESULT 0 DIVERGENT FRAMES on ${r.cols.length} columns over `
       + `${r.compared} logic frames`);
@@ -333,8 +362,10 @@ function main() {
         : `port=${p} board=${b}`));
   }
   console.log(`RESULT ${r.first.size} of ${r.cols.length} columns diverged`
-    + (gateFail ? `; and a wave-8 gate above (HITEX / SPRQ containment) FAILED`
-      : ''));
+    + (r.blocked ? `; and the run was BLOCKED at lf${r.blocked.lf} by `
+      + `$${r.blocked.addr.toString(16).toUpperCase()}` : '')
+    + (r.hitEx.first !== null || r.sprq.missing.length
+      ? `; and a wave-8 gate above (HITEX / SPRQ containment) FAILED` : ''));
   return 1;
 }
 
