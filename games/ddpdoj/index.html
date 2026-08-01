@@ -29,59 +29,87 @@
   tools/bundlegate.mjs, which renders the whole demo off this bundle and scores
   15,955,968/15,955,968 pixels against MAME.
 
-  WHAT IS AND IS NOT SIMULATED IS PRINTED ON THE PAGE. Do not remove that
-  banner. WAVE 8 CHANGED HALF OF IT AND THE BANNER HAD TO CHANGE WITH IT: the
-  SHOT is now translated -- the spawn ($249BFC/$24A222), the 36-slot driver
-  ($253A70), the four handlers the opening reaches and the sprite ENQUEUE
-  ($23F3AE) -- and verified 0-divergent over 125 logic frames.  What is still
-  missing is the DRAWING of it: this page replays a captured display list and
-  splices only the ship's own records into it, and a shot's sprite stream is not
-  in the 363 KiB bundle, so a shot the port really computed is INVISIBLE here.
-  The bomb and the laser are still named throws ($249814, $254078).  Saying
-  "there are no weapons" would now be false and saying "you can shoot" would be
-  worse; the banner says exactly which half exists.
+  WHAT IS AND IS NOT SIMULATED IS ON THE PAGE. Do not remove it, and do not
+  leave it stale -- it has been wrong twice and both times a player found it.
+
+  WAVE 9 CHANGED THIS PAGE ON FIVE COUNTS, ALL FROM ONE PLAY SESSION ON A PHONE:
+
+   1. THE LAYOUT WAS UPSIDE DOWN IN PRIORITY. The picture had a flex row and the
+      prose had the rest of the phone. It is now a three-row grid on 100dvh: a
+      one-line bar, the stage, the pad. Every word of explanation is behind the
+      INFO toggle and OPENS AS AN OVERLAY, so no amount of text can ever take a
+      pixel from the canvas again.
+   2. TATE / WIDE is now a real switch, defaulting to TATE. The rotation was
+      ALREADY correct before this wave -- src/web/app.js has always rotated the
+      448x224 board buffer into a 224x448 canvas -- so "the window is super
+      tiny" was 1, not the orientation. See the worklog; that mattered, because
+      rotating an already-rotated picture would have been the obvious fix and
+      the wrong one.
+   3. THE SPLICE WAS INCOMPLETE, and this is the defect the play session was
+      really about. FIVE display-list records sit at a constant offset from the
+      board's ship -- the ship, two option pods and TWO EXHAUST records -- and
+      pixpack.mjs accepted only three, because the exhaust is drawn on
+      ALTERNATE frames and its 50% score fell under --min-hit 0.9. So the
+      player's own exhaust plume stayed on the recorded path and flew off on
+      its own. src/render/capture.js re-derives the set at load time.
+      THE PODS WERE NEVER BROKEN; 07-review.md D1 is a WORDING defect (the
+      banner said they were "computed live" and they are not) and the wording
+      is what changed.
+   4. HOLDING FIRE used to do nothing at all, silently. It now stops the loop at
+      $24C8BE and says so. See src/type5.js's header for the diagnosis.
+   5. The error box says the words NOT PORTED YET, because a correct stop that
+      reads as a crash is a defect in the message, not in the port.
 -->
 <style>
-  :root { color-scheme: dark; }
+  :root { color-scheme: dark; --bg: #07090c; --line: #1b232b; }
+  * { box-sizing: border-box; }
   html, body {
-    margin: 0; min-height: 100%; background: #07090c; color: #96a3b0;
-    font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    margin: 0; background: var(--bg); color: #96a3b0;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     overscroll-behavior: none;
   }
-  body { display: flex; flex-direction: column; align-items: center; gap: 10px;
-         padding: 12px 12px 20px; box-sizing: border-box; min-height: 100vh; }
-  h1 { font-size: 15px; margin: 0; color: #d6e2ee; font-weight: 600; letter-spacing: .02em;
-       text-align: center; }
-  h1 span { color: #6f7d8a; font-weight: 400; font-size: 12px; display: block; }
-  /* image-rendering: pixelated AND an integer scale -- both are needed. A
+  /* THE WHOLE POINT OF THIS BLOCK: three rows, and only the middle one grows.
+     100dvh, not 100vh -- on a phone 100vh is the viewport WITH the URL bar
+     hidden, so a 100vh page is taller than the screen the moment the bar is
+     showing and the pad goes under the fold. dvh follows the bar. The `100vh`
+     line before it is the fallback for anything that has not got dvh. */
+  body {
+    display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+    height: 100vh; height: 100dvh; width: 100%;
+    padding: 0 0 env(safe-area-inset-bottom); gap: 0;
+  }
+
+  /* ---- row 1: ONE LINE. ---------------------------------------------------
+     Everything that used to be four paragraphs of banner is behind #info. */
+  #bar { display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+         border-bottom: 1px solid var(--line); font-size: 11.5px; min-width: 0; }
+  #bar .name { color: #d6e2ee; font-weight: 600; white-space: nowrap;
+               overflow: hidden; text-overflow: ellipsis; }
+  #bar .spacer { flex: 1 1 auto; min-width: 4px; }
+  #bar button {
+    background: #131a22; border: 1px solid #2a343d; color: #cfe0ef;
+    font: 600 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    border-radius: 5px; padding: 4px 8px; cursor: pointer; white-space: nowrap;
+    touch-action: manipulation;
+  }
+  #bar button[aria-pressed="true"] { background: #234c70; border-color: #3f7fb4; }
+  #stats { color: #6f7d8a; font-size: 10.5px; white-space: nowrap;
+           overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 560px) { #stats { display: none; } }
+
+  /* ---- row 2: THE PICTURE, and nothing else. ------------------------------
+     image-rendering: pixelated AND an integer scale -- both are needed. A
      fractional scale puts the canvas's 1:1 pixels on non-integer DEVICE pixels
      and the browser resamples them. The Batman port shipped a dithered circle
      that looked like tetris pieces because of exactly this, and it was
-     reported from play. src/web/app.js's fitCanvas() picks the integer. */
-  canvas { image-rendering: pixelated; display: block; background: #000;
-           border: 1px solid #1b232b; }
+     reported from play. src/web/app.js's pickScale() picks the integer, and
+     THE ROTATION IS DONE IN THE PIXEL BUFFER, NOT BY A CSS TRANSFORM, so the
+     canvas box stays an exact whole multiple in both orientations. */
   #stage { display: flex; align-items: center; justify-content: center;
-           flex: 1 1 auto; width: 100%; min-height: 0; }
-  #hud { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
-         max-width: 96ch; font-size: 11.5px; }
-  #hud b { color: #cfe0ef; font-weight: 600; }
-  .dim { color: #5d6b78; }
-  details { max-width: 92ch; width: 100%; box-sizing: border-box; }
-  summary { cursor: pointer; color: #9fc7e8; }
-  #banner { max-width: 92ch; border: 1px solid #23303c; border-left: 3px solid #c2703a;
-            padding: 9px 12px; background: #0b1015; box-sizing: border-box; }
-  #banner b { color: #e0b088; }
-  #banner code, details code { color: #9fc7e8; }
-  #provenance { max-width: 92ch; color: #5d6b78; font-size: 11px; }
-  kbd { background: #161d24; border: 1px solid #2a343d;
-        border-radius: 3px; padding: 0 5px; color: #cfe0ef; }
-  #err { color: #ef8a8a; white-space: pre-wrap; font-size: 12px; max-width: 92ch;
-         display: none; border: 1px solid #5a2b2b; border-left: 3px solid #ef8a8a;
-         padding: 9px 12px; background: #140b0b; box-sizing: border-box; }
-  #status { color: #7f8f9d; }
-  a { color: #7fb4dd; }
+           min-height: 0; min-width: 0; overflow: hidden; }
+  canvas { image-rendering: pixelated; display: block; background: #000; }
 
-  /* ---- the on-screen pad -------------------------------------------------
+  /* ---- row 3: the on-screen pad ------------------------------------------
      Shown only on a COARSE pointer. On a desktop it is display:none and the
      keyboard path is exactly what it was.
 
@@ -100,8 +128,7 @@
   body.touch .keyhint { display: none; }
   #pad.on {
     display: flex; align-items: center; justify-content: space-between;
-    width: 100%; max-width: 620px; box-sizing: border-box;
-    gap: 10px; padding: 0 6px 8px;
+    width: 100%; gap: 10px; padding: 6px 8px 4px;
     touch-action: none; user-select: none; -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
@@ -117,7 +144,7 @@
   }
   .dpad i[data-cell=""] { background: transparent; }
   .dpad i[data-on] { background: #2f6ea8; color: #eaf3ff; }
-  .cluster { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .cluster { display: flex; flex-direction: column; align-items: center; gap: 6px; }
   .row { display: flex; gap: 10px; align-items: center; }
   .tbtn {
     background: #1d232d; border: 1px solid #37404f; color: #cde;
@@ -126,54 +153,63 @@
     display: flex; align-items: center; justify-content: center;
     touch-action: none; cursor: pointer; padding: 0;
   }
-  .tbtn.sml { width: 68px; height: 26px; border-radius: 6px; font-size: 10px; }
+  .tbtn.sml { width: 68px; height: 24px; border-radius: 6px; font-size: 10px; }
   .tbtn[data-on] { background: #2f6ea8; border-color: #4d92cf; color: #fff; }
-  /* Landscape on a phone: the picture is 224x448, so a short viewport leaves
-     real estate on both sides. Put the pad in the letterbox rather than under
-     the picture, so #stage keeps the full height and fitCanvas() can pick a
-     bigger INTEGER scale. pointer-events is off on the container and back on
-     for the two clusters, so the invisible strip across the middle cannot
-     swallow a tap. */
+  /* Landscape on a phone: in TATE the picture is 224x448, so a short viewport
+     leaves real estate on both sides. Put the pad in the letterbox rather than
+     under the picture, so #stage keeps the full height and pickScale() can
+     choose a bigger INTEGER scale. pointer-events is off on the container and
+     back on for the two clusters, so the invisible strip across the middle
+     cannot swallow a tap. */
   @media (orientation: landscape) and (max-height: 560px) {
     #pad.on {
-      position: fixed; left: 0; right: 0; bottom: 0; max-width: none;
+      position: fixed; left: 0; right: 0; bottom: 0;
       padding: 0 12px 8px; pointer-events: none;
     }
     #pad.on .dpad, #pad.on .cluster { pointer-events: auto; }
-    #banner, details, h1 span { display: none; }
+    #bar .name { display: none; }
   }
+
+  /* ---- the INFO overlay ---------------------------------------------------
+     Fixed, scrollable, on top. It is an OVERLAY and not a block in the flow so
+     that the canvas's size can never depend on how much text is open -- the
+     defect this whole layout exists to fix. */
+  #info { position: fixed; inset: 0; z-index: 20; display: none;
+          background: rgba(4, 6, 9, .93); overflow: auto;
+          padding: 14px 14px calc(28px + env(safe-area-inset-bottom)); }
+  #info.on { display: block; }
+  #info .sheet { max-width: 82ch; margin: 0 auto; }
+  #info h2 { font-size: 13px; color: #d6e2ee; margin: 18px 0 5px; }
+  #info p, #info li { font-size: 12px; }
+  #info code { color: #9fc7e8; }
+  #info b { color: #cfe0ef; }
+  #info .warn { border-left: 3px solid #c2703a; padding-left: 10px; }
+  #info .warn b { color: #e0b088; }
+  #closeinfo { position: sticky; top: 0; float: right; }
+  .dim { color: #5d6b78; }
+  kbd { background: #161d24; border: 1px solid #2a343d;
+        border-radius: 3px; padding: 0 5px; color: #cfe0ef; }
+  a { color: #7fb4dd; }
+
+  /* ---- the error box, also an overlay ------------------------------------ */
+  #err { position: fixed; inset: auto 8px 8px 8px; z-index: 30; display: none;
+         color: #f0a0a0; white-space: pre-wrap; font-size: 12px;
+         max-height: 62vh; overflow: auto;
+         border: 1px solid #5a2b2b; border-left: 3px solid #ef8a8a;
+         padding: 10px 12px; background: #140b0b; border-radius: 4px; }
+  #err b { color: #ffd0a0; }
+  #status { position: fixed; inset: auto 0 40% 0; text-align: center;
+            color: #7f8f9d; pointer-events: none; }
 </style>
 </head>
 <body>
 
-<h1>DoDonPachi DaiOuJou
-  <span>ddpdojblk VERSION-B (2002.10.07 BLACK VER) &mdash; IGS PGM, 15625/264 = 59.185606 Hz</span></h1>
-
-<div id="banner">
-<b>What is real here, and what is not.</b>
-<b>The ship flies.</b> Its position, velocity, tilt, clamps, speed modes and its
-two option pods are computed <b>live, by the port</b>, one logic frame per
-16.896&nbsp;ms, from the board's own arithmetic &mdash; <b>0 divergent frames
-against the board over 2,200 logic frames on 34 compared columns</b>.
-<b>The picture is pixel-exact</b>: the renderer is the port's own JavaScript and
-it is <b>identical to MAME on 15,955,968 of 15,955,968 pixels over 159
-frames</b>.
-<b>Everything else you see is a replayed board capture.</b> The port does not
-build the display list yet (main-loop call&nbsp;#4 <code>$23D2AE</code> is
-unported, and so are 18 of the 20 object handlers), so the background, the
-enemies and the HUD are 161 captured frames on a loop &mdash; the enemies are
-<b>not simulated</b> and cannot be hit.
-<b>The SHOT is simulated but not drawn; there is no bomb, no laser and no
-sound.</b> Pressing fire really does run the ported spawn, the 36-slot shot
-driver and the sprite-request enqueue &mdash; wave 8 compares ten shot records
-byte for byte against the board over 125 logic frames with <b>0 divergent
-frames on 52 columns</b>, and every one of the 574 sprite requests the port
-emitted appears verbatim in the board's own queue. <b>You will not SEE the
-shot</b>: this page replays a captured display list and only the ship's records
-are spliced into it, so a shot's sprite is simply absent. Bomb
-(<code>$249814</code>) and laser (<code>$254078</code>) still reach a <b>named
-throw carrying the ROM address</b>, which this page prints rather than freezing
-on.
+<div id="bar">
+  <span class="name">DoDonPachi DaiOuJou <span class="dim">ddpdojblk BLACK VER</span></span>
+  <span class="spacer"></span>
+  <span id="stats"></span>
+  <button id="rot" type="button" aria-pressed="true" title="TATE = the cabinet's own 224x448 portrait picture. WIDE = the raw 448x224 board buffer, unrotated.">TATE</button>
+  <button id="infobtn" type="button" aria-pressed="false">INFO</button>
 </div>
 
 <div id="stage"><canvas id="screen" width="224" height="448"></canvas></div>
@@ -204,52 +240,130 @@ on.
   </div>
 </div>
 
-<div id="hud">
-  <span class="keyhint dim">
-    <kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> or
-    <kbd>WASD</kbd> move &nbsp;
-    <kbd>Z</kbd>/<kbd>Y</kbd>/<kbd>Space</kbd> shot &nbsp;
-    <kbd>X</kbd> bomb &nbsp; <kbd>C</kbd> auto &nbsp;
-    <kbd>Enter</kbd> start
-  </span>
-  <span class="dim">&mdash; shot is simulated but invisible; bomb and laser reach unported code and will stop the loop</span>
-  <span id="stats"></span>
-</div>
-
 <div id="status">loading&hellip;</div>
 <div id="err"></div>
 
-<details>
-  <summary>How much of this is measured, and by what</summary>
-  <p>Every number on this page came out of a command recorded in
-  <code>docs/worklog/ddpdoj/</code>, run against the real board image under
-  MAME&nbsp;0.288.</p>
-  <ul>
-    <li><b>The ship:</b> <code>pgm.py flyaround</code> &mdash; 0 divergent
-      frames, 34 compared columns, 2,200 logic frames (wave&nbsp;4).</li>
-    <li><b>The renderer:</b> <code>pgm.py pixslice</code> &mdash;
-      13,647,872/13,647,872 pixels over 136 frame pairs, with nine deliberate
-      mutations all going red (wave&nbsp;6). Two of those nine stayed
-      <em>green</em> on the previous corpus, which is how the project found out
-      that palette timing and sprite priority had never been tested at all.</li>
-    <li><b>The whole demo path:</b> <code>pgm.py demogate</code> &mdash;
-      15,955,968/15,955,968 pixels over 159 frames, port-driven ship
-      included.</li>
-    <li><b>This page's asset bundle:</b>
-      <code>node games/ddpdoj/tools/bundlegate.mjs</code> &mdash; the same
-      15,955,968/15,955,968, rendered from the 363&nbsp;KiB published bundle
-      rather than from 58&nbsp;MiB of cartridge, with four deliberate breaks
-      that all go red.</li>
-  </ul>
-  <p>What is <em>not</em> measured, said plainly: the enemies you can see are a
-  recording, sound is not implemented at all, and no part of this page had ever
-  been run in a browser before it was first published &mdash; every check above
-  is headless.</p>
-  <div id="provenance"></div>
-</details>
+<div id="info">
+<div class="sheet">
+<button id="closeinfo" class="tbtn sml" type="button" style="width:auto;padding:0 10px">CLOSE</button>
+
+<h2>What is real here, and what is not</h2>
+
+<p class="warn"><b>One ship is simulated. Everything else you can see is a
+recording.</b> The ship's position, velocity, tilt, clamps and speed modes are
+computed <b>live, by the port</b>, one logic frame per 16.896&nbsp;ms, from the
+board's own arithmetic &mdash; <b>0 divergent frames against the board over
+2,200 logic frames on 34 compared columns</b>. Nothing else in the picture is.</p>
+
+<p><b>The background, the enemies, the bullets and the HUD are 161 captured frames
+of the real board, on a loop.</b> The port does not build the display
+list yet (main-loop call&nbsp;#4 <code>$23D2AE</code> is unported, and so are 18
+of the 20 object handlers), so those pixels are a replay.
+<b>The enemies cannot see you and cannot be shot.</b> They appear to aim at a
+ship because they were aiming at the ship that flew this recording, and that
+ship is not the one you are moving. When enemy fire passes through you, nothing
+has gone wrong; there is no collision to run.</p>
+
+<p><b>Five records are moved to the port's ship each frame:</b> the ship, its
+two option pods and its two exhaust sprites. The pods and the exhaust are
+<b>not simulated</b> &mdash; the option object <code>$24C096</code> is one of 22
+subsystem calls this port counts and does not run &mdash; they are the
+<em>recorded</em> sprites, relocated to sit at the same fixed offsets from your
+ship that the board puts them at. Until wave&nbsp;9 only three of the five were
+moved: the exhaust flickers on alternate frames, the packer accepts a record
+that holds on 90&nbsp;% of frames, and half of 100 is not 90. So the exhaust
+stayed on the recorded ship's path and flew off across the screen on its own
+&mdash; the "fireball", and at 1515 drawn pixels against the ship's 517 it was
+the biggest thing attached to the player.</p>
+
+<p><b>Your ship does not bank.</b> The splice moves a record's position and
+nothing else, so the drawn image is whatever the recording held &mdash; and the
+recorded ship never moved sideways (its X is one single value on all 161
+frames), so it never tilted and there is exactly one image of it. The port
+really does compute the tilt, and the tilt-indexed animation words with it; what
+is missing is the map from the ROM's sprite-stream addresses to the packed ones
+the 363&nbsp;KiB bundle uses. Until that is shipped, the ship you steer is a
+still frame that moves.</p>
+
+<p><b>No weapon is drawn and there is no sound at all.</b> What the fire buttons
+actually do, which is three different things:</p>
+<ul>
+  <li><b>TAP shot</b> &mdash; really runs the ported cadence machine
+    (<code>$249B2C..$249BE2</code>), the ported spawn (<code>$249BFC</code>),
+    the 36-slot shot driver (<code>$253A70</code>) and the sprite enqueue
+    (<code>$23F3AE</code>), all verified 0-divergent against the board over 125
+    logic frames on 52 columns. <b>You will not see it.</b> A shot's sprite
+    stream is not in the 363&nbsp;KiB bundle, so a shot the port really computed
+    is invisible. It also cannot hit anything, because the enemies are pixels.</li>
+  <li><b>HOLD shot</b> &mdash; on the board this is the <b>laser</b>, and it
+    also ramps the ship's speed down from index 22 to 12. Neither is ported: the
+    ramp lives inside the option object at <code>$24C8BE</code>. Holding for
+    four frames <b>stops the loop</b> with that address. Before wave&nbsp;9 it
+    did nothing at all and said nothing, which was worse.</li>
+  <li><b>BOMB</b> &mdash; reaches a named throw at <code>$249814</code> and
+    stops the loop.</li>
+  <li><b>AUTO</b> &mdash; Button&nbsp;3 is not a third weapon; the board
+    synthesises a shot edge on alternate frames. It does not touch the speed
+    ramp, so it is the one way to keep firing without stopping the port.</li>
+</ul>
+
+<p><b>A red box naming a <code>$</code> address is not a crash.</b> It is the
+port saying which ROM routine it reached that is <b>not ported yet</b>, and
+stopping rather than inventing the next frame. The address is the useful part.</p>
+
+<h2>TATE and WIDE</h2>
+<p>The cabinet is <b>TATE</b>: MAME's driver declares the screen
+<code>rotate="270"</code> on a 448x224 buffer, so the correct picture is
+<b>224 wide by 448 tall</b>, and that is the default everywhere. <b>WIDE</b>
+shows the raw board buffer unrotated &mdash; the game lying on its side. It is
+a preference, not a correction, and it is remembered. Rotating does not change a
+single logic frame; both modes scale by a whole number of device pixels, because
+the rotation is done in the pixel buffer and never by a CSS transform.</p>
+
+<h2>Controls</h2>
+<p class="keyhint">
+  <kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> or
+  <kbd>WASD</kbd> move &nbsp;
+  <kbd>Z</kbd>/<kbd>Y</kbd>/<kbd>Space</kbd> shot &nbsp;
+  <kbd>X</kbd> bomb &nbsp; <kbd>C</kbd> auto &nbsp;
+  <kbd>Enter</kbd> start
+</p>
+
+<h2>How much of this is measured, and by what</h2>
+<p>Every number on this page came out of a command recorded in
+<code>docs/worklog/ddpdoj/</code>, run against the real board image under
+MAME&nbsp;0.288.</p>
+<ul>
+  <li><b>The ship:</b> <code>pgm.py flyaround</code> &mdash; 0 divergent
+    frames, 34 compared columns, 2,200 logic frames (wave&nbsp;4).</li>
+  <li><b>The shot:</b> <code>pgm.py shotgate</code> &mdash; 0 divergent frames,
+    52 columns, 125 logic frames, and every one of the 574 sprite requests the
+    port emitted appears verbatim in the board's own queue (wave&nbsp;8).</li>
+  <li><b>The renderer:</b> <code>pgm.py pixslice</code> &mdash;
+    13,647,872/13,647,872 pixels over 136 frame pairs, with nine deliberate
+    mutations all going red (wave&nbsp;6). Two of those nine stayed
+    <em>green</em> on the previous corpus, which is how the project found out
+    that palette timing and sprite priority had never been tested at all.</li>
+  <li><b>The whole demo path:</b> <code>pgm.py demogate</code> &mdash;
+    15,955,968/15,955,968 pixels over 159 frames, port-driven ship
+    included.</li>
+  <li><b>This page's asset bundle:</b>
+    <code>node games/ddpdoj/tools/bundlegate.mjs</code> &mdash; the same
+    15,955,968/15,955,968, rendered from the 363&nbsp;KiB published bundle
+    rather than from 58&nbsp;MiB of cartridge, with four deliberate breaks
+    that all go red.</li>
+</ul>
+<p>What is <em>not</em> measured, said plainly: the enemies you can see are a
+recording; sound is not implemented at all; and <b>no part of this page has ever
+been run in a browser by the people who wrote it</b> &mdash; every check above is
+headless. If something here looks wrong, it probably is, and saying so is
+useful.</p>
+<div id="provenance" class="dim"></div>
+</div>
+</div>
 
 <script type="module">
-import { boot, fitCanvas } from './src/web/app.js';
+import { boot, fitCanvas, MODES, DEFAULT_MODE } from './src/web/app.js';
 import { attachPad, clearKeyboard, CONTROLS } from './src/web/input.js';
 
 const canvas = document.getElementById('screen');
@@ -259,6 +373,9 @@ const statusEl = document.getElementById('status');
 const errEl = document.getElementById('err');
 const pad = document.getElementById('pad');
 const dpadEl = document.getElementById('dpad');
+const rotBtn = document.getElementById('rot');
+const infoEl = document.getElementById('info');
+const infoBtn = document.getElementById('infobtn');
 
 // ---- on-screen controls ----------------------------------------------------
 // Turned on BEFORE the first fit(), so the pad is already taking its space when
@@ -290,22 +407,54 @@ const backstop = attachPad(dpadEl, [...pad.querySelectorAll('.tbtn')],
 // mask. Without it the last direction held stays held forever and the ship
 // flies into the clamp while the phone is in a pocket. The keyboard half is
 // cleared separately because the two paths lose events in different ways.
+//
+// SINCE WAVE 9 IT ALSO MATTERS FOR THE LOOP, not just the ship: a held SHOT
+// reaches the laser ramp's named throw after four logic frames, so a fire
+// button left stuck by a lost pointerup would stop the port on purpose.
 const clearAll = () => { backstop(); clearKeyboard(); };
 addEventListener('blur', clearAll);
 addEventListener('pagehide', clearAll);
 document.addEventListener('visibilitychange', () => { if (document.hidden) clearAll(); });
 
-// ---- integer device-pixel scaling ------------------------------------------
+// ---- presentation ----------------------------------------------------------
+// TATE by default, EVERYWHERE, because it is the cabinet's picture and the
+// correct one; WIDE is an explicit, remembered choice rather than something
+// that happens when a phone is tilted. Automatic switching was rejected on
+// purpose: the two modes are different PICTURES, and a game that reorients
+// itself mid-play because a hand moved is the thing the owner would report
+// next.
+const STORE = 'ddpdoj.mode';
+let mode = DEFAULT_MODE;
+try {
+  const saved = localStorage.getItem(STORE);
+  if (saved && MODES.includes(saved)) mode = saved;
+} catch { /* private mode: keep the default, do not fail the boot */ }
+
 // Recomputed on resize and on a DPR change (a window dragged between a laptop
 // screen and an external monitor changes devicePixelRatio without firing
 // anything else useful), on orientationchange (a phone rotating changes the
 // stage's shape without a resize on some browsers) and on visualViewport resize
 // (the URL bar sliding away only moves the visual viewport).
-const fit = () => fitCanvas(canvas, stage);
+const fit = () => fitCanvas(canvas, stage, mode);
 addEventListener('resize', fit);
 addEventListener('orientationchange', fit);
 window.visualViewport?.addEventListener('resize', fit);
+
+const paintRot = () => {
+  rotBtn.textContent = mode === 'tate' ? 'TATE' : 'WIDE';
+  rotBtn.setAttribute('aria-pressed', String(mode === 'tate'));
+};
+paintRot();
 fit();
+
+infoBtn.addEventListener('click', () => {
+  const on = infoEl.classList.toggle('on');
+  infoBtn.setAttribute('aria-pressed', String(on));
+});
+document.getElementById('closeinfo').addEventListener('click', () => {
+  infoEl.classList.remove('on');
+  infoBtn.setAttribute('aria-pressed', 'false');
+});
 
 // showError is used by BOTH channels: the boot-time catch below, and onError,
 // which is the only way a mid-flight failure can reach this page at all. A
@@ -315,18 +464,23 @@ fit();
 // and every unported path in THIS port is a throw carrying a ROM address.
 function showError(e, when) {
   statusEl.textContent = '';
+  const msg = String((e && e.message) || e);
+  const addr = msg.match(/\$[0-9A-Fa-f]{4,6}/);
   errEl.style.display = 'block';
-  errEl.textContent = `${when}\n\n${String((e && e.message) || e)}\n\n`
-    + 'The frame loop has stopped. Reload to start again.\n'
-    + 'If the message names a ROM address ($23xxxx / $24xxxx), that path is not '
-    + 'ported yet -- this is the port telling you exactly where it ran out, not '
-    + 'a mystery crash.';
+  errEl.textContent = addr
+    ? `${addr[0]} IS NOT PORTED YET.\n\n`
+      + 'This is not a crash. The port reached a ROM routine nobody has '
+      + 'translated, and it stopped instead of inventing the next frame. '
+      + 'The full message is below and the stack trace is in the console.\n\n'
+      + `${when}\n\n${msg}\n\nReload to start again.`
+    : `${when}\n\n${msg}\n\nThe frame loop has stopped. Reload to start again.`;
   console.error(e);
 }
 
 try {
   statusEl.textContent = 'loading the asset bundle…';
   const app = await boot(canvas, {
+    mode,
     onProgress: (name, n, total) => {
       statusEl.textContent = total
         ? `loading ${name} — ${(n / 1024).toFixed(0)}/${(total / 1024).toFixed(0)} KiB`
@@ -339,6 +493,15 @@ try {
   statusEl.textContent = '';
   fit();
 
+  // The toggle is wired only AFTER boot, so it cannot be pressed while the
+  // canvas has no Demo behind it to resize the backing store.
+  rotBtn.addEventListener('click', () => {
+    mode = app.setMode(mode === 'tate' ? 'yoko' : 'tate');
+    try { localStorage.setItem(STORE, mode); } catch { /* private mode */ }
+    paintRot();
+    fit();
+  });
+
   const m = app.bundle.manifest;
   const cj = app.bundle.cap.json;
   const sc = cj.shipCorrelation;
@@ -348,16 +511,19 @@ try {
     + `'${m.scenario}' from lf${cj.seedLf}; ship records identified at lag `
     + `${sc.lag}, conversion ${sc.conversion}, offsets `
     + sc.accepted.map((e) => `(${e.off})x${e.hits}`).join(' ')
-    + ` of ${m.frames} frames.`;
+    + ` of ${m.frames} frames. This page re-derives that set at load and splices `
+    + `${app.bundle.cap.attachedOffsets()?.length ?? '?'} offsets, not `
+    + `${sc.accepted.length}: `
+    + (app.bundle.cap.attachedOffsets() ?? []).join('  ');
 
   setInterval(() => {
     const s = app.stats();
     statsEl.innerHTML = [
-      `<b>lf</b> ${s.logicFrame}`,
-      `<b>py</b> ${s.py} <span class=dim>(${s.pyPx.toFixed(2)}px)</span>`,
-      `<b>px</b> ${s.px} <span class=dim>(${s.pxPx.toFixed(2)}px)</span>`,
-      `<b>tilt</b> ${s.tilt}`,
-      `<b>logic Hz</b> ${s.logicHz.toFixed(2)}`,
+      `lf ${s.logicFrame}`,
+      `${s.pyPx.toFixed(1)},${s.pxPx.toFixed(1)}px`,
+      `tilt ${s.tilt}`,
+      `${s.logicHz.toFixed(1)}Hz`,
+      `x${canvas.dataset.scale}`,
     ].join(' &nbsp; ');
   }, 250);
 } catch (e) {

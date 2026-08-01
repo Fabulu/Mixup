@@ -4,32 +4,60 @@
 //
 // WHAT IS SIMULATED AND WHAT IS REPLAYED, stated here because a picture cannot
 // say it, and printed on the page itself because a reader will not open this
-// file:
+// file.  WAVE 9 CORRECTED THIS LIST: it used to say "options" under SIMULATED
+// and it was not true (07-review.md D1, and a play report that saw the two pods
+// detach as a cluster).  If you change what the page shows, change this list in
+// the same commit; a stale note here has misled somebody every time.
 //
 //   SIMULATED, live, from the port's own code:  the seven-call main loop, the
 //     frame counters and their three masks, the ISR model and its (A) gate, the
 //     input mirrors and edges, the frame-sync governor, the object driver with
-//     its work budget, and THE PLAYER -- position, velocity, tilt, clamps,
-//     speed modes, options.  That is wave 4's port, which compares 0 divergent
-//     frames against the board over 2,200 logic frames on 34 columns.
+//     its work budget, and THE SHIP -- position, velocity, tilt, clamps and
+//     speed modes.  That is wave 4's port, which compares 0 divergent frames
+//     against the board over 2,200 logic frames on 34 columns.  NOT the option
+//     pods: the option OBJECT is $24C096, one of the 22 subsystem calls
+//     `type5.js` counts and does not run, and no line of `src/` writes
+//     $8104AA.  The 34 compared columns exclude `OPTION_COLUMNS` for exactly
+//     that reason (`state.js`).  The pods LOOK right because they are spliced
+//     at a fixed offset from the ship, which is where the board puts them --
+//     but "the port computes them" was never true and the page no longer
+//     says it (07-review.md D1).
 //
 //   REPLAYED, from a board capture:  everything else in the picture.  The port
 //     does not build the display list (main-loop call #4, $23D2AE, is unported)
 //     and 18 of the 20 top-level object handlers are unported, so the
 //     background, the enemies, the HUD text and every sprite that is not the
-//     ship come out of `assets/capture.bin` -- 161 consecutive frames of the
-//     `fly-around` scenario, the same window wave 4 compares -- and loop.
+//     player's come out of `assets/capture.bin` -- 161 consecutive frames of
+//     the `fly-around` scenario, the same window wave 4 compares -- and loop.
+//     The enemies are pixels: they do not see the ship and cannot be hit.
 //
-//   SPLICED:  the ship's and the two option pods' display-list records are
-//     moved to the PORT's position each frame.  Which records those are was
-//     MEASURED, not eyeballed (`tools/pixpack.mjs`): three offsets accepted at
-//     161/161 frames, at frame lag 1 and truncating fixed-point conversion,
-//     with every other lag/conversion combination accepting NOTHING.
+//   SPLICED:  FIVE display-list records are moved to the PORT's position each
+//     frame -- the ship, its two option pods and its two exhaust records.
+//     Wave 7 moved only three: `pixpack.mjs` accepts an offset that holds on
+//     >= 90 % of frames, and the exhaust appears on ALTERNATE frames, so it
+//     scored 50 % and was rejected.  The result was the "fireball" a player
+//     reported flying off across the screen on the RECORDED ship's path while
+//     the live ship stayed under his finger -- and it is the biggest
+//     player-attached thing on screen, 1515 drawn pixels against the ship's
+//     517.  `render/capture.js` re-derives the set at load time at 45 %; the
+//     measured gap is 80 frames accepted against 41 rejected.
 //
-//   NOT THERE AT ALL:  enemies as SIMULATION, any weapon, and sound.  Wave 5
-//     came back BLOCKED; the fire keys drive the ported cadence machine
-//     ($249B2C..$249BE2) and then reach a loud named throw at the ship-type
-//     jump table.  That throw is the reason `onError` below is not optional.
+//   SPLICED ONLY IN POSITION:  the ship does NOT bank.  `splice` rewrites
+//     display-list words 0 and 1 and nothing else, so the drawn image is
+//     whatever the capture held -- and the recorded ship's X never moved
+//     (`frameList[].px` is 5312 on all 161 frames, ONE distinct value), so it
+//     never tilted and there is exactly one image to hold.  The port computes
+//     tilt and the tilt-indexed animation longs, which ARE words 2-3; what is
+//     missing is the map from ROM stream offsets to `export-web.mjs`'s rebased
+//     ones.  See `render/capture.js` for what a later wave has to add.
+//
+//   NOT THERE AT ALL:  enemies as SIMULATION, any DRAWN weapon, and sound.
+//     Pressing fire runs the ported cadence machine ($249B2C..$249BE2) and the
+//     ported spawn and driver, but no shot sprite stream is in the bundle, so
+//     what the port computes is INVISIBLE.  The bomb ($249814) and, since wave
+//     9, HOLDING fire (the laser speed ramp $24C8BE, inside the unported option
+//     object) reach loud named throws.  Those throws are the reason `onError`
+//     below is not optional.
 //
 // THE CADENCE IS THE BOARD'S: 15625/264 Hz = 59.185606060606..., frame period
 // exactly 16.896 ms, read from `game.json` where it is spelled once.  The host
@@ -45,9 +73,42 @@ import {
 import { loadBundle, httpReader, AssetError } from './assets.js';
 import { attachKeyboard, currentPortWord } from './input.js';
 
-// The rotated picture.  The cabinet is TATE, so the game's long axis is the
-// bitmap's X and the canvas is 224 wide by 448 tall.
-export const CANVAS_W = SCREEN_H, CANVAS_H = SCREEN_W;
+// --------------------------------------------------------------- PRESENTATION
+//
+// THE CABINET IS TATE.  MAME's driver declares the screen `rotate="270"` on the
+// 448x224 buffer, so the correct picture is 224 WIDE by 448 TALL and the long
+// axis of the game is the bitmap's X.
+//
+// THE ROTATION HAPPENS IN THE PIXEL BUFFER, NOT IN CSS, AND THAT IS THE WHOLE
+// TRICK FOR KEEPING THE SCALE INTEGER.  `rotateCCW` writes a 224x448 RGB buffer
+// and the canvas's backing store IS 224x448, so the canvas's CSS box is a plain
+// axis-aligned rectangle that `fitCanvas` sizes to an exact whole multiple of
+// 224x448 in DEVICE pixels.  A `transform: rotate(90deg)` would have put the
+// browser's own resampler between the port and the glass -- the transform's
+// output box is not the element's layout box, so "the layout box is an integer
+// multiple" stops being the same statement as "the painted pixels land on whole
+// device pixels", and any transform-origin or sub-pixel offset reintroduces the
+// resample.  There is NO transform on the canvas.  Do not add one.
+//
+// TWO MODES, and only two:
+//   tate  224x448, `rotateCCW` applied.  The correct presentation.  DEFAULT.
+//   yoko  448x224, the raw board buffer, unrotated.  Offered because a desktop
+//         window is wide, and because it is what the gates' PNGs show before
+//         `np.rot90`.  It is the game lying on its side; it is a preference,
+//         not a correction.
+//
+// The mode is NOT switched automatically on orientationchange.  A phone tilted
+// in a hand would otherwise change what the picture means mid-play, and the two
+// modes are different pictures, not two layouts of one.
+export const PICTURES = Object.freeze({
+  tate: Object.freeze({ w: SCREEN_H, h: SCREEN_W, rotate: true }),
+  yoko: Object.freeze({ w: SCREEN_W, h: SCREEN_H, rotate: false }),
+});
+export const DEFAULT_MODE = 'tate';
+export const MODES = Object.freeze(Object.keys(PICTURES));
+
+/** Back-compat: the TATE picture's dimensions, which is what the page had. */
+export const CANVAS_W = PICTURES.tate.w, CANVAS_H = PICTURES.tate.h;
 
 // The fly-around scenario's intervention, applied here on the same terms as in
 // the comparison: $810424 is the player record's ($3e,A6) invulnerability
@@ -58,28 +119,58 @@ export const CANVAS_W = SCREEN_H, CANVAS_H = SCREEN_W;
 const INVULN = 0x810424;
 
 /**
- * Integer scaling in DEVICE pixels.
+ * PURE.  The largest whole scale in DEVICE pixels, for either picture.
  *
  * `image-rendering: pixelated` AND a whole-number scale.  Both are needed: a
  * fractional scale puts the canvas's 1:1 pixels on non-integer device pixels
  * and the browser resamples them.  The Batman port shipped a dithered circle
  * that came out looking like tetris pieces because of exactly this, and it was
  * reported from play.  So this FLOORS -- do not "fix" it into a percentage.
+ *
+ * It is a separate exported function from `fitCanvas` so it can be TESTED: this
+ * is the one piece of the page's layout that is arithmetic rather than CSS, and
+ * `tests/web-scale.test.js` drives it at nine device-pixel ratios in both
+ * orientations.  The CSS box it returns is `device / dpr`, which is what puts
+ * the picture back on whole device pixels; the test asserts the round trip.
+ *
+ * @param {{w:number,h:number}} pic  PICTURES.tate or PICTURES.yoko
+ * @param availCssW,availCssH  the container's size in CSS pixels
  */
-export function fitCanvas(canvas, container = canvas.parentElement) {
+export function pickScale(pic, availCssW, availCssH, dpr = 1) {
+  const d = dpr > 0 ? dpr : 1;
+  const availW = Math.max(0, availCssW) * d;
+  const availH = Math.max(0, availCssH) * d;
+  // Math.max(1, ...) so a viewport too small for even 1:1 shows 1:1 and
+  // overflows rather than showing a resampled sub-pixel picture.
+  const scale = Math.max(1, Math.floor(Math.min(availW / pic.w, availH / pic.h)));
+  const deviceW = pic.w * scale, deviceH = pic.h * scale;
+  return { scale, deviceW, deviceH, cssW: deviceW / d, cssH: deviceH / d };
+}
+
+/**
+ * Size `canvas` inside `container` for `mode`.  Returns the `pickScale` result.
+ *
+ * The canvas's BACKING STORE is set by `Demo.setMode`, not here -- this only
+ * decides the CSS box.  No transform is ever applied (see PRESENTATION above).
+ */
+export function fitCanvas(canvas, container = canvas.parentElement,
+  mode = DEFAULT_MODE) {
+  const pic = PICTURES[mode] ?? PICTURES[DEFAULT_MODE];
   const dpr = window.devicePixelRatio || 1;
-  const availW = (container?.clientWidth || window.innerWidth) * dpr;
-  const availH = (container?.clientHeight || window.innerHeight) * dpr;
-  const scale = Math.max(1, Math.floor(Math.min(availW / CANVAS_W, availH / CANVAS_H)));
-  canvas.style.width = `${(CANVAS_W * scale) / dpr}px`;
-  canvas.style.height = `${(CANVAS_H * scale) / dpr}px`;
+  const fit = pickScale(pic,
+    container?.clientWidth || window.innerWidth,
+    container?.clientHeight || window.innerHeight, dpr);
+  canvas.style.width = `${fit.cssW}px`;
+  canvas.style.height = `${fit.cssH}px`;
   canvas.style.imageRendering = 'pixelated';
-  canvas.dataset.scale = String(scale);
-  return scale;
+  canvas.style.transform = 'none';        // belt and braces: never a CSS rotate
+  canvas.dataset.scale = String(fit.scale);
+  canvas.dataset.mode = mode;
+  return fit;
 }
 
 class Demo {
-  constructor(canvas, bundle, frameHz) {
+  constructor(canvas, bundle, frameHz, mode = DEFAULT_MODE) {
     this.bundle = bundle;
     this.cap = bundle.cap;
     // The tile functions come from the exported sheets; nothing else about the
@@ -94,13 +185,12 @@ class Demo {
       this.game.ram.u16(RAM.player1 + P.posX)];
 
     this.canvas = canvas;
-    canvas.width = CANVAS_W;
-    canvas.height = CANVAS_H;
     this.ctx = canvas.getContext('2d', { alpha: false });
-    this.img = this.ctx.createImageData(CANVAS_W, CANVAS_H);
     this.rgb = new Uint8Array(SCREEN_W * SCREEN_H * 3);
     this.rot = new Uint8Array(SCREEN_W * SCREEN_H * 3);
     this.pal = new Uint8Array(0x1000 * 3);
+    this.mode = null;
+    this.setMode(mode);
 
     this.periodMs = 1000 / frameHz;
     this.acc = 0;
@@ -110,6 +200,26 @@ class Demo {
     this.hudSteps = 0;
     this.hz = 0;
     this.running = true;
+  }
+
+  /**
+   * Switch presentation.  This RESIZES THE BACKING STORE, which is the reason
+   * the rotation never needs a CSS transform: the canvas is 224x448 in tate and
+   * 448x224 in yoko, and `fitCanvas` then multiplies whichever it is by a whole
+   * number.  Resizing a canvas clears it, so the next `draw()` repaints; the
+   * SIMULATION is untouched, which is the point -- the mode changes the picture
+   * and never a logic frame.
+   */
+  setMode(mode) {
+    const name = PICTURES[mode] ? mode : DEFAULT_MODE;
+    if (name === this.mode) return name;
+    const pic = PICTURES[name];
+    this.mode = name;
+    this.canvas.width = pic.w;
+    this.canvas.height = pic.h;
+    this.img = this.ctx.createImageData(pic.w, pic.h);
+    this.dirty = true;
+    return name;
   }
 
   /** ONE LOGIC FRAME of the port.  No pixel work happens in here. */
@@ -130,16 +240,27 @@ class Demo {
     // THE SPLICE, through the shared module the packer proves round-trips.
     // `prevPos`, not the current position: the sprite buffer lags main RAM by
     // one frame, measured (`capture.js`).
-    this.cap.splice(st, fi, this.prevPos[0], this.prevPos[1]);
+    //
+    // WAVE 9: this now moves FIVE records, not three -- the ship, the two
+    // option pods and the two exhaust records the packer's 90 % threshold
+    // rejected for flickering.  See `render/capture.js`'s header.
+    this.spliced = this.cap.splice(st, fi, this.prevPos[0], this.prevPos[1]);
     const idx = this.renderer.renderIndexed(st);
     // The palette that applies is the NEXT frame's -- the measured sample-point
     // offset (00-recon-assets.md §4).  On a looping capture the next frame is
     // the next captured one.
     paletteRgb(this.cap.part((fi + 1) % n, 'palette'), this.pal);
     resolveRgb(idx, this.pal, this.rgb);
-    rotateCCW(this.rgb, SCREEN_W, SCREEN_H, this.rot);
-    rgbToRgba(this.rot, this.img.data);
+    // TATE rotates the BUFFER; yoko blits the board's own 448x224 buffer.
+    // Either way the canvas backing store already matches (`setMode`).
+    if (PICTURES[this.mode].rotate) {
+      rotateCCW(this.rgb, SCREEN_W, SCREEN_H, this.rot);
+      rgbToRgba(this.rot, this.img.data);
+    } else {
+      rgbToRgba(this.rgb, this.img.data);
+    }
     this.ctx.putImageData(this.img, 0, 0);
+    this.dirty = false;
     return this.cap.frames[fi];
   }
 
@@ -156,6 +277,8 @@ class Demo {
       tilt: g.ram.u16(RAM.player1 + P.tilt) << 16 >> 16,
       frameCounter: g.ram.u16(RAM.frameCounter),
       logicHz: this.hz,
+      mode: this.mode,
+      spliced: this.spliced,
       capture: this.capFrame,
       unported: g.unportedLog.report(),
     };
@@ -176,7 +299,10 @@ class Demo {
       this.step();
       n++;
     }
-    if (n) {
+    if (n || this.dirty) {
+      // `dirty` is set by setMode: resizing the backing store blanks it, and a
+      // mode change between two logic frames would otherwise leave a black
+      // canvas until the next one came due.
       this.capFrame = this.draw();
       if (this.hudAt) {
         this.hz = 1000 * (this.stepsRun - this.hudSteps) / (now - this.hudAt);
@@ -195,7 +321,7 @@ class Demo {
  * `opts.onError` IS NOT OPTIONAL in practice, and the comment is here rather
  * than in the page because this is where the throw escapes.  EVERY UNPORTED
  * PATH IN THIS PORT IS A THROW carrying a ROM address, and they are reached in
- * ordinary play -- pressing the fire button reaches one.  Thrown from inside
+ * ordinary play -- the bomb reaches one, and so does HOLDING fire.  Thrown from inside
  * the requestAnimationFrame callback they land where NOTHING is listening:
  * `boot()` resolved long ago, so the page's `await boot(...)` try/catch cannot
  * see them.  The loop simply stops being rescheduled and the canvas holds its
@@ -222,7 +348,7 @@ export async function boot(canvas, opts = {}) {
   }
 
   const bundle = await loadBundle(httpReader(base, opts.onProgress), opts.bundleOpts);
-  const demo = new Demo(canvas, bundle, frameHz);
+  const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE);
   attachKeyboard(opts.target);
 
   const frame = (t) => {
@@ -245,6 +371,8 @@ export async function boot(canvas, opts = {}) {
     demo,
     bundle,
     stats: () => demo.stats(),
+    get mode() { return demo.mode; },
+    setMode: (m) => demo.setMode(m),
     stop() { demo.running = false; },
   };
 }
