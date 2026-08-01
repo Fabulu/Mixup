@@ -27,6 +27,9 @@ const only = onlyIdx === -1 ? null : args[onlyIdx + 1];
 
 const SITE = 'https://gbtman.pages.dev';
 const PROJECT = 'gbtman';
+// The Pages PRODUCTION branch. See the --branch note at the deploy step: without
+// it, a detached-HEAD build publishes a preview and the live site never moves.
+const BRANCH = 'main';
 
 // `shell` is not decoration on Windows: npx is a .cmd shim, and execFileSync
 // without a shell cannot spawn it -- it fails ENOENT before wrangler is ever
@@ -123,8 +126,19 @@ console.log(`\nbuild id ${buildId}`);
 if (dry) { console.log('\n--dry: built and gated, not deployed.'); process.exit(0); }
 
 // ---- 3. deploy ------------------------------------------------------------
+// --branch IS NOT OPTIONAL, and leaving it out cost three deploys in one
+// session. `wrangler pages deploy` infers the branch from git and decides
+// PRODUCTION vs PREVIEW from it. Publishing from a DETACHED worktree -- which
+// is exactly how this script should be run, so a build comes from a known
+// commit rather than from whatever half-finished edits are on disk -- gives it
+// no branch name, so it silently publishes a PREVIEW. The upload succeeds,
+// wrangler prints "Deployment complete!", and the live site does not move.
+//
+// Nothing in wrangler's output says "this was a preview". The only reason it
+// was ever noticed is step 4 below refusing to confirm, three times.
 run('deploy', 'npx', ['wrangler', 'pages', 'deploy', 'dist',
-  `--project-name=${PROJECT}`, '--commit-dirty=true'], { shell: true });
+  `--project-name=${PROJECT}`, `--branch=${BRANCH}`, '--commit-dirty=true'],
+  { shell: true });
 
 // ---- 4. CONFIRM IT LANDED -------------------------------------------------
 // Not optional, and not one poll. The edge can still be serving the previous
