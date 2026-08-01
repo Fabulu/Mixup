@@ -415,7 +415,13 @@ test('$BC0F: at most ONE enemy per frame reaches $BC44, and it is the highest sl
   for (let j = 9; j >= 0; j--) if (s.obj.style[j + ENEMY_BASE] === 0xC8) reloaded.push(j + ENEMY_BASE);
   assert.deepStrictEqual(reloaded, [21],
     'exactly one slot may reload, and $BBEE LDX #$09 makes it slot 21');
-  assert.strictEqual(s.spawn.zA8, 9, '$BBF0 STX $A8 must hold the slot that fired');
+  // $A8 IS NOT 9 AFTERWARDS, and the old version of this test asserted that it
+  // was. It passed only because the port's $BC19 was a no-op loop that never
+  // touched $A8; the CARTRIDGE's $BC1D does `LDX #$09 / STX $A8` and then walks
+  // it down to $FF. Corrected in wave 11 with the loop body (rule 6). $A8 is
+  // not a watched address, so nothing else could have caught it.
+  assert.strictEqual(s.spawn.zA8, 0xFF,
+    '$BC0F JMP $BC19, whose own loop leaves $A8 at $FF');
 });
 
 test('$BC56: an enemy fires only when the player is STRICTLY to its left', () => {
@@ -429,16 +435,20 @@ test('$BC56: an enemy fires only when the player is STRICTLY to its left', () =>
   // are swapped.
   const equal = running();
   equal.obj.type[21] = 0x83; equal.obj.style[21] = 0; equal.obj.s04E0[21] = 0xC8;
-  equal.obj.x[21] = 0x50; equal.obj.x[0] = 0x50;
-  assert.doesNotThrow(() => enemyBullets(equal, res),
-    'playerX == enemyX must NOT fire: BCC is taken on borrow only');
+  equal.obj.x[21] = 0x50; equal.obj.y[21] = 0x40; equal.obj.x[0] = 0x50;
+  enemyBullets(equal, res);
+  assert.strictEqual(equal.obj.style[21], 0xC8,
+    'the countdown reloaded, so $BC44 WAS entered');
 
   const left = running();
   left.obj.type[21] = 0x83; left.obj.style[21] = 0; left.obj.s04E0[21] = 0xC8;
-  left.obj.x[21] = 0x50; left.obj.x[0] = 0x4F;
-  assert.throws(() => enemyBullets(left, res),
-    /enemy slot 21 fired.*X=79.*X=80/s,
-    'one pixel further left must reach $BC59, which is a LOUD unported throw');
+  left.obj.x[21] = 0x50; left.obj.y[21] = 0x40; left.obj.x[0] = 0x4F;
+  enemyBullets(left, res);
+  assert.strictEqual(left.obj.anim[31], 0x25,
+    'one pixel further left reaches $BC59, which allocates slot 31 and puts '
+    + '$BC64[0] in its $0136');
+  assert.strictEqual(equal.obj.anim[31], 0,
+    '...and the equal case reached $BC58 RTS and allocated nothing');
 });
 
 test('$BBB7: a non-zero $5D skips the whole countdown', () => {
@@ -454,15 +464,24 @@ test('$BBB7: a non-zero $5D skips the whole countdown', () => {
   assert.strictEqual(s.obj.style[21], 5, '$5D != 0 must jump straight to $BC19');
 });
 
-test('$BC23: a live enemy-bullet slot is a LOUD throw, not a silent skip', () => {
-  // Slots 22-31 and their mover $BDD5 are not transcribed. docs/knowledge/03:
-  // a silent no-op here would leave a bullet motionless and the comparison
-  // would blame whatever drew it.
-  // RED WHEN: bulletUpdate() returns instead of throwing.
+test('$BC23: a live enemy-bullet slot is MOVED, and an empty one is not', () => {
+  // Asserted a THROW until wave 11. Inverted rather than deleted (rule 6): the
+  // mover that replaced it has to do what the throw's text said was missing.
+  // RED WHEN: $BC23's `BEQ $BC2B` is dropped (an empty slot then drifts), or
+  // the loop indexes $0136 with the $A9 convention instead of the $A8 one.
   const s = running();
-  s.obj.anim[22 + 4] = 0x50;         // $0136,X with X = 4
-  assert.throws(() => enemyBullets(s, res),
-    /enemy bullet slot 26 is live.*\$BDD5/s);
+  s.obj.anim[22 + 4] = 0x25;         // $0136,X with X = 4 -- object slot 26
+  s.obj.s0460[22 + 4] = 1;           // $047A: bit 1 clear -> X negative,
+                                     //        bit 0 set   -> Y positive
+  s.obj.x[22 + 4] = 100; s.obj.xf[22 + 4] = 0; s.obj.xvel[22 + 4] = 1;
+  s.obj.y[22 + 4] = 100; s.obj.yf[22 + 4] = 0; s.obj.yvelf[22 + 4] = 0x80;
+  s.obj.x[22 + 5] = 100; s.obj.y[22 + 5] = 100;    // live position, EMPTY slot
+  enemyBullets(s, res);
+  assert.strictEqual(s.obj.x[22 + 4], 99, '$BE21-$BE27: X -= $042C:$044C');
+  assert.strictEqual(s.obj.y[22 + 4], 100, '$BE39: Y += 0.5, integer unchanged');
+  assert.strictEqual(s.obj.yf[22 + 4], 0x80, '...and the fraction carries it');
+  assert.strictEqual(s.obj.x[22 + 5], 100, 'the empty slot was skipped entirely');
+  assert.strictEqual(s.work.bulletSlots, 10, '$BC19 is ten iterations, always');
 });
 
 // ================ $B0AF, THE FAN: THE CONSTANTS NOBODY DROVE ===============

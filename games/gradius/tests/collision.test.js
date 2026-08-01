@@ -10,7 +10,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
-import { createState, ENEMY_BASE } from '../src/state.js';
+import { createState, u8, ENEMY_BASE } from '../src/state.js';
 import { nmi } from '../src/nmi.js';
 import { collision, die, explosionWalk, playerVsEnemies, shotSweep } from '../src/collision.js';
 import { respawn } from '../src/flow.js';
@@ -424,23 +424,51 @@ test('$BFE8: an EMPTY shot slot is skipped without touching an enemy', () => {
   assert.deepStrictEqual([...s.score.slice(4, 7)], [0, 0, 0], 'and scored 0');
 });
 
-test('$C22A/$C305: a live ENEMY-BULLET slot is a loud throw', () => {
-  // Slots 22-31 are excluded by the wave plan; $C24B (a bullet killing the ship)
-  // is one of the four routes into $C1D6 and has never fired in any measured
-  // run. RED WHEN: the two loops skip a live slot silently.
-  //
-  // `collision()` directly rather than nmi(): $9A67 JSR $BBB7 runs three
-  // instructions earlier and src/enemies.js throws on a live bullet slot first,
-  // which would make this test pass without the loop below existing at all.
+// This asserted a THROW until wave 11 ("slots 22-31 are excluded by the wave
+// plan"). Inverted rather than deleted, so the arm that replaced the throw is
+// held to what the throw's text promised (rule 6).
+
+test('$C24B: an enemy bullet on the ship is the fourth route into $C1D6', () => {
+  // $C20A's sweep, box class 0 ($C202[0] / $C206[0]), no shield. MEASURED on
+  // the cartridge (bulletprobe.py, `$040C,X` poked so ten enemies fire):
+  // $C24B fired once, at frame 500, with the bullet at dx = 0 and dy = 3 from
+  // the ship -- and on the 12 frames before it, dx was 252..255 and nothing
+  // happened. RED WHEN: the sweep skips live slots, tests the wrong table, or
+  // routes to $C136 instead of $C1D6.
   const s = bootState(res.manifest);
-  s.obj.anim[22 + 4] = 9;                       // $0136 + 4
-  assert.throws(() => collision(s, res), /\$C22A/);
+  s.obj.anim[22 + 4] = 0x25;                    // $013A -- a live kind-0 bullet
+  s.obj.animFrame[22 + 4] = 0;                  // $017A -- its box class
+  s.obj.x[22 + 4] = s.obj.x[0];                 // dx = 0
+  s.obj.y[22 + 4] = u8(s.obj.y[0] - 3);         // dy = 3 once $C23F's -1 is in
+  collision(s, res);
+  assert.strictEqual(s.substate, 0xA0, '$C1F3 STA $1B');
+  assert.strictEqual(s.obj.status[0], 2, '$C1E6 STA $0100');
+  assert.strictEqual(s.zp4C, 0x78, '$C1E2 STA $4C');
+  assert.strictEqual(s.obj.anim[22 + 4], 0x25,
+    '$C24B does NOT free the bullet -- only the shield arm at $C24E does');
+
+  // One pixel further away on X than the measured accept, and the same state is
+  // survivable: the cartridge rejected dx = 255 at frame 499 and killed at
+  // dx = 0 at 500.
+  const miss = bootState(res.manifest);
+  miss.obj.anim[22 + 4] = 0x25;
+  miss.obj.animFrame[22 + 4] = 0;
+  miss.obj.x[22 + 4] = u8(miss.obj.x[0] + 1);   // dx wraps to 255
+  miss.obj.y[22 + 4] = u8(miss.obj.y[0] - 3);
+  collision(miss, res);
+  assert.strictEqual(miss.substate, 0x80, 'dx = 255 >= $C202[0] -> $C259');
 
   // ...and the SECOND loop, $C2FF, which a dying ship reaches instead.
   const t = bootState(res.manifest);
   t.obj.status[0] = 2;                          // $C0CC -> the explosion arm
-  t.obj.anim[22 + 4] = 9;
-  assert.throws(() => collision(t, res), /\$C305/);
+  t.obj.anim[22 + 4] = 0x25;
+  t.obj.type[22 + 4] = 0;                       // $C310 BNE -> $C312 CLC/ADC #$08
+  t.obj.x[22 + 4] = 80; t.obj.y[22 + 4] = 96;
+  t.coll[0x5B] = 0x40;                          // the cell under (80, 96 + 8)
+  collision(t, res);
+  assert.strictEqual(t.obj.anim[22 + 4], 0, '$C327 -> $AEF8 STA $012C,X');
+  assert.strictEqual(t.obj.x[22 + 4], 80,
+    '$AEF8 is the SHORT free: the position bytes survive it');
 });
 
 // These two asserted a THROW until wave 7 ("$C1AF ... is wave 7, and says so").
@@ -529,4 +557,58 @@ test('$C18C: the every-16th item frees itself, sfx $0B, and clears the screen', 
   // $C1AC leaves $A8 where the touched slot put it, because $C194's loop walks
   // Y. A port that reset it to $FF like $C136's failed DEC would be wrong here.
   assert.strictEqual(s.spawn.zA8, 9, '$A8 is untouched by $C194-$C1A9');
+});
+
+test('$C23F: the bullet sweep\'s dy is one SMALLER, because of the carry', () => {
+  // `$C238 CMP $C202,X` leaves carry CLEAR exactly when it falls through, and
+  // `$C23F SBC $0336,Y` is subtract-WITH-BORROW -- the same idiom $C12C has on
+  // the enemy sweep, on the other axis.
+  //
+  // WRITTEN BECAUSE A DELIBERATE BREAK SURVIVED THE CORPUS: dropping the `- 1`
+  // is GREEN on all four enemy-bullet scenarios. The one accepted frame in the
+  // whole corpus has dy = 1 against a height of 8, so a one-pixel box error
+  // changes nothing there. The witness has to be the BOTTOM EDGE.
+  // RED WHEN: the -1 is dropped, or added twice.
+  const at = (bulletY) => {
+    const s = bootState(res.manifest);
+    s.obj.anim[22 + 4] = 0x25;
+    s.obj.animFrame[22 + 4] = 0;                 // box class 0: $10 x $08
+    s.obj.x[22 + 4] = s.obj.x[0];                // dx = 0, well inside
+    s.obj.y[22 + 4] = bulletY;
+    collision(s, res);
+    return s.substate === 0xA0;
+  };
+  const py = bootState(res.manifest).obj.y[0];
+  assert.strictEqual(at(py - 8), true, 'difference 8 -> dy 7, the last accepted');
+  assert.strictEqual(at(py - 9), false, 'difference 9 -> dy 8, outside $C206[0]');
+  assert.strictEqual(at(py + 1), false, 'difference -1 -> dy $FE, outside');
+});
+
+test('$C238 vs $C242: the WIDTH is $C202 and the HEIGHT is $C206', () => {
+  // WRITTEN BECAUSE A DELIBERATE BREAK SURVIVED THE CORPUS: swapping the two
+  // reads is GREEN on all four enemy-bullet scenarios. A bullet aimed at the
+  // ship arrives head on, so every accepted frame has dx = 0 and dy = 1, which
+  // is inside a $10 x $08 box and inside an $08 x $10 one.
+  //
+  // Class 0 is $10 wide and $08 high -- unlike $BFDA/$BFDE's class 0, which is
+  // $10 x $10 and cannot be told apart by a swap at all (tests/collision.test.js
+  // says so at $C127). So this pair CAN be separated, in both directions.
+  // RED WHEN: the two reads are swapped, or either index is off by four.
+  const box = (dx, dy) => {
+    const s = bootState(res.manifest);
+    s.obj.anim[22 + 4] = 0x25;
+    s.obj.animFrame[22 + 4] = 0;
+    s.obj.x[22 + 4] = u8(s.obj.x[0] - dx);
+    s.obj.y[22 + 4] = u8(s.obj.y[0] - dy - 1);   // $C23F's borrow
+    collision(s, res);
+    return s.substate === 0xA0;
+  };
+  assert.strictEqual(box(10, 2), true, 'dx 10 < $10 and dy 2 < $08');
+  assert.strictEqual(box(2, 10), false,
+    'dx 2 is inside EITHER width, but dy 10 is outside the height $08 -- and '
+    + 'inside the WIDTH $10, which is what a swapped port would use');
+  assert.strictEqual(box(10, 10), false, 'outside both, whichever way round');
+  assert.strictEqual(box(15, 7), true, 'the far corner of the real box');
+  assert.strictEqual(box(16, 7), false, 'dx 16 is $C202[0] exactly -- BCS');
+  assert.strictEqual(box(15, 8), false, 'dy 8 is $C206[0] exactly -- BCS');
 });

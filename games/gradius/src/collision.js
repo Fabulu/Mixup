@@ -52,10 +52,7 @@
 // Named rather than silently absent, each as a throw carrying its ROM address:
 //
 //   $C13D/$C159  the type $27 and $29 contact arms (1UP, $844B)   unmeasured
-//   $C20A body   player versus enemy bullets (slots 22-31)        excluded
 //   $C263-$C2A4  the stage-5 destructible-block sweep             stage 5
-//   $C2FF body   enemy bullets versus terrain                     excluded
-//   $BF7D        a shot versus an enemy BULLET (slots 22-31)      excluded
 //   $C05F-$C08D  the ARMOURED branch of $C055                     unexercised
 //   $C099        the type-$9A hit counter and its $BFC5 threshold unexercised
 //   $C2DC        the wall-breaking VRAM patch ($C32F)             unexercised
@@ -67,6 +64,16 @@
 // (shots versus the terrain) WERE on that list and are ported here -- wave 6.
 // $C18C (the every-16th item), $C1AF (the capsule pickup) and $C1C1 (the shield)
 // were on it too, tagged "wave 7", and are ported here -- wave 7.
+//
+// THE THREE ENEMY-BULLET ENTRIES ($C20A, $C2FF, $BF7D) WERE ON IT UNTIL WAVE 11,
+// under the reasoning "slots 22-31 are never populated". They now have bodies.
+// The reasoning was true of the CORPUS and false of the cartridge, and the way
+// that was discovered was a player flying left of an enemy and the game
+// freezing (05-FINDING-enemy-bullets-reached-in-play.md). The route into $C1D6
+// list above changes with them: `$C24B ... 0` was a measurement of a corpus that
+// could not produce a bullet. MEASURED THIS WAVE, with the $040C countdown poked
+// so ten enemies fire: $C24B fires at f500 on `enemy-bullet` and at f513 on the
+// shielded variant, after $C24E has absorbed five.
 
 import { u8, ENEMY_BASE, ENEMY_SLOTS } from './state.js';
 import { probeCollision } from './terrain.js';
@@ -153,7 +160,14 @@ export function shotSweep(state, res) {
  *  4. `$C030 JSR $BF75` runs on EVERY iteration, hit or miss, and it is what
  *     lets a shot destroy an enemy bullet. MEASURED: $BF75 ran 2482 times over
  *     300 frames of held A and $BF7D -- its first instruction past the empty
- *     slot -- ran 0 times, because slots 22-31 are never populated here.
+ *     slot -- ran 0 times, because slots 22-31 were never populated here.
+ *     RE-MEASURED IN WAVE 11 with the bullet path ported and the countdown
+ *     poked so ten enemies fire: $BF75 6651 and 1473 entries in two runs with A
+ *     held, and $BF7D STILL 0 both times. The reason is no longer an empty pool
+ *     -- it is the geometry: the shot's box is $10 x $10 around a point 8 px
+ *     right and 8 px down of the shot, and a bullet aimed at the ship does not
+ *     pass through it in either configuration tried. $BF7D's body is ported and
+ *     NO SCENARIO REACHES IT; three unit tests are all that hold it.
  *
  * The inner loop is TEN iterations unless `$C055` frees the shot, which sets
  * `$A9 = 0` at `$C0BB` and so makes `$C033`'s DEC/BPL fall out one iteration
@@ -194,7 +208,10 @@ function shotVsEnemies(state, res, x) {
         }
       }
     }
-    shotVsBullet(state, state.spawn.zA9);         // $C030 JSR $BF75 (LDY $A9)
+    // $C030 JSR $BF75, and it is handed $A9 -- which $C055's free may already
+    // have zeroed, so this can be called for enemy index 0 twice in a row.
+    const bj = state.spawn.zA9;
+    if (shotVsBullet(state, res, bj, x, a0, a1, a3) && bj !== 0) freed = true;
     state.spawn.zA9 = u8(state.spawn.zA9 - 1);    // $C033 DEC $A9
     if (state.spawn.zA9 & 0x80) break;            // $C035 BPL $C00F
   }
@@ -230,15 +247,51 @@ function shotVsEnemies(state, res, x) {
  * Note what a port that skipped this call would lose: `$BF9F INC $5D`, which is
  * the byte the enemy-bullet engine gates on, and a `JSR $8463` -- shooting a
  * bullet SCORES.
+ *
+ * PORTED IN WAVE 11 (the numbers above are the pre-wave-11 measurement and are
+ * kept, because they are what the exclusion rested on). Three asymmetries with
+ * the enemy sweep three lines up, all of them the ROM's:
+ *
+ *  1. **Y is tested FIRST**, against the constant `#$10`, and only then X
+ *     against the SHOT's width `$A3`. The enemy sweep is the other way round.
+ *  2. `$BF87 LDA $A0 / SBC $0376,Y` inherits a CLEAR carry from the `CMP #$10`
+ *     that just fell through, so dx is one less than the difference -- the same
+ *     `- 1` the enemy sweep has on its dy, on the other axis.
+ *  3. **The bullet's own type decides who dies.** Type 2 (`$BF90`) makes the
+ *     SHOT the casualty: sfx $05, `JMP $C0B7`, and the bullet survives. Every
+ *     other type is destroyed, and then the metasprite id decides whether the
+ *     shot is consumed too: `$BFBB CMP #$59 / BEQ $BFC2` sends kind 1 straight
+ *     to the free while everything else goes through `$C0AE`, where a LASER
+ *     survives its own hit.
+ *
+ * @returns {boolean} true if the shot slot was freed ($C0B7 zeroes $A9 and so
+ *                    ends the caller's inner sweep)
  */
-function shotVsBullet(state, j) {
-  const type = state.obj.type[22 + j];            // $BF77 LDA $0316,Y
-  if (type === 0) return;                         // $BF7A BNE $BF7D / $BF7C RTS
-  throw new Error(`$BF7D: enemy-bullet slot ${22 + j} holds type ${hex2(type)}. `
-                + 'The shot-versus-bullet box ($BF7D-$BF8E), the type-2 arm that '
-                + 'consumes the shot ($BF97) and the free at $BF9F (INC $5D, '
-                + 'JSR $8463, sfx $09) are not ported -- the wave plan excludes '
-                + 'slots 22-31 until a run exercises them.');
+function shotVsBullet(state, res, j, x, a0, a1, a3) {
+  const o = state.obj;
+  const type = o.type[22 + j];                    // $BF77 LDA $0316,Y
+  if (type === 0) return false;                   // $BF7A BNE $BF7D / $BF7C RTS
+  const dy = u8(a1 - o.y[22 + j]);                // $BF7D LDA $A1 / SEC / SBC
+  if (dy >= 0x10) return false;                   // $BF83 CMP #$10 / BCS $BF7C
+  const dx = u8(a0 - o.x[22 + j] - 1);            // $BF87 LDA $A0 / SBC, carry CLEAR
+  if (dx >= a3) return false;                     // $BF8C CMP $A3 / BCS $BF7C
+  if (o.type[22 + j] === 2) {                     // $BF90/$BF93 CMP #$02 / BNE
+    soundRequest(state, 0x05);                    // $BF97/$BF99 JSR $EC1E
+    freeShotSlot(state, x);                       // $BF9C JMP $C0B7
+    return true;
+  }
+  state.spawn.z5D = u8(state.spawn.z5D + 1);      // $BF9F INC $5D
+  const ms = o.anim[22 + j];                      // $BFA1 LDX $0136,Y / STX $AA
+  o.anim[22 + j] = 0;                             // $BFA6/$BFA8 STA $0136,Y
+  o.animFrame[22 + j] = 0;                        // $BFAB STA $0176,Y
+  o.type[22 + j] = 0;                             // $BFAE STA $0316,Y
+  scoreKill(state);                               // $BFB1 JSR $8463 -- +$0010
+  soundRequest(state, 0x09);                      // $BFB4/$BFB6 JSR $EC1E
+  if (ms === 0x59) { freeShotSlot(state, x); return true; }   // $BFBB/$BFBD/$BFC2
+  // $BFBF JMP $C0AE -- the laser test, then $C0B7's free by fall-through.
+  if (o.animFrame[3 + x] === 1) return false;     // $C0AE-$C0B5: the LASER lives
+  freeShotSlot(state, x);
+  return true;
 }
 
 /**
@@ -638,29 +691,77 @@ export function die(state) {
  *   C21A  AD 20 03 / 85 A4 / 18 / 69 08 / 85 A5 / 69 04 / 85 A6   three Y bases
  *   C228  A4 A8 / B9 36 01 LDA $0136,Y / F0 2A BEQ $C259
  *   C22F  BE 76 01  LDX $0176,Y     picks WHICH of the three bases ($A0,X)
- *   ...   C24B  4C D6 C1  JMP $C1D6
+ *   C232  B5 A0 / 38 / F9 76 03 / DD 02 C2 / B0 1C   dx vs $C202,X
+ *   C23D  B5 A4 / F9 36 03 / DD 06 C2 / B0 12        dy vs $C206,X, carry CLEAR
+ *   C247  A5 46 / D0 03 / 4C D6 C1                   no shield -> DEATH
+ *   C24E  C6 46 / A9 0A / 18 / 65 A8 / AA / 20 F8 AE the shield eats the bullet
  *
- * NOT PORTED. Slots 22-31 are the enemy-bullet pool, which the wave plan
- * excludes: nothing in any measured run has ever populated one (src/enemies.js
- * $BC59 is a throw for the same reason), so `$0136,Y` is 0 on every frame and
- * this is ten iterations of nothing. The LOOP is here, and an occupied slot is
- * a loud throw rather than a silent skip.
+ * PORTED IN WAVE 11. Four things worth naming:
+ *
+ *  1. **THE BOX CLASS IS THE BULLET'S OWN KIND, NOT AN ENEMY BOX CLASS.**
+ *     `$0176,Y` was written by `$BC86` from `$BC66,Y`, i.e. 0 or 1, and it
+ *     indexes a DIFFERENT table pair ($C202/$C206) from the enemy sweep's
+ *     $BFDA/$BFDE. It also indexes the three zero-page bases: `$A0,X` and
+ *     `$A4,X`, so a kind-1 bullet is measured against a point 6 px right and
+ *     12 px down from a kind-0 one.
+ *  2. **`$C224 ADC #$04` HAS NO `CLC`.** It inherits the carry from the
+ *     `ADC #$08` two instructions earlier, so `$A6` is playerY + 12 + 1 when
+ *     playerY + 8 wrapped. Transcribed, not tidied.
+ *  3. **The shield does NOT end the sweep.** `$C24E` decrements `$46`, frees
+ *     the bullet through `$AEF8` with X = $0A + $A8, and falls into the loop
+ *     tail -- so one frame can absorb several bullets. MEASURED: with `$46 = 5`
+ *     poked and ten bullets converging, `$C24E` ran at f493, 494, 498, 500, 503
+ *     and `$C24B` then killed the ship at f513, five absorptions and a death.
+ *  4. `$C24B` is a JMP into `$C1D6`, so the remaining bullet slots are not
+ *     swept on that frame at all.
  *
  * @returns {boolean} true if a bullet killed the ship ($C24B)
  */
 function playerVsBullets(state, res) {
   const o = state.obj;
+  const box = res.collisionTables;
+  // $C20E LDA $0360 / STA $A0 / CLC / ADC #$06 / STA $A1 / STA $A2
+  const xb = [o.x[0], u8(o.x[0] + 6), u8(o.x[0] + 6)];
+  // $C21A LDA $0320 / STA $A4 / CLC / ADC #$08 / STA $A5 / ADC #$04 / STA $A6
+  const s1 = o.y[0] + 8;                          // $C21F CLC / ADC #$08
+  // $C224 ADC #$04 with NO CLC. The inherited carry is DEAD on this cartridge
+  // and it is worth saying so rather than leaving a reader to wonder: it can
+  // only be set when playerY > 247, and $A052's clamp caps $0320 at $C0 = 192.
+  // Measured: deleting the carry term is GREEN on all four scenarios and on the
+  // unit suite. Transcribed because it is what the instruction does; $A6 is
+  // doubly dead anyway, since only box class 2 would read it.
+  const s2 = u8(s1) + 4 + (s1 > 0xFF ? 1 : 0);    // $C224 ADC #$04 -- NO CLC
+  const yb = [o.y[0], u8(s1), u8(s2)];
   let iters = 0;
   for (let j = 9; j >= 0; j--) {                  // $C20A / $C259 / $C25B
     state.spawn.zA8 = j;                          // $C20C STX $A8
     iters += 1;
-    if (o.anim[22 + j] !== 0) {                   // $C22A LDA $0136,Y / BEQ
-      throw new Error(`$C22A: enemy-bullet slot ${22 + j} holds metasprite `
-                    + `${hex2(o.anim[22 + j])}. The three-box sweep at `
-                    + `$C22F-$C256 and its route into $C1D6 ($C24B) are not `
-                    + `ported -- the wave plan excludes slots 22-31 until a run `
-                    + `exercises them.`);
+    const i = 22 + j;
+    if (o.anim[i] === 0) continue;                // $C22A LDA $0136,Y / BEQ $C259
+    const k = o.animFrame[i];                     // $C22F LDX $0176,Y
+    if (k > 2) {
+      // $A0,X and $A4,X with X = 3 read $A3 and $A7 -- zero-page scratch left
+      // by whatever ran last, which this port does not model as addressable
+      // bytes. Only $BC86 (0 or 1) and $AEF8 (0) write $0176 for a bullet on
+      // any path that is ported, so reaching this needs one of the unported
+      // producers ($B3B6/$B4A2).
+      throw new Error(`$C22F: enemy-bullet slot ${i} has box class ${k}. `
+                    + '$C232 LDA $A0,X and $C23D LDA $A4,X would read the '
+                    + 'zero-page scratch at $A3/$A7, which this port does not '
+                    + 'model -- only classes 0 and 1 have a base byte.');
     }
+    const dx = u8(xb[k] - o.x[i]);                // $C232-$C235 SEC / SBC $0376,Y
+    if (dx >= box.read(0xC202 + k)) continue;     // $C238 CMP $C202,X / BCS $C259
+    const dy = u8(yb[k] - o.y[i] - 1);            // $C23D/$C23F SBC, carry CLEAR
+    if (dy >= box.read(0xC206 + k)) continue;     // $C242 CMP $C206,X / BCS $C259
+    if (state.zp.shield === 0) {                  // $C247 LDA $46 / $C249 BNE
+      die(state);                                 // $C24B JMP $C1D6
+      return true;
+    }
+    state.zp.shield = u8(state.zp.shield - 1);    // $C24E DEC $46
+    // $C250 LDA #$0A / CLC / ADC $A8 / TAX / JSR $AEF8 -- the SHORT free, which
+    // leaves the bullet's position and velocity bytes alone.
+    freeSlot(state, u8(0x0A + j));                // $C256 JSR $AEF8
   }
   state.spawn.zA8 = 0xFF;                         // $C259's DEC failed the BPL
   if (iters !== ENEMY_SLOTS) {
@@ -803,10 +904,24 @@ function shotProbe(state, x) {
  *
  *   C2FF  A2 09 / 86 A8
  *   C303  A6 A8 / BD 36 01  LDA $0136,X / F0 20 BEQ $C32A
- *   ...   $C31C JSR $C3D3 / BEQ / free the slot through $AEF8
+ *   C30A  BD 36 03  LDA $0336,X / BC 16 03 LDY $0316,X / D0 03 BNE $C315
+ *   C312  18 / 69 08        a type-0 bullet probes 8 px BELOW its own Y
+ *   C315  85 A5 / BD 76 03 LDA $0376,X / 85 A4
+ *   C31C  20 D3 C3  JSR $C3D3      <-- $C3D3 DIRECTLY, not $C3A3's player front
+ *   C31F  F0 09     BEQ $C32A
+ *   C321  A9 0A / 18 / 65 A8 / AA / 20 F8 AE    the same $0A + slot free
  *   C32A  C6 A8 / 10 D5     DEC $A8 / BPL $C303
  *
- * NOT PORTED for the same reason as $C20A: slots 22-31 are never populated.
+ * PORTED IN WAVE 11. The `+ 8` is the only surprise and it is conditional on
+ * the bullet KIND, not on anything about the map: type 0 (the only kind stage 1
+ * fires) probes a point 8 px below the sprite's own Y, type 1 probes its Y.
+ *
+ * NOT REACHED BY ANY SCENARIO YET, and that is measured rather than assumed:
+ * `$C30A` runs on every frame a bullet is alive (n = 1342 over one 700-frame
+ * probe run) and `$C327` -- the free -- ran 0 times, because the only windows
+ * in which a bullet exists are align-400 windows whose collision map is
+ * 0/512. `enemy-bullet-ground` is the scenario that closes that: it aligns at
+ * 1700 like `deep-ground`, where the cartridge's own map has 32 non-zero bytes.
  */
 function bulletsVsTerrain(state, res) {
   const o = state.obj;
@@ -814,11 +929,13 @@ function bulletsVsTerrain(state, res) {
   for (let x = 9; x >= 0; x--) {                  // $C2FF / $C32A / $C32C
     state.spawn.zA8 = x;                          // $C301 STX $A8
     iters += 1;
-    if (o.anim[22 + x] !== 0) {                   // $C305 LDA $0136,X / BEQ
-      throw new Error(`$C305: enemy-bullet slot ${22 + x} holds metasprite `
-                    + `${hex2(o.anim[22 + x])}. $C30A-$C327 (the +8 Y offset for `
-                    + `$0316,X == 0, the $C3D3 probe and the free through `
-                    + `$AEF8) is not ported -- slots 22-31 are excluded.`);
+    const i = 22 + x;
+    if (o.anim[i] === 0) continue;                // $C305 LDA $0136,X / BEQ $C32A
+    let py = o.y[i];                              // $C30A LDA $0336,X
+    if (o.type[i] === 0) py = u8(py + 8);         // $C30D BNE $C315 / $C312 ADC #$08
+    // $C315 STA $A5 / $C317 LDA $0376,X / $C31A STA $A4 / $C31C JSR $C3D3
+    if (probeCollision(state, o.x[i], py) !== 0) {  // $C31F BEQ $C32A
+      freeSlot(state, u8(0x0A + x));              // $C321-$C327 JSR $AEF8
     }
   }
   state.spawn.zA8 = 0xFF;                         // $C32A's DEC failed the BPL

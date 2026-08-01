@@ -215,7 +215,15 @@ stage('self-check: the comparison goes red when the port is broken', () => {
   // does not break. `deep-ground` aligns at 1700 with 32/512 non-zero and the
   // ship dies on the ground at f1866; without the map the port flies through
   // it. It costs one 249-frame port trace.
-  const subset = 'wiggle,corner-br,speed3-diag,opt2-wiggle,deep-ground';
+  // WAVE 11 ADDED `enemy-bullet-rank`, for the same reason wave 10 added
+  // `deep-ground`: the subset could not see the thing the new neuter breaks.
+  // Every scenario above has ZERO live enemy-bullet slots on every frame -- the
+  // pool is empty at align 400 and nothing in their scripts fills it -- so
+  // `bullet-nosub` would have been a break that does not break. This one has up
+  // to ten bullets in flight, four allocation failures and four shield
+  // absorptions over 299 frames.
+  const subset = 'wiggle,corner-br,speed3-diag,opt2-wiggle,deep-ground,'
+               + 'enemy-bullet-rank';
   const failures = (neuter) => {
     const argv = ['games/gradius/tools/oracle/compare.mjs', '--only', subset];
     if (neuter) argv.push('--neuter', neuter);
@@ -254,8 +262,10 @@ stage('self-check: the comparison goes red when the port is broken', () => {
   // because $8087's DMA rewrites all 256 bytes of hardware OAM on the first
   // ported frame. That is documented in porttrace.mjs at the assignment and in
   // docs/worklog/gradius/10-impl-seed-anywhere.md, not hidden by omission.
+  //   bullet-nosub the enemy bullets' sub-pixel accumulators -> needs
+  //                `enemy-bullet-rank`, see above. Wave 11.
   const breaks = ['lead1', 'seed-x+1', 'laginject=450',
-                  'seed-nt+1', 'seed-pal+1', 'seed-coll0'];
+                  'seed-nt+1', 'seed-pal+1', 'seed-coll0', 'bullet-nosub'];
   const survived = [];
   for (const b of breaks) {
     const r = failures(b);

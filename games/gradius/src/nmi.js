@@ -141,6 +141,13 @@ export function nmi(state, buttons, res, lag = false) {
   // paused frames and the port read 10 -- the first divergence this field has
   // ever produced.
   state.work.enemySlots = 0;
+  // ...and the enemy-BULLET loop ($BC19), for the same reason: $9A67 is past
+  // the pause jump too, so a paused frame runs zero iterations and must read
+  // 0 rather than inheriting the last played frame's 10. It is an internal
+  // assertion rather than a compared field -- objloop.lua does not count
+  // $BC21 -- which is written down in 11-impl-enemy-bullets.md as the
+  // cheapest real improvement left on that path.
+  state.work.bulletSlots = 0;
   // ...and so is the SPLIT. `bandB.ran` is "did $9AA3 fire on THIS frame", not a
   // RAM byte, and mode5Tail() was its only writer -- so a frame that never
   // reaches $9A88 used to inherit the last played frame's record. An intro frame

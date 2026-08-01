@@ -317,6 +317,14 @@ python games/gradius/tools/oracle/ramdiff.py --ab "" "D" --hold 120
 
 # extra addresses in the state vector
 python games/gradius/tools/oracle/probe.py --frames 400 --watch 0300,03A0
+
+# the ENEMY BULLETS ($BC59 / $BCB5 / $83B5 / $BDD5 / $C20A / $C2FF / $BF75),
+# wave 11.  38 exec hooks, three of them recording ARGUMENTS at the instruction,
+# plus a per-frame dump of all fifteen arrays of all ten bullet slots (22-31).
+# $040C+j is the enemy's shot countdown: poking it to 0 makes enemy slot j fire
+# on the very next frame, which is the only way a script can reach $BC59 at all
+# (see src/enemies.js $BC44 for why).
+python games/gradius/tools/oracle/bulletprobe.py --frames 700     --script "200:,10:S,490:" --poke "0415=0@450,0415=0@455,0415=0@460"     --hits --args --dump 450:60 --dumpslots
 ```
 
 Input script grammar: comma-separated `count:buttons`, buttons from

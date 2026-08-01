@@ -586,6 +586,18 @@ export function createState() {
       // 26630 over 2663 on the recon's 3000-frame run. The loop is
       // `LDX #$09 / ... / DEC $A8 / BPL`, with no early exit at all.
       enemySlots: 0,
+      // $BC21 entries -- iterations of the ENEMY-BULLET loop ($BC19, wave 11).
+      // Same shape and the same answer: `LDX #$09 / ... / DEC $A8 / BPL`, no
+      // early exit, ten every frame whether the slots are occupied or not.
+      // Asserted in src/enemies.js bulletUpdate().
+      bulletSlots: 0,
+      // $BC63 executions -- ALLOCATION FAILURES in the enemy-bullet allocator.
+      // Counted, not silent, because "every slot full" is ordinary gameplay:
+      // the shot is dropped, `$040C,X` has already been reloaded at $BC09, and
+      // nothing is retried. MEASURED on the cartridge with ten enemies made to
+      // fire on consecutive frames: $BC59 14, $BC68 10, $BC63 4 (f501, 507,
+      // 511, 516). This is the counter `enemy-bullets-full` exists to move.
+      bulletAllocFail: 0,
 
       // ---- the sound driver, wave 8 (src/sound.js) ----------------------
       // docs/knowledge/06's rule that the signals are instrumented SEPARATELY

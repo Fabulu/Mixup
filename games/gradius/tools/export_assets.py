@@ -496,6 +496,28 @@ ENEMY_BLOCKS = [
     ("explosionScripts", 0xAE71, 0xAE99,
      "$AEA8 LDA $AE71,Y with Y = $016C,X * 2, then ($98),Y with Y = $042C,X",
      "six pointers at $AE71-$AE7C then their streams; a 0 byte ends the script"),
+    # ---- WAVE 11: the three tables the ENEMY-BULLET path reads ------------
+    # $BC32 is EIGHTEEN bytes read through TWO overlapping nine-byte views:
+    # $BC93 `LDA $BC32,X` is the muzzle's dx and $BC98 `LDA $BC3B,X` its dy,
+    # and $BC3B is $BC32 + 9. Exported as ONE run because that is what it is;
+    # splitting it into two 9-byte tables would hide the overlap and the second
+    # view's last byte ($BC43) is also the run's last byte.
+    ("bulletMuzzle", 0xBC32, 0xBC44,
+     "$BC93 LDA $BC32,X (dx) and $BC98 LDA $BC3B,X (dy), X = $0496,Y",
+     "nine (dx,dy) muzzle offsets as two overlapping 9-byte views of one "
+     "18-byte run: 00/F8/08 in each axis, i.e. a 3x3 grid around the firing "
+     "enemy. MEASURED: $0496 is 0 on every stage-1 squadron, so only entry 0 "
+     "-- (0,0) -- has ever been read"),
+    ("bulletKind", 0xBC64, 0xBC68,
+     "$BC7A LDA $BC64,Y (metasprite) and $BC80 LDA $BC66,Y (type), Y = 0 or 1",
+     "two parallel 2-byte tables: 25/59 metasprite, 00/01 type. Y is 1 only "
+     "when the FIRING enemy's status $010C,X is $80-$8F ($BC6E-$BC77); "
+     "MEASURED n=0 on the cartridge, so only entry 0 is exercised"),
+    ("bulletAnim", 0xBDD1, 0xBDD5,
+     "$BDED LDA $BDD1,Y with Y = 1..3 ($BDE6 INY, $BDE7 CPY #$04 wraps to 1)",
+     "the three-frame bullet animation 7A 7B 7C. ENTRY 0 IS THE RTS AT $BDD1 "
+     "($60) and is never read: $BDDA BEQ leaves when the status byte is 0 and "
+     "the INY makes Y at least 1. Exported so the base address is the ROM's"),
 ]
 
 ENEMY_STAGE_PTRS = 0xA7D0          # $A2D5 LDA $A7D0,Y -- 7 stages, 2 bytes each
@@ -520,6 +542,21 @@ def enemy_tables(rom: Rom) -> dict:
     if rom.b(0xAE70) != 0x60:
         raise SystemExit("ABORT: $AE70 is not an RTS -- dispatch entries 0 and 31 "
                          "point at it and it is also the byte after the table")
+    # WAVE 11: anchor all three enemy-bullet tables on the OPCODES around them,
+    # so a range cited one byte out cannot ship bytes that merely look like a
+    # table.  Each of these is the instruction immediately past the block.
+    if rom.slice(0xBC44, 2) != bytes((0xA5, 0x1A)):
+        raise SystemExit(f"ABORT: $BC44 should be `LDA $1A` (the head of the fire "
+                         f"decision) but reads {rom.slice(0xBC44, 2).hex(' ')} -- "
+                         f"the muzzle table $BC32-$BC43 does not end where this "
+                         f"claims")
+    if rom.slice(0xBC68, 2) != bytes((0x86, 0xA9)):
+        raise SystemExit(f"ABORT: $BC68 should be `STX $A9` (the allocator's hit) "
+                         f"but reads {rom.slice(0xBC68, 2).hex(' ')}")
+    if rom.b(0xBDD1) != 0x60 or rom.slice(0xBDD5, 2) != bytes((0xA6, 0xA9)):
+        raise SystemExit(f"ABORT: $BDD1 should be an RTS and $BDD5 `LDX $A9` (the "
+                         f"mover) but they read ${rom.b(0xBDD1):02X} / "
+                         f"{rom.slice(0xBDD5, 2).hex(' ')}")
 
     roots = {
         "tableA": rom.w(ENEMY_DESC_PTRS),          # $A5FE -> single-spawn
@@ -693,6 +730,18 @@ COLLISION_BLOCKS = [
     ("explosion", 0xC0FA, 0xC101,
      "$C0E3 LDA $C0FA,X, X = $0160 (the explosion cursor)",
      "2D 2E 2F 30 30 00 00 -- metasprite ids, $00 ends the walk"),
+    # ---- WAVE 11 -----------------------------------------------------------
+    # The PLAYER-versus-enemy-BULLET boxes, which are a different pair of
+    # tables from $BFDA/$BFDE and are indexed by a different byte: $C22F
+    # `LDX $0176,Y` is the BULLET's own animation-frame byte, which $BC86 set
+    # from $BC66,Y -- i.e. 0 or 1, the bullet KIND, not an enemy box class.
+    ("bulletBoxes", 0xC202, 0xC20A,
+     "$C238 CMP $C202,X (width) and $C242 CMP $C206,X (height), X = $0176,Y",
+     "four widths 10 16 16 16 then four heights 08 12 12 10. MEASURED on the "
+     "cartridge with bulletprobe.py: kind 0 is the only one stage 1 fires, and "
+     "963 rejected + 1 accepted sample bracket the pair at W in [1,235], "
+     "H in [2,204] -- loose, because a bullet aimed at the ship approaches it "
+     "almost head-on, so dx is only ever small when dy is too"),
 ]
 
 

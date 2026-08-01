@@ -557,6 +557,80 @@ test('$C3C6: the LASER probes the terrain at x + $0B, because the CMP set the ca
   assert.strictEqual(at(0, 0x55), 6, 'an ordinary shot probes at its own x and misses');
 });
 
+// $BF7D asserted a THROW in the test above until wave 11. Inverted rather than
+// deleted (rule 6): what replaced it is held to what the throw's text promised.
+
+test('$BF7D: a shot destroys an enemy bullet -- INC $5D, +$0010, sfx $09', () => {
+  // `$C030 JSR $BF75` runs on EVERY iteration of the inner sweep, hit or miss.
+  // The bullet is put at index 9, the FIRST the sweep visits, because the enemy
+  // at index 4 consumes the shot and ends the sweep ($C0BB STA $A9) before a
+  // lower index is reached.
+  //
+  // The shot's own hit point for subtype 0 is (x + $BFCE[0], y + $BFD6[0]) =
+  // (108, 108) with width $BFD2[0] = $10; $BF7D tests Y first against the
+  // CONSTANT $10 and only then X against that width, with `$BF87 SBC` taking a
+  // clear carry -- so the bullet has to sit inside (91, 107] x (92, 107].
+  //
+  // RED WHEN: the axes are swapped, the constant $10 becomes the width, the -1
+  // is dropped, $5D is not INCremented, or the score/sfx are missing.
+  const put = (type, ms = 0x25) => {
+    const s = shotOnEnemy();
+    s.obj.type[22 + 9] = type;                // $0316,Y
+    s.obj.anim[22 + 9] = ms;                  // $0136,Y
+    s.obj.animFrame[22 + 9] = 0;              // $0176,Y
+    s.obj.x[22 + 9] = 100; s.obj.y[22 + 9] = 100;
+    s.sfx.length = 0;
+    shotSweep(s, res);
+    return s;
+  };
+  const hit = put(1);
+  assert.strictEqual(hit.obj.anim[22 + 9], 0, '$BFA8 STA $0136,Y');
+  assert.strictEqual(hit.obj.animFrame[22 + 9], 0, '$BFAB STA $0176,Y');
+  assert.strictEqual(hit.obj.type[22 + 9], 0, '$BFAE STA $0316,Y');
+  assert.strictEqual(hit.spawn.z5D, 1, '$BF9F INC $5D -- a WATCHED byte');
+  assert.deepStrictEqual([...hit.score.slice(4, 7)], [0x10, 0, 0], '$BFB1 JSR $8463');
+  assert.ok(hit.sfx.includes(0x09), '$BFB4 LDA #$09 / JSR $EC1E');
+  assert.strictEqual(hit.obj.anim[3], 0, '$C0AE falls into $C0B7: the shot goes');
+  assert.strictEqual(hit.obj.type[ENEMY_BASE + 4], 0x85,
+    'and the sweep ENDED there -- the enemy behind the bullet is untouched');
+
+  // Type 2 is the other way round: the SHOT is the casualty, sfx $05, and the
+  // bullet lives. Nothing scores.
+  const clink = put(2);
+  assert.strictEqual(clink.obj.type[22 + 9], 2, '$BF95 BNE not taken -> $BF97');
+  assert.deepStrictEqual(clink.sfx, [0x05], '$BF97 LDA #$05, and no $09');
+  assert.strictEqual(clink.obj.anim[3], 0, '$BF9C JMP $C0B7');
+  assert.deepStrictEqual([...clink.score.slice(4, 7)], [0, 0, 0], 'no $8463');
+  assert.strictEqual(clink.spawn.z5D, 0, 'and no INC $5D');
+
+  // A miss on Y: one pixel past the constant $10, with X still inside.
+  const miss = shotOnEnemy();
+  miss.obj.type[22 + 9] = 1; miss.obj.anim[22 + 9] = 0x25;
+  miss.obj.animFrame[22 + 9] = 0;
+  miss.obj.x[22 + 9] = 100; miss.obj.y[22 + 9] = 92;   // dy = 108 - 92 = $10
+  shotSweep(miss, res);
+  assert.strictEqual(miss.obj.type[22 + 9], 1, '$BF85 BCS $BF7C at dy == $10');
+});
+
+test('$BFBB: metasprite $59 consumes even the LASER; anything else does not', () => {
+  // `LDA $AA / CMP #$59 / BEQ $BFC2` -- $BFC2 is JMP $C0B7 (free the shot);
+  // $BFBF is JMP $C0AE, where subtype 1 returns before the free. So the KIND-1
+  // bullet ($BC64[1] = $59) is the one that stops a laser. Unreachable on the
+  // cartridge -- $BC77 needs a firing enemy with status $80-$8F and MEASURED
+  // n=0 -- so this is the listing read carefully, and it is labelled as such.
+  // RED WHEN: the $59 test is dropped and the laser survives both kinds.
+  const laser = (ms) => {
+    const s = shotOnEnemy({ sub: 1 });
+    s.obj.type[22 + 9] = 1; s.obj.anim[22 + 9] = ms;
+    s.obj.animFrame[22 + 9] = 0;
+    s.obj.x[22 + 9] = 100; s.obj.y[22 + 9] = 100;
+    shotSweep(s, res);
+    return s.obj.anim[3];
+  };
+  assert.strictEqual(laser(0x59), 0, '$BFC2 JMP $C0B7 -- consumed');
+  assert.strictEqual(laser(0x25), 6, '$BFBF JMP $C0AE -- the laser flies on');
+});
+
 test('the unported arms are loud, and each names its ROM address', () => {
   // docs/knowledge/02: an honest gap beats a guess that looks finished. Each of
   // these is a branch no measured run has ever taken, so its constants are
@@ -576,13 +650,6 @@ test('the unported arms are loud, and each names its ROM address', () => {
 
   const multi = shotOnEnemy({ type: 0x9A });
   assert.throws(() => shotSweep(multi, res), /\$C099/, 'the type-$9A hit counter');
-
-  const bullet = shotOnEnemy();
-  // At index 9, i.e. the FIRST the inner sweep visits: the enemy at index 4
-  // consumes the shot and ends the sweep before a lower index is reached, which
-  // is $C0BB `STA $A9` doing its job.
-  bullet.obj.type[22 + 9] = 5;                // $0316,Y -- an enemy bullet
-  assert.throws(() => shotSweep(bullet, res), /\$BF7D/, 'shot versus bullet');
 
   const stage5 = ship();
   stage5.zp19 = 4;

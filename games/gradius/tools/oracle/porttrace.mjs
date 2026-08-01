@@ -705,6 +705,38 @@ export const POKEABLE = {
 export const POKEABLE_RANGES = [
   { from: 0x0500, to: 0x06FF, why: 'the terrain collision map ($9F55 writes it, '
       + '$C3D3 reads it)', set: (s, a, v) => { s.coll[a - 0x0500] = v; } },
+  // WAVE 11: $040C-$0415, THE ENEMIES' SHOT COUNTDOWN. Same admission rule as
+  // everything above -- a value the CARTRIDGE ITSELF produces, that a button
+  // script cannot reach inside a window that survives.
+  //
+  //   PRODUCED BY THE CARTRIDGE: $A579 loads it from the squadron's style byte
+  //   AND $FE and $BBFD subtracts $98 from it every frame, so every live enemy
+  //   walks $040C,X down through every value from $C8 to 0 and then borrows.
+  //   Poking it to 0 puts an enemy exactly one frame before its own shot.
+  //
+  //   WHY A SCRIPT CANNOT REACH THE SHOT, and this is measured, not argued
+  //   (tools/oracle/bulletprobe.py, see src/enemies.js $BC44's header):
+  //     * $04EC is $C8 = 200 for EVERY stage-1 squadron -- read out of $A5BC
+  //       through the descriptors, all 22 pattern entries, and confirmed on the
+  //       cartridge: all 7 natural $BC44 entries in a 1900-frame run report
+  //       $040C = $04EC = 200;
+  //     * so an enemy only reaches its shot after marching ~200 px left of its
+  //       $F0 spawn, by which time it is at X = 33..38;
+  //     * and $BC56 fires only when the ship is STRICTLY further left than
+  //       that, i.e. at X < 33, where stage 1's opening kills it long before:
+  //       first death per hold from frame 210 is idle 1051, L 1083, LD 1098,
+  //       LU 1108, and five scripted dashes left (with and without $40 = 6)
+  //       died at f1149, f1734, f1742, f1800.
+  //   The owner reaches all of this in 10-30 seconds of ordinary play
+  //   (05-FINDING-enemy-bullets-reached-in-play.md). The corpus cannot, and
+  //   that gap is the whole reason wave 11 exists.
+  //
+  //   POKED FOR ONE FRAME (`@+N`), because the value is transient: $BC09
+  //   reloads it from $04EC the instant it borrows, so a HELD 0 would be a
+  //   state the cartridge is never in for two consecutive frames.
+  { from: 0x040C, to: 0x0415, why: 'the enemy shot countdown $040C,X ($A580 '
+      + 'loads it, $BBFD counts it down, $BC09 reloads it) -- one frame before '
+      + 'a shot', set: (s, a, v) => { s.obj.style[a - 0x0400] = v; } },
 ];
 
 function pokeFor(addr) {
@@ -867,8 +899,18 @@ export function tracePort(o) {
   // docs/worklog/gradius/10-impl-seed-anywhere.md.
   const n = o.neuter || '';
   const lagAt = /^laginject=(\d+)$/.exec(n);
+  // WAVE 11 ADDED ONE, `bullet-nosub`, and it exists to answer a question the
+  // other seven cannot: is anything looking at the ENEMY-BULLET slots? They are
+  // 0 at every align frame in the corpus, so no SEED-time break can touch them
+  // -- this one runs after every frame instead, zeroing the two sub-pixel
+  // accumulators $0396/$03F6 of every live bullet. That is invisible on the
+  // frame it happens (the sprite has not moved) and compounds into a wrong
+  // integer X and Y within a few frames, which is exactly the shape of a
+  // fractional-velocity bug. Before wave 11's watch-list growth (872 -> 1022)
+  // NOTHING in this repo could have seen it.
   const NEUTERS = ['lead1', 'seed-x+1', 'seed-nosub',
-                   'seed-nt+1', 'seed-pal+1', 'seed-coll0', 'seed-oam0'];
+                   'seed-nt+1', 'seed-pal+1', 'seed-coll0', 'seed-oam0',
+                   'bullet-nosub'];
   if (n && !lagAt && !NEUTERS.includes(n)) {
     throw new Error(`unknown neuter ${JSON.stringify(n)}; have: `
                   + `${NEUTERS.join(', ')}, laginject=<frame>`);
@@ -935,6 +977,11 @@ export function tracePort(o) {
     //                   neuter). The row then repeats the previous state.
     //   state.frameDrops  the frame RAN and cost the next NMI -- $882C, once
     //                   per stage load. src/flow.js fullScreenLoad().
+    if (n === 'bullet-nosub') {
+      for (let k = 22; k < 32; k++) {
+        if (state.obj.anim[k]) { state.obj.xf[k] = 0; state.obj.yf[k] = 0; }
+      }
+    }
     const drops = ran ? state.frameDrops : 1;
     if (drops) lagCum += drops;
     rows.push(sampleRow(state, g, o.watch, drops));

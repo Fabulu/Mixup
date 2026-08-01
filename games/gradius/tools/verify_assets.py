@@ -197,6 +197,26 @@ EXPECT_ENEMY_DISPATCH = {0: 0xAE70, 4: 0xB205, 5: 0xB0AF, 8: 0xB26C, 31: 0xAE70}
 #    measured (recon section 7).  $26 = 38, $29 = 41.
 EXPECT_ENEMY_EXPL = {0: [0x26, 0x27, 0x28, 0x00],
                      1: [0x29, 0x2A, 0x2B, 0x2C, 0x00]}
+# 8. THE ENEMY-BULLET TABLES -- wave 11.  Every number here came off the
+#    cartridge through tools/oracle/bulletprobe.py, with the enemies' $040C
+#    countdown poked to 0 so they fire; the path is unreachable from a button
+#    script (see src/enemies.js $BC44 and porttrace.mjs POKEABLE_RANGES).
+#      * $BC64/$BC66, the bullet KIND.  At f451 the cartridge put metasprite
+#        $25 into $0136 and type $00 into BOTH $0316 and $0176 -- entry 0.
+#        Entry 1 ($59/$01) is LISTING-ONLY: $BC77 needs a firing enemy whose
+#        status is $80-$8F and MEASURED n=0 in every run made here.
+#      * $BC32/$BC3B, the muzzle.  $0496 is 0 for every stage-1 squadron, so
+#        entry 0 is the only one read, and the bullet was seen to appear at the
+#        firing enemy's own (96,42) -- i.e. (0,0).  The other eight entries are
+#        $F8/$00/$08 in each axis, a 3x3 grid, and are listing-only.
+#      * $BDD1, the animation.  UNREACHED: $BC8B sets the new bullet's status
+#        to 0 and $BDDA leaves on it, so $BDE1 ran 0 times.  Entry 0 is the
+#        RTS byte $60 at $BDD1 itself and must never be a metasprite id --
+#        asserted below, because that is the one thing about this table the
+#        port can get wrong without any run noticing.
+EXPECT_BULLET_KIND = {"metasprite": [0x25, 0x59], "type": [0x00, 0x01]}
+EXPECT_BULLET_MUZZLE0 = (0x00, 0x00)
+EXPECT_BULLET_ANIM = [0x7A, 0x7B, 0x7C]      # entries 1..3; entry 0 is $BDD1's RTS
 
 # ---- FLOW ($9BCC/$9BD4 start positions, $9785 button codes) -- wave 4 -------
 # 1. THE START POSITION, MEASURED TWICE ON THE CARTRIDGE and not read off the
@@ -234,6 +254,23 @@ EXPECT_COLL_EXPLOSION = [0x2D, 0x2E, 0x2F, 0x30, 0x30, 0x00]
 #    it is stated as such -- the byte-for-byte re-read above is what holds the
 #    table to $10/$20/$30/$10 and $10/$20/$30/$02.
 EXPECT_COLL_BOX0 = {"dxRejected": 16, "dxAccepted": 14, "dyAccepted": 5}
+# 3. THE ENEMY-BULLET BOXES $C202/$C206 -- wave 11, and the honest part of this
+#    entry is how LOOSE the measurement is.  bulletprobe.py drove three runs
+#    with the $040C countdown poked so ten enemies fire, and classified every
+#    live bullet against the ship on every frame the ship was alive:
+#       1267 REJECTED (dx, dy) samples and 2 accepted frames -- bt2 f493 slot
+#       28 at (dx 0, dy 1) and bt4 f513 slot 28 at (dx 0, dy 1).
+#    Every accept has dx = 0, because a bullet AIMED at the ship arrives head
+#    on, so the samples bracket the pair only at W in [1, 235] and H in
+#    [2, 204].  (16, 8) is inside it and so is a great deal else.  What holds
+#    the two bytes to $10 and $08 is the byte-for-byte re-read from the .nes;
+#    what this arm holds is the INDEXING -- that $C238 reads $C202 and $C242
+#    reads $C206, four bytes apart, and not the other way round.
+EXPECT_COLL_BULLET_BOX = {"widths": [0x10, 0x16, 0x16, 0x16],
+                          "heights": [0x08, 0x12, 0x12, 0x10],
+                          "dxAccepted": 0, "dyAccepted": 1,
+                          "widthBracket": (1, 235), "heightBracket": (2, 204),
+                          "samplesRejected": 1267}
 
 # ---- WEAPONS ($A0E0 params, $A1A4 missile step, $BFCE shot boxes) -- wave 6 --
 # 1. THE PARAMETER TABLES, MEASURED as a CONSEQUENCE.  The corpus's three
@@ -757,7 +794,8 @@ def check_enemies(st: State) -> list[str]:
     rom = st.rom
     e = st.enemies
     blocks = {b["name"]: b for b in e["blocks"]}
-    for name in ("spawnData", "dispatch", "animGroups", "explosionScripts"):
+    for name in ("spawnData", "dispatch", "animGroups", "explosionScripts",
+                 "bulletMuzzle", "bulletKind", "bulletAnim"):
         if name not in blocks:
             bad.append(f"enemies/tables.json has no block {name!r}")
     if bad:
@@ -863,6 +901,40 @@ def check_enemies(st: State) -> list[str]:
         if got != want:
             bad.append(f"explosion script {idx} at ${p:04X} reads {got}, the "
                        f"cartridge drew metasprites {want}")
+
+    # ---- WAVE 11, the three enemy-bullet tables --------------------------
+    kind = blocks["bulletKind"]["bytes"]          # $BC64,Y and $BC66,Y
+    if kind[0:2] != EXPECT_BULLET_KIND["metasprite"]:
+        bad.append(f"$BC64 reads {kind[0:2]}, the cartridge put "
+                   f"${EXPECT_BULLET_KIND['metasprite'][0]:02X} into $0136 at "
+                   f"the f451 allocation of bulletprobe.py's `enemy-bullet` run")
+    if kind[2:4] != EXPECT_BULLET_KIND["type"]:
+        bad.append(f"$BC66 reads {kind[2:4]}, the cartridge put "
+                   f"${EXPECT_BULLET_KIND['type'][0]:02X} into $0316 AND $0176 "
+                   f"on that same frame")
+
+    muz = blocks["bulletMuzzle"]["bytes"]         # $BC32,X (dx) / $BC3B,X (dy)
+    if len(muz) != 18:
+        bad.append(f"the muzzle table is {len(muz)} bytes, not 18 -- $BC3B is "
+                   f"$BC32 + 9 and the two nine-byte views must both fit")
+    elif (muz[0], muz[9]) != EXPECT_BULLET_MUZZLE0:
+        bad.append(f"muzzle entry 0 is (${muz[0]:02X}, ${muz[9]:02X}); the "
+                   f"cartridge spawned the bullet on the firing enemy's own "
+                   f"pixel, i.e. {EXPECT_BULLET_MUZZLE0}")
+    elif set(muz) - {0x00, 0xF8, 0x08}:
+        bad.append(f"the muzzle table holds {sorted(set(muz))}; every entry of "
+                   f"a 3x3 offset grid must be $00, $F8 or $08 -- anything else "
+                   f"means the range is cited at the wrong address")
+
+    ba = blocks["bulletAnim"]["bytes"]            # $BDD1,Y with Y = 1..3
+    if ba[0] != 0x60:
+        bad.append(f"$BDD1 is ${ba[0]:02X}, not $60. It is the RTS that ends "
+                   f"$BDD5's caller and the table's own base; a table starting "
+                   f"one byte late would make entry 1 a plausible metasprite id")
+    if ba[1:4] != EXPECT_BULLET_ANIM:
+        bad.append(f"$BDD2-$BDD4 reads {ba[1:4]}, not {EXPECT_BULLET_ANIM} -- "
+                   f"$BDE6 INY / $BDE7 CPY #$04 makes Y 1..3, so those are the "
+                   f"only three entries $BDED can read")
     return bad
 
 
@@ -959,7 +1031,7 @@ def check_collision(st: State) -> list[str]:
     rom = st.rom
     c = st.coll
     blocks = {b["name"]: b for b in c["blocks"]}
-    for name in ("boxes", "explosion"):
+    for name in ("boxes", "explosion", "bulletBoxes"):
         if name not in blocks:
             bad.append(f"collision/tables.json has no block {name!r}")
     if bad:
@@ -1019,6 +1091,33 @@ def check_collision(st: State) -> list[str]:
         if not h0 > e["dyAccepted"]:
             bad.append(f"$BFDE[0] = ${h0:02X}: the cartridge ACCEPTED dy = "
                        f"{e['dyAccepted']} at right-wall f493")
+
+    # ---- WAVE 11, the enemy-bullet boxes at $C202/$C206 ------------------
+    bb = blocks["bulletBoxes"]["bytes"]
+    b = EXPECT_COLL_BULLET_BOX
+    if bb[0:4] != b["widths"] or bb[4:8] != b["heights"]:
+        bad.append(f"$C202/$C206 read {bb[0:4]} / {bb[4:8]}; the widths come "
+                   f"FIRST ($C238 CMP $C202,X) and the heights four bytes later "
+                   f"($C242 CMP $C206,X), and the two differ, so a swap is not "
+                   f"harmless the way $BFDA/$BFDE's class 0 is")
+    else:
+        w0, h0 = bb[0], bb[4]
+        # The bracket the cartridge actually pins, computed once from the 1267
+        # rejected and 2 accepted samples and written into EXPECT as a range
+        # rather than as an equality.  It is LOOSE and it says so: every accept
+        # has dx = 0 because a bullet aimed at the ship arrives head on, so no
+        # sample separates $10 from, say, $40.  The byte-for-byte re-read above
+        # is what pins the value; this is what pins the INDEX.
+        lo, hi = b["widthBracket"]
+        if not lo <= w0 <= hi:
+            bad.append(f"$C202[0] = ${w0:02X}, outside [{lo}, {hi}] -- the "
+                       f"cartridge ACCEPTED dx = {b['dxAccepted']} on both "
+                       f"killing frames and REJECTED {b['samplesRejected']} "
+                       f"other (dx, dy) samples")
+        lo, hi = b["heightBracket"]
+        if not lo <= h0 <= hi:
+            bad.append(f"$C206[0] = ${h0:02X}, outside [{lo}, {hi}] -- same "
+                       f"1267 rejected and 2 accepted samples, other axis")
     return bad
 
 
@@ -1427,8 +1526,41 @@ def _shift_flow_block(st):
     b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
 
 
+def _shift_bullet_muzzle(st):
+    """Re-cite the $BC32 muzzle table one byte along, CONSISTENTLY.
+
+    Address, offset and bytes move together, so the byte-for-byte re-read and
+    the offset re-derivation both still pass.  What catches it is that the run
+    then ends on $BC44's `A5` opcode, which is not $00/$F8/$08.
+    """
+    b = _enemy_block(st, "bulletMuzzle")
+    base = int(b["rom"].lstrip("$"), 16) + 1
+    b["rom"] = f"${base:04X}"
+    b["fileOffset"] = st.rom.off(base)
+    b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
+
+
+def _shift_bullet_anim(st):
+    """Re-cite the $BDD1 animation table at $BDD2 -- the plausible mistake.
+
+    $BDD1 is the RTS of the routine above it AND the table's base; a reader who
+    thinks the table is three bytes long cites $BDD2, and then $BDED's `LDA
+    $BDD1,Y` with Y = 1 returns $7B where the cartridge returns $7A.
+    """
+    b = _enemy_block(st, "bulletAnim")
+    base = int(b["rom"].lstrip("$"), 16) + 1
+    b["rom"] = f"${base:04X}"
+    b["fileOffset"] = st.rom.off(base)
+    b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
+
+
 def _coll_block(st, name):
     return next(b for b in st.coll["blocks"] if b["name"] == name)
+
+
+def _swap_bullet_boxes(st):
+    b = _coll_block(st, "bulletBoxes")["bytes"]
+    b[0:4], b[4:8] = b[4:8], b[0:4]
 
 
 def _shift_coll_block(st):
@@ -1577,6 +1709,27 @@ MUTATIONS = [
     ("enemy-anim", "enemies",
      "shift the status-1 animation group by one metasprite",
      lambda st: _mut_enemy(st, "animGroups", 0xADC5, 0x0B)),
+    # --- enemy bullets (wave 11) ---------------------------------------------
+    ("bullet-kind", "enemies",
+     "swap the two $BC64 metasprites, so a stage-1 bullet would be drawn as $59 "
+     "-- the kind whose $BFBB arm consumes even a laser",
+     lambda st: _enemy_block(st, "bulletKind")["bytes"].__setitem__(0, 0x59)),
+    ("bullet-type", "enemies",
+     "make $BC66[0] 1 instead of 0: same metasprite, but $0176 is the BOX CLASS "
+     "$C22F indexes and $0316 is what $C310 tests for the terrain probe's +8",
+     lambda st: _enemy_block(st, "bulletKind")["bytes"].__setitem__(2, 0x01)),
+    ("bullet-muzzle", "enemies",
+     "give muzzle entry 0 a dy of $08 -- the cartridge spawned the bullet on the "
+     "firing enemy's own pixel",
+     lambda st: _enemy_block(st, "bulletMuzzle")["bytes"].__setitem__(9, 0x08)),
+    ("bullet-muzzle-shift", "enemies",
+     "re-cite the muzzle table at $BC33 -- one byte along, CONSISTENTLY, so "
+     "$BC3B's second view slides into $BC44's `LDA $1A` opcode",
+     _shift_bullet_muzzle),
+    ("bullet-anim-base", "enemies",
+     "re-cite the animation table at $BDD2, which makes entry 0 the metasprite "
+     "$7A instead of the RTS byte $60 -- plausible, and one frame out",
+     _shift_bullet_anim),
     # --- flow (wave 4) -------------------------------------------------------
     ("flow-shift", "flow",
      "re-cite the start-position block at $9BCD -- one byte along, CONSISTENTLY",
@@ -1596,6 +1749,14 @@ MUTATIONS = [
      "widen the class-0 hit box from $10 to $11: the cartridge REJECTED dx = 16 "
      "at right-wall f492, and a 17-wide box kills a frame early",
      lambda st: _coll_block(st, "boxes")["bytes"].__setitem__(0, 0x11)),
+    ("coll-bullet-swap", "collision",
+     "swap the enemy-bullet widths and heights at $C202/$C206 -- unlike "
+     "$BFDA/$BFDE's class 0, these two tables DIFFER, so the swap is visible",
+     _swap_bullet_boxes),
+    ("coll-bullet-height", "collision",
+     "make $C206[0] 1 instead of $08: the cartridge ACCEPTED dy = 1 on both of "
+     "the two killing frames it was measured on, and a height of 1 rejects it",
+     lambda st: _coll_block(st, "bulletBoxes")["bytes"].__setitem__(4, 0x01)),
     ("coll-expl", "collision",
      "make $C0FA[4] $2F instead of $30 -- a fifth explosion frame the cartridge "
      "was measured NOT drawing at f534",

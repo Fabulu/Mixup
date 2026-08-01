@@ -58,9 +58,23 @@
 //   $C413                    the stage-advance arm ($3A != 0, $1B = $82).
 //   $BBB7's $BBE5 arm        the `$17 >= 3` rank consumer. Unreachable once any
 //                            wave has fired, because it is gated on `$5D == 0`.
-//   slots 22-31              enemy bullets. $BC19's loop over them is ported
-//                            (it is what runs every frame) but a non-empty
-//                            bullet slot throws: $BDD5 is not transcribed.
+//
+// SLOTS 22-31 -- THE ENEMY BULLETS -- ARE PORTED AS OF WAVE 11, and the note
+// they used to carry ("no measured run has ever populated them") is deleted
+// rather than softened, because it is the exact sentence that produced two
+// crashes in ordinary play. What was true was that no run in OUR CORPUS had
+// populated them; that is a fact about the sampling, and it was read back as a
+// claim about the cartridge. See $BC44's header for the measurement that
+// separates the two. The whole path is here now: $BC59 (allocate, and FAIL),
+// $BCB5 (aim, through the $83B5 divide), $BDD5 (move), and on the collision
+// side $C20A (they kill the ship), $C2FF (terrain eats them) and $BF75 (a shot
+// destroys one). What is still NOT ported on this path:
+//
+//   $BC44's $1A/$19 arm      stages 2+ skip the player-position gate entirely.
+//   $B3B6/$B4A2/$B3B9/...    the OTHER producers of a bullet -- two unported
+//                            enemy handlers that call $BCB5 and $BDFA directly.
+//                            Their existence is why $BDD5's animation arm is
+//                            transcribed even though $BC8B makes it dead here.
 
 import { u8, u16, ENEMY_BASE, ENEMY_SLOTS } from './state.js';
 import { soundRequest } from './sound.js';
@@ -463,10 +477,19 @@ function emitMember(state, rom) {
  * reach the shot. What actually keeps the bullet slots empty is `$BC44`'s own
  * stage-0/1 gate: an enemy fires only when the PLAYER IS TO ITS LEFT, and the
  * `enemy-waves` scenario parks the ship at X = 240 against the right wall.
+ *
+ * WAVE 11 CLOSED THE OTHER HALF OF THAT SENTENCE. It is not just that
+ * `enemy-waves` parks the ship on the right -- NO fixed hold can be in the
+ * right place at the right time. The countdown is 200 frames for every stage-1
+ * squadron, so a firing enemy is always at X = 33..38, and the ship has to be
+ * further left than that at exactly that frame; stage 1's opening kills every
+ * hold that tries (first death: idle 1051, L 1083, LD 1098, LU 1108, and four
+ * scripted dashes at f1149/1734/1742/1800). The four `enemy-bullet*` scenarios
+ * poke `$040C,X` instead. See $BC44 below.
  */
 export function enemyBullets(state, res) {
   const o = state.obj;
-  if (state.spawn.z5D !== 0) return bulletUpdate(state);   // $BBB7 BNE $BC19
+  if (state.spawn.z5D !== 0) return bulletUpdate(state, res);   // $BBB7 BNE $BC19
   // $BBBB LDY #$01, and on stage 1 nothing touches Y again before $BBEC.
   // $BBBD LDA $19 / ORA $1A / BEQ $BBEC -- on stage 1 with $1A = 0 the whole
   // $02-parity / $1A / $46 / $17 ladder at $BBC3-$BBEB is jumped over and $98
@@ -495,12 +518,12 @@ export function enemyBullets(state, res) {
     if (o.s04E0[i] === 0) continue;                // $BC04 LDA $04EC,X / BEQ
     o.style[i] = o.s04E0[i];                       // $BC09 STA $040C,X
     fireBullet(state, res, x);                     // $BC0C JSR $BC44
-    return bulletUpdate(state);                    // $BC0F JMP $BC19 -- and note
+    return bulletUpdate(state, res);                    // $BC0F JMP $BC19 -- and note
                                                    // it LEAVES the loop, fired
                                                    // or not: at most one enemy
                                                    // can reach $BC44 per frame
   }
-  return bulletUpdate(state);            // the loop falls through into $BC19
+  return bulletUpdate(state, res);            // the loop falls through into $BC19
 }
 
 /**
@@ -509,43 +532,433 @@ export function enemyBullets(state, res) {
  * On stages 0 and 1 with `$1A` clear there is a gate nothing else in the game
  * has: `LDA $0360 / CMP $036C,X / BCC $BC59` -- fire ONLY IF THE PLAYER IS TO
  * THE LEFT of the enemy. An enemy the ship has already flown past does not
- * shoot backwards. That is why `enemy-waves` never populates slots 22-31: the
- * scenario parks the ship at X = 240 and every enemy spawns at $F0 = 240 and
- * marches left, so `playerX >= enemyX` on every single call.
+ * shoot backwards.
  *
- * The allocation at `$BC59` onward is NOT ported -- it fills slots 22-31, whose
- * mover $BDD5 is untranscribed and which no measured run has ever exercised.
+ * WHY THE WHOLE PATH BELOW WAS EXCLUDED FOR EIGHT WAVES, AND WHY THAT WAS
+ * WRONG. The plan said "no measured run has exercised them"; that was a fact
+ * about the CORPUS, and it got read back as a claim about the cartridge. The
+ * owner falsified it in seconds of ordinary play -- fly left of an enemy --
+ * and the port froze (05-FINDING-enemy-bullets-reached-in-play.md).
+ *
+ * MEASURED THIS WAVE with tools/oracle/bulletprobe.py, because the corpus's own
+ * geometry is the reason it never saw this:
+ *   * over 1900 frames of `enemy-waves`'s own script, `$BC44` is entered SEVEN
+ *     times (f1158 1223 1285 1354 1734 1799 1862) and takes `$BC58 RTS` all
+ *     seven, because that scenario parks the ship at X = 240;
+ *   * every one of those seven is type $88 with the enemy at X = 33..38 -- the
+ *     countdown is 200 frames ($04EC = style AND $FE, and EVERY stage-1
+ *     squadron's style is $C8/$C9, read out of $A5BC via the descriptors), so
+ *     an enemy only reaches the shot after marching 200 px left of its $F0
+ *     spawn. The ship has to be at X < ~33 at that instant;
+ *   * and it cannot be: first death per hold, from frame 210, is idle 1051,
+ *     L 1083, LD 1098, LU 1108. Stage 1's opening kills anything on the left
+ *     half of the screen long before frame 1158. Five scripted attempts to dart
+ *     left in time (with and without `$40 = 6`) died at f1149, f1734, f1742,
+ *     f1800 -- measured, not assumed.
+ * So the corpus reaches `$BC44` naturally and can never reach `$BC59` naturally.
+ * The scenarios poke `$040C,X`, the countdown itself -- see POKEABLE_RANGES in
+ * tools/oracle/porttrace.mjs for why that is a cartridge value and not an
+ * invented one.
  */
 function fireBullet(state, res, j) {
   if (state.zp1A !== 0 || res.stage.stage >= 2) {  // $BC44 / $BC48 CMP #$02
     throw new Error(`$1A = ${hex2(state.zp1A)}, $19 = ${res.stage.stage}: `
                   + '$BC44 skips the player-position gate on stages 2+ and '
-                  + 'goes straight to the bullet allocator at $BC59, which is '
-                  + 'not ported');
+                  + 'goes straight to the bullet allocator at $BC59. The GATE '
+                  + 'is what is unported here, not the allocator');
   }
   // $BC4E LDX $A8 / $BC50 LDA $0360 / CMP $036C,X / $BC56 BCC $BC59
   if (state.obj.x[0] >= state.obj.x[j + ENEMY_BASE]) return;   // $BC58 RTS
-  throw new Error(`enemy slot ${j + ENEMY_BASE} fired: the player is at X=`
-                + `${state.obj.x[0]}, left of the enemy at X=`
-                + `${state.obj.x[j + ENEMY_BASE]}, so $BC56 BCC reaches the `
-                + 'enemy-bullet allocator at $BC59. Slots 22-31 and their '
-                + 'mover $BDD5 are not ported (no measured run has populated '
-                + 'them; the plan excludes them pending a recon).');
+  allocBullet(state, res, j);                                  // $BC59
 }
 
 /**
- * `$BC19` -- ten iterations over the enemy-BULLET slots' metasprite bytes
- * (`$0136,X` is `$0120 + 22 + X`). Every one is 0 in this corpus; $BDD5, the
- * bullet mover, is not transcribed.
+ * `$BC59-$BCAE` -- allocate a bullet slot and fill it in, then FALL THROUGH.
+ *
+ *   BC59  A2 09     LDX #$09
+ *   BC5B  BD 36 01  LDA $0136,X / F0 08 BEQ $BC68 / CA DEX / 10 F8 BPL $BC5B
+ *   BC63  60        RTS                       <-- ALLOCATION FAILURE
+ *   BC68  86 A9     STX $A9                   the bullet slot, 0..9
+ *   BC6A  A6 A8     LDX $A8 / A0 00 LDY #$00
+ *   BC6E  BD 0C 01  LDA $010C,X / 10 05 BPL $BC78 / C9 90 CMP #$90 / B0 01 BCS
+ *   BC77  C8        INY                       the firing ENEMY's status picks
+ *                                             the bullet KIND
+ *   BC78  A6 A9     LDX $A9
+ *   BC7A  B9 64 BC  LDA $BC64,Y / 9D 36 01 STA $0136,X    metasprite
+ *   BC80  B9 66 BC  LDA $BC66,Y / 9D 16 03 STA $0316,X / 9D 76 01 STA $0176,X
+ *   BC89  A9 00     LDA #$00 / 9D 16 01 STA $0116,X
+ *   BC8E  A4 A8     LDY $A8 / BE 96 04 LDX $0496,Y        the MUZZLE index
+ *   BC93  BD 32 BC  LDA $BC32,X / 85 98 STA $98           its dx
+ *   BC98  BD 3B BC  LDA $BC3B,X / 85 99 STA $99           its dy
+ *   BC9D  A6 A9     LDX $A9
+ *   BC9F  B9 2C 03  LDA $032C,Y / 18 / 65 99 ADC $99 / 9D 36 03 STA $0336,X
+ *   BCA8  B9 6C 03  LDA $036C,Y / 18 / 65 98 ADC $98 / 9D 76 03 STA $0376,X
+ *   BCB1  8A        TXA / 18 CLC / 69 0A ADC #$0A         <-- FALLS INTO $BCB5
+ *
+ * FOUR THINGS THIS GETS RIGHT ON PURPOSE.
+ *
+ * 1. **ALLOCATION FAILURE IS GAMEPLAY.** `$BC63` is a bare RTS: the shot is
+ *    simply not fired, `$040C,X` has ALREADY been reloaded from `$04EC,X` at
+ *    `$BC09` (before the JSR), and nothing is retried. The enemy waits another
+ *    200 frames. MEASURED on the cartridge: with ten enemies made to fire on
+ *    consecutive frames, `$BC59` ran 14 times, `$BC68` 10, and **`$BC63` 4** --
+ *    at f501, f507, f511 and f516 -- and the ten bullets carried on unchanged.
+ * 2. **THE ALLOCATOR SCANS DOWNWARD**, from index 9, exactly like the four
+ *    enemy allocators. MEASURED slot order: 9,8,7,6,5,4,3,2,1,0, i.e. object
+ *    slot 31 fills first, which is what decides sprite priority at $8B47.
+ * 3. **$0496,Y IS THE j-INDEXED ARRAY**, `s0480[22 + j]`, not `s0480[j + 12]`.
+ *    That is the same pair of bytes $A527 distinguishes (see clearSlot above).
+ *    MEASURED 0 for every stage-1 squadron, so the muzzle offset is entry 0 =
+ *    (0,0) and the bullet starts on the enemy's own pixel.
+ * 4. **$BCB1 IS A FALL-THROUGH INTO $BCB5**, not a call to it (docs/knowledge/02
+ *    trap 1, nine incidents). And the `ADC #$0A` is the whole reason the aim
+ *    routine and the mover address the bullet as `$010C,X` with X = $0A + slot:
+ *    $010C + $0A + slot IS $0116 + slot.
  */
-function bulletUpdate(state) {
+function allocBullet(state, res, j) {
+  const o = state.obj;
+  const rom = res.enemyTables;
+  let k = -1;
+  for (let x = 9; x >= 0; x--) {         // $BC59 LDX #$09 / $BC60 DEX / BPL
+    if (o.anim[22 + x] === 0) { k = x; break; }   // $BC5B LDA $0136,X / BEQ $BC68
+  }
+  if (k < 0) {                           // $BC63 RTS -- every slot busy
+    state.work.bulletAllocFail += 1;     // counted so the failure is VISIBLE
+    return;
+  }
+  state.spawn.zA9 = k;                   // $BC68 STX $A9
+  const e = j + ENEMY_BASE;              // $BC6A LDX $A8
+  const st = o.status[e];                // $BC6E LDA $010C,X
+  // $BC71 BPL $BC78 / $BC73 CMP #$90 / $BC75 BCS $BC78 / $BC77 INY -- kind 1
+  // only for a status in $80-$8F. MEASURED n=0: no stage-1 enemy has one.
+  const y = (st & 0x80) !== 0 && st < 0x90 ? 1 : 0;
+  const i = 22 + k;                      // $BC78 LDX $A9
+  o.anim[i] = rom.read(0xBC64 + y);      // $BC7A/$BC7D STA $0136,X
+  const kind = rom.read(0xBC66 + y);     // $BC80 LDA $BC66,Y
+  o.type[i] = kind;                      // $BC83 STA $0316,X
+  o.animFrame[i] = kind;                 // $BC86 STA $0176,X -- the SAME byte, and
+                                         //   it is the bullet's box class at $C22F
+  o.status[i] = 0;                       // $BC89/$BC8B STA $0116,X
+  const m = o.s0480[22 + j];             // $BC8E LDY $A8 / $BC90 LDX $0496,Y
+  const mdx = rom.read(0xBC32 + m);      // $BC93 LDA $BC32,X / STA $98
+  const mdy = rom.read(0xBC3B + m);      // $BC98 LDA $BC3B,X / STA $99
+  o.y[i] = u8(o.y[e] + mdy);             // $BC9F-$BCA5
+  o.x[i] = u8(o.x[e] + mdx);             // $BCA8-$BCAE
+  aimBullet(state, u8(k + 0x0A));        // $BCB1 TXA / CLC / ADC #$0A -- FALL-THROUGH
+}
+
+/**
+ * `$83B5` -- the cartridge's 24-by-8 restoring divide, transcribed literally.
+ *
+ *   83B5  E6 5D     INC $5D                <-- A SIDE EFFECT, and it is watched
+ *   83B7  86 98 / 84 99 / A9 00 / 85 9A    $98:$99:$9A := X:Y:00
+ *   83BF  A5 9B / 10 08                    divisor >= $80 -> halve BOTH
+ *   83C3  46 98 / 66 99 / 66 9A / 46 9B
+ *   83CB  A9 00 / A2 11 / 18               A = 0, 17 iterations, carry clear
+ *   83D0  26 9A / 26 99 / 26 98            ROL the 24-bit register
+ *   83D6  CA / F0 09                       DEX / BEQ $83E2 -- so only SIXTEEN
+ *                                          quotient bits are produced
+ *   83D9  2A        ROL A                  bring the shifted-out bit down...
+ *   83DA  C5 9B     CMP $9B                ...and OVERWRITE the carry it made.
+ *                                          A ROL A that overflows loses its top
+ *                                          bit here; that is the ROM's own
+ *                                          8-bit limit, not a transcription slip
+ *   83DC  90 F2     BCC $83D0              quotient bit 0
+ *   83DE  E5 9B / B0 EE  SBC $9B / BCS     quotient bit 1 (always taken)
+ *
+ * The caller uses `$99:$9A` as an 8.8 fraction, so the result is
+ * min/max * 256. VALIDATED against the cartridge on the ten (min,max) pairs
+ * bulletprobe.py recorded at `$BD1C`/`$BD1F` -- (16,53)->77, (18,45)->102,
+ * (23,35)->168, (25,28)->228, (33,33)->116, (38,38)->33, (45,45)->11,
+ * (60,60)->8, (75,75)->6, (90,90)->5 -- all ten exact, `$98` and `$99` zero on
+ * every one. tests/enemies.test.js replays them.
+ *
+ * `INC $5D` IS NOT DECORATION. `$5D` is the byte `$BBB7` gates on and it is a
+ * watched address (w_005D); `$9656 STA $5D` clears it at the top of every
+ * mode-5 frame, so a divide performed here leaves `$5D = 1` at the $80B5 sample
+ * point. A port that skipped it would diverge on w_005D on every firing frame.
+ *
+ * @returns {{hi:number, mid:number, lo:number}} $98, $99, $9A
+ */
+export function divide83B5(state, x, y, divisor) {
+  state.spawn.z5D = u8(state.spawn.z5D + 1);   // $83B5 INC $5D
+  let m98 = x, m99 = y, m9A = 0;               // $83B7-$83BD
+  let d = divisor;                             // $9B
+  if (d & 0x80) {                              // $83BF LDA $9B / BPL $83CB
+    const c98 = m98 & 1; m98 >>= 1;            // $83C3 LSR $98
+    const c99 = m99 & 1; m99 = (m99 >> 1) | (c98 << 7);   // $83C5 ROR $99
+    m9A = (m9A >> 1) | (c99 << 7);             // $83C7 ROR $9A
+    d >>= 1;                                   // $83C9 LSR $9B
+  }
+  let a = 0;                                   // $83CB LDA #$00
+  let carry = 0;                               // $83CF CLC
+  for (let n = 0x11; ;) {                      // $83CD LDX #$11
+    let t = (m9A << 1) | carry; m9A = t & 0xFF; let c = t >> 8;   // $83D0 ROL $9A
+    t = (m99 << 1) | c;         m99 = t & 0xFF; c = t >> 8;       // $83D2 ROL $99
+    t = (m98 << 1) | c;         m98 = t & 0xFF; c = t >> 8;       // $83D4 ROL $98
+    n -= 1;                                    // $83D6 DEX
+    if (n === 0) break;                        // $83D7 BEQ $83E2
+    a = u8((a << 1) | c);                      // $83D9 ROL A -- its carry-out is
+                                               //   discarded by the CMP below
+    if (a < d) { carry = 0; continue; }        // $83DA CMP $9B / $83DC BCC $83D0
+    a = u8(a - d);                             // $83DE SBC $9B (carry was SET)
+    carry = 1;                                 // $83E0 BCS $83D0 -- always taken
+  }
+  return { hi: m98, mid: m99, lo: m9A };       // $83E2 RTS
+}
+
+/**
+ * `$BCB5-$BDD1` -- point the new bullet at the ship.
+ *
+ * Entered by FALL-THROUGH from `$BCB1` with A = bullet slot + $0A, and also
+ * called directly from `$B3B6`/`$B4A2` (two unported enemy handlers).
+ *
+ *   BCB5  85 A9 / AA               $A9 := slot + $0A, and X with it
+ *   BCB8  A5 17 / C9 03 / 90 1A    rank < 3 -> $BCD8, aim AT the ship
+ *   BCBE  AD 20 03 / 85 98         rank >= 3: target Y = the ship's
+ *   BCC3  A5 02 / 0A               <-- DEAD: the value is dropped and the carry
+ *                                      it sets is overwritten two lines later
+ *   BCC6  A5 02 / 4A / 4A / 29 1F  lead = ($02 >> 2) AND $1F ...
+ *   BCCC  6D 60 03                 ...ADC $0360 -- and the carry it adds is BIT
+ *                                      1 OF $02, left by the SECOND LSR
+ *   BCCF  90 02 / A9 F8            target X saturates at $F8
+ *   BCD8  AD 20 03 / AD 60 03      rank < 3: the ship's own X and Y
+ *   BCE2  A0 00                    $A0 collects the direction bits
+ *   BCE4  BD 2C 03 / 38 / E5 98    dy = bulletY - targetY
+ *   BCEA  B0 03 / C8 / 49 FF       borrow -> bit 0 SET and one's-complement
+ *   BCEF  D0 02 / A9 01            a zero component becomes 1
+ *   BCF5  BD 6C 03 / 38 / E5 99    dx, the same, into bits 1 (INY twice)
+ *   BD05  84 A0 / A0 00 / A6 9C / 85 9D
+ *   BD0D  C5 9C / B0 05            |dx| >= |dy| ? A = max, X = min, Y = 0
+ *   BD11  A5 9C / A6 9D / C8       : A = |dy|, X = |dx|, Y = 1 (STEEP)
+ *   BD16  85 9B / 84 A1 / A0 00 / 20 B5 83    divide min by max
+ *   BD1F  A6 A9 / A5 A0 / 9D 6C 04            $046C,X := the direction bits
+ *   BD26  A5 A1 / D0 54                       steep -> $BD7E
+ *
+ * THE DIRECTION BYTE IS TWO INDEPENDENT BITS AND THE MOVER READS THEM TWO
+ * DIFFERENT WAYS: `$BDFD CMP #$02 / BCC` tests bit 1 (X sign) and `$BE35
+ * AND #$01` tests bit 0 (Y sign). Bit 0 set = the target was BELOW the bullet.
+ *
+ * THE TWO SPEED BUMPS ARE NOT THE SAME SHAPE, and this is the trap in the
+ * routine. Both halve `$99:$9A` with `LSR/ROR` and then add it back in, but:
+ *   * the `$1A` bump ($BD42) is entered through `LDA $1A / BEQ`, neither of
+ *     which touches the carry -- so `$BD48 ADC` carries in THE BIT THE ROR JUST
+ *     SHIFTED OUT;
+ *   * the `$17` bump ($BD5F) is entered through `CMP #$02`, which OVERWRITES
+ *     that carry with "rank >= 2" -- and the arm only runs when that is true,
+ *     so `$BD67 ADC` always carries in ONE.
+ * A port that used the same helper for both is wrong on the second one.
+ *
+ * MEASURED: `$BD28` (the shallow arm) 10 of 13 fires, `$BD7E` (steep) 3;
+ * `$BCD8` 10, `$BCBE` 0 -- the rank-3 lead is listing-only in the natural
+ * corpus, and `enemy-bullet-rank` reaches it by poking $45/$46 to values
+ * $8974 itself writes, which puts $17 at 3 through $9C45.
+ */
+function aimBullet(state, a9) {
+  const o = state.obj;
+  state.spawn.zA9 = a9;                  // $BCB5 STA $A9 / $BCB7 TAX
+  const i = u8(a9 + ENEMY_BASE);         // every array below is base + $0C + X
+  let ty, tx;
+  if (state.zp17 >= 3) {                 // $BCB8 LDA $17 / CMP #$03 / BCC $BCD8
+    ty = o.y[0];                         // $BCBE LDA $0320 / STA $98
+    // $BCC3 LDA $02 / $BCC5 ASL A: DEAD CODE. The accumulator is reloaded on
+    // the very next instruction and the carry the ASL sets is overwritten by
+    // the two LSRs. Kept as a comment, not as a line, and named as dead so
+    // nobody re-derives it as "bit 7 of $02 is the carry" -- it is bit 1.
+    const lead = (state.frame >> 2) & 0x1F;      // $BCC6-$BCCA LSR/LSR/AND #$1F
+    const carryIn = (state.frame >> 1) & 1;      // the SECOND LSR's carry-out
+    const sum = lead + o.x[0] + carryIn;         // $BCCC ADC $0360
+    tx = sum > 0xFF ? 0xF8 : sum;                // $BCCF BCC / $BCD1 LDA #$F8
+  } else {
+    ty = o.y[0];                         // $BCD8 LDA $0320 / STA $98
+    tx = o.x[0];                         // $BCDD LDA $0360 / STA $99
+  }
+  let dir = 0;                           // $BCE2 LDY #$00
+  let dy = u8(o.y[i] - ty);              // $BCE4 LDA $032C,X / SEC / SBC $98
+  if (o.y[i] < ty) { dir += 1; dy = u8(dy ^ 0xFF); }   // $BCEA BCS / INY / EOR #$FF
+  if (dy === 0) dy = 1;                  // $BCEF BNE $BCF3 / $BCF1 LDA #$01
+  let dx = u8(o.x[i] - tx);              // $BCF5 LDA $036C,X / SEC / SBC $99
+  if (o.x[i] < tx) { dir += 2; dx = u8(dx ^ 0xFF); }   // $BCFB BCS / INY INY / EOR
+  if (dx === 0) dx = 1;                  // $BD01 BNE $BD05 / $BD03 LDA #$01
+  // $BD09 LDX $9C (|dy|) / $BD0B STA $9D (|dx|) / $BD0D CMP $9C
+  const steep = dx < dy;                 // $BD0F BCS $BD16 -- else Y = 1
+  const max = steep ? dy : dx;           // $BD16 STA $9B
+  const min = steep ? dx : dy;           // X, the divide's dividend
+  const q = divide83B5(state, min, 0, max);    // $BD1A LDY #$00 / $BD1C JSR $83B5
+  o.s0460[i] = dir;                      // $BD1F LDX $A9 / $BD21 LDA $A0 / STA $046C,X
+  // The two halves below are mirror images with the axes swapped; they are
+  // written out twice because the ROM writes them out twice and the pair of
+  // ADC carries differs between them (see the header).
+  let hi = q.mid, lo = q.lo;             // $99:$9A, consumed destructively
+  if (!steep) {                          // $BD26 LDA $A1 / $BD28 BNE $BD7E
+    o.xvelf[i] = 0;                      // $BD2A LDA #$00 / $BD2C STA $044C,X
+    o.xvel[i] = 1;                       // $BD2F LDA #$01 / $BD31 STA $042C,X
+    o.yvelf[i] = lo;                     // $BD34 LDA $9A / $BD36 STA $03EC,X
+    o.yvel[i] = hi;                      // $BD39 LDA $99 / $BD3B STA $03BC,X
+    let c = lo & 1;                      // $BD3E LSR $99 / $BD40 ROR $9A
+    lo = (lo >> 1) | ((hi & 1) << 7); hi >>= 1;
+    if (state.zp1A !== 0) {              // $BD42 LDA $1A / $BD44 BEQ $BD5B
+      let s = lo + o.yvelf[i] + c;       // $BD46 LDA $9A / ADC $03EC,X -- the ROR's
+      o.yvelf[i] = u8(s);                //   carry, because BEQ did not touch it
+      s = hi + o.yvel[i] + (s > 0xFF ? 1 : 0);   // $BD4E LDA $99 / ADC $03BC,X
+      o.yvel[i] = u8(s);
+      o.xvelf[i] = 0x80;                 // $BD56 LDA #$80 / $BD58 STA $044C,X
+    }
+    c = lo & 1;                          // $BD5B LSR $99 / $BD5D ROR $9A
+    lo = (lo >> 1) | ((hi & 1) << 7); hi >>= 1;
+    // $BD5F LDA $17 / CMP #$02 / BCC $BD7D -- and the CMP REPLACES `c` with 1
+    // on the only path that reaches the adds.
+    if (state.zp17 >= 2) {
+      let s = lo + o.yvelf[i] + 1;       // $BD65 LDA $9A / ADC $03EC,X, carry SET
+      o.yvelf[i] = u8(s);
+      s = hi + o.yvel[i] + (s > 0xFF ? 1 : 0);   // $BD6D LDA $99 / ADC $03BC,X
+      o.yvel[i] = u8(s);
+      s = o.xvelf[i] + 0x40 + (s > 0xFF ? 1 : 0);// $BD75 LDA $044C,X / ADC #$40
+      o.xvelf[i] = u8(s);
+    }
+    return;                              // $BD7D RTS
+  }
+  o.yvel[i] = 1;                         // $BD7E LDA #$01 / $BD80 STA $03BC,X
+  o.yvelf[i] = 0;                        // $BD83 LDA #$00 / $BD85 STA $03EC,X
+  o.xvelf[i] = lo;                       // $BD88 LDA $9A / $BD8A STA $044C,X
+  o.xvel[i] = hi;                        // $BD8D LDA $99 / $BD8F STA $042C,X
+  let c = lo & 1;                        // $BD92 LSR $99 / $BD94 ROR $9A
+  lo = (lo >> 1) | ((hi & 1) << 7); hi >>= 1;
+  if (state.zp1A !== 0) {                // $BD96 LDA $1A / $BD98 BEQ $BDAF
+    let s = lo + o.xvelf[i] + c;         // $BD9A LDA $9A / ADC $044C,X
+    o.xvelf[i] = u8(s);
+    s = hi + o.xvel[i] + (s > 0xFF ? 1 : 0);     // $BDA2 LDA $99 / ADC $042C,X
+    o.xvel[i] = u8(s);
+    o.yvelf[i] = 0x80;                   // $BDAA LDA #$80 / $BDAC STA $03EC,X
+  }
+  c = lo & 1;                            // $BDAF LSR $99 / $BDB1 ROR $9A
+  lo = (lo >> 1) | ((hi & 1) << 7); hi >>= 1;
+  if (state.zp17 >= 2) {                 // $BDB3 LDA $17 / CMP #$02 / BCC $BDD1
+    let s = lo + o.xvelf[i] + 1;         // $BDB9 LDA $9A / ADC $044C,X, carry SET
+    o.xvelf[i] = u8(s);
+    s = hi + o.xvel[i] + (s > 0xFF ? 1 : 0);     // $BDC1 LDA $99 / ADC $042C,X
+    o.xvel[i] = u8(s);
+    s = o.yvelf[i] + 0x40 + (s > 0xFF ? 1 : 0);  // $BDC9 LDA $03EC,X / ADC #$40
+    o.yvelf[i] = u8(s);
+  }
+}                                        // $BDD1 RTS
+
+/**
+ * `$BC19` -- ten iterations over the enemy-BULLET slots, moving each live one.
+ *
+ *   BC19  A2 13     LDX #$13 / 86 A9 STX $A9      <-- $13 = $0A + 9
+ *   BC1D  A2 09     LDX #$09 / 86 A8 STX $A8
+ *   BC21  A6 A8     LDX $A8 / BD 36 01 LDA $0136,X / F0 03 BEQ $BC2B
+ *   BC28  20 D5 BD  JSR $BDD5
+ *   BC2B  C6 A9 / C6 A8 / 10 F0                   BOTH counters step
+ *
+ * The loop carries TWO indices for the same ten slots: `$A8` counts 9..0 and
+ * addresses them as `$0136,X`, `$A9` counts $13..$0A and addresses them as
+ * `$010C,X`. $0120 + 22 + n and $0100 + $0C + $0A + n are the same byte. The
+ * port keeps both because `$BDD5` reads `$A9` and nothing else passes it.
+ */
+function bulletUpdate(state, res) {
+  state.work.bulletSlots = 0;
   for (let x = 9; x >= 0; x--) {         // $BC1D LDX #$09 / $BC2F BPL $BC21
+    state.spawn.zA8 = x;                 // $BC1F STX $A8
+    state.spawn.zA9 = u8(0x0A + x);      // $BC19 LDX #$13 / $BC2B DEC $A9
+    state.work.bulletSlots += 1;
     if (state.obj.anim[22 + x] !== 0) {  // $BC23 LDA $0136,X / BEQ $BC2B
-      throw new Error(`enemy bullet slot ${22 + x} is live: $BC28 JSR $BDD5 is `
-                    + 'not ported (no measured run has ever populated slots '
-                    + '22-31 -- stage 1\'s opening enemies do not shoot)');
+      moveBullet(state, res, x);         // $BC28 JSR $BDD5
     }
   }
+  state.spawn.zA8 = 0xFF;                // $BC2D's DEC failed the BPL
+  state.spawn.zA9 = 0x09;                // ...and $BC2B's left $A9 at $0A - 1
+  // docs/knowledge/06 mechanism (C): TEN, unconditionally, no early exit, no
+  // work budget. Asserted rather than assumed, like every other object loop.
+  if (state.work.bulletSlots !== ENEMY_SLOTS) {
+    throw new Error(`$BC19 ran ${state.work.bulletSlots} slots, not ${ENEMY_SLOTS}`);
+  }
+}
+
+/**
+ * `$BDD5-$BE6D` -- move ONE enemy bullet, animate it, and free it off-screen.
+ *
+ *   BDD5  A6 A9     LDX $A9                       X = $0A + slot
+ *   BDD7  BC 0C 01  LDY $010C,X / F0 1E BEQ $BDFA status 0 -> NO animation
+ *   BDDC  BD 4C 01  LDA $014C,X / D0 16 BNE $BDF7 timer running -> just DEC
+ *   BDE1  A9 10     LDA #$10 / 9D 4C 01 STA $014C,X
+ *   BDE6  C8 / C0 04 / 90 02 / A0 01              Y := Y+1, wrapping 4 -> 1
+ *   BDED  B9 D1 BD  LDA $BDD1,Y / 9D 2C 01 STA $012C,X
+ *   BDF3  98 / 9D 0C 01                           status := Y
+ *   BDF7  DE 4C 01  DEC $014C,X
+ *   BDFA  BD 6C 04  LDA $046C,X / C9 02 / 90 16   bit 1 of the direction byte
+ *   BE01  ...       X += $042C:$044C   (16-bit, fraction first)
+ *   BE17  ...       X -= $042C:$044C
+ *   BE2A  C9 02 / 90 3D / C9 FC / B0 39           X outside [2, $FB] -> free
+ *   BE32  BD 6C 04  LDA $046C,X / 29 01 / F0 16   bit 0
+ *   BE39  ...       Y += $03BC:$03EC
+ *   BE4F  ...       Y -= $03BC:$03EC
+ *   BE62  C9 08 / 90 05 / C9 C4 / B0 01 / 60      Y outside [8, $C3] -> free
+ *   BE6B  4C F8 AE  JMP $AEF8                     the SHORT free, X = $0A+slot
+ *
+ * THE X TEST RETURNS. `$BE2C`/`$BE30` jump to `$BE6B`, which is a JMP into
+ * `$AEF8`, so a bullet that leaves the sides never runs the Y update at all --
+ * its `$0336`/`$0356` keep the values it had one frame ago, and `$AEF8` does
+ * not clear them. That difference is observable in the watched arrays.
+ *
+ * THE ANIMATION IS DEAD CODE ON THIS PATH AND IS PORTED ANYWAY. `$BC8B` sets
+ * the new bullet's status to 0, so `$BDDA BEQ` always leaves and `$BDD1,Y` is
+ * never read -- MEASURED $BDE1 n=0 over every run made here. It is reachable
+ * from the OTHER two producers ($B3B9/$B4B3/$B4FA, both unported handlers),
+ * and it is four lines, so it is transcribed rather than made a throw. Note
+ * `$BDD1` itself is the routine's own RTS byte ($60): Y is at least 1 by
+ * construction, so entry 0 is unreachable, which is why the exported table
+ * carries it and the port never indexes it.
+ */
+function moveBullet(state, res, x) {
+  const o = state.obj;
+  const rom = res.enemyTables;
+  const i = 22 + x;                      // $BDD5 LDX $A9, $010C + $0A + x
+  let y = o.status[i];                   // $BDD7 LDY $010C,X
+  if (y !== 0) {                         // $BDDA BEQ $BDFA
+    if (o.timer[i] === 0) {              // $BDDC LDA $014C,X / $BDDF BNE $BDF7
+      o.timer[i] = 0x10;                 // $BDE1/$BDE3
+      y = u8(y + 1);                     // $BDE6 INY
+      if (y >= 4) y = 1;                 // $BDE7 CPY #$04 / BCC / $BDEB LDY #$01
+      o.anim[i] = rom.read(0xBDD1 + y);  // $BDED LDA $BDD1,Y / $BDF0 STA $012C,X
+      o.status[i] = y;                   // $BDF3 TYA / $BDF4 STA $010C,X
+    }
+    o.timer[i] = u8(o.timer[i] - 1);     // $BDF7 DEC $014C,X
+  }
+  const dir = o.s0460[i];                // $BDFA LDA $046C,X
+  let nx;
+  // `CMP #$02 / BCC` and `AND #$02` agree for every value $BD21 can put in
+  // $046C -- $A0 is built by two INYs from 0, so dir is 0..3. Written as the
+  // ROM's compare anyway; a deliberate `dir & 2` was measured GREEN on all
+  // four scenarios AND on the unit suite, which is what it should be.
+  if (dir >= 2) {                        // $BDFD CMP #$02 / $BDFF BCC $BE17
+    const f = o.xf[i] + o.xvelf[i];      // $BE01 LDA $044C,X / CLC / ADC $038C,X
+    o.xf[i] = u8(f);                     // $BE08 STA $038C,X
+    nx = u8(o.x[i] + o.xvel[i] + (f > 0xFF ? 1 : 0));   // $BE0B/$BE0E ADC $036C,X
+    o.x[i] = nx;                         // $BE11 STA $036C,X
+  } else {
+    const f = o.xf[i] - o.xvelf[i];      // $BE17 LDA $038C,X / SEC / SBC $044C,X
+    o.xf[i] = u8(f);                     // $BE1E STA $038C,X
+    nx = u8(o.x[i] - o.xvel[i] - (f < 0 ? 1 : 0));      // $BE21/$BE24 SBC $042C,X
+    o.x[i] = nx;                         // $BE27 STA $036C,X
+  }
+  // $BE2A CMP #$02 / BCC $BE6B / CMP #$FC / BCS $BE6B -- A is the X just stored
+  if (nx < 2 || nx >= 0xFC) { freeSlot(state, u8(0x0A + x)); return; }
+  let ny;
+  if (dir & 1) {                         // $BE32 LDA $046C,X / AND #$01 / BEQ $BE4F
+    const f = o.yf[i] + o.yvelf[i];      // $BE39 LDA $03EC,X / CLC / ADC $034C,X
+    o.yf[i] = u8(f);                     // $BE40 STA $034C,X
+    ny = u8(o.y[i] + o.yvel[i] + (f > 0xFF ? 1 : 0));   // $BE43/$BE46 ADC $032C,X
+    o.y[i] = ny;                         // $BE49 STA $032C,X
+  } else {
+    const f = o.yf[i] - o.yvelf[i];      // $BE4F LDA $034C,X / SEC / SBC $03EC,X
+    o.yf[i] = u8(f);                     // $BE56 STA $034C,X
+    ny = u8(o.y[i] - o.yvel[i] - (f < 0 ? 1 : 0));      // $BE59/$BE5C SBC $03BC,X
+    o.y[i] = ny;                         // $BE5F STA $032C,X
+  }
+  // $BE62 CMP #$08 / BCC $BE6B / CMP #$C4 / BCS $BE6B / $BE6A RTS
+  if (ny < 8 || ny >= 0xC4) freeSlot(state, u8(0x0A + x));
 }
 
 // ==================== THE UPDATE LOOP, $ADAB / $ADE5 ========================

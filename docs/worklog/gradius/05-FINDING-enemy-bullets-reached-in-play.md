@@ -1,6 +1,12 @@
 # FINDING — enemy bullets are reached in ordinary play, and the plan says they are not
 
-status: DONE (finding recorded; the port work is NOT done)
+status: DONE -- and the port work is done too, in wave 11.
+        See `11-impl-enemy-bullets.md`: $BC59, $BCB5, $83B5, $BDD5, $C20A, $C2FF
+        and $BF75 are ported, four scenarios compare them per frame against the
+        cartridge, and the watch list grew 872 -> 1022 because slots 22-31 had
+        never had a single watched byte. The second half of "What still needs
+        doing" below -- re-auditing every other "no measured run has exercised
+        this" throw -- is NOT done.
 role: bug report from play   found: 2026-07-31
 
 ## What happened
@@ -73,10 +79,12 @@ used to be.
 
 ## What still needs doing
 
-- **Port enemy bullets** (slots 22-31, `$BC59` allocator, `$BDD5` mover). Until
-  then the game still stops after ~10-30 seconds of normal play — it just says
-  so now. This is arguably a prerequisite for wave 6 being meaningful: "hold A
-  and fight" is not a real test if the enemies cannot shoot back.
+- ~~**Port enemy bullets** (slots 22-31, `$BC59` allocator, `$BDD5` mover).~~
+  **DONE, wave 11.** The reproduction in this file is now four oracle scenarios;
+  `$BC63`, the allocation failure that drops a shot when all ten slots are full,
+  is one of them. What is still unreached by any scenario is `$BF7D`, a player
+  shot destroying an enemy bullet — ported, unit-tested, and measured n=0 in two
+  runs with A held and ten bullets converging.
 - **Re-audit every other "no measured run has exercised this" throw** the same
   way. The armoured branch, the type-`$9A` hit counter, `$A3B1`, the two
   `>=$F0` spawners and the missile crawl path all rest on the same reasoning,

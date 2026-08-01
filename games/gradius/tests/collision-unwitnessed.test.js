@@ -256,16 +256,42 @@ test('$BFE6/$C2C8/$C303: every slot loop starts at its TOP slot, not its bottom'
     '$C2C4: LDX #$05, so object slot 3+5 = 8 first. collision() rather than '
     + 'shotSweep() because $BFE2 sweeps the same slots one loop earlier');
 
+  // $C20A: LDX #$09, so bullet slot 22+9 = 31 is swept before 22+0 = 22. Until
+  // wave 11 the only observable was the slot number inside a throw. Now it is
+  // WHICH BULLET THE SHIELD EATS: two bullets on the ship with `$46` = 1, so
+  // the first one found is absorbed ($C24E frees it) and the second kills.
+  // RED WHEN: the loop counts up -- then slot 22 is the one that vanishes.
   const bullet = bootState(res.manifest);
-  bullet.obj.anim[22 + 9] = 9; bullet.obj.anim[22 + 0] = 9;
-  assert.throws(() => collision(bullet, res), /bullet slot 31 /,
-    '$C20A: LDX #$09, so slot 22+9 = 31 is reported before slot 22');
+  bullet.zp.shield = 1;                  // $46
+  for (const j of [9, 0]) {
+    bullet.obj.anim[22 + j] = 0x25;      // $0136,Y -- a live kind-0 bullet
+    bullet.obj.animFrame[22 + j] = 0;    // $0176,Y -- box class 0
+    bullet.obj.x[22 + j] = bullet.obj.x[0];        // dx = 0
+    bullet.obj.y[22 + j] = bullet.obj.y[0] - 3;   // dy = 3, once $C23F's -1 is in
+  }
+  collision(bullet, res);
+  assert.strictEqual(bullet.obj.anim[22 + 9], 0,
+    '$C20A: LDX #$09, so slot 31 is reached FIRST and $C24E frees it');
+  assert.strictEqual(bullet.obj.anim[22 + 0], 0x25,
+    '...and slot 22 is the one that got through and killed the ship');
+  assert.strictEqual(bullet.substate, 0xA0, '$C1F3 STA $1B -- $C24B fired');
+  assert.strictEqual(bullet.zp.shield, 0, '$C250 DEC $46, exactly once');
 
+  // $C2FF: LDX #$09 as well, and the same trick -- one solid cell under the
+  // higher slot only, so the direction decides which bullet the ground eats.
   const dying = bootState(res.manifest);
   dying.obj.status[0] = 2;               // the explosion arm -> $C2FF, not $C20A
-  dying.obj.anim[22 + 9] = 9; dying.obj.anim[22 + 0] = 9;
-  assert.throws(() => collision(dying, res), /\$C305: enemy-bullet slot 31 /,
-    '$C2FF: LDX #$09 as well');
+  for (const j of [9, 0]) {
+    dying.obj.anim[22 + j] = 0x25;
+    dying.obj.type[22 + j] = 0;          // $0316,X = 0 -> $C312 probes Y + 8
+    dying.obj.y[22 + j] = 96;
+  }
+  dying.obj.x[22 + 9] = 80;              // over the poked cell
+  dying.obj.x[22 + 0] = 200;             // and clear of it
+  dying.coll[0x5B] = 0x40;               // $055B: the cell under (80, 96+8)
+  collision(dying, res);
+  assert.strictEqual(dying.obj.anim[22 + 9], 0, '$C327 freed the higher slot');
+  assert.strictEqual(dying.obj.anim[22 + 0], 0x25, '...and only that one');
 });
 
 // ------------------------------------------------- $C2A5, the per-stage arms --
@@ -319,16 +345,23 @@ test('$C2AB: stage 5 has NO terrain collision, and no terrain loops either', () 
   // $19 = 4 first -- which is the stage-5 destructible-block sweep, a different
   // routine, and the throw is deliberate.
   // RED WHEN: the RTS is dropped; $C2FF's ten-slot loop then runs on stage 5.
+  //
+  // The tripwire was a live-bullet THROW until wave 11. It is now the bullet
+  // itself: one over a solid cell, which $C2FF frees and $C2AF's RTS does not.
   const dying = (stage) => {
     const s = bootState(res.manifest);
     s.zp19 = stage;
     s.obj.status[0] = 2;                 // dying: $C0CC BCS -> the explosion arm
-    s.obj.anim[22 + 4] = 9;              // $013A -- an enemy-bullet slot, a tripwire
-    return s;
+    s.obj.anim[22 + 4] = 0x25;           // $013A -- a live enemy-bullet slot
+    s.obj.type[22 + 4] = 0;              // $031A -> $C312's +8 Y offset
+    s.obj.x[22 + 4] = 80; s.obj.y[22 + 4] = 96;
+    s.coll[0x5B] = 0x40;                 // the cell under (80, 104)
+    collision(s, res);
+    return s.obj.anim[22 + 4];
   };
-  assert.doesNotThrow(() => collision(dying(4), res),
-    '$19 = 4 returns at $C2AF and never reaches $C2FF');
-  assert.throws(() => collision(dying(0), res), /\$C305/,
+  assert.strictEqual(dying(4), 0x25,
+    '$19 = 4 returns at $C2AF and never reaches $C2FF, so the bullet lives');
+  assert.strictEqual(dying(0), 0,
     'the same state on stage 1 DOES reach it -- so the tripwire works');
 });
 

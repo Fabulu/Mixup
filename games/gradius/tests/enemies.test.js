@@ -20,8 +20,8 @@ import test from 'node:test';
 import assert from 'node:assert';
 
 import { createState, ENEMY_BASE } from '../src/state.js';
-import { clearSlot, allocEnemySlot, spawnEngine, updateEnemies }
-  from '../src/enemies.js';
+import { clearSlot, allocEnemySlot, spawnEngine, updateEnemies, enemyBullets,
+         divide83B5 } from '../src/enemies.js';
 import { headlessResources } from './helpers.js';
 
 const res = headlessResources(0);
@@ -395,3 +395,196 @@ test('a read outside the exported enemy ranges is a loud throw, not a number', (
   assert.strictEqual(rom.word(0xA5FE), 0xA662, '$A5FE -> table A');
   assert.strictEqual(rom.word(0xA600), 0xA602, '$A600 -> table B');
 });
+
+// ============ WAVE 11: THE ENEMY BULLETS, $BC59 / $BCB5 / $83B5 / $BDD5 ======
+//
+// The four `enemy-bullet*` scenarios compare this path per frame against the
+// cartridge and they are the primary evidence. This file holds what a scenario
+// cannot isolate or cannot reach: the divide's arithmetic on the exact operand
+// pairs the cartridge was seen handing it, the allocator's failure arm, the two
+// speed bumps' DIFFERENT carries, and the mover's four box boundaries.
+//
+// Everything asserted here was measured with tools/oracle/bulletprobe.py before
+// it was written; the numbers are quoted at each test.
+
+/** A play state with the engine running and one enemy about to shoot. */
+function aboutToFire(j = 9, { ex = 0x60, ey = 0x2A, px = 0x50, py = 0x60 } = {}) {
+  const s = running();
+  const i = j + ENEMY_BASE;
+  s.obj.type[i] = 0x83;              // $030C,X -- AND $7F >= 3, so it counts down
+  s.obj.style[i] = 0;                // $040C,X -- one frame from the borrow
+  s.obj.s04E0[i] = 0xC8;             // $04EC,X -- every stage-1 squadron's reload
+  s.obj.x[i] = ex; s.obj.y[i] = ey;
+  s.obj.x[0] = px; s.obj.y[0] = py;  // the ship, LEFT of it -> $BC56 BCC
+  return s;
+}
+
+test('$83B5: the divide reproduces all ten (min, max) pairs off the cartridge', () => {
+  // bulletprobe.py hooks $BD1C (inputs) and $BD1F (outputs) and recorded these
+  // ten, in order, on the `enemy-bullets-full` configuration:
+  //   |dy| |dx| max -> $98:$99:$9A
+  //    53   16  53     0:0:77      45   18  45     0:0:102
+  //    35   23  35     0:0:168     25   28  28     0:0:228
+  //    15   33  33     0:0:116      5   38  38     0:0:33
+  //     2   45  45     0:0:11       2   60  60     0:0:8
+  //     2   75  75     0:0:6        2   90  90     0:0:5
+  // i.e. floor(min * 256 / max) in $9A with $99 = 0 whenever min < max.
+  // RED WHEN: the loop runs 16 times instead of 17, the `ROL A` carry is fed
+  // into the CMP, or the >= $80 pre-scale is dropped (which only shows on the
+  // divisor below, not on these ten -- every one of them is 28..90).
+  const s = running();
+  const pairs = [[16, 53, 77], [18, 45, 102], [23, 35, 168], [25, 28, 228],
+                 [15, 33, 116], [5, 38, 33], [2, 45, 11], [2, 60, 8],
+                 [2, 75, 6], [2, 90, 5]];
+  for (const [min, max, lo] of pairs) {
+    const q = divide83B5(s, min, 0, max);
+    assert.deepStrictEqual([q.hi, q.mid, q.lo], [0, 0, lo],
+      `${min}/${max} must give $99:$9A = 0:${lo}`);
+  }
+  // min == max is 1.00, not 0: $99 carries it. Not in the ten above because a
+  // 45-degree shot is the one case where $BD0D's BCS keeps the same byte as
+  // both operands.
+  const eq = divide83B5(s, 10, 0, 10);
+  assert.deepStrictEqual([eq.hi, eq.mid, eq.lo], [0, 1, 0]);
+  // The $83BF pre-scale arm, which no measured pair reaches:
+  assert.strictEqual(divide83B5(s, 100, 0, 200).lo, 128, '$83C3 halves both');
+  assert.strictEqual(s.spawn.z5D, 12, '$83B5 INC $5D, once per call, all 12');
+});
+
+test('$BC59: the allocator scans DOWN, and a full pool drops the shot', () => {
+  // MEASURED: ten fires five frames apart took bullet slots 9,8,7,6,5,4,3,2,1,0
+  // -- object slots 31 down to 22 -- and the four fires after that reached
+  // $BC63, the bare RTS, at f501/507/511/516.
+  // RED WHEN: the scan runs upward (sprite priority changes and page $02 with
+  // it), or a failure recycles a slot / leaves $040C at 0 so the enemy retries.
+  const s = aboutToFire();
+  enemyBullets(s, res);
+  assert.strictEqual(s.obj.anim[31], 0x25, 'slot 31 first, not 22');
+  assert.strictEqual(s.obj.anim[22], 0, 'and only one bullet');
+  assert.strictEqual(s.obj.style[9 + ENEMY_BASE], 0xC8, '$BC09 reloaded $040C,X');
+
+  const full = aboutToFire();
+  for (let k = 0; k < 10; k++) {
+    full.obj.anim[22 + k] = 0x25;     // every $0136 busy
+    full.obj.x[22 + k] = 100; full.obj.y[22 + k] = 100;
+    full.obj.s0460[22 + k] = 0;       // dir 0: X and Y both negative, and with
+    full.obj.xvel[22 + k] = 0;        //   zero velocity they stay inside the box
+    full.obj.yvel[22 + k] = 0;
+  }
+  const before = [...full.obj.type.slice(22, 32)];
+  enemyBullets(full, res);
+  assert.strictEqual(full.work.bulletAllocFail, 1, '$BC63 ran once');
+  assert.deepStrictEqual([...full.obj.type.slice(22, 32)], before,
+    'a failure disturbs NOTHING -- no slot is recycled');
+  assert.strictEqual(full.obj.style[9 + ENEMY_BASE], 0xC8,
+    '$BC09 reloaded $040C,X BEFORE the JSR, so the enemy waits 200 frames; it '
+    + 'does not retry on the next one');
+});
+
+test('$BC8E: the muzzle index is $0496 (the j-indexed array), not $0480+j+12', () => {
+  // `LDY $A8 / LDX $0496,Y` -- s0480[22 + j], the SAME byte $A52B clears. The
+  // two are different addresses and state.js says so; here the difference is
+  // WHERE THE BULLET APPEARS.
+  // RED WHEN: the port reads s0480[j + 12]. That byte is 0 in the corpus, so
+  // no scenario can tell the two apart -- only this can.
+  const s = aboutToFire();
+  s.obj.s0480[22 + 9] = 4;            // $0496,Y = entry 4 -> ($08, $08)
+  s.obj.s0480[9 + ENEMY_BASE] = 1;    // $0480+j+12 = entry 1 -> ($F8, $F8)
+  enemyBullets(s, res);
+  assert.strictEqual(s.obj.x[31], 0x60 + 8 - 1,
+    'muzzle +8 on X, then one frame of the mover');
+  assert.strictEqual(s.obj.y[31], 0x2A + 8 + 1, 'muzzle +8 on Y, then +1');
+});
+
+test('$BD5F vs $BD42: the two speed bumps carry in DIFFERENT bits', () => {
+  // The $1A bump is entered through `LDA $1A / BEQ`, which leaves the carry the
+  // ROR just produced; the $17 bump is entered through `CMP #$02`, which
+  // REPLACES it -- and the arm only runs when that compare set it, so it always
+  // carries in ONE. MEASURED as reachability: $BD65 and $BDB9 each ran 5 times
+  // on `enemy-bullet-rank` ($17 = 3) and 0 times in every other run made here.
+  // RED WHEN: one helper is used for both, or the $17 arm carries in the ROR's
+  // bit (which is 0 here, so the velocity fraction comes out one low).
+  const plain = aboutToFire();
+  enemyBullets(plain, res);
+  const s = aboutToFire();
+  s.zp17 = 2;                         // rank 2: the bump, but NOT the lead arm
+  enemyBullets(s, res);
+  // |dy| = ($2A - $60) & $FF -> 53, |dx| = $60 - $50 = 16, steep, q = 0:77.
+  //   base      xvelf = 77
+  //   $17 >= 2  xvelf += (77 >> 2) + 1, and $03EC takes $40 + that carry
+  assert.strictEqual(plain.obj.xvelf[31], 77, 'rank 0: no bump at all');
+  assert.strictEqual(plain.obj.yvelf[31], 0, '...and no $40 either');
+  assert.strictEqual(s.obj.xvelf[31], 77 + 19 + 1,
+    '$BDB9 LDA $9A / ADC $044C,X with the CMP #$02 carry SET');
+  assert.strictEqual(s.obj.yvelf[31], 0x40, '$BDC9 LDA $03EC,X / ADC #$40');
+});
+
+test('$BE2A/$BE62: the X test RETURNS, so an off-side bullet never moves in Y', () => {
+  // `CMP #$02 / BCC $BE6B / CMP #$FC / BCS $BE6B`, and $BE6B is JMP $AEF8 --
+  // the routine ends there. A bullet that leaves the sides keeps the Y it had
+  // one frame ago, because $AEF8 clears five bytes and none of them is $032C.
+  // RED WHEN: the free is written as a flag and the Y update runs anyway, or a
+  // boundary is `<=` where the ROM has `<`.
+  const at = (x, y, dir = 0) => {
+    const s = running();
+    s.obj.anim[22 + 3] = 0x25;
+    s.obj.s0460[22 + 3] = dir;        // 0: X negative and Y negative
+    s.obj.x[22 + 3] = x; s.obj.y[22 + 3] = y;
+    s.obj.xvel[22 + 3] = 1; s.obj.yvel[22 + 3] = 1;
+    enemyBullets(s, res);
+    return s.obj;
+  };
+  // X: the test is on the value AFTER the step, so a bullet at 2 steps to 1
+  // and dies, and one at 3 steps to 2 and lives.
+  assert.strictEqual(at(2, 100).anim[22 + 3], 0, 'X 2 -> 1, and 1 IS < 2');
+  assert.strictEqual(at(3, 100).anim[22 + 3], 0x25, '...but 3 -> 2 lives');
+  assert.strictEqual(at(2, 100).y[22 + 3], 100, 'and the Y update never ran');
+  assert.strictEqual(at(9, 100).x[22 + 3], 8, 'a live one does move');
+  // Y, the same way, on both edges. dir 0 is Y negative, dir 1 is Y positive.
+  assert.strictEqual(at(100, 8).anim[22 + 3], 0, 'Y 8 -> 7, and 7 IS < 8');
+  assert.strictEqual(at(100, 9).anim[22 + 3], 0x25, '...but 9 -> 8 lives');
+  assert.strictEqual(at(100, 0xC3, 1).anim[22 + 3], 0, 'Y $C3 -> $C4 >= $C4');
+  assert.strictEqual(at(100, 0xC2, 1).anim[22 + 3], 0x25, '...and $C3 is not');
+});
+
+test('$BC6E: the KIND comes from the FIRING enemy\'s status, $80-$8F only', () => {
+  // `LDA $010C,X / BPL $BC78 / CMP #$90 / BCS $BC78 / INY`. Y is 1 for a status
+  // in [$80, $8F] and 0 for everything else, including $90 and above.
+  // MEASURED n=0 on the cartridge: no stage-1 squadron sets bit 7 of $010C, so
+  // this is the listing read carefully and it is labelled as such -- the point
+  // of the test is that the WINDOW is closed at both ends.
+  const kind = (status) => {
+    const s = aboutToFire();
+    s.obj.status[9 + ENEMY_BASE] = status;
+    enemyBullets(s, res);
+    return [s.obj.anim[31], s.obj.type[31], s.obj.animFrame[31]];
+  };
+  assert.deepStrictEqual(kind(0x01), [0x25, 0, 0], 'bit 7 clear -> $BC64[0]');
+  assert.deepStrictEqual(kind(0x80), [0x59, 1, 1], '$80 is inside');
+  assert.deepStrictEqual(kind(0x8F), [0x59, 1, 1], '$8F is the last one');
+  assert.deepStrictEqual(kind(0x90), [0x25, 0, 0], '$90 is NOT ($BC75 BCS)');
+  assert.deepStrictEqual(kind(0xFF), [0x25, 0, 0], 'and neither is $FF');
+});
+
+test('$BD0D: |dx| == |dy| takes the X-MAJOR arm, and only rank >= 2 shows it', () => {
+  // `LDX $9C / STA $9D / CMP $9C / BCS $BD16` -- BCS is taken on EQUAL, so a
+  // 45-degree shot is X-major. WRITTEN BECAUSE A DELIBERATE BREAK SURVIVED THE
+  // CORPUS: `dx < dy` -> `dx <= dy` is GREEN on all four enemy-bullet
+  // scenarios, because none of their ten fires has |dx| == |dy| (the measured
+  // pairs are 53/16, 45/18, 35/23, 25/28, 15/33, 5/38, 2/45, 2/60, 2/75, 2/90).
+  //
+  // AND IT IS UNOBSERVABLE AT RANK 0 ANYWAY, which is worth writing down rather
+  // than discovering twice: min == max makes the divide return $99:$9A = 1:0,
+  // and both arms then write xvel = yvel = 1 with both fractions 0. The arms
+  // only separate once a speed bump runs, because $BD75 adds $40 to the MAJOR
+  // axis's fraction and $BD65 adds the halved quotient to the MINOR one.
+  // RED WHEN: the CMP is made strict.
+  const s = aboutToFire(9, { ex: 0x60, ey: 0x2A, px: 0x50, py: 0x3B });
+  s.zp17 = 2;                          // |dx| = $60-$50 = 16, |dy| = $3B-$2A-1 = 16
+  enemyBullets(s, res);
+  assert.strictEqual(s.obj.xvel[31], 1, 'X is the major axis: $BD2F LDA #$01');
+  assert.strictEqual(s.obj.yvel[31], 1, '...and 1.0 in Y as well, at 45 degrees');
+  assert.strictEqual(s.obj.xvelf[31], 0x40, '$BD75 LDA $044C,X / ADC #$40');
+  assert.strictEqual(s.obj.yvelf[31], 0x41, '$BD65 ADC with the CMP carry SET');
+});
+

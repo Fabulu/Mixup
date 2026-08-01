@@ -105,10 +105,16 @@
   <div id="stage"><canvas id="screen" width="256" height="240"></canvas></div>
   <div id="hud">
     <span class="keyhint"><kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> move</span>
-    <span class="keyhint"><kbd>Z</kbd> / <kbd>X</kbd> fire (not ported)</span>
+    <!-- WAVE 11 CORRECTED THIS LINE AND THE ONE BELOW. Both said "not ported"
+         and both had been wrong since wave 6: X is A and fires ($A0E9), Z is B
+         and applies a power-up ($8974), Enter is START and pauses ($9ADA), and
+         since this commit the enemies shoot back ($BC59). A stale hint on the
+         page is the one piece of documentation a player reads. -->
+    <span class="keyhint"><kbd>X</kbd> fire &middot; <kbd>Z</kbd> power-up
+      &middot; <kbd>Enter</kbd> pause</span>
     <span id="stats"></span>
-    <span class="touchnote" hidden>A / B / START / SELECT reach $0007, but no
-      shot, pause or power-up code is ported yet &mdash; the d-pad flies.</span>
+    <span class="touchnote" hidden>A fires, B applies the meter's power-up and
+      START pauses. SELECT reaches $0007 and nothing reads it.</span>
   </div>
 
   <!--

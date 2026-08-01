@@ -105,6 +105,18 @@ play. The sentence that was true ("our corpus never populated slots 22-31")
 was silently promoted to one that was false ("the cartridge does not do this").
 See `03-checks-that-can-fail.md`; this is the same error wearing a new hat.
 
+**Closed in wave 11** (`docs/worklog/gradius/11-impl-enemy-bullets.md`), and the
+closing is worth one more line, because it makes the point sharper rather than
+retiring it. The path is now ported and compared per frame — and it STILL cannot
+be reached by any button script. Measured: `$04EC` is 200 for every stage-1
+squadron, so an enemy reaches its shot only after marching 200 px left of its
+spawn, and the ship has to be further left than that, where stage 1's opening
+kills every fixed hold (first death: idle 1051, L 1083, LD 1098, LU 1108; four
+scripted dashes died at f1149, f1734, f1742, f1800). The scenarios poke the
+countdown `$040C,X`. So the corpus was not merely thin here — it was
+*structurally* incapable, and eight waves of "no run has exercised it" were
+eight waves of measuring the same impossibility.
+
 So for a combinatorial system, split the work by what each method can settle:
 
 | question | tool | why |
