@@ -22,13 +22,24 @@ the only thing in this repo that has ever asked what a frame COSTS, and it is a
 stage of `tools/test-all.mjs`: `nmi()` costs a median of 0.039 ms of the
 16.639 ms budget, the wave-13 synthesiser 0.78 ms, and `renderFrame()` 2.48 ms.
 Before wave 14 the renderer cost **6.07 ms -- 36% of the whole budget** and
-nothing would have said so. Input is now taken **one word per LOGIC frame** off a
+nothing would have said so. Input is taken **one word per LOGIC frame** off a
 queue the DOM handlers fill (`src/input.js`), not re-read from the live mask
 inside the catch-up loop: a press and its release that both landed between two
 animation frames used to be invisible. The page prints `k` -- logic frames per
 animation frame -- next to the lag counter, because that number needs a real
 browser and this repo has none. See
 `docs/worklog/gradius/14-impl-input-granularity.md`.
+
+**Wave 14's input fix was only half a fix, and wave 15 measured the other half.**
+Wave 14's rule at the queue's cap was "the newest state overwrites the tail", so
+a press and its release arriving while the queue was full wrote the tail twice
+and the press never occupied a slot -- and a finger sliding on the touch d-pad
+holds the queue at the cap continuously. Measured, k=1, no host load: **a sliding
+finger plus FIRE tapped ten times a second fired 0 of 20 shots.** Wave 15
+replaced the rule with a merge that carries every undelivered press forward
+(`tail := w | (tail & ~prev)`, derived from `$8206`'s `pressed = now & ~prev`):
+the same input now fires **20 of 20**. The cap is still 2 and the memory bound is
+still two words. See `docs/worklog/gradius/15-impl-input-queue-fix.md`.
 
 **The sound is honest about what it claims.** Wave 8 proves the REGISTER STREAM
 matches the cartridge, per frame, over the whole corpus. Wave 13's synthesiser

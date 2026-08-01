@@ -402,8 +402,16 @@ try {
       + ` &nbsp; <b>lag</b> ${s.lagFrames}`
       + ` &nbsp; <b>k</b> ${avg.toFixed(2)}avg/${L.maxK}max`
         + (L.clamped ? `/${L.clamped}clamped` : '')
+      // WAVE 15: `coalesced` USED TO BE PRINTED AS "lost" AND IT IS NOT A LOSS.
+      // A merge at the cap drops an intermediate LEVEL and carries every
+      // undelivered press forward (src/input.js), so on a phone `merged` runs
+      // into the hundreds during ordinary steering and nothing is wrong.
+      // `lost` is now the one counter that means an input the player made
+      // produced no edge at all, and it must stay at 0.
       + ` &nbsp; <b>inq</b> ${q.depth}`
-        + (q.coalesced ? `/${q.coalesced}lost` : '')
+        + (q.coalesced ? `/${q.coalesced}merged` : '')
+        + (q.carried ? `/${q.carried}carried` : '')
+        + (q.lostEdges ? `/${q.lostEdges}LOST` : '')
       + ` &nbsp; <b>snd</b> ${snd}`;
   }, 100);
 } catch (e) {

@@ -1,6 +1,27 @@
 # Wave 14 — Input granularity, and what a logic frame costs
-status: DONE
+status: DONE, with §4 SUPERSEDED — see the correction below
 wave: 14   role: impl   started: 2026-08-01 (date given in-session)
+
+> **CORRECTION, added by wave 15 (2026-08-01).** §4 and item 2 of "the three
+> things a reviewer should look at hardest" claimed a fix that was measured, by
+> wave 14's own reviewer, to work only for an isolated tap from a drained queue.
+> **The overwrite-the-tail rule destroyed every sub-frame tap while any other
+> control was moving** — on the touch d-pad, always. Measured, k=1, no host
+> load: a sliding finger plus FIRE tapped ten times a second fired **0 of 20**
+> shots. Wave 15 replaced the rule (`tail := w | (tail & ~prev)`, so a press
+> survives its own release) and the same rig now fires **20 of 20**. §4 below is
+> left as written, because what it got wrong is the point; read
+> `14-review.md` §6 and `15-impl-input-queue-fix.md` for what is true now.
+>
+> The same correction applies to this wave's commit message (`25b8ce6`, "taps
+> were being dropped"), to `games/gradius/README.md` and to `src/input.js`'s own
+> comment block. All three have been corrected in wave 15's commit; a commit
+> message cannot be, so it is corrected here.
+>
+> Two other numbers in this file are wrong and the reviewer measured them: there
+> are **nine** captured frames in `tests/ppu.test.js`, not ten (§2), and the new
+> capture-free `tilePixel`/`tileRow` test cannot see an error in `tileBase`
+> because both sides call it (`14-review.md` §7). Neither is fixed here.
 
 ## The task, as I understood it
 
@@ -199,7 +220,7 @@ margins are the weakness and the file says so**: 1.3x will not notice a 20%
 regression; it will notice a stage that starts costing a multiple of what it
 did, which is the failure that had already happened.
 
-### 4. The input fix
+### 4. The input fix — SUPERSEDED BY WAVE 15, see the correction at the top
 
 `src/input.js` now queues every CHANGE to the mask as it happens, inside the DOM
 handler, and `nextInputWord()` hands out one word per logic frame.
@@ -388,6 +409,13 @@ node games/gradius/tools/test-all.mjs            # the gate, ~5 min
    that is physically implausible and preferred it to steering lag; that is a
    judgement about players, not a measurement, and it is the decision most
    likely to be wrong.
+   **IT WAS WRONG, and the sentence above understates what it threw away.** The
+   rule discarded any press+release inside one animation frame while ANY other
+   control was producing a transition — i.e. the whole time a finger is on the
+   d-pad. The reviewer measured 0 of 20 shots; wave 15 fixed the rule and
+   measured 20 of 20. The instinct to name this as the thing most likely to be
+   wrong was right; the analysis of WHY was not, and only the measurement found
+   the difference.
 3. **B4's shape, not just B4.** A deliberate break passed because the tests
    covered one of two symmetric paths. `src/input.js` has two masks by design;
    anything else in this port with two symmetric paths and one test is in the

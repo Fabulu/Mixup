@@ -214,9 +214,11 @@ test('the tap becomes exactly one $0005 edge through the cartridge edge rule', (
 
 test('k logic frames in one callback consume k DIFFERENT words, in order', () => {
   // The finding's headline claim, executed: at the k=8 clamp the old loop
-  // sampled input once. Four transitions arrive while the host is stalled; the
-  // queue caps at 2, so two survive -- and they are the OLDEST and the NEWEST,
-  // never a stale middle one.
+  // sampled input once. Four transitions arrive while the host is stalled and
+  // the queue caps at 2, so the two middle levels are merged -- but WAVE 15's
+  // merge carries every undelivered press, so UP still reaches a logic frame
+  // and still produces its $0005 edge. Under wave 14's "the newest state
+  // overwrites the tail" this read [RIGHT, 0, ...] and UP was never seen.
   resetInput();
   setTouchDirections(BTN.RIGHT);
   setTouchDirections(BTN.RIGHT | BTN.UP);
@@ -225,12 +227,269 @@ test('k logic frames in one callback consume k DIFFERENT words, in order', () =>
   const cap = inputQueueStats().cap;
   assert.equal(cap, 2, 'the queue cap is 2 -- if this changes, so does the trade below');
   assert.equal(inputQueueStats().coalesced, 2, 'two transitions hit the cap');
+  assert.equal(inputQueueStats().carried, 1,
+    'the release of UP had to carry UP forward -- one merge, not two');
+  assert.equal(inputQueueStats().lostEdges, 0, 'and nothing was destroyed');
   const words = [];
   for (let i = 0; i < 8; i++) words.push(nextInputWord());
-  assert.deepEqual(words, [BTN.RIGHT, 0, 0, 0, 0, 0, 0, 0],
-    'the first transition and the current truth, then the current truth');
+  assert.deepEqual(words, [BTN.RIGHT, BTN.UP, 0, 0, 0, 0, 0, 0],
+    'the first transition, then the merge that still carries UP, then the truth');
   assert.notEqual(words[0], words[1],
     'k frames must NOT all read the same word -- that is the defect');
+});
+
+// ===========================================================================
+// PART 2a -- WAVE 15, DEFECT 1: A TRANSITION IS NEVER LOST.
+//
+// 14-review.md section 6: "the input fix does not hold where it matters most".
+// The wave-14 rule at the cap was `pending[last] = w`, so a press and its
+// release both arriving while the queue was full wrote the tail twice and the
+// press never occupied a slot. The touch d-pad holds the queue at the cap
+// permanently, so on a phone EVERY sub-frame tap was destroyed: taps 20,
+// A-edges 0. These are that measurement, executed.
+// ===========================================================================
+
+/** A finger sliding round the d-pad: every step is a real direction change. */
+const SLIDE = [
+  BTN.RIGHT, BTN.RIGHT | BTN.UP, BTN.UP, BTN.UP | BTN.LEFT,
+  BTN.LEFT, BTN.LEFT | BTN.DOWN, BTN.DOWN, BTN.DOWN | BTN.RIGHT,
+];
+
+/**
+ * The reviewer's rig. `callbacks` animation frames at k=1; a sliding finger
+ * emits `movesPerFrame` pointermoves in each; FIRE is tapped every `every`
+ * frames, and `subFrame` decides whether the press and its release both land
+ * inside one animation frame (the case that was destroyed) or straddle two.
+ */
+function slideAndFire({ callbacks = 120, movesPerFrame = 2, every = 6, subFrame = true }) {
+  resetInput();
+  const s = createState();
+  let taps = 0, edges = 0, d = 0;
+  for (let cb = 0; cb < callbacks; cb++) {
+    for (let m = 0; m < movesPerFrame; m++) setTouchDirections(SLIDE[d++ % SLIDE.length]);
+    if (cb % every === 0) {
+      taps++;
+      setTouchButton(BTN.A, true);
+      if (subFrame) setTouchButton(BTN.A, false);
+    } else if (!subFrame && cb % every === 1) setTouchButton(BTN.A, false);
+    readJoypad(s, nextInputWord());              // ONE logic frame per callback
+    if (s.input.pressed & BTN.A) edges++;
+  }
+  return { taps, edges, ...inputQueueStats() };
+}
+
+test('THE WAVE-14 DEFECT: a sub-frame tap survives a d-pad that never stops moving', () => {
+  // MEASURED before the fix: taps 20, A-edges 0, depth 1, coalesced 159.
+  // Zero of twenty shots fired, with no host load at all and k=1.
+  const r = slideAndFire({ subFrame: true });
+  assert.equal(r.taps, 20, 'the rig drove twenty taps');
+  assert.equal(r.edges, 20,
+    `${r.edges} of ${r.taps} sub-frame taps produced a $0005 edge while the `
+    + 'd-pad was sliding -- a press that never occupies a queue slot can never '
+    + 'produce an edge, which is the whole defect');
+  assert.equal(r.lostEdges, 0, 'and the queue does not think it lost any either');
+  assert.ok(r.carried > 0,
+    'the merges must actually have had to carry a press -- if this is 0 the rig '
+    + 'is not reproducing the condition and the check above is a decoration');
+});
+
+test('the same taps with the d-pad still: 20 of 20, as they always were', () => {
+  // The control. This case passed in wave 14 too; it is here so a regression
+  // that breaks the ORDINARY path cannot hide behind the interesting one.
+  const r = slideAndFire({ subFrame: true, movesPerFrame: 0 });
+  assert.equal(r.edges, 20);
+  assert.equal(r.coalesced, 0, 'a still d-pad never reaches the cap');
+});
+
+test('a press that straddles two animation frames is unaffected by the fix', () => {
+  const r = slideAndFire({ subFrame: false });
+  assert.equal(r.edges, 20, 'this was already 20 of 20 in wave 14 and must stay so');
+});
+
+test('sub-frame taps every single frame produce the ARITHMETIC MAXIMUM of edges', () => {
+  // MEASURED before the fix: 60 taps, 1 A-edge (the first, from a drained
+  // queue; every one after it was destroyed).
+  //
+  // 30, not 60, and 30 is not a shortfall: `$8206` is `pressed = now & ~prev`,
+  // so two rising edges need a word with the bit CLEAR between them. Sixty
+  // logic frames can therefore hold at most thirty A edges however perfect the
+  // queue is, and asserting 60 would be asserting something impossible.
+  resetInput();
+  const s = createState();
+  let edges = 0;
+  for (let cb = 0; cb < 60; cb++) {
+    setTouchButton(BTN.A, true);
+    setTouchButton(BTN.A, false);
+    readJoypad(s, nextInputWord());
+    if (s.input.pressed & BTN.A) edges++;
+  }
+  assert.equal(edges, 30,
+    `60 sub-frame taps produced ${edges} edges; 30 is the maximum a 60-frame `
+    + 'word sequence can carry and anything less is the queue dropping presses');
+  // AND THE BOOKS BALANCE, which is the part that makes the 30 a result rather
+  // than a hope: 60 presses = 30 edges delivered + 29 counted as unrepresentable
+  // + the 1 still sitting in the queue, which produces its edge when drained.
+  const st = inputQueueStats();
+  assert.equal(st.lostEdges, 29,
+    'a second tap inside one merge window is unrepresentable and must be COUNTED');
+  assert.equal(st.depth, 1);
+  readJoypad(s, nextInputWord());
+  assert.ok(s.input.pressed & BTN.A, 'the last tap is still in the queue, not lost');
+  assert.equal(edges + st.lostEdges + 1, 60, 'every one of the 60 presses is accounted for');
+});
+
+test('THE MEMORY BOUND: 200,000 transitions with nothing draining hold two words', () => {
+  // "a page left running for an hour must not accumulate." The bound is the
+  // cap itself: `pending.push` is reachable only below MAX_PENDING and the
+  // merge branch writes in place, so there is no growth path at all. 200,000
+  // transitions is about 28 minutes of a finger emitting two pointermoves per
+  // animation frame with the frame loop stopped dead.
+  resetInput();
+  const cap = inputQueueStats().cap;
+  let worst = 0;
+  for (let i = 0; i < 200_000; i++) {
+    setTouchDirections(SLIDE[i % SLIDE.length]);
+    if (i % 3 === 0) setTouchButton(BTN.A, (i & 1) === 0);
+    const d = inputQueueStats().depth;
+    if (d > worst) worst = d;
+  }
+  assert.equal(worst, cap, `queue depth reached ${worst}, cap ${cap}`);
+  assert.equal(inputQueueStats().depth, cap, 'and it is still exactly the cap at the end');
+});
+
+test('THE BOOKS BALANCE: every press is an edge or is counted, over 40,000 events', () => {
+  // The rule stated as an accounting identity rather than as a set of cases:
+  //
+  //     presses in the event stream  ==  $0005 edges + lostEdges
+  //
+  // once the queue has been drained. That is the strongest thing this design
+  // can claim and it is the thing the wave-14 rule broke silently -- under
+  // `pending[last] = w` a press could simply evaporate with no counter moving,
+  // which is why the page could show a healthy `inq 1` while every shot was
+  // being destroyed.
+  //
+  // ONE BIT PER TRANSITION, so the accounting is exact per press. The host is
+  // driven at a deliberately hostile ratio: 0, 1 or 2 logic frames per event,
+  // so the queue spends most of its life at the cap.
+  resetInput();
+  let seed = 0x1234567;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) >>> 11;
+  const BITS = [BTN.RIGHT, BTN.LEFT, BTN.DOWN, BTN.UP, BTN.START, BTN.SELECT, BTN.B, BTN.A];
+  let mask = 0, presses = 0, edges = 0, prevWord = 0;
+  const drain = (n) => {
+    for (let i = 0; i < n; i++) {
+      const w = nextInputWord();
+      for (let b = 0; b < 8; b++) if ((w & (1 << b)) && !(prevWord & (1 << b))) edges++;
+      prevWord = w;
+    }
+  };
+  for (let i = 0; i < 40_000; i++) {
+    const bit = BITS[rnd() % 8];
+    const down = (mask & bit) === 0;
+    if (down) presses++;
+    mask = down ? (mask | bit) : (mask & ~bit);
+    if (bit & DPAD_MASK) setTouchDirections(mask & DPAD_MASK);
+    else setTouchButton(bit, down);
+    drain(rnd() % 3);
+  }
+  drain(inputQueueStats().depth + 1);          // hand out everything still queued
+  const st = inputQueueStats();
+  assert.ok(st.coalesced > 1000,
+    `only ${st.coalesced} merges -- the stream is not reaching the cap, so this `
+    + 'proves nothing about the merge rule');
+  assert.ok(st.carried > 100,
+    `only ${st.carried} carries -- the press-survives-its-release path is barely `
+    + 'exercised');
+  assert.equal(edges + st.lostEdges, presses,
+    `${presses} presses produced ${edges} edges with ${st.lostEdges} counted as `
+    + 'unrepresentable -- a press that is neither is one this module destroyed '
+    + 'without saying so, which is exactly the wave-14 defect');
+});
+
+// ===========================================================================
+// PART 2b -- WAVE 15, DEFECT 2: THE IDEMPOTENCE GUARD IS EXECUTED.
+//
+// 14-review.md section 5: deleting `if (w === live) return;` from noteInput()
+// left `node --test games/gradius/tests/` at 368 pass / 0 fail, because EVERY
+// queue test above hands the setters a DIFFERENT mask each time. These hand
+// them the SAME mask, which is what an auto-repeat keydown and a finger resting
+// in one third of the d-pad actually do, and assert the queue does not grow.
+// A permanently non-empty queue is the state that destroys taps, so this is the
+// same defect class as PART 2a and not a tidiness check.
+// ===========================================================================
+
+test('IDEMPOTENCE: 200 identical setTouchButton calls queue nothing at all', () => {
+  resetInput();
+  setTouchButton(TOUCH_BUTTONS.A, true);
+  assert.equal(nextInputWord(), BTN.A);
+  assert.equal(inputQueueStats().depth, 0, 'the queue is drained before the storm');
+  for (let i = 0; i < 200; i++) setTouchButton(TOUCH_BUTTONS.A, true);
+  const st = inputQueueStats();
+  assert.equal(st.depth, 0,
+    `200 no-op presses left the queue ${st.depth} deep -- noteInput()'s `
+    + 'idempotence guard is gone, and a queue that never drains destroys taps');
+  assert.equal(st.coalesced, 0, 'and nothing reached the cap, because nothing was queued');
+  assert.equal(nextInputWord(), BTN.A, 'the word is still simply what is held');
+});
+
+test('IDEMPOTENCE: a finger resting in one third emits pointermoves and queues nothing', () => {
+  // The d-pad is hit-tested as a 3x3 grid, so a finger that moves a few pixels
+  // inside one third fires pointermove after pointermove with the SAME mask.
+  // At 60 Hz with two moves a frame that is 120 identical calls a second.
+  resetInput();
+  setTouchDirections(BTN.RIGHT);
+  assert.equal(nextInputWord(), BTN.RIGHT);
+  let worst = 0;
+  for (let cb = 0; cb < 60; cb++) {
+    setTouchDirections(BTN.RIGHT);
+    setTouchDirections(BTN.RIGHT);
+    const d = inputQueueStats().depth;
+    if (d > worst) worst = d;
+    assert.equal(nextInputWord(), BTN.RIGHT, `frame ${cb} read the wrong word`);
+  }
+  assert.equal(worst, 0,
+    `a resting finger pushed the queue to ${worst} -- 60 seconds of this is a `
+    + 'queue that is never empty and a d-pad that steers a frame late for ever');
+  assert.equal(inputQueueStats().coalesced, 0);
+});
+
+test('IDEMPOTENCE: 200 auto-repeat keydowns of a held key queue nothing', () => {
+  // The keyboard half of the same rule. B4 of wave 14 was a break that passed
+  // because the tests covered one of src/input.js's two masks; this file's
+  // rule since then is that every input claim is checked on BOTH paths.
+  resetInput();
+  const handlers = {};
+  const target = {
+    addEventListener(t, fn) { (handlers[t] ||= []).push(fn); },
+    fire(t, ev) { for (const fn of handlers[t] || []) fn({ preventDefault() {}, ...ev }); },
+  };
+  attachInput(target);
+  target.fire('keydown', { code: 'ArrowRight' });
+  assert.equal(nextInputWord(), BTN.RIGHT, 'the real keydown is a transition');
+  assert.equal(inputQueueStats().depth, 0);
+  for (let i = 0; i < 200; i++) target.fire('keydown', { code: 'ArrowRight', repeat: true });
+  const st = inputQueueStats();
+  assert.equal(st.depth, 0,
+    `200 auto-repeat keydowns left the queue ${st.depth} deep -- holding a key `
+    + 'must not push 60 identical words a second');
+  assert.equal(st.coalesced, 0);
+  target.fire('blur', {});
+  assert.equal(nextInputWord(), 0);
+});
+
+test('IDEMPOTENCE: the backstop fired repeatedly queues exactly one zero', () => {
+  // index.html binds blur, visibilitychange AND pagehide to clearTouchButtons,
+  // so leaving the page fires it three times in a row with nothing changing.
+  resetInput();
+  setTouchDirections(BTN.LEFT);
+  assert.equal(nextInputWord(), BTN.LEFT);
+  clearTouchButtons();
+  clearTouchButtons();
+  clearTouchButtons();
+  assert.equal(inputQueueStats().depth, 1,
+    'three identical clears are one transition, not three');
+  assert.equal(nextInputWord(), 0);
+  assert.equal(inputQueueStats().depth, 0);
 });
 
 test('the cap bounds steering lag: a sliding finger is never more than 2 frames stale', () => {

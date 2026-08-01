@@ -1,19 +1,60 @@
 # FINDING (hypothesis) — why a slow host makes the port feel UNRESPONSIVE, not just slow
 
-status: SETTLED by wave 14 — the mechanism was REAL and is fixed; the CAUSE was
-        not the one this page suspected. See
-        `docs/worklog/gradius/14-impl-input-granularity.md`.
-role: bug report from play   raised: 2026-08-01   settled: 2026-08-01
+status: SETTLED by wave 15. Wave 14 found the mechanism and built a fix that was
+        measured — by its own reviewer, and only afterwards — to be incomplete;
+        wave 15 completed it. The CAUSE was not the one this page suspected.
+        See `14-impl-input-granularity.md`, `14-review.md` §6 and
+        `15-impl-input-queue-fix.md`.
+role: bug report from play   raised: 2026-08-01
 
-## WHAT WAVE 14 MEASURED (read this before the hypothesis below)
+## THE LEDGER — what was measured, and when
+
+**Do not read this page's status as a verdict on a day.** It has been three
+different things and the sequence is the useful part:
+
+| when | status | what was actually measured |
+|---|---|---|
+| raised, 2026-08-01 | NOT INVESTIGATED | nothing. A mechanism read out of `src/main.js`, and the page said so. |
+| wave 14, 2026-08-01 | SETTLED | `nmi()` 0.039 ms median (candidate 2 FALSE); `renderFrame()` 6.07 ms (the real cost); a queue built, and **an isolated sub-frame tap from a drained queue delivered**. |
+| wave 14 review, 2026-08-01 | DEFECTS FOUND | the same queue, **at its cap**: a sliding d-pad finger + FIRE tapped 10x/s = **0 of 20 shots fired**. The SETTLED above was true of one case and false of the case a phone is always in. |
+| wave 15, 2026-08-01 | SETTLED | the merge rule replaced; the same rig fires **20 of 20**, and the accounting identity `presses == $0005 edges + lostEdges` holds over 40,000 random events. |
+
+The middle row is the one this repo keeps paying for. `docs/knowledge/05-process.md`
+lists four separate times a note that was ahead of its measurement cost real
+time; this is the fifth, and it cost the review that found it.
+
+## WHAT WAVES 14 AND 15 MEASURED (read this before the hypothesis below)
 
 1. **The input mechanism was real, and worse than described.** The page below
    says k frames share one input word. They did — but the sharper defect is
    that a press and its release that BOTH land between two animation frames were
    never seen at all: the live mask went 0 -> A -> 0 with nothing looking.
-   Fixed: `src/input.js` queues every transition as it arrives and
+   `src/input.js` now queues every transition as it arrives and
    `nextInputWord()` hands out one word per LOGIC frame
    (`src/main.js stepLogicFrames`). `tests/loop.test.js` executes both claims.
+
+   **Wave 14's version of that queue still dropped the tap, and it took a
+   reviewer to measure it.** At the queue's two-deep cap the rule was "the newest
+   state overwrites the tail", so a press and its release arriving while full
+   wrote the tail twice — `A`, then `0` — and the press never occupied a slot.
+   A finger on the touch d-pad emits several `pointermove`s per animation frame
+   and therefore holds the queue at the cap continuously, so on a phone this was
+   not a corner case. Measured, k=1, no host load:
+
+   ```
+                                       wave 14        wave 15
+     slide + FIRE tapped 10x/s
+       (sub-frame taps)          taps 20  edges  0   taps 20  edges 20
+     60 sub-frame taps, nothing else
+                                 taps 60  edges  1   taps 60  edges 30
+   ```
+
+   (30, not 60: `$8206` is `pressed = now & ~prev`, so two edges need a word
+   with the bit clear between them and sixty frames hold at most thirty.)
+   Wave 15's rule is that a bit may never leave the queue while it is still an
+   undelivered press — at the cap, `tail := w | (tail & ~prev)` — so a press
+   survives its own release. The cap is still 2 and the memory bound is still
+   exactly two words.
 2. **`nmi()` was NOT the cost.** Measured over 600 frames, best of five passes,
    `tools/framecost.mjs`: **median 0.039 ms, p99 0.138 ms** against a 16.639 ms
    budget — 0.24% of a frame. Candidate 2 on this page ("waves 6-11 added

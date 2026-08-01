@@ -171,7 +171,8 @@ async function loadPage({ coarse = true, audioCtor } = {}) {
       + ' cam: { hi: 0, lo: 0 }, lagFrames: 0 },'
       + ' loopStats: () => ({ callbacks: 200, logicFrames: 210, maxK: 3,'
       + ' clamped: 1, k: [0,192,7,1,0,0,0,0,0] }),'
-      + ' inputStats: () => ({ depth: 2, live: 0, repeats: 7, coalesced: 5, cap: 2 }) });\n');
+      + ' inputStats: () => ({ depth: 2, live: 0, repeats: 7, coalesced: 5,'
+      + ' carried: 3, lostEdges: 1, cap: 2 }) });\n');
   // The trailing counter makes each load a DISTINCT data: URL. Without it the
   // ES module cache hands back the first instance and the script never runs
   // again -- every test after the first would then be asserting against a page
@@ -370,8 +371,13 @@ test('the stats line carries k, the clamp count and the input queue depth', asyn
   // 210 logic frames over 200 callbacks = 1.05 average, maxK 3, 1 clamped.
   assert.match(line, /<b>k<\/b> 1\.05avg\/3max\/1clamped/,
     `k is missing from the stats line: ${line}`);
-  assert.match(line, /<b>inq<\/b> 2\/5lost/,
-    `the input queue depth is missing from the stats line: ${line}`);
+  // WAVE 15: three counters, not one, and `lost` no longer means `coalesced`.
+  // A merge at the cap keeps every undelivered press (src/input.js), so calling
+  // it "lost" told a phone player their steering was destroying their input
+  // when it was not -- and left the number that DOES mean a destroyed input
+  // with nowhere to appear.
+  assert.match(line, /<b>inq<\/b> 2\/5merged\/3carried\/1LOST/,
+    `the input queue counters are missing from the stats line: ${line}`);
   // And the numbers that were already there are still there.
   assert.match(line, /<b>lag<\/b> 0/);
   assert.match(line, /<b>snd<\/b>/);
