@@ -271,6 +271,27 @@ cases. Two design facts, both bought with a failed run:
   rule wave 2 applied to the NOP sled. New `PROBE_POKE`/`PROBE_POKE_FROM` in
   `frame.lua`; `portdiff.mjs` applies the identical poke at the identical point.
 
+### 8b. COVERAGE of the compared window — counted, not asserted
+
+"The scenario pins the walls" is a claim, so here is the count over the 2,200
+compared frames:
+
+```
+frames pinned py == $6500 (404.0 px):  44
+frames pinned py == $0800 ( 32.0 px): 992
+frames pinned px == $3500 (212.0 px): 162
+frames pinned px == $0300 ( 12.0 px): 202
+distinct angle bytes: 0 8 16 24 32 40 48 56 255   (all 8 stick angles + "none")
+distinct tilt values: 0, +-4 ... +-32                (the whole $24A42A range)
+frames with a non-zero applied dY: 1004   dX: 639
+```
+
+So every one of the four clamps is exercised while pinned, every entry of the
+`$2552DC` direction table that the stick can reach is exercised, and the bank
+counter covers its full `[-$20,+$20]` range in both directions. `WALLHITS 284`
+counts only the X walls because `$261126` is called only from the two horizontal
+clamps -- the Y walls have no such call, and the 44/992 above are their evidence.
+
 ### 9. Three oracle findings that are not port results
 
 * **`PROBE_RAMDUMP` dumps the PRE-arm semaphore.** `frame.lua` reads RAM from
