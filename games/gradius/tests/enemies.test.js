@@ -265,10 +265,15 @@ test('$83E4 ASL A is 8-bit: type $85 and type $05 run the SAME handler', () => {
 
 test('an unported handler is a LOUD named throw, with the type and the ROM address', () => {
   // docs/knowledge/03: a silent no-op here would leave the slot motionless and
-  // the comparison would blame the mover. 34 of the 42 entries are unported.
+  // the comparison would blame the mover. 29 of the 42 entries are unported as
+  // of wave 12 (the 13 that are not: 0, 1, 2, 3, 4, 5, 6, 8, 17, 18, 31, 39,
+  // 41 -- ten distinct routines).
   // RED WHEN: the `default:` arm returns instead of throwing.
   const s = running();
-  s.obj.type[21] = 0x87;               // entry 7 -> $B6E1, never dispatched
+  // Entry 7 -> $B6E1. MEASURED REACHABLE on the cartridge: 4995 executions in
+  // 27400 frames, first at game frame 2490 (tools/oracle/throwaudit.py). It is
+  // the wall `deep-page4`'s expectThrow now pins.
+  s.obj.type[21] = 0x87;
   assert.throws(() => updateEnemies(s, res),
     /unimplemented enemy handler \$B6E1 for type \$87 \(entry 7/);
 });
@@ -588,3 +593,218 @@ test('$BD0D: |dx| == |dy| takes the X-MAJOR arm, and only rank >= 2 shows it', (
   assert.strictEqual(s.obj.yvelf[31], 0x41, '$BD65 ADC with the CMP carry SET');
 });
 
+
+// =========================== WAVE 12 =========================================
+// $A3B1, the single-enemy spawn, and the two handlers it reaches on stage 1:
+// $B026/$B098 (the aiming turret) and $B198 (the arc).
+//
+// These are here rather than in the -unwitnessed file because `deep-page3` DOES
+// reach them -- it compares 579 frames from 1900 to 2479, the first window in
+// this project's history that crosses scroll $0380. What is in the -unwitnessed
+// file instead is the deliberate breaks that SURVIVED that comparison.
+
+/** The wave cursor parked on ONE record of a chunk list, ready to fire. */
+function atRecord(camHi, camLo, cur) {
+  const s = createState();
+  s.substate = 0x80;
+  s.spawn.z60 = 2;
+  s.spawn.z61 = camHi & 0x0E;
+  s.cam.hi = camHi; s.cam.lo = camLo;
+  s.spawn.z6A = cur & 0xFF; s.spawn.z6B = cur >> 8;
+  s.obj.y[0] = 96; s.obj.x[0] = 80;
+  return s;
+}
+
+test('$A3B1: the FIRST cmd < $80 in stage 1 fires at scroll $0380, type $12', () => {
+  // The path the owner CRASHED INTO in ordinary play
+  // (06-FINDING-scroll-coverage.md). The numbers come out of the exported
+  // tables, not out of a guess: chunk $61 = 2's list is $A859 and its
+  // thirteenth record is at $A86F -- trigger $C0, i.e. scroll
+  // ($61 + 1) * 256 + ($C0 * 2 AND $FF) = $0380 -- carrying cmd $00. Table A's
+  // cmd-$00 entry ($A662, THREE bytes per command) is $B2 $80 $12, and
+  // $B2 - $A0 = $12.
+  // RED WHEN: the trigger is not doubled, the descriptor is indexed *4 instead
+  // of *3, or $A3C8's SBC #$A0 is any other constant.
+  const s = atRecord(3, 0x80, 0xA86F);
+  spawnEngine(s, res);
+  assert.strictEqual(cursor(s), 0xA871, '$A34F must advance the cursor by 2');
+  assert.deepStrictEqual(occupied(s), [21], '$A3B1 allocates DOWNWARD from 9');
+  assert.strictEqual(s.obj.type[21], 0x12, 'type := $64 - $A0');
+  assert.strictEqual(s.obj.x[21], 0xF0, '$A3C3 LDY #$F0 -- the right edge');
+  assert.strictEqual(s.obj.y[21], 0x12, '$A3DE LDA $66 / STA $032C,X');
+  assert.strictEqual(s.obj.status[21], 0,
+    '$A3B1 writes NO $010C: a single-spawn enemy has status 0, so $ADEA skips '
+    + 'the animator and the handler owns the metasprite');
+  assert.strictEqual(s.obj.s04E0[21], 0x80, '$A579 with $65 = $80');
+  assert.strictEqual(s.obj.style[21], 0x80, '...into $040C as well');
+  assert.strictEqual(s.obj.carrier[21], 0, '$80 is even: no capsule');
+});
+
+test('$A3CC: a descriptor byte >= $D0 spawns on the LEFT edge, type -= $D0', () => {
+  // The other arm of the same three instructions, and it is NOT hypothetical:
+  // stage 1's chunk $61 = 4 (the list at $A87A) carries the record `20 03` at
+  // $A87E, firing at scroll $0440 with cmd $03, and table A's cmd-$03 entry
+  // ($A66B) is $D7 $80 $B7. $D7 - $A0 = $37, which is >= $30, so Y becomes $10
+  // and the type is $37 - $30 = $07.
+  // RED WHEN: $A3D0's SBC #$30 is dropped (type $37 then indexes past the
+  // 42-entry table) or the CMP #$30 boundary moves.
+  const s = atRecord(4, 0x40, 0xA87E);
+  spawnEngine(s, res);
+  assert.strictEqual(s.obj.type[21], 0x07, '$A3D0 SBC #$30');
+  assert.strictEqual(s.obj.x[21], 0x10, '$A3CE LDY #$10 -- the LEFT edge');
+  assert.strictEqual(s.obj.y[21], 0xB7);
+  // ...and this is where the port runs out NEXT. Written as an assertion so
+  // that whoever ports $B6E1 is told to come here and delete it.
+  assert.throws(() => updateEnemies(s, res),
+    /unimplemented enemy handler \$B6E1 for type \$07 \(entry 7/,
+    'scroll $0440 is the next wall after $0380');
+});
+
+test('$A3BB: a single spawn with the pool full is DROPPED, cursor still moves', () => {
+  // The bare RTS at $A3BB, the same shape as $A41F for a squadron member: no
+  // retry, no queue, and $A34F has already advanced the cursor -- so the record
+  // is simply lost. Unreachable from the corpus (it needs ten live enemies at
+  // exactly the frame a single spawn fires), which is why it is a unit test.
+  // RED WHEN: the allocator returns 0 instead of -1 on a full pool.
+  const s = atRecord(3, 0x80, 0xA86F);
+  for (let j = 0; j < 10; j++) s.obj.type[j + ENEMY_BASE] = 0x85;
+  spawnEngine(s, res);
+  assert.strictEqual(cursor(s), 0xA871, 'the cursor advances either way');
+  for (let j = 0; j < 10; j++) {
+    assert.strictEqual(s.obj.type[j + ENEMY_BASE], 0x85, 'no type may change');
+  }
+});
+
+// ------------------------------------------------ $B026 / $B098, the turret ---
+
+/** One turret in slot 21 at (ex, ey), with the ship at (px, py). */
+function turret(type, ex, ey, px, py) {
+  const s = createState();
+  s.substate = 0x80;
+  s.obj.type[21] = type;
+  s.obj.x[21] = ex; s.obj.y[21] = ey;
+  s.obj.x[0] = px; s.obj.y[0] = py;
+  return s;
+}
+
+test('$B098: the ceiling turret rewrites its own type, sets the flip, drifts', () => {
+  // Type $12 and type $92 are the SAME entry (18) of the $AE1C table -- $83E4's
+  // ASL is 8-bit -- so this handler runs on the spawn frame too, and there is
+  // no $B0B4 init-once branch: $B09A writes $92 every frame, which is also how
+  // bit 7 (the collision gate at $C011) gets set the first time.
+  // MEASURED: the turret enters `deep-page3`'s window at frame 2106.
+  // RED WHEN: the type write is dropped (the enemy stays $12 and is
+  // permanently invulnerable) or the ORA #$80 goes.
+  const s = turret(0x12, 0xF0, 0x12, 80, 96);
+  updateEnemies(s, res);
+  assert.strictEqual(s.obj.type[21], 0x92, '$B098 LDA #$92 / STA $030C,X');
+  assert.strictEqual(s.obj.attrMask[21], 0x80, '$B09D ORA #$80 -- the flip');
+  assert.strictEqual(s.obj.anim[21], 0x73, '$B086[1]: dx = $A0, no Y refinement');
+  assert.strictEqual(s.obj.s0480[22 + 9], 0x03,
+    '$B080 STA $0496,X is the j-INDEXED array -- the byte $BC90 LDX $0496,Y '
+    + 'reads to pick this enemy\'s muzzle offset');
+  assert.strictEqual(s.obj.x[21], 0xEF,
+    '$B083 JMP $AEDD: 0.5 px/frame left, i.e. the camera\'s own scroll rate');
+});
+
+test('$B038: the six direction codes, one interior placement each', () => {
+  // Three coarse X bands either side of the ship, and the two OUTER ones are
+  // refined by Y. Every row here is a boundary-free interior point; the
+  // boundaries themselves are in enemies-unwitnessed.test.js, because two
+  // deliberate breaks on those constants SURVIVED the 579-frame comparison.
+  // RED WHEN: any of $B043/$B048/$B050/$B055/$B062/$B068's constants move, or
+  // the $B04E LDY #$03 base changes.
+  const MS = [0x74, 0x73, 0x72, 0x75, 0x76, 0x77];   // $B086
+  const rows = [
+    [100, 100, 90, 90, 0, 'dx = 10, inside $30 -- no Y refinement'],
+    [150, 100, 90, 90, 1, 'dx = $3C, the middle band'],
+    [200, 100, 90, 90, 2, 'dx = $6E, refined by dy = 10 (< $30)'],
+    [200, 200, 90, 90, 1, 'dx = $6E, dy = $6E -- no refinement'],
+    [90, 100, 100, 90, 3, 'dx = -10 -> $F6, at or above $D0'],
+    [90, 100, 150, 90, 4, 'dx = -60 -> $C4, between $A0 and $D0'],
+    [90, 100, 200, 90, 5, 'dx = -110 -> $92, refined by dy = 10'],
+    [90, 200, 200, 90, 4, 'dx = -110, dy = $6E -- no refinement'],
+  ];
+  for (const [ex, ey, px, py, want, why] of rows) {
+    const s = turret(0x12, ex, ey, px, py);
+    updateEnemies(s, res);
+    assert.strictEqual(s.obj.anim[21], MS[want],
+      `(${ex},${ey}) vs (${px},${py}) should be direction ${want}: ${why}`);
+  }
+});
+
+test('$B033: the shot countdown is armed to TEN, and only from one side', () => {
+  // $040C,X is the byte $BBFD walks down by 1 a frame; every stage-1 SQUADRON
+  // reloads it from $04EC = $C8 = 200 (wave 11). A turret writes TEN, i.e. it
+  // shoots within a sixth of a second and re-arms every frame the ship stays
+  // on its firing side.
+  //
+  // WRITTEN BECAUSE A DELIBERATE BREAK SURVIVED THE CORPUS: #$0A -> #$0B is
+  // GREEN on `deep-page3`, while flipping the $B0AB test that GUARDS it is RED
+  // (10 divergent fields, first w_040C@2138). The two facts together say the
+  // guard IS exercised and always answers NO -- the compared window never has
+  // the ship above the ceiling turret -- so the constant has no cartridge
+  // witness at all and this is the only thing holding it.
+  // RED WHEN: the constant moves, or either CMP's sense flips.
+  const armed = turret(0x12, 0xF0, 0x40, 80, 0x20);     // enemy Y >= player Y
+  updateEnemies(armed, res);
+  assert.strictEqual(armed.obj.style[21], 0x0A, '$B033 LDA #$0A / STA $040C,X');
+  const notArmed = turret(0x12, 0xF0, 0x40, 80, 0x41);
+  notArmed.obj.style[21] = 0x77;
+  updateEnemies(notArmed, res);
+  assert.strictEqual(notArmed.obj.style[21], 0x77,
+    '$B0AB BCS: enemy Y < player Y skips $B033 entirely');
+  const equal = turret(0x12, 0xF0, 0x40, 80, 0x40);
+  updateEnemies(equal, res);
+  assert.strictEqual(equal.obj.style[21], 0x0A, 'CMP/BCS arms on equality');
+});
+
+// --------------------------------------------------------- $B198, the arc ---
+
+test('$B198: the init frame sets status 2, wraps bit 7 on, and seeds the arc', () => {
+  // Reached from the single spawn: table A's cmd $01 and cmd $02 are $A6 $81
+  // $B7 and $A6 $80 $B7, and $A6 - $A0 = $06. Those records fire at scroll
+  // $03C0 and $03E0 -- 64 and 96 px past the $A3B1 boundary the owner hit.
+  // RED WHEN: $B19F's status, $B1AA's acceleration or $B1AF's velocity move.
+  const s = turret(0x06, 0xF0, 0xB7, 80, 96);
+  updateEnemies(s, res);
+  assert.strictEqual(s.obj.status[21], 2, '$B19D LDA #$02 / STA $010C,X');
+  assert.strictEqual(s.obj.type[21], 0x86, '$B0B4 is an ADD: $80 + $06');
+  assert.strictEqual(s.obj.s04A0[21], 0, '$B1A7 STA $04AC,X -- the arc counter');
+  assert.strictEqual(s.obj.s0480[21], 0x20, '$B1AA LDA #$20 -- the acceleration');
+  assert.strictEqual(s.obj.yvel[21], 3, '$B1AF LDA #$03 -- NOT type 4\'s #$02');
+  assert.strictEqual(s.obj.xvel[21], 0xFE, '$B1BC LDA #$FE');
+  assert.strictEqual(s.obj.x[21], 0xF0, 'and it does not move on the init frame');
+  assert.strictEqual(s.obj.y[21], 0xB7);
+});
+
+test('$B1DF: arc 0 flies LEFT 2 px/frame, Y velocity decaying by $20/256', () => {
+  // $B200[0] is 0, so $B1DD's BNE is not taken and the mover is $B154 (X +=
+  // xvel, and xvel is $FE). One frame, every byte.
+  // RED WHEN: $B1C5 reads the wrong table, or $B1E8/$B1EB are reordered.
+  const s = turret(0x86, 0xF0, 0xB7, 80, 96);
+  s.obj.s0480[21] = 0x20; s.obj.yvel[21] = 3; s.obj.xvel[21] = 0xFE;
+  updateEnemies(s, res);
+  assert.strictEqual(s.obj.x[21], 0xEE, '$B154: X += $FE');
+  assert.strictEqual(s.obj.y[21], 0xB4, '$B140: Y -= 3');
+  assert.strictEqual(s.obj.yvel[21], 2, '$B120: the fraction borrowed');
+  assert.strictEqual(s.obj.yvelf[21], 0xE0, '0 - $20');
+});
+
+test('$B1D4: the arc advances only when Y velocity is negative AND past -3', () => {
+  // $B1CE BPL / $B1D0 CMP #$FD / $B1D2 BCS -- so $FD does NOT advance and $FC
+  // does. The values either side, since a 579-frame comparison only sees
+  // whatever the arc happens to pass through.
+  // RED WHEN: CMP #$FD becomes #$FE or #$FC.
+  for (const [yv, want] of [[0xFE, 0], [0xFD, 0], [0xFC, 1], [0x80, 1]]) {
+    const s = turret(0x86, 0x80, 0x60, 80, 96);
+    s.obj.s0480[21] = 0x20; s.obj.yvel[21] = yv; s.obj.xvel[21] = 0xFE;
+    updateEnemies(s, res);
+    assert.strictEqual(s.obj.s04A0[21], want,
+      `$03BC = $${yv.toString(16)} should ${want ? '' : 'not '}advance $04AC`);
+    if (want) {
+      assert.strictEqual(s.obj.yvel[21], 3, '$B1D7 JMP $B1AA re-seeds');
+      assert.strictEqual(s.obj.x[21], 0x80, 'and the enemy does not move');
+    }
+  }
+});

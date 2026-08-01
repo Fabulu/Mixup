@@ -322,14 +322,24 @@ export function stagePlay(state, res) {
     // $B0 IS the port's own state as of wave 8 -- it is pulse 1's duration
     // counter (src/sound.js), and "non-zero for 277 frames" is simply a channel
     // that was playing. What is still not ported is $96FB itself: the wave plan
-    // excludes game over and continue, and nothing in this corpus reaches
-    // either. The reason has been corrected rather than left standing.
+    // excludes game over and continue.
+    //
+    // WAVE 12 REPLACED "nothing in this corpus reaches either" WITH A NUMBER,
+    // and the number is not small. MEASURED with an exec hook on $96FB over
+    // 27,400 cartridge frames of seven scripts (tools/oracle/throwaudit.py):
+    // **794 executions, first at game frame 3380**, on two runs that simply
+    // played long enough to lose three lives ($20 reads 255 on 796 frames, and
+    // $97F1 fires twice). This is the highest-traffic unported arm in the whole
+    // port and it needs nothing exotic: it needs a player who is not very good.
     throw new Error(`$96FB: $1B = $${sub.toString(16).toUpperCase()} has bit 6 `
                   + `set (GAME OVER). $96FD gates both the timeout and START on `
                   + `$B0 -- pulse 1's duration counter, i.e. "wait until the `
                   + `game-over jingle has finished" -- and neither the timeout `
-                  + `arm nor the continue screen is ported. Deliberately `
-                  + `excluded by docs/worklog/gradius/00-plan.md.`);
+                  + `arm nor the continue screen is ported. REACHABLE: measured `
+                  + `794 executions of $96FB on the cartridge, first at frame `
+                  + `3380 (tools/oracle/throwaudit.py). Deliberately excluded `
+                  + `by docs/worklog/gradius/00-plan.md; that exclusion is now `
+                  + `the port's biggest known hole.`);
   }
   if (sub & 0x80) { playArm(state, res); return; }         // $96B7-$96BB
   introStep(state, res);                          // $96BE -> jt_96C5

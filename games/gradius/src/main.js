@@ -160,6 +160,16 @@ export async function boot(canvas, opts = {}) {
     // about: an async failure after boot() resolves "used to leave the frame
     // loop dead with the music still playing, and nothing on screen said so."
     // That fix never crossed over to this page. It does now.
+    //
+    // WAVE 12 PUT A NUMBER ON "reached in ordinary play". An exec hook on every
+    // ROM address a throw in src/ names, over 27,400 cartridge frames of seven
+    // scripts (tools/oracle/throwaudit.py), found FIFTEEN reachable ones. The
+    // two nearest the front are $B6E1, first executed at game frame 2490 --
+    // about 40 seconds in -- and GAME OVER ($96FB, 794 executions from frame
+    // 3380), which needs nothing but losing three lives. So this catch is not
+    // belt-and-braces for an unlikely state; it is the normal exit of a play
+    // session. The ranked table is in
+    // docs/worklog/gradius/12-impl-spawn-and-throw-audit.md.
     try {
       let stepped = false;
       while (acc >= period) {

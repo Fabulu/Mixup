@@ -325,7 +325,38 @@ python games/gradius/tools/oracle/probe.py --frames 400 --watch 0300,03A0
 # on the very next frame, which is the only way a script can reach $BC59 at all
 # (see src/enemies.js $BC44 for why).
 python games/gradius/tools/oracle/bulletprobe.py --frames 700     --script "200:,10:S,490:" --poke "0415=0@450,0415=0@455,0415=0@460"     --hits --args --dump 450:60 --dumpslots
+
+# WHICH UNPORTED PATHS DOES A PLAYER ACTUALLY REACH? (wave 12)
+# 79 exec hooks -- one per ROM address named by a loud throw in src/, plus all
+# 42 entries of the $AE1C handler table -- driven by seven long, varied scripts
+# (27,400 cartridge frames).  Also samples 19 RAM GATES per frame, because
+# several throws are not a branch the cartridge takes but a VALUE the port
+# refuses ($18, $19, $1A, $3A, $5C, the rank $17), and for those an address
+# hook answers the wrong question.
+python games/gradius/tools/oracle/throwaudit.py
+python games/gradius/tools/oracle/throwaudit.py --only deep-powered
+python games/gradius/tools/oracle/throwaudit.py --name adhoc --frames 4000     --script "200:,10:S,190:,3600:RD" --poke "0044=2,0045=2,0046=5,0041=1"
 ```
+
+**Two traps `throwaudit.py` was written into, both worth inheriting.**
+
+1. **Hook the ARM, not the test.** `$9663` is `LDA $19 / CMP #$04 / BNE $96A5`
+   and executes on every single frame; the stage-5 census the port refuses
+   starts at `$9669`. The first version of the hook list reported 1613 hits for
+   a path nothing reaches. Where there is no arm address of its own — `$A17C`
+   and `$C3AD` both land on code the normal path also reaches — the only honest
+   measurement is the RAM value, and those are in the gate list instead.
+2. **A script that never presses START runs the ATTRACT DEMO**, which is mode-5
+   gameplay with `$09` set and the pause cheat already granted (`$9C5E` at
+   f414, `$45 = 2`, `$46 = 5`, `$41 = 1`, `$17 = 3` for the whole run). Every
+   run starts with the corpus's own `200:,10:S,190:` for that reason.
+
+**And read the zeroes correctly.** A zero is not "the cartridge does not do
+this"; it is "these frames of these scripts did not do this". That exact slip —
+a fact about our sampling, promoted into a claim about the cartridge — is what
+produced two crashes in ordinary play (`docs/worklog/gradius/05-FINDING` and
+`06-FINDING`), and the tool prints the frame budget next to every zero to keep
+the distinction in front of whoever reads it.
 
 Input script grammar: comma-separated `count:buttons`, buttons from
 `U D L R A B S(tart) E(select)`, empty means nothing held. Frames past the end

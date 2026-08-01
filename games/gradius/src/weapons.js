@@ -310,11 +310,20 @@ export function missileLoop(state, res) {
         freeMissile(state, i);                    // $A1D6
         continue;
       }
+      // WAVE 12 CORRECTION, and it is the correction this whole follow-up is
+      // about. This used to say the crawl arm "has never run", on the strength
+      // of 916 probe calls in the weapons recon and every call of every
+      // scenario. That was a fact about OUR SAMPLING. MEASURED on the cartridge
+      // with an exec hook on $A19E over 27,400 frames of seven scripts
+      // (tools/oracle/throwaudit.py): it runs **203 times, first at game frame
+      // 3324**, on the run that carries missiles at all ($41 = 1) and survives
+      // deep enough to meet real ground. The corpus never reached it because no
+      // scenario both owns missiles and flies past scroll $0380.
       throw new Error(`$A19E: missile ${i} would start CRAWLING at (${px}, ${py})`
-                    + ' -- metasprite $08, `x += 2`. UNEXERCISED: the terrain '
-                    + 'probe returned 0 on all 916 calls of the weapons recon and '
-                    + 'on every call of every scenario here, so the crawl arm has '
-                    + 'never run. Its shape is known and its constants are not.');
+                    + ' -- metasprite $08, `x += 2`. NOT PORTED, and REACHABLE: '
+                    + 'measured 203 executions of $A19E on the cartridge, first '
+                    + 'at frame 3324 (tools/oracle/throwaudit.py). Its shape is '
+                    + 'known and its constants are not.');
     }
     o.anim[i] = 0x0A;                             // $A1AA/$A1AC -- every frame
     const ny = u8(o.y[i] + w.read(0xA1A4 + y));   // $A1AF-$A1B6

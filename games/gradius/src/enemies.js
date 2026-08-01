@@ -47,17 +47,38 @@
 // have reached, never a silent no-op:
 //
 //   $A37A/$A466/$A46F/$A4A6  the `cmd >= $F0` inline-record spawners. Measured
-//                            `total.raw5 = 0` over every run ever made here.
-//   $A3B1                    the single-enemy spawn (`cmd < $80`). Stage 1
-//                            chunks 0 and 1 are all `cmd >= $80`; the first
-//                            `cmd < $80` record is chunk 1's `C0 00`, at scroll
-//                            $0380, i.e. past this corpus.
-//   34 of the 42 handlers    no run has dispatched them. The eight that ARE
-//                            ported (0/31 = RTS, 1, 2, 3, 4, 5, 6, 8) are the
-//                            ones stage 1 reaches in the first 1865 frames.
+//                            `total.raw5 = 0` over every run ever made here,
+//                            and 0 executions of all four addresses over
+//                            27,400 cartridge frames of seven long, varied
+//                            scripts (wave 12, tools/oracle/throwaudit.py).
+//                            Stage 1's four wave lists carry no cmd >= $F0 at
+//                            all, so reaching them needs another stage.
+//   29 of the 42 entries     of the $AE1C table are still throws -- 24 distinct
+//                            routines. The THIRTEEN that are ported -- 0 and 31
+//                            (the RTS), 1, 39 and 41 ($AEDD), 2, 3, 4, 5, 6, 8,
+//                            17, 18 -- are ten distinct routines and they are
+//                            what stage 1 dispatches through scroll $0440.
+//                            FIVE of the 29 are REACHED IN PLAY and measured:
+//                            $B6E1 (entry 7, frame 2490), $B747 (19, 2498),
+//                            $B311 (9, 2783), $AF2E (15, 2778), $AF88 (16,
+//                            5018). The last three only on a run carrying
+//                            power-ups. The ranked table with what it took to
+//                            reach each one is in
+//                            docs/worklog/gradius/12-impl-spawn-and-throw-audit.md.
 //   $C413                    the stage-advance arm ($3A != 0, $1B = $82).
+//                            $3A measured 0 on all 27,400 of those frames.
 //   $BBB7's $BBE5 arm        the `$17 >= 3` rank consumer. Unreachable once any
-//                            wave has fired, because it is gated on `$5D == 0`.
+//                            wave has fired, because it is gated on `$5D == 0`
+//                            -- and 0 executions even on the run that held
+//                            $17 = 4 for 5690 frames, because $BBC1's BEQ
+//                            jumps the whole ladder while $19 | $1A is 0.
+//
+// $A3B1 -- THE SINGLE-ENEMY SPAWN -- IS PORTED AS OF WAVE 12, and so are the
+// two handlers it reaches on stage 1: $B026/$B098 (the aiming turret, types
+// $11/$91 and $12/$92) and $B198 (the arcing type $06/$86). The note they used
+// to carry was the same falsified sentence the bullets carried: "no measured
+// run has exercised them" is a fact about the corpus, and the owner reached
+// $A3B1 in thirty seconds of ordinary play (06-FINDING-scroll-coverage.md).
 //
 // SLOTS 22-31 -- THE ENEMY BULLETS -- ARE PORTED AS OF WAVE 11, and the note
 // they used to carry ("no measured run has ever populated them") is deleted
@@ -356,9 +377,8 @@ function fireWave(state, rom) {
     loadDescriptor(state, rom, 0, off);  // $A366 LDY #$00 / $A368 JSR $A397
     // $A36B BMI $A3B1 -- ALWAYS TAKEN (see the header): the N flag is $A3AE's
     // final DEY leaving Y = $FF, not a test of $64.
-    throw new Error(`wave cmd ${hex2(cmd)} < $80: the single-enemy spawn at `
-                  + '$A3B1 is not ported. Stage 1 chunks 0 and 1 are all '
-                  + 'cmd >= $80 up to scroll $0380 (measured allocP_try = 0)');
+    singleSpawn(state, rom);
+    return;
   }
   // $A36D LDA $98 / ASL / ASL -- (cmd*4) AND $FF, so cmd AND $3F selects one of
   // 64 slots in a table that only has 24 records ($A602-$A661).
@@ -384,6 +404,65 @@ function loadDescriptor(state, rom, y, off) {
   sp.z65 = rom.read(u16(a + 1));
   sp.z64 = rom.read(a);
 }
+
+/**
+ * `$A3B1` -- THE SINGLE-ENEMY SPAWN: the whole of a `cmd < $80` wave record.
+ *
+ * ONE enemy, no squadron, no `$69`/`$6C` emitter, no pattern table. The four
+ * descriptor bytes come from table A ($A662, three bytes per command -- $A35A's
+ * `ASL / CLC / ADC $98` is cmd*3, not cmd*4) and they mean DIFFERENT things
+ * from the formation path's: here `$64` becomes the TYPE (after the two
+ * subtractions below), `$65` is the style byte and `$66` is the Y. Nothing
+ * writes `$010C`, so a single-spawn enemy has status 0 and $ADE8's animator
+ * skips it entirely -- its handler owns its metasprite.
+ *
+ * `$64` CARRIES TWO THINGS IN ONE BYTE, and this is the only interesting line:
+ *
+ *   A3C3  LDY #$F0            assume the RIGHT edge
+ *   A3C5  LDA $64 / SEC / SBC #$A0
+ *   A3CA  CMP #$30 / BCC $A3D2
+ *   A3CE  LDY #$10            ...otherwise the LEFT edge
+ *   A3D0  SBC #$30            (carry is the CMP's, so this is a plain subtract)
+ *
+ * so `$64 - $A0` under $30 is a type spawning at X = $F0 and marching left, and
+ * `$64 - $D0` is a type spawning at X = $10. Stage 1 only ever uses the first
+ * arm: its three table-A entries are $B2 $80 $12 (cmd $00 -> type $12), $A6 $81
+ * $B7 (cmd $01 -> type $06) and $A6 $80 $B7 (cmd $02 -> type $06).
+ *
+ * WHY THIS IS HERE NOW. It was excluded from the eight-wave plan on the
+ * reasoning "no measured run has exercised it", and THE OWNER CRASHED INTO IT
+ * IN ORDINARY PLAY (06-FINDING-scroll-coverage.md) -- thirty seconds of
+ * scrolling. The exclusion was a fact about the CORPUS read back as a claim
+ * about the cartridge. The boundary the old throw carried was right and is kept
+ * here as a measurement: stage 1 chunks $61 = 0 and $61 = 2 are all cmd >= $80
+ * until the record at $A859 + $18 -- trigger $C0, i.e. scroll $0380 -- which is
+ * cmd $00. Then $C8 ($0390) and $D0 ($03A0) are cmd $00 again, $E0 ($03C0) is
+ * cmd $01 and $F0 ($03E0) is cmd $02.
+ *
+ * The allocator is the DEX/BPL shape, so unlike $A4A6 it does test slot 12, and
+ * like every other allocator here it scans DOWNWARD from index 9. Allocation
+ * failure ($A3BB, a bare RTS) DROPS the spawn: no retry, no queue, and the wave
+ * cursor has already advanced at $A34F, so that record is simply lost.
+ */
+function singleSpawn(state, rom) {
+  const sp = state.spawn;
+  const o = state.obj;
+  const j = allocEnemySlot(state, true);   // $A3B1 LDX #$09 / $A3B3 LDA $030C,X
+  if (j < 0) return;                       // $A3BB RTS -- the spawn is DROPPED
+  sp.zA8 = j;                              // $A3BC STX $A8
+  clearSlot(state, j);                     // $A3BE JSR $A527
+  const i = j + ENEMY_BASE;                // $A3C1 LDX $A8
+  let x = 0xF0;                            // $A3C3 LDY #$F0
+  let t = u8(sp.z64 - 0xA0);               // $A3C5 LDA $64 / SEC / SBC #$A0
+  if (t >= 0x30) {                         // $A3CA CMP #$30 / $A3CC BCC $A3D2
+    x = 0x10;                              // $A3CE LDY #$10
+    t = u8(t - 0x30);                      // $A3D0 SBC #$30
+  }
+  o.type[i] = t;                           // $A3D2 STA $030C,X
+  o.x[i] = x;                              // $A3D5 TYA / STA $036C,X
+  applyStyle(state, i, sp.z65);            // $A3D9 LDA $65 / $A3DB JSR $A579
+  o.y[i] = sp.z66;                         // $A3DE LDA $66 / STA $032C,X
+}                                          // $A3E3 RTS
 
 /**
  * `$A3E4` -- set a squadron up, then FALL THROUGH into $A411 to emit its first
@@ -1043,16 +1122,31 @@ function dispatch(state, rom, j, type) {
     case 0xAEDD: return h_AEDD(state);
     case 0xAE99: return h_AE99(state, rom, j);
     case 0xAEE1: return h_AEE1(state);
+    case 0xB026: return h_B026(state, rom, j);   // entry 17, types $11/$91
+    case 0xB098: return h_B098(state, rom, j);   // entry 18, types $12/$92
     case 0xB0AF: return h_B0AF(state, j);
-    case 0xB198: return h_B198(j);
+    case 0xB198: return h_B198(state, rom, j);
     case 0xB205: return h_B205(state, j);
     case 0xB26C: return h_B26C(state, j);
     default:
+      // THE MESSAGE THIS USED TO CARRY WAS "no measured run has ever
+      // dispatched it", and that sentence is the one this whole follow-up
+      // exists to retire: it was a fact about our corpus, read back as a claim
+      // about the cartridge, and it was wrong twice in one evening of ordinary
+      // play. Wave 12 measured the truth instead, with an exec hook on all 42
+      // handler addresses over 27,400 cartridge frames of seven scripts
+      // (tools/oracle/throwaudit.py). FIVE of the entries still listed here are
+      // REACHED IN PLAY: $B6E1 (entry 7, first at frame 2490), $B747 (19, 2498),
+      // $B311 (9, 2783), $AF2E (15, 2778) and $AF88 (16, 5018) -- the last three
+      // only on a run carrying power-ups. The rest were not reached by those
+      // seven scripts, which is a smaller statement than "unreachable" and is
+      // deliberately worded that way.
       throw new Error(`unimplemented enemy handler ${hex4(target)} for type `
                     + `${hex2(type)} (entry ${a >> 1} of the 42-entry table at `
-                    + `$AE1C) in slot ${j + ENEMY_BASE}. No measured run has `
-                    + 'ever dispatched it; port it against the cartridge, do '
-                    + 'not guess it from the listing.');
+                    + `$AE1C) in slot ${j + ENEMY_BASE}. Port it against the `
+                    + 'cartridge, do not guess it from the listing; the '
+                    + 'reachability table is in '
+                    + 'docs/worklog/gradius/12-impl-spawn-and-throw-audit.md.');
   }
 }
 
@@ -1116,10 +1210,24 @@ function addAX(state, j, a) {
   return o.x[i];
 }
 
-// `$B184` (X -= xvel, the mirror of $B154) is deliberately ABSENT. Its only
-// call sites are $B1E5 and $B1FA, both inside handler 6's run path, and that
-// path is a throw below -- handler 4 enters the shared body at $B1DF and $B1F1,
-// which never take it. Writing it here would be untested, unreachable code.
+/**
+ * `$B184` -- X -= (xvel int : xvel frac), 16-bit. The mirror of $B154.
+ *
+ * WAVE 12 PORTED THIS. Until now it was deliberately absent, with a note saying
+ * its only call sites are $B1E5 and $B1FA, both inside handler 6's run path,
+ * and that path was a throw. Handler 6 ($B198) is ported below, so $B1E5 is
+ * live: it is the arm that turns the arcing enemy around and flies it back
+ * RIGHT. $B1FA is still unreachable -- it belongs to $B37C and $B459, two
+ * handlers that are still throws.
+ */
+function subX16(state, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  const f = o.xf[i] - o.xvelf[i];        // $B184 LDA $038C,X / SEC / SBC $044C,X
+  o.xf[i] = u8(f);
+  // $B18E LDA $036C,X / SBC $042C,X -- the fraction's borrow propagates, which
+  // is what makes this 16-bit rather than two independent bytes.
+  o.x[i] = u8(o.x[i] - o.xvel[i] - (f < 0 ? 1 : 0));
+}
 
 /**
  * `$B251` -- the shared off-screen box, tail-called by most handlers.
@@ -1380,14 +1488,67 @@ function unstashY(state, j) {
  * because separating them would invent a structure the ROM does not have.
  *
  * Type 4 is what stage 1's chunk-1 cmd $83/$84 waves spawn; measured first
- * dispatch at game frame 1722 on the 1900-frame RD run. Type 6 has never been
- * dispatched in any run made here -- its ENTRY is a throw, while its BODY is
- * shared with type 4 and therefore is exercised.
+ * dispatch at game frame 1722 on the 1900-frame RD run.
+ *
+ * TYPE 6 IS NOW PORTED (wave 12). Its entry used to be a throw on the reasoning
+ * "no measured run has ever dispatched it" -- the same sentence that produced
+ * two crashes in ordinary play. It is reached from the SINGLE-ENEMY SPAWN
+ * above: stage 1's table-A entries for cmd $01 and cmd $02 are $A6 $81 $B7 and
+ * $A6 $80 $B7, and $A6 - $A0 = $06. Those two records fire at scroll $03C0 and
+ * $03E0, i.e. 64 and 96 px past the $A3B1 boundary the owner already hit.
+ *
+ * THE ARC. `$04AC,X` counts arcs and indexes the five-byte schedule at $B200
+ * (00 00 01 00 00): 0 means $B1DF (X += xvel, and xvel is $FE, so LEFT) and
+ * non-zero means $B1E5 (X -= xvel, so RIGHT). Each arc seeds Y velocity +3 and
+ * subtracts $20/256 of acceleration per frame, so the enemy rises, stalls and
+ * falls; when the Y velocity has gone past -3 ($B1D0 `CMP #$FD`) the arc
+ * counter advances and the next arc is seeded.
  */
-function h_B198(j) {
-  throw new Error('enemy type 6 ($B198) has never been dispatched by any '
-                + 'measured run; its body is shared with type 4 ($B205) and is '
-                + `ported, but its entry is not (slot ${j + ENEMY_BASE})`);
+function h_B198(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) {              // $B198 LDA $030C,X / $B19B BMI $B1C2
+    o.status[i] = 2;                      // $B19D LDA #$02 / STA $010C,X
+    setInitialised(state, j);             // $B1A2 JSR $B0B4 -- one motionless frame
+    o.s04A0[i] = 0;                       // $B1A5 LDA #$00 / $B1A7 STA $04AC,X
+    return arcSeed(state, j);             // FALLS THROUGH into $B1AA
+  }
+  const y = o.s04A0[i];                   // $B1C2 LDY $04AC,X
+  if (y >= 5) {
+    // $B1C5 `LDA $B200,Y` would read $B205, the `LDA $030C,X` opcode of the
+    // NEXT handler, as a turn flag ($BD -- non-zero, i.e. "fly right"). That is
+    // a table overrun, and it is a loud throw rather than a silent $BD.
+    //
+    // MEASURED, and the number is the reason the table is exported at exactly
+    // five bytes: an exec hook on $B1C5 reading the Y register over 27,400
+    // cartridge frames (tools/oracle/throwaudit.py) saw 2439 executions with
+    // Y = 0, 1, 2, 3 and 4 -- EVERY entry -- and never 5. So the enemy really
+    // does walk the whole schedule, and $B251's box frees it before the sixth
+    // read. This guard is the tripwire for the case the cartridge stops just
+    // short of.
+    throw new Error(`$B1C5 LDA $B200,Y with $04AC = ${y}: the five-entry arc `
+                  + 'schedule at $B200 ends at $B204 and $B205 is st_B205\'s '
+                  + `\`LDA $030C,X\` opcode (slot ${j + ENEMY_BASE})`);
+  }
+  o.s0460[i] = rom.read(0xB200 + y);      // $B1C5 LDA $B200,Y / $B1C8 STA $046C,X
+  const yv = o.yvel[i];                   // $B1CB LDA $03BC,X
+  // $B1CE BPL $B1DA / $B1D0 CMP #$FD / $B1D2 BCS $B1DA -- advance the arc only
+  // once the Y velocity is negative AND past -3.
+  if ((yv & 0x80) !== 0 && yv < 0xFD) {
+    o.s04A0[i] = u8(o.s04A0[i] + 1);      // $B1D4 INC $04AC,X
+    return arcSeed(state, j);             // $B1D7 JMP $B1AA
+  }
+  if (o.s0460[i] !== 0) subX16(state, j); // $B1DA LDA $046C,X / BNE $B1E5 -> $B184
+  else addX16(state, j);                  // $B1DF JSR $B154
+  subY16(state, j);                       // $B1E8 JSR $B140
+  velSubAccel(state, j);                  // $B1EB JSR $B120
+  offScreenCheck(state);                  // $B1EE JMP $B251
+}
+
+/** `$B1AA` -- arm the acceleration, then FALL THROUGH into $B1B1 with A = 3. */
+function arcSeed(state, j) {
+  const o = state.obj;
+  o.s0480[j + ENEMY_BASE] = 0x20;         // $B1AA LDA #$20 / STA $048C,X
+  seedArc(state, j, 0x03);                // $B1AF LDA #$03 -- falls into $B1B1
 }
 
 /** `$B1B1` -- seed the velocities. Entered with A = the Y velocity integer. */
@@ -1442,4 +1603,117 @@ function h_B205(state, j) {
   setInitialised(state, j);              // $B20F -- $80 + $84 = $04, bit 7 CLEAR
   o.s0480[i] = 0x20;                     // $B212
   seedArc(state, j, 0x02);               // $B217 -> $B22E -> $B1B1
+}
+
+/**
+ * Handlers 17 and 18, `$B026` (types $11/$91) and `$B098` (types $12/$92) --
+ * THE AIMING TURRET, in its floor and ceiling forms, plus the aim block
+ * `$B033`/`$B038` they both fall into.
+ *
+ * PORTED IN WAVE 12, and reached from the single spawn above: stage 1's cmd $00
+ * record is $B2 $80 $12, and $B2 - $A0 = $12, so the first `cmd < $80` wave the
+ * game ever fires -- at scroll $0380 -- is a type $12 turret. Wave 10 measured
+ * exactly that and pinned it in `deep-page4`'s expectThrow: "the enemy that
+ * record spawns is TYPE $92, and $92 AND $7F = $12 indexes entry 18".
+ *
+ * IT DOES NOT MOVE UNDER ITS OWN POWER. Both forms end `$B083 JMP $AEDD`, i.e.
+ * handler 1's 0.5 px/frame left drift, which is the camera's own scroll rate --
+ * so a turret sits still relative to the terrain and is freed at X < 8.
+ *
+ * WHAT IT ACTUALLY DOES is aim. `$B038-$B06C` turns the enemy's position
+ * relative to the ship into a direction code 0..5 (three coarse X bands either
+ * side, refined by Y only in the two middle ones), and writes TWO things from
+ * it: the metasprite ($B086,Y -- the barrel pointing that way) and `$0496,X`,
+ * which is the muzzle index `$BC90 LDX $0496,Y` reads when this enemy fires.
+ * That is the array wave 11 measured as 0 for every stage-1 squadron; the
+ * turret is what makes it non-zero.
+ *
+ * THE TWO FORMS DIFFER IN THREE BYTES AND NOTHING ELSE:
+ *   $B026  type := $91, no attribute change, and `$B033` (arm the shot
+ *          countdown `$040C,X` = 10) runs when the turret is ABOVE the ship
+ *          (`CPY $0320 / BCS $B038` skips it otherwise);
+ *   $B098  type := $92, `$018C,X |= $80` (the vertical flip -- this is the
+ *          CEILING form), and `$B033` runs when the turret is BELOW the ship
+ *          (`CMP $0320 / BCS $B033`), i.e. the opposite test.
+ * Both rewrite their own type EVERY frame, which is also how bit 7 gets set the
+ * first time -- there is no $B0B4 here and no init-once branch.
+ */
+function h_B026(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  o.type[i] = 0x91;                      // $B026 LDA #$91 / $B028 STA $030C,X
+  // $B02B LDY $032C,X / $B02E CPY $0320 / $B031 BCS $B038
+  if (o.y[i] < o.y[0]) armTurretShot(state, j);   // falls into $B033
+  aimTurret(state, rom, j);              // $B038
+}
+
+function h_B098(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  o.type[i] = 0x92;                      // $B098 LDA #$92 / $B09A STA $030C,X
+  o.attrMask[i] = o.attrMask[i] | 0x80;  // $B09D LDA $018C,X / ORA #$80 / STA
+  // $B0A5 LDA $032C,X / CMP $0320 / $B0AB BCS $B033 / $B0AD BCC $B038
+  if (o.y[i] >= o.y[0]) armTurretShot(state, j);
+  aimTurret(state, rom, j);
+}
+
+/**
+ * `$B033` -- arm the shot countdown, then FALL THROUGH into $B038.
+ *
+ * `$040C,X` is the byte `$BBFD` walks down by 1 a frame; at 0 it reloads from
+ * `$04EC,X` and calls `$BC44`. Every stage-1 SQUADRON has $04EC = $C8 = 200
+ * (wave 11 measured it), so a squadron member takes 200 frames to shoot. This
+ * writes TEN. A turret that has the ship on its firing side shoots within a
+ * sixth of a second, and it re-arms every frame the ship stays there.
+ */
+function armTurretShot(state, j) {
+  state.obj.style[j + ENEMY_BASE] = 0x0A;   // $B033 LDA #$0A / STA $040C,X
+}
+
+/** `$B038`-`$B083` -- the direction code, the metasprite and the muzzle index. */
+function aimTurret(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  let y = 0;                             // $B038 LDY #$00
+  const dx = o.x[i] - o.x[0];            // $B03A LDA $036C,X / SEC / SBC $0360
+  const ax = u8(dx);
+  let refine = false;
+  if (dx >= 0) {                         // $B041 BCC $B04E -- no borrow
+    if (ax >= 0x30) {                    // $B043 CMP #$30 / BCC $B06D
+      y = 1;                             // $B047 INY
+      // $B048 CMP #$60 / BCC $B06D / $B04C BCS $B059
+      if (ax >= 0x60) refine = true;
+    }
+  } else {
+    y = 3;                               // $B04E LDY #$03
+    if (ax < 0xD0) {                     // $B050 CMP #$D0 / BCS $B06D
+      y = 4;                             // $B054 INY
+      // $B055 CMP #$A0 / BCS $B06D, else FALL THROUGH into $B059
+      if (ax < 0xA0) refine = true;
+    }
+  }
+  if (refine) {                          // $B059 -- only the two OUTER X bands
+    const dy = o.y[i] - o.y[0];          // $B059 LDA $032C,X / SEC / SBC $0320
+    const ay = u8(dy);
+    if (dy >= 0) {                       // $B060 BCC $B068
+      if (ay < 0x30) y += 1;             // $B062 CMP #$30 / BCC $B06C (INY)
+    } else if (ay >= 0xD0) {             // $B068 CMP #$D0 / BCC $B06D, else INY
+      y += 1;                            // $B06C INY
+    }
+  }
+  o.anim[i] = rom.read(0xB086 + y);      // $B06D LDA $B086,Y / $B070 STA $012C,X
+  // $B073 LDA $018C,X / $B076 BPL $B07D -- the flipped form reads the OTHER
+  // muzzle row. And `$B07B BNE $B080` is a BRANCH ON THE BYTE JUST LOADED: when
+  // $B092,Y is ZERO it is not taken and execution FALLS THROUGH into $B07D,
+  // re-loading from $B08C,Y. Both rows are 0 at index 5 and only at index 5, so
+  // today this is unobservable -- transcribed anyway, because a table edit that
+  // made them differ would make it observable and nobody would know why.
+  let muz;
+  if ((o.attrMask[i] & 0x80) !== 0) {
+    muz = rom.read(0xB092 + y);          // $B078 LDA $B092,Y
+    if (muz === 0) muz = rom.read(0xB08C + y);   // fall-through to $B07D
+  } else {
+    muz = rom.read(0xB08C + y);          // $B07D LDA $B08C,Y
+  }
+  o.s0480[22 + j] = muz;                 // $B080 STA $0496,X -- the j-INDEXED
+                                         //   array, the one $A527 clears with
+                                         //   `STA $0496,Y`. NOT s0480[j + 12].
+  h_AEDD(state);                         // $B083 JMP $AEDD
 }

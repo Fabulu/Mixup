@@ -165,12 +165,17 @@ export function respawn(state, res) {
   state.save24[p] = cp;                             // $97BB STA $24,X
   state.save28[p] = state.zp1A;                     // $97BD/$97BF
   if (state.lives[p] & 0x80) {                      // $97C1/$97C3 BMI $97F1
+    // MEASURED (wave 12, tools/oracle/throwaudit.py): $97F1 executes TWICE in
+    // 27,400 cartridge frames of seven scripts, at game frames 3379 and 3967,
+    // and each time $96FB then runs for ~400 frames. Losing three lives is not
+    // an exotic state; it is the default outcome of playing.
     throw new Error(`$97F1: $20,${p} went negative -- GAME OVER. $0A &= $FE, `
                   + `$1B = $C0, the canned packet $1C and the $4C = 120 continue `
                   + `window are not ported: $96FD gates both the timeout and `
                   + `START on $B0 -- pulse 1's duration counter (src/sound.js), `
-                  + `i.e. "wait until the game-over jingle has finished". The `
-                  + `arm itself is excluded by docs/worklog/gradius/00-plan.md.`);
+                  + `i.e. "wait until the game-over jingle has finished". `
+                  + `REACHABLE: measured twice in 27400 cartridge frames, first `
+                  + `at frame 3379. Excluded by docs/worklog/gradius/00-plan.md.`);
   }
   // $97C5-$97DB, the two-player switch. With one player $0A = 1, so `AND #$02`
   // is 0 and X -- and therefore $18 -- is unchanged. Ported as the ROM has it
@@ -553,9 +558,20 @@ function resumeCheck(state, res) {
   if (!(state.cheat[p] & 0x80)) {                   // $9B01 LDA $3B,X / BMI
     codeMatch(state, res, 2);                       // $9B05 LDX #$02 / JSR $9765
     if (state.zp33 === 0x0A) {                      // $9B0A/$9B0C CMP #$0A
+      // WAVE 12: this said "no measured run has reached it". MEASURED with an
+      // exec hook on $9C5E over 27,400 cartridge frames of seven scripts
+      // (tools/oracle/throwaudit.py): **4 executions, first at frame 4191** --
+      // and NOT from this call site. Both runs that reached it had already hit
+      // GAME OVER ($96FB at 3380/3968), so what executed $9C5E is the CONTINUE
+      // screen's own code path, which the port does not have either. Nothing
+      // measured has reached it from $9B10, i.e. from a live pause. The
+      // distinction is written down rather than averaged away, because "4" and
+      // "4 from somewhere else" lead to different next steps.
       throw new Error('$9B10 JSR $9C5E: the pause-screen button code was '
                     + 'entered. The cheat it grants ($46=5, $41=1, $40=1, '
-                    + '$45=2) is not ported -- no measured run has reached it.');
+                    + '$45=2) is not ported. $9C5E itself IS executed on the '
+                    + 'cartridge (4 times in 27400 frames, first at f4191) but '
+                    + 'only after GAME OVER, never from this pause path.');
     }
   }
   if (!(state.input.pressed & BTN.START)) return;   // $9B1B/$9B1D/$9B1F

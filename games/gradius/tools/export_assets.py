@@ -518,6 +518,40 @@ ENEMY_BLOCKS = [
      "the three-frame bullet animation 7A 7B 7C. ENTRY 0 IS THE RTS AT $BDD1 "
      "($60) and is never read: $BDDA BEQ leaves when the status byte is 0 and "
      "the INY makes Y at least 1. Exported so the base address is the ROM's"),
+    # ---- WAVE 12: the two tables the SINGLE-SPAWN handlers read -----------
+    # $B086 is EIGHTEEN bytes read through THREE six-byte views, all with the
+    # same Y (0..5) that $B038-$B06C computes from the enemy's position
+    # relative to the ship: $B06D `LDA $B086,Y` is the metasprite, $B07D
+    # `LDA $B08C,Y` the muzzle index for a turret whose $018C has bit 7 clear,
+    # and $B078 `LDA $B092,Y` the one for a turret with bit 7 set -- which is
+    # every type $92, because $B09D `ORA #$80` sets it on entry. Exported as
+    # ONE run for the same reason bulletMuzzle is: three tables at +0/+6/+12 of
+    # one block is what the ROM has, and splitting it would hide that.
+    ("turretFrames", 0xB086, 0xB098,
+     "$B06D LDA $B086,Y (metasprite), $B07D LDA $B08C,Y and $B078 LDA $B092,Y "
+     "(the $0496,X muzzle index), Y = the 0..5 direction code from $B038",
+     "three parallel 6-entry tables for the aiming turret ($B026 type $11/$91 "
+     "and $B098 type $12/$92): metasprites 74 73 72 75 76 77, then the two "
+     "muzzle-index rows 01 01 06 05 05 00 and 03 03 06 08 08 00. The muzzle "
+     "index is what $BC90 `LDX $0496,Y` reads to pick the bullet's (dx,dy) out "
+     "of bulletMuzzle -- so this is the table that makes an enemy bullet come "
+     "out of the barrel rather than the middle"),
+    # $B200 is FIVE bytes and the sixth would be $B205's `LDA $030C,X` opcode
+    # ($BD, which reads as a perfectly plausible non-zero "turn right" flag).
+    # It is exported at five, not six, deliberately: $B1C5 `LDA $B200,Y` with
+    # Y = $04AC,X is a table the enemy walks one entry per arc, and a read past
+    # the end must be the reader's loud throw, not a plausible 0/1 flag. See
+    # src/enemies.js h_B198, which throws at Y >= 5 with the ROM address.
+    ("arcTurns", 0xB200, 0xB205,
+     "$B1C5 LDA $B200,Y with Y = $04AC,X, the arc counter $B1D4 INCs",
+     "00 00 01 00 00 -- the turn schedule of the type $06/$86 arcing enemy: "
+     "0 means $B1DF (X += xvel, i.e. LEFT, xvel is $FE) and non-zero means "
+     "$B1E5 (X -= xvel, i.e. RIGHT). So it flies left, left, right, left, "
+     "left. MEASURED on the cartridge with an exec hook on $B1C5 reading the Y "
+     "register (tools/oracle/throwaudit.py, 27,400 frames): 2439 executions "
+     "and Y takes 0, 1, 2, 3 and 4 -- ALL FIVE ENTRIES ARE READ -- and never "
+     "5. So the length is not a guess: the enemy walks the whole table and "
+     "$B251's box frees it before it can run off the end"),
 ]
 
 ENEMY_STAGE_PTRS = 0xA7D0          # $A2D5 LDA $A7D0,Y -- 7 stages, 2 bytes each
@@ -557,6 +591,26 @@ def enemy_tables(rom: Rom) -> dict:
         raise SystemExit(f"ABORT: $BDD1 should be an RTS and $BDD5 `LDX $A9` (the "
                          f"mover) but they read ${rom.b(0xBDD1):02X} / "
                          f"{rom.slice(0xBDD5, 2).hex(' ')}")
+    # WAVE 12: the same discipline for the two single-spawn tables. Both ends
+    # of each are pinned to the INSTRUCTION either side, because a range cited
+    # one byte out here ships bytes that still look exactly like a table --
+    # metasprite ids and small indices are indistinguishable from opcodes.
+    if rom.slice(0xB083, 3) != bytes((0x4C, 0xDD, 0xAE)):
+        raise SystemExit(f"ABORT: $B083 should be `JMP $AEDD` (the instruction "
+                         f"immediately BEFORE the turret tables) but reads "
+                         f"{rom.slice(0xB083, 3).hex(' ')}")
+    if rom.slice(0xB098, 2) != bytes((0xA9, 0x92)):
+        raise SystemExit(f"ABORT: $B098 should be `LDA #$92` (st_B098, the "
+                         f"instruction immediately AFTER the turret tables) but "
+                         f"reads {rom.slice(0xB098, 2).hex(' ')}")
+    if rom.slice(0xB1FD, 3) != bytes((0x4C, 0xF4, 0xB1)):
+        raise SystemExit(f"ABORT: $B1FD should be `JMP $B1F4` (the instruction "
+                         f"immediately BEFORE $B200) but reads "
+                         f"{rom.slice(0xB1FD, 3).hex(' ')}")
+    if rom.slice(0xB205, 3) != bytes((0xBD, 0x0C, 0x03)):
+        raise SystemExit(f"ABORT: $B205 should be `LDA $030C,X` (st_B205, the "
+                         f"instruction immediately AFTER the arc-turn table) "
+                         f"but reads {rom.slice(0xB205, 3).hex(' ')}")
 
     roots = {
         "tableA": rom.w(ENEMY_DESC_PTRS),          # $A5FE -> single-spawn

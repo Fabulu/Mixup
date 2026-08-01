@@ -187,5 +187,6 @@ the first thing to re-measure.
 | `mesen.py` | headless-run helper every oracle tool imports | yes |
 | `capability_probe.lua` / `.py` | the A/B/C proof, `--twice` for determinism | yes |
 | `input_probe.lua` / `.py` | scripted input is injectable and reproducible | yes |
+| `throwaudit.lua` / `.py` | which of the port's loud throws a PLAYER reaches: an exec hook per ROM address, seven long varied scripts, plus 19 per-frame RAM gates. See PROBE.md 5 | yes |
 | `out/**` | **ROM-derived** framebuffers and reports | **no** — `.gitignore` here covers it |
 | `%LOCALAPPDATA%\Mixup\mesen` | the emulator itself, 78 MB | outside the repo on purpose |

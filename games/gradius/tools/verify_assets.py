@@ -217,6 +217,27 @@ EXPECT_ENEMY_EXPL = {0: [0x26, 0x27, 0x28, 0x00],
 EXPECT_BULLET_KIND = {"metasprite": [0x25, 0x59], "type": [0x00, 0x01]}
 EXPECT_BULLET_MUZZLE0 = (0x00, 0x00)
 EXPECT_BULLET_ANIM = [0x7A, 0x7B, 0x7C]      # entries 1..3; entry 0 is $BDD1's RTS
+# 9. THE SINGLE-SPAWN TABLES -- wave 12.
+#      * $B086, the aiming turret's three parallel 6-entry rows.  The
+#        METASPRITES are a barrel pointing six ways and the two MUZZLE rows are
+#        indices into bulletMuzzle.  What pins them here is NOT a value any run
+#        measured: an exec hook on $B06D reading Y (tools/oracle/throwaudit.py,
+#        27,400 frames) saw 8363 executions with Y = 0, 1, 3 and 4 and NEVER 2
+#        or 5 -- i.e. entries 2 and 5 of all three rows are listing-only.  What
+#        pins them is the two STRUCTURAL facts a shifted range breaks: the
+#        metasprite row is six DISTINCT ids, and both muzzle rows must be legal
+#        indices into the nine-entry $BC32 grid (i.e. <= 8).  A range cited one
+#        byte out slides a metasprite id into the muzzle row and produces a $74.
+#      * $B200, the arc schedule, five bytes.  MEASURED on the cartridge with
+#        an exec hook on $B1C5 reading the Y register (tools/oracle/
+#        throwaudit.py): 2439 executions over 27,400 frames, and Y takes 0, 1,
+#        2, 3 and 4 -- every entry is read -- and NEVER 5.  That is what makes
+#        the five-byte length a measurement rather than a guess: the enemy
+#        walks the whole table and $B251's box frees it before the sixth read.
+EXPECT_TURRET_FRAMES = {"metasprites": [0x74, 0x73, 0x72, 0x75, 0x76, 0x77],
+                        "muzzleNormal": [0x01, 0x01, 0x06, 0x05, 0x05, 0x00],
+                        "muzzleFlipped": [0x03, 0x03, 0x06, 0x08, 0x08, 0x00]}
+EXPECT_ARC_TURNS = [0x00, 0x00, 0x01, 0x00, 0x00]
 
 # ---- FLOW ($9BCC/$9BD4 start positions, $9785 button codes) -- wave 4 -------
 # 1. THE START POSITION, MEASURED TWICE ON THE CARTRIDGE and not read off the
@@ -795,7 +816,8 @@ def check_enemies(st: State) -> list[str]:
     e = st.enemies
     blocks = {b["name"]: b for b in e["blocks"]}
     for name in ("spawnData", "dispatch", "animGroups", "explosionScripts",
-                 "bulletMuzzle", "bulletKind", "bulletAnim"):
+                 "bulletMuzzle", "bulletKind", "bulletAnim",
+                 "turretFrames", "arcTurns"):
         if name not in blocks:
             bad.append(f"enemies/tables.json has no block {name!r}")
     if bad:
@@ -935,6 +957,41 @@ def check_enemies(st: State) -> list[str]:
         bad.append(f"$BDD2-$BDD4 reads {ba[1:4]}, not {EXPECT_BULLET_ANIM} -- "
                    f"$BDE6 INY / $BDE7 CPY #$04 makes Y 1..3, so those are the "
                    f"only three entries $BDED can read")
+
+    # ---- WAVE 12, the two single-spawn tables -----------------------------
+    tf = blocks["turretFrames"]["bytes"]          # $B086 / $B08C / $B092
+    if len(tf) != 18:
+        bad.append(f"the turret table is {len(tf)} bytes, not 18 -- it is three "
+                   f"6-entry rows at $B086, $B08C and $B092 and the direction "
+                   f"code $B038 computes is 0..5")
+    else:
+        rows = {"metasprites": tf[0:6], "muzzleNormal": tf[6:12],
+                "muzzleFlipped": tf[12:18]}
+        for k, want in EXPECT_TURRET_FRAMES.items():
+            if rows[k] != want:
+                bad.append(f"$B086 row {k} reads {rows[k]}, not {want}")
+        # The two arms that survive the exporter and this file citing the same
+        # wrong address: a shifted range slides a metasprite id into a muzzle
+        # row, and a muzzle index above 8 walks off $BC32's nine (dx,dy) pairs
+        # into $BC44's `LDA $1A` opcode.
+        if len(set(rows["metasprites"])) != 6:
+            bad.append(f"$B086's six metasprites are not distinct: "
+                       f"{rows['metasprites']} -- the barrel points six ways")
+        for k in ("muzzleNormal", "muzzleFlipped"):
+            over = [v for v in rows[k] if v > 8]
+            if over:
+                bad.append(f"$B086 row {k} holds {over}, which is not a legal "
+                           f"index into the nine-entry muzzle grid at $BC32 -- "
+                           f"the range is cited at the wrong address")
+
+    turns = blocks["arcTurns"]["bytes"]           # $B1C5 LDA $B200,Y
+    if turns != EXPECT_ARC_TURNS:
+        bad.append(f"$B200 reads {turns}, not {EXPECT_ARC_TURNS} -- the type "
+                   f"$06/$86 arc flies left, left, right, left, left")
+    if len(turns) != 5:
+        bad.append(f"$B200 is {len(turns)} bytes; a sixth would be $B205's "
+                   f"`LDA $030C,X` opcode ($BD), which reads as a perfectly "
+                   f"plausible non-zero turn flag")
     return bad
 
 
@@ -1540,6 +1597,23 @@ def _shift_bullet_muzzle(st):
     b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
 
 
+def _shift_turret_frames(st):
+    """Re-cite the $B086 turret tables one byte along, CONSISTENTLY.
+
+    Same shape as _shift_bullet_muzzle and the same reason it is worth having:
+    all three internal cross-checks still pass, because the cache agrees with
+    the ROM at its own recorded address.  What catches it is that the block then
+    ENDS on $B098's `A9` opcode, so row 3 (the flipped muzzle indices) reads
+    $03 $06 $08 $08 $00 $A9 -- and $A9 is not a legal index into the nine-entry
+    muzzle grid at $BC32.
+    """
+    b = _enemy_block(st, "turretFrames")
+    base = int(b["rom"].lstrip("$"), 16) + 1
+    b["rom"] = f"${base:04X}"
+    b["fileOffset"] = st.rom.off(base)
+    b["bytes"] = list(st.rom.at(b["fileOffset"], b["len"]))
+
+
 def _shift_bullet_anim(st):
     """Re-cite the $BDD1 animation table at $BDD2 -- the plausible mistake.
 
@@ -1730,6 +1804,20 @@ MUTATIONS = [
      "re-cite the animation table at $BDD2, which makes entry 0 the metasprite "
      "$7A instead of the RTS byte $60 -- plausible, and one frame out",
      _shift_bullet_anim),
+    # --- the single spawn (wave 12) ------------------------------------------
+    ("turret-frame", "enemies",
+     "give the turret two identical metasprites: direction 2 becomes direction "
+     "1's barrel, which is exactly what an off-by-one row would look like",
+     lambda st: _enemy_block(st, "turretFrames")["bytes"].__setitem__(2, 0x73)),
+    ("turret-muzzle-shift", "enemies",
+     "re-cite the turret tables at $B087 -- one byte along, CONSISTENTLY, so "
+     "the metasprite row slides into the muzzle row and the muzzle indices "
+     "stop being legal offsets into the nine-entry grid at $BC32",
+     _shift_turret_frames),
+    ("arc-turn", "enemies",
+     "make $B200[0] non-zero: the type $06 arc would fly RIGHT off the screen "
+     "on its first frame instead of left",
+     lambda st: _enemy_block(st, "arcTurns")["bytes"].__setitem__(0, 0x01)),
     # --- flow (wave 4) -------------------------------------------------------
     ("flow-shift", "flow",
      "re-cite the start-position block at $9BCD -- one byte along, CONSISTENTLY",

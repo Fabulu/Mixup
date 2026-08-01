@@ -791,3 +791,234 @@ test('$A2F0/$A2F7: sub-state $81 is a bare RTS and $82 is a loud throw', () => {
   assert.strictEqual(cursor(playing), 0xA846, '$1B = $80 consumes the record');
   assert.strictEqual(playing.obj.type[21], 0x05, 'and spawns the squadron');
 });
+
+// ============================ WAVE 12 ========================================
+// FOUR DELIBERATE BREAKS SURVIVED `deep-page3`, the 579-frame comparison that
+// carries the whole of wave 12's new code (scroll $0319 -> $043B, the first
+// window in this project's history to cross $0380). Every one of them is the
+// same shape docs/knowledge/03 names: the corpus REACHES the code and
+// interrogates none of its parameters.
+//
+// The measured evidence for each is in the comment above it -- the break, the
+// scenario, and the verdict. The three siblings that DID go red are named too,
+// because "this constant is unwitnessed" only means something next to "this
+// one next to it is witnessed".
+//
+//   $B033  LDA #$0A   -> #$0B    GREEN   (the guard at $B0AB is RED: 10 fields)
+//   $B043  CMP #$30   -> #$31    GREEN   (the muzzle store at $B080 is RED)
+//   $B062  CMP #$30   -> #$31    GREEN   ($B083's tail is RED)
+//   $B184  drop the borrow       GREEN   ($B1DA's BNE/BEQ is RED)
+//
+// $B033 itself is pinned in enemies.test.js (it needs a placement, not a
+// boundary). The other three are here.
+
+test('$B043/$B048/$B050/$B055: the four X-band boundaries, each side', () => {
+  // WRITTEN BECAUSE A DELIBERATE BREAK SURVIVED THE CORPUS: `CMP #$30` ->
+  // `#$31` at $B043 is GREEN on deep-page3's 579 frames. The turret in that
+  // window sits at dx around $A0 and never walks across a band edge, so a
+  // one-unit shift is invisible -- while the SAME routine's muzzle store
+  // ($B080) and its $AEDD tail both go red, which is how we know the code runs.
+  //
+  // The bands, with the enemy's X minus the ship's X taken as an 8-BIT
+  // subtraction ($B03A LDA $036C,X / SEC / SBC $0360):
+  //     carry set (enemy right of ship)   $00-$2F -> 0, $30-$5F -> 1, $60+ -> 2*
+  //     carry clear (enemy left of ship)  $D0-$FF -> 3, $A0-$CF -> 4, else 5*
+  // (* refined by Y, held at "no refinement" here by putting the ship far away
+  // in Y -- dy = $6E, which is neither < $30 nor >= $D0.)
+  // RED WHEN: any of the four CMPs moves by one.
+  // THE SUBTRACTION'S CARRY IS THE BAND SELECTOR, not the byte value, so the
+  // ship's X has to be placed on the correct side of the enemy for each half:
+  // $10 (the low player clamp, $A03A) for the no-borrow bands and $F0 (the high
+  // one, $A028) for the borrow bands. A helper that fixed the ship at 0 would
+  // make every dx a no-borrow dx and quietly test one half twice.
+  const MS = [0x74, 0x73, 0x72, 0x75, 0x76, 0x77];
+  const band = (dx) => {
+    const s = createState();
+    s.substate = 0x80;
+    s.obj.type[21] = 0x12;
+    const px = dx < 0x80 ? 0x10 : 0xF0;
+    s.obj.x[0] = px; s.obj.y[0] = 0x10;
+    s.obj.x[21] = (px + dx) & 0xFF;
+    s.obj.y[21] = 0x7E;                            // dy = $6E: no refinement
+    updateEnemies(s, res);
+    return MS.indexOf(s.obj.anim[21]);
+  };
+  assert.strictEqual(band(0x2F), 0, '$B043 CMP #$30: $2F is still band 0');
+  assert.strictEqual(band(0x30), 1, '...and $30 is band 1');
+  assert.strictEqual(band(0x5F), 1, '$B048 CMP #$60: $5F is still band 1');
+  assert.strictEqual(band(0x60), 1, '...and $60 goes to the refined arm, which '
+                                  + 'leaves Y at 1 when dy is out of range');
+  assert.strictEqual(band(0xFF), 3, '$B050 CMP #$D0: $FF is band 3');
+  assert.strictEqual(band(0xD0), 3, '...and $D0 is the last band-3 value');
+  assert.strictEqual(band(0xCF), 4, '...$CF is band 4');
+  assert.strictEqual(band(0xA0), 4, '$B055 CMP #$A0: $A0 is still band 4');
+  assert.strictEqual(band(0x9F), 4, '...and $9F goes to the refined arm, which '
+                                  + 'leaves Y at 4 when dy is out of range');
+});
+
+test('$B062/$B068: the Y refinement adds exactly one, at $30 and at $D0', () => {
+  // The second break that survived: `CMP #$30` -> `#$31` at $B062 is GREEN on
+  // deep-page3. Same reason -- the turret's dy in that window never sits on the
+  // boundary.
+  //
+  // The refinement only runs for the two OUTER X bands ($B04C BCS $B059 and
+  // $B055's fall-through), and it is a single INY: band 1 -> 2 and band 4 -> 5.
+  //
+  // AND THOSE TWO CODES ARE THE ONES THE CARTRIDGE NEVER PRODUCES. MEASURED
+  // with an exec hook on $B06D reading Y over 27,400 frames
+  // (tools/oracle/throwaudit.py): 8363 executions, Y = 0 (26), 1 (13), 3 (2740)
+  // and 4 (5584) -- **never 2 and never 5**. So the refinement's INY has no
+  // cartridge witness at all, in either direction, and every metasprite it can
+  // pick ($72 and $77) is drawn by no run anybody here has made.
+  // RED WHEN: either CMP moves, or the INY is applied to the inner bands too.
+  // Same carry discipline as the test above, now in BOTH axes: the ship goes
+  // low or high in X and in Y independently, so that dx and dy each land on the
+  // side of the subtraction the case is about.
+  const MS = [0x74, 0x73, 0x72, 0x75, 0x76, 0x77];
+  const band = (dx, dy) => {
+    const s = createState();
+    s.substate = 0x80;
+    s.obj.type[21] = 0x12;
+    const px = dx < 0x80 ? 0x10 : 0xF0;
+    const py = dy < 0x80 ? 0x10 : 0xC0;
+    s.obj.x[0] = px; s.obj.y[0] = py;
+    s.obj.x[21] = (px + dx) & 0xFF; s.obj.y[21] = (py + dy) & 0xFF;
+    updateEnemies(s, res);
+    return MS.indexOf(s.obj.anim[21]);
+  };
+  assert.strictEqual(band(0x70, 0x2F), 2, '$B062 CMP #$30: dy $2F refines');
+  assert.strictEqual(band(0x70, 0x30), 1, '...and dy $30 does not');
+  assert.strictEqual(band(0x70, 0xD0), 2, '$B068 CMP #$D0: dy $D0 refines');
+  assert.strictEqual(band(0x70, 0xCF), 1, '...and dy $CF does not');
+  assert.strictEqual(band(0x90, 0x2F), 5, 'the same on the LEFT-hand band');
+  assert.strictEqual(band(0x90, 0x30), 4);
+  // and the inner bands are never refined, whatever dy is
+  assert.strictEqual(band(0x10, 0x2F), 0, 'band 0 is not refined');
+  assert.strictEqual(band(0xF0, 0x2F), 3, 'band 3 is not refined');
+});
+
+test('$B184 is a REAL 16-bit subtract: the X fraction\'s borrow reaches X', () => {
+  // The third break that survived: dropping the borrow in subX16 is GREEN on
+  // deep-page3, while flipping $B1DA's BNE (which CHOOSES $B184 over $B154) is
+  // red. MEASURED WHY, and it is structural rather than a sampling accident:
+  // the only caller reachable today is handler 6, whose $B1B1 seed writes
+  // $044C,X = 0 and nothing on its path ever changes it -- so `$038C,X - 0`
+  // can never borrow. The borrow is real 6502 behaviour on a byte the corpus
+  // cannot drive, so it is pinned here directly.
+  // RED WHEN: `- (f < 0 ? 1 : 0)` is dropped from subX16.
+  const s = createState();
+  s.substate = 0x80;
+  s.obj.type[21] = 0x86;               // handler 6, past its init frame
+  s.obj.s04A0[21] = 2;                 // $B200[2] = 1 -> $B1E5 JSR $B184
+  s.obj.s0480[21] = 0x20;
+  s.obj.x[21] = 0x50; s.obj.xf[21] = 0x00;
+  s.obj.xvel[21] = 0xFE; s.obj.xvelf[21] = 0x80;
+  s.obj.y[21] = 0x60; s.obj.yvel[21] = 3;
+  s.obj.x[0] = 80; s.obj.y[0] = 96;
+  updateEnemies(s, res);
+  assert.strictEqual(s.obj.xf[21], 0x80, '$B184: $00 - $80 wraps to $80');
+  assert.strictEqual(s.obj.x[21], 0x51,
+    '$B18E SBC $042C,X with the fraction\'s borrow: $50 - $FE - 1 = $51. '
+    + 'Without the borrow it would be $52');
+});
+
+test('$B07B: the flipped muzzle row is only DISTINGUISHABLE where it is non-zero', () => {
+  // `LDA $B092,Y / BNE $B080` branches on the byte it JUST LOADED, so a zero
+  // entry does not reach the store -- execution falls into $B07D and re-loads
+  // from $B08C,Y. src/enemies.js transcribes that.
+  //
+  // AND THIS TEST CANNOT PIN IT, WHICH IS THE POINT AND IS SAID OUT LOUD.
+  // MEASURED by trying: rewriting the fall-through as a plain if/else is GREEN
+  // on every test in this repo, because the ONLY index where $B092 is zero is
+  // 5, and $B08C is zero there too -- so both spellings store 0. There is no
+  // input that separates them while the tables hold these bytes. A test that
+  // claimed to catch it would be decoration.
+  //
+  // What IS pinned here is the fact that makes it unobservable, so that an
+  // asset edit which changes it is caught by verify_assets.py's row checks and
+  // whoever reads this knows why the code is shaped the way it is:
+  //   * index 5 is the only zero in either row;
+  //   * everywhere else the two rows DIFFER at 0, 1, 3 and 4, so the branch on
+  //     $018C bit 7 is very much observable -- see the $B026 test below, where
+  //     the same placement gives muzzle $01 unflipped and $03 flipped.
+  // RED WHEN: either muzzle row's bytes change.
+  const rows = [];
+  for (let base of [0xB08C, 0xB092]) {
+    rows.push([...Array(6)].map((_, i) => rom.read(base + i)));
+  }
+  assert.deepStrictEqual(rows[0], [0x01, 0x01, 0x06, 0x05, 0x05, 0x00], '$B08C');
+  assert.deepStrictEqual(rows[1], [0x03, 0x03, 0x06, 0x08, 0x08, 0x00], '$B092');
+  const zeros = rows[1].map((v, i) => (v === 0 ? i : -1)).filter((i) => i >= 0);
+  assert.deepStrictEqual(zeros, [5],
+    '$B07B\'s BNE can only fall through at index 5; if another entry ever '
+    + 'becomes 0 the fall-through stops being unobservable');
+  assert.strictEqual(rows[0][5], 0,
+    '...and $B08C[5] is 0 too, which is why either spelling stores the same');
+  // The run through the code, for the record: direction 5, flipped, stores 0.
+  const s = createState();
+  s.substate = 0x80;
+  s.obj.type[21] = 0x12;               // $B098 -> attribute bit 7 set
+  s.obj.x[0] = 200; s.obj.y[0] = 90;
+  s.obj.x[21] = 90; s.obj.y[21] = 100; // direction code 5
+  updateEnemies(s, res);
+  assert.strictEqual(s.obj.anim[21], 0x77, 'direction 5');
+  assert.strictEqual(s.obj.s0480[22 + 9], 0x00);
+});
+
+test('$B1C5: an arc counter past the five-entry table is a LOUD named throw', () => {
+  // $B200 is FIVE bytes and $B205 is st_B205's `LDA $030C,X` opcode -- $BD,
+  // which reads as a perfectly plausible non-zero "fly right" flag. MEASURED on
+  // the cartridge (tools/oracle/throwaudit.py, the `y` histogram on the $B1C5
+  // hook, 27,400 frames): 2439 executions, Y = 0, 1, 2, 3 and 4, never 5. The
+  // enemy walks the WHOLE table -- a first reading of this routine guessed it
+  // would be freed inside its first arc and that was wrong -- and $B251's box
+  // frees it one entry before the end. So the cartridge stops exactly one read
+  // short of the overrun, which is the least comfortable place for it to stop
+  // and the reason this guard exists.
+  // RED WHEN: the guard is removed (the reader's own out-of-range throw fires
+  // instead, with a message about export_assets.py rather than about $04AC).
+  const s = createState();
+  s.substate = 0x80;
+  s.obj.type[21] = 0x86;
+  s.obj.s04A0[21] = 5;
+  s.obj.x[21] = 0x80; s.obj.y[21] = 0x60;
+  assert.throws(() => updateEnemies(s, res),
+    /\$B1C5 LDA \$B200,Y with \$04AC = 5/);
+});
+
+test('$B026: the FLOOR turret is $B098 with three bytes different', () => {
+  // Entry 17, types $11/$91. REACHED IN PLAY AND BY NO COMPARED WINDOW --
+  // MEASURED with tools/oracle/throwaudit.py: 3700 executions across three
+  // 6000-frame runs, FIRST AT FRAME 2682, which is 203 frames past the end of
+  // `deep-page3`'s window (1900..2479, the deepest comparison in the corpus).
+  // So it is ported, it runs on the cartridge, and nothing in the gate watches
+  // it -- which is precisely the state this file exists for.
+  //
+  // It shares $B033/$B038 with $B098 and differs in exactly three bytes.
+  // RED WHEN: $B026 writes $92, ORs the attribute, or uses $B098's arm test.
+  const s = createState();
+  s.substate = 0x80;
+  s.obj.type[21] = 0x11;
+  s.obj.x[21] = 0x60; s.obj.y[21] = 0x40;
+  s.obj.x[0] = 0x50; s.obj.y[0] = 0x41;   // dx = $10 -> direction 0; enemy above
+  updateEnemies(s, res);
+  assert.strictEqual(s.obj.type[21], 0x91, '$B026 LDA #$91, not #$92');
+  assert.strictEqual(s.obj.attrMask[21], 0x00, 'and no ORA #$80');
+  assert.strictEqual(s.obj.style[21], 0x0A, '$B031 BCS skips $B033 only when '
+                                          + 'the enemy is at or below the ship');
+  assert.strictEqual(s.obj.s0480[22 + 9], 0x01,
+    'with bit 7 of $018C CLEAR, $B076 BPL takes $B07D and the muzzle index '
+    + 'comes from $B08C ($01), not from $B092 ($03)');
+  const other = createState();
+  other.substate = 0x80;
+  other.obj.type[21] = 0x11;
+  other.obj.x[21] = 0x60; other.obj.y[21] = 0x40;
+  other.obj.x[0] = 0x50; other.obj.y[0] = 0x40;   // equal: $B031 BCS taken
+  other.obj.style[21] = 0x77;
+  other.obj.attrMask[21] = 0x80;                  // $B073 LDA $018C,X / BPL
+  updateEnemies(other, res);
+  assert.strictEqual(other.obj.style[21], 0x77,
+    '$B026\'s test is CPY/BCS, i.e. the OPPOSITE sense to $B098\'s');
+  assert.strictEqual(other.obj.s0480[22 + 9], 0x03,
+    '...and a turret whose $018C already has bit 7 reads $B092 even at $B026');
+});
