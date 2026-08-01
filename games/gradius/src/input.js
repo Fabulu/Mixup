@@ -34,6 +34,74 @@ let held = 0;
 // value turns the Enter that launched the page into a START press.
 let seen = 0;
 
+// ===========================================================================
+// WAVE 14: INPUT BELONGS TO A LOGIC FRAME, NOT TO A WALL-CLOCK MOMENT
+// ===========================================================================
+//
+// docs/worklog/gradius/13-FINDING-input-granularity-under-load.md, and it was
+// right: src/main.js used to call `currentButtons()` INSIDE its catch-up loop,
+// so when k logic frames ran in one animation-frame callback all k consumed the
+// same live mask. Two things follow, and the second is the one that matches the
+// word the owner used ("unresponsive", not "slow"):
+//
+//  1. at the k=8 clamp the game advanced at full speed while sampling input
+//     7.5 times a second;
+//  2. **a press and its release that both landed between two callbacks were
+//     invisible.** The mask went 0 -> A -> 0 with nothing looking, so the shot
+//     was never fired at all. That is not latency; that is a dropped input, and
+//     it is why the fix is not "make the loop faster".
+//
+// So the mask is no longer sampled by the loop. Every CHANGE to it is pushed
+// here as it happens -- inside the DOM event handler, on the browser's own
+// schedule -- and `nextInputWord()` hands out exactly one word per LOGIC frame.
+// The host clock decides only HOW MANY logic frames have come due, never what
+// any of them reads (games/ddpdoj/NOTES-replay.md constraint 1). That is also
+// the precondition for a deterministic replay: a recorded run is the sequence
+// of words this function returned, and nothing about when they were returned.
+//
+// THE QUEUE IS TWO DEEP, and the number is a trade with two named cases:
+//
+//   * A TAP shorter than an animation frame is `[mask, 0]` -- two entries. It
+//     must survive, or the tap is lost, which is the defect above. So the cap
+//     cannot be 1.
+//   * A FINGER SLIDING ACROSS THE D-PAD emits a pointermove per direction, many
+//     per animation frame, all of them level changes rather than taps. Whatever
+//     the queue cannot drain becomes steering LAG: at the cap, the ship keeps
+//     turning `cap` logic frames after the finger did. At 2 that is 33 ms; at 8
+//     it would be 133 ms and unflyable. So the cap cannot be large.
+//
+// Two is the smallest value that keeps the tap, and the largest that keeps the
+// slide honest. When the queue is full the NEWEST state overwrites the tail --
+// never the head -- so the current truth is always the last thing in the queue
+// and the transient at the head is still delivered. What that loses is a
+// press-release-press inside one animation frame (a 16 ms double tap), and that
+// is written down rather than discovered.
+const MAX_PENDING = 2;
+
+/** States not yet consumed by a logic frame, oldest first. Length <= MAX_PENDING. */
+const pending = [];
+
+/** The mask as of the last event. What a logic frame gets once the queue is dry. */
+let live = 0;
+
+/** Logic frames that found the queue empty and reused `live`. Diagnostic only. */
+let repeats = 0;
+/** Transitions the cap made us overwrite. Non-zero means the cap is biting. */
+let coalesced = 0;
+
+/**
+ * Called after ANY change to `held` or `touchHeld`. Idempotent: a handler that
+ * fires without changing the mask queues nothing, so holding a key does not
+ * push 60 identical words a second.
+ */
+function noteInput() {
+  const w = u8(held | touchHeld);
+  if (w === live) return;
+  live = w;
+  if (pending.length < MAX_PENDING) pending.push(w);
+  else { pending[pending.length - 1] = w; coalesced++; }
+}
+
 // ---------------------------------------------------------------------------
 // On-screen controls (phones). The page owns the LAYOUT; this file owns the
 // BITS, so there is exactly one place where a control is attached to a joypad
@@ -65,6 +133,7 @@ export const DPAD_MASK = BTN.RIGHT | BTN.LEFT | BTN.DOWN | BTN.UP;
 /** Press (`down`) or release one on-screen button. */
 export function setTouchButton(bit, down) {
   if (down) touchHeld |= u8(bit); else touchHeld &= u8(~bit);
+  noteInput();
 }
 
 /**
@@ -74,10 +143,11 @@ export function setTouchButton(bit, down) {
  */
 export function setTouchDirections(mask) {
   touchHeld = u8((touchHeld & ~DPAD_MASK) | (mask & DPAD_MASK));
+  noteInput();
 }
 
 /** The backstop. Any interruption the buttons never saw clears everything. */
-export function clearTouchButtons() { touchHeld = 0; }
+export function clearTouchButtons() { touchHeld = 0; noteInput(); }
 
 /**
  * Which directions a point on the d-pad surface means. `u`,`v` are the pointer
@@ -117,6 +187,7 @@ export function attachInput(target = (typeof window !== 'undefined' ? window : n
     if (e.repeat && !(seen & b)) return;
     seen |= b;
     held |= b;
+    noteInput();
   });
   target.addEventListener('keyup', (e) => {
     const b = KEYMAP[e.code];
@@ -124,19 +195,61 @@ export function attachInput(target = (typeof window !== 'undefined' ? window : n
     e.preventDefault();
     held &= ~b;
     seen &= ~b;
+    noteInput();
   });
   // Keyboard only. The touch mask's backstop lives with the buttons that set
   // it (index.html binds blur, visibilitychange and pagehide to
   // clearTouchButtons), so a lost keyup and a lost pointerup are recovered
   // independently -- see the note on touchHeld.
-  target.addEventListener('blur', () => { held = 0; seen = 0; });
+  target.addEventListener('blur', () => { held = 0; seen = 0; noteInput(); });
 }
 
 /**
  * The live button mask, in $0007's bit layout: keyboard OR on-screen pad.
- * main.js hands this to nmi() -> readJoypad() once per frame.
+ *
+ * THE FRAME LOOP DOES NOT CALL THIS ANY MORE -- `nextInputWord()` does the job,
+ * once per logic frame, and this is the mask as of the last DOM event with no
+ * relationship to any frame at all. It stays exported because the page and
+ * tests/input.test.js legitimately want "what is held right now"; a caller that
+ * feeds it to nmi() re-creates the wave-13 defect.
  */
 export function currentButtons() { return u8(held | touchHeld); }
+
+/**
+ * THE ONE WORD ONE LOGIC FRAME GETS. src/main.js calls this exactly once per
+ * call to nmi() and never anything else.
+ *
+ * Oldest queued transition first; once the queue is dry, the state the last
+ * event left. A held button therefore reads the same word every frame with no
+ * queue traffic at all, which is the common case and costs one length check.
+ */
+export function nextInputWord() {
+  if (pending.length === 0) { repeats++; return live; }
+  return pending.shift();
+}
+
+/**
+ * Diagnostics for the page and for tests. `depth` is what has not been consumed
+ * yet -- a number that sits at MAX_PENDING means the host is not running enough
+ * logic frames to keep up with the events, which is the condition this whole
+ * mechanism exists to survive; `coalesced` counts the transitions the cap threw
+ * away and should be 0 in ordinary keyboard play.
+ */
+export function inputQueueStats() {
+  return { depth: pending.length, live, repeats, coalesced, cap: MAX_PENDING };
+}
+
+/**
+ * Drop everything: the mask, the queue and the edge memory. For tests, which
+ * share one module instance across files, and for nothing in the page -- the
+ * page's own backstops (blur/pagehide/visibilitychange) go through the ordinary
+ * setters so their zeroes are QUEUED like any other transition rather than
+ * vanishing.
+ */
+export function resetInput() {
+  held = 0; seen = 0; touchHeld = 0; live = 0;
+  pending.length = 0; repeats = 0; coalesced = 0;
+}
 
 /**
  * `$81BF` at $80A4. Given this frame's raw button mask, produce $0007 (held)

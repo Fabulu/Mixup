@@ -15,7 +15,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 
-import { renderFrame, BREAKS, W, H } from '../src/render/ppu.js';
+import { renderFrame, tileRow, tilePixel, BREAKS, W, H } from '../src/render/ppu.js';
 import {
   loadTiles, loadCapture, frameFromCapture, diffAgainstFb, captureSkipMessage,
 } from './helpers.js';
@@ -64,6 +64,57 @@ const RESIDUAL_LINES = [211, 212];
 
 const tiles = loadTiles();
 const out = new Uint32Array(W * H);
+
+// WAVE 14 -- THE COST FIX'S OWN GUARD.
+//
+// renderFrame()'s background loop used to call tileRow() once PER PIXEL, filling
+// an 8-byte scratch to read one byte of it, 61,440 times a frame. That was 36%
+// of the whole 16.639 ms frame budget (tools/framecost.mjs) -- more than nmi()
+// and the synthesiser together -- and nothing in this repo had ever measured it.
+// The fix reads the byte directly through tilePixel().
+//
+// The strongest check on that fix is the pixel comparison below: 61,440 px x
+// seven captured frames, against the framebuffer Mesen produced. But it SKIPS
+// when tools/oracle/out/video/ is absent, and a fix guarded only by a skippable
+// test is not guarded (docs/knowledge/03, "a skip is not a pass"). So the two
+// readings of the same index arithmetic are also held against each other
+// directly, over the whole address space, with no capture required.
+test('tilePixel and tileRow are the same arithmetic, over every tile', () => {
+  const tiles = loadTiles();
+  const scratch = new Uint8Array(8);
+  let checked = 0, nonZero = 0;
+  for (let bank = 0; bank < 4; bank++) {
+    for (let half = 0; half < 2; half++) {
+      for (let tile = 0; tile < 256; tile++) {
+        for (let row = 0; row < 8; row++) {
+          tileRow(tiles, bank, half, tile, row, scratch);
+          for (let col = 0; col < 8; col++) {
+            const a = scratch[col];
+            const b = tilePixel(tiles, bank, half, tile, row, col);
+            assert.strictEqual(b, a,
+              `bank ${bank} half ${half} tile ${tile} row ${row} col ${col}: `
+              + `tilePixel ${b} != tileRow ${a}`);
+            checked++;
+            if (a !== 0) nonZero++;
+          }
+        }
+      }
+    }
+  }
+  assert.equal(checked, 4 * 2 * 256 * 8 * 8, 'the whole 131,072-byte tile pool');
+  // A sheet of zeroes would satisfy the comparison above and prove nothing --
+  // the same "green on an empty asset" trap tests/helpers.js's header names.
+  assert.ok(nonZero > checked / 10,
+    `only ${nonZero} of ${checked} tile bytes are non-zero -- assets/chr/tiles.u8 `
+    + 'looks empty, so this comparison is vacuous');
+  // And the high 3 bits of the column index must be IGNORED, because
+  // renderFrame passes the full 8-bit fine-x (`fxb`) and not `fxb & 7`.
+  for (const col of [8, 9, 200, 255]) {
+    assert.strictEqual(tilePixel(tiles, 0, 0, 1, 0, col),
+                       tilePixel(tiles, 0, 0, 1, 0, col & 7),
+      'tilePixel must mask the column: renderFrame hands it the full fine-x');
+  }
+});
 
 test('natural frames rebuild pixel-for-pixel', (t) => {
   let ran = 0;

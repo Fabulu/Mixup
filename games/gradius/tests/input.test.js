@@ -53,7 +53,17 @@ function attachFresh() {
   return t;
 }
 
-/** One frame of the real chain: currentButtons() -> readJoypad() -> $0007/$0005. */
+/**
+ * One frame of the MASK chain: currentButtons() -> readJoypad() -> $0007/$0005.
+ *
+ * NOT the frame loop's chain any more. Since wave 14 the loop reads
+ * `nextInputWord()` -- one word per LOGIC frame, off a queue -- and this file
+ * deliberately keeps using the live mask, because what it is testing is that a
+ * touch control and a key set the SAME BIT. Interposing the queue would put a
+ * transition-coalescing rule between the button and the assertion for no gain.
+ * The queue's own behaviour, and the fact that src/main.js goes through it, are
+ * tests/loop.test.js.
+ */
 function frame(state) {
   readJoypad(state, currentButtons());
   return state.input;

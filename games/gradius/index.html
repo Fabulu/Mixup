@@ -369,6 +369,23 @@ try {
   setInterval(() => {
     const s = app.state;
     const a = audio.stats();
+    // ---- WAVE 14: k, AND THE ONLY PLACE IT CAN BE READ -----------------------
+    // k is how many LOGIC frames one animation-frame callback ran.
+    // docs/worklog/gradius/13-FINDING-input-granularity-under-load.md asked for
+    // this number and nobody could produce it, because it lived inside a closure
+    // inside requestAnimationFrame. `avg` is logic frames per callback over the
+    // whole session -- 1.00 means the loop is keeping up -- and `max` is the
+    // worst burst, which is the number that says whether catch-up ever engaged
+    // at all. `q` is the input queue's depth (src/input.js): it should read 0
+    // almost always, and a value stuck at the cap means events are arriving
+    // faster than logic frames are consuming them.
+    //
+    // THIS IS NOT DECORATION. There is no browser in this repo's test suite, so
+    // this readout is the measurement, and the owner reading it off a real
+    // machine is how the "unresponsive at the start" report gets closed.
+    const L = app.loopStats();
+    const q = app.inputStats();
+    const avg = L.callbacks ? (L.logicFrames / L.callbacks) : 0;
     // The audio numbers are on the page on purpose. `drop` is logic frames
     // whose samples were thrown away because the host stalled past the
     // backlog ceiling, and `under` is times the scheduler ran dry -- both are
@@ -383,6 +400,10 @@ try {
       + ` &nbsp; <b>cam</b> ${(s.cam.hi << 8) | s.cam.lo}px`
       + ` &nbsp; <b>$0120</b> ${s.obj.anim[0]}`
       + ` &nbsp; <b>lag</b> ${s.lagFrames}`
+      + ` &nbsp; <b>k</b> ${avg.toFixed(2)}avg/${L.maxK}max`
+        + (L.clamped ? `/${L.clamped}clamped` : '')
+      + ` &nbsp; <b>inq</b> ${q.depth}`
+        + (q.coalesced ? `/${q.coalesced}lost` : '')
       + ` &nbsp; <b>snd</b> ${snd}`;
   }, 100);
 } catch (e) {

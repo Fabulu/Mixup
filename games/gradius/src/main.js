@@ -6,7 +6,7 @@
 // rate.
 
 import { createState, MODE_STAGE } from './state.js';
-import { attachInput, currentButtons } from './input.js';
+import { attachInput, nextInputWord, inputQueueStats } from './input.js';
 import { loadResources, loadGameJson, gameplayPalette } from './assets.js';
 import { nmi } from './nmi.js';
 import { renderFrame, frameFor, W, H, chrBank } from './render/ppu.js';
@@ -118,6 +118,127 @@ export function introEntryState(manifest) {
   return s;
 }
 
+/**
+ * The catch-up clamp, in logic frames. A backgrounded tab hands back a delta of
+ * minutes and simulating those is both pointless and slow.
+ */
+export const MAX_CATCHUP_FRAMES = 8;
+
+/**
+ * HOW MANY LOGIC FRAMES ARE DUE, and a census of the answer.
+ *
+ * Split out of `tick()` and exported for one reason: k -- the number of logic
+ * frames one animation-frame callback runs -- is the number
+ * `13-FINDING-input-granularity-under-load.md` asked for and nobody could
+ * produce, because it lived inside a closure inside a requestAnimationFrame
+ * callback where nothing could see it. Now it is an object with a histogram,
+ * `tests/loop.test.js` drives it with a fake clock, and index.html puts `k` on
+ * the page next to the lag counter so the owner can read it off a real browser
+ * on a real machine -- which is the only place the question can actually be
+ * settled (this file's author has no browser).
+ *
+ * COUNTED, NOT TIMED, in the sense docs/knowledge/06 means it: the host clock
+ * decides only how many frames have come due. What each of them computes is
+ * decided entirely by nmi() and by the word nextInputWord() hands it.
+ */
+export class FramePacer {
+  constructor(period, clamp = MAX_CATCHUP_FRAMES) {
+    this.period = period;
+    this.clamp = clamp;
+    this.acc = 0;
+    this.last = null;
+    this.callbacks = 0;
+    this.logicFrames = 0;
+    this.maxK = 0;
+    this.clamped = 0;              // callbacks that hit the ceiling
+    /** hist[k] = callbacks that ran exactly k logic frames, k = 0..clamp. */
+    this.hist = new Uint32Array(clamp + 1);
+  }
+
+  /**
+   * @param {number} now  a DOMHighResTimeStamp (rAF's argument)
+   * @returns {number} k, in 0..clamp
+   */
+  due(now) {
+    // FIRST CALL: no delta exists yet, so run nothing rather than inventing a
+    // frame. rAF's timestamp is the start of the frame and CAN be earlier than
+    // the performance.now() taken just before the loop was armed, which used to
+    // make the first delta negative; `last === null` says so instead of
+    // pretending, and the Math.max keeps a negative delta from unwinding acc.
+    if (this.last === null) { this.last = now; this.callbacks++; this.hist[0]++; return 0; }
+    const dt = Math.max(0, now - this.last);
+    this.last = now;
+    this.acc = Math.min(this.acc + dt, this.period * this.clamp);
+    // DIVIDE, do not subtract in a loop. `acc -= period` repeated eight times
+    // does not return exactly 0 from `period * 8` in IEEE-754, and the residual
+    // is on the wrong side: the clamped burst came out as SEVEN logic frames,
+    // not eight, which tests/loop.test.js caught. `period * clamp` is an exact
+    // scaling by a power of two, so `acc / period` is exactly `clamp` there and
+    // `acc -= k * period` leaves exactly 0.
+    let k = Math.floor(this.acc / this.period);
+    if (k > this.clamp) k = this.clamp;       // only reachable through rounding
+    this.acc -= k * this.period;
+    if (k >= this.clamp) this.clamped++;
+    this.callbacks++;
+    this.logicFrames += k;
+    if (k > this.maxK) this.maxK = k;
+    this.hist[Math.min(k, this.clamp)]++;
+    return k;
+  }
+
+  /** Numbers for the page. `k` is the histogram as a plain array. */
+  stats() {
+    return {
+      callbacks: this.callbacks, logicFrames: this.logicFrames,
+      maxK: this.maxK, clamped: this.clamped, k: Array.from(this.hist),
+    };
+  }
+}
+
+/**
+ * THE CATCH-UP LOOP'S BODY: run `k` logic frames, one input word each.
+ *
+ * Exported and not inlined into `tick()` for one reason, and it is the reason
+ * this wave exists. The defect
+ * `13-FINDING-input-granularity-under-load.md` describes lived exactly here, in
+ * a closure inside a requestAnimationFrame callback inside boot(), where the
+ * only way to test it was to read it -- which is how it survived thirteen
+ * waves. As a function it can be called with real headless resources and the
+ * real input queue, and `tests/loop.test.js` does: k frames must consume k
+ * words, in order, off the queue.
+ *
+ * @param {number} k       logic frames due, from FramePacer.due()
+ * @param {object} state   the port's state, mutated in place
+ * @param {object} res     loadResources()'s bundle
+ * @param {{frame:(log:Uint8Array|number[])=>void}} [audio]
+ */
+export function stepLogicFrames(k, state, res, audio) {
+  for (let i = 0; i < k; i++) {
+    // ---- WAVE 14: ONE INPUT WORD PER LOGIC FRAME ---------------------------
+    // This used to be `currentButtons()` -- the LIVE mask, re-read k times in
+    // this loop, all k reads returning the same word because the browser only
+    // updates it between callbacks. A press and its release that both landed
+    // inside one callback were therefore never seen at all. The word now comes
+    // off a queue that the DOM event handlers fill as the events arrive
+    // (src/input.js), so a logic frame OWNS its input instead of borrowing
+    // whatever the wall clock happened to be showing.
+    //
+    // This is also the precondition for a deterministic replay -- the run is the
+    // sequence of words, not the times they were read -- which is the same
+    // requirement games/ddpdoj/NOTES-replay.md states and the same shape as the
+    // audio line below.
+    nmi(state, nextInputWord(), res);
+    // ---- WAVE 13: ONE AUDIO BATCH PER LOGIC FRAME --------------------------
+    // Inside the catch-up loop, not after it, and that is the whole design.
+    // `state.apuLog` is this frame's $4000-$400F writes and src/nmi.js clears it
+    // at the top of the NEXT frame, so a burst of k frames must hand over k
+    // batches here or k-1 frames of music are lost. What the audio path then
+    // does with them is its own business and runs on the AudioContext's clock,
+    // never on this one (src/audio/output.js).
+    audio?.frame(state.apuLog);
+  }
+}
+
 export async function boot(canvas, opts = {}) {
   const [game, res] = await Promise.all([loadGameJson(), loadResources(0)]);
   // THE REAL STAGE INTRO, not a stand-in. preloadTerrain() used to run the
@@ -137,13 +258,13 @@ export async function boot(canvas, opts = {}) {
   // half-cycle being the dot skipped on the pre-render line of odd frames.
   const period = 1000 / game.display.frameHz;
 
-  let acc = 0, last = performance.now(), running = true;
+  const pacer = new FramePacer(period);
+  let running = true;
   function tick(now) {
     if (!running) return;
-    // Catch up in whole frames, but never run away: a backgrounded tab hands
-    // back a delta of minutes, and simulating those is both pointless and slow.
-    acc = Math.min(acc + (now - last), period * 8);
-    last = now;
+    // How many logic frames have come due. The clamp and the accumulator moved
+    // into FramePacer so the answer is countable from outside -- see the class.
+    const k = pacer.due(now);
     // EVERY UNPORTED PATH IN THIS PORT IS A THROW, and they are reached in
     // ordinary play, not just in exotic states. Thrown from inside tick() they
     // escape into requestAnimationFrame's callback, where NOTHING is listening:
@@ -171,30 +292,8 @@ export async function boot(canvas, opts = {}) {
     // session. The ranked table is in
     // docs/worklog/gradius/12-impl-spawn-and-throw-audit.md.
     try {
-      let stepped = false;
-      while (acc >= period) {
-        acc -= period;
-        nmi(state, currentButtons(), res);
-        // ---- WAVE 13: ONE AUDIO BATCH PER LOGIC FRAME ----------------------
-        // Inside the catch-up loop, not after it, and that is the whole design.
-        // `state.apuLog` is this frame's $4000-$400F writes and src/nmi.js
-        // clears it at the top of the NEXT frame, so a burst of k frames must
-        // hand over k batches here or k-1 frames of music are lost. What the
-        // audio path then does with them is its own business and runs on the
-        // AudioContext's clock, never on this one (src/audio/output.js).
-        //
-        // NOTE FOR WAVE 14, which owns the input side of this same loop:
-        // `currentButtons()` above is still read k times per callback and all k
-        // reads return the same word, which is
-        // docs/worklog/gradius/13-FINDING-input-granularity-under-load.md. The
-        // fix has the same shape as this line -- one input word per LOGIC
-        // frame, taken from a queue rather than from the live mask -- and it
-        // belongs here, at the same seam. Audio does not depend on it and does
-        // not block it.
-        opts.audio?.frame(state.apuLog);
-        stepped = true;
-      }
-      if (stepped) {
+      stepLogicFrames(k, state, res, opts.audio);
+      if (k > 0) {
         renderFrame(frameFor(state), res.tiles, px);
         ctx.putImageData(img, 0, 0);
       }
@@ -214,7 +313,15 @@ export async function boot(canvas, opts = {}) {
   }
   requestAnimationFrame(tick);
 
-  return { state, res, stop() { running = false; } };
+  // `loop` and `input` are exposed so index.html can put k and the input queue
+  // depth on the page. They are READ-ONLY diagnostics: nothing in the frame loop
+  // reads them back, so watching them cannot change what a frame computes.
+  return {
+    state, res, loop: pacer,
+    loopStats: () => pacer.stats(),
+    inputStats: inputQueueStats,
+    stop() { running = false; },
+  };
 }
 
 /**

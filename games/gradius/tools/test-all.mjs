@@ -133,6 +133,33 @@ stage('sound data == the measured ownership window (snddata.py --selfcheck)', ()
     ? { status: 'PASS' } : { status: 'FAIL' };
 });
 
+// --------------------------------------------------------------- stage 1d ---
+// THE COST CHECK. WAVE 14.
+//
+// Everything else in this runner measures CORRECTNESS. Nothing measured COST,
+// and docs/worklog/gradius/13-FINDING-input-granularity-under-load.md said so
+// in as many words -- "Nobody has ever measured how long one logic frame takes
+// ... It is entirely possible the port now needs more than 16.6 ms per frame on
+// a loaded machine, and no check in this repo would notice."
+//
+// It was worse than that. When wave 14 finally measured it, renderFrame() was
+// costing a MEDIAN of 6.07 ms of the 16.639 ms frame -- 36% of the budget, more
+// than nmi() and the whole synthesiser put together -- because its background
+// loop called tileRow() once per PIXEL and threw away seven eighths of every
+// read. Fourteen waves of bit-exact scenarios had gone past it. A port can be
+// pixel-perfect, byte-exact against the cartridge on 14,098 frames, and
+// unplayable, and until this stage existed the gate would have said GREEN.
+//
+// It needs only assets/ (it runs the port headlessly), so ROM-absent is not a
+// reason to skip it. ~20 s.
+stage('one frame fits in the budget (framecost.mjs)', () => {
+  if (!assetsPresent) return { status: 'SKIP', note: 'needs assets/' };
+  return run(process.execPath, ['games/gradius/tools/framecost.mjs'])
+    ? { status: 'PASS' } : { status: 'FAIL', note: 'a stage of the frame is over '
+      + 'its share of the 16.639 ms budget -- see the table above. The limits and '
+      + 'the margin are stated at the top of tools/framecost.mjs.' };
+});
+
 // ---------------------------------------------------------------- stage 2 ---
 // The port-side trace must be able to produce probe.lua's exact field list.
 // This is a shape check and it is cheap; it catches a renamed field before four

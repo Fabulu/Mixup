@@ -134,7 +134,12 @@ async function loadPage({ coarse = true, audioCtor } = {}) {
   globalThis.matchMedia = win.matchMedia;
   globalThis.visualViewport = win.visualViewport;
   globalThis.requestAnimationFrame = () => {};
-  globalThis.setInterval = () => {};
+  // WAVE 14. CAPTURED, not discarded: the stats line is the only place the
+  // k readout and the input-queue depth exist, and it is built inside this
+  // callback. A page that stopped calling app.loopStats() would otherwise be
+  // indistinguishable from one that still did.
+  let statsTick = null;
+  globalThis.setInterval = (fn) => { statsTick = fn; return 0; };
   // WAVE 13. The smallest AudioContext src/audio/output.js touches. It is a
   // FAKE and it proves nothing about how the browser sounds; what it proves is
   // that the page's gesture handler reaches arm(), that the mute button reaches
@@ -155,10 +160,18 @@ async function loadPage({ coarse = true, audioCtor } = {}) {
   // this file loudly instead of being quietly ignored.
   const audioUrl = pathToFileURL(new URL('src/audio/output.js', GAME).pathname.slice(1)).href;
   // boot() is stubbed: this test is about the pad, and the real one fetches.
+  // WAVE 14: the stub now also answers loopStats()/inputStats(), because the
+  // page asks for them UNCONDITIONALLY. That is deliberate on both sides -- an
+  // optional-chained `app.loopStats?.()` on the page would silently print
+  // nothing the day boot() stopped returning it, and a stub that quietly
+  // supplied a default would hide the same thing here.
   const stub = 'data:text/javascript,'
     + encodeURIComponent('export const fitCanvas = () => 4;\n'
       + 'export const boot = async () => ({ state: { obj: { x: [80], y: [96], anim: [1] },'
-      + ' cam: { hi: 0, lo: 0 }, lagFrames: 0 } });\n');
+      + ' cam: { hi: 0, lo: 0 }, lagFrames: 0 },'
+      + ' loopStats: () => ({ callbacks: 200, logicFrames: 210, maxK: 3,'
+      + ' clamped: 1, k: [0,192,7,1,0,0,0,0,0] }),'
+      + ' inputStats: () => ({ depth: 2, live: 0, repeats: 7, coalesced: 5, cap: 2 }) });\n');
   // The trailing counter makes each load a DISTINCT data: URL. Without it the
   // ES module cache hands back the first instance and the script never runs
   // again -- every test after the first would then be asserting against a page
@@ -179,6 +192,7 @@ async function loadPage({ coarse = true, audioCtor } = {}) {
 
   const input = await import(inputUrl);
   return { pad, dpad, cells, buttons, note, win, doc, input, sound, audionote,
+           stats: byId.stats, runStatsTick: () => statsTick && statsTick(),
            mask: () => input.currentButtons(),
            litCells: () => cells.map((c, i) => ('on' in c.dataset ? i : -1)).filter((i) => i >= 0) };
 }
@@ -334,5 +348,32 @@ test('on a fine pointer the pad stays hidden and nothing is bound to the game', 
   // The handlers are still attached (they are harmless with the pad hidden),
   // but nothing has touched the joypad mask.
   assert.equal(p.mask(), 0, 'the keyboard path is untouched: mask is 0');
+  p.win.fire('blur', {});
+});
+
+// ---------------------------------------------------------------------------
+// WAVE 14. The stats line is not decoration: it is the ONLY place k -- how many
+// logic frames one animation-frame callback ran -- can be read, because there
+// is no browser anywhere in this repo's test suite and k cannot be measured
+// without one. `13-FINDING-input-granularity-under-load.md` asked for the
+// number and it was unobtainable; if this readout silently stops working, the
+// question goes back to being unanswerable.
+//
+// SEEN TO FAIL: dropping `app.loopStats()` from index.html leaves the line
+// without the k figure (red); returning the histogram but not `maxK` leaves it
+// reading `NaNmax` (red).
+test('the stats line carries k, the clamp count and the input queue depth', async () => {
+  const p = await loadPage({ coarse: false });
+  p.runStatsTick();
+  const line = p.stats.innerHTML;
+  assert.ok(line, 'the page wrote a stats line at all');
+  // 210 logic frames over 200 callbacks = 1.05 average, maxK 3, 1 clamped.
+  assert.match(line, /<b>k<\/b> 1\.05avg\/3max\/1clamped/,
+    `k is missing from the stats line: ${line}`);
+  assert.match(line, /<b>inq<\/b> 2\/5lost/,
+    `the input queue depth is missing from the stats line: ${line}`);
+  // And the numbers that were already there are still there.
+  assert.match(line, /<b>lag<\/b> 0/);
+  assert.match(line, /<b>snd<\/b>/);
   p.win.fire('blur', {});
 });

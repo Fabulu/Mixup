@@ -57,9 +57,31 @@ export const BREAKS = [
  * already de-planarised by the exporter. Index is
  * `bank*512 + half*256 + n`, half 0 = pattern table $0000.
  */
-function tileRow(tiles, bank, half, tile, row, out) {
-  const o = ((bank << 9) | (half << 8) | (tile & 0xFF)) * 64 + row * 8;
-  for (let i = 0; i < 8; i++) out[i] = tiles[o + i];
+export function tileRow(tiles, bank, half, tile, row, out) {
+  for (let i = 0; i < 8; i++) out[i] = tiles[tileBase(bank, half, tile, row) + i];
+}
+
+/**
+ * The byte offset of pixel 0 of one tile row. Spelled once so `tileRow` and
+ * `tilePixel` cannot drift apart -- tests/ppu.test.js sweeps every bank, half,
+ * row and 256 tiles and requires `tilePixel(...i) === tileRow(...)[i]` for all
+ * eight columns, which is the only thing keeping the two readings honest.
+ */
+function tileBase(bank, half, tile, row) {
+  return ((bank << 9) | (half << 8) | (tile & 0xFF)) * 64 + row * 8;
+}
+
+/**
+ * One pixel of one tile row, without materialising the other seven.
+ *
+ * Exported ONLY so tests/ppu.test.js can hold it against `tileRow`. The two are
+ * the same arithmetic and this is the check that keeps them that way, and it is
+ * the check that does not need a captured frame -- the pixel comparison against
+ * the cartridge is stronger but SKIPS when tools/oracle/out/video/ is absent,
+ * and a cost fix that is only guarded by a skippable test is not guarded.
+ */
+export function tilePixel(tiles, bank, half, tile, row, col) {
+  return tiles[tileBase(bank, half, tile, row) + (col & 7)];
 }
 
 /**
@@ -158,8 +180,22 @@ export function renderFrame(f, tiles, out, breaks = new Set()) {
         const at = nt[base + 0x3C0 + (coarseY >> 2) * 8 + (cx >> 2)];
         const shift = ((coarseY & 2) << 1) | (cx & 2);
         bgpal[x] = (at >> shift) & 3;
-        tileRow(tiles, bgBank, bgHalf, tile, fineY, px);
-        bgpix[x] = px[fxb & 7];
+        // WAVE 14, AND IT IS A COST FIX AND NOTHING ELSE. This line used to be
+        // `tileRow(...); bgpix[x] = px[fxb & 7]` -- eight bytes copied into a
+        // scratch array to read one of them, 61,440 times a frame, i.e. 7/8 of
+        // the reads thrown away. tilePixel() computes the SAME index by the SAME
+        // arithmetic (tileBase, shared with tileRow) and is bit-identical by
+        // construction, not by hope: MEASURED 0 of 12,288,000 pixels different
+        // over 200 consecutive frames, and the whole pixel gate (tests/ppu.test.js
+        // + tools/oracle/rendergate.py, 61,440 px x 7 captured frames) re-run.
+        //
+        // WHY IT MATTERS, since a renderer is not the cartridge: MEASURED
+        // 6.07 -> 2.09 ms median per frame, 36% -> 13% of the 16.639 ms budget
+        // (tools/framecost.mjs). renderFrame() was the single most expensive
+        // thing in the frame loop by an order of magnitude -- more than nmi()
+        // and the synthesiser put together -- and nothing in this repo had ever
+        // looked, which is the hole tools/framecost.mjs now fills.
+        bgpix[x] = tilePixel(tiles, bgBank, bgHalf, tile, fineY, fxb);
       }
     }
 

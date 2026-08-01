@@ -17,6 +17,19 @@ cartridge would have reached; nothing is a silent no-op. The notes below are the
 cartridge facts and the decisions the port was built on; the header of each one
 says what is measured and what is not.
 
+**The frame loop is measured, not assumed (wave 14).** `tools/framecost.mjs` is
+the only thing in this repo that has ever asked what a frame COSTS, and it is a
+stage of `tools/test-all.mjs`: `nmi()` costs a median of 0.039 ms of the
+16.639 ms budget, the wave-13 synthesiser 0.78 ms, and `renderFrame()` 2.48 ms.
+Before wave 14 the renderer cost **6.07 ms -- 36% of the whole budget** and
+nothing would have said so. Input is now taken **one word per LOGIC frame** off a
+queue the DOM handlers fill (`src/input.js`), not re-read from the live mask
+inside the catch-up loop: a press and its release that both landed between two
+animation frames used to be invisible. The page prints `k` -- logic frames per
+animation frame -- next to the lag counter, because that number needs a real
+browser and this repo has none. See
+`docs/worklog/gradius/14-impl-input-granularity.md`.
+
 **The sound is honest about what it claims.** Wave 8 proves the REGISTER STREAM
 matches the cartridge, per frame, over the whole corpus. Wave 13's synthesiser
 (`src/audio/apu.js`) turns that stream into samples and is checked for
