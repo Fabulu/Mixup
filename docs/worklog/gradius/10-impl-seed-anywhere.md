@@ -389,8 +389,20 @@ rather than field by field, because the port cannot execute its window.
    concept; `src/main.js` still boots into the cartridge's own intro. Nothing
    asked for a deep start in the browser and no ROM-derived seed may be shipped.
 5. **`games/ddpdoj/` and `games/batman/`: not touched, not measured.** The shared
-   index still carries another agent's staged deletions; I committed through a
-   private index (`.git/gradius.index`).
+   index still carries another agent's staged deletions — **67 entries**, mostly
+   `D` on files that exist on disk, exactly as `99-final-verification.md` §9
+   described. I committed through a private index (`.git/gradius.index`),
+   read-tree'd immediately before the commit.
+
+   **One consequence worth knowing, because it is not obvious.** Committing from
+   a private index MOVES HEAD, and the shared index still describes the OLD
+   HEAD — so straight after my commit, `git status` showed my 13 files as `MM`
+   and `10-impl-seed-anywhere.md` as `D`, i.e. the shared index had become armed
+   to revert this whole wave. I fixed only my own 14 paths (`git add` them into
+   the shared index, working tree already == HEAD, so they simply become clean)
+   and verified the 67 ddpdoj/batman entries were byte-identical before and
+   after. I did NOT clear or reset anything else. **Whoever owns ddpdoj: your
+   index is still staged with those deletions.**
 
 ## If someone picks this up cold
 
