@@ -144,13 +144,27 @@ test('objord mixes (slot<<16)|type, byte for byte with frame.lua', () => {
   assert.equal(o.value, h & 0x7fffffffffffffffn);
 });
 
-test('a non-empty create queue STOPS the run rather than being drained', () => {
+test('a non-empty create queue is DRAINED by $24111E, not thrown on', () => {
+  // Wave 4 threw here; wave 5 ports the allocator (src/objalloc.js, and
+  // tests/objalloc.test.js pins its four failure paths).  What this test keeps
+  // is the wiring: the driver must drain the queue BEFORE it walks, so an
+  // object staged this frame is dispatched this frame.
   const r = new Ram();
+  r.setU16(0x80e240 + 0x4a, 0x10);            // slot 0 live, priority $10
+  r.setU16(0x80e240, 0x8005);
+  r.setU16(0x80d56c, 0x8007);                 // one staged record, priority $20
+  r.setU16(0x80d56c + 0x4a, 0x20);
   r.setU16(0x80dbac, 0x50);
-  assert.throws(() => runObjectDriver(r, new Map(), {
+  const events = [];
+  const n = runObjectDriver(r, new Map(), {
     budget: new WorkBudget(), order: new ObjOrder(), unportedLog: { note() {} },
-    queueNotEmpty: (a, w) => { throw new Unreached(a, w); },
-  }), Unreached);
+    allocEvent: (k, c) => events.push([k, c]),
+  });
+  assert.equal(r.u16(0x80dbac), 0, 'the queue was drained');
+  assert.equal(r.u16(0x80e240), 0x8007, 'the higher priority took slot 0');
+  assert.equal(r.u16(0x80e240 + 0x50), 0x8005, 'the old slot 0 moved down');
+  assert.equal(n, 2, 'both are dispatched in the SAME frame');
+  assert.deepEqual(events, []);
 });
 
 // ---------------------------------------------------------------- the vectors
@@ -268,7 +282,13 @@ test('the counters advance PER LOOP ITERATION ($23BE8C)', { skip: !tables }, () 
   const c0 = g.ram.u16(RAM.frameCounter);
   for (let i = 0; i < 7; i++) g.step(0xffff);
   assert.equal(g.ram.u16(RAM.frameCounter), c0 + 7);
-  assert.equal(g.ram.u16(RAM.frameCounterCopy), c0 + 7);   // $23BEB2
+  // $23BEB2..$23BEE0: three copies of $80390A, each MASKED. The wave-4 test
+  // asserted the unmasked value and cited $23BEB2 -- the instruction whose very
+  // next line ($23BEBC andi.w #$3) masks it -- so it would have blocked the
+  // fix. 7 & 3 = 3, 7 & 7 = 7, 7 & 15 = 7.
+  assert.equal(g.ram.u16(RAM.frameCounterMod4), (c0 + 7) & 0x3);   // $23BEBC
+  assert.equal(g.ram.u16(RAM.frameCounterMod8), (c0 + 7) & 0x7);   // $23BECE
+  assert.equal(g.ram.u16(RAM.frameCounterMod16), (c0 + 7) & 0xf);  // $23BEE0
   assert.equal(g.ram.u16(RAM.mod3Phase), 7 % 3);
   assert.equal(g.ram.u8(RAM.altPhase), 7 % 2);
   assert.equal(g.logicFrame, 7);

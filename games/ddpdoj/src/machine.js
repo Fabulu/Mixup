@@ -36,7 +36,18 @@ export const MACHINE = {
 export const RAM = {
   spriteList: 0x800000,      // ..$8009FF, 10 bytes/entry, DMA'd at vblank
   frameCounter: 0x80390a,    // ++ per MAIN LOOP ITERATION, not per vblank
-  frameCounterCopy: 0x803910,// $23BEB2 move.w $80390A,$803910
+  // THE THREE DERIVED PHASE COUNTERS.  $23BEB2..$23BEE0 copies $80390A into
+  // each of them and MASKS it -- mod 4, mod 8, mod 16.  Wave 4 stopped after
+  // the first copy and never applied any mask (04-review.md 4, measured:
+  // $803910 held 3501 where the board holds 1, and $803912/$803914 were never
+  // written at all).  They are not decoration: `xref.py abs` finds 13 / 20 / 4
+  // absolute-long readers of them in build B -- a LOWER BOUND, since
+  // register-relative reads are invisible to that search -- at sites like
+  // $252A7C, $25E54C, $26A3DE, $27EE68, $28000C, $26FAC2, which is the shape of
+  // stage and enemy scripts keyed on a frame phase.  Wave 5 needs them right.
+  frameCounterMod4: 0x803910, // $23BEB2 move.w $80390A,_ / $23BEBC andi.w #$3
+  frameCounterMod8: 0x803912, // $23BEC4 move.w $80390A,_ / $23BECE andi.w #$7
+  frameCounterMod16: 0x803914,// $23BED6 move.w $80390A,_ / $23BEE0 andi.w #$f
   altPhase: 0x80390d,        // bchg #0
   mod3Phase: 0x80390e,       // ++ mod 3; READ BACK by the frame sync
   divCount1: 0x80392e,       // frame-sync divider countdowns

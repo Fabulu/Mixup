@@ -532,3 +532,71 @@ $ find games/batman/src -name '*.js' | xargs wc -l | tail -1
    test) is the cheapest available answer.
 5. Which set is canonical — `ddpdoj` (release) or `ddpdojblk` (Black Label, what the
    community means by "DOJ")? An owner decision, not a source fact.
+
+---
+
+## WAVE 5 — WHERE THE ENEMIES AND THE WEAPONS ACTUALLY LIVE (2026-08-01)
+
+Full evidence, with every command and its output:
+`docs/worklog/ddpdoj/05-impl-enemies-and-weapons.md`.
+
+**The top-level object table is a SCHEDULER OF SCHEDULERS.** Wave 2 found the
+20-slot table at `$80E240` driven by `$2410BC`. Measured over the 2,600-frame
+`stage1-open` scenario, it holds exactly **8 live objects in steady state** —
+dispatch types `10, 2, 1, 5, 11, 4, 4, 0` at priorities `1F 1C 1A 18 0A 09 09
+09`. Only ONE of them is the player. **The enemies and the weapons are in
+SUB-TABLES owned by those handlers:**
+
+| what | table | slots × stride | driver | reached from |
+|---|---|---|---|---|
+| **enemies** | `$81332C` | **58 × `$50`** (3 bands: 2 + 8 + 48) | **`$263502`** | type 10 → `$2634F4` |
+| **player shots** | `$810572` (P1), `$810C32` (P2) | **36 × `$30`** each | **`$253A70`** | type 5 (`$28B5E0`) → `$28B610` |
+
+* An enemy's identity is a **function pointer at `+$4C`**, not a type word (the
+  word at `+$0` is `slotIndexInBand | $8000`). Measured over `stage1-open`:
+  **5 distinct handlers** — `$2688CC` ×8411, `$268232` ×740, `$26A2E2` ×662,
+  `$269CEA` ×429, `$275914` ×133. Live enemies peak at 24/frame.
+* A shot's handler comes from a **16-longword table at `$253ADE`** indexed by
+  `(A6) & $F`. Only **4 of the 16** are reached in the opening: `$253B1E`,
+  `$253E34`, `$253BDA`, `$253EC6`. Live shots peak at 20/frame.
+* `$815E9C` (live enemies) and `$81295C` (live shots) are **read by the frame
+  sync's governor** `$23C272`, which sums `$81B40C + $81295C + 2*$81295E`. They
+  are inputs to scheduling, not statistics.
+* Both sub-drivers pull their records by the scroll delta `$813176` once per
+  live record, immediately before the dispatch (`$26352E`, `$253AA6`).
+
+**THREE ALLOCATORS, THREE FAILURE CONVENTIONS.** Nothing is ever evicted:
+
+| allocator | full → | signal |
+|---|---|---|
+| objects `$241182` | dummy record `$80D51C` | `D0 = 0` |
+| enemies `$2636D6` | dummy record `$81454C` (the byte after the table) | **carry set** (`$26374E`) |
+| sprite queue `$23D726` | nothing; the caller's count is zeroed | **carry set** (`$23D75C`) |
+
+Plus two more silent object drops: the priority walk running off all 20 slots
+(`$24116E`), and a priority insert into a FULL table, whose memmove **destroys
+slot 19** (`$241158`).
+
+**THE 256-ENTRY SPRITE CAP, MEASURED AT THE CAP** (`pgm.py spritecap`), and it
+corrects the shape wave 2 inferred:
+
+* The 12-byte request queue's write pointer `$80AFC0` caps at `$BC4` = **251
+  records**; the emitter inserts a filler every 52, and 251 + 5 = 256 = the
+  IGS023 maximum. The queue BUFFER (`$80397C..$80AFBF`, ~2,523 records) is much
+  larger — **the cap is a display-list limit, not a buffer limit.**
+* **All 29 enqueue call sites (`$23D3EC..$23D61A`) are followed by
+  `bcs $23D624`** (static scan of every `bsr` targeting `$23D726`). So a full
+  queue abandons the current bucket's remainder **and every later bucket**, and
+  since buckets are appended in a fixed order, what is lost is a whole
+  low-priority TAIL — not "the last few requests". This closes wave 2's open
+  "whether any caller acts on it I did not establish".
+* **There is a SECOND appender, `$23D762`, whose `$23D794 addi.w #$c,$80AFC0`
+  has NO cap test at all**, reached from the object handlers in main-loop
+  call #2. And the guard is `beq`, not `bge`. Measured: poking `$80AFC0` to
+  `$0900` (192/251) produces **544 executions of `$23D75A`** with the pointer
+  pinned at exactly `$BC4` and the machine running normally; poking `$0A80` or
+  higher lets the pointer reach 339–365 records and the equality guard is
+  **stepped over entirely**, bounded only by the emitter's clamp `$23D65E`.
+* A standing census (`sprite_queue_high_water`, `queue_full_events`,
+  `buckets_cut`) is now printed on **every** probe run. Corpus high-water in
+  normal play: `$5A0` = **120 of 251 records**, `queue_full_events=0`.

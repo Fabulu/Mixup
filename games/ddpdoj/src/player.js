@@ -259,10 +259,9 @@ function finish(ram, rec, d2, d3, ctx, skipClamps) {
       u16(i16(ram.u16(rec + P.posX)) - i16(ram.u16(0x813176))));
   }
 
-  // $2497AA .. $249E4C -- bomb, hyper, shot and laser.  WAVE 5's territory.
-  // The fly-around scenario presses no buttons, so nothing in here can fire;
-  // the guards are evaluated rather than assumed, and any of them opening is a
-  // stop, not a shrug.
+  // $2497AA .. $249E4C -- bomb, hyper, shot and laser.
+  // Wave 4 stopped at the FIRST instruction of the shot branch; wave 5 carries
+  // the shot CADENCE MACHINE ($249B2C..$249BE2) and stops at the spawn.
   bombAndShotGuards(ram, rec, unportedLog);
 
   // $249E4E -- the tail.  Two animation records, indexed by the bank counter.
@@ -276,7 +275,18 @@ function finish(ram, rec, d2, d3, ctx, skipClamps) {
   unportedLog.note(0x249e7e, 'player tail: shadow emit $23EFC0 + the BCD block');
 }
 
-/** $2497AA/$2497FE/$249B48 -- the branches that would leave wave 4's ground. */
+/**
+ * $2497AA .. $249BE2 -- the weapon block, as far as wave 5 translates it.
+ *
+ * THE BUTTON MAP, measured in wave 4 and re-stated because wave 2 item 5 left
+ * it open and it is the whole basis of "all the kinds of weapons":
+ *   mirror bit 4 (P1 Button 1) = the SHOT/LASER edge, tested at $249B48
+ *   mirror bit 5 (P1 Button 2) = the BOMB, tested at $24980A
+ *   mirror bit 6 (P1 Button 3) = AUTO-SHOT: $2497B2 finds the operator byte
+ *     $80380F set to $01 and SYNTHESISES a shot edge into ($19,A6) on alternate
+ *     frames (`bchg #4,($1,A6)` then `bset #4,($19,A6)`).  So Button 3 is not a
+ *     third weapon; it is Button 1 on a 2-frame cadence.
+ */
 function bombAndShotGuards(ram, rec, unportedLog) {
   const dir = ram.u8(rec + P.dirByte);
   const btn = ram.u8(rec + P.btnByte);
@@ -289,21 +299,81 @@ function bombAndShotGuards(ram, rec, unportedLog) {
   if (ram.u16(0x8130ce) >= 4 && (btn & (1 << 5))) {
     unreached(0x249814, 'THE BOMB ($249814); mirror bit 5 went down with stock >= 4');
   }
+  // $249B2C..$249B3C -- the "power" byte the tail draws from: ($54,A6), or
+  // ($55,A6) when bit 0 of ($1,A6) is set, copied into ($56,A6).
+  ram.setU8(rec + 0x56, ram.btst8(rec + P.flags1, 0)     // $249B30 btst #0
+    ? ram.u8(rec + 0x55) : ram.u8(rec + 0x54));          // $249B38 / $249B2C
   // $249B40 tst.b ($3f,A6) / bne $249E4E
   if (ram.u8(rec + P.dead) !== 0) {
     unreached(0x249b40, 'the ($3f,A6) dead flag is set');
   }
-  // $249B48 btst #4,($19,A6) -- the shot/laser edge.
-  if (btn & (1 << 4)) {
-    unreached(ROM.playerShot, 'SHOT/LASER ($249B50); mirror bit 4 went down');
+
+  // THE SHOT CADENCE MACHINE, $249B48..$249BE2.  Ported in wave 5.  This is the
+  // part that runs EVERY frame the button is held or released and that decides,
+  // per frame, whether a shot is emitted; the emission itself ($249BFC /
+  // $249D2C) is not ported and throws below.
+  if (btn & (1 << 4)) {                                  // $249B48 btst #4,($19,A6)
+    ram.setU8(rec + 0x3c, 1);                            // $249B50
+    // $249B56..$249B70: the RELOAD value for the shot counter ($2b,A6).
+    //   D0 = ($21,A6), or 8 if bit 0 of ($1,A6) is set;
+    //   D0 = ((D0 >> 1) & 6) + ($2d,A6).
+    // `lsr.w #1` then `andi.b #6` -- a WORD shift and a BYTE mask, in that
+    // order, so bit 0 of the shifted value is discarded and only bits 1-2
+    // survive.  Translated as written.
+    let d0 = ram.btst8(rec + P.flags1, 0) ? 8 : ram.u8(rec + 0x21);
+    d0 = ((u16(d0) >> 1) & 6) + ram.u8(rec + 0x2d);      // $249B66/$249B68/$249B6C
+    ram.setU8(rec + 0x2b, d0 & 0xff);                    // $249B70
+    if (ram.bclr8(rec + P.flags1, 3)) {                  // $249B74 bclr #3 / beq
+      ram.bset8(rec + P.state, 3);                       // $249B7C
+      ram.setU8(rec + 0x2b, 0);                          // $249B80 clr.b ($2b,A6)
+      // falls through to $249BC2
+    } else if (ram.bclr8(rec + P.state, 3)) {            // $249B86 bclr #3,(A6)/beq
+      ram.setU8(rec + 0x2a, 1);                          // $249B8C
+      unportedLog.note(0x249b8c, 'shot: the $249B92 bra to the tail');
+      return;                                            // $249B92 bra $249E4E
+    }
+  } else {
+    // $249B96 -- the no-shot path.
+    ram.setU8(rec + 0x3c, 0);                            // $249B96
+    ram.bclr8(rec + P.state, 3);                         // $249B9A
+    ram.bclr8(rec + P.flags1, 4);                        // $249B9E
+    if (ram.u8(rec + 0x2b) === 0) {                      // $249BA4 tst.b/beq
+      unportedLog.note(0x249ba4, 'shot: idle, no cadence counter running');
+      return;                                            // -> $249E4E
+    }
+    ram.setU8(rec + 0x2a, (ram.u8(rec + 0x2a) - 1) & 0xff);   // $249BAC subq.b
+    if (ram.u8(rec + 0x2a) !== 0) return;                // $249BB0 bne $249E4E
+    ram.setU8(rec + 0x2b, (ram.u8(rec + 0x2b) - 1) & 0xff);   // $249BB4
+    ram.bset8(rec + P.state, 3);                         // $249BB8
+    ram.bset8(rec + P.flags1, 4);                        // $249BBC
   }
-  // $249B96 -- the no-shot path, which does run every frame of fly-around.
-  ram.setU8(rec + 0x3c, 0);                          // $249B96 clr.b ($3c,A6)
-  ram.bclr8(rec + P.state, 3);                       // $249B9A bclr #3,(A6)
-  ram.bclr8(rec + P.flags1, 4);                      // $249B9E bclr #4,($1,A6)
-  if (ram.u8(rec + 0x2b) !== 0) {                    // $249BA4 tst.b ($2b,A6)/beq
-    unreached(0x249bac, 'the shot cadence counter ($2b,A6) is non-zero with no '
-      + 'shot button -- wave 5 territory');
+
+  // $249BC2..$249BDE -- the DELAY reload for ($2a,A6).
+  let d = ram.u8(rec + 0x2c);                            // $249BC2
+  if (ram.btst8(rec + P.flags1, 0)                       // $249BC6 btst #0 / bne
+    || (ram.u16(rec + P.shipSel) === 0                   // $249BCE tst.w ($58,A6)
+      && ram.u16(rec + 0x20) === 8)) {                   // $249BD4 cmpi.w #$8
+    d = 2;                                               // $249BDC moveq #$2,D0
   }
-  unportedLog.note(0x249b2c, 'player shot block: the no-shot path only');
+  ram.setU8(rec + 0x2a, d & 0xff);                       // $249BDE
+
+  // $249BE2..$249BF8 -- a two-entry jump table on the SHIP TYPE ($58,A6):
+  //   ship 0 -> $249BFC   ship 2 -> $249D2C
+  // Both are the SPAWN: they scan the 36-slot player-shot table at $810572 for
+  // a free record (`tst.w (A0) / bpl` -- a NEGATIVE type word means occupied),
+  // and on failure clear ($2b,A6) and bit 3 of (A6) so the shot is dropped and
+  // the cadence resets.  NOT PORTED: the spawn fills a record through $24A222 /
+  // $24A2D6 out of PC-relative pattern tables ($2554EA, $255502, $25551A,
+  // $255332...) indexed by ship, power ($20,A6) and formation ($5A,A6), and
+  // every record it creates is then driven by src/weapons.js's UNPORTED
+  // handlers.  A guess here would look finished and be wrong from the first
+  // shot.
+  const ship = ram.u16(rec + P.shipSel);
+  unreached(ship === 0 ? 0x249bfc : 0x249d2c,
+    `THE SHOT SPAWN for ship type ${ship} (dispatched by $249BE2's two-entry `
+    + `jump table at $249BF4). It scans the 36-slot shot table at `
+    + `$810572 (P1) / $810C32 (P2) for a free record and, when there is none, `
+    + `clears ($2b,A6) and bit 3 of (A6) at $249CA8/$249CEA -- so the table's `
+    + `occupancy feeds straight back into the player record. Wave 5 ports the `
+    + `shot DRIVER shell (src/weapons.js) and none of the four handlers`);
 }

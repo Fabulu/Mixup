@@ -31,6 +31,7 @@
 // anything cleverer.
 
 import { RAM } from './machine.js';
+import { commitCreates, commitKills, ALLOC_RESULT } from './objalloc.js';
 
 export const OBJ = {
   base: RAM.objTable,      // $80E240   ($2410C4 lea)
@@ -69,16 +70,21 @@ export class ObjOrder {
 export function runObjectDriver(ram, handlers, ctx) {
   const { budget, unportedLog, order } = ctx;
   order.reset();
-  // $2410BC / $2410C0: the kill and create queues.  Wave 4 spawns and kills
-  // nothing, and the scenario is scripted so that the game does not either --
-  // MEASURED: `objlive` is constant across the whole fly-around window.  A
-  // non-empty queue at entry means that assumption broke, and it must stop the
-  // run rather than be drained by code nobody wrote.
-  if (ram.u16(0x80dbac) !== 0) {
-    ctx.queueNotEmpty(0x24111e, 'pending-CREATE queue non-empty');
-  }
-  if (ram.u16(0x80e23e) !== 0) {
-    ctx.queueNotEmpty(0x241262, 'pending-KILL queue non-empty');
+  // $2410BC `bsr $241262` -- DRAIN THE PENDING-KILL QUEUE, then
+  // $2410C0 `bsr $24111E` -- DRAIN THE PENDING-CREATE QUEUE.  In that order.
+  //
+  // Wave 4 threw here instead, because its scenario is scripted so that nothing
+  // spawns or dies (MEASURED: `objlive` constant at 8 across the whole compared
+  // window) and translating an allocator nothing exercises would have been
+  // unverifiable.  Wave 5 translates it -- see objalloc.js for the four
+  // distinct failure paths, which the brief says are gameplay and not edge
+  // cases -- and the fly-around comparison is the regression test that the
+  // translation is inert when the queues are empty.
+  const killed = commitKills(ram);                          // $241262
+  const created = commitCreates(ram);                       // $24111E
+  if (killed) ctx.allocEvent?.('kill', killed);
+  for (const r of created) {
+    if (r !== ALLOC_RESULT.OK) ctx.allocEvent?.(r, 1);
   }
   let processed = 0;
   for (let i = 0; i < OBJ.slots; i++) {                 // $2410CA .. $2410EC

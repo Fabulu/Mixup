@@ -989,6 +989,38 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(STACK_GUARD_LO, STACK_GUARD_HI, "stkgua
     return data
   end)
 
+-- (3c2) THE SPRITE-REQUEST QUEUE, AND WHAT HAPPENS AT ITS CAP.  Wave 5.
+--
+--   $23D726  the enqueue.  A1 = the CURRENT BUCKET's remaining-record count,
+--            A2 = $80397C + $80AFC0 (the shared write pointer, a byte offset).
+--            $23D73E `addi.w #$c,$80AFC0`; $23D746 `cmpi.w #$BC4,$80AFC0` /
+--            `beq $23D75A`.  $BC4 = 3012 = 251 records of 12 bytes.
+--   $23D75A  FULL: `clr.w (A1)` -- a WRITE, and therefore a reliable 68000
+--            execution hook -- then `ori #$1,SR` sets CARRY.
+--   ALL 29 CALL SITES ($23D3EC..$23D61A) are followed by `bcs $23D624`
+--   (measured: a static scan of every bsr in $200000-$2A0000 whose target is
+--   $23D726).  So a full queue does NOT merely drop the next request: it
+--   ABANDONS THE CURRENT BUCKET's remainder and SKIPS EVERY LATER BUCKET,
+--   jumping straight to the emit.  The buckets are appended in a fixed order,
+--   so what is lost is a whole low-priority TAIL, not the last few sprites.
+--
+-- This census counts executions of $23D75A and records WHICH bucket count word
+-- was zeroed, so "the queue never fills" stays a measurement and never becomes
+-- an assumption.  It costs one tap and is on by default.
+cen.sprfull, cen.sprfullbucket, cen.sprqmax = 0, {}, 0
+TAPS[#TAPS + 1] = PROG:install_write_tap(0x80AFC0, 0x80AFFB, "sprq",
+  function(offset, data, mask)
+    local pc = CPU.state["CURPC"].value & 0xffffff
+    if pc == 0x23D73E then
+      local v = data & 0xffff
+      if v > cen.sprqmax then cen.sprqmax = v end
+    elseif pc == 0x23D75A then
+      cen.sprfull = cen.sprfull + 1
+      bump(cen.sprfullbucket, string.format("%06X", offset))
+    end
+    return data
+  end)
+
 -- (3d) THE bg_scale WATCH (wave 3 item 5).  $B04000 is the IGS023's background
 --      scale register.  MAME reads it and DOES NOTHING WITH IT
 --      (igs023_video.cpp:193 "TODO: not implemented, unknown algorithm"), so if
@@ -1233,6 +1265,14 @@ local function finish()
     cen.minwork == math.huge and -1 or cen.minwork, cen.maxwork, cen.over)
   if METER then p("CENSUS spin_iters_bucketed500 %s", hist(cen.spinhist)) end
   p("CENSUS max_sprite_entries=%d", cen.maxspr)
+  -- THE CAP, MEASURED RATHER THAN ASSUMED.  sprite_queue_high_water is the
+  -- largest value $23D73E ever wrote into $80AFC0, in BYTES; /12 is records
+  -- against the 251-record cap ($BC4).  queue_full_events counts executions of
+  -- $23D75A, i.e. the number of times the game actually hit the cap and
+  -- abandoned every remaining sprite bucket for that frame.
+  p("CENSUS sprite_queue_high_water=$%X (%d of 251 records) queue_full_events=%d "
+    .. "buckets_cut[%s]", cen.sprqmax, cen.sprqmax // 12, cen.sprfull,
+    hist(cen.sprfullbucket))
   if PORTIN then p("CENSUS input_port_reads_per_logicframe %s", hist(cen.portinhist)) end
   p("CENSUS stack_guard_hits=%d below_$%06X %s", cen.guard, STACK_GUARD_LO,
     hist(cen.guardpcs))

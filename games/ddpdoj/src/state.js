@@ -14,6 +14,14 @@ import { RAM, P } from './machine.js';
 /** The PROBE_WATCH spec the oracle must be run with for these columns to
  *  exist.  Kept HERE, next to the reader, so the two cannot drift. */
 export const WATCH_SPEC = [
+  // THE THREE DERIVED PHASE COUNTERS, $23BEB2..$23BEE0.  Added in wave 5
+  // because wave 4 shipped them wrong and NOTHING COULD SEE IT: `CLAIMED` was
+  // 31 named columns and the full-RAM digest `d_ram` is in the oracle's TSV but
+  // is not compared, so an unported write to unwatched RAM was invisible by
+  // construction (`04-review.md` 4).  They are the phase that stage and enemy
+  // scripts key off, so wave 5 compares them directly.
+  ['c3910', RAM.frameCounterMod4], ['c3912', RAM.frameCounterMod8],
+  ['c3914', RAM.frameCounterMod16],
   ['py', RAM.player1 + P.posY], ['px', RAM.player1 + P.posX],
   ['paccy', RAM.player1 + P.velY], ['paccx', RAM.player1 + P.velX],
   ['ptc', RAM.player1 + P.tiltDelay], ['ptilt', RAM.player1 + P.tilt],
@@ -77,6 +85,7 @@ export const MASKED = { pst: 0x1000 };
  *  is deliberately NOT compared, and the runner says so out loud. */
 export const CLAIMED = [
   'lf', 'vf', 'irq6', 'rel', 'c390a', 'c390d', 'c390e',
+  'c3910', 'c3912', 'c3914',
   'p1raw', 'p1edge', 'p1prev', 'p2raw', 'p2edge',
   'objn', 'objord', 'objlive',
   'py', 'px', 'paccy', 'paccx', 'ptc', 'ptilt', 'pspd', 'pang',

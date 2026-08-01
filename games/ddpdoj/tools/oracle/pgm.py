@@ -1078,7 +1078,8 @@ def _cmd_check(argv: list[str]) -> int:
     if not quick:
         stage("fly-around: port vs board, 0 divergent frames",
               lambda: sub(__file__, "flyaround"))
-        for m in ("clamp-first", "edge-after-store", "no-tilt-decay", "lsr-not-asr"):
+        for m in ("clamp-first", "edge-after-store", "no-tilt-decay",
+                  "dy-off-by-one", "no-phase-mask"):
             stage(f"fly-around RED [{m}]",
                   lambda m=m: sub(__file__, "flyaround", "--reuse", "--break", m))
         stage("replay determinism (2 in-process + 1 subprocess)",
@@ -1428,7 +1429,8 @@ def _w4_assert_syms() -> None:
     future divergence.  Re-read the real definitions out of src/machine.js and
     fail loudly if any of them moved."""
     txt = (HERE.parent.parent / "src" / "machine.js").read_text(encoding="utf8")
-    for obj, names in (("RAM", ("player1", "p1Options")),
+    for obj, names in (("RAM", ("player1", "p1Options", "frameCounterMod4",
+                                "frameCounterMod8", "frameCounterMod16")),
                        ("P", ("posY", "posX", "velY", "velX", "tiltDelay", "tilt",
                               "speedIdx", "angle", "state", "flags1", "dirByte",
                               "btnByte", "animA", "animB"))):
@@ -1445,13 +1447,147 @@ def _w4_assert_syms() -> None:
 # The symbols src/state.js's WATCH_SPEC is written in, mirrored from
 # src/machine.js.  Asserted below rather than trusted.
 _W4_SYMS = {
-    "RAM": type("R", (), {"player1": 0x8103E6, "p1Options": 0x8104AA})(),
+    "RAM": type("R", (), {"player1": 0x8103E6, "p1Options": 0x8104AA,
+                          "frameCounterMod4": 0x803910,
+                          "frameCounterMod8": 0x803912,
+                          "frameCounterMod16": 0x803914})(),
     "P": type("P", (), {"posY": 0x02, "posX": 0x04, "velY": 0x30, "velX": 0x32,
                         "tiltDelay": 0x4C, "tilt": 0x4E, "speedIdx": 0x1A,
                         "angle": 0x1B, "state": 0x00, "flags1": 0x01,
                         "dirByte": 0x18, "btnByte": 0x19,
                         "animA": 0x0A, "animB": 0x14})(),
 }
+
+
+# --------------------------------------------------------------------------- wave 5
+def _cmd_spritecap(argv: list[str]) -> int:
+    r"""WAVE 5 -- THE SPRITE-REQUEST QUEUE AT ITS CAP, BY INTERVENTION.
+
+    The brief: "The sprite list is capped at 256 entries; find out what happens
+    at the cap rather than assuming it never fills."  Wave 2 answered from the
+    LISTING and said so; the corpus peak is 133 hardware entries and this wave
+    re-measured the queue's own high-water at 120 of 251 records over the whole
+    stage-1 opening.  A measurement of something that never happens proves
+    nothing, so the queue is DRIVEN to its cap instead.
+
+    THE MECHANISM, read off the ROM and re-disassembled here:
+
+      $23D726  the ENQUEUE.  A2 = $80397C + $80AFC0; four `move.l (A0)+,(A2)+`
+               = one 12-byte request; $23D73E `addi.w #$c,$80AFC0`;
+               $23D746 `cmpi.w #$BC4,$80AFC0` / `beq $23D75A`
+      $23D75A  FULL: `clr.w (A1)` zeroes the CALLER's remaining-record count and
+               `ori #$1,SR` SETS CARRY.  Nothing already queued is evicted; the
+               requests that lose are the ones enqueued LAST.
+      $23D64E  the EMIT clamps independently: `cmpi.w #$BC4,D0 / bls` else
+               `move.w #$BC4,D0` -- so even a pointer past the cap emits 251.
+      $BC4 = 3012 = 251 x 12.  The emitter inserts one filler entry every 52
+      records ($23D676 `moveq #$33,D4`, then `moveq #$32`), and 251 + 5 fillers
+      = 256 = the IGS023's hardware maximum.  The two numbers are designed
+      against each other.
+
+    NOTE ON THE GUARD'S SHAPE, from the listing: the full test is `beq`, not
+    `bge`.  It is only safe because the pointer starts at 0 and steps by exactly
+    12, so it can never straddle $BC4.  A port that models the guard as ">=" is
+    not translating this instruction; a port that models it as "==" inherits the
+    same fragility, which is the faithful choice.
+
+    THE INTERVENTION: $80AFC0 is written at the sample point, i.e. before the
+    object driver runs and long before $23D712 clears the queue counters in
+    main-loop call #4.  It is a value the game itself holds every frame (a
+    multiple of 12 below the cap), so this changes WHEN the queue fills and
+    nothing about WHAT the code does about it -- the same rule wave 2 applied to
+    the NOP sled and wave 4 to the invulnerability timer.
+
+    WHAT WAVE 2 COULD NOT ESTABLISH, NOW SETTLED FROM THE LISTING: wave 2 wrote
+    "whether any caller acts on [the carry] I did not establish", because the
+    call sites are reached by `bsr`, which an absolute-long xref cannot see.
+    A static scan of EVERY `bsr` in $200000-$2A0000 whose target is $23D726
+    finds 29 sites, $23D3EC .. $23D61A, and **all 29 are followed by
+    `bcs $23D624`** -- the shared bail-out that jumps straight to the emit.
+    So the cap does not drop "the last few requests": it abandons the current
+    bucket's remainder AND every later bucket, and since the buckets are
+    appended in a fixed order, what is lost is a whole low-priority TAIL.
+    (`bsr` is what this scan sees; a call through a register would not be.)
+
+    WHAT THIS RUN ADDS, and the honest limit of it: the poke makes the EMITTER
+    read the bytes already sitting at those queue offsets, which are last
+    frame's requests -- so `sprites`, `d_spr` and `pix` move for two reasons at
+    once and are NOT a clean measure of which sprites are lost.  What the run
+    does establish, cleanly, is that the FULL PATH EXECUTES (the
+    `queue_full_events` census counts executions of `$23D75A`, hooked by its
+    `clr.w (A1)` write) and that the machine keeps running normally afterwards
+    -- no halt, still build B, the object table still walked.  `d_ram` moving is
+    over-determined here (the poke itself writes $80AFC0, which is inside the
+    digest), so this command does NOT read `d_ram` as evidence about the carry.
+    """
+    defs = scenarios()
+    name = "stage1-open"
+    s = next(x for x in defs["scenarios"] if x["name"] == name)
+    frm = int(argv[0]) if argv else 2000
+    out = OUT / "w5"
+    out.mkdir(parents=True, exist_ok=True)
+    print(f"=== CONTROL: no poke, {s['frames']} frames of '{name}'")
+    ctl, tc = run_scenario(defs, dict(s, pixels=10), out=out, tag=".cap-ctl")
+    check(ctl, "spritecap/control")
+    for l in ctl.find("CENSUS max_sprite_entries") + ctl.find("CENSUS sprite_queue"):
+        print("  " + l)
+
+    # A SWEEP, because one poke value is a guess.  Every value is a MULTIPLE OF
+    # 12 below the $BC4 cap -- the pointer is always a multiple of 12 on the
+    # board, and the full test is `beq`, so a value off that grid could never
+    # match and would be measuring the poke rather than the game.
+    #
+    # Why a sweep is needed at all, and it is the first real finding here: the
+    # queue is appended by TWO routines.  $23D726 is the guarded one (29 call
+    # sites, all in main-loop call #4).  $23D762 is a SECOND appender --
+    # `lea $80397C,A0 / adda.w $80AFC0,A0 / ... / $23D794 addi.w #$c,$80AFC0` --
+    # WITH NO CAP TEST AT ALL, reached from the object handlers in call #2.  So
+    # a poke that is applied at the sample point is consumed by the UNGUARDED
+    # appender first, and if that carries the pointer past $BC4 the guarded
+    # `beq` can never match for the rest of the frame.  Sweeping downward finds
+    # a value where the guarded chain still straddles the cap exactly.
+    for lo, hi in ((0x600, None), (0x900, None), (0xA80, None), (0xB40, None),
+                   (0xB70, None), (0xBB8, None)):
+        val = lo
+        assert val % 12 == 0, f"${val:X} is not on the 12-byte record grid"
+        hi, lo, recs = f"{val >> 8:X}", f"{val & 0xff:02X}", val // 12
+        print(f"\n=== POKE $80AFC0 = ${val:04X} ({val // 12} of 251 records "
+              f"already queued) from logic frame {frm}")
+        r, tsv = run_scenario(defs, dict(s, pixels=10), out=out,
+                              tag=f".cap{recs}",
+                              extra_env={"PROBE_POKE": f"80AFC0={hi},80AFC1={lo}",
+                                         "PROBE_POKE_FROM": str(frm)})
+        check(r, f"spritecap/{recs}", quiet=True)
+        full = 0
+        for l in (r.find("CENSUS max_sprite_entries")
+                  + r.find("CENSUS sprite_queue")
+                  + r.find("CENSUS halt_loop_interrupts")
+                  + r.find("CENSUS object_slots_processed")
+                  + r.find("BUILD ")):
+            print("  " + l)
+            if "queue_full_events=" in l:
+                full = int(l.split("queue_full_events=")[1].split()[0])
+        msgs = first_divergence(tc, tsv)
+        moved = {m.split(":")[0].replace("col ", "") for m in msgs}
+        print(f"  columns moved vs the control: {sorted(moved) or 'NONE'}")
+        for m in msgs:
+            if m.split(":")[0].replace("col ", "") in (
+                    "d_spr", "sprites", "objn", "objord", "objlive", "c390a",
+                    "pix"):
+                print("    " + m)
+        # THE ONLY CLAIM THIS RUN MAKES. See the docstring: `d_ram` is
+        # over-determined because the poke writes inside the digest, and
+        # `d_spr`/`pix`/`sprites` are over-determined because the emitter reads
+        # stale queue bytes. The clean claim is that the cap PATH RUNS and the
+        # machine survives it.
+        print("  REACHED THE CAP: " + (
+            f"YES, {full} executions of $23D75A (`clr.w (A1)`), and the run "
+            f"completed on build B with no halt -- so the cap is a path the "
+            f"board takes in its stride, not a crash"
+            if full else
+            "NO -- $23D75A never executed. The poke did not survive to the "
+            "enqueue; do not read anything else on this line."))
+    return 0
 
 
 def _cmd_flyaround(argv: list[str]) -> int:
@@ -1512,7 +1648,7 @@ COMMANDS = {
     "objdriver": _cmd_objdriver, "overrun": _cmd_overrun,
     "gfx": _cmd_gfx, "zoomcov": _cmd_zoomcov, "check": _cmd_check,
     "sprites": _cmd_sprites, "sound": _cmd_sound,
-    "flyaround": _cmd_flyaround,
+    "flyaround": _cmd_flyaround, "spritecap": _cmd_spritecap,
 }
 
 if __name__ == "__main__":

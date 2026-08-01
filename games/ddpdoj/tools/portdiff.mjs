@@ -23,6 +23,7 @@ import { createHash } from 'node:crypto';
 import { Game } from '../src/main.js';
 import { stateVector, CLAIMED, OPTION_COLUMNS, MASKED } from '../src/state.js';
 import { breakage } from './breakage.mjs';
+import { CLAMP_ORDER } from '../src/player.js';
 
 function readTsv(path) {
   const lines = readFileSync(path, 'utf8').trim().split(/\r?\n/);
@@ -53,6 +54,10 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
     videoFrame: Number(start.vf),
     budgetUnits: opts.budgetUnits,
   });
+  // `CLAMP_ORDER` is a module-level mutable switch, so an in-process caller that
+  // ran `--break clamp-first` and then a clean run would carry the mutation
+  // (`04-review.md` 8).  Reset it on EVERY run, not only inside breakage().
+  CLAMP_ORDER.value = 'rom';
   if (opts.break) breakage(opts.break, game);
 
   const pokes = (opts.poke ?? '').split(',').filter(Boolean).map((kv) => {
@@ -186,6 +191,13 @@ function main() {
       + `recorded): ${r.pokes.map(([a, v]) => `$${a.toString(16).toUpperCase()}`
       + `=$${v.toString(16).toUpperCase()}`).join(' ')}`);
   }
+  // ALLOCATION EVENTS. Empty is the expected result on a scenario that spawns
+  // nothing, and printing the empty line is the point: a counter that is only
+  // shown when it is non-zero cannot be told from a counter nobody installed.
+  console.log(`ALLOC events ($24111E/$241182/$2411E2/$241238): `
+    + (r.game.allocEvents.size
+      ? [...r.game.allocEvents].map(([k, n]) => `${k}=${n}`).join(' ')
+      : 'none -- no object was created, evicted or killed in this window'));
   console.log(`WALLHITS ${r.game.wallHits.length} ($261126) `
     + `[${[...new Set(r.game.wallHits.map((w) => w.which))].join(', ')}]`);
   if (r.vfSkew.length) {

@@ -77,6 +77,7 @@ export class Game {
     this.armedVblanks = opts.seedArm ?? 1;
     this.ram.setU8(RAM.semaphore, this.armedVblanks);
     this.wallHits = [];
+    this.allocEvents = new Map();
     this.frozen = FROZEN_GLOBALS.map(([a, why]) => ({
       addr: a, value: this.ram.u16(a), why,
     }));
@@ -96,10 +97,14 @@ export class Game {
         this.wallHits.push({ lf: this.logicFrame + 1, which });
         if (this.ram.u16(0x81317a) !== 0) this.ram.setU16(0x81316c, 0);
       },
-      queueNotEmpty: (addr, what) => unreached(addr,
-        `${what} -- wave 4 ports neither the allocator ($241182) nor the `
-        + `priority insert ($24111E), whose memmove DESTROYS slot 19 when the `
-        + `table is full and silently drops the spawn when it is not reachable`),
+      // WAVE 5: the allocator is ported (src/objalloc.js).  Every non-OK
+      // outcome -- create-queue full, no slot low enough, slot 19 evicted by a
+      // priority insert, kill queue full -- is COUNTED and printed, because the
+      // brief calls allocation failure gameplay and a silently-handled failure
+      // is exactly what that sentence forbids.
+      allocEvent: (kind, n) => {
+        this.allocEvents.set(kind, (this.allocEvents.get(kind) ?? 0) + n);
+      },
     };
   }
 
@@ -110,7 +115,18 @@ export class Game {
     let p = u16(this.ram.u16(RAM.mod3Phase) + 1);                   // $23BE9A
     if (p === 3) p = 0;                                             // $23BEA0/$23BEAC
     this.ram.setU16(RAM.mod3Phase, p);
-    this.ram.setU16(RAM.frameCounterCopy, this.ram.u16(RAM.frameCounter)); // $23BEB2
+    // $23BEB2..$23BEE0 -- THREE derived phase counters, each a COPY of
+    // $80390A followed by its own mask.  Wave 4 ported the first copy and none
+    // of the three masks; `04-review.md` 4 measured the result ($803910 =
+    // 3501 against the board's 1, $803912/$803914 never written).  The masks
+    // are what stage and enemy scripts key off, so this is a wave-5 blocker,
+    // not a tidy-up: `c3910`/`c3912`/`c3914` are compared columns from now on
+    // and the fly-around scenario is RED without these three lines (measured --
+    // see the worklog).
+    const c = this.ram.u16(RAM.frameCounter);
+    this.ram.setU16(RAM.frameCounterMod4, c & 0x3);    // $23BEB2 / $23BEBC
+    this.ram.setU16(RAM.frameCounterMod8, c & 0x7);    // $23BEC4 / $23BECE
+    this.ram.setU16(RAM.frameCounterMod16, c & 0xf);   // $23BED6 / $23BEE0
   }
 
   /** $23C212 -- main-loop call #5.  See framesync.js: it is a five-way
