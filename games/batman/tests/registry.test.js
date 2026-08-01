@@ -67,13 +67,39 @@ for (const g of registry) {
     }
     assert.equal(typeof m.year, 'number', 'year is a number');
 
-    // rom: a FILENAME, never a path. The ROM stays at the repo root this
-    // workflow; the manifest records which cartridge this port was measured
-    // against so a second game knows where to put its own.
-    assert.equal(typeof m.rom.file, 'string', 'rom.file is a string');
-    assert.ok(!m.rom.file.includes('/'), 'rom.file is a filename, not a path');
-    assert.match(m.rom.sha1, /^[0-9a-f]{40}$/, 'rom.sha1 is a sha1');
-    assert.equal(typeof m.rom.bytes, 'number', 'rom.bytes is a number');
+    // rom: TWO legal shapes, because an arcade board is not a cartridge.
+    //
+    //   CARTRIDGE  rom.file + rom.sha1 + rom.bytes   (Batman .gb, Gradius .nes)
+    //   MAME SET   rom.set + rom.files[]             (DaiOuJou, IGS PGM)
+    //
+    // This test asserted the cartridge shape only, and DaiOuJou's arrival broke
+    // it -- correctly. A PGM board has ten ROMs and no single file or sha1 to
+    // name, so `rom.file` would have to be invented to satisfy the schema, and
+    // an invented field is worse than an absent one. The fix is to teach the
+    // schema the second shape, NOT to loosen the first: each branch below is as
+    // strict as the original was.
+    if (typeof m.rom.set === 'string') {
+      assert.ok(m.rom.set.length, 'rom.set is not empty');
+      assert.ok(!m.rom.set.includes('/'), 'rom.set is a set name, not a path');
+      assert.ok(Array.isArray(m.rom.files) && m.rom.files.length,
+        'a MAME set names the ROMs it is made of');
+      for (const f of m.rom.files) {
+        assert.equal(typeof f, 'string', 'rom.files entries are strings');
+        assert.ok(!f.includes('/'), `rom.files entry ${f} is a filename, not a path`);
+      }
+      // No sha1 here ON PURPOSE. MAME decrypts the program in place and
+      // simulates the undumped IGS027A, so "the binary" is a decrypted image
+      // plus a simulated device -- see games/ddpdoj/README.md. A single hash
+      // would have to say WHICH, and this manifest does not claim one.
+    } else {
+      // The ROM stays at the repo root this workflow; the manifest records
+      // which cartridge this port was measured against so a second game knows
+      // where to put its own.
+      assert.equal(typeof m.rom.file, 'string', 'rom.file is a string');
+      assert.ok(!m.rom.file.includes('/'), 'rom.file is a filename, not a path');
+      assert.match(m.rom.sha1, /^[0-9a-f]{40}$/, 'rom.sha1 is a sha1');
+      assert.equal(typeof m.rom.bytes, 'number', 'rom.bytes is a number');
+    }
 
     // display: the host takes the screen size and the frame rate FROM THE
     // MANIFEST. Both used to be baked into index.html.
@@ -85,6 +111,16 @@ for (const g of registry) {
     assert.ok(m.code && typeof m.code === 'object', 'code block present');
     for (const [key, rel] of Object.entries(m.code)) {
       if (rel === null) continue;          // declared, not written yet
+      // `<thing>Note` is PROSE about the sibling key, not a path. The
+      // convention already exists elsewhere in these manifests -- `romNote`,
+      // `frameHzNote`, `entryNote` -- and this loop did not know about it, so
+      // `code.pageNote` was checked for existence as a filename and failed.
+      // Skipping by suffix keeps the loop strict about everything that IS a
+      // path; a note is still required to be a string below.
+      if (/Note$/.test(key)) {
+        assert.equal(typeof rel, 'string', `code.${key} is prose, so a string`);
+        continue;
+      }
       assert.equal(typeof rel, 'string', `code.${key} is a string`);
       assert.ok(!rel.startsWith('/') && !rel.startsWith('.'),
         `code.${key} is relative to the game dir, with no leading . or /`);
