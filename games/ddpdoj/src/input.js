@@ -36,6 +36,25 @@ import { RAM } from './machine.js';
 /** `ror.w #1` -- bit 0 rotates into bit 15. */
 export const ror16 = (v) => (((v & 1) << 15) | (v >>> 1)) & 0xffff;
 
+/**
+ * THE INVERSE, for a live keyboard (wave 6's demo page).  A replay feeds the
+ * RECORDED port word and never comes near this function; an interactive player
+ * has to synthesise one.
+ *
+ * `p1raw` bit b = NOT (port bit (b+1)&15), from `mirrorsFromPort` below, so a
+ * pressed button b CLEARS port bit (b+1)&15 of an all-ones word.  Checked
+ * against the board's own measurements (`machine.js` BIT, measured by driving
+ * each bit and watching which clamp answered): 1P Start alone -> $FFFE ->
+ * p1raw $8000; P1 Button 3 held -> $FF7F -> p1raw $0040.
+ *
+ * @param {Iterable<number>} bits  BIT.up / BIT.b1 / ... values that are held
+ */
+export function portWordFromBits(bits) {
+  let w = 0xffff;
+  for (const b of bits) w = (w & ~(1 << ((b + 1) & 15))) & 0xffff;
+  return w;
+}
+
 /** $13D46C..$13D476 exactly: the P1 and P2 mirrors from one port word. */
 export function mirrorsFromPort(portWord) {
   const w = portWord & 0xffff;

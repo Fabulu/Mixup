@@ -264,6 +264,29 @@ here — `sampledump.py` must keep reporting and skipping them, and
 `rip/sound/ics.tsv` now holds every register write in order for whoever picks it
 up. **UNRESOLVED, deliberately, rather than guessed.**
 
+## 5a. TWO HOLES IN THIS GATE'S CORPUS, found in wave 6
+
+The gate above is green and its decoder is bit-exact. Wave 6 built a second gate
+over the PORT's JavaScript renderer (`NOTES-render.md`) and, in red-validating
+it, measured two rules that **this** corpus does not exercise. Neither is a
+defect in the decoder; both are defects in the corpus, and they applied to the
+Python gate exactly as much as to the JS one.
+
+1. **No palette fade.** The largest palette movement across all 32 frames dumped
+   by `pgm.py gfx` is **3 words of 2,560**. So frame N's palette and frame N+1's
+   are the same picture, and the measured "the palette that applies is N+1's"
+   offset (§ `00-recon-assets.md` §4) is untested here: a decoder that used the
+   WRONG palette frame scores 100.0000 % on this corpus. Wave 6's
+   `PROBE_PALDELTA` census found a real fade at lf1002..1016 (188-217 words per
+   frame) and a cut at lf1204 (403 words); `pgm.py pixslice` requires one.
+2. **No sprite record has its `pri` bit set** — 0 of 1,397 records over the same
+   32 frames — so `pgm_draw_pix`'s sprite-vs-background priority test is
+   exercised by nothing at all. Wave 6 drives it by intervention
+   (`PROBE_PRICOV`, two rows of the same sprite at `pri=0` and `pri=1` over
+   gameplay background) and measures the difference at 1,301 pixels.
+
+If `gfxgate.py`'s corpus is ever widened, widen it towards those two.
+
 ## 6. What is NOT covered
 
 * **Mixed x/y zoom levels.** The coverage grid uses the same `(z, grow)` on both

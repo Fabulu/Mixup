@@ -55,6 +55,12 @@
 --   PROBE_GFX      directory for IGS023 state dumps (ROM-DERIVED -- gitignored)
 --   PROBE_GFXAT    "lf,lf,..." -- dump a frame PAIR at each of those logic frames
 --   PROBE_ZOOMCOV  "startLF[,perFrame]" -- THE ZOOM COVERAGE POKER, see below
+--   PROBE_PALDELTA "N" -- census the N video frames whose palette moved most,
+--                  so the wave-6 pixel gate's FADE frames are chosen by
+--                  measurement (see PALETTE-DELTA CENSUS below)
+--   PROBE_PRICOV   "startLF" -- THE PRIORITY COVERAGE POKER: two rows of the
+--                  same sprite, pri=0 and pri=1, over gameplay background.
+--                  The natural corpus contains NO pri=1 record at all.
 --   PROBE_WATCH    "name=hex[:w|:l],..." -- EXTRA compared columns, appended
 --                  after the standard ones.  OPT-IN and empty by default, so a
 --                  run without it produces byte-identical output to wave 3's
@@ -517,6 +523,60 @@ local function gfx_dump()
 end
 
 -- ============================================================================
+-- PALETTE-DELTA CENSUS  (wave 6)   PROBE_PALDELTA="N" -> report the top N
+-- ============================================================================
+-- WHY THIS EXISTS.  `00-recon-assets.md` §4 measured that the palette which
+-- applies to the picture is frame N+1's, not frame N's -- and that ONLY A
+-- PALETTE-FADE FRAME EXPOSES THE DIFFERENCE.  Wave 3's 16-pair corpus has a
+-- maximum palette delta of THREE WORDS, so on that corpus both choices score
+-- 100.0000 % and the rule is untested (measured in wave 6: `pixgate.mjs
+-- --mutate pal-same-frame` stays GREEN on the wave-3 dumps).  A fade frame has
+-- to be found before it can be dumped, and guessing which logic frame is a
+-- fade is exactly the kind of guess this project does not make.  So: census it.
+--
+-- Cost: 2,560 palette words read per VIDEO frame.  Opt-in for that reason.
+-- ============================================================================
+local PALDELTA_N = tonumber(os.getenv("PROBE_PALDELTA") or "0") or 0
+local pd_prev, pd_top = nil, {}
+
+local function paldelta_tick()
+  if PALDELTA_N <= 0 then return end
+  local n = PAL.size // 2
+  local cur = {}
+  local d = 0
+  for i = 0, n - 1 do
+    local v = PAL:read_u16(i * 2)
+    cur[i] = v
+    if pd_prev and pd_prev[i] ~= v then d = d + 1 end
+  end
+  if pd_prev then
+    pd_top[#pd_top + 1] = { vf = SCR:frame_number(), lf = lf, d = d }
+  end
+  pd_prev = cur
+end
+
+-- ============================================================================
+-- PRIORITY COVERAGE  (wave 6)   PROBE_PRICOV="startLF"
+-- ============================================================================
+-- MEASURED FIRST, THEN BUILT.  Over the whole wave-3 gfx corpus -- 1,397 sprite
+-- records across 32 dumped frames -- **not one record has its `pri` bit set**
+-- (counted in wave 6 from the dumped `spritebuffer` shares).  So the
+-- sprite-versus-background priority rule in `pgm_draw_pix` is exercised by
+-- nothing in that corpus, in the Python decoder either: `pixgate.mjs --mutate
+-- pri-ignore` stays GREEN on it.  A rule no frame tests is a rule the gate does
+-- not cover, whatever its percentage says.
+--
+-- So it is driven by INTERVENTION, the same shape as the zoom coverage poker
+-- above and for the same reason: a display list is written into the game's own
+-- RAM at the sample point, where it survives to the vblank DMA.  Half the grid
+-- carries pri=0 and half pri=1, over gameplay background, and the SAME sprite
+-- appears in both halves so the only difference between the two rows is the
+-- bit under test.
+-- ============================================================================
+local PRICOV_START = tonumber(os.getenv("PROBE_PRICOV") or "0") or 0
+local pricov = { armed = false, batch = 0, hold = 0, nbatch = 4 }
+
+-- ============================================================================
 -- bg_scale WATCH  (wave 3 item 5)
 -- ============================================================================
 -- MAME does NOT implement the IGS023's bg_scale register -- igs023_video.cpp:193
@@ -738,6 +798,52 @@ local function zc_write_batch()
   if zc.hold >= 2 then zc.hold = 0; zc.batch = zc.batch + 1 end
 end
 
+-- PRIORITY COVERAGE, the writer.  Same source-stream harvest as zoomcov (the
+-- sprite streams cannot be enumerated statically -- `NOTES-assets.md` §3 -- so
+-- the poker borrows one the game is already drawing).
+--
+-- 12 records: two rows of six, IDENTICAL except for word 2's bit 7.
+--   row 0  pri=0  -- `pgm_draw_pix` draws it unconditionally
+--   row 1  pri=1  -- it must LOSE every pixel the BG layer already wrote
+-- Four batches walk the pair of rows down the screen, so the comparison is not
+-- decided by one band of background.
+local function pricov_write_batch()
+  local src = zc_pick_source()
+  if not src then
+    p("FAIL pricov: no live sprite with width<=2 and 8<=height<=32 to harvest "
+      .. "as the source stream; start later")
+    return 0
+  end
+  local n = 0
+  local yrow = { 4 + 52 * pricov.batch, 30 + 52 * pricov.batch }
+  for row = 0, 1 do
+    for gx = 0, 5 do
+      local x = 8 + 72 * gx
+      local y = yrow[row + 1]
+      local b = n * 10
+      -- no zoom on either axis: zom=0 AND grow=1 (NOT zom=0 alone -- that
+      -- selects zoom-table entry 0, which is a real zoom).
+      RAM:write_u16(b + 0, (1 << 15) | (x & 0x7ff))
+      RAM:write_u16(b + 2, (1 << 15) | (y & 0x3ff))
+      RAM:write_u16(b + 4, (((src.color & 0x1f) << 8) | (row << 7)
+                            | ((src.offs >> 16) & 0x7f)) & 0x7fff)
+      RAM:write_u16(b + 6, src.offs & 0xffff)
+      RAM:write_u16(b + 8, ((src.wid & 0x3f) << 9) | (src.hgt & 0x1ff))
+      n = n + 1
+    end
+  end
+  RAM:write_u16(n * 10 + 8, 0)            -- word4 & 0x7fff == 0 terminates
+  p("PRICOV batch=%d/%d sprites=%d pri0_y=%d pri1_y=%d offs=$%06X vf=%d lf=%d hold=%d",
+    pricov.batch + 1, pricov.nbatch, n, yrow[1], yrow[2], src.offs,
+    SCR:frame_number(), lf, pricov.hold)
+  -- Held for two logic frames, for the reason zoomcov records: the pair is
+  -- (state at V, pixels at V+1), so a batch that changes every logic frame is
+  -- only ever the pixels member of a pair and is never compared.
+  pricov.hold = pricov.hold + 1
+  if pricov.hold >= 2 then pricov.hold = 0; pricov.batch = pricov.batch + 1 end
+  return n
+end
+
 -- ---------------------------------------------------------------- state
 local irq4, irq6, rel, spin = 0, 0, 0, 0
 local prev_t, rel_t = 0, 0
@@ -915,6 +1021,10 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x803940, 0x803941, "sem", function(off
         zc_write_batch()
         gfx_pending = 2
       end
+    end
+    -- PRIORITY COVERAGE, poked at the same instant and for the same reason.
+    if PRICOV_START > 0 and lf >= PRICOV_START and pricov.batch < pricov.nbatch then
+      if pricov_write_batch() > 0 then gfx_pending = 2 end
     end
     local ok, e = pcall(emit, pc)
     if not ok then p("LUA_ERROR emit %s", tostring(e)) end
@@ -1291,6 +1401,19 @@ local function finish()
     bgscale.writes, bgscale.bad, hist(bgscale.vals), hist(bgscale.seen))
   if bgscale.bad > 0 then p("CENSUS bg_scale_bad_pcs %s", hist(bgscale.pcs)) end
   if GFXDIR then p("CENSUS gfx_dumps=%d dir=%s", gfx_n, GFXDIR) end
+  -- THE PALETTE-DELTA CENSUS.  Reported as (video frame, logic frame, words
+  -- changed since the previous video frame), biggest first.  This is how the
+  -- wave-6 gate's fade frames are CHOSEN rather than guessed.
+  if PALDELTA_N > 0 then
+    table.sort(pd_top, function(a, b) return a.d > b.d end)
+    local parts = {}
+    for i = 1, math.min(PALDELTA_N, #pd_top) do
+      parts[#parts + 1] = string.format("vf%d/lf%d:%d",
+        pd_top[i].vf, pd_top[i].lf, pd_top[i].d)
+    end
+    p("CENSUS paldelta_top%d words_of_%d [%s]", PALDELTA_N, PAL.size // 2,
+      table.concat(parts, " "))
+  end
   if snd then
     -- THE Z80 PROGRAM BLOB.  The Z80 has 64 KiB of RAM and no ROM, so whatever
     -- is in that RAM now was uploaded from the 68k ROM. Dump it, then take a
@@ -1542,6 +1665,7 @@ SUBS[#SUBS + 1] = emu.add_machine_frame_notifier(function()
       ZOOM:write_u16(z * 4 + 2,  ZC_SYNTH[z + 1] & 0xffff)
     end
   end
+  paldelta_tick()
   if GFXDIR and gfx_pending > 0 then
     gfx_pending = gfx_pending - 1
     local ok, e = pcall(gfx_dump)

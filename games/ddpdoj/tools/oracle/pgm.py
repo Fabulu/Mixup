@@ -59,6 +59,11 @@ Commands
   objdriver     THE OBJECT DRIVER: the derived table + a measured slot census
   overrun       FORCE AN OVERRUN: the 0-nop control, then an injected-load sweep
   gfx           THE GFX GATE: >=12 frame pairs, our decoder vs MAME, 100.0000 %
+  pixslice      THE PIXEL GATE FOR THE PORT'S JS RENDERER (wave 6): a dense
+                stretch, a palette FADE, a >=90-sprite frame, and the
+                sprite-vs-BG priority rule driven by intervention
+  pixdemo       capture 161 consecutive frames + identify the ship's records
+  demogate      the demo path end to end: the PORT's player state -> pixels
   zoomcov       ZOOM COVERAGE: all 16 table entries x grow/shrink x axes x flips
   sprites       THE SPRITE HARVEST: every offs the game used, for the atlas
   sound         THE SOUND MAP: mailbox -> keyon, the Z80 blob, ICS in order
@@ -640,9 +645,10 @@ GFX_MIN_PAIRS = 12
 
 
 def _gfx_run(tag: str, points: str, frames: int, *, zoomcov: str = "",
-             zoomsynth: bool = False, buttons: str | None = None) -> Path:
+             zoomsynth: bool = False, buttons: str | None = None,
+             outdir: Path | None = None) -> Path:
     """One MAME run that leaves IGS023 state+framebuffer pairs on disk."""
-    d = RIP / f"gfx-{tag}"
+    d = outdir if outdir is not None else RIP / f"gfx-{tag}"
     if d.exists():
         shutil.rmtree(d)         # never let a previous run's dumps be counted
     d.mkdir(parents=True, exist_ok=True)
@@ -1088,6 +1094,22 @@ def _cmd_check(argv: list[str]) -> int:
                             OUT / "w4" / "fly-around.seed2000.bin",
                             "--seed-lf", 2000, "--poke", "810424=FF"))
         stage("zoom coverage (+ RED)", lambda: sub(__file__, "zoomcov"))
+        # WAVE 6.  The PYTHON decoder being bit-exact says nothing about the JS
+        # the browser runs, so the port's renderer has its own gate over its own
+        # corpus (a dense stretch, a palette fade, a >=90-sprite frame, and the
+        # priority rule driven by intervention because no natural frame uses it).
+        stage("pixel gate: the port's JS renderer vs MAME",
+              lambda: sub(__file__, "pixslice"))
+        stage("pixel gate RED (9 mutations)",
+              lambda: sub(__file__, "pixslice", "--reuse", "--mutate", "all"))
+        # And the demo path end to end: the PORT's player state -> pixels.
+        stage("demo capture + ship identification (+ splice round-trip)",
+              lambda: sub(__file__, "pixdemo"))
+        stage("demo gate: the port drives the ship, pixel-exact",
+              lambda: sub(__file__, "demogate"))
+        for m in ("off-by-one", "frozen-player", "no-input"):
+            stage(f"demo gate RED [{m}]",
+                  lambda m=m: sub(__file__, "demogate", "--break", m))
         stage("determinism gate", lambda: sub(__file__, "gate"))
 
     nf = sum(1 for _, s, _ in results if s == "FAIL")
@@ -1640,6 +1662,207 @@ def _cmd_flyaround(argv: list[str]) -> int:
     return res.returncode
 
 
+# --------------------------------------------------------------------------- wave 6
+# THE PIXEL SLICE.  The corpus below is not a round number; each range is here
+# because something was MEASURED at it.
+#
+#   PIX_FADE   `PROBE_PALDELTA=24` over the gate scenario reported a SUSTAINED
+#              palette movement of 188-217 words (of 2,560) per video frame
+#              across lf 1002..1016 -- a fade, not a cut.  Wave 3's whole 16-pair
+#              corpus peaks at THREE words, which is why `pixgate.mjs --mutate
+#              pal-same-frame` stays green on it: the measured palette
+#              sample-point offset (00-recon-assets.md §4) is untested there.
+#   PIX_CUT    the same census's top two rows, lf1204/lf1205 at 403 and 399
+#              words -- a hard cut, a different shape of palette event.
+#   PIX_DENSE  61 CONSECUTIVE logic frames of gameplay.  The plan asks for
+#              "every frame of one dense stretch"; wave 3's points are 100+
+#              frames apart and cannot see a one-frame transition at all.
+#              Chosen at 2500 because the gfx gate measured 111 sprites at
+#              f2536 -- the busiest natural frame in the corpus.
+#   PIX_PRICOV the sprite-vs-BG priority rule, by intervention.  MEASURED
+#              FIRST: of 1,397 sprite records in wave 3's 32 dumped frames,
+#              **zero** have the pri bit set, so nothing in the natural corpus
+#              exercises `pgm_draw_pix`'s priority test.
+PIX_FADE = range(995, 1021)
+PIX_CUT = range(1198, 1211)
+PIX_DENSE = range(2500, 2561)
+PIX_PRICOV_FROM = 2200
+PIX_MIN_PAIRS = 60
+PIX_MIN_SPRITES = 90
+PIX_MIN_PALDELTA = 100
+PIX_MIN_DENSE = 40
+
+
+def _pix_points() -> str:
+    return ",".join(str(x) for x in
+                    (list(PIX_FADE) + list(PIX_CUT) + list(PIX_DENSE)))
+
+
+def _cmd_pixslice(argv: list[str]) -> int:
+    """THE PIXEL GATE FOR THE PORT'S RENDERER (wave 6).
+
+    `pgm.py gfx` proves the PYTHON decoder bit-exact.  The port ships
+    JAVASCRIPT, and a Python decoder that is 100 % says nothing about the JS the
+    browser runs, so this is a second gate over `games/ddpdoj/src/render/` --
+    the same modules `index.html` imports, no re-implementation.
+
+      pgm.py pixslice                 dump the wave-6 corpus, then gate it
+      pgm.py pixslice --reuse         gate the dumps already on disk
+      pgm.py pixslice --mutate NAME   RED VALIDATION
+      pgm.py pixslice --mutate all    every mutation; ALL must go red
+      pgm.py pixslice --paldelta      re-run the palette-delta census that
+                                      CHOSE the fade frames
+    """
+    import subprocess as sp
+    if "--paldelta" in argv:
+        r = trace(OUT / "paldelta.tsv", frames=2600, meter=False,
+                  extra_env={"PROBE_PALDELTA": "24"})
+        check(r, "pixslice/paldelta")
+        for l in r.find("CENSUS paldelta"):
+            print("  " + l)
+        return 0
+    reuse = "--reuse" in argv
+    mut = None
+    for i, a in enumerate(argv):
+        if a == "--mutate" and i + 1 < len(argv):
+            mut = argv[i + 1]
+
+    slice_dir, pri_dir = RIP / "pix-slice", RIP / "pix-pri"
+    if not reuse and mut is None:
+        _gfx_run("pixslice", _pix_points(), 2600, outdir=slice_dir)
+        # The priority poker runs SEPARATELY.  Mixing it into the natural
+        # corpus would put a poked display list in the same directory as the
+        # frames whose whole value is that the game built them itself.
+        d = pri_dir
+        if d.exists():
+            shutil.rmtree(d)
+        d.mkdir(parents=True, exist_ok=True)
+        defs = scenarios()
+        s = next(x for x in defs["scenarios"] if x["name"] == defs["gate"])
+        r = trace(OUT / "pix-pri.tsv", frames=PIX_PRICOV_FROM + 40,
+                  buttons=build_script(defs, s), meter=False,
+                  extra_env={"PROBE_GFX": str(d),
+                             "PROBE_PRICOV": str(PIX_PRICOV_FROM)})
+        check(r, "pixslice/pricov")
+        for l in r.find("PRICOV "):
+            print("  " + l)
+        print(f"  {len(r.find('GFXDUMP '))} state+framebuffer dumps in {d}")
+    for d in (RIP / "gfx-gate", slice_dir, pri_dir):
+        if not d.exists():
+            raise SystemExit(f"{d} missing -- run `pgm.py pixslice` without "
+                             f"--reuse (and `pgm.py gfx` for gfx-gate)")
+    if not ROMDIR.exists():
+        raise SystemExit(f"{ROMDIR} missing -- run `python "
+                         f"games/ddpdoj/tools/assets.py extract` first")
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("node is not on PATH -- the port's renderer is JS")
+    cmd = [node, str(TOOLS / "pixgate.mjs"), "--rom", str(ROMDIR),
+           "--dump", str(RIP / "gfx-gate"), "--dump", str(slice_dir),
+           "--dump", str(pri_dir),
+           "--min-pairs", str(PIX_MIN_PAIRS),
+           "--min-sprites", str(PIX_MIN_SPRITES),
+           "--min-paldelta", str(PIX_MIN_PALDELTA),
+           "--min-dense", str(PIX_MIN_DENSE)]
+    if mut:
+        cmd += ["--mutate", mut]
+    if mut and mut != "all":
+        cmd += ["--quiet"]
+    rc = sp.run(cmd).returncode
+    if mut and mut != "all":
+        print(f"EXPECTED-RED [{mut}]: " +
+              ("diverged, as it must" if rc else
+               "STILL 100 % -- the gate cannot see this mutation"))
+        return 0 if rc else 1
+    return rc
+
+
+PIX_DEMO = range(2000, 2160)      # the fly-around scenario's first 160 logic
+# frames from its seed, i.e. exactly the window wave 4 compares 0-divergent.
+
+
+def _cmd_pixdemo(argv: list[str]) -> int:
+    """THE BROWSER DEMO'S CAPTURE (wave 6).
+
+    The port does not build the display list -- main-loop call #4 ($23D2AE) is
+    unported and so are 18 of the 20 top-level object handlers -- so the demo
+    page cannot draw a whole frame out of the port's own state, and this command
+    does not pretend otherwise.  What it captures is:
+
+      * 160 CONSECUTIVE frames of board video state from the `fly-around`
+        scenario, from its seed at lf2000: the same window wave 4 compares at 0
+        divergent frames,
+      * the main-RAM seed at lf2000, which is what the port's `Game` starts
+        from, and
+      * `py`/`px` per logic frame, so `pixpack.mjs` can IDENTIFY the ship's
+        display-list records by correlation rather than by eye.
+
+    `vfmap.tsv` in the dump directory records the (video frame -> logic frame)
+    join, because the pair offset means a filename alone does not carry it.
+    """
+    defs = scenarios()
+    s = next(x for x in defs["scenarios"] if x["name"] == "fly-around")
+    d = RIP / "pix-demo"
+    if d.exists():
+        shutil.rmtree(d)
+    d.mkdir(parents=True, exist_ok=True)
+    out = OUT / "w6"
+    out.mkdir(parents=True, exist_ok=True)
+    seed_lf = s.get("seed", 2000)
+    seed_bin = out / f"demo.seed{seed_lf}.bin"
+    tsv = out / "demo.tsv"
+    r = trace(tsv, frames=max(PIX_DEMO) + 40, buttons=build_script(defs, s),
+              build="B", meter=False,
+              extra_env={"PROBE_WATCH": w4_watch(),
+                         # the replay input word, one per LOGIC frame -- without
+                         # it `demogate.mjs` would have to feed the port the
+                         # board's positions, i.e. the answer
+                         "PROBE_PORTIN": "1",
+                         "PROBE_POKE": s.get("poke", ""),
+                         "PROBE_POKE_FROM": str(s.get("pokeFrom", 0)),
+                         "PROBE_RAMDUMP": f"{seed_lf}:{seed_bin}",
+                         "PROBE_GFX": str(d),
+                         "PROBE_GFXAT": ",".join(str(x) for x in PIX_DEMO)})
+    check(r, "pixdemo")
+    rows = ["vf\tlf"]
+    for l in r.find("GFXDUMP "):
+        f = dict(p.split("=", 1) for p in l.split()[1:3])
+        rows.append(f"{f['vf']}\t{f['lf']}")
+    (d / "vfmap.tsv").write_text("\n".join(rows) + "\n", encoding="utf8")
+    print(f"  {len(rows) - 1} dumps in {d}; seed {seed_bin}")
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("node not on PATH")
+    return subprocess.run(
+        [node, str(TOOLS / "pixpack.mjs"), "--dump", str(d), "--tsv", str(tsv),
+         "--seed", str(seed_bin), "--out", str(RIP / "web")]).returncode
+
+
+def _cmd_demogate(argv: list[str]) -> int:
+    """THE DEMO PATH, GATED (wave 6).  Runs `web/app.js`'s pipeline headlessly:
+    the port's Game driven by the board's own recorded input words, the ship's
+    display-list records moved to the PORT's position, rendered by the port's
+    renderer, and compared pixel for pixel against MAME's framebuffer.
+
+      pgm.py demogate                 the gate
+      pgm.py demogate --break NAME    RED VALIDATION (off-by-one, frozen-player,
+                                      no-input); the gate must go red
+    """
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("node not on PATH -- the port's renderer is JS")
+    web, dump = RIP / "web", RIP / "pix-demo"
+    tsv = OUT / "w6" / "demo.tsv"
+    for p in (web / "capture.json", dump, tsv):
+        if not p.exists():
+            raise SystemExit(f"{p} missing -- run `pgm.py pixdemo` first")
+    cmd = [node, str(TOOLS / "demogate.mjs"), "--rom", str(ROMDIR),
+           "--web", str(web), "--dump", str(dump), "--tsv", str(tsv)]
+    if "--break" in argv:
+        cmd += ["--break", argv[argv.index("--break") + 1]]
+    return subprocess.run(cmd).returncode
+
+
 COMMANDS = {
     "verify": _cmd_verify, "landmarks": _cmd_landmarks, "trace": _cmd_trace,
     "snap": _cmd_snap, "seed": _cmd_seed, "scen": _cmd_scen, "gate": _cmd_gate,
@@ -1649,6 +1872,8 @@ COMMANDS = {
     "gfx": _cmd_gfx, "zoomcov": _cmd_zoomcov, "check": _cmd_check,
     "sprites": _cmd_sprites, "sound": _cmd_sound,
     "flyaround": _cmd_flyaround, "spritecap": _cmd_spritecap,
+    "pixslice": _cmd_pixslice, "pixdemo": _cmd_pixdemo,
+    "demogate": _cmd_demogate,
 }
 
 if __name__ == "__main__":

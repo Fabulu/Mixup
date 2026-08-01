@@ -1,7 +1,28 @@
-# DoDonPachi DaiOuJou — phase 3, preparatory only
+# DoDonPachi DaiOuJou
 
-**Status: no ROM, no code, no port.** This folder exists to answer one question ahead of
-time, because answering it late would be expensive:
+> ## STATUS, corrected 2026-08-01 (wave 6)
+>
+> **The line below — "no ROM, no code, no port" — was true when this file was
+> written and is not true now.** The rest of the page is the phase-3 capability
+> record and is kept because it is still the argument for how the oracle was
+> chosen; read this box first.
+>
+> | | |
+> |---|---|
+> | oracle | `tools/oracle/pgm.py`, pinned to VERSION-B, determinism a red-validated gate — `NOTES-oracle.md` |
+> | assets | decode bit-exact against MAME, gated, exported with a manifest — `NOTES-assets.md` |
+> | port | `src/` — main loop, ISR, counters, object driver + budget, allocator, THE PLAYER. `pgm.py flyaround`: **0 divergent frames, 34 columns, 2,200 logic frames** |
+> | renderer | `src/render/` — `pgm.py pixslice`: **13,647,872 / 13,647,872 pixels identical to MAME over 136 frame pairs**, 9 mutations RED — `NOTES-render.md` |
+> | demo | `index.html` (serve over HTTP, open `/games/ddpdoj/`). Needs ROM-derived files under `rip/` that are never committed. **The page has never been executed** — see `docs/worklog/ddpdoj/06-impl-pixel-slice.md` |
+> | NOT done | **enemies and all three weapons.** Wave 5 is BLOCKED: none of the five enemy handlers, four shot handlers or the bomb is translated, and each is a loud named throw carrying its ROM address |
+>
+> The plan and its wave-by-wave exit conditions: `PLAN-vertical-slice.md`.
+> The evidence for every number above: `docs/worklog/ddpdoj/`.
+
+## Phase 3, preparatory — the capability question, and how it was answered
+
+This folder existed first to answer one question ahead of time, because
+answering it late would be expensive:
 
 > **Can we build an oracle for this at all?**
 
@@ -96,5 +117,10 @@ running it and needs no ROM either.
 
 ## Where this sits
 
-`games/ddpdoj/` per the multi-game layout. It is **not** in `games/index.json` and will
-not be until there is something to boot.
+`games/ddpdoj/` per the multi-game layout. It is **still not** in
+`games/index.json`, and that is now a decision rather than a placeholder: the
+demo page cannot render a single pixel without 58 MiB of graphics ROM and a
+board capture, both of which live under the gitignored `rip/` and neither of
+which this repo will ever ship. A launcher tile that always fails is worse than
+no tile. Revisit when the port builds its own display list — main-loop call #4,
+`$23D2AE` — and stops needing the capture at all.

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DoDonPachi DaiOuJou (IGS PGM, Black Label) - Mixup vertical slice</title>
+<!--
+  STANDALONE, and DELIBERATELY HONEST ABOUT WHAT IT IS.
+
+  Serve the repo over HTTP (`python -m http.server 8000`) and open
+  /games/ddpdoj/. ES modules and the asset fetches both need a real origin;
+  file:// fails on CORS long before it reaches the renderer.
+
+  IT NEEDS ROM-DERIVED FILES THAT ARE NOT AND WILL NEVER BE IN THIS REPO:
+      games/ddpdoj/rip/rom/*          python games/ddpdoj/tools/assets.py extract
+      games/ddpdoj/rip/web/*          python games/ddpdoj/tools/oracle/pgm.py pixdemo
+      games/ddpdoj/rip/port/player.tables.json
+                                      python games/ddpdoj/tools/export-tables.py
+  `rip/` is gitignored twice over. 58 MiB of graphics ROM is fetched on load;
+  that is the whole IGS023 tile region plus both sprite regions, because a
+  sprite stream on this board cannot be random-accessed and therefore cannot be
+  trimmed to "just what this capture uses" without a second measurement.
+
+  WHAT IS AND IS NOT SIMULATED IS PRINTED ON THE PAGE. Do not remove that
+  banner. Wave 5 came back BLOCKED -- no enemy handler, no shot handler and no
+  bomb is translated -- so "shooting all three weapons", which the plan's wave-6
+  demo clause asks for, HAS NO PORT BEHIND IT. Pressing the fire keys moves the
+  ported cadence machine ($249B2C..$249BE2) and then hits a named throw at the
+  ship-type jump table. That is the honest state of the slice.
+-->
+<style>
+  :root { color-scheme: dark; }
+  html, body {
+    margin: 0; min-height: 100%; background: #07090c; color: #96a3b0;
+    font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    overscroll-behavior: none;
+  }
+  body { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 12px 28px; }
+  h1 { font-size: 15px; margin: 0; color: #d6e2ee; font-weight: 600; letter-spacing: .02em; }
+  h1 span { color: #6f7d8a; font-weight: 400; }
+  /* image-rendering: pixelated AND an integer scale -- a fractional scale puts
+     the canvas's 1:1 pixels on non-integer device pixels and the browser
+     resamples them. The Batman port shipped a dithered circle that looked like
+     tetris pieces because of exactly this. */
+  canvas { image-rendering: pixelated; display: block; background: #000;
+           border: 1px solid #1b232b; }
+  #stage { display: flex; align-items: center; justify-content: center; }
+  #hud { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+         max-width: 96ch; font-size: 12px; }
+  #hud b { color: #cfe0ef; font-weight: 600; }
+  .dim { color: #5d6b78; }
+  #banner { max-width: 92ch; border: 1px solid #23303c; border-left: 3px solid #c2703a;
+            padding: 9px 12px; background: #0b1015; }
+  #banner b { color: #e0b088; }
+  #banner code { color: #9fc7e8; }
+  #provenance { max-width: 92ch; color: #5d6b78; font-size: 11.5px; }
+  kbd { background: #161d24; border: 1px solid #2a343d;
+        border-radius: 3px; padding: 0 5px; color: #cfe0ef; }
+  #overlay { max-width: 80ch; }
+  #err { color: #ef8a8a; white-space: pre-wrap; font-size: 12px; }
+  a { color: #7fb4dd; }
+</style>
+</head>
+
+<h1>DoDonPachi DaiOuJou <span>&mdash; ddpdojblk VERSION-B (2002.10.07 BLACK VER), IGS PGM, 15625/264 Hz</span></h1>
+
+<div id="banner">
+<b>What you are looking at.</b>
+The <b>ship</b> &mdash; its position, velocity, tilt, clamps, speed modes and its two
+option pods &mdash; is computed <b>live by the port</b>, one logic frame per
+16.896&nbsp;ms, from the board's own arithmetic. That code compares
+<b>0 divergent frames against the board over 2,200 logic frames on 34 columns</b>
+(<code>pgm.py flyaround</code>).
+<b>Everything else in the picture is a replayed board capture</b>: the port does
+not build the display list &mdash; main-loop call&nbsp;#4 <code>$23D2AE</code> is
+unported, and so are 18 of the 20 top-level object handlers &mdash; so the
+background, the enemies and the HUD come from 161 captured frames of the
+<code>fly-around</code> scenario and loop.
+The <b>renderer</b> drawing all of it is the port's own JS, and it is
+<b>pixel-identical to MAME on 136 frame pairs, 13,647,872 of 13,647,872 pixels</b>
+(<code>pgm.py pixslice</code>).
+<b>There are no weapons</b>: wave 5 came back BLOCKED, no enemy or shot handler is
+translated, and the fire keys reach a named throw rather than a bullet.
+</div>
+
+<div id="stage"><canvas id="screen" width="224" height="448"></canvas></div>
+
+<div id="hud">
+  <span class="dim">
+    <kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> move &nbsp;
+    <kbd>Z</kbd> shot &nbsp; <kbd>X</kbd> bomb &nbsp; <kbd>C</kbd> auto &nbsp;
+    (the three buttons reach unported code)
+  </span>
+</div>
+
+<div id="provenance"></div>
+
+<div id="overlay">
+  <div id="status">loading&hellip;</div>
+  <div id="err"></div>
+</div>
+
+<script type="module" src="./web/app.js"></script>
+</html>
