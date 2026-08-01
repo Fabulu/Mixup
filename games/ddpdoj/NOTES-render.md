@@ -141,9 +141,14 @@ masks, the ISR model, the input mirrors and edges, the frame-sync governor, the
 object driver with its budget, and the player — position, velocity, tilt,
 clamps, speed modes, options.
 
-**Replayed:** everything else. Main-loop call #4 (`$23D2AE`, the display-list
-build) is unported and so are 18 of the 20 top-level object handlers, so the
-background, the enemies and the HUD come out of a 161-frame board capture.
+**Replayed:** everything else. Wave 11 ported main-loop call #4 (`$23D2AE`, the
+display-list build) WHOLE — the 29-bucket gather, the pre-emptive drop policy,
+the equality cap, the emit and the terminator, gated at **0 divergent frames
+over 1,901 build-B frames** by `pgm.py dlgate` — but the port has a simulated
+PRODUCER for exactly one of the thirty buckets (14, the shots), and 18 of the 20
+top-level object handlers are still unported. So the pipeline is real and empty:
+the background, the enemies and the HUD still come out of a 161-frame board
+capture.
 
 **Spliced:** the ship's and the two option pods' records are moved to the port's
 position. Which records those are was MEASURED by correlation, not chosen by

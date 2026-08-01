@@ -12,7 +12,10 @@ import assert from 'node:assert';
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { Unreached } from '../src/unported.js';
-import { SPRQ, enqueueShotSprite, resetSpriteQueueCounters } from '../src/spritequeue.js';
+import { SPRQ, enqueueShotSprite } from '../src/spritequeue.js';
+// WAVE 11: the counter reset is now the TAIL of main-loop call #4, not the only
+// part of it the port models -- src/displaylist.js.
+import { resetSpriteQueueCounters } from '../src/displaylist.js';
 import { RNG, draw } from '../src/rng.js';
 import { S, PS, PLAYER_SLOTS, shotHandlers, handler253BDA } from '../src/shots.js';
 import { SHOT, SHOT_HANDLERS } from '../src/weapons.js';
@@ -186,7 +189,12 @@ test('the gate compares the shot records and REPORTS what it cannot claim', () =
   // ...and these two are traced but NOT claimed, on purpose -- see the comment
   // in src/state.js.  A test that pins the classification is what stops a later
   // wave from quietly moving a red column into the reported bucket.
-  assert.deepEqual(REPORTED_COLUMNS, ['nshot', 'rng']);
+  // WAVE 11 added three more, and they are pinned by NAME here for the same
+  // reason: `b000`/`affe`/`affc` are call #4's budget arithmetic over ALL
+  // THIRTY buckets, and the port has a producer for one of them. They are
+  // compared byte-for-byte by `pgm.py dlgate`, which feeds the port the board's
+  // staged bytes, and reported-not-claimed anywhere else.
+  assert.deepEqual(REPORTED_COLUMNS, ['nshot', 'rng', 'b000', 'affe', 'affc']);
   for (const c of REPORTED_COLUMNS) assert.ok(!CLAIMED.includes(c));
   // the hit tap the gate fails on, and the wider one it only reports
   const ex = Object.fromEntries(EXEC_SPEC.map((e) => [e[0], e]));

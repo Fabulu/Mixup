@@ -1,5 +1,25 @@
 # WAVE 10 RECON 1/5 — the sprite request pipeline
 
+> **CORRECTED BY WAVE 11 — read
+> `docs/worklog/ddpdoj/11-impl-display-list-keystone.md` §2 before acting on
+> §2c, §5 item 7 or §7.5 of this document.** Three findings below did not
+> survive the port:
+> 1. **§2c and "seven things" item 7: THE TERMINATOR IS NEVER SKIPPED.**
+>    `$23D6E8 cmpi.w #$BC4,D1` does not compare the record count — D1 was
+>    reloaded with `$12` four instructions earlier by `$23D6DA`, the tag
+>    argument of a dead `bsr $240ADC`. Measured on 1,901 forced 251-record
+>    frames: the terminator write executed on every one.
+> 2. **§2c: 251 records carry FOUR fillers, not five.** The cadence is `moveq
+>    #$33` then `moveq #$32` — 51 records, a filler, then one per 50 — so
+>    251 + 4 + the terminator = 256.
+> 3. **§7.5: the nine abs-long-less buckets are NOT "fed entirely by `bsr`".**
+>    The scan was run and found ZERO `bsr` callers for any of their stubs.
+>    Bucket 20, the only one of them that carries records, is fed by the BULK
+>    WRITER `$28A098`; the rest measured zero records on all 1,901 frames.
+>
+> Everything else in this recon was reproduced independently by wave 11 —
+> including the whole §3 bucket census, max for max.
+
 status: **DONE** on the pipeline mechanics, the bucket map, the cap and the zoom
 table; **PARTIAL** on naming all 20 top-level dispatch entries; **BLOCKED** on
 proving what each bucket DRAWS in pixels (the ablation experiment is specified

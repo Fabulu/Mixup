@@ -6,9 +6,13 @@
 // per-word masks below on the way.  `word4 & 0x7fff == 0` terminates.
 //
 // The 256-entry cap and the 251-record queue behind it were measured in wave 5
-// (`05-impl-enemies-and-weapons.md` §3): the emitter inserts a filler entry
-// every 52 records, and 251 + 5 = 256.  This parser stops at 256 because the
-// hardware does.
+// (`05-impl-enemies-and-weapons.md` §3).  WAVE 11 CORRECTS THE ARITHMETIC, from
+// the listing AND from a forced 251-record frame on the board (`pgm.py dlgate
+// --cap`): the emitter's filler cadence is `moveq #$33` then `moveq #$32`, i.e.
+// 51 records, a filler, then 50 records per filler -- so 251 records carry
+// FOUR fillers, not five, and **251 + 4 + the terminator = 256**.  The
+// terminator is written at EVERY length (src/displaylist.js §4).  This parser
+// stops at 256 because the hardware does.
 //
 // AND THE ONE THAT WAS BACKWARDS IN THIS REPO'S OWN NOTES: the draw walks the
 // list BACKWARDS and refuses to overwrite a pixel it has already written, so

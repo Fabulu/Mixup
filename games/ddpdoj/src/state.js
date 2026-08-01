@@ -61,6 +61,31 @@ export const WATCH_SPEC = [
   ['s14t', 0x810812], ['s14y', 0x810814], ['s14x', 0x810816],
   ['s14a', 0x81081c], ['s14v', 0x81083e],
   ['s21t', 0x810962], ['s21y', 0x810964], ['s21x', 0x810966],
+
+  // --------------------------------------------------------------- WAVE 11
+  // MAIN-LOOP CALL #4 ($23D2AE) IS NOW PORTED WHOLE, so every word it writes
+  // enters the compared set in the same commit -- wave 5's rule 7.  The split
+  // between CLAIMED and DISPLAYLIST_REPORTED below is not tidiness: three of
+  // these are functions of ALL THIRTY buckets, and the port has a producer for
+  // exactly one of them, so claiming them in a scenario like `fly-around` would
+  // be claiming the enemies.
+  ['b002', 0x80b002],       // $23D3BC -- "bucket 20 was dropped this frame"
+  ['b004', 0x80b004],       // $23D3D8 -- "buckets 6 and 9 were dropped"
+  ['b054', 0x80b054, 'l'],  // THE STANDING WATCH.  $00000000 on every frame
+                            // anyone has ever sampled (1,901 here, 5,000 in
+                            // 10-recon-display-list). Six writers, none read.
+                            // If it ever moves, the emit's `add.l` carries
+                            // between the coordinate fields and the $3FFF
+                            // re-mask can pollute the ZOOM nibble -- so it is a
+                            // compared column from the wave that first depends
+                            // on it, not from the wave that first sees it move.
+  ['affc', 0x80affc],       // $23D62A -- the PREVIOUS frame's queue length, and
+                            // the one word $23D70C's thirty-word clear does NOT
+                            // reach.  Function of all 30 buckets: REPORTED.
+  ['affe', 0x80affe],       // $23D38C -- records over budget (SIGNED: negative
+                            // on a normal frame).  Function of all 30: REPORTED
+  ['b000', 0x80b000],       // $23D382 -- bytes over budget, and $23D3C4
+                            // subtracts bucket 20's count from it in place
 ];
 
 /** PROBE_RAWDUMP ranges: byte-for-byte columns, compared as hex strings so a
@@ -87,6 +112,12 @@ export const RAWDUMP_SPEC = [
   ['shot1', 0x810812, 5 * 0x30],
   ['shot2', 0x810962, 5 * 0x30],
   ['sprq', 0x808854, 0x120],           // 24 records; the bucket is $660 long
+  // WAVE 11: all THIRTY bucket counters, $80AFC0..$80AFFB.  They are zero at
+  // every sample point because call #4's tail clears them ($23D70C), and that
+  // is exactly why they are here: a port that forgets the reset is caught on
+  // frame two rather than never.  Wave 8 compared one of them (`q6`) for the
+  // same reason; this is the other twenty-nine.
+  ['sprctr', 0x80afc0, 0x3c],
 ];
 
 /** PROBE_EXEC: instructions whose per-frame execution count is a column. */
@@ -194,7 +225,29 @@ export const CLAIMED = [
   'p2a', 'p2b', 'p3a', 'p3c', 'p42', 'p44',
   's14t', 's14y', 's14x', 's14a', 's14v', 's21t', 's21y', 's21x',
   'shot1', 'shot2',
+  // WAVE 11.  Claimed because the port computes them from state it HAS: the
+  // two drop flags are cleared every frame and only set on an over-budget frame
+  // (which never happens in a natural scenario -- and `pgm.py dlgate --cap`
+  // forces one and compares it); $80B054 the port never writes at all, so
+  // comparing it is what turns "it was zero" from an assumption into a watch;
+  // and the thirty counters are zero on both sides because both clear them.
+  'b002', 'b004', 'b054', 'sprctr',
 ];
+
+/** WAVE 11 -- call #4's BUDGET ARITHMETIC, traced and DELIBERATELY NOT CLAIMED.
+ *
+ *  `b000`, `affe` and `affc` are functions of ALL THIRTY bucket counters, and
+ *  the port has a ported producer for exactly ONE of them (bucket 14, the
+ *  shots).  In a scenario like `fly-around` the board's sum includes the
+ *  enemies, the options, the bullets and the explosions; the port's does not.
+ *  Claiming these columns there would be claiming the enemies.
+ *
+ *  They ARE compared, byte for byte, on every one of the 1,901 build-B frames
+ *  of `stage1-open` -- by `pgm.py dlgate`, which feeds the port the BOARD's
+ *  staged bucket bytes so the sum has the same thirty inputs on both sides.
+ *  That is the right gate for them, and this note is where the split is
+ *  written down instead of being inferred from an absence. */
+export const DISPLAYLIST_REPORTED = ['b000', 'affe', 'affc'];
 
 /** The option columns.  Separate because the option OBJECT is not ported in
  *  wave 4 -- see the worklog.  Listed here so that adding the handler is a
@@ -216,7 +269,7 @@ export const OPTION_COLUMNS = ['o0y', 'o0x', 'o1y', 'o1x'];
  *  that would catch that is `irq6`, which IS claimed -- and the runner prints
  *  nshot's maximum drift next to it, because "it never mattered in this window"
  *  is a measurement and not a get-out. */
-export const REPORTED_COLUMNS = ['nshot', 'rng'];
+export const REPORTED_COLUMNS = ['nshot', 'rng', ...DISPLAYLIST_REPORTED];
 
 // `rng` is $803916, the whole state of $2433AE.  It is TRACED AND REPORTED for
 // the same shape of reason as `nshot`, and the reason was measured rather than

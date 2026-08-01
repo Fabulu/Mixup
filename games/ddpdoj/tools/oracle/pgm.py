@@ -999,7 +999,26 @@ def _cmd_zoomcov(argv: list[str]) -> int:
     print("EXPECTED-RED zoom-off: " +
           ("diverged, as it must" if red else
            "STILL 100 % -- the zoom corpus does not exercise the zoom loop"))
-    return rc or (0 if red else 1)
+    # WAVE 11.  The entry-$F substitution is the one place the decoder does
+    # something the ROM does not say, and until now nothing could see it: on the
+    # natural 16-pair corpus `zoom-f-literal` is invisible (no frame there
+    # reaches effective index $F), so it lives in gfxgate's EXTRA_MUTATIONS and
+    # is red-validated HERE, where the poker drives index $F on purpose --
+    # against MAME's own framebuffer, not against our other decoder.
+    print("\n--- RED VALIDATION: read zoom entry $F LITERALLY (0, not 1) ---")
+    redf = 0
+    for d in dirs:
+        redf |= sp.run([sys.executable, str(TOOLS / "gfxgate.py"), "--rom", str(ROMDIR),
+                        "--dump", str(d), "--min-pairs", str(batches),
+                        "--mutate", "zoom-f-literal"], stdout=sp.DEVNULL).returncode
+    print("EXPECTED-RED zoom-f-literal: " +
+          ("diverged, as it must -- MAME's framebuffer agrees with the SUBSTITUTE "
+           "and not with the ROM's literal 0. That is inference plus emulator "
+           "behaviour, NOT a hardware measurement, and it stays labelled that way."
+           if redf else
+           "STILL 100 % -- the zoom corpus never reaches effective index $F, so "
+           "the substitution is covered by nothing"))
+    return rc or (0 if (red and redf) else 1)
 
 
 def _cmd_check(argv: list[str]) -> int:
@@ -1088,6 +1107,19 @@ def _cmd_check(argv: list[str]) -> int:
                   "dy-off-by-one", "no-phase-mask"):
             stage(f"fly-around RED [{m}]",
                   lambda m=m: sub(__file__, "flyaround", "--reuse", "--break", m))
+        # WAVE 11.  THE DISPLAY-LIST KEYSTONE, and its two FORCED scenarios --
+        # the cap policy is gameplay and the natural corpus reaches 120 of 251
+        # records, so `dlgate` alone would leave the drop policy, the equality
+        # cap and the terminator decision untested. The mutation sweep runs over
+        # the union of the three and is the thing that proves the gate can fail.
+        stage("display list: the staged-bytes replay gate (1,901 frames)",
+              lambda: sub(__file__, "dlgate"))
+        stage("display list: FORCED runtime cap (251 records)",
+              lambda: sub(__file__, "dlgate", "--cap"))
+        stage("display list: FORCED pre-emptive drop",
+              lambda: sub(__file__, "dlgate", "--cap0"))
+        stage("display list RED (12 mutations over 3 scenarios)",
+              lambda: sub(__file__, "dlgate", "--reuse", "--break", "all"))
         stage("replay determinism (2 in-process + 1 subprocess)",
               lambda: _node(TOOLS / "determinism.mjs",
                             OUT / "w4" / "fly-around.tsv",
@@ -1958,6 +1990,309 @@ def _cmd_demogate(argv: list[str]) -> int:
     return subprocess.run(cmd).returncode
 
 
+# --------------------------------------------------------------------------- wave 11
+# THE DISPLAY-LIST KEYSTONE.  Main-loop call #4 is a PURE TRANSFORM of the thirty
+# bucket counters and their staging buffers into $800000..$8009FF, so it can be
+# gated to the byte with ZERO new gameplay simulation: dump the board's INPUT and
+# its OUTPUT, replay the transform in the port, compare.  The recording becomes
+# the gate's input instead of its output.
+W11 = OUT / "w11"
+
+
+def _w11_run(name: str, *, frames: int, script: str, out_bin: Path | None = None,
+             extra: dict | None = None, seconds: int = 3600) -> Run:
+    W11.mkdir(parents=True, exist_ok=True)
+    env = {
+        "W11_FRAMES": str(frames),
+        "W11_INPUT": script,
+        "W11_REQUIRE_BUILD": "B",
+    }
+    if out_bin is not None:
+        out_bin.unlink(missing_ok=True)     # never re-read a previous run's file
+        env["W11_OUT"] = str(out_bin)
+    if extra:
+        env.update({k: str(v) for k, v in extra.items()})
+    r = run(HERE / "w11dl.lua", seconds=seconds, env=env)
+    check(r, name)
+    for l in r.find("W11 ") + r.find("BUILD ") + r.find("ZOOMRAM "):
+        print("  " + l)
+    return r
+
+
+# THE FORCED CAP.  The queue NEVER fills in natural play -- 120 records of 251
+# over 1,901 build-B frames -- so the drop policy, the equality cap and the
+# terminator decision at exactly 251 records are three code paths the natural
+# corpus cannot test.  They are forced by POKING ONE BUCKET COUNTER at the
+# sample point, which is the same class of intervention as wave 2's NOP sled and
+# wave 4's invulnerability timer: it changes WHEN the cap is reached and nothing
+# about WHAT call #4 does about it.
+#
+# WHY BUCKET 1's COUNTER $80AFC2 AND NOT $80AFC0.  Wave 5 poked $80AFC0 and had
+# to sweep for a value that worked, because $23D762 (the UNGUARDED direct
+# appender) consumes the poke first and can carry the pointer PAST $BC4, after
+# which the guarded `beq` can never match.  A bucket counter has no such
+# problem: the queue pointer starts at bucket 0's own byte count -- always a
+# multiple of 12 -- and $BC4 = 3012 is a multiple of 12, so the drain is
+# guaranteed to land on the cap EXACTLY.  $80AFC2 is drained FIRST of the 29, so
+# the cap fires before any other bucket is touched and the result is repeatable.
+#
+# AND ONE THING `beq` VS `bge` CANNOT BE ASKED ON THE BOARD.  The queue pointer
+# starts at a multiple of 12 and steps by exactly 12, and $BC4 = 3012 is a
+# multiple of 12, so `cmpi.w #$BC4 / beq` and a hypothetical `bge` fire on
+# EXACTLY the same record.  They are indistinguishable by construction -- which
+# is wave 5's point restated as an experiment that cannot be run.  The one place
+# they DO differ is when the pointer is ALREADY past $BC4 when the drain starts,
+# which is what the second forced scenario below produces: `--cap0` pokes
+# $80AFC0 itself, so the guarded `beq` can never match all frame and `bge` would
+# abandon everything on the first record.  The difference is invisible in the
+# display list (the emit clamps to 251 either way) and VISIBLE in $80AFFC, the
+# post-drain queue length -- which is why the gate compares call #4's other
+# outputs and not only $800000..$8009FF.
+W11_CAP_POKE = "80AFC2=0B,80AFC3=C4"     # $0BC4 = 3012 bytes = 251 records
+W11_CAP0_POKE = "80AFC0=0B,80AFC1=40"    # $0B40 = 2880 bytes = 240 records
+W11_CAP_FROM = 2000
+
+
+def _cmd_dlgate(argv: list[str]) -> int:
+    """WAVE 11.  THE STAGED-BYTES REPLAY GATE for main-loop call #4.
+
+      pgm.py dlgate                    stage1-open, every build-B frame
+      pgm.py dlgate --cap              FORCED: bucket 1's counter to $BC4, so
+                                       the RUNTIME cap fires with equality and
+                                       the emit reaches exactly 251 records
+      pgm.py dlgate --cap0             FORCED: the QUEUE pointer to $B40, so the
+                                       pre-emptive drops fire and `beq` vs `bge`
+                                       become distinguishable in $80AFFC
+      pgm.py dlgate --reuse            re-gate the dump already on disk
+      pgm.py dlgate --break NAME       RED VALIDATION; the gate must go red
+      pgm.py dlgate --break all        every mutation in turn
+    """
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("node not on PATH -- the port is JavaScript")
+    cap = "--cap" in argv
+    cap0 = "--cap0" in argv
+    reuse = "--reuse" in argv
+    brk = argv[argv.index("--break") + 1] if "--break" in argv else None
+    defs = scenarios()
+    s = next(x for x in defs["scenarios"] if x["name"] == "stage1-open")
+    tag = "cap0" if cap0 else ("cap" if cap else "open")
+    binp = W11 / f"dl-{tag}.bin"
+    if (not reuse and brk is None) or not binp.exists():
+        extra = {"W11_FROM": 700}       # the chooser fires near lf600; build A
+                                        # frames are not this gate's subject
+        if cap or cap0:
+            extra.update({"W11_POKE": W11_CAP0_POKE if cap0 else W11_CAP_POKE,
+                          "W11_POKE_FROM": W11_CAP_FROM})
+        print(f"=== dumping (staged bytes, display list) pairs over stage1-open"
+              f"{' WITH THE FORCED ' + tag.upper() if (cap or cap0) else ''}",
+              flush=True)
+        r = _w11_run(f"dlgate/{tag}", frames=s["frames"],
+                     script=build_script(defs, s), out_bin=binp, extra=extra)
+        zoom = (r.find("ZOOMRAM ") or [""])[0][len("ZOOMRAM "):]
+        (W11 / f"zoomram-{tag}.txt").write_text(zoom, encoding="utf8")
+    zoom = (W11 / f"zoomram-{tag}.txt").read_text(encoding="utf8").strip()
+
+    def gate(m: str | None, which: Path = binp, quiet: bool = False) -> int:
+        cmd = [node, str(HERE.parent.parent / "tools" / "dlgate.mjs"), str(which)]
+        if zoom:
+            cmd += ["--zoomram", zoom]
+        if m:
+            cmd += ["--break", m]
+        kw = {"stdout": subprocess.DEVNULL} if quiet else {}
+        return subprocess.run(cmd, text=True, **kw).returncode
+
+    if brk == "all":
+        # THE SWEEP RUNS OVER ALL THREE SCENARIOS AND REQUIRES THE UNION.
+        # A mutation is only reachable where its path is: `terminator-by-count`
+        # needs a 251-record frame, `no-preemptive-drop` needs an over-budget
+        # frame, `cap-as-ge` needs the queue pointer ALREADY past $BC4.  Asking
+        # for every mutation to go red on the natural scenario would be asking
+        # the natural scenario to contain paths it measurably does not.  So each
+        # mutation must go red on AT LEAST ONE dump, and which one is printed.
+        tags = ["open", "cap", "cap0"]
+        bins = {tg: W11 / f"dl-{tg}.bin" for tg in tags}
+        missing = [tg for tg in tags if not bins[tg].exists()]
+        if missing:
+            raise SystemExit(f"run `pgm.py dlgate` and `pgm.py dlgate --cap` and "
+                             f"`pgm.py dlgate --cap0` first; missing {missing}")
+        import json as _json
+        # The mutation list is read OUT OF src/displaylist.js -- the two-sides
+        # rule w4_watch() follows.  A hand-copied list here is how a mutation
+        # gets silently dropped from the sweep.
+        body = (HERE.parent.parent / "src" / "displaylist.js").read_text(encoding="utf8")
+        blk = body.split("export const MUTATIONS = {", 1)[1].split("\n};", 1)[0]
+        names = re.findall(r"^\s*'([a-z0-9-]+)':", blk, re.M)
+        # DECLARED EXPECTED-GREEN, with the reason, BEFORE the run.  See
+        # src/displaylist.js §4: build B's terminator test compares D1, which
+        # `$23D6DA move.w #$12,D1` has already loaded, so the terminator is
+        # written at every length and "force the terminator" cannot move a byte.
+        # The plan named this mutation on the recon's reading of that test; the
+        # listing refutes the reading, and this is where that is said out loud
+        # instead of quietly dropping the mutation.
+        #
+        # `b054-two-16bit-adds` is declared green for a MEASURED reason and not
+        # a structural one: $80B054 has been $00000000 on every frame this
+        # project has ever sampled (1,901 build-B frames here, 5,000 in
+        # 10-recon-display-list), and adding zero as one 32-bit add or as two
+        # 16-bit adds is the same answer. It is red-validated in
+        # tests/displaylist.test.js with $80B054 non-zero, where the carry out
+        # of the short axis is the whole point. IF A LATER WAVE EVER SEES
+        # $80B054 MOVE, this becomes a board-red mutation and the declaration
+        # below must come out.
+        expected_green = {"always-terminate", "b054-two-16bit-adds"}
+        base = 0
+        for tg in tags:
+            rc0 = gate(None, bins[tg], quiet=True)
+            print(f"BASELINE {tg}: {'PASS' if rc0 == 0 else 'FAIL'}")
+            base |= rc0
+        bad, table = [], []
+        for n in names:
+            reds = [tg for tg in tags if gate(n, bins[tg], quiet=True) != 0]
+            if n in expected_green:
+                ok = not reds
+                note = ("GREEN everywhere, as DECLARED"
+                        if ok else f"RED on {reds} -- the EXPECTED-GREEN "
+                                   f"declaration is wrong")
+            else:
+                ok = bool(reds)
+                note = (f"RED on {reds}" if ok else
+                        "STILL GREEN ON EVERY SCENARIO -- no gate can see it")
+            table.append((n, reds, ok))
+            print(f"    {n:24s} {note}")
+            if not ok:
+                bad.append(n)
+        print("\nRED VALIDATION: " + ("every mutation behaved as declared, over "
+                                      "the union of stage1-open / --cap / --cap0"
+                                      if not bad and base == 0 else
+                                      f"BROKEN -- baseline="
+                                      f"{'ok' if base == 0 else 'FAILED'} bad={bad}"))
+        _json.dump({"baseline": base, "bad": bad,
+                    "table": [[n, r] for n, r, _ in table]},
+                   open(W11 / "redval.json", "w"))
+        return 0 if (base == 0 and not bad) else 1
+    rc = gate(brk)
+    if brk:
+        print(f"EXPECTED-RED [{brk}]: " +
+              ("diverged, as it must" if rc else
+               "STILL 0 DIVERGENT -- the gate cannot see this mutation"))
+        return 0 if rc else 1
+    return rc
+
+
+# THE BUCKET ABLATION.  10-recon-display-list §7.1: "I did not prove what any
+# bucket DRAWS in pixels.  The ablation experiment settles all 30 in one run and
+# I did not run it."  This is that run, thirty times.  Zero one bucket's counter
+# at $23D382 -- after the sum, before the drop policy and the drain -- and diff
+# the framebuffer against a control whose only difference is the missing poke.
+W11_ABLATE_AT = "1900,2100,2300,2500"
+W11_ABLATE_COUNTERS = [
+    0x80afc0, 0x80afc2, 0x80afc4, 0x80afc6, 0x80afcc, 0x80afd0, 0x80afd2,
+    0x80afc8, 0x80afca, 0x80afd4, 0x80afe8, 0x80aff0, 0x80afea, 0x80afec,
+    0x80afd6, 0x80afda, 0x80afd8, 0x80afce, 0x80aff8, 0x80afdc, 0x80afde,
+    0x80afe4, 0x80afe0, 0x80afe2, 0x80affa, 0x80afe6, 0x80afee, 0x80aff2,
+    0x80aff4, 0x80aff6,
+]
+
+
+def _cmd_ablate(argv: list[str]) -> int:
+    """WAVE 11.  WHAT DOES EACH SPRITE BUCKET DRAW?  Measured, not inferred.
+
+      pgm.py ablate                      all 30 buckets (30 runs + 1 control)
+      pgm.py ablate 14 19 20             only these bucket indexes
+      pgm.py ablate --at 2107,2320 3 5   a SECOND PASS at other logic frames
+
+    WHY A SECOND PASS EXISTS.  A bucket's ablation can only lose pixels on a
+    frame where that bucket HAD records, and the rarer buckets are live on a few
+    hundred of the 1,901 frames.  Pass 1's four frames were chosen before the
+    per-bucket census existed; `node tools/dlgate.mjs <dump> --census --at ...`
+    is what says which frames a given bucket is live on, and a second pass at
+    those frames turns "0 pixels" from "did not appear" into "appeared and drew
+    nothing".  The two are not the same answer and the worklog keeps them apart.
+    """
+    at_arg = None
+    if "--at" in argv:
+        i = argv.index("--at")
+        at_arg = argv[i + 1]
+        argv = argv[:i] + argv[i + 2:]
+    want = [int(a) for a in argv if not a.startswith("-")]
+    defs = scenarios()
+    s = next(x for x in defs["scenarios"] if x["name"] == "stage1-open")
+    script = build_script(defs, s)
+    at = at_arg or W11_ABLATE_AT
+    d = RIP / ("w11-ablate" if at_arg is None else f"w11-ablate-{at.replace(',', '_')}")
+    d.mkdir(parents=True, exist_ok=True)
+    pts = [int(x) for x in at.split(",")]
+
+    def one(tag: str, ablate: int | None) -> Path:
+        sub = d / tag
+        if sub.exists():
+            shutil.rmtree(sub)
+        sub.mkdir(parents=True, exist_ok=True)
+        extra = {"W11_PIX": at, "W11_PIXDIR": str(sub)}
+        if ablate is not None:
+            extra["W11_ABLATE"] = f"{ablate:X}"
+        _w11_run(f"ablate/{tag}", frames=max(pts) + 20, script=script, extra=extra)
+        return sub
+
+    # `--report` re-diffs the framebuffers already on disk: the bounding boxes
+    # were added after the first 31 runs, and re-running MAME thirty-one times
+    # to print a box the dumps already contain would be a measurement of
+    # nothing.
+    report_only = "--report" in sys.argv
+    if report_only:
+        print("=== --report: re-diffing the framebuffers already on disk")
+        ctl = d / "control"
+    else:
+        print("=== CONTROL: no ablation")
+        ctl = one("control", None)
+
+    def readpix(p: Path):
+        return p.read_bytes()
+
+    # THE BOUNDING BOX, not just the count.  "6,380 pixels vanished" is a
+    # number; "a 34x50 box that follows the ship" is an IDENTIFICATION.  The
+    # screen is 448x224 and `SCR:pixels()` is row-major BGRA
+    # (igs023_video.cpp's bitmap; the same layout gfxgate.py reads).
+    SW, SH = 448, 224
+
+    def bbox(a: bytes, b: bytes):
+        x0, y0, x1, y1, n = SW, SH, -1, -1, 0
+        for k in range(0, min(len(a), len(b)), 4):
+            if a[k:k + 4] != b[k:k + 4]:
+                px, py = (k // 4) % SW, (k // 4) // SW
+                x0 = min(x0, px); x1 = max(x1, px)
+                y0 = min(y0, py); y1 = max(y1, py)
+                n += 1
+        return n, (x0, y0, x1, y1) if n else None
+
+    rows = []
+    for i, ctr in enumerate(W11_ABLATE_COUNTERS):
+        if want and i not in want:
+            continue
+        print(f"\n=== ablating bucket {i} (counter ${ctr:06X})")
+        sub = (d / f"b{i:02d}") if report_only else one(f"b{i:02d}", ctr)
+        tot, per, boxes = 0, [], []
+        for lf in pts:
+            a = readpix(ctl / f"lf{lf:06d}.pixels.bin")
+            b = readpix(sub / f"lf{lf:06d}.pixels.bin")
+            n, box = bbox(a, b)
+            per.append(n)
+            if box:
+                boxes.append(f"lf{lf}:{box[0]},{box[1]}..{box[2]},{box[3]}")
+            tot += n
+        rows.append((i, ctr, tot, per, boxes))
+        print(f"  bucket {i:2d} ${ctr:06X}: {tot} differing pixels over "
+              f"{len(pts)} frames {per}  {' '.join(boxes)}")
+    print("\n=== BUCKET -> PIXELS, stage1-open, frames " + at)
+    print(f"{'bucket':>6} {'counter':>9} {'pixels_lost':>12}  per-frame"
+          f"   bounding boxes of what vanished (x0,y0..x1,y1 of 448x224)")
+    for i, ctr, tot, per, boxes in sorted(rows, key=lambda r: -r[2]):
+        print(f"{i:6d} ${ctr:06X} {tot:12d}  {per}   {' '.join(boxes)}")
+    print(f"\nframebuffers in {d} (ROM-DERIVED -- gitignored)")
+    return 0
+
+
 COMMANDS = {
     "verify": _cmd_verify, "landmarks": _cmd_landmarks, "trace": _cmd_trace,
     "snap": _cmd_snap, "seed": _cmd_seed, "scen": _cmd_scen, "gate": _cmd_gate,
@@ -1970,6 +2305,7 @@ COMMANDS = {
     "shotgate": _cmd_shotgate,
     "pixslice": _cmd_pixslice, "pixdemo": _cmd_pixdemo,
     "demogate": _cmd_demogate,
+    "dlgate": _cmd_dlgate, "ablate": _cmd_ablate,
 }
 
 if __name__ == "__main__":

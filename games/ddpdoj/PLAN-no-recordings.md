@@ -42,7 +42,7 @@ the rows it removes.
 
 | # | the capture currently supplies | replaced by | status |
 |---|---|---|---|
-| L1 | **The hardware display list itself** (`$800000..$8009FF`, ≤256 entries, rebuilt every frame) — the port does not build one | W11 (main-loop call #4) | open |
+| L1 | ~~**The hardware display list itself** — the port does not build one~~ → **the CONTENTS of the thirty sprite buckets.** W11 ported main-loop call #4 whole and gated it at **0 divergent frames over the 1,901 build-B frames of `stage1-open`**, byte-for-byte against the board from the board's own staged bucket bytes (plus two forced-cap scenarios). The transform is done; the producers are not — one of thirty buckets (14, the shots) has a ported feeder | W12–W26 (the producers) | **converted by W11** |
 | L2 | The ship's display-list record + banking image (today: SPLICED in position only; one image, tilt 0, because the recorded ship never moved) | W12 | open |
 | L3 | The two option pods + two exhaust records (SPLICED at fixed offsets, 45 %-threshold re-derivation at load) | W12 | open |
 | L4 | Player shot sprites (worse than replayed: NOT in the capture at all — the port computes shots and they are INVISIBLE) | W13 | open |
@@ -58,8 +58,8 @@ the rows it removes.
 | L14 | The palette DURING gameplay: per-stage loads are located (`$2415E8`, W16); per-frame writers/fades were not reconned | **not yet answered** — needs a palette-writer census before W17 closes | open |
 | L15 | The 161-frame LOOP BOUND — the game simply ends where the recording does | W16 + W18 (background + spawns run to the stage-1 terminator), W28 (past stage 1) | open |
 | L16 | "The ship is never hit": death, lives, respawn, continue, game over exist nowhere on the page | W23 + W27 + W28 | open |
-| L17 | The zoom table blob + the entry-`$F`=1 quirk (currently right by inheritance from MAME, gated by nothing) | W11 | open |
-| L18 | The identity of 25 of the 30 sprite buckets (what pixels each buys) — the map that orders everything above | W11 (the ablation) | open |
+| L17 | The zoom table blob + the entry-`$F`=1 quirk | W11 | **REPLACED** — baked as the `$23C588` constant (`src/zoomtable.js`), asserted against `:igs023:zoomram` on every `dlgate` run, named `zoomcov` cases `eff-index-0F`/`eff-index-10`, mutation `zoom-f-literal`. Still classified HARDWARE FACT **BY INFERENCE**, never a silicon measurement |
+| L18 | The identity of 25 of the 30 sprite buckets (what pixels each buys) | W11 (the ablation) | **REPLACED** — the bucket→pixels table in `docs/worklog/ddpdoj/11-impl-display-list-keystone.md` §6, plus the `bsr`/counter-writer census §7 (which corrects "fed entirely by `bsr`" to "no static caller of any kind; bucket 20 is fed by the bulk writer `$28A098`") |
 
 NOT on the ledger, deliberately: **sound**. The page is silent and the capture
 never supplied audio, so sound is not a recording being replaced — it is a
@@ -127,7 +127,23 @@ checked; `d_ram` is in every TSV and compared by nothing).
 
 ### Phase I — the pipeline and the picture (W11–W17)
 
-**W11 — the display-list keystone.** Port main-loop call #4 whole, with NO
+**W11 — the display-list keystone. DONE**
+(`docs/worklog/ddpdoj/11-impl-display-list-keystone.md`, 2026-08-01). Delivered:
+the whole of `$23D2AE..$23D724`, the parameterised enqueue API, the zoom table
+as a baked constant with a boot assertion and two named `zoomcov` cases, the
+30-bucket ablation and the `bsr`-target scan. Gated at **0 divergent frames on
+all 1,901 build-B frames of `stage1-open`** plus two forced-cap scenarios;
+twelve mutations, ten RED over the union of the three, two DECLARED
+EXPECTED-GREEN with measured reasons. **Three of this section's own
+instructions turned out to encode recon errors and were corrected in the same
+commit** — the terminator is NEVER skipped (`$23D6E8` compares D1, which
+`$23D6DA` loaded with `$12`); 251 records carry FOUR fillers, not five, and the
+cadence is 51-then-50, not "every 52"; and the short-axis assertion has to be on
+the DELTA across the `$80B054` add, not on the value (a zoomed record legitimately
+has bits 13..11 set). The original text follows, unedited, so the corrections
+have something to be corrections OF.
+
+Port main-loop call #4 whole, with NO
 producers: the 30 counters, the sum in counter-address order, the pre-emptive
 drop policy (`$80AFDE` first, then `$80AFD2`+`$80AFD4`, telemetry flags
 `$80B002/$80B004`), the 29-bucket drain in the ROM's hand-written order with

@@ -108,6 +108,21 @@ def _mut_u19_at_200000(roms):
     pgmgfx.IGS023_SIZE = 0xa00000
 
 
+def _mut_zoom_f_literal(roms):
+    """Read zoom-table entry $F LITERALLY (the ROM holds 0) instead of
+    substituting 1.  WAVE 11: `$23C588`'s sixteen words are a monotone popcount
+    ramp 16,15,...,2 whose LAST term is missing, and 1 is exactly the term the
+    ramp predicts -- which is also what MAME inserts, with a comment saying it
+    does not know why.  The game DOES index that entry (34 x-records and 18
+    y-records over 5,000 logic frames, 10-recon-display-list §6b), so this is a
+    live rule and not a curiosity."""
+    def zw(zoomram, z):
+        if z >= 0x10:
+            return 0
+        return (int(zoomram[z * 2]) << 16) | int(zoomram[z * 2 + 1])
+    FR.zoom_word = zw
+
+
 MUTATIONS = {
     "tx-msb": _mut_tx_msb,
     "bg-planes": _mut_bg_planes,
@@ -116,6 +131,19 @@ MUTATIONS = {
     "spr-order": _mut_spr_order,
     "u19-at-200000": _mut_u19_at_200000,
 }
+
+# MUTATIONS THAT ARE INVISIBLE ON THE NATURAL CORPUS, kept OUT of the `--mutate
+# all` sweep for a MEASURED reason rather than quietly dropped.  `zoom-f-literal`
+# only moves a pixel on a frame that reaches effective zoom index $F; the
+# 16-pair gfx-gate corpus contains none (measured, wave 11 -- see the worklog),
+# so putting it in MUTATIONS would make `pgm.py gfx --mutate all` report a
+# permanent false failure.  It is red-validated where the case EXISTS: on the
+# `pgm.py zoomcov` dumps, whose poker drives index $F through BOTH encodings on
+# BOTH axes.
+EXTRA_MUTATIONS = {
+    "zoom-f-literal": _mut_zoom_f_literal,
+}
+ALL_MUTATIONS = {**MUTATIONS, **EXTRA_MUTATIONS}
 
 
 def eff_zoom(s, zr):
@@ -146,7 +174,7 @@ def pairs_in(dumpdir):
 
 def run(rom, dump, min_pairs=0, mutate=None, jsonout=None, quiet=False):
     if mutate:
-        MUTATIONS[mutate](None)
+        ALL_MUTATIONS[mutate](None)
     roms = Roms(rom)
     prs = pairs_in(dump)
     ok, tot, totn, rows = True, 0, 0, []
@@ -205,15 +233,15 @@ def main():
     ap.add_argument("--min-pairs", type=int, default=0,
                     help="FAIL (not skip) if fewer pairs than this were dumped")
     ap.add_argument("--mutate", default=None,
-                    help=f"red-validate: one of {sorted(MUTATIONS)} or 'list'")
+                    help=f"red-validate: one of {sorted(ALL_MUTATIONS)} or 'list'")
     ap.add_argument("--json", dest="jsonout", default=None)
     a = ap.parse_args()
     if a.mutate == "list":
-        for k, f in MUTATIONS.items():
+        for k, f in ALL_MUTATIONS.items():
             print(f"{k:16s} {f.__doc__.splitlines()[0]}")
         return 0
-    if a.mutate and a.mutate not in MUTATIONS:
-        raise SystemExit(f"unknown mutation {a.mutate}; have {sorted(MUTATIONS)}")
+    if a.mutate and a.mutate not in ALL_MUTATIONS:
+        raise SystemExit(f"unknown mutation {a.mutate}; have {sorted(ALL_MUTATIONS)}")
     return run(a.rom, a.dump, a.min_pairs, a.mutate, a.jsonout)
 
 

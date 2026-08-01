@@ -1,0 +1,482 @@
+// MAIN-LOOP CALL #4 -- `$23D2AE..$23D724`, THE DISPLAY-LIST BUILD, WHOLE.
+//
+// This is the keystone: nothing any producer computes is visible until this
+// runs.  It is NOT a walk over objects.  It is a 29-BUCKET GATHER with a
+// pre-emptive overflow policy, and every byte of it is here because a byte of it
+// is on the screen.
+//
+// The ROM, in execution order (10-recon-display-list §1, every line re-read from
+// `xref.py dasm` in wave 11 before it was translated):
+//
+//   a  $23D2AE  jsr $23C1A2         clear bit 0 of $80393C (a section flag)
+//   b  $23D2B4  THE SUM             $80AFC0 + the 29 counters -> D0, in BYTES
+//   c  $23D36E  bsr $240ADC         a bare `rts`.  SEVEN of these in call #4:
+//                                   a stripped profiling hook.  They cost cycles
+//                                   and NOTHING ELSE -- but they SET D1 AND D3,
+//                                   and one of those matters (see the terminator)
+//   d  $23D372  D0 -= $BD0 -> $80B000; D0/12 -> $80AFFE      the over-budget pair
+//   e  $23D39C  THE PRE-EMPTIVE OVERFLOW POLICY               §2 below
+//   f  $23D3E0  THE DRAIN, 29 x (lea BUF / lea CTR / bsr $23D726 / bcs $23D624)
+//   g  $23D624  THE EMIT, queue -> $800000, 12-byte request -> 10-byte entry
+//   h  $23D6E8  the terminator                                §4 below
+//   i  $23D70C  clear all thirty counters
+//   j  $23D71E  jsr $23C194         set bit 0 of $80393C back
+//
+// Measured cost, wave 2: 15,594 cycles mean, against the object driver's 77,725.
+//
+// ===========================================================================
+// §1  THE GUARDED COPY `$23D726` COPIES SIXTEEN BYTES PER TWELVE-BYTE RECORD
+// ===========================================================================
+//   23d726: move.w (A1),D0        D0 = this bucket's pending BYTE count
+//   23d728: beq $23D758           nothing -> rts, carry CLEAR
+//   23d72a: lea $80397C,A2 / adda.w $80AFC0,A2
+//   23d736: move.l (A0)+,(A2)+ x4     <-- SIXTEEN bytes
+//   23d73e: addi.w #$c,$80AFC0        <-- TWELVE
+//   23d746: cmpi.w #$BC4,$80AFC0
+//   23d74e: beq $23D75A           FULL
+//   23d750: subi.w #$c,D0
+//   23d754: bne $23D736           <-- back to the COPY.  A2 is NOT recomputed
+//   23d756: move.w D0,(A1)        D0 is 0 here: clears the bucket
+//   23d758: rts
+//   23d75a: clr.w (A1) / ori #$1,SR / rts          FULL: carry SET
+//
+// A2 advances 16 per iteration while the counter advances 12, and A2 is not
+// re-derived inside the loop -- so the copy is an IDENTITY map S[j] -> Q[q0+j]
+// that simply RUNS 4n BYTES PAST the accounted end.  The accounted region
+// Q[q0 .. q0+12n) is exactly S[0 .. 12n), which is what the emit reads; the
+// stray tail is overwritten by the next bucket's copy, whose A2 starts at the
+// accounted end.  Translated as written anyway (it is four lines), because "it
+// works out to a plain copy" is a conclusion and the instruction is the fact.
+//
+// THE CAP IS `beq`, NOT `bge` -- wave 5's finding, re-read here.  It is only
+// safe because the pointer starts at 0 and steps by exactly 12 and $BC4 = 3012
+// is a multiple of 12, so it cannot straddle.  A port that writes `>=` is not
+// translating this instruction.  All 29 drain sites are `bcs $23D624`, so what
+// a full queue abandons is the current bucket's REMAINDER AND EVERY LATER
+// BUCKET -- i.e. the FRONT-MOST part of the picture, because the later a bucket
+// drains the closer to the viewer it draws.
+//
+// ===========================================================================
+// §2  THE PRE-EMPTIVE POLICY IS GAMEPLAY, NOT AN EDGE CASE
+// ===========================================================================
+//   23d3a8: tst.w $80B000 / bmi $23D3E0     under budget -> drain everything
+//   23d3b0: move.w $80AFDE,D0 / clr.w $80AFDE      DROP BUCKET 20 WHOLE
+//   23d3bc: move.w #$1,$80B002                     telemetry
+//   23d3c4: sub.w D0,$80B000 / bmi $23D3E0
+//   23d3cc: clr.w $80AFD2 / clr.w $80AFD4          DROP BUCKETS 6 AND 9 WHOLE
+//   23d3d8: move.w #$1,$80B004
+//
+// Before a single record is copied, the game decides IN ADVANCE which whole
+// CATEGORIES of sprite it is willing to lose, and it is the same categories
+// every time.  `bmi` on zero is false, so the test is "total >= $BD0 bytes" =
+// 252 records, one record above the 251-record queue cap.  $80B002/$80B004 are
+// telemetry: `xref.py abs` finds four absolute-long sites for each and NO
+// READER (a lower bound -- absolute-long only).
+//
+// It never fires in natural stage-1 play (measured: max 120 of 251 records over
+// 1,901 build-B frames), which is exactly why the gate FORCES it -- see
+// `docs/worklog/ddpdoj/11-impl-display-list-keystone.md` §the cap scenario.
+//
+// ===========================================================================
+// §3  THE EMIT'S THREE ARITHMETIC TRAPS
+// ===========================================================================
+//   23d696: move.l (A1)+,D3
+//   23d69a: andi.l #$F800F800,D3     grow+zoom of BOTH words
+//   23d6a0: andi.l #$07FF3FFF,D1     the two POSITION fields
+//   23d6a6: add.l  $80B054,D1        A 32-BIT ADD, NOT TWO 16-BIT ADDS
+//   23d6ac: andi.l #$07FF3FFF,D1
+//   23d6b2: or.l   D3,D1 / move.l D1,(A0)+
+//   23d6ba: move.b (A1)+,D3 / or.b (A1)+,D3 / move.b D3,(-$6,A0)
+//
+//  (i) `add.l` means a carry out of the short axis propagates INTO the long
+//      axis.  $80B054 measured $00000000 on all 1,901 build-B frames of
+//      `stage1-open` -- PRESENCE, NOT COVERAGE.  It has six writers nobody has
+//      disassembled, one of them inside the IRQ-gated $240CC0.  `telemetry.b054`
+//      below counts non-zero frames LOUDLY for the day it moves.
+// (ii) THE SHORT AXIS IS RE-MASKED TO $3FFF HERE -- FOURTEEN BITS -- but the
+//      hardware field is TEN and bits 13..11 are the ZOOM FIELD.  The enqueue
+//      pre-masks to $03FF, so today the extra bits are always clear; the instant
+//      $80B054 is non-zero (or a producer writes a negative short axis) an
+//      overflow silently POLLUTES THE ZOOM NIBBLE and the sprite changes size
+//      instead of position.  `assertShortAxis` is the standing assertion.
+//(iii) the last two request bytes are OR-ED TOGETHER and written OVER the byte
+//      the preceding `move.l` already placed.  A port that copies the request
+//      straight through and forgets the patch loses flip and colour entirely.
+//
+// ===========================================================================
+// §4  THE TERMINATOR IS NEVER SKIPPED, AND THE RECON SAID IT WAS
+// ===========================================================================
+// 10-recon-display-list §2c reads
+//
+//     23d6e8: cmpi.w #$BC4,D1
+//     23d6ec: beq $23D6FE          <-- SKIP THE TERMINATOR
+//
+// as "if exactly 251 records are emitted, no terminator is written", on the
+// assumption that D1 still holds the byte count `$23D678 move.w D0,D1` put
+// there.  IT DOES NOT.  D1 is clobbered twice on the way:
+//
+//   * inside the emit loop, `$23D698 move.l D3,D1` makes D1 the record being
+//     emitted, and
+//   * four instructions before the test, `$23D6DA move.w #$12,D1` loads it as
+//     the tag argument of the SEVENTH dead `bsr $240ADC` -- and $240ADC is a
+//     bare `rts`, so D1 is still $12 at $23D6E8.
+//
+// $0012 is never $0BC4, so **the terminator is written on every frame, at every
+// length, in build B**.  Wave 11 translates that, and gates it: the mutation
+// `terminator-by-count` implements the recon's reading and MUST go red on the
+// forced 251-record scenario.  (The plan's mutation name `always-terminate` is
+// therefore an EXPECTED-GREEN no-op -- see the worklog; it is reported, not
+// quietly dropped.)
+//
+// The other entry into the terminator is `$23D654 beq $23D6EE`, taken when the
+// queue is EMPTY -- it jumps past the test entirely, so an empty list is always
+// terminated too.
+//
+// ===========================================================================
+// §5  THE FILLERS
+// ===========================================================================
+//   23d676: moveq #$33,D4                 ; 51
+//   23d67a: subq.w #1,D4 / bcc $23D696    ; borrow -> insert a filler
+//   23d67e: moveq #$32,D4                 ; 50 thereafter
+//   23d680: move.l #$FC003800,(A0)+ / move.l #0,(A0)+ / move.w #$201,(A0)+
+//   23d690: addi.w #$c,D2 / subq.w #1,D4  ; and fall into the record
+//
+// So: 51 records, filler, 50 records, filler, 50, ...  At the 251-record cap
+// that is 251 + 4 = 255 entries and the terminator makes 256 -- the IGS023's
+// exact maximum.  (10-recon-display-list §2c says "251 + 5 fillers = 256"; the
+// D4 arithmetic above gives FOUR, and the forced scenario measures it.)
+
+import { u16, i16 } from './ram.js';
+import {
+  BUCKETS, COUNTER_BASE, COUNTER_COUNT, RECORD_BYTES, STAGING_LO, STAGING_HI,
+} from './spritequeue.js';
+import { unreached } from './unported.js';
+
+export const DL = {
+  build: 0x23d2ae,
+  queue: 0x80397c,
+  list: 0x800000, listEnd: 0x800a00,
+  sectionFlag: 0x80393c,           // $23C1A2 clears bit 0, $23C194 sets it
+  overBudgetBytes: 0x80b000,       // $23D382
+  overBudgetRecords: 0x80affe,     // $23D38C, D0/12
+  dropped20Flag: 0x80b002,         // $23D3BC
+  dropped69Flag: 0x80b004,         // $23D3D8
+  prevQueueBytes: 0x80affc,        // $23D62A -- NOT cleared by the $23D70C loop
+  globalOffset: 0x80b054,          // $23D6A6 add.l
+  capBytes: 0x0bc4,                // $23D746 cmpi.w -- 3012 = 251 records
+  budgetBytes: 0x0bd0,             // $23D372 subi.w -- 3024 = 252 records
+  fillerFirst: 0x33,               // $23D676 moveq
+  fillerThen: 0x32,                // $23D67E moveq
+  terminatorTestValue: 0x12,       // $23D6DA move.w #$12,D1 -- see §4
+};
+
+/** $23D680 -- the filler entry, five words, verbatim. */
+export const FILLER = Object.freeze([0xfc00, 0x3800, 0x0000, 0x0000, 0x0201]);
+
+/** The SUM's order, $23D2B4..$23D362, read out of the image.  It is neither
+ *  ascending address order nor drain order -- it is a THIRD hand-written order,
+ *  and it does not matter to the value because `add.w` is commutative mod 2^16.
+ *  Kept as written so a reviewer can check it against the listing, and so that
+ *  "the sum order is irrelevant" stays a stated conclusion, not an assumption. */
+export const SUM_ORDER = Object.freeze([
+  0x80afc0, 0x80afc2, 0x80afc4, 0x80afc6, 0x80afd2, 0x80afc8, 0x80afd4,
+  0x80afd0, 0x80afca, 0x80afcc, 0x80afce, 0x80afd6, 0x80afd8, 0x80afda,
+  0x80afdc, 0x80afde, 0x80afe0, 0x80afe2, 0x80afe4, 0x80afe6, 0x80afe8,
+  0x80afea, 0x80afec, 0x80afee, 0x80aff0, 0x80aff2, 0x80aff4, 0x80aff6,
+  0x80aff8, 0x80affa,
+]);
+
+/** Every mutation this module can be broken with, and what it breaks.  Declared
+ *  here so `tools/dlgate.mjs --break` cannot invent one and so a reviewer can
+ *  see the whole red-validation surface in one place. */
+export const MUTATIONS = {
+  'cap-as-ge': 'the runtime cap tests >= $BC4 instead of == $BC4 ($23D746/$23D74E)',
+  'terminator-by-count': "10-recon-display-list's reading: skip the terminator "
+    + 'when exactly 251 records were emitted, instead of comparing D1 ($23D6E8)',
+  'always-terminate': 'force the terminator write. EXPECTED GREEN: the board '
+    + 'already always terminates (§4), so this mutation cannot move a byte',
+  'no-preemptive-drop': 'skip $23D3B0..$23D3D8 -- keep buckets 20, 6 and 9',
+  'drain-order-reversed': 'drain the 29 buckets 29..1 instead of 1..29',
+  'no-filler': 'never insert the $23D680 filler entry',
+  'filler-every-52-flat': 'a filler every 52 records throughout, instead of 51 '
+    + 'then 50 ($23D676 moveq #$33 vs $23D67E moveq #$32)',
+  'b054-two-16bit-adds': 'add $80B054 as two independent 16-bit adds instead of '
+    + 'one add.l ($23D6A6) -- no carry from the short axis into the long',
+  'emit-mask-03ff': 're-mask the short axis to $03FF at emit instead of $3FFF '
+    + '($23D6AC) -- hides the zoom-field pollution hazard',
+  'no-flip-patch': 'skip the OR-ed flip/colour byte written over word 2 '
+    + '($23D6BA..$23D6BE)',
+  'sum-without-queue': 'omit $80AFC0 from the budget sum ($23D2B4)',
+  'no-counter-clear': 'skip the $23D70C..$23D71C thirty-counter reset',
+};
+
+function mutating(opts, name) {
+  if (!opts.mutate) return false;
+  if (!(opts.mutate in MUTATIONS)) {
+    throw new Error(`unknown display-list mutation '${opts.mutate}'; have `
+      + Object.keys(MUTATIONS).join(', '));
+  }
+  return opts.mutate === name;
+}
+
+/**
+ * THE STANDING ASSERTION §3(ii).  After the `$3FFF` re-mask the short axis must
+ * still fit in the hardware's TEN bits; bits 13..11 are the zoom field, so an
+ * overflow does not clip a position, it changes a sprite's SIZE.
+ */
+export function assertShortAxis(before, after, entry, telemetry) {
+  // Bits 13..11 of the $3FFF-masked short axis ARE the zoom field's low three
+  // bits (zoom is bits 14..11; bit 14 is outside the mask, and bit 10 is
+  // dropped by the sprite DMA itself -- igs023_video.cpp's word-1 mask is
+  // $FBFF).  D3 carries a COPY of those bits and `$23D6B2 or.l D3,D1` puts them
+  // back, so having them SET is normal -- it is what a zoomed record looks
+  // like, and stage 1 really does contain them (measured, wave 11).
+  //
+  // THE HAZARD IS NOT THAT THEY ARE SET.  It is that `$23D6A6 add.l $80B054`
+  // can CARRY out of the ten-bit position field into them, and because the
+  // recombination is an OR the extra bits can only be ADDED -- a sprite that
+  // overflowed its position quietly changes SIZE.  So the assertion is on the
+  // DELTA across the add, not on the value: bits 13..10 must survive it.
+  if ((before & 0x3c00) !== (after & 0x3c00)) {
+    telemetry.shortAxisOverflow++;
+    unreached(0x23d6ac, `display-list entry ${entry}: adding $80B054 = `
+      + `$${[...telemetry.b054Values].map((v) => v.toString(16)).join(',')} `
+      + `carried out of the short axis's ten-bit position field -- bits 13..10 `
+      + `went $${(before & 0x3c00).toString(16)} -> $${(after & 0x3c00).toString(16)
+      }. Bits 13..11 are the ZOOM FIELD and $23D6B2 recombines by OR, so this `
+      + `record's zoom nibble has been polluted and the sprite changes SIZE, `
+      + `not position. 10-recon-display-list §2b named this hazard; nothing in `
+      + `the corpus has ever reached it because $80B054 has always been zero`);
+  }
+}
+
+/**
+ * $23D2AE -- main-loop call #4, whole.
+ *
+ * Reads the thirty bucket counters and their staging buffers out of `ram`,
+ * writes the hardware display list to $800000..$8009FF, and clears the counters.
+ *
+ * @param {import('./ram.js').Ram} ram
+ * @param {{mutate?: string, warn?: (msg: string) => void}} opts
+ * @returns telemetry -- what the frame did, for the gate and the runner to print
+ */
+export function buildDisplayList(ram, opts = {}) {
+  const warn = opts.warn ?? (() => {});
+  const t = {
+    pendingBytes: 0, pendingRecords: 0, overBudgetBytes: 0,
+    droppedBucket20: 0, dropped6and9: 0,
+    queueBytes: 0, records: 0, fillers: 0, entries: 0, terminated: false,
+    capFired: false, capBucket: -1, bucketsDrained: 0, bucketsAbandoned: 0,
+    perBucketRecords: new Array(BUCKETS.length).fill(0),
+    b054: 0, b054Values: new Set(), shortAxisOverflow: 0,
+  };
+
+  // (a) $23D2AE jsr $23C1A2 -- `move.w #1,D0 / not.w D0 / and.w D0,$80393C`.
+  ram.setU16(DL.sectionFlag, u16(ram.u16(DL.sectionFlag) & ~1));
+
+  // (b) THE SUM, $23D2B4..$23D362.  `move.w` then 29 x `add.w`: WORD arithmetic,
+  //     so it wraps at $10000 and the port must too.
+  let d0 = 0;
+  for (const a of SUM_ORDER) {
+    if (mutating(opts, 'sum-without-queue') && a === COUNTER_BASE) continue;
+    d0 = u16(d0 + ram.u16(a));
+  }
+  t.pendingBytes = d0;
+  t.pendingRecords = Math.floor(d0 / RECORD_BYTES);
+
+  // (d) $23D372..$23D38C.  `subi.w` then `ext.l` then `divs.w #$C`: the stored
+  //     word is SIGNED, and the division is signed, so an under-budget frame
+  //     writes a negative record count into $80AFFE.  Both are telemetry with
+  //     no reader found; both are written because the board writes them.
+  const over = i16(u16(d0 - DL.budgetBytes));            // $23D372 / $23D380
+  ram.setU16(DL.overBudgetBytes, u16(over));             // $23D382
+  ram.setU16(DL.overBudgetRecords,                       // $23D388 divs.w #$C
+    u16(over < 0 ? -Math.floor(-over / RECORD_BYTES) : Math.floor(over / RECORD_BYTES)));
+  t.overBudgetBytes = over;
+
+  // (e) THE PRE-EMPTIVE POLICY, $23D39C..$23D3DE.
+  ram.setU16(DL.dropped20Flag, 0);                       // $23D39C clr.w
+  ram.setU16(DL.dropped69Flag, 0);                       // $23D3A2 clr.w
+  if (!mutating(opts, 'no-preemptive-drop')) {
+    let rem = i16(ram.u16(DL.overBudgetBytes));
+    if (rem >= 0) {                                      // $23D3A8 tst / bmi
+      const b20 = ram.u16(BUCKETS[20].counter);          // $23D3B0
+      ram.setU16(BUCKETS[20].counter, 0);                // $23D3B6 DROP IT WHOLE
+      ram.setU16(DL.dropped20Flag, 1);                   // $23D3BC
+      t.droppedBucket20 = Math.floor(b20 / RECORD_BYTES);
+      rem = i16(u16(rem - b20));                         // $23D3C4 sub.w
+      ram.setU16(DL.overBudgetBytes, u16(rem));
+      if (rem >= 0) {                                    // $23D3CA bmi
+        t.dropped6and9 = Math.floor(ram.u16(BUCKETS[6].counter) / RECORD_BYTES)
+          + Math.floor(ram.u16(BUCKETS[9].counter) / RECORD_BYTES);
+        ram.setU16(BUCKETS[6].counter, 0);               // $23D3CC
+        ram.setU16(BUCKETS[9].counter, 0);               // $23D3D2
+        ram.setU16(DL.dropped69Flag, 1);                 // $23D3D8
+      }
+    }
+  }
+
+  // (f) THE DRAIN, $23D3E0..$23D622: 29 buckets in the ROM's hand-written order.
+  //     Bucket 0 is not drained -- its producers appended STRAIGHT INTO the
+  //     queue, so it is already the queue's first $80AFC0 bytes.
+  const order = [];
+  for (let i = 1; i < BUCKETS.length; i++) order.push(i);
+  if (mutating(opts, 'drain-order-reversed')) order.reverse();
+  t.perBucketRecords[0] = Math.floor(ram.u16(COUNTER_BASE) / RECORD_BYTES);
+
+  const capGe = mutating(opts, 'cap-as-ge');
+  let abandoned = false;
+  for (const bi of order) {
+    if (abandoned) { t.bucketsAbandoned++; continue; }   // `bcs $23D624`
+    const b = BUCKETS[bi];
+    let d0b = ram.u16(b.counter);                        // $23D726 move.w (A1),D0
+    if (d0b === 0) continue;                             // $23D728 beq -> rts
+    let a2 = DL.queue + u16(ram.u16(COUNTER_BASE));      // $23D72A / $23D730
+    let a0 = b.buffer;
+    let full = false;
+    for (;;) {
+      // $23D736 -- FOUR `move.l (A0)+,(A2)+`: sixteen bytes, see §1.
+      for (let k = 0; k < 16; k += 2) {
+        ram.setU16(a2 + k, ram.u16(a0 + k));
+      }
+      a0 += 16; a2 += 16;
+      const ctr = u16(ram.u16(COUNTER_BASE) + RECORD_BYTES);
+      ram.setU16(COUNTER_BASE, ctr);                     // $23D73E addi.w #$c
+      t.perBucketRecords[bi]++;
+      if (capGe ? ctr >= DL.capBytes : ctr === DL.capBytes) {   // $23D746/$23D74E
+        full = true;
+        break;
+      }
+      d0b = u16(d0b - RECORD_BYTES);                     // $23D750 subi.w
+      if (d0b === 0) break;                              // $23D754 bne
+      // `subi.w #$c / bne` only terminates if the count is a multiple of 4
+      // (gcd(12, $10000)); the board would spin here too, but a tool that hangs
+      // is worse than one that says WHERE. This can only fire on a counter the
+      // game cannot produce -- every producer steps by exactly 12 from 0.
+      if (t.perBucketRecords[bi] > 0x4000) {
+        unreached(0x23d754, `bucket ${bi}'s count $${ram.u16(b.counter).toString(16)
+          } is not a multiple of 12, so \`subi.w #$c,D0 / bne\` never reaches 0 `
+          + `and the drain does not terminate`);
+      }
+    }
+    if (full) {
+      ram.setU16(b.counter, 0);                          // $23D75A clr.w (A1)
+      t.capFired = true; t.capBucket = bi;
+      abandoned = true;                                  // ori #1,SR -> bcs
+    } else {
+      ram.setU16(b.counter, 0);                          // $23D756 move.w D0,(A1), D0==0
+      t.bucketsDrained++;
+    }
+  }
+
+  // (g) THE EMIT, $23D624..$23D6CC.
+  ram.setU16(DL.prevQueueBytes, ram.u16(COUNTER_BASE));  // $23D62A (D7 is dead)
+  let a0 = DL.list;
+  let n = ram.u16(COUNTER_BASE);                         // $23D64E move.w
+  t.queueBytes = n;
+  const b054 = ram.u32(DL.globalOffset);
+  t.b054 = b054;
+  t.b054Values.add(b054);
+  if (b054 !== 0) {
+    // THE LOUD WATCH.  $80B054 was $00000000 on every frame anyone has measured
+    // and it has six writers nobody has read.  The instant it moves, the emit's
+    // 32-bit add and the $3FFF short-axis mask stop being theoretical.
+    warn(`$80B054 = $${b054.toString(16).padStart(8, '0')} -- the global sprite `
+      + `offset is NON-ZERO for the first time in this project. The emit's `
+      + `add.l ($23D6A6) now carries between the coordinate fields and the `
+      + `$3FFF re-mask ($23D6AC) can pollute the zoom nibble. See `
+      + `10-recon-display-list §7.3.`);
+  }
+
+  if (n === 0) {                                         // $23D654 beq $23D6EE
+    writeTerminator(ram, a0, t);
+  } else {
+    if (n > DL.capBytes) n = DL.capBytes;                // $23D65E cmpi/bls/move
+    let a1 = DL.queue;
+    let d4 = DL.fillerFirst;                             // $23D676 moveq #$33
+    const noFiller = mutating(opts, 'no-filler');
+    const flatFiller = mutating(opts, 'filler-every-52-flat');
+    for (;;) {
+      d4 = u16(d4 - 1);                                  // $23D67A subq.w #1
+      if (d4 === 0xffff) {                               // the borrow -> filler
+        d4 = flatFiller ? DL.fillerFirst : DL.fillerThen; // $23D67E moveq #$32
+        if (!noFiller) {
+          for (let k = 0; k < 5; k++) ram.setU16(a0 + k * 2, FILLER[k]);
+          a0 += 10;
+          t.fillers++; t.entries++;
+        }
+        d4 = u16(d4 - 1);                                // $23D694 subq.w #1
+      }
+      // $23D696..$23D6BE -- one 12-byte request -> one 10-byte entry.
+      const w01 = (ram.u16(a1) << 16 | ram.u16(a1 + 2)) >>> 0;
+      const d3 = (w01 & 0xf800f800) >>> 0;               // $23D69A grow+zoom
+      let d1 = (w01 & 0x07ff3fff) >>> 0;                 // $23D6A0 positions
+      const beforeAdd = d1 & 0xffff;
+      if (mutating(opts, 'b054-two-16bit-adds')) {
+        d1 = ((u16((d1 >>> 16) + (b054 >>> 16)) << 16) | u16(d1 + b054)) >>> 0;
+      } else {
+        d1 = ((d1 + b054) >>> 0);                        // $23D6A6 add.l -- 32 BIT
+      }
+      d1 = (d1 & (mutating(opts, 'emit-mask-03ff') ? 0x07ff03ff : 0x07ff3fff)) >>> 0;
+      assertShortAxis(beforeAdd, d1 & 0xffff, t.entries, t);   // standing assertion
+      d1 = (d1 | d3) >>> 0;                              // $23D6B2 or.l
+      ram.setU16(a0 + 0, (d1 >>> 16) & 0xffff);          // $23D6B4 move.l
+      ram.setU16(a0 + 2, d1 & 0xffff);
+      ram.setU16(a0 + 4, ram.u16(a1 + 4));               // $23D6B6 move.l
+      ram.setU16(a0 + 6, ram.u16(a1 + 6));
+      ram.setU16(a0 + 8, ram.u16(a1 + 8));               // $23D6B8 move.w
+      if (!mutating(opts, 'no-flip-patch')) {
+        // $23D6BA move.b (A1)+,D3 / or.b (A1)+,D3 / move.b D3,(-$6,A0):
+        // the two bytes of the request's last word, OR-ED, over word 2's HIGH
+        // byte -- which the `move.l` above has already written.
+        const patched = (ram.u8(a1 + 10) | ram.u8(a1 + 11)) & 0xff;
+        ram.setU16(a0 + 4, ((patched << 8) | (ram.u16(a0 + 4) & 0xff)) & 0xffff);
+      }
+      a1 += RECORD_BYTES;
+      a0 += 10;
+      t.records++; t.entries++;                          // $23D6C2 addq.w #1,D5
+      n = u16(n - RECORD_BYTES);                         // $23D6C8 subi.w
+      if (n === 0) break;                                // $23D6CC bne
+      if (t.records > 0x4000) {                          // see the drain's twin
+        unreached(0x23d6cc, `the emit's byte count is not a multiple of 12, so `
+          + `\`subi.w #$c,D0 / bne\` never reaches 0 and the emit runs away past `
+          + `$8009FF`);
+      }
+    }
+    ram.setU16(COUNTER_BASE, 0);                         // $23D6E2 move.w D0 (==0)
+
+    // (h) $23D6E8 cmpi.w #$BC4,D1 / beq -- see §4.  D1 is $12 here, ALWAYS.
+    let skip = DL.terminatorTestValue === DL.capBytes;
+    if (mutating(opts, 'terminator-by-count')) skip = (t.records === 251);
+    if (mutating(opts, 'always-terminate')) skip = false;
+    if (!skip) writeTerminator(ram, a0, t);
+  }
+
+  // (i) $23D70C..$23D71C -- `moveq #0,D1 / move.w #$1D,D0 / move.w D1,(A0)+ /
+  //     dbra`: THIRTY words, $80AFC0..$80AFFB.  $80AFFC (the previous frame's
+  //     queue length) is one word past the end and SURVIVES.
+  if (!mutating(opts, 'no-counter-clear')) {
+    for (let i = 0; i < COUNTER_COUNT; i++) ram.setU16(COUNTER_BASE + i * 2, 0);
+  }
+
+  // (j) $23D71E jsr $23C194 -- `move.w #1,D0 / or.w D0,$80393C`.
+  ram.setU16(DL.sectionFlag, u16(ram.u16(DL.sectionFlag) | 1));
+  return t;
+}
+
+/** $23D6EE..$23D6FA -- ten zero bytes. `word4 & $7FFF == 0` is what stops the
+ *  hardware's DMA parse. */
+function writeTerminator(ram, a0, t) {
+  for (let k = 0; k < 5; k++) ram.setU16(a0 + k * 2, 0);
+  t.terminated = true;
+  t.entries++;
+}
+
+/** $23D70C..$23D71C on its own.  Kept exported because src/main.js used to call
+ *  it as the ONLY part of call #4 the port modelled; it is now what call #4's
+ *  tail does, and the name stays so the wave-8 gate keeps reading. */
+export function resetSpriteQueueCounters(ram) {
+  for (let i = 0; i < COUNTER_COUNT; i++) ram.setU16(COUNTER_BASE + i * 2, 0);
+}
+
+export { BUCKETS, STAGING_LO, STAGING_HI };

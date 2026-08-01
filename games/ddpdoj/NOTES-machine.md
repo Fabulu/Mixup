@@ -581,9 +581,22 @@ slot 19** (`$241158`).
 corrects the shape wave 2 inferred:
 
 * The 12-byte request queue's write pointer `$80AFC0` caps at `$BC4` = **251
-  records**; the emitter inserts a filler every 52, and 251 + 5 = 256 = the
-  IGS023 maximum. The queue BUFFER (`$80397C..$80AFBF`, ~2,523 records) is much
-  larger — **the cap is a display-list limit, not a buffer limit.**
+  records**. **WAVE 11 CORRECTS TWO NUMBERS ON THIS LINE.** (a) The filler
+  cadence is `$23D676 moveq #$33` then `$23D67E moveq #$32` — 51 records, a
+  filler, then one filler per 50 — so a full list is **251 records + FOUR
+  fillers + the terminator = 256**, not "a filler every 52 and 251 + 5".
+  Measured on a forced 251-record frame (`pgm.py dlgate --cap`, 600 such frames,
+  `fillers max 4`, `entries max 256`). (b) The queue BUFFER is **`$80397C..
+  $805103` = 6,024 bytes = 502 records**, not ~2,523: `$805104` is bucket 1's
+  staging buffer. The point stands — **the cap is a display-list limit, not a
+  buffer limit** — but the margin is 2×, not 10×.
+* **The terminator is NEVER SKIPPED.** `$23D6E8 cmpi.w #$BC4,D1 / beq` looks
+  like "no terminator when the list is exactly full", and 10-recon-display-list
+  §2c read it that way. D1 does not hold the record count there: `$23D6DA
+  move.w #$12,D1` loaded it four instructions earlier as the tag argument of a
+  dead `bsr $240ADC` (a bare `rts`). $0012 is never $0BC4. Confirmed against the
+  board on 1,901 frames of a forced 251-record run — the terminator write
+  `$23D6FA` executed on every one.
 * **All 29 enqueue call sites (`$23D3EC..$23D61A`) are followed by
   `bcs $23D624`** (static scan of every `bsr` targeting `$23D726`). So a full
   queue abandons the current bucket's remainder **and every later bucket**, and

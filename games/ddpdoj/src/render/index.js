@@ -3,9 +3,12 @@
 // What this module renders is the IGS023's VIDEO STATE: two tilemaps, the
 // rowscroll table, the zoom table, the display list and the palette.  It does
 // not compute that state and does not pretend to.  On the port side, building
-// the display list is main-loop call #4 ($23D2AE), which is UNPORTED -- see
-// `src/main.js` and `05-impl-enemies-and-weapons.md` §"Why the done-when is
-// BLOCKED".  So today the renderer's input is either
+// the display list is main-loop call #4 ($23D2AE), and WAVE 11 PORTED IT WHOLE
+// (`src/displaylist.js`, gated at 0 divergent frames over 1,901 build-B frames
+// by `pgm.py dlgate`).  What it does NOT have is producers: one of the thirty
+// buckets has a ported feeder (14, the shots), so the list the port builds is
+// nearly empty and the picture still comes from the board.  So today the
+// renderer's input is either
 //   (a) a board capture (`pgm.py pixslice`), which is what the pixel gate
 //       compares against MAME, or
 //   (b) a capture with the player's records replaced by the port's own,

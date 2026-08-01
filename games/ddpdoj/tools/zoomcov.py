@@ -155,6 +155,40 @@ def main():
     print(f"\nbasic (no-zoom encoding, zom=0+grow=1 on both axes): "
           f"{nbasic} sprites, {basicpx} pixels")
     ok = True
+
+    # ---------------------------------------------------------------- WAVE 11
+    # TWO NAMED CASES.  Until now `$F` was one of sixteen anonymous rows in the
+    # table above, and `$10` was hidden inside the "basic path" line -- so the
+    # single most load-bearing inference in the whole sprite decoder (that the
+    # ROM's literal 0 in entry $F means 1) was covered by nothing that could be
+    # pointed at.  These two cases can be quoted, and `gfxgate.py --mutate
+    # zoom-f-literal` on these same dumps is what makes the first of them fail.
+    #
+    #   eff-index-0F  reached BOTH ways -- (grow=0, zom=$F) and (grow=1, zom=1)
+    #                 -- on BOTH axes, each drawing pixels.
+    #   eff-index-10  the NO-ZOOM encoding (grow=1, zom=0): `zoom_word` returns
+    #                 0 and the UNZOOMED basic path runs.  97.9 % of every
+    #                 record the game emits is this one.
+    print("\n=== NAMED CASES (wave 11) ===")
+    named_ok = True
+    for enc, (z, grow) in (("grow=0,zom=$F", (0xF, 0)), ("grow=1,zom=1", (1, 1))):
+        for axis in ("x", "y"):
+            hits = [h for f in range(4) for h in cell.get((z, grow, axis, f), [])]
+            px = max([h[2] for h in hits], default=-1)
+            words = sorted({h[1] for h in hits})
+            good = px > 0 and words == [1]
+            named_ok &= good
+            print(f"  eff-index-0F  {enc:14s} axis {axis}: "
+                  f"{'COVERED' if good else 'MISSING'} "
+                  f"max_pixels={px} zoom_word(s)={words} "
+                  f"(the table holds 0 here; 1 is the substitute)")
+    print(f"  eff-index-10  grow=1,zom=0  (NO ZOOM): "
+          f"{'COVERED' if nbasic and basicpx else 'MISSING'} "
+          f"{nbasic} sprites, {basicpx} pixels -- zoom_word()==0, basic path")
+    if not named_ok:
+        ok = False
+        print("FAIL the named case eff-index-0F is not covered on both "
+              "encodings and both axes")
     if nbasic == 0 or basicpx == 0:
         ok = False
         print("FAIL the unzoomed basic path drew nothing in this corpus")

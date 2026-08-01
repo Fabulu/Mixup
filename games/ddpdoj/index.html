@@ -259,9 +259,13 @@ board's own arithmetic &mdash; <b>0 divergent frames against the board over
 2,200 logic frames on 34 compared columns</b>. Nothing else in the picture is.</p>
 
 <p><b>The background, the enemies, the bullets and the HUD are 161 captured frames
-of the real board, on a loop.</b> The port does not build the display
-list yet (main-loop call&nbsp;#4 <code>$23D2AE</code> is unported, and so are 18
-of the 20 object handlers), so those pixels are a replay.
+of the real board, on a loop.</b> The port now <b>builds</b> the hardware
+display list &mdash; main-loop call&nbsp;#4, <code>$23D2AE</code>, translated
+whole and verified byte-for-byte against the board on 1,901 consecutive frames
+&mdash; but it has a simulated <em>source</em> for only one of the thirty sprite
+buckets, and 18 of the 20 object handlers are still unported. A correct
+pipeline with nothing to put through it draws nothing, so those pixels are
+still a replay.
 <b>The enemies cannot see you and cannot be shot.</b> They appear to aim at a
 ship because they were aiming at the ship that flew this recording, and that
 ship is not the one you are moving. When enemy fire passes through you, nothing

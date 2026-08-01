@@ -144,6 +144,9 @@ importing entry + mods + input modules and this port has none of the three — i
 is a translated 68000 main loop plus a replayed capture, not a CPU emulator.
 
 The page states on its own face what is simulated (the ship) and what is not
-(the enemies, every weapon, all sound). Revisit when the port builds its own
-display list — main-loop call #4, `$23D2AE` — and stops needing the capture at
-all.
+(the enemies, every weapon, all sound). Wave 11 ported main-loop call #4
+(`$23D2AE`) whole — the port now *builds* a display list, verified byte-for-byte
+against the board over 1,901 consecutive frames — but it has a simulated feeder
+for one of the thirty sprite buckets, so the capture is still what fills the
+screen. Revisit when the producers land and the capture can be deleted
+(`PLAN-no-recordings.md`).

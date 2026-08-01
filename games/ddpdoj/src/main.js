@@ -39,7 +39,7 @@ import { MoveTables } from './vectors.js';
 import { RomWindows } from './rom.js';
 import { makeType5 } from './type5.js';
 import { PLAYER_SLOTS } from './shots.js';
-import { resetSpriteQueueCounters } from './spritequeue.js';
+import { buildDisplayList } from './displaylist.js';
 
 /** The object dispatch table $240F62, as far as the port implements it.
  *  Entry [5] is PARTIAL -- see type5.js: one of its 23 subsystem calls. */
@@ -204,19 +204,27 @@ export class Game {
     this.unportedLog.note(ROM.call1, 'main-loop call #1 ($256D5A)');
     this.objn = runObjectDriver(this.ram, this.handlers, ctx);   // 7: $2410BC
     this.unportedLog.note(ROM.call3, 'main-loop call #3 ($24683E)');
-    // 9: call #4, $23D2AE, THE SPRITE LIST BUILD.  Still unported -- the
-    // 29-bucket sum, the guarded copy at $23D726 with its 251-record cap, and
-    // the emit at $23D624 -- EXCEPT for its very last loop, $23D70C..$23D71C,
-    // which zeroes all thirty bucket counters.  The port models that one loop
-    // because without it $80AFD6 would grow without bound and the shot
-    // enqueue's own output would stop being comparable after one frame.
-    this.unportedLog.note(ROM.spriteBuild,
-      'main-loop call #4: THE SPRITE LIST BUILD ($23D2AE) -- everything except '
-      + 'its $23D70C bucket-counter reset');
+    // 9: call #4, $23D2AE, THE SPRITE LIST BUILD.  PORTED WHOLE in wave 11
+    // (src/displaylist.js): the sum, the pre-emptive drop policy, the 29-bucket
+    // drain with the equality cap and the abandon-the-tail carry, the emit with
+    // its 32-bit `asr.l`/`add.l` pair and the OR-ed flip byte, the terminator
+    // and the thirty-counter reset.
+    //
+    // WHAT IT DRAWS TODAY IS STILL ALMOST NOTHING, and that is the honest
+    // state: only bucket 14 (the shots) has a ported PRODUCER, so the list the
+    // port builds is the shots plus a terminator.  The transform itself is
+    // gated to the byte against the board by `pgm.py dlgate`, which feeds it the
+    // BOARD's staged bucket bytes -- the capture becomes the gate's INPUT
+    // instead of its output.  Every wave from 12 on adds producers, and each one
+    // is verified against its own bucket rather than against a moving frame.
     // How many 12-byte sprite REQUESTS the shot handlers appended this frame,
     // read off $80AFD6 the instant before call #4's tail zeroes it.
     this.shotRequests = this.ram.u16(0x80afd6) / 12;
-    resetSpriteQueueCounters(this.ram);               // $23D70C..$23D71C
+    this.displayList = buildDisplayList(this.ram, {                  // $23D2AE
+      // THE $80B054 WATCH, counted and printed like every other honest gap:
+      // $23D6A6 is the `add.l $80B054,D1` whose behaviour changes if it moves.
+      warn: (m) => this.unportedLog.note(0x23d6a6, `WATCH ${m}`),
+    });
     this.armedVblanks = this.#frameSync();            // 10: THE SAMPLE POINT
     this.logicFrame++;
     return this;
