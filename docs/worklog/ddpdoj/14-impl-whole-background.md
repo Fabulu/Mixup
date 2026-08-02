@@ -1,6 +1,10 @@
 # Wave 14 — the WHOLE stage-1 background
 
-status: **INCOMPLETE — stopped at usage limit**
+status: **COMPLETE.** PART ONE (§0–§7, below) was written by an agent stopped at
+a usage limit and is left EXACTLY as it stood, because §7 was the handover that
+worked. **PART TWO (§8–§12) is the finish and supersedes PART ONE's "NOT RE-RUN"
+table in §0 and its open items in §6.** If you are reading §0's status table,
+read §10 instead: every row of it has since been run.
 started: 2026-08-02
 role: implementer (the only agent writing `games/ddpdoj/`)
 target: `ddpdojblk`, **VERSION-B**. Every address is build B unless the line
@@ -500,3 +504,263 @@ git commit -m "..."
 The repository's MAIN index is dirty with an unrelated agent's staged deletions
 (`git status` shows `D` for dozens of files that exist on disk). That is exactly
 why the private index and the late `read-tree` are not optional here.
+
+---
+
+# PART TWO — the finish, by the agent that picked it up cold
+
+started: 2026-08-02, from `87900ab` (which landed all of PART ONE's code).
+Everything below is this agent's own run. Nothing in PART ONE was re-derived.
+
+## 8. THE PICTURES — LOOKED AT, WITH EYES
+
+§6 item 2 and §7 item 7. **DONE. Verdict: SCENERY, not plausible noise.**
+
+`bg.96_127.png` — columns 96..127, the shard-3 range, which is 3,072..4,095 px
+into a stage the recording only ever covered the first 160 px of. **This is
+exactly the stretch that used to render black, and it is a picture of a place.**
+A brick viaduct runs diagonally across the top with a chain-link/girder deck
+above it; a blue-grey riveted metal retaining wall runs down the right in
+perspective, with its own highlight band and shadow; a pale stone-block kerb
+edges a rubble-and-sand riverbed that runs the length of the strip; a small
+railed structure appears bottom right. The black is the map's own empty
+entries, not a decode failure — it has straight tile-aligned edges where the
+map ends and organic edges nowhere.
+
+**The tell that matters is CONTINUITY ACROSS TILE SEAMS.** A wrong plane order
+or a wrong ROM base produces per-tile-coherent rubbish: each 32x32 cell looks
+like *something*, and the seams between them do not line up. Here the diagonal
+viaduct crosses roughly a dozen tile boundaries with the mortar courses
+unbroken, the metal wall's highlight band runs continuous for hundreds of
+pixels across many cells, and the kerb's stone joints continue through every
+seam. Nothing in a mis-decode survives that.
+
+`bg.second.png` — the $227AF8 / base $32A9 map, 23 columns. A blast crater:
+molten orange lava pooled at the centre with a soft glow gradient, charred
+concrete, scattered wreckage and girders, hexagonal revetment walls, and an
+ornate gold-and-cream architectural border along the top left. Deliberate art,
+correct palette (the orange has a real hot-to-dark ramp, not banded noise), and
+again continuous across seams. **It also draws nothing in the page yet** — the
+painter $26C20C is unported (§6 item 5). This is shard 7's pixels, shipped and
+unread.
+
+`bg.0_223.png` — the whole stage. Reads top-to-bottom as: a pocked grey
+asteroid/rock surface; an industrial deck with catwalks and lit windows; a city
+block with green-lit signage; a long diagonal rail/bridge span with blue running
+lights; the metal-wall-and-riverbed stretch of `bg.96_127`; a large circular
+plaza/arena; a red-brick district; and a gold-lit industrial complex at the end.
+That is a stage with a designed progression, not 224 columns of anything else.
+
+### the break images — and a correction to §5
+
+`bg.0_223.break-planes.png` and `bg.0_223.break-u19.png` are **byte-identical
+to `bg.0_223.png`** (sha1 `9d8d865a…` for all three). **That is correct and it
+is the point**, but it is not stated in §5 and it will mislead the next reader:
+`planes` and `u19` are ONE-SIDED breaks that change only how the CARTRIDGE side
+is decoded. The PNG is rendered from the BUNDLE. So the break moves the
+`--check` diff count and cannot move the picture. **Do not read those two files
+as "what a break looks like" — they are not.** The red is in `--check`'s output,
+not in the image.
+
+`bg.0_223.break-base.png` is the only break that DOES change the picture,
+because `base` is the one that mutates the bundle side: it is a solid **magenta**
+column with black holes — magenta being bgstrip's "this tile is not in the
+bundle" marker. Dropping the $0AA9 stage base asks for tile numbers no shard
+holds, so essentially every lookup misses. Unmistakable, and 20,063 B against
+the good picture's 1,254,769 B — even the FILE SIZE says it.
+
+**Stale artifact:** `bg.0_223.break-swap.png` (539,652 B) is still on disk. It
+is the output of the `swap` break §5 says was DELETED for being unable to fail.
+It is a leftover from before the deletion, it is in gitignored `rip/`, and it
+should not be cited as evidence of anything. Left in place; noted here so the
+next reader does not go looking for a `--break swap` that no longer exists.
+
+## 9. THE TESTS — 200 -> 207, and TWO MORE DEFECTIVE CHECKS FOUND
+
+§6 item 4 and §7 item 6. **DONE. `node --test games/ddpdoj/tests/` is now
+207 pass / 0 fail / 0 skipped / 0 todo**, against the 200/0/0 baseline this
+agent re-confirmed at `87900ab` before touching anything.
+
+New file: `games/ddpdoj/tests/web-shards.test.js`, 7 tests. All four items §7
+specced, plus three the specced ones needed anyway. Synthetic manifests,
+synthetic shard bodies, and the exporter's own SOURCE TEXT — no cartridge, no
+`assets/`, no network, in the house style.
+
+| test | what it pins |
+|---|---|
+| `loadIndex REJECTS shard runs that do not tile the slot space` | gap, overlap, short sum, and a `bg.tileno.u16` of the wrong length |
+| `loadIndex REJECTS a tile that appears in TWO shards` | across shards and within one |
+| `demand() on a FAILED shard throws an AssetError NAMING THE FILE` | the path, the columns, the rebuild command, the original cause, the second-map wording, and no-retry |
+| `demand() on a LOADING shard does NOT throw and puts it in status().waiting` | survivable, named, cleared on arrival, and a SHORT body is a failure not a partial install |
+| `promote() moves a QUEUED shard to the head, and pump() is SERIAL` | reordering mid-flight, idempotence, and `maxLive === 1` |
+| `followColumn() promotes the shard under the cursor and the one ahead` | the lookahead, the `-1` no-op, the second-map shard never scrolled into |
+| `streamColumnOf() places $225B78 + 36*c and REFUSES everything else` | the 224 columns, off-the-end, before-the-base, and MID-COLUMN |
+
+### one source change was needed
+
+`Demo.streamColumn()` was a method on a class `app.js` does not export, so it
+could not be reached from a test. The arithmetic is now
+**`export function streamColumnOf(map, ptr)`** and the method is a one-line call
+to it — the same shape, and for the same reason, as `pickScale`. No behaviour
+changed.
+
+### THE MUTATION RUN — every assertion was made to go RED before it was believed
+
+The brief said to assume the sixth defective check until it has been watched
+going red. It was right twice. 16 single-line mutations of `src/web/assets.js`
+and `src/web/app.js` were applied one at a time, the suite run, the source
+restored. **14 went RED. Two came back GREEN and both were MY assertions, not
+the loader's:**
+
+**(6) `assert(!bg.queue.includes(2))` after `promote()` on a failed shard.**
+Deleting `promote()`'s `state === 'failed'` early return changed nothing:
+`promote()` unshifts the shard, `pump()` discards it on the very same tick
+because it is not `idle`, and the queue is empty either way. The assertion was
+reading a variable that is empty for a reason unrelated to the guard it claimed
+to test. **Deleted and replaced by a FETCH COUNT** — the observable property is
+"a failed shard is never requested twice", and counting requests is the only way
+to see it.
+
+And the replacement taught the more interesting fact: **the no-retry property is
+held by a REDUNDANT PAIR of guards, `promote()`'s and `pump()`'s, and either
+one alone is sufficient.** No single-line mutation can make the fetch-count
+assertion fail. Removing BOTH does (verified RED). That is written into the test
+body so nobody reads a green run as "each of those two lines is covered".
+
+**(7) `assert.equal(streamColumnOf(map, 0), -1)` as a test of the `if (!ptr)`
+guard.** Deleting the guard changes no answer: `off = 0 - $225B78` is negative
+and the `off < 0` arm returns -1 anyway. The same is true for `NaN` and
+`undefined`. The assertion is a TRUE statement about behaviour and is kept —
+but its comment now says it pins the behaviour and not that line, because the
+line is unreachable as a difference.
+
+**The generalisation, which is §5's lesson in a second costume.** §5 found a
+red switch that could not fail because it mutated a SHARED INPUT. These two
+could not fail because they asserted on a value that a REDUNDANT SIBLING already
+forces. Both are the same disease — *an assertion whose subject is not what it
+names* — and both are only findable by mutating the source and watching. **A
+test that has never been seen red is a comment.** Defective checks in this
+project now number seven.
+
+## 10. THE GATES — ALL RUN, ALL GREEN
+
+§6 item 3 and §7 items 1-5. Every gate PART ONE listed as NOT RE-RUN has now
+been run against the committed tree. **Paths are relative to `games/ddpdoj/`,
+not the repo root, except `build-dist.mjs` which is repo-root.**
+
+| gate | command | result |
+|---|---|---|
+| unit | `node --test games/ddpdoj/tests/` (repo root) | **207 pass / 0 fail / 0 skipped / 0 todo** (was 200) |
+| bundlegate | `node tools/bundlegate.mjs --assets assets --dump rip/pix-demo --tsv tools/oracle/out/w6/demo.tsv` | **PASS 15955968/15955968 = 100.0000 %** over 159 frames |
+| demogate | `node tools/demogate.mjs --rom rip/rom --web rip/web --dump rip/pix-demo --tsv tools/oracle/out/w6/demo.tsv` | **PASS 15955968/15955968 = 100.0000 %** over 159 frames |
+| webgate | `node tools/webgate.mjs` | **PASS**, 14 files over HTTP in 439 ms, one frame 100352 px / 98.8 % non-black |
+| leak guard | `node tools/build-dist.mjs` (repo root) | **clean**, 188 files checked (19 also decompressed) vs 12 ROMs, **1 deliberate exception** (Batman player tiles); `dist/` 192 files, 3359 KB |
+| bgstrip | `python tools/bgstrip.py 0 224 --check` | **PASS 2064384/2064384 = 100.0000 %**, bundle vs CARTRIDGE, all 224 columns |
+
+`demogate` needs `--rom` and it is not optional; PART ONE's §7 did not say so
+and the first invocation died on it. The working line is in the table above.
+
+**The pixel gates were 100.0000 % before this wave and they still are.** The
+19 bodies build-dist inflates and re-checks now include the eight new
+`bg.shard*.tiles.u8.gz`; the guard was not weakened to accommodate them and did
+not need to be.
+
+`webgate` fetches **14** files, which is the boot set and nothing else — shards
+0 and 1 appear in its list and shards 2..7 do not. That is the deferred split
+visible from outside the loader.
+
+## 11. THE BREAK TABLE — EVERY SWITCH SEEN RED
+
+`bundlegate --break <b>`, all six, exit 0 = "the break was correctly detected":
+
+| break | exit | what went red |
+|---|---|---|
+| `drop-tile` | 0 | `AssetError: capture frame 0 (lf2000) uses BG tile 2936 ($b78) at map entry 531, which BG shard 0 is supposed to hold and does not` |
+| `drop-stream` | 0 | `AssetError: capture frame 91 (lf2091) record 51 points at packed sprite offset 0, which is not an exported stream base` |
+| `zero-col` | 0 | **14280066/15955968 = 89.4967 %** — diverged |
+| `blank-tile` | 0 | **15804494/15955968 = 99.0507 %** — diverged |
+| `shard-404` | 0 | **NEVER RUN BEFORE.** `AssetError: BG SHARD 2 DID NOT LOAD (assets/gfx/bg.shard2.tiles.u8.gz: HTTP 404 ...)` — and the message names the file, which the gate checks separately |
+| `shard-late` | 0 | **NEVER RUN BEFORE.** `BG tile 3261 ($cbd) of shard 2 drew the transparent pen and the shard is named in bg.status().waiting = [2]` |
+
+`bgstrip.py 0 224 --check --break <b>`, the three surviving one-sided switches:
+
+| break | identical | verdict |
+|---|---|---|
+| (none) | **2064384/2064384 = 100.0000 %** | the bundle IS the cartridge |
+| `planes` | 650133/2064384 = **31.4928 %** | red |
+| `base` | 193536/2064384 = **9.3750 %**, and **1,819 tiles NOT IN THE BUNDLE** | red |
+| `u19` | 101517/2064384 = **4.9175 %** | red |
+
+Note `u19` at **4.9 %** here against wave 3's 52.86 %. Not a contradiction —
+wave 3 measured one FRAME, most of which is not the shifted region; this
+measures all 224 columns, where nearly every tile index is above 0xC000 and
+therefore moves. The 4.9 % is close to what two unrelated pictures share.
+
+### `--break drop-tile` WAS DISTRUSTED, AND THE DISTRUST WAS EARNED
+
+PART ONE §4.6 claims sharding silently disarmed this break and that the fix is
+unverified. **Verified, by re-running the OLD victim choice.** `bundlegate.mjs`
+was temporarily reverted to `nos[count / 2]` — the pre-wave-14 line — and run:
+
+```
+OLD-VICTIM EXPERIMENT: middle slot of the 2026-tile sheet is tile 3743;
+                       the capture uses 415 BG tiles and DOES NOT use this one
+EXPECTED-RED [--break drop-tile]: BG tile 3743 was removed from the sheet and
+                                  NOTHING THREW -- the coverage check is fake
+EXIT=1
+```
+
+So the claim is true and now measured: **slot 1013 of 2026 is tile $0E9F, and
+it is not one of the 415 tiles `verifyCoverage` inspects.** The break removed a
+tile nothing looks at. The current victim, tile **2936 ($0B78)**, is measured
+from the capture itself and throws.
+
+**ONE CORRECTION TO §4.6, which matters to whoever reads this next.** §4.6 says
+the disarmed break "would have gone quietly GREEN". It would not have gone
+*quietly*: bundlegate's fall-through prints `NOTHING THREW -- the coverage check
+is fake` and **returns exit 1**. The trap is subtler and worse for a human
+reader — **both the working and the disarmed outcome print a line beginning
+`EXPECTED-RED [--break drop-tile]:`**, and only the exit code and the sentence
+after the colon separate them. An operator scanning output for the string
+`EXPECTED-RED` sees the same prefix either way. **Check the exit code, not the
+prefix.** (The `for` loop in §10's runs prints `EXIT=` after every break for
+exactly this reason.)
+
+### restoration
+
+`bundlegate.mjs` was the only file mutated, and it was restored from a copy
+taken before the edit: `git diff --quiet HEAD -- tools/bundlegate.mjs` is clean.
+The bundle was hashed before and after the whole break session —
+`find assets -type f | sort | xargs sha1sum | sha1sum` =
+**`49303b089adce7922c88e133d4b1ed34d6014792`** both times. No break writes to
+`assets/`; `shard-404` injects its 404 in the READER, not on disk, which is why.
+
+## 12. STILL UNDONE — carried forward from §6, unchanged
+
+Not this agent's job and not fixed:
+
+1. **The 13 BG ELEMENTS are still unported** — 143,102 B gzipped of sprite
+   streams that the scroll VM's op `$10` spawns. The background is still
+   missing its big objects. `bundlegate`'s unported-call census names the
+   driver: `160 x $26233A the 8-slot background-element driver -- W18`.
+2. **The second map's painter `$26C20C` (object type `$1C`) is still
+   unported.** **Shard 7 ships 205 tiles of pixels and 207 decoded map entries
+   that NOTHING DRAWS.** `bg.second.png` is a picture of art the page cannot
+   currently show. That is 79.4 KiB of deferred bundle doing nothing yet, by
+   design, and it is not a defect — but it is not a feature either until W18.
+3. **No browser has opened this page.** There is none on this machine. Every
+   claim about the shard schedule holding over a real connection is a
+   simulation. `webgate` proves the fetch/assembly path over a real HTTP origin
+   and `bundlegate` proves the pixels; neither proves the CADENCE.
+4. The palette block is shipped, validated at 1020/1024, and still unused.
+5. Column 247 ($227E34) is still accounted for by nothing. 36 bytes.
+
+Items 1 and 2 are the honest headline: **the whole stage-1 background now
+scrolls and is pixel-exact, and it is still not the whole picture.**
+
+---
+
+status: **COMPLETE.** Tests 200 -> 207. Six bundlegate breaks and three bgstrip
+breaks seen red, including the two that had never been run. Four gates green,
+two pixel gates at 100.0000 %. PNGs looked at. Two defective assertions found in
+this agent's own tests and fixed.

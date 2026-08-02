@@ -191,6 +191,35 @@ export function fitCanvas(canvas, container = canvas.parentElement,
   return fit;
 }
 
+/**
+ * WAVE 14 -- the ROM stream pointer -> the stage-1 map column, or -1.
+ *
+ * Pulled out of `Demo.streamColumn` as a pure function for the same reason
+ * `pickScale` is one: it is the arithmetic that decides WHICH SHARD gets
+ * promoted, a wrong answer here is a black stripe forty seconds later, and a
+ * method on an unexported class cannot be tested.  `tests/web-page.test.js`
+ * §5 is the test.
+ *
+ * THE -1 IS THE WHOLE POINT.  `$26134E` loads $225B78 + 36*column for the
+ * column the scroll VM is painting, but the pointer is ALSO whatever the boss
+ * lock rewound it to, and stages 2..5 live in the same address space and are
+ * not exported at all.  An address this cannot place must not be turned into a
+ * plausible column number -- a plausible column promotes the wrong shard and
+ * says nothing.
+ *
+ * @param {{cols:string, colBytes:number, ncols:number}} map  manifest.gfx.bg.map
+ * @param {number} ptr  `game.vram.streamPtr`
+ */
+export function streamColumnOf(map, ptr) {
+  if (!map) return -1;
+  const base = Number.parseInt(String(map.cols).replace('$', ''), 16);
+  if (!ptr) return -1;                     // 0 = no column written yet
+  const off = ptr - base;
+  if (off < 0 || off % map.colBytes !== 0) return -1;
+  const col = off / map.colBytes;
+  return col < map.ncols ? col : -1;
+}
+
 class Demo {
   constructor(canvas, bundle, frameHz, mode = DEFAULT_MODE) {
     this.bundle = bundle;
@@ -285,15 +314,8 @@ class Demo {
    * cannot place must NOT be turned into a plausible column number.
    */
   streamColumn() {
-    const map = this.bundle.manifest.gfx.bg?.map;
-    if (!map) return -1;
-    const base = Number.parseInt(String(map.cols).replace('$', ''), 16);
-    const p = this.game.vram.streamPtr;
-    if (!p) return -1;
-    const off = p - base;
-    if (off < 0 || off % map.colBytes !== 0) return -1;
-    const col = off / map.colBytes;
-    return col < map.ncols ? col : -1;
+    return streamColumnOf(this.bundle.manifest.gfx.bg?.map,
+      this.game.vram.streamPtr);
   }
 
   /** The picture for the port's CURRENT logic frame. */
