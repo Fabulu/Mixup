@@ -7,6 +7,9 @@
 //
 //     node tools/pixgate.mjs --rom <romdir> --dump <dumpdir> [--dump <dir> ...]
 //     node tools/pixgate.mjs ... --mutate list|<name>|all
+//     node tools/pixgate.mjs ... --shards <assetsdir>   (wave 15: BG tiles from
+//                                the published shards, not the ROM; the gate
+//                                then requires a past-px-160 pair)
 //
 // WHY THIS IS EVIDENCE AND NOT A TAUTOLOGY.  The two sides are independently
 // derived: this side is a transcription of `igs023_video.cpp` into JS, the
@@ -37,6 +40,75 @@ import {
   bgTile, bgTileReversedPlanes, txTile, beWords, parseRegs,
   SCREEN_W, SCREEN_H,
 } from '../src/render/index.js';
+import { loadBundle } from '../src/web/assets.js';
+
+// ----------------------------------------------------------------- wave 15
+// THE SHARD PROOF.  Every other run of this gate decodes BG tiles straight out
+// of the cartridge ROM -- which is exactly why it could not close capture-ledger
+// L7: L7 is the claim that the PUBLISHED, SHARDED bundle holds the stage's 1,820
+// tiles, and a ROM decode says nothing about the shard decode.  `--shards
+// <assetsdir>` swaps ONE thing -- the BG tile source becomes the bundle's
+// `BgShards`, the same `bgTileFn` the browser runs -- and re-runs the identical
+// comparison.  Sprites and the TX layer stay on the ROM, so the BG shard decode
+// is the only variable: a 100 % run here means shard pixels == ROM pixels ==
+// MAME, at whatever scroll the corpus reaches.  Run over the `pix-slice` corpus
+// and that scroll is `bg_xscroll ≈ 0x0C00` (3,072 px) -- columns the 161-frame
+// capture (px 0..160) never saw.
+const SHARD_MUTATIONS = ['bg-planes', 'blank-shard-tile'];
+
+/** Reverse the 5-bit BG plane weights of an already-decoded 32x32 tile in place.
+ *  `bgTileReversedPlanes` reads from ROM; in shard mode there is no ROM for BG,
+ *  so the same red is composed ON TOP of the shard-decoded tile. */
+function reversePlanesInPlace(t) {
+  for (let p = 0; p < t.length; p++) {
+    const v = t[p];
+    t[p] = ((v & 1) << 4) | ((v & 2) << 2) | (v & 4)
+      | ((v & 8) >> 2) | ((v & 16) >> 4);
+  }
+  return t;
+}
+
+/** The BG tile whose absence would cost the most pixels, counted ONLY over
+ *  past-160 frames and EXCLUDING any tile the 161-frame capture already holds --
+ *  so blanking it proves the picture past px 160 is coming from the NEW shards
+ *  and not from a ROM fallback or the capture.  Mirrors bundlegate.mjs's
+ *  `mostVisibleBgTile` cell computation. */
+function mostVisiblePast160Tile(a) {
+  const PAST160 = 0xa0;                   // the capture covers px 0..160
+  const visits = new Map();
+  for (const d of a.dumps) {
+    for (const [n] of pairsIn(d)) {
+      const ds = loadFrame(d, n);
+      if (ds.regs.bg_xscroll <= PAST160) continue;
+      if (ds.regs.ctrl & (1 << 12)) continue;        // BG layer disabled
+      const seen = new Set();
+      for (let y = 0; y < SCREEN_H; y++) {
+        const r = (((y + ds.regs.bg_yscroll) & 0x1ff) >> 5) * 64;
+        const sx = (ds.regs.bg_xscroll + ds.rowscroll[y]) & 0x7ff;
+        for (let x = 0; x < SCREEN_W; x += 32) {
+          seen.add(r + ((((x + sx) & 0x7ff)) >> 5));
+        }
+      }
+      for (const cell of seen) {
+        const no = ds.bg[cell * 2];
+        if (a.captureTiles.has(no)) continue;        // must be a NEW tile
+        visits.set(no, (visits.get(no) ?? 0) + 1);
+      }
+    }
+  }
+  let best = null;
+  for (const [no, n] of visits) {
+    const slot = a.shardBg.slot[no];
+    if (slot < 0) continue;
+    let opaque = 0;
+    const px = a.shardBg.pixels.subarray(slot * a.shardBg.tileBytes,
+      (slot + 1) * a.shardBg.tileBytes);
+    for (let k = 0; k < px.length; k++) if (px[k] !== 31) opaque++;
+    const score = n * opaque;
+    if (!best || score > best.score) best = { tile: no, slot, visits: n, opaque, score };
+  }
+  return best;
+}
 
 // ---------------------------------------------------------------- mutations
 //
@@ -142,11 +214,13 @@ function parseArgs(argv) {
   const a = {
     rom: null, dumps: [], minPairs: 0, minSprites: 0, minPaldelta: 0,
     minDense: 0, mutate: null, json: null, quiet: false, limit: 0,
+    shards: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     const v = () => argv[++i];
     if (k === '--rom') a.rom = v();
+    else if (k === '--shards') a.shards = v();
     else if (k === '--dump') a.dumps.push(v());
     else if (k === '--min-pairs') a.minPairs = +v();
     else if (k === '--min-sprites') a.minSprites = +v();
@@ -161,24 +235,47 @@ function parseArgs(argv) {
   return a;
 }
 
-function main() {
+async function main() {
   const a = parseArgs(process.argv.slice(2));
   if (a.mutate === 'list') {
     for (const [k, m] of Object.entries(MUTATIONS)) {
       console.log(`${k.padEnd(18)} ${m.doc}`);
     }
+    if (a.shards) for (const m of SHARD_MUTATIONS) console.log(`${m.padEnd(18)} (shard mode)`);
     return 0;
   }
-  if (a.mutate && a.mutate !== 'all' && !MUTATIONS[a.mutate]) {
-    throw new Error(`unknown mutation ${a.mutate}; have ${Object.keys(MUTATIONS)}`);
+  // In shard mode the BG tile source is the bundle, so the only mutations that
+  // mean anything are the two shard ones; bg-planes is composed on top of the
+  // shard decode rather than read from ROM.  Outside shard mode the mutation
+  // must be one the ROM gate knows.
+  const known = a.shards ? SHARD_MUTATIONS : Object.keys(MUTATIONS);
+  if (a.mutate && a.mutate !== 'all' && !known.includes(a.mutate)) {
+    throw new Error(`unknown mutation ${a.mutate} for ${a.shards ? 'shard' : 'ROM'}`
+      + ` mode; have ${known.join(', ')}`);
   }
   if (!a.rom || !a.dumps.length) throw new Error('--rom and --dump are required');
 
+  if (a.shards) {
+    // The SAME loader the browser runs, over the filesystem.  `shards: 'all'`
+    // fetches every shard -- the past-160 columns live in shards 2..6, which the
+    // page would lazy-load but a gate must hold all at once.
+    const read = (name) => new Uint8Array(fs.readFileSync(path.join(a.shards, name)));
+    const bundle = await loadBundle(read, { shards: 'all' });
+    a.shardBgFn = bundle.tileFns.bgTileFn;
+    a.shardBg = bundle.bg;
+    a.captureTiles = new Set();
+    for (let i = 0; i < bundle.cap.length; i++) {
+      const st = bundle.cap.state(i);
+      for (let t = 0; t < 64 * 16; t++) a.captureTiles.add(st.bg[t * 2]);
+    }
+  }
+
   if (a.mutate === 'all') {
+    const names = a.shards ? SHARD_MUTATIONS : Object.keys(MUTATIONS);
     const base = runGate(a, null);
     console.log(`\nBASELINE: ${base === 0 ? 'PASS' : 'FAIL'}`);
     const undetected = [];
-    for (const name of Object.keys(MUTATIONS)) {
+    for (const name of names) {
       console.log(`\n--- mutation ${name} (must go RED) ---`);
       const rc = runGate({ ...a, quiet: true }, name);
       console.log(`    ${name}: ${rc ? 'RED (good)' : 'STILL GREEN -- THE GATE IS FAKE'}`);
@@ -193,13 +290,38 @@ function main() {
 }
 
 function runGate(a, mutName) {
-  const mut = mutName ? MUTATIONS[mutName] : {};
+  const mut = MUTATIONS[mutName] ?? {};   // shard-only mutations are not in the dict
   const roms = loadRegions(
     (name) => new Uint8Array(fs.readFileSync(path.join(a.rom, name))),
     { igs023Layout: mut.layout ?? IGS023_LAYOUT });
 
+  // BG tile source.  In shard mode it is the bundle's `BgShards`; the bg-planes
+  // red is composed on top of the shard decode, and blank-shard-tile zeroes a
+  // measured past-160 victim in the shard sheet before any tile is drawn.
+  let bgTileFn = mut.render?.bgTileFn ?? bgTile;
+  let shardVictim = null;
+  if (a.shards) {
+    bgTileFn = a.shardBgFn;
+    if (mutName === 'bg-planes') {
+      bgTileFn = (r, i, out) => reversePlanesInPlace(a.shardBgFn(r, i, out));
+    } else if (mutName === 'blank-shard-tile') {
+      shardVictim = mostVisiblePast160Tile(a);
+      if (!shardVictim) {
+        console.log('EXPECTED-RED [blank-shard-tile]: no past-160 frame draws a '
+          + 'BG tile outside the capture set -- the break cannot fail, which is '
+          + 'itself a finding (the shard gate is not exercising new tiles).');
+        return 1;
+      }
+      a.shardBg.pixels.fill(0, shardVictim.slot * a.shardBg.tileBytes,
+        (shardVictim.slot + 1) * a.shardBg.tileBytes);
+      console.log(`  shard victim: BG tile $${shardVictim.tile.toString(16)} `
+        + `(not in the capture), on screen in ${shardVictim.visits} past-160 `
+        + `pair(s), ${shardVictim.opaque}/${a.shardBg.tileBytes} pixels opaque`);
+    }
+  }
+
   const renderer = new Renderer(roms, {
-    bgTileFn: mut.render?.bgTileFn ?? bgTile,
+    bgTileFn,
     txTileFn: mut.render?.txTileFn ?? txTile,
   });
   const drawOpts = {
@@ -212,6 +334,15 @@ function runGate(a, mutName) {
   let pairs = [];
   for (const d of a.dumps) pairs = pairs.concat(pairsIn(d));
   if (a.limit) pairs = pairs.slice(0, a.limit);
+  // WAVE 15 shard mode: the shards carry the stage-1 BG tiles ONLY, so the
+  // boot/title frames (bg_xscroll == 0, drawn from non-stage-1 tiles) are
+  // EXPECTED to diverge and are out of scope.  The gate's question is the
+  // stage-1 picture past px 160, so the comparison is restricted to those
+  // pairs.  (The dump palette still comes from the frame, unchanged -- this
+  // changes only the BG tile source and the frame set.)
+  if (a.shards) {
+    pairs = pairs.filter(([n, dir]) => loadFrame(dir, n).regs.bg_xscroll > 0xa0);
+  }
 
   let exact = 0, total = 0, allOk = true;
   let maxSprites = 0, maxPaldelta = 0;
@@ -253,6 +384,7 @@ function runGate(a, mutName) {
     rows.push({
       state: n, pixels: m, exact: same, total: npix, sprites: sp.length,
       zoomed, paldelta, ctrl: ds.regs.ctrl, bg_scale: ds.regs.bg_scale,
+      bgx: ds.regs.bg_xscroll,
     });
     if (!a.quiet) {
       console.log(
@@ -280,7 +412,7 @@ function runGate(a, mutName) {
       + `sprites, ${a.minSprites} required. The plan asks for one >=90-sprite `
       + 'frame because a green run over quiet frames proves nothing.');
   }
-  if (maxPaldelta < a.minPaldelta) {
+  if (maxPaldelta < a.minPaldelta && !a.shards) {
     problems.push(`NO PALETTE-FADE FRAME: the biggest palette delta was `
       + `${maxPaldelta} words, ${a.minPaldelta} required. Without a fade the `
       + 'palette sample-point offset is untested -- both choices score 100 %.');
@@ -295,11 +427,30 @@ function runGate(a, mutName) {
       + 'those comparisons are worthless in both directions. Escalate -- the '
       + 'ORACLE is wrong there, not the renderer.');
   }
+  // WAVE 15.  In shard mode the WHOLE POINT is a column past px 160, so a pass
+  // that never reached one is not a pass -- it would be bundlegate's territory
+  // (px 0..160) repeated.  This counts the pairs whose bg_xscroll is past the
+  // 161-frame capture (px 0..160) and that were pixel-exact.
+  let past160 = '';
+  if (a.shards) {
+    const past = rows.filter((r) => r.bgx > 0xa0);
+    const pastExact = past.filter((r) => r.exact === r.total).length;
+    past160 = `; ${pastExact}/${past.length} past-160 pair(s) exact`;
+    if (!past.length) {
+      problems.push('NO PAST-160 PAIR: every pair is at bg_xscroll <= 0xA0, i.e. '
+        + 'inside the 161-frame capture. The shard gate is not testing a column '
+        + 'the capture has not already shown -- run it over the pix-slice corpus.');
+    } else if (pastExact !== past.length) {
+      problems.push(`${past.length - pastExact} past-160 pair(s) were NOT exact -- `
+        + 'the shard decode diverges from MAME beyond the capture.');
+    }
+  }
   const verdict = (allOk && !problems.length) ? 'PASS' : 'FAIL';
   for (const p of problems) console.log(`FAIL ${p}`);
   console.log(`${verdict}: ${exact}/${total} = ${pct.toFixed(4)}% over `
     + `${pairs.length} frame pair(s); densest run ${dense} consecutive, `
-    + `busiest ${maxSprites} sprites, biggest palette delta ${maxPaldelta} words`);
+    + `busiest ${maxSprites} sprites, biggest palette delta ${maxPaldelta} words`
+    + past160);
   if (a.json) {
     fs.writeFileSync(a.json, JSON.stringify({
       verdict, pairs: pairs.length, exact, total, pct, mutation: mutName,
@@ -310,7 +461,7 @@ function runGate(a, mutName) {
 }
 
 try {
-  process.exit(main());
+  main().then((c) => process.exit(c));
 } catch (e) {
   console.error(String(e.stack || e));
   process.exit(2);

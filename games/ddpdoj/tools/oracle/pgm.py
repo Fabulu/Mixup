@@ -1223,6 +1223,11 @@ def _cmd_check(argv: list[str]) -> int:
         for m in ("off-by-one", "frozen-player", "no-input", "bg-frozen-camera"):
             stage(f"demo gate RED [{m}]",
                   lambda m=m: sub(__file__, "demogate", "--break", m))
+        # WAVE 15.  The shard gate: the PUBLISHED bundle's BG tiles (not the
+        # ROM) drawn past px 160, pixel-exact against MAME.  Closes
+        # capture-ledger L7.  Self-contained -- it fresh-exports first.
+        stage("background shard gate: published tiles past px 160 (+ RED)",
+              lambda: sub(__file__, "shardgate"))
         stage("determinism gate", lambda: sub(__file__, "gate"))
 
     nf = sum(1 for _, s, _ in results if s == "FAIL")
@@ -2092,6 +2097,70 @@ def _cmd_demogate(argv: list[str]) -> int:
     return subprocess.run(cmd).returncode
 
 
+def _cmd_shardgate(argv: list[str]) -> int:
+    """WAVE 15.  THE BACKGROUND-SHARD GATE -- the measurement that closes
+    capture-ledger L7.
+
+    `pgm.py pixslice` proves the port's renderer matches MAME with BG tiles
+    decoded straight from the ROM; `pgm.py demogate`/`bundlegate` prove the
+    PUBLISHED bundle matches MAME over the 161-frame capture (px 0..160).
+    Neither is the claim L7 makes.  L7 is: the bundle holds the stage's 1,820
+    BG tiles (not the capture's 415), and the page can draw a column past px 160
+    with them.  This gate swaps the ONE thing that neither older gate did -- the
+    BG tile source becomes the published `BgShards` -- and re-runs the identical
+    pixel comparison over the pix-slice corpus's past-160 frames (bg_xscroll
+    ≈ 0x0C00), so the shard decode is the only variable.
+
+      pgm.py shardgate            fresh export, then baseline + RED
+      pgm.py shardgate --reuse    skip the fresh export, reuse assets/ on disk
+      pgm.py shardgate --no-red   baseline only
+    """
+    import subprocess as sp
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("node not on PATH -- the port's renderer is JS")
+    assets = TOOLS.parent / "assets"
+    slice_dir = RIP / "pix-slice"
+    if not slice_dir.exists():
+        raise SystemExit(f"{slice_dir} missing -- run `pgm.py pixslice` first "
+                         "(it produces the past-160 dense frames this gate needs)")
+    if not ROMDIR.exists():
+        raise SystemExit(f"{ROMDIR} missing -- run `python "
+                         f"games/ddpdoj/tools/assets.py extract` first")
+
+    # DONE-WHEN 1: a FRESH extraction passing the exporter's own integrity
+    # checks (CHECK 1 the attribute word, CHECK 2 the 1,820/$0AA9..$11C6 +
+    # 205/$32A9..$3381 counts, the palette-vs-board agreement, the
+    # region-assembly gate).  The exporter cannot verify ITSELF against MAME --
+    # that is the baseline run below -- but it can and must catch the gross
+    # errors a wrong base or stride would make.
+    if "--reuse" not in argv:
+        print("-- fresh export (integrity checks live in export-web.mjs)")
+        rc = sp.run([node, str(TOOLS / "export-web.mjs")]).returncode
+        if rc:
+            return rc
+    elif not assets.exists():
+        raise SystemExit(f"{assets} missing -- run `pgm.py shardgate` without "
+                         "--reuse to build it")
+
+    common = [node, str(TOOLS / "pixgate.mjs"), "--rom", str(ROMDIR),
+              "--shards", str(assets), "--dump", str(slice_dir),
+              "--min-pairs", "40", "--min-sprites", "90", "--min-dense", "40"]
+    # DONE-WHEN 3: the shard-backed renderer, past px 160, == MAME.
+    print("\n-- shard baseline (BG tiles from the published shards, past px 160)")
+    rc = sp.run(common + ["--quiet"]).returncode
+    if rc:
+        return rc
+    if "--no-red" in argv:
+        return 0
+    # RED: a decode error composed on the shard tiles, and a newly-exported
+    # past-160 tile blanked in the shard sheet, must BOTH diverge.  The second
+    # is the one that proves the past-160 picture is coming from the SHARDS and
+    # not a ROM fallback or the capture.
+    print("\n-- shard RED (bg-planes composed; blank-shard-tile)")
+    return sp.run(common + ["--mutate", "all", "--quiet"]).returncode
+
+
 # --------------------------------------------------------------------------- wave 11
 # THE DISPLAY-LIST KEYSTONE.  Main-loop call #4 is a PURE TRANSFORM of the thirty
 # bucket counters and their staging buffers into $800000..$8009FF, so it can be
@@ -2578,7 +2647,7 @@ COMMANDS = {
     "flyaround": _cmd_flyaround, "spritecap": _cmd_spritecap,
     "shotgate": _cmd_shotgate,
     "pixslice": _cmd_pixslice, "pixdemo": _cmd_pixdemo,
-    "demogate": _cmd_demogate,
+    "demogate": _cmd_demogate, "shardgate": _cmd_shardgate,
     "dlgate": _cmd_dlgate, "ablate": _cmd_ablate,
     "shipgate": _cmd_shipgate, "firegate": _cmd_firegate,
 }
