@@ -1178,6 +1178,22 @@ def _cmd_check(argv: list[str]) -> int:
                    if not any(p.exists() for p in _w21)
                    else _node(PATTERNGATE, "--matrix",
                               ",".join(str(p) for p in _w21 if p.exists()))))
+    # WAVE 22.  THE SPAWN GATE -- the enemy spawn walker `$2633BE` against the
+    # board, frame for frame, over a whole-stage corpus comparable to wave 17.
+    # Like the scroll/turret/pattern gates it replays the port against a TSV
+    # already on disk and needs NO emulator run.  The cursor ($8132CC) is
+    # compared at 0 divergent over the stage-1 window (reset at lf 12360, the
+    # same boundary W17 measured), and the spawn counter reaches the script
+    # terminator (339 records) on both sides.
+    SPAWNGATE = TOOLS.parent / "tools" / "w22spawngate.mjs"
+    W22TSV = OUT / "w22-spawn-stage1.tsv"
+    stage("spawn walker: cursor + spawn counter vs the whole of stage 1",
+          lambda: (("SKIP", f"{W22TSV.name} missing -- `python tools/oracle/"
+                             f"w22run.py 16000 w22-spawn-stage1` (~6.5 min)")
+                   if not W22TSV.exists() else _node(SPAWNGATE, W22TSV)))
+    stage("spawn walker RED (clock-per-frame + 3 mutations)",
+          lambda: (("SKIP", f"{W22TSV.name} missing")
+                   if not W22TSV.exists() else _node(SPAWNGATE, W22TSV, "--break", "all")))
     if not quick:
         stage("fly-around: port vs board, 0 divergent frames",
               lambda: sub(__file__, "flyaround"))

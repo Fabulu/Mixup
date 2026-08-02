@@ -256,6 +256,36 @@ VELOCITY_FIELD = (0x200920, 0x221520 - 0x200920,
                   "point at, $200D20..$22151F")
 SHOT_WINDOWS.append(VELOCITY_FIELD)
 
+# WAVE 22 -- THE SPAWN SIDE.  src/spawn.js reads the stage table, the stage-1
+# spawn script and the aux table the way the walker `$2633BE` does.  The two
+# enemy TYPE tables (LO `$267824` / HI `$27E412`, 8 bytes per type -- init then
+# handler) are already exported by wave 20 and are reused unchanged.
+#
+#   $263336  5 stages x 16 bytes  the STAGE TABLE `$263386` installs from: each
+#           entry is (script_ptr, aux_ptr, res_ptr, pad).  `$813096` (stage*4)
+#           x4 is the index; stage 1 -> (script $230C6C, aux $23170C, res $231852).
+#   $230C6C  339 records x 8 B + $FFFF terminator = 2714 B, the stage-1 SPAWN
+#            SCRIPT.  The walker matches each record's first word (the trigger)
+#            against $8130CE.  The 8-byte layout is [trig:W][param:W][type:B]
+#            [flags:B][idx:W&$FFF] (census.py script_records).  Stages 2..5 are
+#            deliberately NOT exported: a read of another stage's script must be
+#            a LOUD THROW BY ADDRESS, not a plausible walk (the same rule W13
+#            applied to the BG column stream).
+#   $23170C  the stage-1 AUX table, word offsets into resource #$1F (the
+#            movement-script bytes), indexed by each record's 12-bit data idx.
+#            Stage 1's max idx is 162, so the live prefix is 326 B; the window
+#            carries an honest margin.  The resource #$1F data itself is W24's
+#            (the movement interpreter $2638A6); the port resolves the pointer
+#            and notes the body unported.
+SHOT_WINDOWS.extend([
+    (0x263330, 0x0060, "WAVE 22: $263336 the five-stage spawn table (16 B per "
+                       "entry: script ptr, aux ptr, resource ptr, pad)"),
+    (0x230C6C, 0x0AA0, "WAVE 22: the STAGE-1 spawn script, 339 records x 8 B + "
+                       "$FFFF terminator ($230C6C..$231706)"),
+    (0x23170C, 0x0150, "WAVE 22: the STAGE-1 aux table -- per-record word "
+                       "offsets into resource #$1F ($23170C, max idx 162)"),
+])
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
