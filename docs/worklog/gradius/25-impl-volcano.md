@@ -173,8 +173,14 @@ SHA-256 restored: YES
   (a) a button script that survives to $82: only the endchain recording reaches
       it; the deep-* / driftright / warphunt scripts all stop at scroll
       $0A64-$0AD0 (well short of boss page $0C00), dying to the stage-1 opening.
-      A powered-poke reaching attempt (10000 frames, RDA/RUA opening + RA tail)
-      was launched but did not complete within the time budget.
+      A fresh powered-poke reaching attempt (10000 frames, the RDA/RUA opening
+      + a 7846-frame RA tail, poke `0044=2,0045=2,0046=5,0041=1`) was run to
+      completion: **maxScroll=2661, $C413 n=0, $B36F n=0** -- it did NOT reach
+      $82 (the $1B gate never leaves $80/$A0). The boss page $0C00=3072 is
+      ~411px past where this script stalls, and the shield poke does not
+      prevent the terrain/bullet deaths that hold it back. The endchain run's
+      script (the one that DID reach $82 and kill the boss) was ad-hoc and is
+      not in the tree.
   (b) a labelled invuln poke applied to BOTH sides: the eruption's spawn
       cadence is timing-sensitive ($02 & 3), and an invuln poke changes the
       player's shot stream and rank, so per knowledge/09 it is valid for
