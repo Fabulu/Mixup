@@ -43,6 +43,7 @@
 import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
 import { allocEnemy, ENEMY } from './enemies.js';
+import { runInitBodyAddr, INIT_BODY_FREED } from './initbody.js';
 
 // --------------------------------------------------------------- the addresses
 export const SPAWN = {
@@ -208,11 +209,17 @@ export function initDispatch(ram, rom, rec, unported, bodyFn) {
   const p2 = (ram.u8(rec + E.p1Sel) & 1) !== 0;     // $263638 btst #$0,($1,A5)
   ram.setU8(rec + E.player, p2 ? 1 : 0);            // $263648 move.b D0,($3,A5)
   ram.setU16(rec + E.clear3E, 0);                   // $26364c clr.w ($3e,A5)
-  // $263650 jsr (A1) -- THE INIT+8 BODY.  The 115 real routines are W23.
-  // `bodyFn` (defaulting to runInitBody) is the one seam: the live port throws
-  // loudly; a test can pass a no-op to inspect the state the mechanism wrote
-  // BEFORE the body runs (which is everything the +8 rule is).
-  (bodyFn ?? runInitBody)(initBody, ram, rec, unported);
+  // $263650 jsr (A1) -- THE INIT+8 BODY (W23: the 21 stage-1 bodies, src/
+  // initbody.js).  `bodyFn` (defaulting to runInitBody) is the one seam: the
+  // live port runs the translated body; a test can pass a no-op to inspect the
+  // state the mechanism wrote BEFORE the body runs (which is everything the +8
+  // rule is).  The body takes `rom` because the prototype loaders + the
+  // sprite/bucket/palette table lookups read ROM the way the 68000 does.
+  const freed = (bodyFn ?? runInitBody)(initBody, ram, rom, rec, unported);
+  // If a stage-kill gate inside the body freed the enemy (`jmp $263762`), the
+  // type word is already clear and the slot will be skipped by the driver; the
+  // scroll-locked fixup below is a position op on a dead record, so skip it.
+  if (freed === INIT_BODY_FREED) return { init, initBody, runLen, failed: false, freed: true };
   // $263652..$26366a: scroll-locked spawn fixup.  If the class byte's bit 0 is
   // set, subtract the cross-axis scroll delta ($813172) from the sub-record's
   // along-axis position (+$04), once, so a scroll-locked enemy does not jump.
@@ -224,19 +231,16 @@ export function initDispatch(ram, rom, rec, unported, bodyFn) {
 }
 
 /**
- * The init+8 body dispatcher.  W23's routines are not ported; each call is a
- * LOUD NAMED THROW carrying the ROM address.  The NULL init ($267814 /
- * $27E402) is honoured as-written: it has already done its only work (the
- * run-length store, which the stub performed) so init+8 for a NULL type is a
- * harmless fall-through past the table, not a throw.
+ * The init+8 body dispatcher (W23).  Runs the translated body in src/initbody.js
+ * for the 21 stage-1 types; returns INIT_BODY_FREED if a stage-kill gate freed
+ * the enemy.  The NULL init ($267814 / $27E402) is honoured as-written: its
+ * stub already wrote the run-length and init+8 is a harmless fall-through, so
+ * it returns undefined (not freed).  Any non-stage-1 address is a LOUD NAMED
+ * THROW (never a silence).
  */
-export function runInitBody(addr, ram, rec, unported) {
+export function runInitBody(addr, ram, rom, rec, unported) {
   if (addr === SPAWN.NULL_INIT + 8 || addr === SPAWN.NULL_INIT2 + 8) return;
-  unported?.note(addr, `init+8 body at $${addr.toString(16).toUpperCase()} (W23: the `
-    + `prototype loaders + bespoke init)`);
-  unreached(addr, `init+8 body at $${addr.toString(16).toUpperCase()} -- W23 ("enemy `
-    + `stats become data"). The 8-byte stub already wrote the run-length; this is `
-    + `the real initialisation (hitbox/HP/speed/heading/palette/animation/bucket)`);
+  return runInitBodyAddr(addr, ram, rom, rec, unported);
 }
 
 // --------------------------------------------- the sub-record allocator $2635B2

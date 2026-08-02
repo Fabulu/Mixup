@@ -328,7 +328,7 @@ ENEMY_PROTO_WINDOWS = [
                        "rec $275EAC)"),
     (0x2766E0, 0x0030, "W23: type $8A protos (sub $2766E6, rec $2766E0)"),
     (0x276850, 0x0030, "W23: type $8B protos (sub $276862, rec $27685E)"),
-    (0x277310, 0x0030, "W23: type $89 protos + palette $27730C (sub $277322, "
+    (0x277300, 0x0040, "W23: type $89 protos + palette $27730C (sub $277322, "
                        "rec $277316)"),
     # the boss $0E: runLen 8 -> 9 sub-records x 28 = 252 B from $292806.
     (0x2927F0, 0x0140, "W23: type $0E (THE BOSS) protos -- 9 sub-records "
@@ -356,6 +356,15 @@ ENEMY_STAT_TABLES = [
     (0x272F70, 0x0090, "W23: the aim-derived sprite/bucket table $272F7A ($80)"),
     (0x2763D0, 0x0050, "W23: type $88's sub-record sprite table $2763D8 "
                        "(indexed by (sub +$28))"),
+    # $2687FE: type $11's loop-indexed palette table (read with `lea $2687FE;
+    # adda $813094`), sitting just BELOW W20's $268800 rec-proto window.
+    (0x2687F0, 0x0020, "W23: type $11's palette table $2687FE (indexed by "
+                       "$813094, the loop word)"),
+    # $242E42: the rank-adjustment BYTE table read by $242E24 (`move.b (A0,D0.w)`
+    # with D0 = $803916 & $7F, so 128 entries). $242E24's return is halved and
+    # added to type $11's bucket word (+$28) at $26874C -- a done-when field.
+    (0x242E42, 0x0080, "W23: the $242E24 rank-adjustment byte table $242E42 "
+                       "(indexed by $803916 & $7F, read in type $11's init)"),
 ]
 SHOT_WINDOWS.extend(ENEMY_PROTO_WINDOWS)
 SHOT_WINDOWS.extend(ENEMY_STAT_TABLES)

@@ -299,7 +299,13 @@ test('initDispatch: the +8 rule -- stub writes run-length, body address is init+
   assert.notEqual(ram.u32(rec + 0x06), 0, 'sub-record ptr stored');
 });
 
-test('initDispatch: WITHOUT bodyFn the real init+8 body THROWS (W23)', () => {
+test('initDispatch: WITHOUT bodyFn the real init+8 body RUNS (W23) and reads ROM', () => {
+  // W23: the 21 stage-1 bodies are now PORTED (src/initbody.js).  Without a
+  // bodyFn the real body runs; with the synth ROM (no prototype windows) the
+  // body's first prototype read throws "outside every ROM window" -- proving
+  // the body ran and reached the loader (W22's stub threw the init+8 address;
+  // now the throw is the loader's ROM read).  The positive "body writes HP"
+  // test is below, against the real ROM.
   const R = synthRom();
   const ram = new Ram();
   const rec = ENEMY.bandCommon;
@@ -308,9 +314,9 @@ test('initDispatch: WITHOUT bodyFn the real init+8 body THROWS (W23)', () => {
   let threw = null;
   try { initDispatch(ram, R, rec, { note() {} }); }
   catch (e) { threw = e; }
-  assert.ok(threw instanceof Unreached, 'the body throws loudly by default');
-  assert.ok(threw.romAddress >= 0x268700 && threw.romAddress <= 0x268724,
-    `throw carries the init+8 address ($${threw?.romAddress.toString(16)})`);
+  assert.ok(threw instanceof Unreached, 'the body ran and threw on missing proto data');
+  assert.equal(threw.romAddress, 0x268828,    // type $11's sub-record prototype
+    `throw carries the prototype address ($${threw?.romAddress.toString(16)})`);
 });
 
 test('initDispatch: the player-select bit ($263638 btst #0,($1,A5))', () => {
@@ -344,17 +350,18 @@ test('initDispatch: a NULL type init+8 does not throw (the stub did all the work
   // The NULL init is $267814 (or $27E402 for the $80+ half); its +8 is $26781C,
   // the do-nothing handler.  runInitBody returns early for NULL types rather
   // than throwing -- the 8-byte stub already wrote the (zero) run-length and
-  // there is no body to port.  A NON-null init+8 throws (W23).
+  // there is no body to port.  A NON-stage-1 init+8 address is a LOUD THROW.
   const ram = new Ram();
   const rec = ENEMY.bandCommon;
   assert.doesNotThrow(() =>
-    runInitBody(SPAWN.NULL_INIT + 8, ram, rec, { note() {} }));
+    runInitBody(SPAWN.NULL_INIT + 8, ram, null, rec, { note() {} }));
   assert.doesNotThrow(() =>
-    runInitBody(SPAWN.NULL_INIT2 + 8, ram, rec, { note() {} }));
-  // and a real body DOES throw:
-  const e = (() => { try { runInitBody(0x268724, ram, rec, { note() {} }); }
+    runInitBody(SPAWN.NULL_INIT2 + 8, ram, null, rec, { note() {} }));
+  // and a NON-stage-1 body DOES throw (not in the W23 body table):
+  const e = (() => { try { runInitBody(0x281000, ram, null, rec, { note() {} }); }
                     catch (x) { return x; } return null; })();
-  assert.ok(e instanceof Unreached, 'non-NULL init+8 throws (W23)');
+  assert.ok(e instanceof Unreached, 'non-stage-1 init+8 throws (W23)');
+  assert.equal(e.romAddress, 0x281000, 'throw carries the unknown body address');
 });
 
 
