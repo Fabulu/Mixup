@@ -763,13 +763,15 @@ test('$A2DF AND #$0E: the chunk index drops bit 0 of the scroll page', () => {
   }
 });
 
-test('$A2F0/$A2F7: sub-state $81 is a bare RTS and $82 is a loud throw', () => {
+test('$A2F0/$A2F7: sub-state $81 freezes, $82 runs the late spawner (W25)', () => {
   // `CMP #$81 / BEQ $A2F6 (RTS)` then `CMP #$82 / BEQ $A2FB (JMP $C413)`. $1B is
-  // $80 on every compared frame of every scenario, so both constants are free:
+  // $80 on every compared frame of every scenario, so the $81 constant is free:
   // changing #$81 to #$83 is green over 5045 frames. $81 is the boss-approach
   // sub-state and it must FREEZE the spawn engine, not fall through into it.
-  // RED WHEN: #$81 moves (the first case then fires a wave), or the $82 arm
-  // stops throwing.
+  // W25 PORTED the $82 arm: it no longer throws, it runs the late spawner
+  // ($C413), which on stage 1 erupts the type-$0A volcano. RED WHEN: #$81 moves
+  // (the first case then fires a wave), or the $82 arm stops calling the late
+  // spawner (no $0A spawn), or the wave cursor gets consumed.
   const frozen = running();
   frozen.substate = 0x81;
   frozen.spawn.z61 = 0; frozen.cam.hi = 0; frozen.cam.lo = 0x20;
@@ -778,12 +780,22 @@ test('$A2F0/$A2F7: sub-state $81 is a bare RTS and $82 is a loud throw', () => {
   assert.strictEqual(cursor(frozen), 0xA844, '$1B = $81 must not consume a record');
   assert.strictEqual(frozen.obj.type[21], 0, 'and must not spawn anything');
 
-  const advancing = running();
-  advancing.substate = 0x82;
-  assert.throws(() => spawnEngine(advancing, res), /\$1B = \$82.*\$C413/s);
+  // $82: the late spawner. frame 0 -> the $02 & 3 gate passes, and the first
+  // empty slot (9, scanning down) gets the volcano type $0A. The wave cursor
+  // must be UNTOUCHED (the late spawner is a separate engine from $A2F0).
+  const erupting = running();
+  erupting.substate = 0x82;
+  erupting.frame = 0;                   // $02 & 3 == 0: the spawn gate passes
+  erupting.spawn.z6A = 0x44; erupting.spawn.z6B = 0xA8;
+  spawnEngine(erupting, res);
+  assert.strictEqual(cursor(erupting), 0xA844, '$82 must not consume a wave record');
+  assert.strictEqual(erupting.obj.type[21], 0x0A,
+    '$82 spawns the volcano type $0A at the first empty slot (9 -> index 21)');
+  assert.strictEqual(erupting.obj.anim[21], 0x58, 'and the volcano metasprite $58');
+  assert.strictEqual(erupting.obj.y[21], 0x90, 'at the volcano base line $90');
 
-  // the control: the same state at $80 DOES fire, so the freeze above is the
-  // sub-state and not the fixture.
+  // the control: the same state at $80 DOES fire a wave, so the freeze above is
+  // the sub-state and not the fixture.
   const playing = running();
   playing.spawn.z61 = 0; playing.cam.hi = 0; playing.cam.lo = 0x20;
   playing.spawn.z6A = 0x44; playing.spawn.z6B = 0xA8;

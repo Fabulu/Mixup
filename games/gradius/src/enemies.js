@@ -67,8 +67,15 @@
 //                            has the ranked table; 22-impl-six-routines.md has
 //                            the first frame and slot-frame count each of the
 //                            six was measured at inside `deep-powered`.
-//   $C413                    the stage-advance arm ($3A != 0, $1B = $82).
-//                            $3A measured 0 on all 27,400 of those frames.
+//   $C413                    the LATE SPAWNER -- the per-stage eruption that
+//                            runs DURING W24's $82 countdown (the 768-frame
+//                            volcano). Reached two ways: $3A != 0 at $A2C4
+//                            (the stage-advance latch, measured 0 on all 27,400
+//                            of those frames) and $1B = $82 at $A2FB (the LIVE
+//                            stage-1 path). Stage 1's arm $C486 spawns type $0A
+//                            (zero wave records, $C486 its only producer).
+//                            PORTED WAVE 25; the other 6 arms (stages 2-7)
+//                            throw loudly by stage scope.
 //   $BBB7's $BBE5 arm        the `$17 >= 3` rank consumer. Unreachable once any
 //                            wave has fired, because it is gated on `$5D == 0`
 //                            -- and 0 executions even on the run that held
@@ -307,8 +314,8 @@ export function spawnEngine(state, res) {
   const rom = res.enemyTables;
   const sp = state.spawn;
   if (state.build.gate !== 0) {        // $A2C0 LDA $3A / BEQ $A2C7
-    throw new Error('$3A != 0: $A2C4 JMP $C413, the stage-advance arm, is not '
-                  + 'ported (measured 0 on 700 of 700 frames of stage 1)');
+    lateSpawner(state, rom, res.stage.stage);  // $A2C4 JMP $C413 (the late spawner)
+    return;
   }
   if (sp.z60 === 0) return;            // $A2C7 LDX $60 / BNE / $A2CB RTS
   if (u8(sp.z60 - 1) !== 0) {          // $A2CC DEX / $A2CD BNE $A2F0
@@ -324,7 +331,8 @@ function runEngine(state, rom, stageIndex) {
   const sp = state.spawn;
   if (state.substate === 0x81) return;   // $A2F0 CMP #$81 / $A2F6 RTS
   if (state.substate === 0x82) {         // $A2F7 CMP #$82
-    throw new Error('$1B = $82: $A2FB JMP $C413 is not ported');
+    lateSpawner(state, rom, stageIndex); // $A2FB JMP $C413 (the late spawner)
+    return;
   }
   if (sp.z69 !== 0) {                    // $A2FE LDA $69 / BNE $A32B
     if (sp.z6C !== 0) {                  // $A32B LDA $6C / BNE $A332
@@ -351,6 +359,205 @@ function runEngine(state, rom, stageIndex) {
   }
   if (state.cam.hi > hi) fireWave(state, rom);      // $A320 BCS $A335
   // $A322 BCC $A32A -- not yet
+}
+
+// ====================== THE LATE SPAWNER, $C413 ==============================
+//
+// $C413 is the per-stage LATE SPAWNER -- the second enemy spawner that runs
+// DURING W24's $82 countdown (the 768-frame eruption at $99E9). It was
+// mislabelled "stage advance" in this port for the same reason the census
+// mis-read its table as 11 entries: its $3A-gated entry at $A2C4 looked like
+// the stage-advance latch, and the table at jt_$C439 abuts the pointer data
+// $C447. The LIVE stage-1 entry is the $1B == $82 arm at $A2FB (runEngine
+// above), and what it spawns is the volcano: type $0A, which has ZERO
+// wave-script records anywhere and $C486 as its only producer.
+//
+// TWO entry points converge here, both JMPs out of the spawn engine:
+//   $A2C4 JMP $C413  when $3A != 0 (the stage-advance latch; measured 0 on
+//                    every frame of every stage-1 run; reaches the same body
+//                    but via the gate at the top of spawnEngine)
+//   $A2FB JMP $C413  when $1B == $82 (the countdown -- the live stage-1 path;
+//                    reached from runEngine above)
+//
+// THE DENOMINATOR (tools/oracle/out/throwaudit-endchain.json, the 6000-frame
+// cartridge run that cleared stage 1):
+//   $C413 executes 768 times (== the $82 duration, game frames 1339-2107).
+//   The $02 & 3 gate at $C415 passes 1 in 4 -> 192 spawn-frames.
+//   Handler entry 10 ($B36F, type $0A) executes 6,365 times over the run.
+//   The 32-byte pattern stream yields 64 spawns/cycle -> 192 = exactly 3 cycles.
+
+/**
+ * `$C413` -- the late spawner entry. Fires every 4th frame, finds an empty
+ * enemy slot, clears it, then dispatches on the stage to one of 7 arms.
+ *
+ * Stage 1's arm is `$C486` (the volcano); the other 6 arms throw loudly by
+ * stage scope. `$C429` (stage 7) is the bare RTS -- no spawn -- and is the
+ * one arm that returns without throwing.
+ */
+function lateSpawner(state, rom, stageIndex) {
+  // $C413 LDA $02 / AND #$03 / BEQ $C41A -- only spawn every 4th frame.
+  // $02 is the free-running frame counter, kept 8-bit in state.frame.
+  if ((state.frame & 0x03) !== 0) return;   // $C417 F0 01 / $C419 60 RTS
+  // $C41A LDX #$09 / $C41C STX $A8 / $C41E-C427: scan slots 9..0 for an empty
+  // one (BPL, so it tests slot 0). allocEnemySlot(state, true) is that scan.
+  const j = allocEnemySlot(state, true);     // $C41E LDX $A8 / LDA $030C,X / BEQ
+  if (j < 0) return;                         // $C429 60 RTS -- no empty slot
+  state.spawn.zA8 = j;                       // $C41C STX $A8 (the cursor)
+  clearSlot(state, j);                       // $C42A JSR $A527
+  // $C42D LDA $3A / BEQ $C434 -- the warp gate. $3A != 0 -> $C686 (W27's rain).
+  // This is checked a SECOND time (the first was spawnEngine's $A2C0 gate that
+  // routed here); on stage 1 it is always 0.
+  if (state.build.gate !== 0) {
+    throw new Error('$C42D: $3A != 0 -> JMP $C686 (the warp rain) is W27, '
+                  + 'not ported. Reached inside the late spawner after a slot '
+                  + 'was cleared; stage 1 ($3A == 0) never takes this branch.');
+  }
+  // $C434 LDA $19 / JSR $83E4 -- jt_$C439, a 7-entry inline dispatch on stage.
+  const target = rom.word(0xC439 + 2 * stageIndex);   // jt_$C439[stage]
+  switch (target) {
+    case 0xC486: return st_C486(state, rom);   // stage 1 -- the volcano
+    // ---- stages 2-7: out of stage-1 scope, LOUD NAMED THROWS ---------------
+    // Each carries its ROM target and what it spawns, so the wave that ports it
+    // has the address and the producer in the message.
+    case 0xC546:
+      throw new Error('$C439[1] -> $C546: stage-2 late-spawner arm not ported '
+                    + '(stage-1 scope, W25). Spawns type $0B via sub_$C44F '
+                    + 'X=2 -> stream $C58D.');
+    case 0xC686:
+      throw new Error('$C439[2] -> $C686: stage-3 late-spawner arm not ported '
+                    + '(stage-1 scope, W25). NB $C686 is ALSO the $3A warp '
+                    + 'target above; stage 3 shares the warp rain body.');
+    case 0xC5AD:
+      throw new Error('$C439[3] -> $C5AD: stage-4 late-spawner arm not ported '
+                    + '(stage-1 scope, W25). Spawns type $0B via sub_$C44F '
+                    + 'X=4 -> stream $C633.');
+    case 0xC653:
+      throw new Error('$C439[4] -> $C653: stage-5 late-spawner arm not ported '
+                    + '(stage-1 scope, W25).');
+    case 0xC6DE:
+      throw new Error('$C439[5] -> $C6DE: stage-6 late-spawner arm not ported '
+                    + '(stage-1 scope, W25).');
+    case 0xC429:
+      return;   // $C429 60 RTS -- stage 7's arm is the bare RTS (no spawn)
+    default:
+      throw new Error(`jt_$C439[${stageIndex}] -> ${hex4(target)}: unrecognised `
+                    + 'late-spawner arm (the 7-entry table is $C439-$C446, '
+                    + 'proven by $C447 abutting sub_$C44F\'s pointer data)');
+  }
+}
+
+/**
+ * `sub_$C44F` -- the PATTERN STEPPER. Reads a packed-nibble spawn stream and
+ * advances the spawn cursor `$69`, producing the position/velocity index `$A9`
+ * and the odd/even flag `$AA` (which the caller uses to pick the crater and the
+ * nibble).
+ *
+ * `x` selects which arm's stream pointer to read from `$C447+X` (X = 0 for the
+ * volcano -> pointer at `$C447` -> stream `$C526`; 2 -> `$C58D`; 4 -> `$C633`).
+ *
+ * `$69` is a free-running counter shared with the wave engine's formation
+ * countdown: it INCs every call, and wraps `$FF` -> `$7F` -> `$80` (so it never
+ * naturally reaches 0 -- the eruption sfx at `st_$C486` plays only because the
+ * wave engine's last formation left `$69` at 0 at the start of `$82`). Each
+ * pattern byte's two nibbles are consumed on consecutive spawns -- the high
+ * nibble when the POST-INC `$69` is even, the low when odd -- so the 32-byte
+ * stream yields 64 spawns per cycle and the 192-spawn eruption walks it 3 times.
+ *
+ * Returns `{ a9, aa }` rather than modelling the transient `$9A`/`$9B`/`$A9`/
+ * `$AA` zero-page bytes: `$9A`/`$9B` are scratch (written and read within this
+ * one call) and `$A9`/`$AA` are consumed only by the caller (`st_$C486`).
+ * The pre-INC `$69` indexes the stream; the POST-INC `$69` picks the nibble --
+ * that split is the load-bearing subtlety and is preserved exactly.
+ */
+function sub_C44F(state, rom, x) {
+  const sp = state.spawn;
+  // $C44F-$C458: load the stream pointer from $C447+X into $9A:$9B. A 16-bit
+  // CPU pointer; the block approachStage0 (W21) exports $C526+ raw for it.
+  const ptr = rom.word(0xC447 + x);          // $C44F BD $C447,X / STA $9A/$9B
+  // $C459-$C461: manage $69. LDA $69; CMP #$FF; if equal, reset to $7F.
+  let cursor = sp.z69;                       // $C459 A5 69 LDA $69 (pre-INC value)
+  if (cursor === 0xFF) {                     // $C45B C9 FF / $C45D D0 BNE
+    cursor = 0x7F;                           // $C45F A9 7F / $C461 STA $69
+  }
+  // $C463 E6 69 -- $69 always increments, AFTER the possible $FF->$7F reset.
+  sp.z69 = u8(cursor + 1);
+  // $C465 AND #$3F / $C467 LSR A / $C468 TAY -- NOTE A still holds the PRE-INC
+  // value (or $7F), so the stream index is (cursor & $3F) >> 1, range 0..31.
+  const y = (cursor & 0x3F) >>> 1;
+  // $C469 B1 9A / $C46B STA $A9 -- read one pattern byte from the stream.
+  const patternByte = rom.read(ptr + y);
+  // $C46D-$C471: $AA = (POST-INC $69) & 1 -- the nibble selector. sp.z69 is
+  // the post-INC value (set at $C463).
+  const aa = sp.z69 & 0x01;                  // $C46D A5 69 / AND #$01 / STA $AA
+  // $C473-$C483: pick the high nibble (aa == 0) or the low nibble (aa != 0),
+  // mask to 4 bits and double -> $A9 = nibble * 2 (the (xvel,yvel,accel) index).
+  let nibble;
+  if (aa !== 0) {                            // $C473 D0 09 BNE $C47E
+    nibble = patternByte & 0x0F;             // $C47E LDA $A9 (the low nibble)
+  } else {
+    nibble = (patternByte >>> 4) & 0x0F;     // $C475 4x LSR A (high -> low)
+  }
+  const a9 = u8(nibble << 1);                // $C480 AND #$0F / $C482 ASL / STA $A9
+  return { a9, aa };
+}
+
+/**
+ * `st_$C486` -- stage 1's late-spawner arm: the VOLCANO. Spawns a type `$0A`
+ * projectile at one of two craters (`$38` left, `$B8` right) with a parabolic
+ * arc: constant X velocity, gravity on Y velocity (`velSubAccel` via the
+ * `$B1E5` handler body). The ONLY producer of type `$0A` in the whole ROM.
+ *
+ * Cadence: the eruption fires every 4th frame for the 768-frame `$82` countdown
+ * = 192 spawns. The pattern stream at `$C526` walks 64 spawns/cycle (high then
+ * low nibble of each of 32 bytes), so the eruption repeats exactly 3 times.
+ */
+function st_C486(state, rom) {
+  const sp = state.spawn;
+  const o = state.obj;
+  // $C486 LDY $69 / $C488 D0 05 BNE -- the eruption rumble sfx ($0F) plays only
+  // when $69 == 0. That happens once, at the first spawn of the countdown,
+  // because the wave engine's last formation counted $69 down to 0 before $82.
+  if (sp.z69 === 0) {                        // $C488 D0 05
+    soundRequest(state, 0x0F);               // $C48A LDA #$0F / $C48C JSR $EC1E
+  }
+  // $C48F LDX #$00 / $C491 JSR $C44F -- the pattern stepper, X=0 -> $C526.
+  const { a9, aa } = sub_C44F(state, rom, 0x00);
+  // $C494-$C49A: Y = a9 + (a9 >> 1) = 1.5*a9 -- the (xvel,yvel,accel) table
+  // index, stepping in 3s through $C4F6/$C4F7/$C4F8.
+  const y = u8((a9 >>> 1) + a9);             // $C496 LSR / CLC / ADC / TAY
+  const j = sp.zA8;                          // $C49B LDX $A8
+  const i = j + ENEMY_BASE;
+  // $C49D-$C4A6: xvel ($042C,X) and yvel ($03BC,X) from the position tables.
+  o.xvel[i] = rom.read(0xC4F6 + y);          // $C49D/$C4A0 STA $042C,X
+  o.yvel[i] = rom.read(0xC4F7 + y);          // $C4A3/$C4A6 STA $03BC,X
+  // $C4A9-$C4BC: yvel ramp-down by spawn index $69. The first 10 spawns ($69 <
+  // $0A) lose 4; spawns 10-29 ($69 < $1E) lose 2; later spawns lose nothing.
+  // Both CMPs read the POST-INC $69 (sub_C44F already incremented it).
+  const cursor = sp.z69;                     // $C4A9 A5 69
+  if (cursor < 0x1E) {                       // $C4AB C9 1E / $C4AD B0 10 BCS skip
+    o.yvel[i] = u8(o.yvel[i] - 1);           // $C4AF DE BC 03
+    o.yvel[i] = u8(o.yvel[i] - 1);           // $C4B2 DE BC 03  (yvel -= 2)
+    if (cursor < 0x0A) {                     // $C4B5 C9 0A / $C4B7 B0 06 BCS skip
+      o.yvel[i] = u8(o.yvel[i] - 1);         // $C4B9 DE BC 03
+      o.yvel[i] = u8(o.yvel[i] - 1);         // $C4BC DE BC 03  (yvel -= 4 total)
+    }
+  }
+  // $C4BF-$C4CA: the acceleration ($048C,X). $02 << 3 then AND #$07 is a DEAD
+  // jitter term: three ASLs zero bits 0-2 before the AND, so it is always 0.
+  // Transcribed faithfully (and pinned as inert by the mutation table below).
+  const jitter = (u8(state.frame << 3)) & 0x07;   // $C4C1-C4C4 (always 0)
+  o.s0480[i] = u8(jitter + rom.read(0xC4F8 + y)); // $C4C6 CLC / ADC $C4F8,Y / STA
+  // $C4CD-$C4DC: hit counter, the CRATER X position, and the type byte $0A.
+  o.s04A0[i] = 0x01;                        // $C4CD LDA #$01 / STA $04AC,X
+  o.x[i] = rom.read(0xC4F4 + aa);           // $C4D2 LDY $AA / LDA $C4F4,Y / STA $036C,X
+  o.type[i] = 0x0A;                         // $C4DA LDA #$0A / STA $030C,X
+  // $C4DF-$C4F0: shared tail loc_$C4E4 (also reached from $C5FE, stage 4's arm).
+  // y is fixed at $90 (the volcano's base line); the velocity fractions and the
+  // anim are seeded from $02 & $3F (the frame counter's low 6 bits).
+  o.y[i] = 0x90;                            // $C4DF LDA #$90 / STA $032C,X
+  o.xvelf[i] = state.frame & 0x3F;          // $C4E4 LDA $02 / AND #$3F / STA $044C,X
+  o.yvelf[i] = state.frame & 0x3F;          // $C4EB STA $03EC,X
+  o.anim[i] = 0x58;                         // $C4EE LDA #$58 / STA $012C,X
 }
 
 /**
@@ -1138,6 +1345,7 @@ function dispatch(state, rom, j, type) {
     case 0xAF2E: return h_AF2E(state, rom, j);   // entry 15, types $0F/$8F
     case 0xAF88: return h_AF88(state, rom, j);   // entry 16, types $10/$90
     case 0xB311: return h_B311(state, rom, j);   // entry  9, types $09/$89
+    case 0xB36F: return h_B36F(state, j);        // entry 10, types $0A/$8A (volcano)
     case 0xB3CB: return h_B3CB(state, rom, j);   // entry 12, types $0C/$8C
     default:
       // THE MESSAGE THIS USED TO CARRY WAS "no measured run has ever
@@ -2159,6 +2367,42 @@ function h_B311(state, rom, j) {
   if (o.y[0] >= o.y[i]) return childBallistic(state, j);
   childStepY(state, j, 0xFE);            // $B362 LDA #$FE / JMP $B3F9
 }
+
+/**
+ * Handler 10, `$B36F` -- THE VOLCANO PROJECTILE, types $0A/$8A. The only enemy
+ * with ZERO wave-script records anywhere: `$C486` (the late spawner's stage-1
+ * arm) is its sole producer. MEASURED 6,365 executions of `$B36F` over the
+ * endchain run (first@1339, the start of the `$82` countdown).
+ *
+ * First frame: bit 7 of the type is clear (`$C486` writes the raw `$0A`), so
+ * the BPL is taken -> `loc_$B3A7 JMP $B0B4` sets the initialised bit. Every
+ * frame after: `JMP $B1E5` -- the ballistic arc:
+ *   $B1E5 JSR $B184  subX16     (X -= xvel, 16-bit; constant sideways velocity)
+ *   $B1E8 JSR $B140  subY16     (Y -= yvel, 16-bit)
+ *   $B1EB JSR $B120  velSubAccel (yvel:frac -= accel -- GRAVITY on Y)
+ *   $B1EE JMP  $B251  offScreenCheck (free when it leaves the box)
+ *
+ * The arc is parabolic: X velocity is constant, Y velocity has gravity. The
+ * two crater positions ($38/$B8) and the per-spawn (xvel,yvel,accel) come from
+ * `st_$C486`'s tables. `$A8` is reloaded at `$B251` -- offScreenCheck reads it
+ * from state.spawn.zA8 rather than trusting the caller's `j`, so both are kept
+ * in sync (the update loop sets zA8 = j before dispatch).
+ */
+function h_B36F(state, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) {             // $B36F LDA $030C,X / $B372 BPL $B3A7
+    return setInitialised(state, j);      // $B3A7 JMP $B0B4 (first frame only)
+  }
+  // $B374 4C E5 B1 JMP $B1E5 -- the arc. All four pieces are shared (ported in
+  // prior waves): subX16 ($B184), subY16 ($B140), velSubAccel ($B120) and
+  // offScreenCheck ($B251). The fall-through chain $B1E5->$B1E8->$B1EB is real
+  // in the ROM (loc_ labels, not separate JSRs past the first).
+  subX16(state, j);                       // $B1E5 JSR $B184
+  subY16(state, j);                       // $B1E8 JSR $B140
+  velSubAccel(state, j);                  // $B1EB JSR $B120
+  offScreenCheck(state);                  // $B1EE JMP  $B251
+}
+
 
 /**
  * Handler 12, `$B3CB` -- THE CEILING HATCH'S CHILD, types $0C/$8C. Entry 9 with

@@ -73,7 +73,7 @@ local HOOKS = {
    { 0xA466, "A466 the >= $F0 spawner body" },
    { 0xA46F, "A46F >= $F0 allocator R" },
    { 0xA4A6, "A4A6 >= $F0 allocator S (DEX/BNE, never tests slot 12)" },
-   { 0xC413, "C413 stage advance ($3A != 0 at $A2C4, $1B = $82 at $A2FB)" },
+   { 0xC413, "C413 the LATE SPAWNER ($3A != 0 at $A2C4, $1B = $82 at $A2FB; PORTED wave 25)" },
    { 0xA2C0, "A2C0 spawn engine entry (control)" },
    -- ---- the enemy-bullet engine -----------------------------------------
    { 0xBBC3, "BBC3 the $19/$1A/$02-parity/$46/$17 countdown ladder" },
