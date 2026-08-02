@@ -373,6 +373,163 @@ export function writeMapLong(ram, rom, vram, row, col, d4) {
   vram.setLong(row, col, u32(d4 + base));                  // $240D88/$240D9A
 }
 
+// ------------------------------------------------------- background ELEMENTS
+//
+// Op $10 BGELEM, the 8-slot driver $26233A / spawner $262366, the 13 stage-1
+// handlers behind $26224A, the $24179E scroll compensation, the $8130DA kill
+// gate and the $23DF2A bucket-2 sprite stage.  Every line is cited from the
+// listing; the recon is §0 of `18-impl-background-elements.md`.
+//
+// A slot is `$20` bytes at `$8131C8 + s*$20`.  Field offsets (A6-relative in
+// the ROM, here slot-relative):
+export const ESLOT = {
+  active: 0x00,  // byte; $80 = in use. $262378 set, $2623D8/$262426... clr (die)
+  arg:    0x02,  // LONG -- op $10's D1. $26237C. HIGH word (+2) is the despawn
+                 //   target and += txNegL via $24179E; LOW word (+4) is the
+                 //   along-axis position and -= scrollDelta via the driver
+  update: 0x08,  // LONG -- the per-frame updater fn pointer. $2623B2 etc.
+  kind:   0x0c,  // WORD -- high byte 0 (never written), low byte = $2623BA's
+                 //   `move.b #imm,$d(a6)`. Read as d4 into $23DF2A
+  data:   0x10,  // LONG -- the $22/$23xxxx sprite-descriptor pointer. $2623A4
+  yPos:   0x14,  // WORD -- the Y constant. $2623AC
+};
+
+/** The 13 stage-1 handlers (ids 0..12), one row each, cited from the listing.
+ *  `v` is the despawn variant: `wbge`/`wbgt` = `move.w +2,d0; addi.w #thr;
+ *  bge/bgt`; `lbgt` = the same with `ext.l` + `addi.l` + `bgt`. `gate` is the
+ *  HANDLER-0-ONLY `$8130DA` kill check. */
+const BGELEM_HANDLERS = [
+  { ctor: 0x2623A4, upd: 0x2623C2, data: 0x22CBCC, yPos: 0x24D0, kind: 0x14, thr: 0x4800, v: 'wbge', gate: true },
+  { ctor: 0x2623FC, upd: 0x26241A, data: 0x22DA70, yPos: 0x1470, kind: 0x13, thr: 0x2800, v: 'wbge', gate: false },
+  { ctor: 0x26244A, upd: 0x262468, data: 0x22DED4, yPos: 0x1690, kind: 0x13, thr: 0x2C00, v: 'lbgt', gate: false },
+  { ctor: 0x26249C, upd: 0x2624BA, data: 0x22E508, yPos: 0x26A8, kind: 0x16, thr: 0x4C00, v: 'lbgt', gate: false },
+  { ctor: 0x2624EE, upd: 0x26250C, data: 0x22F184, yPos: 0x26B0, kind: 0x16, thr: 0x4C00, v: 'wbgt', gate: false },
+  { ctor: 0x26253C, upd: 0x26255A, data: 0x22FE98, yPos: 0x2860, kind: 0x12, thr: 0x5000, v: 'wbgt', gate: false },
+  { ctor: 0x26258A, upd: 0x2625A8, data: 0x23061C, yPos: 0x28C0, kind: 0x12, thr: 0x5000, v: 'wbgt', gate: false },
+  { ctor: 0x2625D8, upd: 0x2625F6, data: 0x231520, yPos: 0x2660, kind: 0x12, thr: 0x4C00, v: 'wbgt', gate: false },
+  { ctor: 0x262626, upd: 0x262644, data: 0x231C44, yPos: 0x2A70, kind: 0x13, thr: 0x5400, v: 'wbgt', gate: false },
+  { ctor: 0x262674, upd: 0x262692, data: 0x232578, yPos: 0x2A70, kind: 0x13, thr: 0x5400, v: 'wbgt', gate: false },
+  { ctor: 0x2626C2, upd: 0x2626E0, data: 0x232EAC, yPos: 0x1E80, kind: 0x14, thr: 0x3C00, v: 'wbgt', gate: false },
+  { ctor: 0x262710, upd: 0x26272E, data: 0x233630, yPos: 0x2090, kind: 0x14, thr: 0x4000, v: 'wbgt', gate: false },
+  { ctor: 0x26275E, upd: 0x26277C, data: 0x233F34, yPos: 0x0A50, kind: 0x15, thr: 0x1400, v: 'wbgt', gate: false },
+];
+const BGELEM_BY_CTOR = new Map(BGELEM_HANDLERS.map((h) => [h.ctor, h]));
+const BGELEM_BY_UPD = new Map(BGELEM_HANDLERS.map((h) => [h.upd, h]));
+
+/** `$262366` -- the spawner. D0 = id, D1 = the op-$10 arg. Finds the first
+ *  free slot, marks it live, stores the arg, and calls the constructor the
+ *  per-stage handler table names. */
+function elemSpawn(ram, rom, ctx, id, arg, mut) {
+  for (let s = 0; s < 8; s++) {
+    const slot = BGRAM.elemSlots + s * 0x20;
+    if (ram.u8(slot + ESLOT.active) !== 0) continue;        // $262372 tst.b/bne
+    ram.setU8(slot + ESLOT.active, 0x80);                   // $262378 move.b #$80
+    ram.setU32(slot + ESLOT.arg, arg >>> 0);                // $26237C move.l D1
+    const tab = ram.u32(BGRAM.elemTable);                   // $262380 $8132C8
+    // $262386/$262388 add.w D0,D0 twice -> id*4; $26238A adda; $26238C (A1)
+    const ctorAddr = rom.u32(tab + (id & 0xffff) * 4);
+    const h = BGELEM_BY_CTOR.get(ctorAddr);
+    if (!h) {
+      unreached(ctorAddr, `$${ctorAddr.toString(16).toUpperCase()} is not one `
+        + `of the 13 stage-1 BGELEM constructors at $26224A (id ${id})`);
+      return;
+    }
+    elemConstruct(ram, slot, h, mut);                        // $26238E jsr (A1)
+    return;
+  }
+  // $262396 -- no free slot: the ROM's dbra falls through to rts (a silent
+  // drop). W17 §5 measured only slots 0..4 ever used in stage 1, so this is
+  // never taken; flagged, never smoothed.
+  ctx.unportedLog.note(0x262366, `$262366 BGELEM id=${id}: all 8 element slots `
+    + `occupied -- dropped (W17 measured this never happens in stage 1)`);
+}
+
+/** One constructor -- the shape all 13 share (`$2623A4` etc.). */
+function elemConstruct(ram, slot, h, mut) {
+  // RED: deleting a constructor field must diverge the staged bytes. Handler
+  // 0's data pointer ($22CBCC) is the one the gate mutates; every other field
+  // is cited straight from the listing.
+  const data = (mut === 'delete-handler0-data' && h.ctor === 0x2623A4) ? 0 : h.data;
+  ram.setU32(slot + ESLOT.data, data);                      // $2623A4 move.l #data
+  ram.setU16(slot + ESLOT.yPos, h.yPos);                    // $2623AC move.w #yPos
+  ram.setU32(slot + ESLOT.update, h.upd);                   // $2623B2 move.l #upd
+  ram.setU8(slot + 0x0d, h.kind);                           // $2623BA move.b #kind
+}
+
+/** `$26233A` -- the 8-slot driver, run once per frame from `$2613A0` (after
+ *  `$240C22`, before `$260EC8`), AND from the `$8130D2` frozen branch. */
+function elemDriver(ram, rom, ctx) {
+  const d0 = ram.u16(BGRAM.scrollDelta);                    // $262348 $813176
+  for (let s = 0; s < 8; s++) {
+    const slot = BGRAM.elemSlots + s * 0x20;
+    if (ram.u8(slot + ESLOT.active) === 0) continue;        // $262342 tst.b/beq
+    ram.setU16(slot + 0x04, u16(ram.u16(slot + 0x04) - d0));// $26234E sub.w D0
+    const updAddr = ram.u32(slot + ESLOT.update);           // $262352 movea.l
+    const h = BGELEM_BY_UPD.get(updAddr);
+    if (!h) {
+      unreached(updAddr, `element updater $${updAddr.toString(16)
+        .toUpperCase()} is not one of the 13 ported stage-1 handlers`);
+      continue;
+    }
+    elemUpdate(ram, ctx, slot, h);                          // $262358 jsr (A1)
+  }
+}
+
+/** `$24179E` -- the per-element scroll compensation. Reads the LONG at
+ *  `$80B03C`, swaps, and adds the (now-high, originally-high) word to `+2`.
+ *  Skipped entirely while `$8130D2` (bgFreeze) is set. */
+function elemScrollComp(ram, slot) {
+  if (ram.u16(BGRAM.bgFreeze) !== 0) return;                // $2417A4 bne
+  const lo = ram.u32(CAM.txNegL) >>> 16;                    // $2417A8/$2417AE swap
+  ram.setU16(slot + ESLOT.arg, u16(ram.u16(slot + ESLOT.arg) + lo)); // $2417B0
+}
+
+/** The bucket-2 sprite stage `$23DF2A`. Packs D1 and writes the 12 bytes the
+ *  recorder (`w18elem.lua`) taps at `$805CC8 + $80AFC4`. */
+const B2_BASE = 0x805cc8;       // $23DF2A lea
+const B2_COUNT = 0x80afc4;      // $23DF2A adda / $23DF4E addi.w #$C
+function elemStage(ram, d1, d2, d3, d4) {
+  const off = ram.u16(B2_COUNT);
+  const d0 = (((d1 >> 6) & 0x7ff03ff) | 0x80008000) >>> 0; // $23DF38..40
+  ram.setU32(B2_BASE + off, d0);                           // $23DF46
+  ram.setU32(B2_BASE + off + 4, d2 >>> 0);                 // $23DF48
+  ram.setU16(B2_BASE + off + 8, d3);                       // $23DF4A
+  ram.setU16(B2_BASE + off + 10, d4);                      // $23DF4C
+  ram.setU16(B2_COUNT, u16(off + 12));                     // $23DF4E
+}
+
+/** One updater -- the shape all 13 share (`$2623C2` etc.). The `$8130DA` kill
+ *  gate and the despawn check differ per handler; both port exactly. */
+function elemUpdate(ram, ctx, slot, h) {
+  if (h.gate && ram.u16(BGRAM.elemGate) !== 0) {           // $2623C2 (handler 0)
+    ram.setU8(slot + ESLOT.active, 0);                     // $2623D8 clr.b -- die
+    return;
+  }
+  // THE DESPAWN CHECK and the overflow-flag trap. `move.w $2(a6),d0` zero-
+  // extends the HIGH word of the arg into D0; `addi.w #thr,d0` then adds the
+  // threshold; `bge`/`bgt` test N==V (&& Z==0), NOT i16(result). When the
+  // signed sum overflows the word -- slot2=$7000, thr=$1400 -> true sum $8400
+  // = +33792, wrapped result $8400 = i16 -31744 -- the V flag flips and N==V
+  // still says "the true sum is positive", so the element LIVES. A port that
+  // tests the wrapped i16 result kills it 2 frames early and never stages.
+  // So: bge = true signed sum >= 0; bgt = > 0. The `.l` variants (`ext.l` +
+  // `addi.l`) reduce to the SAME expression (the 32-bit add cannot overflow
+  // here: i16(slot2)+thr is in [-32768, 54271]).
+  const slot2 = ram.u16(slot + ESLOT.arg);                 // move.w $2(a6),d0
+  const sum = i16(slot2) + h.thr;
+  const alive = h.v === 'wbge' ? sum >= 0 : sum > 0;
+  if (!alive) {
+    ram.setU8(slot + ESLOT.active, 0);                     // clr.b (a6) -- die
+    return;
+  }
+  elemScrollComp(ram, slot);                               // $24179E
+  elemStage(ram,                                            // $23DF2A
+    ram.u32(slot + ESLOT.arg),                             // d1 = move.l $2(a6)
+    ram.u32(slot + ESLOT.data),                            // d2 = move.l $10(a6)
+    ram.u16(slot + ESLOT.yPos),                            // d3 = move.w $14(a6)
+    ram.u16(slot + ESLOT.kind));                           // d4 = move.w $c(a6)
+}
+
 // ------------------------------------------------------- the cross axis, $26146C
 //
 // The player-driven half of the camera.  It writes `$81316E` (the D1 both
@@ -533,9 +690,22 @@ function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut) {
           return a1;
         }
         const param = rom.u16(a2); a2 += 2;                // $2620F0 move.w (A2)+,D0
+        // $24150A copies 64 bytes from `ptr` to `$80E886 + param*64`, treating
+        // every ptr as DATA. The 22-entry stage-1 stream ($26157A) holds 21
+        // $22xxxx data pointers and ONE code-segment address, $246BB8 (entry
+        // 6, 1-based "7"), which disassembles as 64 zero bytes -- a zero
+        // prototype, NOT an executable routine (18-impl §1). The prototype
+        // copy itself is W21's object allocator; op $00 walks the stream and
+        // advances the cursor, and flags a code-segment ptr rather than
+        // smoothing it.
+        const buildBit = (ptr >>> 20) & 0xf;
+        const flag = (buildBit === 2 && (ptr >>> 16) !== 0x0022 && ptr !== 0xffffffff)
+          ? ` -- FLAG: ptr is in the $24xxxx CODE segment, not $22xxxx data; `
+            + `$24150A reads 64 bytes from it regardless (classified 18-impl §1)`
+          : '';
         note(0x24150a, `$24150A object create (ptr $${ptr.toString(16)
           .toUpperCase()}, param $${param.toString(16).toUpperCase()
-          .padStart(4, '0')})`);
+          .padStart(4, '0')})${flag}`);
         ctx.scrollEvent?.({ op, recTime, kind: 'spawn', ptr, param });
         if (--n === 0) break;                              // $2620F8 subq/bne
       }
@@ -606,6 +776,7 @@ function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut) {
         note(0x262366, `$262366 background-element spawn (id ${id}, handler `
           + `$${handler.toString(16).toUpperCase()}, arg $${arg.toString(16)
             .toUpperCase().padStart(8, '0')}) -- W18`);
+        elemSpawn(ram, rom, ctx, id, arg, mut);            // $262178 jsr $262366
         ctx.scrollEvent?.({ op, recTime, kind: 'bgelem', id, handler, arg });
       }
       return a1;
@@ -833,7 +1004,7 @@ export function backgroundInit(ram, rom, vram, ctx, a5, mut) {
 export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {}) {
   if (ram.u16(BGRAM.bgFreeze) !== 0) {                     // $2612A0 tst/bne
     // $2613A0 -- the element driver and the shake still run on a frozen frame.
-    elementDriverAndShake(ctx);
+    elementDriverAndShake(ram, rom, ctx);
     return;
   }
   if (ram.u16(BGRAM.extSpeed) !== 0) {                     // $2612AA
@@ -875,7 +1046,7 @@ export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {}) {
   // free-run holds the boss-lock freeze from frame 7,317 and still advances
   // $80B012 by $162B00 and writes 710 more map columns by frame 13,000.
   if (mut === 'freeze-stops-the-scroll' && ram.u16(a5 + BGO.frozen) !== 0) {
-    elementDriverAndShake(ctx);
+    elementDriverAndShake(ram, rom, ctx);
     return;
   }
   const d6 = ram.u16(a5 + BGO.speedBg);                    // $2612FE ($1c,A5)
@@ -912,14 +1083,18 @@ export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {}) {
   ram.setU16(BGRAM.colAccum, ram.u16(a5 + BGO.accCol));    // $261382
   camTxAccumulate(ram, ram.u16(a5 + BGO.speedTx),          // $26138A..$26139A
     ram.u16(BGRAM.crossDelta), mut);
-  elementDriverAndShake(ctx);
+  elementDriverAndShake(ram, rom, ctx);
 }
 
-function elementDriverAndShake(ctx) {
-  ctx.unportedLog.note(0x26233a, '$26233A the 8-slot background-element driver '
-    + '-- W18 (its 13 stage-1 constructors and the $8130DA kill gate)');
-  ctx.unportedLog.note(0x260ec8, '$260EC8 the screen shake -- MEASURED live: '
-    + '$813186 = 1 for 43 frames during the stage-1 boss (W17 §9)');
+/** `$2613A0 jsr $26233A` + `$2613A6 jsr $260EC8` -- the element driver then
+ *  the screen shake, run last in `$2612A0` and first in its frozen branch. */
+function elementDriverAndShake(ram, rom, ctx) {
+  elemDriver(ram, rom, ctx);                               // $2613A0 -> $26233A
+  // $260EC8 the screen shake -- UNPORTED. MEASURED live: $813186 = 1 for 43
+  // frames during the stage-1 boss (W17 §9), lf11922..11964, far past the W18
+  // window; the elements do not read its outputs. Kept as a named note.
+  ctx.unportedLog.note(0x260ec8, '$260EC8 the screen shake -- UNPORTED; '
+    + 'measured live for 43 frames during the stage-1 boss (W17 §9)');
 }
 
 /**

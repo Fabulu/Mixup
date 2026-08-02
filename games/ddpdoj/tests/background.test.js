@@ -19,7 +19,7 @@ import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { Unreached, UnportedLog } from '../src/unported.js';
 import {
-  BGO, BGRAM, CAM, BGTAB, BgVram, VideoRegs,
+  BGO, BGRAM, CAM, BGTAB, BgVram, VideoRegs, ESLOT,
   camBgAccumulate, camTxAccumulate, camReset, uploadRegs, writeMapLong,
   makeBackground, backgroundFrame,
 } from '../src/background.js';
@@ -558,12 +558,22 @@ test('$2612A0 returns before the interpreter when $8130D2 is set, and the '
   for (let i = 0; i < 4; i++) g.step();
   const clock = g.ram.u16(BGRAM.clock);
   const cols = g.vram.columnsWritten;
+  // seed an active element so the ported driver has observable work: the
+  // driver subtracts $813176 from slot+4 BEFORE the updater runs, so even on a
+  // frozen frame slot+4 must move (the driver is called from $2613A0, which
+  // the frozen branch jumps straight to).
+  const slot = BGRAM.elemSlots;
+  g.ram.setU8(slot + ESLOT.active, 0x80);
+  g.ram.setU32(slot + ESLOT.update, 0x26241a);   // handler 1's updater
+  g.ram.setU16(slot + ESLOT.arg, 0x0000);        // high word: despawn passes
+  g.ram.setU16(BGRAM.scrollDelta, 0x0040);
+  const argLo = g.ram.u16(slot + 0x04);
   g.ram.setU16(BGRAM.bgFreeze, 1);
   g.step();
   assert.equal(g.ram.u16(BGRAM.clock), clock, 'nothing moved');
   assert.equal(g.vram.columnsWritten, cols);
-  assert.ok(g.unportedLog.report().some((l) => l.includes('$26233A')),
-    '$2613A0 still calls the background-element driver -- W18');
+  assert.equal(g.ram.u16(slot + 0x04), (argLo - 0x0040) & 0xffff,
+    '$26233A subtracted scrollDelta from the live element on the frozen frame');
 });
 
 test('the external speed push $813180 is CONSUMED and CLEARED ($2612B4), even '
