@@ -272,13 +272,30 @@ the first record to the boss lock, on twelve compared columns, with nine
 deliberate mistakes watched go red first. Stage&nbsp;1 is 7,317 logic frames and
 8,486&nbsp;pixels; the recording was 161 frames and 160&nbsp;pixels of it.</p>
 
-<p class="warn">What that does <em>not</em> yet give you is the PICTURE of the
-whole stage. The background's <b>tile pixels</b> are still the 415 tiles the
-recording happened to fly over, and stage&nbsp;1 references <b>1,820</b>. So the
-map scrolls correctly and, once it moves past what the recording saw, the tiles
-that were never harvested come out <b>blank</b>. The status line counts them
-(<code>miss</code>). Exporting the other 1,405 is the next wave's whole job; a
-blank column that says so is honest, a still picture that loops is not.</p>
+<p class="warn"><b>And wave&nbsp;14 gave it the PICTURE.</b> Wave&nbsp;13
+scrolled the whole stage but the bundle only held the <b>415</b> background
+tiles harvested from the recording &mdash; 160&nbsp;pixels of an
+8,486&nbsp;pixel stage &mdash; so past the recording the screen went
+<b>black</b>. All <b>1,820</b> tiles the 224 scrolling map columns reference are
+now exported straight from the cartridge's own layout data
+(<code>$225B78</code>), together with the <b>205</b> of the separate 23-column
+map at <code>$227AF8</code> and the stage's <b>2,048-byte palette block</b>
+(<code>$227E58</code>, 32&nbsp;banks of 32). They arrive in <b>eight
+shards</b>: the page fetches two before the first frame &mdash;
+<b>less than it used to fetch in total</b> &mdash; and pulls the other six in
+while you play, in the order the scroll program itself says it will need them.
+If one is still in flight the status line says <code>WAITING ON SHARD n</code>
+and those columns are transparent rather than wrong; if one fails to arrive the
+page stops and names the file. A blank column that says so is honest; a black
+screen that says nothing is what got reported.</p>
+
+<p>Two things are still not the cartridge's. The <b>palette</b> that draws is
+still the recording's: the real block is shipped and checked (1,020 of its
+1,024 entries are byte-identical to what the board had), but four entries are
+<em>animated</em> by a routine nobody has ported, so the recording's copy is the
+one with the animation in it. And the second map's <b>painter</b>
+(<code>$26C20C</code>, object type&nbsp;<code>$1C</code>) is unported &mdash; its
+tiles are in the bundle, nothing draws them yet.</p>
 
 <p><b>The enemies, the bullets and the HUD are still 161 captured frames
 of the real board, on a loop.</b> The port now <b>builds</b> the hardware
@@ -592,11 +609,23 @@ try {
       // WAVE 13: the scroll program, live.  `clk` is $8130CE, the distance
       // odometer (836 ticks to the stage-1 boss lock); `bg` is $B03000, the
       // register the ported $140FFE uploads; `col` counts the map columns
-      // $240D76 has written.  `miss` is the number of DISTINCT BG tiles the
-      // port's ring asked for that the bundle does not hold -- W15 exports
-      // stage 1's 1,820 and it goes to zero.
+      // $240D76 has written.
+      //
+      // WAVE 14: `map` is which of stage 1's 224 map columns the VM is
+      // painting, and `bg N/8` is how many background tile shards have landed.
+      // `miss` is DISTINCT BG tiles a draw asked for and could not get -- with
+      // the whole stage exported that can now only mean a shard still in
+      // flight, and `WAITING ON SHARD n` is the honest version of the black
+      // screen this wave was reported for.  A shard that FAILS throws instead,
+      // through showError, naming the file.
       `clk ${s.clock} bg ${s.bgx} col ${s.columns}`
-        + (s.missingBgTiles ? ` <b>miss ${s.missingBgTiles}</b>` : ''),
+        + (s.mapColumn >= 0 ? ` map ${s.mapColumn}` : '')
+        + (s.shards ? ` shards ${s.shards.ready}/${s.shards.total}` : '')
+        + (s.shards?.waiting?.length
+          ? ` <b>WAITING ON SHARD ${s.shards.waiting.join(',')}</b>`
+          : '')
+        + (s.shards?.orphans ? ` <b>orphan tiles ${s.shards.orphans}</b>` : '')
+        + (s.missingBgTiles ? ` miss ${s.missingBgTiles}` : ''),
       `${s.logicHz.toFixed(1)}Hz`,
       `x${canvas.dataset.scale}`,
     ].join(' &nbsp; ');
