@@ -1,6 +1,6 @@
 # Wave 25b recon — crack the "reaching the boss page" blocker
 
-status: IN PROGRESS
+status: DONE
 wave: 25b   role: recon/tooling   started: 2026-08-02
 
 ## The task
@@ -55,11 +55,13 @@ terrain `$C2C1` at scroll `$0A28` (frame 5514), and W24b/W25's reaching attempts
 all used that tail or the poke without the `RUA` switch. The `RUA` hold flies
 the ship above the death corridor.
 
-## Deliverable 2 — record `scen/endchain.json` through `$82`/`$84`/`$85` (RECORDING)
+## Deliverable 2 — record `scen/endchain.json` through `$82`/`$84`/`$85` (DONE)
 
 A deep-align scenario seeded at frame 6160 (scroll `$0B6B`, the CLEAN boss
 approach band the wave-20 sweep measured), driven by the reaching tail, with the
-powered poke applied from frame 400 via an ABSOLUTE `@400-8999` window.
+powered poke applied from frame 400 via an ABSOLUTE `@400-8999` window. Recorded
+as `out/scen/endchain.json` (9000 frames, 129 MB, merge-asserted). The dump's
+own `$1B` timeline matches `reachcheck.py` to the frame.
 
 `scen.py` was enhanced (W25b) to accept the absolute `@FROM-TO` poke form, which
 the existing whole-window-from-align and one-frame-`@+N` forms cannot express.
@@ -78,7 +80,7 @@ continue-window timeout at `$9751` restarts to title. Recorded as
 RAM dump, the `$1B` ladder through the window is `$80 -> $A0 -> $C0 -> mode 0`,
 four deaths deep.
 
-## Deliverable 4 — wire the gate + run it (gameover DONE; endchain PENDING)
+## Deliverable 4 — wire the gate + run it (DONE: GREEN)
 
 Both scenarios use a new `compareUntilThrow` mechanism added to `compare.mjs`
 (W25b): unlike `expectThrow` (which is NOT field-compared), a
@@ -86,10 +88,47 @@ Both scenarios use a new `compareUntilThrow` mechanism added to `compare.mjs`
 every frame BEFORE the throw, and then verifies the throw fires at the declared
 ROM address. A surprise non-throw is a FAILURE, not a quiet pass.
 
-**gameover: GREEN.** 563 frames compared (align 3800 through the `$9751`
-throw at f4364), **0 divergent TIER 1 fields**, 0 display-list mismatches, lag
+**endchain: GREEN.** 2091 frames compared (align 6160 through the `$B914` throw
+at f8252), **0 divergent TIER 1 fields**, 0 display-list mismatches (133824
+slot-frames, 48508 live), lag exact. The comparison runs through the entire W24
+sub-state timeline -- `$80` boss approach, `$81` countdown setup, the 1280-frame
+`$82` countdown (the volcano eruption included), `$83`, the 512-frame `$84`
+boss-page despawn crawl -- and is field-exact on every frame. The port throws at
+`$B914` on frame 8252 (the `$84`->`$85` boss-spawn advance): the enemy engine
+dispatches type `$98` to the unported boss handler. That throw is the measured
+W26 boundary, not a field skip.
+
+**gameover: GREEN.** 563 frames compared (align 3800 through the `$9751` throw
+at f4364), **0 divergent TIER 1 fields**, 0 display-list mismatches, lag
 exact. The throw at `$9751` fired at frame 4364 as declared. The `$96FB` hold,
 the `$96EF` dying arm and the death itself are all field-exact for the first
 time.
 
-endchain: awaiting the scen dump (Mesen recording in progress).
+The one INFO field on both scenarios is `w_0036` (the blank-pass cursor, which
+depends on the sprite budget `src/oam.js` does not model) -- a pre-existing
+INFO, not a new divergence.
+
+## Deliverable 5 — W25 eruption spawn-for-spawn (DONE, bonus)
+
+The endchain comparison's 1280-frame `$82` window IS the eruption comparison.
+`$C486` (the late spawner, W25) runs every 4th frame during `$82`, spawning
+type-$0A enemies through handler entry 10 (`$B36F`, W25). All of those enemies'
+fields -- type `$030C`, Y `$032C/$034C`, X `$036C/$038C`, status `$010C`,
+metasprite `$012C`, anim timer `$014C`, anim frame `$016C`, velocities -- are in
+the 1022-field watch vector and were compared against the cartridge on every
+frame. The endchain's 0-divergent verdict means the eruption is spawn-for-spawn
+field-exact through the full countdown. The W25 review's 0.4% handler-exec gap
+(6339 vs 6365) does not appear here because this run has the player firing (the
+`RUA` hold includes `A`), so shots interact with eruption enemies exactly as on
+the cartridge.
+
+## What remains (not this wave)
+
+- **`$B914`** (the boss per-frame handler) is W26. Once ported, delete
+  `compareUntilThrow` from the endchain scenario and extend the window into the
+  boss fight; the scen dump already covers 748 frames past `$85` entry.
+- **`$9751`** (restart-to-title) is out of scope (mode 0). The gameover scenario
+  is its permanent boundary.
+- **`$82` at rank 1** (768-frame countdown, not the 1280 this run sees at rank
+  4) would need a different power-up configuration; the rank-countdown table is
+  already exported, so this is a scenario choice, not a port gap.
