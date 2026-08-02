@@ -133,17 +133,31 @@ const ram = new Ram();       // ONE image, rewritten per row -- 128 KiB x 27,000
  *  Only the fields the ported code touches are written, and each one names the
  *  instruction that reads it, so a reader can check the seeding is not smuggling
  *  an answer in. */
+// EVERY OFFSET HERE IS A LITERAL FROM THE LISTING, ON PURPOSE.
+//
+// This function used to seed through TURRET.facingOff, TURRET.subOff and the
+// rest -- the same constants the port then reads and this gate then compares
+// through. Writing and reading at the same symbol agrees with itself whatever
+// the symbol holds, so the gate validated the aim ARITHMETIC and was
+// structurally blind to the RECORD LAYOUT -- which is the error a 68000 record
+// port gets wrong most often. It was the EIGHTH check on this project found
+// incapable of failing, and the reviewer who caught it is the only reason
+// "the turrets track" was not shipped as a stronger claim than it was.
+//
+// Seeding at literals makes TURRET.* THE THING UNDER TEST: change one and this
+// gate goes red, because the port would then read a byte nobody wrote.
+// The instruction beside each line is where the board reads it.
 function seed(g, r, facing, cad) {
   ram.setU16(P1, g.pal); ram.setU16(P1 + 2, g.py); ram.setU16(P1 + 4, g.px);
   ram.setU16(P2, g.p2al); ram.setU16(P2 + 2, g.p2y); ram.setU16(P2 + 4, g.p2x);
-  ram.setU16(TURRET.freezeGate, g.d0d2);            // $268A0E tst.w $8130D2
+  ram.setU16(0x8130d2, g.d0d2);                     // $268A0E tst.w $8130D2
   const a5 = ETAB + r.slot * ESTRIDE;
   ram.setU8(a5 + 0x03, r.targ);                     // $242716 tst.b ($3,A5)
-  ram.setU8(a5 + TURRET.cadenceOff, cad);           // $268A1A
-  ram.setU8(a5 + TURRET.reloadOff, r.rel);          // $268A20
-  ram.setU8(a5 + TURRET.facingOff, facing);         // $268A38 / $268A42
-  ram.setU32(a5 + TURRET.subOff, r.sub);            // $263524 movea.l ($6,A5),A6
-  ram.setU32(a5 + TURRET.gfxOff, r.gfx);            // $268A54
+  ram.setU8(a5 + 0x18, cad);                        // $268A1A ($18,A5)
+  ram.setU8(a5 + 0x19, r.rel);                      // $268A20 ($19,A5)
+  ram.setU8(a5 + 0x33, facing);                     // $268A38 / $268A42 ($33,A5)
+  ram.setU32(a5 + 0x06, r.sub);                     // $263524 movea.l ($6,A5),A6
+  ram.setU32(a5 + 0x22, r.gfx);                     // $268A54 ($22,A5)
   ram.setU16(r.sub + 2, r.sy); ram.setU16(r.sub + 4, r.sx);  // $268A26
   return a5;
 }

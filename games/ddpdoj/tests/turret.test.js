@@ -82,17 +82,21 @@ const A6 = 0x814600;                                  // a sub-record
 function scene({ facing = 0, cad = 0, rel = 1, freeze = 0, y = 0x3000,
                  x = 0x2000, py = 0x5000, px = 0x2000, p1 = 0x8000,
                  p2 = 0x0000, targ = 0 } = {}) {
+  // LITERALS, NOT TURRET.*, for the same reason as w20turretgate.mjs seed():
+  // seeding through the constant the code reads through makes the assertion
+  // agree with itself whatever the constant holds. These offsets come from the
+  // listing, so TURRET.* is the thing under test and a wrong offset goes red.
   const ram = new Ram();
-  ram.setU16(TURRET.freezeGate, freeze);
+  ram.setU16(0x8130d2, freeze);                 // $268A0E tst.w $8130D2
   ram.setU16(AIM.selP1, p1); ram.setU16(AIM.selP1 + 2, py);
   ram.setU16(AIM.selP1 + 4, px);
   ram.setU16(AIM.selP2, p2);
-  ram.setU8(A5 + 3, targ);
-  ram.setU8(A5 + TURRET.cadenceOff, cad);
-  ram.setU8(A5 + TURRET.reloadOff, rel);
-  ram.setU8(A5 + TURRET.facingOff, facing);
-  ram.setU32(A5 + TURRET.subOff, A6);
-  ram.setU16(A6 + 2, y); ram.setU16(A6 + 4, x);
+  ram.setU8(A5 + 3, targ);                      // $242716 tst.b ($3,A5)
+  ram.setU8(A5 + 0x18, cad);                    // $268A1A ($18,A5)
+  ram.setU8(A5 + 0x19, rel);                    // $268A20 ($19,A5)
+  ram.setU8(A5 + 0x33, facing);                 // $268A38 / $268A42 ($33,A5)
+  ram.setU32(A5 + 0x06, A6);                    // $263524 movea.l ($6,A5),A6
+  ram.setU16(A6 + 2, y); ram.setU16(A6 + 4, x); // $268A26
   return ram;
 }
 
