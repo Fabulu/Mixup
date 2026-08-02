@@ -286,6 +286,80 @@ SHOT_WINDOWS.extend([
                        "offsets into resource #$1F ($23170C, max idx 162)"),
 ])
 
+# WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/
+# `$26377A` (ported by W20 in src/enemyproto.js) copy every stage-1 type's
+# hitbox/HP/speed/heading/palette/animation/draw-bucket out of ROM tables at
+# spawn.  W20 exported only the two turret types' prototypes; this wave exports
+# the remaining 19 stage-1 type prototype pairs plus the shared sprite/bucket/
+# palette tables the init+8 bodies index.  (Types $10/$11 reuse W20's windows.)
+#
+# Each window is sized from the prototype addresses census2.py resolved and the
+# loader arithmetic: sub-record prototype = 28 * (runLen+1) bytes for the long
+# form (every stage-1 type's flags word has bit 15 set); record prototype =
+# (D0+1)*2 bytes (the moveq/move.w #N,D0 before `jsr $26377A`).  The small
+# palette tables (indexed by $813094, the loop word) sit immediately before the
+# record prototype and are carried in the same window.  A read of any field the
+# port has not covered stays a LOUD THROW BY ADDRESS -- the export widens, the
+# port never returns undefined.
+ENEMY_PROTO_WINDOWS = [
+    # the two damage-first protos that are NOT shared (the family's shared
+    # sprite tables $269E48/$269EC8 and bucket table $267F70 follow).
+    (0x2697B0, 0x0040, "W23: type $31 protos + palette tables $2697B0/$2697BA "
+                       "(sub $2697DA, rec $2697CE)"),
+    (0x269CB0, 0x0040, "W23: type $05 protos (sub $269CCE, rec $269CB4)"),
+    (0x26A2B0, 0x0040, "W23: types $07/$27 protos (sub $26A2C6, rec $26A2B0)"),
+    (0x26A5B0, 0x0040, "W23: type $08 protos (sub $26A5C8, rec $26A5B2)"),
+    (0x26A820, 0x0040, "W23: type $09 protos (sub $26A844, rec $26A82E)"),
+    (0x26ACF0, 0x0040, "W23: type $0B protos (sub $26AD0C, rec $26ACF6)"),
+    # the midboss $0D: runLen 16 -> 17 sub-records x 28 B = 476 B from $26B50E.
+    (0x26B4F0, 0x0220, "W23: type $0D (THE MIDBOSS) protos -- 17 sub-records "
+                       "(sub $26B50E, rec $26B4FA)"),
+    # the scripted carriers $20/$21 (sub only, $272A90) and prop $24.
+    (0x272A90, 0x0020, "W23: types $20/$21 sub-record prototype $272A90"),
+    (0x296FF0, 0x0020, "W23: type $24 sub-record prototype $296FF2"),
+    # the multi-sub-record types (runLen 1 -> 2 sub-records x 28 = 56 B).
+    (0x273920, 0x0080, "W23: type $80 protos + palette $273922 (sub $27394E, "
+                       "rec $27392C)"),
+    (0x274740, 0x0070, "W23: type $82 protos + palette $27474A (sub $274770, "
+                       "rec $274754)"),
+    (0x275890, 0x0070, "W23: type $85 protos + palette $275890 (sub $2758B0, "
+                       "rec $27589A)"),
+    (0x275EA0, 0x0080, "W23: type $88 protos + palette $275EA2 (sub $275ECC, "
+                       "rec $275EAC)"),
+    (0x2766E0, 0x0030, "W23: type $8A protos (sub $2766E6, rec $2766E0)"),
+    (0x276850, 0x0030, "W23: type $8B protos (sub $276862, rec $27685E)"),
+    (0x277310, 0x0030, "W23: type $89 protos + palette $27730C (sub $277322, "
+                       "rec $277316)"),
+    # the boss $0E: runLen 8 -> 9 sub-records x 28 = 252 B from $292806.
+    (0x2927F0, 0x0140, "W23: type $0E (THE BOSS) protos -- 9 sub-records "
+                       "(sub $292806, rec $2927F6)"),
+]
+# the shared tables the init bodies index by heading / loop / spawn param.
+# $267F70: bucket-emitter pair table indexed by (sub +$1F)<<3 -- 2 longs each.
+# $269E48/$269EC8: the damage-first family's 32-direction sprite + bucket
+#   tables, indexed by ((heading)&$3E)<<1 (a longword at every 4-byte stride).
+# $268694/$268C9E: type $10/$11's 32-direction sprite tables (same heading
+#   arithmetic, reached after addq #1 -- still 0x80 bytes).
+# $272D7A/$272DFA/$272E7A/$272F7A: the aim-derived sprite/bucket tables for
+#   types $80/$82/$85/$88/$89 (16 longs, indexed by the aim direction).
+# $2763D8: type $88's sub-record sprite table, indexed by (sub +$28) word.
+ENEMY_STAT_TABLES = [
+    (0x267F60, 0x00A0, "W23: the bucket-emitter table $267F70 (types $10/$11, "
+                       "indexed by (sub +$1F)<<3)"),
+    (0x268690, 0x0090, "W23: type $10's 32-direction sprite table $268694"),
+    (0x268C90, 0x0090, "W23: type $11's 32-direction sprite table $268C9E"),
+    (0x269E40, 0x0110, "W23: the damage-first family's shared sprite table "
+                       "$269E48 + bucket table $269EC8 (16-dir, heading-indexed)"),
+    (0x272D70, 0x0190, "W23: the aim-derived sprite/bucket tables $272D7A "
+                       "($88) and $272DFA ($82/$85), 16 longs each"),
+    (0x272E70, 0x0090, "W23: the aim-derived sprite table $272E7A ($89)"),
+    (0x272F70, 0x0090, "W23: the aim-derived sprite/bucket table $272F7A ($80)"),
+    (0x2763D0, 0x0050, "W23: type $88's sub-record sprite table $2763D8 "
+                       "(indexed by (sub +$28))"),
+]
+SHOT_WINDOWS.extend(ENEMY_PROTO_WINDOWS)
+SHOT_WINDOWS.extend(ENEMY_STAT_TABLES)
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
