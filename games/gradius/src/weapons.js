@@ -31,12 +31,17 @@
 //
 // Named, each as a throw carrying its ROM address:
 //
-//   $A19E   the missile CRAWL arm. UNEXERCISED: the terrain probe returned 0 on
-//           all 916 calls of the weapons recon and 0 on every call of every
-//           scenario here, so the crawl -- metasprite $08, `x += 2`, and the
-//           $A199 wall-kill above it -- has never run on this machine. Its
-//           SHAPE is known and its constants are not; a reading is not a port.
 //   $A17C   the `$19 == 4` probe bypass (stage 5). $19 is 0 throughout.
+//
+// $A19E -- THE MISSILE CRAWL -- IS PORTED AS OF WAVE 22 and the note it used to
+// carry is deleted rather than softened, because it is the fifth instance in
+// this tree of the same wrong sentence: "UNEXERCISED: the terrain probe
+// returned 0 on all 916 calls of the weapons recon and 0 on every call of every
+// scenario here ... its SHAPE is known and its constants are not." The first
+// half was a fact about the corpus's scroll distance; wave 12's exec hook
+// measured 203 executions on the cartridge, first at game frame 3324. The
+// second half was simply wrong: the constants are row 1 of $A1A4/$A1A6/$A1A8,
+// the same three tables the fly path already reads.
 
 import { u8, u16 } from './state.js';
 import { probeCollision } from './terrain.js';
@@ -310,22 +315,32 @@ export function missileLoop(state, res) {
         freeMissile(state, i);                    // $A1D6
         continue;
       }
-      // WAVE 12 CORRECTION, and it is the correction this whole follow-up is
-      // about. This used to say the crawl arm "has never run", on the strength
-      // of 916 probe calls in the weapons recon and every call of every
-      // scenario. That was a fact about OUR SAMPLING. MEASURED on the cartridge
-      // with an exec hook on $A19E over 27,400 frames of seven scripts
-      // (tools/oracle/throwaudit.py): it runs **203 times, first at game frame
-      // 3324**, on the run that carries missiles at all ($41 = 1) and survives
-      // deep enough to meet real ground. The corpus never reached it because no
-      // scenario both owns missiles and flies past scroll $0380.
-      throw new Error(`$A19E: missile ${i} would start CRAWLING at (${px}, ${py})`
-                    + ' -- metasprite $08, `x += 2`. NOT PORTED, and REACHABLE: '
-                    + 'measured 203 executions of $A19E on the cartridge, first '
-                    + 'at frame 3324 (tools/oracle/throwaudit.py). Its shape is '
-                    + 'known and its constants are not.');
+      // ---- $A19E: THE CRAWL, ported in wave 22 --------------------------
+      //
+      // WAVE 12 MEASURED THIS ARM AND WAVE 22 PORTS IT. The note it carried
+      // said "its shape is known and its constants are not", and that was
+      // wrong in the only way that mattered: the constants are the SECOND ROW
+      // of the same three two-byte tables the fly path already reads. `$A19E
+      // LDY #$01` is the whole difference, and `$A1A2 BNE $A1AC` rejoins the
+      // body eight bytes later with A = $08 (the metasprite) instead of $0A.
+      //
+      //   $A1A4  02 00   dY      fly +2 / crawl 0   -- a crawling missile does
+      //   $A1A6  00 02   dX int  fly  0 / crawl 2      not fall, and moves
+      //   $A1A8  80 00   dX frac fly $80 / crawl 0     right at 2 px/frame
+      //
+      // The measurement that made this reachable rather than a listing
+      // curiosity: an exec hook on $A19E over 27,400 cartridge frames of seven
+      // scripts (tools/oracle/throwaudit.py, wave 12) counted **203
+      // executions, first at game frame 3324** -- on the run that both carries
+      // missiles ($41 = 1) and flies deep enough to meet real ground. The
+      // weapons recon's "unexercised on 916 probe calls" was a fact about the
+      // corpus's scroll distance, not about the cartridge.
+      y = 1;                                      // $A19E LDY #$01
+      o.anim[i] = 0x08;                           // $A1A0 LDA #$08 / $A1AC STA
+    } else {
+      o.anim[i] = 0x0A;                           // $A1AA LDA #$0A / $A1AC STA
     }
-    o.anim[i] = 0x0A;                             // $A1AA/$A1AC -- every frame
+    // $A1AF onward is shared by both arms; only Y differs.
     const ny = u8(o.y[i] + w.read(0xA1A4 + y));   // $A1AF-$A1B6
     o.y[i] = ny;
     if (ny >= 0xC8) { freeMissile(state, i); continue; }   // $A1B9 CMP #$C8/BCS

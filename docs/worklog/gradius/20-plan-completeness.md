@@ -25,11 +25,11 @@ asserted by hand. Counting conventions are stated where two recons differed.
 
 | set | total | ported | remains | source |
 |---|---|---|---|---|
-| `$AE1C` enemy dispatch entries | **42** | 13 | 29 throw | census.py; table is $AE1C-$AE6F, proven by $AE70 being the shared RTS |
-| distinct handler routines behind them | **34** | 10 | 24 | census.py / handlerflow.py |
-| spawner sites (`JSR $A527`) in the whole PRG | **9** | 2 | 7 | grep over rip/prg.asm — complete because every spawn allocates through $A527 |
-| enemy types with any producer in the ROM | **38** | 13 | 25 | all 34 absolute stores into $0300-$031F enumerated; $00/$03/$1B/$1F have no found writer |
-| wave records, all 7 stages (distinct ROM addresses) | **598** | 370 spawn a ported handler | 228 | wavecensus.py / wavedump.py — the two tools decode byte-identically; 718 record *reads*, 682 *live*, 598 *distinct*. This ledger uses distinct. |
+| `$AE1C` enemy dispatch entries | **42** | **19** (W22: was 13) | 23 throw | census.py; table is $AE1C-$AE6F, proven by $AE70 being the shared RTS |
+| distinct handler routines behind them | **34** | **16** (W22: was 10) | 18 | census.py / handlerflow.py |
+| spawner sites (`JSR $A527`) in the whole PRG | **9** | **3** (W22 added `$AFD9`, the hatch's child spawner) | 6 | grep over rip/prg.asm — complete because every spawn allocates through $A527 |
+| enemy types with any producer in the ROM | **38** | **19** (W22: was 13) | 19 | all 34 absolute stores into $0300-$031F enumerated; $00/$03/$1B/$1F have no found writer |
+| wave records, all 7 stages (distinct ROM addresses) | **598** | **454** spawn a ported handler (W22: was 370) | 144 | wavecensus.py / wavedump.py — the two tools decode byte-identically; 718 record *reads*, 682 *live*, 598 *distinct*. This ledger uses distinct. **W22 also fixed wavecensus.py's `PORTED_TARGETS`, which said "read from the source" and was a hand-kept literal frozen at wave 12** — it is parsed out of `src/enemies.js` now, the way census.py always did it |
 | 5-byte inline records (cmd >= $F0) | **73** | 0 | 73 — the whole route ($A37A/$A466/$A46F/$A4A6) is unported and changes the record STRIDE | wavecensus.py |
 | table A single-spawn descriptors ($A662) | **121** exact | data, exported | 119 referenced; $32/$52 never | bounded by $A7D0 abutting |
 | table B formation descriptors ($A602) | **24** exact | data, exported | all 24 referenced | bounded by $A662 abutting |
@@ -53,19 +53,42 @@ asserted by hand. Counting conventions are stated where two recons differed.
 
 | set | total | ported | remains |
 |---|---|---|---|
-| wave records before the boss page (chunks 0-5) | **92** | 74 spawnable | 18: $B747 x8+, $B6E1 x6+, $AF2E x3, $AF88 x1 (post-boss chunk-6 replay would add 10 more; unresolved, see §5) |
-| enemy types the script names | **12** | 8 | $07, $0F, $10, $13 |
-| dispatch entries needed, **transitive closure** incl. handler-spawns-handler | **16** | 10 | 6 routines: $B6E1, $B747, $AF2E, $AF88, and their children $B311 (type $09), $B3CB (type $0C) — the children appear in NO wave list, only via $AF98 |
+| wave records before the boss page (chunks 0-5) | **92** | **92** — `wavecensus.py` prints `stage 0: 92 distinct, 92 ported, 0 unported, 100.0%` (W22) | **0** (post-boss chunk-6 replay would add 10 more; unresolved, see §5) |
+| enemy types the script names | **12** | **12** (W22 added $07, $0F, $10, $13) | 0 |
+| dispatch entries needed, **transitive closure** incl. handler-spawns-handler | **16** | **16** (W22) | 0 — $B6E1, $B747, $AF2E, $AF88 and their children $B311 (type $09) / $B3CB (type $0C) all landed; the children appear in NO wave list, only via $AF98 |
 | play sub-states a clear traverses ($80 $81 $82 $83 $84 $85 $86) | **7** | 1 | 6 |
 | late-spawner arms live in stage 1 | **1** ($C486 volcano, only producer of type $0A in the ROM) | 0 | 1, plus its payload handler entry 10 ($B36F) |
 | boss objects | head $B914 + body $B913 (3 slots) | 0 | both, plus 4 rank tables $B8EF/$B8F8/$B901/$B90A |
 | stage exit | seamless $9904 → $96CF, plus the **$39 warp route** that skips stage 2 ($984F + $C686, double INC $19) | 0 | all of it — the warp route is earned by ordinary stage-1 play and nothing in the port knows it exists |
 
-**The fraction the owner asked for:** by scroll distance the port stops at
-$0427 of $0D00 — it runs **~32% of stage 1**, exactly, and then refuses. By
+**The fraction the owner asked for:** by scroll distance the port stopped at
+$0427 of $0D00 — it ran **~32% of stage 1**, exactly, and then refused. By
 frames of a full clear, ~2,490 of ~9,350. By flow states, 1 of 16. The boss,
 the volcano finale, the transition and the warp route are at 0. The green gate
-(42 scenarios, 378 tests) is true and describes the first third of one stage.
+(42 scenarios, 378 tests) was true and described the first third of one stage.
+
+> **W22 MOVED THE FIRST NUMBER AND ONLY THE FIRST.** The `deep-powered`
+> scenario compares 3,099 consecutive frames from game frame 2300 to 5399 with
+> **zero divergent fields**, which is camera `$03E1` to roughly `$0620` — every
+> wave record of chunks 2, 3 and 4, and the last enemy handler stage 1's script
+> names. By scroll distance the enemy engine now runs to the boss page. What has
+> NOT moved: play sub-states are still 1 of 16, the boss is still 0, the volcano
+> is still 0, both exits are still 0, and the longest window recorded here still
+> ends 3,950 frames short of a clear. W24-W27 own all of that.
+
+---
+
+## Wave-by-wave completion log
+
+**W22 — DONE** (`22-impl-six-routines.md`). Entries 7, 19, 15, 16, 9, 12 plus
+`$AF98` (the child spawner), `$C05F-$C08D` (the ARMOURED damage accumulator,
+which was a throw and without which a hatch is invulnerable) and `$A19E` (the
+missile crawl). Ledger above updated; 13/42 → 19/42 entries, 10/34 → 16/34
+routines, stage 0's wave script 74/92 → 92/92. Note that the plan split this
+across W22 and W23 and the brief merged them; **W23 is therefore also done**
+except for its `$39` measurement, which landed as a unit test rather than a
+four-hatch-kill run (nothing in the corpus can kill four hatches yet — the
+shield poke that makes the run survivable also makes it never take damage).
 
 ---
 

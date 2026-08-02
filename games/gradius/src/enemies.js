@@ -53,18 +53,20 @@
 //                            scripts (wave 12, tools/oracle/throwaudit.py).
 //                            Stage 1's four wave lists carry no cmd >= $F0 at
 //                            all, so reaching them needs another stage.
-//   29 of the 42 entries     of the $AE1C table are still throws -- 24 distinct
-//                            routines. The THIRTEEN that are ported -- 0 and 31
+//   23 of the 42 entries     of the $AE1C table are still throws -- 18 distinct
+//                            routines. The NINETEEN that are ported -- 0 and 31
 //                            (the RTS), 1, 39 and 41 ($AEDD), 2, 3, 4, 5, 6, 8,
-//                            17, 18 -- are ten distinct routines and they are
-//                            what stage 1 dispatches through scroll $0440.
-//                            FIVE of the 29 are REACHED IN PLAY and measured:
-//                            $B6E1 (entry 7, frame 2490), $B747 (19, 2498),
-//                            $B311 (9, 2783), $AF2E (15, 2778), $AF88 (16,
-//                            5018). The last three only on a run carrying
-//                            power-ups. The ranked table with what it took to
-//                            reach each one is in
-//                            docs/worklog/gradius/12-impl-spawn-and-throw-audit.md.
+//                            17, 18, and WAVE 22's 7, 9, 12, 15, 16, 19 -- are
+//                            SIXTEEN distinct routines, and they are every entry
+//                            stage 1's wave script names before the boss page.
+//                            None of the 23 that remain has been measured
+//                            executing on stage 1: wave 12's exec hook over
+//                            27,400 frames of seven scripts named exactly five
+//                            reachable ones and all five are in this wave.
+//                            docs/worklog/gradius/12-impl-spawn-and-throw-audit.md
+//                            has the ranked table; 22-impl-six-routines.md has
+//                            the first frame and slot-frame count each of the
+//                            six was measured at inside `deep-powered`.
 //   $C413                    the stage-advance arm ($3A != 0, $1B = $82).
 //                            $3A measured 0 on all 27,400 of those frames.
 //   $BBB7's $BBE5 arm        the `$17 >= 3` rank consumer. Unreachable once any
@@ -99,6 +101,8 @@
 
 import { u8, u16, ENEMY_BASE, ENEMY_SLOTS } from './state.js';
 import { soundRequest } from './sound.js';
+import { probeCollision } from './terrain.js';
+import { addScore } from './score.js';
 
 const hex2 = (v) => `$${v.toString(16).toUpperCase().padStart(2, '0')}`;
 const hex4 = (v) => `$${v.toString(16).toUpperCase().padStart(4, '0')}`;
@@ -1128,6 +1132,13 @@ function dispatch(state, rom, j, type) {
     case 0xB198: return h_B198(state, rom, j);
     case 0xB205: return h_B205(state, j);
     case 0xB26C: return h_B26C(state, j);
+    // ---- WAVE 22: the six routines between scroll $0440 and the boss ------
+    case 0xB6E1: return h_B6E1(state, rom, j);   // entry  7, types $07/$87
+    case 0xB747: return h_B747(state, rom, j);   // entry 19, types $13/$93
+    case 0xAF2E: return h_AF2E(state, rom, j);   // entry 15, types $0F/$8F
+    case 0xAF88: return h_AF88(state, rom, j);   // entry 16, types $10/$90
+    case 0xB311: return h_B311(state, rom, j);   // entry  9, types $09/$89
+    case 0xB3CB: return h_B3CB(state, rom, j);   // entry 12, types $0C/$8C
     default:
       // THE MESSAGE THIS USED TO CARRY WAS "no measured run has ever
       // dispatched it", and that sentence is the one this whole follow-up
@@ -1716,4 +1727,464 @@ function aimTurret(state, rom, j) {
                                          //   array, the one $A527 clears with
                                          //   `STA $0496,Y`. NOT s0480[j + 12].
   h_AEDD(state);                         // $B083 JMP $AEDD
+}
+
+// ======================= WAVE 22: THE SIX ROUTINES ==========================
+//
+// Entries 7, 19, 15, 16, 9 and 12 -- everything stage 1's wave script reaches
+// between scroll $0440 and the boss page, in the order the game reaches it.
+//
+// THE DENOMINATORS, quoted from 20-recon-enemy-census.md and NOT re-derived:
+// `$AE1C` is 42 entries / 84 bytes / 34 distinct handler routines. Stage 0's
+// chunk 2 ($A87A) is the first wave list that names an unported handler --
+// trigger $20, cmd $03, type $07 -> entry 7 -> `$B6E1`, at scroll
+// `($61 << 8) + trigger*2` = $0400 + $40 = **$0440**. Chunks 0 and 1 contain
+// zero unported spawns, which is exactly why the opening plays.
+//
+// THREE THINGS IN THIS BLOCK ARE FALL-THROUGHS, NOT CALLS. The listing's
+// apparent function boundaries are wrong in all three places and each one was
+// read past on purpose (docs/knowledge/02 trap 1, TEN prior incidents):
+//
+//   $B6A2's arm ends `$B6B5 STA $04CC,X` at $B6B7 and runs straight on into
+//   `$B6B8`, the metasprite/muzzle picker. A port that treats $B6B8 as a
+//   separate subroutine loses the frame's metasprite every time the walker
+//   docks.
+//
+//   $B3D5 `JMP $B3A2` (entry 12's init) lands on two instructions that end at
+//   $B3A6 and fall into `$B3A7 JMP $B0B4`. Entry 12 therefore zeroes $048C AND
+//   sets the initialised bit; entry 9's init ($B316) does NOT zero $048C. The
+//   asymmetry is the cartridge's and is reproduced.
+//
+//   $AF33 IS SHARED BY BOTH HATCHES -- `$AF8B BPL $AF33` and `$AF96 BNE $AF54`
+//   are entry 16 jumping into the MIDDLE of entry 15 twice. Entry 16 is entry
+//   15 with three bytes changed (Y = $F6 not $08, A = $0C not $09, metasprite
+//   $79 not $78), so it is written that way here.
+//
+// AND ONE NEAR-MISS, recorded because it looks like a fall-through and is not:
+// `$B6E1`'s uninitialised arm is `$B6E8 JSR $B65C / $B6EB JMP $B0B4` -- a JMP,
+// so it does NOT run on into $B6EE.
+
+/**
+ * `$B65C` -- pick the column the terrain walker docks at: the PLAYER's X plus
+ * $30, snapped down to a multiple of 8, clamped to [$20, $F0].
+ *
+ * The clamp is asymmetric in the ROM and the asymmetry matters: when
+ * `player.x + $30` CARRIES, `$B662 BCS $B66A` jumps straight to `LDA #$F0`
+ * WITHOUT the `AND #$F8`, so the high clamp is reached two different ways.
+ */
+function walkerDockColumn(state, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  const sum = o.x[0] + 0x30;             // $B65C LDA $0360 / CLC / ADC #$30
+  let a;
+  if (sum > 0xFF) {                      // $B662 BCS $B66A
+    a = 0xF0;                            // $B66A LDA #$F0
+  } else {
+    a = sum & 0xF8;                      // $B664 AND #$F8
+    if (a >= 0xF0) a = 0xF0;             // $B666 CMP #$F0 / BCC $B66C / $B66A
+  }
+  if (a < 0x20) a = 0x20;                // $B66C CMP #$20 / BCS $B672 / $B670
+  o.s0480[i] = a;                        // $B672 STA $048C,X
+}
+
+/**
+ * `$B676` -- the shared docking step, reached by BOTH walkers once the terrain
+ * probe has settled their Y for the frame.
+ *
+ * It compares the walker's own X (snapped to 8) against the docking column and
+ * either walks 2 px left, 1 px right, or -- on an exact match -- LOCKS: it
+ * loads the rank row `$B6D2[$17]` into the fire interval pair
+ * ($04EC/$040C, the same pair $BBFD counts down), bumps the phase `$046C`, and
+ * falls through into $B6B8.
+ *
+ * `$B690 JMP $AEF8` is the free when the walk left takes X below 8. It is also
+ * an entry point for `$B7F3` (the mid-boss, entry 23, still a throw).
+ */
+function walkerDock(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  o.s04E0[i] = 0;                        // $B676 LDA #$00 / STA $04EC,X
+  const col = o.x[i] & 0xF8;             // $B67B LDA $036C,X / AND #$F8
+  if (col === o.s0480[i]) {              // $B680 CMP $048C,X / $B683 BEQ $B6A2
+    const rank = rom.read(0xB6D2 + state.zp17);   // $B6A2 LDY $17 / $B6A4 LDA $B6D2,Y
+    o.s04E0[i] = rank;                   // $B6A7 STA $04EC,X   the fire RELOAD
+    o.style[i] = rank;                   // $B6AA STA $040C,X   the fire COUNTDOWN
+    o.s0460[i] = u8(o.s0460[i] + 1);     // $B6AD INC $046C,X   phase 0 -> 1
+    o.status[i] = 0;                     // $B6B0 LDA #$00 / STA $010C,X
+    o.s04C0[i] = 0;                      // $B6B5 STA $04CC,X
+    return walkerFrame(state, rom, j);   // FALL-THROUGH into $B6B8, not a call
+  }
+  if (col < o.s0480[i]) {                // $B685 BCC $B697 -- left of the column
+    addAX(state, j, 0x01);               // $B697 LDA #$01 / JSR $B164
+    o.status[i] = 4;                     // $B69C LDA #$04 / $B69E STA $010C,X
+    return;
+  }
+  const x = addAX(state, j, 0xFE);       // $B687 LDA #$FE / JSR $B164
+  if (x < 0x08) return freeSlot(state, j);   // $B68C CMP #$08 / BCS $B693 / $B690
+  o.status[i] = 3;                       // $B693 LDA #$03 / $B69E STA $010C,X
+}
+
+/**
+ * `$B6B8` -- the metasprite and the muzzle index, chosen by which side of the
+ * ship the walker is on. Y starts at `$04AC,X`, which is 0 for the FLOOR walker
+ * (entry 7 never writes it) and 1 for the CEILING walker (`$B774 LDA #$01`),
+ * and gains 2 when the walker is to the LEFT of the ship.
+ *
+ * W21's tablecoverage.py settled which of entry 7/19's three tables is which,
+ * and the distinction is load-bearing here: `$B6D2` is the RANK row
+ * (-> $04EC/$040C, above), **`$B6D9` is a METASPRITE table** (`1C 1C 1F 1F`,
+ * -> $012C) and `$B6DD` is the bulletMuzzle index (`01 03 02 04`, -> $0496).
+ */
+function walkerFrame(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  let y = o.s04A0[i];                    // $B6B8 LDY $04AC,X
+  // $B6BB LDA $036C,X / CMP $0360 / BCS $B6C5 -- the walker is LEFT of the ship
+  if (o.x[i] < o.x[0]) y = u8(y + 2);    // $B6C3 INY / INY
+  o.anim[i] = rom.read(0xB6D9 + y);      // $B6C5 LDA $B6D9,Y / STA $012C,X
+  o.s0480[22 + j] = rom.read(0xB6DD + y);  // $B6CB LDA $B6DD,Y / $B6CE STA $0496,X
+                                         //   -- the j-INDEXED array again, the
+                                         //   one $BC90 reads when it fires.
+}
+
+/** `$B70B` -- `LDX $A8 / JMP $B17C`: reload the slot index, then Y += A. */
+function walkerStepY(state, a) {
+  addAY(state, state.spawn.zA8, a);      // $B70B LDX $A8 / $B70D JMP $B17C
+}
+
+/**
+ * `$B723` -- the tail BOTH walkers run on their ODD phases ($046C bit 0 set),
+ * and the reason entry 19 is only 45 bytes long: `$B753 BNE $B723`.
+ *
+ * It drifts with the camera ($AEDD), redraws, and counts $04CC up to $3C = 60
+ * frames per phase. At phase 7 it clears the docking column instead of
+ * re-picking it -- `$B741 LDA #$00 / STA $048C,X` -- which sends the next
+ * $B676 down the `col < $048C` = false path forever, i.e. the walker leaves.
+ */
+function walkerTail(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  h_AEDD(state);                         // $B723 JSR $AEDD
+  walkerFrame(state, rom, j);            // $B726 JSR $B6B8
+  o.s04C0[i] = u8(o.s04C0[i] + 1);       // $B729 INC $04CC,X
+  if (o.s04C0[i] < 0x3C) return;         // $B72C CMP #$3C / BCS $B734 / $B733 RTS
+  o.s0460[i] = u8(o.s0460[i] + 1);       // $B734 INC $046C,X
+  if (o.s0460[i] < 0x07) {               // $B737 CMP #$07 / BCS $B741
+    return walkerDockColumn(state, j);   // $B73E JMP $B65C
+  }
+  o.s0480[i] = 0;                        // $B741 LDA #$00 / $B743 STA $048C,X
+}
+
+/**
+ * Handler 7, `$B6E1` -- THE FLOOR-HUGGING TERRAIN WALKER, types $07/$87. THE
+ * FIRST FAILURE IN THE GAME: stage 0, chunk 2 ($A87A), trigger $20, cmd $03,
+ * at scroll $0440, and MEASURED on the cartridge at game frame 2490 with 4995
+ * executions across three 6000-frame runs (tools/oracle/throwaudit.py, wave 12).
+ * 35 wave spawns across the whole game.
+ *
+ * On EVEN phases it probes the collision map twice through the already-ported
+ * `$C3D3` (src/terrain.js probeCollision) and rides the ground:
+ *
+ *   ground at y+8 but NOT at y+5  ->  level: no Y change at all
+ *   nothing  at y+8               ->  `$B707 LDA #$03`, fall 3 px
+ *   ground   at y+5               ->  `$B71B LDA #$FD`, climb 3 px
+ *
+ * and then docks. On ODD phases it runs $B723 instead. `$046C` is therefore
+ * both the phase counter AND the walk/dwell selector.
+ *
+ * THE TWO PROBES SHARE $A4/$A5 AND THE SECOND IS THREE DECs OF THE FIRST --
+ * `$B710 DEC $A5` x3 -- so the second probe is at y+8-3 = y+5, NOT at y-3+8 as
+ * 20-recon-enemy-census.md's summary line reads. The listing is the authority.
+ */
+function h_B6E1(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  j = state.spawn.zA8;                   // $B6E1 LDX $A8 -- reloads X
+  if (!(o.type[i] & 0x80)) {             // $B6E3 LDA $030C,X / $B6E6 BMI $B6EE
+    walkerDockColumn(state, j);          // $B6E8 JSR $B65C
+    return setInitialised(state, j);     // $B6EB JMP $B0B4 -- a JMP, not a fall
+  }
+  if (o.s0460[i] & 1) return walkerTail(state, rom, j);   // $B6EE/$B6F3 BNE $B723
+  const px = o.x[i];                     // $B6F5 LDA $036C,X / STA $A4
+  const py = u8(o.y[i] + 8);             // $B6FA LDA $032C,X / CLC / ADC #$08
+  if (probeCollision(state, px, py) === 0) {   // $B702 JSR $C3D3 / $B705 BNE $B710
+    walkerStepY(state, 0x03);            // $B707 LDA #$03 / BNE $B71D -> $B70B
+  } else if (probeCollision(state, px, u8(py - 3)) !== 0) {  // $B710-$B719
+    walkerStepY(state, 0xFD);            // $B71B LDA #$FD / $B71D JSR $B70B
+  }
+  walkerDock(state, rom, j);             // $B720 JMP $B676
+}
+
+/**
+ * Handler 19, `$B747` -- THE CEILING-HUGGING WALKER, types $13/$93. 44 wave
+ * spawns; MEASURED first at game frame 2498, eight frames after entry 7, and
+ * the sweep recon calls it the BIGGEST wall of the five (46 powered windows,
+ * more than $B6E1's 25-34).
+ *
+ * It is entry 7 with the Y sign flipped and the branch targets shared: the
+ * probes are at y-8 and y-5, `$B765 BEQ $B71B` and `$B772 BNE $B707` reuse
+ * entry 7's OWN two constants, and `$B753 BNE $B723` reuses its tail. The init
+ * is the one part that is genuinely different: `$04AC = 1` (which shifts
+ * $B6B8's metasprite/muzzle lookup by one) and `$018C |= $80`, the vertical
+ * flip that makes it hang from the ceiling.
+ */
+function h_B747(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  j = state.spawn.zA8;                   // $B747 LDX $A8
+  if (!(o.type[i] & 0x80)) {             // $B749 LDA $030C,X / $B74C BPL $B774
+    o.s04A0[i] = 1;                      // $B774 LDA #$01 / STA $04AC,X
+    o.attrMask[i] = o.attrMask[i] | 0x80;  // $B779 LDA $018C,X / ORA #$80 / STA
+    walkerDockColumn(state, j);          // $B781 JSR $B65C
+    return setInitialised(state, j);     // $B784 JMP $B0B4
+  }
+  if (o.s0460[i] & 1) return walkerTail(state, rom, j);   // $B74E/$B753 BNE $B723
+  const px = o.x[i];                     // $B755 LDA $036C,X / STA $A4
+  const py = u8(o.y[i] - 8);             // $B75A LDA $032C,X / SEC / SBC #$08
+  if (probeCollision(state, px, py) === 0) {   // $B762 JSR $C3D3 / $B765 BEQ $B71B
+    walkerStepY(state, 0xFD);            // $B71B LDA #$FD -- climb toward the roof
+  } else if (probeCollision(state, px, u8(py + 3)) !== 0) {  // $B767-$B772
+    walkerStepY(state, 0x03);            // $B707 LDA #$03 -- back down
+  }
+  walkerDock(state, rom, j);             // $B720 JMP $B676
+}
+
+/**
+ * `$AF33` -- the hatch INIT, shared by entries 15 and 16 (`$AF8B BPL $AF33`).
+ *
+ * Three of its four stores are load-bearing outside this file:
+ *   `$0460,X` = 1 is the j-INDEXED array, the HITBOX CLASS `$C020 LDX $0460,Y`
+ *               and `$C11C` read -- so a hatch has a taller box than a squadron
+ *               member, which is class 0.
+ *   `$048C,X` = 1 is what GATES ARMOUR DAMAGE at `$C070 LDA $048C,Y / BEQ`.
+ *               Without it the hatch is invulnerable.
+ *   `$010C,X` = $80 makes it armoured: `$ADE8 BMI $AE14` skips the $ADC1
+ *               animator, and `$C05D BPL $C090` sends every hit down the
+ *               damage-accumulator arm instead of the kill.
+ */
+function hatchInit(state, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  o.s0460[j] = 1;                        // $AF33 LDA #$01 / $AF35 STA $0460,X
+  o.s0480[i] = 1;                        // $AF38 STA $048C,X
+  o.status[i] = 0x80;                    // $AF3B LDA #$80 / $AF3D STA $010C,X
+  setInitialised(state, j);              // $AF40 JMP $B0B4
+}
+
+/**
+ * `$AF98` -- THE PARAMETERISED SPAWNER, and a first-class spawn site: it is the
+ * ONLY writer of enemy types `$09` and `$0C` in the whole 32 KB (via `$AFE0 STA
+ * $030C,X`; the census enumerated every absolute store into $0300-$031F). That
+ * is why entries 9 and 12 appear in no wave list anywhere and are still
+ * required by stage 1.
+ *
+ * The gate is three-stage and lives in `$042C,X` (the same byte $AE99 uses as
+ * an explosion-script cursor -- different type, different meaning):
+ *   phase 0  spawn only once the hatch's X has reached $C8
+ *   phase 1  ... $A0
+ *   phase 2+ `$AFA8 RTS`, never again
+ * plus `$02 AND $0F == 0` (one frame in 16) and a per-phase count of FIVE in
+ * `$044C,X`; the fifth attempt rolls the phase instead of spawning.
+ *
+ * The allocation is the ordinary DEX/BPL scan (`allocEnemySlot(true)`), and a
+ * FAILURE IS GAMEPLAY: `$AFD2` restores $A8 and returns having consumed the
+ * `$044C` increment. The child is not deferred.
+ */
+function hatchSpawn(state, rom, j, yOff, childType) {
+  const o = state.obj; const sp = state.spawn; const i = j + ENEMY_BASE;
+  const parent = sp.zA8;                 // $AF9A LDX $A8 / $AF9C STX $AB
+  const phase = o.xvel[i];               // $AFA0 LDY $042C,X
+  if (phase === 0) {                     // $AFA3 BEQ $AFB1
+    if (o.x[i] < 0xC8) return;           // $AFB1 CMP #$C8 / $AFB6 BCC $AFB0 RTS
+  } else if (phase === 1) {              // $AFA5 DEY / $AFA6 BEQ $AFA9
+    if (o.x[i] < 0xA0) return;           // $AFA9 CMP #$A0 / $AFAE BCS $AFB8
+  } else {
+    return;                              // $AFA8 RTS
+  }
+  if ((state.frame & 0x0F) !== 0) return;   // $AFB8 LDA $02 / AND #$0F / BNE $B01C
+  o.xvelf[i] = u8(o.xvelf[i] + 1);       // $AFBE INC $044C,X
+  if (o.xvelf[i] >= 5) {                 // $AFC1 CMP #$05 / $AFC6 BCS $B014
+    o.xvelf[i] = 0;                      // $B014 LDA #$00 / $B016 STA $044C,X
+    o.xvel[i] = u8(o.xvel[i] + 1);       // $B019 INC $042C,X
+    return;                              // $B01C RTS
+  }
+  const n = allocEnemySlot(state, true); // $AFC8-$AFD0 LDX #$09 / BEQ / DEX / BPL
+  if (n < 0) { sp.zA8 = parent; return; }   // $AFD2 LDX $AB / STX $A8 / RTS
+  sp.zA8 = n;                            // $AFD7 STX $A8
+  clearSlot(state, n);                   // $AFD9 JSR $A527
+  const ni = n + ENEMY_BASE;
+  o.type[ni] = childType;                // $AFDE LDA $AA / $AFE0 STA $030C,X
+  o.status[ni] = 0;                      // $AFE3 LDA #$00 / $AFE5 STA $010C,X
+  o.x[ni] = u8(o.x[i] + 8);              // $AFEA LDA $036C,Y / ADC #$08 / STA
+  o.y[ni] = u8(o.y[i] + yOff);           // $AFF3 LDA $032C,Y / ADC $AC / STA
+  // $AFFC LDY $17 / $AFFE LDA $19 BEQ INY / $B003 LDA $1A BEQ INY -- the rank
+  // row is shifted by the STAGE and by the LOOP, so the same hatch fires faster
+  // on stage 2+ and faster again on loop 2. $1A is structurally 0 in this port.
+  let y = state.zp17;
+  if (state.zp19 !== 0) y = u8(y + 1);   // $B002 INY
+  if (state.zp1A !== 0) y = u8(y + 1);   // $B007 INY
+  const iv = rom.read(0xB01D + y);       // $B008 LDA $B01D,Y
+  o.s04E0[ni] = iv;                      // $B00B STA $04EC,X   fire RELOAD
+  o.style[ni] = iv;                      // $B00E STA $040C,X   fire COUNTDOWN
+  sp.zA8 = parent;                       // $B011 JMP $AFD2
+}
+
+/**
+ * Handler 15, `$AF2E` -- THE FLOOR HATCH, types $0F/$8F. 14 wave spawns;
+ * MEASURED first at game frame 2778, on a run carrying power-ups.
+ *
+ * Every frame it calls $AF98 (Y = $08, A = $09 -> a type-$09 child 8 px BELOW
+ * it), draws metasprite $78 ($63 on stage 5 only), and reads its own damage
+ * counter `$046C`: >= 3 turns the palette bits on, >= 5 destroys it.
+ *
+ * THE DESTROYED ARM IS THE WARP ROUTE and it is why `$5F` and `$39` became port
+ * state in this wave (src/state.js). On stage 0 ONLY, with the score byte
+ * `$07E5 + 4*$18` EVEN, it bumps `$5F`, and at `$5F >= 4` it does `INC $39` --
+ * the flag `$9937` reads to skip stage 2. The parity gate is `$AF73 LSR A /
+ * BCS`, i.e. bit 0 of the score's middle byte; W27 owns the reader.
+ */
+function h_AF2E(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) return hatchInit(state, j);   // $AF2E/$AF31 BMI $AF43
+  hatchSpawn(state, rom, j, 0x08, 0x09); // $AF43 LDY #$08 / LDA #$09 / JSR $AF98
+  let ms = 0x78;                         // $AF4A LDA #$78
+  if (state.zp19 === 5) ms = 0x63;       // $AF4C LDY $19 / CPY #$05 / $AF52 LDA #$63
+  hatchBody(state, j, ms);               // $AF54
+}
+
+/**
+ * Handler 16, `$AF88` -- THE CEILING HATCH, types $10/$90. 8 wave spawns;
+ * MEASURED first at game frame 5018. It is entry 15 re-entered twice: `$AF8B
+ * BPL $AF33` for the init and `$AF96 BNE $AF54` for the body. Only the child's
+ * Y offset ($F6 = -10), the child's type ($0C) and the metasprite ($79) differ,
+ * and the stage-5 metasprite swap is NOT reachable from here -- $AF94 loads $79
+ * and branches PAST $AF4A.
+ */
+function h_AF88(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) return hatchInit(state, j);   // $AF88/$AF8B BPL $AF33
+  hatchSpawn(state, rom, j, 0xF6, 0x0C); // $AF8D LDY #$F6 / LDA #$0C / JSR $AF98
+  hatchBody(state, j, 0x79);             // $AF94 LDA #$79 / $AF96 BNE $AF54
+}
+
+/** `$AF54`-`$AF87` -- the body both hatches share, entered with A = metasprite. */
+function hatchBody(state, j, ms) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  o.anim[i] = ms;                        // $AF54 STA $012C,X
+  const dmg = o.s0460[i];                // $AF57 LDY $046C,X
+  if (dmg >= 3) o.attrMask[i] = 3;       // $AF5A CPY #$03 / BCC $AF63 / $AF5E-$AF60
+  if (dmg < 5) return h_AEDD(state);     // $AF63 CPY #$05 / $AF65 BCC $AF2B -> $AEDD
+  // ---- DESTROYED ---------------------------------------------------------
+  if (state.zp19 === 0) {                // $AF67 LDA $19 / $AF69 BNE $AF80
+    // $AF6B LDA $18 / ASL / ASL / TAY / $AF70 LDA $07E5,Y -- the 4-byte stride
+    // $8474 uses, so this is the CURRENT player's score middle byte.
+    const digit = state.score[5 + 4 * state.zp.player];
+    if ((digit & 1) === 0) {             // $AF73 LSR A / $AF74 BCS $AF80
+      state.zp5F = u8(state.zp5F + 1);   // $AF76 INC $5F
+      if (state.zp5F >= 4) {             // $AF78 LDA $5F / CMP #$04 / BCC $AF80
+        state.zp39 = u8(state.zp39 + 1); // $AF7E INC $39 -- THE WARP FLAG
+      }
+    }
+  }
+  soundRequest(state, 0x0A);             // $AF80 LDA #$0A / $AF82 JSR $CB28 -> $EC1E
+  explodeInPlace(state, j);              // $CB2B
+  addScore(state, 0x00, 0x01, 0x00);     // $AF85 JMP $8453 -> $9A = 1, $99/$9B = 0
+}
+
+/**
+ * `$CB2B` -- turn this slot into an explosion WITHOUT going through `$BE93`.
+ * `$CB28` is `JSR $EC1E` (the sound) and then falls straight into it, so the
+ * hatch's death plays explosion script 2 and drops NO capsule ($03AC cleared).
+ * `$CB2B` is also reached from $CB69 (the $0600-page object, unported).
+ */
+function explodeInPlace(state, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  o.xvel[i] = 0;                         // $CB2D STA $042C,X  the script cursor
+  o.timer[i] = 0;                        // $CB30 STA $014C,X
+  o.attrMask[i] = 0;                     // $CB33 STA $018C,X
+  o.s0460[i] = 0;                        // $CB36 STA $046C,X
+  o.s04A0[i] = 0;                        // $CB39 STA $04AC,X
+  o.status[i] = 0;                       // $CB3C STA $010C,X
+  o.carrier[i] = 0;                      // $CB3F STA $03AC,X  -- no capsule
+  o.style[i] = 0;                        // $CB42 STA $040C,X
+  o.type[i] = 2;                         // $CB45 LDA #$02 / $CB47 STA $030C,X
+  o.animFrame[i] = 2;                    // $CB4A STA $016C,X  explosion script 2
+}
+
+/**
+ * `$B31E` -- the 8-frame flip animation both hatch children run, EVERY frame
+ * including the first: `INC $014C,X / LSR / LSR / AND #$07`, so the frame
+ * changes every 4 game frames and the palette-OR byte `$018C` is $80 for
+ * frames 4-7. Table `$B33B` = `5E 5F 60 61 62 61 60 5F`.
+ */
+function flipAnim(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  o.timer[i] = u8(o.timer[i] + 1);       // $B31E INC $014C,X
+  const y = (o.timer[i] >> 2) & 0x07;    // $B321-$B326 LSR / LSR / AND #$07
+  o.attrMask[i] = y >= 4 ? 0x80 : 0x00;  // $B329-$B331 CPY #$04 / BCC / LDA #$80
+  o.anim[i] = rom.read(0xB33B + y);      // $B334 LDA $B33B,Y / $B337 STA $012C,X
+}
+
+/** `$B367` -- give up on the climb/dive and go ballistic LEFT at 2 px/frame. */
+function childBallistic(state, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  o.s0480[i] = 1;                        // $B367 LDA #$01 / $B369 STA $048C,X
+  addAX(state, j, 0xFE);                 // $B36C JMP $B2DB -> LDA #$FE / $B103
+  offScreenCheck(state);                 // $B106 JMP $B251
+}
+
+/** `$B3F9` -- Y += A, then handler 1's freeze check and 0.5 px/frame drift. */
+function childStepY(state, j, a) {
+  addAY(state, j, a);                    // $B3F9 JSR $B17C
+  h_AEDD(state);                         // $B3FC JMP $AEDD
+}
+
+/**
+ * Handler 9, `$B311` -- THE FLOOR HATCH'S CHILD, types $09/$89. It appears in
+ * NO wave list in the game; `$AF98` is its only producer. MEASURED first at
+ * game frame 2783.
+ *
+ * `$04CC` is a 10-frame launch delay, `$04AC` latches "the delay is spent", and
+ * `$048C` latches "I have gone ballistic". Until then it climbs 2 px/frame
+ * (`$B362 LDA #$FE`) and stops climbing the moment the PLAYER's Y is at or
+ * below its own -- `$B35A LDA $0320 / CMP $032C,X / BCS $B367`.
+ */
+function h_B311(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) {             // $B311 LDA $030C,X / $B314 BMI $B343
+    o.s04C0[i] = 0x0A;                   // $B316 LDA #$0A / $B318 STA $04CC,X
+    return setInitialised(state, j);     // $B31B JMP $B0B4 -- $048C NOT cleared
+  }
+  flipAnim(state, rom, j);               // $B343 JSR $B31E
+  if (o.s04A0[i] === 0) {                // $B346 LDA $04AC,X / $B349 BNE $B355
+    o.s04C0[i] = u8(o.s04C0[i] - 1);     // $B34B DEC $04CC,X
+    if (o.s04C0[i] !== 0) return childStepY(state, j, 0xFE);   // $B34E BNE $B362
+    o.s04A0[i] = 1;                      // $B350 LDA #$01 / $B352 STA $04AC,X
+  }
+  if (o.s0480[i] !== 0) return childBallistic(state, j);   // $B355/$B358 BNE $B367
+  // $B35A LDA $0320 / $B35D CMP $032C,X / $B360 BCS $B367
+  if (o.y[0] >= o.y[i]) return childBallistic(state, j);
+  childStepY(state, j, 0xFE);            // $B362 LDA #$FE / JMP $B3F9
+}
+
+/**
+ * Handler 12, `$B3CB` -- THE CEILING HATCH'S CHILD, types $0C/$8C. Entry 9 with
+ * the Y sign flipped, a 20-frame delay instead of 10, and the comparison the
+ * other way round (`$B3EF LDA $032C,X / CMP $0320 / BCS $B3FF` -- ITS OWN Y
+ * against the player's, not the player's against its own; the operands really
+ * are swapped between the two, not just the branch).
+ *
+ * ITS INIT IS NOT ENTRY 9'S. `$B3D5 JMP $B3A2` clears `$048C` and then FALLS
+ * THROUGH into `$B3A7 JMP $B0B4`; entry 9's `$B316` arm does not clear it.
+ */
+function h_B3CB(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) {             // $B3CB LDA $030C,X / $B3CE BMI $B3D8
+    o.s04C0[i] = 0x14;                   // $B3D0 LDA #$14 / $B3D2 STA $04CC,X
+    o.s0480[i] = 0;                      // $B3D5 JMP $B3A2 -> LDA #$00 / STA $048C,X
+    return setInitialised(state, j);     // FALL-THROUGH into $B3A7 JMP $B0B4
+  }
+  flipAnim(state, rom, j);               // $B3D8 JSR $B31E
+  if (o.s04A0[i] === 0) {                // $B3DB LDA $04AC,X / $B3DE BNE $B3EA
+    o.s04C0[i] = u8(o.s04C0[i] - 1);     // $B3E0 DEC $04CC,X
+    if (o.s04C0[i] !== 0) return childStepY(state, j, 0x02);   // $B3E3 BNE $B3F7
+    o.s04A0[i] = 1;                      // $B3E5 LDA #$01 / $B3E7 STA $04AC,X
+  }
+  if (o.s0480[i] !== 0) return childBallistic(state, j);   // $B3EA/$B3ED BNE $B3FF
+  // $B3EF LDA $032C,X / $B3F2 CMP $0320 / $B3F5 BCS $B3FF
+  if (o.y[i] >= o.y[0]) return childBallistic(state, j);
+  childStepY(state, j, 0x02);            // $B3F7 LDA #$02 / $B3F9
 }

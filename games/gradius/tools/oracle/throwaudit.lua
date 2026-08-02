@@ -118,7 +118,15 @@ local HOOKS = {
    { 0xBB0F, "hdlr 40 $BB0F" },
    -- ---- collision -------------------------------------------------------
    { 0xC03D, "C03D stage-5 second shot sweep" },
-   { 0xC05F, "C05F the ARMOURED branch" },
+   { 0xC05F, "C05F the ARMOURED branch (PORTED wave 22)" },
+   -- WAVE 22 added the three arms BEHIND $C05F, because reaching $C05F is not
+   -- the same fact as taking damage: $C070's BEQ turns an armoured enemy with
+   -- $048C == 0 away, and only the hatch opens that gate. $AF76/$AF7E are the
+   -- warp counter, which needs the hatch DEAD.
+   { 0xC086, "C086 the armour damage accumulator actually storing (PORTED w22)" },
+   { 0xAF76, "AF76 INC $5F -- a hatch died at an EVEN score digit (PORTED w22)" },
+   { 0xAF7E, "AF7E INC $39 -- the fourth such hatch: the WARP flag (PORTED w22)" },
+   { 0xAF80, "AF80 a hatch was DESTROYED, warp or not (PORTED w22)" },
    { 0xC099, "C099 the type-$9A hit counter" },
    { 0xC13D, "C13D enemy type $27 touched the ship" },
    { 0xC159, "C159 enemy type $29 touched the ship" },

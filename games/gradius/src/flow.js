@@ -144,9 +144,16 @@ export function introStep(state, res) {
  * it is tests/collision.test.js, replaying 00-recon-flow.md's own three
  * intervention rows ($3F poked to 3, 7 and $14 gave $24 = 2, 6 and 4).
  *
- * `$39` is cleared by `$97DD` and is NOT modelled: it has no reader on any path
- * this port takes. `$5E` is the same case -- `$9C09` writes it and the PRG
- * contains no reader at all (grep: two writers, $99B5 and $9C0F, zero readers).
+ * `$39` USED TO BE ON THAT LIST -- "cleared by $97DD and NOT modelled: it has no
+ * reader on any path this port takes". The second half is still true and the
+ * conclusion was wrong. It is the WARP FLAG, and wave 22 ported its producer:
+ * `$AF7E INC $39`, four hatch kills at an even score digit. Its only reader
+ * ($9937, inside the boss-page chain) is still a throw, so it is write-only
+ * here -- which is precisely why the value has to be carried correctly now
+ * rather than reconstructed by W27. See src/state.js zp39.
+ *
+ * `$5E` IS still that case -- `$9C09` writes it and the PRG contains no reader
+ * at all (grep: two writers, $99B5 and $9C0F, zero readers).
  *
  * `$1C` USED TO BE ON THAT LIST and is real port state as of wave 8: it is the
  * background-music de-dupe byte `$839B` compares against, and clearing it HERE
@@ -189,7 +196,7 @@ export function respawn(state, res) {
   }
   state.zp.player = x;                              // $97DB STX $18
   // ---- $97DD: six zero stores, then the intro -----------------------------
-  // $39 and $1C are not modelled -- see the note above.
+  state.zp39 = 0;                                   // $97DF STA $39 -- wave 22
   state.build.gate = 0;                             // $97E1 STA $3A
   state.spawn.z5D = 0;                              // $97E3 STA $5D
   state.zp33 = 0;                                   // $97E5 STA $33
@@ -291,7 +298,7 @@ export function introReset(state, res) {
  * inclusive, 91 bytes, written out as the fields the port keeps for them.
  *
  * Every address in the range that the port models is here. The ones it does not
- * ($43, $4D-$53, $56, $59, $5A, $5E, $5F, $70-$97) are RAM the port has no
+ * ($43, $4D-$53, $56, $59, $5A, $5E, $70-$97) are RAM the port has no
  * field for; $5E is the only one of them with a name, and it has no reader
  * anywhere in the PRG (two writers, `$99B5` and `$9C0F`, zero readers -- grep).
  */
@@ -314,6 +321,7 @@ function clearZeroPage(state) {
   state.build.prog = 0;                             // $58
   state.zp5B = 0; state.zp5C = 0;                   // $5B $5C
   state.spawn.z5D = 0;                              // $5D
+  state.zp5F = 0;                                   // $5F  the hatch counter, w22
   state.spawn.z60 = 0; state.spawn.z61 = 0;         // $60 $61
   state.spawn.z64 = 0; state.spawn.z65 = 0;         // $64-$67
   state.spawn.z66 = 0; state.spawn.z67 = 0;

@@ -118,14 +118,20 @@ test('$A108: Option 2 fires FIRST and the player LAST -- the ORDER, not just the
   assert.strictEqual(s.sfx.length, 3, 'three spawns, three $EC1E requests');
 });
 
-test('$A16F: the missile loop runs slot 11 DOWN to 9, and the throw names which', () => {
-  // The missile loop has no sound request, so its order is observable through
-  // exactly one thing the port already does: the $A19E crawl throw names the
-  // slot it fired for. Two missiles both standing on the floor means two
-  // candidates, and WHICH ONE THROWS is the loop direction.
+test('$A16F: the missile loop runs slot 11 DOWN to 9, in that order', () => {
+  // THE OBSERVABLE CHANGED IN WAVE 22 and the reason is worth writing down. The
+  // missile loop has no sound request and its three iterations are independent,
+  // so until now the only thing that betrayed the ORDER was the $A19E crawl
+  // throw naming the slot it fired for. That throw is gone -- the crawl is
+  // ported -- and with it went the only order check this loop had.
+  //
+  // What replaces it is the sequence of COLLISION-MAP CELLS the probes read.
+  // `probeCollision` indexes `state.coll`, so a Proxy over that array records
+  // the real reads in the real order, with no hook inside src/ and nothing
+  // invented: slot 11 at x=80 reads $055B first, slot 9 at x=112 reads $057B.
   //
   // RED WHEN: `for (let x = 8; x >= 6; x--)` becomes `for (let x = 6; x <= 8; x++)`
-  //           (the message then names missile 9).
+  //           (the recorded first cell is then $7B).
   const s = ship();
   withMissile(s, 8, 80, 96);                  // object slot 11
   withMissile(s, 6, 112, 96);                 // object slot  9
@@ -134,8 +140,19 @@ test('$A16F: the missile loop runs slot 11 DOWN to 9, and the throw names which'
   // (120, 92) -> $0583. Four different cells, two identical situations.
   s.coll[0x5B] = 0x40;
   s.coll[0x7B] = 0x40;
-  assert.throws(() => missileLoop(s, res), /missile 11 would start CRAWLING/,
-    '$A16F LDX #$08: the HIGHEST slot is evaluated first');
+  const reads = [];
+  const raw = s.coll;
+  s.coll = new Proxy(raw, {
+    get(t, p) {
+      if (typeof p === 'string' && /^\d+$/.test(p)) reads.push(Number(p));
+      return Reflect.get(t, p);
+    },
+  });
+  missileLoop(s, res);
+  assert.deepStrictEqual(reads, [0x5B, 0x63, 0x7B, 0x83],
+    '$A16F LDX #$08: the HIGHEST slot is evaluated first, and both probe twice');
+  assert.strictEqual(s.obj.anim[11], 0x08, 'slot 11 crawls');
+  assert.strictEqual(s.obj.anim[9], 0x08, 'and so does slot 9');
 });
 
 // ============================================================================
@@ -161,7 +178,8 @@ test('$A199: a missile against a WALL is freed; the offsets are +8 in X and -8 i
   //
   // RED WHEN: `probeCollision(state, u8(px + 8), u8(py - 8))` becomes any of
   //           (px - 8, py + 8) / (px + 8, py) / (px, py - 8) -- each then reads
-  //           a zero field and takes the $A19E CRAWL throw instead;
+  //           a zero field and takes the $A19E CRAWL arm instead, which leaves
+  //           the missile ALIVE with metasprite $08;
   //       OR: `freeMissile(state, i)` is deleted from the wall arm.
   const s = ship();
   const i = withMissile(s, 6, 80, 96);
@@ -176,10 +194,13 @@ test('$A199: a missile against a WALL is freed; the offsets are +8 in X and -8 i
   // ...and the same map with the second probe's field empty is the crawl. This
   // row is what proves the row above is not passing for the wrong reason.
   const crawl = ship();
-  withMissile(crawl, 6, 80, 96);
+  const ci = withMissile(crawl, 6, 80, 96);
   crawl.coll[0x5B] = 0x40;
-  assert.throws(() => missileLoop(crawl, res), /\$A19E/,
-    'field 2 of $0563 empty -> the floor, not a wall');
+  missileLoop(crawl, res);
+  assert.strictEqual(crawl.obj.animFrame[ci], 3,
+    'field 2 of $0563 empty -> the floor, not a wall: the missile SURVIVES');
+  assert.strictEqual(crawl.obj.anim[ci], 0x08, '$A19E -> $A1A0 LDA #$08');
+  assert.strictEqual(crawl.obj.x[ci], 82, 'and it crawled 2 px right');
 });
 
 test('$C3BB: the missile probes the terrain at Y + 4, pinned from BOTH sides', () => {
@@ -197,15 +218,15 @@ test('$C3BB: the missile probes the terrain at Y + 4, pinned from BOTH sides', (
   //            the first, $40 only the second.
   //
   // RED WHEN: `u8(o.y[i] + 4)` becomes + 3 (rows 1 and 3 flip) or + 5 (row 2).
+  // WAVE 22: the discriminator used to be "did $A19E throw"; it is now "did the
+  // crawl arm run", read off the metasprite $A1AC stores. $08 is the crawl, $0A
+  // the fly, and the two arms are the only writers of that byte.
   const probes = (y0, cell) => {
     const s = ship();
-    withMissile(s, 6, 80, y0);
+    const i = withMissile(s, 6, 80, y0);
     s.coll[0x5B] = cell;
-    try { missileLoop(s, res); } catch (e) {
-      if (/\$A19E/.test(e.message)) return true;   // probe 1 was non-zero
-      throw e;
-    }
-    return false;
+    missileLoop(s, res);
+    return s.obj.anim[i] === 0x08;               // probe 1 was non-zero
   };
   assert.strictEqual(probes(96, 0x40), true, 'y + 4 reads field 3 of $055B');
   assert.strictEqual(probes(95, 0x10), true, 'y + 4 reads field 2 of $055B');

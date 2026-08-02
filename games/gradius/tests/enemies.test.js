@@ -265,17 +265,17 @@ test('$83E4 ASL A is 8-bit: type $85 and type $05 run the SAME handler', () => {
 
 test('an unported handler is a LOUD named throw, with the type and the ROM address', () => {
   // docs/knowledge/03: a silent no-op here would leave the slot motionless and
-  // the comparison would blame the mover. 29 of the 42 entries are unported as
-  // of wave 12 (the 13 that are not: 0, 1, 2, 3, 4, 5, 6, 8, 17, 18, 31, 39,
-  // 41 -- ten distinct routines).
+  // the comparison would blame the mover. 23 of the 42 entries are unported as
+  // of wave 22 (the 19 that are not: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 15, 16,
+  // 17, 18, 19, 31, 39, 41 -- sixteen distinct routines).
   // RED WHEN: the `default:` arm returns instead of throwing.
   const s = running();
-  // Entry 7 -> $B6E1. MEASURED REACHABLE on the cartridge: 4995 executions in
-  // 27400 frames, first at game frame 2490 (tools/oracle/throwaudit.py). It is
-  // the wall `deep-page4`'s expectThrow now pins.
-  s.obj.type[21] = 0x87;
+  // Entry 13 -> $B402. Type $0D, five wave spawns on stages 2 and 4; NOT on
+  // stage 1's critical path, which is why it is still a throw and why it is the
+  // one this check now stands on. Entry 7 ($B6E1) used to be here and is ported.
+  s.obj.type[21] = 0x8D;
   assert.throws(() => updateEnemies(s, res),
-    /unimplemented enemy handler \$B6E1 for type \$87 \(entry 7/);
+    /unimplemented enemy handler \$B402 for type \$8D \(entry 13/);
 });
 
 test('$ADE5\'s animator: reload 6, four entries per status, 0 = wrap and re-read', () => {
@@ -653,11 +653,18 @@ test('$A3CC: a descriptor byte >= $D0 spawns on the LEFT edge, type -= $D0', () 
   assert.strictEqual(s.obj.type[21], 0x07, '$A3D0 SBC #$30');
   assert.strictEqual(s.obj.x[21], 0x10, '$A3CE LDY #$10 -- the LEFT edge');
   assert.strictEqual(s.obj.y[21], 0xB7);
-  // ...and this is where the port runs out NEXT. Written as an assertion so
-  // that whoever ports $B6E1 is told to come here and delete it.
-  assert.throws(() => updateEnemies(s, res),
-    /unimplemented enemy handler \$B6E1 for type \$07 \(entry 7/,
-    'scroll $0440 is the next wall after $0380');
+  // ...and THIS IS THE RECORD WAVE 22 EXISTS FOR. It used to end with
+  // `assert.throws(/\$B6E1/)` and a note telling whoever ported entry 7 to come
+  // here and delete it. Entry 7 is ported, so the record runs: the walker's
+  // first update is $B6E8 (pick the docking column off the PLAYER's X) and
+  // $B6EB (set bit 7), and it moves nothing at all on that frame.
+  const px = s.obj.x[0];
+  const expect = Math.min(0xF0, Math.max(0x20, (px + 0x30) & 0xF8));
+  updateEnemies(s, res);
+  assert.strictEqual(s.obj.type[21], 0x87, '$B6EB JMP $B0B4 sets bit 7');
+  assert.strictEqual(s.obj.s0480[21], expect, '$B65C: player X + $30, snapped, clamped');
+  assert.strictEqual(s.obj.x[21], 0x10, 'and $B6E1 moves nothing on its spawn frame');
+  assert.strictEqual(s.obj.y[21], 0xB7);
 });
 
 test('$A3BB: a single spawn with the pool full is DROPPED, cursor still moves', () => {

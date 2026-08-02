@@ -486,6 +486,27 @@ export function createState() {
     zp49: 0,                    // $49  the alternating squadron group id, 2 or 3
     squad: new Uint8Array(4),   // $0048-$004B
 
+    // ---- $5F and $39: the WARP counter and the WARP flag (wave 22) --------
+    //
+    // Both became real port state the moment entry 15 / entry 16 (the hatches)
+    // were ported, because `$AF76 INC $5F` and `$AF7E INC $39` are two of the
+    // four instructions on the hatch's destroyed arm. Enumerated out of the
+    // whole 32 KB rather than assumed (grep over rip/prg.asm):
+    //
+    //   $39  writers $96D5, $97DF (both `STA $39` = 0), $C786, and the two
+    //        INCs $AF7E (a hatch dies) and $B978 (the boss dies).
+    //        ONE reader: `$9937 LDX $39 / BEQ $9945`, inside the boss-page
+    //        chain that src/nmi.js still refuses -- so on every path this port
+    //        executes $39 is WRITE-ONLY, and that is exactly why it has to be
+    //        modelled: the value has to be RIGHT when W27 ports $9904.
+    //   $5F  writers/readers $AF76/$AF78 (the hatch) and $C77C/$C77E (the
+    //        stage-2 object, unported). Nothing else in the PRG touches it.
+    //
+    // $5F is inside $9B3E's `$3D-$97` wipe (clearZeroPage below); $39 is BELOW
+    // $3D and is cleared only by $97DD's six zero stores.
+    zp39: 0,                    // $39  the warp flag ($AF7E/$B978 INC, $9937 read)
+    zp5F: 0,                    // $5F  hatches killed at an even score digit
+
     // ---- the camera ----------------------------------------------------
     // $98EE adds #$80 to $3D per frame and carries into $3E/$3F through the
     // house 16-bit adder $8402. Base scroll is EXACTLY 1/2 px per frame:

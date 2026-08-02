@@ -631,23 +631,41 @@ test('$BFBB: metasprite $59 consumes even the LASER; anything else does not', ()
   assert.strictEqual(laser(0x25), 6, '$BFBF JMP $C0AE -- the laser flies on');
 });
 
-test('the unported arms are loud, and each names its ROM address', () => {
-  // docs/knowledge/02: an honest gap beats a guess that looks finished. Each of
-  // these is a branch no measured run has ever taken, so its constants are
-  // unverified and a reading is not a port.
+test('$A19E: the missile CRAWL -- metasprite $08, x += 2, Y frozen', () => {
+  // WAVE 22 PORTED THIS ARM and this test replaces the `assert.throws(/\$A19E/)`
+  // that used to stand in for it. The crawl is `LDY #$01 / LDA #$08 / BNE
+  // $A1AC`: row 1 of the same three tables the fly path reads --
+  // $A1A5 = $00 (dY), $A1A7 = $02 (dX int), $A1A9 = $00 (dX frac).
+  //
+  // RED WHEN: `y = 1` becomes `y = 0` (the missile then falls 2 and drifts 0.5,
+  //           i.e. exactly the fly row, and x lands on 80 not 82);
+  //       OR: `o.anim[i] = 0x08` becomes $0A;
+  //       OR: the whole arm is deleted and the wall-free runs instead.
   const crawl = ship();
   crawl.obj.anim[SLOT_M] = 0x0A; crawl.obj.animFrame[SLOT_M] = 3;
-  crawl.obj.x[SLOT_M] = 80; crawl.obj.y[SLOT_M] = 96;
+  crawl.obj.x[SLOT_M] = 80; crawl.obj.y[SLOT_M] = 96; crawl.obj.xf[SLOT_M] = 0;
   // The missile probes at Y + 4 ($C3BB ADC #$03 with the carry CPX #$06 set),
   // i.e. at (80, 100): cell $055B, 2-bit field 3 -> the value $40. The second
   // probe, 8 up and 8 right, lands in cell $0563, which is empty -- so this is
   // the floor, not a wall, and $A19E selects the CRAWL.
   crawl.coll[0x5B] = 0x40;
-  assert.throws(() => missileLoop(crawl, res), /\$A19E/, 'the missile CRAWL');
+  missileLoop(crawl, res);
+  assert.strictEqual(crawl.obj.anim[SLOT_M], 0x08, '$A1A0 LDA #$08 / $A1AC STA');
+  assert.strictEqual(crawl.obj.y[SLOT_M], 96, '$A1A5 = $00: a crawler does not fall');
+  assert.strictEqual(crawl.obj.x[SLOT_M], 82, '$A1A7 = $02: 2 px/frame right');
+  assert.strictEqual(crawl.obj.xf[SLOT_M], 0, '$A1A9 = $00, no sub-pixel');
+  assert.strictEqual(crawl.obj.animFrame[SLOT_M], 3, 'still alive: no $A1D6');
+});
 
-  const armoured = shotOnEnemy({ status: 0x80 });
-  assert.throws(() => shotSweep(armoured, res), /\$C05F/, 'the ARMOURED branch');
-
+test('the unported arms are loud, and each names its ROM address', () => {
+  // docs/knowledge/02: an honest gap beats a guess that looks finished. Each of
+  // these is a branch no measured run has ever taken, so its constants are
+  // unverified and a reading is not a port.
+  //
+  // TWO ROWS LEFT THIS TEST IN WAVE 22 and they are named here rather than
+  // silently dropped: $A19E (the missile crawl, above) and $C05F (the ARMOURED
+  // damage accumulator, tests/collision.test.js). Both had been listed as
+  // "unexercised" on the strength of the corpus; both were measured reachable.
   const multi = shotOnEnemy({ type: 0x9A });
   assert.throws(() => shotSweep(multi, res), /\$C099/, 'the type-$9A hit counter');
 

@@ -82,7 +82,9 @@ import { scoreKill } from './score.js';
 import { pickupCapsule } from './powerup.js';
 import { soundRequest } from './sound.js';
 
-const hex2 = (v) => `$${v.toString(16).toUpperCase().padStart(2, '0')}`;
+// `hex2` used to live here for the $C05F armoured throw's message. That arm is
+// ported (wave 22) and nothing else in this file formats a byte, so the helper
+// is gone rather than left behind unused.
 
 /**
  * `$BFE2` -- the shot-vs-enemy sweep, called from `$9A70`.
@@ -333,15 +335,36 @@ function hitEnemy(state, res, j, x) {
   const e = j + ENEMY_BASE;
   if (!(o.type[e] & 0x80)) { freeShotSlot(state, x); return; }   // $C058 BPL
   if (o.status[e] & 0x80) {                       // $C05D BPL $C090
-    // $C05F-$C08D: the ARMOURED branch. `$010C,Y` bit 7 is set by $A579's style
-    // byte for an armoured enemy; it takes damage into $046C,X instead of dying,
-    // 1 per shot and 2 from a missile ($C07E CPX #$06). MEASURED: $C070 ran 0
-    // times in every run made here, and no stage-1 squadron sets the bit.
-    throw new Error(`$C05F: enemy ${j} is ARMOURED ($010C = ${hex2(o.status[e])}, `
-                  + `bit 7 set). The damage accumulator ($C070-$C08D: $048C,Y `
-                  + `gates it, $0460,X picks 1 or 2, $046C,X takes it) and the `
-                  + `$C06B "clink" are not ported -- unexercised on the `
-                  + `cartridge, so their constants are unverified.`);
+    // ---- $C05F-$C08D: the ARMOURED branch -------------------------------
+    //
+    // PORTED IN WAVE 22, and it had to be: it is not an optional extra to the
+    // hatches, it IS how they take damage. `$AF3B LDA #$80 / STA $010C,X` sets
+    // this bit, `$AF38 STA $048C,X` opens $C070's gate, and `$AF57 LDY $046C,X`
+    // reads the accumulator this arm fills. Leave this a throw and entries 15
+    // and 16 are invulnerable AND the first shot fired at one crashes.
+    //
+    // WHAT IT USED TO SAY, kept because it is the reason it was not ported
+    // sooner and it is the same shape of sentence this project keeps finding:
+    // "MEASURED: $C070 ran 0 times in every run made here, and no stage-1
+    // squadron sets the bit." Both halves were TRUE and the conclusion drawn
+    // from them was wrong -- no stage-1 SQUADRON sets it, the stage-1 HATCHES
+    // do, and no run made here had ever reached one.
+    //
+    // $C05F LDA $012C,Y / BEQ $C070 -- a metasprite of 0 makes NO sound, and
+    // $C064 CMP #$94 exempts exactly one type (the $0600-page object, entry 20).
+    if (o.anim[e] !== 0 && o.type[e] !== 0x94) {
+      soundRequest(state, 0x05);                  // $C06B LDA #$05 / JSR $EC1E
+    }
+    if (o.s0480[e] === 0) { freeShotSlot(state, x); return; }   // $C070 BEQ $C0B7
+    // $C075 LDX $A9 / LDA #$01 / LDY $0460,X / BEQ $C086 -- box class 0 always
+    // takes 1. Only a class != 0 enemy consults the WEAPON, and then $A8 >= 6
+    // (a MISSILE slot, 6/7/8) doubles it. $A8 is the sweep's own weapon index,
+    // set at $BFE4.
+    let dmg = 1;                                  // $C077 LDA #$01
+    if (o.s0460[j] !== 0 && state.spawn.zA8 >= 6) dmg = 2;   // $C07E-$C084
+    o.s0460[e] = u8(o.s0460[e] + dmg);            // $C086 CLC / ADC $046C,X / STA
+    freeShotSlot(state, x);                       // $C08D JMP $C0B7
+    return;
   }
   if (o.type[e] === 0x9A) {                       // $C092/$C095 CMP #$9A
     throw new Error('$C099: a type-$9A enemy took a hit. The per-enemy hit '

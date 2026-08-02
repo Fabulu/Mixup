@@ -21,9 +21,31 @@ def u8(v):  return v & 0xFF
 # --- the 42-entry enemy handler dispatch table, $AE1C (via $AE19 JSR $83E4) ---
 HANDLERS = [wd(0xAE1C + 2 * i) for i in range(42)]
 
-# what games/gradius/src/enemies.js dispatch() implements, read from the source
-PORTED_TARGETS = {0xAE70, 0xAEDD, 0xAE99, 0xAEE1, 0xB026, 0xB098,
-                  0xB0AF, 0xB198, 0xB205, 0xB26C}
+# What games/gradius/src/enemies.js dispatch() implements. THE COMMENT ON THIS
+# LINE USED TO SAY "read from the source" AND IT WAS A HAND-KEPT LITERAL --
+# ten addresses frozen at wave 12, still printing MISS for $B6E1/$B747/$AF2E/
+# $AF88/$B311/$B3CB three waves after they were ported. It is read now, the same
+# way tools/census.py has always read it, so a ported handler cannot go on being
+# reported as unported. (Wave 22: this is the third stale hand-kept list this
+# project has found; docs/knowledge/03.)
+def _ported_targets():
+    p = os.path.join(os.path.dirname(__file__), "..", "..", "src", "enemies.js")
+    src = open(p, encoding="utf-8").read()
+    i = src.index("function dispatch(state, rom, j, type)")
+    body = src[i:src.index("\n}\n", i)]
+    out = set()
+    for line in body.splitlines():
+        line = line.strip()
+        if line.startswith("case 0x"):
+            out.add(int(line[5:line.index(":")], 16))
+    if not out:
+        raise SystemExit("wavecensus: parsed ZERO `case 0x` labels out of "
+                         "src/enemies.js dispatch() -- the parser is broken, and "
+                         "an empty set would silently mark every record MISS")
+    return out
+
+
+PORTED_TARGETS = _ported_targets()
 
 TBL_A = wd(0xA5FE + 0)   # single-spawn descriptors, 3 bytes stride, 4 read
 TBL_B = wd(0xA5FE + 2)   # formation descriptors,   4 bytes stride

@@ -96,6 +96,29 @@ largest is `$29` = 41.
 
 **13 ported / 42. 29 throwing. 24 distinct throwing routines.**
 
+> **WAVE 22 — SIX OF THE 29 LANDED, and the table above is now stale in exactly
+> six rows.** Entries **7 (`$B6E1`)**, **9 (`$B311`)**, **12 (`$B3CB`)**,
+> **15 (`$AF2E`)**, **16 (`$AF88`)** and **19 (`$B747`)** read **yes**.
+> `census.py dispatch` re-measured on 2026-08-02:
+> `entries ported 19 / 42 ; throwing 23` and
+> `distinct targets 34 ; distinct ported 16 ; distinct throwing 18`.
+> That is every entry stage 0's wave script names — `wavecensus.py` prints
+> `stage 0: 92 distinct, 92 ported, 0 unported, 100.0%`. See
+> `22-impl-six-routines.md`.
+>
+> **ONE CORRECTION TO ENTRY 7's ROW, from the listing.** It says the walker
+> "animates via `$B628` record 0". It does not: **neither `$B6E1` nor `$B747`
+> contains any reference to `$B628`.** The animation is `$B6B8`'s `$B6D9`
+> lookup (`1C 1C 1F 1F`, indexed by `$04AC` + 2 when the walker is left of the
+> ship). `$B628`'s only Y = 0 caller is `$B61E`, entry 38.
+>
+> **AND ONE THING THE CENSUS COULD NOT SEE, because it only walked `$AE1C`.**
+> Porting entries 15/16 required porting `$C05F-$C08D` in the COLLISION code as
+> well: `$AF3B LDA #$80 / STA $010C,X` makes a hatch armoured, and the port's
+> armoured arm was a throw. A hatch without it is invulnerable AND crashes on
+> the first shot fired at it. A dispatch-table census is not a closure over what
+> a handler needs.
+
 ---
 
 ## 2. FALL-THROUGH — read past the apparent end
