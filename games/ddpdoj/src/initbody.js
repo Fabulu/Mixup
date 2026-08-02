@@ -49,7 +49,7 @@ const R = {
 const S = {
   flags: 0x00, posX: 0x02, posY: 0x04, f06: 0x06, hit10: 0x10, hp: 0x18,
   speed: 0x1a, heading: 0x1b, palette: 0x1d, anim: 0x1e, f1f: 0x1f, f08: 0x08,
-  f38: 0x38,
+  f31: 0x31, f2e: 0x2e, hit14: 0x14, hit16: 0x16, f38: 0x38,
 };
 
 // ------------------------------------------------------------- the globals read
@@ -406,7 +406,9 @@ BODY.set(0x269754, (ram, rom, a5, a6, unported) => {
   unported?.note(0x28ca60, `$28CA60 in type $31 init -- bespoke; not a stat`);
   unported?.note(0x24150a, `resource installs $24150A in type $31 init (data)`);
   const lp = ram.u16(G.loop);
-  ram.setU8(a6 + S.palette, rom.u8(0x2697B0 + lp));    // move.w (A1,D6),D0; move.b D0,($1d,A6)
+  // $26978A: `move.w (A1,D6.w),D0 / move.b D0,($1d,A6)` -- reads a WORD at
+  // $2697B0+lp and takes its LOW byte (not a direct byte read like $11/$80).
+  ram.setU8(a6 + S.palette, rom.u16(0x2697B0 + lp) & 0xff);
 });
 
 // --- the aim->bucket types.  Each calls $24200A (or $24202C) with a per-site
@@ -537,6 +539,17 @@ BODY.set(0x275DA0, (ram, rom, a5, a6, unported) => {
   ram.setU8(a6 + S.palette, rom.u8(pal));
   ram.setU8(a5 + R.rec1C, rom.u8(pal));
   ram.setU8(a5 + R.rec1D, rom.u8(pal + 1));
+  // $275E7A: the tail -- if the sub-record flags byte bit 5 is clear, install
+  // a hitbox override: +$2E := 1, copy anim to +$31, write $F400 to +$14 (if
+  // anim != 0) or +$16 (if anim == 0), then clear anim.  (Which word gets the
+  // $F400 tracks anim, a movement-script field (W24); the write itself is here.)
+  if ((ram.u8(a6) & 0x20) === 0) {                     // $275E7A btst #$5,(A6)
+    ram.setU16(a6 + S.f2e, 1);                         // $275E80 move.w #$1,($2e,A6)
+    const an = ram.u8(a6 + S.anim);
+    ram.setU8(a6 + S.f31, an);                         // $275E86 move.b ($1e,A6),($31,A6)
+    ram.setU16(a6 + an !== 0 ? S.hit14 : S.hit16, 0xf400); // $275E98 move.w #$f400,(A0)
+    ram.setU8(a6 + S.anim, 0);                         // $275E9C clr.b ($1e,A6)
+  }
 });
 
 // type $89 ($277278): sprite via $24202C + $272E7A, palette $27730C.

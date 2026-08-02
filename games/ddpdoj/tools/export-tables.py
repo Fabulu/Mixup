@@ -304,7 +304,7 @@ SHOT_WINDOWS.extend([
 ENEMY_PROTO_WINDOWS = [
     # the two damage-first protos that are NOT shared (the family's shared
     # sprite tables $269E48/$269EC8 and bucket table $267F70 follow).
-    (0x2697B0, 0x0040, "W23: type $31 protos + palette tables $2697B0/$2697BA "
+    (0x2697B0, 0x0050, "W23: type $31 protos + palette tables $2697B0/$2697BA "
                        "(sub $2697DA, rec $2697CE)"),
     (0x269CB0, 0x0040, "W23: type $05 protos (sub $269CCE, rec $269CB4)"),
     (0x26A2B0, 0x0040, "W23: types $07/$27 protos (sub $26A2C6, rec $26A2B0)"),
@@ -368,6 +368,34 @@ ENEMY_STAT_TABLES = [
 ]
 SHOT_WINDOWS.extend(ENEMY_PROTO_WINDOWS)
 SHOT_WINDOWS.extend(ENEMY_STAT_TABLES)
+
+# The init STUBS: each stage-1 type's init-body entry is init+8, and the
+# 8-byte stub at init (`move.w #N,($4,A5) / rts`) holds the run-length at
+# init+2 that `initDispatch` reads (`rom.u16(init + 2)`).  These are CODE bytes
+# the port reads as data, one 0x10-byte window per stub.  (Types $10/$11 reuse
+# these windows; their protos are in the W20 windows above.)
+ENEMY_INIT_STUBS = [
+    (0x2680A0, 0x0020, "W23: type $10 init stub $2680B0 (run-length @ init+2)"),
+    (0x268710, 0x0020, "W23: type $11 init stub $268714 (run-length @ init+2)"),
+    (0x269740, 0x0020, "W23: type $31 init stub $26974C"),
+    (0x269BC0, 0x0020, "W23: type $05 init stub $269BC6"),
+    (0x26A1E0, 0x0010, "W23: types $07/$27 init stub $26A1E2"),
+    (0x26A4B0, 0x0020, "W23: type $08 init stub $26A4B4"),
+    (0x26A780, 0x0020, "W23: type $09 init stub $26A78C"),
+    (0x26AB90, 0x0020, "W23: type $0B init stub $26AB98"),
+    (0x26B470, 0x0020, "W23: type $0D init stub $26B47C"),
+    (0x272A40, 0x0010, "W23: types $20/$21 init stub $272A42"),
+    (0x2737F0, 0x0020, "W23: type $80 init stub $2737FA"),
+    (0x274620, 0x0020, "W23: type $82 init stub $274622"),
+    (0x275810, 0x0020, "W23: type $85 init stub $275812"),
+    (0x275D90, 0x0020, "W23: type $88 init stub $275D98"),
+    (0x2766A0, 0x0020, "W23: type $8A init stub $2766A6"),
+    (0x276810, 0x0020, "W23: type $8B init stub $27681C"),
+    (0x277270, 0x0010, "W23: type $89 init stub $277270"),
+    (0x2926D0, 0x0020, "W23: type $0E init stub $2926DA"),
+    (0x296FA0, 0x0020, "W23: type $24 init stub $296FA8"),
+]
+SHOT_WINDOWS.extend(ENEMY_INIT_STUBS)
 
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the

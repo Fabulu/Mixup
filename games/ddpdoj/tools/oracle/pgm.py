@@ -1194,6 +1194,19 @@ def _cmd_check(argv: list[str]) -> int:
     stage("spawn walker RED (clock-per-frame + 3 mutations)",
           lambda: (("SKIP", f"{W22TSV.name} missing")
                    if not W22TSV.exists() else _node(SPAWNGATE, W22TSV, "--break", "all")))
+    # WAVE 23 -- enemy stats as data.  The 21 init bodies' spawn-time hitbox/
+    # HP/palette/HP-reload vs the board over the whole stage, plus the plan's
+    # required RED (swap two types' tables -> fields diverge).  Speed/heading
+    # and the aim->bucket fields are W24-pending (the movement reader $263808).
+    STATSGATE = TOOLS.parent / "tools" / "w23statsgate.mjs"
+    W23TSV = OUT / "w23-stats-stage1.tsv"
+    stage("enemy stats: hitbox/HP/palette/HP-reload at spawn (W23)",
+          lambda: (("SKIP", f"{W23TSV.name} missing -- `python tools/oracle/"
+                             f"w23run.py 16000 w23-stats-stage1` (~6.5 min)")
+                   if not W23TSV.exists() else _node(STATSGATE, W23TSV)))
+    stage("enemy stats RED (swap-tables + corrupt-hp + seed-wrong-stage)",
+          lambda: (("SKIP", f"{W23TSV.name} missing")
+                   if not W23TSV.exists() else _node(STATSGATE, W23TSV, "--break", "all")))
     if not quick:
         stage("fly-around: port vs board, 0 divergent frames",
               lambda: sub(__file__, "flyaround"))

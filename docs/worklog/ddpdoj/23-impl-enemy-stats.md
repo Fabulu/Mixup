@@ -1,6 +1,13 @@
 # W23 IMPL — ENEMY STATS BECOME DATA: the two loaders, the 208 pairs, the 21 init bodies
 
-status: **IN PROGRESS**
+status: **DONE (measured; speed/heading + aim-buckets are named W24 gaps).** The
+two loaders (W20) + 19 new prototype-window exports + the 21 stage-1 init bodies
+(src/initbody.js) make every stage-1 enemy's prototype stats DATA.  The spawn-stats
+gate compares the port vs the board AT SPAWN (post-init, pre-handler) over the
+W17-equivalent corpus: **306 of 308 stage-1 (lf,type) spawns match on every
+compared field (99.35 %)**, the 2 divergences are the `$88` hitbox whose write
+target is picked by anim (a movement-script field, W24).  Three RED mutations
+all seen red.
 wave: 23 (plan W23)   role: implementer (sole `src/` writer this wave)
 date: 2026-08-02
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Every address is build B
@@ -80,3 +87,76 @@ $8130B4/$8130BA/$8130BC/$8130CE` and the stage-kill flags `$8130D8..`).
   field. For the aim→bucket types ($80/$82/$85/$88/$89), the spawn bucket
   depends on the spawn position through the aim; that dependency is a NAMED W24
   gap on the bucket field for those five types, not a silence.
+
+## THE MEASURED RESULT (the done-when, honestly)
+
+```
+$ node tools/w23statsgate.mjs
+CORPUS w23-stats-stage1.tsv
+window lf 1620..12359 (10740 frames)
+RESULT stats divergent: 2 across 308 stage-1 (lf,type) spawns (99.3506 % match)
+  matched (every compared field equal): 306 of 308
+  W24-pending: 511 speed/heading/anim/flags fields (overridden by the movement
+    reader $263808, resource #$1F) + 73 aim->bucket fields on types
+    $80/$82/$85/$88/$89 (need the spawn position)
+  rank-counter: 132 bucket-word (b28) fields track the running $803916 counter
+  stale/type-specific bucket: 207 bucket fields the init does not write for that
+    type (stale slot data on the board)
+  out-of-scope (W25/W29 handler-spawned, e.g. $1E/$1C): 5
+  divergent: $88 hitbox x2 (the $F400 write target is picked by anim -- W24)
+```
+
+**What matches at 0 divergent** (the strict set, the loader-written prototype
+stats): the four hitbox half-extents (+$10/+$12/+$14/+$16), HP (+$18), palette
+(+$1D), animation default (+$1E pre-movement-override), and HP-reload (+$26
+where the record prototype reaches it).  These come entirely from the two
+loaders and the loop-indexed palette tables -- the "stats become data" leverage.
+
+**The named gaps, each measured not assumed:**
+1. **Speed / heading / anim / flags -- 511 fields -- are overridden per-spawn by
+   `$263808`.** MEASURED: the FIRST `$11` spawn matches the prototype exactly;
+   later spawns diverge because `$263808` reads the movement script and writes
+   speed (+$1A), heading (+$1B), and (via the `$263948` sub-action dispatch) anim
+   (+$1E) and flags (+$00).  These four fields are the prototype's DEFAULT; the
+   script overrides per spawn.  W24 owns resource #$1F.
+2. **The aim→bucket fields (73) on `$80/$82/$85/$88/$89`** need the spawn
+   position through the W20 aim; W24 (position) again.
+3. **The bucket word +$28 (132) is rank-adjusted** by `$242E24`, which indexes
+   table `$242E42` by `$803916` -- a RUNNING counter incremented every `$242E24`
+   call across the whole game (incl. W25 handler code the port does not run).
+   The F-line captures `$803916` post-init, so the port reads one index ahead;
+   matching it needs the full handler call history.
+4. **207 stale/type-specific bucket fields** the init does not write for that
+   type (e.g. the damage-first family's record prototype is only 11 words, so
+   +$2E is not loaded; the board holds the previous occupant's value).  These
+   are not spawn-time stats.
+5. **`$88` hitbox x2:** the init writes `$F400` to +$14 or +$16 picked by anim
+   (W24); translated faithfully, but the anim value is movement-set.
+
+### THE RED SWEEP (every check seen to fail)
+
+```
+$ node tools/w23statsgate.mjs --break all
+RED [swap-tables]       divergent=822 RED   <-- the plan's required RED
+RED [corrupt-hp]        divergent=113 RED   ($11 HP word zeroed -> strict HP diverges)
+RED [seed-wrong-stage]  divergent=16  RED   ($813092 wrong -> stage-kill gates diverge)
+```
+
+## THE FILES / COMMANDS
+
+```
+python games/ddpdoj/tools/oracle/w23run.py 16000 w23-stats-stage1   # ~6.5 min
+node games/ddpdoj/tools/w23statsgate.mjs                            # 306/308 match
+node games/ddpdoj/tools/w23statsgate.mjs --break all                # 3 RED
+node --test games/ddpdoj/tests/                                     # 343 pass, 0 skip
+python games/ddpdoj/tools/oracle/pgm.py check                      # enemy-stats gate PASS
+```
+
+## WHAT UNBLOCKS (for W25/W29)
+
+The enemy handlers can now read every enemy's hitbox/HP/speed-default/heading-
+default/palette/animation/draw-bucket from the record at spawn (the init bodies
+wrote them).  The remaining spawn-time fields (the movement-overridden
+speed/heading/anim/flags and the aim-buckets) arrive with W24 (the movement
+interpreter `$2638A6` + resource #$1F).  `$8130D8` (the midboss-spawned flag the
+regulars' stage-kill gates read) is now SET by the port's midboss init.
