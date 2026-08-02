@@ -1,0 +1,210 @@
+===============================================================================
+ MIXUP - EVERY COMMAND, COPY-PASTEABLE
+ C:\programmieren\batman
+ Each block says which shell it needs. PS = PowerShell. BASH = Git Bash.
+ Node and Python commands run in either.
+===============================================================================
+
+
+-------------------------------------------------------------------------------
+ 1. LAUNCH CLAUDE CODE AGAINST GLM / Z.AI              [PS]
+-------------------------------------------------------------------------------
+
+  cd C:\programmieren\GLMInst
+
+  Test the endpoint first, launches nothing. Want HTTP 200.
+
+  .\glm-temp.ps1 -Check -Key sk-your-key-here
+
+  Launch:
+
+  .\glm-temp.ps1 -Key sk-your-key-here
+
+  Extra args pass through to claude:
+
+  .\glm-temp.ps1 -Key sk-your-key-here --resume
+
+  Save the key once, then no -Key needed ever again:
+
+  'sk-your-key-here' | Set-Content C:\programmieren\GLMInst\glm.key -Encoding ascii
+  .\glm-temp.ps1
+
+  Sets env vars in THAT WINDOW ONLY. settings.json untouched, other Claude
+  Code windows unaffected, nothing to undo. Close the window and it is gone.
+
+  -Check results:  200 = working.  401 = key wrong or truncated.
+                   403 = account lacks that model, edit the model names at the
+                   top of the script.  404 = endpoint moved, not a key problem.
+
+  First message to paste into the new agent: the contents of PROMPT.md
+
+
+-------------------------------------------------------------------------------
+ 2. RUN THE TESTS
+-------------------------------------------------------------------------------
+
+  node --test games/batman/tests/            Batman units          740 pass
+  node --test games/gradius/tests/           Gradius units         378+
+  node --test games/ddpdoj/tests/            DaiOuJou units        307
+
+  Everything at once:
+
+  node --test games/batman/tests/ games/gradius/tests/ games/ddpdoj/tests/
+
+
+-------------------------------------------------------------------------------
+ 3. RUN THE GATES (the real verdict - these drive the emulators)
+-------------------------------------------------------------------------------
+
+  node tools/test-all.mjs                    Batman   want: 27/27, 0 SKIPPED
+  node games/gradius/tools/test-all.mjs      Gradius  want: GREEN, 9 stages, 0 SKIPPED
+  python games/ddpdoj/tools/oracle/pgm.py check      DaiOuJou
+
+  A SKIP IS NOT A PASS. Read the skip count. "ALL GREEN" with skips is a red
+  run wearing a green hat.
+
+  These are slow - they boot real emulators and run thousands of frames.
+
+
+-------------------------------------------------------------------------------
+ 4. THE DAIOUJOU ORACLE - one entry point, many commands
+-------------------------------------------------------------------------------
+
+  python games/ddpdoj/tools/oracle/pgm.py <command>
+
+  commands:  trace  snap  scen  gate  overrun  objdriver  gfx  zoomcov
+             sprites  sound  flyaround  spritecap  pixslice  demogate
+
+  Cross-build alignment (the Rosetta stone, build A vs build B):
+
+  python games/ddpdoj/tools/rosetta.py
+
+
+-------------------------------------------------------------------------------
+ 5. PLAY IT LOCALLY
+-------------------------------------------------------------------------------
+
+  python -m http.server 8000
+
+  then in the browser:
+
+    http://localhost:8000/                    game picker
+    http://localhost:8000/games/gradius/
+    http://localhost:8000/games/ddpdoj/
+
+  Controls: arrows or WASD to move. Z and Y are the same button (Swiss
+  keyboard), X is the other. Enter starts.
+
+
+-------------------------------------------------------------------------------
+ 6. PUBLISH TO THE LIVE SITE
+-------------------------------------------------------------------------------
+
+  COMMIT AND PUSH FIRST. Then:
+
+  node tools/publish.mjs                     all three games
+  node tools/publish.mjs --only gradius      one game
+  node tools/publish.mjs --only ddpdoj
+  node tools/publish.mjs --dry               gate and build, deploy nothing
+
+  It gates, builds, deploys, then POLLS until it sees the new build id three
+  times in a row. It refuses to deploy on a red gate or any SKIP.
+
+  Live at:  https://gbtman.pages.dev
+
+  Build only, no deploy:
+
+  node tools/build-dist.mjs
+
+
+-------------------------------------------------------------------------------
+ 7. REGENERATE THE EXTRACTED DATA (all of it is gitignored, ~1.5 GB)
+-------------------------------------------------------------------------------
+
+  python tools/export_assets.py                    Batman art and tables
+  python games/gradius/tools/export_assets.py      Gradius art and tables
+  node  games/ddpdoj/tools/export-web.mjs          DaiOuJou web bundle
+
+  Re-record the Gradius oracle corpus (slow):
+
+  python games/gradius/tools/oracle/scen.py
+
+  If a page loads dead or shows a decode error after a code change, it is
+  almost always a stale bundle. Re-run export-web.mjs.
+
+
+-------------------------------------------------------------------------------
+ 8. COMMIT SAFELY (matters when agents are running)                    [BASH]
+-------------------------------------------------------------------------------
+
+  export GIT_INDEX_FILE=.git/mine.index    # BEFORE read-tree, not after
+  git read-tree HEAD                       # IMMEDIATELY before committing
+  git add path/one.js path/two.js          # BY NAME. never git add -A
+  git diff --cached --name-only            # READ THIS before you commit
+  git commit -m "..."
+  unset GIT_INDEX_FILE
+  git push origin HEAD:main
+
+  If git status claims a file is deleted or untracked and you know it is on
+  disk, the shared index is poisoned. This clears it, worktree untouched:
+
+  git reset
+
+  NEVER:  git add -A
+          git checkout -- <file>        destroys uncommitted work
+          force-push, or rewrite history
+
+
+-------------------------------------------------------------------------------
+ 9. THE BACKUP                                                        [BASH]
+-------------------------------------------------------------------------------
+
+  Refresh C:\programmieren\mixbackup from the current tree:
+
+  rm -rf /c/programmieren/mixbackup
+  MSYS2_ARG_CONV_EXCL='*' robocopy "C:\programmieren\batman" "C:\programmieren\mixbackup" /E /MT:16 /R:1 /W:1 /NFL /NDL /NJH /NP
+
+  robocopy exit 1 MEANS SUCCESS. Exit 16 means Git Bash rewrote the /E and
+  /MT flags into paths - that is what MSYS2_ARG_CONV_EXCL prevents.
+
+  Clean source in the backup, keeping the 1.5 GB of generated data:
+
+  cd /c/programmieren/mixbackup && git reset --hard
+
+
+-------------------------------------------------------------------------------
+ 10. WHERE THINGS ARE
+-------------------------------------------------------------------------------
+
+  C:\programmieren\batman                 the repo
+  C:\programmieren\mixbackup              full backup copy
+  C:\programmieren\GLMInst                the GLM launcher
+  C:\oldpcsx2                             the ROMs
+
+  ROMs:
+    C:\programmieren\batman\Batman - Return of the Joker (USA, Europe).gb
+    C:\programmieren\batman\Gradius (USA).nes
+    C:\oldpcsx2\ddpdojblk.7z              <-- the DaiOuJou one we use
+    C:\oldpcsx2\ddp3.zip                  merged set, all nine clones
+
+  Do not put a ddpdojblk.zip back next to that .7z. MAME resolves a set by
+  NAME, takes the zip, reports "is bad", and does not mention the .7z.
+
+  Emulators, under %LOCALAPPDATA%\Mixup\ :
+    mame\mame.exe        MAME 0.288      DaiOuJou
+    mesen\               Mesen 2.1.1     Gradius
+    mame-play\           isolated config for playing by hand
+  PyBoy for Batman is a pip package, not a folder.
+
+
+-------------------------------------------------------------------------------
+ 11. READ THESE
+-------------------------------------------------------------------------------
+
+  HANDOVER.md          the whole project in one file. start here
+  PROMPT.md            paste into a new agent as its first message
+  docs/knowledge/      ten short files. the method
+  SAVEPOINT.md         the running narrative
+  docs/worklog/        what every agent found, newest numbered highest
+
+===============================================================================
