@@ -1347,6 +1347,9 @@ function dispatch(state, rom, j, type) {
     case 0xB311: return h_B311(state, rom, j);   // entry  9, types $09/$89
     case 0xB36F: return h_B36F(state, j);        // entry 10, types $0A/$8A (volcano)
     case 0xB3CB: return h_B3CB(state, rom, j);   // entry 12, types $0C/$8C
+    // ---- WAVE 26: the boss ------------------------------------------------
+    case 0xB914: return h_B914(state, rom, j);   // entry 24, types $18/$98 (head)
+    case 0xB913: return h_B913(state);           // entry 25, types $19/$99 (inert body)
     default:
       // THE MESSAGE THIS USED TO CARRY WAS "no measured run has ever
       // dispatched it", and that sentence is the one this whole follow-up
@@ -2431,4 +2434,344 @@ function h_B3CB(state, rom, j) {
   // $B3EF LDA $032C,X / $B3F2 CMP $0320 / $B3F5 BCS $B3FF
   if (o.y[i] >= o.y[0]) return childBallistic(state, j);
   childStepY(state, j, 0x02);            // $B3F7 LDA #$02 / $B3F9
+}
+
+// ============================ WAVE 26: THE BOSS =============================
+// `$B914` head + `$B913` inert body. Recon: docs/worklog/gradius/26-recon-boss.md
+// (read it first). The boss is a single per-frame handler on slot 9 (enemy index
+// 9, type $98) with two inert body slots (indices 8 and 7, type $99) it syncs
+// every frame, plus a 4-bullet armament it re-positions on each fire cycle.
+//
+// ADDRESSING. The boss mixes THREE indexing conventions inside one routine, and
+// getting them apart is the whole difficulty:
+//
+//   +$0C (enemy-relative)  `$046C,X` with X = enemy index writes slot X+12.
+//                          This is the convention every other handler uses.
+//   +$0B (slot-N-1 trick)  `$030B,X` writes `$030C+(X-1)`, i.e. the PREVIOUS
+//                          slot. How both body slots get written from one
+//                          subroutine (sub_B9F2 runs twice: X=9 then X=8).
+//   overflow / +$0A..+$0F  the body-sync sub_B9B7 writes `$045E,X`/`$045F,X`
+//                          which with X=9 land at `$0467`/`$0468` -- s0460[7]/[8]
+//                          (shot slots), NOT the body. And `$0460,X` (NO +$0C)
+//                          at $B925 writes s0460[X] = the missile-damage flag at
+//                          enemy index 9, distinct from the HP at `$046C,X`.
+//
+// Resolving by RAW address (base+X) is the only way to be byte-exact across all
+// three conventions, and every object byte for slots 7..25 IS a compared field
+// (1022-address watch list). The resolver below mirrors porttrace.mjs `peek`
+// range-for-range, including the $03A0/$03B0 carrier/yvel split.
+
+const BOSS_OBJ_RANGES = [
+  [0x0100, 0x0120, 'status'], [0x0120, 0x0140, 'anim'], [0x0140, 0x0160, 'timer'],
+  [0x0160, 0x0180, 'animFrame'], [0x0180, 0x01A0, 'attrMask'],
+  [0x0300, 0x0320, 'type'], [0x0320, 0x0340, 'y'], [0x0340, 0x0360, 'yf'],
+  [0x0360, 0x0380, 'x'], [0x0380, 0x03A0, 'xf'],
+  [0x03A0, 0x03B6, 'carrier'], [0x03B6, 0x03D0, 'yvel'],   // split, see peek
+  [0x03E0, 0x0400, 'yvelf'], [0x0400, 0x0420, 'style'],
+  [0x0420, 0x0440, 'xvel'], [0x0440, 0x0460, 'xvelf'],
+  [0x0460, 0x0480, 's0460'], [0x0480, 0x04A0, 's0480'],
+  [0x04A0, 0x04C0, 's04A0'], [0x04C0, 0x04E0, 's04C0'], [0x04E0, 0x0500, 's04E0'],
+];
+function bossGet(state, addr) {
+  const o = state.obj;
+  for (const [lo, hi, name] of BOSS_OBJ_RANGES) {
+    if (addr >= lo && addr < hi) {
+      return name === 'yvel' ? o.yvel[addr - 0x03B0] : o[name][addr - lo];
+    }
+  }
+  throw new Error(`boss handler: raw object address $${addr.toString(16)} `
+                + 'is not in any modelled array (porting error, not a ROM gap)');
+}
+function bossSet(state, addr, value) {
+  const o = state.obj;
+  for (const [lo, hi, name] of BOSS_OBJ_RANGES) {
+    if (addr >= lo && addr < hi) {
+      const idx = name === 'yvel' ? addr - 0x03B0 : addr - lo;
+      o[name][idx] = u8(value);
+      return;
+    }
+  }
+  throw new Error(`boss handler: raw object address $${addr.toString(16)} `
+                + 'is not in any modelled array (porting error, not a ROM gap)');
+}
+
+/**
+ * Entry [25], `$B913` -- the body slots (7, 8) dispatch here and DO NOTHING.
+ * The body is rendered and collision-checked but executes no logic of its own;
+ * every byte that makes it visible is written by the head's body-sync
+ * (`sub_B9B7`/`sub_B9F2`). Confirmed inert: the listing is a single `RTS`.
+ */
+function h_B913() { /* $B913: 60  RTS */ }
+
+/**
+ * Entry [24], `$B914` -- the boss head, slot 9. THE per-frame boss handler.
+ *
+ * Three phases, all driven off the cumulative-damage counter `$046C,X` (the HP):
+ *   phase 0..5  the core visibly opens one metasprite step per damage point
+ *              (morph table $B8EF: $6C $6D $6E $6F $70 $71), sfx $08 + score
+ *              +$50 on each step except the initial $6C;
+ *   phase 6    morph reads $00 -> the death gate at $B962;
+ *   phase >=7  same death gate (a safety bound; HP only reaches 6 in play).
+ *
+ * While alive the body runs the intro X-descent, the rank-indexed vertical
+ * movement (tracking the player), the body-sync, and the fire cycle. Death is
+ * the full chain: score, INC $3B, explosion->script 4 (metasprite $A2), body
+ * clear, and `INC $1B` ($85 -> $86). See `bossDeath`/`bossTimeoutDeath`.
+ */
+function h_B914(state, rom, j) {
+  const x = j;                                   // $B914 LDX $A8 -- X = 9 (head)
+  // $B916 LDA $03AC,X / BPL $B920 -- loop-2 shield: clear $04EC if carrier<0
+  if (bossGet(state, 0x03AC + x) & 0x80) {       // $B919 BPL $B920 (N set -> fall)
+    bossSet(state, 0x04EC + x, 0x00);            // $B91B/$B91D STA $04EC,X
+  }
+  bossSet(state, 0x010C + x, 0x90);              // $B920 anim/status = $90 (hittable)
+  bossSet(state, 0x0460 + x, 0x03);              // $B925 missile-damage flag s0460[9]=3
+  bossSet(state, 0x030C + x, 0x98);              // $B92A re-assert head type $98
+  const phase = bossGet(state, 0x046C + x);      // $B92F LDY $046C,X -- THE HP
+  if (phase >= 0x07) { bossDeath(state, rom, x); return; }   // $B932 CPY #$07 / BCS
+  const morph = rom.read(0xB8EF + phase);        // $B936 LDA $B8EF,Y
+  if (morph === 0) { bossDeath(state, rom, x); return; }     // $B939 BEQ (phase 6 terminator)
+  if (morph !== bossGet(state, 0x012C + x)) {    // $B93B CMP $012C,X / BEQ $B9A8
+    bossSet(state, 0x012C + x, morph);           // $B940 STA $012C,X -- advance morph
+    if (morph !== 0x6C) {                        // $B943 CMP #$6C / BEQ (initial: no sfx)
+      addScore(state, 0x50, 0x00, 0x00);         // $B947 JSR $845B -- +$0050 per opening step
+      soundRequest(state, 0x08);                 // $B94A/$B94C JSR $EC1E -- morph sfx
+      // $B94F LDX $A8 / $B951 LDA $1A / BEQ $B95F -- loop-2-only arm
+      if (state.zp1A !== 0) {                    // dead-but-faithful at loop 1 (zp1A=0)
+        bossSet(state, 0x04EC + x, 0xFF);        // $B955 STA $04EC,X
+        bossSet(state, 0x03AC + x, 0x00);        // $B95A/$B95C STA $03AC,X
+      }
+    }
+  }
+  // $B95F JMP $B9A8 -> the alive body (intro descent + rank move + fire).
+  bossAliveBody(state, rom, x);
+}
+
+/**
+ * `loc_B9A8` -- runs only while the boss is alive (phase < 6). The intro
+ * X-descent (head X $F0 -> ~$A3), and once past it the rank movement + fire.
+ * `sub_B9B7` is reached two ways: by fall-through during the intro (when X is
+ * still >= $A4 and the core is not vulnerable -- it then returns straight to
+ * the dispatch loop, skipping rank/fire that frame), and by JSR at $BA6B after
+ * the rank movement. Both run the same body-sync; see `bodySync`.
+ */
+function bossAliveBody(state, rom, x) {
+  // $B9A8 LDA $036C,X (head X) / CMP #$A4 / BCC $BA0A
+  if (bossGet(state, 0x036C + x) >= 0xA4) {
+    bossSet(state, 0x036C + x, u8(bossGet(state, 0x036C + x) - 1));   // $B9AF DEC (intro descent)
+    if (bossGet(state, 0x048C + x) === 0) {      // $B9B2 LDA $048C,X / $B9B5 BNE $BA0A
+      bodySync(state, x);                        // $B9B7 fall-through entry -> returns to caller
+      return;                                    // (no rank/fire this frame: fall-through RTS)
+    }
+  }
+  bossRankAndFire(state, rom, x);                // loc_BA0A
+}
+
+/**
+ * `loc_BA0A`-`$BA9F` -- the Y catch-up, rank movement, body-sync and fire cycle.
+ * The charge counter `$042C,X` (xvel) increments each non-firing frame; when it
+ * reaches `$B90A[$17]` the boss fires (`loc_BAA0`) and resets it. The
+ * volley/vulnerability/timeout ladder on `$04AC`/`$04CC`/`$048C` runs in the
+ * non-firing tail: the core is damageable only while `$04CC` in [1,4], and
+ * self-destructs (no score) at `$04CC >= 6`.
+ */
+function bossRankAndFire(state, rom, x) {
+  const rank = state.zp17;                       // $BA18 / $BA34 / $BA6E LDY $17
+  // $BA0A LDA $0360 (player X) / CMP $036C,X / BCC $BA18 -- boss creeps right if player past it
+  if (state.obj.x[0] >= bossGet(state, 0x036C + x)) {
+    bossSet(state, 0x036C + x, u8(bossGet(state, 0x036C + x) + 2));   // $BA12/$BA15 INC twice
+  }
+  bossRankMove(state, rom, x, rank);             // loc_BA18
+  bodySync(state, x);                            // $BA6B JSR $B9B7
+  // $BA6E LDY $17 / LDA $042C,X / CMP $B90A,Y / BCS $BAA0
+  if (bossGet(state, 0x042C + x) >= rom.read(0xB90A + rank)) {
+    bossFire(state, rom, x);                      // loc_BAA0 -- the fire cycle
+    return;
+  }
+  // $BA78 INC $042C,X / INC $04AC,X / BNE $BA9F
+  bossSet(state, 0x042C + x, u8(bossGet(state, 0x042C + x) + 1));
+  bossSet(state, 0x04AC + x, u8(bossGet(state, 0x04AC + x) + 1));
+  if (bossGet(state, 0x04AC + x) === 0) {        // $BA7E BNE $BA9F ($04AC wrapped)
+    bossSet(state, 0x04CC + x, u8(bossGet(state, 0x04CC + x) + 1));   // $BA80 INC volley
+    const volley = bossGet(state, 0x04CC + x);   // $BA83 LDY $04CC,X
+    if (volley >= 1) bossSet(state, 0x048C + x, 0x01);   // $BA86 CPY #1/BCS -> VULNERABLE
+    if (volley >= 5) bossSet(state, 0x048C + x, 0x00);   // $BA8F CPY #5/BCS -> INVULNERABLE
+    if (volley >= 6) {                            // $BA98 CPY #6/BCS -> timeout death
+      bossTimeoutDeath(state, rom, x);            // $BA9C JMP $B983
+      return;
+    }
+  }
+  // $BA9F RTS
+}
+
+/**
+ * `loc_BA18`-`$BA68` -- rank-indexed VERTICAL movement. The boss paces up/down
+ * to track the player; `$B8F8`/`$B901` form a 16-bit step (`SBC` for one
+ * direction, `ADC` for the other), result clamped to [$18, $A8]. The direction
+ * flag `$03EC,X` is recalculated only on a fire-ready frame (charge >=
+ * threshold); between fires the last direction persists.
+ *
+ * THE CARRY IS LOAD-BEARING and LDA does not touch it, so it is tracked
+ * explicitly. Two paths into the fractional SBC/ADC: if the direction was just
+ * recalculated this frame the carry is the player-comparison result; if the
+ * charge was under threshold (branched at $BA20 with carry clear) the carry
+ * into the subtract is CLEAR, subtracting one extra sub-pixel.
+ */
+function bossRankMove(state, rom, x, rank) {
+  const thr = rom.read(0xB90A + rank);           // $BA1D CMP $B90A,Y
+  const charge = bossGet(state, 0x042C + x);
+  let carry = charge >= thr;                     // $BA1D CMP -> C set iff charge >= thr
+  if (carry) {                                   // $BA20 BCC $BA34 (not taken)
+    let dir = 0;                                 // $BA22 LDY #$00
+    const headY = bossGet(state, 0x032C + x);
+    // $BA27 SEC / $BA28 SBC #$10 -- SEC clears the borrow, so A = headY - $10
+    const a = u8(headY - 0x10);
+    carry = a >= state.obj.y[0];                 // $BA2A CMP $0320 -- C set iff a >= playerY
+    if (!carry) dir = 1;                         // $BA2D BCS $BA30 / $BA2F INY
+    bossSet(state, 0x03EC + x, dir);             // $BA30 TYA / $BA31 STA $03EC,X
+  }
+  const dir = bossGet(state, 0x03EC + x);        // $BA36 LDA $03EC,X (C unchanged)
+  const lo = rom.read(0xB8F8 + rank);            // $B8F8[$17]
+  const hi = rom.read(0xB901 + rank);            // $B901[$17]
+  const yf = bossGet(state, 0x034C + x);
+  const yi = bossGet(state, 0x032C + x);
+  let newY;
+  if (dir === 0) {                               // $BA39 BNE $BA4D -- the SBC path
+    const r = yf - lo - (carry ? 0 : 1);         // $BA3E SBC $B8F8,Y (borrow = !carry)
+    bossSet(state, 0x034C + x, r);               // $BA41 STA $034C,X
+    newY = u8(yi - hi - (r >= 0 ? 0 : 1));       // $BA47 SBC $B901,Y (C out = r>=0)
+  } else {
+    const r = yf + lo + (carry ? 1 : 0);         // $BA50 ADC $B8F8,Y
+    bossSet(state, 0x034C + x, r);               // $BA53 STA $034C,X
+    newY = u8(yi + hi + (r > 0xFF ? 1 : 0));     // $BA59 ADC $B901,Y
+  }
+  if (newY < 0x18) newY = 0x18;                  // $BA5C CMP #$18 / $BA60 LDA #$18
+  if (newY >= 0xA8) newY = 0xA8;                 // $BA62 CMP #$A8 / $BA66 LDA #$A8
+  bossSet(state, 0x032C + x, newY);              // $BA68 STA $032C,X
+}
+
+/**
+ * `sub_B9B7` + `sub_B9F2` -- THE BODY-SYNC. Positions the two inert body slots
+ * (8 and 7) relative to the head every frame and re-asserts their type $99.
+ * Entered two ways (fall-through from the intro, JSR from $BA6B); the internal
+ * `JSR $B9F2` + `DEX` + fall-through runs `sub_B9F2` twice (X=9 then X=8) from
+ * one written-once routine -- the slot-N-1 trick that creates both bodies.
+ *
+ * `sub_B9F2` is split out because it writes a different mix of conventions per
+ * execution: `$018C,X` (the +$0C enemy-relative) clears the CURRENT slot's
+ * attrMask (head on the first pass, body 8 on the second), while `$030B,X` /
+ * `$010B,X` / `$048B,X` / `$04EB,X` (the +$0B trick) set the PREVIOUS slot's
+ * type/status/etc (body 8 then body 7).
+ */
+function bodySync(state, x) {
+  const headX = bossGet(state, 0x036C + x);      // head X
+  const headY = bossGet(state, 0x032C + x);      // head Y
+  const vuln = bossGet(state, 0x048C + x);       // $B9CA LDY $048C,X
+  // sub_B9B7 (X=9):
+  bossSet(state, 0x045F + x, 0x02);              // $B9BB s0460[8] = 2
+  bossSet(state, 0x045E + x, 0x00);              // $B9C0 s0460[7] = 0
+  bossSet(state, 0x012B + x, 0x85);              // $B9C5 anim[20] (body 8) = $85
+  bossSet(state, 0x018A + x, vuln === 0 ? 0x32 : 0x00);  // $B9D1 attrMask[19] (body 7)
+  bossSet(state, 0x012A + x, 0x32);              // $B9D6 anim[19] (body 7) = $32
+  bossSet(state, 0x036B + x, headX);             // $B9DC x[20] (body 8) = headX
+  bossSet(state, 0x036A + x, headX);             // $B9DF x[19] (body 7) = headX
+  bossSet(state, 0x032A + x, headY);             // $B9E5 y[19] (body 7) = headY
+  bossSet(state, 0x032B + x, u8(headY - 0x14));  // $B9EB y[20] (body 8) = headY-$14 (SEC/SBC)
+  // $B9EE JSR $B9F2 (X=9), $B9F1 DEX, fall into $B9F2 (X=8):
+  bodySyncSlot(state, x);                        // X = 9
+  bodySyncSlot(state, x - 1);                    // X = 8
+}
+/** One pass of `sub_B9F2`. X is the enemy index (9 or 8). */
+function bodySyncSlot(state, x) {
+  bossSet(state, 0x018C + x, 0x00);              // $B9F4 attrMask[X+12] = 0 (head, then body8)
+  bossSet(state, 0x048B + x, 0x00);              // $B9F7 s0480[X+11] = 0
+  bossSet(state, 0x04EB + x, 0x00);              // $B9FA s04E0[X+11] = 0
+  bossSet(state, 0x030B + x, 0x99);              // $B9FF type[X+11] = $99
+  bossSet(state, 0x010B + x, 0x80);              // $BA04 status[X+11] = $80
+}
+
+/**
+ * `loc_BAA0`-`$BAF6` -- the fire cycle. Resets the charge and re-positions the
+ * 4 armament bullets at slots 25..22 (X = $A9 = 3..0), each offset from the
+ * head by tables `$BAF7` (X-off) / `$BAFB` (Y-off), with rank-indexed velocity
+ * bytes `$BAFF`/`$BB07`. These slots are a separate projectile pool from the
+ * enemy slots; the boss owns them while alive.
+ */
+function bossFire(state, rom, x) {
+  bossSet(state, 0x042C + x, 0x00);              // $BAA0 charge = 0
+  const rank = state.zp17;                       // $BAE4 LDY $17
+  const headX = bossGet(state, 0x036C + x);      // head X (Y=$A8 in ROM)
+  const headY = bossGet(state, 0x032C + x);      // head Y
+  for (let a9 = 3; a9 >= 0; a9--) {              // $BAA5 STA $A9=#3 / $BAF2 DEC / BPL
+    // $BAAD STA $0476,X -- also zeroes $99/$9A (score scratch, not modelled/watched)
+    bossSet(state, 0x0476 + a9, 0x00);           // s0460[22+a9] = 0
+    bossSet(state, 0x0376 + a9, u8(headX + rom.read(0xBAF7 + a9)));   // $BAB6-$BABD bullet X
+    bossSet(state, 0x0336 + a9, u8(headY + rom.read(0xBAFB + a9)));   // $BAC0-$BAC7 bullet Y
+    bossSet(state, 0x0176 + a9, 0x02);           // $BACC animFrame[22+a9] = 2
+    bossSet(state, 0x0316 + a9, 0x00);           // $BAD1 type[22+a9] = 0
+    bossSet(state, 0x0116 + a9, 0x00);           // $BAD4 status[22+a9] = 0
+    bossSet(state, 0x0136 + a9, 0x41);           // $BAD9 anim[22+a9] = $41
+    bossSet(state, 0x03F6 + a9, 0x00);           // $BADE yvelf[22+a9] = 0
+    bossSet(state, 0x03C6 + a9, 0x00);           // $BAE1 yvel[22+a9] = 0
+    bossSet(state, 0x0436 + a9, rom.read(0xBAFF + rank));  // $BAE9 xvel[22+a9] = $BAFF[rank]
+    bossSet(state, 0x0456 + a9, rom.read(0xBB07 + rank));  // $BAEF xvelf[22+a9] = $BB07[rank]
+  }
+  // $BAF6 RTS
+}
+
+/**
+ * `loc_B962`-`$B9A7` -- the DAMAGE death chain (boss shot to phase 6). On
+ * stage 1, if the kill lands in the `$04CC==1` window with charge <$78, the
+ * stage-1 warp flag `$39` is set (its effect is W27; its FIRING must not throw)
+ * -- and then the full normal death runs regardless. Score, per-player kill
+ * tally, explosion->script 4 (metasprite $A2), body clear, and `INC $1B`.
+ */
+function bossDeath(state, rom, x) {
+  // $B962 LDA $19 / CMP #$01 / BNE $B97A -- the stage-1 warp gate
+  if (state.zp19 === 1
+      && bossGet(state, 0x04CC + x) === 1        // $B96A/$B96D volley == 1
+      && bossGet(state, 0x04AC + x) < 0x78) {    // $B971/$B974 charge < $78
+    state.zp39 = u8(state.zp39 + 1);             // $B978 INC $39 -- THE WARP FLAG
+  }
+  // loc_B97A: score + INC $3B + explosion + script override + body clear + INC $1B
+  bossDeathTail(state, rom, x, true);
+}
+
+/**
+ * `$BA9C -> $B983` -- the TIMEOUT death (core not killed by `$04CC == 6`).
+ * Jumps straight to the explosion with NO score, NO `INC $3B`, and NO warp-gate
+ * evaluation. Everything from `$B983` onward is shared with the damage death.
+ */
+function bossTimeoutDeath(state, rom, x) {
+  bossDeathTail(state, rom, x, false);
+}
+
+/**
+ * The shared death tail from `loc_B97A`/`$B983`. `scored` selects the
+ * `$B97A`-`$B982` preamble (score + INC $3B + the warp gate above); both death
+ * triggers land at `$B983` for the explosion conversion.
+ */
+function bossDeathTail(state, rom, x, scored) {
+  if (scored) {
+    addScore(state, 0x00, 0x10, 0x00);           // $B97A LDA #$10 / JSR $8455 -- +$001000
+    state.cheat[state.zp.player] = u8(state.cheat[state.zp.player] + 1);  // $B97F/$B981 INC $3B,X
+  }
+  // $B983 LDA #$AC / JSR $CB26: sfx $AC + the explosion conversion sub_CB2B.
+  soundRequest(state, 0xAC);                     // $CB28 JSR $EC1E
+  explodeInPlace(state, x);                      // sub_CB2B (X=$A8=9 -> slot 21)
+  // $B988 LDA #$04 / STA $016C,X -- OVERRIDE explosion script to 4 (-> $A2).
+  // explodeInPlace set animFrame=$02 (script 2); the boss uniquely starts at $A2.
+  bossSet(state, 0x016C + x, 0x04);
+  // $B98D-$B99C body clear: A=0, Y=1; loop X=9,8 writing $030B/$012B/$010B,X.
+  for (let xx = x, y = 1; y >= 0; xx--, y--) {   // BPL loops while Y >= 0 (2 iters)
+    bossSet(state, 0x030B + xx, 0x00);           // type[xx-1] = 0
+    bossSet(state, 0x012B + xx, 0x00);           // anim[xx-1] = 0
+    bossSet(state, 0x010B + xx, 0x00);           // status[xx-1] = 0
+  }
+  // $B99E LDA $0100 / CMP #$02 / BCS $B9A7 -- skip the advance during an ending
+  // transition ($0100 is status[0]; >= 2 means a dying/transitioning ship).
+  if (state.obj.status[0] < 2) {
+    state.substate = u8(state.substate + 1);     // $B9A5 INC $1B -- $85 -> $86
+  }
+  // $B9A7 RTS
 }

@@ -268,26 +268,30 @@ test('$84 advance path spawns the boss object and $1B -> $85, $5E := #$3F', () =
   // $998B: the frame $3F leaves bossPage (here forced). Two HUD packets, $2D:=1,
   // clearSlot(9), type[21]:=$98 / y[21]:=$80 / x[21]:=$F0, INC $5B, INC $1B
   // -> $85, $5E := #$3F. RED WHEN: any of the boss bytes is wrong, or $1B/$5E
-  // is not set. (mode5Body after the spawn then routes type $98 to the boss
-  // handler, which is W26 and throws -- caught here.)
+  // is not set. W26 ports the boss handler, so type $98 now dispatches to $B914
+  // (entry 24) and RUNS instead of throwing: the first frame advances the morph
+  // to the initial $6C and creates the two inert body slots (type $99).
   const s = atSubstate(0x84);
   s.cam.hi = BOSS_PAGE + 1;                          // != bossPage -> advance path
-  // The boss type $98 -> enemies.js dispatch entry 24 -> target $B914 (W26,
-  // unported). The default-branch throw renders the handler address via hex4 as
-  // `$B914`; pin THAT, not a regex that matches every ROM-addressed throw.
-  // RED WHEN: the boss byte is wrong (e.g. type $99) -- it dispatches to a
-  // different entry/target whose throw names another address, so /B914/ fails.
-  // Also red if the advance path ever throws earlier (a wrong HUD packet) -- the
-  // message would not carry B914.
-  assert.throws(() => nmi(s, 0, res), /B914/,
-    'type $98 must dispatch to $B914 (entry 24), the W26 boss handler');
+  // The boss type $98 -> enemies.js dispatch entry 24 -> h_B914 (W26). It must
+  // NOT throw. RED WHEN: the boss byte is wrong (e.g. type $99) -- it dispatches
+  // to entry 25 ($B913) and the head handler never runs, so anim stays 0.
+  assert.doesNotThrow(() => nmi(s, 0, res),
+    'type $98 dispatches to $B914 (entry 24), now ported -- must not throw');
   assert.strictEqual(s.substate, 0x85, '$99B1 INC $1B -> $85');
   const bi = 9 + ENEMY_BASE;                         // slot 21
   assert.strictEqual(s.obj.type[bi], 0x98, '$99A2 STA $0315 (boss type $98)');
-  assert.strictEqual(s.obj.y[bi], 0x80, '$99A7 STA $0335');
-  assert.strictEqual(s.obj.x[bi], 0xF0, '$99AC STA $0375');
+  assert.strictEqual(s.obj.y[bi], 0x80, '$99A7 STA $0335 (Y unchanged on frame 1)');
+  // The spawn writes x=$F0 ($99AC), then the head handler runs this same frame
+  // and the intro descent DEC's it once ($B9AF, $F0 >= $A4) -> $EF (239).
+  assert.strictEqual(s.obj.x[bi], 0xEF, 'spawn $F0 then $B9AF DEC -> $EF');
   assert.strictEqual(s.spawn.z5E, 0x3F, '$99B3 LDA #$3F / STA $5E (immediate)');
   assert.strictEqual(s.ppu.chrSel, 1, '$9997 STA $2D := 1');
+  // The head handler ran this frame: morph stepper set anim to the initial $6C
+  // ($B8EF[0]), and bodySync wrote type $99 into both body slots (20 and 19).
+  assert.strictEqual(s.obj.anim[bi], 0x6C, '$B940 morph = $B8EF[0] = $6C');
+  assert.strictEqual(s.obj.type[8 + ENEMY_BASE], 0x99, 'body slot 8 = $99');
+  assert.strictEqual(s.obj.type[7 + ENEMY_BASE], 0x99, 'body slot 7 = $99');
 });
 
 test('$994A despawn guard: no sweep while $3E < $D0; sweep runs AT $D0', () => {
