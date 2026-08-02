@@ -139,7 +139,7 @@ Every mutation was SHA-verified restored (final SHA == baseline).
 | 4 | st_C486 type $0A -> $0B | RED |
 | 5 | st_C486 y $90 -> $80 | RED |
 | 6 | st_C486 sfx $69==0 gate inverted | RED |
-| 7 | st_C486 crater table $C4F4 -> $C5F5 | RED |
+| 7 | st_C486 crater table base $C4F4 -> $C4F5 | RED |
 | 8 | jt_C439 stage 0 target $C486 -> $C487 | RED |
 | 9 | h_B36F velSubAccel (gravity) dropped | RED |
 | 10 | h_B36F init (setInitialised) dropped | RED |
