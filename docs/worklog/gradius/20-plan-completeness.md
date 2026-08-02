@@ -35,8 +35,8 @@ asserted by hand. Counting conventions are stated where two recons differed.
 | table B formation descriptors ($A602) | **24** exact | data, exported | all 24 referenced | bounded by $A662 abutting |
 | formation geometry ($A592) | **21** (corrects 00-recon's 20 — the missing entry is index **19**, `F4 2A`; 00-recon-enemies.md fixed in W21) | data | max index used 20, no overrun | census.py; pinned by tests/tables.test.js |
 | spawn patterns ($A5BC) | **22** | data | max used 21, exactly full | census.py |
-| play sub-states, jt `$982F` (index = $1B low nibble) | **16** | **1** ($80) | 15 — the entire boss/end-of-stage machine | late-systems; layout-proven |
-| `$96A5` $1B ladder arms | **5** | 2 (intro, dying) | 3: next-stage $96CF, game over $96FB, 15/16 of play | late-systems |
+| play sub-states, jt `$982F` (index = $1B low nibble) | **16** | **7** (W24: was 1; `$80` body+exit, `$81`, `$82`, `$83`, `$84`+despawn, `$85`) | 9 — `$86`/W27, `$87`-`$8D` (0 hits), `$8E`/`$8F`/W27 warp | late-systems; layout-proven |
+| `$96A5` $1B ladder arms | **5** | **3** (W24: was 2; intro, dying, + `$96FB` game-over) | 2: next-stage $96CF/W27, + the `$96FB` continue (`$970D`/mode 4) & timeout-restart (`$9751`/mode 0) sub-paths | late-systems |
 | game modes (`$80D4`) | **7** | 1 (mode 5) | 6 — and the miss is SILENT: src/nmi.js has no else | sweep: 76/76 non-mode-5 windows diverge |
 | inline `JSR $83E4` jump tables | **7** | 3 fully | $80D4, $982F, $AE1C, $C439 partial/none | structure.txt + byte proof |
 | `$C439` late-spawner dispatch | **7** (structure.txt's 11 is wrong; $C447 is the next table, byte-proven) | 0 | 7 — incl. stage 1's volcano $C486 | enemy-census + late-systems agree |
@@ -56,7 +56,7 @@ asserted by hand. Counting conventions are stated where two recons differed.
 | wave records before the boss page (chunks 0-5) | **92** | **92** — `wavecensus.py` prints `stage 0: 92 distinct, 92 ported, 0 unported, 100.0%` (W22) | **0** (post-boss chunk-6 replay would add 10 more; unresolved, see §5) |
 | enemy types the script names | **12** | **12** (W22 added $07, $0F, $10, $13) | 0 |
 | dispatch entries needed, **transitive closure** incl. handler-spawns-handler | **16** | **16** (W22) | 0 — $B6E1, $B747, $AF2E, $AF88 and their children $B311 (type $09) / $B3CB (type $0C) all landed; the children appear in NO wave list, only via $AF98 |
-| play sub-states a clear traverses ($80 $81 $82 $83 $84 $85 $86) | **7** | 1 | 6 |
+| play sub-states a clear traverses ($80 $81 $82 $83 $84 $85 $86) | **7** | **6** (W24: was 1; `$80`-`$85` ported, `$86`/W27 throws) | 1 |
 | late-spawner arms live in stage 1 | **1** ($C486 volcano, only producer of type $0A in the ROM) | 0 | 1, plus its payload handler entry 10 ($B36F) |
 | boss objects | head $B914 + body $B913 (3 slots) | 0 | both, plus 4 rank tables $B8EF/$B8F8/$B901/$B90A |
 | stage exit | seamless $9904 → $96CF, plus the **$39 warp route** that skips stage 2 ($984F + $C686, double INC $19) | 0 | all of it — the warp route is earned by ordinary stage-1 play and nothing in the port knows it exists |
@@ -89,6 +89,19 @@ across W22 and W23 and the brief merged them; **W23 is therefore also done**
 except for its `$39` measurement, which landed as a unit test rather than a
 four-hatch-kill run (nothing in the corpus can kill four hatches yet — the
 shield poke that makes the run survivable also makes it never take damage).
+
+**W24 — DONE** (`24-impl-substate-machine.md`). The play sub-state machine
+jt_$982F as a real 16-entry dispatch: `$80`'s `$9A56` exit, the timer states
+`$9A0E`/`$99E9`/`$99C0`, the boss-page scroll `$9982` (+ despawn sweep `$994A`),
+`$997E` (`INC $5B` only; the fall-through is dead), and the game-over arm
+`$96FB` (`$B0`-gated hold + `$4C` timeout), plus the `$97F1` game-over entry.
+Ledger above updated: jt_$982F 1 → 7 of 16; `$96A5` ladder 2 → 3 of 5; stage-1
+traverse 1 → 6 of 7 (`$86`/W27 remains). 445 unit tests (0 skipped),
+test-all.mjs GREEN (regression clean), census unchanged at 19/42 (W24 ports the
+state machine, not the `$AE1C` enemy dispatch). 17/18 mutations seen RED. The
+endchain `scen/` field dump (the in-situ `$1B`-timeline done-when) was NOT
+recorded -- the boss-killing script is not a named scenario and the boss handler
+is W26; documented per rule 2 in the worklog.
 
 ---
 
