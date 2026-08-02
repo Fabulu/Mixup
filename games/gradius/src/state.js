@@ -149,13 +149,16 @@ export function createState() {
     // one the plan named, $BBE5, is UNREACHABLE on stage 1 ($BBC1 BEQ $BBEC
     // when $19|$1A == 0) -- measured n=0 in the window where $17 = 4.
     zp17: 0,                 // $17
-    // $4C, the general 16-bit timer's low byte. $C1D6 loads it with $78 at the
-    // death (wave 5) and $96EF counts it out one per frame -- THAT half is
-    // ported here, as structure, and reaching 0 throws with $979D's address.
-    // $4D (the high byte) is not modelled: every use on the mode-5 path is
-    // 8-bit ($96EF/$975B read $4C alone); $9A0E's 16-bit load is the
-    // end-of-stage chain, which throws.
+    // $4C/$4D, the general 16-bit timer pair. THREE uses, all now modelled:
+    //   $C1D6 loads $4C with $78 at the death and $96EF counts it out one per
+    //     frame (wave 5, 8-bit -- $4D stays whatever it was).
+    //   $9A0E loads the PAIR $4C:$4D for the $82 end-of-stage countdown ($4D :=
+    //     $9A35[rank], $4C := 0) and $99E9 16-bit-decrements it via $840C until
+    //     both are 0 (wave 24: 768 frames at rank 1). Reaching 0 advances $1B.
+    //   $9825 loads $4C with $78 (the game-over continue timeout) and $9715/
+    //     $975B count it down (wave 24, 8-bit -- $4D is not read on that path).
     zp4C: 0,                 // $4C
+    zp4D: 0,                 // $4D  high byte of the $82 countdown pair
     // $09 the demo/attract flag, $16 uncharacterised. Both are gates on the
     // PAUSE handler ($9ADA `LDA $09 / ORA $16 / ORA $0D`) and nothing in the
     // port writes either; measured 0 on every frame of every play run and 1 for
@@ -470,6 +473,21 @@ export function createState() {
       z6D: 0,     // $6D  the squadron's spawn X ($A592 b0 AND $F0)
       z6E: 0,     // $6E  the running Y, += dY per member
       z6F: 0,     // $6F  the member count, kept after $69 counts down
+      // $5E and $62 became real port state in wave 24 (the play sub-state machine).
+      //
+      //   $5E  the DESPAWN SWEEP cursor (sub_$994A). Two writers -- $99B5 (LDA
+      //        #$3F, the immediate, on the $84->$85 transition) and $9C0F (also
+      //        #$3F, in sub_$9C09/clearAhead) -- and $9954 DEC $5E walks it down
+      //        one per frame during the $84 boss-page crawl. ZERO readers in the
+      //        PRG as a RAM byte: it is consumed only by being reloaded into X at
+      //        $9950 and used as an index, which is exactly what the port does.
+      //        Cleared by the $9B3E wipe ($5E is inside $3D-$97); re-seeded to
+      //        $3F by clearAhead on every intro.
+      //   $62  written $9A2D ($81: := 1) and $99D7 ($83: := 2). NO reader found
+      //        in the PRG (grep: zero `LDA $62`). It is a faithful write-only
+      //        flag, modelled so the transcription is complete; it is inert.
+      z5E: 0,     // $5E  despawn sweep cursor (immediate #$3F seeds it)
+      z62: 0,     // $62  write-only phase flag (no reader; $9A2D/$99D7)
       zA8: 0,     // $A8  THE INDEX. The spawn engine's allocators and the update
                   //      loop both keep the enemy index 0..9 here, and $AEE1 /
                   //      $B251 reload X from it rather than trusting the caller.

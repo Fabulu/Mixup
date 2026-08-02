@@ -1,0 +1,452 @@
+// WAVE 24 -- the play sub-state machine (jt_$982F) and the game-over arm $96FB.
+//
+// Every assertion below is written to be SEEN TO FAIL: each names the ROM
+// address it pins and the mutation that turns it red (the RED WHEN line). The
+// full mutation table -- every fix broken, watched red, restored, SHA-verified
+// both ways -- is in docs/worklog/gradius/24-impl-substate-machine.md.
+//
+// The four defective-check shapes (docs/03 lessons 37-41) are avoided:
+//   * no "asserts on no exception" -- each test asserts SPECIFIC state, not just
+//     that nmi() returned without throwing;
+//   * no "sets up state the app never has" -- states are reachable (the
+//     endchain run traverses exactly these sub-states), and any simplification
+//     is named;
+//   * no "sampled frames with no transitions" -- each test drives the
+//     TRANSITION frame, not a steady-state sample;
+//   * no "takes the answer as an argument" -- expected values come from the ROM
+//     table or from independent arithmetic, never from the same constant the
+//     code under test read.
+//
+// EVERY NUMBER WAS MEASURED OUT OF assets/prg.bin / rip/prg.asm ON 2026-08-02.
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { createState, u8, ENEMY_BASE } from '../src/state.js';
+import { nmi } from '../src/nmi.js';
+import { bootState } from '../src/main.js';
+import { bindSoundRom, pulse1Dur, OFF } from '../src/sound.js';
+import { headlessResources, loadStages, ASSETS } from './helpers.js';
+
+const res = headlessResources(0);
+bindSoundRom(res.soundTables);
+
+const RANK_CD = res.stage.rankCountdown;   // $9A35, 8 bytes, exported W24
+const BOSS_PAGE = res.stage.bossPage;       // $9A3D[0] = $0C
+
+/** A play state at a given sub-state. bootState's $1B is $80; override it. */
+function atSubstate(sub) {
+  const s = bootState(res.manifest);
+  s.substate = sub;
+  return s;
+}
+
+// ============================================================== the denominator
+
+test('jt_$982F is a 16-entry table; the dispatch is the low nibble of $1B', () => {
+  // $83E4 ASLs A: $80->$00, $81->$02 ... $8F->$1E (the $80 high bit is carry-out,
+  // dropped). So the index is exactly (low nibble of $1B), 0-15. Read out of
+  // rip/prg.asm $982F: 16 .word entries, $984F abuts at index 14/15.
+  const prg = res.manifest;   // not ROM; the count is structural, pinned in tables.test
+  // The port's switch is `state.substate & 0x0F`. $80->$80 stays in range; $8F
+  // is the last arm. RED WHEN: the mask is wrong (e.g. & 0x07) -- $88 would then
+  // collide with $80.
+  for (let n = 0; n <= 0xF; n++) {
+    const s = atSubstate(0x80 | n);
+    assert.strictEqual(s.substate & 0x0F, n, `low nibble of $${(0x80 | n).toString(16)}`);
+  }
+  void prg;
+});
+
+test('the 8 unported play arms throw with their ROM target', () => {
+  // $86/$9904 (W27), $87/$9B3E, $88/$9BED, $89/$9C12, $8A/$9C1E, $8B/$988C,
+  // $8C/$98DD, $8D/$98E5, $8E/$984F, $8F/$984F. Each carries its address.
+  // RED WHEN: any arm becomes a quiet return or a wrong-address throw.
+  for (const [sub, addr] of [[0x86, '$9904'], [0x87, '$9B3E'], [0x88, '$9BED'],
+                             [0x89, '$9C12'], [0x8A, '$9C1E'], [0x8B, '$988C'],
+                             [0x8C, '$98DD'], [0x8D, '$98E5'],
+                             [0x8E, '$984F'], [0x8F, '$984F']]) {
+    const s = atSubstate(sub);
+    assert.throws(() => nmi(s, 0, res), new RegExp(`\\${addr}`),
+      `$1B=$${sub.toString(16)} should throw at ${addr}`);
+  }
+});
+
+// ============================================================ the $80 exit ($9A56)
+
+test('$80 ($9A4D) keeps playing while $3F < bossPage, then $9A56 sets $1B := $81', () => {
+  // $9A4F CMP $9A3D,X / BCC $9A5B. bossPage for stage 0 is $0C. While cam.hi <
+  // $0C, $1B stays $80; the frame it reaches $0C, $1B := $9A45[0] = $81.
+  // RED WHEN: the BCC polarity is flipped (advances too early/late), or $81 is
+  // wrong.
+  let s = atSubstate(0x80);
+  s.cam.hi = BOSS_PAGE - 1;                          // below the threshold
+  nmi(s, 0, res);
+  assert.strictEqual(s.substate, 0x80, 'still $80 one page below bossPage');
+
+  s = atSubstate(0x80);
+  s.cam.hi = BOSS_PAGE;                              // $3F == $9A3D[0]
+  nmi(s, 0, res);
+  assert.strictEqual(s.substate, 0x81, '$9A56 STA $1B := $9A45[$19] = $81');
+});
+
+test('$9A45 is the constant $81 for every stage (the next-state table)', () => {
+  // Read out of rip/prg.asm line 2860: eight bytes, all $81. The port uses a
+  // literal $81 (the table is trivially constant); this pins the ROM fact and
+  // that no stage's exit goes anywhere else. RED WHEN: the port literal is
+  // changed to e.g. $82.
+  const prg = readFileSync(join(ASSETS, 'prg.bin'));
+  const at = (a) => prg[a - 0x8000];
+  for (let i = 0; i < 8; i++) {
+    assert.strictEqual(at(0x9A45 + i), 0x81, `$9A45[${i}] = $81`);
+  }
+  // And the port's literal: stage 0 reaching bossPage sets $1B := $81.
+  const s = atSubstate(0x80);
+  s.cam.hi = BOSS_PAGE;
+  nmi(s, 0, res);
+  assert.strictEqual(s.substate, 0x81, 'the port literal is $81');
+});
+
+// =========================================================== $81 ($9A0E) countdown setup
+
+test('$81 ($9A0E) loads $4C:$4D from $9A35[rank] and advances to $82', () => {
+  // $9A1E LDA $9A35,X / STA $4D ; $9A23 LDA #$00 / STA $4C ; INC $1B -> $82.
+  // Rank 2 is used (not rank 1) because $9A35[0]==$9A35[1]==3: only a rank whose
+  // countdown DIFFERS from rank 0 catches a `rank->0` mutation. $9A35[2] = $04.
+  // RED WHEN: $4D reads the wrong table column (rank 0 not rank 2), or $4C is
+  // not cleared, or $1B is not advanced.
+  const s = atSubstate(0x81);
+  s.zp17 = 2;                                        // rank 2: $9A35[2] = $04 (!= $03)
+  nmi(s, 0, res);
+  assert.strictEqual(s.zp4D, RANK_CD[2], '$4D := $9A35[2] = $04');
+  assert.strictEqual(s.zp4C, 0x00, '$4C := $00');
+  assert.strictEqual(s.substate, 0x82, 'INC $1B -> $82');
+  assert.strictEqual(s.zp5B, 1, '$9A27 INC $5B (freezes the camera for $82)');
+});
+
+test('$81 countdown duration is rank-indexed: rank 0 -> 768, rank 4 -> 1280', () => {
+  // $82 = $9A35[rank] x 256. The table is 03 03 04 04 05 05 06 06. Rank 0 = 3
+  // -> 768 frames; rank 4 = 5 -> 1280 frames. (Rank 4 is table-derived, not
+  // measured in a powered endchain run -- labelled per knowledge/09.)
+  // RED WHEN: the table is read with the wrong indexer (e.g. stage not rank).
+  assert.deepEqual(RANK_CD, [3, 3, 4, 4, 5, 5, 6, 6], '$9A35 byte-verified');
+  assert.strictEqual(RANK_CD[0] * 256, 768, 'rank 0 countdown');
+  assert.strictEqual(RANK_CD[4] * 256, 1280, 'rank 4 countdown (table-derived)');
+});
+
+test('$81 stage-6 special case ($19 == 6) is a loud throw', () => {
+  // $9A12 CMP #$06 / BNE $9A1E. The port loads one stage; the stage-6 shortcut
+  // ($4D:=1, $4C:=$CA) is unreachable. RED WHEN: it silently skips.
+  const s = atSubstate(0x81);
+  s.zp19 = 6;
+  assert.throws(() => nmi(s, 0, res), /\$9A12/);
+});
+
+// =========================================================== $82 ($99E9) the countdown
+
+test('$82 ($99E9) 16-bit-decrements $4C:$4D and holds $1B until both are 0', () => {
+  // $99EB A2 4C / A9 01 / JSR $840C. $840C is a 16-bit subtract-1: borrow DECs
+  // the high byte. Pre-set a SMALL count so the test does not need 768 frames.
+  // $4C:$4D = $0002 -> 2 frames to reach 0.
+  // RED WHEN: the decrement is 8-bit only (never borrows into $4D), or the
+  // zero-test reads only $4C.
+  const s = atSubstate(0x82);
+  s.zp4C = 0x02; s.zp4D = 0x00;                      // value 2
+  nmi(s, 0, res);
+  assert.strictEqual(s.zp4C, 0x01, 'frame 1: $4C 02->01, no borrow');
+  assert.strictEqual(s.zp4D, 0x00, '$4D unchanged');
+  assert.strictEqual(s.substate, 0x82, 'still $82 (not zero yet)');
+  nmi(s, 0, res);
+  assert.strictEqual(s.zp4C, 0x00, 'frame 2: $4C 01->00');
+  assert.strictEqual(s.zp4D, 0x00, '$4D still 00');
+  assert.strictEqual(s.substate, 0x83, '$99FA INC $1B -> $83 when the pair hits 0');
+});
+
+test('$82 $840C borrows into $4D: $00:$01 -> $FF:$00 (256 frames implied)', () => {
+  // The borrow is the load-bearing half of the 16-bit decrement. With $4C:$4D =
+  // $00:$01 (value 256), one frame borrows: $4C wraps $FF, $4D DECs to $00.
+  // RED WHEN: the borrow is dropped -- $4C would stay $00 and $4D stay $01, and
+  // the countdown would never end (this is exactly the W24 must-fail break).
+  const s = atSubstate(0x82);
+  s.zp4C = 0x00; s.zp4D = 0x01;                      // value 256
+  nmi(s, 0, res);
+  assert.strictEqual(s.zp4C, 0xFF, '$4C wraps $00 -> $FF on borrow');
+  assert.strictEqual(s.zp4D, 0x00, '$8415 DEC $01,X -- $4D 01 -> 00');
+  assert.strictEqual(s.substate, 0x82, 'still $82 (255 to go)');
+});
+
+test('$82 end-of-countdown sets $60 := 0 (spawn engine idle) and requests sfx $3F', () => {
+  // $99F8 STA $60 (A=0); stage 0 or 3 -> $9A06 JSR $EC1E with $3F. $60 is the
+  // spawn-engine state (0 = idle). RED WHEN: $60 is not reset, or the stage
+  // gate is wrong.
+  const s = atSubstate(0x82);
+  s.spawn.z60 = 2;                                   // engine was running
+  s.zp4C = 0x01; s.zp4D = 0x00;                      // value 1 -> 0 next frame
+  s.zp19 = 0;                                        // stage 0 -> sfx $3F
+  s.sfx.length = 0;
+  nmi(s, 0, res);
+  assert.strictEqual(s.spawn.z60, 0, '$99F8 STA $60 -- spawn engine to idle');
+  assert.strictEqual(s.substate, 0x83, '-> $83');
+  assert.ok(s.sfx.includes(0x3F), '$9A08 JSR $EC1E with A=$3F on stage 0');
+});
+
+test('$82 does NOT request sfx $3F on stage 1 or 2', () => {
+  // $99FC LDA $19 / BEQ $9A06 (stage 0) ; $9A00 CMP #$03 / BEQ $9A06 (stage 3).
+  // Only stages 0 and 3 fire $3F. RED WHEN: the gate fires on all stages.
+  for (const stage of [1, 2]) {
+    const s = atSubstate(0x82);
+    s.zp4C = 0x01; s.zp4D = 0x00;
+    s.zp19 = stage;
+    s.sfx.length = 0;
+    nmi(s, 0, res);
+    assert.ok(!s.sfx.includes(0x3F), `stage ${stage} must not fire $3F`);
+    assert.strictEqual(s.substate, 0x83, `stage ${stage} still advances to $83`);
+  }
+});
+
+// =========================================================== $83 ($99C0) the transition
+
+test('$83 ($99C0) INCs $1B to $84 and sets $62 := 2', () => {
+  // $99C0 INC $1B (-> $84); $99D3 INC $5B; $99D7 STA $62 := 2. Stage < 5 path.
+  // RED WHEN: $1B is not advanced, or $62 gets the wrong value (e.g. 1 from $81).
+  const s = atSubstate(0x83);
+  s.zp19 = 0;
+  nmi(s, 0, res);
+  assert.strictEqual(s.substate, 0x84, '$99C0 INC $1B -> $84');
+  assert.strictEqual(s.spawn.z62, 2, '$99D7 LDA #$02 / STA $62');
+});
+
+test('$83 stage >= 5 shortcut ($1B := $86) is a loud throw', () => {
+  // $99C4 CMP #$05 / BCC $99D3. The port loads one stage; the stage>=5 shortcut
+  // ($99CF $1B := $86, plus sfx $AC at == 5) is unreachable. RED WHEN: silent.
+  for (const stage of [5, 6]) {
+    const s = atSubstate(0x83);
+    s.zp19 = stage;
+    assert.throws(() => nmi(s, 0, res), /\$99C4/,
+      `stage ${stage} should throw at $99C4`);
+  }
+});
+
+// =========================================================== $84 ($9982) + despawn $994A
+
+test('$84 ($9982) despawns while $3F == bossPage (BEQ $99BA), holding $1B', () => {
+  // $9986 CMP $9A3D,X / BEQ $99BA. While $3F == bossPage, run the despawn sweep
+  // and stay in $84. RED WHEN: the BEQ is inverted (advances immediately).
+  const s = atSubstate(0x84);
+  s.cam.hi = BOSS_PAGE;                              // == bossPage
+  s.cam.lo = 0xE0;                                   // >= $D0 so the sweep runs
+  s.spawn.z5E = 0x3F;                                // a valid cursor
+  nmi(s, 0, res);
+  assert.strictEqual(s.substate, 0x84, 'BEQ path stays $84');
+  assert.strictEqual(s.spawn.z5E, 0x3E, '$9954 DEC $5E walked the cursor');
+});
+
+test('$84 advance path spawns the boss object and $1B -> $85, $5E := #$3F', () => {
+  // $998B: the frame $3F leaves bossPage (here forced). Two HUD packets, $2D:=1,
+  // clearSlot(9), type[21]:=$98 / y[21]:=$80 / x[21]:=$F0, INC $5B, INC $1B
+  // -> $85, $5E := #$3F. RED WHEN: any of the boss bytes is wrong, or $1B/$5E
+  // is not set. (mode5Body after the spawn then routes type $98 to the boss
+  // handler, which is W26 and throws -- caught here.)
+  const s = atSubstate(0x84);
+  s.cam.hi = BOSS_PAGE + 1;                          // != bossPage -> advance path
+  assert.throws(() => nmi(s, 0, res), /undefined|handler|\$|Error/);  // boss handler W26
+  assert.strictEqual(s.substate, 0x85, '$99B1 INC $1B -> $85');
+  const bi = 9 + ENEMY_BASE;                         // slot 21
+  assert.strictEqual(s.obj.type[bi], 0x98, '$99A2 STA $0315 (boss type $98)');
+  assert.strictEqual(s.obj.y[bi], 0x80, '$99A7 STA $0335');
+  assert.strictEqual(s.obj.x[bi], 0xF0, '$99AC STA $0375');
+  assert.strictEqual(s.spawn.z5E, 0x3F, '$99B3 LDA #$3F / STA $5E (immediate)');
+  assert.strictEqual(s.ppu.chrSel, 1, '$9997 STA $2D := 1');
+});
+
+test('$994A despawn guard: no sweep while $3E < $D0; sweep runs AT $D0', () => {
+  // $994C CPX #$D0 / BCC $997D. The sweep runs only in the last ~quarter of a
+  // scroll page. $3E = $D0 is the FIRST byte that runs (BCC is < , not <=).
+  // RED WHEN: the guard threshold is changed (e.g. $D1 -- then $D0 wrongly
+  // refuses), or the comparison is <= instead of <.
+  // $CF: refused
+  let s = atSubstate(0x84);
+  s.cam.hi = BOSS_PAGE; s.cam.lo = 0xCF;
+  s.spawn.z5E = 0x3F;
+  nmi(s, 0, res);
+  assert.strictEqual(s.spawn.z5E, 0x3F, '$CF (< $D0): cursor unchanged');
+  // $D0: the boundary -- runs the sweep
+  s = atSubstate(0x84);
+  s.cam.hi = BOSS_PAGE; s.cam.lo = 0xD0;
+  s.spawn.z5E = 0x3F;
+  nmi(s, 0, res);
+  assert.strictEqual(s.spawn.z5E, 0x3E, '$D0 (>= $D0): cursor walked -- sweep ran');
+});
+
+test('$994A clears 8 collision columns and (cursor < $14) the enemy object bytes', () => {
+  // $9958-$996D clear $0500/$0540/$0580/$05C0/$0600/$0640/$0680/$06C0,X.
+  // $9974-$997A clear status/anim/type at enemy slot 12+X -- but only when the
+  // OLD cursor < $14 ($9970 CPX #$14 / BCS skip). Seed an enemy in slot 12 and a
+  // cursor of $0C so the object clear fires.
+  // RED WHEN: a column is dropped, or the <$14 object-clear is skipped/duplicated.
+  const s = atSubstate(0x84);
+  s.cam.hi = BOSS_PAGE;
+  s.cam.lo = 0xE0;                                   // >= $D0
+  s.spawn.z5E = 0x0C;                                // cursor < $14 -> object clear
+  // pre-fill the columns and an enemy slot so we can see them cleared
+  for (const base of [0x000, 0x040, 0x080, 0x0C0, 0x100, 0x140, 0x180, 0x1C0]) {
+    s.coll[base + 0x0C] = 0xAB;
+  }
+  s.obj.status[ENEMY_BASE + 0x0C] = 0x55;            // enemy slot 12+0x0C = slot 24
+  s.obj.type[ENEMY_BASE + 0x0C] = 0x99;
+  nmi(s, 0, res);
+  for (const base of [0x000, 0x040, 0x080, 0x0C0, 0x100, 0x140, 0x180, 0x1C0]) {
+    assert.strictEqual(s.coll[base + 0x0C], 0, `coll[$${(base + 0x0C).toString(16)}] cleared`);
+  }
+  assert.strictEqual(s.obj.status[ENEMY_BASE + 0x0C], 0, '$010C,X status cleared');
+  assert.strictEqual(s.obj.type[ENEMY_BASE + 0x0C], 0, '$030C,X type cleared');
+});
+
+test('$994A object clear stops at cursor $14; the collision columns keep going', () => {
+  // $9970 CPX #$14 / BCS $997D. For cursor < $14 the object bytes (status/anim/
+  // type at slot 12+X) are cleared; for cursor >= $14 only the collision map is.
+  // The bound is $14 because $010C+$14 = $0120 (the anim array base) -- on the
+  // cartridge the guard PROTECTS the player's anim byte from being wiped. In
+  // this port the object arrays are separate 32-slot arrays, so slot 12+$14 = 32
+  // is out of bounds and a dropped guard would write nothing observable: like
+  // W22's $AFD2 restore, the guard is faithful but its mutant is silent here.
+  // What IS observable: cursor $14 still clears the collision column (>= $14
+  // does not stop the sweep, only the object clear). RED WHEN: the collision
+  // clear is gated on $14 too (it must not be).
+  const s = atSubstate(0x84);
+  s.cam.hi = BOSS_PAGE;
+  s.cam.lo = 0xE0;
+  s.spawn.z5E = 0x14;                                // >= $14
+  s.coll[0x000 + 0x14] = 0xAB;
+  s.coll[0x100 + 0x14] = 0xAB;
+  nmi(s, 0, res);
+  assert.strictEqual(s.coll[0x000 + 0x14], 0, '$0500,X still cleared at cursor $14');
+  assert.strictEqual(s.coll[0x100 + 0x14], 0, '$0600,X still cleared at cursor $14');
+  // The LAST cursor that clears objects is $13 (slot 31). Confirm it does.
+  const s2 = atSubstate(0x84);
+  s2.cam.hi = BOSS_PAGE; s2.cam.lo = 0xE0;
+  s2.spawn.z5E = 0x13;
+  s2.obj.type[ENEMY_BASE + 0x13] = 0x99;             // slot 31, the last valid
+  nmi(s2, 0, res);
+  assert.strictEqual(s2.obj.type[ENEMY_BASE + 0x13], 0, 'cursor $13 (slot 31) IS cleared');
+});
+
+// =========================================================== $85 ($997E) the dead fall-through
+
+test('$85 ($997E) is INC $5B only; it does NOT advance to $86 and does NOT re-fire $9982', () => {
+  // 997E E6 5B / 9980 D0 35 (BNE $99B7, ALWAYS taken). The fall-through into
+  // $9982 is STRUCTURALLY DEAD ($5B cleared at $9658 each frame). $85 stays $85
+  // every frame; it exits only via the boss-death INC $1B (W26). RED WHEN: the
+  // fall-through is implemented -- $1B would advance or $9982 would re-spawn.
+  const s = atSubstate(0x85);
+  s.zp5B = 0;                                        // $9658 clears it before the arm
+  for (let i = 0; i < 5; i++) nmi(s, 0, res);        // 5 frames of boss fight
+  assert.strictEqual(s.substate, 0x85, '$85 never advances $1B on its own');
+});
+
+test('$85 the BNE is always taken: $5B (cleared to 0 by $9658) becomes 1, != 0', () => {
+  // The dead-branch proof from the listing: $9658 STA $5B zeroes $5B every
+  // mode-5 frame BEFORE the ladder, so INC makes it 1 and BNE (test != 0) always
+  // branches. RED WHEN: $5B enters non-zero (would prove the branch reachable).
+  const s = atSubstate(0x85);
+  s.zp5B = 0;
+  nmi(s, 0, res);
+  assert.strictEqual(s.zp5B, 1, 'INC made $5B 1; $9658 will clear it next frame');
+  assert.strictEqual(s.substate, 0x85, 'no fall-through into $9982');
+});
+
+// =========================================================== the game-over arm $96FB
+
+test('$96FB INCs $5B every frame (freezes the camera for the game-over hold)', () => {
+  // 96FB E6 5B. RED WHEN: the INC is dropped -- the camera would scroll during
+  // the game-over screen.
+  const s = atSubstate(0xC0);                        // bit 6 set -> gameOverArm
+  // Force the jingle-playing path so it runs mode5Body and returns cleanly.
+  s.snd[OFF.DUR] = 0x10;                             // $B0 != 0 (jingle mid-note)
+  s.zp0A = 0;                                        // no players (solo game-over)
+  s.zp5B = 0;
+  nmi(s, 0, res);
+  assert.strictEqual(s.zp5B, 1, '$96FB INC $5B');
+});
+
+test('$96FB holds (mode5Body) while $B0 != 0, then $4C counts down once $B0 reaches 0', () => {
+  // $96FD LDA $B0 / BNE $975D (jingle hold); when $B0==0, $9715 DEC $4C.
+  // RED WHEN: the $B0 gate is inverted (counts down during the jingle), or $4C
+  // is not decremented.
+  let s = atSubstate(0xC0);
+  s.snd[OFF.DUR] = 1;                                // jingle has 1 tick left
+  s.zp0A = 0;
+  s.zp4C = 0x78;                                     // the seeded timeout
+  nmi(s, 0, res);
+  assert.strictEqual(s.zp4C, 0x78, '$4C NOT decremented while $B0 != 0');
+  // jingle ends ($B0 -> 0; the driver would have DEC'd it). Now $4C counts.
+  s.snd[OFF.DUR] = 0;
+  nmi(s, 0, res);
+  assert.strictEqual(s.zp4C, 0x77, '$975B DEC $4C once $B0 == 0');
+});
+
+test('$96FB CONTINUE ($0A==0, START pressed, jingle done) throws at $970D', () => {
+  // $970D JSR $82D5 / mode := 4. Mode 4 is unported. RED WHEN: silent.
+  const s = atSubstate(0xC0);
+  s.snd[OFF.DUR] = 0;                                // jingle done
+  s.zp0A = 0;                                        // solo game-over ($0A cleared)
+  s.zp4C = 0x78;                                     // still in the window
+  // START pressed this frame:
+  assert.throws(() => nmi(s, 0x10, res), /\$970D/);
+});
+
+test('$96FB timeout-expired ($4C == 0) throws at $9751 (restart to title)', () => {
+  // $9751 JSR $9B3E / mode := 0. The continue window expired; restart to title.
+  // RED WHEN: silent.
+  const s = atSubstate(0xC0);
+  s.snd[OFF.DUR] = 0;
+  s.zp0A = 0;                                        // solo -> reaches $9751
+  s.zp4C = 0;                                        // window expired
+  s.zp33 = 0;                                        // not the cheat ($33 != $0A)
+  assert.throws(() => nmi(s, 0, res), /\$9751/);
+});
+
+test('$96FB continue-cheat ($33 == $0A on timeout) throws at $9721', () => {
+  // $971D CPY #$0A / BNE $974B. The continue cheat restores lives; unported.
+  // RED WHEN: silent.
+  const s = atSubstate(0xC0);
+  s.snd[OFF.DUR] = 0;
+  s.zp0A = 0;
+  s.zp4C = 0;
+  s.zp33 = 0x0A;                                     // the cheat code reached 10
+  assert.throws(() => nmi(s, 0, res), /\$9721/);
+});
+
+test('$96FB multiplayer timeout ($0A != 0) throws at $97C5', () => {
+  // $974B AND #$03 / BNE $97C5. A player still in the game at timeout -> switch.
+  // RED WHEN: silent.
+  const s = atSubstate(0xC0);
+  s.snd[OFF.DUR] = 0;
+  s.zp0A = 0x02;                                     // P2 still in
+  s.zp4C = 0;
+  s.zp33 = 0;
+  assert.throws(() => nmi(s, 0, res), /\$97C5/);
+});
+
+// ====================================================== pulse1Dur reads $B0 (OFF.DUR)
+
+test('pulse1Dur reads $B0 = pulse 1 DUR (snd[0], OFF.DUR)', () => {
+  // $96FD LDA $B0. SND_BASE = $B0, OFF.DUR = 0, so $B0 == snd[0]. RED WHEN: the
+  // helper reads the wrong offset (e.g. OWNER at +2).
+  const s = createState();
+  s.snd[OFF.DUR] = 0;
+  assert.strictEqual(pulse1Dur(s), 0, '$B0 == 0 when pulse 1 is free');
+  s.snd[OFF.DUR] = 0x37;
+  assert.strictEqual(pulse1Dur(s), 0x37, '$B0 == 0x37 mid-note');
+});
+
+// ====================================================== the $9A35 export is pinned
+
+test('stage.rankCountdown is exported as 8 bytes 03 03 04 04 05 05 06 06', () => {
+  // $9A35, the rank-countdown half of the 16-byte block (tail = $9A3D). Read by
+  // $9A1E LDA $9A35,X with X = $17. RED WHEN: the export reads the wrong address
+  // or drops a byte.
+  assert.deepEqual(RANK_CD, [3, 3, 4, 4, 5, 5, 6, 6]);
+  assert.strictEqual(RANK_CD.length, 8, 'eight ranks 0..7');
+});

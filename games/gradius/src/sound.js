@@ -93,6 +93,14 @@ export const OFF = {
   OCTAVE: 0x10,   // $EEBF STA $10,X   shift count = 4 - value ($EF54)
 };
 
+/**
+ * `$B0` -- pulse 1's DUR byte (OFF.DUR, the first byte of the struct). Read at
+ * `$96FD LDA $B0 / BNE $975D`: "is pulse 1 still mid-note?", i.e. "has the
+ * game-over jingle ($AF) finished yet?". The driver DECs it each tick ($ED50);
+ * it is non-zero while a note is playing and 0 once the channel is freed.
+ */
+export const pulse1Dur = (state) => state.snd[OFF.DUR];
+
 /** The globals that overlay the noise struct's unused tail ($E3 + $0D..$10). */
 export const G = { F0: 0xF0, F1: 0xF1, F2: 0xF2, F3: 0xF3,
                    F4: 0xF4, F5: 0xF5, F6: 0xF6, F7: 0xF7,

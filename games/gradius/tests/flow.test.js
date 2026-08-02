@@ -275,9 +275,13 @@ test('$96A5: every unported arm throws with the ROM address it would reach', () 
   // RED WHEN: any arm is turned into an early return -- the corpus cannot catch
   // that, because compare.mjs truncates the moment the cartridge enters the
   // state (MODELLED_1B).
+  //
+  // WAVE 24: $96FB (bit 6, game over) is now PORTED -- it is no longer in this
+  // list. Its $970D CONTINUE and $9751 restart-to-title sub-paths stay unported
+  // and are covered by the dedicated game-over tests in w24-substate.test.js.
   for (const [sub, addr] of [[0x10, '$96CF'], [0x90, '$96CF'],
-                             [0x40, '$96FB'], [0x30, '$96CF'],
-                             [0x81, '$982A'], [0x8F, '$982A']]) {
+                             [0x30, '$96CF'],
+                             [0x86, '$9904'], [0x8F, '$984F']]) {
     const s = bootState(res.manifest);
     s.substate = sub;
     assert.throws(() => nmi(s, 0, res), new RegExp(`\\${addr}`),

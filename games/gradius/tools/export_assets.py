@@ -170,6 +170,12 @@ TABLES = [
      "the camera page at which the stage ends -- also its length in 256 px pages"),
     ("stage.bossPage", 0x9A3D, 7, U8, "$9A4F / $9986 CMP $9A3D,Y",
      "the camera page that triggers the boss"),
+    # $9A35 is one 16-byte block split across two names: the head (first 8 bytes)
+    # is the rank countdown, indexed by X=$17 (rank); the tail is $9A3D above,
+    # indexed by X=$19 (stage). Rank and stage index disjoint halves, so the two
+    # never collide. W24 added the head -- the load-bearing data for $82.
+    ("stage.rankCountdown", 0x9A35, 8, U8, "$9A1E LDA $9A35,X (X = $17 rank)",
+     "the $82 end-of-stage countdown = byte x 256 frames, per rank 0..7"),
     # ---- terrain: the decoder's own constants -------------------------------
     ("terrain.screenStride", 0x9D4F, 8, U16,
      "$9E5C, the 16-bit offset of screen n inside a layout array",
@@ -1403,6 +1409,9 @@ def expand_stage(rom: Rom, stage: int) -> dict:
         "stage": stage,
         "endPage": end_page,
         "bossPage": rom.b(0x9A3D + stage),
+        # $9A35: the rank countdown, indexed by $17 (rank), SAME for every stage.
+        # $82's duration = rankCountdown[rank] x 256 frames. W24.
+        "rankCountdown": [rom.b(0x9A35 + r) for r in range(8)],
         "threshold": st["threshold"],
         "tables": {k: f"${v:04X}" for k, v in st.items() if k != "threshold"},
         "pageOrder": order,

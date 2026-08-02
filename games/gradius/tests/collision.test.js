@@ -15,9 +15,13 @@ import { nmi } from '../src/nmi.js';
 import { collision, die, explosionWalk, playerVsEnemies, shotSweep } from '../src/collision.js';
 import { respawn } from '../src/flow.js';
 import { bootState } from '../src/main.js';
+import { bindSoundRom } from '../src/sound.js';
 import { headlessResources } from './helpers.js';
 
 const res = headlessResources(0);
+// Wave 24: respawn() now runs the $97F1 game-over entry (enterGameOver), which
+// requests sfx $AF and stops all sound -- both need the sound ROM bound.
+bindSoundRom(res.soundTables);
 
 /** A live stage-1 play state with one enemy in slot 12 + j. */
 function withEnemy(j, { type = 0x85, x = 100, y = 100, cls = 0 } = {}) {
@@ -370,15 +374,34 @@ test('$9B3E: a respawn LOSES every power-up, and $42 comes back as 0 or 1', () =
     + 'fire the seventh capsule granted is gone too');
 });
 
-test('$97C1: lives going negative is the game-over arm, and it is a loud throw', () => {
-  // `LDA $20,X / BMI $97F1`. $96FD gates the whole continue on $B0, a sound byte
-  // measured non-zero for 277 frames and uncharacterised -- the wave plan
-  // excludes it until wave 8.
-  // RED WHEN: the BMI is dropped; the port would then silently respawn a player
-  // with 255 lives.
+test('$97C1: lives going negative enters GAME OVER ($97F1) -- $1B=$C0, $0A cleared, $4C=120', () => {
+  // `LDA $20,X / BMI $97F1`. Wave 24 ported $97F1 (was a throw). The entry
+  // clears the dead player's bit from $0A, sets $1B := $C0, requests sfx $AF
+  // (the jingle), and seeds the 120-frame continue timeout $4C. respawn()
+  // returns false so the caller runs the mode-5 body ($9827 JMP $9A5E).
+  // RED WHEN: the BMI is dropped (silently respawns 255 lives), or any of the
+  // $97F1 state changes is dropped.
+  const s = bootState(res.manifest);
+  s.lives[0] = 0;                  // DEC -> 0xFF -> BMI taken
+  s.zp0A = 0x01;                   // P1 in the game
+  const normal = respawn(s, res);
+  assert.strictEqual(normal, false, 'game-over returns false (caller runs body)');
+  assert.strictEqual(s.substate, 0xC0, '$97FF LDA #$C0 / STA $1B');
+  assert.strictEqual(s.zp0A, 0x00, '$97F9 AND $0A with $FE drops P1 bit');
+  assert.strictEqual(s.zp4C, 0x78, '$9825 STA $4C -- the 120-frame continue timeout');
+  // $980E: canned packet $1C lands in the VRAM queue (cursor > 0).
+  assert.ok(s.vram.cursor > 0, '$9810 JSR $85E8 -- packet $1C appended');
+  // $06EC,P := $18 + $31. P1: coll[0x1EC] := $31.
+  assert.strictEqual(s.coll[0x1EC], 0x31, '$9818 STA $06EC,X (P1 indicator)');
+});
+
+test('$97F1 demo path ($09 != 0) is still a loud throw', () => {
+  // $9801 LDA $09 / BEQ $980E: the demo/attract game-over path ($0D:=5, INC $0B,
+  // JMP $9C09) is unported. $09 is 0 in every play run; this pins the throw.
   const s = bootState(res.manifest);
   s.lives[0] = 0;
-  assert.throws(() => respawn(s, res), /\$97F1/);
+  s.zp09 = 1;                      // demo/attract
+  assert.throws(() => respawn(s, res), /\$9805/);
 });
 
 test('$97DD: the respawn clears $3A/$5D/$33/$1B and $9C09 clears $57', () => {

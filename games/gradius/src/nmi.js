@@ -82,19 +82,20 @@
 // packets", which sent the terrain knownFail's diagnosis at the wrong routine
 // for the port's whole life.
 
-import { MODE_STAGE, u8 } from './state.js';
+import { MODE_STAGE, u8, BTN, ENEMY_BASE } from './state.js';
 import { readJoypad } from './input.js';
 import { drainQueue, queueTerminator } from './vram.js';
 import { hudTick } from './hud.js';
+import { cannedPacket } from './hudpackets.js';
 import { buildDisplayList, oamDma } from './oam.js';
 import { updatePlayer } from './player.js';
 import { advanceCamera, latchScroll } from './camera.js';
 import { streamBlock } from './terrain.js';
-import { spawnEngine, enemyBullets, updateEnemies } from './enemies.js';
-import { introStep, pauseCheck, respawn } from './flow.js';
+import { spawnEngine, enemyBullets, updateEnemies, clearSlot } from './enemies.js';
+import { introStep, pauseCheck, respawn, codeMatch } from './flow.js';
 import { shotSweep } from './collision.js';
 import { applyCapsule, computeRank } from './powerup.js';
-import { soundDriver, setBgm } from './sound.js';
+import { soundDriver, setBgm, soundRequest, pulse1Dur } from './sound.js';
 import { chrBank } from './render/ppu.js';
 
 /**
@@ -323,74 +324,372 @@ export function stagePlay(state, res) {
                   + `stage's assets.`);
   }
   if (sub & 0x20) { dyingArm(state, res); return; }        // $96AB-$96AF
-  if (sub & 0x40) {                               // $96B1-$96B5
-    // $B0 IS the port's own state as of wave 8 -- it is pulse 1's duration
-    // counter (src/sound.js), and "non-zero for 277 frames" is simply a channel
-    // that was playing. What is still not ported is $96FB itself: the wave plan
-    // excludes game over and continue.
-    //
-    // WAVE 12 REPLACED "nothing in this corpus reaches either" WITH A NUMBER,
-    // and the number is not small. MEASURED with an exec hook on $96FB over
-    // 27,400 cartridge frames of seven scripts (tools/oracle/throwaudit.py):
-    // **794 executions, first at game frame 3380**, on two runs that simply
-    // played long enough to lose three lives ($20 reads 255 on 796 frames, and
-    // $97F1 fires twice). This is the highest-traffic unported arm in the whole
-    // port and it needs nothing exotic: it needs a player who is not very good.
-    throw new Error(`$96FB: $1B = $${sub.toString(16).toUpperCase()} has bit 6 `
-                  + `set (GAME OVER). $96FD gates both the timeout and START on `
-                  + `$B0 -- pulse 1's duration counter, i.e. "wait until the `
-                  + `game-over jingle has finished" -- and neither the timeout `
-                  + `arm nor the continue screen is ported. REACHABLE: measured `
-                  + `794 executions of $96FB on the cartridge, first at frame `
-                  + `3380 (tools/oracle/throwaudit.py). Deliberately excluded `
-                  + `by docs/worklog/gradius/00-plan.md; that exclusion is now `
-                  + `the port's biggest known hole.`);
-  }
+  if (sub & 0x40) { gameOverArm(state, res); return; }     // $96B1-$96B5 -> $96FB
   if (sub & 0x80) { playArm(state, res); return; }         // $96B7-$96BB
   introStep(state, res);                          // $96BE -> jt_96C5
 }
 
 /**
  * `$982A` -- the play arm. `LDA $1B / JSR $83E4` into the 16-entry table at
- * $982F, indexed by ($1B * 2) AND $FF, i.e. by the low nibble.
+ * $982F. `$83E4` opens `ASL A`: the `$80` high bit leaves as carry-out and is
+ * dropped, so the index is exactly **(low nibble of $1B) << 1**, 0-15. The
+ * `$96A5` ladder guarantees that reaching here means bit 7 is set and bits 4-6
+ * are clear, so `$1B` is `$80`-`$8F`.
  *
- * Entry 0 is `st_9A4D`:
+ * WAVE 24 MADE THE TABLE REAL. Before it the port refused any `$1B !== $80`
+ * with one throw; now the dispatch is the cartridge's 16 entries and every arm
+ * not yet ported throws with its ROM target. The stage-1-clear critical path is
+ * 7 states ($80->$81->$82->$83->$84->$85->$86); W24 ports six of the bodies
+ * plus the `$80` exit. `$86`/`$9904`, `$8B`-`$8D`, `$8E`/`$8F` and `$87`-`$8A`
+ * stay throws (W27 / off the stage-1 clear path / intro-shared routines).
  *
- *   9A4D  A6 19 / A5 3F / DD 3D 9A / 90 05      $3F < $9A3D[$19] -> $9A5B
- *   9A56  BD 45 9A / 85 1B                      else $1B := $9A45[$19] = $81
- *   9A5B  20 57 83  JSR $8357                   the CHR bank + the BGM request
- *
- * $9A3D[0] = $0C, which assets/terrain/stages.json already carries as
- * `bossPage` -- the same byte, read by the same instruction. Stage 1 therefore
- * ends at world X >= 3072, which no scenario in this corpus reaches (the
- * furthest is camera page 0).
- *
- * `$9A5B JSR $8357` IS PORTED as of wave 8 (src/sound.js setBgm) and used to
- * be on this file's not-ported list with the note "its only non-sound effect is
- * $2D". That was true and it was not the whole routine: $8363-$839D is the
- * background-music selector, gated on `$3E == 0` -- the two frames in every 512
- * where the camera's low byte is zero, and the first play frame after any stage
- * intro, because $9B3E zeroes $3E. That is where the stage BGM the recon
- * measured starting at game frame 310 comes from, and without it the port's
- * channel-owner bytes would never leave the values they were seeded with.
+ * The two convergence tails every arm ends in:
+ *   `JMP $9A5B` = `setBgm` ($8357) then the mode-5 body ($9A5E falls through).
+ *   `JMP $9A5E` = the mode-5 body only.
  */
 function playArm(state, res) {
-  if (state.substate !== 0x80) {                  // $982C -> jt_982F
-    throw new Error(`$982A: play sub-state $1B = $${state.substate.toString(16)
-      .toUpperCase()}. Only $80 (st_9A4D) is ported; $81-$8F are the `
-      + `end-of-stage and boss-approach chain ($9A0E, $99E9, $99C0, $9982, `
-      + `$997E, $9904, $988C, $98DD, $98E5, $984F) and the intro states the `
-      + `table shares with jt_96C5.`);
+  switch (state.substate & 0x0F) {                  // $982C -> jt_982F, low nibble
+    case 0x0: return st9A4D(state, res);            // [0]  $80 -> $9A4D
+    case 0x1: return st9A0E(state, res);            // [1]  $81 -> $9A0E
+    case 0x2: return st99E9(state, res);            // [2]  $82 -> $99E9
+    case 0x3: return st99C0(state, res);            // [3]  $83 -> $99C0
+    case 0x4: return st9982(state, res);            // [4]  $84 -> $9982
+    case 0x5: return st997E(state, res);            // [5]  $85 -> $997E
+    case 0x6: throw new Error(                       // [6]  $86 -> $9904 (W27)
+        '$9904: $1B = $86 (stage-end). Despawn on $1C==$93, CMP $98FD,X, the '
+      + '$39==0 -> $1B:=$90 next-stage route or else INC $19/$1B:=$8E warp. '
+      + 'W27 (the exit). 513 hits in the endchain run but its port is W27.');
+    case 0x7: throw new Error(                       // [7]  $87 -> $9B3E
+        '$9B3E: jt_$982F arm 7 (full stage reset) reached through the play '
+      + 'dispatch, not the intro dispatch $96C5. introReset is ported '
+      + '(src/flow.js) but this entry through $982A is 0 hits in the endchain '
+      + 'run; left as a throw. Delegate to introStep or leave for the '
+      + 'stage-transition wave.');
+    case 0x8: throw new Error(                       // [8]  $88 -> $9BED
+        '$9BED: jt_$982F arm 8 (intro banner) reached through the play '
+      + 'dispatch. introPackets is ported (src/flow.js) but this entry is '
+      + '0 hits in the endchain run; left as a throw.');
+    case 0x9: throw new Error(                       // [9]  $89 -> $9C12
+        '$9C12: jt_$982F arm 9 (intro HUD) reached through the play dispatch. '
+      + 'introHud is ported (src/flow.js) but this entry is 0 hits; left as a '
+      + 'throw.');
+    case 0xA: throw new Error(                       // [10] $8A -> $9C1E
+        '$9C1E: jt_$982F arm 10 (intro meter) reached through the play '
+      + 'dispatch. introMeter is ported (src/flow.js) but this entry is 0 hits; '
+      + 'left as a throw.');
+    case 0xB: throw new Error(                       // [11] $8B -> $988C
+        '$988C: jt_$982F arm 11. $57->spawn 9 / else $9C24; INC $1B->$8C. '
+      + '0 hits in the endchain run; off the stage-1 clear path.');
+    case 0xC: throw new Error(                       // [12] $8C -> $98DD
+        '$98DD: jt_$982F arm 12. INC $5B / JSR $ADAB / JMP $9A8C. 0 hits in '
+      + 'the endchain run; off the stage-1 clear path.');
+    case 0xD: throw new Error(                       // [13] $8D -> $98E5
+        '$98E5: jt_$982F arm 13 (reset-to-intro). $1B := 0 / JMP $9B3E. 0 '
+      + 'hits in the endchain run; off the stage-1 clear path.');
+    case 0xE:                                        // [14] $8E -> $984F (W27)
+    case 0xF: throw new Error(                       // [15] $8F -> $984F (W27)
+        '$984F: $1B = $' + state.substate.toString(16).toUpperCase() + ' (the '
+      + 'WARP route). Forced 4 px/frame scroll ($2D := 1, JSR $8402 with A=4) '
+      + 'and the type-$A6 rain. W27; 0 hits in the endchain run.');
+    default: throw new Error(`$982A: unreachable jt_$982F index ` // paranoia: 0x0F pins 0-15
+      + `${state.substate & 0x0F}`);
   }
-  if (state.cam.hi >= res.stage.bossPage) {       // $9A4F-$9A54 CMP $9A3D,X
-    throw new Error(`$9A56 LDA $9A45,X: $3F reached ${state.cam.hi} `
-                  + `(>= $9A3D[${state.zp19}] = ${res.stage.bossPage}), so the `
-                  + `cartridge would set $1B = $81 and start the end-of-stage `
-                  + `chain. Not ported.`);
+}
+
+/**
+ * `$9A4D` -- play sub-state $80 (index 0). The "scroll to the boss page" state;
+ * its body has been live since wave 1. W24 ports its EXIT.
+ *
+ *   9A4D  A6 19 / A5 3F / DD 3D 9A / 90 05      $3F < $9A3D[$19] -> $9A5B (keep)
+ *   9A56  BD 45 9A / 85 1B                      else $1B := $9A45[$19] = $81
+ *   9A5B  20 57 83  JSR $8357                   setBgm, then $9A5E (convergence)
+ *
+ * `$9A45` is the constant `$81` for every stage (8 bytes, byte-verified off
+ * rip/prg.asm). A literal is honest; `$81` is what every row holds. The two
+ * paths converge at `$9A5B` (BCC-taken "keep playing" vs the advance) -- two
+ * roads, one tail, NOT a fall-through trap.
+ */
+function st9A4D(state, res) {
+  if (state.cam.hi >= res.stage.bossPage) {         // $9A4F-$9A54 CMP $9A3D,X / BCC $9A5B
+    // $9A56 LDA $9A45,X / STA $1B. $9A45[$19] = $81 for all stages.
+    state.substate = 0x81;                           // $9A59 STA $1B
   }
-  setBgm(state, res);                             // $9A5B JSR $8357
+  setBgm(state, res);                               // $9A5B JSR $8357
   // ...and $8357 falls through into $9A5E.
   mode5Body(state, res);
+}
+
+/**
+ * `$9A0E` -- play sub-state $81 (index 1). The 1-frame COUNTDOWN SETUP: loads
+ * the 16-bit timer $4C:$4D and advances to $82.
+ *
+ *   9A0E  A6 17                       X = rank $17
+ *   9A12  A5 19 / C9 06 / D0 08       stage != 6 -> $9A1E (the normal load)
+ *         (stage 6 special: $4D:=1, $4C:=$CA -- unreachable, one stage loaded)
+ *   9A1E  BD 35 9A / 85 4D            $4D := $9A35[$17]
+ *   9A23  A9 00 / 85 4C               $4C := 0
+ *   9A27  E6 5B / E6 1B               INC $5B; $1B -> $82
+ *   9A2D  A9 01 / 85 62               $62 := 1 (write-only flag, no PRG reader)
+ *   9A2F  20 DF 99                    clear $63-$6F (sub_$99DF)
+ *   9A32  4C 5B 9A                    JMP $9A5B (setBgm + body)
+ *
+ * `$9A35` is the rank-countdown table, exported as `stage.rankCountdown` (W24).
+ * At rank 1 (the endchain run) `$9A35[1]` = `$03`, so `$00:$03` = 768 frames.
+ */
+function st9A0E(state, res) {
+  const rank = state.zp17;                           // $9A0E LDX $17
+  if (state.zp19 === 6) {                            // $9A12 CMP #$06
+    throw new Error('$9A12: $19 = 6 (stage 6 special case). $4D:=1, $4C:=$CA '
+                  + 'is unreachable -- the port loads one stage.');
+  }
+  state.zp4D = res.stage.rankCountdown[rank];        // $9A1E LDA $9A35,X / STA $4D
+  state.zp4C = 0;                                    // $9A23/$9A25 STA $4C
+  state.zp5B = u8(state.zp5B + 1);                   // $9A27 INC $5B
+  state.substate = u8(state.substate + 1);           // $9A29 INC $1B -> $82
+  state.spawn.z62 = 1;                               // $9A2D STA $62 (no PRG reader)
+  clearSpawnExt(state);                              // $9A2F JSR $99DF
+  setBgm(state, res);                               // $9A32 JMP $9A5B
+  mode5Body(state, res);
+}
+
+/**
+ * `$99E9` -- play sub-state $82 (index 2). THE COUNTDOWN. 16-bit decrement of
+ * $4C:$4D via `$840C` once per frame until both are 0; the camera is frozen
+ * meanwhile (INC $5B -> $9A9C skips `$98EE`). Ends with $60 := 0 (spawn engine
+ * to idle) and `INC $1B` -> $83.
+ *
+ *   99E9  E6 5B                       INC $5B
+ *   99EB  A2 4C / A9 01 / 20 0C 84    ($4C:$4D) -= 1  via $840C
+ *   99F2  A5 4C / 05 4D / D0 66       not zero -> JMP $9A5E (loop)
+ *   99F8  85 60 / E6 1B               $60 := 0; $1B -> $83
+ *   99FC  A5 19 / F0 06               stage 0 -> sfx $3F
+ *   9A00  C9 03 / F0 02               stage 3 -> sfx $3F
+ *   9A04  D0 58                       else -> JMP $9A5E
+ *   9A06  A9 3F / 20 1E EC            sfx $3F, then JMP $9A5E
+ *
+ * `$840C` with A=1 is a 16-bit subtract-1: `EOR #$FF` -> $FE, `SEC`, `ADC` ->
+ * the byte - 1; borrow DECs the high byte. At rank 1 the count is $00:$03 = 768.
+ */
+function st99E9(state, res) {
+  state.zp5B = u8(state.zp5B + 1);                   // $99E9 INC $5B
+  // $840C: 16-bit decrement of $4C:$4D (A=1). No-carry = no borrow; carry = DEC hi.
+  if (state.zp4C !== 0) state.zp4C = u8(state.zp4C - 1);     // $840F/$8411
+  else { state.zp4C = 0xFF; state.zp4D = u8(state.zp4D - 1); } // $8415 DEC $01,X
+  if ((state.zp4C | state.zp4D) !== 0) {             // $99F2/$99F4 ORA / D0 $9A5E
+    mode5Body(state, res);                           // $99F6 BNE target
+    return;
+  }
+  state.spawn.z60 = 0;                               // $99F8 STA $60 (A = 0 here)
+  state.substate = u8(state.substate + 1);           // $99FA INC $1B -> $83
+  if (state.zp19 === 0 || state.zp19 === 3) {        // $99FC/$9A00 stage 0 or 3
+    soundRequest(state, 0x3F);                        // $9A06/$9A08 JSR $EC1E
+  }
+  mode5Body(state, res);                             // $9A0B JMP $9A5E
+}
+
+/**
+ * `$99C0` -- play sub-state $83 (index 3). The 1-frame transition. INC $1B
+ * (-> $84), and for stage >= 5 a shortcut to $86 (unreachable, one stage
+ * loaded); else INC $5B, `$62 := 2`, clear $63-$6F, JMP $9A5E.
+ *
+ *   99C0  E6 1B                       $1B -> $84
+ *   99C2  A5 19 / C9 05 / 90 0B       stage < 5 -> $99D3
+ *   99C8  D0 05                       stage > 5 -> $99CF (skip the sfx)
+ *   99CA  A9 AC / 20 1E EC            stage == 5: sfx $AC
+ *   99CF  A9 86 / 85 1B               $1B := $86
+ *   99D3  E6 5B / A9 02 / 85 62       INC $5B; $62 := 2
+ *   99D9  20 DF 99                    clear $63-$6F
+ *   99DC  4C 5E 9A                    JMP $9A5E
+ */
+function st99C0(state, res) {
+  state.substate = u8(state.substate + 1);           // $99C0 INC $1B -> $84
+  if (state.zp19 >= 5) {                             // $99C4 CMP #$05 / BCC $99D3
+    throw new Error('$99C4: $19 = ' + state.zp19 + ' (>= 5). The stage>=5 '
+                  + 'shortcut sets $1B := $86'
+                  + (state.zp19 === 5 ? ' after sfx $AC ($99CA)' : '')
+                  + ' ($99CF). Unreachable: the port loads one stage; $86/$9904 '
+                  + 'is W27.');
+  }
+  state.zp5B = u8(state.zp5B + 1);                   // $99D3 INC $5B
+  state.spawn.z62 = 2;                               // $99D7 STA $62 (no PRG reader)
+  clearSpawnExt(state);                              // $99D9 JSR $99DF
+  mode5Body(state, res);                             // $99DC JMP $9A5E
+}
+
+/**
+ * `$9982` -- play sub-state $84 (index 4). THE BOSS-PAGE SCROLL. Two paths:
+ *   $3F == $9A3D[$19] (== bossPage) -> `BEQ $99BA`: run the despawn sweep
+ *       `sub_$994A` and stay (the ~512-frame crawl at 0.5 px/frame).
+ *   else ($3F > bossPage) -> the ADVANCE path: two HUD packets, `$2D := 1`,
+ *       allocate slot 9 and write the boss object, INC $5B, `INC $1B` -> $85,
+ *       `$5E := #$3F`.
+ * Both then `JMP $9A5E`. W24 ports the CREATION; the boss per-frame handler
+ * (`$B914`) and the death chain are W26, so the field window ends at $84.
+ */
+function st9982(state, res) {
+  if (state.cam.hi === res.stage.bossPage) {         // $9986 CMP $9A3D,X / BEQ $99BA
+    sub994A(state);                                  // $99BA JSR $994A (the despawn)
+    mode5Body(state, res);                           // $99BD JMP $9A5E
+    return;
+  }
+  // $998B: the advance path (fires once, the frame $3F leaves the boss page).
+  cannedPacket(state, res.hudPackets, 0x1E);         // $998B/$998D
+  cannedPacket(state, res.hudPackets, 0x05);         // $9990/$9992
+  state.ppu.chrSel = 1;                              // $9995/$9997 STA $2D
+  clearSlot(state, 9);                              // $999D JSR $A527 ($A8 := 9)
+  const bi = 9 + ENEMY_BASE;                         // $0315 = $0300 + $15 (slot 21)
+  state.obj.type[bi] = 0x98;                         // $99A2 STA $0315 (boss type)
+  state.obj.y[bi] = 0x80;                           // $99A7 STA $0335
+  state.obj.x[bi] = 0xF0;                           // $99AC STA $0375
+  state.zp5B = u8(state.zp5B + 1);                   // $99AF INC $5B
+  state.substate = u8(state.substate + 1);           // $99B1 INC $1B -> $85
+  state.spawn.z5E = 0x3F;                            // $99B3 LDA #$3F / STA $5E (cursor)
+  mode5Body(state, res);                             // $99B7 JMP $9A5E
+}
+
+/**
+ * `sub_$994A` -- THE DESPAWN SWEEP, called from `$9982`'s `BEQ` (this wave) and
+ * `$9904`'s `$1C==$93` arm (W27). Walks the despawn cursor `$5E` down one per
+ * frame, clearing 8 collision-map columns at the cursor and (when the cursor is
+ * < $14) the enemy object bytes behind it.
+ *
+ *   994A  A6 3E / E0 D0 / 90 ..      THE GUARD: only when $3E (scroll low) >= $D0
+ *   9950  A6 5E / 30 ..              cursor valid (not $80+)
+ *   9954  C6 5E                      DEC $5E (X still holds the OLD cursor)
+ *   9958-996D  clear $0600/$0640/$0680/$06C0/$0500/$0540/$0580/$05C0,X
+ *   9970  E0 14 / B0 ..              old cursor >= $14: skip the object clear
+ *   9974-997A  clear $010C,$012C,$030C,X  (status/anim/type at enemy slot 12+X)
+ *
+ * `$5E` is seeded to the IMMEDIATE `$3F` (not the register) at `$99B3` on the
+ * $84->$85 transition and at `$9C0F` on every intro (src/flow.js clearAhead).
+ */
+function sub994A(state) {
+  if (state.cam.lo < 0xD0) return;                   // $994C CPX #$D0 / BCC $997D
+  const x = state.spawn.z5E;                         // $9950 LDX $5E
+  if (x & 0x80) return;                              // $9952 BMI $997D
+  state.spawn.z5E = u8(state.spawn.z5E - 1);         // $9954 DEC $5E
+  const c = state.coll;                              // $0500-$06FF
+  c[0x100 + x] = 0;                                  // $9958 STA $0600,X
+  c[0x140 + x] = 0;                                  // $995B STA $0640,X
+  c[0x180 + x] = 0;                                  // $995E STA $0680,X
+  c[0x1C0 + x] = 0;                                  // $9961 STA $06C0,X
+  c[0x000 + x] = 0;                                  // $9964 STA $0500,X
+  c[0x040 + x] = 0;                                  // $9967 STA $0540,X
+  c[0x080 + x] = 0;                                  // $996A STA $0580,X
+  c[0x0C0 + x] = 0;                                  // $996D STA $05C0,X
+  if (x >= 0x14) return;                             // $9970 CPX #$14 / BCS $997D
+  const i = ENEMY_BASE + x;                          // $010C,X = $0100+$0C+X
+  state.obj.status[i] = 0;                           // $9974 STA $010C,X
+  state.obj.anim[i] = 0;                             // $9977 STA $012C,X
+  state.obj.type[i] = 0;                             // $997A STA $030C,X
+}
+
+/**
+ * `$997E` -- play sub-state $85 (index 5). THE BOSS FIGHT. The handler is two
+ * instructions:
+ *
+ *   997E  E6 5B      INC $5B
+ *   9980  D0 35      BNE $99B7      -> JMP $9A5E (continue)
+ *
+ * The `BNE` is ALWAYS taken: `$5B` is cleared every mode-5 frame at `$9658
+ * STA $5B` (inside `stagePlay`, BEFORE the `$96A5` ladder reaches `$997E`), so
+ * the `INC` makes it 1 and the test-for-nonzero always branches. The
+ * fall-through into `st_9982` ($84) is STRUCTURALLY DEAD -- it would re-fire
+ * the boss-page spawn every 256 frames. NOT ported; cited to `$9658`.
+ *
+ * `$85` exits via the boss-death `INC $1B` (->$86), which lives in the boss
+ * death chain (`$B914`, W26) -- NOT here. `$997E` has no `$1B` writer.
+ */
+function st997E(state, res) {
+  state.zp5B = u8(state.zp5B + 1);                   // $997E INC $5B
+  // $9980 BNE $99B7 -- always taken ($5B was 0, now 1). Fall-through is DEAD.
+  mode5Body(state, res);                             // $99B7 JMP $9A5E
+}
+
+/**
+ * `sub_$99DF` -- clear `$63-$6F` (13 bytes, `LDX #$0C / STA $63,X / DEX / BPL`).
+ * Called from `$81` ($9A2F) and `$83` ($99D9). Of the range, `$64-$67` and
+ * `$69-$6F` are the spawn-engine zero page (modelled); `$63` and `$68` have no
+ * ported reader (cleared on the cartridge, inert here).
+ */
+function clearSpawnExt(state) {
+  state.spawn.z64 = 0; state.spawn.z65 = 0;          // $64-$67
+  state.spawn.z66 = 0; state.spawn.z67 = 0;
+  state.spawn.z69 = 0;                               // $69
+  state.spawn.z6A = 0; state.spawn.z6B = 0;          // $6A:$6B
+  state.spawn.z6C = 0; state.spawn.z6D = 0;          // $6C-$6F
+  state.spawn.z6E = 0; state.spawn.z6F = 0;
+}
+
+/**
+ * `$96FB` -- the GAME-OVER arm (the `$1B & $40` ladder arm, not a jt_$982F
+ * entry). Reached once `$97F1` sets `$1B := $C0` (the last life gone).
+ * MEASURED: 794 executions across the 11 throwaudit recordings (397 in
+ * deep-survivor + 397 in deep-autofire), the highest-traffic unported arm.
+ *
+ *   96FB  E6 5B                       INC $5B (freezes the camera for the hold)
+ *   96FD  A5 B0 / D0 5C               $B0 != 0 (jingle playing) -> $975D
+ *   9701  A5 0A / 29 03 / D0 0E       $0A != 0 (a player still in) -> $9715
+ *   9707  A5 05 / 29 10 / F0 08       START not pressed -> $9715
+ *   970D  20 D5 82 / A9 04 / 85 00    CONTINUE -> mode 4 (unported)
+ *   975D  A2 00 / 20 65 97 / 4C 5E 9A codeMatch(0) + mode-5 body  ($975D tail)
+ *   9715  A5 4C / D0 42               $4C != 0 -> $975B (DEC $4C, $975D tail)
+ *         ($4C == 0: the continue window expired -> restart; throw)
+ *
+ * `$B0` is pulse 1's DUR byte (src/sound.js pulse1Dur): non-zero while the
+ * game-over jingle `$AF` plays. `$0A` is "players still in the game"; `$97F1`
+ * clears the dead player's bit, so a solo game-over leaves `$0A == 0`. `$4C`
+ * is the 120-frame continue timeout seeded at `$9825`.
+ *
+ * The two tails that leave mode 5 -- CONTINUE (mode 4, `$970D`) and the
+ * timeout-expired restart to title (mode 0, `$9751`) -- are unported and throw
+ * loudly with their ROM address. The reproduced window is the `$B0`-gated hold
+ * plus the `$4C` countdown.
+ */
+function gameOverArm(state, res) {
+  state.zp5B = u8(state.zp5B + 1);                   // $96FB INC $5B
+  if (pulse1Dur(state) !== 0) {                      // $96FD LDA $B0 / BNE $975D
+    codeMatch(state, res, 0);                        // $975D LDX #$00 / JSR $9765
+    mode5Body(state, res);                           // $9762 JMP $9A5E
+    return;
+  }
+  // $9701: jingle done. $0A = players still in the game (bit per player).
+  if (!(state.zp0A & 0x03)) {                        // $9701/$9703 (BNE $9715 if a player in)
+    // $0A == 0 -- the solo game-over case (the dead player's bit was cleared at
+    // $97F9). START here means CONTINUE.
+    if (state.input.pressed & BTN.START) {           // $9707/$9709 AND #$10
+      throw new Error('$970D: CONTINUE pressed on the game-over screen. JSR '
+                    + '$82D5 then mode := 4 (the continue/respawn screen) is '
+                    + 'not ported -- modes 0-4 are out of scope.');
+    }
+  }
+  continueTimeout(state, res);                        // $9715
+}
+
+/** `$9715` -- the continue timeout / window-expired tail of `$96FB`. */
+function continueTimeout(state, res) {
+  if (state.zp4C !== 0) {                            // $9715/$9717 BNE $975B
+    state.zp4C = u8(state.zp4C - 1);                 // $975B DEC $4C
+    codeMatch(state, res, 0);                        // $975D LDX #$00 / JSR $9765
+    mode5Body(state, res);                           // $9762 JMP $9A5E
+    return;
+  }
+  // $9719: $4C == 0 -- the 120-frame continue window expired.
+  if (state.zp33 === 0x0A) {                         // $971D CPY #$0A (Y = $33)
+    throw new Error('$9721: continue cheat ($33 reached $0A). The lives restore '
+                  + '($20,X := 3), $0A OR, score clear and JMP $97DD are not '
+                  + 'ported.');
+  }
+  if (state.zp0A & 0x03) {                           // $974B/$974D AND #$03
+    throw new Error('$97C5: multiplayer continue-timeout expired -- the player '
+                  + 'switch ($97C5-$97DB) is not ported.');
+  }
+  // $9751: solo timeout expired -> restart to title. JSR $9B3E, mode := 0.
+  throw new Error('$9751: game-over continue window expired -> restart to title '
+                + '(JSR $9B3E then mode := 0, $1B := 0). $9B3E is ported but '
+                + 'mode 0 (attract/title) is not; the restart-to-title is out '
+                + 'of scope. REACHABLE on the cartridge: the deep-survivor and '
+                + 'deep-autofire runs each sit in $96FB for ~397 frames.');
 }
 
 /**
@@ -415,7 +714,11 @@ function playArm(state, res) {
  */
 function dyingArm(state, res) {
   if (state.zp4C === 0) {                         // $96EF/$96F1
-    respawn(state, res);                          // $96F3 JMP $979D -> $9B3E
+    // respawn() returns false on GAME OVER ($97F1 -> JMP $9A5E): the game-over
+    // entry ends in the mode-5 body, so run it here. A normal respawn (true)
+    // runs the intro and does NOT reach the body -- the next frame's dispatch
+    // takes the intro states.
+    if (!respawn(state, res)) mode5Body(state, res);  // $96F3 -> $979D / $9827 JMP $9A5E
     return;
   }
   state.zp4C = u8(state.zp4C - 1);                // $96F6 DEC $4C

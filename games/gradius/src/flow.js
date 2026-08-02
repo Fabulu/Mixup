@@ -71,7 +71,7 @@ import { u8, BTN } from './state.js';
 import { cannedPacket, copyPacket } from './hudpackets.js';
 import { stLives, stTopScore, stScore, stPowerBar } from './hud.js';
 import { buildBlock } from './terrain.js';
-import { stopAllSound, pauseSaveChannel, pauseRestoreChannel } from './sound.js';
+import { stopAllSound, pauseSaveChannel, pauseRestoreChannel, soundRequest } from './sound.js';
 
 /** `$18`, with the range the per-player arrays assume made explicit. */
 function playerIndex(state) {
@@ -159,6 +159,10 @@ export function introStep(state, res) {
  * background-music de-dupe byte `$839B` compares against, and clearing it HERE
  * is what makes the respawn's stage intro request the BGM again instead of
  * being de-duplicated into silence.
+ *
+ * RETURNS `true` for a normal respawn (the intro ran; the caller does NOT run
+ * the mode-5 body) and `false` for GAME OVER ($97F1 ran; the caller MUST run
+ * the mode-5 body, because $97F1 ends `JMP $9A5E`). Wave 24 ported $97F1.
  */
 export function respawn(state, res) {
   const p = playerIndex(state);                     // $979D LDX $18
@@ -172,17 +176,12 @@ export function respawn(state, res) {
   state.save24[p] = cp;                             // $97BB STA $24,X
   state.save28[p] = state.zp1A;                     // $97BD/$97BF
   if (state.lives[p] & 0x80) {                      // $97C1/$97C3 BMI $97F1
-    // MEASURED (wave 12, tools/oracle/throwaudit.py): $97F1 executes TWICE in
-    // 27,400 cartridge frames of seven scripts, at game frames 3379 and 3967,
-    // and each time $96FB then runs for ~400 frames. Losing three lives is not
-    // an exotic state; it is the default outcome of playing.
-    throw new Error(`$97F1: $20,${p} went negative -- GAME OVER. $0A &= $FE, `
-                  + `$1B = $C0, the canned packet $1C and the $4C = 120 continue `
-                  + `window are not ported: $96FD gates both the timeout and `
-                  + `START on $B0 -- pulse 1's duration counter (src/sound.js), `
-                  + `i.e. "wait until the game-over jingle has finished". `
-                  + `REACHABLE: measured twice in 27400 cartridge frames, first `
-                  + `at frame 3379. Excluded by docs/worklog/gradius/00-plan.md.`);
+    // $97F1: GAME OVER. MEASURED (wave 12, throwaudit.py): executes twice in
+    // 27,400 cartridge frames, at game frames 3379 and 3967; each time $96FB
+    // then runs for ~400 frames. Losing three lives is the default outcome of
+    // playing, not an exotic state. Ported in wave 24 (was a throw).
+    enterGameOver(state, res, p);                     // $97F1 (below)
+    return false;                                     // $9827 JMP $9A5E -- caller runs body
   }
   // $97C5-$97DB, the two-player switch. With one player $0A = 1, so `AND #$02`
   // is 0 and X -- and therefore $18 -- is unchanged. Ported as the ROM has it
@@ -204,6 +203,43 @@ export function respawn(state, res) {
   state.zp1C = 0;                                   // $97E9 STA $1C
   clearAhead(state);                                // $97EB JSR $9C09
   introReset(state, res);                           // $97EE JMP $9B3E
+  return true;
+}
+
+/**
+ * `$97F1` -- the GAME-OVER ENTRY, reached from `$979D` when the last life is
+ * gone (`$20,X` negative). Sets up the game-over screen and seeds the continue
+ * timeout, then ends `JMP $9A5E` (the caller runs the mode-5 body).
+ *
+ *   97F1  A9 FE / E0 00 / F0 02 / A9 FD   mask := P1 ? $FE : $FD
+ *   97F9  25 0A / 85 0A                   $0A &= mask (drop the dead player's bit)
+ *   97FD  A9 C0 / 85 1B                   $1B := $C0 (game over: bits 6+7)
+ *   9801  A5 09 / D0 ..                   $09 != 0 -> demo path (unported; throw)
+ *   980E  A9 1C / 20 E8 85                canned packet $1C (the banner)
+ *   9813  A5 18 / 69 31 / 9D EC 06        $06EC,X := $18 + $31 (a continue indicator)
+ *   981B  20 AB 83                        stop all sound ($FC)
+ *   981E  A9 AF / 20 1E EC                sfx $AF -- the game-over jingle (owns pulse 1)
+ *   9823  A9 78 / 85 4C                   $4C := $78 (120-frame continue timeout)
+ *   9827  4C 5E 9A                        JMP $9A5E
+ *
+ * The jingle `$AF` is what makes `$B0` (pulse 1's DUR) non-zero for ~277 frames,
+ * which is the `$96FD` gate the game-over arm waits on. `$06EC` is inside the
+ * $0500-$06FF collision-map page; it holds a per-player continue-screen byte.
+ */
+function enterGameOver(state, res, p) {
+  const mask = p === 0 ? 0xFE : 0xFD;                // $97F1/$97F3/$97F5/$97F7
+  state.zp0A = u8(state.zp0A & mask);                // $97F9 AND $0A / STA $0A
+  state.substate = 0xC0;                             // $97FD/$97FF LDA #$C0 / STA $1B
+  if (state.zp09 !== 0) {                            // $9801 LDA $09 / BEQ $980E
+    throw new Error('$9805: demo/attract game-over ($09 != 0). $0D := 5, INC '
+                  + '$0B, JMP $9C09 -- the demo game-over path is not ported '
+                  + '(attract mode is out of scope).');
+  }
+  cannedPacket(state, res.hudPackets, 0x1C);         // $980E/$9810
+  state.coll[0x1EC + p] = u8(p + 0x31);              // $9813-$9818 STA $06EC,X
+  stopAllSound(state, res);                          // $981B JSR $83AB
+  soundRequest(state, 0xAF);                         // $981E/$9820 JSR $EC1E (the jingle)
+  state.zp4C = 0x78;                                 // $9823/$9825 STA $4C (120)
 }
 
 /**
@@ -321,6 +357,7 @@ function clearZeroPage(state) {
   state.build.prog = 0;                             // $58
   state.zp5B = 0; state.zp5C = 0;                   // $5B $5C
   state.spawn.z5D = 0;                              // $5D
+  state.spawn.z5E = 0;                              // $5E  (re-seeded to $3F below)
   state.zp5F = 0;                                   // $5F  the hatch counter, w22
   state.spawn.z60 = 0; state.spawn.z61 = 0;         // $60 $61
   state.spawn.z64 = 0; state.spawn.z65 = 0;         // $64-$67
@@ -429,7 +466,10 @@ export function introPackets(state, res) {
  */
 export function clearAhead(state) {
   state.build.ahead = 0;                            // $9C09/$9C0B STA $57
-  // $9C0D LDA #$3F / $9C0F STA $5E -- see above.
+  // $9C0D LDA #$3F / $9C0F STA $5E -- the immediate #$3F, NOT the register $3F.
+  // $5E is the despawn sweep cursor (wave 24, sub_$994A); re-seeded here on every
+  // intro so the $84 crawl starts the sweep at the right column.
+  state.spawn.z5E = 0x3F;                           // $9C0F STA $5E
 }
 
 /**
