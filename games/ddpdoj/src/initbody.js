@@ -147,10 +147,11 @@ function damageFirstFamily(ram, rom, a5, a6, unported, p) {
   ram.setU32(a6 + 0x0a, rom.u32(sp));                  // move.l (A0,D1.w),($a,A6)
   const bp = headingLongAddr(rom, 0x269EC8, ram.u8(a6 + S.heading));
   ram.setU32(a5 + 0x2c, rom.u32(bp));                  // move.l (A0,D1.w),($2c,A5)
-  // $...: if the enemy's class byte bit 5 is set, call $242A80 (an aim
-  // routine).  Not a done-when field; noted.
-  if ((ram.u8(a5 + R.classByte) & 0x20) !== 0) {
-    unported?.note(0x242a80, `$242A80 aim (class-bit-5) in damage-first init `
+  // $269C32: btst.b #$5, $c(A5) -- if the enemy's TYPE byte (record +$0C) bit 5
+  // is set, call $242A80 (an aim routine).  Not a done-when field; noted.
+  // (W23 review F3: was +$0D `classByte` -- off-by-one; the ROM tests +$0C.)
+  if ((ram.u8(a5 + R.typeByte) & 0x20) !== 0) {
+    unported?.note(0x242a80, `$242A80 aim (type-bit-5) in damage-first init `
       + `$${p.initBody.toString(16).toUpperCase()} -- writes to record sprite `
       + `fields, not a done-when stat`);
   }

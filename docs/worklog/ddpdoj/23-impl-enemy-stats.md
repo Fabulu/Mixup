@@ -1,6 +1,13 @@
 # W23 IMPL — ENEMY STATS BECOME DATA: the two loaders, the 208 pairs, the 21 init bodies
 
-status: **DONE (measured; speed/heading + aim-buckets are named W24 gaps).** The
+status: **306/308 stage-1 (lf,type) spawns match on the strict subset
+{hitbox,HP,palette,HP-reload}; speed/heading/anim/flags are overridden per-spawn
+by `$263808` (resource #$1F) -> W24 (511 fields); 2 `$88` hb14/hb16 anim-hitbox
+residuals are ACCEPTED (W24-owned); 3 RED mutants all seen red.**
+(W23 review F1/F2 — corrected in W23b, see `23b-impl-stats-fix.md` — replaced the
+earlier blanket "DONE / 0 divergent" framing and the false `pgm.py check` PASS
+claim below; the ported code itself is unchanged by W23b except the one F3
+displacement byte in `src/initbody.js`.)  The
 two loaders (W20) + 19 new prototype-window exports + the 21 stage-1 init bodies
 (src/initbody.js) make every stage-1 enemy's prototype stats DATA.  The spawn-stats
 gate compares the port vs the board AT SPAWN (post-init, pre-handler) over the
@@ -149,7 +156,9 @@ python games/ddpdoj/tools/oracle/w23run.py 16000 w23-stats-stage1   # ~6.5 min
 node games/ddpdoj/tools/w23statsgate.mjs                            # 306/308 match
 node games/ddpdoj/tools/w23statsgate.mjs --break all                # 3 RED
 node --test games/ddpdoj/tests/                                     # 343 pass, 0 skip
-python games/ddpdoj/tools/oracle/pgm.py check                      # enemy-stats gate PASS
+python games/ddpdoj/tools/oracle/pgm.py check   # enemy-stats gate: exit 0 (W23b F1; pre-F1 was
+                                               # [FAIL] exit 1 on the 2 $88 hb14/hb16 anim-hitbox
+                                               # residuals -- a measured W24 gap, now accepted)
 ```
 
 ## WHAT UNBLOCKS (for W25/W29)

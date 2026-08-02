@@ -268,7 +268,7 @@ const RANK_COUNTER_FIELDS = new Set(['b28']);
 
 // ------------------------------------------------------------- the comparison
 function compare(frames, portByLf) {
-  let matched = 0, divergent = 0, firstDiv = null;
+  let matched = 0, divergent = 0, accepted88 = 0, firstDiv = null;
   let w24Bucket = 0, w24Move = 0, rankCtr = 0, staleBucket = 0, outOfScope = 0;
   let boardSpawns = 0, portSpawns = 0;
   const divByField = new Map();
@@ -302,7 +302,17 @@ function compare(frames, portByLf) {
         if (isBucket) { staleBucket++; continue; }       // stale-slot / type-specific
         if (fn === 'hprel' && !hprelMeaningful(type)) { staleBucket++; continue; }
         if (!FIELDS.includes(fn)) continue;               // not in the strict set
+        // THE ACCEPTED RESIDUAL: the $88 anim-driven hitbox (hb14/hb16).  The
+        // init writes $F400 to +$14/+$16 picked by anim ($275E86), and anim is
+        // the movement-script-overridden field ($263808 / resource #$1F, W24).
+        // Counted in `divergent` (transparency -- it still prints) but named
+        // here as `accepted88` and subtracted for the pass verdict, so the gate
+        // is HONEST: green only when the sole strict divergences are these two.
+        // No OTHER divergence is silenced -- the RED sweep + RULE 4 re-prove
+        // that swap-tables / corrupt-hp / seed-wrong-stage still go red.
+        const isAccepted88 = type === 0x88 && (fn === 'hb14' || fn === 'hb16');
         divergent++;
+        if (isAccepted88) accepted88++;
         if (!firstDiv) firstDiv = { lf, type, fn, port: portRec[fn], board: boardRec[fn] };
         divByField.set(fn, (divByField.get(fn) ?? 0) + 1);
         perTypeDiv = true;
@@ -311,8 +321,8 @@ function compare(frames, portByLf) {
       else divByType.set(type, (divByType.get(type) ?? 0) + 1);
     }
   }
-  return { matched, divergent, firstDiv, w24Bucket, w24Move, rankCtr, staleBucket,
-           outOfScope, boardSpawns, portSpawns, divByField, divByType };
+  return { matched, divergent, accepted88, firstDiv, w24Bucket, w24Move, rankCtr,
+           staleBucket, outOfScope, boardSpawns, portSpawns, divByField, divByType };
 }
 
 function main() {
@@ -338,12 +348,15 @@ function main() {
         console.error(`  lf=${e.lf} clk=${e.clk.toString(16)} type=$${e.type.toString(16)} ${e.err.split('\n')[0]}`);
     }
     const r = compare(frames, portByLf);
+    const unexpected = r.divergent - r.accepted88;     // real strict divergences
     const span = win.reset - win.install;
     console.log(`CORPUS ${path.basename(corpus)}`);
     console.log(`window lf ${win.install}..${win.reset - 1} (${span} frames)`);
     const pct = (100 * (1 - r.divergent / Math.max(1, r.boardSpawns))).toFixed(4);
     console.log(`RESULT stats divergent: ${r.divergent} across `
-      + `${r.boardSpawns} stage-1 (lf,type) spawns (${pct} % match)`);
+      + `${r.boardSpawns} stage-1 (lf,type) spawns (${pct} % match) -- `
+      + `${r.accepted88} accepted $88 anim-hitbox residual`
+      + `${r.accepted88 === 1 ? '' : 's'} (hb14/hb16, W24); ${unexpected} unexpected`);
     if (r.firstDiv) {
       console.log(`  first divergence lf=${r.firstDiv.lf} type=$${r.firstDiv.type.toString(16)}`
         + (r.firstDiv.fn ? ` field=${r.firstDiv.fn} port=${r.firstDiv.port} board=${r.firstDiv.board}`
@@ -370,7 +383,10 @@ function main() {
       for (const [fn, n] of [...r.divByField].sort((a, b) => b[1] - a[1]))
         console.log(`    ${fn}  ${n}`);
     }
-    return r.divergent === 0 ? 0 : 1;
+    // PASS when the only strict divergences are the accepted $88 hb14/hb16
+    // anim-hitbox residuals (W24).  Any OTHER strict divergence (a real one)
+    // makes this exit 1 -- the RED sweep re-proves those still fail.
+    return unexpected === 0 ? 0 : 1;
   }
 
   // the RED sweep -- each mutation must make the gate diverge where it was 0.
@@ -390,7 +406,9 @@ function main() {
     if (romMut === null) { console.log(`RED [${m}] skipped (windows unavailable)`); continue; }
     const { portByLf } = runPort(frames, win, romMut, m);
     const r = compare(frames, portByLf);
-    const red = r.divergent > 2;          // baseline is 2 (the $88 W24 hitbox)
+    // baseline is 2 ($88 hb14/hb16, the accepted residual); a mutation goes RED
+    // when it adds any OTHER strict divergence (divergent - accepted88 > 0).
+    const red = (r.divergent - r.accepted88) > 0;
     if (!red) allRed = false;
     console.log(`RED [${m}] divergent=${r.divergent} ${red ? 'RED' : 'green'} -- ${MUT[m] ?? ''}`);
   }
