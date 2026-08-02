@@ -224,6 +224,96 @@ test('a loop word of $FFFF never completes ($261FA8) -- the boss lock', () => {
   assert.equal(g.ram.u16(BGRAM.scr0 + 0x10), 0xffff, 'the loop word is not decremented');
 });
 
+// ---------------------------------------------------------------------- W19
+// THE QUESTION WAVE 19 WAS SENT TO ANSWER: the live build "runs past" the
+// stage-1 FREEZE records.  It does not -- op $0C is ported, it latches, and it
+// stays latched.  What it freezes is the CLOCK ($8130CE), because ($8,A5) is
+// read at $261324 ONLY and that read guards the single instruction $26132C.
+// Everything else in $2612A0's frame runs frozen.  Neither of the two
+// candidate diagnoses in the brief (unported / released immediately) survives
+// this pair of tests, and the second one is the red switch for the third.
+test('$0C freezes THE CLOCK and NOT the scroll: the camera and the column '
+  + 'writer are outside the ($8,A5) gate ($261324 guards only $26132C)', () => {
+  // Freeze on the first handler frame, at speed $0800 = one column per frame,
+  // and arm an INFINITE repeat so nothing can release it.
+  const g = newGame([[0, 0x08, 0x0800], [0, 0x04, 0xfffe, 2, 0xffff], [0, 0x0c]],
+    { stream: 32 });
+  for (let i = 0; i < 4; i++) g.step();                // 3 warm-up + 1 handler
+  assert.equal(g.ram.u16(A5 + BGO.frozen), 1, '$26214C latched');
+  const clock = g.ram.u16(BGRAM.clock);
+  const cam = g.ram.u32(CAM.bgLong);
+  const cols = g.vram.columnsWritten;
+  const txcam = g.ram.u32(CAM.txLong);
+  const seen = new Set();
+  for (let i = 0; i < 40; i++) { g.step(); seen.add(g.vram.streamPtr); }
+  assert.equal(g.ram.u16(A5 + BGO.frozen), 1, 'still frozen 40 frames later');
+  assert.equal(g.ram.u16(BGRAM.clock), clock,
+    'THE CLOCK IS WHAT IS FROZEN -- $261324 skipped $26132C on all 40 frames');
+  assert.equal(g.ram.u32(CAM.bgLong), cam + 40 * 0x800,
+    '$261308/$240B94 ran on every frozen frame: 40 x $800 of camera');
+  // The TX camera runs on ITS OWN speed word ($22,A5): script 1 is empty here,
+  // so it is still $261180's $0020 and NOT the $0800 the bg got.  What matters
+  // is that it MOVED at all -- it is outside the gate too.
+  assert.ok(g.ram.u32(CAM.txLong) > txcam,
+    '$26138A/$240C22 too -- the TX camera is outside the gate as well');
+  assert.equal(g.vram.columnsWritten, cols + 40,
+    '$26133C..$261376 wrote a map column on every frozen frame');
+  // ...and the terrain LOOPS, which is what the boss lock looks like on the
+  // board: 40 columns were painted but they came from only the TWO columns the
+  // op-$04 window covers, because $261FD0 keeps rewinding to the same target.
+  // That is why "it runs to the end" and "it is locked" look identical to a
+  // player, and why counting columns is the only way to tell them apart.
+  const rewind = g.ram.u32(BGRAM.scr0 + 0x0c);
+  assert.deepEqual([...seen].sort((a, b) => a - b), [rewind, rewind + 36],
+    '40 frames of scrolling consumed exactly the 2 columns of the repeat window');
+});
+
+test('THE RED SWITCH for the sentence above: `freeze-stops-the-scroll` makes a '
+  + 'frozen background stop dead, and the clean run must differ from it', () => {
+  const run = (mutate) => {
+    const g = newGame([[0, 0x08, 0x0800], [0, 0x04, 0xfffe, 2, 0xffff], [0, 0x0c]],
+      { stream: 32, mutate });
+    for (let i = 0; i < 44; i++) g.step();
+    return { clock: g.ram.u16(BGRAM.clock), cam: g.ram.u32(CAM.bgLong),
+      cols: g.vram.columnsWritten, frozen: g.ram.u16(A5 + BGO.frozen) };
+  };
+  const clean = run(null);
+  const red = run('freeze-stops-the-scroll');
+  assert.equal(red.frozen, 1, 'the mutation does not change WHETHER it freezes');
+  assert.equal(red.clock, clean.clock,
+    'nor the clock -- the clock was already frozen in both');
+  assert.ok(red.cam < clean.cam,
+    `the mutation must STOP the camera: clean $${clean.cam.toString(16)} vs `
+    + `red $${red.cam.toString(16)}`);
+  assert.ok(red.cols < clean.cols,
+    `and the column writer: clean ${clean.cols} vs red ${red.cols}`);
+  // ...and the difference is the WHOLE freeze window, at exactly one column per
+  // $800 of camera.  The window is 41 handler frames, not 40: the mutation's
+  // early return sits AFTER $2612D2, so the frame on which $26214C latches is
+  // itself stopped.  Stating it as a ratio rather than a constant is what
+  // stopped that off-by-one becoming a magic number.
+  assert.equal(clean.cam - red.cam, (clean.cols - red.cols) * 0x800,
+    'one column per $800 of camera across the whole stopped window');
+  assert.equal(clean.cols - red.cols, 41);
+});
+
+test('the boss lock is LOUD: op $0C with a $FFFF repeat armed notes $261142, '
+  + 'the enemy-side unfreeze the port has no producer for', () => {
+  const lock = newGame([[0, 0x08, 0x0800], [0, 0x04, 0xfffe, 2, 0xffff], [0, 0x0c]],
+    { stream: 32 });
+  for (let i = 0; i < 6; i++) lock.step();
+  // `UnportedLog.report()` returns "N x $ADDR what" STRINGS, not records.
+  const named = (g) => g.unportedLog.report().some((s) => s.includes('$261142'));
+  assert.ok(named(lock), '$261142 must be named when the VM enters a lock it '
+    + 'cannot leave -- a quiet return here is a defect in its own right');
+  // ...and a FINITE repeat must NOT raise it, or the note means nothing.
+  const ok = newGame([[0, 0x08, 0x0800], [0, 0x04, 0xfffe, 2, 1], [0, 0x0c]],
+    { stream: 32 });
+  for (let i = 0; i < 6; i++) ok.step();
+  assert.ok(!named(ok),
+    'the OPENING freeze (2 passes, released by $261FC0) must stay silent');
+});
+
 test('op $00 SPAWN does NOT write the cursor back on the $FFFFFFFF arm '
   + '($2620EC branches past $2620FC)', () => {
   const g = newGame([[0, 0x00, 2]]);          // asks for 2, the stream holds 1

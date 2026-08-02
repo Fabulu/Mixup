@@ -140,6 +140,12 @@ export const MUTATIONS = {
     + 'red on the attract demo -- declared, see EXPECTED_GREEN',
   'prefill-14-columns': '$261202 `moveq #$e,D7` read as 14 columns instead of '
     + '15 (dbra runs D7+1 times). Must move d18a on the FIRST compared frame',
+  'freeze-stops-the-scroll': 'op $0C read as freezing the SCROLL rather than '
+    + 'the CLOCK. ($8,A5) is read at $261324 ONLY, guarding $26132C; the camera '
+    + '($261308), the column writer ($26133C) and the TX camera ($26138A) are '
+    + 'outside it. Must move b012/b034/d18a/d18c on the opening freeze -- '
+    + 'stage 1 is frozen from frame 52 to frame 279 and scrolls 1,824 px in '
+    + 'between (W19 §2)',
 };
 
 /** Mutations declared GREEN on THIS gate, BEFORE the run, with the reason.

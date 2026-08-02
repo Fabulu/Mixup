@@ -56,7 +56,17 @@ export const BGO = {
   init2: 0x02,      // bclr #0,($2,A5)                       $2611CA
   state: 0x03,      // the 4-bit warm-up state machine       $26127A
   entryClock: 0x06, // ($6,A5) -> $8130CE                    $26114C
-  frozen: 0x08,     // ($8,A5) 1 = the clock is frozen       $26214C
+  // ($8,A5) 1 = THE CLOCK is frozen -- NOT the scroll.  W19 censused every
+  // site: written by $26214C (op $0C, set), $261FC0 (op $04's repeat
+  // completing, clear), $26204A ($26200E's fast-forward, clear) and
+  // $2612E8..$2612F8 (the external $81317E arm), and READ AT EXACTLY ONE
+  // ADDRESS -- $261324, which guards the single instruction $26132C
+  // `addq.w #1,$8130CE`.  The camera accumulate ($261308), the column writer
+  // ($26133C..$261376) and the TX camera ($26138A) are all OUTSIDE it, so a
+  // frozen background KEEPS SCROLLING at whatever speed the last $08 record
+  // set.  `freeze-stops-the-scroll` is the red switch for the opposite
+  // reading; see 19-impl-score-chain-rank-ledger.md §2.
+  frozen: 0x08,     // ($8,A5)                               $26214C
   colPtr: 0x0a,     // long, the cursor into the column stream
   cursor: 0x0e,     // word, the mod-64 ring column          $261372
   scr1Ptr: 0x10,    // long, script 1's column pointer (never advanced -- $261F84
@@ -183,6 +193,13 @@ export class BgVram {
     }
     /** every column index this port has written, in order -- diagnostics only */
     this.columnsWritten = 0;
+    // WAVE 14 -- DIAGNOSTIC, and the page's asset scheduler reads it.  The
+    // ROM address `$26134E` loaded into A0 for the column being painted right
+    // now, i.e. the cursor into the stage's column stream.  The published page
+    // turns it into a stage-1 map column index and uses it to decide which
+    // background shard to fetch next; nothing in the port's own arithmetic
+    // reads it, exactly like `columnsWritten`.
+    this.streamPtr = 0;
   }
   /** `$240D9A move.l D4,(A0)` with A0 = $900000 + ((row<<6)+col)*4. */
   setLong(row, col, v) {
@@ -550,9 +567,30 @@ function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut) {
       ram.setU16(a5 + (d6 !== 0 ? BGO.speedBg : BGO.speedTx), v);
       return a1;
     }
-    case 0x0c: {   // $26214C FREEZE
+    case 0x0c: {   // $26214C FREEZE -- the CLOCK, not the scroll (see BGO.frozen)
       ram.setU16(a5 + BGO.frozen, 1);                      // $26214C
       ram.setU16(blk + SB.resume, u16(ram.u16(BGRAM.clock) + 4)); // $262152..5A
+      // A freeze whose partner op-$04 armed `loops = $FFFF` can NEVER be
+      // released from inside the VM ($261FA8 always takes the rewind branch),
+      // and that is the stage-1 boss lock -- record $261792, clock $0344, map
+      // columns 210..223 looping forever.  The only doors out are OUTSIDE this
+      // file and all three are unported, so say so LOUDLY rather than letting
+      // the port sit in the lock silently.  W19 censused all three:
+      //   $261142  ext-unfreeze ($81317E := 2) -- TWO callers in the whole of
+      //            build B, $26C7F4 and $26D254, both ENEMY state machines,
+      //            each paired with `clr.w $8130F4`.  $261138 (freeze ON) has
+      //            no caller at all.
+      //   $261100  the external speed push -- 9 callers, one of which is the
+      //            stage-1 midboss at $26B73A (D0 = D1 = $0020).
+      //   $8130D2  the global pause -- exactly TWO writers, $25FD82 / $25FD8C.
+      if (ram.u16(blk + SB.loops) === 0xffff) {
+        ctx.unportedLog.note(0x261142, '$261142 the external unfreeze -- op $0C '
+          + `at t=$${recTime.toString(16).toUpperCase().padStart(4, '0')} `
+          + 'latched a freeze whose op-$04 partner armed loops=$FFFF, so the '
+          + 'VM can never release it. The board is released by an ENEMY '
+          + '($26C7F4 / $26D254, both `jsr $261142` + `clr.w $8130F4`) and no '
+          + 'enemy is ported, so the port HOLDS here -- correctly. W19 §2');
+      }
       return a1;
     }
     case 0x10: {   // $262160 BGELEM
@@ -829,6 +867,17 @@ export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {}) {
     ram.setU16(BGRAM.extFreeze, 0);                        // $2612E2
     ram.setU16(a5 + BGO.frozen, ext === 1 ? 1 : 0);        // $2612E8..$2612F8
   }
+  // THE MISREADING THIS SWITCH EXISTS FOR: "FREEZE stops the scroll".  It does
+  // not -- ($8,A5) is read at $261324 ONLY, and $261308/$26133C/$26138A are
+  // outside it.  With the switch on, a frozen background stops dead; without
+  // it, it keeps scrolling and the op-$04 repeat loops the terrain, which is
+  // what the stage-1 boss lock looks like on the board.  MEASURED: the port
+  // free-run holds the boss-lock freeze from frame 7,317 and still advances
+  // $80B012 by $162B00 and writes 710 more map columns by frame 13,000.
+  if (mut === 'freeze-stops-the-scroll' && ram.u16(a5 + BGO.frozen) !== 0) {
+    elementDriverAndShake(ctx);
+    return;
+  }
   const d6 = ram.u16(a5 + BGO.speedBg);                    // $2612FE ($1c,A5)
   let d5 = u16(ram.u16(a5 + BGO.accTick) + d6);            // $261302/$261306
   camBgAccumulate(ram, d6, ram.u16(BGRAM.crossDelta), mut);// $261308..$261314
@@ -848,6 +897,7 @@ export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {}) {
     d5c = u16(d5c - 0x800);                                // $261344
     repeatStep(ram, a5, mut);                              // $261348 -- BEFORE
     let a0 = ram.u32(a5 + BGO.colPtr);                     // $26134E   the read
+    vram.streamPtr = a0;                                   // W14 diagnostic
     const col = ram.u16(a5 + BGO.cursor);                  // $261352
     for (let row = 0; row < 9; row++) {                    // $261358 moveq #8,D6
       writeMapLong(ram, rom, vram, row, col, rom.u32(a0)); // $26135A/$26135C

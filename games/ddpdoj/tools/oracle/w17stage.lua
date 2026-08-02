@@ -38,7 +38,11 @@
 --   $81319E..$8131A9    the op-$04 repeat state (rewind ptr / len / cnt / loop)
 --   $8131C2/$8131C4     the deferred cue callback -> op-$14 sub-op 0
 -- and two that answer "can the stage even END":
---   $813092..$813097    loop / stage / stage*4
+--   $813092..$813097    STAGE INDEX / ? / stage*4  (W19 CORRECTION: this
+--                       file first called $813092 the loop. It is the STAGE
+--                       INDEX -- measured 0->1 at lf12360 on THIS corpus, at
+--                       the same instant $813096 went 0->4, while $813098
+--                       stayed 0 for all 16,000 frames. $813098 is the loop.)
 --   $8130CE             the distance clock, PC-censused (who else writes it?)
 --
 -- WHY THE SPEED AND THE FREEZE ARE NOT TAPPED, and it cost a wrong guess to
@@ -186,7 +190,7 @@ hunter("vm1cursor_8131AA", 0x8131AA, 0x8131AD, 200)  -- one write per script-1 r
 hunter("vm0repeat_81319E", 0x81319E, 0x8131A9, 64)   -- op-$04 rewind/len/cnt/loop
 hunter("cuearm_8131C2",    0x8131C2, 0x8131C7, 32)   -- op-$14 sub-op 0
 -- can the stage END?
-hunter("stage_813092",     0x813092, 0x813097, 32)   -- loop / stage / stage*4
+hunter("stage_813092",     0x813092, 0x813097, 32)   -- STAGE index / ? / stage*4
 hunter("clock_8130CE",     0x8130CE, 0x8130CF, 24)   -- who writes the odometer
 hunter("alldead_8130D2",   0x8130D2, 0x8130D3, 32)   -- 20-recon §6 calls this
   -- "every player is dead" ($25FD82 set / $25FD8C clear).  Pass 1 of this wave
@@ -382,7 +386,8 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x803940, 0x803941, "sem",
           RAM:read_u32(0x13192), RAM:read_u32(0x131aa),
           -- 32 $80B03C   33 elem live mask   34 elem live count
           RAM:read_u32(0xb03c), emask, ecount,
-          -- 35 $813092 loop  36 $813094  37 $813096 stage*4  38 $813098
+          -- 35 $813092 STAGE INDEX (NOT the loop -- W19)  36 $813094
+          -- 37 $813096 stage*4  38 $813098 THE LOOP
           RAM:read_u16(0x13092), RAM:read_u16(0x13094),
           RAM:read_u16(0x13096), RAM:read_u16(0x13098),
           -- 39 $81309E rank  40 $8130BE P1 lives  41 $8130FA P1 life state
