@@ -52,8 +52,9 @@ export const SPAWN = {
   DISTANCE_CLOCK: 0x8130ce,    // $2633d0 cmp.w $8130ce,D0  (real from W14)
   // the deferred queue $815EAA (LIFO, $C80 cap).  $26369a cmpi.w #$c80,D2.
   // entry stride is $50 (one enemy-record-width): $2634ba addi.w #$50,D2 and
-  // the processing copies +$12/+$16/+$1A/+$1E/+$22/+$26 in place, which only
-  // makes sense if source and destination share the enemy record layout.
+  // the drain copies +$2/+$12..+$46/+$4A in place (16 fields, $263472..$2634CC),
+  // which only makes sense if source and destination share the enemy record
+  // layout.
   DEFQ_BASE: 0x815eaa,
   DEFQ_COUNT: 0x815ea8,        // $263446 move.w $815ea8,D6  (byte offset)
   DEFQ_CAP: 0x0c80,            // $26369a cmpi.w #$c80,D2  -> $C80/$50 = 40 entries
@@ -309,7 +310,7 @@ export function dispatchScriptRecord(ram, rom, recCursor, unported) {
 // The ONLY door for the 47 script-less types (plan W21): an enemy handler
 // enqueues a record ($263678/$263684/$263690) and the walker drains the queue
 // LIFO at the end of every script pass ($263446).  Entry stride is $50; cap is
-// $C80 = 25 entries.  Three entry points differ only in the flags word D1:
+// $C80 / $50 = 40 entries.  Three entry points differ only in the flags word D1:
 //   $263678  D1 = $80     $263684  D1 = $00     $263690  D1 = caller's
 export const DEFQ_D1 = { FIXED80: 0x80, FIXED00: 0x00, CALLER: -1 };
 
@@ -357,10 +358,17 @@ export function processDeferred(ram, rom, unported) {
     ram.setU16(SPAWN.DEFQ_COUNT, count);           // (pop happens at $2634d2 in ROM)
     const r = allocEnemy(ram, type, flags);        // $263468 jsr $2636d6
     if (r.addr === ENEMY.dummy) continue;          // $2634d8 cmpa.l #$81454c / beq
-    // $263472..$263496: copy the queued fields into the enemy record
+    // $263472..$2634CC: copy the queued fields into the enemy record.  The ROM
+    // drain copies +$2 (byte) at $263472, FOURTEEN longwords at +$12..+$46
+    // (every 4 bytes, $263478..$2634C6), then +$4A (word) at $2634CC -- sixteen
+    // fields in all.  Truncating this list (the W22 review's F1: the loop once
+    // stopped at +$26) loses any state a handler writes into the tail
+    // (+$2A..+$4A: sub-record position, etc.) and the drained record diverges.
     ram.setU8(r.addr + 0x02, ram.u8(a + 0x02));    // $263472 move.b ($2,A4),($2,A0)
-    for (const off of [0x12, 0x16, 0x1a, 0x1e, 0x22, 0x26])  // $263478..$263496
+    for (const off of [0x12, 0x16, 0x1a, 0x1e, 0x22, 0x26,  // $263478..$263496
+                       0x2a, 0x2e, 0x32, 0x36, 0x3a, 0x3e, 0x42, 0x46])  // $26349c..$2634c6
       ram.setU32(r.addr + off, ram.u32(a + off));
+    ram.setU16(r.addr + 0x4a, ram.u16(a + 0x4a));  // $2634cc move.w ($4a,A4),($4a,A0)
     initDispatch(ram, rom, r.addr, unported);      // $2634e4 bsr $2635f6
     n++;
     // re-read count: the loop tests $815ea8 at $2634e8

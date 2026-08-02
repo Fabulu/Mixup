@@ -422,6 +422,66 @@ test('processDeferred empties a single-entry queue', () => {
   assert.equal(ram.u16(SPAWN.DEFQ_COUNT), 0, 'queue drained to 0');
 });
 
+// The W22 review's F1: the drain `$263446` copies SIXTEEN fields through $2634CC
+// (a byte at +$2, fourteen longwords +$12..+$46, a word at +$4A).  The port once
+// stopped at +$26 (7 fields); this test enqueues a deferred spawn carrying real
+// state in EVERY drain field, drains it, and asserts each one reached the enemy
+// record -- so truncating the loop reddens it.  RULE 4: SEEN RED (drop the tail
+// of the offset list back to 0x12..0x26 and remove the +$4A word copy; eight
+// longword asserts + the word assert go red), restored, SHA-verified.
+test('processDeferred copies ALL 16 drain fields ($263472..$2634CC) -- the F1 gate', () => {
+  const R = synthRom();
+  const ram = new Ram();
+  // enqueue a type $11 spawn (init stub present in the synth ROM -> allocEnemy +
+  // the run-length read succeed; the init+8 BODY throws W23, which we catch --
+  // the drain copy at $263472..$2634CC runs BEFORE the $2634E4 init call).
+  const { addr: q } = enqueueDeferred(ram, 0x11, DEFQ_D1.FIXED00);
+  // distinct values in every drain field, written to the QUEUE slot the way a
+  // W25 handler would before the walker drains.  +$2 is the byte the drain's
+  // `move.b ($2,A4),($2,A0)` reads; writing it after enqueue also covers the
+  // high byte of the type word without disturbing the low byte (type stays $11).
+  ram.setU8 (q + 0x02, 0xAB);
+  ram.setU32(q + 0x12, 0x11121_314);
+  ram.setU32(q + 0x16, 0x16162_830);
+  ram.setU32(q + 0x1A, 0x1A1A4_038);
+  ram.setU32(q + 0x1E, 0x1E1E5_044);
+  ram.setU32(q + 0x22, 0x2222_6050);
+  ram.setU32(q + 0x26, 0x2626_7060);
+  ram.setU32(q + 0x2A, 0x2A2A_8070);
+  ram.setU32(q + 0x2E, 0x2E2E_9080);
+  ram.setU32(q + 0x32, 0x3232_A090);
+  ram.setU32(q + 0x36, 0x3636_B0A0);
+  ram.setU32(q + 0x3A, 0x3A3A_C0B0);
+  ram.setU32(q + 0x3E, 0x3E3E_D0C0);   // high word zeroed by init's clr.w ($3e,A5)
+  ram.setU32(q + 0x42, 0x4242_E0D0);
+  ram.setU32(q + 0x46, 0x4646_F0E0);
+  ram.setU16(q + 0x4A, 0x4A4A);
+  // type $11, flags $00 -> bandCommon, first free slot = $81364C
+  const rec = ENEMY.bandCommon;
+  try { processDeferred(ram, R, { note() {} }); } catch (e) { /* init+8 throws */ }
+  // the drain copy happens before the init body throws; assert every field.
+  assert.equal(ram.u8 (rec + 0x02), 0xAB,           '+$2 byte ($263472)');
+  assert.equal(ram.u32(rec + 0x12), 0x11121_314,    '+$12 long ($263478)');
+  assert.equal(ram.u32(rec + 0x16), 0x16162_830,    '+$16 long ($26347E)');
+  assert.equal(ram.u32(rec + 0x1A), 0x1A1A4_038,    '+$1A long ($263484)');
+  assert.equal(ram.u32(rec + 0x1E), 0x1E1E5_044,    '+$1E long ($26348A)');
+  assert.equal(ram.u32(rec + 0x22), 0x2222_6050,    '+$22 long ($263490)');
+  assert.equal(ram.u32(rec + 0x26), 0x2626_7060,    '+$26 long ($263496)');
+  assert.equal(ram.u32(rec + 0x2A), 0x2A2A_8070,    '+$2A long ($26349C) -- the F1 tail');
+  assert.equal(ram.u32(rec + 0x2E), 0x2E2E_9080,    '+$2E long ($2634A2)');
+  assert.equal(ram.u32(rec + 0x32), 0x3232_A090,    '+$32 long ($2634A8)');
+  assert.equal(ram.u32(rec + 0x36), 0x3636_B0A0,    '+$36 long ($2634AE)');
+  assert.equal(ram.u32(rec + 0x3A), 0x3A3A_C0B0,    '+$3A long ($2634B4)');
+  // +$3E: the drain copies the longword ($2634BA), then init's $26364C
+  // `clr.w ($3e,A5)` zeros its top word, so only the low word survives.
+  assert.equal(ram.u16(rec + 0x3E), 0x0000,         '+$3E top word cleared by init ($26364C)');
+  assert.equal(ram.u16(rec + 0x40), 0xD0C0,         '+$3E low word survives ($2634BA)');
+  assert.equal(ram.u32(rec + 0x42), 0x4242_E0D0,    '+$42 long ($2634C0)');
+  assert.equal(ram.u32(rec + 0x46), 0x4646_F0E0,    '+$46 long ($2634C6)');
+  assert.equal(ram.u16(rec + 0x4A), 0x4A4A,         '+$4A word ($2634CC)');
+  assert.equal(ram.u16(SPAWN.DEFQ_COUNT), 0, 'queue drained to 0');
+});
+
 // ---- 7. against the REAL cartridge tables ----------------------------------
 const haveTables = fs.existsSync(TABLES);
 test('the REAL type $11 +8: the init pointer resolves and init+8 = init + 8', {
