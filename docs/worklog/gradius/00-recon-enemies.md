@@ -147,8 +147,18 @@ very first wave of stage 1.
 `$66` indexes a 2-byte table at **`$A592`**: `(b0 AND $0F)` = member count,
 `(b0 AND $F0)` = spawn X, `b1` = first member's Y.
 `$A592` = `F4 2A | F4 A0 | F3 08 | F2 08 | F2 28 | F4 AA | F4 08 | F4 30 | F4 80 |
-F5 2A | F5 A0 | F3 08 | B5 08 | F3 20 | F3 10 | F3 30 | F4 A0 | F4 2A | F4 A0 | B3 2C`
-(20 entries).
+F5 2A | F5 A0 | F3 08 | B5 08 | F3 20 | F3 10 | F3 30 | F4 A0 | F4 2A | F4 A0 |
+F4 2A | B3 2C`
+(**21 entries**, indices `$00-$14`).
+
+> **CORRECTED, wave 21.** This list said 20 entries and was missing index
+> **19** (`F4 2A`); `B3 2C` is index **20**, not 19. The count is forced by the
+> ROM's own two base addresses: `$A3E8 LDA $A592,X` and `$A42F LDA $A5BC,Y`,
+> and `($A5BC - $A592) / 2 = 21`. Index 20 is reached by cmd `$93`.
+> `20-recon-enemy-census.md` §3 spotted the off-by-one but described it as
+> "off by one from index 17 on"; re-measured on 2026-08-02, indices 17 and 18
+> agree with this list and only 19 was wrong. Pinned by
+> `games/gradius/tests/tables.test.js`.
 
 `$67` indexes a **3-byte** table at **`$A5BC`**: `[delay, dY, styleByte]`.
 Entry 0 = `0A 00 C8` — measured: `$6C` reloads to **10** and the four members of

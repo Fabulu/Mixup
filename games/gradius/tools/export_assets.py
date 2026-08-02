@@ -554,6 +554,218 @@ ENEMY_BLOCKS = [
      "$B251's box frees it before it can run off the end"),
 ]
 
+# ==========================================================================
+# WAVE 21.  The ranges the TWENTY-NINE THROWING $AE1C handlers index.
+#
+# 20-recon-enemy-census.md §4 enumerated 28+ ROM ranges that no exporter
+# shipped, so every unported handler would have hit `romByteReader`'s throw the
+# moment it was written -- the $B086/$B088 crash of wave 15, by design, 24 more
+# times. This block is that list, exported.
+#
+# THE EXTENT OF EVERY ONE IS PINNED ON THE INSTRUCTION IMMEDIATELY AFTER IT.
+# That is the sixth field of each tuple and it is checked at export time, not
+# trusted: metasprite ids, rank speeds and small indices are byte-for-byte
+# indistinguishable from opcodes, so a range cited one byte long ships
+# something that still looks exactly like a table. Every anchor below was read
+# out of `Gradius (USA).nes` with tools/dis6502.py on 2026-08-02 and the
+# lengths agree with the census's counts entry by entry.
+#
+#   (name, start, end_exclusive, readBy, note, anchorAddr, anchorBytes, what)
+#
+ENEMY_BLOCKS_W21 = [
+    # ---- entries 32-37, the six blinking pickups --------------------------
+    ("blinkFrames", 0xAF0A, 0xAF10,
+     "$AF21 LDA $AF0A,Y with Y = type - $20",
+     "89 87 8C 8B 8A 88 -- one metasprite per pickup type $20-$25. $AF09 is "
+     "the RTS before it and $AF10 the first byte of the handler after it, so "
+     "the six is the ROM's, not a guess",
+     0xAF10, (0xA6, 0xA8), "$AF10 LDX $A8, dispatch entries 32-37"),
+    # ---- the rank speed row entries 15/16 reach through $AF40 JMP $B0B4 ----
+    ("rankSpeed", 0xB01D, 0xB026,
+     "$B008 LDA $B01D,Y -> $04EC,X and $040C,X (the 16-bit X velocity), "
+     "Y = the rank $17",
+     "64 46 3C 37 32 2D 28 23 1E -- NINE ranks, matching $BFC5 and $B90A. "
+     "handlerflow.py: this is the ONLY PRG table entries 15 ($AF2E) and 16 "
+     "($AF88) index besides the sound driver's, so it is the whole of wave "
+     "22's table debt for the two hatches",
+     0xB026, (0xA9, 0x91), "$B026 LDA #$91, dispatch entry 17"),
+    # ---- entry 9 / entry 12, the hatch children ---------------------------
+    ("flipFrames", 0xB33B, 0xB343,
+     "$B334 LDA $B33B,Y -> $012C,X, Y = ($016C,X AND 7)",
+     "5E 5F 60 61 62 61 60 5F -- the 8-frame flip of the enemy the floor "
+     "hatch ($AF2E) and the ceiling hatch ($AF88) launch. Both entry 9 "
+     "($B311) and entry 12 ($B3CB) index it; it is the only PRG table either "
+     "one reads",
+     0xB343, (0x20, 0x1E, 0xB3), "$B343 JSR $B31E"),
+    ("spinFrames", 0xB3C2, 0xB3CB,
+     "$B392 LDA $B3C2,Y",
+     "64 64 64 65 65 65 66 66 66 -- entry 11 ($B37F)'s 9-frame spin, three "
+     "frames each",
+     0xB3CB, (0xBD, 0x0C, 0x03), "$B3CB LDA $030C,X, dispatch entry 12"),
+    # ---- entries 13 and 14, the two $B205 variants ------------------------
+    ("phaseB42F", 0xB42F, 0xB434,
+     "$B415 LDA $B42F,Y",
+     "00 00 00 01 01 -- entry 13 ($B402)'s own copy of $B200's shape",
+     0xB434, (0xBD, 0x0C, 0x03), "$B434 LDA $030C,X, dispatch entry 14"),
+    ("phaseB45C", 0xB45C, 0xB461,
+     "$B43C LDA $B45C,Y",
+     "00 00 00 01 01 -- entry 14 ($B434)'s copy. Byte-identical to $B42F and "
+     "exported separately because the ROM has two",
+     0xB461, (0xBD, 0x4C, 0x04), "$B461 LDA $044C,X"),
+    # ---- entry 26 ---------------------------------------------------------
+    ("dwellByRank", 0xB4E4, 0xB4F2,
+     "$B48F and $B4D6 LDA $B4E4,Y / $B4BE LDA $B4EB,Y, Y = the rank $17",
+     "two parallel SEVEN-rank rows in one 14-byte run: 50 50 40 30 20 10 10 "
+     "then 60 60 50 40 30 20 20. Seven, not nine -- $B4EB starts at +7 and "
+     "the run ends at entry 27",
+     0xB4F2, (0xBD, 0x0C, 0x03), "$B4F2 LDA $030C,X, dispatch entry 27"),
+    # ---- entry 30, the stage-end gate -------------------------------------
+    ("gateTiles", 0xB606, 0xB61E,
+     # READ OUT OF THE LISTING, not off the census, which has these two the
+     # wrong way round: $B5A9 is `LDA $B612,X` and $B5DC is `LDA $B606,X`.
+     "$B5A9 LDA $B612,X -> $06C2,Y / $06CA,Y / $06D2,Y (and $06DA,Y), and "
+     "$B5DC LDA $B606,X / $B5E2 LDA $B607,X -> $06F1,Y",
+     "two 12-byte nametable rows the $5B-freezing stage-end gate writes. "
+     "$B606 = 25 78 26 18 25 98 25 F8 25 B8 25 D8 (tile/column pairs) and "
+     "$B612 = FF 00 FF FF C3 FF FF FF FF FF FF FF",
+     # NOT `LDA #$00`: the guard below caught me writing A9 00 here and the ROM
+     # has A0 00 -- entry 38 opens `LDY #$00 / JSR $B628`, the animator call.
+     0xB61E, (0xA0, 0x00, 0x20, 0x28, 0xB6),
+     "$B61E LDY #$00 / JSR $B628, dispatch entry 38"),
+    # ---- the shared $B628 animator ----------------------------------------
+    ("animRecords", 0xB650, 0xB65C,
+     # Read out of the listing: the three loads are CMP, CMP and ADC, and the
+     # middle one is +2, not +1. $B62E CMP $B650,Y (frame count) /
+     # $B639 CMP $B652,Y (wrap limit) / $B644 ADC $B651,Y -> STA $012C,X, so
+     # byte +1 of each record is a METASPRITE BASE.
+     "$B62E CMP $B650,Y / $B639 CMP $B652,Y / $B644 ADC $B651,Y -> $012C,X, "
+     "Y = 0, 3, 6 or 9",
+     "FOUR 3-byte records for $B628's animator, read by entries 26/28/29/38. "
+     "There is no fifth: $B65C is the start of the player-X docking routine "
+     "$B65C, which is the anchor below",
+     0xB65C, (0xAD, 0x60, 0x03), "$B65C LDA $0360, the docking routine"),
+    # ---- entries 7 and 19, the terrain walkers (WAVE 22's first wall) -----
+    ("walkerTables", 0xB6D2, 0xB6E1,
+     # Read out of the listing. The census lists all three as "walker" tables
+     # without saying what they are; $B6C5's destination is $012C,X, the ANIM
+     # FIELD, so $B6D9 is four METASPRITE ids and not a speed row.
+     "$B6A4 LDA $B6D2,Y (Y = the rank $17) -> $04EC,X and $040C,X, the 16-bit "
+     "X velocity; $B6C5 LDA $B6D9,Y -> $012C,X (metasprite); "
+     "$B6CB LDA $B6DD,Y -> $0496,X (the bulletMuzzle index)",
+     "3C 37 32 2D 28 28 23 | 1C 1C 1F 1F | 01 03 02 04 -- one contiguous "
+     "15-byte run holding the census's three tables at +0/+7/+11. Entry 7 "
+     "($B6E1, the floor-hugging walker, stage 1's FIRST unported spawn at "
+     "scroll $0440) and entry 19 ($B747, its ceiling mirror) index all three "
+     "and nothing else in PRG",
+     0xB6E1, (0xA6, 0xA8), "$B6E1 LDX $A8, dispatch entry 7"),
+    # ---- entry 23, the mid-boss -------------------------------------------
+    ("midBossRank", 0xB787, 0xB7A1,
+     "$B7B5..$B839: LDA $B787,Y (fire period) / $B78F,Y (X frac) / "
+     "$B797,Y / $B799,Y (Y frac), Y = the rank $17",
+     "one 26-byte run: 8 + 8 + 2 + 8. $B797 is only two bytes (3F 40) and "
+     "sits between the two 8-rank rows",
+     0xB7A1, (0xA6, 0xA8), "$B7A1 LDX $A8, dispatch entry 23"),
+    ("midBossHits", 0xB852, 0xB85A,
+     "$B84x LDA $B852,Y, Y = the rank $17",
+     "02 03 04 05 06 07 08 08 -- hits to kill entry 23 by rank",
+     0xB85A, (0xBD, 0x8C, 0x04), "$B85A LDA $048C,X"),
+    # ---- entries 23 and 24, muzzles + THE BOSS CORE -----------------------
+    ("coreTables", 0xB8E6, 0xB913,
+     "$B8A9-$B8B4 LDA $B8E6,Y / $B8E9,Y / $B8EC,Y (entry 23's three muzzles); "
+     "$B936 LDA $B8EF,Y (damage frames); $BA3E..$BA73 LDA $B8F8,Y / $B901,Y / "
+     "$B90A,Y (entry 24 by rank)",
+     "one 45-byte run: 3+3+3 muzzle offsets, then 6C 6D 6E 6F 70 71 00 (the "
+     "boss's damage metasprites, 0 terminating), two filler 00s at "
+     "$B8F6/$B8F7, then THREE NINE-rank rows. It ends on $B913, which is "
+     "dispatch entry 25 -- a single RTS byte, not a fall-through into $B914",
+     0xB913, (0x60,), "$B913 RTS, dispatch entry 25"),
+    ("coreSpread", 0xBAF7, 0xBB0F,
+     "$BABA..$BAEC LDA $BAF7,Y / $BAFB,Y / $BAFF,Y / $BB07,Y",
+     "the boss core's 4-way bullet spread: 08 F8 F8 08 | F1 FE 0A 17 | "
+     "8 speeds | 8 directions",
+     0xBB0F, (0xA2, 0x09), "$BB0F LDX #$09, dispatch entry 40"),
+    # ---- entry 40, the scripted fly-past ----------------------------------
+    ("pathScript", 0xBB82, 0xBBB7,
+     "$BB38 LDA $BB82,Y and $BB49 LDA $BB83,Y, Y = 2 * the step counter",
+     "TWENTY-SIX [dX, YhiNibble|metaspriteLowNibble] records then the $FF "
+     "terminator at $BBB6. prgmap.txt's '14-word pointer table at $BB9B' is "
+     "the TAIL of this script, not a table -- ruled out in the census by "
+     "reading $BB33-$BB63",
+     0xBBB7, (0xA5, 0x5D), "$BBB7 LDA $5D"),
+    # ---- $C413, the SECOND spawner nobody had documented ------------------
+    ("lateSpawnerDispatch", 0xC439, 0xC44F,
+     "$C436 JSR $83E4 with A = $19 (the stage) -- an INLINE 7-entry jump "
+     "table -- then $C44F LDA $C447,X / $C452 STA $9A for the stream pointer",
+     "SEVEN handler addresses ($C486 $C546 $C686 $C5AD $C653 $C6DE $C429) "
+     "then FOUR pointers to packed-nibble spawn streams ($C526 $C58D $C633 "
+     "$C752). structure.txt calls the first table 11 entries; it is 7, and "
+     "the proof is that entry 7 would be $C447, which $C44F reads as the "
+     "pointer table",
+     0xC44F, (0xBD, 0x47, 0xC4), "$C44F LDA $C447,X"),
+    ("approachStage0", 0xC4F4, 0xC546,
+     "$C4D4 LDA $C4F4,Y (metasprite) / $C49D LDA $C4F6,Y / $C4A3 LDA $C4F7,Y "
+     "/ $C4C7 ADC $C4F8,Y, Y = $AA; then the $C526 nibble stream through "
+     "($9A),Y",
+     "the stage-0 arm's descriptor rows AND the packed-nibble stream $C447[0] "
+     "points at, as one run: $C4F3 is an RTS and $C546 is the stage-1 arm's "
+     "first instruction, so everything between is data",
+     0xC546, (0xA5, 0x02), "$C546 LDA $02, the stage-1 arm"),
+    ("approachStage1", 0xC56D, 0xC5AD,
+     "$C556 LDA $C56D,Y / $C55C LDA $C56E,Y; then the $C58D nibble stream",
+     "SIXTEEN (x,y) pairs then the 32-byte stream $C447[1] points at. Ends "
+     "where the stage-3 arm begins",
+     0xC5AD, (0xA5, 0x69), "$C5AD LDA $69, the stage-3 arm"),
+    ("approachStage3", 0xC601, 0xC653,
+     "$C5C4-$C5EE LDA $C601,Y / $C603,Y ...; then the $C633 nibble stream",
+     "byte-identical to approachStage0's first 50 bytes -- the ROM has two "
+     "copies -- then the stream $C447[2] points at. $C5FE is `JMP $C4E4` and "
+     "$C653 `INC $68`, so the run is bounded by code both ends",
+     0xC653, (0xE6, 0x68), "$C653 INC $68, the stage-4 arm"),
+    ("approachStage4", 0xC67A, 0xC686,
+     "$C664 LDA $C67A,Y / $C66D LDA $C67B,Y; $C68C CMP $C684,Y ($3A gate)",
+     "four (x,y) pairs, two bytes this recon could not name ($C682/$C683 = "
+     "12 40), then the two-byte $3A gate 28 0A",
+     # Caught by the guard: $C686 is `INC $68`, not `LDA $68`. Four bytes, not
+     # two, because $C653 (the stage-4 arm) also opens `INC $68`.
+     0xC686, (0xE6, 0x68, 0xA5, 0x68),
+     "$C686 INC $68 / LDA $68, the stage-2 arm"),
+    ("approachStage2", 0xC6CA, 0xC6DE,
+     "$C6B3 LDA $C6CA,Y (metasprite) / $C6B9 LDA $C6CC,Y (TYPE) / "
+     "$C6A6 LDA $C6CE,Y (position), Y = $3A",
+     "3F 00 | 97 A6 | 16 position bytes. $C6CC is the ONLY producer of types "
+     "$97 (entry 23) and $A6 (entry 38) outside their own self-writes -- "
+     "$C6BC STA $030C,X",
+     0xC6DE, (0xA5, 0x69), "$C6DE LDA $69, the stage-5 arm"),
+    ("approachStage5", 0xC750, 0xC772,
+     "$C73F LDA $C750,Y; then the $C752 nibble stream",
+     "the two-byte row plus the 32-byte stream $C447[3] points at. The "
+     "stage-5 arm fills an ENEMY-BULLET slot ($0316/$0136), not an enemy",
+     0xC772, (0xA5, 0x19), "$C772 LDA $19"),
+    # ---- entry 22, the stage-2 object -------------------------------------
+    ("stage2Object", 0xC87B, 0xC906,
+     "$C906's body: LDA $C87B,X (four $FF-terminated id streams) and "
+     "LDA $C893,X / $C894,X (four pointers), then ($9A),Y into the streams "
+     "those point at",
+     "24 stream bytes, then the four pointers $C89B $C8F1 $C8BD $C8E0, then "
+     "the 107 bytes those four point INTO -- all of it, because $C878 is "
+     "`JMP $C856` and $C906 is dispatch entry 22, so the whole run between is "
+     "data and splitting it would leave the pointer targets unexported",
+     0xC906, (0xA6, 0xA8), "$C906 LDX $A8, dispatch entry 22"),
+    ("stage2Period", 0xC936, 0xC93D,
+     "$C93x LDA $C936,Y, Y = the rank $17",
+     "50 4B 46 41 3C 28 1E -- entry 22's fire period by rank, seven",
+     0xC93D, (0xA9, 0x00), "$C93D LDA #$00"),
+    # ---- entry 20, the $0600-page object ----------------------------------
+    ("page600Object", 0xCA29, 0xCA5E,
+     "$CA60..$CB03: LDA $CA29,Y / $CA2A,Y / $CA2B,Y / $CA2C,Y (four parallel "
+     "columns, EIGHT rows), then LDA $CA49,Y / $CA50,Y (two damage "
+     "thresholds by rank) and $CA57,Y (Y speed)",
+     "one 53-byte run. $CA29-$CA48 is 8 rows x 4 columns and $CA49 the three "
+     "SEVEN-rank rows the census counted; $CA28 is an RTS and $CA5E is "
+     "dispatch entry 20, so both ends are code",
+     0xCA5E, (0xA4, 0x17), "$CA5E LDY $17, dispatch entry 20"),
+]
+
 ENEMY_STAGE_PTRS = 0xA7D0          # $A2D5 LDA $A7D0,Y -- 7 stages, 2 bytes each
 ENEMY_STAGES = 7
 ENEMY_CHUNKS = 8                   # $61 = $3F AND $0E -> 8 even offsets
@@ -663,6 +875,40 @@ def enemy_tables(rom: Rom) -> dict:
                        "fileOffset": rom.off(a), "len": end - a,
                        "readBy": read_by, "note": note,
                        "bytes": list(rom.slice(a, end - a))})
+
+    # ---- WAVE 21: the 25 ranges the throwing handlers index ---------------
+    # Every one is pinned on the instruction immediately AFTER it. This loop is
+    # the guard; the table above is only a claim until it runs.
+    for name, a, end, read_by, note, anch, want, what in ENEMY_BLOCKS_W21:
+        if anch != end:
+            raise SystemExit(f"ABORT: block {name} ends at ${end:04X} but its "
+                             f"anchor is ${anch:04X} -- the anchor MUST be the "
+                             f"first byte past the block")
+        got = rom.slice(anch, len(want))
+        if got != bytes(want):
+            raise SystemExit(
+                f"ABORT: block {name} (${a:04X}-${end - 1:04X}) claims "
+                f"{what} immediately after it, i.e. "
+                f"{' '.join('%02X' % b for b in want)} at ${anch:04X}, but the "
+                f"ROM has {got.hex(' ')} there. The range is cited wrong and a "
+                f"table of plausible-looking bytes would have shipped.")
+        blocks.append({"name": name, "rom": f"${a:04X}", "end": f"${end:04X}",
+                       "fileOffset": rom.off(a), "len": end - a,
+                       "readBy": read_by, "note": note,
+                       "anchor": {"rom": f"${anch:04X}",
+                                  "bytes": list(want), "is": what},
+                       "bytes": list(rom.slice(a, end - a))})
+
+    # No two blocks may overlap. romByteReader takes the FIRST block that
+    # contains an address, so an overlap would silently pick a winner -- and
+    # with 34 blocks that is no longer something the eye can check.
+    spans = sorted((int(b["rom"][1:], 16), int(b["end"][1:], 16), b["name"])
+                   for b in blocks)
+    for (a0, e0, n0), (a1, e1, n1) in zip(spans, spans[1:]):
+        if a1 < e0:
+            raise SystemExit(f"ABORT: enemy blocks {n0} (${a0:04X}-${e0 - 1:04X}) "
+                             f"and {n1} (${a1:04X}-${e1 - 1:04X}) OVERLAP")
+
     return {
         "note": "CACHE. Rebuild with tools/export_assets.py; the authority is prg.bin.",
         "why": "src/enemies.js reads these at their CPU addresses because the "

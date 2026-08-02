@@ -111,6 +111,34 @@ stage('assets == the cartridge (verify_assets.py --self-test)', () => {
     ? { status: 'PASS' } : { status: 'FAIL' };
 });
 
+// --------------------------------------------------------------- stage 1b2 --
+// tablecoverage.py: does the EXPORT ship every table the port INDEXES, and
+// does metasprites.json contain every id the CARTRIDGE names?
+//
+// WAVE 21. Both directions have already failed in this tree:
+//
+//   LOUD   wave 15 crashed on $B086/$B088 -- a ported handler indexed a range
+//          no exporter shipped. The census then found 28 more in that state,
+//          so the next 24 handlers were going to repeat it one at a time.
+//   QUIET  metasprite $A2 (18 records, named by explosion scripts 4 and 5) was
+//          dropped by an invented `n > 16` bound, and drawMetasprite() returns
+//          the cursor unchanged for a missing id -- it would have drawn nothing
+//          and thrown nothing.
+//
+// The quiet one is why this is a stage and not just a unit test: it can only be
+// seen by walking the ROM and asking what it NAMES. The tool walks all 42
+// $AE1C dispatch targets plus $C413 with a real decoder, so it needs no
+// hand-maintained list and cannot go stale as handlers are ported.
+//
+// It reads assets/prg.bin, not the .nes, so it runs wherever the export does.
+stage('every indexed table is exported (tablecoverage.py)', () => {
+  if (!assetsPresent) return { status: 'SKIP', note: 'needs assets/' };
+  return run('python', ['games/gradius/tools/tablecoverage.py'])
+    ? { status: 'PASS' } : { status: 'FAIL', note: 'a table an $AE1C handler '
+           + 'indexes is in no exported range, or a metasprite id the ROM '
+           + 'names is not in metasprites.json' };
+});
+
 // ---------------------------------------------------------------- stage 1c --
 // snddata.py --selfcheck: the sound data decoded PURELY from the ROM bytes says
 // index $13 (the stage-1 pulse-1 part) lasts 512 ticks, and the cartridge was

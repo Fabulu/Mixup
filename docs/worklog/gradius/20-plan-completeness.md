@@ -33,15 +33,15 @@ asserted by hand. Counting conventions are stated where two recons differed.
 | 5-byte inline records (cmd >= $F0) | **73** | 0 | 73 — the whole route ($A37A/$A466/$A46F/$A4A6) is unported and changes the record STRIDE | wavecensus.py |
 | table A single-spawn descriptors ($A662) | **121** exact | data, exported | 119 referenced; $32/$52 never | bounded by $A7D0 abutting |
 | table B formation descriptors ($A602) | **24** exact | data, exported | all 24 referenced | bounded by $A662 abutting |
-| formation geometry ($A592) | **21** (corrects 00-recon's 20) | data | max index used 20, no overrun | census.py |
+| formation geometry ($A592) | **21** (corrects 00-recon's 20 — the missing entry is index **19**, `F4 2A`; 00-recon-enemies.md fixed in W21) | data | max index used 20, no overrun | census.py; pinned by tests/tables.test.js |
 | spawn patterns ($A5BC) | **22** | data | max used 21, exactly full | census.py |
 | play sub-states, jt `$982F` (index = $1B low nibble) | **16** | **1** ($80) | 15 — the entire boss/end-of-stage machine | late-systems; layout-proven |
 | `$96A5` $1B ladder arms | **5** | 2 (intro, dying) | 3: next-stage $96CF, game over $96FB, 15/16 of play | late-systems |
 | game modes (`$80D4`) | **7** | 1 (mode 5) | 6 — and the miss is SILENT: src/nmi.js has no else | sweep: 76/76 non-mode-5 windows diverge |
 | inline `JSR $83E4` jump tables | **7** | 3 fully | $80D4, $982F, $AE1C, $C439 partial/none | structure.txt + byte proof |
 | `$C439` late-spawner dispatch | **7** (structure.txt's 11 is wrong; $C447 is the next table, byte-proven) | 0 | 7 — incl. stage 1's volcano $C486 | enemy-census + late-systems agree |
-| ROM tables the 42 handlers index | **45** | 13 exported | **28+ ranges missing** from assets/enemies/tables.json — loud throws, fully listed | enemy-census |
-| metasprite records | 161 exported; **$A2 (18 records, referenced by explosion scripts 4/5) proven silently dropped** by export_metasprites.py's invented `n > 16` guard | — | denominator is 162 (strict) vs 170 (any non-empty slot) depending on convention; reconcile in W21 | enemy-census vs unported-census |
+| ROM tables the 42 handlers index | **66 distinct PRG bases** (measured by tablecoverage.py, supersedes the census's 45 rows) | **64 exported** as of W21 — enemies/tables.json is 34 blocks / 3,060 bytes | **2**: $CF2D/$CF2E, the ending chain, excluded by §5 and named in tablecoverage.py KNOWN_GAPS | W21: tools/tablecoverage.py |
+| metasprite records | **157**, $A2 included | — | 0 | W21: the high table is $8E9E-$8EE5, ids $80-$A3, proven by $8EE0 holding $8EE6 ($A1's record sits in what would be slots $A4-$A8). Neither 162 nor 170: 170 counts every slot in $00-$FF with a non-zero count, 157 counts every slot in $00-$A3 with one. The `n > 16` guard dropped 9 ids and wrongly KEPT 5 more |
 | sound records | **63** | 63 | 0 | prior waves |
 | terrain stages | **7** | 7 exported | RLE control codes $07-$0A live in tools/, not src/ | unported-census |
 | `$1A` loop counter | 1 increment site ($9889), 8 read sites | 3 reads ported | structurally pinned at 0 in the port; loop 2+ difficulty cannot exist | zpuse.py |
@@ -102,7 +102,14 @@ $982A/$9A56 wall, in that order, and nothing else.
 Each sized for one implementer. Ordered by what the owner hits first and by
 what unblocks what. Every done-when is a measurement, not a review.
 
-**W21 — Exports and loudness (risk: low; unblocks everything).**
+**W21 — Exports and loudness (risk: low; unblocks everything).** — **PARTLY
+DONE**, see `21-impl-tables-and-metasprite.md`. The 25 data runs covering all
+49 census addresses, the `$A2` fix, the `$A592` correction and the
+cross-reference gate landed. The THREE LOUDNESS FIXES (nmi.js's mode dispatch
+`else throw`, the `$8BD9`/`$8C06` terrain-object pass, camera.js:26's comment)
+and worklog 12's wrong "power-up dependent" claim did **not** — they are
+`src/` edits and were left for the wave that owns those files, so the
+unpowered sweep's 76 silent windows are still silent.
 Export the 28+ enumerated missing ROM ranges into assets/enemies/tables.json
 (full list in 20-recon-enemy-census.md §tables), plus $9A3D/$9A45/$9A35/$98FD,
 $C439/$C447/$C4F4/$C4F6/$C526, $B8EF/$B8F8/$B901/$B90A. Delete

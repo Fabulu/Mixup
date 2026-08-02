@@ -235,7 +235,10 @@ one.
 
 **`$A592` formation geometry has 21 entries, not 20** (`$A592-$A5BB`, indices
 `$00-$14`; index 20 = `B3 2C` is used by cmd `$93`). `00-recon-enemies.md` §3
-lists 20 and is off by one from index 17 on. **`$A5BC` pattern table has 22
+lists 20. *(Wave 21, re-measured: the missing entry is index **19** (`F4 2A`);
+indices 17 and 18 in that list are correct, so "off by one from index 17 on"
+overstated it. `00-recon-enemies.md` is now fixed and both counts are pinned by
+`games/gradius/tests/tables.test.js`.)* **`$A5BC` pattern table has 22
 entries** (`$A5BC-$A5FD`, 3 bytes each, max index used `$15`).
 
 **Types the wave data can spawn: 26 distinct, hitting 26 distinct entries —
@@ -376,6 +379,41 @@ at porting time, not a silent wrong value. That is the right shape. But it means
 throwing handlers can be written**, and that is a mechanical, enumerable job now
 rather than a discovery.
 
+> **DONE, WAVE 21 — every **NO** row above except `$CF2D`/`$CF2E` is now
+> exported.** `assets/enemies/tables.json` went from 9 blocks / 2,073 bytes to
+> **34 blocks / 3,060 bytes**; the 49 addresses this section lists collapse
+> into **25 contiguous data runs**, each one pinned on the *instruction
+> immediately after it* (`ENEMY_BLOCKS_W21` in `tools/export_assets.py`, and
+> the anchor is checked at export time, not asserted in prose). Two of those
+> anchors were WRONG when first written and the guard caught both: `$B61E` is
+> `LDY #$00 / JSR $B628`, not `LDA #$00`, and `$C686` is `INC $68`, not
+> `LDA $68`. See `21-impl-tables-and-metasprite.md`.
+>
+> The only bases any of the 42 handlers still index and no exporter ships are
+> **`$CF2D`/`$CF2E`** — the ending chain's canned-packet pointers, reached only
+> through entry 40 (`$BB0F` → `$CE94`) — excluded by `20-plan-completeness.md`
+> §5 and named in `tools/tablecoverage.py`'s `KNOWN_GAPS` so they print on
+> every run instead of being whitelisted silently.
+>
+> Two corrections this section's table needs, both measured on 2026-08-02 by
+> `tools/tablecoverage.py`, which resolves `LDA <base>,Y … STA $012C,X` chains:
+> * **`$B797` is a metasprite pair (`3F 40`), not a rank row.** `$B7B5 LDA
+>   $B797,Y` stores into `$012C,X`, the anim field. Its "2" is right; its
+>   place in the "mid-boss rank tables" list is misleading.
+> * **`$CA29` is 8 rows × 4 columns (32 bytes), not 4.** `$CA29`/`$CA2A`/
+>   `$CA2B`/`$CA2C` are four parallel columns and the run reaches exactly to
+>   `$CA49`, where the three 7-rank rows begin. Exported as one 53-byte block.
+> * **`$B6D9` is a METASPRITE table** (`1C 1C 1F 1F`): `$B6C5 LDA $B6D9,Y`
+>   stores into `$012C,X`. Of entry 7/19's three tables, `$B6D2` is the rank
+>   row (`-> $04EC,X`/`$040C,X`), `$B6D9` the metasprites and `$B6DD` the
+>   `bulletMuzzle` index (`-> $0496,X`). W22 needs the distinction.
+> * **`$B5A9` and `$B5DC` are the wrong way round in the table above.** The
+>   ROM has `$B5A9 LDA $B612,X` (into `$06C2,Y`/`$06CA,Y`/`$06D2,Y`) and
+>   `$B5DC LDA $B606,X` / `$B5E2 LDA $B607,X` (into `$06F1,Y`).
+> * **`$B650`'s three loads are `CMP`/`CMP`/`ADC` and the middle one is +2:**
+>   `$B62E CMP $B650,Y`, `$B639 CMP $B652,Y`, `$B644 ADC $B651,Y -> $012C,X`.
+>   So each 3-byte record is `[frameCount, metaspriteBase, wrapLimit]`.
+
 ### The one that is NOT loud: metasprite `$A2`
 
 ```
@@ -398,6 +436,30 @@ are unported today, so this is not yet a live bug — it is a live bug the momen
 entry 24 or entry 40 is ported. The other eight ids the `n > 16` guard drops
 (`$A9 $AE $B9 $BA $C1 $CA $CB $F0`) point into sound/CHR data and are not
 metasprites; the high table `$8E9E` holds only four real entries (`$A0-$A3`).
+
+> **FIXED, WAVE 21, and the last sentence above is wrong.** The high table
+> holds **36** real entries, ids `$80-$A3` — `$80-$9F` were always being
+> exported. What is true is that **`$A3` is the last one**, and the ROM proves
+> it: `$8EE0` (id `$A1`'s slot) contains **`$8EE6`**, the byte *after* `$A3`'s
+> slot at `$8EE4`, because `$A1`'s own 9-byte record is stored there. Reading
+> the would-be slots `$A4`-`$A8` as pointers gives `$0402 $01DB $0400 $01DD
+> $0108`, which is `$A1`'s payload byte for byte. So the table is
+> `$8E9E-$8EE5`, 36 entries, and the correct bound is an **id** bound, not a
+> record-count bound.
+>
+> `export_metasprites.py` now stops at `$A3` and has no count limit at all.
+> That keeps `$A2` (18 records) and drops **thirteen** junk ids, not eight:
+> the `n > 16` guard also happily kept `$B8 $C9 $D4 $F2 $FB`, which are CHR
+> and sound bytes with small counts. The export is **157** records, which
+> settles the 162-vs-170 question in `20-plan-completeness.md` §1a: neither.
+> 170 = every slot in `$00-$FF` with a non-zero count; 157 = every slot in
+> `$00-$A3` with one (`$00`, `$31`, `$37`, `$3B`, `$3C`, `$3D`, `$3E` point at
+> the shared null record `$8D9D` and draw nothing, which is `$8AC8 BEQ $8B02`).
+>
+> **And script 4 OVERLAPS script 2.** Script 2 is at `$AE8C` and script 4 at
+> `$AE8B`: script 4 *is* `$A2` prepended to script 2, sharing its terminator at
+> `$AE91`. That is why `$A2` was invisible — one byte in front of a script that
+> already worked.
 
 ---
 
