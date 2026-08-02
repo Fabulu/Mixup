@@ -281,10 +281,22 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
     return { name, missing: true,
              how: `python games/gradius/tools/oracle/scen.py --only ${name}` };
   }
+  // `compareUntilThrow` (W25b): a scenario whose window runs INTO a named
+  // unported ROM path -- the endchain reaches the boss spawn ($84->$85), whose
+  // per-frame handler $B914 is W26. Unlike `expectThrow` (which is NOT field-
+  // compared at all), this runs the port with stopOnThrow and field-compares
+  // every frame BEFORE the throw, then verifies the throw itself. The pre-throw
+  // frames are the W24 sub-state timeline ($81/$82/$83/$84); the throw is the
+  // measured boundary where the boss handler begins (W26). A scenario that does
+  // NOT throw, or throws at a different address, is a FAILURE -- same surprise-
+  // success discipline as expectThrow and knownFail.
+  const scnDef = defs.scenarios.find((s) => s.name === name) || {};
+  const untilThrow = scnDef.compareUntilThrow || null;     // e.g. "B914"
   const port = tracePort({
     name, script: oracle.inputScript, frames: oracle.gameFrames,
     align: oracle.align, seed: oracle.seed, watch: defs.watch,
     poke: oracle.poke, neuter, res,
+    stopOnThrow: !!untilThrow,
   });
 
   const byFrameO = new Map(oracle.frames.map((r) => [r.frame, r]));
@@ -339,6 +351,16 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
   if (frames.length === 0) {
     throw new Error(`${name}: the live window is EMPTY (${stopReason}) -- `
                   + `nothing was compared, which is not a pass`);
+  }
+  // compareUntilThrow: the port ran into its declared unported path and
+  // tracePort (stopOnThrow) stopped there. `all` already lacks the throw frame
+  // and everything after it (port.frames stops one short), so `frames` already
+  // holds only the pre-throw window -- this just records WHY for the report and
+  // tells compareVideo the window did not run to its end.
+  if (port.threw && stoppedAt === null) {
+    stoppedAt = port.threw.atFrame;
+    stopReason = `the port threw at f${port.threw.atFrame}: `
+               + `${port.threw.message} (a declared compareUntilThrow path)`;
   }
 
   // knownFail: a diagnosed but unfixed divergence. Allowed to be red; a
@@ -429,6 +451,9 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
     name, why: oracle.why, script: oracle.inputScript, align: oracle.align,
     alignScroll,
     frames: frames.length, nominal: all.length, stoppedAt, stopReason, neuter,
+    // null unless compareUntilThrow is set: { atFrame, message } when the port
+    // threw, plus the declared ROM address the throw must name.
+    threw: port.threw || null, throwExpected: untilThrow,
     reach: { xMin: Math.min(...xs), xMax: Math.max(...xs),
              yMin: Math.min(...ys), yMax: Math.max(...ys),
              dying: dyingAt.length, deaths, diedAt: dyingAt[0] ?? null },
@@ -565,10 +590,25 @@ export function printScenario(r) {
             + `never changed value in this scenario`);
   const dlistFail = r.dlist === null ? 0
     : (r.dlist.yBad ? 1 : 0) + (r.dlist.liveBad ? 1 : 0);
+  // compareUntilThrow verification: the declared unported path must fire, at the
+  // declared ROM address. Not throwing (the path was ported) or throwing at a
+  // different address are both failures, exactly like a stale expectThrow.
+  let throwFail = 0;
+  if (r.throwExpected) {
+    const hit = r.threw && r.threw.message.includes(r.throwExpected);
+    throwFail = hit ? 0 : 1;
+    console.log(`    [${hit ? 'PASS' : 'FAIL'}] THREW at ${r.throwExpected}: `
+              + (r.threw
+                 ? `frame ${r.threw.atFrame} -- `
+                   + `${r.threw.message.split('.')[0]}.`
+                 : `did NOT throw over ${r.frames} compared frames -- `
+                   + `${r.throwExpected} may have been ported; re-measure`));
+  }
   // The VIDEO block counts into `fail` like the display list does: a wrong
   // screen is a wrong port, not a footnote.
   return { fail: bad.length + (r.romLagInWindow === r.portLag ? 0 : 1)
-                 + dlistFail + (r.video.compared ? r.video.bad : 0),
+                 + dlistFail + throwFail
+                 + (r.video.compared ? r.video.bad : 0),
            info: infoBad.length };
 }
 
@@ -627,13 +667,18 @@ function main(argv) {
     const bad = r.results.filter((x) => x.tier === 'TIER1' && x.first !== null);
     const lagOk = r.romLagInWindow === r.portLag;
     const dlOk = r.dlist === null || (!r.dlist.yBad && !r.dlist.liveBad);
-    const ok = bad.length === 0 && lagOk && dlOk;
+    const throwOk = !r.throwExpected
+      || (r.threw && r.threw.message.includes(r.throwExpected));
+    const ok = bad.length === 0 && lagOk && dlOk && throwOk;
     console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${r.name.padEnd(13)} `
               + `${String(r.frames).padStart(4)} frames  `
               + (bad.length === 0 ? 'all TIER 1 fields exact'
                  : bad.map((x) => `${x.field}@${x.first}`).join(' '))
               + (lagOk ? '' : `  LAG rom ${r.romLagInWindow} port ${r.portLag}`)
-              + (dlOk ? '' : `  OAM Y${r.dlist.yBad}/live${r.dlist.liveBad}`));
+              + (dlOk ? '' : `  OAM Y${r.dlist.yBad}/live${r.dlist.liveBad}`)
+              + (throwOk ? '' : `  THROW ${r.throwExpected} missing`)
+              + (r.throwExpected && r.threw
+                 ? `  threw ${r.throwExpected}@f${r.threw.atFrame}` : ''));
   }
 
   // ---- DISPLAY LIST COVERAGE ------------------------------------------------

@@ -150,14 +150,34 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
             continue
         if "@" in seg:
             body, _, at = seg.partition("@")
-            if not at.startswith("+"):
+            body = body.strip()
+            if at.startswith("+"):
+                # ONE frame, at align+N. Not a convenience: a value the cartridge
+                # itself only ever holds for one frame must be injected for one
+                # frame, or the scenario tests invented state.
+                f = align + int(at[1:])
+                if not (align <= f <= frames - 1):
+                    raise SystemExit(f"{name}: poke frame {f} is outside the "
+                                     f"compared window {align}..{frames - 1}")
+                segs.append(f"{body}@{f}-{f}")
+            elif re.match(r"^\d+\s*-\s*\d+$", at):
+                # ABSOLUTE window @FROM-TO (W25b). The endchain scenario aligns
+                # DEEP (near the boss) but its powered poke must begin at frame
+                # 400 -- before the align -- or the ship dies to terrain $C2C1
+                # long before it reaches $0C00. Neither the whole-window form
+                # (0044=2 -> @align-end) nor the one-frame @+N can express that.
+                # probe.lua and porttrace.mjs both already speak this absolute
+                # form (the sweep uses @400-8999); this just stops scen.py from
+                # rewriting it.
+                frm, to = (int(x) for x in at.split("-"))
+                if not (0 <= frm <= to <= frames - 1):
+                    raise SystemExit(f"{name}: poke window @{frm}-{to} is "
+                                     f"outside 0..{frames - 1}")
+                segs.append(f"{body}@{frm}-{to}")
+            else:
                 raise SystemExit(f"{name}: poke window {at!r} must be '+N' "
-                                 f"(one frame at align+N)")
-            f = align + int(at[1:])
-            if not (align <= f <= frames - 1):
-                raise SystemExit(f"{name}: poke frame {f} is outside the compared "
-                                 f"window {align}..{frames - 1}")
-            segs.append(f"{body.strip()}@{f}-{f}")
+                                 f"(one frame at align+N) or 'FROM-TO' (an "
+                                 f"absolute game-frame window)")
         else:
             segs.append(f"{seg}@{align}-{frames - 1}")
     poke = ",".join(segs)
@@ -171,8 +191,8 @@ def build(name: str, defs: dict, *, keep_ram: bool = False) -> dict:
     # and rebuilt the screen itself; it is not tolerable now that a deep seed
     # HANDS it a screen. See compare.mjs's VIDEO block.
     rp = probe.run(frames, script, pj, ramdump=ram, watch=watch, poke=poke,
-                   video=vid, video_at=[align, frames - 1], timeout_s=300)
-    ro = run_objloop(frames, script, oj, poke=poke)
+                   video=vid, video_at=[align, frames - 1], timeout_s=1800)
+    ro = run_objloop(frames, script, oj, poke=poke, timeout_s=1800)
 
     pdoc = json.loads(pj.read_text())
     odoc = json.loads(oj.read_text())
