@@ -65,7 +65,16 @@ function readTsv(file) {
   });
 }
 
-const BREAKS = ['drop-tile', 'drop-stream', 'zero-col', 'blank-tile'];
+// WAVE 14 adds two, both about the SHARDED background sheet:
+//   --break shard-404    a DEFERRED shard 404s, then a frame needs one of its
+//                        tiles -> the draw must THROW, naming the shard
+//   --break shard-late   a DEFERRED shard is simply not fetched yet -> the draw
+//                        must NOT throw, must draw the transparent pen, and the
+//                        shard must appear in `bg.status().waiting`
+// The pair is the whole point: a shard that is LATE and a shard that is GONE
+// look identical to a picture and must not look identical to a player.
+const BREAKS = ['drop-tile', 'drop-stream', 'zero-col', 'blank-tile',
+  'shard-404', 'shard-late'];
 
 /**
  * The BG tile whose absence would cost the most pixels, measured rather than
@@ -133,7 +142,15 @@ async function main() {
   // The SAME loader the page runs, over the filesystem instead of HTTP. It is
   // deliberately the same module and not a second reader: the assembly, the
   // length assertions and the coverage check are what this gate is testing.
+  // WAVE 14: `shard-404` makes ONE deferred shard unreadable. The victim is
+  // chosen below from the manifest, and it is deliberately not a boot shard --
+  // a boot shard's 404 is `webgate --break missing-file` and throws at load.
+  let shard404 = null;
   const read = async (name) => {
+    if (shard404 !== null && name === `gfx/bg.shard${shard404}.tiles.u8.gz`) {
+      throw new AssetError(`assets/${name}: HTTP 404 (simulated by --break `
+        + 'shard-404)');
+    }
     const p = path.join(a.assets, name);
     if (!fs.existsSync(p)) {
       throw new AssetError(`assets/${name} is missing`);
@@ -141,16 +158,93 @@ async function main() {
     return new Uint8Array(fs.readFileSync(p));
   };
 
+  if (a.break === 'shard-404' || a.break === 'shard-late') {
+    // Load the bundle with the BOOT set only -- which is what the page does --
+    // then ask the tile function for a tile that lives in a deferred shard.
+    // That is exactly what happens when the scroll program reaches column 64
+    // before shard 2 has landed.
+    const bundle = await loadBundle(read);
+    const bg = bundle.bg;
+    const victim = bg.meta.find((m) => !bg.boot.includes(m.i));
+    if (!victim) {
+      console.log('EXPECTED-RED: every shard is a boot shard, so there is no '
+        + 'deferred shard to be late -- this break cannot fail');
+      return 1;
+    }
+    const tile = bg.nos[victim.firstSlot];
+    if (bg.slot[tile] >= 0) {
+      console.log(`EXPECTED-RED: BG tile ${tile} of shard ${victim.i} is already `
+        + 'loaded at boot -- this break cannot fail');
+      return 1;
+    }
+    if (a.break === 'shard-late') {
+      const out = bundle.tileFns.bgTileFn(bundle.roms, tile);
+      const allPen = out.every((v) => v === 31);
+      const waiting = bg.status().waiting.includes(victim.i);
+      const ok = allPen && waiting;
+      console.log(`EXPECTED-RED [--break shard-late]: BG tile ${tile} `
+        + `($${tile.toString(16)}) of shard ${victim.i} drew `
+        + `${allPen ? 'the transparent pen' : 'SOMETHING ELSE'} and the shard is `
+        + `${waiting ? '' : 'NOT '}named in bg.status().waiting = `
+        + `[${bg.status().waiting}] -- `
+        + (ok ? 'late, and the page says which one'
+          : 'the late-shard path is not doing what it claims'));
+      return ok ? 0 : 1;
+    }
+    // shard-404: force the failure, then draw.
+    shard404 = victim.i;
+    await bg.fetch(victim.i);
+    if (bg.state[victim.i] !== 'failed') {
+      console.log(`EXPECTED-RED [--break shard-404]: shard ${victim.i} loaded `
+        + 'anyway -- the injected 404 never reached the loader');
+      return 1;
+    }
+    try {
+      bundle.tileFns.bgTileFn(bundle.roms, tile);
+    } catch (e) {
+      const first = String(e.message).split('\n')[0];
+      const names = String(e.message).includes(`bg.shard${victim.i}.tiles.u8.gz`);
+      console.log(`EXPECTED-RED [--break shard-404]: ${e.name}: ${first}`);
+      if (!(e instanceof AssetError)) {
+        console.log('  ...but not an AssetError, so no rebuild command reaches '
+          + 'the player');
+        return 1;
+      }
+      if (!names) {
+        console.log('  ...and the message does not name the missing file, which '
+          + 'is the only thing that makes it actionable');
+        return 1;
+      }
+      return 0;
+    }
+    console.log(`EXPECTED-RED [--break shard-404]: BG tile ${tile} of a shard `
+      + 'that 404ed drew WITHOUT THROWING -- the page would show a hole and say '
+      + 'nothing, which is the bug wave 14 exists to fix');
+    return 1;
+  }
+
   const bundleOpts = {};
   if (a.break === 'zero-col') bundleOpts.zeroCol = true;
   if (a.break === 'drop-stream') bundleOpts.dropStream = 0;
   if (a.break === 'drop-tile') {
-    // A tile the capture actually uses, taken from the exported sheet itself so
-    // this cannot quietly pick one that is not in the tilemap at all. It does
-    // NOT have to be a VISIBLE tile: the coverage check runs over every map
-    // entry, on screen or not, which is exactly the point of it.
+    // A tile THE CAPTURE ACTUALLY USES. It does NOT have to be a VISIBLE tile:
+    // the coverage check runs over every map entry, on screen or not, which is
+    // exactly the point of it.
+    //
+    // WAVE 14 CHANGED THIS AND IT MATTERS. It used to take the middle slot of
+    // the exported sheet, which was safe while every one of the 415 sheet tiles
+    // came from the recording. The sheet is now the WHOLE STAGE's 2,026 tiles
+    // and only 415 of them are the capture's, so the middle slot is a tile
+    // `verifyCoverage` never looks at -- the break would have gone quietly
+    // green. The victim is now measured from the capture itself.
     const probe = await loadBundle(read);
-    const victim = probe.sheets.bg.nos[Math.floor(probe.sheets.bg.count / 2)];
+    const used = new Set();
+    for (let i = 0; i < probe.cap.length; i++) {
+      const st = probe.cap.state(i);
+      for (let t = 0; t < 64 * 16; t++) used.add(st.bg[t * 2]);
+    }
+    const usedList = [...used].sort((x, y) => x - y);
+    const victim = usedList[Math.floor(usedList.length / 2)];
     try {
       await loadBundle(read, { dropTile: victim });
     } catch (e) {

@@ -42,6 +42,212 @@ export class AssetError extends Error {
 }
 
 /**
+ * WAVE 14 -- THE SHARDED BG SHEET.
+ *
+ * Stage 1's background is 1,820 tiles and 653 KiB gzipped.  The page cannot
+ * wait for that, and it must not draw black while it waits either -- a silent
+ * black screen is the report this wave came out of.  So the sheet arrives in
+ * eight pieces and this class is the thing that knows, at every instant, which
+ * of them are here, which are on the way and which FAILED.
+ *
+ * THE SLOT SPACE IS FIXED AT EXPORT TIME.  `gfx/bg.tileno.u16` lists every slot
+ * of every shard, in shard order, and `manifest.gfx.bg.shards[s].firstSlot`
+ * says where each shard's run begins.  That is why `shardOfTile` is complete at
+ * boot while `slot` is not: the page always knows WHICH shard a tile is in,
+ * even before that shard exists, which is the difference between "shard 4 has
+ * not arrived" and "this tile was never exported".  Those are different bugs
+ * and they get different messages.
+ *
+ * THREE STATES AND THREE MESSAGES:
+ *   ready    the tile is drawn
+ *   loading  the tile is drawn as the transparent pen AND the shard is named on
+ *            the status line -- the picture is incomplete and says so
+ *   failed   a 404, a short body, a bad gzip -> the next draw that needs that
+ *            shard THROWS an AssetError naming the shard and the rebuild
+ *            command.  It does NOT quietly keep drawing holes: a page that
+ *            never recovers has to say why.
+ */
+export class BgShards {
+  /**
+   * @param {object} manifest  the whole manifest (needs `gfx.bg`)
+   * @param {(name:string)=>Promise<Uint8Array>} bin  gunzipping reader
+   */
+  constructor(manifest, bin) {
+    const bg = manifest.gfx.bg;
+    if (!Array.isArray(bg.shards) || !Array.isArray(bg.boot)) {
+      throw new AssetError('assets/manifest.json has no gfx.bg.shards/boot. '
+        + 'This loader is wave 14 or later and the bundle is older.');
+    }
+    this.bin = bin;
+    this.meta = bg.shards;
+    this.boot = bg.boot;
+    this.tileBytes = bg.tileBytes;
+    this.count = bg.tiles;
+    this.pixels = new Uint8Array(bg.tiles * bg.tileBytes);
+    this.nos = null;                       // filled by `loadIndex`
+    this.slot = new Int32Array(0x10000).fill(-1);
+    this.shardOfTile = new Int16Array(0x10000).fill(-1);
+    /** 'idle' | 'loading' | 'ready' | 'failed', per shard */
+    this.state = this.meta.map(() => 'idle');
+    this.error = this.meta.map(() => null);
+    this.inflight = this.meta.map(() => null);
+    /** shards a DRAW asked for and did not have, since the last `drain()` */
+    this.waiting = new Set();
+    /** tiles that are in NO shard -- an export gap, not a late fetch */
+    this.orphans = new Set();
+    this.queue = [];
+    this.pumping = false;
+  }
+
+  /** The slot index, which every shard's tile numbers share.  Boot, once. */
+  async loadIndex() {
+    const nos = new Uint16Array((await this.bin('gfx/bg.tileno.u16.gz')).buffer);
+    if (nos.length !== this.count) {
+      throw new AssetError(`assets/gfx/bg.tileno.u16 has ${nos.length} entries `
+        + `for ${this.count} slots in the manifest.`);
+    }
+    this.nos = nos;
+    let at = 0;
+    for (const m of this.meta) {
+      if (m.firstSlot !== at) {
+        throw new AssetError(`assets/manifest.json: BG shard ${m.i} says its `
+          + `slots start at ${m.firstSlot}, but shards 0..${m.i - 1} end at `
+          + `${at}. The shard runs must tile the slot space exactly.`);
+      }
+      for (let k = 0; k < m.tiles; k++) {
+        const t = nos[at + k];
+        if (this.shardOfTile[t] >= 0) {
+          throw new AssetError(`BG tile ${t} ($${t.toString(16)}) is in shard `
+            + `${this.shardOfTile[t]} AND shard ${m.i}. The shards must be `
+            + 'disjoint; the exporter asserts it and this re-checks it.');
+        }
+        this.shardOfTile[t] = m.i;
+      }
+      at += m.tiles;
+    }
+    if (at !== this.count) {
+      throw new AssetError(`the BG shards cover ${at} slots, the manifest says `
+        + `${this.count}.`);
+    }
+  }
+
+  /** Install one shard's decoded pixels into the slot space. */
+  install(i, bytes) {
+    const m = this.meta[i];
+    const want = m.tiles * this.tileBytes;
+    if (bytes.length !== want) {
+      throw new AssetError(`assets/gfx/bg.shard${i}.tiles.u8 is ${bytes.length} `
+        + `B; the manifest says ${m.tiles} tiles x ${this.tileBytes} = ${want}.`);
+    }
+    this.pixels.set(bytes, m.firstSlot * this.tileBytes);
+    for (let k = 0; k < m.tiles; k++) this.slot[this.nos[m.firstSlot + k]] = m.firstSlot + k;
+    this.state[i] = 'ready';
+    this.waiting.delete(i);
+  }
+
+  /**
+   * Fetch shard `i` once.  Returns a promise that RESOLVES even on failure --
+   * the failure is recorded in `state`/`error` and raised by `demand()` at the
+   * moment a draw actually needs it, so a shard nobody has reached yet cannot
+   * kill a running page from a background fetch.
+   */
+  fetch(i) {
+    if (this.state[i] === 'ready') return Promise.resolve();
+    if (this.inflight[i]) return this.inflight[i];
+    this.state[i] = 'loading';
+    const p = this.bin(`gfx/bg.shard${i}.tiles.u8.gz`)
+      .then((b) => { this.install(i, b); })
+      .catch((e) => { this.state[i] = 'failed'; this.error[i] = e; })
+      .finally(() => { this.inflight[i] = null; });
+    this.inflight[i] = p;
+    return p;
+  }
+
+  /**
+   * A DRAW needs shard `i` and does not have it.
+   *
+   * A failed shard throws HERE, from inside the frame that needed it, because
+   * that is the only place the page can honestly say "the picture you are
+   * looking at is wrong and here is why".  A loading shard is recorded and the
+   * caller draws the transparent pen.
+   */
+  demand(i) {
+    if (this.state[i] === 'failed') {
+      const why = this.error[i]?.message?.split('\n')[0] ?? 'unknown';
+      throw new AssetError(`BG SHARD ${i} DID NOT LOAD (${why}).\n`
+        + `It holds ${this.meta[i].tiles} background tiles for `
+        + (this.meta[i].cols
+          ? `map columns ${this.meta[i].cols[0]}..${this.meta[i].cols[1]}`
+          : 'the second map')
+        + ', and the port has scrolled into them. The picture would be BLACK '
+        + `there, so this stops instead.\nMissing file: `
+        + `assets/gfx/bg.shard${i}.tiles.u8.gz`);
+    }
+    this.waiting.add(i);
+    if (this.state[i] === 'idle') this.promote(i);
+  }
+
+  /** Put shard `i` at the head of the prefetch queue and start pumping. */
+  promote(i) {
+    if (this.state[i] === 'ready' || this.state[i] === 'failed') return;
+    const at = this.queue.indexOf(i);
+    if (at >= 0) this.queue.splice(at, 1);
+    this.queue.unshift(i);
+    this.pump();
+  }
+
+  /** Queue every shard that is not here yet, in ascending (i.e. need) order. */
+  prefetchAll() {
+    for (let i = 0; i < this.meta.length; i++) {
+      if (this.state[i] === 'idle' && !this.queue.includes(i)) this.queue.push(i);
+    }
+    this.pump();
+  }
+
+  /**
+   * ONE fetch at a time.  Deliberately serial: the whole point of the queue is
+   * that a promoted shard jumps ahead, and eight parallel fetches over one
+   * connection would make the promotion meaningless.
+   */
+  pump() {
+    if (this.pumping) return;
+    const next = this.queue.shift();
+    if (next === undefined) return;
+    if (this.state[next] !== 'idle') { this.pump(); return; }
+    this.pumping = true;
+    this.fetch(next).finally(() => { this.pumping = false; this.pump(); });
+  }
+
+  /**
+   * The SCROLL POSITION drives the schedule.  `col` is the stage-1 map column
+   * the port's VM is painting right now ($26134E's cursor), which is the same
+   * axis the shards are cut on -- so "which shard will I need next" is
+   * arithmetic and not a guess.  One shard of lookahead: the recon measured the
+   * tightest gap in the stage at 4.3 s and the loosest at 42 s.
+   */
+  followColumn(col) {
+    if (!(col >= 0)) return;
+    for (const m of this.meta) {
+      if (!m.cols) continue;
+      if (col >= m.cols[0] - 32 && col <= m.cols[1]) this.promote(m.i);
+    }
+  }
+
+  /** Everything the page's status line needs, in one object. */
+  status() {
+    const ready = this.state.filter((s) => s === 'ready').length;
+    return {
+      ready,
+      total: this.meta.length,
+      loading: this.state.map((s, i) => (s === 'loading' ? i : -1)).filter((i) => i >= 0),
+      failed: this.state.map((s, i) => (s === 'failed' ? i : -1)).filter((i) => i >= 0),
+      waiting: [...this.waiting],
+      orphans: this.orphans.size,
+    };
+  }
+}
+
+/**
  * gzip -> bytes, through the platform's own decompressor.
  *
  * Refused rather than worked around if the platform has none: the alternative
@@ -132,22 +338,23 @@ export async function loadBundle(readRaw, opts = {}) {
       + 'this loader only knows gzip.');
   }
 
-  // --- the two tile sheets -------------------------------------------------
+  // --- the TX sheet, which is still one file and still the capture's --------
   const sheets = {};
-  for (const [key, size, bytes] of [['bg', manifest.gfx.bg, BG_TILE_BYTES],
-    ['tx', manifest.gfx.tx, TX_TILE_BYTES]]) {
-    const pixels = await bin(`gfx/${key}.tiles.u8.gz`);
-    const nos = new Uint16Array((await bin(`gfx/${key}.tileno.u16.gz`)).buffer);
-    if (size.tileBytes !== bytes) {
-      throw new AssetError(`assets/manifest.json: ${key} tiles are `
-        + `${size.tileBytes} B each, this renderer decodes ${bytes} B`);
+  {
+    const size = manifest.gfx.tx;
+    const pixels = await bin('gfx/tx.tiles.u8.gz');
+    const nos = new Uint16Array((await bin('gfx/tx.tileno.u16.gz')).buffer);
+    if (size.tileBytes !== TX_TILE_BYTES) {
+      throw new AssetError(`assets/manifest.json: tx tiles are `
+        + `${size.tileBytes} B each, this renderer decodes ${TX_TILE_BYTES} B`);
     }
-    if (pixels.length !== size.tiles * bytes) {
-      throw new AssetError(`assets/gfx/${key}.tiles.u8 is ${pixels.length} B, `
-        + `the manifest says ${size.tiles} x ${bytes} = ${size.tiles * bytes}`);
+    if (pixels.length !== size.tiles * TX_TILE_BYTES) {
+      throw new AssetError(`assets/gfx/tx.tiles.u8 is ${pixels.length} B, `
+        + `the manifest says ${size.tiles} x ${TX_TILE_BYTES} = `
+        + `${size.tiles * TX_TILE_BYTES}`);
     }
     if (nos.length !== size.tiles) {
-      throw new AssetError(`assets/gfx/${key}.tileno.u16 has ${nos.length} `
+      throw new AssetError(`assets/gfx/tx.tileno.u16 has ${nos.length} `
         + `entries for ${size.tiles} tiles`);
     }
     // tile number -> slot. A dense 64 Ki lookup: 256 KiB, built once, and it
@@ -155,45 +362,107 @@ export async function loadBundle(readRaw, opts = {}) {
     // the middle of decoding 3,072 tiles a frame.
     const slot = new Int32Array(0x10000).fill(-1);
     for (let i = 0; i < nos.length; i++) slot[nos[i]] = i;
-    if (opts.dropTile !== undefined && key === 'bg') slot[opts.dropTile] = -1;
-    sheets[key] = { pixels, nos, slot, tileBytes: bytes, count: size.tiles };
+    sheets.tx = { pixels, nos, slot, tileBytes: TX_TILE_BYTES, count: size.tiles };
   }
 
-  // WAVE 13.  A tile the sheet does not hold used to be an unconditional
-  // AssetError, and until this wave that was exactly right: every tile the page
-  // could ask for came out of the recording, and `verifyCoverage` had already
-  // proved they were all present -- so a throw could only mean a mismatched
-  // bundle.  It is no longer the only way to get here.  The PORT now drives the
-  // scroll ($240D76 writes real stage-1 map columns out of the cartridge), and
-  // stage 1 references 1,820 BG tiles against the 415 the capture happened to
-  // fly over.  W15 exports the other 1,405.
+  // --- WAVE 14: the BG sheet, SHARDED --------------------------------------
   //
-  // So the missing-tile path SPLITS, and neither half is silent:
-  //   the CAPTURE's own tiles      -> still a throw, from `verifyCoverage`, at
-  //                                   load, naming the frame and the tile;
-  //   a tile the PORT's ring asks  -> COUNTED in `missingBgTiles` and drawn as
-  //   for and the sheet lacks         the transparent pen, with the count on
-  //                                   the page's status line.
-  // A blank column that says "1,405 tiles missing, W15" is honest; a picture
-  // that quietly repeats the recording is not, and a page that dies four
-  // seconds in is not either.
+  // The boot set is the manifest's, not this file's: the exporter is what knows
+  // which shards the capture's own tiles are in, and `verifyCoverage` below
+  // must be satisfiable out of exactly those.  `opts.shards` is for the gates
+  // (bundlegate wants them all so `--break blank-tile` can reach any tile).
+  const bg = new BgShards(manifest, bin);
+  await bg.loadIndex();
+  if (manifest.gfx.bg.tileBytes !== BG_TILE_BYTES) {
+    throw new AssetError(`assets/manifest.json: bg tiles are `
+      + `${manifest.gfx.bg.tileBytes} B each, this renderer decodes `
+      + `${BG_TILE_BYTES} B`);
+  }
+  const wanted = opts.shards === 'all'
+    ? bg.meta.map((m) => m.i)
+    : bg.boot;
+  for (const i of wanted) {
+    await bg.fetch(i);
+    if (bg.state[i] !== 'ready') {
+      // A BOOT shard is different from a later one: there is no picture at all
+      // without it, so it throws HERE rather than waiting for a draw.
+      const why = bg.error[i]?.message?.split('\n')[0] ?? 'unknown';
+      throw new AssetError(`assets/gfx/bg.shard${i}.tiles.u8.gz is a BOOT shard `
+        + `and it did not load (${why}). Shards ${bg.boot.join(' and ')} carry `
+        + 'every BG tile the recording uses and the first columns the scroll '
+        + 'program paints; without them the page has no background at all.');
+    }
+  }
+  sheets.bg = {
+    pixels: bg.pixels, nos: bg.nos, slot: bg.slot,
+    tileBytes: BG_TILE_BYTES, count: bg.count, shards: bg,
+  };
+  if (opts.dropTile !== undefined) bg.slot[opts.dropTile] = -1;
+
+  // WAVE 13/14.  A tile the sheet does not hold used to be an unconditional
+  // AssetError, and until wave 13 that was exactly right: every tile the page
+  // could ask for came out of the recording.  It is no longer the only way to
+  // get here -- the PORT drives the scroll and stage 1 references 1,820 BG
+  // tiles.  So the missing-tile path has THREE arms and none of them is silent:
+  //
+  //   the CAPTURE's own tiles         -> a throw, from `verifyCoverage`, at
+  //                                      load, naming the frame and the tile
+  //   a tile whose shard is EN ROUTE  -> the transparent pen, the shard
+  //                                      promoted to the head of the queue, and
+  //                                      the shard NAMED on the status line
+  //   a tile whose shard FAILED       -> `demand()` throws, naming the shard
+  //                                      and the file to regenerate
+  //   a tile in NO shard at all       -> counted in `missingBgTiles` and in
+  //                                      `bg.orphans`; that is an EXPORT gap
+  //                                      and it is a different bug
   const missingBgTiles = new Set();
   const BG_TRANSPARENT_PEN = 31;      // render/tiles.js buildBgMap: `v === 31`
-  const tileFn = (sheet, name) => (roms, index, out = new Uint8Array(sheet.tileBytes)) => {
-    const s = sheet.slot[index & 0xffff];
+  const bgTileFn = (roms, index, out = new Uint8Array(BG_TILE_BYTES)) => {
+    const i = index & 0xffff;
+    const s = bg.slot[i];
     if (s < 0) {
-      if (name === 'BG') {
-        missingBgTiles.add(index & 0xffff);
-        out.fill(BG_TRANSPARENT_PEN);
-        return out;
+      const sh = bg.shardOfTile[i];
+      if (sh < 0) {
+        missingBgTiles.add(i);
+        bg.orphans.add(i);
+      } else {
+        bg.demand(sh);                // THROWS if that shard failed
+        missingBgTiles.add(i);
       }
-      throw new AssetError(`${name} tile ${index} ($${index.toString(16)}) is `
-        + `not in the exported sheet (${sheet.count} tiles). The bundle was `
-        + 'built for a different capture than the one being drawn.');
+      out.fill(BG_TRANSPARENT_PEN);
+      return out;
     }
-    out.set(sheet.pixels.subarray(s * sheet.tileBytes, (s + 1) * sheet.tileBytes));
+    out.set(bg.pixels.subarray(s * BG_TILE_BYTES, (s + 1) * BG_TILE_BYTES));
     return out;
   };
+  const txTileFn = (roms, index, out = new Uint8Array(TX_TILE_BYTES)) => {
+    const s = sheets.tx.slot[index & 0xffff];
+    if (s < 0) {
+      throw new AssetError(`TX tile ${index} ($${index.toString(16)}) is not in `
+        + `the exported sheet (${sheets.tx.count} tiles). The bundle was built `
+        + 'for a different capture than the one being drawn.');
+    }
+    out.set(sheets.tx.pixels.subarray(s * TX_TILE_BYTES, (s + 1) * TX_TILE_BYTES));
+    return out;
+  };
+
+  // --- the stage's own BG palette block, checked against the board ---------
+  //
+  // Shipped, VALIDATED, and NOT YET USED -- see the manifest note.  It is
+  // validated rather than merely carried because an asset nothing reads is an
+  // asset nobody notices has gone wrong: this compares the cartridge's block
+  // against the palette RAM the recording captured, which is the same
+  // comparison the exporter makes and the only one available in the browser.
+  const bgPalette = new Uint16Array((await bin('gfx/bg.pal.u16.gz')).buffer);
+  if (bgPalette.length !== manifest.gfx.bg.palette.words) {
+    throw new AssetError(`assets/gfx/bg.pal.u16 has ${bgPalette.length} words, `
+      + `the manifest says ${manifest.gfx.bg.palette.words}`);
+  }
+  const secondMap = new Uint16Array((await bin('gfx/bg.smap.u16.gz')).buffer);
+  if (secondMap.length !== manifest.gfx.bg.secondMap.entries * 2) {
+    throw new AssetError(`assets/gfx/bg.smap.u16 has ${secondMap.length} words `
+      + `for ${manifest.gfx.bg.secondMap.entries} (tile, attr) entries`);
+  }
 
   // --- the packed sprite streams ------------------------------------------
   const maskBytes = await bin('spr/mask.u16.gz');
@@ -219,7 +488,9 @@ export async function loadBundle(readRaw, opts = {}) {
   if (opts.zeroCol) sprcol.fill(0);
 
   // --- the capture, the seed and the player tables -------------------------
-  const capJson = JSON.parse(await text('capture.json'));
+  // WAVE 14: both JSON bodies are gzipped now.  They were 159 KB of the 408 KB
+  // the page used to fetch and the whole-stage background needed that room.
+  const capJson = JSON.parse(TD.decode(await bin('capture.json.gz')));
   if (!capJson.rebased) {
     throw new AssetError('assets/capture.json is not marked `rebased`. It is '
       + 'the raw oracle capture, whose sprite offsets point at cartridge '
@@ -227,7 +498,28 @@ export async function loadBundle(readRaw, opts = {}) {
   }
   const cap = new Capture(capJson, await bin('capture.bin.gz'));
   const seed = await bin('seed.bin.gz');
-  const tables = JSON.parse(await text('player.tables.json'));
+  const tables = JSON.parse(TD.decode(await bin('player.tables.json.gz')));
+
+  // THE PALETTE BLOCK, against the board.  $2415E8 uploads $227E58 into palette
+  // RAM $400..$7FF once per stage, so the recording's own palette IS this
+  // block plus whatever the game animates.  The exporter measured 1020 of 1024
+  // and named the four; this re-checks it in the browser, because a shipped
+  // asset that nothing reads is one nobody notices has gone wrong.  A wrong
+  // address or a byte-swap drops it to a few hundred.
+  let palAgree = 0;
+  {
+    const p = cap.part(0, 'palette');
+    for (let i = 0; i < bgPalette.length; i++) {
+      if (p[0x400 + i] === bgPalette[i]) palAgree++;
+    }
+    if (palAgree < 1000) {
+      throw new AssetError(`assets/gfx/bg.pal.u16 agrees with the recording's `
+        + `own palette RAM $400..$7FF on only ${palAgree} of ${bgPalette.length} `
+        + 'entries. The exporter measured 1020 (the four that differ are bank '
+        + '21 pens 0..3, which the game animates). This palette block and this '
+        + 'capture are not from the same stage.');
+    }
+  }
 
   const bundle = {
     manifest,
@@ -239,10 +531,19 @@ export async function loadBundle(readRaw, opts = {}) {
     // A zero-length array makes that a range error rather than a wrong tile if
     // that ever stops being true.
     roms: { igs023: new Uint8Array(0), sprcol, sprmask },
-    tileFns: { bgTileFn: tileFn(sheets.bg, 'BG'), txTileFn: tileFn(sheets.tx, 'TX') },
+    tileFns: { bgTileFn, txTileFn },
     sheets,
+    // WAVE 14: the shard machine.  `bg.status()` is what the page prints and
+    // `bg.followColumn()` is what the scroll VM drives.
+    bg,
+    // WAVE 14: the stage's own BG palette block and its second map -- shipped
+    // and checked, drawn by nothing yet.  See the manifest notes.
+    bgPalette,
+    secondMap,
+    bgPaletteAgreement: palAgree,
     // WAVE 13: every BG tile number the PORT's own ring asked for and the sheet
-    // could not supply.  Read by the page's status line; W15 empties it.
+    // could not supply -- now almost always "a shard that has not landed yet",
+    // which `bg.status().waiting` names.
     missingBgTiles,
   };
   verifyCoverage(bundle, opts);
@@ -275,9 +576,25 @@ export function verifyCoverage(bundle, opts = {}) {
       for (let t = 0; t < n; t++) {
         const no = ram[t * 2];
         if (sheet.slot[no] < 0) {
+          // WAVE 14: three different bugs wear this symptom and they get three
+          // different sentences. A tile in a shard that is present but does not
+          // index it is a broken sheet; a tile in a shard the boot set does not
+          // include is a boot-set mistake in the EXPORTER (the recording must be
+          // drawable from boot alone); a tile in no shard was never exported.
+          const sh = name === 'BG' ? (bundle.bg?.shardOfTile?.[no] ?? -1) : -1;
+          const loaded = sh >= 0 && bundle.bg.state[sh] === 'ready';
           throw new AssetError(`capture frame ${i} (lf${cap.frames[i].lf}) uses `
-            + `${name} tile ${no} at map entry ${t}, which the exported sheet `
-            + `does not contain (${sheet.count} tiles).`);
+            + `${name} tile ${no} ($${no.toString(16)}) at map entry ${t}, which `
+            + (sh < 0
+              ? `the exported sheet does not contain (${sheet.count} slots).`
+              : loaded
+                ? `BG shard ${sh} is supposed to hold and does not -- the shard `
+                  + 'loaded but its slot never got indexed.'
+                : `is in BG shard ${sh}, and that shard is not in the boot set `
+                  + `[${bundle.bg.boot.join(', ')}]. Everything the RECORDING `
+                  + 'draws has to be loadable before the first frame; the '
+                  + 'exporter folds those tiles into shard 0 and that has '
+                  + 'stopped working.'));
         }
       }
     }

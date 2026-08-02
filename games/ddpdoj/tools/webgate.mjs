@@ -34,7 +34,11 @@ import {
 
 const BREAKS = ['missing-file', 'truncated', 'not-gzip'];
 // A file every path needs, and one whose absence a picture would not report.
-const VICTIM = 'gfx/bg.tiles.u8.gz';
+// WAVE 14: the single BG sheet became eight shards, so the victim is a BOOT
+// shard -- the ones `loadBundle` awaits.  A DEFERRED shard would be the wrong
+// victim on purpose: its 404 is meant to be survivable until a frame needs it,
+// which is a different check and is `bundlegate --break shard-404`.
+const VICTIM = 'gfx/bg.shard0.tiles.u8.gz';
 
 function arg(name, dflt) {
   const i = process.argv.indexOf(`--${name}`);

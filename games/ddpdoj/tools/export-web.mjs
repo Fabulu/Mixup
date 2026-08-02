@@ -45,6 +45,42 @@
 // `tools/bundlegate.mjs`: the demo path, run off the BUNDLE, compared to MAME's
 // own framebuffers.  It must stay at 15955968/15955968, and its `--break`
 // modes must go red.
+//
+// ------------------------------------------------------------------- WAVE 14
+// THE WHOLE STAGE-1 BACKGROUND, AND WHY THE COVERAGE PASS ABOVE IS NO LONGER
+// THE WHOLE ANSWER.
+//
+// Wave 13 gave the port the scroll VM, so `$900000` is now written by the
+// CARTRIDGE's own column stream and the camera walks all 8,486 px of stage 1.
+// The set of BG tiles the page can ask for is therefore NO LONGER bounded by
+// the recording: it is bounded by the MAP, and the map wants 1,820 tiles where
+// the 161-frame capture flew over 415.  Past the recording's 160 px the sheet
+// had nothing and the screen went BLACK, silently, which is the report this
+// wave came out of.
+//
+// So this file now exports the background from the LAYOUT DATA rather than from
+// the recording (`docs/worklog/ddpdoj/20-recon-level-data.md`):
+//
+//   $225B78  224 scrolling map columns, 9 longwords each (tile:u16, attr:u16),
+//            tile base $0AA9 added to the WHOLE longword by $240D86
+//   $227AF8  a SECOND, SEPARATE 23-column map with tile base $32A9, painted in
+//            one shot by object type $1C's handler $26C20C -- 23 of the 24
+//            columns `20-recon-scroll-engine.md` §9.3 called unreachable.  They
+//            are not unreachable, they are a second map with a different tile
+//            base, and a port that ships only the scrolling columns renders a
+//            hole where a background structure should be.
+//   $227E58  2,048 B of palette: 32 banks x 32 xRGB555, which is what the
+//            renderer's `(attr & $3e) >> 1` indexes
+//
+// AND IT SHARDS THE TILE SHEET, because 1,820 decoded tiles is 653 KiB gzipped
+// and nobody waits for that before the first frame.  Eight shards: seven of 32
+// map columns each (0..223) and an eighth holding the second map.  The shards
+// are DISJOINT BY CONSTRUCTION -- a tile is assigned to the FIRST shard whose
+// columns use it -- which costs almost nothing here because the DoJ background
+// is a painted strip and not a tile set: 88.4 % of stage 1's tiles appear in
+// exactly one map column (recon §2).  BOOT LOADS SHARDS 0 AND 1 ONLY; the rest
+// are queued from boot and promoted by the scroll position the VM already
+// computes (`src/web/assets.js`, `src/web/app.js`).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -89,6 +125,11 @@ const webDir = need(path.join(RIP, 'web'),
   'Run: python games/ddpdoj/tools/oracle/pgm.py pixdemo');
 const tablesFile = need(path.join(RIP, 'port', 'player.tables.json'),
   'Run: python games/ddpdoj/tools/export-tables.py');
+// WAVE 14.  The DECRYPTED 68000 image -- the same file `tools/export-tables.py`
+// and every recon tool reads.  The stage's map columns, its second map and its
+// palette block are 68000 DATA, not tile ROM, so they come from here.
+const cpuFile = need(path.join(GAME, 'tools', 'oracle', 'out', 'maincpu.bin'),
+  'Run: python games/ddpdoj/tools/oracle/derive.py');
 
 assertLittleEndianHost();
 const readRom = (n) => new Uint8Array(fs.readFileSync(path.join(romDir, n)));
@@ -223,16 +264,237 @@ console.log(`  BG tiles ${bgList.length}   TX tiles ${txList.length}   `
   + `sprite streams ${streams.size} (${shipHarvested} of them the ship's own `
   + `bank frames, harvested by address because the recorded ship never banked)`);
 
-// ---------------------------------------------------------------------------
-// 2. THE TILE SHEETS.  Decoded, one byte per pixel, in ascending tile order.
+// ------------------------------------------------------------------- WAVE 14
+// 1b. THE STAGE-1 LAYOUT, out of the 68000 image.
+//
+// The capture bounds the SPRITES and the TX layer.  It does not bound the
+// BACKGROUND any more -- the map does.  Every address here is a measured one
+// from `20-recon-level-data.md` §0/§1/§3b; every one of the checks below fails
+// loudly if it is wrong, and several of them were seen to fail while this was
+// being written (see the worklog's RED table).
 
-const bgSheet = new Uint8Array(bgList.length * BG_TILE_BYTES);
-const bgNo = new Uint16Array(bgList.length);
-bgList.forEach((n, i) => {
-  if (n > 0xffff) throw new Error(`BG tile number ${n} does not fit a u16`);
-  bgNo[i] = n;
-  bgTile({ igs023 }, n, bgSheet.subarray(i * BG_TILE_BYTES, (i + 1) * BG_TILE_BYTES));
+const cpu = new Uint8Array(fs.readFileSync(cpuFile));
+const be16 = (a) => (cpu[a] << 8) | cpu[a + 1];
+const be32 = (a) => (((cpu[a] << 24) | (cpu[a + 1] << 16)
+  | (cpu[a + 2] << 8) | cpu[a + 3]) >>> 0);
+
+/** stage 1 = stage index 0.  `w20level.py tables`, and $2611D6/$2611B2. */
+const STAGE1 = Object.freeze({
+  cols: 0x225b78,      // $2611D6's column-stream pointer for stage 0
+  ncols: 224,          // columns the scroll VM reaches -- MEASURED, 224 of 248
+  tileBase: 0x0aa9,    // $240D62[0] >> 16, added to the WHOLE longword
+  smap: 0x227af8,      // $26C220 lea $227AF8,A1 -- the SECOND map
+  nsmap: 23,           // $26C23C moveq #$16,D6 -> 23 columns
+  smapBase: 0x32a9,    // $26C244 addi.l #$32A90000,D4
+  pal: 0x227e58,       // $2611B2's palette pointer for stage 0
+  palWords: 1024,      // 2,048 B = 32 banks x 32 xRGB555
 });
+const COL_BYTES = 36;                    // 9 longwords, $26135A's `dbra D6`, D6=8
+const COL_ROWS = 9;
+
+/** One map: `[ [tile, attr] x 9 ] x n`, with the per-stage base already added. */
+function decodeMap(at, n, base) {
+  const out = [];
+  for (let c = 0; c < n; c++) {
+    const col = [];
+    for (let r = 0; r < COL_ROWS; r++) {
+      const v = be32(at + c * COL_BYTES + r * 4);
+      // $240D88 `add.l D2,D4` with D2 = base<<16: the tile number is the high
+      // word plus the base and the attribute word rides through untouched.
+      col.push([((v >>> 16) + base) & 0xffff, v & 0xffff]);
+    }
+    out.push(col);
+  }
+  return out;
+}
+
+const stageMap = decodeMap(STAGE1.cols, STAGE1.ncols, STAGE1.tileBase);
+const secondMap = decodeMap(STAGE1.smap, STAGE1.nsmap, STAGE1.smapBase);
+
+// CHECK 1 -- the attribute word.  Recon §1b: no BG map entry in the whole game
+// sets a flip bit ($C0) or any bit outside $3E; the attribute is a pure 5-bit
+// palette-bank select.  A wrong stride, a wrong base or a swapped tile/attr
+// half turns this into noise, so it is the cheapest way to catch all three.
+{
+  const bad = [];
+  for (const map of [stageMap, secondMap]) {
+    for (const col of map) for (const [, a] of col) if (a & ~0x3e) bad.push(a);
+  }
+  if (bad.length) {
+    throw new Error(`${bad.length} BG map attribute words have a bit outside `
+      + `$3E (first $${bad[0].toString(16)}). Recon §1b measured ZERO in all `
+      + '8,142 entries of all five stages -- so the column stride, the tile '
+      + 'base or the tile/attr halves are being read wrongly.');
+  }
+}
+
+const mapTiles = new Set();
+for (const col of stageMap) for (const [t] of col) mapTiles.add(t);
+const smapTiles = new Set();
+for (const col of secondMap) for (const [t] of col) smapTiles.add(t);
+
+// CHECK 2 -- the counts and the ranges the recon measured.
+{
+  const lo = Math.min(...mapTiles), hi = Math.max(...mapTiles);
+  if (mapTiles.size !== 1820 || lo !== 0x0aa9 || hi !== 0x11c6) {
+    throw new Error(`stage 1's 224 columns hold ${mapTiles.size} distinct tiles `
+      + `$${lo.toString(16)}..$${hi.toString(16)}; recon §1/§2 measured 1,820 `
+      + 'in $0AA9..$11C6. The stream bound or the tile base has moved.');
+  }
+  const slo = Math.min(...smapTiles), shi = Math.max(...smapTiles);
+  if (smapTiles.size !== 205 || slo !== 0x32a9 || shi !== 0x3381) {
+    throw new Error(`the second map holds ${smapTiles.size} distinct tiles `
+      + `$${slo.toString(16)}..$${shi.toString(16)}; recon §3b measured 205 in `
+      + '$32A9..$3381.');
+  }
+}
+
+// THE PALETTE BLOCK.  Big-endian xRGB555 -- and bit 15 is the check, because a
+// block of map entries read as colours has bit 15 set on a third of its words
+// and a byte-swapped read scatters them.  Recon §1a measured 0 of 1024.
+const bgPal = new Uint16Array(STAGE1.palWords);
+for (let i = 0; i < STAGE1.palWords; i++) bgPal[i] = be16(STAGE1.pal + i * 2);
+{
+  const set = [...bgPal].filter((w) => w & 0x8000).length;
+  if (set !== 0) {
+    throw new Error(`${set} of ${STAGE1.palWords} words at $227E58 have bit 15 `
+      + 'set. xRGB555 never does; recon §1a measured 0. This is not the palette '
+      + 'block, or it is not being read big-endian.');
+  }
+}
+// ...and the block against the BOARD.  $2415E8 uploads it into palette RAM
+// $400..$7FF once per stage, so the capture's own palette IS this block plus
+// whatever the game animates on top of it.  This is the check that says the
+// ADDRESS is right rather than merely plausible: a wrong one drops it to ~370.
+let palAgree = 0;
+{
+  const p = cap.part(0, 'palette');
+  for (let i = 0; i < STAGE1.palWords; i++) if (p[0x400 + i] === bgPal[i]) palAgree++;
+  if (palAgree < 1000) {
+    throw new Error(`the $227E58 palette block agrees with the board's own `
+      + `palette RAM $400..$7FF on only ${palAgree} of ${STAGE1.palWords} `
+      + 'entries at capture frame 0. Wave 14 measured 1020 (the other four are '
+      + 'bank 21 pens 0..3, which the game animates). This block is not what '
+      + '$2415E8 uploads.');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2. THE TILE SHEETS.
+//
+// TX: one sheet, from the capture, unchanged -- it is the HUD and it does not
+// scroll with the stage.
+//
+// BG: EIGHT SHARDS.  Shard s in 0..6 is map columns [32s, 32s+32); shard 7 is
+// the second map.  A tile is assigned to the FIRST shard that uses it, so the
+// shards are disjoint by construction and the shard holding a tile is always
+// the earliest one that needs it.  Slots are contiguous across shards in shard
+// order, so ONE `bg.tileno.u16` describes every slot and the loader can build
+// its tile->slot table before a single shard body has arrived.
+const BG_SHARDS = 8;
+const SMAP_SHARD = 7;
+const BOOT_SHARDS = [0, 1];
+const SHARD_COLS = 32;
+
+/** tile number -> shard index, first use wins. */
+const shardOfTile = new Map();
+for (let s = 0; s < SMAP_SHARD; s++) {
+  for (let c = s * SHARD_COLS; c < Math.min((s + 1) * SHARD_COLS, STAGE1.ncols); c++) {
+    for (const [t] of stageMap[c]) if (!shardOfTile.has(t)) shardOfTile.set(t, s);
+  }
+}
+for (const t of smapTiles) if (!shardOfTile.has(t)) shardOfTile.set(t, SMAP_SHARD);
+
+// THE CAPTURE'S OWN TILES ARE NOT NEGOTIABLE.  `verifyCoverage` throws at load
+// for any BG tile the recording uses and the sheet lacks, and that check must
+// keep working from the BOOT shards alone -- the page draws capture frame 0
+// before shard 2 has been asked for.  Measured: 414 of the capture's 415 tiles
+// are in columns 0..63, and the 415th is tile $0000, which is the value
+// $23C668's ring clear leaves behind and which no map column ever names.
+const bootSet = new Set(BOOT_SHARDS);
+const captureExtras = bgList.filter((t) => !bootSet.has(shardOfTile.get(t)));
+for (const t of captureExtras) {
+  if (shardOfTile.has(t)) {
+    throw new Error(`the capture uses BG tile $${t.toString(16)}, which the map `
+      + `puts in shard ${shardOfTile.get(t)} -- outside the boot set `
+      + `[${BOOT_SHARDS}]. The boot bundle cannot satisfy verifyCoverage.`);
+  }
+  shardOfTile.set(t, 0);         // no map column names it: it belongs to boot
+}
+if (captureExtras.length > 32) {
+  throw new Error(`${captureExtras.length} of the capture's ${bgList.length} BG `
+    + 'tiles are named by no stage-1 map column. Wave 14 measured exactly one '
+    + '(tile $0000, the ring clear). That many means the capture is not of '
+    + 'stage 1, or the map is being decoded wrongly.');
+}
+
+const shardTiles = [];
+for (let s = 0; s < BG_SHARDS; s++) shardTiles.push([]);
+for (const [t, s] of shardOfTile) shardTiles[s].push(t);
+for (const list of shardTiles) list.sort((a, b) => a - b);
+
+const bgSlotNo = [];
+const shardMeta = [];
+for (let s = 0; s < BG_SHARDS; s++) {
+  const firstSlot = bgSlotNo.length;
+  for (const t of shardTiles[s]) bgSlotNo.push(t);
+  shardMeta.push({
+    i: s,
+    kind: s === SMAP_SHARD ? 'secondmap' : 'scroll',
+    cols: s === SMAP_SHARD ? null : [s * SHARD_COLS,
+      Math.min((s + 1) * SHARD_COLS, STAGE1.ncols) - 1],
+    firstSlot,
+    tiles: shardTiles[s].length,
+  });
+}
+const bgNo = Uint16Array.from(bgSlotNo);
+if (new Set(bgSlotNo).size !== bgSlotNo.length) {
+  throw new Error('the BG shards are not disjoint -- a tile is in two of them, '
+    + 'so `bg.tileno.u16`\'s slot mapping is ambiguous');
+}
+
+/** Decoded pixels for one shard, in slot order. */
+const shardPixels = shardTiles.map((list) => {
+  const buf = new Uint8Array(list.length * BG_TILE_BYTES);
+  list.forEach((n, i) => {
+    if (n > 0xffff) throw new Error(`BG tile number ${n} does not fit a u16`);
+    bgTile({ igs023 }, n, buf.subarray(i * BG_TILE_BYTES, (i + 1) * BG_TILE_BYTES));
+  });
+  return buf;
+});
+
+// THE REGION-ASSEMBLY GATE.  `cave_t04401w064.u19` loads at 0x180000 and
+// SHADOWS the top of `pgm_t01s.rom`; at 0x200000 it would not, and every tile
+// index above 0xC000 would shift.  Wave 3 measured that mutation at 52.86 % of
+// pixels still correct -- it renders a PLAUSIBLE background.  This asserts the
+// two facts a wrong base breaks: the region is the size regions.js says, and
+// the highest tile any shard names has all 5,120 of its bits inside it.
+// `tools/bgstrip.py --check --break u19` is the pixel-level form of the same
+// check and is the one that was seen red.
+{
+  const hi = bgSlotNo[bgSlotNo.length - 1];
+  const need = Math.ceil(((hi + 1) * BG_W * BG_H * 5) / 8);
+  if (igs023.length !== IGS023_SIZE || need > igs023.length) {
+    throw new Error(`the assembled igs023 region is ${igs023.length} B and tile `
+      + `$${hi.toString(16)} needs ${need} B of it; regions.js says `
+      + `${IGS023_SIZE}. cave_t04401w064.u19 must load at 0x180000, where it `
+      + 'SHADOWS the top of pgm_t01s.rom -- 0x200000 shifts every tile index '
+      + 'above 0xC000 and still draws a plausible picture.');
+  }
+}
+
+// THE MAP the second-map shard is for.  The 224 SCROLLING columns need no file:
+// the port reads them out of the ROM window `player.tables.json` already
+// carries ($225B78, $22E0 B, which spans the second map too) and writes them
+// into $900000 itself.  The second map's PAINTER ($26C20C, object type $1C) is
+// unported, so its 207 entries are shipped DECODED here for the wave that ports
+// it -- and named in the manifest so nobody has to re-derive the $32A9 base.
+const smapPairs = new Uint16Array(STAGE1.nsmap * COL_ROWS * 2);
+{
+  let k = 0;
+  for (const col of secondMap) for (const [t, a] of col) { smapPairs[k++] = t; smapPairs[k++] = a; }
+}
+
 const txSheet = new Uint8Array(txList.length * TX_TILE_BYTES);
 const txNo = new Uint16Array(txList.length);
 txList.forEach((n, i) => {
@@ -388,15 +650,25 @@ function put(rel, bytes, { gz = true } = {}) {
   written.push([gz ? `${rel}.gz` : rel, body.length, raw.length]);
 }
 
-put('gfx/bg.tiles.u8', bgSheet);
+for (let s = 0; s < BG_SHARDS; s++) put(`gfx/bg.shard${s}.tiles.u8`, shardPixels[s]);
 put('gfx/bg.tileno.u16', bgNo);
+put('gfx/bg.pal.u16', bgPal);
+put('gfx/bg.smap.u16', smapPairs);
 put('gfx/tx.tiles.u8', txSheet);
 put('gfx/tx.tileno.u16', txNo);
 put('spr/mask.u16', packedMask.buf);
 put('spr/col.u16', packedCol.buf);
 put('capture.bin', outBin);
 put('seed.bin', seed);
-put('player.tables.json', tables, { gz: false });
+// WAVE 14.  These two were the last uncompressed bodies in the bundle -- 121 KB
+// and 38 KB of JSON, 159 KB of the 408 KB the page used to fetch.  Adding the
+// whole stage's background put the BOOT figure over what the page loads today,
+// and the owner's constraint is that boot must not get slower.  Gzipping the
+// two JSON blobs gives that back with room to spare and changes nothing about
+// their content: the loader inflates them through the same DecompressionStream
+// every other body already goes through.  `manifest.json` stays PLAIN because
+// it is what says how everything else is encoded.
+put('player.tables.json', tables);
 
 const manifest = {
   note: 'Generated by games/ddpdoj/tools/export-web.mjs. Nothing here is '
@@ -409,12 +681,61 @@ const manifest = {
   // zero-filled sheet that renders a plausible empty starfield.
   encoding: 'gzip',
   gfx: {
-    bg: { tiles: bgList.length, tileBytes: BG_TILE_BYTES, w: BG_W, h: BG_H, bpp: 5 },
+    // WAVE 14 -- the BG sheet is SHARDED and covers the WHOLE stage, not the
+    // recording.  `tiles` is every slot in `bg.tileno.u16`; `shards[s]` says
+    // which contiguous run of those slots lives in `bg.shard<s>.tiles.u8`.
+    bg: {
+      tiles: bgNo.length, tileBytes: BG_TILE_BYTES, w: BG_W, h: BG_H, bpp: 5,
+      stage: 1, stageIndex: 0,
+      map: {
+        cols: `$${STAGE1.cols.toString(16).toUpperCase()}`, ncols: STAGE1.ncols,
+        colBytes: COL_BYTES, rows: COL_ROWS,
+        tileBase: `$${STAGE1.tileBase.toString(16).toUpperCase()}`,
+        note: 'The 224 SCROLLING columns are NOT a file: the port reads them '
+          + 'out of player.tables.json\'s $225B78 ROM window the way $26135A '
+          + 'reads them and writes $900000 itself. This block is here so the '
+          + 'shard boundaries can be checked against the same numbers.',
+      },
+      secondMap: {
+        at: `$${STAGE1.smap.toString(16).toUpperCase()}`, ncols: STAGE1.nsmap,
+        tileBase: `$${STAGE1.smapBase.toString(16).toUpperCase()}`,
+        entries: STAGE1.nsmap * COL_ROWS,
+        file: 'gfx/bg.smap.u16.gz',
+        painter: '$26C20C (object type $1C, init $26C1C2) -- 23x9 columns into '
+          + 'ring columns 47.. (or 41 when $803926 is 0), every frame it lives',
+        note: 'DECODED (tile, attr) pairs with $32A9 ALREADY ADDED, column '
+          + 'major, 9 rows per column. THE PAINTER IS UNPORTED: nothing in this '
+          + 'bundle draws these yet, and shard 7 therefore ships pixels no '
+          + 'frame currently asks for. What spawns type $1C is named-not-found '
+          + '(recon §8.5).',
+      },
+      palette: {
+        at: `$${STAGE1.pal.toString(16).toUpperCase()}`,
+        words: STAGE1.palWords, banks: 32, perBank: 32,
+        file: 'gfx/bg.pal.u16.gz',
+        agreesWithBoard: palAgree,
+        note: 'xRGB555, big-endian in the 68000 image, what $2415E8 uploads '
+          + 'into palette RAM $400..$7FF. It agrees with the board\'s own '
+          + `palette on ${palAgree} of ${STAGE1.palWords} entries at capture `
+          + 'frame 0; the four that differ are bank 21 pens 0..3, which the '
+          + 'game ANIMATES through an unported routine. THE PAGE STILL DRAWS '
+          + 'WITH THE CAPTURE\'S PALETTE for that reason -- this block is '
+          + 'shipped, checked at load, and not yet used.',
+      },
+      shards: shardMeta,
+      boot: BOOT_SHARDS,
+      captureExtras,
+      note: 'DECODED, one byte per pixel, exactly the transformation '
+        + 'src/render/tiles.js bgTile() performs. Slot i holds tile number '
+        + 'bg.tileno.u16[i]; slots [firstSlot, firstSlot+tiles) come from '
+        + 'gfx/bg.shard<i>.tiles.u8.gz. Shards are DISJOINT: a tile lives in '
+        + 'the FIRST shard whose map columns use it. `boot` is the set the page '
+        + 'must have before frame 1; the rest are queued from boot and promoted '
+        + 'by the scroll VM\'s own column cursor. `captureExtras` are tiles the '
+        + 'RECORDING uses that no map column names -- they are folded into '
+        + 'shard 0 so verifyCoverage is satisfiable at boot.',
+    },
     tx: { tiles: txList.length, tileBytes: TX_TILE_BYTES, w: TX_W, h: TX_H, bpp: 4 },
-    note: 'DECODED, one byte per pixel, exactly the transformation '
-      + 'src/render/tiles.js bgTile()/txTile() performs. Slot i holds tile '
-      + 'number bg.tileno.u16[i]; a tile number that is not in that list is a '
-      + 'loud throw, not a blank tile.',
   },
   spr: {
     maskWords: packedMask.buf.length, maskUsed: packedMask.used,
@@ -463,23 +784,45 @@ const manifest = {
   romsUsed: [...IGS023_LAYOUT, ...SPRCOL_LAYOUT, ...SPRMASK_LAYOUT].map(([n]) => n),
 };
 fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 1));
-fs.writeFileSync(path.join(OUT, 'capture.json'), JSON.stringify({
+put('capture.json', new TextEncoder().encode(JSON.stringify({
   ...capJson,
   note: `${capJson.note} -- REBASED for the published bundle by `
     + 'games/ddpdoj/tools/export-web.mjs: every record\'s sprite offs field '
     + 'points into assets/spr/mask.u16, not into the cartridge.',
   rebased: true,
-}));
+})));
 
-let total = 0;
+// WAVE 14 -- THE BOOT FIGURE, which is the number the owner asked for.  A file
+// is "deferred" if the page does not need it before the first frame: that is
+// exactly the non-boot BG shards.  Everything else is boot.
+const DEFERRED = new Set();
+for (let s = 0; s < BG_SHARDS; s++) {
+  if (!BOOT_SHARDS.includes(s)) DEFERRED.add(`gfx/bg.shard${s}.tiles.u8.gz`);
+}
+
+let total = 0, boot = 0;
 for (const [name, gz, raw] of written) {
   total += gz;
-  console.log(`  ${name.padEnd(24)} ${String(gz).padStart(9)} B`
-    + (gz === raw ? '' : `  (from ${raw} B)`));
+  if (!DEFERRED.has(name)) boot += gz;
+  console.log(`  ${name.padEnd(28)} ${String(gz).padStart(9)} B`
+    + (gz === raw ? '' : `  (from ${raw} B)`)
+    + (DEFERRED.has(name) ? '   [deferred]' : ''));
 }
-for (const f of ['manifest.json', 'capture.json']) {
-  const n = fs.statSync(path.join(OUT, f)).size;
-  total += n;
-  console.log(`  ${f.padEnd(24)} ${String(n).padStart(9)} B`);
+{
+  const n = fs.statSync(path.join(OUT, 'manifest.json')).size;
+  total += n; boot += n;
+  console.log(`  ${'manifest.json'.padEnd(28)} ${String(n).padStart(9)} B`);
 }
-console.log(`BUNDLE ${OUT}: ${(total / 1024).toFixed(1)} KiB served`);
+console.log(`BUNDLE ${OUT}: ${(total / 1024).toFixed(1)} KiB total, `
+  + `${(boot / 1024).toFixed(1)} KiB BEFORE THE FIRST FRAME `
+  + `(shards ${BOOT_SHARDS.join('+')}), `
+  + `${((total - boot) / 1024).toFixed(1)} KiB deferred`);
+console.log('  BG shards, gz:');
+for (let s = 0; s < BG_SHARDS; s++) {
+  const [, gz] = written.find(([n]) => n === `gfx/bg.shard${s}.tiles.u8.gz`);
+  const m = shardMeta[s];
+  console.log(`    ${s} ${m.kind.padEnd(9)} `
+    + `${m.cols ? `cols ${String(m.cols[0]).padStart(3)}..${String(m.cols[1]).padStart(3)}` : 'second map    '}`
+    + `  ${String(m.tiles).padStart(4)} tiles  ${String(gz).padStart(7)} B `
+    + `= ${(gz / 1024).toFixed(1)} KiB${BOOT_SHARDS.includes(s) ? '  BOOT' : ''}`);
+}

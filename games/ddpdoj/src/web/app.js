@@ -32,14 +32,24 @@
 //     scenario, the same window wave 4 compares -- and loop.  The enemies are
 //     pixels: they do not see the ship and cannot be hit.
 //
-//     THE BACKGROUND LAYER IS NO LONGER AMONG THEM in the way that matters:
-//     its MOTION, its camera, its scroll registers and its tilemap columns are
-//     the port's (wave 13).  What the recording still supplies for it is the
-//     TILE PIXELS -- 415 harvested tiles against the 1,820 stage 1 references
-//     -- and the ring's initial contents (`bgSeed`), which is 63 columns the
-//     board wrote before the recording started.  Tiles the port's ring asks
-//     for and the bundle lacks are drawn BLANK and COUNTED
-//     (`bundle.missingBgTiles`, on the status line).  W15 exports them.
+//     THE BACKGROUND LAYER IS NO LONGER AMONG THEM AT ALL.  Wave 13 made its
+//     MOTION the port's; WAVE 14 made its PIXELS the cartridge's.  All 1,820 BG
+//     tiles the 224 scrolling map columns of stage 1 reference are exported,
+//     plus the 205 the second map at $227AF8 references, in EIGHT SHARDS.  The
+//     page fetches shards 0 and 1 before the first frame and queues the rest;
+//     the scroll VM's own column cursor promotes whichever one is next.  What
+//     the recording still supplies for the background is the ring's initial
+//     contents (`bgSeed`, 63 columns the board wrote before the recording
+//     started) and the PALETTE -- the cartridge's own palette block IS shipped
+//     and checked (1020 of its 1024 entries equal the board's), but four
+//     entries (bank 21 pens 0..3) are ANIMATED by an unported routine, so the
+//     capture's palette is still what draws.
+//
+//     A SHARD THAT HAS NOT LANDED IS NAMED, NEVER BLACK.  Tiles whose shard is
+//     still in flight are drawn as the transparent pen and the shard number
+//     goes on the status line; a shard that FAILED to load throws an
+//     AssetError naming the shard and the file the moment a frame needs it.
+//     The report this wave came out of was a silent black screen.
 //
 //   PRODUCED (wave 12), and written into the replayed list:  EIGHT display-list
 //     records are now COMPUTED every frame rather than relocated -- the ship
@@ -256,6 +266,34 @@ class Demo {
     g.ram.setU8(INVULN, 0xff);           // the scenario's intervention
     g.step(currentPortWord());
     this.stepsRun++;
+    // WAVE 14 -- THE SCROLL DRIVES THE DOWNLOAD.  The VM's own column cursor is
+    // the same axis the background shards are cut on, so "which shard do I need
+    // next" is arithmetic rather than a timer: shard s is map columns
+    // [32s, 32s+32), and `followColumn` promotes the current one and the next.
+    // Everything is queued at boot anyway (`prefetchAll`); this decides ORDER,
+    // which is what matters when the link is slow.
+    this.bundle.bg?.followColumn(this.streamColumn());
+  }
+
+  /**
+   * The stage-1 map column the port is painting, or -1.
+   *
+   * `vram.streamPtr` is the ROM address `$26134E` loaded for the current column
+   * ($225B78 + 36*column).  It is -1 before the first column is written and
+   * whenever the pointer is outside stage 1's own stream -- the boss lock
+   * rewinds it and stages 2..5 are not exported at all, so an address this
+   * cannot place must NOT be turned into a plausible column number.
+   */
+  streamColumn() {
+    const map = this.bundle.manifest.gfx.bg?.map;
+    if (!map) return -1;
+    const base = Number.parseInt(String(map.cols).replace('$', ''), 16);
+    const p = this.game.vram.streamPtr;
+    if (!p) return -1;
+    const off = p - base;
+    if (off < 0 || off % map.colBytes !== 0) return -1;
+    const col = off / map.colBytes;
+    return col < map.ncols ? col : -1;
   }
 
   /** The picture for the port's CURRENT logic frame. */
@@ -338,6 +376,12 @@ class Demo {
       columns: g.vram.columnsWritten,      // $240D76 map columns written
       scrollEvents: g.scrollEvents.length,
       missingBgTiles: this.bundle.missingBgTiles?.size ?? 0,
+      // WAVE 14 -- the background shards.  `waiting` is the honest part: a
+      // shard a DRAW asked for and did not have.  If it is ever non-empty the
+      // player is looking at a hole and the page says which one, rather than
+      // showing black and saying nothing.
+      mapColumn: this.streamColumn(),
+      shards: this.bundle.bg?.status() ?? null,
     };
   }
 
@@ -405,6 +449,12 @@ export async function boot(canvas, opts = {}) {
   }
 
   const bundle = await loadBundle(httpReader(base, opts.onProgress), opts.bundleOpts);
+  // WAVE 14.  `loadBundle` awaited the BOOT shards only (0 and 1, 210.3 KiB --
+  // less than the 408 KiB the wave-13 page fetched before its first frame).
+  // The other six are queued HERE, after boot has returned, so they compete
+  // with nothing: the recon measured 25 s of slack for the 441 KiB and a
+  // tightest single deadline of 4.3 s.
+  bundle.bg?.prefetchAll();
   const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE);
   attachKeyboard(opts.target);
 
