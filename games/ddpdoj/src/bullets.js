@@ -548,6 +548,32 @@ const fan = (ctx) => (ctx.mut === 'fan-always' ? true
   : ctx.ram.u16(BUL.rank) !== 0);
 
 /**
+ * The twelve rank!=0 fan entries wrap their body in
+ * `movem.l D0-D1/A0,-(A7)` on entry and `movem.l (A7)+,D0-D1/A0` before the
+ * `rts`, so on return D0, D1 and A0 are the CALLER'S ORIGINALS.  The bodies
+ * (pair06, spread2A, ...) and `spawnCore` model their own D0/D1 writes
+ * faithfully; this restores them afterwards, ONE LEVEL UP, exactly as the
+ * cartridge does.  It is invisible to a gate that reconstructs registers per
+ * invocation, but it is load-bearing the moment a `dbra` fan that reuses D0/D1
+ * is ported -- e.g. `$273B44`'s eight-way ring calling `$2817B8` eight times
+ * under rank != 0: each iteration must start from the caller's D0/D1, not the
+ * previous bullet's leftover.
+ *
+ * The twelve: bank A `$281420 $281432 $281442 $281450 $281484 $2814AC`, bank B
+ * `$281744 $281754 $281764 $281776 $2817A8 $2817B8` (the pops sit at `$281360
+ * $281384 $2813CE $2813EA $28147E $2817A2 ...`).  The four single / inline-bias
+ * entries `$281402 $281708 $281726` do NOT wrap -- they restore D0 themselves
+ * with an `addi.l`/`subi.l` pair and no `movem`.
+ */
+const restoreFan = (regs, body) => {
+  const d0 = regs.d0, d1 = regs.d1, a0 = regs.a0;        // movem.l D0-D1/A0,-(A7)
+  const out = body();
+  regs.d0 = d0; regs.d1 = d1;                            // movem.l (A7)+,D0-D1/A0
+  if (a0 !== undefined) regs.a0 = a0;                    // (A0 too, when tracked)
+  return out;
+};
+
+/**
  * THE NINETEEN ENTRY POINTS.  The key is the ROM address a call site `jsr`s.
  *
  * `$281494` is deliberately ABSENT.  20-recon-pattern-tables lists it among
@@ -570,23 +596,25 @@ export const ENTRIES = new Map([
     return out;
   }],
   [0x281420, (ctx, r) => (!fan(ctx) ? [spawnCore(ctx, r, 'A')]
-    : pair06(ctx, r, 'A'))],                          // $28142E bra $28134E
+    : restoreFan(r, () => pair06(ctx, r, 'A')))],    // $28142E bra $28134E
   [0x281432, (ctx, r) => (!fan(ctx) ? [spawnCore(ctx, r, 'A')]
-    : triple05(ctx, r, 'A'))],                        // $28143E bra $281366
+    : restoreFan(r, () => triple05(ctx, r, 'A')))],  // $28143E bra $281366
   [0x281442, (ctx, r) => (!fan(ctx) ? [spawnCore(ctx, r, 'A')]
-    : spread2A(ctx, r))],                             // $28144E bra $2813D4
+    : restoreFan(r, () => spread2A(ctx, r)))],       // $28144E bra $2813D4
   [0x281450, (ctx, r) => {
     if (!fan(ctx)) return [spawnCore(ctx, r, 'A')];
-    r.d0 = (r.d0 + S(4)) >>> 0;                       // $28145C addi.l #$40000
-    const out = spread2A(ctx, r);                     // inlined, not a bra
-    r.d0 = (r.d0 - S(4)) >>> 0;                       // $281478 subi.l #$40000
-    return out;
+    return restoreFan(r, () => {                     // movem D0-D1/A0 .. (A7)+
+      r.d0 = (r.d0 + S(4)) >>> 0;                     // $28145C addi.l #$40000
+      const out = spread2A(ctx, r);                   // inlined, not a bra
+      r.d0 = (r.d0 - S(4)) >>> 0;                     // $281478 subi.l #$40000
+      return out;
+    });
   }],
   [0x281484, (ctx, r) => (!fan(ctx) ? [spawnCore(ctx, r, 'A')]
-    : spread3A(ctx, r))],                             // $281490 bra $2813A6
+    : restoreFan(r, () => spread3A(ctx, r)))],       // $281490 bra $2813A6
   // $2814AC: `bne $28138A`, so the rank-0 path FALLS THROUGH into the core.
   [0x2814ac, (ctx, r) => (!fan(ctx) ? [spawnCore(ctx, r, 'A')]
-    : adaptive(ctx, r, 'A'))],
+    : restoreFan(r, () => adaptive(ctx, r, 'A')))],
   [0x2814b6, (ctx, r) => [spawnCore(ctx, r, 'A')]],   // the core, called directly
   // ---- bank B: the angle arrives in 1/256 turn -----------------------------
   [0x2816f6, (ctx, r) => [spawnCore(ctx, r, 'B')]],
@@ -605,22 +633,24 @@ export const ENTRIES = new Map([
     return out;
   }],
   [0x281744, (ctx, r) => (!fan(ctx) ? [spawnCore(ctx, r, 'B')]
-    : pair06(ctx, r, 'B'))],
+    : restoreFan(r, () => pair06(ctx, r, 'B')))],
   [0x281754, (ctx, r) => (!fan(ctx) ? [spawnCore(ctx, r, 'B')]
-    : triple05(ctx, r, 'B'))],
+    : restoreFan(r, () => triple05(ctx, r, 'B')))],
   [0x281764, (ctx, r) => (!fan(ctx) ? [spawnCore(ctx, r, 'B')]
-    : spread2B(ctx, r))],
+    : restoreFan(r, () => spread2B(ctx, r)))],
   [0x281776, (ctx, r) => {
     if (!fan(ctx)) return [spawnCore(ctx, r, 'B')];
-    r.d0 = (r.d0 + S(6)) >>> 0;                       // $281784 addi.l #$60000
-    const out = spread2B(ctx, r);
-    r.d0 = (r.d0 - S(6)) >>> 0;                       // $28179C subi.l #$60000
-    return out;
+    return restoreFan(r, () => {                     // movem D0-D1/A0 .. (A7)+
+      r.d0 = (r.d0 + S(6)) >>> 0;                     // $281784 addi.l #$60000
+      const out = spread2B(ctx, r);
+      r.d0 = (r.d0 - S(6)) >>> 0;                     // $28179C subi.l #$60000
+      return out;
+    });
   }],
   [0x2817a8, (ctx, r) => (!fan(ctx) ? [spawnCore(ctx, r, 'B')]
-    : spread3B(ctx, r))],
+    : restoreFan(r, () => spread3B(ctx, r)))],
   [0x2817b8, (ctx, r) => (!fan(ctx) ? [spawnCore(ctx, r, 'B')]
-    : adaptive(ctx, r, 'B'))],
+    : restoreFan(r, () => adaptive(ctx, r, 'B')))],
   [0x2817c2, (ctx, r) => [spawnCore(ctx, r, 'B')]],   // the core, 71 direct sites
 ]);
 

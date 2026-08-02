@@ -460,7 +460,12 @@ console.log(`COVERAGE kinds ${base.kinds.size}/39 -> `
 console.log(`COVERAGE cores ${base.banks.size}/2   spawn-inits `
   + `${base.inits.size}/9 -> ${[...base.inits]
     .map((a) => `$${a.toString(16).toUpperCase()}`).sort().join(' ')}`);
-console.log(`COVERAGE rank!=0 generator BODIES reached ${base.bodies.size}/8 -> `
+// BODIES is the 13-entry map above (the 8 SHARED fan bodies $28134E/$281366/
+// $2813A6/$2813D4 bank A + $281668/$281680/$2816C0/$2816DE bank B, PLUS the 5
+// inline / single-shot arms $281402/$281450/$281708/$281726/$281776).  The
+// denominator is the REAL size of that map -- never a hardcoded 8 over a
+// 13-entry structure (that was a coverage fraction that could not be right).
+console.log(`COVERAGE rank!=0 generator BODIES reached ${base.bodies.size}/${BODIES.size} -> `
   + `${[...base.bodies].map((a) => `$${a.toString(16).toUpperCase()}`).sort().join(' ')}`);
 console.log(`COVERAGE rank-0 ENTRY arms attributed ${base.entries.size}/19 -> `
   + `${[...base.entries].map((a) => `$${a.toString(16).toUpperCase()}`).sort().join(' ')}`);

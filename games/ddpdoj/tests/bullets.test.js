@@ -439,6 +439,39 @@ test('$281494 is NOT an entry point and says so by address', () => {
   assert.equal(e.romAddress, 0x281494);
 });
 
+test('the twelve rank!=0 fan entries restore D0/D1/A0 (the movem frame)', () => {
+  // Each rank!=0 fan body is wrapped in `movem.l D0-D1/A0,-(A7)` at entry and
+  // `movem.l (A7)+,D0-D1/A0` before the rts, so on return D0, D1 and A0 are the
+  // caller's originals.  Without it, a `dbra` fan reusing D0/D1 across iterations
+  // (e.g. $273B44's eight-way ring calling $2817B8 eight times under rank != 0)
+  // would accumulate the previous bullet's leftover.
+  //
+  // pair06/triple05 mutate D0 (speed bias); spread2*/spread3*/adaptive mutate D1
+  // (the angle); the inline-bias entries mutate D0 around the body.  So this
+  // checks BOTH registers over all twelve, against the caller's originals.
+  const SUB = 0x815000;
+  const twelve = [
+    0x281420, 0x281432, 0x281442, 0x281450, 0x281484, 0x2814ac,
+    0x281744, 0x281754, 0x281764, 0x281776, 0x2817a8, 0x2817b8,
+  ];
+  for (const entry of twelve) {
+    const ctx = ctxOf();
+    ctx.ram.setU16(BUL.rank, 1);
+    ctx.ram.setU8(0x81332c + 0x0d, 0x7e);            // adaptive: flags miss
+    ctx.ram.setU32(0x81332c + 0x06, SUB);             //          sub-record
+    ctx.ram.setU8(SUB, 0x02);                         //          bit 1 set -> 3-way
+    const r = REGS();
+    r.d0 = 0x00050005;                                // a non-zero speed bias
+    r.d1 = 0x11;                                      // 1/64 turn, < $40 (lossless)
+    const want0 = r.d0, want1 = r.d1;
+    fire(ctx, entry, r);
+    assert.equal(r.d0, want0,
+      `$${entry.toString(16)}: D0 not restored by the movem frame`);
+    assert.equal(r.d1, want1,
+      `$${entry.toString(16)}: D1 not restored by the movem frame`);
+  }
+});
+
 test('a kind >= 39 throws by address instead of reading past the table', () => {
   const ctx = ctxOf();
   const r = REGS(); r.d0 = 39;
@@ -451,17 +484,33 @@ test('a kind >= 39 throws by address instead of reading past the table', () => {
 // 5. THE ANGLE / SPEED MATHS -- $284190.
 // ============================================================================
 function mathRom(rows) {
-  const fold = win(VEC.fold, 0x200);
-  for (let i = 0; i < 256; i++) put16(fold, VEC.fold + 2 * i, foldModel(i));
-  const ptrs = win(VEC.speedPtrs, 1024);
-  const base = 0x200d20;
+  // SEEDED AT LITERAL ADDRESSES, never through VEC.*.  The subject `velocity()`
+  // reads the fold table at `VEC.fold` and the pointer table at `VEC.speedPtrs`;
+  // if either constant is wrong the fixture (written at the literal address
+  // below) and the subject (reading through the constant) DISAGREE and the test
+  // goes RED.  A fixture that seeded through the same constants it tested would
+  // move with the subject and stay green reading the fold table from the wrong
+  // address -- the defect this restructure closes (review F3).  Mirror the
+  // record-layout half: literal offsets in, the subject read through its own
+  // constants, so a wrong constant is a visible misalignment.
+  //   $283F50  the fold table       ($2841A2 lea ($283F50,PC),A2)
+  //   $200920  the per-speed ptrs   ($284194 lea $200920,A3)
+  //   $200D20  quadrant table 0     (entry 0 of the arithmetic progression)
+  //   stride   65 records * 8 = $208 (0..64 quarter-angles INCLUSIVE)
+  const FOLD = 0x283f50;
+  const PTRS = 0x200920;
+  const STRIDE = 65 * 8;
+  const BASE = 0x200d20;
+  const fold = win(FOLD, 0x200);
+  for (let i = 0; i < 256; i++) put16(fold, FOLD + 2 * i, foldModel(i));
+  const ptrs = win(PTRS, 1024);
   for (let s = 0; s < 256; s++) {
-    put32(ptrs, VEC.speedPtrs + 4 * s, base + VEC.quadStride * s);
+    put32(ptrs, PTRS + 4 * s, BASE + STRIDE * s);
   }
   const ws = [fold, ptrs];
   for (const [s, gen] of rows) {
-    const a = base + VEC.quadStride * s;
-    const w = win(a, VEC.quadStride);
+    const a = BASE + STRIDE * s;
+    const w = win(a, STRIDE);
     for (let q = 0; q <= 64; q++) {
       const [dA, dB] = gen(q);
       put32(w, a + 8 * q, dA >>> 0);

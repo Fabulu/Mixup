@@ -257,110 +257,240 @@ def cmd_fold(d):
 
 
 # ----------------------------------------------------------------- rewrites
-def cmd_rewrites(d):
-    """Every instruction in the 39 behaviours + continuations that writes the
-    TYPE WORD of a live bullet -- the IN-FLIGHT KIND REWRITE.
+def _ea6_name(disp):
+    """The EA string for a displacement into the A6 record."""
+    return "(A6)" if disp == 0 else f"(${disp:X},A6)"
 
-    A6 is the bullet record throughout the mover, so `(A6)` and `($0,A6)` are the
-    type word.  The forms searched are the ones the 68000 can encode against
-    (A6) with no displacement, plus the `bchg/bset/bclr #n,(A6)` family, which
-    is what actually produces the rewrites.
+
+def _move_src_str(d, a, w, size_char):
+    """Decode a MOVE instruction's source EA (bits 5-0 of the opcode word) and
+    return (source_text, extension_word_count)."""
+    smode, sreg = (w >> 3) & 7, w & 7
+    if smode <= 1:
+        return (f"{'D' if smode == 0 else 'A'}{sreg}", 0)
+    if smode == 2:
+        return f"(A{sreg})", 0
+    if smode == 3:
+        return f"(A{sreg})+", 0
+    if smode == 4:
+        return f"-(A{sreg})", 0
+    if smode == 5:
+        return f"(${u16(d, a + 2):X},A{sreg})", 1
+    if smode == 6:
+        return f"(d8,A{sreg},Xn)", 1
+    if sreg == 0:
+        return f"(${u16(d, a + 2):X}).w", 1
+    if sreg == 1:
+        return f"(${u32(d, a + 2):06X}).l", 2
+    if sreg == 2:
+        return "(d16,PC)", 1
+    if sreg == 3:
+        return "(d8,PC,Xn)", 1
+    if sreg == 4:                                       # immediate
+        if size_char == "l":
+            return f"#${u32(d, a + 2):08X}", 2
+        return f"#${u16(d, a + 2) & (0xFF if size_char == 'b' else 0xFFFF):02X}", 1
+    return "?", 0
+
+
+def cmd_rewrites(d):
+    r"""Every instruction in $282104..$283BAF that writes through (A6) or
+    (d16,A6) -- the putative IN-FLIGHT KIND REWRITE.
+
+    EXHAUSTIVE BYTE-PATTERN SCAN (review F2).  The scan checks EVERY word
+    boundary in the range -- it is alignment-independent, which is why a linear
+    disassembly cannot replace it ($282104..$283BAF is 6.7 KB of mixed code and
+    continuation data; a linear pass loses sync at the first data island and
+    reported only 20 of the ~80 sites on the first try).
+
+    The opcode allowlist now covers EVERY 68000 instruction class that can write
+    through EA (A6) [mode 010 reg 110 = $16] or (d16,A6) [mode 101 reg 110 =
+    $2E]:
+
+      * ori/andi/subi/addi/eori #imm        -- byte/word/LONG, both EAs
+      * clr/neg/not                          -- byte/word/long, both EAs
+      * move.b/w/l  any-source               -- dest (A6)/(d16,A6)
+      * btst/bchg/bclr/bset  #n and Dn       -- both forms
+
+    The earlier revision (which shipped with wave 21) covered only ori/andi/eori
+    .b/.w, move.b/w (#imm and Dn) and the bit ops -- a PARTIAL allowlist that
+    HID 11 `clr.w (A6)`, 14 `move.l (A6)` and 12 `addi.l (A6)` sites.  The
+    CONCLUSION (no kind rewrite) survives; the PROOF is now exhaustive.
+
+    THE PREMISE "A6 = the record base for the whole of the mover" IS FALSE in
+    the continuation tails: `$28213E adda.l #$a,a6` advances A6 and `lea
+    $36(a6),a6` restores it, so `(A6)` there is record + $0A, the SPRITE
+    DESCRIPTOR.  The classification below no longer assumes the premise, which
+    is why move.l/addi.l to (A6) in the tails are filed as sprite-descriptor
+    writes and not as type-word rewrites.
     """
-    print("IN-FLIGHT TYPE-WORD REWRITES in $282104..$283BAF\n"
-          "  A6 = the $40-byte bullet record for the whole of the mover, so an\n"
-          "  instruction with an effective address of (A6) targets the TYPE WORD.\n"
-          "  Changing its low 6 bits changes the KIND; setting bit 8 re-runs the\n"
-          "  $282030 dispatch, so the NEW kind's behaviour installs a new\n"
-          "  continuation at rec+$22.  This is the ONLY producer of the kinds no\n"
-          "  fire site passes.\n")
-    # 68000 encodings, written out so a reader can check them.  EA (A6) is mode
-    # 010 reg 110 = $16; EA (d16,A6) is mode 101 reg 110 = $2E.  A BYTE operation
-    # on (A6) addresses the HIGH byte of the word -- bits 8..15 -- and a byte
-    # operation on ($1,A6) addresses the LOW byte, bits 0..7.  THE KIND IS BITS
-    # 0..5, so a kind rewrite is a LOW-byte write; a high-byte write moves the
-    # alive/dispatch/kill flags.  Conflating the two is how "20 kinds are
-    # produced by in-flight rewrites" would be asserted from a `bchg #3,(A6)`
-    # that touches bit 11.
-    BITOPS = {0x0816: "btst", 0x0856: "bchg", 0x0896: "bclr", 0x08D6: "bset"}
-    rows = []
+    print("WRITES THROUGH (A6) / (d16,A6) in $282104..$283BAF\n"
+          "  EXHAUSTIVE BYTE-PATTERN SCAN (every word boundary, not a linear\n"
+          "  disassembly).  The TYPE WORD is at A6 (disp 0): its LOW byte ($1,A6)\n"
+          "  holds KIND bits 0..5; a BYTE op on (A6) hits the HIGH byte (bits\n"
+          "  8..15 = alive/kill/dispatch/flip-flop).  A WHOLE-WORD LIVE write to\n"
+          "  (A6) is the only thing that could rewrite a live bullet's kind; a\n"
+          "  `clr.w (A6)` writes 0 = a FREE SLOT (the bullet's death).\n")
+
+    # --- opcode tables, written out so a reader can verify each encoding -------
+    # EA (A6) = mode 010 reg 110 = $16; EA (d16,A6) = mode 101 reg 110 = $2E.
+    A6, D16 = 0x16, 0x2E
+    SZ_B, SZ_W, SZ_L = 0x00, 0x40, 0x80      # size field in bits 7-6
+
+    # clr/neg/not: 0b0100_0xx0_ss_EEEEEE  (xx identifies the op)
+    UN_OPS = {0x42: "clr", 0x44: "neg", 0x46: "not"}
+    # ori/andi/subi/addi/eori: 0b0000_0ooo_ss_EEEEEE
+    IMM_OPS = {0x00: "ori", 0x02: "andi", 0x04: "subi", 0x06: "addi", 0x0A: "eori"}
+    SZ_NAMES = {SZ_B: "b", SZ_W: "w", SZ_L: "l"}
+    # Bit ops operate on a BYTE for memory EAs (the HIGH byte of the word at A6).
+    # Static #n form: the full opcode word identifies op+EA.
+    BITOPS_STATIC = {0x0816: "btst", 0x0856: "bchg", 0x0896: "bclr", 0x08D6: "bset",
+                     0x082E: "btst", 0x086E: "bchg", 0x08AE: "bclr", 0x08EE: "bset"}
+    # Dn form: bits 11-9 = register, bit 8 = 1, bits 7-6 = op, bits 5-0 = EA.
+    # (w & 0xF13F) collapses to 0x0116 for (A6), 0x012E for (d16,A6).
+    BITOPS_DN_OP = {0: "btst", 1: "bchg", 2: "bclr", 3: "bset"}
+
+    rows = []          # (addr, text, bitnum, high_byte, disp, sz_letter, op_root)
     a = BEHAVIOUR_LO
     while a < BEHAVIOUR_HI:
         w = u16(d, a)
-        n = None
-        if w in BITOPS:                                   # <op> #n,(A6)  -- HIGH byte
-            op, half, n, sz = BITOPS[w], "(A6)", u16(d, a + 2), 4
-        elif w in (0x086E, 0x08AE, 0x08EE, 0x082E):       # <op> #n,(d16,A6)
-            op = {0x082E: "btst", 0x086E: "bchg", 0x08AE: "bclr",
-                  0x08EE: "bset"}[w]
-            n, half, sz = u16(d, a + 2), f"(${u16(d, a + 4):X},A6)", 6
-        elif w in (0x0016, 0x0216, 0x0A16):               # ori/andi/eori.b #x,(A6)
-            op = {0x0016: "ori.b", 0x0216: "andi.b", 0x0A16: "eori.b"}[w]
-            half, sz = f"#${u16(d, a + 2) & 0xFF:02X},(A6)", 4
-        elif w in (0x002E, 0x022E, 0x0A2E):               # ...#x,(d16,A6)
-            op = {0x002E: "ori.b", 0x022E: "andi.b", 0x0A2E: "eori.b"}[w]
-            half, sz = (f"#${u16(d, a + 2) & 0xFF:02X},(${u16(d, a + 4):X},A6)", 6)
-        elif w in (0x0056, 0x0256, 0x0A56):               # ori/andi/eori.w #x,(A6)
-            op = {0x0056: "ori.w", 0x0256: "andi.w", 0x0A56: "eori.w"}[w]
-            half, sz = f"#${u16(d, a + 2):04X},(A6)", 4
-        elif w == 0x3CBC:                                 # move.w #imm,(A6)
-            op, half, sz = "move.w", f"#${u16(d, a + 2):04X},(A6)", 4
-        elif w == 0x3D7C:                                 # move.w #imm,(d16,A6)
-            op, half, sz = "move.w", (f"#${u16(d, a + 2):04X},"
-                                      f"(${u16(d, a + 4):X},A6)"), 6
-        elif w == 0x1CBC:                                 # move.b #imm,(A6)
-            op, half, sz = "move.b", f"#${u16(d, a + 2) & 0xFF:02X},(A6)", 4
-        elif w == 0x1D7C:                                 # move.b #imm,(d16,A6)
-            op, half, sz = "move.b", (f"#${u16(d, a + 2) & 0xFF:02X},"
-                                      f"(${u16(d, a + 4):X},A6)"), 6
-        elif 0x3C80 <= w <= 0x3C87:                       # move.w Dn,(A6)
-            op, half, sz = "move.w", f"D{w & 7},(A6)", 2
-        elif 0x1C80 <= w <= 0x1C87:                       # move.b Dn,(A6)
-            op, half, sz = "move.b", f"D{w & 7},(A6)", 2
-        elif 0x1D40 <= w <= 0x1D47:                       # move.b Dn,(d16,A6)
-            op, half, sz = "move.b", f"D{w & 7},(${u16(d, a + 2):X},A6)", 4
-        elif w in (0x0116, 0x0156, 0x0196, 0x01D6):       # <op> Dn,(A6), n in a reg
-            op = {0x0116: "btst", 0x0156: "bchg", 0x0196: "bclr",
-                  0x01D6: "bset"}[w]
-            half, sz = "Dn,(A6)", 2
-        else:
-            a += 2
-            continue
-        if op and op != "btst":
-            # only the type word: (A6) itself, or a displacement of 0 or 1
-            if "A6)" in half and ("(A6)" in half or "($1,A6)" in half
-                                  or "($0,A6)" in half):
-                rows.append((a, f"{op} {half}", n, "(A6)" in half))
-        a += sz
-    for addr, txt, bit, high in rows:
+        hi = (w >> 8) & 0xFF
+        lo = w & 0xFF
+        ea = lo & 0x3F
+        sz_field = lo & 0xC0
+        sz_name = SZ_NAMES.get(sz_field, "")
+        op_root = None
+        text = None
+        bitnum = None
+        inst_size = 2
+        disp = 0
+
+        # ---- bit ops: static #n form (full word match) ----
+        if w in BITOPS_STATIC:
+            op_root = BITOPS_STATIC[w]
+            is_d16 = (ea == D16)
+            disp = 0 if not is_d16 else u16(d, a + 4)
+            bitnum = u16(d, a + 2)
+            sz_name = "b"                 # bit ops on memory = BYTE (high byte)
+            text = f"{op_root} #{bitnum},{_ea6_name(disp)}"
+            inst_size = 6 if is_d16 else 4
+            if op_root == "btst":
+                op_root = None            # btst is a READ, not a write
+
+        # ---- bit ops: Dn form (register in bits 11-9, op in bits 7-6) ----
+        elif (w & 0xF13F) in (0x0116, 0x012E):
+            sub = (w >> 6) & 3
+            op_root = BITOPS_DN_OP[sub]
+            is_d16 = ((w & 0xF13F) == 0x012E)
+            disp = 0 if not is_d16 else u16(d, a + 2)
+            dreg = (w >> 9) & 7
+            sz_name = "b"                 # bit ops on memory = BYTE (high byte)
+            text = f"{op_root} D{dreg},{_ea6_name(disp)}"
+            inst_size = 4 if is_d16 else 2
+            if op_root == "btst":
+                op_root = None
+
+        # ---- immediate arithmetic: ori/andi/subi/addi/eori #imm,EA ----
+        # Extension order: opcode, immediate data, then dest d16 (for (d16,A6)).
+        elif hi in IMM_OPS and sz_field in (SZ_B, SZ_W, SZ_L) and ea in (A6, D16):
+            op_root = IMM_OPS[hi]
+            if sz_name == "l":
+                imm = u32(d, a + 2)
+                imm_sz = 4
+            else:
+                imm = u16(d, a + 2)
+                imm_sz = 2
+                if sz_name == "b":
+                    imm &= 0xFF
+            # The d16 extension comes AFTER the immediate data.
+            disp = 0 if ea == A6 else u16(d, a + 2 + imm_sz)
+            dst_ext = 0 if ea == A6 else 2
+            width = 8 if sz_name == "l" else (2 if sz_name == "b" else 4)
+            text = f"{op_root}.{sz_name} #${imm:0{width}X},{_ea6_name(disp)}"
+            inst_size = 2 + imm_sz + dst_ext
+
+        # ---- clr/neg/not (unary, no immediate operand) ----
+        elif hi in UN_OPS and sz_field in (SZ_B, SZ_W, SZ_L) and ea in (A6, D16):
+            op_root = UN_OPS[hi]
+            disp = 0 if ea == A6 else u16(d, a + 2)
+            text = f"{op_root}.{sz_name} {_ea6_name(disp)}"
+            inst_size = 4 if ea == D16 else 2
+
+        # ---- move: any source, dest (A6) or (d16,A6) ----
+        # MOVE extension order: source EA extensions FIRST, then dest d16.
+        # move.l dst (A6): (w & 0xFFC0) == 0x2C80
+        # move.w dst (A6): (w & 0xFFC0) == 0x3C80
+        # move.b dst (A6): (w & 0xFFC0) == 0x1C80
+        # move.l dst (d16,A6): (w & 0xFFC0) == 0x2D40  ... etc
+        elif (w & 0xFFC0) in (0x2C80, 0x3C80, 0x1C80,  # move to (A6)
+                              0x2D40, 0x3D40, 0x1D40):  # move to (d16,A6)
+            size_map = {0x2C80: "l", 0x3C80: "w", 0x1C80: "b",
+                        0x2D40: "l", 0x3D40: "w", 0x1D40: "b"}
+            op_root = "move"
+            sz_name = size_map[w & 0xFFC0]
+            dst_is_a6 = (w & 0xFFC0) in (0x2C80, 0x3C80, 0x1C80)
+            # Decode source FIRST, then read dest d16 AFTER the source extensions.
+            src, src_ext = _move_src_str(d, a, w, sz_name)
+            disp = 0 if dst_is_a6 else u16(d, a + 2 + src_ext * 2)
+            dst_ext = 0 if dst_is_a6 else 2
+            text = f"move.{sz_name} {src},{_ea6_name(disp)}"
+            inst_size = 2 + src_ext * 2 + dst_ext
+
+        if op_root:
+            high_byte = (disp == 0 and sz_name == "b")
+            rows.append((a, text, bitnum, high_byte, disp, sz_name, op_root,
+                         inst_size))
+
+        a += inst_size if op_root else 2
+
+    for addr, txt, bit, high_byte, disp, sz_name, op_root, _ in rows:
         extra = ""
         if bit is not None:
-            wbit = bit + 8 if high else bit
+            wbit = bit + 8 if high_byte else bit
             extra = f"   word bit {wbit}" + (
                 "  = THE DISPATCH BIT" if wbit == 8 else
                 "  = KIND bit" if wbit < 6 else
                 "  = the kill bit" if wbit == 12 else
                 "  = the alive bit" if wbit == 15 else
                 "  = the $281F3E path bit" if wbit == 7 else "")
+        if op_root == "clr" and disp == 0:
+            extra += "   -> writes 0 = FREE SLOT (death)"
+        elif sz_name == "l" and disp == 0:
+            extra += "   -> LONGWORD; at A6=rec+$0A this is the SPRITE DESCRIPTOR"
         print(f"  ${addr:06X}  {txt:34s}{extra}")
-    print(f"\n  {len(rows)} type-word writers inside $282104..$283BAF.")
-    lowbyte = [r for r in rows if "($1,A6)" in r[1]]
-    wholeword = [r for r in rows if r[1].startswith(("move.w", "ori.w", "andi.w",
-                                                     "eori.w"))]
-    print(f"  writers that touch the LOW byte ($1,A6) = kind bits 0..5: "
-          f"{len(lowbyte)}")
-    print(f"  writers of the WHOLE word: {len(wholeword)}")
+
+    kind_low = [r for r in rows if r[4] == 1 and r[5] == "b"]
+    word_live = [r for r in rows if r[4] == 0 and r[5] == "w"
+                 and r[6] not in ("clr",)]
+    longword = [r for r in rows if r[4] == 0 and r[5] == "l"]
+    clr_word = [r for r in rows if r[4] == 0 and r[6] == "clr"]
+    high_byte = [r for r in rows if r[4] == 0 and r[5] == "b"]
+    print(f"\n  {len(rows)} writes through (A6)/(d16,A6) inside $282104..$283BAF "
+          f"(EXHAUSTIVE byte-pattern scan).")
+    print(f"  LOW byte ($1,A6) = KIND bits 0..5 writers:        {len(kind_low)}")
+    print(f"  WHOLE WORD LIVE writers to (A6):                 {len(word_live)}")
+    print(f"  LONGWORD writers to (A6):                        {len(longword)}"
+          f"  (sprite-descriptor in tails, A6 advanced)")
+    print(f"  clr.w/l (A6) -> 0 (FREE SLOT / death):           {len(clr_word)}")
+    print(f"  HIGH byte (A6) bit ops (bits 8..15):             {len(high_byte)}")
     print("""
   THE KIND OF A LIVE BULLET IS NEVER REWRITTEN IN THIS RANGE.
-  Every one of these is a BYTE operation on (A6), i.e. on the HIGH byte --
-  word bits 8..15 -- which holds `alive` (15), `kill` (12), `run the
-  dispatch` (8) and a private per-bullet FLIP-FLOP at bit 11 that four
-  continuations toggle with `bchg #3,(A6)` / `bchg D0,(A6)`.
+  There are ZERO writers to the LOW byte ($1,A6) = kind bits 0..5, and ZERO
+  whole-word LIVE writes to the type word.  The whole-word ops that DO appear
+  are `clr.w (A6)` -- which writes 0, i.e. marks the slot FREE (the bullet's
+  own death, each followed by `move.w #$FFFF,$2(a6)`) -- and `move.l` /
+  `addi.l` against (A6) in the continuations, where A6 has been ADVANCED
+  (`$28213E adda.l #$a,a6`, closing `lea $36(a6),a6`) so (A6) is record+$0A,
+  the SPRITE DESCRIPTOR, not the type word.  The remaining writes are BYTE
+  ops on (A6) = the HIGH byte, bits 8..15: `andi.b #$FE` clears the dispatch
+  bit (8), `ori.b #$7C` sets the kill bit (12), and `bchg #3,(A6)` toggles
+  the private per-bullet FLIP-FLOP at bit 11.
   20-recon-pattern-tables section 6 reads $2824DC's `bchg #$3,(A6)` as an
   IN-FLIGHT KIND REWRITE.  It is not: on a big-endian 68000 a byte operation
   on (A6) addresses bits 8..15 of the word, so bit #3 is WORD BIT 11 -- and
-  bit 11 is not a kind bit and is not in the mover's $5180 dispatch mask
-  either.  The KIND of a live bullet is fixed at spawn, in $281568/$28187A,
-  and nothing in the 39 behaviours or their continuations changes it.""")
+  bit 11 is neither a kind bit nor in the mover's $5180 dispatch mask.  The
+  KIND of a live bullet is fixed at spawn, in $281568/$28187A, and nothing in
+  the 39 behaviours or their continuations changes it.""")
 
 
 # -------------------------------------------------------------------- sites
