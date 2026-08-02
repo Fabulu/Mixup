@@ -61,7 +61,7 @@ a still photograph of it.
 | L7 | BG tile pixels + palette: bundle holds 415 harvested tiles, stage 1 references **1,820**; export = **666 KB gz, measured** | W15 | open |
 | L8 | TX tilemap: HUD, score digits, text | W19 → **deferred** | open. W19 spent its budget on the ledger and JOB 2; the TX block printer `$240CF0/$240D2C` is NOT ported. The digits it would print are now located (`$81B440` P1 / `$81B444` P2, packed BCD) |
 | L9 | score/chain VALUES — now an owner REQUIREMENT (frame-exact, order-within-frame is semantics) | W19 ledger + W28 | **DENOMINATOR DELIVERED (W19)**, port still open. `19-impl-score-chain-rank-ledger.md`: score = ONE BCD adder `$286626` (28 pc-rel callers, 0 abs) behind 4 wrappers and 2 entry points (`$286096` 85 sites, `$28615E` 87 sites with all 87 amounts recovered); chain = meter `$81B5C0` (decrement `$284636`, refill `$28664E`, counter `$81B5DA` at `$2863B2`, reset `$286320`); rank = `$81309E` recomputed EVERY frame by `$2608D2` from base[stage] + `$8130C6`>>8 + 16×power, and `$8130C6` has ONE increment in all of build B (`$2607E4`). ORDER WITHIN A FRAME measured: rank → hits → drain → **chain decrement LAST** |
-| L10 | enemies: existence, position, motion, facing, AIM — denominator corrected: **126 live types, 111 real handlers, 115 init bodies at init+8**; stage 1 needs 21 types / 19 handlers; aim = pure fn, transcription validated 6,139/6,139 | W21–W25, W29–W30 | open |
+| L10 | enemies: existence, position, motion, facing, AIM — denominator corrected: **126 live types, 111 real handlers, 115 init bodies at init+8**; stage 1 needs 21 types / 19 handlers; aim = pure fn, transcription validated 6,139/6,139 | W21–W25, W29–W30 | **AIM + FACING REPLACED for the two turret types (W20-impl, `20-impl-aim-and-turrets.md`)**; existence/position/motion still open. `src/aim.js` (aim64 + aim256 + 5 tables + 3 target selectors + 3 slews), `src/enemyproto.js` (both prototype loaders), `src/turret.js` (`$268A0E`/`$268376`) compare to the board at **0 divergent on facing, aim cadence and 32-direction sprite pointer over 47,520 one-step pairs and 47,520 closed-loop steps**, two corpora (one PLAYING, one invulnerable), 8 gate mutations + 3 source breaks all seen red. NOT yet in the frame loop — it needs W21's spawn walker and W24's mover, so nothing is removed from the capture yet |
 | L11 | enemy bullets — pool corrected to **$817F8C, 210×$40** ($8171BE is the impact pool); 39 kinds, 2 emitters, 20 generator entries, 911 fire sites | W26–W27, W31 | open |
 | L12 | explosions, death effects, items ($8171BE/80-slot pool now correctly identified as impact/effects) | W28 + | open |
 | L13 | laser, bomb flash, hyper (never in the capture) | post-W28 (old W24/W25 scope) | open |
@@ -315,6 +315,22 @@ evaluator (breakpoint `$24203E`, set D0–D3, read D1 at `$2420AC`) covers the
 294 internal states the corpus never reached, or that evaluator's absence is a
 named blocker; one later-stage/boss run exercises aim256 beyond its current 12
 measured executions. *Leverage: 260 sites, one wave.*
+**MOSTLY DONE 2026-08-02, OUT OF ORDER — `20-impl-aim-and-turrets.md`**, run
+under the label W20 because `20-OWNER-scenarios-must-play.md` §3 named the
+better first test: the stage-1 turrets are a CONTINUOUS per-frame consumer of
+the aim where a bullet samples it once. Shipped: `aim64` `$24203E` + `aim256`
+`$2422A2` + all five tables as ROM windows (the `$1800` bias, the 1.5 axis
+scale, the round-to-nearest divide), `$24270A`/`$242730`/`$242748` WITH the
+alive-fallback, `$242190`/`$24218C`/`$2421AC`, the `$268A2C` muzzle offset, and
+the two turret blocks — validated at **0 divergent on turret facing, aim cadence
+and sprite pointer over 47,520 one-step pairs and 47,520 closed-loop steps**,
+8 gate mutations and 3 source breaks all seen red. **STILL OPEN from this
+entry:** the `$200920` velocity field and `$2418B4`'s fold (they belong to
+`$241812`, W24 — a turret aims but does not move); the debugger-backed
+exhaustive evaluator (NOT built — the board reached 5 of 8 octants, and the
+other three need a target ABOVE the shooter, which stage 1 never presents); the
+aim256 corpus (still 12 executions at 2 sites; neither turret type calls it);
+and the per-site muzzle offsets beyond `$268A2C`'s `+$200`.
 
 **W23 — enemy stats become data.** The two loaders + the 208 exported pairs +
 the 21 stage-1 init BODIES at init+8. *Done when:* every stage-1 type's

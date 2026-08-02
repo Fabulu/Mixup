@@ -1131,6 +1131,26 @@ def _cmd_check(argv: list[str]) -> int:
           lambda: (("SKIP", f"{ATTRACT.name} missing") if not ATTRACT.exists()
                    else _node(SCROLLGATE, ATTRACT, "--entry", "0x38",
                               "--k", "2636", "--break", "no-fast-forward")))
+    # WAVE 20.  THE TURRET GATE -- the aim pair and the turret block against the
+    # board, angle for angle, per frame.  Like the scroll gate it needs NO
+    # emulator run: it replays the port against a TSV already on disk.  TWO
+    # corpora, and they are different KINDS of evidence (20-OWNER-scenarios-must-
+    # play.md): the PLAYING one is on-distribution (the ship fires, kills, bombs
+    # and dies) and the INVULNERABLE one is coverage-only.
+    TURRETGATE = TOOLS.parent / "tools" / "w20turretgate.mjs"
+    for tag, why in (("w20-turret-play", "PLAYING, on-distribution"),
+                     ("w20-turret-invuln", "INVULNERABLE, coverage only")):
+        tsv = OUT / f"{tag}.tsv"
+        stage(f"turret angle vs the board [{why}]",
+              lambda tsv=tsv, tag=tag: (
+                  ("SKIP", f"{tsv.name} missing -- `python tools/oracle/w20run.py"
+                           f" 6000 {tag}`")
+                  if not tsv.exists() else _node(TURRETGATE, "--corpus", tsv)))
+    stage("turret gate RED (8 mutations)",
+          lambda: (("SKIP", "w20-turret-play.tsv missing")
+                   if not (OUT / "w20-turret-play.tsv").exists()
+                   else _node(TURRETGATE, "--corpus", OUT / "w20-turret-play.tsv",
+                              "--break", "all")))
     if not quick:
         stage("fly-around: port vs board, 0 divergent frames",
               lambda: sub(__file__, "flyaround"))

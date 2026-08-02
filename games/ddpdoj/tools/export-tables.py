@@ -169,6 +169,49 @@ SHOT_WINDOWS = [
     #            $228658/$22A5F8/$22B1E8/$22D770 (recon §2) and are W15's.
     (0x225B78, 0x22E0, "WAVE 13: the STAGE-1 BG column stream, 248 columns "
                        "x 36 B = 8,928 B ($2611D6 -> $26135A)"),
+    # ------------------------------------------------------------- WAVE 20
+    # THE AIM PAIR.  One window per core, because the two cores' tables are
+    # packed contiguously and splitting them by name would be a schema decision
+    # the ROM does not support (the same reasoning as the WAVE 12 block above).
+    #   $2420C6  8 longs   the octant SIGN dispatch ($24209C jmp) -- each entry
+    #                      is $2420AE (sub) or $2420BA (add) and src/aim.js
+    #                      CHECKS that rather than trusting an index
+    #   $2420E6  8 words   the octant BASE ($242092)
+    #   $2420F6  129 bytes THE ARCTAN LUT ($242088).  NOT formula-reconstructible:
+    #                      it deviates from a true arctan by +1.65 units of 512
+    #                      at index 10 (20-recon-aiming §2), in the near-axis
+    #                      band, which is where most shots live.  Ship the bytes.
+    (0x2420C0, 0x0100, "WAVE 20: aim64's three tables -- $2420C6 octant signs, "
+                       "$2420E6 octant bases, $2420F6 the 129-byte arctan LUT"),
+    #   $242312  8 x 8 B   the octant stubs ($24230A jsr (A0,D4.w)), each
+    #                      <add|sub>.w D0,D1 / andi.w #$FF,D1 / rts
+    #   $242352  8 words   the octant BASE ($2422F6)
+    #   $242362  65 bytes  the aim256 LUT ($2422EC)
+    (0x242300, 0x0100, "WAVE 20: aim256's tables -- $242312 octant stubs, "
+                       "$242352 bases, $242362 the 65-byte LUT"),
+    # THE ENEMY TYPE TABLE.  256 entries x 8 bytes in TWO halves, split at type
+    # $80 -- `census.py entry()`, and the split is why one window will not do.
+    # Every entry is (init, handler) and EVERY init is an 8-byte stub whose body
+    # is at init+8 (20-recon-enemy-census: 256 of 256, verified mechanically).
+    (0x267820, 0x0410, "WAVE 20: the enemy type table, types $00..$7F "
+                       "($267824, 8 bytes per type: init, handler)"),
+    (0x27E410, 0x0410, "WAVE 20: the enemy type table, types $80..$FF ($27E412)"),
+    # THE TWO TURRET TYPES' PROTOTYPES.  $2637A2 copies the SUB-record prototype
+    # ($20 bytes per sub-record) and $26377A copies D0+1 words into ($16,A5).
+    # Only the two types this wave validates are exported: a read of any other
+    # type's prototype must be a LOUD THROW BY ADDRESS, not a plausible enemy.
+    (0x268180, 0x0080, "WAVE 20: type $10's record prototype $268192 (16 words, "
+                       "$2680E0 moveq #$F) and sub-record prototype $2681B2"),
+    (0x268800, 0x0060, "WAVE 20: type $11's record prototype $268808 (16 words, "
+                       "$26872E moveq #$F) and sub-record prototype $268828"),
+    # THE 32-DIRECTION TURRET SPRITE TABLES, read at $2683B6 / $268A4E with the
+    # facing rounded by `addq.b #1,D1 / andi.w #$3E,D1 / add.w D1,D1`.  The
+    # windows also carry the 16-entry MUZZLE table $268B1E ($268AEC) and the
+    # 16-direction body tables $268594 / $268B9E ($26831E / $2689B6).
+    (0x268580, 0x01A0, "WAVE 20: type $10's $268594 (16 dir body) and $268694 "
+                       "(32 dir turret) sprite tables"),
+    (0x268B10, 0x0220, "WAVE 20: type $11's $268B1E muzzle table, $268B9E body "
+                       "table and $268C9E 32-direction turret sprite table"),
 ]
 
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
