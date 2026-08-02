@@ -1,0 +1,20 @@
+CORRECTION to this commit's message.
+
+This commit contains ONE file: tools/hooks/post-commit. The message describes it
+as also carrying the three W21b worklogs. It does not.
+
+Those three were committed by a concurrent agent in be444f9, seconds before this
+commit was written. `git add` on already-committed, unmodified files stages
+nothing, so the commit correctly reduced to the hook alone -- but the message had
+already been written and was not corrected before committing.
+
+Everything the message says ABOUT the reviews and the hook is accurate and was
+verified. Only the claim about what this commit delivers is wrong.
+
+The near-miss worth recording: this commit's `git read-tree HEAD` was taken
+BEFORE be444f9 landed. Had that agent committed a MODIFIED version of a file
+this one also touched, this commit would have reverted it -- the stale-read-tree
+failure the handover documents, reproduced here despite following the documented
+ordering. The post-commit hook fixes the frozen-index symptom; it does NOT make
+concurrent commits safe. The actual rule is that one process commits at a time,
+and that rule was broken while two agent workflows were running.
