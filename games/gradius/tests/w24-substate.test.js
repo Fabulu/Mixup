@@ -44,19 +44,23 @@ function atSubstate(sub) {
 
 // ============================================================== the denominator
 
-test('jt_$982F is a 16-entry table; the dispatch is the low nibble of $1B', () => {
-  // $83E4 ASLs A: $80->$00, $81->$02 ... $8F->$1E (the $80 high bit is carry-out,
-  // dropped). So the index is exactly (low nibble of $1B), 0-15. Read out of
-  // rip/prg.asm $982F: 16 .word entries, $984F abuts at index 14/15.
-  const prg = res.manifest;   // not ROM; the count is structural, pinned in tables.test
-  // The port's switch is `state.substate & 0x0F`. $80->$80 stays in range; $8F
-  // is the last arm. RED WHEN: the mask is wrong (e.g. & 0x07) -- $88 would then
-  // collide with $80.
-  for (let n = 0; n <= 0xF; n++) {
-    const s = atSubstate(0x80 | n);
-    assert.strictEqual(s.substate & 0x0F, n, `low nibble of $${(0x80 | n).toString(16)}`);
-  }
-  void prg;
+test('the dispatch separates arms: $88 routes to $9BED, not $80\'s body', () => {
+  // $80's body (st9A4D) advances $1B to $81 when cam.hi >= bossPage. $88 must
+  // route to its OWN arm ($9BED) and throw there, NOT run $80's body. This drives
+  // the dispatch THROUGH nmi() (the tautology this replaced never called it). The
+  // $96A5 ladder lets $88 reach playArm (bit 7 set, bits 4-6 clear), where the
+  // port's `switch (substate & 0x0F)` is the code under test.
+  // RED WHEN: the mask is `& 0x07` (nmi.js:351) -- $88 & 0x07 == 0 routes to
+  // st9A4D, cam.hi >= bossPage advances $1B to $81, and the assert.throws fails
+  // because no throw happens. Same red if `case 0x8` collapses into `case 0x0`.
+  const s88 = atSubstate(0x88);
+  s88.cam.hi = BOSS_PAGE;                  // would advance $1B if misrouted to $80
+  assert.throws(() => nmi(s88, 0, res), /\$9BED/,
+    '$88 must route to $9BED, not $80');
+  const s80 = atSubstate(0x80);
+  s80.cam.hi = BOSS_PAGE;
+  nmi(s80, 0, res);
+  assert.strictEqual(s80.substate, 0x81, '$80 body still runs and advances to $81');
 });
 
 test('the 8 unported play arms throw with their ROM target', () => {
@@ -176,6 +180,24 @@ test('$82 $840C borrows into $4D: $00:$01 -> $FF:$00 (256 frames implied)', () =
   assert.strictEqual(s.substate, 0x82, 'still $82 (255 to go)');
 });
 
+test('$82 zero-test reads BOTH $4C and $4D: $01:$01 stays $82 (pins the $4D half)', () => {
+  // $99F2 LDA $4C / ORA $4D / BNE. The countdown loop continues while
+  // `(zp4C | zp4D) !== 0`. The borrow half is pinned by the test above; THIS pins
+  // the zero-test half -- a mutant that drops `| zp4D` (tests only $4C) ends the
+  // timer the first frame $4C reaches 0 while $4D is still nonzero, i.e. after
+  // 256 frames instead of 768 at rank 1. The cartridge passes through this exact
+  // state every time $4C wraps $00->$FF with $4D>0.
+  // $4C:$4D = $01:$01 -> one frame: $4C 01->00 (no borrow), $4D still 01; the pair
+  // is NOT zero so $1B must stay $82. The mutant advances to $83.
+  // RED WHEN: the zero-test reads only $4C at nmi.js:478 (`(zp4C) !== 0`).
+  const s = atSubstate(0x82);
+  s.zp4C = 0x01; s.zp4D = 0x01;                      // $4D nonzero after $4C hits 0
+  nmi(s, 0, res);
+  assert.strictEqual(s.zp4C, 0x00, '$4C 01->00, no borrow ($4D unchanged)');
+  assert.strictEqual(s.zp4D, 0x01, '$4D still 01 -- the pair is NOT zero');
+  assert.strictEqual(s.substate, 0x82, 'still $82: $4D nonzero keeps the countdown');
+});
+
 test('$82 end-of-countdown sets $60 := 0 (spawn engine idle) and requests sfx $3F', () => {
   // $99F8 STA $60 (A=0); stage 0 or 3 -> $9A06 JSR $EC1E with $3F. $60 is the
   // spawn-engine state (0 = idle). RED WHEN: $60 is not reset, or the stage
@@ -250,7 +272,15 @@ test('$84 advance path spawns the boss object and $1B -> $85, $5E := #$3F', () =
   // handler, which is W26 and throws -- caught here.)
   const s = atSubstate(0x84);
   s.cam.hi = BOSS_PAGE + 1;                          // != bossPage -> advance path
-  assert.throws(() => nmi(s, 0, res), /undefined|handler|\$|Error/);  // boss handler W26
+  // The boss type $98 -> enemies.js dispatch entry 24 -> target $B914 (W26,
+  // unported). The default-branch throw renders the handler address via hex4 as
+  // `$B914`; pin THAT, not a regex that matches every ROM-addressed throw.
+  // RED WHEN: the boss byte is wrong (e.g. type $99) -- it dispatches to a
+  // different entry/target whose throw names another address, so /B914/ fails.
+  // Also red if the advance path ever throws earlier (a wrong HUD packet) -- the
+  // message would not carry B914.
+  assert.throws(() => nmi(s, 0, res), /B914/,
+    'type $98 must dispatch to $B914 (entry 24), the W26 boss handler');
   assert.strictEqual(s.substate, 0x85, '$99B1 INC $1B -> $85');
   const bi = 9 + ENEMY_BASE;                         // slot 21
   assert.strictEqual(s.obj.type[bi], 0x98, '$99A2 STA $0315 (boss type $98)');
@@ -334,25 +364,54 @@ test('$994A object clear stops at cursor $14; the collision columns keep going',
 
 // =========================================================== $85 ($997E) the dead fall-through
 
-test('$85 ($997E) is INC $5B only; it does NOT advance to $86 and does NOT re-fire $9982', () => {
-  // 997E E6 5B / 9980 D0 35 (BNE $99B7, ALWAYS taken). The fall-through into
-  // $9982 is STRUCTURALLY DEAD ($5B cleared at $9658 each frame). $85 stays $85
-  // every frame; it exits only via the boss-death INC $1B (W26). RED WHEN: the
-  // fall-through is implemented -- $1B would advance or $9982 would re-spawn.
+test('$85 ($997E) is INC $5B only; a direct INC $1B added to st997E would advance', () => {
+  // 997E E6 5B / 9980 D0 35 (BNE $99B7, ALWAYS taken). $85 stays $85 every frame;
+  // it exits only via the boss-death INC $1B in the W26 boss handler, NOT here.
+  // This 5-frame loop catches a DIRECT `state.substate++` (or `INC $1B`) added to
+  // st997E -- $1B would walk past $85 within the loop. It does NOT, on its own,
+  // catch the 256-frame $5B-wrap hazard: $9658 clears $5B to 0 each frame BEFORE
+  // the arm, so the wrap is unreachable while $9658 stands (the $9658 clear itself
+  // is guarded by the line-361 test below). RED WHEN: an INC $1B is added to
+  // st997E (substate would advance to $86+).
   const s = atSubstate(0x85);
   s.zp5B = 0;                                        // $9658 clears it before the arm
   for (let i = 0; i < 5; i++) nmi(s, 0, res);        // 5 frames of boss fight
   assert.strictEqual(s.substate, 0x85, '$85 never advances $1B on its own');
 });
 
-test('$85 the BNE is always taken: $5B (cleared to 0 by $9658) becomes 1, != 0', () => {
-  // The dead-branch proof from the listing: $9658 STA $5B zeroes $5B every
-  // mode-5 frame BEFORE the ladder, so INC makes it 1 and BNE (test != 0) always
-  // branches. RED WHEN: $5B enters non-zero (would prove the branch reachable).
+test('$85 does not fall through across the $5B wrap boundary', () => {
+  // The cited hazard is "$5B wraps $FF -> $00 on the INC and the dead BNE falls
+  // through, re-spawning every 256 frames". In THIS port the wrap is unreachable
+  // while $9658 stands (it zeroes $5B before the arm, so the $FE pre-set below is
+  // itself overwritten to 0 each frame) AND st997E has no fall-through code. So
+  // this loop is honest about what it guards: it goes RED only if $9658 is removed
+  // (Finding-C mutant) AND a fall-through is then added -- i.e. it pins the
+  // COMBINATION, and stays green today because neither holds. Parking $5B near the
+  // wrap each frame is the structural reason the dead BNE can never drop.
   const s = atSubstate(0x85);
-  s.zp5B = 0;
+  for (let i = 0; i < 4; i++) {
+    s.zp5B = 0xFE;                       // would be 2 INCs from the wrap without $9658
+    nmi(s, 0, res);
+    assert.strictEqual(s.substate, 0x85, `frame ${i}: $85 does not fall through`);
+  }
+});
+
+test('$85 is safe because $9658 clears $5B every frame BEFORE the INC', () => {
+  // The dead-branch proof from the listing rests on ONE line: $9658 STA $5B
+  // (ported at nmi.js:293 `state.zp5B = 0;` inside stagePlay, BEFORE the $96A5
+  // ladder reaches $997E). To GUARD that line we pre-set a residue ONLY $9658
+  // can clear: $FF. With $9658 present, $FF -> (clear) 0 -> (INC) 1. Delete $9658
+  // and $FF carries into st997E, the INC wraps $FF -> $00, and the dead BNE would
+  // NOT branch (the re-spawn-every-256-frames hazard) -- so assert === 1 fails.
+  // RED WHEN: nmi.js:293 `state.zp5B = 0;` is deleted (the post-INC value is 0x00,
+  // not 1). This is the foundation of the "$997E fall-through is dead" proof.
+  // (RULE 2: this guards $9658's clear, not the fall-through itself -- the port
+  // has no fall-through code in st997E to mutate; that rests on the listing.)
+  const s = atSubstate(0x85);
+  s.zp5B = 0xFF;                        // a residue only $9658 can clear
   nmi(s, 0, res);
-  assert.strictEqual(s.zp5B, 1, 'INC made $5B 1; $9658 will clear it next frame');
+  assert.strictEqual(s.zp5B, 1,
+    '$9658 cleared $5B to 0, then $997E INC made it 1 (not 0x00 wrap)');
   assert.strictEqual(s.substate, 0x85, 'no fall-through into $9982');
 });
 

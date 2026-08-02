@@ -76,11 +76,19 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  *        120-frame $4C countdown runs the full mode-5 body underneath it, and
  *        $979D ends it by running the stage intro in the same frame.
  *
- * What is still NOT here: $90 (next stage), $C0 (game over) and the play
- * sub-states $81-$8F. All three are throws in src/nmi.js's ladder, and no
- * scenario in the corpus reaches any of them.
+ * W24 MADE THE PLAY SUB-STATES REAL: $81-$85 (countdown setup, the 768-frame
+ *   countdown, the 1-frame transition, the boss-page despawn/advance, the boss
+ *   fight) and $C0 (game over, the $96FB arm -- the $B0 jingle hold + the $4C
+ *   continue-timeout countdown) are all ported now. $81-$85 run mode5Body so the
+ *   1022 fields are produced; $C0 runs mode5Body during the $B0 hold. No scenario
+ *   in the corpus REACHES any of them yet (no boss-page-reaching script -- see
+ *   docs/worklog/gradius/24-qa-adversarial.md), but they are modelled, so the
+ *   gate no longer truncates the instant $1B leaves $80.
+ *
+ * What is still NOT here: $90 (next stage) and the play sub-states $86-$8F.
+ * Those are still throws in src/nmi.js's ladder.
  */
-const MODELLED_1B = new Set([0, 1, 2, 3, 4, 0x80, 0xA0]);
+const MODELLED_1B = new Set([0, 1, 2, 3, 4, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0xA0, 0xC0]);
 
 const INFO_FIELDS = new Map([
   ['w_0036', '$36 is re-walked by the BLANK PASS $8BAB at $80AD and stored back '
