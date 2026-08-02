@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# post-commit - resync the SHARED index after a private-index commit.
+#
+# THE BUG THIS FIXES (six occurrences, one nearly deleted HANDOVER.md):
+# A commit made with GIT_INDEX_FILE=<private> advances HEAD but never touches
+# .git/index. The shared index stays frozen at the tree it last held. Every
+# later `git status` compares frozen-index against the new HEAD and reports the
+# delta as STAGED changes - files present on disk and in HEAD show as ` D`,
+# modified files show as `MM`. Committing that state would delete real files
+# from HEAD. `git reset` fixes it, until the next private-index commit freezes
+# it again, which is why it recurred every single wave.
+#
+# WHY A HOOK AND NOT A RULE: the documented fix is a final `git read-tree HEAD`
+# at the end of every commit sequence. That works and it is correct, but it
+# depends on every agent, in every wave, remembering one line at the end of a
+# multi-command dance - and the whole reason this repo uses private indexes is
+# that several agents commit concurrently and cannot be trusted to coordinate.
+# A hook cannot be forgotten.
+#
+# THE GUARD: we only resync when the shared index is provably STALE rather than
+# intentionally staged. If its tree equals the PARENT commit's tree, it was in
+# sync before this commit and has nothing staged of its own - that is exactly
+# the freeze case, and resyncing is safe. If it differs, somebody has real
+# staged work sitting there and we leave it completely alone. Without this
+# guard the hook would silently discard a concurrent agent's `git add`.
+
+# The hook inherits GIT_INDEX_FILE from the committing process. Without this
+# unset, every git command below would operate on that PRIVATE index and the
+# shared one would stay frozen - the hook would appear to work and fix nothing.
+unset GIT_INDEX_FILE
+
+# No parent (root commit) or an unreadable HEAD: nothing to compare, do nothing.
+parent_tree=$(git rev-parse -q --verify 'HEAD^{tree}' 2>/dev/null) || exit 0
+prev_tree=$(git rev-parse -q --verify 'HEAD^1^{tree}' 2>/dev/null) || exit 0
+[ -n "$prev_tree" ] || exit 0
+
+# write-tree fails on an unmerged index (mid-conflict). Leave it be.
+shared_tree=$(git write-tree 2>/dev/null) || exit 0
+
+if [ "$shared_tree" = "$prev_tree" ]; then
+    # Stale exactly as predicted: in sync with the pre-commit HEAD, nothing of
+    # its own staged. Resync to the new HEAD. read-tree does NOT touch the
+    # working tree, so no uncommitted edit is at risk.
+    git read-tree HEAD 2>/dev/null
+fi
+
+exit 0
