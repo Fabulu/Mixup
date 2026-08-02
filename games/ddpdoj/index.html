@@ -258,12 +258,34 @@ computed <b>live, by the port</b>, one logic frame per 16.896&nbsp;ms, from the
 board's own arithmetic &mdash; <b>0 divergent frames against the board over
 2,200 logic frames on 34 compared columns</b>. Nothing else in the picture is.</p>
 
-<p><b>The background, the enemies, the bullets and the HUD are 161 captured frames
+<p class="warn"><b>The background SCROLLS LIVE now &mdash; wave&nbsp;13.</b> The
+whole scroll subsystem is ported: object type&nbsp;1 (<code>$26127A</code>), its
+seven-opcode program interpreter (<code>$262062</code>), the repeat/unfreeze
+partner (<code>$261F76</code>), the entry-clock fast-forward
+(<code>$26200E</code>), both cameras with their 1/64-pixel fractions
+(<code>$240B94</code>/<code>$240C22</code>), the register upload and the tilemap
+ring writer (<code>$240D76</code>). The camera position, the scroll registers
+and every map column now come from <b>the port's own arithmetic reading the
+cartridge's own data</b>, not from the recording &mdash; <b>0 divergent frames
+against the board over 10,431 logic frames</b>, the whole of stage&nbsp;1 from
+the first record to the boss lock, on twelve compared columns, with nine
+deliberate mistakes watched go red first. Stage&nbsp;1 is 7,317 logic frames and
+8,486&nbsp;pixels; the recording was 161 frames and 160&nbsp;pixels of it.</p>
+
+<p class="warn">What that does <em>not</em> yet give you is the PICTURE of the
+whole stage. The background's <b>tile pixels</b> are still the 415 tiles the
+recording happened to fly over, and stage&nbsp;1 references <b>1,820</b>. So the
+map scrolls correctly and, once it moves past what the recording saw, the tiles
+that were never harvested come out <b>blank</b>. The status line counts them
+(<code>miss</code>). Exporting the other 1,405 is the next wave's whole job; a
+blank column that says so is honest, a still picture that loops is not.</p>
+
+<p><b>The enemies, the bullets and the HUD are still 161 captured frames
 of the real board, on a loop.</b> The port now <b>builds</b> the hardware
 display list &mdash; main-loop call&nbsp;#4, <code>$23D2AE</code>, translated
 whole and verified byte-for-byte against the board on 1,901 consecutive frames
-&mdash; but it has a simulated <em>source</em> for only one of the thirty sprite
-buckets, and 18 of the 20 object handlers are still unported. A correct
+&mdash; but it has a simulated <em>source</em> for only four of the thirty sprite
+buckets, and 17 of the 20 object handlers are still unported. A correct
 pipeline with nothing to put through it draws nothing, so those pixels are
 still a replay.
 <b>The enemies cannot see you and cannot be shot.</b> They appear to aim at a
@@ -567,6 +589,14 @@ try {
       `lf ${s.logicFrame}`,
       `${s.pyPx.toFixed(1)},${s.pxPx.toFixed(1)}px`,
       `tilt ${s.tilt}`,
+      // WAVE 13: the scroll program, live.  `clk` is $8130CE, the distance
+      // odometer (836 ticks to the stage-1 boss lock); `bg` is $B03000, the
+      // register the ported $140FFE uploads; `col` counts the map columns
+      // $240D76 has written.  `miss` is the number of DISTINCT BG tiles the
+      // port's ring asked for that the bundle does not hold -- W15 exports
+      // stage 1's 1,820 and it goes to zero.
+      `clk ${s.clock} bg ${s.bgx} col ${s.columns}`
+        + (s.missingBgTiles ? ` <b>miss ${s.missingBgTiles}</b>` : ''),
       `${s.logicHz.toFixed(1)}Hz`,
       `x${canvas.dataset.scale}`,
     ].join(' &nbsp; ');

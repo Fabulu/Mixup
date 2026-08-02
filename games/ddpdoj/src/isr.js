@@ -35,6 +35,7 @@
 
 import { RAM, ROM } from './machine.js';
 import { isr6InputRead } from './input.js';
+import { uploadRegs } from './background.js';
 
 /**
  * One IRQ6 dispatch.  Returns true if it RELEASED the semaphore (i.e. the main
@@ -47,8 +48,24 @@ export function irq6(ram, portWord, ctx) {
   unportedLog.note(ROM.isr6Third, 'ISR6 jsr #3 ($18ACC0)');
   const sem = ram.u8(RAM.semaphore);                  // $13C7E6 tst.b $803940
   if (sem === 0) return false;                        // $13C7EC beq $13C80C -- GATED
-  for (const a of ROM.isr6Gated) {
-    unportedLog.note(a, 'ISR6 gated routine');        // $13C7EE..$13C800
+  for (const a of ROM.isr6Gated) {                    // $13C7EE..$13C800
+    // WAVE 13.  THE SECOND OF THE FOUR IS THE SCROLL REGISTER UPLOAD, and it
+    // is BUILD A's -- $140FFE, not build B's $240CC0.  That is not a typo and
+    // it is not `NOTES-build-split.md`'s exception being stretched: it is the
+    // rule.  On a VERSION-B run the interrupt handlers are build A's (measured
+    // three ways, the header above), so the routine behind this gate is the
+    // one in build A's address range, and the two builds' copies DIFFER --
+    // $240CC0 subtracts the screen-shake offsets $80B054/$80B056 and $140FFE
+    // does not.  Measured over the wave-17 corpus, 10,738 consecutive frame
+    // pairs of stage 1: the no-shake form predicts $B03000 on 10,738 of
+    // 10,738, the shake form on 10,696 -- it is wrong on exactly the 42 frames
+    // the boss shakes the screen.  Porting $240CC0 here would have been
+    // invisible for 10,696 frames and wrong for 42.
+    if (a === ROM.isr6RegUpload) {
+      uploadRegs(ram, ctx.video, { subtractShake: ctx.bgMutate === 'upload-subtracts-shake' });
+      continue;
+    }
+    unportedLog.note(a, 'ISR6 gated routine');
   }
   ram.setU8(RAM.semaphore, (sem - 1) & 0xff);         // $13C806 subq.b #1
   unportedLog.note(ROM.isr6Tail, 'ISR6 tail ($13C4FC)');

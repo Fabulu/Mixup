@@ -1100,6 +1100,37 @@ def _cmd_check(argv: list[str]) -> int:
 
     stage("port unit tests", lambda: _node("--test", TOOLS.parent / "tests"))
     stage("player tables export", lambda: sub(TOOLS / "export-tables.py", "--verify"))
+    # WAVE 13.  THE SCROLL PROGRAM, and it is here rather than under `if not
+    # quick` because it needs NO EMULATOR RUN: it replays src/background.js
+    # against TSVs already on disk (the wave-17 whole-stage corpus, the attract
+    # demo at entry clock $0038, and the two wave-10 runs).  Cheapest gate in
+    # the runner and it covers 14,443 logic frames.
+    SCROLLGATE = TOOLS / "scrollportgate.mjs"
+    W17TSV = OUT / "w17-stage1-invuln-p2.tsv"
+    ATTRACT = OUT / "bg-attract.tsv"
+
+    def _scroll(*a):
+        if not W17TSV.exists():
+            # A SKIP IS NOT A PASS.  The corpus is ROM-derived and gitignored,
+            # so a fresh clone has to make it -- that is environmental and is
+            # reported as a SKIP with the command that fixes it, never as green.
+            return ("SKIP", f"{W17TSV.name} missing -- "
+                            "`python tools/oracle/w17run.py 16000 "
+                            "w17-stage1-invuln-p2` (~6.5 min)")
+        return _node(SCROLLGATE, *a)
+
+    stage("scroll program: the port vs the whole of stage 1 (10,431 frames)",
+          lambda: _scroll(W17TSV))
+    stage("scroll program RED (9 mutations)",
+          lambda: _scroll(W17TSV, "--break", "all"))
+    stage("scroll program: the ATTRACT entry clock $0038 (1,364 frames)",
+          lambda: (("SKIP", f"{ATTRACT.name} missing") if not ATTRACT.exists()
+                   else _node(SCROLLGATE, ATTRACT, "--entry", "0x38",
+                              "--k", "2636")))
+    stage("scroll program RED [no-fast-forward] on the attract entry",
+          lambda: (("SKIP", f"{ATTRACT.name} missing") if not ATTRACT.exists()
+                   else _node(SCROLLGATE, ATTRACT, "--entry", "0x38",
+                              "--k", "2636", "--break", "no-fast-forward")))
     if not quick:
         stage("fly-around: port vs board, 0 divergent frames",
               lambda: sub(__file__, "flyaround"))
@@ -1139,7 +1170,10 @@ def _cmd_check(argv: list[str]) -> int:
               lambda: sub(__file__, "pixdemo"))
         stage("demo gate: the port drives the ship, pixel-exact",
               lambda: sub(__file__, "demogate"))
-        for m in ("off-by-one", "frozen-player", "no-input"):
+        # WAVE 13 added `bg-frozen-camera`: the demo gate's picture now comes
+        # from the PORT's background as well as the port's ship, and a 100 %
+        # pixel match means nothing without a switch that can wreck it.
+        for m in ("off-by-one", "frozen-player", "no-input", "bg-frozen-camera"):
             stage(f"demo gate RED [{m}]",
                   lambda m=m: sub(__file__, "demogate", "--break", m))
         stage("determinism gate", lambda: sub(__file__, "gate"))

@@ -159,9 +159,34 @@ export async function loadBundle(readRaw, opts = {}) {
     sheets[key] = { pixels, nos, slot, tileBytes: bytes, count: size.tiles };
   }
 
+  // WAVE 13.  A tile the sheet does not hold used to be an unconditional
+  // AssetError, and until this wave that was exactly right: every tile the page
+  // could ask for came out of the recording, and `verifyCoverage` had already
+  // proved they were all present -- so a throw could only mean a mismatched
+  // bundle.  It is no longer the only way to get here.  The PORT now drives the
+  // scroll ($240D76 writes real stage-1 map columns out of the cartridge), and
+  // stage 1 references 1,820 BG tiles against the 415 the capture happened to
+  // fly over.  W15 exports the other 1,405.
+  //
+  // So the missing-tile path SPLITS, and neither half is silent:
+  //   the CAPTURE's own tiles      -> still a throw, from `verifyCoverage`, at
+  //                                   load, naming the frame and the tile;
+  //   a tile the PORT's ring asks  -> COUNTED in `missingBgTiles` and drawn as
+  //   for and the sheet lacks         the transparent pen, with the count on
+  //                                   the page's status line.
+  // A blank column that says "1,405 tiles missing, W15" is honest; a picture
+  // that quietly repeats the recording is not, and a page that dies four
+  // seconds in is not either.
+  const missingBgTiles = new Set();
+  const BG_TRANSPARENT_PEN = 31;      // render/tiles.js buildBgMap: `v === 31`
   const tileFn = (sheet, name) => (roms, index, out = new Uint8Array(sheet.tileBytes)) => {
     const s = sheet.slot[index & 0xffff];
     if (s < 0) {
+      if (name === 'BG') {
+        missingBgTiles.add(index & 0xffff);
+        out.fill(BG_TRANSPARENT_PEN);
+        return out;
+      }
       throw new AssetError(`${name} tile ${index} ($${index.toString(16)}) is `
         + `not in the exported sheet (${sheet.count} tiles). The bundle was `
         + 'built for a different capture than the one being drawn.');
@@ -216,6 +241,9 @@ export async function loadBundle(readRaw, opts = {}) {
     roms: { igs023: new Uint8Array(0), sprcol, sprmask },
     tileFns: { bgTileFn: tileFn(sheets.bg, 'BG'), txTileFn: tileFn(sheets.tx, 'TX') },
     sheets,
+    // WAVE 13: every BG tile number the PORT's own ring asked for and the sheet
+    // could not supply.  Read by the page's status line; W15 empties it.
+    missingBgTiles,
   };
   verifyCoverage(bundle, opts);
   return bundle;

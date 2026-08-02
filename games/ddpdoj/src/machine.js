@@ -193,7 +193,14 @@ export const ROM = {
   isr6InputGated: 0x15b980,  // ...what it skips -- UNPORTED
   isr6Third: 0x18acc0,       // jsr #3  -- UNPORTED
   isr6Gate: 0x13c7e6,        // THE (A) GATE, beq $13C80C
-  isr6Gated: [0x141676, 0x140ffe, 0x141258, 0x185dc4],   // UNPORTED
+  isr6Gated: [0x141676, 0x140ffe, 0x141258, 0x185dc4],
+  // WAVE 13: the SECOND of those four is now PORTED -- it is the IGS023 scroll
+  // register upload, and it is build A's copy, which differs from build B's
+  // $240CC0 by the two screen-shake subtractions $240CDE/$240CE4.  See
+  // src/isr.js and src/background.js `uploadRegs` for the 10,738-frame
+  // measurement that says which one runs.  The other three stay UNPORTED.
+  isr6RegUpload: 0x140ffe,
+  isr6RegUploadBuildB: 0x240cc0,   // ...and the twin that does NOT execute
   isr6Release: 0x13c806,     // subq.b #1,$803940
   isr6Tail: 0x13c4fc,        // UNPORTED
   // --- build B: the object driver

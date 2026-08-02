@@ -38,9 +38,19 @@ export const FROZEN_GLOBALS = [
   [0x8130d2, 'movement disable; non-zero makes $2417FE return a zero vector'],
   [0x812954, 'the $2496CA -$48 nudge'],
   [0x81308c, 'gate on the post-store X adjust at $2496EE'],
-  [0x813176, 'the amount that post-store X adjust subtracts'],
   [0x80380f, 'operator setting gating the $2497AA bomb/hyper block'],
-  [0x8130ce, 'bomb stock compared against 4 at $2497FE'],
+  // WAVE 13 REMOVED TWO FROM THIS LIST, because the port now writes both:
+  //   $813176 -- "the amount that post-store X adjust subtracts".  It is
+  //     $26151E, inside the background object's cross-axis routine $26146C,
+  //     ported this wave (src/background.js).
+  //   $8130CE -- was listed here as "bomb stock compared against 4 at
+  //     $2497FE".  IT IS NOT BOMB STOCK.  It is THE DISTANCE CLOCK, the scroll
+  //     odometer $26132C bumps once per $200 of scroll
+  //     (20-recon-scroll-engine §3; 20-plan §2 W14 names this exact
+  //     correction).  $2497FE really does compare it against 4, so the gate
+  //     the port has been applying is accidentally right and stays as written
+  //     -- but the NAME was wrong for eight waves and the real bomb stock is
+  //     still unlocated (W28).
 ];
 
 // THE RED-VALIDATION SEAM, and it is deliberately in the shipped file.
@@ -339,8 +349,19 @@ function bombAndShotGuards(ram, rec, ctx, playerIdx) {
       + 'AND mirror bit 6 is held)');
   }
   // $2497FE cmpi.w #$4,$8130CE / bcs $249B2C ; $24980A btst #5,($19,A6)
+  //
+  // WAVE 13, AND THE NAME WAS WRONG SINCE WAVE 4.  $8130CE is not bomb stock:
+  // it is THE DISTANCE CLOCK, the scroll odometer $26132C bumps once per $200
+  // of scroll (20-recon-scroll-engine §3).  The instruction is exactly as
+  // written and stays -- the board really does gate the bomb on the odometer
+  // being >= 4, which is true four frames into any stage -- but until this
+  // wave the port FROZE the word at its seeded value (`FROZEN_GLOBALS`), and it
+  // now moves every frame because the background object is ported.  So this
+  // branch is live for the first time.  The REAL bomb stock is still unlocated
+  // (20-plan W28).
   if (ram.u16(0x8130ce) >= 4 && (btn & (1 << 5))) {
-    unreached(0x249814, 'THE BOMB ($249814); mirror bit 5 went down with stock >= 4');
+    unreached(0x249814, 'THE BOMB ($249814); mirror bit 5 went down with the '
+      + 'distance clock $8130CE >= 4');
   }
   // $249B2C..$249B3C -- the "power" byte the tail draws from: ($54,A6), or
   // ($55,A6) when bit 0 of ($1,A6) is set, copied into ($56,A6).

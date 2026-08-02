@@ -56,8 +56,8 @@ a still photograph of it.
 | L2 | ~~ship record + banking~~ | W12 | **REPLACED** (12-review F3: the page's claim overstates — words 4–7 of eight records still come from capture; fix wording in W13) |
 | L3 | ~~pods + exhaust + shadows~~ | W12 | **REPLACED** (same F3 caveat) |
 | L4 | player shots (not in capture at all — computed and INVISIBLE) | W20, unblocked by W13 | open |
-| L5 | video registers: bg x/y, tx scroll, ctrl, bg_scale, rowscroll array (all-zero, proven: 8 writers in 6 MB, zero gameplay) | W14 | open |
-| L6 | BG tilemap ring + its motion program — now fully decoded: 57 records stage 1, 186 whole game, 7-opcode VM | W16 (data W15) | open |
+| L5 | ~~video registers: bg x/y, tx scroll~~ | **W13** | **REPLACED** — `$140FFE` (build A's, not `$240CC0`) uploads `$B03000`/`$B02000` from the ported `$240B94`; `tx_xscroll`/`tx_yscroll` are `$23C5F2`'s write-once constants. `ctrl` ($001F) and `bg_scale` ($0210) are still the capture's — both constant on 16,000 measured frames, writers named ($23C008/$23C5DC), W19 rider. rowscroll still all-zero and still the capture's |
+| L6 | ~~BG tilemap ring + its motion program~~ | **W13** | **REPLACED, the program half** — object type 1, the 7-opcode VM, `$261F76`, `$26200E`, `$240D76` and both cameras are the port's; `$900000` is written by `$240D76` from the cartridge's own column stream (669 columns over stage 1). The ring's *initial contents* are still seeded from the capture (63 columns the board wrote before the recording began) and the TILE PIXELS are L7/W15 |
 | L7 | BG tile pixels + palette: bundle holds 415 harvested tiles, stage 1 references **1,820**; export = **666 KB gz, measured** | W15 | open |
 | L8 | TX tilemap: HUD, score digits, text | W19 | open |
 | L9 | score/chain VALUES — now an owner REQUIREMENT (frame-exact, order-within-frame is semantics) | W19 ledger + W28 | open, promoted |
@@ -66,7 +66,7 @@ a still photograph of it.
 | L12 | explosions, death effects, items ($8171BE/80-slot pool now correctly identified as impact/effects) | W28 + | open |
 | L13 | laser, bomb flash, hyper (never in the capture) | post-W28 (old W24/W25 scope) | open |
 | L14 | palette during gameplay (fades) — still needs the writer census | W19 rider | open |
-| L15 | the 161-frame LOOP BOUND | background half: W16+W17 (stage scrolls 7,317 frames); foreground half: W29–W30 | open |
+| L15 | the 161-frame LOOP BOUND | background half **W13** (the camera, the registers and the map program run for the stage's 7,317 frames and then hold at the boss lock, correctly — `17-impl` §4 proved the lock is never exited); the background's PICTURE is still bounded by L7's 415 harvested tiles until W15. Foreground half: W29–W30 | half-open |
 | L16 | ship never hit: death, lives, continue | W28 + flow waves | open |
 | L17 | ~~zoom table~~ | W11 | REPLACED |
 | L18 | ~~bucket identity~~ | W11 | REPLACED |
@@ -124,6 +124,18 @@ correct; fix the comment, and locating actual bomb stock moves to W28.
 three scenarios, two entry clocks — **the gate exists before the code**;
 mutations `commit-the-fraction`, `upload-outside-gate`, `skip-entry-fastforward`
 red. *Removes:* L5.
+**DONE 2026-08-02, TOGETHER WITH W16 — `13-impl-scroll-program.md`** (shipped
+under the label W13; the plan's own W13 was closed by `12_5-impl-fallthrough-24C476.md`).
+`tools/scrollportgate.mjs` compares **twelve** columns — the four above plus
+`$80B016`, `$80B034`, `$80B038`, `$80B03C`, both record cursors and both uploaded
+registers — at **0 divergent over 10,431 logic frames** of the wave-17 whole-stage
+corpus, **1,364** of the attract demo at entry clock `$0038`, **1,668** of
+`bg-deep` and **980** of `bgrecon`: 14,443 frames, two entry clocks, four
+scenarios. Nine red mutations, all seen red. `pgm.py flyaround` went from
+**1 of 72** columns diverging to **0 of 88**. NEW MEASUREMENT: the register
+upload that runs is **build A's `$140FFE`**, not `$240CC0` — the two differ by
+the `$80B054`/`$80B056` shake subtraction and the no-shake form predicts
+`$B03000` on 10,738 of 10,738 frame pairs against the shake form's 10,696.
 
 **W15 — the stage-1 background asset, with the measured budget.** Export the
 248-column stream (`$225B78`, 8,928 B — ALL 248 columns; the 24-column tail is
@@ -154,6 +166,15 @@ lf1700–1899, resuming `$0038`) and the attract entry at clock `$0038`; red:
 `clock-per-frame` (diverges at the first repeat), `loop-word-as-iterations`,
 `cond-word-honoured`. *Removes:* L6 and the background half of L15 — the stage
 scrolls 7,317 frames and 8,486 px instead of looping 161.
+**DONE 2026-08-02 with W14 — `13-impl-scroll-program.md`.** All SEVEN opcodes
+are ported, not three: `$00` SPAWN and `$14` CUE walk their streams and advance
+their cursors (the CALLEES `$24150A`/`$28C170`/`$28C186` are counted notes
+carrying the ROM address, the record's clock and the pointer they would have
+used), `$10` BGELEM resolves the per-stage handler and computes the argument
+(`$262366` is W18's), and `$18` FLAG's ladder is written with a throw above the
+listing's four arms. The three named reds are red, plus six more — including
+`reload-lenplus1`, the OTHER half of the len+1/len trap, which only shows on a
+two-pass repeat.
 
 **W17 — the whole-stage corpus, and the boss-lock exit hunt.** Measurement
 wave, cheap, and it is what lets W14–W16 claim the STAGE rather than its first

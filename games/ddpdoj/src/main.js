@@ -42,6 +42,7 @@ import { PLAYER_SLOTS } from './shots.js';
 import { buildDisplayList } from './displaylist.js';
 import { ProtLatch } from './protsim.js';
 import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
+import { makeBackground, BgVram, VideoRegs } from './background.js';
 
 /** The buckets the port has a PRODUCER for, in drain (= depth) order.  Every
  *  other one of the thirty is still empty on the port's side, which is why
@@ -55,8 +56,13 @@ export const PRODUCED_BUCKETS = [
 
 /** The object dispatch table $240F62, as far as the port implements it.
  *  Entry [5] is PARTIAL -- see type5.js: one of its 23 subsystem calls. */
-export function defaultHandlers(rom) {
+export function defaultHandlers(rom, vram, opts = {}) {
   return new Map([
+    // WAVE 13.  $240F62[1] = $26127A, THE BACKGROUND: the scroll VM, both
+    // cameras and the tilemap ring (src/background.js).  Adding this entry is
+    // what makes $813176 and $8130CE move on every existing gate -- both were
+    // in player.js's FROZEN_GLOBALS until this wave.
+    [1, makeBackground(rom, vram, opts)],
     [2, updatePlayer],    // $240F62[2] = $2491C0, P1
     [3, updatePlayer],    // $240F62[3] = $249246, P2
     [5, makeType5(rom)],  // $240F62[5] = $28B5E0, PARTIAL: only $253A70 of 23
@@ -87,7 +93,18 @@ export class Game {
     this.prot = new ProtLatch();
     this.unportedLog = new UnportedLog();
     this.order = new ObjOrder();
-    this.handlers = opts.handlers ?? defaultHandlers(this.rom);
+    // WAVE 13.  $900000, the BG tilemap ring, and the IGS023 scroll registers.
+    // Neither is main RAM, so neither can live in `this.ram`; both are PER GAME
+    // for the reason `prot` is (NOTES-replay.md §2 -- state derives from
+    // (initial state, input words) and nothing else).  `bgSeed` is the board's
+    // own ring at the seed frame: without it the port would draw fifteen
+    // columns into an empty ring and the other forty-nine would be blank.
+    this.vram = new BgVram(opts.bgSeed);
+    this.video = opts.video ?? new VideoRegs();
+    this.scrollEvents = [];
+    this.bgMutate = opts.bgMutate ?? null;
+    this.handlers = opts.handlers
+      ?? defaultHandlers(this.rom, this.vram, { mutate: opts.bgMutate ?? null });
     // Seeded, not counted from zero: the port starts mid-game, and a counter
     // that started at 0 would compare against nothing.
     this.logicFrame = opts.logicFrame ?? 0;
@@ -150,6 +167,16 @@ export class Game {
       },
       budget: this.budget,
       order: this.order,
+      // WAVE 13.  The video registers the ISR6-gated $140FFE uploads, and the
+      // scroll VM's own event log: every SPAWN, BGELEM, CUE and FLAG the
+      // program executed, with the record's clock value.  The events are what
+      // makes "the port skipped an opcode" visible -- an unported CALLEE is
+      // counted in unportedLog, but WHICH record reached it is here.
+      video: this.video,
+      bgMutate: this.bgMutate,
+      scrollEvent: (e) => {
+        this.scrollEvents.push({ lf: this.logicFrame, ...e });
+      },
       wallHit: (addr, which) => {
         // $261126: `tst.w $81317A / beq -> rts; else clr.w $81316C`.  Ported
         // exactly, and recorded, because "the ship pinned the wall" is the

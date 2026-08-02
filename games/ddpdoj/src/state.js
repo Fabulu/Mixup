@@ -134,6 +134,43 @@ export const WATCH_SPEC = [
                             // on a normal frame).  Function of all 30: REPORTED
   ['b000', 0x80b000],       // $23D382 -- bytes over budget, and $23D3C4
                             // subtracts bucket 20's count from it in place
+
+  // --------------------------------------------------------------- WAVE 13
+  // THE SCROLL PROGRAM.  $240F62[1] = $26127A is now RUN, so everything it
+  // writes joins the compared set in the same commit -- wave 5's rule 7.
+  //
+  // The first four are the columns `20-plan` §2 names as the done-when for
+  // W14 and W16 and that `scrollgate.py` has compared at 0 divergent over
+  // 10,431 board frames.  They are here as well as in `tools/scrollportgate.mjs`
+  // for a different reason: that gate runs the background subsystem ALONE off a
+  // board TSV, and these run it inside the whole port, in the object driver's
+  // own slot order, against the same board.  Two instruments, one claim.
+  ['d0ce', 0x8130ce],       // THE DISTANCE CLOCK, an odometer   $26132C
+  ['d18a', 0x81318a],       // the mod-64 ring cursor            $26137A
+  ['d18c', 0x81318c],       // the ($20,A5) column accumulator   $261382
+  ['b012', 0x80b012, 'l'],  // the BG camera's along axis        $240BAA
+  ['b016', 0x80b016, 'l'],  // ...and its cross axis             $240BCC
+  ['b034', 0x80b034, 'l'],  // the TX camera's along axis        $240C38
+  ['b038', 0x80b038, 'l'],  // ...and its cross axis             $240C5A
+  // $80B03C is what $24179E hands every background element to cancel the
+  // scroll, and `20-recon-scroll-engine` §9 item 6 said it had no writer.  It
+  // is written 90 bytes into $240C22 ($240C7C), which is the fall-through trap
+  // wearing a different hat.  Compared from the wave that first writes it.
+  ['b03c', 0x80b03c],
+  ['d16e', 0x81316e],       // the cross-axis delta, D1 to both cameras $2614EE
+  ['d170', 0x813170],       // $2614FE   } the three the BGELEM opcode and
+  ['d172', 0x813172],       // $261508   } every element updater read
+  ['d174', 0x813174],       // $261514
+  ['d0d2', 0x8130d2],       // THE BACKGROUND FREEZE.  Neither side writes it in
+                            // a gameplay window; compared for the reason `b054`
+                            // is -- so "it never fired" is a watch, not a guess.
+  ['d190', 0x813190],       // $26200E's fast-forward flag; 0 outside the init
+  ['scr0', 0x813192, 'l'],  // THE RECORD LEDGER.  $262092 writes the script's
+  ['scr1', 0x8131aa, 'l'],  // cursor ONLY after a record has been dispatched,
+                            // so these two columns say WHICH record the two
+                            // sides last executed, not merely that the state
+                            // agrees.  Wave 17 built its whole `w17ledger.py`
+                            // gate on this pair.
 ];
 
 /** PROBE_RAWDUMP ranges: byte-for-byte columns, compared as hex strings so a
@@ -280,7 +317,17 @@ export function stateVector(game) {
     p2raw: r.u16(RAM.p2raw), p2edge: r.u16(RAM.p2edge),
   };
   for (const [n, a, sz] of WATCH_SPEC) {
-    v[n] = sz === 'b' ? r.u8(a) : r.u16(a & ~1);
+    // WAVE 13 FIXED A LATENT MISMATCH HERE.  `frame.lua:1014` reads a `:l`
+    // column with `read_u32`; this loop read `u16` for every size that was not
+    // 'b', so a long column was compared as its HIGH WORD against the board's
+    // full longword.  It never fired, because the only 'l' column before this
+    // wave was `b054`, which is 0 on every frame anyone has sampled -- so both
+    // sides printed "0" and the defect was invisible by construction.  The
+    // wave-13 camera columns are real longwords and would have gone red for
+    // the wrong reason.
+    if (sz === 'b') v[n] = r.u8(a);
+    else if (sz === 'l') v[n] = r.u32(a & ~1);
+    else v[n] = r.u16(a & ~1);
   }
   Object.assign(v, rawdumps(game));
   return v;
@@ -336,6 +383,12 @@ export const CLAIMED = [
   // comparing it is what turns "it was zero" from an assumption into a watch;
   // and the thirty counters are zero on both sides because both clear them.
   'b002', 'b004', 'b054', 'sprctr',
+  // WAVE 13 -- the scroll program, in the same commit as src/background.js.
+  // `scroll` ($813176) was already in CLAIMED and until this wave the port
+  // never wrote it: the comment above it said "produced by $26151E inside the
+  // unported background object".  It is produced by the PORT now.
+  'd0ce', 'd18a', 'd18c', 'b012', 'b016', 'b034', 'b038', 'b03c',
+  'd16e', 'd170', 'd172', 'd174', 'd0d2', 'd190', 'scr0', 'scr1',
 ];
 
 /** WAVE 11 -- call #4's BUDGET ARITHMETIC, traced and DELIBERATELY NOT CLAIMED.

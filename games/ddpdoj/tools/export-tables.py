@@ -142,6 +142,33 @@ SHOT_WINDOWS = [
     # The window runs to $24C07C = $24C022 + 90.
     (0x24BBA0, 0x04E0, "WAVE 12: $24BBAA + the three option TEMPLATES it points "
                        "at ($24BF6E/$24BFC8/$24C022, 90 bytes each)"),
+    # ------------------------------------------------------------- WAVE 13
+    # THE SCROLL PROGRAM.  `src/background.js` reads all of this the way the
+    # 68000 does; every base below is the address of an instruction's operand.
+    #
+    #   $240D62  the five per-stage TILE BASES, added whole to every map
+    #            longword ($240D80 lea ($240D62,PC),A0 / adda.w $813096)
+    (0x240D60, 0x0020, "WAVE 13: $240D62 the five per-stage BG tile bases"),
+    #   $261252  BG palette block ptrs  ($2611B2)
+    #   $261266  BG column-stream ptrs  ($2611D6)
+    #   $26153E  the five script PAIRS  ($26152C)
+    #   $26157A  stage-1 object stream, 22 entries + $FFFFFFFF ($2620E4)
+    #   $261602  stage-1 cue stream, 14 B ($262186)
+    #   $261610.. all TEN scripts, 186 records, ending at $261F6E ($262072)
+    (0x261240, 0x0D40, "WAVE 13: $261252/$261266/$26153E + the object and cue "
+                       "streams + all ten scroll scripts ($261610..$261F6E)"),
+    #   $262302  the five BG-element handler tables, and the tables themselves
+    #            ($262328 / $26224A..$26227D for stage 1).  Read by op $10 so
+    #            the unported-note can NAME the constructor W18 must port.
+    (0x262240, 0x0100, "WAVE 13: $26224A..$2622F2 the BG-element handler "
+                       "tables and $262302 the per-stage pointer table"),
+    #   $225B78  STAGE 1's column stream, 248 columns x 36 B.  Stages 2..5 are
+    #            deliberately NOT exported: this wave validated stage 1 and a
+    #            read of another stage's stream must be a LOUD THROW BY ADDRESS
+    #            rather than a plausible picture.  The next four streams run
+    #            $228658/$22A5F8/$22B1E8/$22D770 (recon §2) and are W15's.
+    (0x225B78, 0x22E0, "WAVE 13: the STAGE-1 BG column stream, 248 columns "
+                       "x 36 B = 8,928 B ($2611D6 -> $26135A)"),
 ]
 
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a

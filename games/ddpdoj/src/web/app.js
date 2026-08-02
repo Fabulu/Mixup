@@ -26,13 +26,20 @@
 //     diverges at lf2321 because its writer is inside the unported background
 //     object -- verified pre-existing by 11-review.md §4b, and W14's.
 //
-//   REPLAYED, from a board capture:  everything else in the picture.  The port
-//     does not build the display list (main-loop call #4, $23D2AE, is unported)
-//     and 18 of the 20 top-level object handlers are unported, so the
-//     background, the enemies, the HUD text and every sprite that is not the
-//     player's come out of `assets/capture.bin` -- 161 consecutive frames of
-//     the `fly-around` scenario, the same window wave 4 compares -- and loop.
-//     The enemies are pixels: they do not see the ship and cannot be hit.
+//   REPLAYED, from a board capture:  the enemies, the HUD text, the palette and
+//     every sprite that is not the player's still come out of
+//     `assets/capture.bin` -- 161 consecutive frames of the `fly-around`
+//     scenario, the same window wave 4 compares -- and loop.  The enemies are
+//     pixels: they do not see the ship and cannot be hit.
+//
+//     THE BACKGROUND LAYER IS NO LONGER AMONG THEM in the way that matters:
+//     its MOTION, its camera, its scroll registers and its tilemap columns are
+//     the port's (wave 13).  What the recording still supplies for it is the
+//     TILE PIXELS -- 415 harvested tiles against the 1,820 stage 1 references
+//     -- and the ring's initial contents (`bgSeed`), which is 63 columns the
+//     board wrote before the recording started.  Tiles the port's ring asks
+//     for and the bundle lacks are drawn BLANK and COUNTED
+//     (`bundle.missingBgTiles`, on the status line).  W15 exports them.
 //
 //   PRODUCED (wave 12), and written into the replayed list:  EIGHT display-list
 //     records are now COMPUTED every frame rather than relocated -- the ship
@@ -182,9 +189,22 @@ class Demo {
     // renderer changes, and `tools/bundlegate.mjs` is what proves that.
     this.renderer = new Renderer(bundle.roms, bundle.tileFns);
     this.seedLf = this.cap.frames[0].lf;
+    // WAVE 13.  THE PORT NOW OWNS THE BACKGROUND'S MOTION.  Two things go in
+    // and one comes out:
+    //   IN  `bgSeed` -- the board's own $900000 ring at the capture's first
+    //       frame.  The port writes at most ONE column per column-step; the
+    //       other 63 are whatever the board had already written before the
+    //       recording started, and starting from an empty ring would blank
+    //       them.  The recording is the gate's INPUT here, never its output.
+    //   OUT `game.video` -- bg_xscroll/bg_yscroll/tx_*, computed by the ported
+    //       $140FFE from the ported $240B94/$240C22, and `game.vram`, the ring
+    //       the ported $240D76 writes.  `draw()` below hands the renderer BOTH
+    //       in place of the capture's, which is what takes L5 and L6's program
+    //       half off the CAPTURE LEDGER.
     this.game = new Game(bundle.seed, bundle.tables, {
       logicFrame: this.seedLf,
       videoFrame: this.cap.frames[0].vf,
+      bgSeed: this.cap.part(0, 'bg'),
     });
     this.prevTilt = this.game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
     this.prevPos = [this.game.ram.u16(RAM.player1 + P.posY),
@@ -244,6 +264,23 @@ class Demo {
     const k = (this.game.logicFrame - this.seedLf) % n;
     const fi = k < 0 ? k + n : k;
     const st = this.cap.state(fi);
+    // WAVE 13 -- THE SCROLL IS THE PORT'S.  `st.bg` and the four scroll
+    // registers are replaced wholesale; `ctrl`, `bg_scale` and the palette are
+    // still the recording's (both are constants on every measured frame --
+    // ctrl $001F, bg_scale $0210 over 16,000 frames -- and the palette is
+    // W15's).  The tile PIXELS are still the bundle's 415 harvested tiles, so
+    // once the port scrolls past what the recording happened to fly over the
+    // ring asks for tiles the sheet does not hold; `bundle.missingBgTiles`
+    // counts every one and the status line prints it.  That is W15's job and
+    // it is stated on the page rather than hidden behind a still picture.
+    st.bg = this.game.vram.w;
+    st.regs = {
+      ...st.regs,
+      bg_xscroll: this.game.video.bg_xscroll,   // $B03000, from $141018/$14101C
+      bg_yscroll: this.game.video.bg_yscroll,   // $B02000
+      tx_xscroll: this.game.video.tx_xscroll,   // $23C5FC, written once
+      tx_yscroll: this.game.video.tx_yscroll,   // $23C5F2
+    };
     // THE SPLICE, through the shared module the packer proves round-trips.
     // `prevPos`, not the current position: the sprite buffer lags main RAM by
     // one frame, measured (`capture.js`).
@@ -294,6 +331,13 @@ class Demo {
       spliced: this.spliced,
       capture: this.capFrame,
       unported: g.unportedLog.report(),
+      // WAVE 13 -- the scroll program, live.
+      clock: g.ram.u16(0x8130ce),          // $8130CE, the distance odometer
+      bgx: g.video.bg_xscroll,
+      bgy: g.video.bg_yscroll,
+      columns: g.vram.columnsWritten,      // $240D76 map columns written
+      scrollEvents: g.scrollEvents.length,
+      missingBgTiles: this.bundle.missingBgTiles?.size ?? 0,
     };
   }
 

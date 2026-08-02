@@ -105,10 +105,16 @@ function main() {
   }
   const game = new Game(seed, tables, {
     logicFrame: seedLf, videoFrame: cap.frames[0].vf,
+    // WAVE 13: the page seeds the port's $900000 ring from the capture's own
+    // first frame and then lets $240D76 write it.  This gate must do the same
+    // or it stops being the page's draw path -- which is the ONE thing it
+    // exists to be.
+    bgSeed: cap.part(0, 'bg'),
   });
   const renderer = new Renderer(roms);
 
   let exact = 0, total = 0, compared = 0, worst = null, frozen = null;
+  let frozenCam = null;
   let pal, ours, ref;
   for (let i = 1; i < cap.length; i++) {
     const f = cap.frames[i];
@@ -123,11 +129,33 @@ function main() {
       throw new Error(`the port is at lf${game.logicFrame}, the capture frame `
         + `is lf${f.lf} -- the capture is not one dump per logic frame`);
     }
-    // The page's own draw path, with the port's OWN player position.
+    // The page's own draw path, with the port's OWN player position AND -- from
+    // wave 13 -- the port's OWN background: the scroll registers the ported
+    // $140FFE uploaded and the tilemap ring the ported $240D76 wrote.  This
+    // gate loads the REAL IGS023 regions, so unlike the browser bundle it can
+    // draw every tile the ring asks for, which makes it the pixel proof of the
+    // whole background pipeline rather than of the camera alone.
     const st = cap.state(i);
+    {
+      st.bg = game.vram.w;
+      // `bg-frozen-camera` is the COUNTERFACTUAL for the line above.  A 100 %
+      // pixel match "with the port's own background" means nothing unless the
+      // substitution can be seen: the capture window is 160 px of scroll over
+      // 161 frames, so holding the camera at its first value must wreck it.
+      // Without this switch the claim would be indistinguishable from having
+      // substituted two values that happen to be equal.
+      if (a.break === 'bg-frozen-camera' && frozenCam === null) {
+        frozenCam = [game.video.bg_xscroll, game.video.bg_yscroll];
+      }
+      st.regs = { ...st.regs,
+        bg_xscroll: frozenCam ? frozenCam[0] : game.video.bg_xscroll,
+        bg_yscroll: frozenCam ? frozenCam[1] : game.video.bg_yscroll,
+        tx_xscroll: game.video.tx_xscroll, tx_yscroll: game.video.tx_yscroll };
+    }
     let py = prevPy, px = prevPx;
     if (a.break === 'off-by-one') py += 64;             // one whole pixel
     else if (a.break === 'frozen-player') { [py, px] = frozen; }
+    else if (a.break === 'bg-frozen-camera') { /* handled above */ }
     else if (a.break !== 'no-input' && a.break) {
       throw new Error(`unknown --break ${a.break}`);
     }
