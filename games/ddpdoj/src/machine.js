@@ -221,6 +221,9 @@ export const ROM = {
   optionLaser: 0x24c180,       // THE LASER -- W24
   optionNoLaser: 0x24c29e,
   optionFormation2: 0x24c390,
+  // WAVE 12.5 -- the tail EVERY exit of formation 2 falls into (12-review F2).
+  optionFireHandshake: 0x24c476,
+  optionSpawn: 0x24d480,       // THE PODS' SHOT SPAWN -- W20
   optionPodMove: 0x24d12e,
   optionPodShadow: 0x24c406,
   protSet: 0x246d04, protSum: 0x246ea4, protRead: 0x246cac,

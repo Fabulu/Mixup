@@ -55,6 +55,32 @@ export const WATCH_SPEC = [
   ['optilt', RAM.player1 + P.auraPhase],
   ['opglow', RAM.player1 + P.glowPhase],
 
+  // ------------------------------------------------------------- WAVE 12.5
+  // THE $24C476 FIRE HANDSHAKE (12-review F2).  Every exit of option formation
+  // 2 falls into `$24C476`; the port used to return.  These are the four bytes
+  // it writes and the three it reads, and they are here in the SAME commit as
+  // the code -- wave 5's rule 7.
+  //
+  // `p34`/`p35` are the PODS' cadence pair, the twin of `p2a`/`p2b` above
+  // ($249BAC's ship pair).  `oflg1` is the OPTION block's flags byte $8104AB,
+  // whose bits 3 and 4 are the handshake ($24C498 bclr #3 / $24C4A0 bset #4 /
+  // $24C4BC bclr #4 / $24C4D2 bset #4) and whose bit 0 is the init bit and bit
+  // 2 the laser latch -- so it is one compared byte covering three machines.
+  //
+  // `p20`/`p36`/`p37` are the block's READ-ONLY inputs and THE PORT NEVER
+  // WRITES THEM.  They are claimed anyway, for the reason `b054` is claimed:
+  // comparing a field neither side writes is what turns "nothing moved it"
+  // from an assumption into a watch.  If an unported writer touches them the
+  // column says so on the frame it happens.
+  ['p20', RAM.player1 + 0x20],          // word; $24C4E4 cmpi.w #$8,($20,A4)
+                                        // and $249BD4's ship twin. Its LOW
+                                        // BYTE is $24C47E's ($21,A4).
+  ['p34', RAM.player1 + 0x34, 'b'],     // $24C4B4/$24C4C8/$24C4EE
+  ['p35', RAM.player1 + 0x35, 'b'],     // $24C494/$24C4A6/$24C4CE
+  ['p36', RAM.player1 + 0x36, 'b'],     // $24C4D8, the delay reload
+  ['p37', RAM.player1 + 0x37, 'b'],     // $24C490, the burst-count bias
+  ['oflg1', RAM.p1Options + OPT.flags1, 'b'],
+
   // ---------------------------------------------------------------- WAVE 8
   // THE SHOT SUBSYSTEM.  Named scalars first, because a digest tells you THAT
   // something moved and a first-divergence report has to say WHAT.
@@ -176,7 +202,37 @@ export const EXEC_SPEC = [
   // rather than quietly assumed to be harmless.
   ['hitex', 0x245044, 0x810812, 0x810a51],
   ['hitany', 0x245044, 0x810572, 0x810c31],
+
+  // ------------------------------------------------------------- WAVE 12.5
+  // THE ELEVEN WRITE SITES OF `$24C476`, one column each, so that WHICH ARM
+  // the board took is a MEASUREMENT and not an inference from the values.
+  //
+  // `fhb4x` ($24C4BC `bclr #4,($1,A6)`, the no-edge arm's first instruction)
+  // is the one that proves 12-review F2 was a real defect rather than a
+  // reading of the listing: it executes on every frame the option object runs
+  // without a fire edge, and until this wave the port executed it ZERO times.
+  // `bclr` is read-modify-write, so the byte is written back even when the bit
+  // is already clear and the tap fires -- MEASURED, not assumed; see the
+  // worklog's census.
+  //
+  // P1's addresses only: `$8103E6+$34/$35` = `$81041A/$81041B` and the option
+  // block's flags byte `$8104AB`.  P2's block is all zeros in this corpus.
+  ['fh35w', 0x24c494, 0x81041b, 0x81041b],   // move.b D0,($35,A4)
+  ['fh35z', 0x24c4a6, 0x81041b, 0x81041b],   // clr.b   ($35,A4)
+  ['fh35d', 0x24c4ce, 0x81041b, 0x81041b],   // subq.b #1,($35,A4)
+  ['fh34i', 0x24c4b4, 0x81041a, 0x81041a],   // move.b #$1,($34,A4)
+  ['fh34d', 0x24c4c8, 0x81041a, 0x81041a],   // subq.b #1,($34,A4)
+  ['fh34w', 0x24c4ee, 0x81041a, 0x81041a],   // move.b D0,($34,A4)
+  ['fhb3c', 0x24c498, 0x8104ab, 0x8104ab],   // bclr #3,($1,A6)
+  ['fhb4s', 0x24c4a0, 0x8104ab, 0x8104ab],   // bset #4,($1,A6)  edge arm
+  ['fhb4c', 0x24c4ac, 0x8104ab, 0x8104ab],   // bclr #4,($1,A6)  edge arm
+  ['fhb4x', 0x24c4bc, 0x8104ab, 0x8104ab],   // bclr #4,($1,A6)  NO-EDGE arm
+  ['fhb4y', 0x24c4d2, 0x8104ab, 0x8104ab],   // bset #4,($1,A6)  burst tick
 ];
+
+/** The wave-12.5 subset of EXEC_SPEC: the $24C476 block's own write sites. */
+export const FIRE_EXEC = ['fh35w', 'fh35z', 'fh35d', 'fh34i', 'fh34d', 'fh34w',
+  'fhb3c', 'fhb4s', 'fhb4c', 'fhb4x', 'fhb4y'];
 
 export function watchEnv() {
   return WATCH_SPEC.map(([n, a, sz]) =>
@@ -262,6 +318,8 @@ export const CLAIMED = [
   'hity0', 'hity1',
   ...['o0y', 'o0x', 'o1y', 'o1x'],
   'ohold', 'oedge', 'oadel', 'oaidx', 'oanim', 'optilt', 'opglow',
+  // WAVE 12.5 -- the $24C476 fire handshake, ported in the same commit.
+  ...['p20', 'p34', 'p35', 'p36', 'p37', 'oflg1'],
   // WAVE 8.  Present in a trace only when the scenario asked for them, and
   // `portdiff.mjs` compares whatever of CLAIMED the trace actually carries --
   // so `fly-around` keeps its 34 columns and `stage1-shot` gets 55.

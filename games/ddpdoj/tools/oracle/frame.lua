@@ -317,6 +317,17 @@ for kv in (os.getenv("PROBE_EXEC") or ""):gmatch("[^,]+") do
   end
 end
 
+-- ---------------------------------------------------------------- PROBE_WRITERS
+WRITERS, WRITERHITS, WRITERFIRST = {}, {}, {}
+for rng in (os.getenv("PROBE_WRITERS") or ""):gmatch("[^,]+") do
+  local lo, hi = rng:match("^(%x+)%-(%x+)$")
+  if lo then
+    WRITERS[#WRITERS + 1] = { tonumber(lo, 16), tonumber(hi, 16) }
+  else
+    p("WRITERS_UNPARSED [%s]", rng)
+  end
+end
+
 -- ---------------------------------------------------------------- PROBE_PORTIN
 -- The hardware input word at $C08000, read once per logic frame by the IRQ6
 -- input routine.  See the header: this is the replay input record.
@@ -1190,6 +1201,25 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x80AFC0, 0x80AFFB, "sprq",
     return data
   end)
 
+-- (3c4) PROBE_WRITERS -- WHO WRITES THIS BYTE?  A CURPC census over a RAM
+--       range, added in wave 12.5.  `xref.py` can only see ABSOLUTE-LONG
+--       operands and every write inside the option object is `(d8,An)` off a
+--       base register, so the LISTING CANNOT ENUMERATE THEM AT ALL.  This is
+--       the measurement that can: it proves presence, and its silence proves
+--       only that nothing else wrote the range IN THIS RUN.
+--       "lo-hi[,lo-hi...]" in hex, inclusive.
+for _, w in ipairs(WRITERS) do
+  local lo, hi = w[1] & ~1, w[2] | 1
+  TAPS[#TAPS + 1] = PROG:install_write_tap(lo, hi, "writers",
+    function(offset, data, mask)
+      local pc = CPU.state["CURPC"].value & 0xffffff
+      local k = string.format("%06X:%06X", offset, pc)
+      WRITERHITS[k] = (WRITERHITS[k] or 0) + 1
+      if not WRITERFIRST[k] then WRITERFIRST[k] = lf end
+      return data
+    end)
+end
+
 -- (3c3) PROBE_EXEC -- per-instruction execution counts, wave 8.  One write tap
 --       per requested instruction, over the RAM range that instruction writes.
 --       Tap ranges must be word-aligned on this 16-bit space or MAME dies with
@@ -1452,6 +1482,17 @@ local function finish()
   p("CENSUS max_sprite_entries=%d", cen.maxspr)
   for _, w in ipairs(EXECS) do
     p("CENSUS exec_%s pc=$%06X total=%d over %d logic frames", w[1], w[2], w[6], lf)
+  end
+  if #WRITERS > 0 then
+    local a = {}
+    for k, v in pairs(WRITERHITS) do a[#a + 1] = { k, v } end
+    table.sort(a, function(x, y) return x[2] > y[2] end)
+    p("CENSUS writer_sites=%d", #a)
+    for i = 1, #a do
+      local addr, pc = a[i][1]:match("^(%x+):(%x+)$")
+      p("CENSUS writer addr=$%s pc=$%s n=%d firstlf=%d", addr, pc, a[i][2],
+        WRITERFIRST[a[i][1]])
+    end
   end
   -- THE CAP, MEASURED RATHER THAN ASSUMED.  sprite_queue_high_water is the
   -- largest value $23D73E ever wrote into $80AFC0, in BYTES; /12 is records

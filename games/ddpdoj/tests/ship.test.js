@@ -314,9 +314,22 @@ test('the gate is on the RAW byte $24C134 copies, never on the EDGE', {
   const g = bench();
   seedOptions(g.ram);
   g.ram.setU8(RAM.player1 + P.btnByte, 0x10);      // the EDGE alone
-  assert.doesNotThrow(() => runOptionObject(g.ram, g.ctx));
+  // WAVE 12.5.  Until this wave the assertion here was `doesNotThrow`, and it
+  // held for the WRONG REASON: the edge byte reached `$24C476`, which the port
+  // did not have, and the routine simply returned.  With `$24C476` ported the
+  // edge alone runs the pods' cadence machine and the board spawns a pod shot
+  // on the same frame -- so the throw that must NOT appear is the laser's, and
+  // the one that must is `$24D480`'s.  The distinction the test exists for is
+  // sharper now, not weaker.
+  const eEdge = caught(() => runOptionObject(g.ram, g.ctx));
+  assert.ok(eEdge instanceof Unreached);
+  assert.equal(eEdge.romAddress, ROM.optionSpawn,
+    'the EDGE alone must reach $24D480 (the pod spawn), never $24C180 (the laser)');
   g.ram.setU8(RAM.player1 + P.dirByte, 0x10);      // ...now the RAW byte
-  assert.throws(() => runOptionObject(g.ram, g.ctx), Unreached);
+  const eRaw = caught(() => runOptionObject(g.ram, g.ctx));
+  assert.ok(eRaw instanceof Unreached);
+  assert.equal(eRaw.romAddress, ROM.optionLaser,
+    'the RAW byte, and only the raw byte, opens the laser gate at $24C164');
 });
 
 test('$24C160 clears the copy when player state bit 5 is set', {

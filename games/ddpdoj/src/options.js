@@ -235,14 +235,186 @@ function formation2(ram, ctx, b) {
   // $24C3DC..$24C402 -- the SAME four gates as the ship's shadow, in the same
   // order, and the $80390C one is the phase that makes the pods' shadows and
   // their sprites alternate exactly as the ship's do.
-  if (ram.u16(0x812970) !== 0) return;                     // $24C3DC
-  if (ram.u16(0x80390c) !== 0) return;                     // $24C3E6
-  if (ram.u16(0x813098) !== 0) return;                     // $24C3F0
-  if (ram.u16(0x813092) === 2) return;                     // $24C3FA
-  if (SHIP_MUTATE.value === 'no-shadow') return;
-  podShadow(ram, opt, OPT.posY, OPT.flipColour, OPT.shadow0);        // $24C406
-  podShadow(ram, opt, OPT.posY2, OPT.pod + OPT.flipColour, OPT.shadow1); // $24C43E
-  void player;
+  //
+  // THEY DO NOT RETURN.  Every one of them is `bne/beq $24C476`, not `bne` to
+  // an `rts`, and the two shadow enqueues fall off the end of $24C474 into the
+  // same place:
+  //
+  //   24c3e2: bne $24c476   24c3ec: bne $24c476   24c3f6: bne $24c476
+  //   24c402: beq $24c476   24c470: jsr $23efee.l  <-- and $24c476 is next
+  //
+  // All FIVE exits of formation 2 converge on $24C476.  Wave 12 wrote `return`
+  // on four of them and dropped the tail; 12-review F2 caught it and this is
+  // the fix.  It is the ELEVENTH fall-through incident in this project, and it
+  // has the same shape as the other ten: the routine looked finished.
+  if (ram.u16(0x812970) !== 0) return fireHandshake(ram, ctx, b);   // $24C3DC
+  if (ram.u16(0x80390c) !== 0) return fireHandshake(ram, ctx, b);   // $24C3E6
+  if (ram.u16(0x813098) !== 0) return fireHandshake(ram, ctx, b);   // $24C3F0
+  if (ram.u16(0x813092) === 2) return fireHandshake(ram, ctx, b);   // $24C3FA
+  // The `no-shadow` MUTATION skips the two enqueues and NOTHING ELSE: it exists
+  // to prove the shadow columns are compared, and if it also skipped the
+  // handshake below it would light up two instruments for one cause.
+  if (SHIP_MUTATE.value !== 'no-shadow') {
+    podShadow(ram, opt, OPT.posY, OPT.flipColour, OPT.shadow0);        // $24C406
+    podShadow(ram, opt, OPT.posY2, OPT.pod + OPT.flipColour, OPT.shadow1); // $24C43E
+  }
+  return fireHandshake(ram, ctx, b);                       // fall through $24C474
+}
+
+/**
+ * `$24C476..$24C4F6` -- THE FIRE HANDSHAKE AND THE PODS' SHOT CADENCE, the ~30
+ * instructions every exit of formation 2 falls into.
+ *
+ * It is the POD twin of the ship's own cadence machine at `$249B48`
+ * (`player.js bombAndShotGuards`), instruction for instruction the same shape
+ * and NOT the same code -- read the two side by side before "simplifying"
+ * either:
+ *
+ *   |                    | ship $249B48        | pods $24C476        |
+ *   | gate               | btst #4,($19,A6)    | btst #4,($41,A6)    |
+ *   |                    |   the player's EDGE |   the OPTION block's|
+ *   |                    |   byte              |   COPY of it ($24C13A)
+ *   | burst counter      | ($2b,A6)            | ($35,A4)            |
+ *   | delay counter      | ($2a,A6)            | ($34,A4)            |
+ *   | handshake bits     | ($1,A6).3 + (A6).3  | ($1,A6).3 + ($1,A6).4
+ *   |                    |   TWO records       |   ONE byte, the     |
+ *   |                    |                     |   OPTION block's    |
+ *   | reload arithmetic  | ((D0>>1)&6)+($2d,A6)| (D0>>1)+($37,A4)    |
+ *   | delay reload guard | bit0 OR ($58,A6)==0 | bit0 OR ($20,A4)==8 |
+ *   |                    |   AND ($20,A6)==8   |   -- NO ($58,A4) test
+ *   | the spawn          | $249BFC (ported)    | $24D480 (NOT ported)|
+ *
+ * A6 IS THE OPTION BLOCK HERE AND A4 IS THE PLAYER -- the opposite of
+ * `$249B48`, where A6 is the player.  So `($1,A6)` bits 3/4 are the OPTION
+ * block's flags byte `$8104AB` (`machine.js OPT.flags1`) and `($34,A4)`/
+ * `($35,A4)` are in the PLAYER record `$8103E6`.
+ *
+ * WHY IT MATTERS AND WHEN IT RUNS.  `$24C4BC bclr #4,($1,A6)` executes on
+ * EVERY frame the fire edge is absent, which on `fly-around` is every frame of
+ * the run -- 12-review measured the block inert there (`$8103E6+$35` = 0,
+ * `$8104AB` = `$03`, edge byte 0), and that is exactly why the gate stayed
+ * green over a routine that had been dropped.
+ */
+export function fireHandshake(ram, ctx, b) {
+  // THE WRONG PORT, and it is wave 12's own: do what `$24C390` did before this
+  // wave and return.  It has to be reproducible from outside the source file
+  // or "the gate would have caught it" is a claim about a tree nobody has.
+  if (FIRE_MUTATE.value === 'handshake-dropped') return;
+  const { opt, player } = b;
+  // Count the ported write sites under the SAME names `state.js EXEC_SPEC`
+  // gives the board's taps, so `pgm.py firegate` can compare arm-for-arm and
+  // not only value-for-value.  P1 only: the taps are on P1's addresses.
+  const arm = (k) => { if (opt === RAM.p1Options) FIRE_ARMS[k]++; };
+  const gate = FIRE_MUTATE.value === 'edge-on-raw' ? OPT.raw : OPT.edge;
+  if (ram.btst8(opt + gate, 4)) {                          // $24C476 btst #4
+    // ---- THE EDGE ARM, $24C47E..$24C4BA ---------------------------------
+    // $24C47E move.b ($21,A4),D0 -- the LOW BYTE of the same word $24C4E4
+    // compares against 8 below; player.js reads the identical pair at
+    // $249B5C/$249BD4 and uses raw offsets, so these do too.
+    let d0 = ram.u8(player + 0x21);                        // $24C47E
+    if (ram.btst8(player + P.flags1, 0)) d0 = 8;           // $24C482 / $24C48A
+    // $24C48E lsr.b #1,D0 -- a BYTE shift with NO mask.  The ship's twin is
+    // `lsr.w #1` followed by `andi.b #6`; this one keeps bit 0 of the shifted
+    // value.  Translated as written, and the difference is the point.
+    d0 = FIRE_MUTATE.value === 'burst-mask-6'
+      ? (((d0 & 0xffff) >>> 1) & 6)                        // the SHIP's $249B66
+      : (d0 & 0xff) >>> 1;                                 // $24C48E
+    if (FIRE_MUTATE.value !== 'burst-no-bias') {
+      d0 = (d0 + ram.u8(player + 0x37)) & 0xff;            // $24C490 add.b
+    }
+    ram.setU8(player + 0x35, d0); arm('fh35w');            // $24C494 move.b D0
+
+    let b3 = ram.bclr8(opt + OPT.flags1, 3); arm('fhb3c');   // $24C498 bclr #3
+    if (FIRE_MUTATE.value === 'bclr3-inverted') b3 = !b3;
+    if (b3) {                                              // $24C49E beq $24C4AC
+      ram.bset8(opt + OPT.flags1, 4); arm('fhb4s');        // $24C4A0 bset #4
+      ram.setU8(player + 0x35, 0); arm('fh35z');           // $24C4A6 clr.b
+      return fireSpawn(ram, ctx, b);                       // $24C4AA bra $24C4D8
+    }
+    let b4 = ram.bclr8(opt + OPT.flags1, 4); arm('fhb4c');   // $24C4AC bclr #4
+    if (FIRE_MUTATE.value === 'bclr4-inverted') b4 = !b4;
+    if (b4) {                                              // $24C4B2 beq $24C4D8
+      ram.setU8(player + 0x34, 1); arm('fh34i');           // $24C4B4 move.b #1
+      return;                                              // $24C4BA bra $24C4F6
+    }
+    return fireSpawn(ram, ctx, b);                         // $24C4B2 beq $24C4D8
+  }
+  // ---- THE NO-EDGE ARM, $24C4BC..$24C4D6 --------------------------------
+  // `bclr` is a READ-MODIFY-WRITE: the byte is written back even when the bit
+  // was already clear, which is why the board's `fhb4x` tap fires on frames
+  // where nothing appears to change.
+  if (FIRE_MUTATE.value === 'noedge-rts') return;
+  ram.bclr8(opt + OPT.flags1, 4); arm('fhb4x');            // $24C4BC bclr #4
+  if (ram.u8(player + 0x35) === 0) return;                 // $24C4C2 tst.b/beq
+  const d = (ram.u8(player + 0x34) - 1) & 0xff;            // $24C4C8 subq.b #1
+  ram.setU8(player + 0x34, d); arm('fh34d');
+  if (d !== 0) return;                                     // $24C4CC bne $24C4F6
+  ram.setU8(player + 0x35, (ram.u8(player + 0x35) - 1) & 0xff);   // $24C4CE
+  arm('fh35d');
+  ram.bset8(opt + OPT.flags1, 4); arm('fhb4y');            // $24C4D2 bset #4
+  return fireSpawn(ram, ctx, b);                           // falls into $24C4D8
+}
+
+/**
+ * THE MUTATION HOOK for `$24C476`, deliberately IN THE SHIPPED FILE, for the
+ * reason `SHIP_MUTATE` is: a mutation that needs a source edit is a claim about
+ * a tree nobody else can reproduce.  `null` is the ROM and the only value
+ * shipped.  Every name here is exercised by `pgm.py firegate --break`.
+ *
+ *   handshake-dropped  formation 2 returns instead of falling into $24C476 --
+ *                      THE WAVE-12 DEFECT ITSELF, reproducible from outside.
+ *   edge-on-raw        $24C476 tests ($40,A6) instead of ($41,A6)
+ *   bclr3-inverted     $24C49E's branch the other way
+ *   bclr4-inverted     $24C4B2's branch the other way
+ *   burst-mask-6       $24C48E gets the SHIP's `lsr.w #1 / andi.b #6`
+ *   burst-no-bias      $24C490's `add.b ($37,A4),D0` dropped
+ *   delay-no-two       $24C4DC/$24C4E4's arm dropped: always ($36,A4)
+ *   noedge-rts         the no-edge arm returns at once (drops $24C4BC..$24C4D6)
+ */
+export const FIRE_MUTATE = { value: null };
+
+/** The ported write sites of `$24C476`, counted under `EXEC_SPEC`'s names.
+ *  `pgm.py firegate` zeroes it before each replayed frame. */
+export const FIRE_ARMS = {
+  fh35w: 0, fh35z: 0, fh35d: 0, fh34i: 0, fh34d: 0, fh34w: 0,
+  fhb3c: 0, fhb4s: 0, fhb4c: 0, fhb4x: 0, fhb4y: 0,
+};
+export function resetFireArms() {
+  for (const k of Object.keys(FIRE_ARMS)) FIRE_ARMS[k] = 0;
+}
+
+/**
+ * `$24C4D8..$24C4F2` -- the delay reload and THE POD SPAWN.
+ *
+ * Reached from three of the four arms above; the fourth (`$24C4B4`) is the only
+ * path out of `$24C476` that reaches the `rts` at `$24C4F6`.
+ */
+function fireSpawn(ram, ctx, b) {
+  const { opt, player } = b;
+  void ctx;
+  const arm = (k) => { if (opt === RAM.p1Options) FIRE_ARMS[k]++; };
+  let d0 = ram.u8(player + 0x36);                          // $24C4D8 move.b
+  // $24C4DC btst #0,($1,A4) / bne -> 2, else $24C4E4 cmpi.w #$8,($20,A4).
+  // The ship's twin ALSO requires `tst.w ($58,A6)` == 0 ($249BCE); this one
+  // does not.  Do not "harmonise" them.
+  if (FIRE_MUTATE.value !== 'delay-no-two'
+    && (ram.btst8(player + P.flags1, 0)                    // $24C4DC
+      || ram.u16(player + 0x20) === 8)) {                  // $24C4E4
+    d0 = 2;                                                // $24C4EC moveq #$2
+  }
+  ram.setU8(player + 0x34, d0 & 0xff); arm('fh34w');       // $24C4EE move.b
+  unreached(ROM.optionSpawn, `THE PODS' SHOT SPAWN. $24C4F2 bra $24D480, `
+    + `reached because the pod cadence machine emitted a shot this frame. `
+    + `$24D480 is movem.l D6-D7/A3/A5-A6,-(A7) / lea $810572,A0 (P1) or `
+    + `$810C32 (P2, chosen by tst.w D7 at $24D490) / movea.l $8127E8,A1, then `
+    + `the $24D2FC and $24D35C template tables indexed by ($58,A4)*4 (+4 when `
+    + `bit 0 of ($1,A4) is set) and again by ($20,A4)*2, the two $24D500/`
+    + `$24D510 sub-4 phase counters ($52,A6)/($54,A6), and a jsr $23D88E per `
+    + `record. NONE OF IT IS PORTED -- it is W20's, and W20 was told to build `
+    + `on these cadence bytes: ($34,A4) is now ${ram.u8(player + 0x34)} and `
+    + `($35,A4) ${ram.u8(player + 0x35)}. The option block's handshake byte `
+    + `$${(opt + OPT.flags1).toString(16).toUpperCase()} is `
+    + `$${ram.u8(opt + OPT.flags1).toString(16).toUpperCase()}`);
 }
 
 /** `$24C406..$24C43C` and its verbatim twin `$24C43E..$24C474`. */

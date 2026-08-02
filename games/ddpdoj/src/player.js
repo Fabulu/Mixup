@@ -300,10 +300,21 @@ function finish(ram, rec, d2, d3, ctx, skipClamps) {
   ram.setU16(rec + P.hitXPlus, h.hitX[0]);           // $249E78, the LONG at +$14
   ram.setU16(rec + P.hitXMinus, h.hitX[1]);          // ...i.e. +$14 and +$16
   // $249E7E onward: the ground-plane shadow emit ($249EA0 -> $23EFC0, bucket 5)
-  // and the score BCD block ($249F16).  WAVE 12 ports the shadow; the BCD block
-  // is W17's and is still counted rather than silent.
+  // and the score BCD block.  WAVE 12 ports the shadow; the rest is W17's and
+  // is counted rather than silent.
+  //
+  // WAVE 12.5's AUDIT CORRECTED THIS NOTE'S ADDRESS.  `drawShipShadow` has FIVE
+  // exits -- four gates that are `bne/beq $249EE8` and the fall-through past
+  // `$249EE2 jsr $23EFC0` -- and all five land on `$249EE8`, not on `$249F16`.
+  // `$249EE8..$249F14` is a chain of five more gates ($80392C, $8130F8 bit 0,
+  // $81309C, (A6) bit 6, ($7,A5), $812914) that decide whether the BCD block
+  // runs at all, and `$249F4C..$249F88` is P2's copy of it.  The note named
+  // only the middle of the region.  Control DOES reach this line on every path
+  // -- it was never a quiet return -- but an unported region whose census line
+  // understates its own extent is how one becomes invisible.
   drawShipShadow(ram, rec, ctx);
-  unportedLog.note(0x249f16, 'player tail: the score BCD block ($249F16..$249F88)');
+  unportedLog.note(0x249ee8, 'player tail: the five gates $249EE8..$249F14 and '
+    + 'the score BCD block behind them ($249F16..$249F88, P1 and P2)');
 }
 
 /**

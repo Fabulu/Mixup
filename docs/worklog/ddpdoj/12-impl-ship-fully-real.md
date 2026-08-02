@@ -288,6 +288,25 @@ BLOCKED, labelled, and not weakened.**
 Every one is a loud named throw carrying the ROM address; none is a quiet
 return.
 
+> **CORRECTED BY WAVE 12.5, 2026-08-02. THAT SENTENCE WAS FALSE WHEN IT WAS
+> WRITTEN.** `$24C390` fell through into `$24C476` — ~30 instructions writing
+> the option block's handshake bits `($1,A6).3/.4` and the player's cadence
+> pair `($34,A4)/($35,A4)` — and this wave's `formation2()` returned there with
+> no throw and no `note()`. 12-review found it (**F2**); it is the ELEVENTH
+> fall-through incident in this project and the twelfth entry in this table
+> should always have been `$24C476`.
+>
+> The sentence was true of everything its author *considered*, which is exactly
+> the shape of a guard tested only on the path that does not exercise it — and
+> it is why 12.5's audit enumerated every `return` in `src/` against the
+> listing rather than re-reading the ones it remembered writing. The block is
+> ported in `src/options.js fireHandshake()`, its measurement is
+> `docs/worklog/ddpdoj/12_5-impl-fallthrough-24C476.md`, and its gate is
+> `pgm.py firegate` (2,571 board frames, 0 divergent, five red mutations).
+>
+> The one thing the sentence got right is the shape of the fix: `$24D480`, the
+> pods' shot spawn that `$24C4F2` branches to, **is** a loud named throw now.
+
 | ROM | what | why not |
 |---|---|---|
 | `$24C180` | THE LASER, the whole branch | W24. Reached the moment fire is held |
@@ -298,6 +317,7 @@ return.
 | `$24C934` | the pods' DEPLOY ramp | reached only before the pods are out; the corpus seeds after |
 | `$24CAA4`, `$24CA60`, `$24C2C4`, `$24C368`, `$24D188` | five state-bit branches inside `$24C096` | each MEASURED 0 in the window; each throws with its own address |
 | `$253604` | the call between the ship's enqueue and the phase test | writes nothing in any compared column; counted |
+| `$24D480` | THE PODS' SHOT SPAWN, which `$24C4F2` branches to | **ADDED BY WAVE 12.5.** W20's. Reached on the first fire edge, so `firegate` is a trace replay and not a live gate |
 | `$249F16` | the score BCD block | W17 |
 
 Not throws, but named absences: the port does not model `$23C008`'s write to

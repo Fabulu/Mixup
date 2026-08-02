@@ -1494,8 +1494,10 @@ def _w4_assert_syms() -> None:
                               # thing that must notice a rename.
                               "hitYPlus", "hitYMinus", "hitXPlus", "hitXMinus",
                               "auraPhase", "glowPhase")),
+                       # WAVE 12.5: `flags1` is the OPTION block's `$8104AB`,
+                       # whose bits 3/4 are the $24C476 fire handshake.
                        ("OPT", ("posY", "posX", "posY2", "raw", "edge",
-                                "animDelay", "animIdx", "anim"))):
+                                "animDelay", "animIdx", "anim", "flags1"))):
         for n in names:
             m = re.search(rf"\b{n}:\s*(0x[0-9a-fA-F]+)", txt)
             if not m:
@@ -1528,7 +1530,7 @@ _W4_SYMS = {
     # WAVE 12 -- the OPTION BLOCK, $64 bytes at $8104AA (machine.js `OPT`).
     "OPT": type("O", (), {"posY": 0x02, "posX": 0x04, "posY2": 0x22,
                           "raw": 0x40, "edge": 0x41, "animDelay": 0x42,
-                          "animIdx": 0x44, "anim": 0x0A})(),
+                          "animIdx": 0x44, "anim": 0x0A, "flags1": 0x01})(),
 }
 
 
@@ -2412,6 +2414,78 @@ def _cmd_shipgate(argv: list[str]) -> int:
     return one(None)
 
 
+# --------------------------------------------------------------- wave 12.5
+def _cmd_firegate(argv: list[str]) -> int:
+    r"""WAVE 12.5.  THE $24C476 FIRE HANDSHAKE, against the board.
+
+    12-review F2: every exit of option formation 2 falls into `$24C476` and the
+    port returned instead.  `shipgate` and `flyaround` cannot see it -- the
+    block is INERT on a button-free scenario -- so it needs its own instrument
+    and this is it.
+
+    WHY THIS IS A TRACE REPLAY AND NOT A LIVE GATE, stated up front because it
+    is the honest limit of the wave: `$24C4F2 bra $24D480` is the PODS' SHOT
+    SPAWN, which is W20's and is a named throw here.  On the board the very
+    first tap reaches it, so a full-port run BLOCKS on the first fire frame no
+    matter what -- before this wave at `$24C180`, after it at `$24D480`.  There
+    is no window in which the whole port runs and the handshake is exercised.
+    So the block is driven DIRECTLY, frame by frame, off the board's own
+    columns: entry state from the sample point of frame N-1, inputs from frame
+    N, outputs compared against frame N.  Every value on both sides is measured.
+
+    TWO INSTRUMENTS, not one.  The VALUES (`p34`, `p35`, `oflg1`) say what came
+    out; the ELEVEN PROBE_EXEC counters (`state.js FIRE_EXEC`) say which of the
+    block's write sites the BOARD executed, and the port counts the same eleven
+    under the same names.  A port that reaches the right numbers down the wrong
+    arm is red on the second instrument.
+    """
+    defs = scenarios()
+    name = argv[0] if argv and not argv[0].startswith("--") else "stage1-shot"
+    s = next(x for x in defs["scenarios"] if x["name"] == name)
+    brk = argv[argv.index("--break") + 1] if "--break" in argv else None
+    out = OUT / "w12_5"
+    out.mkdir(parents=True, exist_ok=True)
+    tsv = out / f"{name}.fire.tsv"
+    if "--reuse" not in argv or not tsv.exists():
+        r = trace(tsv, frames=s["frames"], buttons=build_script(defs, s),
+                  build=s.get("build", "B"), meter=s.get("meter", True),
+                  extra_env={"PROBE_WATCH": w4_watch(), "PROBE_EXEC": w8_exec(),
+                             "PROBE_POKE": s.get("poke", ""),
+                             "PROBE_POKE_FROM": str(s.get("pokeFrom", 0))})
+        check(r, name)
+        census(r)
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("node not on PATH -- the port is JavaScript")
+    cmd = [node, str(HERE.parent.parent / "tools" / "firegate.mjs"), str(tsv)]
+    if brk:
+        cmd += ["--break", brk]
+    print("\n$ " + " ".join(cmd[1:]))
+    res = subprocess.run(cmd, text=True)
+    if brk:
+        # EXPECTED-GREEN mutations are declared in tools/breakage.mjs BEFORE the
+        # run, with the MEASUREMENT that says why this scenario cannot see them
+        # and the test that does.  Read from that file, never duplicated here.
+        body = (HERE.parent.parent / "tools" / "breakage.mjs").read_text(encoding="utf8")
+        blk = body.split("FIRE_EXPECTED_GREEN = {", 1)[-1].split("\n};", 1)[0]
+        if f"'{brk}':" in blk:
+            if res.returncode != 0:
+                print(f"FAIL mutation '{brk}' is declared EXPECTED-GREEN in "
+                      f"tools/breakage.mjs and went RED -- one of the two is wrong")
+                return 1
+            print(f"EXPECTED-GREEN OK: '{brk}' left the RESULT line green on "
+                  f"{name}, as tools/breakage.mjs declares it must; that file "
+                  f"names the measurement and the test that DOES see it fail")
+            return 0
+        if res.returncode == 0:
+            print(f"FAIL mutation '{brk}' did NOT diverge -- the comparison "
+                  f"cannot see it")
+            return 1
+        print(f"RED OK: mutation '{brk}' diverged, as it must")
+        return 0
+    return res.returncode
+
+
 COMMANDS = {
     "verify": _cmd_verify, "landmarks": _cmd_landmarks, "trace": _cmd_trace,
     "snap": _cmd_snap, "seed": _cmd_seed, "scen": _cmd_scen, "gate": _cmd_gate,
@@ -2425,7 +2499,7 @@ COMMANDS = {
     "pixslice": _cmd_pixslice, "pixdemo": _cmd_pixdemo,
     "demogate": _cmd_demogate,
     "dlgate": _cmd_dlgate, "ablate": _cmd_ablate,
-    "shipgate": _cmd_shipgate,
+    "shipgate": _cmd_shipgate, "firegate": _cmd_firegate,
 }
 
 if __name__ == "__main__":

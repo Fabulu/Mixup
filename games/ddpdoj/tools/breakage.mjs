@@ -180,6 +180,30 @@ export const EXPECTED_GREEN = {
     + 'differing frames -> 124) and must NOT move the RESULT line',
 };
 
+/** WAVE 12.5 -- the `pgm.py firegate` mutations that are EXPECTED to leave the
+ *  RESULT line green ON `stage1-shot`, each with the MEASUREMENT that says why
+ *  and the test that DOES see it fail.  Declared before the run, for the same
+ *  reason `EXPECTED_GREEN` is: an unexplained pass is not evidence.
+ *
+ *  All three numbers below are from `out/w12_5/stage1-shot.fire.tsv`, 2,572
+ *  frames, lf2001..4572. */
+export const FIRE_EXPECTED_GREEN = {
+  'edge-on-raw': 'MEASURED: the raw byte ($40,A6) and the edge byte ($41,A6) '
+    + 'agree on bit 4 on ALL 2,572 frames -- `stage1-shot` taps Button 1 for '
+    + 'exactly one frame at a time, so every held frame is also an edge frame. '
+    + 'Seen red instead by tests/fire.test.js "the gate is the EDGE byte", '
+    + 'which supplies raw=$10 with edge=$00 -- the state a HOLD produces',
+  'burst-mask-6': 'MEASURED: ($21,A4) is 0 on all 2,572 frames (the whole word '
+    + '($20,A4) is 0), so `lsr.b #1` and the ship twin's `lsr.w #1 / andi.b '
+    + '#6` both yield 0 and the difference cannot appear. Seen red instead by '
+    + 'tests/fire.test.js "$24C48E is lsr.b with NO mask", which sets '
+    + '($21,A4) = $0E: $0E>>1 = 7, 7 & 6 = 6',
+  'delay-no-two': 'MEASURED: bit 0 of ($1,A4) is 0 on all 2,572 frames and '
+    + '($20,A4) is never 8, so $24C4EC's `moveq #$2,D0` arm is never taken '
+    + 'and the reload is always ($36,A4). Seen red instead by '
+    + 'tests/fire.test.js "$24C4E4 compares the WORD ($20,A4) against 8"',
+};
+
 export function breakage(name, game) {
   CLAMP_ORDER.value = 'rom';   // never leak a mutation between runs
   SHIP_MUTATE.value = null;    // ...and the same for wave 12's seam
