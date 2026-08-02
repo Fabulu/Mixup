@@ -2671,7 +2671,9 @@ function bodySync(state, x) {
   bossSet(state, 0x045F + x, 0x02);              // $B9BB s0460[8] = 2
   bossSet(state, 0x045E + x, 0x00);              // $B9C0 s0460[7] = 0
   bossSet(state, 0x012B + x, 0x85);              // $B9C5 anim[20] (body 8) = $85
-  bossSet(state, 0x018A + x, vuln === 0 ? 0x32 : 0x00);  // $B9D1 attrMask[19] (body 7)
+  // $B9C8 LDA #$03 (the prg.asm listing mis-printed this as #$32; the raw PRG
+  // byte at $B9C9 is $03, confirmed against the cartridge's attrMask[19]=3).
+  bossSet(state, 0x018A + x, vuln === 0 ? 0x03 : 0x00);  // $B9D1 attrMask[19] (body 7)
   bossSet(state, 0x012A + x, 0x32);              // $B9D6 anim[19] (body 7) = $32
   bossSet(state, 0x036B + x, headX);             // $B9DC x[20] (body 8) = headX
   bossSet(state, 0x036A + x, headX);             // $B9DF x[19] (body 7) = headX
