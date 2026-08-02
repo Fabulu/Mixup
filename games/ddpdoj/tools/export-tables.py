@@ -212,7 +212,49 @@ SHOT_WINDOWS = [
                        "(32 dir turret) sprite tables"),
     (0x268B10, 0x0220, "WAVE 20: type $11's $268B1E muzzle table, $268B9E body "
                        "table and $268C9E 32-direction turret sprite table"),
+    # ------------------------------------------------------------- WAVE 21
+    # THE ENEMY BULLET PATTERN GENERATORS.  src/bullets.js and
+    # src/bulletmath.js read every one of these the way the 68000 does.
+    #
+    #   $281956  39 longs   the TEMPLATE pointer table ($281564 movea.l (A1,D0.w))
+    #   $2819F4  39 x $14   the templates themselves, ending at $281CD6 where
+    #                       code begins ($4A79 tst.w abs.l).  The extent is
+    #                       pinned from BOTH ends: entry[39] of the pointer
+    #                       table is $018100, not a pointer.
+    (0x281950, 0x0390, "WAVE 21: $281956 the 39 bullet-KIND template pointers "
+                       "and the 39 x 20-byte templates at $2819F4..$281CD5"),
+    #   $2815C6  39 longs   the SPAWN-INIT pointer table ($2815B6 adda.w D0,A1)
+    (0x2815C0, 0x00B0, "WAVE 21: $2815C6 the 39 spawn-init pointers "
+                       "(nine distinct routines)"),
+    #   $282030  39 longs   the BEHAVIOUR pointer table ($281F16 adda.w D0,A0).
+    #                       The BODIES are not ported by wave 21; the table is
+    #                       exported so `behaviourFor` can name the address it
+    #                       is not running.
+    (0x282030, 0x00A0, "WAVE 21: $282030 the 39 behaviour-initialiser pointers"),
+    #   $283F50  256 words  THE FOLD TABLE ($2841A2 lea ($283F50,PC),A2 /
+    #                       adda.w (A2),A3).  MEASURED to be exactly
+    #                       8*triangle(i), period 128, peak 64 -- so 256
+    #                       directions fold onto 65 quarter-angle records.
+    (0x283F50, 0x0200, "WAVE 21: $283F50 the 256-word direction FOLD table"),
 ]
+
+# WAVE 21 -- THE VELOCITY FIELD, exported in full and here is why.
+#
+# `$284190` indexes `$200920` with a BYTE from record +$1A, so the domain is
+# 0..255 and nothing narrows it: the speed a bullet gets is
+# `template base (20) + the call site's bias + $813160 + $812950`, and the last
+# two are LIVE VARIABLES ($252C8E writes $812950 every single frame).  A derived
+# subset -- the trick `speed_index_set()` plays for the player's own shots -- is
+# a guess here, and a guess that fails on a player's machine rather than at
+# export time.  The table's extent is proven from both ends: the pointer table
+# is an exact arithmetic progression for exactly 256 entries (entry 256 and its
+# two neighbours are 0), and the last quadrant table ends at $221520, the next
+# known data object.  So: one window, $200920..$22151F, 134,144 bytes.
+VELOCITY_FIELD = (0x200920, 0x221520 - 0x200920,
+                  "WAVE 21: the WHOLE velocity field -- $200920's 256 longword "
+                  "pointers and the 256 x 65 x 8-byte quadrant tables they "
+                  "point at, $200D20..$22151F")
+SHOT_WINDOWS.append(VELOCITY_FIELD)
 
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
@@ -532,6 +574,77 @@ def verify(t: dict) -> list[str]:
     for lv in t["option"]["speedIndices"]:
         if str(lv) not in sp["quads"]:
             bad.append(f"option template wants speed level {lv}, not exported")
+    # ----------------------------------------------------------- WAVE 21
+    # The four bullet tables, checked through the EXPORTED BYTES rather than
+    # through the image, so a window that is short or misaligned fails HERE and
+    # not on a player's machine.  Every check is a property the port depends on
+    # and none of them is "the numbers I happened to read".
+    def win(a: int, n: int) -> bytes | None:
+        for w in t["rom"]["windows"]:
+            b = int(w["base"].lstrip("$"), 16)
+            if b <= a and a + n <= b + w["len"]:
+                o = (a - b) * 2
+                return bytes.fromhex(w["hex"][o:o + n * 2])
+        return None
+
+    def w16(a):
+        b = win(a, 2)
+        return None if b is None else struct.unpack(">H", b)[0]
+
+    def w32(a):
+        b = win(a, 4)
+        return None if b is None else struct.unpack(">I", b)[0]
+
+    tps = [w32(0x281956 + 4 * k) for k in range(39)]
+    if any(p is None for p in tps):
+        bad.append("the $281956 template pointer table is not fully inside a window")
+    else:
+        if w32(0x281956 + 4 * 39) != 0x018100:
+            bad.append(f"$281956[39] is ${w32(0x281956 + 4 * 39):08X}, expected "
+                       f"$00018100 -- the table's far end has moved and the "
+                       f"39-kind extent is no longer pinned")
+        for k, p in enumerate(tps):
+            if win(p, 0x12) is None:
+                bad.append(f"template {k} at ${p:06X} is not inside a window")
+            elif w16(p + 0x0E) != 20:
+                bad.append(f"template {k} base speed is {w16(p + 0x0E)}, not 20 -- "
+                           f"all 39 are 20 and src/bullets.js's speed arithmetic "
+                           f"starts from that")
+            elif (w16(p) & 0x3F) != k and k not in (14, 15):
+                bad.append(f"template {k}'s type word ${w16(p):04X} has low 6 bits "
+                           f"{w16(p) & 0x3F}; only kinds 14 and 15 are aliases "
+                           f"(both carry $810A)")
+    for k in range(39):
+        for name, base in (("spawn-init", 0x2815C6), ("behaviour", 0x282030)):
+            v = w32(base + 4 * k)
+            if v is None or not (0x200000 <= v < 0x2B0000):
+                bad.append(f"{name}[{k}] = {v} is missing or not a code pointer")
+    fold = [w16(0x283F50 + 2 * i) for i in range(256)]
+    if any(v is None for v in fold):
+        bad.append("the $283F50 fold table is not fully inside a window")
+    else:
+        for i, v in enumerate(fold):
+            m = i % 128
+            want = 8 * (m if m <= 64 else 128 - m)
+            if v != want:
+                bad.append(f"$283F50[{i}] = {v}, expected 8*triangle = {want}")
+                break
+    vbase = w32(0x200920)
+    for s in (0, 1, 20, 128, 255):
+        if w32(0x200920 + 4 * s) != vbase + QUAD_STRIDE * s:
+            bad.append(f"$200920[{s}] is not ${vbase:06X} + ${QUAD_STRIDE:X}*{s}")
+    if win(vbase, 256 * QUAD_STRIDE) is None:
+        bad.append("the 256 velocity quadrant tables are not fully inside a window")
+    else:
+        # every row runs (r,0) at quarter-angle 0 to (0,r) at 64, and speed 0 is
+        # a real "do not move".  A short window would show up as a row of zeros
+        # in the middle, which this catches and a length check would not.
+        for s in (1, 20, 255):
+            a = vbase + QUAD_STRIDE * s
+            if w32(a + 4) != 0 or w32(a + 8 * 64) != 0:
+                bad.append(f"velocity row {s} does not run (r,0)..(0,r)")
+        if any(w32(vbase + 4 * i) != 0 for i in range(2 * QUAD_ENTRIES)):
+            bad.append("velocity speed level 0 is not all zeros")
     return bad
 
 

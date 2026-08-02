@@ -61,6 +61,10 @@ export class RomWindows {
       | (w.bytes[i + 2] << 8) | w.bytes[i + 3]) >>> 0;
   }
 
+  /** WAVE 21: the velocity field's entries are SIGNED longwords and `$2841AE
+   *  asr.l #4` is an arithmetic shift, so the sign has to survive the read. */
+  i32(a) { return this.u32(a) | 0; }
+
   /** n bytes as a plain array -- for the 38-byte spawn template. */
   bytes(a, n) {
     const w = this.#at(a, n, `${n} bytes`);

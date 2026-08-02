@@ -1151,6 +1151,33 @@ def _cmd_check(argv: list[str]) -> int:
                    if not (OUT / "w20-turret-play.tsv").exists()
                    else _node(TURRETGATE, "--corpus", OUT / "w20-turret-play.tsv",
                               "--break", "all")))
+    # WAVE 21.  THE PATTERN GATE -- the two bullet spawn cores, the 19 generator
+    # entry points and the 39 kind templates against the board, SPAWN FOR SPAWN
+    # AND WRITE FOR WRITE.  Three corpora and they are three different claims:
+    # `play` is on-distribution; `fanplay` has $813098 POKED, which is the only
+    # way any multi-bullet arm has ever run; `faninvuln` is poked AND
+    # invulnerable and is coverage-only.
+    PATTERNGATE = TOOLS.parent / "tools" / "w21patterngate.mjs"
+    for tag, why in (("w21-bullets-play", "PLAYING, on-distribution"),
+                     ("w21-bullets-fanplay", "PLAYING, $813098 POKED"),
+                     ("w21-bullets-faninvuln", "INVULNERABLE + POKED, coverage")):
+        tsv = OUT / f"{tag}.tsv"
+        stage(f"bullet spawns vs the board [{why}]",
+              lambda tsv=tsv, tag=tag: (
+                  ("SKIP", f"{tsv.name} missing -- `python tools/oracle/w21run.py"
+                           f" 6000 {tag}`")
+                  if not tsv.exists() else _node(PATTERNGATE, "--corpus", tsv)))
+    # ...and the mutation MATRIX. A mutation can be legitimately invisible on one
+    # corpus -- `no-global-bias` cannot fail on a run where both globals read 0 --
+    # so the requirement is that each of the eleven is RED in AT LEAST ONE, and
+    # the grid is printed so a reader sees which corpus caught what.
+    _w21 = [OUT / f"{t}.tsv" for t in ("w21-bullets-play", "w21-bullets-fanplay",
+                                       "w21-bullets-faninvuln")]
+    stage("pattern gate RED (11 mutations x 3 corpora)",
+          lambda: (("SKIP", "no w21-bullets-*.tsv")
+                   if not any(p.exists() for p in _w21)
+                   else _node(PATTERNGATE, "--matrix",
+                              ",".join(str(p) for p in _w21 if p.exists()))))
     if not quick:
         stage("fly-around: port vs board, 0 divergent frames",
               lambda: sub(__file__, "flyaround"))
