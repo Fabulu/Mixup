@@ -198,7 +198,32 @@ export function buildDisplayList(state, table) {
       cursor, work);
     cursor = forceField(state, oam, table, slot, orMask, cursor, work);
   }
-  state.oamCursor = cursor;                       // $8B95 STX $36
+  // $8B97-$8BC2: THE BLANK PASS. After the slot loop the cursor sits at the next
+  // free slot, and sub_$8BAB walks it forward writing $F4 into the Y byte of the
+  // next $37+1 slots. This is what hides the right-edge CULL-GHOSTS: a culled
+  // metasprite record ($8AED BCS) writes its Y/tile/attr at the cursor but never
+  // stores the X byte or advances, so the ghost sits AT the cursor, and the
+  // blank pass's first STA ($8BB3) hides it. The count $37 comes from the sprite
+  // budget $9F ($3E=62 seeded at $8B12, DEC per stored sprite at $8AF9):
+  //   $9F >= $14  -> $37 = $13 (19)        ($8BA2 LDA #$13)
+  //   $9F <  $14  -> $37 = $9F             ($8BA8 STA $37)
+  //   $9F negative (>= $80) -> $37 = $9F, and the walk's BMI skips it.
+  // NOT ported before W26: the oam.fill($F4) at the top was claimed equivalent to
+  // this, but it is NOT -- the cull writes Y AFTER the fill, so the ghost
+  // survives without the walk. The boss's armament bullets (culled when the core
+  // is at the right edge, X+$FF) made the gap visible.
+  const s9F = u8(0x3E - (work ? work.spritesStored : 0));
+  let z37;
+  if (s9F >= 0x80) z37 = s9F;            // $8B99 BMI -> $37 := $9F (walk skips)
+  else if (s9F < 0x14) z37 = s9F;        // $8B9D BCC -> $37 := $9F
+  else z37 = 0x13;                        //          else $37 := $13
+  if (z37 < 0x80) {                       // $8BAD BMI -> skip the walk
+    for (let i = z37; i >= 0; i--) {      // $8BB1 STA / $8BC0 DEY,BPL: z37+1 stores
+      oam[cursor] = 0xF4;                 // $8BB3 STA $0200,X (the Y byte only)
+      cursor = nextSlot(cursor);          // $8BB6 TXA / ADC #$C4 / BEQ / TAX
+    }
+  }
+  state.oamCursor = cursor;               // $8BC2 STX $36 (the WALKED cursor)
 }
 
 /**
