@@ -45,6 +45,10 @@ T_BG_COLSTREAM = 0x261266    # $2611D6
 T_BG_TILEBASE = 0x240D62     # $240D80
 T_BG_ELEMTABLE = 0x262302    # $262328
 
+# WAVE 20 level-data recon: set to a list to collect (frame, streamcol, px)
+# for every column write.  None = off, and off is the default.
+TRACE = None
+
 OPS = {
     0x00: ("SPAWN",   2, 0x2620DE),
     0x04: ("REPEAT",  6, 0x262102),
@@ -302,6 +306,11 @@ def cmd_sim(n, verbose=True):
                             clock = b["resume"]
                             events.append((frame, clock, px, ci, "REPEAT DONE -> unfreeze, "
                                                              f"clock := ${clock:04X}"))
+            # WAVE 20 (level-data recon): a non-invasive trace of every column
+            # write -- (frame, stream column index, px).  Nothing reads it
+            # unless a caller creates the list, so the model is unchanged.
+            if TRACE is not None:
+                TRACE.append((frame, (colptr - stream_base) // 36, px))
             colptr += 36
             cursor = (cursor + 1) & 0x3F
             cols_written += 1
