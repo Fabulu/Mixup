@@ -198,6 +198,24 @@ export function buildDisplayList(state, table) {
       cursor, work);
     cursor = forceField(state, oam, table, slot, orMask, cursor, work);
   }
+  // $8B8D: LDA $19 / CMP #$04 / BEQ $8BD9 -- stage 5's TERRAIN-OBJECT SPRITE
+  // PASS. When $19 == 4 the cartridge walks the collision map $0600,X (cursor
+  // $90 stepping -$30) and, for each non-zero cell, calls $8C06 to draw a
+  // terrain sprite (moai wall / destructible scenery). It is the one
+  // stage-specific subsystem inside this routine and it is NOT ported (the
+  // port loads one stage, stage 1, so $19 is 0). 20-plan sec 1a lists it among
+  // the "genuine silent gaps"; before this throw it was a quiet no-op. $8BD9
+  // runs in buildDisplayList, i.e. BEFORE the mode-5 state machine reaches the
+  // $9663 stage-5 census arm -- so for $19 == 4 THIS throws first and $9663 is
+  // the defense-in-depth tripwire behind it.
+  if (state.zp19 === 4) {                           // $8B8D LDA $19 / $8B91 BEQ
+    throw new Error('$8BD9: stage-5 ($19 = 4) terrain-object sprite pass is not '
+                  + 'ported. $8BD9 walks $0600,X and calls $8C06 per live cell to '
+                  + 'draw the moai wall / destructible scenery; the port loads one '
+                  + 'stage (stage 1). Reached before the $9663 census arm because '
+                  + 'this routine ($8B10) runs at $80A7, ahead of the state machine '
+                  + 'at $80AA. Stage 5 is out of scope (W36+).');
+  }
   // $8B97-$8BC2: THE BLANK PASS. After the slot loop the cursor sits at the next
   // free slot, and sub_$8BAB walks it forward writing $F4 into the Y byte of the
   // next $37+1 slots. This is what hides the right-edge CULL-GHOSTS: a culled

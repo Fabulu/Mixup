@@ -285,10 +285,15 @@ test('$96A5: every unported arm throws with the ROM address it would reach', () 
   // The two OUT-OF-SCOPE sub-paths of $9904 ($19 == 5 -> $CDA5, $19 == 6 ->
   // $9872) stay throws and are asserted below; the ported arms' behaviour is
   // pinned in w27-exits.test.js.
-  // $19 == 4 is the stage-5 census arm at $9663, tested BEFORE the ladder.
+  // $19 == 4 (stage 5) is unported. W28b's loudness fix made the EARLIEST
+  // stage-5 path loud: buildDisplayList's $8BD9 terrain-object sprite pass
+  // ($8B8D LDA $19 / BEQ $8BD9) runs at $80A7, BEFORE the state machine's $9663
+  // census arm at $80AA. So nmi() now throws $8BD9 first; $9663 stays in the
+  // code as a defense-in-depth tripwire (it becomes the first throw once $8BD9
+  // is ported, in the stage-5 wave).
   const s5 = bootState(res.manifest);
   s5.zp19 = 4;
-  assert.throws(() => nmi(s5, 0, res), /\$9663/);
+  assert.throws(() => nmi(s5, 0, res), /\$8BD9/);
   // $9904 sub-path: $19 == 6 -> JMP $9872 (the ending sequence, out of scope).
   const sEnd = bootState(res.manifest);
   sEnd.substate = 0x86; sEnd.zp19 = 6;

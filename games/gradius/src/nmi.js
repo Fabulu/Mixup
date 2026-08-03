@@ -99,6 +99,15 @@ import { addScore } from './score.js';
 import { soundDriver, setBgm, setBgmCode, soundRequest, pulse1Dur, SND_BASE, OFF } from './sound.js';
 import { chrBank } from './render/ppu.js';
 
+// $80D4 jt_80D4 -- the 7-entry GAME-MODE jump table, indexed by `$00` (the
+// mode byte) after `$83E4`'s `ASL A`. Verified straight out of assets/prg.bin
+// (it is FIXED ROM data, not a ported set -- it cannot go stale). Only entry 5
+// ($9650) is ported; 0-4,6 are the boot/title/attract/continue/high-score
+// screens the port boots past (src/main.js sets mode 5 directly). Named here so
+// the else-throw below can cite the exact target the cartridge would have
+// reached, instead of a silent no-op that produces a wrong frame.
+export const MODE_TARGETS = [0x80E2, 0x8116, 0x8121, 0x8137, 0x8165, 0x9650, 0x816C];
+
 /**
  * One NMI. Call it once per 1/60.098814 s -- and read that number from
  * game.json, do not spell it here.
@@ -243,7 +252,26 @@ export function nmi(state, buttons, res, lag = false) {
 
   // $80AA: JSR $80BE -> INC $02, then the mode dispatch at $80D1.
   state.frame = (state.frame + 1) & 0xFF;         // $80BE INC $02
-  if (state.mode === MODE_STAGE) stagePlay(state, res);
+  if (state.mode === MODE_STAGE) {
+    stagePlay(state, res);
+  } else {
+    // THE LOUDNESS FIX (20-plan sec 5 / the W21 loudness note). The `$80D1
+    // JSR $83E4` dispatches `$00` through jt_80D4 above; only mode 5 is
+    // ported. Before this else, every non-mode-5 frame was a SILENT wrong
+    // frame: the sweep measured 76 such windows in the title/attract run
+    // (modes 0,1,2 -- 20-recon-sweep-harness.md) and the port said nothing.
+    // The port boots straight to mode 5 and never transitions out, so reaching
+    // here means a state the port does not model; throw the ROM address it
+    // would have reached, not a quiet no-op. (Porting modes 0-3,6 is W36.)
+    const tgt = MODE_TARGETS[state.mode];
+    throw new Error(
+      '$80D1: game mode ' + state.mode + ' is not ported -- jt_80D4 entry '
+      + state.mode + (tgt ? (' -> $' + tgt.toString(16).toUpperCase().padStart(4, '0')
+                            + ' (the title/attract/continue/high-score screen). ')
+                          : ' is OUT OF the 7-entry jt_80D4 table. ')
+      + 'Only mode 5 ($9650) is ported; the port boots to mode 5 and never '
+      + 'leaves. Modes 0-4,6 are W36.');
+  }
 
   // $80AD: JSR $8BAB -- blank the unused OAM slots. Folded into
   // buildDisplayList (it fills the shadow with $F4 up front instead).
