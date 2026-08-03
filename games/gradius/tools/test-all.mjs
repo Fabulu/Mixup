@@ -139,6 +139,35 @@ stage('every indexed table is exported (tablecoverage.py)', () => {
            + 'names is not in metasprites.json' };
 });
 
+// --------------------------------------------------------------- stage 1b3 --
+// THE LEDGER. WAVE 28. "How finished is each stage", tracked, so it cannot
+// silently regress.
+//
+// Before this, the only per-stage number in the repo was a worklog TABLE
+// (28-recon-stages-2-7.md sec 1): stage 0 is 100%, stage 4 is 28.6%, etc. A
+// table nobody re-derives rots -- and a number that is not re-derived cannot
+// fail a build. stageledger.py re-derives it every gate run, out of
+// assets/prg.bin + src/enemies.js's dispatch() case labels, prints one line per
+// stage ("stage N: X/Y records ... first unported at $ZZZZ"), and FAILS if any
+// stage's coverage moved backward relative to the frozen baseline inside the
+// tool. The backward move is the one a removed `case 0xNNNN:` makes: a ported
+// handler goes missing, an earlier spawn becomes undispatchable, and the
+// first-unported scroll jumps earlier / the ported count drops.
+//
+// It is a COVERAGE gate, not a correctness gate -- it cannot tell you a handler
+// is right, only that the port still claims it. The 47-scenario corpus is the
+// correctness gate; this is the one that stops a future wave from quietly
+// losing stage 1's "shipped" status while the corpus happens not to reach it.
+// It needs only assets/ (it reads prg.bin, not the .nes), so ROM-absent is not
+// a reason to skip it. ~0.1 s.
+stage('per-stage coverage ledger (stageledger.py)', () => {
+  if (!assetsPresent) return { status: 'SKIP', note: 'needs assets/' };
+  return run('python', ['games/gradius/tools/oracle/stageledger.py'])
+    ? { status: 'PASS' } : { status: 'FAIL', note: 'a stage\'s coverage moved '
+           + 'backward relative to the baseline in stageledger.py -- a ported '
+           + 'handler is no longer ported. Run the tool for the per-stage lines.' };
+});
+
 // ---------------------------------------------------------------- stage 1c --
 // snddata.py --selfcheck: the sound data decoded PURELY from the ROM bytes says
 // index $13 (the stage-1 pulse-1 part) lasts 512 ticks, and the cartridge was
