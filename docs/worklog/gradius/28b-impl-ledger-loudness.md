@@ -1,6 +1,6 @@
 # Wave 28b IMPL — the per-stage ledger + non-mode-5 loudness
 
-status: IN PROGRESS
+status: DONE
 wave: 28b   role: implementer (sole src/ writer)   started: 2026-08-03
 
 Wave 1 of the whole-game plan (29-plan-whole-game.md W28). Two parts, both
@@ -116,3 +116,41 @@ silent wrong frame into a named ROM address.
 before; the one edited assertion is the same count, different address). The
 flow.test.js `$19 == 4` row is the only behaviour change and it still asserts a
 throw, just at the earlier `$8BD9`.
+
+## VERIFICATION (measured)
+
+### The census (unchanged, as expected)
+
+`python tools/census.py dispatch`:
+  entries ported 23 / 42 ; throwing 19
+  distinct targets 34 ; distinct ported 20 ; distinct throwing 14
+
+This wave did not touch `src/enemies.js dispatch()`, so the ported handler set
+is unchanged from W26 (23/42 entries, 20 distinct routines).
+
+### The shapecheck consequence (RULE: read past the apparent end)
+
+The shape check seeds the tracer from a BLANK machine and runs 10 frames. Its
+old seed was an all-zero RAM image = mode 0, which the loudness throw now
+(correctly) refuses. Fixed by seeding mode 5 (`$00 = 5`) -- the port's only
+modeled mode; the check is about trace MECHANICS, not mode-0 logic. This does
+NOT re-silence the sweep: `seedFromCartridge` still reads `$00` faithfully, so
+the sweep's 76 mode-0 windows now record as THROW `$80D1` (loud) instead of
+DIVERGED (silent wrong) -- which is the whole point of the wave.
+
+### The gate
+
+`node tools/test-all.mjs` -- see the per-stage numbers above (the ledger prints
+all 7 stages every run). The 47-scenario corpus (`compare.mjs`) is unaffected:
+both new throws sit outside mode 5 / stage 1, so no compared frame reaches them
+(the port boots to mode 5 and loads stage 1; `state.mode` is always 5 and
+`state.zp19` is always 0 in the corpus). 29184/29184 frames compared, 0 failures.
+
+### The 76 loudness windows
+
+The sweep measured 76 non-mode-5 windows (modes 0,1,2 -- 20-recon-sweep-harness.md
+sec "windows that leave mode 5"). Before this wave each was a silent DIVERGED
+frame; now every non-mode-5 frame throws `$80D1` carrying the jt_80D4 target, by
+construction (the mode-dispatch else throw fires for any `state.mode !== 5`).
+Verified directly: a one-frame probe into mode 0 throws
+`$80D1: game mode 0 ... jt_80D4 entry 0 -> $80E2`.
