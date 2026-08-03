@@ -63,14 +63,15 @@ test('the dispatch separates arms: $88 routes to $9BED, not $80\'s body', () => 
   assert.strictEqual(s80.substate, 0x81, '$80 body still runs and advances to $81');
 });
 
-test('the 8 unported play arms throw with their ROM target', () => {
-  // $86/$9904 (W27), $87/$9B3E, $88/$9BED, $89/$9C12, $8A/$9C1E, $8B/$988C,
-  // $8C/$98DD, $8D/$98E5, $8E/$984F, $8F/$984F. Each carries its address.
+test('the unported play arms throw with their ROM target', () => {
+  // $87/$9B3E, $88/$9BED, $89/$9C12, $8A/$9C1E, $8B/$988C, $8C/$98DD,
+  // $8D/$98E5. Each carries its address.
+  // W27: $86/$9904 and $8E/$8F -> $984F are now PORTED (removed); their behaviour
+  // is pinned in w27-exits.test.js.
   // RED WHEN: any arm becomes a quiet return or a wrong-address throw.
-  for (const [sub, addr] of [[0x86, '$9904'], [0x87, '$9B3E'], [0x88, '$9BED'],
+  for (const [sub, addr] of [[0x87, '$9B3E'], [0x88, '$9BED'],
                              [0x89, '$9C12'], [0x8A, '$9C1E'], [0x8B, '$988C'],
-                             [0x8C, '$98DD'], [0x8D, '$98E5'],
-                             [0x8E, '$984F'], [0x8F, '$984F']]) {
+                             [0x8C, '$98DD'], [0x8D, '$98E5']]) {
     const s = atSubstate(sub);
     assert.throws(() => nmi(s, 0, res), new RegExp(`\\${addr}`),
       `$1B=$${sub.toString(16)} should throw at ${addr}`);

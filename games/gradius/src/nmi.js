@@ -89,13 +89,14 @@ import { hudTick } from './hud.js';
 import { cannedPacket } from './hudpackets.js';
 import { buildDisplayList, oamDma } from './oam.js';
 import { updatePlayer } from './player.js';
-import { advanceCamera, latchScroll } from './camera.js';
+import { advanceCamera, latchScroll, addCamera16 } from './camera.js';
 import { streamBlock } from './terrain.js';
 import { spawnEngine, enemyBullets, updateEnemies, clearSlot } from './enemies.js';
-import { introStep, pauseCheck, respawn, codeMatch } from './flow.js';
+import { introStep, pauseCheck, respawn, codeMatch, startPlay, sub9BF0 } from './flow.js';
 import { shotSweep } from './collision.js';
 import { applyCapsule, computeRank } from './powerup.js';
-import { soundDriver, setBgm, soundRequest, pulse1Dur } from './sound.js';
+import { addScore } from './score.js';
+import { soundDriver, setBgm, setBgmCode, soundRequest, pulse1Dur, SND_BASE, OFF } from './sound.js';
 import { chrBank } from './render/ppu.js';
 
 /**
@@ -317,12 +318,7 @@ export function stagePlay(state, res) {
   // ---- $96A5: the ladder. Order matters -- it is five tests in sequence, not
   // a switch, so $1B = $30 takes the bit-4 arm and never sees bit 5.
   const sub = state.substate;
-  if (sub & 0x10) {                               // $96A5-$96A9
-    throw new Error(`$96CF: $1B = $${sub.toString(16).toUpperCase()} has bit 4 `
-                  + `set (NEXT STAGE). INC $19, the $50-$70 clear, $55 = 1, `
-                  + `$9BF0 and $9C3C are not ported -- the port loads one `
-                  + `stage's assets.`);
-  }
+  if (sub & 0x10) { nextStage(state, res); return; }   // $96A5-$96A9 -> $96CF (W27)
   if (sub & 0x20) { dyingArm(state, res); return; }        // $96AB-$96AF
   if (sub & 0x40) { gameOverArm(state, res); return; }     // $96B1-$96B5 -> $96FB
   if (sub & 0x80) { playArm(state, res); return; }         // $96B7-$96BB
@@ -355,10 +351,7 @@ function playArm(state, res) {
     case 0x3: return st99C0(state, res);            // [3]  $83 -> $99C0
     case 0x4: return st9982(state, res);            // [4]  $84 -> $9982
     case 0x5: return st997E(state, res);            // [5]  $85 -> $997E
-    case 0x6: throw new Error(                       // [6]  $86 -> $9904 (W27)
-        '$9904: $1B = $86 (stage-end). Despawn on $1C==$93, CMP $98FD,X, the '
-      + '$39==0 -> $1B:=$90 next-stage route or else INC $19/$1B:=$8E warp. '
-      + 'W27 (the exit). 513 hits in the endchain run but its port is W27.');
+    case 0x6: return st9904(state, res);            // [6]  $86 -> $9904 (W27);
     case 0x7: throw new Error(                       // [7]  $87 -> $9B3E
         '$9B3E: jt_$982F arm 7 (full stage reset) reached through the play '
       + 'dispatch, not the intro dispatch $96C5. introReset is ported '
@@ -387,10 +380,7 @@ function playArm(state, res) {
         '$98E5: jt_$982F arm 13 (reset-to-intro). $1B := 0 / JMP $9B3E. 0 '
       + 'hits in the endchain run; off the stage-1 clear path.');
     case 0xE:                                        // [14] $8E -> $984F (W27)
-    case 0xF: throw new Error(                       // [15] $8F -> $984F (W27)
-        '$984F: $1B = $' + state.substate.toString(16).toUpperCase() + ' (the '
-      + 'WARP route). Forced 4 px/frame scroll ($2D := 1, JSR $8402 with A=4) '
-      + 'and the type-$A6 rain. W27; 0 hits in the endchain run.');
+    case 0xF: return st984F(state, res);             // [15] $8F -> $984F (W27);
     default: throw new Error(`$982A: unreachable jt_$982F index ` // paranoia: 0x0F pins 0-15
       + `${state.substate & 0x0F}`);
   }
@@ -604,6 +594,167 @@ function st997E(state, res) {
   state.zp5B = u8(state.zp5B + 1);                   // $997E INC $5B
   // $9980 BNE $99B7 -- always taken ($5B was 0, now 1). Fall-through is DEAD.
   mode5Body(state, res);                             // $99B7 JMP $9A5E
+}
+
+/**
+ * `$9904` -- play sub-state $86 (index 6). THE STAGE-END. Runs every frame the
+ * boss is dead and the camera crawls the last page to the stage boundary; fires
+ * the despawn sweep, watches the camera page against `stage.endPage[$19]`, and
+ * the frame it arrives sets `$1B` to either `$90` (seamless next stage, the
+ * `$39 == 0` path) or `$8E` (the `$39` warp route). Either way the mode-5 body
+ * runs THIS frame; the actual stage swap is one frame later in `$96CF`.
+ *
+ *   9904  LDA $19 / CMP #$06 / D0 03 / JMP $9872     $19 == 6 -> ending (throw)
+ *   990D  CMP #$05 / D0 03 / JSR $CDA5               $19 == 5 -> stage-6 arm (throw)
+ *   9914  LDA $B2 / BNE $991D                         pulse1 OWNER; skip the seed-sound
+ *   9918  LDX #$93 / JSR $839F                        setBgmCode($93): $1C := $93, sfx $7D,$93
+ *   991D  LDA $1C / CMP #$93 / D0 03 / JSR $994A      $1C == $93 -> despawn sweep
+ *   9926  LDY $19 / LDA $3F / CMP $98FD,Y / BCC $9947 cam.hi < endPage -> keep scrolling
+ *   992F  LDA $1B / AND #$70 / BNE $9947              dying/game-over bits -> skip
+ *   9935  LDA #$90 / LDX $39 / BEQ $9945              $39 == 0 -> $1B := $90 (next stage)
+ *   993B  INC $19 / INC $3A / LDA #$00 / STA $3F / LDA #$8E   WARP: $1B := $8E
+ *   9945  STA $1B
+ *   9947  JMP $9A5E
+ *
+ * `$B2` is pulse1's OWNER byte (`$B0 + OFF.OWNER`); the seed only fires while
+ * pulse1 is free, and `setBgmCode` de-dupes on `$1C` so the sfx lands once.
+ * `$98FD` is `stage.endPage`, exported (W21); stage 1 ends at cam.hi `$0E`.
+ */
+function st9904(state, res) {
+  if (state.zp19 === 6) {                            // $9906 CMP #$06
+    throw new Error('$9872: $19 = 6 -- the ending sequence. $1B -> $87, the '
+                  + 'ending-chain state (the "$0100 := $03" path). Out of scope '
+                  + '(one stage loaded); reached only past stage 7.');
+  }
+  if (state.zp19 === 5) {                            // $990D CMP #$05
+    throw new Error('$9911 JSR $CDA5: $19 = 5 (stage-6 stage-end arm). Out of '
+                  + 'scope (one stage loaded).');
+  }
+  // $9914 LDA $B2 / BNE $991D. $B2 = pulse1 OWNER; skip the stage-clear seed
+  // while a sound owns pulse 1.
+  if (state.snd[OFF.OWNER] === 0) {                  // $9916 BNE $991D
+    setBgmCode(state, 0x93);                          // $9918 LDX #$93 / JSR $839F
+  }
+  // $991D LDA $1C / CMP #$93 / BNE $9926. The despawn sweep runs every frame the
+  // stage-clear code ($93) is the current BGM -- sub_$994A is already ported.
+  if (state.zp1C === 0x93) {                         // $991F CMP #$93 / BNE
+    sub994A(state);                                   // $9923 JSR $994A
+  }
+  // $9926 LDY $19 / LDA $3F / CMP $98FD,Y / BCC $9947. res.stage.endPage is
+  // $98FD[$19] for the loaded stage (stage 1: $0E); $19 has not advanced yet.
+  if (state.cam.hi < res.stage.endPage) {            // $992A CMP $98FD,Y / BCC $9947
+    mode5Body(state, res);                            // $9947 JMP $9A5E
+    return;
+  }
+  // $992F LDA $1B / AND #$70 / BNE $9947 -- defensive: dying/game-over bits.
+  if (state.substate & 0x70) {                       // $9931 AND #$70
+    mode5Body(state, res);                            // $9947 JMP $9A5E
+    return;
+  }
+  // $9935 LDA #$90 / LDX $39 / BEQ $9945.
+  if (state.zp39 === 0) {                            // $9939 BEQ $9945
+    state.substate = 0x90;                            // $9935 A=$90 -> STA $1B (next stage)
+  } else {
+    // $993B INC $19 / INC $3A / LDA #$00 / STA $3F / LDA #$8E. The warp: $19
+    // skips stage 2 here, $3A arms the warp rain, cam.hi resets, $1B := $8E.
+    state.zp19 = u8(state.zp19 + 1);                  // $993B INC $19
+    state.build.gate = u8(state.build.gate + 1);      // $993D INC $3A
+    state.cam.hi = 0;                                 // $993F/$9941 LDA #$00 / STA $3F
+    state.substate = 0x8E;                            // $9943 LDA #$8E -> STA $1B
+  }
+  mode5Body(state, res);                             // $9947 JMP $9A5E
+}
+
+/**
+ * `$96CF` -- the `$1B & $10` ladder arm, NEXT STAGE. Reached the frame after
+ * `$9904` sets `$1B := $90` (seamless) or `$984F` sets `$1B := $90` (warp tail).
+ * Increments the stage counter, clears the warp/camera state and `$50-$70`, and
+ * runs the seamless transition: `$9BF0` (HUD packets) then `$9C3C` (`$60 := 1,
+ * $1B := $80`). No `$882C` screen reload, no intro wait -- play continues into
+ * the next stage immediately (MEASURED: one execution, stage 2 starts at once).
+ *
+ *   96CF  LDX $1B
+ *   96D1  INC $19                                    stage counter ++
+ *   96D3  LDA #$00 / STA $39 / STA $3A / STA $3F     clear warp flag/gate/cam.hi
+ *   96DB  LDX #$20 / STA $50,X / DEX / BPL           clear $50-$70 (33 bytes)
+ *   96E2  LDA #$01 / STA $55                         build.hi := 1 (streamer page)
+ *   96E6  JSR $9BF0                                  HUD packets + INC $1B + clearAhead
+ *   96E9  JSR $9C3C                                  startPlay: $60 := 1, $1B := $80
+ *   96EC  JMP $9A5E                                  mode-5 body THIS frame
+ *
+ * `$9BF0` is called DIRECTLY (not `$9BED`): no `stopAllSound` prologue. Its
+ * `INC $1B` is overwritten by `$9C3C`; its `clearAhead` (`$5E := $3F`) survives.
+ */
+function nextStage(state, res) {
+  state.zp19 = u8(state.zp19 + 1);                   // $96D1 INC $19
+  // $96D3 LDA #$00 (A stays 0 through the stores and the $50-$70 loop).
+  state.zp39 = 0;                                    // $96D5 STA $39
+  state.build.gate = 0;                              // $96D7 STA $3A
+  state.cam.hi = 0;                                  // $96D9 STA $3F
+  clearStageAdvanceZp(state);                        // $96DB-$96E1 clear $50-$70
+  state.build.hi = 1;                                // $96E2/$96E4 LDA #$01 / STA $55
+  sub9BF0(state, res);                               // $96E6 JSR $9BF0
+  startPlay(state);                                  // $96E9 JSR $9C3C ($60 := 1, $1B := $80)
+  mode5Body(state, res);                             // $96EC JMP $9A5E
+}
+
+/**
+ * The `$96DD STA $50,X / DEX / BPL` loop (X = $20..$00) clears `$50-$70`
+ * inclusive (33 bytes). Written out as the fields the port keeps for that
+ * range; the addresses it does not model ($50-$53, $56, $59-$5A, $68, $70) are
+ * RAM with no ported reader, named here so the gaps are visible. This is the
+ * same set `clearZeroPage` (src/flow.js) wipes on a stage intro, minus $3D-$4F
+ * which `$96CF` does not touch.
+ */
+function clearStageAdvanceZp(state) {
+  // $50-$53, $56, $59-$5A, $68, $70: no ported field (RAM the port does not keep).
+  state.build.lo = 0;                                // $54
+  // $55 cleared here, re-seeded to 1 by the caller ($96E4).
+  state.build.hi = 0;                                // $55
+  state.build.ahead = 0;                             // $57
+  state.build.prog = 0;                              // $58
+  state.zp5B = 0;                                    // $5B
+  state.zp5C = 0;                                    // $5C
+  state.spawn.z5D = 0;                               // $5D
+  state.spawn.z5E = 0;                               // $5E (re-seeded to $3F by sub9BF0's clearAhead)
+  state.zp5F = 0;                                    // $5F
+  state.spawn.z60 = 0;                               // $60
+  state.spawn.z61 = 0;                               // $61
+  state.spawn.z62 = 0;                               // $62
+  state.spawn.z64 = 0; state.spawn.z65 = 0;          // $64-$67
+  state.spawn.z66 = 0; state.spawn.z67 = 0;
+  state.spawn.z69 = 0;                               // $69
+  state.spawn.z6A = 0; state.spawn.z6B = 0;          // $6A:$6B (wave cursor)
+  state.spawn.z6C = 0; state.spawn.z6D = 0;          // $6C-$6F
+  state.spawn.z6E = 0; state.spawn.z6F = 0;
+}
+
+/**
+ * `$984F` -- play sub-states $8E/$8F (index 14/15). THE WARP ROUTE. Reached only
+ * when `$9904` saw `$39 != 0` (the four-hatch-kill warp flag): 4 px/frame
+ * forced scroll, the type-$A6 rain (spawned via the late spawner's `$3A` gate,
+ * src/enemies.js), and at cam.hi `$11` a +$5000 score and `$1B := $90` -> the
+ * `$96CF` next-stage arm (whose `INC $19` is the SECOND increment -- stage 2 is
+ * skipped). On the endchain run `$39` is 0 (a TIMEOUT kill), so this is reached
+ * only via the `$39` poke (W27 done-when 2, labelled per knowledge/09).
+ *
+ *   984F  LDA #$01 / STA $2D                         CHR selector := 1 (CNROM bank 2)
+ *   9853  LDX #$3E / LDA #$04 / JSR $8402            cam.lo:hi += 4 (forced scroll)
+ *   985A  LDA $3F / CMP #$11 / BCC $986F             cam.hi < $11 -> keep scrolling
+ *   9860  LDA $1B / AND #$70 / BNE $986F             dying/game-over -> skip
+ *   9866  LDA #$50 / JSR $8455                       score +$5000 ($9A := $50)
+ *   986B  LDA #$90 / STA $1B                         -> $96CF next stage
+ *   986F  JMP $9A5E
+ */
+function st984F(state, res) {
+  state.ppu.chrSel = 1;                              // $984F/$9851 STA $2D
+  addCamera16(state, 4);                             // $9853-$9857 LDA #$04 / JSR $8402
+  // $985A LDA $3F / CMP #$11 / BCC $986F.
+  if (state.cam.hi >= 0x11 && !(state.substate & 0x70)) {   // $985E/$9862/$9864
+    addScore(state, 0x00, 0x50, 0x00);               // $9866 LDA #$50 / JSR $8455
+    state.substate = 0x90;                            // $986B/$986D LDA #$90 / STA $1B
+  }
+  mode5Body(state, res);                             // $986F JMP $9A5E
 }
 
 /**

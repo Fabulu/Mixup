@@ -445,6 +445,21 @@ function fullScreenLoad(state) {
 export function introPackets(state, res) {
   const packets = res.hudPackets;
   stopAllSound(state, res);                         // $9BED JSR $83AB
+  sub9BF0(state, res);                              // $9BF0 (falls through into $9C09)
+}
+
+/**
+ * `$9BF0` -- the stage-HUD packet body, shared by intro state 1 (`$9BED ->
+ * $9BF0`) and the next-stage arm `$96CF` (`$96E6 JSR $9BF0`, WITHOUT `$9BED`'s
+ * stop-sound prologue). Emits packet $10, the stage-name continuation ($19+8),
+ * packets 7 and 5; `INC $1B`; then the `$9C09` fall-through that re-seeds the
+ * despawn cursor (`clearAhead`). The `INC $1B` is overwritten by `$96CF`'s
+ * later `$9C3C` (`$1B := $80`); it is executed anyway because it is the ROM's
+ * own straight-line path and the intermediate value is a compared field for the
+ * one frame it lives.
+ */
+export function sub9BF0(state, res) {
+  const packets = res.hudPackets;
   cannedPacket(state, packets, 0x10);               // $9BF0/$9BF2
   copyPacket(state, packets, u8(state.zp19 + 8));   // $9BF5-$9BFA
   cannedPacket(state, packets, 0x07);               // $9BFD/$9BFF

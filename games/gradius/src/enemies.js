@@ -313,26 +313,45 @@ function loadChunk(state, rom, stageIndex) {
 export function spawnEngine(state, res) {
   const rom = res.enemyTables;
   const sp = state.spawn;
+  // $A2D1 LDA $19: the wave/chunk tables are indexed by the LIVE stage counter
+  // $19, not the loaded-stage index. They match while one stage is loaded
+  // (stage 1: $19 == 0 == res.stage.stage); after W27's $96CF advances $19 to
+  // 1, the engine reads stage 2's wave data out of ROM ($A7D0 + 2*$19), which
+  // is present for all stages. The stage-specific TERRAIN tables (res.stage)
+  // are a different matter -- see streamBlock's $19 guard in terrain.js.
+  const stageIndex = state.zp19;                       // $A2D1 LDA $19
   if (state.build.gate !== 0) {        // $A2C0 LDA $3A / BEQ $A2C7
-    lateSpawner(state, rom, res.stage.stage);  // $A2C4 JMP $C413 (the late spawner)
+    lateSpawner(state, rom, stageIndex);  // $A2C4 JMP $C413 (the late spawner)
     return;
   }
   if (sp.z60 === 0) return;            // $A2C7 LDX $60 / BNE / $A2CB RTS
   if (u8(sp.z60 - 1) !== 0) {          // $A2CC DEX / $A2CD BNE $A2F0
-    runEngine(state, rom, res.stage.stage);
+    runEngine(state, rom, stageIndex, res);
     return;
   }
   sp.z60 = u8(sp.z60 + 1);             // $A2CF INC $60 -- ONLY on this entry;
-  loadChunk(state, rom, res.stage.stage);  //  the $A308 reload path skips it
+  loadChunk(state, rom, stageIndex);  //  the $A308 reload path skips it
 }
 
 /** `$A2F0` -- the running state. */
-function runEngine(state, rom, stageIndex) {
+function runEngine(state, rom, stageIndex, res) {
   const sp = state.spawn;
   if (state.substate === 0x81) return;   // $A2F0 CMP #$81 / $A2F6 RTS
   if (state.substate === 0x82) {         // $A2F7 CMP #$82
     lateSpawner(state, rom, stageIndex); // $A2FB JMP $C413 (the late spawner)
     return;
+  }
+  // Stage 2+ WAVE content is OUT OF SCOPE (the port loads one stage; stage-2
+  // enemy handlers are not ported). The $82 late-spawner arm above still runs
+  // (its own per-stage throws cover it); this guard fires on the first stage-2
+  // wave RECORD -- the frame after the seamless transition's loadChunk. W27.
+  if (stageIndex !== res.stage.stage) {
+    throw new Error(`$A2F0 runEngine: $19 = $${stageIndex.toString(16).toUpperCase()}`
+                  + ` (stage ${stageIndex + 1}). The seamless transition into`
+                  + ` stage 2 is ported ($9904 -> $96CF, $19 flips on the`
+                  + ` cartridge's frame); stage-2 WAVE content (the enemy`
+                  + ` handlers the records spawn) is out of scope -- the port`
+                  + ` loads one stage. This is the first stage-2 wave record.`);
   }
   if (sp.z69 !== 0) {                    // $A2FE LDA $69 / BNE $A32B
     if (sp.z6C !== 0) {                  // $A32B LDA $6C / BNE $A332

@@ -279,18 +279,24 @@ test('$96A5: every unported arm throws with the ROM address it would reach', () 
   // WAVE 24: $96FB (bit 6, game over) is now PORTED -- it is no longer in this
   // list. Its $970D CONTINUE and $9751 restart-to-title sub-paths stay unported
   // and are covered by the dedicated game-over tests in w24-substate.test.js.
-  for (const [sub, addr] of [[0x10, '$96CF'], [0x90, '$96CF'],
-                             [0x30, '$96CF'],
-                             [0x86, '$9904'], [0x8F, '$984F']]) {
-    const s = bootState(res.manifest);
-    s.substate = sub;
-    assert.throws(() => nmi(s, 0, res), new RegExp(`\\${addr}`),
-      `$1B = $${sub.toString(16)} should have thrown at ${addr}`);
-  }
+  //
+  // WAVE 27: $96CF (bit 4, next stage), $9904 ($86, stage-end) and $984F
+  // ($8E/$8F, warp) are now PORTED at the top level -- removed from this list.
+  // The two OUT-OF-SCOPE sub-paths of $9904 ($19 == 5 -> $CDA5, $19 == 6 ->
+  // $9872) stay throws and are asserted below; the ported arms' behaviour is
+  // pinned in w27-exits.test.js.
   // $19 == 4 is the stage-5 census arm at $9663, tested BEFORE the ladder.
   const s5 = bootState(res.manifest);
   s5.zp19 = 4;
   assert.throws(() => nmi(s5, 0, res), /\$9663/);
+  // $9904 sub-path: $19 == 6 -> JMP $9872 (the ending sequence, out of scope).
+  const sEnd = bootState(res.manifest);
+  sEnd.substate = 0x86; sEnd.zp19 = 6;
+  assert.throws(() => nmi(sEnd, 0, res), /\$9872/);
+  // $9904 sub-path: $19 == 5 -> JSR $CDA5 (stage-6 stage-end, out of scope).
+  const sCda = bootState(res.manifest);
+  sCda.substate = 0x86; sCda.zp19 = 5;
+  assert.throws(() => nmi(sCda, 0, res), /\$CDA5/);
   // and a $1B past jt_96C5's five entries is a bad table index, not an arm.
   const s6 = bootState(res.manifest);
   s6.substate = 5;

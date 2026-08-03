@@ -36,6 +36,20 @@ export function advanceCamera(state) {
 }
 
 /**
+ * `$8402` -- the house 16-bit add, `CLC / ADC $00,X / STA $00,X / BCC +2 / INC
+ * $01,X`. With X = `$3E` it adds A to the camera's `$3E:$3F` (lo:hi), skipping
+ * the sub-pixel `$3D`. The ONE caller on a ported path is the warp route:
+ * `$9853 LDX #$3E / LDA #$04 / JSR $8402` -- 4 px/frame forced scroll. Every
+ * other caller ($98EE above, $A3xx wave-cursor advances) goes through $98EE or
+ * the spawn engine's own add; this is the direct entry the warp needs.
+ */
+export function addCamera16(state, a) {
+  const lo = state.cam.lo + a;                        // $8402 CLC / ADC $00,X
+  state.cam.lo = u8(lo);                              // $8405 STA $00,X
+  if (lo > 0xFF) state.cam.hi = u8(state.cam.hi + 1); // $8407 BCC $840B / $8409 INC $01,X
+}
+
+/**
  * `$9A79` -- latch the camera into the PPU shadows for the NEXT frame.
  *
  *   9A79: A5 3E 85 12     LDA $3E / STA $12       PPUSCROLL X shadow

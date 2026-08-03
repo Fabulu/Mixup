@@ -264,13 +264,18 @@ test('jt_$C439: stage 0 -> $C486 (the volcano); stages 2-7 throw loudly', () => 
 
   // stage 0: ported (no throw, spawns $0A)
   const s0 = erupting(0);
+  s0.zp19 = 0;
   assert.doesNotThrow(() => spawnEngine(s0, stageRes(0)));
   assert.strictEqual(type(s0, SLOT_FIRST), 0x0A);
 
-  // stages 1-5: loud throws carrying the ROM target
+  // stages 1-5: loud throws carrying the ROM target. W27: spawnEngine dispatches
+  // the late spawner on the LIVE $19 (state.zp19), not res.stage.stage, so the
+  // test sets both to the stage under test (the $82 arm reaches lateSpawner
+  // before the stage-2 wave guard in runEngine).
   const arms = [[1, 0xC546], [2, 0xC686], [3, 0xC5AD], [4, 0xC653], [5, 0xC6DE]];
   for (const [idx, addr] of arms) {
     const s = erupting(0);
+    s.zp19 = idx;
     const needle = `$C439[${idx}] -> ${addrHex(addr)}`;
     assert.throws(() => spawnEngine(s, stageRes(idx)),
       (err) => err.message.includes(needle),
@@ -278,6 +283,7 @@ test('jt_$C439: stage 0 -> $C486 (the volcano); stages 2-7 throw loudly', () => 
   }
   // stage 6: $C429 RTS (no spawn, no throw)
   const s6 = erupting(0);
+  s6.zp19 = 6;
   assert.doesNotThrow(() => spawnEngine(s6, stageRes(6)));
   assert.strictEqual(type(s6, SLOT_FIRST), 0, 'stage 6 ($C429 RTS) spawns nothing');
 });

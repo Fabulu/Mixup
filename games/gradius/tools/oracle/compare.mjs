@@ -85,10 +85,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  *   docs/worklog/gradius/24-qa-adversarial.md), but they are modelled, so the
  *   gate no longer truncates the instant $1B leaves $80.
  *
- * What is still NOT here: $90 (next stage) and the play sub-states $86-$8F.
- * Those are still throws in src/nmi.js's ladder.
+ * What is still NOT here: the play sub-states $87-$8D (intro-shared routines
+ * reached through $982A rather than $96C5, and the ending chain $8B-$8D).
+ * W27 ported $86/$9904 (stage-end), $90 (next stage) and $8E/$8F (the warp).
  */
-const MODELLED_1B = new Set([0, 1, 2, 3, 4, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0xA0, 0xC0]);
+const MODELLED_1B = new Set([0, 1, 2, 3, 4, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85,
+                             0x86, 0x8E, 0x90, 0xA0, 0xC0]);
 
 const INFO_FIELDS = new Map([
   ['w_0036', '$36 is re-walked by the BLANK PASS $8BAB at $80AD and stored back '
