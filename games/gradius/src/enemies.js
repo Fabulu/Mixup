@@ -341,17 +341,17 @@ function runEngine(state, rom, stageIndex, res) {
     lateSpawner(state, rom, stageIndex); // $A2FB JMP $C413 (the late spawner)
     return;
   }
-  // Stage 2+ WAVE content is OUT OF SCOPE (the port loads one stage; stage-2
-  // enemy handlers are not ported). The $82 late-spawner arm above still runs
-  // (its own per-stage throws cover it); this guard fires on the first stage-2
-  // wave RECORD -- the frame after the seamless transition's loadChunk. W27.
-  if (stageIndex !== res.stage.stage) {
+  // Stage 3+ WAVE content is OUT OF SCOPE (the port ships stage 2 this wave,
+  // W29; stage-3 enemy handlers/terrain are not). The $82 late-spawner arm
+  // above still runs (its own per-stage throws cover stages 3+). This guard
+  // fires on the first stage-3 wave RECORD -- the expected boundary after
+  // stage 2's content + boss + the stage-2->stage-3 transition.
+  if (stageIndex >= 2) {
     throw new Error(`$A2F0 runEngine: $19 = $${stageIndex.toString(16).toUpperCase()}`
-                  + ` (stage ${stageIndex + 1}). The seamless transition into`
-                  + ` stage 2 is ported ($9904 -> $96CF, $19 flips on the`
-                  + ` cartridge's frame); stage-2 WAVE content (the enemy`
-                  + ` handlers the records spawn) is out of scope -- the port`
-                  + ` loads one stage. This is the first stage-2 wave record.`);
+                  + ` (stage ${stageIndex + 1}). Stage 2 ($19=1) is shipped (W29);`
+                  + ` stage-3+ WAVE content (the moai, the inline-5 route, the`
+                  + ` stage-3+ enemy handlers) is out of scope. This is the first`
+                  + ` stage-3 wave record -- the expected boundary.`);
   }
   if (sp.z69 !== 0) {                    // $A2FE LDA $69 / BNE $A32B
     if (sp.z6C !== 0) {                  // $A32B LDA $6C / BNE $A332
@@ -434,13 +434,10 @@ function lateSpawner(state, rom, stageIndex) {
   const target = rom.word(0xC439 + 2 * stageIndex);   // jt_$C439[stage]
   switch (target) {
     case 0xC486: return st_C486(state, rom);   // stage 1 -- the volcano
-    // ---- stages 2-7: out of stage-1 scope, LOUD NAMED THROWS ---------------
+    // ---- stages 2-7: stage-2 shipped (W29); stages 3-7 still LOUD THROWS ----
     // Each carries its ROM target and what it spawns, so the wave that ports it
     // has the address and the producer in the message.
-    case 0xC546:
-      throw new Error('$C439[1] -> $C546: stage-2 late-spawner arm not ported '
-                    + '(stage-1 scope, W25). Spawns type $0B via sub_$C44F '
-                    + 'X=2 -> stream $C58D.');
+    case 0xC546: return st_C546(state, rom);   // stage 2 -- the jellyfish
     case 0xC686:
       throw new Error('$C439[2] -> $C686: stage-3 late-spawner arm not ported '
                     + '(stage-1 scope, W25). NB $C686 is ALSO the $3A warp '
@@ -624,6 +621,48 @@ function st_C486(state, rom) {
   o.xvelf[i] = state.frame & 0x3F;          // $C4E4 LDA $02 / AND #$3F / STA $044C,X
   o.yvelf[i] = state.frame & 0x3F;          // $C4EB STA $03EC,X
   o.anim[i] = 0x58;                         // $C4EE LDA #$58 / STA $012C,X
+}
+
+/**
+ * `st_$C546` -- stage 2's late-spawner arm (jt_$C439[1]). Spawns the JELLYFISH
+ * (type $0B -> entry 11 -> $B37F). Reached every 4th frame by the late spawner
+ * (`$C413`'s `$02 & 3` gate), then a SECOND gate here (`$02 & 7`) halves that
+ * to every 8th frame.
+ *
+ *   C546  A5 02 / AND #$07 / BEQ $C54D / RTS    second gate (every 8th)
+ *   C54D  A2 02 / JSR $C44F                     pattern stepper, X=2 -> $C58D
+ *   C552  A4 A9 / LDY $A9                       Y = a9 (nibble*2 position index)
+ *   C554  A6 A8 / LDX $A8                        the slot the late spawner cleared
+ *   C556  B9 6D C5 / STA $036C,X                X pos = $C56D[Y]
+ *   C55C  B9 6E C5 / STA $032C,X                Y pos = $C56E[Y] (= $C56D[Y+1]!)
+ *   C562  A9 0B / STA $030C,X                    type $0B
+ *   C567  A9 67 / STA $012C,X                    anim $67
+ *   C56C  RTS
+ *
+ * THE X/Y POSITION TABLES ARE OFFSET BY ONE BYTE: `$C56E = $C56D + 1`, so the
+ * Y position of index `i` is `$C56D[i+1]`. The 32-byte run at `$C56D` is SIXTEEN
+ * interleaved (x,y) pairs. `sub_$C44F` (ported W25) returns `{a9, aa}`; only
+ * `a9` is used here (`aa` is the nibble selector the volcano uses for its
+ * crater, unused by the jellyfish). `clearSlot` already ran in `lateSpawner`
+ * before dispatch, so the slot is empty on entry.
+ *
+ * Span `$C546`-`$B56C` + the tables at `$C56D`; NO fall-out (RTS precedes the
+ * data; `st_C58D` is the stream). Recon: 29-impl-stage2.md.
+ */
+function st_C546(state, rom) {
+  const sp = state.spawn;
+  const o = state.obj;
+  // $C546 LDA $02 / AND #$07 / BEQ $C54D -- a SECOND gate on top of the late
+  // spawner's every-4th: spawn only when $02 & 7 == 0. Combined: every 8th.
+  if ((state.frame & 0x07) !== 0) return;       // $C54A BEQ $C54D / $C54C RTS
+  // loc_C54D: X = 2 -> $C447+2 -> stream $C58D. a9 = nibble*2 (the position idx).
+  const { a9 } = sub_C44F(state, rom, 0x02);    // $C54D LDX #$02 / $C54F JSR $C44F
+  const i = sp.zA8 + ENEMY_BASE;                // $C554 LDX $A8 (the cleared slot)
+  // $C556 LDA $C56D,Y (X) / $C55C LDA $C56E,Y (Y). a9 is even (nibble*2).
+  o.x[i] = rom.read(0xC56D + a9);               // $C556/$C559 STA $036C,X
+  o.y[i] = rom.read(0xC56E + a9);               // $C55C/$C55F STA $032C,X
+  o.type[i] = 0x0B;                             // $C562 LDA #$0B / STA $030C,X
+  o.anim[i] = 0x67;                             // $C567 LDA #$67 / STA $012C,X
 }
 
 /**
@@ -846,21 +885,29 @@ function emitMember(state, rom) {
 export function enemyBullets(state, res) {
   const o = state.obj;
   if (state.spawn.z5D !== 0) return bulletUpdate(state, res);   // $BBB7 BNE $BC19
-  // $BBBB LDY #$01, and on stage 1 nothing touches Y again before $BBEC.
-  // $BBBD LDA $19 / ORA $1A / BEQ $BBEC -- on stage 1 with $1A = 0 the whole
-  // $02-parity / $1A / $46 / $17 ladder at $BBC3-$BBEB is jumped over and $98
-  // stays 1. The other arms are not ported, and since wave 7 that is a stage
-  // gate rather than a missing byte: $46 and $17 are both live now, and
-  // `capsule-sweep` drives $17 to 4 with a shield up -- $BBE5 still ran ZERO
-  // times, because $BBC1's BEQ jumps the whole ladder while $19 | $1A is 0.
-  // Measured this wave; it is the plan's risk 5, answered NO for stage 1.
-  if (res.stage.stage !== 0 || state.zp1A !== 0) {
-    throw new Error(`$19 = ${res.stage.stage}, $1A = ${hex2(state.zp1A)}: `
-                  + '$BBC3-$BBEB (the $02 parity, the $1A arms and the $17 >= 3 '
-                  + 'rank bump that decide how fast $040C,X counts down) is not '
-                  + 'ported -- stage 1 branches past all of it at $BBC1');
+  // $BBEC STY $98 -- the per-frame countdown subtract. $BBBB LDY #$01, and the
+  // ladder at $BBC3-$BBEB accelerates it. $BBBD LDA $19 / ORA $1A / BEQ $BBEC:
+  // stage 1 / loop 0 skips the whole ladder (sub stays 1). Stage 2+ runs it.
+  // Ported W29 (stage 2 reaches it: $19=1 fails the BEQ); the ROM is the
+  // authority at rip/prg.asm line 6893. For stage 2 / loop 0 / no shield / rank
+  // < 3 the ladder still yields 1; rank >= 3 yields 2 (enemies fire 2x faster).
+  let sub = 1;                                  // $BBBB LDY #$01
+  if (state.zp19 !== 0 || state.zp1A !== 0) {   // $BBBD/$BBBF ORA $1A / $BBC1 BEQ
+    // $BBC3 LDA $02 / AND #$01 / BNE $BBE5: ODD frames skip the $1A/$46 arms
+    // and go straight to the rank check at $BBE5.
+    if ((state.frame & 0x01) === 0) {           // $BBC5 AND #$01 / $BBC7 BNE
+      if (state.zp1A !== 0) {                    // $BBC9 LDA $1A / BEQ $BBDA
+        sub += 1;                                // $BBCD INY (loop >= 1)
+        if (state.zp1A >= 2) sub += 1;           // $BBCE CMP #$02 / BCC / BBD2 INY
+        if (state.zp.shield !== 0) sub += 1;     // $BBD3 LDA $46 / BEQ / BBD7 INY
+      } else if (state.zp.shield !== 0 && state.zp19 >= 2) {  // loc_BBDA (loop 0)
+        sub += 1;                                // $BBDE/$BBE0 CMP #$02 / BCC / BBE4 INY
+      }
+    }
+    // loc_BBE5 -- the rank arm runs on EVERY frame that entered the ladder
+    // (both parities converge here): rank >= 3 bumps $98 once more.
+    if (state.zp17 >= 3) sub += 1;               // $BBE5-$BBE9 / $BBEB INY
   }
-  const sub = 1;                         // $BBEC STY $98, with Y still 1
   for (let x = 9; x >= 0; x--) {         // $BBEE LDX #$09 / $BC15 DEC $A8 / BPL
     state.spawn.zA8 = x;                 // $BBF0 STX $A8
     const i = x + ENEMY_BASE;
@@ -917,11 +964,12 @@ export function enemyBullets(state, res) {
  * invented one.
  */
 function fireBullet(state, res, j) {
-  if (state.zp1A !== 0 || res.stage.stage >= 2) {  // $BC44 / $BC48 CMP #$02
-    throw new Error(`$1A = ${hex2(state.zp1A)}, $19 = ${res.stage.stage}: `
-                  + '$BC44 skips the player-position gate on stages 2+ and '
-                  + 'goes straight to the bullet allocator at $BC59. The GATE '
-                  + 'is what is unported here, not the allocator');
+  if (state.zp1A !== 0 || state.zp19 >= 2) {  // $BC44 / $BC48 CMP #$02
+    throw new Error(`$1A = ${hex2(state.zp1A)}, $19 = ${hex2(state.zp19)}: `
+                  + '$BC44 skips the player-position gate on stages 3+ (and on'
+                  + ' any loop) and goes straight to the bullet allocator at'
+                  + ' $BC59. Stage 2 ($19=1, loop 0) runs the gate; stages 3+ '
+                  + 'are out of scope (W29 ships stage 2).');
   }
   // $BC4E LDX $A8 / $BC50 LDA $0360 / CMP $036C,X / $BC56 BCC $BC59
   if (state.obj.x[0] >= state.obj.x[j + ENEMY_BASE]) return;   // $BC58 RTS
@@ -1317,6 +1365,56 @@ function moveBullet(state, res, x) {
   if (ny < 8 || ny >= 0xC4) freeSlot(state, u8(0x0A + x));
 }
 
+/**
+ * `$BDFA` -- the AIMED-movement core, for an ENEMY (not a bullet). Entered at
+ * `$BDFA` directly (NOT `$BDD5`) by `$B3B9 JSR $BDFA` inside `$B37F`, so it
+ * runs ONLY the movement: read the direction byte `$046C,X`, move X by
+ * `$042C:$044C` (sign = bit 1), free if X leaves [2,$FB], move Y by
+ * `$03BC:$03EC` (sign = bit 0), free if Y leaves [8,$C3]. `$BE6B JMP $AEF8`
+ * frees via the short free.
+ *
+ * This is the SAME core `moveBullet` (above) inlines for the bullet slot
+ * `22+x`; here the slot is the enemy's own `j + ENEMY_BASE` and the free uses
+ * the enemy index `j`. Transcribed separately rather than factored, because
+ * `moveBullet` is measured GREEN and bundles its own bullet animation/off-screen
+ * arms around the core -- sharing it would risk that measurement.
+ *
+ * `$046C,X` is the direction byte `$BD21` wrote (`aimBullet`, two bits: bit 1 =
+ * X sign, bit 0 = Y sign). The velocity was set by the same `aimBullet` call.
+ */
+function moveAimedEnemy(state, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  const dir = o.s0460[i];                        // $BDFA LDA $046C,X
+  let nx;
+  if (dir >= 2) {                                // $BDFD CMP #$02 / BCC $BE17
+    const f = o.xf[i] + o.xvelf[i];              // $BE01 LDA $044C,X / CLC / ADC
+    o.xf[i] = u8(f);                             // $BE08 STA $038C,X
+    nx = u8(o.x[i] + o.xvel[i] + (f > 0xFF ? 1 : 0));   // $BE0B/$BE0E ADC $036C,X
+    o.x[i] = nx;                                 // $BE11 STA $036C,X
+  } else {
+    const f = o.xf[i] - o.xvelf[i];              // $BE17 LDA $038C,X / SEC / SBC
+    o.xf[i] = u8(f);                             // $BE1E STA $038C,X
+    nx = u8(o.x[i] - o.xvel[i] - (f < 0 ? 1 : 0));      // $BE21/$BE24 SBC $042C,X
+    o.x[i] = nx;                                 // $BE27 STA $036C,X
+  }
+  // $BE2A CMP #$02 / BCC $BE6B / CMP #$FC / BCS $BE6B (A = the X just stored).
+  if (nx < 2 || nx >= 0xFC) return freeSlot(state, j);
+  let ny;
+  if (dir & 1) {                                 // $BE32 LDA $046C,X / AND #$01
+    const f = o.yf[i] + o.yvelf[i];              // $BE39 LDA $03EC,X / CLC / ADC
+    o.yf[i] = u8(f);                             // $BE40 STA $034C,X
+    ny = u8(o.y[i] + o.yvel[i] + (f > 0xFF ? 1 : 0));   // $BE43/$BE46 ADC $032C,X
+    o.y[i] = ny;                                 // $BE49 STA $032C,X
+  } else {
+    const f = o.yf[i] - o.yvelf[i];              // $BE4F LDA $034C,X / SEC / SBC
+    o.yf[i] = u8(f);                             // $BE56 STA $034C,X
+    ny = u8(o.y[i] - o.yvel[i] - (f < 0 ? 1 : 0));      // $BE59/$BE5C SBC $03BC,X
+    o.y[i] = ny;                                 // $BE5F STA $032C,X
+  }
+  // $BE62 CMP #$08 / BCC $BE6B / CMP #$C4 / BCS $BE6B / $BE6A RTS.
+  if (ny < 8 || ny >= 0xC4) return freeSlot(state, j);   // $BE6B JMP $AEF8
+}
+
 // ==================== THE UPDATE LOOP, $ADAB / $ADE5 ========================
 
 /**
@@ -1412,6 +1510,7 @@ function dispatch(state, rom, j, type) {
     case 0xAF88: return h_AF88(state, rom, j);   // entry 16, types $10/$90
     case 0xB311: return h_B311(state, rom, j);   // entry  9, types $09/$89
     case 0xB36F: return h_B36F(state, j);        // entry 10, types $0A/$8A (volcano)
+    case 0xB37F: return h_B37F(state, rom, j);   // entry 11, types $0B/$8B (jellyfish)
     case 0xB3CB: return h_B3CB(state, rom, j);   // entry 12, types $0C/$8C
     // ---- WAVE 26: the boss ------------------------------------------------
     case 0xB914: return h_B914(state, rom, j);   // entry 24, types $18/$98 (head)
@@ -2502,6 +2601,60 @@ function h_B3CB(state, rom, j) {
   // $B3EF LDA $032C,X / $B3F2 CMP $0320 / $B3F5 BCS $B3FF
   if (o.y[i] >= o.y[0]) return childBallistic(state, j);
   childStepY(state, j, 0x02);            // $B3F7 LDA #$02 / $B3F9
+}
+
+/**
+ * Handler 11, `$B37F` -- THE JELLYFISH, types $0B/$8B. Stage 2's signature
+ * enemy (the only stage-2 handler that was missing). Produced by `$C546` (the
+ * stage-2 late-spawner arm) as type $0B; `$B0B4` flips it to $8B once its
+ * morph-in finishes. Reused by stage 7 (9 records) -- FREE there (W34).
+ *
+ * TWO FORMS, selected by bit 7 of the type byte (same slot, same handler):
+ *
+ *   $0B (BMI NOT taken) -- the MORPH-IN. INCs `$04AC,X`, indexes the 9-entry
+ *   anim table at `$B3C2` by `$04AC >> 2`, so `$64` for 12 frames, `$65` for
+ *   12, `$66` for 12. At index 8 (frame ~32) it transitions: `$04CC := 1`,
+ *   `$048C := 0`, then `JMP $B0B4` sets the initialised bit -> type becomes
+ *   $8B next frame. The `$04CC != 0` early-out at the top is the defensive
+ *   re-init (a `$0B` that somehow still has `$04CC` set re-asserts the flip).
+ *
+ *   $8B (BMI taken) -- the ACTIVE form. anim `$67`. On its FIRST frame only
+ *   (`$048C == 0`) it calls `$BCB5` with A = `$A8` = the enemy's own index,
+ *   which AIM is the enemy itself at the ship (aimBullet writes the enemy's
+ *   velocity/direction, NOT a bullet's -- see the $B37F recon in the W29
+ *   worklog). Then `$BDFA` (moveAimedEnemy) flies it along that velocity, and
+ *   `$048C := 1` so it never re-aims: the jellyfish picks a straight course
+ *   toward where the ship WAS on its first active frame.
+ *
+ * Span `$B37F`-`$B3C1` + the table at `$B3C2`; NO fall-out (the RTS at $B3C1
+ * precedes the data; `st_B3CB` is the next routine). Recon: 29-impl-stage2.md.
+ */
+function h_B37F(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) {                  // $B37F LDA $030C,X / $B382 BMI $B3AA
+    // The $0B morph-in form.
+    if (o.s04C0[i] !== 0) {                   // $B384 LDA $04CC,X / $B387 BNE $B39D
+      o.s04C0[i] = 0x01;                      // loc_B39D: $04CC := 1
+      o.s0480[i] = 0;                         // loc_B3A2: $048C := 0
+      return setInitialised(state, j);        // loc_B3A7 JMP $B0B4 ($0B -> $8B)
+    }
+    o.s04A0[i] = u8(o.s04A0[i] + 1);          // $B389 INC $04AC,X
+    const y = o.s04A0[i] >>> 2;               // $B38C/$B38F/$B390 LSR/LSR/TAY
+    o.anim[i] = rom.read(0xB3C2 + y);         // $B392 LDA $B3C2,Y / STA $012C,X
+    if (y === 8) {                            // $B398 CPY #$08 / $B39A BEQ $B39D
+      o.s04C0[i] = 0x01;                      // loc_B39D
+      o.s0480[i] = 0;                         // loc_B3A2
+      return setInitialised(state, j);        // loc_B3A7 JMP $B0B4
+    }
+    return;                                   // $B39C RTS (still morphing, $0B)
+  }
+  // loc_B3AA: the $8B initialised form.
+  o.anim[i] = 0x67;                           // $B3AA LDA #$67 / STA $012C,X
+  if (o.s0480[i] === 0) {                     // $B3AF LDA $048C,X / $B3B2 BNE $B3B9
+    aimBullet(state, j);                      // $B3B4 LDA $A8 / $B3B6 JSR $BCB5
+  }                                          //   -- A=$A8=j aims the ENEMY at the ship
+  moveAimedEnemy(state, j);                   // $B3B9 JSR $BDFA
+  o.s0480[i] = 1;                             // $B3BC LDA #$01 / STA $048C,X
 }
 
 // ============================ WAVE 26: THE BOSS =============================

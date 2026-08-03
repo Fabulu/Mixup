@@ -184,7 +184,14 @@ export async function loadResources(stageIndex = 0) {
   const metasprites = {};
   for (const [k, v] of Object.entries(ms.records)) metasprites[Number(k)] = v;
 
-  return { manifest, tiles, metasprites, stage: stages.stages[stageIndex],
+  // `stages` is the FULL 7-entry array; runtime reads the LIVE stage as
+  // `res.stages[state.zp19]` so the seamless `$96CF` transition into stage 2+
+  // streams the right terrain and reads the right boss/end pages. `stage` is
+  // the INITIAL stage (the one `stageIndex` selects) and is kept for the unit
+  // suite, which calls `streamBlock(s, res.stage)` with stage 0 and never
+  // transitions; nothing in the runtime reads `res.stage` after boot.
+  return { manifest, tiles, metasprites,
+           stage: stages.stages[stageIndex], stages: stages.stages,
            hudPackets: hudPacketTable(hud), enemyTables: enemyTables(enemies),
            flowTables: flowTables(flow),
            collisionTables: collisionTables(coll),

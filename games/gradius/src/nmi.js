@@ -428,7 +428,7 @@ function playArm(state, res) {
  * roads, one tail, NOT a fall-through trap.
  */
 function st9A4D(state, res) {
-  if (state.cam.hi >= res.stage.bossPage) {         // $9A4F-$9A54 CMP $9A3D,X / BCC $9A5B
+  if (state.cam.hi >= res.stages[state.zp19].bossPage) {  // $9A4F-$9A54 CMP $9A3D,X / BCC $9A5B
     // $9A56 LDA $9A45,X / STA $1B. $9A45[$19] = $81 for all stages.
     state.substate = 0x81;                           // $9A59 STA $1B
   }
@@ -460,7 +460,7 @@ function st9A0E(state, res) {
     throw new Error('$9A12: $19 = 6 (stage 6 special case). $4D:=1, $4C:=$CA '
                   + 'is unreachable -- the port loads one stage.');
   }
-  state.zp4D = res.stage.rankCountdown[rank];        // $9A1E LDA $9A35,X / STA $4D
+  state.zp4D = res.stages[state.zp19].rankCountdown[rank]; // $9A1E LDA $9A35,X / STA $4D
   state.zp4C = 0;                                    // $9A23/$9A25 STA $4C
   state.zp5B = u8(state.zp5B + 1);                   // $9A27 INC $5B
   state.substate = u8(state.substate + 1);           // $9A29 INC $1B -> $82
@@ -545,7 +545,7 @@ function st99C0(state, res) {
  * (`$B914`) and the death chain are W26, so the field window ends at $84.
  */
 function st9982(state, res) {
-  if (state.cam.hi === res.stage.bossPage) {         // $9986 CMP $9A3D,X / BEQ $99BA
+  if (state.cam.hi === res.stages[state.zp19].bossPage) {  // $9986 CMP $9A3D,X / BEQ $99BA
     sub994A(state);                                  // $99BA JSR $994A (the despawn)
     mode5Body(state, res);                           // $99BD JMP $9A5E
     return;
@@ -668,9 +668,9 @@ function st9904(state, res) {
   if (state.zp1C === 0x93) {                         // $991F CMP #$93 / BNE
     sub994A(state);                                   // $9923 JSR $994A
   }
-  // $9926 LDY $19 / LDA $3F / CMP $98FD,Y / BCC $9947. res.stage.endPage is
-  // $98FD[$19] for the loaded stage (stage 1: $0E); $19 has not advanced yet.
-  if (state.cam.hi < res.stage.endPage) {            // $992A CMP $98FD,Y / BCC $9947
+  // $9926 LDY $19 / LDA $3F / CMP $98FD,Y / BCC $9947. res.stages[$19].endPage is
+  // $98FD[$19] (stage 1: $0E, stage 2: $0E); $19 has not advanced yet.
+  if (state.cam.hi < res.stages[state.zp19].endPage) {  // $992A CMP $98FD,Y / BCC $9947
     mode5Body(state, res);                            // $9947 JMP $9A5E
     return;
   }
@@ -1041,7 +1041,7 @@ export function mode5Tail(state, res, test1B = false) {
   // INC sites, three readers. Written down as structure so that whoever
   // characterises it does not have to rediscover that the gate is here.
   if (state.zp5B === 0) {                         // $9ACA / $9ACC
-    streamBlock(state, res.stage);                // $9ACE JSR $9D83
+    streamBlock(state, res.stages[state.zp19]);   // $9ACE JSR $9D83
   }
 
   // $9AD1: the pause handler, and it is INSIDE the tail rather than after it --

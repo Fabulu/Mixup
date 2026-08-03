@@ -1022,10 +1022,11 @@ export function setBgm(state, res) {
     a = u8(a + 1);                                // $8377/$8378 CLC / ADC #$01
     if (a === threshold) { fadeStep(state); return; }        // $837A-$837D BEQ $838E
     if (a < threshold) x = 0x93;                  // $837F BCS $8383 / $8381 LDX #$93
-    // $8383 CMP $9A3D,Y -- the stage's boss page. The port loads ONE stage's
-    // assets, so $9A3D[$19] is res.stage.bossPage, the same byte read by the
-    // same instruction at $9A4F (src/nmi.js playArm).
-    const boss = res.stage.bossPage;
+    // $8383 CMP $9A3D,Y -- the stage's boss page. $9A3D[$19] is
+    // res.stages[$19].bossPage, the same byte the same instruction reads at
+    // $9A4F (src/nmi.js playArm). Indexed by the LIVE $19 so stage 2+ fades
+    // against the right page.
+    const boss = res.stages[stage].bossPage;
     if (a === boss) { fadeStep(state); return; }  // $8386 BEQ $838E
     if (a > boss) x = 0xA5;                       // $8388 BCC $839B / $838A LDX #$A5
   }

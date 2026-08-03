@@ -194,11 +194,13 @@ export function frameFromCapture(cap) {
 
 /** The resources src/nmi.js wants, loaded off disk instead of over fetch(). */
 export function headlessResources(stageIndex = 0) {
+  const stages = loadStages().stages;
   return {
     manifest: JSON.parse(readFileSync(assetOrThrow('manifest.json'), 'utf8')),
     tiles: loadTiles(),
     metasprites: loadMetasprites(),
-    stage: loadStages().stages[stageIndex],
+    stage: stages[stageIndex],            // the INITIAL stage (unit suite)
+    stages,                               // the FULL array; runtime reads [state.zp19]
     hudPackets: loadHudPackets(),
     enemyTables: loadEnemyTables(),
     flowTables: loadFlowTables(),

@@ -253,13 +253,13 @@ test('h_B36F: the projectile frees its slot when it leaves the box', () => {
 
 // ==================== THE 7-ARM DISPATCH (jt_$C439) =========================
 
-test('jt_$C439: stage 0 -> $C486 (the volcano); stages 2-7 throw loudly', () => {
+test('jt_$C439: stage 0 -> $C486 (volcano); stage 1 -> $C546 (jellyfish); stages 3-7 throw loudly', () => {
   // $C434 LDA $19 / JSR $83E4. The 7-entry table at $C439 is indexed by stage.
-  // Stage 1 (index 0) is ported; stages 2-7 are out of scope and carry their
-  // ROM target in the throw message. RED WHEN: a stage's target changes, or a
-  // throw loses its address.
+  // Stage 1 (index 0, volcano) and stage 2 (index 1, jellyfish) are ported;
+  // stages 3-7 are out of scope and carry their ROM target in the throw message.
+  // RED WHEN: a stage's target changes, or a throw loses its address.
   const stageRes = (idx) =>
-    ({ ...res, stage: { ...res.stage, stage: idx } });
+    ({ ...res, stage: { ...res.stage, stage: idx }, stages: res.stages });
   const addrHex = (a) => '$' + a.toString(16).toUpperCase().padStart(4, '0');
 
   // stage 0: ported (no throw, spawns $0A)
@@ -268,11 +268,24 @@ test('jt_$C439: stage 0 -> $C486 (the volcano); stages 2-7 throw loudly', () => 
   assert.doesNotThrow(() => spawnEngine(s0, stageRes(0)));
   assert.strictEqual(type(s0, SLOT_FIRST), 0x0A);
 
-  // stages 1-5: loud throws carrying the ROM target. W27: spawnEngine dispatches
+  // stage 1 ($C546): ported W29. At frame 0 both gates pass ($02&3 and $02&7),
+  // so it spawns the jellyfish (type $0B). The second gate ($02 & 7) halves the
+  // cadence to every 8th frame -- frame 4 passes the late spawner but not $C546.
+  const s1a = erupting(0);
+  s1a.zp19 = 1;
+  assert.doesNotThrow(() => spawnEngine(s1a, stageRes(1)));
+  assert.strictEqual(type(s1a, SLOT_FIRST), 0x0B, 'stage 1 spawns the jellyfish');
+  const s1b = erupting(4);
+  s1b.zp19 = 1;
+  spawnEngine(s1b, stageRes(1));
+  assert.strictEqual(type(s1b, SLOT_FIRST), 0,
+    'stage 1 $C546 second gate ($02 & 7): frame 4 does not spawn');
+
+  // stages 2-5: loud throws carrying the ROM target. W27: spawnEngine dispatches
   // the late spawner on the LIVE $19 (state.zp19), not res.stage.stage, so the
   // test sets both to the stage under test (the $82 arm reaches lateSpawner
-  // before the stage-2 wave guard in runEngine).
-  const arms = [[1, 0xC546], [2, 0xC686], [3, 0xC5AD], [4, 0xC653], [5, 0xC6DE]];
+  // before the stage-3 wave guard in runEngine).
+  const arms = [[2, 0xC686], [3, 0xC5AD], [4, 0xC653], [5, 0xC6DE]];
   for (const [idx, addr] of arms) {
     const s = erupting(0);
     s.zp19 = idx;
