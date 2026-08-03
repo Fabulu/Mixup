@@ -125,16 +125,34 @@ function emitBlock(state, stage) {
   const atAddr = ((NT_PAGE[page] | 3) << 8) + (half ? 0xC4 : 0xC0)
                + row * 8 + col;
 
-  // $9E1B-$9E36 / $9E4A / $9E5C / $9E6F -- page -> screen -> layout -> block id
+  // $9E1B-$9E36 / $9E4A / $9E5C / $9E6F -- page -> screen -> layout -> block id.
+  //
+  // $9E38-$9E5A: the screen number from screenOrder goes through a STAGE GATE
+  // before it indexes the layout. Stage 0 uses it as-is. For stages > 0 the
+  // screen is DECREMENTED, and a 0 entry falls back to STAGE 0's tables (screen
+  // 0 of stage 0 -- the shared empty starfield screen that opens every stage).
+  // So the EFFECTIVE stage/screen, not the raw ones, key the screens/blocks
+  // dicts (export_assets.py keys them "<effStage>:<effScreen>"). This was a
+  // latent bug for every stage > 0 -- stage 0 never triggers the gate, which is
+  // why the whole of stage 1 (in-game) shipped field-exact without it. W29.
   const layoutIdx = row * 8 + col + (half ? 4 : 0);
-  const screen = stage.pageOrder[b.hi] ?? 0;   // $9E4A LDA (screenOrder),Y
-  const screenKey = `${stage.stage}:${screen}`;
+  let screen = stage.pageOrder[b.hi] ?? 0;        // $9E4A LDA (screenOrder),Y
+  let effStage = stage.stage;
+  if (stage.stage !== 0) {                         // $9E4C CPX #$00 / BEQ $9E5A
+    if (screen === 0) {                            // $9E50 C9 00 / D0 $9E58
+      effStage = 0;                                // $9E54 LDX #$00 -> stage 0
+      screen = 0;                                  // $9E56 LDA #$01 / $9E58 SBC -> 0
+    } else {
+      screen = screen - 1;                         // $9E58 SBC #$01
+    }
+  }
+  const screenKey = `${effStage}:${screen}`;
   const layout = stage.screens[screenKey];
   if (!layout) throw new Error(`terrain: no screen ${screenKey} in stages.json`);
   const blockId = layout.blockIds[layoutIdx];
 
-  const block = stage.blocks[`${stage.stage}:${blockId}`];
-  if (!block) throw new Error(`terrain: no block ${blockId} in stages.json`);
+  const block = stage.blocks[`${effStage}:${blockId}`];
+  if (!block) throw new Error(`terrain: no block ${effStage}:${blockId} in stages.json`);
 
   // One attribute byte per 32x32 block -- which is exactly one attribute quad,
   // so the block and the attribute grid line up and no read-modify-write is
