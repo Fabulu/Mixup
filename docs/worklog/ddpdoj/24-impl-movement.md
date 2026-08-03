@@ -1,7 +1,10 @@
 # W24 IMPL — the movement interpreter: $2638A6, the 13 opcodes, the velocity cache
 
-status: **IN PROGRESS.** wave: 24 (plan W24)   role: implementer (sole `src/`
-writer this wave). date: 2026-08-03.
+status: **DONE.** All three done-whens met (unit tests; one mover's whole-life
+position at 0 divergent; the W23 spawn-stats gate re-closed 511 -> 0 on scripted
+spawns). Six draft defects corrected (the salvage's "unverified draft" warning
+earned twice -- five by listing-diff, one by the tests). Regression green.
+wave: 24 (plan W24)   role: implementer (sole `src/` writer this wave). date: 2026-08-03.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Every address is build B
 (`$23xxxx`-`$2Axxxx`) unless the line says otherwise. **No build-A address is
 introduced anywhere in this wave.**
@@ -154,3 +157,81 @@ bug was dormant in W23 (bit 5 was set, branch skipped; the 2 `$88` divergences
 were exactly this branch's absence). Fixed to `a6 + (an !== 0 ? S.hit14 :
 S.hit16)`. This is W23-review F1's predicted "downstream wave trusting a spawned
 enemy's fields" -- the movement anim made it live.
+
+### F5 — DONE-WHEN #2: one mover's whole-life position track at 0 divergent
+`tools/w24movegate.mjs` replays ONE scripted type-$11 mover (the first after
+stage start) from spawn to death and compares its sub-record position
+`($2,A6)/($4,A6)` to the board every frame. The corpus is captured by a new lua
+(`tools/oracle/w24move.lua`, driven by `w24moverun.py`) that taps the pre-handler
+point each frame and carries the spawn `param`, `$8130D0`, the class byte and the
+`$80B03C` scroll-comp word the interpreter reads.
+
+Result with AUTO-SHOT DISABLED (`--fire 99999`, the runner default -- see F6):
+```
+SUBJECT $11 stream=$231858 (idx $001) lf 1962..2327 (365 steps)
+RESULT mover-position divergent: 0 of 366 (100.00 % match)
+RED [--break vel] (swap dY/dX): 365 of 366 divergent        -- seen red
+src/movement.js sha256 unchanged both ways (the mutation is the gate wrapper)
+```
+The mover holds HEAD `h=2d p=00` (a forever straight mover): speed/heading/cursor
+are constant for its whole life, and the port's position matches the board at
+0 divergent over 365 frames.  The init position, the per-frame velocity
+(`D2->posX`, `D3->posY`) AND the per-frame `$24179E` scroll compensation (the
+mover is class-byte bit-0 set -- scroll-locked) all reproduce exactly.
+
+### F6 — the auto-shot hit-reaction is W28, not W24 (a measurement)
+With auto-shot ENABLED (the labelled intervention every other wave uses), the
+SAME mover showed a +$40 `posY` swing for ~4 frames at lf 1969-1972.  Speed,
+heading AND cursor were constant across the swing, so `$2638A6` (constant inputs
+=> constant vector) could not have caused it.  Disabling fire made the swing
+vanish and the mover live its full 365-frame natural life at constant -21/frame:
+the swing was a bullet-connecting HIT REACTION (W28's damage/displacement
+handler), not the movement interpreter.  The gate's corpus therefore disables
+fire by default to isolate `$2638A6` (this wave) from W28.  This is exactly the
+"interventions are labelled" rule -- and the one place auto-shot changed the
+compared field rather than just pacing.
+
+## THE MEASURED DONE-WHEN (all three)
+
+```
+1. unit tests (listing-derived)        node --test games/ddpdoj/tests/movement.test.js
+   19 tests: the 13 opcodes, the HEAD param/counter state machine, the velocity
+   cache (dirty recompute+cache / clean reuse), EXIT (per-frame+init), the
+   loop-back (32-bit), $2417DE apply, $24179E scroll comp, and the 163-stream
+   replay (no run-off-end; the two carriers EXIT).  -> 19 pass.
+
+2. one mover's whole-life position      node tools/w24movegate.mjs
+   $11 stream idx $001, 365 frames spawn-to-death, AUTO-SHOT DISABLED:
+     mover-position divergent: 0 of 366 (100.00 % match)
+   RED [--break vel] (swap dY/dX): 365 of 366 divergent  -- seen red
+   src/movement.js sha256 unchanged both ways (the mutation is the gate wrapper)
+
+3. W23 spawn-stats gate re-closed       node tools/w23statsgate.mjs
+   0 divergent across 308 stage-1 spawns (100.0000 % match)
+   W24 movement reader $263808 PORTED: 270 scripted spawns, their
+     speed/heading/anim/flags STRICT at 0 divergent.  (W23 deferred 511 -> 0.)
+   deferred (no script stream -- W25/W29): 108 spd/hdg fields (named)
+   RED: swap-tables=820, corrupt-hp=111, seed-wrong-stage=14  (all RED)
+```
+
+## REGRESSION
+
+```
+node --test games/ddpdoj/tests/             362 pass, 0 fail, 0 skip
+node tools/w22spawngate.mjs                 cursor 0 divergent / 10742 lf, 339=339
+node tools/w23statsgate.mjs                 0 divergent / 308 (exit 0)
+node tools/w24movegate.mjs                  0 divergent / 366 (exit 0)
+python tools/oracle/pgm.py check --quick    asset-integrity FAILs are PRE-EXISTING
+                                            (TX/BG tile + ROM-set; not W24 gates)
+```
+
+## WHAT UNBLOCKS (for W25/W29)
+
+The enemy handlers can now read every enemy's hitbox/HP/speed/heading/palette/
+animation/draw-bucket from the record, and a scripted mover's position is
+produced frame-by-frame by `$2638A6` (the per-frame step `stepMovement` is
+ported; a handler that calls it gets the board's position for free, modulo the
+W28 hit-reaction F6 names).  The 108 deferred spawns (handler-enqueued via
+`$815EAA`) and the bespoke handler position writes (the `$11` handler's
+`jsr (A0)` dispatch etc.) are W25.  The auto-shot hit-reaction displacement is
+W28.

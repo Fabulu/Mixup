@@ -15,8 +15,8 @@ RES_SIZE = RES_END-RES    # $0D7E
 sizes={}
 for i in range(N-1): sizes[i]=aux[i+1]-aux[i]
 sizes[N-1]=(RES_END)-(RES+aux[N-1])
-print(f"resource #\$1F stage-1: \$%06X..\$%06X = %d B (\$%X)"%(RES,RES_END,RES_SIZE,RES_SIZE))
-print(f"streams: N=%d, total bytes=%d (sum=%d)"%(N,RES_SIZE,sum(sizes.values())))
+print("resource #$1F stage-1: $%06X..$%06X = %d B ($%X)"%(RES,RES_END,RES_SIZE,RES_SIZE))
+print("streams: N=%d, total bytes=%d (sum=%d)"%(N,RES_SIZE,sum(sizes.values())))
 svals=list(sizes.values())
 print(f"size: min=%d max=%d mean=%.1f  (smallest non-zero streams, largest streams)"%(min(svals),max(svals),sum(svals)/N))
 # spawn records
