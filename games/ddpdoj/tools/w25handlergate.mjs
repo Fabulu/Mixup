@@ -1,13 +1,22 @@
-// W25 HANDLER GATE -- the dynamic verdict for the six enemy handlers.  Replays
-// EVERY six-handler enemy's whole life (init + one step per frame) and compares
-// its sub-record position (($2,A6)/($4,A6)) against the board at every frame.
+// W25 HANDLER-POSITION GATE -- the dynamic verdict for the position column of
+// the six handler types.  Replays EVERY six-handler enemy's whole life (init +
+// one step per frame) and compares its sub-record position (($2,A6)/($4,A6))
+// against the board at every frame.
 //
-// This generalises W24's single-mover proof to all six handler types through
-// the real per-frame dispatch cadence.  The position column is produced ENTIRELY
-// by `$2638A6` stepMovement (W24) -- or, for the scroll-locked ground gun `$8B`,
-// by `$24179E` scrollCompensate which `$27687E` calls directly instead of
-// `$2638A6`.  The handlers' fire/damage/effect paths (noted, W26/W27/W28) never
-// write `($2/$4,A6)`, so the position column is a clean done-when.
+// HONEST SCOPE (W25b F3): this gate exercises the W24 MOVEMENT INTERPRETER
+// (`stepMovement` / `applyVelocity` / `scrollCompensate`) per handler-type via
+// the per-type DRIVER table below.  It does NOT import or call `handlers.js`,
+// and `handlers.js` is NOT wired into `runEnemyDriver` -- that wiring (enemies
+// rendering live) is a NAMED SEPARATE WAVE (W26+, the firing wave).  So the
+// "0 divergent" here verifies the movement interpreter across more mover types;
+// it does NOT dynamically cover `handlers.js` (whose helpers have smoke-test
+// coverage only via tests/handlers.test.js).
+//
+// The position column is produced ENTIRELY by `$2638A6` stepMovement (W24) --
+// or, for the scroll-locked ground gun `$8B`, by `$24179E` scrollCompensate
+// which `$27687E` calls directly instead of `$2638A6`.  The handlers' fire/
+// damage/effect paths (noted, W26/W27/W28) never write `($2/$4,A6)`, so the
+// position column is a clean done-when.
 //
 // CADENCE (W24, verbatim): the SPAWN row is the init position (post-`$263808`,
 // pre-handler); each P row is +one step.  Port init == SPAWN (readMovementInit),
@@ -15,7 +24,8 @@
 //
 //   node tools/w25handlergate.mjs              # 0 divergent over all six types
 //   node tools/w25handlergate.mjs --break vel  # RED: swap dY/dX -> diverge
-//   node tools/w25handlergate.mjs --break skip # RED: skip one type's step
+//   node tools/w25handlergate.mjs --break skip 82  # RED: omit one type's step
+//                                                 #     (compare-after-omit)
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -158,14 +168,21 @@ function main() {
 
     // step i uses the PREVIOUS row's globals (W24 cadence).
     let prev = s.spawn;
+    // --break skip <type>: OMIT this type's per-frame step but STILL compare its
+    // position to the board (compare-after-omit).  The stale port position then
+    // diverges from the advancing board -> the per-frame step is demonstrably
+    // load-bearing for this type.  (The prior `prev=row; continue` DROPPED the
+    // type's samples, which proved nothing -- W25b F4.)
+    const skip = skipType && s.type === parseInt(skipType, 16);
     for (const row of s.rows) {
-      if (skipType && s.type === parseInt(skipType, 16)) { prev = row; continue; }
       ram.setU16(0x8130d2, prev.freeze);
       ram.setU16(0x813172, prev.scroll);
       ram.setU16(0x80b03c, prev.b03c);
-      if (driver === 'scroll') scrollCompensate(ram, REC);
-      else if (driver === 'vel') applyVelocity(ram, tables, REC);
-      else stepMovement(ram, rom, REC, tables, NOOP);
+      if (!skip) {
+        if (driver === 'scroll') scrollCompensate(ram, REC);
+        else if (driver === 'vel') applyVelocity(ram, tables, REC);
+        else stepMovement(ram, rom, REC, tables, NOOP);
+      }
       px = ram.u16(SUB + 0x02); py = ram.u16(SUB + 0x04);
       compared++;
       if (px !== row.x || py !== row.y) {
@@ -184,7 +201,7 @@ function main() {
     + `${brk ? `  [break=${brk}${skipType ? ` type=$${skipType}` : ''}]` : ''}`);
   for (const t of Object.keys(byType).sort()) {
     const b = byType[t];
-    console.log(`  type $${t}: ${b.spawn} enemies, ${b.rows} steps, ${b.divergent} divergent`);
+    console.log(`  type $${(+t).toString(16)}: ${b.spawn} enemies, ${b.rows} steps, ${b.divergent} divergent`);
   }
   if (firstDiv) {
     console.log(`  first divergence lf=${firstDiv.lf} ${firstDiv.tag} handler=$${firstDiv.handler.toString(16)}: `

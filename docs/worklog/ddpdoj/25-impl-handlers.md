@@ -1,5 +1,18 @@
 # W25 IMPL — THE SIX ENEMY HANDLERS = 79% of stage-1 spawns
 
+> **HONESTY CORRECTION (W25b, 2026-08-03).** Two framings in this log were
+> materially over-stated and are corrected by the W25b fix-pass
+> (`25b-impl-handlers-fix.md`); the corrected text below is marked
+> `[corrected W25b]`:
+> 1. The gate does NOT drive `runEnemyDriver` / `handlers.js`. It drives the W24
+>    movement interpreter per handler-type via a per-type DRIVER table. See F3.
+> 2. `handlers.js` is NOT wired into `runEnemyDriver` (imported only by its own
+>    test). The wiring (enemies rendering live) is a NAMED SEPARATE WAVE (W26+),
+>    not done. See F3.
+> 3. The `$267FC6` fire-gate is NOT "ported, self-contained" -- the prior body
+>    invented a `$804000` RNG read that does not exist in the listing; it is now
+>    a DEFERRED counted note. See F1.
+
 status: **IN PROGRESS.**
 wave: 25 (plan W25)   role: implementer (sole `src/` writer this wave)
 date: 2026-08-03.
@@ -41,7 +54,11 @@ Ported (work, in this wave's scope):
 - `$2417DE`/`$24179E` velocity/scroll-comp -- **W24**
 - `$24200A`/`$24202C`/`$24203E`/`$2422A2` aim -- **W20**
 - `$242190` slew -- **W20**
-- `$267FC6` fire-gate (reads `$813096`/`$813098` + ROM tables `$242576`/`$24259E`/`$242562`, returns carry) -- ported this wave (self-contained)
+- `$267FC6` fire-gate -- **[corrected W25b F1]** NOT "ported, self-contained":
+  the prior body FABRICATED a `$804000` RNG read that does not exist anywhere in
+  `$267FC6..$2680B6`. The real routine is a D2+D3 position-box test on `($2,A6)`
+  + an octagonal player-distance D4 vs `$8103E8`/`$81044A` + a stage threshold.
+  Now a DEFERRED counted note (W26/W27 firing wave); see `25b-impl-handlers-fix.md`.
 - `$242684`/`$2426A4` onscreen-bounds test -- ported this wave (self-contained)
 
 Loud-counted notes (subsystems deliberately outside W25; run every frame so they
@@ -62,9 +79,16 @@ The verifiable column this wave is **enemy sub-record POSITION `($2,A6)/($4,A6)`
 -- produced by `$2638A6` (W24, proven for one mover) now generalised to ALL six
 handler types through the real per-frame enemy-driver dispatch. The fire/death/
 effect columns are loud-named future-wave gaps (W26/W27/W28), counted by
-`UnportedLog`, never silent. The gate (`tools/w25handlergate.mjs`) drives the
-enemy driver frame-by-frame over the W17-equivalent corpus and compares position
-at 0 divergent for every alive enemy; RED = delete a handler's updateMovement.
+`UnportedLog`, never silent. **[corrected W25b F3]** The gate
+(`tools/w25handlergate.mjs`) drives the W24 MOVEMENT INTERPRETER per handler-type
+via a per-type DRIVER table (step / vel / scroll) over the W17-equivalent corpus
+and compares position at 0 divergent for every alive enemy; RED = delete a
+handler's updateMovement. It does NOT import or call `handlers.js`, and
+`handlers.js` is NOT wired into `runEnemyDriver` (imported only by its own test
+file). That wiring (enemies rendering live) is a NAMED SEPARATE WAVE (W26+, the
+firing wave), not done. So "0 divergent" verifies the movement interpreter
+across more mover types; it does NOT dynamically cover `handlers.js` (smoke-test
+coverage only).
 
 ## PLAN OF WORK
 
@@ -147,8 +171,12 @@ node tools/w25handlergate.mjs --break vel     # 57705 divergent (35.4 %) -- RED
   velocity wrapper, never the source)
 ```
 The velocity swap (dY<->dX) takes the match from 84.06 % to 35.41 % -- the gate
-DETECTS velocity corruption.  (A `--break skip <type>` that omits a handler's
-step drops that type's samples, confirming the per-type dispatch.)
+DETECTS velocity corruption.  **[corrected W25b F4]** The `--break skip <type>`
+named here was DEFECTIVE in this wave: it did `prev=row; continue` BEFORE the
+comparison, which DROPPED that type's samples rather than running without the
+step -- so it proved nothing. The W25b fix re-makes it compare-after-omit (omit
+the step, still compare position -> stale port position diverges), making it the
+honest "delete one handler's update" red the spec asks for.
 
 ### F6 -- the handlers do NOT enqueue deferred spawns
 Measured: NONE of the six handlers calls `$263678/$263684/$263690` (the deferred

@@ -28,7 +28,9 @@
 //   * the freeze gate `$8130d2` (self-contained)
 //   * the heading->sprite table lookups (ROM reads)
 //   * the fire-cooldown counters (self-contained state on the record)
-//   * the fire-gate `$267FC6` and the onscreen test `$242684` (ported here)
+//   * the onscreen test `$242684` (ported, self-contained); the fire-gate
+//     `$267FC6` is a DEFERRED counted note (W26/W27 firing wave -- the prior
+//     "ported, self-contained" claim was false: it invented a $804000 RNG read)
 //
 // ===================== WHAT NOTES (never a silent return) ===================
 //
@@ -96,20 +98,36 @@ function noteFan(u, addr, a5, kind) {
   u?.note(addr, `bullet fan $${addr.toString(16).toUpperCase()} ${kind} (W21 log/W26 pool) rec $${a5.toString(16)}`);
 }
 
-// ------------------------------------------- $267FC6: the fire gate (ported)
-// Reads $813096 (stage*4) + $813098 (rank) + four ROM tables ($242576/$24259E/
-// $242562/$24258A) and draws the RNG at $804000 to decide whether the enemy may
-// fire this frame.  Returns `{ carry }`; carry === true means "do not fire"
-// (the ROM's `bcs` arm).  Self-contained.
-function fireGate267FC6(ram, rom) {
-  const d0 = ram.u16(G.stage96);                       // $267FC6 move.w $813096
-  const ranked = ram.u16(G.rank98) !== 0;
-  const a0 = ranked ? 0x24259e : 0x242576;             // $267FCC/$267FD2/$267FDC
-  const d2 = rom.u32(a0 + d0);                         // $267FE2 move.l (A0,D0)
-  // (the second table read at $267FE6 feeds a field the fire-action consumes;
-  // for the gate verdict only D2 + the RNG draw matter.)
-  const rng = ram.u16(0x804000);                       // the RNG word
-  return { carry: i16(rng) >= i16(d2 & 0xffff), d2 };
+// -------------------------------------- $267FC6: the fire gate (DEFERRED NOTE)
+// HONEST DEMOTION (W25b F1).  The prior body FABRICATED an RNG read at $804000
+// that does NOT exist anywhere in $267FC6..$2680B6 (every instruction re-scanned
+// this fix-pass against maincpu.bin: ZERO $804000 references).  It was therefore
+// NOT "ported, self-contained" -- that claim is removed from the code and the
+// worklog.  The real routine (re-derived this fix-pass) is, in order:
+//   1. D0 = move.w $813096 (a stage word); D2 = longword at $242576/$24259E
+//      (rank-selected via $813098); D3 = longword at $242562/$24258A.
+//   2. a position-box overflow test on ($2,A6) using BOTH D2 (Y half) and D3
+//      (X half):  move.l $2(A6),D1; sub.w D2,D1; swap D2; add.w D2,D1; bcs out
+//      (Y); swap D1; sub.w D3,D1; swap D3; add.w D3,D1; bcs out (X).  Carry-out
+//      -> $267FC4 (the do-not-fire arm).  The prior port loaded only D2.
+//   3. a player-distance D4 = octagonal |dx|+|dy|/2 of ($2,A6) vs the active
+//      player(s) at $8103E8 / $81044A (each gated by $8103E6 / $810448), taking
+//      the minimum; cmp.w against the stage threshold table at $2680A2.
+//      Carry (do-not-fire) iff min-distance < threshold.  D4 is what the
+//      fire-action consumes; the prior port never produced it.
+// Translating this faithfully is W26/W27 FIRING-wave work -- the fire-action
+// that consumes D4 is itself a noted indirect `jsr (A0)` -> a `$23Dxxx` routine
+// (the per-bucket fire-action, all noted W26/W27), so a faithful translation
+// would have NO faithful consumer this wave.  Until then: a LOUD COUNTED NOTE
+// citing the address (never a silent return, never a fabricated verdict).
+// Returns `{ carry: false }` (proceed) as a placeholder so the fire-path notes
+// downstream still exercise; the verdict itself is DEFERRED, not claimed.
+function fireGate267FC6(u, ram, rom, a5) {
+  u?.note(0x267fc6, `$267FC6 fire-gate DEFERRED (W26/W27) rec $${a5.toString(16)} `
+    + `-- real routine is a D2+D3 position-box test on ($2,A6) + an octagonal `
+    + `player-distance D4 vs $8103E8/$81044A + stage threshold tbl $2680A2; NOT `
+    + `the $804000 RNG draw the prior code invented; verdict deferred`);
+  return { carry: false };
 }
 
 // ----------------------------------------------- $242684: the onscreen test
@@ -119,9 +137,9 @@ function onScreen242684(ram, a6) {
   const pos = ram.u32(a6 + 0x02);                      // $242684 move.l $2(A6)
   let y = u16((pos & 0xffff) + 0x1c00);                // $242688 addi.w #$1c00
   y = u16(y + ram.u16(G.scroll));                      // $24268C add.w $813172
-  if (i16(y) + 0x9000 > 0xffff) return true;           // $242696 bcs (Y off)
+  if (u16(y) + 0x9000 > 0xffff) return true;           // $242696 bcs (Y off)
   let x = u16((pos >>> 16) + 0x800);                   // swap; $24269A addi.w #$800
-  return i16(x) + 0x8000 > 0xffff;                     // carry = X off
+  return u16(x) + 0x8000 > 0xffff;                     // carry = X off
 }
 
 // helper: $11-style on-screen bounds test (Y first, then X; the inlined variant
@@ -129,9 +147,9 @@ function onScreen242684(ram, a6) {
 function bounds11(ram, a6) {
   const pos = ram.u32(a6 + 0x02);                      // $2688D2 move.l $2(A6)
   let y = u16(u16((pos & 0xffff) + 0xe00) + ram.u16(G.scroll)); // +$e00 + scroll
-  if (i16(y) + 0xac00 > 0xffff) return true;           // $2688E0 addi.w #$ac00
+  if (u16(y) + 0xac00 > 0xffff) return true;           // $2688E0 addi.w #$ac00
   const x = u16((pos >>> 16) + 0x600);                 // $2688E8 addi.w #$600
-  return i16(x) + 0x8400 > 0xffff;                     // $2688EC addi.w #$8400
+  return u16(x) + 0x8400 > 0xffff;                     // $2688EC addi.w #$8400
 }
 
 // ============================================================ TYPE $11 (104)
@@ -173,9 +191,11 @@ function deathSeq11(ram, rom, a5, a6, ctx) {
   noteEffect(u, 0x289004, a5, 'D0=$7 death effect');   // $268852
   // $268858..$268898: pos/anim copy into the (not-spawned) effect record + the
   // $815EA2 cap bookkeeping -- part of the noted $289004 effect gap.
-  // $26889E btst #0,$815EA5 -> $289AF4 (the secondary death effect, if the cap
-  // bit is clear).  Both the cap test and the spawn are W26-owned; noted.
-  noteEffect(u, 0x289af4, a5, 'D0=$4 secondary');      // $2688BA (ea5 bit 0)
+  // $26889E btst #0,$815EA5 -> beq skips $289AF4 when bit 0 is CLEAR, so $289AF4
+  // is called only when the cap bit is SET (W25b F6 -- the note was unconditional
+  // before; the cap test + spawn are W26-owned, the gating is faithful now).
+  if ((ram.u8(0x815ea5) & 1) !== 0)                    // $26889E btst #0,$815EA5 (set -> call)
+    noteEffect(u, 0x289af4, a5, 'D0=$4 secondary');    // $2688BA (ea5 bit 0 SET)
   noteEffect(u, 0x28c25a, a5, 'death burst');          // $2688C0
   freeEnemy(ram, a5);                                  // $2688C6 jmp $263762
 }
@@ -227,7 +247,7 @@ function fireFan11(ram, rom, a5, a6, ctx) {
     d0 = u16(0x30 - ram.u16(G.ba) - 6);               // $268AB0/B2/B8
   }
   ram.setU8(a5 + R.fireCtr, d0 & 0xff);               // $268ABA
-  if (fireGate267FC6(ram, rom).carry) {                // $268ABE jsr / $268AC2 bcs
+  if (fireGate267FC6(u, ram, rom, a5).carry) {         // $268ABE jsr / $268AC2 bcs
     noteFireAction(u, a5, ram.u32(a5 + R.fireAct2E)); return;
   }
   if (ram.u16(G.stage) === 1 && ram.u16(G.midbossD8) !== 0) { // $268AC4/AD0/AD6
@@ -251,14 +271,14 @@ function handler10(ram, rom, a5, ctx) {
   // a +$32 draw-flag gate ($7600 compare) then += $a00 + $7c00.
   const pos = ram.u32(a6 + 0x02);                      // $268238 move.l $2(A6)
   let y = u16(u16((pos & 0xffff) + 0x1200) + ram.u16(G.scroll)); // $26823C/$268240
-  let off = i16(y) + 0xa400 > 0xffff;                  // $268246 addi.w #$a400
+  let off = u16(y) + 0xa400 > 0xffff;                  // $268246 addi.w #$a400
   if (!off) {                                          // $26824A bcs $268268
     let x = u16((pos >>> 16));                         // $26824C swap
     if (ram.u8(a5 + 0x32) !== 0 && i16(x) < 0x7600) {  // $26824E/$268254
       ram.setU8(a5 + 0x32, 0);                         // $26825A clr.b $32(A5)
     }
     x = u16(x + 0xa00);                                // $26825E addi.w #$a00
-    off = i16(x) + 0x7c00 > 0xffff;                    // $268262 addi.w #$7c00
+    off = u16(x) + 0x7c00 > 0xffff;                    // $268262 addi.w #$7c00
   }
   if (off) {                                           // $268266 bcc $268276
     if (ram.u16(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; } // $26826E
@@ -287,6 +307,8 @@ function handler10(ram, rom, a5, ctx) {
   u?.note(0x268232, `$10 fire/state machine $2682F8..$268490 (W26/W27 effects+fans) rec $${a5.toString(16)}`);
 }
 // $2681CE: SHARED DEATH SEQUENCE for $10 (the prologue).  Effects noted, then free.
+// Unlike $11's death seq, the $289AF4 here ($26821E) is UNCONDITIONAL in the ROM
+// (no preceding btst in $2681CE..$26822A), so the note is not gated (W25b F6).
 function deathSeq10(ram, rom, a5, a6, ctx) {
   const u = ctx.unported;
   noteEffect(u, 0x28615e, a5, 'D0=$10 explosion');
@@ -396,11 +418,11 @@ function handler8B(ram, rom, a5, ctx) {
   //  + $c000.  Off-screen-after-on-screen -> free.
   const pos = ram.u32(a6 + 0x02);
   let x = u16((pos >>> 16) + 0x400);                   // $27688C/$276890
-  let off = i16(x) + 0x8c00 > 0xffff;                  // $276894 addi.w #$8c00
+  let off = u16(x) + 0x8c00 > 0xffff;                  // $276894 addi.w #$8c00
   if (!off) {                                          // $276898 bcs $2768B4
     let sc = u16(ram.u16(G.scroll) - 0xf800);          // $27689A/$2768A0 subi.w
     let y = u16(u16((pos & 0xffff) + 0x400) + sc);     // $2768A4/$2768A8/$2768AC
-    off = i16(y) + 0xc000 > 0xffff;                    // $2768AE addi.w #$c000
+    off = u16(y) + 0xc000 > 0xffff;                    // $2768AE addi.w #$c000
   }
   if (off) {                                           // $2768B2 bcc $2768C2
     if (ram.u16(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; } // jmp $263762
