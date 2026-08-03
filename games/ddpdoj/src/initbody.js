@@ -32,6 +32,7 @@
 import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
+import { readMovementInit } from './movement.js';
 
 // ----------------------------------------------------------- the record layout
 // A5 = enemy record, A6 = sub-record (= ($6,A5)).  The offsets the init bodies
@@ -83,17 +84,17 @@ export function freeEnemy(ram, a5) {
 }
 
 // -------------------------------------------------- $263808: initial position
-// Reads resource #$1F (the movement bytes) through the pointer at ($12,A5) to
-// set the spawn position (+$02/+$04) and optionally speed/heading overrides.
-// Resource #$1F is resolved by $246CAC (the IGS027A protection) -- NOT
-// portable this wave (W24 owns the movement interpreter $2638A6 and the
-// resource).  Position is NOT a done-when field, so this is a noted no-op: the
-// sub-record keeps whatever position the pool held.  The NOTE is counted so a
-// later wave that needs position sees every call.
-export function readInitPosition(ram, a5, unported) {
-  unported?.note(0x263808, `the movement-script initial-position reader $263808 `
-    + `(resource #$1F via the IGS027A protection $246CAC) -- W24; position `
-    + `(+$02/+$04) is not a done-when field`);
+// The movement-script INITIAL reader, run once at spawn from every init body.
+// Reads the spawn X,Y from the 4-byte stream prefix, consumes any run of
+// SPEED/ESCAPE opcodes, stops at the FIRST HEAD (storing it as the heading),
+// applies the spawn Y-odometer adjust, zeroes the frame counter, and sets the
+// velocity-dirty bit.  The stream pointer at ($12,A5) is resolved by the spawn
+// walker (`resolveMovementPtr` = resource base + aux[idx], recon §2).  When the
+// pointer is 0 (a script-less enemy) the reader is a no-op ($26380C beq).
+// Ported in src/movement.js (W24); the speed/heading/anim/flags overrides W23
+// deferred close through this call.
+export function readInitPosition(ram, rom, a5, unported) {
+  readMovementInit(ram, rom, a5, unported);
 }
 
 // --------------------------------------------------------- $242E24: rank adjust
@@ -140,7 +141,7 @@ function damageFirstFamily(ram, rom, a5, a6, unported, p) {
   // +$2A holds the bucket emitter low bits AND the default palette byte; this
   // makes the sub-record palette track the record's draw bucket.
   ram.setU8(a6 + S.palette, ram.u8(a5 + 0x2a));        // move.b ($2a,A5),($1d,A6)
-  readInitPosition(ram, a5, unported);                  // jsr $263808 (W24 no-op)
+  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24 no-op)
   // the heading-indexed sprite + bucket tables $269E48 / $269EC8.
   const d1q = (ram.u8(a6 + S.heading) & 0x3e) << 1;
   const sp = headingLongAddr(rom, 0x269E48, ram.u8(a6 + S.heading));
@@ -179,7 +180,7 @@ function init11(ram, rom, a5, a6, unported) {
     let e = 0x30 - (ram.u16(G.ba) & 0xff) - 6;         // $268772 sub.w $8130BA; subq #6
     ram.setU8(a5 + R.rec28, e & 0xff);                 // $26877A move.b D0,($28,A5)
   }
-  readInitPosition(ram, a5, unported);                 // $26877E jsr $263808 (W24)
+  readInitPosition(ram, rom, a5, unported);                 // $26877E jsr $263808 (W24)
   // $268784: stage-2 sets sub +$1F := 2 (the bucket-table index).
   if (ram.u16(G.stage) === 2) ram.setU8(a6 + S.f1f, 2);  // move.b #$2,($1f,A6)
   // $268796: bucket emitter pair from $267F70 indexed by (sub +$1F)<<3.
@@ -221,7 +222,7 @@ function init10(ram, rom, a5, a6, unported) {
   // $2680EE: D0 = $8130BC >> 4; sub.b D0,($19,A5).
   d0 = (ram.u16(G.bc) & 0xff) >> 4;
   ram.setU8(a5 + 0x19, (ram.u8(a5 + 0x19) - d0) & 0xff);
-  readInitPosition(ram, a5, unported);                 // $2680FA jsr $263808 (W24)
+  readInitPosition(ram, rom, a5, unported);                 // $2680FA jsr $263808 (W24)
   // $268100: position-X >= $7600 -> record +$32 := 1 (a draw flag, not stats).
   if (i16(ram.u16(a6 + S.posX)) >= 0x7600) ram.setU8(a5 + R.rec32, 1);
   // $26810E: stage-2 sets sub +$1F := 2.
@@ -353,7 +354,7 @@ BODY.set(0x2680B8, init10);
 BODY.set(0x2766AE, (ram, rom, a5, a6, unported) => {
   loadSubProto(ram, rom, a5, a6, 0x2766E6);            // jsr $2637A2
   loadRecordProto(ram, rom, a5, 0x2766E0, 0x02);       // moveq #$2,D0; jsr $26377A
-  readInitPosition(ram, a5, unported);                  // jsr $263808 (W24)
+  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   // $2766CE: if sub anim (+$1E) != 0, clear it and set record +$1A := $40.
   if (ram.u8(a6 + S.anim) !== 0) {
     ram.setU8(a6 + S.anim, 0);                          // clr.b ($1e,A6)
@@ -366,7 +367,7 @@ BODY.set(0x2766AE, (ram, rom, a5, a6, unported) => {
 BODY.set(0x276824, (ram, rom, a5, a6, unported) => {
   loadSubProto(ram, rom, a5, a6, 0x276862);            // jsr $2637A2
   loadRecordProto(ram, rom, a5, 0x27685E, 0x01);       // moveq #$1,D0; jsr $26377A
-  readInitPosition(ram, a5, unported);                  // jsr $263808 (W24)
+  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   // $276844: stage-1 && clock < 4 -> sub flags := $8000 (mark hidden).
   if (ram.u16(G.stage) === 1 && i16(ram.u16(G.scrollClock)) < 4) {
     ram.setU16(a6, 0x8000);                             // move.w #$8000,(A6)
@@ -395,7 +396,7 @@ BODY.set(0x296FB0, (ram, rom, a5, a6, unported) => {
   ram.setU16(a5 + R.rec1A, 0);                          // move.w #$0,($1a,A5)
   ram.setU16(a5 + R.rec1C, 0x0120);                     // move.w #$120,($1c,A5)
   ram.setU16(a5 + R.rec1E, 0);                          // move.w #$0,($1e,A5)
-  readInitPosition(ram, a5, unported);                  // jsr $263808 (W24)
+  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
 });
 
 // --- type $31 ($269754): boss-approach prop.  Loaders, fixed position, a
@@ -423,7 +424,7 @@ BODY.set(0x273802, (ram, rom, a5, a6, unported) => {
   loadSubProto(ram, rom, a5, a6, 0x27394E);            // jsr $2637A2
   ram.setU32(a5 + R.rec44, 0x27394E + 28);             // move.l A0,($44,A5) (A0 past sub)
   loadRecordProto(ram, rom, a5, 0x27392C, 0x10);       // moveq #$10,D0; jsr $26377A
-  readInitPosition(ram, a5, unported);                  // jsr $263808 (W24)
+  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   if (ram.u16(G.rank98) !== 0) {                        // $273826 tst.w $813098
     ram.setU16(a6 + S.hp, 0x1200);                      // move.w #$1200,($18,A6)
     ram.setU16(a6 + S.f38, 0x1200);                     // move.w #$1200,($38,A6)
@@ -458,7 +459,7 @@ BODY.set(0x27462A, (ram, rom, a5, a6, unported) => {
   loadSubProto(ram, rom, a5, a6, 0x274770);            // jsr $2637A2
   ram.setU32(a5 + R.rec44, 0x274770 + 28);
   loadRecordProto(ram, rom, a5, 0x274754, 0x0d);       // moveq #$d,D0; jsr $26377A
-  readInitPosition(ram, a5, unported);                  // jsr $263808 (W24)
+  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   unported?.note(0x24200a, `$24200A aim in type $82 init -- bucket tracks W24 pos`);
   let d1 = ram.u8(a6 + S.heading);
   ram.setU8(a5 + R.rec2D, d1);
@@ -493,7 +494,7 @@ BODY.set(0x27581A, (ram, rom, a5, a6, unported) => {
   loadSubProto(ram, rom, a5, a6, 0x2758B0);            // jsr $2637A2
   ram.setU32(a5 + R.rec44, 0x2758B0 + 28);
   loadRecordProto(ram, rom, a5, 0x27589A, 0x0a);       // moveq #$a,D0; jsr $26377A
-  readInitPosition(ram, a5, unported);                  // jsr $263808 (W24)
+  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   unported?.note(0x24200a, `$24200A aim in type $85 init -- bucket tracks W24 pos`);
   let d1 = ram.u8(a6 + S.heading);
   ram.setU8(a5 + R.rec29, d1);                          // move.b D1,($29,A5)
@@ -514,7 +515,7 @@ BODY.set(0x275DA0, (ram, rom, a5, a6, unported) => {
   loadSubProto(ram, rom, a5, a6, 0x275ECC);            // jsr $2637A2
   ram.setU32(a5 + R.rec44, 0x275ECC + 28);
   loadRecordProto(ram, rom, a5, 0x275EAC, 0x0f);       // moveq #$f,D0; jsr $26377A
-  readInitPosition(ram, a5, unported);                  // jsr $263808 (W24)
+  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   unported?.note(0x24200a, `$24200A aim in type $88 init -- bucket tracks W24 pos`);
   let d1 = ram.u8(a6 + S.heading);
   ram.setU8(a5 + R.rec29, d1);
@@ -557,7 +558,7 @@ BODY.set(0x275DA0, (ram, rom, a5, a6, unported) => {
 BODY.set(0x277278, (ram, rom, a5, a6, unported) => {
   loadSubProto(ram, rom, a5, a6, 0x277322);            // jsr $2637A2
   loadRecordProto(ram, rom, a5, 0x277316, 0x05);       // moveq #$5,D0; jsr $26377A
-  readInitPosition(ram, a5, unported);                  // jsr $263808 (W24)
+  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   // $277298: stage-0 (==0 here is stage 1, since $813092 stage-1 stores 1) and
   // clock >= $156 -> sub HP +$18 := $280.  (The ROM tests stage==0 which is the
   // attract/track; in stage 1 $813092==1 so this arm is not taken.)
@@ -588,7 +589,7 @@ BODY.set(0x26B484, (ram, rom, a5, a6, unported) => {
   loadSubProto(ram, rom, a5, a6, 0x26B50E);            // jsr $2637A2
   ram.setU32(a5 + R.rec44, 0x26B50E + 28 * 17);        // move.l A0,($44,A5)
   loadRecordProto(ram, rom, a5, 0x26B4FA, 0x09);       // move.w #$9,D0; jsr $26377A
-  readInitPosition(ram, a5, unported);                  // jsr $263808 (W24)
+  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   ram.setU16(a6 + S.posX, u16(i16(ram.u16(a6 + S.posX)) + 0x0a40));  // addi.w #$a40,($2,A6)
   unported?.note(0x26b286, `midboss bespoke $26B286 (part setup) -- not a stat`);
   unported?.note(0x26b304, `midboss bespoke $26B304 (part setup) -- not a stat`);

@@ -105,12 +105,17 @@ export function stageTableEntry(rom, stage) {
  * queue.  The resource #$1F install (`$246CAC`) is noted, not ported (W24).
  * The port sets LIVE_CURSOR = script and AUX_BASE = aux, mirroring $26339C/$26339E.
  */
-export function installStage(ram, rom, stage, unported) {
+export function installStage(ram, rom, stage, unported, prot) {
   const e = stageTableEntry(rom, stage);
   ram.setU32(SPAWN.LIVE_CURSOR, e.script);          // $26339c move.l (A0)+,(A4)
   ram.setU32(SPAWN.AUX_BASE, e.aux);                // $26339e move.l (A0)+,($4,A4)
   ram.setU16(SPAWN.DEFQ_COUNT, 0);                  // $2633b6 clr.w $815ea8
-  unported?.note(0x246d04, `resource #$1F install (res $${e.res.toString(16).toUpperCase()}) -- the movement-script data is W24`);
+  // $2633A2: `move.l res,-(A7); move.l #$1F,-(A7); jsr $246D04` installs the
+  // resource base into protection slot #$1F.  resolveMovementPtr reads res from
+  // the stage table directly (the latch is a transparent indirection for THIS
+  // resource -- the bytes are plain ROM, recon §2); `prot?.setSlot` keeps the
+  // simulated $500000 latch faithful to the board for any other reader.
+  prot?.setSlot(0x1f, e.res);                       // $246D04($1F, res)
 }
 
 // ----------------------------------------------------------------- the walker
@@ -157,21 +162,19 @@ export function walkScriptLoop(ram, rom, onDispatch) {
 /**
  * `$2633FA..$26341E` -- resolve the movement-script pointer for a record.  The
  * 12-bit data idx indexes the aux table (a word offset into resource #$1F);
- * `$246CAC` looks up the resource base (W24, noted) and `$26341E adda.w D7,A1`
- * adds the offset.  The pointer is stored at enemy+$12 regardless; its value
- * is a sentinel until W24, which is fine because nothing reads +$12 this wave.
- * @returns {number} a movement-script pointer (sentinel if the resource is
- *   unported; the real address once W24 resolves resource #$1F)
+ * `$263408 readSlot($1F)` is the resource base (installed by $2633A2) and
+ * `$26341E adda.w D7,A1` adds the offset.  The IGS027A latch is a transparent
+ * indirection for THIS resource (the bytes are plain ROM, recon §2), so the
+ * port reads res from the stage table the way installStage does -- the VALUE is
+ * identical to `readSlot($1F)` and no new protection work is needed.
+ * @returns {number} the movement-script pointer (resource base + aux[idx])
  */
 export function resolveMovementPtr(ram, rom, recCursor, unported) {
   const auxBase = ram.u32(SPAWN.AUX_BASE);          // $2633fa movea.l ($4,A3),A1
   const idx = rom.u16(recCursor + REC.idx) & 0x0fff;// $2633f6 andi.w #$fff,D7
   const off = rom.u16(auxBase + idx * 2);           // $2633fe add.w D7,D7 / $263400 (A1,D7.w)
-  unported?.note(0x246cac, `resource #$1F lookup for movement-script offset `
-    + `$${off.toString(16).toUpperCase()} (idx ${idx}) -- W24`);
-  // resource base unknown until W24; return the offset as a placeholder pointer.
-  // The spawn still COUNTS; nothing in this wave reads enemy+$12.
-  return off;
+  const res = stageTableEntry(rom, stageIndex(ram)).res; // $263408 readSlot($1F)
+  return (res + off) >>> 0;                         // $26341e adda.w D7,A1
 }
 
 /**

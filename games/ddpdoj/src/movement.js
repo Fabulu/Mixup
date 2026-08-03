@@ -102,9 +102,13 @@ export function applyVelocity(ram, tables, a5) {
  */
 export function scrollCompensate(ram, a5) {
   if (ram.u16(GL.freeze) !== 0) return;                  // $24179E / $2417A4 bne
-  const lo = ram.u16(GL.scrollB03C + 2);                 // $2417A8 move.l / $2417AE swap
+  // `move.l $80b03c,D0 / swap D0 / add.w D0,($2,A6)`: swap exchanges the 16-bit
+  // halves, then `add.w` takes the LOW half of the swapped register = the
+  // ORIGINAL HIGH word at $80b03c.  (The draft read $80b03e -- the low word --
+  // which inverts the swap.  Verified against the listing.)
+  const hi = ram.u16(GL.scrollB03C);                     // $2417A8 move.l / $2417AE swap -> high word
   const a6 = ram.u32(a5 + MOVER.subRec);
-  ram.setU16(a6 + SUB.posX, u16(i16(ram.u16(a6 + SUB.posX)) + i16(lo))); // $2417B0 add.w D0,($2,A6)
+  ram.setU16(a6 + SUB.posX, u16(i16(ram.u16(a6 + SUB.posX)) + i16(hi))); // $2417B0 add.w D0,($2,A6)
 }
 
 // =============================================== $2638A6 the per-frame step ===
@@ -160,11 +164,15 @@ export function stepMovement(ram, rom, a5, tables, unported) {
       a0 += 1;
     } else {
       a0 = runEscape(ram, rom, a5, a6, op, a0, unported); // $263932..$263944 dispatch
+      // EXIT (escape #10) longjumps via `addq #8,A7; jmp $263762`: it frees the
+      // record and aborts the interpreter.  runEscape already freed it and returns
+      // the sentinel -- the cursor store / dirty set below MUST NOT run (the record
+      // is dead; storing a Symbol into a u32 would throw anyway).
+      if (a0 === MOVE_EXIT) return true;
     }
     ram.setU32(a5 + MOVER.movement, a0);                 // $26391A move.l A0,($12,A5)
     ram.bset8(a5 + MOVER.flags, 5);                      // $26391E bset #5,($2,A5)
     // $263924 bra $2638C0  -- loop back, read the next opcode.
-    // EXIT (escape #10) longjumps out via $263762; runEscape returns EXIT_SENTINEL.
   }
 }
 
@@ -194,9 +202,12 @@ export const MOVE_EXIT = Symbol('move-exit');
 const ESCAPE_FNS = [
   // #0  LOOP-BACK `$263978`: A0 -= 2*read_byte.  UNUSED by any stage-1 stream
   //     (decoded for completeness; a later stage that emits one ports verbatim).
+  //     `suba.w` sign-extends the WORD operand, but 2*off <= 510 < $8000 so the
+  //     extension is a no-op; the result is the full 32-bit address (NOT wrapped
+  //     to 16 bits -- the cursor is a ROM address like $231860).
   (ram, rom, a5, a6, a0) => {
     const off = rom.u8(a0); a0 += 1;                     // $26397A move.b (A0)+,D0
-    return u16(a0 - 2 * off);                            // $26397C add.w D0,D0 / $26397E suba.w D0,A0
+    return (a0 - 2 * off) >>> 0;                         // $26397C add.w D0,D0 / $26397E suba.w D0,A0
   },
   // #1  SET_SUBANIM `$263982`: next byte -> sub-record +$1F.
   (ram, rom, a5, a6, a0) => {
@@ -306,18 +317,21 @@ export function readMovementInit(ram, rom, a5, unported) {
   if (a0 === 0) return;                                  // $26380C beq $263754
   const a6 = ram.u32(a5 + MOVER.subRec);
   if ((ram.u8(a5 + MOVER.flags) & 0x40) !== 0) {        // $263812 btst #6,($2,A5)
-    // X,Y from the controller (+$48), Y += scroll.
+    // X,Y from the controller (+$48), Y += scroll.  `move.l ($48,A5),($2,A6)`
+    // is a LONG copy: high word -> +$02 (X), low word -> +$04 (Y), THEN Y+=scroll.
     const xy = ram.u32(a5 + MOVER.ctrl48);               // $26381C move.l ($48,A5),($2,A6)
-    ram.setU16(a6 + SUB.posX, xy >>> 16);
+    ram.setU16(a6 + SUB.posX, xy >>> 16);                //   high word -> X
+    ram.setU16(a6 + SUB.posY, xy & 0xffff);              //   low word  -> Y (was missing)
     ram.setU16(a6 + SUB.posY, u16(i16(ram.u16(a6 + SUB.posY)) + i16(ram.u16(GL.scroll172)))); // $263822/$263828
   } else {
     ram.setU16(a6 + SUB.posX, rom.u16(a0));              // $263830/$263832 move.w (A0)+,($2,A6)
     ram.setU16(a6 + SUB.posY, rom.u16(a0 + 2));          // $263836 move.w (A0)+,($4,A6)
     a0 += 4;
   }
-  // `$26383A cmpi.b #$80,($4,A6) / bcs / bset #7`: if the Y LOW byte is >= $80,
-  // set its bit 7.  (For every stage-1 spawn the Y low byte is $00, so this is a
-  // skip -- ported verbatim, not smoothed.)
+  // `$26383A cmpi.b #$80,($4,A6) / bcs / bset #7`: `cmpi.b` on the byte at
+  // ($4,A6) -- the HIGH byte of the Y word (big-endian).  If it is >= $80, set
+  // bit 7 of that same (high) byte.  (For every stage-1 spawn the Y high byte is
+  // $04/$18/$24, so this is a skip -- ported verbatim, not smoothed.)
   if (ram.u8(a6 + SUB.posY) >= 0x80) ram.bset8(a6 + SUB.posY, 7); // $26383A..$263842
   // The opcode loop: consume SPEED/ESCAPE until the first HEAD.
   for (;;) {
@@ -342,8 +356,7 @@ export function readMovementInit(ram, rom, a5, unported) {
   d0 = ((d0 >>> 7) | (d0 << 9)) & 0xffff;               // $263886 ror.w #7,D0
   ram.setU16(a6 + SUB.posY, u16(i16(ram.u16(a6 + SUB.posY)) + i16(d0))); // $263888 add.w D0,($4,A6)
   ram.setU16(a6 + SUB.posY, u16(i16(ram.u16(a6 + SUB.posY)) - 0x800));    // $26388C subi.w #$800
-  ram.setU8(a5 + MOVER.counter, 0);                      // $263894 move.w D1,($10,A5) (D1=0)
-  ram.setU16(a5 + MOVER.counter, 0);                     //   (word clear, as the ROM writes a word)
+  ram.setU16(a5 + MOVER.counter, 0);                     // $263892 moveq #0,D1 / $263894 move.w D1,($10,A5)
   ram.bset8(a5 + MOVER.flags, 5);                       // $263898 bset #5,($2,A5)
 }
 

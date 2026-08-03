@@ -284,6 +284,13 @@ SHOT_WINDOWS.extend([
                        "$FFFF terminator ($230C6C..$231706)"),
     (0x23170C, 0x0150, "WAVE 22: the STAGE-1 aux table -- per-record word "
                        "offsets into resource #$1F ($23170C, max idx 162)"),
+    # WAVE 24 -- resource #$1F, the movement byte-code streams.  $2633A2 installs
+    # the base into protection slot #$1F and $26341E `adda.w aux[idx],A1` resolves
+    # each stream pointer = $231852 + aux[idx].  163 streams, 3454 B total
+    # ($231852..$2325D0, measured by w24streams.py).  Stages 2..5 are deliberately
+    # NOT exported: a read of another stage's stream stays a LOUD THROW BY ADDRESS.
+    (0x231852, 0x0D7E, "WAVE 24: STAGE-1 resource #$1F -- the 163 movement "
+                       "byte-code streams ($231852..$2325D0, 3454 B)"),
 ])
 
 # WAVE 23 -- ENEMY STATS BECOME DATA.  The two prototype loaders `$2637A2`/

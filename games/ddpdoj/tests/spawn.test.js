@@ -216,16 +216,16 @@ test('walkScriptLoop SKIPS a past-due record (the blt path) without dispatch', (
   assert.equal(ram.u32(SPAWN.LIVE_CURSOR), SCRIPT + 8, 'rec0 advanced past');
 });
 
-// ---- 3. the movement-script pointer resolver (resource noted) --------------
-test('resolveMovementPtr reads the aux table offset and notes resource #$1F', () => {
+// ---- 3. the movement-script pointer resolver (resource #$1F resolved) -------
+test('resolveMovementPtr resolves the stream ptr = resource base + aux[idx]', () => {
   const R = synthRom();
   const ram = new Ram();
   installStage(ram, R, 0, { note() {} });
-  let noted = null;
-  const unported = { note(a, w) { noted = [a, w]; } };
-  const ptr = resolveMovementPtr(ram, R, SCRIPT + 0, unported);   // idx 1
-  assert.equal(ptr, 0x00aa, 'the aux[1] offset');
-  assert.ok(noted && noted[0] === 0x246cac, 'resource lookup noted');
+  // resource #$1F is now resolved (W24): ptr = stage's res ($231852) + aux[idx].
+  // $246CAC is no longer a noted gap -- the latch is a transparent indirection
+  // for this resource (recon §2) and the port reads res from the stage table.
+  const ptr = resolveMovementPtr(ram, R, SCRIPT + 0, { note() {} });   // idx 1
+  assert.equal(ptr, RES + 0x00aa, 'res($231852) + aux[1]($00aa)');
 });
 
 // ---- 4. the sub-record allocator $2635B2 ------------------------------------
