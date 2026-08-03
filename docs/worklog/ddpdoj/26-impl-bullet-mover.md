@@ -146,3 +146,59 @@ Kinds 7/12/13 therefore get a direction-dependent spawn offset; 3/4/5/19 do not.
    frame-F after (slot / type&$3F / speed / dir / posA / posB). RED: a mover
    mutant (stored-not-recomputed velocity, broken kill, broken continuation).
 5. Wire the six handlers' fire paths to the generators + pool.
+
+## THE MEASURED RESULT (the done-when)
+
+`tools/oracle/w26mover.lua` taps the bullet driver `$281D9A` at `$281DA6`
+(`clr.w $81B40C`, one insn before `bsr $281DDE`) for BEFORE and `$281DCE`
+(`move.w D0,$80AFE0`, four insns after the mover returns) for AFTER, dumping the
+whole pool both times. The logic frame is counted by the `$803940` semaphore
+(W21's mechanism) -- NOT by the mover, which does not run every frame and tying
+`lf` to it freezes the input script and the game never starts.
+
+`tools/w26movergate.mjs` seeds the port from BEFORE, runs `runMover` once,
+compares to AFTER (slot / type&$3F / speed / dir / posA / posB / velA / velB).
+A 2200-frame PLAYING capture (`w26-mover-val.tsv`, lf2026-2200 of bullets):
+
+```
+RESULT divergent=0 of 1254 slot-steps  -> 100.0000 %   (160 before/after pairs)
+  RED velocity-stored-not-recomputed   divergent=20/1254   (dispatch-frame recompute)
+  RED no-plain-move                    divergent=1233/1254 (plain-path integration)
+  RED break-kill                       divergent=5/1254    (the OOB bounds kill)
+  (window-constant NOT ATTEMPTED: invisible while live<70 -- the W21 gate's blind spot)
+```
+
+The 21 dispatch-frame slots stored velA/velB=0 (leftover from the cleared slot);
+the port recomputes the real vector (e.g. `(-$DF,$0)`), so comparing the stored
+velocity is what makes the recompute red on its OWN frame (a single-step
+before/after gate cannot otherwise see a `+$1E`-only change).
+
+## THE FIRE WIRING
+
+`fireBullet` (src/handlers.js) is the wire: it calls `fire()` (W21) with the
+handler's D0-D5 and spawns into the live pool the mover drives.  The six
+handlers' fire is reached two ways; only one is wirable without W27:
+* DIRECT generator calls (re-derived this wave): `$82` calls `$281708`(x4)/
+  `$281764`(x2)/`$281484`; `$05`/`$07` call `$2814AC`.  Each sits inside a fire
+  STATE MACHINE (HP gate, `$8130CA` gate, aim256 -> stored aim byte at `+$30` ->
+  the fan).  The fan reads D1 from that stored aim byte, so wiring it alone would
+  fire every bullet the wrong way.  The aim+gate machine is the W27 firing wave;
+  the direct fans stay `noteFan` here and `fireBullet` is provided for W27.
+* INDIRECT `jsr (A0)` via `+$2A`/`+$2E` -> a `$23Dxxx` fire-action (the per-bucket
+  body that sets D0-D5).  The `$23Dxxx` bodies are W27; noted, not wirable.
+
+So the pool, generators, mover, and the `fireBullet` wire are all in place; the
+per-handler fire BODIES (aim + gates + `$23Dxxx`) are W27 and the per-frame
+handler+mover call is W29.  `fireGate267FC6` stays DEMOTED (the W25b note -- its
+`$804000` RNG was fabricated; a faithful port needs the D2+D3 box test + D4
+player-distance, which belongs with the W27 firing wave).
+
+## NOT PORTED (loud named throws, by address)
+
+* 32 of 39 behaviour initialisers + continuations (the W27 family
+  `$282104..$283BAF`).  `runInitialiser`/`runContinuation` throw carrying the
+  resolved address.  Stage 1 spawns only the seven ported kinds.
+* the bit-7 RECOMPUTE path and the bit-14 TRANSFORM path are transcribed verbatim
+  but NOT exercised by stage 1 (no bit-7/bit-14 kind appears) -> UNVALIDATED.
+* `$27F8F8` (kill-side effect spawn into the impact pool `$8171BE`) is a counted
+  note -- it does not touch the bullet pool.

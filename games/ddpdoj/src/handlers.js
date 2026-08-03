@@ -54,6 +54,7 @@ import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
 import { freeEnemy } from './initbody.js';
 import { stepMovement, scrollCompensate, applyVelocity } from './movement.js';
+import { fire as fireBulletFan } from './bullets.js';
 
 // ----------------------------------------------------------- record offsets
 // A5 = enemy record, A6 = sub-record (= +$6,A5).  Named once so each handler
@@ -96,6 +97,48 @@ function noteFireAction(u, a5, ptrVal) {
 }
 function noteFan(u, addr, a5, kind) {
   u?.note(addr, `bullet fan $${addr.toString(16).toUpperCase()} ${kind} (W21 log/W26 pool) rec $${a5.toString(16)}`);
+}
+
+// ----------------------------------------------------------- the fire WIRING
+//
+// The bullet POOL and the 19 GENERATORS are ported (W21) and the MOVER that
+// drives the pool is ported (W26, src/mover.js).  The missing connection is the
+// call from a handler's fire point into `fire()`.  `fireBullet` IS that wire:
+// it runs a generator with the handler's D0-D5 and spawns into the live pool the
+// mover then drives.  It is exported so W27 (the fire-action bodies $23Dxxx) and
+// W29 (the frame-loop integration that calls `runHandler` + `runMover` per frame)
+// can close the loop without re-deriving the pool context.
+//
+// WHAT IS AND IS NOT WIRED THIS WAVE.  The six handlers' fire is reached two
+// ways, and only ONE is wirable without W27:
+//
+//   * DIRECT generator calls (re-derived from maincpu.bin this wave):
+//       $82 `$2747C6`:  jsr $281708 (x4), jsr $281764 (x2), jsr $281484
+//       $05/$07 `$269B3E`: jsr $2814AC
+//     These set D0-D5 IN-HANDLER and call the generator straight -- no indirect
+//     fire-action.  But each sits inside a fire STATE MACHINE (the $82 machine
+//     $2747FA..: HP gate, $8130CA gate, aim256 $2422A2 -> stores the aim byte at
+//     +$30/+-$31, THEN the fan).  The fan reads D1 from that stored aim byte, so
+//     wiring the fan alone (with a stale/unset aim) would fire every bullet the
+//     WRONG WAY.  The aim+gate machine is the W27 FIRING wave, so the direct
+//     fans are left as `noteFan` here and `fireBullet` is provided for W27.
+//
+//   * INDIRECT fire-action `jsr (A0)` through +$2A/+-$2E -> a $23Dxxx routine
+//     that sets D0-D5 and calls the $281xxx fan.  The $23Dxxx BODIES are W27
+//     (every one is a per-bucket fire-action, ~1.7 KB).  Noted via
+//     `noteFireAction`; not wirable this wave.
+//
+// So: the pool, the generators, the mover and the wire `fireBullet` are all in
+// place; the per-handler fire BODIES (aim + gates + $23Dxxx) are the W27 firing
+// wave, and the per-frame call of handler+mover together is W29.  Nothing here
+// is silently faked: every fire site names its ROM address and its blocker.
+/**
+ * Wire a generator fire into the live bullet pool.  `regs` is the D0-D5/A5 the
+ * handler's fire point set up; `ctx.ram`/`ctx.rom` carry the pool + cartridge.
+ * @returns the array of per-core results (slot/declined/dropped), in spawn order.
+ */
+export function fireBullet(ctx, entry, regs) {
+  return fireBulletFan(ctx, entry, regs);
 }
 
 // -------------------------------------- $267FC6: the fire gate (DEFERRED NOTE)

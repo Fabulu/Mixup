@@ -287,6 +287,7 @@ function bit5Transform(ctx, base) {
  */
 function boundsKill(ctx, base) {
   const { ram } = ctx;
+  if (ctx.mut === 'break-kill') return false;       // RED: never free OOB
   const posB = ram.u16(base + REC.posB);
   if (posB + BOUNDS.posBkill > 0xffff) { freeSlot(ctx, base); return true; }  // $281E8C bcs
   const posA = ram.u16(base + REC.posA);
