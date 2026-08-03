@@ -727,6 +727,7 @@ function clearStageAdvanceZp(state) {
   state.spawn.z6A = 0; state.spawn.z6B = 0;          // $6A:$6B (wave cursor)
   state.spawn.z6C = 0; state.spawn.z6D = 0;          // $6C-$6F
   state.spawn.z6E = 0; state.spawn.z6F = 0;
+  state.spawn.z68 = 0;                             // $68 (the warp-rain counter)
 }
 
 /**

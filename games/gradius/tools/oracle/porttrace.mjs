@@ -632,6 +632,11 @@ export const POKEABLE = {
   //        recon's own independent run of the same intervention.
   0x42: (s, v) => { s.zp.meter = v; },      // $42 meter,       $894B INC $42
   0x46: (s, v) => { s.zp.shield = v; },     // $46 shield,      $899D STA $46
+  // $39, the WARP FLAG. Poked ONLY by the `warp` scenario (W27 done-when 2) to
+  // force $9904's warp fork ($39 != 0) on the endchain's timeout-kill run, which
+  // naturally leaves $39 at 0. A both-sides poke per docs/knowledge/09: it
+  // validates the warp CODE, not the four-hatch-kill route's reachability.
+  0x39: (s, v) => { s.zp39 = v; },          // $39 warp flag,   $AF7E/$B978 INC $39
   // $1F, the sprite-0 enable. NOT a power-up -- the second reason an address is
   // allowed here, and it is the same reason: the value is one the CARTRIDGE
   // produces and a button script cannot reach FROM ALIGN 400. $9C38

@@ -423,13 +423,12 @@ function lateSpawner(state, rom, stageIndex) {
   if (j < 0) return;                         // $C429 60 RTS -- no empty slot
   state.spawn.zA8 = j;                       // $C41C STX $A8 (the cursor)
   clearSlot(state, j);                       // $C42A JSR $A527
-  // $C42D LDA $3A / BEQ $C434 -- the warp gate. $3A != 0 -> $C686 (W27's rain).
-  // This is checked a SECOND time (the first was spawnEngine's $A2C0 gate that
-  // routed here); on stage 1 it is always 0.
+  // $C42D LDA $3A / BEQ $C434 -- the warp gate. $3A != 0 -> $C686 (the warp
+  // rain). Checked a SECOND time (the first was spawnEngine's $A2C0 gate that
+  // routed here). Reached only on the $39 warp route (W27); stage-1 normal play
+  // has $3A == 0.
   if (state.build.gate !== 0) {
-    throw new Error('$C42D: $3A != 0 -> JMP $C686 (the warp rain) is W27, '
-                  + 'not ported. Reached inside the late spawner after a slot '
-                  + 'was cleared; stage 1 ($3A == 0) never takes this branch.');
+    return st_C686(state, rom);                       // $C42D/$C686
   }
   // $C434 LDA $19 / JSR $83E4 -- jt_$C439, a 7-entry inline dispatch on stage.
   const target = rom.word(0xC439 + 2 * stageIndex);   // jt_$C439[stage]
@@ -463,6 +462,54 @@ function lateSpawner(state, rom, stageIndex) {
                     + 'late-spawner arm (the 7-entry table is $C439-$C446, '
                     + 'proven by $C447 abutting sub_$C44F\'s pointer data)');
   }
+}
+
+/**
+ * `$C686` -- the WARP RAIN. Reached from the late spawner's `$3A` gate during
+ * the `$39` warp route (and as jt_$C439[2], the stage-3 arm, out of scope).
+ * Throttled by the count `$68` against `$C684[$3A]`; each spawn reuses the slot
+ * the late spawner just cleared (`$A8`), places a type-$A6 drop at X `$F0` and a
+ * Y from `$C6CE[$69 & $0F]`, and steps `$69`. Rain stops once cam.hi reaches $0E.
+ *
+ *   C686  INC $68 / LDA $68 / LDY $3A / CMP $C684,Y / BCS $C692 / RTS  count gate
+ *   C692  LDA $3F / CMP #$0E / BCC $C699 / RTS                        stop at $0E
+ *   C699  LDA #$00 / STA $68           reset count
+ *   C69D  LDX $A8                      the cleared slot
+ *   C69F  LDA $69 / INC $69 / AND #$0F / TAY    Y = ($69++) & $0F
+ *   C6A6  LDA $C6CE,Y / STA $032C,X    Y position
+ *   C6AC  LDA #$01 / STA $0460,X       flag (arms the missile-damage path $C079)
+ *   C6B1  LDY $3A / LDA $C6CA,Y / STA $012C,X   anim/metasprite
+ *   C6B9  LDA $C6CC,Y / STA $030C,X    type ($A6 for $3A = 1)
+ *   C6BF  LDA #$80 / STA $010C,X       status
+ *   C6C4  LDA #$F0 / STA $036C,X       X position
+ *   C6C9  RTS
+ *
+ * `$3A = 1` on the warp (one INC at $993D): `$C6CA[1] = $00` (anim),
+ * `$C6CC[1] = $A6` (type), `$C684[1] = $0A` (spawn every 10th late-spawner
+ * call = every 40 frames). `$69` is shared with the wave engine's formation
+ * counter; during the warp the wave engine is idle (the `$3A` gate reroutes it
+ * here), so `$69` is the rain's own position stepper.
+ */
+function st_C686(state, rom) {
+  const sp = state.spawn;
+  sp.z68 = u8(sp.z68 + 1);                          // $C686 INC $68
+  const gate = state.build.gate;                    // $C68A LDY $3A
+  if (sp.z68 < rom.read(0xC684 + gate)) return;     // $C68C CMP $C684,Y / BCC RTS
+  if (state.cam.hi >= 0x0E) return;                 // $C692 CMP #$0E / BCS RTS
+  sp.z68 = 0;                                       // $C699 STA $68
+  const i = sp.zA8 + ENEMY_BASE;                    // $C69D LDX $A8
+  const y = sp.z69 & 0x0F;                          // $C69F/$C6A3 AND #$0F
+  sp.z69 = u8(sp.z69 + 1);                          //         INC $69
+  const o = state.obj;
+  o.y[i] = rom.read(0xC6CE + y);                    // $C6A6 LDA $C6CE,Y / STA $032C,X
+  // $C6AC STA $0460,X uses the RAW enemy index (X = $A8 = 0..9), NOT the +$0C
+  // slot alias the other fields use -- the same $030B-style trap W26 warned of.
+  // $0460+index is the per-handler-state slot 0..9 (peek maps it to s0460[idx]).
+  o.s0460[sp.zA8] = 0x01;                            // $C6AC LDA #$01 / STA $0460,X
+  o.anim[i] = rom.read(0xC6CA + gate);              // $C6B1 LDA $C6CA,Y / STA $012C,X
+  o.type[i] = rom.read(0xC6CC + gate);              // $C6B9 LDA $C6CC,Y / STA $030C,X
+  o.status[i] = 0x80;                               // $C6BF LDA #$80 / STA $010C,X
+  o.x[i] = 0xF0;                                    // $C6C4 LDA #$F0 / STA $036C,X
 }
 
 /**
@@ -1369,6 +1416,8 @@ function dispatch(state, rom, j, type) {
     // ---- WAVE 26: the boss ------------------------------------------------
     case 0xB914: return h_B914(state, rom, j);   // entry 24, types $18/$98 (head)
     case 0xB913: return h_B913(state);           // entry 25, types $19/$99 (inert body)
+    // ---- WAVE 27: the warp rain ------------------------------------------
+    case 0xB61E: return h_B61E(state, rom, j);   // entry 38, types $26/$A6 (warp rain)
     default:
       // THE MESSAGE THIS USED TO CARRY WAS "no measured run has ever
       // dispatched it", and that sentence is the one this whole follow-up
@@ -2795,4 +2844,50 @@ function bossDeathTail(state, rom, x, scored) {
     state.substate = u8(state.substate + 1);     // $B9A5 INC $1B -- $85 -> $86
   }
   // $B9A7 RTS
+}
+
+// ============================ WAVE 27: THE WARP RAIN ========================
+// $B61E (entry 38, type $A6) and its animator $B628. Reached only on the $39
+// warp route, where $C686 (above) spawns type-$A6 drops every ~40 frames. The
+// drop animates through metasprites $8E..$95 (8 frames, stepping every 6th) and
+// drifts left at 2 px/frame until the off-screen box frees it.
+
+/**
+ * `$B61E` -- the warp-rain per-frame handler.
+ *
+ *   B61E  LDY #$00 / JSR $B628        the animator (Y = 0)
+ *   B623  LDA #$FE / JMP $B103        X -= 2 ($B164) then the despawn box ($B251)
+ *
+ * `$B103` is `JSR $B164 / JMP $B251` -- the shared 2-px left drift + off-screen
+ * free that a dozen stage-1 handlers already use (addAX + offScreenCheck).
+ */
+function h_B61E(state, rom, j) {
+  sub_B628(state, rom, j, 0);                        // $B620 JSR $B628 (Y = 0)
+  addAX(state, j, 0xFE);                             // $B623 LDA #$FE -> $B164
+  offScreenCheck(state);                             // $B106 JMP $B251
+}
+
+/**
+ * `$B628` -- the warp rain's animator (and the table-A/group animator shared
+ * with the walkers at $B6E8/$B73E/$B781, all read with their own Y). Y picks a
+ * row of three interleaved bytes at `$B650+$B651+$B652`: the timer threshold,
+ * the metasprite base, and the frame count.
+ *
+ *   B628  INC $014C,X / LDA $014C,X / CMP $B650,Y / BCC RTS   throttle
+ *   B633  LDA $016C,X / CLC / ADC #$01 / CMP $B652,Y / BCC +2 / LDA #$00  frame++
+ *   B640  STA $016C,X / CLC / ADC $B651,Y / STA $012C,X       metasprite = frame + base
+ *   B64A  LDA #$00 / STA $014C,X                             reset timer
+ *
+ * For the rain (Y=0): threshold `$06`, base `$8E`, count `$08` -> 8 frames at
+ * metasprites `$8E..$95`, stepping every 6th handler call.
+ */
+function sub_B628(state, rom, j, y) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  o.timer[i] = u8(o.timer[i] + 1);                   // $B628 INC $014C,X
+  if (o.timer[i] < rom.read(0xB650 + y)) return;     // $B62E CMP $B650,Y / BCC RTS
+  let frame = u8(o.animFrame[i] + 1);                // $B633/$B636/$B637 ADC #$01
+  if (frame >= rom.read(0xB652 + y)) frame = 0;      // $B639 CMP $B652,Y / BCS wrap
+  o.animFrame[i] = frame;                            // $B640 STA $016C,X
+  o.anim[i] = u8(frame + rom.read(0xB651 + y));      // $B643/$B647 ADC $B651,Y / STA $012C,X
+  o.timer[i] = 0;                                    // $B64A STA $014C,X
 }

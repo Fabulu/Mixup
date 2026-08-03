@@ -1,6 +1,6 @@
 # Wave 27 IMPLEMENTER — the exits (stage-end + warp route)
 
-status: IN PROGRESS
+status: DONE
 implementer, 2026-08-03
 
 Scope (from the W27 brief + `20-plan-completeness.md` §3 W27): port the two ways
@@ -118,4 +118,111 @@ No accidental drop-into-next-routine in any of the three.
 
 ## 1. WHAT WAS PORTED
 
-(pending -- implementation log fills in below as each piece lands and validates)
+`games/gradius/src/nmi.js`:
+- **`st9904`** (sub-state $86, stage-end): the despawn seed `setBgmCode($93)`
+  (gated on pulse1 OWNER `$B2`), the despawn sweep (`sub994A` while `$1C == $93`),
+  the `stage.endPage` threshold, and the `$39` fork -- `$1B := $90` (seamless) or
+  `INC $19 / INC $3A / $3F := 0 / $1B := $8E` (warp).
+- **`nextStage`** (`$96CF`): `INC $19`, clear `$39/$3A/$3F`, the `$50-$70` wipe
+  (`clearStageAdvanceZp`), `$55 := 1`, `sub9BF0` (packets), `startPlay` (`$60 := 1,
+  $1B := $80`), then the mode-5 body THIS frame. SEAMLESS.
+- **`st984F`** (sub-states $8E/$8F, warp): `$2D := 1` (CHR bank 2), `addCamera16(4)`
+  (the 4 px/frame forced scroll), and at cam.hi `$11`: score +$5000, `$1B := $90`.
+
+`games/gradius/src/flow.js`: **`sub9BF0`** factored out of `introPackets` -- the
+`$9BF0` packet body without `$9BED`'s stop-sound prologue, shared by intro state 1
+and `$96CF`.
+
+`games/gradius/src/camera.js`: **`addCamera16`** -- `$8402`, the 16-bit add into
+`$3E:$3F` (the warp's 4 px/frame uses it directly).
+
+`games/gradius/src/enemies.js`:
+- **`spawnEngine`/`runEngine` now index the wave tables on the LIVE `$19`**
+  (`$A2D1 LDA $19`), not `res.stage.stage`, so the transition frame's wave cursor
+  is field-exact. A stage-2 guard in `runEngine` throws at the first stage-2 wave
+  record.
+- **`st_C686`** (the warp rain): the `$68`-throttled type-$A6 spawner.
+- **`h_B61E`** + **`sub_B628`** (entry 38, type $A6): the rain handler -- the
+  `$B650/$B651/$B652` animator (8 frames at metasprites `$8E..$95`, step 6) + the
+  shared `$B103` 2-px drift + despawn.
+- **`lateSpawner`'s `$3A` gate** now routes to `st_C686` (was a throw).
+
+`games/gradius/src/state.js`: **`spawn.z68`** -- the warp-rain throttle counter.
+
+## 2. THE DONE-WHEN -- MET (both)
+
+### Done-when 1: the seamless transition (the endchain run)
+
+MEASURED on the endchain scenario (re-recorded to 12000 frames in W26):
+
+- **`$19` flips on the cartridge's frame.** Both sides: `$19 = $00` at f11525,
+  `$19 = $01` at f11526 (the `$96CF` frame). `$1B`: `$86` -> `$90` (f11525) ->
+  `$80` (f11526). MATCH on all three frames.
+- **The endchain compares GREEN through the transition.** 5366 of 5366 frames
+  compared, **TIER 1 800 fields, 0 divergent**, display list 0 mismatches.
+- **It throws at the first stage-2 content.** The throw fires at **`$A2F0 @ f11527`**
+  -- the first stage-2 WAVE record (`runEngine` with `$19 = 1`). The throw is loud
+  and named; 0 divergent fields before it. Stage 2 itself is out of scope (the port
+  loads one stage).
+
+The boundary moved from `$9904 @ f11013` (W26's truncation) to `$A2F0 @ f11527`
+(W27's stage-2 wave content). The transition's `$96CF` frame (f11526) is
+GREEN-compared; the throw is the frame AFTER.
+
+### Done-when 2: the `$39` warp route (the poke)
+
+The endchain is a TIMEOUT kill, so `$39` stays 0 (the warp arm `$B978` does not
+fire on a timeout). The route is therefore validated under an identical `$39`
+poke on BOTH sides (labelled per knowledge/09), not by a natural four-hatch kill:
+
+- A new **`warp`** scenario: the endchain's reaching script + power-up poke, PLUS
+  `0039=1@11013-11999` (forces `$9904`'s warp fork at f11525). Recorded fresh on
+  Mesen (scen.py) and compared.
+- **GREEN: 5839 of 5839 frames compared, TIER 1 0 divergent.** The warp's 4 px/frame
+  scroll, the CHR-bank switch, the type-$A6 rain (cadence + position + animator +
+  drift) are all field-exact against the cartridge up to the 12000-frame dump end.
+  (The warp does not complete inside the dump -- cam.hi reaches only ~`$07` of the
+  `$11` needed for the +$5000 and the stage-3 entry -- so there is no stage-3
+  throw to mark.)
+
+This validates the warp CODE (`$984F`/`$C686`/`$B61E`), not the route's natural
+reachability (which needs a damage kill the corpus cannot reproduce).
+
+## 3. THE `$030B` ALIAS TRAP (caught)
+
+`$C6AC STA $0460,X` uses the RAW enemy index (`X = $A8 = 0..9`), NOT the `+$0C`
+slot alias the rain's OTHER fields use (`$030C/$032C/$036C/$010C/$012C` are all
+`base + $0C + X`, i.e. slot `X + 12`). So the rain's `$0460` lives at `$0460+index`
+(slot 0..9), while its type/anim/etc. live at slot `index + 12`. The first warp
+run wrote `s0460[index + ENEMY_BASE]` and showed **6 divergent fields**
+(`$0467-$0475`) at the first rain spawn; corrected to `s0460[index]` -> 0
+divergent. This is exactly the W26 `$030B,X`-style trap the recon warned of, and
+the BOTH-SIDES poke caught it (the unit tests did not -- `$0460` is a compared
+field, not a unit-test assertion).
+
+## 4. RED MUTATIONS (RULE 4)
+
+1. **Break `INC $19` in `nextStage`** (`+1` -> `+0`): the endchain goes **RED --
+   190 divergent TIER-1 fields** at f11528 (the transition frame). `$19` never
+   advances, the port replays stage-1 wave data for stage 2, and the throw at
+   `$A2F0` does not fire. Restored; 0 divergent.
+2. **The `$0460` alias** (§3): 6 divergent fields before the fix; 0 after. This is
+   the warp's own RED, caught by the both-sides poke.
+
+## 5. REGRESSION
+
+- `node --test games/gradius/tests/`: **475 tests, 0 fail, 0 skip** (468 + 7 new
+  W27 tests in `w27-exits.test.js`).
+- `node games/gradius/tools/test-all.mjs`: **GREEN, 10 passed, 0 failed, 0 SKIPPED**.
+- The full corpus (compare.mjs over all scenarios including the new `warp`): GREEN.
+
+## 6. THE NEW SCENARIO + HARNESS BITS
+
+- `scenarios.json`: endchain `compareUntilThrow` `9904` -> `A2F0`; new `warp`
+  scenario (the `$39` poke, no compareUntilThrow). endchain `_` updated for W27.
+- `compare.mjs`: `MODELLED_1B` += `$86/$8E/$90`.
+- `porttrace.mjs`: `$39` added to `POKEABLE` (the warp flag, both-sides poke).
+
+NOTE: the `warp` scenario's cartridge dump (`out/scen/warp.json`) and the
+endchain re-record are ROM-derived and gitignored. The scenario DEFINITIONS (the
+poke parameters, align, tail) are not ROM-derived and are committed.

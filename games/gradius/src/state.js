@@ -488,6 +488,11 @@ export function createState() {
       //        flag, modelled so the transcription is complete; it is inert.
       z5E: 0,     // $5E  despawn sweep cursor (immediate #$3F seeds it)
       z62: 0,     // $62  write-only phase flag (no reader; $9A2D/$99D7)
+      z68: 0,     // $68  the warp-rain throttle counter ($C686 INC $68; CMP
+                  //      $C684,Y). NOT a compared field (absent from the watch
+                  //      list) but kept so the port's spawn cadence matches the
+                  //      cartridge's. Cleared by $9B3E's $3D-$97 wipe and $96CF's
+                  //      $50-$70 wipe.
       zA8: 0,     // $A8  THE INDEX. The spawn engine's allocators and the update
                   //      loop both keep the enemy index 0..9 here, and $AEE1 /
                   //      $B251 reload X from it rather than trusting the caller.
