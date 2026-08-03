@@ -549,7 +549,7 @@ BODY.set(0x275DA0, (ram, rom, a5, a6, unported) => {
     ram.setU16(a6 + S.f2e, 1);                         // $275E80 move.w #$1,($2e,A6)
     const an = ram.u8(a6 + S.anim);
     ram.setU8(a6 + S.f31, an);                         // $275E86 move.b ($1e,A6),($31,A6)
-    ram.setU16(a6 + an !== 0 ? S.hit14 : S.hit16, 0xf400); // $275E98 move.w #$f400,(A0)
+    ram.setU16(a6 + (an !== 0 ? S.hit14 : S.hit16), 0xf400); // $275E98 move.w #$f400,(A0)
     ram.setU8(a6 + S.anim, 0);                         // $275E9C clr.b ($1e,A6)
   }
 });

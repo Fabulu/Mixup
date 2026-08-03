@@ -118,3 +118,39 @@ init reader -- so the W23-deferred speed/heading/anim/flags overrides compute.
 **Regression after F0-F2:** `node --test games/ddpdoj/tests/` = **343 pass,
 0 fail, 0 skip** (one spawn-test updated: `resolveMovementPtr` no longer notes
 `$246CAC` -- it resolves).
+
+### F3 — DONE-WHEN #3: the W23 spawn-stats gate re-closed (511 -> 0 on scripted)
+`w23statsgate.mjs` now drives the spawn walker per frame to resolve each
+scripted spawn's movement stream, seeds the scratch record's cursor (+$12) and
+param (+$0A), and lets the init reader override speed/heading/anim/flags. Result
+over the W17-equivalent corpus (308 stage-1 (lf,type) spawns):
+
+```
+RESULT stats divergent: 0 across 308 spawns (100.0000 % match)
+  W24 movement reader $263808 PORTED: 270 scripted spawns, their
+    speed/heading/anim/flags are STRICT at 0 divergent. (W23 deferred 511 -> 0.)
+  deferred (no script stream -- W25/W29 handler-spawned): 108 spd/hdg fields
+  W24 position gap: 66 aim->bucket fields ($80/$82/$85/$88/$89)
+  rank-counter / stale-bucket / out-of-scope: unchanged
+RED [swap-tables]=820  [corrupt-hp]=111  [seed-wrong-stage]=14   (all RED)
+```
+
+A focused diagnostic confirmed the interpreter is correct: **270/270 scripted
+spawns match the board's speed/heading at 0 divergent**. The 108 residual are
+DEFERRED spawns (the validated walker -- 339=339 -- does not see them; they are
+handler-enqueued via `$815EAA`, W25/W29), so their movement is not `$263808`'s
+output and never was in W24's scope. The gate now classifies this honestly:
+movement fields are STRICT for scripted spawns (closing W24) and a named
+`deferred` gap otherwise (never a silence). The two `$88` hb14/hb16 anim-driven
+hitbox residuals W23 accepted also closed (anim is now computed).
+
+### F4 — a latent W23 precedence bug the gate exposed (init88 hitbox target)
+Once the movement stream's flag escape cleared sub-record bit 5, the `$88`
+init's anim-driven hitbox branch was entered for the first time and THREW:
+`$14 is outside main RAM`. The line was `ram.setU16(a6 + an !== 0 ? S.hit14 :
+S.hit16, ...)` which JS parses as `(a6+an)!==0 ? 0x14 : 0x16` -- writing to
+address `$14` (operator precedence), not `a6 + (an!==0 ? hit14 : hit16)`. The
+bug was dormant in W23 (bit 5 was set, branch skipped; the 2 `$88` divergences
+were exactly this branch's absence). Fixed to `a6 + (an !== 0 ? S.hit14 :
+S.hit16)`. This is W23-review F1's predicted "downstream wave trusting a spawned
+enemy's fields" -- the movement anim made it live.

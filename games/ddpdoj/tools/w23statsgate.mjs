@@ -41,7 +41,9 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
-import { SPAWN } from '../src/spawn.js';
+import {
+  SPAWN, installStage, walkScriptLoop, resolveMovementPtr,
+} from '../src/spawn.js';
 import { ENEMY } from '../src/enemies.js';
 import { runInitBodyAddr, INIT_BODY_FREED } from '../src/initbody.js';
 
@@ -192,23 +194,46 @@ function runPort(frames, win, rom, brk) {
   // scratch record + sub-record (re-used per spawn; cleared each time).
   const REC = ENEMY.bandCommon;
   const SUB = 0x81459c;              // first common-pool slot (cleared per spawn)
+  let installed = false;
   for (let lf = win.install; lf < win.reset; lf++) {
     const f = frames.get(lf);
     if (!f) continue;
+    // W24: install the stage once (sets LIVE_CURSOR + AUX_BASE) so the walker can
+    // resolve each scripted spawn's movement stream pointer = res + aux[idx].
+    if (!installed) { installStage(ram, rom, 0, { note() {} }); installed = true; }
     ram.setU16(SPAWN.DISTANCE_CLOCK, f.clk);
     seedGlobals(ram, f.globals, brk);
+    // Drive the spawn walker for THIS frame (the cursor persists in ram across
+    // frames, exactly as $2633BE does).  Collect each scripted spawn's resolved
+    // movement ptr (+$12) and param (+$0A) by type -- the two fields the init
+    // reader $263808 needs to override speed/heading/anim/flags per-spawn.
+    const streamByType = new Map();
+    walkScriptLoop(ram, rom, (cursor, rec) => {
+      if (!streamByType.has(rec.type)) {
+        streamByType.set(rec.type, {
+          ptr: resolveMovementPtr(ram, rom, cursor, { note() {} }),
+          param: rec.param,
+        });
+      }
+    });
     const got = new Map();
     for (const type of f.spawns.keys()) {
       if (!STAGE1_TYPES.has(type)) continue;   // W25/W29 (deferred/handler spawns)
       scriptSpawns++;
-      setupScratch(ram, rom, REC, SUB, type);
+      const stream = streamByType.get(type);   // undefined for a non-scripted spawn
+      setupScratch(ram, rom, REC, SUB, type, stream);
       const initBody = initBodyAddr(rom, type);
       try {
         const r = runInitBodyAddr(initBody, ram, rom, REC, makeUnported());
         // a freed enemy (stage-kill gate) -> skip; the board's S-line skipped
         // it too (emit_slot drops type==0), so there is nothing to compare.
         if (r === INIT_BODY_FREED) continue;
-        if (!got.has(type)) got.set(type, portFields(ram, REC));
+        // `streamed` records whether this spawn had a SCRIPT movement stream
+        // (the walker dispatched it).  A scripted spawn's speed/heading/anim/
+        // flags come from $263808 and are now STRICT (W24 ports the reader); a
+        // spawn with NO stream is deferred / handler-spawned (W25/W29) and its
+        // movement fields stay a named gap, never a silence.
+        if (!got.has(type)) got.set(type, { fields: portFields(ram, REC), streamed: !!stream });
       } catch (e) {
         portErrors.push({ lf, clk: f.clk, type, err: e.message });
       }
@@ -226,8 +251,10 @@ function initBodyAddr(rom, type) {
 
 /** Seed a scratch enemy record + sub-record the way the allocator + the init
  *  stub would: type byte (+$0C), class byte (+$0D, 0), sub-record ptr (+$06),
- *  run-length (+$04, read from the init stub at init+2). */
-function setupScratch(ram, rom, rec, sub, type) {
+ *  run-length (+$04, read from the init stub at init+2).  W24: also seed the
+ *  movement cursor (+$12) and spawn param (+$0A) the spawn walker resolved, so
+ *  the init reader $263808 can override speed/heading/anim/flags per-spawn. */
+function setupScratch(ram, rom, rec, sub, type, stream) {
   // clear the record + sub-record so no prior spawn's state leaks in.
   for (let i = 0; i < 0x50; i++) ram.setU8(rec + i, 0);
   for (let i = 0; i < 0x20; i++) ram.setU8(sub + i, 0);
@@ -237,6 +264,10 @@ function setupScratch(ram, rom, rec, sub, type) {
   const tab = type < 0x80 ? SPAWN.TYPE_LO : SPAWN.TYPE_HI;
   const init = rom.u32(tab + (type & 0x7f) * 8);
   ram.setU16(rec + 0x04, rom.u16(init + 2));   // the stub's run-length
+  if (stream) {
+    ram.setU32(rec + 0x12, stream.ptr);        // $26342E move.l A1,($12,A0)
+    ram.setU16(rec + 0x0a, stream.param);      // $263428 move.w ($2,A2),($a,A0)
+  }
 }
 
 // the unported log (collects the $263808 / boss notes; never throws here).
@@ -269,8 +300,8 @@ const RANK_COUNTER_FIELDS = new Set(['b28']);
 // ------------------------------------------------------------- the comparison
 function compare(frames, portByLf) {
   let matched = 0, divergent = 0, accepted88 = 0, firstDiv = null;
-  let w24Bucket = 0, w24Move = 0, rankCtr = 0, staleBucket = 0, outOfScope = 0;
-  let boardSpawns = 0, portSpawns = 0;
+  let w24Bucket = 0, deferred = 0, rankCtr = 0, staleBucket = 0, outOfScope = 0;
+  let boardSpawns = 0, portSpawns = 0, scriptedSpawns = 0;
   const divByField = new Map();
   const divByType = new Map();
   for (const [lf, f] of frames) {
@@ -279,7 +310,7 @@ function compare(frames, portByLf) {
     for (const [type, boardRec] of f.spawns) {
       if (!STAGE1_TYPES.has(type)) { outOfScope++; continue; }   // W25/W29
       boardSpawns++;
-      const portRec = port.get(type);
+      const portRec = port.get(type);     // { fields, streamed } or undefined
       if (!portRec) {            // port freed it (stage-kill gate) or threw
         divergent++;
         if (!firstDiv) firstDiv = { lf, type, kind: 'missing-in-port' };
@@ -287,33 +318,32 @@ function compare(frames, portByLf) {
         continue;
       }
       portSpawns++;
+      if (portRec.streamed) scriptedSpawns++;
+      const fld = portRec.fields;
       // scan ALL columns; classify each mismatch into a named gap or a strict
       // divergence.  Only FIELDS (the loader-written stats) count as strict.
       let perTypeDiv = false;
       for (const fn of ALL_COLS) {
-        if (portRec[fn] === boardRec[fn]) continue;
+        if (fld[fn] === boardRec[fn]) continue;
         const isAimBucket = AIM_BUCKET_TYPES.has(type) && BUCKET_FIELDS.has(fn);
         const isMove = MOVEMENT_FIELDS.has(fn);
         const isRankCtr = RANK_COUNTER_FIELDS.has(fn);
         const isBucket = BUCKET_FIELDS.has(fn);
         if (isAimBucket) { w24Bucket++; continue; }      // W24 (position)
-        if (isMove) { w24Move++; continue; }             // W24 ($263808)
+        if (isMove) {
+          // W24 ports $263808: a SCRIPTED spawn's speed/heading/anim/flags are
+          // now STRICT (0 divergent is the done-when).  A NON-scripted spawn
+          // (the walker found no stream -- deferred / handler-spawned) has its
+          // movement set by W25/W29, a named gap, never a silence.
+          if (portRec.streamed) { /* fall through to strict */ }
+          else { deferred++; continue; }
+        }
         if (isRankCtr) { rankCtr++; continue; }          // rank counter ($803916)
         if (isBucket) { staleBucket++; continue; }       // stale-slot / type-specific
         if (fn === 'hprel' && !hprelMeaningful(type)) { staleBucket++; continue; }
         if (!FIELDS.includes(fn)) continue;               // not in the strict set
-        // THE ACCEPTED RESIDUAL: the $88 anim-driven hitbox (hb14/hb16).  The
-        // init writes $F400 to +$14/+$16 picked by anim ($275E86), and anim is
-        // the movement-script-overridden field ($263808 / resource #$1F, W24).
-        // Counted in `divergent` (transparency -- it still prints) but named
-        // here as `accepted88` and subtracted for the pass verdict, so the gate
-        // is HONEST: green only when the sole strict divergences are these two.
-        // No OTHER divergence is silenced -- the RED sweep + RULE 4 re-prove
-        // that swap-tables / corrupt-hp / seed-wrong-stage still go red.
-        const isAccepted88 = type === 0x88 && (fn === 'hb14' || fn === 'hb16');
         divergent++;
-        if (isAccepted88) accepted88++;
-        if (!firstDiv) firstDiv = { lf, type, fn, port: portRec[fn], board: boardRec[fn] };
+        if (!firstDiv) firstDiv = { lf, type, fn, port: fld[fn], board: boardRec[fn] };
         divByField.set(fn, (divByField.get(fn) ?? 0) + 1);
         perTypeDiv = true;
       }
@@ -321,8 +351,9 @@ function compare(frames, portByLf) {
       else divByType.set(type, (divByType.get(type) ?? 0) + 1);
     }
   }
-  return { matched, divergent, accepted88, firstDiv, w24Bucket, w24Move, rankCtr,
-           staleBucket, outOfScope, boardSpawns, portSpawns, divByField, divByType };
+  return { matched, divergent, accepted88, firstDiv, w24Bucket, deferred, rankCtr,
+           staleBucket, outOfScope, boardSpawns, portSpawns, scriptedSpawns,
+           divByField, divByType };
 }
 
 function main() {
@@ -348,24 +379,26 @@ function main() {
         console.error(`  lf=${e.lf} clk=${e.clk.toString(16)} type=$${e.type.toString(16)} ${e.err.split('\n')[0]}`);
     }
     const r = compare(frames, portByLf);
-    const unexpected = r.divergent - r.accepted88;     // real strict divergences
     const span = win.reset - win.install;
     console.log(`CORPUS ${path.basename(corpus)}`);
     console.log(`window lf ${win.install}..${win.reset - 1} (${span} frames)`);
     const pct = (100 * (1 - r.divergent / Math.max(1, r.boardSpawns))).toFixed(4);
     console.log(`RESULT stats divergent: ${r.divergent} across `
       + `${r.boardSpawns} stage-1 (lf,type) spawns (${pct} % match) -- `
-      + `${r.accepted88} accepted $88 anim-hitbox residual`
-      + `${r.accepted88 === 1 ? '' : 's'} (hb14/hb16, W24); ${unexpected} unexpected`);
+      + `${r.divergent} unexpected`);
     if (r.firstDiv) {
       console.log(`  first divergence lf=${r.firstDiv.lf} type=$${r.firstDiv.type.toString(16)}`
         + (r.firstDiv.fn ? ` field=${r.firstDiv.fn} port=${r.firstDiv.port} board=${r.firstDiv.board}`
            : ` (${r.firstDiv.kind})`));
     }
     console.log(`  matched (every compared field equal): ${r.matched} of ${r.boardSpawns}`);
-    console.log(`  W24-pending: ${r.w24Move} speed/heading fields (overridden by the `
-      + `movement reader $263808, resource #\$1F) + ${r.w24Bucket} aim->bucket fields `
-      + `on types $80/$82/$85/$88/$89 (need the spawn position)`);
+    console.log(`  W24 movement reader $263808 PORTED: ${r.scriptedSpawns} scripted spawns,`
+      + ` their speed/heading/anim/flags are STRICT (0 divergent closes W24).`
+      + ` (W23 deferred 511 of these; now 0.)`);
+    console.log(`  deferred (no script stream -- W25/W29 handler-spawned): ${r.deferred} `
+      + `speed/heading fields outside $263808's reach`);
+    console.log(`  W24 position gap: ${r.w24Bucket} aim->bucket fields on types `
+      + `$80/$82/$85/$88/$89 (need the live spawn position)`);
     console.log(`  rank-counter: ${r.rankCtr} bucket-word (b28) fields track the `
       + `running $803916 counter (W25 handler calls advance it)`);
     console.log(`  stale/type-specific bucket: ${r.staleBucket} bucket fields the `
@@ -383,10 +416,11 @@ function main() {
       for (const [fn, n] of [...r.divByField].sort((a, b) => b[1] - a[1]))
         console.log(`    ${fn}  ${n}`);
     }
-    // PASS when the only strict divergences are the accepted $88 hb14/hb16
-    // anim-hitbox residuals (W24).  Any OTHER strict divergence (a real one)
-    // makes this exit 1 -- the RED sweep re-proves those still fail.
-    return unexpected === 0 ? 0 : 1;
+    // PASS when there are NO strict divergences.  (W24 closed the $88 hb14/hb16
+    // anim-hitbox residual and made the scripted spawns' speed/heading/anim/flags
+    // strict.)  Any strict divergence makes this exit 1; the RED sweep re-proves
+    // the mutations still fail.
+    return r.divergent === 0 ? 0 : 1;
   }
 
   // the RED sweep -- each mutation must make the gate diverge where it was 0.
@@ -406,9 +440,10 @@ function main() {
     if (romMut === null) { console.log(`RED [${m}] skipped (windows unavailable)`); continue; }
     const { portByLf } = runPort(frames, win, romMut, m);
     const r = compare(frames, portByLf);
-    // baseline is 2 ($88 hb14/hb16, the accepted residual); a mutation goes RED
-    // when it adds any OTHER strict divergence (divergent - accepted88 > 0).
-    const red = (r.divergent - r.accepted88) > 0;
+    // baseline is 0 divergent (W24 closed the $88 residual and the movement
+    // fields are now strict for scripted spawns).  A mutation goes RED when it
+    // adds ANY strict divergence (divergent > 0).
+    const red = r.divergent > 0;
     if (!red) allRed = false;
     console.log(`RED [${m}] divergent=${r.divergent} ${red ? 'RED' : 'green'} -- ${MUT[m] ?? ''}`);
   }
