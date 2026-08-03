@@ -1178,6 +1178,20 @@ def _cmd_check(argv: list[str]) -> int:
                    if not any(p.exists() for p in _w21)
                    else _node(PATTERNGATE, "--matrix",
                               ",".join(str(p) for p in _w21 if p.exists()))))
+    # WAVE 26.  THE BULLET MOVER GATE -- the per-frame pool drive `$281DDE` vs
+    # the board, BEFORE-vs-AFTER the mover (isolating it from the spawn side).
+    # Like the other replay gates it needs NO emulator run.
+    MOVERGATE = TOOLS.parent / "tools" / "w26movergate.mjs"
+    W26TSV = OUT / "w26-mover-stage1.tsv"
+    stage("bullet mover: per-frame pool drive vs the board",
+          lambda: (("SKIP", f"{W26TSV.name} missing -- `python tools/oracle/"
+                            f"w26run.py 6000 w26-mover-stage1`")
+                   if not W26TSV.exists()
+                   else _node(MOVERGATE, "--corpus", W26TSV)))
+    stage("bullet mover RED (3 mutations)",
+          lambda: (("SKIP", f"{W26TSV.name} missing")
+                   if not W26TSV.exists()
+                   else _node(MOVERGATE, "--corpus", W26TSV, "--break", "all")))
     # WAVE 22.  THE SPAWN GATE -- the enemy spawn walker `$2633BE` against the
     # board, frame for frame, over a whole-stage corpus comparable to wave 17.
     # Like the scroll/turret/pattern gates it replays the port against a TSV
