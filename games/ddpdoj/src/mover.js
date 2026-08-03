@@ -415,7 +415,110 @@ function muzzleAndSprite(ctx, base) {
 const clearDispatch = (ram, base) =>
   ram.setU8(base, ram.u8(base) & 0xfe);
 
-// ================================================ THE SEVEN STAGE-1 BEHAVIOURS
+// ================================================ SHARED HELPERS USED BY W27
+//
+// The 31 remaining bodies (W27) reuse four small patterns.  Each is factored
+// here exactly once and the ROM address it stands in for is cited.  None of
+// these touch a position field by themselves; the position-relevant logic is
+// kept inline in each continuation so it is auditable line by line.
+
+/** `subq.b #1,off(a6) / bcc skip` -- the BYTE countdown with reload.  The 68000
+ *  `subq.b #1` sets C on borrow, and borrow happens iff the byte was 0; `bcc`
+ *  branches when C is clear, i.e. when the byte was NON-zero.  So the reload +
+ *  action run only when the byte UNDERFLOWS (was 0).  Returns true on underflow.
+ *  Transcribes `$xxxA: subq.b #1,off / bcc $yyyA / move.b reloadOff,off`. */
+function byteUnderflow(ram, base, off, reloadOff) {
+  const old = ram.u8(base + off);
+  ram.setU8(base + off, (old - 1) & 0xff);
+  if (old === 0) {                                    // borrow -> bcc NOT taken
+    ram.setU8(base + off, ram.u8(base + reloadOff));   // move.b reload,off
+    return true;
+  }
+  return false;
+}
+
+/** `tst.b $19(a6) / bne <dec>` -- the per-bullet animation-delay tick.  When
+ *  +$19 is non-zero the bullet is in its delay: decrement +$19 and return true
+ *  (the caller advances without animating).  At 0 the caller animates. */
+function tick19(ram, base) {
+  if (ram.u8(base + 0x19) !== 0) {
+    ram.setU8(base + 0x19, (ram.u8(base + 0x19) - 1) & 0xff);
+    return true;
+  }
+  return false;
+}
+
+/** `$284190` recompute + `movem.w D2-D3,$1e(A6)` store, with an optional
+ *  `asr.w #shift` (kinds 29's half-velocity wall bounce).  dA->+$1E, dB->+$20. */
+function velRecomputeStore(ctx, base, shift = 0) {
+  const { rom, ram } = ctx;
+  const v = velocity(rom, ram.u8(base + REC.speed), ram.u8(base + REC.dir));
+  let dA = v.dA, dB = v.dB;
+  if (shift) { dA = i16(dA) >> shift; dB = i16(dB) >> shift; }   // asr.w #shift
+  ram.setU16(base + REC.velA, u16(dA));
+  ram.setU16(base + REC.velB, u16(dB));
+}
+
+/** `$2822AE` -- the dir-faced sprite epilogue.  Clears bit 8, sets renderOffs/
+ *  graphic, then picks a sprite-frame pointer out of `tableA0` via the 32-word
+ *  direction-offset table `$2822EC`, stores it at +$0A (descriptor) and its base
+ *  at +$12.  Sprite-only (no position effect); the clearDispatch is flow-neutral. */
+function epi2822AE(ctx, base, tableA0) {
+  const { ram, rom } = ctx;
+  clearDispatch(ram, base);                            // $2822AE andi.b #$fe,(A6)
+  ram.setU32(base + 0x06, 0xfe00fe00);                 // $2822B2 renderOffs
+  ram.setU16(base + 0x0e, 0x0210);                     // $2822BA graphic
+  const dir = ram.u8(base + REC.dir);                  // $2822C0
+  const d0 = (dir + 4) & 0xf8;                         // $2822C4 addq #4 ; $2822C6 andi #$f8
+  const off = rom.u16(0x2822ec + d0);                  // $2822D0 move.w ($2822EC,A1,D0),D1
+  const framePtr = rom.u32(tableA0 + off);             // $2822D4 movea.l (A0,D1),A0
+  ram.setU32(base + 0x12, framePtr);                   // $2822D8 move.l A0,$12(A6)
+  const idx = ram.u16(base + 0x16);                    // $2822DC move.w $16,D1
+  ram.setU32(base + 0x0a, rom.u32(framePtr + idx));    // $2822E0 move.l (A0,D1),$a(A6)
+  ram.setU16(base + 0x16, u16(ram.u16(base + 0x16) - 4)); // $2822E6 subq.w #4,$16
+}
+
+/** `$283C8C` -- kind 26's epilogue: clearDispatch + renderOffs $FE00FE00 +
+ *  graphic $210, then the SAME dir-faced setup as `$283C0E` (`$283C20` block). */
+function epi283C8C(ctx, base, tableA0) {
+  const { ram, rom } = ctx;
+  clearDispatch(ram, base);                            // $283C8C
+  ram.setU32(base + 0x06, 0xfe00fe00);                 // $283C90
+  ram.setU16(base + 0x0e, 0x0210);                     // $283C98
+  // $283C20..$283C4A (== epilogueSprite283C0E's dir setup).
+  const dir = ram.u8(base + REC.dir);
+  const d1 = ((dir + 4) >> 2) & 0x3e;                  // $283C28/$283C2A/$283C2C
+  const off = rom.u16(0x283c4c + d1);                  // $283C38
+  const a0 = (tableA0 + off) >>> 0;                    // $283C3A adda.w D1,A0
+  const spr = rom.u32(a0);                             // $283C3C
+  ram.setU32(base + 0x0a, spr);                        // $283C3E descriptor
+  ram.setU32(base + 0x10, (spr + ram.u32(base + 0x14)) >>> 0); // $283C42/$283C46
+}
+
+/** `$283CE4` -- the shared 4-frame sprite ring, gated on the `$80390C` logic-
+ *  semaphore.  Cycles the anim index +$16 by -4 (wrap &$0C) and sets the
+ *  descriptor from *(+$12 + index).  Sprite-only. */
+function cont283CE4(ctx, base) {
+  const { ram, rom } = ctx;
+  if (ram.u16(0x80390c) === 0) return;                 // $283CE4 tst.w ; beq skip
+  const framePtr = ram.u32(base + 0x12);               // $283CF0 movea.l (A0)+,A1
+  const idx = ram.u16(base + 0x16);                    // $283CF2 move.w (A0),D0
+  ram.setU32(base + 0x0a, rom.u32(framePtr + idx));    // $283CF4 move.l (A1,D0),$a
+  ram.setU16(base + 0x16, u16(ram.u16(base + 0x16) - 4) & 0x000c); // $283CFA/$283CFC
+}
+
+/** the `lea -$c(A4)` TRAIL-EMIT block (kinds 27/36/37/38): copies the last
+ *  12-byte sprite entry the plain path just emitted into the SECONDARY sprite
+ *  list at `$81B41C`.  Sprite-only; the mover gate passes no sprite sink, so
+ *  this is a counted note unless a sink is present. */
+function trailEmit(ctx, base) {
+  ctx.notes?.note(0x81b41c,
+    `bullet trail emit (the lea -$c(A4) block): appends the last sprite entry `
+    + `to the secondary list at $81B41C. Sprite-only side effect (rendering); `
+    + `irrelevant to bullet state`);
+}
+
+// ================================================ THE BEHAVIOUR MAPS (W26 + W27)
 //
 // Each INITIALISER clears bit 8, sets the sprite fields, installs the
 // continuation at +$22, and applies any position/speed/dir effect.  Each

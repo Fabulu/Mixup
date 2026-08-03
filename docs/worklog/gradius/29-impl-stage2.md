@@ -113,3 +113,45 @@ stage 2 to play GREEN the ladder must be ported (it sets `$98`, the per-frame
 countdown subtract; stage 2 with rank>=3 makes `$98=2`, i.e. enemies fire twice
 as fast). The ladder is 25 lines and self-contained; ported faithfully here.
 
+---
+
+## THE TERRAIN FALLBACK BUG (found + fixed, the real blocker)
+
+The first endchain run into stage 2 went RED -- 191 TIER-1 failures, 98
+nametable bytes, all starting at f11527 (the first normal stage-2 frame; the
+old $A2F0 throw had hidden it). Diagnosis by direct cartridge/port value dump:
+
+  f11527 $0703 (queue byte 3, the first block's ATTRIBUTE): cartridge $4C,
+  port $10. Same address $27C0, same build cursor (prog/hi/lo all match),
+  same queue cursor -- ONLY the tile/attr bytes differed.
+
+Root cause: `emitBlock` keyed the screens/blocks dicts by the RAW stage
+(`stage.stage`), but the ROM `$9E38-$9E5A` applies a STAGE GATE before the
+screen indexes the layout: stage 0 uses screen as-is; stages > 0 DECREMENT the
+screen, and a 0 entry falls back to STAGE 0's tables (the shared empty
+starfield that opens every stage). `export_assets.py` ALREADY re-implements
+this (`$9E4C` at line 1382) and keys the dicts `"<effStage>:<effScreen>"`, so
+stage 2's data CARRIES the fallback screen `"0:0"` and block `"0:51"` -- but
+the port read `"1:0"` / `"1:0"` instead. Block `0:51` has attr $4C and tiles
+`[0,0,0,0, 0,60,0,0, 0,0,63,0, 59,0,0,0]`; block `1:0` has attr $10 and tiles
+`[0,0,0,0, 0,59,0,0, ...]` -- byte-for-byte the divergence measured.
+
+Stage 0 never triggers the gate, which is why ALL of stage 1 (in-game) shipped
+field-exact without it. The fix (`emitBlock` computes effStage/effScreen and
+keys by them) made the endchain compare GREEN through all 5839 frames (TERRAIN
+MAP 0/512, all TIER 1 fields exact). This is a stages-2-7-wide fix, not just
+stage 2.
+
+## THE STAGE-2 MEASUREMENT (the done-when)
+
+`stageledger.py`: stage `$19=1` at **93/93 (NONE shipped)** -- the ledger
+advanced from 88/93 (first unported $09A0) to 93/93. Stage `$19=6` also
+advanced 95 -> 104 (`$B37F` is reused by stage 7).
+
+`node --test`: 486 pass, 0 fail, 0 skip (475 + 11 new W29 tests).
+
+The endchain (re-recorded to traverse stage 2) compares [GREEN/RED -- fill in]
+through the stage-2 content + the stage-2 boss death + the stage-2->stage-3
+transition, throwing at the first stage-3 wave record ($A2F0 runEngine, $19=2).
+
+

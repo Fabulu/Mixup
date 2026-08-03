@@ -140,7 +140,7 @@ function emitBlock(state, stage) {
   let effStage = stage.stage;
   if (stage.stage !== 0) {                         // $9E4C CPX #$00 / BEQ $9E5A
     if (screen === 0) {                            // $9E50 C9 00 / D0 $9E58
-      effStage = 0;                                // $9E54 LDX #$00 -> stage 0
+      effStage = stage.stage;                      // *** RED MUTANT: was 0 ***
       screen = 0;                                  // $9E56 LDA #$01 / $9E58 SBC -> 0
     } else {
       screen = screen - 1;                         // $9E58 SBC #$01
