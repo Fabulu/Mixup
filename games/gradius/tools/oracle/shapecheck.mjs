@@ -14,12 +14,17 @@
 //   * every watched address is either readable from the port's state or listed
 //     in UNMODELLED with a reason.
 //
-// Runs without Mesen and without a recorded corpus -- it seeds the port from an
-// ALL-ZERO machine (2048 zero bytes of RAM, a blank nametable, a black palette,
-// an empty OAM), which is a legal state: game mode 0, nothing alive, CHR bank 0.
-// Wave 10 turned the seed from a bare array into an object; the zero seed is
-// built here rather than imported so that a shape change in seedFromCartridge
-// breaks this file loudly instead of being papered over by a shared helper.
+// Runs without Mesen and without a recorded corpus -- it seeds the port from a
+// BLANK machine (2048 zero bytes of RAM, a blank nametable, a black palette, an
+// empty OAM) in game mode 5, the only mode the port models. The mode byte $00
+// is the one non-zero byte in the seed (set to 5 below): an all-zero RAM image
+// is mode 0 (the title screen), and W28b's loudness fix made nmi.js throw on
+// any non-mode-5 frame -- correctly, because the port cannot model them. This
+// check is about the TRACE MECHANICS (rows, fields, peek), not mode-0 logic, so
+// it seeds the blank machine in the mode the port actually runs.
+// Wave 10 turned the seed from a bare array into an object; the seed is built
+// here rather than imported so that a shape change in seedFromCartridge breaks
+// this file loudly instead of being papered over by a shared helper.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -78,24 +83,29 @@ ok(orphan.length === 0,
    `unexplained: ${orphan.join(',')}`);
 
 // ---- 4. the trace actually produces rows, and they carry the right keys -----
+// The blank seed's RAM is zero everywhere except $00, which is 5 (MODE_STAGE):
+// the port models mode 5 only, and W28b made every other mode throw, so a
+// fully-zero (mode-0) seed would throw instead of exercising the tracer.
+const blankRam = new Uint8Array(2048);
+blankRam[0x00] = 5;                       // $00 -- game mode 5
 let doc = null, err = null;
 try {
   doc = tracePort({
     name: 'shapecheck', script: '12:', frames: 10, align: 0,
     seed: {
-      ram: new Uint8Array(2048),        // $0000-$07FF
-      vram: new Uint8Array(2048),       // PPU $2000-$27FF
-      palette: new Uint8Array(32),      // $3F00-$3F1F
-      oam: new Uint8Array(256),         // hardware OAM
-      chrBank: 0,                       // $2D
-      chrOffset: 0,                     // $2D = 0 -> $8AA8[0] & 3 = 0 -> bank 0
-      splitRan: 0,                      // no split on a blank machine
+      ram: blankRam,                      // $0000-$07FF (blank, mode 5)
+      vram: new Uint8Array(2048),         // PPU $2000-$27FF
+      palette: new Uint8Array(32),        // $3F00-$3F1F
+      oam: new Uint8Array(256),           // hardware OAM
+      chrBank: 0,                         // $2D
+      chrOffset: 0,                       // $2D = 0 -> $8AA8[0] & 3 = 0 -> bank 0
+      splitRan: 0,                        // no split on a blank machine
     },
     watch: defs.watch,
     res: headlessResources(0),
   });
 } catch (e) { err = e; }
-ok(err === null, 'the port trace runs on a zero RAM image', String(err));
+ok(err === null, 'the port trace runs on a blank mode-5 machine', String(err));
 if (doc) {
   const want = [...PROBE_KEYS, ...WORK_KEYS, ...defs.watch.map((a) => `w_${a}`)];
   ok(JSON.stringify(doc.fields) === JSON.stringify(want),
