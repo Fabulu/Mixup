@@ -490,6 +490,30 @@ CONTINUATIONS.set(0x282598, (ctx, base) => {
   advance40(ctx, base);
 });
 
+// ----- kind 6  ($282620 init / $282654 cont) -- the midboss's bullet; same
+// target-tracker template as kinds 3/4/5 (D4=$2C dead when the spawn's D4 is 0).
+INIT_BODIES.set(0x282620, (ctx, base) => {
+  const { ram } = ctx;
+  clearDispatch(ram, base);                          // $282620
+  ram.setU32(base + 0x0a, 0x1c01ac);                 // renderOffs
+  ram.setU8(base + 0x1d, 0x1a);
+  ram.setU32(base + 0x30, ram.u32(base + REC.velA));  // save/clear/restore (no-op)
+  ram.setU32(base + REC.velA, 0);
+  ram.setU32(base + REC.velA, ram.u32(base + 0x30));
+  ram.setU32(base + 0x0a, 0x1c00a4);                 // renderOffs (final)
+  ram.setU32(base + REC.continuation, 0x282654);
+});
+CONTINUATIONS.set(0x282654, (ctx, base) => {
+  const { ram } = ctx;
+  const old = ram.bchg8(base, 3);                    // $282654 toggle bit 11
+  if (old !== 0) { advance40(ctx, base); return; }   // $282658 bne -> advance
+  animateRenderOffsWrap(ctx, base, 0x1c00a4, 0x24, 0x1c0134);
+  advance40(ctx, base);
+  // ($282678 target-track branch is dead in the corpus: every kind-6 spawn has
+  //  D4=0 -> +$2C=0 -> the `move.l $2c,D1; beq skip` skips it, so the bne arm is
+  //  just the advance above. Port the track faithfully if a stage uses it.)
+});
+
 // ----- kind 7  ($2826DC init / $282738 cont) -- muzzle offset + 8-frame anim
 INIT_BODIES.set(0x2826DC, (ctx, base) => {
   const { ram } = ctx;

@@ -168,6 +168,25 @@ RESULT divergent=0 of 1254 slot-steps  -> 100.0000 %   (160 before/after pairs)
   (window-constant NOT ATTEMPTED: invisible while live<70 -- the W21 gate's blind spot)
 ```
 
+The DONE-WHEN is the INVULNERABLE 9000-frame capture (`w26-mover-invuln.tsv`),
+which reaches the MIDBOSS (lf4997+, max live 96, window cap grows 70 -> 160):
+
+```
+RESULT divergent=0 of 244545 slot-steps  -> 100.0000 %   (6602 before/after pairs)
+  kinds covered: 3,4,5,6,7,12,13,19  (kind 6 = the midboss's bullet)
+  max live in one frame: 96   (window ladder exercised: 70 -> 160)
+  RED velocity-stored-not-recomputed   divergent=3454/244545
+  RED no-plain-move                    divergent=239907/244545
+  RED break-kill                       divergent=3078/244545
+```
+
+Kind 6 (`$282620`) is the midboss's bullet -- the SAME target-tracker template as
+kinds 3/4/5 (and `+$2C` is 0 for all 32099 of its spawns in the corpus), so it was
+a one-entry port.  Without it the midboss region threw on the unported initialiser;
+with it the whole 9000-frame run is 0 divergent.  `window-constant` stays invisible
+(spawn cap == move cap, so a slot can never exist past the current cap -- the W21
+gate documents the same blind spot).
+
 The 21 dispatch-frame slots stored velA/velB=0 (leftover from the cleared slot);
 the port recomputes the real vector (e.g. `(-$DF,$0)`), so comparing the stored
 velocity is what makes the recompute red on its OWN frame (a single-step

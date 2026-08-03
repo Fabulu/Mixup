@@ -238,8 +238,9 @@ test('an UNPORTED behaviour kind throws by address (loud named throw)', { skip: 
 
 test('seven stage-1 initialisers + seven continuations are wired', () => {
   // the addresses the dispatch resolves to must all be in the ported maps
+  // (8 kinds: 3/4/5/6/7/12/13/19 -- kind 6 is the midboss's bullet)
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
-    [0x2823ec, 0x2824a8, 0x282564, 0x2826dc, 0x282908, 0x282962, 0x282b30]);
+    [0x2823ec, 0x2824a8, 0x282564, 0x282620, 0x2826dc, 0x282908, 0x282962, 0x282b30]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
-    [0x282420, 0x2824dc, 0x282598, 0x282738, 0x282944, 0x28299e, 0x282b64]);
+    [0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738, 0x282944, 0x28299e, 0x282b64]);
 });
