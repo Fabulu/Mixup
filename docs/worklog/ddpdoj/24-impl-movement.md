@@ -92,6 +92,13 @@ machine (incl. the counter-done "advance, don't apply the old heading" path),
 the dirty/clean velocity cache, the SPEED/ESCAPE dispatch, escapes #1-#11, the
 init Y-odometer `ror.w #7`, and `$2417DE`/`$241812` (D2->+$02, D3->+$04).
 
+6. **`readMovementInit` referenced `op` out of scope (ReferenceError).** The HEAD
+   terminator after the peek loop stores `op` as the heading (`$263874`), but the
+   draft declared `const op` INSIDE the `for` block -- so after `break` it was
+   gone and the first real init threw. (Caught by the unit tests, not by reading:
+   a reminder that F0-F5 were found by listing-diff, but a 6th waited for the
+   tests to exercise the path.) Hoisted to `let op;` outside the loop.
+
 ### F1 — resource #$1F resolved; the movement cursor is live
 `resolveMovementPtr` returned a placeholder offset (W22's "W24, noted" sentinel).
 Now reads `res = stageTableEntry(rom, stageIndex(ram)).res` and returns

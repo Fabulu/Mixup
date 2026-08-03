@@ -333,17 +333,20 @@ export function readMovementInit(ram, rom, a5, unported) {
   // bit 7 of that same (high) byte.  (For every stage-1 spawn the Y high byte is
   // $04/$18/$24, so this is a skip -- ported verbatim, not smoothed.)
   if (ram.u8(a6 + SUB.posY) >= 0x80) ram.bset8(a6 + SUB.posY, 7); // $26383A..$263842
-  // The opcode loop: consume SPEED/ESCAPE until the first HEAD.
+  // The opcode loop: consume SPEED/ESCAPE until the first HEAD.  `op` is hoisted
+  // out of the loop because the HEAD terminator (after `break`) stores it as the
+  // heading ($263874 move.b D1,($1b,A6)) -- a block-scoped `const` would be gone.
+  let op;
   for (;;) {
-    const op = rom.u8(a0);                               // $263848 move.b (A0),D1  (PEEK)
-    if (op < 0x80) break;                               // $26384A bpl $263870 -- HEAD terminator
-    a0 += 1;                                            // $26384C addq.w #1,A0
-    if (op >= 0xc0) {                                   // $26384E cmpi.b #$c0 / $263852 bcs
-      ram.setU8(a6 + SUB.speed, rom.u8(a0));            // $263854 move.b (A0)+,($1a,A6)
+    op = rom.u8(a0);                                  // $263848 move.b (A0),D1  (PEEK)
+    if (op < 0x80) break;                            // $26384A bpl $263870 -- HEAD terminator
+    a0 += 1;                                         // $26384C addq.w #1,A0
+    if (op >= 0xc0) {                                // $26384E cmpi.b #$c0 / $263852 bcs
+      ram.setU8(a6 + SUB.speed, rom.u8(a0));         // $263854 move.b (A0)+,($1a,A6)
       a0 += 1;
     } else {
       a0 = runEscape(ram, rom, a5, a6, op, a0, unported); // $26385A..$26386C dispatch
-      if (a0 === MOVE_EXIT) return;                      // EXIT aborts the init too
+      if (a0 === MOVE_EXIT) return;                   // EXIT aborts the init too
     }
     // $26386E bra $263848 -- loop back, peek the next opcode.
   }
