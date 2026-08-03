@@ -236,6 +236,20 @@ SHOT_WINDOWS = [
     #                       8*triangle(i), period 128, peak 64 -- so 256
     #                       directions fold onto 65 quarter-angle records.
     (0x283F50, 0x0200, "WAVE 21: $283F50 the 256-word direction FOLD table"),
+    #   $283D4C  32 entries x 12 B  the MUZZLE-OFFSET + sprite table the shared
+    #                       behaviour helper $2820CC indexes by
+    #                       ((dir+4)&$F8)*3/2 (kinds 0/1/7/8/12/13/...). Each
+    #                       entry is {posOffset long, descriptor long, attr word};
+    #                       the posOffset's two signed halves (each >>1) are added
+    #                       to posA/posB at spawn. 32 dir-buckets x 12 = 384 B;
+    #                       the byte at $283ECC is `add.w D0,D0` (next routine).
+    (0x283D4C, 0x0180, "WAVE 26: $283D4C the 32-entry direction muzzle-offset "
+                      "table read by $2820CC (bullet behaviour spawn helper)"),
+    #   $283C4C  32 words  the direction-sprite OFFSET table the shared epilogue
+    #                       $283C0E indexes by ((dir+4)>>2)&$3E (kinds 7/...).
+    #                       Sprite-only (selects a renderOffs frame); 64 B.
+    (0x283C4C, 0x0040, "WAVE 26: $283C4C the 32-word direction-sprite offset "
+                      "table read by the $283C0E behaviour epilogue"),
 ]
 
 # WAVE 21 -- THE VELOCITY FIELD, exported in full and here is why.
