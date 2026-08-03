@@ -1,6 +1,8 @@
 # W26 — THE BULLET MOVER `$281DDE` (per-frame pool drive) + handler fire wiring
 
-status: **IN PROGRESS.**
+status: **DONE.**  The per-frame gate is 0 divergent of 244,545 slot-steps over a
+9000-frame INVULNERABLE capture that reaches the midboss (8 kinds, window cap
+70->160); 381/0/0 tests; three mover mutations seen RED.
 wave: 26. role: IMPLEMENTER (sole `src/` writer this wave).
 date: 2026-08-03.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Every address is build B
