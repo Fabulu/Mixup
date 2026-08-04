@@ -46,6 +46,10 @@ import {
 } from '../src/spawn.js';
 import { ENEMY } from '../src/enemies.js';
 import { runInitBodyAddr, INIT_BODY_FREED } from '../src/initbody.js';
+// W31: the MIDBOSS init body ($26B48C) runs its arm kinematics ($26B4B4 bsr
+// $26B304), which read $241D34 at speed level $70.  Without a MoveTables it
+// is a loud named throw -- which is exactly how this gate FOUND the gap.
+import { MoveTables } from '../src/vectors.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
@@ -186,7 +190,7 @@ function stageWindow(frames) {
  *  field comparison.  The scratch record is set up exactly as `initDispatch`
  *  would (type byte, class byte, sub-record pointer, run-length read from the
  *  init stub), then the body runs and the fields are read. */
-function runPort(frames, win, rom, brk) {
+function runPort(frames, win, rom, brk, tables) {
   const ram = new Ram();
   const portByLf = new Map();        // lf -> Map<type, fields>
   const portErrors = [];
@@ -224,7 +228,7 @@ function runPort(frames, win, rom, brk) {
       setupScratch(ram, rom, REC, SUB, type, stream);
       const initBody = initBodyAddr(rom, type);
       try {
-        const r = runInitBodyAddr(initBody, ram, rom, REC, makeUnported());
+        const r = runInitBodyAddr(initBody, ram, rom, REC, makeUnported(), tables);
         // a freed enemy (stage-kill gate) -> skip; the board's S-line skipped
         // it too (emit_slot drops type==0), so there is nothing to compare.
         if (r === INIT_BODY_FREED) continue;
@@ -366,12 +370,14 @@ function main() {
       + '`python tools/oracle/w23run.py 16000 w23-stats-stage1` (~6.5 min)');
     return 0;   // SKIP, not FAIL (the corpus is ROM-derived / gitignored)
   }
-  const rom = new RomWindows(JSON.parse(fs.readFileSync(TABLES, 'utf8')).rom);
+  const tj = JSON.parse(fs.readFileSync(TABLES, 'utf8'));
+  const rom = new RomWindows(tj.rom);
+  const tables = new MoveTables(tj, rom);
   const frames = readCorpus(corpus);
   const win = stageWindow(frames);
 
   if (BREAKS.length === 0) {
-    const { portByLf, portErrors } = runPort(frames, win, rom, null);
+    const { portByLf, portErrors } = runPort(frames, win, rom, null, tables);
     if (portErrors.length) {
       console.error(`PORT ERRORS (${portErrors.length}) -- init bodies threw on `
         + `uncovered ROM reads; first 8:`);
@@ -438,7 +444,7 @@ function main() {
     if (m === 'swap-tables') romMut = makeSwappedRom();
     else if (m === 'corrupt-hp') romMut = makeCorruptRom();
     if (romMut === null) { console.log(`RED [${m}] skipped (windows unavailable)`); continue; }
-    const { portByLf } = runPort(frames, win, romMut, m);
+    const { portByLf } = runPort(frames, win, romMut, m, tables);
     const r = compare(frames, portByLf);
     // baseline is 0 divergent (W24 closed the $88 residual and the movement
     // fields are now strict for scripted spawns).  A mutation goes RED when it

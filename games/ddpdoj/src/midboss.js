@@ -659,9 +659,11 @@ export function handlerMidboss(ram, rom, a5, ctx) {
     ram.setU8(a5 + R.deathCtr, c);
     if (c === 0) { freeEnemy(ram, a5); return; }       // $26B716 beq / $26B742 jmp $263762
     if (c >= 0x48) {                                   // $26B718 cmpi.b #$48 / bcc
-      drawBody(ram, rom, a5, a6);                      // $26BDF8 bsr $26BFC2
-      // $26BDFC tst.b ($17,A5) / bne $26BE0A -- and it IS non-zero here, so the
-      // arm sprites and the tail are NOT drawn during the death sequence.
+      // $26BDF8, the SAME entry the live path uses.  It is entered with
+      // ($17,A5) non-zero ONLY from here, which is what makes $26BDFC's
+      // `bne $26BE0A` a live branch rather than decoration -- so the death
+      // sequence must reach it through `drawAll` and not by an inlined copy.
+      drawAll(ram, rom, a5, a6);
       return;
     }
     if (c !== 0x30) return;                            // $26B722 cmpi.b #$30 / bne
