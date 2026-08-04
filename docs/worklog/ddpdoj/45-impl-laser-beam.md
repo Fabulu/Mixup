@@ -1,6 +1,6 @@
 # 45 — IMPL: the BEAM (laser L1+L2) and the score arms it changes
 
-status: IN PROGRESS
+status: **DONE**
 
 started: 2026-08-04
 role: implementer (SOLE writer to `games/ddpdoj/`; I do not touch
@@ -477,7 +477,39 @@ caught by this cycle rather than by review:
 - **unported and throwing, by address: `$24CDC0`; `$245314`, `$24536E`,
   `$2453AC` (L3); `$24560A` (the bomb-laser's ninth block, still unnamed in
   `src/`); `$254078` and `$255DD8` (weapon A).**
-- **unit tests 568 -> 584, 0 skipped.** New file `tests/laser.test.js`, 16 tests.
+- **unit tests 568 -> 585, 0 skipped.** New file `tests/laser.test.js`, 17 tests.
+
+### 9.1 THE GATE
+
+```
+python games/ddpdoj/tools/oracle/pgm.py check
+VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED
+```
+
+Unchanged from W32..W44's 49/0/0. **Nothing was disabled, skipped, narrowed or
+loosened.** Every stage read individually, not just the verdict line. The ones
+this wave could plausibly have broken, all green: `fly-around: port vs board, 0
+divergent frames` and its five REDs (the option object is on that path);
+`display list: the staged-bytes replay gate (1,901 frames)`, its FORCED cap and
+FORCED drop cases and its 12 RED mutations over 3 scenarios — **the port's own
+`$800000` build is still byte-exact against the board**, which is what makes a
+new sprite producer safe; `demo gate: the port drives the ship, pixel-exact` and
+its four REDs; `pixel gate` and its nine; `assets/integrity` (the ROM-leak
+guard) and `background shard gate`, because `player.tables.json` grew by six
+windows; and `bullet mover`, `spawn walker`, `enemy stats`, `turret angle`.
+
+Also green on the final tree, and not part of `pgm.py check`:
+
+```
+node --test games/ddpdoj/tests/         585 pass, 0 fail, 0 SKIPPED   (was 568)
+node games/ddpdoj/tools/webgate.mjs     5 of 5 PASS
+```
+
+`webgate`'s W44 stage still reports **16,457 records / 0 MISSED over 300 steps
+with nothing pressed**, digit for digit — which is the evidence that this wave
+changed nothing on the no-input path.
+
+**A SKIP IS NOT A PASS.** 0 skipped, read rather than assumed.
 
 ## 10. WHAT THIS WAVE DID NOT DO
 
@@ -506,3 +538,35 @@ caught by this cycle rather than by review:
   which is W37 §3.3's UNRESOLVED "+17 -> +20 three-frame gap", resolved.
 - §0.5 [M] the port reaches exactly three of the twenty handlers from the
   shipped seed, through template families 1, 2 and 3 entry 0.
+- §1 **[M] THE BRIEF'S CENTRAL PREMISE IS FALSE.** Porting the beam alone does
+  not unblock play: `$24C164` is tested BEFORE the formation dispatch, so the
+  first held frame then died on **`$24D480`, the pods' shot spawn**, and 16 of
+  the 17 arm-up frames run it. Ported here too, with its `$8002` records going
+  into the shot table wave 8 already drives.
+- §2 **[M] `$249B40` was never an unported path.** It is `bne $249E4E`, a branch
+  to the player's own tail; `($3f,A6)` is not "the dead flag" and the LASER is
+  what writes it (`$24C282`) so the ship stops spawning shots. That completes
+  W37 §3.4's `$81295C` correction from the other end.
+- §4 **[M] the drawn beam COLUMN needs L3.** The only setters of bit 4 of
+  `$811EF2` in build B are `$2454AC`/`$2455AE ori.w #$1001,(A1)`, both inside
+  `$2453AC`. So the segments draw and the bright column does not, and `$9201 =
+  $8201 | $1001` means "the beam hit something", exactly as W37 read it.
+- §5 [M] **600 logic frames with fire held, no throw**, the whole timeline, the
+  release teardown, and a second hold paying the full 17 frames again.
+- §6 [M] **DRIVEN IN CHROME. The owner can hold fire.** Error panel empty at
+  every sample, ship flew 69.9,83.0 -> 195.5,12.0 px with the button down. The
+  beam's five art streams are NOT in the shipped 166-stream sheet, so every beam
+  record is a named skip -- checked against `manifest.spr.streams`.
+- §7 **[M] the brief's SCORING premise is about the OTHER laser.** Every laser
+  fork in `score.js` reads `$811F72`, weapon (A)'s record. `$811F72` was 0 on
+  all 600 held frames and `$8130F8` bit 2 was 0 on all 600. `score.js` gains
+  `$2867B4`'s address and four documentation corrections; no behaviour changed.
+- §8 [M] 15 mutants, **14 turned a NAMED test red**, every restore
+  byte-identical by sha256. The one survivor is provably uncatchable and the
+  test that proves it is named. **THREE of my own checks could not fail when
+  first written** and are documented rather than quietly repaired.
+- §9.1 [M] **`pgm.py check` ALL GREEN 49/0/0, 0 SKIPPED**, unchanged from
+  W32..W44. Unit tests 568 -> 585. `webgate` 5 of 5, with W44's 16,457/0 MISSED
+  reproducing digit for digit on the no-input path.
+
+status: **DONE**
