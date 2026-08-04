@@ -677,3 +677,35 @@ The green above is a clean run with nothing else touching `assets/`.
   unchanged**; `build-dist` clean with 4 deliberate exceptions.
 
 status: **DONE**
+
+---
+
+## 8. PUBLISHING IS BLOCKED, AND NOT BY THIS WAVE — for whoever picks it up
+
+`node tools/publish.mjs` **refused to deploy**, at the FIRST stage, before it
+reached DaiOuJou at all:
+
+```
+FAILED at stage: unit-tests
+REFUSING TO PUBLISH: "batman gate" failed.
+
+not ok 508 - games/gradius/game.json: schema and paths
+  code.note -> games/gradius/`entry` STAYS NULL ON PURPOSE. ... exists on disk
+```
+
+**[M] It is `games/gradius/game.json`, landed at 23:00 today by the concurrent
+Gradius wave (`aedb7c5` "Gradius W41: a start screen, nineteen mods").**
+`games/batman/tests/registry.test.js:110-129` walks every `code.*` key and
+asserts it names a file that exists, skipping keys that match `/Note$/` --
+`romNote`, `frameHzNote`, `entryNote`, `pageNote`. The new manifest uses the
+bare key **`note`**, which does not match that pattern, so 500 characters of
+prose are being checked for existence as a filename.
+
+**I DID NOT TOUCH IT.** `games/gradius/` belongs to another agent this session
+and `games/batman/tests/` is not this wave's either. The fix is one character in
+either place (`note` -> `entryNote`, or widen the test's convention) and it is
+theirs to choose.
+
+**Everything DaiOuJou's own publish stages check is green** and was run
+separately: unit tests 606/0/0, `bundlegate` 100.0000 %, `webgate` 7 of 7. The
+bundle on disk is the one that would ship.
