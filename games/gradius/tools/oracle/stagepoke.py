@@ -352,6 +352,14 @@ def cmd_chain(a) -> int:
         y = min(y, frames - 1)
         ps.append(f"0019={a.stage:d}@{x}-{y}")
         ps.append(f"001B={a.sub:d}@{x}-{y}")
+    # --also carries EXTRA one-frame pokes into the same window. The case it
+    # exists for: `$28,X`, the loop counter `$9872` INCs and `$9B3E` copies into
+    # `$1A`. Poking it to 5 makes the poked wrap the SIXTH, which is the only
+    # way to reach `$CEAE`'s `CMP #$06` clamp on the ending text table.
+    for seg in [x for x in a.also.split(",") if x.strip()]:
+        addr, _, val = seg.partition("=")
+        for (x, y) in windows:
+            ps.append(f"{addr.strip()}={int(val):d}@{x}-{min(y, frames - 1)}")
     poke = ",".join(ps)
     d, rows, rb = _run(a.tag, frames, poke, a.switch)
     n = len(rows)
@@ -449,6 +457,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--mode", choices=("crossings", "step", "spawn", "chain"),
                     default="crossings")
+    ap.add_argument("--also", default="",
+                    help="chain mode: extra ADDR=VAL pokes held over the same "
+                         "window, e.g. 0028=5 to make the wrap the sixth")
     ap.add_argument("--sub", type=lambda v: int(v, 0), default=0x86,
                     help="chain mode: the $1B sub-state to force ($86 = the "
                          "end-of-game test at $9904)")

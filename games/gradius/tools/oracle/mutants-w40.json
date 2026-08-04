@@ -189,6 +189,62 @@
   "replace": "  o.y[i] = 0x2D;                             // MUTANT"
  },
  {
+  "id": "END-1",
+  "dump": "chain-ending",
+  "file": "src/enemies.js",
+  "why": "$CEA8's $08 typewriter reload -- the 9-frame cadence",
+  "find": "  state.zp4E = 0x08;                       // $CEA8/$CEAA LDA #$08 / STA $4E",
+  "replace": "  state.zp4E = 0x07;                       // MUTANT"
+ },
+ {
+  "id": "END-2",
+  "dump": "chain-ending",
+  "file": "src/enemies.js",
+  "why": "$BB7D's $A0 settle delay before the first character",
+  "find": "  state.zp4E = 0xA0;                       // $BB7D/$BB7F STA $4E",
+  "replace": "  state.zp4E = 0x9F;                       // MUTANT"
+ },
+ {
+  "id": "END-3",
+  "dump": "chain-ending",
+  "file": "src/enemies.js",
+  "why": "$BB2F's 6-frame path-record cadence (26 records, 156 frames)",
+  "find": "  if (o.timer[i] < 0x06) return;           // $BB2F CMP #$06 / $BB31 BCC $BB81",
+  "replace": "  if (o.timer[i] < 0x05) return;           // MUTANT"
+ },
+ {
+  "id": "END-4",
+  "dump": "chain-ending",
+  "file": "src/enemies.js",
+  "why": "$CE9C's sfx $B2 request -- the 315-frame sound-gated leg",
+  "find": "    soundRequest(state, 0xB2);             // $CE9C/$CE9E JSR $EC1E",
+  "replace": "    soundRequest(state, 0xB3);             // MUTANT"
+ },
+ {
+  "id": "END-5",
+  "dump": "chain-ending",
+  "file": "src/enemies.js",
+  "why": "$BB6B's $D4 gate removed -- the 170-frame triangle wait",
+  "find": "  if (state.snd[TRIANGLE_OWNER] !== 0) return;   // $BB6B LDA $D4 / $BB6D BNE $BB81",
+  "replace": "  if (false) return;   // MUTANT"
+ },
+ {
+  "id": "END-6",
+  "dump": "chain-ending",
+  "file": "src/enemies.js",
+  "why": "$CECE's $4F := $FF end-of-text marker",
+  "find": "    state.zp4F = 0xFF;                     // $CECE/$CED0 LDA #$FF / STA $4F",
+  "replace": "    state.zp4F = 0xFE;                     // MUTANT"
+ },
+ {
+  "id": "END-7",
+  "dump": "chain-ending",
+  "file": "src/enemies.js",
+  "why": "$CEAE's loop clamp CMP #$06 on the text-table index",
+  "find": "  if (loop >= 0x06) loop = 0x06;           // $CEAE-$CEB2 CMP #$06 / BCC / LDA #$06",
+  "replace": "  if (loop >= 0x05) loop = 0x05;           // MUTANT"
+ },
+ {
   "id": "NEG-1",
   "dump": "s7-chunks",
   "pipeline": "tail",

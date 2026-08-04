@@ -50,7 +50,7 @@
 //
 // Exits non-zero on any divergence. Not wired into test-all.mjs: it needs an
 // emulator run, like everything else under tools/oracle/ that does.
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -62,7 +62,8 @@ import { updatePlayer } from '../../src/player.js';
 import { shotSweep } from '../../src/collision.js';
 import { applyCapsule } from '../../src/powerup.js';
 import { headlessResources } from '../../tests/helpers.js';
-import { seedFromCartridge } from './porttrace.mjs';
+import { nmi } from '../../src/nmi.js';
+import { seedFromCartridge, parseScript } from './porttrace.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RAM_FRAME = 0x800;
@@ -79,6 +80,7 @@ function parseArgs(argv) {
     // mutant is proved to go red without a single byte of src/ being touched.
     else if (a === '--dir') o.dir = argv[++i];
     else if (a === '--limit') o.limit = Number(argv[++i]);
+    else if (a === '--chain-frames') o.chainFrames = Number(argv[++i]);
     else if (a === '--pipeline') o.pipeline = argv[++i];
     // --only narrows the comparison to one or more type bytes (bit 7 masked).
     // The dump indexes every live object, which is what makes the run reusable;
@@ -370,6 +372,127 @@ function runSpawn(man, rows, ram, opt, res) {
 }
 
 // ---------------------------------------------------------------------------
+/**
+ * CHAIN MODE -- the whole FRAME, not the object chain, for a run that poked
+ * `$1B` as well as `$19`.
+ *
+ * `stagepoke.py --mode chain` warps the board into a mode-5 sub-state ladder it
+ * would otherwise need a seven-stage clear to enter. Nothing in that ladder is
+ * an enemy handler, so the single-step object comparison above says nothing
+ * about it. This instead seeds ONE port machine from the cartridge's 2 KB at the
+ * poke frame, applies the same two pokes at the same instant, and then runs the
+ * port's whole `nmi()` forward on the SAME buttons the board was driven with --
+ * comparing the flow bytes every frame.
+ *
+ * WHY THE POKED ENTRY IS NOT A FABRICATION, which is the thing to check before
+ * trusting any of it: `$9872` WRITES the checkpoint triple rather than reading
+ * it -- `$26,X := 0`, `$24,X := 0`, `$22,X := ($42 ? 1 : 0)` -- and only then
+ * `INC $28,X`. So the sole pieces of accumulated run state the chain consumes
+ * are `$28,X` (the loop counter) and `$42` (the meter), and both are plain RAM
+ * bytes with the same values ordinary stage-1 play leaves. A poked first wrap
+ * is state the cartridge really does reach; a poked SECOND wrap would need
+ * `$28,X` seeded too, and is a different claim.
+ */
+function runChain(dir, ram, opt, res) {
+  const chain = JSON.parse(readFileSync(join(dir, 'chain.json'), 'utf8'));
+  const probeRun = JSON.parse(readFileSync(join(dir, 'run.json'), 'utf8'));
+  const at = chain.at;
+  const buttons = parseScript(probeRun.inputScript);
+  const frames = Math.min(opt.chainFrames || 1400, probeRun.gameFrames - at - 1);
+
+  // The eight bytes the ladder is MADE of, board address -> port accessor.
+  const WATCH = [
+    ['$1B substate', 0x1B, (s) => s.substate],
+    ['$19 stage', 0x19, (s) => s.zp19],
+    ['$1A loop', 0x1A, (s) => s.zp1A],
+    ['$28 loopCount', 0x28, (s) => s.save28[0]],
+    ['$57 streamer', 0x57, (s) => s.build.ahead],
+    ['$5B ranThisFrame', 0x5B, (s) => s.zp5B],
+    ['$4F typewriter', 0x4F, (s) => s.zp4F],
+    ['$D4 sound', 0xD4, (s) => s.snd[0xD4 - 0xB0]],
+  ];
+  // AND THE TWO OBJECT SLOTS THE BRAIN SCENE USES. Without them the flow bytes
+  // alone are blind to the brain's 26-record path: mutant END-3 ($BB2F's
+  // six-frame cadence) came back GREEN on the eight bytes above, because the
+  // path moves the OBJECT and not the ladder. `$988C` writes slot 9 (the brain,
+  // type $28) and slot 8 (its metasprite $9E companion), and nothing else in
+  // the chain touches either -- so these are the scene itself.
+  for (const slot of [8, 9]) {
+    for (const [nm, base, arr] of [['type', 0x030C, 'type'], ['x', 0x036C, 'x'],
+      ['y', 0x032C, 'y'], ['anim', 0x012C, 'anim'], ['timer', 0x014C, 'timer'],
+      ['animFrame', 0x016C, 'animFrame'], ['status', 0x010C, 'status'],
+      ['s0460', 0x046C, 's0460'], ['s0480', 0x048C, 's0480']]) {
+      WATCH.push([`slot${slot}.${nm}`, base + slot,
+        (s) => s.obj[arr][slot + ENEMY_BASE]]);
+    }
+  }
+
+  const state = createState();
+  seedFromCartridge(state, {
+    ram: ram.slice(at * RAM_FRAME, (at + 1) * RAM_FRAME),
+    vram: new Uint8Array(0x800), palette: new Uint8Array(32),
+    oam: new Uint8Array(256),
+  });
+  // The two pokes, at the same instant probe.lua applied them: AFTER sample
+  // `at`, so they first bite on `at + 1` on both sides.
+  state.zp19 = chain.stage;
+  state.substate = chain.sub;
+
+  let compared = 0, bad = 0, threw = null;
+  const perField = {};
+  const first = [];
+  const ladderPort = [], ladderBoard = [];
+  let prevP = null, prevB = null;
+  for (let g = at + 1; g <= at + frames; g++) {
+    try {
+      nmi(state, buttons[g] ?? 0, res, false);
+    } catch (e) {
+      threw = { g, m: String(e && e.message || e) };
+      break;
+    }
+    compared += 1;
+    const p = WATCH.map(([, , get]) => get(state));
+    const b = WATCH.map(([, a]) => ram[g * RAM_FRAME + a]);
+    const p8 = p.slice(0, 8), b8 = b.slice(0, 8);
+    if (prevP === null || String(p8) !== String(prevP)) {
+      ladderPort.push([g - at, ...p8]); prevP = p8;
+    }
+    if (prevB === null || String(b8) !== String(prevB)) {
+      ladderBoard.push([g - at, ...b8]); prevB = b8;
+    }
+    for (let k = 0; k < WATCH.length; k++) {
+      if (p[k] !== b[k]) {
+        perField[WATCH[k][0]] = (perField[WATCH[k][0]] || 0) + 1;
+        bad += 1;
+        if (first.length < opt.limit) {
+          first.push(`f${g} (+${g - at}) ${WATCH[k][0]}: port ${hex(p[k])} `
+                   + `board ${hex(b[k])}`);
+        }
+      }
+    }
+  }
+
+  console.log(`poked at f${at}: $19 := ${chain.stage}, $1B := ${hex(chain.sub)}`);
+  console.log(`frames run through the PORT'S OWN nmi(): ${compared}`);
+  if (threw) console.log(`  PORT THREW at f${threw.g}: ${threw.m.slice(0, 110)}`);
+  console.log(`fields per frame          : ${WATCH.length}`
+    + `  -> ${compared * WATCH.length} field comparisons`);
+  console.log(`FIELD DIVERGENCES         : ${bad}`);
+  for (const [f, n] of Object.entries(perField)) console.log(`    ${f}: ${n}`);
+  for (const l of first) console.log('    ' + l);
+  console.log('');
+  console.log('THE LADDER, BOARD (offset from the poke frame; the eight flow '
+    + 'bytes only):');
+  for (const r of ladderBoard) {
+    console.log('  +' + String(r[0]).padStart(5) + '  '
+      + WATCH.slice(0, 8).map(([n], k) => `${n.split(' ')[0]}=${hex(r[k + 1])}`)
+        .join(' '));
+  }
+  if (threw) bad += 1;
+  return bad;
+}
+
+// ---------------------------------------------------------------------------
 function main(argv) {
   const opt = parseArgs(argv);
   const dir = opt.dir || join(HERE, 'out', 'stagepoke', opt.tag);
@@ -377,6 +500,16 @@ function main(argv) {
   try {
     dump = JSON.parse(readFileSync(join(dir, 'dump.json'), 'utf8'));
   } catch {
+    if (existsSync(join(dir, 'chain.json'))) {
+      const ramC = readFileSync(join(dir, 'run.ram'));
+      console.log('=========================================================');
+      console.log('INTERVENTION RUN (chain mode) -- $19 AND $1B both forced.');
+      console.log('=========================================================');
+      const badC = runChain(dir, ramC, opt, headlessResources(0));
+      console.log('');
+      console.log(badC === 0 ? 'RESULT: 0 divergent.' : `RESULT: ${badC} DIVERGENT.`);
+      return badC === 0 ? 0 : 1;
+    }
     console.error(`no ${join(dir, 'dump.json')}. Run stagepoke.py --tag `
                 + `${opt.tag} first (it needs Mesen + the ROM).`);
     return 2;

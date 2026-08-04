@@ -136,7 +136,8 @@ def main() -> int:
     dump = Path(a.dump)
     if not dump.is_absolute():
         dump = HERE / "out" / "stagepoke" / a.dump
-    if not (dump / "dump.json").exists():
+    # `chain` runs write chain.json instead of dump.json; both are valid input.
+    if not ((dump / "dump.json").exists() or (dump / "chain.json").exists()):
         raise SystemExit(f"no dump at {dump}")
 
     before = src_hashes()
