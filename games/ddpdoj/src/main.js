@@ -129,6 +129,7 @@ export class Game {
     this.wallHits = [];
     this.allocEvents = new Map();
     this.bulletSpawns = new Map();   // WAVE 30, see #ctx()'s bulletSpawn
+    this.bulletKinds = new Map();    // WAVE 33, see #ctx()'s bulletKind
     this.shotSpawns = new Map();
     this.shotTableFull = 0;
     this.frameRequests = [];        // bucket offsets from COMPARED slots
@@ -217,6 +218,19 @@ export class Game {
           else e.spawned++;
         }
         this.bulletSpawns.set(k, e);
+      },
+      // WAVE 33.  Every BEHAVIOUR BODY that EXECUTED, keyed by the kind index
+      // and carrying the address `$282030[kind]` resolved to.  `bulletSpawn`
+      // above counts FIRES by call site and cannot answer W27 review F1, which
+      // is a question about KINDS: 517,445 live-slot rows across every recorded
+      // mover corpus contain only {3,4,5,6,7,12,13,19}, and no measurement in
+      // this repo reported the port's own set.  The hook fires at `$281F0E`'s
+      // `jsr (A1)` -- the ONE instant a behaviour body runs -- so it counts the
+      // thing the finding is about and not a proxy for it.
+      bulletKind: (kind, addr) => {
+        const e = this.bulletKinds.get(kind) ?? { addr, n: 0 };
+        e.n++;
+        this.bulletKinds.set(kind, e);
       },
     };
   }

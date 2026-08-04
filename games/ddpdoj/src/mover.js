@@ -359,6 +359,10 @@ const TPL_OFF = { runInit: 0x10 };   // bullets.js TPL.runInit -- duplicated to 
 function runInitialiser(ctx, base) {
   const typeWord = ctx.ram.u16(base);
   const addr = behaviourFor(ctx.rom, typeWord);      // $282030[kind] (kind = type&$3f)
+  // WAVE 33 coverage hook, behaviour-neutral: `$281F0E jsr (A1)` is the only
+  // instant a behaviour body executes, so this is where "kind K ran" is true.
+  // Nothing reads it back and no arm depends on it.
+  ctx.bulletKind?.(typeWord & 0x3f, addr);
   const fn = INIT_BODIES.get(addr);
   if (!fn) {
     unreached(addr, `the behaviour INITIALISER $282030[${typeWord & 0x3f}] = `
