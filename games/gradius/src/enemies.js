@@ -362,6 +362,11 @@ function runEngine(state, rom, stageIndex, res) {
   // column print RUNNABLE for a stage that cannot survive one player shot --
   // the exact lie W31 built that column to kill.
   //
+  // W34 FOOTNOTE: that column could never have killed it. It parses two `if`s
+  // in this file and never runs a frame, which is how six crashes shipped
+  // behind it; it prints ADMITTED now, and the question it was being read as
+  // answering is a gate stage of its own (tools/oracle/stagesweep.mjs).
+  //
   // W32c LOWERS IT TO `>= 5`, and here is the evidence, not the intention.
   // Every `$19 == 4` site in the PRG is now live. There are SIX and W32a's
   // list had five; the sixth was found by scanning assets/prg.bin for
