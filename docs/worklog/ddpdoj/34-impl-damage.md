@@ -511,6 +511,32 @@ either and am not repeating the inherited attribution as though I had.
 - 17 mutations, 17 RED; six survived the first pass and all six were defective
   checks of mine (§6), none uncatchable.
 
+### 6.1 THE FULL GATE
+
+`python games/ddpdoj/tools/oracle/pgm.py check`, run to completion:
+
+```
+VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED
+```
+
+Unchanged from W32's and W33's 49/0/0. **Nothing was disabled, skipped,
+narrowed or loosened**; no compared column set, window or frame count moved, and
+no stage was added. The stages this wave could plausibly have broken all pass:
+
+- **`fly-around: port vs board, 0 divergent frames`** — re-run on the FINAL tree
+  as well as inside the gate: **0 DIVERGENT FRAMES on 88 columns over 2,200
+  logic frames**, with `$28B670`'s tail now running on every alternate frame.
+  Its own `HITEX` line reports what makes that possible: `$245044 fired 0 times
+  on the TEN COMPARED RECORDS in the whole window`, because the scenario has no
+  buttons.
+- `enemy stats: hitbox/HP/palette/HP-reload at spawn (W23)`, whose init bodies
+  this wave's handler changes sit beside.
+- `spawn walker`, `bullet mover`, and the pattern gate over three corpora.
+- `determinism`: three runs, one digest, 2,200 frames × 88 columns IDENTICAL.
+- `tools/webgate.mjs`: 14 files over HTTP, one frame rendered, 98.8 % non-black
+  — the published page still boots with the new ROM window in the bundle
+  (`export-web.mjs` was re-run after `export-tables.py` gained `$287DF0`).
+
 ---
 
 ## 7. WHAT I COULD NOT DETERMINE
@@ -582,3 +608,26 @@ the fly-around window.
    assertion was a delta, and two arms had no test at all.
 
 status: DONE
+
+---
+
+## 9. FOR WHOEVER PLANS THE NEXT WAVE
+
+W33 handed this wave a queue built on "damage unblocks the eight handlers".
+§4.2 retires that ordering. What the measurements actually put next:
+
+1. **Compare damage against the board.** Nothing in this wave was compared.
+   `state.js` already taps `$245044` on the cartridge, but as a window-refusal
+   condition. A scenario that FIRES and records the enemy pool's HP words is a
+   one-wave job and it is the only thing that can check any of §2.
+2. **Settle the midboss's off-screen exit** (§7). It decides whether §4.2 is a
+   correction to W33 or a report of a port defect, and it needs one recording
+   past lf4200.
+3. **The eight handlers are reachable NOW** and each is a loud named throw the
+   moment a run walks into it. They are 2,063 instructions (W28 §1 L10 minus
+   `$272AAC`) and the port can dispatch every one.
+4. **`$289004` + `$288E4E` together, never `$289004` alone** (§1.6). 34 kinds,
+   80 slots, 294 call sites, and a driver without which the pool leaks.
+5. **The per-frame ledger** (§1.7) — object type 0 `$28D520`. It needs the HUD
+   printer `$240DC2` and the hyper `$285A12`, which is W28's wave 8, and until
+   it lands a chain the port starts never expires.
