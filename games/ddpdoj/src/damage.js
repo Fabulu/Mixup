@@ -4,9 +4,19 @@
 // This is the routine that makes an enemy's HP go down.  Until this wave the
 // port could not reduce any enemy's HP at all: `$286096` was a counted note in
 // every handler, so the HP word every handler tests with `tst.w ($18,A6)` never
-// moved, nothing ever died, the stage-1 midboss never released the scroll, and
-// the distance clock `$8130CE` stopped at 239 with eight of the nineteen
-// stage-1 handlers' first trigger beyond it (W33 §3).
+// moved and NOTHING IN THE GAME HAD EVER DIED.  MEASURED over 12,000 frames
+// with this file live and the fire button tapped every fourth frame: 2,064
+// shot-vs-enemy overlaps and 343 kills, against 0 and 0 for the identical run
+// with the button never pressed.
+//
+// W33 §3 predicted a second consequence -- "the distance clock stops at 239 and
+// eight of the nineteen stage-1 handlers are unreachable until damage lands" --
+// AND THAT PREDICTION IS FALSE, which W34 measured with the control above: the
+// clock reaches 836 and all eight handlers execute WITHOUT a single hit.  239
+// was the end of the `fly-around` window (2,200 frames from lf2000), and the
+// clock passes it at lf4250.  `$26132C addq.w #1,$8130CE` is gated on the
+// script FREEZE and never on the scroll SPEED (W19 §2.1), so a halted stage
+// still advances its clock.
 //
 // ============================ WHAT THE ENUMERATION SAID ======================
 //
@@ -85,7 +95,7 @@ export const DMG = {
   fa72: 0x80fa72,            // $244D62 move.w D0,$80FA72   (the hit mask)
   b6e6: 0x81b6e6,            // $244D68 move.w D1,$81B6E6
   b6e8: 0x81b6e8,            // $244D6E move.w D2,$81B6E8
-  box: 0x80fa74,             // the 36 shots' bounding box: maxX minX maxY minY
+  box: 0x80fa74,             // the 36 shots' bounding box: maxY minY maxX minX
   gate308c: 0x81308c,        // $28B670 tst.w / $245036 tst.w
   mirror2: 0x80390c,         // $28B6B0 tst.w
   loop98: 0x813098,          // $28B706 tst.w

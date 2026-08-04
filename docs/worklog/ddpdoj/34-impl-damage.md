@@ -1,6 +1,6 @@
 # W34 — IMPL: enemy DAMAGE — the path from a player shot to an enemy's death
 
-status: **IN PROGRESS**
+status: **DONE** — see §8.
 wave: 34. role: IMPLEMENTER (sole writer to `games/ddpdoj/`).
 date: 2026-08-04.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Every address is build B
@@ -510,3 +510,75 @@ either and am not repeating the inherited attribution as though I had.
   420 464 481 488 — W33 published 420 and 424 for the middle two.
 - 17 mutations, 17 RED; six survived the first pass and all six were defective
   checks of mine (§6), none uncatchable.
+
+---
+
+## 7. WHAT I COULD NOT DETERMINE
+
+- **Whether the midboss's off-screen exit at `$26B8E2` is right.** It is the
+  mechanism §4.2 turns on: with no damage the port's midboss drifts left at 32
+  units/frame from posX 11,072 at lf4320 to −8,128 at lf4920 and is freed at
+  lf4955. W31 §3.1 compared the board's scroll state only to lf4200 — the end of
+  the corpus — and **no recording in this repo covers a frame after that**, so I
+  cannot say whether the board's midboss also walks off. If it does not, W33's
+  wall is real on the cartridge and false only in the port, and §4.2 would be
+  describing a port defect rather than correcting a claim. **What I tried:** the
+  `$26B8BE`/`$26B8D8` arm read out of the listing, the position trajectory
+  frame by frame, and a search of `tools/oracle/out/` for any trace past lf4200
+  with the midboss in it. There is none.
+- **Whether the board damages the same enemies on the same frames.** Nothing in
+  this wave is compared against the cartridge. `state.js` already taps
+  `$245044` on the board (`hitex`/`hitany`), but as a WINDOW-REFUSAL condition,
+  not as a compared column, and no scenario records the enemy pool's HP words.
+  That comparison is the obvious next measurement and it is a named gap.
+- **Whether `$286096` preserves D1** — W31 §9 left this open and this wave did
+  not close it, it side-stepped it: `src/score.js` takes the hit mask as an
+  ARGUMENT, so the port does not depend on a register convention nobody has
+  checked. The ROM's own `$26B7E8 move.w D1,($28,A5)` two instructions after
+  `$26B77C jsr $286096` still implies it survives; that is still an inference.
+- **The FIELD layout of an effect record.** `$289004` returns A0 and its callers
+  write eight to eleven fields into it; those writes are inside the one noted
+  gap and I did not decode them.
+- **Anything about the board this wave measured itself.** No MAME was run for
+  any number above. Every dynamic figure is the PORT replayed against a TSV
+  already on disk, or the ROM listing.
+
+## 8. WHERE THE WAVE ENDED
+
+**A. THE INVENTORY: 18 routines enumerated with their real denominators**
+(§1.1), reproducing W19's and W28's counts independently, and finding that
+`$244D62` names exactly ONE external target in 1,456 bytes.
+
+**B. DAMAGE IS PORTED AND MEASURABLE.** 2,064 shot-vs-enemy overlaps and 343
+kills over 12,000 frames against a control of 0 and 0; the score, chain and
+meter move for the first time in this project, with the meter pinned at the cap
+56 that W19 measured on the board.
+
+**C. 8 OF 8 UNPORTED STAGE-1 HANDLERS EXECUTE — AND DAMAGE IS NOT WHY.** The
+control reaches the same clock and the same eight. W33 §3's wall was the end of
+the fly-around window.
+
+**D. TWO DEFECTS FOUND AND FIXED** in handlers ported by W25 and reviewed since
+(§3), neither of which any run could have seen.
+
+### RANKED, FOR THE REVIEWER
+
+1. **§4.2 and §7's first bullet together.** The premise this wave was
+   commissioned on is false in the port; whether it is false on the cartridge
+   depends on a midboss exit nobody has compared. Both halves matter and they
+   are different claims.
+2. **§3.1's two-stage death.** A W25 handler, reviewed by W25's reviewer and
+   read again by W30 and W33, had lost four facts of its damage arm. The reason
+   nobody saw it is that the arm had never executed — which is the argument
+   `docs/knowledge/10` makes about transcription, arriving from the other side.
+3. **§5, the order.** No write this wave adds chose its own place in the frame.
+   If that reasoning is wrong, the owner's constraint is not met and the
+   argument is the thing to attack, not the arithmetic.
+4. **§1.6.** `$289004` is 40 instructions and was deliberately NOT ported
+   because its only driver is unported. If that judgement is wrong the wave left
+   an easy 34-kind subsystem on the table; if it is right, porting it would have
+   rebuilt W33 §4's leak on purpose.
+5. **§6's six survivors.** Three fixtures sat where two readings agree, one
+   assertion was a delta, and two arms had no test at all.
+
+status: DONE
