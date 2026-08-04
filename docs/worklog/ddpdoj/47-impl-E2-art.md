@@ -321,6 +321,159 @@ for. `games/ddpdoj/assets/` is gitignored and every byte of it is regenerated
 from the owner's own cartridge. **The list went from one entry to four and that
 is a decision the owner may want to reverse; it is flagged rather than buried.**
 
+## 4. EVERY CHECK SEEN TO FAIL — and the one that COULD NOT
+
+### 4.1 THE GATE STAGE THAT AGREED WITH ITSELF. Read this one first.
+
+`webgate`'s new W47 stage first asserted, in substance, *"everything sprite
+shard 1 holds is drawn once shard 1 is here"*.
+
+**[M] I cut the hull harvest from 64 entries to 16 — the exact "16-direction"
+mistake `46-diag` §6 warns this wave about, i.e. a bundle carrying A QUARTER of
+the tank art — re-exported, and the stage reported**
+
+```
+PASS: W47 THE TANK BODIES -- ... carries 2310 display-list records.
+      With all 6 shards loaded: 2310 drawn of 2310 (expect all)
+```
+
+**It passed. On the owner's bug, three-quarters unfixed.** The check read its
+subject through the same constant it was testing: a short shard simply makes a
+smaller set, and "all of the set" is true of any set. `docs/knowledge/03` names
+this exactly, and two checks in this project have already seeded through their
+own constant.
+
+It now asserts three **ABSOLUTE, MEASURED** numbers, none of which the bundle
+supplies: **67 streams in shard 1** (62 absent hulls + 5 laser), **4,194
+records** over 1,000 frames from the shipped seed, **32 distinct hull images**.
+Re-mutated:
+
+```
+FAIL: W47 THE TANK BODIES -- ... holds 21 streams (expect 67) and carries 2310
+      display-list records (expect 4194) over 4 distinct images (expect 32)
+```
+
+### 4.2 Seventeen unit mutations, seventeen named reds
+
+`tests/web-spr-shards.test.js`, 21 tests. Each mutation applied to `src/` or
+`tools/`, the suite run, **the NAMED test that went red recorded, the file
+restored and hashed byte-identical**. All 17 restores byte-identical.
+
+| # | mutation | the test that went red |
+|---|---|---|
+| M1 | the packed-space tiling check removed | `SprShards REJECTS shard runs that do not tile the packed space` |
+| M2 | the power-of-two check removed | `a non-power-of-two array length is refused` |
+| M3 | a pre-W47 bundle accepted silently | `a bundle with no spr.shards says WHICH wave it predates` |
+| M4 | `shardOfBase` always says shard 0 | `shardOfBase is a RANGE test on the packed base` (+2 more) |
+| M5 | a shard installed at offset 0 | `install() drops a shard's words at ITS OWN offset` |
+| M6 | the sprite shard-body length check removed | `a SHORT shard body is refused by length` |
+| M7 | the failed-shard message stops naming the files | `a FAILED sprite shard throws from demand(), naming...` |
+| M8 | `demand()` throws for a merely LOADING shard | `a LOADING sprite shard does NOT throw` |
+| M9 | a pending shard reported as MISSING ART | `...skipped by WIDTH and names the SHARD, not the address` |
+| M10 | a record DRAWN out of a shard that has not landed | `THE MUTATION: ...reads ZEROED words` (+1) |
+| M11 | `verifyCoverage` stops checking the capture is boot-drawable | `verifyCoverage REFUSES a capture stream ... DEFERRED shard` |
+| M12 | the hull harvest sized off the "16-direction" comment | `THE HARVEST TAKES 64 HULL ENTRIES, NOT 16` |
+| M14 | the laser folded into the BOOT shard | `SHARD 0 IS THE BOOT SHARD` |
+| M15 | the stream table put back into `manifest.json` | `the stream table is a TYPED ARRAY` |
+| M16 | `$268594` harvested after all | `$268594 is NAMED as not harvested` (+1) |
+| M17 | an `AssetError` wears the "IS NOT PORTED YET" headline | `an AssetError does NOT get the ... headline` |
+| M18 | one sentence for both kinds of skip | `the page says WHICH of the two skips it is` |
+
+**AND ONE MUTANT WAS DEFECTIVE, recorded rather than quietly repaired.** M6's
+first form anchored on `if (bytes.length !== want) {`, which appears in
+**`BgShards.install` as well** — `String.replace` takes the FIRST, so it mutated
+the BACKGROUND loader and this file's tests never looked at it. It came back
+`*** SURVIVED ***`, which is what a survivor is for. Re-anchored on
+`SprShards`' own message and it goes red.
+
+### 4.3 The exporter's own extent checks, seen red against the cartridge
+
+A unit test can only read the exporter's SOURCE. These run the real export
+against the real ROM.
+
+| mutation | what the export printed |
+|---|---|
+| the hull table's stated run 96 -> 90 | `Error: sprite table $268b9e stride 4: the cartridge's run of consecutive stream starts is 96, ending at $268d1e; this file says 90...` |
+| type `$31`'s stride 8 read as 4 | `Error: ... the run is 79, ending at $269a4a; this file says 70 ending at $269b3e` |
+| the hull table claiming 100 entries | `Error: sprite table $268b9e claims 100 entries but its run of valid stream starts is stated as only 96` |
+
+`export-web.mjs` restored and re-hashed byte-identical after each.
+
+### 4.4 Everything W44 and W14 already had, still red
+
+`webgate --break`: `no-remap` (16,457 of 16,457 records lose their key),
+`drop-one-stream` ($166EE4 skipped 3,664, drawn exactly `16457 - 3664`),
+`lag-0` (126 of 200 frames), `terminate-instead-of-zero-width` (the renderer
+sees 9,406 of 24,889), `no-extent-check` (the `$000000` over-read stops being
+named), plus the three fetch breaks. **NEW: `--break spr-shard-404`** — the
+bundle LOADS and `demand()` throws from the frame that needs it.
+
+`bundlegate --break`: `drop-tile`, `drop-stream`, `zero-col` (89.4967 %),
+`blank-tile` (99.0507 %), `shard-404`, `shard-late` — **all six still red
+through the refactored `ShardQueue`**, which is what says the lift did not
+quietly weaken the background's contract.
+
+## 5. THE PAGE, IN A REAL BROWSER — WHAT I SAW
+
+Chrome + Python `playwright` over a local HTTP server, the recipe W42
+established. Nothing downloaded.
+
+### 5.1 THE TANKS HAVE BODIES
+
+**[M] At +15 s — the moment `46-diag` §7 photographed as "lone gun barrels
+standing on the pavement, five or six of them around the ship, each with its
+shadow and no vehicle underneath" — there are SEVEN COMPLETE TANKS on the road:
+tracked hulls with a gun turret on top, and the hulls are on VISIBLY DIFFERENT
+HEADINGS** — the pair at centre-left is square to the screen, the three at
+top-right are angled away up the road, and every turret is independently swung
+round to point at the ship. That is the whole diagnosis on the glass: the turret
+is indexed by FACING and the hull by HEADING, and the headings are no longer
+restricted to 44 and 45.
+
+**[M] At +10 s: ELEVEN complete tanks**, the frame `46-diag` §7 recorded as
+`NO ART 12: $166840x3 $1662C8x2`.
+
+**[M] The page's own status line no longer names a single `$165xxx`/`$166xxx`
+/`$167xxx` address, at any of ten sample times over 30 s.** Before:
+
+```
+[M 46-diag] +10s  NO ART 12: $166840x3 $1662C8x2
+[M 46-diag] +15s  NO ART 19: $1662C8x6 $166264x3
+```
+
+after:
+
+```
+[M] +10s  [port] dl 39 drawn 29 b0 24 spr 6/6  NO ART 10: $233F34x1 $22DA70x1 $22DED4x1
+[M] +15s  [port] dl 56 drawn 26 b0 20 spr 6/6  NO ART 30: $12D174x8 $12D430x8 $172D18x2
+```
+
+Every remaining address is a BACKGROUND element or a bullet-animation stream —
+other producers' rows, not this wave's.
+
+### 5.2 THE BUG AND THE FIX, IN ONE SESSION
+
+I served the page with `spr/*.shard1.u16.gz` **held back for 26 seconds**, so
+the same page shows both states:
+
+- **[M] +16 s, shard 1 in flight: SIX LONE GUN BARRELS floating on the
+  pavement**, no vehicle under any of them, aimed at the ship. **This is the
+  owner's screenshot, reproduced on demand.** The status line reads
+  `spr 1/6 SPR SHARD 1x10` — the page saying, in its own words, that ten records
+  this frame are waiting on 28 KiB.
+- **[M] +28 s, shard 1 landed: the same tanks are whole.** No reload, no
+  restart, no error.
+
+### 5.3 What I did NOT see, stated as a limit
+
+**Nothing here is compared against MAME.** `46-diag` §10.3's limit stands
+unchanged: what §4 of that document proved is that the port asks for the same
+stream ADDRESS the board asked for, 160 of 160 frames. This wave proves the
+bundle now CONTAINS that address's picture and that it draws. **A record with a
+correct descriptor can still be the wrong record**, and no gate in this repo
+compares the PORT's own list against a board frame. That gate still does not
+exist and I did not build it.
+
 ## LOG (appended as findings arrive)
 
 - opened.
