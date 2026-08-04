@@ -714,9 +714,19 @@ try {
       // art is ABSENT AND NAMED, never drawn wrong and never silently dropped,
       // and those addresses are the next wave's shopping list.  `b0` is how many
       // of them came out of bucket 0, THE ENEMIES.
+      //
+      // WAVE 47 -- and there are now TWO reasons a record is not drawn, which
+      // get two different sentences because they are two different bugs:
+      //   NO ART $166840x3        the bundle does not contain this picture
+      //   SPR SHARD 1x27          it does, and that shard is still in flight
+      // `spr n/6` is how many sprite shards have landed.  The tank hulls the
+      // owner reported missing are shard 1: at boot they read as SPR SHARD 1
+      // for as long as 28 KiB takes, and then they are simply there.
       `[${s.spriteSource}] dl ${s.dlRecords} drawn ${s.dlDrawn} b0 ${s.dlBuckets}`
-        + (s.dlMissed
-          ? ` <b>NO ART ${s.dlMissed}: ${s.dlMissing}</b>`
+        + (s.sprShards ? ` spr ${s.sprShards.ready}/${s.sprShards.total}` : '')
+        + (s.dlPending ? ` <b>SPR SHARD ${s.dlPending}</b>` : '')
+        + (s.dlMissing
+          ? ` <b>NO ART ${s.dlNoArt}: ${s.dlMissing}</b>`
           : ''),
       `${s.logicHz.toFixed(1)}Hz`,
       `x${canvas.dataset.scale}`,

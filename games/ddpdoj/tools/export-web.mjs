@@ -161,12 +161,174 @@ const cap = new Capture(capJson, capBin);
 const seed = new Uint8Array(fs.readFileSync(path.join(webDir, 'seed.bin')));
 const tables = fs.readFileSync(tablesFile);
 
+// ------------------------------------------------------------------- WAVE 47
+// THE SPRITE SHEET IS SHARDED, AND THE ENEMY BODY TABLES ARE HARVESTED BY
+// ADDRESS.  (enemy layer E2 -- docs/worklog/ddpdoj/47-impl-E2-art.md)
+//
+// THE REPORT THIS CAME OUT OF.  The owner loaded the page after W44 and saw
+// "lots of turrets running around targetting you... without tank bodies".
+// `46-diag-orphan-turrets.md` measured the cause and this file is the whole of
+// the fix: enemy type $11 -- 104 of stage 1's 339 spawn records -- draws its
+// HULL from `$268B9E` indexed by HEADING and its TURRET from `$268C9E` indexed
+// by FACING, and **the 161-frame recording this atlas was harvested from swept
+// every FACING (the turret tracks the player) and only ever used two of the 64
+// HEADINGS (the tanks all drove one way)**.  So 32 of 32 turret images shipped
+// and 2 of 64 hull images did, and a tank has a body only while it is driving
+// on heading 44 or 45.
+//
+// [M] W47, 6,185 logic frames from the shipped seed, nothing pressed: the hull
+// table's records are **55,574 of the 154,831 records the page could not draw --
+// 35.9 % of every miss in the port's longest run.**  The art is 27.1 KiB gz.
+//
+// SO THE HARVEST BELOW IS BY ROM ADDRESS -- exactly the mechanism the ship's 17
+// tilts already use (§WAVE 12) -- and it takes each table to its FULL EXTENT out
+// of the cartridge rather than to the entries some recording happened to index.
+// That is `docs/knowledge/09`: the ROM is the inventory.
+//
+// AND THE EXTENTS ARE THE TRAP.  `src/handlers.js` called both type-$11 tables
+// "16-direction"; [M] they are 64 and 32 LONGWORDS.  Every extent below is
+// pinned by CODE and re-checked here (`checkTableExtent`), because a harvest
+// sized off a comment would ship a quarter of the hull art and leave the owner's
+// bug exactly where it is.
+//
+// AND BOOT MUST NOT GET SLOWER (HANDOVER §8.8).  So the sheet becomes SHARDS
+// over ONE packed address space: shard 0 is what the bundle already shipped,
+// and the harvest is DEFERRED, queued from boot and promoted by the page's own
+// miss guard the moment a record asks for it.  A record whose shard has not
+// landed is SKIPPED AND NAMED -- "named, never black", the contract
+// `src/web/assets.js BgShards` already has and `bundlegate --break shard-404`
+// already red-validates.
+//
+// The harvest tables, each with the code that pins its extent:
+//
+//   $268B9E  64  type $11 HULL, by HEADING.  $2689A0 builds
+//                `d1 = (($1A,A6) & $3E) << 2`, which reaches $F8, and $2689B4
+//                adds 4 on the mirror bit -> entries 0..63.  Pinned from below
+//                by $268C9E being the next table.
+//   $268C9E  32  type $11 TURRET, by FACING ($268A46's ((($33,A5)+1) & $3E)*2).
+//                ALL 32 ARE ALREADY IN THE SHEET; it is listed so the pair is
+//                enumerated in one place and so the assertion covers both.
+//   $269E48  32  the damage-first family's heading table ($269E20 lea).
+//   $269BB6   4  the same family's `anim4` ($269B64).  All 4 already shipped.
+//   $272E7A  32  type $89's body, $27740E `andi.w #$3E,D1 / add.w D1,D1`.
+//   $26990E  70  type $31's animation, 8 bytes per entry.  THE EXTENT IS THE
+//                HANDLER'S OWN WRAP: phase 2 frees the record at cursor $230 and
+//                `$26990E + $230 == $269B3E`, which is the shared draw block --
+//                i.e. instructions.  [M] 70 entries, 70 distinct streams.
+//                (46-diag §6 priced this at 24 entries / 37.3 KiB and §10.2 said
+//                it had not found the end; it is 70 / 116.7 KiB.)
+//   $2970D8  16  type $24's own table.  $2970D4 is the handler's last
+//                instruction and $297118 is the next init stub, so both ends are
+//                pinned by code.  `handlers.js:2454` reads it.
+//
+//   and the LASER's five streams (W45), which are needed on the FIRST HELD
+//   FRAME and are therefore in the BOOT shard, not a deferred one.
+//
+// WHAT IS DELIBERATELY NOT HARVESTED: `$268594`, enemy type $10's 96-entry
+// table (90 missing, 51.8 KiB).  [M] no ported code reads it -- `grep 268594
+// games/ddpdoj/src/` is empty -- and the 6,185-frame run emitted 0 of its 96
+// streams.  It is in `tools/w35atlas.mjs ROM_TABLES` and it belongs to a handler
+// that does not exist yet.  Named rather than silently omitted.
+
+// A TABLE'S EXTENT IS A CLAIM, AND EACH ONE IS PINNED TWICE.
+//
+//   `entries` -- what the HANDLER can reach, from its own index arithmetic or
+//                its own wrap constant.  This is what is harvested.
+//   `runsTo`  -- how many consecutive valid stream starts the CARTRIDGE holds
+//                from that base, [M] measured, asserted on every build, and
+//                usually LARGER because the next table follows immediately.
+//   `endsAt`  -- where that run stops, and what is there.
+//
+// The two numbers together are what makes this non-vacuous: `entries` alone
+// could be any wrong number and still export something plausible, and `runsTo`
+// alone would over-harvest into the neighbouring table.  `$269E48` is the case
+// that proves the point -- [M] its run is 64, but the second 32 are `FAM.bucket`
+// ($269EC8), which are BUCKET longs that merely happen to look like stream
+// starts, and the index `(d1 & $3E) * 2` cannot reach them.
+//
+/** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
+const HARVEST = Object.freeze([
+  // the LASER's five streams are IMMEDIATES, not a table -- see LASER_STREAMS.
+  [1, 0x268b9e, 64, 4, 96, 0x268d1e,
+    'type $11 HULL by HEADING ($2689BC). Entries: $2689A0 builds '
+    + '`d1 = (($1A,A6) & $3E) << 2`, which reaches $F8, and $2689B4 adds 4 on '
+    + 'the mirror bit -> 0..63. The run of 96 is this table PLUS the turret '
+    + 'table below, which begins at $268B9E+$100 = $268C9E -- that adjacency is '
+    + 'what pins this table from below. THE OWNER\'S BUG: [M] 55,574 of 154,831 '
+    + 'missed records in a 6,185-frame run, 35.9 % of every miss'],
+  [1, 0x268c9e, 32, 4, 32, 0x268d1e,
+    'type $11 TURRET by FACING ($268A72), index $268A46 `((($33,A5)+1) & $3E)*2` '
+    + '-> $7C -> 32. ALREADY SHIPPED IN FULL; harvested by name so the pair is '
+    + 'enumerated in one place and so $268B9E\'s end is pinned by a table this '
+    + 'file knows about rather than by a comment'],
+  [2, 0x272e7a, 32, 4, 96, 0x272ffa,
+    'type $89 body. $27740E `andi.w #$3E,D1 / add.w D1,D1` -> $7C -> 32 '
+    + '(initbody.js:608, handlers.js:1999). The run continues 64 entries past '
+    + 'the end into a table nobody has named; the INDEX is what stops the '
+    + 'harvest, and over-harvesting there would ship 64 streams no code can '
+    + 'reach. [M] first needed lf4938'],
+  [3, 0x269e48, 32, 4, 64, 0x269f48,
+    'the damage-first family\'s heading table, $269E20 lea, index $269E26 '
+    + '`(d1 & $3E) * 2` -> $7C -> 32. The run of 64 walks straight on into '
+    + 'FAM.bucket ($269EC8), whose longs are BUCKET values, and stops exactly at '
+    + 'FAM.muzzle ($269F48). [M] first needed lf6426'],
+  [3, 0x269bb6, 4, 4, 4, 0x269bc6,
+    'the same family\'s anim4, $269B64, ($20,A5) cycling 0/4/8/$C -> 4. '
+    + 'ALREADY SHIPPED IN FULL. Here the run and the index agree exactly'],
+  [4, 0x2970d8, 16, 4, 16, 0x297118,
+    'type $24 ($2970BA / handlers.js:2454). $2970D4 is the handler\'s last '
+    + 'instruction and $297118 is the next init stub, so BOTH ends are pinned by '
+    + 'code -- and [M] the run stops at $297118 too. [M] first needed lf7834'],
+  [5, 0x26990e, 70, 8, 70, 0x269b3e,
+    'type $31\'s animation, 8 bytes per entry. The extent is the HANDLER\'S OWN '
+    + 'WRAP: phase 2 frees the record when the cursor reaches $230, and '
+    + '$26990E+$230 == $269B3E, which is the damage-first family\'s shared draw '
+    + 'block -- instructions. [M] the run stops there too, at 70. '
+    + '(46-diag §6 priced 24 entries / 37.3 KiB and §10.2 said it had not found '
+    + 'the end; it is 70 / 116.7 KiB.) [M] first needed lf8106, and it is 116.7 '
+    + 'KiB for 120 records in the whole run -- hence the LAST shard'],
+]);
+
+/** W45's beam art: the pod muzzle `$24C906` forces onto `($a,A6)` and four of
+ *  the ten segment images at `$24ACE8`.  `45-impl-laser-beam.md` §6 measured
+ *  that not one of them is in the 166-stream sheet, so every beam record is a
+ *  named skip.
+ *
+ *  THEY GO IN SHARD 1, NOT IN THE BOOT SHARD, and that is a decision rather than
+ *  an oversight.  They are only 1.1 KiB, and the player CAN hold fire on frame
+ *  one -- but putting them in shard 0 shifts every packed base behind them,
+ *  which rewrites `capture.bin` and therefore moves the bytes
+ *  `tools/bundlegate.mjs` proves pixel-identical to MAME.  Keeping shard 0
+ *  byte-for-byte what the bundle already shipped is worth more than 1.1 KiB of
+ *  latency on a beam that is a named skip for the second or two shard 1 takes.
+ *  Shard 1 is the FIRST deferred fetch for exactly this reason. */
+const LASER_STREAMS = Object.freeze([0x01302c, 0x013098, 0x065354, 0x011e8c,
+  0x013b94]);
+const LASER_SHARD = 1;
+
+/** Shard metadata.  `boot` is awaited by `loadBundle`; the rest are queued from
+ *  boot and promoted by the page's miss guard. */
+const SPR_SHARDS = Object.freeze([
+  [0, 'boot', 'the recording\'s 150 streams + the ship\'s 17 tilts (W12). '
+    + 'BYTE-IDENTICAL to what shipped before W47.'],
+  [1, 'type11', 'type $11\'s hull $268B9E + turret $268C9E, and the laser\'s 5 '
+    + '(W45). The owner\'s missing tank bodies.'],
+  [2, 'type89', 'type $89\'s body table $272E7A'],
+  [3, 'family', 'the damage-first family, $269E48 + $269BB6'],
+  [4, 'type24', 'type $24\'s table $2970D8'],
+  [5, 'type31', 'type $31\'s 70-frame animation $26990E'],
+]);
+const SPR_BOOT = [0];
+
 // ---------------------------------------------------------------------------
 // 1. COVERAGE.  What can this capture possibly make the renderer read?
 
 const bgUsed = new Set(), txUsed = new Set();
 /** offs -> {maskWords, colStart, colWords, stride, pixels} , from the ROM */
 const streams = new Map();
+/** offs -> sprite shard index.  FIRST shard wins, exactly as the BG sheet's
+ *  `shardOfTile` does, so the shards are disjoint by construction. */
+const shardOfStream = new Map();
 let records = 0;
 
 // ------------------------------------------------------------------- WAVE 35
@@ -217,7 +379,7 @@ for (let i = 0; i < cap.length; i++) {
     // zero, so such a record needs no data at all -- but it still needs a legal
     // `offs`, because the field is rewritten below.
     let w = streams.get(s.offs);
-    if (!w) { w = romExtent(s.offs); streams.set(s.offs, w); }
+    if (!w) { w = romExtent(s.offs); streams.set(s.offs, w); shardOfStream.set(s.offs, 0); }
     checkAgainstRecord(s.offs, s.width, s.height, w);
   }
 }
@@ -266,7 +428,72 @@ for (const offs of shipOffs) {
       + `${shipWide} x ${shipHigh} = ${shipWide * shipHigh}. One of the two is `
       + 'wrong and neither may be assumed.');
   }
-  if (!streams.has(offs)) { streams.set(offs, w); shipHarvested++; }
+  if (!streams.has(offs)) {
+    streams.set(offs, w); shardOfStream.set(offs, 0); shipHarvested++;
+  }
+}
+
+// ------------------------------------------------------------------- WAVE 47
+// 1a. THE ENEMY BODY TABLES AND THE LASER, HARVESTED BY ADDRESS.
+//
+// The cartridge is the inventory.  Every table is taken to its FULL extent (see
+// the HARVEST block's header for what pins each one) and every entry is put
+// through `romExtent`, which throws `SpriteDirError` unless the address is a
+// real stream start in the mask ROM's own chain -- so a wrong base, a wrong
+// stride or a wrong entry count stops here instead of shipping a short sheet.
+const cpuBytes = new Uint8Array(fs.readFileSync(cpuFile));
+const romBe32 = (a) => (((cpuBytes[a] << 24) | (cpuBytes[a + 1] << 16)
+  | (cpuBytes[a + 2] << 8) | cpuBytes[a + 3]) >>> 0);
+
+/** THE END OF A TABLE IS A CLAIM AND IT IS CHECKED.  Every extent in `HARVEST`
+ *  is pinned by code in the listing; this asserts the cartridge agrees, from the
+ *  other side: entry `n-1` must be a stream start and entry `n` must NOT be.
+ *  A table that ran one entry further would ship art indexed by nothing; one
+ *  that stopped one entry short is the owner's bug all over again. */
+function checkTableExtent(base, n, stride, runsTo, endsAt, why) {
+  const isStart = (a) => {
+    const v = romBe32(a) & 0x7fffff;
+    if (v === 0 || (romBe32(a) >>> 24) !== 0) return false;
+    try { streamExtent(sprmask, COLW, v & (MASKW - 1)); return true; } catch { return false; }
+  };
+  if (n > runsTo) {
+    throw new Error(`sprite table $${base.toString(16)} claims ${n} entries but `
+      + `its run of valid stream starts is stated as only ${runsTo}. (${why})`);
+  }
+  let run = 0;
+  while (isStart(base + run * stride) && run <= runsTo + 8) run++;
+  if (run !== runsTo || base + run * stride !== endsAt) {
+    throw new Error(`sprite table $${base.toString(16)} stride ${stride}: the `
+      + `cartridge's run of consecutive stream starts is ${run}, ending at `
+      + `$${(base + run * stride).toString(16)}; this file says ${runsTo} ending `
+      + `at $${endsAt.toString(16)}. One of the two has moved, and a harvest `
+      + `sized off the wrong one ships the wrong art. (${why})`);
+  }
+}
+
+let harvested = 0, harvestAlready = 0;
+const harvestReport = [];
+for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
+  checkTableExtent(base, n, stride, runsTo, endsAt, why);
+  let added = 0, already = 0;
+  const seen = new Set();
+  for (let i = 0; i < n; i++) {
+    const offs = romBe32(base + i * stride) & 0x7fffff;
+    seen.add(offs);
+    if (streams.has(offs)) { already++; continue; }
+    streams.set(offs, romExtent(offs));    // throws unless it is a stream start
+    shardOfStream.set(offs, shard);
+    added++;
+  }
+  harvested += added; harvestAlready += already;
+  harvestReport.push({ shard, base, entries: n, stride, runsTo, endsAt,
+    distinct: seen.size, added, already, why });
+}
+for (const offs of LASER_STREAMS) {
+  if (streams.has(offs)) { harvestAlready++; continue; }
+  streams.set(offs, romExtent(offs));
+  shardOfStream.set(offs, LASER_SHARD);
+  harvested++;
 }
 
 const bgList = [...bgUsed].sort((a, b) => a - b);
@@ -288,7 +515,7 @@ console.log(`  sprite EXTENTS from the ROM chain (src/render/spritedir.js): `
 // loudly if it is wrong, and several of them were seen to fail while this was
 // being written (see the worklog's RED table).
 
-const cpu = new Uint8Array(fs.readFileSync(cpuFile));
+const cpu = cpuBytes;              // WAVE 47 read it above, for the harvest
 const be16 = (a) => (cpu[a] << 8) | cpu[a + 1];
 const be32 = (a) => (((cpu[a] << 24) | (cpu[a + 1] << 16)
   | (cpu[a + 2] << 8) | cpu[a + 3]) >>> 0);
@@ -538,18 +765,35 @@ function coalesce(ranges) {
   return out;
 }
 
-const maskBlocks = coalesce([...streams.entries()]
-  .map(([offs, w]) => [offs & (MASKW - 1), w.maskWords]));
-const colBlocks = coalesce([...streams.values()].map((w) => [w.colStart, w.colWords]));
+// WAVE 47: PER SHARD, IN SHARD ORDER, INTO ONE ADDRESS SPACE.  Each shard owns
+// a CONTIGUOUS run of the packed mask array and a contiguous run of the packed
+// colour array, so the page can allocate both at full size at boot and drop each
+// shard's words into place as it arrives -- and so "which shard is this stream
+// in" is a range test on the packed base rather than a fourth manifest field.
+//
+// Coalescing is INSIDE a shard, never across one.  Two streams that share
+// colour data and land in different shards therefore get one copy each; that is
+// a few duplicated words in exchange for shards that are independently loadable,
+// and it is the same trade `shardOfTile` makes for the background.
+const shardStreams = SPR_SHARDS.map(() => []);
+for (const [offs, w] of streams) shardStreams[shardOfStream.get(offs)].push([offs, w]);
+
+const maskBlocksBy = shardStreams.map((list) =>
+  coalesce(list.map(([offs, w]) => [offs & (MASKW - 1), w.maskWords])));
+const colBlocksBy = shardStreams.map((list) =>
+  coalesce(list.map(([, w]) => [w.colStart, w.colWords])));
 
 // One mask block per stream, starting exactly at that stream's `offs`. If this
 // ever fails the header rewrite below could corrupt another sprite's mask data,
-// so it is an ERROR and not a warning.
+// so it is an ERROR and not a warning.  (It holds because the mask chain's
+// stride is `wide*high + 4` and a stream's own extent is `stride - 2`, so
+// consecutive streams are always two words apart -- W35's `spritedir.js`.)
 const nonEmptyStreams = [...streams.entries()].filter(([, w]) => w.maskWords > 2
   || w.colWords > 0);
-if (maskBlocks.length !== nonEmptyStreams.length) {
+const maskBlockCount = maskBlocksBy.reduce((t, b) => t + b.length, 0);
+if (maskBlockCount !== nonEmptyStreams.length) {
   throw new Error(`${nonEmptyStreams.length} sprite streams coalesced into `
-    + `${maskBlocks.length} mask blocks -- two streams overlap, and rewriting `
+    + `${maskBlockCount} mask blocks -- two streams overlap, and rewriting `
     + 'one\'s header would corrupt the other\'s mask data. Ship the streams at '
     + 'their cartridge addresses instead of re-basing them.');
 }
@@ -557,22 +801,31 @@ if (maskBlocks.length !== nonEmptyStreams.length) {
 const words = (blocks) => blocks.reduce((t, [s, e]) => t + (e - s), 0);
 const pow2 = (n) => { let p = 1; while (p < n) p *= 2; return p; };
 
-function pack(blocks, src) {
-  const total = words(blocks);
+/** Pack every shard's blocks into one power-of-two buffer, in shard order.
+ *  Returns the buffer, a PER-SHARD remap table and a per-shard `[from, len]`
+ *  span -- the span is what becomes a file and what the manifest publishes. */
+function pack(blocksBy, src) {
+  const total = blocksBy.reduce((t, b) => t + words(b), 0);
   const size = Math.max(2, pow2(total));
   const buf = new Uint16Array(size);
-  const map = [];        // [oldStart, oldEnd, newStart]
+  const maps = [], spans = [];
   let at = 0;
-  for (const [s, e] of blocks) {
-    for (let k = s; k < e; k++) buf[at + (k - s)] = src[k & (src.length - 1)];
-    map.push([s, e, at]);
-    at += e - s;
+  for (const blocks of blocksBy) {
+    const from = at;
+    const map = [];      // [oldStart, oldEnd, newStart]
+    for (const [s, e] of blocks) {
+      for (let k = s; k < e; k++) buf[at + (k - s)] = src[k & (src.length - 1)];
+      map.push([s, e, at]);
+      at += e - s;
+    }
+    maps.push(map);
+    spans.push([from, at - from]);
   }
-  return { buf, map, used: total };
+  return { buf, maps, spans, used: total };
 }
 
-const packedMask = pack(maskBlocks, sprmask);
-const packedCol = pack(colBlocks, sprcol);
+const packedMask = pack(maskBlocksBy, sprmask);
+const packedCol = pack(colBlocksBy, sprcol);
 
 const remapIn = (map, addr) => {
   for (const [s, e, at] of map) if (addr >= s && addr < e) return at + (addr - s);
@@ -582,15 +835,20 @@ const remapIn = (map, addr) => {
 /** old `offs` -> new `offs`, and the header rewritten to the new colour base. */
 const offsMap = new Map();
 for (const [offs, w] of streams) {
+  const sh = shardOfStream.get(offs);
   const old = offs & (MASKW - 1);
-  let nb = remapIn(packedMask.map, old);
+  // THE LOOKUP IS IN THIS STREAM'S OWN SHARD'S MAP, not in a global one. A
+  // colour range shared by two streams in different shards exists twice, and a
+  // global search would point one of them at the OTHER shard's copy -- i.e. at
+  // words that are still zero until that shard lands.
+  let nb = remapIn(packedMask.maps[sh], old);
   if (nb < 0) {
     // A stream that is never read (zero width or height in every occurrence).
     // It still needs an `offs` inside the packed space so a mis-parse cannot
     // wrap into somebody else's data.
     nb = 0;
   } else if (w.colWords > 0) {
-    const na = remapIn(packedCol.map, w.colStart);
+    const na = remapIn(packedCol.maps[sh], w.colStart);
     if (na < 0) throw new Error(`colour base ${w.colStart} is not in any block`);
     // `a = ((mask[o+1] << 16) | mask[o]) >>> 2`, inverted. The two bits the
     // shift discards are written as zero: the decoder cannot see them, and
@@ -598,9 +856,16 @@ for (const [offs, w] of streams) {
     packedMask.buf[nb] = (na << 2) & 0xffff;
     packedMask.buf[nb + 1] = ((na << 2) >>> 16) & 0xffff;
   }
-  if (nb > 0xffff) {
-    throw new Error(`packed mask base ${nb} exceeds 16 bits; the capture.bin `
-      + 'rewrite below assumes word 2\'s high bits are all zero');
+  // WAVE 47 RAISED THIS FROM 16 BITS TO 23, WHICH IS THE HARDWARE'S OWN WIDTH.
+  // A display-list record carries `offs` as word 2 bits 6..0 (bits 22..16) and
+  // word 3 (bits 15..0), and both the capture rewrite below and
+  // `Capture.splice`/`portSpriteList` have always written the high 7 bits
+  // correctly.  Only the ASSERTION assumed they were zero -- true while the
+  // packed space was one 32,768-word sheet and false the moment the harvest
+  // pushed it past 65,536.
+  if (nb > 0x7fffff) {
+    throw new Error(`packed mask base ${nb} exceeds the 23 bits a display-list `
+      + 'record can carry (word 2 bits 6..0 : word 3)');
   }
   offsMap.set(offs, nb);
 }
@@ -698,8 +963,21 @@ put('gfx/bg.pal.u16', bgPal);
 put('gfx/bg.smap.u16', smapPairs);
 put('gfx/tx.tiles.u8', txSheet);
 put('gfx/tx.tileno.u16', txNo);
-put('spr/mask.u16', packedMask.buf);
-put('spr/col.u16', packedCol.buf);
+// WAVE 47.  One file per shard per array, each a CONTIGUOUS slice of the packed
+// buffer.  Shard 0's slice holds exactly the words the single `spr/mask.u16`
+// held before this wave (it is packed first and its blocks are unchanged), minus
+// the power-of-two padding, which is why boot does not grow.
+const sprMeta = [];
+for (const [i, kind, why] of SPR_SHARDS) {
+  const [mFrom, mLen] = packedMask.spans[i];
+  const [cFrom, cLen] = packedCol.spans[i];
+  put(`spr/mask.shard${i}.u16`, packedMask.buf.subarray(mFrom, mFrom + mLen));
+  put(`spr/col.shard${i}.u16`, packedCol.buf.subarray(cFrom, cFrom + cLen));
+  sprMeta.push({
+    i, kind, why, streams: shardStreams[i].length,
+    maskFrom: mFrom, maskLen: mLen, colFrom: cFrom, colLen: cLen,
+  });
+}
 put('capture.bin', outBin);
 put('seed.bin', seed);
 // WAVE 14.  These two were the last uncompressed bodies in the bundle -- 121 KB
@@ -711,6 +989,31 @@ put('seed.bin', seed);
 // every other body already goes through.  `manifest.json` stays PLAIN because
 // it is what says how everything else is encoded.
 put('player.tables.json', tables);
+
+// WAVE 47 -- THE STREAM TABLE MOVED OUT OF THE MANIFEST AND INTO A TYPED ARRAY,
+// AND THAT IS A BOOT NUMBER.
+//
+// `manifest.json` is the one body served UNCOMPRESSED -- it is what says how
+// everything else is encoded -- so every byte of it is a BOOT byte.  W44
+// measured the third array element at +2,160 B rather than +1,119 because
+// `JSON.stringify(manifest, null, 1)` puts EVERY array element on its own
+// indented line: ~13 B of whitespace per number.  This wave more than doubles
+// the stream count (166 -> 378), and [M] as pretty JSON that list alone is
+// 11,922 B and even compacted onto one line it is 7,007 B.
+//
+// [M] AS A `Uint32Array` IT IS 4,536 B RAW AND 1,912 B GZIPPED.  A thousand
+// integers belong in a typed array, not in JSON; the manifest keeps the
+// STRUCTURE (shard ranges, the harvest ledger) and the numbers ship as numbers.
+// `src/web/assets.js` inflates it through the same `DecompressionStream` as
+// everything else and materialises it back onto `manifest.spr.streams`, so
+// every existing reader -- `verifyCoverage`, `romToPackedMap`, `bundlegate` --
+// sees exactly the array it always saw.
+const sprStreamList = [...streams.entries()]
+  .map(([offs, w]) => [offs, offsMap.get(offs), w.maskWords])
+  .filter(([, , n]) => n > 2)
+  .sort((a, b) => a[1] - b[1]);
+const sprStreamU32 = Uint32Array.from(sprStreamList.flat());
+put('spr/streams.u32', sprStreamU32);
 
 const manifest = {
   note: 'Generated by games/ddpdoj/tools/export-web.mjs. Nothing here is '
@@ -813,17 +1116,50 @@ const manifest = {
     // The filter is on maskWords, i.e. on the THIRD field now.  A stream of 2
     // words or fewer is a header with no mask data; it cannot legally be drawn
     // and must not be a lookup key on either side.
-    streams: [...streams.entries()]
-      .map(([offs, w]) => [offs, offsMap.get(offs), w.maskWords])
-      .filter(([, , n]) => n > 2)
-      .sort((a, b) => a[1] - b[1]),
+    //
+    // WAVE 47 DID NOT ADD A FOURTH FIELD, deliberately.  Which SHARD a stream is
+    // in is decided by which shard's packed mask range its `packedBase` falls
+    // in (`shards[].maskFrom/maskLen`), so the page can answer "which shard is
+    // this" for a stream whose shard has not arrived -- the same property
+    // `BgShards.shardOfTile` has -- without a per-stream field, and the triples
+    // keep the shape `verifyCoverage` and `romToPackedMap` already read.
+    //
+    // AND THE TRIPLES THEMSELVES ARE NOT IN THIS FILE ANY MORE.  They are
+    // `spr/streams.u32.gz`, a flat `Uint32Array` of `streamCount` x 3, and the
+    // loader materialises them onto `manifest.spr.streams` before anything reads
+    // it.  See the block above this object for the measurement that decided it.
+    streamCount: sprStreamList.length,
+    streamsFile: 'spr/streams.u32.gz',
+    // WAVE 47 -- THE SHARDS.  `shards[i]` owns `mask[maskFrom, maskFrom+maskLen)`
+    // and `col[colFrom, colFrom+colLen)`; the page allocates both arrays at full
+    // size at boot and drops each shard's words in as it lands.  `boot` is the
+    // set `loadBundle` awaits.
+    shards: sprMeta,
+    boot: SPR_BOOT,
+    // THE HARVEST LEDGER, SHORT ON PURPOSE.  `manifest.json` is the one body
+    // served UNCOMPRESSED and it is BOOT BYTES, so the reasoning behind every
+    // extent lives in this file's HARVEST table (which a reader has to open
+    // anyway to change it) and only the numbers ship. [M] the full prose cost
+    // 3.6 KiB of boot.
+    harvest: harvestReport.map((h) => ({
+      shard: h.shard, at: `$${h.base.toString(16).toUpperCase()}`,
+      entries: h.entries, stride: h.stride, distinct: h.distinct,
+      runsTo: h.runsTo, endsAt: `$${h.endsAt.toString(16).toUpperCase()}`,
+      added: h.added, already: h.already,
+    })),
+    laser: LASER_STREAMS.map((o) => `$${o.toString(16).toUpperCase().padStart(6, '0')}`),
+    notHarvested: '$268594 (enemy type $10, 90 absent, 51.8 KiB): no ported '
+      + 'code reads it and 0 of its 96 streams were emitted in 6,185 frames. '
+      + 'See export-web.mjs.',
     note: 'RE-BASED into a compact 16-bit address space: headers rewritten to '
       + 'the packed colour addresses, and every capture.bin record\'s offs '
       + 'field rewritten to match. Array lengths are powers of two because '
       + 'SpriteDrawer indexes with & (len-1). Each entry is [romOffs, '
       + 'packedBase, maskWords]: romOffs is the CARTRIDGE word offset the '
       + 'board\'s own display list carries, and the page remaps the port\'s '
-      + '$800000 list through it (src/web/app.js portSpriteList).',
+      + '$800000 list through it (src/web/app.js portSpriteList). WAVE 47: the '
+      + 'streams are SHARDED -- see `shards` -- and `harvest` says which ROM '
+      + 'table each deferred shard came from.',
   },
   // WAVE 12 -- THE ONE FIELD THAT MAKES THE SHIP BANK.  `render/capture.js`
   // named this as "a one-field change to the exporter and a later wave's job";
@@ -844,9 +1180,12 @@ const manifest = {
           + 'rebased -- the packer and the harvest disagree');
       }
       // The capture stores word 2 bits 6..0 as `offs` bits 22..16 and word 3 as
-      // bits 15..0; the packed space is 16 bits wide (asserted above), so word 2
-      // keeps its flip/colour/pri bits and its offs bits are all zero.
-      return [0, nb & 0xffff];
+      // bits 15..0.  W47: the packed space outgrew 16 bits, so the high 7 are
+      // emitted rather than assumed zero -- `Capture.splice` has always written
+      // them (`(word2 & $FF80) | pair[0]`).  All 17 tilts are in the BOOT shard,
+      // which is packed first, so in practice pair[0] is still 0; it is computed
+      // rather than hardcoded so that stops being a silent dependency.
+      return [(nb >>> 16) & 0x7f, nb & 0xffff];
     }),
     note: 'PACKED-SPACE (word2Low7, word3) per tilt step, 17 entries. The ROM '
       + 'longs these came from are NOT usable directly: export-web.mjs re-bases '
@@ -862,7 +1201,8 @@ put('capture.json', new TextEncoder().encode(JSON.stringify({
   ...capJson,
   note: `${capJson.note} -- REBASED for the published bundle by `
     + 'games/ddpdoj/tools/export-web.mjs: every record\'s sprite offs field '
-    + 'points into assets/spr/mask.u16, not into the cartridge.',
+    + 'points into the packed sprite space assets/spr/mask.shard*.u16 assemble, '
+    + 'not into the cartridge.',
   rebased: true,
 })));
 
@@ -872,6 +1212,13 @@ put('capture.json', new TextEncoder().encode(JSON.stringify({
 const DEFERRED = new Set();
 for (let s = 0; s < BG_SHARDS; s++) {
   if (!BOOT_SHARDS.includes(s)) DEFERRED.add(`gfx/bg.shard${s}.tiles.u8.gz`);
+}
+// WAVE 47: and the non-boot SPRITE shards, for the same reason.
+for (const [i] of SPR_SHARDS) {
+  if (!SPR_BOOT.includes(i)) {
+    DEFERRED.add(`spr/mask.shard${i}.u16.gz`);
+    DEFERRED.add(`spr/col.shard${i}.u16.gz`);
+  }
 }
 
 let total = 0, boot = 0;
@@ -899,4 +1246,22 @@ for (let s = 0; s < BG_SHARDS; s++) {
     + `${m.cols ? `cols ${String(m.cols[0]).padStart(3)}..${String(m.cols[1]).padStart(3)}` : 'second map    '}`
     + `  ${String(m.tiles).padStart(4)} tiles  ${String(gz).padStart(7)} B `
     + `= ${(gz / 1024).toFixed(1)} KiB${BOOT_SHARDS.includes(s) ? '  BOOT' : ''}`);
+}
+// WAVE 47 -- the sprite shards and the harvest, printed so the size of what was
+// added is visible on every build rather than only in a worklog.
+console.log(`  SPRITE STREAMS ${streams.size} (${harvested} harvested by ROM `
+  + `address this wave, ${harvestAlready} of the harvest already present), `
+  + 'shards, gz:');
+for (const m of sprMeta) {
+  const mg = written.find(([n]) => n === `spr/mask.shard${m.i}.u16.gz`)[1];
+  const cg = written.find(([n]) => n === `spr/col.shard${m.i}.u16.gz`)[1];
+  console.log(`    ${m.i} ${m.kind.padEnd(7)} ${String(m.streams).padStart(3)} `
+    + `streams  mask ${String(mg).padStart(6)} + col ${String(cg).padStart(6)} `
+    + `= ${((mg + cg) / 1024).toFixed(1)} KiB`
+    + `${SPR_BOOT.includes(m.i) ? '  BOOT' : '  [deferred]'}`);
+}
+for (const h of harvestReport) {
+  console.log(`    <- $${h.base.toString(16).toUpperCase()} ${String(h.entries).padStart(3)} `
+    + `entries stride ${h.stride}: ${String(h.added).padStart(3)} new, `
+    + `${String(h.already).padStart(3)} already in the sheet -> shard ${h.shard}`);
 }

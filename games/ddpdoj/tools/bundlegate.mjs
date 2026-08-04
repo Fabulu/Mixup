@@ -345,9 +345,12 @@ async function main() {
     + `${exact}/${total} = ${pct.toFixed(4)}% identical to MAME over `
     + `${compared} frames` + (worst ? `; first divergent ${JSON.stringify(worst)}` : ''));
   console.log(`  bundle: ${m.gfx.bg.tiles} BG tiles + ${m.gfx.tx.tiles} TX tiles `
-    + `decoded, ${m.spr.streams.length} sprite streams `
-    + `(${m.spr.maskUsed} mask + ${m.spr.colUsed} colour words packed into `
-    + `${m.spr.maskWords} + ${m.spr.colWords}), ${m.frames} capture frames`);
+    + `decoded, ${m.spr.streams.length} sprite streams in `
+    + `${m.spr.shards.length} shards (boot ${m.spr.boot.join('+')}: `
+    + `${m.spr.shards.filter((s) => m.spr.boot.includes(s.i))
+      .reduce((t, s) => t + s.streams, 0)} streams), `
+    + `${m.spr.maskUsed} mask + ${m.spr.colUsed} colour words packed into `
+    + `${m.spr.maskWords} + ${m.spr.colWords}, ${m.frames} capture frames`);
   console.log('  UNPORTED calls the port made during those frames:');
   for (const l of game.unportedLog.report()) console.log('   ' + l);
   return ok ? 0 : 1;

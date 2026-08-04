@@ -388,6 +388,10 @@ export const PORT_LIST_MUTATIONS = {
     + "TERMINATOR, so this silently drops the whole list behind the first gap",
   'no-extent-check': 'trust the map and never compare the record\'s '
     + '2 + w*h against the stream\'s length -- the $000000 3x40 case',
+  'draw-pending-shard': 'draw a record whose sprite shard has not landed yet. '
+    + 'Those words are still ZERO, so the record becomes a solid rectangle of '
+    + 'pen 0 -- a picture that is wrong rather than absent, which is the one '
+    + 'outcome the whole guard exists to prevent (W47)',
 };
 
 /** Checked ONCE, up front, and not lazily inside the record loop: an empty or
@@ -407,7 +411,7 @@ function portMutating(opts, name) { return opts.mutate === name; }
 export const PORT_LIST_WORDS = SPRITE_LIMIT * RAM_STRIDE;
 
 /**
- * `manifest.spr.streams` -> `romOffs -> [packedBase, maskWords]`.
+ * `manifest.spr.streams` -> `romOffs -> [packedBase, maskWords, shard]`.
  *
  * PURE and exported so it can be tested and so `tools/webgate.mjs` can break it.
  *
@@ -416,8 +420,17 @@ export const PORT_LIST_WORDS = SPRITE_LIMIT * RAM_STRIDE;
  * the packed base for a cartridge address, which is a map that resolves nothing
  * and skips everything: a silently empty screen with a plausible explanation.
  * So an old bundle says so by name instead.
+ *
+ * WAVE 47 adds the SHARD, and it is derived rather than shipped: each sprite
+ * shard owns a contiguous run of the packed mask space (`spr.shards[].maskFrom`
+ * / `maskLen`), so the shard is a range test on the base.  `shardOf` is
+ * optional -- without it every stream reads as shard 0, which is what a
+ * pre-W47 bundle is.
+ *
+ * @param {object} manifest
+ * @param {(base:number)=>number} [shardOf]  usually `bundle.spr.shardOfBase`
  */
-export function romToPackedMap(manifest) {
+export function romToPackedMap(manifest, shardOf = null) {
   const list = manifest?.spr?.streams;
   if (!Array.isArray(list) || !list.length) {
     throw new AssetError('manifest.spr.streams is missing or empty; the page '
@@ -432,7 +445,9 @@ export function romToPackedMap(manifest) {
       + 'address space. Rebuild: node games/ddpdoj/tools/export-web.mjs');
   }
   const m = new Map();
-  for (const [rom, base, words] of list) m.set(rom, [base, words]);
+  for (const [rom, base, words] of list) {
+    m.set(rom, [base, words, shardOf ? shardOf(base) : 0]);
+  }
   return m;
 }
 
@@ -471,11 +486,35 @@ export function romToPackedMap(manifest) {
  * applies to the capture's records, and it covers that case without naming it
  * as a special one.
  *
+ * WAVE 47 -- AND THE THIRD OUTCOME: THE ART EXISTS AND HAS NOT ARRIVED YET.
+ *
+ * The sprite sheet is sharded (`src/web/assets.js SprShards`), so a stream can
+ * be in the bundle and still not be in memory.  Those records are skipped THE
+ * SAME WAY -- width zeroed, everything behind them still drawn -- but they are
+ * counted in `pending` BY SHARD rather than in `missing` by address, because
+ * they are two different bugs and they get two different sentences:
+ *
+ *     NO ART $166840x3        the sheet does not contain this picture
+ *     WAITING ON SPR SHARD 1  it does, and 27 KiB of it is in flight
+ *
+ * and `opts.demand(shard)` is called so the SIMULATION drives the fetch: the
+ * shard a record actually asks for jumps to the head of the queue.  That is a
+ * better clock than a timer for the same reason `BgShards.followColumn` is
+ * (`41-recon-sprite-art.md` §2.5), and it costs nothing to build because the
+ * guard was already naming every record it could not draw.
+ *
+ * A record must NEVER be drawn out of a shard that has not landed: those words
+ * are still zero, and a stream of zeroed mask words is a solid rectangle of
+ * pen 0 -- a picture that is WRONG rather than absent, which is the one outcome
+ * this whole guard exists to prevent.
+ *
  * @param {import('../ram.js').Ram} ram  the port's main RAM
- * @param {Map<number,[number,number]>} map  `romToPackedMap(manifest)`
- * @param {{mutate?: string, out?: Uint16Array}} opts
+ * @param {Map<number,[number,number,number]>} map  `romToPackedMap(...)`
+ * @param {{mutate?: string, out?: Uint16Array,
+ *          shardReady?: (i:number)=>boolean, demand?: (i:number)=>void}} opts
  * @returns {{words: Uint16Array, records: number, drawn: number,
- *            skipped: number, blank: number, missing: Map<number,number>}}
+ *            skipped: number, blank: number, missing: Map<number,number>,
+ *            pending: Map<number,number>}}
  */
 export function portSpriteList(ram, map, opts = {}) {
   checkMutation(opts);
@@ -484,6 +523,7 @@ export function portSpriteList(ram, map, opts = {}) {
 
   let records = 0, drawn = 0, skipped = 0, blank = 0;
   const missing = new Map();
+  const pending = new Map();
   for (let r = 0; r < SPRITE_LIMIT; r++) {
     const b = r * RAM_STRIDE;
     const w4 = words[b + 4];
@@ -498,10 +538,15 @@ export function portSpriteList(ram, map, opts = {}) {
     const offs = ((w2 & 0x007f) << 16) | words[b + 3];
     if (wide === 0 || high === 0) { blank++; continue; }
 
-    const hit = portMutating(opts, 'no-remap') ? [offs, Infinity] : map.get(offs);
+    const hit = portMutating(opts, 'no-remap') ? [offs, Infinity, 0] : map.get(offs);
     const enough = hit !== undefined
       && (portMutating(opts, 'no-extent-check') || hit[1] >= 2 + wide * high);
-    if (hit !== undefined && enough) {
+    // WAVE 47: the art may exist and still not be HERE. `draw-pending-shard`
+    // is the mutation that draws it anyway, and what it produces is a solid
+    // rectangle of pen 0 -- present, plausible and wrong.
+    const here = hit === undefined || !opts.shardReady
+      || portMutating(opts, 'draw-pending-shard') || opts.shardReady(hit[2]);
+    if (hit !== undefined && enough && here) {
       const packed = hit[0];
       words[b + 2] = (w2 & 0xff80) | ((packed >>> 16) & 0x7f);
       words[b + 3] = packed & 0xffff;
@@ -510,11 +555,19 @@ export function portSpriteList(ram, map, opts = {}) {
     }
     // NOT DRAWN, AND NAMED.  See the miss-policy paragraph above.
     skipped++;
-    missing.set(offs, (missing.get(offs) ?? 0) + 1);
+    if (hit !== undefined && enough && !here) {
+      // The art is in the bundle and in flight: name the SHARD, and ask for it
+      // -- this is the call that makes the delivery schedule a function of the
+      // simulation rather than of a clock.
+      pending.set(hit[2], (pending.get(hit[2]) ?? 0) + 1);
+      opts.demand?.(hit[2]);
+    } else {
+      missing.set(offs, (missing.get(offs) ?? 0) + 1);
+    }
     if (portMutating(opts, 'terminate-instead-of-zero-width')) words[b + 4] = 0;
     else words[b + 4] = w4 & ~0x7e00;                // width := 0, height kept
   }
-  return { words, records, drawn, skipped, blank, missing };
+  return { words, records, drawn, skipped, blank, missing, pending };
 }
 
 /** The status line's version of a miss set: the worst `n` by count, as text. */
@@ -575,11 +628,23 @@ class Demo {
     // The seed is a board RAM snapshot, so at construction $800000 already holds
     // the BOARD's own list for the frame before the seed: the very first drawn
     // frame is a real list rather than an empty one.
-    this.romToPacked = romToPackedMap(bundle.manifest);
+    //
+    // WAVE 47 -- and the map now carries the SHARD, so a record whose art is in
+    // flight is skipped as `pending` and NAMES ITS SHARD instead of being
+    // reported as art the bundle does not have.  `listOpts.demand` is what makes
+    // the delivery schedule a function of the game: the shard a record actually
+    // asks for jumps the queue.
+    this.romToPacked = romToPackedMap(bundle.manifest,
+      bundle.spr ? (b) => bundle.spr.shardOfBase(b) : null);
+    this.listOpts = {
+      out: null,
+      shardReady: bundle.spr ? (i) => bundle.spr.state[i] === 'ready' : undefined,
+      demand: bundle.spr ? (i) => bundle.spr.demand(i) : undefined,
+    };
     this.spriteSource = DEFAULT_SPRITE_SOURCE;
     this.listBuf = new Uint16Array(PORT_LIST_WORDS);
-    this.portList = portSpriteList(this.game.ram, this.romToPacked,
-      { out: this.listBuf });
+    this.listOpts.out = this.listBuf;
+    this.portList = portSpriteList(this.game.ram, this.romToPacked, this.listOpts);
 
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
@@ -630,7 +695,7 @@ class Demo {
     // the screen (`render/capture.js`'s measured lag of 1).  Doing it here also
     // makes it independent of how often `draw()` runs: a mode change repaints
     // without stepping, and that must not shift the list by a frame.
-    this.portList = portSpriteList(g.ram, this.romToPacked, { out: this.listBuf });
+    this.portList = portSpriteList(g.ram, this.romToPacked, this.listOpts);
     g.ram.setU8(INVULN, 0xff);           // the scenario's intervention
     g.step(currentPortWord());
     this.stepsRun++;
@@ -778,6 +843,18 @@ class Demo {
       dlMissed: this.portList?.skipped ?? 0,
       dlBlank: this.portList?.blank ?? 0,
       dlMissing: this.portList ? namedMisses(this.portList.missing) : '',
+      // `dlMissed` is every skip; `dlNoArt` is the subset with no art anywhere.
+      dlNoArt: this.portList
+        ? [...this.portList.missing.values()].reduce((a, b) => a + b, 0) : 0,
+      // WAVE 47.  `dlPending` is the OTHER kind of skip and it must not wear the
+      // same words: the art IS in the bundle and the shard is in flight. It
+      // names the shard, so "the tanks have no bodies for a second at boot"
+      // reads as a delivery state rather than as a missing picture.
+      dlPending: this.portList
+        ? [...this.portList.pending.entries()].sort((a, b) => b[1] - a[1])
+          .map(([s, c]) => `${s}x${c}`).join(' ')
+        : '',
+      sprShards: this.bundle.spr?.status() ?? null,
       dlBuckets: g.displayList?.perBucketRecords?.[0] ?? 0,
       capture: this.capFrame,
       unported: g.unportedLog.report(),
@@ -881,6 +958,15 @@ export async function boot(canvas, opts = {}) {
   // with nothing: the recon measured 25 s of slack for the 441 KiB and a
   // tightest single deadline of 4.3 s.
   bundle.bg?.prefetchAll();
+  // WAVE 47.  The five deferred SPRITE shards, 209 KiB, queued the same way and
+  // in NEED ORDER: shard 1 is type $11's hull -- the owner's missing tank
+  // bodies, [M] first asked for at +7.7 s -- and shard 5 is a 70-frame
+  // animation [M] first asked for at +103 s. The queue is separate from the
+  // background's, so the two run in parallel; the sprite queue is one fifth of
+  // the background's bytes and its first deadline is looser, which is the head
+  // of `41-recon-sprite-art.md` §7.7's contention question. The TAIL of it is
+  // still unanalysed and this wave does not close it.
+  bundle.spr?.prefetchAll();
   const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE);
   attachKeyboard(opts.target);
 

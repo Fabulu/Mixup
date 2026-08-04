@@ -69,6 +69,12 @@ const BREAKS = ['missing-file', 'truncated', 'not-gzip'];
 // path, the bundle loads fine, and what must move is a NUMBER.
 const PORT_BREAKS = ['no-remap', 'drop-one-stream', 'lag-0',
   'terminate-instead-of-zero-width', 'no-extent-check'];
+// WAVE 47 -- THE THIRD CATEGORY. A DEFERRED SPRITE SHARD THAT 404s. The bundle
+// must LOAD (a shard nobody has reached cannot take the page down) and the
+// throw must arrive from inside the frame that first needs it, naming the shard
+// and the files. That is `BgShards`' contract and this is the sprite half of it.
+const SPR_BREAKS = ['spr-shard-404'];
+const SPR_VICTIM = 'spr/mask.shard1.u16.gz';
 // A file every path needs, and one whose absence a picture would not report.
 // WAVE 14: the single BG sheet became eight shards, so the victim is a BOOT
 // shard -- the ones `loadBundle` awaits.  A DEFERRED shard would be the wrong
@@ -84,13 +90,15 @@ function arg(name, dflt) {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.resolve(arg('assets', path.join(HERE, '..', 'assets')));
 const brk = arg('break', null);
-if (brk && !BREAKS.includes(brk) && !PORT_BREAKS.includes(brk)) {
+if (brk && !BREAKS.includes(brk) && !PORT_BREAKS.includes(brk)
+    && !SPR_BREAKS.includes(brk)) {
   console.error(`unknown --break ${brk}; known: `
-    + `${[...BREAKS, ...PORT_BREAKS].join(', ')}`);
+    + `${[...BREAKS, ...PORT_BREAKS, ...SPR_BREAKS].join(', ')}`);
   process.exit(2);
 }
 const portBrk = PORT_BREAKS.includes(brk) ? brk : null;
 const fetchBrk = BREAKS.includes(brk) ? brk : null;
+const sprBrk = SPR_BREAKS.includes(brk) ? brk : null;
 
 if (!fs.existsSync(path.join(ASSETS, 'manifest.json'))) {
   console.error(`${ASSETS}/manifest.json is missing -- run: `
@@ -105,6 +113,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(404); res.end('no'); return;
   }
   if (fetchBrk === 'missing-file' && rel === VICTIM) { res.writeHead(404); res.end('no'); return; }
+  if (sprBrk === 'spr-shard-404' && rel === SPR_VICTIM) { res.writeHead(404); res.end('no'); return; }
   let body = fs.readFileSync(file);
   if (fetchBrk === 'truncated' && rel === VICTIM) {
     // Truncate the DECOMPRESSED payload, not the gzip envelope: a short gzip
@@ -120,9 +129,23 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, {
     'content-type': rel.endsWith('.json') ? 'application/json' : 'application/octet-stream',
     'content-length': body.length,
+    // WAVE 47 -- AND THIS ONE LINE COST A REPRODUCIBLE FLAKY RED.
+    // W47's sprite-shard checks fetch AFTER a 1,000-frame CPU-bound window, so
+    // the event loop is blocked for tens of seconds between requests. Node's
+    // server closes an idle keep-alive socket after 5 s, `fetch` (undici)
+    // reuses it anyway, and the shard comes back as `the fetch failed (fetch
+    // failed)` -- which this gate then reports, correctly and confusingly, as
+    // "the tank bodies did not draw". Closing each connection makes the
+    // transport unable to produce that. It is a GATE artefact and never
+    // happened in the browser, where `prefetchAll` runs at boot.
+    connection: 'close',
   });
   res.end(body);
 });
+// Belt to those braces: no idle timeout at all on this server.
+server.keepAliveTimeout = 0;
+server.headersTimeout = 0;
+server.requestTimeout = 0;
 
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -237,7 +260,16 @@ try {
     //     the named misses must include $233F34. A guard that never fires is
     //     not a guard, and this is the half that proves it fires.
     const EXP = { steps: 300, records: 16457, min: 20, max: 69, b0min: 14 };
-    const map = romToPackedMap(bundle.manifest);
+    // WAVE 47: SHARD-AWARE, and this is not optional. `loadBundle` awaited the
+    // BOOT sprite shard only -- exactly what the page does -- so the other five
+    // shards' words are still ZERO. Without `shardReady` every one of their
+    // streams would resolve, get drawn out of zeroed mask words and become a
+    // solid rectangle of pen 0: a picture that is WRONG rather than absent.
+    const map = romToPackedMap(bundle.manifest, (b) => bundle.spr.shardOfBase(b));
+    const shardOpts = {
+      shardReady: (i) => bundle.spr.state[i] === 'ready',
+      demand: () => {},        // no fetching inside a measured window
+    };
     // --break drop-one-stream: $166EE4 is [M] the port's MOST-DRAWN shipped
     // stream, 9,643 records in 3,000 frames. Its records must be skipped AND
     // NAMED, and `drawn` must fall by exactly its count -- not by more (the
@@ -273,7 +305,7 @@ try {
     let dropCount = 0, seedRec = 0;
     const misses = new Map();
     for (let i = 0; i <= EXP.steps; i++) {
-      const before = portSpriteList(game.ram, useMap, { out: buf, mutate });
+      const before = portSpriteList(game.ram, useMap, { out: buf, mutate, ...shardOpts });
       if (i === 0) seedRec = before.records;    // the BOARD's own seeded list
       if (i > 0) {
         // The window the numbers above are stated over: the 300 lists 300 STEPS
@@ -322,7 +354,7 @@ try {
     let gRec = 0, gSkip = 0, gVisible = 0;
     const gMiss = new Map();
     while (game.logicFrame < 2700) {
-      const before = portSpriteList(game.ram, useMap, { out: buf, mutate });
+      const before = portSpriteList(game.ram, useMap, { out: buf, mutate, ...shardOpts });
       gRec += before.records; gSkip += before.skipped;
       gVisible += parseSpriteList(before.words, RAM_STRIDE).length;
       for (const [o, c] of before.missing) gMiss.set(o, (gMiss.get(o) ?? 0) + c);
@@ -385,7 +417,7 @@ try {
     const UP = portWordFromBits([BIT.up]);
     for (let i = 0; i < 90; i++) {
       const prevY = game.ram.u16(RAM.player1 + P.posY);   // P.posY, before the step
-      const held = portSpriteList(game.ram, useMap, { out: buf, mutate });
+      const held = portSpriteList(game.ram, useMap, { out: buf, mutate, ...shardOpts });
       const ship = shipOf(held.words);
       game.ram.setU8(0x810424, 0xff);
       game.step(UP);
@@ -410,6 +442,127 @@ try {
       + `(0 would mean the ship never moved and this check proves nothing)`);
     if (!holdOk) code = 1;
 
+    // ============================================ WAVE 47 -- THE TANK BODIES
+    //
+    // THE OWNER'S REPORT, AS A NUMBER: "lots of turrets running around
+    // targetting you... without tank bodies."
+    //
+    // Enemy type $11 draws its HULL from `$268B9E` (64 images, by HEADING) and
+    // its TURRET from `$268C9E` (32, by FACING). The 161-frame recording the
+    // sheet was harvested from swept every facing and used two of the 64
+    // headings, so 32 of 32 turret images shipped and 2 of 64 hull images did.
+    //
+    // BOTH TABLES ARE SPRITE SHARD 1, so "the records whose art is in shard 1"
+    // is exactly the type-$11 pair (plus the laser's five) and this gate can
+    // identify them WITHOUT reading the cartridge -- shard = a range test on the
+    // packed base, which is the whole reason the shard is derived rather than
+    // shipped per stream.
+    //
+    // IT IS MEASURED TWICE, and the second half is what makes the first mean
+    // anything: with the boot payload alone those records must be PENDING and
+    // named by SHARD (not as missing art), and once shard 1 has landed the same
+    // window must draw every one of them.
+    {
+      const shard1 = new Set([...map.entries()]
+        .filter(([, v]) => v[2] === 1).map(([rom]) => rom));
+      const run = (frames) => {
+        const g = new Game(bundle.seed, bundle.tables, {
+          logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
+          bgSeed: bundle.cap.part(0, 'bg'),
+        });
+        let emitted = 0, drawnS1 = 0, pend = 0, named = 0;
+        for (let i = 0; i < frames; i++) {
+          const res = portSpriteList(g.ram, map, { out: buf, ...shardOpts });
+          // Counted from the RAW list in RAM, not from `res.words`: the remap
+          // has already rewritten words 2 and 3 there, so the cartridge address
+          // is only still readable on this side.
+          for (let k = 0; k < 256; k++) {
+            const b = k * RAM_STRIDE;
+            const w4 = g.ram.u16(0x800000 + (b + 4) * 2);
+            if ((w4 & 0x7fff) === 0) break;
+            const offs = ((g.ram.u16(0x800000 + (b + 2) * 2) & 0x7f) << 16)
+              | g.ram.u16(0x800000 + (b + 3) * 2);
+            if (!shard1.has(offs)) continue;
+            emitted++;
+            if (((w4 & 0x7e00) >> 9) === 0 || (w4 & 0x1ff) === 0) continue;
+            if (!res.missing.has(offs)) {
+              // pending is counted by SHARD, so a record of a shard-1 stream is
+              // drawn exactly when shard 1 is ready.
+              if (bundle.spr.state[1] === 'ready') drawnS1++; else pend++;
+            } else named++;
+          }
+          g.ram.setU8(0x810424, 0xff);
+          g.step(0xffff);
+        }
+        return { emitted, drawnS1, pend, named };
+      };
+      const FRAMES = 1000;
+      const before = run(FRAMES);
+      for (const m of bundle.spr.meta) await bundle.spr.fetch(m.i);
+
+      // --break spr-shard-404: the bundle LOADED (a deferred shard's 404 must
+      // not take the page down at boot) and the throw has to arrive from the
+      // frame that first needs the art, naming the shard and the files.
+      if (sprBrk === 'spr-shard-404') {
+        const failed = bundle.spr.state[1] === 'failed';
+        let msg = null;
+        try { bundle.spr.demand(1); } catch (e) { msg = `${e.name}: ${String(e.message)}`; }
+        const ok = failed && msg && /SPRITE SHARD 1 DID NOT LOAD/.test(msg)
+          && /mask\.shard1/.test(msg) && msg.startsWith('AssetError');
+        console.log(`${ok ? 'EXPECTED-RED' : 'FAIL'} [--break spr-shard-404]: `
+          + `the bundle loaded, shard 1 is '${bundle.spr.state[1]}', and a draw `
+          + `that needs it ${msg ? `throws -- ${msg.split('\n')[0]}` : 'THREW '
+            + 'NOTHING, so a 404 on the tank bodies would be silent'}`);
+        code = ok ? 0 : 1;
+        server.close();
+        process.exit(code);
+      }
+      const allReady = bundle.spr.state.every((s) => s === 'ready');
+      const after = run(FRAMES);
+      // The two halves. BEFORE: nothing of shard 1 is drawn and NOTHING is
+      // reported as missing art -- if the pending path were broken these would
+      // show up as NO ART, which is the wrong sentence for a shard in flight.
+      // AFTER: every emitted record is drawn.
+      const bodyOk = allReady && before.emitted > 0
+        && before.drawnS1 === 0 && before.named === 0
+        && before.pend === before.emitted
+        && after.emitted === before.emitted && after.drawnS1 === after.emitted
+        && after.pend === 0 && after.named === 0;
+      console.log(`${bodyOk ? 'PASS' : 'FAIL'}: W47 THE TANK BODIES -- over `
+        + `${FRAMES} logic frames from the shipped seed, nothing pressed, `
+        + `sprite shard 1 (type $11's hull $268B9E + turret $268C9E + the `
+        + `laser's 5) carries ${before.emitted} display-list records. With the `
+        + `BOOT payload alone: ${before.drawnS1} drawn, ${before.pend} PENDING `
+        + `on shard 1, ${before.named} named as missing art (expect 0 -- a shard `
+        + `in flight is not a missing picture). With all `
+        + `${bundle.spr.meta.length} shards loaded: ${after.drawnS1} drawn of `
+        + `${after.emitted} (expect all), ${after.pend} pending, ${after.named} `
+        + 'with no art'
+        + (allReady ? '' : `  -- SHARD STATES ${bundle.spr.state.join(',')}: `
+          + `${bundle.spr.error.filter(Boolean)
+            .map((e) => e.message.split('\n')[0]).join(' | ')}`));
+      if (!bodyOk) code = 1;
+
+      // THE MUTATION THAT MUST GO RED, and it is the one that matters most:
+      // drawing a record whose shard has not landed reads ZEROED mask words and
+      // produces a solid rectangle of pen 0 -- present, plausible and wrong.
+      const g3 = new Game(bundle.seed, bundle.tables, {
+        logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
+        bgSeed: bundle.cap.part(0, 'bg'),
+      });
+      const notReady = { shardReady: () => false, demand: () => {} };
+      const honest = portSpriteList(g3.ram, map, { out: buf, ...notReady });
+      const cheat = portSpriteList(g3.ram, map,
+        { out: buf, ...notReady, mutate: 'draw-pending-shard' });
+      const mutOk = cheat.drawn > honest.drawn && honest.skipped > cheat.skipped;
+      console.log(`${mutOk ? 'PASS' : 'FAIL'}: W47 --break draw-pending-shard `
+        + `-- with no shard ready the guard draws ${honest.drawn} records and `
+        + `skips ${honest.skipped}; the mutation draws ${cheat.drawn} and skips `
+        + `${cheat.skipped}. Every one of that difference would be a rectangle `
+        + 'of pen 0 read out of words that are still zero');
+      if (!mutOk) code = 1;
+    }
+
     if (portBrk === 'lag-0') {
       // Rendering the list the CURRENT step just built. Re-run the window that
       // way and require the offset to STOP being constant.
@@ -422,7 +575,7 @@ try {
         const prevY = g2.ram.u16(RAM.player1 + P.posY);
         g2.ram.setU8(0x810424, 0xff);
         g2.step(UP);
-        const now = portSpriteList(g2.ram, useMap, { out: buf });   // LAG 0
+        const now = portSpriteList(g2.ram, useMap, { out: buf, ...shardOpts });   // LAG 0
         const ship = shipOf(now.words);
         if (!ship) continue;
         n++;

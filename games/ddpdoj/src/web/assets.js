@@ -67,7 +67,121 @@ export class AssetError extends Error {
  *            command.  It does NOT quietly keep drawing holes: a page that
  *            never recovers has to say why.
  */
-export class BgShards {
+/**
+ * WAVE 47 -- THE QUEUE, LIFTED OUT OF `BgShards` SO THE SPRITE SHEET CAN HAVE
+ * ONE TOO.
+ *
+ * Everything here is the machinery `BgShards` has had since W14 and which was
+ * red-validated by `bundlegate --break shard-404`: three states, one fetch at a
+ * time, a promoted shard jumps the queue, a FAILED shard throws from inside the
+ * frame that needed it rather than at fetch time.  Nothing about it changed --
+ * it moved.  Subclasses supply three things: what a shard's file(s) are, how to
+ * install one, and how to describe it in the error message.
+ */
+export class ShardQueue {
+  constructor(meta, boot, bin, what) {
+    this.bin = bin;
+    this.meta = meta;
+    this.boot = boot;
+    this.what = what;                      // 'BG' / 'SPRITE', for messages
+    /** 'idle' | 'loading' | 'ready' | 'failed', per shard */
+    this.state = this.meta.map(() => 'idle');
+    this.error = this.meta.map(() => null);
+    this.inflight = this.meta.map(() => null);
+    /** shards a DRAW asked for and did not have */
+    this.waiting = new Set();
+    this.queue = [];
+    this.pumping = false;
+  }
+
+  /** @abstract fetch and install shard `i`; rejects on any failure. */
+  async load(i) { throw new Error(`${this.constructor.name} has no load()`); }
+
+  /** @abstract one line naming what shard `i` holds and what file it is. */
+  describe(i) { return `${this.what} shard ${i}`; }
+
+  /**
+   * Fetch shard `i` once.  Returns a promise that RESOLVES even on failure --
+   * the failure is recorded in `state`/`error` and raised by `demand()` at the
+   * moment a draw actually needs it, so a shard nobody has reached yet cannot
+   * kill a running page from a background fetch.
+   */
+  fetch(i) {
+    if (this.state[i] === 'ready') return Promise.resolve();
+    if (this.inflight[i]) return this.inflight[i];
+    this.state[i] = 'loading';
+    const p = this.load(i)
+      .then(() => { this.state[i] = 'ready'; this.waiting.delete(i); })
+      .catch((e) => { this.state[i] = 'failed'; this.error[i] = e; })
+      .finally(() => { this.inflight[i] = null; });
+    this.inflight[i] = p;
+    return p;
+  }
+
+  /**
+   * A DRAW needs shard `i` and does not have it.
+   *
+   * A failed shard throws HERE, from inside the frame that needed it, because
+   * that is the only place the page can honestly say "the picture you are
+   * looking at is wrong and here is why".  A loading shard is recorded and the
+   * caller draws nothing for it -- named, never black.
+   */
+  demand(i) {
+    if (this.state[i] === 'failed') {
+      const why = this.error[i]?.message?.split('\n')[0] ?? 'unknown';
+      throw new AssetError(`${this.what} SHARD ${i} DID NOT LOAD (${why}).\n`
+        + `${this.describe(i)}`);
+    }
+    this.waiting.add(i);
+    if (this.state[i] === 'idle') this.promote(i);
+  }
+
+  /** Put shard `i` at the head of the prefetch queue and start pumping. */
+  promote(i) {
+    if (this.state[i] === 'ready' || this.state[i] === 'failed') return;
+    const at = this.queue.indexOf(i);
+    if (at >= 0) this.queue.splice(at, 1);
+    this.queue.unshift(i);
+    this.pump();
+  }
+
+  /** Queue every shard that is not here yet, in ascending (i.e. need) order. */
+  prefetchAll() {
+    for (let i = 0; i < this.meta.length; i++) {
+      if (this.state[i] === 'idle' && !this.queue.includes(i)) this.queue.push(i);
+    }
+    this.pump();
+  }
+
+  /**
+   * ONE fetch at a time.  Deliberately serial: the whole point of the queue is
+   * that a promoted shard jumps ahead, and eight parallel fetches over one
+   * connection would make the promotion meaningless.
+   */
+  pump() {
+    if (this.pumping) return;
+    const next = this.queue.shift();
+    if (next === undefined) return;
+    if (this.state[next] !== 'idle') { this.pump(); return; }
+    this.pumping = true;
+    this.fetch(next).finally(() => { this.pumping = false; this.pump(); });
+  }
+
+  /** Everything the page's status line needs, in one object. */
+  status() {
+    const ready = this.state.filter((s) => s === 'ready').length;
+    return {
+      ready,
+      total: this.meta.length,
+      loading: this.state.map((s, i) => (s === 'loading' ? i : -1)).filter((i) => i >= 0),
+      failed: this.state.map((s, i) => (s === 'failed' ? i : -1)).filter((i) => i >= 0),
+      waiting: [...this.waiting],
+      orphans: this.orphans?.size ?? 0,
+    };
+  }
+}
+
+export class BgShards extends ShardQueue {
   /**
    * @param {object} manifest  the whole manifest (needs `gfx.bg`)
    * @param {(name:string)=>Promise<Uint8Array>} bin  gunzipping reader
@@ -78,25 +192,29 @@ export class BgShards {
       throw new AssetError('assets/manifest.json has no gfx.bg.shards/boot. '
         + 'This loader is wave 14 or later and the bundle is older.');
     }
-    this.bin = bin;
-    this.meta = bg.shards;
-    this.boot = bg.boot;
+    super(bg.shards, bg.boot, bin, 'BG');
     this.tileBytes = bg.tileBytes;
     this.count = bg.tiles;
     this.pixels = new Uint8Array(bg.tiles * bg.tileBytes);
     this.nos = null;                       // filled by `loadIndex`
     this.slot = new Int32Array(0x10000).fill(-1);
     this.shardOfTile = new Int16Array(0x10000).fill(-1);
-    /** 'idle' | 'loading' | 'ready' | 'failed', per shard */
-    this.state = this.meta.map(() => 'idle');
-    this.error = this.meta.map(() => null);
-    this.inflight = this.meta.map(() => null);
-    /** shards a DRAW asked for and did not have, since the last `drain()` */
-    this.waiting = new Set();
     /** tiles that are in NO shard -- an export gap, not a late fetch */
     this.orphans = new Set();
-    this.queue = [];
-    this.pumping = false;
+  }
+
+  async load(i) {
+    this.install(i, await this.bin(`gfx/bg.shard${i}.tiles.u8.gz`));
+  }
+
+  describe(i) {
+    return `It holds ${this.meta[i].tiles} background tiles for `
+      + (this.meta[i].cols
+        ? `map columns ${this.meta[i].cols[0]}..${this.meta[i].cols[1]}`
+        : 'the second map')
+      + ', and the port has scrolled into them. The picture would be BLACK '
+      + 'there, so this stops instead.\nMissing file: '
+      + `assets/gfx/bg.shard${i}.tiles.u8.gz`;
   }
 
   /** The slot index, which every shard's tile numbers share.  Boot, once. */
@@ -146,79 +264,6 @@ export class BgShards {
   }
 
   /**
-   * Fetch shard `i` once.  Returns a promise that RESOLVES even on failure --
-   * the failure is recorded in `state`/`error` and raised by `demand()` at the
-   * moment a draw actually needs it, so a shard nobody has reached yet cannot
-   * kill a running page from a background fetch.
-   */
-  fetch(i) {
-    if (this.state[i] === 'ready') return Promise.resolve();
-    if (this.inflight[i]) return this.inflight[i];
-    this.state[i] = 'loading';
-    const p = this.bin(`gfx/bg.shard${i}.tiles.u8.gz`)
-      .then((b) => { this.install(i, b); })
-      .catch((e) => { this.state[i] = 'failed'; this.error[i] = e; })
-      .finally(() => { this.inflight[i] = null; });
-    this.inflight[i] = p;
-    return p;
-  }
-
-  /**
-   * A DRAW needs shard `i` and does not have it.
-   *
-   * A failed shard throws HERE, from inside the frame that needed it, because
-   * that is the only place the page can honestly say "the picture you are
-   * looking at is wrong and here is why".  A loading shard is recorded and the
-   * caller draws the transparent pen.
-   */
-  demand(i) {
-    if (this.state[i] === 'failed') {
-      const why = this.error[i]?.message?.split('\n')[0] ?? 'unknown';
-      throw new AssetError(`BG SHARD ${i} DID NOT LOAD (${why}).\n`
-        + `It holds ${this.meta[i].tiles} background tiles for `
-        + (this.meta[i].cols
-          ? `map columns ${this.meta[i].cols[0]}..${this.meta[i].cols[1]}`
-          : 'the second map')
-        + ', and the port has scrolled into them. The picture would be BLACK '
-        + `there, so this stops instead.\nMissing file: `
-        + `assets/gfx/bg.shard${i}.tiles.u8.gz`);
-    }
-    this.waiting.add(i);
-    if (this.state[i] === 'idle') this.promote(i);
-  }
-
-  /** Put shard `i` at the head of the prefetch queue and start pumping. */
-  promote(i) {
-    if (this.state[i] === 'ready' || this.state[i] === 'failed') return;
-    const at = this.queue.indexOf(i);
-    if (at >= 0) this.queue.splice(at, 1);
-    this.queue.unshift(i);
-    this.pump();
-  }
-
-  /** Queue every shard that is not here yet, in ascending (i.e. need) order. */
-  prefetchAll() {
-    for (let i = 0; i < this.meta.length; i++) {
-      if (this.state[i] === 'idle' && !this.queue.includes(i)) this.queue.push(i);
-    }
-    this.pump();
-  }
-
-  /**
-   * ONE fetch at a time.  Deliberately serial: the whole point of the queue is
-   * that a promoted shard jumps ahead, and eight parallel fetches over one
-   * connection would make the promotion meaningless.
-   */
-  pump() {
-    if (this.pumping) return;
-    const next = this.queue.shift();
-    if (next === undefined) return;
-    if (this.state[next] !== 'idle') { this.pump(); return; }
-    this.pumping = true;
-    this.fetch(next).finally(() => { this.pumping = false; this.pump(); });
-  }
-
-  /**
    * The SCROLL POSITION drives the schedule.  `col` is the stage-1 map column
    * the port's VM is painting right now ($26134E's cursor), which is the same
    * axis the shards are cut on -- so "which shard will I need next" is
@@ -232,18 +277,114 @@ export class BgShards {
       if (col >= m.cols[0] - 32 && col <= m.cols[1]) this.promote(m.i);
     }
   }
+}
 
-  /** Everything the page's status line needs, in one object. */
-  status() {
-    const ready = this.state.filter((s) => s === 'ready').length;
-    return {
-      ready,
-      total: this.meta.length,
-      loading: this.state.map((s, i) => (s === 'loading' ? i : -1)).filter((i) => i >= 0),
-      failed: this.state.map((s, i) => (s === 'failed' ? i : -1)).filter((i) => i >= 0),
-      waiting: [...this.waiting],
-      orphans: this.orphans.size,
-    };
+/**
+ * WAVE 47 -- THE SPRITE SHEET, SHARDED.
+ *
+ * THE REPORT THIS CAME OUT OF: "lots of turrets running around targetting
+ * you... without tank bodies".  Enemy type $11's HULL images were 2 of 64 in
+ * the shipped sheet because the recording the sheet was harvested from only ever
+ * drove those tanks on two of the 64 headings (`46-diag-orphan-turrets.md`).
+ * The fix is 212 streams harvested from the cartridge BY ADDRESS, and it cannot
+ * go in the boot payload because boot must not get slower (HANDOVER §8.8).
+ *
+ * SO IT WORKS EXACTLY LIKE `BgShards`, WITH ONE DIFFERENCE THAT MATTERS.  The BG
+ * sheet is indexed by TILE NUMBER, so it needs a 64 Ki lookup to say which shard
+ * a tile is in.  The sprite sheet is ONE PACKED ADDRESS SPACE and each shard
+ * owns a CONTIGUOUS RANGE of it, so "which shard is this stream in" is a range
+ * test on the packed base -- which is why `spr.streams` needed no fourth field
+ * and why the page can name the shard for a stream whose shard has not landed.
+ *
+ * THE ARRAYS ARE ALLOCATED AT FULL SIZE AT BOOT and each shard's words are
+ * dropped into place as it arrives.  A record pointing into a range that is
+ * still zero would draw a rectangle of pen 0, so it must never reach
+ * `SpriteDrawer`: `portSpriteList` skips it by WIDTH and names the shard.
+ */
+export class SprShards extends ShardQueue {
+  constructor(manifest, bin) {
+    const spr = manifest.spr;
+    if (!Array.isArray(spr.shards) || !Array.isArray(spr.boot)
+        || typeof spr.streamCount !== 'number') {
+      throw new AssetError('assets/manifest.json has no spr.shards/boot/'
+        + 'streamCount. This loader is wave 47 or later and the bundle is '
+        + 'older: before W47 the sprite sheet was one unsharded pair of files '
+        + 'and the stream table was inline JSON.');
+    }
+    super(spr.shards, spr.boot, bin, 'SPRITE');
+    this.mask = new Uint16Array(spr.maskWords);
+    this.col = new Uint16Array(spr.colWords);
+    for (const [n, a] of [['mask', this.mask], ['col', this.col]]) {
+      if (a.length === 0 || (a.length & (a.length - 1)) !== 0) {
+        throw new AssetError(`assets/manifest.json says spr.${n}Words is `
+          + `${a.length}, which is not a power of two; SpriteDrawer indexes `
+          + 'with & (len-1) and would wrap wrongly.');
+      }
+    }
+    // The shard runs must TILE both address spaces exactly, in order. A gap
+    // would be words no shard ever fills -- i.e. a stream that is permanently
+    // zero and draws a rectangle of pen 0 with nothing to say about it.
+    let m = 0, c = 0;
+    for (const s of this.meta) {
+      if (s.maskFrom !== m || s.colFrom !== c) {
+        throw new AssetError(`assets/manifest.json: sprite shard ${s.i} starts `
+          + `at mask ${s.maskFrom} / col ${s.colFrom}, but shards 0..${s.i - 1} `
+          + `end at ${m} / ${c}. The shard runs must tile the packed space.`);
+      }
+      m += s.maskLen; c += s.colLen;
+    }
+    if (m > this.mask.length || c > this.col.length) {
+      throw new AssetError(`assets/manifest.json: the sprite shards cover `
+        + `${m} mask and ${c} colour words, more than the ${this.mask.length} `
+        + `and ${this.col.length} the arrays hold.`);
+    }
+    this.usedMask = m;
+    this.usedCol = c;
+  }
+
+  /** Which shard owns packed mask base `b`, or -1.  A range test, not a table. */
+  shardOfBase(b) {
+    for (const s of this.meta) {
+      if (b >= s.maskFrom && b < s.maskFrom + s.maskLen) return s.i;
+    }
+    // A stream whose whole extent is the two header words packs as a 2-word
+    // block and still lands inside some shard's range; base 0 with a zero-length
+    // shard 0 is the only way to get here and the exporter cannot produce it.
+    return -1;
+  }
+
+  async load(i) {
+    const [mask, col] = await Promise.all([
+      this.bin(`spr/mask.shard${i}.u16.gz`),
+      this.bin(`spr/col.shard${i}.u16.gz`),
+    ]);
+    this.install(i, mask, col);
+  }
+
+  install(i, maskBytes, colBytes) {
+    const s = this.meta[i];
+    for (const [name, bytes, want] of [['mask', maskBytes, s.maskLen * 2],
+      ['col', colBytes, s.colLen * 2]]) {
+      if (bytes.length !== want) {
+        throw new AssetError(`assets/spr/${name}.shard${i}.u16 is `
+          + `${bytes.length} B; the manifest says ${want}.`);
+      }
+    }
+    this.mask.set(new Uint16Array(maskBytes.buffer, maskBytes.byteOffset,
+      s.maskLen), s.maskFrom);
+    this.col.set(new Uint16Array(colBytes.buffer, colBytes.byteOffset,
+      s.colLen), s.colFrom);
+    this.state[i] = 'ready';
+    this.waiting.delete(i);
+  }
+
+  describe(i) {
+    const s = this.meta[i];
+    return `It holds ${s.streams} sprite streams -- ${s.why} -- and a record `
+      + 'has asked for one of them. Those records are SKIPPED AND NAMED rather '
+      + 'than drawn from zeroed words, so nothing on screen is wrong; this '
+      + 'stops because the art will never arrive.\nMissing files: '
+      + `assets/spr/mask.shard${i}.u16.gz and assets/spr/col.shard${i}.u16.gz`;
   }
 }
 
@@ -464,27 +605,54 @@ export async function loadBundle(readRaw, opts = {}) {
       + `for ${manifest.gfx.bg.secondMap.entries} (tile, attr) entries`);
   }
 
-  // --- the packed sprite streams ------------------------------------------
-  const maskBytes = await bin('spr/mask.u16.gz');
-  const colBytes = await bin('spr/col.u16.gz');
-  const sprmask = new Uint16Array(maskBytes.buffer);
-  const sprcol = new Uint16Array(colBytes.buffer);
-  if (sprmask.length !== manifest.spr.maskWords
-      || sprcol.length !== manifest.spr.colWords) {
-    throw new AssetError(`assets/spr: mask ${sprmask.length} words and col `
-      + `${sprcol.length} words against a manifest saying `
-      + `${manifest.spr.maskWords} and ${manifest.spr.colWords}`);
+  // --- WAVE 47: the packed sprite streams, SHARDED --------------------------
+  //
+  // The stream TABLE comes first and it is a typed array now, not manifest JSON
+  // (the manifest is the one uncompressed body and 378 triples of it were 7 KB
+  // of boot -- see `export-web.mjs`). It is materialised back onto
+  // `manifest.spr.streams` in exactly the shape it always had, so
+  // `verifyCoverage`, `romToPackedMap` and `bundlegate` are unchanged.
+  {
+    const raw = await bin(manifest.spr.streamsFile ?? 'spr/streams.u32.gz');
+    const flat = new Uint32Array(raw.buffer, raw.byteOffset,
+      Math.floor(raw.byteLength / 4));
+    if (flat.length !== manifest.spr.streamCount * 3) {
+      throw new AssetError(`assets/${manifest.spr.streamsFile} holds `
+        + `${flat.length} u32 for ${manifest.spr.streamCount} streams; it must `
+        + 'be exactly 3 per stream ([romOffs, packedBase, maskWords]).');
+    }
+    const list = new Array(manifest.spr.streamCount);
+    for (let i = 0; i < list.length; i++) {
+      list[i] = [flat[i * 3], flat[i * 3 + 1], flat[i * 3 + 2]];
+    }
+    manifest.spr.streams = list;
   }
-  // SpriteDrawer indexes with `& (len - 1)`. On the cartridge those lengths are
-  // the ROM region sizes and are powers of two by construction; here they are
-  // powers of two because the exporter rounds up to one. If they were not, an
-  // out-of-range read would wrap somewhere the board would not.
-  for (const [n, a] of [['mask', sprmask], ['col', sprcol]]) {
-    if ((a.length & (a.length - 1)) !== 0) {
-      throw new AssetError(`assets/spr/${n}.u16 is ${a.length} words, which is `
-        + 'not a power of two; SpriteDrawer\'s & (len-1) would wrap wrongly');
+
+  const spr = new SprShards(manifest, bin);
+  // EVERY stream must land inside SOME shard's range. A stream outside them all
+  // would be words nothing ever fills -- a permanent rectangle of pen 0 with no
+  // message. This is the sprite analogue of `BgShards.loadIndex`'s disjointness
+  // check and it is why the page can name a shard it does not have.
+  for (const [rom, base] of manifest.spr.streams) {
+    if (spr.shardOfBase(base) < 0) {
+      throw new AssetError(`sprite stream $${rom.toString(16)} is at packed base `
+        + `${base}, which is inside no shard's range. The exporter's shard runs `
+        + 'and its stream table disagree.');
     }
   }
+  const sprWanted = opts.shards === 'all' ? spr.meta.map((m) => m.i) : spr.boot;
+  for (const i of sprWanted) {
+    await spr.fetch(i);
+    if (spr.state[i] !== 'ready') {
+      const why = spr.error[i]?.message?.split('\n')[0] ?? 'unknown';
+      throw new AssetError(`assets/spr/*.shard${i}.u16.gz is a BOOT sprite `
+        + `shard and it did not load (${why}). Shard ${spr.boot.join(' and ')} `
+        + 'carries every stream the RECORDING draws plus the ship\'s own tilt '
+        + 'images; without it there are no sprites at all.');
+    }
+  }
+  const sprmask = spr.mask;
+  const sprcol = spr.col;
   if (opts.zeroCol) sprcol.fill(0);
 
   // --- the capture, the seed and the player tables -------------------------
@@ -536,6 +704,11 @@ export async function loadBundle(readRaw, opts = {}) {
     // WAVE 14: the shard machine.  `bg.status()` is what the page prints and
     // `bg.followColumn()` is what the scroll VM drives.
     bg,
+    // WAVE 47: the sprite sheet's own shard machine.  `spr.status()` is printed
+    // beside the BG one and `spr.demand(i)` is called by the page's MISS GUARD
+    // -- so the sprite schedule is driven by the simulation asking for a
+    // picture, which is a better clock than any timer.
+    spr,
     // WAVE 14: the stage's own BG palette block and its second map -- shipped
     // and checked, drawn by nothing yet.  See the manifest notes.
     bgPalette,
@@ -611,6 +784,21 @@ export function verifyCoverage(bundle, opts = {}) {
         throw new AssetError(`capture frame ${i} (lf${cap.frames[i].lf}) record `
           + `${s.i} points at packed sprite offset ${s.offs}, which is not an `
           + 'exported stream base.');
+      }
+      // WAVE 47: and it must be in a BOOT shard. Everything the RECORDING draws
+      // has to be drawable before the first frame -- `bundlegate` renders the
+      // capture off the boot payload alone and requires 100.0000 % pixel
+      // identity to MAME. A capture stream that drifted into a deferred shard
+      // would make that gate depend on the network.
+      if (bundle.spr) {
+        const sh = bundle.spr.shardOfBase(s.offs);
+        if (!bundle.spr.boot.includes(sh)) {
+          throw new AssetError(`capture frame ${i} (lf${cap.frames[i].lf}) `
+            + `record ${s.i} draws packed sprite base ${s.offs}, which is in `
+            + `SPRITE SHARD ${sh} and not in the boot set `
+            + `[${bundle.spr.boot.join(', ')}]. The exporter must keep every `
+            + 'stream the recording uses in shard 0.');
+        }
       }
       if (have < want) {
         throw new AssetError(`capture frame ${i} (lf${cap.frames[i].lf}) record `

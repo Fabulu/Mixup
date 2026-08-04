@@ -634,8 +634,14 @@ test('a PRE-WAVE-44 manifest is refused by name, not read as a triple', () => {
   assert.throws(() => romToPackedMap({ spr: { streams: [[0, 10], [10, 98]] } }),
     /predates wave 44/);
   assert.throws(() => romToPackedMap({ spr: {} }), /missing or empty/);
+  // WAVE 47 appended the SHARD, and it is DERIVED from the packed base rather
+  // than shipped per stream. With no `shardOf` every stream reads as shard 0,
+  // which is what a pre-W47 bundle is.
   const m = romToPackedMap({ spr: { streams: [[0x1520, 4608, 98]] } });
-  assert.deepEqual(m.get(0x1520), [4608, 98]);
+  assert.deepEqual(m.get(0x1520), [4608, 98, 0]);
+  const s = romToPackedMap({ spr: { streams: [[0x1520, 4608, 98]] } },
+    (b) => (b >= 4096 ? 3 : 0));
+  assert.deepEqual(s.get(0x1520), [4608, 98, 3]);
 });
 
 test('THE EXPORTER KEEPS THE CARTRIDGE ADDRESS, and nothing else moved', () => {
