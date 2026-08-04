@@ -583,9 +583,24 @@ document.getElementById('closeinfo').addEventListener('click', () => {
 function showError(e, when) {
   statusEl.textContent = '';
   const msg = String((e && e.message) || e);
-  const addr = msg.match(/\$[0-9A-Fa-f]{4,6}/);
+  // WAVE 47: AN ASSET FAILURE IS NOT AN UNPORTED ROUTINE, AND IT MUST NOT WEAR
+  // THAT HEADLINE. `AssetError`'s messages now quote ROM addresses -- a sprite
+  // shard is named by the TABLE it was harvested from ("type $11's hull
+  // $268B9E") -- so the address match below fired on a 404 and the panel read
+  // "$268B9E IS NOT PORTED YET", which is exactly wrong: the code is ported and
+  // the FILE is missing. Seen in Chrome with the shard withheld.
+  const isAsset = (e && e.name) === 'AssetError';
+  const addr = isAsset ? null : msg.match(/\$[0-9A-Fa-f]{4,6}/);
   errEl.style.display = 'block';
-  errEl.textContent = addr
+  errEl.textContent = isAsset
+    ? `AN ASSET IS MISSING OR BROKEN.\n\n`
+      + 'This is not a crash and nothing about the port is wrong: a file the '
+      + 'page needs did not arrive, and it stopped rather than drawing a '
+      // `when` is deliberately NOT printed here: the mid-flight channel's is
+      // "The port reached something it has not ported", which is the sentence
+      // this arm exists to stop saying.
+      + `picture made of zeroes.\n\n${msg}\n\nReload to start again.`
+    : addr
     ? `${addr[0]} IS NOT PORTED YET.\n\n`
       + 'This is not a crash. The port reached a ROM routine nobody has '
       + 'translated, and it stopped instead of inventing the next frame. '

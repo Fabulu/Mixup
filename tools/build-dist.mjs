@@ -118,6 +118,56 @@ const PUBLISH_VERBATIM = new Map([
    + 'the port cannot draw Batman without it. Owner decision: the live site may '
    + 'serve real cartridge art; the repo may not, and does not (assets/ is '
    + 'gitignored and nothing ROM-derived is ever committed).'],
+  // ------------------------------------------------------------- WAVE 47
+  // THE THREE DaiOuJou SPRITE COLOUR SHARDS THIS GUARD CAUGHT, AND WHY THE
+  // FIRST THREE ANSWERS BELOW ARE NOT THE RIGHT ONE.
+  //
+  // W47 harvested the enemy body tables the ported handlers read straight out
+  // of the cartridge, by address, and sharded the sprite sheet so boot would
+  // not grow. Three of the six colour shards then came back as verbatim slices
+  // of `cave_a04401w064.u7` and this guard blocked the build. It was right to.
+  //
+  // WHAT IS ACTUALLY DIFFERENT ABOUT THEM, MEASURED: NOTHING, in kind. Every
+  // sprite this page has ever drawn is cartridge art. `col.shard0.u16.gz` --
+  // the sheet that has shipped since wave 7 -- is the same colour ROM's bytes
+  // and this guard does not flag it, for one reason only: its 166 streams come
+  // from SCATTERED addresses, so the packed file is a stitch of many runs and
+  // matches nothing contiguously. Shards 2, 4 and 5 each hold ONE ROM TABLE
+  // whose streams happen to be CONSECUTIVE, so their packed colour is one run.
+  // Shards 1 and 3 hold tables with holes in them and pass. The property this
+  // guard tests is therefore PACKING ORDER, not provenance -- and reordering
+  // the blocks to make it quiet would be gaming it, which is the one thing a
+  // guard like this cannot survive.
+  //
+  //   - an INTERMEDIATE? No. `src/web/assets.js SprShards` fetches all three.
+  //   - a COPY that should be a TRANSLATION? This is the real alternative and
+  //     it is a wave, not a line: DECODE the colour half the way the tiles are
+  //     decoded (one 5-bit pixel per byte). `41-recon-sprite-art.md` §2.2
+  //     measured it -- raw +50 %, gzipped -9.7 % -- and rejected it because it
+  //     changes `SpriteDrawer`'s inner loop, which is on `bundlegate`'s and
+  //     `pixgate`'s 100.0000 % pixel path, and the drawer would have to read
+  //     BOTH forms (the gates compare against the cartridge's own packed ROM).
+  //     It is written down in `docs/worklog/ddpdoj/47-impl-E2-art.md` as the
+  //     thing that would retire these three lines.
+  //   - a SUBSTITUTE? A drawn replacement for 62 tank hulls and a 70-frame
+  //     explosion is not a placeholder, it is a different game.
+  //
+  // So it is the fourth answer, deliberately, and it is the owner's standing
+  // decision (HANDOVER §8.1) applied to the game that decision was not written
+  // for: the live site may serve real cartridge art; the repo may not, and
+  // does not -- `games/ddpdoj/assets/` is gitignored and every byte of it is
+  // regenerated from the owner's own cartridge by `export-web.mjs`.
+  ['games/ddpdoj/assets/spr/col.shard2.u16.gz',
+   'enemy type $89\'s body art ($272E7A, 32 streams). Fetched by '
+   + 'src/web/assets.js SprShards; without it those enemies are a named skip. '
+   + 'Verbatim only because that table\'s streams are consecutive in the ROM -- '
+   + 'see the W47 block above.'],
+  ['games/ddpdoj/assets/spr/col.shard4.u16.gz',
+   'enemy type $24\'s art ($2970D8, 16 streams), same reasoning.'],
+  ['games/ddpdoj/assets/spr/col.shard5.u16.gz',
+   'enemy type $31\'s 70-frame animation ($26990E), same reasoning. The '
+   + 'largest of the three at 118.9 KiB, and DEFERRED -- [M] the port first '
+   + 'asks for it 103 s into stage 1.'],
 ]);
 
 const substituted = [];

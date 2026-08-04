@@ -160,6 +160,167 @@ asked for, how many records that was, and the first logic frame.
 The four body tables plus the laser are **68,934 of the run's 154,831 missed
 records = 44.5 %**, and the hull table alone is 35.9 % of it.
 
+## 2. THE DELIVERY DECISION — the constraint that shaped the wave
+
+**212 streams / 209.1 KiB of art against a standing "boot must not get slower"
+(HANDOVER §8.8) and a boot that was 475.2 KiB.**
+
+`41-recon` §2.5 priced four options and its verdict stands: A (ship it all at
+boot) is +209 KiB and rejected; C (lazy per-stream fetch) is impossible because
+`renderIndexed` is synchronous inside the frame; D (a different compression) is
+9.7 % for a renderer change, and brotli is unusable through
+`DecompressionStream`. **B, the shard, is the only one that works**, and this
+wave builds it.
+
+### 2.1 THE SHARD BOUNDARY, and why shard 0 is byte-identical
+
+The sprite sheet is now **six shards over ONE packed address space**. Each shard
+owns a CONTIGUOUS run of the packed mask array and of the packed colour array;
+the page allocates both at full size at boot and drops each shard's words into
+place as it lands. So **"which shard is a stream in" is a range test on its
+packed base** — which is why `spr.streams` needed no fourth field and why the
+page can NAME a shard for a stream whose shard has not arrived.
+
+| shard | what | streams | gz | when |
+|---|---|---:|---:|---|
+| **0 boot** | the recording's 150 + the ship's 17 tilts (W12) | 166 | **39.2 KiB** | boot |
+| 1 `type11` | `$268B9E` hull + `$268C9E` turret + the laser's 5 | 67 | 28.2 KiB | **[M] +7.7 s** |
+| 2 `type89` | `$272E7A` | 32 | 30.5 KiB | [M] +49.6 s |
+| 3 `family` | `$269E48` + `$269BB6` | 27 | 9.8 KiB | [M] +74.7 s |
+| 4 `type24` | `$2970D8` | 16 | 23.9 KiB | [M] +98.7 s |
+| 5 `type31` | `$26990E`, 70 frames | 70 | 116.7 KiB | [M] +103.2 s |
+
+**Cut by MEASURED FIRST NEED (§1.2), not by a guess**, and shard 0 is
+deliberately **exactly what the bundle already shipped**: the same 166 streams,
+packed first, so every packed base is unchanged, `capture.bin` is byte-identical
+(67,590 B both ways) and **`bundlegate`'s 100.0000 % pixel identity cannot have
+moved**. That is also why the laser's five streams are in shard 1 rather than
+shard 0 even though the player can hold fire on frame one: inserting them into
+shard 0 shifts every base behind them and rewrites the bytes the strongest gate
+in this port compares. 1.1 KiB of latency on a beam that is a named skip for the
+second shard 1 takes is the cheaper side of that trade.
+
+### 2.2 WHAT HAPPENS WHEN THE PLAYER OUTLIVES A SHARD
+
+Nothing new, and that is the point — **the guard W44 built already names every
+record it cannot draw.** W47 adds one distinction, because these are two
+different bugs and they must not wear the same sentence:
+
+```
+    NO ART $166840x3          the bundle does not contain this picture
+    SPR SHARD 1x10            it does, and 28 KiB of it is in flight
+```
+
+and `demand(shard)` is called from the guard, so **the shard a record actually
+asks for jumps to the head of the fetch queue**. The delivery schedule is a
+function of the SIMULATION rather than of a clock — the same reason
+`BgShards.followColumn` is driven by the scroll VM's own column cursor
+(`41-recon` §2.5), and it cost nothing because the guard was already naming
+every record it skipped.
+
+**A record is NEVER drawn out of a shard that has not landed.** Those words are
+still zero and a stream of zeroed mask words is a solid rectangle of pen 0 — a
+picture that is WRONG rather than absent, which is the one outcome the whole
+guard exists to prevent. `--break draw-pending-shard` is the mutation that does
+it anyway, and it is red-validated (§4).
+
+### 2.3 THE FAILURE MODE IF A SHARD IS MISSING — seen, in Chrome
+
+`BgShards`' contract exactly, and the sprite half is now the same code (the
+queue was lifted into a shared `ShardQueue`; `bundlegate --break shard-404` and
+`shard-late` still go red through it, §4).
+
+- **in flight** → its records are skipped, the SHARD is named on the status
+  line, `spr n/6` says how many have landed. Never black.
+- **404 / bad gzip** → recorded at fetch, and **raised by `demand()` from inside
+  the first frame that needs it** — not at boot, so a shard nobody reaches
+  cannot take the page down.
+- **a stream in NO shard** → an EXPORT gap, and `loadBundle` throws for it at
+  load in different words.
+
+**[M] Seen, in Chrome, with `spr/mask.shard1.u16.gz` withheld: the page ran
+normally and stopped at logic frame 2458 — the exact first frame that asks for a
+hull — with**
+
+```
+AN ASSET IS MISSING OR BROKEN.
+SPRITE SHARD 1 DID NOT LOAD (assets/spr/mask.shard1.u16.gz: HTTP 404 ...).
+It holds 67 sprite streams -- type $11's hull $268B9E + turret $268C9E, and the
+laser's 5 (W45). The owner's missing tank bodies. -- and a record has asked for
+one of them.
+```
+
+**AND THAT SCREENSHOT FOUND A DEFECT IN THE PAGE'S ERROR PANEL.** The headline
+read **"$268B9E IS NOT PORTED YET"**: `showError` scrapes the first `$xxxxxx` out
+of any message, and W47's asset messages name the ROM TABLE a shard came from.
+So a missing FILE was being reported as an unported ROUTINE — the port is fine
+and the sentence blamed it. `index.html` now branches on `AssetError` and says
+so. Nothing but a real browser was going to find that.
+
+### 2.4 BOOT, MEASURED BEFORE AND AFTER
+
+```
+[M] BEFORE   475.2 KiB before the first frame   (export-web.mjs's own figure)
+[M] AFTER    473.7 KiB                          -- 1.5 KiB SMALLER
+[M] and the deferred queue grows 510.2 -> 719.4 KiB (the 209 KiB of new art)
+```
+
+**Boot went DOWN while 212 streams of art were added**, and the whole of it is
+one decision:
+
+- **the stream table left `manifest.json`.** [M] `manifest.json` is the one body
+  served UNCOMPRESSED, so every byte of it is a boot byte, and 378 triples of
+  pretty JSON is **11,922 B** (7,007 B even compacted onto one line). As
+  `spr/streams.u32.gz` — a flat `Uint32Array`, three per stream — it is **4,536 B
+  raw and 2,219 B gzipped**. A thousand integers belong in a typed array.
+  `manifest.json` 12,272 -> 8,683 B.
+- the shard files lose the power-of-two padding the single sheet carried: [M]
+  shard 0's mask+col is 40,099 B against the old 40,274.
+
+## 3. THE ROM-LEAK GUARD FIRED, AND IT WAS RIGHT TO
+
+`node tools/build-dist.mjs` **refused to build**:
+
+```
+REFUSING TO BUILD: dist/ contains verbatim cartridge data.
+  spr/col.shard2.u16.gz  (31920 B, decompressed, verbatim inside cave_a04401w064.u7)
+  spr/col.shard4.u16.gz  (31418 B, ...)
+  spr/col.shard5.u16.gz  (243548 B, ...)
+```
+
+**[M] WHAT IS ACTUALLY DIFFERENT ABOUT THOSE THREE: NOTHING, IN KIND.** Every
+sprite this page has ever drawn is cartridge art. `col.shard0.u16.gz` — the
+sheet that has shipped since wave 7 — is the same colour ROM's bytes and is not
+flagged, for one reason: its 166 streams come from SCATTERED addresses, so the
+packed file is a stitch of many runs and matches nothing contiguously. Shards 2,
+4 and 5 each hold ONE ROM TABLE whose streams are CONSECUTIVE, so their packed
+colour is a single run. Shards 1 and 3 hold tables with holes in them and pass.
+
+**The property the guard tests is PACKING ORDER, not provenance** — and
+reordering the blocks to make it quiet would be gaming it, which is the one
+thing a guard like this cannot survive. So the four answers the guard itself
+offers, in its own order:
+
+1. **an INTERMEDIATE?** No. `SprShards` fetches all three.
+2. **a COPY that should be a TRANSLATION?** *This is the real alternative and it
+   is a wave, not a line.* Decode the colour half the way the tiles are already
+   decoded — one 5-bit pixel per byte. `41-recon` §2.2 measured it (raw +50 %,
+   **gzipped −9.7 %**) and rejected it because it changes `SpriteDrawer`'s inner
+   loop, which is on `bundlegate`'s and `pixgate`'s 100.0000 % pixel path, and
+   the drawer would then have to read BOTH forms — the gates compare against the
+   cartridge's own packed ROM. **This is the thing that would retire the three
+   entries below, and it is named here so the next wave does not have to
+   re-derive it.**
+3. **a SUBSTITUTE?** A drawn replacement for 62 tank hulls and a 70-frame
+   explosion is not a placeholder, it is a different game.
+4. **`PUBLISH_VERBATIM`.** Taken, with a reason each, and printed on every build.
+
+This is the owner's standing decision (HANDOVER §8.1 — *"the live site may serve
+real cartridge art; the repo may not"*) applied to the game it was not written
+for. `games/ddpdoj/assets/` is gitignored and every byte of it is regenerated
+from the owner's own cartridge. **The list went from one entry to four and that
+is a decision the owner may want to reverse; it is flagged rather than buried.**
+
 ## LOG (appended as findings arrive)
 
 - opened.
