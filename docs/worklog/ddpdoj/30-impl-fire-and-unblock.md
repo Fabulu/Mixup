@@ -395,6 +395,19 @@ construct 44.2 ms; 1,000 logic frames in 604.3 ms = 0.604 ms/frame
 Caching the resolution would be a defensible optimisation and is not needed, so
 it was not done — the ROM stays the authority for every lookup.
 
+## 7.3 A REGENERATION STEP A LATER WAVE WILL TRIP OVER
+
+This wave added **five ROM windows** (`$273270`, `$23D760`, `$278290`,
+`$242560`, `$2735F0`, `$273470`). `tools/export-web.mjs` line 671 embeds
+`rip/port/player.tables.json` verbatim in the web bundle, so **a tree with new
+windows and a stale bundle makes the PAGE throw "outside every ROM window"
+while every gate and test is green** — the gates read the JSON directly.
+
+Both were re-run here (`python tools/export-tables.py`, then
+`node games/ddpdoj/tools/export-web.mjs`; 94 windows / 179,846 bytes, bundle
+977.3 KiB). Recorded because the failure mode is silent in exactly the
+instruments a wave normally trusts.
+
 ## 8. WHAT I COULD NOT DETERMINE
 
 - **Which routine consumes the extra `$2433AE` draw** behind the new `rng`
