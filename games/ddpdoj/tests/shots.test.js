@@ -165,9 +165,15 @@ test('$253BDA takes the HIT path only on bit 7 of the type word\'s LOW byte', ()
   // FIRST hit takes the long arm and every hit after it takes the short one.
   handler253BDA(r, rom, rec, {}, 0x8103e6, 0xc8);       // bit 1 CLEAR -> first hit
   assert.equal(r.u8(rec) & 0x02, 0x02, '$253BDE bset #$1,(A6) latched');
-  const idxAfterFirst = r.u16(rec + S.animIdx);
+  // $253C90 `move.l (A0)+,($22,A6)` is a LONGWORD: it lands on ($22,A6) AND
+  // ($24,A6), the animation index the very next instruction decrements.  The
+  // block supplies $00000010, so after $253BE4's `subq.w #$4` the index is $C.
+  // Read as a WORD it would leave whatever `body253B94` had left there, which
+  // is why the assertion is the ABSOLUTE value and not a delta.
+  assert.equal(r.u16(rec + S.animIdx), 0x0c,
+    '$253C90 is a LONG, so ($24,A6) is $10 - 4');
   handler253BDA(r, rom, rec, {}, 0x8103e6, 0xc8);       // bit 1 SET -> later hit
-  assert.equal(r.u16(rec + S.animIdx), (idxAfterFirst - 4) & 0xffff,
+  assert.equal(r.u16(rec + S.animIdx), 0x08,
     '$253BE4 subq.w #$4,($24,A6) on every hit after the first');
 });
 

@@ -179,6 +179,297 @@ the reason is W19 §1.6's own** — it declined to port the rank clock because
 "porting the arithmetic without the slot would bake in an order that later has
 to be unpicked". Calling `$284636` from a place I chose would do exactly that.
 
+---
+
+## 2. WHAT WAS PORTED
+
+| file | what |
+|---|---|
+| `src/damage.js` (NEW) | `$28B670`, type 5's TAIL, all four arms; `$244D62` blocks 5, 6a and 6b — the shot bounding box and both enemy pools |
+| `src/score.js` (NEW) | `$286096`, `$28615E`, `$2862C6`, `$286476`, `$286626`, `$28663A`, `$2866DE`, `$286664`, the four wrappers |
+| `src/shots.js` | `$253BDE` and `$253ECA` — the shot's own HIT paths, which were loud named throws |
+| `src/handlers.js` | the damage-reaction arm of every ported handler, and TWO DEFECTS (§3) |
+| `src/midboss.js` | the body's and the eight arms' `$286096`/`$28615E` |
+| `src/type5.js` | the tail runs, after the twenty-three calls, where it is |
+| `tools/export-tables.py` | ONE new 8-byte window: `$287DF0` (the cap) + `$287DF4` (the refill) |
+
+### 2.1 THE FOUR ARMS OF `$28B670`, AND WHY THE PASS IS A 30 Hz CHECK
+
+`$80390C` is the per-frame alternation word `src/shipsprite.js` already
+documents. MEASURED across every 128 KiB RAM dump in `tools/oracle/out/`:
+
+```
+stage1-shot.seed3701  $80390A=$0BBA  $80390C=0     stage1-shot.seed4446  $0EA3  1
+stage1-shot.seed3716  $80390A=$0BC9  $80390C=1     stage1-shot.seed4447  $0EA4  0
+```
+
+— it flips every logic frame. With `$81308C` = 1 (frozen, in every dump) the
+tail therefore runs **`$244D62` on the frames `$80390C` is 0 and `$244D40` —
+the player's box, no shot loop at all — on the frames it is 1.** The shot-vs-
+enemy check is a 30 Hz check on a 59.19 Hz machine, and it is not an
+approximation the port chose.
+
+**AND THE TWO ARMS' SENSES ARE OPPOSITE, twenty-six bytes apart.**
+`$28B6B6 bne.b $28B706` for P1 and `$28B6FC beq.b $28B706` for P2. Reading the
+second as a copy of the first inverts which shot table gets to damage anything;
+mutation M6 is exactly that and it reddens.
+
+### 2.2 WHAT IS NOT PORTED, AND UNDER WHICH ADDRESS IT IS COUNTED
+
+| noted at | what |
+|---|---|
+| `$2459D0` | the PLAYER's own box and, with it, blocks 2–4 — including `$244ED2 subq.w #1,$16(A6)`, the one HP an enemy loses to being RAMMED. All four defer together because 2–4 consume block 1's box. L16. |
+| `$24518A` | the A2 and A3 weapon objects and `$24530C bsr $2453AC`, the laser. L13. |
+| `$244D40` | the tail's no-shot entry. |
+| `$286674` | the cap clamp's tail — the hyper-stock bonus into `$81B64A` and `jmp $287682`, which grants the stock `$285A62` turns into +16 rank. |
+| `$286876` / `$286A82` / `$286DA8` | `$286096`'s bomb and laser arms. |
+| `$28D520` | the per-frame ledger: `$2842B0`'s drain and `$284636`'s meter decrement (§1.7). |
+| `$289F54` / `$28C714` | the shot's own impact effect and burst. |
+| `$274AF0` | type `$82`'s death arm, reached for the first time by this wave's damage. |
+
+### 2.3 AN UNREACHABLE ARM INSIDE `$286096`, TRANSCRIBED AS A COMMENT
+
+`$2860C0 beq.b $286102` goes to `$286102`, **not** to the P2 laser arm eight
+bytes later, and `$2860CC bra.b $2860DE` steps over it. So
+`$2860CE..$2860DC` — `btst #3,D1 / add.w $81B640,D0 / bsr $286DA8`, a complete
+P2 mirror of the arm above it — **has no path into it at all.** It is in
+`src/score.js` as a comment and not as code, because writing it as code would
+give the port a path the cartridge has not got.
+
+---
+
+## 3. TWO DEFECTS THE DAMAGE PATH EXPOSED, BOTH INVISIBLE UNTIL NOW
+
+Both are in handlers ported by W25 and reviewed since, and neither could be
+seen by any run: `$286096` was a note, so **no enemy's HP had ever moved and no
+damage-reaction arm had ever executed.**
+
+### 3.1 TYPE `$11`'s DEATH WAS COLLAPSED FROM TWO STAGES INTO ONE
+
+The port read
+
+```js
+if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) { deathSeq11(...); return; }
+```
+
+The ROM is
+
+```
+$268920 tst.w ($18,A6) / $268924 bpl.b $268990
+$268926 tst.b ($20,A5) / $26892A bmi.w $268844   <- ONLY if already marked
+$26892E move.w ($26,A5),($18,A6)                 <- RELOAD the HP
+$268934 moveq #$8,D0 / $268936 jsr $28615E       <- score 8
+$26893C bset #$7,($20,A5)                        <- MARK it
+$268942 tst.w $815EA2 / bne $268990              <- one effect per frame
+$268988 bra.b $268990                            <- and FALL INTO THE FIRE
+```
+
+**Type `$11` takes TWO trips to zero to die, scores 8 on the first and `$10` on
+the second, and KEEPS FIRING on the first.** The old code lost all four facts.
+Type `$10`'s equivalent arm (`$26829E`) was right, which is what makes the
+`$11` one legible as a slip rather than a reading.
+
+Type `$10` had a smaller version of the same: its first-stage arm ended in a
+`return` where `$2682F0 bra.b $2682F8` falls into the fire machine, so the fire
+machine's counted note was suppressed on every damage frame.
+
+### 3.2 TYPE `$82`'s HP CLAMP WAS A WHOLE-BLOCK NOTE THAT RETURNED
+
+`$274822..$274850` is eight instructions and is the **only** place type `$82`'s
+HP is written back:
+
+```
+$274836 move.w ($18,A6),D4
+$27483A cmp.w ($38,A6),D4 / ble $274844
+$274840 move.w ($38,A6),D4            <- CLAMP DOWN to the floor
+$274844 move.w D4,($18,A6) / $274848 move.w D4,($38,A6)
+$27484C tst.w ($18,A6) / bmi $274AF0  <- THE DEATH ARM
+```
+
+With the note in place **a type `$82` could never die however hard it was
+shot**, and the death arm `$274AF0` was unreachable. Ported; `$274AF0` itself is
+now a note under its own address, so the enemy survives with negative HP and
+says so instead of dying silently.
+
+---
+
+## 4. THE MEASUREMENT — AND IT FALSIFIES THE BRIEF'S PREMISE
+
+`tools/w34damagegate.mjs` (committed), on `fly-around`'s seed at lf2000. The
+input is an INTERVENTION and the tool prints it as one: the recorded stick for
+the trace's own 2,200 frames and then a free run, plus `--stick` (the owner's
+own script from `docs/knowledge/09` — hold DOWN, sweep left/right) and
+single-frame Button-1 taps every 4 logic frames. `--no-pods` disables the
+option object, because a held raw Button-1 bit throws at `$24C164` (the laser
+gate) on its FIRST frame. Nothing here is compared against the board.
+
+### 4.1 THE HEADLINE, AND ITS CONTROL
+
+| | `--fire 4` | `--no-fire` (THE CONTROL) |
+|---|---|---|
+| frames | 12,000 | 12,000 |
+| shot-vs-enemy overlaps that damaged an enemy | **2,064** | **0** |
+| kills reaching `$28615E` | **343** (`$1`×25 `$8`×172 `$10`×140 `$26`×3 `$83`×3) | **0** |
+| P1 pending score `$81B4C0` | **`$00532278`** packed BCD | `$00000000` |
+| chain counter `$81B5DA` | **343** BCD | 0 |
+| chain meter / its cap | **56 / 56** — the cap W19 measured on the board | 0 / 0 |
+| max distance clock `$8130CE` | 836 | **836** |
+| unported stage-1 handlers dispatched | **8 of 8** | **8 of 8** |
+
+### 4.2 **W33 §3's WALL WAS THE WINDOW, NOT THE DAMAGE**
+
+W33 measured "the deepest clock any port run can reach is 239" and concluded
+that **eight of the nine remaining stage-1 handlers are unreachable until enemy
+damage lands**. That is the premise this wave's brief was built on, and the
+control above falsifies it: **with zero hits and zero kills the clock still
+reaches 836 and all eight handlers still execute.**
+
+The mechanism, measured frame by frame (`$8130CE`, `$813176`, the midboss's
+sub-record):
+
+```
+lf3098  the midboss spawns              lf4021  $813176 -> 0, the scroll STOPS
+lf4250  the clock passes 239            <-- 50 frames after fly-around ENDS
+lf4320  clk 244  scroll 0  midboss posX 11072
+lf4920  clk 281  scroll 0  midboss posX -8128   (it drifts LEFT, 32/frame)
+lf4955  the midboss is FREED by $26B8E2 -- it walked off the left edge
+lf9000  clk 836 = $0344, the boss lock W19 §2.4 measured
+```
+
+Two facts do the work, and both were already in this repo:
+
+1. **A halted scroll does not halt the distance clock.** W19 §2.1 measured that
+   `$26132C addq.w #1,$8130CE` is gated ONLY by the script freeze `($8,A5)`,
+   never by the speed; W31 §3.1 watched the board's own clock tick 236→239
+   while `$813176` was pinned at 0. So the clock keeps advancing through the
+   midboss halt at roughly one per 25 frames.
+2. **`fly-around` is 2,200 frames and ends at lf4200**, where the clock is 239.
+   W33 read the end of the window as a wall.
+
+So the honest sentence is: **`$27733E`, `$275F30`, `$26A5E4`, `$26AD28`,
+`$26A860`, `$29700C`, `$2697F6` and `$292902` — 8 of 8, owning 44 of stage 1's
+339 spawn records — are reachable, and every one executed. Damage is not what
+made them reachable; running the port past lf4200 is.** The evidence that one
+executed is the loud named throw the first run produced with no stubs:
+
+```
+BLOCKED at lf4938 by $27733E
+  UNPORTED $27733E: enemy handler at $27733E, dispatched from $263538 for the
+  record at $81378C (slot 14 of 58)
+```
+
+and with `--stub-unported` (a COVERAGE INTERVENTION — each unported handler
+counts its dispatch and frees the enemy, as the cartridge's own dummy handler
+`$26781C` does) all eight report a dispatch count equal to their record count:
+7, 3, 12, 12, 7, 1, 1, 1.
+
+**AND THE FIRST TRIGGER CLOCKS ARE NOT THE ONES W33 PUBLISHED.** The tool reads
+them out of the script at run time rather than carrying constants:
+
+```
+$27733E 283   $275F30 322   $26A5E4 376   $26AD28 377
+$26A860 420   $29700C 464   $2697F6 481   $292902 488
+```
+
+W33 §3 lists "283, 322, 420, 424, 464, 481, 488"; 376 and 377 are the two it
+got wrong.
+
+### 4.3 WHAT DAMAGE ACTUALLY BUYS, STATED WITHOUT THE FALSE PREMISE
+
+343 kills against 0. The score, chain and meter move for the first time in this
+project's history. Three paths that were loud throws now execute
+(`$253BDE`, `$253ECA`, and type `$82`'s `$274822` block). And the stage-1 boss
+`$292902` is dispatched, so the next wave's largest unknown is now reachable.
+
+---
+
+## 5. HOW THE ORDER WAS ESTABLISHED — the owner constraint
+
+Stated as the brief demands, because it is the part that cannot be checked by
+running anything.
+
+**Every write this wave adds happens inside an enemy handler**, at the
+instruction the handler reaches: `$26891A`, `$26828E`, `$269CF8`, `$27481C`,
+`$27596A`, `$273A68`, `$26B77C`, `$26B848` for `$286096`, and their death arms
+for `$28615E`. So the position of every one of them in the frame is **the enemy
+driver's dispatch order**, which the port has reproduced since W29 and which
+`pgm.py flyaround` compares. **No write below the handler has an order this
+wave chose.**
+
+The three ledger events whose order is NOT decided that way are `drain`,
+`drain0` and `meter-` — W19 §1.5's last three — and all three live in top-level
+object **TYPE 0, `$28D520`** (§1.7), one of the sixteen dispatch entries the
+port does not have. They are **not ported**, and the reason is W19 §1.6's own:
+porting the arithmetic without the slot bakes in an order that later has to be
+unpicked. The consequence is stated, not hidden: **a chain this port starts
+never expires**, and `$28D520` is noted by address on every frame the pass runs.
+
+Within one hit the order is the ROM's own `bsr` chain and is transcribed as
+such: `$28615E` reloads the cap from `$287DF0` FIRST, then `$2862C6`, inside
+which the chain counter increments (`$2863B2`) BEFORE the score add
+(`$2863D4`) — W19 §1.5 item 3 — and the meter refill (`$2863E8`) comes between
+the two score adds, not after them.
+
+---
+
+## 6. EVERY CHECK WAS SEEN TO FAIL
+
+`games/ddpdoj/tests/w34damage.test.js` (24 tests) plus the three existing files
+this wave changed. Mutations applied byte-exactly in Python with a
+single-occurrence anchor assertion, the whole 511-test suite run, the file
+restored, sha256 verified identical both ways after every one
+(`src/damage.js` `ae95e5cf637dc6de`, `src/score.js` `a46faa574844c6d1`,
+`src/shots.js` `cfb0aeee134cbc4d`, `src/handlers.js` `1cc5c33b9b1e8cdc`).
+
+| # | mutation | result |
+|---|---|---|
+| M1 | the outer walk runs COUNT slots, not COUNT LIVE ones | RED — 1 |
+| M2 | the box's Y minimum from the RAW Y, not the biased max | RED — 1 |
+| **M3** | `$245014`: the SECOND `sub.w ($16,A6)` dropped | **GREEN, then RED — 1** |
+| M4 | pool B's `$245138 moveq #$30` test dropped | RED — 1 |
+| M5 | pool A's `$245058` X ≥ `$6F00` gate dropped | RED — 1 |
+| M6 | `$28B6FC beq` read as `bne` — the P2 arm inverted | RED — 1 |
+| **M7** | pool B keeps D7 = `$2800` instead of `$1800` | **GREEN, then RED — 1** |
+| M8 | `$286630 abcd` read as a BINARY add | RED — 3 |
+| M9 | `$2860E4 moveq #1` read as `moveq #0` | RED — 2 |
+| M10 | `$286164 add.w D2,D2` dropped — the cap index unscaled | RED — 1 |
+| M11 | `$286314`'s fork inverted — chain when the meter is ZERO | RED — 2 |
+| M12 | `$286380 move.w #1,$81B5DA` dropped | RED — 1 |
+| **M13** | `$286660 bls` read as `bcs` — no cap clamp | **GREEN, then RED — 1** |
+| M14 | `$253BDE bset` read as `btst` — every hit is a first hit | RED — 1 |
+| **M15** | `$253C90` read as a WORD, so the anim index stays stale | **GREEN, then RED — 1** |
+| **M16** | type `$11`'s two-stage death collapsed back into one | **GREEN, then RED — 1** |
+| **M17** | type `$82`'s HP clamp reads `bge` instead of `ble` | **GREEN, then RED — 1** |
+
+**17 mutations, 17 RED. SIX SURVIVED THE FIRST PASS AND ALL SIX WERE DEFECTIVE
+CHECKS OF MINE — none was uncatchable**, which is the distinction W31 asked
+later waves to keep and W33 kept.
+
+- **M3, M7 and M13 — fixtures sitting where two readings agree.** M3's every
+  shot had its four half-extents equal AND the enemy dead-centre, where one
+  subtract and two both overlap; the test now drives an enemy `$200` lower,
+  where they disagree, with the centred case kept as a control. M7's pool-B
+  tests called `poolDamage` directly, and the `$F000` rebias lives in
+  `collisionPass` — the test now goes through `runType5Tail`. M13's meter
+  OVERSHOT the cap, where `>` and `>=` agree; the two readings differ on
+  exactly one value (`meter + refill == cap`) and the test now sits on it.
+- **M15 — an assertion written as a DELTA.** It compared the index before and
+  after, which is invariant under the mutation; it now pins the absolute value
+  the LONG write produces.
+- **M16 and M17 — no test at all.** The two defects §3 fixed had no check, which
+  is why they had survived since W25. Both now have one.
+
+**Unit tests: 492 → 511 pass, 0 fail, 0 SKIPPED.**
+
+**A SKIP APPEARED AND WAS CHASED, NOT TOLERATED** — for the fifth wave running:
+`movement.test.js`'s W24 stream inventory, its gitignored input
+`assets/w24-movement/stage1-streams.json` gone again. Regenerated with
+`python games/ddpdoj/tools/oracle/w24streams.py` **from the REPO ROOT**. This
+run it disappeared during `node tools/export-web.mjs`, which is a NEW data
+point: W32 grepped `games/ddpdoj/tools/` for a remover and found none, and
+`export-web.mjs` was in that grep's scope. I did not identify the mechanism
+either and am not repeating the inherited attribution as though I had.
+
 ## LOG (appended as findings arrive)
 
 - opened.
@@ -198,3 +489,24 @@ to be unpicked". Calling `$284636` from a place I chose would do exactly that.
   top-level object TYPE 0 `$28D520`, which the port does not have. Every write
   this wave adds happens inside an enemy handler, so its order is the enemy
   driver's dispatch order, which the port already reproduces.
+- **PORTED**: `$28B670` + `$244D62`'s three shot blocks (`src/damage.js`), the
+  hit/kill ledger (`src/score.js`), and the shot's own hit paths `$253BDE` /
+  `$253ECA`, which were loud named throws nothing could reach.
+- **TWO DEFECTS** in W25's handlers, both invisible while HP could not move
+  (§3): type `$11`'s death was collapsed from two stages into one, and type
+  `$82`'s HP clamp was a whole-block note that returned, so a `$82` could never
+  die.
+- MEASURED: **2,064 overlaps, 343 kills, P1 pending `$00532278` BCD, chain 343,
+  meter pinned at its cap 56** — the cap W19 measured on the board. The control
+  with the identical script and no fire: **0 and 0**, and the ledger never moves.
+- **AND THE CONTROL FALSIFIED THE BRIEF'S PREMISE** (§4.2). W33's "the deepest
+  clock any port run can reach is 239" was **the end of the fly-around window,
+  not a wall damage removes**: with zero hits the clock still reaches 836 and
+  all eight unported handlers still execute. The midboss walks off the left edge
+  at lf4955 and `$26B8E2` frees it; the distance clock ticks through the halt
+  because `$26132C` is gated on the FREEZE, never on the speed (W19 §2.1).
+- 8 of 8 unported stage-1 handlers dispatched, 44 of 44 spawn records, and the
+  first-trigger clocks are read from the script at run time: 283 322 **376 377**
+  420 464 481 488 — W33 published 420 and 424 for the middle two.
+- 17 mutations, 17 RED; six survived the first pass and all six were defective
+  checks of mine (§6), none uncatchable.

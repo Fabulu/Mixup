@@ -108,8 +108,21 @@ export const DMG = {
   maskP1: 0x1000, maskP2: 0x0800,
 };
 
-/** The box, as four RAM words at `$80FA74`: max X, min X, max Y, min Y. */
-const BOX = { maxX: 0x80fa74, minX: 0x80fa76, maxY: 0x80fa78, minY: 0x80fa7a };
+/** The box, four RAM words at `$80FA74`, and THE FIRST PAIR IS Y.
+ *
+ * `$244F14 movem.w (A6),D0/D2` loads D0 from record `+$2` and D2 from `+$4`,
+ * and the shot record's `+$2` is Y (`$253B9A add.w D0,($2,A6)` is the vertical
+ * step).  So `$80FA74`/`$80FA76` bound Y and `$80FA78`/`$80FA7A` bound X.
+ * Naming them the other way round costs nothing until somebody reads the file.
+ *
+ * THE TWO AXES ARE NOT COMPUTED SYMMETRICALLY, and it is in the listing:
+ *   `$244F1E add.w (A1)+,D0 / $244F20 move.w D0,D1 / $244F22 sub.w (A1)+,D1`
+ *      -- Y's minimum is derived from the ALREADY-BIASED maximum;
+ *   `$244F18 move.w D2,D3` (BEFORE the add) `/ $244F24 / $244F26`
+ *      -- X's minimum is derived from the RAW coordinate.
+ * With equal half-extents the Y minimum is exactly Y and the X minimum is not.
+ */
+const BOX = { maxY: 0x80fa74, minY: 0x80fa76, maxX: 0x80fa78, minX: 0x80fa7a };
 
 function note(ctx, addr, what) { ctx?.unportedLog?.note(addr, what); }
 
@@ -131,10 +144,10 @@ export function shotBoundingBox(ram, table, d7) {
     if ((ram.u16(table + i * DMG.shotStride) & 0x8000) !== 0) { any = true; break; }
   }
   if (!any) return false;                             // $244EF0 bra.w $24518A
-  ram.setU16(BOX.maxX, 0);                            // $244EFE
-  ram.setU16(BOX.minX, 0x7000);                       // $244F00
-  ram.setU16(BOX.maxY, 0);                            // $244F04
-  ram.setU16(BOX.minY, 0x3800);                       // $244F06
+  ram.setU16(BOX.maxY, 0);                            // $244EFE
+  ram.setU16(BOX.minY, 0x7000);                       // $244F00
+  ram.setU16(BOX.maxX, 0);                            // $244F04
+  ram.setU16(BOX.minX, 0x3800);                       // $244F06
   for (let i = 0; i < DMG.shotSlots; i++) {           // $244F0A move.w #$23,D5
     const r = table + i * DMG.shotStride;
     if ((ram.u16(r) & 0x8000) === 0) continue;        // $244F10 tst.w (A6)+ / bpl
@@ -148,13 +161,13 @@ export function shotBoundingBox(ram, table, d7) {
     d2 = u16(d2 + ram.u16(r + 0x14));                 // $244F24
     d3 = u16(d3 - ram.u16(r + 0x16));                 // $244F26
     // $244F2E..$244F4A: four SIGNED min/max updates through `(A1)+`.
-    if (i16(d0) > i16(ram.u16(BOX.maxX))) ram.setU16(BOX.maxX, d0);  // $244F2E ble
-    if (i16(d1) < i16(ram.u16(BOX.minX))) ram.setU16(BOX.minX, d1);  // $244F36 bge
-    if (i16(d2) > i16(ram.u16(BOX.maxY))) ram.setU16(BOX.maxY, d2);  // $244F3E ble
-    if (i16(d3) < i16(ram.u16(BOX.minY))) ram.setU16(BOX.minY, d3);  // $244F46 bge
+    if (i16(d0) > i16(ram.u16(BOX.maxY))) ram.setU16(BOX.maxY, d0);  // $244F2E ble
+    if (i16(d1) < i16(ram.u16(BOX.minY))) ram.setU16(BOX.minY, d1);  // $244F36 bge
+    if (i16(d2) > i16(ram.u16(BOX.maxX))) ram.setU16(BOX.maxX, d2);  // $244F3E ble
+    if (i16(d3) < i16(ram.u16(BOX.minX))) ram.setU16(BOX.minX, d3);  // $244F46 bge
   }
   // $244F56..$244F62: all four biased by D7 ($2800 at this point).
-  for (const a of [BOX.maxX, BOX.minX, BOX.maxY, BOX.minY]) {
+  for (const a of [BOX.maxY, BOX.minY, BOX.maxX, BOX.minX]) {
     ram.setU16(a, u16(ram.u16(a) + d7));
   }
   return true;
@@ -213,14 +226,14 @@ export function poolDamage(ram, pool, count, table, d7, mask, gate308c, variant)
     // $244F9E `lea $E(A5),A1` -- A5 is rec+2, so A1 = rec+$10.
     d0 = u16(d0 + ram.u16(rec + 0x10));               // $244FA2 add.w (A1)+,D0
     d1 = u16(d1 - ram.u16(rec + 0x12));               // $244FA4 sub.w (A1)+,D1
-    if (d1 > ram.u16(BOX.maxX)) continue;             // $244FAC cmp/bhi  UNSIGNED
-    if (d0 < ram.u16(BOX.minX)) continue;             // $244FB0 cmp/bcs
+    if (d1 > ram.u16(BOX.maxY)) continue;             // $244FAC cmp/bhi  UNSIGNED
+    if (d0 < ram.u16(BOX.minY)) continue;             // $244FB0 cmp/bcs
     let d2 = u16(ram.u16(rec + 0x04) + d7);           // $244FB4
     let d3 = d2;                                      // $244FB6
     d2 = u16(d2 + ram.u16(rec + 0x14));               // $244FB8
     d3 = u16(d3 - ram.u16(rec + 0x16));               // $244FBA
-    if (d3 > ram.u16(BOX.maxY)) continue;             // $244FBC bhi
-    if (d2 < ram.u16(BOX.minY)) continue;             // $244FC0 bcs
+    if (d3 > ram.u16(BOX.maxX)) continue;             // $244FBC bhi
+    if (d2 < ram.u16(BOX.minX)) continue;             // $244FC0 bcs
     if (d1 >= offLimit) continue;                     // $244FC4/$2450EC bcc
     // ---- the inner walk over all 36 shot records.
     for (let s = 0; s < DMG.shotSlots; s++) {         // $244FCE move.w #$23,D6
@@ -324,7 +337,7 @@ export function collisionPass(ram, ctx, { table, mask, d1, d2, player }) {
   let hitsB = 0;
   const cntB = ram.u16(DMG.poolBCount);
   if (cntB !== 0) {
-    for (const a of [BOX.maxX, BOX.minX, BOX.maxY, BOX.minY]) {
+    for (const a of [BOX.maxY, BOX.minY, BOX.maxX, BOX.minX]) {
       ram.setU16(a, u16(ram.u16(a) + 0xf000));        // $245096 add.w D7,(A1)+ x4
     }
     d7 = 0x1800;                                      // $24509E move.w #$1800,D7
