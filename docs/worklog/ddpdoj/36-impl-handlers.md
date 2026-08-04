@@ -1,6 +1,6 @@
 # W36 — IMPL: the remaining stage-1 enemy handlers
 
-status: **IN PROGRESS**
+status: **DONE** — see §8.
 wave: 36. role: IMPLEMENTER (sole writer to `games/ddpdoj/`).
 date: 2026-08-04.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Build B = `$23xxxx..$2Axxxx`.
@@ -231,6 +231,165 @@ PORTING bought; the 363 kills and the ledger are what FIRING bought. Neither
 number is carrying the other.
 
 
+## 6. EVERY CHECK WAS SEEN TO FAIL
+
+`games/ddpdoj/tests/w36handlers.test.js`, **21 tests**. Every one drives a real
+routine against the REAL exported cartridge windows and asserts on a value the
+ROM decides — a muzzle vector out of `$269F48`, a fan pair out of `$2732FA`, a
+sprite pointer out of `$269E48`, a bucket out of a stub's own `lea` operands, an
+animation frame out of `$26990E`, a threshold out of `$2680A2`. None writes a
+constant and reads it back through the same constant (`docs/knowledge/03`), and
+the one throw assertion pins `e.romAddress` (`27-review.md` 1A).
+
+Mutations applied byte-exactly in Python with a single-occurrence anchor, the
+whole 546-test suite run, the file restored, sha256 verified identical both ways
+after every one (`src/handlers.js` `72d4a5d60ae5ce83`, `src/movement.js`
+`d7cf9cdcdc7133ea`, `src/spritequeue.js` `f932564c4b3fdbbd`).
+
+| # | mutation | result |
+|---|---|---|
+| M1 | `$269B3E`'s arm select inverted | RED — 2 |
+| M2 | `$269BAA` read as `move.w` — D4's high byte lost | RED — 1 |
+| M3 | `$269E26 andi.w #$3E` read as `#$3F` | RED — 1 |
+| M4 | `$2425B2`'s two table pairs swapped | RED — 3 |
+| M5 | `$2425B2`'s SECOND axis never refuses | RED — 1 |
+| M6 | `$26A6CE`'s carry arm uses dir 0, not the preserved D1 | RED — 1 |
+| M7 | `$0B`'s muzzle index taken from the AIM, not `($23,A5)` | RED — 1 |
+| M8 | `$26A73C bcc` read as `bne` — the fire on the wrong frame | RED — 1 |
+| M9 | `$27615C` rebuilds D1's HIGH half instead of inheriting it | RED — 1 |
+| M10 | `$27615C`'s request rebuilds D3 instead of inheriting it | RED — 1 |
+| M11 | `$275F50 neg.w D3` dropped | RED — 1 |
+| **M12** | `$2638A6`'s frozen exit leaves the out-vector stale | **GREEN, then RED — 1** |
+| M13 | `resolveEmitStub` loses the FIFTH prologue shape | RED — 2 |
+| **M14** | `$2698D2 btst #$1`'s sense inverted | **GREEN, then RED — 1** |
+| M15 | `$2698B2`'s wrap read as `#$228` | RED — 1 |
+| M16 | `$269840`'s stride read as SIX (the bytes consumed), not EIGHT | RED — 1 |
+| M17 | `$297086`'s byte compare read as UNSIGNED | RED — 1 |
+| M18 | `$27744E` dropped — the `$89` fan stride 4, not 8 | RED — 1 |
+| M19 | `$27621E`'s `subq` read as an `addq` | RED — 1 |
+| M20 | `$27627E`'s `move.l #$115` read as a `moveq` | RED — 1 |
+
+**20 mutations, 20 RED. TWO SURVIVED THE FIRST PASS AND BOTH WERE DEFECTIVE
+CHECKS OF MINE, neither uncatchable** — the distinction W31 asked later waves to
+keep and W33/W34/W35 kept.
+
+- **M14 — an assertion that the two arms DIFFER, not WHICH.** `$2698D2 btst #$1`
+  decides whether type `$31`'s second request sits `$40` below the first or `$40`
+  above it, and my test asserted only `set.pos !== clr.pos`, which is invariant
+  under swapping them. It now pins the SIDE: below in one arm, above in the other.
+
+- **M12 — a check that could not exist where I put it, and the fix was to move
+  the code, not the test.** I first asserted `$2638A6`'s frozen return through
+  the handler's recoil field, and there the two readings are *identical*: the
+  correct D3 is 0, a missing D3 is `undefined`, and `u16(x + undefined)` is also
+  0. On top of that, `handler88` was creating its out-object as
+  `{ dy: 0, dx: 0 }` — which put the cartridge's own `$2638A0`/`$263910`
+  initialisation in TWO places and made the one in `src/movement.js`
+  unfalsifiable by construction. **The handler now passes `{}`**, so the zeroing
+  exists exactly where the ROM has it, and the test drives `stepMovement`
+  DIRECTLY with a POISONED out-object (`$7777`) across all three of its
+  value-bearing exits: the clean cache `$2638E8`, the frozen entry `$2638A0`,
+  and the stop heading `$263910` — whose stream address the test FINDS in the
+  movement window rather than carrying.
+
+**Unit tests: 525 → 546 pass, 0 fail, 0 SKIPPED.**
+
+## 7. WHAT I COULD NOT DETERMINE
+
+- **Whether any of the seven agrees with the BOARD, on any frame.** Nothing in
+  this wave is compared against the cartridge, and the reason is structural
+  rather than a matter of effort: `fly-around` is the project's only port-vs-
+  board window, it runs lf2001..4200, and **the deepest distance clock it
+  reaches is 239**. The seven handlers' first triggers are at clk **283, 322,
+  376, 377, 420, 464 and 481** — every one of them beyond the end of the
+  compared window. So `pgm.py check`'s `fly-around: port vs board, 0 divergent
+  frames` stage is green about code these handlers never execute, and the only
+  honest reading of it is *this wave broke nothing that was already compared*.
+  The same is true of the shared tail `$269B3E`/`$269E20`: types `$05`/`$07`
+  reach it only through the fire machine they still `note()`, so it does not run
+  in-window either. **Closing this needs a recording past lf4200 that FIRES**,
+  which is what W34 §9 item 1 already asked for and what this wave makes worth
+  more: there are now 43 more spawn records of ported code on the other side of
+  it.
+- **Whether type `$24`'s speed ramp is bounded.** `$29705E addq.b #$1,($1A,A6)`
+  has **no ceiling in the handler** — unlike the three damage-first sites, which
+  each compare against `$1C` or `$20`. `$29700C` starts the object at speed `$05`
+  (`$297034 move.w #$537,($1A,A6)`, a WORD write covering speed AND heading) and
+  climbs from there; the only thing that ends the object is the position test
+  `$297062 cmpi.w #$DE00,($4,A6)`, which bounds its LIFETIME and not its speed.
+  **What I tried:** reading the whole body for a second compare (there is none),
+  and checking whether the free arm bounds the ramp (it does not, except through
+  the object leaving the screen sooner as it accelerates). So §4.3's closure is a
+  bound on the OTHER six and a floor on this one, and a level above it is a loud
+  named throw that prints the level — not a silent wrong vector.
+- **Whether `($1A,A6)` may exceed the `$2782E4` window's 24 entries.** Type
+  `$88` indexes `$27829C + ($1E,A6) * 4` and `$2782E4 + ($1E,A6) * 4`, and
+  `$2782E4` is `$27829C + $48`, i.e. entry 18 of the SAME 30-entry table (`[M]`
+  read out of the ROM: `$27829C..$278313` are 30 pointers into the `$23D762`
+  family and `$278314` is `00000000`). W30's window ends at `$27833F`, so an
+  `($1E,A6)` of 23 or more reads past it — and would throw by address rather
+  than fetch a neighbour. I did not bound `($1E,A6)` for type `$88`.
+- **The meaning of four record fields.** `($24,A5)`/`($25,A5)` (a phase
+  counter and its reload), `($26,A5)`/`($27,A5)` (the two state flags) and
+  `($1F,A5)` (the per-step turn) are transcribed BY OFFSET with their ROM sites,
+  not by name, because I could not establish a name that the three siblings and
+  the two carrier types would all agree with. Naming them wrongly is how W23's
+  `+$16/+$18/+$1A` note got its claim wrong (W33 §5.2).
+- **Type `$1C`'s handler `$26C20C`.** It is 22 instructions and it is dispatched
+  by this port the moment the midboss dies (`src/midboss.js:714` already
+  executes `$26B7E2`'s enqueue). It writes 23 x 9 longwords into `$9000A4` /
+  `$9000BC` through a `$227AF8` source, and the port has no `$900000` region at
+  all. That is a VIDEO-MEMORY wave, not a handler wave, and this worklog names
+  it rather than guessing at it.
+- **Anything about the board this wave measured itself**, apart from the gate.
+  Every dynamic figure in §5 is the PORT replayed against a TSV already on disk.
+
+## 8. WHERE THE WAVE ENDED
+
+**A. THE BRIEF'S "EIGHT REMAINING HANDLERS" WAS ARITHMETICALLY RIGHT AND TWICE
+MISLEADING** (§2). One of the eight is the stage-1 BOSS, ten instructions of
+dispatch into a script format W33 and W28 both say must be read first; and 19 is
+not the denominator — types `$1C` and `$1E` are reached because an enemy spawns
+them, so stage 1 has **21** handlers and the port had 11.
+
+**B. SEVEN PORTED. 11 of 19 → 18 of 19 scripted handlers; 295 of 339 → 338 of
+339 spawn records.** Counting the two unscripted types, 11 of 21 → 18 of 21.
+
+**C. THE RUN NOW STOPS ON THE BOSS, ON THE BOARD'S OWN FRAME.** Control: clk
+282, blocked at lf4938 on `$27733E`. After: clk 487, blocked at lf8186 on
+`$292902` — and `w22-spawn-stage1.tsv` records the board spawning type `$0E` at
+lf8186. A no-fire control reaches the same clock with 0 kills, so reaching the
+boss is what PORTING bought and the 363 kills are what FIRING bought.
+
+**D. TWO INSTRUMENT DEFECTS, BOTH FOUND BY A LOUD THROW AND BOTH CLOSED BY
+ENUMERATION** (§4.2, §4.3): a fifth sprite-emitter stub shape `resolveEmitStub`
+could not read, and an exported speed set that had never covered the enemies —
+type `$0B` spawns at speed 36 out of its own prototype, through code the port
+has had since W23.
+
+**E. 20 MUTATIONS, 20 RED**, two first-pass survivors, both defective checks of
+mine; one of them was fixed by moving the CODE (`handler88` no longer pre-zeroes
+the vector `$2638A0` zeroes) rather than the test.
+
+### RANKED, FOR THE REVIEWER
+
+1. **§7's first bullet.** The gate is green and it is green about code the seven
+   handlers do not run: every one of their first triggers is beyond
+   `fly-around`'s clk-239 horizon. If a reviewer reads "ALL GREEN 49/0/0"
+   anywhere in this document as evidence about the seven, that is the defect.
+2. **§4.3.** The speed set is a closure over the prototypes, the streams and
+   three named ramps — and §7 records the ONE ramp (`$29705E`) it does not
+   close. If the closure argument is wrong, the number 36 is a measurement and
+   the rest is reasoning.
+3. **§4.1 item 1.** 34 bytes inside `$26A5E4` are transcribed as a comment
+   because two searches found no reference. Negatives are where this project
+   gets burned; the searches are named and they are what I tried, not a proof.
+4. **§2.3.** Type `$1C`'s handler is dispatched by the port TODAY, the first
+   time the midboss dies. It is not a hypothetical gap.
+5. **§6's M12.** A check of mine could not exist where I put it because
+   `u16(x + undefined)` is 0, and the port had ALSO put the cartridge's own
+   initialisation in two places. Both halves matter.
+
 ## LOG (appended as findings arrive)
 
 - opened.
@@ -246,3 +405,41 @@ number is carrying the other.
 - §3 [M]: the externals. Porting the seven needs exactly ONE new routine
   (`$2425B2`, 13 instructions, tables already windowed) and two members of an
   already-resolved enqueue family.
+
+- §4 PORTED: the SEVEN non-boss handlers, the shared damage-first tail
+  `$269B3E`/`$269E20`, `$2425B2` (13 instructions, the only new routine), and
+  `$268018` factored out of `$267FC6` -- W36 is the first caller to `jsr` it
+  directly, so it is a routine with its own callers and not the fire gate's
+  tail.
+- `$2638A6` now returns D2/D3. It is a DEFINED value on all four of its exits
+  (`$2638A0`, `$2638E8`, `$263900`, `$263910`) and `$275F30` reads D3 four
+  instructions after the call.
+- §4.1 [M]: **`$26A6F4..$26A736` is DEAD CODE inside `$26A5E4`** -- 34 bytes
+  both arms step over, 0 branch references in `$269000..$26B000` and 0
+  absolute-longword references in the whole of build B. Transcribed as a
+  COMMENT, per W34 §2.3.
+- §4.2 [M]: a **FIFTH sprite-emitter stub shape**. `$23F896` puts its counter
+  bump BEFORE the record read, so `resolveEmitStub` read the `addi` as the
+  convention word. The port threw at lf8186 before this was fixed.
+- §4.3 [M]: **the exported speed set had never covered the ENEMIES.** Type `$0B`
+  spawns at speed 36 out of its own prototype `$26AD0C` -- W23 code. Now
+  enumerated from the prototypes {0,4,8,16,20,29,36}, the streams' SPEED
+  operands (15 values, max 24, over all 163 stage-1 streams) and three named
+  ramps: 61 -> 65 levels, +3,595 B in `player.tables.json`, +2,164 B gzipped.
+- §5 MEASURED, with the CONTROL being this tree minus the seven map entries
+  (sha256 `fcdd4590337bb35a` identical both ways): clk **282 -> 487**, blocked
+  by `$27733E` at lf4938 -> by **`$292902`, THE BOSS, at lf8186** -- the frame
+  the board's own `w22-spawn-stage1.tsv` spawns type `$0E`. Kills 191 -> 363,
+  and the two new kill values `$34` (type `$89`) and `$115` (type `$88`).
+- §5 the NO-FIRE control: 0 hits, 0 kills, ledger `$00000000`, and STILL clk
+  487 at lf8186. Reaching the boss is what porting bought; the kills are what
+  firing bought.
+- §6: 21 behavioural tests, **20 mutations, 20 RED**; two survived the first
+  pass and both were defective checks of mine. One of them was fixed by moving
+  the CODE -- `handler88` had been pre-zeroing the out-vector `$2638A0` zeroes,
+  which put the cartridge's own initialisation in two places.
+- §7: **the gate cannot see any of the seven.** `fly-around` reaches clk 239 and
+  their first triggers are 283..481. The green gate says this wave broke nothing
+  that was already compared, and nothing more.
+
+status: DONE
