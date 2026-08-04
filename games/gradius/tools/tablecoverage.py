@@ -35,6 +35,15 @@ nothing hand-maintained in between:
            `LDA`; and the table EXTENT is taken as "up to the next indexed
            base inside the same exported block, else the block end".
 
+  3. EXTENTS (wave 34). Checking the BASE is not checking the READ. W33 found
+     two shipped table overruns on bases this tool passed, and W34 found a
+     third with the same shape. So every site where a PRG table read is ONE
+     INSTRUCTION after a RAM index load is enumerated, with the number of
+     entries the export gives that table and the INCs that write that RAM
+     byte, and each must be accounted for in COUNTER_INDEXED by hand. The
+     tool cannot bound an index register -- that needs dataflow it has not
+     got -- so what it guarantees is that a NEW one cannot appear silently.
+
   python games/gradius/tools/tablecoverage.py [--verbose]
 
 Exit 1 on any gap. Nothing is written.
@@ -209,15 +218,104 @@ def find_block(blocks, addr):
 
 
 def collect_indexed(rom: Prg):
-    """base -> reader addresses, over the 42 handlers + $C413 + STAGE5_ROOTS."""
+    """(base -> readers, every PC walked), over 42 handlers + $C413 + roots."""
     roots = ([rom.w(DISPATCH + 2 * i) for i in range(NENT)]
              + [LATE_SPAWNER] + STAGE5_ROOTS)
     allidx: dict[int, set] = {}
+    allseen: set = set()
     for r in roots:
-        _seen, idx = walk(rom, r)
+        seen, idx = walk(rom, r)
+        allseen |= seen
         for a, sites in idx.items():
             allidx.setdefault(a, set()).update(sites)
-    return allidx
+    return allidx, allseen
+
+
+# ==========================================================================
+# WAVE 34.  THE SECOND BLIND SPOT: THIS TOOL CHECKED BASES AND NEVER EXTENTS.
+#
+# W33 sec 8b: both of its table overruns are on bases this tool PASSES.
+# $B42F is exported and `$B415 LDA $B42F,Y` still walked off the end of it,
+# because "is the base inside an exported range" and "can the read leave the
+# table" are different questions and the tool only ever asked the first.
+#
+# A full answer needs to bound an index register, which needs dataflow this
+# tool does not have.  What it CAN do completely is enumerate the SHAPE that
+# produced every one of them:
+#
+#     LDY <ram>,X          the index comes straight out of a RAM byte
+#     LDA <table>,Y        ...and is used, next instruction, to read PRG
+#
+# and then say how many entries the EXPORT gives that table from that base,
+# and which INCs in the walked set write that RAM byte.
+#
+# THE PAIRING IS BY RAM ADDRESS AND THEREFORE OVER-REPORTS, deliberately, and
+# it is said here rather than tuned away: $04AC is INCd by six different
+# handlers, each on its own object, so "INC candidates" is a list of suspects
+# and not a proof that THIS routine bumps it.  The tool claims only that these
+# are the sites where a PRG table read is one instruction away from a RAM
+# counter.  Each is then accounted for BY HAND below, and a site that is not in
+# the dict FAILS -- so a new one cannot appear without somebody writing down
+# what bounds it.  Same mechanism as KNOWN_GAPS, same reason.
+COUNTER_INDEXED = {
+    0xB1C5: "GUARDED. src/enemies.js h_B198 throws at Y >= 5 naming $B205, "
+            "backed by W12 exec hook on the cartridge: 2439 executions over "
+            "27,400 frames, Y took 0..4 and never 5. W34 re-derived that from "
+            "the listing -- $B200 is four left arcs and one right at 98 px "
+            "each, net 294 px left, and $B251 box frees it during arc 4.",
+    0xB415: "GUARDED, W34. $B42F is LEFT LEFT LEFT RIGHT RIGHT at 66 px an "
+            "arc, so the net is ONE arc left and the enemy is still on screen "
+            "when $04AC reaches 5 -- the sixth read is the CARTRIDGE's. The "
+            "export covers Y = 0..6 (seven entries plus one anchor byte) and "
+            "arcTurn() throws at 7; the listing bound is 6. This overran on "
+            "stages 3 and 4 at frame 314 with no input, behind this tool OK.",
+    0xB43C: "GUARDED, W34. Entry 14 byte-identical twin of $B415; same "
+            "derivation, same export shape, same throw.",
+    0xB7B5: "OPEN -- W34 found it and did not settle it. $B797 is TWO entries "
+            "(3F 40, closed/open) inside a 26-byte export, so a Y of 2 reads "
+            "$B799's rank row and returns a PLAUSIBLE metasprite id with no "
+            "throw from anywhere. What IS measured: entry 23 ($B7A1) never "
+            "writes $048C itself, $A569 slot clear zeroes it, and the INCs the "
+            "scan pairs it with ($B0E2/$B0E5) are loc_B0BE four-phase state "
+            "machine on a different object. So Y is PROBABLY always 0, and "
+            "'probably' is exactly the word this project has been wrong with "
+            "before. A wave that touches type $97 should settle it.",
+}
+
+
+def counter_indexed_sites(rom: Prg, blocks, seen):
+    """[(read_pc, ram, table, entries_from_base, [INC sites])], sorted."""
+    incs: dict[int, set] = {}
+    for pc in sorted(seen):
+        try:
+            mn, mode, _ln, arg, _t = decode(rom, pc)
+        except Exception:                                  # noqa: BLE001
+            continue
+        if mn == "INC" and mode in (ABS, ABX, ABY):
+            incs.setdefault(arg, set()).add(pc)
+    out = []
+    for pc in sorted(seen):
+        try:
+            mn, mode, ln, arg, _t = decode(rom, pc)
+        except Exception:                                  # noqa: BLE001
+            continue
+        if mn not in ("LDY", "LDX") or mode not in (ABS, ABX, ABY):
+            continue
+        nxt = pc + ln
+        if nxt not in seen:
+            continue
+        try:
+            mn2, mode2, _l2, base, _t2 = decode(rom, nxt)
+        except Exception:                                  # noqa: BLE001
+            continue
+        if mn2 not in INDEXERS or base < 0x8000:
+            continue
+        if mode2 != (ABY if mn == "LDY" else ABX):
+            continue
+        blk = find_block(blocks, base)
+        entries = (blk["end"] - base) if blk else None
+        out.append((nxt, arg, base, entries, sorted(incs.get(arg, ()))))
+    return out
 
 
 # ------------------------------------------------------------------ metasprites
@@ -308,7 +406,7 @@ def main() -> int:
 
     rom = Prg((ASSETS / "prg.bin").read_bytes())
     blocks = exported_blocks(rom)
-    indexed = collect_indexed(rom)
+    indexed, walked = collect_indexed(rom)
 
     missing, known = [], []
     for b in sorted(indexed):
@@ -358,12 +456,32 @@ def main() -> int:
               + " and is NOT in metasprites.json -- drawMetasprite() would "
                 "draw nothing and throw nothing")
 
-    if missing or gaps:
+    # ---- WAVE 34: EXTENTS, not just bases --------------------------------
+    sites = counter_indexed_sites(rom, blocks, walked)
+    unaccounted = [row for row in sites if row[0] not in COUNTER_INDEXED]
+    print(f"EXTENTS: {len(sites)} site(s) where a PRG table read is one "
+          f"instruction after a RAM index load -- the shape both of W33's "
+          f"overruns had. Pairing is by RAM address and OVER-REPORTS.")
+    for pc, ram, base, entries, inc in sites:
+        print(f"  ${pc:04X} reads ${base:04X},Y indexed from ${ram:04X}: "
+              f"{entries if entries is not None else 'NOT EXPORTED'} entries "
+              f"exported from that base; INC candidates "
+              + (" ".join(f"${a:04X}" for a in inc) or "none"))
+        print("        " + COUNTER_INDEXED.get(pc, "*** NOT ACCOUNTED FOR"))
+    for pc, _ram, _base, _e, _i in unaccounted:
+        print(f"  *** ${pc:04X} indexes a PRG table with a RAM counter and is "
+              f"not in COUNTER_INDEXED. Read the routine, work out what bounds "
+              f"the index, and write it down there -- do NOT widen the export "
+              f"to make the throw go away.")
+
+    if missing or gaps or unaccounted:
         print(f"FAIL: {len(missing)} unexported table(s), "
-              f"{len(gaps)} missing metasprite(s)")
+              f"{len(gaps)} missing metasprite(s), "
+              f"{len(unaccounted)} unaccounted counter-indexed read(s)")
         return 1
-    print("OK: every table the handlers index is exported, and every metasprite "
-          "id the ROM names exists")
+    print("OK: every table the handlers index is exported, every metasprite id "
+          "the ROM names exists, and every counter-indexed read is accounted "
+          "for (1 of 4 still OPEN -- see $B7B5 above)")
     return 0
 
 
