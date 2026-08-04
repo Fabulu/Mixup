@@ -1,6 +1,6 @@
 # Wave 32a IMPLEMENTER -- `$B559` (dispatch entry 29), stage 5's first two chunks
 
-status: IN PROGRESS
+status: DONE
 implementer, 2026-08-04
 
 Scope, from the brief and `32-recon-destructible-terrain.md` §8: **W32a only.**
@@ -47,6 +47,9 @@ Stage `$19 = 4` (in-game stage 5): **14 of 28, first unported at scroll `$0000`
    W32a done-when says "a stage-5 scenario runs from scroll `$0000`". It cannot,
    and the reason is in the listing rather than in the run: **the scope guard is
    not stage 5's first wall, it is the LAST of five.** §4 below.
+   **What materialised instead is a CARTRIDGE COMPARISON: 2,371 handler frames,
+   ten fields each, 0 divergent, over the cartridge's own type-`$1D` objects**,
+   reached by a 46-frame `$19` poke that rides one chunk crossing. §6.
 3. **The ledger's first-unported column was reporting the WRONG SCROLL for any
    record reached from more than one chunk**, and had been since W28. Fixed, with
    a check that can fail. §5.
@@ -273,6 +276,111 @@ no mutation of the port can move it. Stated rather than dressed up.
 
 ---
 
+## §6. THE CARTRIDGE COMPARISON -- 2,371 FRAMES, 0 DIVERGENT
+
+The scenario could not materialise (§4), so I took `docs/knowledge/09`'s
+fallback, the same one W31 used: a **both-sides intervention that validates the
+CODE, not the route**. Committed as `tools/oracle/b559poke.py` +
+`tools/oracle/b559cmp.mjs` so the next wave re-runs it instead of re-deriving it.
+
+### The poke is 46 frames wide, and run 1 is why
+
+`$19` is read by the chunk loader (`$A2D5 LDA $A7D0,Y`) **only at a 512-px
+crossing**, and by the four walkers on every frame. Measured on the endchain
+trajectory (run 1, 5,600 frames, and these numbers are the run's own):
+
+```
+f1338  scroll $0200  $61 = 2        <- the crossing this poke rides
+f2362  scroll $0400  $61 = 4
+f3867  scroll $0600  $61 = 6
+```
+
+**Run 1 opened the window at f1400 — one frame group too late — and got the
+wrong stage-5 chunk.** The f2362 crossing loaded chunk **2** (`$ABE8`, the four
+INLINE-5 ARM records), the board spent **2,533 frames with live `$0600` arm
+groups**, and produced **zero** type-`$1D` objects. That is W32b's whole
+subsystem running on the cartridge, and it is a free confirmation of the recon's
+§2/§4c — the four inline-5 records really do allocate arm groups — but it is
+exactly the wrong window for W32a.
+
+Run 2 holds `$19 = 4` across f1338 only (`0019=4@1300-1345,0019=0@1346-…`; the
+ROM never rewrites `$19` during play, so the poke has to put it back itself).
+That loads **stage 5's chunk 1** (`$ABD3`, ten records, four of them type `$1D`)
+and hands `$19` straight back, so the drifters live their whole lives under
+stage 1's `$19` and the four walkers never fire. **`$0600`'s four group headers
+were checked, not assumed: zero for the entire run.**
+
+### The result
+
+```
+drifter frames in the dump : 2385
+  spawn frames             : 12 (loc_B502 init agrees on 12, disagrees on 0)
+  slot re-used same frame  : 2 (nothing to compare)
+handler frames compared    : 2371
+  port THREW on            : 0
+field mismatches           : 0        <- ten fields x 2371 frames
+
+BRANCHES OF $B559 EXERCISED AGAINST THE BOARD
+  $B55C init arm ($1D -> loc_B502)  : 12
+  $B55E body arm ($9D)              : 2371
+  $B566 box FREED the slot          : 10
+  $B628 stepped the frame           : 300
+  $B639 wrapped to the base ($52)   : 40
+  metasprites seen                  : $52 $53 $54 $55 $56 $57  (6 of 6)
+```
+
+Each row is a SINGLE-STEP differential: the port is seeded from the **board's**
+bytes at frame *i*−1, runs one `updateEnemies`, and is compared to the board at
+frame *i*. So a divergence would be a divergence in that one frame, not the
+consequence of an earlier one (`docs/knowledge/10` point 3).
+
+The two excluded frames are excluded **by a listing rule, not by frame number**:
+`$B559` can leave `$030C` as `$1D`, `$9D` or `$00` and nothing else, so a board
+`after.type` of `$02` means `$A2C0` (which runs at `$9A64`, before `$ADAB`)
+re-allocated the slot inside the same frame and the sampled object is a different
+one.
+
+### The cartridge comparison was watched to fail too
+
+`sha256(enemies.js)` `3fbdf393e99b` before and after all ten.
+
+| mutant | mismatches |
+|---|---|
+| C1 animator row 9 → 3 (`$B4FD`'s) | 330 |
+| C2 animator row 9 → 0 (the warp rain's) | 2,070 |
+| C3 `$B563 DEC` → −2 | 2,411 |
+| C4 `$B563 DEC` dropped | 2,411 |
+| C5 `$B566 JMP $B251` dropped | 40 |
+| C6 entry 29 delegated to `h_B4FD` | 2,701 |
+| C7 `$B55C BPL` inverted | 7,725 |
+| C8 `loc_B502` `$048C` `$80` → `$00` | 12 |
+| C9 `loc_B502` `$04AC` `$14` → `$15` | 12 |
+| C10 `case 0xB559` removed (the handler throws) | 2,383 |
+
+**C1 is the one to pause on.** Using `$B4FD`'s animator row — the single most
+likely copy-paste error in a 16-byte routine that shares a body — moves only
+**330 of 2,371** frames, because rows 3 and 9 have the SAME threshold `$08`. The
+cadence is identical and only the sprite and the wrap point differ. A comparison
+that sampled a shorter window could easily have missed it.
+
+**C8 AND C9 ORIGINALLY REDDENED NOTHING, AND THAT WAS A DEFECT IN THE CHECK.**
+The first version of the spawn-frame check compared the BOARD's `$048C`/`$04AC`
+against `$80`/`$14` written as literals *in the comparator* — so it agreed with
+itself through the very constants it was testing, `docs/knowledge/03`'s named
+failure mode, and mutating `loc_B502` left the cartridge run green. It now RUNS
+the port's own init arm and puts its three outputs next to the board's. Recorded
+rather than quietly fixed, because the green run before the fix was worthless and
+looked identical to the green run after it.
+
+### What this is NOT evidence of
+
+An INTERVENTION run. Valid evidence that our transcription of `$B559` is right.
+**Not** evidence about stage 5's pacing, spawn density or appearance: the terrain
+under these drifters is stage 1's, the rank is the endchain's, and the state is
+one the cartridge can only be in because we forced it. Both tools' headers say so.
+
+---
+
 ## WHAT I COULD NOT REACH
 
 Stated as attempts, not absences.
@@ -286,11 +394,16 @@ Stated as attempts, not absences.
 * **A stage-5 run in the PORT.** Blocked by the four unconditional `$0600`
   walkers (§4), not by `$B559` and not by the scope guard. This is the finding,
   not a shortfall.
-* **`$B559` against the cartridge at all.** Type `$1D` has zero records outside
-  stage 5, so no in-corpus run dispatches entry 29. The remaining route is a
-  poked both-sides intervention (force `$030C,X := $9D` on a live slot on both
-  sides at the same instant, W31's `stage4poke.py` pattern) — see the section
-  below for how far I got.
+* **`$B559` against the cartridge WITHOUT an intervention.** Type `$1D` has zero
+  records outside stage 5, so no in-corpus run dispatches entry 29 and none ever
+  will until a stage-5-reaching input script exists. §6 is the fallback and it is
+  labelled as one.
+* **`$B559` at any rank but the endchain's.** All 2,371 frames are one run's
+  rank. `$B559` reads no rank table and I found none in the listing — but I did
+  not measure a second rank either.
+* **`$B559`'s Y-axis free arms.** `$B251`'s `y < $08` and `y >= $C4` arms are
+  taken 0 times on the board (these drifters exit left); unit check 10 covers
+  them, the cartridge does not.
 * **The 7 unexported tables the recon lists (§6 of the recon).** None of them is
   read by `$B559`: its only table is `$B650`, which `sub_B628` reads straight out
   of `rom` (no export needed), and its six metasprites `$52`-`$57` are already in
