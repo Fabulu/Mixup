@@ -79,6 +79,32 @@ looks right while being sourced from a recording is exactly the kind of false
 green that has cost the most here. But it is the owner's call, not the
 implementer's — put the question to them rather than picking silently.
 
+### DECIDED: REMOVAL FIRST
+
+> "go removal first. The recorded enemies became off and wrong at some point
+> anyway. They were correct in the beginning but I think the stage moves
+> differently now"
+
+The owner chose removal first, and the reason is itself a finding.
+
+**The capture is 161 frames. Stage 1 is 7,317 logic frames.** The recorded
+enemies are a short loop replayed against a scroll that is now COMPUTED by the
+ported scroll VM rather than replayed alongside them. They were correct at the
+start because that is where the recording and the computed scroll agree; they
+drift because nothing keeps a 161-frame loop in step with a 7,317-frame stage.
+
+So "they look wrong now" is the expected consequence of the scroll being ported
+and the enemies not. It is not evidence of a scroll defect — the scroll port is
+gated at 0 divergent across its compared columns — but that should be RE-CHECKED
+rather than assumed, because "expected consequence" is the kind of explanation
+that has been wrong on this project before. If the drift turns out to be faster
+or in a different direction than a 161-frame loop predicts, that is a real
+divergence hiding behind a plausible story.
+
+Removing them therefore costs less than it looks: what is being deleted is
+already wrong on screen. The layer goes empty, and every enemy that appears
+after that is ours.
+
 ## THE TEST OF DONE, IN THE OWNER'S TERMS
 
 Not a gate number. **Load the page, fly, shoot, laser, bomb, and kill a visible
