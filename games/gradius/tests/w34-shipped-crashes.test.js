@@ -27,7 +27,7 @@ import { ASSETS, headlessResources } from './helpers.js';
 import { u8, createState, ENEMY_BASE, ARM_POOL } from '../src/state.js';
 import { bootState } from '../src/main.js';
 import { nmi } from '../src/nmi.js';
-import { armDriver } from '../src/enemies.js';
+import { armDriver, updateEnemies } from '../src/enemies.js';
 import { playerVsEnemies, shotSweep } from '../src/collision.js';
 
 const res = headlessResources(0);
@@ -519,4 +519,64 @@ test('$CC63/$CC7C: both overruns are LOUD and each names its own instruction', (
   let m = ''; try { arm(2, 1)(); } catch (e) { m = e.message; }
   assert.match(m, /\$A500/, 'the shape guard must name where the shape comes from');
   assert.match(m, /stage 7/, 'and which stage can produce one');
+});
+
+// ---- the three mutants the checks above did NOT catch, closed --------------
+//
+// Found by the W34 mutation run (worklog sec 7). Each one is a real hole:
+// a driven run cannot reach the states these pin, so the fixture forces them
+// and says so.
+
+test('$B415: Y = 7 is a NAMED throw, and Y = 6 is the right table', () => {
+  // MUTANTS THIS CLOSES:
+  //   M2  arcTurn's bound widened from 7 to 99 -- no driven run reaches Y = 7,
+  //       so every end-to-end check above stays green with the guard gone.
+  //   M3  h_B402 reading $B45C instead of $B42F -- the two schedules are
+  //       BYTE-IDENTICAL for Y = 0..5 (both $B434 and $B461 are $BD), so the
+  //       swap is invisible until Y = 6, which no run reaches either.
+  //
+  // FIXTURE INTERVENTION, LABELLED: $04AC is forced to 6 and 7. Six is inside
+  // the LISTING bound (sec 1 of the worklog: an enemy that reaches Y = 5 is at
+  // x >= 136, so it survives one more 66 px arc) and seven is past it; a
+  // driven run gets to 5 and stops, so both values are put there by hand.
+  const withArc = (type, arc) => {
+    const s = bootState(res.manifest);
+    const i = 9 + ENEMY_BASE;
+    s.obj.type[i] = type;                 // bit 7 SET = initialised = the run arm
+    s.obj.s04A0[i] = arc;                 // $04AC,X, the arc counter
+    s.obj.status[i] = 1;                  // $010C -- $ADE8/$ADEA want non-zero
+    s.obj.x[i] = 0x80; s.obj.y[i] = 0x60;
+    return s;
+  };
+  // Y = 6: entry 13 must read $B435 and entry 14 $B462, and those DIFFER.
+  assert.notEqual(rb(0xB42F + 6), rb(0xB45C + 6),
+    'the two schedules diverge at entry 6 -- that is what makes M3 catchable');
+  const a = withArc(0x8D, 6);
+  updateEnemies(a, res);
+  assert.equal(a.obj.s0460[9 + ENEMY_BASE], rb(0xB42F + 6),
+    'entry 13 reads $B42F+6, not $B45C+6');
+  const b = withArc(0x8E, 6);
+  updateEnemies(b, res);
+  assert.equal(b.obj.s0460[9 + ENEMY_BASE], rb(0xB45C + 6),
+    'entry 14 reads $B45C+6');
+  // Y = 7: past the LISTING bound, so it is a named throw and not a read.
+  for (const [ty, addr] of [[0x8D, /\$B415 LDA \$B42F,Y/], [0x8E, /\$B43C LDA \$B45C,Y/]]) {
+    assert.throws(() => updateEnemies(withArc(ty, 7), res), addr,
+      `type $${ty.toString(16)} at $04AC = 7 must throw, naming its own read`);
+  }
+});
+
+test('$C396 STA ($A0,X): the map write goes to the page $A1 names', () => {
+  // MUTANT THIS CLOSES: M22, dropping the `($A1 - 5) << 8` from the write-back
+  // address. Every other breakable-wall check uses map page $05, where that
+  // term is zero -- so the whole page half of the pointer was unguarded, which
+  // is the "a check that agrees with itself" shape docs/knowledge/03 names.
+  const f = oneBreakable(0x18, 0x2C, { page: 1 });
+  assert.ok(f.idx >= 256, 'the fixture must actually be on map page $06');
+  const before = f.s.coll[f.idx];
+  shotSweep(f.s, res);
+  assert.equal(f.s.coll[f.idx], before & (~(3 << (2 * (f.tileRow & 3))) & 0xFF),
+    '$0600-page cell cleared');
+  assert.equal(f.s.coll[f.idx - 256], 0,
+    'and the SAME offset on page $05 is untouched');
 });

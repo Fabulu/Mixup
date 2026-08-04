@@ -1,6 +1,6 @@
 # Wave 34 IMPLEMENTER — the six shipped crashes, and the detector in the gate
 
-status: IN PROGRESS
+status: DONE
 implementer, 2026-08-04
 
 Brief: W33's QA sweep (`33-qa-shipped-throws.md`) found six crashes live on the
@@ -12,7 +12,9 @@ found them into `games/gradius/tools/test-all.mjs` as a named gate stage.
 ## HEADLINE, written early so an interrupted run still says something
 
 1. **ALL FIVE REVERTIBLE CRASHES ARE FIXED** — `$B415`, `$C2DC`, `$C13D`,
-   `$C159`, and `$BC44` was already W32c's. `$CC23`/`$CC2B` is §5.
+   `$C159`, and `$BC44` was already W32c's. `$CC23`/`$CC2B` is §6 and it is
+   NOT reachable on any stage this port ships -- settled statically, not by
+   failing to reach it.
 2. **THE DETECTOR IS IN THE GATE**, `stagesweep.mjs`, 80 chunk runs / 112,000
    `nmi()` frames / **2.7 s**, and it is DEMONSTRATED to catch all five when
    they are reverted, on a copy, with the real tree hashed either side.
@@ -28,7 +30,7 @@ found them into `games/gradius/tools/test-all.mjs` as a named gate stage.
    not the fix.
 
 ```
-node --test games/gradius/tests/     579 pass, 0 fail, 0 skipped  (566 before)
+node --test games/gradius/tests/     584 pass, 0 fail, 0 skipped  (566 before)
 node games/gradius/tools/test-all.mjs   GREEN -- 12 passed, 0 failed, 0 SKIPPED
 node games/gradius/tools/oracle/stagesweep.mjs   OK -- 0 undecided throws
 ```
@@ -297,4 +299,218 @@ WHETHER A STAGE SURVIVES ITS OWN CHUNKS IS A DIFFERENT QUESTION:
 
 ---
 
-status: IN PROGRESS
+## §6. `$CC33`'s FOUR INDEXED READS — THREE UNBOUNDED, NONE REACHABLE HERE
+
+W33 §5b found two and could not settle reachability. There are **three**, and
+the third is worse because it is SILENT.
+
+```
+$CC63 LDA $CC1F,Y   TWO entries, Y = the SHAPE
+$CC68 LDA $CC21,Y   TWO entries, Y = the SHAPE
+$CC7C LDA $CC23,Y   EIGHT, Y = $9A = 4 * $0460[owner] + shape
+$CC85 LDA $CC2B,Y   EIGHT, same index
+```
+
+A shape of 2 reads `$CC21`'s bytes through the first two tables and gets **no
+throw at all**, because `armShapeParams` is exported as one 20-byte run: the
+read stays inside the block and returns a plausible number.
+
+**SETTLED, statically.** shape = (a nibble of the record's `$65` byte) − 1
+(`$A500-$A509` is the only writer of `$0601`; `$A4CD` shifts `$65` down four
+bits per arm). Every inline-5 record enumerated through
+`wavecensus.decode_inline5`, so the 5-byte stride is the ROM's:
+
+| `$19` | inline-5 records | `$65` bytes | shapes |
+|---|---|---|---|
+| 2 | 45 | — | route to `$A46F` (the moai); `$0601` never written |
+| 4 | 4 | `$01 $02 $12 $21` | **0 or 1** |
+| 6 | 10 | `$06 $07 $20 $85 $9A $A2 $A9 $C9 $F0` | **up to 14** |
+| others | 0 | — | — |
+
+Box class: every immediate write of `$0460` counted — 0 at `$A52E`/`$A569`/
+`$CA8C`, 1 at `$A4FC`/`$AF35`/`$B7AA`/`$C6AE`, 3 at `$B927` (the boss).
+**Nothing writes 2**, so W33's captured `$9A` = 9 cannot be "class 2, shape 1";
+9 is class 1 with shape 5, i.e. a `$65` nibble of 6, which no shipped stage has.
+
+So on `$19` = 0..4 the index is 4 or 5 (or 0/1 once `$CA8C` deploys the owner)
+and the tables are **not** overrun. **What can overrun is stage 7**, behind the
+`$A2F0` guard. A TRIPWIRE for the wave that lands it, not a fix for a live
+crash — and a named throw carrying the derivation instead of `assets.js`'s "not
+in any exported range" for two of the reads and *nothing at all* for the other
+two. **Not a clamp:** what the cartridge does with a shape of 14 is unknown and
+this port does not guess.
+
+---
+
+## §7. `tablecoverage.py` — EXTENTS, AND A FOURTH SITE
+
+W33 §8b: it checks BASES, never EXTENTS. Bounding an index register needs
+dataflow the tool has not got. What it *can* do completely is enumerate the
+shape both overruns had — `LDY <ram>,X` immediately followed by
+`LDA <table>,Y` — and report the exported extent and the INCs that write that
+RAM byte. Each site must be accounted for by hand in `COUNTER_INDEXED`; an
+unaccounted site FAILS.
+
+```
+$B1C5 -> $B200   5 entries   GUARDED (W12's cartridge hook, re-derived in §1)
+$B415 -> $B42F   8 entries   GUARDED (W34)
+$B43C -> $B45C   8 entries   GUARDED (W34)
+$B7B5 -> $B797               OPEN -- NEW THIS WAVE
+```
+
+**`$B7B5` is a fourth site of the same class and nobody had looked at it.**
+`$B797` is **two** entries (`3F 40`, closed/open) inside a 26-byte export, so a
+Y of 2 reads `$B799`'s rank row and returns a plausible metasprite id with no
+throw from anywhere — the quiet form of the defect. What is measured: entry 23
+(`$B7A1`) never writes `$048C` itself, `$A569`'s slot clear zeroes it, and the
+INCs the scan pairs it with (`$B0E2`/`$B0E5`) are `loc_B0BE`'s four-phase state
+machine on a different object. So Y is **probably** always 0 — and "probably"
+is the word this project has been wrong with before. **Handed forward.**
+
+THE PAIRING IS BY RAM ADDRESS AND OVER-REPORTS, said in the code rather than
+tuned away: `$04AC` is INCd by six handlers, each on its own object, so "INC
+candidates" is a list of suspects and not a proof.
+
+Seen to fail: removing `$B415` from `COUNTER_INDEXED` prints
+`*** $B415 ... is not in COUNTER_INDEXED` and FAILs. Restored;
+`sha256 be78833f80b2` either side.
+
+---
+
+## §8. THE MUTATION TABLE — 22 MUTANTS, 21 RED, 1 SURVIVOR
+
+Harness `scratchpad/w34/mut.py`, on a COPY at `C:/tmp/w34mut`
+(`games/gradius/{src,tests,assets,tools,index.html,game.json}` plus the repo
+`package.json`; the copy baselines at **582 pass / 0 fail / 0 skipped**, and it
+needs `index.html`/`game.json` or the 14-check touch-pad suite fails for a
+copy-environment reason). It patches source as BYTES and normalises the NEEDLE
+to each file's line endings. All three files hash identical before and after
+all 22: `enemies.js 49b04262d3ba`, `collision.js 79a0c02c68fe`,
+`terrain.js 6a5da1f45879`.
+
+| # | mutant | red |
+|---|---|---|
+| M1 | `arcTurn` bound 7 → 5 (the W30 crash) | 2 |
+| M2 | `arcTurn` bound 7 → 99 (no guard at all) | **1, after §8a** |
+| M3 | `h_B402` reads entry 14's table | **1, after §8a** |
+| M4 | `loc_B1DA`'s direction inverted | 4 |
+| M5 | `$B212` seeds yvel 3, not 2 | 4 |
+| M6 | `$C145`'s score gate inverted | 3 |
+| M7 | `$C154 INC $20,X` removed | 2 |
+| M8 | `$C14D` metasprite `$A3` → `$A1` | 2 |
+| M9 | `$C163` pays `$8453` (+1), not `$844B` (+5) | 1 |
+| M10 | `$C15E` metasprite `$A1` → `$A3` | 1 |
+| M11 | `$C173`/`$C177` moved BELOW the `>= 3` arm | 4 |
+| M12 | `$C398`'s map write dropped | 3 |
+| M13 | `$C391` masks with row 0 whatever `$A3` | 1 |
+| M14 | `$C36D`'s queue packet dropped | 1 |
+| M15 | `$C33A`'s stage fork dropped (always `$03`) | 1 |
+| M16 | `$C349`'s nametable always `$2000` | 1 |
+| M17 | `$C2E1`'s laser test dropped | 1 |
+| M18 | `$C2E4`'s laser test inverted | 2 |
+| M19 | `$C3F1` stores `$A3` MASKED (the `$C400` exit forgotten) | ***SURVIVED*** |
+| M20 | `armTableGuard`'s shape bound 2 → 99 | 1 |
+| M21 | `armTableGuard`'s `$9A` bound 8 → 99 | 1 |
+| M22 | `$C396` writes the wrong map page | **1, after §8a** |
+
+### 8a. THREE SURVIVORS ON THE FIRST RUN, ALL THREE DEFECTIVE CHECKS
+
+Recorded rather than quietly fixed, because the green run before the fix was
+worthless and looked identical to the green run after it.
+
+* **M2 survived.** No driven run reaches Y = 7, so every end-to-end check stays
+  green with `arcTurn`'s upper guard removed entirely. A guard whose absence is
+  invisible is a guard a future tidy-up deletes — the same finding W32c made
+  about `$C037`'s gate.
+* **M3 survived, and it is the more interesting one.** `$B42F` and `$B45C` are
+  **byte-identical for Y = 0..5** (both `$B434` and `$B461` are `$BD`), so
+  swapping which one entry 13 reads is invisible until **Y = 6** — and the
+  driven run stops at 5. It looked like W31's M21 ("two byte-identical regions,
+  provably uncatchable") and it is not: the two tables DIVERGE at entry 6
+  (`$0C` against `$4C`), so a fixture that forces `$04AC` = 6 catches it.
+* **M22 survived, and it is `docs/knowledge/03`'s named shape.** Every
+  breakable-wall check used map page `$05`, where `($A1 - 5) << 8` is zero — so
+  the PAGE half of `$C396 STA ($A0,X)`'s pointer was completely unguarded while
+  four checks agreed with each other about the offset.
+
+Closed by two new checks (18 in the file now): one forcing `$04AC` to 6 and 7
+through `updateEnemies()`, one on a page-`$06` fixture asserting both that the
+`$0600` cell is cleared and that the same offset on page `$05` is NOT.
+
+### 8b. THE ONE THAT IS UNCATCHABLE, AND WHY
+
+**M19: storing `$A3` already masked at `$C3F1` reddens nothing.** That is a
+fact about the ROM, settled by the listing rather than by trying harder.
+**Thirteen instructions in the whole PRG touch `$A3`** — counted out of
+`rip/prg.asm` this session: writers `$9E7B`, `$B897`, `$C000`, `$C3F1`,
+`$C406`; readers `$B8B9`, `$BF1D`, `$BF8C`, `$C01C`, `$C2CF`, `$C366`, `$C38F`,
+`$C402`. On the path where `$C400 BEQ $C40E` leaves before `$C406`'s mask, the
+unmasked row is read by NOBODY: `$C2CF`, `$C366` and `$C38F` are all on the
+non-zero arm, `$C402` re-reads and re-writes it, and `$C000`/`$B897` overwrite
+it before `$C01C`/`$BF1D`/`$BF8C`/`$B8B9` look. **The store has no observable
+consequence**; it is transcribed because that is what the ROM does. Same
+category as W32c's M34.
+
+---
+
+## §9. WHAT I COULD NOT REACH — attempts, not absences
+
+* **ANY CARTRIDGE COMPARISON OF ANYTHING IN THIS WAVE.** Unchanged from W32b,
+  W32c and W33, and still the biggest gap. Every number here is port-vs-listing.
+  `$B415`'s derivation *predicts* a cartridge measurement W12 already made, and
+  that is the strongest evidence in the wave, but it is not a new measurement.
+  W32c §10's handover stands: `tools/oracle/b559poke.py` at f1400 is the
+  nearly-free next step.
+* **`$B7B5`/`$B797`.** §7. Found, not settled.
+* **Whether `$04AC` reaches 6 in play.** The listing bounds it at 6; the port
+  reaches **5** on every chunk I drove, and the enemy is freed during arc 5. The
+  `$B415`/`$B43C` Y = 6 read is exercised only by the forced fixture.
+* **`$C2DC` against the cartridge's own VRAM.** The port queues one packet and
+  the check derives its address independently, but nobody has watched stage 2's
+  wall disappear on the board.
+* **The `$C331` dead arm.** Argued from the single xref; not proven against an
+  indirect `JMP` (I did not scan for a computed jump into `$C32F`).
+* **`$9721`/`$9B10`.** Still need the pause-screen button code; the sweep does
+  not drive one.
+* **`$C85D`** (the moai's `STA ($9A),Y` leaving `$0500-$06FF`). Unchanged from
+  W33: 45 type-`$16` records on stage 3 and the tripwire never tripped.
+
+---
+
+## §10. OPEN ITEMS HANDED FORWARD
+
+1. **`$B7B5 LDA $B797,Y`** — a two-entry table indexed by `$048C`, inside a
+   26-byte export, so an overrun is SILENT. §7. Printed by `tablecoverage.py`
+   on every run until somebody settles it.
+2. **The stage-5 cartridge comparison** (W32c §11 item 1), unchanged and still
+   the highest-value unclaimed work.
+3. **`$9751` is a crash a real player reaches on every stage.** The sweep counts
+   32 of 80 runs ending there at 2000 frames. It is the `$80D4` game-modes item
+   (1 of 7) and it is decided, not defective — but it is the most likely thing
+   for a player to hit.
+4. **`stagewaves.py` is still broken on the inline-5 stride** (W32c item 4,
+   untouched again). `wavecensus.py`'s `stream()` has the right stride and this
+   wave used it; `stagewaves.py` does not.
+5. **`wavecensus.py` and `handlerclosure.py` are still not CI-wired** (W32c
+   item 5, untouched).
+6. **The gate stage's frame budget is 1400 per chunk and that is W33's number,
+   not a derived one.** At 2000 the decided `$9751` boundary starts appearing;
+   beyond that nobody has looked.
+
+---
+
+## FINAL NUMBERS
+
+```
+node --test games/gradius/tests/        584 pass, 0 fail, 0 skipped   (566 before)
+node games/gradius/tools/test-all.mjs   GREEN -- 12 passed, 0 failed, 0 SKIPPED
+stagesweep.mjs                          80 chunk runs, 112,000 frames, ~2.7 s, 0 throws
+tablecoverage.py                        OK, 81 bases, 54 ranges, 4 extent sites (1 OPEN)
+stageledger.py                          OK, no stage moved backward
+```
+
+18 new checks in `tests/w34-shipped-crashes.test.js`, one rewritten in
+`tests/collision-unwitnessed.test.js`. 22 mutants, 21 red, 1 provably
+uncatchable and reported as such.
+
+status: DONE
