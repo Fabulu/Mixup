@@ -23,10 +23,18 @@ RECORD-COUNTING CONVENTION (one, documented per the brief):
     * single/formation records (cmd < $F0) need their $AE1C handler address to
       be a `case 0xNNNN:` in src/enemies.js dispatch() (read live, so it cannot
       drift -- the same read `wavecensus.py` / `census.py` use);
-    * inline-5 records (cmd >= $F0) are an unported ROUTE ($A37A, the 5-byte
-      spawn the engine has not ported) and count as UNPORTED. They are not an
-      unported *handler* -- but the port cannot dispatch them either, and the
-      regression that matters (a handler going missing) is independent of them.
+    * inline-5 records (cmd >= $F0) need that AND the ARM their stage routes to
+      ($A466's `CMP #$02` picks $A46F or $A4A6) to be implemented in
+      src/enemies.js.
+
+  WAVE 30 CHANGED THAT SECOND BULLET. It used to read "inline-5 records are an
+  unported ROUTE ($A37A) and count as UNPORTED" -- true when it was written and
+  a STALE HAND-KEPT LITERAL the moment W30 ported the loader, the splitter and
+  the $A46F arm. The test is read out of the source now (wavecensus.dispatchable
+  / PORTED_INLINE5_ARMS), the same way the handler set always has been. The
+  `inline5` COLUMN still counts every 5-byte record, so it now OVERLAPS ported
+  and unported: distinct = ported + unported, and inline5 is a separate tally of
+  how many of those came through the 5-byte stride.
 
 WHAT "MOVES BACKWARD" MEANS:
   Per stage the gate watches two signals, both of which a removed handler trips:
@@ -88,17 +96,7 @@ def _stage_records():
     return per_stage
 
 
-def _ported_p(r):
-    """Is this record's spawn dispatchable by the port? Inline-5 is not."""
-    if r['kind'] == 'inline5':
-        return False                             # $A37A route not ported
-    t = r.get('type')
-    if t is None:
-        return False
-    h, idx = hf(t)
-    if idx >= 42:                                # out of the 42-entry table
-        return False
-    return h in PORTED
+_ported_p = g.dispatchable      # THE one definition, in wavecensus.py
 
 
 def compute():
@@ -106,11 +104,11 @@ def compute():
                first_unported_at, all_ported}] for stages 0..6.
 
     Column convention (identical to wavecensus.py, so the ledger agrees with the
-    recon table): distinct = ported + unported + inline5, where `unported` counts
-    single/formation records whose handler is NOT ported, and `inline5` is the
-    separate unported ROUTE. `all_ported` is true only when EVERY record is
-    dispatchable -- inline5 counts against it, because the port cannot dispatch
-    an inline-5 spawn either."""
+    recon table): distinct = ported + unported, and `inline5` is an OVERLAPPING
+    tally of how many of the distinct records use the 5-byte stride. Before W30
+    the three were disjoint because no inline-5 record was dispatchable; see the
+    module docstring. `all_ported` is true only when EVERY record is
+    dispatchable, inline-5 included."""
     rows = []
     for st in range(7):
         recs = _stage_records()[st]
@@ -119,22 +117,20 @@ def compute():
         first_at = None
         for addr, r in recs.items():
             if r['kind'] == 'inline5':
-                inl += 1                          # the unported $A37A route
-            elif _ported_p(r):
+                inl += 1                          # the $A37A 5-byte stride
+            dispatchable = _ported_p(r)
+            if dispatchable:
                 ported += 1
             else:
-                unported += 1                     # handler not ported
-            # first-unported considers BOTH non-portable kinds: a handler the
-            # port lacks AND an inline-5 route. Either is a spawn the port
-            # cannot dispatch, and the regression that matters (a handler going
-            # missing) shows up here regardless of inline-5.
-            dispatchable = (r['kind'] != 'inline5') and _ported_p(r)
+                unported += 1
+            # first-unported: the earliest spawn the port cannot dispatch, for
+            # ANY reason -- a missing handler or an unported inline-5 arm.
             if not dispatchable:
                 if first_scroll is None or r['scroll'] < first_scroll or \
                    (r['scroll'] == first_scroll and addr < first_at):
                     first_scroll = r['scroll']
                     first_at = addr
-        nondispatchable = unported + inl
+        nondispatchable = unported
         rows.append(dict(stage=st, distinct=len(recs), ported=ported,
                          unported=unported, inline5=inl,
                          first_unported_scroll=first_scroll,
@@ -155,17 +151,24 @@ def compute():
 #   ported_floor          : the minimum distinct records the port must dispatch.
 BASELINE = {
     # FIRST MEASURED OUT OF assets/prg.bin + src/enemies.js ON 2026-08-03 (W28b).
-    # Only stage 0 (in-game stage 1) is fully shipped (W22-W27); the other six
-    # are the stages-2-7 work (W29+). first_unported_scroll is the EARLIEST spawn
+    # RE-MEASURED 2026-08-04 (W30). first_unported_scroll is the EARLIEST spawn
     # the port cannot dispatch in that stage; ported_floor is the minimum number
     # of distinct records the port must keep dispatching.
-    0: dict(first_unported_scroll=None,        ported_floor=92),    # shipped
-    1: dict(first_unported_scroll=0x09A0,      ported_floor=88),
-    2: dict(first_unported_scroll=0x00E0,      ported_floor=28),
-    3: dict(first_unported_scroll=0x0160,      ported_floor=96),
-    4: dict(first_unported_scroll=0x0000,      ported_floor=8),
-    5: dict(first_unported_scroll=0x03B0,      ported_floor=47),
-    6: dict(first_unported_scroll=0x0340,      ported_floor=95),
+    #
+    # W29 SHIPPED STAGE 1 AND DID NOT LIFT THIS DICT -- it left rows 1 and 6 at
+    # 0x09A0/88 and 0x0340/95 while the port had already moved them to
+    # None/93 and 0x0CC0/104 (its own worklog records "stage $19=6 also advanced
+    # 95 -> 104"). A floor that trails the port cannot catch the regression it
+    # exists to catch, so both are corrected here along with W30's own rows.
+    0: dict(first_unported_scroll=None,        ported_floor=92),   # W22-W27
+    1: dict(first_unported_scroll=None,        ported_floor=93),   # W29
+    2: dict(first_unported_scroll=None,        ported_floor=78),   # W30 (moai)
+    3: dict(first_unported_scroll=None,        ported_floor=98),   # W30, free:
+                                                # $B402/$B434 were stage 4's
+                                                # only two missing entries
+    4: dict(first_unported_scroll=0x0000,      ported_floor=14),   # W32 owns it
+    5: dict(first_unported_scroll=0x03B0,      ported_floor=47),   # W33
+    6: dict(first_unported_scroll=0x0CC0,      ported_floor=104),  # W34
 }
 
 

@@ -459,6 +459,10 @@ export function createState() {
       z60: 0,     // $60  engine state: 0 = idle, 1 = load the chunk table, 2 = run
       z61: 0,     // $61  = $3F AND $0E ($A2E1), the 512-px chunk, used as a BYTE
                   //      offset into the stage's chunk table
+      z63: 0,     // $63  the inline-5 record's TRIGGER byte ($A37F STA $63,X with
+                  //      X = 0). WRITE-ONLY: the whole PRG has no `LDA $63` --
+                  //      only the two stores $99E3 and $A37F -- so it is modelled
+                  //      for completeness, like $62 above, and is inert.
       z64: 0,     // $64-$67, the four descriptor bytes $A397 copies out of table
       z65: 0,     //      A or table B. For a formation: status, type, formation
       z66: 0,     //      index ($A592), pattern index ($A5BC).

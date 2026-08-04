@@ -47,6 +47,33 @@ def _ported_targets():
 
 PORTED_TARGETS = _ported_targets()
 
+
+# WAVE 30. The inline-5 ROUTE ($A37A loader -> $A466 splitter -> $A46F / $A4A6).
+# It used to be counted as "always unported" here and in stageledger.py, with
+# the reason written into both docstrings: the port threw on `cmd >= $F0`. W30
+# ported the loader, the splitter and the $A46F (stage-index-2) arm, so that
+# blanket rule became a STALE HAND-KEPT LITERAL of exactly the kind the
+# _ported_targets() comment above is about. It is read out of the source now.
+#
+# An inline-5 record is dispatchable when BOTH hold:
+#   * the arm its stage routes to is implemented, and
+#   * the type the arm ends up storing has a ported $AE1C handler.
+# $A46F forces type $96; $A4A6 stores the record's fourth byte.
+def _ported_inline5_arms():
+    p = os.path.join(os.path.dirname(__file__), "..", "..", "src", "enemies.js")
+    src = open(p, encoding="utf-8").read()
+    if "function loadInline5(" not in src:
+        return set()                     # no 5-byte loader -> no arm can run
+    out = set()
+    if "function loc_A46F(" in src:
+        out.add("$A46F")
+    if "function loc_A4A6(" in src or "function sub_A4A6(" in src:
+        out.add("$A4A6")
+    return out
+
+
+PORTED_INLINE5_ARMS = _ported_inline5_arms()
+
 TBL_A = wd(0xA5FE + 0)   # single-spawn descriptors, 3 bytes stride, 4 read
 TBL_B = wd(0xA5FE + 2)   # formation descriptors,   4 bytes stride
 
@@ -93,6 +120,25 @@ def decode_inline5(p, stage):
     typ = 0x96 if stage == 2 else b[3]
     return dict(kind='inline5', cmd=b[1], bytes=b, type=typ,
                 z64=u8(b[1] - 0x70), count=1, arm='$A46F' if stage == 2 else '$A4A6')
+
+
+def dispatchable(r):
+    """Can the port spawn this record? THE one definition, shared with
+    stageledger.py so the two cannot drift apart.
+
+    Non-inline records need their $AE1C handler ported. Inline-5 records need
+    that AND the arm their stage routes to ($A46F or $A4A6, decided by $A466's
+    `CMP #$02`) to be implemented.
+    """
+    t = r.get('type')
+    if t is None:
+        return False
+    h, idx = handler_for(t)
+    if idx >= 42 or h not in PORTED_TARGETS:
+        return False
+    if r['kind'] == 'inline5':
+        return r['arm'] in PORTED_INLINE5_ARMS
+    return True
 
 
 def stream(ptr, stage, limit=512):
@@ -186,20 +232,33 @@ def main():
     print("DISTINCT wave records (by ROM address, $A844-$ADAA): %d" % len(distinct))
 
     def cov(recs):
+        """(ported, unported, inline5). WAVE 30 CHANGED THE PARTITION and it is
+        worth being explicit: `inline5` used to be a THIRD bucket disjoint from
+        the other two, because the $A37A route was unported and every 5-byte
+        record was undispatchable by construction. Now that the route exists,
+        `inline5` is an OVERLAPPING tally -- how many of the distinct records
+        came through the 5-byte stride -- and the partition is
+
+            distinct = ported + unported
+
+        with each inline-5 record landing in one of those two depending on
+        whether its arm is implemented. Stage 2's 45 moai records are ported and
+        still counted in the inline5 column; stage 4's 4 sun/eye records are not
+        (the $A4A6 arm is W32)."""
         ok = miss = inl = 0
         for r in recs.values():
             if r['kind'] == 'inline5':
                 inl += 1
-                continue
-            h, i = handler_for(r['type'])
-            if h in PORTED_TARGETS:
+            if dispatchable(r):
                 ok += 1
             else:
                 miss += 1
         return ok, miss, inl
 
     print("\n%-6s %-9s %-8s %-8s %-8s %s"
-          % ("stage", "distinct", "ported", "unported", "inline5", "ported %"))
+          % ("stage", "distinct", "ported", "unported", "inline5*", "ported %"))
+    print("  (* inline5 OVERLAPS ported/unported since W30: distinct = "
+          "ported + unported)")
     for st in sorted(per_stage_distinct):
         recs = per_stage_distinct[st]
         ok, miss, inl = cov(recs)

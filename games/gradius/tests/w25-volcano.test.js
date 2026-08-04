@@ -253,10 +253,11 @@ test('h_B36F: the projectile frees its slot when it leaves the box', () => {
 
 // ==================== THE 7-ARM DISPATCH (jt_$C439) =========================
 
-test('jt_$C439: stage 0 -> $C486 (volcano); stage 1 -> $C546 (jellyfish); stages 3-7 throw loudly', () => {
+test('jt_$C439: stage 0 -> $C486, 1 -> $C546, 2 -> $C686; stages 3-5 throw loudly', () => {
   // $C434 LDA $19 / JSR $83E4. The 7-entry table at $C439 is indexed by stage.
-  // Stage 1 (index 0, volcano) and stage 2 (index 1, jellyfish) are ported;
-  // stages 3-7 are out of scope and carry their ROM target in the throw message.
+  // Index 0 (volcano, W25), 1 (jellyfish, W29) and 2 (the $B7A1 chaser, W30)
+  // are ported; indices 3-5 are out of scope and carry their ROM target in the
+  // throw message. Index 6 is the ROM's own RTS.
   // RED WHEN: a stage's target changes, or a throw loses its address.
   const stageRes = (idx) =>
     ({ ...res, stage: { ...res.stage, stage: idx }, stages: res.stages });
@@ -281,11 +282,29 @@ test('jt_$C439: stage 0 -> $C486 (volcano); stage 1 -> $C546 (jellyfish); stages
   assert.strictEqual(type(s1b, SLOT_FIRST), 0,
     'stage 1 $C546 second gate ($02 & 7): frame 4 does not spawn');
 
-  // stages 2-5: loud throws carrying the ROM target. W27: spawnEngine dispatches
+  // stage 2 ($C686): ported W30, and it is the SAME function as the $3A warp
+  // rain -- reached here with $3A = 0, which makes $C6CC[0] = $97 the type
+  // instead of the rain's $C6CC[1] = $A6, and $C684[0] = $28 the throttle
+  // instead of $0A. $68 starts at 0, so the first call INCs it to 1, which is
+  // below $28: NOTHING spawns on the first tick, and that is the arm's own
+  // cadence, not a failure. $68 = $27 on entry is the frame it fires.
+  const s2a = erupting(0);
+  s2a.zp19 = 2;
+  assert.doesNotThrow(() => spawnEngine(s2a, stageRes(2)));
+  assert.strictEqual(type(s2a, SLOT_FIRST), 0,
+    'stage 2 $C686 throttle ($C684[0] = $28): the first tick does not spawn');
+  const s2b = erupting(0);
+  s2b.zp19 = 2;
+  s2b.spawn.z68 = 0x27;
+  spawnEngine(s2b, stageRes(2));
+  assert.strictEqual(type(s2b, SLOT_FIRST), 0x97,
+    'stage 2 spawns type $97 -> entry 23 $B7A1');
+
+  // stages 3-5: loud throws carrying the ROM target. W27: spawnEngine dispatches
   // the late spawner on the LIVE $19 (state.zp19), not res.stage.stage, so the
   // test sets both to the stage under test (the $82 arm reaches lateSpawner
-  // before the stage-3 wave guard in runEngine).
-  const arms = [[2, 0xC686], [3, 0xC5AD], [4, 0xC653], [5, 0xC6DE]];
+  // before the stage-4 wave guard in runEngine).
+  const arms = [[3, 0xC5AD], [4, 0xC653], [5, 0xC6DE]];
   for (const [idx, addr] of arms) {
     const s = erupting(0);
     s.zp19 = idx;

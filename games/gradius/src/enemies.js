@@ -110,6 +110,7 @@ import { u8, u16, ENEMY_BASE, ENEMY_SLOTS } from './state.js';
 import { soundRequest } from './sound.js';
 import { probeCollision } from './terrain.js';
 import { addScore } from './score.js';
+import { queueByte } from './vram.js';
 
 const hex2 = (v) => `$${v.toString(16).toUpperCase().padStart(2, '0')}`;
 const hex4 = (v) => `$${v.toString(16).toUpperCase().padStart(4, '0')}`;
@@ -341,17 +342,22 @@ function runEngine(state, rom, stageIndex, res) {
     lateSpawner(state, rom, stageIndex); // $A2FB JMP $C413 (the late spawner)
     return;
   }
-  // Stage 3+ WAVE content is OUT OF SCOPE (the port ships stage 2 this wave,
-  // W29; stage-3 enemy handlers/terrain are not). The $82 late-spawner arm
-  // above still runs (its own per-stage throws cover stages 3+). This guard
-  // fires on the first stage-3 wave RECORD -- the expected boundary after
-  // stage 2's content + boss + the stage-2->stage-3 transition.
-  if (stageIndex >= 2) {
+  // Stage 4+ WAVE content is OUT OF SCOPE (the port ships stage 3 this wave,
+  // W30; stage-4 enemy handlers are not). The $82 late-spawner arm above still
+  // runs (its own per-stage throws cover stages 4+). This guard fires on the
+  // first stage-4 wave RECORD -- the expected boundary after stage 3's content
+  // + boss + the stage-3->stage-4 transition.
+  //
+  // W30 lowered it from `>= 2` to `>= 3`. What made stage 3 reachable is in
+  // this file: the inline-5 route ($A37A/$A466/$A46F), the moai $C906, the
+  // mover $B7A1, the shared pair $B402/$B434 and $B4FD.
+  if (stageIndex >= 3) {
     throw new Error(`$A2F0 runEngine: $19 = $${stageIndex.toString(16).toUpperCase()}`
-                  + ` (stage ${stageIndex + 1}). Stage 2 ($19=1) is shipped (W29);`
-                  + ` stage-3+ WAVE content (the moai, the inline-5 route, the`
-                  + ` stage-3+ enemy handlers) is out of scope. This is the first`
-                  + ` stage-3 wave record -- the expected boundary.`);
+                  + ` (stage ${stageIndex + 1}). Stage 3 ($19=2) is shipped (W30);`
+                  + ` stage-4+ WAVE content (the $B402/$B434 records are ported,`
+                  + ` but stage 4's late spawner $C5AD and its child $B377 are`
+                  + ` not) is out of scope. This is the first stage-4 wave record`
+                  + ` -- the expected boundary.`);
   }
   if (sp.z69 !== 0) {                    // $A2FE LDA $69 / BNE $A32B
     if (sp.z6C !== 0) {                  // $A32B LDA $6C / BNE $A332
@@ -438,10 +444,15 @@ function lateSpawner(state, rom, stageIndex) {
     // Each carries its ROM target and what it spawns, so the wave that ports it
     // has the address and the producer in the message.
     case 0xC546: return st_C546(state, rom);   // stage 2 -- the jellyfish
-    case 0xC686:
-      throw new Error('$C439[2] -> $C686: stage-3 late-spawner arm not ported '
-                    + '(stage-1 scope, W25). NB $C686 is ALSO the $3A warp '
-                    + 'target above; stage 3 shares the warp rain body.');
+    // Stage 3's arm IS the warp-rain routine, with $3A = 0 instead of 1 (we are
+    // on the $C434 dispatch, which is only reached when $3A == 0). The tables it
+    // indexes by $3A therefore give it a DIFFERENT enemy: $C684[0] = $28 (spawn
+    // every 40th late-spawner call, i.e. every 160 frames, against $0A/40 frames
+    // for the rain), $C6CA[0] = $3F (anim) and $C6CC[0] = $97 -> $B7A1. One
+    // shared body, two stages -- exactly what W27's port already transcribed;
+    // W30's fix is this label. (28-recon-stages-2-7.md 3c called it "a one-line
+    // wiring fix once $B7A1 lands", and it is.)
+    case 0xC686: return st_C686(state, rom);   // stage 3 -- the $B7A1 mover
     case 0xC5AD:
       throw new Error('$C439[3] -> $C5AD: stage-4 late-spawner arm not ported '
                     + '(stage-1 scope, W25). Spawns type $0B via sub_$C44F '
@@ -681,9 +692,7 @@ function fireWave(state, rom) {
   if (rom.read(ptr) === 0xFF) return;    // $A33F/$A341/$A345 -- the terminator
   const cmd = rom.read(u16(ptr + 1));    // $A346 INY / $A347 LDA ($6A),Y -> $98
   if (cmd >= 0xF0) {                     // $A34B CMP #$F0 / BCS $A37A
-    throw new Error(`wave cmd ${hex2(cmd)} >= $F0: the 5-byte inline record at `
-                  + '$A37A and its two spawners ($A46F, $A4A6) are not ported '
-                  + '(measured total.raw5 = 0 on every run made here)');
+    return loadInline5(state, rom);      // THE STRIDE CHANGES HERE -- see below
   }
   addCursor(sp, 2);                      // $A34F LDA #$02 / LDX #$6A / JSR $8402
 
@@ -719,6 +728,110 @@ function loadDescriptor(state, rom, y, off) {
   sp.z66 = rom.read(u16(a + 2));
   sp.z65 = rom.read(u16(a + 1));
   sp.z64 = rom.read(a);
+}
+
+// ======================= THE INLINE-5 ROUTE, $A37A ==========================
+//
+// THE STRIDE CHANGE. A wave record is TWO bytes -- `[trigger, cmd]` -- and the
+// cursor $6A:$6B advances by 2 at $A34F. When the cmd is >= $F0 the record is
+// FIVE bytes and the cursor advances by 5 at $A386 instead. Read straight out
+// of the listing, because a misparse here does not throw: it desynchronises the
+// whole remaining stream and emits WRONG enemies, which is much harder to see
+// than a missing one.
+//
+//   A34B  CMP #$F0 / BCS $A37A                 <-- the split
+//   A34F  LDA #$02 / LDX #$6A / JSR $8402      2-byte stride
+//   A37A  LDY #$00
+//   A37C  LDA ($6A),Y / INY / STA $63,X / INX / CPY #$05 / BCC $A37C
+//   A386  LDA #$05 / LDX #$6A / JSR $8402      5-byte stride
+//
+// X IS STILL 0 at $A37A -- it was set by `$A33D LDX #$00`, four instructions
+// before the trigger read, and nothing between touches it. So the five bytes
+// land in $63, $64, $65, $66, $67 in that order: $63 gets the TRIGGER (a copy
+// of the byte $A30C already read; write-only -- the whole PRG has no `LDA $63`,
+// only the two stores $99E3 and $A37F), $64 gets the CMD.
+//
+// THE 73 RECORDS. 45 distinct in stage 3 (all -> $A46F, the moai) and 4 distinct
+// in stage 5 (-> $A4A6, deferred to W32 with the $0600 substrate). Stages 1, 2,
+// 4, 6 and 7 have none. Counted by tools/oracle/wavecensus.py, which decodes the
+// stride the same way; the two decoders agree byte for byte.
+
+/** `$A37A` -- read the FIVE-byte record, advance the cursor by 5, then $A466. */
+function loadInline5(state, rom) {
+  const sp = state.spawn;
+  const ptr = sp.z6A | (sp.z6B << 8);
+  sp.z63 = rom.read(ptr);                  // $A37F STA $63,X  X = 0 (trigger)
+  sp.z64 = rom.read(u16(ptr + 1));         //                  X = 1 (cmd)
+  sp.z65 = rom.read(u16(ptr + 2));         //                  X = 2
+  sp.z66 = rom.read(u16(ptr + 3));         //                  X = 3
+  sp.z67 = rom.read(u16(ptr + 4));         //                  X = 4
+  addCursor(sp, 5);                        // $A386 LDA #$05 / JSR $8402
+  sp.z64 = u8(sp.z64 - 0x70);              // $A38D LDA $64 / SEC / SBC #$70
+  inline5Arm(state, rom);                  // $A394 JMP $A466
+}
+
+/**
+ * `$A466` -- the inline-5 arm selector, and it is an EQUALITY test:
+ *
+ *   A466  LDA $19 / CMP #$02 / BEQ $A46F / JMP $A4A6
+ *
+ * so ONLY in-game stage 3 gets $A46F; every other stage falls to $A4A6, the
+ * stage-5 terrain-mounted spawner. $A4A6 reads the $0600 destructible-terrain
+ * array, which does not exist in this port yet (W32 owns it), so it stays a
+ * loud named throw. It is also reached from $C676 (`JSR $A4A6`, stage 5's
+ * late-spawner arm $C653), which throws too.
+ */
+function inline5Arm(state, rom) {
+  if (state.zp19 === 2) return loc_A46F(state, rom);   // $A468 CMP #$02 / BEQ
+  throw new Error('$A466 -> $A4A6: the inline-5 TERRAIN-MOUNTED spawner is not '
+                + `ported ($19 = ${hex2(state.zp19)}, in-game stage `
+                + `${state.zp19 + 1}). $A4A6 scans the $0600 destructible-terrain `
+                + 'array for a free cell before it spawns, and $0600 is stage 5\'s '
+                + 'substrate (W32). Record bytes $65/$66/$67 = '
+                + `${hex2(state.spawn.z65)}/${hex2(state.spawn.z66)}/`
+                + `${hex2(state.spawn.z67)}.`);
+}
+
+/**
+ * `$A46F` -- the MOAI spawner. Stage 3 only. It forces the type, which is why
+ * the moai has no wave-record type of its own: the record carries a nametable
+ * address instead.
+ *
+ *   A46F  LDX #$09 / LDA $030C,X / BEQ $A47A / DEX / BPL      DEX/BPL: tests 0
+ *   A479  RTS                          allocation failed -> the spawn is DROPPED
+ *   A47A  LDA #$01 / STA $5D           an absolute STORE (the $A335 INC already
+ *                                      ran; this pins it at 1, it does not add)
+ *   A47E  STX $A8 / JSR $A527
+ *   A483  LDX $A8 / STA $69            <-- $69 := sub_$A527's exit A
+ *   A487  $010C,X := $64               status = cmd - $70, i.e. $80..$8F
+ *   A48C  $032C,X := $65               Y
+ *   A491  $03BC,X := $66               the moai's NAMETABLE ADDRESS, high byte
+ *   A496  $03EC,X := $67               ...and low byte  (yvel:yvelf, reused)
+ *   A49B  $030C,X := $96               type $96 -> entry 22 -> $C906
+ *   A4A0  $036C,X := $F0               X = the right edge
+ *
+ * `$A485 STA $69` STORES ZERO, and that is not a guess: `sub_$A527` sets A to 0
+ * at `$A537 LDA #$00` and every instruction after it is a `STA`/`INX`, so it
+ * RTSes with A = 0. `$A483 LDX $A8` does not touch A. So a moai spawn CANCELS
+ * any squadron still emitting ($69 is the members-remaining counter). Faithful,
+ * and observable: a squadron mid-emission stops.
+ */
+function loc_A46F(state, rom) {
+  const sp = state.spawn;
+  const o = state.obj;
+  const j = allocEnemySlot(state, true);   // $A46F LDX #$09 ... DEX / BPL
+  if (j < 0) return;                       // $A479 RTS -- the spawn is DROPPED
+  sp.z5D = 1;                              // $A47A LDA #$01 / STA $5D
+  sp.zA8 = j;                              // $A47E STX $A8
+  clearSlot(state, j);                     // $A480 JSR $A527   (returns A = 0)
+  sp.z69 = 0;                              // $A485 STA $69 -- sub_$A527's exit A
+  const i = j + ENEMY_BASE;                // $A483 LDX $A8
+  o.status[i] = sp.z64;                    // $A487 LDA $64 / STA $010C,X
+  o.y[i] = sp.z65;                         // $A48C LDA $65 / STA $032C,X
+  o.yvel[i] = sp.z66;                      // $A491 LDA $66 / STA $03BC,X
+  o.yvelf[i] = sp.z67;                     // $A496 LDA $67 / STA $03EC,X
+  o.type[i] = 0x96;                        // $A49B LDA #$96 / STA $030C,X
+  o.x[i] = 0xF0;                           // $A4A0 LDA #$F0 / STA $036C,X
 }
 
 /**
@@ -1195,32 +1308,10 @@ function aimBullet(state, a9) {
   // ADC carries differs between them (see the header).
   let hi = q.mid, lo = q.lo;             // $99:$9A, consumed destructively
   if (!steep) {                          // $BD26 LDA $A1 / $BD28 BNE $BD7E
-    o.xvelf[i] = 0;                      // $BD2A LDA #$00 / $BD2C STA $044C,X
-    o.xvel[i] = 1;                       // $BD2F LDA #$01 / $BD31 STA $042C,X
-    o.yvelf[i] = lo;                     // $BD34 LDA $9A / $BD36 STA $03EC,X
-    o.yvel[i] = hi;                      // $BD39 LDA $99 / $BD3B STA $03BC,X
-    let c = lo & 1;                      // $BD3E LSR $99 / $BD40 ROR $9A
-    lo = (lo >> 1) | ((hi & 1) << 7); hi >>= 1;
-    if (state.zp1A !== 0) {              // $BD42 LDA $1A / $BD44 BEQ $BD5B
-      let s = lo + o.yvelf[i] + c;       // $BD46 LDA $9A / ADC $03EC,X -- the ROR's
-      o.yvelf[i] = u8(s);                //   carry, because BEQ did not touch it
-      s = hi + o.yvel[i] + (s > 0xFF ? 1 : 0);   // $BD4E LDA $99 / ADC $03BC,X
-      o.yvel[i] = u8(s);
-      o.xvelf[i] = 0x80;                 // $BD56 LDA #$80 / $BD58 STA $044C,X
-    }
-    c = lo & 1;                          // $BD5B LSR $99 / $BD5D ROR $9A
-    lo = (lo >> 1) | ((hi & 1) << 7); hi >>= 1;
-    // $BD5F LDA $17 / CMP #$02 / BCC $BD7D -- and the CMP REPLACES `c` with 1
-    // on the only path that reaches the adds.
-    if (state.zp17 >= 2) {
-      let s = lo + o.yvelf[i] + 1;       // $BD65 LDA $9A / ADC $03EC,X, carry SET
-      o.yvelf[i] = u8(s);
-      s = hi + o.yvel[i] + (s > 0xFF ? 1 : 0);   // $BD6D LDA $99 / ADC $03BC,X
-      o.yvel[i] = u8(s);
-      s = o.xvelf[i] + 0x40 + (s > 0xFF ? 1 : 0);// $BD75 LDA $044C,X / ADC #$40
-      o.xvelf[i] = u8(s);
-    }
-    return;                              // $BD7D RTS
+    // $BD2A LDA #$00 -- and then the SHALLOW arm, which is a separate ENTRY
+    // POINT: `$B8DE LDA #$40 / JSR $BD2C` (entry 23's muzzle setup) jumps into
+    // it with A = $40 and its own $99:$9A. See loc_BD2C below.
+    return loc_BD2C(state, i, 0x00, hi, lo);
   }
   o.yvel[i] = 1;                         // $BD7E LDA #$01 / $BD80 STA $03BC,X
   o.yvelf[i] = 0;                        // $BD83 LDA #$00 / $BD85 STA $03EC,X
@@ -1246,6 +1337,51 @@ function aimBullet(state, a9) {
     o.yvelf[i] = u8(s);
   }
 }                                        // $BDD1 RTS
+
+/**
+ * `$BD2C` -- the SHALLOW-angle velocity writer, and an ENTRY POINT in its own
+ * right.
+ *
+ * `$BCB5`'s aim reaches it by falling off `$BD2A LDA #$00` (so A = 0 and the
+ * X-velocity fraction starts at zero), but `$B8DE LDA #$40 / JSR $BD2C` -- the
+ * three-muzzle setup inside entry 23 (`$B7A1`) -- calls it DIRECTLY with A =
+ * `$40` and with `$99`/`$9A` loaded from `$B8E9,Y`/`$B8E6,Y` instead of from
+ * the divide. That is why the leading `STA $044C,X` takes its byte as a
+ * parameter rather than being written as a constant 0.
+ *
+ * @param i   the OBJECT INDEX the ROM's X register addresses (slot + $0C)
+ * @param a   the accumulator on entry: 0 from $BD2A, $40 from $B8DC
+ * @param hi  `$99`
+ * @param lo  `$9A`
+ */
+function loc_BD2C(state, i, a, hi, lo) {
+  const o = state.obj;
+  o.xvelf[i] = a;                        // $BD2C STA $044C,X
+  o.xvel[i] = 1;                         // $BD2F LDA #$01 / $BD31 STA $042C,X
+  o.yvelf[i] = lo;                       // $BD34 LDA $9A / $BD36 STA $03EC,X
+  o.yvel[i] = hi;                        // $BD39 LDA $99 / $BD3B STA $03BC,X
+  let c = lo & 1;                        // $BD3E LSR $99 / $BD40 ROR $9A
+  lo = (lo >> 1) | ((hi & 1) << 7); hi >>= 1;
+  if (state.zp1A !== 0) {                // $BD42 LDA $1A / $BD44 BEQ $BD5B
+    let s = lo + o.yvelf[i] + c;         // $BD46 LDA $9A / ADC $03EC,X -- the ROR's
+    o.yvelf[i] = u8(s);                  //   carry, because BEQ did not touch it
+    s = hi + o.yvel[i] + (s > 0xFF ? 1 : 0);     // $BD4E LDA $99 / ADC $03BC,X
+    o.yvel[i] = u8(s);
+    o.xvelf[i] = 0x80;                   // $BD56 LDA #$80 / $BD58 STA $044C,X
+  }
+  c = lo & 1;                            // $BD5B LSR $99 / $BD5D ROR $9A
+  lo = (lo >> 1) | ((hi & 1) << 7); hi >>= 1;
+  // $BD5F LDA $17 / CMP #$02 / BCC $BD7D -- and the CMP REPLACES `c` with 1
+  // on the only path that reaches the adds.
+  if (state.zp17 >= 2) {
+    let s = lo + o.yvelf[i] + 1;         // $BD65 LDA $9A / ADC $03EC,X, carry SET
+    o.yvelf[i] = u8(s);
+    s = hi + o.yvel[i] + (s > 0xFF ? 1 : 0);     // $BD6D LDA $99 / ADC $03BC,X
+    o.yvel[i] = u8(s);
+    s = o.xvelf[i] + 0x40 + (s > 0xFF ? 1 : 0);  // $BD75 LDA $044C,X / ADC #$40
+    o.xvelf[i] = u8(s);
+  }
+}                                        // $BD7D RTS
 
 /**
  * `$BC19` -- ten iterations over the enemy-BULLET slots, moving each live one.
@@ -1517,6 +1653,12 @@ function dispatch(state, rom, j, type) {
     case 0xB913: return h_B913(state);           // entry 25, types $19/$99 (inert body)
     // ---- WAVE 27: the warp rain ------------------------------------------
     case 0xB61E: return h_B61E(state, rom, j);   // entry 38, types $26/$A6 (warp rain)
+    // ---- WAVE 30: stage 3 ------------------------------------------------
+    case 0xB402: return h_B402(state, rom, j);   // entry 13, types $0D/$8D
+    case 0xB434: return h_B434(state, rom, j);   // entry 14, types $0E/$8E
+    case 0xC906: return h_C906(state, rom, j);   // entry 22, types $16/$96 (moai)
+    case 0xB7A1: return h_B7A1(state, rom, j);   // entry 23, types $17/$97 (chaser)
+    case 0xB4FD: return h_B4FD(state, rom, j);   // entry 28, types $1C/$9C
     default:
       // THE MESSAGE THIS USED TO CARRY WAS "no measured run has ever
       // dispatched it", and that sentence is the one this whole follow-up
@@ -1833,6 +1975,14 @@ function closeDown(state, j) {
   o.s0460[i] = u8(o.s0460[i] - 1);       // $B2A5 DEC $046C,X
   if (o.s0460[i] !== 0) o.s0460[i] = 0;  // $B2A8 BEQ $B2AF / $B2AA-$B2AE -- see
                                          //   the header: this always ends at 0
+  sub_B2AF(state, j);                    // $B2AF (named below; $B546 JSRs it)
+}
+
+/**
+ * `sub_$B2AF` -- Y into the velocity pair, decay it, put it back, then the box.
+ * Named because `$B546` (inside entry 28, `$B4FD`) calls it as a subroutine.
+ */
+function sub_B2AF(state, j) {
   stashY(state, j);                      // $B2AF JSR $B2EE
   velSubAccel(state, j);                 // $B2B2 JSR $B120
   unstashY(state, j);                    // $B2B5 JSR $B304
@@ -1846,6 +1996,14 @@ function closeUp(state, j) {
   o.anim[i] = 0x39;                      // $B2C3 LDA #$39 / STA $012C,X
   o.s04A0[i] = u8(o.s04A0[i] - 1);       // $B2C8 DEC $04AC,X
   if (o.s04A0[i] !== 0) o.s04A0[i] = 0;  // $B2CB BEQ $B2D2 / $B2CD-$B2D1
+  loc_B2D2(state, j);                    // $B2D2 (named below; $B556 JMPs to it)
+}
+
+/**
+ * `loc_$B2D2` -- the mirror of `sub_$B2AF`: the velocity GAINS the acceleration
+ * instead of losing it. Named because `$B556` (entry 28, `$B4FD`) `JMP`s here.
+ */
+function loc_B2D2(state, j) {
   stashY(state, j);                      // $B2D2 JSR $B2EE
   velAddAccel(state, j);                 // $B2D5 JSR $B130
   unstashY(state, j);                    // $B2D8 JMP $B2B5 -> JSR $B304
@@ -1926,6 +2084,16 @@ function h_B198(state, rom, j) {
     o.s04A0[i] = u8(o.s04A0[i] + 1);      // $B1D4 INC $04AC,X
     return arcSeed(state, j);             // $B1D7 JMP $B1AA
   }
+  return loc_B1DA(state, j);              // $B1DA (named below -- $B402 shares it)
+}
+
+/**
+ * `$B1DA` -- X moves by the direction flag, Y rises, the velocity decays, then
+ * the off-screen box. Named because entry 13 (`$B402`) tail-calls it too
+ * (`$B42C JMP $B1DA`), not only handler 6.
+ */
+function loc_B1DA(state, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
   if (o.s0460[i] !== 0) subX16(state, j); // $B1DA LDA $046C,X / BNE $B1E5 -> $B184
   else addX16(state, j);                  // $B1DF JSR $B154
   subY16(state, j);                       // $B1E8 JSR $B140
@@ -1965,13 +2133,24 @@ function arcRightDown(state, j) {
   offScreenCheck(state);                 // $B1EE JMP $B251
 }
 
+/**
+ * `$B212` -- accel := $20, then `$B217 JMP $B22E`: seed the arc with yvel = 2.
+ *
+ * A named entry because it is not private to `$B205`: `$B40F` (inside entry 13,
+ * `$B402`) and `$B44E` (inside entry 14, `$B434`) both `JMP $B212`, which is
+ * the whole reason those two handlers are as short as they are.
+ */
+function loc_B212(state, j) {
+  state.obj.s0480[j + ENEMY_BASE] = 0x20;  // $B212 LDA #$20 / STA $048C,X
+  seedArc(state, j, 0x02);                 // $B217 JMP $B22E -> LDA #$02 / $B1B1
+}
+
 function h_B205(state, j) {
   const o = state.obj; const i = j + ENEMY_BASE;
   if (!(o.type[i] & 0x80)) {             // $B205 LDA $030C,X / BMI $B21A
     o.s0460[i] = 0;                      // $B20A LDA #$00 / STA $046C,X
     setInitialised(state, j);            // $B20F JSR $B0B4
-    o.s0480[i] = 0x20;                   // $B212 LDA #$20 / STA $048C,X
-    seedArc(state, j, 0x02);             // $B217 JMP $B22E -> LDA #$02 / $B1B1
+    loc_B212(state, j);                  // $B212/$B217 -- see above
     return;
   }
   if (o.s0460[i] === 0) {                // $B21A LDA $046C,X / BNE $B233
@@ -1990,8 +2169,657 @@ function h_B205(state, j) {
   // re-initialises on the next. Literal, on purpose.
   o.s0460[i] = 0;                        // $B20A
   setInitialised(state, j);              // $B20F -- $80 + $84 = $04, bit 7 CLEAR
-  o.s0480[i] = 0x20;                     // $B212
-  seedArc(state, j, 0x02);               // $B217 -> $B22E -> $B1B1
+  loc_B212(state, j);                    // $B212 -> $B217 -> $B22E -> $B1B1
+}
+
+// ============ WAVE 30: ENTRIES 13 AND 14, THE SHARED $B205 PAIR =============
+//
+// `$B402` (entry 13, types $0D/$8D) and `$B434` (entry 14, types $0E/$8E) are
+// two arcing enemies that SHARE `loc_$B407`, and each has its own five-byte
+// copy of $B200's turn schedule ($B42F and $B45C -- byte-identical, and the ROM
+// really does carry two). Stages 3, 4 and 5 all name both; porting them here
+// makes stage 4's only two missing entries FREE (W31).
+//
+// THE TABLE OVERRUN IS REAL AND IS READ FROM ROM, not thrown on. `$B415
+// LDA $B42F,Y` with Y = `$04AC,X` is exactly the shape `$B1C5` has, and the port
+// throws THERE -- but there the throw is backed by a 27,400-frame measurement
+// that Y never exceeded 4. NO SUCH MEASUREMENT EXISTS FOR $B42F/$B45C, so
+// inventing a throw would be inventing an absence proof. The exporter ships
+// five bytes each (`phaseB42F`/`phaseB45C`, anchored on the next instruction),
+// so a Y >= 5 gets romByteReader's OWN loud throw naming the address -- which is
+// the honest outcome: "the port cannot read $B434 as a table entry", not "the
+// cartridge never does".
+
+/**
+ * `loc_$B407` -- the shared init both entries fall into.
+ *
+ *   B407  JSR $B0B4                    set the initialised bit
+ *   B40A  LDA #$00 / STA $04AC,X       arc counter := 0
+ *   B40F  JMP $B212                    accel $20 + seed the arc (yvel 2)
+ */
+function loc_B407(state, j) {
+  setInitialised(state, j);              // $B407 JSR $B0B4
+  state.obj.s04A0[j + ENEMY_BASE] = 0;   // $B40A LDA #$00 / STA $04AC,X
+  loc_B212(state, j);                    // $B40F JMP $B212
+}
+
+/**
+ * Entry 13, `$B402` (types $0D/$8D). Stage 3 (2 records), 4 and 5.
+ *
+ *   B402  LDA $030C,X / BMI $B412            initialised -> the run arm
+ *   B407  (shared init above)
+ *   B412  LDY $04AC,X / LDA $B42F,Y / STA $046C,X   direction from the schedule
+ *   B41B  LDX $A8                            reload X (a no-op: X already = $A8)
+ *   B41D  LDA $03BC,X / BPL $B42C            yvel >= 0 -> just move
+ *   B422  CMP #$FE / BCS $B42C               yvel >= -2 -> just move
+ *   B426  INC $04AC,X / JMP $B40F -> $B212   past -2: next arc
+ *   B42C  JMP $B1DA                          $046C ? subX16 : addX16, then the box
+ *
+ * `$B41B LDX $A8` is transcribed as nothing because X already holds `$A8`: the
+ * update loop set it and neither `$B412` nor `$B415` touches X. It is in the
+ * comment so a reader of the listing can find the line.
+ */
+function h_B402(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) return loc_B407(state, j);   // $B402/$B405 BMI $B412
+  const y = o.s04A0[i];                   // $B412 LDY $04AC,X
+  o.s0460[i] = rom.read(0xB42F + y);      // $B415 LDA $B42F,Y / $B418 STA $046C,X
+  const yv = o.yvel[i];                   // $B41D LDA $03BC,X
+  if ((yv & 0x80) !== 0 && yv < 0xFE) {   // $B420 BPL $B42C / $B422 CMP #$FE / BCS
+    o.s04A0[i] = u8(y + 1);               // $B426 INC $04AC,X
+    return loc_B212(state, j);            // $B429 JMP $B40F -> $B212
+  }
+  return loc_B1DA(state, j);              // $B42C JMP $B1DA
+}
+
+/**
+ * Entry 14, `$B434` (types $0E/$8E). Stage 3 (3 records), 4 and 5.
+ *
+ *   B434  LDA $030C,X / BPL $B407            NOT initialised -> the shared init
+ *   B439  LDY $04AC,X / LDA $B45C,Y / STA $046C,X
+ *   B442  LDA $03BC,X / BPL $B451
+ *   B447  CMP #$FE / BCS $B451
+ *   B44B  INC $04AC,X / JMP $B212            (a JMP, not $B40F -- same target)
+ *   B451  LDA $046C,X / BNE $B459
+ *   B456  JMP $B1F1                          direction 0: X += xvel, Y += yvel
+ *   B459  JMP $B1FA                          direction != 0: X -= xvel, Y += yvel
+ *
+ * THE DIFFERENCE FROM `$B402` IS THE TAIL, and it is the whole enemy: $B402
+ * goes to `$B1DA` (X moves, Y moves UP by `$B140`, then `$B120` decays the
+ * velocity -- an arc), while `$B434` goes to `$B1F1`/`$B1FA` (X moves, Y moves
+ * DOWN by `$B16C`). Same schedule, mirrored vertical.
+ *
+ * `$B1FA` had never been reachable before this wave: the port's `subX16` header
+ * says so in as many words -- "its only call sites are $B1E5 and $B1FA, both
+ * inside handler 6's run path... $B1FA is still unreachable -- it belongs to
+ * $B37C and $B459, two handlers that are still throws". $B459 is THIS routine.
+ */
+function h_B434(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) return loc_B407(state, j);   // $B434/$B437 BPL $B407
+  const y = o.s04A0[i];                   // $B439 LDY $04AC,X
+  o.s0460[i] = rom.read(0xB45C + y);      // $B43C LDA $B45C,Y / $B43F STA $046C,X
+  const yv = o.yvel[i];                   // $B442 LDA $03BC,X
+  if ((yv & 0x80) !== 0 && yv < 0xFE) {   // $B445 BPL $B451 / $B447 CMP #$FE / BCS
+    o.s04A0[i] = u8(y + 1);               // $B44B INC $04AC,X
+    return loc_B212(state, j);            // $B44E JMP $B212
+  }
+  if (o.s0460[i] === 0) return arcRightDown(state, j);  // $B451/$B456 JMP $B1F1
+  return loc_B1FA(state, j);              // $B459 JMP $B1FA
+}
+
+/**
+ * Entry 28, `$B4FD` (types `$1C`/`$9C`) -- stage 3, 2 records. A four-phase
+ * lander: it walks left one pixel a frame, waits out a $14-frame timer, then
+ * dives or climbs toward the ship's Y and settles.
+ *
+ *   B4FD  LDA $030C,X / BMI $B510
+ *   B502  JSR $B0B4 / $048C := $80 / $04AC := $14 / RTS      <- loc_B502
+ *   B510  LDY #$03 / JSR $B628          the shared animator, record 3
+ *   B515  DEC $036C,X                   one pixel left, every frame
+ *   B518  JSR $B251                     ...and the box, which may FREE the slot
+ *   B51B  LDY $046C,X / BEQ $B52A       phase 0: the countdown
+ *   B520  DEY / BEQ $B538               phase 1: pick down ($02) or up ($03)
+ *   B523  DEY / BEQ $B546               phase 2: fall  ($B2AF, velocity decays)
+ *   B526  DEY / BEQ $B556               phase 3: rise  ($B2D2, velocity grows)
+ *   B529  RTS                           phase >= 4: nothing
+ *
+ * `loc_$B502` IS THE SHARED BODY stage 5's `$B559` will ride on (`$B55C BPL
+ * $B502`), which is why it is its own function here: W32's `$B559` is a
+ * nine-line wrapper over it and must not re-transcribe it.
+ *
+ * `$B518 JSR $B251` CAN FREE THE SLOT AND THE ROUTINE KEEPS GOING. `$AEF8`
+ * clears only five bytes -- type, status, anim, timer, animFrame -- so `$046C`
+ * survives the free and `$B51B` reads it anyway, and a phase-0 object then
+ * DECs `$04AC` on a slot that is no longer alive. That is transcribed, not
+ * tidied: the writes land on a free slot and the next `$A527` wipes them, but
+ * `$04AC` is observable in between.
+ */
+function h_B4FD(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) return loc_B502(state, j);   // $B4FD/$B500 BMI $B510
+  sub_B628(state, rom, j, 3);            // $B510 LDY #$03 / $B512 JSR $B628
+  o.x[i] = u8(o.x[i] - 1);               // $B515 DEC $036C,X
+  offScreenCheck(state);                 // $B518 JSR $B251 -- may free the slot
+  const phase = o.s0460[i];              // $B51B LDY $046C,X
+  if (phase === 0) {                     // $B51E BEQ $B52A
+    o.s04A0[i] = u8(o.s04A0[i] - 1);     // $B52A DEC $04AC,X
+    if (o.s04A0[i] !== 0) return;        // $B52D LDA $04AC,X / $B530 BNE $B537
+    o.s0460[i] = 0x01;                   // $B532 LDA #$01 / $B534 STA $046C,X
+    return;
+  }
+  if (phase === 1) {                     // $B520 DEY / $B521 BEQ $B538
+    // $B538 LDA #$02 / LDY $032C,X / CPY $0320 / BCS $B534 -- the enemy is at
+    // or below the ship: phase 2 (fall). Otherwise $B542 LDA #$03 (rise).
+    o.s0460[i] = (o.y[i] >= state.obj.y[0]) ? 0x02 : 0x03;
+    return;
+  }
+  if (phase === 2) {                     // $B523 DEY / $B524 BEQ $B546
+    sub_B2AF(state, j);                  // $B546 JSR $B2AF
+    // $B549 LDA $032C,X / CMP $0320 / BNE rts -- settle only on an exact match.
+    if (o.y[i] !== state.obj.y[0]) return;         // $B54F BEQ $B552 / $B551 RTS
+    o.s0460[i] = 0x04;                   // $B552 LDA #$04 / $B554 BNE $B534
+    return;
+  }
+  if (phase === 3) return loc_B2D2(state, j);      // $B526 DEY / $B527 BEQ $B556
+  // $B529 RTS -- phases >= 4 (i.e. the settled state) do nothing more.
+}
+
+// ============ WAVE 30: ENTRY 23, $B7A1 -- THE STAGE-3 CHASER ================
+//
+// SPAN `$B7A1`-`$B8E5`, with a data table INSIDE it at `$B852` (the by-rank hit
+// counts) and the muzzle tables immediately after at `$B8E6`. 187 listing
+// lines, the biggest bespoke handler in stages 2-7, and it does NOT end where
+// it first looks like it does: `$B841 JMP $CB26` and `$B7F3 JMP $B690` are two
+// exits, and `$B85A`/`$B868`/`$B87C`/`$B890`/`$B8A5` are all continuations of
+// the same routine reached by branches, not separate subroutines.
+//
+// TWO PRODUCERS, and only two: the single stage-3 wave record whose descriptor
+// names type $17, and `$C6BC STA $030C,X` in the late spawner's stage-3 arm
+// ($C686 with $3A = 0, which reads $C6CC[0] = $97). $B7A1 also re-writes its
+// own type EVERY frame ($B7AD), so it never runs an "initialised" branch --
+// there is no `LDA $030C,X / BMI` at the top at all.
+//
+// THE TWO $0460 ARRAYS ARE BOTH USED HERE AND THEY ARE DIFFERENT BYTES:
+//   $B7A8 STA $0460,X   X = $A8 = the RAW slot index -> s0460[j], the COLLISION
+//                       BOX CLASS ($C020/$C11C `LDX $0460,Y`)
+//   $B836 LDA $046C,X   X = $A8 as well, but the address is $0460 + $0C + X ->
+//                       s0460[j + 12], the HIT ACCUMULATOR ($C086 adds to it)
+// This is the $030B,X alias family the plan's risk 5 names. Getting it wrong
+// makes the chaser either invincible or unhittable and nothing throws.
+
+/**
+ * Entry 23, `$B7A1` (types `$17`/`$97`).
+ *
+ *   B7A1  LDX $A8
+ *   B7A3  $010C := $80              status, EVERY frame
+ *   B7A8  $0460,X := $01            the hit-box class (RAW index -- see above)
+ *   B7AD  $030C := $97              the type, EVERY frame
+ *   B7B2  LDY $048C,X / $012C := $B797[Y]     $3F closed / $40 open
+ *   B7BB  LDY $17                             the rank, for the four rows below
+ *   B7BD  LDA $04CC,X / CMP #$28 / BCS $B7DF  entry counter done -> chase
+ *   B7C4  LDA $0360 / CMP $036C,X / BCC $B7DF ship is LEFT of it -> chase
+ *   B7CC  INC $04CC,X                         still entering
+ *   B7CF  LDA $036C,X / CMP #$F0 / BCS $B7F6  at the right edge -> no X move
+ *   B7D6  INC $036C,X / INC $036C,X           slide RIGHT 2 px
+ *   B7DF  $038C -= $B78F[rank] / $036C -= 1 (16-bit)   the chase, LEFT
+ *   B7F3  JMP $B690 -> $AEF8                  X underflowed: free the slot
+ *   B7F6  the Y chase, toward $0320, at $B799[rank]/256 px per frame,
+ *         clamped to [$14, $AC]
+ *   B82C  LDA $03BC,X / CMP $B787[rank] / BCS $B85A    charged -> fire
+ *   B836  LDA $046C,X / CMP $B852[rank] / BCC $B846    enough hits -> die
+ *   B83E  JSR $844F (+$0300) / LDA #$0C / JMP $CB26    the death
+ *   B846  INC $03BC,X (twice if $048C is set)          charge
+ */
+function h_B7A1(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  o.status[i] = 0x80;                    // $B7A3 LDA #$80 / STA $010C,X
+  o.s0460[j] = 0x01;                     // $B7A8 STA $0460,X -- the RAW index
+  o.type[i] = 0x97;                      // $B7AD LDA #$97 / STA $030C,X
+  o.anim[i] = rom.read(0xB797 + o.s0480[i]);   // $B7B2 LDY $048C,X / LDA $B797,Y
+  const rank = state.zp17;               // $B7BB LDY $17
+  // ---- the X axis ----------------------------------------------------
+  let chase = true;
+  if (o.s04C0[i] < 0x28 && state.obj.x[0] >= o.x[i]) {  // $B7BD/$B7C4
+    chase = false;
+    o.s04C0[i] = u8(o.s04C0[i] + 1);     // $B7CC INC $04CC,X
+    if (o.x[i] < 0xF0) {                 // $B7CF CMP #$F0 / BCS $B7F6
+      o.x[i] = u8(o.x[i] + 1);           // $B7D6 INC $036C,X
+      o.x[i] = u8(o.x[i] + 1);           // $B7D9 INC $036C,X
+    }
+  }
+  if (chase) {                           // loc_B7DF
+    const f = o.xf[i] - rom.read(0xB78F + rank);   // $B7DF SEC / SBC $B78F,Y
+    o.xf[i] = u8(f);
+    const x = o.x[i] - 1 - (f < 0 ? 1 : 0);        // $B7E9 SBC #$01
+    o.x[i] = u8(x);
+    if (x < 0) return freeSlot(state, j);          // $B7F1 BCS / $B7F3 JMP $B690
+  }
+  // ---- the Y axis, loc_B7F6 ------------------------------------------
+  // The CMP at $B7F9 sets the carry the SBC/ADC below consume, so both are
+  // plain (borrow-free / carry-free) 16-bit steps.
+  const step = rom.read(0xB799 + rank);
+  let ny;
+  if (o.y[i] >= state.obj.y[0]) {        // $B7F6 CMP $0320 / $B7FC BCC $B80F
+    const f = o.yf[i] - step;            // $B7FE LDA $034C,X / SBC $B799,Y
+    o.yf[i] = u8(f);
+    ny = u8(o.y[i] - (f < 0 ? 1 : 0));   // $B807 LDA $032C,X / SBC #$00
+  } else {
+    const f = o.yf[i] + step;            // $B80F LDA $034C,X / ADC $B799,Y
+    o.yf[i] = u8(f);
+    ny = u8(o.y[i] + (f > 0xFF ? 1 : 0));// $B818 LDA $032C,X / ADC #$00
+  }
+  if (ny < 0x14) ny = 0x14;              // $B81D CMP #$14 / BCS / LDA #$14
+  if (ny >= 0xAC) ny = 0xAC;             // $B823 CMP #$AC / BCC / LDA #$AC
+  o.y[i] = ny;                           // $B829 STA $032C,X
+  // ---- charge / fire / die, loc_B82C ---------------------------------
+  if (o.yvel[i] >= rom.read(0xB787 + rank)) return fireB7A1(state, rom, j);  // $B834
+  if (o.s0460[i] >= rom.read(0xB852 + rank)) {     // $B836 LDA $046C,X / BCC $B846
+    addScore(state, 0x00, 0x03, 0x00);   // $B83E JSR $844F ($9A := 3) -- +$0300
+    soundRequest(state, 0x0C);           // $B841 LDA #$0C / JMP $CB26 -> $CB28
+    explodeInPlace(state, j);            // $CB2B
+    return;
+  }
+  o.yvel[i] = u8(o.yvel[i] + 1);         // $B846 INC $03BC,X
+  if (o.s0480[i] !== 0) {                // $B849 LDA $048C,X / $B84C BEQ $B851
+    o.yvel[i] = u8(o.yvel[i] + 1);       // $B84E INC $03BC,X -- twice while open
+  }
+}                                        // $B851 RTS
+
+/**
+ * `loc_$B85A` -- entry 23's fire block. It alternates: on a frame when `$048C`
+ * is already set it just CLOSES (both `$048C` and the charge `$03BC` back to
+ * 0); on a frame when it is clear it opens and fires up to THREE bullets.
+ *
+ *   B85A  LDA $048C,X / BEQ $B868 / (else) $048C := 0, $03BC := 0, RTS
+ *   B868  $048C := 1, $03BC := 1
+ *   B870  $A0 = $A1 = $A2 = $80        the "no slot" sentinel
+ *   B878  LDY #$09 / LDX #$00
+ *   B87C  scan the ten enemy-BULLET slots 9..0 for `$0136,Y == 0`, keeping the
+ *         first THREE indices in $A0-$A2 ($B885 CPX #$03 / BCS $B88C stops)
+ *   B88C  DEX / BPL $B890 / RTS         none found -> nothing fires
+ *   B890  STX $A9                       $A9 = (count - 1), the loop counter
+ *   B892  $A3 = the chaser's X, $A4 = its Y + 8
+ *   B8A5  for Y = $A9 down to 0: fill bullet $A0[Y] and give it a velocity
+ *         through `$BD2C` with A = $40 and ($99:$9A) = ($B8E9[Y] : $B8E6[Y])
+ *
+ * THE THREE MUZZLE ROWS at Y = 0, 1, 2 are `$B8E6` = 00 A0 A0 (the velocity
+ * fraction), `$B8E9` = 00 00 00 (the integer) and `$B8EC` = 00 01 00 (the
+ * direction byte). So the middle bullet gets direction 1 and the outer two
+ * direction 0 -- a spread, not three copies.
+ *
+ * `$B8A1 LDA #$00 / STA $99` is DEAD: `$B8AF LDA $B8E9,Y / STA $99` overwrites
+ * it on the first pass of the loop and every pass after. Kept as a comment.
+ */
+function fireB7A1(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (o.s0480[i] !== 0) {                // $B85A LDA $048C,X / $B85D BEQ $B868
+    o.s0480[i] = 0;                      // $B85F LDA #$00 / $B861 STA $048C,X
+    o.yvel[i] = 0;                       // $B864 STA $03BC,X
+    return;                              // $B867 RTS
+  }
+  o.s0480[i] = 1;                        // $B868 LDA #$01 / $B86A STA $048C,X
+  o.yvel[i] = 1;                         // $B86D STA $03BC,X
+  const slots = [0x80, 0x80, 0x80];      // $B870 LDA #$80 / STA $A0/$A1/$A2
+  let n = 0;                             // $B87A LDX #$00
+  for (let y = 9; y >= 0; y--) {         // $B878 LDY #$09 / $B88A BPL $B87C
+    if (o.anim[22 + y] !== 0) continue;  // $B87C LDA $0136,Y / $B87F BNE $B889
+    slots[n] = y;                        // $B881 TYA / $B882 STA $A0,X
+    n += 1;                              // $B884 INX
+    if (n >= 3) break;                   // $B885 CPX #$03 / $B887 BCS $B88C
+  }
+  n -= 1;                                // $B88C DEX
+  if (n < 0) return;                     // $B88D BPL $B890 / $B88F RTS
+  const bx = o.x[i];                     // $B892 LDY $A8 / $B894 LDA $036C,Y
+  const by = u8(o.y[i] + 8);             // $B899 LDA $032C,Y / CLC / ADC #$08
+  // $B8A1 LDA #$00 / STA $99 -- dead, see the header.
+  for (let y = n; y >= 0; y--) {         // $B8A5 LDY $A9 / $B8E1 DEC / $B8E3 BPL
+    const k = 22 + slots[y];             // $B8A7 LDX $A0,Y -- the bullet slot
+    o.s0460[k] = rom.read(0xB8EC + y);   // $B8A9 LDA $B8EC,Y / $B8AC STA $0476,X
+    const hi = rom.read(0xB8E9 + y);     // $B8AF LDA $B8E9,Y / STA $99
+    const lo = rom.read(0xB8E6 + y);     // $B8B4 LDA $B8E6,Y / STA $9A
+    o.x[k] = bx;                         // $B8B9 LDA $A3 / $B8BB STA $0376,X
+    o.y[k] = by;                         // $B8BE LDA $A4 / $B8C0 STA $0336,X
+    o.animFrame[k] = 1;                  // $B8C3 LDA #$01 / $B8C5 STA $0176,X
+    o.type[k] = 2;                       // $B8C8 LDA #$02 / $B8CA STA $0316,X
+    o.anim[k] = 0x7A;                    // $B8CD LDA #$7A / $B8CF STA $0136,X
+    o.status[k] = 1;                     // $B8D2 LDA #$01 / $B8D4 STA $0116,X
+    // $B8D7 TXA / CLC / ADC #$0A / TAX -- the SAME byte, addressed as $044C,X
+    // with X = slot + $0A instead of $0476,X with X = slot. k is both.
+    loc_BD2C(state, k, 0x40, hi, lo);    // $B8DC LDA #$40 / $B8DE JSR $BD2C
+  }
+}                                        // $B8E5 RTS
+
+/**
+ * `loc_$B502` -- entry 28's init, and the body `$B559` (entry 29, stage 5)
+ * shares via `$B55C BPL $B502`. Ported here so W32 does not re-derive it.
+ */
+function loc_B502(state, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  setInitialised(state, j);              // $B502 JSR $B0B4
+  o.s0480[i] = 0x80;                     // $B505 LDA #$80 / STA $048C,X
+  o.s04A0[i] = 0x14;                     // $B50A LDA #$14 / STA $04AC,X
+}
+
+// ================ WAVE 30: ENTRY 22, $C906 -- THE MOAI ======================
+//
+// THREE ROM REGIONS, not one, and the trap is that they are NOT contiguous and
+// the continuation sits BEFORE the entry point:
+//
+//   $C906-$CA28   st_C906, the per-frame body
+//   $C77C-$C821   loc_C77C, THE DESTROYED CONTINUATION -- reached by
+//                 `$C916 JMP $C77C`, which nothing returns to, and which lives
+//                 130 bytes EARLIER in the ROM. Read past the apparent end.
+//   $C822-$C87A   sub_C822, its collision-map eraser
+//
+// WHAT $0700 IS. `$C9C0 STA $0700,Y` with `Y = $0E` is the ORDINARY VRAM QUEUE
+// (src/vram.js), not a new substrate: `$0E` is the queue's byte cursor and
+// `$8A51` is the drainer. 28-recon-stages-2-7.md calls it a "plasma-ring
+// buffer"; it is the same page the terrain streamer and the HUD append to, and
+// `$C920 LDA $0E / CMP #$04 / BCS $C935` is the SAME four-byte gate `$9D87` and
+// `$889A` use. So the moai simply refuses to open or close on a frame when
+// anything else has already queued.
+//
+// WHERE THE MOAI'S NAMETABLE ADDRESS LIVES: `$03BC:$03EC` (the Y-velocity pair,
+// reused), planted by `$A46F` straight out of the inline-5 record's bytes 3
+// and 4. That is why the moai has no wave-record TYPE of its own.
+//
+// THE WARP. `$C784 LDA #$01 / STA $39` fires when `$5F` reaches $0A -- TEN
+// moai destroyed opens the stage-3 warp, and `$39` is the same flag W27's
+// `$9930` route already consumes. It is a STORE of 1, not the `INC $39` the
+// hatches and the boss use.
+
+/**
+ * Entry 22, `$C906` (types `$16`/`$96`) -- stage 3's moai, and the only
+ * consumer of the inline-5 route's `$A46F` arm.
+ *
+ *   C906  LDX $A8
+ *   C908  LDA $010C,X / AND #$0F / STA $A9      the VARIANT, 0..3 (from the cmd)
+ *   C90F  LDA $046C,X / CMP #$03 / BCS $C916    three hits -> JMP $C77C
+ *   C919  JSR $AEDD                              drift left, free below X = 8
+ *   C91C  LDA $5D / BNE $C935                    a wave record fired -> not now
+ *   C920  LDA $0E / CMP #$04 / BCS $C935         the queue is busy -> not now
+ *   C926  LDA $04AC,X / BNE $C932                the reopen timer -> DEC and RTS
+ *   C92B  LDA $048C,X / BEQ $C95A                closed -> the proximity test
+ *         (else)                     $C93D       open   -> close
+ */
+function h_C906(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  const variant = o.status[i] & 0x0F;    // $C908 LDA $010C,X / AND #$0F / STA $A9
+  if (o.s0460[i] >= 3) return loc_C77C(state, rom, j, variant);   // $C90F/$C916
+  h_AEDD(state);                         // $C919 JSR $AEDD (drift; may free)
+  if (state.spawn.z5D !== 0) return;     // $C91C LDA $5D / $C91E BNE $C935
+  if (state.vram.cursor >= 0x04) return; // $C920 LDA $0E / CMP #$04 / BCS $C935
+  if (o.s04A0[i] !== 0) {                // $C926 LDA $04AC,X / $C929 BNE $C932
+    o.s04A0[i] = u8(o.s04A0[i] - 1);     // $C932 DEC $04AC,X
+    return;                              // $C935 RTS
+  }
+  if (o.s0480[i] === 0) return moaiTryOpen(state, rom, j, variant);   // $C92E BEQ
+  // loc_C93D -- CLOSE. The tile set is the OPEN one plus $10.
+  o.s0480[i] = 0;                        // $C93D LDA #$00 / $C93F STA $048C,X
+  o.s0460[i] = 0;                        // $C942 STA $046C,X   (the hit count!)
+  o.s04E0[i] = 0;                        // $C945 STA $04EC,X
+  o.s04A0[i] = rom.read(0xC936 + state.zp17);   // $C948 LDY $17 / LDA $C936,Y
+  moaiQueue(state, rom, j, variant, u8(variant * 4 + 0x10));   // $C950-$C957
+}
+
+/**
+ * `loc_$C95A` -- the proximity test that OPENS the moai. Four arms, chosen by
+ * the variant `$A9`, each comparing the ship's `$0360`/`$0320` against the
+ * moai's own position with a $0A slack.
+ *
+ * THE VARIANT-1 / VARIANT-3 BRANCH IS EASY TO GET BACKWARDS: `$C968 DEY /
+ * $C969 BEQ $C973` sends variant ONE to `$C973` (the SBC arm) and lets
+ * variant THREE fall into `$C96B` (the ADC arm), not the other way round.
+ *
+ *   $A9 = 0  ship X +$0A >= moai X  AND  ship Y -$0A <  moai Y     ($C98D)
+ *   $A9 = 1  ship Y -$0B >= moai Y                                 ($C973)
+ *   $A9 = 2  ship X -$0A >= moai X  AND  ship Y -$0A <  moai Y     ($C97B)
+ *   $A9 = 3  ship Y +$0B <  moai Y                                 ($C96B)
+ *
+ * THE $0B IS NOT A TYPO AND IS THE WHOLE REASON THE FLAGS ARE TRACKED. The
+ * carry each ADC/SBC consumes is whatever the preceding compare left:
+ *   $C98D  carry CLEAR ($C922 CMP #$04's BCS was NOT taken)         -> +$0A
+ *   $C97B  carry SET   ($C961 CPY #$02 with Y = 2, equal)           -> -$0A
+ *   $C973  carry CLEAR ($C961 CPY #$02 with Y = 1, less)            -> -$0B
+ *   $C96B  carry SET   ($C961 CPY #$02 with Y >= 3, greater)        -> +$0B
+ * The two second-stage `SBC #$0A`s at $C994 and $C982 both follow a CMP whose
+ * BCS/BCC proved the carry SET, so those are plain subtracts.
+ *
+ * Only variants 0-3 exist: the 45 stage-3 inline-5 records carry cmd $F0-$F3
+ * ONLY (14 / 19 / 9 / 3 of them), measured off assets/prg.bin with the same
+ * decoder wavecensus.py uses. A cmd $F4+ would index past $C893's four
+ * pointers, and the exported block would throw on the read.
+ */
+function moaiTryOpen(state, rom, j, variant) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  let open = false;
+  if (variant === 0) {                   // $C95F BEQ $C98D
+    // loc_C98D: ADC #$0A with the carry CLEAR -- see the header.
+    if (u8(state.obj.x[0] + 0x0A) >= o.x[i]) {   // $C98D / $C98F CMP $036C,X / BCS
+      open = u8(state.obj.y[0] - 0x0A) < o.y[i]; // $C994-$C99C
+    }
+  } else if (variant === 2) {            // $C961 CPY #$02 / $C963 BEQ $C97B
+    // loc_C97B: SBC #$0A with the carry SET.
+    if (u8(state.obj.x[0] - 0x0A) >= o.x[i]) {   // $C97D CMP $036C,X / $C980 BCC RTS
+      open = u8(state.obj.y[0] - 0x0A) < o.y[i]; // $C982-$C98A
+    }
+  } else if (variant === 1) {            // $C968 DEY / $C969 BEQ $C973
+    // loc_C973: SBC #$0A with the carry CLEAR -> minus $0B.
+    open = u8(state.obj.y[0] - 0x0B) >= o.y[i];  // $C975 CMP $032C,X / $C978 BCS
+  } else {
+    // loc_C96B: ADC #$0A with the carry SET -> plus $0B.
+    open = u8(state.obj.y[0] + 0x0B) < o.y[i];   // $C96D CMP $032C,X / $C970 BCC
+  }
+  if (!open) return;                     // $C972/$C97A/$C98C/$C99E RTS
+  // loc_C99F -- OPEN.
+  state.spawn.z5D = u8(state.spawn.z5D + 1);    // $C99F INC $5D
+  o.style[i] = 0;                        // $C9A1 LDA #$00 / $C9A3 STA $040C,X
+  o.s04E0[i] = 0x14;                     // $C9A8 LDA #$14 / $C9AA STA $04EC,X
+  o.s0480[i] = 0x14;                     // $C9AD STA $048C,X
+  o.s04A0[i] = rom.read(0xC936 + state.zp17);   // $C9A6 LDY $17 / $C9B0 LDA $C936,Y
+  moaiQueue(state, rom, j, variant, u8(variant * 4));   // $C9B6 ASL / ASL
+}
+
+/**
+ * `loc_$C9BA` -- append the moai's mouth tiles to the VRAM queue.
+ *
+ * One packet of two tiles at the moai's own nametable address, and -- when the
+ * row's third byte `$CA2B[$AA]` is ZERO -- a SECOND packet one row below (+$20)
+ * carrying `$CA2C[$AA]`. `$AA` is `variant * 4` for the OPEN set and
+ * `variant * 4 + $10` for the CLOSED one, so the table at `$CA29` is eight rows
+ * of four: four variants open, then the same four closed.
+ *
+ *   C9BA  STA $AA
+ *   C9BC  LDA #$01 / LDY $0E / STA $0700,Y / INY       packet mode 1
+ *   C9C4  LDA $03BC,X / STA $0700,Y / INY              address HIGH
+ *   C9CB  LDA $A9 / CMP #$02 / BNE $C9DA
+ *   C9D1  LDA $03EC,X / SEC / SBC #$01                 variant 2 sits one left
+ *   C9DA  LDA $03EC,X                                  address LOW
+ *   C9E1  LDX $AA / LDA $CA29,X / ... / $CA2A,X / ... / LDA #$FF   two tiles + end
+ *   C9F7  LDA $CA2B,X / BNE $CA26                      non-zero -> done
+ *   C9FC  ...the second packet, at (address + $20), one tile from $CA2C,X
+ *   CA26  STY $0E / RTS
+ */
+function moaiQueue(state, rom, j, variant, aa) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  const hi = o.yvel[i];                  // $C9C4 LDA $03BC,X -- the NT addr high
+  const lo = (variant === 2)             // $C9CB LDA $A9 / CMP #$02 / BNE $C9DA
+    ? u8(o.yvelf[i] - 1)                 // $C9D1 LDA $03EC,X / SEC / SBC #$01
+    : o.yvelf[i];                        // $C9DA LDA $03EC,X
+  queueByte(state, 0x01);                // $C9BC LDA #$01 / $C9C0 STA $0700,Y
+  queueByte(state, hi);                  // $C9C7 STA $0700,Y
+  queueByte(state, lo);                  // $C9DD STA $0700,Y
+  queueByte(state, rom.read(0xCA29 + aa));      // $C9E3 LDA $CA29,X
+  queueByte(state, rom.read(0xCA2A + aa));      // $C9EA LDA $CA2A,X
+  queueByte(state, 0xFF);                // $C9F1 LDA #$FF / $C9F3 STA $0700,Y
+  if (rom.read(0xCA2B + aa) !== 0) return;      // $C9F7 LDA $CA2B,X / $C9FA BNE
+  queueByte(state, 0x01);                // $C9FC LDA #$01 / $C9FE STA $0700,Y
+  // $CA02 LDX $A8 -- back to the moai's own slot for the +$20 row. The ROM
+  // writes the LOW byte at $0701,Y and the HIGH at $0700,Y and then INYs twice,
+  // so on the wire the pair is [high][low], the same order as above.
+  const lo2 = o.yvelf[i] + 0x20;         // $CA04 LDA $03EC,X / CLC / ADC #$20
+  queueByte(state, u8(o.yvel[i] + (lo2 > 0xFF ? 1 : 0)));   // $CA0D ADC #$00
+  queueByte(state, u8(lo2));             // $CA0A STA $0701,Y
+  queueByte(state, rom.read(0xCA2C + aa));      // $CA19 LDA $CA2C,X
+  queueByte(state, 0xFF);                // $CA20 LDA #$FF
+}                                        // $CA26 STY $0E / $CA28 RTS
+
+/**
+ * `loc_$C77C` -- THE DESTROYED CONTINUATION. `$C916 JMP $C77C` is the only way
+ * in, nothing returns to it, and it sits 394 bytes BEFORE `st_C906` in the ROM.
+ *
+ *   C77C  INC $5F / LDA $5F / CMP #$0A / BCC $C788
+ *   C784  LDA #$01 / STA $39            TEN moai -> the stage-3 WARP
+ *   C788  INC $5D
+ *   C78A  JSR $844F                     +$0300
+ *   C78D  JSR $C822                     erase the moai's collision cells
+ *   C790  LDX $A8 / $98 := $03EC,X / $99 := $03BC,X    the NT address, lo:hi
+ *   C79C  LDA #$0C / JSR $CB26          sound $0C, then $CB2B: become explosion 2
+ *   C7A1  $A9 := $A9 * 2 / LDX $A9 / $9A:$9B := $C893[X]   the rubble stream
+ *   C7B2  build packets until the stream's $FF-after-$FE terminator
+ *   C81F  STX $0E / RTS
+ *
+ * THE STREAM FORMAT, read out of $C7BC-$C821 (four streams, at $C89B, $C8F1,
+ * $C8BD and $C8E0, all inside the exported `stage2Object` block):
+ *
+ *   [offset]  packet address := ($99:$98) MINUS offset      (the $C7BC arm)
+ *   [tiles..] appended verbatim
+ *   $FF       end this packet ($FF on the wire, then a mode $01) and read
+ *             another offset -- back to $C7BC
+ *   $FE       end this packet, then switch ONCE to the $C7EE arm, whose next
+ *             offset is ADDED instead of subtracted, and whose packet ends at
+ *             the next $FF -- which also ends the whole stream
+ *
+ * It terminates because every stream has exactly one $FE and one final $FF.
+ */
+function loc_C77C(state, rom, j, variant) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  state.zp5F = u8(state.zp5F + 1);       // $C77C INC $5F
+  if (state.zp5F >= 0x0A) state.zp39 = 1;// $C784 LDA #$01 / STA $39 -- THE WARP
+  state.spawn.z5D = u8(state.spawn.z5D + 1);   // $C788 INC $5D
+  addScore(state, 0x00, 0x03, 0x00);     // $C78A JSR $844F ($9A := 3) -- +$0300
+  sub_C822(state, rom, j, variant);      // $C78D JSR $C822
+  const lo = o.yvelf[i];                 // $C792 LDA $03EC,X / STA $98
+  const hi = o.yvel[i];                  // $C797 LDA $03BC,X / STA $99
+  soundRequest(state, 0x0C);             // $C79C LDA #$0C / $C79E JSR $CB26
+  explodeInPlace(state, j);              // $CB2B
+  const ptr = rom.word(0xC893 + variant * 2);  // $C7A1 ASL / $C7A8 LDA $C893,X
+  let y = 0;                             // $C7B4 LDY #$00
+  queueByte(state, 0x01);                // $C7B2 LDA #$01 / $C7B8 STA $0700,X
+  for (;;) {
+    // loc_C7BC: the address = ($99:$98) - stream[y], 16-bit, written [hi][lo].
+    const d = lo - rom.read(u16(ptr + y)); y += 1;      // $C7BF SBC ($9A),Y
+    queueByte(state, u8(hi - (d < 0 ? 1 : 0)));         // $C7C4 LDA $99 / SBC #$00
+    queueByte(state, u8(d));                            // $C7C1 STA $0701,X
+    let b;
+    for (;;) {                           // loc_C7CE
+      b = rom.read(u16(ptr + y)); y += 1;
+      if (b === 0xFF || b === 0xFE) break;              // $C7D1 / $C7D5
+      queueByte(state, b);                              // $C7D9 STA $0700,X
+    }
+    queueByte(state, 0xFF);              // $C7E0/$C7EE LDA #$FF
+    queueByte(state, 0x01);              // $C7E6/$C7F4 LDA #$01 -- the next mode
+    if (b === 0xFE) break;               // $C7D7 BEQ $C7EE -- the ADD arm, once
+    // $C7EC BNE $C7BC -- always taken (A = 1), so a $FF starts another packet.
+  }
+  // loc_C7EE's tail: this one offset is ADDED, and its packet ends the stream.
+  const s = lo + rom.read(u16(ptr + y)); y += 1;        // $C7FD CLC / ADC ($9A),Y
+  queueByte(state, u8(hi + (s > 0xFF ? 1 : 0)));        // $C802 LDA $99 / ADC #$00
+  queueByte(state, u8(s));                              // $C7FF STA $0701,X
+  for (;;) {                             // loc_C80C
+    const b = rom.read(u16(ptr + y));
+    if (b === 0xFF) break;               // $C80E CMP #$FF / $C810 BEQ $C819
+    y += 1;                              // $C812 INY
+    queueByte(state, b);                 // $C813 STA $0700,X
+  }
+  queueByte(state, 0xFF);                // $C819 LDA #$FF / $C81B STA $0700,X
+}                                        // $C81F STX $0E / $C821 RTS
+
+/**
+ * `sub_$C822` -- erase the destroyed moai's cells from the TERRAIN COLLISION
+ * MAP at `$0500`-`$06FF` (the port's `state.coll`, written by the terrain
+ * streamer's `$9F7F` and read by `$C3D3`).
+ *
+ * The pointer is derived from the moai's own nametable address:
+ *
+ *   C822  LDX $A8 / LDA $03BC,X / STA $98          $98 := NT addr HIGH
+ *   C829  LDY #$05 / AND #$04 / BEQ $C831 / LDY #$06
+ *   C831  STY $9B                                  page $05 or $06, by bit 2
+ *   C833  LDA $03EC,X / STA $99                    A := NT addr LOW
+ *   C838  ASL A / ROL $98                          a 16-bit <<1 of ($98:A)
+ *   C83B  ASL A / ASL A / AND #$F8 / STA $9A       so $9A := (low << 3) AND $F8
+ *   C841  LDA $98 / AND #$07 / ORA $9A / STA $9A   ...OR the three carried bits
+ *
+ * then, by variant: 0 writes `$0F` at the five offsets `$C87B[0..4]` and `$00`
+ * at `$C87B[6..10]`; 2 subtracts $29 from the pointer LOW BYTE ONLY and uses
+ * rows `$C87B[12..16]` / `$C87B[18..22]`. Variants 1 and 3 do NOTHING
+ * (`$C853 RTS`) -- they are the moai's other halves and share a cell block.
+ */
+function sub_C822(state, rom, j, variant) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  const ntHi = o.yvel[i];                // $C824 LDA $03BC,X / $C827 STA $98
+  const page = (ntHi & 0x04) ? 6 : 5;    // $C82B AND #$04 / $C82D BEQ / LDY #$06
+  const ntLo = o.yvelf[i];               // $C833 LDA $03EC,X / $C836 STA $99
+  const rolled = u8((ntHi << 1) | (ntLo >> 7));         // $C838 ASL A / ROL $98
+  let p = ((u8(ntLo << 3) & 0xF8) | (rolled & 0x07));   // $C83B-$C847
+  // $C84B LDA $A9 / BEQ $C854 / CMP #$02 / BEQ $C86F / $C853 RTS
+  let x;
+  if (variant === 0) x = 0;              // loc_C854 LDX #$00
+  else if (variant === 2) {              // loc_C86F
+    x = 0x0C;                            // $C86F LDX #$0C
+    p = u8(p - 0x29);                    // $C871 LDA $9A / SEC / SBC #$29 -- the
+                                         //   LOW byte only; $9B is untouched
+  } else return;                         // $C853 RTS
+  const base = (page << 8) | p;
+  // loc_C856: $0F at every offset until the $FF, then $00 at every offset of
+  // the NEXT run until its $FF. `$C862 INX` steps past the first run's $FF.
+  let a = 0x0F;                          // $C856 LDA #$0F
+  for (;;) {
+    const off = rom.read(0xC87B + x);    // $C858/$C865 LDY $C87B,X
+    if (off & 0x80) {                    // $C85B/$C868 BMI
+      if (a === 0x00) return;            // $C86E RTS -- the second run is done
+      a = 0x00;                          // $C862 INX / $C863 LDA #$00
+      x += 1;
+      continue;
+    }
+    collWrite(state, base + off, a, j, variant);        // $C85D/$C86A STA ($9A),Y
+    x += 1;                              // $C85F/$C862 INX
+  }
+}
+
+/**
+ * `STA ($9A),Y` out of `sub_$C822`. The pointer is a REAL 16-bit pointer plus Y,
+ * so it can leave the two collision-map pages; it is not masked to one page.
+ * A write outside `$0500`-`$06FF` would land on the VRAM queue ($0700) or on
+ * the object arrays ($0400), neither of which `state.coll` models -- so it is a
+ * loud named throw rather than a silently clamped write. It has NOT been
+ * measured either way; this is the tripwire, not an absence proof.
+ */
+function collWrite(state, addr, v, j, variant) {
+  if (addr < 0x0500 || addr > 0x06FF) {
+    throw new Error(`$C85D STA ($9A),Y wrote $${addr.toString(16).toUpperCase()}`
+                  + `, outside the $0500-$06FF collision map (moai slot ${j}, `
+                  + `variant ${variant}). The port models only those two pages; `
+                  + 'the cartridge would write $0700 (the VRAM queue) or $0400 '
+                  + '(the object arrays) here.');
+  }
+  state.coll[addr - 0x0500] = v;
+}
+
+/**
+ * `$B1FA` -- X -= xvel (16-bit), then FALL THROUGH into `$B1F4`, which is
+ * `$B1F1`'s tail. So it is `arcRightDown` with `subX16` in place of `addX16`.
+ *
+ *   B1FA  JSR $B184     subX16
+ *   B1FD  JMP $B1F4     -> JSR $B16C (addY16) / $B1F7 JMP $B1EB (velSubAccel)
+ *                          / $B1EE JMP $B251 (the box)
+ */
+function loc_B1FA(state, j) {
+  subX16(state, j);                      // $B1FA JSR $B184
+  addY16(state, j);                      // $B1F4 JSR $B16C
+  velSubAccel(state, j);                 // $B1F7 JMP $B1EB -> JSR $B120
+  offScreenCheck(state);                 // $B1EE JMP $B251
 }
 
 /**

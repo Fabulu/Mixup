@@ -270,12 +270,14 @@ test('an unported handler is a LOUD named throw, with the type and the ROM addre
   // 17, 18, 19, 31, 39, 41 -- sixteen distinct routines).
   // RED WHEN: the `default:` arm returns instead of throwing.
   const s = running();
-  // Entry 13 -> $B402. Type $0D, five wave spawns on stages 2 and 4; NOT on
-  // stage 1's critical path, which is why it is still a throw and why it is the
-  // one this check now stands on. Entry 7 ($B6E1) used to be here and is ported.
-  s.obj.type[21] = 0x8D;
+  // Entry 26 -> $B480. Type $1A, FIFTY-THREE of stage 6's 98 wave records --
+  // stage 6's signature enemy, and W33's work. Entry 7 ($B6E1) used to be here
+  // and is ported; entry 13 ($B402) replaced it and is ported as of W30, which
+  // is the third time this check has had to move. The rule is: it must stand on
+  // an entry the ledger still reports as unported.
+  s.obj.type[21] = 0x9A;
   assert.throws(() => updateEnemies(s, res),
-    /unimplemented enemy handler \$B402 for type \$8D \(entry 13/);
+    /unimplemented enemy handler \$B480 for type \$9A \(entry 26/);
 });
 
 test('$ADE5\'s animator: reload 6, four entries per status, 0 = wrap and re-read', () => {
