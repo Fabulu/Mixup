@@ -5,14 +5,24 @@
 // not compute that state and does not pretend to.  On the port side, building
 // the display list is main-loop call #4 ($23D2AE), and WAVE 11 PORTED IT WHOLE
 // (`src/displaylist.js`, gated at 0 divergent frames over 1,901 build-B frames
-// by `pgm.py dlgate`).  What it does NOT have is producers: one of the thirty
-// buckets has a ported feeder (14, the shots), so the list the port builds is
-// nearly empty and the picture still comes from the board.  So today the
-// renderer's input is either
+// by `pgm.py dlgate`).
+//
+// WAVE 44 CORRECTS THE REST OF THIS PARAGRAPH, WHICH HAD BEEN WRONG SINCE WAVE
+// 29.  It used to say "one of the thirty buckets has a ported feeder (14, the
+// shots), so the list the port builds is nearly empty".  [M, 40-recon §2.3 and
+// re-measured in wave 44] EIGHT of the thirty are filled by the port today --
+// 0, 2, 3, 5, 7, 14, 15, 19 -- and bucket 0, THE ENEMIES, runs 14 to 62 records
+// a frame.  The list is not nearly empty; it was merely never read.
+//
+// So the renderer's input is now one of three, and the page's DEFAULT is (c):
 //   (a) a board capture (`pgm.py pixslice`), which is what the pixel gate
 //       compares against MAME, or
-//   (b) a capture with the player's records replaced by the port's own,
-//       which is what `index.html` puts on the screen and labels as such.
+//   (b) a capture with the player's records replaced by the port's own, which
+//       is what `index.html` offers as a labelled diagnostic, or
+//   (c) THE PORT'S OWN `$800000` LIST, copied out of its RAM one frame late and
+//       parsed with `RAM_STRIDE` (`src/web/app.js portSpriteList`).  Records
+//       whose sprite stream is not in the shipped sheet are skipped and their
+//       cartridge address is named; nothing is ever drawn from a wrong stream.
 
 export * from './regions.js';
 export * from './tiles.js';

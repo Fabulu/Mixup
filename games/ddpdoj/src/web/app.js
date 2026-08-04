@@ -106,7 +106,7 @@ import { Game, RAM, MACHINE } from '../main.js';
 import { P } from '../machine.js';
 import {
   Renderer, paletteRgb, resolveRgb, rotateCCW, rgbToRgba, SCREEN_W, SCREEN_H,
-  parseSpriteList, BUFFER_STRIDE,
+  parseSpriteList, BUFFER_STRIDE, RAM_STRIDE, SPRITE_LIMIT,
 } from '../render/index.js';
 import { loadBundle, httpReader, AssetError } from './assets.js';
 import { attachKeyboard, currentPortWord } from './input.js';
@@ -317,6 +317,220 @@ export function stripToAttached(st, recs) {
   return { kept: w, removed: before - w };
 }
 
+// =========================================================== WAVE 44 -- E1
+//
+// THE PORT'S OWN DISPLAY LIST, ON THE SCREEN.
+//
+// Until this wave `src/main.js:352` was the ONLY mention of `displayList` in
+// `src/` or `tools/`: one writer, zero readers.  The port has built a real
+// hardware display list at $800000..$8009FF every frame since wave 11 -- main
+// loop call #4, `$23D2AE`, ported whole and gated byte-for-byte by `pgm.py
+// dlgate` over 1,901 board frames -- and every frame the page threw it away and
+// drew the recording's instead.  That single missing edge is why the ported
+// enemies were invisible (`40-recon-emission-path.md` §1.2).
+//
+// TWO THINGS STAND BETWEEN THAT LIST AND A PIXEL, and this is both of them.
+//
+// (1) THE REMAP.  A record's `offs` field is a CARTRIDGE word offset into
+//     `sprmask`.  `tools/export-web.mjs` RE-BASES every shipped stream into a
+//     compact 16-bit space so the arrays can be powers of two and
+//     `SpriteDrawer` can index them with `& (len-1)`.  So a port record
+//     carrying $12D430 indexes the packed array at $12D430 & 16383 and draws
+//     somebody else's picture -- MEASURED (`40-recon` §4 step 2): of the 302 ROM
+//     offsets the port emits from the page's own seed, 234 are >= 16384 and WRAP,
+//     67 land on arbitrary mask data, and exactly ONE (the null stream $000000)
+//     coincides with a packed base.  Nothing throws, because the length is a
+//     power of two by design.  The map is `manifest.spr.streams`, which
+//     `export-web.mjs` has always computed and, until wave 44, discarded.
+//
+// (2) THE MISS POLICY: EXACT MAP, LOUD MISS, NEVER A FALLBACK.  The shipped
+//     sheet is 166 streams harvested from a 161-frame recording; the port asks
+//     for whatever stage 1 asks for.  A record whose stream is not in the sheet
+//     is NOT DRAWN and its CARTRIDGE ADDRESS is counted and named, on the status
+//     line and in `tools/webgate.mjs`'s output.  No modulo, no clamp, no
+//     nearest-stream, no "draw it anyway": the entire value of this guard is
+//     that a short sheet produces an ADDRESS, which is what makes the next wave
+//     a shopping list instead of a hunt.
+//
+//     AND IT IS A SKIP, NOT A THROW, DELIBERATELY.  This project's rule is that
+//     unported paths are LOUD NAMED THROWS, and a reviewer who reads the `skip`
+//     below without this paragraph would be right to call it the quiet-return
+//     defect HANDOVER §4 forbids.  The rule is about CODE.  This is DATA: a
+//     background element with no art would take the whole page down for a
+//     picture nobody is asking about, and would make the wave unshippable
+//     before the art wave lands.  The honest analogue for missing data is a
+//     named skip with a count, and every one of them is printed.
+//
+//     MEASURED, and this is why the art is a LATER wave and not this one: from
+//     the page's own seed the shipped sheet covers the port's emitter
+//     COMPLETELY for the first 315 logic frames = 5.32 s -- 16,183 records, 0
+//     misses -- and bucket 0, THE ENEMIES, runs 48.49 records per frame over
+//     that window at 100.00 % coverage (`43-plan-enemy-layer.md` §1.2,
+//     reproduced by this wave in `docs/worklog/ddpdoj/44-impl-E1-render.md`).
+//     THAT NUMBER IS A PROPERTY OF THIS SEED and of nothing else: the page boots
+//     into the recording's own window and the sheet was harvested from that
+//     recording.  A different seed, a from-boot start or a warp has no such
+//     grace period, and the misses start immediately.  Say so wherever it is
+//     quoted.
+
+/** Every mutation `portSpriteList` can be broken with, and what it breaks.
+ *  Declared here for the same reason `displaylist.js MUTATIONS` is: so
+ *  `tools/webgate.mjs --break` cannot invent one, and so the whole
+ *  red-validation surface is visible in one place. */
+export const PORT_LIST_MUTATIONS = {
+  'no-remap': 'pass the ROM offset straight through instead of the packed base. '
+    + 'The sheet is re-based, so nearly every record then draws the wrong '
+    + 'picture -- this must report ~301 of 302 streams missing',
+  'drop-one-stream': 'the caller has removed one stream from the map. Its '
+    + 'records must be SKIPPED AND NAMED, not drawn from a neighbour',
+  'terminate-instead-of-zero-width': 'skip a missing record by zeroing WORD 4 '
+    + 'instead of its width field. word4 & $7FFF == 0 is the hardware '
+    + "TERMINATOR, so this silently drops the whole list behind the first gap",
+  'no-extent-check': 'trust the map and never compare the record\'s '
+    + '2 + w*h against the stream\'s length -- the $000000 3x40 case',
+};
+
+/** Checked ONCE, up front, and not lazily inside the record loop: an empty or
+ *  immediately-terminated list never reaches a `portMutating` call, so a
+ *  misspelled `--break` would run as a CLEAN pass and print green. */
+function checkMutation(opts) {
+  if (opts.mutate && !(opts.mutate in PORT_LIST_MUTATIONS)) {
+    throw new Error(`unknown port-list mutation '${opts.mutate}'; have `
+      + Object.keys(PORT_LIST_MUTATIONS).join(', '));
+  }
+}
+
+function portMutating(opts, name) { return opts.mutate === name; }
+
+/** $800000..$8009FF is 0x500 words: 256 entries x RAM_STRIDE, and the parser
+ *  stops at 256 because the hardware does (`spritelist.js`). */
+export const PORT_LIST_WORDS = SPRITE_LIMIT * RAM_STRIDE;
+
+/**
+ * `manifest.spr.streams` -> `romOffs -> [packedBase, maskWords]`.
+ *
+ * PURE and exported so it can be tested and so `tools/webgate.mjs` can break it.
+ *
+ * The LENGTH CHECK is not defensive noise.  Before wave 44 the entries were
+ * PAIRS -- `[packedBase, maskWords]` -- and a pair read as a triple would take
+ * the packed base for a cartridge address, which is a map that resolves nothing
+ * and skips everything: a silently empty screen with a plausible explanation.
+ * So an old bundle says so by name instead.
+ */
+export function romToPackedMap(manifest) {
+  const list = manifest?.spr?.streams;
+  if (!Array.isArray(list) || !list.length) {
+    throw new AssetError('manifest.spr.streams is missing or empty; the page '
+      + 'cannot remap the port\'s display list without it. Rebuild: node '
+      + 'games/ddpdoj/tools/export-web.mjs');
+  }
+  if (list[0].length !== 3) {
+    throw new AssetError(`manifest.spr.streams entries have ${list[0].length} `
+      + 'fields, not 3. This bundle predates wave 44, when the exporter started '
+      + 'keeping the CARTRIDGE address alongside the packed one -- without it '
+      + 'the port\'s own display list cannot be translated into the sheet\'s '
+      + 'address space. Rebuild: node games/ddpdoj/tools/export-web.mjs');
+  }
+  const m = new Map();
+  for (const [rom, base, words] of list) m.set(rom, [base, words]);
+  return m;
+}
+
+/**
+ * PURE.  The port's own `$800000` display list, remapped into the packed sheet's
+ * address space, ready to hand `renderIndexed` as `st.spritebuffer` with
+ * `spriteStride: RAM_STRIDE`.
+ *
+ * `parseSpriteList` applies the sprite DMA's own word masks (word 1 bit 10,
+ * word 2 bit 15 -- `igs023_video.cpp:660-668`), so the RAM list and the post-DMA
+ * `:igs023:spritebuffer` parse IDENTICALLY.  That is why this can be a straight
+ * copy of main RAM and not a DMA model.
+ *
+ * HOW A MISS IS SKIPPED, AND WHY IT IS THE WIDTH AND NOT WORD 4.
+ * `SpriteDrawer.draw` returns before touching a single ROM word when
+ * `wide === 0` (`sprites.js:139`), and `parseSpriteList` terminates only on
+ * `(word4 & $7FFF) === 0` (`spritelist.js:46`).  Width is bits 14..9 of word 4
+ * and height is bits 8..0, so zeroing the WIDTH of a record that has a non-zero
+ * height leaves the terminator test false: the record is skipped and everything
+ * BEHIND it still draws.  Zeroing word 4 instead would terminate the list at the
+ * first gap and silently drop the rest of the frame, which is the
+ * `terminate-instead-of-zero-width` mutation above.
+ *
+ * A record whose width or height is ALREADY zero is left completely alone: it
+ * draws nothing, reads no ROM word and therefore needs no art (the same test
+ * `src/web/assets.js verifyCoverage` makes), and zeroing the width of a
+ * zero-HEIGHT record would turn word 4 into the terminator.  Those are counted
+ * as `blank`, not as misses.
+ *
+ * THE EXTENT CHECK is the general form of a landmine `43-plan-enemy-layer.md`
+ * §1.4 measured: the port emits `offs $000000` -- the null placeholder -- 1,065
+ * times at 1x1 AND TEN TIMES AT 3x40, which reads 122 mask words out of a stream
+ * the sheet holds 10 words of.  Its packed base is 0, so a map lookup alone
+ * would "succeed" and the record would read the next stream's data.  The rule
+ * here is `have >= 2 + w*h`, which is exactly the rule `verifyCoverage` already
+ * applies to the capture's records, and it covers that case without naming it
+ * as a special one.
+ *
+ * @param {import('../ram.js').Ram} ram  the port's main RAM
+ * @param {Map<number,[number,number]>} map  `romToPackedMap(manifest)`
+ * @param {{mutate?: string, out?: Uint16Array}} opts
+ * @returns {{words: Uint16Array, records: number, drawn: number,
+ *            skipped: number, blank: number, missing: Map<number,number>}}
+ */
+export function portSpriteList(ram, map, opts = {}) {
+  checkMutation(opts);
+  const words = opts.out ?? new Uint16Array(PORT_LIST_WORDS);
+  for (let i = 0; i < PORT_LIST_WORDS; i++) words[i] = ram.u16(RAM.spriteList + i * 2);
+
+  let records = 0, drawn = 0, skipped = 0, blank = 0;
+  const missing = new Map();
+  for (let r = 0; r < SPRITE_LIMIT; r++) {
+    const b = r * RAM_STRIDE;
+    const w4 = words[b + 4];
+    if ((w4 & 0x7fff) === 0) break;                  // the hardware terminator
+    records++;
+    const wide = (w4 & 0x7e00) >> 9, high = w4 & 0x01ff;
+    // Word 2 bits 6..0 are `offs` bits 22..16, word 3 is bits 15..0. Every other
+    // bit of word 2 -- flip, colour, pri, and bit 15 which the DMA drops -- is
+    // preserved, exactly as `export-web.mjs` preserves them when it rewrites
+    // capture.bin (line 632).
+    const w2 = words[b + 2];
+    const offs = ((w2 & 0x007f) << 16) | words[b + 3];
+    if (wide === 0 || high === 0) { blank++; continue; }
+
+    const hit = portMutating(opts, 'no-remap') ? [offs, Infinity] : map.get(offs);
+    const enough = hit !== undefined
+      && (portMutating(opts, 'no-extent-check') || hit[1] >= 2 + wide * high);
+    if (hit !== undefined && enough) {
+      const packed = hit[0];
+      words[b + 2] = (w2 & 0xff80) | ((packed >>> 16) & 0x7f);
+      words[b + 3] = packed & 0xffff;
+      drawn++;
+      continue;
+    }
+    // NOT DRAWN, AND NAMED.  See the miss-policy paragraph above.
+    skipped++;
+    missing.set(offs, (missing.get(offs) ?? 0) + 1);
+    if (portMutating(opts, 'terminate-instead-of-zero-width')) words[b + 4] = 0;
+    else words[b + 4] = w4 & ~0x7e00;                // width := 0, height kept
+  }
+  return { words, records, drawn, skipped, blank, missing };
+}
+
+/** The status line's version of a miss set: the worst `n` by count, as text. */
+export function namedMisses(missing, n = 3) {
+  return [...missing.entries()].sort((a, b) => b[1] - a[1]).slice(0, n)
+    .map(([o, c]) => `$${o.toString(16).toUpperCase().padStart(6, '0')}x${c}`)
+    .join(' ');
+}
+
+/** The two sprite sources the page can draw, and the DEFAULT is the port's.
+ *  `capture` is kept as a LABELLED DIAGNOSTIC, not as a fallback: it is the
+ *  cheapest correctness check available without MAME, because the ship must
+ *  land in the same place in both (`43-plan-enemy-layer.md` §3.4, §8.1). */
+export const SPRITE_SOURCES = Object.freeze(['port', 'capture']);
+export const DEFAULT_SPRITE_SOURCE = 'port';
+
 class Demo {
   constructor(canvas, bundle, frameHz, mode = DEFAULT_MODE) {
     this.bundle = bundle;
@@ -345,6 +559,27 @@ class Demo {
     this.prevTilt = this.game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
     this.prevPos = [this.game.ram.u16(RAM.player1 + P.posY),
       this.game.ram.u16(RAM.player1 + P.posX)];
+
+    // WAVE 44 -- THE PORT'S OWN DISPLAY LIST.  `romToPacked` is the map the
+    // exporter now keeps (`portSpriteList` above); `portList` is the list ONE
+    // LOGIC FRAME OLD, and the lag is not optional.
+    //
+    // `render/capture.js`'s own header measured it: `:igs023:spritebuffer` lags
+    // main RAM by one frame -- "lag 1 gives three offsets holding on 161/161
+    // captured frames, lag 0 and lag 2 give none" -- and the splice already
+    // honours it with `prevPos`/`prevTilt`.  So `step()` snapshots the list
+    // BEFORE it runs the frame, which is the list the PREVIOUS frame built, and
+    // `draw()` renders that.  A page that renders the list `step()` has just
+    // built is one frame early, and it looks ALMOST right.
+    //
+    // The seed is a board RAM snapshot, so at construction $800000 already holds
+    // the BOARD's own list for the frame before the seed: the very first drawn
+    // frame is a real list rather than an empty one.
+    this.romToPacked = romToPackedMap(bundle.manifest);
+    this.spriteSource = DEFAULT_SPRITE_SOURCE;
+    this.listBuf = new Uint16Array(PORT_LIST_WORDS);
+    this.portList = portSpriteList(this.game.ram, this.romToPacked,
+      { out: this.listBuf });
 
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
@@ -389,6 +624,13 @@ class Demo {
     const g = this.game;
     this.prevPos = [g.ram.u16(RAM.player1 + P.posY), g.ram.u16(RAM.player1 + P.posX)];
     this.prevTilt = g.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;   // ($4e,A6)
+    // WAVE 44 -- THE ONE-FRAME HOLD, and it is here rather than in `draw()` on
+    // purpose.  Taken BEFORE `g.step()`, $800000 still holds the list the
+    // PREVIOUS frame built, which is the frame the sprite DMA would have put on
+    // the screen (`render/capture.js`'s measured lag of 1).  Doing it here also
+    // makes it independent of how often `draw()` runs: a mode change repaints
+    // without stepping, and that must not shift the list by a frame.
+    this.portList = portSpriteList(g.ram, this.romToPacked, { out: this.listBuf });
     g.ram.setU8(INVULN, 0xff);           // the scenario's intervention
     g.step(currentPortWord());
     this.stepsRun++;
@@ -463,7 +705,27 @@ class Demo {
     // the null stream drawn off screen), the palette and the four scroll
     // registers are untouched.
     this.stripped = stripToAttached(st, this.cap.attached()[fi]);
-    const idx = this.renderer.renderIndexed(st);
+    // WAVE 44 -- AND NOW THE PORT'S OWN LIST GOES ON THE SCREEN.
+    //
+    // Everything above still runs in both sources, and that is deliberate: it
+    // keeps the CAPTURE path -- the splice and wave 37's strip -- alive and
+    // switchable in one keypress, which is the only correctness check this wave
+    // has that does not need MAME.  THE SHIP MUST LAND IN THE SAME PLACE IN
+    // BOTH.  In `port` the recording supplies no sprite at all: only `st.tx`
+    // (the HUD), the palette, `zoomram`, `rowscroll`, `ctrl` and `bg_scale` are
+    // still its, and every record on the screen is the port's own.
+    //
+    // `spriteStride: RAM_STRIDE` is a STRUCTURAL parameter of `renderIndexed`'s
+    // own options bag, not one of the four decoder-mutation knobs whose comment
+    // says the port may not pass a non-default value -- that comment is on the
+    // CONSTRUCTOR's bag (`render/igs023.js:36-41` vs :74-78), and
+    // `tools/pixgate.mjs:327-332` builds its `drawOpts` from exactly the four
+    // mutations and passes neither `spriteStride` nor `scrollSign`.
+    const port = this.portList;
+    const usedPort = this.spriteSource === 'port';
+    if (usedPort) st.spritebuffer = port.words;
+    const idx = this.renderer.renderIndexed(st,
+      usedPort ? { spriteStride: RAM_STRIDE } : undefined);
     // The palette that applies is the NEXT frame's -- the measured sample-point
     // offset (00-recon-assets.md §4).  On a looping capture the next frame is
     // the next captured one.
@@ -504,6 +766,19 @@ class Demo {
       // explanation.
       stripped: this.stripped?.removed ?? 0,
       kept: this.stripped?.kept ?? 0,
+      // WAVE 44.  The port's own list, and the honest part is `missed`: a
+      // display-list record whose sprite stream is not in the shipped sheet is
+      // NOT DRAWN, and its CARTRIDGE address is on the status line. That is
+      // what turns "the picture is wrong" into a list of addresses for the art
+      // wave to harvest. `blank` are records the hardware itself draws nothing
+      // for (width or height zero) and which therefore need no art at all.
+      spriteSource: this.spriteSource,
+      dlRecords: this.portList?.records ?? 0,
+      dlDrawn: this.portList?.drawn ?? 0,
+      dlMissed: this.portList?.skipped ?? 0,
+      dlBlank: this.portList?.blank ?? 0,
+      dlMissing: this.portList ? namedMisses(this.portList.missing) : '',
+      dlBuckets: g.displayList?.perBucketRecords?.[0] ?? 0,
       capture: this.capFrame,
       unported: g.unportedLog.report(),
       // WAVE 13 -- the scroll program, live.
@@ -520,6 +795,20 @@ class Demo {
       mapColumn: this.streamColumn(),
       shards: this.bundle.bg?.status() ?? null,
     };
+  }
+
+  /**
+   * WAVE 44 -- the A/B.  `port` is the DEFAULT and is what the game IS;
+   * `capture` replays the recording's own sprite list through wave 37's strip
+   * and is a LABELLED DIAGNOSTIC.  It is kept because the ship must land in the
+   * same place in both, which is the cheapest check this wave has and the only
+   * one available without MAME.  The SIMULATION is untouched either way, exactly
+   * as `setMode` leaves it untouched: this changes the picture, never a frame.
+   */
+  setSpriteSource(src) {
+    this.spriteSource = SPRITE_SOURCES.includes(src) ? src : DEFAULT_SPRITE_SOURCE;
+    this.dirty = true;
+    return this.spriteSource;
   }
 
   loop(now) {
@@ -617,6 +906,8 @@ export async function boot(canvas, opts = {}) {
     stats: () => demo.stats(),
     get mode() { return demo.mode; },
     setMode: (m) => demo.setMode(m),
+    get spriteSource() { return demo.spriteSource; },
+    setSpriteSource: (s) => demo.setSpriteSource(s),
     stop() { demo.running = false; },
   };
 }

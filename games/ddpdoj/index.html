@@ -252,11 +252,15 @@
 
 <h2>What is real here, and what is not</h2>
 
-<p class="warn"><b>One ship is simulated. Everything else you can see is a
-recording.</b> The ship's position, velocity, tilt, clamps and speed modes are
-computed <b>live, by the port</b>, one logic frame per 16.896&nbsp;ms, from the
-board's own arithmetic &mdash; <b>0 divergent frames against the board over
-2,200 logic frames on 34 compared columns</b>. Nothing else in the picture is.</p>
+<p class="warn"><b>Every sprite on this screen is now computed by the port.</b>
+Wave&nbsp;44 put the port's own hardware display list &mdash; the one it has been
+building at <code>$800000</code> every frame since wave&nbsp;11 and nothing ever
+read &mdash; on the glass. The ship, its pods, its shadows <em>and the enemies</em>
+are simulated: position, velocity, tilt, clamps and speed modes from the board's
+own arithmetic, one logic frame per 16.896&nbsp;ms, <b>0 divergent frames against
+the board over 2,200 logic frames on 34 compared columns</b>. What is still the
+recording is the <b>HUD text</b> and the <b>palette</b>, and the page says so
+below.</p>
 
 <p class="warn"><b>The background SCROLLS LIVE now &mdash; wave&nbsp;13.</b> The
 whole scroll subsystem is ported: object type&nbsp;1 (<code>$26127A</code>), its
@@ -297,29 +301,41 @@ one with the animation in it. And the second map's <b>painter</b>
 (<code>$26C20C</code>, object type&nbsp;<code>$1C</code>) is unported &mdash; its
 tiles are in the bundle, nothing draws them yet.</p>
 
-<p><b>The sky is empty on purpose. The recorded enemies have been taken off
-the screen.</b> Until wave&nbsp;37 every enemy, bullet, explosion and item you
-saw was a 161-frame recording of the real board, on a loop &mdash; and since
-wave&nbsp;13 the background's <em>motion</em> has been computed by the port
+<p><b>The recorded enemies have been taken off the screen &mdash; and the
+port's own are on it.</b> Until wave&nbsp;37 every enemy, bullet, explosion and
+item you saw was a 161-frame recording of the real board, on a loop &mdash; and
+since wave&nbsp;13 the background's <em>motion</em> has been computed by the port
 instead of replayed alongside it. A 161-frame sprite loop played against a
 7,317-frame computed stage agrees at the start and drifts afterwards, which is
 what it looked like: enemies shooting at nothing, in the wrong place. So they
-are gone. <b>Nothing you can see now is a recorded sprite</b>, and every enemy
-that appears from here is the port's own. Measured: 7,671 of the recording's
-display-list records dropped to 886, 8.99% of the picture's pixels, and the
-status line says <code>rec-N</code> every frame so the page never stops
-admitting what it did.</p>
+went: 7,671 of the recording's display-list records dropped to 886, 8.99% of the
+picture's pixels. <b>Nothing you can see now is a recorded sprite.</b></p>
 
-<p>The port already <b>builds</b> the hardware display list &mdash; main-loop
+<p><b>Wave&nbsp;44 filled the hole it left.</b> The port has built the real
+hardware display list every frame since wave&nbsp;11 &mdash; main-loop
 call&nbsp;#4, <code>$23D2AE</code>, translated whole and verified byte-for-byte
-against the board on 1,901 consecutive frames &mdash; and it already
-<em>simulates</em> enemies: it spawns them, moves them, aims their turrets and
-generates their bullet patterns, all gated against the board. What is missing is
-SPRITE EMISSION: only four of the thirty sprite buckets have a producer, so the
-objects that exist cannot draw themselves. That is the next wave, and it is the
-reason the layer is empty rather than wrong.
+against the board on 1,901 consecutive frames &mdash; and it has spawned, moved,
+aimed and shot its enemies for eight waves. <b>Nothing read that list.</b> Now
+the page does: it copies <code>$800000..$8009FF</code> out of the port's own RAM
+one frame late, exactly as the sprite DMA does, translates each record's
+cartridge stream address into the shipped sheet's, and draws it. Measured from
+this page's own seed: <b>16,457 display-list records over 300 logic frames,
+20&ndash;69 per frame, and bucket&nbsp;0 &mdash; the enemies &mdash; runs 14 to 62
+records a frame.</b></p>
+
+<p><b>A record whose picture is not in the bundle is not drawn, and its
+cartridge address goes on the status line.</b> No guess, no nearest match, no
+drawing it anyway. The shipped sheet was harvested from a 161-frame recording,
+so it covers this seed's play <em>completely</em> for the first
+<b>5.32&nbsp;seconds</b> &mdash; 0 missing records &mdash; and then starts
+thinning out, biggest pictures first: the very first record with no art is
+<code>$233F34</code>, a 5&times;80 <em>background</em> element, at
+logic&nbsp;frame&nbsp;2315. After that the status line says
+<code>NO ART n:</code> and lists the addresses. That degradation is a property
+of <em>this seed</em>, which is the recording's own window; it is not a general
+guarantee, and shipping the missing art is the next wave.
 <b>The HUD, the score and the text are still the recording</b> &mdash; they are
-the text layer, not sprites, and removal did not touch them.</p>
+the text layer, not sprites, and none of this touched them.</p>
 
 <p><b>The ship and everything attached to it are now PRODUCED, not relocated.</b>
 Wave&nbsp;12 ported the ship's own draw block <code>$24A482</code> and the whole
@@ -383,9 +399,11 @@ actually do, which is three different things:</p>
     (<code>$249B2C..$249BE2</code>), the ported spawn (<code>$249BFC</code>),
     the 36-slot shot driver (<code>$253A70</code>) and the sprite enqueue
     (<code>$23F3AE</code>), all verified 0-divergent against the board over 125
-    logic frames on 52 columns. <b>You will not see it.</b> A shot's sprite
-    stream is not in the 363&nbsp;KiB bundle, so a shot the port really computed
-    is invisible. It also cannot hit anything, because the enemies are pixels.</li>
+    logic frames on 52 columns. <b>You will not see it.</b> None of the nine
+    shot sprite streams is in the shipped sheet, so a shot the port really
+    computed still has no picture &mdash; and after wave&nbsp;44 the status line
+    says so by address rather than leaving you to guess. The enemies it would
+    hit <em>are</em> real objects now, and they are the ones on the screen.</li>
   <li><b>HOLD shot</b> &mdash; on the board this is the <b>laser</b>, and it
     also ramps the ship's speed down from index 22 to 12. Neither is ported: the
     ramp lives inside the option object at <code>$24C8BE</code>. Holding for
@@ -417,8 +435,17 @@ the rotation is done in the pixel buffer and never by a CSS transform.</p>
   <kbd>WASD</kbd> move &nbsp;
   <kbd>Z</kbd>/<kbd>Y</kbd>/<kbd>Space</kbd> shot &nbsp;
   <kbd>X</kbd> bomb &nbsp; <kbd>C</kbd> auto &nbsp;
-  <kbd>Enter</kbd> start
+  <kbd>Enter</kbd> start &nbsp;
+  <kbd>L</kbd> sprite source: the PORT'S own display list (default) or the
+  recording's
 </p>
+<p>That last one is a diagnostic, not a feature, and it is on the page because
+it is the cheapest correctness check this port has that does not need an
+emulator: <b>the ship must land in exactly the same place in both</b>. In
+<code>port</code> every sprite you can see is computed by the port; in
+<code>capture</code> the sprite layer is the recording's, with wave&nbsp;37's
+strip applied. The simulation is identical either way &mdash; the key changes the
+picture, never a logic frame.</p>
 
 <h2>How much of this is measured, and by what</h2>
 <p>Every number on this page came out of a command recorded in
@@ -568,12 +595,34 @@ function showError(e, when) {
   console.error(e);
 }
 
+// WAVE 44, REPORTED FROM PLAY: "the last loading gfx text just stays on screen
+// even when finished loading". It did, and this flag is the fix.
+//
+// THE MECHANISM, because it is not the obvious one and the obvious repair
+// (clear it again, later) would not have held. `boot()` calls
+// `bundle.bg.prefetchAll()` AFTER `loadBundle` has resolved, and the DEFERRED
+// background shards are fetched through the SAME `httpReader(base, onProgress)`
+// the boot set used (src/web/assets.js:286). So the `statusEl.textContent = ''`
+// below really does run -- and then shards 2..7 land over the next several
+// seconds, each one writing `loading gfx/bg.shard<n>.tiles.u8.gz — …` back into
+// the element, and the last one to arrive stays there forever. There is no
+// later point to clear it at: the writes are asynchronous and the last is
+// whenever the network says.
+//
+// So the loader's channel is CLOSED when boot returns instead. Nothing about
+// what is reported DURING loading changes. Nothing is hidden either: the
+// deferred shards were never this element's subject after boot -- the stats
+// line already prints `shards n/8` every frame from `bg.status()`, and a shard a
+// DRAW actually waited on says `WAITING ON SHARD n` there.
+let booting = true;
+
 try {
   statusEl.textContent = 'loading the asset bundle…';
   const app = await boot(canvas, {
     mode,
     onProgress: (name, n, total) => {
-      statusEl.textContent = total
+      if (!booting) return;              // the deferred shards are not the
+      statusEl.textContent = total       // loading screen's business
         ? `loading ${name} — ${(n / 1024).toFixed(0)}/${(total / 1024).toFixed(0)} KiB`
         : `loading ${name}…`;
     },
@@ -581,6 +630,7 @@ try {
     // silent freeze wasted a real play session on another port in this repo.
     onError: (e) => showError(e, 'The port reached something it has not ported.'),
   });
+  booting = false;
   statusEl.textContent = '';
   fit();
 
@@ -591,6 +641,20 @@ try {
     try { localStorage.setItem(STORE, mode); } catch { /* private mode */ }
     paintRot();
     fit();
+  });
+
+  // WAVE 44 -- THE A/B, ON ONE KEY.  `port` (default) draws the port's own
+  // $800000 display list; `capture` draws the recording's, stripped.  It is
+  // wired here and not in `src/web/input.js` on purpose: that module owns which
+  // CONTROL is which BIT of the board's port word, and this is not a control --
+  // it must never reach the 68000.  `KeyL` by `e.code`, i.e. by PHYSICAL
+  // POSITION, which is the standing requirement for the owner's Swiss QWERTZ
+  // keyboard; L is in the same place on both layouts and collides with nothing
+  // in KEYMAP.
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'KeyL' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    e.preventDefault();
+    app.setSpriteSource(app.spriteSource === 'port' ? 'capture' : 'port');
   });
 
   const m = app.bundle.manifest;
@@ -643,6 +707,17 @@ try {
       // were dropped this frame; the survivors are the ship and the seven
       // records attached to it.
       `rec-${s.stripped} keep ${s.kept}`,
+      // WAVE 44 -- THE PORT'S OWN DISPLAY LIST.  `dl` is how many records the
+      // port emitted this frame, `drawn` how many had art in the shipped sheet,
+      // and `NO ART` names the cartridge stream addresses of the ones that did
+      // not.  The last field is the whole point of the guard: a record with no
+      // art is ABSENT AND NAMED, never drawn wrong and never silently dropped,
+      // and those addresses are the next wave's shopping list.  `b0` is how many
+      // of them came out of bucket 0, THE ENEMIES.
+      `[${s.spriteSource}] dl ${s.dlRecords} drawn ${s.dlDrawn} b0 ${s.dlBuckets}`
+        + (s.dlMissed
+          ? ` <b>NO ART ${s.dlMissed}: ${s.dlMissing}</b>`
+          : ''),
       `${s.logicHz.toFixed(1)}Hz`,
       `x${canvas.dataset.scale}`,
     ].join(' &nbsp; ');

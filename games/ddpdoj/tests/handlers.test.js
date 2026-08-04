@@ -5,6 +5,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
 import { Ram } from '../src/ram.js';
 import { runHandler, HANDLER_ADDRESSES, handlerMap } from '../src/handlers.js';
 import { UnportedLog, Unreached } from '../src/unported.js';
@@ -143,4 +144,66 @@ test('the damage-first family ($05/$07) SCORES the hit through $286096', () => {
     // and the hit bits are cleared by `andi.b #$A3,(A6)` on the way past.
     assert.equal(ram.u8(SUB) & 0x5c, 0, 'the hit bits were consumed');
   }
+});
+
+// ======================================================= W44 -- THE FIELD TABLES
+//
+// A DEFECT THIS WOULD HAVE CAUGHT, found the hard way instead.
+//
+// `handlers.js` reads the board's globals through a table `G`, its enemy record
+// through `R` and the sub-record through `S`. Type $80 cited `G.b8` at two
+// sites -- `$273BDE sub.w $8130B8.l,D0` and `$273D9E`, both confirmed in the
+// listing -- and `b8` WAS NOT IN THE TABLE. `a5 + undefined` is NaN, and
+// `Ram.#off`'s bounds test was `o < 0 || o >= size`, which NaN fails BOTH
+// halves of, so the read went through and `DataView.getUint16(NaN)` returned
+// offset 0: `$800000`, the head of the display list. Type $80's salvo reload
+// and its second turret cadence have been computed from a sprite record's first
+// word since W30.
+//
+// It surfaced in wave 44 only because the page started DRAWING the port's own
+// list and the bounds test was tightened to `!(o >= 0 && o < size)` at the same
+// time; the port then stopped, by name, at logic frame 2753.
+//
+// This is the cheap static version, and it is the one that scales: every
+// `G.x` / `R.x` / `S.x` the file mentions must be a key of the corresponding
+// literal. It reads the source text because the three tables are module-private
+// on purpose -- they are not API.
+test('every G./R./S. field handlers.js reads is actually in its table', () => {
+  const src = fs.readFileSync(new URL('../src/handlers.js', import.meta.url), 'utf8');
+  for (const name of ['R', 'S', 'G']) {
+    const at = src.indexOf(`const ${name} = {`);
+    assert.ok(at > 0, `handlers.js has no ${name} table any more`);
+    // The literal runs to the first `};` at column 0 after it.
+    const body = src.slice(at, src.indexOf('\n};', at));
+    // `(\w+): 0x...` and not `^\s*(\w+):`, because these tables put several
+    // fields on one line -- which is how a missing one hides.
+    const keys = new Set([...body.matchAll(/(\w+)\s*:\s*0x[0-9a-fA-F]+/g)]
+      .map((m) => m[1]));
+    assert.ok(keys.size > 3, `${name} parsed as ${keys.size} keys -- the parse `
+      + 'broke, not the table');
+    // String.raw, because a `\b` inside a plain template literal is a BACKSPACE
+    // character and the regex then matches nothing at all. That is exactly what
+    // the first version of this test did: it passed, with `used` empty, on a
+    // tree where `G.b8` really was missing. Seen to fail, then fixed.
+    const used = new Set([...src.matchAll(
+      new RegExp(String.raw`\b` + name + String.raw`\.(\w+)`, 'g'))]
+      .map((m) => m[1]));
+    assert.ok(used.size > 3, `${name}. is read ${used.size} times -- the scan `
+      + 'broke, and a scan that finds nothing agrees with everything');
+    for (const u of used) {
+      assert.ok(keys.has(u), `handlers.js reads ${name}.${u} and ${name} has no `
+        + `such field, so every site using it computes a NaN address. That is `
+        + `the $8130B8 defect (G.b8, cited at $273BDE and $273D9E, missing from `
+        + `the table from W30 until wave 44).`);
+    }
+  }
+});
+
+test('a NaN address is REFUSED by Ram, not read as offset zero', () => {
+  // The backstop under the test above, and the reason the defect was invisible.
+  const ram = new Ram(null);
+  assert.throws(() => ram.u16(0x800000 + undefined), /outside main RAM/);
+  assert.throws(() => ram.setU16(NaN, 1), /outside main RAM/);
+  assert.throws(() => ram.u8(0x7fffff), /outside main RAM/);
+  assert.equal(ram.u16(0x800000), 0, '...and a legal address still reads');
 });

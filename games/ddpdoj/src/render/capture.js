@@ -4,12 +4,19 @@
 // the splice the page performs is the same code the packer proves correct
 // rather than a second implementation of it.
 //
-// WHY A SPLICE EXISTS AT ALL.  The port computes the player and nothing else
-// that reaches the screen: main-loop call #4 ($23D2AE, the display-list build)
-// is unported, and so are 18 of the 20 top-level object handlers.  So the page
-// replays the board's own display list and MOVES the ship's records to the
-// port's position.  Which records those are is a MEASUREMENT -- see
-// `tools/pixpack.mjs`; it is not a constant anybody typed in.
+// WHY A SPLICE EXISTED AT ALL, AND WHY IT IS NO LONGER THE PAGE'S DEFAULT.
+// This header used to say "main-loop call #4 ($23D2AE, the display-list build)
+// is unported".  IT HAS BEEN PORTED SINCE WAVE 11 and gated at 0 divergent
+// frames over 1,901 board frames by `pgm.py dlgate`; what was missing until
+// WAVE 44 is that nothing READ the list it builds.  The page now renders the
+// port's own `$800000` list by default (`src/web/app.js portSpriteList`), and
+// the splice below is kept as a LABELLED DIAGNOSTIC -- one keypress on the page
+// -- because the ship must land in the same place in both, which is the
+// cheapest correctness check available without an emulator.
+//
+// When it is used: the page replays the board's own display list and MOVES the
+// ship's records to the port's position.  Which records those are is a
+// MEASUREMENT -- see `tools/pixpack.mjs`; it is not a constant anybody typed in.
 //
 // THE ONE-FRAME LAG IS PART OF THE CONTRACT.  `:igs023:spritebuffer` lags main
 // RAM by one frame (PLAN §Assets, re-measured by the packer's lag sweep: lag 1

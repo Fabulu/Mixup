@@ -44,9 +44,20 @@ import { ProtLatch } from './protsim.js';
 import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
 import { makeBackground, BgVram, VideoRegs } from './background.js';
 
-/** The buckets the port has a PRODUCER for, in drain (= depth) order.  Every
- *  other one of the thirty is still empty on the port's side, which is why
- *  `pgm.py shipgate` substitutes only these into the board's staged set. */
+/** THE BUCKETS `pgm.py shipgate` SUBSTITUTES, in drain (= depth) order.
+ *
+ *  WAVE 44 CORRECTS THE COMMENT AND DELIBERATELY LEAVES THE ARRAY ALONE.  It
+ *  used to say "the buckets the port has a PRODUCER for ... every other one of
+ *  the thirty is still empty on the port's side", and that has been false since
+ *  wave 29: [M] `40-recon-emission-path.md` §2.3, re-measured in wave 44, the
+ *  port fills EIGHT of the thirty from the page's own seed -- 0, 2, 3, 5, 7,
+ *  14, 15, 19 -- and bucket 0, THE ENEMIES, carries 14 to 62 records a frame.
+ *
+ *  This ARRAY is not a census and must not be widened to match one.  It is
+ *  consumed by `tools/shipgate.mjs` (imported at :51, printed at :304) and by
+ *  `this.staged` below, and it is the set that gate SUBSTITUTES into the
+ *  board's own staged bytes.  Adding an entry changes what that gate compares;
+ *  do it only while owning `shipgate`. */
 export const PRODUCED_BUCKETS = [
   NAMED_BUCKETS.shadows,   // 5  -- the ship's and the pods' ground-plane shadows
   NAMED_BUCKETS.shots,     // 14 -- wave 8
@@ -55,9 +66,11 @@ export const PRODUCED_BUCKETS = [
 ];
 
 /** The object dispatch table $240F62, as far as the port implements it.
- *  Entry [5] is PARTIAL -- see type5.js: NINE of its 23 subsystem calls, of
- *  which W29 added the enemy subsystem ($2634F4) and the bullet subsystem
- *  ($281D9A + its timer $25354C).  4 of the 20 top-level entries. */
+ *  Entry [5] is PARTIAL -- see type5.js, WHICH IS THE AUTHORITY: `TYPE5_PORTED`
+ *  holds TEN of its 23 subsystem calls, not the "NINE" this comment claimed
+ *  until wave 44 (W33 added `$28AD54` and did not update this line).  Among them
+ *  W29's enemy subsystem ($2634F4) and bullet subsystem ($281D9A + its timer
+ *  $25354C).  4 of the 20 top-level entries. */
 export function defaultHandlers(rom, vram, opts = {}) {
   return new Map([
     // WAVE 13.  $240F62[1] = $26127A, THE BACKGROUND: the scroll VM, both
@@ -67,7 +80,8 @@ export function defaultHandlers(rom, vram, opts = {}) {
     [1, makeBackground(rom, vram, opts)],
     [2, updatePlayer],    // $240F62[2] = $2491C0, P1
     [3, updatePlayer],    // $240F62[3] = $249246, P2
-    // $240F62[5] = $28B5E0, PARTIAL: 9 of its 23 jsr targets.  W29: this entry
+    // $240F62[5] = $28B5E0, PARTIAL: 10 of its 23 jsr targets (`TYPE5_PORTED`
+    // is the authority and says so itself).  W29: this entry
     // is now the one that drives the ENEMIES and the BULLET POOL, so a frame
     // here can throw by address from deep inside a handler nobody has ported --
     // which is the point (docs/knowledge/10: a failure is strong evidence).
@@ -333,11 +347,14 @@ export class Game {
     // its 32-bit `asr.l`/`add.l` pair and the OR-ed flip byte, the terminator
     // and the thirty-counter reset.
     //
-    // WHAT IT DRAWS TODAY: buckets 14 (the shots, wave 8), 19 (THE SHIP, its
-    // invulnerability aura and its glow), 15 (THE TWO OPTION PODS) and 5 (the
-    // ship's and the pods' ground-plane shadows) -- wave 12.  Twenty-six of the
-    // thirty buckets still have no producer, so the list the port builds is
-    // those four plus a terminator.  The transform itself is gated to the byte
+    // WHAT IT DRAWS TODAY, corrected in wave 44: [M] EIGHT of the thirty
+    // buckets carry records from the page's own seed -- 0 (THE ENEMIES, 14 to
+    // 62 a frame), 2 and 3 (background elements and the midboss), 5 (the ship's
+    // and the pods' ground shadows), 7, 14 (the shots, wave 8), 15 (the two
+    // option pods) and 19 (THE SHIP, its aura and its glow).  This used to say
+    // "twenty-six of the thirty still have no producer, so the list is those
+    // four plus a terminator", which stopped being true at wave 29 and stayed
+    // on the page until the list was finally drawn.  The transform itself is gated to the byte
     // by `pgm.py dlgate` and the four producers by `pgm.py shipgate`, both of
     // which feed the port the BOARD's staged bytes for everything they do not
     // claim -- the capture is the gate's INPUT, never its output.

@@ -33,8 +33,19 @@ export class Ram {
   }
   #off(a) {
     const o = a - MACHINE.ramBase;
-    if (o < 0 || o >= MACHINE.ramSize) {
-      throw new RangeError(`$${a.toString(16)} is outside main RAM`);
+    // WAVE 44: `!(o >= 0 && o < size)`, NOT `o < 0 || o >= size`, and the
+    // difference is NaN.  `NaN < 0` and `NaN >= size` are BOTH false, so the old
+    // form let a NaN address through and `DataView.getUint16(NaN)` reads offset
+    // ZERO -- i.e. `$800000`, the head of the display list.  A typo'd or shadowed
+    // field constant then reads a plausible number instead of throwing, silently,
+    // forever.  It cost me a red run in `tools/webgate.mjs` this wave (a local
+    // `const P` shadowed the imported field table, so `RAM.player1 + P.posY` was
+    // NaN and the ship's position came back as display-list word 0), and the
+    // measurement looked wrong rather than broken.  Same two comparisons, same
+    // cost, one more failure mode caught.
+    if (!(o >= 0 && o < MACHINE.ramSize)) {
+      throw new RangeError(`${Number.isFinite(a) ? `$${a.toString(16)}` : a} `
+        + 'is outside main RAM');
     }
     return o;
   }

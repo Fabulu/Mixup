@@ -148,6 +148,25 @@ const G = {
   b4: 0x8130b4,   // $26A742 / $26A906 / $27626E / $276272
   b6: 0x8130b6,   // $27747A -- type $89's salvo reload
   bc: 0x8130bc,   // $276254 -- type $88's, and the only one shifted (lsr.w #2)
+  // WAVE 44 -- A DEFECT, NOT AN ADDITION.  `G.b8` was ALREADY CITED TWICE in
+  // type $80 (below, at $273BDA and $273D9A) and was never in this table, so
+  // both sites evaluated `a5 + undefined` = NaN.  `Ram.#off`'s old bounds test
+  // was `o < 0 || o >= size`, and NaN fails BOTH comparisons, so the read went
+  // through and `DataView.getUint16(NaN)` returned offset ZERO -- i.e.
+  // `$800000`, the head of the display list.  Type $80's salvo reload and its
+  // second turret cadence have therefore been computed from a SPRITE RECORD's
+  // first word since W30, silently, on every frame the handler ran.
+  //
+  // Found because wave 44 tightened that bounds test to `!(o >= 0 && o < size)`
+  // and the page then stopped, loudly, at logic frame 2753 -- which is how this
+  // project is supposed to work and is exactly `docs/knowledge/03`'s point.
+  //
+  // The address is the LISTING's, not the comment's:
+  //   $273BDE  sub.w $8130B8.l,D0      (after move.w #$50,D0)
+  //   $273D9E  sub.w $8130B8.l,D0      (after move.w #$30,D0)
+  // `xref.py abs 8130b8` finds 18 readers in the image, $273BE0 and $273DA0
+  // among them.  `src/initbody.js`'s own table has always had it.
+  b8: 0x8130b8,   // $273BDE (type $80 salvo reload) / $273D9E (turret 2 cadence)
 };
 /** `$27327A` -- type $85/$86's 32-entry longword MUZZLE-VECTOR table, read at
  *  `$275ABC move.l (A4,D0.w),D3`.  Its window is declared by

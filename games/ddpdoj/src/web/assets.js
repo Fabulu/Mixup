@@ -567,8 +567,13 @@ export function verifyCoverage(bundle, opts = {}) {
   if (opts.dropStream !== undefined) {
     streams = streams.filter((_, i) => i !== opts.dropStream);
   }
-  // [base, maskWords] sorted by base -> a lookup by exact base.
-  const byBase = new Map(streams.map(([b, n]) => [b, n]));
+  // WAVE 44: the manifest entry is [romOffs, packedBase, maskWords] -- the
+  // exporter now keeps the CARTRIDGE address it always computed, because the
+  // page remaps the PORT's own display list through it (`app.js
+  // portSpriteList`). THIS check is about the CAPTURE, whose records were
+  // already rewritten into the packed space by the exporter, so it still keys
+  // on the packed base and ignores the ROM one.
+  const byBase = new Map(streams.map(([, b, n]) => [b, n]));
   for (let i = 0; i < cap.length; i++) {
     const st = cap.state(i);
     for (const [name, ram, n, sheet] of [['BG', st.bg, 64 * 16, sheets.bg],

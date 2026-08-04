@@ -23,7 +23,12 @@ import { fileURLToPath } from 'node:url';
 
 import {
   pickScale, PICTURES, MODES, DEFAULT_MODE, stripToAttached,
+  portSpriteList, romToPackedMap, namedMisses, PORT_LIST_WORDS,
+  PORT_LIST_MUTATIONS, SPRITE_SOURCES, DEFAULT_SPRITE_SOURCE,
 } from '../src/web/app.js';
+import { Ram } from '../src/ram.js';
+import { RAM } from '../src/machine.js';
+import { RAM_STRIDE } from '../src/render/spritelist.js';
 import {
   Capture, shadowProject, ATTACH_MIN_SCORE, ATTACH_MIN_FRAMES,
 } from '../src/render/capture.js';
@@ -480,6 +485,223 @@ test('a broken attached set THROWS by name rather than losing the ship quietly',
       /inside a \d+-word/, 'an out-of-range index must throw');
   });
 
+// ============ 2c. WAVE 44 -- THE PORT'S OWN DISPLAY LIST, AND THE MISS GUARD
+//
+// SAME RULE AS ABOVE: synthetic RAM, so the suite runs on a tree with no
+// cartridge. What these prove is the TRANSFORM -- what is remapped, what is
+// skipped, how a skip is written, and that a skip cannot truncate the list.
+// What they CANNOT prove is the measured numbers against the real 166-stream
+// sheet (16,457 records over 300 steps, 0 missed, bucket 0 >= 14 on every
+// frame, the first miss $233F34 at lf2315); those are in `tools/webgate.mjs`,
+// which exits 2 rather than skipping when `assets/` is absent.
+
+/** A `Ram` with a hand-written display list at $800000. Each entry is
+ *  [x, y, colour, romOffs, wide, high]. */
+function ramWithList(entries) {
+  const ram = new Ram();
+  entries.forEach(([x, y, color, offs, wide, high], r) => {
+    const b = RAM.spriteList + r * RAM_STRIDE * 2;
+    ram.setU16(b + 0, x & 0x07ff);
+    ram.setU16(b + 2, y & 0x03ff);
+    // word 2: flip/colour/pri in the high bits, offs bits 22..16 in bits 6..0.
+    ram.setU16(b + 4, ((color & 0x1f) << 8) | ((offs >>> 16) & 0x7f));
+    ram.setU16(b + 6, offs & 0xffff);
+    ram.setU16(b + 8, ((wide & 0x3f) << 9) | (high & 0x1ff));
+  });
+  return ram;                       // the rest is zero = the terminator
+}
+const mapOf = (...rows) => new Map(rows.map(([rom, base, n]) => [rom, [base, n]]));
+
+test('the remap rewrites ONLY the offs field, and by the map', () => {
+  // $12D430 is the real shape of the problem: 23 bits of cartridge address that
+  // must come out as a small packed base, with flip/colour/pri untouched.
+  const ram = ramWithList([[100, 50, 17, 0x12d430, 3, 32]]);
+  const r = portSpriteList(ram, mapOf([0x12d430, 4608, 98]));
+  assert.equal(r.records, 1);
+  assert.equal(r.drawn, 1);
+  assert.equal(r.skipped, 0);
+  const [s] = parseSpriteList(r.words, RAM_STRIDE);
+  assert.equal(s.offs, 4608, 'the record must carry the PACKED base');
+  assert.equal(s.color, 17, 'the colour bank was overwritten');
+  assert.equal(s.width, 3);
+  assert.equal(s.height, 32);
+  assert.equal(s.x, 100);
+  assert.equal(s.y, 50);
+});
+
+test('a record with NO ART is skipped by WIDTH and NAMED by its ROM address',
+  () => {
+    // The three cases side by side: one shipped, one absent, one shipped again.
+    // The THIRD is the point -- a skip must not cost the records behind it.
+    const ram = ramWithList([
+      [10, 10, 0, 0x001520, 3, 32],
+      [20, 20, 1, 0x233f34, 5, 80],     // [M] the real first miss
+      [30, 30, 2, 0x001520, 3, 32],
+    ]);
+    const r = portSpriteList(ram, mapOf([0x001520, 4608, 98]));
+    assert.equal(r.records, 3);
+    assert.equal(r.drawn, 2);
+    assert.equal(r.skipped, 1);
+    assert.deepEqual([...r.missing], [[0x233f34, 1]],
+      'the miss must be named by its CARTRIDGE address and counted');
+    const out = parseSpriteList(r.words, RAM_STRIDE);
+    assert.equal(out.length, 3,
+      'a skip must NOT terminate the list -- everything behind it still draws');
+    assert.equal(out[1].width, 0, 'the skip is a zero WIDTH');
+    assert.equal(out[1].height, 80, '...and the height is untouched, or word 4 '
+      + 'becomes the terminator');
+    assert.equal(out[2].offs, 4608, 'the record BEHIND the gap must still be '
+      + 'remapped and drawable');
+  });
+
+test('the SKIP-BY-WORD-4 mutation truncates the list -- the choice is real',
+  () => {
+    const ram = ramWithList([
+      [10, 10, 0, 0x001520, 3, 32],
+      [20, 20, 1, 0x233f34, 5, 80],
+      [30, 30, 2, 0x001520, 3, 32],
+    ]);
+    const map = mapOf([0x001520, 4608, 98]);
+    const good = parseSpriteList(portSpriteList(ram, map).words, RAM_STRIDE);
+    const bad = parseSpriteList(portSpriteList(ram, map,
+      { mutate: 'terminate-instead-of-zero-width' }).words, RAM_STRIDE);
+    assert.equal(good.length, 3);
+    assert.equal(bad.length, 1,
+      'zeroing word 4 must LOSE the records behind the gap, or the reason the '
+      + 'skip is written into the width field is untested');
+  });
+
+test('a stream that is SHORT for the record is a miss, not an over-read', () => {
+  // [M] `43-plan-enemy-layer.md` §1.4, reproduced this wave over 3,000 frames:
+  // the port emits offs $000000 1,075 times, 1,065 of them at 1x1 and TEN AT
+  // 3x40. The sheet holds TEN mask words for it. A map lookup alone succeeds --
+  // its packed base really is 0 -- and the record reads 122 words out of a
+  // 10-word stream, i.e. the next stream's data.
+  const map = mapOf([0x000000, 0, 10]);
+  const small = portSpriteList(ramWithList([[0, 0, 0, 0, 1, 1]]), map);
+  assert.equal(small.drawn, 1, '1x1 needs 2 + 1 = 3 words and must DRAW');
+  const big = portSpriteList(ramWithList([[0, 0, 0, 0, 3, 40]]), map);
+  assert.equal(big.drawn, 0);
+  assert.equal(big.skipped, 1, '3x40 needs 122 words and must be a MISS');
+  assert.deepEqual([...big.missing], [[0, 1]]);
+  // ...and without the rule it draws, which is the whole reason the rule exists.
+  const unguarded = portSpriteList(ramWithList([[0, 0, 0, 0, 3, 40]]), map,
+    { mutate: 'no-extent-check' });
+  assert.equal(unguarded.drawn, 1);
+  assert.equal(unguarded.skipped, 0);
+});
+
+test('a record the hardware draws nothing for needs NO ART and is left alone',
+  () => {
+    // `SpriteDrawer.draw` returns before touching a ROM word when either extent
+    // is zero (sprites.js:139), so such a record cannot be a miss. AND ZEROING
+    // ITS WIDTH WOULD BE A DISASTER: a record with width != 0 and height 0 has
+    // `word4 & $7FFF != 0`, so the list runs on -- until the width is cleared
+    // and word 4 becomes the terminator.
+    const ram = ramWithList([
+      [10, 10, 0, 0x999999, 4, 0],      // NOT in the map, and draws nothing
+      [20, 20, 1, 0x001520, 3, 32],
+    ]);
+    const r = portSpriteList(ram, mapOf([0x001520, 4608, 98]));
+    assert.equal(r.blank, 1);
+    assert.equal(r.skipped, 0, 'a record that reads no ROM word is not a miss');
+    assert.equal(r.drawn, 1);
+    assert.equal(parseSpriteList(r.words, RAM_STRIDE).length, 2,
+      'the zero-height record must not have become the terminator');
+  });
+
+test('the list stops where the hardware stops, and never reads past $8009FF',
+  () => {
+    assert.equal(PORT_LIST_WORDS, 256 * RAM_STRIDE);
+    // 256 full entries and no terminator at all: the parser caps at 256 because
+    // the hardware does, and this must not walk off the end of the copy.
+    const ram = new Ram();
+    for (let r = 0; r < 300; r++) {
+      const b = RAM.spriteList + r * RAM_STRIDE * 2;
+      if (b + 8 - RAM.spriteList >= 0x20000) break;
+      ram.setU16(b + 4, 0); ram.setU16(b + 6, 0x1520);
+      ram.setU16(b + 8, (3 << 9) | 32);
+    }
+    const r = portSpriteList(ram, mapOf([0x1520, 4608, 98]));
+    assert.equal(r.records, 256);
+    assert.equal(r.words.length, PORT_LIST_WORDS);
+  });
+
+test('a PRE-WAVE-44 manifest is refused by name, not read as a triple', () => {
+  // The silent failure this replaces: a 2-field entry destructured as 3 gives
+  // `words === undefined`, every extent check fails, and the screen is empty
+  // with a perfectly plausible explanation on the status line.
+  assert.throws(() => romToPackedMap({ spr: { streams: [[0, 10], [10, 98]] } }),
+    /predates wave 44/);
+  assert.throws(() => romToPackedMap({ spr: {} }), /missing or empty/);
+  const m = romToPackedMap({ spr: { streams: [[0x1520, 4608, 98]] } });
+  assert.deepEqual(m.get(0x1520), [4608, 98]);
+});
+
+test('THE EXPORTER KEEPS THE CARTRIDGE ADDRESS, and nothing else moved', () => {
+  // The one-line half of this wave, and the only one the unit suite can see --
+  // the bundle it produces is gitignored. If this reverts, the page cannot
+  // translate the port's list at all: `romToPackedMap` throws by name at boot
+  // (the test above) and `tools/webgate.mjs` goes red on the next export. This
+  // is the cheap early warning, not the proof.
+  const exporter = read('tools/export-web.mjs');
+  assert.match(exporter, /\[offs, offsMap\.get\(offs\), w\.maskWords\]/,
+    'export-web.mjs stopped emitting the ROM address it computes. It has '
+    + 'always built `offsMap`; before wave 44 it threw the key away on this '
+    + 'very line, and that is why 301 of the 302 streams the port emits would '
+    + 'index the packed mask array at `offs & 16383` and draw garbage.');
+  // ...and the manifest is the ONLY thing that may have changed. Measured this
+  // wave by hashing all 21 files before and after: no .gz asset moves a byte,
+  // which is why `bundlegate` must still be at 100.0000 %.
+  assert.match(exporter, /NOT ONE \.gz asset moves a byte/,
+    'the exporter must say what this change does NOT touch');
+  assert.match(read('tools/bundlegate.mjs'), /exact === total/,
+    'bundlegate stopped requiring every pixel. Nothing in wave 44 may loosen '
+    + 'it -- the exporter change adds a KEY and re-bases nothing.');
+});
+
+test('the miss list is named by ADDRESS and ordered by COUNT', () => {
+  assert.equal(namedMisses(new Map([[0x233f34, 3], [0x0650a8, 9]]), 2),
+    '$0650A8x9 $233F34x3');
+  assert.equal(namedMisses(new Map()), '');
+});
+
+test('the PORT is the default sprite source, and the mutations are declared',
+  () => {
+    assert.equal(DEFAULT_SPRITE_SOURCE, 'port');
+    assert.deepEqual(SPRITE_SOURCES, ['port', 'capture']);
+    // Declared in one place so `webgate --break` cannot invent one, the same
+    // rule `displaylist.js MUTATIONS` states for itself.
+    for (const n of ['no-remap', 'drop-one-stream',
+      'terminate-instead-of-zero-width', 'no-extent-check']) {
+      assert.ok(n in PORT_LIST_MUTATIONS, `${n} is not declared`);
+    }
+    assert.throws(() => portSpriteList(new Ram(), new Map(),
+      { mutate: 'invented' }), /unknown port-list mutation/);
+  });
+
+test('Demo.draw() renders the HELD list, and step() takes it BEFORE the frame',
+  () => {
+    // The measured contract: `:igs023:spritebuffer` lags main RAM by one frame
+    // (render/capture.js: lag 1 holds on 161/161 captured frames, lag 0 and lag
+    // 2 on none). `webgate` proves the CONSEQUENCE against the real port -- the
+    // ship sits at a constant offset from the PREVIOUS frame's $8103E8. This
+    // proves the PAGE is built that way, which is the thing a reorder breaks:
+    // there is exactly one snapshot and one `g.step()` and their order is the
+    // entire question.
+    const src = read('src/web/app.js');
+    const body = src.slice(src.indexOf('  step() {'));
+    // The exact call sites, not a substring: the prose above them says "BEFORE
+    // `g.step()`" and a looser search finds the COMMENT rather than the code.
+    const iSnap = body.indexOf('this.portList = portSpriteList(');
+    const iStep = body.indexOf('g.step(currentPortWord())');
+    assert.ok(iSnap >= 0 && iStep >= 0, 'step() must do both');
+    assert.ok(iSnap < iStep,
+      'step() builds the port list AFTER g.step(), so the page renders the '
+      + 'list the CURRENT frame just built. That is one frame early and it '
+      + 'looks ALMOST right.');
+  });
+
 test('THE STRIP IS IN THE PAGE AND NOT IN THE EXPORTER', () => {
   // 41-recon-sprite-art.md §5.3, and this is the whole reason wave 37 has a
   // brief. `tools/bundlegate.mjs` renders THE PUBLISHED BUNDLE'S OWN capture
@@ -571,6 +793,57 @@ test('the page says the recorded enemies were REMOVED, and does not still '
     'the page must still say WHY they were wrong: a 161-frame loop against a '
     + '7,317-frame computed stage');
 });
+
+// WAVE 44 -- the claims the port's own list makes, and the one the page must
+// stop making. Same discipline as above: a claim on this page has to be one a
+// check would catch being wrong.
+
+test('the page says the ENEMIES ARE THE PORT\'S and no longer says the layer '
+  + 'is empty', () => {
+  const html = read('index.html');
+  assert.ok(!/only four of the thirty sprite buckets/i.test(html),
+    'the page still says four buckets have producers and the objects cannot '
+    + 'draw themselves. They can: wave 44 renders the port\'s own $800000 list.');
+  assert.ok(!/sky is empty on purpose/i.test(html),
+    'the sky is not empty any more');
+  assert.match(html, /\$800000/,
+    'the page must name the list it is drawing');
+  assert.match(html, /16,457|16457/,
+    'say WHAT WAS MEASURED, not just that something now draws');
+  // ...and the honest half: the coverage is a property of THIS seed, and the
+  // page must not sell 5.32 s of free art as a general guarantee.
+  assert.match(html, /5\.32/, 'the page must say how long the sheet lasts');
+  assert.match(html, /this seed|THIS seed/,
+    'the page must say the coverage window is a property of this seed');
+  assert.match(html, /\$233F34/,
+    'the first record with no art is a measured address and belongs on the page');
+});
+
+test('the loading line is CLOSED when boot returns, or the last shard sticks',
+  () => {
+    // REPORTED FROM PLAY: "the last loading gfx text just stays on screen even
+    // when finished loading." It did. `boot()` starts the DEFERRED background
+    // shards after `loadBundle` resolves, through the SAME onProgress the boot
+    // set used, so `statusEl.textContent = ''` runs and is then overwritten by
+    // shards 2..7 as they land -- and the last to arrive stays forever.
+    //
+    // A source check, and weak in general. It is strong here for the reason the
+    // draw-order one is: there is exactly ONE onProgress handler and exactly one
+    // place boot resolves, and the whole question is whether the first is fenced
+    // by the second. The BEHAVIOUR was checked in a real browser this wave
+    // (44-impl-E1-render.md) -- this is what keeps it from coming back.
+    const html = read('index.html');
+    const i = html.indexOf('onProgress:');
+    assert.ok(i > 0, 'the page must still report loading progress');
+    const handler = html.slice(i, html.indexOf('onError:', i));
+    assert.match(handler, /if \(!booting\) return;/,
+      'the loading line must stop accepting writes once boot has returned, or '
+      + 'the deferred shards keep painting over it');
+    const after = html.indexOf('booting = false;');
+    assert.ok(after > i, 'nothing ever closes the loading channel');
+    assert.ok(after < html.indexOf("statusEl.textContent = '';", after + 1) + 1,
+      'the flag must be cleared before the element is');
+  });
 
 test('the page still says the HUD and the palette are the recording', () => {
   // Removal touched neither. `st.tx` is the text layer, not sprites: over all

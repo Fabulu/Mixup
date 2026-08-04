@@ -784,14 +784,46 @@ const manifest = {
     colWords: packedCol.buf.length, colUsed: packedCol.used,
     // Every stream base that is legal in the packed space, so a record that
     // points outside one is caught at boot instead of drawing noise.
+    //
+    // WAVE 44 (enemy layer E1) KEEPS THE ROM KEY.  Until this wave the triple
+    // below was a PAIR -- `[packedBase, maskWords]` -- and the cartridge address
+    // `offsMap` is keyed on was computed here and thrown away on this very line.
+    // That discarded number is the whole of the remap the page needs: the PORT's
+    // own display list at $800000 carries CARTRIDGE stream addresses in words 2
+    // and 3, and 301 of the 302 it emits index the packed mask array at
+    // `offs & (16384-1)` and draw somebody else's picture if they are not
+    // translated (40-recon-emission-path.md §4 step 2, measured).
+    //
+    // So the entry is now `[romOffs, packedBase, maskWords]` and
+    // `src/web/app.js portSpriteList()` builds `romOffs -> packedBase` out of
+    // it.  MEASURED, this wave, and it is NOT the number the plan predicted:
+    // `spr.streams` 1,706 -> 2,825 COMPACT JSON bytes, but manifest.json goes
+    // 10,112 -> 12,272 B = **+2,160 B**, not +1,119.  `JSON.stringify(manifest,
+    // null, 1)` writes this file PRETTY, so a third array element costs a whole
+    // indented line per stream, not a comma and a number.  (43-plan §3.1(a)
+    // predicted +1,328 B by measuring the compact delta and applying it to the
+    // pretty file.  Same decision, 832 B more.)  Boot 470.0 -> 472.1 KiB.
+    //
+    // AND WHAT DOES NOT CHANGE, VERIFIED BY HASHING ALL 21 FILES BOTH WAYS:
+    // NOT ONE .gz asset moves a byte.  The packed arrays, the rewritten
+    // capture.bin and therefore every pixel `tools/bundlegate.mjs` compares are
+    // exactly what they were -- this line adds a KEY, it does not re-base
+    // anything.
+    //
+    // The filter is on maskWords, i.e. on the THIRD field now.  A stream of 2
+    // words or fewer is a header with no mask data; it cannot legally be drawn
+    // and must not be a lookup key on either side.
     streams: [...streams.entries()]
-      .map(([offs, w]) => [offsMap.get(offs), w.maskWords])
-      .filter(([, n]) => n > 2)
-      .sort((a, b) => a[0] - b[0]),
+      .map(([offs, w]) => [offs, offsMap.get(offs), w.maskWords])
+      .filter(([, , n]) => n > 2)
+      .sort((a, b) => a[1] - b[1]),
     note: 'RE-BASED into a compact 16-bit address space: headers rewritten to '
       + 'the packed colour addresses, and every capture.bin record\'s offs '
       + 'field rewritten to match. Array lengths are powers of two because '
-      + 'SpriteDrawer indexes with & (len-1).',
+      + 'SpriteDrawer indexes with & (len-1). Each entry is [romOffs, '
+      + 'packedBase, maskWords]: romOffs is the CARTRIDGE word offset the '
+      + 'board\'s own display list carries, and the page remaps the port\'s '
+      + '$800000 list through it (src/web/app.js portSpriteList).',
   },
   // WAVE 12 -- THE ONE FIELD THAT MAKES THE SHIP BANK.  `render/capture.js`
   // named this as "a one-field change to the exporter and a later wave's job";
