@@ -777,17 +777,8 @@ function contact(state, res, j, type) {
   const o = state.obj;
   const i = j + ENEMY_BASE;
   const t = type & 0x7F;                          // $C171 AND #$7F
-  if (t === 0x27) {                               // $C173/$C175
-    throw new Error('$C13D: enemy type $27 touched the ship. The arm that reads '
-                  + 'a score digit ($07E5,X), turns the object into type 1 '
-                  + 'metasprite $A3 and INCs $20,X (an extra life) is not '
-                  + 'ported -- no measured run has spawned type $27.');
-  }
-  if (t === 0x29) {                               // $C177/$C179
-    throw new Error('$C159: enemy type $29 touched the ship. The arm that turns '
-                  + 'it into type 1 metasprite $A1 and calls $844B is not '
-                  + 'ported -- no measured run has spawned type $29.');
-  }
+  if (t === 0x27) return pickup1UP(state, i);     // $C173/$C175 BEQ $C13D
+  if (t === 0x29) return pickupBonus(state, i);   // $C177/$C179 BEQ $C159
   if (t >= 3) return armedEnemy(state, res, j);   // $C17D BCS $C1B8
   if (t !== 1) return NEXT_SLOT;                  // $C181 BNE $C136 (type 2)
   const status = o.status[i];                     // $C183 LDA $010C,Y
@@ -799,6 +790,76 @@ function contact(state, res, j, type) {
     return NEXT_SLOT;                             // $C1B5 JMP $C136 -- keep going
   }
   return everyEnemy(state, res, j);               // $C18C
+}
+
+/**
+ * `$C13D` -- TYPE `$27` IS THE EXTRA LIFE, and touching it is what collects it.
+ *
+ *   C13D  A5 18 / 0A / 0A / AA        X = $18 * 4, the score's 4-byte stride
+ *   C142  BD E5 07  LDA $07E5,X / 4A LSR A / B0 EE BCS $C136
+ *   C148  A9 01 / 99 0C 03  STA $030C,Y      the object becomes TYPE 1
+ *   C14D  A9 A3 / 99 2C 01  STA $012C,Y      metasprite $A3
+ *   C152  A6 18 / F6 20     LDX $18 / INC $20,X    <-- THE EXTRA LIFE
+ *   C156  4C 66 C1  JMP $C166  -> LDA #$36 / JSR $EC1E / JMP $C136
+ *
+ * THE SCORE TEST IS THE SAME ONE `$AF70` USES for the warp counter, byte for
+ * byte (`LDA $18 / ASL / ASL`, then bit 0 of `$07E5,X`): the pickup only pays
+ * out while the score's middle BCD byte is EVEN. Not masked to a nibble -- that
+ * is `$CE89`/`scoreDigit()`, a third reader of the same byte with different
+ * arithmetic. `BCS $C136` is a plain "next slot": the object is NOT consumed
+ * and the ship can touch it again on the next frame with a different score.
+ *
+ * `INC $20,X` HAS NO CEILING. `$88BF`'s HUD reads `$20,X` and draws it, and
+ * `$979F DEC $20,X` / `$97C1 BMI` is the death path -- so nine lives plus one
+ * is $0A and nothing clamps it. Literal, on purpose.
+ *
+ * @returns {string} always NEXT_SLOT -- both arms end at `$C16B JMP $C136`
+ */
+function pickup1UP(state, i) {
+  const o = state.obj;
+  // $C13D-$C142. P1's score base is $07E4 ($8474), so +1 is $07E5.
+  const digit = state.score[5 + 4 * state.zp.player];
+  if ((digit & 1) !== 0) return NEXT_SLOT;        // $C145 LSR A / $C146 BCS $C136
+  o.type[i] = 0x01;                               // $C148/$C14A STA $030C,Y
+  o.anim[i] = 0xA3;                               // $C14D/$C14F STA $012C,Y
+  const p = state.zp.player;                      // $C152 LDX $18
+  state.lives[p] = u8(state.lives[p] + 1);        // $C154 INC $20,X
+  return contactChime(state);                     // $C156 JMP $C166
+}
+
+/**
+ * `$C159` -- TYPE `$29` IS THE BONUS, and it pays `$844B`'s +$000500.
+ *
+ *   C159  A9 01 / 99 0C 03  STA $030C,Y      the object becomes TYPE 1
+ *   C15E  A9 A1 / 99 2C 01  STA $012C,Y      metasprite $A1 (not $A3)
+ *   C163  20 4B 84  JSR $844B   -> $9A = 5, $99 = 0, $9B = 0  = +500 points
+ *   C166  (falls through into the chime)
+ *
+ * NO GATE OF ANY KIND: unlike `$C13D` this arm has no score test, so it always
+ * pays. `$844B`'s other caller is `$CB1B`.
+ *
+ * BOTH ARMS LEAVE THE OBJECT ALIVE AS TYPE 1. They do not free the slot and
+ * they do not call `$AEF8`; the object stays in place with a new metasprite,
+ * which is what draws the "1UP"/bonus legend. Type 1 with bit 7 CLEAR is "not
+ * initialised", so `$AE1C` entry 1 runs its own init on the next frame -- and
+ * `$C17F CMP #$01` means a SECOND touch of the same object now falls into the
+ * capsule/every-enemy arms instead. All of that is the ROM's and none of it is
+ * an abstraction this port added.
+ *
+ * @returns {string} always NEXT_SLOT
+ */
+function pickupBonus(state, i) {
+  const o = state.obj;
+  o.type[i] = 0x01;                               // $C159/$C15B STA $030C,Y
+  o.anim[i] = 0xA1;                               // $C15E/$C160 STA $012C,Y
+  addScore(state, 0x00, 0x05, 0x00);              // $C163 JSR $844B -> $8455
+  return contactChime(state);                     // falls through into $C166
+}
+
+/** `$C166` -- `LDA #$36 / JSR $EC1E / JMP $C136`, shared by both arms. */
+function contactChime(state) {
+  soundRequest(state, 0x36);                      // $C166/$C168 JSR $EC1E
+  return NEXT_SLOT;                               // $C16B JMP $C136
 }
 
 /**

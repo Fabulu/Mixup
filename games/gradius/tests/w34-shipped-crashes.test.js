@@ -27,6 +27,7 @@ import { ASSETS, headlessResources } from './helpers.js';
 import { u8, ENEMY_BASE } from '../src/state.js';
 import { bootState } from '../src/main.js';
 import { nmi } from '../src/nmi.js';
+import { playerVsEnemies } from '../src/collision.js';
 
 const res = headlessResources(0);
 const prg = new Uint8Array(readFileSync(join(ASSETS, 'prg.bin')));
@@ -169,4 +170,109 @@ test('$B402: the arc is 34 frames and 66 px, which is why the net is one left', 
     'LEFT LEFT LEFT RIGHT RIGHT -- the net is ONE arc left, so the enemy is '
     + 'still on screen when the schedule ends. $B200 is four left and one '
     + 'right, which is why $B1C5 stops at 4 on the cartridge.');
+});
+
+// =========================================================================
+// #3  $C13D / $C159 -- types $27 and $29 touching the ship. Stages 1-4.
+//     Stage 1 threw at frame 414 with the ship never moved.
+// =========================================================================
+
+/** A stage-1 play state with a pickup of `type` sitting on the ship. */
+function onTheShip(type, digit) {
+  const s = bootState(res.manifest);
+  const i = 9 + ENEMY_BASE;
+  s.obj.type[i] = type;                 // $030C,Y -- bit 7 CLEAR, but $C16E
+  s.obj.x[i] = 100; s.obj.y[i] = 100;   // ANDs it off anyway, so both forms hit
+  s.obj.s0460[9] = 0;                   // $0460,Y -- box class 0, 16 x 16
+  s.obj.x[0] = 100; s.obj.y[0] = 100;
+  s.score[5] = digit;                   // $07E5, player 1
+  return s;
+}
+
+test('$C13D: type $27 is the EXTRA LIFE, and the score byte gates it', () => {
+  // W33 §4b: stage 1 carries three $27 records ($A8F5, chunks 5-7) and the port
+  // threw the first time one flew into a ship that had not moved.
+  // RED WHEN: the arm is a throw again; the score test is dropped or inverted;
+  // $20,X is not INCd; the metasprite is not $A3; the object is freed instead
+  // of being turned into type 1.
+  const even = onTheShip(0x27, 0x40);
+  assert.equal(playerVsEnemies(even, res), false, 'the sweep must NOT die');
+  assert.equal(even.lives[0], 4, '$C154 INC $20,X -- 3 lives became 4');
+  assert.equal(even.obj.type[9 + ENEMY_BASE], 0x01, '$C14A STA $030C,Y');
+  assert.equal(even.obj.anim[9 + ENEMY_BASE], 0xA3, '$C14F STA $012C,Y');
+
+  // the ODD arm: $C146 BCS $C136 is a plain "next slot" and consumes nothing.
+  const odd = onTheShip(0x27, 0x41);
+  assert.equal(playerVsEnemies(odd, res), false);
+  assert.equal(odd.lives[0], 3, 'an odd $07E5 pays nothing');
+  assert.equal(odd.obj.type[9 + ENEMY_BASE], 0x27,
+    'and leaves the object alone, so the next frame can try again');
+});
+
+test('$C159: type $29 pays $844B, always, with no score gate at all', () => {
+  // RED WHEN: the arm is a throw again; the bonus is $8453's +$0001 or $845B's
+  // +$0050 instead of $844B's +$0005; the metasprite is $A3 (that is $C13D's);
+  // a score gate is copied across from $C13D.
+  const s = onTheShip(0x29, 0x41);        // ODD -- must not matter here
+  assert.equal(playerVsEnemies(s, res), false);
+  assert.equal(s.obj.type[9 + ENEMY_BASE], 0x01, '$C15B STA $030C,Y');
+  assert.equal(s.obj.anim[9 + ENEMY_BASE], 0xA1, '$C160 STA $012C,Y -- $A1, not $A3');
+  // $844B is $9A = 5, i.e. +$000500 in the middle BCD byte.
+  assert.equal(s.score[5], 0x46, '$07E5 was $41 and $844B adds 5');
+  assert.equal(s.lives[0], 3, 'and $C159 has no INC $20,X');
+});
+
+test('$C13D/$C159 END TO END: stage 1 chunk 5, 600 frames, ship never moved', () => {
+  // W33's repro, and it is the one that matters: the ship is left exactly where
+  // bootState puts it, no buttons are pressed, and the $27 flies into it.
+  // Before this wave that threw at frame 414.
+  // RED WHEN: either arm throws again.
+  const s = seedChunk(0, 5);
+  let collected = -1, spawned = 0;
+  const was = new Uint8Array(10);
+  for (let f = 0; f < 600; f++) {
+    s.cam.lo = u8(s.cam.lo + 2);
+    if (s.cam.lo < 2) s.cam.hi = u8(s.cam.hi + 1);
+    // TWO INTERVENTIONS, LABELLED (docs/knowledge/09), and both are necessary
+    // rather than convenient: MEASURED, an identical 1400-frame run without
+    // the shield collects nothing, because $C1B8 kills the ship on an ordinary
+    // enemy at f~200 and the sweep never gets as far as the $27. So this run
+    // is evidence about the CODE under a forced state, not about how stage 1
+    // plays. What it is NOT is a forced position: the ship sits exactly where
+    // bootState puts it (80, 96) and no button is pressed.
+    s.obj.status[0] = 1;
+    s.zp.shield = 0xFF;
+    nmi(s, 0x00, res);
+    for (let k = 0; k < 10; k++) {
+      const i = k + ENEMY_BASE;
+      const t = s.obj.type[i] & 0x7F;
+      if (t === 0x27) spawned += 1;
+      // the collection is $C148/$C14D: type $27 -> type 1 with metasprite $A3,
+      // in ONE frame and in that slot. Nothing else in the PRG writes $A3 into
+      // $012C (grep: two sites, $C14D and $CE0E, and $CE0E is the ending).
+      if (was[k] === 0x27 && s.obj.type[i] === 0x01 && s.obj.anim[i] === 0xA3
+          && collected < 0) collected = f;
+      was[k] = t;
+    }
+  }
+  assert.ok(spawned > 0, 'stage 1 chunk 5 must SPAWN a type $27 ($A8F5, trig $34)');
+  assert.ok(collected > 0, 'and the ship must actually COLLECT one -- 600 clean '
+    + `frames alone would also be produced by never touching it (f=${collected})`);
+});
+
+test('$C16E: the two arms are tested BEFORE the shield and before $C1B8', () => {
+  // Why no power-up state avoids these two: $C173/$C177 come first in the
+  // dispatch, so a full shield does not stop them and neither does the
+  // spawn-frame invulnerability that $C1B8 checks.
+  // RED WHEN: the $27/$29 tests are moved below the `>= 3` arm.
+  const s = onTheShip(0x27, 0x40);
+  s.zp.shield = 0xFF;
+  assert.equal(playerVsEnemies(s, res), false);
+  assert.equal(s.lives[0], 4, 'a full shield does not block the pickup');
+  assert.equal(s.zp.shield, 0xFF, 'and the pickup does not spend it');
+  // and the ROM byte order, read independently out of prg.bin
+  assert.deepEqual([0xC171, 0xC172, 0xC173, 0xC174, 0xC175, 0xC176,
+                    0xC177, 0xC178, 0xC179, 0xC17A, 0xC17B, 0xC17C].map(rb),
+    [0x29, 0x7F, 0xC9, 0x27, 0xF0, 0xC6, 0xC9, 0x29, 0xF0, 0xDE, 0xC9, 0x03],
+    'AND #$7F / CMP #$27 / BEQ / CMP #$29 / BEQ / CMP #$03 -- in that order');
 });
