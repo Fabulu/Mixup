@@ -128,6 +128,7 @@ export class Game {
     this.ram.setU8(RAM.semaphore, this.armedVblanks);
     this.wallHits = [];
     this.allocEvents = new Map();
+    this.bulletSpawns = new Map();   // WAVE 30, see #ctx()'s bulletSpawn
     this.shotSpawns = new Map();
     this.shotTableFull = 0;
     this.frameRequests = [];        // bucket offsets from COMPARED slots
@@ -197,6 +198,25 @@ export class Game {
       // is exactly what that sentence forbids.
       allocEvent: (kind, n) => {
         this.allocEvents.set(kind, (this.allocEvents.get(kind) ?? 0) + n);
+      },
+      // WAVE 30.  Every ENEMY FIRE that reached a bullet generator, keyed by
+      // the ROM address of the `jsr` that made it, with the per-core outcome
+      // (spawned / declined by the freeze gate / DROPPED because the pool was
+      // full).  Printed for the same reason `allocEvents` is: until this wave
+      // no handler fire reached the pool at all, and "the fan ran and the pool
+      // refused it" must not look the same as "the fan never ran".
+      bulletSpawn: (site, res) => {
+        const k = `$${site.toString(16).toUpperCase()}`;
+        const e = this.bulletSpawns.get(k)
+          ?? { fired: 0, spawned: 0, declined: 0, dropped: 0 };
+        e.fired++;
+        for (const r of (Array.isArray(res) ? res : [res])) {
+          if (!r) continue;
+          if (r.declined) e.declined++;
+          else if (r.carry) e.dropped++;
+          else e.spawned++;
+        }
+        this.bulletSpawns.set(k, e);
       },
     };
   }

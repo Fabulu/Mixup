@@ -340,6 +340,25 @@ The fire paths this wave wired (`$2813F0` kind `$D`, `$281402` kind `$D`,
 this path. Closing F1 needs the kinds themselves, not more fire sites; the
 denominator is 37 bodies and the numerator is still 8.
 
+## 7.1 WHAT WAS DELIBERATELY NOT TURNED ON
+
+- **`PRODUCED_BUCKETS` is unchanged** (`src/main.js`: 5, 14, 15, 19). Buckets 0,
+  3 and 7 now have a producer, but a PARTIAL one — exactly one enemy type feeds
+  bucket 0 and two feed bucket 7, out of a stage that fills them from dozens.
+  Adding them would make `pgm.py shipgate` substitute the port's near-empty
+  bucket for the board's full one and the picture would get WORSE, not better.
+  The right trigger is "every producer of that bucket is ported", and this wave
+  is not it. Recorded here rather than left to be inferred from an absence.
+- **`Game.bulletSpawns`** (new, `src/main.js` `#ctx()`) counts every enemy fire
+  by the ROM address of the `jsr` that made it, split into
+  fired/spawned/declined/dropped. Until this wave no handler fire reached the
+  pool at all, and "the fan ran and the pool refused it" must not look the same
+  as "the fan never ran".
+- **The page now dies at logic frame 3098 instead of 2346.** That is still a
+  product regression and it is still not behind a flag, for W29 §5.4's reason: a
+  flag defaulting to off is a green achieved by not running code. The fix is to
+  port `$26B6FA`.
+
 ## 8. WHAT I COULD NOT DETERMINE
 
 - **Which routine consumes the extra `$2433AE` draw** behind the new `rng`
