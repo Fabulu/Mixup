@@ -1403,4 +1403,93 @@ CONTINUATIONS.set(0x28374c, (ctx, base) => wallBounce(ctx, base, {
   shift: 0,                                            // $2837EC no asr
 }));
 
+// ================================================ W27 FAMILY I
+//
+// The LAUNCHERS: kinds 30 ($283430) and 31 ($2834FE).  A byte-for-byte
+// comparison of the two 206-byte bodies finds **12 differing bytes, and all 12
+// are PC-relative displacements or the continuation address**.  The two kinds
+// are the same behaviour compiled twice at two addresses; there is no
+// behavioural difference to find, and knowing that is what stops the next
+// reader hunting for one.
+//
+// The initialiser is kind 23's shape (muzzle, dead sprite write, descriptor
+// $1C0E0C, $FC00FE00/$410) plus a PRECOMPUTED ACCELERATION VECTOR:
+//
+//   $283478  D0 = speed (+$1A)
+//   $283480  D1 = dir (+$1B) ... $283484 `sub.b $37(A6),D1`
+//   $283488  bsr $284190      -- velocity(speed, dir - +$37)
+//   $28348C  asr.w #3 on both -- one eighth
+//   $283490  +$30 = dA, +$32 = dB
+//
+// THE ACCELERATION IS NOT ALONG THE BULLET'S HEADING.  `sub.b $37(A6),D1`
+// offsets the direction by the +$37 byte from the spawn record before the
+// velocity is computed, so the bullet accelerates along one angle while flying
+// along another -- a curve, not a speed-up.  The recon recorded this as
+// "precomputes a slowed (>>3) velocity", which is the magnitude and not the
+// direction; ported that way with +$37 ignored, every kind-30/31 bullet would
+// accelerate straight ahead.
+//
+// The continuation is the DECEL BLOCK'S MIRROR and it is worth naming the
+// differences, because the two look identical at a glance:
+//
+//   family F (kinds 23/24)  duration at +$36   velA -= +$2E        (one axis)
+//   family I (kinds 30/31)  duration at +$34   velA += +$30,
+//                                              velB += +$32        (both axes)
+//
+// Same three-state `tst.w / beq / bmi` gate, same +$2C/+$2D byte countdown.
+// $2834EC and $2835BA are dead free-slot stubs (0 references, checked).
+
+/** `$2834B4` / `$283582` -- family I's acceleration block.  See `decelBlock`
+ *  for the identical three-state duration gate; the fields are NOT the same. */
+function accelBlock(ctx, base) {
+  const { ram } = ctx;
+  const dur = ram.u16(base + 0x34);                    // $2834B4 tst.w $34(A6)
+  if (dur === 0) return;                               // $2834B8 beq -> skip all
+  if ((dur & 0x8000) === 0) {                          // $2834BC bmi -> skip the dec
+    ram.setU16(base + 0x34, u16(dur - 1));             // $2834C0 subq.w #1,$34
+  }
+  if (!byteUnderflow(ram, base, 0x2c, 0x2d)) return;   // $2834C4/$2834C8 bcc
+  ram.setU16(base + REC.velA,
+    u16(ram.u16(base + REC.velA) + ram.u16(base + 0x30)));   // $2834D2/$2834D6
+  ram.setU16(base + REC.velB,
+    u16(ram.u16(base + REC.velB) + ram.u16(base + 0x32)));   // $2834DA/$2834DE
+}
+
+/** the launchers' shared initialiser ($283430 == $2834FE apart from the
+ *  continuation address and four PC-relative displacements). */
+function launcherInit(ctx, base, cont) {
+  const { ram, rom } = ctx;
+  muzzleAndSprite(ctx, base);                          // $28343E bsr $2820CC
+  clearDispatch(ram, base);                            // $283442 andi.b #$fe,(A6)
+  ram.setU8(base + 0x1d, 0x1a);                        // $283446
+  ram.setU32(base + 0x06, 0xfe00fe00);                 // $28344C  (dead: overwritten)
+  ram.setU16(base + 0x0e, 0x0210);                     // $283454  (dead: overwritten)
+  ram.setU32(base + 0x0a, 0x1c0e0c);                   // $28345A descriptor
+  ram.setU32(base + 0x06, 0xfc00fe00);                 // $283462 renderOffs (final)
+  ram.setU16(base + 0x0e, 0x0410);                     // $28346A graphic (final)
+  ram.setU32(base + REC.continuation, cont);           // $283470
+  // $283478..$283494 the acceleration vector, at ONE EIGHTH and along the
+  // OFFSET direction `dir - +$37`, not along the bullet's own heading.
+  const speed = ram.u8(base + REC.speed);              // $28347A move.b $1a(A6),D0
+  const dir = (ram.u8(base + REC.dir) - ram.u8(base + 0x37)) & 0xff;  // $283484 sub.b
+  const v = velocity(rom, speed, dir);                 // $283488 bsr $284190
+  ram.setU16(base + 0x30, u16(i16(v.dA) >> 3));        // $28348C asr.w #3 ; $283490
+  ram.setU16(base + 0x32, u16(i16(v.dB) >> 3));        // $28348E asr.w #3 ; $283494
+}
+
+/** the launchers' shared continuation ($28349A == $283568). */
+function launcherCont(ctx, base) {
+  animateRenderOffsWrap(ctx, base, 0x1c0e0c, 0x24, 0x1c0e9c);  // $28349A/$2834A2
+  accelBlock(ctx, base);                               // $2834B4..$2834E0
+  advance40(ctx, base);                                // $2834E2 lea $40(A6)
+}
+
+// ----- kind 30 ($283430 init / $28349A cont)
+INIT_BODIES.set(0x283430, (ctx, base) => launcherInit(ctx, base, 0x28349a));
+CONTINUATIONS.set(0x28349a, launcherCont);
+
+// ----- kind 31 ($2834FE init / $283568 cont) -- the same body, compiled twice
+INIT_BODIES.set(0x2834fe, (ctx, base) => launcherInit(ctx, base, 0x283568));
+CONTINUATIONS.set(0x283568, launcherCont);
+
 export { INIT_BODIES, CONTINUATIONS };

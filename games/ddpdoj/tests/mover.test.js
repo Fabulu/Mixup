@@ -761,28 +761,138 @@ test("the bouncers' ring limit/wrap PAIR depends on the bounce budget ($283076),
     assert.equal(ram.u32(base + 0x0a), 0x1c1d00, '+$19 non-zero: the ring is frozen');
   });
 
-test('the ported-body inventory is exactly 26 initialisers + 25 continuations', () => {
+// ======================================== W27 FAMILY I: the LAUNCHERS ========
+
+test('kinds 30/31 precompute their acceleration along dir MINUS +$37, at one '
+  + 'eighth ($283484 sub.b / $28348C asr.w #3)', { skip: !HAVE_TABLES }, () => {
+    for (const kind of [30, 31]) {
+      const ram = new Ram(null);
+      ram.setU16(0x81b41a, 1);
+      ram.setU16(0x813176, 0);
+      const base = seedBullet(ram, 0, { type: 0x8100 | kind, speed: 0x14, dir: 0x40 });
+      ram.setU8(base + 0x37, 0x18);                   // the direction OFFSET
+      runMover({ ram, rom: ROM, notes: new UnportedLog() });   // F1: the initialiser
+      const off = velocity(ROM, 0x14, 0x40 - 0x18);   // along the OFFSET heading
+      const same = velocity(ROM, 0x14, 0x40);         // along the bullet's own
+      assert.notEqual(u16(i16(off.dA) >> 3), u16(i16(same.dA) >> 3),
+        `kind ${kind}: the test is only meaningful if the two headings differ`);
+      assert.equal(ram.u16(base + 0x30), u16(i16(off.dA) >> 3),
+        `kind ${kind}: +$30 = dA(dir - +$37) >> 3`);
+      assert.equal(ram.u16(base + 0x32), u16(i16(off.dB) >> 3),
+        `kind ${kind}: +$32 = dB(dir - +$37) >> 3`);
+    }
+  });
+
+test('kinds 30/31 accelerate BOTH axes on the +$2C underflow, gated by the +$34 '
+  + 'duration word ($2834B4) -- note +$34, not family F\'s +$36',
+  { skip: !HAVE_TABLES }, () => {
+    for (const [label, dur, expectAccel, expectDur] of [
+      ['+$34 = 0 skips the block', 0x0000, false, 0x0000],
+      ['+$34 positive accelerates and counts down', 0x0005, true, 0x0004],
+      ['+$34 negative accelerates forever', 0xffff, true, 0xffff],
+    ]) {
+      const ram = new Ram(null);
+      ram.setU16(0x81b41a, 1);
+      ram.setU16(0x813176, 0);
+      const base = seedBullet(ram, 0, { type: 0x8100 | 30, speed: 0x14, dir: 0x20 });
+      ram.setU8(base + 0x37, 0x18);
+      ram.setU16(base + 0x34, dur);
+      ram.setU8(base + 0x2c, 0x00);
+      ram.setU8(base + 0x2d, 0x07);
+      // +$36 is family F's duration word and must be IRRELEVANT here: seeding it
+      // to 0 would silence a port that read the wrong field.
+      ram.setU16(base + 0x36, 0x0000);
+      const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+      runMover(ctx);                                  // F1: the initialiser
+      const a1 = ram.u16(base + REC.velA), b1 = ram.u16(base + REC.velB);
+      const dA = ram.u16(base + 0x30), dB = ram.u16(base + 0x32);
+      assert.notEqual(dA, 0, 'the acceleration vector must be non-zero to be visible');
+      runMover(ctx);                                  // F2: the continuation
+      assert.equal(ram.u16(base + 0x34), expectDur, `${label}: +$34`);
+      if (expectAccel) {
+        assert.equal(ram.u16(base + REC.velA), u16(a1 + dA), `${label}: velA += +$30`);
+        assert.equal(ram.u16(base + REC.velB), u16(b1 + dB), `${label}: velB += +$32`);
+        assert.equal(ram.u8(base + 0x2c), 0x07, `${label}: +$2C reloaded from +$2D`);
+      } else {
+        assert.equal(ram.u16(base + REC.velA), a1, `${label}: velA untouched`);
+        assert.equal(ram.u16(base + REC.velB), b1, `${label}: velB untouched`);
+        assert.equal(ram.u8(base + 0x2c), 0x00, `${label}: +$2C not even ticked`);
+      }
+    }
+  });
+
+test('every ported initialiser installs ITS OWN continuation address at +$22',
+  { skip: !HAVE_TABLES }, () => {
+    // THIS TEST EXISTS BECAUSE A MUTATION SURVIVED.  Kinds 30 and 31 are
+    // byte-identical bodies at two addresses, so wiring kind 31's initialiser to
+    // kind 30's continuation ($28349A instead of $283568) changes NO observable
+    // behaviour and was invisible to every other assertion in this file.  It is
+    // still wrong: +$22 is a real longword in the record that the board holds,
+    // and any gate that compares it -- or any future body that dispatches on it
+    // -- would diverge.  Same shape as the kind 2/21 sprite-table swap in the
+    // family B mutation table.
+    //
+    // The kind -> body mapping is read from the ROM's $282030 table, so the
+    // subject set cannot drift; the expected continuation per body is the ledger.
+    const EXPECT = new Map([
+      [0x282104, 0x28213e], [0x282162, 0x28219e], [0x2821c2, 0x283ce4],
+      [0x2823ec, 0x282420], [0x2824a8, 0x2824dc], [0x282564, 0x282598],
+      [0x282620, 0x282654], [0x2826dc, 0x282738], [0x282772, 0x2827bc],
+      [0x2827e0, 0x28281c], [0x282840, 0x28287c], [0x2828a0, 0x2828ea],
+      [0x282908, 0x282944], [0x282962, 0x28299e], [0x2829bc, 0x2829fe],
+      [0x282a1e, 0x282a66], [0x282aae, 0x282af6], [0x282b30, 0x282b64],
+      [0x282bee, 0x282c2a], [0x282c56, 0x283ce4], [0x282d42, 0x282d76],
+      [0x282e00, 0x282e4a], [0x282ebc, 0x282ef0], [0x282f6e, 0x282f9e],
+      [0x28330c, 0x28333c], [0x283430, 0x28349a], [0x2834fe, 0x283568],
+      [0x28371c, 0x28374c],
+    ]);
+    const seen = new Set();
+    for (let k = 0; k < 39; k++) {
+      const body = ROM.u32(0x282030 + 4 * k);
+      if (!INIT_BODIES.has(body)) continue;            // still a loud named throw
+      const ram = new Ram(null);
+      ram.setU16(0x81b41a, 1);
+      ram.setU16(0x813176, 0);
+      const base = seedBullet(ram, 0, { type: 0x8100 | k, speed: 0x14, dir: 0x40 });
+      runMover({ ram, rom: ROM, notes: new UnportedLog() });   // the spawn frame only
+      const installed = ram.u32(base + REC.continuation);
+      assert.ok(CONTINUATIONS.has(installed),
+        `kind ${k} ($${body.toString(16)}) installed $${installed.toString(16)} `
+        + `at +$22, which is not a ported continuation -- a dangling target`);
+      assert.equal(installed, EXPECT.get(body),
+        `kind ${k} ($${body.toString(16)}) must install $`
+        + `${EXPECT.get(body)?.toString(16)} at +$22, not $${installed.toString(16)}`);
+      seen.add(body);
+    }
+    // kinds 14 and 15 alias kind 10's $282840, so this counts DISTINCT BODIES
+    // reached, not kind indices -- an equality on indices would read 30, not 28.
+    assert.equal(seen.size, EXPECT.size,
+      'every entry of the expected map must have been reached through $282030');
+  });
+
+test('the ported-body inventory is exactly 28 initialisers + 27 continuations', () => {
   // A LEDGER test: it pins the exact set, so porting a body turns it RED until
   // the inventory here is updated deliberately.  That is the point -- the count
   // cannot drift upward without somebody writing down which addresses moved.
   //
   // W26 ported 8 bodies (kinds 3/4/5/6/7/12/13/19; kind 6 is the midboss's).
-  // W27 adds 18: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
+  // W27 adds 20: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
   // family C kinds 16/18, family D kind 17, family E kinds 22/24, family F
-  // kind 23, families G+L kinds 25/29/34.  Kind 10's $282840 is also the
-  // target for kinds 14 and 15, which alias it in the $282030 table.  So 26
-  // distinct bodies now cover 29 of the 39 kind indices.
+  // kind 23, families G+L kinds 25/29/34, family I kinds 30/31.  Kind 10's
+  // $282840 is also the target for kinds 14 and 15, which alias it in the
+  // $282030 table.  So 28 distinct bodies now cover 31 of the 39 kind indices.
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
     [0x282104, 0x282162, 0x2821c2, 0x2823ec, 0x2824a8, 0x282564, 0x282620,
      0x2826dc, 0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962,
      0x2829bc, 0x282a1e, 0x282aae, 0x282b30, 0x282bee, 0x282c56,
-     0x282d42, 0x282e00, 0x282ebc, 0x282f6e, 0x28330c, 0x28371c]);
+     0x282d42, 0x282e00, 0x282ebc, 0x282f6e, 0x28330c, 0x283430, 0x2834fe,
+     0x28371c]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
     [0x28213e, 0x28219e, 0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738,
      0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x2829fe,
      0x282a66, 0x282af6, 0x282b64, 0x282c2a, 0x282d76, 0x282e4a, 0x282ef0,
-     0x282f9e, 0x28333c, 0x28374c, 0x283ce4]);
-  // 26 initialisers, 25 continuations. NOT equal, and that is correct: kinds 2
+     0x282f9e, 0x28333c, 0x28349a, 0x283568, 0x28374c, 0x283ce4]);
+  // 28 initialisers, 27 continuations. NOT equal, and that is correct: kinds 2
   // and 21 both install $283CE4, so bodies MAY share a continuation.
   //
   // An earlier version of this test asserted `INIT_BODIES.size ===

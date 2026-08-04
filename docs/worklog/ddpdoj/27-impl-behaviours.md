@@ -580,3 +580,78 @@ bullet well past the line.
 
 **Inventory: 23 → 26 initialisers, 25 continuations. 29 of 39 kind indices
 covered; 11 distinct bodies remain (families H, I, J, K + kinds 32/35).**
+
+### 2026-08-04 — FAMILY I PORTED (kinds 30, 31) — the LAUNCHERS
+
+**KINDS 30 AND 31 ARE THE SAME BODY, COMPILED TWICE.** A byte-for-byte compare
+of `$283430..$2834FE` against `$2834FE..$2835CC` finds **12 differing bytes in
+206, and all 12 are PC-relative displacements or the continuation address**.
+There is no behavioural difference to find. Writing that down is the point: the
+next reader will otherwise spend the same time looking for one.
+
+**THE ACCELERATION IS NOT ALONG THE BULLET'S HEADING.** The initialiser
+precomputes an acceleration vector:
+
+    $283478  D0 = speed (+$1A)
+    $283480  D1 = dir (+$1B)
+    $283484  sub.b $37(A6),D1        <-- THE DIRECTION OFFSET
+    $283488  bsr $284190             velocity(speed, dir - +$37)
+    $28348C  asr.w #3 on both        one eighth
+    $283490  +$30 = dA, +$32 = dB
+
+The recon recorded this as "precomputes a slowed (>>3) velocity into +$30/+32",
+which is the magnitude and not the direction. Ported that way — with +$37
+ignored — every kind-30/31 bullet would accelerate straight ahead instead of
+curving, and only a player who never met one would not notice.
+
+**THE ACCEL BLOCK IS THE DECEL BLOCK'S MIRROR AND USES DIFFERENT FIELDS.** They
+are easy to conflate because the three-state duration gate is instruction-
+identical:
+
+| | duration word | effect |
+|---|---|---|
+| family F (23/24) | **+$36** | velA -= +$2E (one axis, subtract) |
+| family I (30/31) | **+$34** | velA += +$30, velB += +$32 (both axes, add) |
+
+The kind-30 test seeds +$36 to zero deliberately, so a port that read family F's
+field would find a zero duration and skip — i.e. the test can fail for that
+specific confusion.
+
+`$2834EC`/`$2835BA` are dead free-slot stubs (0 references, `w27targets.py`).
+
+### THE MUTATION THAT SURVIVED (second of the wave), AND THE TEST IT FORCED
+
+| mutation | first result |
+|---|---|
+| accel computed along the bullet's own heading, not `dir - +$37` | RED — `not ok 220` |
+| accel not shifted (`asr.w #3` dropped) | RED — `not ok 220` |
+| accel duration read from +$36 instead of +$34 | RED — `not ok 221` |
+| velB not accelerated (one axis only) | RED — `not ok 221` |
+| accel subtracts instead of adds | RED — `not ok 221` |
+| **kind 31's initialiser installs kind 30's continuation `$28349A`** | **GREEN — NOT CAUGHT** |
+
+Because the two continuations are functionally identical, cross-wiring them
+changes nothing observable — and that is exactly why it is dangerous: **+$22 is
+a real longword the board holds**, so the port would disagree with the cartridge
+on a field a gate can read, while every behavioural test agreed. This is the
+same shape as the family B kind-2/21 table swap, and it is now clear it is a
+CLASS of defect, not an incident.
+
+So the check is now general rather than per-kind: **`every ported initialiser
+installs ITS OWN continuation address at +$22`** walks the `$282030` table out
+of the ROM, runs each ported initialiser's spawn frame, and asserts the +$22 it
+installs both resolves in `CONTINUATIONS` and equals the ledgered address. The
+subject set is derived, so it cannot decay; the expected addresses are the
+ledger half and must be extended deliberately. The kind-31 mutation now reddens
+`not ok 222`, that test alone.
+
+That test also caught its own first defect within a minute: it counted KIND
+INDICES reached (30) against the number of distinct bodies expected (28),
+because kinds 14 and 15 alias kind 10's `$282840`. Counting the wrong unit is
+the same mistake as an invented denominator, at test scale.
+
+`src/mover.js` restored and hash-verified byte-identical (`590a3cbd508a246e`);
+**403 pass / 0 fail / 0 skipped**.
+
+**Inventory: 26 → 28 initialisers, 27 continuations. 31 of 39 kind indices
+covered; 9 distinct bodies remain (families H, J, K + kinds 32/35).**
