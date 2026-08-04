@@ -1,6 +1,6 @@
 # Wave 37 TOOLING — the sweep must report what it did NOT sweep
 
-status: IN PROGRESS
+status: DONE
 tooling, 2026-08-04
 
 Scope: `games/gradius/tools/` only. `src/` and `tests/` belong to W36
@@ -323,13 +323,33 @@ BEFORE all copy/mutation work  253b352af64941e5f03b59c45cc9e2dd429b7fbc28f57cf5e
 AFTER  the copy was deleted    253b352af64941e5f03b59c45cc9e2dd429b7fbc28f57cf5e52977cec4788a58
 ```
 
-(The same value W35 ended on, so W36's `src/` work had not landed while I ran.)
-`git status --porcelain games/gradius/src games/gradius/tests` is empty; the
-copy at `C:/tmp/w37demo` is deleted; no `gradius-stagesweep-*` directory
-remains under `%TEMP%`.
+(The same value W35 ended on, so W36's `src/` work had not landed while I ran.
+It landed later in the session and the hash has moved since — by their edits,
+not mine.) `git status --porcelain games/gradius/src games/gradius/tests` is
+empty; the copy at `C:/tmp/w37demo` is deleted; no `gradius-stagesweep-*`
+directory remains under `%TEMP%`.
 
-Gate after the change: `node games/gradius/tools/test-all.mjs` →
-**GREEN — 12 passed, 0 failed, 0 SKIPPED** (4 m 35 s).
+Gate after the first change: `node games/gradius/tools/test-all.mjs` →
+**GREEN — 12 passed, 0 failed, 0 SKIPPED** (4 m 35 s). Second full gate run
+after the `chunkGeometry` fix: see FINAL NUMBERS.
+
+### And the warn rules fired for real, unprompted
+
+W36 lifted the `$A2F0` guard to `>= 7` while my second gate run was in flight,
+so that run printed — correctly, and without failing:
+
+```
+  $19=6   debt             admits        SWEPT                   14
+  7 of 7 stages swept (7 admitted, 0 forced behind the guard); 0 NOT SWEPT.
+  ... stage $19=6 was swept and stageledger.py's BASELINE still calls it debt.
+      Not a failure (the sweep covers MORE than the ledger claims); update
+      BASELINE[6] when the wave that lifted the guard lands.
+  OK -- 0 undecided throws on 7 admitted stage(s)
+```
+
+That is the coverage report doing its job on a live tree: the stage moved from
+`SWEPT (forced)` to `SWEPT`, the forced section emptied itself, the per-stage
+chunk count stayed 7, and the one artifact that had not caught up was named.
 
 ---
 
@@ -422,3 +442,85 @@ Its own run today: OK, 82 bases, 55 ranges, 4 extent sites, 1 still OPEN.
    address in it). Not a finding about the port; a finding about running a
    sweep against a tree another agent is writing. The numbers in §2 are from
    `src/enemies.js sha256 7265b5388bcb`, W35's committed state.
+
+---
+
+## §8. HANDED FORWARD
+
+1. **`wavecensus.py` hard-crashes on a mid-edit `src/enemies.js`.**
+   `_ported_targets()` does `src.index("function dispatch(state, rom, j, type)")`
+   at IMPORT time, so `stageledger.py` — which imports it — dies with a
+   `ValueError` traceback and the gate reports "a stage's coverage moved
+   backward", which is not what happened. Seen this session (§FINAL NUMBERS).
+   A `SystemExit` naming the file and the missing signature would cost three
+   lines and would stop a tooling failure from being read as a coverage
+   regression. Not fixed here: `src/` was being written throughout, so I could
+   not have red-validated it against a stable tree.
+2. **`--force-frames` is 600 and that is a budget decision, not a derived
+   number** (the admitted sweep's 1400 is W33's, also not derived — W34 item 6).
+3. **`tablecoverage.py`'s root set**, §6a: the ordered work is (1)
+   `exported_blocks()` reads `terrain/stages.json`, (2) roots move to the frame,
+   (3) triage the residue. Step (1) first, or the tool reports 26 gaps of which
+   14 are false.
+4. **`$B7B5`/`$B797`** — W34 item 1, W35 item 2, untouched again, §6b.
+5. **`stagewaves.py` is still broken on the inline-5 stride** and
+   `wavecensus.py`/`handlerclosure.py` are still not CI-wired (W34 items 4/5,
+   W35 item 5). Untouched a third time.
+
+---
+
+## FINAL NUMBERS
+
+```
+stagesweep.mjs, W35's committed src (7265b5388bcb):
+  admitted   96 chunk runs, 134,400 nmi() frames, 0 undecided throws
+  forced     14 runs (stage $19=6, 7 slots x 2 modes), 4 threw:
+             $AF10 x2 (f140, PASSIVE), $B569 x2 (f76, PLAYING)
+  coverage   7 of 7 stages swept -- 6 admitted, 1 forced; 0 NOT SWEPT
+  wall clock 3.2-3.6 s
+
+demonstration (a COPY in the pre-W35 state, both tools, same tree):
+  W34's stagesweep.mjs   stages 0..4, "OK -- 0 undecided throws", exit 0,
+                         silent about two whole stages
+  W37's stagesweep.mjs   exit 1; forced stage $19=5 reproduces W35's sixteen
+                         frame numbers exactly (PASSIVE f533 f172 f41 f28 f16
+                         f9 f9 f534 / PLAYING f377 f172 f41 f28 f16 f9 f9 f377,
+                         $B480 x16, earliest frame 9)
+
+seen to fail: --stages 0-4 (exit 1) -- --stages 6 (exit 1) -- guard renamed
+              (exit 1, "FAILED STRING SEARCH") -- BASELINE row deleted (exit 1)
+              -- and W37's own first cut, which exited 0 on the demo copy
+
+tablecoverage.py   OK, 82 bases, 55 ranges, 4 extent sites, 1 OPEN ($B7B5).
+                   Unmodified: sha256 fba7e280ac4d.
+root blind spot    82 bases from the tool's roots; the four frame entry points
+                   $80A1 $80A7 $80AA $9650 reach 59 more, 26 unexported, of
+                   which 14 are the terrain/streamer decode. NOT narrowed.
+
+gate, run 1 (W35's committed src, after the coverage work):
+  node games/gradius/tools/test-all.mjs   GREEN -- 12 passed, 0 failed, 0 SKIPPED
+gate, run 2 (during W36's uncommitted src/tests edits, after chunkGeometry):
+  RED -- 9 passed, 3 failed, 0 SKIPPED.  MY STAGE PASSED.
+  The three failures are W36's in-flight tree, not this wave:
+    unit tests                  -- games/gradius/tests, being written
+    per-stage coverage ledger   -- wavecensus.py ValueError at import:
+                                   "function dispatch(state, rom, j, type)"
+                                   not found in a half-edited enemies.js
+    comparison self-check       -- mutates the same src/
+  `git status --porcelain games/gradius/src games/gradius/tests` at that moment
+  listed 2 modified src files and 6 modified test files, none of them mine.
+
+real tree, sha256 over sha256sum of every .js under games/gradius/{src,tests}:
+  BEFORE all copy work  253b352af64941e5f03b59c45cc9e2dd429b7fbc28f57cf5e52977cec4788a58
+  AFTER  the copy went  253b352af64941e5f03b59c45cc9e2dd429b7fbc28f57cf5e52977cec4788a58
+(it has moved since, by W36's edits; `git status --porcelain` for src and tests
+was empty at both measurements)
+```
+
+Files changed this wave, all in `games/gradius/tools/`:
+`oracle/stagesweep.mjs` (the work) and `test-all.mjs` (the gate stage's comment
+and its FAIL note). Nothing in `src/`, `tests/`, or `games/ddpdoj/`. No gate was
+weakened; the one relaxation, `--allow-partial`, must be typed and prints that
+the run does not cover those stages.
+
+status: DONE
