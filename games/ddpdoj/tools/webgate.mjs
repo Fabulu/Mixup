@@ -471,6 +471,7 @@ try {
           bgSeed: bundle.cap.part(0, 'bg'),
         });
         let emitted = 0, drawnS1 = 0, pend = 0, named = 0;
+        const seen = new Set();
         for (let i = 0; i < frames; i++) {
           const res = portSpriteList(g.ram, map, { out: buf, ...shardOpts });
           // Counted from the RAW list in RAM, not from `res.words`: the remap
@@ -483,7 +484,7 @@ try {
             const offs = ((g.ram.u16(0x800000 + (b + 2) * 2) & 0x7f) << 16)
               | g.ram.u16(0x800000 + (b + 3) * 2);
             if (!shard1.has(offs)) continue;
-            emitted++;
+            emitted++; seen.add(offs);
             if (((w4 & 0x7e00) >> 9) === 0 || (w4 & 0x1ff) === 0) continue;
             if (!res.missing.has(offs)) {
               // pending is counted by SHARD, so a record of a shard-1 stream is
@@ -494,8 +495,28 @@ try {
           g.ram.setU8(0x810424, 0xff);
           g.step(0xffff);
         }
-        return { emitted, drawnS1, pend, named };
+        return { emitted, drawnS1, pend, named, distinct: seen.size };
       };
+      // *** AND THIS PAIR OF NUMBERS IS THE WHOLE CHECK, FOR A REASON THAT
+      // COST ME A GREEN RUN. ***
+      //
+      // My first version of this stage asserted only that everything shard 1
+      // holds gets drawn once shard 1 is here. **That agrees with itself
+      // whatever shard 1 holds.** SEEN: with the hull harvest cut from 64
+      // entries to 16 -- the "16-direction" mistake `46-diag` warned this wave
+      // about, i.e. a bundle with a QUARTER of the tank art -- the stage
+      // reported "2310 drawn of 2310" and PASSED. `docs/knowledge/03` names
+      // exactly this: a check that reads its subject through the same constant
+      // it is testing has made the port its own source of truth.
+      //
+      // So the denominators are ABSOLUTE and MEASURED, and neither is derived
+      // from the bundle: the port's own emitter asks for the type-$11 hull on
+      // [M] 4,194 records in these 1,000 frames -- the exact count W47 measured
+      // as MISSING before the harvest -- across [M] 32 distinct hull images, and
+      // the table is [M] 62 absent hulls + 5 laser streams = 67.
+      const EXP47 = { records: 4194, streams: 67, distinct: 32 };
+      const nStreams = bundle.spr.meta[1].streams;
+
       const FRAMES = 1000;
       const before = run(FRAMES);
       for (const m of bundle.spr.meta) await bundle.spr.fetch(m.i);
@@ -523,7 +544,9 @@ try {
       // reported as missing art -- if the pending path were broken these would
       // show up as NO ART, which is the wrong sentence for a shard in flight.
       // AFTER: every emitted record is drawn.
-      const bodyOk = allReady && before.emitted > 0
+      const bodyOk = allReady
+        && before.emitted === EXP47.records && before.distinct === EXP47.distinct
+        && nStreams === EXP47.streams
         && before.drawnS1 === 0 && before.named === 0
         && before.pend === before.emitted
         && after.emitted === before.emitted && after.drawnS1 === after.emitted
@@ -531,7 +554,10 @@ try {
       console.log(`${bodyOk ? 'PASS' : 'FAIL'}: W47 THE TANK BODIES -- over `
         + `${FRAMES} logic frames from the shipped seed, nothing pressed, `
         + `sprite shard 1 (type $11's hull $268B9E + turret $268C9E + the `
-        + `laser's 5) carries ${before.emitted} display-list records. With the `
+        + `laser's 5) holds ${nStreams} streams (expect ${EXP47.streams}) and `
+        + `carries ${before.emitted} display-list records (expect `
+        + `${EXP47.records}) over ${before.distinct} distinct images (expect `
+        + `${EXP47.distinct}). With the `
         + `BOOT payload alone: ${before.drawnS1} drawn, ${before.pend} PENDING `
         + `on shard 1, ${before.named} named as missing art (expect 0 -- a shard `
         + `in flight is not a missing picture). With all `
