@@ -35,17 +35,38 @@ const OPTF = RAM.p1Options + OPT.flags1;       // $8104AB
 const P34 = RAM.player1 + 0x34;                // $81041A
 const P35 = RAM.player1 + 0x35;                // $81041B
 
+/**
+ * WAVE 45.  `$24C4F2 bra $24D480` was a loud named throw and is now the ported
+ * PODS' SHOT SPAWN, so this bench has to answer its ROM reads.  It is a
+ * deliberately EMPTY window set rather than the real tables: every read
+ * `$24D480` makes returns 0, which makes the template a 44-byte run of zeros
+ * and the spawn's effect exactly "a record appeared in `$810572`" -- which is
+ * the only thing these tests are about.  The REAL template contents are pinned
+ * by `tests/ship.test.js`, which loads `player.tables.json`.
+ */
+const ZERO_ROM = { u8: () => 0, u16: () => 0, u32: () => 0, i16: () => 0 };
+
 function bench() {
-  return { ram: new Ram(null), ctx: { unportedLog: new UnportedLog() } };
+  return {
+    ram: new Ram(null),
+    ctx: { unportedLog: new UnportedLog(), rom: ZERO_ROM },
+  };
 }
 
-/** Run the block; return the ROM address of any named throw, or null. */
+/** Run the block; return `ROM.optionSpawn` when it reached `$24D480`, the ROM
+ *  address of any named throw, or null.  Until W45 the spawn WAS a throw and
+ *  this returned its address the same way; the witness is now the record. */
 function run(ram, ctx) {
   resetFireArms();
-  try { fireHandshake(ram, ctx, B); return null; } catch (e) {
+  const before = ram.u16(0x810572);
+  try {
+    fireHandshake(ram, ctx, B);
+  } catch (e) {
     if (e instanceof Unreached) return e.romAddress;
     throw e;
   }
+  return ram.u16(0x810572) !== before || FIRE_ARMS.fh34w !== 0
+    ? ROM.optionSpawn : null;
 }
 
 test.afterEach(() => { FIRE_MUTATE.value = null; });
@@ -235,18 +256,35 @@ test('$24C4E4 compares the WORD ($20,A4) against 8 -- and has NO ($58,A4) test',
 
 // ==================================================== 4. THE UNPORTED NEIGHBOUR
 
-test('$24D480 is a LOUD named throw carrying the ROM address', () => {
+test('$24D480 WRITES A SHOT RECORD -- 44 bytes, then the queue', () => {
+  // WAVE 45.  This test asserted a THROW from wave 12.5 until now, and the
+  // throw was what stopped the owner shooting once `$24C180` was ported: the
+  // laser gate is tested BEFORE the formation dispatch, so a held button
+  // reached `$24C476` on the first frame and died here.
+  //
+  // `$24D48A movea.l $8127E8,A1 / $24D4B2 move.w (A1),D4` is a ROM pointer held
+  // in RAM.  Left at 0 here (the ZERO_ROM bench), so D4 = 0 and the free-slot
+  // scan is one slot deep -- which is what makes slot 0 the record's home.
   const { ram, ctx } = bench();
   ram.setU8(OPTF, 0x03);
   ram.setU8(B.opt + OPT.edge, 0x10);
   ram.setU8(RAM.player1 + 0x37, 0x02);
-  let e = null;
-  try { fireHandshake(ram, ctx, B); } catch (err) { e = err; }
-  assert.ok(e instanceof Unreached);
-  assert.equal(e.romAddress, 0x24d480);
-  assert.match(e.message, /PODS' SHOT SPAWN/);
-  assert.match(e.message, /\$810572/, 'it names the record table it would write');
-  assert.match(e.message, /W20/, 'and whose wave it is');
+  ram.setU16(B.opt + OPT.posY, 0x1179);           // ($2,A6), the POD's position
+  ram.setU16(B.opt + OPT.posX, 0x14c0);
+  ram.setU16(RAM.player1 + P.optFormation, 2);    // $24D562 ($5a,A4)
+  ram.setU8(RAM.player1 + 0x56, 0x02);            // $24D554 ($56,A4), the power
+  const queue0 = ram.u16(0x80afc0);
+  assert.doesNotThrow(() => fireHandshake(ram, ctx, B));
+  // $24D532/$24D53A -- the record's position is the POD's plus the template's,
+  // and the template is zero here, so it is the pod's exactly.
+  assert.equal(ram.u16(0x810572 + 0x02), 0x1179, '$24D536 add.w (A1)+,D1');
+  assert.equal(ram.u16(0x810572 + 0x04), 0x14c0, '$24D53E add.w (A1)+,D1');
+  assert.equal(ram.u8(0x810572 + 0x1d), 0x02, '$24D554 move.b ($56,A4)');
+  assert.equal(ram.u16(0x810572 + 0x28), 2, '$24D562 move.w ($5a,A4),(A0)+');
+  // $24D56A lea (-$2c,A0),A6 / $24D56E jsr $23D88E -- the QUEUE, bucket 0, and
+  // TWO records because $24D480 runs once per POD.
+  assert.equal(ram.u16(0x80afc0), queue0 + 24,
+    'two 12-byte requests: $24D56E for pod 0 and $24D5CC for pod 1');
 });
 
 test('the block never touches bits 0, 1, 2, 5, 6 or 7 of $8104AB', () => {

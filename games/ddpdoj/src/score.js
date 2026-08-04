@@ -61,10 +61,35 @@
 //            $286A82 / $286DA8   behind $8130F8 bit 2 AND $811F72's sign AND
 //                     its bit 0 -- THE LASER, which has never executed
 //            $286674  the cap clamp's TAIL: the hyper-stock bonus into $81B64A
-//                     and `jmp $287682`, which is the routine that GRANTS a
-//                     hyper stock ($81B65C, capped at 5) and therefore feeds
+//                     and `jmp $287682`, which GRANTS A HYPER ITEM and feeds
 //                     $285A62's +16 rank.  That is the owner's own case and it
 //                     needs $287682's machine, which is W28's wave 8.
+//
+// ================= WAVE 45: **WHICH LASER THESE ARMS ARE** ==================
+//
+// W45 ported THE BEAM -- the weapon a player gets by holding Button 1 -- and
+// changed NOTHING about this file's behaviour.  That is not luck and it is
+// worth writing down, because the wave brief predicted the opposite.
+//
+// `37-recon-laser.md` §0 established that "the laser" is TWO weapons.  Every
+// laser fork in this file -- `$2860A8`, `$2862DC`, and therefore `$286A82`,
+// `$2867B4` and `$286DA8` behind them -- reads **`$811F72`**, and `$811F72` is
+// the **BOMB-LASER's** 45 x $30 record (W37 §4.2: `$24560A` walks it as 45
+// records of $30; type-5 call #7 `$255DD8` drives it; the only thing that
+// selects that weapon is `$24989E bset #$0,($1,A6)`, INSIDE THE BOMB).
+//
+// **THE BEAM DOES NOT LIVE THERE.**  It lives in `$811EF2`/`$811F12` (the beam
+// records), `$811F32`/`$811F52` (the drawn column) and the two 32 x $30 pools
+// at `$8112F2`/`$8118F2` -- `src/laser.js SEG`/`BEAM`.  MEASURED, this wave:
+// **600 logic frames with fire held, the beam armed at +17 and laying segments
+// from +19 on, and `$811F72` was 0 on every one of them.**  `$8130F8` bit 2 --
+// the OTHER gate on `$2860A8`'s arm -- was 0 on all 600 as well, so the arm is
+// two independent gates away from reachable.
+//
+// So a wave that ports the beam and "fixes" these arms would be adding a rank
+// feed and a chain break the beam has not got.  The correct change was to name
+// the address of the rank feeder `$2867B4` so the wave that ports `$286A82`
+// cannot ship one without the other, and to say -- here -- which laser this is.
 //            $28D520  the per-frame half, above.
 //
 // ============================== THE BCD, AND THE TRAP ========================
@@ -89,6 +114,16 @@ export const SCORE = {
   wrapP1: 0x28614a, wrapP2: 0x286154, wrapMask: 0x286128, wrapTail: 0x286102,
   altBomb: 0x286876,        // NOTED
   altLaserP1: 0x286a82, altLaserP2: 0x286da8,   // NOTED
+  /** `$2867B4` -- **THE LASER'S RANK FEEDER**, reached ONLY by
+   *  `$286AF8 bsr` from inside `$286A82`, with 0 absolute callers.  Its own
+   *  8-frame divider `$81B636`, `+4` (or `+$30` while hypering) into `$81B64A`,
+   *  then `$2867CE jsr $287682`, which is one of that routine's six callers.
+   *  `37-recon-laser.md` §9.8: "any wave that ports `$286A82` without
+   *  `$2867B4` ships a laser that scores and does not raise rank -- which is
+   *  the owner's named failure with the sign flipped."  Neither is ported and
+   *  the address is here so the next wave cannot port one without the other. */
+  laserRankFeed: 0x2867b4,
+  laserRankDivider: 0x81b636,
   perFrame: 0x28d520,       // NOTED -- object type 0: the drain and the decrement
   drain: 0x2842b0, decrement: 0x284636,
   scratch: 0x81b5aa,        // $286626 lea $81B5AA,A1
@@ -235,9 +270,12 @@ function capClamp(ram, ctx, p, d1) {
   note(ctx, SCORE.capTail, `$286674 onwards -- the chain meter reached its cap `
     + `and the board runs the HYPER-STOCK BONUS: the $813094-indexed tables at `
     + `$286EC2/$286ECC/$2866D2, then $2866C4 add.w D0,$81B64A and `
-    + `$2866CA jmp $287682, which grants a hyper stock ($81B65C, capped at 5 `
-    + `at $28768C) and therefore feeds $285A62's +16 RANK. Not ported: that is `
-    + `the owner's own named failure case and it needs $287682's machine`);
+    + `$2866CA jmp $287682. W38 §2.4 CORRECTS what eight waves of this file's `
+    + `text said: $287682 never writes $81B65C at all -- $28768C cmpi.w #$5 is `
+    + `a REFUSAL test, the only absolute writer of the stock is $2530CA and it `
+    + `is UNCAPPED, and what $287682 increments is $81B6E0, the pending-item `
+    + `count. The rank chain is still real, one step longer: item -> $2530CA `
+    + `stock -> $285A62 +$81B646 -> $2608F4's 16x term. Not ported`);
 }
 
 /**
@@ -346,6 +384,11 @@ function chainContinue(ram, ctx, p, d3, d1) {
  * LEVEL** (W19 §1.2), so all 85 call sites score the same thing and none of
  * them carries an amount.
  *
+ * **W38 §4.3 CORRECTS THE NAME ABOVE AND IT IS WORTH THE LINE:** `$81B63E` is
+ * the hyper's 0/1 ACTIVE FLAG, not its level (the level is `$81B654`), so the
+ * value added is 1 or 2 and never level-scaled.  The arithmetic this file
+ * shipped was right; the sentence describing it was not.
+ *
  * `$286096 btst #1,(A6) / beq` -- an enemy whose sub-record byte 0 has bit 1
  * set scores NOTHING and the routine returns immediately.  A6 is the enemy's
  * sub-record, so this is per-enemy and must be transcribed even though no
@@ -361,9 +404,13 @@ export function scoreHit(ram, ctx, a6, d1) {
       if ((d1 & 0x10) !== 0) {                        // $2860BC btst #4,D1
         note(ctx, SCORE.altLaserP1, `$2860C8 bsr $286A82 -- $286096's LASER `
           + `arm ($8130F8 bit 2 + $811F72 negative + its bit 0 + its bit 7 `
-          + `clear). No laser has ever executed in this port; $2453C2 ran ZERO `
-          + `times in 580 live-beam frames (10-recon-combat §8.7). $2860CC `
-          + `bra.b $2860DE, so the plain P1 add below still runs`);
+          + `clear). $2860CC bra.b $2860DE, so the plain P1 add below STILL `
+          + `RUNS and both happen, in that order. $286A82 needs $2867B4 `
+          + `($${SCORE.laserRankFeed.toString(16).toUpperCase()}) with it -- a `
+          + `separate 8-frame divider $81B636 that feeds $81B64A and grants a `
+          + `hyper stock through $287682, i.e. RANK. Porting the accumulator `
+          + `without the feeder ships a laser that scores and does not raise `
+          + `rank (37-recon-laser §9.8)`);
       } else {
         // ---------------------------------------------------------------
         // $2860C0 `beq.b $286102`, and it goes to **$286102**, not to the P2

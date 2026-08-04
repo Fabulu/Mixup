@@ -10,7 +10,10 @@
 //           $252bd0   $281d9a   $25354c   $25292a   $252a52
 //   28b670: tst.w $81308c / beq $28b730 ...
 //
-// **THIS FILE RUNS TEN OF THE TWENTY-THREE AND COUNTS THE OTHER THIRTEEN.**
+// **THIS FILE RUNS TWELVE OF THE TWENTY-THREE AND COUNTS THE OTHER ELEVEN.**
+// (W45 added #10 `$254680` and #11 `$255042`, the beam's segment driver and its
+// draw.  Both were counted as "three of the thirteen unported calls, with no
+// indication that they are the laser" -- `37-recon-laser.md` §5.)
 // (W33 added call #3, `$28AD54`, and only its FIRST LOOP -- see the case body.)
 // `TYPE5_PORTED` below is the authority; this paragraph is not.  It said "EXACTLY
 // ONE" from wave 8 until wave 29 -- through wave 12 adding five -- and W28's
@@ -127,6 +130,7 @@ import { reapSubRecords, SUB_REAPER } from './spawn.js';
 import { runBulletDriver, runClearTimer } from './bulletdriver.js';
 import { runType5Tail } from './damage.js';
 import { notePerFrameLedger } from './score.js';
+import { runSegmentDriver, runBeamDraw } from './laser.js';
 
 export const TYPE5 = {
   handler: 0x28b5e0,
@@ -138,6 +142,8 @@ export const TYPE5 = {
   clearTimer: 0x25354c,     // $28B65E -- the screen clear's arming timer
   shotDriver: 0x253a70,     // $28B610 -- the ONE call this port makes
   optionObject: 0x24c096,   // $28B616 -- where the LASER RAMP lives
+  segmentDriver: 0x254680,  // $28B61C -- THE BEAM's 32-slot segment driver (W45)
+  beamDraw: 0x255042,       // $28B622 -- THE BEAM's draw                   (W45)
   laserRampDown: 0x24c8be,  // inside it; $24C8CE is the write
   /** ($4b,A6)'s reload with the measured formation ($5a,A4) = 2: (2-2>>1)+4. */
   laserRampFrames: 4,
@@ -182,7 +188,9 @@ export const TYPE5_PORTED = new Set([
   0x2634f4,   // #2  THE ENEMY SUBSYSTEM: spawn walk + deferred drain + driver (W29)
   0x28ad54,   // #3  the SUB-RECORD REAPER, first loop only (W33) -- see below
   0x253a70,   // #8  the player-shot driver (wave 8)
-  0x24c096,   // #9  THE OPTION OBJECT (wave 12)
+  0x24c096,   // #9  THE OPTION OBJECT (wave 12) -- and THE BEAM (W45)
+  0x254680,   // #10 THE BEAM's segment driver, 32 slots x 2 players (W45)
+  0x255042,   // #11 THE BEAM's draw (W45)
   0x24a458,   // #14 the ship's alt entry, P1 (wave 12)
   0x24a46c,   // #15 ...P2
   0x24a440,   // #16 the ship's draw, P1 (wave 12)
@@ -228,6 +236,18 @@ export function makeType5(rom) {
           } else {
             runOptionObject(ram, ctx);
           }
+          break;
+        case TYPE5.segmentDriver:                       // $28B61C -> $254680
+          // WAVE 45.  Calls #10 and #11 are TWO THIRDS OF THE BEAM and they
+          // are wired together with #9 for the reason W37 §6 gives: the beam is
+          // a bootstrap across frame boundaries -- #9 seeds a segment, #10's
+          // handler sets the bit both of #9's builders wait on, and #11 draws
+          // what #9 laid down.  Any two of the three is a machine that arms and
+          // never fires.
+          ctx.laserSegments = runSegmentDriver(ram, ctx);
+          break;
+        case TYPE5.beamDraw:                            // $28B622 -> $255042
+          ctx.laserDrawn = runBeamDraw(ram, ctx);
           break;
         case TYPE5.subReaper:                           // $28B5F2 -> $28AD54
           // WAVE 33.  ONLY the reaper half of `$28AD54` runs here -- the twelve

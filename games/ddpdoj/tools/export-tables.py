@@ -639,6 +639,65 @@ SHOT_WINDOWS.append(
                        "read at $28616C) and the per-hit REFILL table $287DF4 "
                        "(by $81043E/$8104A0, read at $2862D4/$286484)"))
 
+# ---------------------------------------------------------------- WAVE 45
+# THE BEAM.  `37-recon-laser.md` §2.3 measured that wave 8's 107 windows cover
+# the BOMB-LASER's templates and NOTHING of the beam's, and §9.1 asks for these
+# first because every routine in the subsystem reads through them.  Widths are
+# generous on purpose -- `export-tables.py`'s own rule is "wider than measured
+# fails at the export, narrower than used fails on the player's machine".
+#
+# ONE WINDOW FOR THE WHOLE $24A8xx..$24B8xx BLOCK, and the reason is the same
+# one the WAVE 12 block gives: the five template FAMILIES, the per-type SCRIPTS
+# they point at, the per-family ANIM TABLES those point at and the two
+# sub-templates `$254C1E` copies are packed contiguously and interleaved, and
+# naming each by extent would be a schema decision the ROM does not support.
+# MEASURED contents, in address order:
+#   $24A824  the hitbox/size word table ($254CB0, indexed by power/formation/ship)
+#   $24A86A  the type-2/7/12/17 SCRIPTS ($24A86A/$24A89C/$24A8CE/$24A900)
+#   $24A932  family 1, 25 x $26 -- what $24CAAE seeds into pool slot 28
+#   $24ACE8  family 2's sixteen anim tables, $28 bytes each
+#   $24AF68  family 2, 20 x $0E -- $24CB3A's per-frame segment
+#   $24B048  family 3's scripts
+#   $24B0A0  families 3, 4 and 5 -- $24CCD0's beam HEAD, 10 + 10 + 5 x $20
+#   $24B420  the `($28,A6)` sub-template $254C1E copies into $811892
+#   $24B6D2  the `($2c,A6)` sub-template $254C1E copies into $811EF2
+SHOT_WINDOWS.extend([
+    (0x24A800, 0x1100, "W45 THE BEAM: $24A824 the hitbox table, the type "
+                       "scripts, all five template families ($24A932 x25x$26, "
+                       "$24AF68 x20x$0E, $24B0A0/$24B1E0/$24B320 x$20) and "
+                       "every anim table and sub-template they point at"),
+    (0x24BB00, 0x00A0, "W45 THE BEAM: $24BB0A, the (offset, pointer) pairs "
+                       "$254FE6 puts in $811F32 and $255042 walks"),
+    (0x24CFB0, 0x0180, "W45 THE BEAM: the five pointer tables $24CFBA (25), "
+                       "$24CFE2 (10), $24D00A (5), $24D01E/$24D026/$24D03A, "
+                       "$24D076/$24D07E/$24D092, $24D0A6/$24D0AE/$24D0C2 and "
+                       "$24D0D6 -- $24CFBA..$24D12D"),
+    # TWO tables of TWENTY, not one of thirty-two: `$2546BA lea ($254712,PC)`
+    # for P1 and `$2546FA lea ($254762,PC)` for P2, $50 apart.  The index is
+    # `type & $1F`, which runs to 31, so the window has to cover the overrun
+    # into $2547B2's code as well -- and it does, because a read there is a
+    # LOUD NAMED THROW out of the dispatch, not a silent zero.
+    (0x254710, 0x00C0, "W45 THE BEAM: the segment dispatches $254712 (P1, 20 "
+                       "entries) and $254762 (P2, 20), read by $254680 with "
+                       "`type & $1F`"),
+    # THE PODS' SHOT SPAWN, $24D480.  `movea.l $8127E8,A1 / move.w (A1),D4` --
+    # a ROM pointer held in RAM.  MEASURED $255278 in the shipped seed, i.e. a
+    # word out of the per-power BURST-COUNT table that begins after $255042's
+    # `rts` at $255158.  The window is the whole run of it up to the WAVE-12
+    # ship-table window at $255330, because nothing in this port advances the
+    # cursor and its extent is therefore unproven from a run.
+    (0x255158, 0x01D8, "W45: $24D4B2's burst-count table, reached through the "
+                       "RAM pointer $8127E8/$8127F0 (MEASURED $255278)"),
+    # $23F508 is the emitter stub every segment handler and the beam draw end
+    # with, and `src/spritequeue.js resolveEmitStub` READS ITS CODE to learn
+    # which bucket it feeds and which calling convention it uses, rather than
+    # trusting a number in a comment.  It is W36's fifth prologue shape
+    # (`addi.w #$C,<ctr>` BEFORE the record read), so the resolver needs 22
+    # bytes of it.
+    (0x23F500, 0x0020, "W45: the emitter stub $23F508, read by "
+                       "spritequeue.js resolveEmitStub"),
+])
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and

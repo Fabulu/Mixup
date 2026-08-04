@@ -368,8 +368,27 @@ function bombAndShotGuards(ram, rec, ctx, playerIdx) {
   ram.setU8(rec + 0x56, ram.btst8(rec + P.flags1, 0)     // $249B30 btst #0
     ? ram.u8(rec + 0x55) : ram.u8(rec + 0x54));          // $249B38 / $249B2C
   // $249B40 tst.b ($3f,A6) / bne $249E4E
+  //
+  // **THIS WAS A THROW UNTIL WAVE 45 AND IT IS NOT AN UNPORTED PATH AT ALL.**
+  // The instruction is `bne $249E4E` -- a branch to the player's own TAIL,
+  // which is the very next thing this function's caller does -- so the arm has
+  // always been "skip the shot cadence machine this frame", i.e. a `return`.
+  // Calling `($3f,A6)` "the dead flag" and throwing on it was a guess, and the
+  // thing that flushed it out is the LASER: `$24C282 move.b #$1,($3f,A4)` sets
+  // this byte on the frame the beam's arm-up completes (+16) and
+  // `$24C2D6 move.b D0,($3f,A4)` clears it on release, precisely so that the
+  // ship stops spawning ordinary shots while it is firing a beam.
+  //
+  // That also completes `37-recon-laser.md` §3.4's correction. W37 is right
+  // that `$81295C` falling to 0 is the shot table DRAINING and not a laser
+  // write; what it does not say is WHY nothing refills the table after +16, and
+  // this is why -- the cadence machine is switched off at its head, by the
+  // laser, on purpose.  The six shots at lf2001..2007 are the pre-arm burst.
   if (ram.u8(rec + P.dead) !== 0) {
-    unreached(0x249b40, 'the ($3f,A6) dead flag is set');
+    unportedLog.note(0x249b40, 'shot: ($3f,A6) is set -- the cadence machine is '
+      + 'skipped ($249B44 bne $249E4E). The LASER sets this byte at $24C282 '
+      + 'when its arm-up completes and clears it at $24C2D6 on release');
+    return;                                              // $249B44 bne $249E4E
   }
 
   // THE SHOT CADENCE MACHINE, $249B48..$249BE2.  Ported in wave 5.  This is the

@@ -11,8 +11,9 @@
 //      nothing in the port could ever reach them).
 //   3. THE LASER.  `$24C164 btst #4,($40,A6)` is the laser gate and it is on the
 //      RAW HELD input byte the player copies in at `$24C134` -- NOT on the edge
-//      the shot cadence machine reads.  Everything behind it belongs to W24 and
-//      is a loud named throw here, carrying `$24C180`.
+//      the shot cadence machine reads.  **WAVE 45 PORTED IT**: everything behind
+//      that gate is `src/laser.js`, and the throw that used to carry `$24C180`
+//      is gone.  Until then any press of fire took the page down.
 //
 // THE RECORD IS $64 BYTES, NOT $20 (machine.js `OPT`).  Pod 0 is the first $20,
 // pod 1 the second, and the control block -- including the copied input bytes at
@@ -44,6 +45,9 @@ import { i16, u16, asr } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueRequest, enqueueRegisters, NAMED_BUCKETS } from './spritequeue.js';
 import { groundPlane, SHIP_MUTATE } from './shipsprite.js';
+import {
+  BEAM, runLaserGate, buildBeam, wipeSegmentPool, rampDown,
+} from './laser.js';
 
 /** The two players' blocks, in the ROM's own order: P1 first, P2 second. */
 export const OPTION_BLOCKS = [
@@ -122,49 +126,91 @@ function runOneBlock(ram, ctx, b) {
   if (ram.btst8(player + P.state, 5)) ram.setU16(opt + OPT.raw, 0);
 
   // $24C164 btst #4,($40,A6) / beq $24C29E -- THE LASER GATE.
+  //
+  // WAVE 45.  This was a loud named throw on `$24C180` from wave 12 until now,
+  // and because the gate is the BOARD's -- the raw held bit, no speed term,
+  // first held frame -- there was no input short enough to avoid it and the
+  // game could not be shot at all (`39-OWNER-visible-play-before-sound.md`).
+  // `src/laser.js` is the whole of what is behind it.
   if (ram.u8(opt + OPT.raw) & 0x10) {
-    laserThrow(ram, opt, player);
+    const to = runLaserGate(ram, ctx, beamOf(b));           // $24C16E..$24C29C
+    if (to === 'c310') return podsSwingBack(ram, ctx, b);   // $24C178 bne
+    return podsOnShip(ram, ctx, b);                         // every other arm
   }
-  noLaser(ram, ctx, b);
+  return noLaser(ram, ctx, b);                              // $24C16A beq
 }
 
-/** `$24C16E..$24C29C` -- everything behind the laser gate.  W24's. */
-function laserThrow(ram, opt, player) {
-  unreached(ROM.optionLaser, `THE LASER. $24C164 `
-    + `btst #4,($40,A6) is set -- P1 is HOLDING Button 1 and the raw held bit `
-    + `arrived through $24C134's copy of the player's ($18,A6). This is the `
-    + `board's OWN gate and it fires on the FIRST held frame with no dependence `
-    + `on the speed index; the throw wave 9 put here fired on the fourth and `
-    + `only when the ship was off its speed floor, so a player already at the `
-    + `floor held fire and still got silence. MEASURED on the board, 600 held `
-    + `frames (10-recon-combat §2): six shots at lf2001..2007, $8104AB bit 2 `
-    + `latches at +17, the laser record $811EF2 goes live at +20 ($8200 -> `
-    + `$8201/$9201) and $81295C falls to 0 for the rest of the hold. None of `
-    + `that is ported: $24C180 jsr $2536FA, the ramp $24C8BE, the latch `
-    + `$24C1A8 bset #2,($1,A6), the beam record $811EF2 and the 45 x $30 `
-    + `segment table $811F72 are all W24. Speed index is now `
-    + `${ram.u8(player + P.speedIdx)} and its floor ${ram.u8(player + P.laserFloor)}; `
-    + `the option block's latch byte is `
-    + `$${ram.u8(opt + OPT.flags1).toString(16).toUpperCase()}`);
-}
+/** The `src/laser.js` block that shares this one's player.  The two lists are
+ *  kept apart on purpose: `OPTION_BLOCKS` carries what `$24C096` needs and
+ *  `BEAM` carries the four RAM records the beam lives in. */
+function beamOf(b) { return BEAM[b.d7 ? 0 : 1]; }
 
-/** `$24C29E..$24C382` -- the ordinary pod path. */
+/** `$24C29E..$24C338` -- the ordinary pod path, and the RELEASE TEARDOWN. */
 function noLaser(ram, ctx, b) {
   const { opt, player } = b;
   if (ram.i8(player + P.flags1) < 0) {                     // $24C29E tst.b ($1,A4)
-    unreached(0x24c2a4, `bit 7 of the player's ($1,A4) sends $24C2A2 to the `
-      + `laser RAMP-DOWN $24C8BE without the laser gate -- the knockback state. `
-      + `MEASURED 0; player.js throws on the same bit at $2496A2`);
+    // $24C2A4 bsr $24C8BE / bra $24C33A -- the knockback state ramps the speed
+    // DOWN without the laser gate.  This was a throw until W45 for want of
+    // `$24C8BE`, which is now ported; `player.js` still throws on the same bit
+    // at `$2496A2`, so the arm remains transcribed-and-unexercised.
+    rampDown(ram, player, opt);                            // $24C2A4 bsr
+    return podsOnShip(ram, ctx, b);                        // $24C2A8 bra
   }
   ram.setU16(player + 0x60, 0);                            // $24C2AC jsr $25370A
   rampUp(ram, player);                                     // $24C2B2 bsr $24C8E4
   ram.setU8(opt + 0x3f, 0x0a);                             // $24C2B6 move.b #$a
-  if (ram.btst8(opt + OPT.state, 6)) {                     // $24C2BC btst #6,(A6)
-    unreached(0x24c2c4, `bit 6 of the option block's state byte opens $24C2C4, `
-      + `which clears five of the PLAYER's cadence bytes ($2a,$2b,$34,$35,$3f) `
-      + `and calls $252714/$25275C. MEASURED 0 over fly-around`);
+  if (!ram.btst8(opt + OPT.state, 6)) {                    // $24C2BC btst #6,(A6)
+    return podsOnShip(ram, ctx, b);                        // $24C2C0 beq
   }
 
+  // ---- $24C2C4: THE TEARDOWN.  Bit 6 is set by `$24C17C` on the frame the
+  // laser's start delay expires, so this runs on the first frame after fire is
+  // RELEASED and never otherwise.  It was a throw until W45 because nothing
+  // could set the bit.
+  for (const o of [0x2a, 0x2b, 0x34, 0x35, 0x3f]) {        // $24C2C4..$24C2D6
+    ram.setU8(player + o, 0);
+  }
+  wipeSegmentPool(ram, ctx, beamOf(b));                    // $24C2DE / $24C2E4
+  ram.setU8(opt + 0x4a, 8);                                // $24C2E8 move.b #8
+  ram.setU8(opt + OPT.reloadCount, 4);                     // $24C2EE move.b #4
+  // `andi.w #$DFDB,(A6)` clears bit 5 of BOTH bytes and bit 2 of the low one:
+  // the high byte's bit 5 is the BUILDERS' gate (`$24CB3A btst #5,(A6)`) and
+  // the low byte's bit 2 is the LATCH (`$24C1A8`).  So a release un-arms the
+  // beam and un-latches it in one instruction, and the next hold pays the full
+  // seventeen frames again.
+  ram.setU16(opt + OPT.state, ram.u16(opt + OPT.state) & 0xdfdb);  // $24C2F4
+  if (!ram.bclr8(opt + OPT.state, 4)) {                    // $24C2F8 bclr #4
+    return podsSwingBack(ram, ctx, b);                     // $24C2FC beq
+  }
+  ram.setU32(opt + OPT.anim, ram.u32(opt + 0x2a));         // $24C2FE move.l
+  ram.setU16(opt + OPT.size, ram.u16(opt + 0x2e));         // $24C304 move.w
+  ram.setU32(opt + OPT.offLong, ram.u32(opt + 0x26));      // $24C30A move.l
+  return podsSwingBack(ram, ctx, b);                       // falls into $24C310
+}
+
+/** `$24C310..$24C338` -- the pods swing BACK out, two units per frame, until
+ *  `($1b,A6)` reaches the template's rest angle `($36,A6)` = $10.  Reached from
+ *  the teardown AND from every frame of the laser's nine-frame start delay. */
+function podsSwingBack(ram, ctx, b) {
+  const { opt } = b;
+  const d0 = ram.u8(opt + 0x36);                           // $24C310 move.b
+  if (d0 > ram.u8(opt + OPT.angle)) {                      // $24C314 cmp.b/bhi
+    ram.setU8(opt + OPT.angle, (ram.u8(opt + OPT.angle) + 2) & 0xff);  // $24C32C
+    ram.setU8(opt + 0x3b, (ram.u8(opt + 0x3b) - 2) & 0xff);            // $24C330
+    ram.setU8(opt + 0x3b, ram.u8(opt + 0x3b) & 0x3f);                  // $24C334
+    return podsOnShip(ram, ctx, b);                        // falls into $24C33A
+  }
+  ram.setU8(opt + OPT.angle, d0);                          // $24C31A move.b
+  ram.setU8(opt + 0x3b, ram.u8(opt + 0x37));               // $24C31E move.b
+  // $24C324 andi.b #$B3,(A6) -- clears bits 2, 3 and 6 of the state word's HIGH
+  // byte, i.e. the "laser has started" bit `$24C17C` set.
+  ram.setU8(opt + OPT.state, ram.u8(opt + OPT.state) & 0xb3);          // $24C324
+  return podsOnShip(ram, ctx, b);                          // $24C328 bra
+}
+
+/** `$24C33A..$24C382` -- the tail EVERY arm of `$24C096` converges on. */
+function podsOnShip(ram, ctx, b) {
+  const { opt, player } = b;
   // $24C33A move.l ($2,A4),D0 / move.l D0,($2,A6) / move.l D0,($22,A6)
   // ONE longword: both pods are put ON the ship every frame, and the formation
   // routine then moves each of them off it by exactly one frame of its own
@@ -174,10 +220,19 @@ function noLaser(ram, ctx, b) {
   ram.setU32(opt + OPT.posY, pos);
   ram.setU32(opt + OPT.posY2, pos);
 
-  if (ram.u8(opt + OPT.angle) === 0) {                     // $24C346 tst.b ($1b,A6)
-    unreached(0x24c368, `pod 0's angle byte ($1b,A6) is 0, which takes $24C34A `
-      + `to $24C368 -- a SINGLE $24D12E call plus $24CB3A, the pods-stowed `
-      + `path. MEASURED $10 on every sampled frame`);
+  if (ram.u8(opt + OPT.angle) === 0) {                     // $24C346 tst.b/beq
+    // ---- $24C368: **THE BEAM**, not "the pods-stowed path". -----------------
+    // `src/options.js` carried that name from wave 12 until W37 §3.3 retired
+    // it: this is the second half of the laser and it was unreachable in every
+    // corpus run for exactly the reason the laser was -- nobody held the button
+    // for seventeen frames.
+    movePod(ram, ctx, b, opt);                             // $24C368 bsr $24D12E
+    ram.setU16(opt + OPT.posY,                             // $24C36C/$24C370
+      u16(ram.u16(opt + OPT.posY) + ram.u16(opt + 0x1e)));
+    buildBeam(ram, ctx, beamOf(b));                        // $24C374 bsr $24CB3A
+    return beamPodTail(ram, ctx, b);                       // $24CC68..$24CCCC
+    // $24C378 bra $24C37E -- and $24C37A bsr $24CDC0 is JUMPED. See
+    // `laser.js builder2` for why that is a throw and not a deletion.
   }
   // $24C34C..$24C35E -- the formation dispatch, (($5a,A4)-2)*2 into `bra.w`s.
   const form = ram.u16(player + P.optFormation);
@@ -192,6 +247,39 @@ function noLaser(ram, ctx, b) {
   // $24C360 lea ($20,A6),A6 -- translated for the record: A6 is reloaded by the
   // dbra's target ($24C0B0) or discarded at the rts, so it is dead. Saying so
   // is cheaper than a later reader wondering whether the port dropped it.
+  return undefined;
+}
+
+/**
+ * `$24CC68..$24CCCC` -- the tail BOTH beam builders converge on, and the twin
+ * of `$24D12E`'s own `$24D170..$24D17E`.
+ *
+ * So on a lasering frame pod 0 reaches bucket 15 TWICE: once from `$24D12E`
+ * (`$24D17E jmp $23F2CA`) and once from here (`$24CCC6 jmp $23F2CA`).  That is
+ * what the listing does and it is transcribed rather than deduplicated -- the
+ * two records differ only in that this one is emitted after `$24C36C` has moved
+ * `($2,A6)`, and a port that emitted one would be a record short in a bucket
+ * whose depth a byte-for-byte gate can see.
+ *
+ * The shadow's size word is `$210` here against the ordinary pod shadow's
+ * `$208` (`$24C428`), and its flip/colour word is a plain `$18` rather than the
+ * pod's `($1c,A6)`-with-the-colour-replaced.
+ */
+function beamPodTail(ram, ctx, b) {
+  const { opt, player } = b;
+  if (ram.i8(player + P.flags1) < 0) return undefined;     // $24CC68 tst.b/bmi
+  const gated = ram.u16(0x812970) !== 0                    // $24CC6E
+    || ram.u16(0x813098) !== 0                             // $24CC78
+    || ram.u16(0x80390c) !== 0                             // $24CC80
+    || ram.u16(0x813092) === 2;                            // $24CC88
+  if (!gated && SHIP_MUTATE.value !== 'no-shadow') {
+    const d1 = groundPlane(ram.u16(opt + OPT.posY),        // $24CC92..$24CCAE
+      ram.u16(opt + OPT.posX), 0xfe00fe00);
+    enqueueRegisters(ram, NAMED_BUCKETS.shadows, d1,
+      ram.u32(opt + OPT.shadow0), 0x210, 0x18);            // $24CCB4..$24CCC0
+  }
+  enqueueRequest(ram, NAMED_BUCKETS.options, opt);         // $24CCC6 jmp $23F2CA
+  return undefined;
 }
 
 /** `$24C8E4` -- the speed ramp UP, one index per frame toward ($39,A4). */
@@ -403,18 +491,102 @@ function fireSpawn(ram, ctx, b) {
     d0 = 2;                                                // $24C4EC moveq #$2
   }
   ram.setU8(player + 0x34, d0 & 0xff); arm('fh34w');       // $24C4EE move.b
-  unreached(ROM.optionSpawn, `THE PODS' SHOT SPAWN. $24C4F2 bra $24D480, `
-    + `reached because the pod cadence machine emitted a shot this frame. `
-    + `$24D480 is movem.l D6-D7/A3/A5-A6,-(A7) / lea $810572,A0 (P1) or `
-    + `$810C32 (P2, chosen by tst.w D7 at $24D490) / movea.l $8127E8,A1, then `
-    + `the $24D2FC and $24D35C template tables indexed by ($58,A4)*4 (+4 when `
-    + `bit 0 of ($1,A4) is set) and again by ($20,A4)*2, the two $24D500/`
-    + `$24D510 sub-4 phase counters ($52,A6)/($54,A6), and a jsr $23D88E per `
-    + `record. NONE OF IT IS PORTED -- it is W20's, and W20 was told to build `
-    + `on these cadence bytes: ($34,A4) is now ${ram.u8(player + 0x34)} and `
-    + `($35,A4) ${ram.u8(player + 0x35)}. The option block's handshake byte `
-    + `$${(opt + OPT.flags1).toString(16).toUpperCase()} is `
-    + `$${ram.u8(opt + OPT.flags1).toString(16).toUpperCase()}`);
+  return podShotSpawn(ram, ctx, b);                        // $24C4F2 bra $24D480
+}
+
+/**
+ * `$24D480..$24D5D8` -- THE PODS' SHOT SPAWN.
+ *
+ * **THIS WAS NOT IN WAVE 45's BRIEF AND IT HAD TO BE, AND THAT IS A FINDING
+ * ABOUT THE BRIEF.**  `37-recon-laser.md` prices the beam as L1+L2 "shipped
+ * together" and says that unblocks the owner.  It does not: the laser gate
+ * `$24C164` is checked BEFORE the formation dispatch, so once `$24C180` stops
+ * throwing, the very next thing a held button reaches is `$24C476`'s edge arm
+ * -- the pods' cadence machine -- which fires on the FIRST held frame and threw
+ * here.  The beam does not take over until `($1b,A6)` reaches 0 at frame +16,
+ * so sixteen of the seventeen arm-up frames run this routine.  Porting the beam
+ * without it moves the crash from one address to another and the owner still
+ * cannot shoot.
+ *
+ * Two near-identical halves, one per pod, into the SAME 36-slot shot table
+ * `$810572` the ship's own spawn `$249BFC` writes -- pod 0 scanning from slot
+ * 0 and pod 1 from slot 7 (`$24D4A0 move.w #$150,D0`, `$150 = 7 * $30`), which
+ * is where `src/type5.js`'s "the option pods' shots go into slots 7..12" comes
+ * from.  Both templates carry type word `$8002` = shot dispatch entry [2] =
+ * `$253E34`, which `src/shots.js` has ported since wave 8, so the records this
+ * writes are driven by code that already exists.
+ *
+ * `$24D4A4 tst.w ($58,A4) / beq $24D4AE / move.w #$150,D0` -- BOTH arms load
+ * `$150`.  Translated as written, with the branch, because the fact that the
+ * ship-select arm is a no-op is a property of the cartridge and not of the port.
+ */
+function podShotSpawn(ram, ctx, b) {
+  const { opt, player, d7 } = b;
+  const table = d7 ? 0x810572 : 0x810c32;                  // $24D484 / $24D494
+  // $24D48A movea.l $8127E8,A1 / $24D4B2 move.w (A1),D4 -- a ROM pointer held
+  // in RAM.  MEASURED $255278 in the shipped seed.
+  const cursor = ram.u32(d7 ? 0x8127e8 : 0x8127f0);        // $24D48A / $24D49A
+  const a3 = table + 0x150;                                // $24D4AE/$24D4B0
+  let d4 = ctx.rom.u16(cursor);                            // $24D4B2 move.w
+  const d5sel = ram.u16(player + P.shipSel);               // $24D4B4 move.w
+  let d0 = u16(d5sel * 4);                                 // $24D4BA/$24D4BC
+  if (ram.btst8(player + P.flags1, 0)) {                   // $24D4BE btst #0
+    d0 = u16(d0 + 4);                                      // $24D4C6 addq.w #4
+    d4 = ctx.rom.u16(0x24d47c + i16(d5sel));               // $24D4C8/$24D4CC
+  }
+  // $24D4D0 tst.w $81308C / bne / cmpi.w #$4,D4 / bls / moveq #$4,D4
+  if (ram.u16(0x81308c) === 0 && d4 > 4) d4 = 4;
+  let d5 = d4;                                             // $24D4E0 move.w
+  let a1 = ctx.rom.u32(ctx.rom.u32(0x24d2fc + i16(d0))     // $24D4EA/$24D4F8
+    + i16(u16(ram.u16(player + 0x20) * 2)));
+  let a2 = ctx.rom.u32(ctx.rom.u32(0x24d35c + i16(d0))     // $24D4EE/$24D4FC
+    + i16(u16(ram.u16(player + 0x20) * 2)));
+
+  const phase = (off) => {                                 // $24D500 / $24D510
+    const v = ram.u16(opt + off) - 4;                      // subq.w #4
+    ram.setU16(opt + off, v < 0 ? 8 : u16(v));             // bcc / move.w #$8
+    return ram.u16(opt + off);
+  };
+  const d6 = phase(0x52);                                  // $24D500..$24D50C
+  const d7ph = phase(0x54);                                // $24D510..$24D51C
+
+  writePodShot(ram, ctx, b, table, d4, a1, opt, d6, d7ph);    // $24D520..$24D574
+  writePodShot(ram, ctx, b, a3, d5, a2, opt + OPT.pod, d6, d7ph);  // $24D576..
+}
+
+/** One half of `$24D480`: scan for a free slot, then 44 bytes and a bucket-0
+ *  enqueue.  `$24D578 lea ($20,A6),A6` is why the second half's A6 is pod 1. */
+function writePodShot(ram, ctx, b, table, count, src, pod, d6, d7ph) {
+  const { player } = b;
+  let a0 = table;
+  for (let n = count; ; n--) {                             // $24D520 / $24D57C
+    if ((ram.u16(a0) & 0x8000) === 0) break;               // tst.w (A0) / bpl
+    a0 += 0x30;                                            // lea ($30,A0),A0
+    if (n === 0) return;                                   // dbra
+  }
+  let s = src, a = a0;
+  ram.setU16(a, ctx.rom.u16(s)); s += 2; a += 2;           // $24D530 the TYPE
+  ram.setU16(a, u16(ram.u16(pod + OPT.posY)                // $24D532/$24D536
+    + ctx.rom.u16(s))); s += 2; a += 2;
+  ram.setU16(a, u16(ram.u16(pod + OPT.posX)                // $24D53A/$24D53E
+    + ctx.rom.u16(s))); s += 2; a += 2;
+  ram.setU32(a, ctx.rom.u32(s)); s += 4; a += 4;           // $24D542
+  const a5 = ctx.rom.u32(s); s += 4;                       // $24D544 movea.l
+  ram.setU32(a, ctx.rom.u32(a5 + i16(d6))); a += 4;        // $24D548 the ANIM
+  for (let k = 0; k < 4; k++) {                            // $24D54C..$24D552
+    ram.setU32(a, ctx.rom.u32(s)); s += 4; a += 4;
+  }
+  ram.setU8(a - 1, ram.u8(player + 0x56));                 // $24D554 move.b
+  ram.setU32(a, ctx.rom.u32(s)); s += 4; a += 4;           // $24D55A
+  ram.setU16(a, ctx.rom.u16(s)); s += 2; a += 2;           // $24D55C
+  ram.setU16(a, d7ph); a += 2;                             // $24D55E move.w D7
+  ram.setU16(a, ctx.rom.u16(s)); s += 2; a += 2;           // $24D560
+  ram.setU16(a, ram.u16(player + P.optFormation)); a += 2; // $24D562 ($5a,A4)
+  ram.setU16(a, ram.u16(player + 0x20)); a += 2;           // $24D566 ($20,A4)
+  // $24D56A lea (-$2c,A0),A6 / $24D56E jsr $23D88E -- 44 bytes written, and
+  // $23D88E is the QUEUE's own record enqueue (bucket 0, $80397C/$80AFC0), the
+  // same fourteen instructions `enqueueRequest` already ports.
+  enqueueRequest(ram, 0, a0);                              // $24D56E jsr $23D88E
 }
 
 /** `$24C406..$24C43C` and its verbatim twin `$24C43E..$24C474`. */

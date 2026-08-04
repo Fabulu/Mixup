@@ -278,12 +278,22 @@ test('$2634F4 walks the SPAWN SCRIPT before the 58-slot driver',
 // ===========================================================================
 // type 5 itself: the three calls must RUN, not be counted.
 // ===========================================================================
-test('TYPE5_PORTED is TEN of the twenty-three, and the list is the ROM\'s', () => {
+test('TYPE5_PORTED is TWELVE of the twenty-three, and the list is the ROM\'s', () => {
   assert.equal(TYPE5.calls.length, 23, '$28B5E6..$28B66A');
   // W33 added call #3, `$28AD54` -- and ONLY its first loop, the sub-record
   // reaper.  The rest of that routine ($28AD70 onwards, reached by
   // fall-through) is still counted under its own address.
-  assert.equal(TYPE5_PORTED.size, 10);
+  // W45 added #10 `$254680` and #11 `$255042`, THE BEAM's segment driver and
+  // its draw.  They belong with #9 `$24C096`: the beam is a bootstrap across
+  // frame boundaries -- #9 seeds a segment, #10's handler `$2548C4` runs
+  // `$254C1E bset #5,(A4)`, which is the ONE instruction in build B that opens
+  // #9's builders, and #11 draws what they lay down.  Any two of the three is a
+  // machine that arms and never fires.
+  assert.equal(TYPE5_PORTED.size, 12);
+  assert.ok(TYPE5_PORTED.has(TYPE5.segmentDriver));
+  assert.ok(TYPE5_PORTED.has(TYPE5.beamDraw));
+  assert.ok(TYPE5.calls.includes(TYPE5.segmentDriver));
+  assert.ok(TYPE5.calls.includes(TYPE5.beamDraw));
   assert.ok(TYPE5_PORTED.has(TYPE5.subReaper));
   assert.ok(TYPE5.calls.includes(TYPE5.subReaper));
   for (const a of [TYPE5.enemyFrame, TYPE5.bulletDriver, TYPE5.clearTimer]) {
