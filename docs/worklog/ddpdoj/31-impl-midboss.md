@@ -512,8 +512,21 @@ uncatchable, and every source file byte-identical after every one.**
 
 ## 8. THE FULL GATE
 
-`python tools/oracle/pgm.py check`, run to completion on the final tree — see
-§8.1 below (filled in when the run finished).
+`python tools/oracle/pgm.py check`, run to completion on the final tree:
+
+```
+VERDICT: FAILURES -- 45 passed, 4 failed, 0 SKIPPED
+  [FAIL] scroll program: the port vs the whole of stage 1 (10,431 frames)
+  [FAIL] scroll program RED (9 mutations)
+  [FAIL] scroll program: the ATTRACT entry clock $0038 (1,364 frames)
+  [FAIL] scroll program RED [no-fast-forward] on the attract entry
+```
+
+**44/5 -> 45/4, 0 SKIPPED, and the one that changed is `fly-around`.** The four
+that remain are the pre-existing scroll-program red that has been failing since
+W22 and that nobody owns; W29 and W30 both confirmed them unchanged and so does
+this run. **This is the first time the DaiOuJou gate's failure count has gone
+down.**
 
 **Unit tests: 475 pass, 0 fail, 0 SKIPPED** (was 452 before this wave; 21 new
 tests here, plus 2 added to `initbody.test.js`).
@@ -530,9 +543,33 @@ this wave created:
   added: the four `$803917` draws, and the `$26B4B4` throw when `tables` is
   absent.
 
-### 8.1 THE GATE RESULT
+### 8.1 A REGRESSION THIS WAVE CAUSED, AND THE GATE FOUND IT
 
-(see the LOG below; the run is recorded there with its verdict)
+The FIRST full run came back **44 passed / 5 failed** with a different fifth:
+
+```
+[FAIL] enemy stats: hitbox/HP/palette/HP-reload at spawn (W23) -- exit 1
+  lf=3097 clk=c5 type=$d UNPORTED $26B4B4: the MIDBOSS init body reached
+  $26B4B4 bsr $26B304 without a MoveTables
+```
+
+`tools/w23statsgate.mjs` calls `runInitBodyAddr` itself and did not pass
+`tables`, so the throw §6.1 added fired inside the gate. **That is the throw
+doing its job**: the gate named the routine and the frame instead of quietly
+producing a wrong record. Fixed by constructing a `MoveTables` in the gate and
+threading it through `runPort`.
+
+**AND THE FIX IMPROVED THE GATE'S OWN RESULT**, which is a board-level number
+and the only one in this wave that is not `fly-around`:
+
+| | before W31 | after |
+|---|---|---|
+| stage-1 spawns matched | 307 of 308 | **308 of 308 (100.0000 %)** |
+| scripted spawns with STRICT movement fields | 269 | **270** |
+
+The one that was missing was type `$0D` at lf3097 — the midboss. Its spawn
+stats are now bit-exact against the W23 board corpus (10,740 frames), and the
+gate's three RED mutations still go red (820 / 111 / 14 divergent).
 
 ---
 
