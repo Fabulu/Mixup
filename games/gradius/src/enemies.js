@@ -4696,6 +4696,90 @@ function sub_CBD1(state) {
  * instructions later. Written as a comment rather than as code, and named here
  * so the next reader does not "restore" it.
  */
+/**
+ * WAVE 34 -- `$CC33`'S FOUR INDEXED READS, AND THE THREE OF THEM THAT ARE
+ * UNBOUNDED. W33 sec 5b found two; there are three, and the third is worse
+ * because it lands INSIDE the exported block and would be silent.
+ *
+ *   $CC63 LDA $CC1F,Y   $CC1F-$CC20 = 4A 6A     TWO entries, Y = the SHAPE
+ *   $CC68 LDA $CC21,Y   $CC21-$CC22 = 56 76     TWO entries, Y = the SHAPE
+ *   $CC7C LDA $CC23,Y   $CC23-$CC2A = 04 x4 0C x4   EIGHT, Y = $9A
+ *   $CC85 LDA $CC2B,Y   $CC2B-$CC32 = FC 10 FC 10 FC 20 FC 20   EIGHT, Y = $9A
+ *
+ * A shape of 2 or more reads `$CC21`/`$CC23`'s bytes through the first two
+ * tables and gets no throw at all today, because `armShapeParams` is exported
+ * as one 20-byte run: the read stays inside the block and returns a plausible
+ * number. That is the quiet failure `docs/knowledge/03` names, and it is the
+ * reason this guard tests the SHAPE and not only `$9A`.
+ *
+ * ============ REACHABILITY, SETTLED STATICALLY (W33 could not) =============
+ *
+ * `$9A = 4 * $0460[owner] + $0601[group]`, so both halves have to be bounded.
+ *
+ * THE SHAPE. `$A500-$A509` is the only writer of `$0601`: `LDA $65 / AND #$0F
+ * / BEQ $A4CD / SEC / SBC #$01`, so shape = (a nibble of the record's `$65`
+ * byte) - 1, and `$A4CD` shifts `$65` down four bits per allocated arm. Every
+ * inline-5 record in the PRG enumerated this session through
+ * `tools/oracle/wavecensus.py` (`decode_inline5`, so the STRIDE is the ROM's):
+ *
+ *   $19 = 2   45 records -- but stage 3 routes to `$A46F` (the moai), which
+ *             never writes $0601 at all. Not this path.
+ *   $19 = 4    4 records, `$65` in { $01 $02 $12 $21 } -> nibbles 1 and 2
+ *             -> SHAPE 0 OR 1.
+ *   $19 = 6   10 records, `$65` in { $06 $07 $20 $85 $9A $A2 $A9 $C9 $F0 }
+ *             -> nibbles up to 15 -> SHAPE UP TO 14.
+ *   no other stage has an inline-5 record at all.
+ *
+ * THE BOX CLASS. Every instruction that writes `$0460` counted out of
+ * `rip/prg.asm` (13 sites, 8 of them writes): 0 at `$A52E` (the slot clear),
+ * `$A569` and `$CA8C`; 1 at `$A4FC` (the arm owner's own spawn), `$AF35`,
+ * `$B7AA` and `$C6AE`; 3 at `$B927`, the BOSS. **NOTHING WRITES 2**, so W33's
+ * reading of its captured `$9A` = 9 as "class 2, shape 1" cannot be what
+ * happened; 9 is class 1 with shape 5, which needs a `$65` nibble of 6.
+ *
+ * SO, ON THE SHIPPED SET (`$19` 0..4): the only arms come from stage 5's four
+ * records, shape is 0 or 1, the owner's class is 1 (`$A4FC`), and `$9A` is 4 or
+ * 5 -- INSIDE both eight-entry tables. If the owner is re-purposed at class 0
+ * (`$CA8C`, the deploy) `$9A` is 0 or 1, also inside. **The overrun is NOT
+ * reachable in ordinary play on any stage this port ships**, which is the
+ * question W33 left open, and it is settled from the listing rather than by
+ * failing to reach it.
+ *
+ * WHAT IS REACHABLE IS STAGE 7 (`$19` = 6), whose records carry shapes up to
+ * 14 -- and stage 7 is behind `$A2F0`'s scope guard. So this is a TRIPWIRE for
+ * the wave that lands it, not a fix for a live crash. It is here because the
+ * alternative is what shipped: `assets.js` saying `$CC34 is not in any
+ * exported range` for two of the four reads, and NOTHING AT ALL for the other
+ * two.
+ *
+ * NOT A CLAMP. What the cartridge does with a shape of 14 is unknown and this
+ * port does not guess it; a stage-7 wave has to measure `$CC63`/`$CC7C` on the
+ * board and decide how long those tables really are.
+ */
+function armTableGuard(state, base, owner, shape, z9A) {
+  const where = `(group $${base.toString(16).toUpperCase().padStart(2, '0')}, `
+              + `owner slot ${owner}, $0460 = ${state.obj.s0460[owner]})`;
+  if (shape >= 2) {
+    throw new Error(
+      `$CC63 LDA $CC1F,Y / $CC68 LDA $CC21,Y with $0601 = ${shape} ${where}. `
+      + 'Those are TWO-entry tables ($CC1F-$CC20 and $CC21-$CC22) and a shape '
+      + 'of 2 or more reads the next table\'s bytes -- SILENTLY, because '
+      + 'armShapeParams is one 20-byte export. shape is a nibble of the wave '
+      + 'record\'s $65 byte minus 1 ($A500-$A509); stage 5\'s four records give '
+      + '0 and 1, and only stage 7 ($19 = 6, behind the $A2F0 guard) carries '
+      + 'nibbles above 3. Measure $CC63 on the board before widening this.');
+  }
+  if (z9A >= 8) {
+    throw new Error(
+      `$CC7C LDA $CC23,Y / $CC85 LDA $CC2B,Y with $9A = ${z9A} ${where}. `
+      + 'Both are EIGHT-entry tables ($CC23-$CC2A, $CC2B-$CC32) and $CC33 is '
+      + 'sub_CC33\'s own first byte. $9A = 4 * $0460[owner] + shape, and with '
+      + 'shape < 2 (checked above) this needs a box class of 2 or more -- '
+      + 'nothing in the PRG writes 2, and 3 is $B927, the BOSS. An arm group '
+      + 'owned by a boss slot is a state no wave record produces.');
+  }
+}
+
 function sub_CC33(state, rom, base, owner) {
   const c = state.coll;
   const o = state.obj;
@@ -4712,6 +4796,7 @@ function sub_CC33(state, rom, base, owner) {
   const oy = o.y[oi];                          // $CC4B/$CC4E -> $99
   const shape = c[ARM_POOL + base + 0x01];     // $CC5B LDA $0601,X
   const z9A = u8(u8(o.s0460[owner] << 2) + shape);   // $CC50-$CC59 ASL/ASL/ADC
+  armTableGuard(state, base, owner, shape, z9A);     // WAVE 34 -- see below
   const z9F = shape & 0x01;                    // $CC5F/$CC61 AND #$01 -> $9F
   let lo = rom.read(0xCC1F + shape);           // $CC63 LDA $CC1F,Y -> $9B
   let hi = rom.read(0xCC21 + shape);           // $CC68 LDA $CC21,Y -> $9C

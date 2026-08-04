@@ -24,9 +24,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ASSETS, headlessResources } from './helpers.js';
-import { u8, ENEMY_BASE } from '../src/state.js';
+import { u8, createState, ENEMY_BASE, ARM_POOL } from '../src/state.js';
 import { bootState } from '../src/main.js';
 import { nmi } from '../src/nmi.js';
+import { armDriver } from '../src/enemies.js';
 import { playerVsEnemies, shotSweep } from '../src/collision.js';
 
 const res = headlessResources(0);
@@ -402,4 +403,120 @@ test('$C2DC END TO END: stage 2, 1400 frames, fire held, walls actually break', 
   assert.ok(broke > 0, `and shooting must remove some (${broke} of a peak `
     + `${peak} on screen) -- 1400 clean frames alone would also be produced by `
     + 'never firing at one');
+});
+
+// =========================================================================
+// #4  $CC7C/$CC85 -- the two 8-entry tables. W33 could not settle whether the
+//     overrun is reachable in ordinary play. It is settled here, statically,
+//     and the answer is NO on every stage this port ships.
+// =========================================================================
+
+test('$CC1F..$CC2B: four tables in one 20-byte block -- 2, 2, 8 and 8', () => {
+  // The extents, out of prg.bin. The first two are the ones that would fail
+  // SILENTLY, because a shape of 2 reads $CC21's bytes and stays inside the
+  // exported run -- a plausible number, no throw, docs/knowledge/03's quiet
+  // failure. That is why the guard tests the SHAPE and not only $9A.
+  // RED WHEN: export_assets.py cites armShapeParams at the wrong address.
+  assert.deepEqual([...Array(20).keys()].map((k) => rb(0xCC1F + k)),
+    [0x4A, 0x6A, 0x56, 0x76,
+     0x04, 0x04, 0x04, 0x04, 0x0C, 0x0C, 0x0C, 0x0C,
+     0xFC, 0x10, 0xFC, 0x10, 0xFC, 0x20, 0xFC, 0x20]);
+  assert.deepEqual([0xCC33, 0xCC34, 0xCC35].map(rb), [0xB9, 0x0C, 0x03],
+    '$CC33 is sub_CC33\'s own LDA $030C,Y -- one past the last 8-entry table');
+});
+
+test('$0601 and $0460: the two halves of $9A are BOUNDED on the shipped set', () => {
+  // THE REACHABILITY W33 LEFT OPEN, settled by enumerating the ROM rather than
+  // by failing to reach it (docs/knowledge/09).
+  //
+  // shape = (a nibble of the record's $65 byte) - 1 ($A500-$A509), and $A4CD
+  // shifts $65 down four bits per allocated arm. Walked here with the record
+  // STRIDE the port itself uses, so a misparse of the 5-byte route cannot make
+  // this look safe.
+  // RED WHEN: nothing in src/ -- it is a fact about the cartridge, and it is
+  // the fact the guard's message quotes.
+  const rom = res.enemyTables;
+  const perStage = new Map();
+  for (let st = 0; st < 7; st++) {
+    const tbl = rom.word(0xA7D0 + 2 * st);
+    for (let c = 0; c < 8; c++) {
+      let p = rom.word(tbl + 2 * c);
+      for (let n = 0; n < 512; n++) {
+        const trig = rb(p);
+        if (trig === 0xFF) break;
+        const cmd = rb(p + 1);
+        if (cmd >= 0xF0) {
+          if (!perStage.has(st)) perStage.set(st, new Set());
+          perStage.get(st).add(rb(p + 2));           // the $65 byte
+          p += 5;                                     // $A386 LDA #$05
+        } else {
+          p += 2;                                     // the ORDINARY stride
+        }
+      }
+    }
+  }
+  const nibbles = (set) => {
+    const out = new Set();
+    for (let v of set) { while (v) { if (v & 0x0F) out.add(v & 0x0F); v >>= 4; } }
+    return [...out].sort((a, b) => a - b);
+  };
+  // Stage 3 ($19 = 2) routes inline-5 records to $A46F (the moai), which never
+  // writes $0601, so its shapes are irrelevant to this table.
+  assert.deepEqual(nibbles(perStage.get(4) || new Set()), [1, 2],
+    'stage 5 ($19 = 4): $65 nibbles 1 and 2, so shape is 0 or 1');
+  assert.ok(Math.max(...nibbles(perStage.get(6) || new Set())) > 4,
+    'stage 7 ($19 = 6) carries nibbles above 4 -- shapes this routine cannot '
+    + 'index, and it is behind the $A2F0 scope guard');
+  for (const st of [0, 1, 3, 5]) {
+    assert.ok(!perStage.has(st) || perStage.get(st).size === 0,
+      `stage $19 = ${st} has no inline-5 record at all`);
+  }
+  // and the other half: NOTHING in the PRG writes 2 into $0460.
+  const writes = new Set();
+  for (let a = 0x8000; a < 0xFFFD; a++) {
+    // LDA #imm (A9 nn) followed within four bytes by STA $0460,X/Y (9D/99 60 04)
+    if (rb(a) !== 0xA9) continue;
+    for (let k = 2; k <= 5; k++) {
+      if ((rb(a + k) === 0x9D || rb(a + k) === 0x99)
+          && rb(a + k + 1) === 0x60 && rb(a + k + 2) === 0x04) {
+        writes.add(rb(a + 1));
+      }
+    }
+  }
+  assert.ok(writes.has(0) && writes.has(1) && writes.has(3),
+    `box classes written by an immediate: ${[...writes].sort()}`);
+  assert.ok(!writes.has(2), 'and NEVER 2 -- so W33\'s $9A = 9 cannot be '
+    + '"class 2, shape 1"; 9 is class 1 with shape 5, i.e. a $65 nibble of 6');
+});
+
+test('$CC63/$CC7C: both overruns are LOUD and each names its own instruction', () => {
+  // The tripwire, and it must be seen to fire. Before this wave the $CC7C pair
+  // arrived as assets.js's "$CC34 is not in any exported range" -- a crash
+  // report pointing at the exporter -- and the $CC63 pair arrived as NOTHING,
+  // because armShapeParams is one 20-byte run and the read stays inside it.
+  // RED WHEN: either guard is removed or its bound is widened.
+  const s = createState();
+  s.zp19 = 4; s.substate = 0x80;
+  s.obj.status[0] = 1;
+  const OWNER = 8;
+  const arm = (shape, cls) => {
+    s.coll[ARM_POOL + 0x90] = OWNER;                 // $0600 -- the owner slot
+    s.coll[ARM_POOL + 0x90 + 0x01] = shape;          // $0601 -- the SHAPE
+    // $0603 = 1, so $CC3B DECs it to ZERO and $CC41 AND #$01 falls through.
+    // Setting it to 2 gives 1, which is ODD and RTSs at $CC45 -- W32b and
+    // W32c each lost a run to exactly that fixture, so it is spelled out.
+    s.coll[ARM_POOL + 0x90 + 0x03] = 1;
+    s.obj.type[OWNER + ENEMY_BASE] = 0x94;
+    s.obj.s0460[OWNER] = cls;                        // $0460,Y -- the box class
+    return () => armDriver(s, res.enemyTables);
+  };
+  assert.doesNotThrow(arm(1, 1), 'shape 1 class 1 is $9A = 5 -- inside');
+  assert.throws(arm(2, 1), /\$CC63 LDA \$CC1F,Y/,
+    'shape 2 reads $CC21 through a TWO-entry table');
+  assert.throws(arm(0, 3), /\$CC7C LDA \$CC23,Y/,
+    'class 3 (the boss, $B927) is $9A = 12 -- past the EIGHT-entry tables');
+  // and the messages must carry the derivation, not just the address
+  let m = ''; try { arm(2, 1)(); } catch (e) { m = e.message; }
+  assert.match(m, /\$A500/, 'the shape guard must name where the shape comes from');
+  assert.match(m, /stage 7/, 'and which stage can produce one');
 });
