@@ -236,11 +236,82 @@ test('an UNPORTED behaviour kind throws by address (loud named throw)', { skip: 
       'kind 16 initialiser $2829BC is not ported and must throw carrying the address');
   });
 
-test('seven stage-1 initialisers + seven continuations are wired', () => {
-  // the addresses the dispatch resolves to must all be in the ported maps
-  // (8 kinds: 3/4/5/6/7/12/13/19 -- kind 6 is the midboss's bullet)
+// ---------------------------------------------------------- W27 family A
+// These exist because the inventory test above proves only that the seven new
+// bodies are WIRED.  Wiring is not behaviour: the suite went green the moment
+// the addresses were listed, which says nothing about whether the descriptor
+// steps by the right amount or wraps at the right place.
+
+test('kind 0: the descriptor ring steps by $C and snaps back at its limit',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 0, posA: 0x1000, posB: 0x2000, dir: 0x10 });
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: initialiser $282104
+    assert.equal(ram.u32(base + 0x0a), 0x1bf58c, 'F1: descriptor seeded to the ring base');
+    assert.equal(ram.u32(base + 0x06), 0xfe00ff00, 'F1: renderOffs $FE00FF00 (kind 0 is the odd one)');
+    assert.equal(ram.u16(base + 0x0e), 0x0208, 'F1: graphic $208, not the $210 the rest use');
+    runMover(ctx);                                    // F2: continuation $28213E
+    assert.equal(ram.u32(base + 0x0a), 0x1bf58c + 0xc, 'F2: descriptor advanced one $C step');
+    // park one step below the limit: the next step must land ON $1BF5D4 and reset.
+    ram.setU32(base + 0x0a, 0x1bf5d4 - 0xc);
+    runMover(ctx);
+    assert.equal(ram.u32(base + 0x0a), 0x1bf58c,
+      'reaching the limit $1BF5D4 snaps back to the base, it does not stop there');
+  });
+
+test('kind 20 only animates while the $80390C semaphore is set',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 20, posA: 0x1000, posB: 0x2000, dir: 0x10 });
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: initialiser $282BEE
+    assert.equal(ram.u32(base + 0x0a), 0x1c0134, 'F1: descriptor seeded');
+    ram.setU16(0x80390c, 0);                          // semaphore CLEAR
+    runMover(ctx);
+    assert.equal(ram.u32(base + 0x0a), 0x1c0134,
+      'semaphore clear: $282C36 beq skips the ring, descriptor must NOT move');
+    ram.setU16(0x80390c, 1);                          // semaphore SET
+    runMover(ctx);
+    assert.equal(ram.u32(base + 0x0a), 0x1c0134 + 0x14,
+      'semaphore set: the ring advances one $14 step');
+  });
+
+test('kind 8 keeps the SECOND sprite write, not the first (the dead store is real)',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 8, posA: 0x1000, posB: 0x2000, dir: 0x10 });
+    runMover({ ram, rom: ROM, notes: new UnportedLog() });
+    // $28278E writes $FE00FE00/$210, then $2827A4/$2827AC overwrite with these.
+    assert.equal(ram.u32(base + 0x06), 0xfc00fe00, 'renderOffs is the second write');
+    assert.equal(ram.u16(base + 0x0e), 0x0410, 'graphic is the second write');
+    assert.equal(ram.u32(base + 0x0a), 0x1c0944, 'descriptor seeded between the two writes');
+  });
+
+test('the ported-body inventory is exactly 15 initialisers + 15 continuations', () => {
+  // A LEDGER test: it pins the exact set, so porting a body turns it RED until
+  // the inventory here is updated deliberately.  That is the point -- the count
+  // cannot drift upward without somebody writing down which addresses moved.
+  //
+  // W26 ported 8 bodies (kinds 3/4/5/6/7/12/13/19; kind 6 is the midboss's).
+  // W27 family A adds 7 more: kinds 0, 1, 8, 9, 10, 11, 20 -- and kind 10's
+  // $282840 is also the target for kinds 14 and 15, which alias it in the
+  // $282030 table.  So 15 distinct bodies now cover 17 of the 39 kind indices.
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
-    [0x2823ec, 0x2824a8, 0x282564, 0x282620, 0x2826dc, 0x282908, 0x282962, 0x282b30]);
+    [0x282104, 0x282162, 0x2823ec, 0x2824a8, 0x282564, 0x282620, 0x2826dc,
+     0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962, 0x282b30,
+     0x282bee]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
-    [0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738, 0x282944, 0x28299e, 0x282b64]);
+    [0x28213e, 0x28219e, 0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738,
+     0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x282b64,
+     0x282c2a]);
+  // every initialiser installs a continuation that exists: no body can be wired
+  // in with a dangling +$22 target.
+  assert.equal(INIT_BODIES.size, CONTINUATIONS.size);
 });

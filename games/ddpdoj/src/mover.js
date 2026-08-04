@@ -753,4 +753,157 @@ function epilogueSprite283C0E(ctx, base, tableA0) {
   ram.setU32(base + 0x10, (spr + ram.u32(base + 0x14)) >>> 0);  // $283C42 +$14
 }
 
+// ============================================================ W27 FAMILY A
+//
+// The seven SPRITE-RING bodies: kinds 0, 1, 8, 9, 10 (aliased by 14 and 15),
+// 11 and 20.  Every one is the same shape -- the initialiser calls $2820CC
+// (muzzle offset + sprite), clears bit 8, writes the sprite fields, installs
+// its continuation; the continuation steps the DESCRIPTOR at +$0A by a fixed
+// amount and snaps back to a base when it reaches a limit.  No position,
+// speed or direction effect: the plain path moves them in a straight line.
+//
+// Three things the family summary did not capture, all read out of the listing:
+//
+//   1. KIND 20 IS SEMAPHORE-GATED.  Its continuation opens `tst.w $80390C /
+//      beq` ($282C30), so the ring only advances on frames the logic semaphore
+//      is set -- the same gate `cont283CE4` honours.  The other six animate
+//      unconditionally.  Treating 20 as a plain ring would step its descriptor
+//      on every frame instead of roughly half of them.
+//   2. KIND 11 ADVANCES VIA A1, NOT A6.  Its continuation is `addi.l #$24,
+//      -(A1)` + `lea $40(A6),A6` ($2828EA/$2828FE), where the other six are
+//      `adda.l #$a,A6` + `addi.l #n,(A6)` + `lea $36(A6),A6`.  Both land on
+//      +$0A and both advance the record pointer by $40 net -- the same result
+//      by two different routes, which is exactly the kind of difference that
+//      looks like a transcription error later if it is not written down.
+//   3. KINDS 8 AND 11 WRITE THEIR SPRITE FIELDS TWICE.  $282790 sets renderOffs
+//      $FE00FE00 and graphic $210, then $2827A4/$2827AC immediately overwrite
+//      them with $FC00FE00 and $410.  The first write is dead, and it is
+//      transcribed anyway: the port's job is to be the same code, not the
+//      tidier code.  (Kind 3 already carries an identical dead store.)
+//
+// Net A6 delta is +$40 for all seven, checked against each `lea` in the listing.
+
+// ----- kind 0  ($282104 init / $28213E cont)
+INIT_BODIES.set(0x282104, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                        // $282112 bsr $2820CC
+  clearDispatch(ram, base);                          // $282114 andi.b #$fe,(A6)
+  ram.setU32(base + 0x0a, 0x1bf58c);                 // $282118 descriptor
+  ram.setU8(base + 0x1d, 0x1a);                      // $282120
+  ram.setU32(base + 0x06, 0xfe00ff00);               // $282126 renderOffs
+  ram.setU16(base + 0x0e, 0x0208);                   // $28212E graphic
+  ram.setU32(base + REC.continuation, 0x28213e);     // $282134
+});
+CONTINUATIONS.set(0x28213e, (ctx, base) => {
+  // $28213E adda.l #$a,A6 / $282144 addi.l #$c,(A6) / $28214A cmpi.l #$1bf5d4
+  animateRenderOffsWrap(ctx, base, 0x1bf58c, 0x0c, 0x1bf5d4);
+  advance40(ctx, base);                              // $282158 lea $36(A6) -> +$40
+});
+
+// ----- kind 1  ($282162 init / $28219E cont)
+INIT_BODIES.set(0x282162, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                        // $282170
+  clearDispatch(ram, base);                          // $282174
+  ram.setU32(base + 0x0a, 0x1bf5d4);                 // $282178
+  ram.setU8(base + 0x1d, 0x1a);                      // $282180
+  ram.setU32(base + 0x06, 0xfe00fe00);               // $282186
+  ram.setU16(base + 0x0e, 0x0210);                   // $28218E
+  ram.setU32(base + REC.continuation, 0x28219e);     // $282194
+});
+CONTINUATIONS.set(0x28219e, (ctx, base) => {
+  animateRenderOffsWrap(ctx, base, 0x1bf5d4, 0x14, 0x1bf714);  // $2821A4/$2821AA
+  advance40(ctx, base);                              // $2821B8
+});
+
+// ----- kind 8  ($282772 init / $2827BC cont) -- the DOUBLE sprite write
+INIT_BODIES.set(0x282772, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                        // $282780
+  clearDispatch(ram, base);                          // $282784
+  ram.setU8(base + 0x1d, 0x1a);                      // $282788
+  ram.setU32(base + 0x06, 0xfe00fe00);               // $28278E  (dead: overwritten)
+  ram.setU16(base + 0x0e, 0x0210);                   // $282796  (dead: overwritten)
+  ram.setU32(base + 0x0a, 0x1c0944);                 // $28279C descriptor
+  ram.setU32(base + 0x06, 0xfc00fe00);               // $2827A4 renderOffs (final)
+  ram.setU16(base + 0x0e, 0x0410);                   // $2827AC graphic (final)
+  ram.setU32(base + REC.continuation, 0x2827bc);     // $2827B2
+});
+CONTINUATIONS.set(0x2827bc, (ctx, base) => {
+  animateRenderOffsWrap(ctx, base, 0x1c0944, 0x24, 0x1c09d4);  // $2827C2/$2827C8
+  advance40(ctx, base);                              // $2827D6
+});
+
+// ----- kind 9  ($2827E0 init / $28281C cont)
+INIT_BODIES.set(0x2827e0, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                        // $2827EE
+  clearDispatch(ram, base);                          // $2827F2
+  ram.setU8(base + 0x1d, 0x1a);                      // $2827F6
+  ram.setU32(base + 0x06, 0xfe00fe00);               // $2827FC
+  ram.setU16(base + 0x0e, 0x0210);                   // $282804
+  ram.setU32(base + 0x0a, 0x1c0260);                 // $28280A
+  ram.setU32(base + REC.continuation, 0x28281c);     // $282812
+});
+CONTINUATIONS.set(0x28281c, (ctx, base) => {
+  animateRenderOffsWrap(ctx, base, 0x1c0260, 0x14, 0x1c02b0);  // $282822/$282828
+  advance40(ctx, base);                              // $282836
+});
+
+// ----- kind 10 ($282840 init / $28287C cont) -- kinds 14 and 15 alias here
+INIT_BODIES.set(0x282840, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                        // $28284E
+  clearDispatch(ram, base);                          // $282852
+  ram.setU8(base + 0x1d, 0x1a);                      // $282856
+  ram.setU32(base + 0x06, 0xfe00fe00);               // $28285C
+  ram.setU16(base + 0x0e, 0x0210);                   // $282864
+  ram.setU32(base + 0x0a, 0x1c02d8);                 // $28286A
+  ram.setU32(base + REC.continuation, 0x28287c);     // $282872
+});
+CONTINUATIONS.set(0x28287c, (ctx, base) => {
+  animateRenderOffsWrap(ctx, base, 0x1c02d8, 0x14, 0x1c0350);  // $282882/$282888
+  advance40(ctx, base);                              // $282896
+});
+
+// ----- kind 11 ($2828A0 init / $2828EA cont) -- the A1-relative continuation
+INIT_BODIES.set(0x2828a0, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                        // $2828AE
+  clearDispatch(ram, base);                          // $2828B2
+  ram.setU8(base + 0x1d, 0x1a);                      // $2828B6
+  ram.setU32(base + 0x06, 0xfe00fe00);               // $2828BC  (dead: overwritten)
+  ram.setU16(base + 0x0e, 0x0210);                   // $2828C4  (dead: overwritten)
+  ram.setU32(base + 0x0a, 0x1c0e0c);                 // $2828CA descriptor
+  ram.setU32(base + 0x06, 0xfc00fe00);               // $2828D2 renderOffs (final)
+  ram.setU16(base + 0x0e, 0x0410);                   // $2828DA graphic (final)
+  ram.setU32(base + REC.continuation, 0x2828ea);     // $2828E0
+});
+CONTINUATIONS.set(0x2828ea, (ctx, base) => {
+  // $2828EA addi.l #$24,-(A1): A1 is at base+$E after the emit, so this lands on
+  // +$0A -- the same field the A6 form reaches.  $2828FE lea $40(A6) directly.
+  animateRenderOffsWrap(ctx, base, 0x1c0e0c, 0x24, 0x1c0e9c);
+  advance40(ctx, base);
+});
+
+// ----- kind 20 ($282BEE init / $282C2A cont) -- SEMAPHORE-GATED ring
+INIT_BODIES.set(0x282bee, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                        // $282BFC
+  clearDispatch(ram, base);                          // $282C00
+  ram.setU32(base + 0x0a, 0x1c0134);                 // $282C04 descriptor
+  ram.setU8(base + 0x1d, 0x1a);                      // $282C0C
+  ram.setU32(base + 0x06, 0xfe00fe00);               // $282C12
+  ram.setU16(base + 0x0e, 0x0210);                   // $282C1A
+  ram.setU32(base + REC.continuation, 0x282c2a);     // $282C20
+});
+CONTINUATIONS.set(0x282c2a, (ctx, base) => {
+  const { ram } = ctx;
+  // $282C30 tst.w $80390C / $282C36 beq -- skip the ring, but STILL advance.
+  if (ram.u16(0x80390c) !== 0) {
+    animateRenderOffsWrap(ctx, base, 0x1c0134, 0x14, 0x1c01ac);  // $282C38/$282C3E
+  }
+  advance40(ctx, base);                              // $282C4C lea $36(A6)
+});
+
 export { INIT_BODIES, CONTINUATIONS };

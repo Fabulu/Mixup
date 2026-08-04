@@ -107,4 +107,72 @@ the shared epilogue `$2822AE` (dir-faced sprite frame).  Each CONTINUATION ends
 
 ## FINDINGS (updated as they arrive)
 
-(in progress)
+### 2026-08-04 — FAMILY A PORTED (7 bodies, kinds 0/1/8/9/10/11/20)
+
+Resumed after the usage wall. Ported the seven sprite-ring bodies against a
+fresh capstone listing of each address (`w27disasm.py`), not against the family
+summary above — and the listing corrected that summary twice:
+
+1. **KIND 20 IS SEMAPHORE-GATED, and the summary filed it as a plain ring.**
+   Its continuation opens `tst.w $80390C / beq` (`$282C30`/`$282C36`), the same
+   gate `cont283CE4` honours. Ported as a plain ring it would step its
+   descriptor every frame instead of roughly half of them. The family list had
+   20 in family A *and* mentioned it under C ("20-partial"); the listing
+   settles it. **This is why bodies get ported from the disassembly and not from
+   a summary of the disassembly**, however good the summary is.
+
+2. **KIND 11 ADVANCES VIA A1, NOT A6.** `addi.l #$24,-(A1)` + `lea $40(A6),A6`
+   (`$2828EA`/`$2828FE`) where the other six use `adda.l #$a,A6` + `addi.l
+   #n,(A6)` + `lea $36(A6),A6`. Same field, same +$40 net, two different
+   routes. Recorded because an unexplained difference reads as a transcription
+   error to the next person.
+
+3. **KINDS 8 AND 11 WRITE THEIR SPRITE FIELDS TWICE** — `$28278E` sets
+   renderOffs `$FE00FE00`/graphic `$210`, then `$2827A4`/`$2827AC` overwrite
+   with `$FC00FE00`/`$410`. The first write is dead. Transcribed anyway: the
+   port's job is to be the same code, not the tidier code (kind 3 already
+   carries an identical dead store).
+
+Kind 0 is also the only body in the family with renderOffs `$FE00FF00` and
+graphic `$208`; the other six are `$FE00FE00`/`$210`.
+
+**Inventory: 8 -> 15 distinct bodies, covering 17 of 39 kind indices** (kind
+10's `$282840` is aliased by 14 and 15). 22 distinct bodies remain.
+
+### THE GREEN THAT MEANT NOTHING, AND THE ONE THAT DOES
+
+When the seven bodies landed, the suite reported 381/381 — because the only
+test touching the maps was a LEDGER test asserting a fixed address set, and it
+had just been updated. **Wiring is not behaviour.** That is the same shape as
+this wave's own predecessor, where 381/381 was green over seven uncalled
+helpers and zero ported bodies.
+
+So three behavioural tests were added (384 total) and then MUTATED and watched
+fail, per rule 4:
+
+| mutation | result |
+|---|---|
+| remove kind 20's `$80390C` gate | RED — `not ok 202`, that test only |
+| kind 0 ring step `$C` -> `$D`   | RED — `not ok 201`, that test only |
+
+Each mutation reddened exactly ONE test, not the suite — a mutation that
+reddens everything proves nothing about the specific constant. `src/mover.js`
+restored and hash-verified byte-identical both ways (`41e01c6516e085b8`), suite
+back to 384/384/0 skipped.
+
+### NOT DONE, AND NOT CLAIMED
+
+- **22 distinct bodies remain** (families B–L): the curver, homing tracker,
+  decelerator, wall-bouncers, launchers, splitter, slow-clock accel.
+- **The bit-7 RECOMPUTE and bit-14 TRANSFORM paths are still unexercised.**
+  W26 transcribed them; no stage-1 kind reaches them; this wave did not force
+  them either. Step 4 of the plan is untouched.
+- **No oracle comparison was run for family A.** These seven are sprite-only
+  (descriptor/renderOffs/graphic), and the mover gate compares
+  posA/posB/speed/dir/velA/velB — so the gate is BLIND to every field these
+  bodies write. The unit tests above are currently the only check on them.
+  That blindness is structural, not an oversight, but it means "0 divergent"
+  from the mover gate must never be quoted as evidence about family A.
+- Step 2 (the ROM windows for `$2821FA`/`$2822EC`/`$282C8E`/`$2830EA`/`$283704`
+  and `$1BF000..$1C2C00` in `export-tables.py`) is NOT done — family A reads no
+  table, so it was not needed yet. Families B, H and K will need it.
