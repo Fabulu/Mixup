@@ -51,30 +51,56 @@ test('the dispatch separates arms: $88 routes to $9BED, not $80\'s body', () => 
   // $96A5 ladder lets $88 reach playArm (bit 7 set, bits 4-6 clear), where the
   // port's `switch (substate & 0x0F)` is the code under test.
   // RED WHEN: the mask is `& 0x07` (nmi.js:351) -- $88 & 0x07 == 0 routes to
-  // st9A4D, cam.hi >= bossPage advances $1B to $81, and the assert.throws fails
-  // because no throw happens. Same red if `case 0x8` collapses into `case 0x0`.
+  // st9A4D, cam.hi >= bossPage advances $1B to $81, and the assertion fails
+  // because $1B is $81 and not $89. Same red if `case 0x8` collapses into
+  // `case 0x0`.
+  //
+  // W38 PORTED ARM 8 ($9BED), so the discriminator is no longer "it throws
+  // with a different address" but "it lands on a different NEXT STATE": $9BED
+  // INCs $1B to $89 and $80's body would set it to $81. Rewritten rather than
+  // deleted; the mis-route it guards is exactly the same one.
   const s88 = atSubstate(0x88);
-  s88.cam.hi = BOSS_PAGE;                  // would advance $1B if misrouted to $80
-  assert.throws(() => nmi(s88, 0, res), /\$9BED/,
-    '$88 must route to $9BED, not $80');
+  s88.cam.hi = BOSS_PAGE;                  // would advance $1B to $81 if misrouted
+  assert.doesNotThrow(() => nmi(s88, 0, res), 'arm 8 is ported as of W38');
+  assert.strictEqual(s88.substate, 0x89,
+    '$88 must route to $9BED (-> $89), not $80 (-> $81)');
   const s80 = atSubstate(0x80);
   s80.cam.hi = BOSS_PAGE;
   nmi(s80, 0, res);
   assert.strictEqual(s80.substate, 0x81, '$80 body still runs and advances to $81');
 });
 
-test('the unported play arms throw with their ROM target', () => {
+test('every play arm routes to its OWN routine -- none is a throw any more', () => {
+  // WAS "the unported play arms throw with their ROM target", covering
   // $87/$9B3E, $88/$9BED, $89/$9C12, $8A/$9C1E, $8B/$988C, $8C/$98DD,
-  // $8D/$98E5. Each carries its address.
-  // W27: $86/$9904 and $8E/$8F -> $984F are now PORTED (removed); their behaviour
-  // is pinned in w27-exits.test.js.
-  // RED WHEN: any arm becomes a quiet return or a wrong-address throw.
-  for (const [sub, addr] of [[0x87, '$9B3E'], [0x88, '$9BED'],
-                             [0x89, '$9C12'], [0x8A, '$9C1E'], [0x8B, '$988C'],
-                             [0x8C, '$98DD'], [0x8D, '$98E5']]) {
+  // $8D/$98E5. W27 removed $86 and $8E/$8F; W38 PORTED ALL SEVEN OF THESE, so
+  // the table has no throwing entry left and the check is INVERTED rather than
+  // deleted -- it now pins WHERE each arm leaves $1B, which is what a
+  // mis-routed `case` would get wrong and what a quiet return would not do at
+  // all.
+  //
+  //   $87 $9B3E  INC $1B                     -> $88
+  //   $88 $9BED  ... INC $1B (sub_$9BF0)     -> $89
+  //   $89 $9C12  INC $1B                     -> $8A
+  //   $8A $9C1E  INC $1B                     -> $8B
+  //   $8B $988C  $57 == 0: JMP $9C24, and $9C24 does NOT advance -> $8B
+  //   $8C $98DD  the object pass only; the brain advances it, not the arm -> $8C
+  //   $8D $98E5  $1B := 0, then $9B3E INCs   -> $01
+  //
+  // RED WHEN: any arm becomes a quiet return, or two cases collapse.
+  // The whole ladder end to end is driven in tests/w38-ending.test.js.
+  for (const [sub, next, why] of [[0x87, 0x88, '$9B3E INC $1B'],
+                                  [0x88, 0x89, '$9BED -> $9BF0 INC $1B'],
+                                  [0x89, 0x8A, '$9C12 INC $1B'],
+                                  [0x8A, 0x8B, '$9C1E INC $1B'],
+                                  [0x8B, 0x8B, '$988C -> $9C24, no advance'],
+                                  [0x8C, 0x8C, '$98DD advances nothing itself'],
+                                  [0x8D, 0x01, '$98E5 $1B := 0, $9B3E INCs']]) {
     const s = atSubstate(sub);
-    assert.throws(() => nmi(s, 0, res), new RegExp(`\\${addr}`),
-      `$1B=$${sub.toString(16)} should throw at ${addr}`);
+    assert.doesNotThrow(() => nmi(s, 0, res),
+      `$1B=$${sub.toString(16)} is ported as of W38`);
+    assert.strictEqual(s.substate, next,
+      `$1B=$${sub.toString(16)} (${why}) must leave $1B = $${next.toString(16)}`);
   }
 });
 

@@ -107,7 +107,7 @@
 //                            transcribed even though $BC8B makes it dead here.
 
 import { u8, u16, ENEMY_BASE, ENEMY_SLOTS, ARM_POOL, ARM_BASES } from './state.js';
-import { soundRequest } from './sound.js';
+import { soundRequest, SND_BASE, OFF } from './sound.js';
 import { probeCollision } from './terrain.js';
 import { addScore } from './score.js';
 import { queueByte } from './vram.js';
@@ -1979,6 +1979,8 @@ function dispatch(state, rom, j, type) {
     // ---- WAVE 36: stage 7 --------------------------------------------------
     case 0xB569: return h_B569(state, rom, j);   // entry 30, type $1E
     case 0xAF10: return h_AF10(state, rom, j);   // entries 32-37, types $20-$25
+    // ---- WAVE 38: the end-of-game chain --------------------------------------
+    case 0xBB0F: return h_BB0F(state, rom, j);   // entry 40, type $28 (the brain)
     default:
       // THE MESSAGE THIS USED TO CARRY WAS "no measured run has ever
       // dispatched it", and that sentence is the one this whole follow-up
@@ -5436,4 +5438,247 @@ function h_B569(state, rom, j) {
     q[y0 + k - 5] = tile;                     // $B5F6 LDA $99 / $B5F8 STA $06FB,Y
     q[y0 + k - 13] = u8(tile + 2);            // $B5FB CLC / ADC #$02 / STA $06F3,Y
   }
+}
+
+// ================== WAVE 38: THE ENDING BRAIN AND ITS TYPEWRITER =============
+//
+// Dispatch entry 40, type `$28`. It is the LAST entry of the 42 that any
+// producer in the ROM reaches, and its only producer is `$988C` (src/nmi.js),
+// which spawns it in SLOT 9 -- so no wave record in any of the seven stages
+// references it and `stagesweep.mjs` could never have found it.
+//
+// IT IS NOT AN ENEMY. It has no hit points, it fires nothing, `$98DD` runs
+// neither collision nor the player, and it cannot be shot. It is a SCENE
+// DIRECTOR with three phases:
+//
+//   1. the FLY-IN. Every 6th frame, one record of the 26-record path script at
+//      `$BB82` -- `[dX, YhiNibble | metaspriteLowNibble]` -- until the `$FF` at
+//      `$BBB6`. X drifts by dX (negative from record 13 on), Y climbs by the
+//      high nibble, and the metasprite is `$96 + low nibble`.
+//   2. the SETTLE. `$BB66` blanks the brain's own metasprite, turns the object
+//      in SLOT 8 into an explosion (`$CB28` FALLS THROUGH into `$CB2B`) and
+//      arms the typewriter with `$4E := $A0`.
+//   3. the TEXT. `$CE94`, every 9th frame, re-emits the whole line plus one
+//      more character into the `$0700` queue, then waits for pulse 1 to go
+//      quiet, adds 10,000 points and sets `$4F := $FF`. `$BB1F` then counts
+//      `$4C` from 0 down through 256 frames, frees slot 9 and INCs `$1B`.
+//
+// `$048C,X` (`s0480[21]`) is the phase-1/phase-3 selector and `$0475`
+// (`s0460[21]`) is the path cursor -- both cleared by `$988C`'s own
+// `clearSlot(9)`, so the scene always starts from record 0.
+
+/** `$C3` -- PULSE 2's owner byte ($C1 + OFF.OWNER), read at `$CE94`. */
+const PULSE2_OWNER = 0xC1 - SND_BASE + OFF.OWNER;
+/** `$D4` -- the TRIANGLE's owner byte ($D2 + OFF.OWNER), read at `$BB6B`. */
+const TRIANGLE_OWNER = 0xD2 - SND_BASE + OFF.OWNER;
+
+/**
+ * `st_$BB0F` -- dispatch entry 40, type `$28`.
+ *
+ *   BB0F  A2 09        LDX #$09           <- the DISPATCHED SLOT IS DISCARDED
+ *   BB11  BC 8C 04     LDY $048C,X / F0 13 BEQ $BB29     not settled -> the path
+ *   BB16  A5 4F / C9 FF / F0 03           $4F != $FF -> $BB1C
+ *   BB1C  4C 94 CE     JMP $CE94                        the typewriter
+ *   BB1F  C6 4C / D0 5E                   DEC $4C, and 0 ends the scene
+ *   BB23  20 F8 AE     JSR $AEF8          free slot 9
+ *   BB26  E6 1B / 60   INC $1B -> $8D
+ *
+ * `LDX #$09` IS LOAD-BEARING AND IS TRANSCRIBED, NOT ASSERTED. The handler
+ * ignores whichever slot `$ADE5` dispatched it for and drives slot 9
+ * unconditionally, so a type `$28` in any other slot would drive slot 9's
+ * fields on the cartridge too. The port does the same rather than throwing on
+ * `j != 9`: the only producer is `$988C`, which uses slot 9, and inventing a
+ * guard here would be inventing behaviour the ROM does not have.
+ *
+ * `$4C` is 0 when this is first reached -- `$9B3E`'s `$3D`-`$97` wipe cleared
+ * it four states earlier and nothing between writes it -- so `DEC $4C` gives
+ * `$FF` and the scene holds for a full 256 frames after the text finishes.
+ */
+function h_BB0F(state, rom, j) {
+  const o = state.obj;
+  const x = 9;                             // $BB0F LDX #$09 (j is discarded)
+  const i = x + ENEMY_BASE;                // slot 21: $0315/$0335/$0375/...
+  if (o.s0480[i] !== 0) {                  // $BB11 LDY $048C,X / $BB14 BEQ $BB29
+    if (state.zp4F !== 0xFF) {             // $BB16/$BB18 CMP #$FF / $BB1A BEQ
+      loc_CE94(state, rom);                // $BB1C JMP $CE94
+      return;
+    }
+    state.zp4C = u8(state.zp4C - 1);       // $BB1F DEC $4C
+    if (state.zp4C !== 0) return;          // $BB21 BNE $BB81 (the RTS)
+    freeSlot(state, x);                    // $BB23 JSR $AEF8
+    state.substate = u8(state.substate + 1);  // $BB26 INC $1B -> $8D
+    return;
+  }
+  // ---- loc_$BB29: the fly-in ---------------------------------------------
+  //   BB29  FE 4C 01     INC $014C,X
+  //   BB2C  BD 4C 01 / C9 06 / 90 4E      timer < 6 -> RTS
+  //   BB33  AD 75 04 / 0A / A8            Y := 2 * $0475
+  //   BB38  B9 82 BB / C9 FF / F0 27      the $FF terminator -> $BB66
+  //   BB3F  EE 75 04                      INC $0475
+  //   BB42  18 / 6D 75 03 / 8D 75 03      x += dX (A survives the CMP and INC)
+  //   BB49  B9 83 BB / 4A x4 / 85 98      $98 := byte1 >> 4
+  //   BB52  AD 35 03 / 38 / E5 98 / 8D    y -= $98
+  //   BB5B  B9 83 BB / 29 0F / 18 / 69 96 A := $96 + (byte1 AND $0F)
+  //   BB63  4C 47 B6                      JMP $B647: anim := A, timer := 0
+  //
+  // The timer is reset ONLY on the `$B647` path, so a stepped frame restarts
+  // the 6-frame count and the terminator frame does not -- once the script is
+  // exhausted `$BB29` runs its INC every frame and falls into `$BB66` every
+  // frame until `$D4` lets it settle.
+  o.timer[i] = u8(o.timer[i] + 1);         // $BB29 INC $014C,X
+  if (o.timer[i] < 0x06) return;           // $BB2F CMP #$06 / $BB31 BCC $BB81
+  const y = u8(o.s0460[i] << 1);           // $BB33 LDA $0475 / $BB36 ASL / TAY
+  const dx = rom.read(0xBB82 + y);         // $BB38 LDA $BB82,Y
+  if (dx === 0xFF) {                       // $BB3B CMP #$FF / $BB3D BEQ $BB66
+    loc_BB66(state, x);
+    return;
+  }
+  o.s0460[i] = u8(o.s0460[i] + 1);         // $BB3F INC $0475
+  o.x[i] = u8(o.x[i] + dx);                // $BB42/$BB43/$BB46 CLC / ADC / STA
+  const b1 = rom.read(0xBB83 + y);         // $BB49 LDA $BB83,Y
+  o.y[i] = u8(o.y[i] - (b1 >> 4));         // $BB4C-$BB58 LSR x4 / SEC / SBC
+  o.anim[i] = u8((b1 & 0x0F) + 0x96);      // $BB5B-$BB61, then $B647 STA $012C,X
+  o.timer[i] = 0;                          // $B64A/$B64C LDA #$00 / STA $014C,X
+}
+
+/**
+ * `loc_$BB66` -- the SETTLE, and the fall-through that makes slot 8 explode.
+ *
+ *   BB66  A9 00 / 8D 35 01     anim[21] := 0   -- the brain stops being drawn
+ *   BB6B  A5 D4 / D0 12        the TRIANGLE's owner byte: busy -> come back
+ *   BB6F  A9 AC
+ *   BB71  CA                   X := 8
+ *   BB72  20 28 CB  JSR $CB28  sfx $AC ... AND FALLS INTO sub_$CB2B
+ *   BB75  A9 05 / 9D 6C 01     animFrame[20] := 5 -- override the script
+ *   BB7A  EE 95 04             INC $0495 -> phase 3
+ *   BB7D  A9 A0 / 85 4E        $4E := $A0, the 160-frame pause before the text
+ *
+ * `$CB28` IS `JSR $EC1E` FOLLOWED BY `sub_$CB2B`, with no RTS between them --
+ * the same shape `$B983` uses for the boss death and the same one this file
+ * already documents at `$AF82`. Read `$BB72` as a plain sound request and slot
+ * 8 never becomes an explosion, so the `$016C,X := 5` on the next line writes
+ * an animation-script index into a still-live metasprite object and the scene
+ * shows the wrong thing with nothing throwing.
+ *
+ * `$D4` is `$D2 + OFF.OWNER`, the TRIANGLE channel's owner byte, so the brain
+ * refuses to settle while the triangle is mid-note. It is the only gate on the
+ * whole transition and it is a SOUND gate, not a timer.
+ */
+function loc_BB66(state, x) {
+  const o = state.obj;
+  o.anim[x + ENEMY_BASE] = 0;              // $BB66/$BB68 STA $0135
+  if (state.snd[TRIANGLE_OWNER] !== 0) return;   // $BB6B LDA $D4 / $BB6D BNE $BB81
+  const x8 = x - 1;                        // $BB71 DEX -- slot 8
+  soundRequest(state, 0xAC);               // $BB72 JSR $CB28 -> $EC1E
+  explodeInPlace(state, x8);               // ... and FALLS INTO sub_$CB2B
+  o.animFrame[x8 + ENEMY_BASE] = 0x05;     // $BB75/$BB77 STA $016C,X
+  o.s0480[x + ENEMY_BASE] = u8(o.s0480[x + ENEMY_BASE] + 1);  // $BB7A INC $0495
+  state.zp4E = 0xA0;                       // $BB7D/$BB7F STA $4E
+}
+
+/**
+ * `loc_$CE94` -- THE ENDING TYPEWRITER. Called from `$BB1C` every frame the
+ * brain has settled and the text is not finished.
+ *
+ *   CE94  A5 C3 / D0 09        pulse 2 owned -> skip the music request
+ *   CE98  A5 4F / D0 05        past the first character -> skip it too
+ *   CE9C  A9 B2 / 20 1E EC     sfx $B2, the ENDING MUSIC
+ *   CEA1  A5 4E / F0 03 / C6 4E / 60      the 8-frame (first time $A0) delay
+ *   CEA8  A9 08 / 85 4E        re-arm
+ *   CEAC  A5 1A / C9 06 / 90 02 / A9 06   THE LOOP CLAMP: min($1A, 6)
+ *   CEB4  0A / AA / BD 2D CF / BD 2E CF   the script pointer, $CF2D[loop]
+ *   CEC0  A0 00               Y := 0
+ *   CEC2  A5 4F / 10 10       $4F < $80 -> $CED6, the emit
+ *   CEC6  C9 FF / F0 0B       $FF -> RTS (and $BB16 stops calling us)
+ *   CECA  A5 B2 / D0 07       pulse 1 still owned -> wait
+ *   CECE  A9 FF / 85 4F / 20 3F 84        DONE: +$010000 = 10,000 points
+ *   CED6  85 9A / A6 0E       $9A := $4F (chars to emit), X := $0E
+ *   CEDA  the packet: $01, addrHi, addrLo, then characters until $9A goes
+ *         negative or the script says $FE ($CF0C) or $FF ($CF12)
+ *   CEF6  LDA #$3F / LDY $06FF,X / BEQ / LDA #$35 / JSR $EC1E   the CLICK
+ *   CF02  LDA #$FF / JSR $CF28 / STX $0E / INC $4F
+ *
+ * `$CEAC` IS THE ONLY `$1A`-INDEXED POINTER IN THE ROM, and `$CF2D`'s seven
+ * words are all `$CF3B` (exported as `endingScript`; the port reads all seven
+ * rather than short-circuiting the flatness). So the ending text is
+ * byte-identical in every loop, and the clamp at 6 is the whole reason `$1A`
+ * growing without bound cannot break anything.
+ *
+ * `$4F` COUNTS CHARACTERS AND ALSO ENCODES THE PHASE, which is why the emit
+ * loop re-sends the WHOLE line every tick: `$9A` starts at `$4F` and `$CF23
+ * DEC $9A` runs before each character, so tick n writes n+1 characters into a
+ * fresh packet at the same PPU address. Sixteen characters, then the `$FE`.
+ *
+ * `$CF12`'s RESTART ARM IS TRANSCRIBED AND UNREACHABLE ON THIS DATA. It fires
+ * on an `$FF` in the script; `$CF3B`'s nineteen bytes are `22 C8`, sixteen
+ * characters and `$FE`, with no `$FF` anywhere -- so the arm needs a script
+ * this cartridge does not contain. It is here because it is in the listing and
+ * because `$CF15` reads `$CF2D` (entry ZERO, not `$CF2D,X`), which is a detail
+ * a rewrite would get wrong.
+ */
+function loc_CE94(state, rom) {
+  // $CE94 LDA $C3 -- pulse 2's OWNER; $CE98 LDA $4F.
+  if (state.snd[PULSE2_OWNER] === 0 && state.zp4F === 0) {
+    soundRequest(state, 0xB2);             // $CE9C/$CE9E JSR $EC1E
+  }
+  if (state.zp4E !== 0) {                  // $CEA1 LDA $4E / $CEA3 BEQ $CEA8
+    state.zp4E = u8(state.zp4E - 1);       // $CEA5 DEC $4E
+    return;                                // $CEA7 RTS
+  }
+  state.zp4E = 0x08;                       // $CEA8/$CEAA LDA #$08 / STA $4E
+  let loop = state.zp1A;                   // $CEAC LDA $1A
+  if (loop >= 0x06) loop = 0x06;           // $CEAE-$CEB2 CMP #$06 / BCC / LDA #$06
+  // $CEB4 ASL / TAX / $CEB6 LDA $CF2D,X / $CEBB LDA $CF2E,X
+  let p = rom.read(0xCF2D + 2 * loop) | (rom.read(0xCF2E + 2 * loop) << 8);
+  let y = 0;                               // $CEC0 LDY #$00
+  if (state.zp4F & 0x80) {                 // $CEC2 LDA $4F / $CEC4 BPL $CED6
+    if (state.zp4F === 0xFF) return;       // $CEC6/$CEC8 CMP #$FF / BEQ $CED5
+    if (state.snd[OFF.OWNER] !== 0) return;  // $CECA LDA $B2 / $CECC BNE $CED5
+    state.zp4F = 0xFF;                     // $CECE/$CED0 LDA #$FF / STA $4F
+    addScore(state, 0x00, 0x00, 0x01);     // $CED2 JSR $843F: $9B:$9A:$99 = 01 00 00
+    return;
+  }
+  let rem = state.zp4F;                    // $CED6 STA $9A
+  // $CED8 LDX $0E -- the port's queueByte() carries the cursor, so X is
+  // state.vram.cursor throughout and `$CF07 STX $0E` is already done.
+  let paused = false;
+  let restarted = true;
+  while (restarted) {
+    restarted = false;
+    queueByte(state, 0x01);                      // $CEDA/$CEDC JSR $CF28
+    queueByte(state, rom.read(p + y)); y += 1;   // $CEDF JSR $CF25 -- addr hi
+    queueByte(state, rom.read(p + y)); y += 1;   // $CEE2 JSR $CF25 -- addr lo
+    for (;;) {
+      const c = rom.read(p + y);           // $CEE5 LDA ($98),Y
+      if (c === 0xFF) {                    // $CEE7/$CEE9 CMP #$FF / BEQ $CF12
+        queueByte(state, c); y += 1;       // $CF12 JSR $CF25 -- the $FF IS emitted
+        // $CF15/$CF1A LDA $CF2D / $CF2E -- entry ZERO, never $CF2D,X.
+        p = rom.read(0xCF2D) | (rom.read(0xCF2E) << 8);
+        y = 0;                             // $CF1F LDY #$00
+        restarted = true;                  // $CF21 BEQ $CEDA
+        break;
+      }
+      if (c === 0xFE) {                    // $CEEB/$CEED CMP #$FE / BEQ $CF0C
+        state.zp4F = 0x80;                 // $CF0C/$CF0E LDA #$80 / STA $4F
+        paused = true;                     // $CF10 BNE $CF02 -- SKIPS the click
+        break;
+      }
+      rem = u8(rem - 1);                   // $CEEF JSR $CF23 -> DEC $9A
+      queueByte(state, c); y += 1;         // ... and falls into $CF25
+      if (rem & 0x80) break;               // $CEF2 LDA $9A / $CEF4 BPL $CEE5
+    }
+    if (paused) break;
+  }
+  if (!paused) {
+    // $CEF6 LDA #$3F / $CEF8 LDY $06FF,X / $CEFB BEQ $CEFF / $CEFD LDA #$35.
+    // `$06FF,X` is $0700 + X - 1: the byte just written. A BLANK ($00) gets the
+    // quiet click $3F and a real character gets $35. X is at least $0E + 3 here
+    // (three bytes are always appended above), so the ROM's own X = 0 case --
+    // which would read $06FF, the last byte of the collision map -- cannot
+    // arise; the port reads the same byte the cartridge does.
+    const last = state.vram.q[(state.vram.cursor - 1) & 0xFF];
+    soundRequest(state, last === 0 ? 0x3F : 0x35);   // $CEFF JSR $EC1E
+  }
+  queueByte(state, 0xFF);                  // $CF02/$CF04 LDA #$FF / JSR $CF28
+  state.zp4F = u8(state.zp4F + 1);         // $CF07 STX $0E / $CF09 INC $4F
 }

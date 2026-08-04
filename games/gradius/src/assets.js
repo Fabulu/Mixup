@@ -189,7 +189,14 @@ export async function loadResources(stageIndex = 0) {
   // streams the right terrain and reads the right boss/end pages. `stage` is
   // the INITIAL stage (the one `stageIndex` selects) and is kept for the unit
   // suite, which calls `streamBlock(s, res.stage)` with stage 0 and never
-  // transitions; nothing in the runtime reads `res.stage` after boot.
+  // transitions.
+  //
+  // THIS COMMENT USED TO END "nothing in the runtime reads `res.stage` after
+  // boot" AND THAT WAS FALSE FOR ELEVEN WAVES: `introTerrain` (src/flow.js,
+  // `$9C24`'s four `JSR $9D8E`) read it, so a stage-2+ intro streamed stage
+  // 1's blocks. Fixed in W38 -- the four calls take `res.stages[state.zp19]`,
+  // the same expression `streamBlock` has used since W27. The sentence is left
+  // here, corrected, because it is the sentence that hid the defect.
   return { manifest, tiles, metasprites,
            stage: stages.stages[stageIndex], stages: stages.stages,
            hudPackets: hudPacketTable(hud), enemyTables: enemyTables(enemies),

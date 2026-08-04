@@ -141,15 +141,15 @@ HUD_PACKETS = "hud/packets.json"
 # GAPS THAT ARE OUT OF SCOPE, NAMED AND PRINTED EVERY RUN rather than silently
 # whitelisted. Removing an entry here must be a deliberate edit.
 #
-#   $CF2D/$CF2E  the ENDING chain canned-packet pointers ($CEB6/$CEBB LDA
-#                $CF2D,X). Reached only through entry 40 ($BB0F -> $CE94) when
-#                $048C != 0 and $4F != $FF. 20-plan-completeness.md 5 excludes
-#                the ending chain from this plan; when it is taken, export
-#                $CF2D-$CF3A (7 pointers, all $CF3B) and the flat script.
-KNOWN_GAPS = {
-    0xCF2D: "ending chain ($CE94), excluded by 20-plan-completeness.md 5",
-    0xCF2E: "ending chain ($CE94), excluded by 20-plan-completeness.md 5",
-}
+# WAVE 38 EMPTIED THIS DICT, and the deliberate edit is this comment. It held
+# $CF2D and $CF2E -- the ending typewriter's loop-indexed script pointers
+# ($CEB6/$CEBB LDA $CF2D,X) -- with the note "when it is taken, export
+# $CF2D-$CF3A (7 pointers, all $CF3B) and the flat script". W38 took it:
+# `endingScript` in export_assets.py exports $CF2D-$CF4D, both bases are inside
+# it, and src/enemies.js loc_CE94 reads all seven words through the ordinary
+# romByteReader. The dict stays as a MECHANISM (a gap that is named and printed
+# beats a gap that is silent) and is empty because nothing is currently excused.
+KNOWN_GAPS = {}
 
 
 class Prg:

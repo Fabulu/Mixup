@@ -269,20 +269,23 @@ test('an unported handler is a LOUD named throw, with the type and the ROM addre
   // of wave 22 (the 19 that are not: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 15, 16,
   // 17, 18, 19, 31, 39, 41 -- sixteen distinct routines).
   // RED WHEN: the `default:` arm returns instead of throwing.
+  // Entry 40 -> $BB0F, type $28: the ENDING BRAIN. It stood here through W30,
+  // W35 and W36 and W38 PORTED IT, so the assertion is INVERTED rather than
+  // deleted -- the SIXTH move of this check, and the last one it can have on
+  // this side, because entry 27 is now the only unported entry in the whole
+  // 42-entry table. An inverted check still fails if $BB0F comes back as a
+  // throw or turns into a quiet return: it must run AND do something, and what
+  // it does on its very first call is $BB29's `INC $014C,X` on SLOT 9 -- which
+  // it drives whatever slot it was dispatched for, because $BB0F opens
+  // `LDX #$09`.
   const s = running();
-  // Entry 40 -> $BB0F, type $28: the ENDING BRAIN, spawned by $988C in the
-  // end-of-game chain (29-plan-whole-game.md's W35 section). Entry 7 ($B6E1)
-  // used to be here and is ported; $B402 replaced it (W30), $B480 replaced THAT
-  // (W35), $B569 replaced that (W36) -- the FIFTH time this check has moved.
-  // The rule is: it must stand on an entry the ledger still reports as
-  // unported, and after W36 there are exactly TWO left in the whole 42-entry
-  // table -- entry 27 ($B4F2, type $1B, which NO wave record in any of the
-  // seven stages references) and entry 40 ($BB0F, type $28). This check stands
-  // on 40 because it is the one something in the ROM actually spawns.
   s.obj.type[21] = 0xA8;
-  assert.throws(() => updateEnemies(s, res),
-    /unimplemented enemy handler \$BB0F for type \$A8 \(entry 40/);
-  // ...and entry 27 is asserted too, so "two left" is a checked number rather
+  s.obj.timer[21] = 0;
+  assert.doesNotThrow(() => updateEnemies(s, res),
+    'entry 40 ($BB0F) is ported as of W38');
+  assert.strictEqual(s.obj.timer[21], 1,
+    '$BB29 INC $014C,X must run -- a quiet return leaves the timer at 0');
+  // ...and entry 27 is asserted too, so "ONE left" is a checked number rather
   // than a sentence in a comment.
   const s2 = running();
   s2.obj.type[21] = 0x9B;

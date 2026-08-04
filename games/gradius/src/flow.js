@@ -334,7 +334,7 @@ export function introReset(state, res) {
  * inclusive, 91 bytes, written out as the fields the port keeps for them.
  *
  * Every address in the range that the port models is here. The ones it does not
- * ($43, $4D-$53, $56, $59, $5A, $5E, $70-$97) are RAM the port has no
+ * ($43, $50-$53, $56, $59, $5A, $5E, $70-$97) are RAM the port has no
  * field for; $5E is the only one of them with a name, and it has no reader
  * anywhere in the PRG (two writers, `$99B5` and `$9C0F`, zero readers -- grep).
  */
@@ -351,6 +351,17 @@ function clearZeroPage(state) {
   state.zp49 = 0;                                   // $49
   state.squad.fill(0);                              // $4A/$4B ($0048+$49)
   state.zp4C = 0;                                   // $4C
+  // $4D. W38: THE PORT HAD A FIELD FOR THIS AND WAS NOT CLEARING IT, and the
+  // docstring above listed it among "RAM the port has no field for" -- which
+  // stopped being true in W24, when st9A0E started writing the countdown's
+  // high byte. `LDX #$5A / STA $3D,X` covers $3D-$97 and $4D is inside it.
+  // Inert on every path measured so far ($9A0E rewrites the pair before $99E9
+  // reads it, and the death/continue timers are 8-bit), which is why nothing
+  // caught it; transcribed now because this wave routes the ENDING through
+  // $9B3E and a stale byte in a wipe is a defect whether or not it is read.
+  state.zp4D = 0;                                   // $4D
+  state.zp4E = 0;                                   // $4E  (W38, the typewriter)
+  state.zp4F = 0;                                   // $4F  (W38, the typewriter)
   state.build.lo = 0;                               // $54
   state.build.hi = 0;                               // $55  (restored at $9B6C)
   state.build.ahead = 0;                            // $57
@@ -541,10 +552,21 @@ export function introMeter(state, res) {
 export function introTerrain(state, res) {
   state.ppu.blank = 5;                              // $9C24/$9C26
   if (state.build.ahead === 0) {                    // $9C28 LDA $57 / BNE $9C38
-    buildBlock(state, res.stage);                   // $9C2C
-    buildBlock(state, res.stage);                   // $9C2F
-    buildBlock(state, res.stage);                   // $9C32
-    buildBlock(state, res.stage);                   // $9C35 JMP $9D8E
+    // W38: `res.stages[$19]`, NOT `res.stage`. These four were the ONE reader
+    // of `res.stage` left in the runtime, and src/assets.js said in so many
+    // words that there were none ("nothing in the runtime reads res.stage
+    // after boot"). `res.stage` is the stage the LAUNCHER selected and it never
+    // moves; `$9D8E` is the same routine `$9ACE` reaches through streamBlock(),
+    // which has read `res.stages[state.zp19]` since W27's seamless transition.
+    // So an intro on any stage but the first streamed STAGE 1's blocks --
+    // reachable on every stage-2+ RESPAWN, which is a shipped path, and now
+    // reachable a second way because the ending replays the intro. On stage 1
+    // the two expressions are the same object, which is why nothing caught it.
+    const stage = res.stages[state.zp19];
+    buildBlock(state, stage);                       // $9C2C
+    buildBlock(state, stage);                       // $9C2F
+    buildBlock(state, stage);                       // $9C32
+    buildBlock(state, stage);                       // $9C35 JMP $9D8E
     return;
   }
   state.zp1F = 1;                                   // $9C38/$9C3A

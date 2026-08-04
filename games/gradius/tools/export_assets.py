@@ -568,7 +568,11 @@ ENEMY_BLOCKS = [
 # moment it was written -- the $B086/$B088 crash of wave 15, by design, 24 more
 # times. This block is that list, exported.
 #
-# THE EXTENT OF EVERY ONE IS PINNED ON THE INSTRUCTION IMMEDIATELY AFTER IT.
+# THE EXTENT OF EVERY ONE IS PINNED ON THE BYTES IMMEDIATELY AFTER IT, and for
+# all but one of them those bytes are an INSTRUCTION.  The exception is W38's
+# `endingScript`, whose right-hand neighbour is another export's data (stage 1's
+# screen-order table); it says so in its own entry rather than implying an
+# opcode boundary it does not have.
 # That is the sixth field of each tuple and it is checked at export time, not
 # trusted: metasprite ids, rank speeds and small indices are byte-for-byte
 # indistinguishable from opcodes, so a range cited one byte long ships
@@ -863,6 +867,36 @@ ENEMY_BLOCKS_W21 = [
      "the same loop. $CD64 is sub_$CC33's RTS and $CDA5 is sub_$CDA5's "
      "LDA $66, so both ends are code",
      0xCDA5, (0xA5, 0x66, 0xC9, 0x58), "$CDA5 LDA $66 / CMP #$58, sub_$CDA5"),
+    # ---- WAVE 38: the ending typewriter's pointer table AND its one script --
+    #
+    # $CF2D is SEVEN WORDS indexed by the LOOP counter $1A, and every one of
+    # them is $CF3B: `$CEAC LDA $1A / CMP #$06 / BCC / LDA #$06 / ASL / TAX /
+    # LDA $CF2D,X`, so X is 0, 2, 4, 6, 8, $0A or $0C and the table is exactly
+    # as wide as the clamp allows. The ending text is byte-identical in every
+    # loop; that flatness is the single fact that rules out "loops select a
+    # different stream" (loop-1a-recon.md), and it is exported rather than
+    # asserted so the port can be seen to read all seven.
+    #
+    # THE SCRIPT'S EXTENT IS THE READER'S, NOT A GUESS. $CEE5 walks ($98),Y
+    # from $CF3B and stops on $FF (restart) or $FE (pause). The first $FE is at
+    # $CF4D, so $CF3B-$CF4D -- two PPU address bytes ($22 $C8) and SIXTEEN
+    # characters -- is everything the routine can reach. There is no $FF in it,
+    # so $CF12's restart arm is transcribed and unreachable ON THIS DATA.
+    #
+    # THE ANCHOR IS NOT AN OPCODE and that is said out loud: $CF4E is DATA.
+    # It is not unidentified data, though -- it is `$9FBC[0]` = the stage-1
+    # SCREEN-ORDER table, already exported as terrain/stages.json's
+    # stages[0].tables.screenOrder. So the block is bounded on the right by
+    # another export's left edge, which an off-by-one in either direction
+    # breaks.
+    ("endingScript", 0xCF2D, 0xCF4E,
+     "$CEB6 LDA $CF2D,X / $CEBB LDA $CF2E,X (X = 2 * min($1A, 6)) and "
+     "$CF15/$CF1A LDA $CF2D/$CF2E (the restart, which always re-reads entry "
+     "0); then $CEE5 LDA ($98),Y through the script those point at",
+     "SEVEN identical words ($CF3B x7) then the one script they all select: "
+     "$22 $C8 (the PPU address) + sixteen characters + $FE. 33 bytes",
+     0xCF4E, (0x00, 0x00, 0x00, 0x00, 0x01, 0x06),
+     "$CF4E is $9FBC[0], stage 1's screen-order table (terrain/stages.json)"),
 ]
 
 ENEMY_STAGE_PTRS = 0xA7D0          # $A2D5 LDA $A7D0,Y -- 7 stages, 2 bytes each

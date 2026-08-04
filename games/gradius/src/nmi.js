@@ -93,7 +93,8 @@ import { advanceCamera, latchScroll, addCamera16 } from './camera.js';
 import { streamBlock } from './terrain.js';
 import { spawnEngine, enemyBullets, updateEnemies, clearSlot,
          armCensus, armDriver, armDriverGated } from './enemies.js';
-import { introStep, pauseCheck, respawn, codeMatch, startPlay, sub9BF0 } from './flow.js';
+import { introStep, pauseCheck, respawn, codeMatch, startPlay, sub9BF0,
+         introReset, introPackets, introHud, introMeter, introTerrain } from './flow.js';
 import { shotSweep, collision, sub_CDA5 } from './collision.js';
 import { applyCapsule, computeRank } from './powerup.js';
 import { addScore } from './score.js';
@@ -430,33 +431,22 @@ function playArm(state, res) {
     case 0x4: return st9982(state, res);            // [4]  $84 -> $9982
     case 0x5: return st997E(state, res);            // [5]  $85 -> $997E
     case 0x6: return st9904(state, res);            // [6]  $86 -> $9904 (W27);
-    case 0x7: throw new Error(                       // [7]  $87 -> $9B3E
-        '$9B3E: jt_$982F arm 7 (full stage reset) reached through the play '
-      + 'dispatch, not the intro dispatch $96C5. introReset is ported '
-      + '(src/flow.js) but this entry through $982A is 0 hits in the endchain '
-      + 'run; left as a throw. Delegate to introStep or leave for the '
-      + 'stage-transition wave.');
-    case 0x8: throw new Error(                       // [8]  $88 -> $9BED
-        '$9BED: jt_$982F arm 8 (intro banner) reached through the play '
-      + 'dispatch. introPackets is ported (src/flow.js) but this entry is '
-      + '0 hits in the endchain run; left as a throw.');
-    case 0x9: throw new Error(                       // [9]  $89 -> $9C12
-        '$9C12: jt_$982F arm 9 (intro HUD) reached through the play dispatch. '
-      + 'introHud is ported (src/flow.js) but this entry is 0 hits; left as a '
-      + 'throw.');
-    case 0xA: throw new Error(                       // [10] $8A -> $9C1E
-        '$9C1E: jt_$982F arm 10 (intro meter) reached through the play '
-      + 'dispatch. introMeter is ported (src/flow.js) but this entry is 0 hits; '
-      + 'left as a throw.');
-    case 0xB: throw new Error(                       // [11] $8B -> $988C
-        '$988C: jt_$982F arm 11. $57->spawn 9 / else $9C24; INC $1B->$8C. '
-      + '0 hits in the endchain run; off the stage-1 clear path.');
-    case 0xC: throw new Error(                       // [12] $8C -> $98DD
-        '$98DD: jt_$982F arm 12. INC $5B / JSR $ADAB / JMP $9A8C. 0 hits in '
-      + 'the endchain run; off the stage-1 clear path.');
-    case 0xD: throw new Error(                       // [13] $8D -> $98E5
-        '$98E5: jt_$982F arm 13 (reset-to-intro). $1B := 0 / JMP $9B3E. 0 '
-      + 'hits in the endchain run; off the stage-1 clear path.');
+    // ---- WAVE 38: THE END-OF-GAME CHAIN, arms 7-13 -------------------------
+    // Arms 7-10 are the ORDINARY STAGE INTRO, reached through the PLAY
+    // dispatcher instead of $96C5's. jt_$982F[7..10] and jt_$96C5[0..3] hold
+    // the same four addresses; the difference is only the entry, and it is a
+    // real difference: $96BE re-arms `$0D = 3` on every intro frame and $982A
+    // does not, so the ending's four setup frames run with whatever blanking
+    // $882C and $9BC5 leave. Delegating is the transcription -- these ARE the
+    // same routines -- and the port calls them directly rather than through
+    // introStep() for exactly that $0D reason.
+    case 0x7: introReset(state, res);   return;      // [7]  $87 -> $9B3E
+    case 0x8: introPackets(state, res); return;      // [8]  $88 -> $9BED
+    case 0x9: introHud(state, res);     return;      // [9]  $89 -> $9C12
+    case 0xA: introMeter(state, res);   return;      // [10] $8A -> $9C1E
+    case 0xB: return st988C(state, res);             // [11] $8B -> $988C
+    case 0xC: return st98DD(state, res);             // [12] $8C -> $98DD
+    case 0xD: return st98E5(state, res);             // [13] $8D -> $98E5
     case 0xE:                                        // [14] $8E -> $984F (W27)
     case 0xF: return st984F(state, res);             // [15] $8F -> $984F (W27);
     default: throw new Error(`$982A: unreachable jt_$982F index ` // paranoia: 0x0F pins 0-15
@@ -739,9 +729,8 @@ function st997E(state, res) {
  */
 function st9904(state, res) {
   if (state.zp19 === 6) {                            // $9906 CMP #$06
-    throw new Error('$9872: $19 = 6 -- the ending sequence. $1B -> $87, the '
-                  + 'ending-chain state (the "$0100 := $03" path). Out of scope '
-                  + '(one stage loaded); reached only past stage 7.');
+    loc9872(state);                                  // $990A JMP $9872
+    return;                                          // $988B RTS -- no mode-5 body
   }
   if (state.zp19 === 5) {                            // $990D CMP #$05
     // W35. NOT a "5-line hook": $CDA5 is a bound test and TWO `JSR $CDB3`, and
@@ -783,6 +772,187 @@ function st9904(state, res) {
     state.substate = 0x8E;                            // $9943 LDA #$8E -> STA $1B
   }
   mode5Body(state, res);                             // $9947 JMP $9A5E
+}
+
+// ======================= WAVE 38: THE END-OF-GAME CHAIN ======================
+//
+// Six sub-states, one enemy handler and one typewriter, and it is the LOOP
+// WRAP: `$9889 INC $28,X` is the ONLY instruction in the whole 32 KB PRG that
+// increments the loop counter, and `$9B72 LDA $28,X / $9B74 STA $1A` is the
+// only thing that reads it back. Scanned this wave rather than inherited:
+// eleven instructions in the PRG name `$1A`, none of them indexed, and `$28,X`
+// has exactly three (`$97BF` STA, `$9889` INC, `$9B72` LDA).
+//
+// THE SHAPE THE PLAN DID NOT HAVE. `29-plan-whole-game.md` lists `$9872` ->
+// `$8B` -> `$8C` -> `$8D` and skips FOUR states, which is why it also does not
+// say that the ending plays over STAGE 1's terrain. `$9872`'s `INC $1B` lands
+// on `$87`, and `jt_$982F[7..10]` is the stage-intro ladder:
+//
+//   $86  $9904  $19 == 6 -> JMP $9872
+//        $9872  INC $1B; $2001 := 0; $3F := 0; $26,X := 0; $24,X := 0;
+//               $22,X := ($42 ? 1 : 0); INC $28,X; RTS
+//   $87  $9B3E  the full wipe -- and it restores $19 from $26,X (now 0, so
+//               STAGE 1) and $1A from $28,X (now loop + 1)
+//   $88  $9BED  $89  $9C12  $8A  $9C1E     the same three intro rungs
+//   $8B  $988C  stream terrain until $57, THEN the brain
+//   $8C  $98DD  objects only -- the scene
+//   $8D  $98E5  $1B := 0 / JMP $9B3E -> the ordinary intro -> $1B := $80
+//
+// so the wrap is not a special "restart" path at all: it is the game's own
+// stage intro, run twice, with the checkpoint bytes rewritten in between.
+
+/**
+ * `loc_$9872` -- THE LOOP WRAP. Reached only from `$9904` with `$19 == 6`.
+ *
+ *   9872  E6 1B        INC $1B                 $86 -> $87
+ *   9874  A6 18        LDX $18
+ *   9876  A9 00        LDA #$00
+ *   9878  8D 01 20     STA $2001               PPUMASK off, MID-FRAME
+ *   987B  85 3F        STA $3F                 camera page := 0
+ *   987D  95 26        STA $26,X               the checkpoint STAGE := 0
+ *   987F  95 24        STA $24,X               the checkpoint PAGE  := 0
+ *   9881  A4 42        LDY $42
+ *   9883  F0 02        BEQ $9887               ($42 == 0 leaves A = 0)
+ *   9885  A9 01        LDA #$01
+ *   9887  95 22        STA $22,X               $22,X := ($42 ? 1 : 0)
+ *   9889  F6 28        INC $28,X               <-- THE LOOP COUNTER
+ *   988B  60           RTS                     no mode-5 body this frame
+ *
+ * `$9878` IS A REGISTER WRITE, NOT `$11`. The NMI already pushed `$11` into
+ * `$2001` at `$808A`, hundreds of cycles earlier in this same frame, so this
+ * blanks the screen for the REST of the frame and leaves `$11` alone. The port
+ * writes `bandA.mask` (what the renderer draws with) and not `ppu.mask` (`$11`,
+ * which `$808A` reads next frame) for exactly that reason.
+ *
+ * `$22`/`$24`/`$26`/`$28` are the per-player checkpoint quartet `$979D` writes
+ * on a death and `$9B62`-`$9B74` restores on an intro. Rewriting three of them
+ * and incrementing the fourth is the whole of "start the game again, one loop
+ * harder": stage 0, page 0, the meter cursor collapsed to 0-or-1, loop + 1.
+ * LIVES (`$20,X`) are NOT touched, and neither is the score.
+ */
+function loc9872(state) {
+  state.substate = u8(state.substate + 1);           // $9872 INC $1B  ($86->$87)
+  const p = state.zp.player;                         // $9874 LDX $18
+  if (p !== 0 && p !== 1) {
+    throw new Error(`$18 = ${p}: $987D writes $26,X and $9889 INCs $28,X; `
+                  + 'only 0 and 1 are player indices');
+  }
+  state.bandA.mask = 0;                              // $9878 STA $2001 (see above)
+  state.cam.hi = 0;                                  // $987B STA $3F
+  state.save26[p] = 0;                               // $987D STA $26,X
+  state.save24[p] = 0;                               // $987F STA $24,X
+  // $9881 LDY $42 / BEQ $9887 / LDA #$01 -- A is 0 from $9876 unless $42 is set.
+  state.save22[p] = state.zp.meter !== 0 ? 1 : 0;    // $9887 STA $22,X
+  state.save28[p] = u8(state.save28[p] + 1);         // $9889 INC $28,X
+}
+
+/**
+ * `st_$988C` -- play sub-state `$8B`, and the rung that decides whether the
+ * intro ends in PLAY or in the ENDING.
+ *
+ *   988C  A5 57 / D0 03      $57 != 0 -> $9893
+ *   9890  4C 24 9C           JMP $9C24        <- the intro's own terrain rung
+ *   9893  A2 09 / 86 A8 / 20 27 A5      clearSlot(9)
+ *   989A  C6 A8 / 20 27 A5               clearSlot(8)
+ *   989F  A9 28 / 8D 15 03   $0315 = type[21] := $28  -> $AE1C entry 40, $BB0F
+ *   98A4  A9 88 / 8D 35 03   $0335 = y[21]    := $88
+ *   98A9  A9 A4 / 8D 75 03   $0375 = x[21]    := $A4
+ *   98AE  A9 80 / 8D 34 03   $0334 = y[20]    := $80
+ *   98B3  A9 74 / 8D 74 03   $0374 = x[20]    := $74
+ *   98B8  A9 9E / 8D 34 01   $0134 = anim[20] := $9E
+ *   98BD  A9 00 / 8D 20 01 / 8D 00 01    anim[0] := 0, status[0] := 0
+ *   98C5  E6 1B              INC $1B -> $8C
+ *   98C7  A9 03 / 8D 00 01   status[0] := 3   <- the ship, back on and INERT
+ *   98CC  A9 E8 / 20 1E EC   sfx $E8
+ *   98D1  E6 1F              INC $1F
+ *   98D3  A9 21 / 20 E8 85   canned packet $21
+ *   98D8  A9 05 / 4C E8 85   canned packet $05  (a JMP: $85E8's RTS ends here)
+ *
+ * `$57` IS THE TERRAIN STREAMER'S "far enough ahead" FLAG, not a timer, and it
+ * is why the brain appears when it does: `$9B3E` set `$3F` and `$55` from the
+ * same (now zero) checkpoint byte, so the lead is 0, and `$9C24` emits four
+ * blocks a frame until `$9DA7` refuses on the 85th. On stage 1 that is 23
+ * frames -- the same 23 the boot intro measures (src/flow.js) -- and `$9C24`
+ * NEVER advances `$1B`, so `$988C` re-runs every one of them.
+ *
+ * SO `$9C24`'s OWN `$57 != 0` ARM ($9C38 -> $9C3C -> `$1B := $80`, i.e. PLAY)
+ * IS UNREACHABLE FROM HERE: `$988C` tests `$57` first and diverts. Nothing is
+ * clamped for it -- the port calls introTerrain() exactly as `$9890 JMP $9C24`
+ * does, and the arm is dead by the CALLER's test.
+ *
+ * The two `$0100` writes are both kept. `$98C2` writes 0 and `$98C7` writes 3
+ * with an `INC $1B` in between; the 0 never reaches a reader, and it is a real
+ * store in the ROM's straight line (same call as W36 made on `$B569`).
+ * Status 3 is not "alive": `$ADC1`'s group 3 is the ship's, and `$98DD` runs
+ * neither the player nor collision, so the Vic Viper simply sits there.
+ */
+function st988C(state, res) {
+  if (state.build.ahead === 0) {                     // $988C LDA $57 / BNE $9893
+    introTerrain(state, res);                        // $9890 JMP $9C24
+    return;
+  }
+  const o = state.obj;
+  clearSlot(state, 9);                               // $9893-$9897 LDX #$09 / JSR $A527
+  clearSlot(state, 8);                               // $989A/$989C DEC $A8 / JSR $A527
+  o.type[9 + ENEMY_BASE] = 0x28;                     // $989F/$98A1 STA $0315
+  o.y[9 + ENEMY_BASE] = 0x88;                        // $98A4/$98A6 STA $0335
+  o.x[9 + ENEMY_BASE] = 0xA4;                        // $98A9/$98AB STA $0375
+  o.y[8 + ENEMY_BASE] = 0x80;                        // $98AE/$98B0 STA $0334
+  o.x[8 + ENEMY_BASE] = 0x74;                        // $98B3/$98B5 STA $0374
+  o.anim[8 + ENEMY_BASE] = 0x9E;                     // $98B8/$98BA STA $0134
+  o.anim[0] = 0;                                     // $98BD/$98BF STA $0120
+  o.status[0] = 0;                                   // $98C2 STA $0100
+  state.substate = u8(state.substate + 1);           // $98C5 INC $1B -> $8C
+  o.status[0] = 3;                                   // $98C7/$98C9 STA $0100
+  soundRequest(state, 0xE8);                         // $98CC/$98CE JSR $EC1E
+  state.zp1F = u8(state.zp1F + 1);                   // $98D1 INC $1F
+  cannedPacket(state, res.hudPackets, 0x21);         // $98D3/$98D5 JSR $85E8
+  cannedPacket(state, res.hudPackets, 0x05);         // $98D8/$98DA JMP $85E8
+}
+
+/**
+ * `st_$98DD` -- play sub-state `$8C`. The whole ending SCENE runs here, and
+ * what is remarkable is what it does NOT call.
+ *
+ *   98DD  E6 5B     INC $5B          suppresses the camera at $9A9C
+ *   98DF  20 AB AD  JSR $ADAB        the object pass, and ONLY the object pass
+ *   98E2  4C 8C 9A  JMP $9A8C        the tail, entered PAST the `LDA $1B/BPL`
+ *
+ * No `$A2C0` spawn engine, no `$9FFC` player, no `$C0C7` collision, no `$BBB7`
+ * enemy bullets, no `$9D83` streamer. The brain (`$BB0F`, dispatch entry 40)
+ * is the only thing alive, and it is the one that ends the state with its own
+ * `INC $1B` at `$BB26`.
+ *
+ * `$9A8C` is entered one instruction PAST `$9A88 LDA $1B / BPL $9AC4`, which is
+ * the `test1B = false` case mode5Tail() already models -- and here it matters
+ * for the first time in this port, because `$1B` is `$8C` and bit 7 IS set, so
+ * the two agree anyway. `INC $5B` is what stops the camera; the split still
+ * runs (docs/knowledge: `$15`/`$5B` skip `JSR $98EE` and nothing else).
+ */
+function st98DD(state, res) {
+  state.zp5B = u8(state.zp5B + 1);                   // $98DD INC $5B
+  updateEnemies(state, res);                         // $98DF JSR $ADAB
+  mode5Tail(state, res);                             // $98E2 JMP $9A8C
+}
+
+/**
+ * `st_$98E5` -- play sub-state `$8D`. THE WRAP ITSELF, and it is three
+ * instructions.
+ *
+ *   98E5  E6 5B     INC $5B
+ *   98E7  A9 00 / 85 1B    $1B := 0     <- out of the play ladder entirely
+ *   98EB  4C 3E 9B  JMP $9B3E           the ORDINARY intro, THIS frame
+ *
+ * `$9B3E` INCs `$1B` to 1, so the next frame takes `$96BE`'s intro dispatch
+ * (`$0D = 3` re-armed every frame this time) and walks 1, 2, 3, 4 to `$9C24`,
+ * whose `$57` arm now DOES fire -- `$9C3C` sets `$1B := $80` and loop 2 of
+ * stage 1 begins. `$19` and `$1A` come back out of `$26,X`/`$28,X`, which
+ * `$9872` set to 0 and loop + 1.
+ */
+function st98E5(state, res) {
+  state.zp5B = u8(state.zp5B + 1);                   // $98E5 INC $5B
+  state.substate = 0;                                // $98E7/$98E9 STA $1B
+  introReset(state, res);                            // $98EB JMP $9B3E
 }
 
 /**

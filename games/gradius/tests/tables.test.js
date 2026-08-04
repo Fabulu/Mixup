@@ -182,9 +182,32 @@ test('every exported enemy block is pinned on the instruction after it', () => {
   }
   // 25 from wave 21 + 5 from wave 32b (the $0600 arm pool's tables, plus
   // $BEEA, which W32c's reader indexes and W32b exported so that rooting
-  // $BEF3 in tablecoverage.py does not just relocate the gap).
-  assert.equal(anchored, 30, 'the 25 wave-21 ranges plus W32b 5');
-  assert.equal(json.blocks.length, 39);
+  // $BEF3 in tablecoverage.py does not just relocate the gap) + 1 from W38
+  // (`endingScript`, $CF2D-$CF4D: the typewriter's seven loop-indexed pointers
+  // and the one script all seven select).
+  assert.equal(anchored, 31, 'the 25 wave-21 ranges plus W32b 5 plus W38 1');
+  assert.equal(json.blocks.length, 40);
+  // W38's anchor is the ONE that is not an opcode, and the loop above checked
+  // its bytes like every other. It is named here so the exception stays
+  // visible: $CF4E is stage 1's screen-order table ($9FBC[0]), i.e. another
+  // export's left edge, so the block is bounded by data on the right and by
+  // $CF2C's RTS on the left.
+  const ending = json.blocks.find((b) => b.name === 'endingScript');
+  assert.ok(ending, 'endingScript must be exported');
+  assert.equal(ending.rom, '$CF2D');
+  assert.equal(ending.end, '$CF4E');
+  // seven words, all $CF3B -- the fact that rules out "loops select a
+  // different stream" (docs/worklog/gradius/loop-1a-recon.md).
+  for (let i = 0; i < 7; i++) {
+    assert.equal(ending.bytes[2 * i] | (ending.bytes[2 * i + 1] << 8), 0xCF3B,
+      `$CF2D word ${i} must be $CF3B`);
+  }
+  // and the script itself: PPU address $22C8, sixteen characters, $FE.
+  assert.equal(ending.bytes[14], 0x22);
+  assert.equal(ending.bytes[15], 0xC8);
+  assert.equal(ending.bytes[32], 0xFE, 'the pause terminator at $CF4D');
+  assert.ok(!ending.bytes.slice(16, 32).includes(0xFF),
+    'no $FF in the script -- $CF12\'s restart arm has no data to fire on');
 });
 
 test('no two exported enemy blocks overlap', () => {
@@ -200,9 +223,14 @@ test('no two exported enemy blocks overlap', () => {
 });
 
 test('a read outside every block still throws, with the address', () => {
-  // The loudness is the feature. $CF2D (the ending chain) is deliberately
-  // unexported -- see tools/tablecoverage.py KNOWN_GAPS -- and must stay loud.
-  assert.throws(() => rom().read(0xCF2D), /\$CF2D is not in any exported range/);
+  // The loudness is the feature. This used to stand on $CF2D (the ending
+  // chain), which W38 EXPORTED, so it moves to the byte one past the new
+  // block's right edge instead of being deleted -- $CF4E is stage 1's
+  // screen-order table, which lives in terrain/stages.json and is deliberately
+  // NOT in enemies/tables.json.
+  assert.doesNotThrow(() => rom().read(0xCF2D), '$CF2D is exported as of W38');
+  assert.doesNotThrow(() => rom().read(0xCF4D), 'and so is the $FE at $CF4D');
+  assert.throws(() => rom().read(0xCF4E), /\$CF4E is not in any exported range/);
   assert.throws(() => rom().read(0x8000), /\$8000 is not in any exported range/);
 });
 

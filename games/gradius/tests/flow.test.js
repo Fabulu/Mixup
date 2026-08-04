@@ -325,10 +325,17 @@ test('$96A5: every unported arm throws with the ROM address it would reach', () 
   // last inversion it can have, because there is no stage 8.
   assert.doesNotThrow(() => nmi(seedWave(6), 0, res),
     'stage 7 must now run a whole frame with its wave stream live');
-  // $9904 sub-path: $19 == 6 -> JMP $9872 (the ending sequence, out of scope).
+  // $9904 sub-path: $19 == 6 -> JMP $9872. PORTED W38, so this is INVERTED
+  // rather than deleted -- the last of $9904's two out-of-scope sub-paths to
+  // go. It must run AND do the two things only $9872 does: advance $1B to $87
+  // and INC the checkpoint slot $28,X, which is the ONLY loop-counter
+  // increment in the whole PRG. A quiet return would leave both alone.
   const sEnd = bootState(res.manifest);
   sEnd.substate = 0x86; sEnd.zp19 = 6;
-  assert.throws(() => nmi(sEnd, 0, res), /\$9872/);
+  assert.doesNotThrow(() => nmi(sEnd, 0, res), '$9872 is ported as of W38');
+  assert.strictEqual(sEnd.substate, 0x87, '$9872 INC $1B: $86 -> $87');
+  assert.strictEqual(sEnd.save28[0], 1, '$9889 INC $28,X -- the loop counter');
+  assert.strictEqual(sEnd.save26[0], 0, '$987D STA $26,X -- back to stage 1');
   // $9904 sub-path: $19 == 5 -> JSR $CDA5, PORTED W35. It must run AND do
   // something: two cells of stage 6's exit aperture a frame, so $66 steps 0->2
   // and the VRAM queue grows by two five-byte packets. An early return would

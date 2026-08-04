@@ -212,6 +212,18 @@ export function createState() {
     //     $975B count it down (wave 24, 8-bit -- $4D is not read on that path).
     zp4C: 0,                 // $4C
     zp4D: 0,                 // $4D  high byte of the $82 countdown pair
+    // $4E/$4F, THE ENDING TYPEWRITER'S ONLY STATE (wave 38, $CE94). $4E is the
+    // frame delay -- $A0 once at $BB7D, then 8 after every character -- and $4F
+    // is BOTH the character count and the phase, which is why it is one byte
+    // and not two:
+    //   $00-$7F  emit ($4F + 1) characters of the line this tick ($CED6)
+    //   $80      the script's $FE was reached; $CF0C sets it and $CF09 INCs
+    //   $81-$FE  waiting for pulse 1 to go free ($CECA LDA $B2)
+    //   $FF      done. $CE94 returns at once and $BB16 stops calling it.
+    // Both are inside $9B3E's $3D-$97 wipe, so the ending starts from 0/0 and
+    // $BB7D is what makes the first character wait 160 frames.
+    zp4E: 0,                 // $4E
+    zp4F: 0,                 // $4F
     // $09 the demo/attract flag, $16 uncharacterised. Both are gates on the
     // PAUSE handler ($9ADA `LDA $09 / ORA $16 / ORA $0D`) and nothing in the
     // port writes either; measured 0 on every frame of every play run and 1 for
