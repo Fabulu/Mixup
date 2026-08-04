@@ -41,19 +41,38 @@ deviation, documented) and a parallax feeder race (measured both ways; keeping
 the lookahead costs 6,288 bad scanlines, dropping it 8,112).
 
 ### Gradius — the numbers that matter
-- `$AE1C` enemy dispatch: **19 of 42 entries**, 16 of 34 distinct routines
-- wave records that spawn a ported handler: **454 of 598**
-- play sub-states (`$982F`): **1 of 16** — the other 15 are the whole boss and
-  end-of-stage machine
-- game modes (`$80D4`): **1 of 7**, and *the miss is silent* — `src/nmi.js` has
-  no `else`; the sweep measured 76/76 non-mode-5 windows diverging
-- `$C439` late spawner: **0 of 7** (includes stage 1's volcano)
-- 73 five-byte inline records (`cmd >= $F0`): **0** — and this route changes the
-  wave-stream STRIDE, so it is a misparse, not a missing enemy
-- `$1A` loop counter pinned at 0: loop-2 difficulty cannot exist yet
+*Re-measured 2026-08-04 (W38). The list below stood for roughly ten waves after
+it stopped being true; every figure here was printed by the named tool on the
+day it was written, and the ones this project has been wrong about are the ones
+nobody re-ran.*
+- **ALL SEVEN STAGES PLAY, AND THE GAME ENDS AND LOOPS.**
+- `$AE1C` enemy dispatch: **41 of 42 entries**, 33 of 34 distinct routines
+  (`tools/census.py`). The one left is entry 27 `$B4F2`, type `$1B`, which no
+  wave record in any of the seven stages references
+- wave records that spawn a ported handler: **598 of 598**, all seven stages
+  ADMITTED (`tools/oracle/stageledger.py`), including all 49 five-byte inline
+  records (`cmd >= $F0`, the stride-changing route)
+- play sub-states (`$982F`): **16 of 16** — the boss, the end-of-stage machine
+  and the end-of-game chain are all in
+- `$C439` late spawner: **7 of 7**
+- **`$1A` is no longer pinned**: `$9872`'s `INC $28,X` runs, the game wraps to
+  loop 2, and all 9 `$1A` sites are ported. Measured: loops 2, 3 and 6 sweep
+  frame-for-frame identically, because every gameplay reader of `$1A` has three
+  tiers (0 / 1 / >= 2) — so difficulty tops out at loop 3, not at the ending
+  table's 7
+- game modes (`$80D4`): **1 of 7**, and the miss is LOUD as of W28b. This is
+  now the largest single gap: no title, no attract, no game over, no continue,
+  no high-score entry
+- **`$9751` is the crash a real player reaches**: running out of lives restarts
+  to mode 0, which is not ported. A passive loop-2 sweep hits it on 31 of 110
+  chunk runs
 
-Gate: `node games/gradius/tools/test-all.mjs` → GREEN, 9 stages, 0 skipped.
-378+ unit tests. 42 scenarios / 14,098 frames.
+Gate: `node games/gradius/tools/test-all.mjs` → GREEN, 12 stages, 0 skipped.
+643 unit tests. 47 scenarios / 29,657 frames, 0 divergent — **and 6 FIELDS are
+skipped inside that run** (pad2 oamBudget spriteOverflow scanline cpuCycle
+splitSpins), which the gate's own summary line does not say.
+**No cartridge comparison exists for stages 2-7 or for the ending chain**; every
+number for those is port-vs-listing.
 
 ### DaiOuJou — the numbers that matter
 - **The whole stage-1 background scrolls live** from the game's own scroll
@@ -185,7 +204,7 @@ shipping.
 node --test games/batman/tests/                    740 pass
 node tools/test-all.mjs                            Batman: ALL GREEN 27/27, 0 skipped
 node --test games/gradius/tests/
-node games/gradius/tools/test-all.mjs              GREEN, 9 stages, 0 SKIPPED
+node games/gradius/tools/test-all.mjs              GREEN, 12 stages, 0 SKIPPED
 node --test games/ddpdoj/tests/
 python games/ddpdoj/tools/oracle/pgm.py check
 
@@ -331,9 +350,13 @@ These are settled. Do not re-litigate them.
 
 ### Next up, in priority order
 
-**Gradius:** the boss and end-of-stage machine (15 of 16 sub-states — the
-largest single block); the six missing game modes, which fail *silently*; the
-`$C439` late spawner; the 73 stride-changing inline records.
+**Gradius** (rewritten W38 — every item on the old list has shipped):
+**a cartridge comparison for stages 2-7 and for the ending chain**, which is the
+largest unclaimed work in the port and has been the standing item since W32c;
+the **six missing `$80D4` game modes** (`$9751`, the restart-to-title, is now
+the most reachable throw in the game and a loop-2 clear walks straight into it);
+dispatch entry 27 `$B4F2`; the `$1B = $83` null wave cursor; and `$B7B5`/`$B797`,
+W34's open table-extent finding.
 
 **DaiOuJou:** the 39 bullet behaviour bodies (`$282104..$283BAF`, ~6.7 KB, all
 throwing); the enemy loaders (2 routines + 208 table pairs behind 124 of 126
@@ -409,7 +432,9 @@ confident guess — three waves came back BLOCKED and all three were right to.
 ## 11. THE ONE-PARAGRAPH VERSION
 
 Three hand-written ports verified against real hardware. Batman is finished.
-Gradius plays most of stage 1 and has no boss, no title screen and no ending.
+Gradius plays all seven stages, ends, and wraps to loop 2 — but has no title
+screen, no attract mode and no game over, and nothing past stage 1 has ever been
+compared against the board.
 DaiOuJou scrolls its whole first stage from the game's own data, aims its
 turrets correctly, and generates its bullet patterns from the nineteen unrolled
 generators the developers actually wrote — but its enemies are still a
