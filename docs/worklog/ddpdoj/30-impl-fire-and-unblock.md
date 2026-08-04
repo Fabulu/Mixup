@@ -379,6 +379,22 @@ Type-5 subsystem calls: **9 of 23** — unchanged; W30 added no call.
   flag defaulting to off is a green achieved by not running code. The fix is to
   port `$26B6FA`.
 
+## 7.2 THE PAGE DID NOT GET SLOWER — MEASURED
+
+The owner's standing constraint is that boot must not get slower than it is
+today, and this wave added a per-emit ROM read (`resolveEmitStub` resolves a
+stub's bucket out of the cartridge on every sprite request rather than from a
+transcribed map). Measured, headless, same harness as §7:
+
+```
+construct 44.2 ms; 1,000 logic frames in 604.3 ms = 0.604 ms/frame
+                                     (the budget at 59.185606 Hz is 16.9 ms)
+```
+
+3.6 % of a frame, with up to 45 live enemies each doing 1-4 resolutions.
+Caching the resolution would be a defensible optimisation and is not needed, so
+it was not done — the ROM stays the authority for every lookup.
+
 ## 8. WHAT I COULD NOT DETERMINE
 
 - **Which routine consumes the extra `$2433AE` draw** behind the new `rng`
