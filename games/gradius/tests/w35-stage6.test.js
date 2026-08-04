@@ -112,6 +112,27 @@ test('$B480 phase 2 (DRIFT): $AEE1 moves it, and at dwell 1 it goes to phase 0',
     '$B4D6 LDA $B4EB,Y -- row B, not row A');
 });
 
+test('$B4E1 JMP $B251: the DRIFT arm ends on the off-screen box and can free the slot', () => {
+  // ADDED AFTER THE FIRST MUTATION RUN, where dropping $B4E1's tail jump
+  // survived every other check in this file (M10). Only the phase-2 arm ends on
+  // $B251 -- $B4B8 and $B4C4's arm both RTS -- so a creature that leaves the box
+  // during a FLIGHT leg stays allocated until its next drift. That asymmetry is
+  // the ROM's and it is worth an assertion of its own.
+  // RED WHEN: $B4E1's JMP $B251 is dropped, or given to the $B4AE arm as well.
+  const gone = cell(true, { rank: 0, x: 0xF8 });   // past $B25A's CMP #$F4
+  gone.obj.s0480[I] = 2;
+  gone.obj.s04C0[I] = 5;
+  updateEnemies(gone, res);
+  assert.strictEqual(gone.obj.type[I], 0, '$B251 -> $AEF8 frees the slot');
+
+  const stays = cell(true, { rank: 0, x: 0xF8 });  // SAME position, phase 1
+  stays.obj.s0480[I] = 1;
+  stays.obj.s04C0[I] = 5;
+  updateEnemies(stays, res);
+  assert.strictEqual(stays.obj.type[I], 0x9A,
+    'the FLIGHT arm ($B4BB RTS) does NOT run the box -- the asymmetry is real');
+});
+
 test('$B480 phase 0 RE-AIMS the creature at the ship, then flies it (phase := 1)', () => {
   // $B49B LDA $048C,X / BNE $B4A5 -- phase 0 ONLY calls $BCB5, and with A = $A8
   // (the enemy's own index), so it aims the CREATURE, not a bullet. Then the
@@ -254,7 +275,12 @@ test('$C6DE: the 16-bit velocity is $A9 * 32 + $02, split across $03C6:$03F6', (
   // ((pre-INC $69) & $3F) >> 1 with the nibble chosen by the POST-INC $69.
   const ptr = rom.word(0xC44D);
   assert.strictEqual(ptr, 0xC752, 'fixture: X = 6 selects the $C752 stream');
-  for (const f of [0, 4, 8]) {
+  // FRAME 64 IS NOT DECORATION AND IT WAS ADDED AFTER THE FIRST MUTATION RUN.
+  // At $69 = 0 the stream byte is $AF and the low nibble gives a9 = $1E, so
+  // a9*32 = 960 and its LOW BYTE is 192. Only a frame counter of 64 or more
+  // makes 192 + $02 carry into the integer half -- with frames 0/4/8 alone,
+  // dropping $C712's ADC carry (M13) was invisible.
+  for (const f of [0, 4, 8, 64]) {
     const s = erupting(f);
     const pre = s.spawn.z69;
     const patternByte = rom.read(ptr + ((pre & 0x3F) >>> 1));
@@ -268,6 +294,33 @@ test('$C6DE: the 16-bit velocity is $A9 * 32 + $02, split across $03C6:$03F6', (
     assert.strictEqual(s.obj.yvel[slot], (v >>> 8) & 0xFF,
       `frame ${f}: $03C6 is its high byte -- the carry must propagate`);
   }
+});
+
+test('$C6E4 LDX #$06 selects the $C752 stream, not stage 4\'s $C633', () => {
+  // ADDED AFTER THE FIRST MUTATION RUN. Changing the 6 to a 4 (M15) survived
+  // every other check here, because ALL THREE of $C526, $C633 and $C752 open
+  // with the byte $AF -- so the first spawn of a fresh run is identical whichever
+  // stream is read, and a misparse only shows up further along. That is the
+  // stride-change trap's little brother and it is why this walks to $69 = 4.
+  //
+  // $C633 and $C752 first disagree at stream index 2, which is $69 = 4 or 5:
+  // the high nibble there is 1 on stage 4's stream and $E on stage 6's.
+  // RED WHEN: the 6 becomes 0, 2 or 4.
+  const s4 = rom.word(0xC44B);
+  assert.strictEqual(s4, 0xC633, 'fixture: $C447+4 -> $C633');
+  const s = erupting(0);
+  s.spawn.z69 = 4;                         // index 2, high nibble (post-INC odd? no)
+  spawnEngine(s, res);
+  const slot = s.obj.anim.indexOf(0x8D);
+  const pb = rom.read(0xC752 + 2);
+  const pb4 = rom.read(0xC633 + 2);
+  const nib = (5 & 1) ? (pb & 0x0F) : (pb >>> 4);
+  const nib4 = (5 & 1) ? (pb4 & 0x0F) : (pb4 >>> 4);
+  assert.notStrictEqual(nib, nib4,
+    'fixture: the two streams must actually disagree here, or this proves nothing');
+  const v = ((nib * 2) & 0xFF) * 32 + 0;
+  assert.strictEqual(s.obj.yvelf[slot], v & 0xFF,
+    '$69 = 4 must consume $C752\'s byte, not $C633\'s');
 });
 
 test('$C6DE declines silently when all ten bullet slots are busy ($C6F3 RTS)', () => {
@@ -300,6 +353,28 @@ test('$CDA5 runs sub_$CDB3 TWICE a frame and stops dead at $66 == $58', () => {
   sub_CDA5(s, res);
   assert.strictEqual(s.spawn.z66, 0x58, '$CDA7 CMP #$58 / BCC -- no 45th frame');
   assert.strictEqual(s.vram.cursor, before, '...and no 89th VRAM packet');
+});
+
+test('sub_$CDB3 HAS ITS OWN $58 BOUND, and an ODD $66 is the only way to see it', () => {
+  // ADDED AFTER THE FIRST MUTATION RUN. Widening sub_$CDB3's `CPX #$58` (M19)
+  // survived everything, because $66 starts at 0 and steps by TWO, so it takes
+  // only EVEN values and the second call's own test never arbitrates. That made
+  // the inner bound look redundant -- and it is not, because `$66` IS THE SPAWN
+  // ENGINE'S DESCRIPTOR BYTE: `$A397` copies a wave record's third byte into it
+  // and the wave engine runs during `$86` (`$A2F0` is entered for every `$1B`
+  // that is not `$81`/`$82`). An odd `$66` is therefore reachable, and on an odd
+  // cursor the second call is the ONLY thing standing between the walk and
+  // sub_$CE89's opcodes.
+  // RED WHEN: sub_$CDB3's CPX #$58 is widened or removed.
+  const s = createState();
+  s.zp19 = 5;
+  s.spawn.z66 = 0x57;                      // ODD, one below the bound
+  const packets0 = s.vram.cursor;
+  sub_CDA5(s, res);
+  assert.strictEqual(s.spawn.z66, 0x58,
+    'the FIRST call runs (cell $57) and the SECOND must decline');
+  assert.strictEqual(s.vram.cursor - packets0, 5,
+    'exactly one five-byte packet -- an 89th cell would read $CE89');
 });
 
 test('$CDA5 queues ONE five-byte nametable packet per cell, at row hi+7 / col lo+16', () => {
@@ -424,6 +499,10 @@ test('$C099: a type-$9A creature takes $BFC5[rank] hits, and the shot is still e
       s.obj.x[3] = 100; s.obj.y[3] = 100;
       shotSweep(s, res);
       hits += 1;
+      // $C0A4 BCC $C0AE, and $C0AE falls into $C0B7: a shot that did NOT kill
+      // is still eaten. Only a laser (subtype 1) survives, and this is not one.
+      assert.strictEqual(s.obj.anim[3], 0,
+        `rank ${rank} hit ${hits}: the shot is consumed even when it does not kill`);
     }
     assert.strictEqual(hits, need,
       `rank ${rank}: $BFC5[${rank}] = ${need} hits, no more and no fewer`);
