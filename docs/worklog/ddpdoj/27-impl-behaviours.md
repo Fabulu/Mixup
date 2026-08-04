@@ -884,3 +884,91 @@ skipped**.
 covered. ONE distinct body remains: kind 28 ($283260), family J -- the splitter,
 which re-aims at the player via `$242748`/`$242296` and spawns through
 `$2817C2`. It is the only kind still taking the loud named throw.**
+
+### 2026-08-04 — FAMILY J PORTED (kind 28) — ALL 39 KIND INDICES NOW DISPATCH
+
+**KIND 28'S COUNTDOWN IS THE OPPOSITE OF EVERY OTHER ONE IN THIS WAVE.**
+Families C, D, F, H, I and K all use `subq.b #1,off / bcc`, which fires on
+UNDERFLOW — the borrow only happens when the byte was already 0. Kind 28 uses:
+
+    $283290  tst.b $28(A6) / beq   -- already spent?  skip forever
+    $283298  subq.b #1,$28(A6)
+    $28329C  bne                   -- FIRE when the byte REACHES ZERO
+
+**`bne`, not `bcc`.** So +$28 = `$14` counts twenty frames and fires on the
+twentieth, and the `tst.b / beq` in front makes the arm a ONE-SHOT. Applying
+this wave's own hard-won rule here would fire a frame late **and then fire again
+every 256 frames forever**, because the byte would wrap through `$FF`. The rule
+that has been right six times in a row is still not the rule — **the instruction
+is.** Six correct applications of a heuristic are not evidence about the
+seventh.
+
+`move.w #$1410,$28` seeds +$28 = `$14` and +$29 = `$10`; nothing in this body
+reads +$29. The animation tail is the WALL BOUNCERS' tail (`$2832D2` ==
+`$283064`) with the budget-dependent ring pair removed — always limit `$1C1E38`
+/ wrap `$1C1BF8` — and its descriptor base `$1C1B68` is the bouncers'. Three
+families share that one sprite ring.
+
+The FIRE arm is a loud named throw at `$242748`. Its full transcription is in
+the source so the next wave does not re-read it: re-aim (carry = no target,
+skip), `$242296`, then `$2817C2` with D1 = the re-aimed direction (+`$B0` when
+`$8130DC` is zero), D0 = the longword at +$2C, D2 = this bullet's position.
+`spawnCore` could be wired today, but the direction it needs comes out of the
+unported aim, so wiring it would invent every bullet it produced.
+
+### THE NEGATIVE TEST HAD TO CHANGE ITS SUBJECT, NOT ITS PURPOSE
+
+`an UNPORTED behaviour kind throws by address` derives its subject from the
+`$282030` table and, with kind 28 ported, would have hit its own
+`assert.fail('retire this test')`. It was not retired. The property it guards is
+"an unported path is a LOUD NAMED THROW", and the mover still has such a path —
+the CONTINUATION dispatch. It now seeds a record whose +$22 holds an address no
+body claims and asserts the throw carries it. Same guard, live subject.
+
+### THE MUTATION THAT SURVIVED, AND A WHOLE CLASS OF ASSERTION IT CONDEMNS
+
+| mutation | first result |
+|---|---|
+| kind 28 fires on underflow instead of at zero | RED — `not ok 230` |
+| the one-shot `tst.b/beq` guard removed | RED — `not ok 230` |
+| +$28 seeded `$1014` (the halves swapped) | RED — `not ok 230` |
+| the ring frozen while the countdown runs | RED — `not ok 231` |
+| +$19 no longer gates the tail | RED — `not ok 231` |
+| **the throw carries `$263684` instead of `$242748`** | **GREEN — NOT CAUGHT** |
+
+The assertion was `/242748/i.test(e.message)` — and **the message quotes other
+ROM addresses in its own explanation**, so a regex over it matches a throw that
+carries entirely the wrong address. `Unreached` has carried `.romAddress` since
+wave 4 and only `handlers.test.js` was using it.
+
+All four such assertions in `mover.test.js` now check `e.romAddress`. The
+mutation reddens `not ok 230` alone. **Every loud-named-throw test that matches
+on message text is this bug**, and there are more of them elsewhere in the
+suite — recorded here as a finding for a reviewer rather than fixed blind in
+files this wave is not the writer for.
+
+`src/mover.js` restored and hash-verified byte-identical (`7c594d82ad8f38c3`);
+**413 pass / 0 fail / 0 skipped**.
+
+### WHERE THE WAVE ENDED
+
+**37 distinct bodies cover ALL 39 kind indices.** No behaviour kind reaches the
+initialiser throw any more; W27 ported 29 bodies on top of W26's 8.
+
+What is NOT done, and is not claimed:
+
+- **Kind 28's SPLIT ARM still throws** at `$242748`. The body is ported; the
+  player-track subsystem it calls is not. Same for **kind 18's spawn arm**
+  (`$263684`, the enemy subsystem). Two arms, both loud, both by address.
+- **Step 4 of this wave's plan is untouched**: the bit-7 RECOMPUTE path
+  (`$281F3E`) and the bit-14 TRANSFORM path (`$281FA2`/`$281FB4`) are still
+  unexercised. Kind 35 is a bit-7 body and its test drives it through the mover,
+  so the bit-7 path now RUNS — but no test asserts anything about the path
+  itself, and bit-14 has no kind at all in the table.
+- **No oracle comparison was run for any W27 family.** The mover gate compares
+  posA/posB/speed/dir/velA/velB only, so it is structurally BLIND to every
+  sprite-only body (families A, B, C, K, kind 26). "0 divergent" from that gate
+  must never be quoted as evidence about them. The gate-visible bodies (17, 23,
+  24, 25, 27, 29, 30, 31, 32, 34, 35, 36, 37, 38) have not been compared either.
+- **The unit tests are the only check on all of it.** Branch coverage against
+  the ROM has not been measured for the new bodies.

@@ -239,19 +239,33 @@ test('an UNPORTED behaviour kind throws by address (loud named throw)', { skip: 
       const body = ROM.u32(0x282030 + 4 * k);
       if (!INIT_BODIES.has(body)) unported.push([k, body]);
     }
-    if (unported.length === 0) {
-      // Not a silent pass: every one of the 39 kinds is ported, which is a
-      // milestone worth failing loudly about so this test gets retired
-      // deliberately rather than sitting here asserting nothing.
-      assert.fail('all 39 behaviour kinds are ported -- retire this test');
+    if (unported.length > 0) {
+      const [kind, addr] = unported[0];
+      const hex = addr.toString(16).toUpperCase();
+      seedBullet(ram, 0, { type: 0x8100 | kind, dir: 0x40 });
+      assert.throws(
+        () => runMover({ ram, rom: ROM, notes: new UnportedLog() }),
+        // e.romAddress, NOT the message: the message QUOTES other ROM
+        // addresses in its explanation, so a regex over it matches a throw
+        // that carries the wrong address. Mutation-proven -- see kind 28.
+        (e) => e instanceof Unreached && e.romAddress === addr,
+        `kind ${kind} initialiser $${hex} is not ported and must throw carrying `
+        + 'the address');
+      return;
     }
-    const [kind, addr] = unported[0];
-    const hex = addr.toString(16).toUpperCase();
-    seedBullet(ram, 0, { type: 0x8100 | kind, dir: 0x40 });
+    // ALL 39 KINDS ARE NOW PORTED (W27), so the subject this test was derived
+    // from no longer exists. It is NOT retired and NOT left asserting nothing:
+    // the property it guards is "an unported path is a LOUD NAMED THROW", and
+    // the mover still has one -- the CONTINUATION dispatch. A record whose +$22
+    // holds an address no body claims must throw carrying that address, exactly
+    // as a missing initialiser did.
+    const bogus = 0x283bff;                            // inside the behaviour
+    assert.ok(!CONTINUATIONS.has(bogus), 'the subject must genuinely be unported');
+    seedBullet(ram, 0, { type: 0x8000, dir: 0x40, cont: bogus });
     assert.throws(
       () => runMover({ ram, rom: ROM, notes: new UnportedLog() }),
-      (e) => e instanceof Unreached && new RegExp(hex, 'i').test(e.message),
-      `kind ${kind} initialiser $${hex} is not ported and must throw carrying the address`);
+      (e) => e instanceof Unreached && e.romAddress === bogus,
+      'a continuation at +$22 that no body claims must throw carrying its address');
   });
 
 // ---------------------------------------------------------- W27 family A
@@ -399,7 +413,7 @@ test('kind 18 spawns an enemy on the frame its +$34 word UNDERFLOWS, not on reac
     runMover(ctx);                                    // F3: 1 -> 0, no spawn
     assert.equal(ram.u16(base + 0x34), 0, 'F3: counter at 0, still no spawn');
     assert.throws(() => runMover(ctx),                // F4: 0 -> borrow -> spawn
-      (e) => e instanceof Unreached && /263684/i.test(e.message),
+      (e) => e instanceof Unreached && e.romAddress === 0x263684,
       'F4: the underflow frame calls $263684 and must throw carrying that address');
   });
 
@@ -1089,6 +1103,67 @@ test('kind 35 starts at SPEED ZERO and winds up one step every fifth animating '
       + 'the reloaded $04 down to $02 by frame 24');
   });
 
+// ================================== W27 FAMILY J: the SPLITTER (kind 28) =====
+
+test('kind 28 fires when its +$28 byte REACHES ZERO, not on underflow, and only '
+  + 'ONCE ($28329C bne, guarded by $283290 tst.b/beq)',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 28, speed: 0x14, dir: 0x40 });
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: the initialiser
+    assert.equal(ram.u16(base + 0x28), 0x1410,
+      'F1: +$28 counter $14, +$29 $10 (nothing in this body reads +$29)');
+    assert.equal(ram.u32(base + 0x0a), 0x1c1b68,
+      'F1: the WALL BOUNCERS\' descriptor base -- three families share this ring');
+    ram.setU32(base + REC.velA, 0);
+    // $14 = 20 frames. Every countdown in families C/D/F/H/I/K uses `bcc` and
+    // fires on UNDERFLOW, i.e. one frame LATER than this one. Nineteen quiet
+    // frames, then the twentieth throws.
+    for (let f = 1; f <= 19; f++) {
+      runMover(ctx);
+      ram.setU32(base + REC.velA, 0);
+      assert.equal(ram.u8(base + 0x28), 0x14 - f, `frame ${f}: +$28 ticked`);
+    }
+    assert.throws(
+      () => runMover(ctx),
+      (e) => e instanceof Unreached && e.romAddress === 0x242748,
+      'frame 20: +$28 reached 0 and the split arm throws by address');
+    // The throw happened AFTER the decrement, so +$28 is now 0 and the
+    // `tst.b / beq` guard makes the arm a ONE-SHOT: it must never fire again,
+    // and in particular must NOT come back round after 256 more frames.
+    assert.equal(ram.u8(base + 0x28), 0x00, '+$28 is spent');
+    for (let f = 0; f < 300; f++) {
+      runMover(ctx);                                  // must not throw
+      ram.setU32(base + REC.velA, 0);
+    }
+    assert.equal(ram.u8(base + 0x28), 0x00,
+      'the guard skips the whole arm, so +$28 is never decremented again -- an '
+      + 'underflow reading would wrap to $FF and re-fire every 256 frames');
+  });
+
+test('kind 28 keeps animating on the frames its split arm is idle ($2832D2)',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 28, speed: 0x14, dir: 0x40 });
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1
+    ram.setU32(base + REC.velA, 0);
+    runMover(ctx);                                    // F2
+    assert.equal(ram.u32(base + 0x0a), (0x1c1b68 + 0x24) >>> 0,
+      'the animation tail runs on the countdown frames too');
+    // +$19 gates it, exactly as it gates the bouncers' tail.
+    ram.setU8(base + 0x19, 0x02);
+    const held = ram.u32(base + 0x0a);
+    runMover(ctx);
+    assert.equal(ram.u32(base + 0x0a), held, '+$19 non-zero freezes the ring');
+    assert.equal(ram.u8(base + 0x19), 0x01, '+$19 ticked down');
+  });
+
 test('every ported initialiser installs ITS OWN continuation address at +$22',
   { skip: !HAVE_TABLES }, () => {
     // THIS TEST EXISTS BECAUSE A MUTATION SURVIVED.  Kinds 30 and 31 are
@@ -1113,7 +1188,8 @@ test('every ported initialiser installs ITS OWN continuation address at +$22',
       [0x282e00, 0x282e4a], [0x282ebc, 0x282ef0], [0x282f6e, 0x282f9e],
       [0x28330c, 0x28333c], [0x283430, 0x28349a], [0x2834fe, 0x283568],
       [0x2830b2, 0x28310e], [0x283148, 0x283194], [0x2835cc, 0x283616],
-      [0x283850, 0x28388a], [0x2838c6, 0x283912], [0x2839de, 0x283a2a],
+      [0x283260, 0x283290], [0x283850, 0x28388a], [0x2838c6, 0x283912],
+      [0x2839de, 0x283a2a],
       [0x283af6, 0x283b42],
       [0x2836a8, 0x2836d0], [0x28371c, 0x28374c],
     ]);
@@ -1141,33 +1217,36 @@ test('every ported initialiser installs ITS OWN continuation address at +$22',
       'every entry of the expected map must have been reached through $282030');
   });
 
-test('the ported-body inventory is exactly 36 initialisers + 35 continuations', () => {
+test('the ported-body inventory is exactly 37 initialisers + 36 continuations', () => {
   // A LEDGER test: it pins the exact set, so porting a body turns it RED until
   // the inventory here is updated deliberately.  That is the point -- the count
   // cannot drift upward without somebody writing down which addresses moved.
   //
   // W26 ported 8 bodies (kinds 3/4/5/6/7/12/13/19; kind 6 is the midboss's).
-  // W27 adds 28: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
+  // W27 adds 29: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
   // family C kinds 16/18, family D kind 17, family E kinds 22/24, family F
   // kind 23, families G+L kinds 25/29/34, family H kinds 26/27/32/36/37/38,
-  // family I kinds 30/31, family K kind 33, and kind 35.  Kind 10's $282840 is
-  // also the target for kinds 14 and 15, which alias it in the $282030 table.
-  // So 36 distinct bodies now cover 39 of the 39 kind indices, minus kind 28 --
-  // 38 of 39; kind 28 (family J, the splitter) is the last one throwing.
+  // family I kinds 30/31, family J kind 28, family K kind 33, and kind 35.
+  // Kind 10's $282840 is also the target for kinds 14 and 15, which alias it in
+  // the $282030 table.  So 37 distinct bodies cover ALL 39 kind indices: no
+  // behaviour kind reaches the initialiser throw any more.  (Kind 28's SPLIT
+  // ARM still throws by address at $242748 -- the body is ported, the player-
+  // track subsystem it calls is not.)
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
     [0x282104, 0x282162, 0x2821c2, 0x2823ec, 0x2824a8, 0x282564, 0x282620,
      0x2826dc, 0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962,
-     0x2829bc, 0x282a1e, 0x282aae, 0x282b30, 0x282bee, 0x282c56,
-     0x282d42, 0x282e00, 0x282ebc, 0x282f6e, 0x2830b2, 0x283148, 0x28330c,
+     0x2829bc, 0x282a1e, 0x282aae, 0x282b30, 0x282bee, 0x282c56, 0x282d42,
+     0x282e00, 0x282ebc, 0x282f6e, 0x2830b2, 0x283148, 0x283260, 0x28330c,
      0x283430, 0x2834fe, 0x2835cc, 0x2836a8, 0x28371c, 0x283850, 0x2838c6,
      0x2839de, 0x283af6]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
     [0x28213e, 0x28219e, 0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738,
      0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x2829fe,
      0x282a66, 0x282af6, 0x282b64, 0x282c2a, 0x282d76, 0x282e4a, 0x282ef0,
-     0x282f9e, 0x28310e, 0x283194, 0x28333c, 0x28349a, 0x283568, 0x283616,
-     0x2836d0, 0x28374c, 0x28388a, 0x283912, 0x283a2a, 0x283b42, 0x283ce4]);
-  // 36 initialisers, 35 continuations. NOT equal, and that is correct: kinds 2
+     0x282f9e, 0x28310e, 0x283194, 0x283290, 0x28333c, 0x28349a, 0x283568,
+     0x283616, 0x2836d0, 0x28374c, 0x28388a, 0x283912, 0x283a2a, 0x283b42,
+     0x283ce4]);
+  // 37 initialisers, 36 continuations. NOT equal, and that is correct: kinds 2
   // and 21 both install $283CE4, so bodies MAY share a continuation.
   //
   // An earlier version of this test asserted `INIT_BODIES.size ===

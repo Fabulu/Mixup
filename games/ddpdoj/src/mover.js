@@ -1782,4 +1782,79 @@ CONTINUATIONS.set(0x283616, (ctx, base) => {
   // ($283696 free-slot stub is UNREACHABLE -- 0 references.)
 });
 
+// ================================================ W27 FAMILY J
+//
+// Kind 28 ($283260) -- the SPLITTER, and the last body in the $282030 table.
+//
+// **ITS COUNTDOWN IS THE OPPOSITE OF EVERY OTHER ONE IN THIS WAVE.**  Families
+// C, D, F, H, I and K all use `subq.b #1,off / bcc`, which fires on UNDERFLOW --
+// the borrow only happens when the byte was ALREADY 0.  Kind 28 uses
+//
+//     $283290  tst.b $28(A6) / beq   -- already spent?  skip forever
+//     $283298  subq.b #1,$28(A6)
+//     $28329C  bne                   -- FIRE when the byte REACHES ZERO
+//
+// `bne`, not `bcc`.  So +$28 = $14 counts 20 frames and fires on the 20th, and
+// the `tst.b / beq` in front makes it a ONE-SHOT: once the byte is 0 the arm is
+// never entered again.  Applying this wave's own rule ("countdowns fire on
+// underflow") here would fire a frame late and then fire again every 256 frames
+// forever.  The RULE IS THE INSTRUCTION, not the family.
+//
+// `move.w #$1410,$28` seeds +$28 = $14 (the counter) and +$29 = $10.  Nothing in
+// this body reads +$29; it is left for whatever consumes the record downstream.
+//
+// The animation tail is the WALL BOUNCERS' tail ($2832D2 == $283064) with the
+// budget-dependent pair removed: kind 28 always uses limit $1C1E38 / wrap
+// $1C1BF8, and its descriptor base $1C1B68 is the bouncers' too.  Three families
+// sharing one sprite ring.
+//
+// THE FIRE ARM IS A LOUD NAMED THROW, and this is the transcription of what it
+// would do, so the next wave does not have to re-read it:
+//
+//     $2832A0  jsr $242748       re-aim at the player; returns CARRY on failure
+//     $2832A6  bcs               carry -> no spawn, fall to the animation
+//     $2832AA  jsr $242296
+//     $2832B0  tst.w $8130DC / bne $2832C2   -- when that global is ZERO:
+//     $2832BA    D1 = dir (+$1B) + $B0
+//     $2832C2  D0 = the longword at +$2C, D2 = position (+$2), D3 = D4 = 0
+//     $2832CE  jsr $2817C2       the bank-B spawn core
+//
+// `$242748`/`$242296` are the player-track subsystem and are not ported.  The
+// spawn itself is wirable through `spawnCore`, but its direction argument comes
+// out of `$242748`, so wiring it without the aim would invent every bullet it
+// produces.  Throwing by address is the correct answer until the aim lands.
+
+INIT_BODIES.set(0x283260, (ctx, base) => {
+  const { ram } = ctx;
+  ram.setU16(base + 0x28, 0x1410);                     // $283260 counter $14 / +$29 $10
+  ram.setU32(base + REC.continuation, 0x283290);       // $283266
+  clearDispatch(ram, base);                            // $28326E andi.b #$fe,(A6)
+  ram.setU32(base + 0x0a, 0x1c1b68);                   // $283272 descriptor
+  ram.setU32(base + 0x06, 0xfc00fe00);                 // $28327A renderOffs
+  ram.setU16(base + 0x0e, 0x0410);                     // $283282 graphic
+  ram.setU8(base + 0x1d, 0x1a);                        // $283288
+});
+CONTINUATIONS.set(0x283290, (ctx, base) => {
+  const { ram } = ctx;
+  // $283290 tst.b $28 / beq -- spent: this arm is a ONE-SHOT.
+  const n = ram.u8(base + 0x28);
+  if (n !== 0) {
+    ram.setU8(base + 0x28, (n - 1) & 0xff);            // $283298 subq.b #1,$28
+    if (((n - 1) & 0xff) === 0) {                      // $28329C bne -- fire at ZERO
+      unreached(0x242748,
+        `kind 28's SPLIT arm: the +$28 byte reached 0, so $2832A0 calls $242748 `
+        + `(re-aim at the player; carry means "no target, skip the spawn"), then `
+        + `$242296, then spawns through $2817C2 with D1 = the re-aimed direction `
+        + `(+$B0 when $8130DC is zero), D0 = the longword at +$2C and D2 = this `
+        + `bullet's position. The player-track subsystem is not ported, and the `
+        + `spawn's direction comes out of it, so every bullet it produced would `
+        + `be invented`);
+    }
+  }
+  // $2832D2 the animation tail -- the wall bouncers' ($283064) with a fixed pair.
+  if (tick19(ram, base)) { advance40(ctx, base); return; }   // $2832D2/$2832FE
+  animateRenderOffsWrap(ctx, base, 0x1c1bf8, 0x24, 0x1c1e38);  // $2832D8..$2832F2
+  advance40(ctx, base);                                // $2832F4 lea $36(A6)
+});
+
 export { INIT_BODIES, CONTINUATIONS };
