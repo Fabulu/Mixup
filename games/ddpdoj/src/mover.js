@@ -906,4 +906,51 @@ CONTINUATIONS.set(0x282c2a, (ctx, base) => {
   advance40(ctx, base);                              // $282C4C lea $36(A6)
 });
 
+// ============================================================ W27 FAMILY B
+//
+// Kinds 2 ($2821C2, table $2821FA) and 21 ($282C56, table $282C8E).  The two
+// bodies are instruction-for-instruction identical apart from that table
+// pointer.  Both END in `bra.w $2822AE` -- a TAIL JUMP into the shared
+// dir-faced epilogue, which is where bit 8 gets cleared and the sprite fields
+// written.  The routine does not stop at its last `move.l`; reading it as if
+// it did would drop the entire epilogue.  (`epi2822AE` is W26's, already
+// transcribed and in use by other kinds.)
+//
+// Both install the SAME continuation, `$283CE4` -- the 4-frame ring gated on
+// the `$80390C` semaphore, also already transcribed as `cont283CE4`.  It is
+// registered here because W26 had no kind that reached it: the helper existed
+// but nothing dispatched to it.
+//
+// `move.l #$C000C,$16(A6)` writes BOTH +$16 (the anim index, $000C) and +$18
+// ($000C) as one longword -- the epilogue reads +$16 and steps it by -4.
+
+// ----- kind 2  ($2821C2 init) -- table $2821FA
+INIT_BODIES.set(0x2821c2, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                        // $2821D0 bsr $2820CC
+  ram.setU8(base + 0x1d, 0x1a);                      // $2821D4
+  ram.setU32(base + 0x16, 0x000c000c);               // $2821E0 anim index + $18
+  ram.setU16(base + 0x26, 0x0101);                   // $2821E8
+  ram.setU32(base + REC.continuation, 0x283ce4);     // $2821EE
+  epi2822AE(ctx, base, 0x2821fa);                    // $2821F6 bra.w $2822AE
+});
+
+// ----- kind 21 ($282C56 init) -- table $282C8E, otherwise identical to kind 2
+INIT_BODIES.set(0x282c56, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                        // $282C64
+  ram.setU8(base + 0x1d, 0x1a);                      // $282C68
+  ram.setU32(base + 0x16, 0x000c000c);               // $282C74
+  ram.setU16(base + 0x26, 0x0101);                   // $282C7C
+  ram.setU32(base + REC.continuation, 0x283ce4);     // $282C82
+  epi2822AE(ctx, base, 0x282c8e);                    // $282C8A bra.w $2822AE
+});
+
+// the shared continuation both kinds install.  cont283CE4 is sprite-only and
+// does NOT advance A6 itself -- the ring is the whole body.
+CONTINUATIONS.set(0x283ce4, (ctx, base) => {
+  cont283CE4(ctx, base);
+  advance40(ctx, base);
+});
+
 export { INIT_BODIES, CONTINUATIONS };

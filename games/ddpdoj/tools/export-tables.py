@@ -250,6 +250,30 @@ SHOT_WINDOWS = [
     #                       Sprite-only (selects a renderOffs frame); 64 B.
     (0x283C4C, 0x0040, "WAVE 26: $283C4C the 32-word direction-sprite offset "
                       "table read by the $283C0E behaviour epilogue"),
+    #   $2822EC  32 words  the direction-sprite OFFSET table the OTHER shared
+    #                       epilogue, $2822AE, indexes by (dir+4)&$F8. Note this
+    #                       is a DIFFERENT table from $283C4C above and a
+    #                       different index expression -- $2822AE masks to $F8
+    #                       where $283C0E shifts >>2 and masks $3E. 64 B.
+    #
+    #   W26 transcribed $2822AE but NO KIND DISPATCHED TO IT, so this window was
+    #   never needed and never noticed to be missing. W27's kinds 2 and 21 are
+    #   the first to reach it, and the port threw immediately and by address --
+    #   `UNPORTED $2822FC: word outside every ROM window`. That throw is the
+    #   system working: the alternative to a missing window is invented data.
+    (0x2822EC, 0x0040, "WAVE 27: $2822EC the 32-word direction-sprite offset "
+                      "table read by the $2822AE behaviour epilogue"),
+    #   $2821FA  kind 2's sprite-frame table: 9 pointers into $28221E..$2822AC,
+    #                       each of which is a list of $1BFxxx frame descriptors.
+    #                       $2822AE resolves *(A0 + $2822EC[d0]) then
+    #                       *(that + index). Covers both indirections: $2821FA
+    #                       through the end of the pointer lists at $2822AC.
+    (0x2821FA, 0x00B4, "WAVE 27: $2821FA kind 2's dir-indexed sprite-frame "
+                      "pointer table + the frame lists it points into"),
+    #   $282C8E  kind 21's equivalent of $2821FA. Same shape, same two-level
+    #                       indirection, different frames.
+    (0x282C8E, 0x00B4, "WAVE 27: $282C8E kind 21's dir-indexed sprite-frame "
+                      "pointer table + the frame lists it points into"),
 ]
 
 # WAVE 21 -- THE VELOCITY FIELD, exported in full and here is why.

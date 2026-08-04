@@ -176,3 +176,71 @@ back to 384/384/0 skipped.
 - Step 2 (the ROM windows for `$2821FA`/`$2822EC`/`$282C8E`/`$2830EA`/`$283704`
   and `$1BF000..$1C2C00` in `export-tables.py`) is NOT done — family A reads no
   table, so it was not needed yet. Families B, H and K will need it.
+
+### 2026-08-04 — FAMILY B PORTED (kinds 2, 21) + the tables they needed
+
+**Both bodies END IN `bra.w $2822AE`** — a tail jump into the shared dir-faced
+epilogue, which is where bit 8 is cleared and the sprite fields written. The
+routine does not stop at its last `move.l`. Read as if it did, the entire
+epilogue is dropped. Eleventh incident of the fall-through shape.
+
+Also: **`w27disasm.py` runs straight past the routine into DATA.** Everything
+after `$2821FA` disassembles as plausible-looking `ori.b` instructions and is
+actually kind 2's sprite-frame pointer table. The `bra.w` is the real end. A
+linear sweep cannot tell you where a routine stops; only the control flow can.
+
+**THE DEAD HELPER THAT THREW THE MOMENT IT WAS REACHED.** W26 transcribed
+`$2822AE` (`epi2822AE`) and `$283CE4` (`cont283CE4`), but NO KIND DISPATCHED TO
+EITHER. They sat as unexercised code. Kinds 2 and 21 are the first to reach
+them, and `epi2822AE` threw instantly and by address:
+
+    UNPORTED $2822FC: word at $2822FC is outside every ROM window
+
+The `$2822EC` direction table had never been exported, because nothing had ever
+read it. **That throw is the system working exactly as designed** — the
+alternative to a missing window is invented data that looks fine. Three windows
+added to `export-tables.py` (`$2822EC`+$40, `$2821FA`+$B4, `$282C8E`+$B4);
+`player.tables.json` regenerated, 88 windows / 177,078 bytes.
+
+Note `$2822EC` is a DIFFERENT table from `$283C4C` with a different index
+expression — `$2822AE` masks `(dir+4)&$F8`, `$283C0E` does `((dir+4)>>2)&$3E`.
+Two epilogues, two tables, easy to conflate.
+
+**Inventory: 15 -> 17 initialisers, 16 continuations.** Not equal, and correct:
+kinds 2 and 21 share `$283CE4`.
+
+### TWO DEFECTIVE CHECKS, BOTH MINE, BOTH CAUGHT WITHIN THE HOUR
+
+1. **`assert.equal(INIT_BODIES.size, CONTINUATIONS.size)`** — written by me in
+   the family A commit under a comment claiming it proved "no body is wired in
+   with a dangling +$22 target". It proved nothing of the sort: two maps can
+   have equal size with every target wrong. It went red the moment a legitimate
+   shared continuation appeared, which is how it was caught. Replaced with a
+   check that resolves every continuation key.
+2. **The kind 2 test asserted `+$16 == $C` AND `+$16 == $C-4`** — the epilogue
+   steps the index by −4 during init, so the two assertions contradicted each
+   other. It failed for that reason before it could ever fail for a real one.
+   `+$18` is the half that survives init untouched.
+
+Ninth and tenth defective checks on this project. Both were written *by the
+person applying the rule about defective checks*, on the same day, which is
+worth more than the fixes: knowing the failure mode does not stop you producing
+it. Only mutation does.
+
+### MUTATION TABLE (family B)
+
+| mutation | result |
+|---|---|
+| drop kind 2's `bra.w $2822AE` tail jump | RED — `not ok 204`, that test alone |
+| give kind 21 kind 2's table (`$282C8E` -> `$2821FA`) | **GREEN — NOT CAUGHT** |
+
+That second row is the useful one. Kinds 2 and 21 are instruction-identical
+apart from one `lea`, which makes swapping their tables the most plausible slip
+in the family — and nothing detected it, because kind 21 had no behavioural
+test at all. A test comparing the two resolved frame-table pointers was added;
+the swap now reddens `not ok 205`, that test alone. `src/mover.js` restored and
+hash-verified byte-identical (`a4f6545d2f6a7ecb`); **386 pass / 0 fail / 0
+skipped**.
+
+Had the mutation not been run, family B would have shipped with a real hole in
+its coverage and a green suite saying otherwise.

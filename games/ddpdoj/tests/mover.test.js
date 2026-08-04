@@ -294,7 +294,55 @@ test('kind 8 keeps the SECOND sprite write, not the first (the dead store is rea
     assert.equal(ram.u32(base + 0x0a), 0x1c0944, 'descriptor seeded between the two writes');
   });
 
-test('the ported-body inventory is exactly 15 initialisers + 15 continuations', () => {
+test('kind 2 tail-jumps into the $2822AE epilogue and installs the shared $283CE4 ring',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 2, posA: 0x1000, posB: 0x2000, dir: 0x10 });
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: initialiser $2821C2
+    // the init's own writes. `move.l #$C000C,$16(A6)` sets +$16 AND +$18; the
+    // epilogue then steps +$16 by -4, so +$18 is the half that survives init
+    // unchanged. (An earlier draft of this test asserted +$16 == $C as well as
+    // == $C-4 below -- self-contradictory, and it failed for that reason before
+    // it ever failed for a real one.)
+    assert.equal(ram.u16(base + 0x18), 0x000c, 'F1: +$18 = $C, untouched by the epilogue');
+    assert.equal(ram.u16(base + 0x26), 0x0101, 'F1: +$26 = $101');
+    assert.equal(ram.u32(base + REC.continuation), 0x283ce4, 'F1: shared ring installed');
+    // proof the TAIL JUMP ran: these three fields are written only by $2822AE,
+    // never by the body above it. If the routine were read as ending at its
+    // last move.l, all three would still hold their seeded values.
+    assert.equal(ram.u32(base + 0x06), 0xfe00fe00, 'F1: epilogue wrote renderOffs');
+    assert.equal(ram.u16(base + 0x0e), 0x0210, 'F1: epilogue wrote graphic');
+    assert.equal(ram.u16(base + 0x16), 0x000c - 4, 'F1: epilogue stepped the index by -4');
+    assert.notEqual(ram.u32(base + 0x12), 0, 'F1: epilogue resolved a frame-table pointer');
+  });
+
+test('kinds 2 and 21 resolve DIFFERENT sprite-frame tables ($2821FA vs $282C8E)',
+  { skip: !HAVE_TABLES }, () => {
+    // These two bodies are instruction-identical apart from one `lea`, which
+    // makes swapping their tables the single most plausible transcription slip
+    // in the family. Mutation-checked: giving kind 21 kind 2's table was NOT
+    // caught by the kind-2 test alone -- the suite stayed green. This is the
+    // test that reddens for it.
+    const frameBase = (kind) => {
+      const ram = new Ram(null);
+      ram.setU16(0x81b41a, 1);
+      ram.setU16(0x813176, 0);
+      const base = seedBullet(ram, 0, { type: 0x8100 | kind, posA: 0x1000, posB: 0x2000, dir: 0x10 });
+      runMover({ ram, rom: ROM, notes: new UnportedLog() });
+      return ram.u32(base + 0x12);                   // $2822D8 move.l A0,$12(A6)
+    };
+    const k2 = frameBase(2), k21 = frameBase(21);
+    assert.notEqual(k2, 0, 'kind 2 resolved a frame-table pointer');
+    assert.notEqual(k21, 0, 'kind 21 resolved a frame-table pointer');
+    assert.notEqual(k2, k21,
+      'kinds 2 and 21 must resolve DIFFERENT frame tables; equal means one body '
+      + 'was given the other\'s $lea table address');
+  });
+
+test('the ported-body inventory is exactly 17 initialisers + 16 continuations', () => {
   // A LEDGER test: it pins the exact set, so porting a body turns it RED until
   // the inventory here is updated deliberately.  That is the point -- the count
   // cannot drift upward without somebody writing down which addresses moved.
@@ -304,14 +352,24 @@ test('the ported-body inventory is exactly 15 initialisers + 15 continuations', 
   // $282840 is also the target for kinds 14 and 15, which alias it in the
   // $282030 table.  So 15 distinct bodies now cover 17 of the 39 kind indices.
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
-    [0x282104, 0x282162, 0x2823ec, 0x2824a8, 0x282564, 0x282620, 0x2826dc,
-     0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962, 0x282b30,
-     0x282bee]);
+    [0x282104, 0x282162, 0x2821c2, 0x2823ec, 0x2824a8, 0x282564, 0x282620,
+     0x2826dc, 0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962,
+     0x282b30, 0x282bee, 0x282c56]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
     [0x28213e, 0x28219e, 0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738,
      0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x282b64,
-     0x282c2a]);
-  // every initialiser installs a continuation that exists: no body can be wired
-  // in with a dangling +$22 target.
-  assert.equal(INIT_BODIES.size, CONTINUATIONS.size);
+     0x282c2a, 0x283ce4]);
+  // 17 initialisers, 16 continuations. NOT equal, and that is correct: kinds 2
+  // and 21 both install $283CE4, so bodies MAY share a continuation.
+  //
+  // An earlier version of this test asserted `INIT_BODIES.size ===
+  // CONTINUATIONS.size` under a comment claiming it proved "no body is wired in
+  // with a dangling +$22 target". It proved no such thing -- two maps can have
+  // equal size with every target wrong -- and it went red the moment a shared
+  // continuation appeared, which is how it was caught. Replaced with the check
+  // the comment always meant:
+  for (const cont of CONTINUATIONS.keys()) {
+    assert.ok(typeof CONTINUATIONS.get(cont) === 'function',
+      `continuation $${cont.toString(16)} must resolve to a body`);
+  }
 });
