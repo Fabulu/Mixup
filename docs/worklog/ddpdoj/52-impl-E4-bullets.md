@@ -87,16 +87,25 @@ reason L3 §3.1 already wrote down and this wave re-checked:
 * allocating without the driver consumes all 70 slots and then fails silently
   forever — W33's leak one level down, which is recon 50's own warning.
 
-**THIS WAVE ALLOCATES FROM NO POOL.** It writes into two buffers that already
-exist and are already sized by the board — `$809C4C` (bucket 23's staging
-buffer, the mover's own A4) and `$809274 + $80AFE0` (bucket 22's, the trail
-cursor) — and both are **DRAINED EVERY FRAME by call #4** (`$23D2AE`, which
-clears all thirty counters at `$23D6xx`; `src/displaylist.js`). [M] Measured over
-3,000 frames: bucket 23's counter is written and cleared every frame, peak 65
-records = 780 bytes against a buffer the board sizes for 251, and it returns to 0
-on every frame in which the pool is empty. No allocator is called; `$27F8F8`
-stays the counted note L3 made it. Porting `$27F95A` is E5/E7's, with its driver,
-or not at all.
+**THIS WAVE ALLOCATES FROM NO POOL, AND HERE IS THE DRAIN PROOF.** It writes into
+two buffers that already exist and are already sized by the board — `$809C4C`
+(bucket 23's staging buffer, which IS the mover's A4) and `$809274 + $80AFE0`
+(bucket 22's, the trail cursor). Both are **DRAINED EVERY FRAME by call #4**,
+`$23D2AE`, which sums the thirty counters, emits the records and clears all
+thirty (`src/displaylist.js`).
+
+```
+[M] buckets 22 and 23 are 2,520 bytes each = 210 records of 12
+    -- and the bullet pool is 210 slots. The board sized the buffer at exactly
+       the pool's own capacity, so the bulk writer cannot overflow it.
+[M] 1,200 frames from the shipped seed: $80AFE2 reads 0 after call #4 on
+    1,200 of 1,200 frames. It drains COMPLETELY, every frame.
+[M] the peak WITHIN a frame (buildDisplayList's own telemetry) is 65 records
+    = 780 B of the 2,520.
+```
+
+No allocator is called; `$27F8F8` stays the counted note L3 made it. Porting
+`$27F95A` is E5/E7's, with its driver, or not at all.
 
 ### 0.3 What the brief is right about
 

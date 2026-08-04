@@ -146,7 +146,9 @@ export const BULLET_DRIVER = {
   ctr22: 0x80afe0,          // `$281DB2` reads it and `$281DCE` writes it
   buf23: 0x809c4c,          // `$281D9E lea` -- bucket 23's, and the mover's A4
   ctr23: 0x80afe2,          // `$281DD6 move.w A4,`
-  counterWrite: 0x281dce,   // where the missing sprite sink is counted
+  // W29..W51 this said "where the MISSING sprite sink is counted". W52 wired
+  // the sink, so it is simply where bucket 22's length is written.
+  counterWrite: 0x281dce,   // `$281DCE move.w D0,$80AFE0`
 };
 
 // The two record offsets the clear writes.  `posA` is the `move.w #$FFFF,$2(A6)`

@@ -574,7 +574,7 @@ function trailEmit(ctx, base) {
   const { ram } = ctx;
   const from = ctx.spriteOut.a4 - EMIT_BYTES;        // $283194 lea (-$c,A4),A4
   ctx.spriteOut.a4 = from;
-  let to = ram.u32(0x81b41c);                        // $283198 movea.l $81B41C,A0
+  const to = ram.u32(0x81b41c);                      // $283198 movea.l $81B41C,A0
   for (let k = 0; k < EMIT_BYTES; k += 4) {          // $2831A0 move.l (A2)+,(A0)+
     ram.setU32(to + k, ram.u32(from + k));
   }
