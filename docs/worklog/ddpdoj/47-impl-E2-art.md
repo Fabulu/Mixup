@@ -1,6 +1,8 @@
 # 47 — IMPL: THE ART THE PORT ASKS FOR, BY ADDRESS (enemy layer, wave E2)
 
-status: **IN PROGRESS**
+status: **DONE** -- gate `ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED`,
+unit tests 585 -> 606, `webgate` 7 of 7, `bundlegate` still 100.0000 %, boot
+475.2 -> **473.7 KiB**, and **the tanks have bodies in a real browser**.
 
 started: 2026-08-04. WAVE 47 / enemy-layer E2.
 role: IMPLEMENTER. SOLE writer to `games/ddpdoj/`. `games/gradius/` NOT TOUCHED.
@@ -511,6 +513,95 @@ correct descriptor can still be the wrong record**, and no gate in this repo
 compares the PORT's own list against a board frame. That gate still does not
 exist and I did not build it.
 
+## 6. THE CHANGE, FILE BY FILE
+
+- **`tools/export-web.mjs`** — `HARVEST`, seven tables with their entry count,
+  stride, the cartridge's own run length and where that run ends, plus a `why`
+  citing the code that pins each; `checkTableExtent`, which asserts both numbers
+  against the ROM on every export; the laser's five immediates; `SPR_SHARDS` and
+  per-shard packing into ONE address space; the packed base widened from 16 to
+  the hardware's own 23 bits; `spr/streams.u32` instead of inline manifest JSON;
+  `$268594` named as deliberately not harvested.
+- **`src/web/assets.js`** — `ShardQueue`, W14's queue machinery lifted out of
+  `BgShards` unchanged (three states, one fetch at a time, promotion, a failed
+  shard raised by `demand()` from the frame that needs it); `SprShards`, which
+  adds `shardOfBase`, a two-file `load` and the packed-space tiling check; the
+  stream table materialised out of the typed array onto `manifest.spr.streams`
+  so every existing reader is untouched; `verifyCoverage` now also refuses a
+  capture stream that has drifted out of the boot shard.
+- **`src/web/app.js`** — `romToPackedMap` derives the shard; `portSpriteList`
+  gains `pending` (by shard) beside `missing` (by address), calls
+  `opts.demand(shard)`, and gains the `draw-pending-shard` mutation; `Demo`
+  wires both; `boot()` queues the deferred sprite shards.
+- **`index.html`** — `SPR SHARD n` and `spr n/6` on the status line; the
+  `AssetError` arm of `showError`.
+- **`tools/webgate.mjs`** — the W47 tank-bodies stage with three absolute
+  denominators, the `draw-pending-shard` check, `--break spr-shard-404`, and
+  `connection: close` on the test server (a 1,000-frame CPU window between
+  fetches made Node's idle keep-alive socket produce a reproducible flaky red).
+- **`tools/bundlegate.mjs`** — its bundle line prints the shards.
+- **`tools/build-dist.mjs`** — three `PUBLISH_VERBATIM` entries, §3.
+- **`tests/web-spr-shards.test.js`** — 21 tests, new file.
+
+## 6.5 THE GATE, ON THE FINAL TREE
+
+```
+python games/ddpdoj/tools/oracle/pgm.py check
+VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED
+```
+
+Unchanged from W32..W46's 49/0/0. **Nothing was disabled, skipped, narrowed or
+loosened**, and every stage line was read rather than only the verdict. The ones
+this wave could plausibly have broken, all green:
+
+- `assets/integrity` and its four REDs — **including `assets/integrity RED
+  [rom-byte]`, the ROM-leak guard**;
+- `pixel gate: the port's JS renderer vs MAME` (100.0000 %) and its 9 REDs;
+- `demo gate: the port drives the ship, pixel-exact` and its 4 REDs;
+- `background shard gate: published tiles past px 160 (+ RED)` — the stage that
+  fresh-exports and then draws off the published shards, i.e. the one the
+  exporter rewrite had to survive;
+- `display list: the staged-bytes replay gate (1,901 frames)` and its 12 REDs.
+
+Also green on the final tree, and not part of `pgm.py check`:
+
+```
+node --test games/ddpdoj/tests/    606 pass, 0 fail, 0 SKIPPED   (was 585)
+node tools/webgate.mjs             7 of 7 PASS
+node tools/bundlegate.mjs          15955968/15955968 = 100.0000%  <- UNCHANGED
+node tools/build-dist.mjs          clean, 4 deliberate exception(s)
+BUNDLE                             473.7 KiB before the first frame (was 475.2)
+```
+
+**A FIRST GATE RUN WAS THROWN AWAY AND IT IS WORTH RECORDING WHY.** It came back
+`48 passed, 1 failed`, the failure being the background shard gate — because I
+was re-exporting `assets/` in another shell while it ran, and `export-web.mjs`
+removes `gfx/` and `spr/` before rewriting them. `HANDOVER` §10 names this
+hazard for concurrent AGENTS; it is just as true of one agent with two shells.
+The green above is a clean run with nothing else touching `assets/`.
+
+## 7. WHAT THIS WAVE DID NOT DO
+
+- **Nothing is compared against MAME.** §5.3.
+- **The `0 skipped` window did not move.** §4.6 — the first miss is still
+  `$233F34` at +5.32 s, a background element.
+- **192 stream addresses still have no art**, 85,897 records over the long run.
+  They belong to producers this wave did not touch; `$12D430` alone is 14,104.
+- **`$268594`** (type `$10`, 90 streams, 51.8 KiB) is NOT shipped, deliberately
+  — no ported code reads it. §1.1.
+- **The colour half is still packed cartridge words**, not a decode. That is
+  what would retire the three `PUBLISH_VERBATIM` entries and it is a wave. §3.
+- **`verifyCoverage` still walks only the CAPTURE's records.** `43-plan` E2 asks
+  for it to walk the PORT's; that needs a `Game` run and does not belong inside
+  `loadBundle`. The port-side coverage assertion is in `webgate`'s W47 stage
+  instead, with stated measured numbers. **This is a deliberate deviation from
+  the plan, named rather than quietly skipped.**
+- **The R6 contention question is still open.** The sprite queue is 209 KiB
+  against the background's 510 KiB and its first deadline is looser, so the
+  HEAD of the queue is fine; the tail is analysed by nobody, exactly as
+  `41-recon` §7.7 left it.
+- **`games/gradius/` was not touched.**
+
 ## LOG (appended as findings arrive)
 
 - opened.
@@ -536,3 +627,53 @@ exist and I did not build it.
   tree, re-run today). Not the 470.0 KiB of W41 or the 472.1 of W44:
   `player.tables.json.gz` grew 129,563 -> 132,744 B when W45 exported the laser
   tables.
+- §2 [M]: **the delivery decision.** Six sprite shards over one packed address
+  space; shard 0 is byte-identical to what shipped before (so `capture.bin` and
+  `bundlegate`'s pixels cannot move); the 212 harvested streams are five
+  DEFERRED shards cut by MEASURED first need, queued at boot and **promoted by
+  the page's own miss guard**. A record whose shard is in flight names the
+  SHARD; a record with no art anywhere names the ADDRESS.
+- §2.4 [M]: **BOOT 475.2 -> 473.7 KiB. It went DOWN while 212 streams of art
+  were added**, because the 378-triple stream table left the uncompressed
+  `manifest.json` (11,922 B of pretty JSON) for `spr/streams.u32.gz` (2,219 B).
+- §2.3 [M]: the failure mode, in Chrome: with the shard withheld the page ran
+  and stopped at **lf2458 -- the exact first frame that asks for a hull** --
+  naming the shard, both files and what it holds. **And that screenshot found a
+  defect**: the error panel headline read "$268B9E IS NOT PORTED YET", because
+  `showError` scrapes the first `$xxxxxx` out of any message. A missing FILE was
+  being reported as an unported ROUTINE. Fixed and red-validated.
+- §3 [M]: **the ROM-leak guard refused to build.** Three colour shards are
+  verbatim slices of `cave_a04401w064.u7` -- not because they are more
+  cartridge-y than the sheet that has shipped since wave 7, but because those
+  tables' streams are CONSECUTIVE while the boot sheet's 166 are scattered.
+  Taken as `PUBLISH_VERBATIM` with a reason each rather than reordering bytes to
+  silence a guard, and the real alternative (decode the colour half, -9.7 % gz)
+  is named. **The list went from one entry to four; that is the owner's call to
+  reverse.**
+- §4.1 [M]: **the new gate stage COULD NOT FAIL as first written.** With the
+  hull harvest cut to 16 entries -- a bundle carrying a quarter of the tank art
+  -- it reported "2310 drawn of 2310" and PASSED. It now asserts three absolute
+  measured numbers (67 streams, 4,194 records, 32 distinct images) and the same
+  mutation goes red.
+- §4.2 [M]: 17 unit mutations, each turning ONE named test red, every restore
+  hashed byte-identical; **one recorded as a DEFECTIVE MUTANT** (its anchor
+  matched `BgShards` first).
+- §4.3 [M]: three exporter extent mutations seen red against the cartridge.
+- §4.5 [M]: **THE RESULT. Same 6,185-frame run: the hull table 74,826 emitted /
+  19,252 drawn -> 74,826 / 74,826; missed records 154,831 -> 85,897 (-44.5 %);
+  distinct missing addresses 326 -> 192; first orphan lf2458 -> NONE**, and not
+  one stream of any harvested table left in the miss set.
+- §4.6: E2's done-when as the plan wrote it is **NOT met** -- the "0 skipped for
+  N seconds" figure is still 5.32 s because the first miss is a BACKGROUND
+  element. Said plainly rather than reported as green.
+- §5 [M]: **THE OWNER'S WAVE, IN A REAL BROWSER. At +15 s -- the frame the
+  diagnosis photographed as lone gun barrels -- SEVEN COMPLETE TANKS on visibly
+  different headings, every turret independently aimed at the ship.** At +10 s,
+  eleven. The page's status line names no hull address at any of ten sample
+  times over 30 s. And with shard 1 held back 26 s the SAME page shows the bug
+  and then fixes itself.
+- §6.5 [M]: **`pgm.py check` ALL GREEN 49/0/0, 0 SKIPPED**; unit tests
+  585 -> 606; `webgate` 7 of 7; **`bundlegate` 15955968/15955968 = 100.0000 %,
+  unchanged**; `build-dist` clean with 4 deliberate exceptions.
+
+status: **DONE**
