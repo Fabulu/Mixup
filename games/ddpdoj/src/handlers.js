@@ -1,9 +1,10 @@
-// THE PORTED ENEMY HANDLERS.  NINE addresses for TEN of stage 1's types.
+// THE PORTED ENEMY HANDLERS.  TEN addresses for ELEVEN of stage 1's types.
 //
 //   W25:  `$2688CC` ($11), `$26A2E2` ($07/$27), `$2747C6` ($82),
 //         `$269CEA` ($05), `$27687E` ($8B), `$268232` ($10)
 //   W30:  `$275914` ($85 AND $86 -- one handler, two types, exactly as $07 and
 //         $27 share `$26A2E2`), `$2739C0` ($80), `$276702` ($8A)
+//   W31:  `$26B6FA` ($0D, THE MIDBOSS) -- in src/midboss.js, not this file
 //
 // The enemy driver `$263502` (src/enemies.js) dispatches each live enemy's
 // handler from the function pointer the init stored at record `+$4C`.
@@ -11,9 +12,7 @@
 // **W30's THREE WERE GATE BLOCKERS, in that order.**  W29 wired the enemy
 // subsystem into the frame loop and `fly-around` stopped after 345 frames with
 // `Unreached $275914`; porting each one moved the block point to the next.  The
-// fourth is the MIDBOSS `$26B6FA` (576 instructions) and it is NOT ported --
-// `fly-around` is still red because of it, and that is a scoped, named gap
-// rather than a mystery.
+// The fourth was the MIDBOSS `$26B6FA`, and W31 ported it (src/midboss.js).
 //
 // COVERAGE, as table entries rather than frames, MEASURED this wave by walking
 // the stage-1 script `$230C6C..$231703` (339 records of 8 bytes, the type at
@@ -85,6 +84,7 @@ import { fire as fireBulletFan, WriteLog } from './bullets.js';
 import { AimTables, AIM, aim64, aim256, aim64FromCaller, slew64 } from './aim.js';
 import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
   enqueueRegistersThroughStub, EMIT_TABLE } from './spritequeue.js';
+import { handlerMidboss } from './midboss.js';
 
 /** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
  *  Named because the port also has `addi.w` pairs around a `swap`, which do
@@ -1257,6 +1257,10 @@ const HANDLERS = new Map([
   [0x275914, handler85],   // W30: types $85 AND $86 share this one
   [0x2739c0, handler80],   // W30: type $80
   [0x276702, handler8A],   // W30: type $8A
+  // W31: type $0D, THE MIDBOSS.  It lives in its own module because it is
+  // four routines and five data tables (see src/midboss.js's header), and
+  // it was the FOURTH and last of the gate blockers W29 uncovered.
+  [0x26b6fa, handlerMidboss],
 ]);
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a

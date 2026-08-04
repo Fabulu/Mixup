@@ -17,6 +17,7 @@ import { RomWindows } from '../src/rom.js';
 import { ENEMY } from '../src/enemies.js';
 import { runInitBodyAddr, freeEnemy, INIT_BODY_FREED,
   INIT_BODY_ADDRESSES } from '../src/initbody.js';
+import { MoveTables } from '../src/vectors.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TABLES = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
@@ -25,6 +26,14 @@ const HAVE = fs.existsSync(TABLES);
 function realRom() {
   const j = JSON.parse(fs.readFileSync(TABLES, 'utf8'));
   return new RomWindows(j.rom);
+}
+
+// W31: the MIDBOSS init body ($26B48C) runs its arm kinematics, which read
+// $241D34, so it is the one body that needs a MoveTables.  Omitting it is a
+// LOUD NAMED THROW at $26B4B4 -- see the test below.
+function realTables() {
+  const j = JSON.parse(fs.readFileSync(TABLES, 'utf8'));
+  return new MoveTables(j, new RomWindows(j.rom));
 }
 
 // a fresh enemy record at a real slot, with the type/class bytes the dispatch
@@ -122,8 +131,33 @@ test('the midboss body sets $8130D8 (the stage-kill flag the regulars gate on)',
   const ram = new Ram();
   const { rec } = freshEnemy(ram, 0x0d);
   ram.setU16(0x8130d8, 0);
-  runInitBodyAddr(0x26b484, ram, rom, rec, { note() {} });
+  runInitBodyAddr(0x26b484, ram, rom, rec, { note() {} }, realTables());
   assert.equal(ram.u16(0x8130d8), 1, 'midboss init set $8130D8 := 1 ($26B4B8)');
+});
+
+// W31.  Until this wave the body NOTED both `bsr`s; $26B4B0 bsr $26B286 ends
+// `bsr $26B2AC`, which takes FOUR draws off the shared $803917 counter, so
+// noting it left the port four draws behind the board from the spawn frame on.
+test('the midboss init body takes the FOUR $803917 draws $26B2AC makes',
+  { skip: !HAVE && 'rip absent' },
+  () => {
+  const rom = realRom();
+  const ram = new Ram();
+  const { rec } = freshEnemy(ram, 0x0d);
+  ram.setU16(0x803916, 0);
+  runInitBodyAddr(0x26b484, ram, rom, rec, { note() {} }, realTables());
+  assert.equal(ram.u8(0x803917), 4,
+    'three $2431F4 + one $242FDE, all on the ONE shared counter byte');
+});
+
+test('the midboss init body without a MoveTables is a LOUD NAMED THROW at $26B4B4',
+  { skip: !HAVE && 'rip absent' },
+  () => {
+  const rom = realRom();
+  const ram = new Ram();
+  const { rec } = freshEnemy(ram, 0x0d);
+  assert.throws(() => runInitBodyAddr(0x26b484, ram, rom, rec, { note() {} }),
+    (e) => e.romAddress === 0x26b4b4);
 });
 
 test('freeEnemy marks sub-records dead and clears the type word ($263762)', () => {

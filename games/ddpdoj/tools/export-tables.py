@@ -118,6 +118,21 @@ SHOT_WINDOWS = [
     (0x241AF4, 0x0200, "$241AF4 the shot vector's angle-fold table"),
     # $2433C2 lea ($2433D0,PC) -- the 64-longword pseudo-random table.
     (0x2433D0, 0x0100, "$2433D0 the $2433AE pseudo-random longword table"),
+    # W31: $2433AE IS ONE OF A FAMILY.  A scan of the whole decrypted image for
+    # `addq.b #1,$803917` finds 32 sites in build B, each reading a DIFFERENT
+    # canned table off the SAME 8-bit counter.  The stage-1 midboss $26B6FA
+    # uses two of them, so their tables are windows now.
+    #   $2431F4: `moveq #$3f` masks the index -> 64 bytes, $24324E..$24328D,
+    #            and $24328E is the next routine's `addq.b` (far end PINNED).
+    (0x24324E, 0x0040, "W31: $2431F4's 64-byte draw table $24324E, indexed by "
+                       "$803916 & $3F (the midboss's $26B2AC draws)"),
+    #   $242FDE: NO MASK -- `move.w $803916,D0` then `move.b (A0,D0.w),D0` --
+    #            so the index is the whole word.  256 bytes, $24301A..$243119,
+    #            and $24311A is code (far end PINNED).  In range only because
+    #            $23BE36 `clr.w $803916` zeroes the high byte and `addq.b`
+    #            never carries into it.
+    (0x24301A, 0x0100, "W31: $242FDE's 256-byte draw table $24301A, indexed by "
+                       "the WHOLE $803916 word (the midboss's $26B2AC/$26B35E)"),
     # ------------------------------------------------------------- WAVE 12
     # THE SHIP'S OWN SPRITE BLOCK ($24A482) and the OPTION OBJECT ($24C096).
     # One window covers every table both of them index, because they are packed
@@ -401,6 +416,24 @@ ENEMY_PROTO_WINDOWS = [
     # the midboss $0D: runLen 16 -> 17 sub-records x 28 B = 476 B from $26B50E.
     (0x26B4F0, 0x0220, "W23: type $0D (THE MIDBOSS) protos -- 17 sub-records "
                        "(sub $26B50E, rec $26B4FA)"),
+    # W31: THE MIDBOSS HANDLER'S OWN TABLES.  Extents pinned from BOTH ends.
+    #   $26B214  the DEATH-BURST list walked by $26B1D2: 14 records of
+    #            (word D1, word D0, long -> +$26), terminated by $FFFF at
+    #            $26B284, and $26B286 is the next routine's first instruction.
+    (0x26B210, 0x0080, "W31: the midboss's death-burst list $26B214 -- 14 "
+                       "records of 8 B, $FFFF-terminated, walked at $26B1D2"),
+    #   $26BE70  8 longs, read at $26BE40 with ($A,A0) which steps 4 and stops
+    #            at $1C; abuts $26BE90.
+    #   $26BE90  32 longs, read at $26BE1C with ($30,A0) masked $7F; $26BF10
+    #            is `lea $26BF42(pc),A0`, i.e. code.
+    #   $26BF42  32 longs, read at $26BF10 with ($8,A6) which steps 4 to $7C;
+    #            $26BFC2 is `lea $26BFE8(pc),A0`, i.e. code.
+    #   $26BFE8  5 longs, read at $26BFC2 with ($24,A5) which steps 4 and wraps
+    #            at $14; the five are spaced $EA4 and $26BFFC breaks the run.
+    # One window covers all four plus the two tail routines interleaved with
+    # them ($26BF10 and $26BFC2), which is how the ROM lays them out.
+    (0x26BE70, 0x0190, "W31: the midboss's four sprite tables $26BE70 (8), "
+                       "$26BE90 (32), $26BF42 (32) and $26BFE8 (5 longs)"),
     # the scripted carriers $20/$21 (sub only, $272A90) and prop $24.
     (0x272A90, 0x0020, "W23: types $20/$21 sub-record prototype $272A90"),
     (0x296FF0, 0x0020, "W23: type $24 sub-record prototype $296FF2"),
@@ -448,8 +481,13 @@ ENEMY_STAT_TABLES = [
     # carrying a transcribed pointer->bucket map that agrees with itself.
     # $23D760 is the `rts` before $23D762; $23DF98 is inside $23DF86's body and
     # the window ends past the last stub's counter operand.
-    (0x23D760, 0x0840, "W30: the sprite-emitter stub family $23D762..$23DF86, "
-                       "read as data to resolve (bucket, convention) per stub"),
+    # W31 WIDENED THIS from $840 to $910.  The midboss `jsr $23E056` twice
+    # ($26BE3A/$26BE60) -- a FOURTH stub shape (`move.l A0,-(A7) / move.l
+    # D0,-(A7)` in front of the same fourteen instructions), and it sat
+    # $B6 bytes past the old end, so `resolveEmitStub` could not read it.
+    (0x23D760, 0x0910, "W30/W31: the sprite-emitter stub family "
+                       "$23D762..$23E08C, read as data to resolve "
+                       "(bucket, convention) per stub"),
     # W30: the 24-entry emitter dispatch $27829C (type $8A's $2767C2) and its
     # neighbour $278320, and the $267F70 pair table is already covered by the
     # W23 $267F60 window.
@@ -613,6 +651,9 @@ SPAWN_POWERS = 5                 # power word 0,2,4,6,8 -> byte index 0,4,8,12,1
 TEMPLATE_LEN = 0x26              # $24A222 consumes exactly 38 bytes from A1
 TEMPLATE_SPEED_OFF = 26          # ...and byte 26 lands in ($1a,A6), the speed index
 PLAYER_SPEED_LEVELS = 32         # the player's own range: floor 12, base 22, 28 held
+# W31: speed indices an ENEMY HANDLER hands $241D34 as an immediate.  0x70 is
+# `move.w #$70,D0` at $26B3B2 and $26B3F8, the midboss's two arm-vector reads.
+HANDLER_SPEED_INDICES = {0x70}
 
 
 def u16(d: bytes, a: int) -> int:
@@ -674,6 +715,13 @@ def speed_index_set(d: bytes) -> list[int]:
         s.add(t[TEMPLATE_SPEED_OFF])
     # WAVE 12: and the OPTION PODS' own levels, from $24BBAA's templates.
     s.update(option_speed_indices(d))
+    # W31: and the levels enemy handlers pass to $241D34 as an IN-CODE CONSTANT
+    # rather than out of a template, which the walk above cannot see.  The
+    # midboss's arm kinematics ($26B304) does `move.w #$70,D0` at BOTH
+    # $26B3B2 and $26B3F8.  Listed with its call sites, exactly as W12 listed
+    # the pods' 224 -- MEASURED: the port threw `speed index 112 was not
+    # exported` on the first midboss frame before this line existed.
+    s.update(HANDLER_SPEED_INDICES)
     return sorted(s)
 
 

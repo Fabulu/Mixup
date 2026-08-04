@@ -52,3 +52,70 @@ export function drawWord(ram, rom) {
   const v = draw(ram, rom) & 0xffff;
   return v >= 0x8000 ? v - 0x10000 : v;
 }
+
+// ===========================================================================
+// W31 -- `$2433AE` IS ONE MEMBER OF A FAMILY, AND THE FAMILY SHARES ITS STATE.
+//
+// The comment above says "THE COUNTER IS SHARED" and names one other bumper
+// ($289F62).  MEASURED this wave, by scanning the whole 6 MB decrypted image
+// for the byte string `52 39 00 80 39 17` (`addq.b #1,$803917`): there are
+// **32 sites in build B** --
+//   $24276C $242B3C $242B58 $242B74 $242B90 $242CAC $242CCA $242CE8 $242D06
+//   $242E24 $242EC2 $242FDE $242FFC $24311A $243138 $243156 $2431F4 $243212
+//   $243230 $24328E $2433AE $2434D0 $2434F2 $243614 $243736 $243858 $24397A
+//   $243A9C $243BBE $289F62 $28AB86 $28ABE0
+// (and 30 more in build A's $142xxx/$143xxx, which are that build's copies).
+// Each reads a DIFFERENT canned table with a different mask; they all advance
+// the one 8-bit counter.  So "the port drew N times" is only comparable to the
+// board if every family member the board reached is ported -- which is why the
+// `rng` column ($803916) is REPORTED and not claimed.
+//
+// The stage-1 MIDBOSS `$26B6FA` uses two of them, and they are ported here.
+
+/** `$2431F4`'s table.  `moveq #$3f` masks the index, so 64 bytes; `$24328E` is
+ *  the next routine's `addq.b`, which pins the far end. */
+export const RNG_2431F4 = { table: 0x24324e, entries: 64 };
+/** `$242FDE`'s table.  There is **NO MASK** -- `move.w $803916,D0` then
+ *  `move.b (A0,D0.w),D0` -- so the index is the WHOLE word.  256 bytes,
+ *  `$24301A..$243119`, pinned at the far end by `$24311A`, which is code.
+ *  The unmasked read is in range only because `$23BE36 clr.w $803916` zeroes
+ *  the high byte and `addq.b` never carries into it; if that ever stops being
+ *  true the ROM window turns it into a loud named throw rather than a wrong
+ *  byte. */
+export const RNG_242FDE = { table: 0x24301a, entries: 256 };
+
+/**
+ * `$2431F4` -- bump the shared counter, return the byte at `$24324E[state & $3F]`.
+ *
+ *   2431f4: addq.b #1,$803917
+ *   2431fa: moveq #$3f,D0 / and.w $803916,D0
+ *   243204: lea ($24324E,PC),A0 / move.b (A0,D0.w),D0
+ *
+ * D0's upper 24 bits are 0 on entry to the `move.b` (the `moveq`+`and.w` leave
+ * a value <= $3F), so the returned D0 IS the table byte -- 0..3 for every entry
+ * in this table.  `$2431F4` and `$243212` are the same routine returning into
+ * D0 and D1 respectively; the midboss uses the D0 one, three times.
+ * @returns {number} D0, 0..255.
+ */
+export function drawByte2431F4(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $2431F4
+  const i = u16(ram.u16(RNG.state)) & 0x3f;                   // $2431FA/$2431FC
+  return rom.u8(RNG_2431F4.table + i);                        // $24320A
+}
+
+/**
+ * `$242FDE` -- bump the shared counter, return `ext.w` of `$24301A[state]`.
+ *
+ *   242fde: addq.b #1,$803917
+ *   242fe4: move.w $803916,D0            <-- NO MASK
+ *   242fec: lea ($24301A,PC),A0 / move.b (A0,D0.w),D0 / ext.w D0
+ *
+ * @returns {number} D0 as a SIGNED 16-bit value (`ext.w`).
+ */
+export function drawSigned242FDE(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $242FDE
+  const i = u16(ram.u16(RNG.state));                          // $242FE4, whole word
+  const idx = i >= 0x8000 ? i - 0x10000 : i;                  // (A0,D0.w) is signed
+  const b = rom.u8(RNG_242FDE.table + idx);                   // $242FF2
+  return b >= 0x80 ? b - 0x100 : b;                           // $242FF6 ext.w D0
+}

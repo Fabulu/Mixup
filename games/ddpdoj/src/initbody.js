@@ -30,6 +30,7 @@
 // fields at spawn.
 
 import { unreached } from './unported.js';
+import { initArms, stepArms } from './midboss.js';
 import { u16, i16 } from './ram.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
@@ -585,14 +586,31 @@ BODY.set(0x277278, (ram, rom, a5, a6, unported) => {
 // body, not done-when stats), and it SETS $8130D8/$8130DA -- the stage-kill
 // flags the regulars gate on.  Those writes ARE ported (semantically load-bearing
 // for which spawns land after the midboss).
-BODY.set(0x26B484, (ram, rom, a5, a6, unported) => {
+BODY.set(0x26B484, (ram, rom, a5, a6, unported, tables) => {
   loadSubProto(ram, rom, a5, a6, 0x26B50E);            // jsr $2637A2
   ram.setU32(a5 + R.rec44, 0x26B50E + 28 * 17);        // move.l A0,($44,A5)
   loadRecordProto(ram, rom, a5, 0x26B4FA, 0x09);       // move.w #$9,D0; jsr $26377A
   readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   ram.setU16(a6 + S.posX, u16(i16(ram.u16(a6 + S.posX)) + 0x0a40));  // addi.w #$a40,($2,A6)
-  unported?.note(0x26b286, `midboss bespoke $26B286 (part setup) -- not a stat`);
-  unported?.note(0x26b304, `midboss bespoke $26B304 (part setup) -- not a stat`);
+  // W31: BOTH `bsr`s are now RUN, and neither was "not a stat".
+  //   $26B4B0 bsr $26B286 -- writes ($1B,A4)/($29,A4) for all eight arms AND
+  //     ends `bsr $26B2AC`, which takes FOUR draws off the shared $803917
+  //     counter (3x $2431F4, 1x $242FDE).  Noting it left the port four draws
+  //     behind the board from the midboss's spawn frame onwards -- the `rng`
+  //     column, not a cosmetic.
+  //   $26B4B4 bsr $26B304 -- one step of the swing machine and the initial
+  //     PLACEMENT of all eight arms.  The board runs it TWICE on the spawn
+  //     frame (once here, once from the handler, which the driver reaches on
+  //     the same frame); running it once would leave ($1C,A5) a step behind
+  //     for the whole life of the boss.
+  initArms(ram, rom, a5, a6);                           // $26B4B0 bsr $26B286
+  if (!tables) {
+    unreached(0x26b4b4, `the MIDBOSS init body reached $26B4B4 bsr $26B304 `
+      + `without a MoveTables. Its arm placement reads $241D34 (speed level `
+      + `$70), so the caller must pass \`tables\` through runInitBodyAddr -- `
+      + `see src/enemyframe.js. Refusing to place the arms silently`);
+  }
+  stepArms(ram, rom, a5, a6, tables);                   // $26B4B4 bsr $26B304
   ram.setU16(G.d8, 1);                                  // move.w #$1,$8130d8  (LOAD-BEARING)
   ram.setU16(G.da, 0);                                  // move.w #$0,$8130da
   unported?.note(0x24150a, `midboss resource installs $24150A (#$10/11/15) -- data`);
@@ -619,7 +637,11 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported) => {
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise
  *  undefined.  An unknown address is a LOUD NAMED THROW (never a silence). */
-export function runInitBodyAddr(addr, ram, rom, a5, unported) {
+// W31: `tables` is APPENDED, not inserted, and every existing call site is
+// unaffected.  Exactly one body needs it -- the MIDBOSS's `$26B4B4 bsr
+// $26B304`, whose arm placement reads `$241D34`.  A caller that omits it
+// reaches a LOUD NAMED THROW inside that body rather than a silent skip.
+export function runInitBodyAddr(addr, ram, rom, a5, unported, tables) {
   const a6 = ram.u32(a5 + R.subRec);                  // A6 = ($6,A5)
   const fn = BODY.get(addr);
   if (!fn) {
@@ -627,7 +649,7 @@ export function runInitBodyAddr(addr, ram, rom, a5, unported) {
       + `the W23 stage-1 body table (21 bodies). Either a non-stage-1 type was `
       + `spawned, or a body was missed; do NOT smooth`);
   }
-  const r = fn(ram, rom, a5, a6, unported);
+  const r = fn(ram, rom, a5, a6, unported, tables);
   return r === FREED ? FREED : undefined;
 }
 

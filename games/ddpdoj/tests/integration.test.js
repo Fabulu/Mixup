@@ -226,9 +226,9 @@ test('the handler adapter covers every address in handlerMap(), and only those',
   { skip: SKIP }, () => {
     const m = enemyHandlerMap(ROM);
     assert.deepEqual([...m.keys()].sort(), [...HANDLER_ADDRESSES].sort());
-    assert.equal(m.size, 9, 'W25 ported six of stage 1\'s nineteen handlers; '
+    assert.equal(m.size, 10, 'W25 ported six of stage 1\'s nineteen handlers; '
       + 'W30 added $275914, $2739C0 and $276702 -- the three that BLOCKED the '
-      + 'fly-around gate');
+      + 'fly-around gate -- and W31 added $26B6FA, the MIDBOSS, the fourth');
   });
 
 test('an enemy whose ($4C,A5) handler is unported throws BY THAT ADDRESS',
@@ -238,11 +238,14 @@ test('an enemy whose ($4C,A5) handler is unported throws BY THAT ADDRESS',
   const rec = ENEMY.table;
   ram.setU16(rec, 0x8000);                         // live
   ram.setU32(rec + ENEMY.subRecOff, 0x815000);     // a sub-record inside main RAM
-  ram.setU32(rec + ENEMY.handlerOff, 0x26b6fa);    // the MIDBOSS -- not in W25's six
+  // W31 ported the MIDBOSS ($26B6FA), which this test used to name.  $2697F6
+  // (type $31) is the next unported handler W29's survey actually reaches --
+  // at logic frame 8100 -- so the test still names a REAL gap.
+  ram.setU32(rec + ENEMY.handlerOff, 0x2697f6);
   const ctx = ctxOf(ram);
   assert.throws(
     () => runEnemyFrame(ram, ROM, ctx, new Map()),
-    (e) => e instanceof Unreached && e.romAddress === 0x26b6fa);
+    (e) => e instanceof Unreached && e.romAddress === 0x2697f6);
 });
 
 // THE ORDER TEST, and the one that proves the wire rather than the map: the

@@ -58,9 +58,12 @@ const STUB_ROM = {
   u32: (a) => STUB_LONGS.get(a) ?? 0,
 };
 
-test('the ported handler addresses are registered (W25 six + W30 $275914/$2739C0/$276702)', () => {
+test('the ported handler addresses are registered (W25 six + W30 three + W31 the midboss)', () => {
+  // W31 adds `$26B6FA` (type $0D, the MIDBOSS), which lives in src/midboss.js
+  // and is NOT in SIX -- the `runs on a live record` test below drives SIX
+  // against a STUB rom, and the midboss reads four real ROM tables.
   assert.deepEqual([...HANDLER_ADDRESSES].sort((a, b) => a - b),
-    [...SIX].sort((a, b) => a - b));
+    [...SIX, 0x26b6fa].sort((a, b) => a - b));
 });
 
 test('an unknown handler address is a LOUD NAMED THROW', () => {

@@ -1001,6 +1001,35 @@ export function backgroundInit(ram, rom, vram, ctx, a5, mut) {
  * tick and before the column write; the two mirrors `$81318A`/`$81318C` are
  * written AFTER the column, which is why they are the columns the gate compares.
  */
+/**
+ * `$261100` -- THE EXTERNAL SPEED PUSH, the writer side.  Three writes:
+ *
+ *   261100: move.w #$1,$813180
+ *   261108: move.w D0,$813182
+ *   26110E: move.w D1,$813184
+ *   261114: rts
+ *
+ * `backgroundFrame` above has consumed those three words since W13
+ * (`$2612AA`); until W31 nothing in the port PRODUCED them, so the arm was
+ * live but unreachable.  **Nine callers in build B**, and the one this project
+ * needs is `$26B73A` -- the stage-1 MIDBOSS, pushing D0 = D1 = `$0020` on the
+ * frame its death countdown `($17,A5)` passes `$30`.
+ *
+ * THIS IS THE OWNER'S "minibosses stop the scroll", from the other end.
+ * `20-OWNER-minibosses-stop-the-scroll.md` + W19 §2 established that a VM
+ * FREEZE does not stop the scroll; the stage stops ADVANCING because a paired
+ * op-`$04` repeats a column band with `loops = $FFFF`, and nothing inside the
+ * VM can end it.  What ends it is this: the midboss dies, pushes speed `$0020`,
+ * and `$2612BC`/`$2612C4` overwrite the parked background object's speed.  The
+ * scroll VM is NOT a pure function of the script, and this three-instruction
+ * routine is the whole of its input from the enemy system.
+ */
+export function pushExternalSpeed(ram, d0, d1) {
+  ram.setU16(BGRAM.extSpeed, 1);                           // $261100
+  ram.setU16(BGRAM.extSpeedBg, u16(d0));                   // $261108
+  ram.setU16(BGRAM.extSpeedTx, u16(d1));                   // $26110E
+}
+
 export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {}) {
   if (ram.u16(BGRAM.bgFreeze) !== 0) {                     // $2612A0 tst/bne
     // $2613A0 -- the element driver and the shake still run on a frozen frame.

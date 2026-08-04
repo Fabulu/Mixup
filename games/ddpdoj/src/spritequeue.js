@@ -285,6 +285,14 @@ export const EMIT_TABLE = {
 export function resolveEmitStub(rom, stub) {
   let at = stub;
   if (rom.u16(at) === 0x48e7) at += 4;                 // movem.l D0/A0-A1,-(A7)
+  // W31: a FOURTH prologue shape, found by reading the midboss's two calls
+  // `jsr $23E056` ($26BE3A / $26BE60).  `$23E056` is `$23DF58` -- the same
+  // bucket-3 register enqueue, instruction for instruction -- with
+  // `move.l A0,-(A7) / move.l D0,-(A7)` in front and the matching pops before
+  // its `rts`.  Only which registers survive differs, and a port cannot
+  // observe that; what matters is that the bucket still comes from the
+  // cartridge and not from a map somebody typed.
+  else if (rom.u16(at) === 0x2f08 && rom.u16(at + 2) === 0x2f00) at += 4;
   if (rom.u16(at) !== 0x41f9 || rom.u16(at + 6) !== 0xd0f9) {
     unreached(stub, `the sprite-emitter stub $${stub.toString(16).toUpperCase()} `
       + `does not open \`lea <abs>.l,A0 / adda.w <abs>.l,A0\` (it opens $${
