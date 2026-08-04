@@ -821,6 +821,45 @@ test('kinds 30/31 accelerate BOTH axes on the +$2C underflow, gated by the +$34 
     }
   });
 
+// ========================================= W27 FAMILY K: the SLOW CLOCK ======
+
+test('kind 33 steps its $283704 table every OTHER frame, and its indices are a '
+  + 'two-entry LEAD-IN ($14/$10) over a four-entry ring ($C/$8/$4/$0)',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 33, speed: 0x14, dir: 0x40 });
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                     // F1: the initialiser
+    assert.equal(ram.u16(base + 0x2c), 0x0014,
+      'F1: +$2C is a WORD index of $14 -- not the big-endian $00/$14 half-swap, '
+      + 'because $2836DE reads it back with move.w');
+    assert.equal(ram.u16(base + 0x2e), 0x0101, 'F1: +$2E counter $01 / +$2F reload $01');
+    assert.equal(ram.u32(base + 0x0a), 0x1c01ac, 'F1: descriptor $1C01AC');
+    ram.setU32(base + REC.velA, 0);                    // park it: no bounds kill
+
+    const used = [];
+    for (let f = 0; f < 24; f++) {
+      const before = ram.u16(base + 0x2c);
+      runMover(ctx);
+      const stepped = ram.u16(base + 0x2c) !== before;
+      assert.equal(stepped, f % 2 === 1,
+        `frame ${f}: the +$2E byte countdown fires on UNDERFLOW, so the table `
+        + 'steps on every other frame, starting with the SECOND');
+      if (stepped) {
+        used.push(before);
+        assert.equal(ram.u32(base + 0x0a), ROM.u32(0x283704 + before),
+          `frame ${f}: descriptor = the longword at $283704 + $${before.toString(16)}`);
+      }
+    }
+    // $2836EE `subq.w #$4 / bcc / move.w #$C` resets to $C, NOT to $14, so the
+    // two entries at $14 and $10 play exactly once per bullet.
+    assert.deepEqual(used,
+      [0x14, 0x10, 0x0c, 0x08, 0x04, 0x00, 0x0c, 0x08, 0x04, 0x00, 0x0c, 0x08],
+      'the lead-in plays once and the ring is four entries wide');
+  });
+
 test('every ported initialiser installs ITS OWN continuation address at +$22',
   { skip: !HAVE_TABLES }, () => {
     // THIS TEST EXISTS BECAUSE A MUTATION SURVIVED.  Kinds 30 and 31 are
@@ -844,7 +883,7 @@ test('every ported initialiser installs ITS OWN continuation address at +$22',
       [0x282bee, 0x282c2a], [0x282c56, 0x283ce4], [0x282d42, 0x282d76],
       [0x282e00, 0x282e4a], [0x282ebc, 0x282ef0], [0x282f6e, 0x282f9e],
       [0x28330c, 0x28333c], [0x283430, 0x28349a], [0x2834fe, 0x283568],
-      [0x28371c, 0x28374c],
+      [0x2836a8, 0x2836d0], [0x28371c, 0x28374c],
     ]);
     const seen = new Set();
     for (let k = 0; k < 39; k++) {
@@ -870,29 +909,30 @@ test('every ported initialiser installs ITS OWN continuation address at +$22',
       'every entry of the expected map must have been reached through $282030');
   });
 
-test('the ported-body inventory is exactly 28 initialisers + 27 continuations', () => {
+test('the ported-body inventory is exactly 29 initialisers + 28 continuations', () => {
   // A LEDGER test: it pins the exact set, so porting a body turns it RED until
   // the inventory here is updated deliberately.  That is the point -- the count
   // cannot drift upward without somebody writing down which addresses moved.
   //
   // W26 ported 8 bodies (kinds 3/4/5/6/7/12/13/19; kind 6 is the midboss's).
-  // W27 adds 20: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
+  // W27 adds 21: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
   // family C kinds 16/18, family D kind 17, family E kinds 22/24, family F
-  // kind 23, families G+L kinds 25/29/34, family I kinds 30/31.  Kind 10's
-  // $282840 is also the target for kinds 14 and 15, which alias it in the
-  // $282030 table.  So 28 distinct bodies now cover 31 of the 39 kind indices.
+  // kind 23, families G+L kinds 25/29/34, family I kinds 30/31, family K kind
+  // 33.  Kind 10's $282840 is also the target for kinds 14 and 15, which alias
+  // it in the $282030 table.  So 29 distinct bodies now cover 32 of the 39
+  // kind indices.
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
     [0x282104, 0x282162, 0x2821c2, 0x2823ec, 0x2824a8, 0x282564, 0x282620,
      0x2826dc, 0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962,
      0x2829bc, 0x282a1e, 0x282aae, 0x282b30, 0x282bee, 0x282c56,
      0x282d42, 0x282e00, 0x282ebc, 0x282f6e, 0x28330c, 0x283430, 0x2834fe,
-     0x28371c]);
+     0x2836a8, 0x28371c]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
     [0x28213e, 0x28219e, 0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738,
      0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x2829fe,
      0x282a66, 0x282af6, 0x282b64, 0x282c2a, 0x282d76, 0x282e4a, 0x282ef0,
-     0x282f9e, 0x28333c, 0x28349a, 0x283568, 0x28374c, 0x283ce4]);
-  // 28 initialisers, 27 continuations. NOT equal, and that is correct: kinds 2
+     0x282f9e, 0x28333c, 0x28349a, 0x283568, 0x2836d0, 0x28374c, 0x283ce4]);
+  // 29 initialisers, 28 continuations. NOT equal, and that is correct: kinds 2
   // and 21 both install $283CE4, so bodies MAY share a continuation.
   //
   // An earlier version of this test asserted `INIT_BODIES.size ===

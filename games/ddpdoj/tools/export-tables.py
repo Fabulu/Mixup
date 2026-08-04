@@ -288,6 +288,19 @@ SHOT_WINDOWS = [
     #                       indirection, different frames.
     (0x282C8E, 0x00B4, "WAVE 27: $282C8E kind 21's dir-indexed sprite-frame "
                       "pointer table + the frame lists it points into"),
+    #   $283704  kind 33's 6-entry descriptor ring, read by $2836E2 as
+    #                       `lea $283704(pc),A0 / adda.w D0,A0 / move.l (A0),$a`
+    #                       with D0 = the WORD at record +$2C.
+    #
+    #   SIZED FROM THE INDEX EXPRESSION, not the entry count. The initialiser
+    #   seeds +$2C = $14 and the continuation does `subq.w #$4 / bcc /
+    #   move.w #$C`, so the reachable indices are $14, $10, $C, $8, $4, $0 --
+    #   the highest is $14 and the read is a LONGWORD, so the extent is $18.
+    #   $283704 + $18 = $28371C, exactly where kind 34's body begins: an
+    #   abutting bound, the same evidence used for $2822EC's $100.
+    (0x283704, 0x0018, "WAVE 27: $283704 kind 33's 6-entry descriptor table, "
+                      "indexed by the word at record +$2C ($14 down to 0, then "
+                      "wrapping to $C -- a 2-entry lead-in over a 4-entry ring)"),
 ]
 
 # WAVE 21 -- THE VELOCITY FIELD, exported in full and here is why.

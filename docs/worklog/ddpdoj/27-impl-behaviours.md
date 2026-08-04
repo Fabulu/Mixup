@@ -655,3 +655,75 @@ the same mistake as an invented denominator, at test scale.
 
 **Inventory: 26 → 28 initialisers, 27 continuations. 31 of 39 kind indices
 covered; 9 distinct bodies remain (families H, J, K + kinds 32/35).**
+
+### 2026-08-04 — FAMILY K PORTED (kind 33) — the SLOW CLOCK, and a ring that is not the table
+
+Kind 33 (`$2836A8`) is the only body in this wave that indexes a ROM table with
+a value it keeps in the record, so it is the only one that needed a new window.
+Its initialiser is the barest in the whole set: bit 8, descriptor `$1C01AC`,
++$1D, two counters, and the continuation. No muzzle call, no renderOffs or
+graphic write at all.
+
+**WHICH FIELD IS THE BIG-ENDIAN TRAP, AND WHICH IS NOT.** The initialiser has
+two word writes that look alike:
+
+    $2836BA  move.w #$14,$2c(A6)     -- read back with `move.w $2c(A6),D0` and
+                                        `subq.w #$4,$2c`, so +$2C really is the
+                                        word $0014.  NOT a counter/reload pair.
+    $2836C0  move.w #$101,$2e(A6)    -- read back with `subq.b #1,$2e` and
+                                        `move.b $2f(A6),$2e(A6)`, so this IS the
+                                        byte pair: counter $01, reload $01.
+
+The rule the earlier findings imply is "a word write to a counter field is a
+half-swap", and applied blindly it would have corrupted +$2C. **The read decides
+which it is, not the write.** Here both halves of +$2E happen to be 1, so the
+swap would have been invisible in that field anyway — recorded because the next
+body with `move.w #$0104` will not be so forgiving.
+
+**THE RING IS NOT THE TABLE.** The continuation takes the longword at
+`$283704 + (+$2C)` on each +$2E underflow, then `subq.w #$4,$2c / bcc`, and on
+BORROW resets +$2C to **`$C`, not `$14`**. So the indices run
+
+    $14, $10, $C, $8, $4, $0,  then  $C, $8, $4, $0,  $C, $8, $4, $0, ...
+
+— the two entries at `$14` and `$10` are a **LEAD-IN that plays exactly once per
+bullet**, and the steady state is a four-entry ring inside a six-entry table.
+Read as "wrap the ring" it becomes a six-entry loop and every kind-33 bullet
+holds a permanently wrong animation phase after its first pass.
+
+And because the counter is the underflow flavour, the table steps on **every
+other frame, starting with the second** — a fresh bullet holds `$1C01AC` for two
+frames before the table ever speaks.
+
+### THE WINDOW, SIZED FROM THE INDEX EXPRESSION
+
+`$283704 + $18`, six longwords. The highest index the body can produce is `$14`
+and the read is a longword, so the extent is `$18` — and `$283704 + $18 =
+$28371C`, exactly where kind 34's body begins. An abutting bound, the same
+evidence that settled `$2822EC`'s `$100`. Tables regenerated: **89 windows /
+177,294 bytes.**
+
+### MUTATION TABLE (family K)
+
+| mutation | result |
+|---|---|
+| the wrap resets +$2C to $14 instead of $C | RED — `not ok 222`, alone |
+| the table steps every frame (drop the +$2E gate) | RED — `not ok 222`, alone |
+| the index steps by 2 instead of 4 | RED — `not ok 222`, alone |
+| the index is decremented BEFORE the read | RED — `not ok 222`, alone |
+| the table base is `$283708` | RED — `not ok 222`, alone |
+| +$2C seeded byte-swapped as `$1400` | RED — `not ok 222`, alone |
+
+**A SEVENTH "MUTATION" WAS NOT ONE, AND IT LOOKED LIKE A SURVIVOR.** Replacing
+`setU16(+$2C, 0x0014)` with `setU8(+$2C,0)` + `setU8(+$2D,$14)` went green — and
+it should have, because those are the same two bytes. It is an equivalent
+rewrite, not a mutation. Reported here because a *first* reading of that green
+row is "the half-swap is untested", and the honest reading is "the experiment
+was invalid". `$1400` is the mutation that actually tests it, and it reddens.
+
+`src/mover.js` restored and hash-verified byte-identical (`fee0d525b697afe6`);
+**404 pass / 0 fail / 0 skipped**.
+
+**Inventory: 28 → 29 initialisers, 28 continuations. 32 of 39 kind indices
+covered; 8 distinct bodies remain (family H kinds 26/27/32/36/37/38, family J
+kind 28, and kind 35).**

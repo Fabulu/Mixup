@@ -1492,4 +1492,61 @@ CONTINUATIONS.set(0x28349a, launcherCont);
 INIT_BODIES.set(0x2834fe, (ctx, base) => launcherInit(ctx, base, 0x283568));
 CONTINUATIONS.set(0x283568, launcherCont);
 
+// ================================================ W27 FAMILY K
+//
+// Kind 33 ($2836A8) -- the SLOW-CLOCK sprite ring.  The only body in the wave
+// that indexes a ROM table with a value it keeps in the record, so it is the
+// only one that needed a new window.
+//
+// init: no muzzle call, no renderOffs/graphic write at all -- just bit 8,
+// descriptor $1C01AC, +$1D, and two counters.  `move.w #$14,$2c` and
+// `move.w #$101,$2e`:
+//
+//   +$2C is read back as a WORD (`move.w $2c(A6),D0`, `subq.w #$4,$2c`), so it
+//        genuinely holds $0014 -- this is NOT the big-endian counter/reload
+//        half-swap that families C and D have.  Check how the field is READ
+//        before assuming which trap applies.
+//   +$2E/+$2F IS the byte pair (counter $01, reload $01), read by
+//        `subq.b #1,$2e` with reload from +$2F.  Both halves are 1, so the
+//        swap would have been invisible here; it is written down because the
+//        next body with `move.w #$0104` will not be so forgiving.
+//
+// cont ($2836D0): every other frame (the +$2E underflow), take the longword at
+// `$283704 + (+$2C)` as the descriptor, then `subq.w #$4,$2c / bcc`, and on
+// BORROW reset +$2C to $C -- not to $14.
+//
+// SO THE RING IS NOT THE TABLE.  Starting at $14 the indices run
+// $14, $10, $C, $8, $4, $0 and then wrap to **$C**, so the first pass uses all
+// six entries and every pass afterwards uses only four ($C, $8, $4, $0).  The
+// two entries at $14 and $10 are a LEAD-IN that plays exactly once per bullet.
+// Reading `subq.w #$4 / bcc / move.w #$C` as "wrap the ring" gives a six-entry
+// loop and a permanently wrong animation phase.
+//
+// The table's extent is settled by an abutting bound: the highest index the
+// body can produce is $14, the read is a longword, and $283704 + $18 = $28371C
+// -- exactly where kind 34's body begins.  Six entries, and the ring's own
+// wrap constant ($C) is inside it.
+
+INIT_BODIES.set(0x2836a8, (ctx, base) => {
+  const { ram } = ctx;
+  clearDispatch(ram, base);                            // $2836A8 andi.b #$fe,(A6)
+  ram.setU32(base + 0x0a, 0x1c01ac);                   // $2836AC descriptor
+  ram.setU8(base + 0x1d, 0x1a);                        // $2836B4
+  ram.setU16(base + 0x2c, 0x0014);                     // $2836BA the table INDEX (word)
+  ram.setU16(base + 0x2e, 0x0101);                     // $2836C0 counter $01 / reload $01
+  ram.setU32(base + REC.continuation, 0x2836d0);       // $2836C6
+});
+CONTINUATIONS.set(0x2836d0, (ctx, base) => {
+  const { ram, rom } = ctx;
+  // $2836D0 subq.b #1,$2e / bcc $2836FA -- fires on UNDERFLOW, reload from +$2F.
+  if (!byteUnderflow(ram, base, 0x2e, 0x2f)) { advance40(ctx, base); return; }
+  const idx = ram.u16(base + 0x2c);                    // $2836DE move.w $2c(A6),D0
+  ram.setU32(base + 0x0a, rom.u32(0x283704 + idx));    // $2836E2/$2836EA move.l (A0),$a
+  // $2836EE subq.w #$4,$2c / bcc -- on BORROW (index was 0) reset to $C, NOT $14.
+  const next = ram.u16(base + 0x2c) - 4;
+  ram.setU16(base + 0x2c, u16(next));
+  if (next < 0) ram.setU16(base + 0x2c, 0x000c);       // $2836F4 move.w #$c,$2c
+  advance40(ctx, base);                                // $2836FA lea $40(A6)
+});
+
 export { INIT_BODIES, CONTINUATIONS };
