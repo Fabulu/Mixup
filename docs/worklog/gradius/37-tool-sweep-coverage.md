@@ -108,9 +108,10 @@ If the ledger says ADMITTED and the run did not sweep the stage, the run fails.
 
 ---
 
-## §2. WHAT THE FORCED SWEEP FOUND ON THE REAL TREE, TODAY
+## §2. WHAT THE FORCED SWEEP FOUND ON THE REAL TREE, TODAY —
+## INCLUDING A BUG IN THE HARNESS ITSELF
 
-Stage 7 (`$19 = 6`) has never been swept by anything. 600 frames per chunk,
+Stage 7 (`$19 = 6`) had never been swept by anything. 600 frames per chunk,
 both modes, guard lifted:
 
 ```
@@ -122,23 +123,56 @@ both modes, guard lifted:
   6 of 16 forced runs threw, earliest at frame 0
 ```
 
-Measured by me this session. **Five of stage 7's eight chunk streams survive
-600 frames in both modes**; three do not. Chunks 5 and 6 are the ones the
-ledger's `first unported scroll $0AC0` predicts, and they die on two different
-handlers depending on the mode — `$AF10` with the pad down at f140, `$B569` at
-f76 once the ship is alive and shooting, i.e. **the PLAYING intervention gets
-there first and finds a different wall.**
+Measured by me this session. Chunks 5 and 6 are the ones the ledger's
+`first unported scroll $0AC0` predicts, and they die on two different handlers
+depending on the mode — `$AF10` with the pad down at f140, `$B569` at f76 once
+the ship is alive and shooting: **the PLAYING intervention gets there first and
+finds a different wall.**
 
-`$8010` at frame 0 on chunk 7 is the interesting one and I am NOT diagnosing it
-here: it is an `enemyTables` read of `$8010`, which is the bottom of PRG and not
-a table base at all, on the first frame of the run. Two readings are open —
-stage 7 chunk 7's stream pointer really is unported data, or seeding directly
-onto that pointer is not a state the game reaches — and settling it needs the
-listing, not this tool. **Handed to W36, which is porting stage 7 right now.**
+### And I nearly wrote `$8010` up as stage 7's third crash. It is MY OWN BUG.
 
-Presence, not absence: three chunks throwing proves those paths are missing; the
+I went to the listing before writing it down, because `$8010` is the bottom of
+PRG and not a plausible table base. Measured out of `assets/prg.bin`, this
+session:
+
+```
+$A7D0's stage pointers   $A7DE $A7EE $A7FE $A80C $A81A $A828 $A836
+spacing                        16    16    14    14    14    14
+first chunk STREAM       $A844      so the whole chunk-pointer region is
+                                    $A7DE..$A843 -- 102 bytes, 51 words
+```
+
+**`$A7D0` does not address a rectangular 7 x 8 table.** From stage 2 on the
+subtables OVERLAP — a stage's 8th word *is* the next stage's 1st — which is why
+W33 saw `$19=2` chunk 7 die on `$AAEC`, stage `$19=3` chunk 0's own pointer, at
+the identical frame 314. Those slots are the ROM's and they stay swept.
+
+**The last stage is the one that bites.** `$A836 + 14` = `$A844`, which is not a
+pointer at all: it is the first two bytes of a chunk stream. `sweepChunk` read it
+as one and the port threw at frame 0. Two derivations now bound the table and
+must agree — (a) a slot ADDRESS at or after the first stream is not an entry,
+(b) every slot VALUE that is an entry points at or above that same address, and
+`$8010` fails (b) — and `chunkGeometry()` asserts (b) for every slot it sweeps.
+Stage 7 has **7 chunk slots, not 8**; the sweep is 55 slots, not 56.
+
+**No stage but the last has the problem, so nothing could find it until a run
+went behind the guard.** The forced mode's first real catch was a defect in the
+tool that added it.
+
+Corrected result, same run:
+
+```
+  PASSIVE  stage $19=6       .     .     .     .     . f140* f140*
+  PLAYING  stage $19=6       .     .     .     .     .  f76*  f76*
+  4 of 14 forced runs threw, earliest at frame 76
+```
+
+Presence, not absence: two chunks throwing proves those paths are missing; the
 five clean chunks prove only that 600 frames from those pointers did not reach
-one.
+one. (W36, working on stage 7 concurrently, reached the same three causes and
+the same table geometry independently — commit `5aeee75`, which landed while I
+was measuring. Their `$98FD[6] = $0D` camera-cap derivation is theirs, not
+mine; my numbers above are from the pointer table.)
 
 ---
 
@@ -301,10 +335,90 @@ Gate after the change: `node games/gradius/tools/test-all.mjs` →
 
 ## §6. `tablecoverage.py` — the two secondary items
 
-(in progress)
+### 6a. The root-walk blind spot has NOT narrowed, and W34 did not aim at it
+
+W34's extent work is on a **different axis**: it bounds reads whose base the
+walk already found. The blind spot is about bases the walk never reaches, and
+nothing since W33 has touched it except W35's one new root.
+
+Measured by me this session, importing `tablecoverage` and using its own
+decoder and `walk()`:
+
+```
+tool's own root set (42 $AE1C entries + $C413 + 5 stage-5 roots)
+                                        2,868 PCs, 82 indexed PRG bases
+the four straight-line frame entry points $80A1 $80A7 $80AA $9650, alone
+                                        3,923 PCs, 84 indexed PRG bases
+  bases those four reach that the tool's walk does NOT       59
+  of those, in NO exported block                             26
+    -- of which the tool's docstring already predicts 14 as the terrain and
+       streamer tables decoded into terrain/stages.json rather than into a
+       TABLE_FILES block: $9D4F $9D50 $9D6D $9D6F $9D73 $9FB4 $9FBC $9FBD
+       $9FCC $9FCD $9FDC $9FDD $9FEC $9FED
+    -- leaving 12: $8254 $82B4 $8893 $8894 $8AA8 $8B08 $8D9E $8D9F $8E9E
+       $8E9F $9749 $99AE
+```
+
+**That is a LOWER BOUND and it is not comparable to W33's figure.** W33 reported
+84 of 165 outside the walk (their number, not mine) from a root set that also
+included every entry of six jump tables — `jt_$80D4`, `jt_$88AD`, `jt_$8989`,
+`jt_$96C5`, `jt_$982F`, `jt_$C439` — and **W33 did not record those tables'
+lengths**. Only two of the six are exported (`$AE1C`, `$C439`), so reproducing
+165 means deciding four table lengths, which is inventing a denominator; I did
+not. What I can say from my own numbers is that the walk went from 81 bases
+(W33's reading) to **82** — W35's `$CDA5` root — while four entry points that
+the frame demonstrably executes already reach **59 bases it does not see**. The
+class is open.
+
+**What closing it would take, concretely.** The blocker is not the roots; it is
+`exported_blocks()`. Root the walk at the frame and ~26 unexported bases appear,
+and at least 14 of them are *already exported* — decoded into
+`terrain/stages.json`'s per-stage fields instead of a raw `TABLE_FILES` range.
+So the tool would report 26 gaps of which 14 are false, and that is exactly why
+its docstring records "`$9663` is DELIBERATELY NOT A ROOT" (rooting it turns
+1 gap into 20, none real). The work is, in order: (1) teach `exported_blocks()`
+to read `terrain/stages.json`'s decoded fields as covered ranges, (2) then move
+the root set to the frame, (3) then triage the residue — starting with the 12
+above — one base at a time against the listing, each landing either in an
+export or in a named, reasoned `KNOWN_GAP` entry. Step (1) is the prerequisite
+and it is a self-contained wave's worth of work.
+
+### 6b. `$B7B5` -> `$B797` — UNTOUCHED, deliberately
+
+Still OPEN, still printed on every run, and I did **not** widen the export. W34
+measured that `$B797` is two entries inside a 26-byte block, so an overrun is
+silent, and that entry 23 `$B7A1` never writes `$048C` itself — "so Y is
+PROBABLY always 0". Proving the extent needs the listing (the writers of `$048C`
+on that object, read one at a time), not another sweep, and the brief forbids
+widening without that proof. Nothing in this wave reaches type `$97`. It stays
+OPEN with W34's and W35's wording.
+
+`tablecoverage.py` is unmodified this wave — `sha256 fba7e280ac4d`, measured by
+me, and `git status --porcelain games/gradius/tools/tablecoverage.py` is empty.
+Its own run today: OK, 82 bases, 55 ranges, 4 extent sites, 1 still OPEN.
 
 ---
 
 ## §7. WHAT I COULD NOT REACH — attempts, not absences
 
-(in progress)
+1. **Whether `stagesweep.mjs`'s seeding is a state the game reaches.** It seeds
+   `$1B = $80` on a chunk's stream pointer with `$60 = 2` and the camera at 0.
+   That is W34's fixture and I did not re-derive it. It is why `$99C4` was
+   invisible to the sweep (W35 found it by scanning the listing) and it is the
+   standing limit on everything this tool says. A forced sweep does not widen
+   that: it only changes WHICH stages get the same fixture.
+2. **Any cartridge comparison of anything in this wave.** Unchanged from W32b
+   through W36. Every number here is port-vs-listing or tool-vs-tool.
+3. **W33's 165-base whole-frame figure**, §6a — not reproduced, because four of
+   the six jump-table lengths it depends on are unrecorded.
+4. **Whether the five clean stage-7 chunks are clean or merely unreached.**
+   600 forced frames each. The old tool ran 1400; I lowered the FORCED budget to
+   keep the gate near 4 s, and that is a decision with a cost — `--force-frames
+   1400` is one flag away and nobody has spent it.
+5. **The `$83` null wave cursor** (W35 §10 item 1) is still the highest-value
+   open item and the sweep still cannot see it: it never leaves `$1B = $80`.
+6. **W36's `src/` work was landing while I measured.** One forced run picked up
+   a half-edited tree (`h_AF10 is not defined`, a `ReferenceError` with no ROM
+   address in it). Not a finding about the port; a finding about running a
+   sweep against a tree another agent is writing. The numbers in §2 are from
+   `src/enemies.js sha256 7265b5388bcb`, W35's committed state.

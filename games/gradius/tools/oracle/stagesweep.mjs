@@ -9,8 +9,9 @@
 //         [--verbose]
 //
 // For every stage the `$A2F0` scope guard admits, and for every one of that
-// stage's eight chunk streams, seed the engine on that chunk's stream pointer,
-// step the camera and run `nmi()`. **Require zero throws.**
+// stage's chunk streams -- eight of them, except the last stage, which has
+// seven; see `chunkGeometry` -- seed the engine on that chunk's stream
+// pointer, step the camera and run `nmi()`. **Require zero throws.**
 //
 // ================== WHY THIS EXISTS, WHICH IS THE WHOLE POINT ================
 //
@@ -63,6 +64,11 @@
 //   2. IT PRINTS ITS OWN COVERAGE -- every stage the ROM has, whether this run
 //      swept it, and if not, why not. The denominator is the export's own
 //      `stagePtrTable.stages`, never a number typed here.
+//   2b. ... AND IT FOUND A BUG IN THE HARNESS THE MOMENT IT DID. `$A7D0` is
+//      not a rectangular 7 x 8 table: the subtables overlap and the LAST stage
+//      has seven slots, so the old chunk loop read `$A844` -- stream data --
+//      as stage 7's eighth pointer and threw at frame 0. Nothing could see
+//      that until a run went behind the guard. `chunkGeometry`.
 //   3. ADMITTED-BUT-UNSWEPT IS A FAILURE. "Admitted" is read from a SECOND,
 //      INDEPENDENT artifact -- `stageledger.py`'s frozen BASELINE dict -- and
 //      not from the guard this tool already parses, because a coverage claim
@@ -258,6 +264,61 @@ function resources(A) {
 }
 
 /**
+ * HOW MANY CHUNK SLOTS EACH STAGE ACTUALLY HAS. Wave 37, and it is a defect
+ * this tool had from W34 that only the FORCED sweep could expose.
+ *
+ * `$A7D0`'s seven stage pointers do NOT address a rectangular 7 x 8 table.
+ * Measured out of `assets/prg.bin` this session:
+ *
+ *   bases  $A7DE $A7EE $A7FE $A80C $A81A $A828 $A836   (spacing 16,16,14,14,14,14)
+ *   the whole chunk-pointer region is $A7DE..$A843 -- 102 bytes, 51 words --
+ *   and the first chunk STREAM begins at $A844.
+ *
+ * So the subtables OVERLAP: from stage 2 on, a stage's 8th word IS the next
+ * stage's 1st, which is why W33 saw stage $19=2 chunk 7 die on `$AAEC`, stage
+ * $19=3 chunk 0's pointer, at the same frame 314. That overlap is the ROM's
+ * and those slots are swept.
+ *
+ * THE LAST STAGE IS THE ONE THAT BITES. `$A836 + 14` = `$A844`, which is not a
+ * pointer at all -- it is the first two bytes of stage 1 chunk 0's stream.
+ * Seeding it made this tool's own forced sweep throw `enemy tables: $8010 is
+ * not in any exported range` at frame 0 on both modes, and I very nearly wrote
+ * that up as stage 7 debt. **It is the harness reading past the end of the
+ * ROM's table.** No stage before the last has the problem, so nothing found it
+ * until the guard came off.
+ *
+ * Two derivations, and they must agree (docs/knowledge/03):
+ *   (a) a slot ADDRESS at or after the first stream is not a table entry;
+ *   (b) every slot VALUE that is a real pointer points INTO stream space,
+ *       i.e. is >= that same address. `$8010` is not.
+ * `(b)` is asserted for every slot this tool sweeps.
+ */
+export function chunkGeometry(rom) {
+  const bases = Array.from({ length: STAGES }, (_, st) => rom.word(0xA7D0 + 2 * st));
+  // Slots 0..CHUNKS-2 are inside every subtable at any spacing >= 14 bytes, so
+  // they bound the table without assuming its length.
+  let firstStream = Infinity;
+  for (const b of bases) {
+    for (let c = 0; c < CHUNKS - 1; c++) firstStream = Math.min(firstStream, rom.word(b + 2 * c));
+  }
+  const counts = bases.map((b) => Math.max(0, Math.min(CHUNKS, (firstStream - b) >> 1)));
+  for (let st = 0; st < STAGES; st++) {
+    for (let c = 0; c < counts[st]; c++) {
+      const p = rom.word(bases[st] + 2 * c);
+      if (p < firstStream) {
+        throw new Error(`stagesweep: stage $19=${st} chunk ${c} at `
+          + `$${(bases[st] + 2 * c).toString(16).toUpperCase()} holds `
+          + `$${p.toString(16).toUpperCase()}, which is BELOW the first chunk `
+          + `stream $${firstStream.toString(16).toUpperCase()} -- so it is not `
+          + 'a stream pointer and the two derivations of the table\'s extent '
+          + 'disagree. Read the listing before touching this.');
+      }
+    }
+  }
+  return { bases, firstStream, counts };
+}
+
+/**
  * Seed on stage `st`'s chunk `c`, out of `$A7D0`'s own pointer table.
  *
  * `$A7D0` holds 7 stage pointers, each to a table of `chunksPerStage` = 8
@@ -408,8 +469,14 @@ const decidedForced = [];          // ... that are the decided out-of-scope edge
 const swept = new Map();           // stage -> 'guard' | 'forced'
 let runs = 0, frames = 0, forcedRuns = 0, forcedFrames = 0;
 
-console.log(`STAGE SWEEP -- ${FRAMES} frames per chunk, ${CHUNKS} chunks per `
-          + `stage, ${STAGES} stages (assets/enemies/tables.json stagePtrTable)`);
+const engine = await loadEngine(SRC_DIR);
+const res = resources(engine.A);
+const geo = chunkGeometry(res.enemyTables);
+const SLOTS = geo.counts.reduce((a, b) => a + b, 0);
+
+console.log(`STAGE SWEEP -- ${FRAMES} frames per chunk, ${STAGES} stages / `
+          + `${SLOTS} chunk slots (assets/enemies/tables.json stagePtrTable, `
+          + `clipped to the ROM's own table -- see chunkGeometry)`);
 console.log(`  the $A2F0 guard admits stages 0..${guard.limit - 1}`
           + (guard.found ? '' : '  <-- GUARD NOT FOUND, see COVERAGE below'));
 console.log('  PASSIVE = no buttons and no forced state.  PLAYING = $0100 alive,');
@@ -417,14 +484,11 @@ console.log('  $46 = $FF, $41 = 1, A one frame in three -- INTERVENTIONS, and a'
 console.log('  PLAYING run is evidence about the code, never about how a stage plays.');
 console.log('');
 
-const engine = await loadEngine(SRC_DIR);
-const res = resources(engine.A);
-
 for (const playing of [false, true]) {
   for (let st = 0; st < guard.limit; st++) {
     if (!sel.set.has(st)) continue;
     const row = [];
-    for (let c = 0; c < CHUNKS; c++) {
+    for (let c = 0; c < geo.counts[st]; c++) {
       const r = sweepChunk(engine, res, st, c, FRAMES, playing);
       runs += 1; frames += r.frames;
       const edge = r.throwAt >= 0 ? decidedFor(r.message) : null;
@@ -470,7 +534,7 @@ if (FORCE && unadmitted.length && guard.found) {
   for (const playing of [false, true]) {
     for (const st of unadmitted) {
       const row = [];
-      for (let c = 0; c < CHUNKS; c++) {
+      for (let c = 0; c < geo.counts[st]; c++) {
         const r = sweepChunk(fEngine, fRes, st, c, FORCE_FRAMES, playing);
         forcedRuns += 1; forcedFrames += r.frames;
         const edge = r.throwAt >= 0 ? decidedFor(r.message) : null;
@@ -547,9 +611,20 @@ for (let st = 0; st < STAGES; st++) {
   else note = 'NOT SWEPT';
   if (!how) unswept.push({ st, adm, note });
   if (how && adm === false && st < guard.limit) aheadOfLedger.push(st);
-  const n = how === 'guard' ? 2 * CHUNKS : how === 'forced' ? 2 * CHUNKS : 0;
+  const n = how ? 2 * geo.counts[st] : 0;
   console.log(`  $19=${st}   ${(adm ? 'ADMITTED' : 'debt').padEnd(16)} `
             + `${g.padEnd(13)} ${note.padEnd(23)} ${n}`);
+}
+for (let st = 0; st < STAGES; st++) {
+  if (geo.counts[st] < CHUNKS) {
+    const past = geo.bases[st] + 2 * geo.counts[st];
+    console.log(`  ... stage $19=${st} has ${geo.counts[st]} of the ${CHUNKS} `
+      + `slots stagePtrTable.chunksPerStage suggests: `
+      + `$${past.toString(16).toUpperCase()} is at or past the first chunk `
+      + `STREAM ($${geo.firstStream.toString(16).toUpperCase()}), so it is not `
+      + 'a pointer. Sweeping it read $8010 and threw at frame 0 -- the '
+      + 'harness\'s own bug, not the port\'s (chunkGeometry).');
+  }
 }
 const nGuard = [...swept.values()].filter((v) => v === 'guard').length;
 const nForced = [...swept.values()].filter((v) => v === 'forced').length;
