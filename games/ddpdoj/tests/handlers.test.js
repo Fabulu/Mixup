@@ -10,10 +10,11 @@ import { runHandler, HANDLER_ADDRESSES, handlerMap } from '../src/handlers.js';
 import { UnportedLog, Unreached } from '../src/unported.js';
 
 const REC = 0x81364C, SUB = 0x81459C;
-// W30 adds `$275914`, and it is SEVEN entries for EIGHT stage-1 types:
-// $85 and $86 share `$275914`, exactly as $07 and $27 share `$26A2E2`.
+// W30 adds `$275914`, `$2739C0` and `$276702`: NINE entries for TEN stage-1
+// types, because $85 and $86 share `$275914` exactly as $07 and $27 share
+// `$26A2E2`.  All three were gate BLOCKERS, in that order.
 const SIX = [0x2688cc, 0x268232, 0x269cea, 0x26a2e2, 0x2747c6, 0x27687e,
-  0x275914];
+  0x275914, 0x2739c0, 0x276702];
 
 // W30.  ($2A,A5)/($2E,A5) are the SPRITE-EMITTER pair the init copies out of
 // `$267F70` -- a RECORD-convention stub and a REGISTER-convention one -- and
@@ -57,7 +58,7 @@ const STUB_ROM = {
   u32: (a) => STUB_LONGS.get(a) ?? 0,
 };
 
-test('the ported handler addresses are registered (W25 six + W30 $275914)', () => {
+test('the ported handler addresses are registered (W25 six + W30 $275914/$2739C0/$276702)', () => {
   assert.deepEqual([...HANDLER_ADDRESSES].sort((a, b) => a - b),
     [...SIX].sort((a, b) => a - b));
 });

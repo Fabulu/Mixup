@@ -55,9 +55,9 @@ import { u16, i16 } from './ram.js';
 import { freeEnemy } from './initbody.js';
 import { stepMovement, scrollCompensate, applyVelocity } from './movement.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
-import { AimTables, AIM, aim64, aim64FromCaller, slew64 } from './aim.js';
+import { AimTables, AIM, aim64, aim256, aim64FromCaller, slew64 } from './aim.js';
 import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
-  enqueueRegistersThroughStub } from './spritequeue.js';
+  enqueueRegistersThroughStub, EMIT_TABLE } from './spritequeue.js';
 
 /** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
  *  Named because the port also has `addi.w` pairs around a `swap`, which do
@@ -866,6 +866,359 @@ function deathSeq85(ram, rom, a5, a6, ctx) {
   freeEnemy(ram, a5);                                  // $275BA6 jmp $263762
 }
 
+// ================================================= TYPE $80 (W30) =========
+// `$2739C0`, span `$2739C0..$273F02` -- `$273EFE jmp $263762` ends the death
+// arm, `$273F04` is a `nop` pad and `$273F06` is type $81's init stub.  310
+// instructions, the second-largest stage-1 body after the midboss, and the
+// second gate blocker: with `$275914` ported, `fly-around` stopped here at
+// logic frame 2634.
+//
+// It is the type $85 skeleton with four things bolted on, and every one of them
+// resolves to code this project already has:
+//   * a SHIELD timer on `($36,A5)` that pins HP at `$7FFF` until it expires;
+//   * a big aim256 fan -- `$2422A2` then EIGHT `$2817B8` spawns off `$2735FA`,
+//     or SEVEN `$2817A8` off `$2736FA`, chosen by stage and `($20,A5)`;
+//   * TWO independent turrets, alternated frame by frame by
+//     `$273C3A bchg #$6,($1,A6)`, each with its own facing word
+//     (`($2C,A5)` / `($32,A5)`) and its own sprite pointer;
+//   * two more `$281484` fires off the 32-entry muzzle table `$27347A`.
+// Four sprite requests, all through W11's enqueue API.
+function handler80(ram, rom, a5, ctx) {
+  const { tables, unported: u } = ctx;
+  const a6 = ram.u32(a5 + 0x06);
+  if (stepMovement(ram, rom, a5, tables, u)) return;   // $2739C0 jsr $2638A6
+  // $2739C6..$2739E4: bounds.  Y += $1800 + scroll + $9800; X += $1400 + $7400.
+  const p0 = ram.u32(a6 + 0x02);
+  let off = u16(u16((p0 & 0xffff) + 0x1800) + ram.u16(G.scroll)) + 0x9800 > 0xffff;
+  if (!off) off = u16((p0 >>> 16) + 0x1400) + 0x7400 > 0xffff;   // $2739DC/$2739E0
+  if (off) {                                           // $2739E4 bcc $2739F4
+    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; } // $2739EC
+  } else {
+    ram.setU8(a5 + R.onScreen, 1);                     // $2739F4
+  }
+  ram.setU32(a6 + R.sprite22, ram.u32(a6 + 0x02));     // $2739FA (BOTH A6)
+  // $273A00: THE SHIELD.  While `($36,A5)` is non-negative the HP pair is held
+  // at $7FFF -- invulnerable -- and the counter is decremented by 1, or by 2
+  // while `$811F72` is set.  On the BORROW the HP pair drops to $1400 and the
+  // enemy becomes killable.  `sub.w` then `bcc`, so the borrow is the event.
+  if ((ram.u16(a5 + 0x36) & 0x8000) === 0) {           // $273A00 tst.w / bmi
+    ram.setU16(a6 + S.hp, 0x7fff);                     // $273A08/$273A0C
+    ram.setU16(a6 + S.f38, 0x7fff);                    // $273A10
+    const step = ram.u16(0x811f72) !== 0 ? 2 : 1;      // $273A14/$273A18/$273A22
+    const cur = ram.u16(a5 + 0x36);
+    ram.setU16(a5 + 0x36, u16(cur - step));            // $273A26 sub.w D0,($36,A5)
+    if (cur < step) {                                  // $273A2A bcc $273A3A
+      ram.setU16(a6 + S.hp, 0x1400);                   // $273A2E/$273A32
+      ram.setU16(a6 + S.f38, 0x1400);                  // $273A36
+    }
+  }
+  // $273A3A: the damage branch -- $275914's, with $255 where $85 has $1C0.
+  const dmg = (ram.u8(a6) | ram.u8(a6 + 0x20)) & 0x5c; // $273A3A/$273A3C/$273A40
+  let d0;
+  if (dmg === 0) {                                     // $273A44 bne $273A5E
+    d0 = ram.u8(a5 + R.rec1C);                         // $273A46
+    if (ram.u16(a6 + S.hp) < 0x255                     // $273A4A cmpi.w / bcc
+        && ram.u16(G.ca) === 0) d0 = 0x19;             // $273A52 tst.w / $273A5A
+  } else {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $273A62
+    ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);    // $273A64
+    noteDamage(u, a5, '$80');                           // $273A68 jsr $286096
+    d0 = ram.u8(a6 + S.palette);                       // $273A6E
+    if (d0 === 0x19) d0 = ram.u8(a5 + R.rec1C);        // $273A72/$273A78
+    d0 = (d0 ^ ram.u8(a5 + R.rec1D)) & 0xff;           // $273A7C/$273A80
+    let d4 = ram.u16(a6 + S.hp);                       // $273A82
+    if (i16(d4) > i16(ram.u16(a6 + S.f38))) d4 = ram.u16(a6 + S.f38); // $273A86/$273A8C
+    ram.setU16(a6 + S.hp, d4);                         // $273A90
+    ram.setU16(a6 + S.f38, d4);                        // $273A94
+    if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $273A98 tst.w / $273A9C bmi
+      deathSeq80(ram, a5, ctx); return;                // $273DAE
+    }
+  }
+  ram.setU8(a6 + S.palette, d0);                       // $273AA0
+  u?.note(0x28ac72, '$28AC72 sub-record spawn engine in $80 rec $'
+    + a5.toString(16) + ' -- see the $85 note; its result is unused by $273AAA');
+  // $273AAA tst.l $8130D2 / bne $273C94 -- a freeze skips the fire AND both
+  // turret aims and goes straight to the draw.
+  if (ram.u32(G.freeze) === 0) {
+    // $273AB4/$273ABC/$273AC6: three gates in front of the big fan.  ($18,A5)
+    // is a WORD here (it is a BYTE cadence in type $11) -- non-zero means the
+    // salvo has already been fired and the LASER tail owns the record.
+    if (ram.u16(a5 + 0x18) === 0                       // $273AB4 tst.w / bne
+        && i16(ram.u16(a6 + 0x02)) >= 0x1000) {        // $273ABC cmpi.w / blt
+      const c = ram.u8(a5 + R.rec1E);                  // $273AC6 subq.b #1,($1E,A5)
+      ram.setU8(a5 + R.rec1E, (c - 1) & 0xff);
+      if (c === 0) {                                   // $273ACA bcc $273BEE
+        ram.setU8(a5 + R.rec1E, ram.u8(a5 + 0x34));    // $273ACE reload from +$34
+        fan80(ram, rom, a5, a6, ctx);                  // $273AD4..$273BCA
+        // $273BCE: the SALVO counter, reachable only after the fan block.
+        const sal = ram.u8(a5 + R.salvo);              // $273BCE subq.b #1,($20,A5)
+        ram.setU8(a5 + R.salvo, (sal - 1) & 0xff);
+        if (sal === 0) {                               // $273BD2 bcc $273BEE
+          ram.setU8(a5 + R.salvo, ram.u8(a5 + R.rec21)); // $273BD4
+          ram.setU8(a5 + R.rec1E, u16(0x50 - ram.u16(G.b8)) & 0xff); // $273BDA/$273BE4
+          ram.setU16(a5 + 0x18, 1);                    // $273BE8 move.w #$1,($18,A5)
+        }
+      }
+    }
+    // $273BEE: the TURRET cadence, on ($26,A5) with reload ($27,A5).
+    const t = ram.u8(a5 + 0x26);                       // $273BEE subq.b #1
+    ram.setU8(a5 + 0x26, (t - 1) & 0xff);
+    if (t === 0) {                                     // $273BF2 bcc $273C94
+      ram.setU8(a5 + 0x26, ram.u8(a5 + 0x27));         // $273BF6
+      if (ram.u8(a5 + 0x24) === ram.u8(a5 + 0x25))     // $273BFC/$273C00 bne
+        turrets80(ram, rom, a5, a6);                   // $273C08..$273C8E
+    }
+  }
+  // $273C94: FOUR sprite requests.
+  enqueueRequest(ram, 7, a6);                          // $273C94 jsr $23D852
+  const pos = ram.u32(a6 + 0x02);                      // $273C9A move.l ($2,A6),D1
+  // $273C9E addi.w #$0 (the short axis is unbiased) / swap / $273CA4 addi.w #$80.
+  const longA = u16((pos >>> 16) + 0x80);
+  enqueueRegisters(ram, 7, ((longA << 16) | (pos & 0xffff)) >>> 0,
+    ram.u32(a5 + 0x28), 0x628, ram.u16(a6 + S.f1c));   // $273CAA/$273CAE/$273CB2/$273CB6
+  // $273CBC `move.w ($4,A6),D1` REPLACES ONLY D1's LOW WORD -- the high word is
+  // still the $80-biased long axis from the request above.  A port that rebuilt
+  // D1 from the record here would drop that bias.
+  enqueueRegisters(ram, 7, ((longA << 16) | u16((pos & 0xffff) + 0xf600)) >>> 0,
+    ram.u32(a5 + 0x2e), 0x628, ram.u16(a6 + S.f1c));   // $273CC0/$273CC4/$273CC8
+  if (ram.u16(G.rank98) === 0 && ram.u16(G.mirror2) !== 0) { // $273CCE/$273CD6
+    enqueueRegisters(ram, 3,
+      ((u16((pos >>> 16) + 0xd600) << 16) | (pos & 0xffff)) >>> 0, // $273CE2/$273CE8
+      0x172d18, 0xa40, 0x18);                          // $273CEE/$273CF4/$273CF8/$273CFC
+  }
+  // $273D02: the LASER tail, armed by ($18,A5) and cadenced on ($22,A5).
+  if (ram.u16(a5 + 0x18) === 0) return;                // $273D02 tst.w / beq $273D1E
+  if (ram.u32(G.freeze) !== 0) return;                 // $273D08 tst.l / bne
+  if (i16(ram.u16(a6 + 0x02)) < 0x1000) return;        // $273D10 cmpi.w / blt
+  const lc = ram.u8(a5 + 0x22);                        // $273D18 subq.b #1,($22,A5)
+  ram.setU8(a5 + 0x22, (lc - 1) & 0xff);
+  if (lc !== 0) return;                                // $273D1C bcs $273D20 only
+  laser80(ram, rom, a5, a6, ctx);                      // $273D20
+}
+
+// $273AD4..$273BCA -- the aim256 fan.  TWO shapes, and which one runs is decided
+// by the stage and by ($20,A5); both are `dbra` loops that step D1 by a fixed
+// amount and read a 64-entry longword table with `((D1+2) & $FC)`.
+function fan80(ram, rom, a5, a6, ctx) {
+  // $273AD4..$273AF2: the inlined target select (see aim85).
+  let p0 = AIM.selP1, p1 = AIM.selP2;
+  if (ram.u8(a5 + 0x03) !== 0) { p0 = AIM.selP2; p1 = AIM.selP1; } // $273AE0/$273AE6
+  if ((ram.u16(p0) & 0x8000) === 0) {                  // $273AE8 tst.w / bmi
+    if ((ram.u16(p1) & 0x8000) === 0) return;          // $273AEC / $273AEE bpl $273BCE
+    const t = p0; p0 = p1; p1 = t;                     // $273AF2 exg
+  }
+  const tgtY = ram.u16(p0 + 2), tgtX = ram.u16(p0 + 4);   // $273AF4 movem.w
+  const selfY = ram.u16(a6 + 0x02), selfX = ram.u16(a6 + 0x04); // $273AFA
+  // $273B00 addi.w #$fe00,D0 / $273B04 addi.w #$0,D1 (the short axis is unbiased).
+  let d1 = aim256(aimTables(rom), u16(selfY + 0xfe00), selfX, tgtY, tgtX); // $273B08
+  const d2 = ram.u32(a6 + 0x02);                       // $273B0E move.l ($2,A6),D2
+  const d5 = 0xfe000000;                               // $273B12 move.l #$fe000000,D5
+  const stage4 = ram.u16(G.stage) === 4;               // $273B1A cmpi.w #$4
+  const s20 = ram.u8(a5 + R.salvo);
+  // $273B1A..$273B5C: which loop, and D0.  Written as the listing branches.
+  let wide;                                            // true = the $2735FA loop
+  let d0;
+  if (stage4) {                                        // $273B22 bne $273B44
+    if (s20 === 5) { d0 = 0x00000004; wide = true; }   // $273B26/$273B30 bra $273B62
+    else if (s20 === 4) { d0 = 0xffff0004; wide = true; } // $273B36 beq $273B4E, $273B5C
+    else { wide = false; d0 = 0xfffe0004; }            // $273B40 bra $273B8E, $273BA0
+  } else if (s20 === 1) {                              // $273B44 cmpi.b #$1 / bne
+    d0 = 0x00000004; wide = true;                      // $273B4E, stage != 4 -> $273B62
+  } else { wide = false; d0 = 0xffff0005; }            // $273B8E
+  const entry = wide ? 0x2817b8 : 0x2817a8;
+  const table = wide ? 0x2735fa : 0x2736fa;
+  const step = wide ? 8 : 0xc;                         // $273B66 / $273BAA moveq
+  const iters = wide ? 8 : 7;                          // $273B68 moveq #$7 / #$6, dbra
+  d1 = (d1 - (wide ? 0x1c : 0x24)) & 0xff;             // $273B62 / $273BA6 subi.b
+  for (let n = 0; n < iters; n++) {                    // $273B86 / $273BCA dbra
+    const idx = u16((d1 + 2) & 0xfc);                  // $273B70/$273B72/$273B74
+    const d3 = u32(rom.u32(table + idx) + d5);         // $273B78 / $273B7C add.l D5,D3
+    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, entry,
+      { d0, d1, d2, d3, d4: 0, d5, a5 });              // $273B7E / $273BC2
+    ctx.bulletSpawn?.(entry, res);
+    d1 = u16(d1 + step);                               // $273B84 / $273BC8 add.w D6,D1
+  }
+}
+
+// $273C08..$273C8E -- the TWO turrets.  `bchg #$6,($1,A6)` both TESTS the old
+// bit and FLIPS it, so the two arms alternate on consecutive aims and each
+// turret re-aims at half the cadence.
+function turrets80(ram, rom, a5, a6) {
+  let p0 = AIM.selP1, p1 = AIM.selP2;
+  if (ram.u8(a5 + 0x03) !== 0) { p0 = AIM.selP2; p1 = AIM.selP1; } // $273C14/$273C1A
+  if ((ram.u16(p0) & 0x8000) === 0) {                  // $273C1C tst.w / bmi
+    if ((ram.u16(p1) & 0x8000) === 0) return;          // $273C20 / $273C22 bpl $273C94
+    const t = p0; p0 = p1; p1 = t;                     // $273C26 exg
+  }
+  const tgtY = ram.u16(p0 + 2), tgtX = ram.u16(p0 + 4);   // $273C28 movem.w
+  const selfY = ram.u16(a6 + 0x02), selfX = ram.u16(a6 + 0x04); // $273C2E
+  const was = (ram.u8(a6 + 0x01) & 0x40) !== 0;        // $273C3A bchg #$6,($1,A6)
+  ram.setU8(a6 + 0x01, ram.u8(a6 + 0x01) ^ 0x40);
+  // The two arms differ ONLY in the short-axis muzzle bias and in which pair of
+  // record fields they own.  facing: ($2C,A5) / ($32,A5); sprite: ($28,A5) /
+  // ($2E,A5), both out of $272F7A.
+  const shortBias = was ? 0xfb00 : 0x0500;             // $273C70 / $273C46
+  const facingOff = was ? 0x32 : 0x2c;                 // $273C7A / $273C50
+  const gfxOff = was ? 0x2e : 0x28;                    // $273C8E / $273C64
+  const dir = aim64(aimTables(rom), u16(selfY + 0x680), u16(selfX + shortBias),
+    tgtY, tgtX);                                       // $273C42/$273C4A (or $273C6C/$273C74)
+  const nf = slew64(ram.u16(a5 + facingOff), dir);     // $273C54 / $273C7E
+  ram.setU16(a5 + facingOff, nf);                      // $273C5A / $273C84
+  ram.setU32(a5 + gfxOff, rom.u32(0x272f7a + ((nf & 0x3e) * 2))); // $273C64 / $273C8E
+}
+
+// $273D20..$273DAC -- the laser pair.  Both fires go through `$281484` with a
+// muzzle vector out of `$27347A` biased per turret, and the SECOND salvo
+// counter ($24,A5) disarms the tail by clearing ($18,A5).
+function laser80(ram, rom, a5, a6, ctx) {
+  ram.setU8(a5 + 0x22, ram.u8(a5 + 0x35));             // $273D20 reload from +$35
+  const d0 = ram.u16(G.stage) === 4 ? 0x00070013 : 0x00020013; // $273D2C/$273D32/$273D3E
+  const d2 = ram.u32(a6 + 0x02);                       // $273D62 move.l ($2,A6),D2
+  for (const [facingOff, shortBias] of [[0x2c, 0x0500], [0x32, 0xfb00]]) {
+    const d1 = ram.u16(a5 + facingOff);                // $273D44 / $273D6C
+    const t = rom.u32(0x27347a + u16((d1 & 0x3e) * 2)); // $273D50 / $273D78
+    // $273D54/$273D58/$273D5A -- addi.w around a `swap`, so the two halves do
+    // NOT carry into each other (unlike $273B7C's `add.l`).
+    const d3 = ((u16((t >>> 16) + 0x680) << 16) | u16((t & 0xffff) + shortBias)) >>> 0;
+    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281484,
+      { d0, d1, d2, d3, d4: 0, d5: 0, a5 });            // $273D66 / $273D88
+    ctx.bulletSpawn?.(0x281484, res);
+  }
+  const c = ram.u8(a5 + 0x24);                         // $273D8E subq.b #1,($24,A5)
+  ram.setU8(a5 + 0x24, (c - 1) & 0xff);
+  if (c !== 0) return;                                 // $273D92 bcc $273DAC
+  ram.setU8(a5 + 0x24, ram.u8(a5 + 0x25));             // $273D94
+  ram.setU8(a5 + 0x22, u16(0x30 - ram.u16(G.b8)) & 0xff); // $273D9A/$273D9E/$273DA4
+  ram.setU16(a5 + 0x18, 0);                            // $273DA8 clr.w ($18,A5)
+}
+
+// $273DAE..$273EFE -- the death arm.  SIX `$289004` allocations, each followed
+// by field writes into the record it would have returned in A0; all six are part
+// of the one noted gap, not six separate ones.
+function deathSeq80(ram, a5, ctx) {
+  const u = ctx.unported;
+  noteEffect(u, 0x28615e, a5, 'D0=$83 explosion');     // $273DAE/$273DB4
+  noteEffect(u, 0x28c2dc, a5, 'death burst');          // $273DBA jsr $28C2DC
+  for (const d0 of ['$D', '$84', '$84', '$D', '$D', '$85']) {
+    noteEffect(u, 0x289004, a5, 'D0=' + d0 + ' death effect'); // $273DC2..$273EC8
+  }
+  freeEnemy(ram, a5);                                  // $273EFE jmp $263762
+}
+
+// ================================================= TYPE $8A (W30) =========
+// `$276702`, span `$276702..$276818` -- `$276814 jmp $263762` ends the death
+// arm, `$27681A` is a `nop` pad, and `$27681C` is type $8B's init stub (whose
+// body at `$276824` W23 already ports).  75 instructions, and the THIRD gate
+// blocker: with `$275914` and `$2739C0` ported, `fly-around` stopped here at
+// logic frame 2713.
+//
+// A scroll-locked prop like type `$8B`: no `stepMovement`, just
+// `$24179E scrollCompensate`.  What is new is the tail -- it reaches an enqueue
+// through the 24-entry DISPATCH TABLE `$27829C`, indexed by the sub-record's
+// `($1E,A6)` word, which is why `resolveEmitStub` exists (src/spritequeue.js
+// 1c).  For this type the prototype leaves that word 0, i.e. `$23D762`, i.e.
+// BUCKET 0 -- the bucket W28 measured at 87,545 sprite pixels (72.1 % of the
+// whole picture) with NO PRODUCER.  This is its first one.
+function handler8A(ram, rom, a5, ctx) {
+  const { unported: u } = ctx;
+  const a6 = ram.u32(a5 + 0x06);
+  // $276702 tst.b $8130F8 / bmi -- the same stage-kill gate type $8B has.
+  if ((ram.u8(0x8130f8) & 0x80) !== 0) { freeEnemy(ram, a5); return; } // $276736
+  scrollCompensate(ram, a5);                           // $27670A jsr $24179E
+  // $276710..$27672E: bounds.  Y += $C00 + scroll + $B000; X += $400 + $8C00.
+  const pos = ram.u32(a6 + 0x02);
+  let off = u16(u16((pos & 0xffff) + 0xc00) + ram.u16(G.scroll)) + 0xb000 > 0xffff;
+  if (!off) off = u16((pos >>> 16) + 0x400) + 0x8c00 > 0xffff;   // $276726/$27672A
+  if (off) {                                           // $27672E bcc $27673E
+    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; } // $276736
+  } else {
+    ram.setU8(a5 + R.onScreen, 1);                     // $27673E
+  }
+  // $276744: the damage branch.  No `$286096` call at all in this one -- the
+  // hit bits are cleared and only the HP SIGN is consulted.
+  if ((ram.u8(a6) & 0x5c) !== 0) {                     // $276744 moveq #$5c / and.b
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $27674A andi.b #$a3,(A6)
+    if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $27674E tst.w / $276752 bmi
+      deathSeq8A(ram, a5, ctx); return;                // $2767D0
+    }
+  }
+  // $276756 tst.w $811F72 / bne $2767A6 -- while the mover's freeze word is set
+  // the PROXIMITY test is skipped and the counter runs down anyway.
+  if (ram.u16(0x811f72) === 0) {
+    const live = playersAlive242884(ram);              // $27675E jsr $242884
+    if (live === 0) return;                            // $276764 tst.w / beq $2767CE
+    // $276768..$27679E: is either LIVE player within $240 on the SHORT axis?
+    // The two arms are not symmetric: P1's is `bcs -> reload` (near) and P2's is
+    // `bcc -> rts` (far), because P1 falls THROUGH into P2's test when it is far
+    // and bit 1 is set.
+    let near = false;
+    if ((live & 1) !== 0) {                            // $276768 btst #$0 / beq $27678A
+      const d = u16(ram.u16(a6 + 0x04) - ram.u16(0x8103ea)); // $27676E/$276774/$276778
+      const m = (d & 0x8000) !== 0 ? u16(-d) : d;      // $27677A bpl / neg.w
+      if (m < 0x240) near = true;                      // $27677E cmpi.w / $276782 bcs
+      else if ((live & 2) === 0) return;               // $276784 btst #$1 / beq $2767CE
+    }
+    if (!near) {                                       // reached $27678A
+      const d = u16(ram.u16(a6 + 0x04) - ram.u16(0x81044c)); // $27678A/$276790/$276794
+      const m = (d & 0x8000) !== 0 ? u16(-d) : d;      // $276796 bpl / neg.w
+      if (m >= 0x240) return;                          // $27679A cmpi.w / $27679E bcc
+    }
+    ram.setU16(a5 + 0x18, 0x000f);                     // $2767A0 move.w #$f,($18,A5)
+  }
+  ram.setU16(a5 + 0x18, u16(ram.u16(a5 + 0x18) - 1));  // $2767A6 subq.w #$1,($18,A5)
+  // $2767AA bchg #$6,($1,A6) / bne -- `bchg` TESTS the old bit and FLIPS it, so
+  // the blink+emit below runs on every OTHER frame.
+  const was = (ram.u8(a6 + 0x01) & 0x40) !== 0;
+  ram.setU8(a6 + 0x01, ram.u8(a6 + 0x01) ^ 0x40);
+  if (was) return;                                     // $2767B0 bne $2767CE
+  // $2767B2 eori.l #$B4,($A,A6) -- the sprite pointer TOGGLES between two
+  // frames $B4 apart.  A longword EOR, not an add.
+  ram.setU32(a6 + S.sprite0a, (ram.u32(a6 + S.sprite0a) ^ 0xb4) >>> 0);
+  // $2767BA..$2767CC: `move.w ($1E,A6),D0 / add.w D0,D0 / add.w D0,D0 /
+  // lea $27829C(pc),A0 / movea.l (A0,D0.w),A0 / jsr (A0)`.
+  const idx = u16(ram.u16(a6 + S.anim) * 4);           // $2767BA/$2767BE/$2767C0
+  if (idx >= EMIT_TABLE.entries27829C * 4) {
+    unreached(EMIT_TABLE.dispatch27829C + idx, `type $8A's emitter dispatch `
+      + `$2767C8 indexed $27829C with ($1E,A6) = $${ram.u16(a6 + S.anim)
+        .toString(16).toUpperCase()}, i.e. byte offset $${idx.toString(16)
+        .toUpperCase()}. The table has ${EMIT_TABLE.entries27829C} longwords `
+      + `($27829C..$2782FB); past it is $278300, which is not a pointer table`);
+  }
+  enqueueThroughStub(ram, rom, rom.u32(EMIT_TABLE.dispatch27829C + idx), a6);
+  void u;
+}
+
+// `$242884` -- WHICH PLAYERS ARE ALIVE, as a two-bit mask.  Ten instructions,
+// and the test is TWO conditions per player: the record's first BYTE must be
+// negative (bit 15 of the alive word) AND its bit 0 must be CLEAR.
+//   242884: moveq #$0,D0 / move.b $8103E6,D1 / bpl / btst D0,D1 / bne / moveq #$1,D0
+//   242894: move.b $810448,D1 / bpl / btst #$0,D1 / bne / addq.w #$2,D0
+// The first `btst` uses D0 as the bit number and D0 is 0 there, so both are
+// bit 0 -- a detail that reads like a bug and is not one.
+function playersAlive242884(ram) {
+  let d0 = 0;                                          // $242884 moveq #$0,D0
+  const p1 = ram.u8(AIM.selP1);                        // $242886 move.b $8103E6,D1
+  if ((p1 & 0x80) !== 0 && (p1 & 1) === 0) d0 = 1;     // $24288C bpl / $24288E btst
+  const p2 = ram.u8(AIM.selP2);                        // $242894 move.b $810448,D1
+  if ((p2 & 0x80) !== 0 && (p2 & 1) === 0) d0 += 2;    // $24289A bpl / $24289C btst
+  return d0;                                           // $2428A4 rts
+}
+
+// $2767D0..$276814 -- the death arm.  Two effect spawns and `$27F92A`, then the
+// field writes into the record `$289004` would have returned; all noted.
+function deathSeq8A(ram, a5, ctx) {
+  const u = ctx.unported;
+  noteEffect(u, 0x28615e, a5, 'D0=$1 explosion');      // $2767D0/$2767D2
+  noteEffect(u, 0x28c25a, a5, 'death burst');          // $2767D8
+  u?.note(0x27f92a, `$27F92A in $8A death (D0 = ($1A,A5), D2 = ($1F,A6)) rec $`
+    + a5.toString(16) + ' -- the $816B7A pool family, unported');  // $2767E6
+  noteEffect(u, 0x289004, a5, 'D0=$C death effect');   // $2767EE
+  // $2767FA..$276810: `move.w ($1E,A6),D0 / add.w D0,D0 / lea $278320(pc),A1 /
+  // move.w (A1,D0.w),($1E,A0)` and `move.w #$1,($10,A0)` -- writes into the
+  // record the allocation did not make, so they are inside the same gap.
+  freeEnemy(ram, a5);                                  // $276814 jmp $263762
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x2688cc, handler11],
@@ -875,6 +1228,8 @@ const HANDLERS = new Map([
   [0x2747c6, handler82],
   [0x27687e, handler8B],
   [0x275914, handler85],   // W30: types $85 AND $86 share this one
+  [0x2739c0, handler80],   // W30: type $80
+  [0x276702, handler8A],   // W30: type $8A
 ]);
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a

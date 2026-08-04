@@ -470,6 +470,18 @@ ENEMY_STAT_TABLES = [
     (0x273270, 0x0090, "W30: type $85/$86's 32-entry muzzle-vector table "
                        "$27327A, read at $275ABC by the $2813F0 fire"),
     (0x272F70, 0x0090, "W23: the aim-derived sprite/bucket table $272F7A ($80)"),
+    # W30: type $80's handler $2739C0 reads three more longword tables.
+    # $2735FA and $2736FA are indexed by `((D1+2) & $FC)` -- byte offsets
+    # 0..$FC, so 64 longwords = $100 bytes each, and the pair is pinned from
+    # both ends: $2735FA + $100 == $2736FA and $2736FA + $100 == $2737FA, which
+    # is type $80's own init stub (code).
+    (0x2735F0, 0x0220, "W30: type $80's two fan-direction tables $2735FA "
+                       "($2817B8 loop) and $2736FA ($2817A8 loop), 64 longs each"),
+    # $27347A is indexed by `(D1 & $3E) * 2` -> 0..$7C, 32 longwords.  EXTENT
+    # PINNED FROM THE DATA: entries 0..31 are a clean circle ($0600,$0000 /
+    # $0040,$0540 / $FA80,$0000 / $0040,$FAC0) and entry 32 at $2734FA breaks it.
+    (0x273470, 0x0090, "W30: type $80's 32-entry muzzle table $27347A, read at "
+                       "$273D50/$273D78 by the two $281484 fires"),
     (0x2763D0, 0x0050, "W23: type $88's sub-record sprite table $2763D8 "
                        "(indexed by (sub +$28))"),
     # $2687FE: type $11's loop-indexed palette table (read with `lea $2687FE;
