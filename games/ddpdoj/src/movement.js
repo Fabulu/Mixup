@@ -120,10 +120,21 @@ export function scrollCompensate(ram, a5) {
  * paths (counter-done / SPEED / ESCAPE), so a PARAM-$00 HEAD re-runs forever.
  *
  * @param tables  MoveTables (src/vectors.js); `.vector(speed,heading)` is $241812.
+ * @param vec     W36, OPTIONAL: an object that receives D2/D3 as `{dy,dx}`.
+ *   **`$2638A6` RETURNS D2/D3 ON EVERY PATH** and one caller reads them --
+ *   `$275F30` (type `$88`) does `jsr $2638A6 / ... / neg.w D3 / add.w D3,(A0)`
+ *   four instructions later.  The four returns are, out of the listing:
+ *     `$2638A0 moveq #0,D2 / moveq #0,D3`   the FROZEN entry
+ *     `$2638E8 movem.w ($40,A5),D2-D3`      the clean-cache HEAD
+ *     `$263900 jsr $2417DE` -> its D2/D3    the dirty HEAD
+ *     `$263910 moveq #0,D2 / move.w D2,D3`  a STOP heading (>= $40)
+ *   so it is a defined return value, not a register that happens to survive.
+ *   Omit it and nothing changes.
  * @returns `true` if the enemy EXITed this frame (escape #10 -> the record was
  *   freed by `$263762`); `false` otherwise.
  */
-export function stepMovement(ram, rom, a5, tables, unported) {
+export function stepMovement(ram, rom, a5, tables, unported, vec = null) {
+  if (vec) { vec.dy = 0; vec.dx = 0; }                   // $2638A0 / $263910
   if (ram.u16(GL.freeze) !== 0) return false;            // $2638A6 tst.w $8130d2 / bne $2638A0
   if ((ram.u8(a5 + MOVER.classByte) & 1) !== 0) {        // $2638AE btst #0,($d,A5)
     scrollCompensate(ram, a5);                           // $2638B6 jsr $24179e
@@ -145,7 +156,7 @@ export function stepMovement(ram, rom, a5, tables, unported) {
         const heading = op & 0x7f;                       // $2638D2 andi.w #$7f,D1
         ram.setU8(a6 + SUB.heading, heading);            // $2638D6 move.b D1,($1b,A6)
         if (heading < 0x40) {                            // $2638DA cmpi.w #$40,D1 / bcc $263910
-          applyOneHeading(ram, a5, a6, tables);          // $2638E0..$26390E (dirty/clean + apply)
+          applyOneHeading(ram, a5, a6, tables, vec);    // $2638E0..$26390E (dirty/clean + apply)
         }
         // PARAM==0 OR counter-not-done OR stop heading: return WITHOUT storing
         // the cursor (the implicit loop -- the same HEAD re-reads next frame).
@@ -178,15 +189,17 @@ export function stepMovement(ram, rom, a5, tables, unported) {
 
 // the per-frame HEAD apply: dirty -> recompute+apply+cache; clean -> reuse cache.
 // `$2638E0 btst #5,($2,A5)` / `$2638E6 bne $2638FA` / `$2638E8 movem ($40,A5),D2-D3`.
-function applyOneHeading(ram, a5, a6, tables) {
+function applyOneHeading(ram, a5, a6, tables, vec = null) {
   if ((ram.u8(a5 + MOVER.flags) & 0x20) !== 0) {        // $2638E0 btst #5,($2,A5)
     ram.bclr8(a5 + MOVER.flags, 5);                     // $2638FA bclr #5,($2,A5)
     const v = applyVelocity(ram, tables, a5);            // $263900 jsr $2417de
     ram.setU16(a5 + MOVER.velDX, u16(v.dy));            // $263906 movem.w D2-D3,($40,A5)
     ram.setU16(a5 + MOVER.velDY, u16(v.dx));
+    if (vec) { vec.dy = v.dy; vec.dx = v.dx; }          // D2/D3 out (W36)
   } else {
     const dx = i16(ram.u16(a5 + MOVER.velDX));           // $2638E8 movem.w ($40,A5),D2-D3
     const dy = i16(ram.u16(a5 + MOVER.velDY));
+    if (vec) { vec.dy = dx; vec.dx = dy; }              // D2/D3 out (W36)
     ram.setU16(a6 + SUB.posX, u16(i16(ram.u16(a6 + SUB.posX)) + dx)); // $2638EE add.w D2,($2,A6)
     ram.setU16(a6 + SUB.posY, u16(i16(ram.u16(a6 + SUB.posY)) + dy)); // $2638F2 add.w D3,($4,A6)
   }

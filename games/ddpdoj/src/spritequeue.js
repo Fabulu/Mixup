@@ -309,7 +309,23 @@ export function resolveEmitStub(rom, stub) {
         counter.toString(16).toUpperCase()}, which is not one of the thirty `
       + `buckets wave 11 enumerated`);
   }
-  const op = rom.u16(at + 12);
+  let op = rom.u16(at + 12);
+  // W36: A FIFTH SHAPE, found the way W31 found the fourth -- by a handler
+  // calling a stub the resolver could not read.  `$23F896` (type `$31`'s
+  // `$2698C4`/`$2698E2`/`$2698F6`, bucket 21) bumps the counter BEFORE it
+  // reads the record:
+  //   41F9 <buf> D0F9 <ctr> | 0679 000C <ctr> | 43EE 0002 ...
+  //     ^at+0        ^at+6       ^at+$C          ^at+$14
+  // The `addi.w #$C,<ctr>.l` is EIGHT bytes the $23D762 family puts at the END
+  // instead.  The order is invisible to a port (`enqueueRequest` reads the
+  // counter and then adds), but the OPCODE AT +$C is not, and reading it as the
+  // convention word is how a bucket-21 request became a throw.  The `#$C` is
+  // checked too, because that constant IS `RECORD_BYTES` and a different one
+  // would mean a different record stride, not a different prologue.
+  if (op === 0x0679 && rom.u16(at + 14) === RECORD_BYTES
+      && rom.u32(at + 16) === counter) {
+    op = rom.u16(at + 20);
+  }
   if (op === 0x43ee) return { bucket: b.i, conv: 'record' };     // lea $2(A6),A1
   if (op === 0x2001) return { bucket: b.i, conv: 'register' };   // move.l D1,D0
   unreached(stub, `the sprite-emitter stub $${stub.toString(16).toUpperCase()} `

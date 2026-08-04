@@ -116,6 +116,121 @@ cartridge (`$23DECE` = bucket 0, register convention; `$23F896` = bucket 21,
 record convention), and both are entries 18 and — of the very table
 `$27829C` W30 already windows.
 
+## 4. WHAT WAS PORTED
+
+| file | what |
+|---|---|
+| `src/handlers.js` | the SEVEN handlers, the shared damage-first tail `$269B3E`/`$269E20`, `$2425B2` (new), and `$268018` factored out of `$267FC6` because W36 is the first caller to `jsr` it directly |
+| `src/movement.js` | `$2638A6` now RETURNS D2/D3 through an optional out-object — it is a defined return on all four of its exits, and `$275F30` reads D3 four instructions after the call |
+| `src/spritequeue.js` | a **FIFTH** sprite-emitter stub shape (§4.2) |
+| `tools/export-tables.py` | seven new ROM windows, and the ENEMY SPEED LEVELS (§4.3) |
+
+### 4.1 THREE THINGS THE LISTING FORCED THAT A SWEEP WOULD HAVE MISSED
+
+1. **`$26A6F4..$26A736` IS DEAD CODE INSIDE `$26A5E4`.** Both arms of
+   `$26A6E2 tst.b ($1A,A6) / bne $26A738` and `$26A6EA … / bra.w $26A738` step
+   over 34 bytes containing a complete alternative state machine ending in
+   `jsr $242178 / bra $269E20`. **[M]** A branch search over `$269000..$26B000`
+   finds 0 references to any word of it, and an absolute-longword scan of the
+   whole of build B finds 0. It is transcribed **as a comment, not as code** —
+   the W34 §2.3 precedent — because writing it would give the port a path the
+   cartridge has not got.
+2. **`$27615C` RE-USES THREE REGISTERS FROM THE PREVIOUS ENQUEUE.** Type `$88`'s
+   fourth sprite request sets only `move.w ($4,A6),D1` — a WORD — so D1's HIGH
+   half is still the third request's `($2,A6)+$FF00`, and it sets neither D3 nor
+   D4. Rebuilding the registers per call would put a different sprite on screen.
+3. **`$269BAA move.b #$18,D4` after `$269BA6 move.w ($1C,A6),D4`.** The byte move
+   replaces only D4's low byte, so the request keeps `($1C,A6)`'s high byte.
+
+### 4.2 A FIFTH SPRITE-EMITTER STUB SHAPE — found the way W31 found the fourth
+
+`resolveEmitStub` reads a stub's (bucket, convention) out of the cartridge
+rather than carrying a typed map, and it knew four prologue shapes. Type `$31`
+enqueues through **`$23F896`**, which is a member of the family with the
+counter bump BEFORE the record read instead of after the writes:
+
+```
+  41F9 <buf> D0F9 <ctr> | 0679 000C <ctr> | 43EE 0002 ...
+  ^at+0        ^at+6      ^at+$C            ^at+$14
+```
+
+The order is invisible to a port; the OPCODE AT `+$C` is not, and reading it as
+the convention word turned a bucket-21 request into a throw. **[M] The port
+threw `$23F896 continues with $679` at lf8186 before this was fixed** — the
+loud-throw mechanism doing exactly its job on a shape nobody had read.
+
+### 4.3 THE ENEMY SPEED LEVELS — a hole the new handlers walked into
+
+**[M] The port threw `speed index 36 was not exported` on the first live type
+`$0B`**, and 36 is not an invention: it is byte `+$16` of the long-form
+sub-record prototype at **`$26AD0C`**, copied by `$2637A2` — code the port has
+had since W23. `tools/export-tables.py`'s `speed_index_set` covered the PLAYER's
+0..31, the player's spawn templates, the option pods and W31's one midboss
+immediate. **It never covered the ENEMIES**, and nothing noticed because every
+handler the port had either drove position from the movement stream (whose SPEED
+operands are all inside 0..31 — **[M]** 15 distinct values, max 24, over all 163
+stage-1 streams) or did not drive it at all.
+
+The fix is an ENUMERATION, not a widening to stop a throw. `enemy_speed_indices`
+reads three things out of the ROM:
+
+- **the sub-record prototypes** — each stage-1 type's init body's
+  `lea <proto>(pc),A0 / nop / jsr $2637A2`, decoded through BOTH of the forms
+  `src/enemyproto.js` documents. **[M] {0, 4, 8, 16, 20, 29, 36}**, and every
+  prototype address it derives matches the one W23 wrote in that type's window
+  comment — 30 of 30.
+- **the movement streams' `>= $C0` SPEED operands** — **[M] {1..6, 8, 10, 12,
+  14, 16, 18, 20, 22, 24}**.
+- **the RAMPS.** Three handlers step `($1A,A6)` arithmetically, at six sites,
+  each between 0 and a constant it compares against (`$26A40C cmpi.b #$1C`,
+  `$26A98A cmpi.b #$20`, `$26AED6 cmpi.b #$1C`), so every integer up to the
+  largest of those and the prototypes is reachable.
+
+**61 → 65 exported levels** (+33 +34 +35 +36), `player.tables.json`
+446,936 → 450,531 B. Not 256: the whole table is 133 KiB of quadrants and the
+owner's boot constraint is binding. §8 records the one ramp this bound does not
+close.
+
+## 5. THE MEASUREMENT, AND ITS CONTROL
+
+`tools/w34damagegate.mjs` (W34's, unchanged), `fly-around`'s lf2000 seed, the
+same INTERVENTION W34 named and for the same reason: the recorded stick plus the
+owner's DOWN/left-right script, a single-frame Button-1 tap every 4 logic
+frames, `--no-pods`, and a free run past the end of the 2,200-frame trace.
+`docs/knowledge/09`: valid for COVERAGE, invalid for characterising play.
+Nothing here is compared against MAME.
+
+**THE CONTROL IS THIS TREE WITH THE SEVEN MAP ENTRIES REMOVED** — not a
+different tree, not a citation of W34 — applied byte-exactly in Python with a
+single-occurrence anchor, and `src/handlers.js` sha256 `fcdd4590337bb35a`
+verified identical before and after.
+
+| | CONTROL (seven unregistered) | AFTER |
+|---|---|---|
+| frames | 2,937 (lf2001..lf4937) | **6,185** (lf2001..lf8185) |
+| MAX CLK `$8130CE` | 282 | **487** |
+| BLOCKED by | `$27733E` at lf4938 | **`$292902` at lf8186 — THE BOSS** |
+| kills reaching `$28615E` | 191 | **363** |
+| kill values | `$1`x22 `$8`x92 `$10`x72 `$26`x3 `$83`x2 | + **`$34`x6** (type `$89`) and **`$115`x2** (type `$88`) |
+| P1 pending `$81B4C0` | `$00168517` | `$00627145` packed BCD |
+| unported stage-1 handlers dispatched | 8 | **1** |
+
+The control reproduces W34 §4.2's number exactly — `BLOCKED at lf4938 by
+$27733E` — from a different tree two waves later.
+
+**AND THE RUN NOW STOPS EXACTLY WHERE THE SCRIPT SAYS IT SHOULD.** `$292902`'s
+first record is at clk **488**; the run reaches **487** and throws on the frame
+the boss spawns. W33 §3.1 read the BOARD's own `w22-spawn-stage1.tsv` and
+recorded *"type `$0E` (THE BOSS) spawns lf8186 clk `$01E8`"* — **the port blocks
+at lf8186.** Same logic frame, from two instruments that share no code.
+
+**A NO-FIRE CONTROL SEPARATES THE TWO CLAIMS.** With the identical script and the
+fire button never pressed: 0 hits, 0 kills, ledger `$00000000` — and still
+**clk 487, blocked at lf8186 by `$292902`**. So reaching the boss is what
+PORTING bought; the 363 kills and the ledger are what FIRING bought. Neither
+number is carrying the other.
+
+
 ## LOG (appended as findings arrive)
 
 - opened.

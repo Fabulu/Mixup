@@ -522,6 +522,60 @@ ENEMY_STAT_TABLES = [
                        "$273D50/$273D78 by the two $281484 fires"),
     (0x2763D0, 0x0050, "W23: type $88's sub-record sprite table $2763D8 "
                        "(indexed by (sub +$28))"),
+    # ===================== W36: the seven remaining stage-1 handlers ========
+    # $269BB6: the damage-first family's FOUR-entry animation table, read at
+    # $269B64 `move.l ($269BB6,PC,D2.w),D2` with D2 = ($20,A5), a byte offset
+    # the same block cycles 0/4/8/$C (`addq.w #$4` + `andi.w #$F`).  PINNED
+    # FROM BOTH ENDS: $269BB4 is the `nop` after `$269BAE jmp $23DF58`, and
+    # $269BC6 is type $05's init stub (`3B7C 0000 0004 / 4E75`), i.e. code.
+    (0x269BB6, 0x0010, "W36: the damage-first family's 4-entry draw table "
+                       "$269BB6 ($269B64, ($20,A5) cycling 0/4/8/$C)"),
+    # $269F48: the family's 32-entry longword MUZZLE table, read at $269DEC
+    # ($05), $26A762 ($08), $26A922 ($09), $26ADEC and $26AEB0 ($0B) with the
+    # index `((D2 + 1) & $3E) * 2`, i.e. byte offsets 0..$7C.  PINNED FROM BOTH
+    # ENDS: entries 0..31 are a clean circle ($0380,$0000 / $0340,$00C0 /
+    # $FC00,$0000 / $0340,$FF40 at 0/1/16/31) and $269FC8 is `3B7C 0000 0004 /
+    # 4E75` -- the next type's init stub, code.
+    (0x269F48, 0x0080, "W36: the damage-first family's 32-entry muzzle table "
+                       "$269F48, read by the $2814AC fires"),
+    # $26990E: type $31's ANIMATION table, 8-byte entries of which the handler
+    # reads six (`move.l (A0)+,($A,A6)` then `move.w (A0)+,($18,A5)`), stepped
+    # by `addq.w #$8,($1A,A5)`.  PINNED FROM BOTH ENDS BY THE HANDLER ITSELF:
+    # $2698B2 frees the record when the cursor reaches $230, and
+    # $26990E + $230 == $269B3E, which is the damage-first family's shared draw
+    # block -- instructions.  So the table is exactly 70 entries.
+    (0x26990E, 0x0230, "W36: type $31's 70-entry animation table $26990E "
+                       "(cursor ($1A,A5), wrap $230 == $269B3E, code)"),
+    # $2731FA: type $88's 32-entry longword fan-direction table, read at
+    # $2761AC/$276200 with `(D1 & $3E) * 2` -> 0..$7C.  PINNED FROM BOTH ENDS:
+    # entries 0..31 are a clean circle ($0400,$0000 / $FD00,$0000 at 0/16) and
+    # $2731FA + $80 == $27327A, which is type $85's muzzle table -- the table
+    # W30 already windows separately, so the two abut exactly.
+    (0x2731FA, 0x0080, "W36: type $88's 32-entry fan-direction table $2731FA "
+                       "($27619A lea, read by both turrets)"),
+    # $2732FA: type $89's fan table, and its entries are PAIRS.  $27744C and
+    # $27744E double the masked heading TWICE, so the stride is 8 bytes, and
+    # $277452/$277462 read `(A4)+` twice -- byte offsets 0..$F8 plus 8.  The
+    # extent is INDEX-DERIVED ($100 bytes, 32 headings x 2 longwords) and NOT
+    # pinned by code at the far end: $2733FA is more vector data.  What pins it
+    # is the grid the neighbours sit on -- $2731FA+$80 = $27327A, +$80 =
+    # $2732FA, +$100 = $2733FA -- and that is stated rather than dressed up.
+    (0x2732FA, 0x0100, "W36: type $89's 32-heading PAIRED fan table $2732FA "
+                       "($27743C lea, two move.l (A4)+ per fire)"),
+    # $2970D8: type $24's 16-entry longword sprite table, read at $2970BA
+    # `adda.w ($18,A5),A0` with ($18,A5) masked `andi.w #$3F` -> 0..$3C.
+    # PINNED FROM BOTH ENDS: $2970D4 is the last instruction of the handler and
+    # $297118 is `3B7C 000B 0004 / 4E75`, the next init stub -- code.
+    (0x2970D8, 0x0040, "W36: type $24's 16-entry sprite table $2970D8 "
+                       "(cursor ($18,A5) & $3F)"),
+    # $23F896: A FIFTH SPRITE-EMITTER STUB SHAPE, read as data by
+    # `resolveEmitStub` exactly as the $23D762 family is.  It sits $1826 bytes
+    # past the end of W30/W31's $23D760 window, so it needs its own, and it
+    # opens `41F9 <buf> D0F9 <ctr>` like the others but puts the counter bump
+    # BEFORE `lea $2(A6),A1` instead of after the writes.  The window covers
+    # the whole routine $23F896..$23F8D0 (`rts`).
+    (0x23F890, 0x0050, "W36: the sprite-emitter stub $23F896 (bucket 21, "
+                       "type $31's three enqueues), read as data"),
     # $2687FE: type $11's loop-indexed palette table (read with `lea $2687FE;
     # adda $813094`), sitting just BELOW W20's $268800 rec-proto window.
     (0x2687F0, 0x0020, "W23: type $11's palette table $2687FE (indexed by "
@@ -677,6 +731,113 @@ PLAYER_SPEED_LEVELS = 32         # the player's own range: floor 12, base 22, 28
 # `move.w #$70,D0` at $26B3B2 and $26B3F8, the midboss's two arm-vector reads.
 HANDLER_SPEED_INDICES = {0x70}
 
+# ======================= W36: THE ENEMY SPEED LEVELS ========================
+# The set above covers the PLAYER's range and the templates the player's own
+# spawner copies.  It never covered the ENEMIES, and until W36 nothing noticed,
+# because every enemy handler the port had either drove position through the
+# movement stream (whose SPEED operands all land inside 0..31) or did not drive
+# it at all.
+#
+# W36's `$26AD28` (type $0B) does BOTH of the things that break that: its
+# initial `($1A,A6)` comes from the sub-record PROTOTYPE `$2637A2` copies, not
+# from the stream, and its handler then RAMPS that byte.  MEASURED: the port
+# threw `speed index 36 was not exported` on the first live type $0B, and 36 is
+# byte +$16 of the long-form prototype at `$26AD0C` -- the cartridge's own
+# number, arrived at through code the port has had since W23.
+#
+# So the set is enumerated in three parts, all from the ROM:
+STAGE1_SCRIPT = 0x230C6C          # 8-byte records, $FFFF terminator
+TYPE_TAB_LO, TYPE_TAB_HI = 0x267824, 0x27E412
+MOVE_AUX, MOVE_RES, MOVE_RES_END, MOVE_N = 0x23170C, 0x231852, 0x2325D0, 163
+PROTO_COPY = 0x2637A2             # the loader whose two forms src/enemyproto.js
+PROTO_LONG_SPEED = 0x16           # ...documents: 28 table bytes -> $20 record
+PROTO_SHORT_SPEED = 0x0E          # ...16 table bytes -> $20 record
+# The RAMP CEILINGS, by ROM site.  These three handlers are the only stage-1
+# code that steps `($1A,A6)` arithmetically, and each does it between 0 and a
+# constant it compares against:
+#   $26A69C subq.b #$1  / $26A420 addq.b #$1 until `$26A40C cmpi.b #$1C`  ($08)
+#   $26A958 subq.b #$1  / $26A99E addq.b #$2 until `$26A98A cmpi.b #$20`  ($09)
+#   $26AE1C subq.b #$1  / $26AEEA addq.b #$1 until `$26AED6 cmpi.b #$1C`  ($0B)
+# so every integer from 0 up to the larger of (that type's prototype speed, its
+# ceiling) is reachable, and the closure below is `range(0, max + 1)`.
+RAMP_CEILINGS = {0x1C, 0x20}
+
+
+def stage1_types(d: bytes) -> set[int]:
+    """The types stage 1's script names, plus the three an ENEMY spawns."""
+    out = {0x1C, 0x1E, 0x23}
+    a = STAGE1_SCRIPT
+    while u16(d, a) != 0xFFFF:
+        out.add(u16(d, a + 4) >> 8)
+        a += 8
+    return out
+
+
+def _type_entry(t: int) -> int:
+    return (TYPE_TAB_LO if t < 0x80 else TYPE_TAB_HI - 0x80 * 8) + t * 8
+
+
+def proto_speed_indices(d: bytes) -> set[int]:
+    """Every sub-record prototype speed byte a stage-1 type spawns with.
+
+    Finds each init body's `lea <proto>(pc),A0 / nop / jsr $2637A2` and decodes
+    the prototype the way src/enemyproto.js does -- the word-0 SIGN picks the
+    form, and both forms produce $20 record bytes from 28 or 16 table bytes.
+    The sub-record count is the init STUB's own `move.w #$N,($4,A5)`, i.e. N+1
+    records (the `dbra`)."""
+    out: set[int] = set()
+    for t in sorted(stage1_types(d)):
+        init = u32(d, _type_entry(t))
+        n = u16(d, init + 2)
+        body = init + 8
+        for off in range(0, 0x200, 2):
+            a = body + off
+            if (u16(d, a) == 0x41FA and u16(d, a + 4) == 0x4E71
+                    and u16(d, a + 6) == 0x4EB9 and u32(d, a + 8) == PROTO_COPY):
+                disp = struct.unpack_from(">h", d, a + 2)[0]
+                cur = (a + 2 + disp) & 0xFFFFFF       # lea's PC is the operand word
+                for _ in range(n + 1):
+                    if u16(d, cur) & 0x8000:          # $2637AC, the LONG form
+                        out.add(d[cur + PROTO_LONG_SPEED])
+                        cur += 28
+                    else:                             # $2637C2, the SHORT form
+                        out.add(d[cur + PROTO_SHORT_SPEED])
+                        cur += 16
+    return out
+
+
+def stream_speed_indices(d: bytes) -> set[int]:
+    """Every SPEED operand in stage 1's 163 movement streams (`>= $C0` -> the
+    next byte lands in `($1A,A6)`, `$26392C`).  The opcode lengths are the ones
+    src/movement.js's twelve escapes consume."""
+    aux = [u16(d, MOVE_AUX + 2 * i) for i in range(MOVE_N)]
+    starts = [MOVE_RES + a for a in aux]
+    lens = [(starts[i + 1] - starts[i]) if i + 1 < MOVE_N
+            else MOVE_RES_END - starts[i] for i in range(MOVE_N)]
+    esc_len = {0: 2, 1: 2, 2: 2, 3: 2, 4: 2, 5: 6, 6: 6, 7: 2, 8: 2, 9: 2,
+               10: 1, 11: 1}
+    out: set[int] = set()
+    for st, ln in zip(starts, lens):
+        j = 4                                          # the 4-byte X,Y header
+        while j < ln:
+            b = d[st + j]
+            if b < 0x80:
+                j += 2                                 # HEAD + its param
+            elif b < 0xC0:
+                j += esc_len[b & 0x0F]
+            else:
+                out.add(d[st + j + 1])                 # $26392C move.b (A0)+,($1a,A6)
+                j += 2
+    return out
+
+
+def enemy_speed_indices(d: bytes) -> set[int]:
+    """The closure: the prototypes, the streams, and the ramps between them."""
+    protos = proto_speed_indices(d)
+    streams = stream_speed_indices(d)
+    top = max(protos | streams | RAMP_CEILINGS)
+    return protos | streams | set(range(0, top + 1))
+
 
 def u16(d: bytes, a: int) -> int:
     return struct.unpack_from(">H", d, a)[0]
@@ -744,6 +905,9 @@ def speed_index_set(d: bytes) -> list[int]:
     # the pods' 224 -- MEASURED: the port threw `speed index 112 was not
     # exported` on the first midboss frame before this line existed.
     s.update(HANDLER_SPEED_INDICES)
+    # W36: and the ENEMIES' own levels -- the sub-record prototypes, the
+    # movement streams' SPEED opcodes, and the arithmetic ramps between them.
+    s.update(enemy_speed_indices(d))
     return sorted(s)
 
 

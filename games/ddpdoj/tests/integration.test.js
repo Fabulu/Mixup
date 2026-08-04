@@ -226,10 +226,13 @@ test('the handler adapter covers every address in handlerMap(), and only those',
   { skip: SKIP }, () => {
     const m = enemyHandlerMap(ROM);
     assert.deepEqual([...m.keys()].sort(), [...HANDLER_ADDRESSES].sort());
-    assert.equal(m.size, 11, 'W25 ported six of stage 1\'s nineteen handlers; '
+    assert.equal(m.size, 18, 'W25 ported six of stage 1\'s nineteen handlers; '
       + 'W30 added $275914, $2739C0 and $276702 -- the three that BLOCKED the '
-      + 'fly-around gate -- W31 added $26B6FA, the MIDBOSS, the fourth, and '
-      + 'W33 added $272AAC, the scripted carrier: 11 of 19');
+      + 'fly-around gate -- W31 added $26B6FA, the MIDBOSS, the fourth, W33 '
+      + 'added $272AAC, the scripted carrier, and W36 added the seven remaining '
+      + 'NON-BOSS handlers ($26A5E4 $26A860 $26AD28 $27733E $275F30 $2697F6 '
+      + '$29700C): 18 of 19. The nineteenth is the stage-1 BOSS $292902, ten '
+      + 'instructions of dispatch into $294AD8, and it still throws');
   });
 
 test('an enemy whose ($4C,A5) handler is unported throws BY THAT ADDRESS',
