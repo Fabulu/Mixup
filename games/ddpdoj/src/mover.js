@@ -1174,4 +1174,107 @@ CONTINUATIONS.set(0x282d76, (ctx, base) => {
   advance40(ctx, base);                                 // $282DE4 lea $40(A6)
 });
 
+// ================================================ W27 FAMILY E (finished) + F
+//
+// Kind 24 ($282EBC) and kind 23 ($282E00) are two halves of one template, and
+// the recon's family split ("E = homing tracker", "F = the decelerator") cuts
+// through the middle of it.  What the listing shows:
+//
+//   * kind 24's INITIALISER is byte-identical to kind 22's ($282D42) apart from
+//     the continuation address -- same descriptor $1C1E38, same $FC00FE00 /
+//     $410, same save-velocity-to-+$30 / `clr.l $1E`.
+//   * kind 24's CONTINUATION has NO TRACK ARM.  Kind 22's `beq` goes to the
+//     track code at $282DA4; kind 24's `beq $282F46` goes STRAIGHT to the
+//     release.  So the attach is one frame long: the spawn frame stores a zero
+//     velocity, the next plain frame moves the bullet nowhere, and the
+//     continuation immediately latches +$34 bit 3 and restores +$1E.  It is a
+//     ONE-FRAME LAUNCH DELAY built out of the tracker's machinery, not a
+//     tracker.  There is no target pointer read anywhere in the body.
+//   * kinds 23 and 24 then share a DECELERATION block, instruction for
+//     instruction ($282E64 == $282F16), which is family F's whole content.
+//
+// THE DEAD TAILS.  Both bodies carry template vestiges nothing branches to:
+// kind 23 has a release stub at $282E94 and a free-slot stub at $282EAA; kind
+// 24 has a free-slot stub at $282F5C.  Every branch in the reachable code was
+// checked ($282E4A: bne $282E64, beq/bmi/bcc; $282EF0: beq $282F46, bne
+// $282F16, bcc $282F3C) and none of them lands there.  They are transcribed as
+// comments only -- porting an unreachable arm would invent behaviour.
+//
+// Kind 23's initialiser is kind 11's shape, dead sprite write and all, and it
+// writes the SAME descriptor $1C0E0C over the SAME $24-step ring to $1C0E9C.
+// The difference between kinds 11 and 23 is entirely the decel block.
+
+/** `$282E64` / `$282F16` -- the shared DECELERATION block of kinds 23 and 24.
+ *
+ *  +$36 is a DURATION word and it has three states, which is easy to miss:
+ *    `tst.w $36 / beq  -> skip the WHOLE block` (zero: never decelerate)
+ *    `           bmi   -> skip only the decrement` (negative: decelerate forever)
+ *    else `subq.w #1,$36`                          (positive: count it down)
+ *  Then a byte countdown at +$2C with reload +$2D, and on UNDERFLOW
+ *  `move.w $2e(A6),D0 / sub.w D0,$1e(A6)` -- velA (+$1E) loses the +$2E word.
+ *  Position-relevant: the plain path integrates +$1E. */
+function decelBlock(ctx, base) {
+  const { ram } = ctx;
+  const dur = ram.u16(base + 0x36);                    // $282E64 tst.w $36(A6)
+  if (dur === 0) return;                               // $282E68 beq -> skip all
+  if ((dur & 0x8000) === 0) {                          // $282E6C bmi -> skip the dec
+    ram.setU16(base + 0x36, u16(dur - 1));             // $282E70 subq.w #1,$36
+  }
+  if (!byteUnderflow(ram, base, 0x2c, 0x2d)) return;   // $282E74/$282E78 bcc
+  const d0 = ram.u16(base + 0x2e);                     // $282E82 move.w $2e(A6),D0
+  ram.setU16(base + REC.velA, u16(ram.u16(base + REC.velA) - d0));  // $282E86 sub.w
+}
+
+// ----- kind 23 ($282E00 init / $282E4A cont) -- the DECELERATOR
+INIT_BODIES.set(0x282e00, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                          // $282E0E bsr $2820CC
+  clearDispatch(ram, base);                            // $282E12 andi.b #$fe,(A6)
+  ram.setU8(base + 0x1d, 0x1a);                        // $282E16
+  ram.setU32(base + 0x06, 0xfe00fe00);                 // $282E1C  (dead: overwritten)
+  ram.setU16(base + 0x0e, 0x0210);                     // $282E24  (dead: overwritten)
+  ram.setU32(base + 0x0a, 0x1c0e0c);                   // $282E2A descriptor
+  ram.setU32(base + 0x06, 0xfc00fe00);                 // $282E32 renderOffs (final)
+  ram.setU16(base + 0x0e, 0x0410);                     // $282E3A graphic (final)
+  ram.setU32(base + REC.continuation, 0x282e4a);       // $282E40
+});
+CONTINUATIONS.set(0x282e4a, (ctx, base) => {
+  // $282E4A the ring steps UNCONDITIONALLY -- no bit-11 flip-flop gate here.
+  animateRenderOffsWrap(ctx, base, 0x1c0e0c, 0x24, 0x1c0e9c);   // $282E4A/$282E52
+  decelBlock(ctx, base);                               // $282E64..$282E88
+  advance40(ctx, base);                                // $282E8A lea $40(A6)
+  // ($282E94 release stub and $282EAA free-slot stub are UNREACHABLE from here.)
+});
+
+// ----- kind 24 ($282EBC init / $282EF0 cont) -- one-frame launch delay + decel
+INIT_BODIES.set(0x282ebc, (ctx, base) => {
+  const { ram } = ctx;
+  clearDispatch(ram, base);                            // $282EBC andi.b #$fe,(A6)
+  ram.setU32(base + 0x0a, 0x1c1e38);                   // $282EC0 descriptor
+  ram.setU32(base + 0x06, 0xfc00fe00);                 // $282EC8 renderOffs
+  ram.setU16(base + 0x0e, 0x0410);                     // $282ED0 graphic
+  ram.setU8(base + 0x1d, 0x1a);                        // $282ED6
+  ram.setU32(base + 0x30, ram.u32(base + REC.velA));   // $282EDC save velocity
+  ram.setU32(base + REC.velA, 0);                      // $282EE2 clr.l $1e(A6)
+  ram.setU32(base + REC.continuation, 0x282ef0);       // $282EE6
+});
+CONTINUATIONS.set(0x282ef0, (ctx, base) => {
+  const { ram } = ctx;
+  // $282EF2 btst #3,$34(A6) / $282EF6 beq $282F46 -- CLEAR means "not launched
+  // yet", and unlike kind 22 that arm is the RELEASE, not a track.
+  if ((ram.u8(base + 0x34) & 0x08) === 0) {
+    ram.setU8(base + 0x34, ram.u8(base + 0x34) | 0x08);   // $282F46 bset #3,$34
+    ram.setU32(base + REC.velA, ram.u32(base + 0x30));    // $282F4C restore velocity
+    advance40(ctx, base);                                 // $282F52 lea $40(A6)
+    return;                                               // NOTE: no decel this frame
+  }
+  // $282EF8 bchg #3,(A6) / bne $282F16 -- the bit-11 flip-flop halves the ring rate.
+  if (ram.bchg8(base, 3) === 0) {
+    animateRenderOffsWrap(ctx, base, 0x1c1ec8, 0x24, 0x1c2108);   // $282EFC/$282F04
+  }
+  decelBlock(ctx, base);                               // $282F16..$282F3A
+  advance40(ctx, base);                                // $282F3C lea $40(A6)
+  // ($282F5C free-slot stub is UNREACHABLE from here -- no branch targets it.)
+});
+
 export { INIT_BODIES, CONTINUATIONS };

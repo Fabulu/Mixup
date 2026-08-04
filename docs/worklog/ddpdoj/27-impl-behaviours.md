@@ -418,3 +418,78 @@ test now asserts no `$27F8F8` note appears; the mutation reddens `not ok 211`.
 
 **Inventory: 20 → 21 initialisers, 20 continuations. 24 of 39 kind indices
 covered; 16 distinct bodies remain.**
+
+### 2026-08-04 — FAMILY E FINISHED (kind 24) + FAMILY F (kind 23)
+
+The recon's family split cuts through the middle of one template, and porting
+the two bodies together is what made that visible.
+
+**KIND 24 IS NOT A TRACKER.** Its INITIALISER (`$282EBC`) is byte-identical to
+kind 22's (`$282D42`) — same descriptor `$1C1E38`, same `$FC00FE00`/`$410`, same
+`move.l $1e,$30` / `clr.l $1e`. Its CONTINUATION is not: kind 22's
+`btst #3,$34 / beq` goes to the TRACK code at `$282DA4`; kind 24's
+`beq $282F46` goes **straight to the release**. There is no target-pointer read
+anywhere in the body. So the attach lasts exactly one frame — the spawn frame
+stores a zero velocity, the next plain frame moves the bullet nowhere, and the
+continuation latches +$34 bit 3 and restores +$1E. It is a **one-frame launch
+delay built out of the tracker's machinery**, the same trick kinds 19 and 22
+use for different durations.
+
+**AND THE SAME BYTES MEAN DIFFERENT THINGS IN THE TWO BODIES.** In kind 22 +$2C
+is the TARGET POINTER longword. In kinds 23/24 those bytes are a countdown
+(+$2C), its reload (+$2D) and a deceleration step (+$2E — the low half of what
+kind 22 reads as a pointer). Nothing in the record layout says which; only the
+body does. A shared "field layout" table for the pool would be actively wrong
+here.
+
+**THE SHARED DECEL BLOCK** (`$282E64` == `$282F16`, instruction for
+instruction) is family F's entire content, and its +$36 duration word has
+**three** states, not two:
+
+    tst.w $36 / beq  -> skip the WHOLE block (no decel AND no +$2C tick)
+                bmi  -> skip only the decrement (decelerate forever)
+    else  subq.w #1,$36                        (decelerate and count down)
+
+Then `subq.b #1,$2C / bcc`, reload from +$2D on underflow, and
+`move.w $2e(A6),D0 / sub.w D0,$1e(A6)` — velA loses the +$2E word. Position-
+relevant: the plain path integrates +$1E. Reading the `beq` as "skip the
+subtraction" instead of "skip the block" would tick the countdown on frames the
+ROM does not, so every later underflow lands on the wrong frame.
+
+Kind 23's own initialiser (`$282E00`) is kind 11's shape, dead sprite write and
+all, over the SAME descriptor `$1C0E0C` and the SAME `$24`-step ring to
+`$1C0E9C`. The whole difference between kinds 11 and 23 is the decel block.
+Kind 23's ring steps UNCONDITIONALLY; kind 24's is behind the bit-11 flip-flop.
+
+### THREE DEAD TAILS, TRANSCRIBED AS COMMENTS AND NOT AS CODE
+
+Both bodies carry template vestiges that **nothing branches to**: kind 23 has a
+release stub at `$282E94` and a free-slot stub at `$282EAA`; kind 24 has a
+free-slot stub at `$282F5C`. Every branch in the reachable code was enumerated
+(`$282E4A`: bne `$282E64`, beq/bmi/bcc; `$282EF0`: beq `$282F46`, bne `$282F16`,
+bcc `$282F3C`) and none lands there. This is the *opposite* of the fall-through
+trap and needs the same discipline: the sweep prints them right after the body,
+so porting them "because they are there" would invent a kill and a second
+release the cartridge cannot reach. **Control flow decides, in both directions.**
+
+### MUTATION TABLE (families E-finish + F)
+
+| mutation | result |
+|---|---|
+| +$36 = 0 skips only the subtraction, not the block | RED — `not ok 212`, alone |
+| +$36 negative still decrements | RED — `not ok 212`, alone |
+| the decel subtracts from velB instead of velA | RED — `not ok 212` + `214` |
+| kind 24's release arm falls through into the decel block | RED — `not ok 214`, alone |
+| kind 24 tracks its +$2C target like kind 22 | RED — `not ok 213` + `214` |
+
+No survivors. `src/mover.js` restored and hash-verified byte-identical
+(`f9893f046bb3f02a`); **395 pass / 0 fail / 0 skipped**.
+
+One test defect caught in the writing: the kind 23 decel test first used
+`dir: $40`, which is purely horizontal — velA is **0** there, so subtracting
+from it is invisible and the test could not have failed for the reason it
+existed. Moved to `dir: $20`. Same shape as the `dir: $10` window defect
+recorded above: a test whose inputs are all convenient is not a test.
+
+**Inventory: 21 → 23 initialisers, 22 continuations. 26 of 39 kind indices
+covered; 14 distinct bodies remain (families G–L).**

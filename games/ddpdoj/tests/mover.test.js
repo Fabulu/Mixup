@@ -510,26 +510,130 @@ test('kind 22 DIES WITH ITS TARGET (both target tests kill the bullet)',
     }
   });
 
-test('the ported-body inventory is exactly 21 initialisers + 20 continuations', () => {
+// ============================================ W27 FAMILY E (finished) + F ====
+//
+// Kind 24 ($282EBC) shares kind 22's initialiser byte for byte but its
+// continuation has NO TRACK ARM -- the `beq` that sends kind 22 to $282DA4
+// sends kind 24 straight to the release at $282F46.  Kinds 23 and 24 then share
+// a decel block ($282E64 == $282F16) whose +$36 duration word has THREE states.
+//
+// NOTE +$2C IS A DIFFERENT FIELD IN THE TWO BODIES.  In kind 22 it is the
+// TARGET POINTER longword; in kinds 23/24 the same bytes are a countdown (+$2C),
+// its reload (+$2D) and the deceleration step (+$2E, the low half of what kind
+// 22 reads as a pointer).  Nothing in the record says which; only the body does.
+
+test('kind 23 (the DECELERATOR) subtracts +$2E from velA on the +$2C underflow, '
+  + 'and the +$36 duration word has three states ($282E64)',
+  { skip: !HAVE_TABLES }, () => {
+    for (const [label, dur, expectDecel, expectDur] of [
+      ['+$36 = 0: beq skips the WHOLE block', 0x0000, false, 0x0000],
+      ['+$36 positive: decelerate and count down', 0x0005, true, 0x0004],
+      ['+$36 negative: bmi -> decelerate forever, no count down', 0xffff, true, 0xffff],
+    ]) {
+      const ram = new Ram(null);
+      ram.setU16(0x81b41a, 1);
+      ram.setU16(0x813176, 0);
+      // dir $20 (not $40): at $40 the velocity is purely horizontal and velA is
+      // 0, so a subtraction from it would be invisible. Diagonal makes it visible.
+      const base = seedBullet(ram, 0, { type: 0x8100 | 23, speed: 0x14, dir: 0x20 });
+      ram.setU16(base + 0x36, dur);
+      ram.setU8(base + 0x2c, 0x00);                   // counter 0 -> underflows at once
+      ram.setU8(base + 0x2d, 0x07);                   // the reload
+      ram.setU16(base + 0x2e, 0x0030);                // the deceleration step
+      const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+      runMover(ctx);                                  // F1: initialiser $282E00
+      const v1 = ram.u16(base + REC.velA);
+      assert.notEqual(v1, 0, 'F1: the dispatch path stored a real velocity at +$1E');
+      runMover(ctx);                                  // F2: continuation $282E4A
+      assert.equal(ram.u16(base + 0x36), expectDur, `${label}: +$36`);
+      if (expectDecel) {
+        assert.equal(ram.u16(base + REC.velA), u16(v1 - 0x0030),
+          `${label}: velA -= the +$2E word`);
+        assert.equal(ram.u8(base + 0x2c), 0x07, `${label}: +$2C reloaded from +$2D`);
+      } else {
+        assert.equal(ram.u16(base + REC.velA), v1, `${label}: velA untouched`);
+        assert.equal(ram.u8(base + 0x2c), 0x00,
+          `${label}: the beq skips the +$2C tick as well as the subtraction`);
+      }
+      // the ring animates UNCONDITIONALLY here -- no bit-11 flip-flop gate.
+      assert.equal(ram.u32(base + 0x0a), (0x1c0e0c + 0x24) >>> 0,
+        `${label}: the descriptor ring stepped on this frame`);
+    }
+  });
+
+test('kind 24 has NO track arm: it RELEASES on its first continuation frame and '
+  + 'never reads a target pointer ($282EF6 beq -> $282F46)',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 24, speed: 0x14, dir: 0x40 });
+    // Seed exactly what kind 22 would ride: a live target and a +$28 offset. If
+    // kind 24 were ported as kind 22's continuation the position would become
+    // target+offset; the ROM never looks at either field here.
+    seedTarget(ram, { pos: 0x11112222 });
+    ram.setU32(base + 0x2c, TGT);
+    ram.setU32(base + 0x28, 0x00010001);
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: initialiser $282EBC
+    const saved = ram.u32(base + 0x30);
+    assert.notEqual(saved, 0, 'F1: velocity parked in +$30');
+    assert.equal(ram.u32(base + REC.velA), 0, 'F1: +$1E cleared -> one stationary frame');
+    runMover(ctx);                                    // F2: the release
+    assert.notEqual(ram.u32(base + REC.posA), (0x11112222 + 0x00010001) >>> 0,
+      'F2: kind 24 must NOT ride the target position -- that is kind 22');
+    assert.equal(ram.u8(base + 0x34) & 0x08, 0x08, 'F2: +$34 bit 3 latched');
+    assert.equal(ram.u32(base + REC.velA), saved, 'F2: velocity restored from +$30');
+  });
+
+test('kind 24 returns from the release arm BEFORE the decel block, and decelerates '
+  + 'only from the frame after ($282F52 vs $282F3C)',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 24, speed: 0x14, dir: 0x40 });
+    ram.setU16(base + 0x36, 0x0005);
+    ram.setU8(base + 0x2c, 0x00);
+    ram.setU8(base + 0x2d, 0x07);
+    ram.setU16(base + 0x2e, 0x0030);
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: initialiser
+    const saved = ram.u32(base + 0x30);
+    runMover(ctx);                                    // F2: the release arm
+    assert.equal(ram.u16(base + 0x36), 0x0005,
+      'F2: the release arm advances at $282F52 -- the decel block is not reached');
+    assert.equal(ram.u8(base + 0x2c), 0x00, 'F2: +$2C not ticked on the release frame');
+    assert.equal(ram.u16(base + REC.velA), (saved >>> 16) & 0xffff,
+      'F2: velocity restored intact, not restored-then-decelerated');
+    runMover(ctx);                                    // F3: the animate+decel arm
+    assert.equal(ram.u16(base + 0x36), 0x0004, 'F3: +$36 counted down');
+    assert.equal(ram.u16(base + REC.velA), u16(((saved >>> 16) & 0xffff) - 0x0030),
+      'F3: velA -= the +$2E word');
+  });
+
+test('the ported-body inventory is exactly 23 initialisers + 22 continuations', () => {
   // A LEDGER test: it pins the exact set, so porting a body turns it RED until
   // the inventory here is updated deliberately.  That is the point -- the count
   // cannot drift upward without somebody writing down which addresses moved.
   //
   // W26 ported 8 bodies (kinds 3/4/5/6/7/12/13/19; kind 6 is the midboss's).
-  // W27 adds 11: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
-  // family C kinds 16/18, family D kind 17, family E kind 22.  Kind 10's
-  // $282840 is also the target for kinds 14 and 15, which alias it in the
-  // $282030 table.  So 15 distinct bodies now cover 17 of the 39 kind indices.
+  // W27 adds 15: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
+  // family C kinds 16/18, family D kind 17, family E kinds 22/24, family F
+  // kind 23.  Kind 10's $282840 is also the target for kinds 14 and 15, which
+  // alias it in the $282030 table.  So 23 distinct bodies now cover 26 of the
+  // 39 kind indices.
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
     [0x282104, 0x282162, 0x2821c2, 0x2823ec, 0x2824a8, 0x282564, 0x282620,
      0x2826dc, 0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962,
      0x2829bc, 0x282a1e, 0x282aae, 0x282b30, 0x282bee, 0x282c56,
-     0x282d42]);
+     0x282d42, 0x282e00, 0x282ebc]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
     [0x28213e, 0x28219e, 0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738,
      0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x2829fe,
-     0x282a66, 0x282af6, 0x282b64, 0x282c2a, 0x282d76, 0x283ce4]);
-  // 17 initialisers, 16 continuations. NOT equal, and that is correct: kinds 2
+     0x282a66, 0x282af6, 0x282b64, 0x282c2a, 0x282d76, 0x282e4a, 0x282ef0,
+     0x283ce4]);
+  // 23 initialisers, 22 continuations. NOT equal, and that is correct: kinds 2
   // and 21 both install $283CE4, so bodies MAY share a continuation.
   //
   // An earlier version of this test asserted `INIT_BODIES.size ===
