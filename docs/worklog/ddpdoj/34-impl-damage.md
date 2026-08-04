@@ -461,14 +461,38 @@ later waves to keep and W33 kept.
 
 **Unit tests: 492 → 511 pass, 0 fail, 0 SKIPPED.**
 
-**A SKIP APPEARED AND WAS CHASED, NOT TOLERATED** — for the fifth wave running:
-`movement.test.js`'s W24 stream inventory, its gitignored input
-`assets/w24-movement/stage1-streams.json` gone again. Regenerated with
-`python games/ddpdoj/tools/oracle/w24streams.py` **from the REPO ROOT**. This
-run it disappeared during `node tools/export-web.mjs`, which is a NEW data
-point: W32 grepped `games/ddpdoj/tools/` for a remover and found none, and
-`export-web.mjs` was in that grep's scope. I did not identify the mechanism
-either and am not repeating the inherited attribution as though I had.
+### 6.2 THE RECURRING SKIP — **FOUND, AFTER FIVE WAVES**
+
+`movement.test.js`'s W24 stream inventory has skipped in W29, W31, W32, W33 and
+twice in this wave, always with the same message: its gitignored input
+`assets/w24-movement/stage1-streams.json` is absent. W29 and W31 attributed it
+to "a concurrent `pgm.py check`"; W32 grepped `games/ddpdoj/tools/` for a
+remover, found none, and said so; W33 said the mechanism was still
+unidentified and refused to repeat the attribution.
+
+**It is `games/ddpdoj/tools/export-web.mjs` line 634:**
+
+```js
+fs.rmSync(OUT, { recursive: true, force: true });   // OUT = games/ddpdoj/assets
+```
+
+`w24streams.py` writes `games/ddpdoj/assets/w24-movement/`, and `pgm.py check`
+runs the exporter — so **every gate run deleted the dump, and the next unit-test
+run skipped.** MEASURED here rather than argued: the suite was 516/0/0, I ran
+`node tools/export-web.mjs`, and the directory was gone; the gate's own second
+run came back `# pass 515 # skipped 1` with `assets/w24-movement/` missing on
+disk immediately afterwards.
+
+**Fixed.** The exporter now removes exactly what it owns — `gfx/`, `spr/` and
+the top-level FILES — and leaves any other subdirectory alone. Verified: the
+dump survives a full `export-web.mjs`, `tools/webgate.mjs` still fetches all 14
+files and renders a frame 98.8 % non-black, and the suite is **516 pass, 0 fail,
+0 SKIPPED**.
+
+Worth stating plainly for the next reader: W32's grep DID cover this file and
+this pattern (`rmSync`, under `games/ddpdoj/tools/`). What it did not do was
+resolve `OUT`. A grep that finds a remover and does not follow its argument is
+the same class of miss as a note whose address nobody checks.
 
 ## LOG (appended as findings arrive)
 
@@ -519,7 +543,10 @@ either and am not repeating the inherited attribution as though I had.
 VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED
 ```
 
-Unchanged from W32's and W33's 49/0/0. **Nothing was disabled, skipped,
+**RUN TWICE, TO COMPLETION, and the second run was on the FINAL tree** — the
+first had already started when the midboss-arm A6 fix landed, and a gate whose
+MAME stages ran against a different tree from its unit-test stage is not a
+result. Both runs: 49/0/0. Unchanged from W32's and W33's 49/0/0. **Nothing was disabled, skipped,
 narrowed or loosened**; no compared column set, window or frame count moved, and
 no stage was added. The stages this wave could plausibly have broken all pass:
 

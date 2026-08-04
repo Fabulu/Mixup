@@ -631,7 +631,34 @@ if (rewritten !== records) {
 // state and compresses 61:1, which is the difference between a 4.0 MiB fetch
 // and a 66 KiB one.
 
-fs.rmSync(OUT, { recursive: true, force: true });
+// ===========================================================================
+// W34.  THIS `rmSync` USED TO TAKE THE WHOLE OF `assets/`, AND THAT IS THE
+// MECHANISM FOUR WAVES COULD NOT FIND.
+//
+// `movement.test.js`'s W24 stream inventory started SKIPPING in W29 and skipped
+// again in W31, W32, W33 and W34, every time with the same message: its
+// gitignored input `assets/w24-movement/stage1-streams.json` was absent.  W29
+// and W31 attributed it to "a concurrent `pgm.py check`"; W32 grepped
+// `games/ddpdoj/tools/` for a remover and reported finding none; W33 said the
+// mechanism was still unidentified.
+//
+// It is this line.  `OUT` is `games/ddpdoj/assets`, `w24streams.py` writes
+// `games/ddpdoj/assets/w24-movement/`, and `pgm.py check` runs this exporter --
+// so every gate run deleted the dump and the very next unit-test run skipped.
+// MEASURED this wave: the suite was 516/0/0, `node tools/export-web.mjs` ran,
+// and the directory was gone.
+//
+// The clean rebuild is still right for what this tool OWNS.  It now removes
+// exactly that -- `gfx/`, `spr/`, and the top-level FILES -- and leaves any
+// other subdirectory alone.
+for (const d of ['gfx', 'spr']) {
+  fs.rmSync(path.join(OUT, d), { recursive: true, force: true });
+}
+if (fs.existsSync(OUT)) {
+  for (const e of fs.readdirSync(OUT, { withFileTypes: true })) {
+    if (e.isFile()) fs.rmSync(path.join(OUT, e.name), { force: true });
+  }
+}
 fs.mkdirSync(path.join(OUT, 'gfx'), { recursive: true });
 fs.mkdirSync(path.join(OUT, 'spr'), { recursive: true });
 // In the same breath as the directory, per the standing rule. The repo root's
