@@ -60,15 +60,29 @@ nobody re-ran.*
   frame-for-frame identically, because every gameplay reader of `$1A` has three
   tiers (0 / 1 / >= 2) — so difficulty tops out at loop 3, not at the ending
   table's 7
-- game modes (`$80D4`): **1 of 7**, and the miss is LOUD as of W28b. This is
-  now the largest single gap: no title, no attract, no game over, no continue,
-  no high-score entry
-- **`$9751` is the crash a real player reaches**: running out of lives restarts
-  to mode 0, which is not ported. A passive loop-2 sweep hits it on 31 of 110
-  chunk runs
+- game modes (`$80D4`): **7 of 7** as of W39. The port boots at `$8067`'s state
+  in mode 0, scrolls the title in over 127 frames, waits 256 on the menu, runs
+  the attract demo off the 75-record script at `$9CB7`, starts on START, and
+  comes all the way back round through `$9751`. **There is no game-over mode and
+  no high-score entry in that table** — the plan and `src/nmi.js` both said there
+  was; game over is `$96FB` inside mode 5 and CONTINUE (`$970D`) sets `$00 := 4`,
+  the same handover a fresh game uses. Mode 6 (`$816C`) is transcribed and
+  **nothing in the 32 KB writes 6 to `$00`** (the enumeration is in
+  `src/modes.js`'s header and pinned by `tests/modes.test.js`)
+- `$9751` USED TO BE "the crash a real player reaches" and is not any more. The
+  `gameover` scenario is promoted: 599 of 599 frames, **800 of 800 TIER 1 fields
+  exact**, including the watched game mode `$00` across the restart, mode 0's two
+  full-screen loads and the whole title scroll. It is the first and only
+  cartridge comparison of a game mode other than 5
+- **what a player sees on the title screen is still not the cartridge's**:
+  `$8871`'s 2304 `$2007` writes per image are the one remaining gap on that path,
+  so the logo is missing while the palette, the four text lines and the cursor
+  ship (all `$0700`-queue producers) arrive. W39 identified the source data —
+  `$8893` is a two-entry INTERLEAVED word table, `$8C78` playfield and `$8C8C`
+  title, six RLE chunks each, escape `$34`, terminator `$39`
 
 Gate: `node games/gradius/tools/test-all.mjs` → GREEN, 12 stages, 0 skipped.
-643 unit tests. 47 scenarios / 29,657 frames, 0 divergent — **and 6 FIELDS are
+679 unit tests. 47 scenarios / 29,693 frames, 0 divergent — **and 6 FIELDS are
 skipped inside that run** (pad2 oamBudget spriteOverflow scanline cpuCycle
 splitSpins), which the gate's own summary line does not say.
 **No cartridge comparison exists for stages 2-7 or for the ending chain**; every
@@ -350,13 +364,15 @@ These are settled. Do not re-litigate them.
 
 ### Next up, in priority order
 
-**Gradius** (rewritten W38 — every item on the old list has shipped):
+**Gradius** (rewritten W38, re-cut W39 — the six modes have shipped):
 **a cartridge comparison for stages 2-7 and for the ending chain**, which is the
 largest unclaimed work in the port and has been the standing item since W32c;
-the **six missing `$80D4` game modes** (`$9751`, the restart-to-title, is now
-the most reachable throw in the game and a loop-2 clear walks straight into it);
-dispatch entry 27 `$B4F2`; the `$1B = $83` null wave cursor; and `$B7B5`/`$B797`,
-W34's open table-extent finding.
+**`$8871`'s 2304 `$2007` writes per image** — now the only thing between the
+port and a real title screen, and W39 identified both source lists (`$8C78`
+playfield, `$8C8C` title, behind the interleaved word table at `$8893`);
+dispatch entry 27 `$B4F2`; the `$1B = $83` null wave cursor; `$B7B5`/`$B797`,
+W34's open table-extent finding; and `$97C5`, the two-player continue switch,
+which is the last throw on the game-over path (one controller, `$18 = 1`).
 
 **DaiOuJou:** the 39 bullet behaviour bodies (`$282104..$283BAF`, ~6.7 KB, all
 throwing); the enemy loaders (2 routines + 208 table pairs behind 124 of 126
@@ -432,8 +448,10 @@ confident guess — three waves came back BLOCKED and all three were right to.
 ## 11. THE ONE-PARAGRAPH VERSION
 
 Three hand-written ports verified against real hardware. Batman is finished.
-Gradius plays all seven stages, ends, and wraps to loop 2 — but has no title
-screen, no attract mode and no game over, and nothing past stage 1 has ever been
+Gradius boots where the cartridge boots, shows its menu, plays its own attract
+demo, starts on START, plays all seven stages, ends, wraps to loop 2, and comes
+back round to the title when the last life is gone — but the title screen has no
+logo (`$8871`'s 2304 writes are unported) and nothing past stage 1 has ever been
 compared against the board.
 DaiOuJou scrolls its whole first stage from the game's own data, aims its
 turrets correctly, and generates its bullet patterns from the nineteen unrolled

@@ -475,6 +475,15 @@ function grantPowerUps(state) {
  * 75 records, `$9CB7`-`$9D4C`, then `FF FF` at `$9D4D`. The FIRST is `$80 $90`:
  * hold A for 144 ticks.
  *
+ * `$9C7D` LOOKS LIKE "the player interrupts the demo" AND CANNOT BE REACHED
+ * THAT WAY. `$80C0` runs `$821A` on every mode-2 frame -- `$00 < 3`, and `$03`
+ * is 0 for the whole attract loop because `$80F4` clears it -- so a START or
+ * SELECT edge is consumed at `$8248`, which sets `$00 := 1`, and `$80CF`'s
+ * re-read means `$8121` never runs on that frame at all. The only frame in the
+ * game where `$03` still holds `$40` with `$00 < 3` is the one right after
+ * `$9751`, and that frame is mode 0. Transcribed, and unreachable through
+ * `nmi()` by the same argument as `$824A`'s `$0E := 0`.
+ *
  * ONLY THE ODD FRAMES SPEND TIME. `$9C7F LDA $02 / LSR A` sends odd frames to
  * the loader/decrementer and even frames straight to the applier, so a duration
  * of N lasts 2N frames. The third record's duration is `$00`, and the ROM stores

@@ -413,23 +413,32 @@ export function sweepChunk(eng, res, st, c, frames, playing, loop = 0) {
  * THROWS THE OWNER HAS ALREADY DECIDED ARE OUT OF SCOPE.
  *
  * These are NOT tolerated failures and they are NOT skips: they are the
- * documented edge of what this port claims (HANDOVER sec 2 -- Gradius has no
- * title screen and no attract mode, and `$80D4` is 1 of 7 game modes). A run
- * that ends on one has proved everything up to that frame and then walked off
- * the port's stated edge. They are COUNTED and PRINTED, never silently passed
- * over, and anything not on this list is a failure.
+ * documented edge of what this port claims. A run that ends on one has proved
+ * everything up to that frame and then walked off the port's stated edge. They
+ * are COUNTED and PRINTED, never silently passed over, and anything not on this
+ * list is a failure.
  *
  * Keyed by the ROM address every throw in this port leads its message with.
  * A message that does not lead with `$XXXX` cannot match and therefore fails,
  * which is the right default: `assets.js`'s "not in any exported range" reads
  * like an asset problem and was two of W33's six crashes.
+ *
+ * W39 DELETED THREE OF THE FOUR. `$9751`, `$970D` and `$9721` were all "mode 0
+ * / mode 4 is not ported", and all three now run (src/modes.js). The excuse for
+ * `$9751` in particular said "a player who runs out of lives gets this on every
+ * stage" -- and that is exactly why it could not stay: an excuse nothing can
+ * reach is indistinguishable from an excuse that is quietly hiding something.
+ * They are deleted rather than kept "just in case", which is the same rule
+ * compare.mjs applies to knownFail from the other direction.
  */
 const DECIDED = new Map([
-  ['$9751', 'game over -> restart to title. Mode 0 (attract/title) is not '
-          + 'ported; a player who runs out of lives gets this on every stage.'],
-  ['$970D', 'START on the game-over screen -> mode 0. Same boundary.'],
-  ['$9721', 'the continue cheat ($33 == $0A) -> mode 0. Same boundary.'],
-  ['$9B10', 'the pause-screen button code ($33 == $0A). Same boundary.'],
+  ['$9B10', 'the pause-screen button code ($33 == $0A). $9C5E`s body is ported '
+          + '(src/modes.js, the attract demo needs it); what is not is this '
+          + 'caller`s surroundings -- $9B13`s DEC $3B,X and what a live cheat '
+          + 'does to a compared run.'],
+  ['$97C5', 'the two-player continue-timeout switch. It ends `STX $18` with '
+          + 'X = 1, the one value src/flow.js playerIndex() refuses; the port '
+          + 'has one controller.'],
 ]);
 
 const decidedFor = (msg) => {

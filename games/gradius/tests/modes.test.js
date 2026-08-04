@@ -27,6 +27,7 @@ import { resetState } from '../src/main.js';
 import { st80E2, st8116, st8137, st8165, st816C, sub821A, newGame, demoInput }
   from '../src/modes.js';
 import { bindSoundRom } from '../src/sound.js';
+import { cannedPacket } from '../src/hudpackets.js';
 import { headlessResources, assetOrThrow } from './helpers.js';
 
 const res = headlessResources(0);
@@ -48,6 +49,24 @@ function run(s, n, buttons = () => 0) {
 }
 
 /**
+ * Run frames until `done(s)`, and FAIL rather than spin if it never happens.
+ *
+ * THE CAP IS PART OF THE CHECK. A test that waits for a transition with an
+ * unbounded `while` does not fail when the transition is deleted -- it HANGS,
+ * which reads as "still running" and is how a mutation run silently stops
+ * covering everything after it. Found the hard way in this wave's own harness:
+ * the first mutant (`$8186` INC dropped) hung the suite instead of reddening it.
+ */
+function until(s, done, cap, what) {
+  for (let i = 0; i < cap; i++) {
+    nmi(s, 0, res);
+    if (done(s)) return i + 1;
+  }
+  assert.fail(`${what}: still waiting after ${cap} frames `
+            + `(mode ${s.mode}, $01 = ${s.zp01}, $1B = $${s.substate.toString(16)})`);
+}
+
+/**
  * A state ON THE TITLE MENU, reached the way the cartridge reaches it.
  *
  * NOT `s.mode = 1` by hand: the menu's whole behaviour hangs off `$4C:$4D`,
@@ -57,13 +76,32 @@ function run(s, n, buttons = () => 0) {
  */
 function atMenu() {
   const s = boot();
-  while (s.mode === 0) nmi(s, 0, res);
+  until(s, (x) => x.mode !== 0, 400, 'mode 0 never handed over');
   assert.strictEqual(s.mode, 1, 'mode 0 handed over to the menu');
   return s;
 }
 
 /** 1 setup frame + $FE/2 scroll frames + the frame that reads $12 == 0. */
 const TITLE_FRAMES = 1 + 0xFE / 2 + 1;
+
+/**
+ * The bytes `$85E8` would append for a list of packet indices, built
+ * independently of the code under test.
+ *
+ * It reuses src/hudpackets.js's copier ON PURPOSE: what is being checked is
+ * WHICH indices a mode emits and IN WHAT ORDER, not the copier -- W2's own
+ * tests hold that. Re-implementing the $85F3 walk here would be a second
+ * transcription with its own bugs, which is exactly the failure this project
+ * calls "the test becomes the source of truth".
+ */
+function queueOf(indices) {
+  const scratch = createState();
+  for (const i of indices) cannedPacket(scratch, res.hudPackets, i);
+  // ...and $80B0's `JSR $8641`, the drainer's mode-0 stop byte, which every
+  // non-lag frame appends LAST. Spelled here so the comparisons below are
+  // whole-queue rather than prefix comparisons.
+  return [...scratch.vram.q.subarray(0, scratch.vram.cursor), 0x00];
+}
 
 // ===========================================================================
 //  1. The table itself, and the enumeration behind mode 6
@@ -163,6 +201,38 @@ test('$80E2 phase 0: the two loads, then $12 = $FE and $1F = 1', () => {
   assert.strictEqual(s.ppu.blank, 0x10, '$81BC -> $83B0 STA $0D');
   assert.strictEqual(s.frameDrops, 0,
     'MEASURED rom 0 at gameover f4365: two loads and no dropped NMI');
+});
+
+test('$8266/$82B6: the title frame queues packets 6, 4, 3, 2, 1 IN THAT ORDER', () => {
+  // 8266 A9 06 / 20 E8 85, then $82B6's `$A0 + 1` loop counting 3,2,1,0.
+  // The drainer replays the page in order, so the order is on the wire.
+  //
+  // Read out of the QUEUE, and the expected bytes come from the packet streams
+  // themselves -- the check cannot agree with the index the code computed.
+  //
+  // RED WHEN: the loop stops one short (packet 1 never drawn), the index is $A0
+  // instead of $A0 + 1 (every line is off by one), the order is reversed, or
+  // $8266's palette packet is dropped.
+  const s = boot();
+  nmi(s, 0, res);                                  // mode 0 phase 0
+  assert.deepStrictEqual([...s.vram.q.subarray(0, s.vram.cursor)],
+                         queueOf([0x06, 4, 3, 2, 1]),
+    'packet 6 (the palette), then 4, 3, 2, 1');
+  assert.ok(s.vram.cursor > 40, `five packets is more than 40 bytes`);
+});
+
+test('$80FF: EVERY title-scroll frame re-queues the palette packet 6', () => {
+  // 80FF A9 06 / 20 E8 85, on every frame of the 127-frame scroll -- not once.
+  // RED WHEN: it is dropped, or moved into phase 0.
+  const s = boot();
+  nmi(s, 0, res);                                  // phase 0
+  for (let i = 0; i < 3; i++) {
+    nmi(s, 0, res);
+    const stream = res.hudPackets[0x06];
+    assert.strictEqual(s.vram.q[0], 0x01, `scroll frame ${i}: the mode byte`);
+    assert.strictEqual(s.vram.q[1], stream[0], `scroll frame ${i}: packet 6`);
+    assert.strictEqual(s.vram.q[2], stream[1]);
+  }
 });
 
 test('$8256 falls through: the title frame leaves $4C:$4D = 256', () => {
@@ -400,6 +470,14 @@ test('$8152: the chosen menu line BLINKS on bit 3 of $4C', () => {
   assert.strictEqual(blank[2], packet[1], '...and byte 2 ($9B counts 2 down)');
   assert.strictEqual(blank[3], 0x00, '...and blanks everything after them');
   assert.notStrictEqual(packet[2], 0x00, 'so the two really differ');
+  // ...and the OTHER menu line, which is what pins `1 + $0F` rather than `$0F`.
+  // Packets 0 and 1 happen to start with the same PPUADDR high byte, so a test
+  // that only looks at the first byte of the $0F = 0 case cannot see the shift.
+  s.zp0F = 1;
+  assert.deepStrictEqual(emit(0x04), queueOf([2]),
+    '$0F = 1 emits packet 2 -- `1 + $0F`, not `$0F`');
+  assert.deepStrictEqual(emit(0x0C), queueOf([0x82]),
+    '...and $82, its blanked twin');
 });
 
 test('$8137 phase 2: $82D5 gives three lives, then mode 4 hands over to play', () => {
@@ -426,9 +504,30 @@ test('$82F0: two players ($03 bit 5) makes $0A = 7, one player makes it 1', () =
   // RED WHEN: the branch is inverted, or the 2P value is written as 3 (only
   // bits 0 and 1 have readers, so 3 would look right and is not the byte).
   const a = createState(); a.zp03 = 0x70; newGame(a);
-  const b = createState(); b.zp03 = 0x40; newGame(b);
+  const b = createState(); b.zp03 = 0x40; b.zp09 = 5; newGame(b);
   assert.strictEqual(a.zp0A, 0x07, '$82F0 BNE $82F8 with Y still 7');
   assert.strictEqual(b.zp0A, 0x01, '$82F6 LDY #$01');
+  // $82E2 STA $09. It matters because $09 SURVIVES $8307 -- the wipe starts at
+  // $12 -- so a game started after an attract lap inherits the demo flag unless
+  // this store runs, and $846F would then refuse to score.
+  assert.strictEqual(b.zp09, 0, '$82E2 STA $09 clears an inherited demo flag');
+});
+
+test('$8165 is the WHOLE of mode 4: $1B := 0, then INC $00', () => {
+  // 8165 A9 00 / 85 1B / 4C 86 81. Driven directly, and that is not laziness:
+  // BOTH live routes into mode 4 ($8162 from mode 3, and $9712 from $970D) run
+  // $82D5 first, whose $8307 wipe covers $12-$EF and so has already zeroed $1B.
+  // The store is therefore dead on every route the cartridge has, and only a
+  // direct call can pin the transcription.
+  //
+  // RED WHEN: the store or the INC is dropped.
+  const s = boot();
+  s.mode = 4;
+  s.substate = 0x77;
+  st8165(s);
+  assert.strictEqual(s.substate, 0, '$8167 STA $1B');
+  assert.strictEqual(s.mode, 5, '$8169 JMP $8186');
+  assert.strictEqual(s.zp01, 0, '$818C');
 });
 
 // ===========================================================================
@@ -474,12 +573,18 @@ test('$82C7: the demo gets ONE life and $09, and $0A survives the wipe', () => {
   // score, change the BGM and be pausable).
   const s = boot();
   s.mode = 2; s.zp01 = 0; s.zp0A = 0x03; s.lives[0] = 3; s.zp19 = 4;
+  s.coll[0] = 0x99; s.coll[0x1FF] = 0x99;          // $0500 and $06FF
+  s.obj.type[7] = 0x99;                            // $0307
   nmi(s, 0, res);
   assert.strictEqual(s.zp0A, 0x03, '$82CE STA $0A -- restored across $8307');
   assert.strictEqual(s.lives[0], 1, '$82D0 INC $20 from the wiped 0');
   assert.strictEqual(s.zp09, 1, '$82D2 INC $09');
   assert.strictEqual(s.zp19, 0, '$8307 cleared $0012-$00EF, which covers $19');
   assert.strictEqual(s.zp01, 1, '$8125 INC $01 -- and $01 is BELOW $12');
+  // $8315-$8328: the four-page clear, $0300-$06FF, through ($98),Y.
+  assert.strictEqual(s.obj.type[7], 0, '$831F: $0300');
+  assert.strictEqual(s.coll[0], 0, '$831F: $0500');
+  assert.strictEqual(s.coll[0x1FF], 0, '$831F: $06FF -- the last byte, $99 = 6');
 });
 
 test('$8307 starts at $12: $00, $01, $03, $0B, $0E, $0F, $10 and $11 survive', () => {
@@ -529,9 +634,15 @@ test('$9C6D: ODD frames spend the duration, EVEN frames only re-apply', () => {
   const s = createState();
   s.substate = 0x80; s.zp31 = 0; s.zp30 = 0;
   s.frame = 1;                                     // ODD: loads record 0
+  s.input.prev = 0x3C;
   demoInput(s, res);
   assert.strictEqual(s.zp31, 2, '$9CA9 STY $31 -- 2n+2 for record 0');
   assert.strictEqual(s.input.held, rom(0x9CB7), '$9C88 LDA $9CB5,Y with Y = 2');
+  assert.strictEqual(s.input.pressed, rom(0x9CB7), '$9C8B STA $05 -- the same byte');
+  // $9C8D STY $07: on the cartridge $07 IS what the next frame's $8202 subtracts,
+  // so overwriting it overwrites the edge basis. src/input.js keeps that byte as
+  // `prev`. RED WHEN it is left holding the pad word from before the demo.
+  assert.strictEqual(s.input.prev, rom(0x9CB7), '$9C8D STA $07 -- and `prev` is $07');
   assert.strictEqual(s.zp30, u8(rom(0x9CB8) - 1), '$9CA1 then $9CAE DEC $30');
   const spent = s.zp30;
   s.frame = 2;                                     // EVEN: apply only
@@ -563,17 +674,29 @@ test('$9CA5: the script`s FF FF terminator ends the demo through $0B', () => {
   // RED WHEN: the terminator test is dropped (the demo would read $9D4F's word
   // table as buttons), or $0B is not raised (mode 2 would never end).
   let off = 0;
-  while (rom(0x9CB8 + off) !== 0xFF) off += 2;
+  for (; off < 256 && rom(0x9CB8 + off) !== 0xFF; off += 2) { /* $9C9E's own walk */ }
   assert.strictEqual(off, 150, '75 (button, duration) records');
   const s = createState();
   s.substate = 0x80; s.zp31 = off; s.zp30 = 0; s.zp0B = 0; s.frame = 1;
   demoInput(s, res);
   assert.strictEqual(s.zp0B, 1, '$9CB1 INC $0B');
   assert.strictEqual(s.zp31, off, '$31 did NOT advance past the terminator');
+  // $9CA1 STA $30 happens BEFORE $9CA3's CMP, so the terminator's $FF lands in
+  // $30 as well. Nothing ever reads it -- $8424 clears $30 on the next mode-0
+  // pass -- so this assertion pins a STORE, not a behaviour, and says so.
+  assert.strictEqual(s.zp30, 0xFF, '$9CA1 stored the terminator byte too');
 });
 
 test('$9C7D: a real START or SELECT during the demo raises $0B too', () => {
   // 9C79 LDA $05 / 29 30 / D0 32. This is read BEFORE $9C88 overwrites $05.
+  //
+  // DRIVEN DIRECTLY, AND IT CANNOT BE DRIVEN THROUGH nmi(): $80C0 runs $821A on
+  // every mode-2 frame ($00 < 3, and $03 is 0 for the whole attract loop because
+  // $80F4 clears it), so a START or SELECT edge is consumed at $8248 and the
+  // frame never reaches $8121. The only frame in the game where $03 still holds
+  // $40 with $00 < 3 is the one right after $9751, and that is mode 0. So this
+  // branch is transcribed and unreachable by the same argument as $824A.
+  //
   // RED WHEN: the test runs after the script write (it would then test the
   // script's own byte, and $80 or $C4 would look like neither bit).
   const s = createState();
@@ -633,34 +756,63 @@ test('END TO END: RESET -> START -> the intro -> PLAY, in 27 intro frames', () =
   nmi(s, 0x10, res);                               // START
   assert.strictEqual(s.mode, 3, '$8236 -> $818F');
   assert.strictEqual(s.zp03, 0x40, 'one player');
-  let f = 0;
-  while (s.mode === 3) { nmi(s, 0, res); f++; }
-  assert.strictEqual(f, 0x50 + 1, '$4C = $50 blink frames, plus the phase-0 frame');
+  // $8137's phase 0 already ran on the START frame ($80CF re-read $00), so what
+  // is left is $4C = $50 decrement frames plus the one phase-2 frame that runs
+  // $82D5 and advances the mode.
+  const f = until(s, (x) => x.mode !== 3, 400, 'mode 3 never ended');
+  assert.strictEqual(f, 0x50 + 1, '$50 blink frames, then the $815F frame');
   assert.strictEqual(s.mode, 4, '$8162 JMP $8186');
   nmi(s, 0, res);
   assert.strictEqual(s.mode, 5, 'PLAY');
   assert.strictEqual(s.substate, 0, '$8165 STA $1B');
-  let intro = 0;
-  while (s.substate !== 0x80) { nmi(s, 0, res); intro++; }
+  const intro = until(s, (x) => x.substate === 0x80, 200, 'the intro never ended');
   assert.strictEqual(intro, 27, 'the cartridge`s own 27 intro frames (W4)');
   assert.strictEqual(s.obj.status[0], 1, '$9BC0 -- the ship is alive');
   assert.strictEqual(s.lives[0], 3, '...with $82D5`s three lives');
 });
 
-test('END TO END: the attract demo ends and the whole cycle repeats', () => {
+test('END TO END: the attract demo ends and the whole cycle repeats, TWICE', () => {
   // The demo runs until the script's terminator or the demo ship's death, then
-  // $812D reads $0B and $818F puts the machine back in mode 0. RED WHEN: $0B is
-  // never read, the tail writes the wrong mode, or $01 is not cleared (mode 0
-  // would take the SHORT arm and never rebuild the title screen).
+  // $812D reads $0B and $818F puts the machine back in mode 0.
+  //
+  // THE LAP LENGTHS ARE THE CHECK, not just the sequence of modes. A demo that
+  // ends on its first frame -- which is what dropping $818A's `$0B := 0` or
+  // inverting $812F's test produces -- still yields the mode sequence
+  // 0,1,2,0,1,2 and would pass a check that only looked at the order. The
+  // second attract lap must be as long as the first and both must be long.
+  //
+  // RED WHEN: $0B survives a mode change, the $812D test is inverted, the tail
+  // writes the wrong mode, $01 is not cleared (mode 0 would take the SHORT arm
+  // and never rebuild the title screen), or the demo's own joystick is not
+  // driven (the script cursor would stay at 0).
   const s = boot();
   const seen = [];
+  const at = [];
   let last = -1;
-  for (let i = 0; i < 8000 && seen.length < 5; i++) {
+  let i = 0;
+  let scriptRan = 0;
+  for (; i < 12000 && seen.length < 7; i++) {
     nmi(s, 0, res);
-    if (s.mode !== last) { seen.push(s.mode); last = s.mode; }
+    if (s.mode === 2 && s.zp31 > scriptRan) scriptRan = s.zp31;
+    if (s.mode !== last) { seen.push(s.mode); at.push(i); last = s.mode; }
   }
-  assert.deepStrictEqual(seen, [0, 1, 2, 0, 1],
-    'title -> menu -> attract -> title -> menu, unattended');
-  assert.strictEqual(s.zp09, 1,
+  assert.ok(i < 12000, `only ${seen.length} mode changes in 12000 frames: ${seen}`);
+  assert.deepStrictEqual(seen, [0, 1, 2, 0, 1, 2, 0],
+    'title -> menu -> attract, twice round');
+  const lap1 = at[3] - at[2];
+  const lap2 = at[6] - at[5];
+  assert.ok(lap1 > 2000, `the first attract lap is a real game (${lap1} frames)`);
+  // WITHIN ONE FRAME, not identical, and the one frame is the cartridge's:
+  // $9C7F's `LDA $02 / LSR A` splits the script's ticks by the FREE-RUNNING
+  // frame counter, which $8307 does not clear ($02 is below $12), so the second
+  // demo can start on the other parity and spend its first record's tick a
+  // frame earlier or later. Everything else about the lap is re-seeded, because
+  // $30 and $31 are inside $8424's $0020-$0097.
+  assert.ok(Math.abs(lap2 - lap1) <= 1,
+    `the second lap repeats the first (${lap1} then ${lap2} frames)`);
+  assert.strictEqual(at[1] - at[0], 0xFE / 2 + 1, 'the title scroll, both laps');
+  assert.ok(scriptRan >= 100,
+    `$9C6D walked the script during the demo ($31 reached ${scriptRan})`);
+  assert.strictEqual(s.zp09, 2,
     '$09 is NOT cleared between attract laps: $8307 starts at $12 and $8424 at $20');
 });
