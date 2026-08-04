@@ -168,6 +168,38 @@ stage('per-stage coverage ledger (stageledger.py)', () => {
            + 'handler is no longer ported. Run the tool for the per-stage lines.' };
 });
 
+// -------------------------------------------------------------- stage 1b4 ---
+// THE STAGE SWEEP. WAVE 34, and it is here because SIX CRASHES SHIPPED TO THE
+// PUBLIC SITE BEHIND THIS RUNNER PRINTING GREEN.
+//
+// Not one of them was subtle. Every one was the FIRST throw of a run driven
+// from a chunk pointer the game itself uses, three of them with no player
+// input at all -- stages 3 and 4 died at frame 314 from chunk 0 with the pad
+// on the table. W33 found all six in 1.53 s the first time anybody drove
+// `nmi()` this way, and this gate had eleven stages and none of them did.
+//
+// The stage above it is the reason. `stageledger.py`'s runnability column
+// PARSES TWO `if`s AND NEVER RUNS A FRAME -- it answers "is this throw
+// statically guarded out of this stage" -- and five wave briefs, including
+// this runner's own reading of it, took it for "this stage plays". Four of the
+// six live in `collision.js`, which that tool does not open. The column is
+// spelled ADMITTED now; this stage answers the question the old spelling
+// implied.
+//
+// It asserts ONE thing -- zero throws -- so it cannot invent a denominator,
+// and a throw in this port is a first divergence with a ROM address on it. It
+// proves nothing about correctness; `compare.mjs` is that gate.
+//
+// It reads assets/ and runs the port headlessly, so ROM-absent is not a reason
+// to skip it. ~3 s for 80 chunk runs and ~112,000 frames.
+stage('every stage survives its own chunks (stagesweep.mjs)', () => {
+  if (!assetsPresent) return { status: 'SKIP', note: 'needs assets/' };
+  return run(process.execPath, ['games/gradius/tools/oracle/stagesweep.mjs'])
+    ? { status: 'PASS' } : { status: 'FAIL', note: 'a stage threw while running '
+           + 'its OWN wave stream. The ROM address in the message above is the '
+           + 'diagnosis; it is a path the port does not have, not a test bug.' };
+});
+
 // ---------------------------------------------------------------- stage 1c --
 // snddata.py --selfcheck: the sound data decoded PURELY from the ROM bytes says
 // index $13 (the stage-1 pulse-1 part) lasts 512 ticks, and the cartridge was

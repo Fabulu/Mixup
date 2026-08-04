@@ -354,17 +354,19 @@ BASELINE = {
     # 95 -> 104"). A floor that trails the port cannot catch the regression it
     # exists to catch, so both are corrected here along with W30's own rows.
     #
-    # W31 ADDS `runnable`: True once ALL THREE of the stage's gates are open --
+    # W31 ADDS `admitted` (it was spelled `runnable` until W34 -- see the
+    # rename note in _print_ledger): True once ALL THREE of the stage's gates
+    # are open --
     # every record dispatchable, runEngine's scope guard admitting the stage,
     # and its jt_$C439 late-spawner arm ported. Stage 3 is the reason it exists:
     # it read None/floor-98 in both columns above for a whole wave while
     # `if (stageIndex >= 3) throw` still stopped it dead on its first record, so
     # a row could be perfect and the stage unplayable at the same time. Once
     # True it can never go back to False without the gate failing.
-    0: dict(first_unported_scroll=None,        ported_floor=92,  runnable=True),   # W22-W27
-    1: dict(first_unported_scroll=None,        ported_floor=93,  runnable=True),   # W29
-    2: dict(first_unported_scroll=None,        ported_floor=78,  runnable=True),   # W30 (moai)
-    3: dict(first_unported_scroll=None,        ported_floor=98,  runnable=True),   # W31:
+    0: dict(first_unported_scroll=None,        ported_floor=92,  admitted=True),   # W22-W27
+    1: dict(first_unported_scroll=None,        ported_floor=93,  admitted=True),   # W29
+    2: dict(first_unported_scroll=None,        ported_floor=78,  admitted=True),   # W30 (moai)
+    3: dict(first_unported_scroll=None,        ported_floor=98,  admitted=True),   # W31:
                                                 # records came free in W30
                                                 # ($B402/$B434); W31 opened the
                                                 # other two gates ($C5AD, $B377)
@@ -385,9 +387,9 @@ BASELINE = {
     #          where lowering a baseline row is correct, and it is written down
     #          here rather than done quietly because the docstring above says
     #          "never backward" and a future reader is entitled to ask why.
-    4: dict(first_unported_scroll=0x0480,      ported_floor=24,  runnable=False),  # W32a: $B559
-    5: dict(first_unported_scroll=0x03B0,      ported_floor=47,  runnable=False),  # W33
-    6: dict(first_unported_scroll=0x0AC0,      ported_floor=104, runnable=False),  # W34 (corrected)
+    4: dict(first_unported_scroll=0x0480,      ported_floor=24,  admitted=False),  # W32a: $B559
+    5: dict(first_unported_scroll=0x03B0,      ported_floor=47,  admitted=False),  # W33
+    6: dict(first_unported_scroll=0x0AC0,      ported_floor=104, admitted=False),  # W32a (corrected)
 }
 
 
@@ -416,7 +418,24 @@ def _print_ledger(rows):
     # W31: the two non-record signals, printed separately so nobody reads a
     # 100 % record row as "this stage runs". They are different questions.
     print()
-    print("PER-STAGE RUNNABILITY  (NOT record coverage -- see W31)")
+    # W34 RENAMED THIS COLUMN, and the rename is the finding.
+    #
+    # It printed RUNNABLE, and RUNNABLE is not what it measures. It measures
+    # TWO SOURCE-TEXT PREDICATES in one file -- the integer in `runEngine`'s
+    # `if (stageIndex >= N)`, and whether the stage's `jt_$C439` case body
+    # contains `return` and not `throw`. It never runs a frame. It does not
+    # open collision.js, terrain.js, weapons.js, oam.js or nmi.js at all.
+    #
+    # Six crashes shipped behind it. Four of them live in collision.js; one in
+    # enemies.js well away from lateSpawner; stages 3 and 4 printed RUNNABLE
+    # for two waves while both died at frame 314 from chunk 0 with no input.
+    # Five wave briefs quoted this column as "the stage plays" -- which is a
+    # fair reading of the word and not of the code, so the word is what changes.
+    #
+    # ADMITTED is exactly the claim: the two static gates in front of the stage
+    # are open. The other question -- does it survive its own wave stream --
+    # has its own gate stage now, and it is named on the line below the table.
+    print("PER-STAGE STATIC ADMISSION  (two `if`s, no frames -- see W34)")
     print("%-6s %-22s %-28s %s"
           % ("stage", "$A2F0 runEngine", "late spawner jt_$C439[$19]", "verdict"))
     for r in rows:
@@ -427,7 +446,12 @@ def _print_ledger(rows):
                               "ported" if r['late_ported'] else "THROWS")
         ok = r['all_ported'] and r['engine'] and r['late_ported']
         print("%-6d %-22s %-28s %s"
-              % (r['stage'], eng, arm, "RUNNABLE" if ok else "blocked"))
+              % (r['stage'], eng, arm, "ADMITTED" if ok else "blocked"))
+    print()
+    print("ADMITTED means the two static gates are open. It does NOT mean the")
+    print("stage plays: this tool runs no frames and reads only enemies.js.")
+    print("WHETHER A STAGE SURVIVES ITS OWN CHUNKS IS A DIFFERENT QUESTION:")
+    print("  node games/gradius/tools/oracle/stagesweep.mjs   (gate stage, ~3 s)")
 
 
 def gate(rows):
@@ -462,7 +486,7 @@ def gate(rows):
         # (3) W31: runnability must not unwind. A stage that once ran must keep
         # running -- and this is the only signal that watches the scope guard
         # and the late-spawner arm at all.
-        if base.get('runnable') and not (r['all_ported'] and r['engine']
+        if base.get('admitted') and not (r['all_ported'] and r['engine']
                                          and r['late_ported']):
             why = []
             if not r['all_ported']:
@@ -474,7 +498,7 @@ def gate(rows):
                            % (r['late_arm'],
                               "" if r['late_child'] is None
                               else " (or its child $%04X)" % r['late_child']))
-            msgs.append("stage %d regressed: was RUNNABLE, now blocked -- %s."
+            msgs.append("stage %d regressed: was ADMITTED, now blocked -- %s."
                         % (st, "; ".join(why)))
     return msgs
 
@@ -494,7 +518,7 @@ def main():
             sc = r['first_unported_scroll']
             run = r['all_ported'] and r['engine'] and r['late_ported']
             print("    %d: dict(first_unported_scroll=%s, ported_floor=%d, "
-                  "runnable=%s),"
+                  "admitted=%s),"
                   % (r['stage'], 'None' if sc is None else ('0x%04X' % sc),
                      r['ported'], run))
         return 0
