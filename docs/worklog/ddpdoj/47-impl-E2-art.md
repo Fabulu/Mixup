@@ -413,6 +413,43 @@ bundle LOADS and `demand()` throws from the frame that needs it.
 through the refactored `ShardQueue`**, which is what says the lift did not
 quietly weaken the background's contract.
 
+## 4.5 THE RESULT, AS ONE MEASUREMENT — the same 6,185-frame run, twice
+
+Identical conditions to §1's before-run: the shipped seed, nothing pressed, the
+page's own `portSpriteList` and the page's own map, all six sprite shards
+loaded, stopping at the same loud named throw (`$292902` at lf8185).
+
+```
+                                            BEFORE            AFTER
+[M] display-list records                    288,903           288,903
+[M] drawn                                   134,072           203,006
+[M] MISSED                                  154,831            85,897   -44.5 %
+[M] distinct missing addresses                  326               192
+[M] HULL ($268B9E) emitted / DRAWN     74,826 / 19,252   74,826 / 74,826
+[M] first ORPHAN frame                       lf2458              NONE
+```
+
+**[M] And not one stream of any of the seven harvested tables, nor of the
+laser's five, is in the remaining miss set — 0 of 0 of 0, table by table.**
+
+The 85,897 that remain are other producers' rows, and the list says whose: the
+biggest is `$12D430` at 14,104 records, which is the port's single most-emitted
+stream and belongs to no table any ported handler reads. That is the next
+wave's shopping list and it is 192 addresses long, not 326.
+
+### 4.6 E2's DONE-WHEN, and the half of it this wave CANNOT meet
+
+`43-plan` §4 E2 asks for *"the guard's `skipped` count is 0 over the first N
+seconds for a stated, measured N"*.
+
+**[M] N is 5.32 seconds, and it did not move.** The first record with no art is
+still `$233F34` at lf2315 — a 5x80 BACKGROUND ELEMENT reached from the immediate
+at `$262760`, which no enemy-body table contains and which this wave was never
+going to fix. **Saying "E2 is done" on that metric would be false**, so it is
+stated the other way round: the metric this wave moves is **the enemy-body share
+of the miss set, 44.5 % of every missed record in the port's longest run, to
+zero**, and `webgate`'s W47 stage pins it at three absolute numbers.
+
 ## 5. THE PAGE, IN A REAL BROWSER — WHAT I SAW
 
 Chrome + Python `playwright` over a local HTTP server, the recipe W42
