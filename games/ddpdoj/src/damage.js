@@ -76,7 +76,72 @@
 // NOTHING HERE IS SILENT.  Every deferral is an `UnportedLog` note filed under
 // the ROM address of the instruction it replaces.
 
+// ======================= WAVE 51: THE BEAM'S OWN DAMAGE ======================
+//
+// The owner, playing the live build after W45: "Laser no longer crashes the
+// game, your little options come to front, but no laser graphics happen and
+// **the enemies don't die**."  This wave is the second half of that sentence.
+//
+// W45 left `$2453AC` a loud named throw and said why (§10: "No damage.  The
+// beam melts nothing").  What it did NOT say, because it did not need to, is
+// that the beam's damage is not reached from `laser.js` at all -- it is reached
+// from HERE.  `$245310` is `bra.w $24560A`, so `$244D62` does not end at
+// `$245310`, and the three blocks after the shot loops are:
+//
+//   | 7 | $24518A..$24525A | A2 = $811802 (beam pool slot 27) vs 150 slots |
+//   | 8 | $24525C..$24530A | A3 = $811892 (slot 30)           vs 150 slots |
+//   |   | $24530C bsr $2453AC   THE BEAM'S OWN PASS, 100 + 50 slots        |
+//   | 9 | $24560A..$2459CE | the BOMB-LASER's, behind `$811F72` negative   |
+//
+// **AND ALL FOUR ARE GATED ON THE LASER BYTE.**  `$24519A tst.b ($3f,A4) /
+// $24519E beq.w $24560A` -- `($3f,A4)` is the byte `$24C282` sets on the frame
+// the arm-up completes and `$24C2D6` clears on release (W45 §2 found it from
+// the other end, in `$249B40`).  So blocks 7, 8 and `$2453AC` run if and ONLY
+// if a beam is being fired, which is why W34 could note the whole tail away
+// without losing a single hit: nothing in this port could hold fire.
+//
+// MEASURED, this wave, from the shipped bundle seed with fire held from the
+// first step: `($3f,A4)` is 1 from +17 and the `$24518A` note fired 301 times
+// in 601 steps -- every frame the `$80390C` alternation gives P1 the pass.
+//
+// -------------------------- THE BIT THAT ARMS THE PASS ----------------------
+//
+// `$2453BA bset #$1,(A1) / $2453BE beq.w $245608` is a BYTE operation on the
+// beam record's high byte, i.e. bit 9 of the word `$811EF2`, i.e. **`$0200`**.
+// `bset` sets Z from the bit's OLD value, so the pass arms itself on its first
+// run and damages from its second run onward.
+//
+// **THAT RETIRES W45 §0.4's ONE UNEXPLAINED NUMBER.**  W45 measured the port's
+// `$811EF2` as `$8000` where `10-recon-combat §2`'s board trace has `$8200`,
+// and guessed `$0200` was "a per-power bit of the sub-template" it had not
+// reproduced.  It is not: `$0200` is this instruction, and the board trace has
+// it because the board's beam had run its damage pass.  The guess was testable
+// and wrong; the port now reproduces `$8200` for the ROM's own reason.
+//
+// It also means `$245314` and `$24536E` -- the two entries W37 §4.1 calls "the
+// beam's damage entries", whose only callers are `$254DA2` (inside `$254D06`)
+// and `$24CE46` (inside `$24CDC0`) -- are NOT needed to arm it.  A build-B
+// sweep this wave for every `bra/bsr/bcc/jsr/jmp` reaching `$254D06` returns
+// **0 sites**, the same shape as W37 §7.3's result for `$24C37A`; both stay
+// unported and neither is called dead code.
+//
+// ------------------------------ THE $400 BIT --------------------------------
+//
+// `$2454E0` and `$2455F2 ori.w #$400,D4 / or.w D4,(A5)` (and block 8's
+// `$2452F2 ori.w #$4400,D4`) put bits into the ENEMY's type word that the
+// handlers' `moveq #$5C,D1 / and.b (A6),D1` reads.  `$400` is D1 bit 2, and
+// `$286096`'s `$2860EC btst #$2,D1` takes `bsr $286876` instead of the plain
+// BCD add.  **So the score fork the beam makes live is `$286876`, not the
+// `$811F72` forks** -- see `src/score.js`, which ports it this wave.
+//
+// ------------------------------ WHAT STILL DEFERS ---------------------------
+//
+// `$24560A` (block 9, the BOMB-LASER's 966 bytes) is transcribed only as far as
+// its own two guards, both of which are FALSE on this tree, and throws by
+// address beyond them.  `$2459D0` and blocks 2-4 are unchanged (L16).
+
 import { u16, i16 } from './ram.js';
+import { unreached } from './unported.js';
 
 export const DMG = {
   tail: 0x28b670,            // object type 5's tail
@@ -89,6 +154,17 @@ export const DMG = {
   weaponA2: 0x24518a,        // $811802 vs 150 enemy slots
   weaponA3: 0x24525c,        // $811892 vs 150 enemy slots
   laserPass: 0x2453ac,       // $24530C bsr.w
+  bombLaserBlock: 0x24560a,  // $245310 bra.w -- $244D62's NINTH block
+  bombLaserBody: 0x245622,   // ...past its two guards
+  damageSeg: 0x245314,       // $254DA2 jsr -- inside the unreachable $254D06
+  damageStart: 0x24536e,     // $24CE46 jsr -- inside the unreachable $24CDC0
+  fa7c: 0x80fa7c,            // $2453AC clr.w -- 0 = the per-frame pass
+  b410: 0x81b410,            // $2453F2 / $24550C / $245484 tst.w
+  laserSlot27: 0x811802, laserSlot27P2: 0x811e02,
+  laserSlot30: 0x811892, laserSlot30P2: 0x811e92,
+  beamRecP1: 0x811ef2, beamRecP2: 0x811f12,
+  laserRec: 0x811f72,        // $24560A lea $811F72,A6 -- the BOMB-LASER's record
+  laserByte: 0x3f,           // $24519A tst.b ($3f,A4) -- $24C282 writes it
   // the two writes the pass makes that a gate can see
   shotHitBit: 0x245044,      // bset #$7,(-$3,A6)   -- state.js taps this
   // the globals
@@ -307,13 +383,305 @@ export function poolDamage(ram, pool, count, table, d7, mask, gate308c, variant)
   return hits;
 }
 
+// ---------------------------------------------------------------------------
+// BLOCKS 7 and 8 -- `$24518A..$24530A`.  ONE $30-byte pool record against all
+// 150 enemy slots, twice, with A2 = pool slot 27 and A3 = pool slot 30.
+//
+// **THE 150 IS NOT A THIRD POOL.**  `$81459C + 100*$20 = $81521C`, which is
+// pool B's base, so `moveq #$95,D7` walks pool A's hundred slots and pool B's
+// fifty CONTIGUOUSLY, as capacity and not as a live count -- the opposite of
+// blocks 6a/6b, which walk the counters.  A port that "reused" `poolDamage`
+// here would walk the wrong number of records with the wrong early-outs.
+//
+// The two blocks are NOT the same loop, and the differences are the listing's:
+//
+//   1. the live test: `$2451DC move.w (A5),D4 / bpl` vs `$245288 move.b (A5),D4
+//      / bpl` -- the word's bit 15 and the high byte's bit 7, the same bit;
+//   2. the off-screen constant: `#$9800` vs `#$9700`;
+//   3. block 7 accepts a record whose byte 0 has bit 5 OR bit 0
+//      (`$245218`/`$24521E`); block 8 requires bit 5 alone (`$2452C4`);
+//   4. block 8 DOUBLES its damage while `$81B6E6` (the hyper flag the tail
+//      copies from `$81B63E`) is non-zero and block 7 never does;
+//   5. the hit bits: `ori.w #$400,D4` vs `ori.w #$4400,D4`.  Both land in the
+//      handlers' `$5C` mask; `$4000` is bit 6, which `$286876` reads at
+//      `$286966 btst #$6,D1` to add TWO to the chain instead of one.
+//
+// Both reduce by a HALF when `$81308C` is 0 (`lsr.w #1`), where blocks 6a/6b
+// reduce by a QUARTER (`lsr.w #2`).  Four separate reductions in one routine,
+// none of them the same; this is the kind of thing "tidying" destroys.
+// ---------------------------------------------------------------------------
+function weaponObjectPass(ram, a2, d6, opts) {
+  if ((ram.u16(a2) & 0x8000) === 0) return 0;         // $2451A2/$24525C tst.w/bpl
+  if (opts.block === 7) {
+    ram.bclr8(a2, 4);                                 // $2451A8 bclr #$4,(A2)
+    if (ram.u16(a2 + 0x02) >= 0x7000) return 0;       // $2451AC cmpi.w/bcc
+  }
+  // $2451B6/$245262 `lea ($10,A2),A0` -- the four half-extents, in place.
+  const d0 = u16(u16(ram.u16(a2 + 0x02) + d6) + ram.u16(a2 + 0x10));  // $2451BA..
+  const d1 = u16(u16(ram.u16(a2 + 0x02) + d6) - ram.u16(a2 + 0x12));  // $2451C4
+  const d2 = u16(u16(ram.u16(a2 + 0x04) + d6) + ram.u16(a2 + 0x14));  // $2451C6..
+  const d3 = u16(u16(ram.u16(a2 + 0x04) + d6) - ram.u16(a2 + 0x16));  // $2451D0
+  const offLimit = opts.block === 7 ? 0x9800 : 0x9700;  // $2451F8 / $2452A6
+  const hitBits = opts.block === 7 ? 0x400 : 0x4400;    // $245242 / $2452F2
+  let hits = 0;
+  for (let n = 0; n < 150; n++) {                     // $2451D8/$245284 moveq #$95
+    const rec = DMG.poolA + n * DMG.enemyStride;
+    if ((ram.u8(rec) & 0x80) === 0) continue;         // $2451DC / $245288 bpl
+    // ---- the Y pair.  Block 7 adds first and subtracts second; block 8 does
+    // the same two sums in the OPPOSITE ORDER ($245296 before $24529E), which
+    // changes nothing arithmetically and is transcribed because it is the
+    // instruction stream.
+    const y = u16(ram.u16(rec + 0x02) + d6);
+    const yPlus = u16(y + ram.u16(rec + 0x10));
+    const yMinus = u16(y - ram.u16(rec + 0x12));
+    if (yPlus < d1) continue;                         // $2451EC / $2452A2 bcs
+    if (d0 < yMinus) continue;                        // $2451F4 / $24529A bcs
+    if (yMinus >= offLimit) continue;                 // $2451F8 / $2452A6 bcc
+    const x = u16(ram.u16(rec + 0x04) + d6);
+    const xPlus = u16(x + ram.u16(rec + 0x14));
+    const xMinus = u16(x - ram.u16(rec + 0x16));
+    if (xPlus < d3) continue;                         // $24520A / $2452B8 bcs
+    if (d2 < xMinus) continue;                        // $245212 / $2452C0 bcs
+    const b0 = ram.u8(rec);
+    if (opts.block === 7) {
+      // $245218 `btst #$5,D4 / bne $245224` -- bit 5 ALONE is enough; only if
+      // it is clear does `$24521E btst #$0,D4 / beq` demand bit 0.
+      if ((b0 & 0x20) === 0 && (b0 & 0x01) === 0) continue;
+    } else if ((b0 & 0x20) === 0) continue;           // $2452C4 btst #$5,(A5)/beq
+    if ((ram.u16(rec + 0x18) & 0x8000) !== 0) continue;  // $245224/$2452CA bmi
+    let d5 = ram.u16(a2 + 0x18);                      // $245228 / $2452D0
+    if (opts.block === 8 && ram.u16(DMG.b6e6) !== 0) {
+      d5 = u16(d5 + d5);                              // $2452DC add.w D5,D5
+    }
+    if (ram.u16(DMG.gate308c) === 0) {                // $24522E / $2452DE tst/bne
+      d5 = u16(d5 - ((d5 & 0xffff) >>> 1));           // $245236/$245238/$24523A
+    }
+    ram.setU16(rec, u16(ram.u16(rec) | ram.u16(DMG.fa72) | hitBits));  // or.w D4
+    if (ram.u16(rec + 0x02) >= 0x6f00) continue;      // $245248 / $2452F8 bcc
+    ram.setU16(rec + 0x18, u16(ram.u16(rec + 0x18) - d5));  // $245250 / $245300
+    hits++;
+  }
+  return hits;
+}
+
+// ---------------------------------------------------------------------------
+// `$2453AC..$245608` -- THE BEAM'S OWN DAMAGE PASS.  606 bytes, `$24530C bsr`.
+//
+// A1 is the beam control record (`$811EF2` P1 / `$811F12` P2), the one
+// `$254C1E` writes and `laser.js` calls `BEAM[].rec`.  D6 is `$24518A`'s
+// `#$2800`, NOT the pass's D7 (which blocks 5/6b have already moved to $1800).
+//
+// THE FIVE THINGS THIS ROUTINE WRITES ON THE BEAM RECORD, because they are what
+// the drawn column reads:
+//   ($10,A1)  the beam's REACH.  Seeded `$7400 + D6`, pulled DOWN to the
+//             topmost enemy hit, and un-biased by `$245604 sub.w D6,($10,A1)`
+//             on the way out -- so an early exit leaves it BIASED, which is the
+//             board's behaviour and not a bug to smooth.
+//   ($c,A1)   cleared on any hit.
+//   ($e,A1)   the per-hit damage; pool B's tail REWRITES it (see below).
+//   (A1) bit 9 ($0200)  the arm, above.
+//   (A1) bits 12+0 ($1001)  `$2454AC`/`$2455AE ori.w #$1001,(A1)` -- **the only
+//             instructions in build B that set bit 4 of the record's high byte**
+//             (W45 §4 proved it with a whole-image encoding scan), and
+//             `$254F48`'s `btst #4,(A2)` is what lights the bright column.  So
+//             W45's "a port that lit the column without the damage pass would be
+//             inventing the hit" is exactly right, and this is the wave that
+//             earns it.
+//
+// **THE POOL-B FALL-OFF, WHICH LOOKS LIKE A BUG AND IS THE LISTING.**
+// `$2455CE move.w D5,D4 / bpl $2455D6` -> `lsr.w #3,D4 / neg.w D4 / move.w D4,
+// ($e,A1)`: after the first pool-B hit the damage word is stored NEGATED and an
+// eighth of its size, and the next pool-B hit re-negates it (`$2455D2 neg.w D5`)
+// without rewriting it.  So a beam melting through pool B does 1/8 damage from
+// the second target on -- and pool A, which reads `($e,A1)` with no `neg`, then
+// SUBTRACTS A NEGATIVE, i.e. heals.  Nothing resets `($e,A1)` between frames
+// except `$254C1E` (a new beam) or the hyper arm at `$24541C`/`$24553E`.  Four
+// readings of the disassembly and it says the same thing each time; it is
+// transcribed and NOT guarded, and it is called out here so the next person to
+// see an enemy gain HP knows which instruction did it.
+// ---------------------------------------------------------------------------
+export function laserDamagePass(ram, a1, d6) {
+  ram.setU16(DMG.fa7c, 0);                            // $2453AC clr.w $80FA7C
+  const a2 = a1;                                      // $2453B2 movea.l A1,A2
+  if ((ram.u16(a1) & 0x8000) === 0) return 0;         // $2453B4 tst.w/bpl
+  if (ram.bset8(a1, 1) === 0) return 0;               // $2453BA bset #$1/beq
+  return laserDamageBody(ram, a1, a2, d6);
+}
+
+/** `$2453C2..$245608` -- the body, and the ONLY thing `$245314`/`$24536E`
+ *  would reach if either were reachable (`$245364 bsr $2453C2`).  Split out at
+ *  the ROM's own entry point so the boundary is legible; both callers stay
+ *  unported and are named on `DMG`. */
+function laserDamageBody(ram, a1, a2, d6) {
+  ram.bclr8(a1, 4);                                   // $2453C2 bclr #$4,(A1)
+  ram.setU16(a1 + 0x10, u16(0x7400 + d6));            // $2453C6/$2453CC
+  // $2453D0 `lea ($2,A1),A0` and five post-increment reads.
+  let d0 = u16(ram.u16(a1 + 0x02) + d6);              // $2453D4/$2453D8
+  const d1 = d0;                                      // $2453DA move.w D0,D1
+  d0 = u16(u16(d0 + 0x400) + ram.u16(a1 + 0x06));     // $2453DC/$2453E0
+  const d2 = u16(u16(ram.u16(a1 + 0x04) + d6) + ram.u16(a1 + 0x08));  // $2453E2/$2453E6
+  const d3 = u16(u16(ram.u16(a1 + 0x04) + d6) - ram.u16(a1 + 0x0a));  // $2453E8
+  // ---- $2453EA..$24541C: the HYPER recompute of the damage word.  Both gates
+  // are 0 on this tree ($81B6E6 is the tail's copy of $81B63E), so the arm is
+  // transcribed and unexercised.  `$245414 subq.w #1,D7 / dbra` runs $81B6E8
+  // times -- and 65,536 times when $81B6E8 is 0, which is the board's own
+  // arithmetic and is not guarded here for the same reason `src/score.js`
+  // does not guard `$28618A`'s.
+  if (ram.u16(DMG.b6e6) !== 0 && ram.u16(DMG.b410) === 0) {  // $2453EA/$2453F2
+    let d5 = ram.u16(a1 + 0x1c);                      // $2453FA move.w ($1c,A1)
+    let d4 = (d5 & 0xffff) >>> 2;                     // $2453FE/$245400 lsr.w #2
+    if ((ram.u16(DMG.g309c) & 0x8000) !== 0) {        // $245402 tst.w/bpl
+      d4 = (d4 & 0xffff) >>> 1;                       // $24540C lsr.w #1
+    }
+    let d7 = u16(ram.u16(DMG.b6e8) - 1);              // $24540E/$245414
+    for (;;) {                                        // $245416/$245418 dbra
+      d5 = u16(d5 + d4);
+      if (d7 === 0) break;
+      d7 = u16(d7 - 1);
+    }
+    ram.setU16(a1 + 0x0e, d5);                        // $24541C move.w D5,($e,A1)
+  }
+  let hits = 0;
+  // ======================= $245420: POOL A, 100 SLOTS ======================
+  // **D0 IS CARRIED INTO POOL B.**  `$2454C2 move.w D4,D0` overwrites the box's
+  // upper Y bound with the reach of the last enemy pool A hit, and nothing
+  // between `$2454FA` and `$245580 cmp.w D4,D0` reloads it.  Returning the box
+  // rather than a hit count is the only way a JS transcription keeps that.
+  const a = laserPool(ram, a1, d6, DMG.poolA, 100, { d0, d1, d2, d3 }, 'A');
+  hits += a.hits; d0 = a.d0;
+  // ---- $2454FA `movea.l A2,A1` -- A1 was never moved, but the board restores
+  // it here and the restore is what makes pool B read the same record.
+  a1 = a2;
+  // ---- $2454FC..$245540: the SECOND hyper recompute, with a DIFFERENT shift
+  // ladder ($245528 lsr.w #1, then a conditional second lsr on $8130F8 bit 0)
+  // and a `clr.w ($e,A1)` arm when `$81B410` is non-zero.
+  if (ram.u16(DMG.b6e6) !== 0 && (ram.u16(DMG.g309c) & 0x8000) === 0) {  // $2454FC/$245504
+    if (ram.u16(DMG.b410) !== 0) {                    // $24550C tst.w/beq
+      ram.setU16(a1 + 0x0e, 0);                       // $245514 clr.w ($e,A1)
+    } else {
+      let d7 = u16(ram.u16(DMG.b6e8) - 1);            // $24551A/$245520
+      let d5 = ram.u16(a1 + 0x1c);                    // $245522 move.w ($1c,A1)
+      let d4 = (d5 & 0xffff) >>> 1;                   // $245526/$245528 lsr.w #1
+      if ((ram.u8(SCORE_G30F8) & 0x01) === 0) {       // $25552A btst #$0,$8130F8
+        d4 = (d4 & 0xffff) >>> 1;                     // $245536 lsr.w #1
+      }
+      for (;;) {                                      // $245538/$24553A dbra
+        d5 = u16(d5 + d4);
+        if (d7 === 0) break;
+        d7 = u16(d7 - 1);
+      }
+      ram.setU16(a1 + 0x0e, d5);                      // $24553E move.w D5,($e,A1)
+    }
+  }
+  // ======================== $245542: POOL B, 50 SLOTS ======================
+  hits += laserPool(ram, a1, d6, DMG.poolB, 50, { d0, d1, d2, d3 }, 'B').hits;
+  ram.setU16(a1 + 0x10, u16(ram.u16(a1 + 0x10) - d6));  // $245604 sub.w D6
+  return hits;
+}
+
+/** `$245438..$2454F8` (pool A) and `$24555A..$245602` (pool B).  The two share
+ *  their box test instruction for instruction and differ ONLY after the HP
+ *  test, which is why one function takes a `which`. */
+function laserPool(ram, a1, d6, pool, slots, box, which) {
+  let { d0 } = box;
+  const { d1, d2, d3 } = box;
+  let hits = 0;
+  for (let n = 0; n < slots; n++) {                   // $245426 #$63 / $245548 #$31
+    const rec = pool + n * DMG.enemyStride;
+    if ((ram.u8(rec) & 0x80) === 0) continue;         // $245438/$24555A move.b/bpl
+    // ---- `move.l ($2,A5),D4` loads Y into D4's HIGH word and X into its LOW,
+    // and the routine `swap`s between the two axes rather than reloading.  The
+    // three `swap`s are why the X test comes FIRST here and second in block 7.
+    let x = u16(ram.u16(rec + 0x04) + d6);            // $24543C/$245440
+    const xPlus = u16(x + ram.u16(rec + 0x14));       // $245444 add.w ($14,A5)
+    if (xPlus < d3) continue;                         // $245448 cmp.w D3,D4/bcs
+    const xMinus = u16(x - ram.u16(rec + 0x16));      // $24544C sub.w ($16,A5)
+    if (d2 < xMinus) continue;                        // $245450 cmp.w D5,D2/bcs
+    const y = u16(ram.u16(rec + 0x02) + d6);          // $245454/$245456 swap/add
+    const yMinus = u16(y - ram.u16(rec + 0x12));      // $24545A sub.w ($12,A5)
+    if (d0 < yMinus) continue;                        // $24545E cmp.w D4,D0/bcs
+    const yPlus = u16(y + ram.u16(rec + 0x10));       // $245462 add.w ($10,A5)
+    if (yPlus < d1) continue;                         // $245466 cmp.w D1,D5/bcs
+    if (yMinus >= 0x9800) continue;                   // $24546A cmpi.w/bcc
+    if ((ram.u8(rec) & 0x20) === 0) continue;         // $245472 btst #$5,(A5)/beq
+    if ((ram.u16(rec + 0x18) & 0x8000) !== 0) continue;  // $245478 tst.w/bmi
+    let d5 = ram.u16(a1 + 0x0e);                      // $245480 move.w ($e,A1),D5
+    let skipReach = false;
+    if (which === 'A') {
+      // ---- $245484..$2454A2: the HYPER double, and the ONLY path that skips
+      // the reach update.  `$245494 tst.w ($1a,A1)` is the beam's formation
+      // word and `$24549A btst #$1,(A5)` the enemy's own bit 1.
+      const hyperArm = ram.u16(DMG.b6e6) !== 0 && ram.u16(DMG.b410) !== 0;
+      if (!hyperArm && ram.u16(a1 + 0x1a) !== 0 && (ram.u8(rec) & 0x02) !== 0) {
+        d5 = u16(d5 + d5);                            // $2454A0 add.w D5,D5
+        skipReach = true;                             // $2454A2 bra $2454C4
+      }
+    }
+    if (!skipReach) {
+      // ---- $2454A4/$2455A6: the REACH test and the hit flags.
+      if (yMinus >= ram.u16(a1 + 0x10)) continue;     // $2454A6/$2455A8 cmp/bcc
+      ram.setU16(a1, u16(ram.u16(a1) | 0x1001));      // $2454AC/$2455AE ori.w
+      ram.setU16(a1 + 0x0c, 0);                       // $2454B0/$2455B2 clr.w
+      let reach = yMinus;                             // $2454B4/$2455B6 cmp.w D1,D4
+      if (reach < d1) reach = u16(d1 + 0x400);        // $2454B8/$2455BA + $400
+      ram.setU16(a1 + 0x10, reach);                   // $2454BE/$2455C0
+      d0 = reach;                                     // $2454C2/$2455C4 move.w D4,D0
+    }
+    if (ram.u16(DMG.fa7c) !== 0) continue;            // $2454C4/$2455C6 tst.w/bne
+    if (which === 'B') {
+      // ---- $2455CE..$2455DC: the fall-off.  See this file's header.
+      if ((d5 & 0x8000) !== 0) {                      // $2455D0 bpl $2455D6
+        d5 = u16(-d5);                                // $2455D2 neg.w D5
+      } else {
+        ram.setU16(a1 + 0x0e, u16(-((d5 & 0xffff) >>> 3)));  // $2455D6/$2455D8/$2455DA
+      }
+    }
+    if (ram.u16(DMG.gate308c) === 0) {                // $2454CC/$2455DE tst.w/bne
+      d5 = u16(d5 - ((d5 & 0xffff) >>> 2));           // $2454D4/$2454D6/$2454D8
+    }
+    ram.setU16(rec, u16(ram.u16(rec) | ram.u16(DMG.fa72) | 0x400));  // $2454DA..$2454E4
+    if (which === 'A' && ram.u16(rec + 0x02) >= 0x6f00) continue;    // $2454E6 bcc
+    ram.setU16(rec + 0x18, u16(ram.u16(rec + 0x18) - d5));  // $2454EE/$2455F8
+    hits++;
+  }
+  return { hits, d0 };
+}
+
+/** `$8130F8`.  `btst #n,<ea>` on memory is a BYTE operation, so `$25552A
+ *  btst #$0,$8130F8.l` tests bit 0 of the byte AT `$8130F8` -- the word's HIGH
+ *  byte -- exactly as `src/score.js` reads `$28609E btst #$2` at the same
+ *  address. */
+const SCORE_G30F8 = 0x8130f8;
+
+/**
+ * `$24560A` -- **THE NINTH BLOCK OF `$244D62`**, 966 bytes, which W37 §4.2
+ * found and no file under `src/` has ever named.  `$245310 bra.w $24560A`.
+ *
+ * Only its two guards are transcribed, because both are FALSE on this tree and
+ * the block behind them is the BOMB-LASER's (weapon (A), W37 §0), not the
+ * beam's.  If either ever goes true the port throws by address rather than
+ * skipping 966 bytes of damage silently.
+ */
+function bombLaserBlock(ram, a4) {
+  const d5 = ram.u16(DMG.laserRec);                   // $245612 move.w (A6),D5
+  if ((d5 & 0x8000) === 0) return;                    // $245614 bpl.w $2459CE
+  if ((ram.u8(a4 + 0x01) & 0x40) === 0) return;       // $245618 btst #$6/beq
+  unreached(DMG.bombLaserBody, `$24560A's body -- $244D62's NINTH block, the `
+    + `BOMB-LASER's damage: $245638 walks 150 slots at $81459C with moveq #$50 `
+    + `(or #$1 when ($1e,A6) is set), $2456A6 builds a bounding box over `
+    + `$811F72 as 45 records of $30, and $245720 walks pool B. Both its guards `
+    + `just went true: $811F72 is negative and the player's ($1,A4) bit 6 is `
+    + `set, i.e. weapon (A) is live. That needs the BOMB ($24989E is its only `
+    + `writer) and type-5 call #7 $255DD8, neither of which is ported`);
+}
+
 /**
  * `$244D62` -- the pass, entered with the tail's five registers.
  *
  * `table` is A0 (the player's 36-slot shot table), `mask` is D0, `d1`/`d2` are
  * the hyper words the tail loads.  D7 is `$2800` at entry (`$244D74`).
  */
-export function collisionPass(ram, ctx, { table, mask, d1, d2, player }) {
+export function collisionPass(ram, ctx, { table, mask, d1, d2, player, a1, a2, a3 }) {
   ram.setU16(DMG.fa72, mask);                         // $244D62 move.w D0,$80FA72
   ram.setU16(DMG.b6e6, d1);                           // $244D68 move.w D1,$81B6E6
   ram.setU16(DMG.b6e8, d2);                           // $244D6E move.w D2,$81B6E8
@@ -333,8 +701,8 @@ export function collisionPass(ram, ctx, { table, mask, d1, d2, player }) {
   }
   // ---- $244EE0: the shot bounding box.
   if (!shotBoundingBox(ram, table, d7)) {             // $244EF0 bra.w $24518A
-    noteWeapons(ctx);
-    return { hitsA: 0, hitsB: 0, anyShot: false };
+    const w = weaponTail(ram, ctx, player, a1, a2, a3);
+    return { hitsA: 0, hitsB: 0, anyShot: false, ...w };
   }
   const gate = ram.u16(DMG.gate308c);
   // ---- $244F68: pool A, $81459C, 100 slots.
@@ -354,17 +722,48 @@ export function collisionPass(ram, ctx, { table, mask, d1, d2, player }) {
     hitsB = poolDamage(ram, DMG.poolB, cntB, table, d7, ram.u16(DMG.fa72),
       gate, 'B');
   }
-  noteWeapons(ctx);
-  return { hitsA, hitsB, anyShot: true };
+  const w = weaponTail(ram, ctx, player, a1, a2, a3);
+  return { hitsA, hitsB, anyShot: true, ...w };
 }
 
-function noteWeapons(ctx) {
-  note(ctx, DMG.weaponA2, `$24518A onwards -- the A2 weapon object ($811802 `
-    + `for P1) against all 150 enemy slots, its own damage at $245250, and `
-    + `then $24525C's A3 object ($811892) plus $24530C bsr $2453AC, THE LASER. `
-    + `Ledger row L13; $24536E has one caller, $24CE46 inside the option `
-    + `object, and $2453C2 executed ZERO times in 580 live-beam frames `
-    + `(10-recon-combat §8.7)`);
+/**
+ * `$245188..$245310` -- the WEAPON TAIL, and its gate.
+ *
+ * Everything here is behind `$24519A tst.b ($3f,A4) / beq.w $24560A`, the byte
+ * `$24C282` sets while a beam is arming and `$24C2D6` clears on release.  So
+ * this whole tail is a no-op on every frame nobody is holding fire, which is
+ * why W34 could defer it without losing a hit, and why porting it now cannot
+ * change a single frame of the no-input gates.  MEASURED, this wave: the
+ * `webgate` no-input run is digit-for-digit unchanged.
+ *
+ * ORDER, and how it was established: block 7 (`$2451A2`), block 8 (`$24525C`),
+ * `$24530C bsr $2453AC`, `$245310 bra.w $24560A`.  That is the instruction
+ * stream -- `$245258 dbra` falls into `$24525C`, `$245308 dbra` falls into
+ * `$24530C`, and the `bsr` returns into the `bra`.  Not a measurement.
+ */
+function weaponTail(ram, ctx, player, a1, a2, a3) {
+  const d6 = 0x2800;                                  // $24518A move.w #$2800,D6
+  const d0 = ram.u16(player);                         // $24518E move.w (A4),D0
+  if ((d0 & 0x8000) === 0) return { weapon: null };   // $245190 bpl.w $2459CE
+  if ((d0 & 0x0080) !== 0) {                          // $245194 tst.b D0 / bmi
+    bombLaserBlock(ram, player);
+    return { weapon: null };
+  }
+  if (ram.u8(player + DMG.laserByte) === 0) {         // $24519A tst.b ($3f,A4)
+    bombLaserBlock(ram, player);                      // $24519E beq.w $24560A
+    return { weapon: null };
+  }
+  if (a1 === undefined) {
+    // The tail always supplies A1/A2/A3; a caller that does not is a defect in
+    // this file, not a board state, so it says so rather than guessing.
+    throw new Error('collisionPass: the $28B670 tail must pass A1/A2/A3');
+  }
+  const hits27 = weaponObjectPass(ram, a2, d6, { block: 7 });   // $2451A2
+  const hits30 = weaponObjectPass(ram, a3, d6, { block: 8 });   // $24525C
+  const beam = laserDamagePass(ram, a1, d6);                    // $24530C bsr
+  bombLaserBlock(ram, player);                                  // $245310 bra.w
+  void ctx;
+  return { weapon: { hits27, hits30, beam } };
 }
 
 /**
@@ -387,7 +786,8 @@ export function runType5Tail(ram, ctx) {
       if (mirror === 0) {                             // $28B6B0 tst.w / bne $28B706
         return collisionPass(ram, ctx, {              // $28B6B8 jmp $244D62
           table: DMG.p1shots, mask: DMG.maskP1,
-          d1: ram.u16(DMG.hyper1), d2: ram.u16(DMG.hyperLvl1), player: DMG.p1rec });
+          d1: ram.u16(DMG.hyper1), d2: ram.u16(DMG.hyperLvl1), player: DMG.p1rec,
+          a1: DMG.beamRecP1, a2: DMG.laserSlot27, a3: DMG.laserSlot30 });
       }
     } else {
       const p2 = ram.u16(DMG.p2rec);                  // $28B6C0 move.w $810448,D4
@@ -399,7 +799,8 @@ export function runType5Tail(ram, ctx) {
       if (mirror !== 0) {
         return collisionPass(ram, ctx, {              // $28B6FE jmp $244D62
           table: DMG.p2shots, mask: DMG.maskP2,
-          d1: ram.u16(DMG.hyper2), d2: ram.u16(DMG.hyperLvl2), player: DMG.p2rec });
+          d1: ram.u16(DMG.hyper2), d2: ram.u16(DMG.hyperLvl2), player: DMG.p2rec,
+          a1: DMG.beamRecP2, a2: DMG.laserSlot27P2, a3: DMG.laserSlot30P2 });
       }
     }
     // $28B706: the two-player interaction arm.

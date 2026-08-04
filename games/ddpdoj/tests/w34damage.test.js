@@ -322,10 +322,16 @@ test('the deferred blocks are COUNTED BY ADDRESS, not silently skipped', () => {
   const c = ctx();
   runType5Tail(ram, c);
   const keys = [...c.unportedLog.calls.keys()];
-  for (const a of [DMG.playerBox, DMG.weaponA2]) {
+  for (const a of [DMG.playerBox]) {
     assert.ok(keys.some((k) => k.startsWith(`$${a.toString(16).toUpperCase()} `)),
       `$${a.toString(16).toUpperCase()} is filed under its OWN address`);
   }
+  // WAVE 51 RETIRED ONE OF THIS TEST'S TWO ADDRESSES, and the assertion is
+  // INVERTED rather than deleted so it can still fail.  `$24518A` was a note
+  // from W34 to W45; it is now PORTED (blocks 7, 8 and `$2453AC`), so a note
+  // filed under it would mean the weapon tail had been deferred again.
+  assert.ok(!keys.some((k) => k.startsWith('$24518A ')),
+    '$24518A is PORTED since wave 51 and must no longer be a deferral note');
 });
 
 // ==================================================================== W34 §7
