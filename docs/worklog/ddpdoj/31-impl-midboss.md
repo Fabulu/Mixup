@@ -664,5 +664,17 @@ lf3098.
 - kinds 3 and 7 execute for the first time; both are W26 bodies, F1 stands (§4.2).
 - 24 mutations; six survived the first pass, four were defective checks (fixed
   and re-run RED) and two are provably uncatchable (§7.1).
+- the first full gate run came back 44/5 with a NEW fifth -- the W23 stats gate,
+  which this wave's `tables` thread broke and which the throw named exactly
+  (§8.1). Fixed; the gate then improved from 307/308 to 308/308.
+- the final gate: **45 passed / 4 failed / 0 SKIPPED**, the four being the
+  pre-existing scroll-program red.
+- **A SKIP APPEARED AND WAS CHASED, NOT TOLERATED** -- the same one W29 hit:
+  `movement.test.js`'s W24 stream inventory started skipping because its
+  gitignored input `assets/w24-movement/stage1-streams.json` had been deleted by
+  a concurrent `pgm.py check`. Regenerated with
+  `python games/ddpdoj/tools/oracle/w24streams.py` (note: it must be run from the
+  REPO ROOT, not from `games/ddpdoj/` -- its IMG path is repo-relative). Final:
+  **475 pass, 0 fail, 0 SKIPPED**.
 
 status: DONE
