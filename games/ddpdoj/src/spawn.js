@@ -384,11 +384,19 @@ export function processDeferred(ram, rom, unported) {
 }
 
 /**
- * `$2634F4` -- the per-frame spawn driver: walk the script, then drain the
- * queue.  This is what the live frame loop will call once the init bodies
- * (W23) and handlers (W25) are ported; until then the gate drives
- * `walkScriptLoop` with a counting callback and validates the SAME cursor
- * logic against the board.
+ * `$2633BE` -- the per-frame spawn driver: walk the script, then drain the
+ * deferred queue.
+ *
+ * **THE ADDRESS IN THIS DOCSTRING WAS WRONG UNTIL W29.**  It said `$2634F4`,
+ * which is the CALLER (`$2634F6 bsr.w $2633BE / $2634FA bsr.w $263502`) and
+ * includes the 58-slot enemy driver this function does not run.  Nothing had
+ * noticed because until W29 the caller did not exist in the port at all: the
+ * gate drove `walkScriptLoop` directly and never had to name the routine.
+ * `$2634F4` is now `src/enemyframe.js`.
+ *
+ * The two halves below are ONE routine in the ROM by fall-through: `$263444
+ * move.l A2,(A3)` writes the cursor back and drops straight into `$263446
+ * move.w $815EA8,D6`, the deferred drain, which is what reaches `$2634F2 rts`.
  */
 export function runSpawnWalker(ram, rom, unported) {
   const script = walkScriptLoop(ram, rom, (cur, rec) =>

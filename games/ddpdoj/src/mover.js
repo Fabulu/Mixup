@@ -98,8 +98,15 @@ export function runMover(ctx) {
   }
 }
 
-/** `$281DEA..$281E1E` -- the cascade.  D7+1 slots walked. */
-function moverIterCount(ram) {
+/** `$281DEA..$281E1E` -- the cascade.  D7+1 slots walked.
+ *
+ *  EXPORTED (W29) because `$281CD6`, the bomb/screen-clear sweep the bullet
+ *  driver calls one instruction earlier, contains the SAME cascade instruction
+ *  for instruction (`$281CEE..$281D1E` and again at `$281D50..$281D80`).  Two
+ *  copies of this in the port would be two things that agree with each other
+ *  whatever they hold -- the shape `docs/knowledge/03` calls a check that cannot
+ *  fail, applied to production code. */
+export function moverIterCount(ram) {
   // D7 starts $45; each NON-zero window word in order advances it one step.
   let step = 0;
   for (let i = 0; i < 4; i++) {

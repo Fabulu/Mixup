@@ -101,11 +101,16 @@ import { shotHandlers } from './shots.js';
 import { runOptionObject } from './options.js';
 import { drawShip, drawShipAlt, SHIP_MUTATE } from './shipsprite.js';
 import { RAM, ROM } from './machine.js';
+import { runEnemyFrame, enemyHandlerMap } from './enemyframe.js';
+import { runBulletDriver, runClearTimer } from './bulletdriver.js';
 
 export const TYPE5 = {
   handler: 0x28b5e0,
   entryTest: 0x28b5e0,      // tst.b ($2,A5)
   notStarted: 0x28b5a8,
+  enemyFrame: 0x2634f4,     // $28B5EC -- the spawn walker + the 58-slot driver
+  bulletDriver: 0x281d9a,   // $28B658 -- the screen clear + THE MOVER
+  clearTimer: 0x25354c,     // $28B65E -- the screen clear's arming timer
   shotDriver: 0x253a70,     // $28B610 -- the ONE call this port makes
   optionObject: 0x24c096,   // $28B616 -- where the LASER RAMP lives
   laserRampDown: 0x24c8be,  // inside it; $24C8CE is the write
@@ -135,24 +140,35 @@ export function laserRampWouldMove(held, speedIdx, laserFloor) {
   return held >= TYPE5.laserRampFrames && speedIdx !== laserFloor;
 }
 
-/** The five of the 23 `jsr` targets wave 12 RUNS, by their position in the
+/** The nine of the 23 `jsr` targets the port RUNS, by their position in the
  *  ROM's own call order.  Everything else is still counted.  The four ship-draw
  *  entries come BEFORE the option object in that order and that matters: the
  *  ship's records reach bucket 19 while the pods' reach bucket 15, and the two
  *  buckets drain at different depths, so the ORDER WITHIN a bucket is what a
- *  byte-for-byte gate can see. */
+ *  byte-for-byte gate can see.
+ *
+ *  WAVE 29 added #2, #20 and #21.  #2 and #20 are the two that matter: they are
+ *  the entry points of the ENEMY and BULLET subsystems, and until this wave
+ *  nothing under `src/` imported `spawn.js`, `handlers.js`, `mover.js` or
+ *  `turret.js` at all -- W28 measured it.  #21 is six instructions and is the
+ *  timer that arms #20's screen clear; porting it with #20 keeps that one
+ *  machine whole rather than half-wired. */
 export const TYPE5_PORTED = new Set([
+  0x2634f4,   // #2  THE ENEMY SUBSYSTEM: spawn walk + deferred drain + driver (W29)
   0x253a70,   // #8  the player-shot driver (wave 8)
   0x24c096,   // #9  THE OPTION OBJECT (wave 12)
   0x24a458,   // #14 the ship's alt entry, P1 (wave 12)
   0x24a46c,   // #15 ...P2
   0x24a440,   // #16 the ship's draw, P1 (wave 12)
   0x24a44c,   // #17 ...P2
+  0x281d9a,   // #20 THE BULLET SUBSYSTEM: screen clear + the mover (W29)
+  0x25354c,   // #21 the screen clear's arming timer (W29)
 ]);
 
 /** Handlers this module dispatches to, built once per Game. */
 export function makeType5(rom) {
   const handlers = shotHandlers();
+  const enemyHandlers = enemyHandlerMap(rom);
   return function type5(ram, slot, index, ctx) {
     if (ram.u8(slot + 2) === 0) {                       // $28B5E0 tst.b ($2,A5)
       unreached(TYPE5.notStarted, `object type 5's "not started" branch `
@@ -161,6 +177,19 @@ export function makeType5(rom) {
     }
     for (const c of TYPE5.calls) {
       switch (c) {
+        case TYPE5.enemyFrame:                          // $28B5EC -> $2634F4
+          ctx.enemyFrame = runEnemyFrame(ram, rom, ctx, enemyHandlers);
+          break;
+        case TYPE5.bulletDriver:                        // $28B658 -> $281D9A
+          // `notes` is what src/mover.js calls the log; `ram` is not on Game's
+          // ctx at all.  Both are supplied here, once, rather than renamed
+          // across two files this wave is not the reviewer for.
+          ctx.bulletFrame = runBulletDriver({ ...ctx, ram, rom,
+            notes: ctx.unportedLog });
+          break;
+        case TYPE5.clearTimer:                          // $28B65E -> $25354C
+          runClearTimer(ram);
+          break;
         case TYPE5.shotDriver:                          // $28B610
           ctx.shotsProcessed = runShotDriver(ram, rom, handlers, ctx);
           break;
