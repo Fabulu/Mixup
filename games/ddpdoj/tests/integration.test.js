@@ -290,6 +290,13 @@ test('one type-5 pass RUNS $2634F4/$281D9A/$25354C instead of counting them',
     ram.setU16(rec, 0x8000);
     ram.setU32(rec + ENEMY.subRecOff, 0x815000);
     ram.setU32(rec + ENEMY.handlerOff, 0x2688cc);          // type $11, W25
+    // W30: ($2A,A5)/($2E,A5) are the sprite-EMITTER pair.  Read out of the
+    // ROM's own `$267F70` rather than written as a constant this test also
+    // asserts on -- a synthetic record with a zero pointer now throws by
+    // address, because the board would `jsr 0`.
+    ram.setU32(rec + 0x2a, ROM.u32(0x267f70));
+    ram.setU32(rec + 0x2e, ROM.u32(0x267f74));
+    ram.setU8(rec + 0x18, 2);                              // the aim cadence
     ram.setU32(SPAWN.LIVE_CURSOR, 0x231704);               // the script terminator
     ram.setU16(MOVER.liveCount, 0x4321);                   // a stale bullet count
     ram.setU16(BULLET_DRIVER.armWord, 3);                  // the timer must tick

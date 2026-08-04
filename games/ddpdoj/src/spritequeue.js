@@ -246,6 +246,93 @@ export function enqueueRegisters(ram, bucket, d1, d2, d3, d4) {
   return off;
 }
 
+// ---------------------------------------------------------------------------
+// 1c. THE STUB IS A POINTER IN A TABLE -- resolving one FROM THE ROM.   W30.
+//
+// The enemy handlers do not `jsr $23D852`.  They do
+// `movea.l ($2A,A5),A0 / jsr (A0)` and `movea.l ($2E,A5),A0 / jmp (A0)`, with
+// those two longwords written at spawn out of `$267F70` (six 8-byte pairs,
+// indexed by the sub-record's `($1F,A6)` << 3), and `$276702` does
+// `move.w ($1E,A6),D0 / lsl x2 / lea $27829C(pc),A0 / movea.l (A0,D0.w),A0 /
+// jsr (A0)` through a 24-entry table.
+//
+// **THIS CORRECTS A LABEL, NOT JUST AN ABSENCE.**  `src/handlers.js` called the
+// `($2A,A5)`/`($2E,A5)` calls "indirect fire-actions -> the `$23Dxxx` routines
+// -> the `$281xxx` bullet fans".  They are nothing of the kind: read out of the
+// ROM, every one of the twelve longwords in `$267F70` and all 24 in `$27829C`
+// is a member of THIS family -- a sprite ENQUEUE stub.  The enemies' draw was
+// being counted as their fire.
+//
+// THE THREE SHAPES, read off all 20 distinct stubs the two tables reference:
+//
+//   41F9 <buf.l> D0F9 <ctr.l> 43EE 0002 ...   the RECORD convention
+//   48E7 80C0 41F9 <buf.l> D0F9 <ctr.l> 43EE  ...the same, registers saved
+//   41F9 <buf.l> D0F9 <ctr.l> 2001 ...        the REGISTER convention
+//   41FA <disp> 4E71 2206 ...                 the ZOOMING variant ($23D9E2 fam)
+//
+// and the buffer/counter pairs resolve to exactly FIVE buckets -- 0, 1, 2, 3
+// and 7.  The resolver below reads those two longwords out of the cartridge
+// rather than carrying a transcribed map, so the bucket a stub feeds is the
+// ROM's answer and not a table somebody typed.  A stub whose opcodes do not
+// match one of the shapes is a LOUD NAMED THROW carrying the stub's address.
+export const EMIT_TABLE = {
+  pair267F70: 0x267f70,   // 6 pairs: (record stub, register stub)
+  dispatch27829C: 0x27829c, // 24 longwords, indexed by ($1E,A6) * 4
+  entries27829C: 24,
+};
+
+/** @returns {{bucket:number, conv:'record'|'register'}} */
+export function resolveEmitStub(rom, stub) {
+  let at = stub;
+  if (rom.u16(at) === 0x48e7) at += 4;                 // movem.l D0/A0-A1,-(A7)
+  if (rom.u16(at) !== 0x41f9 || rom.u16(at + 6) !== 0xd0f9) {
+    unreached(stub, `the sprite-emitter stub $${stub.toString(16).toUpperCase()} `
+      + `does not open \`lea <abs>.l,A0 / adda.w <abs>.l,A0\` (it opens $${
+        rom.u16(at).toString(16).toUpperCase()}). The ZOOMING family $23D9E2/`
+      + `$23DA5C/$23DAD6/$23DB50/$23DBCA opens \`41FA <disp> 4E71 2206\` and is a `
+      + `DIFFERENT routine needing the caller's D6 flags -- see enqueueZoomedRequest`);
+  }
+  const buffer = rom.u32(at + 2);
+  const counter = rom.u32(at + 8);
+  const b = BUCKETS.find((x) => x.buffer === buffer && x.counter === counter);
+  if (!b) {
+    unreached(stub, `the sprite-emitter stub $${stub.toString(16).toUpperCase()} `
+      + `feeds buffer $${buffer.toString(16).toUpperCase()} counted at $${
+        counter.toString(16).toUpperCase()}, which is not one of the thirty `
+      + `buckets wave 11 enumerated`);
+  }
+  const op = rom.u16(at + 12);
+  if (op === 0x43ee) return { bucket: b.i, conv: 'record' };     // lea $2(A6),A1
+  if (op === 0x2001) return { bucket: b.i, conv: 'register' };   // move.l D1,D0
+  unreached(stub, `the sprite-emitter stub $${stub.toString(16).toUpperCase()} `
+    + `continues with $${op.toString(16).toUpperCase()}, which is neither $43EE `
+    + `(lea $2(A6),A1 -- the record convention) nor $2001 (move.l D1,D0 -- the `
+    + `register convention)`);
+  return null;                                          // unreachable
+}
+
+/** Run a RECORD-convention emitter stub read out of a ROM pointer. */
+export function enqueueThroughStub(ram, rom, stub, rec) {
+  const r = resolveEmitStub(rom, stub);
+  if (r.conv !== 'record') {
+    unreached(stub, `$${stub.toString(16).toUpperCase()} is the REGISTER-`
+      + `convention emitter for bucket ${r.bucket}, but the call site passes a `
+      + `record. The caller and the table disagree about the convention`);
+  }
+  return enqueueRequest(ram, r.bucket, rec);
+}
+
+/** Run a REGISTER-convention emitter stub read out of a ROM pointer. */
+export function enqueueRegistersThroughStub(ram, rom, stub, d1, d2, d3, d4) {
+  const r = resolveEmitStub(rom, stub);
+  if (r.conv !== 'register') {
+    unreached(stub, `$${stub.toString(16).toUpperCase()} is the RECORD-`
+      + `convention emitter for bucket ${r.bucket}, but the call site passes `
+      + `D1-D4. The caller and the table disagree about the convention`);
+  }
+  return enqueueRegisters(ram, r.bucket, d1, d2, d3, d4);
+}
+
 /** $23F3AE, the shot handlers' stub: `enqueueRequest` on bucket 14.  Kept as a
  *  named export because src/shots.js and wave 8's gate speak of it by name. */
 export function enqueueShotSprite(ram, rec) {

@@ -55,16 +55,22 @@ import { u16, i16 } from './ram.js';
 import { freeEnemy } from './initbody.js';
 import { stepMovement, scrollCompensate, applyVelocity } from './movement.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
-import { AimTables, AIM, aim64, slew64 } from './aim.js';
-import { enqueueRequest, enqueueRegisters } from './spritequeue.js';
+import { AimTables, AIM, aim64, aim64FromCaller, slew64 } from './aim.js';
+import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
+  enqueueRegistersThroughStub } from './spritequeue.js';
+
+/** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
+ *  Named because the port also has `addi.w` pairs around a `swap`, which do
+ *  not, and confusing the two is a one-character bug in a coordinate. */
+const u32 = (v) => (v >>> 0) % 0x100000000;
 
 // ----------------------------------------------------------- record offsets
 // A5 = enemy record, A6 = sub-record (= +$6,A5).  Named once so each handler
 // reads as the listing does.
 const R = {
   onScreen: 0x16, cooldown: 0x18, cooldownReload: 0x19, deathFlag: 0x20,
-  sprite22: 0x22, hpReload: 0x26, fireCtr: 0x28, fireAct2A: 0x2a,
-  fireAct2E: 0x2e, facing: 0x33, pal34: 0x34, palCycle: 0x35,
+  sprite22: 0x22, hpReload: 0x26, fireCtr: 0x28,
+  facing: 0x33, pal34: 0x34, palCycle: 0x35,
   handler: 0x4c, runLen: 0x04, movement: 0x12, flags: 0x02, classByte: 0x0d,
   // W30, for `$275914`.  The SAME BYTES the names above cover, named again for
   // the type that uses them differently -- `($20,A5)` is `deathFlag` in $10/$11
@@ -73,6 +79,12 @@ const R = {
   // is a death flag while it is being decremented as a counter.
   rec1C: 0x1c, rec1D: 0x1d, rec1E: 0x1e, rec21: 0x21, rec23: 0x23, rec24: 0x24,
   salvo: 0x20, cadence22: 0x22,
+  // W30: the SPRITE-EMITTER pair the init copies out of `$267F70` -- a RECORD-
+  // convention stub and a REGISTER-convention one.  They were called
+  // `fireAct2A`/`fireAct2E` and labelled as bullet fire-actions; every longword
+  // in that table is a member of the `$23D762` enqueue family (see
+  // src/spritequeue.js §1c).  Renamed so the mislabel cannot come back.
+  emitRec2A: 0x2a, emitReg2E: 0x2e,
 };
 // sub-record (A6)
 const S = {
@@ -93,6 +105,10 @@ const G = {
  *  `tools/export-tables.py`; the extent ($80 bytes) is pinned from the data,
  *  not from the index expression alone -- see the W30 worklog §1.1. */
 const MUZZLE_85 = 0x27327a;
+/** `$268B1E` -- type $11's muzzle table, read at `$268AF2` with the index
+ *  `((($33,A5)+2) & $3C) * 2`, so the ENTRIES ARE 8 BYTES APART and only the
+ *  first longword of each is read.  Already inside W20's $268B10 window. */
+const MUZZLE_11 = 0x268b1e;
 // 16-direction sprite-pointer tables, by handler (ROM addresses, build B)
 const SPRITE_TAB = {
   h11_main: 0x268b9e,   // $2689B6 lea (heading -> sub +$0A sprite)
@@ -107,13 +123,11 @@ function noteDamage(u, a5, from) {
 function noteEffect(u, addr, a5, what) {
   u?.note(addr, `effect $${addr.toString(16).toUpperCase()} (${what}) (W26) rec $${a5.toString(16)}`);
 }
-function noteFireAction(u, a5, ptrVal) {
-  u?.note(ptrVal, `indirect fire-action jsr (A0)= $${ptrVal.toString(16).toUpperCase()} `
-    + `(W27 $23Dxxx + W21/W26 bullet fan) rec $${a5.toString(16)} -- bullet cols excluded`);
-}
-function noteFan(u, addr, a5, kind) {
-  u?.note(addr, `bullet fan $${addr.toString(16).toUpperCase()} ${kind} (W21 log/W26 pool) rec $${a5.toString(16)}`);
-}
+// W30 REMOVED `noteFireAction` and `noteFan`.  The first named the RECORD- and
+// REGISTER-convention SPRITE EMITTERS at ($2A,A5)/($2E,A5) "indirect
+// fire-actions -> the $281xxx bullet fans", which is what they are not; the
+// second stood in for a fan that is now called.  Both are wired -- see
+// `enqueueThroughStub` (src/spritequeue.js §1c) and `fireFan11` below.
 
 // ----------------------------------------------------------- the fire WIRING
 //
@@ -142,7 +156,7 @@ function noteFan(u, addr, a5, kind) {
 //   * INDIRECT fire-action `jsr (A0)` through +$2A/+-$2E -> a $23Dxxx routine
 //     that sets D0-D5 and calls the $281xxx fan.  The $23Dxxx BODIES are W27
 //     (every one is a per-bucket fire-action, ~1.7 KB).  Noted via
-//     `noteFireAction`; not wirable this wave.
+//     a counted note; not wirable at that wave.
 //
 // So: the pool, the generators, the mover and the wire `fireBullet` are all in
 // place; the per-handler fire BODIES (aim + gates + $23Dxxx) are the W27 firing
@@ -157,36 +171,71 @@ export function fireBullet(ctx, entry, regs) {
   return fireBulletFan(ctx, entry, regs);
 }
 
-// -------------------------------------- $267FC6: the fire gate (DEFERRED NOTE)
-// HONEST DEMOTION (W25b F1).  The prior body FABRICATED an RNG read at $804000
-// that does NOT exist anywhere in $267FC6..$2680B6 (every instruction re-scanned
-// this fix-pass against maincpu.bin: ZERO $804000 references).  It was therefore
-// NOT "ported, self-contained" -- that claim is removed from the code and the
-// worklog.  The real routine (re-derived this fix-pass) is, in order:
-//   1. D0 = move.w $813096 (a stage word); D2 = longword at $242576/$24259E
-//      (rank-selected via $813098); D3 = longword at $242562/$24258A.
-//   2. a position-box overflow test on ($2,A6) using BOTH D2 (Y half) and D3
-//      (X half):  move.l $2(A6),D1; sub.w D2,D1; swap D2; add.w D2,D1; bcs out
-//      (Y); swap D1; sub.w D3,D1; swap D3; add.w D3,D1; bcs out (X).  Carry-out
-//      -> $267FC4 (the do-not-fire arm).  The prior port loaded only D2.
-//   3. a player-distance D4 = octagonal |dx|+|dy|/2 of ($2,A6) vs the active
-//      player(s) at $8103E8 / $81044A (each gated by $8103E6 / $810448), taking
-//      the minimum; cmp.w against the stage threshold table at $2680A2.
-//      Carry (do-not-fire) iff min-distance < threshold.  D4 is what the
-//      fire-action consumes; the prior port never produced it.
-// Translating this faithfully is W26/W27 FIRING-wave work -- the fire-action
-// that consumes D4 is itself a noted indirect `jsr (A0)` -> a `$23Dxxx` routine
-// (the per-bucket fire-action, all noted W26/W27), so a faithful translation
-// would have NO faithful consumer this wave.  Until then: a LOUD COUNTED NOTE
-// citing the address (never a silent return, never a fabricated verdict).
-// Returns `{ carry: false }` (proceed) as a placeholder so the fire-path notes
-// downstream still exercise; the verdict itself is DEFERRED, not claimed.
-function fireGate267FC6(u, ram, rom, a5) {
-  u?.note(0x267fc6, `$267FC6 fire-gate DEFERRED (W26/W27) rec $${a5.toString(16)} `
-    + `-- real routine is a D2+D3 position-box test on ($2,A6) + an octagonal `
-    + `player-distance D4 vs $8103E8/$81044A + stage threshold tbl $2680A2; NOT `
-    + `the $804000 RNG draw the prior code invented; verdict deferred`);
-  return { carry: false };
+// ------------------------------------------ $267FC6: THE FIRE GATE (W30)
+// PORTED THIS WAVE, and the deferral it replaces is worth stating: W25b
+// demoted this to a counted note after finding the previous body had FABRICATED
+// an RNG read at `$804000` that appears nowhere in the routine, and W26/W27
+// left it deferred because "a faithful translation would have no faithful
+// consumer".  W30 wires handler $11's fan, so it now has one -- and a gate that
+// always says "fire" would invent every bullet it lets through.
+//
+// The whole routine, `$267FC6..$2680A0`, in order:
+//   1. `$267FC6 move.w $813096,D0` -- used DIRECTLY AS A BYTE OFFSET into four
+//      longword tables, so it steps by 4 and each table is 5 entries
+//      ($242562..$2425B1, pinned from both ends: $242560 is the previous
+//      routine's `rts`, $2425B2 is `48E7 C080`, code).  Rank ($813098) picks
+//      $242576/$24259E for D2 and $242562/$24258A for D3.
+//   2. `$268004`: a position-box test on ($2,A6).  `sub.w D2,D1 / swap D2 /
+//      add.w D2,D1 / bcs` on the SHORT axis, then `swap D1` and the same with
+//      D3 on the LONG axis.  Only the ADD's carry is tested.
+//   3. `$268018`: the OCTAGONAL player distance, computed per player and only
+//      for a player whose record word has bit 15 set, `$7FFF` otherwise; the
+//      minimum of the two is compared against `$2680A2[$813092]`.
+//   4. `$26809E cmp.w D4,D0 / rts` -- CARRY SET (do not fire) iff the nearest
+//      live player is CLOSER than the stage's threshold.
+const FG = {
+  stageWord: 0x813096, boxD2: 0x242576, boxD2rank: 0x24259e,
+  boxD3: 0x242562, boxD3rank: 0x24258a, thresh: 0x2680a2,
+};
+
+/** `$268018..$26804C` -- |dy|*3/4 and |dx|, then max + min/2. */
+function octDistance(ram, a6, player) {
+  const ty = ram.u16(player), tx = ram.u16(player + 2);   // $268024 movem.w
+  let d0 = u16(ram.u16(a6 + 0x02) - ty);                  // $268032 sub.w D2,D0
+  if ((d0 & 0x8000) !== 0) d0 = u16(-d0);                 // $268034 bpl / neg.w
+  d0 = u16(d0 - (d0 >>> 2));                              // $26803A lsr.w #2 / sub.w
+  let d1 = u16(ram.u16(a6 + 0x04) - tx);                  // $26803E sub.w D3,D1
+  if ((d1 & 0x8000) !== 0) d1 = u16(-d1);                 // $268040 bpl / neg.w
+  if (d0 < d1) { const t = d0; d0 = d1; d1 = t; }         // $268044 cmp/bcc/exg
+  return u16(d0 + (d1 >>> 1));                            // $26804A lsr.w #1 / add.w
+}
+
+/** @returns {{carry:boolean}} carry SET = DO NOT FIRE. */
+function fireGate267FC6(u, ram, rom, a5, a6) {
+  void u; void a5;
+  const off = ram.u16(FG.stageWord);                      // $267FC6
+  const rank = ram.u16(G.rank98) !== 0;                   // $267FD2 / $267FEC
+  const d2 = rom.u32((rank ? FG.boxD2rank : FG.boxD2) + off);  // $267FE2
+  const d3 = rom.u32((rank ? FG.boxD3rank : FG.boxD3) + off);  // $267FFC
+  const pos = ram.u32(a6 + 0x02);                         // $268004 move.l (A0),D1
+  // $268006/$26800A -- only the ADD's carry is tested (`sub.w` first, `bcs` last).
+  if (u16((pos & 0xffff) - (d2 & 0xffff)) + ((d2 >>> 16) & 0xffff) > 0xffff) {
+    return { carry: true };                               // $26800C bcs $267FC4
+  }
+  if (u16((pos >>> 16) - (d3 & 0xffff)) + ((d3 >>> 16) & 0xffff) > 0xffff) {
+    return { carry: true };                               // $268016 bcs $267FC4
+  }
+  // $268018 / $268050: $7FFF stands in for "that player is not alive", which is
+  // why a one-player game does not make every enemy fire at the origin.
+  let d4 = 0x7fff;                                        // $268018 move.w #$7fff
+  if ((ram.u16(AIM.selP1) & 0x8000) !== 0)                // $26801C tst.w / bpl
+    d4 = octDistance(ram, a6, AIM.selP1 + 2);             // $268024 $8103E8
+  let d0 = 0x7fff;                                        // $268050
+  if ((ram.u16(AIM.selP2) & 0x8000) !== 0)                // $268054 tst.w / bpl
+    d0 = octDistance(ram, a6, AIM.selP2 + 2);             // $26805C $81044A
+  if (d4 < d0) d0 = d4;                                   // $268086 cmp/bcc/move
+  const th = rom.u16(FG.thresh + u16(ram.u16(G.stage) * 2)); // $26808C/$26809C
+  return { carry: d0 < th };                              // $26809E cmp.w D4,D0
 }
 
 // ----------------------------------------------- $242684: the onscreen test
@@ -305,52 +354,102 @@ function fire11(ram, rom, a5, a6, ctx) {
       d1 = u16(d1 + 4);                                // $2689B4 (mirror)
     ram.setU32(a6 + S.sprite0a, rom.u32(SPRITE_TAB.h11_main + d1)); // $2689BC
   }
-  // $2689C2: indirect fire-action via +$2A (the per-bucket $23Dxxx routine).
-  noteFireAction(u, a5, ram.u32(a5 + R.fireAct2A));    // $2689C6 jsr (A0)
+  // ------------------------------------------------------------- W30.
+  // $2689C2 `movea.l ($2A,A5),A0 / jsr (A0)` -- THE RECORD-CONVENTION SPRITE
+  // EMITTER, not a fire-action.  ($2A,A5) and ($2E,A5) are the pair the init
+  // copied out of `$267F70` (src/initbody.js `$268796`), and every longword in
+  // that table is a member of the `$23D762` enqueue family.  Calling them
+  // "indirect fire-actions -> the $281xxx bullet fans" -- as this file did
+  // until W30 -- counted the enemies' DRAW as their FIRE.
+  enqueueThroughStub(ram, rom, ram.u32(a5 + R.emitRec2A), a6);   // $2689C6
   if ((ram.u8(a5 + R.deathFlag) & 0x80) !== 0) {       // $2689C8 tst.b $20 / bmi
-    if (ram.u16(G.mirror2) !== 0)                      // $2689CE
-      noteFireAction(u, a5, ram.u32(a5 + R.fireAct2E)); // $268A08 jmp (A0)
-    return;                                           // $268A0C rts
+    if (ram.u16(G.mirror2) === 0) return;              // $2689CE tst.w / beq $268A0C
+    // $2689D6..$268A08: the DEATH-ANIMATION emitter.  D1 = the position plus a
+    // LONG bias ($2689DA `addi.l #$100fe00,D1` -- one 32-bit add, so the low
+    // half's carry reaches the high half), and D2 walks a frame counter kept in
+    // ($1E,A5) that steps by $24 and WRAPS AT $90 -- a write the port did not
+    // make before this wave.
+    const d1 = u32(ram.u32(a6 + 0x02) + 0x0100fe00);   // $2689D6/$2689DA
+    let d2 = ram.u16(a5 + R.rec1E);                    // $2689E2 move.w ($1E,A5),D2
+    d2 = u16(d2 + 0x24);                               // $2689E6 addi.w #$24
+    if (d2 === 0x90) d2 = 0;                           // $2689EA cmpi.w #$90 / bne
+    ram.setU16(a5 + R.rec1E, d2);                      // $2689F2 move.w D2,($1E,A5)
+    enqueueRegistersThroughStub(ram, rom, ram.u32(a5 + R.emitReg2E),
+      d1, u32(d2 + 0x22c59c), 0x410, 0x1e);            // $2689F6/$2689FC/$268A00/$268A08
+    return;                                            // $268A08 jmp (A0)
   }
-  if (ram.u16(G.freeze) !== 0) {                       // $268A0E
-    noteFireAction(u, a5, ram.u32(a5 + R.fireAct2E)); return;
-  }
-  // $268A1A: the fire-cooldown counter.  Self-contained state on the record.
-  ram.setU8(a5 + R.cooldown, (ram.u8(a5 + R.cooldown) - 1) & 0xff); // subq.b #1
-  if ((ram.u8(a5 + R.cooldown) & 0x80) === 0) {        // $268A1E bcc $268A5A
+  if (ram.u16(G.freeze) !== 0) { draw11(ram, rom, a5, a6); return; } // $268A0E
+  // $268A16 `move.b ($33,A5),D1` -- loaded, then overwritten by the aim below
+  // and never read on the no-aim path.  Transcribed as a comment, not as code.
+  // $268A1A: the aim CADENCE.  `bcc` is "no borrow", so the aim runs only on
+  // the frame the byte was already 0.
+  const cad = ram.u8(a5 + R.cooldown);                 // $268A1A subq.b #1,($18,A5)
+  ram.setU8(a5 + R.cooldown, (cad - 1) & 0xff);
+  if (cad === 0) {                                     // $268A1E bcc $268A5A
     ram.setU8(a5 + R.cooldown, ram.u8(a5 + R.cooldownReload)); // $268A20 reload
-    // $268A30 jsr $24200A (aim, W20) + $268A3C jsr $242190 (slew, W20).  These
-    // write record +$33 (facing) and +$22 (sprite); not the position column.
-    u?.note(0x24200a, `aim $24200A + slew $242190 (W20) in $11 fire rec $${a5.toString(16)} `
-      + `-- writes +$33/+22, not position`);
+    const selfY = ram.u16(a6 + 0x02), selfX = ram.u16(a6 + 0x04); // $268A26 movem.w
+    // $268A2C addi.w #$200,D0 -- THE MUZZLE OFFSET, long axis only.
+    const r = aim64FromCaller(aimTables(rom), ram, a5, u16(selfY + 0x200), selfX);
+    if (r.carry) { draw11(ram, rom, a5, a6); return; } // $268A36 bcs $268A68
+    const nf = slew64(ram.u8(a5 + R.facing), r.dir);   // $268A38/$268A3C jsr $242190
+    ram.setU8(a5 + R.facing, nf);                      // $268A42 move.b D1,($33,A5)
+    // $268A46 addq.b #1,D1 / andi.w #$3E,D1 / add.w D1,D1 -- 32 entries, stride 4.
+    ram.setU32(a5 + R.sprite22,                        // $268A54 move.l (A0,D1.w)
+      rom.u32(SPRITE_TAB.h11_fire + (((nf + 1) & 0x3e) * 2)));
   }
-  // $268A5A: the secondary fire counter (+$28) when sub flags bit 5 set.
-  if ((ram.u8(a6) & 0x20) !== 0) {                     // btst #5
-    const c = (ram.u8(a5 + R.fireCtr) - 1) & 0xff;     // $268A62 subq.b #1,$28
-    ram.setU8(a5 + R.fireCtr, c);
-    if (c === 0) { fireFan11(ram, rom, a5, a6, ctx); return; } // $268A66 beq
-  }
-  noteFireAction(u, a5, ram.u32(a5 + R.fireAct2E));    // $268A82 jmp (A0) (common fire)
+  // $268A5A: the FAN counter (+$28), behind the sub-record's bit-5 flag.
+  if ((ram.u8(a6) & 0x20) === 0) { draw11(ram, rom, a5, a6); return; } // btst #5 / beq
+  const c = (ram.u8(a5 + R.fireCtr) - 1) & 0xff;       // $268A62 subq.b #1,($28,A5)
+  ram.setU8(a5 + R.fireCtr, c);
+  if (c !== 0) { draw11(ram, rom, a5, a6); return; }    // $268A66 beq $268A86
+  fireFan11(ram, rom, a5, a6, ctx);                    // $268A86
 }
 
-// $268A86..$268B1A: counter-elapsed kind-$D fan.
+// $268A68: THE COMMON DRAW.  Every arm of $11's fire machine falls into it, and
+// it is the REGISTER-convention emitter through ($2E,A5).  `addi.l #$fc00fc00`
+// is ONE 32-bit add -- the two halves are not independent.
+function draw11(ram, rom, a5, a6) {
+  const d1 = u32(ram.u32(a6 + 0x02) + 0xfc00fc00);     // $268A68/$268A6C
+  enqueueRegistersThroughStub(ram, rom, ram.u32(a5 + R.emitReg2E), d1,
+    ram.u32(a5 + R.sprite22),                          // $268A72 move.l ($22,A5),D2
+    0x620,                                             // $268A76 move.w #$620,D3
+    ram.u16(a6 + S.f1c));                              // $268A7A move.w ($1C,A6),D4
+}
+
+// $268A86..$268B1A: THE KIND-$D FAN -- W30 WIRES IT.  This is the fire W29 §5.1
+// specified and did not do, and it is the highest-volume one in the stage: type
+// $11 is 104 of stage 1's 339 spawn records.
 function fireFan11(ram, rom, a5, a6, ctx) {
   const u = ctx.unported;
-  let d0 = u16(0xa0 - ram.u16(G.aa) + 4);             // $268A86/A8/A90
-  if (ram.u16(G.rank98) === 0 && ram.u16(G.stage) === 1 // $268A92/$268A9C
-      && i16(ram.u16(G.clock)) >= 0x159) {             // $268AA6
-    d0 = u16(0x30 - ram.u16(G.ba) - 6);               // $268AB0/B2/B8
+  let d0 = u16(u16(0xa0 - ram.u16(G.aa)) + 4);         // $268A86/$268A8A/$268A90
+  // $268A92/$268A9C/$268AA6 -- `bcs` on `cmpi.w #$159,$8130CE` is UNSIGNED.
+  if (ram.u16(G.rank98) === 0 && ram.u16(G.stage) === 1
+      && ram.u16(G.clock) >= 0x159) {
+    d0 = u16(u16(0x30 - ram.u16(G.ba)) - 6);           // $268AB0/$268AB2/$268AB8
   }
-  ram.setU8(a5 + R.fireCtr, d0 & 0xff);               // $268ABA
-  if (fireGate267FC6(u, ram, rom, a5).carry) {         // $268ABE jsr / $268AC2 bcs
-    noteFireAction(u, a5, ram.u32(a5 + R.fireAct2E)); return;
+  ram.setU8(a5 + R.fireCtr, d0 & 0xff);                // $268ABA move.b D0,($28,A5)
+  if (fireGate267FC6(u, ram, rom, a5, a6).carry) {     // $268ABE jsr / $268AC2 bcs
+    draw11(ram, rom, a5, a6); return;
   }
-  if (ram.u16(G.stage) === 1 && ram.u16(G.midbossD8) !== 0) { // $268AC4/AD0/AD6
-    noteFireAction(u, a5, ram.u32(a5 + R.fireAct2E)); return;
+  if (ram.u16(G.stage) === 1 && ram.u16(G.midbossD8) !== 0) { // $268AC4/$268AD0/$268AD6
+    draw11(ram, rom, a5, a6); return;
   }
-  if ((ram.u8(a6) & 0x20) !== 0)                        // $268AD8 btst #5
-    noteFan(u, 0x281402, a5, 'kind $D');               // $268B14 jsr $281402
-  noteFireAction(u, a5, ram.u32(a5 + R.fireAct2E));    // $268B1A bra $268A68
+  if ((ram.u8(a6) & 0x20) === 0) { draw11(ram, rom, a5, a6); return; } // $268AD8 btst #5
+  // $268ADE..$268B14 -- the four registers, all computed here.
+  // D1: `move.b ($33,A5),D1 / addq.b #$2,D1 / andi.w #$3C,D1`.  The `addq` is
+  // BYTE-wide and the mask WORD-wide, so it is (facing + 2) & $FF & $3C.
+  const d1 = ((ram.u8(a5 + R.facing) + 2) & 0xff) & 0x3c;   // $268ADE/$268AE2/$268AE4
+  // D2: the $268B1E muzzle table.  `move.w D1,D2 / add.w D2,D2` is a *2 on an
+  // index that is already a multiple of 4, so the ENTRIES ARE 8 BYTES APART and
+  // only the first longword of each is read -- byte offsets 0,8,..,$78.
+  const d2 = u32(rom.u32(MUZZLE_11 + u16(d1 * 2)) + ram.u32(a6 + 0x02)); // $268AF2/$268AF6
+  // D0: kind $D.  `cmpi.w #$3,$813092 / bcs` is UNSIGNED, so stages 0..2 keep
+  // the bare `moveq #$D` (speed bias 0) and 3+ take the $FFFC bias.
+  const d0f = ram.u16(G.stage) < 3 ? 0x0000000d : 0xfffc000d;  // $268AFA/$268AFC/$268B08
+  const regs = { d0: d0f, d1, d2, d3: 0x02000000, d4: 0, d5: 0, a5 }; // $268B0E
+  const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281402, regs); // $268B14
+  ctx.bulletSpawn?.(0x268b14, res);
+  draw11(ram, rom, a5, a6);                            // $268B1A bra $268A68
 }
 
 // ============================================================ TYPE $10 (16)

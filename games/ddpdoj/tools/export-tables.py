@@ -440,6 +440,26 @@ ENEMY_STAT_TABLES = [
     (0x272D70, 0x0190, "W23: the aim-derived sprite/bucket tables $272D7A "
                        "($88) and $272DFA ($82/$85), 16 longs each"),
     (0x272E70, 0x0090, "W23: the aim-derived sprite table $272E7A ($89)"),
+    # W30: THE SPRITE-EMITTER STUB FAMILY, read as DATA by src/spritequeue.js's
+    # `resolveEmitStub`.  The enemy handlers reach an enqueue through a POINTER
+    # ($267F70's twelve longwords, $27829C's twenty-four), and the bucket a
+    # pointer feeds is the `lea <abs>.l,A0 / adda.w <abs>.l,A0` pair inside the
+    # stub itself.  Resolving it FROM THE CARTRIDGE is what stops the port
+    # carrying a transcribed pointer->bucket map that agrees with itself.
+    # $23D760 is the `rts` before $23D762; $23DF98 is inside $23DF86's body and
+    # the window ends past the last stub's counter operand.
+    (0x23D760, 0x0840, "W30: the sprite-emitter stub family $23D762..$23DF86, "
+                       "read as data to resolve (bucket, convention) per stub"),
+    # W30: the 24-entry emitter dispatch $27829C (type $8A's $2767C2) and its
+    # neighbour $278320, and the $267F70 pair table is already covered by the
+    # W23 $267F60 window.
+    (0x278290, 0x00B0, "W30: $27829C the 24-entry sprite-emitter dispatch "
+                       "(type $8A $2767C2) + $278320's death-effect words"),
+    # W30: $267FC6's FOUR position-box tables, five longwords each, contiguous
+    # at $242562..$2425B1 -- pinned from BOTH ends ($242560 is the previous
+    # routine's `rts`, $2425B2 is `48E7 C080 movem.l`, i.e. code).
+    (0x242560, 0x0054, "W30: $267FC6's position-box tables $242562/$242576/"
+                       "$24258A/$24259E, 5 longs each, indexed by $813096"),
     # W30: type $85/$86's handler $275914 fires at $275AD0 with D3 taken from
     # a 32-entry LONGWORD muzzle table at $27327A ($275AAA lea $27327A,A4 /
     # $275ABC move.l (A4,D0.w),D3 with D0 = (($28,A5) & $3E) * 2, so byte

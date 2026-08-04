@@ -15,6 +15,23 @@ const REC = 0x81364C, SUB = 0x81459C;
 const SIX = [0x2688cc, 0x268232, 0x269cea, 0x26a2e2, 0x2747c6, 0x27687e,
   0x275914];
 
+// W30.  ($2A,A5)/($2E,A5) are the SPRITE-EMITTER pair the init copies out of
+// `$267F70` -- a RECORD-convention stub and a REGISTER-convention one -- and
+// `enqueueThroughStub` resolves the bucket by reading the stub's own
+// `lea <abs>.l,A0 / adda.w <abs>.l,A0` operands out of the cartridge.  A zeroed
+// synthetic record therefore throws BY ADDRESS now, which is correct: the ROM
+// would `jsr 0`.  The fixture installs `$267F70[0]` (the bucket-0 pair) and
+// STUB_ROM answers exactly those two stubs.
+const EMIT_REC = 0x23d762, EMIT_REG = 0x23dece;
+const STUB_WORDS = new Map([
+  [EMIT_REC, 0x41f9], [EMIT_REC + 6, 0xd0f9], [EMIT_REC + 12, 0x43ee],
+  [EMIT_REG, 0x41f9], [EMIT_REG + 6, 0xd0f9], [EMIT_REG + 12, 0x2001],
+]);
+const STUB_LONGS = new Map([
+  [EMIT_REC + 2, 0x80397c], [EMIT_REC + 8, 0x80afc0],
+  [EMIT_REG + 2, 0x80397c], [EMIT_REG + 8, 0x80afc0],
+]);
+
 function makeRam(over = {}) {
   const ram = new Ram(null);
   for (let i = 0; i < 0x50; i++) ram.setU8(REC + i, 0);
@@ -22,12 +39,23 @@ function makeRam(over = {}) {
   ram.setU16(REC, 0x8000);            // live
   ram.setU32(REC + 0x06, SUB);        // sub-record pointer
   ram.setU32(REC + 0x12, 0);          // movement cursor 0 -> stepMovement no-op
+  ram.setU32(REC + 0x2a, EMIT_REC);   // W30: the emitter pair the init writes
+  ram.setU32(REC + 0x2e, EMIT_REG);
+  ram.setU8(REC + 0x18, 2);           // W30: the aim CADENCE -- non-zero, so
+                                      // `$268A1A subq.b #1 / bcc` does NOT
+                                      // borrow and the aim does not run.  These
+                                      // are SMOKE tests against a synthetic ROM
+                                      // that cannot answer aim64's five tables.
   ram.setU16(SUB + 0x18, 0x0100);     // HP positive (alive)
   for (const [k, v] of Object.entries(over)) ram.setU16(parseInt(k), v);
   return ram;
 }
 const STUB_TABLES = { vector: () => ({ dy: 0, dx: 0 }) };
-const STUB_ROM = { u8: () => 0, u16: () => 0, u32: () => 0 };
+const STUB_ROM = {
+  u8: () => 0,
+  u16: (a) => STUB_WORDS.get(a) ?? 0,
+  u32: (a) => STUB_LONGS.get(a) ?? 0,
+};
 
 test('the ported handler addresses are registered (W25 six + W30 $275914)', () => {
   assert.deepEqual([...HANDLER_ADDRESSES].sort((a, b) => a - b),
