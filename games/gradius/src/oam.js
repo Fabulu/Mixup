@@ -21,7 +21,7 @@
 // 47, 32, 17 and 2 -- the -15-slot walk below, from a base of 188. See
 // tests/oam.test.js, which reproduces all four slots and all sixteen bytes.
 
-import { u8, i8 } from './state.js';
+import { u8, i8, ARM_POOL } from './state.js';
 
 /** $8B08+4 = CE 6D 23 F8. Sprite 0: y=206 tile=$6D attr=$23 x=248. */
 export const SPRITE0 = [0xCE, 0x6D, 0x23, 0xF8];
@@ -135,7 +135,7 @@ export function drawMetasprite(oam, table, id, baseX, baseY, orMask, cursor,
  * The budget itself is never close to biting in this corpus: measured `$9F` at
  * the end of the busiest frame of the 1900-frame enemy run is 48 of 62.
  */
-export function buildDisplayList(state, table) {
+export function buildDisplayList(state, table, rom = null) {
   const oam = state.shadowOam;
   // The work census for this frame (state.js `work`). Counted here, in the real
   // loop, and compared against the cartridge's own execution counts -- see
@@ -217,16 +217,15 @@ export function buildDisplayList(state, table) {
   // stage-1 code.
   //
   // $8BD9 runs in buildDisplayList, i.e. BEFORE the mode-5 state machine reaches
-  // the $9663 census -- so for $19 == 4 THIS throws first and $9663 is the
-  // defense-in-depth tripwire behind it.
+  // the $9663 census -- this routine ($8B10) runs at $80A7, ahead of the state
+  // machine at $80AA. W32b ports it.
   if (state.zp19 === 4) {                           // $8B8D LDA $19 / $8B91 BEQ
-    throw new Error('$8BD9: stage-5 ($19 = 4) ARM-SEGMENT sprite pass is not '
-                  + 'ported. $8BD9 walks the four $0600 arm-group headers and '
-                  + 'calls $8C06 per live group to draw its six segments. NOT '
-                  + 'destructible terrain -- see '
-                  + 'docs/worklog/gradius/32-recon-destructible-terrain.md. '
-                  + 'Reached before the $9663 census because this routine ($8B10) '
-                  + 'runs at $80A7, ahead of the state machine at $80AA. W32b.');
+    if (rom === null) {
+      throw new Error('$8BD9: stage 5 ($19 = 4) needs the $8BF2/$8C02 head '
+                    + 'tables, and buildDisplayList was called without a ROM '
+                    + 'byte reader. Pass res.enemyTables as the third argument.');
+    }
+    cursor = armSpritePass(state, oam, rom, cursor, work);
   }
   // $8B97-$8BC2: THE BLANK PASS. After the slot loop the cursor sits at the next
   // free slot, and sub_$8BAB walks it forward writing $F4 into the Y byte of the
@@ -327,4 +326,103 @@ export function oamDma(state) {
     state.hwOam[i + 2] = state.shadowOam[i + 2] & 0xE3;
     state.hwOam[i + 3] = state.shadowOam[i + 3];
   }
+}
+
+/**
+ * `$8BD9` + `$8C06` -- THE STAGE-5 ARM-SEGMENT SPRITE PASS. Wave 32b.
+ *
+ *   8B8D  LDA $19 / CMP #$04 / BEQ $8BD9         <- jumps IN from the slot loop
+ *   8BD9  LDX #$90 / STX $A8
+ *   8BDD  LDX $A8 / LDA $0600,X / BEQ $8BE7 / JSR $8C06
+ *   8BE7  LDA $A8 / SEC / SBC #$30 / STA $A8 / BPL $8BDD
+ *   8BF0  BMI $8B93                             <- falls BACK into the tail
+ *
+ * IT IS NOT A SUBROUTINE. `$8B91 BEQ` jumps into it and `$8BF0 BMI` (always
+ * taken -- the `BPL` above only fails with N set) jumps back to `$8B93`, the
+ * shared blank-pass setup. So it is an INTERPOSED BLOCK inside `$8B10`, and it
+ * consumes the same two working values the rest of `$8B10` does: the OAM write
+ * cursor `$9C` and the remaining-sprite budget `$9F`.
+ *
+ * `$9F` IS LIVE STATE HERE, and that is the one thing this port had to change
+ * about `$8B10`. The port never modelled `$9F` during the slot loop -- it
+ * derives it once at `$8B97` from `work.spritesStored`. That derivation stays
+ * exact (both are "$3E minus one per sprite actually stored"), so this pass
+ * reads and writes the same counter rather than inventing a second one.
+ *
+ *   8C06  LDA #$05 / STA $AA                    six segments, 5 down to 0
+ *   8C0A  LDY $A8 / STY $A9
+ *   8C0E  LDA $0615,Y / LSR / LSR / AND #$0F / TAX     segment 5's ANGLE
+ *   8C16  LSR / LSR / TAY
+ *   8C19  LDA $8BF2,X / STA $AB                 the head TILE   (16 entries)
+ *   8C1E  LDA $8C02,Y / STA $AC                 the head ATTR   (4 entries)
+ *   8C23  LDY $A9 / LDX $9C
+ *   8C27  LDA $0618,Y / BEQ $8C71 / CMP #$F4 / BCS $8C71    <- the CULL
+ *   8C30  STA $0203,X / LDA $0620,Y / STA $0200,X
+ *   8C39  LDA #$F7 / LDY $AA / BNE $8C57
+ *   8C3F  LDA $AB / STA $0201,X / LDA $AC / STA $0202,X / BPL $8C65
+ *   8C4B  LDA $0200,X / SEC / SBC #$08 / STA $0200,X      <- the FLIPPED head
+ *   8C57  STA $0201,X / LDA #$01 / CPY #$03 / BNE $8C62 / LDA #$02
+ *   8C62  STA $0202,X
+ *   8C65  TXA / CLC / ADC #$C4 / BEQ $8C66 / STA $9C / DEC $9F / BMI $8C77
+ *   8C71  INC $A9 / DEC $AA / BPL $8C23
+ *
+ * FOUR THINGS THAT A REWRITE LOSES:
+ *
+ *  1. **`$AA == 0` IS THE TIP, AND IT IS THE LAST SEGMENT DRAWN.** `$AA` counts
+ *     5 down to 0 while `$A9` counts base+0 up to base+5, so the head sprite
+ *     ($8C3F's arm) is segment FIVE. The five body sprites are tile `$F7` with
+ *     attribute 1, except segment 3 (`CPY #$03`) which gets attribute 2.
+ *  2. **`$8C49 BPL` TESTS THE ATTRIBUTE BYTE IT JUST STORED.** `$8C02` is
+ *     `02 42 C2 82`; the two with bit 7 set are vertically flipped, and a
+ *     flipped head is moved 8 px UP so the flip pivots on the joint instead of
+ *     on the sprite. That is a data-driven branch, not a constant.
+ *  3. **THE CULL DOES NOT ADVANCE THE CURSOR.** A segment at X = 0 (the wrap
+ *     kill in $CD2F) or X >= $F4 is skipped whole: no OAM bytes, no cursor
+ *     step, no budget spend.
+ *  4. **RUNNING OUT OF BUDGET ENDS THE GROUP, NOT THE PASS.** `$8C77` is an
+ *     `RTS` back into `$8BD9`'s loop at `$8BE7`, so the next live group starts
+ *     a fresh `$8C06`, draws ONE more sprite and returns again. The port must
+ *     not hoist the bail out of the group loop; it would drop sprites the
+ *     cartridge draws.
+ */
+function armSpritePass(state, oam, rom, cursor, work) {
+  const c = state.coll;
+  for (let base = 0x90; !(base & 0x80); base = u8(base - 0x30)) {  // $8BD9/$8BE7
+    if (c[ARM_POOL + base] === 0) continue;       // $8BDF/$8BE2 BEQ $8BE7
+    cursor = drawArmGroup(state, oam, rom, c, base, cursor, work); // $8BE4 JSR $8C06
+  }
+  return cursor;                                  // $8BF0 BMI $8B93
+}
+
+/** `$8C06` -- one group's six segments. */
+function drawArmGroup(state, oam, rom, c, base, cursor, work) {
+  // $8C0E-$8C21: the head tile and attribute, from SEGMENT 5's angle.
+  const tipAngle = c[ARM_POOL + base + 0x15];     // $8C0E LDA $0615,Y
+  const ti = (tipAngle >> 2) & 0x0F;              // $8C11/$8C12/$8C13 LSR LSR AND
+  const headTile = rom.read(0x8BF2 + ti);         // $8C19 LDA $8BF2,X -> $AB
+  const headAttr = rom.read(0x8C02 + (ti >> 2));  // $8C16/$8C17 LSR LSR / $8C1E -> $AC
+  for (let seg = 0, aa = 5; aa >= 0; seg++, aa--) {   // $8C71 INC $A9 / DEC $AA / BPL
+    const sx = c[ARM_POOL + base + 0x18 + seg];   // $8C27 LDA $0618,Y
+    if (sx === 0) continue;                       // $8C2A BEQ $8C71
+    if (sx >= 0xF4) continue;                     // $8C2C/$8C2E CMP #$F4 / BCS $8C71
+    const x = cursor;                             // $8C25 LDX $9C
+    oam[u8(x + 3)] = sx;                          // $8C30 STA $0203,X
+    oam[x] = c[ARM_POOL + base + 0x20 + seg];     // $8C33/$8C36 LDA $0620,Y / STA $0200,X
+    if (aa !== 0) {                               // $8C3B LDY $AA / $8C3D BNE $8C57
+      oam[u8(x + 1)] = 0xF7;                      // $8C39 LDA #$F7 / $8C57 STA $0201,X
+      oam[u8(x + 2)] = aa === 3 ? 0x02 : 0x01;    // $8C5A-$8C62 CPY #$03
+    } else {
+      oam[u8(x + 1)] = headTile;                  // $8C3F/$8C41 LDA $AB / STA $0201,X
+      oam[u8(x + 2)] = headAttr;                  // $8C44/$8C46 LDA $AC / STA $0202,X
+      if ((headAttr & 0x80) !== 0) {              // $8C49 BPL $8C65 -- bit 7 of $AC
+        oam[x] = u8(oam[x] - 0x08);               // $8C4B-$8C51 SEC / SBC #$08
+      }
+    }
+    cursor = nextSlot(x);                         // $8C65-$8C6B TXA / ADC #$C4 / STA $9C
+    if (work) work.spritesStored++;               // $8C6D DEC $9F
+    // $8C6F BMI $8C77 -- the budget is $3E minus every sprite stored so far,
+    // exactly as $8B97 derives it. Negative means the 8-bit counter wrapped.
+    if (u8(0x3E - (work ? work.spritesStored : 0)) >= 0x80) return cursor;  // $8C77 RTS
+  }
+  return cursor;
 }

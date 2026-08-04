@@ -75,7 +75,7 @@
 // so ten enemies fire: $C24B fires at f500 on `enemy-bullet` and at f513 on the
 // shielded variant, after $C24E has absorbed five.
 
-import { u8, ENEMY_BASE, ENEMY_SLOTS } from './state.js';
+import { u8, ENEMY_BASE, ENEMY_SLOTS, ARM_POOL } from './state.js';
 import { probeCollision } from './terrain.js';
 import { killEnemy, freeSlot } from './enemies.js';
 import { scoreKill } from './score.js';
@@ -417,20 +417,82 @@ export function collision(state, res) {
     shotsVsTerrain(state, res);
     return;
   }
-  // $C25D: LDA $19 / CMP #$04 / BNE $C2A5 -- the stage-5 arm falls through here.
-  if (state.zp19 === 4) {
-    // W32a CORRECTION: not "destructible blocks". $C263-$C2A4 walks the four
-    // $0600 ARM GROUPS and, for each live one, its six segments' X/Y at
-    // B+$18..$1D / B+$20..$25 -- the player's body against the arm. It fires
-    // UNCONDITIONALLY on every stage-5 frame (it is a loop that does nothing
-    // when all four headers are 0), which is one of the four reasons stage 5
-    // cannot run with runEngine's scope guard opened alone.
-    throw new Error('$C263: $19 = 4 (stage 5). The player-vs-ARM-SEGMENT sweep '
-                  + 'over the four $0600 groups ($C263-$C2A4, and $C290\'s route '
-                  + 'into $C1D6) is not ported. NOT destructible terrain -- see '
-                  + 'docs/worklog/gradius/32-recon-destructible-terrain.md. W32c.');
+  // $C25D: LDA $19 / CMP #$04 / BNE $C2A5 -- and the stage-5 arm ENDS AT
+  // $C2A4 RTS, so on stage 5 this routine never reaches $C2A5 at all. The
+  // terrain part's own `$C2AB CMP #$04 / RTS` covers the other way in ($C0F7,
+  // the dying ship), which is why stage 5 has no terrain collision anywhere.
+  if (state.zp19 === 4) {                         // $C25D/$C25F/$C261 BNE $C2A5
+    if (playerVsArms(state)) {                    // $C263-$C2A4, $C290 -> $C1D6
+      shotsVsTerrain(state, res);                 // $C1D6 ... JMP $C2C4
+    }
+    return;                                       // $C2A4 RTS
   }
   terrainPart(state, res);                        // $C2A5
+}
+
+/**
+ * `$C263-$C2A4` -- THE PLAYER'S BODY AGAINST THE ARM SEGMENTS. Wave 32b.
+ *
+ *   C263  LDX #$90 / STX $A9
+ *   C267  LDX $A9 / LDA $0600,X / BEQ $C29B        group free -> next
+ *   C26E  LDA #$05 / STA $AB / TXA / CLC / ADC #$05 / STA $AA
+ *   C278  LDX $AA / LDA $A0 / SBC $0618,X / CMP #$0A / BCS $C295
+ *   C283  LDA $A4 / SBC $0620,X / CMP #$0A / BCS $C295
+ *   C28C  LDA $46 / BNE $C293 / JMP $C1D6          NO SHIELD -> DEATH
+ *   C293  DEC $46
+ *   C295  DEC $AA / DEC $AB / BPL $C278
+ *   C29B  LDA $A9 / SEC / SBC #$30 / STA $A9 / BPL $C267 / RTS
+ *
+ * `$A0` and `$A4` are `$C20A`'s FIRST base pair -- the raw `$0360`/`$0320`, not
+ * the +6/+8 variants at `$A1`/`$A5`. They were set two instructions' worth of
+ * loop earlier, in playerVsBullets, and are still live here. The port reads
+ * `o.x[0]`/`o.y[0]` and says so rather than threading them through, because
+ * `$C20A` writes them unconditionally on every frame that reaches `$C25D`.
+ *
+ * **NEITHER SUBTRACT HAS A `SEC`.** The carry is whatever the previous
+ * `CMP #$0A` left, and the first iteration inherits `$C274 ADC #$05` (clear).
+ * So the box is 10 px wide and 10 px tall on any iteration entered after a
+ * rejected test, and 11 px on the first -- the classic unsigned distance idiom
+ * this file already carries at `$C12C` and `$BF87`, and it is transcribed the
+ * same way for the same reason.
+ *
+ * Being ABOVE or LEFT of a segment wraps the difference to a large number and
+ * the `CMP` rejects it, so the box is one-sided, exactly like `$C101`'s.
+ *
+ * The shield does NOT end the sweep: `$C293 DEC $46` falls into the loop tail,
+ * so one frame can spend several shield points against several segments -- the
+ * same shape `$C24E` has for bullets.
+ *
+ * ALL SIX SEGMENTS ARE TESTED, including segment 2. There is no exemption here;
+ * the "only segment 2 is vulnerable" rule is `$BF31`'s, and that is the SHOT
+ * sweep ($BEF3, W32c), not this one.
+ *
+ * @returns {boolean} true if a segment killed the ship (`$C290 JMP $C1D6`)
+ */
+function playerVsArms(state) {
+  const c = state.coll;
+  const px = state.obj.x[0];                      // $A0, from $C20E/$C211
+  const py = state.obj.y[0];                      // $A4, from $C21A/$C21D
+  for (let base = 0x90; !(base & 0x80); base = u8(base - 0x30)) {   // $C263/$C29B
+    if (c[ARM_POOL + base] === 0) continue;       // $C269/$C26C BEQ $C29B
+    let carry = 0;                                // $C273 CLC / $C274 ADC #$05
+    for (let seg = 5; seg >= 0; seg--) {          // $C26E $AB = 5 / $C295-$C299
+      const dx = px - c[ARM_POOL + base + 0x18 + seg] - (1 - carry);  // $C27C SBC
+      carry = dx >= 0 ? 1 : 0;
+      if (u8(dx) >= 0x0A) { carry = 1; continue; }    // $C27F/$C281 CMP / BCS $C295
+      carry = 0;                                  // the CMP fell through
+      const dy = py - c[ARM_POOL + base + 0x20 + seg] - (1 - carry);  // $C285 SBC
+      carry = dy >= 0 ? 1 : 0;
+      if (u8(dy) >= 0x0A) { carry = 1; continue; }    // $C288/$C28A CMP / BCS $C295
+      carry = 0;
+      if (state.zp.shield === 0) {                // $C28C/$C28E LDA $46 / BNE $C293
+        die(state);                               // $C290 JMP $C1D6
+        return true;
+      }
+      state.zp.shield = u8(state.zp.shield - 1);  // $C293 DEC $46
+    }
+  }
+  return false;                                   // $C2A4 RTS
 }
 
 /**

@@ -320,7 +320,11 @@ test('jt_$C439: stage 0 -> $C486, 1 -> $C546, 2 -> $C686, 3 -> $C5AD; 4-5 throw'
   // the late spawner on the LIVE $19 (state.zp19), not res.stage.stage, so the
   // test sets both to the stage under test (the $82 arm reaches lateSpawner
   // before the stage-5 wave guard in runEngine).
-  const arms = [[4, 0xC653], [5, 0xC6DE]];
+  // W32b MOVED THE THROW LIST AGAIN -- fourth time. Index 4 ($C653, stage 5's
+  // arm-owner spawner) is ported this wave, so leaving it below would assert
+  // that a shipped arm still throws. Its behaviour is pinned in
+  // tests/w32b-arms.test.js.
+  const arms = [[5, 0xC6DE]];
   for (const [idx, addr] of arms) {
     const s = erupting(0);
     s.zp19 = idx;

@@ -285,15 +285,22 @@ test('$96A5: every unported arm throws with the ROM address it would reach', () 
   // The two OUT-OF-SCOPE sub-paths of $9904 ($19 == 5 -> $CDA5, $19 == 6 ->
   // $9872) stay throws and are asserted below; the ported arms' behaviour is
   // pinned in w27-exits.test.js.
-  // $19 == 4 (stage 5) is unported. W28b's loudness fix made the EARLIEST
-  // stage-5 path loud: buildDisplayList's $8BD9 terrain-object sprite pass
-  // ($8B8D LDA $19 / BEQ $8BD9) runs at $80A7, BEFORE the state machine's $9663
-  // census arm at $80AA. So nmi() now throws $8BD9 first; $9663 stays in the
-  // code as a defense-in-depth tripwire (it becomes the first throw once $8BD9
-  // is ported, in the stage-5 wave).
+  // $19 == 4 (stage 5). W32b PORTED all four of the unconditional stage-5
+  // walkers ($9663, $8B8D -> $8BD9, $C25D -> $C267, $9A76 -> $C772), so a frame
+  // with an EMPTY $0600 pool no longer throws anywhere -- all four are walks
+  // that do nothing when the four group headers are 0. This assertion used to
+  // be `assert.throws(..., /\$8BD9/)`; it is inverted rather than deleted,
+  // because "the walls are gone" is exactly what W32b claims and an absent
+  // check would not notice one of them coming back as a throw.
   const s5 = bootState(res.manifest);
   s5.zp19 = 4;
-  assert.throws(() => nmi(s5, 0, res), /\$8BD9/);
+  assert.doesNotThrow(() => nmi(s5, 0, res),
+    'an empty $0600 pool must walk clean through all four stage-5 gates');
+  // ...and what DOES still stop stage 5 is the wave stream's own scope guard.
+  // $60 >= 2 is the spawn engine's running state ($A2CD DEX / BNE $A2F0).
+  const s5w = bootState(res.manifest);
+  s5w.zp19 = 4; s5w.substate = 0x80; s5w.spawn.z60 = 2;
+  assert.throws(() => nmi(s5w, 0, res), /\$A2F0 runEngine/);
   // $9904 sub-path: $19 == 6 -> JMP $9872 (the ending sequence, out of scope).
   const sEnd = bootState(res.manifest);
   sEnd.substate = 0x86; sEnd.zp19 = 6;

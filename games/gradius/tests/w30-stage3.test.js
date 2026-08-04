@@ -109,13 +109,20 @@ test('$A466 splits on $19 == 2 EXACTLY; a lower stage throws naming $A4A6', () =
   // cannot get here through spawnEngine, because runEngine's own stage guard
   // ($A2F0, "stage-4+ wave content out of scope") throws one call earlier. So
   // the equality is pinned from BELOW only -- $19 = 0 and 1. The stage-5 side
-  // ($19 = 4, the four sun/eye records) is W32's to pin, from the other side.
+  // ($19 = 4, the four arm records) is W32b's to pin, from the other side.
+  //
+  // W32b PORTED $A4A6, so the non-2 arm no longer throws. It ALLOCATES: the
+  // record's $65 nibbles become arm groups and its $66/$67 become the owner.
+  // The check is now that the two arms do DIFFERENT things and that the split
+  // is an equality -- $19 = 0 and 1 must NOT get the moai's forced type $96.
   for (const st of [0, 1]) {
     const s = engineAt(0xA9E6, 2);
     s.zp19 = st;
-    assert.throws(() => tick(s, 3, 0x40),
-      (e) => e.message.includes('$A466 -> $A4A6'),
-      `$19 = ${st} must route to $A4A6 and throw`);
+    assert.doesNotThrow(() => tick(s, 3, 0x40),
+      `$19 = ${st} must route to $A4A6`);
+    const types = [...s.obj.type.slice(12, 22)];
+    assert.ok(!types.includes(0x96),
+      `$19 = ${st} must NOT reach $A46F, which forces type $96`);
   }
 });
 

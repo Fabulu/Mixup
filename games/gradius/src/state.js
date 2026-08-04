@@ -59,6 +59,43 @@ export const SLOTS = 32;
 export const ENEMY_BASE = 0x0C;   // $A534 ADC #$0C
 export const ENEMY_SLOTS = 10;    // $ADB3 LDX #$09
 
+/**
+ * THE STAGE-5 ARM POOL, `$0600`-`$06BF`, addressed inside `state.coll`.
+ *
+ * `state.coll` is `$0500`-`$06FF` (see below), so `$0600 + off` is
+ * `coll[ARM_POOL + off]`. FOUR groups of `$30` bytes at offsets $00/$30/$60/$90
+ * -- the count and the stride are the ROM's, not an inference: the walk
+ * `LDX #$90 ... SEC / SBC #$30 ... BPL` appears verbatim at SIX sites
+ * ($8BEA, $A4C7, $BF04, $C29E, $CB83, $CBC3).
+ *
+ * Per group, from the 71 instruction sites that touch $0600-$06BF
+ * (docs/worklog/gradius/32-recon-destructible-terrain.md §1a):
+ *
+ *   +$00        owner enemy slot, 0 = the group is FREE
+ *   +$01        shape (the spawn nibble minus 1)
+ *   +$02..$07   cleared by $A517, no reader found in the whole PRG
+ *   +$03        update-parity counter ($CC3B DEC, odd -> skip this frame)
+ *   +$04        fire timer, vs $CBCA[$17]
+ *   +$05        hit counter, vs $BEEA[$17]   (W32c)
+ *   +$10..$15   the six segments' ANGLE
+ *   +$18..$1D   the six segments' X
+ *   +$20..$25   the six segments' Y
+ *
+ * +$06..$0F, +$16..$17, +$1E..$1F and +$26..$2F are never touched. Note +$02
+ * and +$03..$07 overlap: $A517's six-iteration clear writes $0602-$0607, so
+ * the parity counter and the two timers are simply the low end of that run.
+ *
+ * IT IS NOT ITS OWN ARRAY ON PURPOSE. `$994A`'s despawn sweep clears
+ * `$0600,X / $0640,X / $0680,X / $06C0,X` at stride $40, not $30, so it cuts
+ * ACROSS the group structure; and `$9B49` clears the whole page. Keeping the
+ * pool inside `coll` reproduces both aliases for free. A separate Uint8Array
+ * would have made the sweep a no-op on the arms, which is not what the
+ * cartridge does.
+ */
+export const ARM_POOL = 0x100;    // $0600 - $0500
+/** The four group bases, in the order the ROM's `-$30` walk visits them. */
+export const ARM_BASES = [0x90, 0x60, 0x30, 0x00];
+
 /** Ring length, from `CMP #$18` at $A08C. */
 export const RING_LEN = 0x18;
 
@@ -99,8 +136,11 @@ export function createState() {
     // Three gates, one of which stopped being a constant in wave 4.
     //
     //   $5C >= 2  halves the player's update rate ($9A5E/$969A). Stage-5 only:
-    //             $9650 only computes it when $19 == 4 (00-recon-flow.md 3),
-    //             and src/nmi.js throws on $19 == 4 before it gets there.
+    //             $9650 only computes it when $19 == 4 (00-recon-flow.md 3).
+    //             PORTED IN W32b -- it is the count of LIVE $0600 arm groups
+    //             ($9669-$9683) and two or more of them fork the frame. This
+    //             note used to end "src/nmi.js throws on $19 == 4 before it
+    //             gets there", which stopped being true in W32b.
     //   $15       PAUSE, and LIVE PORT STATE since wave 4: $9ADA toggles it on
     //             a START EDGE and $9650's first branch then jumps the whole
     //             update to $9A8C (src/flow.js pauseCheck). The `pause`
@@ -500,7 +540,15 @@ export function createState() {
       zA8: 0,     // $A8  THE INDEX. The spawn engine's allocators and the update
                   //      loop both keep the enemy index 0..9 here, and $AEE1 /
                   //      $B251 reload X from it rather than trusting the caller.
-      zAE: 0,     // $AE:$AF set to $0080 at $ADAB every frame. NO READER FOUND --
+      // $AE:$AF, set to $0080 at $ADAB every frame.
+      //
+      // $AE HAS A READER AND THIS NOTE USED TO SAY IT DID NOT. W32b found it:
+      // $CB91, the stage-5 arm driver, clears $AE at $CB93 and then reads it at
+      // $CBB2 as a ONE-SHOT -- at most one of the four arm groups may fire per
+      // pass, whichever the $90 -> $00 walk reaches first. So $ADAF's store is
+      // not dead code with a dead partner; it is the same byte, cleared twice a
+      // frame by two different owners. ($AF still has no reader found.)
+      zAE: 0,
       zAF: 0,     //      00-recon-enemies.md's open question; reproduced anyway.
     },
     // $47 and $49, and the squadron kill counters at $0048+$49.
@@ -623,10 +671,20 @@ export function createState() {
       ahead: 0,              // $57
     },
 
-    // The terrain collision map, $0500-$06FF. NOT a second table and NOT
-    // precomputed: it is derived at $9F55 from the tile indices the streamer
-    // has just queued, by thresholding. The ordering is observable -- the map
-    // for a column exists only once that column has been queued.
+    // $0500-$06FF, and it is THREE things sharing one page, exactly as the
+    // cartridge has them:
+    //
+    //   $0500-$05FF  the TERRAIN COLLISION MAP. NOT a second table and NOT
+    //                precomputed: derived at $9F55 from the tile indices the
+    //                streamer has just queued, by thresholding. The ordering
+    //                is observable -- a column's map exists only once that
+    //                column has been queued.
+    //   $0600-$06BF  the STAGE-5 ARM POOL (see ARM_POOL at the top).
+    //   $06C0-$06FF  the tail of the $0700 VRAM QUEUE, addressed BACKWARDS
+    //                ($88E5's $06FE,Y and friends). Group 3 of the arm pool
+    //                ends at $06B5 used / $06BF reserved, so they do not
+    //                overlap -- ruled out by reading all 16 sites in W32's
+    //                recon, not by assuming.
     coll: new Uint8Array(0x200),     // $0500-$06FF
 
     // ---- sprites ----------------------------------------------------------

@@ -217,14 +217,24 @@ test('the box also frees on Y, which $B559 never changes -- so only a spawn can'
 
 // ======================== 5. THE SCOPE GUARD IS UNCHANGED ===================
 
-test('$A2F0 still throws on stage 5, and no longer blames $B559', () => {
-  // W32a deliberately does NOT lower this guard. Stage 5 is not one guard away:
-  // $9663, $8BD9, $C267 and $C772/$CB8A all fire unconditionally every frame
-  // before a wave record is read. Lowering it would move the crash to $9663 and
-  // make stageledger.py's runnability column call stage 5 "admitted" -- the
-  // exact lie W31 built that column to kill.
-  // RED WHEN: the guard is lowered to >= 5, or its message still lists $B559 as
-  // a missing handler.
+test('$A2F0 still throws on stage 5, and names what is ACTUALLY left', () => {
+  // W32a deliberately did NOT lower this guard, because $9663, $8BD9, $C267 and
+  // $C772/$CB8A all fired unconditionally before a wave record was read.
+  //
+  // W32b PORTED ALL FOUR, and stage 5's twenty-eight wave records are now
+  // 28/28. The guard STILL does not move, and the reason changed rather than
+  // went away: TWO interaction paths remain and both fire in ordinary play --
+  // $C037 -> $BEF3 (a shot against an arm segment, whenever a shot is alive)
+  // and $CB91 -> $CBD1 (an arm firing, every 25-40 frames per live arm).
+  // Admitting stage 5 would make stageledger.py's runnability column print
+  // RUNNABLE for a stage that cannot survive one player shot -- the exact lie
+  // W31 built that column to kill.
+  //
+  // THE POINT OF THE MESSAGE ASSERTIONS BELOW is that the guard has to keep
+  // naming the CURRENT debt. It has now been wrong twice (it named $B559 after
+  // W32a shipped it, and $CA5E/$A4A6 after W32b shipped them), which is exactly
+  // the drift this check exists to catch.
+  // RED WHEN: the guard is lowered, or its message goes stale again.
   const tbl = rom.word(0xA7D0 + 2 * 4);
   const ptr = rom.read(tbl) | (rom.read(tbl + 1) << 8);
   const s = createState();
@@ -235,51 +245,60 @@ test('$A2F0 still throws on stage 5, and no longer blames $B559', () => {
     'stage 5 ($19=4) must still throw loudly, naming $A2F0');
   let msg = '';
   try { spawnEngine(s, res); } catch (e) { msg = e.message; }
-  assert.ok(!/\$B559/.test(msg),
-    '$B559 is ported now -- the guard must not still name it as missing');
-  assert.ok(/\$CA5E/.test(msg) && /\$A4A6/.test(msg),
-    'the guard must name what is ACTUALLY left: $CA5E and $A4A6');
-  assert.ok(/\$9663/.test(msg) && /\$8BD9/.test(msg) && /\$C267/.test(msg)
-            && /\$CB8A/.test(msg),
-    'and the four per-frame $0600 walkers that fire before any wave record');
+  for (const shipped of ['$B559', '$C653']) {
+    assert.ok(!new RegExp(`\${shipped} [^)]*not ported`).test(msg),
+      `${shipped} is ported -- the guard must not name it as missing`);
+  }
+  assert.ok(/\$BEF3/.test(msg) && /\$CBD1/.test(msg),
+    'the guard must name what is ACTUALLY left: $BEF3 and $CBD1 (W32c)');
+  assert.ok(/W32c/.test(msg),
+    'and it must name the wave that owns them');
+  // The four walkers are PORTED, so the guard must no longer list them as the
+  // reason stage 5 is blocked. This is the half of the check that goes red if
+  // a future wave copies the old message forward.
+  assert.ok(!/walkers/.test(msg),
+    'the four $0600 walkers are ported -- the guard must not still cite them');
 });
 
 // ============ 6. THE FOUR PER-FRAME STAGE-5 WALLS ARE ALL LOUD ==============
 
-test('every unconditional $19==4 entry point throws, and $9A76 no longer does not', () => {
-  // THE FINDING THIS WAVE ADDS TO THE RECON. Stage 5 is not one scope guard
-  // away: FOUR gates fire every frame before the spawn engine reads a wave
-  // record, and each walks the four $0600 arm-group headers --
-  //   $9663            src/nmi.js       the $5C census
+test('every unconditional $19==4 entry point is WIRED, and the W32c gaps are loud', () => {
+  // W32a WROTE THIS AS "all four throw". W32b PORTED all four, so the check is
+  // turned round rather than deleted: each of the four unconditional stage-5
+  // gates must still sit under a live `state.zp19 === 4` guard AND must now
+  // CALL the ported routine by name. That is the same property W32a was really
+  // guarding -- "no stage-5 gate is a silent no-op" -- expressed against a
+  // ported subsystem instead of an unported one.
+  //
+  //   $9663            src/nmi.js       the $5C census + the frame fork
   //   $8B8D -> $8BD9   src/oam.js       the arm sprite pass
   //   $C25D -> $C267   src/collision.js the player-vs-segment sweep
   //   $9A76 -> $C772   src/nmi.js       the arm driver ($CB8A/$CB91)
-  // The LAST of those had NO CALL SITE AT ALL -- a comment and nothing else --
-  // and was covered only by $9663's throw, which is precisely the throw W32b
-  // deletes. This check is a source-level structural check on purpose: the
-  // condition it guards is "a future wave cannot delete one throw and silently
-  // uncover another", which no runtime state can express while $9663 throws
-  // first.
-  // RED WHEN: any of the four loses its `throw`, or $9A76 goes back to being a
-  // bare comment.
+  //
+  // RED WHEN: any of the four loses its guard or its call, i.e. becomes the
+  // quiet return W32a found at $9A76.
   const src = {
     nmi: readFileSync(new URL('../src/nmi.js', import.meta.url), 'utf8'),
     oam: readFileSync(new URL('../src/oam.js', import.meta.url), 'utf8'),
     coll: readFileSync(new URL('../src/collision.js', import.meta.url), 'utf8'),
   };
   const walls = [
-    ['nmi', "throw new Error('$9663:"],
-    ['nmi', "throw new Error('$9A76 -> $C772:"],
-    ['oam', "throw new Error('$8BD9:"],
-    ['coll', "throw new Error('$C263:"],
+    ['nmi', 'armCensus(state)'],            // $9663
+    ['nmi', 'armDriverGated(state, res.enemyTables)'],   // $9A76 -> $C772
+    ['oam', 'armSpritePass(state, oam, rom, cursor, work)'],  // $8B8D -> $8BD9
+    ['coll', 'playerVsArms(state)'],        // $C25D -> $C267
   ];
   for (const [file, needle] of walls) {
     const at = src[file].indexOf(needle);
-    assert.ok(at >= 0, `${file}.js must carry a loud named throw: ${needle}`);
-    // AND IT MUST STILL BE GUARDED BY $19 == 4. A throw whose guard has been
-    // neutered ($19 === 4 -> false, or the branch deleted) is a silent gap
-    // wearing a loud message, which is the exact failure this check exists for.
-    assert.match(src[file].slice(Math.max(0, at - 1200), at), /state\.zp19 === 4/,
+    assert.ok(at >= 0, `${file}.js must CALL the ported stage-5 entry: ${needle}`);
+    assert.match(src[file].slice(Math.max(0, at - 1600), at), /state\.zp19 === 4/,
       `${needle} must sit under a live \`state.zp19 === 4\` guard`);
   }
+  // AND THE TWO W32c GAPS MUST STILL BE LOUD. $CBD1 sits INSIDE the now-ported
+  // driver, so it is the one place a half-ported subsystem could go quiet.
+  const enem = readFileSync(new URL('../src/enemies.js', import.meta.url), 'utf8');
+  assert.ok(enem.includes("throw new Error('$CBD1:"),
+    'the arm fire path must stay a loud named throw (W32c)');
+  assert.ok(src.coll.includes("$BEF3"),
+    'the shot-vs-arm sweep must stay a loud named throw (W32c)');
 });

@@ -91,9 +91,10 @@ import { buildDisplayList, oamDma } from './oam.js';
 import { updatePlayer } from './player.js';
 import { advanceCamera, latchScroll, addCamera16 } from './camera.js';
 import { streamBlock } from './terrain.js';
-import { spawnEngine, enemyBullets, updateEnemies, clearSlot } from './enemies.js';
+import { spawnEngine, enemyBullets, updateEnemies, clearSlot,
+         armCensus, armDriver, armDriverGated } from './enemies.js';
 import { introStep, pauseCheck, respawn, codeMatch, startPlay, sub9BF0 } from './flow.js';
-import { shotSweep } from './collision.js';
+import { shotSweep, collision } from './collision.js';
 import { applyCapsule, computeRank } from './powerup.js';
 import { addScore } from './score.js';
 import { soundDriver, setBgm, setBgmCode, soundRequest, pulse1Dur, SND_BASE, OFF } from './sound.js';
@@ -248,7 +249,11 @@ export function nmi(state, buttons, res, lag = false) {
 
   // $80A7: JSR $8B10 -- build the shadow-OAM display list, BEFORE the state
   // machine below moves anything. See consequence 2 above.
-  buildDisplayList(state, res.metasprites);
+  // res.enemyTables carries $8BF2/$8C02, the stage-5 arm HEAD tables $8C06
+  // reads. Passed here rather than plumbed through `res` so that every existing
+  // two-argument call site (the unit tests) keeps working and throws by name if
+  // it ever reaches $19 == 4.
+  buildDisplayList(state, res.metasprites, res.enemyTables);
 
   // $80AA: JSR $80BE -> INC $02, then the mode dispatch at $80D1.
   state.frame = (state.frame + 1) & 0xFF;         // $80BE INC $02
@@ -334,13 +339,58 @@ export function stagePlay(state, res) {
     return;
   }
 
-  // $9663 LDA $19 / CMP #$04 / BNE $96A5 -- only stage 5 counts the four bytes
-  // at $0600/$0630/$0660/$0690 into $5C and only stage 5 can then take the
-  // half-rate arm at $9689. The port loads one stage's assets, so $19 == 4 is
-  // a state it cannot be in; it throws rather than skip the arm silently.
-  if (state.zp19 === 4) {
-    throw new Error('$9663: $19 = 4 (stage 5). The $5C census at $9669-$9683 '
-                  + 'and the half-rate arm at $9689-$96A2 are not ported.');
+  // ---- $9663-$96A2: THE STAGE-5 HALF-RATE FRAME FORK. Wave 32b. -----------
+  //
+  //   9663  LDA $19 / CMP #$04 / BNE $96A5      stage 5 only
+  //   9669  LDX #$00 / count $0600/$0630/$0660/$0690 nonzero into X
+  //   9683  STX $5C / CPX #$02 / BCC $96A5      fewer than 2 arms -> normal
+  //   9689  LDA $02 / LSR A / BCC $96A5         EVEN frame        -> normal
+  //   968E  JSR $A2C0 / $CB91 / $ADAB / $BBB7 / $9FFC / $C0C7
+  //   96A0  INC $5B / JMP $9A8C
+  //
+  // THIS IS THE DEVELOPERS' OWN SLOWDOWN MITIGATION, and it is the only place
+  // in the game where one logical update is spread over two hardware frames.
+  // With two or more arms alive, the ODD frame runs spawn + arms + enemies +
+  // enemy bullets + THE PLAYER + player-vs-enemy collision and then jumps
+  // straight to $9A8C, skipping the whole $1B sub-state machine, the scroll
+  // latch and the wave stream; the EVEN frame takes the normal $96A5 ladder but
+  // $9A5E's own `$5C >= 2` test then skips $A2C0/$BBB7/$9FFC/$ADAB. So the ship
+  // moves at 30 Hz while two arms are on screen. It is visible, it is
+  // deliberate, and it is not a bug to smooth out.
+  //
+  // IT DOES NOT SPAN TWO `nmi()` CALLS. $9650 is entered once per NMI from
+  // $80D1 and $96A2's JMP lands inside the same NMI, so the frame's OUTER shape
+  // -- one input sample at $80B5, one display list, one DMA -- is unchanged.
+  // The recon (32-recon-destructible-terrain.md §8) named "whether src/nmi.js
+  // can express a forked frame" as the wave's biggest unknown; it can, and the
+  // shape it needs is the one the PAUSE jump twelve lines above has shipped
+  // since wave 1: run a subset, then call mode5Tail() directly.
+  //
+  // THE ORDER IS NOT $9A5E'S ORDER. $968E runs $ADAB BEFORE $9FFC; $9A5E runs
+  // $9FFC before $ADAB. So on a forked frame the fan ($B0AF sub-states 1 and 2,
+  // which compare their own Y against $0320) sees LAST frame's player position
+  // and on a normal frame it sees this frame's. Re-using mode5Body's order here
+  // would be wrong on every stage-5 odd frame and no timing check could see it.
+  if (state.zp19 === 4) {                         // $9663/$9665/$9667 BNE $96A5
+    state.zp5C = armCensus(state);                // $9669-$9683 STX $5C
+    // $9685 CPX #$02 / BCC $96A5 and $9689 LDA $02 / LSR A / BCC $96A5 -- the
+    // LSR puts bit 0 of the frame counter in carry, so the fork is the ODD
+    // frame. Both tests fall through to the SAME $96A5 ladder.
+    if (state.zp5C >= 2 && (state.frame & 0x01) !== 0) {
+      spawnEngine(state, res);                    // $968E JSR $A2C0
+      armDriver(state, res.enemyTables);          // $9691 JSR $CB91 (NOT $CB8A --
+                                                  //   the $5C gate is skipped here)
+      updateEnemies(state, res);                  // $9694 JSR $ADAB
+      enemyBullets(state, res);                   // $9697 JSR $BBB7
+      updatePlayer(state, res);                   // $969A JSR $9FFC
+      collision(state, res);                      // $969D JSR $C0C7 -- and $C04B
+                                                  //   makes $BFE2 skip it on the
+                                                  //   other parity, so it stays
+                                                  //   once per logical frame
+      state.zp5B = u8(state.zp5B + 1);            // $96A0 INC $5B
+      mode5Tail(state, res);                      // $96A2 JMP $9A8C
+      return;
+    }
   }
 
   // ---- $96A5: the ladder. Order matters -- it is five tests in sequence, not
@@ -911,27 +961,29 @@ function dyingArm(state, res) {
  * `JMP $9A5E`.
  */
 function mode5Body(state, res) {
-  // $9A5E: LDA $5C / CMP #$02 / BCS $9A70 -- when $5C >= 2 the player update
-  // is skipped ENTIRELY here and a different caller at $969A runs it on EVEN
-  // frames only. UNREACHABLE ON STAGE 1, and that is now settled rather than
-  // merely unobserved: $9650 only computes $5C at all when the stage index
-  // $19 == 4 (it counts the non-zero bytes at $0600/$0630/$0660/$0690), so on
-  // every other stage $5C stays 0 (00-recon-flow.md 3, which closes
-  // NOTES-player.md 12 open question 1). The throw stays because the port has
-  // no stage 5. It is UNREACHABLE from here now that $965A's clear is ported --
-  // only the $19 == 4 arm at $9683 can put a non-zero value back, and that arm
-  // now throws at $9663 -- and it is kept as a tripwire for whoever ports it.
-  if (state.zp5C >= 2) throw new Error('$5C >= 2: the stage-5 half-rate player path is not ported ($9A5E/$969A)');
-
+  // $9A5E: LDA $5C / CMP #$02 / BCS $9A70 -- when $5C >= 2 the player update is
+  // skipped ENTIRELY here and $969A runs it on the ODD frames instead. That is
+  // the other half of $9663's fork, and W32b turned it from a throw into the
+  // branch the cartridge has.
+  //
+  // IT REMAINS UNREACHABLE ON EVERY STAGE BUT 5, and that is settled by the
+  // listing rather than merely unobserved: $965A clears $5C on every mode-5
+  // frame and $9683 is the only other writer in the whole PRG, behind
+  // `$19 == 4`. So stages 1-4 and 6-7 take the four calls below unconditionally
+  // (00-recon-flow.md 3, which closes NOTES-player.md 12 open question 1).
+  //
   // ---- $9A64-$9A6D: the enemies, in the cartridge's order -----------------
   // The spawn engine runs BEFORE the player moves and the update loop AFTER,
   // which matters for the fan ($B0AF sub-states 1 and 2 compare their own Y
   // against $0320, the player's, so they see THIS frame's player position) and
   // for the one-frame-old positions the display list at $80A7 already used.
-  spawnEngine(state, res);                        // $9A64 JSR $A2C0
-  enemyBullets(state, res);                       // $9A67 JSR $BBB7
-  updatePlayer(state, res);                       // $9A6A JSR $9FFC
-  updateEnemies(state, res);                      // $9A6D JSR $ADAB
+  // $968E's fork runs the same four in a DIFFERENT order -- see the note there.
+  if (state.zp5C < 2) {                           // $9A5E-$9A62 BCS $9A70
+    spawnEngine(state, res);                      // $9A64 JSR $A2C0
+    enemyBullets(state, res);                     // $9A67 JSR $BBB7
+    updatePlayer(state, res);                     // $9A6A JSR $9FFC
+    updateEnemies(state, res);                    // $9A6D JSR $ADAB
+  }
 
   // $9A70: JSR $BFE2 -- and this is the whole collision subsystem, not just the
   // shot sweep. $BFE2's nine-iteration outer loop over $0123,X (object slots
@@ -963,12 +1015,14 @@ function mode5Body(state, res) {
   // four $0600 arm-group headers and all four do nothing when the headers are 0
   // -- which is why "just open runEngine's scope guard" does not make stage 5
   // run one frame.
+  // W32b WIRED IT. $C778 JMP $CB8A, and $CB8A is itself `LDA $5C / CMP #$02 /
+  // BCC $CB91 / RTS` -- so on a two-arm frame THIS CALL DOES NOTHING and the
+  // arms are driven from $9691, inside the fork. With 0 or 1 arms alive there
+  // is no fork and this is the only driver call in the frame. Two callers, one
+  // pass per logical frame either way.
   if (state.zp19 === 4) {                         // $C772 LDA $19 / CMP #$04
-    throw new Error('$9A76 -> $C772: $19 = 4 (stage 5). $C778 JMP $CB8A -- the '
-                  + '$0600 ARM-GROUP driver ($CB8A\'s $5C >= 2 skip, then $CB91\'s '
-                  + 'walk of the four groups, the $CBCA fire timer and $CBD1) is '
-                  + 'not ported. W32b.');
-  }
+    armDriverGated(state, res.enemyTables);       // $C778 JMP $CB8A
+  }                                               // $C77B RTS
 
   latchScroll(state);                             // $9A79  -> $12 / $10
   mode5Tail(state, res, true);                    // falls through into $9A88

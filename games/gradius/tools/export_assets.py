@@ -770,6 +770,57 @@ ENEMY_BLOCKS_W21 = [
      "SEVEN-rank rows the census counted; $CA28 is an RTS and $CA5E is "
      "dispatch entry 20, so both ends are code",
      0xCA5E, (0xA4, 0x17), "$CA5E LDY $17, dispatch entry 20"),
+    # ---- WAVE 32b: the $0600 ARM POOL's four table runs -------------------
+    #
+    # NONE OF THESE FOUR IS REACHABLE FROM tablecoverage.py's ROOT SET, and
+    # that is why they were missing rather than because anybody decided they
+    # were not needed. That tool walks from the 42 $AE1C dispatch entries plus
+    # $C413 (LATE_SPAWNER); $8C06 hangs off $8BAB (the sprite pass, called at
+    # $80A7), $CB91 off $9A76/$9691, and $CC33/$CC99 off $CB91. The tool
+    # reported OK with all four unexported and would have gone on doing so.
+    # W32b adds the four roots to its walk in the same wave; see
+    # docs/worklog/gradius/32-recon-destructible-terrain.md §6.
+    ("armHeadSprite", 0x8BF2, 0x8C06,
+     "$8C19 LDA $8BF2,X (X = segment 5's angle >> 2 AND $0F) and "
+     "$8C1E LDA $8C02,Y (Y = that index >> 2)",
+     "TWENTY bytes in one run: sixteen head TILES "
+     "(FD FB FB F9 F9 FB FB FD FD FB FB F9 F9 FB FB FD) then four ATTRIBUTE "
+     "bytes (02 42 C2 82). Exported as one block because $8C02 is $8BF2 + 16 "
+     "and both are read by the same routine; $8BF1 is the `BMI $8B93` that "
+     "ends $8BD9 and $8C06 is the first instruction of sub_$8C06, so the run "
+     "is bounded by code both ends. The two high-bit attributes ($C2, $82) "
+     "are load-bearing: $8C49 BPL tests bit 7 of the byte it just stored and "
+     "shifts the head sprite 8 px up when it is set",
+     0x8C06, (0xA9, 0x05, 0x85, 0xAA), "$8C06 LDA #$05 / STA $AA, sub_$8C06"),
+    ("armFirePeriod", 0xCBCA, 0xCBD1,
+     "$CBAD CMP $CBCA,Y, Y = the rank $17",
+     "28 23 1E 19 19 19 19 -- SEVEN ranks, the frames between one arm's "
+     "shots. $CBC9 is the RTS that ends sub_$CB91 and $CBD1 is sub_$CBD1's "
+     "LDX #$09, so seven is the ROM's count and not a guess",
+     0xCBD1, (0xA2, 0x09), "$CBD1 LDX #$09, sub_$CBD1 (the arm's shot)"),
+    ("armShapeParams", 0xCC1F, 0xCC33,
+     "$CC63 LDA $CC1F,Y / $CC68 LDA $CC21,Y (Y = the SHAPE $0601,X) and "
+     "$CC7C LDA $CC23,Y / $CC85 LDA $CC2B,Y (Y = $9A = 4*$0460,owner + shape)",
+     "TWENTY bytes holding four overlapping rows at +0, +2, +4 and +$0C: "
+     "4A 6A (angle floor) | 56 76 (angle ceiling) | 04 04 04 04 0C 0C 0C 0C "
+     "(segment-0 dX by $9A) | FC 10 FC 10 FC 20 FC 20 (segment-0 dY by $9A). "
+     "$CC1E is sub_$CC19's RTS and $CC33 sub_$CC33's first byte. "
+     "DELIBERATELY NOT EXTENDED: $CC23,Y is indexed by $9A, which is "
+     "4*$0460 + ($0601 = the shape) and so runs past $CC32 for any shape "
+     "above 3. The recon found no producer of a shape above 1 (stage 5's "
+     "four inline-5 records give 0 and 1, $C67A's four live rows give 0 and "
+     "1) but could not prove one cannot exist, so the block stops at the "
+     "ROM's own code boundary and a shape that overruns it becomes a LOUD "
+     "THROW out of romByteReader instead of silently reading opcodes",
+     0xCC33, (0xB9, 0x0C, 0x03), "$CC33 LDA $030C,Y, sub_$CC33"),
+    ("armSegmentDelta", 0xCD65, 0xCDA5,
+     "$CD16 SBC $CD65,Y / $CD1C LDA $CD65,Y (dX) and $CD4B SBC $CD85,Y / "
+     "$CD55 ADC $CD85,Y (dY), Y = the segment angle AND $3F, folded to 0-$1F",
+     "SIXTY-FOUR bytes: two 32-entry signed delta rows, dX at $CD65 and dY "
+     "at $CD85, exported as one run because they are adjacent and read by "
+     "the same loop. $CD64 is sub_$CC33's RTS and $CDA5 is sub_$CDA5's "
+     "LDA $66, so both ends are code",
+     0xCDA5, (0xA5, 0x66, 0xC9, 0x58), "$CDA5 LDA $66 / CMP #$58, sub_$CDA5"),
 ]
 
 ENEMY_STAGE_PTRS = 0xA7D0          # $A2D5 LDA $A7D0,Y -- 7 stages, 2 bytes each

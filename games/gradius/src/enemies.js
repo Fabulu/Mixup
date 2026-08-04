@@ -106,7 +106,7 @@
 //                            Their existence is why $BDD5's animation arm is
 //                            transcribed even though $BC8B makes it dead here.
 
-import { u8, u16, ENEMY_BASE, ENEMY_SLOTS } from './state.js';
+import { u8, u16, ENEMY_BASE, ENEMY_SLOTS, ARM_POOL } from './state.js';
 import { soundRequest } from './sound.js';
 import { probeCollision } from './terrain.js';
 import { addScore } from './score.js';
@@ -354,39 +354,35 @@ function runEngine(state, rom, stageIndex, res) {
   // ceiling volcano) + $B377 (its rock); its 98 wave records came free with
   // W30's $B402/$B434.
   //
-  // W32a PORTED $B559 (entry 29), which is the type of TEN of stage 5's 28
-  // distinct records -- the whole of chunks 0 and 1, scroll $0000-$047F. The
-  // guard STAYS AT `>= 4`, and that is a measured decision, not an oversight:
+  // W32a PORTED $B559 (entry 29) and W32b PORTED THE WHOLE $0600 ARM POOL, so
+  // stageledger.py now reads `stage 4: 28/28, first unported NONE`. Every one
+  // of stage 5's twenty-eight distinct wave records has a handler.
   //
-  //   THE SCOPE GUARD IS NOT STAGE 5'S FIRST WALL. It is the LAST of five.
-  //   Four other stage-5 gates fire UNCONDITIONALLY, every frame, before the
-  //   spawn engine ever reads a wave record, and every one of them walks the
-  //   four $0600 arm-group headers:
-  //     $9663 (src/nmi.js)        the $5C census, every mode-5 frame
-  //     $8B8D -> $8BD9 (oam.js)   the arm sprite pass, every sprite frame
-  //     $C25D -> $C267 (collision.js)  player vs arm segments, every frame
-  //     $9A76 -> $C772 -> $CB8A   the arm driver -- and the port has NO call
-  //                               site for $C772 at all (nmi.js:950 is a
-  //                               comment), so it is a SILENT no-op the moment
-  //                               $9663's throw is lifted. W32b must add it in
-  //                               the same edit.
-  //     $C037 -> $BEF3 (collision.js)  shot vs arm, whenever a shot is alive
-  //   Lowering this guard alone would move the crash from a wave record to
-  //   $9663 and buy nothing, while making this column claim stage 5 is
-  //   "admitted" -- the exact lie W31 built the runnability column to kill.
+  // THE GUARD NEVERTHELESS STAYS AT `>= 4`, and that is a measured decision
+  // rather than an oversight. W32a's finding was that the guard is the LAST of
+  // FIVE stage-5 walls; W32b knocked down the four that fire UNCONDITIONALLY
+  // ($9663, $8B8D -> $8BD9, $C25D -> $C267, $9A76 -> $C772 -> $CB8A), but TWO
+  // gaps remain and both are ORDINARY in play, not corner cases:
   //
-  // What still has no handler on stage 5: $CA5E (entry 20, the arm owner) and
-  // the 4 inline-5 records at $ABE8, which route through $A4A6. Both are W32b.
+  //   $C037 -> $BEF3   a SHOT against an arm segment -- fires whenever a shot
+  //                    is alive and stage 5 is loaded, i.e. constantly (W32c)
+  //   $CB91 -> $CBD1   an arm firing -- every $CBCA[$17] frames per live arm,
+  //                    which is 25 to 40 frames (W32c)
+  //
+  // Admitting stage 5 here would make this tool's runnability column print
+  // "RUNNABLE" for a stage that cannot survive one player shot -- the exact lie
+  // W31 built the column to kill, and the same reason W32a refused to lower it.
+  // W32c lowers it, and the two throws above are what it has to delete first.
   if (stageIndex >= 4) {
     throw new Error(`$A2F0 runEngine: $19 = $${stageIndex.toString(16).toUpperCase()}`
-                  + ` (stage ${stageIndex + 1}). Stage 4 ($19=3) is shipped (W31);`
-                  + ` stage-5+ WAVE content is out of scope. W32a shipped entry`
-                  + ` 29 (chunks 0-1, scroll $0000-$047F); stage 5 still needs the`
-                  + ` $0600 ARM-GROUP pool -- NOT destructible terrain, see`
-                  + ` docs/worklog/gradius/32-recon-destructible-terrain.md --`
-                  + ` i.e. $CA5E, $A4A6, $C653, plus the four per-frame $0600`
-                  + ` walkers $9663 / $8BD9 / $C267 / $CB8A that fire before any`
-                  + ` wave record is read.`);
+                  + ` (stage ${stageIndex + 1}). Stage 4 ($19=3) is shipped (W31).`
+                  + ` Stage 5's twenty-eight wave records are ALL ported now`
+                  + ` (W32a entry 29, W32b entry 20 + $A4A6 + $C653 + the $0600`
+                  + ` ARM pool), but two per-frame interaction paths are not:`
+                  + ` $C037 -> $BEF3 (a shot against an arm segment) and`
+                  + ` $CB91 -> $CBD1 (an arm firing). Both fire in ordinary play,`
+                  + ` so admitting stage 5 here would claim a runnability the`
+                  + ` port does not have. W32c.`);
   }
   if (sp.z69 !== 0) {                    // $A2FE LDA $69 / BNE $A32B
     if (sp.z6C !== 0) {                  // $A32B LDA $6C / BNE $A332
@@ -486,9 +482,9 @@ function lateSpawner(state, rom, stageIndex) {
     // $C486 with the crater on the roof (Y $2C, not $90) and type $15 -> entry
     // 21 -> $B377, whose arc adds Y where the stage-1 rock's subtracts it.
     case 0xC5AD: return st_C5AD(state, rom);   // stage 4 -- the ceiling volcano
-    case 0xC653:
-      throw new Error('$C439[4] -> $C653: stage-5 late-spawner arm not ported '
-                    + '(stage-1 scope, W25).');
+    // Stage 5's arm reads one of four $C67A rows every $28 calls and hands it
+    // to $A4A6, the ARM-GROUP allocator. W32b.
+    case 0xC653: return st_C653(state, rom);   // stage 5 -- the arm owner
     case 0xC6DE:
       throw new Error('$C439[5] -> $C6DE: stage-6 late-spawner arm not ported '
                     + '(stage-1 scope, W25).');
@@ -881,7 +877,7 @@ function loadDescriptor(state, rom, y, off) {
 // only the two stores $99E3 and $A37F), $64 gets the CMD.
 //
 // THE 73 RECORDS. 45 distinct in stage 3 (all -> $A46F, the moai) and 4 distinct
-// in stage 5 (-> $A4A6, deferred to W32 with the $0600 substrate). Stages 1, 2,
+// in stage 5 (-> $A4A6, the ARM-GROUP allocator, ported in W32b). Stages 1, 2,
 // 4, 6 and 7 have none. Counted by tools/oracle/wavecensus.py, which decodes the
 // stride the same way; the two decoders agree byte for byte.
 
@@ -905,20 +901,20 @@ function loadInline5(state, rom) {
  *   A466  LDA $19 / CMP #$02 / BEQ $A46F / JMP $A4A6
  *
  * so ONLY in-game stage 3 gets $A46F; every other stage falls to $A4A6, the
- * stage-5 terrain-mounted spawner. $A4A6 reads the $0600 destructible-terrain
- * array, which does not exist in this port yet (W32 owns it), so it stays a
- * loud named throw. It is also reached from $C676 (`JSR $A4A6`, stage 5's
- * late-spawner arm $C653), which throws too.
+ * ARM-GROUP allocator. It is also reached from $C676 (`JSR $A4A6`, stage 5's
+ * late-spawner arm $C653).
+ *
+ * W32b PORTED $A4A6. The message this replaced called $0600 "the destructible
+ * -terrain array" and said $A4A6 "scans it for a free cell before it spawns" --
+ * both wrong. $0600 is the four-group ARM POOL and $A4A6 allocates groups OUT
+ * of it, one per nibble of $65, before spawning their owner.
+ *
+ * `$A46C` IS A `JMP`, NOT A `JSR`: $A4A6's RTS returns to $A466's caller. The
+ * port's `return` reproduces that -- nothing follows this call.
  */
 function inline5Arm(state, rom) {
   if (state.zp19 === 2) return loc_A46F(state, rom);   // $A468 CMP #$02 / BEQ
-  throw new Error('$A466 -> $A4A6: the inline-5 TERRAIN-MOUNTED spawner is not '
-                + `ported ($19 = ${hex2(state.zp19)}, in-game stage `
-                + `${state.zp19 + 1}). $A4A6 scans the $0600 destructible-terrain `
-                + 'array for a free cell before it spawns, and $0600 is stage 5\'s '
-                + 'substrate (W32). Record bytes $65/$66/$67 = '
-                + `${hex2(state.spawn.z65)}/${hex2(state.spawn.z66)}/`
-                + `${hex2(state.spawn.z67)}.`);
+  return sub_A4A6(state);                              // $A46C JMP $A4A6
 }
 
 /**
@@ -1792,6 +1788,8 @@ function dispatch(state, rom, j, type) {
     case 0xB377: return h_B377(state, j);        // entry 21, types $15/$95
     // ---- WAVE 32a: stage 5's chunks 0 and 1 -------------------------------
     case 0xB559: return h_B559(state, rom, j);   // entry 29, types $1D/$9D
+    // ---- WAVE 32b: the stage-5 $0600 ARM POOL -----------------------------
+    case 0xCA5E: return h_CA5E(state, rom, j);   // entry 20, types $14/$94 (arm owner)
     default:
       // THE MESSAGE THIS USED TO CARRY WAS "no measured run has ever
       // dispatched it", and that sentence is the one this whole follow-up
@@ -4083,4 +4081,516 @@ function sub_B628(state, rom, j, y) {
   o.animFrame[i] = frame;                            // $B640 STA $016C,X
   o.anim[i] = u8(frame + rom.read(0xB651 + y));      // $B643/$B647 ADC $B651,Y / STA $012C,X
   o.timer[i] = 0;                                    // $B64A STA $014C,X
+}
+
+// ==================== WAVE 32b: THE $0600 ARM POOL ==========================
+//
+// Stage 5's articulated ARMS. Four groups of $30 bytes at $0600/$0630/$0660/
+// $0690 (state.js ARM_POOL / ARM_BASES), six segments each, owned by the enemy
+// $CA5E (dispatch entry 20, types $14/$94).
+//
+// IT IS NOT DESTRUCTIBLE TERRAIN. docs/worklog/gradius/29-plan-whole-game.md
+// said so in five places and was wrong in all five; W32's recon accounted for
+// every field of all $30 bytes out of the 71 instruction sites that touch
+// $0600-$06BF and found no nametable write, no VRAM packet, no terrain-map
+// access and no compression. The arm is six (x, y, angle) triples in RAM,
+// regenerated every other frame from the owner's position by $CC33/$CC99 and
+// drawn purely as sprites by $8C06 (src/oam.js).
+//
+// The twelve routines and where they live:
+//
+//   $9663  the $5C census + the HALF-RATE FRAME FORK   src/nmi.js
+//   $8BD9/$8C06  the segment sprite pass                src/oam.js
+//   $C263  player body vs the segments                  src/collision.js
+//   $A4A6  allocate groups + spawn the owner            HERE (sub_A4A6)
+//   $C653  the stage-5 late spawner                     HERE (st_C653)
+//   $CA5E  the owner enemy                              HERE (h_CA5E)
+//   $CB4E  free this owner's groups when it dies        HERE (loc_CB4E)
+//   $CB8A/$CB91  the per-frame group driver             HERE (armDriverGated)
+//   $CC33/$CC99  the segment kinematics                 HERE (sub_CC33)
+//   $CBD1  the arm's tip fires                          W32c -- a LOUD THROW
+//   $BEF3/$BF0B  a shot destroys an arm                 W32c -- src/collision.js
+//
+// WHAT THE $0600 BYTES MEAN is in state.js next to ARM_POOL, once, and every
+// line below cites the ROM offset rather than a name, because the ROM's own
+// operands ($0611,X, $0619,X, $0621,X) are indexed by BASE + SEGMENT and a
+// named accessor would hide the +1 that makes $CC99 a chain.
+
+/**
+ * `$A4A6` -- allocate up to two arm groups from the nibbles of `$65`, then
+ * spawn their OWNER into a free enemy slot. Reached from `$A466` (every stage
+ * but 3, i.e. in practice stage 5's four inline-5 wave records) and from
+ * `$C676` (the stage-5 late spawner `$C653`).
+ *
+ *   A4A6  LDX #$09 / LDA $030C,X / BEQ $A4B1 / DEX / BNE $A4A8 / RTS
+ *   A4B1  STX $A8 / LDA #$00 / STA $98            $98 = arms allocated
+ *   A4B7  LDX #$90 / STX $A9                     the group walk, HIGHEST FIRST
+ *   A4BB  LDX $A9 / LDA $0600,X / BNE $A4C4 / BEQ $A500
+ *   A4C4  LDA $A9 / SEC / SBC #$30 / STA $A9 / BPL $A4BB
+ *   A4CD  LSR $65 x4 / BNE $A4B7                 next nibble, at most twice
+ *   A4D7  JSR $A527 ... the owner
+ *   A500  LDA $65 / AND #$0F / BEQ $A4CD         nibble 0 = "no arm here"
+ *   A506  SEC / SBC #$01 / STA $0601,X           SHAPE = nibble - 1
+ *   A50C  LDA $A8 / STA $0600,X                  the group is now OWNED
+ *   A511  LDA #$00 / INC $98 / LDY #$05
+ *   A517  STA $0610,X / STA $0602,X / STA $0618,X / INX / DEY / BPL $A517
+ *   A524  JMP $A4CD
+ *
+ * THE ALLOCATOR IS THE `DEX / BNE` SHAPE, so slot 0 is never tested -- the same
+ * quirk `allocEnemySlot(state, false)` was written and unit-tested for in wave
+ * 3, before any caller existed. This is that caller.
+ *
+ * `$65` IS SHIFTED IN PLACE and is a compared zero-page byte, so the port
+ * writes it back on every shift rather than working on a copy. Four `LSR`s and
+ * a `BNE` bound the loop at TWO iterations for any byte, which is why one call
+ * can never exhaust the pool's four groups.
+ *
+ * `$A517` CLEARS THE ANGLES AND THE Xs BUT NOT THE Ys. Six iterations write
+ * +$10..$15 (angle), +$02..$07 (the parity counter and both timers) and
+ * +$18..$1D (X); +$20..$25 (Y) keep whatever the previous tenant left. That is
+ * observable on the first frame after a re-allocation and it is the cartridge's,
+ * so it is transcribed rather than tidied. ($CC33 rewrites segment 0's Y before
+ * anything reads it, but segments 1-5's Ys are chained off it.)
+ */
+function sub_A4A6(state) {
+  const o = state.obj;
+  const c = state.coll;
+  const sp = state.spawn;
+  const j = allocEnemySlot(state, false);      // $A4A6-$A4AE DEX/BNE: NOT slot 0
+  if (j < 0) return;                           // $A4B0 RTS -- the spawn is dropped
+  sp.zA8 = j;                                  // $A4B1 STX $A8
+  let count = 0;                               // $A4B3/$A4B5 STA $98
+  for (;;) {
+    // $A4B7-$A4CB: the four headers, $90 stepping -$30, first FREE one wins.
+    let free = -1;
+    for (let base = 0x90; !(base & 0x80); base = u8(base - 0x30)) {
+      if (c[ARM_POOL + base] === 0) { free = base; break; }  // $A4BD/$A4C0
+    }
+    if (free >= 0) {                           // $A4C2 BEQ $A500
+      const nib = sp.z65 & 0x0F;               // $A500/$A502 LDA $65 / AND #$0F
+      if (nib !== 0) {                         // $A504 BEQ $A4CD -- nibble 0 skips
+        c[ARM_POOL + free + 0x01] = u8(nib - 1);   // $A506/$A509 -> $0601,X
+        c[ARM_POOL + free + 0x00] = j;             // $A50C/$A50E -> $0600,X
+        count = u8(count + 1);                     // $A513 INC $98
+        for (let s = 0; s <= 5; s++) {             // $A515 LDY #$05 / $A522 BPL
+          c[ARM_POOL + free + 0x10 + s] = 0;       // $A517 STA $0610,X
+          c[ARM_POOL + free + 0x02 + s] = 0;       // $A51A STA $0602,X
+          c[ARM_POOL + free + 0x18 + s] = 0;       // $A51D STA $0618,X
+        }
+      }
+    }
+    sp.z65 = sp.z65 >> 4;                      // $A4CD-$A4D3 LSR $65, four times
+    if (sp.z65 === 0) break;                   // $A4D5 BNE $A4B7
+  }
+  // ---- $A4D7: the OWNER -------------------------------------------------
+  clearSlot(state, j);                         // $A4D7 JSR $A527
+  const i = j + ENEMY_BASE;
+  o.type[i] = sp.z66;                          // $A4DC LDA $66 / STA $030C,X
+  o.status[i] = 0x80;                          // $A4E1 LDA #$80 / STA $010C,X
+  o.x[i] = 0xF0;                               // $A4E6 LDA #$F0 / STA $036C,X
+  o.y[i] = sp.z67;                             // $A4EB LDA $67 / STA $032C,X
+  o.anim[i] = 0x89;                            // $A4F0 LDA #$89 / STA $012C,X
+  o.animFrame[i] = count;                      // $A4F5 LDA $98 / STA $016C,X
+  // $A4FA LDA #$01 / $A4FC STA $0460,X -- X is $A8 = j, so this is $0460 + j,
+  // NOT $046C + j. It is the byte $CA87 tests and $CA8C clears (the one-shot
+  // DEPLOY flag) and the byte $C079 reads to decide 1 or 2 damage per hit;
+  // $046C + j, the accumulated DAMAGE that $CA7E and $CAAC compare, is a
+  // different byte and $A527 has just zeroed it.
+  o.s0460[j] = 1;                              // $A4FC STA $0460,X
+}
+
+/**
+ * `$C653` -- stage 5's late-spawner arm, `jt_$C439[4]`. Every `$28` late-spawner
+ * calls (and the late spawner itself only runs one frame in four, so every 160
+ * frames) it reads one of FOUR rows out of `$C67A` and hands them to `$A4A6`.
+ *
+ *   C653  INC $68 / LDA $68 / CMP #$28 / BCC $C679 (RTS)
+ *   C65B  LDA #$00 / STA $68
+ *   C65F  LDA $69 / AND #$06 / TAX
+ *   C664  LDA $C67A,X / STA $65        the SHAPE NIBBLES
+ *   C669  LDA #$14 / STA $66           type $14 -> dispatch entry 20
+ *   C66D  LDA $C67B,X / STA $67        the owner's Y
+ *   C672  INX / INX / STX $69
+ *   C676  JSR $A4A6
+ *
+ * `$C67A` is 12 bytes but `AND #$06` makes only the first FOUR rows reachable:
+ * `(02,80)` one arm shape 1, `(00,40)` NO ARM AT ALL ($65 = 0 -> $A500's
+ * `BEQ $A4CD` -> `LSR` to 0 -> straight to the owner), `(01,80)` one arm shape
+ * 0, `(00,C0)` no arm. Rows at +8 and +10 (`12 40`, `28 0A`) are unreachable
+ * through the mask -- and `28 0A` is the `$3A` gate `$C684` that the stage-2/3
+ * arm `$C686` reads, sitting inside the same run.
+ */
+function st_C653(state, rom) {
+  const sp = state.spawn;
+  sp.z68 = u8(sp.z68 + 1);                     // $C653 INC $68
+  if (sp.z68 < 0x28) return;                   // $C655-$C659 BCC $C679 (RTS)
+  sp.z68 = 0;                                  // $C65B/$C65D
+  const x = sp.z69 & 0x06;                     // $C65F/$C661/$C663 TAX
+  sp.z65 = rom.read(0xC67A + x);               // $C664/$C667 STA $65
+  sp.z66 = 0x14;                               // $C669/$C66B STA $66
+  sp.z67 = rom.read(0xC67B + x);               // $C66D/$C670 STA $67
+  sp.z69 = u8(x + 2);                          // $C672/$C673 INX INX / $C674 STX $69
+  sub_A4A6(state);                             // $C676 JSR $A4A6
+}
+
+/**
+ * `$CA5E` -- dispatch entry 20, types `$14`/`$94`. THE ARM OWNER: a floating
+ * body that drifts left at 0.5 px/frame, bobs toward the player's Y, absorbs
+ * shots into a damage counter, DEPLOYS at one rank threshold and DIES at a
+ * second, taking its arms with it.
+ *
+ *   CA5E  LDY $17 / LDA $CA49,Y -> $98      damage to DEPLOY, by rank
+ *   CA65  LDA $CA50,Y -> $99                damage to DIE, by rank
+ *   CA6A  LDA #$94 / LDX $A8 / STA $030C,X  force INITIALISED every frame
+ *   CA71  INC $042C,X / LDA $042C,X / LDY #$81 / AND #$08 / BEQ +1 / INY
+ *   CA7E  LDA $046C,X / CMP $98 / BCC $CAA3            not deployed yet
+ *   CA85  LDA #$00 / CMP $0460,X / BEQ $CAA1           already nudged
+ *   CA8C  STA $0460,X / $036C,X += 8 / $032C,X += 8    the ONE-SHOT nudge
+ *   CAA1  INY / INY                                    metasprites $83/$84
+ *   CAA3  TYA / STA $012C,X / LDA #$01 / STA $048C,X   ARMOURED: absorbs shots
+ *   CAAC  LDA $046C,X / CMP $99 / BCS $CB1B            DEAD
+ *   CAB3  LDA $016C,X / BNE $CAC1                      arms still alive?
+ *   CAB8  JSR $AEE1 / LDA $012C,X / BNE $CAC1 / RTS    none: drift, maybe freed
+ *   CAC1  LDA $04AC,X / BNE $CADC
+ *   CAC6  LDA $02 / AND #$3F / STA $04AC,X             a NEW bob timer
+ *   CACD  LDY #$00 / LDA $032C,X / CMP $0320 / BCS +1 / INY / STA $04CC,X
+ *   CADC  DEC $04AC,X / LDY $17 / LDA $04CC,X / BNE $CB00
+ *   CAE6  $034C,X -= $CA57,Y  /  $032C,X -= carry, CLAMPED at $20   (up)
+ *   CB00  $034C,X += $CA57,Y  /  $032C,X += carry, CLAMPED at $A8   (down)
+ *   CB17  JSR $AEE1 / RTS
+ *
+ * THE TWO SBC/ADC AT `$CAE9` AND `$CB03` HAVE NO `SEC`/`CLC` IN FRONT OF THEM.
+ * The carry they consume is whatever the last carry-setting instruction left,
+ * and there are exactly two ways in:
+ *
+ *   - the timer was still running ($04AC != 0): the last carry writer is
+ *     `$CAAF CMP $99` and the `BCS` was NOT taken, so C = 0 -- the subtract
+ *     borrows one extra 1/256 px and the add adds none;
+ *   - the timer had expired and $CACD-$CAD9 ran: the last carry writer is
+ *     `$CAD2 CMP $0320`, so C = 1 exactly when the owner is at or below the
+ *     player -- which is also the case that picks the UP branch, so the
+ *     one-frame-in-$40 subtract is one unit SMALLER than every other frame's.
+ *
+ * That asymmetry is 1/256 px on one frame in up to 64 and it is transcribed
+ * because it is real, not because it is visible. `docs/knowledge/02`: a missing
+ * SEC is not a typo in someone else's code.
+ *
+ * `$042C,X` is the xvel array -- the ROM reuses it as this handler's own
+ * animation counter, exactly as `$AEB2` reuses it as the explosion cursor.
+ *
+ * READING PAST THE APPARENT END: `$CB1A RTS` ends the live path and `$CB1B` is
+ * reached only by `$CAB1 BCS`, so it is a branch target and not a fall-through.
+ * `$CB23 JMP $CB4E` means `$CB4E` gets `$CB1B`'s caller's return, and `$CB26`
+ * (`LDX $A8`) FALLS THROUGH into `$CB28` (`JSR $EC1E`) which FALLS THROUGH into
+ * `$CB2B` -- two fall-throughs in six bytes, both already documented at
+ * explodeInPlace() above.
+ */
+function h_CA5E(state, rom, j) {
+  const o = state.obj;
+  const i = j + ENEMY_BASE;
+  const rank = state.zp17;                     // $CA5E LDY $17
+  const toDeploy = rom.read(0xCA49 + rank);    // $CA60 LDA $CA49,Y -> $98
+  const toDie = rom.read(0xCA50 + rank);       // $CA65 LDA $CA50,Y -> $99
+  o.type[i] = 0x94;                            // $CA6A/$CA6E STA $030C,X
+  o.xvel[i] = u8(o.xvel[i] + 1);               // $CA71 INC $042C,X
+  let ms = 0x81;                               // $CA77 LDY #$81
+  if ((o.xvel[i] & 0x08) !== 0) ms += 1;       // $CA74/$CA79/$CA7B/$CA7D INY
+  if (o.s0460[i] >= toDeploy) {                // $CA7E/$CA81 CMP $98 / BCC $CAA3
+    if (o.s0460[j] !== 0) {                    // $CA85/$CA87 CMP $0460,X / BEQ $CAA1
+      o.s0460[j] = 0;                          // $CA8C STA $0460,X
+      o.x[i] = u8(o.x[i] + 8);                 // $CA8F-$CA95 ADC #$08
+      o.y[i] = u8(o.y[i] + 8);                 // $CA98-$CA9E ADC #$08
+    }
+    ms += 2;                                   // $CAA1/$CAA2 INY / INY
+  }
+  o.anim[i] = ms;                              // $CAA3/$CAA4 TYA / STA $012C,X
+  o.s0480[i] = 1;                              // $CAA7/$CAA9 STA $048C,X -- ARMOURED
+  if (o.s0460[i] >= toDie) return loc_CB1B(state, j);   // $CAAF/$CAB1 BCS $CB1B
+  // ---- alive ------------------------------------------------------------
+  // The carry that $CAE9/$CB03 will consume. Getting here means $CAB1's BCS was
+  // NOT taken, i.e. C = 0; only $CAD2 below can change it.
+  let carry = 0;
+  if (o.animFrame[i] === 0) {                  // $CAB3 LDA $016C,X / BNE $CAC1
+    h_AEE1(state);                             // $CAB8 JSR $AEE1 (may FREE the slot)
+    if (o.anim[i] === 0) return;               // $CABB/$CABE BNE $CAC1 / $CAC0 RTS
+  }
+  if (o.s04A0[i] === 0) {                      // $CAC1 LDA $04AC,X / BNE $CADC
+    o.s04A0[i] = state.frame & 0x3F;           // $CAC6-$CACA LDA $02 / AND #$3F
+    const atOrBelow = o.y[i] >= o.y[0];        // $CACF/$CAD2 CMP $0320 / BCS $CAD8
+    carry = atOrBelow ? 1 : 0;                 // the carry $CAE9/$CB03 inherits
+    o.s04C0[i] = atOrBelow ? 0 : 1;            // $CACD LDY #$00 / $CAD7 INY / $CAD9
+  }
+  o.s04A0[i] = u8(o.s04A0[i] - 1);             // $CADC DEC $04AC,X
+  const step = rom.read(0xCA57 + rank);        // $CADF LDY $17 / $CAE9 / $CB03
+  if (o.s04C0[i] === 0) {                      // $CAE1 LDA $04CC,X / BNE $CB00
+    const f = o.yf[i] - step - (1 - carry);    // $CAE6/$CAE9 SBC $CA57,Y
+    o.yf[i] = u8(f);                           // $CAEC STA $034C,X
+    let hi = u8(o.y[i] - (f < 0 ? 1 : 0));     // $CAEF/$CAF2 SBC #$00
+    if (hi < 0x20) hi = 0x20;                  // $CAF4/$CAF6 BCS $CAFA / $CAF8
+    o.y[i] = hi;                               // $CAFA STA $032C,X
+  } else {
+    const f = o.yf[i] + step + carry;          // $CB00/$CB03 ADC $CA57,Y
+    o.yf[i] = u8(f);                           // $CB06 STA $034C,X
+    let hi = u8(o.y[i] + (f > 0xFF ? 1 : 0));  // $CB09/$CB0C ADC #$00
+    if (hi >= 0xA8) hi = 0xA8;                 // $CB0E/$CB10 BCC $CB14 / $CB12
+    o.y[i] = hi;                               // $CB14 STA $032C,X
+  }
+  h_AEE1(state);                               // $CB17 JSR $AEE1 / $CB1A RTS
+}
+
+/**
+ * `$CB1B` -- the owner's death. Score `$844B` (+$0500), sfx `$0A`, turn the slot
+ * into an explosion, then free every group this owner held.
+ */
+function loc_CB1B(state, j) {
+  addScore(state, 0x00, 0x05, 0x00);           // $CB1B JSR $844B -> $9A = 5
+  soundRequest(state, 0x0A);                   // $CB1E/$CB20 JSR $CB26 -> $CB28 -> $EC1E
+  explodeInPlace(state, j);                    // $CB26 LDX $A8, falls into $CB2B
+  loc_CB4E(state, j);                          // $CB23 JMP $CB4E
+}
+
+/**
+ * `$CB4E` -- free every group owned by slot `$A8`, and turn a free enemy slot
+ * into an explosion at each freed arm's SEGMENT 2.
+ *
+ *   CB4E  LDX #$90 / STX $A9
+ *   CB52  LDX $A9 / LDY $0600,X / BEQ $CB80 / CPY $A8 / BNE $CB80
+ *   CB5D  LDA #$00 / STA $0600,X
+ *   CB62  LDX #$07 / LDA $030C,X / BNE $CB7D / JSR $CB2B     slots 7..0, DEX/BPL
+ *   CB6C  LDY $A9 / LDA $061A,Y / STA $036C,X                segment 2's X
+ *   CB74  LDA $0622,Y / STA $032C,X                          segment 2's Y
+ *   CB7D  DEX / BPL $CB64
+ *   CB80  LDA $A9 / SEC / SBC #$30 / STA $A9 / BPL $CB52
+ *
+ * SEGMENT 2 IS THE ONE THE EXPLOSION SITS ON, and it is the same segment
+ * `$BF31 CMP #$02` makes the only vulnerable one -- the ROM's constant in two
+ * places, not a choice. The slot scan is `LDX #$07`, so it stops at enemy slot
+ * 7 and never uses 8 or 9; and it IS the `DEX / BPL` shape, so slot 0 is
+ * eligible here even though `$A4A6`'s allocator refuses it.
+ */
+function loc_CB4E(state, owner) {
+  const c = state.coll;
+  const o = state.obj;
+  for (let base = 0x90; !(base & 0x80); base = u8(base - 0x30)) {   // $CB4E/$CB80-$CB87
+    if (c[ARM_POOL + base] === 0) continue;    // $CB54/$CB57 LDY $0600,X / BEQ $CB80
+    if (c[ARM_POOL + base] !== owner) continue;  // $CB59/$CB5B CPY $A8 / BNE $CB80
+    c[ARM_POOL + base] = 0;                    // $CB5D/$CB5F STA $0600,X
+    for (let x = 7; x >= 0; x--) {             // $CB62 LDX #$07 / $CB7D DEX / BPL
+      if (o.type[x + ENEMY_BASE] !== 0) continue;   // $CB64/$CB67 BNE $CB7D
+      explodeInPlace(state, x);                // $CB69 JSR $CB2B
+      o.x[x + ENEMY_BASE] = c[ARM_POOL + base + 0x1A];   // $CB6E/$CB71 $061A,Y
+      o.y[x + ENEMY_BASE] = c[ARM_POOL + base + 0x22];   // $CB74/$CB77 $0622,Y
+      break;                                   // $CB7A JMP $CB80
+    }
+  }
+}
+
+/**
+ * `$9663`'s census -- how many of the four groups are LIVE. Walks LOW to HIGH,
+ * unlike every other walk over this pool, and that is the listing's order:
+ * `$0600`, `$0630`, `$0660`, `$0690`, each `LDA / BEQ +1 / INX`.
+ *
+ * The result is `$5C`, and `$5C >= 2` is what forks the frame (src/nmi.js).
+ */
+export function armCensus(state) {
+  const c = state.coll;
+  let x = 0;                                   // $9669 LDX #$00
+  if (c[ARM_POOL + 0x00] !== 0) x += 1;        // $966B/$966E/$9670
+  if (c[ARM_POOL + 0x30] !== 0) x += 1;        // $9671/$9674/$9676
+  if (c[ARM_POOL + 0x60] !== 0) x += 1;        // $9677/$967A/$967C
+  if (c[ARM_POOL + 0x90] !== 0) x += 1;        // $967D/$9680/$9682
+  return x;                                    // $9683 STX $5C
+}
+
+/**
+ * `$CB8A` -- the driver's OWN half-rate gate, and it is the third `$5C >= 2`
+ * test in the frame. `$C772` (the `$19 == 4` gate at `$9A76`) jumps here, so on
+ * a two-arm frame the `$9A76` call does NOTHING and the arms are driven from
+ * `$9691` instead -- inside the fork, at 30 Hz. With 0 or 1 arms alive there is
+ * no fork and `$9A76` is the only driver call.
+ *
+ *   CB8A  LDA $5C / CMP #$02 / BCC $CB91 / RTS
+ */
+export function armDriverGated(state, rom) {
+  if (state.zp5C >= 2) return;                 // $CB8A-$CB90 BCC $CB91 / RTS
+  armDriver(state, rom);
+}
+
+/**
+ * `$CB91` -- one pass over the four groups: kinematics, then the fire timer.
+ *
+ *   CB91  LDA #$00 / STA $AE          AT MOST ONE ARM FIRES PER PASS
+ *   CB95  LDX #$90 / STX $A8
+ *   CB99  LDX $A8 / LDY $0600,X / BEQ $CBC0
+ *   CBA0  JSR $CC33 / LDX $A8         X reloaded -- $CC33 clobbers it
+ *   CBA5  INC $0604,X / LDA $0604,X / LDY $17 / CMP $CBCA,Y / BCC $CBC0
+ *   CBB2  LDA $AE / BNE $CBC0 / INC $AE
+ *   CBB8  LDA #$00 / STA $0604,X / JSR $CBD1
+ *   CBC0  LDA $A8 / SEC / SBC #$30 / STA $A8 / BPL $CB99
+ *
+ * `$AE` IS THE ONE-SHOT. The port keeps it in `state.spawn.zAE` rather than in
+ * a local because it is the same zero-page byte `$ADAF` clears at the top of
+ * every `$ADAB`, and state.js used to say of it "NO READER FOUND" -- that note
+ * is wrong and is corrected in this commit. `$CBB2 LDA $AE` is its reader.
+ *
+ * `$CBA5 INC $0604,X` RUNS EVEN WHEN `$CC33` HAS JUST FREED THE GROUP. `$CC19`
+ * zeroes `$0600,X` and returns, and nothing re-tests the header, so a group can
+ * fire on the same frame it dies. Transcribed, not fixed.
+ */
+export function armDriver(state, rom) {
+  const c = state.coll;
+  state.spawn.zAE = 0;                         // $CB91/$CB93 STA $AE
+  for (let base = 0x90; !(base & 0x80); base = u8(base - 0x30)) {   // $CB95/$CBC0-$CBC7
+    const owner = c[ARM_POOL + base];          // $CB9B LDY $0600,X
+    if (owner === 0) continue;                 // $CB9E BEQ $CBC0
+    sub_CC33(state, rom, base, owner);         // $CBA0 JSR $CC33
+    const t = u8(c[ARM_POOL + base + 0x04] + 1);   // $CBA5 INC $0604,X
+    c[ARM_POOL + base + 0x04] = t;
+    if (t < rom.read(0xCBCA + state.zp17)) continue;   // $CBAB/$CBAD/$CBB0 BCC $CBC0
+    if (state.spawn.zAE !== 0) continue;       // $CBB2/$CBB4 BNE $CBC0
+    state.spawn.zAE = u8(state.spawn.zAE + 1); // $CBB6 INC $AE
+    c[ARM_POOL + base + 0x04] = 0;             // $CBB8/$CBBA STA $0604,X
+    // $CBBD JSR $CBD1 -- the arm's TIP fires. W32c, not this wave.
+    throw new Error('$CBD1: the arm at $0600+'
+                  + `$${base.toString(16).toUpperCase().padStart(2, '0')} `
+                  + 'reached its fire interval ($CBCA[$17] = '
+                  + `${rom.read(0xCBCA + state.zp17)} frames) and $CBD1 -- `
+                  + 'allocate an enemy-bullet slot ($0136,X, X = 9..0), place '
+                  + 'metasprite $86 at segment 5 (the TIP) minus 8 px in both '
+                  + 'axes, then $CC16 JMP $BCB1 -- is not ported. W32c.');
+  }
+}
+
+/**
+ * `$CC33` + `$CC99` -- THE SEGMENT KINEMATICS, and the largest single routine
+ * in the pool (332 bytes). Regenerates all six segments of ONE group from its
+ * owner's position, every OTHER frame.
+ *
+ *   CC33  LDA $030C,Y / BEQ $CC19          the owner is gone -> free the group
+ *   CC38  LDA $0603,X                      DEAD LOAD (overwritten at $CC3E)
+ *   CC3B  DEC $0603,X / LDA $0603,X / AND #$01 / BEQ $CC46 / RTS
+ *   CC46  $98 := $036C,Y   $99 := $032C,Y             the owner's X and Y
+ *   CC50  LDA $0460,Y / ASL / ASL / CLC / ADC $0601,X / STA $9A
+ *   CC5B  LDA $0601,X / TAY / AND #$01 / STA $9F      TAY BEFORE the AND
+ *   CC63  $9B := $CC1F,Y   $9C := $CC21,Y             the angle floor/ceiling
+ *   CC6D  TXA / ASL / ADC $02 / AND #$7F / ADC $0360 / AND #$F0 / STA $9E
+ *   CC7A  LDY $9A / $0618,X := $CC23,Y + $98          segment 0's X
+ *   CC85  $0620,X := $CC2B,Y + $99                    segment 0's Y
+ *   CC8E  STX $A9 / $AA := 4 / $9D := $0320           then fall into $CC99
+ *
+ * `$CC19` IS ENTERED FROM `$CC36 BEQ`, i.e. it is the FIRST thing this routine
+ * can do, and it is the silent free the recon named: an owner that died by any
+ * other route (a shot, `$AEF8`'s off-screen box) leaves its groups behind and
+ * this is what reaps them.
+ *
+ * `$9E` IS THE TARGET COLUMN THE ARM REACHES FOR, and its arithmetic carries
+ * two carries that a rewrite loses: `ASL A` on base `$90` sets carry, so group
+ * 3's `ADC $02` is one higher than groups 0-2's; and `AND #$7F` does not touch
+ * the carry, so that same bit rides into `ADC $0360` (the PLAYER's X). Both are
+ * transcribed.
+ *
+ * `$9A` = `4 * $0460[owner] + shape`, so the segment-0 offset row changes the
+ * moment the owner DEPLOYS ($CA8C clears $0460). `$9F` = shape AND 1 and picks
+ * which way the arm sweeps.
+ *
+ * `$CC38`'s load IS DEAD -- `$CC3B DEC` and `$CC3E LDA` reload the same byte two
+ * instructions later. Written as a comment rather than as code, and named here
+ * so the next reader does not "restore" it.
+ */
+function sub_CC33(state, rom, base, owner) {
+  const c = state.coll;
+  const o = state.obj;
+  const oi = owner + ENEMY_BASE;
+  if (o.type[oi] === 0) {                      // $CC33/$CC36 LDA $030C,Y / BEQ $CC19
+    c[ARM_POOL + base] = 0;                    // $CC19/$CC1B STA $0600,X
+    return;                                    // $CC1E RTS
+  }
+  // $CC38 LDA $0603,X is DEAD -- see the note above.
+  const par = u8(c[ARM_POOL + base + 0x03] - 1);   // $CC3B DEC $0603,X
+  c[ARM_POOL + base + 0x03] = par;
+  if ((par & 0x01) !== 0) return;              // $CC3E-$CC45 AND #$01 / BEQ / RTS
+  const ox = o.x[oi];                          // $CC46/$CC49 -> $98
+  const oy = o.y[oi];                          // $CC4B/$CC4E -> $99
+  const shape = c[ARM_POOL + base + 0x01];     // $CC5B LDA $0601,X
+  const z9A = u8(u8(o.s0460[owner] << 2) + shape);   // $CC50-$CC59 ASL/ASL/ADC
+  const z9F = shape & 0x01;                    // $CC5F/$CC61 AND #$01 -> $9F
+  let lo = rom.read(0xCC1F + shape);           // $CC63 LDA $CC1F,Y -> $9B
+  let hi = rom.read(0xCC21 + shape);           // $CC68 LDA $CC21,Y -> $9C
+  // $CC6D-$CC78: the target column, carries included.
+  let a = base;                                // $CC6D TXA
+  let carry = (a >> 7) & 1;                    // $CC6E ASL A -- carry OUT
+  a = u8(a << 1);
+  let s = a + state.frame + carry;             // $CC6F ADC $02
+  carry = s > 0xFF ? 1 : 0;
+  a = u8(s) & 0x7F;                            // $CC71 AND #$7F -- carry untouched
+  s = a + o.x[0] + carry;                      // $CC73 ADC $0360 (the PLAYER's X)
+  const z9E = u8(s) & 0xF0;                    // $CC76 AND #$F0 -> $9E
+  c[ARM_POOL + base + 0x18] = u8(rom.read(0xCC23 + z9A) + ox);   // $CC7C-$CC82
+  c[ARM_POOL + base + 0x20] = u8(rom.read(0xCC2B + z9A) + oy);   // $CC85-$CC8B
+  const z9D = o.y[0];                          // $CC94/$CC97 LDA $0320 -> $9D
+  // ---- $CC99: five iterations, segment k+1 chained off segment k ---------
+  // $CC8E STX $A9 / $CC90 LDA #$04 / STA $AA, then $CD5B INC $A9 / DEC $AA /
+  // BMI $CD64. $AA = 4,3,2,1,0 -> FIVE passes, k = 0..4, producing segments
+  // 1..5. Segment 0 was written above and its ANGLE ($0610) is never written
+  // by anything but $A517's clear.
+  for (let k = 0; k <= 4; k++) {               // $CD5D DEC $AA / $CD5F BMI $CD64
+    const p = ARM_POOL + base + k;             // X = $A9
+    const seen = c[p + 0x19] & 0xF0;           // $CC9F/$CCB0 LDA $0619,X / AND #$F0
+    // $CC9B LDA $9F / BEQ $CCB0 -- the two sweeps are MIRRORED, not equal:
+    // odd shapes DEC on `<=` and INC on `>`; even shapes INC on `<`, DEC on
+    // `>` and leave the angle alone on `==`. The `==` case is the difference.
+    let ang = c[p + 0x11];
+    if (z9F !== 0) {                           // $CC9D BEQ $CCB0
+      if (seen <= z9E) ang = u8(ang - 1);      // $CCA6 BEQ / $CCA8 BCC -> $CCBB
+      else ang = u8(ang + 1);                  // $CCAA INC $0611,X
+    } else if (seen < z9E) {
+      ang = u8(ang + 1);                       // $CCB9 BCC $CCAA
+    } else if (seen > z9E) {
+      ang = u8(ang - 1);                       // fall through to $CCBB
+    }                                          // seen == $9E -> $CCB7 BEQ, no change
+    if (ang < lo) ang = lo;                    // $CCC1/$CCC3 CMP $9B / BCS / LDA $9B
+    if (ang >= hi) ang = hi;                   // $CCC7/$CCC9 CMP $9C / BCC / LDA $9C
+    c[p + 0x11] = ang;                         // $CCCD STA $0611,X
+    // $CCD0-$CCF4: the SNAP-BACK. Each sweep has one angle band it refuses to
+    // hold while the segment is on the wrong side of the player's Y.
+    if (z9F !== 0) {                           // $CCD0 LDY $9F / BEQ $CCE7
+      if (ang >= 0x84 && c[p + 0x21] >= z9D) { // $CCD4 CMP #$84 / $CCDB CMP $9D
+        ang = 0x7C; c[p + 0x11] = ang;         // $CCDF/$CCE1 LDA #$7C
+      }
+    } else if (ang < 0x3C && c[p + 0x21] < z9D) {   // $CCE7 CMP #$3C / $CCEE CMP $9D
+      ang = 0x44; c[p + 0x11] = ang;           // $CCF2/$CCF4 LDA #$44
+    }
+    // $CCF7-$CD03: the NEXT segment may only bend +/- 6 from this one. ($CD05
+    // TYA is dead -- $CD06 reloads immediately.)
+    hi = u8(ang + 6);                          // $CCFB/$CCFC CLC / ADC #$06
+    lo = u8(hi - 0x0C);                        // $CD00/$CD01 SEC / SBC #$0C
+    // $CD06-$CD22: the angle folds to 0-$1F and picks a signed dX. The high
+    // half SUBTRACTS with the carry `CPY #$20` left SET; the low half ADDS with
+    // it CLEAR. Two branches of one 32-entry table, and the fold is what makes
+    // $CD65's 32 bytes cover a 64-value angle.
+    let y = ang & 0x3F;                        // $CD06/$CD09 AND #$3F / TAY
+    let nx;
+    if (y >= 0x20) {                           // $CD0C CPY #$20 / BCC $CD1C
+      y = y & 0x1F;                            // $CD10/$CD12 AND #$1F / TAY
+      nx = u8(c[p + 0x18] - rom.read(0xCD65 + y));      // $CD13/$CD16 SBC, C = 1
+    } else {
+      nx = u8(rom.read(0xCD65 + y) + c[p + 0x18]);      // $CD1C/$CD1F ADC, C = 0
+    }
+    c[p + 0x19] = nx;                          // $CD22 STA $0619,X
+    // $CD25-$CD3E: the WRAP KILL. A segment that has run off one edge is
+    // parked at X = 0, but only when the OWNER is on the far side -- so a
+    // wrap that is really the arm reaching across the screen survives.
+    if (nx < 0x10) {                           // $CD25 CMP #$10 / BCS $CD36
+      if (ox >= 0xA0) c[p + 0x19] = 0;         // $CD29/$CD2B CMP #$A0 / BCC $CD40
+    } else if (nx >= 0xF0) {                   // $CD36 CMP #$F0 / BCC $CD40
+      if (ox < 0x30) c[p + 0x19] = 0;          // $CD3A/$CD3C CMP #$30 / BCC $CD2F
+    }
+    // $CD40-$CD58: bit 5 of the ANGLE (not of the folded index) picks the sign
+    // of dY, and $CD85 is read at the SAME folded index.
+    if ((ang & 0x20) !== 0) {                  // $CD40/$CD43 AND #$20 / BEQ $CD51
+      c[p + 0x21] = u8(c[p + 0x20] - rom.read(0xCD85 + y));   // $CD47-$CD4B SEC/SBC
+    } else {
+      c[p + 0x21] = u8(c[p + 0x20] + rom.read(0xCD85 + y));   // $CD51-$CD55 CLC/ADC
+    }
+  }
 }
