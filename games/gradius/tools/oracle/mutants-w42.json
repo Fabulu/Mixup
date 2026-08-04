@@ -4,7 +4,7 @@
     "dump": "s5-chunks",
     "pipeline": "tail",
     "file": "src/enemies.js",
-    "why": "THE DEFECT ITSELF: $CAB8's JSR $AEE1 stops handing its carry to $CAE9. Must reproduce W40 \u00c2\u00a75a's 237 exactly.",
+    "why": "THE DEFECT ITSELF: $CAB8's JSR $AEE1 stops handing its carry to $CAE9. 237 divergent on W40's narrower comparison; 252 on this one, because W42 narrowed the $9663 fork skip and 519 more frames are compared.",
     "find": "    carry = c ? 1 : 0;                         // $AEE1's RTS carry -- see its header",
     "replace": "    carry = 0;                                 // MUTANT"
   },
@@ -13,7 +13,7 @@
     "dump": "s5-chunks",
     "pipeline": "tail",
     "file": "src/enemies.js",
-    "why": "W40's PROBE-1 rebuilt EXACTLY: the INITIALISER becomes 1, so A1 (the majority path) borrows nothing. Must be far WORSE than the defect.",
+    "why": "W40's PROBE-1 rebuilt EXACTLY: the INITIALISER becomes 1, so A1 -- the majority path -- borrows nothing instead. 3,580 on W40's comparison, 3,695 on this one. Far WORSE than the defect, which is why PROBE-1 measured wrong.",
     "find": "  // NOT taken, i.e. C = 0; $CAB8's JSR and $CAD2's CMP below both rewrite it.\n  let carry = 0;",
     "replace": "  // MUTANT\n  let carry = 1;"
   },

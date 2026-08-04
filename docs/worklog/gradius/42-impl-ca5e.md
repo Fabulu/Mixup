@@ -1,6 +1,6 @@
 # Wave 42 IMPL — `$CA5E`, the 1/256 px borrow
 
-status: IN PROGRESS
+status: DONE
 impl, 2026-08-04
 
 Scope: `games/gradius/` ONLY. `games/ddpdoj/` belongs to concurrent agents.
@@ -239,3 +239,168 @@ node --test games/gradius/tests/        ->  725 pass, 0 fail, 0 skipped  (was 72
   `w32arepro`, 0 elsewhere. Counted and printed, never silently.
 * one **`[STILL BROKEN] knownFail $8871`** (the title logo, `src/flow.js`
   `fullScreenLoad`): 10 of 13 windows, 1,916 bytes. Pre-existing and unrelated.
+
+---
+
+## 8. BUDGET REMAINING — THE HARNESS POINTED AT THE CHEAPEST OPEN ITEM
+
+W40 §7 item 4: "the six unreached late spawners — `--mode spawn --window
+6460-7730` per stage". Cheapest, so it went first: **stage 5's**, one 3-minute
+board run.
+
+**ENUMERATE FIRST (`docs/knowledge/09`).** `jt_$C439[4]` = `$C653`, and reading
+it settles what to capture before anything runs: `$C653 INC $68 / CMP #$28 /
+BCC RTS` fires one frame in `$28`, then `LDA #$14 / STA $66` — it spawns
+**exactly one type, `$14`**, the arm owner, through `$A4A6`, cycling `$69` over
+`$C67A`'s four pairs. So the run wanted `--types 14`, and the seven spawns it
+produced used **4 of 4** `$C67A` rows.
+
+That one run turned up **three defects, none of them in `src/`, all of them in
+the machinery that produces this project's cartridge numbers.**
+
+### 8a. `seedFromCartridge` NEVER SEEDED `$68` — the SHARED seeder, every scenario
+
+`porttrace.mjs` seeds `$5D $60 $61 $64 $65 $66 $67 $69 $6A-$6F`. **`$68` is not
+in the list**, and it has two ROM writers — `$C653` (above) and `$C686 INC $68 /
+CMP $C684,Y` (the warp rain). Both are one-in-N throttles, so an unseeded `$68`
+of 0 makes the port's spawner **do nothing for up to `$28` frames after any
+seed**, silently. There was no readback case for `$68` either.
+
+Found because the port produced SEVEN empty slots where the cartridge spawned
+seven arm owners. No scenario in the corpus reaches either writer, which is
+exactly why it survived to W42. Fixed, with the derivation written at the line.
+
+### 8b. `stagecmp.mjs` SPAWN MODE IS THE `sub_$C44F` FAMILY ONLY
+
+Spawn mode hand-builds a state with `$1B := $82` and the pre-INC `$69`, which
+fits `$C486 / $C546 / $C5AD / $C6DE` (W31's stage-4 entry among them) and
+nothing else. `$C653` gates on `$68`, so it did nothing: seven spawns, 78
+divergent, `$69: port 1 vs cart 2` — the cursor never even advanced. `$68` is
+now seeded there from the film too, which took it to 53.
+
+**AND IT STILL CANNOT VALIDATE `$C653`**, because the board's spawn row is
+sampled AFTER `$ADAB` dispatched and `$CA5E` has already run one frame on the
+new object, while spawn mode's row is pre-dispatch. The residue is systematic:
+every field is exactly one `$CA5E` + `$AEE1` frame (`x $F0/$EF`, `xf $00/$80`,
+`y $40/$3F` — a whole half-pixel in each axis).
+
+The fix is not to patch spawn mode but to use the SEEDED path: the seven rows
+re-expressed as STEP rows over the same film, so the whole machine is seeded
+from the cartridge's own 2 KB at frame i−1 and the full `$9A64` tail runs.
+
+```
+node stagecmp.mjs --tag s5-late-step --dir .../out/stagepoke/s5-late-step --pipeline tail
+  frames compared 7   fields per frame 21  ->  147 field comparisons
+  FIELD DIVERGENCES : 0
+```
+
+**`jt_$C439[4]` = `$C653` is the FIRST late spawner other than stage 4's ever
+compared against the board.** 7 of 7 spawns, 4 of 4 `$C67A` rows, 0 divergent.
+
+### 8c. TWO `$5C >= 2` GATES THE HARNESS WAS NOT MODELLING — and W40's two "window edge" frames explained
+
+W40 skipped every `$19 == 4` frame ("`$9663`'s census is not replayed") — 142
+frames on `s5-chunks`. **`$19 == 4` IS NOT THE FORK.** `$9663` is three
+conditions and the harness was skipping on the first:
+
+```
+9665  CMP #$04 / BNE $96A5              $19 == 4
+9683  STX $5C / CPX #$02 / BCC $96A5    the census found TWO groups
+9689  LDA $02 / LSR A / BCC $96A5       ...and the frame counter is ODD
+```
+
+All three are in the board's own film at sample i, so the skip is now the ROM's
+condition: **142 skipped -> 10**, and `$9663`'s census is REPLAYED (`armCensus`)
+and **compared against the `$5C` the board wrote at `$9683`** instead of being
+assumed. Hole 1 of W40 §6a is closed.
+
+Narrowing it exposed **16 field divergences at f2321 and f4371** — precisely the
+two frames W40's own source comment names as "the only non-`$CA5E` divergences
+the stage-5 run had", without saying why. Two more listing facts, both real:
+
+1. **`$9A5E LDA $5C / CMP #$02 / BCS $9A70` is a FOURTH `$5C >= 2` gate.** When
+   two groups are live the frame does not spawn, does not run the enemy
+   bullets, does not move the player and does not dispatch `$ADAB`.
+   `src/nmi.js` `mode5Body()` has had this branch since W32b; **the harness's
+   `tail` pipeline ran all six calls unconditionally.**
+2. **`$9A73` is not the end of the object chain on a stage-5 frame.**
+   `$9A76 JSR $C772` -> `$CB8A` runs the arm driver whenever `$5C < 2`, and it
+   writes object bytes.
+
+Measured, and this is what makes it a fact rather than a story: at f2321 the
+board's `$5C` = 3 and `$02` = `$12` (EVEN), so `$968C`'s BCC was taken and there
+was no `$968E` fork — and **every live slot's 21 bytes are byte-identical
+between f2320 and f2321.** The board's whole object chain was skipped. With
+`$9A5E`'s gate transcribed into the tail, all 16 go to 0.
+
+### 8d. WHAT THAT COST AND BOUGHT, re-measured everywhere
+
+| run | before W42 | after |
+|---|---|---|
+| `s5-chunks` frames compared | 9,886 (142 skipped) | **10,405 (10 skipped)** |
+| `s5-chunks` `$CA5E` frames | 3,826 | **3,962** |
+| `w32arepro` type `$1D` frames | 2,364 | **2,371 — `b559cmp.mjs`'s number exactly** |
+| every run's divergences | — | **0** |
+
+§6a's "one W40 number corrected" is now moot: `stagecmp.mjs` and `b559cmp.mjs`
+agree at 2,371, because the frames one skipped and the other compared are now
+compared by both.
+
+**Both mutation tables were re-run on the changed harness**, since a harness
+that compares more must still redden:
+
+```
+mutants-w40.json --dump s6-chunks --pipeline tail   RED 30 of 30, 2 controls green
+mutants-w42.json --dump s5-chunks --pipeline tail   RED  4 of  5, 2 controls green,
+                                                    1 declared hole (W42-3)
+games/gradius/src: 25 files, sha256 IDENTICAL before and after
+```
+
+W42-1 is 237 -> **252** and W42-2 3,580 -> **3,695** on the wider comparison;
+the mutant file records both numbers so neither reads later as drift.
+
+---
+
+## 9. STILL OPEN, stated as attempts and not as absences
+
+1. **W42-3's hole.** A cartridge comparison in which `$CAB8` returns through
+   `$AEEC` needs an A2 stretch that begins on the other `$038C,X` parity. It is
+   a coin flip per stretch and this film lost it 247 times out of 247. A second
+   stage-5 trajectory would settle it; the unit test guards it meanwhile.
+2. **The other late spawners.** `$C653` is now the worked example for the SEEDED
+   path (`--mode spawn --types <from the listing>`, then re-shape to step rows).
+   `$C6DE` (stage 6), `$C429` (stage 7), `$C486`, `$C546`, `$C58D`, `$C633` and
+   `$C752` remain.
+3. **Spawn mode proper.** It compares a pre-dispatch port row against a
+   post-`$ADAB` board row. That is sound only for handlers whose init arm does
+   not move the object on its spawn frame — true of W31's `$0A`/`$15`, false of
+   `$14`. Either dispatch inside spawn mode or retire it for the step path.
+4. **`$968E`'s fork itself** is still not replayed: 10 frames on `s5-chunks`, 0
+   everywhere else. It is a different call ORDER, not a subset, so it needs
+   transcribing rather than reusing the tail.
+5. Untouched from W40 §7: stage 7's boss records, stage 3's `$96`/`$A46F`, and
+   every boss but stages 1-2's.
+
+## FINAL NUMBERS
+
+```
+src/           enemies.js ONLY -- h_AEE1 returns its carry, h_CA5E consumes it
+tests/         w32b-arms.test.js +2 named tests    723 -> 725, 0 skipped
+tools/         stagecmp.mjs   $68 seeded; $9663's real three-condition fork;
+                              $9663 REPLAYED and its $5C COMPARED; $9A5E's
+                              gate; $9A76's arm driver
+               porttrace.mjs  $68 seeded and read back -- the SHARED seeder
+               mutants-w42.json (7 entries)
+
+cartridge comparisons, 11 board runs, ALL re-measured this wave:
+  s3 504,273 | s4 617,127 | s5 218,505 | s6 503,307 | s7 733,068
+  w31 271x11 | w32a 2,371x10 | chain 36,400 | loop6 36,400 | $C653 7x21
+                                                  ALL 0 DIVERGENT
+mutation       W40's 30 of 30 red; W42's 4 of 5 red, 2 controls green,
+               1 declared hole; src/ sha256 identical before and after
+gate           node games/gradius/tools/test-all.mjs
+               GREEN -- 12 passed, 0 failed, 0 gate-level SKIPPED
+               (6 FIELDS still skipped inside compare.mjs -- inherited)
+```
+
+status: DONE

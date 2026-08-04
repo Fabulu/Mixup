@@ -56,7 +56,7 @@ import { dirname, join } from 'node:path';
 
 import { createState, ENEMY_BASE, u8 } from '../../src/state.js';
 import {
-  spawnEngine, enemyBullets, updateEnemies,
+  spawnEngine, enemyBullets, updateEnemies, armCensus, armDriverGated,
 } from '../../src/enemies.js';
 import { updatePlayer } from '../../src/player.js';
 import { shotSweep } from '../../src/collision.js';
@@ -246,17 +246,56 @@ function runStep(man, rows, ram, opt, res) {
     for (const p of pokes) {
       if (p.addr === 0x19 && i - 1 >= p.from && i - 1 <= p.to) z19 = p.val;
     }
-    if (z19 === 4) { fork += 1; continue; }
+    // WAVE 42. `$19 == 4` ALONE IS NOT THE FORK. $9663 is three conditions and
+    // the harness was skipping on the first:
+    //
+    //   9665  CMP #$04 / BNE $96A5          $19 == 4
+    //   9683  STX $5C / CPX #$02 / BCC      the census found TWO live groups
+    //   9689  LDA $02 / LSR A / BCC $96A5   and the frame counter is ODD
+    //
+    // All three are readable out of the board's own film at sample i. `$5C` is
+    // what the board WROTE at `$9683` on that very frame, so it needs no
+    // re-derivation -- and it is only meaningful when `$19` was 4, which is
+    // exactly when it is consulted. `$02` at sample i is the post-`$80BE`-INC
+    // value the frame ran on (the same sample the NMI prologue fix takes).
+    // Measured: this turns 142 skipped frames on `s5-chunks` into 4, and every
+    // one of the newly compared frames agrees with the board.
+    const z5C = ram[i * RAM_FRAME + 0x5C];
+    const z02 = ram[i * RAM_FRAME + 0x02];
+    if (z19 === 4 && z5C >= 2 && (z02 & 1) !== 0) { fork += 1; continue; }
     const st = seedAt(ram, i - 1, pokes);
+    // WAVE 42. `$9663`'s census IS replayed now, not skipped: it is four RAM
+    // reads over the pool `seedAt` already loaded, and `$5C` is what `$CB8A`
+    // gates on. The board wrote its own `$5C` at `$9683` on this frame, so the
+    // two are compared below -- the census is CHECKED, not assumed.
+    if (z19 === 4) st.zp5C = armCensus(st);      // $9663-$9683 STX $5C
 
     try {
       if (opt.pipeline === 'tail') {
-        spawnEngine(st, res);                    // $9A64
-        enemyBullets(st, res);                   // $9A67
-        updatePlayer(st, res);                   // $9A6A
-        updateEnemies(st, res);                  // $9A6D
+        // WAVE 42. `$9A5E LDA $5C / CMP #$02 / BCS $9A70` is a FOURTH `$5C >= 2`
+        // gate and the tail was running straight through it. When two arm groups
+        // are live the frame does NOT spawn, does NOT run the enemy bullets,
+        // does NOT move the player and does NOT dispatch `$ADAB` -- `$968E`'s
+        // fork does all four on the ODD frames instead. `src/nmi.js`
+        // mode5Body() has had this branch since W32b; only this harness lacked
+        // it, and the blanket `$19 == 4` skip hid that. It is what f2321 and
+        // f4371 -- W40's two unexplained "window edge" frames -- actually are:
+        // the board's whole object chain was skipped and nothing moved, which
+        // is measurable in the film (0 bytes of every live slot changed).
+        if (st.zp5C < 2) {                       // $9A5E-$9A62 BCS $9A70
+          spawnEngine(st, res);                  // $9A64
+          enemyBullets(st, res);                 // $9A67
+          updatePlayer(st, res);                 // $9A6A
+          updateEnemies(st, res);                // $9A6D
+        }
         shotSweep(st, res);                      // $9A70 -> $C0C7
         applyCapsule(st, res);                   // $9A73
+        // `$9A73` IS NOT THE END OF THE OBJECT CHAIN ON A STAGE-5 FRAME.
+        // `$9A76 JSR $C772` is `LDA $19 / CMP #$04 / JMP $CB8A`, and `$CB8A`
+        // runs the arm driver whenever `$5C < 2`. It writes object bytes --
+        // the owner's `$016C,X` among them -- so leaving it out made 16 fields
+        // on `s5-chunks` divergent the moment the fork skip was narrowed.
+        if (z19 === 4) armDriverGated(st, res.enemyTables);   // $9A76
       } else {
         updateEnemies(st, res);                  // $9A6D alone
       }
@@ -269,6 +308,13 @@ function runStep(man, rows, ram, opt, res) {
     }
 
     compared += 1;
+    // `$5C` -- the census the harness used to skip past. The board's byte at
+    // sample i is `$9683 STX $5C` from this very frame.
+    if (z19 === 4 && st.zp5C !== z5C) {
+      perField.z5C = (perField.z5C || 0) + 1;
+      bad += 1;
+      note(`f${i} $5C: port ${hex(st.zp5C)} board ${hex(z5C)} ($9663's census)`);
+    }
     typesSeen.set(prev & 0x7F, (typesSeen.get(prev & 0x7F) || 0) + 1);
     const k = r.slot + ENEMY_BASE;
     for (const [name, addr] of fields) {
@@ -291,8 +337,8 @@ function runStep(man, rows, ram, opt, res) {
     + (opt.pipeline === 'tail' ? ' (compared: the tail replays $A2C0)'
       : ' (skipped: --pipeline enemies does not replay $A2C0)'));
   console.log(`  slot re-used same frame  : ${reuse} (nothing to compare)`);
-  console.log(`  $19 == 4 frames skipped   : ${fork} ($9663's census is not `
-    + 'replayed here)');
+  console.log(`  $9663 FORK frames skipped: ${fork} (all three of $19==4, `
+    + '$5C>=2 and $02 odd -- $968E is not replayed here)');
   console.log(`frames compared            : ${compared}`);
   console.log(`fields per frame           : ${fields.length}`
     + `  -> ${compared * fields.length} field comparisons`);
@@ -334,6 +380,17 @@ function runSpawn(man, rows, ram, opt, res) {
     s.zp19 = r.z19;                 // the poked stage, or the control row's
     s.frame = u8(r.z02);            // $02 as the board had it on the spawn frame
     s.spawn.z69 = r.z69_m1;         // the PRE-INC cursor sub_$C44F reads
+    // WAVE 42. `$69` IS NOT THE ONLY ZP THE ELEVEN LATE SPAWNERS READ, and
+    // seeding only `$69` silently restricted this mode to the `sub_$C44F`
+    // family ($C486, $C546, $C5AD, $C6DE -- W31's stage-4 entry among them).
+    // `$C653` (stage 5) and `$C686` (the warp rain) gate on `$68` instead:
+    // `$C653 INC $68 / CMP #$28 / BCC RTS` fires one frame in $28, so a `$68`
+    // of 0 makes the port do NOTHING and every field reads as divergent. That
+    // was measured, not guessed: seven $C653 spawns compared 78 divergent with
+    // `$69: port 1 vs cart 2`, i.e. the cursor never even advanced.
+    // Taken from the board's own film at frame i-1, which is exact -- nothing
+    // writes $68 between $80B5 and $A2F7.
+    s.spawn.z68 = ram[(r.frame - 1) * RAM_FRAME + 0x68];
     // $C41E scans slots 9..0 for an empty one. Occupy the ones above the slot
     // the board used so the port's scan lands on the same index.
     for (let j = 9; j > r.slot; j--) s.obj.type[j + ENEMY_BASE] = 0x27;

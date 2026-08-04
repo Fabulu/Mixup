@@ -280,6 +280,15 @@ export function seedFromCartridge(state, seed) {
   state.spawn.z65 = r(0x65);               // $65
   state.spawn.z66 = r(0x66);               // $66
   state.spawn.z67 = r(0x67);               // $67
+  // WAVE 42. `$68` WAS MISSING FROM THIS LIST, and it is a real zero-page byte
+  // with two ROM writers: `$C653 INC $68 / CMP #$28` (stage 5's late spawner)
+  // and `$C686 INC $68 / CMP $C684,Y` (the warp rain). Both are one-in-N
+  // throttles, so an unseeded `$68` of 0 makes the port's spawner silently do
+  // NOTHING for up to $28 frames after any seed. No scenario in the corpus
+  // reaches either, which is why it survived: it was found by pointing the
+  // stage-5 late-spawner comparison at $C653 and getting seven spawns the
+  // cartridge made and the port did not.
+  state.spawn.z68 = r(0x68);               // $68
   state.spawn.z69 = r(0x69);               // $69
   state.spawn.z6A = r(0x6A);               // $6A
   state.spawn.z6B = r(0x6B);               // $6B
@@ -523,6 +532,7 @@ export function peek(state, addr) {
     case 0x65: return state.spawn.z65;
     case 0x66: return state.spawn.z66;
     case 0x67: return state.spawn.z67;
+    case 0x68: return state.spawn.z68;     // W42 -- see the seeder above
     case 0x69: return state.spawn.z69;
     case 0x6A: return state.spawn.z6A;     // the wave cursor, low
     case 0x6B: return state.spawn.z6B;     // ...and high
