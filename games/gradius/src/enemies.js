@@ -342,22 +342,28 @@ function runEngine(state, rom, stageIndex, res) {
     lateSpawner(state, rom, stageIndex); // $A2FB JMP $C413 (the late spawner)
     return;
   }
-  // Stage 4+ WAVE content is OUT OF SCOPE (the port ships stage 3 this wave,
-  // W30; stage-4 enemy handlers are not). The $82 late-spawner arm above still
-  // runs (its own per-stage throws cover stages 4+). This guard fires on the
-  // first stage-4 wave RECORD -- the expected boundary after stage 3's content
-  // + boss + the stage-3->stage-4 transition.
+  // Stage 5+ WAVE content is OUT OF SCOPE. The $82 late-spawner arm above still
+  // runs (its own per-stage throws cover stages 5+). This guard fires on the
+  // first stage-5 wave RECORD -- the expected boundary after stage 4's content
+  // + boss + the stage-4->stage-5 transition.
   //
-  // W30 lowered it from `>= 2` to `>= 3`. What made stage 3 reachable is in
-  // this file: the inline-5 route ($A37A/$A466/$A46F), the moai $C906, the
-  // mover $B7A1, the shared pair $B402/$B434 and $B4FD.
-  if (stageIndex >= 3) {
+  // W30 lowered it from `>= 2` to `>= 3`; W31 lowers it to `>= 4`. THIS GUARD
+  // IS INVISIBLE TO stageledger.py -- the ledger reports type->handler coverage
+  // and read 98/98 for stage $19=3 for a whole wave while this line still threw
+  // on stage 4's first record. What made stage 4 reachable is $C5AD (the
+  // ceiling volcano) + $B377 (its rock); its 98 wave records came free with
+  // W30's $B402/$B434.
+  //
+  // Stage 5 is W32's and it is NOT one guard away: 14 of its 28 distinct
+  // records still have no handler ($CA5E, $B559) and 4 of them route through
+  // $A4A6, the $0600 terrain-mounted spawner, which throws.
+  if (stageIndex >= 4) {
     throw new Error(`$A2F0 runEngine: $19 = $${stageIndex.toString(16).toUpperCase()}`
-                  + ` (stage ${stageIndex + 1}). Stage 3 ($19=2) is shipped (W30);`
-                  + ` stage-4+ WAVE content (the $B402/$B434 records are ported,`
-                  + ` but stage 4's late spawner $C5AD and its child $B377 are`
-                  + ` not) is out of scope. This is the first stage-4 wave record`
-                  + ` -- the expected boundary.`);
+                  + ` (stage ${stageIndex + 1}). Stage 4 ($19=3) is shipped (W31);`
+                  + ` stage-5+ WAVE content is out of scope -- stage 5 needs the`
+                  + ` $0600 destructible-terrain substrate ($A4A6, $CA5E, $B559,`
+                  + ` $C653). This is the first stage-5 wave record -- the`
+                  + ` expected boundary.`);
   }
   if (sp.z69 !== 0) {                    // $A2FE LDA $69 / BNE $A32B
     if (sp.z6C !== 0) {                  // $A32B LDA $6C / BNE $A332
@@ -453,10 +459,10 @@ function lateSpawner(state, rom, stageIndex) {
     // W30's fix is this label. (28-recon-stages-2-7.md 3c called it "a one-line
     // wiring fix once $B7A1 lands", and it is.)
     case 0xC686: return st_C686(state, rom);   // stage 3 -- the $B7A1 mover
-    case 0xC5AD:
-      throw new Error('$C439[3] -> $C5AD: stage-4 late-spawner arm not ported '
-                    + '(stage-1 scope, W25). Spawns type $0B via sub_$C44F '
-                    + 'X=4 -> stream $C633.');
+    // Stage 4's arm is the CEILING volcano: the same eruption as stage 1's
+    // $C486 with the crater on the roof (Y $2C, not $90) and type $15 -> entry
+    // 21 -> $B377, whose arc adds Y where the stage-1 rock's subtracts it.
+    case 0xC5AD: return st_C5AD(state, rom);   // stage 4 -- the ceiling volcano
     case 0xC653:
       throw new Error('$C439[4] -> $C653: stage-5 late-spawner arm not ported '
                     + '(stage-1 scope, W25).');
@@ -625,10 +631,27 @@ function st_C486(state, rom) {
   o.s04A0[i] = 0x01;                        // $C4CD LDA #$01 / STA $04AC,X
   o.x[i] = rom.read(0xC4F4 + aa);           // $C4D2 LDY $AA / LDA $C4F4,Y / STA $036C,X
   o.type[i] = 0x0A;                         // $C4DA LDA #$0A / STA $030C,X
-  // $C4DF-$C4F0: shared tail loc_$C4E4 (also reached from $C5FE, stage 4's arm).
-  // y is fixed at $90 (the volcano's base line); the velocity fractions and the
-  // anim are seeded from $02 & $3F (the frame counter's low 6 bits).
+  // $C4DF LDA #$90 / STA $032C,X -- the volcano's base line. NOT part of the
+  // shared tail: $C5AD writes $2C here instead (the ceiling) at $C5F9.
   o.y[i] = 0x90;                            // $C4DF LDA #$90 / STA $032C,X
+  loc_C4E4(state, j);                       // fall through into loc_$C4E4
+}
+
+/**
+ * `loc_$C4E4` -- the tail `st_$C486` FALLS INTO and `st_$C5AD` reaches by
+ * `$C5FE JMP $C4E4`, a jump 281 bytes BACKWARD in the ROM with nothing
+ * returning to it. Reading `st_$C5AD` top to bottom and stopping at its last
+ * byte would ship a stage-4 rock with no animation and uninitialised velocity
+ * fractions.
+ *
+ *   C4E4  A5 02 / 29 3F              A := $02 & $3F  (frame counter, low 6)
+ *   C4E8  9D 4C 04 / 9D EC 03        xvelf AND yvelf both := that same value
+ *   C4EE  A9 58 / 9D 2C 01           anim := metasprite $58
+ *   C4F3  60                          RTS -- $C4F4 is the approachStage0 DATA
+ *                                     block, so there is no further fall-out
+ */
+function loc_C4E4(state, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
   o.xvelf[i] = state.frame & 0x3F;          // $C4E4 LDA $02 / AND #$3F / STA $044C,X
   o.yvelf[i] = state.frame & 0x3F;          // $C4EB STA $03EC,X
   o.anim[i] = 0x58;                         // $C4EE LDA #$58 / STA $012C,X
@@ -674,6 +697,82 @@ function st_C546(state, rom) {
   o.y[i] = rom.read(0xC56E + a9);               // $C55C/$C55F STA $032C,X
   o.type[i] = 0x0B;                             // $C562 LDA #$0B / STA $030C,X
   o.anim[i] = 0x67;                             // $C567 LDA #$67 / STA $012C,X
+}
+
+/**
+ * `st_$C5AD` -- stage 4's late-spawner arm (`jt_$C439[3]`). THE CEILING
+ * VOLCANO. Stage 4's craters hang from the top of the screen and drop their
+ * rocks, which is why this arm is `$C486` upside down: same sfx, same stepper,
+ * a byte-identical descriptor table, but `$032C,X := $2C` (the ceiling)
+ * instead of `$90`, and a type of `$15` -> entry 21 -> `$B377`, whose arc adds
+ * Y where `$B36F`'s subtracts it.
+ *
+ * The cartridge agrees from a second direction: `$99FC LDA $19 / BEQ $9A06 /
+ * CMP #$03 / BEQ $9A06` gives stages 1 and 4 -- and ONLY those two -- the
+ * eruption sfx `$3F` at the end of the `$82` countdown. That branch has been
+ * ported since W24 (`nmi.js` `st99E9`), a wave before anything here existed.
+ *
+ *   C5AD  A5 69 / D0 05                 sfx only on the first spawn ($69 == 0)
+ *   C5B1  A9 0F / 20 1E EC              sfx $0F -- the rumble, same as $C48A
+ *   C5B6  A2 04 / 20 4F C4              stepper X=4 -> $C447+4 -> stream $C633
+ *   C5BB  LSR/CLC/ADC $A9 / TAY         Y = a9 * 1.5 (3-byte descriptor rows)
+ *   C5C2  A6 A8                          the slot lateSpawner already cleared
+ *   C5C4  $042C,X := $C603,Y            xvel
+ *   C5CA  $03BC,X := $C604,Y            yvel
+ *   C5D0  A5 69 / C9 1E / B0 06         ONE ramp arm, not the volcano's two
+ *   C5D6  DEC $03BC,X x2                 yvel -= 2 while $69 < $1E
+ *   C5DC  A5 02 / 29 0F / ADC $C605,Y   accel + a LIVE 0..15 jitter
+ *   C5E7  $04AC,X := $01                 hit counter
+ *   C5EC  A4 AA / $036C,X := $C601,Y    X = $38 or $B8, by the nibble parity
+ *   C5F4  $030C,X := $15                 type $15 (raw -- $B377 sets bit 7)
+ *   C5F9  $032C,X := $2C                 THE CEILING
+ *   C5FE  4C E4 C4                       -> loc_$C4E4 (the shared tail)
+ *
+ * THE JITTER IS THE ONE THAT IS REAL. `$C4C1`'s three `ASL`s clear bits 0-2
+ * before its `AND #$07`, so stage 1's acceleration jitter is identically zero
+ * (W25 measured that and transcribed it as inert). `$C5DE` has no shifts: it
+ * masks `$02` raw, so stage 4's acceleration varies by 0..15 per spawn. Two
+ * routines that look like the same code and are not.
+ *
+ * `$C601`-`$C632` is byte-identical to `$C4F4`-`$C525` -- the ROM carries two
+ * copies of the descriptor rows. This port reads `$C601`, the address the
+ * instruction names. No test can tell the two apart; see the worklog.
+ */
+function st_C5AD(state, rom) {
+  const sp = state.spawn;
+  const o = state.obj;
+  // $C5AD LDY $69 / $C5AF D0 05 -- the rumble sfx fires only when the spawn
+  // cursor is 0, i.e. once per eruption, exactly as $C486/$C488 does.
+  if (sp.z69 === 0) {                       // $C5AF BNE $C5B6
+    soundRequest(state, 0x0F);              // $C5B1 LDA #$0F / $C5B3 JSR $EC1E
+  }
+  // $C5B6 LDX #$04 / $C5B8 JSR $C44F -- X=4 reads the pointer at $C44B, which
+  // is jt_$C439's tenth word: the 32-byte packed-nibble stream at $C633.
+  const { a9, aa } = sub_C44F(state, rom, 0x04);
+  // $C5BB-$C5C1: Y = a9 + (a9 >> 1) = 1.5*a9 -- 3-byte rows at $C603/4/5.
+  const y = u8((a9 >>> 1) + a9);             // $C5BD LSR / CLC / ADC $A9 / TAY
+  const j = sp.zA8;                          // $C5C2 LDX $A8
+  const i = j + ENEMY_BASE;
+  o.xvel[i] = rom.read(0xC603 + y);          // $C5C4/$C5C7 STA $042C,X
+  o.yvel[i] = rom.read(0xC604 + y);          // $C5CA/$C5CD STA $03BC,X
+  // $C5D0-$C5D9: ONE ramp arm. The POST-INC $69 (sub_C44F already stepped it):
+  // the first 30 spawns of an eruption lose 2 from yvel, the rest lose nothing.
+  // $C486 has a SECOND, inner arm at $C4B5 ($69 < $0A, another -2); $C5AD does
+  // NOT -- $C5D4 BCS jumps straight past both DECs to $C5DC.
+  if (sp.z69 < 0x1E) {                       // $C5D2 CMP #$1E / $C5D4 BCS $C5DC
+    o.yvel[i] = u8(o.yvel[i] - 1);           // $C5D6 DE BC 03
+    o.yvel[i] = u8(o.yvel[i] - 1);           // $C5D9 DE BC 03
+  }
+  // $C5DC-$C5E4: acceleration = descriptor + ($02 & $0F). Unlike $C4C1 this
+  // jitter is LIVE (no ASLs before the mask), so successive spawns in the same
+  // eruption fall at measurably different rates.
+  const jitter = state.frame & 0x0F;         // $C5DC LDA $02 / $C5DE AND #$0F
+  o.s0480[i] = u8(jitter + rom.read(0xC605 + y));  // $C5E1 ADC $C605,Y / STA $048C,X
+  o.s04A0[i] = 0x01;                         // $C5E7 LDA #$01 / STA $04AC,X
+  o.x[i] = rom.read(0xC601 + aa);            // $C5EC LDY $AA / LDA $C601,Y / STA $036C,X
+  o.type[i] = 0x15;                          // $C5F4 LDA #$15 / STA $030C,X
+  o.y[i] = 0x2C;                             // $C5F9 LDA #$2C / STA $032C,X
+  loc_C4E4(state, j);                        // $C5FE JMP $C4E4 (the shared tail)
 }
 
 /**
@@ -1659,6 +1758,8 @@ function dispatch(state, rom, j, type) {
     case 0xC906: return h_C906(state, rom, j);   // entry 22, types $16/$96 (moai)
     case 0xB7A1: return h_B7A1(state, rom, j);   // entry 23, types $17/$97 (chaser)
     case 0xB4FD: return h_B4FD(state, rom, j);   // entry 28, types $1C/$9C
+    // ---- WAVE 31: stage 4 ------------------------------------------------
+    case 0xB377: return h_B377(state, j);        // entry 21, types $15/$95
     default:
       // THE MESSAGE THIS USED TO CARRY WAS "no measured run has ever
       // dispatched it", and that sentence is the one this whole follow-up
@@ -3399,6 +3500,36 @@ function h_B36F(state, j) {
   subY16(state, j);                       // $B1E8 JSR $B140
   velSubAccel(state, j);                  // $B1EB JSR $B120
   offScreenCheck(state);                  // $B1EE JMP  $B251
+}
+
+/**
+ * Handler 21, `$B377` -- THE CEILING VOLCANO'S ROCK, types `$15`/`$95`.
+ * `st_$C5AD` (stage 4's late-spawner arm) is its ONLY producer: no wave record
+ * anywhere in the 598 names type `$15`, exactly as no record names the stage-1
+ * volcano's `$0A`.
+ *
+ *   B377  BD 0C 03      LDA $030C,X
+ *   B37A  10 2B         BPL $B3A7   -> JMP $B0B4, type += $80 (the init frame)
+ *   B37C  4C FA B1      JMP $B1FA
+ *
+ * `$B36F` and `$B377` are the same routine with ONE address changed, and that
+ * address is the whole difference between the two stages' eruptions:
+ *
+ * | | `$B36F` (type $0A) | `$B377` (type $15) |
+ * |---|---|---|
+ * | arc | `$B1E5` -> `$B184` `$B140` `$B120` `$B251` | `$B1FA` -> `$B184` `$B16C` `$B120` `$B251` |
+ * | Y | `subY16` -- the rock flies UP off the crater | `addY16` -- it falls DOWN off the ceiling |
+ *
+ * Both arms already existed in this port: `setInitialised` since W12 and
+ * `loc_B1FA` since W30 (it was factored out for `$B434`'s `$B459 JMP $B1FA`).
+ * `$B37C` is a JMP, so `$B37F` (entry 11, the jellyfish) is NOT fallen into.
+ */
+function h_B377(state, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) {              // $B377 LDA $030C,X / $B37A BPL $B3A7
+    return setInitialised(state, j);       // $B3A7 JMP $B0B4 (first frame only)
+  }
+  loc_B1FA(state, j);                      // $B37C JMP $B1FA
 }
 
 
