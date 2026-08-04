@@ -225,9 +225,14 @@ function shotVsEnemies(state, res, x) {
                   + `${ENEMY_SLOTS}, and the shot was not consumed`);
   }
   if (state.zp19 === 4) {                         // $C037/$C039 CMP #$04
+    // W32a CORRECTION: not "destructible blocks". $BEF3/$BF0B walks the six
+    // SEGMENTS of each live $0600 arm group; only segment 2 is vulnerable
+    // ($BF31 CMP #$02), and the hit count comes from $BEEA,$17 (9 rank rows,
+    // 2..9 hits). See docs/worklog/gradius/32-recon-destructible-terrain.md.
     throw new Error('$C03D: $19 = 4 (stage 5). The second sweep at $C03D-$C046 '
-                  + '($BEF3, the shot against the destructible blocks) is not '
-                  + 'ported -- the port loads one stage\'s assets.');
+                  + '($BEF3, a shot against the $0600 ARM SEGMENTS -- not '
+                  + 'destructible terrain, see 32-recon-destructible-terrain.md) '
+                  + 'is not ported. W32c.');
   }
 }
 
@@ -414,9 +419,16 @@ export function collision(state, res) {
   }
   // $C25D: LDA $19 / CMP #$04 / BNE $C2A5 -- the stage-5 arm falls through here.
   if (state.zp19 === 4) {
-    throw new Error('$C263: $19 = 4 (stage 5). The destructible-block sweep over '
-                  + '$0600/$0618/$0620 ($C263-$C2A4, and $C290\'s route into '
-                  + '$C1D6) is not ported -- the port loads one stage\'s assets.');
+    // W32a CORRECTION: not "destructible blocks". $C263-$C2A4 walks the four
+    // $0600 ARM GROUPS and, for each live one, its six segments' X/Y at
+    // B+$18..$1D / B+$20..$25 -- the player's body against the arm. It fires
+    // UNCONDITIONALLY on every stage-5 frame (it is a loop that does nothing
+    // when all four headers are 0), which is one of the four reasons stage 5
+    // cannot run with runEngine's scope guard opened alone.
+    throw new Error('$C263: $19 = 4 (stage 5). The player-vs-ARM-SEGMENT sweep '
+                  + 'over the four $0600 groups ($C263-$C2A4, and $C290\'s route '
+                  + 'into $C1D6) is not ported. NOT destructible terrain -- see '
+                  + 'docs/worklog/gradius/32-recon-destructible-terrain.md. W32c.');
   }
   terrainPart(state, res);                        // $C2A5
 }

@@ -209,9 +209,74 @@ def _stage_records():
                 r['trigger'] = trig
                 r['cmd'] = cmd
                 r['scroll'] = (z61 + ((trig >> 7) & 1)) * 256 + u8(trig << 1)
-                recs[p] = r                       # distinct by ROM address
+                # W32a: KEEP THE EARLIEST SCROLL, not the last one written.
+                # A record's ROM address is distinct; the SCROLL it fires at is
+                # not, because chunk pointers are SHARED (stage 4's chunks 2-6
+                # are all the same pointer $ABE8, and stage 0's 5/6/7 are one
+                # pointer). The old `recs[p] = r` let the LAST chunk in the walk
+                # overwrite the record, so first-unported reported the LATEST
+                # scroll a shared record fires at instead of the first one a
+                # player reaches. Measured cost of that bug, this session:
+                #   stage 4  $ABE8 printed $0C80, the player hits it at $0480
+                #   stage 6  $AD98 printed $0CC0, the player hits it at $0AC0
+                # -- i.e. the ledger has been reporting stage 6 as 512 px more
+                # finished than it is since W28. Both directions of the error
+                # flatter the port, which is why it survived four waves.
+                if p not in recs or r['scroll'] < recs[p]['scroll']:
+                    recs[p] = r                   # distinct by ROM address
         per_stage[st] = recs
     return per_stage
+
+
+def _scroll_convention_check(per_stage):
+    """Prove the EARLIEST-scroll rule above actually held. [] = clean.
+
+    W32a ADDED THIS BECAUSE THE FIX ARRIVED UNGUARDED. Reverting `_stage_records`
+    to the old `recs[p] = r` moved stage 4 from $0480 to $0C80 and stage 6 from
+    $0AC0 to $0CC0 -- both FORWARD, which `gate()` reads as "coverage advanced"
+    and passes. So the whole correction reddened nothing, and a later refactor
+    could have undone it silently. Two independent checks, both of which the
+    revert breaks:
+
+      (a) a SECOND, structurally different computation of the minimum (a dict of
+          ints, not a dict of records), compared entry for entry;
+      (b) the two SHARED-POINTER records measured by hand out of assets/prg.bin
+          this session, pinned as literals:
+            stage 4  $ABE8  chunks 2,3,4,5,6 -> first at scroll $0480
+            stage 6  $AD98  first at scroll $0AC0
+          A hand-checkable literal is what stops (a) from being two spellings of
+          the same mistake.
+    """
+    msgs = []
+    for st in range(7):
+        tbl = STAGE_TBL[st]
+        nchunk = (STAGE_TBL[st + 1] - tbl) // 2
+        lo = {}
+        for ci in range(nchunk):
+            z61 = ci * 2
+            ptr = rd(tbl + z61) | (rd(tbl + z61 + 1) << 8)
+            for kind, p, trig, cmd in g.stream(ptr, st):
+                if kind == 'END':
+                    continue
+                sc = (z61 + ((trig >> 7) & 1)) * 256 + u8(trig << 1)
+                lo[p] = sc if p not in lo else min(lo[p], sc)
+        for p, r in per_stage[st].items():
+            if r['scroll'] != lo[p]:
+                msgs.append("stage %d record $%04X kept scroll $%04X but the "
+                            "earliest chunk that reaches it fires at $%04X -- "
+                            "_stage_records is letting a later chunk overwrite "
+                            "a shared record." % (st, p, r['scroll'], lo[p]))
+                break                                 # one per stage is enough
+    for st, addr, want in ((4, 0xABE8, 0x0480), (6, 0xAD98, 0x0AC0)):
+        got = per_stage[st].get(addr)
+        if got is None:
+            msgs.append("stage %d has no record at $%04X -- the fixture this "
+                        "check is pinned to has moved." % (st, addr))
+        elif got['scroll'] != want:
+            msgs.append("stage %d record $%04X must fire first at scroll $%04X "
+                        "(measured out of assets/prg.bin, W32a); the ledger says "
+                        "$%04X." % (st, addr, want, got['scroll']))
+    return msgs
 
 
 _ported_p = g.dispatchable      # THE one definition, in wavecensus.py
@@ -303,9 +368,26 @@ BASELINE = {
                                                 # records came free in W30
                                                 # ($B402/$B434); W31 opened the
                                                 # other two gates ($C5AD, $B377)
-    4: dict(first_unported_scroll=0x0000,      ported_floor=14,  runnable=False),  # W32 owns it
+    #
+    # W32a MOVED ROW 4 FORWARD and CORRECTED ROW 6 BACKWARD. Those are two
+    # different events and the difference is the whole point of this comment:
+    #
+    #   row 4  $0000 -> $0480, floor 14 -> 24. A real advance: $B559 (entry 29)
+    #          is now ported and it is the type of TEN of stage 5's 28 records,
+    #          all of chunks 0 and 1. The first record the port cannot dispatch
+    #          is now $ABE8, the first of the four inline-5 arm spawns (W32b).
+    #
+    #   row 6  $0CC0 -> $0AC0. NOT a regression and NOT an advance -- the OLD
+    #          NUMBER WAS WRONG. `_stage_records` let a later chunk overwrite a
+    #          shared record's scroll, so $AD98 (reached from two chunks) was
+    #          reported at the LATER of its two scrolls. Nothing about stage 6's
+    #          port changed this wave; the measurement did. This is the one case
+    #          where lowering a baseline row is correct, and it is written down
+    #          here rather than done quietly because the docstring above says
+    #          "never backward" and a future reader is entitled to ask why.
+    4: dict(first_unported_scroll=0x0480,      ported_floor=24,  runnable=False),  # W32a: $B559
     5: dict(first_unported_scroll=0x03B0,      ported_floor=47,  runnable=False),  # W33
-    6: dict(first_unported_scroll=0x0CC0,      ported_floor=104, runnable=False),  # W34
+    6: dict(first_unported_scroll=0x0AC0,      ported_floor=104, runnable=False),  # W34 (corrected)
 }
 
 
@@ -398,6 +480,12 @@ def gate(rows):
 
 
 def main():
+    conv = _scroll_convention_check(_stage_records())
+    if conv:
+        print("SCROLL CONVENTION BROKEN -- the first-unported column is lying:")
+        for m in conv:
+            print("  - " + m)
+        return 1
     rows = compute()
     _print_ledger(rows)
     if '--baseline' in sys.argv:

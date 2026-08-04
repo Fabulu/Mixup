@@ -198,23 +198,35 @@ export function buildDisplayList(state, table) {
       cursor, work);
     cursor = forceField(state, oam, table, slot, orMask, cursor, work);
   }
-  // $8B8D: LDA $19 / CMP #$04 / BEQ $8BD9 -- stage 5's TERRAIN-OBJECT SPRITE
-  // PASS. When $19 == 4 the cartridge walks the collision map $0600,X (cursor
-  // $90 stepping -$30) and, for each non-zero cell, calls $8C06 to draw a
-  // terrain sprite (moai wall / destructible scenery). It is the one
-  // stage-specific subsystem inside this routine and it is NOT ported (the
-  // port loads one stage, stage 1, so $19 is 0). 20-plan sec 1a lists it among
-  // the "genuine silent gaps"; before this throw it was a quiet no-op. $8BD9
-  // runs in buildDisplayList, i.e. BEFORE the mode-5 state machine reaches the
-  // $9663 stage-5 census arm -- so for $19 == 4 THIS throws first and $9663 is
-  // the defense-in-depth tripwire behind it.
+  // $8B8D: LDA $19 / CMP #$04 / BEQ $8BD9 -- stage 5's ARM-SEGMENT SPRITE PASS.
+  //
+  // W32a CORRECTION: this used to say "terrain-object sprite pass ... the moai
+  // wall / destructible scenery", and that was wrong.
+  // docs/worklog/gradius/32-recon-destructible-terrain.md accounted for every
+  // field of $0600-$06BF out of the 71 instruction sites that touch it: it is a
+  // 4-group x $30-byte ARTICULATED-ARM pool (six segments each) owned by the
+  // stage-5 enemy $CA5E, and it touches no terrain map, no nametable and no VRAM
+  // packet. $8BD9 walks the four group headers ($90 stepping -$30) and calls
+  // $8C06 per LIVE GROUP to draw its six segments -- five body sprites of tile
+  // $F7 plus a head chosen from $8BF2,X.
+  //
+  // It is NOT a subroutine: $8B91 BEQ jumps INTO it and $8BF0 BMI falls back
+  // into the shared sprite tail at $8B93, consuming the shared OAM cursor $9C
+  // and the remaining-sprite counter $9F (up to 6 x 4 = 24 sprites). Whoever
+  // ports it must read $8B47-$8BC2 first: an edit here is an edit to shipped
+  // stage-1 code.
+  //
+  // $8BD9 runs in buildDisplayList, i.e. BEFORE the mode-5 state machine reaches
+  // the $9663 census -- so for $19 == 4 THIS throws first and $9663 is the
+  // defense-in-depth tripwire behind it.
   if (state.zp19 === 4) {                           // $8B8D LDA $19 / $8B91 BEQ
-    throw new Error('$8BD9: stage-5 ($19 = 4) terrain-object sprite pass is not '
-                  + 'ported. $8BD9 walks $0600,X and calls $8C06 per live cell to '
-                  + 'draw the moai wall / destructible scenery; the port loads one '
-                  + 'stage (stage 1). Reached before the $9663 census arm because '
-                  + 'this routine ($8B10) runs at $80A7, ahead of the state machine '
-                  + 'at $80AA. Stage 5 is out of scope (W36+).');
+    throw new Error('$8BD9: stage-5 ($19 = 4) ARM-SEGMENT sprite pass is not '
+                  + 'ported. $8BD9 walks the four $0600 arm-group headers and '
+                  + 'calls $8C06 per live group to draw its six segments. NOT '
+                  + 'destructible terrain -- see '
+                  + 'docs/worklog/gradius/32-recon-destructible-terrain.md. '
+                  + 'Reached before the $9663 census because this routine ($8B10) '
+                  + 'runs at $80A7, ahead of the state machine at $80AA. W32b.');
   }
   // $8B97-$8BC2: THE BLANK PASS. After the slot loop the cursor sits at the next
   // free slot, and sub_$8BAB walks it forward writing $F4 into the Y byte of the

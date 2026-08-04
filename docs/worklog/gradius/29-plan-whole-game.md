@@ -33,8 +33,15 @@ here unchanged):
    records vs the 4-byte default). Stage 3 needs `$A46F`; stage 5 needs `$A4A6`.
 2. **The 5 late-spawner wrappers** (`$C546`/`$C686`-stage-3/`$C5AD`/`$C653`/`$C6DE`) are
    small per-stage arms over the already-ported `sub_$C44F`. Cheap, but per-stage.
-3. **Stage 5's destructible-terrain `$0600` substrate** is a stage-specific SUBSYSTEM
-   (loader + sprite pass + collision/VRAM arms), not a handler — **the single biggest risk**.
+3. ~~**Stage 5's destructible-terrain `$0600` substrate**~~ **CORRECTED BY W32's RECON
+   (`32-recon-destructible-terrain.md`): `$0600` IS NOT TERRAIN.** It is a 4-group ×
+   `$30`-byte **articulated-ARM pool** (six segments each) owned by the stage-5 enemy
+   `$CA5E`. It touches no nametable, no VRAM packet and no terrain map; every field of all
+   `$30` bytes is accounted for from the 71 instruction sites that reference
+   `$0600`-`$06BF`. It IS still a stage-specific SUBSYSTEM (allocator + sprite pass +
+   kinematics + collision arms) rather than a handler, and it IS still the biggest single
+   risk — but the *mechanism* named here was wrong, and the one piece that really was
+   about terrain (`$C32F`) turns out not to run on stage 5 at all.
 4. **The end-of-game chain** (brain `$BB0F` + typewriter `$CE94` + 4 state entries + the
    `$CF3B` script) is a substantial NEW piece (~150-200 lines bespoke JS) that doubles as
    the loop-wrap point — the ONLY `$1A` increment lives in `$9872`, so this chain **GATES LOOPS**.
@@ -125,7 +132,7 @@ movement/rank/scroll/camera, bullets, power-ups, the kill chain, and the boss fr
 | 2 (`$19=1`) | `$B37F` (jellyfish, 1) | `$C546` | `$B205 $B0AF $B26C $B026 $B098 $AF2E $AF88 $AEDD` + boss `$B914` |
 | 3 (`$19=2`) | `$B402` `$B434` `$C906` (moai) `$B7A1` `$B4FD` (**5 — the heaviest**) + inline-5 `$A46F` | `$C686` stage-3 wiring (fn exists) | `$B205 $B0AF $B26C $B026 $B098 $AEDD` + boss |
 | 4 (`$19=3`) | `$B402` `$B434` (**FREE once stage 3 ports them**) | `$C5AD` (+ child `$B377`, 6-line) | `$B205 $B0AF $B198 $B6E1 $B747 $AF88 $AF2E $B026 $B098 $AEDD` + boss |
-| 5 (`$19=4`) | `$CA5E` (sun/eye, inline-5) `$B559` (shares body with `$B4FD`); `$B402`/`$B434` FREE from stage 3 | `$C653` (routes through `$A4A6`) | `$B26C` + boss. **NEW subsystem: the `$0600` destructible-terrain substrate** |
+| 5 (`$19=4`) | `$CA5E` (the arm owner, inline-5) `$B559` (shares body with `$B4FD`) — **`$B559` SHIPPED, W32a**; `$B402`/`$B434` FREE from stage 3 | `$C653` (routes through `$A4A6`) | `$B26C` + boss. **NEW subsystem: the `$0600` ARM-GROUP pool (NOT destructible terrain — W32 recon)** |
 | 6 (`$19=5`) | `$B480` (cell/wall, 53 records) | `$C6DE` (slot-scan, metasprite `$8D`); `$CDA5` stage-end hook (5 lines) | `$B205 $B0AF $B26C $AF2E $B026 $B098 $AEDD` + boss |
 | 7 (`$19=6`) | `$B569` (2 records); `$AF10` (1 handler, entries 32-37, the `$20`-`$25` gallery); `$B37F` FREE from stage 2 | `$C429` = RTS (already handled) | `$B205 $B0AF $B198 $B6E1 $B747 $AF88 $B026 $B098 $AEDD` + boss; then the end-of-game chain (W35) |
 
@@ -138,7 +145,7 @@ each arm is a ~15-25-line wrapper):
 | 1 | `$C546` | type `$0B` via `$C44F` X=2 → `$C58D` | **W29** |
 | 2 | `$C686` | type `$97`/`$A6`; also the `$3A` warp-rain target (fn exists) | **W30** (stage-3 wiring fix) |
 | 3 | `$C5AD` | type `$15` (`$B377`) via `$C44F` X=4 → `$C633` | **W31** |
-| 4 | `$C653` | routes through `$A4A6` (inline-5 `$0600` arm) | **W32** (coupled to the substrate) |
+| 4 | `$C653` | routes through `$A4A6` (inline-5 `$0600` ARM-GROUP allocator) | **W32b** (coupled to the pool) |
 | 5 | `$C6DE` | slot-scan on `$0136,X`, metasprite `$8D` | **W33** |
 | 6 | `$C429` | RTS (stage 7 has no late spawner) | **handled** |
 
@@ -220,8 +227,8 @@ boundary (`$A2F0`'s analogue for `$19=2`, the first stage-3 wave record).
   `$B559` (stage 5) shares `$B4FD`'s `loc_B502` body too — porting `$B4FD` right makes
   stage 5's `$B559` a 9-line wrapper later.
 
-`$A4A6`'s terrain-scan BODY is DEFERRED to W32 (it reads `$0600`, which does not exist
-until the stage-5 substrate). The loader/splitter it shares with `$A46F` lands here.
+`$A4A6`'s `$0600` group-scan BODY is DEFERRED to W32b (it allocates an ARM GROUP, not a
+terrain cell — see the W32 recon). The loader/splitter it shares with `$A46F` lands here.
 
 **Dependencies.** W28. The inline-5 stride change is the load-bearing decode; `$C906`'s
 `$0700` ring buffer is a new (small) substrate but self-contained.
@@ -255,21 +262,41 @@ stage 4's 14 named types are already ported.
 
 ---
 
-### W32 — Stage 5 (`$19=4`): the destructible-terrain `$0600` substrate — THE RISK (risk: HIGH; recon gate first)
+### W32 — Stage 5 (`$19=4`): the `$0600` ARM-GROUP pool — THE RISK (risk: HIGH; recon gate first)
 
-**Scope.** Stage 5 is structurally different: 28 distinct records, only 8 ported (28.6%),
-and **20 of 28 are inline-5** (4 distinct, repeated across 5 chunks) that force type
-`$14` (the sun/eye, `$CA5E`) via the **`$A4A6` arm**. `$A4A6` does NOT just spawn — it
-scans the **`$0600,X` destructible-terrain array** (a separate object pool from `$030C`)
-for a free cell to mount the enemy on. Four coupled pieces currently throw or are silent
-on `$19==4`:
+> **THIS SECTION AS ORIGINALLY WRITTEN WAS WRONG ABOUT THE MECHANISM AND THE RECON GATE
+> CAUGHT IT.** Read `docs/worklog/gradius/32-recon-destructible-terrain.md` first.
+> `$0600` is a 4-group × `$30`-byte articulated-ARM pool, not a terrain map; `$C32F` (the
+> only genuinely terrain piece below) is EXCLUDED on stage 5 by `$C2AB CMP #$04 / RTS`;
+> and the plan MISSED a fifth piece, `$9663`'s half-rate frame fork, which is the real
+> risk. The recon split the wave into three:
+>   * **W32a — `$B559` (entry 29). SHIPPED** (`32a-impl-b559.md`). Ten of stage 5's 28
+>     records, all of chunks 0-1. Ledger stage 4: 14/28 → 24/28, first unported
+>     `$0000` → `$0480`.
+>   * **W32b — the arm substrate (~1,040 bytes)** including the frame fork.
+>   * **W32c — the three interaction routines (~285 bytes).**
+
+**Scope.** Stage 5 is structurally different: 28 distinct records, and **4 of them are
+inline-5** (replayed across chunks 2-6) that force type `$14` (the arm owner, `$CA5E`)
+via the **`$A4A6` arm**. `$A4A6` does NOT just spawn — it scans the **`$0600,X` arm-group
+headers** (a separate pool from `$030C`) for a free group to mount the enemy on. The
+coupled pieces on `$19==4`, corrected:
 
 | piece | role | port status |
 |---|---|---|
-| `$A4A6` inline-5 arm (`enemies.js:368`) | terrain-mounted spawner (reads `$0600,X`) | throws |
-| `$C267`-`$C299` bullet-vs-`$0600` (`collision.js:394`, gated `$19==4`) | bullet interacts with wall | throws |
-| `$C32F`-`$C39A` breakable-wall VRAM patch `$C2DC` (`collision.js:847`) | the wall visibly crumbles | throws |
-| `$8BD9`/`$8C06` terrain-object sprite pass (`oam.js`, in `$8BAB`) | draws `$0600`-mounted objects every frame | **silent gap** (W28 makes it loud) |
+| `$A4A6` inline-5 arm (`enemies.js`) | arm-group allocator (reads `$0600,X`) | throws |
+| `$C267`-`$C299` player-vs-arm-segment (`collision.js`, gated `$19==4`) | the arm kills the player | throws |
+| ~~`$C32F`-`$C39A` breakable-wall VRAM patch~~ | **NOT REACHED ON STAGE 5** — `$C2AB CMP #$04 / BNE $C2B5 / $C2AF RTS`. A stage-2/4/6/7 item. | (n/a) |
+| `$8BD9`/`$8C06` arm sprite pass (`oam.js`, in `$8BAB`) | draws the six segments of each live group | throws (W28 made it loud) |
+| **`$9663`'s half-rate frame fork** (MISSING FROM THE ORIGINAL TABLE) | with ≥ 2 arms alive one logical frame is split across two hardware frames; the player runs at 30 Hz | throws (`nmi.js`), + tripwires at `$9A5E` and `$C04B` |
+
+**W32a MEASURED A SIXTH THING THE PLAN AND THE RECON BOTH MISSED.** Stage 5 cannot run a
+single frame with the scope guard opened alone: FOUR stage-5 gates fire *unconditionally*
+every frame, before the spawn engine reads a wave record, and every one walks the four
+`$0600` group headers — `$9663` (nmi), `$8B8D`→`$8BD9` (oam), `$C25D`→`$C267`
+(collision) and `$9A76`→`$C772`→`$CB8A`. The last of those **has no call site in the port
+at all** (`nmi.js` has only a comment), so it becomes a SILENT no-op the moment `$9663`'s
+throw is lifted. W32b must add it in the same edit.
 
 **RECON GATE (the first sub-step of this wave; read-only).** Before any `src/` edit,
 enumerate from the ROM + `rip/`: the loader `$9663` (the stage-5 terrain census), the
@@ -446,13 +473,19 @@ multi-wave effort — they are a consequence of W35 + dropping 3 throws.
 
 ## 5. Risks (ranked)
 
-1. **Stage 5's `$0600` destructible-terrain substrate (BIGGEST).** Four coupled pieces
-   (the `$A4A6` spawner, the `$C267` bullet-vs-wall collision, the `$C32F`/`$C2DC` VRAM
-   crumble, the `$8BD9`/`$8C06` sprite pass) across two files (`enemies.js` +
-   `collision.js`/`oam.js`), plus the loader `$9663`. Unlike every other stage it is a
-   SUBSYSTEM, not a handler. **Mitigation:** W32 opens with a read-only RECON GATE that
-   sizes the substrate before any `src/` edit, and the wave is explicitly allowed to split
-   (substrate + handlers). W28 makes the silent sprite-pass gap loud first.
+1. **Stage 5's `$0600` ARM-GROUP pool (BIGGEST).** *(Was "destructible-terrain
+   substrate"; corrected by the W32 recon — see above. `$0600` is a 4×`$30`-byte
+   articulated-arm pool owned by `$CA5E`, with no nametable, VRAM, terrain-map or
+   compression involvement anywhere.)* The coupled pieces are the `$A4A6` allocator, the
+   `$C267` player-vs-segment sweep, the `$BEF3` shot-vs-segment sweep, the `$8BD9`/`$8C06`
+   sprite pass, the `$CB91` driver, the `$CC33` kinematics and `$CA5E` itself — across
+   three files (`enemies.js` + `collision.js` + `oam.js`) — **plus `$9663`'s half-rate
+   frame fork, which the original list omitted and which is the item that can still
+   grow**: it is a control-flow change at the top of play mode, not a handler.
+   `$C32F`/`$C2DC` is NOT part of it. Measured size: 1,320 bytes / ~591 instructions,
+   2.1× W30's stage-3 scope. **Mitigation, which WORKED:** the read-only RECON GATE ran
+   first, corrected the mechanism, and split the wave into W32a/W32b/W32c. W32a is
+   shipped.
 
 2. **The inline-5 stride-change trap.** The `$A466` splitter changes the wave-stream
    STRIDE (5-byte records at cmd >= `$F0`). A misparse does NOT throw — it desynchronises

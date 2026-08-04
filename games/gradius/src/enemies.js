@@ -354,16 +354,39 @@ function runEngine(state, rom, stageIndex, res) {
   // ceiling volcano) + $B377 (its rock); its 98 wave records came free with
   // W30's $B402/$B434.
   //
-  // Stage 5 is W32's and it is NOT one guard away: 14 of its 28 distinct
-  // records still have no handler ($CA5E, $B559) and 4 of them route through
-  // $A4A6, the $0600 terrain-mounted spawner, which throws.
+  // W32a PORTED $B559 (entry 29), which is the type of TEN of stage 5's 28
+  // distinct records -- the whole of chunks 0 and 1, scroll $0000-$047F. The
+  // guard STAYS AT `>= 4`, and that is a measured decision, not an oversight:
+  //
+  //   THE SCOPE GUARD IS NOT STAGE 5'S FIRST WALL. It is the LAST of five.
+  //   Four other stage-5 gates fire UNCONDITIONALLY, every frame, before the
+  //   spawn engine ever reads a wave record, and every one of them walks the
+  //   four $0600 arm-group headers:
+  //     $9663 (src/nmi.js)        the $5C census, every mode-5 frame
+  //     $8B8D -> $8BD9 (oam.js)   the arm sprite pass, every sprite frame
+  //     $C25D -> $C267 (collision.js)  player vs arm segments, every frame
+  //     $9A76 -> $C772 -> $CB8A   the arm driver -- and the port has NO call
+  //                               site for $C772 at all (nmi.js:950 is a
+  //                               comment), so it is a SILENT no-op the moment
+  //                               $9663's throw is lifted. W32b must add it in
+  //                               the same edit.
+  //     $C037 -> $BEF3 (collision.js)  shot vs arm, whenever a shot is alive
+  //   Lowering this guard alone would move the crash from a wave record to
+  //   $9663 and buy nothing, while making this column claim stage 5 is
+  //   "admitted" -- the exact lie W31 built the runnability column to kill.
+  //
+  // What still has no handler on stage 5: $CA5E (entry 20, the arm owner) and
+  // the 4 inline-5 records at $ABE8, which route through $A4A6. Both are W32b.
   if (stageIndex >= 4) {
     throw new Error(`$A2F0 runEngine: $19 = $${stageIndex.toString(16).toUpperCase()}`
                   + ` (stage ${stageIndex + 1}). Stage 4 ($19=3) is shipped (W31);`
-                  + ` stage-5+ WAVE content is out of scope -- stage 5 needs the`
-                  + ` $0600 destructible-terrain substrate ($A4A6, $CA5E, $B559,`
-                  + ` $C653). This is the first stage-5 wave record -- the`
-                  + ` expected boundary.`);
+                  + ` stage-5+ WAVE content is out of scope. W32a shipped entry`
+                  + ` 29 (chunks 0-1, scroll $0000-$047F); stage 5 still needs the`
+                  + ` $0600 ARM-GROUP pool -- NOT destructible terrain, see`
+                  + ` docs/worklog/gradius/32-recon-destructible-terrain.md --`
+                  + ` i.e. $CA5E, $A4A6, $C653, plus the four per-frame $0600`
+                  + ` walkers $9663 / $8BD9 / $C267 / $CB8A that fire before any`
+                  + ` wave record is read.`);
   }
   if (sp.z69 !== 0) {                    // $A2FE LDA $69 / BNE $A32B
     if (sp.z6C !== 0) {                  // $A32B LDA $6C / BNE $A332
@@ -1767,6 +1790,8 @@ function dispatch(state, rom, j, type) {
     case 0xB4FD: return h_B4FD(state, rom, j);   // entry 28, types $1C/$9C
     // ---- WAVE 31: stage 4 ------------------------------------------------
     case 0xB377: return h_B377(state, j);        // entry 21, types $15/$95
+    // ---- WAVE 32a: stage 5's chunks 0 and 1 -------------------------------
+    case 0xB559: return h_B559(state, rom, j);   // entry 29, types $1D/$9D
     default:
       // THE MESSAGE THIS USED TO CARRY WAS "no measured run has ever
       // dispatched it", and that sentence is the one this whole follow-up
@@ -2607,6 +2632,55 @@ function loc_B502(state, j) {
   setInitialised(state, j);              // $B502 JSR $B0B4
   o.s0480[i] = 0x80;                     // $B505 LDA #$80 / STA $048C,X
   o.s04A0[i] = 0x14;                     // $B50A LDA #$14 / STA $04AC,X
+}
+
+// ==================== WAVE 32a: ENTRY 29, $B559 =============================
+//
+// SPAN `$B559`-`$B568`, 16 bytes, 6 instructions. Stage 5 (`$19 = 4`) only:
+// type `$1D` is the FIRST record of stage 5's chunk 0 (`$ABB6`) and the type of
+// TEN of that stage's 28 distinct wave records -- every one of them in chunks 0
+// and 1, i.e. the whole of scroll `$0000`-`$047F`.
+//
+//   B559  BD 0C 03  LDA $030C,X
+//   B55C  10 A4     BPL $B502          <- BACKWARD, 87 bytes, into $B4FD's body
+//   B55E  A0 09     LDY #$09
+//   B560  20 28 B6  JSR $B628          the shared animator, row 9
+//   B563  DE 6C 03  DEC $036C,X        one pixel left, every frame
+//   B566  4C 51 B2  JMP $B251          the off-screen box (may FREE the slot)
+//
+// READING PAST THE APPARENT END, and the three things it settles:
+//
+//  * `$B566` is a `JMP`, so nothing falls out of `$B559`. `$B569` is `st_B569`
+//    (entry 30, stage 7's handler) and its only xref is `$AE19`, the dispatch --
+//    it is never fallen into. So the routine really is 16 bytes.
+//  * `$B55C BPL $B502` is a BACKWARD branch into the MIDDLE of entry 28
+//    (`$B4FD`), which begins 92 bytes earlier. `loc_B502` was already factored
+//    out by W30/W31 for exactly this, so this wave re-uses it and does not
+//    re-transcribe it. That is the fall-through family's shape again (the
+//    fifteenth incident on this project), caught in advance this time.
+//  * `sub_B628` with Y = 9 reads `$B659`/`$B65A`/`$B65B` = threshold `$08`,
+//    base `$52`, count `$06`. `$B650`'s table is TWELVE bytes ($B650-$B65B) and
+//    `$B65C` is code (`loc_B65C`), so Y = 9 is the LAST row that fits and there
+//    is no overrun. Metasprites `$52`-`$57`; all six are in the export.
+//
+// `loc_B502` WRITES TWO FIELDS THIS HANDLER NEVER READS. `$048C` (accel, $80)
+// and `$04AC` ($14) exist for `$B4FD`'s four-phase machine; `$B559`'s body is
+// only animate + move + box. They are transcribed because the cartridge writes
+// them and they are observable in RAM, not because they do anything here.
+//
+// `$B566 JMP $B251` CAN FREE THE SLOT. Unlike `$B4FD` (whose `$B518` is a `JSR`
+// and which then keeps running on a freed slot) this is a tail jump, so nothing
+// follows it -- the one place `$B559` is SIMPLER than the body it shares.
+
+/**
+ * Entry 29, `$B559` (types `$1D`/`$9D`) -- stage 5's chunk-0/1 drifter.
+ */
+function h_B559(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) return loc_B502(state, j);   // $B559/$B55C BPL $B502
+  sub_B628(state, rom, j, 9);            // $B55E LDY #$09 / $B560 JSR $B628
+  o.x[i] = u8(o.x[i] - 1);               // $B563 DEC $036C,X
+  offScreenCheck(state);                 // $B566 JMP $B251 -- may free the slot
 }
 
 // ================ WAVE 30: ENTRY 22, $C906 -- THE MOAI ======================

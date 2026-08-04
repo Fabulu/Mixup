@@ -947,7 +947,28 @@ function mode5Body(state, res) {
   // MEASURED, same capsule, two runs: "380:A" gives $42 = 1 at f627 and $40 = 0;
   // "380:AB" gives $42 = 0 and $40 = 1 (src/powerup.js).
   applyCapsule(state, res);                       // $9A73 JSR $8974
-  // $9A76: JSR $C772 -- `LDA $19 / CMP #$04 / BNE / RTS`: stage 5 only.
+
+  // $9A76: JSR $C772 -- `LDA $19 / CMP #$04 / BNE $C77B (RTS) / JMP $CB8A`.
+  //
+  // W32a MADE THIS LOUD. It was a COMMENT AND NOTHING ELSE: no call, no throw.
+  // That is invisible today only because $9663 (above) throws on $19 == 4 before
+  // this line is reached -- i.e. it is COVERED, not silent. But it is covered by
+  // a throw W32b is going to DELETE, and the moment that happens the arm driver
+  // $CB8A/$CB91 (the fire timer and the per-frame group walk) becomes a genuine
+  // quiet no-op with nothing left to announce it. Put the throw in now, so
+  // W32b's own gate cannot pass without wiring $C772.
+  //
+  // $C772 is one of FOUR stage-5 entry points that fire unconditionally every
+  // frame ($9663, $8B8D->$8BD9, $C25D->$C267, $9A76->$C772). All four walk the
+  // four $0600 arm-group headers and all four do nothing when the headers are 0
+  // -- which is why "just open runEngine's scope guard" does not make stage 5
+  // run one frame.
+  if (state.zp19 === 4) {                         // $C772 LDA $19 / CMP #$04
+    throw new Error('$9A76 -> $C772: $19 = 4 (stage 5). $C778 JMP $CB8A -- the '
+                  + '$0600 ARM-GROUP driver ($CB8A\'s $5C >= 2 skip, then $CB91\'s '
+                  + 'walk of the four groups, the $CBCA fire timer and $CBD1) is '
+                  + 'not ported. W32b.');
+  }
 
   latchScroll(state);                             // $9A79  -> $12 / $10
   mode5Tail(state, res, true);                    // falls through into $9A88
