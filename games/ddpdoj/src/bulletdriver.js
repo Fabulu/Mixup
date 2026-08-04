@@ -32,18 +32,26 @@
 // Bucket 22 is the exception that proves it -- `$281DB2` reads `$80AFE0` back
 // and appends, so its length is preserved across the call.
 //
-// WHAT THIS PORT DOES NOT DO, said here rather than discovered: **it emits no
-// sprites.**  `spriteEmit` in `src/mover.js` writes to a JS array sink and
-// returns immediately when there is none (`if (!ctx.sprites) return;`), and this
-// file passes none.  Buckets 22 and 23 therefore stay empty and the two counter
-// writes above land on the values they already held.  That is FAITHFUL to a run
-// in which nothing was emitted -- it is not a fabricated length -- but it is
-// also not the board's behaviour, so it is COUNTED at `$281DCE` every frame.
-// Wiring the sink is a separate wave and it must be, for a measured reason:
-// `26-review.md` F1 and F2 are open defects IN the emit (`spriteEmit` swaps the
-// renderOffs half-words relative to `$284286`; kind 19's continuation omits its
-// renderOffs wrap), both latent only BECAUSE no sink exists.  Turning the sink
-// on this wave would ship two known-wrong fields into the picture.
+// WAVE 52 -- **THE SINK IS WIRED, AND THE BULLETS ARE VISIBLE.**  From W29 to
+// W51 this block said "it emits no sprites": `spriteEmit` wrote four numbers
+// into a JS array, this file passed no array, and both counters above were
+// therefore differences of cursors that had not moved.  [M] Measured, on the
+// tree before this wave: 1,200 logic frames from the shipped seed, buckets 22
+// and 23 = **0 records**, with or without fire, while 14,172 live bullet
+// record-frames went past.  That is the owner's "you can't see the bullets".
+//
+// The wave that turns it on has to fix `26-review.md` F1 and F2 in the same
+// change, because both were latent ONLY because no sink existed, and both are
+// fixed here from the listing rather than from the review:
+//   F1 -- `$284286` adds word@+$6 to posA and word@+$8 to posB; the port had the
+//         two axes swapped (`src/mover.js spriteEmit`);
+//   F2 -- `$282B7A cmpi.l #$1C1E38 / move.l #$1C1BF8` is kind 19's animation
+//         wrap and the port stepped past it. [M] NOT latent: with the sink on,
+//         the port emits $1C1E5C/$1C1E80/$1C1EA4, three descriptors in no ROM
+//         animation table at all.
+// `26-review.md` F3 (`freeSlot` notes `$27F8F8` on the bounds and bit-12 kills,
+// where `$281EC4` has no such call) is NOT fixed here: it is note accounting,
+// it is not in this wave's path, and it stays an open review finding.
 //
 // ================================ `$281CD6` =================================
 //
@@ -207,26 +215,30 @@ export function runBulletDriver(ctx) {
   // have taken.
   const a0 = i16(ram.u16(BULLET_DRIVER.ctr22));
   ram.setU32(BULLET_DRIVER.trailCursor, BULLET_DRIVER.buf22 + a0);  // $281DB8
-  const before = ctx.sprites ? ctx.sprites.length : 0;
+
+  // WAVE 52 -- **A4 IS A REAL ADDRESS NOW.**  `$281D9E lea $809C4C,A4` is the
+  // mover's emit cursor, and giving it to `runMover` is the whole of "the enemy
+  // bullets are visible": `spriteEmit` writes twelve bytes at (A4)+ and the two
+  // counters below stop being differences of cursors that never moved.
+  //
+  // A caller with no `spriteOut` -- `tools/w26movergate.mjs` and
+  // `tests/mover.test.js`, which compare bullet STATE against the board -- gets
+  // exactly what it got before, because the emit has no bullet-pool side effect.
+  ctx.spriteOut = { a4: a4start };                           // $281D9E / $281DA4
 
   runMover(ctx);                                             // $281DBE bsr.b $281DDE
 
-  // $281DC0..$281DD6.  Both counters come from a POINTER DIFFERENCE.  A4 is the
-  // mover's own emit cursor: `spriteEmit` pushes FOUR values per 12-byte record,
-  // so the byte distance A4 travelled is (pushes/4)*12.  With no sink (the case
-  // today, and stated in the header) that is 0 and both counters land on the
-  // values they already held -- faithful to "nothing was emitted", not invented.
+  // $281DC0..$281DD6.  Both counters come from a POINTER DIFFERENCE, and both
+  // pointers have now actually moved.  Bucket 22's is `$81B41C`, which the trail
+  // block advances; bucket 23's is A4 itself, which every `spriteEmit` advances
+  // and the trail block REWINDS (the entry moves from 23 to 22 -- see
+  // `mover.js trailEmit`).
   const d0 = (ram.u32(BULLET_DRIVER.trailCursor) - BULLET_DRIVER.buf22) | 0;
   ram.setU16(BULLET_DRIVER.ctr22, u16(d0));                  // $281DCE
-  const emitted = ctx.sprites ? (ctx.sprites.length - before) / 4 : 0;
-  const a4 = a4start + emitted * 12;                         // $281DD4 suba.l (A7)+,A4
+  const a4 = ctx.spriteOut.a4;                               // $281DD4 suba.l (A7)+,A4
   ram.setU16(BULLET_DRIVER.ctr23, u16(a4 - a4start));        // $281DD6
-  ctx.unportedLog?.note(BULLET_DRIVER.counterWrite,
-    `the bullet driver's sprite EMISSION ($281DCE/$281DD6, buckets 22 and 23): `
-    + `src/mover.js's spriteEmit writes to a JS sink and this driver passes `
-    + `none, so both counters are set from unmoved cursors. The pixels are a `
-    + `separate wave -- 26-review F1/F2 are open defects INSIDE the emit`);
-  return { cleared, live: ram.u16(MOVER.liveCount) };
+  return { cleared, live: ram.u16(MOVER.liveCount),
+    emitted: (a4 - a4start) / 12, trail: (d0 - a0) / 12 };
 }
 
 /**

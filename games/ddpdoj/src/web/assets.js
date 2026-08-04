@@ -145,9 +145,22 @@ export class ShardQueue {
     this.pump();
   }
 
-  /** Queue every shard that is not here yet, in ascending (i.e. need) order. */
+  /**
+   * Queue every shard that is not here yet, in FETCH ORDER.
+   *
+   * WAVE 52.  This used to walk ascending index and call that "need order",
+   * which was true while the shards happened to be cut in deadline order and
+   * stopped being true the moment two later shards had earlier deadlines: [M]
+   * the enemy bullets want art at +0.7 s and the player's shots on the first
+   * frame the button is held, against sprite shard 1's +7.7 s. So the exporter
+   * PUBLISHES the order (`shards[i].order`) and this reads it. A meta entry
+   * without one falls back to its index, which is what every background shard
+   * still does.
+   */
   prefetchAll() {
-    for (let i = 0; i < this.meta.length; i++) {
+    const byNeed = this.meta.map((m, i) => i)
+      .sort((a, b) => (this.meta[a].order ?? a) - (this.meta[b].order ?? b));
+    for (const i of byNeed) {
       if (this.state[i] === 'idle' && !this.queue.includes(i)) this.queue.push(i);
     }
     this.pump();
@@ -621,9 +634,25 @@ export async function loadBundle(readRaw, opts = {}) {
         + `${flat.length} u32 for ${manifest.spr.streamCount} streams; it must `
         + 'be exactly 3 per stream ([romOffs, packedBase, maskWords]).');
     }
-    const list = new Array(manifest.spr.streamCount);
-    for (let i = 0; i < list.length; i++) {
-      list[i] = [flat[i * 3], flat[i * 3 + 1], flat[i * 3 + 2]];
+    // WAVE 52: PLANAR AND DELTA-CODED. Three columns of `streamCount`, columns
+    // 0 and 1 first-differenced (see `export-web.mjs` for the 4,152 -> 500 B
+    // measurement). The accumulator is `>>> 0`, which is exact for a DECREASING
+    // column too because the exporter stored the difference in a Uint32Array.
+    // An older bundle is refused BY NAME here rather than decoding to nonsense
+    // -- a wrong stream table draws the wrong picture and never throws.
+    if (manifest.spr.streamsFormat !== 'planes-delta-1') {
+      throw new AssetError(`assets/${manifest.spr.streamsFile} is in format `
+        + `"${manifest.spr.streamsFormat ?? 'interleaved (pre-W52)'}" and this `
+        + 'loader reads "planes-delta-1". Re-export the bundle: '
+        + 'node games/ddpdoj/tools/export-web.mjs');
+    }
+    const n = manifest.spr.streamCount;
+    const list = new Array(n);
+    let rom = 0, base = 0;
+    for (let i = 0; i < n; i++) {
+      rom = (rom + flat[i]) >>> 0;
+      base = (base + flat[n + i]) >>> 0;
+      list[i] = [rom, base, flat[2 * n + i]];
     }
     manifest.spr.streams = list;
   }

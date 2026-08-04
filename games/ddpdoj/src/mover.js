@@ -82,9 +82,11 @@ const BOUNDS = { posAkill: 0x9000, posBkill: 0xC800 };  // $281E88/$281E90 addi.
 /**
  * `$281DDE` -- drive the whole live bullet pool one frame.
  *
- * @param ctx {{ram, rom, notes?:UnportedLog, sprites?:Array, mut?:string}}
+ * @param ctx {{ram, rom, notes?:UnportedLog, spriteOut?:{a4:number}, mut?:string}}
  *        `notes` counts the deliberately-out-of-scope effect spawn `$27F8F8`;
- *        `sprites` (optional) receives the packed sprite entries the mover emits.
+ *        `spriteOut` (WAVE 52) is the mover's own A4 -- the 12-byte emit cursor
+ *        into bucket 23's staging buffer `$809C4C`, advanced in place. Absent
+ *        for the position gate, which compares no sprite field.
  */
 export function runMover(ctx) {
   const { ram } = ctx;
@@ -322,28 +324,60 @@ function freeSlotNoEffect(ctx, base) {
 }
 
 // ------------------------------------------------- shared: the sprite emit ($284286)
-/**
- * `$284286` (and the byte-identical inline `$281E96..$281EB8`) -- pack one
- * sprite list entry to (A4)+.  No bullet-pool side effect; emitted to the
- * caller's `ctx.sprites` sink when present (rendering is downstream).
- */
+//
+// ===================== WAVE 52: THE SINK IS REAL RAM NOW =====================
+//
+// From W26 to W51 this wrote FOUR NUMBERS INTO A JS ARRAY and `bulletdriver.js`
+// passed no array, so buckets 22 and 23 were empty on every frame of every run
+// and the owner could not see a single enemy bullet.  It now writes the twelve
+// bytes the board writes, at the address the board writes them, and the driver's
+// two counters come out of a pointer difference that has actually moved.
+//
+// A4 is the CURSOR, and it is the same register the trail block rewinds, so it
+// lives on `ctx.spriteOut` and both routines move it.  `spriteOut` absent means
+// the caller is the position gate, which passes none deliberately -- the emit
+// has no bullet-state side effect, so its absence cannot change a compared field.
+//
+// AND `26-review.md` F1 IS FIXED HERE, from the listing rather than from the
+// review:
+//
+//   284286: lea ($2,A6),A1     A1 = +$2
+//   28428a: move.l (A1)+,D0    D0 = [posA:posB]        A1 = +$6
+//   28428c: swap D0            D0 = [posB:posA]
+//   28428e: add.w (A1)+,D0     the LOW half is posA, so posA += word@+$6
+//   284290: swap D0            D0 = [posA':posB]
+//   284292: add.w (A1)+,D0     ...and posB += word@+$8
+//
+// The port added word@+$6 to posB and word@+$8 to posA -- the two axes swapped,
+// which is `26-review` F1 exactly, and it was invisible for six waves because
+// nothing consumed the output.  `muzzleAndSprite` in this same file has always
+// had the pairing right, which is the review's own evidence and reproduces here.
+export const EMIT_BYTES = 12;
+
 export function spriteEmit(ctx, base) {
-  if (!ctx.sprites) return;                          // the gate passes no sink
+  if (!ctx.spriteOut) return;                        // the position gate passes none
   const { ram } = ctx;
   // $284286 lea $2(A6),A1 ; move.l (A1)+,D0 -> D0 = posA:posB ; A1=+$6
   let d0 = ram.u32(base + REC.posA);                 // {posA,posB}
-  // swap ; add.w (A1)+,D0 -> posA += renderOffs.hi ; swap ; add.w (A1)+,D0 -> posB += renderOffs.lo
   const ro = ram.u32(base + REC.renderOffs);         // +$6
   let lo = d0 & 0xffff, hi = (d0 >>> 16) & 0xffff;   // lo=posB, hi=posA
-  lo = u16(lo + ((ro >>> 16) & 0xffff));             // posB += renderOffs hi word
-  hi = u16(hi + (ro & 0xffff));                      // posA += renderOffs lo word
+  // MUTATION `emit-axes-swapped`: the pre-W52 pairing, i.e. `26-review` F1.
+  if (ctx.mut === 'emit-axes-swapped') {
+    lo = u16(lo + ((ro >>> 16) & 0xffff));
+    hi = u16(hi + (ro & 0xffff));
+  } else {
+    hi = u16(hi + ((ro >>> 16) & 0xffff));           // $28428E posA += word@+$6
+    lo = u16(lo + (ro & 0xffff));                    // $284292 posB += word@+$8
+  }
   d0 = (hi << 16) | lo;
   d0 = (d0 >> 6) & 0x07ff03ff;                       // $284294 asr.l #6 ; $284296 andi.l
   d0 = (d0 | 0x80008000) >>> 0;                      // $28429C ori.l
-  ctx.sprites.push(d0);                              // (A4)+ : packed pos
-  ctx.sprites.push(ram.u32(base + REC.descriptor));  // (A1)+ : descriptor (+$A)
-  ctx.sprites.push(ram.u16(base + REC.graphic));     // (A1)  : graphic (+$E)
-  ctx.sprites.push(ram.u16(base + REC.attribute));   // $1c(A6): attribute
+  const at = ctx.spriteOut.a4;
+  ram.setU32(at + 0, d0);                            // $2842A2 move.l D0,(A4)+
+  ram.setU32(at + 4, ram.u32(base + REC.descriptor));// $2842A4 move.l (A1)+,(A4)+
+  ram.setU16(at + 8, ram.u16(base + REC.graphic));   // $2842A6 move.w (A1),(A4)+
+  ram.setU16(at + 10, ram.u16(base + REC.attribute));// $2842A8 move.w $1c(A6),(A4)+
+  ctx.spriteOut.a4 = at + EMIT_BYTES;
 }
 
 // ===================================================== THE BEHAVIOUR DISPATCH
@@ -518,15 +552,33 @@ function cont283CE4(ctx, base) {
   ram.setU16(base + 0x16, u16(ram.u16(base + 0x16) - 4) & 0x000c); // $283CFA/$283CFC
 }
 
-/** the `lea -$c(A4)` TRAIL-EMIT block (kinds 27/36/37/38): copies the last
- *  12-byte sprite entry the plain path just emitted into the SECONDARY sprite
- *  list at `$81B41C`.  Sprite-only; the mover gate passes no sprite sink, so
- *  this is a counted note unless a sink is present. */
+/**
+ * `$283194..$2831A6` -- the TRAIL-EMIT block (kinds 27/36/37/38).
+ *
+ *   283194: lea (-$c,A4),A4          <-- A4 REWINDS, and is NOT restored
+ *   283198: movea.l $81B41C,A0
+ *   28319e: movea.l A4,A2
+ *   2831a0: move.l (A2)+,(A0)+   x3   the 12 bytes the plain path just emitted
+ *   2831a6: move.l A0,$81B41C
+ *
+ * **THE REWIND IS PERMANENT** and that is the whole meaning of the block: the
+ * entry is MOVED from bucket 23 to bucket 22, not copied into both. Nothing
+ * between here and `lea $40(A6),A6` puts A4 back, so the next slot's emit
+ * overwrites the twelve bytes this just took. A port that "copied" would give
+ * every trailing bullet two display-list records.
+ *
+ * Sprite-only; a caller with no `spriteOut` (the position gate) does nothing.
+ */
 function trailEmit(ctx, base) {
-  ctx.notes?.note(0x81b41c,
-    `bullet trail emit (the lea -$c(A4) block): appends the last sprite entry `
-    + `to the secondary list at $81B41C. Sprite-only side effect (rendering); `
-    + `irrelevant to bullet state`);
+  if (!ctx.spriteOut) return;
+  const { ram } = ctx;
+  const from = ctx.spriteOut.a4 - EMIT_BYTES;        // $283194 lea (-$c,A4),A4
+  ctx.spriteOut.a4 = from;
+  let to = ram.u32(0x81b41c);                        // $283198 movea.l $81B41C,A0
+  for (let k = 0; k < EMIT_BYTES; k += 4) {          // $2831A0 move.l (A2)+,(A0)+
+    ram.setU32(to + k, ram.u32(from + k));
+  }
+  ram.setU32(0x81b41c, to + EMIT_BYTES);             // $2831A6 move.l A0,$81B41C
 }
 
 // ================================================ THE BEHAVIOUR MAPS (W26 + W27)
@@ -641,7 +693,7 @@ INIT_BODIES.set(0x2826DC, (ctx, base) => {
   // setup reads per-kind sprite tables and is run only when a sprite sink is
   // present, so the position gate is not gated on sprite data windows.
   clearDispatch(ram, base);                          // $283C0E andi.b #$fe,(A6)
-  if (ctx.sprites) epilogueSprite283C0E(ctx, base, 0x282714);
+  if (ctx.spriteOut) epilogueSprite283C0E(ctx, base, 0x282714);
 });
 CONTINUATIONS.set(0x282738, (ctx, base) => {
   const { ram } = ctx;
@@ -650,8 +702,38 @@ CONTINUATIONS.set(0x282738, (ctx, base) => {
     advance40(ctx, base);
     return;
   }
-  // $28273E..$28275A animate renderOffs through the 8-frame ring; no pos/spd/dir.
-  ram.setU32(base + 0x0a, (ram.u32(base + 0x0a) + 0x24) >>> 0);
+  // ============ WAVE 52: A THIRD DEFECT OF `26-review` F2's FAMILY ============
+  //
+  // This block used to be one line -- `+$24`, no wrap, no reload -- under the
+  // comment "animate renderOffs through the 8-frame ring".  The listing:
+  //
+  //   28273e: lea ($a,A6),A6            A6 = base+$A
+  //   282742: move.l (A6),D0
+  //   282744: lea ($6,A6),A0            A0 = base+$10
+  //   282748: addi.l #$24,D0
+  //   28274e: cmp.l (A0)+,D0            <-- against the LIMIT at +$10, A0 = +$14
+  //   282750: bne $282754
+  //   282752: sub.l (A0),D0             <-- ...minus the SPAN at +$14
+  //   282754: addq.l #4,A0              A0 = +$18
+  //   282756: move.l D0,(A6)
+  //   282758: move.b (A0)+,(A0)+        <-- +$19 := +$18, the delay RELOAD
+  //
+  // so the ring is [spr, spr + $6C) -- `$2826F4` puts the span $6C at +$14 and
+  // `$283C42` puts `spr + (+$14)` at +$10 -- and it is THREE frames, not eight.
+  // It is exactly kind 26's `$283128`, which this file already transcribes
+  // correctly at `CONTINUATIONS.set(0x28310e)`.
+  //
+  // [M] IT WAS NOT LATENT EITHER, and it is the one the enemy-bullet sink found
+  // rather than the review: with the sink wired, kind 7 emitted 2,478 records
+  // over 66 descriptors from $1C0158 to $1C0B9C -- addresses that are not
+  // stream starts in the cartridge's own chain at all, i.e. the port walking off
+  // the end of a three-frame ring for up to sixty frames.
+  let d0 = (ram.u32(base + 0x0a) + 0x24) >>> 0;      // $282748
+  if (ctx.mut !== 'kind7-no-wrap' && d0 === ram.u32(base + 0x10)) {
+    d0 = (d0 - ram.u32(base + 0x14)) >>> 0;          // $28274E/$282752
+  }
+  ram.setU32(base + 0x0a, d0);                       // $282756
+  ram.setU8(base + 0x19, ram.u8(base + 0x18));       // $282758 move.b (A0)+,(A0)+
   advance40(ctx, base);
 });
 
@@ -719,7 +801,25 @@ CONTINUATIONS.set(0x282b64, (ctx, base) => {
   // bit3 of +$34 set: toggle bit 11 (flipFlop); bne -> advance, else animate.
   const old = ram.bchg8(base, 3);                    // $282B6C bchg D0,(A6)
   if (old === 0) {
-    ram.setU32(base + 0x0a, (ram.u32(base + 0x0a) + 0x24) >>> 0);  // animate
+    // WAVE 52 -- `26-review.md` F2 FIXED, and it was NOT latent.
+    //
+    //   282b74: addi.l #$24,(A6)          A6 = base+$A ($282B70 lea)
+    //   282b7a: cmpi.l #$1c1e38,(A6)
+    //   282b80: bne $282b88
+    //   282b82: move.l #$1c1bf8,(A6)
+    //
+    // The port stepped by $24 with no wrap. [M] With the sink wired, a 1,200-
+    // frame run with nothing pressed emits descriptors $1C1E5C, $1C1E80 and
+    // $1C1EA4 -- three addresses PAST the wrap and inside no animation any ROM
+    // table names, i.e. the port reading off the end of the ring. The review
+    // called it latent because nothing consumed +$A; it stopped being latent
+    // the moment this wave gave it a consumer, and it is fixed in the same
+    // change, which is what `43-plan` §4 E4 asks for.
+    if (ctx.mut === 'kind19-no-wrap') {
+      ram.setU32(base + 0x0a, (ram.u32(base + 0x0a) + 0x24) >>> 0);
+    } else {
+      animateRenderOffsWrap(ctx, base, 0x1c1bf8, 0x24, 0x1c1e38);   // $282B74..$282B86
+    }
   }
   advance40(ctx, base);
 });

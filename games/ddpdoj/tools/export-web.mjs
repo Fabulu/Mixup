@@ -308,6 +308,27 @@ const LASER_SHARD = 1;
 
 /** Shard metadata.  `boot` is awaited by `loadBundle`; the rest are queued from
  *  boot and promoted by the page's miss guard. */
+// ------------------------------------------------------------------- WAVE 52
+// AND THE TWO SHARDS THE WEAPONS NEED.  (enemy layer E4 --
+// docs/worklog/ddpdoj/52-impl-E4-bullets.md)
+//
+// The owner's report after W51: "shooting enemies with bullets works, but you
+// can't see the bullets".  Both halves of that are one thing -- neither the
+// player's shots (bucket 14) nor the enemy bullets (buckets 22/23) had any art
+// in the sheet, because the sheet was harvested from a 161-frame recording in
+// which the shots and the bullets happen to be drawn from streams the recording
+// did carry for OTHER producers, or not at all.
+//
+// [M] 1,200 logic frames from the shipped seed with fire tapped every 4 frames:
+// bucket 14 emits 21,691 records over 20 distinct streams and NOT ONE of the 20
+// is in the sheet.  The bullet pool runs 14,172 live record-frames with nothing
+// pressed over 68 distinct descriptors, of which 6 are in the sheet.
+//
+// SHARD 6 AND SHARD 7 ARE FETCHED FIRST among the deferred, because their
+// deadlines are the earliest anything in this bundle has: [M] the first enemy
+// bullet wants art at lf+40 = +0.7 s and the first shot on the first frame the
+// player presses fire.  `SPR_ORDER` below is what says so; the queue used to
+// assume ascending index WAS need order and after this wave it is not.
 const SPR_SHARDS = Object.freeze([
   [0, 'boot', 'the recording\'s 150 streams + the ship\'s 17 tilts (W12). '
     + 'BYTE-IDENTICAL to what shipped before W47.'],
@@ -317,8 +338,17 @@ const SPR_SHARDS = Object.freeze([
   [3, 'family', 'the damage-first family, $269E48 + $269BB6'],
   [4, 'type24', 'type $24\'s table $2970D8'],
   [5, 'type31', 'type $31\'s 70-frame animation $26990E'],
+  [6, 'shots', 'THE PLAYER\'S SHOTS: the ship\'s own $2554EA/$255502 and the '
+    + 'option pods\' $24D2FC/$24D35C, five powers each, with every chain each '
+    + '38-byte template opens (W52).'],
+  [7, 'bullets', 'THE ENEMY BULLETS: the mask ROM\'s own stream chain across '
+    + 'the four ranges the 39 behaviour bodies animate inside (W52).'],
 ]);
 const SPR_BOOT = [0];
+/** the order the deferred shards are FETCHED in -- measured first need, not
+ *  index order.  [M] W52: bullets +0.7 s, shots the first fire frame, then
+ *  W47's own measured ladder 7.7 / 49.6 / 74.7 / 98.7 / 103.2 s. */
+const SPR_ORDER = Object.freeze([0, 7, 6, 1, 2, 3, 4, 5]);
 
 // ---------------------------------------------------------------------------
 // 1. COVERAGE.  What can this capture possibly make the renderer read?
@@ -444,6 +474,7 @@ for (const offs of shipOffs) {
 const cpuBytes = new Uint8Array(fs.readFileSync(cpuFile));
 const romBe32 = (a) => (((cpuBytes[a] << 24) | (cpuBytes[a + 1] << 16)
   | (cpuBytes[a + 2] << 8) | cpuBytes[a + 3]) >>> 0);
+const romBe16 = (a) => (cpuBytes[a] << 8) | cpuBytes[a + 1];
 
 /** THE END OF A TABLE IS A CLAIM AND IT IS CHECKED.  Every extent in `HARVEST`
  *  is pinned by code in the listing; this asserts the cartridge agrees, from the
@@ -494,6 +525,171 @@ for (const offs of LASER_STREAMS) {
   streams.set(offs, romExtent(offs));
   shardOfStream.set(offs, LASER_SHARD);
   harvested++;
+}
+
+// ------------------------------------------------------------------- WAVE 52
+// 1b. THE PLAYER'S SHOTS, and 1c. THE ENEMY BULLETS.
+//
+// TWO DIFFERENT SHAPES, because the cartridge lays them out two different ways
+// and using one mechanism for both would be a lie about one of them.
+//
+//   THE SHOTS are reached by INDEX, through 38-byte templates: four pointer
+//   tables -> a per-power table -> a template -> three separate chains.  There
+//   is no contiguous block to walk; the 71 streams live in five separate runs
+//   ($004970.., $006D48.., $007CDC.., $009360.., $00C4DC..).  So they are
+//   harvested exactly the way `src/shots.js` and `src/options.js` reach them,
+//   with every index range pinned by the instruction that bounds it.
+//
+//   THE BULLETS are reached by ADDRESS ARITHMETIC -- `addi.l #$24,-(A1)` and a
+//   `cmpi.l` wrap -- over CONTIGUOUS runs of the mask ROM's own stream chain.
+//   Enumerating the 20 wrap ranges, the 39 templates, the muzzle table, the two
+//   direction-table families and the loose immediates gives 213 addresses; [M]
+//   WALKING THE CHAIN across the four ranges those 213 live in gives 306 and
+//   contains all 213.  The walk is what ships, for the reason `46-diag` gave
+//   this project about the tank hulls: an animation ring sized off a reading is
+//   how you ship a quarter of the art, and the chain cannot be read wrong --
+//   `streamExtent` solves each stream's stride out of the cartridge and the
+//   walk ENDS EXACTLY on the stated address or this build stops.
+const SHOT_TABLES = Object.freeze([
+  [0x2554ea, 'ship PRIMARY, $249C3E `movea.l ($2554EA,PC,D0.w),A0`. D0 = '
+    + '(($5a,A6)-2)<<2 and MEASURED ($5a,A6) = 2, so entry 0. $249C3A\'s +4 is '
+    + 'the LASER arm and is NOT harvested (below)'],
+  [0x255502, 'ship SECONDARY, $249C88, the same index'],
+  [0x24d2fc, 'option pod 0, $24D4EA `movea.l ($24D2FC,PC,D0.w),A0`. D0 = '
+    + '($58,A4)*4 and MEASURED ($58,A4) = 0 (TYPE-A) -- machine.js P.shipSel'],
+  [0x24d35c, 'option pod 1, $24D4EE, the same index'],
+]);
+/** the five POWER steps: `$249C48`/`$24D4F8` index by ($20,A6)*2 and the power
+ *  word is 0,2,4,6,8 -- `src/shots.js PS.power`. */
+const SHOT_POWERS = [0, 2, 4, 6, 8];
+/** `$253C7A` (dispatch nibble 0/8) and `$253F38` (nibble 2/10): the HIT
+ *  re-point tables, indexed by the template's own ($26,A6). */
+const SHOT_HIT_TABLE = { 0: 0x24deb2, 2: 0x25014c };
+/** `$24A238 move.l (A2,D0.w),(A0)+` / `$24D548`: D0 is the firing object's
+ *  animation PHASE, which `$24A26E`/`$24D500` cycle 8,4,0. */
+const SPAWN_PHASES = [0, 4, 8];
+/** what the SPAWN can leave in ($24,A6), i.e. how far the per-frame animation
+ *  `$253BC6 subq.w #4 / bcc / move.w #$4` can index: the ship copies the
+ *  player's ($44,A6), which `$24A32E` cycles 4,0; a pod copies its own D7
+ *  phase, which `$24D510` cycles 8,4,0. */
+const SHOT_ANIM_TOP = { 0x2554ea: 4, 0x255502: 4, 0x24d2fc: 8, 0x24d35c: 8 };
+
+const shotStreams = new Set();
+const shotReport = [];
+for (const [ptr, why] of SHOT_TABLES) {
+  const table = romBe32(ptr);
+  for (const pw of SHOT_POWERS) {
+    const tpl = romBe32(table + pw * 2);
+    const nib = romBe16(tpl) & 0xf;
+    if (!(nib in SHOT_HIT_TABLE)) {
+      throw new Error(`shot template $${tpl.toString(16)} (from $${ptr.toString(16)}`
+        + `[0], power ${pw}) carries type word $${romBe16(tpl).toString(16)}, i.e. `
+        + `$253ADE dispatch nibble ${nib}. src/shots.js ports nibbles 0, 2, 8 and `
+        + `10 only -- harvesting art for a handler that does not exist is what `
+        + `$268594 is NAMED for. (${why})`);
+    }
+    // the SPAWN's own descriptor: the template's +$0A pointer, three phases.
+    const a2 = romBe32(tpl + 10);
+    for (const k of SPAWN_PHASES) shotStreams.add(romBe32(a2 + k) & 0x7fffff);
+    // the per-frame animation: the template's +$1E pointer, indices 0..top.
+    const ap = romBe32(tpl + 30);
+    for (let k = 0; k <= SHOT_ANIM_TOP[ptr]; k += 4) {
+      shotStreams.add(romBe32(ap + k) & 0x7fffff);
+    }
+    // the HIT re-point.  `$253C90 move.l (A0)+,$22(A6)` is a LONGWORD whose LOW
+    // word is the index the hit animation starts at and counts DOWN to 0 --
+    // reading it as a word leaves the index stale AND under-sizes this harvest.
+    const blk = romBe32(SHOT_HIT_TABLE[nib] + romBe16(tpl + 36));
+    const hp = romBe32(blk + 6), top = romBe32(blk + 10) & 0xffff;
+    if (top === 0 || top % 4 !== 0 || top > 0x100) {
+      throw new Error(`shot hit block $${blk.toString(16)} says its animation `
+        + `starts at index $${top.toString(16)}, which is not a positive multiple `
+        + 'of 4 under $100. Either $253C90 is being read as a word or the hit '
+        + 'table has moved.');
+    }
+    for (let k = 0; k <= top; k += 4) shotStreams.add(romBe32(hp + k) & 0x7fffff);
+    shotReport.push({ ptr, pw, tpl, nib, a2, ap, hit: blk, top });
+  }
+}
+// WHAT IS DELIBERATELY NOT HARVESTED, named rather than omitted: the `+4` arm of
+// all four tables.  [M] $25556E/$255582 carry type word $8004 = dispatch entry
+// [4] = $254078, which `src/shots.js` throws by address, and $24D334/$24D394
+// carry $8006, entry [6], which the port does not have at all.
+for (const [ptr] of SHOT_TABLES) {
+  const t = romBe32(ptr + 4), nib = romBe16(romBe32(t)) & 0xf;
+  if (nib in SHOT_HIT_TABLE) {
+    throw new Error(`the LASER arm $${ptr.toString(16)}[+4] -> $${t.toString(16)} `
+      + `now carries a PORTED dispatch nibble (${nib}). It used to be an unported `
+      + 'handler and that is the only reason its art is not harvested here.');
+  }
+}
+{
+  let added = 0, already = 0;
+  for (const offs of [...shotStreams].sort((a, b) => a - b)) {
+    if (streams.has(offs)) { already++; continue; }
+    streams.set(offs, romExtent(offs));      // throws unless it is a stream start
+    shardOfStream.set(offs, 6);
+    added++;
+  }
+  harvested += added; harvestAlready += already;
+  harvestReport.push({ shard: 6, base: 0x2554ea, entries: shotStreams.size,
+    stride: 0, runsTo: shotStreams.size, endsAt: 0, distinct: shotStreams.size,
+    added, already,
+    why: 'THE PLAYER SHOTS -- 4 pointer tables x 5 powers x 3 chains (W52)' });
+}
+
+/** `[base, endsAt, why]` -- walk the mask ROM's stream chain from `base` and
+ *  stop when the running address reaches `endsAt`.  **`endsAt` IS THE CLAIM**:
+ *  if the chain steps OVER it the range is wrong and this build stops, which is
+ *  the same two-sided pin `checkTableExtent` puts on an index table. */
+const BULLET_RANGES = Object.freeze([
+  [0x1bf58c, 0x1c0e9c,
+    'the LOW bullet block. The bottom is $282118\'s `move.l #$1BF58C,$a(A6)` '
+    + '(kind 0) and the top is the limit of the highest wrap in the family, '
+    + '$282E4A `cmpi.l #$1C0E9C` -- and [M] the cartridge\'s own chain closes '
+    + 'EXACTLY on $1C0E9C after 228 streams. It covers every one of the 20 '
+    + '`animateRenderOffsWrap` rings below $1C1000, the 39 templates\' own '
+    + 'descriptors ($281956[k]+6), the $283D4C muzzle table and both '
+    + 'direction-table families ($2821FA/$282C8E via $2822EC, $282714/$2830EA '
+    + 'via $283C4C)'],
+  [0x1c1418, 0x1c143c, 'kind 1\'s $281FDC `move.l #$1C1418,$a(A6)`, alone'],
+  [0x1c1658, 0x1c167c, 'kind 1\'s $281FC4 `move.l #$1C1658,$a(A6)`, alone'],
+  [0x1c1b68, 0x1c23d8,
+    'the HIGH bullet block: the bouncers ($282F80 #$1C1B68), the tracker '
+    + '($282D46 #$1C1E38) and their two rings $1C1BF8..$1C1E38 and '
+    + '$1C1EC8..$1C2108. [M] the chain closes EXACTLY on $1C23D8 after 76 '
+    + 'streams, and $1C23D8 itself is a 6,276-word picture -- a stride 313x the '
+    + 'bullets around it, i.e. a different subject entirely'],
+]);
+{
+  let added = 0, already = 0, total = 0;
+  for (const [base, endsAt, why] of BULLET_RANGES) {
+    let a = base, n = 0, prev = base;
+    while (a < endsAt) {
+      const w = romExtent(a);                // throws unless it is a stream start
+      if (streams.has(a)) already++; else {
+        streams.set(a, w); shardOfStream.set(a, 7); added++;
+      }
+      prev = a; a += w.stride; n++; total++;
+      if (n > 4096) throw new Error(`bullet range $${base.toString(16)} did not `
+        + `reach $${endsAt.toString(16)} in 4096 streams`);
+    }
+    if (a !== endsAt) {
+      throw new Error(`bullet range $${base.toString(16)}: the cartridge's stream `
+        + `chain steps from $${prev.toString(16)} OVER $${endsAt.toString(16)} to `
+        + `$${a.toString(16)}. This file's end address is not a stream boundary, `
+        + 'so the range is wrong and the sheet would be short or long. '
+        + `(${why})`);
+    }
+    // the per-range detail goes to the CONSOLE, not into `manifest.json` --
+    // that file is uncompressed and every byte of it is a boot byte.
+    console.log(`  bullet chain $${base.toString(16).toUpperCase()}..`
+      + `$${endsAt.toString(16).toUpperCase()}: ${n} streams, closes exactly`);
+  }
+  harvested += added; harvestAlready += already;
+  harvestReport.push({ shard: 7, base: 0x1bf58c, entries: total, stride: 0,
+    runsTo: total, endsAt: 0x1c23d8, distinct: total, added, already,
+    why: 'THE ENEMY BULLETS -- 4 chain ranges (W52)' });
 }
 
 const bgList = [...bgUsed].sort((a, b) => a - b);
@@ -975,8 +1171,19 @@ for (const [i, kind, why] of SPR_SHARDS) {
   put(`spr/col.shard${i}.u16`, packedCol.buf.subarray(cFrom, cFrom + cLen));
   sprMeta.push({
     i, kind, why, streams: shardStreams[i].length,
+    // WAVE 52: the queue used to fetch in ASCENDING INDEX order and call that
+    // "need order".  It stopped being true the moment a later shard had an
+    // earlier deadline, so the order is published rather than assumed.
+    order: SPR_ORDER.indexOf(i),
     maskFrom: mFrom, maskLen: mLen, colFrom: cFrom, colLen: cLen,
   });
+}
+if (SPR_ORDER.length !== SPR_SHARDS.length
+  || new Set(SPR_ORDER).size !== SPR_SHARDS.length
+  || SPR_ORDER.some((i) => !SPR_SHARDS.some(([j]) => j === i))) {
+  throw new Error(`SPR_ORDER (${SPR_ORDER.join(',')}) is not a permutation of `
+    + `the ${SPR_SHARDS.length} sprite shards, so some shard would never be `
+    + 'queued at all.');
 }
 put('capture.bin', outBin);
 put('seed.bin', seed);
@@ -1008,11 +1215,37 @@ put('player.tables.json', tables);
 // everything else and materialises it back onto `manifest.spr.streams`, so
 // every existing reader -- `verifyCoverage`, `romToPackedMap`, `bundlegate` --
 // sees exactly the array it always saw.
+//
+// WAVE 52 -- AND IT IS PLANAR AND DELTA-CODED, WHICH IS 500 B INSTEAD OF 4,152.
+//
+// This wave adds 369 streams (166+212 -> 747) and the triples went 2,219 ->
+// 4,152 gzipped bytes of BOOT.  The table is sorted by packed base, so column 1
+// is strictly increasing and column 0 is nearly so; interleaved, gzip sees
+// `rom, base, words, rom, base, words, ...` and cannot exploit either.  Split
+// into three PLANES and first-differenced, the same 747x3 numbers are:
+//
+//   [M] interleaved            4,152 B      planes, no delta   4,502 B
+//   [M] PLANES + DELTA           500 B
+//
+// Column 2 (maskWords) is NOT differenced -- it is small and unordered, and
+// differencing it makes it bigger.  The deltas are stored in a `Uint32Array`
+// and are therefore wrapped, which is exact under two's complement: the reader
+// accumulates with `>>> 0` and gets the original value back for a decreasing
+// column too.  `spr.streamsFormat` names the encoding so a bundle written by an
+// older exporter is REFUSED by name instead of silently decoding to nonsense.
 const sprStreamList = [...streams.entries()]
   .map(([offs, w]) => [offs, offsMap.get(offs), w.maskWords])
   .filter(([, , n]) => n > 2)
   .sort((a, b) => a[1] - b[1]);
-const sprStreamU32 = Uint32Array.from(sprStreamList.flat());
+const SPR_STREAMS_FORMAT = 'planes-delta-1';
+const sprStreamU32 = new Uint32Array(sprStreamList.length * 3);
+for (let i = 0; i < sprStreamList.length; i++) {
+  for (let p = 0; p < 3; p++) {
+    const cur = sprStreamList[i][p];
+    sprStreamU32[p * sprStreamList.length + i] = p === 2
+      ? cur : (cur - (i ? sprStreamList[i - 1][p] : 0));
+  }
+}
 put('spr/streams.u32', sprStreamU32);
 
 const manifest = {
@@ -1130,6 +1363,7 @@ const manifest = {
     // it.  See the block above this object for the measurement that decided it.
     streamCount: sprStreamList.length,
     streamsFile: 'spr/streams.u32.gz',
+    streamsFormat: SPR_STREAMS_FORMAT,
     // WAVE 47 -- THE SHARDS.  `shards[i]` owns `mask[maskFrom, maskFrom+maskLen)`
     // and `col[colFrom, colFrom+colLen)`; the page allocates both arrays at full
     // size at boot and drops each shard's words in as it lands.  `boot` is the

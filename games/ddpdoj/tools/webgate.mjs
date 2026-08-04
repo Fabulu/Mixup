@@ -250,16 +250,40 @@ try {
     //
     // WHAT THE ASSERTIONS ARE AND WHY EACH ONE CANNOT BE SATISFIED BY A BLACK
     // SCREEN, WHICH IS THE FAILURE THIS WHOLE WAVE EXISTS TO PREVENT:
-    //   * 16,457 records over 300 STEPS, 20..69 per frame -- not an empty list,
+    //   * 18,893 records over 300 STEPS, 20..82 per frame -- not an empty list,
     //     not the recording (7,671 over 161), not a capped one.
-    //   * ZERO MISSED in that window. The shipped sheet covers the port's own
-    //     emitter completely for the first 5.32 s from THIS seed.
+    //   * ZERO records with NO ART ANYWHERE in that window. The shipped sheet
+    //     covers the port's own emitter completely for the first 5.32 s from
+    //     THIS seed.
     //   * bucket 0 -- THE ENEMIES -- carries >= 14 records on EVERY one of the
     //     300 frames, and every one of them survives the remap.
     //   * and then a SECOND window to lf2400, where `skipped` must be > 0 and
     //     the named misses must include $233F34. A guard that never fires is
     //     not a guard, and this is the half that proves it fires.
-    const EXP = { steps: 300, records: 16457, min: 20, max: 69, b0min: 14 };
+    //
+    // ==================== WAVE 52 MOVED TWO OF THESE NUMBERS ====================
+    //
+    // and NEITHER is a loosening, so both are re-stated rather than nudged.
+    //
+    // `records` 16,457 -> 18,893 and `max` 69 -> 82, because the ENEMY BULLETS
+    // now emit. [M] From W26 to W51 `src/mover.js spriteEmit` wrote into a JS
+    // array and `bulletdriver.js` passed none, so bucket 23 was empty on every
+    // frame of every run. [M] The total moved by exactly 2,436 records and
+    // bucket 23 carries [M] 2,432 over the 300 STEPS -- the same measurement one
+    // frame apart, because the totals above are taken from the HELD list (the
+    // page's one-frame lag) and `perBucketRecords` from the list the step just
+    // built. Both are asserted; neither is absorbed into the other.
+    //
+    // `skipped === 0` split into `missing === 0` AND `pending === 14 on shard 7`.
+    // The bullets' art is a DEFERRED shard, and this window deliberately does no
+    // fetching (`demand` is a no-op here), so from [M] step 59 a handful of
+    // records are correctly skipped as "in flight" rather than drawn out of
+    // zeroed words. Collapsing the two back into one count would let a bundle
+    // that has LOST a picture pass as a bundle that is merely still loading it.
+    const EXP = {
+      steps: 300, records: 18893, min: 20, max: 82, b0min: 14,
+      b23: 2432, pending: 14, pendingShard: 7, pendingFrom: 59,
+    };
     // WAVE 47: SHARD-AWARE, and this is not optional. `loadBundle` awaited the
     // BOOT sprite shard only -- exactly what the page does -- so the other five
     // shards' words are still ZERO. Without `shardReady` every one of their
@@ -302,7 +326,9 @@ try {
     });
     const buf = new Uint16Array(PORT_LIST_WORDS);
     let pRec = 0, pDrawn = 0, pSkip = 0, pMin = 1e9, pMax = -1, b0Min = 1e9;
-    let dropCount = 0, seedRec = 0;
+    let dropCount = 0, seedRec = 0, pMiss = 0, pPend = 0, pPendFrom = -1;
+    let b23 = 0;
+    const pendShards = new Set();
     const misses = new Map();
     for (let i = 0; i <= EXP.steps; i++) {
       const before = portSpriteList(game.ram, useMap, { out: buf, mutate, ...shardOpts });
@@ -314,23 +340,38 @@ try {
         pMin = Math.min(pMin, before.records); pMax = Math.max(pMax, before.records);
         for (const [o, c] of before.missing) {
           misses.set(o, (misses.get(o) ?? 0) + c);
+          pMiss += c;
           if (o === DROP) dropCount += c;
+        }
+        for (const [s, c] of before.pending) {
+          pPend += c; pendShards.add(s);
+          if (pPendFrom < 0) pPendFrom = i;
         }
       }
       if (i === EXP.steps) break;
       game.ram.setU8(0x810424, 0xff);           // the page's own intervention
       game.step(0xffff);                        // nothing pressed
       b0Min = Math.min(b0Min, game.displayList.perBucketRecords[0]);
+      // WAVE 52: bucket 23 is the ENEMY BULLETS' own bulk write ($281DD6). It
+      // was 0 on every frame of every run until this wave, so it is asserted as
+      // an absolute number and not folded into the total above.
+      b23 += game.displayList.perBucketRecords[23];
     }
     const named = [...misses.entries()].sort((a, b) => b[1] - a[1])
       .map(([o, c]) => `$${o.toString(16).toUpperCase().padStart(6, '0')}x${c}`);
+    const pendOk = pPend === EXP.pending && pPendFrom === EXP.pendingFrom
+      && pendShards.size === 1 && pendShards.has(EXP.pendingShard);
     const portOk = pRec === EXP.records && pMin >= EXP.min && pMax <= EXP.max
-      && pSkip === 0 && b0Min >= EXP.b0min;
+      && pMiss === 0 && b0Min >= EXP.b0min && b23 === EXP.b23 && pendOk;
     console.log(`${portOk ? 'PASS' : 'FAIL'}: W44 the PORT'S OWN display list `
       + `over ${EXP.steps} steps from the shipped seed, nothing pressed -- `
       + `${pRec} records (expect ${EXP.records}), ${pMin}..${pMax} per frame `
-      + `(expect ${EXP.min}..${EXP.max}), ${pDrawn} drawn, ${pSkip} MISSED `
-      + `(expect 0), bucket 0 >= ${b0Min} on every frame (expect >= ${EXP.b0min}), `
+      + `(expect ${EXP.min}..${EXP.max}), ${pDrawn} drawn, ${pMiss} with NO ART `
+      + `ANYWHERE (expect 0), ${pPend} skipped as IN FLIGHT from step ${pPendFrom} `
+      + `on shard(s) ${[...pendShards].join('+') || '-'} (expect ${EXP.pending} `
+      + `from ${EXP.pendingFrom} on ${EXP.pendingShard}), bucket 0 >= ${b0Min} on `
+      + `every frame (expect >= ${EXP.b0min}), W52 bucket 23 THE ENEMY BULLETS `
+      + `${b23} records (expect ${EXP.b23}; it was 0 before W52), `
       + `the seed's own held list ${seedRec} records`);
     if (named.length) console.log(`  NO ART: ${named.slice(0, 8).join(' ')}`);
     if (!portOk) code = 1;
@@ -587,6 +628,80 @@ try {
         + `${cheat.skipped}. Every one of that difference would be a rectangle `
         + 'of pen 0 read out of words that are still zero');
       if (!mutOk) code = 1;
+
+      // ===================== WAVE 52: THE WEAPONS ARE VISIBLE =====================
+      //
+      // The owner's report: "shooting enemies with bullets works, but you can't
+      // see the bullets". Two producers, two shards, ONE input condition -- FIRE
+      // TAPPED EVERY FOUR FRAMES, because holding the button charges the beam
+      // and nearly stops the ordinary cadence ([M] 360 bucket-14 records held
+      // against 21,691 tapped over the same 1,200 frames).
+      //
+      // THE DENOMINATORS ARE PORT-SIDE AND ABSOLUTE, for W47 §4.1's reason: a
+      // stage that asks "is everything the shard holds drawn?" agrees with
+      // itself whatever the shard holds. `records`, `distinct` and `first` come
+      // out of the port's own emitter and no bundle can supply them; only
+      // `streams` is read from the bundle, and it is the one number a short
+      // harvest would move.
+      //
+      // `distinct` is NOT `streams`, deliberately: shard 6 ships all 71 streams
+      // the four template tables can reach and this window reaches 20 of them
+      // (one formation, one power level, no hits on some chains). Asserting 71
+      // here would be asserting a different claim than the one measured.
+      const EXP52 = {
+        frames: 1200,
+        6: { streams: 71, records: 22071, distinct: 20, first: 1,
+          what: 'THE PLAYER\'S SHOTS ($2554EA/$255502 + the pods\' $24D2FC/$24D35C)' },
+        7: { streams: 298, records: 4388, distinct: 32, first: 98,
+          what: 'THE ENEMY BULLETS ($281D9A\'s bulk write, buckets 22/23)' },
+      };
+      const runW52 = (frames) => {
+        const g = new Game(bundle.seed, bundle.tables, {
+          logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
+          bgSeed: bundle.cap.part(0, 'bg'),
+        });
+        const st = { 6: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 },
+          7: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 } };
+        for (let i = 0; i < frames; i++) {
+          const res = portSpriteList(g.ram, map, { out: buf, ...shardOpts });
+          for (let k = 0; k < 256; k++) {
+            const b = k * RAM_STRIDE;
+            const w4 = g.ram.u16(0x800000 + (b + 4) * 2);
+            if ((w4 & 0x7fff) === 0) break;
+            const offs = ((g.ram.u16(0x800000 + (b + 2) * 2) & 0x7f) << 16)
+              | g.ram.u16(0x800000 + (b + 3) * 2);
+            const sh = map.get(offs)?.[2];
+            if (sh !== 6 && sh !== 7) continue;
+            const t = st[sh];
+            t.rec++; t.seen.add(offs); if (t.first < 0) t.first = i;
+            if (((w4 & 0x7e00) >> 9) === 0 || (w4 & 0x1ff) === 0) continue;
+            if (res.missing.has(offs)) t.named++;
+            else if (bundle.spr.state[sh] === 'ready') t.drawn++; else t.pend++;
+          }
+          g.ram.setU8(0x810424, 0xff);
+          // FIRE TAPPED. `src/input.js` owns which control is which bit; this is
+          // the same word the page's own key handler builds.
+          g.step(i % 4 === 0 ? portWordFromBits([BIT.b1]) : 0xffff);
+        }
+        return st;
+      };
+      const w52after = runW52(EXP52.frames);
+      for (const sh of [6, 7]) {
+        const e = EXP52[sh], a = w52after[sh];
+        const ok = bundle.spr.meta[sh].streams === e.streams
+          && a.rec === e.records && a.seen.size === e.distinct && a.first === e.first
+          && a.drawn === a.rec && a.pend === 0 && a.named === 0;
+        console.log(`${ok ? 'PASS' : 'FAIL'}: W52 ${e.what} -- over ${EXP52.frames} `
+          + `logic frames from the shipped seed with FIRE TAPPED every 4 frames, `
+          + `sprite shard ${sh} holds ${bundle.spr.meta[sh].streams} streams `
+          + `(expect ${e.streams}) and the port's own $800000 list carries `
+          + `${a.rec} records of them (expect ${e.records}) over ${a.seen.size} `
+          + `distinct images (expect ${e.distinct}), first at frame ${a.first} `
+          + `(expect ${e.first}). All shards loaded: ${a.drawn} DRAWN of ${a.rec}, `
+          + `${a.pend} pending, ${a.named} with no art. Before W52 this bucket `
+          + 'emitted nothing at all');
+        if (!ok) code = 1;
+      }
     }
 
     if (portBrk === 'lag-0') {

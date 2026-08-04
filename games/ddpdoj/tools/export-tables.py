@@ -331,6 +331,24 @@ SHOT_WINDOWS = [
     (0x283704, 0x0018, "WAVE 27: $283704 kind 33's 6-entry descriptor table, "
                       "indexed by the word at record +$2C ($14 down to 0, then "
                       "wrapping to $C -- a 2-entry lead-in over a 4-entry ring)"),
+    #   $282714  kind 7's 9-entry dir-indexed sprite-frame table, read by the
+    #                       $283C0E epilogue (`lea $282714(pc),A0 / bra $283C0E`
+    #                       then `adda.w $283C4C[d1],A0 / move.l (A0),$a`).
+    #
+    #   WAVE 52 ADDED THIS WINDOW AND IT IS A CONSEQUENCE, NOT AN OVERSIGHT.
+    #   `src/mover.js` ran the $283C0E epilogue only `if (ctx.sprites)` -- and
+    #   until W52 nothing ever passed a sprite sink, so the read never happened
+    #   and the missing window could not be reached.  Wiring the enemy bullets'
+    #   emit reached it on the first run: `UNPORTED $282718` at step 1,417.
+    #
+    #   Sized exactly like $2830EA above and for the same reason: the $283C4C
+    #   offsets top out at $20 (the 32 words are 0,4,8..$20 and back down) and
+    #   the read is a longword, so the extent is $24.  $282714 + $24 = $282738,
+    #   which is kind 7's own CONTINUATION -- an abutting bound, the same
+    #   evidence $2830EA and $2822EC are sized by.
+    (0x282714, 0x0024, "WAVE 52: $282714 kind 7's 9-entry dir-indexed sprite-"
+                      "frame table, read by the $283C0E epilogue. Reachable "
+                      "only once a sprite sink exists (W52)"),
 ]
 
 # WAVE 21 -- THE VELOCITY FIELD, exported in full and here is why.
