@@ -2346,15 +2346,81 @@ function h_B205(state, j) {
 // really does carry two). Stages 3, 4 and 5 all name both; porting them here
 // makes stage 4's only two missing entries FREE (W31).
 //
-// THE TABLE OVERRUN IS REAL AND IS READ FROM ROM, not thrown on. `$B415
-// LDA $B42F,Y` with Y = `$04AC,X` is exactly the shape `$B1C5` has, and the port
-// throws THERE -- but there the throw is backed by a 27,400-frame measurement
-// that Y never exceeded 4. NO SUCH MEASUREMENT EXISTS FOR $B42F/$B45C, so
-// inventing a throw would be inventing an absence proof. The exporter ships
-// five bytes each (`phaseB42F`/`phaseB45C`, anchored on the next instruction),
-// so a Y >= 5 gets romByteReader's OWN loud throw naming the address -- which is
-// the honest outcome: "the port cannot read $B434 as a table entry", not "the
-// cartridge never does".
+// ===========================================================================
+// WAVE 34: THE TABLE OVERRUN IS REAL, AND IT IS THE CARTRIDGE'S, NOT THE
+// PORT'S. This block used to say the opposite by omission, and stages 3 and 4
+// crashed at frame 314 with the player pressing nothing (W33 §5a).
+//
+// W30 shipped `phaseB42F`/`phaseB45C` at five bytes and let `romByteReader`
+// throw for Y >= 5, on the reasoning that "no measurement exists, so inventing
+// a throw would be inventing an absence proof". The throw it produced was
+// assets.js's `$B434 is not in any exported range`, whose message tells the
+// reader to go and edit export_assets.py -- a crash report that points at the
+// wrong file, for a read the ROM makes on purpose.
+//
+// WHY THE SIXTH READ HAPPENS, FROM THE LISTING ALONE (no emulator run; every
+// number here is arithmetic on bytes in rip/prg.asm):
+//
+//   * an arc is seeded by `$B212` (accel `$048C` = $20, yvel `$03BC` = 2) and
+//     flips when `$B422 CMP #$FE` fails, i.e. at yvel = -3. `$B120` subtracts
+//     $20/256 of velocity a frame, so each integer step is 8 frames and the
+//     arc is 1 + 4*8 = 33 moving frames plus the one frame that INCs $04AC.
+//     `$B1BC` re-seeds xvel to $FE every arc, so an arc is exactly 66 px.
+//   * `$B42F` = 00 00 00 01 01. `$B1DA` reads the byte as `LDA $046C,X / BNE
+//     $B1E5`: 0 -> `$B154` addX16 (x += $FE, LEFT), non-zero -> `$B184`
+//     subX16 (x -= $FE, RIGHT). So the schedule is LEFT LEFT LEFT RIGHT RIGHT
+//     and its NET displacement is ONE arc left = 66 px.
+//   * `$B251`'s box frees the enemy at x < 4 or x >= $F4. A wave record that
+//     spawns at the right edge ($F0) is therefore at $F0 - 66 = $AE when the
+//     fifth entry has been consumed -- ON SCREEN -- and `$B426 INC $04AC,X`
+//     makes Y = 5. THE READ IS UNAVOIDABLE.
+//
+// AND THE SAME ARITHMETIC EXPLAINS WHY `$B1C5` DOES NOT OVERRUN, which is the
+// check on the reasoning rather than a coincidence: `$B200` = 00 00 01 00 00
+// is FOUR left and one right, and `$B1AA` seeds yvel 3 with the flip at -4, so
+// its arc is 49 moving frames = 98 px. Net THREE arcs left = 294 px, and from
+// $F0 that leaves the box during arc 4. W12's exec hook on the cartridge saw
+// $B1C5's Y take 0,1,2,3,4 over 27,400 frames and never 5 -- which is what
+// this derivation predicts, from the tables, without the emulator.
+//
+// HOW FAR Y CAN GO, AND WHY THE THROW IS AT 7. Past the schedule the bytes are
+// `$B434` BD 0C 03 (st_B434's own opcode) and `$B461` BD 4C 04 (the orphan at
+// $B461) -- ALL NON-ZERO, so every overrun entry means RIGHT. Reaching Y = 5
+// at all needs the spawn x >= 202 (three left arcs of 66 must not leave the
+// box), so x >= 202 - 66 = 136 when Y becomes 5; each further arc adds 66 and
+// the box frees at 244. 136 + 66 = 202 (survives, Y = 6), 136 + 132 = 268
+// (freed). **Y CANNOT EXCEED 6.** The exporter ships seven entries plus one
+// byte of anchor alignment and the throw below is at 7, so the two bounds
+// cannot drift apart silently.
+// ===========================================================================
+
+/**
+ * `$B415 LDA $B42F,Y` and `$B43C LDA $B45C,Y` -- the turn schedule AND the
+ * read past its end, shared by entries 13 and 14 because the ROM's two copies
+ * are byte-identical and the bound is derived the same way for both.
+ *
+ * @param {{read:(a:number)=>number}} rom  enemyTables
+ * @param {number} base   $B42F (entry 13) or $B45C (entry 14)
+ * @param {number} y      $04AC,X, the arc counter
+ * @param {number} slot   the enemy slot, for the message only
+ */
+function arcTurn(rom, base, y, slot) {
+  if (y >= 7) {
+    // NOT "the table is five long" -- see the block above. This is the
+    // LISTING's bound on the index, and a Y at or past it means the arc
+    // counter, the arc length or $B251's box is wrong in the port, which is a
+    // movement bug and not an asset gap. Naming it here rather than letting
+    // assets.js say "not in any exported range" is the whole point of W34.
+    throw new Error(
+      `$B4${base === 0xB42F ? '15 LDA $B42F' : '3C LDA $B45C'},Y with $04AC = `
+      + `${y} (slot ${slot}). The schedule is five entries and the cartridge `
+      + 'reads at most two past it (Y = 5, 6): reaching Y = 5 needs a spawn x '
+      + '>= 202, so x >= 136 when the schedule ends, and each further 66 px '
+      + 'arc runs into $B251\'s `CMP #$F4` free. A larger Y means the arc '
+      + 'counter, the 34-frame arc or the off-screen box is wrong here.');
+  }
+  return rom.read(base + y);
+}
 
 /**
  * `loc_$B407` -- the shared init both entries fall into.
@@ -2389,7 +2455,7 @@ function h_B402(state, rom, j) {
   const o = state.obj; const i = j + ENEMY_BASE;
   if (!(o.type[i] & 0x80)) return loc_B407(state, j);   // $B402/$B405 BMI $B412
   const y = o.s04A0[i];                   // $B412 LDY $04AC,X
-  o.s0460[i] = rom.read(0xB42F + y);      // $B415 LDA $B42F,Y / $B418 STA $046C,X
+  o.s0460[i] = arcTurn(rom, 0xB42F, y, i); // $B415 LDA $B42F,Y / $B418 STA $046C,X
   const yv = o.yvel[i];                   // $B41D LDA $03BC,X
   if ((yv & 0x80) !== 0 && yv < 0xFE) {   // $B420 BPL $B42C / $B422 CMP #$FE / BCS
     o.s04A0[i] = u8(y + 1);               // $B426 INC $04AC,X
@@ -2424,7 +2490,7 @@ function h_B434(state, rom, j) {
   const o = state.obj; const i = j + ENEMY_BASE;
   if (!(o.type[i] & 0x80)) return loc_B407(state, j);   // $B434/$B437 BPL $B407
   const y = o.s04A0[i];                   // $B439 LDY $04AC,X
-  o.s0460[i] = rom.read(0xB45C + y);      // $B43C LDA $B45C,Y / $B43F STA $046C,X
+  o.s0460[i] = arcTurn(rom, 0xB45C, y, i); // $B43C LDA $B45C,Y / $B43F STA $046C,X
   const yv = o.yvel[i];                   // $B442 LDA $03BC,X
   if ((yv & 0x80) !== 0 && yv < 0xFE) {   // $B445 BPL $B451 / $B447 CMP #$FE / BCS
     o.s04A0[i] = u8(y + 1);               // $B44B INC $04AC,X

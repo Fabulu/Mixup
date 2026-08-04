@@ -609,15 +609,48 @@ ENEMY_BLOCKS_W21 = [
      "frames each",
      0xB3CB, (0xBD, 0x0C, 0x03), "$B3CB LDA $030C,X, dispatch entry 12"),
     # ---- entries 13 and 14, the two $B205 variants ------------------------
-    ("phaseB42F", 0xB42F, 0xB434,
-     "$B415 LDA $B42F,Y",
-     "00 00 00 01 01 -- entry 13 ($B402)'s own copy of $B200's shape",
-     0xB434, (0xBD, 0x0C, 0x03), "$B434 LDA $030C,X, dispatch entry 14"),
-    ("phaseB45C", 0xB45C, 0xB461,
-     "$B43C LDA $B45C,Y",
-     "00 00 00 01 01 -- entry 14 ($B434)'s copy. Byte-identical to $B42F and "
-     "exported separately because the ROM has two",
-     0xB461, (0xBD, 0x4C, 0x04), "$B461 LDA $044C,X"),
+    #
+    # WAVE 34.  THESE TWO RAN OFF THE END OF THEIR OWN TABLES ON THE CARTRIDGE
+    # AND THE PORT SHIPPED A CRASH WHERE THE ROM HAS A READ.  Both were five
+    # bytes here until W33 found stages 3 and 4 dying at frame 314 with no
+    # player input at all.  The extent is now the read's, not the table's, and
+    # the derivation is in src/enemies.js h_B402 -- in one line:
+    #
+    #   $B42F is 00 00 00 01 01 = LEFT LEFT LEFT RIGHT RIGHT.  Each arc is 34
+    #   frames and moves 66 px ($B212 seeds yvel 2 / accel $20, $B422 flips at
+    #   -3).  Net over the whole schedule is ONE arc LEFT, so an enemy that
+    #   spawns at the right edge is still on screen when $04AC reaches 5 and
+    #   $B415 reads $B434.  $B200's schedule (00 00 01 00 00 = FOUR left, one
+    #   right, 98 px an arc) is net THREE arcs left and leaves first -- which is
+    #   exactly why W12's 27,400-frame cartridge hook saw $B1C5's Y stop at 4.
+    #   Same shape, opposite outcome, and the difference is the two tables.
+    #
+    # The exported extent is SEVEN entries + one byte of anchor alignment; the
+    # port throws at Y >= 7, which is one more than the LISTING bound of 6
+    # (h_B402's proof: reaching Y = 5 needs the spawn x >= 202, so x is >= 136
+    # when the schedule ends, and each overrun arc is +66 px against $B251's
+    # `CMP #$F4` free).  Neither the port nor the exporter may quietly widen
+    # again: the anchors below are on real instruction boundaries.
+    ("phaseB42F", 0xB42F, 0xB437,
+     "$B415 LDA $B42F,Y with Y = $04AC,X, the arc counter $B426 INCs",
+     "00 00 00 01 01 -- entry 13 ($B402)'s own copy of $B200's shape -- "
+     "FOLLOWED BY BD 0C 03, which is st_B434's own `LDA $030C,X` opcode and "
+     "which $B415 reads as turn flags for Y = 5 and 6. All three are non-zero, "
+     "so every read past the schedule means the same thing: $B1DA's `LDA "
+     "$046C,X / BNE $B1E5` takes subX16 and the enemy flies RIGHT off the "
+     "screen. This is the CARTRIDGE's behaviour, not a port artefact",
+     0xB437, (0x10, 0xCE), "$B437 BPL $B407, inside st_B434"),
+    ("phaseB45C", 0xB45C, 0xB464,
+     "$B43C LDA $B45C,Y with Y = $04AC,X, the arc counter $B44B INCs",
+     "00 00 00 01 01 -- entry 14 ($B434)'s copy of the schedule, byte-"
+     "identical to $B42F and exported separately because the ROM has two -- "
+     "FOLLOWED BY BD 4C 04, the first bytes of the ORPHANED routine at $B461 "
+     "($B461-$B47F is a 16-bit velocity decrement and a second copy of $B251's "
+     "off-screen box; nothing in the PRG jumps to either). $B43C reads them as "
+     "turn flags for Y = 5 and 6; all three are non-zero, so $B451's `BNE "
+     "$B459` takes $B1FA and the enemy flies RIGHT off the screen",
+     0xB464, (0x38, 0xFD, 0x8C, 0x04),
+     "$B464 SEC / SBC $048C,X, inside the orphan at $B461"),
     # ---- entry 26 ---------------------------------------------------------
     ("dwellByRank", 0xB4E4, 0xB4F2,
      "$B48F and $B4D6 LDA $B4E4,Y / $B4BE LDA $B4EB,Y, Y = the rank $17",
