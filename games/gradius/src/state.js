@@ -740,6 +740,13 @@ export function createState() {
       // fire on consecutive frames: $BC59 14, $BC68 10, $BC63 4 (f501, 507,
       // 511, 516). This is the counter `enemy-bullets-full` exists to move.
       bulletAllocFail: 0,
+      // $CBDB reached by FALL-THROUGH from $CBD9's failed BPL -- the same
+      // failure for the STAGE-5 ARM's shot ($CBD1, W32c), counted separately
+      // because it has a different producer and three EXTRA ways to decline:
+      // the tip's X below $10, at or above $F0, or its Y at or above $D0. Those
+      // three are muzzle gates, not allocation failures, and are NOT counted
+      // here -- only "all ten $0136 slots busy" is.
+      armBulletAllocFail: 0,
 
       // ---- the sound driver, wave 8 (src/sound.js) ----------------------
       // docs/knowledge/06's rule that the signals are instrumented SEPARATELY

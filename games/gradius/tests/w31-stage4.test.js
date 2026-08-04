@@ -60,12 +60,16 @@ test('jt_$C439[3] routes stage 4 to $C5AD, and it no longer throws', () => {
     'stage 4 late spawner must produce a type $15');
 });
 
-test('$A2F0: the scope guard admits stage 4 and still stops stage 5', () => {
-  // runEngine's `if (stageIndex >= 4) throw` -- the wall a wave moves forward
-  // one stage at a time. THIS IS THE GATE stageledger.py could not see: stage
-  // $19=3 read 98/98 records for a whole wave while `>= 3` threw on its first.
-  // RED WHEN: the bound goes back to 3 (stage 4 throws) or forward to 5
-  // (stage 5 runs with $A4A6/$CA5E/$B559 unported and spawns wrong enemies).
+test('$A2F0: the scope guard admits stage 4, and W32c moved it past stage 5', () => {
+  // runEngine's scope guard -- the wall a wave moves forward one stage at a
+  // time. THIS IS THE GATE stageledger.py could not see: stage $19=3 read 98/98
+  // records for a whole wave while `>= 3` still threw on its first.
+  //
+  // W32c MOVED IT TO `>= 5`. This check keeps its stage-4 half unchanged (that
+  // is what it was written for) and follows the guard forward one stage; the
+  // evidence the move rests on is in tests/w32c-interactions.test.js, which
+  // owns the assertion about stage 5.
+  // RED WHEN: the bound goes back to 4 or 3, or forward to 6.
   // Both states are parked on their stage's chunk-0 stream at scroll $0000,
   // which is a record whose trigger has ALREADY been reached -- so the engine
   // does not merely survive the guard, it fires a real wave record.
@@ -86,8 +90,13 @@ test('$A2F0: the scope guard admits stage 4 and still stops stage 5', () => {
     'stage 4 ($19=3) must reach the wave engine');
   assert.strictEqual(s3.obj.type[slot(s3)], 0x05,
     'stage 4\'s first record (@$AAEC, cmd $89) must actually spawn its type $05');
-  assert.throws(() => spawnEngine(wave(4), res), /\$A2F0 runEngine/,
-    'stage 5 ($19=4) must still throw loudly, naming $A2F0');
+  const s4 = wave(4);
+  assert.doesNotThrow(() => spawnEngine(s4, res),
+    'stage 5 ($19=4) must reach the wave engine too (W32c)');
+  assert.strictEqual(s4.obj.type[slot(s4)], 0x1D,
+    'stage 5\'s first record (@$ABB6) must spawn its type $1D -- W32a\'s $B559');
+  assert.throws(() => spawnEngine(wave(5), res), /\$A2F0 runEngine/,
+    'stage 6 ($19=5) must still throw loudly, naming $A2F0');
 });
 
 // ==================== 2. THE STREAM, $C5B8 LDX #$04 =========================

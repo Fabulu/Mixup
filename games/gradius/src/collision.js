@@ -77,8 +77,8 @@
 
 import { u8, ENEMY_BASE, ENEMY_SLOTS, ARM_POOL, ARM_BASES } from './state.js';
 import { probeCollision } from './terrain.js';
-import { killEnemy, freeSlot } from './enemies.js';
-import { scoreKill } from './score.js';
+import { killEnemy, freeSlot, explodeInPlace } from './enemies.js';
+import { scoreKill, addScore } from './score.js';
 import { pickupCapsule } from './powerup.js';
 import { soundRequest } from './sound.js';
 
@@ -224,16 +224,165 @@ function shotVsEnemies(state, res, x) {
     throw new Error(`$C00B ran ${iters} enemies for shot slot ${i}, not `
                   + `${ENEMY_SLOTS}, and the shot was not consumed`);
   }
-  if (state.zp19 === 4) {                         // $C037/$C039 CMP #$04
-    // W32a CORRECTION: not "destructible blocks". $BEF3/$BF0B walks the six
-    // SEGMENTS of each live $0600 arm group; only segment 2 is vulnerable
-    // ($BF31 CMP #$02), and the hit count comes from $BEEA,$17 (9 rank rows,
-    // 2..9 hits). See docs/worklog/gradius/32-recon-destructible-terrain.md.
-    throw new Error('$C03D: $19 = 4 (stage 5). The second sweep at $C03D-$C046 '
-                  + '($BEF3, a shot against the $0600 ARM SEGMENTS -- not '
-                  + 'destructible terrain, see 32-recon-destructible-terrain.md) '
-                  + 'is not ported. W32c.');
+  // $C037-$C046 -- THE SECOND SWEEP, stage 5 only. W32c.
+  //
+  // `$C03F LDA $0123,X` re-reads the shot's OWN anim byte AFTER the ten-enemy
+  // loop, so a shot that `$C055` has already consumed does not go on to sweep
+  // the arms. That re-read is the whole of the gate and it is easy to lose:
+  // `$C011`'s loop tested the ENEMY's byte, this one tests the SHOT's.
+  if (state.zp19 === 4                            // $C037/$C039 CMP #$04
+      && o.anim[3 + x] !== 0) {                   // $C03D LDX $A8 / $C03F BEQ $C047
+    shotVsArms(state, res, x, a0, a1, a3);        // $C044 JSR $BEF3
   }
+}
+
+/**
+ * `$BEF3`-`$BF0A` -- ONE live shot against the four ARM GROUPS. Wave 32c, and
+ * the fifth and last of W32a's stage-5 walls.
+ *
+ *   BEF3  A2 90     LDX #$90 / 86 A9 STX $A9
+ *   BEF7  A6 A9     LDX $A9 / BD 00 06 LDA $0600,X / F0 03 BEQ $BF01
+ *   BEFE  20 0B BF  JSR $BF0B
+ *   BF01  A5 A9     LDA $A9 / 38 SEC / E9 30 SBC #$30 / 85 A9 STA $A9
+ *   BF08  10 ED     BPL $BEF7 / 60 RTS
+ *
+ * **THE LOOP INDEX IS `$A9` ITSELF AND `$C0B7` WRITES IT.** Every path out of
+ * `$BF0B` that consumes the shot goes through `$C0B7`, whose `$C0BB STA $A9`
+ * (A = 0) makes the very next `$BF04 SBC #$30` produce $D0 and fail the `BPL`.
+ * So **a shot that hits anything stops sweeping the remaining groups**, exactly
+ * as it stops sweeping the remaining enemies at `$C033`. A port that walked
+ * `ARM_BASES` with a JS `for..of` would keep going and could destroy two arms
+ * with one shot. That is why this is the one walk over the pool in the whole
+ * port that does NOT use `ARM_BASES`.
+ *
+ * THE `BPL` IS AT THE END (state.js `ARM_BASES`): $90, $60, $30, $00, then $D0.
+ * Four groups, first pass unconditional.
+ */
+function shotVsArms(state, res, x, a0, a1, a3) {
+  const c = state.coll;
+  state.spawn.zA9 = 0x90;                         // $BEF3/$BEF5 LDX #$90 / STX $A9
+  let groups = 0;
+  for (;;) {
+    const base = state.spawn.zA9;                 // $BEF7 LDX $A9
+    groups += 1;
+    if (c[ARM_POOL + base] !== 0) {               // $BEF9/$BEFC LDA $0600,X / BEQ
+      sub_BF0B(state, res, x, base, a0, a1, a3);  // $BEFE JSR $BF0B
+    }
+    state.spawn.zA9 = u8(state.spawn.zA9 - 0x30); // $BF01-$BF06 SEC / SBC #$30
+    if (state.spawn.zA9 & 0x80) break;            // $BF08 BPL $BEF7 / $BF0A RTS
+  }
+  // FOUR, unless the shot was consumed -- and then it is FEWER, which is the
+  // $C0BB write above and not a work budget. Asserted so a silent walk (the
+  // W32b pre-test-loop bug, which made five of these do nothing) cannot return.
+  if (groups < 1 || groups > 4) {
+    throw new Error(`$BEF3 walked ${groups} groups for shot slot ${3 + x}`);
+  }
+}
+
+/**
+ * `$BF0B`-`$BF74` -- one live shot against ONE group's six segments, and the
+ * destruction.
+ *
+ *   BF0B  A9 05     LDA #$05 / 85 AB STA $AB            $AB = the segment, 5..0
+ *   BF0F  8A        TXA / 18 CLC / 69 05 ADC #$05 / 85 AA STA $AA
+ *   BF15  A6 AA     LDX $AA
+ *   BF17  A5 A0     LDA $A0 / 38 SEC / FD 18 06 SBC $0618,X
+ *   BF1D  C5 A3     CMP $A3 / B0 09 BCS $BF2A           dx >= the SHOT's width
+ *   BF21  A5 A1     LDA $A1 / FD 20 06 SBC $0620,X      <- SBC, carry CLEAR: -1
+ *   BF26  C9 0A     CMP #$0A / 90 07 BCC $BF31          dy < 10 -> A HIT
+ *   BF2A  C6 AA     DEC $AA / C6 AB DEC $AB / 10 E5 BPL $BF15 / 60 RTS
+ *   BF31  A5 AB     LDA $AB / C9 02 CMP #$02 / F0 03 BEQ $BF3A
+ *   BF37  4C B7 C0  JMP $C0B7                           any other segment: no damage
+ *   BF3A  A6 A9     LDX $A9 / FE 05 06 INC $0605,X / BD 05 06 LDA $0605,X
+ *   BF42  A4 17     LDY $17 / D9 EA BE CMP $BEEA,Y / 90 EE BCC $BF37
+ *   BF49  20 53 84  JSR $8453                           +$000100
+ *   BF4C  A2 00     LDX #$00 / A9 00 LDA #$00           <-- BOTH DEAD
+ *   BF50  A4 A9     LDY $A9 / BE 00 06 LDX $0600,Y / DE 6C 01 DEC $016C,X
+ *   BF58  A9 00     LDA #$00 / 99 00 06 STA $0600,Y     the group is FREE
+ *   BF5D  A2 00     LDX #$00
+ *   BF5F  B9 1A 06  LDA $061A,Y / 9D 6C 03 STA $036C,X  segment 2's X -> SLOT 0
+ *   BF65  B9 22 06  LDA $0622,Y / 9D 2C 03 STA $032C,X  segment 2's Y -> SLOT 0
+ *   BF6B  A9 0C     LDA #$0C / A2 00 LDX #$00 / 20 28 CB JSR $CB28
+ *   BF72  4C B7 C0  JMP $C0B7
+ *
+ * SIX THINGS THIS ROUTINE DOES THAT A REASONABLE REWRITE WOULD NOT.
+ *
+ * 1. **ONLY SEGMENT 2 TAKES DAMAGE, BUT ALL SIX EAT THE SHOT.** `$BF31 CMP #$02
+ *    / BEQ $BF3A` is reached only after a hit has already been detected, and the
+ *    else-arm is `JMP $C0B7` -- the shot is consumed and nothing is damaged. So
+ *    the arm is a shield everywhere except one link. `$C267` (W32b) has no such
+ *    exemption, so the arm is lethal along its whole length and vulnerable at
+ *    one sixth of it.
+ * 2. **THE `$BF23 SBC` HAS NO `SEC`.** The carry is the one `$BF1D CMP $A3`
+ *    left, and the branch that got here was the `BCS` NOT taken, i.e. carry
+ *    CLEAR -- so dy is one MORE than the true difference and the 10 px band sits
+ *    1 px above the segment. dx has an explicit `$BF19 SEC` and does not. Same
+ *    asymmetry as `$C023` in the enemy sweep, opposite way round from `$BF87`.
+ * 3. **THE HIT COUNTER IS THE GROUP'S, NOT THE SEGMENT'S.** `$0605,X` with
+ *    X = `$A9` = the group base, so five shots at segment 2 count the same as
+ *    five shots spread over five frames. `$BEEA[$17]` is NINE rank rows
+ *    (02 02 03 04 05 06 07 08 09) -- 2 hits at rank 0, 9 at rank 8.
+ * 4. **THE EXPLOSION LANDS IN ENEMY SLOT 0, UNCONDITIONALLY** (`$BF5D`/`$BF6D
+ *    LDX #$00`), overwriting whatever is there. That is not a default: `$A4A6`'s
+ *    allocator is the `DEX / BNE` shape and never allocates slot 0, so the
+ *    cartridge is reusing the one slot the arm owner can never occupy. The
+ *    recon called this MEDIUM RISK and it is transcribed, not fixed.
+ * 5. **`$BF4C LDX #$00` AND `$BF4E LDA #$00` ARE DEAD** -- X is overwritten by
+ *    `$BF52 LDX $0600,Y` and A by `$BF58 LDA #$00`, both within three
+ *    instructions. They read like a slot-0 default and are not one. Comments,
+ *    not code (the recon named them; this is the confirmation).
+ * 6. **`$BF55 DEC $016C,X` IS THE OWNER'S ARM COUNT**, the byte `$A4F5` filled
+ *    from `$98` and `$CAB3 LDA $016C,X / BNE $CAC1` reads: an owner whose arms
+ *    are all destroyed stops bobbing and only drifts. X here is the OWNER slot
+ *    read out of the group header, not the shot index and not the group base.
+ *
+ * `$BF0A` ends `sub_BEF3` and `$BF0B` is `sub_BF0B`, reached only by `$BEFE
+ * JSR`; `$BF72 JMP $C0B7` is followed by `sub_BF75`, whose only xref is `$C030`.
+ * READ PAST THE APPARENT END: neither boundary is a fall-through.
+ *
+ * AND `JMP $C0B7` IS NOT A STACK DISCARD. `$C0B7` falls into `$C0BD` and then
+ * `$C0C6 RTS`, which pops the address `$BEFE JSR $BF0B` pushed -- so it returns
+ * to `$BF01`, exactly where `$BF30 RTS` would have. The only difference from an
+ * ordinary return is the `$A9 = 0` it leaves behind, which is item 1 of
+ * shotVsArms above.
+ */
+function sub_BF0B(state, res, x, base, a0, a1, a3) {
+  const c = state.coll;
+  const o = state.obj;
+  for (let seg = 5; seg >= 0; seg--) {            // $BF0B $AB = 5 / $BF2A-$BF2E
+    // $BF0F TXA / CLC / ADC #$05 / STA $AA -- $AA is base + $AB throughout, so
+    // the two indexed loads are $0618 + base + seg and $0620 + base + seg.
+    const dx = u8(a0 - c[ARM_POOL + base + 0x18 + seg]);   // $BF19 SEC / $BF1A SBC
+    if (dx >= a3) continue;                       // $BF1D/$BF1F CMP $A3 / BCS $BF2A
+    const dy = u8(a1 - c[ARM_POOL + base + 0x20 + seg] - 1);   // $BF23, carry CLEAR
+    if (dy >= 0x0A) continue;                     // $BF26/$BF28 CMP #$0A / BCC $BF31
+    // ---- $BF31: a hit, and the shot dies here whatever happens next --------
+    if (seg !== 2) {                              // $BF31/$BF33/$BF35 CMP #$02
+      freeShotSlot(state, x);                     // $BF37 JMP $C0B7
+      return;
+    }
+    const hp = ARM_POOL + base + 0x05;
+    c[hp] = u8(c[hp] + 1);                        // $BF3A LDX $A9 / $BF3C INC $0605,X
+    if (c[hp] < res.enemyTables.read(0xBEEA + state.zp17)) {   // $BF42/$BF44 CMP $BEEA,Y
+      freeShotSlot(state, x);                     // $BF47 BCC $BF37 -> JMP $C0B7
+      return;
+    }
+    // ---- $BF49: THE ARM IS DESTROYED --------------------------------------
+    addScore(state, 0x00, 0x01, 0x00);            // $BF49 JSR $8453 -> $9A = 1
+    // $BF4C LDX #$00 / $BF4E LDA #$00 are DEAD -- item 5 above.
+    const owner = c[ARM_POOL + base];             // $BF50 LDY $A9 / $BF52 LDX $0600,Y
+    const oi = owner + ENEMY_BASE;
+    o.animFrame[oi] = u8(o.animFrame[oi] - 1);    // $BF55 DEC $016C,X -- item 6
+    c[ARM_POOL + base] = 0;                       // $BF58/$BF5A STA $0600,Y
+    o.x[ENEMY_BASE] = c[ARM_POOL + base + 0x1A];  // $BF5D LDX #$00 / $BF5F/$BF62
+    o.y[ENEMY_BASE] = c[ARM_POOL + base + 0x22];  // $BF65/$BF68 -- segment 2, slot 0
+    soundRequest(state, 0x0C);                    // $BF6B LDA #$0C / $BF6F -> $EC1E
+    explodeInPlace(state, 0);                     // $CB28 falls into $CB2B, X = $00
+    freeShotSlot(state, x);                       // $BF72 JMP $C0B7
+    return;
+  }
+  // $BF30 RTS -- six segments tested, nothing hit, and `$A9` is untouched so
+  // the caller's walk carries on to the next group.
 }
 
 /**

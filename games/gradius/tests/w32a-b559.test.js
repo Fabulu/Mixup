@@ -215,54 +215,51 @@ test('the box also frees on Y, which $B559 never changes -- so only a spawn can'
   }
 });
 
-// ======================== 5. THE SCOPE GUARD IS UNCHANGED ===================
+// ==================== 5. THE SCOPE GUARD, AND ITS MESSAGE ==================
 
-test('$A2F0 still throws on stage 5, and names what is ACTUALLY left', () => {
+test('$A2F0 has moved to stage 6, and its message names what is ACTUALLY left', () => {
   // W32a deliberately did NOT lower this guard, because $9663, $8BD9, $C267 and
-  // $C772/$CB8A all fired unconditionally before a wave record was read.
+  // $C772/$CB8A all fired unconditionally before a wave record was read. W32b
+  // ported all four and STILL did not lower it, because $BEF3 and $CBD1 fire in
+  // ordinary play. W32c ported those, found and ported a SIXTH `$19 == 4` site
+  // nobody had listed ($A17C, the missile's terrain-probe bypass) plus $BC44's
+  // skip arm, and moved the guard to `>= 5`.
   //
-  // W32b PORTED ALL FOUR, and stage 5's twenty-eight wave records are now
-  // 28/28. The guard STILL does not move, and the reason changed rather than
-  // went away: TWO interaction paths remain and both fire in ordinary play --
-  // $C037 -> $BEF3 (a shot against an arm segment, whenever a shot is alive)
-  // and $CB91 -> $CBD1 (an arm firing, every 25-40 frames per live arm).
-  // Admitting stage 5 would make stageledger.py's runnability column print
-  // RUNNABLE for a stage that cannot survive one player shot -- the exact lie
-  // W31 built that column to kill.
-  //
-  // THE POINT OF THE MESSAGE ASSERTIONS BELOW is that the guard has to keep
-  // naming the CURRENT debt. It has now been wrong twice (it named $B559 after
-  // W32a shipped it, and $CA5E/$A4A6 after W32b shipped them), which is exactly
-  // the drift this check exists to catch.
-  // RED WHEN: the guard is lowered, or its message goes stale again.
-  const tbl = rom.word(0xA7D0 + 2 * 4);
-  const ptr = rom.read(tbl) | (rom.read(tbl + 1) << 8);
-  const s = createState();
-  s.substate = 0x80; s.spawn.z60 = 2; s.zp19 = 4; s.spawn.z61 = 0;
-  s.spawn.z6A = ptr & 0xFF; s.spawn.z6B = ptr >>> 8;
-  s.cam.hi = 0; s.cam.lo = 0;
-  assert.throws(() => spawnEngine(s, res), /\$A2F0 runEngine/,
-    'stage 5 ($19=4) must still throw loudly, naming $A2F0');
+  // THE POINT OF THE MESSAGE ASSERTIONS BELOW is unchanged and is why this
+  // check survives the move: the guard has to keep naming the CURRENT debt. It
+  // has been wrong twice already (it named $B559 after W32a shipped it, and
+  // $CA5E/$A4A6 after W32b shipped them).
+  // RED WHEN: the guard moves off 5, or its message goes stale again.
+  const seed = (stage) => {
+    const tbl = rom.word(0xA7D0 + 2 * stage);
+    const ptr = rom.read(tbl) | (rom.read(tbl + 1) << 8);
+    const s = createState();
+    s.substate = 0x80; s.spawn.z60 = 2; s.zp19 = stage; s.spawn.z61 = 0;
+    s.spawn.z6A = ptr & 0xFF; s.spawn.z6B = ptr >>> 8;
+    s.cam.hi = 0; s.cam.lo = 0;
+    return s;
+  };
+  assert.doesNotThrow(() => spawnEngine(seed(4), res),
+    'stage 5 ($19=4) must reach the wave engine now');
+  assert.throws(() => spawnEngine(seed(5), res), /\$A2F0 runEngine/,
+    'stage 6 ($19=5) must throw loudly, naming $A2F0');
   let msg = '';
-  try { spawnEngine(s, res); } catch (e) { msg = e.message; }
-  for (const shipped of ['$B559', '$C653']) {
+  try { spawnEngine(seed(5), res); } catch (e) { msg = e.message; }
+  for (const shipped of ['$B559', '$C653', '$BEF3', '$CBD1', '$A17C']) {
     assert.ok(!new RegExp(`\${shipped} [^)]*not ported`).test(msg),
       `${shipped} is ported -- the guard must not name it as missing`);
   }
-  assert.ok(/\$BEF3/.test(msg) && /\$CBD1/.test(msg),
-    'the guard must name what is ACTUALLY left: $BEF3 and $CBD1 (W32c)');
-  assert.ok(/W32c/.test(msg),
-    'and it must name the wave that owns them');
-  // The four walkers are PORTED, so the guard must no longer list them as the
-  // reason stage 5 is blocked. This is the half of the check that goes red if
-  // a future wave copies the old message forward.
+  assert.ok(/\$C6DE/.test(msg),
+    'the guard must name what is ACTUALLY left: stage 6\'s own late spawner');
   assert.ok(!/walkers/.test(msg),
     'the four $0600 walkers are ported -- the guard must not still cite them');
+  assert.ok(!/W32c\./.test(msg),
+    'and it must stop deferring to W32c, which is shipped');
 });
 
 // ============ 6. THE FOUR PER-FRAME STAGE-5 WALLS ARE ALL LOUD ==============
 
-test('every unconditional $19==4 entry point is WIRED, and the W32c gaps are loud', () => {
+test('every unconditional $19==4 entry point is WIRED -- all SIX of them', () => {
   // W32a WROTE THIS AS "all four throw". W32b PORTED all four, so the check is
   // turned round rather than deleted: each of the four unconditional stage-5
   // gates must still sit under a live `state.zp19 === 4` guard AND must now
@@ -294,11 +291,24 @@ test('every unconditional $19==4 entry point is WIRED, and the W32c gaps are lou
     assert.match(src[file].slice(Math.max(0, at - 1600), at), /state\.zp19 === 4/,
       `${needle} must sit under a live \`state.zp19 === 4\` guard`);
   }
-  // AND THE TWO W32c GAPS MUST STILL BE LOUD. $CBD1 sits INSIDE the now-ported
-  // driver, so it is the one place a half-ported subsystem could go quiet.
+  // W32c ADDS THE OTHER TWO. $C037 -> $BEF3 was wall 5; $A17C is the SIXTH
+  // `$19 == 4` site in the PRG and was in nobody's list -- W32a's had five, and
+  // it is not gated on the arm pool at all, it is the MISSILE's terrain probe.
+  const weap = readFileSync(new URL('../src/weapons.js', import.meta.url), 'utf8');
+  const more = [
+    [src.coll, 'shotVsArms(state, res, x, a0, a1, a3)'],   // $C037 -> $BEF3
+    [weap, 'const stage5 = state.zp19 === 4;'],            // $A17C
+  ];
+  for (const [text, needle] of more) {
+    const at = text.indexOf(needle);
+    assert.ok(at >= 0, `the port must carry: ${needle}`);
+  }
+  // ...and $CBD1, the one gap that ever sat INSIDE ported code, must be a CALL
+  // and not a throw. This is the assertion W32a and W32b both carried as
+  // `must stay a loud named throw`; it is inverted rather than deleted.
   const enem = readFileSync(new URL('../src/enemies.js', import.meta.url), 'utf8');
-  assert.ok(enem.includes("throw new Error('$CBD1:"),
-    'the arm fire path must stay a loud named throw (W32c)');
-  assert.ok(src.coll.includes("$BEF3"),
-    'the shot-vs-arm sweep must stay a loud named throw (W32c)');
+  assert.ok(!enem.includes("throw new Error('$CBD1:"),
+    '$CBD1 is ported (W32c) -- the throw must be gone');
+  assert.ok(enem.includes('sub_CBD1(state, base);'),
+    'and $CBB D JSR $CBD1 must be a real call from the driver');
 });

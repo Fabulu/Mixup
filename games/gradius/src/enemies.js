@@ -355,34 +355,46 @@ function runEngine(state, rom, stageIndex, res) {
   // W30's $B402/$B434.
   //
   // W32a PORTED $B559 (entry 29) and W32b PORTED THE WHOLE $0600 ARM POOL, so
-  // stageledger.py now reads `stage 4: 28/28, first unported NONE`. Every one
-  // of stage 5's twenty-eight distinct wave records has a handler.
+  // stageledger.py reads `stage 4: 28/28, first unported NONE`. W32a refused to
+  // lower this guard and so did W32b, both for the same measured reason: the
+  // guard is the LAST of the stage-5 walls, not the first, and admitting the
+  // stage while an ORDINARY play path still threw would make the runnability
+  // column print RUNNABLE for a stage that cannot survive one player shot --
+  // the exact lie W31 built that column to kill.
   //
-  // THE GUARD NEVERTHELESS STAYS AT `>= 4`, and that is a measured decision
-  // rather than an oversight. W32a's finding was that the guard is the LAST of
-  // FIVE stage-5 walls; W32b knocked down the four that fire UNCONDITIONALLY
-  // ($9663, $8B8D -> $8BD9, $C25D -> $C267, $9A76 -> $C772 -> $CB8A), but TWO
-  // gaps remain and both are ORDINARY in play, not corner cases:
+  // W32c LOWERS IT TO `>= 5`, and here is the evidence, not the intention.
+  // Every `$19 == 4` site in the PRG is now live. There are SIX and W32a's
+  // list had five; the sixth was found by scanning assets/prg.bin for
+  // `A5 19 C9 04` this wave rather than by trusting the list:
   //
-  //   $C037 -> $BEF3   a SHOT against an arm segment -- fires whenever a shot
-  //                    is alive and stage 5 is loaded, i.e. constantly (W32c)
-  //   $CB91 -> $CBD1   an arm firing -- every $CBCA[$17] frames per live arm,
-  //                    which is 25 to 40 frames (W32c)
+  //   $8B8D -> $8BD9   the segment sprite pass                       W32b
+  //   $9663            the $5C census + the half-rate frame fork     W32b
+  //   $A17C            the MISSILE's terrain-probe bypass            W32c  <--
+  //   $C037 -> $BEF3   a shot against an arm segment                 W32c
+  //   $C25D -> $C267   the player's body against the segments        W32b
+  //   $C772 -> $CB8A   the per-frame arm driver                      W32b
   //
-  // Admitting stage 5 here would make this tool's runnability column print
-  // "RUNNABLE" for a stage that cannot survive one player shot -- the exact lie
-  // W31 built the column to kill, and the same reason W32a refused to lower it.
-  // W32c lowers it, and the two throws above are what it has to delete first.
-  if (stageIndex >= 4) {
+  // plus `$CB91 -> $CBD1` (an arm firing), which is not gated on $19 at all --
+  // it sits INSIDE the driver and was the one half-ported gap behind working
+  // code. All eight are ported. `$A17C` is the one that matters for the
+  // decision: it fires whenever a MISSILE is alive, i.e. for any player who
+  // took the second power-up, and neither W32a's five-wall list nor W32b's
+  // worklog named it.
+  //
+  // MEASURED before lowering (tests/w32c-interactions.test.js, the last two
+  // checks): 600 consecutive stagePlay frames on stage 5 with two live arm
+  // groups, an owner, missiles in flight and the player holding fire -- both
+  // frame parities, 300 forked frames, arms fired, arms destroyed, the owner's
+  // arm count decremented, and 0 throws. The same fixture on the previous
+  // commit throws inside the first ten frames.
+  if (stageIndex >= 5) {
     throw new Error(`$A2F0 runEngine: $19 = $${stageIndex.toString(16).toUpperCase()}`
-                  + ` (stage ${stageIndex + 1}). Stage 4 ($19=3) is shipped (W31).`
-                  + ` Stage 5's twenty-eight wave records are ALL ported now`
-                  + ` (W32a entry 29, W32b entry 20 + $A4A6 + $C653 + the $0600`
-                  + ` ARM pool), but two per-frame interaction paths are not:`
-                  + ` $C037 -> $BEF3 (a shot against an arm segment) and`
-                  + ` $CB91 -> $CBD1 (an arm firing). Both fire in ordinary play,`
-                  + ` so admitting stage 5 here would claim a runnability the`
-                  + ` port does not have. W32c.`);
+                  + ` (stage ${stageIndex + 1}). Stage 5 ($19=4) is shipped`
+                  + ` (W32a entry 29, W32b the $0600 ARM pool + the half-rate`
+                  + ` frame fork, W32c $BEF3/$CBD1/$A17C). Stage 6 ($19=5) has`
+                  + ` 47 of its 98 distinct wave records ported -- run`
+                  + ` tools/oracle/stageledger.py for the first unported one --`
+                  + ` and its late spawner $C6DE also throws.`);
   }
   if (sp.z69 !== 0) {                    // $A2FE LDA $69 / BNE $A32B
     if (sp.z6C !== 0) {                  // $A32B LDA $6C / BNE $A332
@@ -1200,14 +1212,37 @@ export function enemyBullets(state, res) {
  * The scenarios poke `$040C,X`, the countdown itself -- see POKEABLE_RANGES in
  * tools/oracle/porttrace.mjs for why that is a cartridge value and not an
  * invented one.
+ *
+ * ---- WAVE 32c: THE SKIP ARM, AND IT WAS NOT A STAGE-5 GAP ------------------
+ *
+ * `$BC44 LDA $1A / BNE $BC59` and `$BC48 LDA $19 / CMP #$02 / BCS $BC59` were a
+ * LOUD THROW until this wave, tagged "stages 3+ are out of scope (W29 ships
+ * stage 2)". Two things about that were wrong by the time W32c read it:
+ *
+ *  1. **It was never a stage-5 wall.** The bound is `$19 >= 2`, so it fires on
+ *     stages 3, 4, 5, 6 AND 7 -- and stages 3 ($19=2) and 4 ($19=3) have been
+ *     past the `$A2F0` scope guard since W30 and W31, with stageledger.py
+ *     printing RUNNABLE for both. **Any enemy firing a bullet on stage 3 or 4
+ *     crashed the port**, and no ledger column could see it, because the ledger
+ *     measures type-to-handler coverage and this is a per-frame path inside an
+ *     already-ported handler -- the exact shape W32b's `$CBD1` had.
+ *  2. **There is nothing to port.** The two branches both land on `$BC59`, the
+ *     allocator, which has been ported since wave 11. The arm is eight bytes of
+ *     test and the body is the `else` that was already there.
+ *
+ * Found by W32c because it is the third thing that stops a stage-5 frame, after
+ * `$BEF3` and `$CBD1`; it was reached at frame 190 of the first 600-frame
+ * stage-5 run and it is NOT in W32a's five-wall list, W32b's worklog, or the
+ * recon. Stated as what it is: a gap that shipped inside two "RUNNABLE" stages.
  */
 function fireBullet(state, res, j) {
+  // $BC44 LDA $1A / BNE $BC59 -- any LOOP skips the gate. $1A is pinned at 0
+  // in this port (loop-2 difficulty does not exist yet), so this arm is
+  // transcribed and unexercised; the $19 arm below is the live one.
+  // $BC48 LDA $19 / CMP #$02 / BCS $BC59 -- stage 3 and up skip it too.
   if (state.zp1A !== 0 || state.zp19 >= 2) {  // $BC44 / $BC48 CMP #$02
-    throw new Error(`$1A = ${hex2(state.zp1A)}, $19 = ${hex2(state.zp19)}: `
-                  + '$BC44 skips the player-position gate on stages 3+ (and on'
-                  + ' any loop) and goes straight to the bullet allocator at'
-                  + ' $BC59. Stage 2 ($19=1, loop 0) runs the gate; stages 3+ '
-                  + 'are out of scope (W29 ships stage 2).');
+    allocBullet(state, res, j);               // $BC46/$BC4C BNE/BCS $BC59
+    return;
   }
   // $BC4E LDX $A8 / $BC50 LDA $0360 / CMP $036C,X / $BC56 BCC $BC59
   if (state.obj.x[0] >= state.obj.x[j + ENEMY_BASE]) return;   // $BC58 RTS
@@ -3474,9 +3509,11 @@ function hatchBody(state, j, ms) {
  * `$CB2B` -- turn this slot into an explosion WITHOUT going through `$BE93`.
  * `$CB28` is `JSR $EC1E` (the sound) and then falls straight into it, so the
  * hatch's death plays explosion script 2 and drops NO capsule ($03AC cleared).
- * `$CB2B` is also reached from $CB69 (the $0600-page object, unported).
+ * `$CB2B` is also reached from `$CB69` (the arm pool's free-on-death, W32b) and
+ * from `$BF6F JSR $CB28` with `LDA #$0C / LDX #$00` (a shot destroying an arm,
+ * W32c, src/collision.js) -- which is why this is exported.
  */
-function explodeInPlace(state, j) {
+export function explodeInPlace(state, j) {
   const o = state.obj; const i = j + ENEMY_BASE;
   o.xvel[i] = 0;                         // $CB2D STA $042C,X  the script cursor
   o.timer[i] = 0;                        // $CB30 STA $014C,X
@@ -4083,7 +4120,7 @@ function sub_B628(state, rom, j, y) {
   o.timer[i] = 0;                                    // $B64A STA $014C,X
 }
 
-// ==================== WAVE 32b: THE $0600 ARM POOL ==========================
+// ============== WAVES 32b/32c: THE $0600 ARM POOL ==========================
 //
 // Stage 5's articulated ARMS. Four groups of $30 bytes at $0600/$0630/$0660/
 // $0690 (state.js ARM_POOL / ARM_BASES), six segments each, owned by the enemy
@@ -4108,8 +4145,11 @@ function sub_B628(state, rom, j, y) {
 //   $CB4E  free this owner's groups when it dies        HERE (loc_CB4E)
 //   $CB8A/$CB91  the per-frame group driver             HERE (armDriverGated)
 //   $CC33/$CC99  the segment kinematics                 HERE (sub_CC33)
-//   $CBD1  the arm's tip fires                          W32c -- a LOUD THROW
-//   $BEF3/$BF0B  a shot destroys an arm                 W32c -- src/collision.js
+//   $CBD1  the arm's tip fires                          HERE (sub_CBD1)   W32c
+//   $BEF3/$BF0B  a shot destroys an arm                 src/collision.js  W32c
+//
+// ALL TWELVE ARE PORTED. W32c closed the last two, and with them the fifth and
+// last of W32a's stage-5 walls; the $A2F0 scope guard moved with them.
 //
 // WHAT THE $0600 BYTES MEAN is in state.js next to ARM_POOL, once, and every
 // line below cites the ROM offset rather than a name, because the ROM's own
@@ -4441,6 +4481,11 @@ export function armDriver(state, rom) {
   const c = state.coll;
   state.spawn.zAE = 0;                         // $CB91/$CB93 STA $AE
   for (const base of ARM_BASES) {              // $CB95/$CBC0-$CBC7
+    // $CB97 STX $A8 / $CBC5 STA $A8. W32b left `$A8` unwritten here because
+    // nothing in the walk read it; `$CBD1` reads it TWICE ($CBDC and $CC02),
+    // so the byte is now kept for real. The exit value is $D0, not $FF -- the
+    // walk steps by $30 and $00 - $30 is what fails $CBC7's BPL.
+    state.spawn.zA8 = base;                    // $CB97/$CBC5 STA $A8
     const owner = c[ARM_POOL + base];          // $CB9B LDY $0600,X
     if (owner === 0) continue;                 // $CB9E BEQ $CBC0
     sub_CC33(state, rom, base, owner);         // $CBA0 JSR $CC33
@@ -4450,15 +4495,97 @@ export function armDriver(state, rom) {
     if (state.spawn.zAE !== 0) continue;       // $CBB2/$CBB4 BNE $CBC0
     state.spawn.zAE = u8(state.spawn.zAE + 1); // $CBB6 INC $AE
     c[ARM_POOL + base + 0x04] = 0;             // $CBB8/$CBBA STA $0604,X
-    // $CBBD JSR $CBD1 -- the arm's TIP fires. W32c, not this wave.
-    throw new Error('$CBD1: the arm at $0600+'
-                  + `$${base.toString(16).toUpperCase().padStart(2, '0')} `
-                  + 'reached its fire interval ($CBCA[$17] = '
-                  + `${rom.read(0xCBCA + state.zp17)} frames) and $CBD1 -- `
-                  + 'allocate an enemy-bullet slot ($0136,X, X = 9..0), place '
-                  + 'metasprite $86 at segment 5 (the TIP) minus 8 px in both '
-                  + 'axes, then $CC16 JMP $BCB1 -- is not ported. W32c.');
+    sub_CBD1(state, base);                     // $CBBD JSR $CBD1 -- W32c
   }
+  state.spawn.zA8 = u8(0x00 - 0x30);           // $CBC0-$CBC7 left $A8 = $D0
+}
+
+/**
+ * `$CBD1`-`$CC18` -- THE ARM'S TIP FIRES. Wave 32c.
+ *
+ *   CBD1  LDX #$09 / LDA $0136,X / BEQ $CBDC / DEX / BPL $CBD3 / (RTS)
+ *   CBDC  LDY $A8 / LDA $061D,Y / CMP #$10 / BCC $CBDB     tip X < $10
+ *   CBE5  CMP #$F0 / BCS $CBDB                             tip X >= $F0
+ *   CBE9  LDA $0625,Y / CMP #$D0 / BCS $CBDB               tip Y >= $D0
+ *   CBF0  STX $A9
+ *   CBF2  LDA #$86 / STA $0136,X                           the metasprite
+ *   CBF7  LDA #$00 / STA $0316,X / STA $0116,X / STA $0176,X
+ *   CC02  LDY $A8 / LDA $061D,Y / SEC / SBC #$08 / STA $0376,X
+ *   CC0D  LDA $0625,Y / SEC / SBC #$08 / STA $0336,X
+ *   CC16  JMP $BCB1                                        <-- FALL-THROUGH pair
+ *
+ * **`$CBF9` WRITES A LITERAL 0 INTO `$0316,X` WHERE `$BC83` WRITES `$BC66,Y`.**
+ * That is the one structural difference from the ordinary enemy-bullet
+ * allocator six routines up, and it is worth being precise about, because the
+ * obvious dramatic reading of it is WRONG and this comment carried it for an
+ * afternoon: `$BC66` is `00 01`, so kind 0 -- the common case -- is type 0 too.
+ * The arm's bullet is therefore *fixed* at kind 0; it is not *uniquely* type 0.
+ * (Counted out of prg.bin: exactly six instructions write `$0316` -- `$B8CA`
+ * the boss's, value 2; `$BAD1`, 0; `$BC83`, `$BC66,Y` = 0 or 1; `$BFAE`, the
+ * free; `$C739`, 1; and this one, 0.)
+ *
+ * What the byte then decides, from its only two readers:
+ *
+ *   * `$BF77 LDA $0316,Y / BNE $BF7D` -- the SHOT-vs-bullet sweep treats 0 as
+ *     "empty slot" and returns without testing geometry, so **an arm's bullet
+ *     cannot be shot down.** A type-1 bullet in the same place IS destroyed
+ *     (`$BF9F`), and a type-2 one kills the SHOT instead (`$BF97`). The type is
+ *     load-bearing; what it is not is unique.
+ *   * `$C22A LDA $0136,Y / BEQ $C259` -- the PLAYER-vs-bullet sweep gates on
+ *     `$0136` (the metasprite) instead, so the bullet is fully lethal whatever
+ *     its type, with box class `$0176` = 0 -> `$C202[0]` = $10 wide and
+ *     `$C206[0]` = $08 tall. `$BC23`'s MOVER gates on `$0136` as well.
+ *
+ * `$BC6E`'s status ladder (which picks kind 1 for a firing enemy whose status
+ * is $80-$8F) has NO counterpart here: the arm always fires kind 0.
+ *
+ * `$CBF0 STX $A9` IS A DEAD STORE. `$CC16 JMP $BCB1` is `TXA / CLC / ADC #$0A`
+ * falling into `$BCB5 STA $A9`, which overwrites it with slot + $0A two
+ * instructions later, and nothing between $CBF0 and $CC16 reads `$A9`. It is
+ * transcribed anyway (one line, and `$A9` is a real zero-page byte that is
+ * observable between the two writes only if something faults in between --
+ * nothing does), and named here so the next reader does not re-derive it as
+ * meaningful.
+ *
+ * `$CBDB` IS A FALL-THROUGH TARGET AS WELL AS A BRANCH TARGET: the allocator's
+ * `$CBD9 BPL $CBD3` drops into it when X reaches $FF, and $CBE3/$CBE7/$CBEE all
+ * branch to it. Four ways to decline to fire, one RTS.
+ *
+ * THE THREE MUZZLE GATES ARE ON THE TIP, SEGMENT 5 (`+$1D` / `+$25`), not on
+ * the owner: an arm whose tip has swept off the left edge, past the right edge
+ * or below the play area holds its fire, and `$CBB8` has ALREADY reset the fire
+ * timer, so the shot is lost rather than deferred -- the same "allocation
+ * failure is gameplay" shape `$BC63` has.
+ *
+ * `$CC02 LDY $A8` RE-READS BOTH COORDINATES. It is not a cached copy of the
+ * bytes the gates tested; nothing writes them in between, so the values are the
+ * same, and it is transcribed as a re-read because that is what the ROM does.
+ */
+function sub_CBD1(state, base) {
+  const o = state.obj;
+  const c = state.coll;
+  let k = -1;
+  for (let x = 9; x >= 0; x--) {               // $CBD1 LDX #$09 / $CBD8 DEX / BPL
+    if (o.anim[22 + x] === 0) { k = x; break; }    // $CBD3/$CBD6 BEQ $CBDC
+  }
+  if (k < 0) {                                 // $CBDB RTS -- every slot busy
+    state.work.armBulletAllocFail += 1;        // counted, so the failure is VISIBLE
+    return;
+  }
+  const tipX = c[ARM_POOL + base + 0x1D];      // $CBDC LDY $A8 / $CBDE LDA $061D,Y
+  if (tipX < 0x10) return;                     // $CBE1/$CBE3 CMP #$10 / BCC $CBDB
+  if (tipX >= 0xF0) return;                    // $CBE5/$CBE7 CMP #$F0 / BCS $CBDB
+  const tipY = c[ARM_POOL + base + 0x25];      // $CBE9 LDA $0625,Y
+  if (tipY >= 0xD0) return;                    // $CBEC/$CBEE CMP #$D0 / BCS $CBDB
+  state.spawn.zA9 = k;                         // $CBF0 STX $A9 -- DEAD, see above
+  const i = 22 + k;
+  o.anim[i] = 0x86;                            // $CBF2/$CBF4 STA $0136,X
+  o.type[i] = 0;                               // $CBF9 STA $0316,X -- see above
+  o.status[i] = 0;                             // $CBFC STA $0116,X
+  o.animFrame[i] = 0;                          // $CBFF STA $0176,X -- box class 0
+  o.x[i] = u8(c[ARM_POOL + base + 0x1D] - 8);  // $CC02-$CC0A SEC / SBC #$08
+  o.y[i] = u8(c[ARM_POOL + base + 0x25] - 8);  // $CC0D-$CC15 SEC / SBC #$08
+  aimBullet(state, u8(k + 0x0A));              // $CC16 JMP $BCB1 -- FALL-THROUGH
 }
 
 /**

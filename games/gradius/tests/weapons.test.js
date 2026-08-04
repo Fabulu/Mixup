@@ -666,11 +666,21 @@ test('the unported arms are loud, and each names its ROM address', () => {
   // silently dropped: $A19E (the missile crawl, above) and $C05F (the ARMOURED
   // damage accumulator, tests/collision.test.js). Both had been listed as
   // "unexercised" on the strength of the corpus; both were measured reachable.
+  //
+  // A THIRD LEFT IT IN WAVE 32c: $A17C, the stage-5 probe bypass. Its throw
+  // said "UNMEASURED -- $19 was 0 on every frame of every run made here", which
+  // was true of the corpus and became a reason not to port six bytes of branch.
+  // It is the SIXTH `$19 == 4` site in the PRG and W32a's wall list had five,
+  // so it would have crashed stage 5 for any player carrying missiles. Ported
+  // and pinned in tests/w32c-interactions.test.js; the assertion here is
+  // INVERTED rather than deleted, so the throw coming back is caught.
   const multi = shotOnEnemy({ type: 0x9A });
   assert.throws(() => shotSweep(multi, res), /\$C099/, 'the type-$9A hit counter');
 
   const stage5 = ship();
   stage5.zp19 = 4;
   stage5.obj.anim[SLOT_M] = 0x0A; stage5.obj.animFrame[SLOT_M] = 3;
-  assert.throws(() => missileLoop(stage5, res), /\$A17C/, 'the stage-5 bypass');
+  assert.doesNotThrow(() => missileLoop(stage5, res),
+    '$A17C is ported (W32c) -- stage 5 takes $A180 BEQ $A1AA, the FLY body');
+  assert.strictEqual(stage5.obj.anim[SLOT_M], 0x0A, 'and it flies, not crawls');
 });

@@ -286,24 +286,41 @@ test('$9689: the fork is the ODD frame, and it runs a DIFFERENT ORDER from $9A5E
   // AND THE OTHER HALF OF THE FORK. On the EVEN frame the ladder runs, but
   // $9A5E's own `LDA $5C / CMP #$02 / BCS $9A70` then skips $A2C0/$BBB7/$9FFC/
   // $ADAB -- so the two parities together run each of them exactly once per
-  // LOGICAL frame. $60 = 2 makes $A2C0 reach the stage-5 scope guard and throw,
-  // which is how "did the spawn engine run?" is observable at all here.
-  const even = stage5();
-  even.coll[ARM_POOL + 0x00] = 1; even.coll[ARM_POOL + 0x30] = 1;
-  even.zp1E = 1; even.zp1F = 2; even.frame = 2; even.spawn.z60 = 2;
-  assert.doesNotThrow(() => stagePlay(even, res),
+  // LOGICAL frame.
+  //
+  // W32b USED THE $A2F0 SCOPE GUARD'S THROW AS THE DISCRIMINATOR ("did the
+  // spawn engine run?"). W32c moved that guard past stage 5, so the throw is
+  // gone and the check is rewritten to observe the engine's actual OUTPUT
+  // instead: stage 5's chunk 0 at scroll $0000 has a record whose trigger has
+  // already been reached, so a frame that runs $A2C0 SPAWNS A TYPE $1D and a
+  // frame that skips it does not. That is a stronger discriminator than the
+  // throw ever was -- a throw only proved the call happened.
+  const forkFixture = (frame) => {
+    const tbl = rb(0xA7D0 + 2 * 4) | (rb(0xA7D1 + 2 * 4) << 8);
+    const ptr = rb(tbl) | (rb(tbl + 1) << 8);
+    const s = stage5();
+    s.coll[ARM_POOL + 0x00] = 1; s.coll[ARM_POOL + 0x30] = 1;
+    s.zp1E = 1; s.zp1F = 2; s.frame = frame; s.spawn.z60 = 2;
+    s.spawn.z61 = 0; s.spawn.z6A = ptr & 0xFF; s.spawn.z6B = ptr >>> 8;
+    s.cam.hi = 0; s.cam.lo = 0;
+    stagePlay(s, res);
+    return s.obj.type.slice(12, 22).filter((t) => (t & 0x7F) === 0x1D).length;
+  };
+  assert.equal(forkFixture(2), 0,
     '$5C >= 2 on the EVEN frame must skip $A2C0 -- $9A5E BCS $9A70');
-  const odd = stage5();
-  odd.coll[ARM_POOL + 0x00] = 1; odd.coll[ARM_POOL + 0x30] = 1;
-  odd.zp1E = 1; odd.zp1F = 2; odd.frame = 1; odd.spawn.z60 = 2;
-  assert.throws(() => stagePlay(odd, res), /\$A2F0 runEngine/,
+  assert.equal(forkFixture(1), 1,
     'and the ODD frame is the one that DOES run it, from $968E');
   // one arm: the normal body runs the engine on BOTH parities
   for (const fr of [1, 2]) {
+    const tbl = rb(0xA7D0 + 2 * 4) | (rb(0xA7D1 + 2 * 4) << 8);
+    const ptr = rb(tbl) | (rb(tbl + 1) << 8);
     const one = stage5();
     one.coll[ARM_POOL + 0x00] = 1;
     one.zp1E = 1; one.zp1F = 2; one.frame = fr; one.spawn.z60 = 2;
-    assert.throws(() => stagePlay(one, res), /\$A2F0 runEngine/,
+    one.spawn.z61 = 0; one.spawn.z6A = ptr & 0xFF; one.spawn.z6B = ptr >>> 8;
+    one.cam.hi = 0; one.cam.lo = 0;
+    stagePlay(one, res);
+    assert.equal(one.obj.type.slice(12, 22).filter((t) => (t & 0x7F) === 0x1D).length, 1,
       `$5C = 1, frame ${fr}: $9A5E must NOT skip the engine`);
   }
 });
@@ -350,37 +367,44 @@ test('$CB8A: the driver called from $9A76 does NOTHING once two arms are alive',
   assert.equal(s.coll[ARM_POOL + 0x90 + 0x03], 3, '$5C = 1 lets $CB91 run');
 });
 
-test('$CB91: $AE is a ONE-SHOT -- at most one arm fires per pass, and $CBD1 is loud', () => {
-  // $CB93 STA $AE / $CBB2 LDA $AE / BNE $CBC0 / $CBB6 INC $AE. state.js said
-  // "$AE: NO READER FOUND" for eleven waves; this is its reader.
+test('$CB91: the walk is $90 down to $00, and the timer resets BEFORE the fire', () => {
+  // $CB93 STA $AE / $CBB2 LDA $AE / BNE $CBC0 / $CBB6 INC $AE, and $CBB8 STA
+  // $0604,X BEFORE $CBBD JSR $CBD1.
   //
-  // $CBD1 is W32c, so a ripe timer THROWS. The check is that it throws for the
-  // FIRST group the $90 -> $00 walk reaches and that the fire timer of that
-  // group was reset first ($CBB8 STA $0604,X runs before $CBBD JSR).
-  // RED WHEN: $CBD1 becomes a silent return, or the walk changes direction.
+  // W32b WROTE THIS AGAINST A THROW: $CBD1 was unported, so the first ripe
+  // group ended the pass and "the $30 group is untouched" was a statement about
+  // the throw, not about the walk. W32c ports $CBD1, so the pass now COMPLETES
+  // and the untouched-$30 claim comes from $AE instead. The ONE-SHOT half moved
+  // to tests/w32c-interactions.test.js, which is where W32b's surviving mutant
+  // M12 finally becomes testable; what stays here is the walk ORDER and the
+  // ordering of the timer reset against the fire.
+  // RED WHEN: the walk changes direction, or $CBB8 moves after $CBBD.
   const s = stage5();
   const period = rb(0xCBCA + s.zp17);
   for (const b of [0x30, 0x90]) {
     s.coll[ARM_POOL + b] = 5;
-    s.coll[ARM_POOL + b + 0x03] = 1;              // ODD -> $CC45 RTS, no kinematics
+    // +$03 = 0: $CC3B's DEC leaves $FF, which is ODD, so $CC45's RTS skips the
+    // kinematics and the tip bytes below survive. (W32b wrote 1 here and called
+    // it "ODD"; 1 DECs to 0, which is EVEN and RUNS. It did not matter then
+    // because $CBD1 threw before anything read the tip.)
+    s.coll[ARM_POOL + b + 0x03] = 0;
     s.coll[ARM_POOL + b + 0x04] = u8(period - 1); // one INC short of ripe
+    s.coll[ARM_POOL + b + 0x1D] = 0x80;           // the tip, inside the muzzle
+    s.coll[ARM_POOL + b + 0x25] = 0x60;           // window ($10..$EF, < $D0)
   }
   s.obj.type[5 + ENEMY_BASE] = 0x94;
-  assert.throws(() => armDriver(s, res.enemyTables), /\$CBD1/,
-    'a ripe fire timer must be a LOUD named throw, not a quiet skip');
+  armDriver(s, res.enemyTables);
   assert.equal(s.coll[ARM_POOL + 0x90 + 0x04], 0,
-    '$90 is reached first and its timer was reset before $CBBD');
-  assert.equal(s.coll[ARM_POOL + 0x30 + 0x04], u8(period - 1),
-    '$30 is walked AFTER $90, so the throw at $90 never reached it -- its '
-  + 'timer is untouched. That is the walk order, and it is the check.');
+    '$90 is reached FIRST and $CBB8 reset its timer before $CBBD');
+  assert.equal(s.coll[ARM_POOL + 0x30 + 0x04], period,
+    '$30 is walked AFTER $90, was INC\'d to the period, and was refused by '
+  + '$CBB2 -- so its timer is NOT reset. That is the walk order and the '
+  + 'one-shot, in one byte.');
   assert.equal(rb(0xCBCA + 6), 0x19, '$CBCA is 7 rank rows ending 19');
   assert.equal(s.spawn.zAE, 1,
     '$CBB6 INC $AE ran BEFORE $CBBD -- the reader state.js said did not exist');
-  // WHAT THIS CHECK CANNOT DO, and mutant M12 proves it: deleting the $CBB2
-  // one-shot test reddens NOTHING, because the FIRST ripe group throws at
-  // $CBD1 and no second group is ever reached. $AE's whole purpose -- at most
-  // one arm fires per pass -- becomes observable only when W32c ports $CBD1.
-  // Recorded here rather than dressed up as coverage.
+  assert.equal(s.obj.anim[22 + 9], 0x86,
+    'and exactly one bullet exists: $CBD1 fired for the $90 group');
 });
 
 // =================== 5. THE KINEMATICS =====================================

@@ -66,7 +66,7 @@ LATE_SPAWNER = 0xC413      # the second spawner; its own $83E4 at $C439
 # roots.  A green here is a statement about the walk, not about the cartridge,
 # and it stayed green with all seven missing.
 #
-# The four roots below close that.  Each is an entry point the FRAME reaches
+# The roots below close that.  Each is an entry point the FRAME reaches
 # directly rather than through the enemy dispatch:
 #
 #   $8BD9   inside sub_$8B10 ($80A7), the stage-5 arm sprite pass -> $8C06,
@@ -77,9 +77,19 @@ LATE_SPAWNER = 0xC413      # the second spawner; its own $83E4 at $C439
 #           $9A76 -> $C772 -> $CB8A.  Indexes $CBCA, and calls $CC33/$CC99,
 #           which index $CC1F, $CD65 and $CD85.
 #   $BEF3   the shot-vs-arm sweep, reached from $C037 inside $BFE2.  Indexes
-#           $BEEA.  Still unported (W32c); rooted here anyway, because the
-#           tool's job is to report what the ROM indexes, not what the port
-#           has reached.
+#           $BEEA.  W32b rooted it while it was still unported, because the
+#           tool's job is to report what the ROM indexes, not what the port has
+#           reached; W32c ported it.
+#
+# WAVE 32c ADDS A FOURTH, $A16F, and the reason is the same class of blindness:
+# the MISSILE loop hangs off $9FFC (the player), not off the enemy dispatch, so
+# it was outside the walk.  W32c ported its $A17C stage-5 arm -- the SIXTH
+# `$19 == 4` site in the PRG, which W32a's five-wall list did not have -- and
+# the loop indexes $A1A4/$A1A6/$A1A8, three two-byte fly/crawl rows.  MEASURED
+# when it was added: the walk goes from 78 indexed bases to 81 and the tool
+# still reports OK, so those three were ALREADY exported.  It is rooted anyway,
+# because "already covered" is a fact to be re-checked on every run and not a
+# reason to leave a live routine outside the walk.
 #
 # $9663 IS DELIBERATELY NOT A ROOT, and the recon's §6 recommendation to add it
 # was wrong.  Its own body -- the four-header census -- indexes nothing: four
@@ -95,7 +105,7 @@ LATE_SPAWNER = 0xC413      # the second spawner; its own $83E4 at $C439
 # SET is an assumption, and this one carried "every table is read by an $AE1C
 # handler" for eleven waves.  Anything reached from the NMI's own order
 # ($80A7's sprite pass, $80AA's state machine) was outside it.
-STAGE5_ROOTS = [0x8BD9, 0xCB91, 0xBEF3]
+STAGE5_ROOTS = [0x8BD9, 0xCB91, 0xBEF3, 0xA16F]
 ANIM_LO, ANIM_HI = 0x0120, 0x0140
 EXPLOSION_PTRS, EXPLOSION_N = 0xAE71, 6
 INDEXERS = ("LDA", "LDX", "LDY", "CMP", "ADC", "SBC")

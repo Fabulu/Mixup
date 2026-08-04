@@ -296,11 +296,26 @@ test('$96A5: every unported arm throws with the ROM address it would reach', () 
   s5.zp19 = 4;
   assert.doesNotThrow(() => nmi(s5, 0, res),
     'an empty $0600 pool must walk clean through all four stage-5 gates');
-  // ...and what DOES still stop stage 5 is the wave stream's own scope guard.
+  // W32c PORTED THE LAST TWO ARM PATHS ($BEF3, $CBD1) plus $A17C, and the
+  // $A2F0 scope guard moved from `>= 4` to `>= 5` with them. So the running
+  // wave stream no longer stops stage 5 either: seed the engine on stage 5's
+  // own chunk 0 ($A7D0[4]) and a whole frame goes through. This assertion used
+  // to be `assert.throws(..., /\$A2F0 runEngine/)`; inverted rather than
+  // deleted, for the same reason the one above it was.
   // $60 >= 2 is the spawn engine's running state ($A2CD DEX / BNE $A2F0).
-  const s5w = bootState(res.manifest);
-  s5w.zp19 = 4; s5w.substate = 0x80; s5w.spawn.z60 = 2;
-  assert.throws(() => nmi(s5w, 0, res), /\$A2F0 runEngine/);
+  const seedWave = (stage) => {
+    const s = bootState(res.manifest);
+    const tbl = res.enemyTables.word(0xA7D0 + 2 * stage);
+    const ptr = res.enemyTables.read(tbl) | (res.enemyTables.read(tbl + 1) << 8);
+    s.zp19 = stage; s.substate = 0x80; s.spawn.z60 = 2;
+    s.spawn.z61 = 0; s.spawn.z6A = ptr & 0xFF; s.spawn.z6B = ptr >>> 8;
+    s.cam.hi = 0; s.cam.lo = 0;
+    return s;
+  };
+  assert.doesNotThrow(() => nmi(seedWave(4), 0, res),
+    'stage 5 must now run a whole frame with its wave stream live');
+  // ...and STAGE 6 is what the guard stops now.
+  assert.throws(() => nmi(seedWave(5), 0, res), /\$A2F0 runEngine/);
   // $9904 sub-path: $19 == 6 -> JMP $9872 (the ending sequence, out of scope).
   const sEnd = bootState(res.manifest);
   sEnd.substate = 0x86; sEnd.zp19 = 6;

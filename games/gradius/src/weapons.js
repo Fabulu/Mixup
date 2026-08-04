@@ -297,18 +297,31 @@ export function missileLoop(state, res) {
     const i = SLOT_A + x;                         // $0123,X with X = 8 is $012B
     if (o.animFrame[i] === 0) continue;           // $A177 LDA $0163,X / BEQ
     let y = 0;                                    // $A173/$A185 LDY #$00 -- fly
-    if (state.zp19 === 4) {                       // $A17C LDA $19 / CMP #$04
-      throw new Error('$A17C: $19 = 4 (stage 5) skips the missile terrain probe '
-                    + 'entirely. UNMEASURED -- $19 was 0 on every frame of every '
-                    + 'run made here, so the bypass has never been taken.');
-    }
+    // ---- $A17C-$A180: STAGE 5 SKIPS THE PROBE ENTIRELY. Wave 32c. ---------
+    //
+    // `LDA $19 / CMP #$04 / BEQ $A1AA` branches PAST `$A182 JSR $C3AF` and past
+    // both of `$A187`'s arms, straight to the FLY body -- with Y still 0 from
+    // `$A173`. So on stage 5 a missile never crawls, is never stopped by a
+    // wall, and lives until `$A1B9`'s floor test ($0323 >= $C8) or `$A1D2`'s
+    // right edge frees it. It is the same exclusion `$C2AB CMP #$04 / RTS`
+    // applies to the player's own terrain block: stage 5 has no terrain
+    // collision at all, so probing it would read a map nothing maintains.
+    //
+    // THIS IS THE SIXTH `$19 == 4` SITE IN THE PRG AND W32a'S WALL LIST HAD
+    // FIVE. Counted out of assets/prg.bin this wave: $8B8D, $9663, $A17C,
+    // $C037, $C25D, $C772 -- six `A5 19 C9 04` sequences and no other
+    // comparison of $19 against 4 anywhere. $A17C was the missing one, it
+    // fires whenever a MISSILE is alive (i.e. after the second power-up), and
+    // it would have made stage 5 crash for any player who took missiles.
+    const stage5 = state.zp19 === 4;              // $A17C/$A17E CMP #$04
     // $A182 JSR $C3AF. $C3B7's `CPX #$06 / BCC / ADC #$03` is entered with the
     // CARRY SET (that is what CPX leaves when X >= 6, which is the only way to
     // reach the ADC), so a MISSILE probes at Y + 4, not Y + 3. Wave 5's comment
     // in src/collision.js said +3; corrected in this commit.
     const py = u8(o.y[i] + 4);                    // $C3B4-$C3BD
     const px = o.x[i];                            // $C3CE (subtype 3, not 1)
-    if (probeCollision(state, px, py) !== 0) {    // $A187 CMP #$00 / BEQ $A1AA
+    if (!stage5                                   // $A180 BEQ $A1AA
+        && probeCollision(state, px, py) !== 0) { // $A187 CMP #$00 / BEQ $A1AA
       // $A18B: probe again 8 px UP and 8 px RIGHT. Non-zero -> the missile has
       // hit a wall; zero -> it CRAWLS along the floor.
       if (probeCollision(state, u8(px + 8), u8(py - 8)) !== 0) {  // $A199/$A19C
