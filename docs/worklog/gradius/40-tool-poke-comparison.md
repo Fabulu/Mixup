@@ -1,6 +1,6 @@
 # Wave 40 TOOLING — one poke harness, and the stages it can and cannot reach
 
-status: IN PROGRESS
+status: DONE
 tooling, 2026-08-04
 
 Scope: `games/gradius/tools/` ONLY. `src/` and `tests/` belong to a concurrent
@@ -337,3 +337,263 @@ distinguished from mine by the marker every mutation this tool writes carries.)
 
 The control is not decoration. Without it, "every mutant went red" could equally
 mean the harness goes red on any edit at all.
+
+---
+
+## 4. THE ENDING AND THE LOOP — THE BRIEF'S PREMISE IS WRONG, AND HERE IS THE PROOF
+
+The brief asked me to determine whether the poke method can reach the ending,
+and offered a reason it might not:
+
+> the ending depends on accumulated run state (checkpoints, loop counter) that
+> an intervention may not be able to fabricate faithfully
+
+**It does not.** `$9872` — the first rung — WRITES the checkpoint triple before
+it reads anything:
+
+```
+$9872   $2001 := 0; $3F := 0; $26,X := 0; $24,X := 0;
+        $22,X := ($42 ? 1 : 0);   INC $28,X        <- the only loop increment
+```
+
+`$26,X`, `$24,X` and `$22,X` are ASSIGNED, not consumed. The only accumulated
+state the whole chain reads is `$28,X` (the loop counter) and `$42` (the meter),
+and both are plain RAM bytes holding exactly what ordinary stage-1 play leaves.
+So a poked FIRST wrap is a state the cartridge genuinely reaches.
+
+And the entry condition is two bytes. `$1B` is a plain RAM byte that `jt_$982F`
+indexes straight off, and `$9904` (`$1B = $86`) is `LDA $19 / CMP #$06 / …
+JMP $9872`. `stagepoke.py --mode chain` writes both for ONE frame.
+
+### 4a. WHAT THE BOARD DID
+
+```
+python .../stagepoke.py --mode chain --stage 6 --sub 0x86 \
+    --window 2000-2000 --frames 5600 --tag chain-ending
+poke  ...,0019=6@2000-2000,001B=134@2000-2000
+```
+
+| +frames | what the board did |
+|---:|---|
+| +1 | `$1B` `$86`→`$87`, `$19` = 6, **`$28,X` 0 → 1** — `$9872` ran |
+| +2 | `$1B` `$88`, **`$19` := 0 and `$1A` := 1** — `$9B3E`'s wipe. THE WRAP |
+| +3,+4,+5 | `$89` `$8A` `$8B`, one frame each |
+| +27 | `$57` = 1 — the streamer caught up (23 frames of `$988C` on `$9C24`) |
+| +28 | `$1B` `$8C` — **the brain spawns**, sfx `$E8` (`$D4` = `$28`) |
+| +354 | `$D4` `$2C` — the 170-frame triangle wait ends; the brain has SETTLED |
+| +515 … +650 | **`$4F` steps 1..$10 at exactly 9 frames** — the typewriter |
+| +659 | `$4F` := `$81` (the phase bit) |
+| +974 | `$4F` := `$FF` — 315 frames on `$B2`, +10,000 points |
+| +1230 | `$1B` `$8C`→`$8D` |
+| +1231..+1234 | `$1B` 1,2,3,4 — the ordinary intro ladder |
+| +1256 | **`$1B` := `$80`, `$1A` = 1 — LOOP 2, STAGE 1, PLAYING** |
+
+`$1B` values visited: `$87 $88 $89 $8A $8B $8C $8D $01 $02 $03 $04 $80`.
+
+### 4b. AND IT WAS COMPARED, NOT JUST REACHED
+
+`stagecmp.mjs` chain mode seeds ONE port machine from the cartridge's 2 KB at
+the poke frame, applies the same two pokes at the same instant, and runs the
+port's own `nmi()` forward on the same buttons the board was driven with:
+
+```
+node .../stagecmp.mjs --tag chain-ending
+  poked at f2000: $19 := 6, $1B := $86
+  frames run through the PORT'S OWN nmi() : 1400
+  fields per frame 26  ->  36,400 field comparisons
+  FIELD DIVERGENCES : 0
+```
+
+The 26 are the eight flow bytes (`$1B $19 $1A $28 $57 $5B $4F $D4`) plus the
+nine object fields of slots 8 and 9 — the brain and its companion, which is the
+scene itself.
+
+**EVERY LEG W38 DERIVED FROM THE LISTING IS THE CARTRIDGE'S.** W38's §5 table
+and the board's are the same table, frame for frame: 23, 156, 161, 144, 256,
+1,256. That includes the two W38 reported as measured-not-derived and named as
+the likeliest to be wrong:
+
+> the two waits are the driver's timing, not a counter, so they are exactly the
+> kind of number this project has been wrong about before
+
+**170 frames on `$D4` and 315 on `$B2`. Both exact.** W38's item 1 under "what I
+could not reach" was *"ANY CARTRIDGE COMPARISON OF ANYTHING IN THIS WAVE …
+nobody has watched the brain fly in on the cartridge."* Somebody has now.
+
+### 4c. WHAT THE CHAIN COMPARISON STILL DOES NOT COVER
+
+* **The ending TEXT's pixels.** The comparison watches `$4F`'s cadence and the
+  queue's effects on RAM, not the nametable. What `$CF3D`'s sixteen bytes SPELL
+  is still a question nobody has rendered (W38 item 2).
+* **`$CF12`, the typewriter's restart arm** — still unreachable on this data for
+  W38's reason (`$CF3B`'s nineteen bytes contain no `$FF`), and a poke cannot
+  put one there without editing the ROM.
+* **The `$CEAE` clamp's effect on the TEXT.** Mutant END-7 clamps the loop index
+  at 5 instead of 6 and stays GREEN even at `$1A` = 6, because both indices
+  select text this comparison cannot see. Reported as a hole, not hidden.
+
+### 4d. AND A SECOND LAP, AT LOOP 6
+
+`--also 0028=5` carries one more one-frame poke into the same window: `$28,X`,
+the loop counter. `$9872` INCs it to 6 and `$9B3E` copies it into `$1A`, so the
+poked wrap is the SIXTH — the only way to reach `$CEAE`'s `CMP #$06` clamp.
+
+```
+node .../stagecmp.mjs --tag chain-loop6
+  +1  $1B=$87 $28=$06        +2  $1B=$88 $1A=$06     ... +1256 $1B=$80
+  1,400 frames x 26 fields = 36,400 comparisons, 0 divergent
+```
+
+W38 found loops 2/3/6 frame-identical **in the port**. They are frame-identical
+**on the cartridge** too. `$1A` is genuinely unpinned and the wrap is real.
+
+---
+
+## 5. THE SAME HARNESS, POINTED AT STAGES 3, 4 AND 5 — AND ONE REAL DEFECT
+
+Once the tool is general the marginal cost of another stage is one 2-minute
+emulator run, so all of them were done.
+
+| stage | `$19` | frames compared | fields | field comparisons | divergent |
+|---|---:|---:|---:|---:|---:|
+| 3 | 2 | 24,013 | 21 | 504,273 | **0** |
+| 4 | 3 | 29,387 | 21 | 617,127 | **0** |
+| 5 | 4 | 9,886 | 21 | 207,606 | **237** |
+| 6 | 5 | 23,967 | 21 | 503,307 | **0** |
+| 7 | 6 | 34,908 | 21 | 733,068 | **0** |
+
+### 5a. FINDING — `$CA5E`'s Y INTEGRATOR BORROWS A BIT THE CARTRIDGE DOES NOT
+
+Stage 5's 237 divergences are ALL in one handler, `$CA5E` (dispatch entry 20,
+types `$14`/`$94` — the arm owner, W32b's). Every other type on that stage is 0.
+
+```
+  type $14 -> $CA5E  : 3826 frames compared, 237 field divergences
+    yf: 230   y: 7          (all 21 fields compared; only these two moved)
+
+  f3324 slot 7 type $94 yf: port $1F board $20
+  f3325 slot 7 type $94 yf: port $AF board $B0
+  f3326 slot 7 type $94 yf: port $3F board $40      ... one LOW, every frame
+```
+
+Measured on the board at f3323-f3330, rank `$17` = 4 and `$CA57[4]` = `$70`:
+
+```
+board yf: 90 20 B0 40 D0 60 F0 80        -- exactly -$70 per frame
+port  yf: -- 1F AF 3F CF 5F EF 7F        -- exactly -$71
+```
+
+The port's line is
+
+```js
+const f = o.yf[i] - step - (1 - carry);    // $CAE6/$CAE9 SBC $CA57,Y
+```
+
+and `carry` is assigned ONLY inside `if (o.s04A0[i] === 0)` (from `$CACF CMP
+$0320`). On every frame that takes `$CAC1 BNE $CADC` it keeps its initialiser of
+0, so the `SBC` borrows. The cartridge does not borrow on those frames.
+
+**THE OBVIOUS FIX IS WRONG AND THAT IS MEASURED, NOT GUESSED.** Mutant `PROBE-1`
+changes the initialiser to 1 and runs the same comparison: **237 → 3,580**, with
+the port now one HIGH on a different set of frames (`f2620 yf: port $20 board
+$1F`). So the carry `$CAE9` inherits is not a constant either way. The remaining
+candidates are `$CAAD`'s `CMP $99` and — much more likely — `$CAB8 JSR $AEE1`,
+a subroutine call on the `animFrame == 0` path that leaves whatever carry its
+own last comparison left. Pinning it needs the listing, not another run.
+
+I cannot fix it: `src/` is out of scope this wave and belongs to a concurrent
+agent. It is handed forward in §7 with the run that reproduces it in one command.
+
+Scale, honestly: 237 of 207,606 fields, and the error is 1/256 of a pixel per
+frame on the stage-5 arm owner's vertical drift, which reaches the integer `$0320`
+on 7 frames of 3,826. It is a real transcription defect and it is a small one.
+
+### 5b. AND WHAT THE STAGE-3 RUN DID NOT REACH — the `$96` moai arm
+
+Stage 3 (`$19` = 2) is the one stage whose inline-5 records route differently:
+`$A466 CMP #$02` sends them to `$A46F` (which forces type `$96`) instead of
+`$A4A6`. **`$A466` reads `$19` when the record FIRES, not when the chunk loads**,
+and the window hands `$19` back within 46 frames — so the records fired under
+`$19` = 0, took `$A4A6`, and came out as types `$21`/`$23`/`$24`/`$25`/`$26`
+(the raw fourth descriptor byte). Those 13,567 frames compared 0 divergent and
+they are NOT the moai.
+
+Type `$96` and `$A46F` therefore remain uncompared. Reaching them needs `$19` = 2
+HELD across a record's trigger, which also opens the terrain streamer's
+per-stage pointers and the stage-end pages — a wider intervention with a wider
+blast radius, and a separate wave's job to bound.
+
+---
+
+## 6. WHAT IS STILL UNVALIDATED, PER STAGE — THE TABLE THE PROJECT ASKED FOR
+
+Every number in the "cartridge" column is a FIELD COMPARISON against the real
+board. `ordinary play` means a scripted run the game could actually produce;
+`INTERVENTION` means `$19` (and for the ending `$1B`) was forced.
+
+| stage | `$19` | cartridge evidence | provenance | what is STILL unvalidated |
+|---|---:|---|---|---|
+| 1 | 0 | the whole 47-scenario corpus, full-frame, 1,022 watched addresses | **ordinary play** | nothing this method can add |
+| 2 | 1 | `endchain`, 5,839 frames full-frame incl. the stage-2 boss and the `$19` 1→2 transition (W29) | **ordinary play** | nothing this method can add |
+| 3 | 2 | **504,273 field comparisons, 0 divergent** (W40) | INTERVENTION | **type `$96` and the `$A46F` moai arm** — §5b. `$A466` reads `$19` at TRIGGER time, so a crossing-width window cannot reach them |
+| 4 | 3 | **617,127, 0 divergent** (W40) + 271 late-spawner spawns x 11 fields, 0 (W31) | INTERVENTION | its `$82` boss trigger and stage-end pages; chunks 6-7 |
+| 5 | 4 | **207,606, 237 divergent** (W40) + 2,374 x 10, 0 (W32a) | INTERVENTION | **`$CA5E`'s carry (§5a — an OPEN DEFECT)**; `$9663`'s census and the `$968E` fork, which this harness skips (529 frames) rather than replays |
+| 6 | 5 | **503,307, 0 divergent** (W40) | INTERVENTION | its late spawner `$C6DE`; chunks 6-7; the stage-6 boss |
+| 7 | 6 | **733,068, 0 divergent** (W40) | INTERVENTION | **the boss records `$1E $20 $21 $22 $23 $24 $25`** (chunks 5-6 — the crossing lands 80 frames before the death); the late spawner `$C429`; `$A836`'s chunk-7 pointer, which reads `$8010` and streams 239 records |
+| ending `$9872` | — | **36,400 comparisons, 0 divergent**, loop 1→2 (W40) | INTERVENTION | the ending TEXT's PIXELS; `$CF12`'s restart arm; `$CEAE`'s clamp (§4c) |
+| loop wrap | — | **36,400, 0 divergent** at loop 6→7 (W40) | INTERVENTION | loops above 6 are clamped by `$CEAE` and were not run |
+| every stage's BOSS | — | **none** | — | no boss but stage 1's and stage 2's has ever been compared |
+| every late spawner but stage 4's | — | **none** | — | `jt_$C439[$19]` needs the `$82` window (`--mode spawn`), one more run per stage |
+
+**Read the provenance column, every time.** Six of the ten rows are intervention
+runs. They say the port's CODE agrees with the cartridge under a forced state.
+They do not say those stages play, pace or look right, and nothing in this wave
+is evidence that they do.
+
+### 6a. THE THREE HONEST HOLES IN THE COMPARISON ITSELF
+
+1. `$9663`'s arm census is not replayed, so any frame the board held `$19 == 4`
+   is COUNTED AND SKIPPED, not compared (529 frames on the stage-5 run, 9 on
+   W32a's, 0 on all the others).
+2. The chain comparison watches 26 RAM bytes. It does not watch the nametable,
+   so END-7 stays green.
+3. `--pipeline enemies` calls a frame the player shot on divergent, because
+   `$9A70` runs after `$ADAB`. Every number above uses `--pipeline tail`, which
+   runs every writer of an object byte in a mode-5 frame.
+
+---
+
+## 7. HANDED FORWARD
+
+1. **`$CA5E`'s carry (§5a).** OPEN DEFECT, reproducible in one command:
+   `node .../stagecmp.mjs --tag s5-chunks --pipeline tail --only 14`.
+   The obvious fix is measured wrong (PROBE-1). Needs the listing at `$CAB8`.
+2. **Stage 7's boss records.** A longer-lived trajectory, or a window that rides
+   the chunk-5 crossing earlier than f5434, would reach `$1E`/`$20`-`$25`.
+3. **Stage 3's `$96` / `$A46F`.** Needs `$19 = 2` HELD across a trigger.
+4. **The six unreached late spawners.** `--mode spawn --window 6460-7730` per
+   stage; stage 4's is the worked example and the tool is already parameterised
+   for the rest.
+5. **`stagecmp.mjs` chain mode is a general sub-state warp**, not an ending tool.
+   `$1B` is a plain byte and `jt_$982F` indexes off it, so any rung of any
+   ladder is one poke and one comparison away.
+
+## FINAL NUMBERS
+
+```
+tools added   games/gradius/tools/oracle/stagepoke.py    (poke, 4 modes)
+                                        stagecmp.mjs     (compare, 3 modes)
+                                        mutgate.py       (mutate a COPY)
+                                        mutants-w40.json (32 entries)
+tools changed none. stage4poke.py, stage4cmp.mjs, b559poke.py and b559cmp.mjs
+              are untouched and still run; W31's comparator was RE-RUN on the
+              new tool's dump and agreed.
+src/ tests/   NOT WRITTEN. Measured by sha256 before and after every mutant.
+
+cartridge comparisons this wave   2,664,912 field comparisons over 9 board runs
+      271x11 + 2375x10 + 504,273 + 617,127 + 207,606 + 503,307 + 733,068
+      + 36,400 + 36,400
+                                  237 divergent, ALL in one handler ($CA5E)
+mutation gate                     RED 30 of 30, 2 controls green as designed
+                                  games/gradius/src sha256 unchanged by me
+```

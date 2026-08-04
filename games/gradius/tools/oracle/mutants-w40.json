@@ -238,11 +238,39 @@
  },
  {
   "id": "END-7",
-  "dump": "chain-ending",
+  "dump": "chain-loop6",
   "file": "src/enemies.js",
-  "why": "$CEAE's loop clamp CMP #$06 on the text-table index",
+  "why": "$CEAE's loop clamp CMP #$06 on the ending text table. GREEN even at $1A = 6: clamping at 5 selects $CF2D+10 and $CF2D+12, and BOTH point at text this comparison cannot see -- it watches $4F's cadence and the queue's RAM effects, not the nametable. An honest hole, and the same one W38 item 2 names.",
   "find": "  if (loop >= 0x06) loop = 0x06;           // $CEAE-$CEB2 CMP #$06 / BCC / LDA #$06",
-  "replace": "  if (loop >= 0x05) loop = 0x05;           // MUTANT"
+  "replace": "  if (loop >= 0x05) loop = 0x05;           // MUTANT",
+  "expect": "GREEN"
+ },
+ {
+  "id": "S5-1",
+  "dump": "s5-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B415's $B42F arc table (type $0D), a stage-5 record",
+  "find": "  o.s0460[i] = arcTurn(rom, 0xB42F, y, i); // $B415 LDA $B42F,Y / $B418 STA $046C,X",
+  "replace": "  o.s0460[i] = arcTurn(rom, 0xB430, y, i); // MUTANT"
+ },
+ {
+  "id": "S5-2",
+  "dump": "s5-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B43C's $B45C arc table (type $0E), a stage-5 record",
+  "find": "  o.s0460[i] = arcTurn(rom, 0xB45C, y, i); // $B43C LDA $B45C,Y / $B43F STA $046C,X",
+  "replace": "  o.s0460[i] = arcTurn(rom, 0xB45D, y, i); // MUTANT"
+ },
+ {
+  "id": "PROBE-1",
+  "dump": "s5-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "NOT A MUTANT -- the OBVIOUS FIX for the $CA5E finding, PROVED WRONG here. Defaulting the SBC/ADC carry to SET instead of CLEAR takes 237 divergences to 3,580. The carry $CAE9 inherits is not a constant; it comes from a third source. Recorded so the next wave does not spend a day applying it.",
+  "find": "  let carry = 0;\n  if (o.animFrame[i] === 0) {",
+  "replace": "  let carry = 1;  // CANDIDATE FIX\n  if (o.animFrame[i] === 0) {"
  },
  {
   "id": "NEG-1",

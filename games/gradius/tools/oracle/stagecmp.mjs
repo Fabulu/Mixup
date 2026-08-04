@@ -236,10 +236,17 @@ function runStep(man, rows, ram, opt, res) {
       reuse += 1; continue;
     }
 
-    // `$9663`'s census is NOT replayed here (see PROLOGUE_ZEROED). It only
-    // runs when the board held `$19 == 4`, so those frames are counted and
-    // skipped rather than compared against a `$5C` this harness did not derive.
-    if (ram[(i - 1) * RAM_FRAME + 0x19] === 4) { fork += 1; continue; }
+    // `$9663`'s census is NOT replayed here (see PROLOGUE_ZEROED). It only runs
+    // when the board held `$19 == 4` DURING the frame -- which is the seed
+    // frame's byte with the run's own pokes applied on top, not the seed byte
+    // alone. Reading the seed byte alone left the first frame of every poke
+    // window in the comparison, and those six frames were the only non-$CA5E
+    // divergences the stage-5 run had: f2321 and f4371, the two window edges.
+    let z19 = ram[(i - 1) * RAM_FRAME + 0x19];
+    for (const p of pokes) {
+      if (p.addr === 0x19 && i - 1 >= p.from && i - 1 <= p.to) z19 = p.val;
+    }
+    if (z19 === 4) { fork += 1; continue; }
     const st = seedAt(ram, i - 1, pokes);
 
     try {
@@ -433,10 +440,34 @@ function runChain(dir, ram, opt, res) {
     vram: new Uint8Array(0x800), palette: new Uint8Array(32),
     oam: new Uint8Array(256),
   });
-  // The two pokes, at the same instant probe.lua applied them: AFTER sample
-  // `at`, so they first bite on `at + 1` on both sides.
-  state.zp19 = chain.stage;
-  state.substate = chain.sub;
+  // EVERY poke the run made, applied to the port at the same instant probe.lua
+  // applied it to the board: AFTER sample `g`, so it first bites on `g + 1` on
+  // both sides. `--mode chain` can carry more than the two ($0028, the loop
+  // counter, is the one that makes a LATER wrap reachable), so this walks the
+  // manifest's own string rather than re-stating the two by hand -- the first
+  // draft applied only $19 and $1B and the loop-6 run then diverged on $28 and
+  // $1A for 1,400 frames, which is a harness that did not do what the board did.
+  const SET = {
+    0x19: (s, v) => { s.zp19 = v; }, 0x1B: (s, v) => { s.substate = v; },
+    0x28: (s, v) => { s.save28[0] = v; }, 0x29: (s, v) => { s.save28[1] = v; },
+    0x40: (s, v) => { s.zp.speed = v; }, 0x41: (s, v) => { s.zp.missile = v; },
+    0x42: (s, v) => { s.zp.meter = v; }, 0x44: (s, v) => { s.zp.weapon = v; },
+    0x45: (s, v) => { s.zp.options = v; }, 0x46: (s, v) => { s.zp.shield = v; },
+  };
+  const chainPokes = parsePokes(chain.poke);
+  for (const p of chainPokes) {
+    if (!SET[p.addr]) {
+      throw new Error(`chain mode has no port-side model for the poke at `
+                    + `$${p.addr.toString(16)}; add one to SET rather than `
+                    + 'letting the two sides run different experiments.');
+    }
+  }
+  const applyPokes = (g) => {
+    for (const p of chainPokes) {
+      if (g >= p.from && g <= p.to) SET[p.addr](state, p.val);
+    }
+  };
+  applyPokes(at);
 
   let compared = 0, bad = 0, threw = null;
   const perField = {};
@@ -460,6 +491,7 @@ function runChain(dir, ram, opt, res) {
     if (prevB === null || String(b8) !== String(prevB)) {
       ladderBoard.push([g - at, ...b8]); prevB = b8;
     }
+    applyPokes(g);                       // the same instant as probe.lua
     for (let k = 0; k < WATCH.length; k++) {
       if (p[k] !== b[k]) {
         perField[WATCH[k][0]] = (perField[WATCH[k][0]] || 0) + 1;
