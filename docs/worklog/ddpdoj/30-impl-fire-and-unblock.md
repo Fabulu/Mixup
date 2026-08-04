@@ -1,6 +1,8 @@
 # W30 — IMPL: unblock `fly-around` (`$275914`), then wire the handler FIRE path
 
-status: **IN PROGRESS**
+status: **DONE** -- three of the four gate blockers ported, the fourth
+(the MIDBOSS `$26B6FA`) scoped out explicitly. Bullets now spawn from live
+enemies in the product. THE GATE IS STILL RED. See 3.
 wave: 30. role: IMPLEMENTER (sole writer to `games/ddpdoj/`).
 date: 2026-08-04.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Every address is build B
@@ -181,7 +183,29 @@ Two things to read off that, and they point opposite ways.
 
 ### 3.2 THE FULL GATE
 
-`python tools/oracle/pgm.py check`, on the final tree.
+`python tools/oracle/pgm.py check`, run to completion on the FINAL tree (an
+earlier run raced with this wave's edits and was discarded rather than quoted):
+
+```
+VERDICT: FAILURES -- 44 passed, 5 failed, 0 SKIPPED
+  [FAIL] scroll program: the port vs the whole of stage 1 (10,431 frames)
+  [FAIL] scroll program RED (9 mutations)
+  [FAIL] scroll program: the ATTRACT entry clock $0038 (1,364 frames)
+  [FAIL] scroll program RED [no-fast-forward] on the attract entry
+  [FAIL] fly-around: port vs board, 0 divergent frames
+```
+
+**The same five as W29, and 0 SKIPPED.** The four scroll-program stages are the
+pre-existing red nobody owns, failing since W22 and confirmed unchanged again
+here; the fifth is `fly-around`, red because it is BLOCKED, not because a
+column disagreed. **Nothing else regressed** — including the four stages that
+drive a whole `Game`: `display list`, `demo gate`, `replay determinism` and the
+`determinism gate`. Given that this wave added three handlers, a fire gate, two
+live fire paths and four buckets receiving their first sprite requests, those
+four staying green is the check that mattered.
+
+The `fly-around` figures in §3.1 were re-taken on the trace this gate run
+recorded, not on the cached one, and are identical.
 
 ## 4. WHAT THIS WAVE PORTED
 
@@ -331,6 +355,24 @@ quoted as "the port survives N frames".
 | bullet KINDS ever live | none | **{4, 5, 13, 19}** |
 | distinct handler throws in the window | 4 | **1** (`$26B6FA`) |
 
+**EVERY FIRE, BY THE ROM ADDRESS OF THE `jsr` THAT MADE IT** (`Game.bulletSpawns`,
+same survey; fired / spawned / declined by the freeze gate / DROPPED because the
+pool was full):
+
+```
+$268B14  fired 37  spawned 37  declined 0  dropped 0   type $11's kind-$D fan
+$275AD0  fired 15  spawned 15  declined 0  dropped 0   type $85's kind-$D fan
+$2817B8  fired 16  spawned 16  declined 0  dropped 0   type $80's WIDE aim256 loop
+$2817A8  fired 14  spawned 14  declined 0  dropped 0   type $80's NARROW loop
+$281484  fired 20  spawned 20  declined 0  dropped 0   type $80's laser pair
+```
+
+**Five distinct fire sites, 102 spawns, 0 dropped.** Zero dropped is worth
+saying out loud rather than passing over: the pool's free-slot search only
+examines 70 of its 210 slots until the `$81B414..$81B41A` window ladder opens,
+and this path never came close. It is also the number that would move first if
+a later wave wired the six fire/state machines still noted.
+
 **BUT F1 IS NOT CLOSED, AND SAYING SO IS THE POINT.** The four kinds that
 execute — 4, 5, 13, 19 — are all **W26** bodies, and all four are already in the
 set `{3,4,5,6,7,12,13,19}` that `27-review.md` measured as the only kinds any
@@ -438,3 +480,46 @@ instruments a wave normally trusts.
   sole remaining blocker.
 - 17 mutations run; two survived, both were defective checks, both fixed and
   re-run RED.
+
+## 9. WHERE THE WAVE ENDED, AND WHAT THE REVIEWER SHOULD LOOK AT FIRST
+
+**A. IS `fly-around` UNBLOCKED? NO.** It went from 345 compared frames to 1,097,
+and the blocker went `$275914` -> `$2739C0` -> `$26B6FA`. The midboss is 576
+instructions and is a wave of its own. **DaiOuJou is still not publishable and
+the reason is one named routine.**
+
+**B. DO ANY W27 BULLET BODIES EXECUTE LIVE? NO** — and this is the wave's second
+shortfall, stated as plainly as the first. Bullets DO now spawn from live
+enemies (102 spawns across five fire sites, peak 27 of 210 in the pool, first at
+lf2040, where W29 had zero and W28 measured the whole stack as dead code). But
+every kind those fire sites produce -- 4, 5, 13, 19 -- is a **W26** body, and
+all four were already inside the set `{3,4,5,6,7,12,13,19}` that
+`27-review.md` F1 measured as the only kinds any board recording has ever
+contained. **8 of 37 bodies have executed; the other 29 still have exactly one
+check each, written by the wave that wrote them.** F1 is not closed.
+
+**C. WHAT DIVERGED.** Nothing in the claimed set: 0 of 88 columns over all 1,097
+frames. In the REPORTED set, `rng` is newly divergent -- **first at lf2955,
+port `63` against board `64`, largest gap 2** -- and I could not identify the
+consumer (§8). The three display-list columns diverge as they always have and
+they moved TOWARD the board.
+
+### RANKED, FOR THE REVIEWER
+
+1. **§3** -- the gate is red and the midboss is the only thing left in the
+   window. Check that claim: it rests on a survey that frees the record each
+   throw names and carries on, which is off-distribution after the first one.
+2. **§7 / B above** -- no W27 body executes even now. The fire sites are wired
+   and they produce the wrong kinds to close F1.
+3. **§6's M15 and M16** -- two of my own checks could not fail, both for the
+   classic reason (a fixture value at which two operations agree; a scale factor
+   tested at input 0). If two got through, look for a third.
+4. **§5** -- four defects found by reading, three of them in W25 code that has
+   been green since. The inverted cadence (§5.2) is the one to re-derive.
+5. **§4.5** -- the `($2A,A5)`/`($2E,A5)` mislabel. Confirm from `$267F70` that
+   all twelve longwords really are enqueue stubs; the whole emitter wiring
+   rests on it.
+6. **§3.1's `rng`** -- 143 frames of an unexplained extra draw.
+7. **§7.1** -- `PRODUCED_BUCKETS` deliberately not extended.
+
+status: DONE
