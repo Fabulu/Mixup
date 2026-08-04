@@ -1,6 +1,13 @@
 # W33 — IMPL: stage-1 enemy handlers, CHOSEN BY THE BULLET KINDS THEY FIRE
 
-status: **IN PROGRESS**
+status: **DONE** — gate **`ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED`**, unit
+tests **492/0/0**. Stage-1 handlers **10 of 19 → 11 of 19**. The live bullet-kind
+set is **{3,4,5,7,13,19} before and after**, 0 of W27's 29 bodies — **and that
+was PREDICTED from the ROM before any code was written**: §2 measures that no
+non-boss stage-1 handler fires a kind outside the W26 eight. The wave's real
+product is that measurement and the defect it uncovered on the way: **the port
+had been leaking sub-records since W29 and silently discarding every spawn from
+lf2906 onward** (§4).
 wave: 33. role: IMPLEMENTER (sole writer to `games/ddpdoj/`).
 date: 2026-08-04.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Every address is build B
@@ -380,6 +387,41 @@ waves to keep:
   count is what stopped me, and it is in the test so nobody has to trust the
   paragraph.
 
+## 7.1 THE FULL GATE
+
+`python tools/oracle/pgm.py check`, run to completion on the final tree
+(MAME re-recorded every scenario; nothing was reused):
+
+```
+VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED
+```
+
+Unchanged from W32's 49/0/0. **Nothing was disabled, skipped, narrowed or
+loosened**; no compared column set, window or frame count moved. The stages
+this wave could plausibly have broken all pass on their own recordings:
+
+- `enemy stats: hitbox/HP/palette/HP-reload at spawn (W23)` — the gate that
+  W31's `tables` thread broke, and which runs the type-`$20` init body this
+  wave rewrote;
+- `spawn walker: cursor + spawn counter vs the whole of stage 1` — the walker
+  whose two failure arms are now counted;
+- `fly-around: port vs board, 0 divergent frames` — 2,200 frames with the
+  reaper and the carrier live;
+- `bullet mover: per-frame pool drive vs the board`, and the pattern gate over
+  three corpora.
+
+**Unit tests: 479 → 492 pass, 0 fail, 0 SKIPPED.**
+
+**A SKIP APPEARED AND WAS CHASED, NOT TOLERATED** — for the fourth wave
+running: `movement.test.js`'s W24 stream inventory skipped because its
+gitignored input `assets/w24-movement/stage1-streams.json` had vanished during
+the check. Regenerated with `python games/ddpdoj/tools/oracle/w24streams.py`
+**from the REPO ROOT**; 492/0/0. Adding to W32 §9's open question: this run
+saw the whole `assets/w24-movement/` **directory** gone, not just the file, and
+W32's grep found no site under `games/ddpdoj/tools/` that removes anything
+there. The mechanism is still unidentified; I did not find it either and I am
+not repeating the inherited attribution as though I had.
+
 ## 8. WHAT I COULD NOT DETERMINE
 
 - **Which kinds the stage-1 BOSS actually fires.** §2 attributes kinds 9 and 11
@@ -442,3 +484,60 @@ waves to keep:
   checks of mine (§7), neither uncatchable.
 - `spawnEvent` added so the two silent drop arms are COUNTED — the check that
   would have caught §4's defect four waves ago.
+
+## 9. WHERE THE WAVE ENDED
+
+**A. HANDLERS PORTED: 11 of 19** (289 → 295 of 339 spawn records).
+`$272AAC` (types `$20`/`$21`/`$23`) plus, not a handler but the thing that made
+any of it reachable, the reaper half of `$28AD54` (type-5 call #3; `TYPE5_PORTED`
+9 → 10 of 23).
+
+**B. THE LIVE BULLET-KIND SET: {3,4,5,7,13,19} BEFORE, {3,4,5,7,13,19} AFTER.**
+No W27 body executed for the first time. **It could not have**: §2 enumerates
+all 519 generator call sites (and proves there are no pc-relative ones) and
+measures that every non-boss stage-1 handler fires only 4, 6, 13 or nothing.
+The only stage-1 producer of a W27 kind is the boss `$292902`, through a script
+format nobody has read — and `w26-mover-invuln.tsv` contains 813 recorded frames
+of that boss and still shows only the eight.
+
+**C. THE GATE: 49 passed / 0 failed / 0 SKIPPED. Unit tests 492/0/0.**
+
+### RANKED, FOR THE REVIEWER
+
+1. **§4, the sub-record leak.** Four waves of coverage numbers were taken on a
+   port that stopped spawning ~900 frames into every run. Re-read anything that
+   said "N frames, 0 divergent" from W29 on with that in mind. The fix is twelve
+   instructions; the reason nobody saw it is that `$28AD54` was noted under a
+   description of its *second* routine.
+2. **§2's conclusion is a negative claim and negatives are where this project
+   gets burned.** It rests on: 519 absolute call sites, 0 pc-relative ones, and
+   a recursive closure per handler. If a handler reaches a generator through an
+   indirect `jsr (A0)` off a table I did not follow, the claim is wrong. I found
+   no such construct in these eight bodies; that is what I tried, not a proof.
+3. **§7's M12/M13** — two of my own checks could not fail on the first pass, and
+   M12 nearly went into this worklog as "provably uncatchable" when it is
+   catchable on 2,047 of 65,536 inputs.
+4. **§5.2** — a W23 `note()` that asserted three record fields "are not
+   loader-written" when the loader writes all three. Notes carry claims and
+   claims rot.
+5. **§6** — kind 12 is fired by a PORTED handler (`$268232`) from inside a
+   deferral. It is the cheapest remaining kind, and it is a fire-machine port,
+   not a handler port.
+
+### FOR WHOEVER PLANS THE NEXT WAVE
+
+W28's recon put "the 13 remaining stage-1 handlers" at waves 5–6 of 15. This
+wave's measurements reorder that:
+
+- **8 of the 9 remaining are unreachable by any port run** until the port can
+  DAMAGE an enemy — `$286096` is a note in every handler, so the midboss never
+  dies, the scroll never resumes, and clk stops at 239. Collision/damage (the
+  recon's wave 7) is a hard prerequisite, not a follow-on.
+- **Porting them is therefore transcription with no dynamic check available**,
+  which is exactly the shape `27-review.md` F1 objects to. Doing it before
+  damage lands would add 8 more bodies whose only check is the wave that wrote
+  them.
+- **F1 cannot be closed inside stage 1 at all.** Its 29 bodies are stage-2+
+  content (types `$84`/`$95`/`$96` fire kinds 8 and 11 and first spawn at
+  lf12379, after the stage-1→2 boundary) and the stage-1 boss. Closing it means
+  either the boss's script format or a stage-2 corpus.
