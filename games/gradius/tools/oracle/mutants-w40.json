@@ -1,0 +1,201 @@
+[
+ {
+  "id": "S6-1",
+  "dump": "s6-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B488's PHASE := 2 on the init arm becomes 1 (stage 6, type $1A)",
+  "find": "    o.s0480[i] = 0x02;                     // $B488 LDA #$02 / STA $048C,X",
+  "replace": "    o.s0480[i] = 0x01;                     // MUTANT"
+ },
+ {
+  "id": "S6-2",
+  "dump": "s6-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B4E4[rank], the FLY-leg dwell row, read one byte along",
+  "find": "    o.s04C0[i] = rom.read(0xB4E4 + state.zp17);   // $B48D LDY $17 / LDA $B4E4,Y",
+  "replace": "    o.s04C0[i] = rom.read(0xB4E5 + state.zp17);   // MUTANT"
+ },
+ {
+  "id": "S6-3",
+  "dump": "s6-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B4EB[rank], the DRIFT-leg dwell row, read one byte along",
+  "find": "      o.s04C0[i] = rom.read(0xB4EB + state.zp17);  // $B4D4 LDY $17 / LDA $B4EB,Y",
+  "replace": "      o.s04C0[i] = rom.read(0xB4EC + state.zp17);  // MUTANT"
+ },
+ {
+  "id": "S6-4",
+  "dump": "s6-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B4AB's phase dispatch: DRIFT taken on phase 1 instead of phase 2",
+  "find": "  if (o.s0480[i] === 2) {                  // $B4AB DEY / $B4AC BEQ $B4C8",
+  "replace": "  if (o.s0480[i] === 1) {                  // MUTANT"
+ },
+ {
+  "id": "S6-5",
+  "dump": "s6-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B4BC's PHASE := 2 after the FLY leg becomes 0",
+  "find": "  o.s0480[i] = 0x02;                       // $B4C4 LDA #$02 / $B4C6 BNE $B4B8",
+  "replace": "  o.s0480[i] = 0x00;                       // MUTANT"
+ },
+ {
+  "id": "GEN-1",
+  "dump": "s6-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B650,Y, the shared animator's per-record frame time, read one along",
+  "find": "  if (o.timer[i] < rom.read(0xB650 + y)) return;     // $B62E CMP $B650,Y / BCC RTS",
+  "replace": "  if (o.timer[i] < rom.read(0xB651 + y)) return;     // MUTANT"
+ },
+ {
+  "id": "GEN-2",
+  "dump": "s6-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B026's type constant $91 -> $11 (the type-$11 handler's init arm)",
+  "find": "  o.type[i] = 0x91;                      // $B026 LDA #$91 / $B028 STA $030C,X",
+  "replace": "  o.type[i] = 0x90;                      // MUTANT"
+ },
+ {
+  "id": "GEN-3",
+  "dump": "s6-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B098's type constant $92 -> $93 (the type-$12 handler's init arm)",
+  "find": "  o.type[i] = 0x92;                      // $B098 LDA #$92 / $B09A STA $030C,X",
+  "replace": "  o.type[i] = 0x93;                      // MUTANT"
+ },
+ {
+  "id": "S7-1",
+  "dump": "s7-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B6FA's +8 probe offset on the walker's floor test (stage 7, type $07)",
+  "find": "  const py = u8(o.y[i] + 8);             // $B6FA LDA $032C,X / CLC / ADC #$08",
+  "replace": "  const py = u8(o.y[i] + 9);             // MUTANT"
+ },
+ {
+  "id": "S7-2",
+  "dump": "s7-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B707's downward step +3 becomes +4",
+  "find": "    walkerStepY(state, 0x03);            // $B707 LDA #$03 / BNE $B71D -> $B70B",
+  "replace": "    walkerStepY(state, 0x04);            // MUTANT"
+ },
+ {
+  "id": "S7-3",
+  "dump": "s7-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B75A's -8 probe offset on the CEILING walker (stage 7, type $13)",
+  "find": "  const py = u8(o.y[i] - 8);             // $B75A LDA $032C,X / SEC / SBC #$08",
+  "replace": "  const py = u8(o.y[i] - 9);             // MUTANT"
+ },
+ {
+  "id": "S7-4",
+  "dump": "s7-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B3AA's metasprite $67 on the type-$0B handler",
+  "find": "  o.anim[i] = 0x67;                           // $B3AA LDA #$67 / STA $012C,X",
+  "replace": "  o.anim[i] = 0x66;                           // MUTANT"
+ },
+ {
+  "id": "S7-5",
+  "dump": "s7-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B3D0's $14 dwell on the type-$0C handler",
+  "find": "    o.s04C0[i] = 0x14;                   // $B3D0 LDA #$14 / $B3D2 STA $04CC,X",
+  "replace": "    o.s04C0[i] = 0x13;                   // MUTANT"
+ },
+ {
+  "id": "S7-6",
+  "dump": "s7-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$AF8D's $F6/$0C hatch-spawn pair (type $10)",
+  "find": "  hatchSpawn(state, rom, j, 0xF6, 0x0C); // $AF8D LDY #$F6 / LDA #$0C / JSR $AF98",
+  "replace": "  hatchSpawn(state, rom, j, 0xF5, 0x0C); // MUTANT"
+ },
+ {
+  "id": "S7-7",
+  "dump": "s7-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$AF94's metasprite $79 on the type-$10 hatch body",
+  "find": "  hatchBody(state, j, 0x79);             // $AF94 LDA #$79 / $AF96 BNE $AF54",
+  "replace": "  hatchBody(state, j, 0x78);             // MUTANT"
+ },
+ {
+  "id": "R32A-1",
+  "dump": "w32arepro",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B563's DEC $036C,X -- the drifter's one pixel per frame becomes two",
+  "find": "  o.x[i] = u8(o.x[i] - 1);               // $B563 DEC $036C,X",
+  "replace": "  o.x[i] = u8(o.x[i] - 2);               // MUTANT"
+ },
+ {
+  "id": "R32A-2",
+  "dump": "w32arepro",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "$B55E's LDY #$09 -- the drifter's animator record index",
+  "find": "  sub_B628(state, rom, j, 9);            // $B55E LDY #$09 / $B560 JSR $B628",
+  "replace": "  sub_B628(state, rom, j, 8);            // MUTANT"
+ },
+ {
+  "id": "R31-1",
+  "dump": "w31repro",
+  "pipeline": "enemies",
+  "file": "src/enemies.js",
+  "why": "$C5D6/$C5D9's double DEC on the ramp arm becomes a single one",
+  "find": "    o.yvel[i] = u8(o.yvel[i] - 1);           // $C5D9 DE BC 03",
+  "replace": "    o.yvel[i] = u8(o.yvel[i] - 0);           // MUTANT"
+ },
+ {
+  "id": "R31-2",
+  "dump": "w31repro",
+  "pipeline": "enemies",
+  "file": "src/enemies.js",
+  "why": "$C5DE's AND #$0F jitter mask becomes #$07",
+  "find": "  const jitter = state.frame & 0x0F;         // $C5DC LDA $02 / $C5DE AND #$0F",
+  "replace": "  const jitter = state.frame & 0x07;         // MUTANT"
+ },
+ {
+  "id": "R31-3",
+  "dump": "w31repro",
+  "pipeline": "enemies",
+  "file": "src/enemies.js",
+  "why": "$C601's crater X table read one byte along",
+  "find": "  o.x[i] = rom.read(0xC601 + aa);            // $C5EC LDY $AA / LDA $C601,Y / STA $036C,X",
+  "replace": "  o.x[i] = rom.read(0xC602 + aa);            // MUTANT"
+ },
+ {
+  "id": "R31-4",
+  "dump": "w31repro",
+  "pipeline": "enemies",
+  "file": "src/enemies.js",
+  "why": "$C5F9's ceiling Y of $2C becomes $2D",
+  "find": "  o.y[i] = 0x2C;                             // $C5F9 LDA #$2C / STA $032C,X",
+  "replace": "  o.y[i] = 0x2D;                             // MUTANT"
+ },
+ {
+  "id": "NEG-1",
+  "dump": "s7-chunks",
+  "pipeline": "tail",
+  "file": "src/enemies.js",
+  "why": "CONTROL: a comment-only edit. Must come back GREEN, or the gate is red for a reason other than the mutation.",
+  "find": "// ================= WAVE 35: ENTRY 26, $B480 -- STAGE 6 ======================",
+  "replace": "// ================= WAVE 35: ENTRY 26, $B480 -- STAGE SIX ====================",
+  "expect": "GREEN"
+ }
+]

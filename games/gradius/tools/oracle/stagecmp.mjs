@@ -69,7 +69,7 @@ const RAM_FRAME = 0x800;
 
 // ---------------------------------------------------------------------------
 function parseArgs(argv) {
-  const o = { tag: null, limit: 12, pipeline: 'enemies', dir: null };
+  const o = { tag: null, limit: 12, pipeline: 'enemies', dir: null, only: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--tag') o.tag = argv[++i];
@@ -80,6 +80,13 @@ function parseArgs(argv) {
     else if (a === '--dir') o.dir = argv[++i];
     else if (a === '--limit') o.limit = Number(argv[++i]);
     else if (a === '--pipeline') o.pipeline = argv[++i];
+    // --only narrows the comparison to one or more type bytes (bit 7 masked).
+    // The dump indexes every live object, which is what makes the run reusable;
+    // this is how a stage's OWN types are separated from the stage-1 traffic
+    // that happened to be on screen at the same time.
+    else if (a === '--only') {
+      o.only = new Set(argv[++i].split(',').map((v) => parseInt(v, 16) & 0x7F));
+    }
     else if (a === '--quiet') o.quiet = true;
     else throw new Error(`unknown argument ${a}`);
   }
@@ -105,9 +112,63 @@ function parsePokes(s) {
   });
 }
 
+/**
+ * THE THREE BYTES THE NMI PROLOGUE WRITES BEFORE THE OBJECT CHAIN RUNS, and the
+ * reason they are taken from the LATER frame.
+ *
+ * This harness seeds from the sample at frame i-1 and then runs the object
+ * chain, which on the cartridge is `$9A64`-`$9A73` -- a long way into NMI i.
+ * Three zero-page bytes are already the NEW frame's by the time it gets there:
+ *
+ *   $02  `$80BE INC $02`, the free-running frame counter. Handlers fork on its
+ *        low bits ($C415's AND #$03, and every "every other frame" gate), so a
+ *        seed one behind puts the whole chain a frame out of phase.
+ *   $05  the edge-detected buttons and
+ *   $07  the held buttons, both filled by `$81BF`'s controller strobe.
+ *        `updatePlayer` reads them, the player moves, and every aiming routine
+ *        ($BCB5, $BDFA) reads the player's NEW position -- so a stale pair
+ *        produces velocities that are right for the wrong frame.
+ *
+ * Taking them from sample i is not an approximation: `$80B5` samples at the END
+ * of NMI i and nothing between `$81BF` and `$80B5` writes any of the three
+ * again, so sample i's copies ARE the values the object chain read.
+ *
+ * MEASURED, on the stage-6 run: seeding all three from i-1 gave 1,200 field
+ * divergences over 503,307 comparisons, 1,034 of them the `$040C,X` shot
+ * countdown alternating +-1 -- the signature of a one-frame phase error, not of
+ * a wrong constant.
+ */
+const PROLOGUE_BYTES = [0x02, 0x05, 0x07];
+
+/**
+ * `$9650-$965A`, THE FOUR STORES EVERY MODE-5 FRAME MAKES BEFORE THE BODY:
+ *
+ *   9650 LDA #$0C / STA $13      9656 STA $5D / 9658 STA $5B / 965A STA $5C
+ *
+ * A sample taken at `$80B5` is taken AFTER the frame filled `$5D` and `$5B`
+ * again, so seeding them from it hands the object chain last frame's leftovers.
+ * `$5D` in particular is load-bearing: `$BBB7 LDA $5D / BNE $BC19` skips the
+ * whole enemy-shot countdown, so a stale non-zero `$5D` makes the port miss a
+ * decrement the board made.
+ *
+ * MEASURED. Before this line, the stage-6 run had 405 `$040C,X` divergences and
+ * every one of them was the port failing to decrement on a frame the board did.
+ * After it, zero. That is a defect in this HARNESS, found and fixed here; it is
+ * not a statement about `src/`, which was never touched.
+ *
+ * `$5C` is zeroed for the same reason and with one caveat, which the comparator
+ * counts rather than hides: `$9663` writes `$5C` again, later in the same
+ * prologue, but ONLY when `$19 == 4`. A run that compares frames on which the
+ * board held `$19 == 4` therefore needs `$9663`'s census replayed, and this
+ * harness does not replay it -- so those frames are counted and reported.
+ */
+const PROLOGUE_ZEROED = [0x5D, 0x5B, 0x5C];
+
 function seedAt(ram, frame, pokes) {
   const slice = ram.slice(frame * RAM_FRAME, (frame + 1) * RAM_FRAME);
   for (const p of pokes) if (frame >= p.from && frame <= p.to) slice[p.addr] = p.val;
+  for (const a of PROLOGUE_BYTES) slice[a] = ram[(frame + 1) * RAM_FRAME + a];
+  for (const a of PROLOGUE_ZEROED) slice[a] = 0;
   const state = createState();
   // The video seed is IRRELEVANT here and is passed as zeros rather than
   // omitted, because seedFromCartridge() builds a complete machine or none.
@@ -151,6 +212,7 @@ function runStep(man, rows, ram, opt, res) {
   const perField = {};
   const first = [];
   const typesSeen = new Map();      // type -> frames compared
+  const typesBad = new Map();       // type -> field divergences
   const animsSeen = new Set();
   const freed = new Set();
   const note = (m) => { if (first.length < opt.limit) first.push(m); };
@@ -158,6 +220,7 @@ function runStep(man, rows, ram, opt, res) {
   for (const r of rows) {
     const i = r.frame;
     const prev = r.prevType, now = r.type;
+    if (opt.only && !opt.only.has(prev & 0x7F) && !opt.only.has(now & 0x7F)) continue;
     // A row whose BEFORE has no object is a SPAWN frame: `$A2C0` created it
     // earlier in the same frame. The `enemies` pipeline does not replay the
     // spawn engine, so it has nothing to compare; `tail` does.
@@ -171,12 +234,11 @@ function runStep(man, rows, ram, opt, res) {
       reuse += 1; continue;
     }
 
+    // `$9663`'s census is NOT replayed here (see PROLOGUE_ZEROED). It only
+    // runs when the board held `$19 == 4`, so those frames are counted and
+    // skipped rather than compared against a `$5C` this harness did not derive.
+    if (ram[(i - 1) * RAM_FRAME + 0x19] === 4) { fork += 1; continue; }
     const st = seedAt(ram, i - 1, pokes);
-    // `$9A5E BCS $9A70`: with two or more arm groups censused the cartridge
-    // runs the `$968E` fork instead, in a DIFFERENT order. Those frames are not
-    // this comparison's frames; they are counted and skipped rather than
-    // compared against the wrong sequence.
-    if (st.zp5C >= 2) { fork += 1; continue; }
 
     try {
       if (opt.pipeline === 'tail') {
@@ -205,6 +267,7 @@ function runStep(man, rows, ram, opt, res) {
       const want = ram[i * RAM_FRAME + addr + r.slot];
       if (got !== want) {
         perField[name] = (perField[name] || 0) + 1;
+        typesBad.set(prev & 0x7F, (typesBad.get(prev & 0x7F) || 0) + 1);
         bad += 1;
         note(`f${i} slot ${r.slot} type ${hex(prev)} ${name}: `
            + `port ${hex(got)} board ${hex(want)}`);
@@ -219,7 +282,8 @@ function runStep(man, rows, ram, opt, res) {
     + (opt.pipeline === 'tail' ? ' (compared: the tail replays $A2C0)'
       : ' (skipped: --pipeline enemies does not replay $A2C0)'));
   console.log(`  slot re-used same frame  : ${reuse} (nothing to compare)`);
-  console.log(`  $968E fork frames ($5C>=2): ${fork} (a different frame order)`);
+  console.log(`  $19 == 4 frames skipped   : ${fork} ($9663's census is not `
+    + 'replayed here)');
   console.log(`frames compared            : ${compared}`);
   console.log(`fields per frame           : ${fields.length}`
     + `  -> ${compared * fields.length} field comparisons`);
@@ -235,7 +299,9 @@ function runStep(man, rows, ram, opt, res) {
   const rom = res.enemyTables;
   for (const [t, n] of [...typesSeen].sort((a, b) => a[0] - b[0])) {
     const h = handlerOf(rom, t);
-    console.log(`  type ${hex(t)} -> ${h}  : ${n} frames compared`
+    const nb = typesBad.get(t) || 0;
+    console.log(`  type ${hex(t)} -> ${h}  : ${n} frames compared, `
+      + `${nb} field divergences`
       + (freed.has(t) ? ', freed the slot at least once' : ''));
   }
   console.log('  metasprites the board showed: '

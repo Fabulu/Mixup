@@ -158,3 +158,182 @@ node .../stage4cmp.mjs                     spawns compared 271, mismatches  0
 The second line is the one that matters: **W31's own comparator, unmodified,
 reading the NEW tool's run.** Same board run, two independent comparators, same
 verdict. `--emit-legacy` exists for exactly that check.
+
+### 2b. W32a REPRODUCED THROUGH THE NEW TOOL
+
+```
+python .../stagepoke.py --mode step --stage 4 --window 1300-1345 \
+    --frames 5600 --types 1D --fields w32a --tag w32arepro
+
+poke 0044=2@400-5599,...,0019=4@1300-1345,0019=0@1346-5599   <- b559poke.py's, exactly
+indexed 2385 slot-frames                                     <- b559poke.py's 2385
+f1338 $61 $02 -> chunk 1   $19 was $04 at the crossing   <- RIDDEN
+
+node .../stagecmp.mjs --tag w32arepro
+  frames compared 2371   fields per frame 10   FIELD DIVERGENCES 0
+  spawn frames 12, slot re-used 2        metasprites $52..$57
+```
+
+2,371 and 0, field for field with W32a. With `--pipeline tail` the twelve SPAWN
+frames become real comparisons instead of an approximated init arm — the port's
+own `$A2C0` produces the drifters — and that is 2,374 frames, still 0.
+
+### 2c. TWO DEFECTS IN THIS HARNESS, FOUND BY ITS OWN NUMBERS
+
+Neither is in `src/`. Both were found because a 21-field comparison over 500,000
+fields makes a one-frame phase error visible where a 10-field one did not.
+
+1. **The NMI prologue.** Seeding from sample i−1 and then running `$9A64` hands
+   the object chain a stale `$02` (the frame counter `$80BE` INCs) and stale
+   `$05`/`$07` (the buttons `$81BF` polls). Signature: 1,034 `$040C,X` shot
+   countdowns alternating ±1. Fixed by taking those three from sample i, which
+   is exact — nothing writes them again before `$80B5`.
+2. **`$9650`-`$965A`.** Every mode-5 frame clears `$5D`, `$5B` and `$5C` before
+   the body. A sample is taken after the frame refilled them. `$5D` is
+   load-bearing: `$BBB7 LDA $5D / BNE $BC19` skips the whole enemy-shot
+   countdown, so a stale `$5D` made the port miss decrements the board made.
+   Signature: 405 `$040C,X` divergences, all in one direction. Fixed by zeroing
+   the three, which is what the ROM does.
+
+Residual after both: **0**. The two fixes are documented at their constants in
+`stagecmp.mjs` with the measurement that found them.
+
+---
+
+## 3. STAGE 6 AND STAGE 7 — THE FIRST CARTRIDGE EVIDENCE EITHER HAS EVER HAD
+
+Both runs ride **five** chunk crossings in one 5,600-frame trajectory, so the
+board loads that stage's chunks 1, 2, 3, 4 and 5 in turn and the wave engine
+spawns its own records with the game's own descriptor bytes. `$19` is handed
+back after each 46-frame window, so every compared frame runs under stage 1's
+`$19` — measured, `$5C == 0` on all 5,600 frames of both runs, so `$9663` never
+censused an arm group and the `$968E` fork never ran.
+
+```
+python .../stagepoke.py --mode step --stage 5 \
+    --window 1300-1345 --window 2320-2367 --window 3345-3391 \
+    --window 4370-4415 --window 5395-5439 --frames 5600 --fields full \
+    --tag s6-chunks                                     ($19 = 5 -> STAGE 6)
+    ... --stage 6 ... --tag s7-chunks                   ($19 = 6 -> STAGE 7)
+
+both: f1338 chunk 1, f2362 chunk 2, f3386 chunk 3, f4410 chunk 4, f5434 chunk 5
+      -- all five RIDDEN ($19 held at the crossing frame, re-derived from the
+      run's own film, not from the run the windows were picked on)
+```
+
+### STAGE 6 (`$19 = 5`) — `node stagecmp.mjs --tag s6-chunks --pipeline tail`
+
+```
+indexed slot-frames  24016      spawn frames 117 (compared)   re-used 49
+frames compared      23967      fields per frame 21  -> 503,307 field comparisons
+port THREW on        0
+FIELD DIVERGENCES    0                    <- FIRST DIVERGENT FIELD: none
+```
+
+| type | handler | frames compared | divergences |
+|---|---|---:|---:|
+| `$1A` | **`$B480`** — stage 6's own, W35's port | 2,912 | **0** |
+| `$11` | `$B026` | 2,666 | 0 |
+| `$12` | `$B098` | 2,847 | 0 |
+| `$08` | `$B26C` | 2,869 | 0 |
+| `$04` | `$B205` | 2,583 | 0 |
+| `$09` | `$B311` | 1,587 | 0 |
+| `$0F` | `$AF2E` | 930 | 0 |
+| `$05` | `$B0AF` | 374 | 0 |
+| `$27`/`$01` | `$AEDD` | 5,992 | 0 |
+| `$02` | `$AE99` | 1,090 | 0 |
+| `$00` | `$AE70` (spawn frames) | 117 | 0 |
+
+43 distinct metasprites appeared on the board across those frames.
+
+### STAGE 7 (`$19 = 6`) — `node stagecmp.mjs --tag s7-chunks --pipeline tail`
+
+```
+indexed slot-frames  34923      spawn frames 88 (compared)    re-used 15
+frames compared      34908      fields per frame 21  -> 733,068 field comparisons
+port THREW on        0
+FIELD DIVERGENCES    0                    <- FIRST DIVERGENT FIELD: none
+```
+
+| type | handler | frames compared | divergences |
+|---|---|---:|---:|
+| `$13` | **`$B747`** — the ceiling walker, W36's port | 9,990 | **0** |
+| `$07` | **`$B6E1`** — the floor walker, W36's port | 9,525 | **0** |
+| `$11` | `$B026` | 4,640 | 0 |
+| `$12` | `$B098` | 4,597 | 0 |
+| `$04` | `$B205` | 1,983 | 0 |
+| `$0B` | `$B37F` | 757 | 0 |
+| `$0C` | `$B3CB` | 569 | 0 |
+| `$10` | `$AF88` | 465 | 0 |
+| `$05` | `$B0AF` | 374 | 0 |
+| `$08` | `$B26C` | 153 | 0 |
+| `$06` | `$B198` | 133 | 0 |
+| `$01`/`$02`/`$00` | `$AEDD`/`$AE99`/`$AE70` | 1,722 | 0 |
+
+42 distinct metasprites appeared on the board across those frames.
+
+**READ THE LABEL.** Both are INTERVENTION runs. They say the port's transcription
+of stage 6's and stage 7's handlers agrees with the cartridge, byte for byte,
+over 1.24 million field comparisons. They say NOTHING about how either stage
+plays, paces or looks — the terrain under these enemies is stage 1's.
+
+### 3a. WHAT THESE RUNS DID *NOT* REACH, stated as an attempt and not an absence
+
+* **Stage 7's chunks 5 and 6 boss records** — types `$1E`, `$20`, `$21`, `$22`,
+  `$23`, `$24`, `$25`, which are the ONLY types in stage 7 that appear nowhere
+  in stages 1-2. The chunk-5 crossing is at f5434 and the player dies at f5514,
+  so the board had 80 frames of that chunk and those records' triggers had not
+  come round. NOT compared. (Chunks 1-4 use types stage 1/2 also use — but with
+  stage 7's own descriptor bytes, which is what these runs exercised.)
+* **Stage 6's chunk 6 and both stages' chunk 7.** Stage 7's `$A836` chunk-7
+  pointer reads `$8010` and streams 239 records — a table overrun, not a chunk.
+  Not ridden and not to be ridden without a separate finding first.
+* **Every stage's LATE SPAWNER except stage 4's.** `jt_$C439[$19]` needs the
+  `$82` countdown window (`--mode spawn`), which this trajectory reaches at
+  f6460 — a second run per stage. Not done here.
+
+### 3b. THE MUTATION TABLE — 21 of 21 red, and `src/` never written
+
+`src/` belongs to a concurrent agent this wave, so the mutant cannot live there.
+`mutgate.py` copies `src`, `tests` and `assets` to a scratch tree, mutates the
+COPY, and points the copy's comparator back at the REAL run's dump (`--dir`), so
+the cartridge bytes are the same bytes the green run used and the only thing
+that changed is the port. It re-hashes the real `src/` before and after.
+
+```
+python .../mutgate.py --dump s6-chunks --mutants .../mutants-w40.json
+RED 21 of 21 mutants; 1 control green as designed: ['NEG-1']
+games/gradius/src: 2 file(s) moved under this run (src/flow.js, src/nmi.js)
+  -- NOT mine: no '// MUTANT' marker is present in any of them.
+```
+
+(The two moved files are the concurrent agent's work, caught by the check and
+distinguished from mine by the marker every mutation this tool writes carries.)
+
+| id | target | divergences |
+|---|---|---:|
+| S6-1 | `$B488` PHASE := 2 → 1 (type `$1A`) | 48 |
+| S6-2 | `$B4E4[rank]` FLY dwell row, one byte along | 45 |
+| S6-3 | `$B4EB[rank]` DRIFT dwell row, one byte along | 46 |
+| S6-4 | `$B4AB` phase dispatch: DRIFT on phase 1 | 11,326 |
+| S6-5 | `$B4BC` PHASE := 2 → 0 after the FLY leg | 12 |
+| GEN-1 | `$B650,Y` shared animator frame time | 810 |
+| GEN-2 | `$B026` type constant `$91` → `$90` | 2,668 |
+| GEN-3 | `$B098` type constant `$92` → `$93` | 2,850 |
+| S7-1 | `$B6FA` +8 floor probe → +9 | 247 |
+| S7-2 | `$B707` step +3 → +4 | 934 |
+| S7-3 | `$B75A` −8 ceiling probe → −9 | 4,496 |
+| S7-4 | `$B3AA` metasprite `$67` → `$66` | 446 |
+| S7-5 | `$B3D0` dwell `$14` → `$13` | 5 |
+| S7-6 | `$AF8D` hatch spawn `$F6` → `$F5` | 5 |
+| S7-7 | `$AF94` metasprite `$79` → `$78` | 464 |
+| R32A-1 | `$B563` DEC → subtract 2 | 2,403 |
+| R32A-2 | `$B55E` animator record 9 → 8 | 329 |
+| R31-1 | `$C5D9` the second DEC removed | 28 |
+| R31-2 | `$C5DE` AND `#$0F` → `#$07` | 135 |
+| R31-3 | `$C601` crater X table one along | 270 |
+| R31-4 | `$C5F9` ceiling Y `$2C` → `$2D` | 270 |
+| NEG-1 | **CONTROL**: a comment-only edit | **0 (green, as designed)** |
+
+The control is not decoration. Without it, "every mutant went red" could equally
+mean the harness goes red on any edit at all.
