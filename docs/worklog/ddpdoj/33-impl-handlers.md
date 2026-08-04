@@ -103,6 +103,39 @@ ported" — is false for stage 1.** Porting stage-1 enemy handlers cannot make a
 W27 body execute. That is the wave's first finding and it is measured, not
 argued.
 
+### 2.1 AND THE SAME IS TRUE OF THE ALREADY-PORTED HANDLERS' NOTED FIRE PATHS
+
+Worth checking separately, because "the handler is ported but its fire machine
+is a `note()`" is the other way a kind could be one deferral away:
+
+| noted machine | owner | kinds behind it |
+|---|---|---|
+| `$2682F8..$268490` | type `$10` | **12** (one site) |
+| `$269D84..` | types `$05`/`$07`/`$27` | **13** |
+| `$28AC72` (sub-record spawn engine) | types `$82`/`$85`/`$80` | **none** — the whole of `$28xxxx` contains 0 of the 519 generator call sites |
+
+So no deferral inside a ported stage-1 handler is hiding a W27 kind either.
+What those deferrals ARE hiding is **kind 12**, which is why the port has never
+dispatched it (§6).
+
+### 2.2 AND STAGE 1 REACHES TWO TYPES ITS SCRIPT DOES NOT NAME
+
+Enemies spawn enemies. Read out of the ROM (every `jsr` to the three deferred
+enqueues `$263678`/`$263684`/`$263690`, with the D0 immediate at each site):
+
+- `$0D.hand` (the midboss) enqueues **type `$1C`** — its own death burst,
+  `$26B184`'s 14-record list at `$26B214`. Type `$1C` has no fire site.
+- `$0E.hand` (the boss) enqueues **type `$1E`**, whose handler `$296DD6` fires
+  kinds **3, 4, 5** — all W26.
+- `$20`/`$21`/`$23` enqueue a type the MOVEMENT STREAM names, not an immediate.
+  Resolved through the aux table `$23170C` and resource `$231852` for all six
+  stage-1 records: five spawn type `$11`, one spawns type `$10`. **Both ported.**
+
+Confirmed dynamically from the board's own `w22-spawn-stage1.tsv`: over stage 1
+the recorded run spawns exactly the 21 scripted types plus `$1C` and `$1E`.
+(The `$84`/`$8D`/`$8F`/`$90`/`$95`/`$96` in that file — three of which DO fire
+W27 kinds — all appear after lf12379, i.e. in **stage 2**.)
+
 ## 3. AND EIGHT OF THE NINE ARE BEHIND A WALL THE PORT CANNOT PASS
 
 The stage-1 script's records are keyed on the distance clock `$8130CE`
@@ -346,6 +379,33 @@ waves to keep:
   to write this up as "provably uncatchable" like W31's M11/M12; the exhaustive
   count is what stopped me, and it is in the test so nobody has to trust the
   paragraph.
+
+## 8. WHAT I COULD NOT DETERMINE
+
+- **Which kinds the stage-1 BOSS actually fires.** §2 attributes kinds 9 and 11
+  to `$292902`'s address range by nearest-preceding-type-table-entry, which is
+  a lead, not a fact: the boss dispatches through installed script tables and
+  the D0 at those sites is `move.l ($C,A4),D0`, a data read. **I could not
+  reach it; what I tried:** the recursive call closure from `$292902` (48
+  routines, 0 generator sites — it never reaches one by a static branch), the
+  519-site kind resolution, and a pc-relative scan that found 0 further sites.
+  Bounding the boss's kind set needs the script format read first, which is the
+  recon's waves 12–13.
+- **Why `w26-mover-invuln.tsv` contains 813 frames of a live stage-1 boss and
+  no kind outside the eight.** Either the boss's kind-9/11 phases are not
+  entered in that run, or the `$295xxx`/`$296xxx` sites are not the stage-1
+  boss's at all. I did not distinguish the two.
+- **Whether the 57 unresolved generator call sites carry a new kind.** They are
+  the ones whose D0 comes from a struct (`$29DAFA move.l ($C,A4),D0`), i.e.
+  data-driven, and all 57 are in `$264xxx` or `$299xxx..$29Exxx` — outside
+  stage 1's handlers. So they do not bear on this wave's question, and I did not
+  read the tables behind them.
+- **Whether the board drops the same spawns the port now drops.** `spawnEvent`
+  counts them; no corpus column records the board's side, so the two are not
+  compared. Stated as a limit.
+- **Anything about the board that this wave measured itself.** No new MAME
+  recording. Every dynamic number above is the port replayed against TSVs
+  already on disk, or the ROM listing.
 
 ## LOG (appended as findings arrive)
 
