@@ -1,8 +1,26 @@
-// THE SIX ENEMY HANDLERS -- `$2688CC` ($11), `$26A2E2` ($07/$27), `$2747C6`
-// ($82), `$269CEA` ($05), `$27687E` ($8B), `$268232` ($10) -- 79 % of stage-1
-// spawns (267 of 339 records).  The enemy driver `$263502` (src/enemies.js)
-// dispatches each live enemy's handler from the function pointer the init stored
-// at record `+$4C`.
+// THE PORTED ENEMY HANDLERS.  NINE addresses for TEN of stage 1's types.
+//
+//   W25:  `$2688CC` ($11), `$26A2E2` ($07/$27), `$2747C6` ($82),
+//         `$269CEA` ($05), `$27687E` ($8B), `$268232` ($10)
+//   W30:  `$275914` ($85 AND $86 -- one handler, two types, exactly as $07 and
+//         $27 share `$26A2E2`), `$2739C0` ($80), `$276702` ($8A)
+//
+// The enemy driver `$263502` (src/enemies.js) dispatches each live enemy's
+// handler from the function pointer the init stored at record `+$4C`.
+//
+// **W30's THREE WERE GATE BLOCKERS, in that order.**  W29 wired the enemy
+// subsystem into the frame loop and `fly-around` stopped after 345 frames with
+// `Unreached $275914`; porting each one moved the block point to the next.  The
+// fourth is the MIDBOSS `$26B6FA` (576 instructions) and it is NOT ported --
+// `fly-around` is still red because of it, and that is a scoped, named gap
+// rather than a mystery.
+//
+// COVERAGE, as table entries rather than frames, MEASURED this wave by walking
+// the stage-1 script `$230C6C..$231703` (339 records of 8 bytes, the type at
+// record +$4) and resolving each type through `$267824`/`$27E412`:
+//   **9 of the 19 distinct handlers, owning 288 of the 339 spawn records.**
+// The other 10 handlers own 51 records and every one of them throws by address.
+// W25's headline was 6 handlers / 270 records; W30 adds 3 and 18.
 //
 // ======================= WHAT A HANDLER IS, IN THIS PORT =====================
 //

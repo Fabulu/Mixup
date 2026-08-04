@@ -340,6 +340,26 @@ The fire paths this wave wired (`$2813F0` kind `$D`, `$281402` kind `$D`,
 this path. Closing F1 needs the kinds themselves, not more fire sites; the
 denominator is 37 bodies and the numerator is still 8.
 
+## 6.1 COVERAGE, AS TABLE ENTRIES
+
+Measured this wave by walking the stage-1 script `$230C6C..$231703` (339 records
+of 8 bytes, the type at record `+$4`) and resolving each type through
+`$267824`/`$27E412` — not quoted from W28:
+
+> **9 of the 19 distinct handlers stage 1's script references are ported, and
+> those nine own 288 of the 339 spawn records. The other 10 handlers own 51
+> records and every one of them throws by its own ROM address.**
+
+W25's headline was 6 handlers / 270 records; this wave adds 3 handlers and 18
+records. The 18 is small and the block-point movement is not: the three are what
+stood between the gate and the midboss.
+
+Bullet behaviour bodies: **8 of 37 have executed anywhere** — unchanged in
+kind by this wave (see §7), though they now execute in the PRODUCT rather than
+only in a unit test.
+
+Type-5 subsystem calls: **9 of 23** — unchanged; W30 added no call.
+
 ## 7.1 WHAT WAS DELIBERATELY NOT TURNED ON
 
 - **`PRODUCED_BUCKETS` is unchanged** (`src/main.js`: 5, 14, 15, 19). Buckets 0,
