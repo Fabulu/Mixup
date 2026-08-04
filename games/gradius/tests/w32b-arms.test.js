@@ -720,3 +720,109 @@ test('$C267: the player box against the segments is 10 px, one-sided, and eats s
   const dead = mk(px - 5, py - 5, 0);
   assert.notEqual(dead.substate, 0x80, 'no shield: $C290 JMP $C1D6 kills the ship');
 });
+
+// ============ 7. WAVE 42 -- THE CARRY $CAE9/$CB03 INHERIT =================
+//
+// W40 §5a found the port one 1/256 px LOW on 237 of stage 5's cartridge frames.
+// `$CAE9 SBC $CA57,Y` and `$CB03 ADC $CA57,Y` have no SEC/CLC, and nothing
+// between the last carry writer and them touches the flag, so there are three
+// ways in. The port modelled two. The third is `$CAB8 JSR $AEE1`, which returns
+// C = 1 on every path that gets back to the arithmetic.
+//
+// THESE CHECKS ARE DIFFERENCES BETWEEN TWO PORT RUNS, not absolutes against a
+// constant the port also reads -- docs/knowledge/03's self-sealing failure. The
+// step `$CA57[$17]` cancels out; what is left is the carry alone.
+
+/**
+ * One `$CA5E` frame with the carry path chosen by hand.
+ *
+ * `armed` -> `$016C,X`: non-zero takes `$CAB6 BNE $CAC1` (A1, no JSR);
+ * zero runs `$CAB8 JSR $AEE1` (A2).  `xf` picks WHICH of $AEE1's three exits.
+ * `down` -> `$04CC,X`, the branch at `$CAE4`.  `$04AC,X` is left non-zero so
+ * `$CAC1 BNE $CADC` is taken and `$CAD2 CMP $0320` never runs.
+ */
+function ca5eFrame({ armed, down, xf = 0xFF, x = 0x80, rank = 4 }) {
+  const s = stage5();
+  s.zp17 = rank;
+  const j = 7, i = j + ENEMY_BASE;
+  s.obj.type[i] = 0x94;
+  s.obj.anim[i] = 0x81;
+  s.obj.y[i] = 0x60; s.obj.yf[i] = 0x80;   // mid-range: neither clamp can bite
+  s.obj.x[i] = x; s.obj.xf[i] = xf;
+  s.obj.s0460[i] = 0;                      // undamaged: no deploy, no death
+  s.obj.s0460[j] = 1;
+  s.obj.s04A0[i] = 5;                      // $04AC,X != 0 -- the timer is running
+  s.obj.s04C0[i] = down ? 1 : 0;           // $04CC,X -- the $CAE4 branch
+  s.obj.animFrame[i] = armed ? 1 : 0;      // $016C,X -- the $CAB6 branch
+  s.spawn.zA8 = j;
+  updateEnemies(s, res);
+  return { s, i, pos16: (s.obj.y[i] << 8) | s.obj.yf[i] };
+}
+
+test('$CAE9/$CB03: the A2 path inherits C=1 from $AEE1, and A1 inherits C=0', () => {
+  // RED WHEN: h_AEE1 stops returning its carry, h_CA5E stops consuming it, or
+  // either branch's sign is flipped.
+  const step = rb(0xCA57 + 4);
+  assert.equal(step, 0x70, '$CA57[4] -- the rank-4 row');
+
+  // ---- UP ($04CC,X == 0, $CAE6 SBC) --------------------------------------
+  const upA1 = ca5eFrame({ armed: true,  down: false });
+  const upA2 = ca5eFrame({ armed: false, down: false });
+  const base = (0x60 << 8) | 0x80;
+  assert.equal(base - upA1.pos16, step + 1,
+    'A1: $CAAF CMP $99 left C=0, so $CAE9 SBC borrows one extra 1/256 px');
+  assert.equal(base - upA2.pos16, step,
+    'A2: $CAB8 JSR $AEE1 left C=1, so $CAE9 SBC is exact');
+  assert.equal((base - upA2.pos16) + 1, base - upA1.pos16,
+    'the A2 frame moves EXACTLY one unit less than the A1 frame -- the carry');
+
+  // ---- DOWN ($04CC,X != 0, $CB00 ADC) ------------------------------------
+  const dnA1 = ca5eFrame({ armed: true,  down: true });
+  const dnA2 = ca5eFrame({ armed: false, down: true });
+  assert.equal(dnA1.pos16 - base, step,
+    'A1: C=0, so $CB03 ADC is exact');
+  assert.equal(dnA2.pos16 - base, step + 1,
+    'A2: C=1, so $CB03 ADC carries one extra 1/256 px IN');
+  assert.equal(dnA2.pos16 - base, (dnA1.pos16 - base) + 1,
+    'and the ADC asymmetry is the mirror of the SBC one');
+});
+
+test('$AEE1 returns C=1 from BOTH its live exits, and C=0 only where $CAC0 RTSes', () => {
+  // $AEE7 SBC #$80 / $AEEC BCS  -> C=1 (no borrow)
+  // $AEF1 CMP #$08 / $AEF6 BCS  -> C=1 (X still >= 8 after the DEC)
+  // $AEF6 not taken -> $AEF8    -> C=0, but $AEF8 zeroes $012C,X, so
+  //                               $CABE BNE is not taken and $CAC0 RTS runs.
+  // RED WHEN: h_AEE1 returns a constant, or the $AEF1 exit is given C=0.
+  const step = rb(0xCA57 + 4);
+  const base = (0x60 << 8) | 0x80;
+
+  // ON THE A2 PATH $AEE1 RUNS TWICE -- once at $CAB8 and again at $CB17 -- so
+  // the owner drifts a WHOLE pixel that frame, not half of one. The A1 path
+  // takes only $CB17. That is the listing's shape and it is pinned here
+  // because it is easy to lose when $CAB8's call is read as "the" drift.
+  const a1 = ca5eFrame({ armed: true, down: false, xf: 0xFF, x: 0x80 });
+  assert.deepEqual([a1.s.obj.xf[a1.i], a1.s.obj.x[a1.i]], [0x7F, 0x80],
+    'A1: $CB17 alone -- half a pixel');
+
+  // exit 1: $CAB8 sees xf $FF - $80 = $7F, no borrow -> C=1. Then $CB17 sees
+  // $7F - $80, which DOES borrow, so xf comes back to $FF and X DECs once.
+  const noBorrow = ca5eFrame({ armed: false, down: false, xf: 0xFF, x: 0x80 });
+  assert.deepEqual([noBorrow.s.obj.xf[noBorrow.i], noBorrow.s.obj.x[noBorrow.i]],
+    [0xFF, 0x7F], 'A2: TWO $AEE1 calls -- a whole pixel');
+  assert.equal(base - noBorrow.pos16, step, '$AEEC exit: C=1');
+
+  // exit 2: $CAB8 sees xf $00 - $80, which borrows, so X DECs to $7F -- still
+  // >= 8, so $AEF6 is taken and C=1 as well. $CB17 then sees $80 - $80.
+  const borrow = ca5eFrame({ armed: false, down: false, xf: 0x00, x: 0x80 });
+  assert.deepEqual([borrow.s.obj.xf[borrow.i], borrow.s.obj.x[borrow.i]],
+    [0x00, 0x7F], '$AEEE DEC $036C,X ran inside the $CAB8 call');
+  assert.equal(base - borrow.pos16, step,
+    '$AEF6 exit: C=1 too -- both live exits agree, so the fix is not "always 1"');
+
+  // exit 3: X DECs from 8 to 7, below $AEF1 CMP #$08 -> $AEF8 frees the slot.
+  const freed = ca5eFrame({ armed: false, down: false, xf: 0x00, x: 0x08 });
+  assert.equal(freed.s.obj.type[freed.i], 0, '$AEFA STA $030C,X -- the slot is free');
+  assert.equal(freed.s.obj.anim[freed.i], 0, '$AF00 STA $012C,X');
+  assert.equal(freed.pos16, base,
+    '$CABE BNE not taken -> $CAC0 RTS: NO arithmetic ran, so C=0 never reaches $CAE9');
+});

@@ -2126,16 +2126,32 @@ function h_AEDD(state) {
 /**
  * Handler 3, `$AEE1` -- the generic drift every unhandled object gets:
  * 0.5 px/frame LEFT, freed once the integer X drops below 8.
+ *
+ * IT RETURNS A CARRY, AND ONE CALLER READS IT. Every exit of this routine is
+ * `$AF09 RTS`, and the last carry writer on each of the three ways there is in
+ * the listing, so the returned flag is derived and not observed:
+ *
+ *   $AEE7 SBC #$80 / $AEEC BCS $AF09        -> C = 1   (no borrow, common case)
+ *   $AEF1 CMP #$08 / $AEF6 BCS $AF09        -> C = 1   (X still on screen)
+ *   $AEF6 not taken, falls into $AEF8       -> C = 0   ($AEF1's CMP, and
+ *          nothing in $AEF8-$AF06 is anything but LDA/STA)
+ *
+ * `$CAB8` is the only one of the three `JSR $AEE1` sites whose next
+ * carry-reading instruction is reached without an intervening carry writer:
+ * `$B4C8` is followed by `DEC $04CC,X` and `$CB17` by `RTS`. See `h_CA5E`.
+ *
+ * @returns {boolean} the carry flag left in the caller (`$AF09 RTS`).
  */
 function h_AEE1(state) {
   const j = state.spawn.zA8;             // $AEE1 LDX $A8 -- reloads X
   const o = state.obj; const i = j + ENEMY_BASE;
   const v = o.xf[i] - 0x80;              // $AEE3 LDA $038C,X / SEC / SBC #$80
   o.xf[i] = u8(v);
-  if (v >= 0) return;                    // $AEEC BCS $AF09 -- no borrow
+  if (v >= 0) return true;               // $AEEC BCS $AF09 -- no borrow, C = 1
   o.x[i] = u8(o.x[i] - 1);               // $AEEE DEC $036C,X
-  if (o.x[i] >= 0x08) return;            // $AEF1 CMP #$08 / BCS $AF09
-  freeSlot(state, j);                    // $AEF8
+  if (o.x[i] >= 0x08) return true;       // $AEF1 CMP #$08 / $AEF6 BCS -- C = 1
+  freeSlot(state, j);                    // $AEF8 -- $AEF6 not taken, so C = 0
+  return false;
 }
 
 /**
@@ -4738,20 +4754,37 @@ function st_C6DE(state, rom) {
  *   CB17  JSR $AEE1 / RTS
  *
  * THE TWO SBC/ADC AT `$CAE9` AND `$CB03` HAVE NO `SEC`/`CLC` IN FRONT OF THEM.
- * The carry they consume is whatever the last carry-setting instruction left,
- * and there are exactly two ways in:
+ * The carry they consume is whatever the last carry-setting instruction left.
+ * `$CADC DEC` / `$CADF LDY` / `$CAE1 LDA` / `$CAE4 BNE` / `$CAE6 LDA` write no
+ * carry, so the flag is decided before `$CADC` and there are THREE ways in --
+ * W40 §5a's 237 `yf` divergences were the third one, which this port missed
+ * until W42:
  *
- *   - the timer was still running ($04AC != 0): the last carry writer is
- *     `$CAAF CMP $99` and the `BCS` was NOT taken, so C = 0 -- the subtract
- *     borrows one extra 1/256 px and the add adds none;
- *   - the timer had expired and $CACD-$CAD9 ran: the last carry writer is
- *     `$CAD2 CMP $0320`, so C = 1 exactly when the owner is at or below the
- *     player -- which is also the case that picks the UP branch, so the
- *     one-frame-in-$40 subtract is one unit SMALLER than every other frame's.
+ *   A1  timer running ($04AC != 0) and $016C,X != 0: the last carry writer is
+ *       `$CAAF CMP $99` and the `BCS` was NOT taken, so C = 0 -- the subtract
+ *       borrows one extra 1/256 px and the add adds none;
+ *   A2  timer running and $016C,X == 0, so `$CAB8 JSR $AEE1` RAN: the last
+ *       carry writer is inside $AEE1, and C = 1 on EVERY path that gets back
+ *       here. $AEE1's third exit leaves C = 0, but it is $AEF8, which zeroes
+ *       `$012C,X` -- so `$CABE BNE $CAC1` is not taken and `$CAC0 RTS` returns
+ *       before the arithmetic. C = 0 is unreachable at `$CAE9`, from the
+ *       listing, not from a run;
+ *   B   the timer had expired and $CACD-$CAD9 ran: the last carry writer is
+ *       `$CAD2 CMP $0320`, so C = 1 exactly when the owner is at or below the
+ *       player -- which is also the case that picks the UP branch, so on a
+ *       B frame the arithmetic is always clean in both directions.
  *
- * That asymmetry is 1/256 px on one frame in up to 64 and it is transcribed
- * because it is real, not because it is visible. `docs/knowledge/02`: a missing
- * SEC is not a typo in someone else's code.
+ * Measured on the cartridge (`stagepoke.py --stage 4 --tag s5-chunks`, the
+ * carry recovered from the 16-bit (`$032C`,`$034C`) delta minus `$CA57,Y`,
+ * clamped frames excluded):
+ *
+ *      A1 up 1390 frames C=0   A1 down 1879 C=0
+ *      A2 up  173 frames C=1   A2 down   70 C=1     <- the 237
+ *      B  up   20 frames C=1   B  down   24 C=0
+ *
+ * That asymmetry is 1/256 px per frame and it is transcribed because it is
+ * real, not because it is visible. `docs/knowledge/02`: a missing SEC is not a
+ * typo in someone else's code.
  *
  * `$042C,X` is the xvel array -- the ROM reuses it as this handler's own
  * animation counter, exactly as `$AEB2` reuses it as the explosion cursor.
@@ -4786,11 +4819,12 @@ function h_CA5E(state, rom, j) {
   if (o.s0460[i] >= toDie) return loc_CB1B(state, j);   // $CAAF/$CAB1 BCS $CB1B
   // ---- alive ------------------------------------------------------------
   // The carry that $CAE9/$CB03 will consume. Getting here means $CAB1's BCS was
-  // NOT taken, i.e. C = 0; only $CAD2 below can change it.
+  // NOT taken, i.e. C = 0; $CAB8's JSR and $CAD2's CMP below both rewrite it.
   let carry = 0;
   if (o.animFrame[i] === 0) {                  // $CAB3 LDA $016C,X / BNE $CAC1
-    h_AEE1(state);                             // $CAB8 JSR $AEE1 (may FREE the slot)
+    const c = h_AEE1(state);                   // $CAB8 JSR $AEE1 (may FREE the slot)
     if (o.anim[i] === 0) return;               // $CABB/$CABE BNE $CAC1 / $CAC0 RTS
+    carry = c ? 1 : 0;                         // $AEE1's RTS carry -- see its header
   }
   if (o.s04A0[i] === 0) {                      // $CAC1 LDA $04AC,X / BNE $CADC
     o.s04A0[i] = state.frame & 0x3F;           // $CAC6-$CACA LDA $02 / AND #$3F

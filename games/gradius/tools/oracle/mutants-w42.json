@@ -1,0 +1,67 @@
+[
+  {
+    "id": "W42-1",
+    "dump": "s5-chunks",
+    "pipeline": "tail",
+    "file": "src/enemies.js",
+    "why": "THE DEFECT ITSELF: $CAB8's JSR $AEE1 stops handing its carry to $CAE9. Must reproduce W40 \u00c2\u00a75a's 237 exactly.",
+    "find": "    carry = c ? 1 : 0;                         // $AEE1's RTS carry -- see its header",
+    "replace": "    carry = 0;                                 // MUTANT"
+  },
+  {
+    "id": "W42-2",
+    "dump": "s5-chunks",
+    "pipeline": "tail",
+    "file": "src/enemies.js",
+    "why": "W40's PROBE-1 rebuilt EXACTLY: the INITIALISER becomes 1, so A1 (the majority path) borrows nothing. Must be far WORSE than the defect.",
+    "find": "  // NOT taken, i.e. C = 0; $CAB8's JSR and $CAD2's CMP below both rewrite it.\n  let carry = 0;",
+    "replace": "  // MUTANT\n  let carry = 1;"
+  },
+  {
+    "id": "W42-3",
+    "dump": "s5-chunks",
+    "pipeline": "tail",
+    "file": "src/enemies.js",
+    "why": "$AEEC's exit (the common no-borrow one) returns C=0 instead of C=1. EXPECTED GREEN AND REPORTED AS A HOLE: measured on this dump, all 247 A2 frames enter $CAB8 with $038C,X < $80, so $CAB8 never returns through $AEEC here. Caught instead by tests/w32b-arms.test.js '$AEE1 returns C=1 from BOTH its live exits'.",
+    "find": "  if (v >= 0) return true;               // $AEEC BCS $AF09 -- no borrow, C = 1",
+    "replace": "  if (v >= 0) return false;              // MUTANT"
+  },
+  {
+    "id": "W42-4",
+    "dump": "s5-chunks",
+    "pipeline": "tail",
+    "file": "src/enemies.js",
+    "why": "$AEF6's exit (X still >= 8 after the DEC) returns C=0 instead of C=1",
+    "find": "  if (o.x[i] >= 0x08) return true;       // $AEF1 CMP #$08 / $AEF6 BCS -- C = 1",
+    "replace": "  if (o.x[i] >= 0x08) return false;      // MUTANT"
+  },
+  {
+    "id": "W42-5",
+    "expect": "GREEN",
+    "dump": "s5-chunks",
+    "pipeline": "tail",
+    "file": "src/enemies.js",
+    "why": "PROVABLY UNCATCHABLE, and declared as such: $AEF8's exit leaves C=0, but $AEF8 zeroes $012C,X so $CABE BNE is not taken and $CAC0 RTSes before any arithmetic. No comparison of object bytes can see this flag. The listing is the only proof; tests/w32b-arms.test.js pins the RTS instead.",
+    "find": "  freeSlot(state, j);                    // $AEF8 -- $AEF6 not taken, so C = 0\n  return false;",
+    "replace": "  freeSlot(state, j);                    // MUTANT\n  return true;"
+  },
+  {
+    "id": "W42-6",
+    "dump": "s5-chunks",
+    "pipeline": "tail",
+    "file": "src/enemies.js",
+    "why": "the OTHER direction: $CAD2 CMP $0320's carry (path B) is forced to 0, so the B-frame subtract borrows",
+    "find": "    carry = atOrBelow ? 1 : 0;                 // the carry $CAE9/$CB03 inherits",
+    "replace": "    carry = 0;                                 // MUTANT"
+  },
+  {
+    "id": "W42-NEG",
+    "expect": "GREEN",
+    "dump": "s5-chunks",
+    "pipeline": "tail",
+    "file": "src/enemies.js",
+    "why": "CONTROL: a comment-only edit. Without it, 'every mutant went red' could mean the harness reddens on any edit at all.",
+    "find": " * @returns {boolean} the carry flag left in the caller (`$AF09 RTS`).",
+    "replace": " * @returns {boolean} the carry flag left in the caller. // MUTANT"
+  }
+]
