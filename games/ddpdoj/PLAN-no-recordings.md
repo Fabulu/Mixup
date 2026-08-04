@@ -585,6 +585,24 @@ third, and it is the third with the best tooling already built.
    scenarios reach it. Bundle size is unmeasured; W15 measures before
    anyone promises. Mitigation if it is bad: per-stage lazy chunks; the
    manifest already records provenance either way.
+
+   > **CORRECTED BY W35, 2026-08-04.** "Sprites CANNOT be statically
+   > enumerated" is FALSE, and the wave-3 sentence it inherits
+   > (`rip/assets/manifest.json`: *"a header cannot be told from two
+   > arbitrary bytes; walking the mask ROM would be a GUESS"*) is half
+   > right. There is indeed no sprite table in ROM — the address is a
+   > per-object descriptor at `($a,A6)`. But **the mask ROM is a
+   > self-describing chain**: stride = `wide*high + 4`, and each stream's own
+   > two-word colour pointer closes it, because the drawer consumes one
+   > colour pixel per CLEAR mask bit and three pixels per colour word.
+   > Walking it from `$000000` yields **8,073 streams** filling
+   > `$000000..$33A6E4`, validated against 1,690 observations from three
+   > independent instruments with 0 exceptions
+   > (`src/render/spritedir.js`, `docs/worklog/ddpdoj/35-recon-sprite-atlas.md`
+   > §3–§4.4). **The risk is real but it is a SIZE risk, not a possibility
+   > risk**: the committed stage-1 ROM list is 2,035 streams = 1,192.6 KiB
+   > gzipped against today's 39.3 KiB, so shipping it needs the same
+   > deferred-shard treatment the background got.
 3. **The unresolved mysteries that could invalidate ports if guessed over:**
    `$2453C2` (laser collision never executed in 580 live-beam frames),
    `$8130D2`'s writer (freezes the whole background — a port ignoring it

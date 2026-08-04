@@ -24,9 +24,23 @@
 //     frames, walked to count exactly how many mask words and colour words
 //     the drawer consumes
 //
-// Measured: 415 BG tiles, 159 TX tiles, 150 distinct sprite streams,
+// Wave 7 measured: 415 BG tiles, 159 TX tiles, 150 distinct sprite streams,
 // 11,325 mask words and 21,784 colour words -- out of 8,388,608 and 16,777,216
 // respectively.  0.13 % and 0.13 %.
+//
+// CURRENT, and both numbers moved for reasons later waves wrote down: the atlas
+// is **166** streams (W12 added the ship's 16 other bank frames BY ADDRESS,
+// because the recorded ship never banked) over **12,900 mask words and 24,794
+// colour words**.  W35 changed where the EXTENTS come from -- see its block
+// below -- which moved `maskUsed` by exactly 7 words, all of them the null
+// stream `$000000`'s, and moved nothing else.
+//
+// AND THE PROVENANCE OF THE ATLAS IS STILL THE RECORDING, WHICH IS THE POINT
+// W28 §6 MADE: 150 of the 166 exist because they appeared in a 161-frame
+// capture. `tools/w35atlas.mjs` enumerates the same thing from the cartridge --
+// **1,150 streams for stage 1** out of the ROM's own **8,073** -- and
+// `docs/worklog/ddpdoj/35-recon-sprite-atlas.md` §7 states what it would cost to
+// ship that list instead.
 //
 // AND THE OUTPUT IS NOT A SLICE OF THE CARTRIDGE.
 //   * the tiles are DECODED -- 5bpp LSB-first bitstream -> one byte per pixel,
@@ -93,6 +107,7 @@ import {
   SPRMASK_LAYOUT, SPRMASK_SIZE, assemble, assertLittleEndianHost,
 } from '../src/render/regions.js';
 import { bgTile, txTile, BG_W, BG_H, TX_W, TX_H } from '../src/render/tiles.js';
+import { streamExtent } from '../src/render/spritedir.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GAME = path.resolve(HERE, '..');
@@ -150,41 +165,46 @@ const tables = fs.readFileSync(tablesFile);
 // 1. COVERAGE.  What can this capture possibly make the renderer read?
 
 const bgUsed = new Set(), txUsed = new Set();
-/** offs -> {maskWords, colStart, colWords} , the MAXIMUM over every occurrence */
+/** offs -> {maskWords, colStart, colWords, stride, pixels} , from the ROM */
 const streams = new Map();
 let records = 0;
 
-/**
- * Walk one record's mask stream exactly as `SpriteDrawer` does, counting.
- *
- * Both `_lineBasic` and `_lineZoom` consume `wide` mask words per SOURCE line
- * and `high` source lines are always walked -- a ygrow-doubled line REWINDS
- * (`this.b = tbo`) and replays the same words, and a yzoom-dropped line is
- * consumed without being drawn.  So the mask extent is `2 + wide*high` words
- * and the colour extent is one 5-bit pixel per CLEAR mask bit, three pixels to
- * a colour word, in both paths.  That is an assertion about the transcription
- * in `src/render/sprites.js`, and `tools/bundlegate.mjs` is what tests it:
- * if this walk under-counts by one word the gate stops being 100 %.
- */
-function walkStream(offs, wide, high) {
-  let b = offs & (MASKW - 1);
-  const a0 = (((sprmask[(b + 1) & (MASKW - 1)] << 16)
-    | sprmask[b & (MASKW - 1)]) >>> 2);
-  b += 2;
-  let npix = 0;
-  for (let line = 0; line < high; line++) {
-    for (let w = 0; w < wide; w++) {
-      const m = sprmask[b & (MASKW - 1)];
-      b++;
-      for (let k = 0; k < 16; k++) if (!((m >> k) & 1)) npix++;
-    }
+// ------------------------------------------------------------------- WAVE 35
+// THE EXTENTS NOW COME OUT OF THE MASK ROM, NOT OUT OF THE RECORDING.
+//
+// Until this wave a stream's extent was `2 + record.width * record.height`,
+// i.e. it was read off the display-list record that drew it -- and the only
+// records this file has are `capture.bin`'s.  So the published sheet's SIZES
+// had the recording as their provenance, which is half of what W28 §6 named as
+// the thing gating deleting the capture.
+//
+// `src/render/spritedir.js` derives them from the cartridge instead: the mask
+// ROM is a closed chain (stride = wide*high + 4, closed by each stream's own
+// colour pointer), and `streamExtent` solves it at one address.
+//
+// The two readings are cross-checked against each other below rather than one
+// replacing the other silently, because a stream's ROM length is an UPPER bound
+// on what any record may read, not an identity: a record with smaller extents
+// legitimately draws a prefix.  `$000000` -- the null pointer the recording
+// draws as 1x1 -- is the one stream where they differ, and it differs the safe
+// way round.
+const romExtent = (offs) => streamExtent(sprmask, COLW, offs & (MASKW - 1));
+let extentAgree = 0, extentPrefix = 0;
+
+/** The record's reading, kept ONLY to check the ROM's. `SpriteDrawer` consumes
+ *  `wide` mask words per SOURCE line and always walks `high` source lines (a
+ *  ygrow-doubled line REWINDS and replays; a yzoom-dropped line is consumed
+ *  without being drawn), so a record reads `2 + wide*high` words. */
+function checkAgainstRecord(offs, wide, high, w) {
+  const need = wide * high;
+  if (need > w.stride - 4) {
+    throw new Error(`stream $${offs.toString(16)}: a display-list record reads `
+      + `${need} mask words but the ROM chain gives this stream only `
+      + `${w.stride - 4}. Either src/render/spritedir.js has mis-solved the `
+      + 'chain or the record is not pointing at a stream start -- either way '
+      + 'the sheet would be SHORT, so this stops.');
   }
-  return {
-    maskWords: 2 + wide * high,
-    colStart: a0 & (COLW - 1),
-    // `_pix` reads BEFORE advancing, and rolls to the next word every 3 pixels.
-    colWords: npix === 0 ? 0 : Math.floor((npix - 1) / 3) + 1,
-  };
+  if (need === w.stride - 4) extentAgree++; else extentPrefix++;
 }
 
 for (let i = 0; i < cap.length; i++) {
@@ -196,18 +216,9 @@ for (let i = 0; i < cap.length; i++) {
     // `draw()` returns before touching a single ROM word when either extent is
     // zero, so such a record needs no data at all -- but it still needs a legal
     // `offs`, because the field is rewritten below.
-    const w = walkStream(s.offs, s.width, s.height);
-    const prev = streams.get(s.offs);
-    if (!prev) streams.set(s.offs, w);
-    else {
-      prev.maskWords = Math.max(prev.maskWords, w.maskWords);
-      prev.colWords = Math.max(prev.colWords, w.colWords);
-      if (prev.colStart !== w.colStart) {
-        throw new Error(`stream $${s.offs.toString(16)} resolved to two colour `
-          + `bases (${prev.colStart} and ${w.colStart}) -- the header is not a `
-          + 'function of offs and this exporter\'s model is wrong');
-      }
-    }
+    let w = streams.get(s.offs);
+    if (!w) { w = romExtent(s.offs); streams.set(s.offs, w); }
+    checkAgainstRecord(s.offs, s.width, s.height, w);
   }
 }
 
@@ -241,20 +252,21 @@ if (shipOffs.length !== 17) {
   throw new Error(`the $25533A ship animation table has ${shipOffs.length} tilt `
     + 'entries, not 17 -- re-run tools/export-tables.py');
 }
+//
+// WAVE 35.  The harvest no longer needs `SHIP_SIZE` to know how much to take --
+// `romExtent` reads that off the chain.  The constant is kept and CHECKED, which
+// turns a measured number into a number the cartridge agrees with: all 17 tilt
+// images must be exactly `3 x 32` streams.
 let shipHarvested = 0;
 for (const offs of shipOffs) {
-  const w = walkStream(offs, shipWide, shipHigh);
-  const prev = streams.get(offs);
-  if (!prev) { streams.set(offs, w); shipHarvested++; continue; }
-  // The tilt-0 image IS in the capture.  If the harvest disagrees with the
-  // capture's own record about the same stream, the extents above are wrong and
-  // this must stop rather than ship a sheet that is subtly short.
-  if (prev.colStart !== w.colStart) {
-    throw new Error(`ship stream $${offs.toString(16)}: the capture says colour `
-      + `base ${prev.colStart}, the $0620 extents say ${w.colStart}`);
+  const w = romExtent(offs);
+  if (w.stride - 4 !== shipWide * shipHigh) {
+    throw new Error(`ship tilt stream $${offs.toString(16)}: the ROM chain says `
+      + `${w.stride - 4} mask words, the MEASURED ($e,A6) = $0620 says `
+      + `${shipWide} x ${shipHigh} = ${shipWide * shipHigh}. One of the two is `
+      + 'wrong and neither may be assumed.');
   }
-  prev.maskWords = Math.max(prev.maskWords, w.maskWords);
-  prev.colWords = Math.max(prev.colWords, w.colWords);
+  if (!streams.has(offs)) { streams.set(offs, w); shipHarvested++; }
 }
 
 const bgList = [...bgUsed].sort((a, b) => a - b);
@@ -263,6 +275,9 @@ console.log(`coverage over ${cap.length} captured frames, ${records} records:`);
 console.log(`  BG tiles ${bgList.length}   TX tiles ${txList.length}   `
   + `sprite streams ${streams.size} (${shipHarvested} of them the ship's own `
   + `bank frames, harvested by address because the recorded ship never banked)`);
+console.log(`  sprite EXTENTS from the ROM chain (src/render/spritedir.js): `
+  + `${extentAgree} records match their stream's full length exactly, `
+  + `${extentPrefix} read a prefix of it`);
 
 // ------------------------------------------------------------------- WAVE 14
 // 1b. THE STAGE-1 LAYOUT, out of the 68000 image.
