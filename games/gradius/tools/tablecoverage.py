@@ -114,7 +114,17 @@ LATE_SPAWNER = 0xC413      # the second spawner; its own $83E4 at $C439
 # SET is an assumption, and this one carried "every table is read by an $AE1C
 # handler" for eleven waves.  Anything reached from the NMI's own order
 # ($80A7's sprite pass, $80AA's state machine) was outside it.
-STAGE5_ROOTS = [0x8BD9, 0xCB91, 0xBEF3, 0xA16F]
+#
+# WAVE 35 ADDS $CDA5, and for the reason the paragraph above gives.  It is the
+# STAGE-6 stage-end arm ($9911 JSR $CDA5, inside play sub-state $86) and it
+# reads TWO tables -- $CE2D (four AND masks) and $CE31 (88 aperture cells) --
+# neither of which was exported until this wave and neither of which this tool
+# could see, because $9904 is reached from the NMI's own state machine and not
+# from any $AE1C handler.  It is exactly the class of miss the lesson above
+# names, found one wave later on a different routine.  Measured: adding it moves
+# this tool from 2 known gaps to 2 (it drags in nothing else -- sub_$CDB3's only
+# other call is to itself, and its body has no JSR).
+STAGE5_ROOTS = [0x8BD9, 0xCB91, 0xBEF3, 0xA16F, 0xCDA5]
 ANIM_LO, ANIM_HI = 0x0120, 0x0140
 EXPLOSION_PTRS, EXPLOSION_N = 0xAE71, 6
 INDEXERS = ("LDA", "LDX", "LDY", "CMP", "ADC", "SBC")

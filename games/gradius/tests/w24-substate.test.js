@@ -240,14 +240,37 @@ test('$83 ($99C0) INCs $1B to $84 and sets $62 := 2', () => {
   assert.strictEqual(s.spawn.z62, 2, '$99D7 LDA #$02 / STA $62');
 });
 
-test('$83 stage >= 5 shortcut ($1B := $86) is a loud throw', () => {
-  // $99C4 CMP #$05 / BCC $99D3. The port loads one stage; the stage>=5 shortcut
-  // ($99CF $1B := $86, plus sfx $AC at == 5) is unreachable. RED WHEN: silent.
+test('$83 stage >= 5 shortcut: $1B := $86, sfx $AC only on stage 6, AND the tail runs', () => {
+  // $99C4 CMP #$05 / BCC $99D3. THIS WAS A THROW UNTIL W35, on the strength of
+  // "the port loads one stage" -- a fact about the corpus, and stage 6 IS
+  // `$19 == 5`, so it sat on the ordinary stage-6 path the moment stage 6 was
+  // admitted. It is not reachable by tools/oracle/stagesweep.mjs (which seeds
+  // `$1B = $80` and never leaves the wave stream); it was found by scanning
+  // assets/prg.bin for every `$19` compare.
+  //
+  // THREE THINGS ARE ASSERTED AND THE THIRD IS THE FALL-THROUGH.
+  //  * $1B ends at $86, not $84 (the INC still happens first, then the store).
+  //  * sfx $AC ($99CA) fires on stage 6 and NOT on stage 7 ($99C8 BNE $99CF).
+  //  * $99CF FALLS INTO $99D3, so $5B is still INC'd and $62 still becomes 2 --
+  //    there is no branch between $99D1 STA $1B and $99D3 INC $5B. The
+  //    docstring this replaces said "else INC $5B" and was wrong.
+  // RED WHEN: the shortcut returns early, the sound fires on stage 7, or $1B
+  // is left at $84.
   for (const stage of [5, 6]) {
     const s = atSubstate(0x83);
     s.zp19 = stage;
-    assert.throws(() => nmi(s, 0, res), /\$99C4/,
-      `stage ${stage} should throw at $99C4`);
+    const zp5B = s.zp5B;
+    nmi(s, 0, res);
+    assert.strictEqual(s.substate, 0x86,
+      `stage ${stage}: $99CF LDA #$86 / STA $1B must win over $99C0's INC`);
+    assert.strictEqual(s.zp5B, (zp5B + 1) & 0xFF,
+      `stage ${stage}: $99CF FALLS INTO $99D3 -- INC $5B still runs`);
+    assert.strictEqual(s.spawn.z62, 2,
+      `stage ${stage}: ...and so does $99D7 STA $62`);
+    // The sound fork, off the port's own per-frame request list (state.sfx,
+    // wave 6): $99CA fires sfx $AC on stage 6 and $99C8 BNE jumps it on 7.
+    assert.strictEqual(s.sfx.includes(0xAC), stage === 5,
+      `stage ${stage}: sfx $AC at $99CA fires on $19 == 5 ONLY`);
   }
 });
 

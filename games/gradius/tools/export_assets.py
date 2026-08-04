@@ -1155,6 +1155,21 @@ COLLISION_BLOCKS = [
      "8-byte run, because that is what the ROM has. $C39B[k] clears the 2-bit "
      "field at bit 2k of the map byte; $C39F[k] is k * $20, the sub-cell's "
      "contribution to the nametable row"),
+    # ---- WAVE 35: STAGE 6's EXIT APERTURE ($CDA5 -> sub_$CDB3) -------------
+    # $CE2D is a SECOND copy of $C39B's four AND masks (FC F3 CF 3F) -- the ROM
+    # has both and each routine indexes its own, so they are exported
+    # separately rather than aliased.  $CE31 is the 88 cells sub_$CDB3 walks,
+    # bounded by its own `CPX #$58`; the run ends where sub_$CE89 begins.
+    ("apertureCells", 0xCE2D, 0xCE89,
+     "$CE27 AND $CE2D,X (X = (hi+3) & 3, the sub-cell) and $CDC0 LDA $CE31,X "
+     "(X = $66, 0..$57)",
+     "one 92-byte run: FC F3 CF 3F, then EIGHTY-EIGHT packed (hi, lo) cells. "
+     "Each cell is one nametable tile at row hi+7, column lo+16 of $2400 and "
+     "one 2-bit collision cell at $0600 + $81 + 8*lo + ((hi+3) >> 2). Plotted, "
+     "they are a bevelled cross -- stage 6's exit aperture. FOUR of the 88 are "
+     "DUPLICATES (84 distinct cells), which is the ROM's table and not a "
+     "decode error. $CE2C is sub_$CDB3's RTS and $CE89 is sub_$CE89's "
+     "LDA $18, so both ends are code"),
 ]
 
 
@@ -1175,6 +1190,27 @@ def collision_tables(rom: Rom) -> dict:
         raise SystemExit(f"ABORT: $C3A3 should be `LDA $0320` (sub_C3A3) but "
                          f"reads {rom.slice(0xC3A3, 3).hex(' ')} -- the "
                          f"$C39B/$C39F break tables do not end where this claims")
+    # WAVE 35. Both ends of the stage-6 aperture run are pinned to real opcodes.
+    # $CE2C is `RTS` -- sub_$CDB3's last byte, immediately before the masks.
+    if rom.b(0xCE2C) != 0x60:
+        raise SystemExit(f"ABORT: $CE2C should be `RTS` (the end of sub_$CDB3) "
+                         f"but reads ${rom.b(0xCE2C):02X} -- the $CE2D/$CE31 "
+                         f"aperture run does not begin where this claims")
+    # $CE89 is `LDA $18`, the first instruction of sub_$CE89 (the score nibble).
+    if rom.slice(0xCE89, 4) != bytes((0xA5, 0x18, 0x0A, 0x0A)):
+        raise SystemExit(f"ABORT: $CE89 should be `LDA $18 / ASL / ASL` "
+                         f"(sub_$CE89) but reads {rom.slice(0xCE89, 4).hex(' ')} "
+                         f"-- the 88-cell aperture table does not end here")
+    # And the bound is the ROM's own: sub_$CDB3 tests `CPX #$58` at $CDB5, so
+    # the table is exactly $58 cells after the four masks. If that immediate
+    # ever moves, the export length is wrong and this says so rather than
+    # shipping 88 bytes for a routine that reads a different number.
+    if rom.slice(0xCDB5, 2) != bytes((0xE0, 0x58)):
+        raise SystemExit(f"ABORT: $CDB5 should be `CPX #$58` (sub_$CDB3's own "
+                         f"bound) but reads {rom.slice(0xCDB5, 2).hex(' ')}")
+    if (0xCE89 - 0xCE31) != 0x58:
+        raise SystemExit("ABORT: $CE31..$CE89 is not $58 cells")
+
     # The explosion table MUST contain a terminating zero, or $C0E9's BNE never
     # falls through and the walk reads $C101's opcodes as metasprite ids.
     expl = rom.slice(0xC0FA, 7)

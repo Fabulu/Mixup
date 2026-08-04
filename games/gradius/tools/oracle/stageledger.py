@@ -387,8 +387,19 @@ BASELINE = {
     #          where lowering a baseline row is correct, and it is written down
     #          here rather than done quietly because the docstring above says
     #          "never backward" and a future reader is entitled to ask why.
-    4: dict(first_unported_scroll=0x0480,      ported_floor=24,  admitted=False),  # W32a: $B559
-    5: dict(first_unported_scroll=0x03B0,      ported_floor=47,  admitted=False),  # W33
+    #
+    # W32b/W32c FINISHED ROW 4 (the $0600 arm pool, $A4A6's four inline-5
+    # records, $BEF3/$CBD1/$A17C) -- None/28/admitted.
+    #
+    # W35 MOVED ROW 5 FROM $03B0/47 TO None/98. Stage 6's ONLY unported type was
+    # $1A -> entry 26 -> $B480 (53 of its 104 record reads); the other seven
+    # types it names were already ported common vocabulary. The other two gates
+    # opened with it: jt_$C439[5] = $C6DE, and the $A2F0 scope guard, which
+    # moved to `>= 6` on the strength of tools/oracle/stagesweep.mjs sweeping
+    # all eight of stage 6's chunk streams clean in both modes -- 16 of 16 runs
+    # threw on $B480 before the wave, earliest at frame 9.
+    4: dict(first_unported_scroll=None,        ported_floor=28,  admitted=True),   # W32a-c
+    5: dict(first_unported_scroll=None,        ported_floor=98,  admitted=True),   # W35
     6: dict(first_unported_scroll=0x0AC0,      ported_floor=104, admitted=False),  # W32a (corrected)
 }
 

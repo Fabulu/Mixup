@@ -95,8 +95,15 @@ test('$A2F0: the scope guard admits stage 4, and W32c moved it past stage 5', ()
     'stage 5 ($19=4) must reach the wave engine too (W32c)');
   assert.strictEqual(s4.obj.type[slot(s4)], 0x1D,
     'stage 5\'s first record (@$ABB6) must spawn its type $1D -- W32a\'s $B559');
-  assert.throws(() => spawnEngine(wave(5), res), /\$A2F0 runEngine/,
-    'stage 6 ($19=5) must still throw loudly, naming $A2F0');
+  // W35 MOVED IT TO `>= 6`. Same shape as the two moves before it: the stage
+  // this check used to watch throw is now the stage it watches RUN, and the
+  // wall is one further on. Stage 6's own evidence lives in
+  // tests/w35-stage6.test.js.
+  const s5 = wave(5);
+  assert.doesNotThrow(() => spawnEngine(s5, res),
+    'stage 6 ($19=5) must reach the wave engine now (W35)');
+  assert.throws(() => spawnEngine(wave(6), res), /\$A2F0 runEngine/,
+    'stage 7 ($19=6) must still throw loudly, naming $A2F0');
 });
 
 // ==================== 2. THE STREAM, $C5B8 LDX #$04 =========================

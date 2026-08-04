@@ -618,18 +618,22 @@ test('$A2F0: the guard admits stage 5 and still stops stage 6', () => {
     'stage 5 ($19=4) must reach the wave engine');
   assert.equal(s4.obj.type[9 + ENEMY_BASE], 0x1D,
     'and fire a real record: chunk 0 @$ABB6 is a type $1D (W32a\'s $B559)');
-  assert.throws(() => spawnEngine(wave(5), res), /\$A2F0 runEngine/,
-    'stage 6 ($19=5) must still throw loudly, naming $A2F0');
-  // the message must name what is ACTUALLY left, not what W32c shipped. This
-  // check exists because that message has now gone stale three times.
+  // W35 moved the guard to `>= 6` and stage 6 now fires a real record too: its
+  // chunk 0 ($ABFD) opens on a type $11 ($B026), which was already ported.
+  const s5 = wave(5);
+  assert.doesNotThrow(() => spawnEngine(s5, res),
+    'stage 6 ($19=5) must reach the wave engine (W35)');
+  assert.throws(() => spawnEngine(wave(6), res), /\$A2F0 runEngine/,
+    'stage 7 ($19=6) must still throw loudly, naming $A2F0');
+  // the message must name what is ACTUALLY left, not what this repo shipped.
+  // This check exists because that message has now gone stale three times.
   let msg = '';
-  try { spawnEngine(wave(5), res); } catch (e) { msg = e.message; }
-  // The message may (and does) name W32c's routines as SHIPPED; what it must
-  // not do is carry a FORWARD reference to them, which is how it went stale
-  // after W32a and again after W32b.
+  try { spawnEngine(wave(6), res); } catch (e) { msg = e.message; }
   assert.ok(!/W32c\./.test(msg),
-    'the guard must stop deferring to W32c -- W32c is this commit');
-  assert.ok(/\$C6DE/.test(msg), 'and name stage 6\'s own unported late spawner');
+    'the guard must stop deferring to W32c -- W32c is shipped');
+  assert.ok(/\$9872/.test(msg), 'and name stage 7\'s own unported end chain');
+  assert.ok(!/\$C6DE[^)]*not ported/.test(msg),
+    '$C6DE is ported (W35) -- the guard must not name it as missing');
   assert.ok(/stageledger/.test(msg), 'and point at the tool that lists the rest');
 });
 

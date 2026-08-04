@@ -521,12 +521,46 @@ function hitEnemy(state, res, j, x) {
     freeShotSlot(state, x);                       // $C08D JMP $C0B7
     return;
   }
+  // ---- $C099-$C0A4: the MULTI-HIT arm, for type $9A only (W35) -------------
+  //
+  // PORTED IN WAVE 35, and the sentence it replaces is the one this project
+  // keeps having to retire. It said "$C099 ran 0 times in every measured run" --
+  // TRUE, and a fact about the corpus read back as a claim about the cartridge.
+  // Type $9A is `$1A | $80`, the INITIALISED form of entry 26's creature, which
+  // is STAGE 6's signature enemy and 53 of its 104 record reads. Nothing before
+  // this wave could reach one, so nothing had ever shot one.
+  //
+  // MEASURED: with stage 6 admitted and $B480 ported but this still a throw,
+  // `stagesweep.mjs` goes RED on 8 of 8 PLAYING stage-6 chunks -- the earliest
+  // at frame 54 -- and stays clean on all 8 PASSIVE ones. Shooting a cell
+  // creature is the whole trigger. It is not an exotic path; it is the stage.
+  //
+  //   C092  LDA $030C,X / C9 9A CMP #$9A / D0 0D BNE $C0A6   only type $9A
+  //   C099  FE AC 04  INC $04AC,X                            one more hit
+  //   C09C  BD AC 04  LDA $04AC,X / A4 17 LDY $17
+  //   C0A1  D9 C5 BF  CMP $BFC5,Y / 90 08 BCC $C0AE   still alive -> NO score,
+  //                                                    NO kill, and the shot is
+  //                                                    still consumed below
+  //
+  // `$BFC5` is `rankHits`, NINE entries ($BFC5-$BFCD) indexed by `$17`, which
+  // `$9C45` bounds at 5 (its only writer; `$45` is capped at 2 by
+  // `$89D3 CMP #$02 / BCS`). Exported since wave 6 and read at its CPU address,
+  // so a rank outside the row is a loud throw rather than a plausible byte.
+  //
+  // THE COUNTER IS `$04AC,X` WITH X = `$A9` = THE ENEMY, not the shot. It is the
+  // same byte entry 26 does NOT use for anything else (`$B480` keeps its phase
+  // in `$048C` and its dwell in `$04CC`), and `$A527`'s slot clear zeroes it, so
+  // a recycled slot starts at zero hits.
   if (o.type[e] === 0x9A) {                       // $C092/$C095 CMP #$9A
-    throw new Error('$C099: a type-$9A enemy took a hit. The per-enemy hit '
-                  + 'counter ($04AC,X) and its threshold $BFC5[$17] are not '
-                  + 'ported -- $C099 ran 0 times in every measured run. $17 '
-                  + '(the power-up rank) IS live since wave 7 (src/powerup.js '
-                  + '$9C45), so only $BFC5 and the counter are missing.');
+    o.s04A0[e] = u8(o.s04A0[e] + 1);              // $C099 INC $04AC,X
+    // $C09F LDY $17 / $C0A1 CMP $BFC5,Y / $C0A4 BCC $C0AE -- under the
+    // threshold the enemy lives; the score and the kill are BOTH skipped and
+    // execution rejoins at the laser test.
+    if (o.s04A0[e] < res.weaponTables.read(0xBFC5 + state.zp17)) {
+      if (o.animFrame[3 + x] === 1) return;       // $C0AE-$C0B5: the LASER lives
+      freeShotSlot(state, x);                     // $C0B7 (fall-through)
+      return;
+    }
   }
   scoreKill(state);                               // $C0A6 JSR $8463
   killEnemy(state, res, j);                       // $C0A9 JSR $BE93
@@ -1235,6 +1269,115 @@ function breakWall(state, res) {
   // $C38F-$C39A: clear the 2-bit field, through the probe's own pointer.
   const idx = ((z.zA1 - 5) << 8) + z.zA0;
   state.coll[idx & 0x1FF] = u8(z.zA2 & tbl.read(0xC39B + z.zA3));
+}
+
+// ============ WAVE 35: $CDA5 -- THE STAGE-6 EXIT APERTURE ===================
+//
+// Called from `$9911 JSR $CDA5`, inside play sub-state `$86` (`$9904`, the
+// stage-end crawl), on every frame that `$19 == 5`. It lives here rather than
+// in nmi.js because what it does is `breakWall`'s job on a schedule: queue one
+// nametable tile and clear one 2-bit collision cell, from a table.
+//
+// THE PLAN AND THE RECON BOTH CALL THIS "a 5-line stage-end hook" AND IT IS THE
+// FALL-THROUGH FAMILY AGAIN (docs/knowledge/02 trap 1, fourteenth incident).
+// `$CDA5`-`$CDB2` really is five instructions -- and three of them are
+// `JSR $CDB3 / JSR $CDB3 / RTS`. The routine is `sub_$CDB3`, `$CDB3`-`$CE2C`,
+// and it needs a 92-byte data run that nothing exported until this wave.
+//
+//   CDA5  A5 66     LDA $66 / C9 58 CMP #$58 / 90 01 BCC $CDAC / 60 RTS
+//   CDAC  20 B3 CD  JSR $CDB3 / 20 B3 CD JSR $CDB3 / 60 RTS     <-- TWICE
+//   CDB3  A6 66     LDX $66 / E0 58 CPX #$58 / 90 01 BCC $CDBA / 60 RTS
+//   CDBA  E6 66     INC $66
+//   CDBC  A9 00     LDA #$00 / 85 9B STA $9B
+//   CDC0  BD 31 CE  LDA $CE31,X / 85 99 STA $99            the CELL byte
+//   CDC5  29 F0 / 0A / 26 9B / 85 9A      $9B:$9A := (t & $F0) << 1
+//   CDCC  A5 99 / 09 F0 / 18 / 65 9A / 85 9A      += ($F0 | lo)
+//   CDD5  A9 24 / 65 9B / 85 9B                   += $2400
+//   CDDB  A6 0E     LDX $0E ... five bytes 01 $9B $9A 00 FF into $0700
+//   CDFD  A5 99 / 29 0F / 0A 0A 0A / 85 9A        $9A := lo * 8
+//   CE06  A5 99 / 4A 4A 4A 4A / 18 / 69 03 / 85 9B  $9B := hi + 3
+//   CE11  4A 4A / 18 / 69 81 / 65 9A / 85 9C      $9C := (($9B) >> 2) + $81 + $9A
+//   CE1A  A9 06     LDA #$06 / 85 9D STA $9D      the map PAGE: $0600
+//   CE1E  A5 9B / 29 03 / AA                      X := (hi + 3) & 3
+//   CE23  A0 00 / B1 9C / 3D 2D CE / 91 9C / 60   the cell, cleared in place
+//
+// THE TWO ADDRESSES, REDUCED. The ROM computes both with scattered shifts and
+// this port derives each the SHORT way, deliberately, so a transcription slip
+// cannot agree with itself through the same arithmetic (the discipline W34 used
+// on `$C353`'s `ntBase + tileRow*32 + column`):
+//
+//   VRAM   $2400 + 32*hi + lo + $F0   =  nametable 1, ROW hi+7, COLUMN lo+16
+//   MAP    $0600 + $81 + 8*lo + ((hi + 3) >> 2), 2-bit field (hi + 3) & 3
+//
+// with `hi = t >> 4` and `lo = t & $0F`. Every address lands inside the
+// nametable proper: the largest is $2400 + 480 + 15 + 240 = $26DF, and the
+// attribute table starts at $27C0.
+//
+// WHAT THE 88 BYTES ARE. Plotted as (row hi+7, column lo+16) they are a
+// bevelled cross -- a four-tile-high horizontal corridor opening out of a
+// two-tile vertical shaft, rows 7..22 and columns 21..31:
+//
+//     row  7  ..........##....        row 15  .....###########
+//     row  9  ..........###...        row 17  .........######.
+//     row 11  ..........####..        row 19  ..........###...
+//     row 13  .....###########        row 22  ..........##....
+//                     (columns 16..31, every other row shown)
+//
+// It is STAGE 6's EXIT APERTURE, cut out of the nametable and the collision map
+// together so the ship can fly through it, two cells a frame for 44 frames. The
+// order is scrambled, not left-to-right (the first four bytes give (8,6),
+// (9,10), (7,12), (4,10)), which is why it reads as an iris rather than a wipe.
+//
+// AND FOUR OF THE 88 ENTRIES ARE DUPLICATES -- 84 distinct cells, 88 reads. The
+// port re-reads and re-clears them exactly as the ROM does (four extra VRAM
+// packets, four idempotent map writes). That is the cartridge's table, not a
+// decode error, and it is stated here so nobody "fixes" it into 84.
+//
+// `$66` IS THE SPAWN ENGINE'S OWN BYTE. It is `$64`-`$67`'s third descriptor
+// slot (`$A397` copies a wave record into them; `$A592` reads it as a formation
+// index), and `$CDA5` reuses it as a 0..$58 cursor. The port uses the SAME byte,
+// `state.spawn.z66`, rather than inventing a private counter -- `$96CF`'s
+// `$50-$70` wipe is what zeroes it between stages, and a private counter would
+// silently survive a stage change.
+//
+// `$0600` IS MODELLED TWICE IN THIS PORT and stage 6 uses the other model:
+// `state.coll` is $0500-$06FF (here) and `state.arm`/ARM_POOL is $0600-$06BF
+// (W32b's stage-5 arms). On the cartridge they are the same bytes. They do not
+// collide because the arm pool is `$19 == 4` only and this is `$19 == 5` only.
+// Recorded, not aliased: no stage exercises both, and an alias written without
+// one would be a guess.
+
+/**
+ * `sub_$CDB3` -- ONE cell of the aperture. Returns nothing; `$CDA5` runs it
+ * twice a frame and both calls re-test the `$58` bound.
+ */
+function apertureCell(state, res) {
+  const sp = state.spawn;
+  const tbl = res.collisionTables;
+  const x = sp.z66;                            // $CDB3 LDX $66 -- LATCHED here
+  if (x >= 0x58) return;                       // $CDB5 CPX #$58 / BCC $CDBA / RTS
+  sp.z66 = u8(x + 1);                          // $CDBA INC $66 -- X keeps the OLD
+  const t = tbl.read(0xCE31 + x);              // $CDC0 LDA $CE31,X (the old index)
+  const hi = t >> 4;
+  const lo = t & 0x0F;
+  // $CDC5-$CDD9, reduced: $2400 + 32*hi + lo + $F0.
+  queuePacket(state, 0x01, 0x2400 + 32 * hi + lo + 0xF0, [0x00]);
+  // $CDFD-$CE18: the map byte's offset, and $CE1A the page ($06).
+  const off = u8(((hi + 3) >> 2) + 0x81 + ((lo << 3) & 0xFF));
+  const k = (hi + 3) & 0x03;                   // $CE1E LDA $9B / AND #$03 / TAX
+  const idx = 0x100 + off;                     // page $06 -> coll[$100 + off]
+  // $CE25 LDA ($9C),Y / $CE27 AND $CE2D,X / $CE2A STA ($9C),Y -- read-modify-
+  // write through the pointer it just built, exactly like $C396's STA ($A0,X).
+  state.coll[idx] = u8(state.coll[idx] & tbl.read(0xCE2D + k));
+}
+
+/**
+ * `$CDA5` -- the stage-6 stage-end arm, called from `$9904` when `$19 == 5`.
+ */
+export function sub_CDA5(state, res) {
+  if (state.spawn.z66 >= 0x58) return;         // $CDA7 CMP #$58 / BCC $CDAC / RTS
+  apertureCell(state, res);                    // $CDAC JSR $CDB3
+  apertureCell(state, res);                    // $CDAF JSR $CDB3
 }
 
 /**

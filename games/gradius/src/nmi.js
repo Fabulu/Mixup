@@ -94,7 +94,7 @@ import { streamBlock } from './terrain.js';
 import { spawnEngine, enemyBullets, updateEnemies, clearSlot,
          armCensus, armDriver, armDriverGated } from './enemies.js';
 import { introStep, pauseCheck, respawn, codeMatch, startPlay, sub9BF0 } from './flow.js';
-import { shotSweep, collision } from './collision.js';
+import { shotSweep, collision, sub_CDA5 } from './collision.js';
 import { applyCapsule, computeRank } from './powerup.js';
 import { addScore } from './score.js';
 import { soundDriver, setBgm, setBgmCode, soundRequest, pulse1Dur, SND_BASE, OFF } from './sound.js';
@@ -557,26 +557,44 @@ function st99E9(state, res) {
 
 /**
  * `$99C0` -- play sub-state $83 (index 3). The 1-frame transition. INC $1B
- * (-> $84), and for stage >= 5 a shortcut to $86 (unreachable, one stage
- * loaded); else INC $5B, `$62 := 2`, clear $63-$6F, JMP $9A5E.
+ * (-> $84), and on stages 6 and 7 an immediate re-write of `$1B` to `$86`.
  *
  *   99C0  E6 1B                       $1B -> $84
  *   99C2  A5 19 / C9 05 / 90 0B       stage < 5 -> $99D3
  *   99C8  D0 05                       stage > 5 -> $99CF (skip the sfx)
  *   99CA  A9 AC / 20 1E EC            stage == 5: sfx $AC
- *   99CF  A9 86 / 85 1B               $1B := $86
+ *   99CF  A9 86 / 85 1B               $1B := $86      ...and FALLS INTO $99D3
  *   99D3  E6 5B / A9 02 / 85 62       INC $5B; $62 := 2
  *   99D9  20 DF 99                    clear $63-$6F
  *   99DC  4C 5E 9A                    JMP $9A5E
+ *
+ * W35 -- TWO CORRECTIONS, AND THE SECOND IS A FALL-THROUGH.
+ *
+ * 1. **This threw for `$19 >= 5` and stage 6 IS `$19 == 5`.** The message said
+ *    "Unreachable: the port loads one stage", which was true when W24 wrote it
+ *    and is a statement about the corpus, not about the cartridge. `$83` is
+ *    reached the frame the `$82` countdown ends, so a stage-6 run walked into
+ *    it the moment stage 6 was admitted. It is NOT reachable by
+ *    `tools/oracle/stagesweep.mjs`, which seeds `$1B = $80` and never leaves
+ *    the wave stream -- found by scanning `assets/prg.bin` for `$19` compares
+ *    against 5, not by running anything.
+ * 2. **`$99CF` FALLS INTO `$99D3`.** There is no branch and no RTS between
+ *    `$99D1 STA $1B` and `$99D3 INC $5B`, so the stage-6/7 path does the
+ *    `INC $5B` / `$62 := 2` / clear-`$63-$6F` tail as well. The docstring this
+ *    replaces wrote "else INC $5B", which is exactly the reading
+ *    docs/knowledge/02 trap 1 warns about, and would have left `$5B` and the
+ *    spawn scratch wrong on the only two stages that take the shortcut.
+ *
+ * `$1B` IS WRITTEN TWICE ON PURPOSE: `INC` to `$84` first, then `$86` over the
+ * top. Reproduced in that order because `$1B` is a compared field.
  */
 function st99C0(state, res) {
   state.substate = u8(state.substate + 1);           // $99C0 INC $1B -> $84
   if (state.zp19 >= 5) {                             // $99C4 CMP #$05 / BCC $99D3
-    throw new Error('$99C4: $19 = ' + state.zp19 + ' (>= 5). The stage>=5 '
-                  + 'shortcut sets $1B := $86'
-                  + (state.zp19 === 5 ? ' after sfx $AC ($99CA)' : '')
-                  + ' ($99CF). Unreachable: the port loads one stage; $86/$9904 '
-                  + 'is W27.');
+    // $99C8 BNE $99CF -- stage 7 ($19 = 6) skips the sound; stage 6 plays it.
+    if (state.zp19 === 5) soundRequest(state, 0xAC); // $99CA LDA #$AC / JSR $EC1E
+    state.substate = 0x86;                           // $99CF LDA #$86 / $99D1 STA $1B
+    // ...and FALLS INTO $99D3. No `return` here, and that is the whole point.
   }
   state.zp5B = u8(state.zp5B + 1);                   // $99D3 INC $5B
   state.spawn.z62 = 2;                               // $99D7 STA $62 (no PRG reader)
@@ -705,8 +723,11 @@ function st9904(state, res) {
                   + '(one stage loaded); reached only past stage 7.');
   }
   if (state.zp19 === 5) {                            // $990D CMP #$05
-    throw new Error('$9911 JSR $CDA5: $19 = 5 (stage-6 stage-end arm). Out of '
-                  + 'scope (one stage loaded).');
+    // W35. NOT a "5-line hook": $CDA5 is a bound test and TWO `JSR $CDB3`, and
+    // $CDB3 is the routine -- see src/collision.js. It carves stage 6's exit
+    // aperture, two cells a frame for 44 frames, out of the nametable and the
+    // collision map together.
+    sub_CDA5(state, res);                            // $9911 JSR $CDA5
   }
   // $9914 LDA $B2 / BNE $991D. $B2 = pulse1 OWNER; skip the stage-clear seed
   // while a sound owns pulse 1.

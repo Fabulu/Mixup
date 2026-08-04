@@ -324,15 +324,35 @@ test('jt_$C439: stage 0 -> $C486, 1 -> $C546, 2 -> $C686, 3 -> $C5AD; 4-5 throw'
   // arm-owner spawner) is ported this wave, so leaving it below would assert
   // that a shipped arm still throws. Its behaviour is pinned in
   // tests/w32b-arms.test.js.
-  const arms = [[5, 0xC6DE]];
-  for (const [idx, addr] of arms) {
-    const s = erupting(0);
-    s.zp19 = idx;
-    const needle = `$C439[${idx}] -> ${addrHex(addr)}`;
-    assert.throws(() => spawnEngine(s, stageRes(idx)),
-      (err) => err.message.includes(needle),
-      `stage ${idx} must throw with "${needle}"`);
-  }
+  // W35 EMPTIED THE THROW LIST -- fifth and last move. Index 5 ($C6DE, stage
+  // 6's arm) is ported this wave, so there is no unported arm left and the
+  // assertion is INVERTED rather than deleted: $C6DE must run AND fill an
+  // ENEMY-BULLET slot, which is the one thing that distinguishes it from every
+  // other arm (it ignores the enemy slot lateSpawner cleared for it).
+  //
+  // Object index $16 + slot; the scan runs 9..0 so slot 9 (index $1F) fills
+  // first. Metasprite $8D, type 1, x $98 (the IMMEDIATE at $C745), y $84 or
+  // $42 by ($02 & 4).
+  const s5 = erupting(0);
+  s5.zp19 = 5;
+  assert.doesNotThrow(() => spawnEngine(s5, stageRes(5)));
+  assert.strictEqual(s5.obj.type[SLOT_FIRST + ENEMY_hi], 0,
+    'stage 5 ($C6DE) must NOT fill the enemy slot -- it fills a bullet slot');
+  assert.strictEqual(s5.obj.anim[0x16 + 9], 0x8D,
+    'stage 5 spawns metasprite $8D into ENEMY-BULLET slot 9 ($013F)');
+  assert.strictEqual(s5.obj.type[0x16 + 9], 0x01, '$C737 LDA #$01 -> $0316,X');
+  assert.strictEqual(s5.obj.x[0x16 + 9], 0x98,
+    '$C745 LDA #$98 is an IMMEDIATE, not `LDA $98` (which this routine wrote)');
+  assert.strictEqual(s5.obj.xvel[0x16 + 9], 0x04, '$C717 LDA #$04 -> $0436,X');
+  // Frame 0: ($02 & 4) == 0, so $C730 BNE is NOT taken, $C732 INY runs and the
+  // direction is 1 -- $C750[1] = $42, the UPPER row. Frame 4 takes the other.
+  assert.strictEqual(s5.obj.s0460[0x16 + 9], 1, '$C732 INY -> $0476,X := 1');
+  assert.strictEqual(s5.obj.y[0x16 + 9], 0x42, 'and $C750[1] = $42');
+  const s5b = erupting(4);
+  s5b.zp19 = 5;
+  spawnEngine(s5b, stageRes(5));
+  assert.strictEqual(s5b.obj.s0460[0x16 + 9], 0, 'frame 4: ($02 & 4) != 0');
+  assert.strictEqual(s5b.obj.y[0x16 + 9], 0x84, 'and $C750[0] = $84');
   // stage 6: $C429 RTS (no spawn, no throw)
   const s6 = erupting(0);
   s6.zp19 = 6;

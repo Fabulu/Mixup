@@ -314,16 +314,26 @@ test('$96A5: every unported arm throws with the ROM address it would reach', () 
   };
   assert.doesNotThrow(() => nmi(seedWave(4), 0, res),
     'stage 5 must now run a whole frame with its wave stream live');
-  // ...and STAGE 6 is what the guard stops now.
-  assert.throws(() => nmi(seedWave(5), 0, res), /\$A2F0 runEngine/);
+  // W35 PORTED STAGE 6 ($B480, $C6DE, $CDA5, $99C4 and $C099), so stage 6's
+  // wave stream runs too. Inverted rather than deleted, for the third time in
+  // this assertion's life.
+  assert.doesNotThrow(() => nmi(seedWave(5), 0, res),
+    'stage 6 must now run a whole frame with its wave stream live');
+  // ...and STAGE 7 is what the guard stops now.
+  assert.throws(() => nmi(seedWave(6), 0, res), /\$A2F0 runEngine/);
   // $9904 sub-path: $19 == 6 -> JMP $9872 (the ending sequence, out of scope).
   const sEnd = bootState(res.manifest);
   sEnd.substate = 0x86; sEnd.zp19 = 6;
   assert.throws(() => nmi(sEnd, 0, res), /\$9872/);
-  // $9904 sub-path: $19 == 5 -> JSR $CDA5 (stage-6 stage-end, out of scope).
+  // $9904 sub-path: $19 == 5 -> JSR $CDA5, PORTED W35. It must run AND do
+  // something: two cells of stage 6's exit aperture a frame, so $66 steps 0->2
+  // and the VRAM queue grows by two five-byte packets. An early return would
+  // otherwise be indistinguishable from a port.
   const sCda = bootState(res.manifest);
   sCda.substate = 0x86; sCda.zp19 = 5;
-  assert.throws(() => nmi(sCda, 0, res), /\$CDA5/);
+  assert.doesNotThrow(() => nmi(sCda, 0, res), '$CDA5 is ported (W35)');
+  assert.strictEqual(sCda.spawn.z66, 2,
+    '$CDA5 runs sub_$CDB3 TWICE a frame -- $66 steps by 2, not 1');
   // and a $1B past jt_96C5's five entries is a bad table index, not an arm.
   const s6 = bootState(res.manifest);
   s6.substate = 5;

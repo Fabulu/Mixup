@@ -674,8 +674,20 @@ test('the unported arms are loud, and each names its ROM address', () => {
   // so it would have crashed stage 5 for any player carrying missiles. Ported
   // and pinned in tests/w32c-interactions.test.js; the assertion here is
   // INVERTED rather than deleted, so the throw coming back is caught.
+  // A FOURTH LEFT IT IN WAVE 35: $C099, the type-$9A multi-hit counter. Its
+  // throw said "$C099 ran 0 times in every measured run" -- true, and a fact
+  // about the corpus. Type $9A is `$1A | $80`, the initialised form of stage
+  // 6's signature creature, so nothing could reach one until W35 ported $B480.
+  // With stage 6 admitted, stagesweep.mjs went RED on 8 of 8 PLAYING chunks.
+  // INVERTED rather than deleted: one shot INCs the counter and the enemy must
+  // SURVIVE it (rank 0's $BFC5 threshold is 2), which is the half a bare
+  // "does not throw" would miss.
   const multi = shotOnEnemy({ type: 0x9A });
-  assert.throws(() => shotSweep(multi, res), /\$C099/, 'the type-$9A hit counter');
+  const eSlot = multi.obj.type.indexOf(0x9A);
+  assert.doesNotThrow(() => shotSweep(multi, res), '$C099 is ported (W35)');
+  assert.strictEqual(multi.obj.s04A0[eSlot], 1, '$C099 INC $04AC,X -- one hit');
+  assert.strictEqual(multi.obj.type[eSlot], 0x9A,
+    'and it must still be alive: $BFC5[0] = 2, so one hit is not enough');
 
   const stage5 = ship();
   stage5.zp19 = 4;

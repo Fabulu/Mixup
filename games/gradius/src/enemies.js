@@ -392,14 +392,57 @@ function runEngine(state, rom, stageIndex, res) {
   // frame parities, 300 forked frames, arms fired, arms destroyed, the owner's
   // arm count decremented, and 0 throws. The same fixture on the previous
   // commit throws inside the first ten frames.
-  if (stageIndex >= 5) {
+  //
+  // W35 LOWERS IT TO `>= 6`, and here is the evidence, not the intention.
+  // Stage 6's ONLY unported type was `$1A` -> entry 26 -> `$B480` (53 of its
+  // 104 record reads; wavecensus.py, this tree), and every one of the other
+  // seven types it names was already a ported common-vocabulary routine. That
+  // handler, the late-spawner arm `jt_$C439[5]` = `$C6DE`, and the stage-end
+  // arm `$9911 JSR $CDA5` are all ported this wave; `stageledger.py` reads
+  // `stage 5: 98/98, first unported NONE`.
+  //
+  // AND -- unlike every stage wall before it -- the decision is not made on
+  // that count. `tools/oracle/stagesweep.mjs` drives all eight of stage 6's own
+  // chunk streams frame by frame in both modes; before this wave 16 of 16 runs
+  // threw on `$B480` (earliest at frame 9), and after it 16 of 16 are clean at
+  // 1400 frames. The guard moves because the stage survives its own wave
+  // stream, which is the question W33 built that stage to answer and the one
+  // the ADMITTED column below cannot ask.
+  //
+  // EVERY SITE THAT BEHAVES DIFFERENTLY WHEN `$19 == 5` IS LIVE. There are
+  // FOUR, and the list was built by scanning assets/prg.bin for EVERY
+  // `CMP/CPX/CPY #imm` with a zero-page load of `$19` within 16 bytes above it
+  // (29 sites) and then reading each one, rather than by trusting the plan --
+  // which named neither of the two below that were still throwing:
+  //
+  //   $990D CMP #$05 -> $CDA5   the exit aperture         W35 (collision.js)
+  //   $99C4 CMP #$05 -> $99CF   the $86 shortcut + sfx $AC  W35 (nmi.js) <--
+  //   $AF4E CPY #$05            entry 15's metasprite $63 instead of $78  W22
+  //   $C33A CPX #$05            the breakable wall's sfx $04, not $03     W34
+  //
+  // The other 25 sites compare `$19` against 0, 1, 2, 3, 4, 6, 8, $0A or $14,
+  // and on every one of them stage 6 takes an arm that a SHIPPED stage already
+  // takes: `$99FC` (0 or 3), `$9A12`/`$9906` (6 only), `$8B8F`/`$9665`/`$9F51`/
+  // `$A17E`/`$C039`/`$C25F`/`$C2AB`/`$C774` (4 only), `$A468`/`$C2A7`/`$C2FA`/
+  // `$BBE0`/`$BC4A` (2), `$BBE7` (>= 3), `$B964`/`$B96D` (1). `$97B5` and
+  // `$8B9B` are false positives -- both reload A before the compare.
+  //
+  // `$99C4` IS THE ONE WORTH READING. It threw for `$19 >= 5` with the message
+  // "Unreachable: the port loads one stage", and `$83` is the sub-state the
+  // `$82` countdown hands to -- so it is on the ordinary stage-6 path and it is
+  // NOT reachable by stagesweep.mjs, which seeds `$1B = $80`. Static scanning
+  // found it; no amount of sweeping would have.
+  //
+  // Plus `jt_$C439[5]` and `jt_$AE1C[26]`, which are dispatch-table entries
+  // rather than `$19` compares and are the two handlers this wave ports.
+  if (stageIndex >= 6) {
     throw new Error(`$A2F0 runEngine: $19 = $${stageIndex.toString(16).toUpperCase()}`
-                  + ` (stage ${stageIndex + 1}). Stage 5 ($19=4) is shipped`
-                  + ` (W32a entry 29, W32b the $0600 ARM pool + the half-rate`
-                  + ` frame fork, W32c $BEF3/$CBD1/$A17C). Stage 6 ($19=5) has`
-                  + ` 47 of its 98 distinct wave records ported -- run`
+                  + ` (stage ${stageIndex + 1}). Stage 6 ($19=5) is shipped`
+                  + ` (W35 entry 26 $B480, the $C6DE late spawner and the`
+                  + ` $CDA5 exit aperture). Stage 7 ($19=6) has 104 of its 111`
+                  + ` distinct wave records ported -- run`
                   + ` tools/oracle/stageledger.py for the first unported one --`
-                  + ` and its late spawner $C6DE also throws.`);
+                  + ` and its end-of-game chain ($9904 -> $9872) also throws.`);
   }
   if (sp.z69 !== 0) {                    // $A2FE LDA $69 / BNE $A32B
     if (sp.z6C !== 0) {                  // $A32B LDA $6C / BNE $A332
@@ -502,9 +545,7 @@ function lateSpawner(state, rom, stageIndex) {
     // Stage 5's arm reads one of four $C67A rows every $28 calls and hands it
     // to $A4A6, the ARM-GROUP allocator. W32b.
     case 0xC653: return st_C653(state, rom);   // stage 5 -- the arm owner
-    case 0xC6DE:
-      throw new Error('$C439[5] -> $C6DE: stage-6 late-spawner arm not ported '
-                    + '(stage-1 scope, W25).');
+    case 0xC6DE: return st_C6DE(state, rom);   // stage 6 -- the bullet spitter
     case 0xC429:
       return;   // $C429 60 RTS -- stage 7's arm is the bare RTS (no spawn)
     default:
@@ -1830,6 +1871,8 @@ function dispatch(state, rom, j, type) {
     case 0xB559: return h_B559(state, rom, j);   // entry 29, types $1D/$9D
     // ---- WAVE 32b: the stage-5 $0600 ARM POOL -----------------------------
     case 0xCA5E: return h_CA5E(state, rom, j);   // entry 20, types $14/$94 (arm owner)
+    // ---- WAVE 35: stage 6 --------------------------------------------------
+    case 0xB480: return h_B480(state, rom, j);   // entry 26, types $1A/$9A
     default:
       // THE MESSAGE THIS USED TO CARRY WAS "no measured run has ever
       // dispatched it", and that sentence is the one this whole follow-up
@@ -2786,6 +2829,128 @@ function h_B559(state, rom, j) {
   o.x[i] = u8(o.x[i] - 1);               // $B563 DEC $036C,X
   offScreenCheck(state);                 // $B566 JMP $B251 -- may free the slot
 }
+
+// ================= WAVE 35: ENTRY 26, $B480 -- STAGE 6 ======================
+//
+// SPAN `$B480`-`$B4E3` + the two rank rows at `$B4E4`-`$B4F1`. Stage 6
+// (`$19 = 5`) only: type `$1A` is the ONLY unported type on that stage and it
+// is 53 of the stage's 104 record reads / 51 of its 98 distinct records.
+// `wavecensus.py`, this tree: stage 5's type list is
+// `$04 $05 $08 $0F $11 $12 $1A $27` and every other one of those is already a
+// ported common-vocabulary routine.
+//
+//   B480  BD 0C 03  LDA $030C,X / 30 11 BMI $B496       uninitialised arm
+//   B485  20 B4 B0  JSR $B0B4                            set bit 7 of the type
+//   B488  A9 02     LDA #$02 / 9D 8C 04 STA $048C,X      PHASE := 2
+//   B48D  A4 17     LDY $17 / B9 E4 B4 LDA $B4E4,Y
+//   B492  9D CC 04  STA $04CC,X / 60 RTS                 DWELL := row A[rank]
+//   B496  A0 06     LDY #$06 / 20 28 B6 JSR $B628        animator, record 6
+//   B49B  BD 8C 04  LDA $048C,X / D0 05 BNE $B4A5
+//   B4A0  A5 A8     LDA $A8 / 20 B5 BC JSR $BCB5         PHASE 0 -> RE-AIM
+//   B4A5  BC 8C 04  LDY $048C,X / 88 DEY / F0 03 BEQ $B4AE
+//   B4AB  88        DEY / F0 1A BEQ $B4C8
+//   B4AE  DE CC 04  DEC $04CC,X / F0 09 BEQ $B4BC        phases 0 and 1: FLY
+//   B4B3  20 FA BD  JSR $BDFA / A9 01 LDA #$01
+//   B4B8  9D 8C 04  STA $048C,X / 60 RTS                 PHASE := 1
+//   B4BC  A4 17     LDY $17 / B9 E4 B4 LDA $B4E4,Y / 9D CC 04 STA $04CC,X
+//   B4C4  A9 02     LDA #$02 / D0 F0 BNE $B4B8           PHASE := 2, dwell A
+//   B4C8  20 E1 AE  JSR $AEE1 / DE CC 04 DEC $04CC,X     phase 2: DRIFT
+//   B4CE  F0 04     BEQ $B4D4 / A9 02 LDA #$02 / D0 0A BNE $B4DE
+//   B4D4  A4 17     LDY $17 / B9 EB B4 LDA $B4EB,Y / 9D CC 04 STA $04CC,X
+//   B4DC  A9 00     LDA #$00                             PHASE := 0, dwell B
+//   B4DE  9D 8C 04  STA $048C,X / 4C 51 B2 JMP $B251     the off-screen box
+//
+// A THREE-PHASE CYCLE ON `$048C`, and the dispatch at `$B4A5` is written as a
+// double `DEY` so **phase 0 and any phase >= 3 both fall into `$B4AE`**. Only
+// 0, 1 and 2 are ever stored, but the fall-in is the ROM's shape and is
+// reproduced rather than switched on:
+//
+//   phase 2  (the state a fresh $1A enters in) -- $AEE1's generic drift for
+//            $B4EB[rank] frames, then phase 0.
+//   phase 0  -- ONE frame. `$B49B` sees 0, so `$BCB5` re-aims the CREATURE
+//            ITSELF at the ship (A = $A8, the enemy's own index -- exactly the
+//            jellyfish's `$B3B4 LDA $A8 / JSR $BCB5`, NOT a bullet), then
+//            `$B4AE` flies it one frame along the new course and stores 1.
+//   phase 1  -- $BDFA along that fixed course for $B4E4[rank] frames, then
+//            phase 2 and dwell A again.
+//
+// So the creature swims a straight leg toward where the ship WAS, drifts,
+// re-aims, and repeats -- faster at high rank, because both rank rows count
+// DOWN with rank ($50 $50 $40 $30 $20 $10 $10 and $60 $60 $50 $40 $30 $20 $20).
+//
+// READING PAST THE APPARENT END, and what it settles:
+//
+//  * `$B4E1` is a `JMP`, so nothing falls out of the code. The 14 bytes at
+//    `$B4E4` are the two rank rows and `$B4F2` is `st_B4F2` (dispatch entry
+//    27), whose only xref is `$AE19`. The routine really does end there.
+//  * `$B4C6 BNE $B4B8` and `$B4D2 BNE $B4DE` are both BACKWARD/forward branches
+//    into the OTHER arm's store. They are unconditional in effect (A is $02 in
+//    both), and they are the reason `$B4B8` and `$B4DE` are separate labels
+//    rather than tails.
+//  * `$B4A2 JSR $BCB5` does NOT return to a fresh X: `$BCB7 TAX` leaves X = $A8,
+//    which is the value it already had. `$B4A5 LDY $048C,X` therefore reads the
+//    same slot. `aimBullet` writes `$046C`, `$042C/$044C` and `$03BC/$03EC` and
+//    never touches `$048C`, so the phase this handler is about to read is the
+//    phase it wrote last frame.
+//
+// THE RANK BOUND IS PROVEN FROM THE LISTING, NOT ASSUMED (W35 worklog §3).
+// `$B4E4` is SEVEN entries and `$B4EB` is the SEVEN after it, ending one byte
+// before dispatch entry 27's opcode -- the narrowest rank row in the ROM (the
+// others, `$B787`/`$B852`/`$B8F8`, are 8 or 9). `$17` has one writer in the
+// whole PRG, `$9C5B` at the bottom of `$9C45`:
+//     $17 = ($44 != 0) + $45 + ($46 != 0) + ($19 != 0)
+// and `$45` has two writers -- `$9C6A STA $45` (the immediate #$02) and
+// `$89D9 INC $45`, guarded by `$89D3 LDA $45 / CMP #$02 / BCS $8983`. `$45` is
+// capped at 2, so **max $17 = 1 + 2 + 1 + 1 = 5**. Y is 0..5 against a 7-entry
+// row; entry 6 of each row is transcribed and unreachable. NOTHING IS CLAMPED
+// HERE: the rank is passed through as the ROM passes it, and if a future wave
+// makes `$45` reach 3 the export's own bound is what will speak up.
+
+/**
+ * Entry 26, `$B480` (types `$1A`/`$9A`) -- STAGE 6's signature creature.
+ */
+function h_B480(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  if (!(o.type[i] & 0x80)) {               // $B480 LDA $030C,X / $B483 BMI $B496
+    setInitialised(state, j);              // $B485 JSR $B0B4
+    o.s0480[i] = 0x02;                     // $B488 LDA #$02 / STA $048C,X
+    o.s04C0[i] = rom.read(0xB4E4 + state.zp17);   // $B48D LDY $17 / LDA $B4E4,Y
+    return;                                // $B495 RTS
+  }
+  // loc_B496 -- the initialised form.
+  sub_B628(state, rom, j, 6);              // $B496 LDY #$06 / $B498 JSR $B628
+  if (o.s0480[i] === 0) {                  // $B49B LDA $048C,X / $B49E BNE $B4A5
+    // $B4A0 LDA $A8 / $B4A2 JSR $BCB5 -- A is the ENEMY's own slot, so this
+    // aims the creature, not a bullet. Same call shape as $B37F's $B3B4.
+    aimBullet(state, j);
+  }
+  // loc_B4A5: LDY $048C,X / DEY / BEQ $B4AE / DEY / BEQ $B4C8. Phase 0 and any
+  // phase >= 3 fall through into $B4AE; only 2 reaches $B4C8.
+  if (o.s0480[i] === 2) {                  // $B4AB DEY / $B4AC BEQ $B4C8
+    // loc_B4C8 -- the DRIFT phase.
+    h_AEE1(state);                         // $B4C8 JSR $AEE1 ($AEE1 reloads X from $A8)
+    o.s04C0[i] = u8(o.s04C0[i] - 1);       // $B4CB DEC $04CC,X
+    if (o.s04C0[i] !== 0) {                // $B4CE BEQ $B4D4
+      o.s0480[i] = 0x02;                   // $B4D0 LDA #$02 / $B4D2 BNE $B4DE
+    } else {
+      // loc_B4D4 -- dwell row B and back to the RE-AIM phase.
+      o.s04C0[i] = rom.read(0xB4EB + state.zp17);  // $B4D4 LDY $17 / LDA $B4EB,Y
+      o.s0480[i] = 0x00;                   // $B4DC LDA #$00
+    }
+    offScreenCheck(state);                 // $B4DE STA $048C,X / $B4E1 JMP $B251
+    return;
+  }
+  // loc_B4AE -- phases 0 and 1 (and, structurally, anything >= 3): FLY.
+  o.s04C0[i] = u8(o.s04C0[i] - 1);         // $B4AE DEC $04CC,X
+  if (o.s04C0[i] !== 0) {                  // $B4B1 BEQ $B4BC
+    moveAimedEnemy(state, j);              // $B4B3 JSR $BDFA
+    o.s0480[i] = 0x01;                     // $B4B6 LDA #$01 / $B4B8 STA $048C,X
+    return;                                // $B4BB RTS
+  }
+  // loc_B4BC -- the leg is over: dwell row A and back to the DRIFT phase.
+  o.s04C0[i] = rom.read(0xB4E4 + state.zp17);    // $B4BC LDY $17 / LDA $B4E4,Y
+  o.s0480[i] = 0x02;                       // $B4C4 LDA #$02 / $B4C6 BNE $B4B8
+}                                          // $B4BB RTS
 
 // ================ WAVE 30: ENTRY 22, $C906 -- THE MOAI ======================
 //
@@ -4342,6 +4507,100 @@ function st_C653(state, rom) {
   sp.z67 = rom.read(0xC67B + x);               // $C66D/$C670 STA $67
   sp.z69 = u8(x + 2);                          // $C672/$C673 INX INX / $C674 STX $69
   sub_A4A6(state);                             // $C676 JSR $A4A6
+}
+
+/**
+ * `st_$C6DE` -- STAGE 6's late-spawner arm (`jt_$C439[5]`). WAVE 35.
+ *
+ * The odd one of the seven: it is the only arm that does NOT fill the enemy
+ * slot `lateSpawner` just cleared for it. It writes an **enemy-BULLET** slot --
+ * the same ten `$0136,X` slots `allocBullet` uses, at object index `$16 + X` --
+ * so stage 6's late spawner produces a stream of fast projectiles rather than
+ * an enemy. That is why its metasprite (`$8D`) is a bullet id and why nothing
+ * in the enemy dispatch is involved.
+ *
+ *   C6DE  A5 69     LDA $69
+ *   C6E0  D0 00     BNE $C6E2      <-- OFFSET ZERO. The branch target IS the
+ *                                      next instruction, so both the load and
+ *                                      the branch are DEAD.
+ *   C6E2  A9 04     LDA #$04       <-- also DEAD: $C44F's first instruction is
+ *   C6E4  A2 06     LDX #$06           LDA $C447,X, which clobbers A.
+ *   C6E6  20 4F C4  JSR $C44F      X = 6 -> pointer $C44D -> stream $C752
+ *   C6E9  A2 09     LDX #$09
+ *   C6EB  BD 36 01  LDA $0136,X / F0 04 BEQ $C6F4 / CA DEX / 10 F8 BPL $C6EB
+ *   C6F3  60        RTS                              every bullet slot busy
+ *   C6F4  86 A8     STX $A8                          <-- OVERWRITES the enemy
+ *                                                        cursor with a BULLET
+ *                                                        slot index
+ *   C6F6  A5 A9 / 0A 0A 0A 0A / 85 A9 / A9 00 / 2A / 06 A9 / 2A / 85 98
+ *                              $98:$A9 := $A9 * 32   (a 16-bit shift, not two)
+ *   C706  A5 02 / 18 / 65 A9 / 9D F6 03              yvelf := $02 + lo
+ *   C710  A9 00 / 65 98 / 9D C6 03                   yvel  := hi + carry
+ *   C717  A9 04 / 9D 36 04                           xvel  := 4
+ *   C71C  A9 00 / 9D 56 04 / 9D 16 01 / 9D 56 03 / 9D 96 03
+ *                                                    xvelf, status, yf, xf := 0
+ *   C72A  A0 00 / A5 02 / 29 04 / D0 01 / C8         dir := ($02 & 4) ? 0 : 1
+ *   C733  98 / 9D 76 04                              $046C,X := dir
+ *   C737  A9 01 / 9D 16 03 / 9D 76 01                type := 1, animFrame := 1
+ *   C73F  B9 50 C7 / 9D 36 03                        y := $C750[dir] ($84/$42)
+ *   C745  A9 98 / 9D 76 03                           x := $98 -- THE IMMEDIATE
+ *   C74A  A9 8D / 9D 36 01                           anim := $8D
+ *   C74F  60        RTS
+ *
+ * THREE THINGS THAT ARE EASY TO GET WRONG HERE.
+ *
+ * 1. **`$C745 LDA #$98` IS AN IMMEDIATE, NOT ZERO PAGE `$98`** -- and `$98` had
+ *    just been written by this very routine four instructions earlier, so
+ *    reading it as `LDA $98` produces a plausible number and a silently wrong
+ *    spawn X. The opcode is `A9`, not `A5`.
+ * 2. **`$C6F4 STX $A8` REDEFINES `$A8`.** On entry `$A8` is the ENEMY slot
+ *    `lateSpawner` allocated and cleared; from here on it is a BULLET slot
+ *    0..9. The enemy slot is simply abandoned (still cleared) -- that is the
+ *    cartridge's behaviour, and `sp.zA8` is written so the next frame's
+ *    `$C41E` scan starts where the ROM starts it.
+ * 3. **THE VELOCITY IS ONE 16-BIT NUMBER**, `$A9 * 32 + $02`, split across
+ *    `$03C6` (integer) and `$03F6` (fraction) -- so the frame counter is the
+ *    LOW BITS of a velocity, not a separate jitter term. The four ASLs plus
+ *    `ROL A / ASL $A9 / ROL A` are the ROM's way of doing `<< 5` on a 16-bit
+ *    value; the port does the shift once and derives both halves from it, so a
+ *    transcription slip cannot agree with itself.
+ *
+ * `approachStage5` (`$C750`-`$C772`, W25) already exports both the two-byte row
+ * and the 32-byte stream, so this arm needs no new asset.
+ */
+function st_C6DE(state, rom) {
+  const sp = state.spawn;
+  const o = state.obj;
+  // $C6DE LDA $69 / $C6E0 BNE $C6E2 and $C6E2 LDA #$04 are both dead (header).
+  const { a9 } = sub_C44F(state, rom, 0x06);   // $C6E4 LDX #$06 / $C6E6 JSR $C44F
+  // $C6E9-$C6F1: scan the ten ENEMY-BULLET slots 9..0 for a free one. Object
+  // index $16 + x, the same band allocBullet() uses.
+  let k = -1;
+  for (let x = 9; x >= 0; x--) {               // $C6EB LDA $0136,X / BEQ $C6F4
+    if (o.anim[0x16 + x] === 0) { k = x; break; }
+  }
+  if (k < 0) return;                           // $C6F3 RTS -- every slot busy
+  sp.zA8 = k;                                  // $C6F4 STX $A8 (see header note 2)
+  const i = 0x16 + k;
+  // $C6F6-$C704: $98:$A9 := a9 << 5, as a single 16-bit value.
+  const v = (a9 << 5) & 0xFFFF;                // a9 <= $1E, so v <= $3C0
+  // $C706-$C714: yvelf := $02 + (v & $FF); yvel := (v >> 8) + carry.
+  const lo = state.frame + (v & 0xFF);         // $C706 LDA $02 / CLC / ADC $A9
+  o.yvelf[i] = u8(lo);                         // $C70D STA $03F6,X
+  o.yvel[i] = u8((v >>> 8) + (lo > 0xFF ? 1 : 0));   // $C712 ADC $98 / STA $03C6,X
+  o.xvel[i] = 0x04;                            // $C717 LDA #$04 / STA $0436,X
+  o.xvelf[i] = 0;                              // $C71C LDA #$00 / $C71E STA $0456,X
+  o.status[i] = 0;                             // $C721 STA $0116,X
+  o.yf[i] = 0;                                 // $C724 STA $0356,X
+  o.xf[i] = 0;                                 // $C727 STA $0396,X
+  // $C72A-$C733: the direction byte. ($02 & 4) NON-zero leaves Y at 0.
+  const dir = (state.frame & 0x04) !== 0 ? 0 : 1;    // $C72E AND #$04 / BNE / INY
+  o.s0460[i] = dir;                            // $C734 STA $0476,X
+  o.type[i] = 0x01;                            // $C737 LDA #$01 / $C739 STA $0316,X
+  o.animFrame[i] = 0x01;                       // $C73C STA $0176,X -- the box class
+  o.y[i] = rom.read(0xC750 + dir);             // $C73F LDA $C750,Y / STA $0336,X
+  o.x[i] = 0x98;                               // $C745 LDA #$98 -- IMMEDIATE
+  o.anim[i] = 0x8D;                            // $C74A LDA #$8D / $C74C STA $0136,X
 }
 
 /**

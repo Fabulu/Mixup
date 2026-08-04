@@ -241,20 +241,35 @@ test('$A2F0 has moved to stage 6, and its message names what is ACTUALLY left', 
   };
   assert.doesNotThrow(() => spawnEngine(seed(4), res),
     'stage 5 ($19=4) must reach the wave engine now');
-  assert.throws(() => spawnEngine(seed(5), res), /\$A2F0 runEngine/,
-    'stage 6 ($19=5) must throw loudly, naming $A2F0');
+  // W35 moved the guard to `>= 6`. The MESSAGE assertions are the point of this
+  // check and they follow the guard: it went stale after W32a and again after
+  // W32b, so what it must never do is name a routine this repo has shipped.
+  assert.doesNotThrow(() => spawnEngine(seed(5), res),
+    'stage 6 ($19=5) must reach the wave engine now (W35)');
+  assert.throws(() => spawnEngine(seed(6), res), /\$A2F0 runEngine/,
+    'stage 7 ($19=6) must throw loudly, naming $A2F0');
   let msg = '';
-  try { spawnEngine(seed(5), res); } catch (e) { msg = e.message; }
-  for (const shipped of ['$B559', '$C653', '$BEF3', '$CBD1', '$A17C']) {
-    assert.ok(!new RegExp(`\${shipped} [^)]*not ported`).test(msg),
+  try { spawnEngine(seed(6), res); } catch (e) { msg = e.message; }
+  for (const shipped of ['$B559', '$C653', '$BEF3', '$CBD1', '$A17C',
+                         '$B480', '$C6DE', '$CDA5']) {
+    assert.ok(!new RegExp(`\\${shipped} [^)]*not ported`).test(msg),
       `${shipped} is ported -- the guard must not name it as missing`);
   }
-  assert.ok(/\$C6DE/.test(msg),
-    'the guard must name what is ACTUALLY left: stage 6\'s own late spawner');
+  assert.ok(/\$9872/.test(msg),
+    'the guard must name what is ACTUALLY left: stage 7\'s end-of-game chain');
   assert.ok(!/walkers/.test(msg),
     'the four $0600 walkers are ported -- the guard must not still cite them');
   assert.ok(!/W32c\./.test(msg),
     'and it must stop deferring to W32c, which is shipped');
+  // Naming a wave as SHIPPED is fine and is what the message is for; what it
+  // must never do is DEFER to one, which is how it went stale twice. So: no
+  // wave number above the highest shipped one may appear in it.
+  const SHIPPED_THROUGH = 35;
+  for (const m of msg.matchAll(/\bW(\d\d)\b/g)) {
+    assert.ok(Number(m[1]) <= SHIPPED_THROUGH,
+      `the guard defers to ${m[0]}, which is not shipped -- that is exactly `
+      + 'how this message went stale after W32a and again after W32b');
+  }
 });
 
 // ============ 6. THE FOUR PER-FRAME STAGE-5 WALLS ARE ALL LOUD ==============
