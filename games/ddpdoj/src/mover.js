@@ -1661,33 +1661,105 @@ CONTINUATIONS.set(0x28310e, (ctx, base) => {
   advance40(ctx, base);                                // $283130 lea $36(A6)
 });
 
-// ----- kind 27 ($283148 init / $283194 cont) -- trail emit, drift, steer
-INIT_BODIES.set(0x283148, (ctx, base) => {
+// ----- kinds 27, 36, 37 and 38 -- ONE body, four times, four rings
+//
+// A byte-for-byte compare of the four $118-byte bodies against kind 27's finds
+// 15, 16 and 17 differing bytes, and every one of them is either a PC-relative
+// displacement or one of exactly FOUR constants: the descriptor BASE, the
+// continuation address, the ring LIMIT and the ring WRAP.  So they are one
+// behaviour with four animation ranges:
+//
+//   kind | init base | wrap    | limit   | the ring
+//   -----+-----------+---------+---------+------------------------
+//    27  | $1BFED0   | $1BFEF4 | $1BFF84 | [$1BFEF4, $1BFF84)
+//    36  | $1BFF60   | $1BFF84 | $1C0014 | [$1BFF84, $1C0014)
+//    37  | $1BFFF0   | $1C0014 | $1C00A4 | [$1C0014, $1C00A4)
+//    38  | $1C0080   | $1C00A4 | $1C0134 | [$1C00A4, $1C0134)
+//
+// FOUR CONSECUTIVE $90-BYTE RINGS, and in every row `init base + $24 == wrap`
+// and `wrap + $90 == limit` -- four frames each.  That is twelve constants read
+// separately out of four listings agreeing on one pattern, which is the kind of
+// evidence a single transcription cannot give you.  Note the initialiser's base
+// is one step BELOW the ring, because the phase loop always runs at least once.
+function driftBodyInit(ctx, base, { animBase, cont }) {
   const { ram } = ctx;
   clearDispatch(ram, base);                            // $283148 andi.b #$fe,(A6)
   ram.setU32(base + 0x0a, 0x1c01ac);                   // $28314C  (dead: overwritten)
   ram.setU8(base + 0x1d, 0x1a);                        // $283154
   ram.setU32(base + 0x30, ram.u32(base + REC.velA));   // $28315A save velocity...
   ram.setU32(base + REC.velA, 0);                      // $283160 ...and clear it
-  ram.setU32(base + 0x0a, 0x1bfed0);                   // $283164 descriptor base
+  ram.setU32(base + 0x0a, animBase);                   // $283164 descriptor base
   // $28316C..$283180: the starting animation phase comes from a GLOBAL.
   const phase = (ram.u16(0x80390a) >>> 2) & 0x3;       // $283172 lsr.w #2 / andi.w #3
   for (let i = 0; i <= phase; i++) {                   // $283178 dbra: D0+1 times
     ram.setU32(base + 0x0a, (ram.u32(base + 0x0a) + 0x24) >>> 0);
   }
-  ram.setU32(base + REC.continuation, 0x283194);       // $283184
+  ram.setU32(base + REC.continuation, cont);           // $283184
   ram.setU16(base + 0x30, 0x0020);                     // $28318C OVERWRITES saved velA
-});
-CONTINUATIONS.set(0x283194, (ctx, base) => {
+}
+function driftBodyCont(ctx, base, { wrap, limit }) {
   const { ram } = ctx;
   trailEmit(ctx, base);                                // $283194..$2831A6
-  animateRenderOffsWrap(ctx, base, 0x1bfef4, 0x24, 0x1bff84);  // $2831AC/$2831B2
+  animateRenderOffsWrap(ctx, base, wrap, 0x24, limit); // $2831AC/$2831B2
   // $2831C0 tst.w $30 / beq -- the drift/steer block is gated AND time-limited.
   const n = ram.u16(base + 0x30);
   if (n === 0) { advance40(ctx, base); return; }       // $2831C4 beq $283256
   ram.setU16(base + 0x30, u16(n - 1));                 // $2831C8 subq.w #1,$30
   driftAndSteer(ctx, base);                            // $2831CC..$283250
   advance40(ctx, base);                                // $283256 lea $40(A6)
+}
+const DRIFT_BODIES = [
+  // kind, init,      cont,      animBase, wrap,     limit
+  [27, 0x283148, 0x283194, 0x1bfed0, 0x1bfef4, 0x1bff84],
+  [36, 0x2838c6, 0x283912, 0x1bff60, 0x1bff84, 0x1c0014],
+  [37, 0x2839de, 0x283a2a, 0x1bfff0, 0x1c0014, 0x1c00a4],
+  [38, 0x283af6, 0x283b42, 0x1c0080, 0x1c00a4, 0x1c0134],
+];
+for (const [, init, cont, animBase, wrap, limit] of DRIFT_BODIES) {
+  INIT_BODIES.set(init, (ctx, base) => driftBodyInit(ctx, base, { animBase, cont }));
+  CONTINUATIONS.set(cont, (ctx, base) => driftBodyCont(ctx, base, { wrap, limit }));
+}
+
+// ----- kind 35 ($283850 init / $28388A cont) -- the SPEED RAMP, a bit-7 body
+//
+// Kind 35 is one of the six kinds whose template sets type-word bit 7, so the
+// mover RECOMPUTES its velocity from speed/dir every single frame and never
+// reads +$1E.  That is what makes this body work: the initialiser sets
+// `move.b #$0,$1a(A6)` -- SPEED ZERO -- and the continuation adds 1 to it every
+// fifth animating frame.  The bullet is motionless when it appears and winds up.
+//
+// It carries the same `move.l $1e,$30` / `clr.l $1e` as kinds 19/22/24/27, and
+// here the save is doubly vestigial: nothing restores +$30, AND a bit-7 bullet
+// never consults +$1E in the first place.  Four bodies now share that idiom and
+// only two of them (19, 22) actually use it as a launch delay.
+//
+// The +$28/+$29 pair is `move.w #$404` -- counter $04, reload $04 -- and it is
+// the byte-underflow flavour, so the first speed step lands on the FIFTH
+// animating frame, not the fourth.  Animating frames are every other frame (the
+// bit-11 flip-flop at $28388C) and bit 11 is CLEAR after the initialiser, so the
+// FIRST continuation frame animates: frames 1,3,5,7,9 -- the first acceleration
+// is NINE frames in, not ten.  (Ten was the number written down before it was
+// run; the flip-flop's starting phase is the difference.)
+INIT_BODIES.set(0x283850, (ctx, base) => {
+  const { ram } = ctx;
+  clearDispatch(ram, base);                            // $283850 andi.b #$fe,(A6)
+  ram.setU32(base + 0x0a, 0x1c01ac);                   // $283854  (dead: overwritten)
+  ram.setU8(base + 0x1d, 0x1a);                        // $28385C
+  ram.setU32(base + 0x30, ram.u32(base + REC.velA));   // $283862 save (vestigial)
+  ram.setU32(base + REC.velA, 0);                      // $283868 clr.l $1e
+  ram.setU32(base + REC.continuation, 0x28388a);       // $28386C
+  ram.setU32(base + 0x0a, 0x1c0014);                   // $283874 descriptor (final)
+  ram.setU16(base + 0x28, 0x0404);                     // $28387C counter $04 / reload $04
+  ram.setU8(base + REC.speed, 0x00);                   // $283882 SPEED = 0
+});
+CONTINUATIONS.set(0x28388a, (ctx, base) => {
+  const { ram } = ctx;
+  if (ram.bchg8(base, 3) !== 0) { advance40(ctx, base); return; }   // $28388C/$28388E
+  if (byteUnderflow(ram, base, 0x28, 0x29)) {          // $283890/$283894/$283898
+    ram.setU8(base + REC.speed, (ram.u8(base + REC.speed) + 1) & 0xff);  // $28389E
+  }
+  animateRenderOffsWrap(ctx, base, 0x1c0014, 0x24, 0x1c00a4);  // $2838A2/$2838AA
+  advance40(ctx, base);                                // $2838BC lea $40(A6)
 });
 
 // ----- kind 32 ($2835CC init / $283616 cont) -- the same core, ungated

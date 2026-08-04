@@ -817,3 +817,70 @@ walks it.
 **Inventory: 29 → 32 initialisers, 31 continuations. 35 of 39 kind indices
 covered; 4 distinct bodies remain: kind 28 (family J, the splitter), kind 35,
 and kinds 36/37/38.**
+
+### 2026-08-04 — FAMILY H COMPLETED (kinds 36, 37, 38) + KIND 35
+
+**KINDS 27, 36, 37 AND 38 ARE ONE BODY, FOUR TIMES.** A byte-for-byte compare of
+the three $118-byte bodies against kind 27's finds 15, 16 and 17 differing
+bytes, and every one is either a PC-relative displacement or one of exactly FOUR
+constants — the descriptor BASE, the continuation address, the ring LIMIT and
+the ring WRAP:
+
+| kind | init base | wrap | limit | ring |
+|---|---|---|---|---|
+| 27 | `$1BFED0` | `$1BFEF4` | `$1BFF84` | `[$1BFEF4, $1BFF84)` |
+| 36 | `$1BFF60` | `$1BFF84` | `$1C0014` | `[$1BFF84, $1C0014)` |
+| 37 | `$1BFFF0` | `$1C0014` | `$1C00A4` | `[$1C0014, $1C00A4)` |
+| 38 | `$1C0080` | `$1C00A4` | `$1C0134` | `[$1C00A4, $1C0134)` |
+
+**Four consecutive $90-byte rings that tile `$1BFEF4..$1C0134`**, and in every
+row `init base + $24 == wrap` and `wrap + $90 == limit` — four frames each. That
+is twelve constants read separately out of four listings all agreeing on one
+pattern, which is evidence a single transcription cannot produce. The
+initialiser's base sits one step BELOW its ring because the phase `dbra` always
+runs at least once.
+
+**KIND 35 IS A SPEED RAMP, AND IT ONLY WORKS BECAUSE IT IS A BIT-7 BODY.** Its
+template sets type-word bit 7, so the mover recomputes velocity from speed/dir
+every frame and never reads +$1E. That is what makes `move.b #$0,$1a(A6)` —
+SPEED ZERO — meaningful: the bullet appears motionless and the continuation adds
+1 to its speed every fifth animating frame. Ported without knowing which mover
+path it takes, "speed 0" reads as a harmless field write.
+
+It carries the same `move.l $1e,$30` / `clr.l $1e` idiom as kinds 19/22/24/27,
+and here the save is **doubly** vestigial: nothing restores +$30, and a bit-7
+bullet never consults +$1E anyway. **Five bodies now share that idiom and only
+two of them (19, 22) use it as a launch delay.** The idiom is not the meaning.
+
+### THE NUMBER WRITTEN DOWN BEFORE IT WAS RUN WAS WRONG BY ONE
+
+The port's comment said kind 35's first acceleration is "ten frames in". It is
+**nine**. `bchg` reports the OLD bit and bit 11 is clear after the initialiser,
+so the FIRST continuation frame animates — animating frames are 1, 3, 5, 7, 9,
+and the underflow counter fires on the fifth of those. The test was written with
+10 and went red; both the test and the source comment are corrected.
+
+That is exactly the failure this project keeps naming: a number derived by
+reasoning and recorded as if measured. It cost nothing here only because the
+check was written to be able to fail.
+
+### MUTATION TABLE (kinds 35/36/37/38)
+
+| mutation | result |
+|---|---|
+| kind 37 given kind 36's ring | RED — `not ok 228`, alone |
+| kind 38's init base set equal to its wrap | RED — `not ok 228`, alone |
+| kind 35 does not zero its speed | RED — `not ok 229`, alone |
+| kind 35 drops the bit-11 flip-flop | RED — `not ok 229`, alone |
+| kind 35's counter fires on reaching 0, not on underflow | RED — `not ok 229` |
+| kind 35 steps speed by 2 | RED — `not ok 229`, alone |
+| the shared +$30 gate seeded `$10` instead of `$20` | RED — `not ok 225` + `226` |
+
+Seven mutations, seven reds, no survivors. `src/mover.js` restored and
+hash-verified byte-identical (`2f19549b90eefd51`); **411 pass / 0 fail / 0
+skipped**.
+
+**Inventory: 32 → 36 initialisers, 35 continuations. 38 of 39 kind indices
+covered. ONE distinct body remains: kind 28 ($283260), family J -- the splitter,
+which re-aims at the player via `$242748`/`$242296` and spawns through
+`$2817C2`. It is the only kind still taking the loud named throw.**

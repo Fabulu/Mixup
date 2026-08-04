@@ -1014,6 +1014,81 @@ test('kind 26 rings its descriptor inside bounds carried in the RECORD, and '
       'a THREE-frame ring: +$14 steps until it hits +$10, then -= the +$14 span');
   });
 
+test('kinds 27/36/37/38 are ONE body with FOUR consecutive $90-byte rings, and '
+  + 'each initialiser starts one $24 step below its own ring',
+  { skip: !HAVE_TABLES }, () => {
+    // From the listings: init base + $24 == wrap, and wrap + $90 == limit.
+    for (const [kind, wrap, limit] of [
+      [27, 0x1bfef4, 0x1bff84],
+      [36, 0x1bff84, 0x1c0014],
+      [37, 0x1c0014, 0x1c00a4],
+      [38, 0x1c00a4, 0x1c0134],
+    ]) {
+      const ram = new Ram(null);
+      ram.setU16(0x81b41a, 1);
+      ram.setU16(0x813176, 0);
+      ram.setU16(0x80390a, 0);                        // phase 0
+      const base = seedBullet(ram, 0, { type: 0x8100 | kind, speed: 0x14, dir: 0x20 });
+      ram.setU8(base + 0x2c, 0xff);                   // no steering
+      ram.setU8(base + 0x36, 0xff);
+      const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+      runMover(ctx);                                  // F1: the initialiser
+      ram.setU32(base + REC.velA, 0);
+      assert.equal(ram.u32(base + 0x0a), wrap,
+        `kind ${kind}: phase 0 lands the descriptor on its ring's FIRST frame `
+        + `($${wrap.toString(16)}), i.e. the init base is one $24 step below it`);
+      // walk the ring: four frames, then back to the wrap target.
+      const seen = [ram.u32(base + 0x0a)];
+      for (let f = 0; f < 4; f++) { runMover(ctx); ram.setU32(base + REC.velA, 0);
+                                    seen.push(ram.u32(base + 0x0a)); }
+      assert.deepEqual(seen, [wrap, wrap + 0x24, wrap + 0x48, wrap + 0x6c, wrap],
+        `kind ${kind}: a FOUR-frame ring ending at $${limit.toString(16)}`);
+      assert.equal(wrap + 0x90, limit,
+        `kind ${kind}: wrap + $90 == limit -- the four rings tile $1BFEF4..$1C0134`);
+    }
+  });
+
+test('kind 35 starts at SPEED ZERO and winds up one step every fifth animating '
+  + 'frame ($283882 / $283890)', { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 35, speed: 0x14, dir: 0x20 });
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: the initialiser
+    assert.equal(ram.u8(base + REC.speed), 0x00,
+      'F1: $283882 zeroes the SPEED -- a bit-7 bullet recomputes from it every '
+      + 'frame, so speed 0 means it does not move at all');
+    assert.equal(ram.u16(base + 0x28), 0x0404, 'F1: +$28 counter $04 / +$29 reload $04');
+    assert.equal(ram.u32(base + 0x0a), 0x1c0014, 'F1: descriptor $1C0014');
+    ram.setU32(base + REC.velA, 0);
+    // The bit-11 flip-flop halves the rate. bit 11 is CLEAR after the
+    // initialiser, and `bchg` reports the OLD bit, so the FIRST continuation
+    // frame animates -- animating frames are 1, 3, 5, 7, 9...  The counter is
+    // the underflow flavour, so the fifth of those (frame 9) is the first step.
+    // Frame 10 was the expectation written before this ran, and it was wrong by
+    // exactly the off-by-one the flip-flop's phase introduces.
+    const bumps = [];
+    let prev = 0;
+    for (let f = 1; f <= 24; f++) {
+      runMover(ctx);
+      ram.setU32(base + REC.velA, 0);
+      const sp = ram.u8(base + REC.speed);
+      if (sp !== prev) {
+        bumps.push(f);
+        prev = sp;
+        assert.equal(ram.u8(base + 0x28), 0x04,
+          `frame ${f}: the underflow reloads +$28 from +$29 on the SAME frame`);
+      }
+    }
+    assert.deepEqual(bumps, [9, 19],
+      'speed steps on the 5th and 10th ANIMATING frames, which are frames 9 and 19');
+    assert.equal(ram.u8(base + REC.speed), 0x02, 'two steps in 24 frames');
+    assert.equal(ram.u8(base + 0x28), 0x02,
+      'and it keeps ticking after the reload: animating frames 21 and 23 took '
+      + 'the reloaded $04 down to $02 by frame 24');
+  });
+
 test('every ported initialiser installs ITS OWN continuation address at +$22',
   { skip: !HAVE_TABLES }, () => {
     // THIS TEST EXISTS BECAUSE A MUTATION SURVIVED.  Kinds 30 and 31 are
@@ -1038,6 +1113,8 @@ test('every ported initialiser installs ITS OWN continuation address at +$22',
       [0x282e00, 0x282e4a], [0x282ebc, 0x282ef0], [0x282f6e, 0x282f9e],
       [0x28330c, 0x28333c], [0x283430, 0x28349a], [0x2834fe, 0x283568],
       [0x2830b2, 0x28310e], [0x283148, 0x283194], [0x2835cc, 0x283616],
+      [0x283850, 0x28388a], [0x2838c6, 0x283912], [0x2839de, 0x283a2a],
+      [0x283af6, 0x283b42],
       [0x2836a8, 0x2836d0], [0x28371c, 0x28374c],
     ]);
     const seen = new Set();
@@ -1064,31 +1141,33 @@ test('every ported initialiser installs ITS OWN continuation address at +$22',
       'every entry of the expected map must have been reached through $282030');
   });
 
-test('the ported-body inventory is exactly 32 initialisers + 31 continuations', () => {
+test('the ported-body inventory is exactly 36 initialisers + 35 continuations', () => {
   // A LEDGER test: it pins the exact set, so porting a body turns it RED until
   // the inventory here is updated deliberately.  That is the point -- the count
   // cannot drift upward without somebody writing down which addresses moved.
   //
   // W26 ported 8 bodies (kinds 3/4/5/6/7/12/13/19; kind 6 is the midboss's).
-  // W27 adds 24: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
+  // W27 adds 28: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
   // family C kinds 16/18, family D kind 17, family E kinds 22/24, family F
-  // kind 23, families G+L kinds 25/29/34, family H kinds 26/27/32, family I
-  // kinds 30/31, family K kind 33.  Kind 10's $282840 is also the target for
-  // kinds 14 and 15, which alias it in the $282030 table.  So 32 distinct
-  // bodies now cover 35 of the 39 kind indices.
+  // kind 23, families G+L kinds 25/29/34, family H kinds 26/27/32/36/37/38,
+  // family I kinds 30/31, family K kind 33, and kind 35.  Kind 10's $282840 is
+  // also the target for kinds 14 and 15, which alias it in the $282030 table.
+  // So 36 distinct bodies now cover 39 of the 39 kind indices, minus kind 28 --
+  // 38 of 39; kind 28 (family J, the splitter) is the last one throwing.
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
     [0x282104, 0x282162, 0x2821c2, 0x2823ec, 0x2824a8, 0x282564, 0x282620,
      0x2826dc, 0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962,
      0x2829bc, 0x282a1e, 0x282aae, 0x282b30, 0x282bee, 0x282c56,
      0x282d42, 0x282e00, 0x282ebc, 0x282f6e, 0x2830b2, 0x283148, 0x28330c,
-     0x283430, 0x2834fe, 0x2835cc, 0x2836a8, 0x28371c]);
+     0x283430, 0x2834fe, 0x2835cc, 0x2836a8, 0x28371c, 0x283850, 0x2838c6,
+     0x2839de, 0x283af6]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
     [0x28213e, 0x28219e, 0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738,
      0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x2829fe,
      0x282a66, 0x282af6, 0x282b64, 0x282c2a, 0x282d76, 0x282e4a, 0x282ef0,
      0x282f9e, 0x28310e, 0x283194, 0x28333c, 0x28349a, 0x283568, 0x283616,
-     0x2836d0, 0x28374c, 0x283ce4]);
-  // 32 initialisers, 31 continuations. NOT equal, and that is correct: kinds 2
+     0x2836d0, 0x28374c, 0x28388a, 0x283912, 0x283a2a, 0x283b42, 0x283ce4]);
+  // 36 initialisers, 35 continuations. NOT equal, and that is correct: kinds 2
   // and 21 both install $283CE4, so bodies MAY share a continuation.
   //
   // An earlier version of this test asserted `INIT_BODIES.size ===
