@@ -353,18 +353,36 @@ export function allocSubRecord(ram, classByte, runLen) {
  * param and movement ptr and run the init dispatch.  On alloc failure the
  * walker still advances (carry -> $263440), so the CURSOR is unaffected; only
  * the spawn's EFFECT is skipped.
+ * **WAVE 33: THE TWO FAILURE ARMS ARE NOW COUNTED.**  Both are faithful ROM
+ * behaviour -- the board really does drop a spawn when a band is full
+ * (`$263748`) or when the sub-record pool cannot fit the run (`$263622 bcs
+ * $263674`) -- but the port had no way to SEE either, and that is how the
+ * sub-record leak (W33 §4: 100 of 100 slots from lf2906, every spawn after it
+ * discarded) survived four waves.  `spawnEvent` is optional and appended, so
+ * no existing call site changed; `Game` folds it into `allocEvents`, beside the
+ * object allocator's own failures, for exactly the reason stated there.
+ *
+ * @param spawnEvent optional `(kind, type) => void`
  * @returns {{ok:boolean, slot:number, type:number, initBody:number}}
  */
-export function dispatchScriptRecord(ram, rom, recCursor, unported, tables) {
+export function dispatchScriptRecord(ram, rom, recCursor, unported, tables,
+  spawnEvent) {
   const type = rom.u8(recCursor + REC.type);       // $2633e0
   const flags = rom.u8(recCursor + REC.flags);     // (the high byte of the +4 longword)
   const param = rom.u16(recCursor + REC.param);    // $263428
   const mov = resolveMovementPtr(ram, rom, recCursor, unported); // $2633fa..$26341e
   const r = allocEnemy(ram, type, flags);          // $263420 bsr $2636d6
-  if (r.carry) return { ok: false, slot: r.addr, type, initBody: 0 };  // $263424 bcs
+  if (r.carry) {                                   // $263424 bcs $263440
+    spawnEvent?.('band-full', type);               // $263748 -- the DUMMY record
+    return { ok: false, slot: r.addr, type, initBody: 0 };
+  }
   ram.setU16(r.addr + E.param, param);             // $263428 move.w ($2,A2),($a,A0)
   ram.setU32(r.addr + E.movement, mov);            // $26342e move.l A1,($12,A0)
   const init = initDispatch(ram, rom, r.addr, unported, undefined, tables); // $263438
+  // `$263622 bcs $263674` -- the sub-record run did not fit and the record was
+  // cleared.  The init BODY never ran, so this spawn produced nothing at all.
+  if (init.failed) spawnEvent?.('sub-record-pool-full', type);
+  else spawnEvent?.('script', type);
   return { ok: true, slot: r.addr, type, initBody: init.initBody,
            allocFailed: init.failed };
 }
@@ -410,7 +428,7 @@ export function enqueueDeferred(ram, type, d1mode, callerD1 = 0) {
  * AFTER the walker this frame.
  * @returns {number} the number of deferred spawns processed
  */
-export function processDeferred(ram, rom, unported, tables) {
+export function processDeferred(ram, rom, unported, tables, spawnEvent) {
   let n = 0;
   for (;;) {
     let count = ram.u16(SPAWN.DEFQ_COUNT);         // $263446 move.w $815ea8,D6
@@ -421,7 +439,10 @@ export function processDeferred(ram, rom, unported, tables) {
     const flags = ram.u16(a + 0x04);               // $263464 move.w ($4,A4),D1
     ram.setU16(SPAWN.DEFQ_COUNT, count);           // (pop happens at $2634d2 in ROM)
     const r = allocEnemy(ram, type, flags);        // $263468 jsr $2636d6
-    if (r.addr === ENEMY.dummy) continue;          // $2634d8 cmpa.l #$81454c / beq
+    if (r.addr === ENEMY.dummy) {                  // $2634d8 cmpa.l #$81454c / beq
+      spawnEvent?.('deferred-band-full', type);
+      continue;
+    }
     // $263472..$2634CC: copy the queued fields into the enemy record.  The ROM
     // drain copies +$2 (byte) at $263472, FOURTEEN longwords at +$12..+$46
     // (every 4 bytes, $263478..$2634C6), then +$4A (word) at $2634CC -- sixteen
@@ -433,7 +454,8 @@ export function processDeferred(ram, rom, unported, tables) {
                        0x2a, 0x2e, 0x32, 0x36, 0x3a, 0x3e, 0x42, 0x46])  // $26349c..$2634c6
       ram.setU32(r.addr + off, ram.u32(a + off));
     ram.setU16(r.addr + 0x4a, ram.u16(a + 0x4a));  // $2634cc move.w ($4a,A4),($4a,A0)
-    initDispatch(ram, rom, r.addr, unported, undefined, tables);  // $2634e4
+    const init = initDispatch(ram, rom, r.addr, unported, undefined, tables); // $2634e4
+    spawnEvent?.(init.failed ? 'deferred-sub-record-pool-full' : 'deferred', type);
     n++;
     // re-read count: the loop tests $815ea8 at $2634e8
   }
@@ -455,9 +477,9 @@ export function processDeferred(ram, rom, unported, tables) {
  * move.l A2,(A3)` writes the cursor back and drops straight into `$263446
  * move.w $815EA8,D6`, the deferred drain, which is what reaches `$2634F2 rts`.
  */
-export function runSpawnWalker(ram, rom, unported, tables) {
+export function runSpawnWalker(ram, rom, unported, tables, spawnEvent) {
   const script = walkScriptLoop(ram, rom, (cur, rec) =>
-    dispatchScriptRecord(ram, rom, cur, unported, tables));
-  const deferred = processDeferred(ram, rom, unported, tables);
+    dispatchScriptRecord(ram, rom, cur, unported, tables, spawnEvent));
+  const deferred = processDeferred(ram, rom, unported, tables, spawnEvent);
   return { script, deferred };
 }

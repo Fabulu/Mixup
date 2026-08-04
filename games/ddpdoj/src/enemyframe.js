@@ -99,7 +99,11 @@ export function runEnemyFrame(ram, rom, ctx, handlers) {
   // W31: `ctx.tables` reaches the walker because the MIDBOSS's init body
   // ($26B48C) runs its arm kinematics ($26B4B4 bsr $26B304), which reads
   // the $241D34 vector tables.  Every other body ignores it.
-  const { script, deferred } = runSpawnWalker(ram, rom, u, ctx.tables);  // $2634F6
+  // W33: `ctx.spawnEvent` counts the two SILENT drop arms (band full, and the
+  // sub-record pool refusing the run).  Optional, so the gates that call this
+  // without one are unchanged.
+  const { script, deferred } = runSpawnWalker(ram, rom, u, ctx.tables,
+    ctx.spawnEvent);                                           // $2634F6
   const driven = runEnemyDriver(ram, handlers, hctx(ctx));    // $2634FA
   return { script, deferred, driven };
 }

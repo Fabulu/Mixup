@@ -200,6 +200,17 @@ export class Game {
       allocEvent: (kind, n) => {
         this.allocEvents.set(kind, (this.allocEvents.get(kind) ?? 0) + n);
       },
+      // WAVE 33.  The ENEMY spawn's own outcomes, counted for the same reason
+      // and in the same map.  Two of the four are FAILURES the board also has
+      // ($263748 band full, $263622 the sub-record run not fitting) and until
+      // this wave the port could not see either -- which is how a sub-record
+      // leak that discarded EVERY spawn from lf2906 onwards survived four
+      // waves with green gates.  A drop that is real must still be visible.
+      spawnEvent: (kind, type) => {
+        const k = `spawn-${kind}`;
+        this.allocEvents.set(k, (this.allocEvents.get(k) ?? 0) + 1);
+        void type;
+      },
       // WAVE 30.  Every ENEMY FIRE that reached a bullet generator, keyed by
       // the ROM address of the `jsr` that made it, with the per-core outcome
       // (spawned / declined by the freeze gate / DROPPED because the pool was
