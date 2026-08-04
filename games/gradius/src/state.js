@@ -550,6 +550,25 @@ export function createState() {
                   //      list) but kept so the port's spawn cadence matches the
                   //      cartridge's. Cleared by $9B3E's $3D-$97 wipe and $96CF's
                   //      $50-$70 wipe.
+      // ---- $A0-$A3, THE TERRAIN PROBE'S OWN FOUR BYTES (wave 34) ---------
+      //
+      // `$C3D3` builds a real 16-bit pointer into the collision map in $A0:$A1,
+      // keeps the byte it read in $A2 and the sub-cell index in $A3, and those
+      // four bytes are STILL LIVE when `$C2DC JSR $C32F` runs: the breakable
+      // wall's whole job is to patch the byte $A0:$A1 points at (`$C396 LDX
+      // #$00 / STA ($A0,X)`) and to turn $A0/$A3 into a nametable address.
+      // They were pure locals inside probeCollision() until the breakable arm
+      // was ported, and the ROM keeps them in zero page ACROSS the JSR, so the
+      // port keeps them too rather than threading a return value that would
+      // hide which routine owns them.
+      //
+      // $A3 IS WRITTEN TWICE AND THE SECOND WRITE IS CONDITIONAL. `$C3F1 STA
+      // $A3` stores the full tile row 0..31; `$C406 STA $A3` masks it to 0..3
+      // -- but only on the path where the map byte was NON-ZERO, because
+      // `$C400 BEQ $C40E` leaves first. So after a probe that found nothing,
+      // $A3 holds the unmasked row. Reproduced literally; the only reader
+      // ($C2CF LDY $A3) runs on the non-zero path.
+      zA0: 0, zA1: 0, zA2: 0, zA3: 0,
       zA8: 0,     // $A8  THE INDEX. The spawn engine's allocators and the update
                   //      loop both keep the enemy index 0..9 here, and $AEE1 /
                   //      $B251 reload X from it rather than trusting the caller.

@@ -27,7 +27,7 @@ import { ASSETS, headlessResources } from './helpers.js';
 import { u8, ENEMY_BASE } from '../src/state.js';
 import { bootState } from '../src/main.js';
 import { nmi } from '../src/nmi.js';
-import { playerVsEnemies } from '../src/collision.js';
+import { playerVsEnemies, shotSweep } from '../src/collision.js';
 
 const res = headlessResources(0);
 const prg = new Uint8Array(readFileSync(join(ASSETS, 'prg.bin')));
@@ -275,4 +275,131 @@ test('$C16E: the two arms are tested BEFORE the shield and before $C1B8', () => 
                     0xC177, 0xC178, 0xC179, 0xC17A, 0xC17B, 0xC17C].map(rb),
     [0x29, 0x7F, 0xC9, 0x27, 0xF0, 0xC6, 0xC9, 0x29, 0xF0, 0xDE, 0xC9, 0x03],
     'AND #$7F / CMP #$27 / BEQ / CMP #$29 / BEQ / CMP #$03 -- in that order');
+});
+
+// =========================================================================
+// #2  $C2DC -- the BREAKABLE WALL. Stage 2's signature mechanic: 227 field-2
+//     cells across 42 of its 83 placed blocks, and shooting one threw.
+// =========================================================================
+
+test('$C39B/$C39F: the four masks and the four OR values, out of prg.bin', () => {
+  // Independently derived twice over: the raw bytes, and the arithmetic they
+  // are (mask k clears the 2-bit field at bit 2k; or[k] is k * $20).
+  // RED WHEN: export_assets.py cites the range at the wrong address.
+  const tbl = res.collisionTables;
+  assert.deepEqual([0, 1, 2, 3].map((k) => rb(0xC39B + k)), [0xFC, 0xF3, 0xCF, 0x3F]);
+  assert.deepEqual([0, 1, 2, 3].map((k) => rb(0xC39F + k)), [0x00, 0x20, 0x40, 0x60]);
+  for (let k = 0; k < 4; k++) {
+    assert.equal(tbl.read(0xC39B + k), (~(3 << (2 * k))) & 0xFF, `mask ${k}`);
+    assert.equal(tbl.read(0xC39F + k), k * 0x20, `or ${k}`);
+  }
+});
+
+/**
+ * A stage-2 state with ONE breakable cell under a shot at (sx, sy).
+ * Returns the state plus the address arithmetic done INDEPENDENTLY of $C32F's
+ * scattered shifts: nametable base + tileRow * 32 + column.
+ */
+function oneBreakable(sx, sy, { stage = 1, sub = 0, page = 0 } = {}) {
+  const s = bootState(res.manifest);
+  s.zp19 = stage;
+  s.cam.lo = 0; s.cam.hi = page;
+  // $C3BF CMP #$01 / $C3C9 ADC #$0A -- a LASER probes 11 px to its RIGHT, so
+  // the cell has to be placed where the PROBE lands, not where the sprite is.
+  const px = sub === 1 ? u8(sx + 0x0B) : sx;
+  const worldLo = u8(u8(px + 8) + s.cam.lo);        // $C3D3-$C3DB
+  const tileRow = u8(sy + 0x14) >> 3;               // $C3E9
+  const col = worldLo >> 3;
+  const a0 = u8((worldLo & 0xF8) + (tileRow >> 2));
+  const idx = (page & 1) * 256 + a0;
+  s.coll[idx] = (2 << (2 * (tileRow & 3)))          // field = 2, BREAKABLE
+              | (1 << (2 * ((tileRow + 1) & 3)));   // and a SOLID neighbour
+  s.obj.anim[3 + 5] = 6;                            // object 8, an ordinary shot
+  s.obj.animFrame[3 + 5] = sub;                     // 0 shot, 1 LASER, 3 missile
+  s.obj.x[3 + 5] = sx; s.obj.y[3 + 5] = sy;
+  const ntBase = (page & 1) === 0 ? 0x2000 : 0x2400;
+  return { s, idx, tileRow, col, addr: ntBase + tileRow * 32 + col };
+}
+
+test('$C32F: the wall goes away, ONE nametable tile is queued, and the sfx fires', () => {
+  // THE FIX. Before this wave every one of stage 2's 227 breakable cells threw
+  // the first time a shot probed it -- first at frame 130, on 6 of 8 chunks.
+  // RED WHEN: $C32F is a throw again; the map write is dropped or clears the
+  // wrong field; the queue packet's address arithmetic changes; the sfx goes.
+  const f = oneBreakable(0x18, 0x2C);
+  const before = f.s.coll[f.idx];
+  const cursor = f.s.vram.cursor;
+  shotSweep(f.s, res);
+
+  // (a) the 2-bit field is cleared and its NEIGHBOUR in the same byte is not
+  assert.notEqual(before, 0, 'the fixture must actually place a breakable cell');
+  assert.equal(f.s.coll[f.idx], before & (~(3 << (2 * (f.tileRow & 3))) & 0xFF),
+    '$C393 AND $C39B,X / $C398 STA ($A0,X) -- only this cell');
+  assert.notEqual(f.s.coll[f.idx], 0, 'and the solid neighbour SURVIVES, which '
+    + 'is what makes this a mask and not a byte wipe');
+
+  // (b) exactly one 5-byte packet: mode 1, addr hi, addr lo, $00, $FF
+  const q = f.s.vram.q, c = cursor;
+  assert.equal(f.s.vram.cursor, (c + 5) & 0xFF, '$0E advanced by five');
+  assert.deepEqual([q[c], q[c + 1], q[c + 2], q[c + 3], q[c + 4]],
+    [0x01, f.addr >> 8, f.addr & 0xFF, 0x00, 0xFF],
+    `one tile blanked at $${f.addr.toString(16).toUpperCase()} -- derived here `
+    + 'as ntBase + tileRow * 32 + column, which is NOT how $C353-$C36B spells it');
+
+  // (c) the sound, and its stage fork
+  assert.equal(f.s.sfx.at(-1), 0x03, '$C33E LDA #$03 on stage 2');
+  const six = oneBreakable(0x18, 0x2C, { stage: 5 });
+  shotSweep(six.s, res);
+  assert.equal(six.s.sfx.at(-1), 0x04,
+    '$C338 LDA #$04 / $C33A CPX #$05 -- stage 6 has its own break sound');
+
+  // (d) page 6 of the map is nametable $2400, not $2000
+  const p1 = oneBreakable(0x18, 0x2C, { page: 1 });
+  shotSweep(p1.s, res);
+  const d = p1.s.vram.q, k = 0;
+  assert.equal((d[k + 1] << 8) | d[k + 2], p1.addr,
+    '$C349 LDY $A1 / CPY #$05 -- map page $06 draws into NT $2400');
+});
+
+test('$C2DF: a shot is consumed by the wall it breaks, a LASER is not', () => {
+  // $C2E1 LDA $0163,X / CMP #$01 / BEQ $C2ED. The laser goes THROUGH the hole
+  // it just made and can break a second cell in the same sweep; a shot cannot.
+  // RED WHEN: the subtype test is dropped, or reads $0123 instead of $0163.
+  const shot = oneBreakable(0x18, 0x2C, { sub: 0 });
+  shotSweep(shot.s, res);
+  assert.equal(shot.s.obj.anim[3 + 5], 0, '$C2E8 LDA #$00 / JSR $C0BD');
+
+  const laser = oneBreakable(0x18, 0x2C, { sub: 1 });
+  shotSweep(laser.s, res);
+  assert.equal(laser.s.obj.anim[3 + 5], 6, 'the laser survives its own hole');
+  assert.equal(laser.s.coll[laser.idx] & 3, 0, 'and it DID break the cell');
+});
+
+test('$C2DC END TO END: stage 2, 1400 frames, fire held, walls actually break', () => {
+  // W33's repro, in the gate's own shape. Before this wave the earliest throw
+  // was frame 130 -- 2.2 seconds after entering the chunk.
+  // RED WHEN: $C32F throws again, or stops changing the map.
+  const s = seedChunk(1, 2);
+  const field2 = () => {
+    let n = 0;
+    for (let i = 0; i < 512; i++) {
+      for (let k = 0; k < 4; k++) if (((s.coll[i] >> (2 * k)) & 3) === 2) n += 1;
+    }
+    return n;
+  };
+  let broke = 0, peak = 0;
+  for (let f = 0; f < 1400; f++) {
+    s.cam.lo = u8(s.cam.lo + 2);
+    if (s.cam.lo < 2) s.cam.hi = u8(s.cam.hi + 1);
+    s.obj.status[0] = 1; s.zp.shield = 0xFF;       // INTERVENTIONS, labelled
+    const b = field2();
+    if (b > peak) peak = b;
+    nmi(s, (f % 3 === 0 ? 0x80 : 0x00) | (f % 60 < 30 ? 0x01 : 0x02), res);
+    const a = field2();
+    if (a < b) broke += b - a;
+  }
+  assert.ok(peak > 0, 'stage 2\'s streamed map must CONTAIN breakable cells');
+  assert.ok(broke > 0, `and shooting must remove some (${broke} of a peak `
+    + `${peak} on screen) -- 1400 clean frames alone would also be produced by `
+    + 'never firing at one');
 });

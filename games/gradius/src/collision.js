@@ -81,6 +81,7 @@ import { killEnemy, freeSlot, explodeInPlace } from './enemies.js';
 import { scoreKill, addScore } from './score.js';
 import { pickupCapsule } from './powerup.js';
 import { soundRequest } from './sound.js';
+import { queuePacket } from './vram.js';
 
 // `hex2` used to live here for the $C05F armoured throw's message. That arm is
 // ported (wave 22) and nothing else in this file formats a byte, so the helper
@@ -1151,11 +1152,12 @@ function shotsVsTerrain(state, res) {
     // is the same arithmetic; $C40B `AND $C40F,Y` leaves the field IN PLACE and
     // every consumer either tests it for zero or shifts it down here).
     if (cell === 2) {                             // $C2D8 CMP #$02 / BNE $C2E8
-      throw new Error(`$C2DC: shot slot ${3 + x} hit a BREAKABLE wall (field 2). `
-                    + '$C32F (the VRAM patch that removes the block, $C34C\'s '
-                    + 'queue append and the $0500 map update) is not ported -- '
-                    + 'stage 1 pages 0-3 hold no solid tiles at all and $C2DC '
-                    + 'ran 0 times in every measured run.');
+      breakWall(state, res);                      // $C2DC JSR $C32F
+      // $C2DF LDX $A8 / $C2E1 LDA $0163,X / CMP #$01 / BEQ $C2ED -- a LASER
+      // goes THROUGH the hole it just made; a shot and a missile are consumed.
+      // The `LDX $A8` re-load is the ROM's; $C32F does not touch X, but it
+      // does JSR $EC1E, and the reload is what makes that safe.
+      if (o.animFrame[3 + x] === 1) continue;     // $C2E6 BEQ $C2ED
     }
     // $C2E8 LDA #$00 / JSR $C0BD -- the shot is absorbed by solid terrain. Note
     // this is $C0BD, i.e. the LAST THREE stores of $C0B7's free, entered as a
@@ -1170,6 +1172,69 @@ function shotsVsTerrain(state, res) {
   // stage 3 ($19 == 2) does not. Both arms are the ROM's, in the ROM's order.
   if (state.obj.status[0] < 2 && state.zp19 === 2) return;   // $C2FE RTS
   bulletsVsTerrain(state, res);                   // $C2FF
+}
+
+/**
+ * `$C32F-$C39A` -- THE BREAKABLE WALL. Stage 2's signature mechanic, and it
+ * threw until wave 34.
+ *
+ * W33 counted stage 2's map out of `assets/terrain/stages.json`: **227 field-2
+ * cells across 42 of the 83 blocks it actually places**, against ZERO on stage
+ * 1 -- which is exactly why every stage-1 measurement ever made here missed
+ * this, and why `$C2DC` "ran 0 times in every measured run" was a fact about
+ * the corpus rather than about the cartridge.
+ *
+ *   C32F  A6 19     LDX $19
+ *   C331  C9 04     CMP #$04 / D0 03 BNE $C338 / A9 00 LDA #$00 / 60 RTS
+ *   C338  A9 04     LDA #$04 / E0 05 CPX #$05 / F0 02 BEQ $C340 / A9 03
+ *   C340  20 1E EC  JSR $EC1E                       sfx $04 on stage 6, else $03
+ *   C343  A9 00 / 85 A6                             $A6 := 0
+ *   C347  A9 20     LDA #$20 / A4 A1 LDY $A1 / C0 05 CPY #$05 / F0 02
+ *   C34F  A9 24     LDA #$24 / 85 A7 STA $A7        NT $2000 (page 5) or $2400
+ *   C353  A5 A0 / 29 07 / 4A / 66 A6                $A6 := ($A0 & 1) << 7
+ *   C35A  18 / 65 A7 / 85 A7                        $A7 += ($A0 & 7) >> 1
+ *   C35F  A5 A0 / 4A 4A 4A / 05 A6                  A := ($A0 >> 3) | $A6
+ *   C366  A6 A3 / 1D 9F C3 / 85 A6                  $A6 := A | $C39F[$A3]
+ *   C36D  ...       five bytes into $0700 at $0E: 01 $A7 $A6 00 FF
+ *   C38F  A6 A3 / A5 A2 / 3D 9B C3                  the map byte, cell cleared
+ *   C396  A2 00 / 81 A0                             STA ($A0,X) with X = 0
+ *
+ * THE ADDRESS ARITHMETIC IS ONE TILE, and it is worth reducing because the
+ * scattered shifts hide it: `$A0` is `(worldLo & $F8) | (tileRow >> 2)`, so
+ * `$A0 & 7` is `tileRow >> 2` and `$A0 >> 3` is the column. The packet address
+ * comes out as `ntBase + (tileRow >> 2) * 128 + $A3 * 32 + column`, and since
+ * `$A3` is `tileRow & 3` that is exactly `ntBase + tileRow * 32 + column` --
+ * ONE nametable tile, blanked to $00 by the single data byte at `$C381`.
+ *
+ * `STA ($A0,X)` WITH X = 0 IS `STA ($A0)`. It writes back through the very
+ * pointer `$C3D3` built, so the map byte that was probed is the map byte that
+ * is patched; there is no second address computation to get wrong.
+ *
+ * DEAD CODE, TRANSCRIBED AS A COMMENT. `$C331 CMP #$04` compares the
+ * ACCUMULATOR, and `sub_C32F`'s only xref is `$C2DC`, which is reached only
+ * through `$C2D8 CMP #$02 / BNE` -- so A is 2 on every entry and the `BNE` is
+ * always taken. `$C335 LDA #$00 / RTS` cannot run. Two instructions later the
+ * ROM writes `CPX #$05` for the same kind of test, so `$C331` is almost
+ * certainly a `CPX #$04` that was typed as `CMP #$04`: stage 5 ($19 = 4) is the
+ * stage with no collision map at all, and `$C2AB CMP #$04 / RTS` already keeps
+ * it out one level up. Reproduced as the ROM has it, not as it was meant.
+ */
+function breakWall(state, res) {
+  const z = state.spawn;
+  const tbl = res.collisionTables;
+  // $C331-$C337 is dead (see above); $C338-$C33E is what runs.
+  soundRequest(state, state.zp19 === 5 ? 0x04 : 0x03);   // $C340 JSR $EC1E
+  // $C343-$C351: the nametable base. $A1 is 5 or 6, the map PAGE.
+  let a7 = z.zA1 === 5 ? 0x20 : 0x24;                    // $C347/$C34F/$C351
+  const a6seed = (z.zA0 & 1) << 7;                       // $C353-$C358 LSR / ROR $A6
+  a7 = u8(a7 + ((z.zA0 & 7) >> 1));                      // $C35A-$C35D
+  const a6 = u8(((z.zA0 >> 3) | a6seed) | tbl.read(0xC39F + z.zA3));  // $C35F-$C36B
+  // $C36D-$C38D: mode 1, addr hi, addr lo, one $00 data byte, $FF terminator.
+  // Exactly the shape queuePacket() writes, and $0E advances by five.
+  queuePacket(state, 0x01, (a7 << 8) | a6, [0x00]);
+  // $C38F-$C39A: clear the 2-bit field, through the probe's own pointer.
+  const idx = ((z.zA1 - 5) << 8) + z.zA0;
+  state.coll[idx & 0x1FF] = u8(z.zA2 & tbl.read(0xC39B + z.zA3));
 }
 
 /**

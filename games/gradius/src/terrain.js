@@ -238,15 +238,21 @@ function advanceProgress(state) {
  * Returns the 2-bit field: 0 = empty, 1 = solid on stage 1.
  */
 export function probeCollision(state, screenX, screenY) {
+  const z = state.spawn;
   const worldLo = u8(u8(screenX + 8) + state.cam.lo);      // $C3D3-$C3DB
   const carry = (u8(screenX + 8) + state.cam.lo) > 0xFF ? 1 : 0;
   const a0 = worldLo & 0xF8;
   const page = u8(state.cam.hi + carry) & 1;               // $C3DE-$C3E6
+  z.zA1 = 5 + page;                                        // $C3E7 STA $A1
   const tileRow = u8(screenY + 0x14) >> 3;                 // $C3E9
-  const idx = ((page - 0) << 8) + u8(a0 + (tileRow >> 2)); // $C3F3
+  z.zA3 = tileRow;                                         // $C3F1 STA $A3 -- UNMASKED
+  z.zA0 = u8(a0 + (tileRow >> 2));                         // $C3F8 STA $A0
+  const idx = (page << 8) + z.zA0;                         // the ($A0),Y read
   const byte = state.coll[idx & 0x1FF];
-  if (byte === 0) return 0;                                // $C400 BEQ
-  const shift = (tileRow & 3) * 2;                         // $C402/$C409
+  z.zA2 = byte;                                            // $C3FE STA $A2
+  if (byte === 0) return 0;                                // $C400 BEQ $C40E
+  z.zA3 = tileRow & 3;                                     // $C406 STA $A3 -- masked
+  const shift = z.zA3 * 2;                                 // $C402/$C409
   return (byte >> shift) & 3;
 }
 

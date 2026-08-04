@@ -1141,6 +1141,20 @@ COLLISION_BLOCKS = [
      "963 rejected + 1 accepted sample bracket the pair at W in [1,235], "
      "H in [2,204] -- loose, because a bullet aimed at the ship approaches it "
      "almost head-on, so dx is only ever small when dy is too"),
+    # ---- WAVE 34: the BREAKABLE WALL's two four-entry tables ---------------
+    # $C32F is stage 2's signature mechanic ($19 = 1 places 227 field-2 cells
+    # across 42 of its 83 blocks) and it was an unported throw until W34.  Both
+    # tables are indexed by $A3, the sub-cell index the probe masked to 0..3 at
+    # $C406, and both are pure arithmetic on it -- $C39B[k] is ~(3 << 2k) and
+    # $C39F[k] is k * $20.  Exported as BYTES anyway, so the port cannot become
+    # its own source of truth for either (docs/knowledge/03).
+    ("breakMasks", 0xC39B, 0xC3A3,
+     "$C393 AND $C39B,X (clear the cell) and $C368 ORA $C39F,X (the sub-cell's "
+     "bits 5-6 of the nametable address), X = $A3",
+     "FC F3 CF 3F then 00 20 40 60 -- four AND masks and four OR values in one "
+     "8-byte run, because that is what the ROM has. $C39B[k] clears the 2-bit "
+     "field at bit 2k of the map byte; $C39F[k] is k * $20, the sub-cell's "
+     "contribution to the nametable row"),
 ]
 
 
@@ -1155,6 +1169,12 @@ def collision_tables(rom: Rom) -> dict:
     if rom.slice(0xC101, 2) != bytes((0xA9, 0x09)):
         raise SystemExit(f"ABORT: $C101 should be `LDA #$09` (the player-vs-enemy "
                          f"sweep) but reads {rom.slice(0xC101, 2).hex(' ')}")
+    # $C3A3 is `LDA $0320`, the PLAYER's half of the terrain probe, so the two
+    # breakable-wall tables end exactly where the code begins again.
+    if rom.slice(0xC3A3, 3) != bytes((0xAD, 0x20, 0x03)):
+        raise SystemExit(f"ABORT: $C3A3 should be `LDA $0320` (sub_C3A3) but "
+                         f"reads {rom.slice(0xC3A3, 3).hex(' ')} -- the "
+                         f"$C39B/$C39F break tables do not end where this claims")
     # The explosion table MUST contain a terminating zero, or $C0E9's BNE never
     # falls through and the walk reads $C101's opcodes as metasprite ids.
     expl = rom.slice(0xC0FA, 7)

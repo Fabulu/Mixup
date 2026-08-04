@@ -244,7 +244,10 @@ test('$BFE6/$C2C8/$C303: every slot loop starts at its TOP slot, not its bottom'
   assert.strictEqual(swept.obj.type[4 + ENEMY_BASE], 2, '$BED3 STA $030C,Y');
 
   // $C2C4: two shots at the SAME position over a poked BREAKABLE cell (field
-  // value 2), which is a loud throw naming the slot it resolved first.
+  // value 2). This used to read the slot number out of `$C2DC`'s throw; wave 34
+  // ported $C32F, so the discriminator is now the ROM's own OUTPUT and is
+  // strictly stronger -- a throw only ever proved which call happened first,
+  // this proves the WALL WENT AWAY between the two probes.
   const terrain = bootState(res.manifest);
   for (const x of [5, 0]) {
     terrain.obj.anim[3 + x] = 6; terrain.obj.animFrame[3 + x] = 0;
@@ -252,9 +255,14 @@ test('$BFE6/$C2C8/$C303: every slot loop starts at its TOP slot, not its bottom'
   }
   terrain.coll[0x5B] = 0x20;             // $055B, the cell under (80, 96): the
                                          // 2-bit field at shift 4 reads 2
-  assert.throws(() => collision(terrain, res), /\$C2DC: shot slot 8 /,
-    '$C2C4: LDX #$05, so object slot 3+5 = 8 first. collision() rather than '
-    + 'shotSweep() because $BFE2 sweeps the same slots one loop earlier');
+  collision(terrain, res);
+  assert.strictEqual(terrain.coll[0x5B], 0,
+    '$C393 AND $C39B,X cleared the field the FIRST shot found');
+  assert.strictEqual(terrain.obj.anim[3 + 5], 0, '$C2C4: LDX #$05, so object '
+    + 'slot 3+5 = 8 is resolved FIRST and $C2E8 consumes it');
+  assert.strictEqual(terrain.obj.anim[3 + 0], 6, '...and by the time slot 3 is '
+    + 'probed the cell reads 0, so $C2CD skips it and the shot flies on. If the '
+    + 'loop counted UP, slot 3 would be the one consumed');
 
   // $C20A: LDX #$09, so bullet slot 22+9 = 31 is swept before 22+0 = 22. Until
   // wave 11 the only observable was the slot number inside a throw. Now it is
