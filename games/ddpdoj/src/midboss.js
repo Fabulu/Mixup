@@ -79,6 +79,7 @@ import { AimTables, AIM, aim256 } from './aim.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { drawByte2431F4, drawSigned242FDE } from './rng.js';
+import { scoreHit, scoreKill } from './score.js';
 import { pushExternalSpeed } from './background.js';
 
 /** `addi.l` -- a 32-bit add whose low half CARRIES into the high half. */
@@ -683,8 +684,11 @@ export function handlerMidboss(ram, rom, a5, ctx) {
     // is not written on any path this wave read -- which matters, because
     // $26B7E8 stores it two instructions later.  I could not read every branch
     // of the score family; see the worklog's "what I could not determine".
-    note(ctx, 0x286096, `DAMAGE in the MIDBOSS rec $${a5.toString(16)} `
-      + `-- HP/sub-hitbox columns excluded, as for every other handler`);
+    // $26B77C jsr $286096 -- W34.  D1 is the hit mask $26B76E built and
+    // $26B7E8 stores it two instructions after the death branch, so it must
+    // survive the call: src/score.js takes it as an argument rather than
+    // relying on a register convention nobody can check.
+    scoreHit(ram, ctx, a6, dmg);
     ram.setU8(a6 + S.palette,                          // $26B782..$26B78C eor.b
       (ram.u8(a6 + S.palette) ^ ram.u8(a6 + S.f1f)) & 0xff);
     if (ram.u8(a5 + R.hitFlags) === 0) {               // $26B790 tst.b / bne
@@ -715,8 +719,7 @@ export function handlerMidboss(ram, rom, a5, ctx) {
       // $26B7E8 move.w D1,($28,A5).  $263684 pops D0-D2, so D1 is still the hit
       // mask from $26B76E; it becomes $243E7C's player-select flags below.
       ram.setU16(a5 + R.fireD1, dmg);
-      note(ctx, 0x28615e, `the midboss death explosion (D0=$353) rec $${
-        a5.toString(16)}`);                            // $26B7EC/$26B7F2
+      scoreKill(ram, rom, ctx, 0x353, dmg);          // $26B7EC/$26B7F2
       deathBurst(ram, rom, a5, a6, ctx);               // $26B7F8 bsr $26B184
       note(ctx, 0x246410, `the midboss's ANIMATION-OBJECT install from the `
         + `14-record list at $26C0FC ($26B7FC lea / $26B802 jsr) -- its own `
@@ -742,14 +745,14 @@ export function handlerMidboss(ram, rom, a5, ctx) {
         continue;
       }
       ram.setU8(a4 + A.flags, ram.u8(a4 + A.flags) & 0xa3);   // $26B842/$26B846
-      note(ctx, 0x286096, `DAMAGE on midboss ARM ${n} rec $${a5.toString(16)}`);
+      scoreHit(ram, ctx, a4, d);                     // $26B848 jsr $286096
       ram.setU8(a4 + A.f1d,                            // $26B84E..$26B858 eor.b
         (ram.u8(a4 + A.f1d) ^ ram.u8(a4 + A.f1f)) & 0xff);
       if (ram.u8(a5 + R.hitFlags) === 0) {             // $26B85C tst.b / bne
         ram.setU16(a4 + A.hp, 0x0400);                 // $26B864
       }
       if ((ram.u16(a4 + A.hp) & 0x8000) === 0) continue;   // $26B86A tst.w / bpl
-      note(ctx, 0x28615e, `midboss ARM ${n} explosion (D0=$26)`);  // $26B872/$26B874
+      scoreKill(ram, rom, ctx, 0x26, d);             // $26B872/$26B874
       kill = true;                                     // fall through to $26B87A
     }
     note(ctx, 0x28c25a, `midboss ARM ${n} death burst $28C25A`);   // $26B87A

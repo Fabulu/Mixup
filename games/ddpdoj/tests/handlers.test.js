@@ -120,14 +120,20 @@ test('$11 runs the movement interpreter first ($2688CC jsr $2638A6)', () => {
   assert.ok(u.calls.size >= 0);
 });
 
-test('the damage-first family ($05/$07) notes DAMAGE and does not crash', () => {
+// W34.  This test used to assert that the damage branch NOTED `$286096`, and
+// `27-review.md` F4 found that it matched the note's PROSE (`286096`, without
+// even a `$`) rather than the address it was filed under.  `$286096` is now
+// PORTED, so the note is gone and the test asserts the routine's own effect:
+// one point per hit, packed BCD, into P1's pending accumulator $81B4C0.
+test('the damage-first family ($05/$07) SCORES the hit through $286096', () => {
   for (const h of [0x269cea, 0x26a2e2]) {
     const ram = makeRam();
-    ram.setU8(SUB, 0x5c);              // set the hit bits -> damage branch
+    ram.setU8(SUB, 0x10);              // $1000 >> 8 -- the P1 hit bit
     const u = new UnportedLog();
     runHandler(h, ram, STUB_ROM, REC, { tables: STUB_TABLES, unported: u });
-    // HP is positive -> the damage branch notes $286096 but does not free.
-    assert.ok([...u.calls.keys()].some((k) => k.includes('286096')),
-      `$${h.toString(16)} noted DAMAGE $286096`);
+    assert.equal(ram.u32(0x81b4c0), 1,
+      `$${h.toString(16)}: $286096 added 1 + $81B63E to P1's pending score`);
+    // and the hit bits are cleared by `andi.b #$A3,(A6)` on the way past.
+    assert.equal(ram.u8(SUB) & 0x5c, 0, 'the hit bits were consumed');
   }
 });

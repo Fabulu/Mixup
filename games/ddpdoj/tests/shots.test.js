@@ -29,9 +29,15 @@ function grab(fn) {
 
 /** A RomWindows over one synthetic window at `base`. */
 function romAt(base, bytes) {
+  return romWindows([[base, bytes]]);
+}
+/** Several windows at once -- W34's shot HIT path reads three tables. */
+function romWindows(pairs) {
   return new RomWindows({
-    windows: [{ base: `$${base.toString(16)}`, len: bytes.length, why: 'test',
-      hex: bytes.map((b) => b.toString(16).padStart(2, '0')).join('') }],
+    windows: pairs.map(([base, bytes]) => ({
+      base: `$${base.toString(16)}`, len: bytes.length, why: 'test',
+      hex: bytes.map((b) => b.toString(16).padStart(2, '0')).join(''),
+    })),
   });
 }
 
@@ -134,13 +140,35 @@ test('$253BDA takes the HIT path only on bit 7 of the type word\'s LOW byte', ()
   r.setU16(rec + S.posY, 0x1000);
   r.setU16(rec + S.velY, 0x100);
   r.setU32(rec + S.animPtr, 0x24d918);
-  const rom = romAt(0x24d918, [0, 0, 0, 0, 0, 0, 0, 0]);
+  // W34: the first-hit arm reads three more tables -- the $2433AE draw table
+  // (twice), the $24DEB2 pointer table, and the block behind the pointer.
+  const rom = romWindows([
+    [0x24d918, Array(32).fill(0)],              // the animation frames
+    [0x2433d0, Array(64).fill(0)],              // $2433AE's canned longwords
+    [0x24deb2, [0x00, 0x24, 0xde, 0xf0]],       // the pointer for tableIdx 0
+    // The block is `move.l (A0)+,($6,A6) / move.w (A0)+,($E,A6) /
+    // move.l (A0)+,($1E,A6) / move.l (A0)+,($22,A6)`, and that last LONGWORD
+    // lands on ($22,A6) AND ($24,A6) -- the animation index.  Byte 12/13 =
+    // $0010 so the index survives the `subq.w #4` that follows; with the block
+    // all zeros the shot despawns on its own first hit, which is faithful and
+    // makes the test about something else.
+    [0x24def0, [0, 0, 0, 0, 0, 0,
+      0x00, 0x24, 0xd9, 0x18,                   // ($1E,A6) = the anim pointer
+      0, 0, 0x00, 0x10, 0, 0]],                 // ($22,A6)/($24,A6)
+  ]);
   handler253BDA(r, rom, rec, {}, 0x8103e6, 0x48);       // bit 7 clear -> moves
   assert.equal(r.u16(rec + S.posY), 0x1100, '$253B9A add.w D0,($2,A6)');
-  // ...and with it set the port refuses, by name, rather than inventing a path
-  const e = grab(() => handler253BDA(r, rom, rec, {}, 0x8103e6, 0xc8));
-  assert.ok(e instanceof Unreached);
-  assert.equal(e.romAddress, 0x253bde);
+  // W34.  With bit 7 SET this used to be a LOUD NAMED THROW at $253BDE,
+  // because nothing could set the bit: $245044 is inside the collision pass
+  // and the pass was a note.  Both are ported now, so the arm runs, and the
+  // thing to assert is the fork `$253BDE bset #$1,(A6) / beq $253C10`: the
+  // FIRST hit takes the long arm and every hit after it takes the short one.
+  handler253BDA(r, rom, rec, {}, 0x8103e6, 0xc8);       // bit 1 CLEAR -> first hit
+  assert.equal(r.u8(rec) & 0x02, 0x02, '$253BDE bset #$1,(A6) latched');
+  const idxAfterFirst = r.u16(rec + S.animIdx);
+  handler253BDA(r, rom, rec, {}, 0x8103e6, 0xc8);       // bit 1 SET -> later hit
+  assert.equal(r.u16(rec + S.animIdx), (idxAfterFirst - 4) & 0xffff,
+    '$253BE4 subq.w #$4,($24,A6) on every hit after the first');
 });
 
 test('$253B9E is an UNSIGNED compare against $8000 and kills the record', () => {

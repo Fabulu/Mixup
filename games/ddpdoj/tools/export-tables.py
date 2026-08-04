@@ -563,6 +563,28 @@ ENEMY_INIT_STUBS = [
 ]
 SHOT_WINDOWS.extend(ENEMY_INIT_STUBS)
 
+# WAVE 34 -- THE LEDGER'S TWO SMALL TABLES, and the extent is deliberately tight.
+#
+#   $287DF0  the CHAIN-METER CAP, read at `$28616C move.w (A0,D2.w),$81B5B2`
+#            with D2 = `$813098 * 2` (the LOOP word, doubled at $286164).  The
+#            bytes are `0038 005A` -- 56 and 90 -- and W19 MEASURED 56 on the
+#            board for loop 1.  `$813098` is 0 or 1, so two entries is the whole
+#            index space.
+#   $287DF4  the PER-HIT METER REFILL, read at `$2862D4` (P1) and `$286484`
+#            (P2) with the weapon selector `$81043E`/`$8104A0` UNSCALED -- it is
+#            already a byte offset.  The bytes are `0014 0012` = 20 and 18.
+#
+# ONE 8-BYTE WINDOW, NOT MORE.  `$287DF8` onward reads `0118 2223 0084 6001 ...`
+# which are not plausible refill amounts, and every RAM dump this project holds
+# has `$81043E` = 0, so a third entry would be a guess about a table nobody has
+# indexed.  A read past the end is a LOUD NAMED THROW out of `src/rom.js`, which
+# is the correct answer to an unproven extent -- and is how W31 found that speed
+# level $70 was missing rather than silently reading a zero.
+SHOT_WINDOWS.append(
+    (0x287DF0, 0x0008, "W34: the chain-meter CAP table $287DF0 (by $813098*2, "
+                       "read at $28616C) and the per-hit REFILL table $287DF4 "
+                       "(by $81043E/$8104A0, read at $2862D4/$286484)"))
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and

@@ -86,6 +86,7 @@ import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
   enqueueRegistersThroughStub, EMIT_TABLE } from './spritequeue.js';
 import { handlerMidboss } from './midboss.js';
+import { scoreHit, scoreKill } from './score.js';
 
 /** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
  *  Named because the port also has `addi.w` pairs around a `swap`, which do
@@ -152,10 +153,20 @@ const SPRITE_TAB = {
 };
 
 // ---------------------------------------------------- the loud-counted notes
-function noteDamage(u, a5, from) {
-  u?.note(0x286096, `DAMAGE $286096 (W28) ${from} rec $${a5.toString(16)} `
-    + `-- HP/sub-hitbox columns excluded`);
-}
+//
+// W34 REPLACED `noteDamage` WITH THE ROUTINE ITSELF.  It used to read
+//
+//     u?.note(0x286096, `DAMAGE $286096 (W28) ... -- HP/sub-hitbox columns
+//                        excluded`);
+//
+// and `27-review.md` F4 found the test that checked it was matching the note's
+// PROSE rather than its address.  It is now `scoreHit` (src/score.js), called
+// with the same D1 the handler built, and the hit mask is a real argument
+// rather than a sentence.
+/** `moveq #$5C,D1 / and.b (A6),D1` -- the mask every handler's damage branch
+ *  builds and hands to `$286096`.  Bit 4 is "P1 hit this" and bit 3 is "P2",
+ *  which is how a kill lands in the right player's score. */
+function hitMask(ram, a6) { return ram.u8(a6) & 0x5c; }
 function noteEffect(u, addr, a5, what) {
   u?.note(addr, `effect $${addr.toString(16).toUpperCase()} (${what}) (W26) rec $${a5.toString(16)}`);
 }
@@ -350,13 +361,46 @@ function handler11(ram, rom, a5, ctx) {
   }
   // $268906: damage/hit branch.  sub flags byte & $5C.
   if ((ram.u8(a6) & 0x5c) !== 0) {                     // $268908
+    const d1 = hitMask(ram, a6);                       // $268906/$268908
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $26890E andi.b #$a3
     const pc = ram.u8(a5 + R.palCycle);                // $268912
     ram.setU8(a6 + S.palette, ram.u8(a6 + S.palette) ^ pc); // $268916 eor.b
-    noteDamage(u, a5, '$11');                           // $26891A jsr $286096 (W28)
+    scoreHit(ram, ctx, a6, d1);                        // $26891A jsr $286096 (W34)
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $268920 tst.w $18 / $268924 bpl
-      deathSeq11(ram, rom, a5, a6, ctx);               // $26892A bmi $268844
-      return;
+      // ================================================================
+      // W34.  THE TWO-STAGE DEATH, WHICH THIS PORT DID NOT HAVE.
+      //
+      // Until this wave the line here was `deathSeq11(...); return;`, i.e. the
+      // port jumped straight to `$268844` the first time HP went negative.
+      // The ROM does not:
+      //
+      //   $268926 tst.b ($20,A5) / $26892A bmi.w $268844   <- ONLY if already marked
+      //   $26892E move.w ($26,A5),($18,A6)                 <- RELOAD the HP
+      //   $268934 moveq #$8,D0 / $268936 jsr $28615E       <- score 8
+      //   $26893C bset #$7,($20,A5)                        <- MARK it
+      //   $268942 tst.w $815EA2 / bne $268990              <- one effect per frame
+      //   $268988 bra.b $268990                            <- and FALL INTO THE FIRE
+      //
+      // So type $11 takes TWO trips to zero to die, scores 8 on the first and
+      // $10 on the second, and KEEPS FIRING on the first.  The old code lost
+      // all four facts.  It was invisible because nothing could reduce HP:
+      // `$286096` was a note and this branch had never executed anywhere.
+      // ================================================================
+      if ((ram.u8(a5 + R.deathFlag) & 0x80) !== 0) {   // $268926/$26892A bmi $268844
+        deathSeq11(ram, rom, a5, a6, ctx, d1);
+        return;
+      }
+      ram.setU16(a6 + S.hp, ram.u16(a5 + R.hpReload)); // $26892E move.w ($26,A5)
+      scoreKill(ram, rom, ctx, 0x08, d1);              // $268934/$268936
+      ram.bset8(a5 + R.deathFlag, 7);                  // $26893C bset #$7,($20,A5)
+      if (ram.u16(0x815ea2) === 0) {                   // $268942 tst.w / bne $268990
+        ram.setU16(0x815ea2, 1);                       // $26894A move.w #$1
+        noteEffect(u, 0x289004, a5, 'D0=$3 hit effect'); // $268952/$268958
+        // $26895E..$268982: eight writes into the record `$289004` would have
+        // returned in A0, plus the `$267FAC` sprite-index table read.  All of
+        // it is inside the noted allocator gap.
+      }
+      // $268988 bra.b $268990 -- and on into the fire machine.
     }
   } else {
     ram.setU8(a6 + S.palette, ram.u8(a5 + R.pal34));   // $26898A
@@ -365,9 +409,9 @@ function handler11(ram, rom, a5, ctx) {
 }
 
 // ---- $268844: SHARED DEATH SEQUENCE (the prologue) ------------------------
-function deathSeq11(ram, rom, a5, a6, ctx) {
+function deathSeq11(ram, rom, a5, a6, ctx, d1) {
   const u = ctx.unported;
-  noteEffect(u, 0x28615e, a5, 'D0=$10 explosion');     // $268846
+  scoreKill(ram, rom, ctx, 0x10, d1);                  // $268844/$268846
   noteEffect(u, 0x289004, a5, 'D0=$7 death effect');   // $268852
   // $268858..$268898: pos/anim copy into the (not-spawned) effect record + the
   // $815EA2 cap bookkeeping -- part of the noted $289004 effect gap.
@@ -517,18 +561,23 @@ function handler10(ram, rom, a5, ctx) {
   }
   // $26827C: damage/hit branch (same shape as $11).
   if ((ram.u8(a6) & 0x5c) !== 0) {                     // $26827E
+    const d1 = hitMask(ram, a6);                       // $26827C moveq #$5C / and.b
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $268282
     const pc = ram.u8(a5 + R.palCycle);                // $268286
     ram.setU8(a6 + S.palette, ram.u8(a6 + S.palette) ^ pc); // $26828A
-    noteDamage(u, a5, '$10');                           // $26828E jsr $286096 (W28)
+    scoreHit(ram, ctx, a6, d1);                        // $26828E jsr $286096 (W34)
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $268294 tst.w $18 / bpl
-      if ((ram.u8(a5 + R.deathFlag) & 0x80) !== 0) { deathSeq10(ram, rom, a5, a6, ctx); return; } // $26829E bmi $2681CE
+      if ((ram.u8(a5 + R.deathFlag) & 0x80) !== 0) { deathSeq10(ram, rom, a5, a6, ctx, d1); return; } // $26829E bmi $2681CE
       ram.bclr8(a6, 1);                                // $2682A2 bclr #1,(A6)
       ram.setU16(a6 + S.hp, ram.u16(a5 + R.hpReload)); // $2682A6 reload HP
-      noteEffect(u, 0x28615e, a5, 'D0=$8 explosion');  // $2682AE
+      scoreKill(ram, rom, ctx, 0x08, d1);              // $2682AA/$2682AE
       ram.bset8(a5 + R.deathFlag, 7);                  // $2682B4 bset #7,$20
       noteEffect(u, 0x289004, a5, 'D0=$3 death effect'); // $2682C0
-      return;                                          // (death effect setup -> noted)
+      // $2682F0 `bra.b $2682F8` -- NOT a return.  Type $10's first trip to zero
+      // reloads, scores 8, marks itself and then RUNS ITS FIRE MACHINE on the
+      // same frame, exactly as type $11's does.  W34: the `return` that used to
+      // be here suppressed the fire machine's counted note on every damage
+      // frame, which no run could see because no run had a damage frame.
     }
   }
   // $2682F8.. : the fire/state machine (same shape as $11: freeze, heading->sprite
@@ -539,9 +588,9 @@ function handler10(ram, rom, a5, ctx) {
 // $2681CE: SHARED DEATH SEQUENCE for $10 (the prologue).  Effects noted, then free.
 // Unlike $11's death seq, the $289AF4 here ($26821E) is UNCONDITIONAL in the ROM
 // (no preceding btst in $2681CE..$26822A), so the note is not gated (W25b F6).
-function deathSeq10(ram, rom, a5, a6, ctx) {
+function deathSeq10(ram, rom, a5, a6, ctx, d1) {
   const u = ctx.unported;
-  noteEffect(u, 0x28615e, a5, 'D0=$10 explosion');
+  scoreKill(ram, rom, ctx, 0x10, d1);                  // $2681CE/$2681D0
   noteEffect(u, 0x289004, a5, 'D0=$7 death effect');
   noteEffect(u, 0x289af4, a5, 'D0=$4 secondary');
   noteEffect(u, 0x28c25a, a5, 'death burst');
@@ -559,14 +608,15 @@ function damageFirstHandler(ram, rom, a5, ctx, label) {
   const { tables, unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
   // $269CEA/$26A2E2 entry: the damage/hit branch FIRST (before movement).
-  if ((ram.u8(a6) & 0x5c) !== 0) {                     // moveq #$5c / and.b (A6)
-    ram.setU8(a6, ram.u8(a6) & 0xa3);                  // move.b #$a3 / and.b
-    noteDamage(u, a5, label);                           // jsr $286096 (W28)
+  if ((ram.u8(a6) & 0x5c) !== 0) {                     // $269CEA moveq #$5c / and.b
+    const d1 = hitMask(ram, a6);
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $269CF2/$269CF6
+    scoreHit(ram, ctx, a6, d1);                        // $269CF8 jsr $286096 (W34)
     // palette flash from +$2A/+2B (the bucket emitter pair XOR).
-    const d0 = ram.u8(a5 + 0x2a) ^ ram.u8(a5 + 0x2b);  // eor.b
-    ram.setU8(a6 + S.palette, d0);                      // move.b D0,$1d(A6)
-    if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // tst.w $18 / bpl
-      noteEffect(u, 0x28615e, a5, 'D0=$8 explosion');  // jsr $28615E
+    const d0 = ram.u8(a5 + 0x2a) ^ ram.u8(a5 + 0x2b);  // $269CFE..$269D06 eor.b
+    ram.setU8(a6 + S.palette, d0);                      // $269D08 move.b D0,$1d(A6)
+    if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $269D0C tst.w $18 / bpl
+      scoreKill(ram, rom, ctx, 0x08, d1);              // $269D14/$269D16 jsr $28615E
       noteEffect(u, 0x289004, a5, 'D0=$2 death effect'); // jsr $289004
       noteEffect(u, 0x28c2a8, a5, 'death burst');      // jsr $28C2A8
       freeEnemy(ram, a5);                              // jmp $263762
@@ -620,14 +670,46 @@ function handler82(ram, rom, a5, ctx) {
   ram.setU32(a6 + R.sprite22, ram.u32(a6 + 0x02));     // move.l $2(A6),$22(A6)
   // $2747EE: the damage branch combines (A6) and $20(A6): `(flags | $20(A6)) & $5c`.
   let dmg = (ram.u8(a6) | ram.u8(a6 + 0x20)) & 0x5c;   // move.b (A6)/or.b $20/andi
-  if (dmg !== 0) {                                     // bne $274812
-    ram.setU8(a6, ram.u8(a6) & 0xa3);                  // and.b #$a3,(A6)
-    ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);    // and.b #$a3,$20(A6)
-    noteDamage(u, a5, '$82');                           // jsr $286096 (W28)
-    // $274822.. : palette/HP gate -> branches into the fire machine or death.
-    // (The HP-reload + death-effect paths note; the position column is settled.)
-    u?.note(0x286096, `$82 post-damage HP/palette gate $274822.. (W28) rec $${a5.toString(16)}`);
-    return;                                            // (the death arms note + free)
+  if (dmg !== 0) {                                     // $2747F8 bne $274812
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $274816 and.b #$a3,(A6)
+    ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);    // $274818 and.b #$a3,$20(A6)
+    scoreHit(ram, ctx, a6, dmg);                       // $27481C jsr $286096 (W34)
+    // ================================================================
+    // W34.  `$274822..$274850`, THE HP CLAMP, was a whole-block `note()` that
+    // RETURNED.  It is eight instructions and it is the only place type $82's
+    // HP is written back, so with the note in place a type $82 could never die
+    // however hard it was shot.  Read out of the ROM:
+    //
+    //   $274822 move.b ($1D,A6),D0 / cmpi.b #$19,D0 / bne $274830
+    //   $27482C move.b ($1C,A5),D0            <- only when the palette IS $19
+    //   $274830 move.b ($1D,A5),D2 / eor.b D2,D0
+    //   $274836 move.w ($18,A6),D4
+    //   $27483A cmp.w ($38,A6),D4 / ble $274844
+    //   $274840 move.w ($38,A6),D4            <- CLAMP DOWN to the floor
+    //   $274844 move.w D4,($18,A6) / $274848 move.w D4,($38,A6)
+    //   $27484C tst.w ($18,A6) / bmi $274AF0  <- THE DEATH ARM
+    //   $274854 move.b D0,($1D,A6)            <- and on into the fire machine
+    //
+    // `($38,A6)` is the HP FLOOR the port already names (`S.f38`, W30 found it
+    // in `$275914`).  The clamp is MONOTONIC: HP and the floor both become
+    // min(HP, floor), so the floor can only ever fall.
+    // ================================================================
+    let d0 = ram.u8(a6 + S.palette);                   // $274822
+    if (d0 === 0x19) d0 = ram.u8(a5 + R.rec1C);        // $274826/$27482C
+    d0 = (d0 ^ ram.u8(a5 + R.rec1D)) & 0xff;           // $274830/$274834
+    let d4 = ram.u16(a6 + S.hp);                       // $274836
+    if (i16(d4) > i16(ram.u16(a6 + S.f38))) d4 = ram.u16(a6 + S.f38); // $27483A/$274840
+    ram.setU16(a6 + S.hp, d4);                         // $274844
+    ram.setU16(a6 + S.f38, d4);                        // $274848
+    if ((d4 & 0x8000) !== 0) {                         // $27484C tst.w / bmi $274AF0
+      u?.note(0x274af0, `$82's DEATH ARM $274AF0 -- reached for the first time `
+        + `by W34's damage path. $274AF0..$274B64 is the effect/score/free `
+        + `sequence and is not ported; the enemy therefore stays alive with `
+        + `negative HP instead of dying. rec $${a5.toString(16)}`);
+      return;
+    }
+    ram.setU8(a6 + S.palette, d0);                     // $274854
+    // and on into the fire machine's counted note below.
   }
   // $2747FA..$274854: the no-damage fire/state machine.  An HP gate ($18 >= $80)
   // and $8130CA gate select a fire pattern; aim256 + the multiple bullet fans are
@@ -669,10 +751,14 @@ function handler8B(ram, rom, a5, ctx) {
     ram.bset8(a6, 5);                                  // $2768DC bset #5,(A6)
   }
   // $2768E0: the damage/hit branch.  flags & $5c -> clear, HP check -> death.
-  if ((ram.u8(a6) & 0x5c) !== 0) {                     // moveq #$5c / and.b (A6)
-    ram.setU8(a6, ram.u8(a6) & 0xa3);                  // andi.b #$a3,(A6)
-    if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // tst.w $18 / bmi $2768F2
-      noteEffect(u, 0x28615e, a5, 'D0=$1 explosion');  // jsr $28615E
+  if ((ram.u8(a6) & 0x5c) !== 0) {                     // $2768E0 moveq #$5c / and.b
+    const d1 = hitMask(ram, a6);
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $2768E6 andi.b #$a3,(A6)
+    // $8B is the ONE ported handler that never calls `$286096`: its damage
+    // branch goes straight from the flag clear to `$2768EA tst.w ($18,A6)`.
+    // So a hit that does not kill an $8B scores nothing at all.
+    if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $2768EA tst.w $18 / bmi
+      scoreKill(ram, rom, ctx, 0x01, d1);              // $2768F2/$2768F4 jsr $28615E
       noteEffect(u, 0x28c25a, a5, 'death burst');      // jsr $28C25A
       u?.note(0x27f8ee, `$27F8EE $8B death routine (W29) rec $${a5.toString(16)}`);
       noteEffect(u, 0x289004, a5, 'D0=$1 death effect'); // jsr $289004
@@ -736,7 +822,7 @@ function handler85(ram, rom, a5, ctx) {
     // ---- $275960: the damage arm.
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $275964 and.b D0,(A6)  (D0=$A3)
     ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);    // $275966 and.b D0,($20,A6)
-    noteDamage(u, a5, '$85');                           // $27596A jsr $286096 (W28)
+    scoreHit(ram, ctx, a6, dmg);                       // $27596A jsr $286096 (W34)
     d0 = ram.u8(a6 + S.palette);                       // $275970 move.b ($1D,A6),D0
     if (d0 === 0x19) d0 = ram.u8(a5 + R.rec1C);        // $275974 cmpi.b #$19 / $27597A
     d0 = (d0 ^ ram.u8(a5 + R.rec1D)) & 0xff;           // $27597E/$275982 eor.b D2,D0
@@ -747,7 +833,7 @@ function handler85(ram, rom, a5, ctx) {
     ram.setU16(a6 + S.hp, d4);                         // $275992
     ram.setU16(a6 + S.f38, d4);                        // $275996
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $27599A tst.w / $27599E bmi
-      deathSeq85(ram, rom, a5, a6, ctx);               // $275AF2
+      deathSeq85(ram, rom, a5, a6, ctx, dmg);          // $275AF2
       return;
     }
   }
@@ -879,9 +965,9 @@ function fire85(ram, rom, a5, a6, ctx) {
 // transcribed even though `$27E812` itself is a note, because it decides
 // whether the routine is called ONCE or TWICE -- that is this handler's own
 // control flow, not the callee's.
-function deathSeq85(ram, rom, a5, a6, ctx) {
+function deathSeq85(ram, rom, a5, a6, ctx, d1) {
   const u = ctx.unported;
-  noteEffect(u, 0x28615e, a5, 'D0=$25 explosion');     // $275AF2/$275AF4
+  scoreKill(ram, rom, ctx, 0x25, d1);                  // $275AF2/$275AF4
   // $275AFA moveq #$0,D0 / $275AFC cmpi.b #$86,($C,A5) / $275B04 moveq #$8,D0
   let d0 = ram.u8(a5 + 0x0c) === 0x86 ? 8 : 0;
   u?.note(0x27e812, `$27E812 pool spawn (D0=$${d0.toString(16)}) in $85/$86 death `
@@ -958,7 +1044,7 @@ function handler80(ram, rom, a5, ctx) {
   } else {
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $273A62
     ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);    // $273A64
-    noteDamage(u, a5, '$80');                           // $273A68 jsr $286096
+    scoreHit(ram, ctx, a6, dmg);                       // $273A68 jsr $286096 (W34)
     d0 = ram.u8(a6 + S.palette);                       // $273A6E
     if (d0 === 0x19) d0 = ram.u8(a5 + R.rec1C);        // $273A72/$273A78
     d0 = (d0 ^ ram.u8(a5 + R.rec1D)) & 0xff;           // $273A7C/$273A80
@@ -967,7 +1053,7 @@ function handler80(ram, rom, a5, ctx) {
     ram.setU16(a6 + S.hp, d4);                         // $273A90
     ram.setU16(a6 + S.f38, d4);                        // $273A94
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $273A98 tst.w / $273A9C bmi
-      deathSeq80(ram, a5, ctx); return;                // $273DAE
+      deathSeq80(ram, rom, a5, ctx, dmg); return;      // $273DAE
     }
   }
   ram.setU8(a6 + S.palette, d0);                       // $273AA0
@@ -1131,9 +1217,9 @@ function laser80(ram, rom, a5, a6, ctx) {
 // $273DAE..$273EFE -- the death arm.  SIX `$289004` allocations, each followed
 // by field writes into the record it would have returned in A0; all six are part
 // of the one noted gap, not six separate ones.
-function deathSeq80(ram, a5, ctx) {
+function deathSeq80(ram, rom, a5, ctx, d1) {
   const u = ctx.unported;
-  noteEffect(u, 0x28615e, a5, 'D0=$83 explosion');     // $273DAE/$273DB4
+  scoreKill(ram, rom, ctx, 0x83, d1);                  // $273DAE/$273DB4
   noteEffect(u, 0x28c2dc, a5, 'death burst');          // $273DBA jsr $28C2DC
   for (const d0 of ['$D', '$84', '$84', '$D', '$D', '$85']) {
     noteEffect(u, 0x289004, a5, 'D0=' + d0 + ' death effect'); // $273DC2..$273EC8
@@ -1173,9 +1259,10 @@ function handler8A(ram, rom, a5, ctx) {
   // $276744: the damage branch.  No `$286096` call at all in this one -- the
   // hit bits are cleared and only the HP SIGN is consulted.
   if ((ram.u8(a6) & 0x5c) !== 0) {                     // $276744 moveq #$5c / and.b
+    const d1 = hitMask(ram, a6);
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $27674A andi.b #$a3,(A6)
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $27674E tst.w / $276752 bmi
-      deathSeq8A(ram, a5, ctx); return;                // $2767D0
+      deathSeq8A(ram, rom, a5, ctx, d1); return;       // $2767D0
     }
   }
   // $276756 tst.w $811F72 / bne $2767A6 -- while the mover's freeze word is set
@@ -1242,9 +1329,9 @@ function playersAlive242884(ram) {
 
 // $2767D0..$276814 -- the death arm.  Two effect spawns and `$27F92A`, then the
 // field writes into the record `$289004` would have returned; all noted.
-function deathSeq8A(ram, a5, ctx) {
+function deathSeq8A(ram, rom, a5, ctx, d1) {
   const u = ctx.unported;
-  noteEffect(u, 0x28615e, a5, 'D0=$1 explosion');      // $2767D0/$2767D2
+  scoreKill(ram, rom, ctx, 0x01, d1);                  // $2767D0/$2767D2
   noteEffect(u, 0x28c25a, a5, 'death burst');          // $2767D8
   u?.note(0x27f92a, `$27F92A in $8A death (D0 = ($1A,A5), D2 = ($1F,A6)) rec $`
     + a5.toString(16) + ' -- the $816B7A pool family, unported');  // $2767E6

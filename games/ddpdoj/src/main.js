@@ -130,6 +130,7 @@ export class Game {
     this.allocEvents = new Map();
     this.bulletSpawns = new Map();   // WAVE 30, see #ctx()'s bulletSpawn
     this.bulletKinds = new Map();    // WAVE 33, see #ctx()'s bulletKind
+    this.kills = { n: 0, score: 0, byValue: new Map() };  // WAVE 34, killEvent
     this.shotSpawns = new Map();
     this.shotTableFull = 0;
     this.frameRequests = [];        // bucket offsets from COMPARED slots
@@ -238,6 +239,17 @@ export class Game {
       // this repo reported the port's own set.  The hook fires at `$281F0E`'s
       // `jsr (A1)` -- the ONE instant a behaviour body runs -- so it counts the
       // thing the finding is about and not a proxy for it.
+      // WAVE 34.  Every `$28615E` -- A KILL -- with the score value its call
+      // site carried.  `freeEnemy` cannot stand in for this: it also fires on
+      // the off-screen exit every handler has, and "how many enemies did the
+      // player destroy" and "how many records were recycled" are different
+      // questions that this port answered with one number until now.
+      killEvent: (d0, d1) => {
+        this.kills.n++;
+        this.kills.score += d0;
+        this.kills.byValue.set(d0, (this.kills.byValue.get(d0) ?? 0) + 1);
+        void d1;
+      },
       bulletKind: (kind, addr) => {
         const e = this.bulletKinds.get(kind) ?? { addr, n: 0 };
         e.n++;
@@ -307,6 +319,13 @@ export class Game {
     // reader learns that without reading src/.
     this.enemyFrame = ctx.enemyFrame ?? null;    // {script, deferred, driven}
     this.bulletFrame = ctx.bulletFrame ?? null;  // {cleared, live}
+    // WAVE 34.  What object type 5's TAIL did: `{hitsA, hitsB, anyShot}` from
+    // `$244D62`, or `null` on the frames the tail took `$28B728 jmp $244D40`
+    // (the player-box-only entry, which damages nothing).  Same reason as the
+    // two above -- a subsystem that did nothing must be visible as having done
+    // nothing, and the tail runs on ALTERNATE frames by `$80390C`, so `null`
+    // is the ordinary answer half the time.
+    this.damageFrame = ctx.damage ?? null;
     this.unportedLog.note(ROM.call3, 'main-loop call #3 ($24683E)');
     // 9: call #4, $23D2AE, THE SPRITE LIST BUILD.  PORTED WHOLE in wave 11
     // (src/displaylist.js): the sum, the pre-emptive drop policy, the 29-bucket

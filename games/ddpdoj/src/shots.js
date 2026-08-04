@@ -51,6 +51,7 @@ import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueShotSprite } from './spritequeue.js';
 import { SHOT } from './weapons.js';
+import { drawWord } from './rng.js';
 
 /** Record offsets, named once. */
 export const S = {
@@ -264,13 +265,117 @@ export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
 // written that way here too, with the ROM's own labels, so the control flow can
 // be checked against `xref.py dasm 253B1E 200` line for line.
 
-function hitPathThrow(site, rec) {
-  unreached(site, `the shot HIT path at $${site.toString(16).toUpperCase()}: `
-    + `bit 7 of the record's low byte is set, and the only thing that sets it `
-    + `is $245044 (bset #$7,(-$3,A6), the shot-vs-enemy damage routine, `
-    + `MEASURED firing on 182 frames of stage1-open). The enemy port is still `
-    + `blocked, so this path is deliberately NOT translated. Record `
-    + `$${rec.toString(16).toUpperCase()}`);
+// ======================= WAVE 34: THE SHOT HIT PATH ========================
+//
+// `hitPathThrow` used to live here.  Its message was right about the mechanism
+// and wrong, from this wave on, about the conclusion:
+//
+//     "bit 7 of the record's low byte is set, and the only thing that sets it
+//      is $245044 ... The enemy port is still blocked, so this path is
+//      deliberately NOT translated."
+//
+// `$245044` is now `src/damage.js poolDamage`, so the bit arrives and the path
+// runs.  It is TWO paths -- `$253BDE` for entries [0]/[8] and `$253ECA` for
+// [2]/[10] -- and they are NOT the same routine: the second has no `btst
+// #0,(A6)` recoil block, adds its scatter to the POSITION rather than the
+// velocity, uses `asr.w #2` where the first uses `asr.w #1`, and does not drift
+// on later hits.
+//
+// THE TWO ARMS OF `bset #$1,(A6)` ARE THE WHOLE STRUCTURE.  The FIRST hit takes
+// the long arm -- an effect, a random scatter, a new sprite block -- and every
+// hit after it takes the short one, which steps the animation index down by 4
+// and despawns the shot when it borrows.  `bset` returns the OLD bit, so `beq`
+// is "this is the first hit".
+
+/** `$253C10..$253C94` (entry [0]) and `$253EEE..$253F52` (entry [2]) -- the
+ *  FIRST hit.  Everything that differs between the two is a parameter here and
+ *  is named at the instruction it comes from. */
+function firstHit(ram, rom, rec, ctx, v) {
+  if (ram.u16(0x81308c) !== 0) {                                    // $253C10/$253EEE
+    ctx?.unportedLog?.note(0x289f54, `$253C18 moveq #$14,D0 / jsr $289F54 -- `
+      + `the shot's IMPACT effect, gated on $81308C. The $289xxx effect family `
+      + `is unported for the reason src/score.js gives for $289004: its pool's `
+      + `only driver is type-5 call #5 $288E4E`);
+  }
+  let d0 = ram.u16(rec + S.velY);                                   // $253C20/$253EFE
+  let d2 = ram.u16(rec + S.velX);                                   // movem.w $2c(a6),d0/d2
+  if (v.recoil) {
+    // $253C26..$253C48 -- entry [0] ONLY.  A shot that has already been carried
+    // by the ship ((A6) bit 0) is pushed BACK $200 in Y, unless its ($29,A6)
+    // bit 2 is set AND its power word is not the $A that bit selects.
+    if (ram.btst8(rec + S.type, 0)) {                               // $253C26 btst #0,(A6)
+      let push = true;
+      if (ram.btst8(rec + 0x29, 2)) {                               // $253C30 btst #2,$29(A6)
+        if (0xa !== ram.u16(rec + S.power)) push = false;           // $253C3A/$253C3E
+      }
+      if (push) {
+        ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) - 0x200)); // $253C44
+      }
+    }
+  }
+  // $253C4A..$253C5C / $253F04..$253F18 -- TWO draws off the shared $803917
+  // counter, one per axis.  The shift is one of the differences between the two
+  // paths: `asr.w #1` here, `asr.w #2` at $253F0A/$253F16.
+  const j0 = drawWord(ram, rom) >> v.scatterShift;                  // $253C4A/$253C50
+  const j2 = drawWord(ram, rom) >> v.scatterShift;                  // $253C54/$253C5A
+  if (v.scatterIntoPos) {
+    // $253F0C/$253F18: entry [2] adds the jitter STRAIGHT INTO the position and
+    // then adds the velocity on top ($253F1C/$253F20).  Entry [0] adds the
+    // jitter into the VELOCITY first ($253C52/$253C5C) and moves once.
+    ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + j0));
+    ram.setU16(rec + S.posX, u16(ram.u16(rec + S.posX) + j2));
+  } else {
+    d0 = u16(d0 + j0);                                              // $253C52
+    d2 = u16(d2 + j2);                                              // $253C5C
+  }
+  ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + d0));        // $253C5E/$253F1C
+  ram.setU16(rec + S.posX, u16(ram.u16(rec + S.posX) + d2));        // $253C62/$253F20
+  // $253C66/$253F24 `asr.w #2` on BOTH halves -- an ARITHMETIC shift, so a
+  // negative velocity rounds toward -infinity and not toward zero.
+  ram.setU16(rec + S.velY, u16(i16(d0) >> 2));                      // $253C6A movem.w
+  ram.setU16(rec + S.velX, u16(i16(d2) >> 2));
+  ctx?.unportedLog?.note(0x28c714, `$253C70/$253F2E jsr $28C714 -- the shot's `
+    + `impact BURST, one of the $28Cxxx effect family, unported`);
+  // $253C76/$253F34: re-point the whole sprite block out of the table.
+  const a0 = rom.u32(v.table + i16(ram.u16(rec + S.tableIdx)));     // $253C7A/$253F38
+  ram.setU32(rec + S.drawOff, rom.u32(a0));                         // $253C84/$253F42
+  ram.setU16(rec + S.dlWord4, rom.u16(a0 + 4));                     // $253C88/$253F46
+  ram.setU32(rec + S.animPtr, rom.u32(a0 + 6));                     // $253C8C/$253F4A
+  // $253C90/$253F4E `move.l (A0)+,$22(A6)` is a LONGWORD, so it writes
+  // ($22,A6) AND ($24,A6) -- the animation index the very next instruction
+  // decrements.  Reading it as a word leaves the index stale.
+  ram.setU32(rec + S.anim2, rom.u32(a0 + 10));                      // $253C90/$253F4E
+  return laterHit(ram, rom, rec, v);                                // $253C94 bra $253BE4
+}
+
+/** `$253BE4..$253C0E` / `$253ED0..$253EEC` -- EVERY hit after the first, and
+ *  the tail the first one falls into. */
+function laterHit(ram, rom, rec, v) {
+  const n = subqBorrow(ram.u16(rec + S.animIdx), 4);                // $253BE4/$253ED0
+  ram.setU16(rec + S.animIdx, n.v);
+  if (n.borrow) { ram.setU16(rec, 0); return; }                     // $253BE8 bcs $253B90
+  if (v.moves) {
+    // $253BEC..$253BF8 -- entry [0] keeps drifting; entry [2] does NOT (its
+    // $253ED8 goes straight to the sprite re-point).
+    ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + ram.u16(rec + S.velY)));
+    ram.setU16(rec + S.posX, u16(ram.u16(rec + S.posX) + ram.u16(rec + S.velX)));
+  }
+  const p = ram.u32(rec + S.animPtr);                               // $253BFA/$253ED8
+  ram.setU32(rec + S.dlWord23, rom.u32(p + i16(ram.u16(rec + S.animIdx))));
+  enqueueShotSprite(ram, rec);                                      // $253C08/$253EE6
+}
+
+/** `$253BDE` (entries [0]/[8]) and `$253ECA` ([2]/[10]) -- the fork. */
+function hitPath(ram, rom, rec, ctx, site) {
+  const v = site === 0x253bde
+    ? { table: 0x24deb2, recoil: true, scatterShift: 1, scatterIntoPos: false,
+        moves: true }
+    : { table: 0x25014c, recoil: false, scatterShift: 2, scatterIntoPos: true,
+        moves: false };
+  if (ram.bset8(rec + S.type, 1) === 0) {                           // $253BDE/$253ECA
+    return firstHit(ram, rom, rec, ctx, v);                         // beq -> $253C10
+  }
+  return laterHit(ram, rom, rec, v);                                // bne -> $253BE4
 }
 
 /** $253B94..$253BD8 -- $253B1E's move / clamp / re-point / enqueue tail. */
@@ -314,7 +419,7 @@ export function handler253B1E(ram, rom, rec, ctx, prec, d1) {
     ram.u8(rec + S.angle));
   ram.setU16(rec + S.velY, u16(v.dy));                              // $253B60
   ram.setU16(rec + S.velX, u16(v.dx));
-  if (ram.u8(rec + S.lowByte) & 0x80) hitPathThrow(0x253bde, rec);  // $253B66
+  if (ram.u8(rec + S.lowByte) & 0x80) return hitPath(ram, rom, rec, ctx, 0x253bde); // $253B66
   const a0 = rom.u32(0x24ddd6 + i16(ram.u16(rec + S.tableIdx)));    // $253B72
   ram.setU32(rec + S.drawOff, rom.u32(a0));                         // $253B7C
   ram.setU16(rec + S.dlWord4, rom.u16(a0 + 4));                     // $253B80
@@ -327,7 +432,7 @@ export function handler253B1E(ram, rom, rec, ctx, prec, d1) {
 /** $253BDA -- dispatch entry [8]: `tst.b D1 / bpl $253B94`. */
 export function handler253BDA(ram, rom, rec, ctx, prec, d1) {
   if ((d1 & 0x80) === 0) return body253B94(ram, rom, rec);
-  hitPathThrow(0x253bde, rec);
+  return hitPath(ram, rom, rec, ctx, 0x253bde);
 }
 
 /** $253E96..$253EC4 -- $253E34's OWN tail.  Not $253B94's: it clamps Y against
@@ -352,7 +457,7 @@ export function handler253E34(ram, rom, rec, ctx, prec, d1) {
   }
   ram.bset8(rec + 0x00, 0);                                         // $253E3C
   ram.setU16(rec, u16(ram.u16(rec) | 0x8));                         // $253E4C
-  if (d1 & 0x80) hitPathThrow(0x253eca, rec);                       // $253E50
+  if (d1 & 0x80) return hitPath(ram, rom, rec, ctx, 0x253eca);      // $253E50
   const a0 = rom.u32(0x24fc8e + i16(ram.u16(rec + S.tableIdx)));    // $253E5A
   ram.setU32(rec + S.drawOff, rom.u32(a0));                         // $253E64
   ram.setU16(rec + S.dlWord4, rom.u16(a0 + 4));                     // $253E68
@@ -368,7 +473,7 @@ export function handler253E34(ram, rom, rec, ctx, prec, d1) {
 /** $253EC6 -- dispatch entry [10]: `tst.b D1 / bpl $253E96`. */
 export function handler253EC6(ram, rom, rec, ctx, prec, d1) {
   if ((d1 & 0x80) === 0) return body253E96(ram, rec);
-  hitPathThrow(0x253eca, rec);
+  return hitPath(ram, rom, rec, ctx, 0x253eca);
 }
 
 /** The dispatch map the shot driver is given, keyed by ROM address. */

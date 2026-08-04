@@ -125,6 +125,8 @@ import { RAM, ROM } from './machine.js';
 import { runEnemyFrame, enemyHandlerMap } from './enemyframe.js';
 import { reapSubRecords, SUB_REAPER } from './spawn.js';
 import { runBulletDriver, runClearTimer } from './bulletdriver.js';
+import { runType5Tail } from './damage.js';
+import { notePerFrameLedger } from './score.js';
 
 export const TYPE5 = {
   handler: 0x28b5e0,
@@ -265,12 +267,21 @@ export function makeType5(rom) {
             + `${TYPE5.calls.length} jsr targets are still unported`);
       }
     }
-    // $28B670 `tst.w $81308c / beq $28B730` and everything after it -- the
-    // two-player shot/laser interaction block at $28B67A, and the ONLY caller
-    // of $244D62, the player-vs-bullet collision.  Counted, not run; W23's.
-    ctx.unportedLog.note(0x28b670, `object type 5's tail ($28B670 onwards, `
-      + `gated on $81308C) -- and with it $244D62, the player's own collision, `
-      + `which has no other caller`);
+    // ---------------------------------------------------------------- W34
+    // $28B670 -- THE TAIL, and the only thing in build B that reaches
+    // `$244D62` (four absolute callers, all of them here).  Until this wave it
+    // was a counted note, and with it noted the port could not reduce any
+    // enemy's HP at all: nothing died, the midboss never released the scroll,
+    // and the distance clock `$8130CE` stopped at 239 with eight of the
+    // nineteen stage-1 handlers' first trigger beyond it (W33 §3).
+    //
+    // IT RUNS HERE, AFTER THE TWENTY-THREE CALLS, BECAUSE THAT IS WHERE IT IS.
+    // The enemy frame (call #2) has already refreshed `$815E9E`/`$815EA0` and
+    // the shot driver (call #8) has already moved the shots, so the pass sees
+    // this frame's positions -- which is what makes `$80390C`'s per-frame
+    // alternation a 30 Hz collision check rather than an accident.
+    ctx.damage = runType5Tail(ram, ctx);
+    notePerFrameLedger(ctx);
     void index;
   };
 }
