@@ -55,7 +55,9 @@ export const PRODUCED_BUCKETS = [
 ];
 
 /** The object dispatch table $240F62, as far as the port implements it.
- *  Entry [5] is PARTIAL -- see type5.js: one of its 23 subsystem calls. */
+ *  Entry [5] is PARTIAL -- see type5.js: NINE of its 23 subsystem calls, of
+ *  which W29 added the enemy subsystem ($2634F4) and the bullet subsystem
+ *  ($281D9A + its timer $25354C).  4 of the 20 top-level entries. */
 export function defaultHandlers(rom, vram, opts = {}) {
   return new Map([
     // WAVE 13.  $240F62[1] = $26127A, THE BACKGROUND: the scroll VM, both
@@ -65,7 +67,11 @@ export function defaultHandlers(rom, vram, opts = {}) {
     [1, makeBackground(rom, vram, opts)],
     [2, updatePlayer],    // $240F62[2] = $2491C0, P1
     [3, updatePlayer],    // $240F62[3] = $249246, P2
-    [5, makeType5(rom)],  // $240F62[5] = $28B5E0, PARTIAL: only $253A70 of 23
+    // $240F62[5] = $28B5E0, PARTIAL: 9 of its 23 jsr targets.  W29: this entry
+    // is now the one that drives the ENEMIES and the BULLET POOL, so a frame
+    // here can throw by address from deep inside a handler nobody has ported --
+    // which is the point (docs/knowledge/10: a failure is strong evidence).
+    [5, makeType5(rom)],
   ]);
 }
 

@@ -210,3 +210,119 @@ tests, which is weak evidence about ORDER — deleting anything reddens things.
 M7b keeps the call and moves it below the mover, and it reddens exactly the
 order test. Those are different experiments and only the second one tests the
 claim.
+
+**The order test also drives the mover's bit-14 path for the first time.**
+W26 transcribed `$281FA2` → `$281FB4` and W27 recorded that no kind in the
+`$282030` table reaches it, so it had never executed from any caller. The
+screen clear's transform arm is what reaches it, and `$281FB4 bset #$5,(A6)` is
+a BYTE operand — the type word's HIGH byte, i.e. word bit 13, not bit 5. The
+first version of this test asserted `& 0x0020` and went red for that reason
+before it could go red for a real one.
+
+## 5. WHAT WAS DEFERRED, AND EXACTLY WHY
+
+### 5.1 NO W27 BEHAVIOUR BODY EXECUTES IN THE LIVE PATH. This is the shortfall.
+
+The mover runs every frame over an empty pool. A bullet only enters the pool
+through `spawnCore`, and every caller of it is a handler FIRE point that is
+still a counted note. So `runMover`'s 37 bodies remain exercised only by
+`tests/mover.test.js` and `tools/w26movergate.mjs` — `27-review.md` F1 stands
+unchanged, and this wave did not close it.
+
+**It is closable, and here is the listing, so the next wave does not re-derive
+it.** Handler `$11`'s counter-elapsed fan (`$268AD8..$268B1A`) is the shortest
+route:
+
+```
+268AD8  btst #$5,(A6) / beq            the sub-record flag gate
+268ADE  move.b $33(A5),D1              <-- THE FACING BYTE
+268AE2  addq.b #$2,D1 / andi.w #$3C,D1
+268AE8  move.w D1,D2 / add.w D2,D2
+268AEC  lea $268B1E(pc),A0             <-- a MUZZLE TABLE inside the handler
+268AF2  move.l (A0,D2.w),D2 / add.l $2(A6),D2
+268AFA  moveq #$D,D0
+268AFC  cmpi.w #$3,$813092 / bcs       rank/stage gate
+268B08  move.l #$FFFC000D,D0
+268B0E  move.l #$2000000,D3
+268B14  jsr $281402                    <-- A PORTED GENERATOR ENTRY
+```
+
+Three of the four inputs are computed in the handler. The fourth, **D1, is
+`+$33` — the facing byte written by `$268A30 jsr $24200A` and `$268A3C jsr
+$242190`, which `src/handlers.js` still `note()`s.** Both routines ARE ported
+(`src/aim.js`: `$24200A` = `aim64FromCaller`, 61 call sites; `$242190` =
+`slew64`, 84 call sites). And `$281402` IS one of `src/bullets.js`'s 19
+`ENTRIES`.
+
+So the missing pieces are: (a) call the two aim routines instead of noting them,
+(b) a ROM window at `$268B1E` (the muzzle table, which the linear sweep prints
+as `bclr.b d2,d0` — it is DATA), (c) the D0/D2/D3 setup above.
+
+**Not done here on purpose.** That is a port of a fire state machine, not a
+wire: it changes `+$33` and `+$22` on a handler that has a gate
+(`w25handlergate.mjs`), and `src/handlers.js` says in its own header that firing
+the fan with an unset aim "would fire every bullet the WRONG WAY". Doing it
+unreviewed at the tail of an integration wave is how a port ships invented
+bullets. It is one small, well-specified wave.
+
+### 5.2 NO SPRITE IS EMITTED. Buckets 22 and 23 stay empty.
+
+`$281DCE`/`$281DD6` are written from cursors that did not move, because
+`spriteEmit` writes to a JS array sink and this driver passes none. Counted
+every frame at `$281DCE`. **Deferring is a decision with a measured reason:**
+`26-review.md` F1 and F2 are OPEN defects inside the emit — `spriteEmit` swaps
+the renderOffs half-words relative to `$284286`, and kind 19's continuation
+omits its renderOffs wrap — and both are latent only *because* no sink exists.
+Turning the sink on this wave would ship two known-wrong fields into the picture
+on the same day.
+
+### 5.3 THE OTHER FOURTEEN CALLS ARE COUNTED NOTES, NOT THROWS.
+
+The brief asks for every unported target to be a loud named throw. Fourteen of
+these run every frame regardless of input, so fourteen throws is a page that
+never boots — `type5.js` has said so since wave 8 and it is still true. They are
+`UnportedLog` notes keyed by address, printed next to what did run. **This is
+the one place this wave knowingly departs from "unported = throw", and it is
+recorded here rather than left to be discovered.** Inside the two calls that
+were wired, the rule is applied without exception: an unported enemy handler
+throws (`$275914`, `$2739C0`, `$276702`, `$26B6FA`, `$2697F6`, `$292902` all
+observed), and the screen clear's `$27F8F8` throws.
+
+### 5.3b A CORRECTION TO THE BRIEF'S PREMISE, AND WHERE IT CAME FROM
+
+The brief (and W28's recon §0.2) says the port implements 1 of 23. It
+implemented **6**. The source of the error is a comment: `src/type5.js`'s header
+has said "THIS FILE PORTS EXACTLY ONE OF THE TWENTY-THREE" since wave 8, and
+wave 12 added five calls without touching it. The recon read the comment and
+reported it as measured. **A stale header comment in this project is a wrong
+number with a citation attached** — corrected this wave, and the paragraph now
+says outright that `TYPE5_PORTED` is the authority and the prose is not.
+
+### 5.4 THE PAGE NOW DIES AT LOGIC FRAME 2346.
+
+Before this wave the page ran indefinitely, drawing a recording with a ported
+ship over it. It now simulates the enemies for 345 frames and then throws by
+address. **That is a product regression and an information gain, and it is not
+hidden behind a flag.** A flag defaulting to off would be exactly the failure
+mode the brief names: a green achieved by not running code. The fix is to port
+`$275914`, not to stop calling it.
+
+## 6. WHAT I COULD NOT DETERMINE
+
+- **Whether stage 1 NEEDS any of the fourteen unported calls.** W28 could not
+  say either. What is now known is narrower and useful: with #2, #8, #9, #14-17,
+  #20 and #21 running and the other fourteen counted, the enemy simulation is
+  self-consistent for 7,400 logic frames — no init body, no movement script and
+  no allocator path fell over. That is evidence the fourteen are not *feeding*
+  the enemy subsystem; it is not evidence they do nothing.
+- **What `$289B80`, `$28AD54`, `$2890F2`, `$252BD0`, `$2527CE`, `$25292A` and
+  `$252A52` are.** Each was identified only by the RAM it touches (the table
+  above). Naming them needs a read, not a guess, and this wave did not do it.
+- **Whether the `$268B1E` muzzle table in handler `$11` is 16 or 64 longwords.**
+  The index expression is `(($33(A5)+2) & $3C) * 2` → byte offsets 0..$78,
+  longword read, so the extent is at least `$7C`. I did not find its abutting
+  bound.
+- **Anything about the board.** No MAME was run this wave. Every dynamic number
+  above is the PORT running against a seeded RAM dump, and the seed is a
+  fly-around capture with the invulnerability poke — `docs/knowledge/09` says
+  that is valid for coverage and invalid for characterising play.

@@ -10,23 +10,43 @@
 //           $252bd0   $281d9a   $25354c   $25292a   $252a52
 //   28b670: tst.w $81308c / beq $28b730 ...
 //
-// THIS FILE PORTS EXACTLY ONE OF THE TWENTY-THREE -- `$253A70`, the player-shot
-// driver -- AND COUNTS THE OTHER TWENTY-TWO.  That is a deliberate choice with
-// a cost, and the cost is stated here rather than discovered by a reader:
+// **THIS FILE RUNS NINE OF THE TWENTY-THREE AND COUNTS THE OTHER FOURTEEN.**
+// `TYPE5_PORTED` below is the authority; this paragraph is not.  It said "EXACTLY
+// ONE" from wave 8 until wave 29 -- through wave 12 adding five -- and W28's
+// recon read it and reported "the port has 1 of 23" as a measured fact.  A stale
+// header comment in this project is not decoration, it is a wrong number with a
+// citation attached, and it cost a recon its headline.  Keep it correct or
+// delete it.
 //
-//  * A partial handler is not a handler.  Anything the other twenty-two write
-//    is missing from the port, so any compared column that depends on them
+// The partial-handler cost is real and is stated here rather than discovered:
+//
+//  * A partial handler is not a handler.  Anything the fourteen unported calls
+//    write is missing from the port, so any compared column that depends on them
 //    diverges.  The gate's answer to that is to compare the SHOT TABLE SLOTS
 //    THE PLAYER'S OWN SPAWN CAN REACH (slots 14..17 and 21..24) and nothing
 //    else in that table -- the option pods' shots go into slots 7..12 through
-//    $24C096, which is one of the twenty-two.
+//    $24C096, which is now RUN (wave 12).
 //  * `$28B5E0`'s own entry test `tst.b ($2,A5) / beq $28B5A8` is translated,
 //    because a handler that ran when the board's did not would be worse than
 //    one that does less.
-//  * The twenty-two are counted through `UnportedLog`, so a run always prints
+//  * The fourteen are counted through `UnportedLog`, so a run always prints
 //    what it did NOT do next to what it did.  Wave 4 set that precedent for
-//    whole dispatch entries; this is the first time it is used INSIDE one, and
-//    it is louder because of it: the log line says "22 of 23".
+//    whole dispatch entries; this was the first use of it INSIDE one.
+//
+// ------------------------------------------------ WAVE 29: THE INTEGRATION
+//
+// Calls #2 (`$2634F4`) and #20 (`$281D9A`) are the ENTRY POINTS of the enemy and
+// bullet subsystems.  W21-W27 ported both stacks -- the spawn walker, the 58-slot
+// driver, six handlers, 21 init bodies, the movement interpreter, the mover and
+// all 37 bullet behaviour bodies -- and W28 then measured that **no module under
+// `src/` imported any of them**: they were reachable only from their own tests
+// and their own gates.  Wiring them here is what turns that transcription into
+// executing code, and the first thing it produced was a loud named throw at
+// `$275914` -- an enemy handler nobody has ported -- 345 logic frames into the
+// page's own seed.  See `src/enemyframe.js` and `src/bulletdriver.js`.
+//
+// Call #21 (`$25354C`) came with #20: it is the six-instruction timer that arms
+// #20's screen clear, and half a machine is worse than none.
 //
 // $28B5A8 (the `beq` target) is not translated either -- it is the not-yet-
 // started branch and it is a named throw if ($2,A5) is ever 0.

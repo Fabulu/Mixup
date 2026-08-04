@@ -87,7 +87,7 @@
 // all target `$253562`, the rts.  So this is complete, not a prefix.
 
 import { unreached } from './unported.js';
-import { u16 } from './ram.js';
+import { u16, i16 } from './ram.js';
 import { BUL } from './bullets.js';
 import { runMover, moverIterCount, MOVER } from './mover.js';
 
@@ -107,7 +107,10 @@ export const BULLET_DRIVER = {
   counterWrite: 0x281dce,   // where the missing sprite sink is counted
 };
 
-// the two record offsets the clear writes
+// The two record offsets the clear writes.  `posA` is the `move.w #$FFFF,$2(A6)`
+// that follows the `jsr $27F8F8` on the FREE arm -- kept because the ROM has it,
+// unused in the port because the throw is in front of it.  If `$27F8F8` is ever
+// ported, the free arm ends `freeSlotNoEffect`-style with these two writes.
 const CLR = { posA: 0x02, transformFlag: 0x3c };
 
 /**
@@ -155,7 +158,12 @@ export function runBulletDriver(ctx) {
   const cleared = runScreenClear(ctx);                       // $281D9A bsr.w $281CD6
   const a4start = BULLET_DRIVER.buf23;                       // $281D9E / $281DA4
   ram.setU16(BULLET_DRIVER.liveCount, 0);                    // $281DA6 clr.w $81B40C
-  const a0 = u16(ram.u16(BULLET_DRIVER.ctr22));              // $281DB2 adda.w (WORD)
+  // $281DB2 `adda.w $80AFE0,A0`.  ADDA.W SIGN-EXTENDS its source to 32 bits --
+  // it is not an unsigned add.  A bucket-22 length is a byte count and has never
+  // been measured at or above $8000, so the two readings agree today; the ROM
+  // decides which one the port implements, not the range the data happens to
+  // have taken.
+  const a0 = i16(ram.u16(BULLET_DRIVER.ctr22));
   ram.setU32(BULLET_DRIVER.trailCursor, BULLET_DRIVER.buf22 + a0);  // $281DB8
   const before = ctx.sprites ? ctx.sprites.length : 0;
 
