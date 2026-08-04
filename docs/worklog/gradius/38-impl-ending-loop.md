@@ -1,6 +1,6 @@
 # Wave 38 IMPLEMENTER — the end-of-game chain `$9872` and the loop wrap
 
-status: IN PROGRESS
+status: DONE
 implementer, 2026-08-04
 
 Brief: port the end-of-game chain and let `$1A` increment, wrapping the game to
@@ -365,7 +365,136 @@ does, which is why the port transcribes the `LDX` instead of guarding it.
 
 ## §10. THE MUTATION TABLE
 
-@@MUTANTS@@
+Harness `scratchpad/mut38.py`, on a COPY at `C:/tmp/w38mut`
+(`games/gradius/` plus the repo `package.json`; the copy baselines at 0
+failures). It patches source as BYTES, normalises each needle to the file's own
+line endings, **refuses any needle that does not appear exactly once**, and
+re-hashes all three files after every restore. All three are byte-identical
+before and after every pass — `nmi.js bb028d6fa843`, `enemies.js 89deb3285d4a`,
+`flow.js 42e9f9664309`. The copies are deleted.
+
+**63 mutants. First pass: 53 red, 10 survived. Second pass, after the seven
+checks §10a describes: 61 red, 2 survived, and both are provably uncatchable.**
+
+| # | mutant | red |
+|---|---|---|
+| M1 | `$9889 INC $28,X` dropped — the loop counter stops | 6 |
+| M2 | `$28,X := 1` instead of INC (a one-shot wrap) | 2 |
+| M3 | `$987D STA $26,X` dropped — the stage is not reset | 1 |
+| M4 | `$987F STA $24,X` dropped — the page is not reset | 1 |
+| M5 | `$22,X` takes `$42` verbatim, not `($42 ? 1 : 0)` | 1 |
+| M6 | `$987B STA $3F` dropped | 1 |
+| M7 | `$9878 STA $2001` dropped — the screen stays on | 1 |
+| M8 | `$9872 INC $1B` dropped | 5 |
+| M9 | `$9906 CMP #$06` becomes `>= 6` | ***SURVIVED*** |
+| M10 | `$9906 CMP #$06` becomes `== 5` | 7 |
+| M11 | arm 7 collapses into arm 8 (`$9B3E` -> `$9BED`) | **1st: SURVIVED — 2nd: 2** |
+| M12 | arms 9 and 10 swapped | **1st: SURVIVED — 2nd: 1** |
+| M13 | arm 12 (`$98DD`) becomes a quiet return | 2 |
+| M14 | `$988C`'s `$57` test dropped — always stream, never the brain | 2 |
+| M15 | `$988C`'s `$57` test inverted | 4 |
+| M16 | the brain's type becomes `$27` | 2 |
+| M17 | slot 9's X and Y swapped | 1 |
+| M18 | slot 8's metasprite `$9E` dropped | 1 |
+| M19 | `$98C5 INC $1B` dropped — `$8B` never advances | 2 |
+| M20 | `$98C9 STA $0100` dropped | 1 |
+| M21 | `$98D1 INC $1F` dropped | 1 |
+| M22 | the sfx `$E8` request dropped | 1 |
+| M23 | the two canned packets dropped | **1st: SURVIVED — 2nd: 1** |
+| M24 | `$98DD` runs the full mode-5 body, not the tail | 2 |
+| M25 | `$98DD`'s `INC $5B` dropped | 1 |
+| M26 | `$98E5` does not zero `$1B` | 2 |
+| M27 | `$98E5` does not call `$9B3E` | 2 |
+| M28 | `$BB0F` uses the dispatched slot, not the hardcoded 9 | **1st: SURVIVED — 2nd: 1** |
+| M29 | the 6-frame path gate becomes 5 | 4 |
+| M30 | the path cursor is not INCd | 3 |
+| M31 | the `$FF` terminator is not tested | 6 |
+| M32 | the record's two nibbles swapped | 1 |
+| M33 | the metasprite base `$96` becomes `$95` | 1 |
+| M34 | `$B647`'s tail does not reset the timer | 3 |
+| M35 | the `$4F == $FF` test inverted | 9 |
+| M36 | `$BB1F DEC $4C` dropped | 3 |
+| M37 | `$BB23 JSR $AEF8` dropped | 1 |
+| M38 | `$BB26 INC $1B` dropped — the scene never ends | 2 |
+| M39 | **THE FALL-THROUGH** — `$CB28` read as a plain sound request | 1 |
+| M40 | the `$D4` triangle gate dropped | 1 |
+| M41 | the `$D4` gate reads pulse 1's `$B2` instead | 2 |
+| M42 | `$4E` armed with 8, not `$A0` | 2 |
+| M43 | `INC $0495` dropped — the brain never settles | 2 |
+| M44 | `$BB75`'s animFrame override 5 -> 2 | 1 |
+| M45 | `$BB68`'s blanking of the brain dropped | **1st: SURVIVED — 2nd: 1** |
+| M46 | the `$1A` clamp dropped | 1 |
+| M47 | the clamp is 7, not 6 | 1 |
+| M48 | the script-table index is not doubled | 3 |
+| M49 | `$4E` re-armed with 4, not 8 | 1 |
+| M50 | the DEC/emit order flipped — n characters, not n+1 | 2 |
+| M51 | the two PPU address bytes are not emitted | 1 |
+| M52 | `$CF02`'s `$FF` terminator not appended | 3 |
+| M53 | the `$FE` arm falls into the click instead of skipping it | 1 |
+| M54 | the two click sounds swapped | 1 |
+| M55 | the `$B2` pulse-1 wait dropped | 1 |
+| M56 | the ending bonus is `$001000`, not `$010000` | 1 |
+| M57 | the `$C3` pulse-2 gate on the ending music dropped | 1 |
+| M58 | `$CF09 INC $4F` dropped — the typewriter never advances | 3 |
+| M59 | `$CF12`'s restart re-reads `$CF2D,X`, not `$CF2D` | ***SURVIVED*** |
+| M60 | dispatch entry 40 unwired again | 17 |
+| M61 | `introTerrain` back to `res.stage` (the shipped defect) | **1st: SURVIVED — 2nd: 1** |
+| M62 | `$9B3E` stops clearing `$4D` | **1st: SURVIVED — 2nd: 1** |
+| M63 | `$9B3E` stops clearing `$4F` | **1st: SURVIVED — 2nd: 1** |
+
+### 10a. SIX OF THE TEN SURVIVORS WERE HOLES IN THE SUITE, NOT FACTS ABOUT THE ROM
+
+W36 named a third category — a defective MUTANT — and this wave adds nothing to
+it. What it does add is the observation that **five of the six holes had the same
+shape: the check asserted the WRONG THING WELL.**
+
+* **M11 and M12 — `jt_$982F[7..10]` all `INC $1B`.** The check asked "where does
+  `$1B` end up", which is the one property the four arms share. `$9B3E` is now
+  held by what only it does — the `$3D`-`$97` wipe and the `$19`/`$1A` restore —
+  and `$9C12`/`$9C1E` by their producers' byte counts, **37 and 40, which are the
+  CARTRIDGE's** (measured at f285 and f286 of the boot script, recorded in
+  `src/flow.js` since W4).
+* **M23 — nothing looked at `$988C`'s queue at all.** Held now by a fact derived
+  from `$85F3`'s control codes rather than from the packet data: packet `$21`
+  ends on `$FE` (close one run) and packet `$05` takes the `$FD` arm (close one,
+  open another), so the pair leaves **exactly three `$FF` terminators**. Drop
+  either and the count changes.
+* **M45 — DOCS/KNOWLEDGE/03, VERBATIM.** The old check was
+  `assert anim[21] === 0` on a fixture where `anim[21]` had never been written.
+  It agreed with itself. It now clears a real value (`$9D`, what the last path
+  record leaves) with the `$D4` gate held so nothing else can be responsible.
+* **M28 — every fixture put the brain in slot 9**, where `LDX #$09` and the
+  dispatched index are the same number. Held by an INTERVENTION, labelled: type
+  `$28` in slot 5 is a state the cartridge cannot produce (`$989F` is the only
+  `LDA #$28` in the PRG), so the check proves the TRANSCRIPTION of the `LDX`,
+  not a reachable state.
+* **M61 and M62 — the two pre-existing defects §7 describes.** M61 is the more
+  interesting: a stage check at the level's START cannot see it, because
+  **every stage's first two pages are the same empty sky** — measured, all seven
+  stages queue byte-identical blocks at page 0 and at page 1, and they first
+  diverge at page 4. That is why the defect survived eleven waves, and the new
+  fixture seeds page 4 (a state any mid-level death reaches, since `$97BB` caps
+  the checkpoint at 8). It also cross-checks `$9C24` against `$9ACE` — the two
+  call sites of one ROM routine, which is exactly what disagreed.
+
+### 10b. THE TWO THAT ARE UNCATCHABLE, AND WHY
+
+**M9 — `$9906 CMP #$06` widened to `>= 6` changes nothing, because `$19` cannot
+exceed 6 on the cartridge.** The two instructions that increment it are
+`$993B INC $19` (inside `$9904`'s own `$39` warp fork, which `$19 == 6` jumps
+past) and `$96D1 INC $19` (the `$1B & $10` arm, reached only from `$9904`/`$984F`
+setting `$1B := $90`, which `$19 == 6` also jumps past). So stage 7 is the fixed
+point: nothing in the ROM can produce `$19 = 7`, and the port's `$A2F0` guard
+throws before this line if anything hands it one. Equality and `>=` agree on
+every state that exists.
+
+**M59 — `$CF12`'s restart reading `$CF2D,X` instead of `$CF2D` is doubly
+unobservable.** The arm needs an `$FF` inside the script and `$CF3B`'s nineteen
+bytes contain none, so it never executes; and if it did, all seven words of
+`$CF2D` are `$CF3B`, so the two expressions return the same pointer for every
+value of `$1A`. It is transcribed from the listing and written down here rather
+than "fixed", exactly as W34's M19, W35's M27 and W36's M18 were.
+
 
 ## §11. WHAT I COULD NOT REACH — attempts, not absences
 
@@ -416,10 +545,14 @@ does, which is why the port transcribes the `LDX` instead of guarding it.
 2. **`$9751`** (section 11 item 6). It is now the first thing a player who
    finishes the game will hit twice.
 3. **The `$83` null wave cursor**, unchanged.
-4. **HANDOVER's Gradius numbers are stale by roughly ten waves** — "`$AE1C`
+4. **HANDOVER's Gradius numbers were stale by roughly ten waves** — "`$AE1C`
    enemy dispatch: 19 of 42", "wave records: 454 of 598", "play sub-states: 1 of
-   16", "`$1A` loop counter pinned at 0", "Gate: 9 stages" — every one of those
-   is measurably wrong today. Section 9 has the current figures.
+   16", "`$1A` loop counter pinned at 0", "Gate: 9 stages", and "Gradius plays
+   most of stage 1 and has no boss, no title screen and no ending". Every one of
+   those was measurably wrong. **Re-measured and rewritten by this wave**
+   (commit `f56e80b`), including the two counterweights the old list did not
+   carry: the 6 field-level skips inside the comparison run, and the fact that
+   nothing past stage 1 has ever been compared against the board.
 5. **`wavecensus.py`'s `_ported_targets` anchor is still a full function
    signature** (W36 item 4), so W36's `framePackets` module-binding scaffolding
    in `src/enemies.js` is still there and still labelled for deletion.
@@ -430,3 +563,73 @@ does, which is why the port transcribes the `LDX` instead of guarding it.
    the gate currently never executes; I did not wire it because the gate's
    budget is somebody's decision, not mine.
 
+
+---
+
+## FINAL NUMBERS
+
+```
+DONE-WHEN, as measurements:
+
+  does the game reach its ending?   YES. $1B = $86 with $19 = 6 runs $9872 and
+                                    the brain scene plays out over 1,256 frames.
+  does it wrap to loop 2?           YES. It lands on $1B = $80, $19 = 0.
+  is $1A still pinned at 0?         NO. It reads 1 after one lap and 2 after two,
+                                    and $9889 INC $28,X is the only instruction
+                                    in the PRG that can do it.
+  what does the sweep say?          Before: 8 of the 16 $982F sub-states threw on
+                                    stage 7. After: ONE does, and it is the
+                                    pre-existing $83 null wave cursor, identical
+                                    character for character to W35's and W36's.
+                                    stagesweep.mjs: 0 undecided throws at loops
+                                    0, 1, 2, 3 and 6.
+  node games/gradius/tools/test-all.mjs
+                                    GREEN -- 12 passed, 0 failed, 0 SKIPPED
+                                    (and 6 FIELD-level skips inside compare.mjs,
+                                    reported separately per the brief: pad2
+                                    oamBudget spriteOverflow scanline cpuCycle
+                                    splitSpins. Unchanged by this wave.)
+
+stageledger.py    ALL 598/598, 100.0 %, all seven ADMITTED, and BASELINE[6]
+                  lifted to None/111/admitted -- the disagreement stagesweep.mjs
+                  had printed on every run since W36
+census.py         41 of 42 dispatch entries, 33 of 34 distinct routines
+tablecoverage.py  OK, 82 bases, 56 exported ranges, 4 extent sites, 1 OPEN
+                  ($B7B5), and KNOWN_GAPS is now EMPTY
+node --test games/gradius/tests/   650 pass, 0 fail, 0 skipped  (619 before)
+
+the chain, $86 -> loop 2 stage 1, no input:
+  1,256 frames.  23 stream / 156 path / 170 on $D4 / 161 + 144 typewriter /
+  315 on $B2 / 256 on $4C / 26 intro.  Five of the seven are exact arithmetic
+  off the listing; the two SOUND waits are the driver's and are labelled as
+  measured, not derived.
+
+the loop sweep (stagesweep.mjs --loop N, new this wave):
+  loop 0  152,881 frames   0 undecided   8 DECIDED ($9751)
+  loop 1  151,910          0            28
+  loop 2  151,462          0            31
+  loop 3  151,462          0            31        <- identical to loop 2
+  loop 6  151,462          0            31        <- and to loop 6
+  So the difficulty ladder has THREE rungs (0 / 1 / >= 2) and tops out at
+  loop 3, not at the ending table's 7.
+
+63 mutants, 53 red on the first pass, 10 survivors -- six of which were holes
+in the suite and are now closed, and TWO of which are provably uncatchable and
+written up as such. Second pass: 61 red, 2 survived.
+
+real tree, sha256 over sha256sum of every .js under games/gradius/{src,tests},
+sorted, after all mutation work:
+  ad297ad0671bd036789d0d289f679b59dbc088aa039ba3df2a17467d432c5833
+`git status --porcelain games/gradius/src games/gradius/tests` is empty; the
+copies at C:/tmp/w38mut, w38mut2, w38mut3 and w38ctl are deleted.
+```
+
+31 new checks in `tests/w38-ending.test.js`, seven of which exist only because a
+mutant survived the first pass. **Five existing checks were inverted rather than
+deleted**, each named in its own comment (`enemies.test.js` — entry 40's loud
+throw, on its sixth move; `flow.test.js` — `$9904`'s last out-of-scope
+sub-path; `w24-substate.test.js` x2 — the `$88` routing discriminator and the
+whole "unported play arms" table, which no longer has an unported arm in it;
+`tables.test.js` — the `$CF2D` unexported-range check, moved to `$CF4E`).
+
+status: DONE
