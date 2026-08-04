@@ -26,11 +26,26 @@
 //     diverges at lf2321 because its writer is inside the unported background
 //     object -- verified pre-existing by 11-review.md §4b, and W14's.
 //
-//   REPLAYED, from a board capture:  the enemies, the HUD text, the palette and
-//     every sprite that is not the player's still come out of
-//     `assets/capture.bin` -- 161 consecutive frames of the `fly-around`
-//     scenario, the same window wave 4 compares -- and loop.  The enemies are
-//     pixels: they do not see the ship and cannot be hit.
+//   REPLAYED, from a board capture:  the HUD text and the palette still come
+//     out of `assets/capture.bin` -- 161 consecutive frames of the `fly-around`
+//     scenario, the same window wave 4 compares -- and loop.
+//
+//     WAVE 37 TOOK THE RECORDED SPRITES OFF THE SCREEN, and that is an OWNER
+//     DECISION rather than a consequence of finishing: "we have to get rid of
+//     the recorded enemies, they look retarded", then "go removal first"
+//     (`39-OWNER-visible-play-before-sound.md`).  The reason is a finding in
+//     itself: the capture is 161 frames, stage 1 is 7,317 logic frames, and
+//     since wave 13 the BACKGROUND's motion is COMPUTED.  A 161-frame sprite
+//     loop replayed against a 7,317-frame computed scroll agrees at the start
+//     and drifts after, which is exactly what was reported from play.
+//
+//     So `Demo.draw()` now strips `st.spritebuffer` to the eight
+//     player-attached records (`stripToAttached`, below).  MEASURED over all
+//     161 frames of the shipped bundle: 7,671 display-list records -> 886,
+//     8.99 % of pixels changed, no throw.  THE LAYER IS EMPTY, NOT WRONG:
+//     nothing on the screen is a recorded enemy, and every enemy that appears
+//     from here is the port's own.  The strip is in the PAGE and must not move
+//     into `tools/export-web.mjs` -- see `stripToAttached`'s header.
 //
 //     THE BACKGROUND LAYER IS NO LONGER AMONG THEM AT ALL.  Wave 13 made its
 //     MOTION the port's; WAVE 14 made its PIXELS the cartridge's.  All 1,820 BG
@@ -91,6 +106,7 @@ import { Game, RAM, MACHINE } from '../main.js';
 import { P } from '../machine.js';
 import {
   Renderer, paletteRgb, resolveRgb, rotateCCW, rgbToRgba, SCREEN_W, SCREEN_H,
+  parseSpriteList, BUFFER_STRIDE,
 } from '../render/index.js';
 import { loadBundle, httpReader, AssetError } from './assets.js';
 import { attachKeyboard, currentPortWord } from './input.js';
@@ -218,6 +234,87 @@ export function streamColumnOf(map, ptr) {
   if (off < 0 || off % map.colBytes !== 0) return -1;
   const col = off / map.colBytes;
   return col < map.ncols ? col : -1;
+}
+
+/**
+ * WAVE 37 -- THE RECORDED ENEMIES COME OFF THE SCREEN.  OWNER'S DECISION:
+ * `39-OWNER-visible-play-before-sound.md`, "we have to get rid of the recorded
+ * enemies, they look retarded", and then, choosing the order, "go removal
+ * first".  Specified by `41-recon-sprite-art.md` §5.1.
+ *
+ * Keep only the display-list records `cap.attached()[fi]` names -- the ship,
+ * its two option pods, its exhaust plume and glow, and the three ground
+ * shadows, the eight classes the wave-9 conditional matcher accepts -- compact
+ * them to the front, and write the terminator after them.  Everything else in
+ * the recording's list is an enemy, an enemy's bullet, an explosion or an item,
+ * and every one of those is a RECORDING that no longer agrees with the screen
+ * it is drawn on: the capture is 161 frames and stage 1 is 7,317 logic frames,
+ * so a short loop is being replayed against a scroll the port now COMPUTES.
+ * They were right at the start and drift after; that is what the owner saw.
+ *
+ * WHY THIS IS IN THE PAGE AND NOT IN `tools/export-web.mjs`, and it is the one
+ * place the obvious optimisation is wrong (recon §5.3).  `tools/bundlegate.mjs`
+ * renders THE PUBLISHED BUNDLE'S OWN CAPTURE and requires `exact === total` --
+ * 100.0000 % pixel-identity to MAME.  Stripping in the exporter would drop that
+ * gate to roughly 91 % for entirely the right reason, and the tempting repair
+ * would be to weaken the strongest pixel gate this port owns.  `app.js` is on
+ * no gate's path -- `bundlegate`, `pixgate` and `webgate` each build their own
+ * `Renderer` and their own `st` -- so the strip costs ZERO gate coverage here
+ * and would cost the project that gate there.  DO NOT MOVE IT INTO THE DATA.
+ *
+ * ORDER IS FORCED, NOT STYLISTIC.  `Capture.splice` addresses records by their
+ * index in the ORIGINAL list, and `#shipRecord` identifies the ship by its size
+ * word among those same indices, so this MUST run AFTER the splice.  Run before
+ * it and the splice writes the ship's position into whatever record has landed
+ * in the ship's old slot -- the red-validated mutation in the test.
+ *
+ * Compaction in place is safe because `attached()` is built by walking
+ * `parseSpriteList` in order, so the kept indices ascend and the destination
+ * never runs ahead of the source.  RELATIVE ORDER SURVIVES, which matters: a
+ * higher list index draws IN FRONT on this hardware (`spritelist.js`), and the
+ * shadows sit below the ship on 243 of 243 recorded records.
+ *
+ * The terminator is the hardware's own: `word4 & 0x7fff == 0` ends the list
+ * (`spritelist.js`), so the whole eight-word record after the last survivor is
+ * zeroed rather than trusting whatever the recording left there.
+ *
+ * PURE and exported for the same reason `pickScale` and `streamColumnOf` are:
+ * a method on an unexported class cannot be tested, and this one decides what
+ * the player sees.
+ *
+ * @param {{spritebuffer: Uint16Array}} st  the renderer's state, POST-splice
+ * @param {Array<[number, string, number, number]>} recs  `cap.attached()[fi]`
+ * @returns {{kept:number, removed:number}}
+ */
+export function stripToAttached(st, recs) {
+  const buf = st.spritebuffer;
+  const S = BUFFER_STRIDE;
+  const before = parseSpriteList(buf).length;
+  let w = 0, prev = -1;
+  for (const [idx] of recs ?? []) {
+    // LOUD, NOT QUIET.  Neither of these can happen -- `attached()` walks
+    // `parseSpriteList` in order over this same buffer, so its indices are
+    // STRICTLY ASCENDING and in range -- and that is exactly why a `continue`
+    // would be wrong: it would turn a broken matcher into a ship that silently
+    // stops being drawn.  A quiet skip is a defect in its own right on this
+    // project, and the check is arithmetic on eight numbers.
+    //
+    // Ascending is what makes the in-place compaction correct: `idx > prev >=
+    // w - 1` gives `idx >= w`, so the destination never runs ahead of the
+    // source and no record is overwritten before it has been copied.
+    if (idx <= prev || (idx + 1) * S > buf.length) {
+      throw new Error(`stripToAttached: attached record ${idx} follows ${prev} `
+        + `and must be strictly ascending and inside a ${buf.length}-word `
+        + `sprite buffer (writing slot ${w}).`);
+    }
+    prev = idx;
+    if (idx !== w) buf.copyWithin(w * S, idx * S, idx * S + S);
+    w++;
+  }
+  // THE TERMINATOR.  Without it the records after the last survivor are still
+  // the recording's and the parser walks straight on into them.
+  if ((w + 1) * S <= buf.length) buf.fill(0, w * S, w * S + S);
+  return { kept: w, removed: before - w };
 }
 
 class Demo {
@@ -355,6 +452,17 @@ class Demo {
     // lags main RAM by one frame.
     this.spliced = this.cap.splice(st, fi, this.prevPos[0], this.prevPos[1],
       { tilt: this.prevTilt, ship: this.bundle.manifest.ship ?? null });
+    // WAVE 37 -- AND NOW THE RECORDED ENEMIES COME OFF.  AFTER the splice, for
+    // the reason `stripToAttached`'s header gives: the splice addresses records
+    // by their index in the ORIGINAL list.  MEASURED over all 161 frames of the
+    // shipped bundle: 7,671 display-list records -> 886, 23..72 per frame ->
+    // 5..6, 8.99 % of the 16,156,672 compared pixels changed, no throw.  What
+    // is left is the eight player-attached classes and nothing else; the
+    // background, the HUD (`st.tx`, which is not sprites at all -- 4 of 220
+    // record classes in the recording are static and the only frequent one is
+    // the null stream drawn off screen), the palette and the four scroll
+    // registers are untouched.
+    this.stripped = stripToAttached(st, this.cap.attached()[fi]);
     const idx = this.renderer.renderIndexed(st);
     // The palette that applies is the NEXT frame's -- the measured sample-point
     // offset (00-recon-assets.md §4).  On a looping capture the next frame is
@@ -389,6 +497,13 @@ class Demo {
       logicHz: this.hz,
       mode: this.mode,
       spliced: this.spliced,
+      // WAVE 37.  The page must keep SAYING what it is: `stripped` is how many
+      // of the recording's own display-list records were thrown away this
+      // frame, and `kept` is what survived.  An empty enemy layer with no
+      // explanation is the same defect class as a black screen with no
+      // explanation.
+      stripped: this.stripped?.removed ?? 0,
+      kept: this.stripped?.kept ?? 0,
       capture: this.capFrame,
       unported: g.unportedLog.report(),
       // WAVE 13 -- the scroll program, live.

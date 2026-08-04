@@ -42,18 +42,18 @@ the rows it removes.
 
 | # | the capture currently supplies | replaced by | status |
 |---|---|---|---|
-| L1 | ~~**The hardware display list itself** — the port does not build one~~ → **the CONTENTS of the thirty sprite buckets.** W11 ported main-loop call #4 whole and gated it at **0 divergent frames over the 1,901 build-B frames of `stage1-open`**, byte-for-byte against the board from the board's own staged bucket bytes (plus two forced-cap scenarios). The transform is done; the producers are not — one of thirty buckets (14, the shots) has a ported feeder | W12–W26 (the producers) | **converted by W11** |
+| L1 | ~~**The hardware display list itself** — the port does not build one~~ → **the CONTENTS of the thirty sprite buckets.** W11 ported main-loop call #4 whole and gated it at **0 divergent frames over the 1,901 build-B frames of `stage1-open`**, byte-for-byte against the board from the board's own staged bucket bytes (plus two forced-cap scenarios). The transform is done; the producers are not — one of thirty buckets (14, the shots) has a ported feeder **W37: 26 of the 30 buckets are now EMPTY rather than RECORDED.** `Demo.draw()` strips the capture's display list to the eight player-attached records (`stripToAttached`), on the owner's decision (`39-OWNER-visible-play-before-sound.md`). MEASURED over all 161 frames of the shipped bundle: **7,671 records -> 886, 8.99 % of pixels, no throw**. This does NOT convert the row -- what the capture still supplies for the four producing buckets is WHICH SLOT each record occupies -- but nothing on screen is a recorded enemy any more | W12–W26 (the producers) | **converted by W11** |
 | L2 | ~~The ship's display-list record + banking image~~ | W12 | **REPLACED** — `$24A482` ported whole: the ship's own record (`$24A538`), the invulnerability aura (`$24A532`, 5x40 c2 — wave 9's "exhaust plume") and the glow (`$24A632`, 1x32 c26, through the `$500000` latch). Gated at **0 divergent frames over 2,200 lf of `fly-around`**, staged bucket-19 bytes AND the emitted list entries (`pgm.py shipgate`), ten red mutations. **The ship banks**: the 17 rebased animation pairs are in `manifest.ship`, 16 of them harvested from the sprite ROMs by address because the recording contains only the tilt-0 image. What the capture still supplies is WHICH LIST SLOT the records occupy — that is L1's remaining half (26 buckets with no producer), not the ship's |
 | L3 | ~~The two option pods + two exhaust records~~ | W12 | **REPLACED** — `$24C096` ported as far as the laser gate: the pod records `$8104AA`/`$8104CA`, `$24D12E`'s move, bucket 15, and the three ground shadows in bucket 5 (`$249EE2`, `$24C438`, `$24C470`). Same gate, same 0 divergent frames. `OPTION_COLUMNS` joined `CLAIMED`. **The wave-11 ablation's label for bucket 5 ("the ship's exhaust") is corrected: its only two writers are `$23EFC0`/`$23EFEE` and every caller reached is a SHADOW.** The "two exhaust records" of this row are the aura and the glow, and they are in bucket 19, not 5. **CORRECTED BY W12.5:** "as far as the laser gate" overstated the coverage in one place -- formation 2 (`$24C390`) FELL THROUGH into `$24C476`, ~30 instructions of fire handshake and pod shot cadence, and W12 returned there silently (12-review F2). Ported in W12.5 with `$24D480` (the pods' shot spawn) as a named throw; gated by `pgm.py firegate` at 0 divergent over 2,571 board frames. **No display-list record is involved, so this row's status does not change** -- it is the note that was wrong, not the replacement |
-| L4 | Player shot sprites (worse than replayed: NOT in the capture at all — the port computes shots and they are INVISIBLE) | W13 | open |
+| L4 | Player shot sprites (worse than replayed: NOT in the capture at all — the port computes shots and they are INVISIBLE) | W13 | open — **and W37's strip did NOT touch this row**, which is a small correction to `41-recon-sprite-art.md` §3.2's list: the player's shots were never in the capture, so there was nothing to remove. They are still computed and still invisible |
 | L5 | The video registers: bg x/y scroll, tx scroll, ctrl, bg_scale — and the rowscroll array (measured all-zero over 13,600 lf) | W14 | open |
 | L6 | The BG tilemap (the 64-column ring, one 9-tile column per 32 px of scroll) and its motion program (speeds, freeze, repeat) | W16, data from W15 | open |
 | L7 | BG tile pixels + BG palette blocks (bundle holds 415 harvested tiles; stage 1 references **1,820** — 10-recon-background §6b) | W15 | open |
 | L8 | The TX tilemap: HUD, score digits, all on-screen text | W17 | open |
 | L9 | The score/chain VALUES behind those digits (recorded pixels that do not respond to play) | W17 + W21 | open |
-| L10 | The enemies: existence, position, motion, FACING and AIM (aim reads the live player 3.5×/frame — 10-recon-enemies §5 — a recording cannot supply it, ever) | W18–W20, W22, W26 | open |
-| L11 | Enemy bullets (buckets 22/23, the front of the picture) | W23 | open |
-| L12 | Explosions, death effects, items (bucket 20 bulk writer, `$289004` pool) | W21 + W11's ablation naming | open |
+| L10 | The enemies: existence, position, motion, FACING and AIM (aim reads the live player 3.5×/frame — 10-recon-enemies §5 — a recording cannot supply it, ever) | W18–W20, W22, W26 | **REMOVED (empty) — awaiting its producer.** W37 took the recorded enemies OFF THE SCREEN in the DRAW path. Not REPLACED: the port spawns, moves and aims them and their bullets, but SPRITE EMISSION is unported, so the layer is empty rather than simulated |
+| L11 | Enemy bullets (buckets 22/23, the front of the picture) | W23 | **REMOVED (empty) — awaiting its producer.** W37, same strip. The recorded enemy bullets are gone; the ported ones do not draw yet |
+| L12 | Explosions, death effects, items (bucket 20 bulk writer, `$289004` pool) | W21 + W11's ablation naming | **REMOVED (empty) — awaiting its producer.** W37, same strip. The recorded explosions, death effects and items are gone; nothing draws in their place yet |
 | L13 | The laser beam, bomb flash, hyper (NOT in the capture at any price — the recorded player never held fire or bombed) | W24, W25 | open |
 | L14 | The palette DURING gameplay: per-stage loads are located (`$2415E8`, W16); per-frame writers/fades were not reconned | **not yet answered** — needs a palette-writer census before W17 closes | open |
 | L15 | The 161-frame LOOP BOUND — the game simply ends where the recording does | W16 + W18 (background + spawns run to the stage-1 terminator), W28 (past stage 1) | open |
@@ -603,6 +603,14 @@ third, and it is the third with the best tooling already built.
    > risk**: the committed stage-1 ROM list is 2,035 streams = 1,192.6 KiB
    > gzipped against today's 39.3 KiB, so shipping it needs the same
    > deferred-shard treatment the background got.
+   > **W37 CARRIES IN W41's CORRECTION: 2,035 IS NOT A STAGE-1 CENSUS.** It is
+   > a FLOOR whose 52-table set was discovered by measurement and then
+   > enumerated to each table's full extent, so it OVER-includes and
+   > UNDER-includes at once, and both directions are measured:
+   > 1,012 of the 2,035 have never been reached by any instrument, and the
+   > port's own emitter already produces **92 streams the list does not
+   > contain** (`41-recon-sprite-art.md` §1.3, §1.4). A ROM-derived sheet must
+   > not ship before that gap closes, and no existing check would catch it.
 3. **The unresolved mysteries that could invalidate ports if guessed over:**
    `$2453C2` (laser collision never executed in 580 live-beam frames),
    `$8130D2`'s writer (freezes the whole background — a port ignoring it

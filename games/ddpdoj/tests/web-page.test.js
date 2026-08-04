@@ -4,8 +4,16 @@
 // `node --test games/ddpdoj/tests/` still works on a tree with no cartridge
 // extracted -- the same rule tests/render.test.js and tests/shots.test.js state
 // for themselves. What these CANNOT do is prove the page looks right in a
-// browser; there is no browser on this machine and that gap is written down in
-// docs/worklog/ddpdoj/09-impl-tate-and-honest-page.md rather than papered over.
+// browser.
+//
+// THE REASON THIS FILE USED TO GIVE FOR THAT WAS WRONG, AND W37 MEASURED IT:
+// it said "there is no browser on this machine". There is -- Chrome and Edge
+// are both installed and the Python `playwright` package is present, nothing
+// downloaded -- and W37 drove this very page in it, flew the ship and read the
+// status line back out of the DOM (42-impl-strip-capture-enemies.md §3). The
+// real reason these tests stay synthetic is the one above: the SUITE must run
+// without a cartridge. A browser-driven PLAYABILITY gate is a separate thing
+// and is now known to be buildable.
 
 import test from 'node:test';
 import assert from 'node:assert';
@@ -13,7 +21,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { pickScale, PICTURES, MODES, DEFAULT_MODE } from '../src/web/app.js';
+import {
+  pickScale, PICTURES, MODES, DEFAULT_MODE, stripToAttached,
+} from '../src/web/app.js';
 import {
   Capture, shadowProject, ATTACH_MIN_SCORE, ATTACH_MIN_FRAMES,
 } from '../src/render/capture.js';
@@ -130,7 +140,7 @@ const C = { SHIP: 0, POD: 0, EXHAUST: 2, SHADOW: 24, DECOY: 9, RARE: 11 };
  *   DECOY    its own path, every frame -- must never be accepted
  *   RARE     rigid and perfect, but present on 2 frames -- the minimum sample
  */
-function syntheticCapture(n = 40) {
+function syntheticCapture(n = 40, { decoyFirst = false } = {}) {
   const SLOTS = 8;                              // room for the list + terminator
   const frameBytes = SLOTS * STRIDE * 2;
   const bin = new Uint8Array(n * frameBytes);
@@ -141,14 +151,20 @@ function syntheticCapture(n = 40) {
     const py = 64 * (40 + i * 3), px = 64 * (60 + (i % 7) * 5);
     const cy = py >> 6, cx = px >> 6;
     const g = shadowProject(py, px);
-    const list = [
-      [cy - 24, cx - 16, 3, 32, C.SHIP, 0],
-      [cy - 16, cx + 24, 2, 16, C.POD, 2],
-    ];
+    const list = [];
+    // WAVE 37.  `decoyFirst` puts an UNATTACHED record in slot 0, which is what
+    // the real capture looks like -- the ship is nowhere near the front of the
+    // board's list -- and it is what makes the strip's ORDER testable.  Strip
+    // before the splice with everything already at the front and the mutation
+    // is invisible; strip before the splice here and the splice writes the
+    // ship's position into the decoy's old slot.
+    if (decoyFirst) list.push([300 + i * 7, 150 + i, 4, 24, C.DECOY, 0]);
+    list.push([cy - 24, cx - 16, 3, 32, C.SHIP, 0]);
+    list.push([cy - 16, cx + 24, 2, 16, C.POD, 2]);
     // ABSENT means ABSENT: not in the list at all, so the slots behind it move.
     if (i % 2) list.push([cy - 52, cx - 20, 5, 40, C.EXHAUST, 0]);
     else list.push([g.x, g.y + 20, 1, 8, C.SHADOW, 0]);
-    list.push([300 + i * 7, 150 + i, 4, 24, C.DECOY, 0]);
+    if (!decoyFirst) list.push([300 + i * 7, 150 + i, 4, 24, C.DECOY, 0]);
     if (i < 2) list.push([cy - 70, cx + 70, 2, 48, C.RARE, 0]);
 
     const base = i * frameBytes;
@@ -160,9 +176,10 @@ function syntheticCapture(n = 40) {
       wr(4, ((w & 0x3f) << 9) | (h & 0x1ff));
     });                                          // the rest stays zero = the
                                                  // terminator (word4 & $7FFF)
+    const s0 = decoyFirst ? 1 : 0;                // the ship's slot
     frameList.push({ lf: 2000 + i, vf: 2000 + i, py, px,
       refPy: py, refPx: px, refLf: 1999 + i, regs: {},
-      player: [[0, -24, -16], [1, -16, 24]] });   // what the packer would accept
+      player: [[s0, -24, -16], [s0 + 1, -16, 24]] });  // what the packer accepts
   }
   return new Capture({
     layout: [['spritebuffer', SLOTS * STRIDE * 2]], frameBytes, frameList,
@@ -345,6 +362,142 @@ test('records: "packer" reproduces wave 7 exactly', () => {
   assert.equal(cap.splice(st, 1, 64 * 200, 64 * 90, { records: 'packer' }), 2);
 });
 
+// ================================ 2b. WAVE 37 -- THE RECORDED ENEMIES COME OFF
+//
+// The OWNER's decision (39-OWNER-visible-play-before-sound.md): "we have to get
+// rid of the recorded enemies, they look retarded", then "go removal first".
+// `stripToAttached` keeps the eight player-attached records and throws the rest
+// of the recording's display list away, in the PAGE and never in the exporter.
+//
+// WHAT THESE CAN AND CANNOT SAY.  They run on the synthetic capture above, so
+// they prove the STRIP's behaviour -- what survives, in what order, where the
+// list ends, and that it is ordered after the splice -- on a tree with no
+// cartridge.  They CANNOT say the real bundle goes from 7,671 records to 886;
+// that needs `games/ddpdoj/assets/`, which is gitignored, and it is asserted by
+// `tools/webgate.mjs` instead, which hard-fails rather than skipping when the
+// bundle is missing.
+
+test('the strip keeps the ATTACHED records and nothing else', () => {
+  const cap = syntheticCapture(40, { decoyFirst: true });
+  for (const fi of [0, 1, 8, 9]) {
+    const st = { spritebuffer: cap.part(fi, 'spritebuffer') };
+    const before = parseSpriteList(st.spritebuffer);
+    const att = cap.attached()[fi];
+    const r = stripToAttached(st, att);
+    const after = parseSpriteList(st.spritebuffer);
+
+    assert.equal(r.kept, att.length, `frame ${fi}: kept != |attached|`);
+    assert.equal(r.removed, before.length - att.length);
+    assert.equal(after.length, att.length,
+      `frame ${fi}: the list must END after the survivors, not run on into the `
+      + 'recording -- the terminator is word4 & $7FFF == 0');
+    // THE DECOY IS THE POINT.  It is present on every frame, on its own path,
+    // and it is what "a recorded enemy" means in this fixture.
+    assert.ok(!after.some((s) => s.color === C.DECOY),
+      `frame ${fi}: a rejected record survived the strip`);
+    // ...and the accepted ones did survive, BY CLASS and in ORDER. A higher
+    // list index draws IN FRONT (spritelist.js), so a reorder here would put a
+    // ground shadow on top of the ship.
+    const cls = (s) => `${s.width}x${s.height} c${s.color} p${s.pri} f${s.flip}`;
+    assert.deepEqual(after.map(cls),
+      att.map(([i]) => cls(before.find((s) => s.i === i))),
+      `frame ${fi}: the survivors changed order`);
+    // The survivors' WORDS are the originals, byte for byte -- the strip moves
+    // records, it never edits one.
+    for (const [k, [idx]] of att.entries()) {
+      assert.deepEqual(after[k].raw, before.find((s) => s.i === idx).raw);
+    }
+  }
+});
+
+test('the strip runs AFTER the splice, and BEFORE is the red mutation', () => {
+  const cap = syntheticCapture(40, { decoyFirst: true });
+  const fi = 8, py = 64 * 200, px = 64 * 90;
+  const shipAt = (buf) => parseSpriteList(buf)
+    .find((s) => s.width === 3 && s.height === 32);
+
+  // THE ORDER THE PAGE USES: splice, then strip.
+  const good = { spritebuffer: cap.part(fi, 'spritebuffer') };
+  cap.splice(good, fi, py, px);
+  stripToAttached(good, cap.attached()[fi]);
+  const ok = shipAt(good.spritebuffer);
+  assert.ok(ok, 'the ship must survive the strip');
+  assert.equal(ok.x, (py >> 6) - 24, 'the ship must be where the PORT put it');
+  assert.equal(ok.y, (px >> 6) - 16);
+
+  // THE MUTATION: strip FIRST. `splice` addresses records by their index in the
+  // ORIGINAL list, so after compaction those indices name different records --
+  // the ship's position is written into whatever moved into its old slot, and
+  // the ship itself is left wherever the recording had it. Seen to fail.
+  const bad = { spritebuffer: cap.part(fi, 'spritebuffer') };
+  stripToAttached(bad, cap.attached()[fi]);
+  cap.splice(bad, fi, py, px);
+  const wrong = shipAt(bad.spritebuffer);
+  assert.ok(wrong, 'the fixture must still contain a ship record to compare');
+  assert.notEqual(wrong.x, (py >> 6) - 24,
+    'stripping BEFORE the splice must NOT produce a correctly placed ship, or '
+    + 'this mutation cannot fail and the ordering constraint is untested');
+});
+
+test('Demo.draw() really calls them in that order', () => {
+  // The test above proves the CONSTRAINT; this proves the PAGE obeys it, which
+  // is a different statement and the one a reorder would break. A source check
+  // is weak evidence in general and strong here: there is exactly one call site
+  // of each and their order is the entire question.
+  const src = read('src/web/app.js');
+  const body = src.slice(src.indexOf('  draw() {'));
+  const iSplice = body.indexOf('this.cap.splice(');
+  const iStrip = body.indexOf('stripToAttached(');
+  assert.ok(iSplice >= 0 && iStrip >= 0, 'draw() must call both');
+  assert.ok(iSplice < iStrip,
+    'draw() strips BEFORE it splices. splice addresses records by their index '
+    + 'in the ORIGINAL list, so the ship would be left behind.');
+});
+
+test('an empty attached set empties the list rather than throwing', () => {
+  // The honest degenerate case: a capture whose matcher accepted nothing must
+  // draw NO sprites, not the recording's.
+  const cap = syntheticCapture(40, { decoyFirst: true });
+  const st = { spritebuffer: cap.part(3, 'spritebuffer') };
+  assert.ok(parseSpriteList(st.spritebuffer).length > 0);
+  const r = stripToAttached(st, []);
+  assert.equal(r.kept, 0);
+  assert.equal(parseSpriteList(st.spritebuffer).length, 0);
+});
+
+test('a broken attached set THROWS by name rather than losing the ship quietly',
+  () => {
+    // A `continue` here would turn a broken matcher into a ship that silently
+    // stops being drawn, which is the failure shape this project keeps paying
+    // for. Both impossible cases are named throws.
+    const cap = syntheticCapture(40, { decoyFirst: true });
+    const st = () => ({ spritebuffer: cap.part(2, 'spritebuffer') });
+    assert.throws(() => stripToAttached(st(), [[3, 'rigid', 0, 0], [1, 'rigid', 0, 0]]),
+      /must be strictly ascending/, 'descending indices must throw');
+    assert.throws(() => stripToAttached(st(), [[2, 'rigid', 0, 0], [2, 'rigid', 0, 0]]),
+      /must be strictly ascending/, 'a repeated index must throw');
+    assert.throws(() => stripToAttached(st(), [[9999, 'rigid', 0, 0]]),
+      /inside a \d+-word/, 'an out-of-range index must throw');
+  });
+
+test('THE STRIP IS IN THE PAGE AND NOT IN THE EXPORTER', () => {
+  // 41-recon-sprite-art.md §5.3, and this is the whole reason wave 37 has a
+  // brief. `tools/bundlegate.mjs` renders THE PUBLISHED BUNDLE'S OWN capture
+  // and requires 100.0000 % pixel-identity to MAME. Strip in the DATA path and
+  // that gate falls to roughly 91 % for entirely the right reason, and the
+  // tempting repair is to weaken the strongest pixel gate this port owns.
+  assert.match(read('src/web/app.js'), /stripToAttached/,
+    'the strip must live in the page');
+  const exporter = read('tools/export-web.mjs');
+  assert.ok(!/stripToAttached|attached\(\)/.test(exporter),
+    'the strip has moved into export-web.mjs. It must not: bundlegate.mjs '
+    + 'demands 100.0000 % pixel-identity from the published bundle.');
+  // ...and the gate that would catch it must still be demanding exactness.
+  assert.match(read('tools/bundlegate.mjs'), /exact === total/,
+    'bundlegate stopped requiring every pixel. Nothing in wave 37 may loosen '
+    + 'it -- the strip is in the page precisely so it does not have to.');
+});
+
 // ============================================== 3. THE PAGE'S OWN CLAIMS
 //
 // 07-review.md D1: the banner said the ship's "two option pods are computed
@@ -398,10 +551,34 @@ test('the error box says NOT PORTED YET when the message names an address', () =
   assert.match(html, /console\.error/, 'the console trace must be kept');
 });
 
-test('the page says the enemies are a recording and cannot be hit', () => {
+// WAVE 37 INVERTS THIS ONE, and the discipline does not invert. Until this
+// wave the page said "the enemies are a recording and cannot be hit", which was
+// true and was the right thing to say. The recorded enemies are now GONE, so
+// that sentence would be a lie -- and an EMPTY sky with no explanation is the
+// same defect class as a black screen with no explanation, which is what got
+// wave 14 reported. So the page must now say the layer was emptied and why.
+test('the page says the recorded enemies were REMOVED, and does not still '
+  + 'claim they are on screen', () => {
   const html = read('index.html');
-  assert.match(html, /cannot\s+see\s+you\s+and\s+cannot\s+be\s+shot/i);
-  assert.match(html, /161\s+captured\s+frames/);
+  assert.ok(!/cannot\s+see\s+you\s+and\s+cannot\s+be\s+shot/i.test(html),
+    'the page still says the recorded enemies are flying around. They are not; '
+    + 'Demo.draw strips them.');
+  assert.match(html, /taken off the screen|recorded enemies have been/i,
+    'the page must say the recorded enemies were removed');
+  assert.match(html, /7,671[^]{0,80}886|886/,
+    'say WHAT WAS MEASURED, not just that something was removed');
+  assert.match(html, /161-frame|161\s+captured|161\s+frames/,
+    'the page must still say WHY they were wrong: a 161-frame loop against a '
+    + '7,317-frame computed stage');
+});
+
+test('the page still says the HUD and the palette are the recording', () => {
+  // Removal touched neither. `st.tx` is the text layer, not sprites: over all
+  // 161 frames only 4 of 220 record classes are static and the only frequent
+  // one is the null stream drawn off screen (41-recon-sprite-art.md §3.2).
+  const html = read('index.html');
+  assert.match(html, /HUD[^]{0,200}recording|recording[^]{0,200}HUD/i);
+  assert.match(html, /palette[^]{0,200}recording/i);
 });
 
 // ==================================================== 4. THE LASER GUARD

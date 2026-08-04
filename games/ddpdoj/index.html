@@ -297,18 +297,29 @@ one with the animation in it. And the second map's <b>painter</b>
 (<code>$26C20C</code>, object type&nbsp;<code>$1C</code>) is unported &mdash; its
 tiles are in the bundle, nothing draws them yet.</p>
 
-<p><b>The enemies, the bullets and the HUD are still 161 captured frames
-of the real board, on a loop.</b> The port now <b>builds</b> the hardware
-display list &mdash; main-loop call&nbsp;#4, <code>$23D2AE</code>, translated
-whole and verified byte-for-byte against the board on 1,901 consecutive frames
-&mdash; but it has a simulated <em>source</em> for only four of the thirty sprite
-buckets, and 17 of the 20 object handlers are still unported. A correct
-pipeline with nothing to put through it draws nothing, so those pixels are
-still a replay.
-<b>The enemies cannot see you and cannot be shot.</b> They appear to aim at a
-ship because they were aiming at the ship that flew this recording, and that
-ship is not the one you are moving. When enemy fire passes through you, nothing
-has gone wrong; there is no collision to run.</p>
+<p><b>The sky is empty on purpose. The recorded enemies have been taken off
+the screen.</b> Until wave&nbsp;37 every enemy, bullet, explosion and item you
+saw was a 161-frame recording of the real board, on a loop &mdash; and since
+wave&nbsp;13 the background's <em>motion</em> has been computed by the port
+instead of replayed alongside it. A 161-frame sprite loop played against a
+7,317-frame computed stage agrees at the start and drifts afterwards, which is
+what it looked like: enemies shooting at nothing, in the wrong place. So they
+are gone. <b>Nothing you can see now is a recorded sprite</b>, and every enemy
+that appears from here is the port's own. Measured: 7,671 of the recording's
+display-list records dropped to 886, 8.99% of the picture's pixels, and the
+status line says <code>rec-N</code> every frame so the page never stops
+admitting what it did.</p>
+
+<p>The port already <b>builds</b> the hardware display list &mdash; main-loop
+call&nbsp;#4, <code>$23D2AE</code>, translated whole and verified byte-for-byte
+against the board on 1,901 consecutive frames &mdash; and it already
+<em>simulates</em> enemies: it spawns them, moves them, aims their turrets and
+generates their bullet patterns, all gated against the board. What is missing is
+SPRITE EMISSION: only four of the thirty sprite buckets have a producer, so the
+objects that exist cannot draw themselves. That is the next wave, and it is the
+reason the layer is empty rather than wrong.
+<b>The HUD, the score and the text are still the recording</b> &mdash; they are
+the text layer, not sprites, and removal did not touch them.</p>
 
 <p><b>The ship and everything attached to it are now PRODUCED, not relocated.</b>
 Wave&nbsp;12 ported the ship's own draw block <code>$24A482</code> and the whole
@@ -626,6 +637,12 @@ try {
           : '')
         + (s.shards?.orphans ? ` <b>orphan tiles ${s.shards.orphans}</b>` : '')
         + (s.missingBgTiles ? ` miss ${s.missingBgTiles}` : ''),
+      // WAVE 37 -- the recorded enemies are STRIPPED, and the page says so
+      // every frame rather than leaving the player to wonder why the sky is
+      // empty.  `rec-` is how many of the recording's own display-list records
+      // were dropped this frame; the survivors are the ship and the seven
+      // records attached to it.
+      `rec-${s.stripped} keep ${s.kept}`,
       `${s.logicHz.toFixed(1)}Hz`,
       `x${canvas.dataset.scale}`,
     ].join(' &nbsp; ');
