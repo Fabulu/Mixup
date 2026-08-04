@@ -30,39 +30,296 @@
   },
   "code": {
     "entry": null,
-    "mods": null,
-    "page": "index.html"
+    "mods": "src/mods.js",
+    "input": "src/input.js",
+    "page": "start.html",
+    "note": "`entry` STAYS NULL ON PURPOSE. The repo launcher's play stage is Batman-shaped -- its key hints name walking and jumping, and it opens no AudioContext -- so driving Gradius through it would cost the player the sound the W8/W13 audio path exists to produce. `page` is Gradius's OWN start screen (start.html), which is the parity item: mods, presets, level select and the starting power-up picker, all read out of `mods` below. One catalogue, two possible front ends; the day the launcher grows an audio channel and per-game key hints, set `entry` to src/main.js and it works unchanged."
   },
   "input": {
     "note": "The $0007 (held) / $0005 (edge) bit layout, MEASURED by A/B RAM diff -- see tools/oracle/PROBE.md 4 and BTN in src/state.js, which this must equal (tests/input.test.js asserts it). The low nibble is direction: `AND #$0F` at $A082 is the ROM's own test for 'any direction held'.",
     "buttons": [
-      { "id": "RIGHT", "mask": 1 },
-      { "id": "LEFT", "mask": 2 },
-      { "id": "DOWN", "mask": 4 },
-      { "id": "UP", "mask": 8 },
-      { "id": "START", "mask": 16 },
-      { "id": "SELECT", "mask": 32 },
-      { "id": "B", "mask": 64 },
-      { "id": "A", "mask": 128 }
+      {
+        "id": "RIGHT",
+        "mask": 1
+      },
+      {
+        "id": "LEFT",
+        "mask": 2
+      },
+      {
+        "id": "DOWN",
+        "mask": 4
+      },
+      {
+        "id": "UP",
+        "mask": 8
+      },
+      {
+        "id": "START",
+        "mask": 16
+      },
+      {
+        "id": "SELECT",
+        "mask": 32
+      },
+      {
+        "id": "B",
+        "mask": 64
+      },
+      {
+        "id": "A",
+        "mask": 128
+      }
     ],
     "defaultKeymap": {
-      "ArrowRight": "RIGHT", "ArrowLeft": "LEFT",
-      "ArrowDown": "DOWN", "ArrowUp": "UP",
-      "KeyD": "RIGHT", "KeyA": "LEFT", "KeyS": "DOWN", "KeyW": "UP",
-      "KeyX": "A", "Space": "A",
-      "KeyZ": "B", "KeyY": "B", "KeyC": "B",
-      "Enter": "START", "ShiftRight": "SELECT", "ShiftLeft": "SELECT"
+      "ArrowRight": "RIGHT",
+      "ArrowLeft": "LEFT",
+      "ArrowDown": "DOWN",
+      "ArrowUp": "UP",
+      "KeyD": "RIGHT",
+      "KeyA": "LEFT",
+      "KeyS": "DOWN",
+      "KeyW": "UP",
+      "KeyX": "A",
+      "Space": "A",
+      "KeyZ": "B",
+      "KeyY": "B",
+      "KeyC": "B",
+      "Enter": "START",
+      "ShiftRight": "SELECT",
+      "ShiftLeft": "SELECT"
     },
     "touchLayout": {
       "note": "The on-screen pad in index.html. The d-pad is ONE pointer-capture surface hit-tested as a 3x3 grid, not four buttons: the corner cells report TWO bits, because updatePlayer() tests X and Y independently and a diagonal is nothing but two bits at once. The cluster is SELECT+START stacked ABOVE B+A -- inline with A/B the row is wider than the space beside the d-pad and A falls off a narrow phone (learned on the Game Boy port).",
       "dpad": [
-        ["UP", "LEFT"], ["UP"], ["UP", "RIGHT"],
-        ["LEFT"], [], ["RIGHT"],
-        ["DOWN", "LEFT"], ["DOWN"], ["DOWN", "RIGHT"]
+        [
+          "UP",
+          "LEFT"
+        ],
+        [
+          "UP"
+        ],
+        [
+          "UP",
+          "RIGHT"
+        ],
+        [
+          "LEFT"
+        ],
+        [],
+        [
+          "RIGHT"
+        ],
+        [
+          "DOWN",
+          "LEFT"
+        ],
+        [
+          "DOWN"
+        ],
+        [
+          "DOWN",
+          "RIGHT"
+        ]
       ],
-      "clusters": [["SELECT", "START"], ["B", "A"]]
+      "clusters": [
+        [
+          "SELECT",
+          "START"
+        ],
+        [
+          "B",
+          "A"
+        ]
+      ]
     }
   },
-  "entries": [],
-  "options": []
+  "entries": [
+    {
+      "id": 0,
+      "kind": "title",
+      "label": "Title screen",
+      "note": "The cartridge's own boot: mode 0, $8067's state, the 127-frame title scroll-in, the menu countdown and the attract demo (W39). Any stage below skips straight to that stage's $9B3E intro."
+    },
+    {
+      "id": 1,
+      "kind": "level",
+      "label": "1 -- Volcano",
+      "note": "Volcano / Big Core. The stage every measured scenario lives in; 47 oracle scenarios, 29,693 frames, 0 divergent."
+    },
+    {
+      "id": 2,
+      "kind": "level",
+      "label": "2 -- Stonehenge",
+      "note": "Stonehenge. Ported W29."
+    },
+    {
+      "id": 3,
+      "kind": "level",
+      "label": "3 -- Moai",
+      "note": "Moai. Ported W30 -- entry 22, $C906, and the only enemy whose identity is a nametable address."
+    },
+    {
+      "id": 4,
+      "kind": "level",
+      "label": "4 -- Inverse Volcano",
+      "note": "Inverse Volcano. Ported W31."
+    },
+    {
+      "id": 5,
+      "kind": "level",
+      "label": "5 -- Tentacles",
+      "note": "Tentacles / the $0600 arm pool. Ported W32a-c; the only stage with no terrain collision at all ($C2AB CMP #$04 / RTS)."
+    },
+    {
+      "id": 6,
+      "kind": "level",
+      "label": "6 -- Cell",
+      "note": "Cell. Ported W35."
+    },
+    {
+      "id": 7,
+      "kind": "level",
+      "label": "7 -- Fortress",
+      "note": "Fortress + the boss rush. Ported W36; the ending and the loop back to stage 1 are W38."
+    }
+  ],
+  "options": [
+    {
+      "key": "weapon",
+      "label": "Weapon",
+      "default": 0,
+      "note": "$44. 0 normal / 1 LASER / 2 DOUBLE -- $89CF stores 1 and $89BB stores 2, measured, not the other way round.",
+      "values": [
+        {
+          "value": 0,
+          "label": "Normal"
+        },
+        {
+          "value": 1,
+          "label": "Laser"
+        },
+        {
+          "value": 2,
+          "label": "Double"
+        }
+      ]
+    },
+    {
+      "key": "options",
+      "label": "Options",
+      "default": 0,
+      "note": "$45. Capped at 2 by $89D5 and by this list: $A108 walks OBJECT SLOTS 0..$45 and slots 3-5 are the SHOT slots, so a third Option fires the weapon out of a shot slot.",
+      "values": [
+        {
+          "value": 0,
+          "label": "None"
+        },
+        {
+          "value": 1,
+          "label": "One"
+        },
+        {
+          "value": 2,
+          "label": "Two"
+        }
+      ]
+    },
+    {
+      "key": "missile",
+      "label": "Missile",
+      "default": 0,
+      "note": "$41. $A15C gates the missile on it; there is no timer, only the flight time of the one live missile per object.",
+      "values": [
+        {
+          "value": 0,
+          "label": "Off"
+        },
+        {
+          "value": 1,
+          "label": "On"
+        }
+      ]
+    },
+    {
+      "key": "shield",
+      "label": "Shield",
+      "default": 0,
+      "note": "$46, the remaining hits. $8997 grants 5; $C1C1/$C247/$C293 spend one each. It does NOT stop terrain -- $C2A5 never reads it.",
+      "values": [
+        {
+          "value": 0,
+          "label": "Off"
+        },
+        {
+          "value": 5,
+          "label": "Full (5 hits)"
+        }
+      ]
+    },
+    {
+      "key": "speed",
+      "label": "Speed",
+      "default": 0,
+      "note": "$40. $A006's min(($40+2) AND $FF, $10) is the real saturation; $89A1 has no cap at all, and $40 = 254 wraps and makes the ship STOP.",
+      "values": [
+        {
+          "value": 0,
+          "label": "1 (stock)"
+        },
+        {
+          "value": 1,
+          "label": "2"
+        },
+        {
+          "value": 2,
+          "label": "3"
+        },
+        {
+          "value": 3,
+          "label": "4"
+        },
+        {
+          "value": 4,
+          "label": "5"
+        }
+      ]
+    },
+    {
+      "key": "meter",
+      "label": "Power meter",
+      "default": 0,
+      "note": "$42, the bar cursor. 0 nothing selected, 1..6 a cell; 6 is ?/SHIELD. $894B wraps 7 back to 1, never to 0.",
+      "values": [
+        {
+          "value": 0,
+          "label": "Empty"
+        },
+        {
+          "value": 1,
+          "label": "Speed up"
+        },
+        {
+          "value": 2,
+          "label": "Missile"
+        },
+        {
+          "value": 3,
+          "label": "Double"
+        },
+        {
+          "value": 4,
+          "label": "Laser"
+        },
+        {
+          "value": 5,
+          "label": "Option"
+        },
+        {
+          "value": 6,
+          "label": "Shield"
+        }
+      ]
+    }
+  ]
 }

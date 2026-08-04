@@ -102,6 +102,11 @@ import { addScore } from './score.js';
 import { soundDriver, setBgm, setBgmCode, soundRequest, pulse1Dur, SND_BASE, OFF } from './sound.js';
 import { chrBank } from './render/ppu.js';
 import { modeDispatch, newGame } from './modes.js';
+// MODS. Every call to this import in this file is behind `if (state.mods)`, and
+// `state.mods` is undefined on every state createState() makes -- see the ONE
+// RULE at the top of src/mods.js. With no loadout attached these three hooks
+// are three branch-not-taken tests per frame and nothing else.
+import { modHidePlayer, modShowPlayer, modFrameEnd, modFreezeEnemies } from './mods.js';
 
 // $80D4 jt_80D4 -- the 7-entry GAME-MODE jump table, indexed by `$00` (the
 // mode byte) after `$83E4`'s `ASL A`. Verified straight out of assets/prg.bin
@@ -265,7 +270,12 @@ export function nmi(state, buttons, res, lag = false) {
   // reads. Passed here rather than plumbed through `res` so that every existing
   // two-argument call site (the unit tests) keeps working and throws by name if
   // it ever reaches $19 == 4.
+  // MODS: the respawn blink. `$8B10` draws object 0 only when `$0120` is
+  // non-zero, so the ship is hidden by zeroing it across THIS call and putting
+  // it straight back -- nothing else in the frame ever sees the zero.
+  const modHidden = state.mods ? modHidePlayer(state) : -1;
   buildDisplayList(state, res.metasprites, res.enemyTables);
+  if (modHidden >= 0) modShowPlayer(state, modHidden);
 
   // $80AA: JSR $80BE -> INC $02, the $80C0 pre-dispatch, then jt_80D4 at $80D1.
   //
@@ -281,6 +291,10 @@ export function nmi(state, buttons, res, lag = false) {
   queueTerminator(state);                         // $80B0 JSR $8641
 
   state.lock = 0;                                 // $80B5 STA $04
+  // MODS: the frame is over and the lock is down. Everything modFrameEnd writes
+  // is read by the NEXT frame ($17 by the enemy aim, $040C,X by $BBFD), which is
+  // exactly why it is here and not at the top.
+  if (state.mods) modFrameEnd(state);
   return true;
 }
 
@@ -1218,7 +1232,11 @@ function mode5Body(state, res) {
     spawnEngine(state, res);                      // $9A64 JSR $A2C0
     enemyBullets(state, res);                     // $9A67 JSR $BBB7
     updatePlayer(state, res);                     // $9A6A JSR $9FFC
-    updateEnemies(state, res);                    // $9A6D JSR $ADAB
+    // MODS: Everyone Stay Calm skips $ADAB, and only $ADAB -- the spawner above
+    // and the bullet loop keep running, so enemies still arrive and still shoot.
+    if (!(state.mods && modFreezeEnemies(state))) {
+      updateEnemies(state, res);                  // $9A6D JSR $ADAB
+    }
   }
 
   // $9A70: JSR $BFE2 -- and this is the whole collision subsystem, not just the

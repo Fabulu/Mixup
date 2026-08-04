@@ -30,10 +30,15 @@ const DIST = path.join(ROOT, 'dist');
 // bearing; the INCLUDE list is the only place that knows it.
 const GAMES = ['batman', 'gradius', 'ddpdoj'];
 
-// Games that also ship their OWN page. Gradius cannot go through the launcher
-// yet: the picker imports code.entry, code.mods and code.input, and Gradius has
-// only the first of the three. Until it has the other two it is reachable at
-// /games/gradius/ and listed in the picker as a link, not booted inline.
+// Games that also ship their OWN page.
+//
+// GRADIUS SHIPS TWO HTML FILES AS OF W41 and this list used to name one. Its
+// manifest's `code.page` is start.html -- the mod / level / power-up front end,
+// which is what the picker links to -- and start.html hands over to index.html,
+// the player. A dist/ carrying only index.html publishes a launcher card that
+// 404s. So the entries below are DISCOVERED rather than spelled: every .html
+// beside the game's game.json ships. (Gradius's `code.entry` is null on
+// purpose; see the note in games/gradius/game.json.)
 //
 // DaiOuJou is not on that road at all and is not expected to join it: it is not
 // a CPU emulator with a boot(state) the picker can drive, it is a translated
@@ -45,7 +50,9 @@ const PAGES = ['gradius', 'ddpdoj'];
 const INCLUDE = ['index.html', 'games/index.json',
                  ...GAMES.flatMap((g) => [`games/${g}/game.json`,
                                           `games/${g}/src`, `games/${g}/assets`]),
-                 ...PAGES.map((g) => `games/${g}/index.html`)];
+                 ...PAGES.flatMap((g) => fs.readdirSync(path.join(ROOT, 'games', g))
+                   .filter((f) => f.endsWith('.html'))
+                   .map((f) => `games/${g}/${f}`))];
 
 // assets/ is ROM-DERIVED, and "derived" covers a range. games/batman/assets/
 // holds extracted tables -- decoded levels, a tile subset, a sound script. But

@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gradius (NES) — start</title>
+<!--
+  THE START SCREEN. Gradius's half of the Batman parity item.
+
+  It is a FRONT END, not an overlay: nothing here runs while the game runs, and
+  the game is not loaded until LAUNCH. The argument is in the header of
+  src/mods.js -- level select writes `$26,X` and loop select `$28,X`, and
+  `$9B6E`/`$9B72` read both inside the very first `$9B3E`, so half the
+  catalogue has to be decided before the first NMI; and START and SELECT belong
+  to the cartridge's own title screen now (W39, `$821A`), so an overlay would
+  be fighting mode 1 for the two buttons a player would reach for.
+
+  It carries NO game code. The only module it imports is src/mods.js, which is
+  a catalogue and eight pure hooks; index.html is what boots the port. The
+  handover is the URL hash, which means every loadout is a shareable link and
+  reloading the game page keeps it.
+
+  Serve over HTTP (`python -m http.server 8000`) -- module imports and fetch
+  both need a real origin.
+-->
+<style>
+  /* The launcher's palette, deliberately: a player who came from the repo's
+     game select should not feel like they changed products. */
+  :root {
+    --bg: #0d0f14; --panel: #161a22; --line: #262d3a;
+    --fg: #dfe5ef; --dim: #7c8799; --accent: #f2c14e; --on: #8bd450;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg);
+    font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    padding: 2rem 1rem 6rem;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 1rem; margin-bottom: 1.2rem; }
+  h1 { font-size: 1.15rem; margin: 0 0 .25rem; letter-spacing: .06em; }
+  h1 span { color: var(--dim); font-weight: 400; }
+  .sub { color: var(--dim); font-size: 12px; max-width: 90ch; }
+  .sub a { color: var(--accent); }
+  h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .14em;
+       color: var(--dim); margin: 1.75rem 0 .6rem; font-weight: 600; }
+  .grid { display: grid; gap: .6rem; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: .7rem .8rem; cursor: pointer; text-align: left; color: inherit;
+    font: inherit; transition: border-color .12s, background .12s;
+  }
+  .card:hover { border-color: #3a4557; }
+  .card[aria-pressed="true"] { border-color: var(--on); background: #16211a; }
+  .card .nm { font-weight: 600; display: flex; justify-content: space-between; gap: .5rem; }
+  .card .nm i { font-style: normal; color: var(--on); opacity: 0; }
+  .card[aria-pressed="true"] .nm i { opacity: 1; }
+  .card .bl { color: var(--dim); font-size: 12px; margin-top: .2rem; }
+  .card .fx { margin-top: .45rem; font-size: 11px; color: #93a0b4;
+              border-top: 1px dashed var(--line); padding-top: .4rem; display: none; }
+  .card[aria-pressed="true"] .fx { display: block; }
+  .fx code { color: var(--accent); }
+  .presets .card { background: #1b1710; border-color: #3a3320; }
+  .card.original { background: #101820; border-color: #2c4a34; }
+
+  .kit { display: flex; flex-wrap: wrap; gap: .8rem 1.4rem; background: var(--panel);
+         border: 1px solid var(--line); border-radius: 6px; padding: .8rem .9rem; }
+  .kit label { display: flex; flex-direction: column; gap: .25rem; font-size: 11px;
+               color: var(--dim); letter-spacing: .06em; text-transform: uppercase; }
+  .kit .note { flex: 1 1 100%; text-transform: none; letter-spacing: 0; font-size: 11px; }
+  select, button {
+    font: inherit; background: #1d232d; color: var(--fg);
+    border: 1px solid var(--line); border-radius: 4px; padding: .35rem .5rem;
+  }
+  button { cursor: pointer; }
+  .bar {
+    position: sticky; bottom: 0; margin-top: 1.6rem; padding: .9rem 1rem;
+    background: #11151c; border: 1px solid var(--line); border-radius: 6px;
+    display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;
+  }
+  .bar .stack { flex: 1 1 320px; min-width: 0; color: var(--dim); font-size: 12px; }
+  .bar .stack b { color: var(--fg); font-weight: 600; }
+  .warn { color: var(--accent); }
+  #launch { background: var(--accent); color: #171208; border-color: var(--accent);
+            font-weight: 700; letter-spacing: .06em; padding: .5rem 1.4rem; }
+  #reset, #tolauncher { color: var(--dim); }
+  #err { color: #ffb4b4; background: #2a1a1a; border: 1px solid #5a2a2a;
+         border-radius: 4px; padding: .8rem 1rem; margin-top: 1rem;
+         white-space: pre-wrap; display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Gradius <span>— start screen</span></h1>
+    <div class="sub">NES, Konami 1986 · hand-translated from the disassembly and
+      verified frame-by-frame against the cartridge ·
+      <a href="../../index.html">◂ all games</a><br>
+      Every modifier below writes a real byte of the machine — the zero-page
+      address is printed on the card. Nothing here is on unless you switch it
+      on, and with nothing on this is the cartridge.</div>
+  </header>
+
+  <h2>Start here</h2>
+  <div class="grid presets" id="presets">
+    <button class="card original" type="button" id="vanilla">
+      <div class="nm"><span>Original Game</span><i>✓</i></div>
+      <div class="bl">The 1986 cartridge, untouched. 47 oracle scenarios,
+        29,693 frames, 0 divergent.</div>
+    </button>
+  </div>
+
+  <h2>Physics &amp; host</h2><div class="grid" data-cat="physics"></div>
+  <h2>Combat</h2><div class="grid" data-cat="combat"></div>
+  <h2>Chaos</h2><div class="grid" data-cat="chaos"></div>
+
+  <h2>Starting kit <span style="text-transform:none;letter-spacing:0">— what you begin the run with</span></h2>
+  <div class="kit" id="kit">
+    <div class="note">These are the six power-up bytes <code>$9B3E</code>'s wipe
+      clears and the capsule arms at <code>$8974</code> write. They land on the
+      first stage intro only — switch on <b>Muscle Memory</b> to get them back
+      after every death, or <b>Full Kit, One Speed</b> to have the lot.</div>
+  </div>
+
+  <div class="bar">
+    <div class="stack" id="stack"></div>
+    <label style="color:var(--dim);font-size:12px">Start at
+      <select id="level"></select>
+    </label>
+    <button id="tolauncher" type="button">◂ games</button>
+    <button id="reset" type="button">Clear</button>
+    <button id="launch" type="button">LAUNCH ▸</button>
+  </div>
+
+  <div id="err"></div>
+</div>
+
+<script type="module">
+import { MODS, PRESETS, CATEGORIES, PRESETS as _P,
+         resolveLoadout, describeMod, loadoutToHash, hashToLoadout } from './src/mods.js';
+
+const el = (id) => document.getElementById(id);
+const selected = new Set();
+let manifest = null;
+
+// The entries[] and options[] lists are the MANIFEST's, exactly as the repo
+// launcher reads them for Batman. Nothing about the seven stages or the six
+// power-up bytes is spelled twice.
+try {
+  const r = await fetch('./game.json');
+  if (!r.ok) throw new Error(`game.json: HTTP ${r.status}`);
+  manifest = await r.json();
+} catch (e) {
+  const b = el('err');
+  b.style.display = 'block';
+  b.textContent = `${e.message}\n\nServe over HTTP:\n  python -m http.server 8000`;
+  throw e;
+}
+
+// ---- the mod cards ---------------------------------------------------------
+for (const [id, mod] of Object.entries(MODS)) {
+  const host = document.querySelector(`.grid[data-cat="${mod.category}"]`);
+  if (!host) continue;                       // a category with no heading is visible as absence
+  const b = document.createElement('button');
+  b.className = 'card';
+  b.type = 'button';
+  b.dataset.id = id;
+  b.setAttribute('aria-pressed', 'false');
+  b.innerHTML = `<div class="nm"><span></span><i>ON</i></div>
+                 <div class="bl"></div><div class="fx"></div>`;
+  b.querySelector('.nm span').textContent = mod.name;
+  b.querySelector('.bl').textContent = mod.blurb;
+  b.querySelector('.fx').innerHTML = describeMod(id)
+    .map((d) => `${d.key}: <code>${d.to}</code>`).join('<br>');
+  b.addEventListener('click', () => {
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    sync();
+  });
+  host.appendChild(b);
+}
+
+for (const [, p] of Object.entries(PRESETS)) {
+  const b = document.createElement('button');
+  b.className = 'card';
+  b.type = 'button';
+  b.innerHTML = '<div class="nm"><span></span></div><div class="bl"></div>';
+  b.querySelector('.nm span').textContent = p.name;
+  b.querySelector('.bl').textContent = p.mods.map((m) => MODS[m].name).join(' + ');
+  b.addEventListener('click', () => {
+    selected.clear();
+    p.mods.forEach((m) => selected.add(m));
+    sync();
+  });
+  el('presets').appendChild(b);
+}
+
+el('vanilla').addEventListener('click', () => { selected.clear(); sync(); });
+
+// ---- the level list and the starting kit, both from game.json --------------
+const levelSel = el('level');
+for (const e of manifest.entries) {
+  const o = document.createElement('option');
+  o.value = String(e.id);
+  o.textContent = e.label;
+  o.title = e.note || '';
+  levelSel.appendChild(o);
+}
+
+for (const opt of manifest.options || []) {
+  const lab = document.createElement('label');
+  lab.textContent = opt.label;
+  lab.title = opt.note || '';
+  const sel = document.createElement('select');
+  sel.dataset.key = opt.key;
+  for (const v of opt.values) {
+    const o = document.createElement('option');
+    o.value = String(v.value);
+    o.textContent = v.label;
+    sel.appendChild(o);
+  }
+  sel.value = String(opt.default ?? opt.values[0].value);
+  sel.addEventListener('change', sync);
+  lab.appendChild(sel);
+  el('kit').appendChild(lab);
+}
+
+function kitValues() {
+  const out = {};
+  for (const sel of el('kit').querySelectorAll('select')) {
+    out[sel.dataset.key] = parseInt(sel.value, 10);
+  }
+  return out;
+}
+
+// ---- the summary line, which is the honest part ----------------------------
+function sync() {
+  for (const c of document.querySelectorAll('.card[data-id]')) {
+    c.setAttribute('aria-pressed', selected.has(c.dataset.id) ? 'true' : 'false');
+  }
+  const ids = [...selected];
+  const kit = kitValues();
+  const level = parseInt(levelSel.value, 10);
+  const lo = resolveLoadout(ids, { ...kit, stage: level });
+  el('vanilla').setAttribute('aria-pressed',
+    (!ids.length && !lo.anyStart && !level) ? 'true' : 'false');
+
+  const bytes = Object.keys(lo.zp)
+    .map((a) => `$${Number(a).toString(16).toUpperCase()}=${lo.zp[a]}`).join(' ');
+  let txt = ids.length
+    ? `<b>${ids.length}</b> active — ${ids.map((i) => MODS[i].name).join(' · ')}`
+    : '<b>Original Game</b> — nothing switched on';
+  if (bytes) txt += ` &nbsp;·&nbsp; zero page: <b>${bytes}</b>`;
+  if (level) txt += ` &nbsp;·&nbsp; <b>$19 = ${level - 1}</b>`;
+  if (lo.conflicts.size) {
+    txt += ` &nbsp;<span class="warn">⚠ ${[...lo.conflicts.keys()].join(', ')} — last wins</span>`;
+  }
+  el('stack').innerHTML = txt;
+  location.hash = hashFor(ids, level, kit);
+}
+
+// The hash is the handover to index.html AND the shareable link. Kept in the
+// same shape Batman's loadoutToHash produces (`mods=a+b&level=n`) so a future
+// shared launcher round-trips either game with one code path; the six kit
+// bytes ride along beside it under their manifest key names.
+function hashFor(ids, level, kit) {
+  const tail = loadoutToHash(ids, level);
+  const p = new URLSearchParams(tail);
+  for (const [k, v] of Object.entries(kit)) if (v) p.set(k, String(v));
+  return p.toString();
+}
+
+// ---- restore from the URL --------------------------------------------------
+if (location.hash.replace(/^#/, '')) {
+  const p = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const { ids, level } = hashToLoadout(location.hash);
+  ids.forEach((i) => selected.add(i));
+  levelSel.value = String(level);
+  for (const sel of el('kit').querySelectorAll('select')) {
+    const v = p.get(sel.dataset.key);
+    if (v !== null && [...sel.options].some((o) => o.value === v)) sel.value = v;
+  }
+}
+levelSel.addEventListener('change', sync);
+el('reset').addEventListener('click', () => {
+  selected.clear();
+  for (const s of el('kit').querySelectorAll('select')) s.selectedIndex = 0;
+  levelSel.value = '0';
+  sync();
+});
+el('tolauncher').addEventListener('click', () => { location.href = '../../index.html'; });
+el('launch').addEventListener('click', () => {
+  location.href = `./index.html#${hashFor([...selected], parseInt(levelSel.value, 10), kitValues())}`;
+});
+sync();
+</script>
+</body>
+</html>

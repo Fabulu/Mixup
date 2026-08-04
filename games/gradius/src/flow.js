@@ -72,6 +72,9 @@ import { cannedPacket, copyPacket } from './hudpackets.js';
 import { stLives, stTopScore, stScore, stPowerBar } from './hud.js';
 import { buildBlock } from './terrain.js';
 import { stopAllSound, pauseSaveChannel, pauseRestoreChannel, soundRequest } from './sound.js';
+// MODS -- one call, at the TAIL of $9B3E, behind `if (state.mods)`. See the ONE
+// RULE in src/mods.js.
+import { modAfterIntroReset } from './mods.js';
 
 /** `$18`, with the range the per-player arrays assume made explicit. */
 function playerIndex(state) {
@@ -404,6 +407,10 @@ export function introReset(state, res) {
   state.obj.status[0] = 1;                          // $9BC0/$9BC2 STA $0100
   state.ppu.blank = 6;                              // $9BC5/$9BC7 STA $0D
   stopAllSound(state, res);                         // $9BC9 JMP $83AB
+  // MODS: the intro has finished seeding the ship, both rings and the screen.
+  // Full Kit writes the six power-up bytes the wipe above just cleared, Heal
+  // Gradius Syndrome puts the ship back where it fell, and the blink is armed.
+  if (state.mods) modAfterIntroReset(state);
 }
 
 /**

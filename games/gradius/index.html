@@ -129,6 +129,11 @@
     <button id="sound" type="button" data-on="on" aria-pressed="false"
             title="Mute the sound. The synthesiser keeps running, so unmuting
                    resumes exactly where the music got to.">&#9835; sound on</button>
+    <!-- The start screen (start.html) is where mods, the level list and the
+         starting power-up picker live. This is a plain link, not a script: the
+         menu is a FRONT END and nothing of it exists while the game runs. -->
+    <a id="tomods" href="./start.html" style="color:#f2c14e">&#9666; mods</a>
+    <span id="modline"></span>
     <span id="stats"></span>
     <span class="touchnote" hidden>A fires, B applies the meter's power-up and
       START pauses. SELECT reaches $0007 and nothing reads it.</span>
@@ -355,8 +360,52 @@ function showError(e, when) {
   console.error(e);
 }
 
+// ---- the loadout, handed over by start.html through the URL hash -----------
+//
+// PARSED HERE, NOT IMPORTED, and that is deliberate twice over. src/mods.js
+// already validates everything -- unknown ids are dropped, out-of-range bytes
+// are ignored, the stage is clamped -- so this page has nothing to do but split
+// strings; and keeping the module graph of this script at three imports is what
+// lets tests/page-wiring.test.js run the page's REAL text against a data: URL.
+//
+// `globalThis.location` rather than `location`: that same test runs this script
+// in Node, where there is no location at all, and an empty hash is exactly the
+// right answer there -- no mods, mode 0, the cartridge's own title screen.
+const hash = ((globalThis.location && globalThis.location.hash) || '').replace(/^#/, '');
+const q = new URLSearchParams(hash);
+const num = (k) => { const v = parseInt(q.get(k), 10); return Number.isNaN(v) ? undefined : v; };
+// game.json entries[]: id 0 is the cartridge's own title screen, 1..7 are the
+// seven stages. `$19` is zero-based, hence the -1.
+const entry = num('level') || 0;
+const loadoutOpts = {
+  // SPLIT ON SPACE AS WELL AS '+', and it is not defensive padding: a '+' in a
+  // query string IS an encoded space, so `URLSearchParams.get('mods')` hands
+  // back "a b" for "mods=a+b". Splitting on '+' alone silently produced ONE
+  // unknown id, which src/mods.js then dropped -- a two-mod link that quietly
+  // launched vanilla. Caught in the browser, not by a test.
+  mods: (q.get('mods') || '').split(/[+\s]+/).filter(Boolean),
+  stage: entry > 0 ? entry - 1 : 0,
+  // `title: false` is what src/main.js tests for -- explicitly, so that a page
+  // with no hash at all still boots where W39 put it: mode 0, $8067's state.
+  title: entry === 0,
+  weapon: num('weapon'), options: num('options'), missile: num('missile'),
+  shield: num('shield'), speed: num('speed'), meter: num('meter'),
+};
+// A player who followed a link needs to see what is switched on without
+// reading the URL. Guarded because tests/page-wiring.test.js builds only the
+// elements the PAD needs, and a missing element must not stop the game.
+const modline = document.getElementById('modline');
+if (modline) {
+  const bits = [];
+  if (loadoutOpts.mods.length) bits.push(`${loadoutOpts.mods.length} mod(s): ${loadoutOpts.mods.join(', ')}`);
+  if (entry > 0) bits.push(`stage ${entry}`);
+  modline.textContent = bits.length ? `[${bits.join(' · ')}]` : '';
+  modline.style.color = '#8bd450';
+}
+
 try {
   const app = await boot(canvas, {
+    ...loadoutOpts,
     // The named throws are the port's most useful output. Losing them to a
     // silent freeze wasted a real play session.
     onError: (e) => showError(e, 'The port reached something it has not ported.'),
@@ -364,6 +413,12 @@ try {
     // AudioContext's clock. Nothing here can affect what a frame computes.
     audio,
   });
+  // A HANDLE, for looking at the running machine from the console -- the same
+  // thing Batman's launcher does with `window.game`. It is READ-ONLY as far as
+  // the frame loop is concerned: nothing in src/ ever looks at it, so watching
+  // the port cannot change what it computes. It is how this wave's mods were
+  // checked in a real browser (docs/worklog/gradius/41-impl-mods.md).
+  globalThis.__gradius = app;
   // The frame rate is NOT spelled here. It comes from game.json via main.js:
   // 60.098814 Hz, derived (NTSC PPU 5369318.18 / 89341.5) rather than rounded.
   setInterval(() => {

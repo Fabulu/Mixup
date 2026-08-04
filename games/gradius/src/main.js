@@ -10,6 +10,8 @@ import { attachInput, nextInputWord, inputQueueStats } from './input.js';
 import { loadResources, loadGameJson, gameplayPalette } from './assets.js';
 import { nmi } from './nmi.js';
 import { renderFrame, frameFor, W, H, chrBank } from './render/ppu.js';
+import { resolveLoadout, attachMods, modInput, modRenderBreaks, modPalette,
+         modPostRender } from './mods.js';
 
 /**
  * The state the mode-5 play path starts from.
@@ -272,7 +274,11 @@ export function stepLogicFrames(k, state, res, audio) {
     // sequence of words, not the times they were read -- which is the same
     // requirement games/ddpdoj/NOTES-replay.md states and the same shape as the
     // audio line below.
-    nmi(state, nextInputWord(), res);
+    // MODS: Mirror Gradius and Gradius Down Under swap two bits of the word
+    // before the frame ever sees it -- the host equivalent of holding the pad
+    // the wrong way round. Untouched, and not even called, with mods off.
+    const word = nextInputWord();
+    nmi(state, state.mods ? modInput(state, word) : word, res);
     // ---- WAVE 13: ONE AUDIO BATCH PER LOGIC FRAME --------------------------
     // Inside the catch-up loop, not after it, and that is the whole design.
     // `state.apuLog` is this frame's $4000-$400F writes and src/nmi.js clears it
@@ -301,9 +307,27 @@ export async function boot(canvas, opts = {}) {
   //
   // `opts.startMode` exists for the launcher and for anyone who wants the old
   // behaviour; it is not a fallback the frame loop can take by itself.
-  const state = opts.startMode === MODE_STAGE
-    ? introEntryState(res.manifest)
-    : resetState(res.manifest);
+  // ---- MODS ---------------------------------------------------------------
+  // Resolved BEFORE the state exists, because half of them have to be in RAM
+  // before the first NMI: level select writes `$26,X` and loop select `$28,X`,
+  // and `$9B6E`/`$9B72` read both inside the very first `$9B3E`. That is also
+  // the argument for the mod menu being a front end rather than an overlay --
+  // see the header of src/mods.js.
+  //
+  // `resolveLoadout([])` with no picker values gives `attachMods` nothing to
+  // do and it leaves `state.mods` UNDEFINED, which is the state every gate,
+  // every scenario and every unit test runs in.
+  const loadout = resolveLoadout(opts.mods || [], opts);
+
+  // Picking a stage means "start there", which means skipping the cartridge's
+  // own title and attract modes -- the same rule Batman's launcher uses for its
+  // level list, and the launcher spells it the same way (`title: kind ===
+  // 'title'`). The test is against `false` EXPLICITLY so that the default with
+  // no options at all is still W39's boot: mode 0, `$8067`'s state, the
+  // 127-frame scroll-in, the menu and the attract demo.
+  const intoStage = opts.startMode === MODE_STAGE || opts.title === false;
+  const state = intoStage ? introEntryState(res.manifest) : resetState(res.manifest);
+  attachMods(state, loadout);
 
   attachInput(opts.target);
 
@@ -314,7 +338,14 @@ export async function boot(canvas, opts = {}) {
   // FRAME RATE COMES FROM game.json. It is spelled once, there, and is derived
   // rather than rounded: 60.098814 Hz is NTSC PPU 5369318.18 / 89341.5, the
   // half-cycle being the dot skipped on the pre-render line of odd frames.
-  const period = 1000 / game.display.frameHz;
+  //
+  // MODS: Turbo and Bullet Time are a HOST clock change and nothing else. They
+  // scale the period the pacer is measuring against, so the catch-up loop, its
+  // clamp and its histogram all keep working unchanged and every logic frame is
+  // still exactly one nmi() with one input word. Nothing in the simulation can
+  // tell what the wall clock is doing.
+  const period = 1000 / game.display.frameHz
+               * loadout.meta.frameSkip / loadout.meta.ticksPerFrame;
 
   const pacer = new FramePacer(period);
   let running = true;
@@ -352,7 +383,20 @@ export async function boot(canvas, opts = {}) {
     try {
       stepLogicFrames(k, state, res, opts.audio);
       if (k > 0) {
-        renderFrame(frameFor(state), res.tiles, px);
+        const f = frameFor(state);
+        // MODS, and every line of it is AFTER the simulation. Disco writes a
+        // scratch palette (state.vram.pal is never touched); Always on enemies
+        // is the renderer's own `sprlimit` break, which exists to prove the
+        // comparison can go red and is simply held down here; the rest are pure
+        // functions of the finished framebuffer.
+        if (state.mods) {
+          const pal = modPalette(state);
+          if (pal) f.pal = pal;
+          renderFrame(f, res.tiles, px, modRenderBreaks(state));
+          modPostRender(state, px, W, H);
+        } else {
+          renderFrame(f, res.tiles, px);
+        }
         ctx.putImageData(img, 0, 0);
       }
       // Outside the loop: turning batches into samples is per ANIMATION frame,

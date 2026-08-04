@@ -82,6 +82,8 @@ import { scoreKill, addScore } from './score.js';
 import { pickupCapsule } from './powerup.js';
 import { soundRequest } from './sound.js';
 import { queuePacket } from './vram.js';
+// MODS -- one call, in die(), behind `if (state.mods)`. See src/mods.js.
+import { modRefuseDeath } from './mods.js';
 
 // `hex2` used to live here for the $C05F armoured throw's message. That arm is
 // ported (wave 22) and nothing else in this file formats a byte, so the helper
@@ -1016,6 +1018,14 @@ function armedEnemy(state, res, j) {
  * unconditionally would stall the spawn engine for 120 frames.
  */
 export function die(state) {
+  // MODS, and the ONE place they touch this file. All four death routes
+  // ($C101's contact, $C247's bullet, $C290's arm segment, $C2C1's terrain)
+  // converge here, so an invulnerability window put here cannot be
+  // half-applied -- and the cartridge has none of its own to reuse (the two
+  // `BPL`s at $C011/$C055 are the ENEMY's spawn guard). It is also where the
+  // death POSITION is captured: $979D does not run for another 120 frames and
+  // $9B3E clears $0360/$0320 before anyone can ask.
+  if (state.mods && modRefuseDeath(state)) return;
   if (state.substate >= 0x81) state.spawn.z60 = 0;  // $C1D6-$C1DE
   state.zp4C = 0x78;                              // $C1E0/$C1E2
   state.obj.status[0] = 2;                        // $C1E4/$C1E6 STA $0100
