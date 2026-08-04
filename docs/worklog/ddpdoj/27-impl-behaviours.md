@@ -363,3 +363,58 @@ cannot decay green. If every kind is ever ported it calls `assert.fail` with
 
 **Inventory: 19 → 20 initialisers, 19 continuations. 23 of 39 kind indices
 covered; 17 distinct bodies remain (families E–L).**
+
+### 2026-08-04 — FAMILY E, KIND 22: not a homing tracker, an ATTACHED one
+
+The recon called family E "the homing tracker". The listing says otherwise: the
+bullet does not steer toward a target, it is **PINNED TO** one and later
+**RELEASED**.
+
+- **init** (`$282D62`/`$282D68`) saves the whole velocity longword +$1E into
+  +$30 and **clears +$1E**. Zero velocity means the plain path cannot move it,
+  so while attached the position comes entirely from the target. Kind 19 uses
+  the same save/clear trick for its launch delay.
+- **track** (`$282DA4`): position (+$2, the posA:posB longword) = the target's
+  own position + the fixed offset at +$28. Target pointer at +$2C.
+- **release** (`$282DD8`): `bset #3,$34` latches the mode and +$1E is restored
+  from +$30 — the bullet flies off on the velocity it was born with.
+- **animate** (`$282D7E`): once latched, an ordinary descriptor ring.
+
+**RELEASE HAPPENS TWO WAYS AND ONLY ONE IS OBVIOUS.** The target pointer being
+NULL (`$282DA8 beq`), or the descriptor animation reaching `$1C1EEC`
+(`$282DCE`) — and that second one is a FALL-THROUGH: `bne $282DE4` skips the
+release, so *reaching* the limit drops into `$282DD8`. Read as "the ring wraps
+here", the whole release path disappears. Twelfth incident.
+
+**THE TWO KILL TESTS ARE ON THE TARGET, NOT THE BULLET.** `$282DAC tst.w (A0) /
+bpl` kills when the TARGET's type word has bit 15 clear; `$282DB0 tst.b $1(A0) /
+bmi` kills on a flag in the target's second byte. A bullet attached to something
+that dies, dies with it.
+
+Also: the animate ring's base is `$1C1EC8`, which is **not** the descriptor the
+initialiser writes (`$1C1E38`). The first wrap moves it into a different ring.
+
+### THE MUTATION THAT SURVIVED, AND WHAT IT COST TO CATCH
+
+Kind 22's kill at `$282DEE` is a bare `clr.w (A6)` + `move.w #$ffff,$2(A6)` with
+**no jsr to the death-effect spawner** — so it is `freeSlotNoEffect`, not
+`freeSlot`. I reasoned that out from the listing *before* writing the code, got
+it right, and then found the distinction was **completely untested**:
+
+| mutation | first result |
+|---|---|
+| `freeSlotNoEffect` → `freeSlot` (spurious death effect) | **GREEN — NOT CAUGHT** |
+| init drops the `clr.l $1E` | RED — `not ok 209` |
+| drop the `bmi` target-flag kill test | RED — `not ok 211` |
+| release drops the velocity restore | RED — `not ok 210` |
+
+Getting a detail right is not the same as having a check that would notice if it
+were wrong. The only difference between the two helpers is a note emitted to the
+log, and no test inspected the log. `UnportedLog.calls` is a Map, so the kill
+test now asserts no `$27F8F8` note appears; the mutation reddens `not ok 211`.
+
+`src/mover.js` restored and hash-verified byte-identical (`e2c04d1feb883cf2`);
+**392 pass / 0 fail / 0 skipped**.
+
+**Inventory: 20 → 21 initialisers, 20 continuations. 24 of 39 kind indices
+covered; 16 distinct bodies remain.**

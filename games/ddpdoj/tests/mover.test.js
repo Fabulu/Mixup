@@ -434,24 +434,101 @@ test('kind 17 (the CURVER) turns and accelerates on its FIRST continuation frame
     assert.equal(ram.u8(base + REC.dir), dir2, 'F3: counter non-zero, no turn this frame');
   });
 
-test('the ported-body inventory is exactly 20 initialisers + 19 continuations', () => {
+// ---------------------------------------------------------- W27 family E
+// Kind 22 is ATTACHED to a target, not homing at it: init parks its velocity in
+// +$30 and zeroes +$1E so the plain path cannot move it, and each frame its
+// position is copied from the target. Release restores the velocity.
+
+const TGT = 0x812000;                                // a scratch target record
+function seedTarget(ram, { alive = true, flag = 0x00, pos = 0x11112222 } = {}) {
+  ram.setU16(TGT, alive ? 0x8000 : 0x0000);          // bit 15 = alive
+  ram.setU8(TGT + 1, flag);                          // $282DB0 tst.b $1(A0) / bmi
+  ram.setU32(TGT + 2, pos);
+  return TGT;
+}
+
+test('kind 22 parks its velocity in +$30 and rides its target position',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);                          // no scroll compensation
+    const base = seedBullet(ram, 0, { type: 0x8100 | 22, speed: 0x14, dir: 0x40 });
+    seedTarget(ram);
+    ram.setU32(base + 0x2c, TGT);                     // the target pointer
+    ram.setU32(base + 0x28, 0x00010001);              // the fixed offset
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: initialiser $282D42
+    const saved = ram.u32(base + 0x30);
+    assert.notEqual(saved, 0, 'F1: the dispatch-recomputed velocity was saved to +$30');
+    assert.equal(ram.u32(base + REC.velA), 0, 'F1: +$1E cleared so the plain path cannot move it');
+    runMover(ctx);                                    // F2: track
+    assert.equal(ram.u32(base + REC.posA), (0x11112222 + 0x00010001) >>> 0,
+      'F2: position = target position + the +$28 offset');
+  });
+
+test('kind 22 RELEASES on a null target: latches +$34 bit 3 and restores velocity',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 22, speed: 0x14, dir: 0x40 });
+    ram.setU32(base + 0x2c, 0);                       // $282DA8 beq -> release
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: initialiser
+    const saved = ram.u32(base + 0x30);
+    runMover(ctx);                                    // F2: release
+    assert.equal(ram.u8(base + 0x34) & 0x08, 0x08, 'F2: +$34 bit 3 latched');
+    assert.equal(ram.u32(base + REC.velA), saved, 'F2: velocity restored from +$30');
+  });
+
+test('kind 22 DIES WITH ITS TARGET (both target tests kill the bullet)',
+  { skip: !HAVE_TABLES }, () => {
+    // $282DAC bpl: target type word bit 15 clear. $282DB0 bmi: target +$1 negative.
+    for (const [label, opts] of [
+      ['target type word bit 15 clear', { alive: false }],
+      ['target +$1 byte negative', { flag: 0x80 }],
+    ]) {
+      const ram = new Ram(null);
+      ram.setU16(0x81b41a, 1);
+      ram.setU16(0x813176, 0);
+      const base = seedBullet(ram, 0, { type: 0x8100 | 22, speed: 0x14, dir: 0x40 });
+      seedTarget(ram, opts);
+      ram.setU32(base + 0x2c, TGT);
+      const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+      runMover(ctx);                                  // F1: initialiser
+      runMover(ctx);                                  // F2: the kill
+      assert.equal(ram.u16(base), 0, `${label}: slot freed`);
+      assert.equal(ram.u16(base + REC.posA), 0xffff, `${label}: posA = $FFFF`);
+      // $282DEE is a BARE clr.w + move.w #$ffff -- there is no jsr to the
+      // death-effect spawner, so this kill must NOT emit one. Mutation-checked:
+      // swapping freeSlotNoEffect for freeSlot was invisible to every other
+      // assertion here, because the only difference is this note.
+      const effects = [...ctx.notes.calls.keys()]
+        .filter((k) => /27F8F8/i.test(k));
+      assert.deepEqual(effects, [],
+        `${label}: kind 22's kill must not spawn a death effect ($27F8F8)`);
+    }
+  });
+
+test('the ported-body inventory is exactly 21 initialisers + 20 continuations', () => {
   // A LEDGER test: it pins the exact set, so porting a body turns it RED until
   // the inventory here is updated deliberately.  That is the point -- the count
   // cannot drift upward without somebody writing down which addresses moved.
   //
   // W26 ported 8 bodies (kinds 3/4/5/6/7/12/13/19; kind 6 is the midboss's).
   // W27 adds 11: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
-  // family C kinds 16/18, family D kind 17.  Kind 10's
+  // family C kinds 16/18, family D kind 17, family E kind 22.  Kind 10's
   // $282840 is also the target for kinds 14 and 15, which alias it in the
   // $282030 table.  So 15 distinct bodies now cover 17 of the 39 kind indices.
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
     [0x282104, 0x282162, 0x2821c2, 0x2823ec, 0x2824a8, 0x282564, 0x282620,
      0x2826dc, 0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962,
-     0x2829bc, 0x282a1e, 0x282aae, 0x282b30, 0x282bee, 0x282c56]);
+     0x2829bc, 0x282a1e, 0x282aae, 0x282b30, 0x282bee, 0x282c56,
+     0x282d42]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
     [0x28213e, 0x28219e, 0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738,
      0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x2829fe,
-     0x282a66, 0x282af6, 0x282b64, 0x282c2a, 0x283ce4]);
+     0x282a66, 0x282af6, 0x282b64, 0x282c2a, 0x282d76, 0x283ce4]);
   // 17 initialisers, 16 continuations. NOT equal, and that is correct: kinds 2
   // and 21 both install $283CE4, so bodies MAY share a continuation.
   //

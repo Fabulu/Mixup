@@ -1089,4 +1089,89 @@ CONTINUATIONS.set(0x282a66, (ctx, base) => {
   advance40(ctx, base);                              // $282AA4 lea $40(A6)
 });
 
+// ============================================================ W27 FAMILY E
+//
+// Kind 22 ($282D42) -- the ATTACHED tracker.  The recon called this family "the
+// homing tracker", which undersells it: the bullet does not steer toward a
+// target, it is PINNED TO one and later RELEASED.
+//
+//   init  ($282D62/$282D68): saves the whole velocity longword +$1E to +$30 and
+//         CLEARS +$1E.  A zero velocity means the plain path moves it nowhere,
+//         so while attached the bullet's position comes entirely from its
+//         target.  (Kind 19 uses the same save/clear trick for its launch delay.)
+//   track ($282DA4): position (+$2, the posA:posB longword) = the target's own
+//         position (+$2 of the target record) PLUS the fixed offset at +$28.
+//         The target pointer lives at +$2C.
+//   release ($282DD8): `bset #3,$34` latches the mode, and +$1E is restored from
+//         +$30 -- the bullet keeps the velocity it was born with and flies off.
+//   animate ($282D7E): once the latch is set, it is an ordinary descriptor ring.
+//
+// RELEASE HAPPENS TWO WAYS, and only one is obvious: the target pointer at +$2C
+// being NULL ($282DA8 beq), or the descriptor animation reaching $1C1EEC
+// ($282DCE).  The second is a fall-through -- `bne $282DE4` skips the release,
+// so reaching the limit DROPS INTO $282DD8.  Read as "the ring wraps here" it
+// would be missed entirely.
+//
+// THE TWO KILL TESTS ARE ON THE TARGET, NOT THE BULLET.  $282DAC `tst.w (A0) /
+// bpl` kills when the TARGET's type word has bit 15 clear (target dead), and
+// $282DB0 `tst.b $1(A0) / bmi` kills on a flag in the target's second byte.  So
+// a bullet attached to something that dies dies with it.
+//
+// The kill at $282DEE is a bare `clr.w (A6)` + `move.w #$ffff,$2(A6)` with NO
+// jsr to the death-effect spawner -- so it is freeSlotNoEffect, NOT freeSlot.
+// Using freeSlot here would emit a death-effect the cartridge never spawns.
+//
+// Note the animate ring's base is $1C1EC8, which is NOT the descriptor the
+// initialiser writes ($1C1E38).  The first wrap moves it into a different ring.
+
+INIT_BODIES.set(0x282d42, (ctx, base) => {
+  const { ram } = ctx;
+  clearDispatch(ram, base);                          // $282D42 andi.b #$fe,(A6)
+  ram.setU32(base + 0x0a, 0x1c1e38);                 // $282D46 descriptor
+  ram.setU32(base + 0x06, 0xfc00fe00);               // $282D4E renderOffs
+  ram.setU16(base + 0x0e, 0x0410);                   // $282D56 graphic
+  ram.setU8(base + 0x1d, 0x1a);                      // $282D5C
+  ram.setU32(base + 0x30, ram.u32(base + REC.velA)); // $282D62 save velocity
+  ram.setU32(base + REC.velA, 0);                    // $282D68 clr.l $1e(A6)
+  ram.setU32(base + REC.continuation, 0x282d76);     // $282D6C
+});
+CONTINUATIONS.set(0x282d76, (ctx, base) => {
+  const { ram } = ctx;
+  // $282D78 btst #3,$34(A6) / beq -> bit CLEAR means still attached.
+  const attached = (ram.u8(base + 0x34) & 0x08) === 0;
+
+  if (!attached) {                                   // $282D7E the ANIMATE arm
+    if (ram.bchg8(base, 3) !== 0) { advance40(ctx, base); return; }  // $282D80 bne
+    animateRenderOffsWrap(ctx, base, 0x1c1ec8, 0x24, 0x1c2108);      // $282D86/$282D8C
+    advance40(ctx, base);                            // $282D9A lea $36(A6)
+    return;
+  }
+
+  // ---- $282DA4 the TRACK arm
+  const target = ram.u32(base + 0x2c);               // $282DA4 move.l $2c(A6),D1
+  let release = (target === 0);                      // $282DA8 beq -> release
+
+  if (!release) {
+    // $282DAC tst.w (A0) / bpl -- the TARGET's type word, bit 15 clear = dead.
+    // $282DB0 tst.b $1(A0) / bmi -- a flag in the target's second byte.
+    if ((ram.u16(target) & 0x8000) === 0 || (ram.u8(target + 1) & 0x80) !== 0) {
+      freeSlotNoEffect(ctx, base);                   // $282DEE clr.w + $ffff
+      advance40(ctx, base);
+      return;
+    }
+    // $282DB6 the whole posA:posB longword = target position + our +$28 offset
+    ram.setU32(base + REC.posA,
+      (ram.u32(target + 0x02) + ram.u32(base + 0x28)) >>> 0);        // $282DBA/$282DBE
+    if (ram.bchg8(base, 3) !== 0) { advance40(ctx, base); return; }  // $282DC2/$282DC4
+    // $282DC6 step the descriptor; reaching $1C1EEC FALLS THROUGH to the release.
+    ram.setU32(base + 0x0a, (ram.u32(base + 0x0a) + 0x24) >>> 0);
+    if (ram.u32(base + 0x0a) !== 0x1c1eec) { advance40(ctx, base); return; }
+  }
+
+  // ---- $282DD8 RELEASE: latch the mode and give the bullet its velocity back
+  ram.setU8(base + 0x34, ram.u8(base + 0x34) | 0x08);   // $282DD8 bset #3,$34
+  ram.setU32(base + REC.velA, ram.u32(base + 0x30));    // $282DDE restore velocity
+  advance40(ctx, base);                                 // $282DE4 lea $40(A6)
+});
+
 export { INIT_BODIES, CONTINUATIONS };
