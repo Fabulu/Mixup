@@ -109,3 +109,35 @@ after that is ours.
 
 Not a gate number. **Load the page, fly, shoot, laser, bomb, and kill a visible
 enemy.** Anything that does not move that sentence forward is not the priority.
+
+---
+
+## STANDING DIRECTIVE — 2026-08-04, evening
+
+> "get back onto daioujou whenever you can, don't stop until that first level is
+> feature complete and oracles perfectly."
+
+DaiOuJou stage 1 is the standing priority. Gradius work is permitted when it
+does not displace a DaiOuJou wave — a free slot goes to DaiOuJou first.
+
+**"Feature complete AND oracles perfectly" is TWO conditions and both must hold.**
+This project has repeatedly satisfied one and reported the pair:
+
+- W27 transcribed all 39 bullet behaviour kinds — none of them executed anywhere.
+- The gate read ALL GREEN 49/0/0 while the page was unplayable and the enemies
+  on screen were a recording.
+- "79.6% of spawns" was 31% of the code.
+
+So the bar is:
+
+1. **FEATURE COMPLETE** — the owner's own test: load the page, fly, shoot,
+   laser, bomb, and kill a VISIBLE enemy. Plus the capture ledger empty and
+   `capture.bin` deleted. Enemies, weapons, effects, HUD and score all produced
+   by ported code.
+2. **ORACLES PERFECTLY** — compared against the real board, with the comparison
+   demonstrated capable of failing. A green from a gate that is structurally
+   blind to the fields in question is not evidence. State per subsystem what is
+   compared and what is not.
+
+Neither counts without the other, and a wave that delivers one must say plainly
+which one it delivered.
