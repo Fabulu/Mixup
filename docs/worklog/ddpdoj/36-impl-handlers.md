@@ -188,7 +188,7 @@ reads three things out of the ROM:
 
 **61 → 65 exported levels** (+33 +34 +35 +36), `player.tables.json`
 446,936 → 450,531 B. Not 256: the whole table is 133 KiB of quadrants and the
-owner's boot constraint is binding. §8 records the one ramp this bound does not
+owner's boot constraint is binding. §7 records the one ramp this bound does not
 close.
 
 ## 5. THE MEASUREMENT, AND ITS CONTROL
@@ -293,6 +293,40 @@ keep and W33/W34/W35 kept.
   movement window rather than carrying.
 
 **Unit tests: 525 → 546 pass, 0 fail, 0 SKIPPED.**
+
+### 6.1 THE FULL GATE
+
+`python games/ddpdoj/tools/oracle/pgm.py check`, run to completion on the final
+tree (MAME re-recorded every scenario; nothing was reused):
+
+```
+VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED
+# pass 546   # fail 0   # skipped 0
+```
+
+Unchanged from W32/W33/W34/W35's 49/0/0; the unit-test stage is 525 -> **546**
+with **no skip**, which is the state W34 §6.2's exporter fix produced and this
+wave did not disturb. **Nothing was disabled, skipped, narrowed or loosened**;
+no compared column set, window or frame count moved, and no stage was added.
+The stages this wave could plausibly have broken all pass on their own
+recordings:
+
+- **`fly-around: port vs board` — `RESULT 0 DIVERGENT FRAMES on 88 columns over
+  2200 logic frames`**, with the seven new handlers in the dispatch map and the
+  new `stepMovement` signature under every mover in the window. §7 states what
+  that does and does not prove.
+- `enemy stats: hitbox/HP/palette/HP-reload at spawn (W23)` — **308 of 308**,
+  the stage whose prototype loader `$2637A2` §4.3's speed enumeration decodes.
+  Its own accounting names types `$1C`/`$1E` as handler-spawned, which is the
+  same finding as §2.3 arriving from the board.
+- `scroll program` (10,431 frames, twice), the attract entry (1,364 frames,
+  twice), `turret angle` (14,732 and 32,788 one-step pairs), the pattern gate
+  over three corpora, the bullet mover, the spawn walker, `determinism`, and
+  the display-list gate (2,207,744 px, 100.0000 %).
+- `tools/webgate.mjs` re-run on the final tree as well: **14 files over HTTP,
+  one frame rendered 98.8 % non-black** — the published page still boots with
+  the seven new ROM windows and the four new speed levels in the bundle
+  (`export-web.mjs` was re-run after `export-tables.py` changed).
 
 ## 7. WHAT I COULD NOT DETERMINE
 
@@ -438,6 +472,9 @@ the vector `$2638A0` zeroes) rather than the test.
   pass and both were defective checks of mine. One of them was fixed by moving
   the CODE -- `handler88` had been pre-zeroing the out-vector `$2638A0` zeroes,
   which put the cartridge's own initialisation in two places.
+- §6.1: `pgm.py check` **ALL GREEN 49/0/0**, unit tests **546/0/0**, no skip;
+  `fly-around` **0 divergent frames on 88 columns over 2,200 logic frames**, and
+  the enemy-stats stage 308 of 308.
 - §7: **the gate cannot see any of the seven.** `fly-around` reaches clk 239 and
   their first triggers are 283..481. The green gate says this wave broke nothing
   that was already compared, and nothing more.
