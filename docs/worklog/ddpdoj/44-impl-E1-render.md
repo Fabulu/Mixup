@@ -1,6 +1,8 @@
 # 44 — IMPL: RENDER THE PORT'S OWN DISPLAY LIST (enemy layer, wave E1)
 
-status: **IN PROGRESS**
+status: **DONE** — gate `ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED`, unit
+tests 553 -> 568, `webgate` 5 of 5, and **ported enemies were seen on the screen
+in a real browser**.
 started: 2026-08-04. WAVE 44 / enemy-layer E1.
 role: IMPLEMENTER. SOLE writer to `games/ddpdoj/`. `games/gradius/` NOT TOUCHED.
 spec: `43-plan-enemy-layer.md` §3.1 (a)–(e), §3.2 done-when, §5 D1–D4.
@@ -473,6 +475,46 @@ DURING loading changes, and nothing is hidden: the stats line already prints
 Checked two ways: a source check that goes red without the guard (M7), and the
 browser, which is what the report was about.
 
+## 9. THE GATE
+
+```
+python games/ddpdoj/tools/oracle/pgm.py check
+VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED
+```
+
+Unchanged from W32/W33/W34/W35/W36/W37's 49/0/0. **Nothing was disabled,
+skipped, narrowed or loosened.** Every stage read individually, not just the
+verdict line. The ones this wave could plausibly have broken, all green:
+
+- `pixel gate: the port's JS renderer vs MAME` and its 9 RED mutations;
+- `demo gate: the port drives the ship, pixel-exact` and its 4 REDs;
+- `assets/integrity` and its 4 REDs — the manifest is the file this wave
+  changed and `assets/integrity RED [rom-byte]` is the ROM-leak guard — plus
+  `background shard gate`;
+- `display list: the staged-bytes replay gate (1,901 frames)`, its FORCED cap
+  and FORCED drop cases, and its 12 RED mutations over 3 scenarios. **The port's
+  own `$800000` build is still byte-exact against the board**, which is what
+  makes drawing it mean anything;
+- `enemy stats`, `spawn walker`, `bullet mover`, `turret angle`, `fly-around`
+  and their REDs — the handlers the `G.b8` fix touches.
+
+**`bundlegate`'s `exact === total` is untouched and a unit test asserts it.** It
+could not have moved anyway: no `.gz` asset changed a byte (§1).
+
+Also green on the final tree, and not part of `pgm.py check`:
+
+```
+node --test games/ddpdoj/tests/         568 pass, 0 fail, 0 SKIPPED   (was 553)
+node games/ddpdoj/tools/webgate.mjs     5 of 5 PASS
+```
+
+**THE HONEST NOTE ABOUT THE COUNT.** The gate's `port unit tests` stage ran
+inside a ~40-minute run that started after the last source edit, so its tree is
+the final tree for everything it reads; the only files changed afterwards are
+this worklog and `PLAN-no-recordings.md`, which no gate stage opens. **568 is
+from a re-run on the final tree.** A skip is not a pass: 0 skipped, read rather
+than assumed.
+
 ## 10. WHAT THIS WAVE DID NOT DO
 
 - **No new art.** Zero bytes. That is `43-plan` D2 and it holds: the shipped
@@ -579,3 +621,15 @@ The runtime backstop covers what a static scan cannot: `Ram.#off` now refuses a
 NaN address, so any field constant that is undefined anywhere in the port stops
 by name on the frame it is read. **[M] 6,185 logic frames from the shipped seed
 produced no such stop** — presence, not absence.
+
+- §9 [M]: **`pgm.py check` ALL GREEN 49/0/0, 0 SKIPPED** — unchanged from
+  W32..W37. Unit tests **553 -> 568**, 0 skipped. `webgate` 5 of 5 PASS.
+  `bundlegate`'s `exact === total` untouched, and no `.gz` asset moved a byte.
+- §11 [M]: 16 of 32 sprite colour banks, bank 24 all-zero — `43-plan` §1.5's
+  count reproduced, its SET one member apart (correction 5).
+- §5.3 [M]: 52 files, 63 field tables scanned; `G.b8` was the only genuine miss.
+  The scanner was seen to find it with the fix backed out.
+- §12: two files' line endings moved CRLF -> LF as a side effect;
+  `git diff --ignore-cr-at-eol` gives the true sizes and the worklog says so.
+
+status: **DONE**
