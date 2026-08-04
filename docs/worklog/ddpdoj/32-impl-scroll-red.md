@@ -1,6 +1,12 @@
 # W32 — IMPL: the four scroll-program gate failures
 
-status: **IN PROGRESS**
+status: **DONE** — the DaiOuJou gate is **`VERDICT: ALL GREEN -- 49 passed, 0
+failed, 0 SKIPPED`**. All four scroll-program stages were ONE defect, and it was
+in the HARNESS: `tools/scrollportgate.mjs` never ran main-loop call #4's tail
+(`$23D70C..$23D71C`), so the background object's own bucket-2 producer walked
+`$805CC8 + $80AFC4` into the camera block the gate compares. Fixed; the stage-1
+stage now compares **10,431 of 10,431 frames, 0 of 12 columns divergent** and the
+attract stage **1,364 of 1,364, 0 of 9**. **DaiOuJou is publishable again.**
 wave: 32. role: IMPLEMENTER (sole writer to `games/ddpdoj/`).
 date: 2026-08-04.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Every address is build B
@@ -397,5 +403,43 @@ No ROM window was added or widened, so `export-web.mjs` did not need re-running
   7 opcodes at `$2620C2`**; `$18 FLAG` not taken.
 - 5 mutations, 5 RED, `src/background.js` byte-identical after every one.
 - unit tests 475 -> **479 pass, 0 fail, 0 SKIPPED**.
+- a line-ending accident of my own, caught by `git show --stat` and fixed in its
+  own commit: a Python text-mode write on Windows turned `tests/background.test
+  .js` from LF to CRLF and a 105-line addition into a 1,325-line diff.
+  `git diff --ignore-cr-at-eol` settled it in one command, exactly as HANDOVER
+  §10 says. Content was never touched.
+- **THE FULL GATE: `VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED`**
+  (was 45/4/0). Nothing else moved: the 45 that passed before still pass, and
+  the four that changed are the four this wave owned.
+- **A SKIP APPEARED AND WAS CHASED, NOT TOLERATED** (§9): the same
+  `movement.test.js` one W29 and W31 hit. Regenerated; 479/0/**0**.
 
-status: IN PROGRESS
+---
+
+## 9. THE RECURRING SKIP, AND THE INHERITED EXPLANATION IS UNPROVEN
+
+`movement.test.js`'s W24 stream inventory skipped again during this wave, for
+the third wave running:
+
+```
+ok 19 - the 163 stage-1 streams: no run-off-end; EXIT streams EXIT
+   # SKIP the gitignored W24 dump is absent
+   (games/ddpdoj/assets/w24-movement/stage1-streams.json)
+```
+
+Fixed the same way (`python games/ddpdoj/tools/oracle/w24streams.py`, **from the
+REPO ROOT** — its paths are repo-relative), and the suite is back to 479 pass /
+0 fail / **0 SKIPPED**.
+
+**But W29's and W31's attribution — "deleted by a concurrent `pgm.py check`" —
+is not something I could confirm, and I looked.** A grep for `rmtree` / `unlink`
+/ `os.remove` / `rmSync` across `games/ddpdoj/tools/`, `games/ddpdoj/tools/
+oracle/` and the repo-root `tools/` finds **no site that removes anything under
+`games/ddpdoj/assets/`**; the only `rmtree` in `tools/assets.py` targets
+`rip/rom`, and `pgm.py`'s five all target `rip/` or `out/` subdirectories. So
+the mechanism is still unidentified and the inherited sentence should not be
+quoted as measured. **I could not reach it; what I tried is the grep above and a
+listing of `games/ddpdoj/assets/` before and after.** The regeneration command
+is right whatever the cause.
+
+status: DONE
