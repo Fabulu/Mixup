@@ -171,11 +171,17 @@ bullet-nosub). A green from a comparison that cannot fail would be worthless.
 The same gate then passed inside `publish.mjs`, which refuses on red or any
 SKIP, and the site went live as build `20260804010834`.
 
-NOT CAPTURED: the per-scenario endchain frame count. Three separate attempts to
-read it truncated their own output (`tail -25`, `tail -50`, and a `head -8`
-inside a backgrounded pipe), and chasing it a fourth time was not worth the
-run. GREEN vs RED is what this line needed and that is measured; the count is
-one command away for whoever wants it:
+THE FRAME COUNT WAS ALREADY IN THIS FILE. The terrain-fallback section above
+records the endchain going GREEN "through all 5839 frames (TERRAIN MAP 0/512,
+all TIER 1 fields exact)" — measured by the wave itself before it died. Three
+attempts were spent re-deriving it from a fresh run, each truncating its own
+output (`tail -25`, `tail -50`, then a `head -8` inside a backgrounded pipe),
+before the existing measurement was noticed twenty lines up in the document
+being edited.
+
+So: 5839 frames is the wave's own figure and stands. The 2026-08-04 re-run
+confirms the VERDICT is still GREEN on current HEAD; it did not re-capture the
+count, and does not need to. To re-derive it:
 
     node games/gradius/tools/oracle/compare.mjs | grep -A4 '^=== endchain'
 
