@@ -133,6 +133,31 @@ export function seedChunk(res, st, c) {
   return { state: s, ptr };
 }
 
+/**
+ * Steer toward the nearest live enemy: the D-pad bits, or 0 if there is none.
+ *
+ * An AUTOPILOT IS AN INTERVENTION and it is off-distribution: a real player
+ * does not fly into every enemy. It is here for COVERAGE only
+ * (docs/knowledge/09) -- what it buys is that the contact half of
+ * `$C16E`'s dispatch is exercised on every chunk that spawns anything, instead
+ * of on the chunks where the fixture's own trajectory happened to intersect.
+ *
+ * Enemy slots are objects $0C..$15; `$030C,Y` = 0 is an empty slot.
+ */
+function chase(s) {
+  const o = s.obj;
+  let best = -1, bestD = 1e9;
+  for (let k = 0; k < 10; k++) {
+    const i = k + 0x0C;
+    if (o.type[i] === 0) continue;
+    const d = Math.abs(o.x[i] - o.x[0]) + Math.abs(o.y[i] - o.y[0]);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  if (best < 0) return 0x00;
+  return (o.x[best] > o.x[0] ? 0x01 : o.x[best] < o.x[0] ? 0x02 : 0x00)
+       | (o.y[best] > o.y[0] ? 0x04 : o.y[best] < o.y[0] ? 0x08 : 0x00);
+}
+
 /** One chunk run. Returns {frames, throwAt, message}. */
 export function sweepChunk(res, st, c, frames, playing) {
   const { state: s } = seedChunk(res, st, c);
@@ -144,8 +169,18 @@ export function sweepChunk(res, st, c, frames, playing) {
       s.obj.status[0] = 1;                       // $0100 -- INTERVENTION
       s.zp.shield = 0xFF;                        // $46   -- INTERVENTION
       s.zp41 = 1;                                // $41   -- INTERVENTION
-      btn = (f % 3 === 0 ? 0x80 : 0x00)          // A, one frame in three
-          | (f % 60 < 30 ? 0x01 : 0x02);         // and the stick, left/right
+      // A one frame in three, and the stick CHASING the nearest live enemy.
+      //
+      // THE STICK PATTERN IS NOT DECORATION AND IT WAS MEASURED, TWICE. A
+      // left/right-only fixture leaves the ship at the boot y of $60 and never
+      // meets the type-$29 pickup, which spawns at y $24/$A4/$BA/$BD -- that
+      // is exactly why W33 could not witness $C159's spawn. A lissajous sweep
+      // reaches those rows and then misses the type-$27 at y $60, because
+      // contact needs x AND y inside a 16x16 box on the same frame. Both
+      // patterns were run against the reverted fixes on a copy: each caught
+      // one of the two and neither caught both. A CHASE catches both, because
+      // it stops depending on where the fixture happens to put the ship.
+      btn = (f % 3 === 0 ? 0x80 : 0x00) | chase(s);
     }
     try {
       nmi(s, btn, res);
