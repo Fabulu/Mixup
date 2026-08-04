@@ -119,6 +119,51 @@ export function introEntryState(manifest) {
 }
 
 /**
+ * THE STATE AT `$8067` -- i.e. what RESET leaves for the first NMI. W39.
+ *
+ *   8022  clear $0000-$07CF (the ($98),Y walk skips each page's byte 0)
+ *   8035  LDX #$F0 / CMP $0700,X ...   is $07F0-$07FF already $F0..$FF?
+ *   8042  cold boot: $0700-$07FF := 0, then $07F0-$07FF := $F0..$FF
+ *   8052  A9 50 / 8D E1 07             $07E1 := $50   -- TOP = 50000
+ *   8057  A9 00 / 85 00                $00 := 0       -- MODE 0
+ *   805B  8D 00 07 / JSR $81AB / JSR $83AB / JSR $8510
+ *   8067  JMP $8067                    the empty spin; the NMI does the rest
+ *
+ * `$07E1 = $50` IS RESET'S, NOT THE ATTRACT MODE'S. This file said "TOP score,
+ * the 50000 the attract mode leaves" in two places for eleven waves and the
+ * listing says otherwise: `$8052` writes it before the first NMI ever runs, and
+ * on a WARM boot ($07F0-$07FF still holding the signature) it is not written at
+ * all -- which is how the cartridge keeps a high score across a soft reset.
+ *
+ * The `$8035` signature check is not modelled: a browser tab has no warm boot,
+ * so the port takes the cold arm every time and says so here rather than
+ * carrying a $07F0 array nothing else reads.
+ *
+ * `$8510` (hold A+B at power-on -> the `$8523` service screen) is not modelled
+ * either. It reads the pad at RESET, before any of this port's input plumbing
+ * exists, and it ends `$852E STA $00` -- mode 0 again -- by a different road.
+ */
+export function resetState(manifest) {
+  const s = createState();
+  s.mode = 0;                      // $8059 STA $00 -- MODE 0, the title
+  s.substate = 0;                  // $1B, inside the $8022 clear
+  // $1E and $1F default to 1 and 2 in createState() because those are the values
+  // MEASURED mid-play; RESET's clear puts both at 0 and $80F6 INCs $1F to 1.
+  s.zp1E = 0;
+  s.zp1F = 0;
+  s.ppu.ctrl = 0;                  // $10 -- $8256 sets $A8
+  s.ppu.mask = 0;                  // $11 -- $8256 sets $1E
+  s.ppu.scrollY = 0;               // $13
+  s.ppu.chrSel = 0;                // $2D -- $80EC sets 3
+  s.zp.autofire = 0;               // $35 -- $9B5E sets 20 at the stage intro
+  s.score[0x01] = 0x50;            // $07E1 -- $8052/$8054, TOP = 50000
+  s.vram.pal.set(gameplayPalette(manifest));
+  s.bandA.chrBank = chrBank(0);
+  s.bandB.chrBank = chrBank(2);
+  return s;
+}
+
+/**
  * The catch-up clamp, in logic frames. A backgrounded tab hands back a delta of
  * minutes and simulating those is both pointless and slow.
  */
@@ -241,11 +286,24 @@ export function stepLogicFrames(k, state, res, audio) {
 
 export async function boot(canvas, opts = {}) {
   const [game, res] = await Promise.all([loadGameJson(), loadResources(0)]);
-  // THE REAL STAGE INTRO, not a stand-in. preloadTerrain() used to run the
-  // streamer's gate to exhaustion here; the port now enters mode 5 at $1B = 0
-  // and plays out $9B3E, $9BF0, $9C12, $9C1E and $9C24's 84 blocks over the
-  // cartridge's own 27 frames, with the screen blanked by $0D throughout.
-  const state = introEntryState(res.manifest);
+  // W39: THE PORT NOW BOOTS WHERE THE CARTRIDGE BOOTS -- mode 0, $8067's state.
+  // It used to start at `introEntryState()`, i.e. at the handover mode 4 makes
+  // to mode 5, because modes 0-4 and 6 were not ported. The title menu, the
+  // 256-frame countdown, the attract demo, START, and the whole way back round
+  // from a game over now run.
+  //
+  // WHAT A PLAYER SEES IS NOT YET THE CARTRIDGE'S TITLE SCREEN, and that is the
+  // one gap left: `$8871`'s 2304 `$2007` writes are not ported (src/modes.js
+  // header), so the LOGO is missing. Everything that reaches the screen through
+  // the $0700 queue -- the palette (packet 6), the four text lines (packets
+  // 4,3,2,1) and the cursor ship -- does arrive, because those are producers
+  // this port has had since W2.
+  //
+  // `opts.startMode` exists for the launcher and for anyone who wants the old
+  // behaviour; it is not a fallback the frame loop can take by itself.
+  const state = opts.startMode === MODE_STAGE
+    ? introEntryState(res.manifest)
+    : resetState(res.manifest);
 
   attachInput(opts.target);
 

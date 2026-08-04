@@ -338,7 +338,7 @@ export function introReset(state, res) {
  * field for; $5E is the only one of them with a name, and it has no reader
  * anywhere in the PRG (two writers, `$99B5` and `$9C0F`, zero readers -- grep).
  */
-function clearZeroPage(state) {
+export function clearZeroPage(state) {
   state.cam.sub = 0; state.cam.lo = 0; state.cam.hi = 0;   // $3D $3E $3F
   state.zp.speed = 0;                               // $40
   state.zp.missile = 0;                             // $41
@@ -409,8 +409,36 @@ function clearZeroPage(state) {
  *
  * The frame overrun is here rather than in introReset() because $882C is what
  * costs the time: 2304 PPU writes in one NMI. See state.frameDrops.
+ *
+ * ---------------------------------------------------------------------------
+ * W39: `which` NAMES THE IMAGE, AND THE TWO ENTRY POINTS ARE ONE ROUTINE.
+ *
+ *   8824  A9 03 / 85 2D    $2D := 3
+ *   8828  A2 02  LDX #$02  ->  $882E     the TITLE / attract screen
+ *   882A  D0 02  BNE $882E
+ *   882C  A2 00  LDX #$00  ->  falls in  the PLAYFIELD screen
+ *   882E  BD 93 88  LDA $8893,X / ... / BD 94 88  LDA $8894,X
+ *   8893  .byte $78 $8C $8C $8C $60
+ *
+ * `$8893` is a TWO-ENTRY INTERLEAVED word table -- the two words share the byte
+ * at `$8895`, which is why it is five bytes and not four: X = 0 gives $8C78 and
+ * X = 2 gives $8C8C. `$8871` is one shared RLE decoder for both (escape $34
+ * introduces a count/value RUN, $39 ends the chunk, anything else is a literal
+ * `$2007` write; `CPY #$0C` at $8858 makes it six chunk pointers per image).
+ *
+ * This settles the open dependency `29-plan-whole-game.md` flagged for the mode
+ * wave -- "one shared routine or three?" -- and the answer is ONE, loading TWO
+ * screens. It also retires export_assets.py's NOT_EXPORTED line "The title
+ * screen's nametable ... its source table has not been identified."
+ *
+ * IT COSTS THE MODE PORT NOTHING, which is why `which` is documented and then
+ * unused: the two entries differ only in `$2D` (which `$8824` writes itself and
+ * `$8256` immediately re-writes) and in WHICH image is pushed -- and the image
+ * is the part that is not ported. The parameter exists so the call sites read
+ * as the ROM does and so the day the 2304 writes land, the selector is already
+ * plumbed through.
  */
-function fullScreenLoad(state) {
+export function fullScreenLoad(state, which = 0) {
   state.ppu.blank = 0x10;                           // $8838 -> $8333 -> $83B0
   state.vram.cursor = 0;                            // $883B STA $0E
   state.zp1F = 0;                                   // $883F STA $1F
@@ -423,6 +451,22 @@ function fullScreenLoad(state) {
   // one dropped NMI, at game frame 283 on a boot and 614 on a respawn, and none
   // anywhere else in either run.
   state.frameDrops = 1;
+}
+
+/**
+ * `$8824` -- the TITLE/attract entry into the routine above.
+ *
+ *   8824  A9 03 / 85 2D    $2D := 3
+ *   8828  A2 02 / D0 02    LDX #$02, then straight into $882E
+ *
+ * Two instructions of its own and then the shared body. `$8256` is its only
+ * caller and sets `$2D = 3` itself four instructions earlier, so the store here
+ * is redundant on that path -- and it is reproduced anyway, because "the caller
+ * already did it" is how a port acquires a difference nobody can find later.
+ */
+export function titleScreenLoad(state) {
+  state.ppu.chrSel = 3;                             // $8824/$8826 LDA #$03 / STA $2D
+  fullScreenLoad(state, 2);                         // $8828 LDX #$02 -> $882E
 }
 
 /**

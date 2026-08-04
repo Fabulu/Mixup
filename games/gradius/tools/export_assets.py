@@ -353,8 +353,18 @@ NOT_EXPORTED = [
     "of the PPU.  tools/oracle/palprobe.lua measures the emulator's, and it "
     "lands in tools/oracle/out/video/master_palette.bin.  Nothing here may "
     "claim a ROM address for it.",
-    "The title screen's nametable.  $8871 (the RLE full-screen loader) writes it "
-    "at load time; its source table has not been identified. NOTES-render.md 9.",
+    # W39 HALF-RETIRED THIS.  The source table IS identified now, so the second
+    # sentence used to be false: "$8893" is a TWO-ENTRY INTERLEAVED word table
+    # (five bytes, the two words sharing $8895) -- X = 0 -> $8C78, the playfield
+    # image, and X = 2 -> $8C8C, the title/attract one -- with six chunk pointers
+    # per image and one shared RLE decoder at $8871 (escape $34 introduces a
+    # count/value RUN, $39 ends the chunk, anything else is a literal).  What is
+    # still not exported is the 2304 decoded bytes per image.
+    "The title and playfield NAMETABLE IMAGES.  $8871 (the shared RLE loader) "
+    "writes them at load time from the two chunk lists at $8C78 and $8C8C, "
+    "behind the interleaved word table at $8893; src/flow.js fullScreenLoad() "
+    "reproduces the RAM side effects and not the 2304 $2007 writes.  Decoding "
+    "them is its own wave.  NOTES-render.md 9, src/modes.js header.",
     # Sound USED to be listed here as "untouched by any recon".  It is exported
     # now -- assets/sound/tables.json, the $ECB2 channel bases and the one
     # $EFB8-$FFC0 block that holds the pitch table, the 64 sound records and
@@ -1083,6 +1093,16 @@ FLOW_BLOCKS = [
     ("codes", 0x9785, 0x979D,
      "$9765 LDA $9785,X / $976A LDA $9786,X, then CMP ($98),Y with Y = $33",
      "two pointers ($9789 game over, $9793 pause) and their 10-byte strings"),
+    # ---- W39, the $80D4 modes -------------------------------------------
+    ("menuConfig", 0x8254, 0x8256,
+     "$822F LDA $8254,X with X = $0F, START on the title menu",
+     "$40 for one player, $70 for two -- the whole of $03's initial value"),
+    ("menuCursorY", 0x82B4, 0x82B6,
+     "$82AD LDA $82B4,X with X = $0F, every title-menu frame",
+     "$86 and $96: where the cursor SHIP ($0320) sits on each menu line"),
+    ("demoScript", 0x9CB7, 0x9D4F,
+     "$9C88 LDA $9CB5,Y and $9C9E LDA $9CB8,Y, both with Y = $31",
+     "75 (button, duration) pairs then FF FF -- the attract demo's joystick"),
 ]
 
 
@@ -1121,6 +1141,34 @@ def flow_tables(rom: Rom) -> dict:
         if base + 4 >= n_pos:
             raise SystemExit(f"ABORT: $9BCC[{s}] = {base}; +4 (checkpoint $24 = 8) "
                              f"runs off the end of the {n_pos}-byte $9BD4 table")
+
+    # ---- W39, the three mode tables -------------------------------------
+    # Both ends of every one of these lands on a real opcode boundary, checked
+    # the same way the two above are.  $8256 is `JSR $83AB`, the first
+    # instruction after the two-byte config table; $82B6 is `LDA #$03`, the
+    # first instruction of sub_82B6, right after the two cursor rows.
+    if rom.slice(0x8254, 4) != bytes((0x40, 0x70, 0x20, 0xAB)):
+        raise SystemExit(f"ABORT: $8254 should be `40 70` followed by $8256's "
+                         f"`JSR $83AB` but reads {rom.slice(0x8254, 4).hex(' ')}")
+    if rom.slice(0x82B4, 4) != bytes((0x86, 0x96, 0xA9, 0x03)):
+        raise SystemExit(f"ABORT: $82B4 should be `86 96` followed by $82B6's "
+                         f"`LDA #$03` but reads {rom.slice(0x82B4, 4).hex(' ')}")
+    # The demo script's extent is not a guess: walk it exactly as $9C9E does --
+    # the DURATION byte of record n is $9CB8 + 2n -- and demand that the first
+    # $FF is the one at $9D4E, i.e. 75 records and then the terminator pair.
+    n_rec = 0
+    while True:
+        dur = rom.b(0x9CB8 + 2 * n_rec)
+        if dur == 0xFF:
+            break
+        n_rec += 1
+        if 0x9CB8 + 2 * n_rec > 0x9D4E:
+            raise SystemExit("ABORT: the $9CB7 demo script has no $FF duration "
+                             "before $9D4E; its extent is not what W39 measured")
+    if n_rec != 75 or rom.slice(0x9D4D, 2) != bytes((0xFF, 0xFF)):
+        raise SystemExit(f"ABORT: the $9CB7 demo script walks {n_rec} records "
+                         f"(expected 75) and ends {rom.slice(0x9D4D, 2).hex(' ')} "
+                         f"(expected ff ff)")
 
     blocks = []
     for name, a, end, read_by, note in FLOW_BLOCKS:

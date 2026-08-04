@@ -118,6 +118,17 @@ export const RING_LEN = 0x18;
  */
 export const MODE_STAGE = 5;
 
+/**
+ * The other six, named. W39 ported them; src/modes.js is the transcription and
+ * carries the enumeration that says nothing in the PRG ever writes `MODE_6`.
+ */
+export const MODE_TITLE_SCROLL = 0;   // $80E2
+export const MODE_TITLE_MENU = 1;     // $8116
+export const MODE_ATTRACT = 2;        // $8121
+export const MODE_START = 3;          // $8137
+export const MODE_HANDOVER = 4;       // $8165
+export const MODE_6 = 6;              // $816C
+
 export function createState() {
   return {
     // ---- the frame heartbeat ------------------------------------------
@@ -145,6 +156,30 @@ export function createState() {
     frameDrops: 0,
 
     mode: MODE_STAGE,        // $00   game mode; 5 = stage play
+    // ---- W39: the four bytes the $80D4 modes run on ---------------------
+    // $01 is the CURRENT MODE'S PHASE, not a global sub-state: each of modes 0,
+    // 2 and 3 reads it with its own meaning ($80E2 "have I built the screen",
+    // $8121 "have I wiped RAM", $8137 0/1/2 for jingle/blink/done) and $8188
+    // zeroes it on every mode change. Six writers, all in src/modes.js: $80FC,
+    // $8125, $8133, $817F, $818C and $8530 (the A+B service screen).
+    zp01: 0,                 // $01
+    // $03, THE CONFIGURATION BYTE for the whole session. Written in exactly
+    // three places -- $80F4 (:= 0, the boot), $8232 (:= $8254[$0F], i.e. $40 for
+    // one player or $70 for two) and $8176 ($03 AND $0F, mode 6) -- and read in
+    // six: $80C6 (bit 6 stops $821A running, so START becomes PAUSE once play
+    // starts), $8172, $81EB and $81F1 (bit 5 = read the two pads separately
+    // instead of merging them, and $F0 == $E0 merges only START/SELECT), $82E4
+    // (bit 1 -> $1A := 0) and $82F0 (bit 5 -> $0A := 7).
+    zp03: 0,                 // $03
+    // $0B, THE ATTRACT DEMO'S ONLY EXIT. Two producers ($9CB1 when the script
+    // ends or the player presses START/SELECT, $9809 when the demo ship dies)
+    // and one reader ($812D). $818A clears it on every mode change.
+    zp0B: 0,                 // $0B
+    // $0F, THE MENU CURSOR: 0 = 1 PLAYER, 1 = 2 PLAYERS. $8239's `2 - $0F`
+    // reset is what keeps it in {0,1}; both readers ($822D and $82AB) index
+    // TWO-byte tables with it, and src/modes.js throws rather than run off them.
+    // $814E also adds it to 1 to pick which menu line mode 3 blinks.
+    zp0F: 0,                 // $0F
     substate: 0x80,          // $1B   mode-5 sub-state; see nmi.js on the gate
     // Three gates, one of which stopped being a constant in wave 4.
     //
@@ -243,6 +278,16 @@ export function createState() {
     // (unless $3B,X is negative), which is why $33 is real port state rather
     // than a stub: see src/flow.js codeMatch().
     zp33: 0,                 // $33
+    // $30/$31, THE ATTRACT DEMO'S SCRIPT CURSOR (W39). $31 is the byte offset
+    // into the (button, duration) pair table at $9CB7 and is always 2n+2 for the
+    // record being played, because $9CA7's `INY / INY` runs before $9C88 reads
+    // `$9CB5,Y`; $30 is the duration left, decremented on ODD frames only
+    // ($9CAE, gated by $9C7F's `LDA $02 / LSR A`). Five instructions in the
+    // whole PRG touch either ($9C9A, $9CA1, $9CAE; $9C72/$9C84/$9C96 read $31,
+    // $9CA9 writes it) and both are inside $8424's $0020-$0097 clear, so a new
+    // demo always starts from the top of the script.
+    zp30: 0,                 // $30
+    zp31: 0,                 // $31
     cheat: new Uint8Array(2),// $3B,X  ($9B15 DEC $3B,X, $B981 INC $3B,X)
     // $22/$24/$26/$28, indexed by $18: the per-player state the respawn saves
     // ($979D, src/flow.js respawn) and the stage intro restores ($9B62-$9B74).

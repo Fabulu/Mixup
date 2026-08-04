@@ -100,14 +100,24 @@ import { applyCapsule, computeRank } from './powerup.js';
 import { addScore } from './score.js';
 import { soundDriver, setBgm, setBgmCode, soundRequest, pulse1Dur, SND_BASE, OFF } from './sound.js';
 import { chrBank } from './render/ppu.js';
+import { modeDispatch } from './modes.js';
 
 // $80D4 jt_80D4 -- the 7-entry GAME-MODE jump table, indexed by `$00` (the
 // mode byte) after `$83E4`'s `ASL A`. Verified straight out of assets/prg.bin
-// (it is FIXED ROM data, not a ported set -- it cannot go stale). Only entry 5
-// ($9650) is ported; 0-4,6 are the boot/title/attract/continue/high-score
-// screens the port boots past (src/main.js sets mode 5 directly). Named here so
-// the else-throw below can cite the exact target the cartridge would have
-// reached, instead of a silent no-op that produces a wrong frame.
+// (it is FIXED ROM data, not a ported set -- it cannot go stale).
+//
+// W39 PORTED THE OTHER SIX. This constant used to end "Only entry 5 ($9650) is
+// ported; 0-4,6 are the boot/title/attract/continue/high-score screens the port
+// boots past (src/main.js sets mode 5 directly)" -- and the description was
+// wrong twice over as well as out of date: there is no continue SCREEN and no
+// high-score entry anywhere in this table. Entry 4 is three instructions
+// ($1B := 0) and CONTINUE is `$970D` inside mode 5, which sets $00 := 4 to get
+// back to it. The seven are boot/title-scroll, title menu, attract demo, start
+// jingle, handover, PLAY, and $816C. src/modes.js is the transcription.
+//
+// The list stays here because it is what the out-of-range throw in
+// src/modes.js prints, and because tests/modes.test.js checks it against
+// assets/prg.bin rather than against this file.
 export const MODE_TARGETS = [0x80E2, 0x8116, 0x8121, 0x8137, 0x8165, 0x9650, 0x816C];
 
 /**
@@ -256,28 +266,14 @@ export function nmi(state, buttons, res, lag = false) {
   // it ever reaches $19 == 4.
   buildDisplayList(state, res.metasprites, res.enemyTables);
 
-  // $80AA: JSR $80BE -> INC $02, then the mode dispatch at $80D1.
+  // $80AA: JSR $80BE -> INC $02, the $80C0 pre-dispatch, then jt_80D4 at $80D1.
+  //
+  // W39: this used to be `if (mode === 5) stagePlay(); else throw`, which was
+  // the W28b loudness fix standing in for six unported modes. All seven entries
+  // now run and the dispatch itself lives in src/modes.js, next to the six
+  // handlers and the $80C0 gate that has to run BEFORE it.
   state.frame = (state.frame + 1) & 0xFF;         // $80BE INC $02
-  if (state.mode === MODE_STAGE) {
-    stagePlay(state, res);
-  } else {
-    // THE LOUDNESS FIX (20-plan sec 5 / the W21 loudness note). The `$80D1
-    // JSR $83E4` dispatches `$00` through jt_80D4 above; only mode 5 is
-    // ported. Before this else, every non-mode-5 frame was a SILENT wrong
-    // frame: the sweep measured 76 such windows in the title/attract run
-    // (modes 0,1,2 -- 20-recon-sweep-harness.md) and the port said nothing.
-    // The port boots straight to mode 5 and never transitions out, so reaching
-    // here means a state the port does not model; throw the ROM address it
-    // would have reached, not a quiet no-op. (Porting modes 0-3,6 is W36.)
-    const tgt = MODE_TARGETS[state.mode];
-    throw new Error(
-      '$80D1: game mode ' + state.mode + ' is not ported -- jt_80D4 entry '
-      + state.mode + (tgt ? (' -> $' + tgt.toString(16).toUpperCase().padStart(4, '0')
-                            + ' (the title/attract/continue/high-score screen). ')
-                          : ' is OUT OF the 7-entry jt_80D4 table. ')
-      + 'Only mode 5 ($9650) is ported; the port boots to mode 5 and never '
-      + 'leaves. Modes 0-4,6 are W36.');
-  }
+  modeDispatch(state, res, stagePlay);            // $80C0-$80D1
 
   // $80AD: JSR $8BAB -- blank the unused OAM slots. Folded into
   // buildDisplayList (it fills the shadow with $F4 up front instead).
