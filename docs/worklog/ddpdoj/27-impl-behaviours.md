@@ -727,3 +727,93 @@ was invalid". `$1400` is the mutation that actually tests it, and it reddens.
 **Inventory: 28 → 29 initialisers, 28 continuations. 32 of 39 kind indices
 covered; 8 distinct bodies remain (family H kinds 26/27/32/36/37/38, family J
 kind 28, and kind 35).**
+
+### 2026-08-04 — FAMILY H (CORE) PORTED (kinds 26, 27, 32)
+
+The recon described family H as one shape: "optional trail emit, +$30 countdown
+gate, then pos += +$28/+2A pair, counter +$2C -> dir += +$2E, counter +$36 ->
+speed += +$38, recompute+store velocity". That is **kind 27 exactly**, **kind 32
+with two pieces removed** (no trail, no gate), and **kind 26 not at all** — kind
+26 has no drift, no steering and no velocity recompute. It is a sprite ring
+whose bounds live in the record.
+
+**KIND 26 IS THE FIRST DISPATCH EVER TO REACH `$283C8C`.** `w27targets.py` finds
+exactly one reference to that epilogue in `$281000..$285000` and it is kind 26's
+`bra.w`. W26 transcribed it as `epi283C8C` and it has sat unexercised since —
+the same situation `epi2822AE` was in before family B reached it. Re-read
+against the listing this session: `$283C8C` clears bit 8, writes renderOffs
+`$FE00FE00` and graphic `$210`, then `bra.b $283C20` into the MIDDLE of the
+`$283C0E` epilogue, so it skips `$283C0E`'s own `$FC00FE00`/`$410` and runs only
+the direction lookup. **The transcription was right. Its ROM window was
+missing**, exactly as before.
+
+**AND THAT WINDOW IS NOT SPRITE-ONLY.** `$283C46` writes +$10 = frame + (+$14),
+and kind 26's continuation uses +$10 as its RING LIMIT. Kind 26's initialiser
+sets +$14 = `$3C`; the continuation steps the descriptor by `$14` and subtracts
+`$3C` when it reaches +$10 — a THREE-frame ring whose bounds are computed in one
+routine and consumed in another, with nothing in either naming the other. Window
+`$2830EA + $24`, sized from the measured `$283C4C` offsets (0,4,8…$20 and back
+down; max `$20`, longword read) and confirmed by the abutting bound: `$2830EA +
+$24 = $28310E`, kind 26's continuation. **90 windows / 177,330 bytes.**
+
+**`move.b (A0)+,(A0)+` AT `$28312E` IS `+$19 = +$18`.** Source read with
+post-increment, then destination written with post-increment; with A0 at +$18 it
+copies +$18 into +$19. It looks like a no-op. Read as one, kind 26 animates
+every frame instead of every other frame.
+
+**KIND 27 STARTS AT A GLOBAL-DEPENDENT ANIMATION PHASE.** `move.w $80390A,D0 /
+lsr.w #2 / andi.w #3` then a `dbra` adding `$24` — descriptor = `$1BFED0` +
+`$24`*(D0+1), one of four phases. Two kind-27 bullets spawned on different
+frames are in different phases, and nothing in the record records which.
+
+**KIND 27 DESTROYS ITS OWN SAVED VELOCITY.** `$28315A move.l $1e,$30` saves,
+`$283160 clr.l $1e` clears — and `$28318C move.w #$20,$30` then OVERWRITES the
+saved velA half with a `$20` countdown. Nothing restores +$1E. So this is *not*
+the launch delay of kinds 19/22/24: the bullet has NO stored velocity at all
+until its first steer fires and recomputes one. +$30 is a 32-frame BUDGET for
+the drift, not a delay before it.
+
+### TWO REAL GAPS AND ONE FALSE ALARM
+
+| mutation | first result |
+|---|---|
+| drift pair swapped (+$28 <-> +$2A) | RED — `not ok 223` + `226` |
+| kind 26's ring never wraps (limit not from +$10) | RED — `not ok 227` |
+| kind 26 drops the `+$19 = +$18` reload | RED — `not ok 227` |
+| kind 27's phase loop runs `phase` times, not `phase+1` | RED — `not ok 225` |
+| kind 27's phase uses `>>3` instead of `>>2` | RED — `not ok 225` |
+| kind 27's +$30 gate never expires | RED — `not ok 226` |
+| kind 27's +$30 not decremented | RED — `not ok 226` |
+| **recompute runs unconditionally (drop the D1 dirty flag)** | **GREEN** |
+| **kind 26's epilogue given kind 2's table `$2821FA`** | **GREEN** |
+| steer adds the whole word instead of its low byte | GREEN — *and correctly* |
+
+**The third survivor is not one.** `add.b D0,$1b(A6)` and a word add truncated
+to the destination byte are the SAME value, because the destination is a byte.
+The mutation is an equivalent rewrite. The port's comment claimed a wrong turn
+would result; that claim was false and **has been corrected in the source** —
+an inaccurate comment in this port is a defect in its own right, since the
+comments are the deliverable.
+
+**The first survivor was a test that could not fail.** It wrote `$DEADBEEF` into
++$1E as a sentinel — which the PLAIN path then integrates into the position, so
+the bullet flew out of bounds and the mover freed the slot *before the
+continuation ran at all*. It passed for the wrong reason, over a branch it never
+executed. Now it uses a small sentinel, asserts the sentinel differs from what a
+recompute would write, and asserts the bullet is **still alive** after the frame.
+Eleventh defective check on this project; the third this wave; and again it took
+a mutation, not a reading, to find it.
+
+**The second survivor is the third instance of one class**: kind 2 vs 21's
+sprite tables, kind 30 vs 31's continuation address, and now kind 26's frame
+table — *a body wired to a sibling's data, invisible because the shapes match*.
+The fix pins the RESOLVED pointer against `$2830EA` walked the way the epilogue
+walks it.
+
+`src/mover.js` restored and hash-verified byte-identical through the battery
+(`c136ae252e549ceb`), then the comment correction landed (`08a4e478248283a3`);
+**409 pass / 0 fail / 0 skipped**.
+
+**Inventory: 29 → 32 initialisers, 31 continuations. 35 of 39 kind indices
+covered; 4 distinct bodies remain: kind 28 (family J, the splitter), kind 35,
+and kinds 36/37/38.**

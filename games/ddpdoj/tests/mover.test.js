@@ -860,6 +860,160 @@ test('kind 33 steps its $283704 table every OTHER frame, and its indices are a '
       'the lead-in plays once and the ring is four entries wide');
   });
 
+// ==================================== W27 FAMILY H (core): 26, 27 and 32 =====
+
+test('kinds 27/32 steer by the LOW BYTE of the +$2E and +$38 WORDS ($2831EE '
+  + 'add.b), drift by +$28/+$2A, and recompute velocity only when one fired',
+  { skip: !HAVE_TABLES }, () => {
+    for (const kind of [27, 32]) {
+      const ram = new Ram(null);
+      ram.setU16(0x81b41a, 1);
+      ram.setU16(0x813176, 0);
+      ram.setU16(0x80390a, 0);                        // kind 27's phase global
+      const base = seedBullet(ram, 0, { type: 0x8100 | kind, speed: 0x14, dir: 0x20 });
+      ram.setU16(base + 0x28, 0x0007);                // the drift pair
+      ram.setU16(base + 0x2a, 0x0009);
+      ram.setU8(base + 0x2c, 0x00);                   // turn counter: underflows at once
+      ram.setU8(base + 0x2d, 0x05);
+      ram.setU16(base + 0x2e, 0x7f03);                // HIGH byte $7F must be IGNORED
+      ram.setU8(base + 0x36, 0x02);                   // accel counter: does NOT fire
+      ram.setU8(base + 0x37, 0x04);
+      ram.setU16(base + 0x38, 0x7f06);
+      const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+      runMover(ctx);                                  // F1: the initialiser
+      const pA = ram.u16(base + REC.posA), pB = ram.u16(base + REC.posB);
+      const vA = ram.u16(base + REC.velA);
+      ram.setU32(base + REC.velA, 0);                 // park: the plain path adds 0
+      runMover(ctx);                                  // F2: the continuation
+      assert.equal(ram.u16(base + REC.posA), u16(pA + 0x0007),
+        `kind ${kind}: posA += the +$28 word`);
+      assert.equal(ram.u16(base + REC.posB), u16(pB + 0x0009),
+        `kind ${kind}: posB += the +$2A word`);
+      assert.equal(ram.u8(base + REC.dir), (0x20 + 0x03) & 0xff,
+        `kind ${kind}: dir += $03, the LOW byte of $7F03 -- add.b, not add.w`);
+      assert.equal(ram.u8(base + REC.speed), 0x14,
+        `kind ${kind}: the +$36 counter was 2, so speed must NOT change`);
+      assert.equal(ram.u8(base + 0x2c), 0x05, `kind ${kind}: +$2C reloaded from +$2D`);
+      assert.equal(ram.u8(base + 0x36), 0x01, `kind ${kind}: +$36 just ticked`);
+      const v = velocity(ROM, 0x14, 0x23);
+      assert.equal(ram.u16(base + REC.velA), v.dA & 0xffff,
+        `kind ${kind}: velocity recomputed from the NEW dir and stored`);
+      assert.notEqual(ram.u16(base + REC.velA), vA,
+        `kind ${kind}: ...and it is not the spawn-frame value`);
+    }
+  });
+
+test('kinds 27/32 do NOT recompute velocity on a frame where neither counter '
+  + 'fired ($28320C tst.w D1 / beq)', { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 32, speed: 0x14, dir: 0x20 });
+    ram.setU8(base + 0x2c, 0x09);                     // neither counter underflows
+    ram.setU8(base + 0x36, 0x09);
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1
+    // A SMALL sentinel, deliberately.  The first version of this test used
+    // $DEADBEEF, which the PLAIN path integrates into the position -- the bullet
+    // left the playfield and the mover freed the slot before the continuation
+    // ever ran, so the test passed without executing the branch it names.  It
+    // was caught by the `recompute-unconditional` mutation surviving.
+    const SENTINEL = 0x00110022;
+    ram.setU32(base + REC.velA, SENTINEL);
+    const v = velocity(ROM, 0x14, 0x20);
+    assert.notEqual(SENTINEL, ((v.dA & 0xffff) << 16 | (v.dB & 0xffff)) >>> 0,
+      'the sentinel must differ from what a recompute would write');
+    runMover(ctx);                                    // F2
+    assert.ok((ram.u16(base) & TYPEBIT.alive) !== 0,
+      'the bullet must still be ALIVE -- otherwise the continuation never ran');
+    assert.equal(ram.u32(base + REC.velA), SENTINEL,
+      'the D1 dirty flag stayed 0, so $283250 movem.w never ran');
+  });
+
+test("kind 27's +$30 is a 32-frame gate that OVERWRITES the saved velA half, and "
+  + 'the animation phase comes from the $80390A global ($28316C)',
+  { skip: !HAVE_TABLES }, () => {
+    for (const [global, phase] of [[0x0000, 0], [0x0004, 1], [0x0008, 2], [0x000c, 3],
+                                   [0x0010, 0]]) {
+      const ram = new Ram(null);
+      ram.setU16(0x81b41a, 1);
+      ram.setU16(0x813176, 0);
+      ram.setU16(0x80390a, global);
+      const base = seedBullet(ram, 0, { type: 0x8100 | 27, speed: 0x14, dir: 0x20 });
+      runMover({ ram, rom: ROM, notes: new UnportedLog() });
+      assert.equal(ram.u32(base + 0x0a), (0x1bfed0 + 0x24 * (phase + 1)) >>> 0,
+        `$80390A = $${global.toString(16)}: descriptor starts one of FOUR phases`);
+      assert.equal(ram.u16(base + 0x30), 0x0020,
+        '+$30 is $20 -- $28318C overwrote the velA half that $28315A had saved');
+      assert.equal(ram.u32(base + REC.velA), 0,
+        '+$1E cleared and never restored: kind 27 has no stored velocity at spawn');
+    }
+  });
+
+test("kind 27's +$30 gate stops the drift after exactly 32 frames ($2831C4)",
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    ram.setU16(0x80390a, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 27, speed: 0x14, dir: 0x20 });
+    ram.setU16(base + 0x28, 0x0001);                  // 1 per frame, so pos counts them
+    ram.setU16(base + 0x2a, 0x0000);
+    ram.setU8(base + 0x2c, 0xff);                     // no steering; drift only
+    ram.setU8(base + 0x36, 0xff);
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: the initialiser
+    ram.setU32(base + REC.velA, 0);
+    const p0 = ram.u16(base + REC.posA);
+    for (let f = 0; f < 40; f++) { runMover(ctx); ram.setU32(base + REC.velA, 0); }
+    assert.equal(ram.u16(base + 0x30), 0, '+$30 counted down to 0 and stopped');
+    assert.equal(ram.u16(base + REC.posA), u16(p0 + 0x20),
+      'exactly $20 drift steps in 40 frames -- the gate is a budget, not a delay');
+  });
+
+test('kind 26 rings its descriptor inside bounds carried in the RECORD, and '
+  + 'reloads +$19 from +$18 every animating frame ($28312E move.b (A0)+,(A0)+)',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 26, speed: 0x14, dir: 0x40 });
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: init + the $283C8C epilogue
+    ram.setU32(base + REC.velA, 0);
+    assert.equal(ram.u32(base + 0x14), 0x0000003c, 'F1: +$14 is the ring SPAN $3C');
+    assert.equal(ram.u16(base + 0x18), 0x0101, 'F1: +$18 delay $01 / +$19 reload $01');
+    const first = ram.u32(base + 0x0a);
+    // PIN THE TABLE, not just "a pointer resolved".  Giving the $283C8C epilogue
+    // kind 2's table ($2821FA) instead of kind 26's ($2830EA) was mutation-tested
+    // and SURVIVED every other assertion here -- the same shape as the kind 2/21
+    // swap in family B and the kind 30/31 continuation swap in family I.
+    const d1 = ((0x40 + 4) >> 2) & 0x3e;              // $283C28..$283C2C
+    const off = ROM.u16(0x283c4c + d1);               // $283C38
+    assert.equal(first, ROM.u32(0x2830ea + off),
+      'F1: the frame pointer must come from KIND 26\'s table at $2830EA');
+    assert.equal(ram.u32(base + 0x10), (first + 0x3c) >>> 0,
+      'F1: $283C46 set +$10 = frame + +$14 -- the ring LIMIT, from the epilogue');
+    // +$19 is 1 after the initialiser, so F2 only ticks it down.
+    runMover(ctx);
+    assert.equal(ram.u32(base + 0x0a), first, 'F2: +$19 was 1 -- the delay, no step');
+    assert.equal(ram.u8(base + 0x19), 0, 'F2: +$19 ticked to 0');
+    // Three steps take the descriptor round the whole ring: $3C / $14 = 3.
+    const seen = [];
+    for (let f = 0; f < 6; f++) {
+      runMover(ctx);
+      if (f % 2 === 0) {
+        seen.push(ram.u32(base + 0x0a));
+        assert.equal(ram.u8(base + 0x19), 0x01,
+          'the animating frame copies +$18 into +$19 -- a no-op reading of '
+          + '`move.b (A0)+,(A0)+` would animate every frame');
+      }
+    }
+    assert.deepEqual(seen,
+      [(first + 0x14) >>> 0, (first + 0x28) >>> 0, first],
+      'a THREE-frame ring: +$14 steps until it hits +$10, then -= the +$14 span');
+  });
+
 test('every ported initialiser installs ITS OWN continuation address at +$22',
   { skip: !HAVE_TABLES }, () => {
     // THIS TEST EXISTS BECAUSE A MUTATION SURVIVED.  Kinds 30 and 31 are
@@ -883,6 +1037,7 @@ test('every ported initialiser installs ITS OWN continuation address at +$22',
       [0x282bee, 0x282c2a], [0x282c56, 0x283ce4], [0x282d42, 0x282d76],
       [0x282e00, 0x282e4a], [0x282ebc, 0x282ef0], [0x282f6e, 0x282f9e],
       [0x28330c, 0x28333c], [0x283430, 0x28349a], [0x2834fe, 0x283568],
+      [0x2830b2, 0x28310e], [0x283148, 0x283194], [0x2835cc, 0x283616],
       [0x2836a8, 0x2836d0], [0x28371c, 0x28374c],
     ]);
     const seen = new Set();
@@ -909,30 +1064,31 @@ test('every ported initialiser installs ITS OWN continuation address at +$22',
       'every entry of the expected map must have been reached through $282030');
   });
 
-test('the ported-body inventory is exactly 29 initialisers + 28 continuations', () => {
+test('the ported-body inventory is exactly 32 initialisers + 31 continuations', () => {
   // A LEDGER test: it pins the exact set, so porting a body turns it RED until
   // the inventory here is updated deliberately.  That is the point -- the count
   // cannot drift upward without somebody writing down which addresses moved.
   //
   // W26 ported 8 bodies (kinds 3/4/5/6/7/12/13/19; kind 6 is the midboss's).
-  // W27 adds 21: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
+  // W27 adds 24: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
   // family C kinds 16/18, family D kind 17, family E kinds 22/24, family F
-  // kind 23, families G+L kinds 25/29/34, family I kinds 30/31, family K kind
-  // 33.  Kind 10's $282840 is also the target for kinds 14 and 15, which alias
-  // it in the $282030 table.  So 29 distinct bodies now cover 32 of the 39
-  // kind indices.
+  // kind 23, families G+L kinds 25/29/34, family H kinds 26/27/32, family I
+  // kinds 30/31, family K kind 33.  Kind 10's $282840 is also the target for
+  // kinds 14 and 15, which alias it in the $282030 table.  So 32 distinct
+  // bodies now cover 35 of the 39 kind indices.
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
     [0x282104, 0x282162, 0x2821c2, 0x2823ec, 0x2824a8, 0x282564, 0x282620,
      0x2826dc, 0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962,
      0x2829bc, 0x282a1e, 0x282aae, 0x282b30, 0x282bee, 0x282c56,
-     0x282d42, 0x282e00, 0x282ebc, 0x282f6e, 0x28330c, 0x283430, 0x2834fe,
-     0x2836a8, 0x28371c]);
+     0x282d42, 0x282e00, 0x282ebc, 0x282f6e, 0x2830b2, 0x283148, 0x28330c,
+     0x283430, 0x2834fe, 0x2835cc, 0x2836a8, 0x28371c]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
     [0x28213e, 0x28219e, 0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738,
      0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x2829fe,
      0x282a66, 0x282af6, 0x282b64, 0x282c2a, 0x282d76, 0x282e4a, 0x282ef0,
-     0x282f9e, 0x28333c, 0x28349a, 0x283568, 0x2836d0, 0x28374c, 0x283ce4]);
-  // 29 initialisers, 28 continuations. NOT equal, and that is correct: kinds 2
+     0x282f9e, 0x28310e, 0x283194, 0x28333c, 0x28349a, 0x283568, 0x283616,
+     0x2836d0, 0x28374c, 0x283ce4]);
+  // 32 initialisers, 31 continuations. NOT equal, and that is correct: kinds 2
   // and 21 both install $283CE4, so bodies MAY share a continuation.
   //
   // An earlier version of this test asserted `INIT_BODIES.size ===

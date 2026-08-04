@@ -1549,4 +1549,165 @@ CONTINUATIONS.set(0x2836d0, (ctx, base) => {
   advance40(ctx, base);                                // $2836FA lea $40(A6)
 });
 
+// ================================================ W27 FAMILY H (core)
+//
+// Kinds 26 ($2830B2), 27 ($283148) and 32 ($2835CC).  The recon described this
+// family as one shape -- "optional trail emit, +$30 countdown gate, then pos +=
+// +$28/+2A pair, counter +$2C -> dir += +$2E, counter +$36 -> speed += +$38,
+// recompute+store velocity".  That is kind 27 exactly, kind 32 with two pieces
+// removed, and **kind 26 not at all**: kind 26 has no drift, no steering and no
+// velocity recompute.  It is a sprite ring whose limit lives in the record.
+//
+// THE STEER DELTAS ARE BYTES READ OUT OF WORDS.  `move.w $2e(A6),D0` then
+// `add.b D0,$1b(A6)`: the ADD IS A BYTE add, so what reaches the direction is
+// D0's low byte -- the byte at +$2F, not the word at +$2E.  Same for speed and
+// +$38/+$39.
+//
+// AND IT MAKES NO DIFFERENCE, which is worth saying rather than implying
+// otherwise: the destination is a BYTE, so `(dir + D0.w) & $FF` and
+// `(dir + D0.b) & $FF` are the same value.  A mutation replacing the low-byte
+// mask with the whole word was run and stayed GREEN, correctly -- it is an
+// equivalent rewrite, not a missed check.  The transcription keeps the `& 0xff`
+// because that is the instruction; nobody should read a behavioural claim into
+// it.
+//
+// KIND 26 tail-jumps `bra.w $283C8C`, which is the FIRST dispatch ever to reach
+// that epilogue (`w27targets.py` finds exactly one reference to it in the whole
+// range, and it is kind 26's).  W26 transcribed it as `epi283C8C`; it has sat
+// unexercised ever since, exactly as `epi2822AE` had before family B reached it.
+// Re-read against the listing this session: `$283C8C` clears bit 8, writes
+// renderOffs $FE00FE00 and graphic $210, then `bra.b $283C20` into the MIDDLE of
+// the `$283C0E` epilogue -- so it skips $283C0E's own $FC00FE00/$410 and runs
+// only the direction lookup. The transcription was right. Its window was not:
+// the `$2830EA` table it reads had never been exported.
+//
+// KIND 26'S RING LIMIT COMES OUT OF THE EPILOGUE.  `$283C42/$283C46` set
+// +$10 = descriptor + (+$14), and kind 26's initialiser sets +$14 = $3C. The
+// continuation steps the descriptor by $14 and subtracts +$14 ($3C) when it
+// reaches +$10 -- a THREE-frame ring ($3C / $14) whose bounds are carried in the
+// record rather than written as constants. Two fields set in two different
+// routines, and neither makes sense without the other.
+//
+// AND `move.b (A0)+,(A0)+` AT $28312E IS +$19 = +$18.  Source read with
+// post-increment, then destination written with post-increment, so with A0 at
+// +$18 it copies +$18 into +$19: the animation delay reloads itself from its own
+// reload byte every time it animates. Read as a no-op (it looks like one), kind
+// 26 animates every frame instead of every other frame.
+//
+// KIND 27 STARTS AT A GLOBAL-DEPENDENT ANIMATION FRAME.  `$28316C move.w
+// $80390A,D0 / lsr.w #2 / andi.w #3` then a `dbra` loop adding $24 -- so the
+// descriptor starts at $1BFED0 + $24*(D0+1), one of four phases chosen by a
+// global counter. Two kind-27 bullets spawned on different frames are not in
+// the same animation phase, and nothing in the record records which.
+//
+// KIND 27 ALSO DESTROYS ITS OWN SAVED VELOCITY.  `$28315A move.l $1e,$30` saves
+// velA:velB, `$283160 clr.l $1e` clears it -- and then `$28318C move.w #$20,$30`
+// OVERWRITES the saved velA half with a $20 countdown. Nothing ever restores
+// +$1E from +$30. So unlike kinds 19/22/24, this is not a launch delay: the
+// bullet has NO stored velocity until its first steer fires and recomputes one.
+
+/** `$2831CC..$283250` / `$283630..$283686` -- family H's drift-and-steer core.
+ *  Position drifts by the +$28/+$2A word pair; two byte countdowns bend the
+ *  direction and the speed; and the velocity is recomputed and stored only if
+ *  one of them fired (the D1 "dirty" flag). */
+function driftAndSteer(ctx, base) {
+  const { ram } = ctx;
+  // $2831CC movem.w $28(A6),D0-D1 -> D0 = +$28 word, D1 = +$2A word
+  ram.setU16(base + REC.posA,
+    u16(ram.u16(base + REC.posA) + ram.u16(base + 0x28)));     // $2831D2 add.w D0,$2
+  ram.setU16(base + REC.posB,
+    u16(ram.u16(base + REC.posB) + ram.u16(base + 0x2a)));     // $2831D6 add.w D1,$4
+  let dirty = false;                                           // $2831DA moveq #0,D1
+  // $2831DC the TURN: byte countdown +$2C, reload +$2D, dir += the LOW BYTE of
+  // the +$2E word (`move.w $2e,D0` then `add.b D0,$1b` -- a BYTE add).
+  if (byteUnderflow(ram, base, 0x2c, 0x2d)) {
+    const d0 = ram.u16(base + 0x2e);                           // $2831EA
+    ram.setU8(base + REC.dir, (ram.u8(base + REC.dir) + (d0 & 0xff)) & 0xff);  // $2831EE
+    dirty = true;                                              // $2831F2 moveq #1,D1
+  }
+  // $2831F4 the ACCEL: byte countdown +$36, reload +$37, speed += the LOW BYTE
+  // of the +$38 word.
+  if (byteUnderflow(ram, base, 0x36, 0x37)) {
+    const d0 = ram.u16(base + 0x38);                           // $283202
+    ram.setU8(base + REC.speed, (ram.u8(base + REC.speed) + (d0 & 0xff)) & 0xff);  // $283206
+    dirty = true;                                              // $28320A
+  }
+  // $28320C tst.w D1 / beq -- recompute ONLY when something changed.  $283212..
+  // $28324E is `$284190`'s body INLINED (same $200920 / $283F50 / $2841C2
+  // triple); `velocity()` is that function.
+  if (dirty) velRecomputeStore(ctx, base);                     // $283250 movem.w
+}
+
+// ----- kind 26 ($2830B2 init / $28310E cont) -- a ring whose limit is in the record
+INIT_BODIES.set(0x2830b2, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                          // $2830C0 bsr $2820CC
+  ram.setU8(base + 0x1d, 0x1a);                        // $2830C4
+  ram.setU32(base + 0x14, 0x0000003c);                 // $2830CA the ring SPAN
+  ram.setU16(base + 0x18, 0x0101);                     // $2830D2 delay $01 / reload $01
+  ram.setU32(base + REC.continuation, 0x28310e);       // $2830D8
+  epi283C8C(ctx, base, 0x2830ea);                      // $2830E6 bra.w $283C8C
+});
+CONTINUATIONS.set(0x28310e, (ctx, base) => {
+  const { ram } = ctx;
+  if (tick19(ram, base)) { advance40(ctx, base); return; }   // $28310E/$28313A
+  // $283118 D0 = descriptor ; $28311E += $14 ; $283124 cmp against +$10 (the
+  // limit the epilogue computed) ; on equality subtract +$14 (the span).
+  let d0 = (ram.u32(base + 0x0a) + 0x14) >>> 0;
+  if (d0 === ram.u32(base + 0x10)) d0 = (d0 - ram.u32(base + 0x14)) >>> 0;  // $283128
+  ram.setU32(base + 0x0a, d0);                         // $28312C move.l D0,(A6)
+  // $28312E move.b (A0)+,(A0)+ with A0 at +$18 -- this is +$19 = +$18.
+  ram.setU8(base + 0x19, ram.u8(base + 0x18));
+  advance40(ctx, base);                                // $283130 lea $36(A6)
+});
+
+// ----- kind 27 ($283148 init / $283194 cont) -- trail emit, drift, steer
+INIT_BODIES.set(0x283148, (ctx, base) => {
+  const { ram } = ctx;
+  clearDispatch(ram, base);                            // $283148 andi.b #$fe,(A6)
+  ram.setU32(base + 0x0a, 0x1c01ac);                   // $28314C  (dead: overwritten)
+  ram.setU8(base + 0x1d, 0x1a);                        // $283154
+  ram.setU32(base + 0x30, ram.u32(base + REC.velA));   // $28315A save velocity...
+  ram.setU32(base + REC.velA, 0);                      // $283160 ...and clear it
+  ram.setU32(base + 0x0a, 0x1bfed0);                   // $283164 descriptor base
+  // $28316C..$283180: the starting animation phase comes from a GLOBAL.
+  const phase = (ram.u16(0x80390a) >>> 2) & 0x3;       // $283172 lsr.w #2 / andi.w #3
+  for (let i = 0; i <= phase; i++) {                   // $283178 dbra: D0+1 times
+    ram.setU32(base + 0x0a, (ram.u32(base + 0x0a) + 0x24) >>> 0);
+  }
+  ram.setU32(base + REC.continuation, 0x283194);       // $283184
+  ram.setU16(base + 0x30, 0x0020);                     // $28318C OVERWRITES saved velA
+});
+CONTINUATIONS.set(0x283194, (ctx, base) => {
+  const { ram } = ctx;
+  trailEmit(ctx, base);                                // $283194..$2831A6
+  animateRenderOffsWrap(ctx, base, 0x1bfef4, 0x24, 0x1bff84);  // $2831AC/$2831B2
+  // $2831C0 tst.w $30 / beq -- the drift/steer block is gated AND time-limited.
+  const n = ram.u16(base + 0x30);
+  if (n === 0) { advance40(ctx, base); return; }       // $2831C4 beq $283256
+  ram.setU16(base + 0x30, u16(n - 1));                 // $2831C8 subq.w #1,$30
+  driftAndSteer(ctx, base);                            // $2831CC..$283250
+  advance40(ctx, base);                                // $283256 lea $40(A6)
+});
+
+// ----- kind 32 ($2835CC init / $283616 cont) -- the same core, ungated
+INIT_BODIES.set(0x2835cc, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                          // $2835DA bsr $2820CC
+  clearDispatch(ram, base);                            // $2835DE
+  ram.setU8(base + 0x1d, 0x1a);                        // $2835E2
+  ram.setU32(base + 0x06, 0xfe00fe00);                 // $2835E8  (dead: overwritten)
+  ram.setU16(base + 0x0e, 0x0210);                     // $2835F0  (dead: overwritten)
+  ram.setU32(base + 0x0a, 0x1c0944);                   // $2835F6 descriptor
+  ram.setU32(base + 0x06, 0xfc00fe00);                 // $2835FE renderOffs (final)
+  ram.setU16(base + 0x0e, 0x0410);                     // $283606 graphic (final)
+  ram.setU32(base + REC.continuation, 0x283616);       // $28360C
+});
+CONTINUATIONS.set(0x283616, (ctx, base) => {
+  animateRenderOffsWrap(ctx, base, 0x1c0944, 0x24, 0x1c09d4);  // $283616/$28361E
+  driftAndSteer(ctx, base);                            // $283630..$283686
+  advance40(ctx, base);                                // $28368C lea $40(A6)
+  // ($283696 free-slot stub is UNREACHABLE -- 0 references.)
+});
+
 export { INIT_BODIES, CONTINUATIONS };

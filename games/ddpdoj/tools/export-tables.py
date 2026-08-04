@@ -298,6 +298,21 @@ SHOT_WINDOWS = [
     #   the highest is $14 and the read is a LONGWORD, so the extent is $18.
     #   $283704 + $18 = $28371C, exactly where kind 34's body begins: an
     #   abutting bound, the same evidence used for $2822EC's $100.
+    #   $2830EA  kind 26's 9-entry dir-indexed sprite-frame table, reached
+    #                       through the $283C8C epilogue (`lea $2830EA(pc),A0`
+    #                       then `adda.w $283C4C[d1],A0 / move.l (A0),$a`).
+    #
+    #   REQUIRED, not sprite-only: $283C46 also writes +$10 = frame + (+$14),
+    #   and kind 26's CONTINUATION uses +$10 as its ring limit.  Without the
+    #   window the ring bound is unavailable, not merely the picture.
+    #
+    #   Sized from the index expression: the $283C4C offsets top out at $20
+    #   (measured, not assumed -- the 32 words are 0,4,8...$20 and back down),
+    #   the read is a longword, so the extent is $24.  $2830EA + $24 = $28310E,
+    #   exactly where kind 26's continuation begins: an abutting bound.
+    (0x2830EA, 0x0024, "WAVE 27: $2830EA kind 26's 9-entry dir-indexed sprite-"
+                      "frame table, read by the $283C8C epilogue; also supplies "
+                      "the +$10 ring limit its continuation compares against"),
     (0x283704, 0x0018, "WAVE 27: $283704 kind 33's 6-entry descriptor table, "
                       "indexed by the word at record +$2C ($14 down to 0, then "
                       "wrapping to $C -- a 2-entry lead-in over a 4-entry ring)"),
