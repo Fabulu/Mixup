@@ -459,7 +459,7 @@ later waves to keep and W33 kept.
 - **M16 and M17 — no test at all.** The two defects §3 fixed had no check, which
   is why they had survived since W25. Both now have one.
 
-**Unit tests: 492 → 511 pass, 0 fail, 0 SKIPPED.**
+**Unit tests: 492 → 516 pass, 0 fail, 0 SKIPPED.**
 
 ### 6.2 THE RECURRING SKIP — **FOUND, AFTER FIVE WAVES**
 
@@ -543,10 +543,20 @@ the same class of miss as a note whose address nobody checks.
 VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED
 ```
 
-**RUN TWICE, TO COMPLETION, and the second run was on the FINAL tree** — the
-first had already started when the midboss-arm A6 fix landed, and a gate whose
-MAME stages ran against a different tree from its unit-test stage is not a
-result. Both runs: 49/0/0. Unchanged from W32's and W33's 49/0/0. **Nothing was disabled, skipped,
+**RUN THREE TIMES, TO COMPLETION.** The first had already started when the
+midboss-arm A6 fix landed, and a gate whose MAME stages ran against a different
+tree from its unit-test stage is not a result. The second ran on that tree and
+came back 49/0/0 — but its own unit-test stage reported `# pass 515 # skipped 1`,
+which is how §6.2's five-wave mystery was finally caught. The third ran on the
+final tree with the exporter fixed:
+
+```
+VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED
+# pass 516   # fail 0   # skipped 0
+```
+
+Unchanged from W32's and W33's 49/0/0, and the first DaiOuJou gate run in five
+waves whose unit-test stage has no skip in it. **Nothing was disabled, skipped,
 narrowed or loosened**; no compared column set, window or frame count moved, and
 no stage was added. The stages this wave could plausibly have broken all pass:
 
@@ -612,7 +622,12 @@ control reaches the same clock and the same eight. W33 §3's wall was the end of
 the fly-around window.
 
 **D. TWO DEFECTS FOUND AND FIXED** in handlers ported by W25 and reviewed since
-(§3), neither of which any run could have seen.
+(§3), neither of which any run could have seen — plus a third in the midboss
+(the arm's `$286096` was passing A4 where `$26B822` leaves A6 alone).
+
+**E. THE RECURRING SKIP IS FOUND AND FIXED** after five waves (§6.2):
+`export-web.mjs` deleted the whole of `games/ddpdoj/assets/`, and `pgm.py
+check` runs it.
 
 ### RANKED, FOR THE REVIEWER
 
@@ -633,6 +648,9 @@ the fly-around window.
    rebuilt W33 §4's leak on purpose.
 5. **§6's six survivors.** Three fixtures sat where two readings agree, one
    assertion was a delta, and two arms had no test at all.
+6. **§6.2.** W32's grep covered the right file and the right pattern and did not
+   resolve the argument. A grep that finds a remover and does not follow what it
+   removes is the same class of miss as a note whose address nobody checks.
 
 status: DONE
 
