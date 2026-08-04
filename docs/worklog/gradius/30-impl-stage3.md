@@ -1,6 +1,7 @@
 # Wave 30 IMPLEMENTER -- stage 3 ($19=2) plays start-to-finish
 
-status: IN PROGRESS
+status: DONE (with one named UNRESOLVED item -- no stage-3 both-sides
+cartridge comparison was recorded; see "WHAT I COULD NOT REACH")
 implementer, 2026-08-04
 
 Scope (from the brief + `29-plan-whole-game.md` W30): make stage 3 (`$19 = 2`)
@@ -356,9 +357,41 @@ dispatchable, first unported NONE**. It was 28/78 at the top of this file.
 - **`$C87B` collision-map offset runs: 2 of 4 runs** exercised (variant 0's
   two); variant 2's two are transcribed and unexercised.
 
-### The gate
+### The gate, MEASURED 2026-08-04 on this wave's HEAD
 
-`node games/gradius/tools/test-all.mjs` -- result recorded below once the run
-finished; `node --test games/gradius/tests/` alone: **511 pass, 0 fail,
-0 SKIPPED** (486 before this wave + 25 new W30 checks... the count is stated
-exactly in the gate section).
+`node games/gradius/tools/test-all.mjs`:
+
+```
+  PASS  inputs
+  PASS  unit tests (node --test games/gradius/tests/)
+  PASS  assets == the cartridge (verify_assets.py --self-test)
+  PASS  every indexed table is exported (tablecoverage.py)
+  PASS  per-stage coverage ledger (stageledger.py)
+  PASS  sound data == the measured ownership window (snddata.py --selfcheck)
+  PASS  one frame fits in the budget (framecost.mjs)
+  PASS  port trace shape == probe.lua state vector
+  PASS  the renderer rebuilds the cartridge pixel-exactly (rendergate.py)
+  PASS  port vs cartridge (compare.mjs)
+  PASS  self-check: the comparison goes red when the port is broken
+  GREEN -- 11 passed, 0 failed, 0 SKIPPED
+```
+
+**0 SKIPPED stages.** Read the skip count honestly, though: `compare.mjs`
+reports "6 fields SKIPPED (pad2 oamBudget spriteOverflow scanline cpuCycle
+splitSpins)" INSIDE its own run -- those are per-field skips that predate this
+wave (they are emulator-side quantities with no port counterpart, declared in
+`porttrace.mjs`), not skipped gate stages. The gate-level skip count is zero.
+
+Unit tests: **512 pass, 0 fail, 0 skipped** (486 before, + 26 new W30 checks).
+
+Corpus: **47 scenarios, 29,657 of 29,657 frames compared, 0 failures**, and the
+self-check drove all 7 deliberate breaks RED (lead1 249, seed-x+1 167,
+laginject=450 983, seed-nt+1 1, seed-pal+1 6, seed-coll0 105, bullet-nosub 71
+TIER-1 failures). That matters here beyond the usual reason: this wave
+REFACTORED five pieces of already-shipped stage-1/2 code out into named
+functions -- `loc_BD2C` (out of `aimBullet`'s tail), `loc_B1DA` (out of
+`h_B198`), `sub_B2AF` and `loc_B2D2` (out of `h_B26C`'s two closing arms) and
+`loc_B212` (out of `h_B205`'s init) -- because stage 3's handlers enter all five
+from outside. The corpus staying at 0 divergent over 29,657 frames is what says
+those extractions were behaviour-preserving; the endchain alone is 5,839 frames
+with every TIER-1 field exact.
