@@ -190,14 +190,28 @@ stage('per-stage coverage ledger (stageledger.py)', () => {
 // and a throw in this port is a first divergence with a ROM address on it. It
 // proves nothing about correctness; `compare.mjs` is that gate.
 //
+// W37 -- AND THE INSTRUMENT HAD THE SAME DEFECT ONE LEVEL UP. It read the
+// `$A2F0` guard live, so "sweep clean" meant "clean on the stages already
+// admitted": before W35 it printed OK while saying NOTHING about stage 6,
+// where 16 of 16 forced runs threw at `$B480` by frame 9. It now prints a
+// COVERAGE table on every run (stages swept vs the export's own stage count,
+// and WHY each unswept stage was not swept), it sweeps the stages BEHIND the
+// guard in a patched throwaway copy of `src/` under %TEMP% -- reported, and
+// not failed on, because that is declared debt -- and it FAILS if a stage
+// `stageledger.py`'s BASELINE calls ADMITTED was not swept, or was reached
+// only by forcing the guard and threw. Read the COVERAGE table, not the last
+// line: this runner printing GREEN over a partial sweep is how six crashes
+// shipped.
+//
 // It reads assets/ and runs the port headlessly, so ROM-absent is not a reason
-// to skip it. ~3 s for 80 chunk runs and ~112,000 frames.
+// to skip it. ~4 s for 96 chunk runs / ~134,000 frames plus the forced probe.
 stage('every stage survives its own chunks (stagesweep.mjs)', () => {
   if (!assetsPresent) return { status: 'SKIP', note: 'needs assets/' };
   return run(process.execPath, ['games/gradius/tools/oracle/stagesweep.mjs'])
     ? { status: 'PASS' } : { status: 'FAIL', note: 'a stage threw while running '
-           + 'its OWN wave stream. The ROM address in the message above is the '
-           + 'diagnosis; it is a path the port does not have, not a test bug.' };
+           + 'its OWN wave stream, or a stage the ledger calls ADMITTED was not '
+           + 'swept. The ROM address in the message above is the diagnosis; it '
+           + 'is a path the port does not have, not a test bug.' };
 });
 
 // ---------------------------------------------------------------- stage 1c --
