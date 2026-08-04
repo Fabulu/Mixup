@@ -3,6 +3,7 @@
 //     node games/gradius/tools/oracle/stagesweep.mjs
 //         [--frames N]        frames per chunk run          (default 1400)
 //         [--force-frames N]  frames per FORCED chunk run   (default 600)
+//         [--loop N]          seed the LOOP counter $1A (default 0)
 //         [--no-force]        do not look behind the $A2F0 guard at all
 //         [--stages 0-4,6]    restrict the sweep (see --allow-partial)
 //         [--allow-partial]   ... and accept the coverage hole it makes
@@ -326,11 +327,20 @@ export function chunkGeometry(rom) {
  * byte offset into that table. Chunks that repeat a pointer are swept anyway:
  * they cost nothing and the duplication is the ROM's, not this tool's.
  */
-export function seedChunk(eng, res, st, c) {
+export function seedChunk(eng, res, st, c, loop = 0) {
   const rom = res.enemyTables;
   const tbl = rom.word(0xA7D0 + 2 * st);
   const ptr = rom.read(tbl + 2 * c) | (rom.read(tbl + 2 * c + 1) << 8);
   const s = eng.bootState(res.manifest);
+  // W38: `$1A`, THE LOOP COUNTER, and it is 0 unless `--loop` says otherwise.
+  // It stopped being structurally pinned when W38 ported `$9889 INC $28,X`, so
+  // eight `$1A` readers ($B003's fire-rate row, $B951, $BBBF/$BBC9, $BC44,
+  // $BD42, $BD96, $CEAC) went from dead-but-faithful to live -- and NOTHING in
+  // the corpus reaches a second lap, so a sweep is the only instrument that
+  // can drive them at all. `$28,X` is set too, because `$9B3E` restores `$1A`
+  // from it and an intro inside the run would otherwise put it back to 0.
+  s.zp1A = loop;                                 // $1A
+  s.save28[0] = loop;                            // $28,X -- $9B72's source
   s.zp19 = st;                                   // $19, the stage
   s.substate = 0x80;                             // $1B, mode-5 play
   s.spawn.z60 = 2;
@@ -366,8 +376,8 @@ function chase(s) {
 }
 
 /** One chunk run. Returns {frames, throwAt, message}. */
-export function sweepChunk(eng, res, st, c, frames, playing) {
-  const { state: s } = seedChunk(eng, res, st, c);
+export function sweepChunk(eng, res, st, c, frames, playing, loop = 0) {
+  const { state: s } = seedChunk(eng, res, st, c, loop);
   const u8 = eng.u8;
   for (let f = 0; f < frames; f++) {
     s.cam.lo = u8(s.cam.lo + 2);                 // the camera, 2 px a frame
@@ -437,6 +447,11 @@ const FORCE_FRAMES = arg('--force-frames', 0) || 600;
 const VERBOSE = argv.includes('--verbose');
 const FORCE = !argv.includes('--no-force');
 const ALLOW_PARTIAL = argv.includes('--allow-partial');
+// W38: `--loop N` seeds `$1A` (and `$28,X`, its restore source). 0 is the
+// default and the gate never passes anything else, so this run is unchanged
+// unless somebody types it. `$CEAC` clamps at 6, so 0..6 is the whole range
+// the ROM's own tables distinguish; anything above reads the clamped entry.
+const LOOP = arg('--loop', 0) || 0;
 
 // THE DENOMINATOR IS THE EXPORT'S, NOT THIS FILE'S (docs/knowledge/10 rule 5:
 // never invent a denominator). `$A7D0` holds `stages` pointers, each to a table
@@ -489,7 +504,7 @@ for (const playing of [false, true]) {
     if (!sel.set.has(st)) continue;
     const row = [];
     for (let c = 0; c < geo.counts[st]; c++) {
-      const r = sweepChunk(engine, res, st, c, FRAMES, playing);
+      const r = sweepChunk(engine, res, st, c, FRAMES, playing, LOOP);
       runs += 1; frames += r.frames;
       const edge = r.throwAt >= 0 ? decidedFor(r.message) : null;
       if (r.throwAt >= 0 && edge) {

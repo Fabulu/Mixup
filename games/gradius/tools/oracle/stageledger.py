@@ -400,7 +400,21 @@ BASELINE = {
     # threw on $B480 before the wave, earliest at frame 9.
     4: dict(first_unported_scroll=None,        ported_floor=28,  admitted=True),   # W32a-c
     5: dict(first_unported_scroll=None,        ported_floor=98,  admitted=True),   # W35
-    6: dict(first_unported_scroll=0x0AC0,      ported_floor=104, admitted=False),  # W32a (corrected)
+    #
+    # W36 SHIPPED STAGE 7 AND DID NOT LIFT THIS ROW -- the same failure W29 had
+    # (see above), and stagesweep.mjs printed it on every run since: "stage
+    # $19=6 was swept and stageledger.py's BASELINE still calls it debt".
+    # W38 lifts it. Stage 7's whole debt was SEVEN records in the chunk-5 stream
+    # $AD8A: one type $1E (entry 30, $B569, the shutter) and six types $20-$25
+    # (entries 32-37, the shared $AF10 gallery). All three gates are open --
+    # jt_$C439[6] = $C429 is a bare RTS, and the $A2F0 guard moved to `>= 7`,
+    # which is past the last stage $A7D0 has.
+    #
+    # THIS ROW IS ALSO WHY THE DICT NEEDS A SECOND READER: it is the artifact
+    # stagesweep.mjs consults so that its coverage claim is not checked against
+    # its own input. A stale row here is a warning there, and this one warned
+    # for two waves before anybody edited it.
+    6: dict(first_unported_scroll=None,        ported_floor=111, admitted=True),   # W36, lifted W38
 }
 
 
