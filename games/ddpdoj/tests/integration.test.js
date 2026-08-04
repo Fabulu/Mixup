@@ -135,13 +135,32 @@ test('$281CD6 with $81B412 NEGATIVE takes the TRANSFORM arm ($281D48)', () => {
   assert.equal(ram.u16(dead + 0x3c), 0);
 });
 
-test('$281CD6 with $81B412 POSITIVE is a LOUD NAMED THROW at $27F8F8', () => {
+// WAVE 51 TURNED THIS TEST INSIDE OUT, and the reason is the whole point of it.
+// It asserted that `$281CD6`'s positive arm THROWS at `$27F8F8`, on W29's belief
+// that "nothing in the port can make `$81B410` non-zero: the only writer is the
+// bomb".  `$243E7C move.w #$1,$81B410` is the second writer and `src/midboss.js`
+// has ported it since W31; what was missing was the midboss's DEATH.  W51's beam
+// kills it, and [M] this path then ran on the shipped seed at step 1,773 with
+// fire held -- and at step 2,203 with fire merely TAPPED, i.e. **it was already
+// reachable on the W45 tree by ordinary shots and no test had walked that far.**
+//
+// `$27F8F8` is now a counted NOTE and the two writes after it are ported.  The
+// assertion is therefore the OPPOSITE one and is still a real check: the bullet
+// must be cleared exactly as `$281D36`/`$281D38` clear it, and the address must
+// still be named in the log rather than vanishing.
+test('$281CD6 with $81B412 POSITIVE clears the bullet and NAMES $27F8F8', () => {
   const ram = new Ram();
-  liveBullet(ram, 0);
+  const live = liveBullet(ram, 0);
   ram.setU16(BULLET_DRIVER.armWord, 1);
   ram.setU16(BULLET_DRIVER.modeWord, 0x0001);
-  assert.throws(() => runScreenClear(ctxOf(ram)),
-    (e) => e instanceof Unreached && e.romAddress === BULLET_DRIVER.clearEffect);
+  const c = ctxOf(ram);
+  assert.equal(runScreenClear(c), 1, 'the live slot is acted on');
+  assert.equal(ram.u16(live), 0, '$281D36 clr.w (A6)');
+  assert.equal(ram.u16(live + 0x02), 0xffff, '$281D38 move.w #$FFFF,($2,A6)');
+  const named = [...c.unportedLog.calls.keys()]
+    .filter((k) => k.startsWith('$27F8F8 '));
+  assert.equal(named.length, 1, '$27F8F8 is COUNTED under its own address');
+  assert.match(named[0], /\$8171BE/, 'and it names the pool it does NOT allocate from');
   assert.equal(BULLET_DRIVER.clearEffect, 0x27f8f8);
 });
 

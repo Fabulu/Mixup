@@ -67,11 +67,45 @@
 // slot-count cascade the mover walks (`moverIterCount`), which is why that
 // function is exported rather than written twice.
 //
-// `$27F8F8` is a LOUD NAMED THROW.  It is reachable only when `$81B410` is
-// non-zero, and nothing in the port can make it non-zero: the only writer is the
-// bomb (`$249814`, itself a named throw in `src/player.js`) and `$25354C` below
-// only ever decrements.  So the throw costs nothing today and names the routine
-// the first time a bomb is ported and this path is walked.
+// `$27F8F8` WAS A LOUD NAMED THROW AND WAVE 51 DOWNGRADED IT TO A COUNTED
+// NOTE.  The sentence that stood here from W29 to W50 --
+//
+//     "It is reachable only when `$81B410` is non-zero, and nothing in the port
+//      can make it non-zero: the only writer is the bomb (`$249814`)"
+//
+// -- **IS FALSE, and it was false before W51 too.**  `$243E7C move.w #$1,$81B410`
+// is the SECOND writer; `src/midboss.js armScreenClear` has ported it since W31,
+// reached from the midboss's death arms `$26B70C` and `$26B80C`.  What was
+// missing was not the writer, it was the DEATH: nothing in this port could kill
+// the midboss.  W51's beam can, and [M] it does, at step 1,773 of a run from the
+// shipped seed with fire held -- the body and all eight arms, each with its own
+// `$289004`/`$28C25A` death note -- and the very next frame the screen clear
+// armed and the page died on this throw.  The owner would have hit it by
+// holding the button for thirty seconds.
+//
+// **THE REASON IT IS A NOTE AND NOT A PORT** is the one W34 §1.6 gives for
+// `$289004` and `50-recon-effects` restates as the POOL LEAK: `$27F8F8` is a
+// SLOT ALLOCATOR over the impact pool `$8171BE` -- `moveq #$45,D7` = 70 slots of
+// `$2C`, free test `tst.w (A0)`, `bra $280B3E` to fill and
+// `$280B3E addq.w #1,$817F7E` to count -- and its only driver is `$27F95A`,
+// **type-5 call #4, unported**.  Porting the allocator without the driver would
+// consume all 70 slots and then fail silently forever, which is W33's defect
+// rebuilt one level down.  So this wave allocates NOTHING.
+//
+// **AND THE NOTE INVENTS NOTHING**, which is the test `src/unported.js` sets for
+// the difference.  Read the call site:
+//
+//   281d26  move.w D7,-(A7)
+//   281d28  move.w $81B412,D0
+//   281d2e  jsr $27F8F8            <- the effect.  Its RESULT is A0 and the
+//   281d34  move.w (A7)+,D7           CARRY, and the caller uses NEITHER: there
+//   281d36  clr.w (A6)                is no `bcc` after it and A0 is dead.
+//   281d38  move.w #$FFFF,($2,A6)  <- the two writes that actually clear the
+//   281d3e  lea ($40,A6),A6           bullet, and BOTH are ported below.
+//
+// So the bullets are cleared exactly as the board clears them and the effect is
+// absent and named -- the same shape as every other member of this family
+// already in the port (`$289004`, `$28C25A`, `$289F54`, `$27F8EE`, `$289F96`).
 //
 // ================================ `$25354C` =================================
 //
@@ -137,14 +171,22 @@ export function runScreenClear(ctx) {
     const base = BUL.pool + s * BUL.stride;
     if ((ram.u8(base) & 0x80) === 0) continue;          // $281D22 tst.b (A6) / bpl
     // $281D28 move.w $81B412,D0 ; $281D2E jsr $27F8F8 -- the impact/effect pool
-    // ($8171BE, driven by type-5 call #4 $27F95A, also unported).  No stub.
-    unreached(BULLET_DRIVER.clearEffect,
-      `the screen clear's effect spawn ($281D2E jsr $27F8F8, D0=$${
-        mode.toString(16).toUpperCase()}) for bullet slot ${s}. $27F8F8 walks the `
-      + `IMPACT pool $8171BE, which no wave has ported; its driver $27F95A is `
-      + `type-5 call #4 and is also unported. This arm is reachable only while `
-      + `$81B410 is non-zero -- i.e. only from a bomb ($249814, itself a named `
-      + `throw in src/player.js)`);
+    // ($8171BE, 70 slots of $2C, driven by type-5 call #4 $27F95A, unported).
+    // COUNTED, never allocated -- see this file's header for both reasons.
+    ctx.unportedLog?.note(BULLET_DRIVER.clearEffect,
+      `$281D2E jsr $27F8F8 (D0=$${mode.toString(16).toUpperCase()}) -- the `
+      + `screen clear's per-bullet effect. $27F8F8 is a slot ALLOCATOR over the `
+      + `impact pool $8171BE (moveq #$45,D7 = 70 x $2C, free test tst.w (A0), `
+      + `filled at $280B3E which also bumps the live count $817F7E), and its `
+      + `only driver is $27F95A, type-5 call #4, UNPORTED. Allocating without a `
+      + `driver is W33's leak one level down (50-recon-effects), so this port `
+      + `allocates nothing. The caller reads neither A0 nor the carry, and the `
+      + `two writes that clear the bullet ($281D36/$281D38) ARE ported, so the `
+      + `only thing absent is the visual effect. Reached because W51's beam can `
+      + `kill the midboss, whose death arms $81B410 through $243E7C`);
+    ram.setU16(base, 0);                                // $281D36 clr.w (A6)
+    ram.setU16(base + CLR.posA, 0xffff);                // $281D38 move.w #$FFFF
+    hit++;
   }
   return hit;
 }

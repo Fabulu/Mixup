@@ -814,11 +814,13 @@ export function runType5Tail(ram, ctx) {
   if (mirror === 0) {                                 // $28B730 tst.w / bne $28B76E
     return collisionPass(ram, ctx, {                  // $28B766 jmp $244D62
       table: DMG.p1shots, mask: DMG.maskP1,
-      d1: ram.u16(DMG.hyper1), d2: ram.u16(DMG.hyperLvl1), player: DMG.p1rec });
+      d1: ram.u16(DMG.hyper1), d2: ram.u16(DMG.hyperLvl1), player: DMG.p1rec,
+      a1: DMG.beamRecP1, a2: DMG.laserSlot27, a3: DMG.laserSlot30 });
   }
   return collisionPass(ram, ctx, {                    // $28B79C jmp $244D62
     table: DMG.p2shots, mask: DMG.maskP2,
-    d1: ram.u16(DMG.hyper2), d2: ram.u16(DMG.hyperLvl2), player: DMG.p2rec });
+    d1: ram.u16(DMG.hyper2), d2: ram.u16(DMG.hyperLvl2), player: DMG.p2rec,
+    a1: DMG.beamRecP2, a2: DMG.laserSlot27P2, a3: DMG.laserSlot30P2 });
 }
 
 /** `$244D40` -- the same three global writes, then the PLAYER's box and

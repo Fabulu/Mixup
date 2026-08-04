@@ -101,7 +101,44 @@
 // `$81B4C0..$81B4C3`, and a reader who takes the `lea` for the accumulator's
 // address is off by one slot on every player.
 
+// ============ WAVE 51: `$286876` IS NOT "THE BOMB ARM" AND IT IS LIVE =======
+//
+// This file has said since W34, and W45 repeated it, that `$2860F2 bsr $286876`
+// is unreachable because the `$400` hit bit "is set only at `$245242`/`$2452F2`,
+// both inside the A2/A3 weapon loops `src/damage.js` does not run".
+//
+// **BOTH HALVES OF THAT SENTENCE ARE NOW FALSE**, and W51 measured it rather
+// than reasoned it:
+//
+//   * `$2454E0` and `$2455F2 ori.w #$400,D4 / or.w D4,(A5)`, inside `$2453AC`
+//     -- THE BEAM's own damage pass -- set the same bit, and block 8's
+//     `$2452F2 ori.w #$4400,D4` sets `$4000` with it;
+//   * `src/damage.js` runs those loops from W51 on, behind `$24519A
+//     tst.b ($3f,A4)`, the byte the laser sets while it is firing.
+//
+// [M] 601 steps from the shipped bundle seed with the fire bit HELD, the beam
+// killing 57 enemies: `$286876` executed **2 times** (0 in the fire-suppressed
+// control), and `$286674` -- the cap-clamp tail -- went from 2 to 55.
+//
+// So the arm is ported here.  Leaving it a note would have been the quiet wrong
+// answer: `$2860F0 beq $2860F8` means the ordinary BCD add runs INSTEAD of
+// `$286876`, never as well, so a note there silently drops the whole ledger
+// event -- score, chain, meter and hi-water -- on every laser hit.
+//
+// **AND IT IS NOT THE BOMB'S ARM.**  `$400` is D1 bit 2 and nothing about it
+// says "bomb"; the bomb reaches `$286876` through the same bit from
+// `$245242`/`$2452F2`, which are the SAME two weapon loops.  The name in this
+// file was a guess from W34's reachability argument and is retired.
+//
+// WHAT THE BRIEF PREDICTED AND WHAT ACTUALLY HAPPENED.  `37-recon-laser` §4.3
+// to §4.6 names three laser score differences -- `$2860C8 bsr $286A82`,
+// `$2867B4`'s 8-frame rank divider and `$2862EA`'s chain zero -- and all three
+// are behind **`$811F72`**, the BOMB-LASER's record.  [M] `$811F72` was 0 and
+// `$8130F8` was 0 on all 601 steps of the run above.  W45's measurement holds
+// and its conclusion was right for one more wave than it expected.
+
 import { u16 } from './ram.js';
+import { unreached } from './unported.js';
 
 export const SCORE = {
   hit: 0x286096,            // A HIT LANDS
@@ -112,7 +149,14 @@ export const SCORE = {
   capClamp: 0x286664,
   capTail: 0x286674,        // NOTED -- the hyper-stock bonus
   wrapP1: 0x28614a, wrapP2: 0x286154, wrapMask: 0x286128, wrapTail: 0x286102,
-  altBomb: 0x286876,        // NOTED
+  /** `$286876..$286A80`, 523 bytes -- `$286096`'s `$400`-bit arm.  PORTED in
+   *  wave 51; see this file's header for why it stopped being unreachable. */
+  altBomb: 0x286876,
+  altBombShared: 0x286aaa,  // its `$8130F8` bit-2 arm, INSIDE $286A82's body
+  bombRankFeed: 0x286774,   // $2868EE bsr -- the twin of $2867B4
+  hyperGrant: 0x287682,     // $2867A4 jsr -- W28 wave 8, still NOTED
+  rankAccum: 0x81b64a,      // $28679E add.w D2,$81B64A
+  bombStock: 0x81b65c,      // $286782 cmpi.w #$5
   altLaserP1: 0x286a82, altLaserP2: 0x286da8,   // NOTED
   /** `$2867B4` -- **THE LASER'S RANK FEEDER**, reached ONLY by
    *  `$286AF8 bsr` from inside `$286A82`, with 0 absolute callers.  Its own
@@ -176,6 +220,8 @@ export const LEDGER = {
     refill: 0x28663a,       // $28631C / $2863E8 bsr
     hyperLvl: 0x81b654,     // $28618A (in $28615E)
     wrap: 0x28614a,         // $2861E4 bsr  (the four repeats)
+    power: 0x810408,        // $2868C4 / $286910 -- ($22,A4), the POWER word
+    formation: 0x810440,    // $286922 cmpi.w #$2 -- ($5a,A4), the FORMATION
   },
   p2: {
     who: 2,
@@ -375,6 +421,173 @@ function chainContinue(ram, ctx, p, d3, d1) {
 }
 
 /**
+ * `$286774..$2867B2` -- the `$400` arm's RANK FEEDER, and the exact twin of
+ * `$2867B4`, the LASER's, sixty-four bytes later.  Same divider word
+ * `$81B636`, same `add.w D2,$81B64A`, same `jsr $287682`, same `#$8` reload;
+ * only D2 differs.
+ *
+ * **AND ITS D2 IS ALWAYS `$18`.**  Read out of the listing:
+ *
+ *     28677c  moveq #$0,D2 / addi.w #$18,D2
+ *     286782  cmpi.w #$5,$81B65C / beq $28679E
+ *     28678c  bra $28679E                  <<-- and the fall-through goes there too
+ *     28678e  addi.w #-$4,D2 ...           <<-- NINETEEN BYTES NOTHING REACHES
+ *     28679e  add.w D2,$81B64A
+ *
+ * The `beq` and the `bra` have the SAME target, so `$28678E..$28679C` -- the
+ * bomb-stock test's other arm and the hyper `+4` -- is unreachable in build B.
+ * Transcribed as this comment and not as code, for the reason
+ * `$2860CE`'s unreachable P2 mirror is: writing it would give the port a path
+ * the cartridge has not got.  Whether it is a compiler artifact or a disabled
+ * feature I do not know and do not claim.
+ */
+function bombRankFeed(ram, ctx) {
+  const d = u16(ram.u16(SCORE.laserRankDivider) - 1);   // $286774 subq.w #1
+  ram.setU16(SCORE.laserRankDivider, d);
+  if (d !== 0xffff) return;                             // $28677A bcc -> rts
+  ram.setU16(SCORE.rankAccum, u16(ram.u16(SCORE.rankAccum) + 0x18));  // $28679E
+  note(ctx, SCORE.hyperGrant, `$2867A4 jsr $287682 from $286774, the $400 `
+    + `arm's rank feeder -- the SIXTH of that routine's six absolute callers `
+    + `and the first this port has ever reached. $287682 tests $81B64A against `
+    + `#$95F, clears it, and increments $81B6E0, the PENDING-ITEM count, which `
+    + `$2530CA turns into a hyper stock and $285A62 into +$81B646 of RANK `
+    + `(W38 §2.4). It is W28's wave 8 and stays unported. CONSEQUENCE, stated `
+    + `rather than hidden: $81B64A now ACCUMULATES with nothing to drain it at `
+    + `#$95F, so a beam that chains for long enough banks rank the board would `
+    + `have spent. That is the owner's named failure surface `
+    + `(20-OWNER-scoring-must-be-exact) and it is the LAST link of this chain`);
+  ram.setU16(SCORE.laserRankDivider, 8);                // $2867AA/$2867AC
+}
+
+/**
+ * `$286876..$286A80` -- `$286096`'s `$400`-bit arm, 523 bytes.  P1 only:
+ * `$286118 bra.w $286B9C` is P2's and stays a note.
+ *
+ * It is a THIRD chain machine, beside `$2862C6`'s and `$28615E`'s, and it is
+ * not a copy of either.  What it does that `$2862C6` does not:
+ *   * it re-seeds the meter to a CONSTANT (`#$A`, or `#$19` while hypering)
+ *     instead of refilling from `$287DF4`;
+ *   * it seeds `$81B636`, the rank divider, from the player's POWER word;
+ *   * it increments the chain ONE OR TWO times, chosen by `$286966 btst #$6,D1`
+ *     -- D1 bit 6 is `$4000`, which only block 8's `$2452F2 ori.w #$4400,D4`
+ *     sets.  So the beam's slot-30 object chains twice per hit and slot 27's
+ *     `$400` chains once;
+ *   * it runs `$286626` THREE times (accB, acc3, the pending score) where the
+ *     ordinary chained path runs it three times in a different order with a
+ *     `refillMeter` between.
+ *
+ * D0 is the score value (packed BCD) the caller computed at `$2860E4`
+ * (`moveq #1 / add.w $81B63E`), D1 the hit mask.
+ */
+export function bombHitChain(ram, ctx, d0, d1) {
+  if ((ram.u8(SCORE.g30f8) & 0x04) !== 0) {             // $286876 btst #$2/bne
+    unreached(SCORE.altBombShared, `$28687E bne $286AAA -- the $400 arm's `
+      + `OTHER entry, which lands INSIDE $286A82's body ($286AAA move.l D0,D3 / `
+      + `tst.w $811F72) and shares its 282-byte tail. $8130F8 bit 2 is the gate `
+      + `and it has been 0 on every frame of every run in this repo, including `
+      + `601 steps of a live beam in wave 51. Reaching it means the laser SCORE `
+      + `machine $286A82 is live, and $286A82 needs $2867B4 with it `
+      + `(37-recon-laser §9.8)`);
+  }
+  const p = LEDGER.p1;
+  const d3 = d0 >>> 0;                                  // $286882 move.l D0,D3
+  const laser = ram.u16(SCORE.laserRec);                // $286884 tst.w $811F72
+  if ((laser & 0x8000) === 0 && ram.u16(p.meter) === 0) {  // $28688A/$28688C bne
+    // ---- $286894..$2868EC: START A CHAIN FROM NOTHING.  Six longs and two
+    // words zeroed, the meter forced to 10, and the RANK DIVIDER seeded from
+    // the player's power: `$8 - ($22,A4)`, plus half of itself, plus $12.
+    ram.setU32(p.acc1, 0);                              // $286896
+    ram.setU32(p.acc2, 0);                              // $28689C
+    ram.setU32(p.accA, 0);                              // $2868A2
+    ram.setU32(p.accB, 0);                              // $2868A8
+    ram.setU16(p.chain, 0);                             // $2868AE
+    ram.setU16(p.t4, 0);                                // $2868B4
+    ram.setU16(p.meter, 0x0a);                          // $2868BA move.w #$A
+    let d2 = u16(8 - ram.u16(p.power));                 // $2868C2/$2868C4
+    d2 = u16(d2 + ((d2 & 0xffff) >>> 1));               // $2868CA..$2868CE
+    d2 = u16(d2 + 0x12);                                // $2868D0 addi.w #$12
+    ram.setU16(SCORE.laserRankDivider, d2);             // $2868D4
+    if (ram.u16(p.hyper) !== 0) d2 = u16(d2 - 0x0c);    // $2868DA/$2868E2
+    ram.setU16(p.w1e, d2);                              // $2868E6
+    return;                                             // $2868EC rts
+  }
+  // ======================= $2868EE: THE CHAIN IS ALREADY UP =================
+  bombRankFeed(ram, ctx);                               // $2868EE bsr $286774
+  const w = u16(ram.u16(p.w1e) - 1);                    // $2868F2 subq.w #1
+  ram.setU16(p.w1e, w);
+  if (w !== 0xffff) {                                   // $2868F8 bcc $2869D8
+    return bombMeterFloor(ram, p);                      // -> $2869D8
+  }
+  // ---- $2868FC..$28692E: the counter RELOAD, and it is a different formula
+  // under a hyper (`$6 - $81B654`) from the one above (`$8 - ($22,A4)`), with
+  // a `subq.w #3` unless the option FORMATION is exactly 2.
+  let d2;
+  if (ram.u16(p.hyper) !== 0) {
+    d2 = u16(6 - ram.u16(p.hyperLvl));                  // $286904/$286906
+  } else {
+    d2 = u16(8 - ram.u16(p.power));                     // $28690E/$286910
+    d2 = u16(d2 + ((d2 & 0xffff) >>> 1));               // $286916..$28691A
+    d2 = u16(d2 + 1 + 0x11);                            // $28691C/$28691E
+    if (ram.u16(p.formation) !== 2) d2 = u16(d2 - 3);   // $286922/$28692C
+  }
+  ram.setU16(p.w1e, d2);                                // $28692E
+  if (ram.u32(p.acc1) !== 0) {                          // $286934 tst.l/beq
+    const v = ram.u32(p.acc1);                          // $28693C
+    ram.setU32(p.accA, v);                              // $286942
+    ram.setU32(p.accB, v);                              // $286948
+    ram.setU16(p.chain, 1);                             // $28694E
+    ram.setU32(p.acc1, 0);                              // $286958
+  }
+  // ---- $28695E..$286990: the packed-BCD `+1`, ONE OR TWO TIMES.
+  //      `$286966 btst #$6,D1` -- D1 bit 6 is $4000, block 8's own hit bit --
+  //      makes D0 = 1, and `$286990 dbra D0` therefore runs the body TWICE.
+  const reps = (d1 & 0x40) !== 0 ? 2 : 1;               // $286966/$28696C
+  for (let n = 0; n < reps; n++) {
+    const hi = ram.u8(p.chain), lo = ram.u8(p.chain + 1);
+    const r0 = abcd(lo, 1, 0);                          // $28697C abcd D0,D2
+    const r1 = abcd(hi, 0, r0.x);                       // $286980/$286982
+    ram.setU8(p.chain, r1.v);                           // $28698C move.w D2,(A0)
+    ram.setU8(p.chain + 1, r0.v);
+  }
+  if (ram.u16(p.hiwater) < ram.u16(p.chain)) {          // $286994/$28699A bcc
+    ram.setU16(p.hiwater, ram.u16(p.chain));            // $2869A2
+  }
+  bcdAdd(ram, p.accB, d3);                              // $2869AC..$2869B4
+  bcdAdd(ram, p.acc3, ram.u32(p.accA));                 // $2869B8..$2869C4
+  bcdAdd(ram, p.pendingEnd, ram.u32(p.accA));           // $2869C8..$2869D4
+  return bombMeterFloor(ram, p);                        // fall into $2869D8
+}
+
+/** `$2869D8..$286A80` -- the meter FLOOR (10, or 25 while hypering) and the
+ *  same two popup arms `$2863FE` has, split at chain `$10`. */
+function bombMeterFloor(ram, p) {
+  if (ram.u16(p.hyper) === 0) {                         // $2869D8 tst.w/bne
+    if (ram.u16(p.meter) < 0x0a) ram.setU16(p.meter, 0x0a);   // $2869E0/$2869EA
+  } else if (ram.u16(p.meter) < 0x19) {                 // $2869F4
+    ram.setU16(p.meter, 0x19);                          // $2869FE
+  }
+  const chain = ram.u16(p.chain);
+  if (chain < 0x10) {                                   // $286A06 cmpi.w/bcc
+    if (chain > 1) ram.setU16(p.t4, 0x78);              // $286A10 bls / $286A1A
+    ram.setU16(p.t6, ram.u16(p.meter));                 // $286A22
+    if (ram.u32(p.acc3) === 0) ram.setU16(p.popup, 0xb4);  // $286A2C/$286A34
+    return;                                             // $286A3C rts
+  }
+  // ---- $286A3E: and note it is `tst.w $81B5CA / bne`, i.e. gated on TCA,
+  // where `$286436`'s equivalent is `cmpi.w #$10,chain / bne`.  Not the same
+  // condition and not the same two writes.
+  if (ram.u16(p.tca) === 0) {                           // $286A3E tst.w/bne
+    ram.setU16(p.tcc, 0);                               // $286A46
+    ram.setU16(p.t4, 0);                                // $286A4C
+  }
+  ram.setU16(p.tc8, 0xf0);                              // $286A52
+  ram.setU16(p.tca, ram.u16(p.meter));                  // $286A5A
+  ram.setU16(p.tdc, ram.u16(p.chain));                  // $286A64
+  ram.setU32(p.acc3, ram.u32(p.accB));                  // $286A6E
+  ram.setU16(p.popup, 0xf0);                            // $286A78
+}
+
+/**
  * `$286096` -- A HIT LANDS.
  *
  * D1 is the HIT MASK the caller built with `moveq #$5C,D1 / and.b (A6),D1`, so
@@ -430,9 +643,10 @@ export function scoreHit(ram, ctx, a6, d1) {
   if (!skipP1 && (d1 & 0x10) !== 0) {                 // $2860DE btst #4,D1
     const d0 = u16(1 + ram.u16(LEDGER.p1.hyper));     // $2860E4/$2860E6
     if ((d1 & 0x04) !== 0) {                          // $2860EC btst #2,D1
-      note(ctx, SCORE.altBomb, `$2860F2 bsr $286876 -- $286096's BOMB arm `
-        + `(D1 bit 2 = the $400 hit bit, set only at $245242/$2452F2 inside the `
-        + `A2/A3 weapon loops src/damage.js does not run)`);
+      // $2860F0 `beq $2860F8`, so this runs INSTEAD of the plain add below,
+      // never as well -- unlike the laser arm at $2860C8, whose $2860CC `bra`
+      // rejoins.  W51: PORTED, because the beam sets the $400 bit.
+      bombHitChain(ram, ctx, d0, d1);                 // $2860F2 bsr $286876
     } else {
       bcdAdd(ram, LEDGER.p1.pendingEnd, d0);          // $2860F8/$2860FE
     }
