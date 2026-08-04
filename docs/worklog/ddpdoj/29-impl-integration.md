@@ -1,6 +1,7 @@
 # W29 — INTEGRATION: wiring the type-5 subsystem call list (`$28B5E0`)
 
-status: IN PROGRESS
+status: **DONE** — 9 of 23 wired; the gate has a NEW red and it is a truncation
+by a loud named throw, not a wrong column. See §3.2 and §5.
 wave: 29. role: IMPLEMENTER (sole writer to `games/ddpdoj/`).
 date: 2026-08-04.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Every address is build B
@@ -132,6 +133,22 @@ cleared, the mover walks its cascade (70 slots, all four windows 0) and finds
 **zero live bullets**, so **no W27 behaviour body executes in the live path.**
 Said plainly because it is the wave's main shortfall — see §5.
 
+**THE ORDER IS VISIBLE IN THE LIVE RUN, not only in a unit test.** `Game` now
+carries `enemyFrame` / `bulletFrame` off the per-frame context so a runner can
+print what each subsystem did:
+
+```
+lf 2001  {script:0, deferred:0, driven:7}   {cleared:0, live:0}
+lf 2002  {script:1, deferred:0, driven:8}   {cleared:0, live:0}
+lf 2010  {script:1, deferred:0, driven:9}   {cleared:0, live:0}
+lf 2018  {script:2, deferred:0, driven:11}  {cleared:0, live:0}
+```
+
+`driven` rises by exactly `script` on the frame the record is created — the
+walker's output is in the table before the driver walks it, which is what
+`$2634F6 bsr` before `$2634FA bsr` means. And `{cleared:0, live:0}` every frame
+is how a reader sees the bullet subsystem doing nothing without reading `src/`.
+
 ### 3.1 THE SURVEY — what the live path REACHES over the whole stage
 
 A scratch harness (not committed) runs the same loop, and on an `Unreached`
@@ -165,6 +182,71 @@ It may not be quoted as "the port survives N frames".
   Six of the thirteen unported stage-1 handlers W28 enumerated. The other seven
   are not reached by this path; that is a statement about the path, not about
   the cartridge.
+
+## 3.2 THE GATE, AND THE DIVERGENCE
+
+`python tools/oracle/pgm.py check`, full, twice — once before the wiring landed
+and once after.
+
+| | before | after |
+|---|---|---|
+| verdict | FAILURES — 45 passed, **4 failed**, 0 skipped | FAILURES — 44 passed, **5 failed**, 0 skipped |
+| the four | the four `scroll program` stages — **a pre-existing red nobody owns**, failing since W22 (W28 §4.8) and confirmed unchanged here | same four |
+| the fifth | — | **`fly-around: port vs board, 0 divergent frames` — exit 1** |
+
+Every other stage stayed green, including the four that drive a whole `Game`:
+`display list` (1,901 frames + the cap/drop/12-mutation set), `demo gate` (the
+port drives the ship, pixel-exact, + four REDs), `replay determinism`, and the
+`determinism gate`.
+
+### THE FIFTH FAILURE, AND WHAT IT IS
+
+Run on the final tree, `pgm.py flyaround --reuse`:
+
+```
+RESULT 0 of 88 columns diverged; and the run was BLOCKED at lf2346 by $275914
+BLOCKED at lf2346 by the named throw $275914 -- the port reached a path this
+wave does not translate. 345 frames were compared before it.
+```
+
+**NOT ONE COMPARED COLUMN DIVERGED.** The gate is red because the window was
+TRUNCATED — 345 frames instead of 2,200 — by the loud named throw. The failure
+is "the port stopped", not "the port was wrong", and the runner says which
+routine stopped it.
+
+### AND ONE PREVIOUSLY-DIVERGENT COLUMN NOW MATCHES
+
+Measured properly: the three `case`s were removed from `src/type5.js`
+byte-exactly, `portdiff.mjs` re-run on the same corpus and seed, and the file
+restored and sha256-verified. So this is the same gate over the same data with
+and without the wiring, not two different runs.
+
+| REPORTED column | WITHOUT the wiring | WITH it |
+|---|---|---|
+| `rng` (`$803916`, the state of `$2433AE`) | **differed on 2,199 of 2,200 frames**, first at **lf2002**, largest gap 61 | **differed on 0 of 345** |
+| `nshot` | 0 of 2,200 | 0 of 345 |
+| `b000` / `affe` / `affc` | differed on 2,200 of 2,200, first at lf2001 | differed on 345 of 345, first at lf2001 — **unchanged, pre-existing** |
+| compared columns | 0 divergent over 2,200 frames | 0 divergent over 345 frames |
+
+`src/state.js` says of `rng`: *"the first thing a future wave that ports a
+drawing subsystem will want is the drift it has to close."* The drift starts at
+lf2002, two frames into the window, and **wiring the enemy subsystem closed it
+for every frame the port now reaches**: the board's other subsystems were
+drawing from `$2433AE` and the port was not. That is the strongest single piece
+of evidence this wave produced, and it is evidence *for* the transcription of
+W22-W25, not for the wiring alone.
+
+`b000`/`affe`/`affc` are the display-list output pointers and were already
+differing on every frame before this wave. They are not this wave's.
+
+### A NEW COUPLING, RECORDED BEFORE IT BITES
+
+The frame-sync governor (`$23C272`) sums `$81B40C + $81295C + 2*$81295E`, and
+`$81B40C` is now **written by the port** (`$281DA6 clr.w`, then the mover's own
+`addq` per live slot) instead of being whatever the seed held. With an empty
+pool that is 0 either way, so nothing moved today — but the moment a bullet
+exists, this wave's wiring can change WHEN a frame is armed. The column that
+would catch it is `irq6`, which IS claimed, and it is 0 divergent over the 345.
 
 ## 4. EVERY CHECK WAS SEEN TO FAIL
 
@@ -326,3 +408,54 @@ mode the brief names: a green achieved by not running code. The fix is to port
   above is the PORT running against a seeded RAM dump, and the seed is a
   fly-around capture with the invulnerability poke — `docs/knowledge/09` says
   that is valid for coverage and invalid for characterising play.
+
+## 7. WHERE THE WAVE ENDED
+
+**9 of 23 type-5 subsystem calls RUN** (was 6, not the 1 the brief inherited).
+The two that matter are the enemy subsystem's entry `$2634F4` and the bullet
+subsystem's entry `$281D9A`; `$25354C` came with the second.
+
+**The W21-W27 enemy stack executes in the product.** Five of the six ported
+handlers, the W23 init bodies, the W24 movement interpreter, the W22 spawn
+walker and the deferred drain all run every frame from `Game.step()`. Over
+7,400 frames of survey the init bodies and the interpreter threw **zero** times.
+
+**The W26/W27 bullet stack executes but has nothing to drive.** The mover is
+called every frame over a pool no ported code fills. `27-review.md` F1 — 29 of
+37 bodies checked only by the wave that wrote them — is **not** closed, and §5.1
+is the listing the next wave needs.
+
+**Gate: 44 pass / 5 fail / 0 skipped.** Four are the pre-existing scroll-program
+red. The fifth is `fly-around`, red because the run is BLOCKED at lf2346 by
+`$275914` with **0 of 88 compared columns divergent** — and with the `rng`
+column, which diverged on 2,199 of 2,200 frames before this wave, now matching
+on every frame the port reaches.
+
+**Unit tests: 427 pass, 0 fail, 0 SKIPPED** (was 413 before this wave).
+
+A skip appeared partway through the session and was chased rather than
+tolerated: `movement.test.js`'s W24 stream inventory started skipping because
+its gitignored input `assets/w24-movement/stage1-streams.json` had been deleted
+by a concurrent `pgm.py check` run. Regenerated with
+`python games/ddpdoj/tools/oracle/w24streams.py` (reads `maincpu.bin` only, no
+emulator). Recorded because the runner reports a skip inside an otherwise green
+number and a skip is not a pass.
+
+**14 new tests, 14 mutations, 14 reds, no survivors**; every source file
+restored byte-identical after every mutation.
+
+### FOR THE REVIEWER, RANKED
+
+1. **§5.1** — no W27 body runs live. The wave's stated shortfall, with the
+   listing for closing it.
+2. **§5.3** — fourteen of the 23 calls are counted notes and not throws. The one
+   place this wave departs from "unported = throw", and why.
+3. **§5.4** — the page dies at lf2346. Deliberate; no flag was added.
+4. **§5.2** — buckets 22/23 still have no producer, deliberately, because
+   `26-review.md` F1/F2 are open defects inside the emit.
+5. **§3.2's new coupling** — `$81B410`/`$81B40C` and the frame-sync governor.
+6. `enemyframe.js`'s `hctx()` shim exists because `ctx.unportedLog`,
+   `ctx.unported` and `ctx.notes` are three names for one object and `ctx.ram`
+   does not exist. Renaming them is a tidy-up this wave did not own.
+
+status: DONE

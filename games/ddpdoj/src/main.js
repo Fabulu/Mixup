@@ -255,6 +255,13 @@ export class Game {
     this.#counters();                                 // 5: $23BE8C, call #0
     this.unportedLog.note(ROM.call1, 'main-loop call #1 ($256D5A)');
     this.objn = runObjectDriver(this.ram, this.handlers, ctx);   // 7: $2410BC
+    // WAVE 29.  What the two newly-wired subsystems did this frame, lifted off
+    // the per-frame ctx so a runner can PRINT it.  A subsystem that did nothing
+    // must be visible as having done nothing -- the bullet driver runs every
+    // frame over a pool nothing fills yet, and `{cleared:0, live:0}` is how a
+    // reader learns that without reading src/.
+    this.enemyFrame = ctx.enemyFrame ?? null;    // {script, deferred, driven}
+    this.bulletFrame = ctx.bulletFrame ?? null;  // {cleared, live}
     this.unportedLog.note(ROM.call3, 'main-loop call #3 ($24683E)');
     // 9: call #4, $23D2AE, THE SPRITE LIST BUILD.  PORTED WHOLE in wave 11
     // (src/displaylist.js): the sum, the pre-emptive drop policy, the 29-bucket
