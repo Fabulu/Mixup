@@ -106,7 +106,7 @@
 //                            Their existence is why $BDD5's animation arm is
 //                            transcribed even though $BC8B makes it dead here.
 
-import { u8, u16, ENEMY_BASE, ENEMY_SLOTS, ARM_POOL } from './state.js';
+import { u8, u16, ENEMY_BASE, ENEMY_SLOTS, ARM_POOL, ARM_BASES } from './state.js';
 import { soundRequest } from './sound.js';
 import { probeCollision } from './terrain.js';
 import { addScore } from './score.js';
@@ -4163,7 +4163,7 @@ function sub_A4A6(state) {
   for (;;) {
     // $A4B7-$A4CB: the four headers, $90 stepping -$30, first FREE one wins.
     let free = -1;
-    for (let base = 0x90; !(base & 0x80); base = u8(base - 0x30)) {
+    for (const base of ARM_BASES) {                // $A4B7-$A4CB
       if (c[ARM_POOL + base] === 0) { free = base; break; }  // $A4BD/$A4C0
     }
     if (free >= 0) {                           // $A4C2 BEQ $A500
@@ -4371,7 +4371,7 @@ function loc_CB1B(state, j) {
 function loc_CB4E(state, owner) {
   const c = state.coll;
   const o = state.obj;
-  for (let base = 0x90; !(base & 0x80); base = u8(base - 0x30)) {   // $CB4E/$CB80-$CB87
+  for (const base of ARM_BASES) {              // $CB4E/$CB80-$CB87
     if (c[ARM_POOL + base] === 0) continue;    // $CB54/$CB57 LDY $0600,X / BEQ $CB80
     if (c[ARM_POOL + base] !== owner) continue;  // $CB59/$CB5B CPY $A8 / BNE $CB80
     c[ARM_POOL + base] = 0;                    // $CB5D/$CB5F STA $0600,X
@@ -4440,7 +4440,7 @@ export function armDriverGated(state, rom) {
 export function armDriver(state, rom) {
   const c = state.coll;
   state.spawn.zAE = 0;                         // $CB91/$CB93 STA $AE
-  for (let base = 0x90; !(base & 0x80); base = u8(base - 0x30)) {   // $CB95/$CBC0-$CBC7
+  for (const base of ARM_BASES) {              // $CB95/$CBC0-$CBC7
     const owner = c[ARM_POOL + base];          // $CB9B LDY $0600,X
     if (owner === 0) continue;                 // $CB9E BEQ $CBC0
     sub_CC33(state, rom, base, owner);         // $CBA0 JSR $CC33

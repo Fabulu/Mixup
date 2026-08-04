@@ -180,9 +180,11 @@ test('every exported enemy block is pinned on the instruction after it', () => {
     b.anchor.bytes.forEach((v, i) => assert.equal(at(p, a + i), v,
       `${b.name}: ${b.anchor.is} -- byte ${i} at ${hex(a + i)}`));
   }
-  // 25 from wave 21 + 4 from wave 32b (the $0600 arm pool's tables).
-  assert.equal(anchored, 29, 'the 25 wave-21 ranges plus W32b 4');
-  assert.equal(json.blocks.length, 38);
+  // 25 from wave 21 + 5 from wave 32b (the $0600 arm pool's tables, plus
+  // $BEEA, which W32c's reader indexes and W32b exported so that rooting
+  // $BEF3 in tablecoverage.py does not just relocate the gap).
+  assert.equal(anchored, 30, 'the 25 wave-21 ranges plus W32b 5');
+  assert.equal(json.blocks.length, 39);
 });
 
 test('no two exported enemy blocks overlap', () => {

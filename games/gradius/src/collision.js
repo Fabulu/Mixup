@@ -75,7 +75,7 @@
 // so ten enemies fire: $C24B fires at f500 on `enemy-bullet` and at f513 on the
 // shielded variant, after $C24E has absorbed five.
 
-import { u8, ENEMY_BASE, ENEMY_SLOTS, ARM_POOL } from './state.js';
+import { u8, ENEMY_BASE, ENEMY_SLOTS, ARM_POOL, ARM_BASES } from './state.js';
 import { probeCollision } from './terrain.js';
 import { killEnemy, freeSlot } from './enemies.js';
 import { scoreKill } from './score.js';
@@ -473,7 +473,7 @@ function playerVsArms(state) {
   const c = state.coll;
   const px = state.obj.x[0];                      // $A0, from $C20E/$C211
   const py = state.obj.y[0];                      // $A4, from $C21A/$C21D
-  for (let base = 0x90; !(base & 0x80); base = u8(base - 0x30)) {   // $C263/$C29B
+  for (const base of ARM_BASES) {                  // $C263/$C29B
     if (c[ARM_POOL + base] === 0) continue;       // $C269/$C26C BEQ $C29B
     let carry = 0;                                // $C273 CLC / $C274 ADC #$05
     for (let seg = 5; seg >= 0; seg--) {          // $C26E $AB = 5 / $C295-$C299

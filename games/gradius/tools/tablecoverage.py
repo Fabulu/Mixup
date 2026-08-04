@@ -57,6 +57,45 @@ ASSETS = GAME / "assets"
 DISPATCH = 0xAE1C          # $AE19 JSR $83E4, 42 entries
 NENT = 42
 LATE_SPAWNER = 0xC413      # the second spawner; its own $83E4 at $C439
+
+# WAVE 32b.  THE ROOT SET WAS NARROWER THAN THE GREEN READ.
+#
+# This tool walked from the 42 $AE1C entries plus $C413 and reported OK, and
+# W32's recon then found SEVEN unexported ranges (120 bytes) that the ROM does
+# index -- because the routines that read them are not reachable from those
+# roots.  A green here is a statement about the walk, not about the cartridge,
+# and it stayed green with all seven missing.
+#
+# The four roots below close that.  Each is an entry point the FRAME reaches
+# directly rather than through the enemy dispatch:
+#
+#   $8BD9   inside sub_$8B10 ($80A7), the stage-5 arm sprite pass -> $8C06,
+#           which indexes $8BF2 and $8C02.  NOT a subroutine: $8B91 BEQ jumps
+#           in and $8BF0 BMI falls back out, so it has no xref a call-graph
+#           walk would follow.
+#   $CB91   the arm driver, reached from $9691 (the $9663 fork) and from
+#           $9A76 -> $C772 -> $CB8A.  Indexes $CBCA, and calls $CC33/$CC99,
+#           which index $CC1F, $CD65 and $CD85.
+#   $BEF3   the shot-vs-arm sweep, reached from $C037 inside $BFE2.  Indexes
+#           $BEEA.  Still unported (W32c); rooted here anyway, because the
+#           tool's job is to report what the ROM indexes, not what the port
+#           has reached.
+#
+# $9663 IS DELIBERATELY NOT A ROOT, and the recon's §6 recommendation to add it
+# was wrong.  Its own body -- the four-header census -- indexes nothing: four
+# absolute LDAs and an INX.  Rooting it instead drags in the whole of mode 5
+# ($A2C0, $ADAB, $9FFC, $C0C7 and $9A8C's tail), and with it seventeen TERRAIN
+# and STREAMER tables that ARE exported, just decoded into
+# `terrain/stages.json` rather than raw into one of TABLE_FILES.  Measured:
+# adding it turns this tool from 1 gap into 20, none of them real.  The three
+# roots above are the ones that reach the seven ranges the recon actually
+# found.
+#
+# THE LESSON, and it is worth more than the four lines: a coverage tool's ROOT
+# SET is an assumption, and this one carried "every table is read by an $AE1C
+# handler" for eleven waves.  Anything reached from the NMI's own order
+# ($80A7's sprite pass, $80AA's state machine) was outside it.
+STAGE5_ROOTS = [0x8BD9, 0xCB91, 0xBEF3]
 ANIM_LO, ANIM_HI = 0x0120, 0x0140
 EXPLOSION_PTRS, EXPLOSION_N = 0xAE71, 6
 INDEXERS = ("LDA", "LDX", "LDY", "CMP", "ADC", "SBC")
@@ -160,8 +199,9 @@ def find_block(blocks, addr):
 
 
 def collect_indexed(rom: Prg):
-    """base -> set of reader addresses, over the 42 handlers + $C413."""
-    roots = [rom.w(DISPATCH + 2 * i) for i in range(NENT)] + [LATE_SPAWNER]
+    """base -> reader addresses, over the 42 handlers + $C413 + STAGE5_ROOTS."""
+    roots = ([rom.w(DISPATCH + 2 * i) for i in range(NENT)]
+             + [LATE_SPAWNER] + STAGE5_ROOTS)
     allidx: dict[int, set] = {}
     for r in roots:
         _seen, idx = walk(rom, r)
@@ -267,7 +307,7 @@ def main() -> int:
         (known if b in KNOWN_GAPS else missing).append(b)
 
     print(f"TABLES: {len(indexed)} PRG bases indexed by the 42 $AE1C handlers "
-          f"+ $C413; {len(blocks)} exported ranges "
+          f"+ $C413 + {len(STAGE5_ROOTS)} stage-5 roots; {len(blocks)} exported ranges "
           f"({sum(b['end'] - b['base'] for b in blocks)} bytes)")
     if args.verbose:
         for base in sorted(indexed):

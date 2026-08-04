@@ -21,7 +21,7 @@
 // 47, 32, 17 and 2 -- the -15-slot walk below, from a base of 188. See
 // tests/oam.test.js, which reproduces all four slots and all sixteen bytes.
 
-import { u8, i8, ARM_POOL } from './state.js';
+import { u8, i8, ARM_POOL, ARM_BASES } from './state.js';
 
 /** $8B08+4 = CE 6D 23 F8. Sprite 0: y=206 tile=$6D attr=$23 x=248. */
 export const SPRITE0 = [0xCE, 0x6D, 0x23, 0xF8];
@@ -387,7 +387,7 @@ export function oamDma(state) {
  */
 function armSpritePass(state, oam, rom, cursor, work) {
   const c = state.coll;
-  for (let base = 0x90; !(base & 0x80); base = u8(base - 0x30)) {  // $8BD9/$8BE7
+  for (const base of ARM_BASES) {                  // $8BD9/$8BE7
     if (c[ARM_POOL + base] === 0) continue;       // $8BDF/$8BE2 BEQ $8BE7
     cursor = drawArmGroup(state, oam, rom, c, base, cursor, work); // $8BE4 JSR $8C06
   }

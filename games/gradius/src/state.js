@@ -93,7 +93,20 @@ export const ENEMY_SLOTS = 10;    // $ADB3 LDX #$09
  * cartridge does.
  */
 export const ARM_POOL = 0x100;    // $0600 - $0500
-/** The four group bases, in the order the ROM's `-$30` walk visits them. */
+/**
+ * The four group bases, in the order the ROM's walk visits them.
+ *
+ *   LDX #$90 / STX $A9        <- $A4B7, $BEF3, $C263, $CB4E, $CB91, $8BD9
+ *   loop: ... body ...
+ *   LDA $A9 / SEC / SBC #$30 / STA $A9 / BPL loop
+ *
+ * THE `BPL` IS AT THE END, so the first pass runs UNCONDITIONALLY and the test
+ * is on the value AFTER the subtraction: $90, $60, $30, $00, then $D0 fails it.
+ * A JS `for (base = 0x90; !(base & 0x80); ...)` is a PRE-test loop and rejects
+ * $90 on sight, because $90 has bit 7 set -- so all four walks silently did
+ * NOTHING. W32b shipped that bug into its first draft and the unit suite caught
+ * it on six checks at once. The list exists so the shape cannot come back.
+ */
 export const ARM_BASES = [0x90, 0x60, 0x30, 0x00];
 
 /** Ring length, from `CMP #$18` at $A08C. */

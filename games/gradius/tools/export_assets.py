@@ -792,6 +792,15 @@ ENEMY_BLOCKS_W21 = [
      "are load-bearing: $8C49 BPL tests bit 7 of the byte it just stored and "
      "shifts the head sprite 8 px up when it is set",
      0x8C06, (0xA9, 0x05, 0x85, 0xAA), "$8C06 LDA #$05 / STA $AA, sub_$8C06"),
+    ("armHitsByRank", 0xBEEA, 0xBEF3,
+     "$BF44 CMP $BEEA,Y, Y = the rank $17",
+     "02 02 03 04 05 06 07 08 09 -- NINE ranks, the shots it takes to destroy "
+     "one arm at segment 2. Nine and not seven: $BEE9 is the RTS that ends "
+     "$BE93 and $BEF3 is sub_$BEF3's LDX #$90, so both ends are code. Exported "
+     "by W32b even though its READER ($BEF3/$BF0B, the shot-vs-segment sweep) "
+     "is W32c -- the tool's job is to cover what the ROM indexes, and rooting "
+     "$BEF3 in tablecoverage.py without this range would just move the gap",
+     0xBEF3, (0xA2, 0x90, 0x86, 0xA9), "$BEF3 LDX #$90 / STX $A9, sub_$BEF3"),
     ("armFirePeriod", 0xCBCA, 0xCBD1,
      "$CBAD CMP $CBCA,Y, Y = the rank $17",
      "28 23 1E 19 19 19 19 -- SEVEN ranks, the frames between one arm's "
