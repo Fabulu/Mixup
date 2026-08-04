@@ -244,3 +244,55 @@ skipped**.
 
 Had the mutation not been run, family B would have shipped with a real hole in
 its coverage and a green suite saying otherwise.
+
+### 2026-08-04 — FAMILY C PORTED (kinds 16, 18) — the enemy spawner
+
+Both initialisers are family B's shape (muzzle, +$1D, `$2821FA` table, +$16 =
+`$C000C`, +$26 = `$101`, `bra.w $2822AE` tail jump) with extra counter fields.
+**They reuse KIND 2's table at `$2821FA`**, so no new ROM window was needed —
+the windows added for family B already cover them.
+
+Their continuations do not animate: they **RE-STAMP** descriptor, renderOffs and
+graphic with the same fixed `$410`-family values every frame. The sprite never
+steps; it is rewritten.
+
+**KIND 18 IS THE ENEMY SPAWNER.** After the re-stamp it runs a WORD countdown at
++$34 (`subq.w #1,$34(A6) / bcc`, `$282B0C`), and on underflow calls `$263684`
+with D0 = `$35`, copies the bullet's position into the new enemy's +$16, then
+`bra $281EC4` — the bullet kills itself and the enemy takes its place. `$263684`
+is the enemy subsystem, unported, so that arm is a loud named throw.
+
+Two things worth knowing before trusting any test of it:
+
+- **The countdown fires on UNDERFLOW, not on reaching zero.** The 68000 sets C
+  on borrow and borrow happens only when the word was already 0, so `bcc` is
+  taken while it is non-zero. A `+$34` of 2 survives frames at 2 and 1, sits at
+  0 on the third, and spawns on the FOURTH. Off by one here spawns the enemy a
+  frame early for every kind-18 bullet in the game.
+- **Neither initialiser writes +$34.** It arrives from the spawn record. A test
+  that forgets to seed it underflows on its first frame.
+
+**Inventory: 17 -> 19 initialisers, 18 continuations.** 22 of 39 kind indices
+covered; 18 distinct bodies remain (families D–L).
+
+### A TEST THAT WENT GREEN FOR THE WRONG REASON
+
+`an UNPORTED behaviour kind throws by address` used **kind 16** as its example.
+W27 ported kind 16 — so the test would have gone green because its subject
+disappeared, not because the behaviour it guards still holds. Re-pointed at kind
+17 (`$282A1E`, the curver), which is genuinely unported.
+
+This is a maintenance hazard specific to negative tests: a test asserting "X is
+not done yet" decays into a tautology the moment X gets done, and it decays
+GREEN. Every future wave that ports a kind must re-point it, not delete it.
+
+### MUTATION TABLE (family C)
+
+| mutation | result |
+|---|---|
+| kind 18 fires on reaching 0 instead of on underflow | RED — `not ok 207`, alone |
+| kind 16 steps its descriptor instead of re-stamping | RED — `not ok 206`, alone |
+| drop kind 18's `bra.w $2822AE` tail jump | RED — `not ok 207`, alone |
+
+`src/mover.js` restored and hash-verified byte-identical (`f79f3c3284f94308`);
+**388 pass / 0 fail / 0 skipped**.

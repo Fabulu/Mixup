@@ -228,12 +228,15 @@ test('an UNPORTED behaviour kind throws by address (loud named throw)', { skip: 
     const ram = new Ram(null);
     ram.setU16(0x81b41a, 1);
     ram.setU16(0x813176, 0);
-    // kind 16 is a bit-7 curver not in the stage-1 seven -> init must throw.
-    seedBullet(ram, 0, { type: 0x8100 | 16, dir: 0x40 });
+    // Kind 17 ($282A1E, the CURVER) is not ported -> its initialiser must throw.
+    // This test used kind 16 until W27 ported it; when the example kind gets
+    // ported the test goes green for the wrong reason, so it must be re-pointed
+    // at a still-unported kind rather than deleted.
+    seedBullet(ram, 0, { type: 0x8100 | 17, dir: 0x40 });
     assert.throws(
       () => runMover({ ram, rom: ROM, notes: new UnportedLog() }),
-      (e) => e instanceof Unreached && /2829BC/i.test(e.message),
-      'kind 16 initialiser $2829BC is not ported and must throw carrying the address');
+      (e) => e instanceof Unreached && /282A1E/i.test(e.message),
+      'kind 17 initialiser $282A1E is not ported and must throw carrying the address');
   });
 
 // ---------------------------------------------------------- W27 family A
@@ -342,23 +345,67 @@ test('kinds 2 and 21 resolve DIFFERENT sprite-frame tables ($2821FA vs $282C8E)'
       + 'was given the other\'s $lea table address');
   });
 
-test('the ported-body inventory is exactly 17 initialisers + 16 continuations', () => {
+test('kind 16 RE-STAMPS its sprite fields every frame rather than animating',
+  { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 16, posA: 0x1000, posB: 0x2000, dir: 0x10 });
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: initialiser $2829BC
+    runMover(ctx);                                    // F2: continuation $2829FE
+    assert.equal(ram.u32(base + 0x0a), 0x1c0014, 'F2: descriptor stamped');
+    // scribble over all three, then run again: a ring would step from the
+    // scribbled value, a re-stamp overwrites it outright.
+    ram.setU32(base + 0x0a, 0xdeadbeef);
+    ram.setU32(base + 0x06, 0xdeadbeef);
+    ram.setU16(base + 0x0e, 0xbeef);
+    runMover(ctx);
+    assert.equal(ram.u32(base + 0x0a), 0x1c0014, 'F3: descriptor re-stamped, not stepped');
+    assert.equal(ram.u32(base + 0x06), 0xfc00fe00, 'F3: renderOffs re-stamped');
+    assert.equal(ram.u16(base + 0x0e), 0x0410, 'F3: graphic re-stamped');
+  });
+
+test('kind 18 spawns an enemy on the frame its +$34 word UNDERFLOWS, not on reaching 0',
+  { skip: !HAVE_TABLES }, () => {
+    // `subq.w #1,$34(A6) / bcc` -- C is set on borrow, and borrow happens only
+    // when the word was already 0. So +$34 = 2 survives frames at 2 and 1, is 0
+    // on the third, and fires on the FOURTH. Off-by-one here would spawn the
+    // enemy a frame early for every kind-18 bullet in the game.
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 18, posA: 0x1000, posB: 0x2000, dir: 0x10 });
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: initialiser
+    ram.setU16(base + 0x34, 2);                       // +$34 is NOT set by the init
+    runMover(ctx);                                    // F2: 2 -> 1, no spawn
+    assert.equal(ram.u16(base + 0x34), 1, 'F2: counter stepped, no spawn');
+    runMover(ctx);                                    // F3: 1 -> 0, no spawn
+    assert.equal(ram.u16(base + 0x34), 0, 'F3: counter at 0, still no spawn');
+    assert.throws(() => runMover(ctx),                // F4: 0 -> borrow -> spawn
+      (e) => e instanceof Unreached && /263684/i.test(e.message),
+      'F4: the underflow frame calls $263684 and must throw carrying that address');
+  });
+
+test('the ported-body inventory is exactly 19 initialisers + 18 continuations', () => {
   // A LEDGER test: it pins the exact set, so porting a body turns it RED until
   // the inventory here is updated deliberately.  That is the point -- the count
   // cannot drift upward without somebody writing down which addresses moved.
   //
   // W26 ported 8 bodies (kinds 3/4/5/6/7/12/13/19; kind 6 is the midboss's).
-  // W27 family A adds 7 more: kinds 0, 1, 8, 9, 10, 11, 20 -- and kind 10's
+  // W27 adds 11: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
+  // family C kinds 16/18.  Kind 10's
   // $282840 is also the target for kinds 14 and 15, which alias it in the
   // $282030 table.  So 15 distinct bodies now cover 17 of the 39 kind indices.
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
     [0x282104, 0x282162, 0x2821c2, 0x2823ec, 0x2824a8, 0x282564, 0x282620,
      0x2826dc, 0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962,
-     0x282b30, 0x282bee, 0x282c56]);
+     0x2829bc, 0x282aae, 0x282b30, 0x282bee, 0x282c56]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
     [0x28213e, 0x28219e, 0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738,
-     0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x282b64,
-     0x282c2a, 0x283ce4]);
+     0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x2829fe,
+     0x282af6, 0x282b64, 0x282c2a, 0x283ce4]);
   // 17 initialisers, 16 continuations. NOT equal, and that is correct: kinds 2
   // and 21 both install $283CE4, so bodies MAY share a continuation.
   //

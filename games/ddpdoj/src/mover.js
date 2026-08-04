@@ -953,4 +953,80 @@ CONTINUATIONS.set(0x283ce4, (ctx, base) => {
   advance40(ctx, base);
 });
 
+// ============================================================ W27 FAMILY C
+//
+// Kinds 16 ($2829BC) and 18 ($282AAE): the "transform-once" flyers.  Both
+// initialisers are family B's shape -- muzzle, +$1D, the $2821FA table, +$16 =
+// $C000C, +$26 = $101, and a `bra.w $2822AE` TAIL JUMP into the same dir-faced
+// epilogue -- plus a few extra counter fields.  Note they reuse KIND 2's table
+// at $2821FA, so no new ROM window is needed.
+//
+// Their continuations are what makes them different: instead of stepping a
+// ring, they OVERWRITE descriptor / renderOffs / graphic with the same fixed
+// $410-family values on every single frame.  The sprite never animates; it is
+// re-stamped.
+//
+// KIND 18 IS THE ENEMY SPAWNER, and it is the interesting one.  After the
+// re-stamp it runs a WORD countdown at +$34 (`subq.w #1,$34(A6) / bcc`), and on
+// underflow it calls `$263684` with D0 = $35 -- the enemy-spawn entry -- writes
+// the bullet's position into the new enemy's +$16, and then `bra $281EC4`:
+// the bullet KILLS ITSELF and the enemy takes its place.  `$263684` belongs to
+// the enemy subsystem and is not ported, so that arm is a loud named throw.
+//
+// The countdown reads +$34, which NEITHER initialiser writes -- it arrives from
+// the spawn record.  Worth knowing before trusting a seeded test: seed +$34 or
+// the first frame underflows immediately.
+
+// ----- kind 16 ($2829BC init / $2829FE cont)
+INIT_BODIES.set(0x2829bc, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                        // $2829CA
+  ram.setU8(base + 0x1d, 0x1a);                      // $2829CE
+  ram.setU32(base + 0x16, 0x000c000c);               // $2829D8
+  ram.setU16(base + 0x26, 0x0101);                   // $2829E0
+  ram.setU32(base + REC.continuation, 0x2829fe);     // $2829E6
+  ram.setU8(base + 0x28, 0x00);                      // $2829EE
+  ram.setU16(base + 0x2a, 0x0001);                   // $2829F4
+  epi2822AE(ctx, base, 0x2821fa);                    // $2829FA bra.w $2822AE
+});
+CONTINUATIONS.set(0x2829fe, (ctx, base) => {
+  const { ram } = ctx;
+  ram.setU32(base + 0x0a, 0x1c0014);                 // $2829FE descriptor
+  ram.setU32(base + 0x06, 0xfc00fe00);               // $282A06 renderOffs
+  ram.setU16(base + 0x0e, 0x0410);                   // $282A0E graphic
+  advance40(ctx, base);                              // $282A14 lea $40(A6)
+});
+
+// ----- kind 18 ($282AAE init / $282AF6 cont) -- THE ENEMY SPAWNER
+INIT_BODIES.set(0x282aae, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                        // $282ABC
+  ram.setU8(base + 0x1d, 0x1a);                      // $282AC0
+  ram.setU32(base + 0x16, 0x000c000c);               // $282ACA
+  ram.setU16(base + 0x26, 0x0101);                   // $282AD2
+  ram.setU32(base + REC.continuation, 0x282af6);     // $282AD8
+  ram.setU8(base + 0x28, 0x00);                      // $282AE0
+  ram.setU16(base + 0x2a, 0x0001);                   // $282AE6
+  ram.setU16(base + 0x2c, 0x0004);                   // $282AEC  (kind 16 lacks this)
+  epi2822AE(ctx, base, 0x2821fa);                    // $282AF2 bra.w $2822AE
+});
+CONTINUATIONS.set(0x282af6, (ctx, base) => {
+  const { ram } = ctx;
+  ram.setU32(base + 0x0a, 0x1c0014);                 // $282AF6 descriptor
+  ram.setU32(base + 0x06, 0xfc00fe00);               // $282AFE renderOffs
+  ram.setU16(base + 0x0e, 0x0410);                   // $282B06 graphic
+  // $282B0C subq.w #1,$34(A6) / $282B10 bcc -- WORD countdown; the 68000 sets C
+  // on borrow, and borrow happens iff the word was 0.  bcc is taken while it is
+  // non-zero, so the spawn fires on UNDERFLOW, not on reaching zero.
+  const old = ram.u16(base + 0x34);
+  ram.setU16(base + 0x34, u16(old - 1));
+  if (old !== 0) { advance40(ctx, base); return; }   // $282B26 lea $40(A6)
+  unreached(0x263684,
+    `kind 18's spawn arm: the +$34 countdown underflowed, so $282B16 calls `
+    + `$263684 (D0 = $35, the enemy-spawn entry), copies the bullet's position `
+    + `($2(A6)) into the new enemy's +$16, and kills the bullet via $281EC4. `
+    + `The enemy subsystem is not ported, so every value after this frame `
+    + `would be invented`);
+});
+
 export { INIT_BODIES, CONTINUATIONS };
