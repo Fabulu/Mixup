@@ -623,18 +623,31 @@ test('$A2F0: the guard admits stage 5 and still stops stage 6', () => {
   const s5 = wave(5);
   assert.doesNotThrow(() => spawnEngine(s5, res),
     'stage 6 ($19=5) must reach the wave engine (W35)');
-  assert.throws(() => spawnEngine(wave(6), res), /\$A2F0 runEngine/,
-    'stage 7 ($19=6) must still throw loudly, naming $A2F0');
+  // W36 moved it to `>= 7`, and stage 7 fires a real record too: its chunk 0
+  // ($ACC7) opens on a cmd $89 formation of type $05, ported since wave 1.
+  const s6 = wave(6);
+  assert.doesNotThrow(() => spawnEngine(s6, res),
+    'stage 7 ($19=6) must reach the wave engine (W36)');
+  assert.equal(s6.obj.type[9 + ENEMY_BASE], 0x05,
+    'and fire a real record: chunk 0 @$ACC7 is a type $05 formation');
+  assert.throws(() => spawnEngine(wave(7), res), /\$A2F0 runEngine/,
+    '$19 = 7 must still throw loudly, naming $A2F0');
   // the message must name what is ACTUALLY left, not what this repo shipped.
-  // This check exists because that message has now gone stale three times.
+  // This check exists because that message has now gone stale three times, and
+  // W36 is the fourth revision: with every stage shipped, "what is left" is no
+  // longer a stage but an IMPOSSIBLE `$19`, and the message has to say so.
   let msg = '';
-  try { spawnEngine(wave(6), res); } catch (e) { msg = e.message; }
+  try { spawnEngine(wave(7), res); } catch (e) { msg = e.message; }
   assert.ok(!/W32c\./.test(msg),
     'the guard must stop deferring to W32c -- W32c is shipped');
-  assert.ok(/\$9872/.test(msg), 'and name stage 7\'s own unported end chain');
+  assert.ok(/SEVEN/.test(msg),
+    'and say why: $A7D0 holds seven stage wave tables, so $19 > 6 is wrong data');
   assert.ok(!/\$C6DE[^)]*not ported/.test(msg),
     '$C6DE is ported (W35) -- the guard must not name it as missing');
-  assert.ok(/stageledger/.test(msg), 'and point at the tool that lists the rest');
+  assert.ok(!/\$B569[^)]*not ported/.test(msg),
+    '$B569 is ported (W36) -- the guard must not name it as missing');
+  assert.ok(/\$98E5/.test(msg),
+    'and point at the one thing that DOES write $19 back to 0: the loop wrap');
 });
 
 test('THE MEASUREMENT THE GUARD RESTS ON: 1780 stage-5 nmi() frames, 0 throws', () => {

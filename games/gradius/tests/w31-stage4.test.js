@@ -102,8 +102,17 @@ test('$A2F0: the scope guard admits stage 4, and W32c moved it past stage 5', ()
   const s5 = wave(5);
   assert.doesNotThrow(() => spawnEngine(s5, res),
     'stage 6 ($19=5) must reach the wave engine now (W35)');
-  assert.throws(() => spawnEngine(wave(6), res), /\$A2F0 runEngine/,
-    'stage 7 ($19=6) must still throw loudly, naming $A2F0');
+  // W36 MOVED IT TO `>= 7`, past the last stage `$A7D0` has. Stage 7's evidence
+  // lives in tests/w36-stage7.test.js. RED WHEN: the bound goes back to 6.
+  const s6 = wave(6);
+  assert.doesNotThrow(() => spawnEngine(s6, res),
+    'stage 7 ($19=6) must reach the wave engine now (W36)');
+  assert.strictEqual(s6.obj.type[slot(s6)], 0x05,
+    'stage 7\'s first record (@$ACC7, cmd $89) must actually spawn its type $05');
+  // ...and $19 = 7 is not a stage: $A7D0 holds SEVEN words, so the guard is
+  // still the thing that says so, loudly.
+  assert.throws(() => spawnEngine(wave(7), res), /\$A2F0 runEngine/,
+    '$19 = 7 is a wrong $19, not a missing port');
 });
 
 // ==================== 2. THE STREAM, $C5B8 LDX #$04 =========================

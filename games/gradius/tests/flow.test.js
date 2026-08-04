@@ -319,8 +319,12 @@ test('$96A5: every unported arm throws with the ROM address it would reach', () 
   // this assertion's life.
   assert.doesNotThrow(() => nmi(seedWave(5), 0, res),
     'stage 6 must now run a whole frame with its wave stream live');
-  // ...and STAGE 7 is what the guard stops now.
-  assert.throws(() => nmi(seedWave(6), 0, res), /\$A2F0 runEngine/);
+  // W36 PORTED STAGE 7 ($B569, $AF10's six and $9A12) and the guard moved to
+  // `>= 7`, which is past the last stage $A7D0 has. Inverted rather than
+  // deleted, for the FOURTH time in this assertion's life -- and this is the
+  // last inversion it can have, because there is no stage 8.
+  assert.doesNotThrow(() => nmi(seedWave(6), 0, res),
+    'stage 7 must now run a whole frame with its wave stream live');
   // $9904 sub-path: $19 == 6 -> JMP $9872 (the ending sequence, out of scope).
   const sEnd = bootState(res.manifest);
   sEnd.substate = 0x86; sEnd.zp19 = 6;

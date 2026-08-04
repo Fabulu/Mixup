@@ -270,15 +270,24 @@ test('an unported handler is a LOUD named throw, with the type and the ROM addre
   // 17, 18, 19, 31, 39, 41 -- sixteen distinct routines).
   // RED WHEN: the `default:` arm returns instead of throwing.
   const s = running();
-  // Entry 30 -> $B569. Type $1E, TWO of stage 7's 111 wave records. Entry 7
-  // ($B6E1) used to be here and is ported; entry 13 ($B402) replaced it and is
-  // ported as of W30; entry 26 ($B480, stage 6's cell creature) replaced THAT
-  // and is ported as of W35 -- the fourth time this check has had to move. The
-  // rule is: it must stand on an entry the ledger still reports as unported,
-  // and after W35 the only ones left are stage 7's ($B569 and $AF10's six).
-  s.obj.type[21] = 0x9E;
+  // Entry 40 -> $BB0F, type $28: the ENDING BRAIN, spawned by $988C in the
+  // end-of-game chain (29-plan-whole-game.md's W35 section). Entry 7 ($B6E1)
+  // used to be here and is ported; $B402 replaced it (W30), $B480 replaced THAT
+  // (W35), $B569 replaced that (W36) -- the FIFTH time this check has moved.
+  // The rule is: it must stand on an entry the ledger still reports as
+  // unported, and after W36 there are exactly TWO left in the whole 42-entry
+  // table -- entry 27 ($B4F2, type $1B, which NO wave record in any of the
+  // seven stages references) and entry 40 ($BB0F, type $28). This check stands
+  // on 40 because it is the one something in the ROM actually spawns.
+  s.obj.type[21] = 0xA8;
   assert.throws(() => updateEnemies(s, res),
-    /unimplemented enemy handler \$B569 for type \$9E \(entry 30/);
+    /unimplemented enemy handler \$BB0F for type \$A8 \(entry 40/);
+  // ...and entry 27 is asserted too, so "two left" is a checked number rather
+  // than a sentence in a comment.
+  const s2 = running();
+  s2.obj.type[21] = 0x9B;
+  assert.throws(() => updateEnemies(s2, res),
+    /unimplemented enemy handler \$B4F2 for type \$9B \(entry 27/);
 });
 
 test('$ADE5\'s animator: reload 6, four entries per status, 0 = wrap and re-read', () => {

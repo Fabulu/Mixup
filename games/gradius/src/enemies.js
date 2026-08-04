@@ -111,6 +111,52 @@ import { soundRequest } from './sound.js';
 import { probeCollision } from './terrain.js';
 import { addScore } from './score.js';
 import { queueByte } from './vram.js';
+// W36: `$B569` (the stage-7 shutter) is the first ENEMY handler that appends a
+// canned $0700 packet -- `$B580 JMP $85E8` and two `$B5BE/$B5C3 JSR $85E8`.
+// The packet table is `res.hudPackets`, which is why `res` is threaded through
+// updateSlot/dispatch below rather than only `res.enemyTables`.
+import { cannedPacket } from './hudpackets.js';
+
+/**
+ * `$85F3`'s canned-packet table (`assets/hud/packets.json`, ROM `$864E`), for
+ * the duration of ONE `updateEnemies()` call.
+ *
+ * WHY IT IS A MODULE BINDING AND NOT A PARAMETER, because that is a fair
+ * question and the answer is not "it was easier". W36's `$B569` is the first
+ * ENEMY handler that appends a canned packet, so it needs `res.hudPackets`,
+ * and every other producer in this port takes it as an argument
+ * (`hudTick(state, res.hudPackets)`, `cannedPacket(state, packets, $1C)`).
+ * The argument route means widening `dispatch()`'s parameter list -- and
+ * `tools/oracle/wavecensus.py::_ported_targets` finds `dispatch()` by its EXACT
+ * declaration text -- the whole parameter list, closing paren included -- and
+ * reads the `case 0x` labels that follow to decide which of the 42 handlers
+ * are ported. Widening the list makes that parser raise, and it takes
+ * `stageledger.py` and the coverage gate down with it. `tools/` belongs to
+ * another agent this wave. (The literal is deliberately NOT spelled out here:
+ * a second copy of it in this file is itself an earlier `str.index` hit, which
+ * made the parser read THIS function's body and report zero ported handlers.
+ * Found by doing it.)
+ *
+ * So: SET once at the top of `updateEnemies()` from the same `res` the rest of
+ * the frame uses, CLEARED in a `finally` so nothing outside the object loop can
+ * read a stale one, and any handler that reads it unset gets a named throw
+ * rather than `undefined`. It is a resource handle, not RAM, and it is not in
+ * `state` -- so it cannot be compared, seeded or serialised by accident.
+ *
+ * REMOVE IT the moment `wavecensus.py`'s anchor stops being a full signature;
+ * `dispatch(state, rom, j, type, res)` is the shape this wants to be.
+ */
+let framePackets = null;
+
+/** The guarded read. Loud rather than `undefined` -- docs/knowledge/03. */
+function packetTable() {
+  if (framePackets === null) {
+    throw new Error('$85E8: the canned-packet table is not set. An enemy '
+                  + 'handler that queues a packet was reached without going '
+                  + 'through updateEnemies(), which is the only setter.');
+  }
+  return framePackets;
+}
 
 const hex2 = (v) => `$${v.toString(16).toUpperCase().padStart(2, '0')}`;
 const hex4 = (v) => `$${v.toString(16).toUpperCase().padStart(4, '0')}`;
@@ -435,14 +481,66 @@ function runEngine(state, rom, stageIndex, res) {
   //
   // Plus `jt_$C439[5]` and `jt_$AE1C[26]`, which are dispatch-table entries
   // rather than `$19` compares and are the two handlers this wave ports.
-  if (stageIndex >= 6) {
+  //
+  // ======================= W36 LOWERS IT TO `>= 7` ===========================
+  //
+  // That is the LAST stage: `$A7D0` holds seven and `stageIndex` cannot exceed
+  // 6, so the guard is now unreachable rather than merely lower. It is kept,
+  // and it still throws, because `$19` is a byte the game writes ($993B INC
+  // $19, $96D1 INC $19) and a wrong one must be loud.
+  //
+  // THE EVIDENCE. Stage 7's whole wave debt was SEVEN records out of 111, all
+  // in the chunk-5 stream `$AD8A`: one type `$1E` (entry 30, `$B569`) and six
+  // types `$20`-`$25` (entries 32-37, the shared `$AF10`). Both are ported at
+  // the bottom of this file. `stageledger.py` reads `stage 6: 111/111, first
+  // unported NONE`.
+  //
+  // AND THE SWEEP CAME FIRST, not last. Before any of it, `stagesweep.mjs` was
+  // forced onto stage 7 on a copy with only this guard lifted: 7 of 112 runs
+  // threw -- `$B569` (3), `$AF10` (2) and a chunk-7 stream pointer of `$8010`
+  // (2). The first two are ported; the third is the SWEEP seeding a chunk the
+  // camera cannot index (docs/worklog/gradius/36-impl-stage7.md sec 2:
+  // `$A7D0`'s per-stage subtables OVERLAP -- each stage's 8th word is the next
+  // stage's 1st -- and stage 6 has no successor, while `$98FD[6]` = 13 caps
+  // `$3F AND $0E` at 12). Nothing was widened for it.
+  //
+  // EVERY SITE THAT BEHAVES DIFFERENTLY WHEN `$19 == 6`, re-scanned this wave
+  // (21 sites where a zero-page load of `$19` is followed by a `CMP/CPX/CPY
+  // #imm` within 16 bytes; no instruction in the PRG compares against `$19`
+  // as an OPERAND, which was checked separately). Exactly TWO compare with
+  // `#$06`, and BOTH are equality tests (`D0` = BNE), so stage 7 is the only
+  // stage that can take either arm:
+  //
+  //   $9906 CMP #$06 -> JMP $9872   the end-of-game chain     STILL A THROW,
+  //                                 and it is 29-plan-whole-game.md's W35
+  //   $9A12 CMP #$06 -> $9A16       the countdown seed        W36 (nmi.js) <--
+  //
+  // `$9A12` IS THE ONE WORTH READING, and it is W35's `$99C4` again. It threw
+  // with "$4D:=1, $4C:=$CA is unreachable -- the port loads one stage", which
+  // is a fact about the corpus wearing the clothes of a fact about the
+  // cartridge: `$81` is what `$9A4D` hands to at `bossPage`, so it is on the
+  // ordinary stage-7 path. stagesweep.mjs CANNOT reach it (1400 frames at
+  // 2 px/frame is page 10; `$9A3D[6]` is page 12). Static scanning found it.
+  //
+  // On the other 19 sites stage 7 takes an arm a SHIPPED stage already takes:
+  // `$99C4` (>= 5, shared with stage 6 and forked at `$99C8`, W35), `$99FC`
+  // (0 or 3), `$8B8F`/`$9665`/`$9F51`/`$A17E`/`$C039`/`$C25F`/`$C331`/`$C774`
+  // (== 4), `$A468`/`$C2A7`/`$C2FA`/`$BBCE`/`$BBE0`/`$BC4A` (== 2), `$AF4E`
+  // (== 5), `$B964` (== 1), `$97B5` (< 8, a false positive -- it reloads A).
+  //
+  // WHAT STAGE 7 DOES NOT HAVE IS A BOSS. `$99C4 CMP #$05 / BCS $99C8` sends
+  // both stage 6 and stage 7 straight from `$83` to `$86`, so `$84` (`$9982`,
+  // the BigCore creation) and `$85` never run. 29-plan-whole-game.md's
+  // DONE-WHEN for this wave -- "reaches the stage-7 BigCore death
+  // (`$9A3D[6]=$0C`)" -- reads a bossPage byte as a boss; `$9A3D[6]` is where
+  // the CAMERA stops. Stage 7's only "boss" is the brain at `$9872`.
+  if (stageIndex >= 7) {
     throw new Error(`$A2F0 runEngine: $19 = $${stageIndex.toString(16).toUpperCase()}`
-                  + ` (stage ${stageIndex + 1}). Stage 6 ($19=5) is shipped`
-                  + ` (W35 entry 26 $B480, the $C6DE late spawner and the`
-                  + ` $CDA5 exit aperture). Stage 7 ($19=6) has 104 of its 111`
-                  + ` distinct wave records ported -- run`
-                  + ` tools/oracle/stageledger.py for the first unported one --`
-                  + ` and its end-of-game chain ($9904 -> $9872) also throws.`);
+                  + ` (stage ${stageIndex + 1}). $A7D0 holds SEVEN stage wave`
+                  + ` tables, so $19 > 6 is not a missing port -- it is a wrong`
+                  + ` $19. All seven stages are shipped (W36 closed stage 7 with`
+                  + ` entry 30 $B569 and entries 32-37 $AF10). The loop wrap`
+                  + ` resets $19 to 0 at $98E5, which is still a throw.`);
   }
   if (sp.z69 !== 0) {                    // $A2FE LDA $69 / BNE $A32B
     if (sp.z6C !== 0) {                  // $A32B LDA $6C / BNE $A332
@@ -1772,17 +1870,22 @@ function moveAimedEnemy(state, j) {
 export function updateEnemies(state, res) {
   const rom = res.enemyTables;
   const sp = state.spawn;
-  sp.zAF = 0x80;                         // $ADAB LDA #$80 / STA $AF
-  sp.zAE = 0x00;                         // $ADAF LDA #$00 / STA $AE
-  sp.zA8 = 9;                            // $ADB3 LDX #$09 / $ADB5 STX $A8
-  state.work.enemySlots = 0;
-  do {
-    updateSlot(state, rom, sp.zA8);      // $ADB7 LDX $A8 / $ADB9 JSR $ADE5
-    state.work.enemySlots += 1;
-    sp.zA8 = u8(sp.zA8 - 1);             // $ADBC DEC $A8
-  } while (!(sp.zA8 & 0x80));            // $ADBE BPL $ADB7
-  if (state.work.enemySlots !== ENEMY_SLOTS) {
-    throw new Error(`$ADAB ran ${state.work.enemySlots} slots, not ${ENEMY_SLOTS}`);
+  framePackets = res.hudPackets;         // W36 -- see framePackets' own comment
+  try {
+    sp.zAF = 0x80;                       // $ADAB LDA #$80 / STA $AF
+    sp.zAE = 0x00;                       // $ADAF LDA #$00 / STA $AE
+    sp.zA8 = 9;                          // $ADB3 LDX #$09 / $ADB5 STX $A8
+    state.work.enemySlots = 0;
+    do {
+      updateSlot(state, rom, sp.zA8);    // $ADB7 LDX $A8 / $ADB9 JSR $ADE5
+      state.work.enemySlots += 1;
+      sp.zA8 = u8(sp.zA8 - 1);           // $ADBC DEC $A8
+    } while (!(sp.zA8 & 0x80));          // $ADBE BPL $ADB7
+    if (state.work.enemySlots !== ENEMY_SLOTS) {
+      throw new Error(`$ADAB ran ${state.work.enemySlots} slots, not ${ENEMY_SLOTS}`);
+    }
+  } finally {
+    framePackets = null;
   }
 }
 
@@ -1873,6 +1976,9 @@ function dispatch(state, rom, j, type) {
     case 0xCA5E: return h_CA5E(state, rom, j);   // entry 20, types $14/$94 (arm owner)
     // ---- WAVE 35: stage 6 --------------------------------------------------
     case 0xB480: return h_B480(state, rom, j);   // entry 26, types $1A/$9A
+    // ---- WAVE 36: stage 7 --------------------------------------------------
+    case 0xB569: return h_B569(state, rom, j);   // entry 30, type $1E
+    case 0xAF10: return h_AF10(state, rom, j);   // entries 32-37, types $20-$25
     default:
       // THE MESSAGE THIS USED TO CARRY WAS "no measured run has ever
       // dispatched it", and that sentence is the one this whole follow-up
@@ -5140,5 +5246,194 @@ function sub_CC33(state, rom, base, owner) {
     } else {
       c[p + 0x21] = u8(c[p + 0x20] + rom.read(0xCD85 + y));   // $CD51-$CD55 CLC/ADC
     }
+  }
+}
+
+// ==================== WAVE 36: STAGE 7 ($19 = 6) ============================
+//
+// Stage 7's whole enemy debt is SEVEN wave records, all of them in the chunk-5
+// stream `$AD8A` (chunk 6 shares the pointer), and TWO handlers:
+//
+//   $AD98  scroll $0AC0  type $1E        -> entry 30      $B569   the SHUTTER
+//   $AD9E..$ADA8  scroll $0B60-$0BC0  types $20-$25
+//                                        -> entries 32-37 $AF10   the GALLERY
+//
+// 29-plan-whole-game.md calls the pair "the gallery" and describes `$B569` only
+// as "~101 lines, falls into $B574-$B605, $5B/$046C,X state". The shape is
+// right; WHAT IT DOES is not in the plan at all. `$B569` is not an enemy: it
+// FREEZES THE WORLD (`$B574 INC $5B` suppresses both the camera at `$9A9C` and
+// the terrain streamer at `$9ACA`) and then opens a shutter in six steps,
+// writing the COLLISION MAP and patching VRAM packets it has already queued.
+// Read the listing before believing any of the three descriptions.
+
+/**
+ * Entries 32-37, `$AF10` (types `$20`-`$25`) -- THE GALLERY. Six objects, one
+ * handler, and all it does is BLINK.
+ *
+ *   AF10  A6 A8      LDX $A8
+ *   AF12  A5 02 / 29 1F / C9 1A / B0 0C     ($02 AND $1F) >= $1A -> $AF26
+ *   AF1A  BD 0C 03 / 38 / E9 20 / A8        Y := type - $20
+ *   AF21  B9 0A AF / D0 02                  A := $AF0A,Y  (BNE ALWAYS taken)
+ *   AF26  A9 00                             ...or blank
+ *   AF28  9D 2C 01   STA $012C,X            the metasprite
+ *   AF2B  4C DD AE   JMP $AEDD              and drift left
+ *
+ * `$AF0A` = `89 87 8C 8B 8A 88`, six bytes, `blinkFrames` in the export. So
+ * `$02 AND $1F` in `$00`-`$19` shows the object (26 frames) and `$1A`-`$1F`
+ * blanks it (6): a 32-frame cycle, ON 26 / OFF 6, all six in lock-step because
+ * the phase comes from the GLOBAL frame counter and not from the object.
+ *
+ * `$AF24 BNE $AF28` IS ALWAYS TAKEN and it is transcribed as a branch anyway:
+ * all six bytes of `$AF0A` are non-zero, so the fall-through into `$AF26 LDA
+ * #$00` can only be entered from `$AF18`. Reproduced rather than folded, so a
+ * future wave that finds a seventh entry does not have to re-derive it.
+ *
+ * NOTHING SETS BIT 7. `$AF10` never calls `$B0B4`, so `$030C,X` stays `$20`-
+ * `$25` for the object's whole life -- which also means these six are never
+ * "initialised and collidable" and `$C16E` never looks at them. That is what
+ * makes the `- $20` safe, and it is asserted rather than assumed: an
+ * initialised `$A0`-`$A5` would give Y = `$80`-`$85` and `$AF21` would read
+ * `$AF8A` onward -- st_AF88's own opcodes -- which is W34's `$B415` shape and
+ * gets a named throw here instead of assets.js's "not in any exported range".
+ */
+function h_AF10(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  let ms = 0;                            // $AF26 LDA #$00 (the blank arm)
+  if ((state.frame & 0x1F) < 0x1A) {     // $AF12-$AF18 LDA $02 / AND #$1F / CMP #$1A / BCS
+    const y = u8(o.type[i] - 0x20);      // $AF1A LDA $030C,X / SEC / SBC #$20 / TAY
+    if (y > 5) {
+      throw new Error(`$AF21 LDA $AF0A,Y with Y = ${hex2(y)}: type ${hex2(o.type[i])} `
+                    + 'is outside $20-$25, so this reads past $AF0A six bytes '
+                    + 'into st_AF88 own opcodes. Entries 32-37 are the only ones '
+                    + 'pointing at $AF10 and $AF10 never sets bit 7 ($B0B4), so '
+                    + 'something else initialised this slot -- find that, do not '
+                    + 'widen the table.');
+    }
+    ms = rom.read(0xAF0A + y);           // $AF21 LDA $AF0A,Y
+    // $AF24 BNE $AF28 -- always taken; the six bytes are $89 $87 $8C $8B $8A $88.
+    if (ms === 0) ms = 0;                // $AF26, reachable only from $AF18
+  }
+  o.anim[i] = ms;                        // $AF28 STA $012C,X
+  h_AEDD(state);                         // $AF2B JMP $AEDD (and $AEDD -> $AEE1)
+}
+
+/**
+ * Entry 30, `$B569` (type `$1E`) -- STAGE 7'S SHUTTER.
+ *
+ * It drifts in from x `$F0` under the shared `$AEDD` mover, and the moment its
+ * integer X drops below `$B0` it takes over the frame:
+ *
+ *   B569  20 DD AE   JSR $AEDD                    drift (or nothing, if frozen)
+ *   B56C  BD 6C 03 / C9 B0 / 90 01 / 60           x >= $B0 -> RTS
+ *   B574  E6 5B      INC $5B                      FREEZE: no camera, no streamer
+ *   B576  BC 6C 04 / D0 08                        phase != 0 -> $B583
+ *   B57B  FE 6C 04 / A9 1F / 4C E8 85             phase 0: -> 1, canned packet $1F
+ *   B583  C0 07 / 90 03 / 4C F8 AE                phase >= 7 -> free the slot
+ *   B58A  FE AC 04 / BD AC 04 / C9 14 / B0 01 / 60   20 frames per step
+ *   B595  FE 6C 04 / A9 00 / 9D AC 04             next phase, reset the counter
+ *   B59D  88 / 84 A9                              step := phase - 1  (0..5)
+ *
+ * SO THE SHAPE IS: one setup frame, then SIX steps of twenty frames, then the
+ * object frees itself -- 121 frames of frozen screen, and `$5B` is INCd on
+ * every one of them because `$B574` is above the phase test.
+ *
+ * **`$B5BA BPL $B5A9` FALLS INTO `$B5BC`.** `loc_B5BC` only listed xref is
+ * `$B5A2 BCS`, so the even-step arm looks like it ends at the loop -- it does
+ * not. There is no `JMP` and no `RTS` between `$B5BA` and `$B5BC`, so the
+ * collision-map write is an EXTRA that even steps do and odd steps skip, and
+ * both then queue the two packets. Reading it the other way gives a shutter
+ * that draws on three of its six steps. Fall-through incident sixteen.
+ *
+ * WHAT EACH STEP DOES, with `step` = phase - 1 = 0..5:
+ *
+ *  * EVEN steps only (`$B5A0 LSR A / BCS $B5BC`), `x0 = (step>>1) + step` =
+ *    0/3/6: three bytes of `$B612` (inside the exported `gateTiles`
+ *    `$B606-$B61D`) written into FOUR collision-map columns at `$06C2`,
+ *    `$06CA`, `$06D2`, `$06DA` -- the same stride-8 column layout `$CDA5`
+ *    uses (`$0600 + $81 + 8*lo + k`, W35). Y counts DOWN 2,1,0 while X counts
+ *    UP, so the three bytes land REVERSED.
+ *  * every step: `$B5BE` and `$B5C3` queue canned packet `$20` (`24 00 C2 C2
+ *    C2 C2 FE`) TWICE -- eight bytes each, `01 24 00 C2 C2 C2 C2 FF` -- and
+ *    then `$B5DC` onward REWRITES the address and data of both packets it has
+ *    just appended, by absolute address `$06F1,Y` with Y = `$0E`. That is the
+ *    same back-patch `$88E5 STA $06FE,Y` does in src/hud.js, at a deeper
+ *    offset: `$06F1 + $0E` is `$0700 + $0E - 15`.
+ *  * the packet ADDRESSES come from `$B606,X` with `X = (step AND $FE) * 2` =
+ *    0/0/4/4/8/8, i.e. PAIRS of steps share a pair of nametable addresses:
+ *    `$2578`+`$2618`, `$2598`+`$25F8`, `$25B8`+`$25D8`.
+ *  * the packet DATA is `$C2` on odd steps and `$C3` on even ones for the
+ *    second packet, and that byte + 2 (`$C4`/`$C5`) for the first.
+ *
+ * `$B5D6 STA $A9` OVERWRITES the step before `$B5D8 LDX $A9` reads it, so the
+ * table index and the parity test read the same byte at two different times.
+ * The port keeps them as two locals for that reason and does not reuse one.
+ *
+ * PACKET `$1F` IS THE FIRST CALLER OF `$85F3`'s `$FD` ARM. `27 D6 AF FD 27 DE
+ * AA FD 27 E6 FA FE` -- src/hudpackets.js says the `$FD` arm is "NOT EXERCISED
+ * BY ANY MEASURED FRAME"; it is now. It emits THREE packets from one index:
+ * `01 27 D6 AF FF 01 27 DE AA FF 01 27 E6 FA FF`, fifteen bytes, three single
+ * ATTRIBUTE bytes at `$27D6`/`$27DE`/`$27E6` -- the shutter recolours its own
+ * corner of nametable 1 before it starts moving.
+ */
+function h_B569(state, rom, j) {
+  const o = state.obj; const i = j + ENEMY_BASE;
+  h_AEDD(state);                              // $B569 JSR $AEDD
+  if (o.x[i] >= 0xB0) return;                 // $B56C/$B56F CMP #$B0 / BCC $B574 / RTS
+  // loc_B574 -- from here the shutter owns the frame.
+  state.zp5B = u8(state.zp5B + 1);            // $B574 INC $5B
+  const phase = o.s0460[i];                   // $B576 LDY $046C,X
+  if (phase === 0) {                          // $B579 BNE $B583
+    o.s0460[i] = u8(phase + 1);               // $B57B INC $046C,X
+    cannedPacket(state, packetTable(), 0x1F); // $B57E LDA #$1F / $B580 JMP $85E8
+    return;
+  }
+  // loc_B583
+  if (phase >= 0x07) { freeSlot(state, j); return; }  // $B583 CPY #$07 / $B587 JMP $AEF8
+  // loc_B58A
+  o.s04A0[i] = u8(o.s04A0[i] + 1);            // $B58A INC $04AC,X
+  if (o.s04A0[i] < 0x14) return;              // $B590 CMP #$14 / BCC $B595 / RTS
+  // loc_B595
+  o.s0460[i] = u8(phase + 1);                 // $B595 INC $046C,X
+  o.s04A0[i] = 0;                             // $B598 LDA #$00 / $B59A STA $04AC,X
+  const step = u8(phase - 1);                 // $B59D DEY / $B59E STY $A9
+  if ((step & 1) === 0) {                     // $B5A0 TYA / $B5A1 LSR A / $B5A2 BCS $B5BC
+    // $B5A4 ADC $A9 with the carry LSR just cleared: x0 = (step>>1) + step.
+    let x0 = (step >> 1) + step;              // $B5A4/$B5A6 TAX
+    for (let y = 2; y >= 0; y--) {            // $B5A7 LDY #$02 ... $B5BA BPL $B5A9
+      const b = rom.read(0xB612 + x0);        // $B5A9 LDA $B612,X
+      state.coll[0x1C2 + y] = b;              // $B5AC STA $06C2,Y   (coll is $0500-based)
+      state.coll[0x1CA + y] = b;              // $B5AF STA $06CA,Y
+      state.coll[0x1D2 + y] = b;              // $B5B2 STA $06D2,Y
+      state.coll[0x1DA + y] = b;              // $B5B5 STA $06DA,Y
+      x0 += 1;                                // $B5B8 INX
+    }
+    // ...and FALLS INTO $B5BC. No branch, no RTS. See the docstring.
+  }
+  // loc_B5BC
+  cannedPacket(state, packetTable(), 0x20);   // $B5BC LDA #$20 / $B5BE JSR $85E8
+  cannedPacket(state, packetTable(), 0x20);   // $B5C1 LDA #$20 / $B5C3 JSR $85E8
+  // $B5C6-$B5CD: LDY #$C2 / LSR A / BCS -> keep $C2 (odd step), else LDY #$C3.
+  const tile = (step & 1) !== 0 ? 0xC2 : 0xC3;   // $B5CF STY $99
+  const t = u8((step & 0xFE) << 1);           // $B5D1/$B5D3/$B5D5 AND #$FE / ASL A
+  const q = state.vram.q;
+  const y0 = state.vram.cursor;               // $B5DA LDY $0E
+  // `$06F1,Y` is ABSOLUTE indexed and does not wrap inside a page, so a cursor
+  // below 16 would write the COLLISION MAP instead of the queue. The two $85E8
+  // calls above have just appended sixteen bytes, so it cannot happen unless
+  // $0E wrapped past 256 first -- loud rather than silently mis-addressed, the
+  // same call this port already makes at $88E5 (src/hud.js).
+  if (y0 < 16) {
+    throw new Error(`$B5DC STA $06F1,Y with $0E = ${y0}: the two canned $20 `
+                  + 'packets should have left the cursor at >= 16, so the queue '
+                  + 'wrapped and these six back-patches would land in $06xx, the '
+                  + 'collision map.');
+  }
+  q[y0 - 15] = rom.read(0xB606 + t);          // $B5DC LDA $B606,X / STA $06F1,Y
+  q[y0 - 14] = rom.read(0xB607 + t);          // $B5E2 LDA $B607,X / STA $06F2,Y
+  q[y0 - 7] = rom.read(0xB608 + t);           // $B5E8 LDA $B608,X / STA $06F9,Y
+  q[y0 - 6] = rom.read(0xB609 + t);           // $B5EE LDA $B609,X / STA $06FA,Y
+  for (let k = 0; k <= 3; k++) {              // $B5F4 LDX #$03 ... $B603 BPL $B5F6
+    q[y0 + k - 5] = tile;                     // $B5F6 LDA $99 / $B5F8 STA $06FB,Y
+    q[y0 + k - 13] = u8(tile + 2);            // $B5FB CLC / ADC #$02 / STA $06F3,Y
   }
 }

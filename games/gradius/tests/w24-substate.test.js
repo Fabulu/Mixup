@@ -140,12 +140,39 @@ test('$81 countdown duration is rank-indexed: rank 0 -> 768, rank 4 -> 1280', ()
   assert.strictEqual(RANK_CD[4] * 256, 1280, 'rank 4 countdown (table-derived)');
 });
 
-test('$81 stage-6 special case ($19 == 6) is a loud throw', () => {
-  // $9A12 CMP #$06 / BNE $9A1E. The port loads one stage; the stage-6 shortcut
-  // ($4D:=1, $4C:=$CA) is unreachable. RED WHEN: it silently skips.
+test('$81 on STAGE 7 ($19 == 6) seeds a fixed $01CA, not the rank table', () => {
+  // W36 INVERTED THIS, and the reason is worth keeping. It used to assert a
+  // throw whose message read "the stage-6 shortcut is unreachable -- the port
+  // loads one stage": true of the corpus in W24, and read back as a claim about
+  // the cartridge. Stage 7 IS `$19 == 6` and `$81` is what `$9A4D` hands to at
+  // bossPage, so this arm sat on the ordinary stage-7 path the whole time.
+  //
+  // $9A16 LDA #$01 / STA $4D / LDA #$CA / D0 07 BNE $9A25. The BNE skips BOTH
+  // $9A1E (the rank read) and $9A23 (LDA #$00), so $9A25's shared STA $4C
+  // stores the $CA. RED WHEN: the arm falls into $9A1E, or $4C is left 0, or
+  // the fork is dropped and stage 7 uses the rank table.
   const s = atSubstate(0x81);
   s.zp19 = 6;
-  assert.throws(() => nmi(s, 0, res), /\$9A12/);
+  s.zp17 = 0;
+  assert.doesNotThrow(() => nmi(s, 0, res));
+  assert.strictEqual(s.zp4D, 0x01, '$9A18: $4D := 1');
+  assert.strictEqual(s.zp4C, 0xCA, '$9A1A/$9A25: $4C := $CA -- $01CA = 458 frames');
+  assert.strictEqual(s.substate, 0x82, '$9A29 INC $1B still runs');
+  // ...and it is the SAME at every rank, which is the whole difference from
+  // every other stage: $9A35[$17] would give 3, 3, 4, 4, 5, 5.
+  for (let rank = 0; rank <= 5; rank++) {
+    const r = atSubstate(0x81);
+    r.zp19 = 6; r.zp17 = rank;
+    nmi(r, 0, res);
+    assert.strictEqual(r.zp4D * 256 + r.zp4C, 0x01CA,
+      `stage 7's countdown must be $01CA at rank ${rank}`);
+  }
+  // The control: stage 6 at the same rank DOES read the table.
+  const s6 = atSubstate(0x81);
+  s6.zp19 = 5; s6.zp17 = 2;
+  nmi(s6, 0, res);
+  assert.strictEqual(s6.zp4D * 256 + s6.zp4C, 4 * 256,
+    '$9A35[2] = 4 -- the non-stage-7 arm is untouched');
 });
 
 // =========================================================== $82 ($99E9) the countdown

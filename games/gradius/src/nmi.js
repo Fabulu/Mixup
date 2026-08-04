@@ -493,9 +493,13 @@ function st9A4D(state, res) {
  *
  *   9A0E  A6 17                       X = rank $17
  *   9A12  A5 19 / C9 06 / D0 08       stage != 6 -> $9A1E (the normal load)
- *         (stage 6 special: $4D:=1, $4C:=$CA -- unreachable, one stage loaded)
+ *   9A16  A9 01 / 85 4D               STAGE 7 ONLY: $4D := 1
+ *   9A1A  A9 CA / D0 07               A := $CA, BNE $9A25 -- SKIPS $9A1E AND
+ *                                     $9A23, so the $CA is what $9A25 stores
  *   9A1E  BD 35 9A / 85 4D            $4D := $9A35[$17]
- *   9A23  A9 00 / 85 4C               $4C := 0
+ *   9A23  A9 00                       A := 0
+ *   9A25  85 4C                       $4C := A   <- the SHARED store, and the
+ *                                     reason $9A1C is a BNE and not a JMP
  *   9A27  E6 5B / E6 1B               INC $5B; $1B -> $82
  *   9A2D  A9 01 / 85 62               $62 := 1 (write-only flag, no PRG reader)
  *   9A2F  20 DF 99                    clear $63-$6F (sub_$99DF)
@@ -507,11 +511,28 @@ function st9A4D(state, res) {
 function st9A0E(state, res) {
   const rank = state.zp17;                           // $9A0E LDX $17
   if (state.zp19 === 6) {                            // $9A12 CMP #$06
-    throw new Error('$9A12: $19 = 6 (stage 6 special case). $4D:=1, $4C:=$CA '
-                  + 'is unreachable -- the port loads one stage.');
+    // W36. THIS THREW, AND THE REASON GIVEN WAS CIRCULAR. "$4D:=1, $4C:=$CA is
+    // unreachable -- the port loads one stage" was true of the corpus when W24
+    // wrote it and was read back as a claim about the cartridge. Stage 7 IS
+    // `$19 == 6`, and `$81` is the sub-state `$9A4D` hands to the frame the
+    // camera reaches `bossPage` -- so this sat on the ORDINARY stage-7 path
+    // from the moment the stage was admitted. It is also invisible to
+    // `stagesweep.mjs`, which seeds `$1B = $80` and drives 1400 frames at
+    // 2 px/frame: page 12 needs 1536. Found by scanning `assets/prg.bin` for
+    // every `$19` compare (21 sites; `$9906` and `$9A12` are the only two
+    // against `#$06`), exactly as W35 found `$99C4`.
+    //
+    // $9A16 LDA #$01 / STA $4D / LDA #$CA / BNE $9A25 -- the BNE is taken on a
+    // non-zero immediate, so it lands PAST $9A1E's rank read and $9A23's
+    // `LDA #$00`, and $9A25 STA $4C stores the $CA. Stage 7's countdown is a
+    // FIXED $01CA = 458 frames, the same at every rank; every other stage's is
+    // `$9A35[$17] * 256` (768 at rank 0, 1536 at rank 5).
+    state.zp4D = 0x01;                               // $9A16 LDA #$01 / $9A18 STA $4D
+    state.zp4C = 0xCA;                               // $9A1A LDA #$CA / $9A25 STA $4C
+  } else {
+    state.zp4D = res.stages[state.zp19].rankCountdown[rank]; // $9A1E LDA $9A35,X / STA $4D
+    state.zp4C = 0;                                  // $9A23/$9A25 STA $4C
   }
-  state.zp4D = res.stages[state.zp19].rankCountdown[rank]; // $9A1E LDA $9A35,X / STA $4D
-  state.zp4C = 0;                                    // $9A23/$9A25 STA $4C
   state.zp5B = u8(state.zp5B + 1);                   // $9A27 INC $5B
   state.substate = u8(state.substate + 1);           // $9A29 INC $1B -> $82
   state.spawn.z62 = 1;                               // $9A2D STA $62 (no PRG reader)
