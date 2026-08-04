@@ -261,8 +261,22 @@ SHOT_WINDOWS = [
     #   the first to reach it, and the port threw immediately and by address --
     #   `UNPORTED $2822FC: word outside every ROM window`. That throw is the
     #   system working: the alternative to a missing window is invented data.
-    (0x2822EC, 0x0040, "WAVE 27: $2822EC the 32-word direction-sprite offset "
-                      "table read by the $2822AE behaviour epilogue"),
+    #
+    #   SIZE CORRECTION (W27, same day): this window was first added as $40
+    #   bytes, on the assumption "32 words = 64 bytes". WRONG. $2822AE indexes
+    #   it as `move.w ($2822EC,A1,D0),D1` with D0 = (dir+4)&$F8, so D0 is a BYTE
+    #   OFFSET running 0, 8, 16 ... $F8 -- the 32 entries are spaced 8 bytes
+    #   apart, not packed. The last one lives at $2822EC+$F8, so the table needs
+    #   $FA bytes, and it ends exactly where kind 3's body begins ($2823EC), so
+    #   $100 is the true extent.
+    #
+    #   It passed anyway, because every test written against this table used
+    #   `dir: 0x10` -> D0 = $10 -> well inside $40. The first test to use
+    #   dir $40 threw `UNPORTED $28232C` on its first frame. A window validated
+    #   only by inputs that all happen to be small is not validated.
+    (0x2822EC, 0x0100, "WAVE 27: $2822EC the 32-entry direction-sprite offset "
+                      "table read by the $2822AE behaviour epilogue; indexed by "
+                      "(dir+4)&$F8 as a BYTE offset, so it spans $100 to $2823EC"),
     #   $2821FA  kind 2's sprite-frame table: 9 pointers into $28221E..$2822AC,
     #                       each of which is a list of $1BFxxx frame descriptors.
     #                       $2822AE resolves *(A0 + $2822EC[d0]) then

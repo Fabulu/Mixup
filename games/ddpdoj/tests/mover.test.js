@@ -228,15 +228,29 @@ test('an UNPORTED behaviour kind throws by address (loud named throw)', { skip: 
     const ram = new Ram(null);
     ram.setU16(0x81b41a, 1);
     ram.setU16(0x813176, 0);
-    // Kind 17 ($282A1E, the CURVER) is not ported -> its initialiser must throw.
-    // This test used kind 16 until W27 ported it; when the example kind gets
-    // ported the test goes green for the wrong reason, so it must be re-pointed
-    // at a still-unported kind rather than deleted.
-    seedBullet(ram, 0, { type: 0x8100 | 17, dir: 0x40 });
+    // SELF-MAINTAINING. This test hardcoded kind 16, then kind 17, and each
+    // time the wave that ported that kind turned it GREEN FOR THE WRONG REASON
+    // -- the subject vanished, not the behaviour. So the kind is now DERIVED:
+    // read the $282030 behaviour table out of the ROM and pick the first kind
+    // whose body is absent from INIT_BODIES. It cannot decay.
+    const unported = [];
+    for (let k = 0; k < 39; k++) {
+      const body = ROM.u32(0x282030 + 4 * k);
+      if (!INIT_BODIES.has(body)) unported.push([k, body]);
+    }
+    if (unported.length === 0) {
+      // Not a silent pass: every one of the 39 kinds is ported, which is a
+      // milestone worth failing loudly about so this test gets retired
+      // deliberately rather than sitting here asserting nothing.
+      assert.fail('all 39 behaviour kinds are ported -- retire this test');
+    }
+    const [kind, addr] = unported[0];
+    const hex = addr.toString(16).toUpperCase();
+    seedBullet(ram, 0, { type: 0x8100 | kind, dir: 0x40 });
     assert.throws(
       () => runMover({ ram, rom: ROM, notes: new UnportedLog() }),
-      (e) => e instanceof Unreached && /282A1E/i.test(e.message),
-      'kind 17 initialiser $282A1E is not ported and must throw carrying the address');
+      (e) => e instanceof Unreached && new RegExp(hex, 'i').test(e.message),
+      `kind ${kind} initialiser $${hex} is not ported and must throw carrying the address`);
   });
 
 // ---------------------------------------------------------- W27 family A
@@ -388,24 +402,56 @@ test('kind 18 spawns an enemy on the frame its +$34 word UNDERFLOWS, not on reac
       'F4: the underflow frame calls $263684 and must throw carrying that address');
   });
 
-test('the ported-body inventory is exactly 19 initialisers + 18 continuations', () => {
+test('kind 17 (the CURVER) turns and accelerates on its FIRST continuation frame',
+  { skip: !HAVE_TABLES }, () => {
+    // $282A56 `move.w #$1,$2a(A6)` is BIG-ENDIAN: it sets the counter +$2A to
+    // $00 and the RELOAD +$2B to $01. A counter seeded to 0 underflows on the
+    // very first frame, so a fresh kind-17 bullet turns immediately -- it does
+    // not wait. Reading the word as counter=1 would delay the first turn.
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 17, posA: 0x1000, posB: 0x2000,
+      speed: 0x14, dir: 0x40 });
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                    // F1: initialiser $282A1E
+    assert.equal(ram.u8(base + 0x2a), 0x00, 'F1: counter +$2A seeded to 0 (high byte)');
+    assert.equal(ram.u8(base + 0x2b), 0x01, 'F1: reload +$2B seeded to 1 (low byte)');
+    assert.equal(ram.u8(base + 0x2c), 0x00, 'F1: counter +$2C seeded to 0');
+    assert.equal(ram.u8(base + 0x2d), 0x04, 'F1: reload +$2D seeded to 4');
+    ram.setU8(base + 0x34, 0x08);                     // the turn rate, from the spawn record
+    const dir0 = ram.u8(base + REC.dir), spd0 = ram.u8(base + REC.speed);
+    runMover(ctx);                                    // F2: continuation $282A66
+    assert.equal(ram.u8(base + REC.dir), (dir0 + 0x08) & 0xff,
+      'F2: dir turned by the +$34 rate on the first frame');
+    assert.equal(ram.u8(base + REC.speed), (spd0 + 1) & 0xff,
+      'F2: speed accelerated by 1 on the first frame');
+    assert.equal(ram.u8(base + 0x2a), 0x01, 'F2: turn counter reloaded from +$2B');
+    assert.equal(ram.u8(base + 0x2c), 0x04, 'F2: accel counter reloaded from +$2D');
+    // F3: the turn counter is 1 now, so it steps to 0 WITHOUT underflow -- no turn.
+    const dir2 = ram.u8(base + REC.dir);
+    runMover(ctx);
+    assert.equal(ram.u8(base + REC.dir), dir2, 'F3: counter non-zero, no turn this frame');
+  });
+
+test('the ported-body inventory is exactly 20 initialisers + 19 continuations', () => {
   // A LEDGER test: it pins the exact set, so porting a body turns it RED until
   // the inventory here is updated deliberately.  That is the point -- the count
   // cannot drift upward without somebody writing down which addresses moved.
   //
   // W26 ported 8 bodies (kinds 3/4/5/6/7/12/13/19; kind 6 is the midboss's).
   // W27 adds 11: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
-  // family C kinds 16/18.  Kind 10's
+  // family C kinds 16/18, family D kind 17.  Kind 10's
   // $282840 is also the target for kinds 14 and 15, which alias it in the
   // $282030 table.  So 15 distinct bodies now cover 17 of the 39 kind indices.
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
     [0x282104, 0x282162, 0x2821c2, 0x2823ec, 0x2824a8, 0x282564, 0x282620,
      0x2826dc, 0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962,
-     0x2829bc, 0x282aae, 0x282b30, 0x282bee, 0x282c56]);
+     0x2829bc, 0x282a1e, 0x282aae, 0x282b30, 0x282bee, 0x282c56]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
     [0x28213e, 0x28219e, 0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738,
      0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x2829fe,
-     0x282af6, 0x282b64, 0x282c2a, 0x283ce4]);
+     0x282a66, 0x282af6, 0x282b64, 0x282c2a, 0x283ce4]);
   // 17 initialisers, 16 continuations. NOT equal, and that is correct: kinds 2
   // and 21 both install $283CE4, so bodies MAY share a continuation.
   //

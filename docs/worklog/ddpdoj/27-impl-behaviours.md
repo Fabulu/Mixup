@@ -296,3 +296,70 @@ GREEN. Every future wave that ports a kind must re-point it, not delete it.
 
 `src/mover.js` restored and hash-verified byte-identical (`f79f3c3284f94308`);
 **388 pass / 0 fail / 0 skipped**.
+
+### 2026-08-04 — FAMILY D PORTED (kind 17, the CURVER) — first gate-visible body
+
+Kind 17 (`$282A1E`) is the first W27 body the mover gate can actually see:
+families A–C write only descriptor/renderOffs/graphic, which the gate ignores.
+This one writes **DIR (+$1B) and SPEED (+$1A)**, both compared fields.
+
+Its initialiser is byte-identical to kind 18's; the continuation re-stamps the
+`$410` sprite fields then runs two independent byte countdowns with reload:
+
+    $282A7C  subq.b #1,$2A / bcc -> reload from +$2B, dir += +$34   (the turn)
+    $282A92  subq.b #1,$2C / bcc -> reload from +$2D, speed += 1    (the accel)
+
+**THE COUNTER/RELOAD HALVES ARE NOT WHAT THEY LOOK LIKE.** `move.w #$1,$2a(A6)`
+is big-endian, so it seeds the COUNTER +$2A to `$00` and the RELOAD +$2B to
+`$01` — not counter=1. A counter at 0 underflows on its FIRST continuation
+frame, so a fresh kind-17 bullet turns and accelerates immediately rather than
+after a delay. Reading the word as counter=1/counter=4 would postpone the first
+turn by a frame and the first acceleration by four, for every curver in the
+game. Same shape in kinds 16 and 18, which use the identical writes.
+
++$34 (the turn rate) is not written by the initialiser — it comes from the
+spawn record, exactly like kind 18's countdown.
+
+### A ROM WINDOW THAT WAS TOO NARROW, AND WHY IT PASSED ANYWAY
+
+Adding kind 17 threw `UNPORTED $28232C` on its first frame — **a defect in the
+window I added for family B this same session**, not in the port.
+
+`$2822AE` indexes `$2822EC` as `move.w ($2822EC,A1,D0),D1` with
+`D0 = (dir+4)&$F8`. D0 is a **BYTE OFFSET** running 0, 8, 16 … `$F8`, so the 32
+entries are spaced 8 bytes apart, not packed. I sized the window `$40` on
+"32 words = 64 bytes". The true extent is `$100`, ending exactly where kind 3's
+body begins at `$2823EC` — a clean abutting bound, the same kind of evidence
+used elsewhere in this project to prove a table's length.
+
+**It passed for hours because every test written against that table used
+`dir: 0x10`** → D0 = `$10`, comfortably inside `$40`. The first test to use
+`dir: 0x40` walked straight off the end. A window validated only by inputs that
+all happen to be small is not validated — and nothing in the suite would have
+caught it until a real scenario spawned a bullet aimed left.
+
+Widened to `$0100`; tables regenerated, 88 windows / 177,270 bytes.
+
+### MUTATION TABLE (family D)
+
+| mutation | result |
+|---|---|
+| seed +$2A=1/+$2B=0 (the big-endian half-swap) | RED — `not ok 208` |
+| the turn writes SPEED instead of DIR | RED — `not ok 208` |
+| accel reloads from +$2B instead of +$2D | RED — `not ok 208` |
+
+All three reddened the curver test and nothing else. `src/mover.js` restored and
+hash-verified byte-identical (`66b41156f8cbe684`); **389 pass / 0 fail / 0
+skipped**.
+
+### THE NEGATIVE TEST IS NOW SELF-MAINTAINING
+
+`an UNPORTED behaviour kind throws by address` had already been re-pointed once
+(kind 16 → 17), and this wave ported kind 17 too. Rather than re-point it a
+second time it now **derives** its subject: it reads the `$282030` table out of
+the ROM and picks the first kind whose body is absent from `INIT_BODIES`. It
+cannot decay green. If every kind is ever ported it calls `assert.fail` with
+"retire this test" rather than silently asserting nothing.
+
+**Inventory: 19 → 20 initialisers, 19 continuations. 23 of 39 kind indices
+covered; 17 distinct bodies remain (families E–L).**

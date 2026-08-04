@@ -1029,4 +1029,64 @@ CONTINUATIONS.set(0x282af6, (ctx, base) => {
     + `would be invented`);
 });
 
+// ============================================================ W27 FAMILY D
+//
+// Kind 17 ($282A1E) -- THE CURVER, and the first W27 body the mover gate can
+// actually see.  Families A-C write only descriptor/renderOffs/graphic, all of
+// which the gate ignores; this one writes DIR (+$1B) and SPEED (+$1A), both
+// compared fields.
+//
+// Its initialiser is byte-identical to kind 18's, and the continuation opens
+// with the same $410 re-stamp, then runs TWO independent byte countdowns:
+//
+//   $282A7C  subq.b #1,$2A / bcc  -> on underflow: reload from +$2B,
+//                                     then dir += +$34        (the turn)
+//   $282A92  subq.b #1,$2C / bcc  -> on underflow: reload from +$2D,
+//                                     then speed += 1         (the accel)
+//
+// So the bullet turns by a per-record rate every +$2B frames and accelerates by
+// 1 every +$2D frames.  Both counters are the reload flavour that `byteUnderflow`
+// already models.
+//
+// THE COUNTER/RELOAD PAIRS COME FROM WORD WRITES, AND THE HALVES ARE NOT WHAT
+// THEY LOOK LIKE.  `move.w #$1,$2a(A6)` ($282A56) is big-endian, so it sets
+// +$2A = $00 and +$2B = $01 -- the COUNTER to zero and the RELOAD to one.  Same
+// for `move.w #$4,$2c(A6)`: +$2C = $00, +$2D = $04.  A counter seeded to 0
+// underflows on its FIRST continuation frame, so a fresh kind-17 bullet turns
+// and accelerates immediately rather than after a delay.  Reading those as
+// counter=1 and counter=4 would delay the first turn by a frame and the first
+// acceleration by four.
+//
+// +$34 (the turn rate) is NOT written by the initialiser -- it arrives from the
+// spawn record, exactly as kind 18's +$34 countdown does.
+
+INIT_BODIES.set(0x282a1e, (ctx, base) => {
+  const { ram } = ctx;
+  muzzleAndSprite(ctx, base);                        // $282A2C
+  ram.setU8(base + 0x1d, 0x1a);                      // $282A30
+  ram.setU32(base + 0x16, 0x000c000c);               // $282A3A
+  ram.setU16(base + 0x26, 0x0101);                   // $282A42
+  ram.setU32(base + REC.continuation, 0x282a66);     // $282A48
+  ram.setU8(base + 0x28, 0x00);                      // $282A50
+  ram.setU16(base + 0x2a, 0x0001);                   // $282A56 -> +$2A=0, +$2B=1
+  ram.setU16(base + 0x2c, 0x0004);                   // $282A5C -> +$2C=0, +$2D=4
+  epi2822AE(ctx, base, 0x2821fa);                    // $282A62 bra.w $2822AE
+});
+CONTINUATIONS.set(0x282a66, (ctx, base) => {
+  const { ram } = ctx;
+  ram.setU32(base + 0x0a, 0x1c0014);                 // $282A66 descriptor
+  ram.setU32(base + 0x06, 0xfc00fe00);               // $282A6E renderOffs
+  ram.setU16(base + 0x0e, 0x0410);                   // $282A76 graphic
+  // $282A7C the TURN: counter +$2A, reload +$2B, then dir += the +$34 rate.
+  if (byteUnderflow(ram, base, 0x2a, 0x2b)) {
+    const rate = ram.u8(base + 0x34);                // $282A8A move.b $34,D0
+    ram.setU8(base + REC.dir, (ram.u8(base + REC.dir) + rate) & 0xff);  // $282A8E
+  }
+  // $282A92 the ACCEL: counter +$2C, reload +$2D, then speed += 1.
+  if (byteUnderflow(ram, base, 0x2c, 0x2d)) {
+    ram.setU8(base + REC.speed, (ram.u8(base + REC.speed) + 1) & 0xff); // $282AA0
+  }
+  advance40(ctx, base);                              // $282AA4 lea $40(A6)
+});
+
 export { INIT_BODIES, CONTINUATIONS };
