@@ -440,6 +440,15 @@ ENEMY_STAT_TABLES = [
     (0x272D70, 0x0190, "W23: the aim-derived sprite/bucket tables $272D7A "
                        "($88) and $272DFA ($82/$85), 16 longs each"),
     (0x272E70, 0x0090, "W23: the aim-derived sprite table $272E7A ($89)"),
+    # W30: type $85/$86's handler $275914 fires at $275AD0 with D3 taken from
+    # a 32-entry LONGWORD muzzle table at $27327A ($275AAA lea $27327A,A4 /
+    # $275ABC move.l (A4,D0.w),D3 with D0 = (($28,A5) & $3E) * 2, so byte
+    # offsets 0..$7C).  EXTENT PINNED FROM THE DATA, not from the index alone:
+    # entries 0..31 are a clean circle ($0500,$0000 / $0040,$03C0 / $FB80,$0000
+    # / $0040,$FC40 at 0/8/16/24) and entry 32 at $2732FA breaks it, so the
+    # table is $27327A..$2732F9 and the window covers exactly that.
+    (0x273270, 0x0090, "W30: type $85/$86's 32-entry muzzle-vector table "
+                       "$27327A, read at $275ABC by the $2813F0 fire"),
     (0x272F70, 0x0090, "W23: the aim-derived sprite/bucket table $272F7A ($80)"),
     (0x2763D0, 0x0050, "W23: type $88's sub-record sprite table $2763D8 "
                        "(indexed by (sub +$28))"),

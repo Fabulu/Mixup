@@ -10,7 +10,10 @@ import { runHandler, HANDLER_ADDRESSES, handlerMap } from '../src/handlers.js';
 import { UnportedLog, Unreached } from '../src/unported.js';
 
 const REC = 0x81364C, SUB = 0x81459C;
-const SIX = [0x2688cc, 0x268232, 0x269cea, 0x26a2e2, 0x2747c6, 0x27687e];
+// W30 adds `$275914`, and it is SEVEN entries for EIGHT stage-1 types:
+// $85 and $86 share `$275914`, exactly as $07 and $27 share `$26A2E2`.
+const SIX = [0x2688cc, 0x268232, 0x269cea, 0x26a2e2, 0x2747c6, 0x27687e,
+  0x275914];
 
 function makeRam(over = {}) {
   const ram = new Ram(null);
@@ -26,7 +29,7 @@ function makeRam(over = {}) {
 const STUB_TABLES = { vector: () => ({ dy: 0, dx: 0 }) };
 const STUB_ROM = { u8: () => 0, u16: () => 0, u32: () => 0 };
 
-test('the six handler addresses are registered', () => {
+test('the ported handler addresses are registered (W25 six + W30 $275914)', () => {
   assert.deepEqual([...HANDLER_ADDRESSES].sort((a, b) => a - b),
     [...SIX].sort((a, b) => a - b));
 });

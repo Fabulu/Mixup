@@ -226,7 +226,8 @@ test('the handler adapter covers every address in handlerMap(), and only those',
   { skip: SKIP }, () => {
     const m = enemyHandlerMap(ROM);
     assert.deepEqual([...m.keys()].sort(), [...HANDLER_ADDRESSES].sort());
-    assert.equal(m.size, 6, 'W25 ported six of stage 1\'s nineteen handlers');
+    assert.equal(m.size, 7, 'W25 ported six of stage 1\'s nineteen handlers; '
+      + 'W30 added $275914 -- the one that BLOCKED the fly-around gate');
   });
 
 test('an enemy whose ($4C,A5) handler is unported throws BY THAT ADDRESS',

@@ -54,7 +54,9 @@ import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
 import { freeEnemy } from './initbody.js';
 import { stepMovement, scrollCompensate, applyVelocity } from './movement.js';
-import { fire as fireBulletFan } from './bullets.js';
+import { fire as fireBulletFan, WriteLog } from './bullets.js';
+import { AimTables, AIM, aim64, slew64 } from './aim.js';
+import { enqueueRequest, enqueueRegisters } from './spritequeue.js';
 
 // ----------------------------------------------------------- record offsets
 // A5 = enemy record, A6 = sub-record (= +$6,A5).  Named once so each handler
@@ -64,11 +66,19 @@ const R = {
   sprite22: 0x22, hpReload: 0x26, fireCtr: 0x28, fireAct2A: 0x2a,
   fireAct2E: 0x2e, facing: 0x33, pal34: 0x34, palCycle: 0x35,
   handler: 0x4c, runLen: 0x04, movement: 0x12, flags: 0x02, classByte: 0x0d,
+  // W30, for `$275914`.  The SAME BYTES the names above cover, named again for
+  // the type that uses them differently -- `($20,A5)` is `deathFlag` in $10/$11
+  // and a SALVO COUNTER in $85, `($22,A5)` is a sprite scratch in $82 and an
+  // AIM CADENCE in $85.  One name per meaning, so a reader is never told a byte
+  // is a death flag while it is being decremented as a counter.
+  rec1C: 0x1c, rec1D: 0x1d, rec1E: 0x1e, rec21: 0x21, rec23: 0x23, rec24: 0x24,
+  salvo: 0x20, cadence22: 0x22,
 };
 // sub-record (A6)
 const S = {
   flags: 0x00, posX: 0x02, posY: 0x04, hp: 0x18, speed: 0x1a, heading: 0x1b,
   palette: 0x1d, anim: 0x1e, f1f: 0x1f, sprite0a: 0x0a, f10: 0x10, f1c: 0x1c,
+  f38: 0x38,   // W30: $275984/$275996 -- the HP FLOOR $275914 clamps against
 };
 // the globals the handlers read
 const G = {
@@ -76,7 +86,13 @@ const G = {
   clock: 0x8130ce, midbossD8: 0x8130d8, aa: 0x8130aa, ba: 0x8130ba,
   stage96: 0x813096, scrollClockOdo: 0x8130d0,
   mirror: 0x80390b, mirror2: 0x80390c,
+  ca: 0x8130ca,   // W30: $275954 -- the gate that picks $85's palette index
 };
+/** `$27327A` -- type $85/$86's 32-entry longword MUZZLE-VECTOR table, read at
+ *  `$275ABC move.l (A4,D0.w),D3`.  Its window is declared by
+ *  `tools/export-tables.py`; the extent ($80 bytes) is pinned from the data,
+ *  not from the index expression alone -- see the W30 worklog §1.1. */
+const MUZZLE_85 = 0x27327a;
 // 16-direction sprite-pointer tables, by handler (ROM addresses, build B)
 const SPRITE_TAB = {
   h11_main: 0x268b9e,   // $2689B6 lea (heading -> sub +$0A sprite)
@@ -183,6 +199,42 @@ function onScreen242684(ram, a6) {
   if (u16(y) + 0x9000 > 0xffff) return true;           // $242696 bcs (Y off)
   let x = u16((pos >>> 16) + 0x800);                   // swap; $24269A addi.w #$800
   return u16(x) + 0x8000 > 0xffff;                     // carry = X off
+}
+
+// ---------------------------------------- $2426A4: the OTHER onscreen test
+// The same eight instructions as `$242684` on a WIDER short axis, and it is a
+// separate routine, not a parameter: `$2426A4` adds `#$1000`/`#$7000` where
+// `$242684` adds `#$800`/`#$8000`.  READ PAST THE APPARENT START: its
+// early-out `$2426B6 bcs.b $2426A2` branches BACKWARDS to `$242684`'s shared
+// `rts`, so the two routines are physically interleaved and a reader who starts
+// at `$2426A4` sees a branch to an address inside the routine before it.
+//
+//   2426A4: move.l $2(A6),D0 / addi.w #$1c00 / add.w $813172 / addi.w #$9000
+//   2426B6: bcs $2426A2                       carry -> OFF-screen, return
+//   2426B8: swap D0 / addi.w #$1000 / addi.w #$7000 / rts
+//
+// Returns true if OFF-screen (the 68000 returns that as CARRY SET).
+function offScreen2426A4(ram, a6) {
+  const pos = ram.u32(a6 + 0x02);                      // $2426A4 move.l $2(A6)
+  let y = u16((pos & 0xffff) + 0x1c00);                // $2426A8 addi.w #$1c00
+  y = u16(y + ram.u16(G.scroll));                      // $2426AC add.w $813172
+  if (u16(y) + 0x9000 > 0xffff) return true;           // $2426B2/$2426B6 bcs
+  const x = u16((pos >>> 16) + 0x1000);                // $2426B8 swap / $2426BA
+  return u16(x) + 0x7000 > 0xffff;                     // $2426BE addi.w #$7000
+}
+
+// ------------------------------------------------- the aim tables, per ROM
+// `$275914` calls the aim CORE `$24203E` directly (its target-select is inlined,
+// not a `bsr $24270A`), and the core reads five ROM tables.  `AimTables` checks
+// two of them against the instruction encodings in its constructor, so building
+// it is a real read of the cartridge and must not happen 41 times a frame.  The
+// cache is keyed on the ROM OBJECT, so it is a pure derivation of immutable
+// input -- NOT per-Game mutable state, which `NOTES-replay.md` §2 forbids.
+const AIM_TABLES = new WeakMap();
+function aimTables(rom) {
+  let t = AIM_TABLES.get(rom);
+  if (!t) { t = new AimTables(rom); AIM_TABLES.set(rom, t); }
+  return t;
 }
 
 // helper: $11-style on-screen bounds test (Y first, then X; the inlined variant
@@ -424,8 +476,13 @@ function handler82(ram, rom, a5, ctx) {
   } else {
     ram.setU16(a5 + R.onScreen, 1);                    // move.b #$1,$16(A5)
   }
-  // $2747E8: copy position to +$22 (a record scratch for the aim/fire setup).
-  ram.setU32(a5 + R.sprite22, ram.u32(a6 + 0x02));     // move.l $2(A6),$22(A6)
+  // $2747E8: copy position to the SUB-RECORD's +$22.
+  // W30 FIX.  This line read `a5 + R.sprite22` while its own comment said
+  // `$22(A6)`.  `$2747E8` is `2D6E 0002 0022`: bits 11..9 = `110` and the
+  // destination mode is `101`, so BOTH operands are `(d16,A6)`.  The port was
+  // writing the position into the wrong record and never into the right one.
+  // Found by reading `$275936`, the identical instruction in `$275914` (W30).
+  ram.setU32(a6 + R.sprite22, ram.u32(a6 + 0x02));     // move.l $2(A6),$22(A6)
   // $2747EE: the damage branch combines (A6) and $20(A6): `(flags | $20(A6)) & $5c`.
   let dmg = (ram.u8(a6) | ram.u8(a6 + 0x20)) & 0x5c;   // move.b (A6)/or.b $20/andi
   if (dmg !== 0) {                                     // bne $274812
@@ -493,6 +550,223 @@ function handler8B(ram, rom, a5, ctx) {
   //  fire is gated by the stage/clock bit-5 set above and run elsewhere.)
 }
 
+// ================================================= TYPES $85 AND $86 (W30)
+// `$275914`.  THE HANDLER THAT BLOCKED THE GATE: W29 wired the enemy subsystem
+// into the frame loop and `fly-around` stopped at logic frame 2346 with
+// `Unreached $275914`, which is why this wave exists.
+//
+// **TWO TYPES SHARE IT**, read out of the type table (`$27E412 + (t-$80)*8`):
+// `$85` (init `$275812`, body `$27581A`, W23) and `$86` (init `$275BAE`, body
+// `$275BB6`, NOT in W23's 21 because stage 1's script has no `$86` record).
+// The handler branches on which at `$275AFC cmpi.b #$86,($C,A5)` in its death
+// arm, so the distinction is transcribed rather than folded away.
+//
+// **THE SPAN IS `$275914..$275BAA` AND CONTROL FLOW DECIDES IT.**  `$275BA6 jmp
+// $263762` ends the death arm, `$275BAC` is a `nop` pad, and `$275BAE` is type
+// `$86`'s init stub falling through into its init body -- a different routine
+// that a linear sweep prints as though it belonged to this one.
+//
+// WHAT MAKES THIS HANDLER DIFFERENT FROM THE OTHER SIX: it is the first ported
+// handler that **emits sprites** (`$23D852`/`$23DF86` into bucket 7 and
+// `$23DF58` into bucket 3, all three through W11's enqueue API) and the first
+// that **fires a bullet in the live path** (`$275AD0 jsr $2813F0`), because all
+// four of that generator's register arguments are computed inside the handler
+// -- no `$23Dxxx` fire-action, no separate aim state machine.
+function handler85(ram, rom, a5, ctx) {
+  const { tables, unported: u } = ctx;
+  const a6 = ram.u32(a5 + 0x06);
+  if (stepMovement(ram, rom, a5, tables, u)) return;   // $275914 jsr $2638A6
+  // $27591A jsr $2426A4 / $275920 bcc $275930 -- carry SET is off-screen.
+  if (offScreen2426A4(ram, a6)) {
+    // $275922 tst.b ($16,A5) / beq $275936.  A BYTE test, unlike $11's word.
+    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; } // $275928 jmp $263762
+  } else {
+    ram.setU8(a5 + R.onScreen, 1);                     // $275930 move.b #$1,($16,A5)
+  }
+  // $275936 move.l ($2,A6),($22,A6) -- BOTH operands are A6 (see handler82's
+  // fix above: this is the instruction that exposed it).
+  ram.setU32(a6 + R.sprite22, ram.u32(a6 + 0x02));
+  // $27593C: the damage test combines (A6) and ($20,A6), like type $82's.
+  const dmg = (ram.u8(a6) | ram.u8(a6 + 0x20)) & 0x5c; // move.b (A6)/or.b $20/andi.w #$5c
+  let d0;
+  if (dmg === 0) {                                     // $275946 bne $275960
+    d0 = ram.u8(a5 + R.rec1C);                         // $275948 move.b ($1C,A5),D0
+    // $27594C cmpi.w #$1c0,($18,A6) / bcc $2759A2 -- an UNSIGNED HP compare, so
+    // a "negative" (dead) HP is >= $1C0 and takes this arm too.
+    if (ram.u16(a6 + S.hp) < 0x1c0                     // $275952 bcc
+        && ram.u16(G.ca) === 0) {                      // $275954 tst.w $8130CA / bne
+      d0 = 0x19;                                       // $27595C moveq #$19,D0
+    }
+  } else {
+    // ---- $275960: the damage arm.
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $275964 and.b D0,(A6)  (D0=$A3)
+    ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);    // $275966 and.b D0,($20,A6)
+    noteDamage(u, a5, '$85');                           // $27596A jsr $286096 (W28)
+    d0 = ram.u8(a6 + S.palette);                       // $275970 move.b ($1D,A6),D0
+    if (d0 === 0x19) d0 = ram.u8(a5 + R.rec1C);        // $275974 cmpi.b #$19 / $27597A
+    d0 = (d0 ^ ram.u8(a5 + R.rec1D)) & 0xff;           // $27597E/$275982 eor.b D2,D0
+    // $275984..$275996: D4 = min(($18,A6), ($38,A6)) SIGNED, written to both.
+    let d4 = ram.u16(a6 + S.hp);                       // $275984 move.w ($18,A6),D4
+    if (i16(d4) > i16(ram.u16(a6 + S.f38)))            // $275988 cmp.w ($38,A6),D4 / ble
+      d4 = ram.u16(a6 + S.f38);                        // $27598E
+    ram.setU16(a6 + S.hp, d4);                         // $275992
+    ram.setU16(a6 + S.f38, d4);                        // $275996
+    if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $27599A tst.w / $27599E bmi
+      deathSeq85(ram, rom, a5, a6, ctx);               // $275AF2
+      return;
+    }
+  }
+  // ---- $2759A2: the common tail.
+  ram.setU8(a6 + S.palette, d0);                       // $2759A2 move.b D0,($1D,A6)
+  // $2759A6 jsr $28AC72 -- the SUB-RECORD SPAWN ENGINE.  It walks a script
+  // pointer at ($44,A5) and, each time HP ($18,A6) drops past the next
+  // threshold word, allocates out of the ten-slot pool at $81DB90 (stride $26,
+  // counted at $81DD0C) and installs a part.  That pool's driver is type-5
+  // call #3 ($28AD54), also unported.  Its return value is DEAD here -- the
+  // next instruction is `tst.l $8130D2` -- so skipping it costs the sub-record
+  // spawns and the advance of ($44,A5), and NOTHING in this handler's own
+  // control flow.  Counted, never silent.
+  u?.note(0x28ac72, `$28AC72 sub-record spawn engine ($81DB90 pool, cue script `
+    + `at ($44,A5), driver $28AD54) in $85 rec $${a5.toString(16)} -- its result `
+    + `is unused by $2759AC; the spawns and the ($44,A5) advance are the gap`);
+  // $2759AC tst.l $8130D2 -- a LONG test, so it covers $8130D2 AND $8130D4.
+  if (ram.u32(G.freeze) === 0) {                       // $2759B2 bne $275A24
+    // $2759B6 subq.b #1,($22,A5) / bcc $275A24 -- the aim CADENCE.  `bcc` is
+    // "no borrow", so the aim runs only on the frame the byte was already 0.
+    const cad = ram.u8(a5 + R.cadence22);
+    ram.setU8(a5 + R.cadence22, (cad - 1) & 0xff);
+    if (cad === 0) {                                   // $2759BA bcc $275A24
+      ram.setU8(a5 + R.cadence22, ram.u8(a5 + R.rec23)); // $2759BE reload from +$23
+      // $2759C4 move.b ($20,A5),D0 / cmp.b ($21,A5),D0 / bne $275A24
+      if (ram.u8(a5 + R.salvo) === ram.u8(a5 + R.rec21)) {
+        aim85(ram, rom, a5, a6);                       // $2759D0..$275A1E
+      }
+    }
+  }
+  // ---- $275A24: THE DRAW.  Three sprite requests, all through W11's API.
+  // $275A24 jsr $23D852 -- the per-record stub on BUCKET 7 ($807450/$80AFC8),
+  // reading the sub-record's own seven fields.
+  enqueueRequest(ram, 7, a6);
+  // $275A2A..$275A46: the second request, REGISTER convention, also bucket 7.
+  // D1 = the position with a muzzle bias on each axis; the low word is the
+  // SHORT axis and the high word the LONG one (src/spritequeue.js §the spec),
+  // and the two `addi.w`s straddle a `swap`, so neither may carry into the
+  // other half.
+  const pos = ram.u32(a6 + 0x02);                      // $275A2A move.l ($2,A6),D1
+  const d1a = ((u16((pos >>> 16) + 0xf300) << 16)      // $275A34 addi.w #$f300 (long)
+    | u16((pos & 0xffff) + 0xfc00)) >>> 0;             // $275A2E addi.w #$fc00 (short)
+  enqueueRegisters(ram, 7, d1a,
+    ram.u32(a5 + R.rec24),                             // $275A3A move.l ($24,A5),D2
+    0x620,                                             // $275A3E move.w #$620,D3
+    ram.u16(a6 + S.f1c));                              // $275A42 move.w ($1C,A6),D4
+  // $275A4C..$275A64: three gates before the THIRD request.  All three are
+  // "skip it": rank non-zero, the $80390C alternation word zero, or stage 2.
+  if (ram.u16(G.rank98) === 0                          // $275A4C tst.w $813098 / bne
+      && ram.u16(G.mirror2) !== 0                      // $275A54 tst.w $80390C / beq
+      && ram.u16(G.stage) !== 2) {                     // $275A5C cmpi.w #$2,$813092 / beq
+    const d1b = ((u16((pos >>> 16) + 0xe400) << 16)    // $275A70 addi.w #$e400
+      | u16((pos & 0xffff) + 0x400)) >>> 0;            // $275A6A addi.w #$400
+    // $275A84 jsr $23DF58 -- BUCKET 3 ($80688C/$80AFC6).  D2 is the LITERAL
+    // sprite-descriptor address $192A48 ($275A76 move.l #$192a48,D2), not a
+    // table read, so nothing is fetched from a window here.
+    enqueueRegisters(ram, 3, d1b, 0x192a48, 0x820, 0x18);
+  }
+  // ---- $275A8A: the FIRE cadence.
+  if (ram.u32(G.freeze) !== 0) return;                 // $275A8A tst.l / $275A90 bne
+  if (i16(ram.u16(a6 + 0x02)) < 0x1000) return;        // $275A92 cmpi.w #$1000 / blt
+  const fc = ram.u8(a5 + R.rec1E);                     // $275A9A subq.b #1,($1E,A5)
+  ram.setU8(a5 + R.rec1E, (fc - 1) & 0xff);
+  if (fc !== 0) return;                                // $275A9E bcs $275AA2 (borrow only)
+  fire85(ram, rom, a5, a6, ctx);                       // $275AA2
+}
+
+// ---- $2759D0..$275A1E: the INLINED target select + aim + slew ------------
+// The ROM does NOT `bsr $24270A` here; it writes the two player-record
+// addresses out longhand.  It is the same routine (`src/aim.js`
+// `targetSelectBy`), and it is transcribed inline rather than delegated so that
+// a reader checking `$2759D0` against this file sees the same four tests.
+function aim85(ram, rom, a5, a6) {
+  let p0 = AIM.selP1, p1 = AIM.selP2;                  // $2759D0 lea / $2759D6 lea
+  if (ram.u8(a5 + 0x03) !== 0) { p0 = AIM.selP2; p1 = AIM.selP1; } // $2759DC/$2759E2 exg
+  if ((ram.u16(p0) & 0x8000) === 0) {                  // $2759E4 tst.w (A0) / bmi
+    if ((ram.u16(p1) & 0x8000) === 0) return;          // $2759E8 tst.w (A1) / bpl $275A24
+    const t = p0; p0 = p1; p1 = t;                     // $2759EC exg A0,A1
+  }
+  const tgtY = ram.u16(p0 + 2);                        // $2759EE movem.w ($2,A0),D2-D3
+  const tgtX = ram.u16(p0 + 4);
+  const selfY = ram.u16(a6 + 0x02);                    // $2759F4 movem.w ($2,A6),D0-D1
+  const selfX = ram.u16(a6 + 0x04);
+  // $2759FA addi.w #$f900,D0 -- THE MUZZLE OFFSET, on the long axis only.
+  const dir = aim64(aimTables(rom), u16(selfY + 0xf900), selfX, tgtY, tgtX); // $2759FE
+  const nf = slew64(ram.u16(a5 + R.fireCtr), dir);     // $275A04/$275A08 jsr $242190
+  ram.setU16(a5 + R.fireCtr, nf);                      // $275A0E move.w D1,($28,A5)
+  // $275A12 andi.w #$3E,D1 / add.w D1,D1 -- 32 entries at a 4-byte stride.
+  ram.setU32(a5 + R.rec24, rom.u32(0x272DFA + ((nf & 0x3e) * 2))); // $275A18/$275A1E
+}
+
+// ---- $275AA2..$275AF0: THE FIRE ------------------------------------------
+// The first handler fire wired into the live path.  Every register the
+// generator reads is computed here; there is no `$23Dxxx` fire-action and no
+// stored aim byte, which is exactly why this one is wirable and $11's is a
+// separate piece of work.
+function fire85(ram, rom, a5, a6, ctx) {
+  ram.setU8(a5 + R.rec1E, 6);                          // $275AA2 move.w #$6,D0 / $275AA6
+  const facing = ram.u16(a5 + R.fireCtr);              // $275AB0 move.w ($28,A5),D1
+  // $275AB4 move.w D1,D0 / andi.w #$3E,D0 / add.w D0,D0 -- 32 longwords.
+  const idx = u16((facing & 0x3e) * 2);
+  // $275ABC move.l (A4,D0.w),D3 / $275AC0 addi.l #$f9000000,D3.  The `addi.l`
+  // is on the WHOLE longword, so the carry out of the low half reaches the
+  // high half -- write it as a 32-bit add, not two 16-bit ones.
+  const d3 = ((rom.u32(MUZZLE_85 + idx) + 0xf9000000) >>> 0);
+  const regs = {
+    d0: 0xffff000d,                                    // $275AC6 move.l #$ffff000d,D0
+    d1: facing, d2: ram.u32(a6 + 0x02) >>> 0,          // $275ACC move.l ($2,A6),D2
+    d3, d4: 0, d5: 0, a5,
+  };
+  // $275AD0 jsr $2813F0.  Kind $D; `$2815C6[13]` is `$2818AC` (the do-nothing
+  // epilogue) and template `$281AF8`'s +$10 run-init word is $0000, so D4/D5
+  // are never read and passing 0 is not a guess.
+  const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x2813f0, regs);
+  ctx.bulletSpawn?.(0x275ad0, res);
+  // $275AD6 subq.b #1,($20,A5) / bcc $275AF0 -- the SALVO counter.  On the
+  // frame it borrows, ($1E,A5) is reloaded with $50 - $8130BA instead of the
+  // 6 written at $275AA6, i.e. a long gap between salvos and a short one
+  // inside them.
+  const salvo = ram.u8(a5 + R.salvo);                  // ($20,A5)
+  ram.setU8(a5 + R.salvo, (salvo - 1) & 0xff);
+  if (salvo !== 0) return;                             // $275ADA bcc $275AF0
+  ram.setU8(a5 + R.salvo, ram.u8(a5 + R.rec21));       // $275ADC move.b ($21,A5),($20,A5)
+  ram.setU8(a5 + R.rec1E, u16(0x50 - ram.u16(G.ba)) & 0xff); // $275AE2/$275AE6/$275AEC
+}
+
+// ---- $275AF2..$275BA6: the DEATH sequence --------------------------------
+// Six unported subsystem calls and a free.  The `$27E812` D0 arithmetic IS
+// transcribed even though `$27E812` itself is a note, because it decides
+// whether the routine is called ONCE or TWICE -- that is this handler's own
+// control flow, not the callee's.
+function deathSeq85(ram, rom, a5, a6, ctx) {
+  const u = ctx.unported;
+  noteEffect(u, 0x28615e, a5, 'D0=$25 explosion');     // $275AF2/$275AF4
+  // $275AFA moveq #$0,D0 / $275AFC cmpi.b #$86,($C,A5) / $275B04 moveq #$8,D0
+  let d0 = ram.u8(a5 + 0x0c) === 0x86 ? 8 : 0;
+  u?.note(0x27e812, `$27E812 pool spawn (D0=$${d0.toString(16)}) in $85/$86 death `
+    + `rec $${a5.toString(16)} -- the $816B7A pool, driven by type-5 call #18 `
+    + `$27E99E, also unported`);                       // $275B06 jsr $27E812
+  // $275B0C tst.w $81308C / bne $275B20 ; $275B14 cmpi.w #$8,D0 / beq $275B20
+  if (ram.u16(0x81308c) === 0 && d0 !== 8) {
+    u?.note(0x27e812, `$27E812 SECOND pool spawn (D0=$${d0.toString(16)}) in `
+      + `$85 death rec $${a5.toString(16)} -- two-player path ($81308C == 0)`);
+  }                                                    // $275B1A jsr $27E812
+  // $275B20/$275B4C/$275B72: three effect allocations, each followed by field
+  // writes into the record `$289004` would have returned in A0.  The writes are
+  // part of the noted gap, not a separate one.
+  noteEffect(u, 0x289004, a5, 'D0=$5 death effect');   // $275B22
+  noteEffect(u, 0x289004, a5, 'D0=$C death effect');   // $275B4E
+  noteEffect(u, 0x289004, a5, 'D0=$84 death effect');  // $275B76
+  noteEffect(u, 0x28c274, a5, 'death burst');          // $275BA0 jsr $28C274
+  freeEnemy(ram, a5);                                  // $275BA6 jmp $263762
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x2688cc, handler11],
@@ -501,6 +775,7 @@ const HANDLERS = new Map([
   [0x26a2e2, handler07],
   [0x2747c6, handler82],
   [0x27687e, handler8B],
+  [0x275914, handler85],   // W30: types $85 AND $86 share this one
 ]);
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a
@@ -509,7 +784,7 @@ export function runHandler(addr, ram, rom, a5, ctx) {
   const fn = HANDLERS.get(addr & 0xffffff);
   if (!fn) {
     unreached(addr, `enemy handler at $${(addr & 0xffffff).toString(16).toUpperCase()} `
-      + `is not in the W25 six-handler table {`
+      + `is not in the ported handler table {`
       + [...HANDLERS.keys()].map((a) => `$${a.toString(16).toUpperCase()}`).join(' ')
       + `}. Either a non-stage-1 type was dispatched, or a handler was missed`);
   }
