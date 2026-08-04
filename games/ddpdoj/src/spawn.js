@@ -246,6 +246,63 @@ export function runInitBody(addr, ram, rom, rec, unported, tables) {
   return runInitBodyAddr(addr, ram, rom, rec, unported, tables);
 }
 
+// ------------------------------------------- $28AD54: THE SUB-RECORD REAPER
+//
+// **WAVE 33.  THE PORT LEAKED SUB-RECORDS FOR FOUR WAVES AND NOTHING SAID SO.**
+//
+// The three states of a sub-record's byte 0, out of the listing and not from a
+// name anyone invented:
+//
+//   NEGATIVE  ALIVE.   `$2635EC move.w #$8000,(A6)` on allocation, then
+//                      overwritten by the prototype's own first word, which is
+//                      negative for every live type.
+//   1         DYING.   `$263762` (free the enemy) writes ONE:
+//                      `moveq #$1,D0 / move.b D0,(A6) / lea $20(A6),A6 / dbra`.
+//   0         FREE.    `$2635D8 tst.b (A6) / beq` -- the allocator's ONLY test.
+//
+// So `$263762` does NOT free the slot; it marks it dying. **The 1 -> 0
+// transition is this loop, and this loop is TYPE-5 CALL #3**, which the port
+// counted as a note labelled "the sub-record spawn engine driver". It is TWO
+// routines by fall-through: the reaper below, and then `$28AD70` onwards, the
+// driver over the $81DB90 cue pool, which is a different subsystem and stays
+// noted (see `src/type5.js`).
+//
+//   $28AD54 move.w #$95,D0        150 slots -- the 100-slot COMMON pool
+//   $28AD58 moveq #$0,D1          $81459C and the 50-slot SPECIAL pool $81521C
+//   $28AD5A lea $81459C,A0        are CONTIGUOUS and walked as ONE array
+//   $28AD60 tst.b (A0) / beq      already 0: leave it
+//   $28AD64 bmi                   negative: ALIVE, leave it
+//   $28AD66 move.w D1,(A0)        1 (or any positive non-zero): ZERO IT
+//   $28AD68 lea $20(A0),A0 / dbra
+//
+// Note the write is a WORD (`move.w D1,(A0)`), not a byte: it clears byte 1 as
+// well. Transcribed as-written.
+//
+// MEASURED before this landed, on the fly-around replay: 7 of 100 common slots
+// occupied at the lf2000 seed, 100 of 100 from lf2906, and from that frame on
+// EVERY spawn failed its sub-record allocation and was silently cleared.
+export const SUB_REAPER = {
+  entry: 0x28ad54,
+  slots: 0x96,               // $28AD54 move.w #$95,D0 then dbra == 150
+  base: 0x81459c,            // $28AD5A lea
+  tail: 0x28ad70,            // where the OTHER routine begins
+};
+
+/** `$28AD54..$28AD6C` -- turn every DYING sub-record slot into a FREE one.
+ *  @returns {number} how many slots this frame reaped (diagnostic only) */
+export function reapSubRecords(ram) {
+  let n = 0;
+  for (let i = 0; i < SUB_REAPER.slots; i++) {          // $28AD6C dbra
+    const a = SUB_REAPER.base + i * SPAWN.SUB_STRIDE;   // $28AD68 lea $20(A0),A0
+    const b = ram.u8(a);                                // $28AD60 tst.b (A0)
+    if (b === 0) continue;                              // $28AD62 beq
+    if ((b & 0x80) !== 0) continue;                     // $28AD64 bmi -- alive
+    ram.setU16(a, 0);                                   // $28AD66 move.w D1,(A0)
+    n++;
+  }
+  return n;
+}
+
 // --------------------------------------------- the sub-record allocator $2635B2
 //
 // `runLen` is the value the init stub wrote to ($4,A5) = run-1 (census:

@@ -58,12 +58,15 @@ const STUB_ROM = {
   u32: (a) => STUB_LONGS.get(a) ?? 0,
 };
 
-test('the ported handler addresses are registered (W25 six + W30 three + W31 the midboss)', () => {
+test('the ported handler addresses are registered (W25 six + W30 three + W31 the midboss + W33 the carrier)', () => {
   // W31 adds `$26B6FA` (type $0D, the MIDBOSS), which lives in src/midboss.js
   // and is NOT in SIX -- the `runs on a live record` test below drives SIX
   // against a STUB rom, and the midboss reads four real ROM tables.
+  // W33 adds `$272AAC` (types $20/$21/$23, THE SCRIPTED CARRIER); it is not in
+  // SIX either, because it reads its spawn type out of the enemy record rather
+  // than out of the stub ROM and has its own tests below.
   assert.deepEqual([...HANDLER_ADDRESSES].sort((a, b) => a - b),
-    [...SIX, 0x26b6fa].sort((a, b) => a - b));
+    [...SIX, 0x26b6fa, 0x272aac].sort((a, b) => a - b));
 });
 
 test('an unknown handler address is a LOUD NAMED THROW', () => {

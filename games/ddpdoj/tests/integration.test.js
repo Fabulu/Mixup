@@ -226,9 +226,10 @@ test('the handler adapter covers every address in handlerMap(), and only those',
   { skip: SKIP }, () => {
     const m = enemyHandlerMap(ROM);
     assert.deepEqual([...m.keys()].sort(), [...HANDLER_ADDRESSES].sort());
-    assert.equal(m.size, 10, 'W25 ported six of stage 1\'s nineteen handlers; '
+    assert.equal(m.size, 11, 'W25 ported six of stage 1\'s nineteen handlers; '
       + 'W30 added $275914, $2739C0 and $276702 -- the three that BLOCKED the '
-      + 'fly-around gate -- and W31 added $26B6FA, the MIDBOSS, the fourth');
+      + 'fly-around gate -- W31 added $26B6FA, the MIDBOSS, the fourth, and '
+      + 'W33 added $272AAC, the scripted carrier: 11 of 19');
   });
 
 test('an enemy whose ($4C,A5) handler is unported throws BY THAT ADDRESS',
@@ -274,9 +275,14 @@ test('$2634F4 walks the SPAWN SCRIPT before the 58-slot driver',
 // ===========================================================================
 // type 5 itself: the three calls must RUN, not be counted.
 // ===========================================================================
-test('TYPE5_PORTED is nine of the twenty-three, and the list is the ROM\'s', () => {
+test('TYPE5_PORTED is TEN of the twenty-three, and the list is the ROM\'s', () => {
   assert.equal(TYPE5.calls.length, 23, '$28B5E6..$28B66A');
-  assert.equal(TYPE5_PORTED.size, 9);
+  // W33 added call #3, `$28AD54` -- and ONLY its first loop, the sub-record
+  // reaper.  The rest of that routine ($28AD70 onwards, reached by
+  // fall-through) is still counted under its own address.
+  assert.equal(TYPE5_PORTED.size, 10);
+  assert.ok(TYPE5_PORTED.has(TYPE5.subReaper));
+  assert.ok(TYPE5.calls.includes(TYPE5.subReaper));
   for (const a of [TYPE5.enemyFrame, TYPE5.bulletDriver, TYPE5.clearTimer]) {
     assert.ok(TYPE5.calls.includes(a), `$${a.toString(16)} is one of the 23`);
     assert.ok(TYPE5_PORTED.has(a));

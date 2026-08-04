@@ -10,7 +10,8 @@
 //           $252bd0   $281d9a   $25354c   $25292a   $252a52
 //   28b670: tst.w $81308c / beq $28b730 ...
 //
-// **THIS FILE RUNS NINE OF THE TWENTY-THREE AND COUNTS THE OTHER FOURTEEN.**
+// **THIS FILE RUNS TEN OF THE TWENTY-THREE AND COUNTS THE OTHER THIRTEEN.**
+// (W33 added call #3, `$28AD54`, and only its FIRST LOOP -- see the case body.)
 // `TYPE5_PORTED` below is the authority; this paragraph is not.  It said "EXACTLY
 // ONE" from wave 8 until wave 29 -- through wave 12 adding five -- and W28's
 // recon read it and reported "the port has 1 of 23" as a measured fact.  A stale
@@ -20,7 +21,7 @@
 //
 // The partial-handler cost is real and is stated here rather than discovered:
 //
-//  * A partial handler is not a handler.  Anything the fourteen unported calls
+//  * A partial handler is not a handler.  Anything the thirteen unported calls
 //    write is missing from the port, so any compared column that depends on them
 //    diverges.  The gate's answer to that is to compare the SHOT TABLE SLOTS
 //    THE PLAYER'S OWN SPAWN CAN REACH (slots 14..17 and 21..24) and nothing
@@ -29,7 +30,7 @@
 //  * `$28B5E0`'s own entry test `tst.b ($2,A5) / beq $28B5A8` is translated,
 //    because a handler that ran when the board's did not would be worse than
 //    one that does less.
-//  * The fourteen are counted through `UnportedLog`, so a run always prints
+//  * The thirteen are counted through `UnportedLog`, so a run always prints
 //    what it did NOT do next to what it did.  Wave 4 set that precedent for
 //    whole dispatch entries; this was the first use of it INSIDE one.
 //
@@ -122,6 +123,7 @@ import { runOptionObject } from './options.js';
 import { drawShip, drawShipAlt, SHIP_MUTATE } from './shipsprite.js';
 import { RAM, ROM } from './machine.js';
 import { runEnemyFrame, enemyHandlerMap } from './enemyframe.js';
+import { reapSubRecords, SUB_REAPER } from './spawn.js';
 import { runBulletDriver, runClearTimer } from './bulletdriver.js';
 
 export const TYPE5 = {
@@ -129,6 +131,7 @@ export const TYPE5 = {
   entryTest: 0x28b5e0,      // tst.b ($2,A5)
   notStarted: 0x28b5a8,
   enemyFrame: 0x2634f4,     // $28B5EC -- the spawn walker + the 58-slot driver
+  subReaper: 0x28ad54,      // $28B5F2 -- W33: its FIRST loop only (the reaper)
   bulletDriver: 0x281d9a,   // $28B658 -- the screen clear + THE MOVER
   clearTimer: 0x25354c,     // $28B65E -- the screen clear's arming timer
   shotDriver: 0x253a70,     // $28B610 -- the ONE call this port makes
@@ -175,6 +178,7 @@ export function laserRampWouldMove(held, speedIdx, laserFloor) {
  *  machine whole rather than half-wired. */
 export const TYPE5_PORTED = new Set([
   0x2634f4,   // #2  THE ENEMY SUBSYSTEM: spawn walk + deferred drain + driver (W29)
+  0x28ad54,   // #3  the SUB-RECORD REAPER, first loop only (W33) -- see below
   0x253a70,   // #8  the player-shot driver (wave 8)
   0x24c096,   // #9  THE OPTION OBJECT (wave 12)
   0x24a458,   // #14 the ship's alt entry, P1 (wave 12)
@@ -222,6 +226,26 @@ export function makeType5(rom) {
           } else {
             runOptionObject(ram, ctx);
           }
+          break;
+        case TYPE5.subReaper:                           // $28B5F2 -> $28AD54
+          // WAVE 33.  ONLY the reaper half of `$28AD54` runs here -- the twelve
+          // instructions $28AD54..$28AD6C that turn a DYING sub-record (byte 0
+          // == 1, written by `$263762`) into a FREE one (byte 0 == 0, the only
+          // thing `$2635D8` accepts).  Until this wave nothing performed that
+          // transition and the 150-slot pool filled permanently: MEASURED
+          // 100 of 100 common slots occupied from lf2906 of the fly-around
+          // replay, with fifteen enemies alive, after which every spawn was
+          // silently dropped.  See src/spawn.js's SUB_REAPER block.
+          //
+          // The REST of $28AD54 -- $28AD70 onwards, the driver over the
+          // $81DB90 cue pool -- is a different subsystem reached by
+          // FALL-THROUGH and is still counted, by its own address, so this
+          // stays visibly a partial port rather than quietly a whole one.
+          ctx.subReaped = reapSubRecords(ram);
+          ctx.unportedLog.note(SUB_REAPER.tail, `$28AD54's SECOND routine `
+            + `($28AD70 onwards, reached by fall-through): the $81DB90 `
+            + `sub-record cue-pool driver, count at $81DD0C. W33 ported only `
+            + `the reaper loop $28AD54..$28AD6C ahead of it`);
           break;
         case ROM.shipDrawAltP1:                         // $24A458
           drawShipAlt(ram, RAM.player1);

@@ -375,16 +375,51 @@ BODY.set(0x276824, (ram, rom, a5, a6, unported) => {
   }
 });
 
-// --- type $20 / $21 ($272A4A, scripted carriers).  Sub-proto only; the body
-// reads up to three params from the movement script ($12,A5).  The movement
-// pointer is W24, so the param reads are noted; the record fields they write
-// (+$16/+$18/+$1A) are NOT loader-written, so the port leaves them at the
-// pool default and the gate sees the prototype's sub-record stats unchanged.
+// --- type $20 / $21 / $23 ($272A4A, THE SCRIPTED CARRIER).
+//
+// **W33 REPLACED A NOTE HERE WITH CODE, AND THE NOTE'S REASONING WAS WRONG.**
+// It said the +$16/+$18/+$1A params "are not loader-written, so the port leaves
+// them at the pool default".  They ARE loader-written -- by these very
+// instructions -- and `$272AAC` reads all three every frame: +$16 is THE TYPE
+// THIS CARRIER SPAWNS, +$18/+$19 the salvo count, +$1A/+$1B the spawn cooldown
+// and its reload.  With them at the pool default the handler would spawn type 0
+// forever.  The position at ($2,A6) comes from the same stream and nothing else
+// writes it (this init does NOT call `$263808`).
+//
+//   $272A56 movea.l ($12,A5),A0      the movement-script pointer (W24 resolved)
+//   $272A5A move.l (A0)+,($2,A6)     the spawn position
+//   $272A5E..$272A64 D0 = D1 = D2 = $00FF
+//   $272A66 and.w (A0)+,D0           param 1 -- the low byte only
+//   $272A68 cmpi.w #$2,D0 / bne      THE ESCAPE: a param-1 of 2 is not a type
+//   $272A6E move.w #$1,($8,A6)         it sets the no-scroll-compensate flag
+//   $272A74/$272A78                    and the REAL type is the NEXT word
+//   $272A7A and.w (A0)+,D1           param 2
+//   $272A7C and.w (A0)+,D2           param 3
+//   $272A7E/$272A82/$272A86          -> ($16,A5) ($18,A5) ($1A,A5), as WORDS
+//   $272A8A move.l A0,($12,A5)       the stream pointer is CONSUMED, so this
+//                                    type's ($12,A5) is no longer a movement
+//                                    script -- and its handler never steps one.
+//
+// Each store is a WORD of a byte-sized value, so the HIGH byte of each pair
+// lands as 0: ($1A,A5) = 0 and ($1B,A5) = param 3.  That is why the handler's
+// `subq.b #$1,($1A,A5)` borrows on its very first frame and immediately
+// reloads from ($1B,A5) -- transcribe the word stores, not what they "meant".
 BODY.set(0x272A4A, (ram, rom, a5, a6, unported) => {
   loadSubProto(ram, rom, a5, a6, 0x272A90);            // jsr $2637A2
-  unported?.note(0x272A56, `scripted-carrier param read from movement script `
-    + `($12,A5) at $272A56 -- W4 (resource #$1F); record +$16/+$18/+$1A params `
-    + `are not loader-written and not in the done-when set`);
+  let p = ram.u32(a5 + R.movement);                    // $272A56 movea.l ($12,A5),A0
+  ram.setU32(a6 + S.posX, rom.u32(p)); p += 4;         // $272A5A move.l (A0)+,($2,A6)
+  let d0 = rom.u16(p) & 0xff; p += 2;                  // $272A66 and.w (A0)+,D0
+  if (d0 === 2) {                                      // $272A68 cmpi.w #$2 / bne
+    ram.setU16(a6 + 0x08, 1);                          // $272A6E move.w #$1,($8,A6)
+    d0 = rom.u16(p) & 0xff; p += 2;                    // $272A74/$272A78
+  }
+  const d1 = rom.u16(p) & 0xff; p += 2;                // $272A7A and.w (A0)+,D1
+  const d2 = rom.u16(p) & 0xff; p += 2;                // $272A7C and.w (A0)+,D2
+  ram.setU16(a5 + 0x16, d0);                           // $272A7E move.w D0,($16,A5)
+  ram.setU16(a5 + 0x18, d1);                           // $272A82 move.w D1,($18,A5)
+  ram.setU16(a5 + 0x1a, d2);                           // $272A86 move.w D2,($1A,A5)
+  ram.setU32(a5 + R.movement, p);                      // $272A8A move.l A0,($12,A5)
+  void unported;
 });
 
 // --- type $24 ($296FB0): boss-approach prop.  Sub-proto, resource install,

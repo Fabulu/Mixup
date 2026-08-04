@@ -82,6 +82,7 @@ import { freeEnemy } from './initbody.js';
 import { stepMovement, scrollCompensate, applyVelocity } from './movement.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
 import { AimTables, AIM, aim64, aim256, aim64FromCaller, slew64 } from './aim.js';
+import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
   enqueueRegistersThroughStub, EMIT_TABLE } from './spritequeue.js';
 import { handlerMidboss } from './midboss.js';
@@ -112,6 +113,14 @@ const R = {
   // in that table is a member of the `$23D762` enqueue family (see
   // src/spritequeue.js §1c).  Renamed so the mislabel cannot come back.
   emitRec2A: 0x2a, emitReg2E: 0x2e,
+  // W33, for `$272AAC` (types $20/$21/$23).  The SAME bytes named again for
+  // the type that uses them differently, per this block's own rule: ($16,A5)
+  // is `onScreen` (a BYTE flag) for $10/$11 and here is a WORD holding the
+  // TYPE THIS CARRIER SPAWNS; ($18,A5) is `cooldown` elsewhere and here is the
+  // salvo COUNT; ($1A,A5)/($1B,A5) are the spawn cooldown and its reload.
+  // All four are written by the init body out of the movement stream.
+  carrySpawnType: 0x16, carrySalvo: 0x18, carrySalvoCtr: 0x19,
+  carryCooldown: 0x1a, carryReload: 0x1b,
 };
 // sub-record (A6)
 const S = {
@@ -1246,8 +1255,85 @@ function deathSeq8A(ram, a5, ctx) {
   freeEnemy(ram, a5);                                  // $276814 jmp $263762
 }
 
+// ==================================================================== W33
+// `$272AAC` -- TYPES `$20`, `$21` AND `$23`, THE SCRIPTED CARRIER.
+//
+// **IT FIRES NO BULLET.**  There is not one `jsr $281xxx` in it, nor in its
+// call closure -- checked by the recursive closure scan in the W33 worklog §2
+// (which follows `bsr`/`jsr`/`bra`/`bcc` and reports every generator entry
+// reached).  What it does instead is SPAWN OTHER ENEMIES: once per cooldown it
+// pushes one deferred record of the type its movement stream names.  For
+// stage 1's six records those types are `$11` (five of them) and `$10` (one) --
+// both already ported -- read out of the aux table `$23170C` and the movement
+// resource `$231852` at data indices $041/$066/$067/$068/$071/$072.
+//
+// THE EXTENT.  `$272AAC..$272B46 rts`.  `$272B48` is the NEXT type's 8-byte
+// init stub (`move.w #$0,($4,A5) / rts`) and `$272B50` its init+8 -- so a
+// reader who kept going would port a different type's loader as this one's
+// tail.  Read past the `rts` to see that, and stop there.
+//
+// THE ONE SURPRISE: `$272B44 beq $272AF6` jumps BACKWARD into the middle of the
+// bounds block, to the `jmp $263762` free.  The salvo counter running out and
+// the enemy leaving the screen are the same exit, and they are `$50` bytes
+// apart in the listing.
+function handler20(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + 0x06);
+  // $272AAC tst.w ($8,A6) / bne -- ($8,A6) is set to 1 by the INIT when the
+  // stream's first param word is the escape `$0002` (see initbody.js), and it
+  // means "do NOT scroll-compensate me".
+  if (ram.u16(a6 + 0x08) === 0) scrollCompensate(ram, a5);   // $272AB4 jsr $24179E
+  // $272ABA..$272AEA -- the bounds test.  The three `addi.w`/`add.w` are WORD
+  // adds on D0's low half, so the high half (axis A) is untouched and the
+  // `swap` below reads the ORIGINAL value.  Confusing that for `addi.l` is the
+  // one-character bug the `u32` note at the top of this file exists for.
+  const pos = ram.u32(a6 + S.posX);                    // $272ABA move.l ($2,A6),D0
+  const lo = u16(u16(u16((pos & 0xffff) + 0x1c00)      // $272ABE addi.w #$1C00
+    + ram.u16(G.scroll)));                             // $272AC2 add.w $813172
+  let off = lo + 0x9000 > 0xffff;                      // $272AC8 addi.w / $272ACC bcs
+  if (!off) {
+    // $272ACE swap D0 / $272AD0 move.w D0,D1 / $272AD2 ext.l D1 -- SIGNED.
+    const d1 = ((i16(pos >>> 16) + 0x4000) | 0);       // $272AD4 addi.l #$4000
+    if (d1 <= 0x3800) off = true;                      // $272ADA cmpi.l / ble
+    else if (d1 >= 0xb800) off = true;                 // $272AE4 cmpi.l / blt -> on
+  }
+  if (off) {
+    if (ram.u16(a6 + 0x06) !== 0) { freeEnemy(ram, a5); return; }  // $272AEE/$272AF6
+  } else {
+    ram.setU16(a6 + 0x06, 1);                          // $272AFE move.w #$1,($6,A6)
+  }
+  if (ram.u16(G.freeze) !== 0) return;                 // $272B04 tst.w / bne $272B46
+  // $272B0C subq.b #$1,($1A,A5) / bcc $272B46 -- an 8-bit BORROW, so the
+  // counter fires on the frame it wraps below zero, not on the frame it is 0.
+  const c = ram.u8(a5 + R.carryCooldown);
+  ram.setU8(a5 + R.carryCooldown, (c - 1) & 0xff);
+  if (c !== 0) return;                                 // bcc: no borrow
+  ram.setU8(a5 + R.carryCooldown, ram.u8(a5 + R.carryReload));  // $272B12
+  // $272B18..$272B22: enqueue one deferred spawn of ($16,A5) with D1 = the
+  // CLASS BYTE ($D,A5), i.e. the `$263690` entry point (D1 = the caller's).
+  const type = ram.u16(a5 + R.carrySpawnType);         // $272B18 move.w ($16,A5),D0
+  const cls = ram.u8(a5 + R.classByte);                // $272B1E move.b ($D,A5),D1
+  const q = enqueueDeferred(ram, type, DEFQ_D1.CALLER, cls);   // $272B22 jsr $263690
+  // $272B28..$272B34.  THE ROM DOES THESE THREE WRITES UNCONDITIONALLY, and on
+  // a full queue `$2636CA` hands back the DUMMY `$816B2A` -- so they land in
+  // the bit bucket rather than being skipped.  Transcribed that way; a port
+  // that guarded them would differ from the board the first time the queue
+  // filled, and $816B2A exists precisely so it need not.
+  ram.setU32(q.addr + 0x12, ram.u32(a5 + R.movement));  // $272B28
+  ram.setU32(q.addr + 0x48, ram.u32(a6 + S.posX));      // $272B2E
+  // `bset.b #$6,($2,A0)` -- a BYTE op on the HIGH byte of the queue's type
+  // WORD, which the drain copies to the new enemy's ($2,A5) flags at $263472.
+  ram.setU8(q.addr + 0x02, ram.u8(q.addr + 0x02) | 0x40);   // $272B34
+  // $272B3A tst.w ($18,A5) / beq -- a zero SALVO WORD means "spawn forever".
+  if (ram.u16(a5 + R.carrySalvo) === 0) return;        // $272B3E beq $272B46
+  const n = ram.u8(a5 + R.carrySalvoCtr);              // $272B40 subq.b #$1,($19,A5)
+  ram.setU8(a5 + R.carrySalvoCtr, (n - 1) & 0xff);
+  if (((n - 1) & 0xff) === 0) freeEnemy(ram, a5);      // $272B44 beq $272AF6
+  void rom; void ctx;
+}
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
+  [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
   [0x2688cc, handler11],
   [0x268232, handler10],
   [0x269cea, handler05],

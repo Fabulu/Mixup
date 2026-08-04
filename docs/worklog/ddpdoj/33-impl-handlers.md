@@ -159,6 +159,67 @@ The wall in §3 is therefore a fact about **the port**, not about the corpora:
 the port cannot reach clk > 239, and 8 of the 9 remaining handlers live beyond
 it. Both statements are true and they are different statements.
 
+## 4. THE DEFECT THIS WAVE ACTUALLY FOUND: THE PORT LEAKS SUB-RECORDS
+
+Chasing "why does the one reachable unported handler `$272AAC` not throw when
+its record IS dispatched" produced a defect that has been silently live since
+W29 wired the enemy subsystem in.
+
+**The measurement, on the fly-around replay:**
+
+```
+lf2000   common sub-record slots occupied:   7 of 100
+lf2400                                      44
+lf2800                                      70
+lf2906   100 of 100  <- and it never comes down again
+lf3200  100     (25 live enemies)
+lf4000  100     (15 live enemies)
+```
+
+100 slots held by 15 enemies. **From lf2906 onward every new enemy in the port
+fails its sub-record allocation and is silently cleared** — `initDispatch`
+returns `failed:true`, `$263622 bcs $263674` clears the record, and nothing
+throws, notes or counts it. Measured for the type-`$20` record at clk 188:
+
+```
+DBG type 20 carry false addr 8133cc flags 1
+DBG init {"init":$272A42,"initBody":$272A4A,"runLen":0,"failed":true} h=0 word=0
+```
+
+### THE CAUSE, OUT OF THE LISTING
+
+- `$2635D8 tst.b (A6) / beq` — the allocator's FREE test is **byte 0 == 0**.
+- `$263762` (free the enemy) writes **1**, not 0:
+  `moveq #$1,D0 / move.w ($4,A5),D1 / move.b D0,(A6) / lea $20(A6),A6 / dbra`.
+- So a freed slot reads 1 and the allocator still calls it occupied.
+
+**The routine that turns 1 into 0 is `$28AD54` — TYPE-5 CALL #3 — and it is
+one of the 22 unported subsystem calls.** Its first twelve instructions are a
+reaper over all **150** slots (`move.w #$95,D0`, i.e. the 100-slot common pool
+`$81459C` and the 50-slot special pool `$81521C` are CONTIGUOUS and walked as
+one):
+
+```
+$28AD54 move.w #$95,D0 / moveq #$0,D1 / lea $81459C,A0
+$28AD60 tst.b (A0) / beq $28AD68        already 0 -- skip
+$28AD64 bmi $28AD68                     NEGATIVE = alive -- skip
+$28AD66 move.w D1,(A0)                  positive non-zero (= the freeEnemy 1) -> ZERO
+$28AD68 lea $20(A0),A0 / dbra D0
+$28AD70 ...                             falls through into the $81DB90 sub-record
+                                        spawn engine's own driver -- a different
+                                        subsystem, still noted
+```
+
+`$28AD54` was a `note()` in `src/type5.js` labelled only "the sub-record spawn
+engine driver". **It is two routines by fall-through** — the classic trap — and
+the half nobody read is the half the allocator depends on.
+
+**Consequence for every coverage number since W29.** Any port run longer than
+~900 frames from a mid-stage seed has been spawning nothing. That is not a
+sampling caveat, it is a silent failure of the exact shape `docs/knowledge/03`
+is about, and no gate could see it because the compared columns are the ones
+the surviving enemies write.
+
 ## LOG (appended as findings arrive)
 
 - opened.
