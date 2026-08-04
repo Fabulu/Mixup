@@ -525,3 +525,57 @@ browser, which is what the report was about.
   same place in both.
 - §8 [M]: the owner's loading-text report — the DEFERRED shards were re-writing
   the element after boot. Fixed, red-validated, and seen gone in the browser.
+
+## 11. THE PALETTE BANKS — `43-plan` §1.5 REPRODUCED, WITH ONE CORRECTION
+
+Not on E1's path, and cheap enough to settle while the guard was being measured.
+
+**[M] 3,000 frames from the shipped seed, nothing pressed: the port's own records
+ask for 16 of the 32 sprite colour banks**, which is `43-plan` §1.5's count
+exactly. Fifteen of them have a full set of non-zero pens in the capture's own
+palette and the sixteenth is **bank 24 — 5,731 records, ZERO non-zero pens, the
+three ground shadows** — independently reproducing RECON 2 §4.2's ROM-side
+finding from the other side.
+
+**CORRECTION 5.** `43-plan` §1.5 lists the set as
+`0 2 10 12 14 15 16 17 18 19 20 21 22 26 28` + 24. **[M] mine is
+`0 2 9 10 12 14 15 16 17 18 19 20 21 22 26` + 24**: I see **bank 9 (2 records)**
+and **not bank 28**. Same size, one member apart, and both are rare banks — 2
+records in 3,000 frames is the sort of number a one-frame window difference
+moves. Nothing on E1's path depends on which; it matters to whoever ships the
+sprite-palette uploader, and the honest statement is that the SET is not settled
+to the last member while the COUNT and bank 24 are.
+
+## 12. ONE PIECE OF DIFF NOISE, NAMED SO NOBODY MISREADS IT
+
+`tests/handlers.test.js` and `tools/webgate.mjs` were **CRLF** files; the edits
+in this wave rewrote them **LF**, so `git diff` shows the whole file changed.
+`git diff --ignore-cr-at-eol` is the settling command (`HANDOVER` §10, which
+records 53 files of real work nearly discarded on exactly this confusion) and it
+gives the true sizes: **handlers.test.js 63 added / 0 deleted — a pure append —
+and webgate.mjs 279 / 12.** No other file's endings moved. The tree has no
+`.gitattributes`, `core.autocrlf` is `false`, and `games/ddpdoj/` is 169 LF files
+to 28 CRLF, so these two moved TOWARDS the majority; they are not re-converted,
+because doing so would be a second whole-file churn for nothing.
+
+### 5.3 IS `G.b8` THE ONLY ONE? — the whole tree, scanned  [M]
+
+Presence is not absence, so I looked rather than assumed. **All 52 files under
+`games/ddpdoj/src/`, 63 hex-valued field tables**, every `NAME.field` reference
+checked against its table's keys.
+
+**[M] `handlers.js`'s `G.b8` was the only genuine miss in the port.** Thirteen
+other tables report a "missing" name and every one of them is my scanner's key
+regex only recognising `field: 0x…`: `ENEMY.slots` is `slots: 58`,
+`ALLOC.slots` is `slots: 20`, `TYPE5.laserRampFrames` is `4`, `LEDGER.p1` is an
+object, and so on. Each was opened and confirmed present.
+
+The scanner was **seen to find `G.b8`** with the fix backed out, which is the
+only reason the negative result above is worth anything — my first attempt at
+this scan was silently matching nothing (§5.2's `\b` again, in a shell one-liner
+this time) and reported a clean tree while `G.b8` really was missing.
+
+The runtime backstop covers what a static scan cannot: `Ram.#off` now refuses a
+NaN address, so any field constant that is undefined anywhere in the port stops
+by name on the frame it is read. **[M] 6,185 logic frames from the shipped seed
+produced no such stop** — presence, not absence.
