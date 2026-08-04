@@ -33,7 +33,7 @@
     "mods": "src/mods.js",
     "input": "src/input.js",
     "page": "start.html",
-    "note": "`entry` STAYS NULL ON PURPOSE. The repo launcher's play stage is Batman-shaped -- its key hints name walking and jumping, and it opens no AudioContext -- so driving Gradius through it would cost the player the sound the W8/W13 audio path exists to produce. `page` is Gradius's OWN start screen (start.html), which is the parity item: mods, presets, level select and the starting power-up picker, all read out of `mods` below. One catalogue, two possible front ends; the day the launcher grows an audio channel and per-game key hints, set `entry` to src/main.js and it works unchanged."
+    "entryNote": "`entry` STAYS NULL ON PURPOSE. The repo launcher's play stage is Batman-shaped -- its key hints name walking and jumping, and it opens no AudioContext -- so driving Gradius through it would cost the player the sound the W8/W13 audio path exists to produce. `page` is Gradius's OWN start screen (start.html), which is the parity item: mods, presets, level select and the starting power-up picker, all read out of `mods` below. One catalogue, two possible front ends; the day the launcher grows an audio channel and per-game key hints, set `entry` to src/main.js and it works unchanged."
   },
   "input": {
     "note": "The $0007 (held) / $0005 (edge) bit layout, MEASURED by A/B RAM diff -- see tools/oracle/PROBE.md 4 and BTN in src/state.js, which this must equal (tests/input.test.js asserts it). The low nibble is direction: `AND #$0F` at $A082 is the ROM's own test for 'any direction held'.",
