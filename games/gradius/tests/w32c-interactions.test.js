@@ -569,6 +569,29 @@ test('$BC44: stages 3+ and any loop skip the player-position gate entirely', () 
   assert.equal(mk(0, 1), 1, 'loop 2 on stage 1: $BC46 BNE $BC59');
 });
 
+test('$C037: the $19 == 4 gate is LIVE -- no other stage sweeps the arms', () => {
+  // A gate whose absence is invisible is a gate that will be deleted by a
+  // future tidy-up. On stages 1-4 the pool is empty (only $A4A6 allocates and
+  // $9B49 clears the page at every stage load), so removing $C039's CMP costs
+  // nothing observable in the pool -- a mutant that deleted it SURVIVED the
+  // first mutation run. What IS observable is `$A9`: $BEF3 writes $90 into it
+  // and the walk leaves it at $D0, where a frame that never enters $BEF3 leaves
+  // the $FF that $C033's own DEC/BPL produced.
+  // RED WHEN: the $19 == 4 test is dropped, or inverted.
+  const mk = (stage) => {
+    const s = stage5();
+    s.zp19 = stage;
+    shot(s, 0, 0xA0, 0xA0);
+    shotSweep(s, res);
+    return s.spawn.zA9;
+  };
+  assert.equal(mk(4), 0xD0, 'stage 5: $BEF3 ran and its walk left $A9 at $D0');
+  for (const st of [0, 1, 2, 3, 5, 6]) {
+    assert.equal(mk(st), 0xFF,
+      `stage ${st + 1} must NOT enter $BEF3 -- $A9 keeps $C033's $FF`);
+  }
+});
+
 // =============== 9. THE SCOPE GUARD, AND ITS EVIDENCE ======================
 
 test('$A2F0: the guard admits stage 5 and still stops stage 6', () => {

@@ -4495,7 +4495,7 @@ export function armDriver(state, rom) {
     if (state.spawn.zAE !== 0) continue;       // $CBB2/$CBB4 BNE $CBC0
     state.spawn.zAE = u8(state.spawn.zAE + 1); // $CBB6 INC $AE
     c[ARM_POOL + base + 0x04] = 0;             // $CBB8/$CBBA STA $0604,X
-    sub_CBD1(state, base);                     // $CBBD JSR $CBD1 -- W32c
+    sub_CBD1(state);                           // $CBBD JSR $CBD1 -- W32c
   }
   state.spawn.zA8 = u8(0x00 - 0x30);           // $CBC0-$CBC7 left $A8 = $D0
 }
@@ -4561,9 +4561,15 @@ export function armDriver(state, rom) {
  * bytes the gates tested; nothing writes them in between, so the values are the
  * same, and it is transcribed as a re-read because that is what the ROM does.
  */
-function sub_CBD1(state, base) {
+function sub_CBD1(state) {
   const o = state.obj;
   const c = state.coll;
+  // $CBDC LDY $A8 -- the GROUP BASE, read out of zero page and not handed in.
+  // The first draft took it as a parameter and a mutant that stopped the driver
+  // writing `$A8` survived, because nothing then depended on the byte. It is
+  // read here for the same reason the ROM reads it: `$CBD1` is a subroutine and
+  // `$A8` is its only argument.
+  const base = state.spawn.zA8;                // $CBDC LDY $A8
   let k = -1;
   for (let x = 9; x >= 0; x--) {               // $CBD1 LDX #$09 / $CBD8 DEX / BPL
     if (o.anim[22 + x] === 0) { k = x; break; }    // $CBD3/$CBD6 BEQ $CBDC
@@ -4572,7 +4578,7 @@ function sub_CBD1(state, base) {
     state.work.armBulletAllocFail += 1;        // counted, so the failure is VISIBLE
     return;
   }
-  const tipX = c[ARM_POOL + base + 0x1D];      // $CBDC LDY $A8 / $CBDE LDA $061D,Y
+  const tipX = c[ARM_POOL + base + 0x1D];      // $CBDE LDA $061D,Y
   if (tipX < 0x10) return;                     // $CBE1/$CBE3 CMP #$10 / BCC $CBDB
   if (tipX >= 0xF0) return;                    // $CBE5/$CBE7 CMP #$F0 / BCS $CBDB
   const tipY = c[ARM_POOL + base + 0x25];      // $CBE9 LDA $0625,Y

@@ -1,6 +1,6 @@
 # Wave 32c IMPLEMENTER -- the last arm interactions, and the sixth wall nobody had counted
 
-status: IN PROGRESS
+status: DONE
 implementer, 2026-08-04
 
 Scope, from the brief and `32-recon-destructible-terrain.md` §8 + `32b-impl-substrate.md` §3/§9:
@@ -39,7 +39,7 @@ stageledger.py, stage $19 = 4
   AFTER    28 distinct   28 ported   0 unported   100.0 %   admitted               RUNNABLE
 
 node games/gradius/tools/test-all.mjs   GREEN -- 11 passed, 0 failed, 0 SKIPPED
-node --test games/gradius/tests/        565 pass, 0 fail, 0 skipped  (551 before)
+node --test games/gradius/tests/        566 pass, 0 fail, 0 skipped  (551 before)
 python .../tablecoverage.py             OK, 81 indexed bases (78 before), 53 ranges
 ```
 
@@ -367,10 +367,171 @@ falsify, and this one would have been three waves old before anybody checked it.
 
 ---
 
-## §8. WHAT I COULD NOT REACH -- attempts, not absences
+## §9. THE MUTATION TABLE -- 49 MUTANTS, 48 RED, 1 SURVIVOR REPORTED
 
-(filled in below as the wave closes)
+Harness: `scratchpad/w32cmut.mjs`. Patches source as BYTES and normalises the
+NEEDLE to each file's own line endings rather than the file to the needle's --
+`collision.js` and `state.js` are CRLF, `enemies.js` and `weapons.js` are LF
+(HANDOVER §10's Windows note; W32a lost a run to the text-mode version of this
+and W32b wrote the byte-mode fix). Runs six suites, restores, and hashes all
+four files before and after **every single mutant**.
+
+All four hashes identical before and after all 49:
+`collision.js a12b3b70fd91`, `enemies.js 26a065369c93`,
+`weapons.js f7b98bc8b1e8`, `state.js 5bdf184a97fb`.
+
+| # | mutant | red |
+|---|---|---|
+| M1 | `$BEF3` walks `ARM_BASES` (a `for..of`) -- `$C0B7`'s `$A9` write ignored | 3 |
+| M2 | `$BEF3` walks LOW to HIGH (`$00` first) | 6 |
+| M3 | `$BF04` steps by `-$60` | 1 |
+| M4 | `$BF31 CMP #$02` -> segment 0 is the vulnerable one | 7 |
+| M5 | `$BF35`'s else stops consuming the shot | 1 |
+| M6 | `$BF23`'s borrow dropped (the `-1`) | 2 |
+| M7 | `$BF19`'s `SEC` lost -- dx gains a borrow it has not got | 7 |
+| M8 | `$BF1D` compares dx against `#$0A`, not the shot's width `$A3` | 1 |
+| M9 | `$BF26 CMP #$0A` becomes `#$10` | 1 |
+| M10 | `$BF0B` walks the six segments 0 UP to 5 | 1 |
+| M11 | `$BF44` reads `$BEEA` row 0 whatever the rank | 2 |
+| M12 | `$BF3C` increments the SEGMENT's byte, not the group's `+$05` | 6 |
+| M13 | `$BF47 BCC` dropped -- the first hit destroys the arm | 3 |
+| M14 | `$BF55 DEC $016C,X` removed | 1 |
+| M15 | `$BF5F`/`$BF65` read segment 0, not segment 2 | 1 |
+| M16 | the explosion goes to a FREE slot instead of slot 0 | 1 |
+| M17 | `$BF49 JSR $8453` removed | 1 |
+| M18 | `$BF6B` sound `$0C` dropped | 3 |
+| M19 | `$C03F`'s re-read of `$0123,X` dropped | 1 |
+| M20 | `$C037`'s `$19 == 4` gate removed | 1 |
+| M21 | `$C044 JSR $BEF3` removed entirely | 8 |
+| M22 | `$CBD1` becomes a silent return | 4 |
+| M23 | `$CBD1`'s allocator scans UPWARD | 3 |
+| M24 | `$CBDE`/`$CBE9` read segment 0, not the TIP | 2 |
+| M25 | `$CBE1 CMP #$10` becomes `#$00` | 1 |
+| M26 | `$CBE5 CMP #$F0` becomes `#$FF` | 1 |
+| M27 | `$CBEC CMP #$D0` becomes `#$F0` | 1 |
+| M28 | `$CBF2` metasprite `$86` -> `$25` | 3 |
+| M29 | `$CBF9` writes `$BC66[kind]` instead of a literal 0 | 1 |
+| M30 | `$CC08`/`$CC11` the `-8` muzzle offsets dropped | 1 |
+| M31 | `$CC16 JMP $BCB1` dropped (the bullet is never aimed) | 1 |
+| M32 | `$CC16` hands `$BCB1` the raw slot, without the `+$0A` | 1 |
+| M33 | `$CBB2`'s `$AE` one-shot deleted -- **W32b's surviving M12** | 2 |
+| M34 | `$CBB8`'s timer reset moved AFTER `$CBBD` | ***SURVIVED*** |
+| M35 | `$CB97`/`$CBC5 STA $A8` removed again (W32b's deviation) | 4 |
+| M36 | `$CBC0`-`$CBC7` leaves `$A8` at `$FF`, not `$D0` | 1 |
+| M37 | `$BC48`'s bound `$19 >= 2` becomes `$19 >= 4` | 1 |
+| M38 | `$BC46`/`$BC4C` skip goes to the RTS, not to `$BC59` | 2 |
+| M39 | `$BC44`'s `$1A` arm dropped | 1 |
+| M40 | `$A17C`'s bypass bound becomes `$19 >= 4` | 2 |
+| M41 | `$A180 BEQ $A1AA` removed | 1 |
+| M42 | `$A2F0` scope guard back to `>= 4` | 6 |
+| M43 | `$A2F0` scope guard forward to `>= 6` | 4 |
+| M44 | the guard message stops naming `$C6DE` | 2 |
+| M45 | `ARM_BASES` reversed | 3 |
+| M46 | `$CBDB`'s allocation failure becomes silent | 1 |
+| M47 | `$CBFF` the box class is set from the metasprite, not 0 | 1 |
+| M48 | `$CBB8`'s timer reset REMOVED | 4 |
+| M49 | `$CBDC LDY $A8` reads group `$00` whatever the driver set | 4 |
+
+**Every one of the fifteen new checks is reddened by at least one mutant**, and
+the four INVERTED inherited assertions are reddened too (M40 reddens
+`w32a-b559.test.js`'s wiring check, M41 `weapons.test.js`'s, M42/M43
+`flow.test.js`'s and `w31-stage4.test.js`'s).
+
+### THE SURVIVOR, AND WHY IT IS "NO CHECK CAN SEE THIS" RATHER THAN A GAP
+
+**M34: swapping `$CBB8`'s timer reset and `$CBBD JSR $CBD1` reddens nothing.**
+That is not a missing check, it is a fact about the ROM, and it is settled by
+the listing rather than by trying harder: **exactly two instructions in the whole
+PRG write `$0604`** -- `$CBA5 INC $0604,X` and `$CBBA STA $0604,X` -- counted out
+of `assets/prg.bin` this session. `$CBD1` and everything it reaches
+(`$BCB1`/`$BCB5`/`$83B5`/`$BD1F`) touch `$046C`, not `$0604`. **The two writes are
+independent and their order has no observable consequence.** Reported rather than
+repaired, per the brief: separate "my check was bad" from "no check can see
+this". M48 (removing the reset entirely) reddens four checks, so the write itself
+is guarded; only its ORDER is not.
+
+### THREE SURVIVORS ON THE FIRST RUN, TWO OF THEM REAL DEFECTS IN THE PORT
+
+Recorded rather than quietly fixed, because the green run before the fix was
+worthless and looked identical to the green run after it:
+
+1. **M20 (`$C037`'s `$19 == 4` gate removed) survived.** On stages 1-4 the pool
+   is empty, so walking it costs nothing observable *in the pool* -- and a gate
+   whose absence is invisible is a gate a future tidy-up deletes. Fixed by
+   finding an observable that is not the pool: `$A9`. `$BEF3` writes `$90` into
+   it and the walk leaves `$D0`, where a frame that never enters `$BEF3` keeps
+   the `$FF` that `$C033`'s own `DEC`/`BPL` produced. New check 13.
+2. **M35 (the driver stops writing `$A8`) survived, and that was a PORT defect.**
+   `sub_CBD1` took the group base as a JS PARAMETER, so nothing depended on the
+   zero-page byte the ROM actually reads (`$CBDC LDY $A8`, `$CC02 LDY $A8`). It
+   now reads `state.spawn.zA8`, which is both more faithful and what makes M35
+   and the new M49 red. **This is the same class of error as a test that seeds
+   `base + CONST` and asserts through `CONST`** -- the port had quietly made
+   itself the source of truth for the routine's argument.
+3. **A stale source-text assertion.** `w32a-b559.test.js`'s wiring check looked
+   for the literal `sub_CBD1(state, base);`, and the fix for (2) renamed it. It
+   went red on the unmutated source and made M34 look reddened when it was not.
+   Caught by re-running the full suite after the rename, which is the only
+   reason the M34 survivor is reported honestly.
 
 ---
 
-status: IN PROGRESS
+## §10. WHAT I COULD NOT REACH -- attempts, not absences
+
+* **A CARTRIDGE COMPARISON OF ANYTHING IN THIS WAVE.** Unchanged from W32b, and
+  it is the biggest gap. No corpus scenario reaches stage 5 (W31 measured the
+  endchain trajectory game-overing at f14333 inside stage 2; W32a re-confirmed
+  over 47). **W32b handed forward a specific, nearly-free next step and I did
+  not take it**: `tools/oracle/b559poke.py` already knows how to open a `$19`
+  poke window, and W32a recorded that opening it at f1400 instead of f1338 loads
+  stage 5's chunk 2 and produces **2,533 cartridge frames with live `$0600` arm
+  groups**. W32b said that comparison "needs the port to survive `$BEF3` and
+  `$CBD1` for those frames" -- it does now. What stopped me was budget, not a
+  blocker, and it is the single highest-value thing W33 can do: it would turn
+  every number in §4 from port-vs-listing into port-vs-cartridge.
+* **Any measurement at a rank but `$17 = 0` for `$CBCA`.** `$BEEA` has nine rank
+  rows and check 1 drives rows 0 and 8 through the real sweep; `$CBCA` has seven
+  and only row 0 is driven. Rows 1-6 are transcribed and unexercised.
+* **`$BEEA` rows 1-7.** Read from `prg.bin` and asserted as a table, not driven.
+* **The LASER against an arm.** Check 4 exercises `$BFD2[1]`'s `$30` width, so
+  the wider box IS measured; what is not is a laser's `$C0AE` survival
+  interacting with `$BEF3`'s walk. `$BF37`/`$BF72`'s `JMP $C0B7` frees the slot
+  unconditionally, which is transcribed and unexercised for subtype 1.
+* **`$CBD1`'s aim output.** Check 7 asserts only that `$5D` moved and that `$A9`
+  is slot + `$0A`. The direction bits `$BCB5` writes into `$046C` are wave 11's
+  ported code and were not re-measured here.
+* **The `$1A` arm of `$BC44`.** `$1A` is pinned at 0 in this port (loop-2
+  difficulty does not exist), so M39 is reddened by a fixture that forces
+  `$1A = 1` -- a state the port cannot otherwise be in. Labelled in the check.
+* **`$A17C` on the cartridge.** The bypass is measured in the port against the
+  listing; no run made here has ever had `$19 = 4` and a live missile on the
+  board at the same time.
+* **The `$9F` sprite budget biting inside `$8C06`** (W32b's item, unchanged) and
+  **`$CC1F` rows 2 and 3** (exported, unread).
+* **Whether a shape above 1 can exist.** Unchanged from the recon and W32b: I
+  did not scan for an indirect or computed write to `$65` either.
+
+---
+
+## §11. OPEN ITEMS HANDED FORWARD
+
+1. **THE STAGE-5 CARTRIDGE COMPARISON.** §10, first bullet. The port now
+   survives the frames W32a's run 1 already recorded; the tooling exists.
+2. **M34 is a listing fact, not a gap.** §9. If a third writer of `$0604` is
+   ever found, it becomes testable.
+3. **`$9751`'s restart-to-title (mode 0)** is what a long stage-5 run hits once
+   the player runs out of lives. Out of scope here; it is the `$80D4`
+   game-modes item (1 of 7) on the plan, and it is now the first thing a
+   free-running stage-5 session meets.
+4. **`stagewaves.py` is still broken on the inline-5 stride** (recon §8 item 1,
+   untouched by W32a, W32b and W32c).
+5. **`wavecensus.py` and `handlerclosure.py` are still not CI-wired** (recon §8
+   item 4).
+6. **No reader found for `B+$02`, `B+$06`, `B+$07`** -- unchanged, and still
+   stated as "not found", not "unused".
+7. **The next stage is 6 (`$19 = 5`): 47 of 98 records, first unported at scroll
+   `$03B0` (`@$AC2E`), and its late spawner `$C6DE` throws.**
+
+---
+
+status: DONE

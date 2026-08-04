@@ -309,6 +309,6 @@ test('every unconditional $19==4 entry point is WIRED -- all SIX of them', () =>
   const enem = readFileSync(new URL('../src/enemies.js', import.meta.url), 'utf8');
   assert.ok(!enem.includes("throw new Error('$CBD1:"),
     '$CBD1 is ported (W32c) -- the throw must be gone');
-  assert.ok(enem.includes('sub_CBD1(state, base);'),
-    'and $CBB D JSR $CBD1 must be a real call from the driver');
+  assert.ok(enem.includes('sub_CBD1(state);'),
+    'and $CBBD JSR $CBD1 must be a real call from the driver');
 });
