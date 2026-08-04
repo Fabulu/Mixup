@@ -2053,7 +2053,11 @@ function deathSeq89(ram, rom, a5, ctx, d1) {
 function handler88(ram, rom, a5, ctx) {
   const { tables, unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
-  const vec = { dy: 0, dx: 0 };
+  // The out-object is EMPTY on purpose: `$2638A6` zeroes D2/D3 itself on the
+  // frozen entry ($2638A0) and on a stop heading ($263910), so pre-filling it
+  // here would put the cartridge's own initialisation in two places and make
+  // the one in src/movement.js unfalsifiable.
+  const vec = {};
   if (stepMovement(ram, rom, a5, tables, u, vec)) return;    // $275F30 jsr $2638A6
   // $275F36..$275F58: the RECOIL/LEAN.  D3 is `$2638A6`'s own return (see
   // src/movement.js) -- the block is four instructions after the call and reads
