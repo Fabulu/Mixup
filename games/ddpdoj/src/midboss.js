@@ -745,7 +745,11 @@ export function handlerMidboss(ram, rom, a5, ctx) {
         continue;
       }
       ram.setU8(a4 + A.flags, ram.u8(a4 + A.flags) & 0xa3);   // $26B842/$26B846
-      scoreHit(ram, ctx, a4, d);                     // $26B848 jsr $286096
+      // $26B848 jsr $286096, and A6 IS STILL THE BODY'S SUB-RECORD: $26B822
+      // `lea $20(A6),A4` set up the arm pointer without touching A6, so
+      // `$286096 btst #$1,(A6)` reads the BODY's flags byte and not the arm's.
+      // Passing `a4` here would gate an arm's score on the arm's own bit 1.
+      scoreHit(ram, ctx, a6, d);                     // $26B848 jsr $286096
       ram.setU8(a4 + A.f1d,                            // $26B84E..$26B858 eor.b
         (ram.u8(a4 + A.f1d) ^ ram.u8(a4 + A.f1f)) & 0xff);
       if (ram.u8(a5 + R.hitFlags) === 0) {             // $26B85C tst.b / bne
