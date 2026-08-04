@@ -257,9 +257,11 @@ function compareVideo(name, oracle, port, stoppedAt, introInWindow) {
     //
     // The excuse is DERIVED, not a list of scenario names: it applies exactly
     // when the cartridge's $1B re-enters the intro set {1,2,3,4} inside the
-    // window. That is 10 of 37 scenarios, and three of those ten (intro-boot,
-    // intro-respawn, capsule-shield) are byte-exact anyway. The other 27 --
-    // including both deep scenarios and every long one -- are graded strictly.
+    // window, OR the cartridge is in game MODE 0 (W39 -- the title screen is
+    // two more $8871 images, and `gameover` is the first window to contain one).
+    // Three of the excused scenarios (intro-boot, intro-respawn, capsule-shield)
+    // are byte-exact anyway. Every other scenario -- including both deep ones
+    // and every long one -- is graded strictly.
     ntKnown: introInWindow,
     bad: ((nt.n && !introInWindow) ? 1 : 0) + (pal.n ? 1 : 0) + (oam.n ? 1 : 0)
        + (coll.n ? 1 : 0),
@@ -473,13 +475,26 @@ export function compareScenario(name, { neuter = null, res = null, quiet = false
     // ONLY WHEN THE WINDOW RAN TO THE END. If the cartridge left the modelled
     // $1B set the port was never asked to follow it, so the screens are allowed
     // to differ and comparing them would be inventing a failure.
-    // `introInWindow`: did the cartridge run a STAGE LOAD inside this window?
-    // Read off the ORACLE's own $1B -- states 1-4 are the five-step stage intro
-    // ($9B3E $9BED $9C12 $9C1E $9C24) and $9B78's `JSR $882C` is inside the
-    // first of them. See compareVideo() for what it excuses and what it does not.
+    // `introInWindow`: did the cartridge run a FULL-SCREEN LOAD inside this
+    // window? Read off the ORACLE's own bytes, never off a scenario list.
+    //
+    //   $1B in {1,2,3,4}  the five-step stage intro ($9B3E $9BED $9C12 $9C1E
+    //                     $9C24); $9B78's `JSR $882C` is inside the first.
+    //   $00 == 0          W39. MODE 0 loads TWO screens ($80E6 `JSR $882C` and
+    //                     $8256's `JSR $8824`) on its phase-0 frame, and every
+    //                     later mode-0 frame is still showing them. The old
+    //                     derivation missed this because the port could not
+    //                     leave mode 5, so no window contained a mode-0 frame;
+    //                     `gameover` now does, from f4364 on. Note $9751's own
+    //                     frame samples $00 = 0 AND $1B = 0 -- $9B3E INCs $1B
+    //                     to 1 and $9758 puts it straight back -- so the mode
+    //                     is the only byte at $80B5 that sees that load.
+    //
+    // See compareVideo() for what it excuses and what it does not.
     video: compareVideo(name, oracle, port, stoppedAt,
                         frames.some((f) => [1, 2, 3, 4]
-                          .includes(byFrameO.get(f).w_001B))),
+                          .includes(byFrameO.get(f).w_001B)
+                          || byFrameO.get(f).w_0000 === 0)),
     romLagTotal: oracle.lagFrames, romLagInWindow, portLag: portLagInWindow,
     // A field that never varies across the whole run tells you nothing when it
     // matches. Counted and printed, per docs/knowledge/03 trap 4.3.

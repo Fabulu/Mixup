@@ -180,8 +180,12 @@ export function respawn(state, res) {
     // 27,400 cartridge frames, at game frames 3379 and 3967; each time $96FB
     // then runs for ~400 frames. Losing three lives is the default outcome of
     // playing, not an exotic state. Ported in wave 24 (was a throw).
-    enterGameOver(state, res, p);                     // $97F1 (below)
-    return false;                                     // $9827 JMP $9A5E -- caller runs body
+    //
+    // W39: enterGameOver() now has TWO tails. The normal one ends `$9827 JMP
+    // $9A5E` (the caller runs the mode-5 body) and the DEMO one ends `$980B JMP
+    // $9C09`, whose RTS goes all the way back to `$812D` -- so a demo death
+    // must NOT run the body. It returns true when it took the demo tail.
+    return enterGameOver(state, res, p);              // $97F1 (below)
   }
   // $97C5-$97DB, the two-player switch. With one player $0A = 1, so `AND #$02`
   // is 0 and X -- and therefore $18 -- is unchanged. Ported as the ROM has it
@@ -194,7 +198,22 @@ export function respawn(state, res) {
     x = 1;                                          // $97D9 LDX #$01
   }
   state.zp.player = x;                              // $97DB STX $18
-  // ---- $97DD: six zero stores, then the intro -----------------------------
+  restartStage(state, res);                         // $97DD
+  return true;
+}
+
+/**
+ * `$97DD` -- six zero stores, `$9C09`, and then the stage intro THIS FRAME.
+ *
+ *   97DD  A9 00 / 85 39 / 85 3A / 85 5D / 85 33 / 85 1B / 85 1C
+ *   97EB  20 09 9C  JSR $9C09
+ *   97EE  4C 3E 9B  JMP $9B3E
+ *
+ * Factored out of `respawn()` in W39 because it has a SECOND caller: `$9746`,
+ * the continue cheat, jumps straight here after restoring the lives -- so a
+ * cheated continue restarts the stage without going near `$979D`'s save block.
+ */
+function restartStage(state, res) {
   state.zp39 = 0;                                   // $97DF STA $39 -- wave 22
   state.build.gate = 0;                             // $97E1 STA $3A
   state.spawn.z5D = 0;                              // $97E3 STA $5D
@@ -203,7 +222,38 @@ export function respawn(state, res) {
   state.zp1C = 0;                                   // $97E9 STA $1C
   clearAhead(state);                                // $97EB JSR $9C09
   introReset(state, res);                           // $97EE JMP $9B3E
-  return true;
+}
+
+/**
+ * `$9721` -- THE CONTINUE CHEAT, reached when the button code `$9793` has been
+ * matched ten times (`$33 == $0A`) by the time the 120-frame window expires.
+ *
+ *   9721  A9 03 / 95 20         three lives back
+ *   9725  A9 01 / 95 2A         and the extra-life threshold back to $01xxxx
+ *   9729  BD 49 97 / 05 0A / 85 0A    $0A |= $9749[X]  -- the player is IN again
+ *   9730  A9 00 / 95 24         $24,X := 0: back to the START of the stage, not
+ *                               to the checkpoint
+ *   9734  8A / 0A / 0A / AA     X := $18 * 4
+ *   9738  $07E4,X .. $07E7,X := 0     the player's score, all four bytes
+ *   9746  4C DD 97  JMP $97DD
+ *
+ * `$9749` is `01 02` -- a per-player BIT, not a count -- and `$0A` is OR'd, not
+ * assigned, so a two-player cheat leaves the other player's bit alone.
+ *
+ * W39 ported it because it stopped being decorative: the game-over screen runs
+ * `codeMatch()` on every one of its ~400 frames and the port now GETS to a game
+ * over and back out of it. It was a throw from W24 to W39.
+ */
+export function continueCheat(state, res) {
+  const p = playerIndex(state);                     // $9719 LDX $18
+  state.lives[p] = 3;                               // $9721/$9723 STA $20,X
+  state.extraLife[p] = 1;                           // $9725/$9727 STA $2A,X
+  state.zp0A = u8(state.zp0A | res.flowTables.read(0x9749 + p));  // $9729-$972E
+  state.save24[p] = 0;                              // $9730/$9732 STA $24,X
+  // $9734-$9745: X := $18 << 2, then four stores from $07E4. The port's score
+  // array is based at $07E0, so player p's four bytes are score[4 + 4p .. +3].
+  state.score.fill(0, 4 + 4 * p, 8 + 4 * p);        // $9738/$973D/$9740/$9743
+  restartStage(state, res);                         // $9746 JMP $97DD
 }
 
 /**
@@ -225,21 +275,31 @@ export function respawn(state, res) {
  * The jingle `$AF` is what makes `$B0` (pulse 1's DUR) non-zero for ~277 frames,
  * which is the `$96FD` gate the game-over arm waits on. `$06EC` is inside the
  * $0500-$06FF collision-map page; it holds a per-player continue-screen byte.
+ *
+ * W39 PORTED `$9805`, THE DEMO TAIL, which is what ends the attract mode when
+ * the demo ship dies. It is the SHORT one -- no banner, no jingle, no timeout --
+ * because mode 2 is about to be torn down anyway: `INC $0B` is what `$812D`
+ * reads two instructions after `$964D` returns. Returns TRUE when it took that
+ * tail, because `$980B JMP $9C09` RTSes to `$812D` and never reaches `$9A5E`.
  */
 function enterGameOver(state, res, p) {
   const mask = p === 0 ? 0xFE : 0xFD;                // $97F1/$97F3/$97F5/$97F7
   state.zp0A = u8(state.zp0A & mask);                // $97F9 AND $0A / STA $0A
   state.substate = 0xC0;                             // $97FD/$97FF LDA #$C0 / STA $1B
   if (state.zp09 !== 0) {                            // $9801 LDA $09 / BEQ $980E
-    throw new Error('$9805: demo/attract game-over ($09 != 0). $0D := 5, INC '
-                  + '$0B, JMP $9C09 -- the demo game-over path is not ported '
-                  + '(attract mode is out of scope).');
+    // $9805: the ATTRACT DEMO's game over. $0D = 5 blanks the screen for five
+    // frames while mode 0 rebuilds it; $0B is the demo's only exit flag.
+    state.ppu.blank = 5;                             // $9805/$9807 STA $0D
+    state.zp0B = u8(state.zp0B + 1);                 // $9809 INC $0B
+    clearAhead(state);                               // $980B JMP $9C09
+    return true;                                     // ...and its RTS lands at $812D
   }
   cannedPacket(state, res.hudPackets, 0x1C);         // $980E/$9810
   state.coll[0x1EC + p] = u8(p + 0x31);              // $9813-$9818 STA $06EC,X
   stopAllSound(state, res);                          // $981B JSR $83AB
   soundRequest(state, 0xAF);                         // $981E/$9820 JSR $EC1E (the jingle)
   state.zp4C = 0x78;                                 // $9823/$9825 STA $4C (120)
+  return false;                                      // $9827 JMP $9A5E
 }
 
 /**
@@ -303,7 +363,24 @@ export function introReset(state, res) {
   state.zp1A = state.save28[p];                     // $9B72/$9B74  $1A
   state.substate = u8(state.substate + 1);          // $9B76 INC $1B
 
-  fullScreenLoad(state);                            // $9B78 JSR $882C
+  fullScreenLoad(state, 0);                         // $9B78 JSR $882C
+  // THE DROPPED NMI, and it belongs to THIS call site rather than to $882C.
+  //
+  // MEASURED, and the four measurements do not agree with each other, which is
+  // exactly why the port has no rule and carries a constant:
+  //   boot f283, respawn f614/f617/f621   the cartridge dropped one NMI on the
+  //     frame that ran $9B78 -- except in `enemy-bullets-full`, where it did
+  //     NOT (see 11-impl-enemy-bullets.md; that window deliberately stops at
+  //     f600, before its own respawn)
+  //   gameover f4364                      $9751's `JSR $9B3E` -- rom 1, port 1
+  //   gameover f4365                      mode 0's TWO full-screen loads, i.e.
+  //     4608 $2007 writes, TWICE the work -- and rom 0. src/modes.js st80E2()
+  //     therefore claims no drop, and that is a measurement, not a guess.
+  //
+  // What decides it is cycles, and docs/knowledge/06 says plainly that this
+  // port has no model for them. So: one constant, at the one call site where
+  // the cartridge is measured to drop, with the counter-example written down.
+  state.frameDrops = 1;
 
   state.ppu.mask = 0x1E;                            // $9B7B/$9B7D
   state.ppu.ctrl = 0xA8;                            // $9B7F/$9B81
@@ -447,10 +524,11 @@ export function fullScreenLoad(state, which = 0) {
   // $8849-$886B: PPUADDR = $2000 and six JSR $8871 chunks. NOT PORTED.
   state.ppu.ctrl = 0x88;                            // $886E -> $81B5 $10 = $88
   state.ppu.blank = 0x10;                           // $81BC -> $83B0
-  // The cartridge's own work overran this frame's vblank on every measured run:
-  // one dropped NMI, at game frame 283 on a boot and 614 on a respawn, and none
-  // anywhere else in either run.
-  state.frameDrops = 1;
+  // THE DROPPED NMI USED TO BE SET HERE AND IT IS NOT ANY MORE (W39). It is a
+  // property of the CALL SITE, not of this routine, and the corpus now contains
+  // a window that proves it -- see introReset() below and st80E2() in
+  // src/modes.js. Setting it here made the mode-0 boot frame claim a drop the
+  // cartridge does not take, on the one scenario that compares that frame.
 }
 
 /**

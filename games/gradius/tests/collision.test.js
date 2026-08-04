@@ -395,13 +395,31 @@ test('$97C1: lives going negative enters GAME OVER ($97F1) -- $1B=$C0, $0A clear
   assert.strictEqual(s.coll[0x1EC], 0x31, '$9818 STA $06EC,X (P1 indicator)');
 });
 
-test('$97F1 demo path ($09 != 0) is still a loud throw', () => {
-  // $9801 LDA $09 / BEQ $980E: the demo/attract game-over path ($0D:=5, INC $0B,
-  // JMP $9C09) is unported. $09 is 0 in every play run; this pins the throw.
+test('$9805 demo path ($09 != 0): $0D := 5, INC $0B, and NO jingle', () => {
+  // $9801 LDA $09 / BEQ $980E. W39 ported the demo tail; it was a throw from
+  // W24. It is the SHORT arm: no banner packet, no $06EC indicator, no $AF
+  // jingle and no $4C timeout, because mode 2 is about to be torn down.
+  //
+  // RED WHEN: the $09 test is inverted or dropped (the demo would play the whole
+  // game-over screen and never set $0B, so the attract mode would never end), or
+  // $0D/$0B/$57 is not written, or the return value is false -- which would make
+  // the caller run the mode-5 body that `$980B JMP $9C09` skips.
   const s = bootState(res.manifest);
   s.lives[0] = 0;
   s.zp09 = 1;                      // demo/attract
-  assert.throws(() => respawn(s, res), /\$9805/);
+  s.zp0B = 0;
+  s.build.ahead = 1;               // $9C09 clears $57
+  s.vram.cursor = 0;
+  s.zp4C = 0;
+  const tookDemoTail = respawn(s, res);
+  assert.strictEqual(tookDemoTail, true, '$980B JMP $9C09 -- the caller must NOT run $9A5E');
+  assert.strictEqual(s.substate, 0xC0, '$97FF STA $1B still runs above the split');
+  assert.strictEqual(s.ppu.blank, 5, '$9805/$9807 STA $0D');
+  assert.strictEqual(s.zp0B, 1, '$9809 INC $0B -- the attract mode`s only exit');
+  assert.strictEqual(s.build.ahead, 0, '$9C09 STA $57');
+  assert.strictEqual(s.spawn.z5E, 0x3F, '$9C0F STA $5E -- the IMMEDIATE #$3F');
+  assert.strictEqual(s.vram.cursor, 0, 'no $1C banner packet on this arm');
+  assert.strictEqual(s.zp4C, 0, 'no $78 continue timeout on this arm');
 });
 
 test('$97DD: the respawn clears $3A/$5D/$33/$1B and $9C09 clears $57', () => {

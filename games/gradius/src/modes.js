@@ -636,6 +636,11 @@ export function newGame(state) {
  */
 export function st80E2(state, res) {
   if (state.zp01 === 0) {                           // $80E2/$80E4 BNE $80FF
+    // NO DROPPED NMI ON THIS FRAME, and it is measured rather than assumed.
+    // This frame does 4608 `$2007` writes -- TWICE what `$9B78`'s single load
+    // does -- and `gameover`'s cartridge rows read `lagged` 0 at f4365 while
+    // reading 1 at f4364, the `$9751` frame that ran one load. See the note at
+    // the `$9B78` call site in src/flow.js: the drop belongs to the call site.
     fullScreenLoad(state, 0);                       // $80E6 JSR $882C
     buildTitleScreen(state, res);                   // $80E9 JSR $8256
     state.ppu.chrSel = 3;                           // $80EC/$80EE

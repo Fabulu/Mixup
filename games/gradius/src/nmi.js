@@ -94,13 +94,14 @@ import { streamBlock } from './terrain.js';
 import { spawnEngine, enemyBullets, updateEnemies, clearSlot,
          armCensus, armDriver, armDriverGated } from './enemies.js';
 import { introStep, pauseCheck, respawn, codeMatch, startPlay, sub9BF0,
-         introReset, introPackets, introHud, introMeter, introTerrain } from './flow.js';
+         introReset, introPackets, introHud, introMeter, introTerrain,
+         continueCheat } from './flow.js';
 import { shotSweep, collision, sub_CDA5 } from './collision.js';
 import { applyCapsule, computeRank } from './powerup.js';
 import { addScore } from './score.js';
 import { soundDriver, setBgm, setBgmCode, soundRequest, pulse1Dur, SND_BASE, OFF } from './sound.js';
 import { chrBank } from './render/ppu.js';
-import { modeDispatch } from './modes.js';
+import { modeDispatch, newGame } from './modes.js';
 
 // $80D4 jt_80D4 -- the 7-entry GAME-MODE jump table, indexed by `$00` (the
 // mode byte) after `$83E4`'s `ASL A`. Verified straight out of assets/prg.bin
@@ -1085,10 +1086,12 @@ function clearSpawnExt(state) {
  * clears the dead player's bit, so a solo game-over leaves `$0A == 0`. `$4C`
  * is the 120-frame continue timeout seeded at `$9825`.
  *
- * The two tails that leave mode 5 -- CONTINUE (mode 4, `$970D`) and the
- * timeout-expired restart to title (mode 0, `$9751`) -- are unported and throw
- * loudly with their ROM address. The reproduced window is the `$B0`-gated hold
- * plus the `$4C` countdown.
+ * W39: THE TWO TAILS THAT LEAVE MODE 5 NOW RUN. CONTINUE (`$970D` -> mode 4)
+ * and the timeout-expired restart to title (`$9751` -> mode 0) were throws from
+ * W24 to W39 for one reason -- the modes they jump to did not exist. They do
+ * now (src/modes.js), and `$9751` in particular was named in HANDOVER.md as
+ * "the crash a real player reaches": a loop-2 clear or three lost lives walks
+ * straight into it, and a passive loop-2 sweep hit it on 31 of 110 chunk runs.
  */
 function gameOverArm(state, res) {
   state.zp5B = u8(state.zp5B + 1);                   // $96FB INC $5B
@@ -1102,9 +1105,16 @@ function gameOverArm(state, res) {
     // $0A == 0 -- the solo game-over case (the dead player's bit was cleared at
     // $97F9). START here means CONTINUE.
     if (state.input.pressed & BTN.START) {           // $9707/$9709 AND #$10
-      throw new Error('$970D: CONTINUE pressed on the game-over screen. JSR '
-                    + '$82D5 then mode := 4 (the continue/respawn screen) is '
-                    + 'not ported -- modes 0-4 are out of scope.');
+      // $970D: CONTINUE. `$82D5` is the SAME new-game setup mode 3 runs at
+      // `$815F`, and mode 4 is the same three-instruction handover a fresh game
+      // takes -- so CONTINUE IS A NEW GAME THAT SKIPS THE TITLE. `$8307`'s wipe
+      // covers `$0012-$00EF`, which includes `$19` (the stage) and `$24,X` (the
+      // checkpoint), so nothing about where the player died survives it. That is
+      // this cartridge's continue and it is worth writing down, because "resume
+      // at the checkpoint" is what the word usually means.
+      newGame(state);                                // $970D JSR $82D5
+      state.mode = 4;                                // $9710/$9712 STA $00
+      return;                                        // $9714 RTS
     }
   }
   continueTimeout(state, res);                        // $9715
@@ -1120,20 +1130,32 @@ function continueTimeout(state, res) {
   }
   // $9719: $4C == 0 -- the 120-frame continue window expired.
   if (state.zp33 === 0x0A) {                         // $971D CPY #$0A (Y = $33)
-    throw new Error('$9721: continue cheat ($33 reached $0A). The lives restore '
-                  + '($20,X := 3), $0A OR, score clear and JMP $97DD are not '
-                  + 'ported.');
+    continueCheat(state, res);                       // $9721 -- W39, was a throw
+    return;
   }
   if (state.zp0A & 0x03) {                           // $974B/$974D AND #$03
+    // $97C5 is the TWO-PLAYER switch, and it is unreachable with one: a solo
+    // game-over cleared player 1's bit at $97F9, so $0A is 0 here. Still a
+    // throw, and deliberately: it ends `STX $18` with X = 1, which is the one
+    // value src/flow.js playerIndex() refuses.
     throw new Error('$97C5: multiplayer continue-timeout expired -- the player '
-                  + 'switch ($97C5-$97DB) is not ported.');
+                  + 'switch ($97C5-$97DB) is not ported. $0A = '
+                  + state.zp0A + ', so a second player is still in the game.');
   }
-  // $9751: solo timeout expired -> restart to title. JSR $9B3E, mode := 0.
-  throw new Error('$9751: game-over continue window expired -> restart to title '
-                + '(JSR $9B3E then mode := 0, $1B := 0). $9B3E is ported but '
-                + 'mode 0 (attract/title) is not; the restart-to-title is out '
-                + 'of scope. REACHABLE on the cartridge: the deep-survivor and '
-                + 'deep-autofire runs each sit in $96FB for ~397 frames.');
+  // $9751: the window expired with nobody left -- RESTART TO THE TITLE.
+  //
+  //   9751  20 3E 9B  JSR $9B3E     the stage intro's state 0, IN THIS FRAME
+  //   9754  A9 00 / 85 00           mode := 0
+  //   9758  85 1B                   $1B := 0
+  //
+  // THE ORDER IS THE POINT. `$9B3E` ends `INC $1B` ($9B76) and `$9758` puts it
+  // straight back to 0 -- so the wipe, the full-screen load and the ship
+  // placement all happen and the sub-state does not advance. Mode 0 then
+  // rebuilds everything on its next frame anyway; what this buys is a screen
+  // that is already blanked ($0D = 6 at $9BC5) when the title load starts.
+  introReset(state, res);                            // $9751 JSR $9B3E
+  state.mode = 0;                                    // $9754/$9756 STA $00
+  state.substate = 0;                                // $9758 STA $1B
 }
 
 /**

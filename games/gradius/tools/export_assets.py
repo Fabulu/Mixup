@@ -1100,6 +1100,9 @@ FLOW_BLOCKS = [
     ("menuCursorY", 0x82B4, 0x82B6,
      "$82AD LDA $82B4,X with X = $0F, every title-menu frame",
      "$86 and $96: where the cursor SHIP ($0320) sits on each menu line"),
+    ("playerBit", 0x9749, 0x974B,
+     "$9729 LDA $9749,X with X = $18, the continue cheat at $9721",
+     "$01 and $02 -- the per-player BIT that is OR'd back into $0A"),
     ("demoScript", 0x9CB7, 0x9D4F,
      "$9C88 LDA $9CB5,Y and $9C9E LDA $9CB8,Y, both with Y = $31",
      "75 (button, duration) pairs then FF FF -- the attract demo's joystick"),
@@ -1153,6 +1156,11 @@ def flow_tables(rom: Rom) -> dict:
     if rom.slice(0x82B4, 4) != bytes((0x86, 0x96, 0xA9, 0x03)):
         raise SystemExit(f"ABORT: $82B4 should be `86 96` followed by $82B6's "
                          f"`LDA #$03` but reads {rom.slice(0x82B4, 4).hex(' ')}")
+    # $974B is `LDA $0A`, the first instruction of loc_974B, right after the
+    # two-byte player-bit table the continue cheat ORs into $0A.
+    if rom.slice(0x9749, 4) != bytes((0x01, 0x02, 0xA5, 0x0A)):
+        raise SystemExit(f"ABORT: $9749 should be `01 02` followed by $974B's "
+                         f"`LDA $0A` but reads {rom.slice(0x9749, 4).hex(' ')}")
     # The demo script's extent is not a guess: walk it exactly as $9C9E does --
     # the DURATION byte of record n is $9CB8 + 2n -- and demand that the first
     # $FF is the one at $9D4E, i.e. 75 records and then the terminator pair.

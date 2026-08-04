@@ -526,36 +526,68 @@ test('$96FB holds (mode5Body) while $B0 != 0, then $4C counts down once $B0 reac
   assert.strictEqual(s.zp4C, 0x77, '$975B DEC $4C once $B0 == 0');
 });
 
-test('$96FB CONTINUE ($0A==0, START pressed, jingle done) throws at $970D', () => {
-  // $970D JSR $82D5 / mode := 4. Mode 4 is unported. RED WHEN: silent.
+// The three tests below were `assert.throws` from W24 until W39, because all
+// three tails leave mode 5 for a mode that did not exist. They do now, and the
+// checks are the same three lines of listing read the other way round.
+
+test('$970D CONTINUE ($0A==0, START, jingle done): $82D5 then mode := 4', () => {
+  // 970D 20 D5 82 / A9 04 / 85 00. RED WHEN: the mode is left at 5, the wrong
+  // mode is written, or $82D5's lives/score reset is skipped.
   const s = atSubstate(0xC0);
   s.snd[OFF.DUR] = 0;                                // jingle done
   s.zp0A = 0;                                        // solo game-over ($0A cleared)
   s.zp4C = 0x78;                                     // still in the window
-  // START pressed this frame:
-  assert.throws(() => nmi(s, 0x10, res), /\$970D/);
+  s.lives[0] = 0xFF;                                 // the life that went negative
+  s.score[4] = 0x12; s.score[5] = 0x34;              // player 1's score
+  nmi(s, 0x10, res);                                 // START pressed this frame
+  assert.strictEqual(s.mode, 4, '$9712 STA $00 -- the handover mode');
+  assert.strictEqual(s.lives[0], 3, '$82FA gave three lives back');
+  assert.strictEqual(s.score[4], 0, '$82D8 cleared $07E4');
+  assert.strictEqual(s.zp0A, 1, '$82F8 STY $0A -- one player back in');
+  assert.strictEqual(s.zp09, 0, '$82E2 -- not a demo');
 });
 
-test('$96FB timeout-expired ($4C == 0) throws at $9751 (restart to title)', () => {
-  // $9751 JSR $9B3E / mode := 0. The continue window expired; restart to title.
-  // RED WHEN: silent.
+test('$9751 timeout-expired ($4C == 0): $9B3E, then mode := 0 AND $1B := 0', () => {
+  // 9751 20 3E 9B / A9 00 / 85 00 / 85 1B. The ORDER is the check: $9B3E ends
+  // `INC $1B` at $9B76 and $9758 puts it back to 0. RED WHEN: mode is not 0, or
+  // $1B is left at 1 because the STA was dropped or moved above the JSR, or
+  // $9B3E is not run at all (the ship would not be replaced).
   const s = atSubstate(0xC0);
   s.snd[OFF.DUR] = 0;
   s.zp0A = 0;                                        // solo -> reaches $9751
   s.zp4C = 0;                                        // window expired
   s.zp33 = 0;                                        // not the cheat ($33 != $0A)
-  assert.throws(() => nmi(s, 0, res), /\$9751/);
+  s.obj.status[0] = 0;                               // $9B3E sets it back to 1
+  s.zp.speed = 7;                                    // and $3D-$97 gets wiped
+  nmi(s, 0, res);
+  assert.strictEqual(s.mode, 0, '$9756 STA $00 -- back to the title');
+  assert.strictEqual(s.substate, 0, '$9758 STA $1B, AFTER $9B76 INC $1B');
+  assert.strictEqual(s.obj.status[0], 1, '$9BC0 -- $9B3E really ran');
+  assert.strictEqual(s.zp.speed, 0, '$9B3E wiped $3D-$97');
 });
 
-test('$96FB continue-cheat ($33 == $0A on timeout) throws at $9721', () => {
-  // $971D CPY #$0A / BNE $974B. The continue cheat restores lives; unported.
-  // RED WHEN: silent.
+test('$9721 continue-cheat ($33 == $0A on timeout): lives back, score cleared', () => {
+  // 9721 A9 03 / 95 20 ... 9746 4C DD 97. RED WHEN: the lives restore, the $0A
+  // OR (a per-player BIT from $9749, not a count), the $24,X clear or the
+  // four-byte score clear is dropped, or $97DD's restart does not run.
   const s = atSubstate(0xC0);
   s.snd[OFF.DUR] = 0;
   s.zp0A = 0;
   s.zp4C = 0;
   s.zp33 = 0x0A;                                     // the cheat code reached 10
-  assert.throws(() => nmi(s, 0, res), /\$9721/);
+  s.lives[0] = 0xFF;
+  s.save24[0] = 8;                                   // a checkpoint to be dropped
+  s.score[4] = 0x99; s.score[7] = 0x99;
+  s.score[8] = 0x77;                                 // player 2's, untouched
+  nmi(s, 0, res);
+  assert.strictEqual(s.lives[0], 3, '$9721/$9723 STA $20,X');
+  assert.strictEqual(s.extraLife[0], 1, '$9725/$9727 STA $2A,X');
+  assert.strictEqual(s.zp0A, 1, '$9729 ORA $0A with $9749[0] = $01');
+  assert.strictEqual(s.save24[0], 0, '$9730/$9732 -- back to the stage start');
+  assert.strictEqual(s.score[4], 0, '$9738 STA $07E4,X');
+  assert.strictEqual(s.score[7], 0, '$9743 STA $07E7,X -- all FOUR bytes');
+  assert.strictEqual(s.score[8], 0x77, 'player 2 ($07E8) untouched');
+  assert.strictEqual(s.substate, 1, '$97DD -> $9B3E, whose $9B76 INCs $1B');
 });
 
 test('$96FB multiplayer timeout ($0A != 0) throws at $97C5', () => {
