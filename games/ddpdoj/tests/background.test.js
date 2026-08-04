@@ -608,3 +608,108 @@ test('a stage other than 1 is a LOUD THROW BY ADDRESS, not a plausible '
   const e = (() => { try { g.step(); } catch (x) { return x; } })();
   assert.ok(e instanceof Unreached, 'the synthetic ROM has no stage-2 tables');
 });
+
+// ---------------------------------------------------------------------------
+// WAVE 32.  THE BACKGROUND OBJECT IS A SPRITE-BUCKET PRODUCER, AND ITS OFFSET
+// HAS NO CAP.  `tools/scrollportgate.mjs` was red for ten waves because it ran
+// this producer with no consumer; these three pin the mechanism so the next
+// harness that drives `backgroundFrame` in isolation cannot repeat it.
+
+const B2_BASE = 0x805cc8;      // $23DF2A lea $805CC8,A0
+const B2_COUNT = 0x80afc4;     // $23DF2A adda.w $80AFC4 / $23DF4E addi.w #$C
+
+/** A live element in slot 0 whose despawn test passes, so `$23DF2A` runs. */
+function liveElement(g, updater = 0x26241a) {
+  const slot = BGRAM.elemSlots;
+  g.ram.setU8(slot + ESLOT.active, 0x80);
+  g.ram.setU32(slot + ESLOT.update, updater);
+  g.ram.setU16(slot + ESLOT.arg, 0x0000);
+  return slot;
+}
+
+test('$23DF2A stages the element into BUCKET 2 at $805CC8 + $80AFC4 and steps '
+  + 'the counter by 12 -- the background object PRODUCES, and nothing in it '
+  + 'consumes', () => {
+  const g = newGame([[0, 0x08, 0x0800]]);
+  for (let i = 0; i < 4; i++) g.step();
+  liveElement(g);
+  g.ram.setU16(B2_COUNT, 0);
+  g.step();
+  assert.equal(g.ram.u16(B2_COUNT), 12, '$23DF4E addi.w #$C -- one record');
+  const first = g.ram.u32(B2_BASE);
+  assert.notEqual(first, 0, 'the record landed at offset 0');
+  g.step();
+  assert.equal(g.ram.u16(B2_COUNT), 24, 'and the SECOND record follows it');
+  assert.equal(g.ram.u32(B2_BASE + 12), first,
+    'at $805CC8 + 12, i.e. indexed by the counter and by nothing else');
+});
+
+test('and the offset is NOT BOUNDED: at $80AFC4 = $5340 the twelve-byte record '
+  + 'lands on $80B008..$80B013 and overwrites $80B010/$80B012 -- the camera '
+  + 'the scroll gate compares (the W32 defect, reproduced exactly)', () => {
+  // THE FIXTURE IS THE ARITHMETIC, and it is asserted before anything runs so
+  // the test cannot pass by agreeing with itself about where $80B010 is.
+  assert.equal(B2_BASE + 0x5340 + 8, CAM.bgId,
+    '$805CC8 + $5340 + 8 IS $80B010 -- 1,776 twelve-byte records past the base');
+  // TWO RUNS THAT DIFFER IN ONE WORD OF SETUP. The control clears the counter
+  // the way $23D70C does; the subject leaves it where 1,776 uncleared records
+  // put it. Anything they disagree on is the overrun and nothing else -- the
+  // camera accumulate, the clock and the column writer are identical in both.
+  const run = (count) => {
+    const g = newGame([[0, 0x08, 0x0800]]);
+    for (let i = 0; i < 4; i++) g.step();
+    // handler 3 ($26249C/$2624BA) is the shape the wave-17 corpus had live at
+    // lf2965. Its constructor's two constants are set here because this test
+    // drives the updater directly rather than through op $10, and they are
+    // DIFFERENT values on purpose so a d3/d4 swap in $23DF2A fails this too.
+    const slot = liveElement(g, 0x2624ba);
+    g.ram.setU16(slot + ESLOT.yPos, 0x1690);     // d3
+    g.ram.setU8(slot + ESLOT.kind + 1, 0x13);    // d4
+    g.ram.setU16(B2_COUNT, count);
+    g.step();
+    return g.ram;
+  };
+  const clean = run(0), overrun = run(0x5340);
+  assert.equal(overrun.u16(CAM.bgId), 0x1690, 'd3 landed on $80B010');
+  assert.equal(overrun.u32(CAM.bgLong) >>> 16, 0x0013, 'd4 landed on $80B012');
+  assert.notEqual(clean.u16(CAM.bgId), 0x1690, 'and the control was not hit');
+  assert.equal(clean.u32(CAM.bgLong) & 0xffff, overrun.u32(CAM.bgLong) & 0xffff,
+    'the LOW word of $80B012 is untouched -- the record straddles the boundary');
+  assert.notEqual(clean.u32(CAM.bgLong) >>> 16, 0x0013,
+    'the control kept whatever high word $240B94 computed');
+  // On the wave-17 corpus that word was $0003 at lf2965, so the element's $13
+  // replacing it is +$100000 and the gate printed `port=133940 board=33940`.
+  assert.equal((overrun.u32(CAM.bgLong) - clean.u32(CAM.bgLong)) & 0xffff, 0,
+    'and the damage is confined to the HIGH word -- the record straddles $80B012');
+});
+
+test('the $23D70C..$23D71C counter clear is what bounds it: with the thirty '
+  + 'words zeroed each frame the offset never leaves bucket 2', () => {
+  const g = newGame([[0, 0x08, 0x0800]], { stream: 600 });
+  for (let i = 0; i < 4; i++) g.step();
+  liveElement(g);
+  let peak = 0;
+  for (let i = 0; i < 400; i++) {
+    g.ram.setU16(B2_COUNT, 0);                   // $23D70C's thirtieth word
+    g.step();
+    peak = Math.max(peak, g.ram.u16(B2_COUNT));
+  }
+  assert.equal(peak, 12, 'one record per frame, from offset 0 every time');
+  assert.ok(B2_BASE + peak < 0x80688c, 'and never past bucket 3 at $80688C');
+});
+
+test('the $262084 coverage hook reports the RECORD ADDRESS and the opcode, and '
+  + 'marks the $26200E replay so a consumer can fold it', () => {
+  const seen = [];
+  const g = newGame([[0, 0x08, 0x0800], [2, 0x0c]]);
+  g.ctx.scrollRecord = (r) => seen.push(r);
+  for (let i = 0; i < 4; i++) g.step();          // clock 0 -> the $08 record
+  assert.equal(seen.length, 1, 'exactly one record dispatched at clock 0');
+  assert.equal(seen[0].op, 0x08);
+  assert.equal(seen[0].t, 0);
+  assert.equal(seen[0].script, 0, 'D6 = 1 is SCRIPT 0 ($262068 / $262096)');
+  assert.equal(seen[0].replay, false, '$813190 is 0 on the normal path');
+  assert.equal(g.rom.u16(seen[0].at), 0,
+    '`at` points at the record`s own time word, not past it');
+  assert.equal(g.rom.u16(seen[0].at + 4), 0x08, 'and +4 is its opcode');
+});

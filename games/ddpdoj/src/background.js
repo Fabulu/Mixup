@@ -855,6 +855,15 @@ function interpret(ram, rom, ctx, a5, clock, mut) {
       if (mut === 'cond-word-honoured' && rom.u16(a1) !== 0) break;
       a1 += 2;
       const op = rom.u16(a1); a1 += 2;                     // $262084 move.w (A1)+,D2
+      // COVERAGE HOOK, not behaviour.  `docs/knowledge/10`: the unit that
+      // means something for this VM is RECORDS DISPATCHED and OPCODES TAKEN,
+      // not frames.  `a1 - 6` is the record's own address (time, pad, op), so
+      // a consumer can count DISTINCT records rather than dispatches -- the
+      // fast-forward $26200E replays the whole script and would otherwise
+      // inflate the number. Optional, like `scrollEvent`; nothing here reads
+      // it back and no arm depends on it.
+      ctx.scrollRecord?.({ at: a1 - 6, op, t, script: d6 === 1 ? 0 : 1,
+        replay: ram.u16(BGRAM.fastFwd) !== 0 });
       a1 = runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, t, mut);
       // $262092 `move.l A1,(A6)` -- the record LEDGER wave 17 tapped: it runs
       // only after a record has been dispatched and its value names the next.

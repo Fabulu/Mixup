@@ -61,6 +61,32 @@
 //
 // WHAT IS COMPARED: eleven columns, of which the first four are the ones
 // `20-plan` §2 makes the done-when for W14 and W16.
+//
+// THE THIRD BOARD STEP THIS HARNESS MUST MODEL, and W32 added it after four
+// gate stages had been red for ten waves because it was missing.
+//
+//   MAIN-LOOP CALL #4's TAIL, `$23D70C..$23D71C`: `moveq #0,D1 / move.w
+//   #$1D,D0 / move.w D1,(A0)+ / dbra` -- THIRTY WORDS, $80AFC0..$80AFFB, the
+//   sprite-staging counters, cleared once per frame.
+//
+// The background object is a PRODUCER of bucket 2: W18's thirteen background
+// elements each reach `$23DF2A` (`elemStage`), which stages twelve bytes at
+// `$805CC8 + $80AFC4` and does `addi.w #$C,$80AFC4`.  NOTHING IN THE ROM CAPS
+// THAT OFFSET (`src/spritequeue.js`: `capBytes` is derived from the next
+// buffer's address and no instruction checks it) -- the board's only bound is
+// that call #4 zeroes the counter every single frame.  A harness that runs the
+// producer and not the clear therefore lets `$80AFC4` climb by 12 per live
+// element per frame, forever.
+//
+// MEASURED, on `w17-stage1-invuln-p2` with four elements live: at logic frame
+// 2965 the counter reached $5340, so the twelve-byte record landed at
+// $80B008..$80B013 and its last two words -- `d3` = the element's yPos $1690
+// and `d4` = its kind $13 -- were written straight into **$80B010 and $80B012**,
+// i.e. the camera id and the high word of `$80B012`, TWO OF THE COMPARED
+// COLUMNS.  The gate reported `b012 port=133940 board=33940` and every
+// following column fell over behind it.  With the clear in place the same tree
+// compares 10,431 frames with 0 divergent.  The scribble is the PORT DOING
+// EXACTLY WHAT THE ROM DOES in a frame the harness only half-simulated.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -69,6 +95,7 @@ import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
 import { makeBackground, BgVram, VideoRegs, uploadRegs, BGRAM, BGO, CAM }
   from '../src/background.js';
+import { resetSpriteQueueCounters } from '../src/displaylist.js';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 
@@ -140,6 +167,15 @@ export const MUTATIONS = {
     + 'red on the attract demo -- declared, see EXPECTED_GREEN',
   'prefill-14-columns': '$261202 `moveq #$e,D7` read as 14 columns instead of '
     + '15 (dbra runs D7+1 times). Must move d18a on the FIRST compared frame',
+  'no-counter-clear': "main-loop call #4's tail $23D70C..$23D71C dropped, so "
+    + 'the thirty sprite-staging counters $80AFC0..$80AFFB are never zeroed. '
+    + 'THIS IS THE MISREADING THIS GATE ITSELF SHIPPED FOR TEN WAVES: the '
+    + 'background object PRODUCES into bucket 2 ($23DF2A stages 12 bytes at '
+    + '$805CC8 + $80AFC4) and nothing in the ROM caps that offset, so without '
+    + "the clear $80AFC4 climbs 12 bytes per live element per frame and the "
+    + 'staging pointer eventually walks into the camera block it is being '
+    + 'compared against. Must move b012 first, at the frame the record crosses '
+    + '$80B010 (lf2965 on the wave-17 corpus, lf3701 on the attract entry)',
   'freeze-stops-the-scroll': 'op $0C read as freezing the SCROLL rather than '
     + 'the CLOCK. ($8,A5) is read at $261324 ONLY, guarding $26132C; the camera '
     + '($261308), the column writer ($26133C) and the TX camera ($26138A) are '
@@ -186,7 +222,20 @@ export function gate(tsvPath, {
   const video = new VideoRegs();
   const unportedLog = new UnportedLog();
   const events = [];
-  const ctx = { unportedLog, scrollEvent: (e) => events.push(e) };
+  // TABLE-ENTRY COVERAGE, not a frame count (`docs/knowledge/10`). `at` is the
+  // record's own ROM address, so `records` counts DISTINCT stage-1 records the
+  // VM dispatched and `opcodes` the distinct entries of the seven-entry table
+  // at $2620C2 it took. `$26200E`'s fast-forward replays the script, so a
+  // dispatch count would be an inflated denominator-free number; these are not.
+  const records = new Set(), opcodes = new Map();
+  const ctx = {
+    unportedLog,
+    scrollEvent: (e) => events.push(e),
+    scrollRecord: (r) => {
+      records.add(r.at);
+      opcodes.set(r.op, (opcodes.get(r.op) ?? 0) + 1);
+    },
+  };
   const A5 = 0x80e240;                        // object slot 0 ($2410C4 lea)
 
   const hasCol = (n) => rows.length && rows[0].length > COL[n];
@@ -238,6 +287,14 @@ export function gate(tsvPath, {
       pending = null;
     }
 
+    // 0. main-loop call #4's TAIL, $23D70C..$23D71C: the thirty staging
+    //    counters $80AFC0..$80AFFB are zeroed once per frame. On the board this
+    //    runs at the END of the frame, AFTER the objects have staged; clearing
+    //    at the top of the next one is the same thing and keeps the sample
+    //    point where the TSV took it. Without it the background object's own
+    //    bucket-2 producer ($23DF2A, W18's elements) runs with no consumer and
+    //    walks $805CC8 + $80AFC4 into $80B010 -- see the header.
+    if (mutate !== 'no-counter-clear') resetSpriteQueueCounters(ram);
     // 1. IRQ6, gated: $140FFE uploads last frame's camera to the registers.
     uploadRegs(ram, video, { subtractShake: mutate === 'upload-subtracts-shake' });
     // 2. main-loop call #2 -> $240F62[1] -> $26127A -> $2612A0.
@@ -293,7 +350,7 @@ export function gate(tsvPath, {
   }
 
   return { compared, frozen, last, resetAt, frozenAt, first, diverged, events, blocked,
-    unportedLog, vram, pushSeen,
+    unportedLog, vram, pushSeen, records, opcodes,
     columns: COMPARED.filter((c) => rows.length
       && (COL[c] === undefined || rows[0].length > COL[c])) };
 }
@@ -338,6 +395,19 @@ function main() {
   console.log(`SCROLL EVENTS the port's VM executed: `
     + [...kinds].map(([kd, n]) => `${kd}=${n}`).join(' '));
   console.log(`MAP COLUMNS written into $900000 by $240D76: ${clean.vram.columnsWritten}`);
+  // THE COVERAGE LINE.  Records and opcode-table entries, never frames.
+  const OPNAME = { 0x00: 'SPAWN', 0x04: 'REPEAT', 0x08: 'SPEED', 0x0c: 'FREEZE',
+    0x10: 'BGELEM', 0x14: 'CUE', 0x18: 'FLAG' };
+  const took = [...clean.opcodes.keys()].sort((a, b) => a - b);
+  console.log(`COVERAGE ${clean.records.size} DISTINCT script records dispatched`
+    + ` (by ROM address, replays folded); ${took.length} of 7 opcode-table `
+    + `entries at $2620C2 taken: `
+    + took.map((o) => `$${o.toString(16).padStart(2, '0')} ${OPNAME[o] ?? '??'}`
+      + `=${clean.opcodes.get(o)}`).join(' ')
+    + (took.length < 7 ? `; NOT TAKEN: `
+      + Object.keys(OPNAME).map(Number).filter((o) => !clean.opcodes.has(o))
+        .map((o) => `$${o.toString(16).padStart(2, '0')} ${OPNAME[o]}`).join(' ')
+      : ''));
   if (clean.blocked) {
     console.log(`BLOCKED at lf${clean.blocked.lf} by a named throw: `
       + `${clean.blocked.message}`);
