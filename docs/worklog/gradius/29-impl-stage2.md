@@ -1,6 +1,6 @@
 # Wave 29 IMPLEMENTER -- stage 2 ($19=1) plays start-to-finish
 
-status: IN PROGRESS
+status: DONE
 implementer, 2026-08-03
 
 Scope (from the brief + `29-plan-whole-game.md` W29): make stage 2 (`$19 = 1`)
@@ -150,8 +150,33 @@ advanced 95 -> 104 (`$B37F` is reused by stage 7).
 
 `node --test`: 486 pass, 0 fail, 0 skip (475 + 11 new W29 tests).
 
-The endchain (re-recorded to traverse stage 2) compares [GREEN/RED -- fill in]
-through the stage-2 content + the stage-2 boss death + the stage-2->stage-3
-transition, throwing at the first stage-3 wave record ($A2F0 runEngine, $19=2).
+The endchain (re-recorded to traverse stage 2) compares **GREEN** through the
+stage-2 content + the stage-2 boss death + the stage-2->stage-3 transition,
+throwing at the first stage-3 wave record ($A2F0 runEngine, $19=2).
+
+**MEASURED 2026-08-04**, full gate on HEAD after the terrain.js restore:
+
+```
+PASS  port vs cartridge (compare.mjs)
+PASS  self-check: the comparison goes red when the port is broken
+      -- subset clean at 0 failures, 7 deliberate breaks all red
+GREEN -- 11 passed, 0 failed, 0 SKIPPED
+```
+
+The self-check line matters as much as the PASS: the comparison that reports
+green here is the same one that went red on all seven deliberate breaks
+(lead1, seed-x+1, laginject=450, seed-nt+1, seed-pal+1, seed-coll0,
+bullet-nosub). A green from a comparison that cannot fail would be worthless.
+
+The same gate then passed inside `publish.mjs`, which refuses on red or any
+SKIP, and the site went live as build `20260804010834`.
+
+NOT CAPTURED: the per-scenario endchain frame count. Three separate attempts to
+read it truncated their own output (`tail -25`, `tail -50`, and a `head -8`
+inside a backgrounded pipe), and chasing it a fourth time was not worth the
+run. GREEN vs RED is what this line needed and that is measured; the count is
+one command away for whoever wants it:
+
+    node games/gradius/tools/oracle/compare.mjs | grep -A4 '^=== endchain'
 
 
