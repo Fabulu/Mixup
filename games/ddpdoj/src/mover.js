@@ -1277,4 +1277,130 @@ CONTINUATIONS.set(0x282ef0, (ctx, base) => {
   // ($282F5C free-slot stub is UNREACHABLE from here -- no branch targets it.)
 });
 
+// ================================================ W27 FAMILIES G + L
+//
+// The WALL BOUNCERS: kinds 25 ($282F6E), 29 ($28330C) and 34 ($28371C).  The
+// recon split these across two families ("G. the wall-bouncer" and "L. the
+// bouncer variant ... 29 uses `addi.b #$80`; 34 uses neg+80").  The listing says
+// that is backwards and incomplete, so here is the measured table:
+//
+//   kind | left ($200)  | right ($3600) | top ($600)  | bottom ($6E00) | velocity
+//   -----+--------------+---------------+-------------+----------------+---------
+//    25  | dir = -dir   | dir = -dir    | UNREACHABLE | dir = $80-dir  | full
+//    29  | dir = $40    | dir = $C0     | dir = $00   | dir = $80      | asr.w #1
+//    34  | dir = dir+$80| dir = dir+$80 | dir = dir+$80| dir = dir+$80 | full
+//
+// So kind 29 does not `addi.b #$80` at all -- it SETS an absolute direction per
+// wall, i.e. it does not reflect, it snaps to the axis.  Kind 34 is the one that
+// adds $80 (a flat 180 degree flip on every wall).  Kind 25 reflects with
+// `neg.b` on the vertical walls and `neg.b`+`addi.b #$80` on the bottom.  Only
+// kind 29 halves the recomputed velocity on impact.
+//
+// KIND 25 HAS NO TOP WALL, AND ITS TOP-BOUNCE CODE IS STILL THERE.  At $282FEC
+// `bcc.w $28302A` sends posA >= $600 to the bottom test and $282FF0 `bra.w
+// $283064` sends posA < $600 straight to the animation -- so the block at
+// $282FF4 (a top bounce that scales velocity to 3/4 via `asr.w #2` + `sub.w`)
+// is never entered.  Kinds 29 and 34 fall THROUGH into their equivalent block;
+// kind 25 has an extra `bra` in the way.  This is the mirror image of the
+// fall-through trap and it needs the same discipline: `tools/oracle/
+// w27targets.py` finds 0 instructions in $281000..$285000 that reference
+// $282FF4, and a raw search finds it nowhere in the image as a longword
+// pointer, so it is not a jump-table entry either.  It is NOT ported.
+//
+// The three initialisers are identical apart from the continuation address, and
+// none of them calls $2820CC -- no muzzle offset for a bouncer.
+//
+// THE DESCRIPTOR ARITHMETIC CHECKS OUT AGAINST ITSELF, which is worth writing
+// down because it is independent evidence the constants were read correctly:
+// the initialiser sets +$0A = $1C1B68 and the pre-bounce ring runs $1C1B68 ->
+// limit $1C1E38 (wrap to $1C1BF8); a bounce adds exactly $2D0, and
+// $1C1B68 + $2D0 = $1C1E38 -- the bounce lands the descriptor on the boundary
+// between the two rings, and the post-bounce ring ($2C now 0) is limit $1C2108
+// / wrap $1C1EC8.  Two independently-read constants meeting exactly.
+
+/** `$283064` / `$2833E2` / `$283802` -- the bouncers' shared animation tail.
+ *  The delay byte +$19 gates it, and the ring's limit/wrap PAIR depends on
+ *  whether any bounce budget is left at +$2C. */
+function bouncerTail(ctx, base) {
+  const { ram } = ctx;
+  if (tick19(ram, base)) { advance40(ctx, base); return; }  // $283064/$2830A4
+  let limit = 0x1c1e38, wrap = 0x1c1bf8;               // $28306A/$283070
+  if (ram.u16(base + 0x2c) === 0) {                    // $283076 tst.w $2c / bne
+    limit = 0x1c2108; wrap = 0x1c1ec8;                 // $28307E/$283084
+  }
+  animateRenderOffsWrap(ctx, base, wrap, 0x24, limit);  // $28308A..$283098
+  advance40(ctx, base);                                // $28309A lea $36(A6)
+}
+
+/** the shared bouncer continuation.  `spec.left/right/top/bottom` are the four
+ *  wall arms; a null arm is code the body cannot reach (kind 25's top).  Each
+ *  arm is `{dir, attr}`: the direction transform and the `eori.b` on +$1C.
+ *  `spec.shift` is the `asr.w #n` applied to the recomputed velocity. */
+function wallBounce(ctx, base, spec) {
+  const { ram } = ctx;
+  if (ram.u16(base + 0x2c) === 0) { bouncerTail(ctx, base); return; }  // $282F9E beq
+  const d0 = ram.u32(base + REC.posA);                 // $282FA6 move.l $2(A6),D0
+  const posB = d0 & 0xffff;                            // the LOW word of the pair
+  const posA = (d0 >>> 16) & 0xffff;                   // the HIGH word ($282FE6 swap)
+  let arm = null;
+  if (posB < 0x0200) arm = spec.left;                  // $282FAA cmpi.w #$200 / bcc
+  else if (posB > 0x3600) arm = spec.right;            // $282FC8 cmpi.w #$3600 / bls
+  else if (posA < 0x0600) arm = spec.top;              // $282FE8 cmpi.w #$600 / bcc
+  else if (posA > 0x6e00) arm = spec.bottom;           // $28302A cmpi.w #$6E00 / bls
+  if (!arm) { bouncerTail(ctx, base); return; }        // no wall -> straight to the tail
+  ram.setU8(base + REC.dir, arm.dir(ram.u8(base + REC.dir)) & 0xff);   // $282FBA
+  ram.setU8(base + 0x1c, ram.u8(base + 0x1c) ^ arm.attr);   // $282FBE eori.b on +$1C
+  velRecomputeStore(ctx, base, spec.shift);            // $283048..$283052
+  ram.setU32(base + 0x0a, (ram.u32(base + 0x0a) + 0x2d0) >>> 0);   // $283058
+  ram.setU16(base + 0x2c, u16(ram.u16(base + 0x2c) - 1));          // $283060 subq.w
+  bouncerTail(ctx, base);                              // falls through to $283064
+}
+
+/** the three bouncers' shared initialiser ($282F6E == $28330C == $28371C apart
+ *  from the continuation address).  Note the continuation is installed BEFORE
+ *  bit 8 is cleared, and there is no `bsr $2820CC`. */
+function bouncerInit(ctx, base, cont) {
+  const { ram } = ctx;
+  ram.setU16(base + 0x2c, 0x0001);                     // $282F6E move.w #$1,$2c
+  ram.setU32(base + REC.continuation, cont);           // $282F74
+  clearDispatch(ram, base);                            // $282F7C andi.b #$fe,(A6)
+  ram.setU32(base + 0x0a, 0x1c1b68);                   // $282F80 descriptor
+  ram.setU32(base + 0x06, 0xfc00fe00);                 // $282F88 renderOffs
+  ram.setU16(base + 0x0e, 0x0410);                     // $282F90 graphic
+  ram.setU8(base + 0x1d, 0x1a);                        // $282F96
+}
+
+// ----- kind 25 ($282F6E init / $282F9E cont) -- reflecting, no top wall
+const NEG = (d) => -d;                                 // $282FB8 neg.b d1
+const NEG80 = (d) => 0x80 - d;                         // $283032 neg.b + addi.b #$80
+INIT_BODIES.set(0x282f6e, (ctx, base) => bouncerInit(ctx, base, 0x282f9e));
+CONTINUATIONS.set(0x282f9e, (ctx, base) => wallBounce(ctx, base, {
+  left:   { dir: NEG,    attr: 0x40 },                 // $282FB2..$282FBE
+  right:  { dir: NEG,    attr: 0x40 },                 // $282FD0..$282FDC
+  top:    null,                                        // $282FF4 UNREACHABLE
+  bottom: { dir: NEG80,  attr: 0x20 },                 // $283032..$283042
+  shift: 0,                                            // $283048 no asr
+}));
+
+// ----- kind 29 ($28330C init / $28333C cont) -- snaps to an axis, half speed
+INIT_BODIES.set(0x28330c, (ctx, base) => bouncerInit(ctx, base, 0x28333c));
+CONTINUATIONS.set(0x28333c, (ctx, base) => wallBounce(ctx, base, {
+  left:   { dir: () => 0x40, attr: 0x40 },             // $283350 move.w #$40,D1
+  right:  { dir: () => 0xc0, attr: 0x40 },             // $28336A move.w #$C0,D1
+  top:    { dir: () => 0x00, attr: 0x20 },             // $283386 move.w #$0,D1
+  bottom: { dir: () => 0x80, attr: 0x20 },             // $2833B4 move.w #$80,D1
+  shift: 1,                                            // $2833CC/$2833CE asr.w #1
+}));
+
+// ----- kind 34 ($28371C init / $28374C cont) -- a flat 180 flip on every wall
+const FLIP180 = (d) => d + 0x80;                       // $283766 addi.b #$80,d1
+INIT_BODIES.set(0x28371c, (ctx, base) => bouncerInit(ctx, base, 0x28374c));
+CONTINUATIONS.set(0x28374c, (ctx, base) => wallBounce(ctx, base, {
+  left:   { dir: FLIP180, attr: 0x40 },                // $283760..$28376E
+  right:  { dir: FLIP180, attr: 0x40 },                // $283780..$28378E
+  top:    { dir: FLIP180, attr: 0x20 },                // $2837A2..$2837B0
+  bottom: { dir: FLIP180, attr: 0x20 },                // $2837D2..$2837E0
+  shift: 0,                                            // $2837EC no asr
+}));
+
 export { INIT_BODIES, CONTINUATIONS };

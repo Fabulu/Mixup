@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { Ram } from '../src/ram.js';
 import { Unreached, UnportedLog } from '../src/unported.js';
 import { BUL, REC, TYPEBIT, WriteLog, spawnCore } from '../src/bullets.js';
+import { velocity } from '../src/bulletmath.js';
 import { runMover, MOVER, INIT_BODIES, CONTINUATIONS } from '../src/mover.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -612,28 +613,176 @@ test('kind 24 returns from the release arm BEFORE the decel block, and decelerat
       'F3: velA -= the +$2E word');
   });
 
-test('the ported-body inventory is exactly 23 initialisers + 22 continuations', () => {
+// ==================================== W27 FAMILIES G + L: the WALL BOUNCERS ==
+//
+// Kinds 25/29/34 share an initialiser and an animation tail and differ ONLY in
+// the direction transform per wall and the velocity scaling.  The recon had the
+// two variants swapped (it credited kind 29 with the `addi.b #$80` and kind 34
+// with `neg+80`); these tests pin what the listing actually does, per wall.
+
+/** Park a bouncer ON a wall with ZERO velocity -- so the plain path cannot move
+ *  it between the initialiser frame and the continuation frame -- and run one
+ *  continuation.  Zeroing +$1E also proves the velocity seen afterwards was
+ *  RECOMPUTED by the bounce and not left over from the spawn frame. */
+function bounceOnce(kind, { posA, posB, dir = 0x30, speed = 0x14 }) {
+  const ram = new Ram(null);
+  ram.setU16(0x81b41a, 1);
+  ram.setU16(0x813176, 0);
+  const base = seedBullet(ram, 0, { type: 0x8100 | kind, speed, dir });
+  const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+  runMover(ctx);                                      // F1: the initialiser
+  assert.equal(ram.u32(base + 0x0a), 0x1c1b68, 'F1: descriptor = $1C1B68');
+  assert.equal(ram.u16(base + 0x2c), 1, 'F1: +$2C seeded with one bounce');
+  ram.setU16(base + REC.posA, posA);
+  ram.setU16(base + REC.posB, posB);
+  ram.setU32(base + REC.velA, 0);                     // both velA and velB
+  ram.setU16(base + 0x1c, 0);                         // attribute
+  runMover(ctx);                                      // F2: the continuation
+  return { ram, base };
+}
+
+test('kind 25 REFLECTS off three walls and HAS NO TOP WALL ($282FF0 jumps over '
+  + 'the $282FF4 block)', { skip: !HAVE_TABLES }, () => {
+    for (const [label, posA, posB, expectDir, expectAttr] of [
+      ['left ($200)',    0x1000, 0x0100, (-0x30) & 0xff, 0x40],
+      ['right ($3600)',  0x1000, 0x3700, (-0x30) & 0xff, 0x40],
+      ['bottom ($6E00)', 0x6f00, 0x1000, (0x80 - 0x30) & 0xff, 0x20],
+    ]) {
+      const { ram, base } = bounceOnce(25, { posA, posB });
+      assert.equal(ram.u8(base + REC.dir), expectDir, `${label}: dir`);
+      assert.equal(ram.u8(base + 0x1c), expectAttr, `${label}: the eori.b on +$1C`);
+      assert.equal(ram.u16(base + 0x2c), 0, `${label}: the bounce budget was spent`);
+      const v = velocity(ROM, 0x14, expectDir);
+      assert.equal(ram.u16(base + REC.velA), v.dA & 0xffff,
+        `${label}: velA recomputed from the NEW dir at FULL speed (no asr)`);
+      assert.equal(ram.u32(base + 0x0a), (0x1c1b68 + 0x2d0 + 0x24) >>> 0,
+        `${label}: descriptor += $2D0, then the tail's own $24 step`);
+    }
+    // The top: posA < $600 falls into `bra.w $283064`, not into a bounce.
+    const { ram, base } = bounceOnce(25, { posA: 0x0400, posB: 0x1000 });
+    assert.equal(ram.u8(base + REC.dir), 0x30, 'top: dir untouched');
+    assert.equal(ram.u16(base + 0x2c), 1, 'top: the bounce budget is NOT spent');
+    assert.equal(ram.u8(base + 0x1c), 0x00, 'top: no eori on the attribute');
+    assert.equal(ram.u16(base + REC.velA), 0,
+      'top: no recompute either -- the velocity we zeroed stays zero');
+  });
+
+test('kind 29 SNAPS to an absolute direction per wall ($40/$C0/$00/$80) and '
+  + 'HALVES the recomputed velocity ($2833CC asr.w #1)',
+  { skip: !HAVE_TABLES }, () => {
+    for (const [label, posA, posB, expectDir, expectAttr] of [
+      ['left',   0x1000, 0x0100, 0x40, 0x40],
+      ['right',  0x1000, 0x3700, 0xc0, 0x40],
+      ['top',    0x0400, 0x1000, 0x00, 0x20],
+      ['bottom', 0x6f00, 0x1000, 0x80, 0x20],
+    ]) {
+      const { ram, base } = bounceOnce(29, { posA, posB });
+      assert.equal(ram.u8(base + REC.dir), expectDir,
+        `${label}: dir is SET, not reflected -- a reflection of $30 would be $D0/$50`);
+      assert.equal(ram.u8(base + 0x1c), expectAttr, `${label}: attribute`);
+      const v = velocity(ROM, 0x14, expectDir);
+      assert.equal(ram.u16(base + REC.velA), u16(i16(v.dA) >> 1), `${label}: velA halved`);
+      assert.equal(ram.u16(base + REC.velB), u16(i16(v.dB) >> 1), `${label}: velB halved`);
+      assert.equal(ram.u16(base + 0x2c), 0, `${label}: budget spent`);
+    }
+  });
+
+test('kind 34 adds $80 on EVERY wall, top included, at full speed ($283766)',
+  { skip: !HAVE_TABLES }, () => {
+    for (const [label, posA, posB, expectAttr] of [
+      ['left',   0x1000, 0x0100, 0x40],
+      ['right',  0x1000, 0x3700, 0x40],
+      ['top',    0x0400, 0x1000, 0x20],
+      ['bottom', 0x6f00, 0x1000, 0x20],
+    ]) {
+      const { ram, base } = bounceOnce(34, { posA, posB });
+      assert.equal(ram.u8(base + REC.dir), (0x30 + 0x80) & 0xff,
+        `${label}: dir += $80 (NOT neg, NOT an absolute set)`);
+      assert.equal(ram.u8(base + 0x1c), expectAttr, `${label}: attribute`);
+      const v = velocity(ROM, 0x14, 0xb0);
+      assert.equal(ram.u16(base + REC.velA), v.dA & 0xffff,
+        `${label}: velA at FULL speed -- kind 34 has no asr, kind 29 does`);
+      assert.equal(ram.u16(base + 0x2c), 0, `${label}: budget spent`);
+    }
+  });
+
+test('the wall thresholds are EXCLUSIVE on all four sides -- $200/$3600 on posB, '
+  + '$600/$6E00 on posA (bcc/bls, not bcs/blt)', { skip: !HAVE_TABLES }, () => {
+    // The four tests are `cmpi.w #$200 / bcc` (skip when posB >= $200),
+    // `cmpi.w #$3600 / bls` (skip when posB <= $3600), `cmpi.w #$600 / bcc`
+    // (skip when posA >= $600) and `cmpi.w #$6E00 / bls` (skip when posA <=
+    // $6E00).  Kind 34 is used because all four of its arms are live.
+    for (const [label, posA, posB, bounces] of [
+      ['posB = $1FF bounces',      0x1000, 0x01ff, true],
+      ['posB = $200 does NOT',     0x1000, 0x0200, false],
+      ['posB = $3600 does NOT',    0x1000, 0x3600, false],
+      ['posB = $3601 bounces',     0x1000, 0x3601, true],
+      ['posA = $5FF bounces',      0x05ff, 0x1000, true],
+      ['posA = $600 does NOT',     0x0600, 0x1000, false],
+      ['posA = $6E00 does NOT',    0x6e00, 0x1000, false],
+      ['posA = $6E01 bounces',     0x6e01, 0x1000, true],
+    ]) {
+      const { ram, base } = bounceOnce(34, { posA, posB });
+      assert.equal(ram.u16(base + 0x2c), bounces ? 0 : 1, `${label}: budget`);
+      assert.equal(ram.u8(base + REC.dir), bounces ? 0xb0 : 0x30, `${label}: dir`);
+    }
+  });
+
+test("the bouncers' ring limit/wrap PAIR depends on the bounce budget ($283076), "
+  + 'and +$19 gates the whole tail', { skip: !HAVE_TABLES }, () => {
+    const ram = new Ram(null);
+    ram.setU16(0x81b41a, 1);
+    ram.setU16(0x813176, 0);
+    const base = seedBullet(ram, 0, { type: 0x8100 | 25, speed: 0x14, dir: 0x30 });
+    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
+    runMover(ctx);                                     // F1: initialiser
+    const park = () => {                               // mid-field, motionless
+      ram.setU16(base + REC.posA, 0x1000);
+      ram.setU16(base + REC.posB, 0x1000);
+      ram.setU32(base + REC.velA, 0);
+    };
+    // budget left -> limit $1C1E38 wraps to $1C1BF8
+    park();
+    ram.setU32(base + 0x0a, 0x1c1e38 - 0x24);
+    runMover(ctx);
+    assert.equal(ram.u32(base + 0x0a), 0x1c1bf8, 'budget left: the $1C1E38/$1C1BF8 pair');
+    // budget spent -> a DIFFERENT pair entirely
+    ram.setU16(base + 0x2c, 0);
+    park();
+    ram.setU32(base + 0x0a, 0x1c2108 - 0x24);
+    runMover(ctx);
+    assert.equal(ram.u32(base + 0x0a), 0x1c1ec8, 'budget spent: the $1C2108/$1C1EC8 pair');
+    // +$19 non-zero: the tail decrements it and does NOT touch the descriptor.
+    park();
+    ram.setU8(base + 0x19, 0x03);
+    ram.setU32(base + 0x0a, 0x1c1d00);
+    runMover(ctx);
+    assert.equal(ram.u8(base + 0x19), 0x02, '+$19 ticked down');
+    assert.equal(ram.u32(base + 0x0a), 0x1c1d00, '+$19 non-zero: the ring is frozen');
+  });
+
+test('the ported-body inventory is exactly 26 initialisers + 25 continuations', () => {
   // A LEDGER test: it pins the exact set, so porting a body turns it RED until
   // the inventory here is updated deliberately.  That is the point -- the count
   // cannot drift upward without somebody writing down which addresses moved.
   //
   // W26 ported 8 bodies (kinds 3/4/5/6/7/12/13/19; kind 6 is the midboss's).
-  // W27 adds 15: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
+  // W27 adds 18: family A kinds 0/1/8/9/10/11/20, family B kinds 2/21,
   // family C kinds 16/18, family D kind 17, family E kinds 22/24, family F
-  // kind 23.  Kind 10's $282840 is also the target for kinds 14 and 15, which
-  // alias it in the $282030 table.  So 23 distinct bodies now cover 26 of the
-  // 39 kind indices.
+  // kind 23, families G+L kinds 25/29/34.  Kind 10's $282840 is also the
+  // target for kinds 14 and 15, which alias it in the $282030 table.  So 26
+  // distinct bodies now cover 29 of the 39 kind indices.
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
     [0x282104, 0x282162, 0x2821c2, 0x2823ec, 0x2824a8, 0x282564, 0x282620,
      0x2826dc, 0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962,
      0x2829bc, 0x282a1e, 0x282aae, 0x282b30, 0x282bee, 0x282c56,
-     0x282d42, 0x282e00, 0x282ebc]);
+     0x282d42, 0x282e00, 0x282ebc, 0x282f6e, 0x28330c, 0x28371c]);
   assert.deepEqual([...CONTINUATIONS.keys()].sort((a, b) => a - b),
     [0x28213e, 0x28219e, 0x282420, 0x2824dc, 0x282598, 0x282654, 0x282738,
      0x2827bc, 0x28281c, 0x28287c, 0x2828ea, 0x282944, 0x28299e, 0x2829fe,
      0x282a66, 0x282af6, 0x282b64, 0x282c2a, 0x282d76, 0x282e4a, 0x282ef0,
-     0x283ce4]);
-  // 23 initialisers, 22 continuations. NOT equal, and that is correct: kinds 2
+     0x282f9e, 0x28333c, 0x28374c, 0x283ce4]);
+  // 26 initialisers, 25 continuations. NOT equal, and that is correct: kinds 2
   // and 21 both install $283CE4, so bodies MAY share a continuation.
   //
   // An earlier version of this test asserted `INIT_BODIES.size ===

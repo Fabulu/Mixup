@@ -493,3 +493,90 @@ recorded above: a test whose inputs are all convenient is not a test.
 
 **Inventory: 21 → 23 initialisers, 22 continuations. 26 of 39 kind indices
 covered; 14 distinct bodies remain (families G–L).**
+
+### 2026-08-04 — FAMILIES G + L PORTED (kinds 25, 29, 34) — the WALL BOUNCERS
+
+Three bodies, one initialiser and one animation tail between them. The recon
+put them in two families and got the variants the wrong way round. The measured
+table, per wall, from the three listings:
+
+| kind | left ($200) | right ($3600) | top ($600) | bottom ($6E00) | velocity |
+|---|---|---|---|---|---|
+| 25 | `dir = -dir` | `dir = -dir` | **UNREACHABLE** | `dir = $80-dir` | full |
+| 29 | `dir = $40` | `dir = $C0` | `dir = $00` | `dir = $80` | `asr.w #1` |
+| 34 | `dir += $80` | `dir += $80` | `dir += $80` | `dir += $80` | full |
+
+The recon said "29 uses `addi.b #$80`; 34 uses neg+80". **It is kind 34 that
+adds $80** — on all four walls, a flat 180-degree flip. Kind 29 does not
+reflect at all: it `move.w #$40/$C0/$00/$80,D1` and SNAPS to the axis, which is
+a different shape of motion, not a different constant. And only kind 29 halves
+the recomputed velocity on impact. Ported from the summary, two of three
+bouncers would have flown wrong and the third would have kept its speed.
+
+### KIND 25 HAS NO TOP WALL, AND ITS TOP-BOUNCE CODE IS STILL IN THE ROM
+
+`$282FEC bcc.w $28302A` sends posA >= $600 to the bottom test, and `$282FF0
+bra.w $283064` sends posA < $600 straight to the animation. So the block at
+`$282FF4` — a top bounce that scales the velocity to 3/4 via `asr.w #2` +
+`sub.w` — is never entered. Kinds 29 and 34 FALL THROUGH into their equivalent
+block; kind 25 has an extra `bra` in the way.
+
+This is the fall-through trap **in reverse**, and it is just as expensive: the
+linear sweep prints `$282FF4` immediately after the reachable code, in the
+middle of the routine, looking exactly like the top-wall arm the other two
+bouncers have. Porting it gives kind 25 a wall the cartridge does not give it.
+
+Ruling it out needed a tool, so there is one now: **`tools/oracle/
+w27targets.py <addr>`** disassembles a range and prints every instruction whose
+operand resolves to the address. Results:
+
+    $282FF4 (kind 25 top bounce)   0 references in $281000..$285000
+    $282E94 (kind 23 release stub) 0
+    $282EAA (kind 23 free stub)    0
+    $282F5C (kind 24 free stub)    0
+
+and a raw byte search finds none of the four anywhere in the image as a
+big-endian longword, so none is a jump-table entry either. Both directions
+matter: **only control flow can say where a routine stops, and only control
+flow can say which of the code between the ends is alive.**
+
+### THE CONSTANTS CHECK OUT AGAINST EACH OTHER
+
+Independent evidence the descriptor numbers were read right, not just read: the
+initialiser sets +$0A = `$1C1B68`; the pre-bounce ring runs to limit `$1C1E38`
+and wraps to `$1C1BF8`; a bounce adds exactly `$2D0` — and `$1C1B68 + $2D0 =
+$1C1E38`. The bounce lands the descriptor precisely on the boundary between the
+two rings, and the tail then switches to the post-bounce pair (limit `$1C2108`,
+wrap `$1C1EC8`) because +$2C has just reached 0. Four constants read
+separately, meeting exactly.
+
+Also: **the ring pair depends on the bounce budget**, which is easy to read as
+one ring with a wrap. And the bouncer initialiser does NOT call `$2820CC` —
+no muzzle offset for a bouncer, unlike most of families A–D.
+
+### MUTATION TABLE (families G + L)
+
+| mutation | result |
+|---|---|
+| port kind 25's dead `$282FF4` top arm | RED — `not ok 215`, alone |
+| kind 29 drops the `asr.w #1` | RED — `not ok 216`, alone |
+| kind 34 negates instead of adding $80 | RED — `not ok 217` + `218` |
+| kind 29's left/right absolute dirs swapped | RED — `not ok 216`, alone |
+| the tail's two ring limit/wrap pairs swapped | RED — `not ok 219`, alone |
+| the `eori.b` lands on +$1D instead of +$1C | RED — `not ok 215/216/217` |
+| left wall test inclusive (`<=` not `<`) | RED — `not ok 218`, alone |
+| bottom wall test inclusive (`>=` not `>`) | RED — `not ok 218`, alone |
+| drop the `subq.w #1,$2C` budget decrement | RED — 4 tests |
+| +$19 no longer gates the tail | RED — `not ok 219`, alone |
+
+Ten mutations, ten reds, **no survivors**. `src/mover.js` restored and
+hash-verified byte-identical (`2bcb1f79cdb23556`); **400 pass / 0 fail / 0
+skipped**.
+
+The threshold test is the one worth keeping: `cmpi.w/bcc` and `cmpi.w/bls` make
+all four walls EXCLUSIVE, and the two inclusive-off-by-one mutations are
+invisible to every other test in the file because every other test parks the
+bullet well past the line.
+
+**Inventory: 23 → 26 initialisers, 25 continuations. 29 of 39 kind indices
+covered; 11 distinct bodies remain (families H, I, J, K + kinds 32/35).**
