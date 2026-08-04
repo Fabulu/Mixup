@@ -43,6 +43,8 @@ import { createState, ENEMY_BASE, u8 } from '../src/state.js';
 import { updateEnemies } from '../src/enemies.js';
 import { nmi } from '../src/nmi.js';
 import { bootState } from '../src/main.js';
+import { introTerrain } from '../src/flow.js';
+import { streamBlock } from '../src/terrain.js';
 import { headlessResources } from './helpers.js';
 
 const res = headlessResources(0);
@@ -57,6 +59,25 @@ function atEnd(sub = 0x86) {
   s.zp19 = 6;
   s.substate = sub;
   return s;
+}
+
+/**
+ * `$9C24`'s four `JSR $9D8E`, on stage `st` at streamer page `page`, and the
+ * bytes they queue.
+ *
+ * PAGE 4 AND NOT 0. Every stage's first two pages are the same empty sky, so a
+ * fixture at the level's start cannot tell one stage's terrain from another's
+ * -- which is exactly why the defect in section 7a of the worklog survived. A
+ * respawn seeds `$3F` and `$55` from `$24,X`, which `$97BB` caps at 8, so page
+ * 4 is a state the game reaches on any mid-level death.
+ */
+function introQueue(st, page = 4) {
+  const s = createState();
+  s.zp19 = st;
+  s.build.ahead = 0;                  // $9C28 LDA $57 / BNE -- take the stream arm
+  s.build.hi = page; s.cam.hi = page; // $9B68-$9B6C: $3F and $55 from the checkpoint
+  introTerrain(s, res);
+  return [...s.vram.q.slice(0, s.vram.cursor)];
 }
 
 /** A state with the brain already spawned and settled, ready for `$CE94`. */
@@ -526,4 +547,139 @@ test('$1A is not pinned: the port reaches a non-zero loop counter', () => {
   assert.strictEqual(s.zp1A, 0, 'starts pinned');
   for (let f = 0; f < 2000 && s.substate !== 0x80; f++) nmi(s, 0, res);
   assert.strictEqual(s.zp1A, 1);
+});
+
+// ============ 7. THE SIX HOLES THE MUTATION TABLE FOUND ======================
+//
+// Every check below exists because a mutant SURVIVED the first pass. They are
+// written up in docs/worklog/gradius/38-impl-ending-loop.md sec 10a beside the
+// two survivors that are provably uncatchable, so the difference between "the
+// suite had a hole" and "the ROM cannot tell" stays visible.
+
+test('arm 7 is $9B3E and NOT $9BED -- both INC $1B, so the state is not the test', () => {
+  // M11 SURVIVED. `jt_$982F[7]` and `[8]` are different routines that both
+  // advance $1B by one, so "$87 leaves $88" cannot separate them. What CAN:
+  // $9B3E wipes $3D-$97 and restores $19/$1A from the checkpoint; $9BED does
+  // neither.
+  // RED WHEN: case 0x7 calls introPackets (or anything that is not the wipe).
+  const s = atEnd(0x87);
+  s.zp19 = 6;                       // the wipe must pull this back from $26,X
+  s.save26[0] = 0;
+  s.save28[0] = 4;
+  s.zp.speed = 3;                   // $40, inside the $3D-$97 wipe
+  s.zp.options = 2;                 // $45, likewise
+  nmi(s, 0, res);
+  assert.strictEqual(s.substate, 0x88);
+  assert.strictEqual(s.zp19, 0, '$9B6E/$9B70 $19 := $26,X');
+  assert.strictEqual(s.zp1A, 4, '$9B72/$9B74 $1A := $28,X');
+  assert.strictEqual(s.zp.speed, 0, '$9B42 wiped $40');
+  assert.strictEqual(s.zp.options, 0, 'and $45');
+});
+
+test('arms 9 and 10 are not interchangeable: 37 bytes then 3 more', () => {
+  // M12 SURVIVED for the same reason as M11 -- both INC $1B. The producers are
+  // what differ, and the byte counts are the CARTRIDGE's, measured at f285 and
+  // f286 of the boot script and recorded in src/flow.js: $0E = 37 after intro
+  // state 2 (lives 8 + top 14 + score 14 + $8641's 1) and 40 after state 3.
+  // RED WHEN: the two cases are swapped or collapsed.
+  const s9 = atEnd(0x89);
+  nmi(s9, 0, res);
+  assert.strictEqual(s9.substate, 0x8A);
+  assert.strictEqual(s9.vram.cursor, 37, '$9C12: lives + top score + score');
+  const sA = atEnd(0x8A);
+  nmi(sA, 0, res);
+  assert.strictEqual(sA.substate, 0x8B);
+  assert.strictEqual(sA.vram.cursor, 40, '$9C1E: the power meter, 3 bytes');
+});
+
+test('$988C queues BOTH canned packets, and $05 is the $FD arm (two runs)', () => {
+  // M23 SURVIVED -- nothing looked at the queue. The structural fact, derived
+  // from $85F3's control codes rather than from the packet data: $21 closes ONE
+  // run ($FE -> append $FF and end) and $05 takes the $FD arm, which closes a
+  // run and opens another -- so the pair leaves exactly THREE $FF terminators.
+  // Dropping $21 leaves two, dropping $05 leaves one, dropping both leaves none.
+  // RED WHEN: either $85E8 call is dropped or the indices are swapped for a
+  // packet with different control codes.
+  const s = atEnd(0x8B);
+  s.build.ahead = 1;
+  nmi(s, 0, res);
+  const q = [...s.vram.q.slice(0, s.vram.cursor)];
+  assert.strictEqual(q[0], 0x01, 'a canned packet opens with the mode byte $01');
+  assert.strictEqual(q.filter((b) => b === 0xFF).length, 3,
+    'packet $21 closes one run; packet $05 is the $FD arm and closes two');
+});
+
+test('$BB68 blanks the brain\'s OWN metasprite, from a non-zero value', () => {
+  // M45 SURVIVED, and the reason is docs/knowledge/03 exactly: the old check
+  // asserted `anim[I] === 0` on a state where anim[I] had never been set, so it
+  // agreed with itself. Give it something to clear.
+  // RED WHEN: $BB66's `STA $0135` is dropped.
+  const s = createState();
+  s.obj.type[I] = 0x28;
+  s.obj.s0460[I] = 26;              // the path is exhausted
+  s.obj.anim[I] = 0x9D;             // what the last path record left
+  s.snd[0xD4 - 0xB0] = 0x40;        // and hold the triangle, so ONLY $BB68 runs
+  for (let f = 0; f < 6; f++) updateEnemies(s, res);
+  assert.strictEqual(s.obj.anim[I], 0, '$BB68 STA $0135');
+  assert.strictEqual(s.obj.s0480[I], 0, 'and the $D4 gate still held');
+});
+
+test('$BB0F drives SLOT 9 whatever slot it was dispatched for', () => {
+  // M28 SURVIVED because every other check puts the brain in slot 9, where the
+  // `LDX #$09` and the dispatched index agree. INTERVENTION, labelled
+  // (docs/knowledge/09): type $28 in slot 5 is a state the cartridge cannot
+  // produce -- $989F is the ONLY `LDA #$28` in the PRG and it writes $0315 --
+  // so this proves the TRANSCRIPTION of `LDX #$09`, not a reachable state.
+  // RED WHEN: h_BB0F uses `j` instead of the literal 9.
+  const s = createState();
+  const OTHER = 5 + ENEMY_BASE;     // slot 5 -> object 17
+  s.obj.type[OTHER] = 0x28;
+  s.obj.timer[OTHER] = 0;
+  s.obj.timer[I] = 0;
+  updateEnemies(s, res);
+  assert.strictEqual(s.obj.timer[I], 1, '$BB29 INC $014C,X with X = 9');
+  assert.strictEqual(s.obj.timer[OTHER], 0, 'and NOT the dispatched slot');
+});
+
+test('$9C24 streams the CURRENT stage\'s blocks, not the launcher\'s', () => {
+  // M61 SURVIVED the unit suite, and it is the shipped defect section 7a of the
+  // worklog describes: `$9C24`'s four `JSR $9D8E` used `res.stage` while
+  // `$9ACE`'s streamBlock used `res.stages[$19]`. Same ROM routine, two stages.
+  // The stage-5 sweep caught it (154,000 frames -> 152,881 with 8 game-overs);
+  // the unit suite could not, because every fixture here is stage 1.
+  // RED WHEN: introTerrain reads res.stage.
+  const first = introQueue(0);
+  const second = introQueue(1);
+  const third = introQueue(2);
+  assert.notDeepStrictEqual(second, first, 'stage 2 must not build stage 1\'s blocks');
+  assert.notDeepStrictEqual(third, first, 'nor stage 3');
+  assert.notDeepStrictEqual(third, second);
+  // ...and the cross-check that NAMES the defect: the OTHER call site of the
+  // same ROM routine, `$9ACE JSR $9D83 -> $9D8E`, which has read
+  // res.stages[$19] since W27's seamless transition. The two must agree,
+  // because on the cartridge they are one routine.
+  const viaStream = createState();
+  viaStream.zp19 = 1;
+  viaStream.build.hi = 4; viaStream.cam.hi = 4;
+  streamBlock(viaStream, res.stages[1]);
+  const n = viaStream.vram.cursor;
+  assert.ok(n > 0, 'streamBlock must have queued a block');
+  assert.deepStrictEqual(second.slice(0, n),
+    [...viaStream.vram.q.slice(0, n)],
+    '$9C24 and $9ACE must agree -- they are the same routine');
+});
+
+test('$9B3E\'s $3D-$97 wipe covers $4C, $4D, $4E and $4F', () => {
+  // M62 and M63 SURVIVED: `LDX #$5A / LDA #$00 / STA $3D,X / DEX / BPL` is 91
+  // bytes and the port models four of them in that range. $4D was NOT being
+  // cleared at all before W38 and nothing noticed, because $9A0E rewrites the
+  // countdown pair before $99E9 reads it. A wipe is held by asserting the wipe.
+  // RED WHEN: any of the four stores is dropped from clearZeroPage.
+  const s = atEnd(0x87);
+  s.zp4C = 0x11; s.zp4D = 0x22; s.zp4E = 0x33; s.zp4F = 0x44;
+  nmi(s, 0, res);
+  assert.strictEqual(s.zp4C, 0, '$4C');
+  assert.strictEqual(s.zp4D, 0, '$4D');
+  assert.strictEqual(s.zp4E, 0, '$4E');
+  assert.strictEqual(s.zp4F, 0, '$4F');
 });
