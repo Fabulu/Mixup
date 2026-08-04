@@ -880,11 +880,17 @@ function loc9872(state) {
  * clamped for it -- the port calls introTerrain() exactly as `$9890 JMP $9C24`
  * does, and the arm is dead by the CALLER's test.
  *
- * The two `$0100` writes are both kept. `$98C2` writes 0 and `$98C7` writes 3
+ * THE TWO `$0100` WRITES ARE BOTH KEPT. `$98C2` writes 0 and `$98C7` writes 3
  * with an `INC $1B` in between; the 0 never reaches a reader, and it is a real
- * store in the ROM's straight line (same call as W36 made on `$B569`).
- * Status 3 is not "alive": `$ADC1`'s group 3 is the ship's, and `$98DD` runs
- * neither the player nor collision, so the Vic Viper simply sits there.
+ * store in the ROM's straight line (same call W36 made on `$B569`).
+ *
+ * AND 3 IS NOT "ALIVE" -- it is the DEAD side of every gate that reads `$0100`.
+ * `$89E3 CMP #$02 / BCC` (the power meter), `$9FFC CMP #$02 / BCS -> $A16F`
+ * (the player update jumps to the death animation) and `$C0C7` all treat
+ * `>= 2` as dead. None of them runs during `$8C` -- `$98DD` calls only `$ADAB`
+ * and `$9A8C` -- and `$98BF` has already set `$0120` to 0, so the Vic Viper is
+ * not drawn at all. The ending is the only place in the game where the ship is
+ * simultaneously marked dead and not exploding.
  */
 function st988C(state, res) {
   if (state.build.ahead === 0) {                     // $988C LDA $57 / BNE $9893
