@@ -731,8 +731,15 @@ function st_C546(state, rom) {
  * THE JITTER IS THE ONE THAT IS REAL. `$C4C1`'s three `ASL`s clear bits 0-2
  * before its `AND #$07`, so stage 1's acceleration jitter is identically zero
  * (W25 measured that and transcribed it as inert). `$C5DE` has no shifts: it
- * masks `$02` raw, so stage 4's acceleration varies by 0..15 per spawn. Two
- * routines that look like the same code and are not.
+ * masks `$02` raw, so stage 4's acceleration genuinely varies. Two routines
+ * that look like the same code and are not.
+ *
+ * It varies over FOUR values, not sixteen, and the reason is one gate up:
+ * `$C415 AND #$03 / BEQ` means this arm only ever runs on frames where
+ * `$02 & 3 == 0`, so `$02 & $0F` can only be 0, 4, 8 or 12. That is a property
+ * of the cartridge, not of any particular run -- confirmed on the board over
+ * 270 spawns (W31's `stage4poke.py`), which saw exactly those four and no
+ * others.
  *
  * `$C601`-`$C632` is byte-identical to `$C4F4`-`$C525` -- the ROM carries two
  * copies of the descriptor rows. This port reads `$C601`, the address the

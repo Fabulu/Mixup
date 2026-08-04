@@ -158,8 +158,10 @@ test('$C5DE: the accel jitter is LIVE ($02 & $0F), unlike $C4C1\'s dead one', ()
   const ptr = rom.word(0xC44B);
   const seen = new Set();
   for (const f of [0x00, 0x04, 0x08, 0x0C]) {
-    // The $C413 gate needs $02 & 3 == 0, so only multiples of 4 are reachable
-    // -- which still walks four distinct jitter values 0/4/8/12.
+    // $C415 AND #$03 / BEQ means this arm only runs when $02 & 3 == 0, so the
+    // jitter takes exactly FOUR of its sixteen nominal values -- 0, 4, 8, 12.
+    // That is the cartridge's own bound, not a gap in this loop: the board
+    // produced those four and no others over 270 spawns (stage4poke.py).
     const s = erupting(f);
     s.spawn.z69 = 0;
     const { y } = stepper(0, ptr);
