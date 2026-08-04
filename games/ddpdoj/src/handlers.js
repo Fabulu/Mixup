@@ -30,25 +30,33 @@
 // per-type logic: an on-screen bounds test (free on exit), a damage/hit branch
 // (palette flash + `$286096` DAMAGE), a freeze gate (`$8130d2`), a heading->
 // sprite table lookup, a fire-cooldown counter, the aim (`$2420xx`, W20) +
-// slew (`$242190`, W20), and the fire itself: an INDIRECT `jsr (A0)` through a
-// function pointer the init stored (record `+$2A`/`+$2E`) at a `$23Dxxx`
-// fire-action routine, which sets up D0-D5 and calls a `$281xxx` bullet FAN
-// generator (W21).
+// slew (`$242190`, W20), and its DRAW: an INDIRECT `jsr (A0)`/`jmp (A0)` through
+// a function pointer the init stored at record `+$2A`/`+$2E`, which is a SPRITE
+// ENQUEUE STUB out of `$267F70` (src/spritequeue.js 1c) -- W30 corrected that;
+// this comment used to call it a "$23Dxxx fire-action -> $281xxx bullet fan"
+// and it is neither.  The FIRE is a direct `jsr $281xxx` in the handler body.
 //
-// ===================== WHAT IS FAITHFULLY PORTED THIS WAVE ===================
+// ===================== WHAT IS FAITHFULLY PORTED (W25 + W30) =================
 //
-// The structure of all six handlers, re-derived from maincpu.bin with capstone
-// (NOT prior art -- the fall-through trap is live: two handlers start BEFORE
-// their table address via a shared death-sequence prologue, and two share one
-// prologue).  Cited by ROM address on every non-obvious line.  Working parts:
+// The structure of all NINE handlers, each re-derived from maincpu.bin with
+// capstone (NOT prior art -- the fall-through trap is live: two of W25's start
+// BEFORE their table address via a shared death-sequence prologue, two share
+// one prologue, and all three of W30's are followed within eight bytes by the
+// NEXT type's init stub).  Cited by ROM address on every non-obvious line.
+// Working parts:
 //   * `jsr $2638A6` stepMovement (W24) -- position, the done-when column
 //   * the on-screen bounds test + `jmp $263762` free (self-contained)
 //   * the freeze gate `$8130d2` (self-contained)
 //   * the heading->sprite table lookups (ROM reads)
 //   * the fire-cooldown counters (self-contained state on the record)
-//   * the onscreen test `$242684` (ported, self-contained); the fire-gate
-//     `$267FC6` is a DEFERRED counted note (W26/W27 firing wave -- the prior
-//     "ported, self-contained" claim was false: it invented a $804000 RNG read)
+//   * the onscreen tests `$242684` and `$2426A4` (ported, self-contained)
+//   * the fire-gate `$267FC6` -- PORTED IN FULL BY W30.  It was a deferred
+//     counted note from W25b (whose predecessor had invented a $804000 RNG
+//     read) until this wave gave it a faithful consumer.
+//   * the SPRITE ENQUEUES through `+$2A`/`+$2E` and through `$27829C`, resolved
+//     to a bucket by reading the stub out of the cartridge (W30)
+//   * the FIRES: `$2813F0` ($85), `$281402` ($11), `$2817A8`/`$2817B8`/`$281484`
+//     ($80) -- all through W21's generators into W26's live pool
 //
 // ===================== WHAT NOTES (never a silent return) ===================
 //
@@ -56,17 +64,18 @@
 // never throw -- the unported.js convention) rather than halt the driver:
 //   * `$286096` DAMAGE -- W28 (HP/hitbox; the hit-reaction displacement W24's
 //     F6 isolated)
-//   * the INDIRECT fire-action calls `jsr (A0)`/`jmp (A0)` through `+$2A`/`+$2E`
-//     -> the `$23Dxxx` routines -> the `$281xxx` bullet fans -- need the W26
-//     bullet POOL (`$817F8C`) + the W27 fire-action bodies
 //   * `$28615E` (effect/score, 87 callers), `$289004` (sprite-EFFECT allocator,
-//     294 callers), `$289AF4`, `$28C25A`/`$274`/`$2A8` (death effects) -- W26
-//   * `$28AC72` (type `$82`), `$27F8EE` (type `$8B`) -- W27/W29
+//     294 callers), `$289AF4`, `$28C25A`/`$274`/`$2A8`/`$2DC` (death effects)
+//   * `$28AC72` (types `$82`, `$85`, `$80`) -- the SUB-RECORD spawn engine, a
+//     ten-slot pool at `$81DB90` whose driver is type-5 call #3 `$28AD54`
+//   * `$27F8EE` (type `$8B`), `$27F92A`/`$27E812` (the `$816B7A` pool family)
+// The fire/state machines of `$10`, `$82` and `$05`/`$07` are still whole-block
+// notes: W30 wired `$11`, `$85` and `$80` and did NOT touch those three.
 // The fields those routines would have written (HP after a hit, spawned
 // effect/bullet records) are EXCLUDED from the compared set BY NAME.  The
 // position column (`$2/$4,A6`) is untouched by any of them -- it is the
-// verified done-when column (W24 proved it for one mover; this wave
-// generalises the proof to all six types through the real per-frame dispatch).
+// verified done-when column (W24 proved it for one mover; W25 generalised the
+// proof to six types through the real per-frame dispatch, W30 to nine).
 
 import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
