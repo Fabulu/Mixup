@@ -101,7 +101,272 @@ wrote it into the right one. `$275914` has the identical instruction at
 `$275936`, which is how it was found. Fixed; see §4 for the mutation that
 pins it.
 
+## 3. THE GATE IS STILL RED, AND THE REASON CHANGED THREE TIMES
+
+`fly-around` is a 2,200-frame window from logic frame 2000 (`scenarios.json`),
+so it runs to lf4200. W29 left it BLOCKED at lf2346. **It is still blocked, and
+this is the honest sequence, each measured with `pgm.py flyaround --reuse` on
+the tree of the moment:**
+
+| after | frames compared | blocked at | by |
+|---|---|---|---|
+| W29 (the wave's starting state) | 345 | lf2346 | `$275914` |
+| `$275914` ported | 633 | lf2634 | `$2739C0` |
+| `$2739C0` ported | 1,097 | lf3098 | **`$26B6FA`, THE MIDBOSS** |
+| `$276702` ported | 1,097 | lf3098 | `$26B6FA` |
+
+**Porting `$275914` was never going to unblock the gate, and W29's own survey
+said so** (§3.1: six distinct unported handlers reached, `$275914` first at
+lf2345 and the midboss at lf3093). I did not read that as a schedule until
+after the first port, and I should have: `$26B6FA` is inside the window, so
+`fly-around` cannot go green without it.
+
+**SCOPING IT HONESTLY.** `$26B6FA` is 576 instructions — W28 measured it as the
+largest single body in the stage, 2.2x any other unported handler and more than
+half of the whole remaining 20.4 % of spawn records. W28's own wave estimate
+puts it in its own slot ("5-6: the 13 remaining stage-1 handlers (regulars,
+then the midboss)"). I did not attempt it. **The gate is therefore still RED and
+DaiOuJou is still not publishable, and the remaining blocker is exactly one
+named routine.**
+
+What this wave did instead was remove the other three, so the next wave's scope
+is a single body rather than an unknown queue. `$276702` is in the list even
+though it does not move the block point, because it was the blocker before the
+midboss and leaving it would put a second item back on that scope.
+
+### 3.1 WHAT DID NOT DIVERGE, AND WHAT DID
+
+`python tools/oracle/pgm.py flyaround --reuse`, final tree:
+
+```
+RESULT 0 of 88 columns diverged; and the run was BLOCKED at lf3098 by $26B6FA
+```
+
+**Zero of the 88 CLAIMED columns diverged on any of the 1,097 frames** — over a
+window three times longer than W29's, with three new handlers, a ported fire
+gate, a wired bullet fan and four buckets receiving sprite requests for the
+first time. That is the wave's strongest single result.
+
+**THE REPORTED COLUMNS, and one of them is newly divergent.** These are traced
+and deliberately not claimed (`src/state.js` `REPORTED_COLUMNS`):
+
+| column | W29 (345 frames) | W30 (1,097 frames) |
+|---|---|---|
+| `nshot` | 0 divergent | 0 divergent |
+| `rng` (`$803916`) | 0 divergent | **143 divergent, FIRST AT lf2955, port=63 board=64, largest gap 2** |
+| `b000` | 345/345, first lf2001, port 62584 board 62800, largest gap 1092 | 1097/1097, first lf2001, port **62752** board 62800, largest gap 804 |
+| `affe` | 345/345, port 65290 board 65308, gap 91 | 1097/1097, port **65304** board 65308, gap 67 |
+| `affc` | 345/345, port 72 board 288, gap 1092 | 1097/1097, port **240** board 288, gap 804 |
+
+Two things to read off that, and they point opposite ways.
+
+1. **The three display-list columns MOVED TOWARD THE BOARD** on the very first
+   frame of the window and stayed closer. `b000`/`affe`/`affc` are functions of
+   all thirty bucket counters, and this wave gave four buckets (0, 3, 7 and the
+   `$267F70` pair's) their first producers. The port's sprite-request budget
+   converging on the board's is independent evidence that the emitter wiring is
+   right — it is not something a wrong bucket index could produce.
+2. **`rng` IS NEWLY DIVERGENT AND THE PORT IS BEHIND BY ONE.** It was 0-of-345
+   at W29 and is now 143 of 1,097, first at **lf2955**, port `63` against board
+   `64`, largest gap 2. `$803916` is the state of `$2433AE`, and the port never
+   calls it, so the board took a draw the port did not. I could not identify
+   which consumer: the three new handlers contain no `$2433AE` reference (I
+   disassembled all three in full), so it is a routine reached *because* of this
+   wave's state changes rather than one this wave wrote. **I could not reach it;
+   here is what I tried:** a text search of `$2739C0..$273F02`, `$275914..
+   $275BAA` and `$276702..$276818` for `2433AE`, and a check of the two W30 fire
+   entries (`$2813F0`, `$281402`, `$281484`, `$2817A8`, `$2817B8`) against
+   `src/bullets.js`, which draws no random number. It is 143 frames of a
+   REPORTED column and it is stated here rather than left to be found.
+
+### 3.2 THE FULL GATE
+
+`python tools/oracle/pgm.py check`, on the final tree.
+
+## 4. WHAT THIS WAVE PORTED
+
+### 4.1 `$275914` — types `$85` AND `$86` (§1)
+
+156 instructions. First ported handler that EMITS SPRITES and first that FIRES
+in the live path. See §1 for the full call-site enumeration.
+
+### 4.2 `$2739C0` — type `$80`
+
+310 instructions, span `$2739C0..$273F02` (`$273F04` is a `nop` pad, `$273F06`
+is type `$81`'s init stub — read past the end). The `$85` skeleton plus:
+
+- a SHIELD timer on `($36,A5)` pinning the HP pair at `$7FFF`, stepping by 1 or
+  by 2 while `$811F72` is set, and dropping both words to `$1400` on the borrow;
+- an aim256 fan: `$2422A2`, then EIGHT `$2817B8` spawns off `$2735FA` or SEVEN
+  `$2817A8` off `$2736FA`, selected by stage and `($20,A5)`;
+- TWO turrets alternated by `$273C3A bchg #$6,($1,A6)`, each owning its own
+  facing word (`($2C,A5)`/`($32,A5)`) and sprite pointer (`($28,A5)`/`($2E,A5)`);
+- two `$281484` laser fires off `$27347A`;
+- four sprite requests (two bucket 7, one bucket 7, one bucket 3).
+
+Every callee was already ported. Two new ROM windows, both pinned from BOTH
+ends: `$2735FA`+`$2736FA` are `$100` each and `$2736FA + $100 == $2737FA`, which
+is type `$80`'s own init stub; `$27347A` is 32 longwords and entry 32 at
+`$2734FA` breaks the circle.
+
+### 4.3 `$276702` — type `$8A`, and BUCKET 0's FIRST PRODUCER
+
+75 instructions, span `$276702..$276818` (`$27681C` is type `$8B`'s init stub).
+A scroll-locked prop. Its tail reaches an enqueue through the **24-entry
+dispatch table `$27829C`**, indexed by `($1E,A6) * 4`; for this type's own
+prototype that word is 0, i.e. `$23D762`, i.e. **bucket 0** — which W28 measured
+at 87,545 sprite pixels, 72.1 % of the whole picture, with no producer at all.
+`$242884` (the two-bit player-alive mask) came with it.
+
+### 4.4 `$267FC6` — THE FIRE GATE, no longer a deferral
+
+W25b demoted it to a counted note after finding the previous body had fabricated
+an `$804000` RNG read; W26 and W27 left it deferred with a stated reason — "a
+faithful translation would have no faithful consumer this wave". Wiring type
+`$11`'s fan gives it one, and a gate that always says "fire" invents every
+bullet it lets through. Ported in full: the four rank-selected position-box
+tables at `$242562..$2425B1` (pinned from both ends), the octagonal player
+distance, the `$2680A2` per-stage threshold.
+
+### 4.5 `resolveEmitStub` — THE MISLABEL, AND WHY IT MATTERED
+
+`src/handlers.js` called `($2A,A5)` and `($2E,A5)` *"indirect fire-actions ->
+the `$23Dxxx` routines -> the `$281xxx` bullet fans"*. Read out of the ROM, all
+twelve longwords in `$267F70` and all 24 in `$27829C` are members of the
+`$23D762` sprite-ENQUEUE family — 20 distinct stubs in three shapes:
+
+```
+41F9 <buf.l> D0F9 <ctr.l> 43EE 0002 ...   the RECORD convention
+48E7 80C0 41F9 <buf.l> D0F9 <ctr.l> 43EE  ...the same, registers saved
+41F9 <buf.l> D0F9 <ctr.l> 2001 ...        the REGISTER convention
+41FA <disp> 4E71 2206 ...                 the ZOOMING variant, a LOUD THROW
+```
+
+**The enemies' DRAW was being counted as their FIRE.** `resolveEmitStub` reads
+the `lea`/`adda` operands out of the cartridge and matches them against wave
+11's thirty buckets, so the bucket a pointer feeds is the ROM's answer and not a
+map somebody typed. Fields renamed `emitRec2A`/`emitReg2E` so it cannot come
+back. New ROM window `$23D760+$840` — 2 KB of code read as data, declared and
+documented.
+
+## 5. FOUR DEFECTS FOUND WHILE READING, ALL FIXED
+
+1. **`$2747E8` wrote the wrong record** (§2). `2D6E 0002 0022` — both operands
+   are `(d16,A6)`; the port wrote `($22,A5)` while its own comment said
+   `$22(A6)`. Found because `$275936` is the identical instruction.
+2. **Type `$11`'s aim CADENCE WAS INVERTED.** `$268A1A subq.b #1,($18,A5) / bcc
+   $268A5A` borrows only when the byte was already 0, so the ROM aims on exactly
+   the frames the old code skipped and skips the ones it aimed on. `src/turret.js`
+   has had it right since W20 (`if (cad !== 0) return;`); `handlers.js` tested
+   the stored result's bit 7. Mutation M4 restores the old shape and reddens the
+   test that pins it.
+3. **The death-animation arm never wrote `($1E,A5)`** — `$2689E2..$2689F2` is a
+   frame counter that steps by `$24` and wraps at `$90`, and the port skipped
+   the whole `$2689D6` block.
+4. **Two `bcs` read as SIGNED.** `$268AA6 cmpi.w #$159,$8130CE` and `$268AFC
+   cmpi.w #$3,$813092` are unsigned; the port used `i16(...) >= 0x159`.
+
+## 6. EVERY CHECK WAS SEEN TO FAIL — AND TWO OF THEM COULD NOT
+
+`games/ddpdoj/tests/w30handlers.test.js`, 25 tests, plus the existing suite.
+Mutations applied byte-exactly in Python with a single-occurrence anchor
+assertion, suite run, file restored, sha256 verified identical both ways
+(`src/handlers.js` `1027b3174930ec3e`, `src/spritequeue.js` `7c8388a29b2f5d3f`).
+
+| # | mutation | result |
+|---|---|---|
+| M1 | the record/register emit conventions swapped | RED — 12 |
+| M2 | `$26809E`'s threshold compare inverted | RED — 3 |
+| M3 | `$268004`'s position-box test dropped | RED — 1, alone |
+| M4 | `$268A1A`'s cadence back to the pre-W30 (inverted) shape | RED — 3 |
+| M5 | `$268AF2`'s muzzle table read at stride 4 instead of 8 | RED — 1, alone |
+| M6 | `$275936` writes `($22,A5)` — the defect of §5.1 | RED — 1, alone |
+| M6b | `$2739FA` writes `($22,A5)` — the same instruction in type `$80` | RED — 1, alone |
+| M7 | `$275ABC`'s muzzle index loses its `*2` | RED — 1, alone |
+| M8 | `$275AE6` reloads from `$8130B8` instead of `$8130BA` | RED — 1, alone |
+| M9 | `$275A4C`'s rank gate inverted | RED — 1, alone |
+| M10 | `$273A36` dropped — only half the shield expiry written | RED — 1, alone |
+| M11 | `$273A18` — the shield always steps by 1 | RED — 1, alone |
+| M12 | `$273C3A` `bchg` becomes a `bset` (never flips back) | RED — 1, alone |
+| M13 | `$273B68`'s wide loop runs 7 times instead of 8 | RED — 1, alone |
+| M14 | `$2767AA` tests the NEW bit instead of the old | RED — 3 |
+| M15 | `$2767B2` ADDS `$B4` instead of EOR-ing it | **GREEN — SURVIVED** |
+| M16 | `$2767BA`'s emitter index loses its `*4` | **GREEN — SURVIVED** |
+
+**TWO MUTATIONS SURVIVED THE FIRST PASS, AND BOTH ARE REPORTED AS FINDINGS
+RATHER THAN QUIETLY FIXED**, because the shape of each is one this project keeps
+re-discovering:
+
+- **M15** — the test's fixture value was `$001C0900`, whose low byte is 0, and
+  `x ^ $B4 == x + $B4` for every such value. The check agreed with itself
+  whatever the operation was. Fixed by choosing `$001C09FF`, and the test now
+  asserts *out loud* that its own fixture can distinguish the two.
+- **M16** — the test drove `($1E,A6) = 0`, and `0 * 4 == 0`. A scale factor
+  cannot be tested at the one input where it does not apply. Fixed by adding a
+  test at index 5, which resolves to `$23D852` = bucket 7 and lands in a
+  different bucket the moment the `*4` goes.
+
+Both mutations were re-applied after the fixes: **RED, one named test each.**
+**17 mutations, 17 reds, no survivors**, and every source file byte-identical
+after every one.
+
+## 7. THE STATE OF THE BULLET STACK — W27's F1, PARTLY CLOSED
+
+W29 §5.1: no W27 behaviour body executed anywhere but its own unit test, and
+`27-review.md` F1 measured that the 29 W27 kinds have never appeared on the
+board at all.
+
+**BULLETS NOW SPAWN FROM LIVE ENEMIES IN THE PRODUCT.** A scratch survey (not
+committed) runs the page's own loop over `fly-around`'s input words from the
+seed, and on an `Unreached` records the address, frees the record the throw
+names and carries on. **Everything after the first throw is off-distribution by
+construction** (`docs/knowledge/09`), so this is an INVENTORY and may not be
+quoted as "the port survives N frames".
+
+| | W29 | after this wave |
+|---|---|---|
+| peak live enemies | 41 of 58 | **45 of 58** |
+| peak live bullets | **0 of 210** | **27 of 210** |
+| first live bullet | never | **lf2040** |
+| bullet KINDS ever live | none | **{4, 5, 13, 19}** |
+| distinct handler throws in the window | 4 | **1** (`$26B6FA`) |
+
+**BUT F1 IS NOT CLOSED, AND SAYING SO IS THE POINT.** The four kinds that
+execute — 4, 5, 13, 19 — are all **W26** bodies, and all four are already in the
+set `{3,4,5,6,7,12,13,19}` that `27-review.md` measured as the only kinds any
+board recording contains. **Zero of W27's 29 bodies have executed even now.**
+The fire paths this wave wired (`$2813F0` kind `$D`, `$281402` kind `$D`,
+`$2817A8`/`$2817B8` kind 4, `$281484` kind `$13`) simply do not produce them on
+this path. Closing F1 needs the kinds themselves, not more fire sites; the
+denominator is 37 bodies and the numerator is still 8.
+
+## 8. WHAT I COULD NOT DETERMINE
+
+- **Which routine consumes the extra `$2433AE` draw** behind the new `rng`
+  divergence at lf2955 (§3.1). Ruled out: the three handlers this wave ported
+  (disassembled in full, no `$2433AE` reference) and the five bullet generator
+  entries they call.
+- **Whether the midboss is the LAST blocker.** `$26B6FA` is the only throw the
+  survey reaches inside the 2,200-frame window today, but the survey frees the
+  record a throw names and carries on, so every frame after lf3098 is
+  off-distribution. A run that actually simulates the midboss can reach handlers
+  this one cannot.
+- **Anything about the board.** No MAME was run this wave. Every dynamic number
+  above is either the PORT against a seeded RAM dump, or `portdiff.mjs` against
+  the trace W29 recorded. The seed is a fly-around capture with the
+  invulnerability poke.
+- **The extent of `$278320`** (type `$8A`'s death-effect word table). Entries
+  0..11 are plausible bucket indices and entry 12 onwards is not, but the read
+  is inside the noted `$289004` gap so nothing in the port touches it.
+
 ## LOG (appended as findings arrive)
 
 - opened; read `$275914` in full out of the ROM (§1).
 - found and fixed the `$2747E8` destination-register defect (§2).
+- `$275914` ported and committed; gate 345 -> 633 frames, blocker moved.
+- `$267FC6` ported, type `$11`'s fan wired, the emitter mislabel corrected;
+  the three display-list REPORTED columns moved toward the board.
+- `$2739C0` and `$276702` ported; gate 633 -> 1,097 frames; the MIDBOSS is the
+  sole remaining blocker.
+- 17 mutations run; two survived, both were defective checks, both fixed and
+  re-run RED.
