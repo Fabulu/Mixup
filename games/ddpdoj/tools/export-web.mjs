@@ -287,6 +287,31 @@ const HARVEST = Object.freeze([
     + '(46-diag §6 priced 24 entries / 37.3 KiB and §10.2 said it had not found '
     + 'the end; it is 70 / 116.7 KiB.) [M] first needed lf8106, and it is 116.7 '
     + 'KiB for 120 records in the whole run -- hence the LAST shard'],
+  // ------------------------------------------------------------- WAVE 53 E5a
+  // THE SHOT'S IMPACT SPARK.  Not a body table and not indexed by a heading:
+  // this is an ANIMATION, walked by `$28A15C move.w ($10,A6),D0 / subq.w #4`
+  // from a starting cursor the template carries, downwards, once per frame.
+  //
+  // BOTH ENDS ARE PINNED BY DATA THAT IS NOT THIS LIST.  The bottom is the
+  // pointer at `$28A5AC+$10` (and the fourteen other templates' -- [M] all 15
+  // name $28A5C2 and nothing else).  The top is the largest starting cursor any
+  // of the 15 carries, $8C, i.e. 36 longwords -- and [M] $28A5C2 + 36*4 ==
+  // $28A652, template 1's own base.  The list and the templates ABUT EXACTLY.
+  // `tools/export-tables.py check_pool_e_extents` asserts both on every export.
+  //
+  // [M] ENTRY 0 ($22CBC0) IS NEVER DRAWN, and it is harvested anyway rather
+  // than trimmed.  `$28A15C` reads the cursor BEFORE `$28A160 subq.w #4` and
+  // `$28A164 bcs` frees the slot on the borrow, so a record that reaches cursor
+  // 0 dies instead of drawing list[0].  Trimming to 35 would make the harvest
+  // depend on my reading of a branch instead of on the table's own extent, and
+  // `46-diag`'s tank hulls are what that costs.  Named here, measured in
+  // `53-impl-E5a-spark.md`.
+  [8, 0x28a5c2, 36, 4, 36, 0x28a652,
+    'THE IMPACT SPARK, $289F54/$28A098 (src/spark.js). 36 frames, '
+    + '$22CA1C..$22CBC0 step $C -- 12 mask words each, which is exactly the '
+    + '2 + wide*high + 2 that the record own ($e,A6) = $0208 (1 x 8) wants. '
+    + '[M] 0 of the 36 are in the shipped sheet and it is 0.8 KiB gz for all '
+    + 'of them -- the cheapest shard in this bundle by a factor of thirteen'],
 ]);
 
 /** W45's beam art: the pod muzzle `$24C906` forces onto `($a,A6)` and four of
@@ -343,12 +368,19 @@ const SPR_SHARDS = Object.freeze([
     + '38-byte template opens (W52).'],
   [7, 'bullets', 'THE ENEMY BULLETS: the mask ROM\'s own stream chain across '
     + 'the four ranges the 39 behaviour bodies animate inside (W52).'],
+  [8, 'spark', 'THE IMPACT SPARK: pool E 36-frame animation $28A5C2, '
+    + 'the flash where a bullet CONNECTS (W53). 0.8 KiB.'],
 ]);
 const SPR_BOOT = [0];
 /** the order the deferred shards are FETCHED in -- measured first need, not
  *  index order.  [M] W52: bullets +0.7 s, shots the first fire frame, then
  *  W47's own measured ladder 7.7 / 49.6 / 74.7 / 98.7 / 103.2 s. */
-const SPR_ORDER = Object.freeze([0, 7, 6, 1, 2, 3, 4, 5]);
+// W53: the spark lands FOURTH, behind the two producers that have to draw
+//  before anything can be hit.  Its first need is the first frame a shot
+//  CONNECTS, which is later than the first fire frame (shard 6) and later
+//  than the first enemy bullet (shard 7) -- and it is 0.8 KiB, so it costs
+//  the two ahead of it almost nothing.
+const SPR_ORDER = Object.freeze([0, 7, 6, 8, 1, 2, 3, 4, 5]);
 
 // ---------------------------------------------------------------------------
 // 1. COVERAGE.  What can this capture possibly make the renderer read?
@@ -1430,7 +1462,27 @@ const manifest = {
   capture: { layout: capJson.layout, frameBytes: capJson.frameBytes },
   romsUsed: [...IGS023_LAYOUT, ...SPRCOL_LAYOUT, ...SPRMASK_LAYOUT].map(([n]) => n),
 };
-fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 1));
+// WAVE 53 -- **THE MANIFEST IS WRITTEN COMPACT NOW**, and it is worth a
+// paragraph because it is a 2.5 KiB boot saving for no lost information.
+//
+// W47 §2.4 established the rule this is an application of: `manifest.json` is
+// THE ONE BODY SERVED UNCOMPRESSED, so every byte of it is a boot byte -- which
+// is why W47 moved the 378-triple stream table out of it and into
+// `spr/streams.u32.gz`.  [M] The remaining object is 10,282 B pretty-printed at
+// one space per level and 7,722 B with the whitespace gone: **25 % of this file
+// is indentation the browser parses and throws away.**  Not one `note`, `why`
+// or number is dropped -- the prose W47 §2.3 needs for "SPRITE SHARD 1 DID NOT
+// LOAD ... it holds 67 streams" is all still here, and any JSON formatter puts
+// the indentation back for a human.
+//
+// [M] AND THE OTHER IDEA WAS MEASURED AND REJECTED, recorded so the next wave
+// does not re-derive it: `player.tables.json`'s 117 ROM windows are 380,040 HEX
+// characters, which looks like exactly the waste W47 found in the stream table.
+// Re-encoding all of them as base64 makes the raw JSON 27 KB SMALLER and the
+// GZIPPED body **14.4 KB BIGGER** (133,612 -> 148,032 B), because hex is 4 bits
+// of entropy per byte and deflate eats it, while base64 is 6 and it cannot.
+// Hex is the right encoding here and it is right by measurement, not by taste.
+fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest));
 put('capture.json', new TextEncoder().encode(JSON.stringify({
   ...capJson,
   note: `${capJson.note} -- REBASED for the published bundle by `

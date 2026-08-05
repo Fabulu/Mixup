@@ -131,6 +131,7 @@ import { runBulletDriver, runClearTimer } from './bulletdriver.js';
 import { runType5Tail } from './damage.js';
 import { notePerFrameLedger } from './score.js';
 import { runSegmentDriver, runBeamDraw } from './laser.js';
+import { runSparkDriver } from './spark.js';
 
 export const TYPE5 = {
   handler: 0x28b5e0,
@@ -144,6 +145,7 @@ export const TYPE5 = {
   optionObject: 0x24c096,   // $28B616 -- where the LASER RAMP lives
   segmentDriver: 0x254680,  // $28B61C -- THE BEAM's 32-slot segment driver (W45)
   beamDraw: 0x255042,       // $28B622 -- THE BEAM's draw                   (W45)
+  sparkDriver: 0x28a098,    // $28B628 -- POOL E, THE SHOT'S IMPACT SPARK (W53)
   laserRampDown: 0x24c8be,  // inside it; $24C8CE is the write
   /** ($4b,A6)'s reload with the measured formation ($5a,A4) = 2: (2-2>>1)+4. */
   laserRampFrames: 4,
@@ -197,6 +199,15 @@ export const TYPE5_PORTED = new Set([
   0x24a44c,   // #17 ...P2
   0x281d9a,   // #20 THE BULLET SUBSYSTEM: screen clear + the mover (W29)
   0x25354c,   // #21 the screen clear's arming timer (W29)
+  // W53 (E5a).  #12 is `$28A098`, and `40-recon` 3.3 filed it as "bucket 20's
+  // BULK WRITER -- cheap in pixels (195 px), THE FIRST PRE-EMPTIVE SACRIFICE".
+  // `50-recon` 1.7 corrected that and this wave ports it: it is the DRIVER of
+  // the shot's impact spark, pool E, and W11's 195 px was measured on
+  // `stage1-open`, a scenario that never fires a shot, so it was never evidence
+  // about this call at all.  It ships in the SAME COMMIT as its allocator
+  // `$289F54` (`src/shots.js firstHit` -> `src/spark.js spawnSpark`), because a
+  // pool with a producer and no consumer is W33 4's leak.
+  0x28a098,   // #12 THE SHOT'S IMPACT SPARK: pool E's driver + bucket 20 (W53)
 ]);
 
 /** Handlers this module dispatches to, built once per Game. */
@@ -248,6 +259,17 @@ export function makeType5(rom) {
           break;
         case TYPE5.beamDraw:                            // $28B622 -> $255042
           ctx.laserDrawn = runBeamDraw(ram, ctx);
+          break;
+        case TYPE5.sparkDriver:                         // $28B628 -> $28A098
+          // WAVE 53.  It runs HERE, twelfth of twenty-three, and the position
+          // matters for the same reason W12's ship-draw ordering did: this call
+          // OVERWRITES bucket 20's counter (`$28A1B4 move.w A4,$80AFDE`, a bulk
+          // writer, `src/spritequeue.js` 3), so anything that appended to
+          // bucket 20 earlier in the frame would be silently discarded.
+          // Nothing in this port does -- [M] bucket 20 read 0 records on every
+          // frame of every run before this wave -- and that is measurement, not
+          // proof: the board's own writers into bucket 20 are unenumerated.
+          ctx.sparkFrame = runSparkDriver(ram, rom, ctx);
           break;
         case TYPE5.subReaper:                           // $28B5F2 -> $28AD54
           // WAVE 33.  ONLY the reaper half of `$28AD54` runs here -- the twelve

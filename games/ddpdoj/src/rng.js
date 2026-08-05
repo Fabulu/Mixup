@@ -119,3 +119,81 @@ export function drawSigned242FDE(ram, rom) {
   const b = rom.u8(RNG_242FDE.table + idx);                   // $242FF2
   return b >= 0x80 ? b - 0x100 : b;                           // $242FF6 ext.w D0
 }
+
+// =========================== W53: THREE MORE MEMBERS ========================
+//
+// The shot's IMPACT SPARK (`src/spark.js`, pool E) draws from three more of the
+// 32 sites the scan above lists, and each has its OWN canned table with its own
+// mask.  Both far ends are pinned by the next `addq.b` site, exactly the way
+// W31 pinned `$24324E` and `$24301A`:
+//
+//   $242E24  mask $7F -> 128 bytes $242E42..$242EC1, and $242EC2 IS the next
+//            routine's `addq.b`.  ALREADY a ROM window (W23 exported it as
+//            "the rank-adjustment byte table"; it is the same table and the
+//            same routine -- the label was written for the caller W23 had).
+//   $242FFC  NO MASK, `move.w $803916,D5` -- the EXACT TWIN of $242FDE above,
+//            reading THE SAME 256-byte table $24301A and returning into D5.
+//            Two entry points, one body; nothing new to export.
+//   $28ABE0  mask $3F -> 64 bytes $28ABFA..$28AC39, and $28AC3A is
+//            `lea $81DB90,A0`, i.e. code.  A NEW window.
+//
+// `$28AB86` is a fourth twin ($3F mask, table $28ABA0..$28ABDF, whose far end is
+// $28ABE0 itself).  Nothing in this wave's path reaches it and it is NOT ported.
+
+/** `$242E24`'s table: `moveq #$7f` masks the index, so 128 bytes,
+ *  `$242E42..$242EC1`, and `$242EC2` is the next `addq.b` (far end PINNED). */
+export const RNG_242E24 = { table: 0x242e42, entries: 128 };
+/** `$28ABE0`'s table: `moveq #$3f`, 64 bytes `$28ABFA..$28AC39`, and `$28AC3A`
+ *  is `lea $81DB90,A0` -- code (far end PINNED). */
+export const RNG_28ABE0 = { table: 0x28abfa, entries: 64 };
+
+/**
+ * `$242E24` -- bump the shared counter, return the byte at `$242E42[state & $7F]`.
+ *
+ *   242e24: addq.b #1,$803917
+ *   242e2a: moveq #$7f,D0 / and.w $803916,D0
+ *   242e32: lea ($242E42,PC),A0 / move.b (A0,D0.w),D0
+ *
+ * `moveq`+`and.w` leave D0 <= $7F with its upper 24 bits clear, and `move.b`
+ * writes only the low byte, so the returned D0 is 0..255 and NOTHING above bit 7
+ * survives.  `$28A39E addq.b #8,D0` then adds within that byte.
+ * @returns {number} D0, 0..255.
+ */
+export function drawByte242E24(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $242E24
+  const i = u16(ram.u16(RNG.state)) & 0x7f;                   // $242E2A/$242E2C
+  return rom.u8(RNG_242E24.table + i);                        // $242E3A
+}
+
+/**
+ * `$242FFC` -- `$242FDE`'s twin, returning into D5 instead of D0, off the SAME
+ * 256-byte table.  Kept as its own entry point because the CALLER's address is
+ * what a reader checks against the listing, and because the two return into
+ * different registers, which is the only reason the ROM has both.
+ * @returns {number} D5 as a SIGNED 16-bit value (`ext.w`).
+ */
+export function drawSigned242FFC(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $242FFC
+  const i = u16(ram.u16(RNG.state));                          // $243002, whole word
+  const idx = i >= 0x8000 ? i - 0x10000 : i;                  // (A0,D5.w) is signed
+  const b = rom.u8(RNG_242FDE.table + idx);                   // $243010
+  return b >= 0x80 ? b - 0x100 : b;                           // $243014 ext.w D5
+}
+
+/**
+ * `$28ABE0` -- bump the shared counter, return the byte at `$28ABFA[state & $3F]`.
+ *
+ *   28abe0: addq.b #1,$803917
+ *   28abe6: moveq #$3f,D1 / and.w $803916,D1
+ *   28abee: lea ($28ABFA,PC),A2 / adda.w D1,A2 / move.b (A2),D1
+ *
+ * NOTE THE ADDRESSING: `adda.w D1,A2` then `move.b (A2),D1`, not
+ * `move.b (A2,D1.w),D1`.  Same result, different instruction; transcribed as
+ * the ROM writes it so a reader can match it line for line.
+ * @returns {number} D1, 0..255.
+ */
+export function drawByte28ABE0(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $28ABE0
+  const i = u16(ram.u16(RNG.state)) & 0x3f;                   // $28ABE6/$28ABE8
+  return rom.u8(RNG_28ABE0.table + i);                        // $28ABF6
+}

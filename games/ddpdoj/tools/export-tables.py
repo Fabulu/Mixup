@@ -716,6 +716,45 @@ SHOT_WINDOWS.extend([
                        "spritequeue.js resolveEmitStub"),
 ])
 
+# ============= W53 (E5a): THE SHOT'S IMPACT SPARK -- POOL E's DATA ===========
+#
+# `src/spark.js` ports $289F54 (the allocator) and $28A098 (the driver).  Two
+# windows, and BOTH ENDS OF BOTH ARE PINNED BY SOMETHING THAT IS NOT A READING:
+#
+#   $28A5AC..$28AB85, 1,498 B, ONE contiguous block of three things:
+#       $28A5AC          template 0                              22 B
+#       $28A5C2          THE DESCRIPTOR LIST, 36 longwords       144 B
+#                        ($22CA1C..$22CBC0 step $C) -- and $28A5C2 + 144 lands
+#                        EXACTLY on $28A652, where template 1 starts
+#       $28A652..$28A785 templates 1..14, stride 22              308 B
+#                        ...and $28A770 + 22 == $28A786          EXACT
+#       $28A786..$28AB85 the 256-entry POINTER TABLE              1,024 B
+#                        $289F68 reads it with `move.w $803916,D5 / add.w D5,D5
+#                        / add.w D5,D5` -- NO MASK, exactly like $242FDE -- so
+#                        it must be 256 entries, and [M] $28A786 + 256*4 ==
+#                        $28AB86, which disassembles to `addq.b #1,$803917`,
+#                        i.e. CODE.  EXACT, and it is the far end.
+#       [M] the 256 entries resolve to 15 DISTINCT templates (one named 32
+#       times, fourteen named 16), and all 15 differ ONLY in the starting
+#       animation cursor: $8C $80 $74 $68 $5C $50 $44 $38 $2C $20.
+#
+#   $28ABFA..$28AC39, 64 B, $28ABE0's draw table (`moveq #$3f` masks the index).
+#       [M] $28ABFA + 64 == $28AC3A == `lea $81DB90,A0`, code.  EXACT.
+#
+# NOT EXPORTED, and named rather than skipped: $28A506's template and its own
+# 36-longword list at $28A51C ($22C6BC..$22C860).  They belong to $289F96 /
+# $289FC0 / $289FDA -- the LASER's three pool-E producers, which this wave does
+# not port.  Exporting data for a routine that does not exist is E2's $268594.
+SHOT_WINDOWS.extend([
+    (0x28A5AC, 0x05DA, "W53 POOL E: the 15 spark templates, their shared "
+                       "36-entry descriptor list $28A5C2, and the 256-entry "
+                       "pointer table $28A786 -- $28A5AC..$28AB85, whose far "
+                       "end is $28AB86 (`addq.b #1,$803917`, code)"),
+    (0x28ABFA, 0x0040, "W53 POOL E: $28ABE0's 64-byte draw table $28ABFA "
+                       "(indexed by $803916 & $3F), read by $28A39E for the "
+                       "spark's heading -- far end $28AC3A is code"),
+])
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
@@ -988,7 +1027,52 @@ def speed_index_set(d: bytes) -> list[int]:
     return sorted(s)
 
 
+def check_pool_e_extents(d: bytes) -> None:
+    """W53 (E5a).  ASSERT POOL E's DATA BLOCK AGAINST THE CARTRIDGE, every export.
+
+    Three arithmetics close exactly on a landmark that is not a reading; if any
+    of them stops closing, the block has moved and the export must STOP rather
+    than ship 1,498 bytes of something else.  W47 §4.3's precedent, applied to a
+    table whose extent is pinned by CODE rather than by a chain.
+    """
+    PTRS, N_PTRS = 0x28A786, 256
+    end = PTRS + N_PTRS * 4                    # $28AB86
+    if d[end:end + 6] != bytes((0x52, 0x39, 0x00, 0x80, 0x39, 0x17)):
+        raise SystemExit(
+            f"$28A786's pointer table: this file says {N_PTRS} entries ending at "
+            f"${end:06X}, but ${end:06X} is not `addq.b #1,$803917` "
+            f"({d[end:end + 6].hex()}). $289F68 indexes it with an UNMASKED "
+            f"$803916, so a short table reads a template out of code.")
+    tpls = sorted({u32(d, PTRS + 4 * i) for i in range(N_PTRS)})
+    if len(tpls) != 15:
+        raise SystemExit(f"$28A786 resolves to {len(tpls)} distinct pool-E "
+                         f"templates; W53 measured 15.")
+    if tpls[0] != 0x28A5AC or tpls[-1] + 22 != PTRS:
+        raise SystemExit(
+            f"the pool-E templates run ${tpls[0]:06X}..${tpls[-1] + 22:06X}; "
+            f"W53 measured $28A5AC..${PTRS:06X} (the last template abutting the "
+            f"pointer table EXACTLY).")
+    lists = {u32(d, t + 0x10) for t in tpls}
+    if lists != {0x28A5C2}:
+        raise SystemExit(f"the 15 pool-E templates name descriptor lists "
+                         f"{[hex(x) for x in sorted(lists)]}; W53 measured all "
+                         f"fifteen naming $28A5C2 alone.")
+    # The list's own length is pinned from BOTH ends: the largest starting cursor
+    # any template carries ($8C -> 36 longwords) and the next template's base.
+    cur = max(u16(d, t + 0x0E) for t in tpls)
+    if 0x28A5C2 + (cur // 4 + 1) * 4 != 0x28A652:
+        raise SystemExit(
+            f"$28A5C2 + (${cur:04X}/4 + 1) longwords does not land on $28A652, "
+            f"the first template of the run. The descriptor list and the "
+            f"templates no longer abut.")
+    # $28ABE0's draw table: `moveq #$3f` -> 64 bytes, and $28AC3A is code.
+    if d[0x28AC3A:0x28AC40] != bytes((0x41, 0xF9, 0x00, 0x81, 0xDB, 0x90)):
+        raise SystemExit("$28ABFA's 64-byte draw table does not end at $28AC3A "
+                         "(`lea $81DB90,A0`).")
+
+
 def build(d: bytes) -> dict:
+    check_pool_e_extents(d)                    # W53 -- see the function's docstring
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
     levels = speed_index_set(d)

@@ -52,6 +52,7 @@ import { unreached } from './unported.js';
 import { enqueueShotSprite } from './spritequeue.js';
 import { SHOT } from './weapons.js';
 import { drawWord } from './rng.js';
+import { spawnSpark } from './spark.js';
 
 /** Record offsets, named once. */
 export const S = {
@@ -290,12 +291,20 @@ export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
 /** `$253C10..$253C94` (entry [0]) and `$253EEE..$253F52` (entry [2]) -- the
  *  FIRST hit.  Everything that differs between the two is a parameter here and
  *  is named at the instruction it comes from. */
-function firstHit(ram, rom, rec, ctx, v) {
+function firstHit(ram, rom, rec, ctx, v, prec) {
+  // WAVE 53 (E5a) -- THE SHOT'S IMPACT SPARK, PORTED.  This was a counted note
+  // from wave 8 to W52 and the note's REASON was right about $289004 and wrong
+  // about this routine: `$289F54` is not in pool B at all.  It allocates from
+  // POOL E ($81D394/$81D790, 60 slots), whose driver `$28A098` is type-5 call
+  // #12 and IS NOW PORTED, in the same commit, in `src/spark.js`.  Allocator
+  // and driver together is what stops this being W33's leak; the drain proof is
+  // in that file's header and the census is in `53-impl-E5a-spark.md`.
+  //
+  // A4 is the PLAYER record ($253A86/$253AC6 `lea`), and `$289F82 cmpa.l
+  // #$8103E6,A4` is the ONLY thing that picks P1's 30 slots over P2's -- which
+  // is why `prec` had to be threaded down here.
   if (ram.u16(0x81308c) !== 0) {                                    // $253C10/$253EEE
-    ctx?.unportedLog?.note(0x289f54, `$253C18 moveq #$14,D0 / jsr $289F54 -- `
-      + `the shot's IMPACT effect, gated on $81308C. The $289xxx effect family `
-      + `is unported for the reason src/score.js gives for $289004: its pool's `
-      + `only driver is type-5 call #5 $288E4E`);
+    spawnSpark(ram, rom, ctx, rec, prec);           // $253C18 moveq #$14 / $253C1A
   }
   let d0 = ram.u16(rec + S.velY);                                   // $253C20/$253EFE
   let d2 = ram.u16(rec + S.velX);                                   // movem.w $2c(a6),d0/d2
@@ -334,8 +343,18 @@ function firstHit(ram, rom, rec, ctx, v) {
   // negative velocity rounds toward -infinity and not toward zero.
   ram.setU16(rec + S.velY, u16(i16(d0) >> 2));                      // $253C6A movem.w
   ram.setU16(rec + S.velX, u16(i16(d2) >> 2));
+  // W53 CORRECTS THIS NOTE'S SUBJECT.  It said "the shot's impact BURST, one of
+  // the $28Cxxx effect family" -- and `50-recon` §2.5 measured, and this wave
+  // re-read, that `$28C714` is a SOUND REQUEST: `tst.b $81DEB8` (a debounce
+  // byte), then `move.w #$24,D0 / #$62,D1 / #$3,D2 / jsr ($28C0AE,PC)`, whose
+  // body shares `$28BFEC`'s `add.w $81DEB4,D1` volume clamp with `$28C3BA` --
+  // the routine six lines up that this file ALREADY labels the fire SOUND.  The
+  // visual impact burst is `$289F54`, which is ported now.  A note that names
+  // the wrong subsystem sends the next implementer to the wrong wave, so it is
+  // corrected rather than left.
   ctx?.unportedLog?.note(0x28c714, `$253C70/$253F2E jsr $28C714 -- the shot's `
-    + `impact BURST, one of the $28Cxxx effect family, unported`);
+    + `impact SOUND CUE ($28C722 -> $28C0AE -> $28BFEC's $81DEB4 volume `
+    + `clamp), NOT a visual. Audio is outside the slice (PLAN 6.2)`);
   // $253C76/$253F34: re-point the whole sprite block out of the table.
   const a0 = rom.u32(v.table + i16(ram.u16(rec + S.tableIdx)));     // $253C7A/$253F38
   ram.setU32(rec + S.drawOff, rom.u32(a0));                         // $253C84/$253F42
@@ -366,14 +385,14 @@ function laterHit(ram, rom, rec, v) {
 }
 
 /** `$253BDE` (entries [0]/[8]) and `$253ECA` ([2]/[10]) -- the fork. */
-function hitPath(ram, rom, rec, ctx, site) {
+function hitPath(ram, rom, rec, ctx, site, prec) {
   const v = site === 0x253bde
     ? { table: 0x24deb2, recoil: true, scatterShift: 1, scatterIntoPos: false,
         moves: true }
     : { table: 0x25014c, recoil: false, scatterShift: 2, scatterIntoPos: true,
         moves: false };
   if (ram.bset8(rec + S.type, 1) === 0) {                           // $253BDE/$253ECA
-    return firstHit(ram, rom, rec, ctx, v);                         // beq -> $253C10
+    return firstHit(ram, rom, rec, ctx, v, prec);                   // beq -> $253C10
   }
   return laterHit(ram, rom, rec, v);                                // bne -> $253BE4
 }
@@ -419,7 +438,7 @@ export function handler253B1E(ram, rom, rec, ctx, prec, d1) {
     ram.u8(rec + S.angle));
   ram.setU16(rec + S.velY, u16(v.dy));                              // $253B60
   ram.setU16(rec + S.velX, u16(v.dx));
-  if (ram.u8(rec + S.lowByte) & 0x80) return hitPath(ram, rom, rec, ctx, 0x253bde); // $253B66
+  if (ram.u8(rec + S.lowByte) & 0x80) return hitPath(ram, rom, rec, ctx, 0x253bde, prec); // $253B66
   const a0 = rom.u32(0x24ddd6 + i16(ram.u16(rec + S.tableIdx)));    // $253B72
   ram.setU32(rec + S.drawOff, rom.u32(a0));                         // $253B7C
   ram.setU16(rec + S.dlWord4, rom.u16(a0 + 4));                     // $253B80
@@ -432,7 +451,7 @@ export function handler253B1E(ram, rom, rec, ctx, prec, d1) {
 /** $253BDA -- dispatch entry [8]: `tst.b D1 / bpl $253B94`. */
 export function handler253BDA(ram, rom, rec, ctx, prec, d1) {
   if ((d1 & 0x80) === 0) return body253B94(ram, rom, rec);
-  return hitPath(ram, rom, rec, ctx, 0x253bde);
+  return hitPath(ram, rom, rec, ctx, 0x253bde, prec);
 }
 
 /** $253E96..$253EC4 -- $253E34's OWN tail.  Not $253B94's: it clamps Y against
@@ -457,7 +476,7 @@ export function handler253E34(ram, rom, rec, ctx, prec, d1) {
   }
   ram.bset8(rec + 0x00, 0);                                         // $253E3C
   ram.setU16(rec, u16(ram.u16(rec) | 0x8));                         // $253E4C
-  if (d1 & 0x80) return hitPath(ram, rom, rec, ctx, 0x253eca);      // $253E50
+  if (d1 & 0x80) return hitPath(ram, rom, rec, ctx, 0x253eca, prec);      // $253E50
   const a0 = rom.u32(0x24fc8e + i16(ram.u16(rec + S.tableIdx)));    // $253E5A
   ram.setU32(rec + S.drawOff, rom.u32(a0));                         // $253E64
   ram.setU16(rec + S.dlWord4, rom.u16(a0 + 4));                     // $253E68
@@ -473,7 +492,7 @@ export function handler253E34(ram, rom, rec, ctx, prec, d1) {
 /** $253EC6 -- dispatch entry [10]: `tst.b D1 / bpl $253E96`. */
 export function handler253EC6(ram, rom, rec, ctx, prec, d1) {
   if ((d1 & 0x80) === 0) return body253E96(ram, rec);
-  return hitPath(ram, rom, rec, ctx, 0x253eca);
+  return hitPath(ram, rom, rec, ctx, 0x253eca, prec);
 }
 
 /** The dispatch map the shot driver is given, keyed by ROM address. */
