@@ -251,4 +251,31 @@ premise about the mechanism was wrong.** Every full-state figure this project
 holds was measured over lf2001..4200, and the owner's reported degradation
 begins at ~lf3800-4200 — at the far edge of it.
 
+---
+
+## 6. A SECOND THING THE MECHANISM FOUND ON ITS WAY PAST — `stage1-shot`'s WINDOW
+
+Before the deep ladder finished I re-seeded the port at the three seed files
+wave 8 left in `out/w8/`, against wave 8's own trace. This costs no emulator
+time at all, which is the point of the whole wave.
+
+```
+[M] seed lf4447 -> 125 frames, RESULT 0 DIVERGENT on 72 columns        (green)
+[M] seed lf3716 -> 856 frames, RESULT 7 of 72 columns diverged
+                   HITEX $245044 fired 0 times -- the usual excuse does NOT apply
+                   SPRQ CONTAINMENT: 727 of 3,073 records MISSING, first lf3743
+                   first fields: s14x s21y s21x shot1 shot2 @lf3743, s14y s14v @lf3763
+[M] seed lf2000 -> 2,572 frames, RESULT 13 of 72 columns diverged
+                   HITEX fired 314 times on 208 frames, first at lf2023
+                   (so THIS one really is explained: the board took the
+                    unported hit path)
+```
+
+`scenarios.json`'s `stage1-shot` has `"seed": 4447`, giving **125** compared
+frames. Its own `why` field still describes the window as *"lf3717..4572 ...
+lf3716, giving 856 compared frames, MEASURED"*. **The scenario's data and its
+description disagree by 731 frames**, and at the seed its description names the
+gate is red on seven shot columns with the hit path never taken. Recorded here
+as a measurement; `src/` belongs to T1 this wave and I have not touched it.
+
 (Findings below are appended as they arrive.)
