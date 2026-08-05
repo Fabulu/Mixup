@@ -73,3 +73,43 @@ good for.
 One thing to do EARLY when that wave starts: pick the landmark pairs and
 measure them on our side FIRST, before watching any video. A measurement taken
 after seeing the target is not independent.
+
+## OWNER CALIBRATION DATUM — MAME at ~50% speed
+
+owner, 2026-08-05:
+
+> "Mame running at 50% speed or so should gets closest to real slowdown"
+
+This is the most concrete thing anyone has said about the size of the gap, and
+it should be recorded before it is acted on, because **it is a calibration
+observation, not a mechanism.**
+
+**What it suggests:** under load, the real board effectively delivers roughly
+HALF the game-frames MAME does. That is a factor-of-two discrepancy, which is
+large — large enough to be a structural difference rather than a tuning error.
+Candidates worth separating when the lag wave runs:
+
+- MAME's emulated CPU completes more work per frame than the board does (the
+  documented figure is 337,920 cycles/frame at 15625/264 = 59.185606 Hz).
+- The board drops or dilates differently — `docs/knowledge/06` names THREE
+  mechanisms (dropped updates, time dilation, partial completion) and they are
+  not interchangeable. Halving throughput reproduces the RATE of only one.
+- Something in the sprite/DMA path stalls the board in a way MAME does not model.
+
+**THE TRAP, and it is this project's oldest one.** Matching the RATE is not
+matching the MECHANISM. If slowdown gets "ported" by scaling a clock until the
+game feels right, the result is a screen that looks correct and is sourced from
+a fudge — exactly the failure the capture-replay enemies were, and exactly what
+`docs/knowledge/10` exists to prevent. A halving factor tuned to taste would
+pass every gate we own and be wrong in every route the owner plays.
+
+**So use this datum as a TARGET TO EXPLAIN, not a constant to apply.** The
+question it poses is "what does the board do that costs it half its frames under
+load", and the answer has to come out of the listing and the hardware, the same
+way `$CA5E`'s 1/256-px borrow did — where the obvious fix measured wrong and the
+real cause was a carry not propagating through an RTS.
+
+If the mechanism turns out genuinely unreachable from the ROM, then a calibrated
+factor is a legitimate LAST resort — but it must be declared as a deviation in
+the worklog, the way W62 declared its two invented state exits, and never
+presented as a port of the board's behaviour.
