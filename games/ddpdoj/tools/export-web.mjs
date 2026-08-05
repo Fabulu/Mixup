@@ -224,11 +224,10 @@ const tables = fs.readFileSync(tablesFile);
 //   and the LASER's five streams (W45), which are needed on the FIRST HELD
 //   FRAME and are therefore in the BOOT shard, not a deferred one.
 //
-// WHAT IS DELIBERATELY NOT HARVESTED: `$268594`, enemy type $10's 96-entry
-// table (90 missing, 51.8 KiB).  [M] no ported code reads it -- `grep 268594
-// games/ddpdoj/src/` is empty -- and the 6,185-frame run emitted 0 of its 96
-// streams.  It is in `tools/w35atlas.mjs ROM_TABLES` and it belongs to a handler
-// that does not exist yet.  Named rather than silently omitted.
+// WAVE 81 CLOSED THE ONE DEFERRAL THIS BLOCK NAMED.  `$268594` used to be here
+// under "WHAT IS DELIBERATELY NOT HARVESTED: enemy type $10's 96-entry table
+// (90 missing, 51.8 KiB); no ported code reads it".  It is harvested now -- as
+// TWO tables, not one -- and `src/handlers.js` reads both.  See §WAVE 81.
 
 // A TABLE'S EXTENT IS A CLAIM, AND EACH ONE IS PINNED TWICE.
 //
@@ -348,6 +347,48 @@ const HARVEST = Object.freeze([
     'THE AT-MAXIMUM animation, 17 frames, taken when the thing an item grants '
     + 'is already at maximum and the pickup scores $1000 instead of $10. '
     + '$27F508 + 8 + 17*4 == $27F54C == THE COLLECT TAIL ITSELF'],
+  // ------------------------------------------------------------- WAVE 81
+  // THE FIGHTER, THE MECH AND THE TWIN TURRET -- the three types W80 measured
+  // as ART waves rather than emission waves.  Every extent below is pinned by
+  // the INDEX ARITHMETIC in the handler, and W80's own figures are refused by
+  // it in three places (docs/worklog/ddpdoj/81-impl-fighter-mech-art.md §1):
+  //
+  //  * TYPE $82's art is NOT "57 descriptors" and NOT one table.  Its body
+  //    descriptor is the CONSTANT $1735FC in the sub-record prototype at
+  //    $274770+6 (immediate, below); its heading table $272DFA is the
+  //    $151E10 family THIS FILE ALREADY SHIPS in shard 11; and its third
+  //    record is the immediate $173810 at $274A70.  TWO new streams.
+  //  * TYPE $10's `$268594` is TWO tables of 64 and 32, not one of 96 --
+  //    exactly type $11's hull/turret pair, and the 96 in `w35atlas.mjs
+  //    ROM_TABLES` is their SUM.  Both are reachable and both are harvested.
+  //  * TYPE $88 needs 37 streams, not the one W80's census saw: the body
+  //    immediate $17D480, the four-frame sub table $2763D8, AND the 32-entry
+  //    turret table $272D7A that `src/initbody.js:560` has read since W36.
+  [14, 0x268594, 64, 4, 96, 0x268714,
+    'type $10 HULL by HEADING. $268300 reads ($1A,A6), $268304 `moveq #$3E / '
+    + 'and.w D7,D1 / add.w D1,D1 / add.w D1,D1` -> $F8, and $26831C adds 4 on '
+    + 'the mirror bit ($80390B bit 2) -> entries 0..63; $268324 `move.l '
+    + '(A0,D1.w),($a,A6)`. THE INDEX IS INSTRUCTION-FOR-INSTRUCTION $268B9E\'s '
+    + '(type $11 hull), and the run of 96 is this table PLUS the turret table '
+    + 'below at $268594+$100 -- the same adjacency that pins $268B9E. [M] W81: '
+    + 'stride $C4 = 4x48 = 64x48 px, the gold armoured mech W75 photographed'],
+  [14, 0x268694, 32, 4, 32, 0x268714,
+    'type $10 TURRET by FACING. $2683AE `addq.b #1,D1 / andi.w #$3E,D1 / add.w '
+    + 'D1,D1` -> $7C -> 32, $2683BC `move.l (A0,D1.w),($22,A5)`. This is '
+    + '$268C9E\'s index exactly. Pinned from BELOW by code: [M] $268714 is '
+    + '$3B7C0000 (`move.w #..,($4,A5)`), not a stream'],
+  [16, 0x272d7a, 32, 4, 160, 0x272ffa,
+    'type $88 TWIN TURRET, both barrels. src/initbody.js:560/565 already reads '
+    + 'it twice ($275DE6/$275E1A), index `(($1B,A6) & $3E) << 1` -> $7C -> 32. '
+    + 'THE RUN OF 160 WALKS STRAIGHT ON through $272DFA (type $82/$85, 32, '
+    + 'already shipped in shard 11) and $272E7A (type $89, 96, shard 2) and '
+    + 'stops at $272FFA -- so the run cannot size this table and the INDEX '
+    + 'does. [M] $151790 stride $34 = 48 mask words'],
+  [16, 0x2763d8, 4, 4, 4, 0x2763e8,
+    'type $88 SUB-RECORD, four frames. $275E46 / handlers.js:2515 `move.l '
+    + '(A0,D0.w),($2a,A6)` indexed by ($28,A6) as a BYTE offset. Both ends are '
+    + 'the cartridge\'s: $2763D0 is the handler\'s `jmp $263762` and [M] '
+    + '$2763E8 is $00000800, which is not a stream start'],
   [8, 0x28a5c2, 36, 4, 36, 0x28a652,
     'THE IMPACT SPARK, $289F54/$28A098 (src/spark.js). 36 frames, '
     + '$22CA1C..$22CBC0 step $C -- 12 mask words each, which is exactly the '
@@ -374,6 +415,33 @@ const LASER_STREAMS = Object.freeze([0x01302c, 0x013098, 0x065354, 0x011e8c,
 const LASER_SHARD = 1;
 /** W61: the item shard -- see SPR_SHARDS[12]. */
 const ITEM_SHARD = 12;
+
+// ------------------------------------------------------------------- WAVE 81
+/** THE THREE STREAMS THAT ARE IMMEDIATES, NOT TABLE ENTRIES.  Each is pinned by
+ *  the instruction or the prototype word that carries it, and a fourth address
+ *  the same reading produces -- type $85's `$2758B0` prototype -- is NOT here
+ *  because [M] its descriptor `$172FC4` is already in shard 11.
+ *
+ *  `[shard, offs, why]`. */
+const W81_IMMEDIATES = Object.freeze([
+  [15, 0x1735fc,
+    'TYPE $82\'s BODY. Not a table: the sub-record PROTOTYPE at $274770 carries '
+    + 'it at +6, which `loadSubProto` copies to ($a,A6) (initbody.js:496), and '
+    + '$274A28 `jsr $23DBCA` emits ($a,A6) unchanged. [M] size word $274770+$A '
+    + '= $0C58 = 96x88 px, 530 mask words -- the blue forward-swept-wing '
+    + 'fighter W75 §3.1 photographed off the board\'s framebuffer'],
+  [15, 0x173810,
+    'TYPE $82\'s THIRD RECORD, the one that goes to a DIFFERENT BUCKET. '
+    + '$274A70 `move.l #$173810,D2` / $274A76 `move.w #$628,D3` (6x40) / '
+    + '$274A7E `jsr $23DF58`. Gated by `tst.w $813098` (RANK) at $274A50 and '
+    + '`tst.w $80390C` at $274A58, so a rank-0 single-player run never asks '
+    + 'for it -- which is exactly why a harvest sized off a RUN would miss it'],
+  [16, 0x17d480,
+    'TYPE $88\'s BODY. The prototype at $275ECC+6 (initbody.js:552), size word '
+    + '$0C60 = 96x96 px, 578 mask words. [M] This is the stream the live page '
+    + 'named at 55 s and 65 s and 80 s in W68 §6 -- `NO ART $17D480` -- for a '
+    + 'type that has been emitting 12 of 12 records since W36'],
+]);
 
 /** Shard metadata.  `boot` is awaited by `loadBundle`; the rest are queued from
  *  boot and promoted by the page's miss guard. */
@@ -437,6 +505,15 @@ const SPR_SHARDS = Object.freeze([
   [13, 'bomb', 'THE BOMB AND THE LASER BOMB: $255E3E\'s three phase scripts, '
     + 'the laser bomb\'s data block $256662..$256986, pool E\'s $28A464, the '
     + 'ship\'s bit-7 aura and type $8A\'s pair (W66)'],
+  [14, 'type10', 'THE GOLD MECH: type $10\'s hull $268594 (64, by heading) and '
+    + 'turret $268694 (32, by facing) -- the pair W80 read as one 96-entry '
+    + 'table. The owner\'s "tanks on the golden terrain" (W81)'],
+  [15, 'type82', 'THE FIGHTER: type $82\'s body $1735FC (96x88) and its '
+    + 'bucket-3 record $173810. The largest invisible object in the stage, and '
+    + 'it arrives on the rung the midboss dies (W75 §4, W81)'],
+  [16, 'type88', 'THE TWIN TURRET: type $88\'s body $17D480, its four-frame '
+    + '$2763D8 and both barrels\' $272D7A. Already emitting 12 of 12 records '
+    + 'with no picture for any (W80 §5, W81)'],
 ]);
 const SPR_BOOT = [0];
 /** the order the deferred shards are FETCHED in -- measured first need, not
@@ -473,7 +550,15 @@ const SPR_BOOT = [0];
 // shards the simulation reaches on its own. `demand()` promotes it to the head
 // of the queue on the frame Button 2 is pressed, exactly as it has since W47,
 // and until it lands the page NAMES it rather than drawing pen 0.
-const SPR_ORDER = Object.freeze([0, 7, 6, 10, 9, 13, 12, 8, 1, 2, 3, 4, 5, 11]);
+// W81: the three new shards go AHEAD of shard 1, and the clock that says so is
+// the BOARD's, not the port's -- `75-diag` §3's per-type first..last logic frame
+// over a 210-rung ladder of the whole stage. [M, cited W75 §3] type $10 is on
+// screen from lf2,200 and type $88 from lf2,500 (measured here off the same
+// ladder), against shard 1's own first need at +7.7 s = lf~2,456 (W47). Type
+// $82 arrives at lf3,825 -- 30 s of slack on 2.7 KiB -- and goes behind them.
+// Shard 14 is 52 KiB and its deadline is the earliest of the three, so it leads.
+const SPR_ORDER = Object.freeze([0, 7, 6, 10, 9, 13, 12, 8, 14, 16, 15,
+  1, 2, 3, 4, 5, 11]);
 
 // ---------------------------------------------------------------------------
 // 1. COVERAGE.  What can this capture possibly make the renderer read?
@@ -663,6 +748,16 @@ for (const offs of ITEM_STREAMS) {
   streams.set(offs, romExtent(offs));
   shardOfStream.set(offs, ITEM_SHARD);
   harvested++;
+}
+// WAVE 81: the three immediates above.  `romExtent` throws unless each is a real
+// stream start, which is the whole check an immediate can have -- there is no
+// run and no neighbour to pin it against.
+for (const [shard, offs, why] of W81_IMMEDIATES) {
+  if (streams.has(offs)) { harvestAlready++; continue; }
+  streams.set(offs, romExtent(offs));
+  shardOfStream.set(offs, shard);
+  harvested++;
+  void why;
 }
 
 // ------------------------------------------------------------------- WAVE 52
@@ -2198,9 +2293,8 @@ const manifest = {
       added: h.added, already: h.already,
     })),
     laser: LASER_STREAMS.map((o) => `$${o.toString(16).toUpperCase().padStart(6, '0')}`),
-    notHarvested: '$268594 (enemy type $10, 90 absent, 51.8 KiB): no ported '
-      + 'code reads it and 0 of its 96 streams were emitted in 6,185 frames. '
-      + 'See export-web.mjs.',
+    notHarvested: 'NONE. W81 closed $268594 (enemy type $10): it is TWO '
+      + 'tables, 64 + 32, and both ship in shard 14.',
     note: 'RE-BASED into a compact 16-bit address space: headers rewritten to '
       + 'the packed colour addresses, and every capture.bin record\'s offs '
       + 'field rewritten to match. Array lengths are powers of two because '

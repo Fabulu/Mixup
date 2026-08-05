@@ -485,6 +485,16 @@ ENEMY_STAT_TABLES = [
     (0x267F60, 0x00A0, "W23: the bucket-emitter table $267F70 (types $10/$11, "
                        "indexed by (sub +$1F)<<3)"),
     (0x268690, 0x0090, "W23: type $10's 32-direction sprite table $268694"),
+    # W81: type $10's own MUZZLE table, $268494, read at $268474 with
+    # `move.w D1,D3 / addq.w #1,D3 / andi.w #$3E,D3 / add.w D3,D3` -> byte
+    # offsets 0..$7C, i.e. 32 entries of FOUR bytes ending at $268514.  Type
+    # $11's $268B1E is EIGHT bytes an entry over the same index, which is why
+    # this is a separate window and not a reuse: reading one as the other puts
+    # every bullet at half the offset.  The far end is pinned by the run's own
+    # shape -- $268514 begins $268516's `bra`-target code region -- and by the
+    # index, which cannot reach past $268510.
+    (0x268490, 0x0090, "W81: type $10's 32-entry muzzle-vector table $268494, "
+                       "read at $268474 by the $281402 fire ($26848A)"),
     (0x268C90, 0x0090, "W23: type $11's 32-direction sprite table $268C9E"),
     (0x269E40, 0x0110, "W23: the damage-first family's shared sprite table "
                        "$269E48 + bucket table $269EC8 (16-dir, heading-indexed)"),

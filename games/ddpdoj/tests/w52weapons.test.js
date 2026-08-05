@@ -278,11 +278,24 @@ test('the two weapon shards are DEFERRED and fetched FIRST among the deferred', 
   // the game reaches by itself, and because at 186 KiB it is the second-largest
   // body in the bundle and must not sit in front of shards the simulation
   // reaches on its own.  `demand()` promotes it on the frame Button 2 is pressed.
-  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 10, 9, 13, 12, 8, 1, 2, 3, 4, 5, 11\]\)/.test(s),
+  // W81 inserted 14 (the gold mech), 16 (the twin turret) and 15 (the fighter)
+  // BETWEEN the spark and shard 1, in that order, because the BOARD's own
+  // ladder puts type $10 on screen from lf2,200 and type $88 from lf2,500 --
+  // both ahead of shard 1's measured +7.7 s -- and type $82 not until lf3,825.
+  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 10, 9, 13, 12, 8, 14, 16, 15,\s*1, 2, 3, 4, 5, 11\]\)/.test(s),
     'the bullets (+0.7 s), the shots (the first fire frame), the LASER (the '
-    + 'first held frame), the death explosion, THE BOMB, THE ITEM and the '
-    + 'impact spark all come before shard 1 (+7.7 s): index order is NOT need '
-    + 'order any more');
+    + 'first held frame), the death explosion, THE BOMB, THE ITEM, the impact '
+    + 'spark and W81\'s three enemy-art shards all come before shard 1 '
+    + '(+7.7 s): index order is NOT need order any more');
+  // and the ORDER IS A CLAIM ABOUT DEADLINES, not a literal: whatever the array
+  // says, every shard whose first need is earlier than shard 1's must precede
+  // it. This is the assertion the literal above cannot make on its own.
+  const order = JSON.parse(s.match(/SPR_ORDER = Object\.freeze\((\[[\s\S]*?\])\)/)[1]);
+  for (const early of [7, 6, 10, 9, 13, 12, 8, 14, 16, 15]) {
+    assert.ok(order.indexOf(early) < order.indexOf(1),
+      `shard ${early}'s first need is earlier than shard 1's +7.7 s, so it must `
+      + 'be fetched first');
+  }
   assert.ok(/\[12, 'items'/.test(s), 'W61: the item is its own shard');
   assert.ok(/\[13, 'bomb'/.test(s), 'W66: the bomb and the laser bomb are a shard');
   assert.ok(/\[10, 'laser'/.test(s) && /\[11, 'structures'/.test(s),

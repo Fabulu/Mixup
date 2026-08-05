@@ -392,16 +392,53 @@ test('the table EXTENTS are checked against the cartridge, not trusted', () => {
   assert.match(src, /checkTableExtent\(base, n, stride, runsTo, endsAt, why\)/);
 });
 
-test('$268594 is NAMED as not harvested, not silently omitted', () => {
-  // 96 entries, 90 of them absent, 51.8 KiB. No ported code reads it and the
-  // 6,185-frame run emitted 0 of its streams. A silent omission is how the next
-  // wave re-derives it from scratch.
+// W81 INVERTED THIS TEST, and the inversion is the finding.  It used to read
+// "$268594 is NAMED as not harvested, not silently omitted" and asserted that
+// `0x268594` appears in NO executable line, on the reasoning that it was "96
+// entries, 51.8 KiB, for a handler that does not exist".
+//
+// [M] W81: it is not 96 entries.  `$268300..$268324` indexes it with
+// `(($1A,A6) & $3E) * 4` plus a mirror +4, which reaches $FC -- SIXTY-FOUR
+// entries -- and `$2683AE` indexes a SECOND table at $268594+$100 with
+// `((($33,A5)+1) & $3E) * 2` -- THIRTY-TWO.  The 96 was their sum.  Both are
+// reachable, the handler exists now, and both ship in shard 14.
+test('$268594 is TWO tables, 64 + 32, and both are harvested', () => {
   const src = read('tools/export-web.mjs');
-  assert.match(src, /\$268594/);
+  const code = src.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '');
+  assert.ok(/\[14, 0x268594, 64, 4, 96, 0x268714,/.test(code),
+    'the HULL table is 64 entries, and its run of 96 is itself PLUS the turret '
+    + 'table at +$100 -- the same adjacency that pins type $11\'s $268B9E');
+  assert.ok(/\[14, 0x268694, 32, 4, 32, 0x268714,/.test(code),
+    'the TURRET table is 32 entries and its run stops at $268714, which is code');
   assert.match(src, /notHarvested/);
-  assert.ok(!/0x268594/.test(src.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '')),
-    '$268594 must not appear in executable code -- naming it is the point, '
-    + 'harvesting it would be 51.8 KiB for a handler that does not exist');
+  assert.ok(/NONE\. W81 closed \$268594/.test(src),
+    'the manifest must SAY the deferral closed, in the same field that named '
+    + 'it -- a field that silently goes empty is how the next wave re-derives '
+    + 'the whole thing from scratch');
+});
+
+test('W81: type $82 and type $88 harvest what their INDEX reaches, not what a run saw', () => {
+  const src = read('tools/export-web.mjs');
+  const code = src.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '');
+  // The two IMMEDIATES. Neither is a table entry and neither can be found by
+  // walking a run: they are prototype words and a `move.l #imm,D2`.
+  assert.ok(/\[15, 0x1735fc,/.test(code) && /\[15, 0x173810,/.test(code),
+    'type $82 is TWO streams -- the $274770 prototype body and $274A70\'s '
+    + 'bucket-3 immediate -- not the 57 slot-frames W80 counted');
+  assert.ok(/\[16, 0x17d480,/.test(code),
+    'type $88\'s body is the $275ECC prototype word, the stream the live page '
+    + 'named as NO ART in W68 §6');
+  assert.ok(/\[16, 0x272d7a, 32, 4, 160, 0x272ffa,/.test(code),
+    'type $88\'s twin turret table is 32 by INDEX; its run of 160 walks '
+    + 'straight through $272DFA and $272E7A, so the run cannot size it');
+  assert.ok(/\[16, 0x2763d8, 4, 4, 4, 0x2763e8,/.test(code),
+    'type $88\'s four-frame sub table, both ends pinned by the cartridge');
+  // AND WHAT IS NOT HERE: $272DFA. Type $82's heading table is the $151E10
+  // family shard 11 has shipped since W58, so harvesting it again would be a
+  // second copy of art already in the bundle.
+  assert.ok(!/0x272dfa/.test(code),
+    'type $82\'s heading table $272DFA is the $151E10 family already in shard '
+    + '11 (STRUCTURE_RANGES); re-harvesting it would duplicate 32 streams');
 });
 
 test('SHARD 0 IS THE BOOT SHARD and holds the recording plus the ship', () => {

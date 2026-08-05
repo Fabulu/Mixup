@@ -34,14 +34,29 @@ const SIX = [0x2688cc, 0x268232, 0x269cea, 0x26a2e2, 0x2747c6, 0x27687e,
 // and `$269B3E`'s two draw arms use two REGISTER-convention stubs -- `$23DF86`
 // (arm A, bucket 7) and `$23DF58` (arm B, **bucket 3**).  Arm B being a
 // different bucket from arm A is the ROM's, not a typo: `$80688C`/`$80AFC6`.
+// W81 adds `$23DBCA`, TYPE $82's BODY EMITTER, and it is the first member of
+// the ZOOMING family (`$23D9E2 $23DA5C $23DAD6 $23DB50 $23DBCA`, $7A apart)
+// this project has ever had a producer for.  Its shape is a different one --
+// `41FA <disp> 4E71 2206` -- and its buffer/counter pair lives at +$3C, not at
+// +$0.  Every word below is transcribed out of `maincpu.bin`:
+//   $23DBCA 41FA 097E / 4E71 / 2206     ($23DBCA+2+$97E == $23E54A, the scale
+//                                        table -- which is what makes it a
+//                                        member of the family and not merely a
+//                                        routine that starts the same way)
+//   $23DC06 41F9 00807450 / D0F9 0080AFC8   -> BUCKET 7, and bucket 7 is where
+//                                        W75 §4.1 measured all 155 of type
+//                                        $82's board slot-frames.
 const EMIT_REC = 0x23d762, EMIT_REG = 0x23dece, EMIT_FAM = 0x23d852;
-const EMIT_A = 0x23df86, EMIT_B = 0x23df58;
+const EMIT_A = 0x23df86, EMIT_B = 0x23df58, EMIT_ZOOM = 0x23dbca;
 const STUB_WORDS = new Map([
   [EMIT_REC, 0x41f9], [EMIT_REC + 6, 0xd0f9], [EMIT_REC + 12, 0x43ee],
   [EMIT_REG, 0x41f9], [EMIT_REG + 6, 0xd0f9], [EMIT_REG + 12, 0x2001],
   [EMIT_FAM, 0x41f9], [EMIT_FAM + 6, 0xd0f9], [EMIT_FAM + 12, 0x43ee],
   [EMIT_A, 0x41f9], [EMIT_A + 6, 0xd0f9], [EMIT_A + 12, 0x2001],
   [EMIT_B, 0x41f9], [EMIT_B + 6, 0xd0f9], [EMIT_B + 12, 0x2001],
+  [EMIT_ZOOM, 0x41fa], [EMIT_ZOOM + 2, 0x097e], [EMIT_ZOOM + 4, 0x4e71],
+  [EMIT_ZOOM + 6, 0x2206],
+  [EMIT_ZOOM + 0x3c, 0x41f9], [EMIT_ZOOM + 0x42, 0xd0f9],
 ]);
 const STUB_LONGS = new Map([
   [EMIT_REC + 2, 0x80397c], [EMIT_REC + 8, 0x80afc0],
@@ -49,6 +64,7 @@ const STUB_LONGS = new Map([
   [EMIT_FAM + 2, 0x807450], [EMIT_FAM + 8, 0x80afc8],
   [EMIT_A + 2, 0x807450], [EMIT_A + 8, 0x80afc8],
   [EMIT_B + 2, 0x80688c], [EMIT_B + 8, 0x80afc6],
+  [EMIT_ZOOM + 0x3e, 0x807450], [EMIT_ZOOM + 0x44, 0x80afc8],
 ]);
 
 function makeRam(over = {}) {
@@ -75,6 +91,12 @@ function makeRam(over = {}) {
   // the port.  The gate-level aim evidence is `w80emitgate.mjs`, against the
   // cartridge; this file stays a smoke test and says so.
   ram.setU16(0x803910, 1);
+  // W81.  ($26,A5) is type $82's HEADING CADENCE and `$2749B4 subq.b #1 / bcc`
+  // is the same shape as ($18,A5)'s above -- a zero borrows and runs the aim,
+  // and a synthetic ROM cannot answer aim64's five tables.  Non-zero for the
+  // same reason and with the same caveat: this file is a SMOKE test.  The
+  // aiming evidence for $82 is `tools/w80emitgate.mjs`, against the cartridge.
+  ram.setU8(REC + 0x26, 3);
   for (const [k, v] of Object.entries(over)) ram.setU16(parseInt(k), v);
   return ram;
 }

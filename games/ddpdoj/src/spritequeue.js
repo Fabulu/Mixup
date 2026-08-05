@@ -443,15 +443,65 @@ export const SCALE_TABLE = Object.freeze([
   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 ]);
 
+// ---------------------------------------------------------------------- W81
+// THE ZOOMING FAMILY HAS FIVE MEMBERS AND THEY FEED FIVE DIFFERENT BUCKETS.
+// `$23D9E2 $23DA5C $23DAD6 $23DB50 $23DBCA`, $7A apart, identical instruction
+// for instruction except for the `lea <buffer>.l,A0 / adda.w <counter>.l,A0`
+// at +$3C.  `$23D9E2` is bucket 0 and is the one this file has always had;
+// type $82's body record goes through `$23DBCA`, which is BUCKET 7 -- and
+// bucket 7 is exactly where W75 §4.1 measured all 155 of type $82's board
+// slot-frames.
+//
+// The bucket comes OUT OF THE CARTRIDGE (the two longwords at +$3E and +$44),
+// never out of a map somebody typed, which is `resolveEmitStub`'s own rule.
+// The `41FA <disp>` is checked to resolve to $23E54A, so a routine that merely
+// starts with the same four opcodes cannot pass as a member of the family.
+/** @returns {{bucket:number}} */
+export function resolveZoomStub(rom, stub) {
+  const bad = (why) => unreached(stub, `$${stub.toString(16).toUpperCase()} was `
+    + `called as a member of the ZOOMING enqueue family $23D9E2/$23DA5C/`
+    + `$23DAD6/$23DB50/$23DBCA, and ${why}`);
+  if (rom.u16(stub) !== 0x41fa || rom.u16(stub + 4) !== 0x4e71
+      || rom.u16(stub + 6) !== 0x2206) {
+    bad(`it does not open \`lea (d16,PC),A0 / nop / move.l D6,D1\` (it opens $${
+      rom.u16(stub).toString(16).toUpperCase()})`);
+  }
+  const scale = i16(rom.u16(stub + 2)) + stub + 2;   // 68000 PC-rel: PC = stub+2
+  if (scale !== SCALE_TABLE_ROM) {
+    bad(`its PC-relative \`lea\` resolves to $${scale.toString(16).toUpperCase()
+    } and not to the scale table $${SCALE_TABLE_ROM.toString(16).toUpperCase()}`);
+  }
+  const at = stub + 0x3c;
+  if (rom.u16(at) !== 0x41f9 || rom.u16(at + 6) !== 0xd0f9) {
+    bad(`+$3C is not \`lea <abs>.l,A0 / adda.w <abs>.l,A0\` (it is $${
+      rom.u16(at).toString(16).toUpperCase()})`);
+  }
+  const buffer = rom.u32(at + 2), counter = rom.u32(at + 8);
+  const b = BUCKETS.find((x) => x.buffer === buffer && x.counter === counter);
+  if (!b) {
+    bad(`it feeds buffer $${buffer.toString(16).toUpperCase()} counted at $${
+      counter.toString(16).toUpperCase()}, which is not one of the thirty `
+      + 'buckets wave 11 enumerated');
+  }
+  return { bucket: b.i };
+}
+
+/** Run a zooming enqueue read out of a ROM address (W81). */
+export function enqueueZoomedThroughStub(ram, rom, stub, rec, flags) {
+  return enqueueZoomedRequest(ram, rec, flags, resolveZoomStub(rom, stub).bucket);
+}
+
 /**
- * $23D9E2 -- the zooming enqueue.  Appends to the QUEUE (bucket 0).
+ * $23D9E2 -- the zooming enqueue.  Appends to the QUEUE (bucket 0) unless the
+ * caller names another member of the family's bucket (W81).
  *
  * @param {import('./ram.js').Ram} ram
  * @param {number} rec    the object record (A6)
  * @param {number} flags  D6: the flags longword, high word = long axis
  *                        (grow bit 15, zoom bits 14..11), low word = short axis
+ * @param {number} bucket which member of the family; 0 is `$23D9E2`'s own
  */
-export function enqueueZoomedRequest(ram, rec, flags) {
+export function enqueueZoomedRequest(ram, rec, flags, bucket = 0) {
   const d6 = flags >>> 0;
   const sizeWord = ram.u16(rec + 0x0e);
   const height = sizeWord & 0x1ff;                            // $23D9F6
@@ -468,13 +518,25 @@ export function enqueueZoomedRequest(ram, rec, flags) {
       + `producer that can be gated`);
   }
   const scaleShort = SCALE_TABLE[(height >> 1) >> 2];         // $23D9FA..$23DA00
-  const scaleLong = SCALE_TABLE[(widthByte & 0x3e) >> 1];     // $23DA10..$23DA1C
+  // W81 -- A DEFECT, AND IT SURVIVED BECAUSE NOTHING REACHED THIS ROUTINE.
+  // This line read `SCALE_TABLE[(widthByte & 0x3e) >> 1]`.  `$23DA16` is
+  // `lsl.w #$2,D0` (`E548`), so the BYTE offset into a FOUR-byte table is
+  // `(hi & $3E) * 4` and the ENTRY INDEX is `hi & $3E` -- which is the width
+  // field DOUBLED, i.e. `pixels / 8`, exactly as the short axis's `height / 8`
+  // is.  The `>> 1` halved it and made the long-axis recentring `pixels / 16`.
+  // The block comment above this function ("entry index = width*2") had it
+  // right; the code did not.  Nothing could see it because W11 had no producer
+  // for the zooming family at all -- type $82's `$274A28 jsr $23DBCA` is the
+  // first, and on its own `($E,A6)` = $0C58 the two readings are 6 and 12,
+  // i.e. a 3-pixel error on a 96x88 sprite.
+  const scaleLong = SCALE_TABLE[widthByte & 0x3e];            // $23DA10..$23DA1C
 
   //  $23D9E8..$23D9EE, then $23DA08..$23DA0C on the swapped half.
   const shortAdj = i16(u16(0x80 - u16(d6 >>> 8)) * scaleShort);
   const longAdj = i16(u16(0x80 - ((d6 >>> 24) & 0xff)) * scaleLong);
 
-  const b = BUCKETS[0];
+  const b = BUCKETS[bucket];
+  if (!b) throw new RangeError(`no sprite bucket ${bucket}`);
   const off = u16(ram.u16(b.counter));                        // $23DA24
   const at = b.buffer + off;
   ram.setU16(b.counter, u16(off + RECORD_BYTES));             // $23DA52
