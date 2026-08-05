@@ -1,6 +1,6 @@
 # W57 / M1 — IMPL: the midboss's DEATH (`$26C1C2`/`$26C1CA`/`$26C20C`)
 
-status: **IN PROGRESS**
+status: **DONE**
 
 wave: 57 (DaiOuJou M1). role: IMPLEMENTER, SOLE writer to `games/ddpdoj/src/`.
 date: 2026-08-05.
@@ -374,3 +374,53 @@ the 19 SCRIPT bodies asserted separately from W57's deferred one) and
 `integration.test.js` (`m.size` 19, with the script denominator still 18 of 19,
 the boss). **The denominators were not merged**: type `$1C` is not one of the
 nineteen stage-1 script handlers and saying it was would invent coverage.
+
+### 7.3 AFTER -- the DEPLOYED build, same recipe, same browser
+
+Build `20260805035733`, confirmed live on three consecutive polls, then driven
+with fire (`z`) HELD from boot:
+
+```
+BOOTED     lf2543  clk162
++22.3s     lf3925  clk239     <- PAST the old wall (lf3766/clk232) and past the crawl
++43.8s     lf5184  clk318
++65.7s     lf6486  clk399
++89.9s     lf7870  clk488     <- stops at "$292902 IS NOT PORTED YET"
+```
+
+**Killing the midboss on the deployed page no longer stops the game.** What
+stops it now is the **stage-1 BOSS**, `$292902`, 4,104 logic frames and about
+68 seconds of play further on -- a loud named throw W36 left deliberately, and
+the honest new frontier. The `#err` panel is empty for the whole of the midboss
+window; the local run against the same bundle over `http://127.0.0.1` stopped
+at **exactly the same frame**, lf7870/clk488.
+
+**[M] the server I started for the local run was killed and the post-run sweep
+(`Get-CimInstance Win32_Process`) finds ZERO `http.server`/`serve.py`
+processes.**
+
+### 7.4 WHAT THE DEPLOY CARRIED THAT IS NOT MINE -- said out loud
+
+W58/E3 (the art wave) was mid-flight in `games/ddpdoj/tools/` when this fix was
+ready, with `export-web.mjs`, `webgate.mjs` and `tests/w52weapons.test.js`
+UNCOMMITTED. `assets/` is one shared artifact, so the published bundle carries
+their work as well as mine. I did not stash, revert or edit any of their files
+(`docs/knowledge/05`, and the HANDOVER's own warning about a dirty tree).
+
+What I did instead, and what justified pressing publish: I ran **their** gate on
+**this exact tree** and it is green -- `webgate.mjs` **13 of 13 PASS**, including
+their two new W58 stages -- on top of `pgm.py check` **51/0/0** and **706** unit
+tests. Nothing red was published. But the record should say that build
+`20260805035733` contains W58's in-flight art, published by W57.
+
+## LOG (continued)
+
+- **[M] LIVE, BEFORE:** the deployed build stopped at lf3766/clk232 with
+  `$26C1C4`, a FOURTH reproduction.
+- **[M] LIVE, AFTER:** build `20260805035733` runs to lf7870/clk488 and stops at
+  `$292902`, the stage-1 boss. Same frame as the local run against the same
+  bundle. Server killed; zero orphans.
+- gate **ALL GREEN 51 passed / 0 failed / 0 SKIPPED** (49 -> 51: this wave's
+  scenario and its red). Unit tests **697 -> 706**, 0 skipped.
+
+status: **DONE**
