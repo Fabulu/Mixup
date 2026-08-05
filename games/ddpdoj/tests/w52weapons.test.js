@@ -266,10 +266,16 @@ test('the two weapon shards are DEFERRED and fetched FIRST among the deferred', 
   // even though it is 218.4 KiB against 0.8, because [M] the first frame an
   // enemy DIES is the same frame the first shot connects (24 in webgate's own
   // tapped window) and `demand()` promotes whichever the simulation reaches.
-  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 9, 8, 1, 2, 3, 4, 5\]\)/.test(s),
-    'the bullets (+0.7 s), the shots (the first fire frame), the death '
-    + 'explosion and the impact spark all come before shard 1 (+7.7 s): index '
-    + 'order is NOT need order any more');
+  // W58 inserted shard 10, THE LASER, THIRD -- ahead of the death explosion,
+  // because the player can hold fire on frame one and the beam is the owner's
+  // most-repeated complaint -- and shard 11, THE STRUCTURES, LAST, because it
+  // is 256.7 KiB and `demand()` promotes it the moment a record asks ([M] +5.3 s).
+  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 10, 9, 8, 1, 2, 3, 4, 5, 11\]\)/.test(s),
+    'the bullets (+0.7 s), the shots (the first fire frame), the LASER (the '
+    + 'first held frame), the death explosion and the impact spark all come '
+    + 'before shard 1 (+7.7 s): index order is NOT need order any more');
+  assert.ok(/\[10, 'laser'/.test(s) && /\[11, 'structures'/.test(s),
+    'W58: the laser and the big mid-screen structures are their own shards');
   assert.ok(/order: SPR_ORDER\.indexOf\(i\)/.test(s),
     'and the order is PUBLISHED in the manifest rather than assumed by the queue');
 });

@@ -402,15 +402,33 @@ try {
       game.ram.setU8(0x810424, 0xff);
       game.step(0xffff);
     }
-    const FIRST_MISS = 0x233f34;                // [M] a 5x80 BACKGROUND element
+    // ============================ WAVE 58 MOVED THIS STAGE'S SUBJECT =========
+    //
+    // and it is a TIGHTENING, not a loosening, so it is re-stated rather than
+    // nudged. Until W58 this stage asserted `$233F34` -- a 5x80 BACKGROUND
+    // element -- was among the named misses, because it was [M] the first
+    // record in the whole run with no picture anywhere. W58 SHIPS IT (shard 11,
+    // the big mid-screen structures), so that clause is now false FOR THE RIGHT
+    // REASON and keeping it would fail a green tree.
+    //
+    // What replaces it is stronger, because it is an ABSOLUTE and not an
+    // "includes": [M] over this whole window the ONLY address the guard names
+    // is `$000000`, five times. That is the EXTENT RULE half -- a record that
+    // reads 122 mask words out of a stream the sheet holds 10 of -- which is
+    // the half `--break no-extent-check` red-validates and the half that would
+    // draw garbage rather than nothing. `gMiss.size === 1` says the bundle now
+    // covers every real picture this window asks for AND that the guard is
+    // still alive; either failure moves the number.
     const NULL_STREAM = 0x000000;               // [M] 3x40 against 10 mask words
-    const guardOk = gSkip > 0 && gMiss.has(FIRST_MISS) && gMiss.has(NULL_STREAM)
-      && gVisible === gRec;
+    const EXP_MISS_ADDRS = 1, EXP_NULL_HITS = 5;
+    const guardOk = gSkip > 0 && gMiss.size === EXP_MISS_ADDRS
+      && gMiss.get(NULL_STREAM) === EXP_NULL_HITS && gVisible === gRec;
     console.log(`${guardOk ? 'PASS' : 'FAIL'}: W44 the guard FIRES -- to lf2700, `
       + `${gRec} records, ${gSkip} MISSED (expect > 0), `
-      + `${gMiss.size} distinct addresses, includes $233F34 `
-      + `(${gMiss.has(FIRST_MISS) ? 'yes' : 'NO'}) and the $000000 over-read `
-      + `(${gMiss.has(NULL_STREAM) ? `yes x${gMiss.get(NULL_STREAM)}` : 'NO'}); `
+      + `${gMiss.size} distinct addresses (expect ${EXP_MISS_ADDRS}), the `
+      + `$000000 over-read x${gMiss.get(NULL_STREAM) ?? 0} (expect `
+      + `${EXP_NULL_HITS}); W58 shipped $233F34 and every other real picture `
+      + `this window asks for, so the EXTENT rule is all that is left to fire; `
       + `the renderer still sees ${gVisible} of ${gRec} records `
       + `(a skip must not TERMINATE the list)`);
     console.log('  NO ART: ' + [...gMiss.entries()].sort((a, b) => b[1] - a[1])
@@ -741,6 +759,87 @@ try {
             9: 'W54 $289004 was a COUNTED NOTE and pool B' }[sh]
             ?? 'W52 this bucket'} `
           + 'emitted nothing at all');
+        if (!ok) code = 1;
+      }
+
+      // ================================================== WAVE 58 -- E3, THE ART
+      //
+      // THE OWNER'S REPORT: "Laser looks like shit also and flickers... tons of
+      // enemies completely invisible."  [M] `55-diag` measured 79.3 % of the
+      // sprite PIXELS the port asks for having no picture, and bucket 16 -- the
+      // beam -- drawing 5.0 % of its own records over 33 descriptors of which
+      // 29 were absent.
+      //
+      // THIS STAGE NEEDS ITS OWN WINDOW AND THAT IS THE POINT.  The W52 window
+      // TAPS fire every 4 frames, which charges nothing: the beam only exists
+      // while Button 1 is HELD.  Running the laser shard through the tapped
+      // window would report a handful of records and pass on almost nothing.
+      // So this one is the E3 scenario -- fly UP, tap every 4th frame, and two
+      // 120-frame HOLDS inside every 600 -- which is what makes the beam draw
+      // and what `58-impl-E3-art.md` states every before/after number over.
+      //
+      // W47 §4.1's TRAP, avoided the same way: `records`, `distinct` and `first`
+      // are the PORT's own and no bundle can supply them; `streams` is the one
+      // number a short harvest moves.  A harvest cut to the 29 addresses one
+      // run measured moves `streams` from 415 to 29 and `distinct` with it.
+      const EXP58 = {
+        frames: 1500,
+        10: { streams: 407, records: 1736, distinct: 34, first: 24,
+          what: 'THE LASER BEAM ($24BB0A x4 frames x5 powers + the segment '
+            + 'and option blocks, bucket 16)' },
+        11: { streams: 146, records: 12681, distinct: 101, first: 315,
+          what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
+            + 'hole in the middle of the playfield)' },
+      };
+      const runW58 = (frames) => {
+        const g = new Game(bundle.seed, bundle.tables, {
+          logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
+          bgSeed: bundle.cap.part(0, 'bg'),
+        });
+        const st = { 10: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 },
+          11: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 } };
+        const FIRE = portWordFromBits([BIT.b1]), UP = portWordFromBits([BIT.up]);
+        for (let i = 0; i < frames; i++) {
+          const res = portSpriteList(g.ram, map, { out: buf, ...shardOpts });
+          for (let k = 0; k < 256; k++) {
+            const b = k * RAM_STRIDE;
+            const w4 = g.ram.u16(0x800000 + (b + 4) * 2);
+            if ((w4 & 0x7fff) === 0) break;
+            const offs = ((g.ram.u16(0x800000 + (b + 2) * 2) & 0x7f) << 16)
+              | g.ram.u16(0x800000 + (b + 3) * 2);
+            const sh = map.get(offs)?.[2];
+            if (sh !== 10 && sh !== 11) continue;
+            const t = st[sh];
+            t.rec++; t.seen.add(offs); if (t.first < 0) t.first = i;
+            if (((w4 & 0x7e00) >> 9) === 0 || (w4 & 0x1ff) === 0) continue;
+            if (res.missing.has(offs)) t.named++;
+            else if (bundle.spr.state[sh] === 'ready') t.drawn++; else t.pend++;
+          }
+          g.ram.setU8(0x810424, 0xff);
+          const ph = i % 600;
+          let word = 0xffff & UP;
+          if ((ph >= 120 && ph < 240) || (ph >= 360 && ph < 480)) word &= FIRE;
+          else if (i % 4 === 0) word &= FIRE;
+          g.step(word);
+        }
+        return st;
+      };
+      const w58after = runW58(EXP58.frames);
+      for (const sh of [10, 11]) {
+        const e = EXP58[sh], a = w58after[sh];
+        const ok = bundle.spr.meta[sh].streams === e.streams
+          && a.rec === e.records && a.seen.size === e.distinct && a.first === e.first
+          && a.drawn === a.rec && a.pend === 0 && a.named === 0;
+        console.log(`${ok ? 'PASS' : 'FAIL'}: W58 ${e.what} -- over ${EXP58.frames} `
+          + 'logic frames from the shipped seed flying UP with fire tapped and '
+          + 'two 120-frame HOLDS in every 600, sprite shard '
+          + `${sh} holds ${bundle.spr.meta[sh].streams} streams `
+          + `(expect ${e.streams}) and the port's own $800000 list carries `
+          + `${a.rec} records of them (expect ${e.records}) over ${a.seen.size} `
+          + `distinct images (expect ${e.distinct}), first at frame ${a.first} `
+          + `(expect ${e.first}). All shards loaded: ${a.drawn} DRAWN of ${a.rec}, `
+          + `${a.pend} pending, ${a.named} with no art. Before W58 not one of `
+          + 'them had a picture');
         if (!ok) code = 1;
       }
     }

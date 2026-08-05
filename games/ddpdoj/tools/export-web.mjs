@@ -107,7 +107,7 @@ import {
   SPRMASK_LAYOUT, SPRMASK_SIZE, assemble, assertLittleEndianHost,
 } from '../src/render/regions.js';
 import { bgTile, txTile, BG_W, BG_H, TX_W, TX_H } from '../src/render/tiles.js';
-import { streamExtent } from '../src/render/spritedir.js';
+import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GAME = path.resolve(HERE, '..');
@@ -374,6 +374,13 @@ const SPR_SHARDS = Object.freeze([
     + '$221520/$221630, 23 distinct scripts of 12..36 cells each, walked the '
     + 'way $288E4E and $288E20 walk them (W54). What happens when an enemy '
     + 'actually dies.'],
+  [10, 'laser', 'THE LASER BEAM: $24BB0A\'s 4-frame animation for all five '
+    + 'POWER steps + the segment block $24A86A..$24B7EA and the option block '
+    + '$24BBA0..$24C080 (W58). [M] 29 of the beam\'s 33 descriptors had no '
+    + 'picture: the owner\'s flicker.'],
+  [11, 'structures', 'buckets 2/3/7 -- background structures, midboss and large '
+    + 'emplacements, [M] 111 streams = 82.5 % of every missing sprite PIXEL '
+    + '(W58). The 288x208 hole in the middle of the playfield.'],
 ]);
 const SPR_BOOT = [0];
 /** the order the deferred shards are FETCHED in -- measured first need, not
@@ -390,7 +397,14 @@ const SPR_BOOT = [0];
 // need at +7.7 s.  It goes FOURTH, ahead of the 0.8 KiB spark deliberately:
 // the spark's own first need is later than the first kill in a tapped run and
 // `demand()` promotes whichever the simulation actually reaches first anyway.
-const SPR_ORDER = Object.freeze([0, 7, 6, 9, 8, 1, 2, 3, 4, 5]);
+// W58: shard 10 THE LASER goes THIRD, behind the two shards that have to draw
+// before anything can be hit and ahead of the 218 KiB explosion, because [M]
+// its deadline is the FIRST HELD FRAME -- the player can hold fire on frame one
+// -- and it is the owner's most-repeated complaint. Shard 11 THE STRUCTURES is
+// 256.7 KiB and goes LAST by index, which costs nothing: [M] its first need is
+// +5.3 s and `demand()` promotes whichever shard the simulation actually
+// reaches first, exactly as it has since W47.
+const SPR_ORDER = Object.freeze([0, 7, 6, 10, 9, 8, 1, 2, 3, 4, 5, 11]);
 
 // ---------------------------------------------------------------------------
 // 1. COVERAGE.  What can this capture possibly make the renderer read?
@@ -828,6 +842,317 @@ function walkEffectScript(desc, dur) {
   console.log(`  effect scripts $221520+$221630: ${entries} entries, `
     + `${scripts.size} distinct scripts, ${seen.size} streams, data ends exactly `
     + `at $${EFFECT_DATA_END.toString(16).toUpperCase()}`);
+}
+
+// ------------------------------------------------------------------- WAVE 58
+// 1e. THE LASER'S ART, and 1f. THE BIG MID-SCREEN STRUCTURES.  (E3 --
+// docs/worklog/ddpdoj/58-impl-E3-art.md)
+//
+// THE REPORT THIS CAME OUT OF.  The owner, playing the live build: "something
+// fires. It looks like shit. Laser looks like shit also and flickers. After
+// initial tanks shots come out of nowhere, tons of enemies completely
+// invisible."  `55-diag-invisible-content.md` measured that it is MISSING ART:
+// [M] 79.3 % of the sprite pixels the port asks for had no picture behind them.
+//
+// THE FLICKER IS NOT A PHASE BUG, IT IS 29 ABSENT PICTURES.  [M] Bucket 16 --
+// the beam -- emitted 2,606 records over a 3,000-frame playing run and drew 131
+// of them (5.0 %) over 33 distinct descriptors, 29 of which the sheet did not
+// have.  Every emit site already runs (`src/laser.js`, W45); the beam simply
+// steps an animation whose frames are not in the bundle, so it appears on a
+// minority of its own steps and vanishes on the rest.
+//
+// (1e) THE LASER, ENUMERATED FROM THE CARTRIDGE RATHER THAN FROM THE RUN.
+// `55-diag` §10's W56 shopping list is the 29 addresses ONE scenario reached at
+// ONE power level.  [M] The beam's descriptor comes from `$24BB0A`, a table of
+// twenty (startOffset, pointer) pairs indexed by
+// `($22,A5)*4 + {0,$28,$50,$78}` (`$254FF6..$255036`, `laser.js beamRequest`),
+// and each pointer names a 40-byte block of FOUR ten-byte animation frames that
+// `$2550A0 subi.w #$a` walks.  Shipping the 29 ships ONE of those blocks and
+// the beam goes blank again the first time the player picks up a power-up.  So:
+//
+//   * THE BEAM: `$24BB0A` entries 0..4 -- the five POWER steps of the default
+//     loadout -- walked to all four frames each. 20 streams.
+//     THREE THINGS PIN THE STRUCTURE AND ALL THREE ARE ASSERTED BELOW:
+//       [M] $24B7EA + 20*$28 == $24BB0A, i.e. the block array ABUTS the pointer
+//           table exactly, which is what says there are twenty blocks;
+//       [M] $24BB0A + 20*8  == $24BBAA, and the longword there no longer
+//           carries the start offset $1E -- which is what says the pointer
+//           table is twenty entries and not more;
+//       [M] the start offset is $1E and the step is $A, and $1E + $A == $28 --
+//           the four frames EXACTLY fill a block.
+//   * THE SEGMENTS: every longword in the laser's own contiguous data block
+//     `$24A86A..$24B7EA` that is a MASK-ROM DIRECTORY ENTRY, plus the option
+//     block `$24BBA0..$24C080`.  THE METHOD IS DELIBERATE AND IT IS AN UPPER
+//     BOUND, NOT A CENSUS: a segment's descriptor `($a,A6)` is written only by
+//     `laser.js` reading one of these windows (`hBody`, `hOnShip`, `hOnPod`,
+//     `scriptBody`, `stepTemplate`, `startBeamRecords`), so the port CANNOT ask
+//     for a laser stream that is not in this set.  It over-includes -- the five
+//     template families interleave scripts, anim tables and $20-byte records --
+//     and the directory test is what keeps that bounded ([M] 80 of 362 hits in
+//     the segment block and 28 of 195 in the option block are NOT directory
+//     entries and are dropped).
+//     [M] It costs 104.5 KiB gz for 399 new streams against 7.7 KiB for the 29,
+//     all of it DEFERRED, and the assertion below is that all 29 are inside it.
+//
+// WHAT IS DELIBERATELY NOT HARVESTED, named rather than omitted:
+//   * `$24BB0A` entries 5..19 -- the `+$28`/`+$50`/`+$78` groups, 60 more
+//     streams.  `+$28` needs `($58,A5)` (ship select) non-zero and
+//     `src/machine.js` records it as [M] 0 for TYPE-A over the whole corpus with
+//     nothing in the port writing it; `+$50` needs `($5a,A6) != 2` and
+//     `tools/export-tables.py` records [M] 2 on every frame.  This is the
+//     `$268594` precedent: art for a state no ported code can enter.
+//   * AND IT IS SAFE TO LEAVE THEM OUT, because the port cannot silently draw
+//     the wrong thing there.  [M] the blocks those entries point at,
+//     `$24B902..$24BB0A`, are outside EVERY window `tools/export-tables.py`
+//     exports (`$24A800+$1100` stops at $24B900 and `$24BB00+$A0` starts after
+//     it), so reaching one is a LOUD NAMED THROW out of `src/rom.js` at $24B902
+//     -- which is more informative than a NO ART skip.  Widening that window
+//     WITHOUT this art would turn a loud throw into a quiet blank; the two must
+//     move together and neither moves in this wave.
+//   * the LASER's own impact spark `$22C6BC..$22C860` -- W53 §6's, still behind
+//     the unported `$289F96`/`$289FC0`/`$289FDA`.
+//
+// (1f) THE BIG MID-SCREEN STRUCTURES -- buckets 2, 3 and 7.
+// [M] 89.7 % of every missing sprite pixel in `55-diag`'s run and [M] 82.5 % of
+// mine.  These are the 288x208 black hole the owner sees in the middle of the
+// playfield.  THIS LIST IS A MEASURED FLOOR AND IT IS SAID SO HERE rather than
+// dressed up as an enumeration: they are reached from BACKGROUND-ELEMENT
+// IMMEDIATES ($2623A6..$262760) and from tables no ported handler indexes, so
+// there is no table for this file to walk to an extent.  `55-diag` §10's W59
+// asks for exactly this list and this is it, from a 3,000-frame playing run.
+// [M] 111 streams, 256.7 KiB gz, DEFERRED and promoted by the page's own miss
+// guard the moment a record asks -- which [M] is +5.3 s from the seed.
+
+const LASER_SHARD_W58 = 10;
+const STRUCT_SHARD = 11;
+
+/** the beam's `(startOffset, pointer)` pairs and the block array they index. */
+const BEAM_ANIM = Object.freeze({
+  ptrTab: 0x24bb0a, ptrEntries: 20, ptrStride: 8, ptrEndsAt: 0x24bbaa,
+  blocks: 0x24b7ea, blockBytes: 0x28, start: 0x1e, step: 0x0a,
+  /** entries 0..4: `($22,A5)*4` with the group offset 0 -- the power ladder of
+   *  the default ship and formation.  See the block header for 5..19. */
+  harvest: 5,
+});
+
+/** `[from, to, why]` -- scan for longwords that are MASK-ROM DIRECTORY entries. */
+const LASER_BLOCKS = Object.freeze([
+  [0x24a86a, 0x24b7ea,
+    'the laser\'s own contiguous data block: the type-2/7/12/17 scripts '
+    + '($24A86A..), family 1 ($24A932 x25x$26), family 2\'s sixteen $28-byte '
+    + 'anim tables ($24ACE8..$24AF68) and family 2 itself ($24AF68 x20x$0E), '
+    + 'family 3\'s scripts ($24B048), families 3/4/5 ($24B0A0/$24B1E0/$24B320) '
+    + 'and the two sub-templates $254C1E copies ($24B420, $24B6D2). It stops at '
+    + '$24B7EA because that is where the BEAM\'s own block array begins'],
+  [0x24bba0, 0x24c080,
+    'the OPTION block $24BBAA.. -- $24C906\'s twelve-byte template lists, whose '
+    + '($a,A6)/($5c,A6) pair is the pod muzzle and ITS GROUND SHADOW. [M] '
+    + '$065354 has shipped since W45 and $065388, the shadow beside it, did not: '
+    + 'it is bucket 5\'s only missing stream'],
+]);
+
+/** [M] ALL 33 descriptors bucket 16 -- the beam -- asked for over a 3,000-frame
+ *  playing run, of which the bundle held FOUR ($01302C $013098 $011E8C $013B94,
+ *  the first frame of four different cycles) and 29 it did not.
+ *  THE HARVEST ABOVE MUST CONTAIN EVERY ONE. This is what makes the range scan
+ *  non-vacuous: a wrong range, a wrong directory filter or a wrong beam walk
+ *  drops some of them and this build stops, naming them. */
+const B16_MEASURED = Object.freeze([
+  0x01302c, 0x013050, 0x013074, 0x013098, 0x0130bc, 0x0130e0, 0x013104,
+  0x013128, 0x01314c, 0x013170, 0x01447c, 0x0144e0, 0x014544, 0x014d28,
+  0x014d8c, 0x014df0, 0x014e54, 0x011e8c, 0x0120c0, 0x0122f4, 0x012528,
+  0x01275c, 0x012990, 0x012bc4, 0x012df8, 0x013b94, 0x013c18, 0x022aec,
+  0x022b90, 0x022c34, 0x022cd8, 0x022d7c, 0x022e20,
+]);
+
+/** bucket 0's last four, a chain run pinned from above by W53's own boundary:
+ *  [M] $22C59C..$22C6BC, and $22C6BC is exactly where the LASER's impact-spark
+ *  list ($28A51C, W53 §6) begins. */
+const B0_RUN = Object.freeze([0x22c59c, 0x22c6bc]);
+
+{
+  const dir = new Set(Array.from(walkDirectory(sprmask).starts));
+  const isDirEntry = (v) => v !== 0 && (v >>> 24) === 0
+    && dir.has((v & 0x7fffff) & (MASKW - 1));
+  const laserStreams = new Set();
+
+  // --- the beam -------------------------------------------------------------
+  if (BEAM_ANIM.blocks + BEAM_ANIM.ptrEntries * BEAM_ANIM.blockBytes
+      !== BEAM_ANIM.ptrTab) {
+    throw new Error(`the beam's block array $${BEAM_ANIM.blocks.toString(16)} + `
+      + `${BEAM_ANIM.ptrEntries} x $${BEAM_ANIM.blockBytes.toString(16)} does not `
+      + `land on the pointer table $${BEAM_ANIM.ptrTab.toString(16)}. The two `
+      + 'ABUT in the cartridge and that adjacency is the only thing that says '
+      + 'how many blocks there are.');
+  }
+  if (BEAM_ANIM.ptrTab + BEAM_ANIM.ptrEntries * BEAM_ANIM.ptrStride
+      !== BEAM_ANIM.ptrEndsAt
+      || (romBe32(BEAM_ANIM.ptrEndsAt) & 0xffff) === BEAM_ANIM.start) {
+    throw new Error(`the beam's pointer table $${BEAM_ANIM.ptrTab.toString(16)}: `
+      + `${BEAM_ANIM.ptrEntries} entries end at `
+      + `$${BEAM_ANIM.ptrEndsAt.toString(16)}, and the longword there `
+      + `($${romBe32(BEAM_ANIM.ptrEndsAt).toString(16)}) still carries the start `
+      + `offset $${BEAM_ANIM.start.toString(16)} -- so the table is longer than `
+      + 'this file says and the harvest would be short.');
+  }
+  if (BEAM_ANIM.start + BEAM_ANIM.step !== BEAM_ANIM.blockBytes) {
+    throw new Error(`the beam walks from $${BEAM_ANIM.start.toString(16)} down in `
+      + `steps of $${BEAM_ANIM.step.toString(16)}, which does not fill a `
+      + `$${BEAM_ANIM.blockBytes.toString(16)}-byte block exactly.`);
+  }
+  const blockAt = new Set();
+  for (let k = 0; k < BEAM_ANIM.ptrEntries; k++) {
+    blockAt.add(BEAM_ANIM.blocks + k * BEAM_ANIM.blockBytes);
+  }
+  for (let i = 0; i < BEAM_ANIM.ptrEntries; i++) {
+    const a = BEAM_ANIM.ptrTab + i * BEAM_ANIM.ptrStride;
+    const start = romBe32(a) & 0xffff, ptr = romBe32(a + 4);
+    if (start !== BEAM_ANIM.start || !blockAt.has(ptr)) {
+      throw new Error(`beam pointer entry ${i} at $${a.toString(16)} is `
+        + `(start $${start.toString(16)}, ptr $${ptr.toString(16)}); every entry `
+        + `must start at $${BEAM_ANIM.start.toString(16)} and point INTO the `
+        + `block array $${BEAM_ANIM.blocks.toString(16)}..`
+        + `$${BEAM_ANIM.ptrTab.toString(16)}.`);
+    }
+    if (i >= BEAM_ANIM.harvest) continue;      // groups +$28/+$50/+$78: see above
+    for (let off = BEAM_ANIM.start; off >= 0; off -= BEAM_ANIM.step) {
+      laserStreams.add(romBe32(ptr + off + 4) & 0x7fffff);   // ($a,A6)
+    }
+  }
+  const beamCount = laserStreams.size;
+
+  // --- the segments and the option block ------------------------------------
+  for (const [from, to] of LASER_BLOCKS) {
+    for (let a = from; a + 4 <= to; a += 2) {
+      const v = romBe32(a);
+      if (isDirEntry(v)) laserStreams.add(v & 0x7fffff);
+    }
+  }
+  const missed = B16_MEASURED.filter((o) => !laserStreams.has(o));
+  if (missed.length) {
+    throw new Error(`the laser harvest resolves ${laserStreams.size} streams and `
+      + `does NOT contain ${missed.length} of the ${B16_MEASURED.length} `
+      + 'descriptors a 3,000-frame playing run measured bucket 16 asking for: '
+      + `${missed.map((o) => '$' + o.toString(16)).join(' ')}. The range scan or `
+      + 'the beam walk has moved, and the owner\'s flicker would come back.');
+  }
+  let added = 0, already = 0;
+  for (const offs of [...laserStreams].sort((a, b) => a - b)) {
+    if (streams.has(offs)) { already++; continue; }
+    streams.set(offs, romExtent(offs));      // throws unless it is a stream start
+    shardOfStream.set(offs, LASER_SHARD_W58);
+    added++;
+  }
+  harvested += added; harvestAlready += already;
+  harvestReport.push({ shard: LASER_SHARD_W58, base: BEAM_ANIM.ptrTab,
+    entries: laserStreams.size, stride: 0, runsTo: laserStreams.size,
+    endsAt: 0x24c080, distinct: laserStreams.size, added, already,
+    why: 'THE LASER -- beam 5-power ladder + segment/option blocks (W58)' });
+  console.log(`  laser $24BB0A[0..${BEAM_ANIM.harvest - 1}] x4 frames = `
+    + `${beamCount} beam streams; + $24A86A..$24B7EA and $24BBA0..$24C080 = `
+    + `${laserStreams.size} total, and all ${B16_MEASURED.length} measured `
+    + 'bucket-16 descriptors are in it');
+}
+
+{
+  // bucket 0's last four, walked as a chain so the run's own extent sizes it.
+  let added = 0, already = 0, n = 0, a = B0_RUN[0];
+  while (a < B0_RUN[1] && n <= 64) {
+    const w = romExtent(a);
+    if (streams.has(a)) already++;
+    else { streams.set(a, w); shardOfStream.set(a, LASER_SHARD_W58); added++; }
+    a += w.stride; n++;
+  }
+  if (a !== B0_RUN[1]) {
+    throw new Error(`the $${B0_RUN[0].toString(16)} run steps OVER `
+      + `$${B0_RUN[1].toString(16)} to $${a.toString(16)}; $22C6BC is W53's own `
+      + 'boundary (the LASER impact-spark list) and it must be a stream start.');
+  }
+  harvested += added; harvestAlready += already;
+  harvestReport.push({ shard: LASER_SHARD_W58, base: B0_RUN[0], entries: n,
+    stride: 0, runsTo: n, endsAt: B0_RUN[1], distinct: n, added, already,
+    why: 'bucket 0, $22C59C..$22C6BC (W58)' });
+  console.log(`  $22C59C..$22C6BC: ${n} streams, closes exactly on W53's boundary`);
+}
+
+/** THE FOUR 32-FRAME ANIMATION FAMILIES, WALKED AS CHAINS -- `[base, endsAt,
+ *  why]`, `BULLET_RANGES`' mechanism, and `endsAt` IS THE CLAIM: if the
+ *  cartridge's chain steps OVER it this build stops.
+ *
+ *  THESE WERE AN EXPLICIT LIST OF MEASURED ADDRESSES UNTIL THE BROWSER SAID
+ *  OTHERWISE.  [M] With the measured list shipped, the live page still named
+ *  `$1567D4 $156ABC $156B38 $155C34` -- four neighbours of the twelve the run
+ *  reached, in the same uniform 3x40 run.  That is a measured floor going short
+ *  in the first thirty seconds of play, exactly as `46-diag`'s tank hulls did.
+ *  [M] All four families are 32 streams of ONE stride and each is closed by the
+ *  stride CHANGING at its far end, so the cartridge sizes them and not a run.
+ *  It costs 6.7 KiB gz for 35 more streams. */
+const STRUCTURE_RANGES = Object.freeze([
+  [0x11e1fc, 0x127e7c, '13x96 c16, stride 1252. [M] 32 streams, and $127E7C -- '
+    + 'itself an 18x208 this file ships below -- is stride 3748, a different '
+    + 'subject entirely'],
+  [0x12c7b0, 0x12d430, '3x32, stride 100. [M] 32 streams, closed by $12D430 '
+    + 'being stride 68. ($12D430 is the port\'s single most-emitted missing '
+    + 'stream -- [M] 3,600 records in 3,000 frames -- and it is NOT in this run; '
+    + 'it is the first frame of the next family and is shipped by name below.) '
+    + '55-diag §2.2 calls this "a 38-frame run $12C7B0..$12D3CC"; [M] it is 32'],
+  [0x151e10, 0x152a90, '3x32, stride 100. [M] 32 streams, closed by stride 228'],
+  [0x155c34, 0x156bb4, '3x40 c12, stride 124. [M] 32 streams, closed by $156BB4 '
+    + 'being stride 484. 55-diag §2.2 calls this "a 16-frame 3x40 c12 run '
+    + '$155D2C..$1569C4"; [M] it is 32, and it starts $DC lower'],
+]);
+
+/** [M] the eighteen buckets-2/3/7 streams a 3,000-frame playing run asked for
+ *  that are NOT inside one of the four families above. THESE ARE STILL A
+ *  MEASURED FLOOR -- see the block header. Every one is a large one-off
+ *  structure reached from a background-element immediate, with no uniform run
+ *  around it for the chain walk to close on. */
+const STRUCTURE_STREAMS = Object.freeze([
+  0x127e7c, 0x128d20, 0x129bc4, 0x12aa68, 0x12b90c, 0x12d430,
+  0x1727c4, 0x172d18, 0x1928bc, 0x192a48, 0x22cbcc, 0x22da70,
+  0x22ded4, 0x22e508, 0x22f184, 0x22fe98, 0x23061c, 0x233f34,
+]);
+{
+  if (STRUCTURE_STREAMS.length !== 18 || STRUCTURE_RANGES.length !== 4) {
+    throw new Error(`STRUCTURE_STREAMS holds ${STRUCTURE_STREAMS.length} `
+      + `addresses and there are ${STRUCTURE_RANGES.length} chain ranges; `
+      + 'W58 measured 18 and 4.');
+  }
+  let added = 0, already = 0, chained = 0;
+  for (const [base, endsAt, why] of STRUCTURE_RANGES) {
+    let a = base, n = 0, prev = base;
+    while (a < endsAt) {
+      const w = romExtent(a);              // throws unless it is a stream start
+      if (streams.has(a)) already++;
+      else { streams.set(a, w); shardOfStream.set(a, STRUCT_SHARD); added++; }
+      prev = a; a += w.stride; n++; chained++;
+      if (n > 512) throw new Error(`structure range $${base.toString(16)} did `
+        + `not reach $${endsAt.toString(16)} in 512 streams`);
+    }
+    if (a !== endsAt || n !== 32) {
+      throw new Error(`structure range $${base.toString(16)}: the cartridge's `
+        + `chain runs ${n} streams from $${prev.toString(16)} to `
+        + `$${a.toString(16)}; this file says 32 ending at `
+        + `$${endsAt.toString(16)}. All four of these families are 32-frame `
+        + `animations closed by a stride change, and a walk that stopped short `
+        + `ships a subset the way the MEASURED list did. (${why})`);
+    }
+  }
+  for (const offs of STRUCTURE_STREAMS) {
+    if (streams.has(offs)) { already++; continue; }
+    streams.set(offs, romExtent(offs));    // throws unless it is a stream start
+    shardOfStream.set(offs, STRUCT_SHARD);
+    added++;
+  }
+  harvested += added; harvestAlready += already;
+  harvestReport.push({ shard: STRUCT_SHARD, base: 0x11e1fc,
+    entries: chained + STRUCTURE_STREAMS.length, stride: 0,
+    runsTo: chained + STRUCTURE_STREAMS.length, endsAt: 0x233f34,
+    distinct: chained + STRUCTURE_STREAMS.length, added, already,
+    why: 'buckets 2/3/7: 4 x 32-frame chains + 18 measured one-offs (W58)' });
+  console.log(`  buckets 2/3/7: ${chained} streams over 4 closed chains + `
+    + `${STRUCTURE_STREAMS.length} measured one-offs, ${added} new -- the `
+    + '288x208 hole in the middle of the playfield');
 }
 
 const bgList = [...bgUsed].sort((a, b) => a - b);
