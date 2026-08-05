@@ -734,9 +734,11 @@ try {
       // get two different sentences because they are two different bugs:
       //   NO ART $166840x3        the bundle does not contain this picture
       //   SPR SHARD 1x27          it does, and that shard is still in flight
-      // `spr n/8` is how many sprite shards have landed (it prints the bundle's
+      // `spr n/9` is how many sprite shards have landed (it prints the bundle's
       // own total, so it has never needed editing; this COMMENT said 6 until
-      // W52 and was the only wrong number here).  The tank hulls the owner
+      // W52, 8 until W53, and is the only number in this block that has ever
+      // been wrong -- which is what a hand-maintained count next to a computed
+      // one always ends up being).  The tank hulls the owner
       // reported missing are shard 1: at boot they read as SPR SHARD 1 for as
       // long as 28 KiB takes, and then they are simply there.
       //
@@ -745,6 +747,12 @@ try {
       // want art at +0.7 s and the shots on the first frame fire is pressed,
       // against shard 1's +7.7 s -- so `SPR SHARD 7` is the sentence a slow
       // link shows for the second or two before the bullets appear.
+      //
+      // WAVE 53 added shard 8, THE IMPACT SPARK -- the flash where a shot
+      // connects -- fetched fourth, behind the two producers that have to draw
+      // before anything can be hit.  It is 0.8 KiB, the smallest shard in the
+      // bundle, and [M] with it withheld the page runs normally and stops on
+      // the exact frame the first shot connects, naming it.
       `[${s.spriteSource}] dl ${s.dlRecords} drawn ${s.dlDrawn} b0 ${s.dlBuckets}`
         + (s.sprShards ? ` spr ${s.sprShards.ready}/${s.sprShards.total}` : '')
         + (s.dlPending ? ` <b>SPR SHARD ${s.dlPending}</b>` : '')

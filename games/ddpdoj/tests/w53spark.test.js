@@ -72,11 +72,22 @@ function putList(rom, base = LIST) {
   for (let k = 0; k < 36; k++) rom.putL(base + k * 4, 0x220000 + k);
 }
 
-/** The three RNG tables the fill reads, filled so the drawn values are known.
- *  `$803916` is set by each test; these make the byte at every index explicit. */
+/** The three RNG tables the fill reads.
+ *
+ *  FLAT by default -- most tests here are about the fill and the driver and want
+ *  the drawn values to be a constant.  `byIndex` makes every byte a function of
+ *  its index instead, which is what the MASK test needs: with a flat table a
+ *  wrong mask reads a different index and gets the same byte, and a mutation
+ *  that changes `& $7F` to `& $3F` survives.  (It did -- see §4 of the worklog.)
+ *
+ *  The tables are written 128 entries wide even where the ROM's is 64, so a
+ *  mutant that widens the mask reads a REAL byte rather than falling off the
+ *  FakeRom and dying with the wrong message. */
 function putRngTables(rom, o = {}) {
-  for (let i = 0; i < RNG_242E24.entries; i++) rom.put(RNG_242E24.table + i, o.speed ?? 0x10);
-  for (let i = 0; i < RNG_28ABE0.entries; i++) rom.put(RNG_28ABE0.table + i, o.angle ?? 0x20);
+  const f = (dflt) => (i) => (o.byIndex ? dflt + (i >> 4) : dflt);
+  const sp = f(0x10), an = f(0x20);
+  for (let i = 0; i < 128; i++) rom.put(RNG_242E24.table + i, o.speed ?? sp(i));
+  for (let i = 0; i < 128; i++) rom.put(RNG_28ABE0.table + i, o.angle ?? an(i));
   for (let i = 0; i < RNG_242FDE.entries; i++) rom.put(RNG_242FDE.table + i, o.flip ?? 1);
 }
 
@@ -203,6 +214,34 @@ test('$289F62 bumps the SHARED RNG counter, and $289F68 indexes the pointer '
     '$289F62 + $242FFC + $242E24 + $28ABE0 = four bumps of the shared counter');
   assert.equal(ram.u16(SPARK.p1Base + E.selector), 0x0004,
     '$28A786[3] was taken, i.e. the index is $803916*4 with NO mask');
+});
+
+test('$289F6E/$289F70 are WORD doublings and $289F78 SIGN-EXTENDS the result', () => {
+  // Both `add.w D5,D5` truncate to a word, and `movea.l (A2,D5.w),A2` then
+  // sign-extends -- so a state of $3FFF gives D5 = $FFFC = -4 and the read is
+  // FOUR BYTES BELOW the table.  A port that computed `state * 4` in 32 bits
+  // would read $28B782 instead.  $803916 cannot reach $3FFF today ($23BE36
+  // `clr.w` zeroes the high byte and `addq.b` never carries), so this is a
+  // transcription assertion, and it is here because the alternative is a
+  // comment claiming the same thing with nothing checking it.
+  const below = 0x28a930;
+  const rom = fullRom();
+  // $242FFC's own read is unmasked too, and at this state it lands far outside
+  // the 256-byte table -- which in the real port is a `src/rom.js` throw BY
+  // ADDRESS, the correct answer.  The fixture covers it so this test can reach
+  // the thing it is actually about.
+  for (let i = 0x3f00; i < 0x4200; i++) rom.put(RNG_242FDE.table + i, 1);
+  rom.putL(SPARK.ptrTable - 4, below);
+  rom.putW(below + 0x00, 0x0008); rom.putW(below + 0x02, 0); rom.putW(below + 0x04, 0);
+  rom.putW(below + 0x06, 0x0208); rom.putW(below + 0x08, 0x001e); rom.putW(below + 0x0a, 0);
+  rom.putL(below + 0x0c, 0x0000008c); rom.putL(below + 0x10, LIST);
+  rom.putW(below + 0x14, 0x0e06);
+  const ram = fresh();
+  ram.setU16(0x803916, 0x3ffe);                  // $289F62 makes it $3FFF
+  putShot(ram);
+  assert.ok(spawnSpark(ram, rom, ctx(), 0x810572, SPARK.p1PlayerRec));
+  assert.equal(ram.u16(SPARK.p1Base + E.selector), 0x0008,
+    'D5 = $FFFC, sign-extended to -4: the template BELOW $28A786 was taken');
 });
 
 test('$289F82 cmpa.l #$8103E6,A4 is the ONLY thing that picks P1 over P2', () => {
@@ -497,6 +536,49 @@ test('$289F3A clears both halves AND both count words', () => {
   assert.equal(ram.u16(SPARK.budget), 0);
 });
 
+// ======================= THE THREE MASKS, EACH SEEN TO MATTER =============
+//
+// Four members of the `$803917` family draw inside ONE spawn, in this order,
+// and each advances the shared counter before its own read:
+//
+//   $289F62  the pointer index      = $803916,        NO MASK     (256 entries)
+//   $242FFC  the flip draw          = $803916,        NO MASK     (256 entries)
+//   $242E24  the spark's SPEED      = $803916 & $7F   (128 entries)
+//   $28ABE0  the spark's ANGLE      = $803916 & $3F    (64 entries)
+//
+// Three DIFFERENT masks over one counter, and a flat fixture cannot tell them
+// apart: with every table byte the same, a wrong mask reads a different index
+// and gets the same answer.  This test is the one that can see the mask, and it
+// exists because the mutation pass found the earlier ones could not.
+
+test('the four family members draw in ROM ORDER, each with ITS OWN mask', () => {
+  // state $6C, so the four reads index $6D, $6E, $6F & $7F = $6F, and
+  // $70 & $3F = $30.  A $3F mask on the third would read $2F instead of $6F,
+  // and a $7F mask on the fourth would read $70 instead of $30 -- and with
+  // `byIndex` those are DIFFERENT BYTES.
+  const alt = 0x28a920;
+  const rom = fullRom({ rng: { byIndex: true }, ptr: { 0x6d: alt } });
+  rom.putW(alt + 0x00, 0x0008);                  // a THIRD distinct selector
+  rom.putW(alt + 0x02, 0); rom.putW(alt + 0x04, 0);
+  rom.putW(alt + 0x06, 0x0208); rom.putW(alt + 0x08, 0x001e);
+  rom.putW(alt + 0x0a, 0); rom.putL(alt + 0x0c, 0x0000008c);
+  rom.putL(alt + 0x10, LIST); rom.putW(alt + 0x14, 0x0e06);
+  const ram = fresh(); const seen = [];
+  ram.setU16(0x803916, 0x6c);
+  putShot(ram, 0x810572, { angle: 0x03 });
+  assert.ok(spawnSpark(ram, rom, ctx(seen), 0x810572, SPARK.p1PlayerRec));
+  // $289F68 -- UNMASKED. $6D & $3F would be $2D, which names TPL, not `alt`.
+  assert.equal(ram.u16(SPARK.p1Base + E.selector), 0x0008,
+    '$28A786[$6D] was taken: the pointer index is the WHOLE $803916 word');
+  // $242E42[$6F] = $10 + ($6F >> 4) = $16; +8 = $1E.  A $3F mask gives
+  // $242E42[$2F] = $12, i.e. speed $1A.
+  // $28ABFA[$30] = $20 + 3 = $23; + the shot's angle $03 = $26.  A $7F mask
+  // gives $28ABFA[$70] = $27, i.e. angle $2A.
+  assert.deepEqual(seen, [[0x1e, 0x26]],
+    '$242E24 masks with $7F and $28ABE0 with $3F -- three different masks, one counter');
+  assert.equal(ram.u8(RNG.counter), 0x70, 'four bumps: $6C -> $70');
+});
+
 // ============================================= THE EXPORT SIDE, ASSERTED
 //
 // A unit test can only read the exporter's SOURCE; the run against the real
@@ -517,6 +599,21 @@ test('the exporter ASSERTS pool E\'s data block against the cartridge', () => {
   assert.ok(/0x41, 0xF9, 0x00, 0x81, 0xDB, 0x90/.test(s),
     '$28AC3A must be `lea $81DB90,A0` -- the far end of $28ABE0\'s draw table');
   assert.ok(/\(0x28A5AC, 0x05DA,/.test(s) && /\(0x28ABFA, 0x0040,/.test(s));
+});
+
+test('$253C18 SPAWNS the spark now -- it is not a counted note any more', () => {
+  // A source assertion, and it is the weakest check in this file BY DESIGN: what
+  // actually proves the spark reaches the display list is `webgate`'s W53 stage
+  // (8,843 records over 35 images, absolute and port-side), and that mutation is
+  // run against the real gate in §4 of the worklog rather than here.  This one
+  // exists so the unit suite notices if the call is deleted.
+  const s = fs.readFileSync(new URL('../src/shots.js', import.meta.url), 'utf8');
+  assert.ok(/spawnSpark\(ram, rom, ctx, rec, prec\);/.test(s),
+    '$253C1A jsr $289F54, with A6 = the shot and A4 = the player');
+  assert.ok(!/note\(0x289f54/.test(s),
+    'and the wave-8 note that called it "the $289xxx effect family, unported" is gone');
+  assert.ok(/impact SOUND CUE/.test(s),
+    '$28C714 is re-labelled: it is a sound request, not the visual burst');
 });
 
 test('the spark art is harvested by ROM ADDRESS, 36 entries, into its OWN shard', () => {

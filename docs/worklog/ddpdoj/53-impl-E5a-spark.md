@@ -206,6 +206,253 @@ pixel identity cannot have moved.
 
 ---
 
+---
+
+## 4. EVERY CHECK SEEN TO FAIL
+
+### 4.1 Thirty-eight unit mutants, thirty-seven named reds, ONE survivor
+
+`node games/ddpdoj/.scratch/mutate53.mjs`: apply ONE edit, run ONE test file,
+require a NAMED test red, restore, **verify the file's sha256 is byte-identical**
+(the harness throws on a mismatch). Every restore matched.
+
+| # | mutation | the NAMED test that went red |
+|---|---|---|
+| M1 | `$28A068` the 30-vs-15 branch inverted — **recon 50's own reading** | `$28A062 gives THIRTY slots when $81308C is NON-ZERO…` |
+| M2 | a full pool fails SILENTLY | `a full pool is a COUNTED failure, not a silent discard` |
+| M3 | `$289F5A`'s `$813098` failure return ignored | `$289F54 tst.w $813098 is a FAILURE RETURN…` |
+| M4 | `$289F62` does not bump the shared RNG counter | `$289F62 bumps the SHARED RNG counter…` |
+| M5 | `$289F68` masks the pointer index with `$3F` | `the four family members draw in ROM ORDER, each with ITS OWN mask` |
+| M5b | `$289F6E`/`$289F70` computed in 32 bits, so D5 never wraps or goes negative | `$289F6E/$289F70 are WORD doublings and $289F78 SIGN-EXTENDS…` |
+| M6 | `$289F82` picks the pool half the other way | `…the ONLY thing that picks P1 over P2` |
+| M7 | `$28A1F6 addq.w #4,A0` dropped | `$28A1DA fills the record … field by field` |
+| M8 | `$28A216` read as a WORD (the cursor never installed) | same |
+| M9 | `$28A1FC` the negative-attribute arm inverted | `a POSITIVE template attribute is taken as-is…` |
+| M10 | `$28A20A` the `$2000` flip on a NON-zero draw | `$28A20C ORs $2000 … exactly when $242FFC draws a ZERO` |
+| M11 | `$28A3AA` the speed clamp dropped | `$28A3A8 addq.b #8 / $28A3AA clamp to $24…` |
+| M12 | `$28A3B6` the shot's own angle not added | same |
+| M13 | `$28A3CC` the one-shot 4x nudge dropped | `…nudges the position by FOUR TIMES it` |
+| M14 | **`$28A164` the cursor borrow does not free the slot — W33's leak, rebuilt** | `$28A164 FREES the slot when the cursor borrows…` |
+| M15 | `$28A15C` samples the cursor AFTER the decrement | same |
+| M16 | counter B's borrow does not reach the animation | `counter B borrowing advances the animation on its own` |
+| M17 | `$28A136` tests the SIGN instead of the borrow | `EITHER delay counter borrowing advances the animation` |
+| M18 | `$28A17C` the off-screen cull dropped | `$28A17C culls a record that has passed $7000…` |
+| M19 | `$28A178` reads D6's high word | same |
+| M20 | D5 split — the cull bound stops moving with the budget | `D5 is the budget AND the cull bound…` |
+| M21 | `$28A0FC` a free slot costs a `dbra` | `$28A0FC skips a FREE slot without consuming the dbra` |
+| M22 | the pool-overrun guard removed | `a count word that outruns the pool is a LOUD NAMED THROW…` |
+| M23 | the emitter selector not range-checked | `an emitter selector outside 0/4/8/$C…` |
+| M24 | `$28A0FE` the record budget never frees | `$28A0FE frees a record when the … BUDGET runs out` |
+| M25 | `$28A1B4` APPENDS to bucket 20 | `…OVERWRITES bucket 20's counter` |
+| M26 | `$28A180` two 16-bit shifts instead of one 32-bit | **SURVIVOR — see below** |
+| M27 | `$289F3A` clears only P1's half | `$289F3A clears both halves AND both count words` |
+| M28 | an unported fill kind filled as if it were the spark | `a kind other than $14 is a LOUD NAMED THROW…` |
+| M29 | the `$28A5AC` window one entry short of the pointer table | `the exporter ASSERTS pool E's data block…` |
+| M30 | the extent assertion no longer runs on every export | same |
+| M31 | the harvest trimmed to the 35 entries a run reaches | `the spark art is harvested by ROM ADDRESS, 36 entries…` |
+| M32 | the spark folded into the BOOT shard | same |
+| M33 | the driver dropped from `TYPE5_PORTED` | `TYPE5_PORTED is THIRTEEN of the twenty-three…` |
+| M34 | the shot handler stops spawning the spark | `$253C18 SPAWNS the spark now…` |
+| M35 | the fetch order back to W52's (the spark last) | `the two weapon shards are DEFERRED and fetched FIRST…` |
+| M36 | `$242E24` masks with `$3F` instead of `$7F` | `…each with ITS OWN mask` |
+| M37 | `$28ABE0` masks with `$7F` instead of `$3F` | same |
+
+**FOUR OF MY OWN CHECKS COULD NOT FAIL WHEN FIRST WRITTEN, and the mutation
+cycle caught all four rather than review.** They are recorded as category (a),
+defective checks, because that is what they were:
+
+* **M5, M36 and M37 all survived against a FLAT RNG fixture.** The three tables
+  were filled with one repeated byte, so a wrong mask read a different index and
+  got the same answer. Three different masks over one counter (`$289F68` none,
+  `$242E24` `$7F`, `$28ABE0` `$3F`) is exactly the shape a flat fixture cannot
+  see. The fixture is index-dependent now, and there is a test whose only job is
+  the four draws in ROM order.
+* **M34's first target was a test file that does not test it.** A skipped or
+  mis-aimed mutant is not a passed one (W52 §4.1's own lesson); it is aimed at a
+  source assertion now, and the REAL check for it is the gate run in §4.3.
+
+**M26 IS THE SURVIVOR AND IT IS PROVABLY UNCATCHABLE.** `$28A180 asr.l D4,D0 /
+and.l #$07FF03FF,D0` — a port that shifted the two 16-bit halves separately gets
+the same answer for **every input**, because the mask removes precisely the bits
+the two forms differ in. `src/spritequeue.js` TRAP 1 says this in general ("two
+independent 16-bit shifts agree ONLY because of that mask"); at this site the
+mask is applied immediately, so there is nothing left to observe. [M] 3,000,000
+random longwords plus an exhaustive sweep of all 65,536 high words: **0
+differences**. Category (c) of the brief's three, and the port keeps the 32-bit
+form because that is the instruction.
+
+### 4.2 The exporter's own checks, seen red against the CARTRIDGE
+
+A unit test can only read the exporter's source. These run the real export
+against the real ROM; each file was sha256'd byte-identical after.
+
+| mutation | what it printed |
+|---|---|
+| the pointer table claimed as 128 entries | `$28A786's pointer table: this file says 128 entries ending at $28A986, but $28A986 is not [addq.b #1,$803917] (0028a7020028). $289F68 indexes it with an UNMASKED $803916, so a short table reads a template out of code.` |
+| the templates claimed to start one entry low | `the pool-E templates run $28A5AC..$28A786; this file says $28A596..$28A786…` |
+| the spark list claimed to end one longword early | `sprite table $28a5c2 stride 4: the cartridge's run of consecutive stream starts is 36, ending at $28a652; this file says 35 ending at $28a64e…` |
+
+**AND THE SECOND MESSAGE WAS DEFECTIVE WHEN FIRST WRITTEN** — it hardcoded
+`$28A5AC` in its own text, so mutating the EXPECTATION printed the same range on
+both sides of the sentence. Both sides come out of variables now, and the
+mutation was re-run against it.
+
+### 4.3 The GATE stage, seen to fail against the real bundle
+
+| cut | what the stage printed |
+|---|---|
+| the spark harvest cut to 9 of 36 entries | `FAIL: W53 THE IMPACT SPARK … shard 8 holds 9 streams (expect 36) and the port's own $800000 list carries 2963 records (expect 8843) over 8 distinct images (expect 35), first at frame 33 (expect 24)` |
+| **`$253C18` stops spawning the spark — the whole wave, undone** | `FAIL: W53 … 0 records of them (expect 8843) over 0 distinct images (expect 35), first at frame -1 (expect 24)` |
+
+**AND THE SECOND CUT IS ALSO THE PROOF OF §0's RNG CLAIM.** With that one line
+removed, `webgate`'s W52 stages snapped straight back to **22,071 and 4,388** —
+the exact numbers W52 measured. Nothing else in the tree moved. That is the
+shared draw counter `$803917`, isolated to one instruction and measured from the
+other side.
+
+### 4.4 THE SCORING, RE-MEASURED — the brief's own "VERIFIED HAS A SHELF LIFE"
+
+W51 measured the ledger; this wave changes what runs (every connecting shot now
+advances `$803917`), so the ledger was re-read rather than inherited. Same
+1,500-frame tapped window, one line different:
+
+```
+                            WITH the spark      WITHOUT it (one line)
+[M] kills reaching $28615E        130                 130
+[M] $81B4C0 pending score   $00077515           $00077515
+[M] $81B5DA chain                 304                 304
+[M] $81B5C0 meter / cap        56 / 56             56 / 56
+[M] $81B64A rank feed               0                   0
+[M] $286674 executions            128                 128
+[M] $803916 RNG state            $C2                 $14      <- the ONLY move
+```
+
+**The ledger is unmoved and the counter moved by 174 draws.** That is not a
+vacuous "nothing changed": the intervention is demonstrably live, and the score
+path is demonstrably indifferent to it, over a window in which 130 enemies died.
+
+---
+
+## 5. THE PAGE, IN A REAL BROWSER — WHAT I SAW  [M]
+
+Chrome + Python `playwright`, the recipe W42 established. Nothing downloaded.
+**Both servers were killed afterwards and [M] zero `python -m http.server` and
+zero `srv53` node processes remain** — checked with `Get-CimInstance
+Win32_Process`, not with `ps`, which does not see them on this machine and would
+have reported the orphan as gone while it was still holding the port. (It did:
+the first kill attempt "succeeded" and the server was still serving.)
+
+### 5.1 **THE SPARK IS ON THE SCREEN**
+
+**[M] Flying the ship UP into the tanks and tapping fire: TWO BRIGHT
+YELLOW-WHITE EIGHT-POINTED STARBURSTS, one on each side of the ship, sitting
+exactly where the two option pods' shots meet the two enemies flanking it.**
+They flash and are gone within a few frames; over a fourteen-frame burst of tight
+crops they appear, move with the enemies and vanish. They are a different thing
+from the ship's own orange exhaust plume directly beneath it (which the control
+has too) and from the blue and pink enemy bullets.
+
+**[M] THE CONTROL — the same flight path with fire never pressed — has NEITHER
+starburst on any of the fourteen frames.** No shot connects, so no spark can
+exist. That is the whole claim, and it is the same shape as §2's measurement:
+8,843 records with fire and 0 without.
+
+`spr 9/9` on the status line at every sample — all nine sprite shards land — and
+**not one address the page names is a spark stream.** The remaining `NO ART`
+list is W47/W52's own leftovers (`$233F34`, `$22DA70`, `$22DED4`, `$12D430`,
+`$12CD8C`), all background elements or other producers' rows.
+
+### 5.2 THE FAILURE MODE, SEEN — and it names the spark by what it IS
+
+Served with `spr/*.shard8.u16.gz` held back, the page ran normally through boot
+and through the whole no-fire window, and **stopped at logic frame 2715 — the
+first frame a shot connected — with:**
+
+```
+AN ASSET IS MISSING OR BROKEN.
+SPRITE SHARD 8 DID NOT LOAD (assets/spr/mask.shard8.u16.gz: HTTP 404 ...).
+It holds 36 sprite streams -- THE IMPACT SPARK: pool E 36-frame animation
+$28A5C2, the flash where a bullet CONNECTS (W53). 0.8 KiB. -- and a record has
+asked for one of them. Those records are SKIPPED AND NAMED rather than drawn
+from zeroed words, so nothing on screen is wrong; this stops because the art
+will never arrive.
+```
+
+**That is the strongest single piece of evidence in this wave**, because it is
+the page itself saying, unprompted, that a spark record exists and is asking for
+art — and it says it on the exact frame the simulation first needs it, not at
+boot. `demand()` raised it from inside that frame, which is `BgShards`' contract
+(W47 §2.2) still holding for a shard built six waves later.
+
+### 5.3 What I did NOT see, stated as a limit
+
+**Nothing here is compared against MAME.** No gate in this repo compares the
+port's own list against a board frame, and this wave did not build one. I have
+proved the port asks for stream addresses the cartridge's own tables contain,
+that the bundle holds them, that they draw, and that they draw ONLY when a shot
+connects. **A record with a correct descriptor can still be the wrong record**,
+and whether this spark looks like the board's spark is unmeasured.
+
+---
+
+## 6. COVERAGE — branches and table entries, never frames
+
+* **`$289F54`'s call sites: 2 of 8 reachable**, 6 behind loud named throws
+  (dispatch nibbles 3, 4, 5, 6, 7 and 9). All eight pass `moveq #$14,D0`.
+* **pool E's producers: 1 of 4 ported.** `$289F96`, `$289FC0` and `$289FDA` —
+  the LASER's three, all inside code W45 already ported — stay counted notes,
+  with their own template `$28A506` and their own 36-stream list `$28A51C`
+  (`$22C6BC..$22C860`, [M] 0.4 KiB gz) deliberately NOT harvested. **The laser's
+  own impact spark is therefore still missing, and it is named rather than left
+  to look done.**
+* **`$28A1DA`'s fill dispatch `$28A232`: 1 of 8 entries transcribed**; the other
+  seven throw by address.
+* **`$28A140`'s emitter table: 2 of 4 entries executed** (`$28A150` via selector
+  `$C`, and `$28A132` reached from it every frame). Entries 0 and 8 are
+  transcribed-and-unexercised: no spark template carries selector 0 or 8.
+* **the animation list: 35 of 36 entries reached**, and the 36th is provably
+  unreachable (§1.3), not merely unmeasured.
+* **the 15 templates: all 15 exported**, and the run reaches the whole cursor
+  ladder `$8C..$20` — which is what makes 35 distinct streams appear rather than
+  one repeated sequence.
+* **transcribed and unexercised, named:** `$28A0AA clr.w $81DB8E` (unreachable
+  while D0 = 0 at `$28A098`), `$28A0FE`'s budget free (60 slots against a
+  208-record budget), `$28A1FE`'s negative-attribute arm (all 15 templates are
+  `$001E`), and `$289F3A` itself — its two callers are `$25FD58` and `$28B5CC`,
+  and `$28B5CC` is inside object type 5's "not started" branch, which this port
+  throws for.
+* **unit tests 635 → 666, 0 skipped.** New file `tests/w53spark.test.js`, 31
+  tests -- 28 written first, and THREE more added because the mutation cycle
+  found the first set could not see the three RNG masks, the spawn call, or
+  `$289F68`'s word wrap (§4.1). `webgate` 9 of 9 → **10 of 10**.
+
+---
+
+## 7. WHAT THIS WAVE DID NOT DO
+
+- **Nothing is compared against MAME.** §5.3.
+- **The LASER's three pool-E producers are NOT ported** (`$289F96`, `$289FC0`,
+  `$289FDA`), and their art is not harvested. The driver in `src/spark.js` would
+  step their records correctly the day they land; until then the beam's own
+  impact flash is missing. §6.
+- **Pools A, B, C and D are untouched.** `$289004`/`$288E4E` (E5b, 218.4 KiB of
+  art), `$289098`/`$2890F2` (pool D, and `50-recon` §4.2's second leak),
+  `$27F8F8`/`$27F95A` (the impact pool, still E4's refusal) and `$2440E0` (E5c)
+  are all still counted notes. **The DEATH explosion is not in this wave** — the
+  owner's "no explosions" is half answered, and the half that is answered is the
+  4.6x more frequent half.
+- **`$26C1C4` is still the wall.** A tapped run now reaches it at step 2,192
+  rather than 2,204, because the spark's RNG bump shifts the trajectory. The
+  enemy-layer export frontier is unchanged and is not this wave's.
+- **`$28C714` was RE-LABELLED, not ported.** It is a sound cue and belongs to
+  the sound wave the owner deferred.
+- **Nothing was published.** The bundle on disk is the one that would ship;
+  `tools/publish.mjs` deploys all three games and the deploy is the
+  orchestrator's call.
+- **`games/gradius/` was not touched.**
+
+---
+
 ## LOG (appended as findings arrive)
 
 - opened.

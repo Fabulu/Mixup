@@ -1047,11 +1047,15 @@ def check_pool_e_extents(d: bytes) -> None:
     if len(tpls) != 15:
         raise SystemExit(f"$28A786 resolves to {len(tpls)} distinct pool-E "
                          f"templates; W53 measured 15.")
-    if tpls[0] != 0x28A5AC or tpls[-1] + 22 != PTRS:
+    LOW = 0x28A5AC
+    if tpls[0] != LOW or tpls[-1] + 22 != PTRS:
+        # The message prints BOTH sides from variables, so a mutation of the
+        # EXPECTATION reads as clearly as a move of the cartridge.  (An earlier
+        # version hardcoded $28A5AC in the text and printed the same range twice.)
         raise SystemExit(
             f"the pool-E templates run ${tpls[0]:06X}..${tpls[-1] + 22:06X}; "
-            f"W53 measured $28A5AC..${PTRS:06X} (the last template abutting the "
-            f"pointer table EXACTLY).")
+            f"this file says ${LOW:06X}..${PTRS:06X} (the last template abutting "
+            f"the pointer table EXACTLY).")
     lists = {u32(d, t + 0x10) for t in tpls}
     if lists != {0x28A5C2}:
         raise SystemExit(f"the 15 pool-E templates name descriptor lists "

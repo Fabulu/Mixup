@@ -308,7 +308,15 @@ export function spawnSpark(ram, rom, ctx, spawner, player, d0 = SPARK.kindSpark)
     return false;
   }
   ram.setU8(0x803917, (ram.u8(0x803917) + 1) & 0xff);    // $289F62 addq.b #1
-  const d5 = u16(ram.u16(0x803916)) * 4;                 // $289F68..$289F70
+  // $289F68 move.w $803916,D5 / $289F6E add.w D5,D5 / $289F70 add.w D5,D5.
+  // BOTH doublings are WORD ops, so D5 wraps at $10000, and `$289F78
+  // movea.l (A2,D5.w),A2` then SIGN-EXTENDS it -- a state above $3FFF would
+  // index BELOW the table.  It cannot today ($23BE36 `clr.w $803916` zeroes the
+  // high byte and `addq.b` never carries into it, the same argument
+  // `src/rng.js` RNG_242FDE makes for its own unmasked read), and the ROM
+  // window turns it into a loud named throw rather than a wrong template if
+  // that ever stops being true.
+  const d5 = i16(u16(u16(ram.u16(0x803916)) * 2) * 2);   // $289F68..$289F70
   const tpl = rom.u32(SPARK.ptrTable + d5);              // $289F78 movea.l (A2,D5.w)
   let a0 = player === SPARK.p1PlayerRec                  // $289F82 cmpa.l
     ? SPARK.p1Base : SPARK.p2Base;
