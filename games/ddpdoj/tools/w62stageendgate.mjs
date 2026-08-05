@@ -111,7 +111,7 @@ function run() {
     bgGoneLf: null, bgLiveAtEnd: null,
     stageBefore: null, stageAfter: null, stageWrittenLf: null,
     clkAfter: null, d6States: [], type6States: [], type6Slot: null,
-    ledgerAtBoss: null, ledgerAtEnd: null, notes: null,
+    ledgerAtBoss: null, ledgerAtEnd: null, notes: null, playerFlungLf: null,
   };
   let prevBg = null, prevT6 = null, prevD6 = null, prevTimeout = null;
   let prevStage = null, prevHandle = null;
@@ -158,6 +158,10 @@ function run() {
       r.handleChangedLf = lf; r.bgHandleAfter = h;
     }
     prevHandle = h;
+    // $24A420's constant velocity pair, the ONLY place ($2,A6)/($4,A6) can be
+    // ($C00, $E00): `movem.w D2/D7,$2(A6)` on the stage-clear path.
+    if (ram.u16(0x8103e6 + 0x02) === 0x0c00 && ram.u16(0x8103e6 + 0x04) === 0x0e00
+      && r.playerFlungLf === null) r.playerFlungLf = lf;
     const stg = ram.u16(SE.stage);
     if (prevStage !== null && stg !== prevStage && r.stageWrittenLf === null) {
       r.stageWrittenLf = lf; r.stageAfter = stg; r.clkAfter = ram.u16(A.clock);
@@ -218,7 +222,7 @@ const EXP = {
   bossFirstLf: 7871, timeoutStart: 0x2a2f, timeoutSteps: 10799,
   timeoutLf: 18669, animFrames: 474, suspendLf: 19143, advanceLf: 19144,
   bgGoneLf: 19147, stageWrittenLf: 19216, rebuiltLf: 19217,
-  d6States: 7, type6States: 7,
+  d6States: 7, type6States: 7, playerFlungLf: 19147,
 };
 
 const r = run();
@@ -242,6 +246,9 @@ console.log(`  RANK at the end  : ${JSON.stringify(r.ledgerAtEnd)}`);
 console.log(`  stopped: ${r.throwMsg ?? '(ran out of steps)'}`);
 console.log('');
 
+say(r.bossFirstLf !== null,
+  `the boss record is SEEN AT ALL -- $292928 jmp $263762 must not free it on `
+  + `its first frame (got ${r.bossFirstLf})`);
 say(r.bossFirstLf === EXP.bossFirstLf,
   `the boss record is live at lf${EXP.bossFirstLf}, W57's own frontier (got ${r.bossFirstLf})`);
 say(bundle.tables && r.protoTimeout === 0x2a30,
@@ -293,11 +300,19 @@ say(r.clkFinal === 0,
 say(r.type6States.length === EXP.type6States,
   `object type 6 walks ${EXP.type6States} states (got `
   + `${r.type6States.map(([s2]) => `$${s2.toString(16)}`).join(',')})`);
+say(ev('player-beam-wipe').length === 1,
+  `$24A3A2's \`bset.b #$2,$1(A6)\` LATCHES: the 45-record beam wipe at $811F72 `
+  + `runs ONCE in the whole stage clear, not once a frame `
+  + `(got ${ev('player-beam-wipe').length})`);
+say(r.playerFlungLf === EXP.playerFlungLf,
+  `$24A420 movem.w D2/D7,$2(A6) writes the constant pair ($C00, $E00) at `
+  + `lf${EXP.playerFlungLf} -- the $813092 == 4 arm above it is STAGE 5's and `
+  + `must not be taken here (got ${r.playerFlungLf})`);
 // RANK, to I2's standard: four addresses, digit-identical across the stage end.
 for (const k of ['rank', 'rankPower', 'hyperP1', 'hyperP2']) {
-  say(r.ledgerAtBoss[k] === r.ledgerAtEnd[k],
+  say(r.ledgerAtBoss !== null && r.ledgerAtBoss[k] === r.ledgerAtEnd[k],
     `RANK: ${k} is digit-identical across the stage end `
-    + `(${r.ledgerAtBoss[k]} -> ${r.ledgerAtEnd[k]})`);
+    + `(${r.ledgerAtBoss?.[k]} -> ${r.ledgerAtEnd?.[k]})`);
 }
 
 console.log('');

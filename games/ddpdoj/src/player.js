@@ -237,6 +237,10 @@ function stageClearPlayer24A3A2(ram, rec, slot, ctx) {
     for (let i = 0; i <= 0x2c; i++) {                // $24A3AC moveq #$2C
       ram.setU16(0x811f72 + i * 0x30, 0);            // $24A3B6 / $24A3B8 lea $30
     }
+    // The latch is the whole point of `bne $24A3D4`, so the ONCE is what a
+    // gate has to be able to see.  Without this hook a mutation that drops the
+    // `bset` wipes the beam every frame of the stage clear and nothing notices.
+    ctx.stageEndEvent?.('player-beam-wipe', ram.u8(rec + P.playerIdx));
     ram.setU16(rec, ram.u16(rec) & 0xff3f);          // $24A3C0 andi.w #$FF3F
     ram.setU8(rec + P.invuln, 1);                    // $24A3C4 move.b #$1,$3E
     ram.setU16(rec + 0x2a, 0);                       // $24A3CC

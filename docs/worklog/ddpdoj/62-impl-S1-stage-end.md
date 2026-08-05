@@ -82,6 +82,17 @@ Stage 1 must END. Recon 49's cheap path: the boss's `$22(a5) = $2A30` =
 **Five new ROM windows** (`$240F62` 160 B, `$29370A` 80, `$293104` 72,
 `$294F68` 40, `$292932` 32 = **384 bytes**). `games/gradius/` NOT TOUCHED.
 
+Three new files, and the number that matters for the port's own stated value —
+"a second person can check any line against the original listing without
+re-deriving it":
+
+```
+[M] src/stageend.js    479 lines   221 distinct ROM addresses cited
+[M] src/boss.js        670 lines   322 distinct
+[M] src/scheduler.js   428 lines   167 distinct
+[M] TOTAL            1,575 lines   687 distinct
+```
+
 ### 1.1 THE BRIEF'S PREMISE, CHECKED — recon 49 reproduces, with FIVE corrections
 
 Every address, table and census in recon 49 §1–§3 was re-read out of
@@ -329,3 +340,158 @@ The three things standing between that and a stage 1 that ends *correctly*:
    lands, the only way stage 1 ends is the 10,800-frame timeout — the boss is on
    screen as nothing and cannot be shot.
 3. **STAGE 2's DATA**, if anyone wants to see what is on the other side.
+
+## 10. A MISTAKE OF MINE, RECORDED
+
+**I COMMITTED A MUTANT.** The savepoint commit `ac5c10c` staged
+`games/ddpdoj/src/` by directory while `.scratch/mutate62.mjs` had M9 applied to
+`src/scheduler.js` (the A3 walk with `off += 0` instead of `+= 4`, i.e. a slot
+that runs its INIT for ever and never its STEP). The harness restores every file
+it touches and sha256-verifies it, so the DISK was correct four seconds later —
+but the commit is not, and it was pushed.
+
+Corrected by the next commit, and recorded because it is a new instance of a
+hazard the HANDOVER already names twice: **`git add <dir>` is `git add -A` with
+extra steps**, and the private-index rule does not protect a tree that another
+of my own processes is editing. Stage by FILE, and do not commit while a
+mutation harness is running.
+
+## 11. EVERY CHECK SEEN TO FAIL — 33 mutants, 33 RED, 0 SURVIVORS
+
+```
+[M] 33 of 33 mutants turned a NAMED check RED; survivors 0
+    ...and SEVEN of them survived an earlier pass, all seven defective checks
+    of mine (11.1 and 11.2) -- one of which HUNG rather than failing.
+```
+
+
+`.scratch/mutate62.mjs`: apply ONE edit with a single-occurrence anchor, run ONE
+check, require a NAMED test (or a named gate assertion) RED, restore, **verify
+sha256 byte-identical**. `games/ddpdoj/.scratch/` is gitignored (W60's precedent
+for a harness that edits `src/`), so the RESULTS are here and the machinery is
+not.
+
+### 11.1 ONE OF MY OWN TESTS COULD NOT FAIL — IT HUNG INSTEAD
+
+M9 (the A3 slot that runs its INIT for ever and never its STEP) did not go red
+on the first pass. It **hung `node --test` for twenty-five minutes**, because
+`state 5 rewrites $A(a4) to $80` was written as `while (state !== 6)` with no
+counter, and a slot stuck in state 0 never reaches 6.
+
+**A check that can hang is a check that cannot fail** (`docs/knowledge/03`), and
+this one would have sat in the suite indefinitely rather than reporting. Fixed
+two ways, because either alone would leave the class open:
+
+* the test is now bounded AND **the bound is asserted** — `assert.equal(n, 347)`,
+  so a mutation that changes the cadence is red on the FRAME COUNT and not only
+  on the field;
+* the harness now runs every check with a 180-second timeout, so a hang is a
+  visible failure instead of a silence.
+
+That is the same shape as W57's M3 and W61's M20/M21/M22: a defect in my own
+check, found by the mutant it was supposed to catch.
+
+### 11.1b AND RE-READING `$242970` WHILE THE GATE RAN FOUND A REAL DEFECT
+
+Not a mutant — a re-read. `$242976 bmi.b $24298C` jumps to the `bset` when the
+player record is **NEGATIVE**, i.e. when bit 15 is SET and the player is LIVE.
+I had written it as "bit 15 CLEAR", which sent every live player down the two
+`btst`s below instead, and in the shipped seed both of them skip. So
+`$242952`'s `bset #$5` on `$8103E6` and `$810448` was **not happening at all**,
+on the very path this wave exists to make run.
+
+Found by reading the four instructions again after the code was written,
+measured, gated and committed — `docs/knowledge/02`'s rule pointed at a BRANCH
+SENSE instead of a routine end. Three new mutants (M31/M32/M33, one per test in
+the chain) and a four-case unit test now hold it: LIVE always bsets;
+not-live-and-bit-0-clear skips; not-live-and-low-byte-bit-7-set skips; and the
+fall-through bsets.
+
+### 11.2 THREE MUTANTS SURVIVED THE SECOND PASS, AND ALL THREE WERE MY GATE'S FAULT
+
+| mutant | what it broke | why it survived | the check that now exists |
+|---|---|---|---|
+| **M28** | `$24A3A2`'s `bset.b #$2,$1(A6)` latch — so the 45-record BEAM WIPE at `$811F72` ran on every frame of the stage clear instead of once | nothing counted the wipe. A `bset` used as a once-only latch is invisible in the state it leaves behind | `src/player.js` now emits `player-beam-wipe` at the instruction, and the gate asserts it happens **exactly once** |
+| **M29** | `$24A3F0 cmp.w $813092,D0` read as stage **1** instead of stage 4 | **UNOBSERVABLE, and that is a FINDING.** `$813092` is 0 for the whole clearing window — `$812972` goes up at lf19144 and `$25FD0C` does not write the stage until lf19216 — so on stage 1 neither `#$4` nor `#$1` can ever match. Re-cut as `=== 0`, which IS observable, and it then went red on a new assertion for `$24A420`'s constant pair `($C00, $E00)` |
+| **M30** | `$29291E bcc` read as `bcs` — the stage advance firing on every frame the boss is NOT suspended | the gate CRASHED (`ledgerAtBoss` was null, because `$292928` frees the boss on its first frame and the pre-step scan never saw it) and a crash is not a NAMED red | a `the boss record is SEEN AT ALL` assertion, and the ledger block no longer dereferences a null |
+
+`.scratch/mutate62.mjs` also gained a 180-second per-check timeout, so a hang is
+a visible failure rather than a silence.
+
+**AND FOUR MORE ANCHORS FAILED TO MATCH AT ALL** (`ANCHOR NOT UNIQUE (0)`)
+because a patch script of mine had rewritten `src/scheduler.js` and
+`src/stageend.js` with **CRLF** line endings while the repository's are LF.
+That is the third time this session; `HANDOVER` §10's `git diff
+--ignore-cr-at-eol` is the one-command test for it, and the fix is
+`open(p, 'w', newline='')` — or not using Python to edit JS at all.
+
+## 12. THE BOOT COST — five ROM windows, 384 raw bytes, and every byte named
+
+`.scratch/w62boot.mjs`, W61 §6's method: re-export with the PRE-W62 exporter
+(`git show cefa567:`) and with this tree's, both sha256'd byte-identical on the
+way back.
+
+```
+[M] manifest.json            10,776 ->  10,776      +0   (no new shard)
+[M] player.tables.json.gz   138,932 -> 139,651    +719
+[M] spr/streams.u32.gz        1,055 ->   1,055      +0
+[M] seed.bin.gz               6,878 ->   6,878      +0
+[M] capture.json.gz           3,920 ->   3,920      +0
+[M] TOTAL                   161,561 -> 162,280    +719 B = 0.70 KiB
+```
+
+**+719 B, all of it in `player.tables.json.gz`, and it is the FIVE ROM WINDOWS**
+— 384 raw cartridge bytes, hex-encoded at two characters a byte before gzip.
+**They cannot be deferred**: a missing sprite stream is a NAMED SKIP the page
+draws around, but a missing ROM window is a THROW out of `src/rom.js`, which is
+the whole reason `RomWindows` exists (W54 §3, W61 §6).
+
+**No new sprite shard**, so `manifest.json` — the one body served uncompressed —
+does not move at all. This is the cheapest wave for boot since W47.
+
+## 13. THE DONE-WHEN, EACH AS A MEASUREMENT
+
+| the brief asks for | `[M]` |
+|---|---|
+| **Stage 1 ends. Say what happens, with the logic frame. Does the background tear down and rebuild? Does the stage counter advance?** | §3 and §7: **YES, at logic frame 19,217.** `$25FCFA` queues the background object (`$813144 = 7`) on the DEFERRED kill list at lf19145 and it leaves the object table at lf19147; `$25FD0C` writes `$813092` **0 -> 1** and `$813096` **0 -> 4** at lf19216; `$25FD38` builds a NEW type-1 object at lf19217 with `$813144 = $B` and entry clock 0, and the distance clock reads **0**. Seen in Chrome as well as headless, at the same frame |
+| **whether it ends via the timeout, via a boss kill, or both — and which paths remain throws** | **VIA THE TIMEOUT, and only via the timeout.** `$294F32` spends 10,799 further decrements of `$22(a5)` and expires at lf18669; the HP arm `$294BA4` never fires because nothing can damage the boss — the boss's own scripts are dormant (§6) and its sprite is never drawn. Seven of the ten A3 scripts, all five A4 scripts and eight of the nine A0 entries remain **LOUD NAMED THROWS**, as does everything past the rebuild (`$228658`, stage 2's map) |
+| **Say what you SAW in the browser. LIVE deployed URL as well as local** | §7 |
+| **Rank: state explicitly whether any rank write became reachable** | §4: **NO.** `$81309E` 53, `$81B646` 0, `$81B65C` 0, `$81B65E` 0 — digit-identical at the boss's arrival and after the rebuild, and `$81B64A` is 2,112 on both, unmoved from W61's figure. The one newly-reachable rank-adjacent path — the boss's part deaths dropping a HYPER STOCK item at `$294C5A` — is covered by W61's refusal AND is not reached on the timeout path at all |
+| **If you allocate from any pool, prove it drains** | Two allocations, both from the OBJECT table (`$241182`), both single: object type 6 at lf19144 and the new background at lf19217. [M] the object table holds 8 records before the advance and 9 after, and `$25FCFA`'s kill drains through `$241262` one frame later — measured as `bg object absent from lf19147`. **AND ONE DOES NOT DRAIN, DECLARED: the type-6 object holds state 4 for ever** (§2), because `$28E7F8` is not ported. That is one of twenty object slots, permanently, and it is named rather than hidden |
+| **Gate ALL GREEN, 767 unit tests** | §15 |
+
+## 14. WHAT I COULD NOT DETERMINE
+
+* **Anything against the board.** No MAME was run this session. Every dynamic
+  number above is the PORT against the shipped seed, or the ROM's own
+  arithmetic. Recon 49 §9's last open item asks the first wave that ports this
+  to "record a scenario that reaches the timeout and compare `$813092`,
+  `$8130CE` and `$813144` across the transition" — this wave answers it on the
+  port's side only, and that half is `tools/w62stageendgate.mjs`.
+* **What the stage end LOOKS like.** With the presentation tier unported there
+  is no `STAGE CLEAR` banner, no result screen and no tally; what a player sees
+  is the ship flung away by `$24A420`'s constant velocity pair and then the
+  stage-2 throw. The picture is compared against nothing.
+* **`$28E7F8`'s banner** (299 instructions), whose `$28EAD4 clr.w $81DFF6` is
+  the only writer that could let object type 6 leave state 4. §2.
+* **`$81DFFC..$81E023`**, the five per-stage byte lists `$28ECB2` indexes by
+  `$813096`. They are RAM, they are ZERO in the shipped seed, and **I did not
+  find their writer** — so `$28ECCE` picks art entry [0] every time and whether
+  that is what the board does is unmeasured. What I tried: `xref.py abs` on all
+  five bases, and reading `$28D566`/`$28EC86`/`$28E7A2`'s clears.
+* **`$2938AE` and `$2938F2`**, the boss-local emitters D-script 6 and the two
+  part scripts call. Counted, never read past their first instruction.
+* **Whether the three A0 sequencer entries beyond [1] are ever reached**, and
+  what `$81298C`'s sixteen-word parameter block means. `$259734`'s copy is
+  transcribed; nothing this port runs reads the result.
+* **The `$2429C4` variant's caller `$259DDA`.** Recon 49 §9 opened it and this
+  wave classified `$2429C4` itself from the listing (§1, ADVANCE_ENTRIES) but
+  did NOT read `$259DDA`.
+
+## 15. THE GATE, ON THE SETTLED TREE
+
+W58 §6's rule, and this wave broke it twice before honouring it: **a gate
+started before the tree settled is not evidence about the tree.** The first
+`pgm.py check` of this session ran while `.scratch/mutate62.mjs` was editing
+`src/`; the second ran while I was still reading `$242970`. Both were killed and
+neither is quoted. The run below is the third, on a tree nothing was editing.

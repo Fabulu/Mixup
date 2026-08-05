@@ -91,7 +91,17 @@ number for those is port-vs-listing.
 ### DaiOuJou — the numbers that matter
 - **The whole stage-1 background scrolls live** from the game's own scroll
   program (7-opcode VM, 57 stage-1 records of 186 across ten scripts)
-- stage 1 is **7,317 logic frames / 8,486 px** to the boss lock
+- stage 1 is **7,317 logic frames / 8,486 px** to the boss lock -- and **STAGE 1
+  NOW ENDS**: W62 ported the boss's 10,800-frame timeout (`$294F32`), the stage
+  advance (`$242952`), object type 6 and the `$25FCFA`/`$25FD38`
+  teardown-and-rebuild. [M] on the LIVE page, fire held: at logic frame 19,218
+  the background object is destroyed and a NEW one built, `$813092` goes 0 -> 1
+  and the distance clock is back at zero. The port then stops on stage 2's
+  column stream `$228658`, which no wave has exported. **The RESULT SCREEN
+  (`$28D9AA`, 819 instructions) is NOT ported and two of object type 6's state
+  exits are DECLARED DEVIATIONS** -- see `docs/worklog/ddpdoj/62` SS2 and
+  `src/stageend.js`'s header; and the boss itself is still recon 48's three
+  waves, so the only way stage 1 ends is the timeout
 - the ship, its two option pods, two exhaust records and three ground shadows
   are simulated; **everything else in the picture is still a 161-frame capture**
   that loops (the CAPTURE LEDGER in `games/ddpdoj/PLAN-no-recordings.md` tracks
@@ -374,7 +384,9 @@ dispatch entry 27 `$B4F2`; the `$1B = $83` null wave cursor; `$B7B5`/`$B797`,
 W34's open table-extent finding; and `$97C5`, the two-player continue switch,
 which is the last throw on the game-over path (one controller, `$18 = 1`).
 
-**DaiOuJou:** the 39 bullet behaviour bodies (`$282104..$283BAF`, ~6.7 KB, all
+**DaiOuJou:** the RESULT SCREEN (`$28D9AA`/`$28E7F8`/`$285400`), which removes
+W62's two declared deviations and is where the stage-clear score comes from;
+the 39 bullet behaviour bodies (`$282104..$283BAF`, ~6.7 KB, all
 throwing); the enemy loaders (2 routines + 208 table pairs behind 124 of 126
 types); the score/chain/rank ledger's missing score path; and the two open
 review findings from W21 — a hardcoded coverage denominator, and an absence

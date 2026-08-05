@@ -196,15 +196,34 @@ export function runStageAdvance242952(ram, rom, ctx) {
   return { d7, result: r.result };
 }
 
-/** `$242970..$242992` and its P2 mirror: `bset #$5` on the player record's
- *  status word, unless the record is alive-with-bit-0-set-and-bit-15-of-the-
- *  high-byte-clear.  Three tests, transcribed in the ROM's order. */
+/**
+ * `$242970..$242992` and its P2 mirror `$242994..$2429B6`: `bset.b #$5` on the
+ * player record's status word.  THREE tests, and the FIRST one's sense is the
+ * trap:
+ *
+ *   242970: tst.w $8103E6
+ *   242976: bmi.b  $24298C     <- NEGATIVE (bit 15 SET, i.e. the player is
+ *                                 LIVE) jumps STRAIGHT TO THE BSET
+ *   242978: btst.b #$0,$8103E6
+ *   242980: beq.b  $242994     <- bit 0 CLEAR -> skip the bset entirely
+ *   242982: btst.b #$7,$8103E7
+ *   24298A: bne.b  $242994     <- bit 7 of the LOW byte SET -> skip
+ *   24298C: bset.b #$5,$8103E6
+ *
+ * So a live player ALWAYS gets bit 5; the two `btst`s only decide what happens
+ * to a record whose bit 15 is clear.  This was written the other way round
+ * first -- `bmi` read as "branch if bit 15 is CLEAR" -- which sent every live
+ * player down the btst chain and, in the shipped seed, skipped the bset on both.
+ */
 function playerBit5(ram, base) {
   const w = ram.u16(base);
-  if ((w & 0x8000) === 0) { ram.setU8(base, ram.u8(base) | 0x20); return; }  // bmi
-  if ((ram.u8(base) & 0x01) === 0) return;                 // btst #0 / beq -> skip
-  if ((ram.u8(base + 1) & 0x80) !== 0) return;             // btst #7 of the LOW byte
-  ram.setU8(base, ram.u8(base) | 0x20);                    // bset #5
+  if ((w & 0x8000) !== 0) {                                // $242976 bmi
+    ram.setU8(base, ram.u8(base) | 0x20);                  // $24298C bset #5
+    return;
+  }
+  if ((ram.u8(base) & 0x01) === 0) return;                 // $242980 beq
+  if ((ram.u8(base + 1) & 0x80) !== 0) return;             // $24298A bne
+  ram.setU8(base, ram.u8(base) | 0x20);                    // $24298C bset #5
 }
 
 // ============================================================ OBJECT TYPE 6

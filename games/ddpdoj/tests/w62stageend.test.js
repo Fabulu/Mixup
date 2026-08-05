@@ -332,7 +332,16 @@ test('state 5 rewrites $A(a4) to $80, so state 6 waits 128 frames and not 32',
     installScripts(ram, ROM, { a3: 0x29370a });
     a3Start259962(ram, 6);
     const c = { rom: ROM, unportedLog: new UnportedLog(), bossSubRec: A6 };
-    while (ram.u8(SCHED.a3Base + 0x02) !== 6) runScheduler25962E(ram, ROM, c);
+    // BOUNDED, and the bound is asserted.  The first version of this test was
+    // `while (state !== 6)` with no counter, and mutant M9 -- the A3 slot that
+    // runs its INIT for ever -- made it HANG rather than go red.  A check that
+    // can hang is a check that cannot fail (docs/knowledge/03); this one now
+    // says how many frames it took as well as what it found.
+    let n = 0;
+    while (ram.u8(SCHED.a3Base + 0x02) !== 6 && n < 1000) {
+      runScheduler25962E(ram, ROM, c); n++;
+    }
+    assert.equal(n, 347, 'state 6 is entered on the 347th frame of the script');
     assert.equal(ram.u16(SCHED.a3Base + 0x0a), 0x80);
   });
 
@@ -395,6 +404,43 @@ test('$242952 increments the stage and hands it to the new type-6 record',
     assert.equal(ram.u16(st) & 0xff, 6);
     assert.equal(ram.u16(st + ALLOC.priOff), 0x000a);
     assert.equal(ram.u16(st + 0x04), 4, '$242A3A move.w D7,$4(A0)');
+  });
+
+test('$242976 bmi -- A LIVE PLAYER ALWAYS GETS `bset #$5`, and the two btsts '
+  + 'only decide a record whose bit 15 is CLEAR', { skip: SKIP }, () => {
+    // LIVE (bit 15 set): straight to the bset, whatever the two btsts say.
+    for (const low of [0x00, 0xff]) {
+      const ram = new Ram();
+      const { ctx } = ctxOf(ram);
+      ram.setU16(SE.p1, 0x8000 | low);
+      runStageAdvance242952(ram, ROM, ctx);
+      assert.equal(ram.u8(SE.p1) & 0x20, 0x20,
+        `a live player with low byte $${low.toString(16)} must be bset`);
+    }
+    // NOT live, bit 0 CLEAR -> $242980 beq SKIPS the bset.
+    {
+      const ram = new Ram();
+      const { ctx } = ctxOf(ram);
+      ram.setU16(SE.p1, 0x0000);
+      runStageAdvance242952(ram, ROM, ctx);
+      assert.equal(ram.u8(SE.p1) & 0x20, 0, '$242980 beq');
+    }
+    // NOT live, bit 0 SET, LOW byte's bit 7 SET -> $24298A bne SKIPS it too.
+    {
+      const ram = new Ram();
+      const { ctx } = ctxOf(ram);
+      ram.setU16(SE.p1, 0x0180);
+      runStageAdvance242952(ram, ROM, ctx);
+      assert.equal(ram.u8(SE.p1) & 0x20, 0, '$24298A bne');
+    }
+    // NOT live, bit 0 SET, LOW byte's bit 7 CLEAR -> the bset RUNS.
+    {
+      const ram = new Ram();
+      const { ctx } = ctxOf(ram);
+      ram.setU16(SE.p1, 0x0100);
+      runStageAdvance242952(ram, ROM, ctx);
+      assert.equal(ram.u8(SE.p1) & 0x20, 0x20, 'the fall-through to $24298C');
+    }
   });
 
 test('$2429C4 -- the SECOND entry -- is named and NOT ported', { skip: SKIP }, () => {
