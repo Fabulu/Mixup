@@ -1,7 +1,7 @@
 # W65 IMPL — B3: THE LASER BOMB `$249A80`
 
 status: **DONE** — **BOMBING WHILE HOLDING THE BEAM WORKS.** `[M]` on the LIVE
-build `20260805133936`: fire held, `($3f,A6)` = 1, press X three times, the
+build `20260805144407`: fire held, `($3f,A6)` = 1, press X three times, the
 stock falls 3 → 2 → 1 → 0, **thirty-one** of the forty-five records go live,
 `$2456A6` takes 32 pool-A hits and 55 pool-B hits and **erases 54 enemy
 bullets**, the ship's flags bit 7 goes on for the bomb and off at the teardown,
@@ -264,7 +264,13 @@ Chrome + Python `playwright`, W64's recipe with the one thing it deliberately
 did not do: **fire HELD, not tapped**, so `($3f,A6)` reaches 1 and the press
 takes `$249A80`. Button 2 is `x`. The page is READ, not only photographed.
 
-### 7.1 DEPLOYED — `https://gbtman.pages.dev/games/ddpdoj/`, build `20260805133936`
+### 7.1 DEPLOYED — `https://gbtman.pages.dev/games/ddpdoj/`, build `20260805144407`
+
+TWO deployed runs, because the first (`20260805133936`) predated §8's missing
+`$80FA74` store.  `[M]` the second, on the FINAL tree, is the one below and it
+agrees with the first in every column: three laser bombs, `stock` 3 → 2 → 1 →
+0, `live` 29/24/31, `beam` 35 pool-A / 44 pool-B / 29 bullets erased, `rank`
+53/0/0/0/0 on all 17 samples, `PAGE ERRORS []`.
 
 ```
 [M] BOOTED     lf 2314  held 0  stock 3  live  0  rank 53/0/0/0/0
