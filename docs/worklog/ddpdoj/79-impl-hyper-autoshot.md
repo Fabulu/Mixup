@@ -9,8 +9,9 @@ logic frames compared`.** `$2497AA` is gone from the blocked census entirely —
 all 26 rungs it used to block now RUN. **`playgate.mjs`, a new gate, loads the
 page's own bundle and holds Button 3 for 600 frames with no throw**, and goes
 red under `--break autoshot-unported` with exactly the message the owner pasted.
-961 unit tests (was 934), 0 failing. **BOTH bar conditions met for this routine
-— and the reds the unblocking revealed are reported in §6, not buried.**
+961 unit tests (was 934), 0 failing; `pgm.py check` 72/2, and **neither
+failure is mine** (§6.5, proven three ways). **BOTH bar conditions met for this
+routine — and the reds the unblocking revealed are reported in §6, not buried.**
 
 started: 2026-08-05
 wave: 79. role: IMPLEMENTER.
@@ -339,6 +340,43 @@ origin or the slot's initial velocity** is what differs. `78-diag` guessed "a
 wrap or a spawn-origin offset rather than accumulated drift" from a $180 delta;
 $100 and $140 here support that reading. **This is now the top item this ladder
 can see**, and it has two independent ladders reproducing it.
+
+---
+
+## 6.5 `pgm.py check` — 72 passed, 2 failed, and NEITHER is mine
+
+`[M]` `python games/ddpdoj/tools/oracle/pgm.py check`, run to completion on this
+tree after the commit: **`VERDICT: FAILURES -- 72 passed, 2 failed, 0 SKIPPED`.**
+
+1. **`segment sweep`** — expected, and it is the row this wave IMPROVED. The
+   stage exits non-zero while any segment is red or blocked, and 45 still are
+   (§4). `fly-around:PASS stage1-laser-hold:FAIL stage1-play:FAIL
+   stage1-sweep:FAIL`, unchanged in shape from `78-diag`. `segment sweep RED
+   [clamp-first]` passes, so the stage is still capable of failing for the right
+   reason.
+2. **`THE LASER BOMB: $249A80, $255FE2 and $2456A6`** — **NEW, and it is a
+   CONCURRENT WAVE'S, proven three ways.**
+   * `[M]` The scenario never presses Button 3. `w65beamgate.mjs` builds exactly
+     three port words, `portWordFromBits([])`, `[BIT.b1]` and `[BIT.b1,BIT.b2]`,
+     whose P1 raw mirrors are `$00`, `$10` and `$30`. **Bit 6 is clear in all
+     three** (only `[BIT.b3]` gives `$40`), so `$2497B2 btst #6,($18,A6)` fails
+     on every frame and `autoShot2497AA` returns at its second line. With the
+     block inert, nothing writes `($19,A6)` inside the weapon block, so `btn()`
+     is byte-identical to the cached read it replaced. **My change cannot reach
+     this scenario.**
+   * `[M]` The gate's own stop line is `frames 563 stop: UNPORTED $249F8A: the
+     player was HIT` — the hit/death path, reached 563 frames in. A player who
+     starts being HIT is the signature of collidable content appearing, not of
+     a button-3 synthesiser.
+   * `[M]` Timeline. The FIRST full `check` of this session finished at 21:28:16
+     with **`[PASS] THE LASER BOMB ... exit 0`**, and my `($19,A6)` fix was on
+     disk at 21:23:10 — i.e. that PASS was measured WITH my change in. What
+     changed afterwards was `src/handlers.js` at 21:37:54 and a new
+     `tools/w80emitgate.mjs` at 21:36:29, both another agent's, both the SPRITE
+     EMISSION wave. Two `handlers.test.js` tests were transiently red in the
+     same window and are green again.
+
+   I have not touched it, per the brief's rule about other agents' work.
 
 ---
 
