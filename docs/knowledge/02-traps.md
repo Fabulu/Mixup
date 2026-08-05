@@ -1,6 +1,6 @@
 # The traps
 
-Eight failure shapes that cost this project real work. None of them is Game Boy specific —
+Eight failure shapes that cost this project real work. None of them is Game Boy specific -
 and none turned out to be Batman specific either: every one has since recurred on the NES
 and the arcade port.
 
@@ -30,14 +30,14 @@ not stopped happening: it recurs on every new machine, in every wave, in a new c
 >
 > **Do not increment this by claiming "the Nth incident" in a worklog.** The project tried
 > that and the ordinal forked: once Gradius and DaiOuJou were being worked in parallel, each
-> incremented its own counter, and the series now collides — `$282DCE` and `$24560A` are
+> incremented its own counter, and the series now collides - `$282DCE` and `$24560A` are
 > both written down as "the twelfth", and the highest ordinal ever claimed, nineteen, is
 > below the deduplicated floor. An ordinal maintained in two places is not a count. Either
 > build one canonical list, or say "again" and describe the shape.
 
 The nastiest version: four routines that look like four handlers turn out to be *two*
 routines with two entry points each, whose halves jump into one another. One half
-subtracts 2 and falls into the other, which adds 1 back — so the real step is −1, not −2.
+subtracts 2 and falls into the other, which adds 1 back - so the real step is −1, not −2.
 We shipped the −2 reading.
 
 The variant that catches you inside your own port: an arm that "skips the update" quietly
@@ -45,16 +45,16 @@ borrows the update's *tail*. The ROM's early return does not run the tail; ours 
 drew a player the cartridge does not draw, for 45 consecutive frames.
 
 The version that scales, found on the arcade port: it can be **systemic rather than
-incidental**. All 256 entries in DaiOuJou's object type table are exactly 8 bytes — a run
-length and an `rts` — and the real initialisation begins at +8, reached by an `addq.w #8,A1`
+incidental**. All 256 entries in DaiOuJou's object type table are exactly 8 bytes - a run
+length and an `rts` - and the real initialisation begins at +8, reached by an `addq.w #8,A1`
 in the caller. Read only the table address and you get *none* of any enemy's setup, not half
 of it. The same census walked every handler twice, linearly to the first terminator and then
 by following edges: **105 of 111 run past their first terminator**, one of them by 4,014
 bytes. When a trap turns out to be a property of the whole table rather than one routine,
-measure the table — do not fix the routine you noticed.
+measure the table - do not fix the routine you noticed.
 
 **Practice:** when you port a branch that returns early, ask what the ROM's return
-actually skips — not just what it skips *computing*, but what it skips *doing* at the end
+actually skips - not just what it skips *computing*, but what it skips *doing* at the end
 of the caller. And when a routine "looks finished", say what *ended* it: a terminator you
 saw, or a label you stopped at.
 
@@ -65,7 +65,7 @@ missing was not data but *whether anything drew it*. Bit this project twice.
 
 **Corollary discovered later, and it is the sharper version:** "renders without throwing"
 is not "renders a picture". Three separate harnesses drove one handover and all reported
-PASS while the game rendered a **solid white frame** — they checked that rendering did not
+PASS while the game rendered a **solid white frame** - they checked that rendering did not
 throw, never that it produced an image. Assert on the **output**.
 
 ## 3. When one field will not converge, suspect the measurement
@@ -96,7 +96,7 @@ broken. Four distinct shapes, all found here:
    must be exact on every frame" invariant is *vacuous*. Sample the transitions.
 4. **A unit test that takes the answer in as an argument.** A function's tests passed
    `grounded` in directly, so they exercised the arithmetic and never the **call site's**
-   operand — and stayed green through a bug that used the wrong record byte on four levels.
+   operand - and stayed green through a bug that used the wrong record byte on four levels.
 
 **Rule that covers all four:** a harness may only set up state the application sets up on
 the path being tested, and a check must assert on output the application actually
@@ -109,9 +109,9 @@ difficulties for months**, because nothing ran it. The bug it was written for wa
 player-visible the whole time.
 
 **Rule:** if it is worth writing, it goes in the gate the same day. And the gate must fail
-loudly on a stage that cannot run — see `03-checks-that-can-fail.md` on SKIP.
+loudly on a stage that cannot run - see `03-checks-that-can-fail.md` on SKIP.
 
-## 6. Instruction-level timing is out of scope — say so explicitly
+## 6. Instruction-level timing is out of scope - say so explicitly
 
 Real hardware drops work on lag frames: the main loop does not finish before the next
 interrupt, and that iteration's updates are skipped. Your port will never lag, so it runs
@@ -126,7 +126,7 @@ entire 18-field "regression" that looked like a real bug.
 
 Not every difference from the original is a defect. We reproduce a 50%-dither effect
 *spatially* rather than as the hardware's 30 Hz alternation, because a modern display
-turns that alternation into a strobe over a third of the screen — a photosensitivity
+turns that alternation into a strobe over a third of the screen - a photosensitivity
 hazard rather than the translucency a slow LCD made of it.
 
 That deviation looks exactly like a bug in the pixel numbers (it is the worst score in our
@@ -140,7 +140,7 @@ A player-reported "softlock" sent four investigations in four wrong directions: 
 asset, a rejected promise, a synchronous throw, a hold that never ended.
 
 The report that solved it in minutes was **"the boss explodes, the screen fades to white,
-and then we softlock."** The fade was the clue. Nothing was frozen — the next level had
+and then we softlock."** The fade was the clue. Nothing was frozen - the next level had
 loaded and was running perfectly, with the palette left faded out. The game was
 *invisible*, not stuck.
 

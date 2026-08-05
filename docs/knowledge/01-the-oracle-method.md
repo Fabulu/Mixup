@@ -9,7 +9,7 @@ Everything else here is detail. If you take one thing to the next port, take thi
 ## Why it matters more than it sounds
 
 Without a reference you are reading a disassembly and believing yourself. That is not a
-small risk — on this project, reading the listing carefully and *still being wrong* was
+small risk - on this project, reading the listing carefully and *still being wrong* was
 the single most common failure, nine separate times. The listing tells you what the
 instructions are. It does not tell you which arm actually executes, what the hardware
 does with the result, or what the previous frame left behind.
@@ -18,7 +18,7 @@ Two examples worth internalising, both from `docs/03-VERIFICATION.md`:
 
 - The metasprite index looked like `facing XOR 1` in the listing. It is `facing`. That
   arm simply is not the one the walk path takes. Taking the listing at face value drew
-  the player mirrored **for his entire run** and cost ~276 wrong pixels a frame — and no
+  the player mirrored **for his entire run** and cost ~276 wrong pixels a frame - and no
   gameplay field was affected, so only a pixel comparison could ever have caught it.
 - A routine that ends in `RET` may never be reached, because the routine above it falls
   through into a different tail.
@@ -27,14 +27,14 @@ Two examples worth internalising, both from `docs/03-VERIFICATION.md`:
 
 Pick your reference emulator on these three capabilities, not on popularity:
 
-1. **Execution hooks** — "call me when the CPU executes address X (in bank B)". This is
+1. **Execution hooks** - "call me when the CPU executes address X (in bank B)". This is
    the load-bearing one. It buys you: sampling at a stable point, attributing a write to
    the routine that made it, counting how many times an arm ran, and reading CPU
    registers at the moment of a call. Half the hard bugs here were solved by hooking one
    address and reading one register.
-2. **Direct memory access** — read and write RAM/VRAM/OAM at will, mid-run.
+2. **Direct memory access** - read and write RAM/VRAM/OAM at will, mid-run.
 3. **Deterministic stepping and a framebuffer you can read.** Plus save/load state if you
-   can get it — it makes per-level setup enormously cheaper.
+   can get it - it makes per-level setup enormously cheaper.
 
 PyBoy gave us all of this via `pyboy.hook_register(bank, addr, cb, ctx)`. For the NES,
 evaluate candidates against the same list before writing a line of port code. If your
@@ -49,7 +49,7 @@ some samples contain two executions of a routine and some contain none.
 
 We chased a "camera impurity" for a long time that was purely this. The fix was to sample
 at the main loop's own VBlank-wait call, at which point the player fields are
-post-update and the camera holds this iteration's output — exactly the pair one tick of
+post-update and the camera holds this iteration's output - exactly the pair one tick of
 our port produces.
 
 **Rule:** find the instruction in the game's main loop where a frame is unambiguously
@@ -59,7 +59,7 @@ everything around it is perfect, **suspect the measurement before the port**.
 ## Input has a lead
 
 The game reads the joypad in its VBlank interrupt, and the main loop that consumes it
-runs immediately after — i.e. during the emulator's *next* tick. So buttons must be held
+runs immediately after - i.e. during the emulator's *next* tick. So buttons must be held
 **one tick early** for the real machine to act on them on the same numbered frame as your
 port. Get this wrong and every input response reads as a one-frame divergence, which
 drowns out the real bugs.
@@ -76,7 +76,7 @@ frames.
 Practical points that took a while to learn:
 
 - **Late content is unreachable from a script.** Add injection flags to *both* harnesses
-  so they stay comparable — we have `--warp COL[,ROW]` to place the player and `--ammo N`
+  so they stay comparable - we have `--warp COL[,ROW]` to place the player and `--ammo N`
   to grant items. Apply them at the *same* point on both sides or every warped scenario
   sits permanently one frame skewed.
 - **Report the FIRST divergence per field**, plus a window around the earliest. That
@@ -88,7 +88,7 @@ Practical points that took a while to learn:
 - **Scale coverage to the content, not to the file.** Eight frames out of 4,137 is not
   coverage of a 69-second sequence; it is a spot check that will be quoted as proof.
 
-## Layer the checks — each layer catches what the others cannot
+## Layer the checks - each layer catches what the others cannot
 
 Cheapest first, so a bad constant is reported before anything spends a minute inside an
 emulator:
@@ -97,7 +97,7 @@ emulator:
 |---|---|---|
 | unit tests | one routine's logic in isolation | ordering, integration, anything visual |
 | data integrity | the extracted assets are what the game loads | code that misuses correct data |
-| state trace | the port's variables match the ROM's, frame by frame | anything not in the compared field list — especially *drawing* |
+| state trace | the port's variables match the ROM's, frame by frame | anything not in the compared field list - especially *drawing* |
 | **pixels** | what a player actually sees | nothing, but it is slow and hard to attribute |
 
 The pixel layer is not optional. We had a screen match the cartridge's VRAM **byte for

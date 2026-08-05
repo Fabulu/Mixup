@@ -1,4 +1,4 @@
-# Can an oracle SEE the slowdown? — MAME capability findings
+# Can an oracle SEE the slowdown? - MAME capability findings
 
 > ## ⚠ READ THIS BEFORE ANYTHING ELSE IN THIS FILE
 >
@@ -18,7 +18,7 @@
 >
 > ### What this does and does not invalidate
 >
-> **Still good — this is most of the file:**
+> **Still good - this is most of the file:**
 > - Every capability finding: taps, hooks, determinism, headless operation.
 > - The game's logic, state, RAM, graphics and code structure. A port verified
 >   frame-by-frame against MAME is still verified for everything except timing.
@@ -36,8 +36,8 @@
 > ### What follows for the port, and it is not fatal
 >
 > **Separate WHAT from WHEN in the architecture, from day one.** The port models
-> the game's work explicitly — a per-frame work budget with a calibration
-> constant — rather than inheriting whatever pace the host happens to produce.
+> the game's work explicitly - a per-frame work budget with a calibration
+> constant - rather than inheriting whatever pace the host happens to produce.
 > Then the slowdown model has ONE knob, and that knob can be calibrated against a
 > better reference when one exists, without rewriting the object driver.
 >
@@ -48,25 +48,25 @@
 > **What a real reference would be**, in rough order of cost: documented
 > measurements from people who own the board; frame-accurate capture from real
 > PGM hardware; a second emulator of this board to cross-check (the Gradius
-> Mesen/MAME cross-check is the precedent — two independent implementations
+> Mesen/MAME cross-check is the precedent - two independent implementations
 > disagreeing is how the NES lag frame was found at all).
 >
 > **Until then, every slowdown number this project produces is labelled
 > "MAME-timed, uncalibrated".** Not doing that is how "about 54 fps" nearly
 > became a fact.
 >
-> ### MECHANISM vs MAGNITUDE — the split that rescues most of the work
+> ### MECHANISM vs MAGNITUDE - the split that rescues most of the work
 >
 > Two different questions got conflated, and only one of them is blocked:
 >
 > | question | who can answer it | blocked? |
 > |---|---|---|
-> | **MECHANISM** — WHAT does the board do when it runs out of time? Does it drop the sprite DMA, skip an update, truncate an object loop, stretch the frame? Which code path runs? | MAME. This is about the GAME'S CODE, and MAME executes that faithfully. | **NO** |
-> | **MAGNITUDE** — HOW OFTEN and HOW MUCH, on real hardware, for a given scene? | not MAME | **YES** |
+> | **MECHANISM** - WHAT does the board do when it runs out of time? Does it drop the sprite DMA, skip an update, truncate an object loop, stretch the frame? Which code path runs? | MAME. This is about the GAME'S CODE, and MAME executes that faithfully. | **NO** |
+> | **MAGNITUDE** - HOW OFTEN and HOW MUCH, on real hardware, for a given scene? | not MAME | **YES** |
 >
-> **So keep going.** Mechanism is the part that decides the port's architecture —
+> **So keep going.** Mechanism is the part that decides the port's architecture -
 > `docs/knowledge/06` says mechanism (C), partial completion, cannot be
-> retrofitted — and mechanism is exactly the part MAME can still tell us. Find
+> retrofitted - and mechanism is exactly the part MAME can still tell us. Find
 > the overrun path, learn what the game does when the frame is gone, build the
 > object driver to express it. Magnitude is one calibration constant on top,
 > deliberately isolated so it can be set later.
@@ -75,12 +75,12 @@
 > IGS023 at vblank, and the game's own frame counters (`$80390A`, `$80390D`
 > bit 0, `$80390E` mod 3) are incremented INSIDE the main loop body rather than
 > by an interrupt. If an overrun means the loop body does not complete, those
-> counters do not advance — and anything driven by them (animation phase,
+> counters do not advance - and anything driven by them (animation phase,
 > alternation, RNG) slows with the game rather than with the display. That would
 > make slowdown observable to the game's own logic, which is the single most
 > important question in this folder, and it is answerable under MAME.
 >
-> The owner reports the real board's slowdown is a **distinctive kind** — not
+> The owner reports the real board's slowdown is a **distinctive kind** - not
 > generic frame-dropping. That is a hypothesis with a testable shape: find which
 > of the three mechanisms (or which combination) the code actually implements,
 > and see whether the distinctiveness falls out of it.
@@ -95,7 +95,7 @@
 > today; do not fake it, and do not calibrate against another emulator and call
 > it hardware.**
 >
-> ### THE SCROLL-CLOCK METHOD — the one calibration path we have
+> ### THE SCROLL-CLOCK METHOD - the one calibration path we have
 >
 > Owner's proposal, and it is sound in shape: **use recorded video of the real
 > board, and use the AUTOSCROLL as the shared clock.**
@@ -110,7 +110,7 @@
 > ```
 >
 > **The player's inputs do not have to match**, which is what makes it usable at
-> all — the scroll timeline is common to any run of the stage. Find the intervals
+> all - the scroll timeline is common to any run of the stage. Find the intervals
 > where N/M departs from 1, then bisect within them to localise WHERE the extra
 > slowdown lives.
 >
@@ -134,7 +134,7 @@
 >    precision cannot be recovered. Measure over LONG intervals, and report the
 >    residual.
 > 3. **Load depends on the run, not just the position.** Different player,
->    different bullets on screen, different enemies killed early — so the same
+>    different bullets on screen, different enemies killed early - so the same
 >    scroll interval can carry different load. Mitigate with many intervals and
 >    many runs, and prefer stretches dominated by scripted spawns.
 > 4. **RANK.** Now known to change bullet speed and density, which changes load
@@ -142,7 +142,7 @@
 >    Rank must be estimated or controlled, or the comparison measures rank rather
 >    than hardware.
 >
-> **What it yields:** not a single constant, most likely, but a curve — extra
+> **What it yields:** not a single constant, most likely, but a curve - extra
 > slowdown as a function of load. That is a better target anyway, because the
 > load meter already gives us the x-axis.
 
@@ -157,7 +157,7 @@ settled without the DaiOuJou board image and are named as such.
 > leaves open: **§3a** proves a 68000's `:maincpu` program space is tappable for opcode
 > fetches, and **§7b** shows `igs/pgm.cpp` declares its refresh via raw timing
 > (`pixclock`/`htotal`/`vtotal` are present in `-listxml`), not a rounded `set_refresh_hz`
-> literal — so for `ddpdoj`, unlike the NES driver, MAME's reported refresh *is* a
+> literal - so for `ddpdoj`, unlike the NES driver, MAME's reported refresh *is* a
 > derivation and can be trusted.
 
 **No ROM for DoDonPachi DaiOuJou was obtained, searched for, or used.** Everything here was
@@ -174,21 +174,21 @@ test program written from scratch for this investigation.
    memory access, deterministic stepping and a readable framebuffer: all four demonstrated.
 2. **Slowdown is directly measurable, two independent ways that agree to 4 CPU cycles.**
 3. **MAME's execution is bit-deterministic** across repeats, throttle, frameskip, emulation
-   speed, host thread count and debugger-enabled — including the frames that overran.
-4. **`ddpdoj` is not Cave hardware.** MAME places it in `igs/pgm.cpp` — the IGS
+   speed, host thread count and debugger-enabled - including the frames that overran.
+4. **`ddpdoj` is not Cave hardware.** MAME places it in `igs/pgm.cpp` - the IGS
    PolyGameMaster: **68000 @ 20 MHz + Z80 @ 8.4672 MHz + a fully emulated ARM7 @ 20 MHz.**
    The README's working assumption ("Cave board", "something close to 54 Hz") is wrong on
    both counts.
 5. **The refresh rate is exactly `15625/264 Hz = 59.185606060606…`**, and the frame period
-   is exactly **16,896.000 µs** — i.e. exactly **337,920 68000 cycles per frame**. Derived
+   is exactly **16,896.000 µs** - i.e. exactly **337,920 68000 cycles per frame**. Derived
    from the driver's own raw video timing, per `07-clocks-and-framerates.md`.
-6. **The one thing that must be planned for:** the ARM7 is not a protection stub — it is a
+6. **The one thing that must be planned for:** the ARM7 is not a protection stub - it is a
    second programmable CPU that MAME emulates. Any (B) time-dilation model for this game is
    a model of *two* CPUs' workloads plus MAME's scheduler interleave, not one.
 
 ---
 
-## 1. Setup — reproducible from nothing
+## 1. Setup - reproducible from nothing
 
 ```
 $ curl -L -o mame0288b_x64.exe \
@@ -201,7 +201,7 @@ $ ./mame.exe -version
 0.288 (mame0288)
 ```
 
-**The unattended invocation** — this is the equivalent of Mesen's `--testRunner`, and unlike
+**The unattended invocation** - this is the equivalent of Mesen's `--testRunner`, and unlike
 Mesen it is documented:
 
 ```
@@ -224,7 +224,7 @@ DEBUG MODE: pid=36440 MainWindowHandle=0 Title=[]
 ```
 
 `MainWindowHandle=0` means the process owns no top-level window. **`-debugger none` is the
-piece that matters** — `-debug` alone would open the Windows debugger UI. This is MAME's
+piece that matters** - `-debug` alone would open the Windows debugger UI. This is MAME's
 answer to the Mesen GUI problem, and it is a supported documented option
 (`-debugger  debugger used: windows, imgui, gdbstub or none`), not an undocumented mode.
 
@@ -232,7 +232,7 @@ Every run in this document exited with rc=0 from a non-interactive shell.
 
 ---
 
-## 2. Question 1 — per-frame CPU work
+## 2. Question 1 - per-frame CPU work
 
 ### 2a. Cycles, exactly **[MEASURED]**
 
@@ -250,9 +250,9 @@ end
 
 Symbols confirmed present by evaluating each one: `cycles`, `totalcycles`,
 `lastinstructioncycles`, `frame`, `beamx`, `beamy`, `pc`, `cpunum`, `logunmap`.
-(`beamh` / `beamv` do not exist — the console answered `unknown symbol`.)
+(`beamh` / `beamv` do not exist - the console answered `unknown symbol`.)
 
-Without `-debug`, `manager.machine.debugger` is `nil` and `cpu.debug` does not exist —
+Without `-debug`, `manager.machine.debugger` is `nil` and `cpu.debug` does not exist -
 **so cycle symbols require the debugger, and the debugger requires `-debugger none` to stay
 headless.** That is the whole trick.
 
@@ -280,7 +280,7 @@ Cross-checking the two measures over 2,392 logic frames of Gradius:
 cycles vs (elapsed_time × 1.7897727 MHz):  mean err 3.99 cyc,  max |err| 4.00 cyc
 ```
 
-A **constant** 4-cycle bias, zero variance — the two methods are the same measurement,
+A **constant** 4-cycle bias, zero variance - the two methods are the same measurement,
 offset by where in the instruction the tap fires. Either can be used; the cycle counter is
 exact, the time route is dependency-free.
 
@@ -299,13 +299,13 @@ vframe 4: cycles this frame = 152926
 
 ---
 
-## 3. Question 2 — did the game finish its frame?
+## 3. Question 2 - did the game finish its frame?
 
 ### 3a. Execution hooks exist, and they are *memory taps* **[MEASURED]**
 
 This was the biggest open risk and it is resolved. `address_space:install_read_tap(lo, hi,
 name, cb)` **fires on opcode fetches**, so a read tap on a code address is an execution hook
-— PyBoy's `hook_register` equivalent, without the debugger.
+- PyBoy's `hook_register` equivalent, without the debugger.
 
 Proof on the 6502, hooking Gradius's NMI entry `$806A` and the `$04` lock byte:
 
@@ -314,7 +314,7 @@ RESULT frames=600 reads@0x806A=595 writes@0x0004=1786
 ```
 
 595 NMI dispatches in 600 frames (the first ~5 predate NMI enable), and 1,786 writes to
-`$04` = 3 per NMI — which is exactly right: `INC $04` is a read-modify-write and the 6502
+`$04` = 3 per NMI - which is exactly right: `INC $04` is a read-modify-write and the 6502
 emits a dummy write plus the real write, plus the `STA $04` that clears it. 595×3 = 1,785,
 plus one at init. The tap is seeing the real bus, not an approximation.
 
@@ -339,7 +339,7 @@ range $200-20F read-tap hits over 60 frames: 2085306
 > after the branch, or accept a one-to-two instruction lead and calibrate it once.
 
 The `:maincpu` on both megadriv and the NES exposes only a `program` space (plus
-`cpu_space` on the 68000) — there is no separate `AS_OPCODES` space that fetches could hide
+`cpu_space` on the 68000) - there is no separate `AS_OPCODES` space that fetches could hide
 in.
 
 ### 3b. CPU registers are readable *at* the hook **[MEASURED]**
@@ -351,7 +351,7 @@ Hooking `$8087` in Gradius, which is `STY $4014` (the OAM DMA trigger, preceded 
 gframe=1 A=00 X=00 Y=02 SP=1F8 P=74 PC=8087 CURPC=8087 GENPC=8085 IR=A0
 ```
 
-`Y=02` — the shadow-OAM page, exactly as the ROM notes predict. `IR=A0` is the `LDY #`
+`Y=02` - the shadow-OAM page, exactly as the ROM notes predict. `IR=A0` is the `LDY #`
 opcode and `GENPC=8085` is that instruction's start. This is the capability that makes the
 (C) detector possible: **the object slot index normally lives in a register at the top of
 the object loop, and we can read it there.**
@@ -414,10 +414,10 @@ its NMI. What it did was run its logic 2,392 times in 2,400 video frames.
 That is a textbook **(B) time-dilation** signature at whole-frame granularity, measured
 end to end by an oracle that did not know in advance what it would find. Whether it is the
 *only* thing Gradius does under heavier load is the Gradius workflow's question, not this
-one — but the instrument that would answer it now exists and is proven.
+one - but the instrument that would answer it now exists and is proven.
 
 > **Bucketing trap, measured.** The first version of this harness bucketed by *emulator*
-> frame and reported 3 spurious "the NMI did not finish" frames — which were simply NMIs
+> frame and reported 3 spurious "the NMI did not finish" frames - which were simply NMIs
 > whose entry and tail straddled MAME's frame boundary. `01-the-oracle-method.md` says
 > "sample at a stable point in the game's own loop"; this is that rule producing a false
 > positive within an hour of ignoring it. **Bucket by the game's own frame** (`$806A` →
@@ -426,7 +426,7 @@ one — but the instrument that would answer it now exists and is proven.
 
 ---
 
-## 4. Question 3 — frame-rate observation without knowing the game's code
+## 4. Question 3 - frame-rate observation without knowing the game's code
 
 Two game-agnostic signals, both measured:
 
@@ -435,14 +435,14 @@ Two game-agnostic signals, both measured:
 | logic frames per video frame | count interrupt-vector fetches / handler completions per video frame | 8 video frames with 0, none with 2 |
 | identical framebuffer twice | hash `screen:pixels()` each video frame | 518 duplicates |
 
-`screen:pixels()` returns the real framebuffer even under `-video none` — dumped to PPM and
+`screen:pixels()` returns the real framebuffer even under `-video none` - dumped to PPM and
 inspected, it shows the Gradius title screen at frame 250 and the Vic Viper in Stage 1 with
 enemies on screen at frames 400 / 700 / 1100. **The framebuffer criterion is satisfied.**
 
 **But the duplicate-frame detector on its own is not a slowdown detector, and this run
 proves it in both directions:**
 
-- 518 duplicates against 4 real lost logic frames — the title screen and quiet stretches
+- 518 duplicates against 4 real lost logic frames - the title screen and quiet stretches
   repeat pixels while the logic is running perfectly. Enormous false-positive rate.
 - Of the 4 real events, only 2 (frames 325 and 638) also produced an identical framebuffer.
   On 1095 and 1936 the background was still scrolling, so the picture changed even though
@@ -455,7 +455,7 @@ supplies both cleanly.
 
 ---
 
-## 5. Question 4 — determinism
+## 5. Question 4 - determinism
 
 **[MEASURED] Bit-identical output across eight configurations**, including the overrun
 frames, from the same 1,200-frame scripted Gradius scenario:
@@ -477,7 +477,7 @@ plus host thread count:
 931004a0231dfc8d7c8ebd430a38e68ca80da7a75500444cd9a722ae418686ce *np8.gframe.tsv   -numprocessors 8
 ```
 
-**And the instrumentation does not perturb the emulation** — two decisive checks:
+**And the instrumentation does not perturb the emulation** - two decisive checks:
 
 - 68000, 300 frames, with and without a read tap that fired **10,426,553 times**:
   `totalcycles=45876854` in both runs. Identical to the cycle.
@@ -495,7 +495,7 @@ constraint.**
 
 ---
 
-## 6. Question 5 — the (C) detector, and it is more than a sketch
+## 6. Question 5 - the (C) detector, and it is more than a sketch
 
 `06-lag-and-slowdown.md` calls "object slots processed: 0..N" the field most likely to be
 missing from inherited tooling and the one that decides whether slowdown can be retrofitted.
@@ -524,7 +524,7 @@ commit**.
 ### Finding the loop without a disassembly
 
 You do not have to know `OBJ_LOOP_BODY` in advance. Put a **write** tap over the suspected
-object arrays and record `CURPC` at every write — MAME then tells you which code writes the
+object arrays and record `CURPC` at every write - MAME then tells you which code writes the
 table. Run against Gradius, over 1,200 frames, tapping `$0300-$037F`:
 
 ```
@@ -544,7 +544,7 @@ A2B4  n=72      off=$0361..$0362
 
 That is the object system's code map, produced by measurement in one run. The offset
 clustering at `$0320`, `$0330`, `$0360`, `$0370` is consistent with the parallel-array
-layout that `games/gradius/NOTES-lag.md` lists as an *unverified* third-party lead — and
+layout that `games/gradius/NOTES-lag.md` lists as an *unverified* third-party lead - and
 this is how to verify it properly, rather than repeating it.
 
 ### What this run did and did not show
@@ -558,7 +558,7 @@ object-slot touch counts per logic frame:
 ```
 
 The 5 frames with 32 are the full-table walk from `$9B4C`, and they are **the same 5 frames
-that blew the cycle budget** — a stage/wave initialisation, not a per-frame object loop.
+that blew the cycle budget** - a stage/wave initialisation, not a per-frame object loop.
 So this particular range is *not* the per-frame object update, and the `$0320 = object Y`
 lead is not confirmed by it. **Reported as a negative result rather than dressed up**: the
 detector mechanism is proven, the Gradius address it should be pointed at is not yet known,
@@ -567,7 +567,7 @@ and finding it is `NOTES-lag.md`'s job.
 ### Why this matters more on the real target
 
 On PGM the object loop is 68000 code and the slot index will be in a data or address
-register — readable at the hook, as §3b proved on the 6502 and §3c proved the 68000 side of.
+register - readable at the hook, as §3b proved on the 6502 and §3c proved the 68000 side of.
 The prefetch caveat of §3a applies: place the hook on an instruction that is unambiguously
 inside the loop body and validate the count against a known-idle frame first.
 
@@ -597,7 +597,7 @@ All ROM-free, from MAME's own database (`mame.exe -listxml ddpdoj ddpdojblk ddpd
 `ddpdojblk` (Black Label) is identical hardware. For contrast:
 
 ```
-=== ddpdfk  sourcefile=cave/cv1k.cpp     (DoDonPachi Dai-Fukkatsu, 2008 — the actual Cave CV1000)
+=== ddpdfk  sourcefile=cave/cv1k.cpp     (DoDonPachi Dai-Fukkatsu, 2008 - the actual Cave CV1000)
    chip cpu Hitachi SH7709S clock=102400000
    display: refresh=60.024000        <- no pixclock/htotal/vtotal: a declared rate, not a derived one
    driver: savestate=UNSUPPORTED     feature: TIMING=IMPERFECT
@@ -610,16 +610,16 @@ All ROM-free, from MAME's own database (`mame.exe -listxml ddpdoj ddpdojblk ddpd
 
 ### 7a. Three corrections to `games/ddpdoj/README.md`
 
-1. **"Which MAME driver, which CPU, which board revision" — answered.** `ddpdoj` in
+1. **"Which MAME driver, which CPU, which board revision" - answered.** `ddpdoj` in
    `igs/pgm.cpp`, IGS PolyGameMaster. Cave developed the game; IGS built the board. The
    README's framing of "Cave hardware" is not right for *this* title.
-2. **"One estimate in conversation was 'something close to 54'" — that estimate is wrong**
+2. **"One estimate in conversation was 'something close to 54'" - that estimate is wrong**
    by more than five hertz, and §7b gives the exact figure with its derivation. This is
    precisely the kind of number `07-clocks-and-framerates.md` warns would have poisoned the
    whole slowdown effort.
 3. **`ddpdoj` is a *better* oracle target than any Cave-board DoDonPachi.** MAME rates its
    emulation `good`, supports save states, and flags only *sound* as imperfect. The CV1000
-   title `ddpdfk` has `savestate=unsupported` **and** an explicit `timing: imperfect` flag —
+   title `ddpdfk` has `savestate=unsupported` **and** an explicit `timing: imperfect` flag -
    a timing-imperfect driver is close to disqualifying for a project whose whole subject is
    timing. If the game is ever swapped for "a Cave shooter", check this field first.
 
@@ -646,10 +646,10 @@ the derived budgets are **exact integers**, which is unusually convenient:
 | ARM7 cycles per frame | **337,920** exactly |
 | Z80 cycles per frame | 89,413,632 / 625 = 143,060.851 (not integer) |
 
-**Write `15625/264`, or `59.185606060606`, into the manifest — never `59.19`, never `54`.**
+**Write `15625/264`, or `59.185606060606`, into the manifest - never `59.19`, never `54`.**
 
 For contrast, a caution measured on the NES driver: `screen.refresh` reported
-**60.0988000000** — MAME's `nes` driver declares a *rounded* literal, not the exact
+**60.0988000000** - MAME's `nes` driver declares a *rounded* literal, not the exact
 60.098813897 that `07-clocks-and-framerates.md` derives. The error is 1.4 × 10⁻⁵ Hz and
 harmless, but the lesson generalises: **`screen.refresh` returns whatever the driver
 declared.** Trust it only when `-listxml` also reports `pixclock`/`htotal`/`vtotal`, which
@@ -658,14 +658,14 @@ proves the driver used raw timing. For `ddpdoj` it does. For `ddpdfk` and `ddpdo
 
 ---
 
-## 8. What is NOT proven — the honest list
+## 8. What is NOT proven - the honest list
 
 Ordered by how much damage each could do.
 
 1. **[UNTESTED] The ARM7 changes the shape of the problem.** `prot` is a real ARM7 that MAME
    executes; on PGM it runs game logic, not just a challenge/response. A (B) model for this
    game must account for 68000 work, ARM7 work, and how the two rendezvous. None of that can
-   be probed without the board image — but the *instrument* for probing it is identical
+   be probed without the board image - but the *instrument* for probing it is identical
    (`machine.devices[":prot"].spaces["program"]` taps, its own `totalcycles`), and MAME will
    happily give per-device cycle counts for all three CPUs.
 2. **[UNTESTED] DRC.** MAME's ARM7 core has a dynamic recompiler; `-drc`/`-nodrc` exists.
@@ -676,10 +676,10 @@ Ordered by how much damage each could do.
 3. **[UNTESTED] Multi-CPU scheduler quantum.** With three CPUs the interleave granularity
    affects when each CPU sees the other's writes. MAME sets this per driver
    (`set_perfect_quantum` / `set_quantum_time`); there is no command-line override, so it is
-   at least *fixed*, and every determinism test here passed — but they were on a
+   at least *fixed*, and every determinism test here passed - but they were on a
    single-CPU-driven workload. Verify on the real machine before trusting cross-CPU ordering.
 4. **[MEASURED, with a caveat] Save states.** `machine:buffer_save()` produced a 2,257,358-byte
-   buffer and `machine:buffer_load()` restored RAM **exactly** — a hash over `$0000-$07FF`
+   buffer and `machine:buffer_load()` restored RAM **exactly** - a hash over `$0000-$07FF`
    matched the saved value on the very next read:
    ```
    vf=500 ramsum=2783029931 buflen=2257358
@@ -688,11 +688,11 @@ Ordered by how much damage each could do.
    ```
    **But a replay from that state did not reproduce the original trace** (first mismatch at
    step 1 of 60). The restore is exact; resuming *deterministically* from a mid-run load is
-   not yet solved — most likely input/frame-boundary alignment in the harness rather than
+   not yet solved - most likely input/frame-boundary alignment in the harness rather than
    MAME. `ddpdoj` advertises `savestate=supported`, so this is worth an hour to get right,
    because it is what makes per-level scenario setup cheap. **Do not build the corpus on
    save-state resume until this is nailed down.**
-5. **[UNTESTED] Whether DaiOuJou's own logic observes the slowdown** — the README calls this
+5. **[UNTESTED] Whether DaiOuJou's own logic observes the slowdown** - the README calls this
    the single most important question in the folder and it remains completely open. It is
    answerable the moment there is a board image: hook the RNG's step site and the main
    counter increments, and check whether they advance per loop iteration or per interrupt.
@@ -704,8 +704,8 @@ Ordered by how much damage each could do.
    out loud in the definition of done. The Gradius cross-check (same ROM under Mesen and
    MAME, per the README) is the cheapest available proxy and should be done.
 
-**Nothing on this list is a "MAME cannot do this".** The capability question — the one this
-folder exists to answer — came back clean.
+**Nothing on this list is a "MAME cannot do this".** The capability question - the one this
+folder exists to answer - came back clean.
 
 ---
 
@@ -718,7 +718,7 @@ folder exists to answer — came back clean.
   The ARM7 is a first-class part of the port's problem and should be named in the plan.
 - **Build the state vector with `videoFrame` and `logicFrame` as separate compared fields
   from the very first probe**, plus the per-frame cycle count. All three are free now.
-- **Carry the slot-order field from the start**, even before there is an object driver — it
+- **Carry the slot-order field from the start**, even before there is an object driver - it
   is `06-lag-and-slowdown.md`'s explicit instruction and §6 shows it costs nothing.
 - **Do not use the duplicate-framebuffer hash as a slowdown detector.** §4 measured both its
   false-positive and false-negative rate on a real game.
@@ -728,12 +728,12 @@ folder exists to answer — came back clean.
 
 ---
 
-## Appendix — probe scripts
+## Appendix - probe scripts
 
 The Lua probes used here are in `games/ddpdoj/probes/`. They are our own code and contain no
 ROM-derived data beyond Gradius landmark addresses already recorded in
 `games/gradius/NOTES-rom.md`. `mk68ktest.py` generates the 32 KB 68000 test program used for
-the 68000 capability proofs — also entirely our own code, and the binary is deliberately not
+the 68000 capability proofs - also entirely our own code, and the binary is deliberately not
 checked in.
 
 | file | proves |
@@ -757,23 +757,23 @@ Measured on the real board image through `games/ddpdoj/tools/oracle/pgm.py`.
 Evidence: `docs/worklog/ddpdoj/01-impl-oracle-pin-versionb.md`. Harness note:
 `games/ddpdoj/NOTES-oracle.md`.
 
-* **§8.2 `-drc` vs `-nodrc` — TESTED.** Same 2,600-frame VERSION-B scenario,
+* **§8.2 `-drc` vs `-nodrc` - TESTED.** Same 2,600-frame VERSION-B scenario,
   byte-identical traces (`13f8ef743e0b3a53…` both ways). No pin needed.
-* **§8.4 savestates — RESOLVED, with a correction to the correction.** A save
+* **§8.4 savestates - RESOLVED, with a correction to the correction.** A save
   taken in the frame notifier resumes: aligned on `$80390A`, 120 frames
   compared, `d_ram` differs on 1 (the boundary frame), dead stack on 20,
   `$80FA84` on 1, everything else identical. A save taken *inside a memory tap*
   does **not** resume (it re-enters the core mid-instruction): `d_ram` and
   `$80390E` differ on 120/120. Arm in the tap, save in the notifier.
-* **§8.5 "does the game's own logic observe the slowdown"** — the counters
+* **§8.5 "does the game's own logic observe the slowdown"** - the counters
   advance per MAIN LOOP ITERATION at `$23BE8C` and `$80390E` is read back by the
   frame sync itself (`$23C21A`), so yes, mechanically. **Still no overrun has
-  been forced**, so (C) remains unmeasured — wave 2.
+  been forced**, so (C) remains unmeasured - wave 2.
 
 And one thing this file did not anticipate: **the V3021 RTC breaks determinism
 across a date change.** The game reads the calendar (`$23C53A: lea $C00006,A0`)
 and it lands in main RAM; two runs 26 hours apart differ in exactly ten bytes,
-all month/day. Bounded and carved into its own reported column — see
+all month/day. Bounded and carved into its own reported column - see
 `NOTES-oracle.md` §5.
 
 

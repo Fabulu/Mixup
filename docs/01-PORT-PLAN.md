@@ -1,4 +1,4 @@
-# 01 — JAVASCRIPT PORT PLAN
+# 01 - JAVASCRIPT PORT PLAN
 
 Goal: translate the game's **code** into readable, modifiable JavaScript.
 Original **data** (tiles, maps, metasprites, songs) is extracted to JSON/PNG
@@ -36,24 +36,24 @@ Rule: one module per original subsystem; every function carries a
 | `hud.js` | `00:0F7B-0FCB`, cursor `00:0FCC` | energy bar, menu cursors |
 | `sound/sequencer.js` | `7:$4000-46D4` entire driver, `00:0AE1` request mailbox, Timer-tick semantics | 1:1 port of the 56-opcode sequencer (§d) |
 | `sound/apu-worklet.js` | (hardware behaviour, simplified per proven quirks) | 4-channel synth inside an AudioWorklet |
-| `assets.js` | — | fetch + decode `assets/*` into typed arrays |
-| `mods.js` | — | tunables registry + hook bus (see `02-MOD-SYSTEM.md`) |
-| `debug.js` | — | state inspector, frame-step, trace recorder for oracle diffing |
+| `assets.js` | - | fetch + decode `assets/*` into typed arrays |
+| `mods.js` | - | tunables registry + hook bus (see `02-MOD-SYSTEM.md`) |
+| `debug.js` | - | state inspector, frame-step, trace recorder for oracle diffing |
 
 Shell: `index.html` (mod selection screen + canvas), `launcher/` UI code.
 
 Porting style rules:
 1. Preserve original control flow per routine first (mechanical translation),
-   then readability-refactor **behind the same function boundary** — never
+   then readability-refactor **behind the same function boundary** - never
    merge two ROM routines into one JS function until the oracle passes.
 2. All game constants come from `tunables.js` (generated from §10 of the
-   master reference) — never inline a magic number that the mod system owns.
+   master reference) - never inline a magic number that the mod system owns.
 3. The main loop's call ORDER is sacred (it defines OAM priority and
    platform-carry ordering). Keep the `00:0567` sequence verbatim.
 
 ---
 
-## b) STATE REPRESENTATION — **keep fixed-point integer math** (decided)
+## b) STATE REPRESENTATION - **keep fixed-point integer math** (decided)
 
 The game's RAM becomes one plain JS object tree in `state.js`:
 
@@ -93,22 +93,22 @@ preserved via masks.** Rationale:
   in subpixels but accessed through helpers/getters (`px(v) = v >> 4`,
   `SUBPX = 16`), and all constants are expressed in the same named units in
   `tunables.js` (`gravityFalling: 3 /* subpx per frame² */`).
-* Mods don't need floats either — they scale the same integer tunables.
+* Mods don't need floats either - they scale the same integer tunables.
   A mod that truly wants float physics can replace `player.js` wholesale via
   the hook system; the core stays exact.
 
-Actor arrays become arrays of named-field objects (not byte buffers) — but
+Actor arrays become arrays of named-field objects (not byte buffers) - but
 each field documents its original width and every arithmetic site masks
 accordingly (`vy = (vy - 1) << 24 >> 24` for signed-byte semantics, provided
 by helpers `i8()`, `u8()`, `u16()`).
 
-The `$D000` map stays a real `Uint8Array` with the original layout — it is
+The `$D000` map stays a real `Uint8Array` with the original layout - it is
 performance-relevant, byte-addressed everywhere, and mods that edit terrain
 get a stable format.
 
 ---
 
-## c) RENDERING — scanline compositor over decoded tile atlases (decided)
+## c) RENDERING - scanline compositor over decoded tile atlases (decided)
 
 Not a PPU emulator: it consumes **our JS state** (tilemap arrays, sprite list,
 camera, raster program), but reproduces the layering/priority/palette rules so
@@ -126,50 +126,50 @@ Design:
   incl. the 12 player tiles that `player-anim` streaming overwrites per frame),
   `bgMap`/`winMap` (32×32 byte arrays). `level.js`/`camera.js` write these
   exactly where the ROM wrote VRAM (column streaming, 2×2 queue, BG anim, VRAM
-  scripts) — this is cheap and keeps menu screens working verbatim.
+  scripts) - this is cheap and keeps menu screens working verbatim.
 * **Raster program**: per frame, `renderer` asks the raster module (ported
   `$0857` state machine) to emit an ordered list of
-  `{fromLine, scx, scy, bgp, obp0, obp1, wx, wy}` bands — identical values to
+  `{fromLine, scx, scy, bgp, obp0, obp1, wx, wy}` bands - identical values to
   what the ISR would have written. Water mode emits ~36 4-line bands using the
   same sine table; parallax mode emits 3 bands; default is 1 band.
 * Per scanline: resolve the active band, then compose BG (tilemap fetch with
   scx/scy wrap), window (if `wy ≤ line` and `wx < 167`), then the ≤40 sprites
   from the ordered sprite list (8×16, x-flip/y-flip, OBP0/1, behind-BG bit,
-  lowest-index-wins overlap, drop past 40 — same rules as `$0BC6` + DMG
+  lowest-index-wins overlap, drop past 40 - same rules as `$0BC6` + DMG
   priority). 10-sprites-per-line hardware limit: **skip** (never load-bearing
   here; revisit only if a visual diff says otherwise).
 * Palettes: BGP/OBP are 8-bit values mapping 2-bit pixels → 4 shades; the
   compositor applies the band's palette at pixel-write time (a 4-entry LUT per
-  band — this is what makes fades, invuln blink, water darkening, and the
+  band - this is what makes fades, invuln blink, water darkening, and the
   Disco mod free).
 * Shade → RGBA: one global 4-colour theme (classic DMG green + selectable
   themes later; a mod hook).
 
-Sprite list: `render.spriteQueue` replaces shadow OAM — modules push
+Sprite list: `render.spriteQueue` replaces shadow OAM - modules push
 metasprite draws in main-loop order through a ported `drawMetasprite(table,
 index, x, y, attrMask)`; the queue caps at 40 4-byte-equivalent entries with
 original overflow behaviour.
 
 ---
 
-## d) AUDIO — ported sequencer driving an AudioWorklet APU
+## d) AUDIO - ported sequencer driving an AudioWorklet APU
 
 Two layers, both ours:
 
-1. **`sound/sequencer.js`** — a straight port of the bank-7 driver: 8 track
+1. **`sound/sequencer.js`** - a straight port of the bank-7 driver: 8 track
    objects (the 36-byte record becomes named fields), the 56-opcode
    interpreter, drum/slide presets, envelopes, arbitration (`owner = max
    track`), fader, and the 4-slot command mailbox fed by `soundRequest(id,
    mask)` calls from gameplay code. Songs are interpreted from the extracted
-   song JSON (§e) — same streams, same FIXDUR context-sensitivity, `RET`
+   song JSON (§e) - same streams, same FIXDUR context-sensitivity, `RET`
    fall-through at depth 0, big-endian active-pointer quirk collapses into
    normal JS variables.
-2. **`sound/apu-worklet.js`** — an `AudioWorkletProcessor` implementing only
+2. **`sound/apu-worklet.js`** - an `AudioWorkletProcessor` implementing only
    what this game can reach (proven in master ref §8): 2 pulse channels with
    4 duty settings + volume-envelope (NRx2 applied on trigger only), 1 wave
    channel with a 32-sample buffer (only one waveform in the game) and 4-level
    volume, 1 LFSR noise channel (15/7-bit, NR43 divisor semantics), NR50/NR51
-   panning/volume. **No length counters, no sweep, no zombie envelopes** —
+   panning/volume. **No length counters, no sweep, no zombie envelopes** -
    these are unreachable, so they are simply not implemented.
 
 Timing (the critical part): the **sequencer runs inside the worklet**, ticked
@@ -180,7 +180,7 @@ the Timer ISR did. This mirrors the original architecture exactly: sound was
 interrupt-driven and independent of the frame loop there, and it is here.
 
 Consequence to accept: gameplay code cannot read sequencer state (it never
-does in the ROM either — the interface is the one-way mailbox). Fades are
+does in the ROM either - the interface is the one-way mailbox). Fades are
 sequencer-internal, as in the ROM.
 
 ---
@@ -201,7 +201,7 @@ Build step `tools/export_assets.py` (new, wraps the existing rippers) writes
 | `leveltables.json` | `0:$1015/$1023/$1031/$103F/$286D`, `1:$7C7D/$7CED`, raster modes, BG-anim tables | one object per level |
 | `songs.json` | bank 7 via `dumpsong.py` logic | 47 songs → per-track event arrays `[{op, args}]` with resolved labels for loops/calls; pitch table; drum/slide preset definitions; the single waveform |
 | `ui.json` | VRAM scripts (`5:$52F5/$5170`, `3:$7C15+`, `7:$7960+`, stage names, font map) | decoded script records (the JS interpreter replays them) |
-| `constants/tunables.js` | master-ref §10 | **generated JS module** — single source of truth for mods |
+| `constants/tunables.js` | master-ref §10 | **generated JS module** - single source of truth for mods |
 
 Hardcoded in JS (small, code-adjacent): sine table `0:$09A2`, slope tables
 `0:$221C-$2408`, fade ramps, HUD metasprite ids, anim-select tables.
@@ -214,7 +214,7 @@ tiles.bin packer. All additions go in `tools/`, no throwaways.
 
 ---
 
-## f) VERIFICATION STRATEGY — build the throwaway oracle: **yes** (decided)
+## f) VERIFICATION STRATEGY - build the throwaway oracle: **yes** (decided)
 
 Recommendation: **build a minimal headless SM83 interpreter as a test oracle.**
 It never ships, it is not the game, and it is the only way to make "faithful"
@@ -225,7 +225,7 @@ Scope of the oracle (deliberately tiny, `tools/oracle/`):
 * SM83 CPU interpreter + flat memory + MBC1 bank reg + the game's IRQ pattern:
   fire VBlank every 70224 cycles, Timer per 69×256 cycles, STAT/LYC modelled
   by cycle-derived LY. `rLY` reads = cycle-derived (this feeds the crit RNG).
-  rDMA = memcpy. No PPU pixels, no APU — but log per-line SCX/SCY/BGP writes
+  rDMA = memcpy. No PPU pixels, no APU - but log per-line SCX/SCY/BGP writes
   (that IS the raster program) and all NRxx writes (that IS the audio trace).
 * Input: scripted per-frame joypad from a JSON file.
 * Output: per-frame canonical **state vector** dump: player block, camera,
@@ -238,17 +238,17 @@ Harness (`tools/verify.js` / npm script):
    frame + field. Build input scripts per subsystem (walk ramp, jump arcs,
    slope walk, wall-jump chain, enemy patrols, boss patterns).
 2. **Golden frames** (renderer): feed the oracle's VRAM/OAM/raster log into
-   OUR compositor, and separately render the JS port's own frame — pixel-diff.
+   OUR compositor, and separately render the JS port's own frame - pixel-diff.
    (Also reuse `rip/levels/*.png` as static goldens for the BG path.)
 3. **Audio**: diff the NRxx write log of the oracle vs the JS sequencer's
    emitted register-equivalent stream for each of the 47 songs (register
    values + tick indices; this is exact, no audio rendering needed).
 4. **Determinism guard**: the port replaces the one nondeterminism source
-   (`rLY` reads in the crit check and menu cursor) with a modelled LY —
+   (`rLY` reads in the crit check and menu cursor) with a modelled LY -
    documented in `state.rng`; oracle comparison uses the same model.
 Non-goals: cycle accuracy inside a frame, PPU FIFO, mid-instruction IRQs.
-The one real risk — the re-entrant Timer ISR changing mailbox latency by a
-frame — is accepted and normalised in the diff (sound commands compare with
+The one real risk - the re-entrant Timer ISR changing mailbox latency by a
+frame - is accepted and normalised in the diff (sound commands compare with
 ±1 tick tolerance).
 
 If the oracle stalls or a divergence is genuinely untraceable, fallback is
@@ -261,7 +261,7 @@ do not start there.
 
 | phase | deliverable | contents | effort (rel.) | depends |
 |---|---|---|---|---|
-| **P0** | tooling | asset exporters (§e), `tunables.js` generation, oracle + verify harness (§f), repo scaffold, dev server | 2.5 | — |
+| **P0** | tooling | asset exporters (§e), `tunables.js` generation, oracle + verify harness (§f), repo scaffold, dev server | 2.5 | - |
 | **P1** | **"Batman moves and collides in level 1 on screen"** | `main/state/input/level/collision/camera/player(core)/render(basic)`: fixed-step loop; level-1 JSON loaded; walk/jump/gravity/terminal/turn-stall with exact constants; floor/wall/ceiling/slope probes; camera follow + clamps; single-band BG rendering + player metasprite with streamed anim tiles; keyboard input | 3 | P0 (assets; oracle can trail) |
 | **P2** | full player + world interaction | wall-cling/wall-jump, punch, batarang, bat-rope, breakables + restore timers, pickups, conveyors, water/slow mode, death pits, knockback/i-frames, death sequence, lives; map-object array (`actors.js`) incl. platforms/doors; effects pools; HUD bar | 3 | P1 |
 | **P3** | enemies + combat loop | enemy driver + states 1-3, 6, 11, 12; activation/despawn; contact/melee/batarang damage; crit; stun/kill FX; level transitions + route dispatch; levels 1-3, 5, 7, 9, 10, 12, 13 playable | 2.5 | P2 |

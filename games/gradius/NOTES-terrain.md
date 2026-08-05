@@ -17,7 +17,7 @@ seven stages use the same decoder and the same five per-stage table pointers.
 
 ---
 
-## 1. The camera — PROVEN
+## 1. The camera - PROVEN
 
 ```
 $3D   sub-pixel fraction (8 bit)
@@ -53,12 +53,12 @@ two, or wiped wholesale by an init routine:
 | writer PC (post-instruction) | writes | what |
 |---|---|---|
 | `$98F5` | 3207 | `STA $3D` in `$98EE` |
-| `$8407` | 3207 | `STA $00,X` in `$8402` — the `$3E` half |
-| `$840B` | 12 | `INC $01,X` — carry into `$3F` |
+| `$8407` | 3207 | `STA $00,X` in `$8402` - the `$3E` half |
+| `$840B` | 12 | `INC $01,X` - carry into `$3F` |
 | `$8310` | 3 | `STA $00,X` in `$8307`, the `$12-$EF` zero-page wipe on stage (re)start |
 | `$802E`, `$8438`, `$9B44`, `$9B6C` | 3, 6, 3, 1 | RESET and stage-init clears |
 
-### What the PPU is told, and **when** — PROVEN, and it is a one-frame lag
+### What the PPU is told, and **when** - PROVEN, and it is a one-frame lag
 
 `$9A79`, on the gameplay path, **before** `$9AA0` calls `$98EE`:
 
@@ -92,7 +92,7 @@ band is unscrolled**. Two raster bands, as already established.
 
 ---
 
-## 2. Who writes the nametable — PROVEN by census
+## 2. Who writes the nametable - PROVEN by census
 
 Every write to `$2000/$2005/$2006/$2007` over 600 frames of boot-plus-gameplay,
 tagged with the writing PC (Mesen reports the PC *after* the storing
@@ -100,7 +100,7 @@ instruction, hence the +3):
 
 | port | store at | writes | what |
 |---|---|---|---|
-| `$2007` | `$8A88` | 9008 | **the VRAM queue drainer `$8A51`** — everything during gameplay |
+| `$2007` | `$8A88` | 9008 | **the VRAM queue drainer `$8A51`** - everything during gameplay |
 | `$2007` | `$888B` | 5429 | `$8871`, the RLE full-screen loader; runs once, at the stage load |
 | `$2007` | `$887D` | 203 | same routine, literal-byte path |
 | `$2006` | `$8A69`, `$8A70` | 1290 each | the queue's own address writes |
@@ -110,7 +110,7 @@ instruction, hence the +3):
 
 **There is exactly one nametable writer during gameplay: `$8A51`.**
 
-### The VRAM queue — `$0700`, cursor `$0E`
+### The VRAM queue - `$0700`, cursor `$0E`
 
 `$8A51` is called from the NMI at `$8099`, near the top, so **a block queued
 during frame N reaches the PPU at the start of frame N+1**. Packet format,
@@ -126,12 +126,12 @@ read out of `$8A51-$8A9A`:
   `$8A86` emits a literal `$FF` and keeps going. That is the escape.
 * `$0E` is the write cursor; `$8A76` zeroes `$0700` and `$0E` when the queue is
   drained. A packet costs `4 + n` bytes of it (3 header + data + `$FF`), so one
-  terrain block is `4*8 + 5 = 37` — checked against the cartridge, which reads
+  terrain block is `4*8 + 5 = 37` - checked against the cartridge, which reads
   `$0E = 38` at `$80B5` on a block frame, the extra 1 being `$8641`'s.
 * `$8645`/`$8647` append; `$85E8`/`$85F3` push a canned packet from the 39-entry
-  pointer table at `$864E` (score, power-up bar, "STAGE n" — the HUD).
+  pointer table at `$864E` (score, power-up bar, "STAGE n" - the HUD).
 * **`$8641` is a one-byte routine and is NOT a HUD producer.** `LDA #$00 /
-  BEQ $8645 / LDX $0E / STA $0700,X / INX / STX $0E / RTS` — it appends the
+  BEQ $8645 / LDX $0E / STA $0700,X / INX / STX $0E / RTS` - it appends the
   drainer's mode-0 stop byte, and the NMI calls it at `$80B0`, last of all. The
   real HUD tick is `$9AC7 JSR $8898`. Mislabelling `$8641` sent the terrain
   knownFail's diagnosis at the wrong routine and hid a constant one-byte
@@ -139,7 +139,7 @@ read out of `$8A51-$8A9A`:
 
 ---
 
-## 3. The streamer — `$9D83` / `$9D8E`, one 32x32 block per call — PROVEN
+## 3. The streamer - `$9D83` / `$9D8E`, one 32x32 block per call - PROVEN
 
 Called once per frame from `$9ACE`. Gate at `$9D83`:
 
@@ -149,7 +149,7 @@ Called once per frame from `$9ACE`. Gate at `$9D83`:
 9D8B  90 01  BCC $9D8E
 ```
 
-**`$0E` is a BYTE cursor, so `CMP #$04` is four bytes — less than one packet's
+**`$0E` is a BYTE cursor, so `CMP #$04` is four bytes - less than one packet's
 three-byte header.** The port compared a packet count against it until wave 1
 and got away with it because the drainer zeroes `$0E` at `$8099` and the
 streamer was the only producer, so the gate always read 0.
@@ -157,7 +157,7 @@ streamer was the only producer, so the gate always read 0.
 `$3A` is the **stage-advance latch**, not an uncharacterised flag: written at
 `$96D7` and `$97E1` (`STA $3A`, A = 0, stage init) and `$993D` (`INC $3A`, in
 the stage-end block that also does `INC $19` and `$3F = 0`). Measured 0 on 700
-of 700 frames of a boot-and-play run — it never rises during stage 1.
+of 700 frames of a boot-and-play run - it never rises during stage 1.
 
 and four times back-to-back from `$9C24` during the stage load.
 
@@ -170,7 +170,7 @@ $57       result flag: 0 = this frame built (or is mid half-page),
           1 = the 384 px lead throttled it
 ```
 
-`$9D8E` is `LDA #$00 / STA $57` — **`$57` is cleared on every pass of the gate
+`$9D8E` is `LDA #$00 / STA $57` - **`$57` is cleared on every pass of the gate
 above**, before the throttle is even evaluated, and `INC`'d at `$9DAF` only when
 the throttle refuses. It is a result, not an input, and a frame that does not
 get past the `$3A`/`$0E` gate does not write it at all.
@@ -189,7 +189,7 @@ flags of the **high byte**:
 ```
 
 so it stops once the cursor is **>= 384 px (`$0180`) ahead of the camera** *and
-is ahead at all*. The `BMI` arm is easy to lose in translation — an unsigned
+is ahead at all*. The `BMI` arm is easy to lose in translation - an unsigned
 lead compared against `$0180` turns "you are behind, catch up" into "you are
 miles ahead, stop", and then never recovers, because the cursor stays put while
 the camera keeps moving. That was live in `src/terrain.js` until wave 1.
@@ -229,7 +229,7 @@ layoutIdx  = row*8 + col + (half ? 4 : 0)   $9E1B-$9E36
 
 ---
 
-## 4. The source data — PROVEN
+## 4. The source data - PROVEN
 
 Five per-stage pointers, one table each, indexed by the stage number `$19`:
 
@@ -263,13 +263,13 @@ block id --$D778[id] (word)-->  RLE'd 4x4 tile stream
 ```
 
 A "screen" is **256 x 224 px = 8 x 7 blocks = 56 bytes**. The stride is read
-from `$9D4F` (`0000 0038 0070 ...` — `$38` = 56).
+from `$9D4F` (`0000 0038 0070 ...` - `$38` = 56).
 
 For stages other than 0, `$9E4C-$9E58` subtracts 1 from the screen index and
-falls back to **stage 0's tables with screen 0** when the entry is `$00` — one
+falls back to **stage 0's tables with screen 0** when the entry is `$00` - one
 shared empty starfield screen.
 
-### The 4x4 tile stream — RLE, `$9EBE-$9F4C`
+### The 4x4 tile stream - RLE, `$9EBE-$9F4C`
 
 The stream is read as 4 rows of 4 tiles. A byte is a **literal tile** if it is
 `$00` or has a non-zero high nibble. Otherwise it is a control code:
@@ -283,14 +283,14 @@ The stream is read as 4 rows of 4 tiles. A byte is a **literal tile** if it is
 `$9D73[1..6] = 00 3A DC 40 DD BB`, `$9D73[$0B..$0F] = ED EE E3 EB E5`.
 
 After a "fill the rest of the row" code the source index is restored to just
-after the code (`STY $9B` at `$9EEE`, `LDY $9B` at `$9F32`) — the fill consumes
+after the code (`STY $9B` at `$9EEE`, `LDY $9B` at `$9F32`) - the fill consumes
 one source byte, not four.
 
 **Sharp edge for the port:** the `$07`/`$08` path's loop-back at `$9F24` tests
 `X` (the queue cursor), *not* the remaining tile count. If a row ever ended
 exactly on an `$07`/`$08`, the ROM would keep consuming. Expanding **every
 block of all seven stages** offline (`tools/stage1map.py`) never hits it, so the
-data avoids it — but a port that "cleans up" the loop condition is not
+data avoids it - but a port that "cleans up" the loop condition is not
 translating the ROM, it is fixing it. `terrain.py`'s `decode_block()` raises
 instead of guessing.
 
@@ -312,7 +312,7 @@ formation at page 11, twin peaks at page 12, and an empty page 13 for the boss.
 
 ---
 
-## 5. Terrain collision — SAME DATA AS THE VISUALS — PROVEN
+## 5. Terrain collision - SAME DATA AS THE VISUALS - PROVEN
 
 This is the answer to the question that mattered on Batman, and here it is
 unambiguous: **collision is derived from the tile indices the streamer has just
@@ -343,7 +343,7 @@ stride of 8):
   is `0` for stage 1's starfield tiles (`$00`, `$3A`-`$3F`)
 
 Confirmed on the demo run: the only non-zero bytes stored were
-`$50` (240x), `$55`, `$54`, `$01`, `$05`, `$40`, `$04` — i.e. **only field
+`$50` (240x), `$55`, `$54`, `$01`, `$05`, `$40`, `$04` - i.e. **only field
 values 0 and 1 ever occur on stage 1**. Fields 2 and 3 are reachable in
 principle on stage 6, whose threshold is `$42`, so `$40`/`$41` would fall
 through as literals; that has not been run.
@@ -361,7 +361,7 @@ Cleared at stage end by `$994A` (`STA $0500/$0540/.../$06C0,X` for X = `$3F`
 down to 0, i.e. all 512 bytes), gated on `$3E >= $D0`.
 
 **How the map is compared, and what that cost to work out (wave 10).** The
-range is in no watch list — 512 addresses that read 0 on every frame of every
+range is in no watch list - 512 addresses that read 0 on every frame of every
 align-400 scenario, because stage 1's camera pages 0-3 contain no solid tile
 bits. Wave 10 changed both halves of that. `porttrace.mjs` now SEEDS the map out
 of `seedRam`, because a window that starts at frame 1900 begins with 65 of the
@@ -369,7 +369,7 @@ of `seedRam`, because a window that starts at frame 1900 begins with 65 of the
 the map the port ENDS each window with against the cartridge's, out of the RAM
 dump `scen.py` was already taking. Both were necessary and the order matters:
 
-* seeding it alone made the WRITE path invisible. MEASURED — `$9F7F`'s base
+* seeding it alone made the WRITE path invisible. MEASURED - `$9F7F`'s base
   `u8($54 + $58)` made `+ 1`, and `$9F81`'s `c * 8` stride made `c * 4`, are
   BOTH green across `deep-ground`, `terrain-death` and `deep-page3`, because
   every cell that kills the ship was written before the align frame. The two
@@ -379,7 +379,7 @@ dump `scen.py` was already taking. Both were necessary and the order matters:
   `compare.mjs` prints how many cells the CARTRIDGE rewrote over each window so
   the check states its own coverage.
 
-### And it is READ from there — `$C3D3`
+### And it is READ from there - `$C3D3`
 
 ```
 C3D3  LDA $A4 / CLC / ADC #$08 / ADC $3E / AND #$F8 / STA $A0   screen X -> world, tile-aligned
@@ -398,7 +398,7 @@ Exactly the inverse of the write. **Verified two ways**: a census of `$A1` at
 
 ### Stage 5 is the exception, and it corroborates the rest
 
-`$9F4F: LDY $19 / CPY #$04 / BEQ $9F94` — **stage index 4 skips the collision
+`$9F4F: LDY $19 / CPY #$04 / BEQ $9F94` - **stage index 4 skips the collision
 write entirely.** Independently, `$9663` (`LDA $19 / CMP #$04 / BNE ...`) reads
 `$0600`, `$0630`, `$0660`, `$0690` as four object slots, and `$8BD9`/`$8C06`
 draw from `$0600+X`, `$0615+X`, `$0618+X`, `$0620+X` with X in
@@ -408,15 +408,15 @@ screen order is all zeros and it produces **0 solid tiles**.
 
 ---
 
-## 6. Scripted vs streamed — stage 1 is streamed; the ENEMIES are the script
+## 6. Scripted vs streamed - stage 1 is streamed; the ENEMIES are the script
 
 * **Terrain: 100% streamed.** No scripted camera moves in stage 1's normal
-  path — the camera is a constant 1/2 px/frame and the terrain is a pure
+  path - the camera is a constant 1/2 px/frame and the terrain is a pure
   function of the camera position and the tables in section 4. The scripted
   parts are only the boundaries: the stage-entry sub-state sequence
   (`$1B` = 1,2,3,4,`$80`), the boss trigger at page `$0C`, the stage end at
   page `$0E`, and the 4 px/frame `st_984F` state.
-* **Enemies: a scroll-triggered script — LIKELY, not yet measured by me.**
+* **Enemies: a scroll-triggered script - LIKELY, not yet measured by me.**
   `sub_A2C0` reads a per-stage pointer table at `$A7D0,Y` (stage 1 -> `$A7DE`),
   indexes it by `$3F & $0E` (an **even** page number, i.e. one stream per 512
   px), and stores the stream pointer in `$6A/$6B`. `$A30A-$A328` then compares
@@ -431,7 +431,7 @@ screen order is all zeros and it produces **0 solid tiles**.
 ## 7. What the port needs, in order
 
 1. `cam = {sub: $3D, x: $3E|$3F<<8}`, `cam += 0.5 px/frame` while the gameplay
-   gate holds — and that gate is **`$1B` bit 7, `$1E`, `$1F`, `$0D` and then
+   gate holds - and that gate is **`$1B` bit 7, `$1E`, `$1F`, `$0D` and then
    `$15`/`$5B`** (`$9A88-$9AA0`), not the sprite-0 split, which is reached
    whether the camera advanced or not; the PPU scroll and nametable bit are
    **last frame's** `cam`.
@@ -441,7 +441,7 @@ screen order is all zeros and it produces **0 solid tiles**.
 3. `streamBlock()`: the gate (`$3A`, `$0E < 4` **bytes**, the signed 384 px
    lead with its `BMI` catch-up arm, and `$57` written as a result), the `$58`
    walk, the address math of section 3, the RLE of section 4, then the
-   collision derivation of section 5 **from the tiles it just produced** — not
+   collision derivation of section 5 **from the tiles it just produced** - not
    from a second table, and not precomputed, because the ROM's ordering is
    observable: the map for a column exists only once the column has been
    queued.
@@ -492,7 +492,7 @@ python games/gradius/tools/oracle/terrain.py --frames 4000 --script "4000:" \
 | `addr` | poke `$AA` (`+1`) | nametable address 11 wrong (`$2100` vs `$2101`) |
 | `tiles` | poke `$A4` (`+4`) | tile bytes 63 wrong **and** collision 16 wrong |
 | `collide` | zero `$99` just before `STA ($A8,X)` | RAM map: 141 of 448 live bytes wrong |
-| `solid` | fill `$0500-$06FF` with `$FF` | the ship dies: `$1B` `$80` -> `$A0` on the first poked frame (601), restart sequence at 722-725, camera reset — on a stretch with **no terrain at all**, so the map is the only possible cause |
+| `solid` | fill `$0500-$06FF` with `$FF` | the ship dies: `$1B` `$80` -> `$A0` on the first poked frame (601), restart sequence at 722-725, camera reset - on a stretch with **no terrain at all**, so the map is the only possible cause |
 
 Three traps met along the way, all worth keeping:
 
@@ -501,14 +501,14 @@ Three traps met along the way, all worth keeping:
   on the boot script it ran on 287-369 and then not again until 571, throttled
   by the 384 px lead. A control that never touched a block "passed".
 * **A vacuous green.** The first long run was green on every collision check
-  while the map was **entirely zero** — stage 1's opening is pure starfield and
+  while the map was **entirely zero** - stage 1's opening is pure starfield and
   no tile reaches `$40`, so "predicted == actual" was `0 == 0`, 2128 times. Real
   terrain starts at page 4 (world x >= 1024) and an idle player is shot at
   around world x = 430, so **the run has to be driven with the attract-mode
   demo** (empty input script, mode 2), which plays stage 1 competently and
   reaches page `$06`. `terrain.py` now asserts the map contains solid terrain
   before believing any collision check. The `collide` control is *still*
-  vacuous on the short boot script for the same reason — it only turns red on
+  vacuous on the short boot script for the same reason - it only turns red on
   the demo run, which is what the anti-vacuity check is there to tell you.
 * **A control with nothing in range.** `--neuter solid` on a stretch with no
   terrain was the *right* experiment for the opposite reason: it proves the map

@@ -1,4 +1,4 @@
-# Can MAME be an oracle? — measured, on a ROM we already have
+# Can MAME be an oracle? - measured, on a ROM we already have
 
 **Status: answered YES on all three criteria, empirically, with one important caveat that
 is itself the most interesting result here.**
@@ -16,12 +16,12 @@ Read `docs/knowledge/01-the-oracle-method.md` for the three criteria this is jud
 
 | criterion | verdict | how |
 |---|---|---|
-| **A. execution hooks** | **YES** — a real Lua callback fires on execution | `address_space:install_read_tap()` on the opcode byte, discriminated by `CURPC` |
-| **B. memory access** | **YES** — read *and* write, CPU RAM and video RAM, mid-run | `space:read_u8/write_u8`, `memory.shares`, the PPU's own `videoram` space |
-| **C. headless determinism** | **YES** — no window, and byte-identical across runs | `-video none`; two runs produced identical probe output *and* identical PNG bytes |
+| **A. execution hooks** | **YES** - a real Lua callback fires on execution | `address_space:install_read_tap()` on the opcode byte, discriminated by `CURPC` |
+| **B. memory access** | **YES** - read *and* write, CPU RAM and video RAM, mid-run | `space:read_u8/write_u8`, `memory.shares`, the PPU's own `videoram` space |
+| **C. headless determinism** | **YES** - no window, and byte-identical across runs | `-video none`; two runs produced identical probe output *and* identical PNG bytes |
 
-**Bonus achieved: cross-validated against Mesen.** MAME and Mesen agree byte for byte —
-CPU registers plus a 512-byte RAM digest — for **388 consecutive NMIs** of real Gradius
+**Bonus achieved: cross-validated against Mesen.** MAME and Mesen agree byte for byte -
+CPU registers plus a 512-byte RAM digest - for **388 consecutive NMIs** of real Gradius
 execution. Then they disagree, exactly once, and the disagreement is **about whether an NMI
 was delivered on a lag frame**. See §5. That is the single most consequential class of
 disagreement for phase 3, and it showed up on the first frame the game overran.
@@ -56,7 +56,7 @@ $ ./mame.exe -version
 Facts worth keeping:
 
 - **`mameXXXb_x64.exe` is not an installer.** It is a 7-Zip self-extracting archive.
-  *Running* it would pop a GUI extraction dialog — the exact failure mode the Mesen
+  *Running* it would pop a GUI extraction dialog - the exact failure mode the Mesen
   evaluation hit. Extracting it with `7z x` never runs it, and that is what makes the
   install unattended. `setup_mame.py` refuses to proceed if 7-Zip is absent rather than
   falling back to running the SFX.
@@ -69,10 +69,10 @@ Facts worth keeping:
 
 ---
 
-## 2. A — EXECUTION HOOKS. The load-bearing answer
+## 2. A - EXECUTION HOOKS. The load-bearing answer
 
 **The short version: MAME has no "call this Lua function on execute" API, but you can build
-an exact one out of `install_read_tap`, and it is not a hack — it is the opcode fetch.**
+an exact one out of `install_read_tap`, and it is not a hack - it is the opcode fetch.**
 
 ### What the debugger route gives you, and why it is second best
 
@@ -89,7 +89,7 @@ started with `-debug`**. Measured:
 === cpu.debug   bpclear bpdisable bpenable bplist bpset go step wpclear wpdisable wpenable wplist wpset
 ```
 
-Breakpoints **do** work unattended — this was the specific worry, and the answer is that
+Breakpoints **do** work unattended - this was the specific worry, and the answer is that
 they do not require a human:
 
 ```
@@ -130,11 +130,11 @@ Gradius's NMI handler at `$806A`:
 
 - `off=32874` = `$806A`. `data=8` = **`$08` = `PHP`**, which is genuinely the first
   instruction of Gradius's NMI handler. It is the opcode fetch, not a coincidence.
-- 116 hits in 120 frames — one per NMI, exactly as a frame-rate hook should be.
+- 116 hits in 120 frames - one per NMI, exactly as a frame-rate hook should be.
 - **CPU registers are readable at that instant**, which is the capability the method
   document calls load-bearing.
 
-### Distinguishing an opcode fetch from a data read — measured, not assumed
+### Distinguishing an opcode fetch from a data read - measured, not assumed
 
 A read tap fires for data reads too. The discriminator is `CURPC`. Tapping `$0004`
 (Gradius's frame lock, which is read as *data*) shows `CURPC` is the **reading
@@ -167,17 +167,17 @@ A_lock_write_site pc:val=809F:01 n=400    # /  does a dummy write of the OLD val
 A_lock_write_site pc:val=80B5:00 n=400    # cleared at $80B5
 ```
 
-Two things here. First, `$809F` raises the lock and `$80B5` clears it — independent
+Two things here. First, `$809F` raises the lock and `$80B5` clears it - independent
 confirmation of the static read. Second, **`$809F` writes twice per NMI**: `00` then `01`.
 That is the 6502's read-modify-write dummy write, which MAME models. Anyone counting writes
 to a flag will double-count unless they know this. It is also a decent accuracy signal.
 
-`A_lag_frames_lock_set_at_nmi_entry=0` over 400 title-screen NMIs — i.e. the lag census of
+`A_lag_frames_lock_set_at_nmi_entry=0` over 400 title-screen NMIs - i.e. the lag census of
 `docs/knowledge/06-lag-and-slowdown.md` is one hook and it already works.
 
 ---
 
-## 3. B — MEMORY ACCESS
+## 3. B - MEMORY ACCESS
 
 Read and write, both spaces, mid-run. All measured:
 
@@ -193,18 +193,18 @@ B_prg_rom_len=32768 chr_rom_len=32768
 Notes:
 
 - CPU space is `cpu.spaces["program"]`. Video memory is a **separate device's** space:
-  `machine.devices[":ppu"].spaces["videoram"]` — note the name is `videoram`, *not*
+  `machine.devices[":ppu"].spaces["videoram"]` - note the name is `videoram`, *not*
   `program`; asking for `program` silently returns nil.
 - `machine.memory.shares[":mainram"]` gives the RAM block directly. Prefer it for reads
   *inside* a tap callback: reading through the address space re-enters the tap.
 - `machine.memory.regions` exposes the cartridge: `:nes_slot:cart:prg_rom`,
-  `:nes_slot:cart:chr_rom` — both 32768 bytes, correct for Gradius.
+  `:nes_slot:cart:chr_rom` - both 32768 bytes, correct for Gradius.
 - MAME identified the mapper on its own: the device tree contains `:nes_slot:cnrom`,
   i.e. CNROM = iNES mapper 3, which is what Gradius is.
 
 ---
 
-## 4. C — HEADLESS DETERMINISM
+## 4. C - HEADLESS DETERMINISM
 
 The flags that matter:
 
@@ -259,7 +259,7 @@ $ curl .../mame0288/src/mame/nintendo/nes.cpp
 414:	m_screen->set_refresh_hz(60.0988);
 ```
 
-The error is 1.39e-5 Hz — 0.0008 frames per minute, irrelevant for the NES. **The
+The error is 1.39e-5 Hz - 0.0008 frames per minute, irrelevant for the NES. **The
 methodological point is not.** `docs/knowledge/07` says to read the driver's `set_raw(...)`
 or `set_refresh_hz(...)` and compute. This shows those two are not equivalent:
 `set_raw(pixel_clock, htotal, vtotal)` *is* a derivation; `set_refresh_hz(literal)` is
@@ -270,7 +270,7 @@ hardware's.
 
 ---
 
-## 5. Cross-validation against Mesen — and the one disagreement
+## 5. Cross-validation against Mesen - and the one disagreement
 
 Both emulators hook the *same* address, `$806A`, and emit the same per-NMI digest: CPU
 registers plus an FNV-1a over zero page and the object page. Mesen has a first-class
@@ -299,14 +299,14 @@ FIRST DIVERGENCE at NMI 389:
 - The divergence is **not** a state divergence. Mesen delivers **one NMI that MAME does
   not**, and after that single insertion the two run identically again for all 110
   remaining samples. The game's computation never disagrees.
-- The extra NMI has **`lock=$01` at entry** and **`SP=$EF`** — 13 bytes deeper than the
+- The extra NMI has **`lock=$01` at entry** and **`SP=$EF`** - 13 bytes deeper than the
   usual `$FC`. That means it fired while the main loop was still deep inside a call chain
   with the frame lock held: it is the re-entrant NMI that hits `$8073` and bails. **A lag
-  frame.** It is also the *first* lag frame in the run — MAME's own census over 400 NMIs
+  frame.** It is also the *first* lag frame in the run - MAME's own census over 400 NMIs
   reported `A_lag_frames_lock_set_at_nmi_entry=0`.
 
 So: **the two emulators agree on everything except how many NMIs are delivered when the
-game overruns a frame** — which is precisely the signal DaiOuJou's port would be built on.
+game overruns a frame** - which is precisely the signal DaiOuJou's port would be built on.
 Which emulator is right is **not established here** and must not be guessed. It is a
 concrete, reproducible, one-frame question, and it should be settled before MAME's timing
 is trusted for slowdown work.
@@ -317,7 +317,7 @@ keep the moment timing enters the picture.
 
 ### A second, benign difference: the P register
 
-MAME reports `P=$74`, Mesen `P=$44`, on every sample. `$74 ^ $44 = $30` — **bits 5 and 4
+MAME reports `P=$74`, Mesen `P=$44`, on every sample. `$74 ^ $44 = $30` - **bits 5 and 4
 only**. Neither is a physical flip-flop on a 6502: bit 5 does not exist, and bit 4 (B)
 exists only in the byte pushed to the stack. This is a reporting convention, not state. The
 tooling masks P with `$CF` for comparison and still emits `Praw=` so the difference stays
@@ -329,7 +329,7 @@ visible rather than being quietly normalised away.
 
 1. **A dropped tap handle is silently collected and the callback just stops firing.**
    `prog:install_read_tap(...)` returns a handle. Discard the return value and the tap is
-   garbage-collected — no error, no warning, no hits, ever. This produced a run with
+   garbage-collected - no error, no warning, no hits, ever. This produced a run with
    *completely empty output* and no diagnostic of any kind. Keep every handle in a global.
 2. **`bpset(addr, nil, nil)` segfaults MAME.** Passing nil for condition/action crashes in
    `strlen` on a null pointer (`ACCESS VIOLATION ... While attempting to read memory at
@@ -338,7 +338,7 @@ visible rather than being quietly normalised away.
    the `0` as a software-list item and abort with a 50-line list of NES games. Use
    `-nonvram_save`.
 4. **`-autoboot_script` runs *after* machine reset**, so `emu.add_machine_reset_notifier`
-   never fires from it — the reset already happened. Use
+   never fires from it - the reset already happened. Use
    `emu.add_machine_frame_notifier`. A script whose only entry point is the reset notifier
    produces silence, not an error.
 5. **Lua errors inside MAME are often swallowed.** A `nil` passed to `string.format("%04X")`
@@ -346,7 +346,7 @@ visible rather than being quietly normalised away.
    `pcall` and print the error yourself.
 6. **`-debug` implies a debugger, and the default is `auto`** (`mame -showconfig` →
    `debugger auto`). If the debugger API is needed, always pass `-debugger none` too.
-   Whether `auto` opens a window was **deliberately not tested** — the brief is explicit
+   Whether `auto` opens a window was **deliberately not tested** - the brief is explicit
    that an emulator opening a GUI on the owner is a failure, and there is no reason to find
    out the hard way. The good news is that **the execution-hook route in §2 needs no
    debugger at all**, so the safest configuration is also the capable one.
@@ -369,9 +369,9 @@ tooling capability.
 - **Which emulator is right about the extra lag-frame NMI in §5.** This is the first thing
   to chase, because it is exactly the class of fact phase 3 depends on.
 - Whether MAME's PGM driver declares refresh via `set_raw` (a derivation) or
-  `set_refresh_hz` (someone's rounding) — see §4, and `NOTES-machine.md` for the driver
+  `set_refresh_hz` (someone's rounding) - see §4, and `NOTES-machine.md` for the driver
   reading.
-- Save/load state from Lua — `machine:buffer_save()` / `buffer_load()` exist in the API
+- Save/load state from Lua - `machine:buffer_save()` / `buffer_load()` exist in the API
   listing but were **not exercised**. They would make per-level setup much cheaper and are
   worth a probe.
 - Input injection. `machine.ioport.ports[":ctrl1:joypad:JOYPAD"]` exposes named fields
@@ -389,7 +389,7 @@ go to a scratch directory under the system temp folder.
 | file | what it does |
 |---|---|
 | `setup_mame.py` | unattended install: pinned URL, SHA-256 verified, 7-Zip extraction, never runs the SFX |
-| `mame.py` | thin headless driver layer — the flag set, and stdout tag filtering |
+| `mame.py` | thin headless driver layer - the flag set, and stdout tag filtering |
 | `capability_probe.lua` | the proof: execution hook, registers at the hook, RAM+VRAM read/write, framebuffer, PNG |
 | `capability_probe.py` | runs the probe **twice** and diffs output and PNG bytes; asserts the seven capability checks |
 | `crosscheck_mame.lua` | per-NMI digest, MAME side |

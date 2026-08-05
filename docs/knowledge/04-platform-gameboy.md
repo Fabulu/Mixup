@@ -1,4 +1,4 @@
-# Game Boy hardware facts we had to learn — and the NES question each implies
+# Game Boy hardware facts we had to learn - and the NES question each implies
 
 These are DMG specifics, so they do **not** transfer to the NES directly. What transfers
 is the *category*: every one of these is a place where the hardware, not the game code,
@@ -34,7 +34,7 @@ On the DMG:
 
 Two different rules on two different axes. Implementing priority as "lowest OAM index
 wins" put a HUD bar over an enemy that the hardware draws in front. And sorting the whole
-queue by X before taking ten per line breaks the crowded case badly — the split matters.
+queue by X before taking ten per line breaks the crowded case badly - the split matters.
 
 > **NES:** priority is by OAM index only, with no X rule, plus a background-priority bit
 > per sprite. Confirm this against the hardware rather than inheriting our DMG logic.
@@ -45,7 +45,7 @@ The hardware adds a sprite's offset into an **8-bit** shadow-OAM byte. A record 
 coordinate runs past 255 **wraps**; it does not sail on the way a JavaScript number does.
 
 A banner in one level comes out of the table at OAM Y = 257, which the hardware stores as
-**1** — one row of each letter along the very top edge. We kept 257, decided it was
+**1** - one row of each letter along the very top edge. We kept 257, decided it was
 off-screen, and dropped four sprites. A sweep found 63, 135 and 15 out-of-range entries on
 three different levels.
 
@@ -74,7 +74,7 @@ comparison will tell you why.
 Two hardware-ticked counters never reset. Game logic gates on them with masks like
 `& 7` and `& 1`, so their **phase** at gameplay start is part of correct behaviour. The
 boot path lands every level at the same measured values. We seeded ours at zero, which put
-every `& 7` cadence five frames out — invisible for 27 scenarios, because nothing that was
+every `& 7` cadence five frames out - invisible for 27 scenarios, because nothing that was
 being compared consumed the raw phase until one specific gravity rule did.
 
 > **NES:** find the equivalent free-running counters and **measure their value at the
@@ -105,7 +105,7 @@ Palette registers are written from RAM shadows during VBlank. Two consequences b
 ## Partial initialisation, and screens that inherit the last one's state
 
 A sound-engine init does not clear the whole track block, so a song can start with the
-previous song's frequency word still loaded — and one song's first event is a rest that
+previous song's frequency word still loaded - and one song's first event is a rest that
 retriggers *without* writing a pitch, so it audibly plays whatever was there before.
 
 Two songs "diverged at tick 0" for months purely because our port started from zeroes and
@@ -118,8 +118,8 @@ seed from it.
 ## A cue that plays the wrong sound is invisible to memory comparison
 
 A sound-request routine takes the id in one register and a mask in another. Swap them and
-a cue still plays, nothing crashes, and no memory comparison flags it — the game just
+a cue still plays, nothing crashes, and no memory comparison flags it - the game just
 makes the wrong noise. Caught only because a person said the pickup chime sounded off.
 
-**Build a cue-stream comparison** — every sound request the game makes, with id, mask and
-the routine that asked — early. It is cheap and it catches a class nothing else does.
+**Build a cue-stream comparison** - every sound request the game makes, with id, mask and
+the routine that asked - early. It is cheap and it catches a class nothing else does.

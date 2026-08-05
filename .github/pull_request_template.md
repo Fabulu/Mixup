@@ -11,7 +11,7 @@
 
 **Verification**
 - [ ] `npm test` passes
-- [ ] `npm run test-all` run locally — which stages, and what they said:
+- [ ] `npm run test-all` run locally - which stages, and what they said:
 - [ ] any new check was validated by reverting the fix and watching it FAIL
 - [ ] nothing ROM-derived is committed
 

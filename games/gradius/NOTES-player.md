@@ -10,7 +10,7 @@ red six different ways.
 
 > The one number in `tools/oracle/PROBE.md` that is **wrong**: it gives the X clamp as
 > `[16, 220]`. The ROM clamps at `$F0 = 240` (`$A028: C9 F0`), and the ship has been
-> driven there — `X reached : 80..240` in run B of `playermodel.py`. 220 was the furthest
+> driven there - `X reached : 80..240` in run B of `playermodel.py`. 220 was the furthest
 > that particular 160-frame hold got, not a wall. `Y ∈ [16, 192]` is correct.
 
 ---
@@ -41,14 +41,14 @@ exactly the 94 frames RIGHT was held.
 measured) reports zero sites; no site appears outside the requested range, which is where
 the RAM mirrors at `$0B60/$1360/$1B60` would have shown up; and only two PCs are reported,
 where a hook that also fired on *reads* would have reported dozens. The first version of
-this check used `$0790-$079F` and **failed with 38 sites** — RESET's RAM-integrity test at
+this check used `$0790-$079F` and **failed with 38 sites** - RESET's RAM-integrity test at
 `$8037-$8050` writes the whole `$0700` page.
 
 ## 2. The RAM the player lives in
 
 Page `$0300` is four parallel arrays and they are `$20` apart. `$A285` is the proof, not a
 guess: the same subroutine services **both** axes, and the axis is chosen by the 6502 `Y`
-register — `LDY #$00` for the vertical axis, `LDY #$40` for the horizontal one.
+register - `LDY #$00` for the vertical axis, `LDY #$40` for the horizontal one.
 
 | array | meaning | notes |
 |---|---|---|
@@ -84,7 +84,7 @@ Zero page:
 | `$18` | current player index, 0 or 1. Measured 0 | `$A01D: A6 18` then `B5 07` |
 | `$05`/`$06` | buttons **pressed** (edge), P1/P2 | `$8206: STA $05,X` |
 | `$07`/`$08` | buttons **held**, P1/P2 | `$8208: STY $07,X` |
-| `$98`,`$99` | 16-bit step, low/high. **Scratch** — reused all over the frame | `$A011`/`$A015` |
+| `$98`,`$99` | 16-bit step, low/high. **Scratch** - reused all over the frame | `$A011`/`$A015` |
 | `$9A`,`$9B` | A-edge / A-held, and `$9B` is the tilt code before that | `$A047`, `$A100`, `$A106` |
 | `$9C` | second-shot type here; the joypad shift register earlier in the frame | `$A0F8` |
 
@@ -171,9 +171,9 @@ bytes `$A285`: `A5 98 18 79 40 03 99 40 03 A5 99 79 20 03 99 20 03 60 B9 40 03 3
 Notes the port must keep:
 
 * **Clamp constants are `$F0` (240) and `$10` (16), from the bytes `C9 F0` and `C9 10`.**
-* **LEFT is tested unconditionally after RIGHT** — `$A031` is a fall-through target, not an
+* **LEFT is tested unconditionally after RIGHT** - `$A031` is a fall-through target, not an
   `else`. Holding L+R therefore runs *both*: add step, clamp, subtract step, clamp. Away
-  from the walls the net displacement is zero (measured — `$3` is one of the direction
+  from the walls the net displacement is zero (measured - `$3` is one of the direction
   combinations `playermodel.py` run A exercises and the model reproduces it).
 * **There is no pre-check on X.** At the right wall the integer is re-clamped to `$F0`
   every frame while `$0380` keeps accumulating, so the sub-pixel byte is *not* frozen. The
@@ -215,12 +215,12 @@ A07D: 8D 20 03   STA $0320
 ```
 bytes: `$A03C: … A9 01 A0 00 85 9B B5 07 29` / `$A04C: 04 F0 14 AD 20 03 C9 C0 B0 0D 20 85 A2 C9 C0 90` / `$A05C: 02 A9 C0 A0 02 D0 18 B5 07 29 08 F0 17 AD 20 03` / `$A06C: C9 10 90 10 20 97 A2 C9 10 B0 02 A9 10 A0 03 84` / `$A07C: 9B 8D 20 03 …`
 
-* **DOWN wins over UP** when both are held — but only because DOWN is tested first. If
+* **DOWN wins over UP** when both are held - but only because DOWN is tested first. If
   DOWN is held *and* the ship is already at `Y >= $C0`, `$A054` falls through into the UP
   test and **UP is honoured**. That is not the same as "DOWN has priority", and the model
   variant `no-down-priority` was seen to diverge on frame 535 of run B because of it.
 * **The pre-checks matter, not just the clamps.** At the floor (`Y == $C0`) DOWN writes
-  *nothing at all* — not the integer, not the sub-pixel byte, not even the tilt code, so
+  *nothing at all* - not the integer, not the sub-pixel byte, not even the tilt code, so
   `$9B` stays 1 and the ship straightens up. The model variant `no-y-precheck` (clamp
   after the add, as X does) went red on `animId` and on the ring cursor.
 * The pre-checks are asymmetric: DOWN is `>= $C0` (blocks *at* the wall), UP is `< $10`
@@ -231,7 +231,7 @@ bytes: `$A03C: … A9 01 A0 00 85 9B B5 07 29` / `$A04C: 04 F0 14 AD 20 03 C9 C0
 ## 6. Diagonals: no special case, no normalisation
 
 X is done, then Y is done, each with the **same** `$99:$98` step. Holding RIGHT+DOWN moves
-the ship the full step on both axes — diagonal speed is `step × √2`.
+the ship the full step on both axes - diagonal speed is `step × √2`.
 
 Measured rather than asserted: `playermodel.py`'s `diag-norm` variant (halve the step when
 two axes are held) diverges at frame 440 of run A and 485 of run B. There is no diagonal
@@ -278,7 +278,7 @@ A2BD: C8 8A 60   INY / TXA / RTS
 * Ring length is **24** (`$18`), cursor in `$0160`, and the two Options trail by **11** and
   **22** entries. `opt-lag-12` diverged at frame 340.
 * `$A0A7`/`$A0AA` run **unconditionally**, whatever `$45` says. Slots 1 and 2 are
-  maintained from stage start even with no Options collected — which is why `PROBE.md`
+  maintained from stage start even with no Options collected - which is why `PROBE.md`
   saw them trailing before anything was drawn.
 
 ## 8. The tilt latch, and the Options' animation
@@ -300,7 +300,7 @@ A0C5: 8D 40 01   STA $0140
 **The ship's tilt is latched only every 8 frames**, from whatever `$9B` happened to be on
 the frame the counter hit 8. A one-frame tap of UP between latches is invisible.
 
-`$0120` is causal, not correlated — forcing it and looking at the picture:
+`$0120` is causal, not correlated - forcing it and looking at the picture:
 
 ```
 baseline  $0120=1  fb=0x117871A8  nonblack=2149
@@ -338,7 +338,7 @@ said for most of the port's life. Proven twice independently in
 `docs/worklog/gradius/00-recon-weapons.md` 0: from the `$8989` meter jump table, where
 the arm labelled DOUBLE stores **2** (`$89BB: LDA #$02 / STA $98 / ... STA $44`) and the
 arm labelled LASER stores **1** (`$89CF: LDA #$01`); and from the cartridge, by forcing
-`$44` and watching the shots —
+`$44` and watching the shots -
 
 | `$44` | slot A | slot B | behaviour |
 |---|---|---|---|
@@ -348,10 +348,10 @@ arm labelled LASER stores **1** (`$89CF: LDA #$01`); and from the cartridge, by 
 
 Per slot (player = 0, Options = 1..`$45`): if shot slot A is free (`$0123,X == 0`) and
 either A was just pressed **or** the autofire timer `$03A3,X` has run down while A is
-held, `$A235` spawns it — `$0363,X = $0360,X`, `$0323,X = $0320,X`,
-`$0123,X = $98`, `$0163,X = $44 & 1` — and `$03A3,X` is reloaded from `$35` (measured 20).
+held, `$A235` spawns it - `$0363,X = $0360,X`, `$0323,X = $0320,X`,
+`$0123,X = $98`, `$0163,X = $44 & 1` - and `$03A3,X` is reloaded from `$35` (measured 20).
 Slot B is the same shape at `$A250`/`$0126,X`/`$0166,X`, and is **skipped when
-`$44 != 2`** — also the opposite of what this said. The bytes:
+`$44 != 2`** - also the opposite of what this said. The bytes:
 
 ```
 A124  A5 44     LDA $44
@@ -380,13 +380,13 @@ timers are FROZEN while a slot is occupied, so the cadence is the shot's lifetim
 
 The rest of `$9FFC`, in order:
 
-* `$A16F-$A234` — the missile/shot movement loops. These run **even when the player is
+* `$A16F-$A234` - the missile/shot movement loops. These run **even when the player is
   dead**: `$9FFC`'s first act is `LDA $0100 / CMP #$02 / BCC $A006 / JMP $A16F`, which
   jumps *past* movement, ring, tilt and firing straight into them.
 * `$A173` loop: slots 8..6, the missiles. This used to describe the table at `$A1A4` as
   "`+2` or `+8`/`$80` per frame", which is a misreading of it. `$A1A4` = `02 00 | 00 02 |
-  80 00` is **three interleaved 2-entry tables** — `dy = {2, 0}`, `dxhi = {0, 2}`,
-  `dxlo = {$80, 0}` — indexed by `Y` (0 = fly, 1 = crawl). So fly is `y += 2, x += 0.5`
+  80 00` is **three interleaved 2-entry tables** - `dy = {2, 0}`, `dxhi = {0, 2}`,
+  `dxlo = {$80, 0}` - indexed by `Y` (0 = fly, 1 = crawl). So fly is `y += 2, x += 0.5`
   with sprite id `$0A`, and crawl is `y += 0, x += 2` with sprite id `$08`. Killed at
   `Y >= $C8`, on an `x` carry, or at `X >= $F8`
   (`docs/worklog/gradius/00-recon-weapons.md` 4).
@@ -414,15 +414,15 @@ Measured with execution hooks and the CPU cycle counter, one gameplay frame
 |---|---|---|---|
 | 0 | 231 | `$80B5` | previous frame ends (`STA $04`) |
 | 1107 | 241 | `$806A` | **NMI entry** |
-| 1170 | 241 | `$8087` | OAM DMA from page `$02` — copies the display list the **previous** frame built |
+| 1170 | 241 | `$8087` | OAM DMA from page `$02` - copies the display list the **previous** frame built |
 | 1697 | 246 | `$8096` | PPUMASK |
 | 1701 | 246 | `$8099` | `JSR $8A51` |
 | 2367 | 252 | `$809C` | `JSR $8281` (VRAM queue) |
-| 2420 | 252 | `$809F` | `INC $04` — the frame lock goes up |
+| 2420 | 252 | `$809F` | `INC $04` - the frame lock goes up |
 | 2431 | 252 | `$ED02` | sound driver |
 | 2897 | 256 | `$80A4` | **joypad** `$81BF` → `$05`/`$07` |
 | 3327 | 260 | `$8B10` | sprite-budget seed |
-| 5502 | 17 | `$80AA` | `JSR $80BE` — the game state machine |
+| 5502 | 17 | `$80AA` | `JSR $80BE` - the game state machine |
 | 5508 | 17 | `$80BE` | `INC $02`, the free-running frame counter |
 | 5524 | 17 | `$80D1` | mode dispatch (`$83E4`, table `$80D4`); mode 5 → `$9650` |
 | 5766 | 20 | `$9A5E` | stage-play tail; `LDA $5C / CMP #$02 / BCS $9A70` |
@@ -444,7 +444,7 @@ Measured with execution hooks and the CPU cycle counter, one gameplay frame
 | 8642 | 45 | `$9A73` | `JSR $8974` |
 | 8693 | 45 | `$9A79` | scroll copy `$3E/$3F → $12/$13` |
 | 8744 | 46 | `$9AA0` | `JSR $98EE`, then the sprite-0 spin |
-| 27102 | **207** | `$9AAA` | the split fires — **18,358 cycles, 161 scanlines of busy-wait** |
+| 27102 | **207** | `$9AAA` | the split fires - **18,358 cycles, 161 scanlines of busy-wait** |
 | 28289 | 218 | `$80AD` | `JSR $8BAB` |
 | 28361 | 218 | `$8641` | last subsystem |
 
@@ -470,23 +470,23 @@ Three consequences the port has to encode:
   stage index `$19 == 4`, by counting the non-zero bytes at `$0600/$0630/$0660/$0690`
   (`docs/worklog/gradius/00-recon-flow.md` 3). On every other stage `$5C` stays 0, so
   stage 1 cannot reach the half-rate path.
-* `$9A5E` bails to `$9A70` when `$5C >= 2` — the player update is skipped entirely.
+* `$9A5E` bails to `$9A70` when `$5C >= 2` - the player update is skipped entirely.
 * `$9FFC` skips movement/ring/tilt/firing when `$0100 >= 2`.
 * **Stage entry: the player update does not run for the opening frames of mode 5.**
   Measured: mode 5 at game frame 282, `$0100` becomes 1 at 283, `$9FFC` first runs at
-  **310**. The gate is `$96B7: LDA $1B / BPL $96BE` — while bit 7 of `$1B` is clear the
+  **310**. The gate is `$96B7: LDA $1B / BPL $96BE` - while bit 7 of `$1B` is clear the
   mode-5 handler runs the stage-intro table at `$96C5` instead of `JMP $982A`. `$1B` was
   measured stepping `1,2,3,4` over frames 283-308 and reaching `$80` on 309.
   **THE 28 IS NOT A CONSTANT, and the 26 was wrong.** This line said "the first 28
   frames"; the stage-flow recon replaced that with "a respawn intro of 26 frames
   (f614-f640)". Wave 4 measured both windows again, per frame, with exec hooks on all
   five intro handlers: **the boot intro is mode-5 frames 283-309 and the respawn's is
-  614-640 — 27 frames each, 23 of them in state 4**
+  614-640 - 27 frames each, 23 of them in state 4**
   (`docs/worklog/gradius/04-impl-flow-structure-the-1b-ladder-the-stage-i.md`,
   MEASURED 1). Frame 282 is the MODE-4 handover (`$8165`, three instructions), not a
   mode-5 frame, which is where the 28 came from.
 
-  `$9C24` really does exit by watching `$57` rather than by counting — but it lands on
+  `$9C24` really does exit by watching `$57` rather than by counting - but it lands on
   the same number every time for a structural reason: `$9B3E` sets `$3F` and `$55` from
   the same byte (`$24`, the checkpoint) and clears `$3E`/`$54`/`$58`, so the terrain
   streamer's 16-bit lead is exactly 0 at every intro. A 23-frame counter is green on
@@ -498,7 +498,7 @@ Three consequences the port has to encode:
 
 `tools/oracle/playermodel.py` implements sections 3-8 and **free-runs** them: seeded from
 RAM at one frame, then driven only by the button stream, compared against the machine's
-RAM every frame. Free-running is the point — a sub-pixel accumulator's error only shows up
+RAM every frame. Free-running is the point - a sub-pixel accumulator's error only shows up
 by compounding.
 
 Fields compared every frame: `$0360`, `$0380`, `$0320`, `$0340`, `$0160`, all 24 entries of
@@ -518,12 +518,12 @@ run B: $40 forced to 5 (3.5 px/frame), driven into both X walls
 
 | variant | first divergence |
 |---|---|
-| `no-subpixel` — whole pixels only | run B frame 340, `xf` |
-| `x-max-220` — believe PROBE.md's 220 | run B frame 380, `x` 220 vs 223 |
-| `diag-norm` — halve the step on diagonals | run A frame 440 |
-| `no-down-priority` — let UP win over DOWN | run B frame 535 |
-| `no-y-precheck` — clamp instead of pre-checking | run A frame 340 |
-| `ring-always` / `opt-lag-12` — ring length 23 / Option lag 12 | frames 362 / 340 |
+| `no-subpixel` - whole pixels only | run B frame 340, `xf` |
+| `x-max-220` - believe PROBE.md's 220 | run B frame 380, `x` 220 vs 223 |
+| `diag-norm` - halve the step on diagonals | run A frame 440 |
+| `no-down-priority` - let UP win over DOWN | run B frame 535 |
+| `no-y-precheck` - clamp instead of pre-checking | run A frame 340 |
+| `ring-always` / `opt-lag-12` - ring length 23 / Option lag 12 | frames 362 / 340 |
 
 **`no-subpixel` and `x-max-220` are VACUOUS in run A** and pass there. That is not a bug in
 the check, it is a fact about the cartridge: at `$40 = 0` the step is exactly 1.00 px so

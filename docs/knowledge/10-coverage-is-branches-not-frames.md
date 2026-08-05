@@ -1,14 +1,14 @@
-# Coverage is branches, not frames — and why transcription beats agreement
+# Coverage is branches, not frames - and why transcription beats agreement
 
 > **"Our tests will still be useful, but they can't be our source of truth.
-> They are verification."** — the owner, 2026-08-02
+> They are verification."** - the owner, 2026-08-02
 >
 > **The ROM is the source of truth. The tests are verification.** Everything
 > below is a consequence of that one sentence.
 >
 > It follows that a FAILING test and a PASSING test are not the same currency.
-> A failure is strong evidence — the transcription is wrong on that path, and
-> the first divergence points at it. A pass is weak — that path matched.
+> A failure is strong evidence - the transcription is wrong on that path, and
+> the first divergence points at it. A pass is weak - that path matched.
 > We have been reporting the passes.
 >
 > And when they disagree, **the listing wins**. A green test against a wrong
@@ -35,7 +35,7 @@ frames down the same corridor of the state space are one path measured twice.
 And in this game the state space is *player-controlled*. Aim reads player
 position; spawn logic and pattern parameters read game state the player steers.
 So the reachable-state graph is not something a scripted corpus can sample
-representatively — it is not even something we can enumerate. **Every passing
+representatively - it is not even something we can enumerate. **Every passing
 comparison is a statement about the paths we walked, and the set of paths a human
 can walk is unbounded.**
 
@@ -53,7 +53,7 @@ being *the same code*:
 
 - **every branch transcribed**, including the ones no run has taken;
 - **every table entry exported**, not the entries some scenario indexed;
-- **every order preserved** — within the frame as well as across it;
+- **every order preserved** - within the frame as well as across it;
 - **every unported path a loud named throw**, so an unwalked path announces
   itself the first time a human walks it rather than doing something plausible.
 

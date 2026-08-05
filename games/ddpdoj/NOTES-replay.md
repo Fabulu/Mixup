@@ -1,8 +1,8 @@
-# Replay — a requirement for later, with constraints that bind NOW
+# Replay - a requirement for later, with constraints that bind NOW
 
 **Owner's requirement, 2026-07-31: the DaiOuJou port must be able to replay a
 recorded game with 100% accuracy.** Implementation comes after the slice. The
-*constraints* do not — they are cheap to honour while the skeleton is being
+*constraints* do not - they are cheap to honour while the skeleton is being
 written and expensive to retrofit afterwards.
 
 ## Why this is nearly free, if nobody breaks it
@@ -33,7 +33,7 @@ replay desyncs three minutes in and nobody can say why.
 it.** DaiOuJou reads `$C08000` exactly once per logic frame at build A's
 `$13D46A` and mirrors it to `$803970`. **Input lead is ZERO** here (measured;
 the Game Boy needed one tick, so this is per-machine and never assumed). A
-replay stores one input word per logic frame — not per video frame, and not per
+replay stores one input word per logic frame - not per video frame, and not per
 host frame.
 
 **4. `logicFrame` and `videoFrame` stay separate and named.** They diverge here
@@ -50,14 +50,14 @@ than later.
 The tempting way to model slowdown is to measure how long the host took to
 compute a frame and stretch time accordingly. **That makes every replay
 machine-dependent**: the same inputs on a faster laptop produce a different
-game, because the slowdown differs. Replays would desync across machines, and —
-worse — the port would not be reproducible against itself.
+game, because the slowdown differs. Replays would desync across machines, and -
+worse - the port would not be reproducible against itself.
 
 So the work budget must be **counted, not timed**: a deterministic function of
 the game's own state (objects processed, sprites emitted, work units consumed),
 identical on every machine, with the calibration constant fixed in the build and
 not sampled from the host. `NOTES-slowdown-oracle.md` already argues for
-exactly this shape on different grounds — one knob, isolated, calibratable
+exactly this shape on different grounds - one knob, isolated, calibratable
 later. Replay determinism is the second, independent reason to build it that
 way, and two independent reasons for the same design is usually a sign it is
 right.
@@ -68,23 +68,23 @@ change to the simulation.
 
 ## What the format should carry, when it is built
 
-- the build (VERSION-B vs A — they are different games in one ROM), and the
+- the build (VERSION-B vs A - they are different games in one ROM), and the
   port's own version;
 - the initial state, or a named start condition;
 - one input word per logic frame;
-- **a periodic state digest** — a hash of the game state every N logic frames.
+- **a periodic state digest** - a hash of the game state every N logic frames.
 
 That last item is what makes it a *verification* asset rather than a toy. A
 replay that desyncs then reports the first logic frame at which it diverged,
 which is first-divergence analysis (`docs/knowledge/01`) applied to the port
 against itself. Any recorded game becomes a regression test, and a long
-superplay becomes the most demanding test in the suite — thousands of frames of
+superplay becomes the most demanding test in the suite - thousands of frames of
 dense patterns, rank changes and slowdown, checked automatically.
 
 ## What it is NOT
 
 Not a savestate. Savestates capture a moment; replays capture a history, and
-only the history proves the simulation is reproducible. Both are useful — MAME's
+only the history proves the simulation is reproducible. Both are useful - MAME's
 savestates already restore DaiOuJou faithfully (27 bytes of dead stack and one
-IRQ4 phase byte differ) — but a savestate cannot demonstrate determinism, and a
+IRQ4 phase byte differ) - but a savestate cannot demonstrate determinism, and a
 replay cannot let you skip ahead.

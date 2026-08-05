@@ -1,4 +1,4 @@
-# Sound — why this is not the Game Boy problem, and how to attack it anyway
+# Sound - why this is not the Game Boy problem, and how to attack it anyway
 
 status: PLANNING (no port work started)   raised: 2026-08-01
 
@@ -9,7 +9,7 @@ ticking per frame, and a register set small enough to reason about whole.
 Gradius wave 8 ported the NES `$ED02` driver **state-exact first, audio output as
 the stretch**, and that was the right bar for an APU.
 
-**DaiOuJou is not that.** The PGM's audio chip is an **ICS2115** — a multi-voice
+**DaiOuJou is not that.** The PGM's audio chip is an **ICS2115** - a multi-voice
 wavetable/sample synthesiser with per-voice sample position, pitch, volume
 envelopes, interrupts and timers. It is a small synthesiser, not four channels.
 
@@ -26,8 +26,8 @@ table:
 
 | question | who can answer it | confidence |
 |---|---|---|
-| **WHAT THE GAME ASKS FOR** — which command the 68k sends, which voice is keyed on, with what sample, pitch, envelope and volume, on which frame | MAME. This is the GAME'S CODE and the register writes it makes. | high — verifiable frame-exact, same as every other subsystem |
-| **WHAT COMES OUT OF THE CHIP** — the actual waveform | MAME's ICS2115 model, which is itself incompletely verified | low — NOT ground truth |
+| **WHAT THE GAME ASKS FOR** - which command the 68k sends, which voice is keyed on, with what sample, pitch, envelope and volume, on which frame | MAME. This is the GAME'S CODE and the register writes it makes. | high - verifiable frame-exact, same as every other subsystem |
+| **WHAT COMES OUT OF THE CHIP** - the actual waveform | MAME's ICS2115 model, which is itself incompletely verified | low - NOT ground truth |
 
 So the bar is the same one Gradius set and for a sharper reason:
 **state-exactness first.** A port that issues byte-identical voice commands on
@@ -48,7 +48,7 @@ From `docs/worklog/ddpdoj/00-recon-assets.md` (status PARTIAL on sound):
   most likely to be verifiable end to end.
 - Regions: `ics` is 0x1000000, assembled from `pgm_m01s.rom` @0x000000 and
   `cave_m04401b032.u17` @**0x400000** (the offset is not what a reader would
-  guess — the same class of trap as the tile ROM at 0x180000).
+  guess - the same class of trap as the tile ROM at 0x180000).
 - A first live sample capture exists; nothing is decoded or verified.
 
 ## The three things to settle before writing any code
@@ -62,11 +62,11 @@ From `docs/worklog/ddpdoj/00-recon-assets.md` (status PARTIAL on sound):
    strongest first: (a) the command stream to the chip is byte-exact per frame;
    (b) the per-voice register state is byte-exact at the sample point; (c) the
    emitted PCM matches MAME's. **(c) is the weakest claim despite sounding like
-   the strongest**, because it inherits MAME's uncertainty — and it is the one a
+   the strongest**, because it inherits MAME's uncertainty - and it is the one a
    naive gate would reach for, because comparing audio buffers is easy.
 3. **Where the samples live at runtime.** `cave_m04401b032.u17` is 4 MiB and
    `pgm_m01s.rom` is 2 MiB. This is the first asset in the project big enough
-   that shipping it is a real decision — see the deferred sharding question.
+   that shipping it is a real decision - see the deferred sharding question.
    The published slice today is 363 KiB total; sound would dwarf everything
    else, and that is the trigger for designing shard boundaries rather than
    doing it prematurely.
@@ -80,4 +80,4 @@ Getting *audible, correct* sound depends on a synthesiser model whose reference
 implementation is admittedly incomplete. That is a research problem, not a
 porting problem, and it should be labelled as one rather than allowed to look
 like the last 10% of a port. If it is attempted, the ICS2115's own
-documentation — not MAME's source — is the reference to work from.
+documentation - not MAME's source - is the reference to work from.

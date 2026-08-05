@@ -1,4 +1,4 @@
-# WHICH BUILD IS RUNNING — and the one place "build A is a defect" is WRONG
+# WHICH BUILD IS RUNNING - and the one place "build A is a defect" is WRONG
 
 **Read this before acting on any rule that says a `$13xxxx`/`$14xxxx` address is
 a defect.** That rule is right about the main loop and wrong about the
@@ -18,8 +18,8 @@ finding.
   is build B; the interrupt handlers are not.
 
 This is not absurd. Wave 1 measured that both handlers are BIOS trampolines
-through RAM vectors — `$0CA6` reads `$801470` (IRQ4), `$0CBE` reads `$801478`
-(IRQ6) — so whichever handler address was installed in RAM is what runs,
+through RAM vectors - `$0CA6` reads `$801470` (IRQ4), `$0CBE` reads `$801478`
+(IRQ6) - so whichever handler address was installed in RAM is what runs,
 regardless of which build's main loop is executing.
 
 Confirmed on a default (VERSION-A) boot, 900 video frames:
@@ -34,7 +34,7 @@ and port what actually runs.**
 ## What this invalidates
 
 `docs/worklog/ddpdoj/02-impl-object-driver-and-overrun.md` §4's phase-order
-table and §2's description of the (A) gate name build-B ISR addresses —
+table and §2's description of the (A) gate name build-B ISR addresses -
 `$23CC4E`, `$23D0F8`, `$23D10C`, `$28C19A`, `$23C44C`, gated `$24133C`/
 `$240CC0`/`$240F26`/`$287286`, release `$23C46C`, tail `$23C158`. Per the
 reviewer, **none of them executes.**
@@ -45,12 +45,12 @@ reviewer, **none of them executes.**
 on a VERSION-B run and either confirms or replaces them.
 
 **The consequence if this is not fixed:** an implementer following that table
-ports four routines that never run and omits the four that do — and the port
+ports four routines that never run and omits the four that do - and the port
 would still look plausible, because the main loop it hangs off IS build B.
 
 ## Do not repeat the mistake I just made
 
-Reading the interrupt vectors on a **default boot** does not test this claim —
+Reading the interrupt vectors on a **default boot** does not test this claim -
 a default boot IS build A, so build-A vectors are exactly what you would see
 either way. The measurement has to be taken after the chooser has selected
 VERSION-B.

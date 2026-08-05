@@ -1,7 +1,7 @@
-# RECON-2 — RAM MAP & GAME STATE
+# RECON-2 - RAM MAP & GAME STATE
 
 ROM: `Batman - Return of the Joker (USA, Europe).gb` (128 KB, MBC1, no cart RAM).
-Static analysis only — no emulator. Confidence is stated per claim; anything not
+Static analysis only - no emulator. Confidence is stated per claim; anything not
 marked is **CONFIRMED** by at least two independent code sites.
 
 Tooling added by this pass:
@@ -9,7 +9,7 @@ Tooling added by this pass:
 | script | purpose |
 |---|---|
 | `tools/ramscan.py` | runs `banktrace` then classifies every WRAM/HRAM/OAM/IO access as `direct` (`LDH`/`LD [a16]`), `ptr` (constant-folded `LD rr,nnnn` + dereference), or `immediate` (RAM-looking constant never dereferenced → false positive). `--range`, `--addr`, `--region`, `--csv`, `--immediates`. |
-| `tools/show.py` | `python tools/show.py BANK LO HI` — print an address window of `disasm/bank_XX.asm`. |
+| `tools/show.py` | `python tools/show.py BANK LO HI` - print an address window of `disasm/bank_XX.asm`. |
 
 ```
 python tools/ramscan.py "Batman - Return of the Joker (USA, Europe).gb" --region HRAM
@@ -27,7 +27,7 @@ the DMA stub from shadow OAM `$C000`).
 
 * **The player is not in an actor slot.** Batman's entire state lives in **HRAM
   `$FF80-$FF98` + `$FF93/$FF94` + `$FFB2/$FFC2/$FFC3-$FFC5`**. Recon-1's guess
-  that `1:$4E0C` is "the player state machine" is **wrong** — `1:$4E0C` is a loop
+  that `1:$4E0C` is "the player state machine" is **wrong** - `1:$4E0C` is a loop
   over the 8-slot, 32-byte actor array at `$C268`.
 * Two actor arrays exist, both **8 slots**, both indexed by the same slot number:
   `$C1E8` (16-byte stride, map-spawned platform/hazard objects) and `$C268`
@@ -39,7 +39,7 @@ the DMA stub from shadow OAM `$C000`).
 
 ---
 
-## 1. PLAYER STATE BLOCK (HRAM) — the primary deliverable
+## 1. PLAYER STATE BLOCK (HRAM) - the primary deliverable
 
 All addresses HRAM. World coordinates are **12.4 fixed point** (1 px = 16 units),
 stored **high byte first** (`$FF81` = X hi, `$FF82` = X lo). Confirmed by
@@ -53,7 +53,7 @@ stored **high byte first** (`$FF81` = X hi, `$FF82` = X lo). Confirmed by
 | `$FF82` | 1 | **PosX lo** | 12.4 low byte (high nibble = sub-tile px, low nibble = 1/16 px) | `00:18E7` |
 | `$FF83` | 1 | **PosY hi** | 12.4 | `00:18F1`, `00:20BA` |
 | `$FF84` | 1 | **PosY lo** | 12.4 | `00:18F1` |
-| `$FF85` | 1 | *(write-only, 1 site `00:1333`)* | UNCONFIRMED — dead/debug | 0 reads in the whole ROM |
+| `$FF85` | 1 | *(write-only, 1 site `00:1333`)* | UNCONFIRMED - dead/debug | 0 reads in the whole ROM |
 | `$FF86` | 1 | **VelX** | signed byte, 1/16 px per frame | `00:1D3D` accel, `00:1888/$18C8` integrate |
 | `$FF87` | 1 | **VelY** | signed byte, **positive = up**; `Y -= VelY` | `00:1A7E`, `00:1B00`, `00:1A89` |
 | `$FF88` | 1 | **Facing** | 0 = right, 1 = left | `00:187D` (Right→0), `00:18B9` (Left→1); drives `$1D3D` sign |
@@ -66,7 +66,7 @@ stored **high byte first** (`$FF81` = X hi, `$FF82` = X lo). Confirmed by
 | `$FF8F` | 1 | TurnAroundTimer | frames, set `$0F` | `00:187A`, `00:18B5`; picks anim `$14/$13` from table `00:1BD3` |
 | `$FF90` | 1 | LandingSquatTimer | set `$10` on hard landing | `00:1B3D` |
 | `$FF91` | 1 | scratch (1R/1W, `00:1C94/1C99`) | UNCONFIRMED | |
-| `$FF92` | 1 | scratch (`00:1C70/1C7A/1C8C`) | UNCONFIRMED — bat-rope sub-state | |
+| `$FF92` | 1 | scratch (`00:1C70/1C7A/1C8C`) | UNCONFIRMED - bat-rope sub-state | |
 | `$FF93` | 1 | **ScreenX** | OAM X (= `(PosX-camX)>>4 + 8`) | written once `00:1B58`, read 22× |
 | `$FF94` | 1 | **ScreenY** | OAM Y (= `(PosY-camY)>>4 + 16`) | written once `00:1B5B`, read 14× |
 | `$FF95` | 1 | **SlowModeFlag** | non-zero = water/heavy (halves speed, halves gravity) | `00:2E7F LD A,$80`, `00:2E9A XOR A`; read `00:1D42/1AE4/1AF5` |
@@ -98,13 +98,13 @@ stored **high byte first** (`$FF81` = X hi, `$FF82` = X lo). Confirmed by
 | `$C715` | DeathSequenceActive (1 = playing death animation) |
 | `$C716` | PauseFlag (toggled by Start, `00:060A`) |
 
-**Bat-rope segment array:** `$C5EF-$C606` — 6 × 4 bytes `{Xhi,Xlo,Yhi,Ylo}` at
+**Bat-rope segment array:** `$C5EF-$C606` - 6 × 4 bytes `{Xhi,Xlo,Yhi,Ylo}` at
 `$C5EB + (n+1)*4`, `n = $FFB4`. Entry at `$C5EB-$C5EE` is never used (`n+1`
 indexing). `00:3DA6`, `00:1961`.
 
-**Batarang / thrown-weapon pool:** `$C4B0-$C4CA` — **3 × 9 bytes** at
+**Batarang / thrown-weapon pool:** `$C4B0-$C4CA` - **3 × 9 bytes** at
 `$C4A7 + 9*(n+1)`, `n = 0..2` (`00:199F`, `LD DE,$0009`, `CP $03`).
-`$C4A7-$C4AF` is a phantom slot 0 that is **never touched — 9 free bytes.**
+`$C4A7-$C4AF` is a phantom slot 0 that is **never touched - 9 free bytes.**
 Layout (from `00:19CE-$1A14`):
 
 | off | field |
@@ -120,11 +120,11 @@ Layout (from `00:19CE-$1A14`):
 
 ## 2. ACTOR TABLES
 
-### 2.1 `$C1E8` — 8 × 16 bytes ($C1E8-$C267) — map-spawned objects
+### 2.1 `$C1E8` - 8 × 16 bytes ($C1E8-$C267) - map-spawned objects
 
 Driver: `sub_01_4230` (`LD C,0 … SWAP C; LD HL,$C1E8; ADD HL,BC; … INC C; CP $08`).
 Slot is freed by `sub_01_4BE8`, which takes the **top 3 bits of a level-map
-metatile** (`AND $E0`, `SRL A` → slot*16) and zeroes 16 bytes — proving stride 16
+metatile** (`AND $E0`, `SRL A` → slot*16) and zeroes 16 bytes - proving stride 16
 and count 8.
 
 | off | field | evidence |
@@ -142,7 +142,7 @@ Activation half-width per type is table **`1:$4BA5`** (13 bytes:
 `00 0B 0B 0B 0B 0B 0B 0B 0B 0B 0B 08 09`), compared against
 `|camX+5 − actor.X| ` at `01:425D-$4267`.
 
-### 2.2 `$C268` — 8 × 32 bytes ($C268-$C367) — enemies / bosses
+### 2.2 `$C268` - 8 × 32 bytes ($C268-$C367) - enemies / bosses
 
 Driver: `sub_01_4E0C` (`SWAP A; ADD A,A` → *32; `LD HL,$C268; ADD HL,BC`;
 loop `INC A; CP $08` at `01:60D4`, or descending on odd frames `01:60CC`).
@@ -179,7 +179,7 @@ Absolute references seen in the ROM decode cleanly against this layout:
 | `$C60B-$C61A` | 4 × 4 B | inline `01:4BFF` | boss-door / gate debris (`$C733` sequencer) |
 | `$C67B-$C692` | 8 × 3 B | inline `00:1351` | delayed tile-restore timers `{timer, Xhi, Yhi}`; on expiry clears the map cell and spawns effect `$97` |
 | `$C693-$C6CE` | 10 × 6 B | **`sub_00_0CC2`** (`A*6`, `CP $0A`) | visual effects / pickups: `{spriteID, Xhi, Xlo, Yhi, Ylo, subtype}` seeded from `$C744-$C747` + `D`,`E` |
-| `$C6CF-$C6EE` | 4 × 8 B | **`sub_00_0CF3`** (`A*8`, `CP $04`) | ballistic thrown objects (gravity) — see below |
+| `$C6CF-$C6EE` | 4 × 8 B | **`sub_00_0CF3`** (`A*8`, `CP $04`) | ballistic thrown objects (gravity) - see below |
 | `$C6EF-$C6FA` | 4 × 3 B | inline `01:7AB3` | type-`$17` markers `{type, Xhi, Yhi}`, sound `$25` |
 | `$C6FB-$C702` | 4 × 2 B | `sub_00_0AE1` | sound command ring |
 
@@ -252,8 +252,8 @@ Bank 0 addresses are also raw file offsets. Bank 1 file offset = `addr - $4000 +
 | `$02` | **contact damage from `$C1E8` objects** | `00:15E5 LD B,$02` | **`$015E6`** |
 | `$04` | hazard/spike damage | `00:1E20 LD B,$04` | `$01E21` |
 | `$01` | environmental drain (slow mode + `$C756!=0`) | `00:2E8D LD B,$01` | `$02E8E` |
-| table | **enemy contact damage by state** — `01:$6BC1`, 13 bytes: `00 02 02 02 00 00 00 01 02 01 02 81 00`; bit 7 → add per-level bonus | data `01:$6BC1` | `$06BC1` |
-| table | per-level contact-damage bonus — `01:$6BCE`, 14 bytes, `00`×11 then `03 01 01` | data `01:$6BCE` | `$06BCE` |
+| table | **enemy contact damage by state** - `01:$6BC1`, 13 bytes: `00 02 02 02 00 00 00 01 02 01 02 81 00`; bit 7 → add per-level bonus | data `01:$6BC1` | `$06BC1` |
+| table | per-level contact-damage bonus - `01:$6BCE`, 14 bytes, `00`×11 then `03 01 01` | data `01:$6BCE` | `$06BCE` |
 | `$5A` / `$DA` | **invulnerability frames after a hit** (90; `$DA` = 90 + knockback-left bit) | `00:15EF`/`00:15F3`, `00:1E2A`/`00:1E2E`, `00:2E92`, `01:67B1`/`01:67B5` | `$015F0`,`$015F4`,`$01E2B`,`$01E2F`,`$02E93`,`$067B2`,`$067B6` |
 | `$10` / `$F0` | knockback X velocity (right/left) | `00:1790`, `00:1794` | `$01791`, `$01795` |
 | `$18` | knockback Y velocity | `00:17B2 LD A,$18` | `$017B3` |
@@ -265,9 +265,9 @@ Bank 0 addresses are also raw file offsets. Bank 1 file offset = `addr - $4000 +
 | value | meaning | instruction | operand |
 |---|---|---|---|
 | `$02` | **melee/punch damage to enemies** | `00:26F0 LD B,$02` | **`$026F1`** |
-| `(HL)` | critical hit = enemy's full remaining HP | `00:26E3 LD B,(HL)` | — |
+| `(HL)` | critical hit = enemy's full remaining HP | `00:26E3 LD B,(HL)` | - |
 | `$08` | crit window: `(rLY XOR frameCounter) < 8` ≈ 3 % | `00:26D3 CP $08` | `$026D4` |
-| `1` | batarang damage (`DEC (HL)` on +$16) | `00:3D0B` | — |
+| `1` | batarang damage (`DEC (HL)` on +$16) | `00:3D0B` | - |
 | `$3C` | enemy hit-stun / flash frames | `00:26CA`, `00:3D04` | `$026CB`, `$03D05` |
 | `$05` | boss HP bonus on difficulty 2 | `00:0D83 ADD A,$05` | `$00D84` |
 
@@ -287,7 +287,7 @@ Bank 0 addresses are also raw file offsets. Bank 1 file offset = `addr - $4000 +
 | `$BB` | `rTMA` → sound tick 59.4 Hz | `00:0248 LD A,$BB` | `$00249` |
 | `$0A` | `$0CC2` pool size (10) | `00:0CEC CP $0A` | `$00CED` |
 | `$04` | `$0CF3` pool size (4) | `00:0D4B CP $04` | `$00D4C` |
-| `$08` | actor-array iteration count (both arrays) | `01:4A56`, `01:60D7`, `00:2725`, `00:2EEF`, `00:3D0F` | — |
+| `$08` | actor-array iteration count (both arrays) | `01:4A56`, `01:60D7`, `00:2725`, `00:2EEF`, `00:3D0F` | - |
 | `$03` | gravity on `$C6CF` ballistics | `00:1469 SUB $03` | `$0146A` |
 | `$A0` | terminal velocity for `$C6CF` ballistics | `00:1473 LD A,$A0` | `$01474` |
 | `$30` | Y-velocity cap for `$C1E8` objects | `01:42C0/42C4` | `$042C1`, `$042C5` |
@@ -300,7 +300,7 @@ Bank 0 addresses are also raw file offsets. Bank 1 file offset = `addr - $4000 +
 
 | addr | R | W | name |
 |---|---|---|---|
-| `$FF80`-`$FF98` | | | **player block — see §1** (`$FF80` is *reused* as the stage-select cursor at `00:399C-$39BB`) |
+| `$FF80`-`$FF98` | | | **player block - see §1** (`$FF80` is *reused* as the stage-select cursor at `00:399C-$39BB`) |
 | `$FF99`,`$FF9A` | 1,1 | 3,2 | VBlank tile-transfer dest lo/hi (0 = idle); drives `CALL $C4CB` |
 | `$FF9B`,`$FF9C` | 2,1 | 6,3 | VBlank row-transfer dest lo/hi (0 = idle), source `$C5CB` |
 | `$FF9D` | 2 | 3 | shadow-OAM write cursor (0..$A0), reset by `$0C1F` |
@@ -311,7 +311,7 @@ Bank 0 addresses are also raw file offsets. Bank 1 file offset = `addr - $4000 +
 | `$FFA2`,`$FFA3` | 10,7 | 2,2 | **camera X hi,lo** (12.4) |
 | `$FFA4`,`$FFA5` | 6,4 | 2,2 | **camera Y hi,lo** (12.4) |
 | `$FFA6` | 1 | 1 | scratch in `00:128C` |
-| `$FFA7` | 13 | 1 | **frame parity**, toggled every VBlank at `00:07FC-$0800`; flips actor-loop direction and gates the HUD draw. *(Recon-1 called this a level-type flag — it is not.)* |
+| `$FFA7` | 13 | 1 | **frame parity**, toggled every VBlank at `00:07FC-$0800`; flips actor-loop direction and gates the HUD draw. *(Recon-1 called this a level-type flag - it is not.)* |
 | `$FFA9`,`$FFAA` | 4,5 | 3,4 | SCX / SCY shadow (camera >> 4) |
 | `$FFAB`-`$FFAF` | | | WX, WY, BGP, OBP0, OBP1 shadows |
 | `$FFB0` | **65** | 5 | **LEVEL / STAGE number** (1-based). Most-read variable in the ROM |
@@ -337,7 +337,7 @@ Bank 0 addresses are also raw file offsets. Bank 1 file offset = `addr - $4000 +
 | `$FFE7` | 2 | 2 | VBlank-pending handshake |
 | `$FFE8` | 1 | 1 | saved `rIE` across `LCDOff` |
 | `$FFEA` | 1 | 2 | sound-tick re-entrancy guard |
-| `$FFF0`-`$FFF9` | — | — | **OAM-DMA stub (code)**, written once at boot |
+| `$FFF0`-`$FFF9` | - | - | **OAM-DMA stub (code)**, written once at boot |
 
 **Joypad bit layout** (from `00:07CC-$07F6`; d-pad is read first and `SWAP`ped
 into the high nibble):
@@ -356,7 +356,7 @@ Soft reset = `$FFE1 == $0F` (A+B+Select+Start) at `00:0A55`.
 
 ### HRAM false positives (do **not** treat as variables)
 
-`--immediates` proves these `LD rr,nnnn` values are never dereferenced — they are
+`--immediates` proves these `LD rr,nnnn` values are never dereferenced - they are
 negative 16-bit constants used for backwards pointer arithmetic:
 
 `$FFE0`(−32, 8×) `$FFE3 $FFE5 $FFE7 $FFE8 $FFE9 $FFEA $FFEB $FFEC`(7×)
@@ -373,7 +373,7 @@ negative 16-bit constants used for backwards pointer arithmetic:
 | range | size | contents |
 |---|---|---|
 | `$C000-$C09F` | 160 | **shadow OAM** (DMA source), 40 × 4 B |
-| `$C0A0-$C0FF` | 96 | **UNUSED — free real estate** (zero accesses) |
+| `$C0A0-$C0FF` | 96 | **UNUSED - free real estate** (zero accesses) |
 | `$C100-$C12F` | 48 | VBlank vertical-column descriptor: `[0]=dest hi`, `[1]=dest lo`, then 18 tile bytes. `[0]==0` → idle |
 | `$C130-$C15F` | 48 | VBlank 2×2-tile queue, 6-B records `{dest hi, dest lo, t0..t3}`, cursor `$FF9F`, zero-terminated. Capacity UNCONFIRMED (cursor is 8-bit; practical limit is the `$C160` boundary = 8 entries) |
 | `$C160-$C1BF` | 96 | VRAM-script staging buffer built at `00:1136`, executed by `CALL $0A0E` at `00:115D`. Size UNCONFIRMED (upper bound only) |
@@ -381,9 +381,9 @@ negative 16-bit constants used for backwards pointer arithmetic:
 | `$C1E8-$C267` | 128 | **actor array A**, 8 × 16 B (§2.1) |
 | `$C268-$C367` | 256 | **actor array B (enemies)**, 8 × 32 B (§2.2) |
 | `$C368-$C4A6` | 319 | tile-block source pool, indexed `$C368 + E*4` by `sub_00_11F1` |
-| `$C4A7-$C4AF` | 9 | **UNUSED** phantom batarang slot 0 — free real estate |
+| `$C4A7-$C4AF` | 9 | **UNUSED** phantom batarang slot 0 - free real estate |
 | `$C4B0-$C4CA` | 27 | batarang pool, 3 × 9 B |
-| `$C4CB-$C58A` | 192 | **generated 64-byte copier (executable code)** — do not relocate |
+| `$C4CB-$C58A` | 192 | **generated 64-byte copier (executable code)** - do not relocate |
 | `$C58B-$C5CA` | 64 | tile staging buffer (source for `CALL $C4CB`) |
 | `$C5CB-$C5EB` | 33 | tilemap row buffer (VBlank row transfer) |
 | `$C5EC-$C5EE` | 3 | unused padding |
@@ -397,9 +397,9 @@ negative 16-bit constants used for backwards pointer arithmetic:
 | `$C6EF-$C6FA` | 12 | type-`$17` markers, 4 × 3 B |
 | `$C6FB-$C702` | 8 | sound command ring, 4 × 2 B |
 | `$C703` | 1 | **current ROM bank shadow** (60 writes, 1 read) |
-| `$C704-$C709` | 6 | **UNUSED — free real estate** |
-| `$C70A-$C767` | 94 | **game state block** — see §6 |
-| `$C768-$C7FF` | 152 | **UNUSED — free real estate** (zero accesses) |
+| `$C704-$C709` | 6 | **UNUSED - free real estate** |
+| `$C70A-$C767` | 94 | **game state block** - see §6 |
+| `$C768-$C7FF` | 152 | **UNUSED - free real estate** (zero accesses) |
 | `$C800-$C94C` | 333 | sound-driver RAM; 8 tracks × `$24` B from `$C82D` |
 | `$C94D-$CFFF` | 1715 | stack (grows down from `$CFFF`); large unused hole in practice |
 | `$D000-$DFFF` | 4096 | **decompressed level map**, column-major: `addr = $D000 + (Xhi<<5) + (Yhi & $0F)*2`, 2 B per metatile, 16 rows/column, up to 128 columns (`sub_00_11B9`). Absolute writes seen at `$D205 $D263 $D41B $D41D $D4DA-$D4DD $D4FB $DB84 $DB85` are hard-coded level edits |
@@ -434,7 +434,7 @@ negative 16-bit constants used for backwards pointer arithmetic:
 | `$C734`,`$C735` | 2/1 | door position (X,Y metatile) | high |
 | `$C736`-`$C73B` | | scripted-move state: `$C737` = script id, `$C738` = steps left, `$C739`/`$C73A` = X/Y limits | medium |
 | `$C73D` | 16/9 | boss/mini-boss phase counter | medium |
-| `$C73E` | 23/4 | **level sub-type** (low nibble of table `00:$1015[level-1]`) — selects boss/room behaviour | high |
+| `$C73E` | 23/4 | **level sub-type** (low nibble of table `00:$1015[level-1]`) - selects boss/room behaviour | high |
 | `$C73F` | 12/16 | level event flag A | medium |
 | `$C740` | 9/8 | **cutscene lock** (`$FF` = normal play; anything else freezes the actor/HUD logic) | high |
 | `$C741` | 7/18 | level event timer | medium |
@@ -445,7 +445,7 @@ negative 16-bit constants used for backwards pointer arithmetic:
 | `$C74E`,`$C74F` | 1/2 | spawn staging extras | low |
 | `$C750` | 4/4 | **boss-fight flag** (1 on level `$0E`; disables pause and normal player logic) | high |
 | `$C751` | 8/5 | super-jump / launch pad armed | high |
-| `$C753` | 7/1 | **STAGE-BRANCH PROGRESS BITMASK** — see §7 | high |
+| `$C753` | 7/1 | **STAGE-BRANCH PROGRESS BITMASK** - see §7 | high |
 | `$C754` | 2/1 | second progress bitmask (`SET 0/1/2` on levels 3/5/13, `01:4D86-$4D91`; read by `01:4DDA` level setup) | high |
 | `$C755` | 3/1 | UNCONFIRMED | low |
 | `$C756` | 19/2 | **DIFFICULTY** 0/1/2, default 1 at `00:01D1`, cycled at `00:3980-$399A`. Effects: enemy HP `+5` (`00:0D83`), boss activation flags (`00:0DA0` vs `00:0E07`), batarang speed on level `$0E` (`00:1A04`), environmental drain (`00:2E81`) | **high** |
@@ -462,7 +462,7 @@ negative 16-bit constants used for backwards pointer arithmetic:
 
 ## 7. Debug / cheat / free real estate
 
-* **`$C753` — stage-branch progress bitmask (the game's only save state).**
+* **`$C753` - stage-branch progress bitmask (the game's only save state).**
   Set on *completing* a branch stage, dispatched on `$FFB0` at `00:35E8`:
   level `$04` → `SET 0` (`00:360F`), level `$08` → `SET 1` (`00:3616`),
   level `$0B` → `SET 2` (`00:3608`). When all three are set
@@ -472,24 +472,24 @@ negative 16-bit constants used for backwards pointer arithmetic:
   (`00:038E`, `00:03EA`, `00:0411`, `00:0FE7`). Written only at `00:361B` and
   never cleared except by the boot WRAM wipe, so it survives game-over.
   **Forcing `$C753 = $07` is the cleanest level-warp hook for mods.**
-* **`$C756` — difficulty selector**, 3-way, cycled by the menu at `00:3980`;
+* **`$C756` - difficulty selector**, 3-way, cycled by the menu at `00:3980`;
   labels come from ROM `00:$7C5F` / `$7C69` / `$7C73` (10-byte VRAM scripts).
 * **`$C713` stage select**, BCD `$01-$46` (`00:39A7`, `00:39B3`, DAA), rendered by
   `sub_00_3A10`. `$FF80` is reused as its cursor (0..$2E). Reachable from the
   same menu tree as `$C756`.
 * **Unreferenced WRAM (safe to repurpose):**
-  * `$C0A0-$C0FF` — 96 B
-  * `$C4A7-$C4AF` — 9 B (phantom batarang slot)
-  * `$C5EC-$C5EE` — 3 B, `$C607-$C60A` — 4 B
-  * `$C704-$C709` — 6 B
-  * `$C768-$C7FF` — **152 B, the largest contiguous free block**
-  * `$C94D-$CF00` — below the stack; risky but unused in practice
+  * `$C0A0-$C0FF` - 96 B
+  * `$C4A7-$C4AF` - 9 B (phantom batarang slot)
+  * `$C5EC-$C5EE` - 3 B, `$C607-$C60A` - 4 B
+  * `$C704-$C709` - 6 B
+  * `$C768-$C7FF` - **152 B, the largest contiguous free block**
+  * `$C94D-$CF00` - below the stack; risky but unused in practice
 * **Unreferenced HRAM:** `$FFD1`, `$FFD7-$FFDA`, `$FFDE-$FFE0`, `$FFE3-$FFE6`,
   `$FFE9`, `$FFEB-$FFEF` (23 bytes total). `$FFFA-$FFFE` are also untouched but
   are directly below `rIE`.
-* **`$FF85`** is written once (`00:1333`) and never read — dead variable.
+* **`$FF85`** is written once (`00:1333`) and never read - dead variable.
 * `$FF91`, `$FF92`, `$FF96`, `$C755` have ≤2 sites each and no determined
-  meaning — candidates for reuse after an emulator check.
+  meaning - candidates for reuse after an emulator check.
 
 ---
 

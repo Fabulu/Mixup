@@ -19,14 +19,14 @@ game:
 
 | question | tool | why |
 |---|---|---|
-| What entities/handlers/patterns EXIST? | **the ROM** — read the tables | finite, enumerable, complete |
+| What entities/handlers/patterns EXIST? | **the ROM** - read the tables | finite, enumerable, complete |
 | Which of them does our corpus reach? | measurement | a sample, and a biased one |
-| Is our implementation of one correct? | **the oracle** — compare per frame | the cartridge arbitrates |
+| Is our implementation of one correct? | **the oracle** - compare per frame | the cartridge arbitrates |
 
 **Discovering content by measurement is discovering it one crash at a time.**
 That is exactly what happened in Gradius: enemy bullets found by the owner
 flying left of an enemy, `$A3B1` found by scrolling past `$0380`, then
-`throwaudit.py` found fifteen more reachable paths — each one a thing the ROM
+`throwaudit.py` found fifteen more reachable paths - each one a thing the ROM
 had listed all along, in a 42-entry dispatch table we could have read in full on
 day one.
 
@@ -73,7 +73,7 @@ project and they are not remotely the same.
 
 ## Intervention runs give you STATES, not a picture of the game
 
-Invulnerability, poked rank, seeded deep starts, forced counters — these are how
+Invulnerability, poked rank, seeded deep starts, forced counters - these are how
 this project reaches code a scripted run cannot. They are indispensable and they
 have a sharp edge, named by the owner when approving their use:
 
@@ -89,7 +89,7 @@ player survives where a real one dies, so:
   rank feeds aim, bullet speed, enemy HP and possibly spawns;
 - **the player occupies positions no survivor could**, so player-tracking
   routines produce angles a real game never emits;
-- **nothing is ever cleared by death** — bullets, objects and slots accumulate,
+- **nothing is ever cleared by death** - bullets, objects and slots accumulate,
   so the sprite budget, the allocation-failure paths and the cap policy see
   pressure that ordinary play would not produce;
 - **and the state may simply be unreachable**: a combination the game can enter
@@ -102,11 +102,11 @@ state" and invalid evidence for "this is what the game does."**
 
 So:
 
-- Use them for COVERAGE — reaching a handler, a pattern, a boss, a late stage.
+- Use them for COVERAGE - reaching a handler, a pattern, a boss, a late stage.
   This is what they are for and they are excellent at it.
 - Use them for CORRECTNESS of a single routine, by comparing port and board
   under the *same* forced state, poked at the same instant on both sides.
-- **Do NOT use them to characterise normal play** — spawn timing, bullet
+- **Do NOT use them to characterise normal play** - spawn timing, bullet
   density, difficulty pacing, what a stage "looks like". Those need a run the
   game could actually produce.
 - **LABEL THE PROVENANCE OF EVERY NUMBER.** "9,500 frames, invulnerable" is a

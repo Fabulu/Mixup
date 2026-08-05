@@ -1,12 +1,12 @@
-# Gradius (NES, Konami 1986) — phase 2
+# Gradius (NES, Konami 1986) - phase 2
 
 **Status: stage 1 plays, kills, is killed, and can be heard.** `src/` is a running
-port of the play path — the Vic Viper, the Options, the terrain streamer, the HUD,
+port of the play path - the Vic Viper, the Options, the terrain streamer, the HUD,
 the enemy spawn engine and update loop, the `$1B` state machine with the stage intro
 and pause, collision, death, the explosion and the checkpoint respawn (wave 5), the
 weapons and the kill chain (wave 6), the power-up loop (wave 7), the `$ED02` sound
 driver (wave 8), the enemy bullets (wave 11) and, since wave 13, an NES APU
-synthesiser that turns the driver's register writes into sound — verified
+synthesiser that turns the driver's register writes into sound - verified
 frame-exact against the cartridge by `tools/test-all.mjs`.
 
 **What is still absent, and it is named rather than left to be discovered:** the
@@ -44,32 +44,32 @@ still two words. See `docs/worklog/gradius/15-impl-input-queue-fix.md`.
 **The sound is honest about what it claims.** Wave 8 proves the REGISTER STREAM
 matches the cartridge, per frame, over the whole corpus. Wave 13's synthesiser
 (`src/audio/apu.js`) turns that stream into samples and is checked for
-determinism and for structural properties only — there is deliberately no gate
+determinism and for structural properties only - there is deliberately no gate
 comparing emitted PCM against an emulator's audio, because that claim would
 inherit the emulator's own guesses about the chip. See
 `docs/worklog/gradius/13-impl-audio-output.md` and `games/ddpdoj/NOTES-sound.md`.
 
 **Playing it.** Serve the repo (`python -m http.server 8000`) and open
-`/games/gradius/` — a standalone page, not the root launcher, because the launcher
+`/games/gradius/` - a standalone page, not the root launcher, because the launcher
 imports `code.entry`/`code.mods`/`code.input` and this port has only `boot()`.
 Arrows or `W`/`A`/`S`/`D` fly, `Enter` is START, `Z`/`X` are B/A. **Sound starts on
-your first key or tap** — every browser refuses audio before a user gesture, so the
+your first key or tap** - every browser refuses audio before a user gesture, so the
 page says what it is waiting for rather than being silently mute, and there is a
 mute button beside the stats. **On a phone the page draws an on-screen pad** (coarse
 pointers only): a d-pad hit-tested as a 3x3 grid, so a finger in a corner third
-reports two directions at once — the ship's mover tests X and Y independently and
+reports two directions at once - the ship's mover tests X and Y independently and
 has no diagonal case, so a diagonal is exactly two bits. See
 `docs/worklog/gradius/00-touch-controls.md`, including the list of things only a
 human with a real phone can check.
 
-Read `docs/knowledge/` first — most of what Batman cost us was method, not Game Boy
+Read `docs/knowledge/` first - most of what Batman cost us was method, not Game Boy
 knowledge, and all of it applies here.
 
 | file | what is in it |
 |---|---|
 | [`NOTES-rom.md`](NOTES-rom.md) | vectors, the NMI, shadow OAM, where the split is |
 | [`NOTES-lag.md`](NOTES-lag.md) | the lag plan |
-| [`NOTES-render.md`](NOTES-render.md) | **the renderer, measured** — CHR banks, palettes, nametables, sprites, and the two raster bands, with a pixel-exact rebuild of real frames as the evidence |
+| [`NOTES-render.md`](NOTES-render.md) | **the renderer, measured** - CHR banks, palettes, nametables, sprites, and the two raster bands, with a pixel-exact rebuild of real frames as the evidence |
 | [`NOTES-player.md`](NOTES-player.md) | the player actor (written by a parallel workstream) |
 | [`NOTES-terrain.md`](NOTES-terrain.md) | the stage data (written by a parallel workstream) |
 | [`tools/oracle/PROBE.md`](tools/oracle/PROBE.md) | the reference probe and the RAM map |
@@ -86,13 +86,13 @@ Measured from the ROM, not looked up:
 | CRC32 | `54f1af1f` |
 | PRG | **32 KB** (2 × 16 KB) |
 | CHR | **32 KB** (4 × 8 KB banks) |
-| mapper | **3 — CNROM** |
+| mapper | **3 - CNROM** |
 | mirroring | vertical |
 | battery | no |
 
 **This is about as friendly as an NES cartridge gets, and it matters.** Mapper 3 does
 exactly one thing: it switches the 8 KB CHR bank via a write to `$8000-$FFFF`. There is
-**no PRG banking at all** — all 32 KB is mapped at `$8000-$FFFF` permanently. So unlike
+**no PRG banking at all** - all 32 KB is mapped at `$8000-$FFFF` permanently. So unlike
 Batman, where a routine's identity depended on which of eight banks was paged in and the
 disassembler had to track `$2000` writes, here **an address is an address**. That removes
 an entire category of the confusion that made the Game Boy listing hard to reason about.
@@ -102,7 +102,7 @@ last write to the mapper register. Track it the same way the GB port tracked `$F
 
 ## What has to be decided before writing code
 
-### 1. The reference emulator — SETTLED: Mesen 2.1.1, headless via `--testRunner`
+### 1. The reference emulator - SETTLED: Mesen 2.1.1, headless via `--testRunner`
 
 Measured, not assumed. Full evidence and the traps it hides in:
 [`tools/oracle/README.md`](tools/oracle/README.md).
@@ -111,13 +111,13 @@ Mesen's `--testRunner` mode runs a Lua script against a ROM with **no window at
 all** (`MainWindowHandle : 0` on the live process) and exits with whatever code
 the script passes to `emu.stop(n)`. It gives all three capabilities:
 
-- **execution hooks** — `emu.addMemoryCallback(fn, emu.callbackType.exec, addr, addr,
+- **execution hooks** - `emu.addMemoryCallback(fn, emu.callbackType.exec, addr, addr,
   emu.cpuType.nes, emu.memType.nesMemory)`, the direct counterpart of PyBoy's
   `hook_register`. Proven by hooking `$806A` (the NMI vector, read out of PRG at
   runtime) and reading CPU registers and zero page at that instruction.
-- **direct memory access** — CPU RAM, OAM, PPU memory, palette RAM, all readable
+- **direct memory access** - CPU RAM, OAM, PPU memory, palette RAM, all readable
   *and* writable mid-run, with side-effect-free `nesDebug`/raw memory types.
-- **deterministic headless stepping + framebuffer** — two separate processes
+- **deterministic headless stepping + framebuffer** - two separate processes
   produced a byte-identical 256×240 dump (sha256 `8b74199b…`) and identical
   values in every reported field. Savestates round-trip exactly, and scripted
   input via `emu.setInput` is both effective and reproducible.
@@ -133,7 +133,7 @@ python games/gradius/tools/oracle/input_probe.py
 Rejected after being installed and run against the real cartridge: **nes-py**
 (refuses this ROM's NES 2.0 header; and no execution hooks, no registers, no OAM
 or PPU memory) and **jsnes** (no hook API, and 13.94% of its pixels disagree with
-Mesen on the same frame — useful as a second opinion, not as the reference).
+Mesen on the same frame - useful as a second opinion, not as the reference).
 
 ### 2. The NES counterparts of the DMG rules that bit us
 
@@ -142,15 +142,15 @@ work, paired with the NES question it implies. Each of these must be **measured*
 assumed from the Game Boy answer:
 
 - **8 sprites per scanline** (not 10), and the sprite-overflow flag. Does Gradius rely on
-  it? It is a shooter with a lot on screen, so almost certainly yes — and its flicker
+  it? It is a shooter with a lot on screen, so almost certainly yes - and its flicker
   pattern is part of how the game looks.
-- **Sprite priority is by OAM index only** on the NES, with no X-coordinate rule — the
+- **Sprite priority is by OAM index only** on the NES, with no X-coordinate rule - the
   opposite of the DMG, where getting this wrong cost us a full investigation. Do not
   inherit the Batman renderer's logic.
 - **Mid-frame effects**: the NES uses sprite-0 hit and mapper scanline IRQs. Mapper 3 has
   no IRQ, so Gradius must use **sprite-0 hit** (or timed code) for its status-bar split.
   Find it early; the split is structural, not decoration.
-- **OAM is 64 entries × 4 bytes**, Y and X each a single byte — same wrap trap as the DMG.
+- **OAM is 64 entries × 4 bytes**, Y and X each a single byte - same wrap trap as the DMG.
 - **Free-running counters** whose boot phase is load-bearing: find them, measure their
   value at the first gameplay frame rather than starting from zero.
 - **Palette**: NES palette RAM is written through PPU ports during VBlank. Same class of
@@ -161,7 +161,7 @@ assumed from the Game Boy answer:
 
 Read `docs/knowledge/06-lag-and-slowdown.md` before writing any harness code.
 
-On Batman lag was declared out of scope and tagged. That was defensible there — single
+On Batman lag was declared out of scope and tagged. That was defensible there - single
 frames, minutes apart, on a platformer. **It is the wrong default here**, for two reasons:
 
 1. Gradius is famous for slowing down when the screen fills, and shooters are generally
@@ -172,8 +172,8 @@ frames, minutes apart, on a platformer. **It is the wrong default here**, for tw
 
 The mechanism is already located (`NOTES-rom.md`): **`$04` is the lock.** The NMI at
 `$806A` reads it at `$8073` and bails immediately if non-zero, raises it at `$809F`,
-clears it at `$80B5`. Note what the bail skips — OAM DMA, the PPU register writes, every
-`JSR` in the handler — which means on the NES a lag frame is **visible**, unlike the Game
+clears it at `$80B5`. Note what the bail skips - OAM DMA, the PPU register writes, every
+`JSR` in the handler - which means on the NES a lag frame is **visible**, unlike the Game
 Boy case where only internal updates were dropped. Confirm that by measurement.
 
 Requirements for the harness, from the first probe onward:
@@ -208,5 +208,5 @@ requirement is known. Keep the character's data separable from the driver from d
 
 `games/gradius/` per the phase-2 layout: each game owns its `src/`, `tests/`, `assets/`
 and a `game.json` manifest, with `games/index.json` as the registry the launcher reads
-before importing any game code. Gradius is **not** in that registry yet — it goes in when
+before importing any game code. Gradius is **not** in that registry yet - it goes in when
 there is something to boot.

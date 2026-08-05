@@ -25,8 +25,8 @@ $FFFA -> $806A                       the NMI vector
 $8067: 4C 67 80   JMP $8067          RESET ends in an empty infinite spin
 ```
 
-Everything — OAM DMA, the VRAM queue, scroll, sound, the joypad, the game state
-machine — happens inside the NMI handler. Its bytes, read at runtime:
+Everything - OAM DMA, the VRAM queue, scroll, sound, the joypad, the game state
+machine - happens inside the NMI handler. Its bytes, read at runtime:
 
 ```
 $806A: 08 48 8A 48 98 48   PHP/PHA/TXA/PHA/TYA/PHA
@@ -48,9 +48,9 @@ been cleared yet. Hit counts over 300 emulator frames on the title screen:
 |---|---|---|
 | `$806A` | 296 | NMI entries |
 | `$8075` | 296 | reached the guard |
-| `$8077` | 296 | guard not taken — real work |
+| `$8077` | 296 | guard not taken - real work |
 | `$80B5` | 296 | **samples taken** |
-| `$81BF` | **297** | joypad — one *more* than the NMI count, because RESET's init path reads it once at frame 3 before NMI is enabled |
+| `$81BF` | **297** | joypad - one *more* than the NMI count, because RESET's init path reads it once at frame 3 before NMI is enabled |
 | `$9AA3` | 0 | the sprite-0 split does not run on the title screen |
 
 ### The check that proves the hook is where we think it is
@@ -72,7 +72,7 @@ one-instruction slip would have produced a perfectly plausible trace.
 Counted exactly rather than by subtraction: the `$806A` hook reads `$04` on
 entry. Non-zero means the previous NMI has not finished and this one takes the
 `BNE` at `$8075`, dropping the whole frame's update. Measured: **1 lag frame**
-in a 560-frame boot-and-play run, at game frame 283 — the stage load. Reported
+in a 560-frame boot-and-play run, at game frame 283 - the stage load. Reported
 as `lagFrames`, with the game frame printed, never hidden
 (`docs/knowledge/02-traps.md` #6).
 
@@ -82,7 +82,7 @@ as `lagFrames`, with the game frame printed, never hidden
 
 Buttons are set with `emu.setInput()` on the `inputPolled` event, i.e. when the
 CPU reads `$4016`. The game's own strobe routine at `$81BF` shifts them in.
-**Nothing is poked into RAM** — and the probe proves the bits really travelled,
+**Nothing is poked into RAM** - and the probe proves the bits really travelled,
 by reporting `$9C`, which only becomes non-zero if the shift register ran.
 
 **Button bits in `$9C`**, measured one button at a time:
@@ -108,7 +108,7 @@ therefore latches `$9C`/`$9D` with a second hook at **`$80A7`**, the instruction
 immediately after `JSR $81BF`. Same shape as `docs/knowledge/02` trap #3: the
 field that would not make sense was the measurement, not the game.
 
-The *durable* input fields are `$0005` and `$0007` — see the RAM map below.
+The *durable* input fields are `$0005` and `$0007` - see the RAM map below.
 
 ### The input lead is ZERO. Measured, not inherited.
 
@@ -147,7 +147,7 @@ run B: gameFrames=560 lag=1 finalMode=5 json sha256=cc2a1948deb5c1b0…56180ed
 
 The JSON is written by the Lua side with a fixed key order and integers only, so
 the hash is of the emulator's output and not of Python's formatting. The RAM
-dump — 2048 bytes per game frame — is compared too, which is a far stronger
+dump - 2048 bytes per game frame - is compared too, which is a far stronger
 statement than the state vector alone.
 
 Speed: **560 game frames in 4.8 s wall**, including ~2 s of process startup.
@@ -191,23 +191,23 @@ with near-identical drift. That is what `--pokecheck` is for.
 | **`$0360`** | **player X**, screen pixels | drift +140 under RIGHT, −64 under LEFT, exactly 0 while idle. Poking it moves the ship (below). |
 | **`$0320`** | **player Y**, screen pixels | drift +96 under DOWN, −80 under UP, 0 while idle |
 | `$0005` | buttons **pressed this frame** (edge) | reads `$10` on the START press frame and `$00` on all nine frames it stayed held |
-| `$0007` | buttons **held** | RIGHT `$01`, LEFT `$02`, DOWN `$04`, UP `$08`, START `$10` — the low nibble of `$9C`, and unlike `$9C` it survives to the end of the frame |
+| `$0007` | buttons **held** | RIGHT `$01`, LEFT `$02`, DOWN `$04`, UP `$08`, START `$10` - the low nibble of `$9C`, and unlike `$9C` it survives to the end of the frame |
 | `$0361`,`$0362` / `$0321`,`$0322` | the two Option/Multiple followers | trail the player by 11 and 22 entries of the position ring |
-| `$07A0`-`$07B7` | 24-entry ring of past player **X** | at one frame: `$0360` = 201, ring = `200 201 178 179 … 199` — a circular buffer with its cursor at index 1 |
+| `$07A0`-`$07B7` | 24-entry ring of past player **X** | at one frame: `$0360` = 201, ring = `200 201 178 179 … 199` - a circular buffer with its cursor at index 1 |
 | `$07C0`-`$07D7` | 24-entry ring of past player **Y** | same extent, moves only under UP/DOWN |
 
 **Clamps**, measured by holding a direction into the wall for 150 frames:
 X ∈ [16, 220], Y ∈ [16, 192]. Base speed steps the value by **0 or 1 per
 frame** (never 2), which is the pre-SPEEDUP rate.
 
-Both fields read **0** on the first frame or two of game mode 5 — the actor is
+Both fields read **0** on the first frame or two of game mode 5 - the actor is
 not initialised until after the mode changes. A port that samples the transition
 frame will see zeros, and they are real.
 
 **A ten-frame "input lag" that is not one.** Holding RIGHT from game frame 300
 moves `$0360` only at frame 310. Holding it from frame 400, or from 500, moves
 it **on the press frame itself** (80 → 81 at frame 400). So the ship is simply
-not under player control for roughly the first 28 frames of mode 5 — a
+not under player control for roughly the first 28 frames of mode 5 - a
 stage-entry window in the game. Measured at three different start frames
 specifically because a single measurement at 300 would have been reported as a
 harness lead. It also confirms the zero input lead a second time, on a gameplay
@@ -235,11 +235,11 @@ baseline and on the left in the poked one; the three spinning enemies, the
 identical. That is an intervention, not a correlation.
 
 `$0360` reads **41** rather than 40 because the poke lands at `$80B5` of frame N
-and frame N+1's update adds the still-held RIGHT to it — i.e. the ROM *consumes*
+and frame N+1's update adds the still-held RIGHT to it - i.e. the ROM *consumes*
 `$0360` as the position it increments, which is stronger evidence than the
 poke sticking would have been.
 
-**The poke check is not vacuous**, and it does the one job the RAM diff cannot —
+**The poke check is not vacuous**, and it does the one job the RAM diff cannot -
 telling a variable apart from a copy of it.
 
 Poking an inactive actor slot:
@@ -287,7 +287,7 @@ confirmed before anything is built on it.**
 ### Independent corroboration of somebody else's number
 
 At one gameplay frame the player's metasprite is three shadow-OAM entries at
-`$0360 + {-9, -1, +7}`, `$0320 + 0`, in **slots 13, 28 and 43** — 15 apart. The
+`$0360 + {-9, -1, +7}`, `$0320 + 0`, in **slots 13, 28 and 43** - 15 apart. The
 static recon derived a −15-slot stride between consecutive sprites from
 `$8AF2: TXA / CLC / ADC #$C4`, by reading the listing. Two derivations, one
 number (`docs/knowledge/03`).
@@ -343,8 +343,8 @@ python games/gradius/tools/oracle/throwaudit.py --name adhoc --frames 4000     -
 1. **Hook the ARM, not the test.** `$9663` is `LDA $19 / CMP #$04 / BNE $96A5`
    and executes on every single frame; the stage-5 census the port refuses
    starts at `$9669`. The first version of the hook list reported 1613 hits for
-   a path nothing reaches. Where there is no arm address of its own — `$A17C`
-   and `$C3AD` both land on code the normal path also reaches — the only honest
+   a path nothing reaches. Where there is no arm address of its own - `$A17C`
+   and `$C3AD` both land on code the normal path also reaches - the only honest
    measurement is the RAM value, and those are in the gate list instead.
 2. **A script that never presses START runs the ATTRACT DEMO**, which is mode-5
    gameplay with `$09` set and the pause cheat already granted (`$9C5E` at
@@ -352,8 +352,8 @@ python games/gradius/tools/oracle/throwaudit.py --name adhoc --frames 4000     -
    run starts with the corpus's own `200:,10:S,190:` for that reason.
 
 **And read the zeroes correctly.** A zero is not "the cartridge does not do
-this"; it is "these frames of these scripts did not do this". That exact slip —
-a fact about our sampling, promoted into a claim about the cartridge — is what
+this"; it is "these frames of these scripts did not do this". That exact slip -
+a fact about our sampling, promoted into a claim about the cartridge - is what
 produced two crashes in ordinary play (`docs/worklog/gradius/05-FINDING` and
 `06-FINDING`), and the tool prints the frame budget next to every zero to keep
 the distinction in front of whoever reads it.
@@ -363,7 +363,7 @@ Input script grammar: comma-separated `count:buttons`, buttons from
 of the script hold nothing. Counts are **game** frames (samples), not emulator
 frames.
 
-`ramdiff.py`'s shared boot prefix is `"200:,10:S,190:"` — 400 game frames. Game
+`ramdiff.py`'s shared boot prefix is `"200:,10:S,190:"` - 400 game frames. Game
 mode 5 (gameplay) starts at frame 282, the single lag frame is at 283, and the
 ship becomes controllable at ~310, so holds start at 400, clear of all three.
 

@@ -1,6 +1,6 @@
-# Progression, bees, and the second loop — and why the corpus needs TWO strategies
+# Progression, bees, and the second loop - and why the corpus needs TWO strategies
 
-status: RESEARCH ONLY — nothing here is measured on our board yet
+status: RESEARCH ONLY - nothing here is measured on our board yet
 raised: 2026-08-01
 
 **Everything below is from public player documentation, NOT from our own
@@ -34,7 +34,7 @@ So:
 | **reach loop 2 at all** | a clean run meeting an entry condition | FORBIDDEN |
 
 Do not let the convenient strategy silently become the only one. A corpus built
-entirely on continues would make loop 2 unreachable and — worse — would look
+entirely on continues would make loop 2 unreachable and - worse - would look
 like full coverage while the entire second half of the game sits untested. That
 is the same failure shape as the scroll-`$0380` blind spot in Gradius, one order
 of magnitude larger.
@@ -43,12 +43,12 @@ of magnitude larger.
 
 Easy to conflate, and the two have opposite consequences:
 
-- **A miss** — lose a life, respawn. Loop 2 TOLERATES misses: "no more than 2"
+- **A miss** - lose a life, respawn. Loop 2 TOLERATES misses: "no more than 2"
   is itself one of the entry conditions. Dying is not disqualifying.
-- **A continue** — the stock is exhausted and a coin is inserted. This IS
+- **A continue** - the stock is exhausted and a coin is inserted. This IS
   disqualifying, and no other condition rescues it.
 
-So coin-feeding cannot reach loop 2 — not because it dies, but because a
+So coin-feeding cannot reach loop 2 - not because it dies, but because a
 coin-fed run is by definition one that ran out of lives.
 
 ### The way out: we do not have to EARN loop 2, we have to REACH THE BRANCH
@@ -64,12 +64,12 @@ reached here, and how zoom coverage is produced. The precedent is established
 and the discipline that goes with it is too:
 
 1. Find the loop-2 decision routine first. It reads all five pieces of state, so
-   hooking it identifies the addresses to poke — do NOT guess which byte is the
+   hooking it identifies the addresses to poke - do NOT guess which byte is the
    miss counter.
 2. Poke at the sample point on BOTH sides, so port and board stay frame-aligned.
 3. **A poked run proves the DECISION, not the journey.** It shows the cartridge
    grants loop 2 for a given counter set. It does NOT show that ordinary play
-   produces that counter set — that is a separate claim needing separate
+   produces that counter set - that is a separate claim needing separate
    evidence, and conflating them is the seed-hiding-bugs trap from
    `docs/worklog/gradius/09-DECIDED-seed-anywhere.md`.
 4. Once inside loop 2, its CONTENT can then be compared normally, and that is
@@ -77,7 +77,7 @@ and the discipline that goes with it is too:
    enemy behaviour and rank.
 
 So the corpus needs three strategies, not two: coin-fed for stage content, poked
-for the loop-2 branch and its content, and — if it is ever affordable — one
+for the loop-2 branch and its content, and - if it is ever affordable - one
 genuinely clean run to confirm the journey matches the poke.
 
 ## 3. The loop-2 entry conditions, as reported
@@ -87,7 +87,7 @@ Any ONE of these in loop 1, per player documentation:
 - no more than **2 misses**
 - no more than **3 bombs** used
 - **Bee Perfect in at least 3 stages**
-- at least **350,000,000 points** (reported as White Label only — so possibly
+- at least **350,000,000 points** (reported as White Label only - so possibly
   NOT applicable to our Black Label target; verify)
 
 Plus the absolute bar: **no continues**.
@@ -97,7 +97,7 @@ tracking, across a whole loop, at minimum a miss counter, a bomb counter, a
 per-stage bee-perfect flag or count, the score, and a "has continued" flag. Those
 are five pieces of persistent RAM state with a decision routine reading them at
 the end of stage 5. **Find that routine and you find all five addresses at once**
-— hook the branch that decides loop 2 and read what it tests, exactly as the
+- hook the branch that decides loop 2 and read what it tests, exactly as the
 Gradius player mover was found by hooking writes rather than reading listings.
 
 That routine is also a natural home for the rank interaction, since
@@ -118,7 +118,7 @@ Port consequences worth stating before anyone writes scoring code:
   unreachable by exactly the kind of scripted run we build by default. Another
   instance of the standing pattern: a parameter (here, weapon mode) the corpus
   never varies.
-- Bee state is **cross-stage** — the base value carries forward — so it cannot be
+- Bee state is **cross-stage** - the base value carries forward - so it cannot be
   modelled per stage.
 - Scoring is not cosmetic here. It is a loop-2 entry condition, so a scoring bug
   is a progression bug.

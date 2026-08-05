@@ -1,6 +1,6 @@
-# RECON-1 — Code Architecture & Banking
+# RECON-1 - Code Architecture & Banking
 
-ROM: `Batman - Return of the Joker (USA, Europe).gb` — 131072 bytes, 8 banks,
+ROM: `Batman - Return of the Joker (USA, Europe).gb` - 131072 bytes, 8 banks,
 header `$0147=$01` (MBC1), `$0148=$02` (128 KB), `$0149=$00` (no cart RAM),
 licensee `$014B=$BB` (Sunsoft), title `BATMAN ROJ`, `$0143=$00` (DMG-only).
 
@@ -14,7 +14,7 @@ Tooling produced by this pass (all in `tools/`):
 | `dump.py` | linear disassembly of an arbitrary `(bank, start, end)` window |
 
 Regenerated listings live in `disasm2/bank_XX.asm` (bank-aware; the original
-`disasm/` set mis-attributes every `$4xxx` target to bank 0 — see *Tooling
+`disasm/` set mis-attributes every `$4xxx` target to bank 0 - see *Tooling
 caveat* at the end).
 
 ```
@@ -33,28 +33,28 @@ python tools/banktrace.py "Batman - Return of the Joker (USA, Europe).gb" --jt -
 | `$0150` | `XOR A` → `rIF`, `rIE`, `rTIMA`, `rTMA`, `rTAC` = 0. Also the **soft-reset target** (`$0A57` jumps here when the reset combo is held). |
 | `$0150-$0179` | zero-fill WRAM/HRAM (`LD BC,$xxxx` + `DEC BC` loops), then `XOR A; LD [$C000],A` |
 | `$017D-$0183` | `rIF=0`, `rIE=0`, `DI`, `LD SP,$CFFF` (stack top = `$CFFF`, grows down) |
-| `$0186` | `CALL $09DD` — LCD off (waits `rLY==$91`, then clears `rLCDC` bit 7) |
-| `$0189` | `CALL $09C2` — copies the 10-byte **OAM-DMA routine** from `$09D0` into HRAM `$FFF0` |
+| `$0186` | `CALL $09DD` - LCD off (waits `rLY==$91`, then clears `rLCDC` bit 7) |
+| `$0189` | `CALL $09C2` - copies the 10-byte **OAM-DMA routine** from `$09D0` into HRAM `$FFF0` |
 | `$018C-$0199` | bank 1 → `$C703`/`$2000`; then bank 7; |
-| `$019E` | `CALL $4000` **in bank 7** — sound-hardware init (`NR52`, `NR51`, `NR50`, `NR30/32/34`, `NR10`, clears sound RAM `$C800..$C94C`) |
+| `$019E` | `CALL $4000` **in bank 7** - sound-hardware init (`NR52`, `NR51`, `NR50`, `NR30/32/34`, `NR10`, clears sound RAM `$C800..$C94C`) |
 | `$01A1-$01AA` | restore bank 1 |
 | `$01AB-$01BD` | fill VRAM `$8000-$9FFF` with `$2F` using the `LD SP,$9FFF` + `PUSH DE` trick (fastest clear on LR35902), then `LD [$9800],A` |
 | `$01BE` | `LD SP,$CFFF` (restore stack) |
-| `$01C1-$01C9` | `CALL $0A77` — memset `$8000`, `$1800` bytes, `D=0` (clear tile RAM) |
-| `$01CC` | `CALL $0A61` — clear shadow OAM `$C000-$C09F` (again with the SP trick) |
-| `$01D4-$01FB` | **generates 192 bytes of machine code at `$C4CB`** — a 64×unrolled `LD A,[HL+] / LD [DE],A / INC E` copier terminated by `RET` (see §6) |
+| `$01C1-$01C9` | `CALL $0A77` - memset `$8000`, `$1800` bytes, `D=0` (clear tile RAM) |
+| `$01CC` | `CALL $0A61` - clear shadow OAM `$C000-$C09F` (again with the SP trick) |
+| `$01D4-$01FB` | **generates 192 bytes of machine code at `$C4CB`** - a 64×unrolled `LD A,[HL+] / LD [DE],A / INC E` copier terminated by `RET` (see §6) |
 | `$01FC-$0228` | init HRAM game vars, `CALL $0B15` twice (`A=$02`, `A=$1B`) to load font/title tiles, fill `$9C00` with `$2F` |
 | `$022E-$0247` | bank 5 excursion → `LD DE,$52F5; CALL $0A0E` (VRAM script = Sunsoft copyright text) |
 | `$0248-$0255` | timer setup: `rTMA=$BB`, `rTIMA=$BB`, `rTAC=$04` (4096 Hz, enabled) ⇒ IRQ every `256-$BB = 69` ticks ≈ **59.4 Hz sound tick** |
 | `$0257-$0260` | `rIF=0`, `rIE=$05` (VBlank+Timer), `EI` |
-| `$0261-$0263` | `rLCDC=$E7` — **LCD on** (BG+OBJ+WIN on, WIN map `$9C00`, tiles `$8000`, 8×16 OBJ) |
+| `$0261-$0263` | `rLCDC=$E7` - **LCD on** (BG+OBJ+WIN on, WIN map `$9C00`, tiles `$8000`, 8×16 OBJ) |
 | `$0265-$0278` | fade in (`CALL $0A7F` with `C=$80`), copyright screen delay loop |
 | `$027D-$035A` | Sunsoft logo → title screen build (bank 5/6 excursions) |
 | `$02C4` | **title/menu loop** (`CALL $0A4F` = wait VBlank; polls `$FFE2`) |
 | `$03DC` | **option-screen loop** |
 | `$04BB-$0564` | level entry: `CALL $333F`, LCD off, clear `$9C40`, per-level VRAM script `$32A3`, wipe ~40 game-state vars, `CALL $2889` (level gfx), `$0C34` (level map → `$D000`), `$104E`, `$0D50`, `$4DDA` (bank 1) |
 | **`$0567`** | **MAIN GAME LOOP head** |
-| `$0650` | `JP $0567` — loop back |
+| `$0650` | `JP $0567` - loop back |
 
 ### Main loop body (`$0567` → `$0650`)
 
@@ -105,7 +105,7 @@ python tools/banktrace.py "Batman - Return of the Joker (USA, Europe).gb" --jt -
 | `$0060` Joypad | `RETI` | no |
 
 `rIE` is `$05` (VBlank+Timer) during normal play and `$07` (+STAT) whenever a
-raster split is armed — written at `$0EB7`, `$0EDE`, `$0F2D`, `$35C7`, `$38C3`,
+raster split is armed - written at `$0EB7`, `$0EDE`, `$0F2D`, `$35C7`, `$38C3`,
 always paired with `rSTAT=$40` (LYC interrupt) at `$0EA6`, `$0ECD`, `$0F15`,
 `$35B6`, `$38AF`.
 
@@ -114,9 +114,9 @@ always paired with `rSTAT=$40` (LYC interrupt) at `$0EA6`, `$0ECD`, `$0F15`,
 1. `PUSH AF/BC/DE/HL`.
 2. If `$FFE7 == 0` (main loop not waiting) → set `$C757=1` and skip straight to
    `$081E` (lag-frame path: only SCX/SCY are refreshed).
-3. `CALL $FFF0` — **OAM DMA from `$C000`** (HRAM stub, 10 bytes, see §6).
+3. `CALL $FFF0` - **OAM DMA from `$C000`** (HRAM stub, 10 bytes, see §6).
 4. If `$FFB0 == 6` skip the transfer block.
-5. **Column transfer**: descriptor at `$C100` — `[C100]=dest hi`, `[C101]=dest lo`,
+5. **Column transfer**: descriptor at `$C100` - `[C100]=dest hi`, `[C101]=dest lo`,
    then 18 (or 9 when `$FFB0` is 9/`$0A`) tile bytes written with `ADD HL,BC`
    (`BC=$0020`) stride, i.e. a vertical tilemap column for horizontal scrolling.
    `$99xx` wrap handled at `$0688` (`LD H,$99; LD A,$08; RST $30`). Clears `$C100` when done.
@@ -127,7 +127,7 @@ always paired with `rSTAT=$40` (LYC interrupt) at `$0EA6`, `$0ECD`, `$0F15`,
 8. **Row transfer** (`$074E`): if `$FF9B/$FF9C != 0`, copy 33 bytes from `$C5CB`
    to that VRAM address (horizontal tilemap row for vertical scrolling).
 9. **Tile transfer** (`$07BC`): if `$FF99/$FF9A != 0`, `LD HL,$C58B` and
-   `CALL $C4CB` — the generated 64-byte copier (4 tiles of graphics).
+   `CALL $C4CB` - the generated 64-byte copier (4 tiles of graphics).
 10. **Joypad read** (`$07CC-$07F6`): standard two-nibble read, `$FFE1` = held,
     `$FFE2` = newly pressed (`old XOR new AND new`).
 11. Frame counter `$FFB1++`, then `rWX,rWY,rBGP,rOBP0,rOBP1` written from
@@ -136,11 +136,11 @@ always paired with `rSTAT=$40` (LYC interrupt) at `$0EA6`, `$0ECD`, `$0F15`,
     (`rLYC=0`, `$C764/$C765` reset, palette-cycle counter at `$C765` ping-pongs 0..11).
 13. `POP HL/DE/BC/AF; RETI`.
 
-**The VBlank handler never touches `$2000`** — it is bank-agnostic and only
+**The VBlank handler never touches `$2000`** - it is bank-agnostic and only
 reads bank-0 code + RAM. That is what makes the un-guarded bank excursions in
 the main loop safe.
 
-### STAT/LYC `$0857` — raster effects
+### STAT/LYC `$0857` - raster effects
 
 A state machine dispatched on `$FFC7` (0..7). Each state writes `rSCX`/`rSCY`
 mid-frame and programs the next `rLYC`:
@@ -159,7 +159,7 @@ mid-frame and programs the next `rLYC`:
 This is a genuine scanline-accurate effect: **a JS port cannot render this with
 a single full-frame blit.**
 
-### Timer `$095F` — sound tick (~59.4 Hz)
+### Timer `$095F` - sound tick (~59.4 Hz)
 
 ```
 095F  FB           EI                     ; re-enables IRQs immediately (nested)
@@ -214,7 +214,7 @@ the MBC1 ROM-bank register. Verified by brute-force byte scan (`tools/bankscan.p
   register ever used, and cart RAM is never enabled. **`LD [$2000],A` is the
   entire MBC surface of this game.**
 * No `LD HL,$2000`-style indirect write exists (checked all `LD rr,d16` with a
-  `$2000-$3FFF` immediate — every hit is unrelated data or a real address such
+  `$2000-$3FFF` immediate - every hit is unrelated data or a real address such
   as `$3337`, `$32A3`).
 * No `PUSH rr / RET` indirect-call idiom anywhere in traced code.
 * RST vectors are **not** used for far calls (see below).
@@ -242,7 +242,7 @@ Return (always to bank 1, hard-coded):
 0247  FB        EI
 ```
 
-Exceptions to the 62 traced sites: `$0191` (init — writes `$C703` *before*
+Exceptions to the 62 traced sites: `$0191` (init - writes `$C703` *before*
 `$2000`), and the two Timer-IRQ sites `$098C`/`$0997` described above.
 
 ### Calling convention summary
@@ -292,7 +292,7 @@ and copies a blob out of a banked ROM into VRAM:
 **Table `$0B43`-`$0BAE`: 36 entries × 3 bytes `{bank, srcptr_lo, srcptr_hi}`.**
 Each `srcptr` points at a 4-byte header `{dest_lo, dest_hi, len_lo, len_hi}`
 followed immediately by the payload. All 34 valid destinations are inside VRAM
-`$8000-$97FF` — i.e. this is the tile-graphics loader.
+`$8000-$97FF` - i.e. this is the tile-graphics loader.
 
 | idx | bank | src | dest | len | | idx | bank | src | dest | len |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -301,8 +301,8 @@ followed immediately by the payload. All 34 valid destinations are inside VRAM
 | 02 | 6 | `$54B0` | `$8800` | `$0470` | | 14 | 4 | `$5A70` | `$90E0` | `$06A0` |
 | 03 | 3 | `$7E54` | `$8D00` | `$0100` | | 15 | 4 | `$6398` | `$8400` | `$0680` |
 | 04 | 3 | `$7D70` | `$9000` | `$00E0` | | 16 | 4 | `$6A1C` | `$8400` | `$0900` |
-| 05 | 6 | `$4204` | `$90E0` | `$0720` | | 17 | — | unused (`FF FF`) | | |
-| 06 | 4 | `$586C` | `$8E00` | `$0200` | | 18 | — | unused (`FF FF`) | | |
+| 05 | 6 | `$4204` | `$90E0` | `$0720` | | 17 | - | unused (`FF FF`) | | |
+| 06 | 4 | `$586C` | `$8E00` | `$0200` | | 18 | - | unused (`FF FF`) | | |
 | 07 | 2 | `$6BB2` | `$90E0` | `$0720` | | 19 | 6 | `$4928` | `$8400` | `$0460` |
 | 08 | 2 | `$4344` | `$8400` | `$0840` | | 1A | 6 | `$4D8C` | `$8400` | `$0720` |
 | 09 | 2 | `$4B88` | `$8E00` | `$0200` | | 1B | 6 | `$5924` | `$8C70` | `$0690` |
@@ -310,17 +310,17 @@ followed immediately by the payload. All 34 valid destinations are inside VRAM
 | 0B | 2 | `$72D6` | `$8E00` | `$0100` | | 1D | 6 | `$5FB8` | `$8C80` | `$0160` |
 | 0C | 4 | `$45A4` | `$9570` | `$0290` | | 1E | 6 | `$648C` | `$8400` | `$09E0` |
 | 0D | 4 | `$4838` | `$8FC0` | `$0040` | | 1F | 6 | `$6E70` | `$9000` | `$0800` |
-| 0E | — | unused (`FF FF`) | | | | 20 | 4 | `$7320` | `$8400` | `$0C00` |
+| 0E | - | unused (`FF FF`) | | | | 20 | 4 | `$7320` | `$8400` | `$0C00` |
 | 0F | 4 | `$487C` | `$8E00` | `$0200` | | 21 | 6 | `$7735` | `$9000` | `$07F0` |
 | 10 | 4 | `$4A80` | `$90E0` | `$0720` | | 22 | 5 | `$5398` | `$8400` | `$0BC0` |
 | 11 | 4 | `$51A4` | `$8E40` | `$01C0` | | 23 | 5 | `$5374` | `$8C70` | `$0020` |
 
 (Entry `$0A` and the chain starting at `4:$45A4` physically overlap by `$E0`
-bytes — deliberate tile sharing, not a decode error; the `$45A4` chain is
+bytes - deliberate tile sharing, not a decode error; the `$45A4` chain is
 contiguous: `$45A4 → $4838 → $487C → $4A80 → $51A4 → $5368 → $586C → $5A70 →
 $6114 → $6398 → $6A1C → $7320 → $7F24`.)
 
-### RST vectors — arithmetic helpers, not far calls
+### RST vectors - arithmetic helpers, not far calls
 
 | vector | bytes | meaning | xrefs |
 |---|---|---|---|
@@ -363,11 +363,11 @@ mis-decodes `$4xxx` targets as bank-0 addresses; the 90.0% is the honest figure.
 | bank | verdict | code extent | evidence |
 |---|---|---|---|
 | **0** | **CODE** (~90%, rest = tables) | `$0150-$3FFF` | resident home bank; 301 `CALL` opcodes; 90% traced from `$0100` |
-| **1** | **CODE** (~83%) | `$4000-$7E3F` | the resident gameplay bank — always mapped except during excursions. Reached by direct `CALL $4xxx` from the main loop (`$055D→$4DDA`, `$05BA→$4230`, `$05CF→$4E0C`, `$05D6→$4BB0`, `$05EF→$7AD3`). `$7E3F-$8000` is `$00` padding. |
+| **1** | **CODE** (~83%) | `$4000-$7E3F` | the resident gameplay bank - always mapped except during excursions. Reached by direct `CALL $4xxx` from the main loop (`$055D→$4DDA`, `$05BA→$4230`, `$05CF→$4E0C`, `$05D6→$4BB0`, `$05EF→$7AD3`). `$7E3F-$8000` is `$00` padding. |
 | **2** | **DATA** (tile graphics) | none | never a `CALL`/`JP` target; only reached via resource table (idx 00,07,08,09,0B,1C) and via `LD HL,$4D8C / ADD HL,BC` at `00:2C49` (pointer table). Linear-sweep: 3.65% illegal opcodes, only 17 `CD` bytes in 16 KB, mean legal run 34.8 |
-| **3** | **DATA** (level maps + tables) | none | pointer table at `3:$4000` (16 LE entries: `401C 481D 4A2E 514F 5210 5731 5852 5D73 5E34 6635 6C56 6D27 7348 7969 4F80 4F4F`) indexed by `$FFB0-1` at `00:$0C45`; also `3:$7A2A`, `3:$7BF9`, `3:$7C15`, `3:$7C4C`. **Zero `C9` (RET) and zero `CD` (CALL) bytes in the entire 16 KB** — conclusive |
+| **3** | **DATA** (level maps + tables) | none | pointer table at `3:$4000` (16 LE entries: `401C 481D 4A2E 514F 5210 5731 5852 5D73 5E34 6635 6C56 6D27 7348 7969 4F80 4F4F`) indexed by `$FFB0-1` at `00:$0C45`; also `3:$7A2A`, `3:$7BF9`, `3:$7C15`, `3:$7C4C`. **Zero `C9` (RET) and zero `CD` (CALL) bytes in the entire 16 KB** - conclusive |
 | **4** | **DATA** (tile graphics only) | none | referenced *only* by the `$0B15` resource table (13 entries). 2.62% illegal, 15 `CD` bytes |
-| **5** | **DATA** (metasprite tables + VRAM scripts) | none | metasprite pointer tables `5:$5F5C` and `5:$736B` (used by `$0BAF`/`$0BC6`), VRAM scripts `$52F5`, `$5170`, `$5276`, `$4FB0`. **7.02% illegal opcodes** — highest in the ROM |
+| **5** | **DATA** (metasprite tables + VRAM scripts) | none | metasprite pointer tables `5:$5F5C` and `5:$736B` (used by `$0BAF`/`$0BC6`), VRAM scripts `$52F5`, `$5170`, `$5276`, `$4FB0`. **7.02% illegal opcodes** - highest in the ROM |
 | **6** | **DATA** (tile graphics + tables) | none | pointer table `6:$611C`, blobs `6:$642A`/`6:$6459`, VRAM script `6:$7674`, plus 9 resource-table entries |
 | **7** | **MIXED** | `$4000-$46D5` (1749 B, 1625 traced = 92.9% of the code region) | sound engine. Entries: `$4000` init, `$405D` pause, `$4083` resume, `$412B` tick. 56-entry command jump table at `$43CE`. `$46D5-$7FFF` (14635 B) = music/SFX data; song pointer table at `7:$477D` (`480A 49E7 4B6D 50CD 5653 5B37 5E6C 61A8 64FD 6601 677E 6E4B ...`) |
 
@@ -378,7 +378,7 @@ mis-decodes `$4xxx` targets as bank-0 addresses; the 90.0% is the honest figure.
    two destination banks are ever followed by a `CALL`/`JP` into `$4000-$7FFF`:
    bank 1 (resident) and bank 7 (`$019E→$4000`, `$061E→$405D`, `$063D→$4083`,
    `$0990→$412B`). Every switch to banks 2/3/5/6 is immediately followed by a
-   *data* access — `LD DE,$xxxx; CALL $0A0E`, `LD HL,$xxxx; ADD HL,BC`, or
+   *data* access - `LD DE,$xxxx; CALL $0A0E`, `LD HL,$xxxx; ADD HL,BC`, or
    `LD HL,$xxxx; LD DE,$C61B; LD BC,n; CALL $09FB`. Bank 4 is never even
    selected by an inline immediate; it is reachable only through `$0B15`.
 2. **Forced disassembly fails.** `gbdis --entry N:4000` on each bank:
@@ -416,37 +416,37 @@ traced banks.
 
 | addr | n | name / purpose |
 |---|---|---|
-| `$0AE1` | 66 | **`SoundRequest(B=id, C=cmdmask)`** — finds a free slot in the 4×2-byte ring at `$C6FB`; consumed by the Timer IRQ. Typical `LD BC,$1301; CALL $0AE1` |
-| `$0A4F` | 34 | **`WaitVBlank`** — sets `$FFE7`, `HALT`s until VBlank clears it; also the soft-reset check |
-| `$0BC6` | 28 | **`DrawMetasprite`** — table `5:$5F5C`, entry `E`, adds `B/C` offsets, emits 4-byte OAM records at `$C000+[$FF9D]`, `$FF9E` = attribute OR-mask, terminator `$FF`; stops at `$A0` (40 sprites) |
+| `$0AE1` | 66 | **`SoundRequest(B=id, C=cmdmask)`** - finds a free slot in the 4×2-byte ring at `$C6FB`; consumed by the Timer IRQ. Typical `LD BC,$1301; CALL $0AE1` |
+| `$0A4F` | 34 | **`WaitVBlank`** - sets `$FFE7`, `HALT`s until VBlank clears it; also the soft-reset check |
+| `$0BC6` | 28 | **`DrawMetasprite`** - table `5:$5F5C`, entry `E`, adds `B/C` offsets, emits 4-byte OAM records at `$C000+[$FF9D]`, `$FF9E` = attribute OR-mask, terminator `$FF`; stops at `$A0` (40 sprites) |
 | `$0BAF` | 9 | same but table `5:$736B` (second metasprite set) |
-| `$11B9` | 21 | **`WorldToMapAddr`** — `BC:C` world coords → `HL` inside the level map at `$D000` (`>>4` tile, `*2` metatile) |
-| `$11F1` | 19 | **`QueueTileWrite`** — appends a 6-byte `{dest,4 tiles}` record to the VBlank queue at `$C130`, cursor `$FF9F` (+6 per entry); source block from `$C368 + E*4` |
-| `$1172` | 17 | **`WorldToScreen`** — subtracts camera `$FFA2/$FFA3` (X) and `$FFA4/$FFA5` (Y) from a 12.4 fixed-point world position, `<<4`, returns `C` = OAM X (+8), `B` = OAM Y (+16) |
-| `$0A0E` | 16 | **`RunVRAMScript(DE)`** — see format below |
-| `$0A7F` | 16 | **`Fade(C)`** — 33 steps through the `$0B09`/`$0B11` palette ramps into `$FFAD/$FFAE/$FFAF`; `C` bit 7 = fade out, low bits select which of BGP/OBP0/OBP1 |
-| `$0C1F` | 16 | **`ClearUnusedOAM`** — zeroes shadow OAM from `$C000+[$FF9D]` to `$C0A0`, resets `$FF9D` |
+| `$11B9` | 21 | **`WorldToMapAddr`** - `BC:C` world coords → `HL` inside the level map at `$D000` (`>>4` tile, `*2` metatile) |
+| `$11F1` | 19 | **`QueueTileWrite`** - appends a 6-byte `{dest,4 tiles}` record to the VBlank queue at `$C130`, cursor `$FF9F` (+6 per entry); source block from `$C368 + E*4` |
+| `$1172` | 17 | **`WorldToScreen`** - subtracts camera `$FFA2/$FFA3` (X) and `$FFA4/$FFA5` (Y) from a 12.4 fixed-point world position, `<<4`, returns `C` = OAM X (+8), `B` = OAM Y (+16) |
+| `$0A0E` | 16 | **`RunVRAMScript(DE)`** - see format below |
+| `$0A7F` | 16 | **`Fade(C)`** - 33 steps through the `$0B09`/`$0B11` palette ramps into `$FFAD/$FFAE/$FFAF`; `C` bit 7 = fade out, low bits select which of BGP/OBP0/OBP1 |
+| `$0C1F` | 16 | **`ClearUnusedOAM`** - zeroes shadow OAM from `$C000+[$FF9D]` to `$C0A0`, resets `$FF9D` |
 | `$09FB` | 14 | **`memcpy(HL→DE, BC)`** |
-| `$0B15` | 12 | **`LoadBankedResource(A)`** — see §3 |
-| `$0CC2` | 11 | **`AllocSlot_C693`** — first free of 10 × 6-byte records at `$C693` |
-| `$11D9` | 10 | **`WorldToBGMapAddr`** — world coords → `$9800`-based tilemap address |
-| `$34A4` | 8 | **`ClearBGMap(D)`** — LCD off, `LD SP,$9A3F` + `PUSH DE` fill of `$9800-$9A3F` |
-| `$18E7` | 6 | **`AddToPos16($FF82:$FF81, BC)`** — 16-bit signed add into the player X accumulator (`$18F1` = same for `$FF84:$FF83`, Y) |
+| `$0B15` | 12 | **`LoadBankedResource(A)`** - see §3 |
+| `$0CC2` | 11 | **`AllocSlot_C693`** - first free of 10 × 6-byte records at `$C693` |
+| `$11D9` | 10 | **`WorldToBGMapAddr`** - world coords → `$9800`-based tilemap address |
+| `$34A4` | 8 | **`ClearBGMap(D)`** - LCD off, `LD SP,$9A3F` + `PUSH DE` fill of `$9800-$9A3F` |
+| `$18E7` | 6 | **`AddToPos16($FF82:$FF81, BC)`** - 16-bit signed add into the player X accumulator (`$18F1` = same for `$FF84:$FF83`, Y) |
 | `$20BA` | 5 | 16-bit add of `BC` to `$FF83:$FF84`, mirrored into `$FFB8/$FFC1/$FFB9/$FFC2` |
-| `$09DD` | 4 | **`LCDOff`** — waits `rLY==$91` after masking `rIE` low bits (saved in `$FFE8`) |
-| `$0FCC` | 4 | **`DrawBlinkingCursor`** — sprite id from `$3337 + ((frame>>3)&3)` |
-| `$0CF3` | 4 | **`AllocSlot_C6CF`** — 8-byte records |
+| `$09DD` | 4 | **`LCDOff`** - waits `rLY==$91` after masking `rIE` low bits (saved in `$FFE8`) |
+| `$0FCC` | 4 | **`DrawBlinkingCursor`** - sprite id from `$3337 + ((frame>>3)&3)` |
+| `$0CF3` | 4 | **`AllocSlot_C6CF`** - 8-byte records |
 | `$11A7` | 4 | proximity test vs camera X (`|$FFA2+5 - B| < 9`) |
 | `$2777` | 4 | subtract `B` from `$FF8A` (health/timer) then `SoundRequest($12,$01)` |
 | `$0A61` | 3 | **`ClearShadowOAM`** (`LD SP,$C09F` + `PUSH DE` ×79) |
-| `$09C2` | 2 | **`InstallOAMDMA`** — copies `$09D0`(10 B) → `$FFF0` |
-| `$0A77` | — | **`memset(HL, BC, D)`** |
-| `$0C34` | 2 | **`LoadLevelMap`** — bank 3, pointer table `3:$4000` indexed by `$FFB0-1`, RLE-expands into `$D000`, per-level tile-translation table via `3:$7A2A` |
-| `$104E`/`$121F` | 2/1 | **`UpdateCamera`** — identical prologue, clamps camera to `[$C732]-5` |
-| `$0D50` | 2 | **`InitRasterMode`** — sets `$FFC7` from the per-level table at `$1015` |
-| `$2889` | 2 | **`LoadLevelGraphics`** — bank 5, table at `5:$4000`, 4 bytes/level |
+| `$09C2` | 2 | **`InstallOAMDMA`** - copies `$09D0`(10 B) → `$FFF0` |
+| `$0A77` | - | **`memset(HL, BC, D)`** |
+| `$0C34` | 2 | **`LoadLevelMap`** - bank 3, pointer table `3:$4000` indexed by `$FFB0-1`, RLE-expands into `$D000`, per-level tile-translation table via `3:$7A2A` |
+| `$104E`/`$121F` | 2/1 | **`UpdateCamera`** - identical prologue, clamps camera to `[$C732]-5` |
+| `$0D50` | 2 | **`InitRasterMode`** - sets `$FFC7` from the per-level table at `$1015` |
+| `$2889` | 2 | **`LoadLevelGraphics`** - bank 5, table at `5:$4000`, 4 bytes/level |
 | `$333F` | 2 | per-level init dispatch on `$FFB0` |
-| `$0F39` | — | HUD tile selection from tables `$1023`/`$1031` |
+| `$0F39` | - | HUD tile selection from tables `$1023`/`$1031` |
 | `$0F7B` | 2 | **`DrawHUD`** (lives/energy, `$FF8A`) |
 | `$2FAE` | 3 | 16-byte copy `DE→HL` |
 | `$1336` | 1 | background/parallax state per level |
@@ -457,10 +457,10 @@ Cross-bank leaf calls from bank 0's main loop into **bank 1**:
 `$4DDA` (level-specific setup), `$4230` (**actor update loop** over `$C1E8`,
 16-byte records, index `SWAP`ped ×16), `$4E0C` (player state machine, jump table
 `$60EF`), `$4BB0` (table `1:$4D00`), `$7AD3`. Most-called bank-1 routines:
-`1:$63AD` (25 — 16-bit add-to-`(HL)`), `1:$6616` (12), `1:$63B4` (8),
+`1:$63AD` (25 - 16-bit add-to-`(HL)`), `1:$6616` (12), `1:$63B4` (8),
 `1:$6499` (8), `1:$4A79` (6).
 
-### `sub_00_0A0E` — the VRAM script interpreter (16 call sites, drives every screen)
+### `sub_00_0A0E` - the VRAM script interpreter (16 call sites, drives every screen)
 
 ```
 0A0E  1A        LD A,[DE]          ; dest HIGH byte
@@ -492,7 +492,7 @@ digits `$80-$89`.
 
 Ranked by expected pain when hand-porting to JS.
 
-### 6.1 Runtime-generated code in WRAM — `$C4CB` (HIGH)
+### 6.1 Runtime-generated code in WRAM - `$C4CB` (HIGH)
 
 `$01D4-$01FB` writes 192 bytes of *machine code* into WRAM and then
 `CALL $C4CB` at `$07C9` inside the VBlank handler. Generated body:
@@ -510,11 +510,11 @@ emit $C9                ; RET
 
 Net effect: an unrolled **64-byte `memcpy(HL → DE)`**. Occupies `$C4CB-$C58A`;
 the 64-byte staging buffer it reads from is immediately after it at **`$C58B`**.
-In JS this becomes a plain `copy(dst, src, 64)` — **but any emulator-style
+In JS this becomes a plain `copy(dst, src, 64)` - **but any emulator-style
 "execute WRAM" fallback must still work if the port keeps a CPU core**, and any
 memory map must not place data over `$C4CB-$C58A`.
 
-### 6.2 HRAM-resident OAM DMA — `$FFF0` (MEDIUM)
+### 6.2 HRAM-resident OAM DMA - `$FFF0` (MEDIUM)
 
 `sub_00_09C2` copies `$09D0`(10 bytes) into `$FFF0`:
 
@@ -531,7 +531,7 @@ Called from VBlank at `$0664`. Shadow OAM base = `$C000`.
 **Caution:** `$FFF0-$FFFD` show up in a naive HRAM-access scan only because
 `LD BC,$FFF0` / `LD DE,$FFF4` are used as *negative 16-bit constants* (−16, −12)
 for backwards pointer arithmetic. Filtering to real `LDH`/`LD [a16]` opcodes
-shows **zero** variable accesses in `$FFF0-$FFF9` — the stub is never clobbered.
+shows **zero** variable accesses in `$FFF0-$FFF9` - the stub is never clobbered.
 HRAM variables actually occupy `$FF80-$FFE2`, plus `$FFE7`, `$FFE8`, `$FFEA`.
 
 ### 6.3 Scanline raster effects (HIGH)
@@ -542,7 +542,7 @@ every 4 lines and applies a sine offset from `$09A2`). A JS renderer must be
 per-scanline, or at minimum honour a scroll/palette change list keyed by `LY`.
 State 7 uses a 16-bit fractional scroll accumulator at `$C763/$C764`.
 
-### 6.4 Computed jumps (`JP HL`) — 4 sites, all with recoverable tables (MEDIUM)
+### 6.4 Computed jumps (`JP HL`) - 4 sites, all with recoverable tables (MEDIUM)
 
 | `JP HL` | table | entries | targets |
 |---|---|---|---|
@@ -554,7 +554,7 @@ State 7 uses a 16-bit fractional scroll accumulator at `$C763/$C764`.
 All four use the identical `LD HL,tbl / ADD HL,BC / LD A,[HL+] / LD H,(HL) /
 LD L,A / JP HL` shape, and every target is in-bank. Entry counts were derived by
 `tools/banktrace.py --jt` and each has been spot-checked. **The 12-entry table at
-`01:$60EF` has duplicate targets (`6107` three times) — do not assume
+`01:$60EF` has duplicate targets (`6107` three times) - do not assume
 one-handler-per-index.** `01:$50D3` entry 3 (`$7750`) is far from its neighbours;
 worth re-verifying against a running emulator (UNCONFIRMED whether index 3 is
 ever taken).
@@ -607,7 +607,7 @@ read through it. All 63 sites are enumerated in §3 / `--switches` output.
 ### 6.9 `RST $28/$30/$38` as inline arithmetic (LOW, but pervasive)
 
 61 call sites. `RST $28` = `HL += A` (with carry into H), `RST $30` = `DE += A`,
-`RST $38` = `BC += A`. Note the `RET NC` — the carry propagation is conditional,
+`RST $38` = `BC += A`. Note the `RET NC` - the carry propagation is conditional,
 so `HL += A` is a *true* 16-bit add of an unsigned 8-bit value. Inline them.
 
 ### 6.10 No self-modifying code beyond §6.1/§6.2 (verified)
@@ -618,7 +618,7 @@ are write-once.
 
 ---
 
-## Appendix A — memory map (as used by this ROM)
+## Appendix A - memory map (as used by this ROM)
 
 | range | use |
 |---|---|
@@ -646,12 +646,12 @@ are write-once.
 | `$FFEA` | sound-tick re-entrancy guard |
 | `$FFF0-$FFF9` | **OAM-DMA stub (code)** |
 
-## Appendix B — tooling caveat
+## Appendix B - tooling caveat
 
 `tools/gbdis.py`'s `Rom.offset()` computes `bank*0x4000 + (addr & 0x3FFF)`, and
 `Disassembler.add_entry` keeps `bank` for targets ≥ `$4000`. When bank-0 code
 does `CALL $4xxx`, the entry is recorded as `(0, $4xxx)` which aliases to file
-offset `$0xxx` — bank 0's own low memory. This is why the original
+offset `$0xxx` - bank 0's own low memory. This is why the original
 `disasm/bank_00.asm` shows nonsense xrefs like `00:4101` and why its 96.9%
 figure is inflated. `tools/banktrace.py` fixes this by carrying the mapped-bank
 value; prefer `disasm2/` for all downstream work.

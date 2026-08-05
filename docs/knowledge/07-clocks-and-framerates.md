@@ -3,7 +3,7 @@
 **No console runs at 60 Hz.** Every game must declare its own clock, and the number must
 be derived from the hardware's actual timing, not rounded to something convenient.
 
-This matters far more once slowdown is a subject of study — see
+This matters far more once slowdown is a subject of study - see
 [`06-lag-and-slowdown.md`](06-lag-and-slowdown.md). **A wrong base rate contaminates every
 lag measurement you will ever take**, because the drift is indistinguishable from the thing
 you are trying to measure.
@@ -27,12 +27,12 @@ frame          262 scanlines x 341 PPU cycles = 89,342 cycles
 ```
 
 **But not every frame is 89,342 cycles.** With rendering enabled, one PPU cycle is skipped
-at the end of the pre-render scanline on **odd frames** — so frames alternate 89,342 /
+at the end of the pre-render scanline on **odd frames** - so frames alternate 89,342 /
 89,341 and the average is 89,341.5. That is where 60.098814 comes from.
 
 **With rendering disabled the skip does not happen**, so a blanked screen runs at
 60.098478 Hz. The difference is tiny (0.00034 Hz) and almost certainly below the threshold
-of anything we care about — but *know that it exists* before someone reports a
+of anything we care about - but *know that it exists* before someone reports a
 one-cycle-per-frame mystery. It matters for Gradius specifically because the game blanks
 the screen deliberately: `$0D` counts down and gates the PPUMASK write at `$8096`.
 
@@ -41,7 +41,7 @@ the screen deliberately: `$0D` counts down and gates the PPUMASK write at `$8096
 **1. It contaminates lag measurement, and that is the important one.**
 
 Assume 60.000 Hz for an NES game that runs at 60.0988 and you accumulate ~0.099 extra
-frames every second — **about 6 frames per minute** of phantom drift. Real slowdown in
+frames every second - **about 6 frames per minute** of phantom drift. Real slowdown in
 Gradius is a handful of frames in a dense wave. The error is an order of magnitude larger
 than the signal. You would be measuring your own rounding.
 
@@ -55,7 +55,7 @@ agree what a frame is.
 
 ### What Batman actually shipped
 
-`FRAME_MS = 1000 / 59.73` — a rounded 59.73 against the true 59.727501.
+`FRAME_MS = 1000 / 59.73` - a rounded 59.73 against the true 59.727501.
 
 That is **0.7 µs per frame**, or about **2.5 ms per hour** of play. Genuinely negligible
 for a platformer, and not worth changing now that everything is verified against it. But
@@ -72,17 +72,17 @@ Do not assume one universal 60 Hz loop. The rate belongs in the game's manifest,
 ```
 
 Batman keeps its Game Boy clock; Gradius owns the clock whenever someone is in the Gradius
-world. Note the smell to avoid: on Batman the rate is currently spelled **twice** —
+world. Note the smell to avoid: on Batman the rate is currently spelled **twice** -
 `src/main.js` and `tools/oracle/headless.mjs`, whose comment already says *"must match
 src/main.js"*. A comment asking a human to keep two constants in sync is a bug waiting for
 a quiet moment.
 
-## Host clock vs guest clock — a trap specific to this project
+## Host clock vs guest clock - a trap specific to this project
 
 The browser paints at 60, 120 or 144 Hz. The guest runs at 60.0988. **These will never
 line up**, so the loop uses a fixed timestep and an accumulator.
 
-Measured on Batman: at 59.727501 Hz guest on a 60 Hz host, the accumulator **underruns** —
+Measured on Batman: at 59.727501 Hz guest on a 60 Hz host, the accumulator **underruns** -
 roughly **one 0-tick displayed frame every 222 frames**, and a 2-tick frame only ever
 appears paired with a 0-tick one, so the average logic rate holds.
 
@@ -94,22 +94,22 @@ So:
 
 - **Never measure slowdown against wall-clock time.** Measure it against the *guest's own
   logic-frame counter*, which is immune to host pacing.
-- **Keep the two clocks separate and named** — `videoFrame` and `logicFrame` — in the state
+- **Keep the two clocks separate and named** - `videoFrame` and `logicFrame` - in the state
   vector and in the harness. If they can only be told apart by inference, they will be
   confused.
 - The oracle runs headless with no host clock at all, which is one more reason the
   authoritative measurements come from there and not from the browser.
 
-## DoDonPachi DaiOuJou — DERIVED, and both guesses were wrong
+## DoDonPachi DaiOuJou - DERIVED, and both guesses were wrong
 
-**59.185606060606… Hz — exactly 15625/264, a frame period of exactly 16.896 ms.**
+**59.185606060606… Hz - exactly 15625/264, a frame period of exactly 16.896 ms.**
 
 Derived from MAME's driver source by two independent agents, pinned to MAME 0.289. The
 "about 54" figure that was floated in conversation is **wrong by nearly five frames a
 second**, and this is precisely why it was never written down as fact.
 
 The second surprise is bigger: **DaiOuJou is not Cave hardware at all.** It is an **IGS
-PolyGameMaster (PGM)** board — 68000 @ 20 MHz, Z80 @ 8.4672 MHz, IGS023 custom video —
+PolyGameMaster (PGM)** board - 68000 @ 20 MHz, Z80 @ 8.4672 MHz, IGS023 custom video -
 defined in `src/mame/igs/pgm.cpp`, not in `atlus/cave.cpp`. (The 1997 *DoDonPachi* is the
 Cave one.) Every instinct carried over from "Cave board" reasoning needs re-checking
 against PGM instead.
@@ -140,7 +140,7 @@ refresh = pixel_clock / (htotal * vtotal)      # when the driver uses set_raw
 ```
 
 That is a checkable derivation with a source, which is the standard everything here is
-held to. Do it **before** any timing work on a game, not during — and confirm the driver
+held to. Do it **before** any timing work on a game, not during - and confirm the driver
 is not just handing you a literal (above).
 
 
@@ -148,4 +148,4 @@ is not just handing you a literal (above).
 
 > Derive the rate from the hardware's clock and cycle counts. Put it in the game manifest,
 > spell it once, and never round it. If you are studying slowdown, an inexact base rate is
-> not a small error — it is larger than your signal.
+> not a small error - it is larger than your signal.

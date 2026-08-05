@@ -1,4 +1,4 @@
-# The asset pipeline — the gfx gate, the atlas, the sound map
+# The asset pipeline - the gfx gate, the atlas, the sound map
 
 status: wave 3, built and measured 2026-08-01.
 Evidence, with every command and its actual output:
@@ -33,7 +33,7 @@ PASS: 1605632/1605632 = 100.0000% over 16 frame pair(s)
 ```
 
 It is a GATE, not a report. It fails on anything below 100.0000 %, **and it fails
-if fewer than 12 pairs were produced** — the second half matters more, because a
+if fewer than 12 pairs were produced** - the second half matters more, because a
 run whose MAME half silently produced nothing would otherwise print
 `ALL EXACT: 0 pairs` and pass. Measured against an empty directory:
 
@@ -62,7 +62,7 @@ FRONT), and `cave_t04401w064.u19` loads at **0x180000**, overwriting the top
 for §2: the natural corpus barely exercises the zoom path, so a decoder with a
 completely broken zoom loop passes the frame gate 97 % of the time.
 
-## 2. Zoom coverage — 384 combinations, twice
+## 2. Zoom coverage - 384 combinations, twice
 
 `pgm.py zoomcov` writes a synthetic display list into **the game's own sprite
 list in main RAM at the sample point** and lets the hardware DMA carry it to the
@@ -94,8 +94,8 @@ flips the index to `0x10 - z`, so the no-zoom encoding is **`zom=0` with
 
 1. **MAME's `draw_sprites` does NOT re-read `:igs023:spritebuffer` at draw
    time.** The first attempt switched the sprite DMA off (`ctrl` bit 0) and wrote
-   the post-DMA buffer directly. The poke landed — the dumped buffer held our
-   18-sprite grid on both frames of every pair — and MAME drew the game's
+   the post-DMA buffer directly. The poke landed - the dumped buffer held our
+   18-sprite grid on both frames of every pair - and MAME drew the game's
    sprites anyway (an explosion and the ship; I looked at the PNG). 92.64 %.
    **The share is an OUTPUT of the DMA, not the INPUT of the draw.** On the
    natural corpus the two always agree, which is why the decoder can be
@@ -108,7 +108,7 @@ flips the index to `0x10 - z`, so the no-zoom encoding is **`zom=0` with
    state f2078 -> pixels f2079:  all three candidates 100352 (the tables are equal)
    state f2082 -> pixels f2083:  all three candidates 100352 (the tables are equal)
    ```
-   Poking at the sample point instead of in the notifier moved nothing — the
+   Poking at the sample point instead of in the notifier moved nothing - the
    same 978 pixels, on the same single pair. **I did not establish where MAME
    latches it** (shares are not tappable and the read is in C++), so rather than
    model an offset I could not pin, each coverage run holds its table constant
@@ -134,8 +134,8 @@ cannot be enumerated statically: a record in 68k RAM carries a 23-bit WORD offse
 into `sprmask`, where a two-word header points into a length-compressed 5bpp
 stream in `sprcol`; the stream cannot be random-accessed and a header cannot be
 told from two arbitrary bytes. So the exporter **harvests every `offs` the game
-actually handed to the hardware**, at the sample point, across the corpus — a
-measurement — instead of walking the mask ROM, which would be a guess. The
+actually handed to the hardware**, at the sample point, across the corpus - a
+measurement - instead of walking the mask ROM, which would be a guess. The
 manifest states the policy, names the corpus (`stage1-open`, `stage1-deep`;
 2,600 + 5,000 logic frames) and states the consequence out loud:
 
@@ -161,7 +161,7 @@ Red-validated, four ways, every one caught:
 | `bg-planes` | BG plane weights | BG independent decode |
 | `rom-byte` | one byte of `pgm_t01s.rom` | the ROM re-hash |
 
-## 4. `bg_scale` — the watch tripped on its first run
+## 4. `bg_scale` - the watch tripped on its first run
 
 A standing write tap on `$B04000` is in **every** scenario now, and the value is
 also read back at every sample point (a value set before the autoboot script
@@ -177,7 +177,7 @@ BGSCALE vf=7 lf=0 value=0610 pc=0065E2
 ```
 
 `$0065E2` is inside the 512 KiB `ddp3_bios.u37`, and both writes happen at
-`lf=0` — i.e. **the PGM BIOS programs a non-100 % background scale during boot,
+`lf=0` - i.e. **the PGM BIOS programs a non-100 % background scale during boot,
 before the game has completed a single logic frame.** MAME does not implement
 the register at all (`igs023_video.cpp:193`, "TODO: not implemented, unknown
 algorithm"), so **those BIOS boot frames are rendered by MAME without a feature
@@ -189,7 +189,7 @@ of the gate scenario the register read 0x210 every time. `gfxgate.py` also fails
 any pair whose dumped `bg_scale != 0x210` outright, because a 100 % score there
 would be agreement between two wrong pictures.
 
-## 5. The sound map (identification only — playback is out of the slice)
+## 5. The sound map (identification only - playback is out of the slice)
 
 `pgm.py sound` over `stage1-deep` (5,000 logic frames):
 
@@ -200,7 +200,7 @@ CENSUS sound doorbells=657 z80_window_writes=336798 ics_reg_writes=191367 keyons
 ### The mailbox: the command is a 2-word message at Z80 window $0006/$0008
 
 Wave 0 found every doorbell write to be `data=0001` from one PC and concluded
-the selector must go through the shared RAM window — but never tapped it. Tapped
+the selector must go through the shared RAM window - but never tapped it. Tapped
 now, logging the bytes written **since the previous ring**:
 
 ```
@@ -233,13 +233,13 @@ Z80 BLOB: needle = 32 bytes at z80 RAM $010F
   odd  byte lane (stride 2, +1)  hits=0
 ```
 
-**23,314 contiguous bytes match, verbatim, at two addresses — one per build.**
+**23,314 contiguous bytes match, verbatim, at two addresses - one per build.**
 The two-version cartridge carries its own Z80 driver in each build, and they are
 byte-identical over the matched range. For VERSION-B the driver image lives at
 decrypted `:maincpu` **$2C3510 = z80 RAM $0086**, i.e. z80 $0000 would be
 $2C348A. The run stops backwards at z80 $0086 and forwards at z80 $5B97 because
 by the end of the run the Z80 has overwritten those areas with its own runtime
-state — the bound is on the *dump*, not on the copy.
+state - the bound is on the *dump*, not on the copy.
 
 ### The 17 `end <= start` samples: the wave-0 explanation is REFUTED
 
@@ -260,7 +260,7 @@ bank, so a bank wrap does not explain them
 **Both wave-0 hypotheses are measured false**: the addresses are in one bank, and
 the driver does not go on to fix the end register. So these keyons genuinely
 program `end` below `start`. What the chip does with that is not established
-here — `sampledump.py` must keep reporting and skipping them, and
+here - `sampledump.py` must keep reporting and skipping them, and
 `rip/sound/ics.tsv` now holds every register write in order for whoever picks it
 up. **UNRESOLVED, deliberately, rather than guessed.**
 
@@ -279,8 +279,8 @@ Python gate exactly as much as to the JS one.
    WRONG palette frame scores 100.0000 % on this corpus. Wave 6's
    `PROBE_PALDELTA` census found a real fade at lf1002..1016 (188-217 words per
    frame) and a cut at lf1204 (403 words); `pgm.py pixslice` requires one.
-2. **No sprite record has its `pri` bit set** — 0 of 1,397 records over the same
-   32 frames — so `pgm_draw_pix`'s sprite-vs-background priority test is
+2. **No sprite record has its `pri` bit set** - 0 of 1,397 records over the same
+   32 frames - so `pgm_draw_pix`'s sprite-vs-background priority test is
    exercised by nothing at all. Wave 6 drives it by intervention
    (`PROBE_PRICOV`, two rows of the same sprite at `pri=0` and `pri=1` over
    gameplay background) and measures the difference at 1,301 pixels.

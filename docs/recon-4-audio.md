@@ -1,4 +1,4 @@
-# RECON-4 — AUDIO ENGINE & MUSIC DATA
+# RECON-4 - AUDIO ENGINE & MUSIC DATA
 
 ROM: `Batman - Return of the Joker (USA, Europe).gb` (128 KB, MBC1, Sunsoft).
 Static analysis only, no emulator. Everything below is **CONFIRMED from code**
@@ -30,10 +30,10 @@ Reference output committed to `rip/`:
 | `7:$46D5-$477C` | 168 | **pitch table**, 84 × 16-bit LE, values biased by `-$80` |
 | `7:$477D-$47DA` | 94 | **song pointer table**, 47 × 16-bit LE |
 | `7:$47DB-$47E9` | 15 | 3 shared wave-volume envelopes (`$47DB`, `$47E0`, `$47E5`) |
-| `7:$47EA-$47F9` | 16 | wave table A — **never referenced by any song** |
-| `7:$47FA-$4809` | 16 | wave table B — the only waveform the game ever loads |
+| `7:$47EA-$47F9` | 16 | wave table A - **never referenced by any song** |
+| `7:$47FA-$4809` | 16 | wave table B - the only waveform the game ever loads |
 | `7:$480A-$7956` | 12 621 | song / SFX sequence data, envelopes, pitch envelopes |
-| `7:$7960-$7FFF` | 1696 | **NOT SOUND** — a VRAM script (ending text), run by `00:3758` |
+| `7:$7960-$7FFF` | 1696 | **NOT SOUND** - a VRAM script (ending text), run by `00:3758` |
 
 `7:$7957-$795F` is `$FF` padding. Free space in bank 7 is therefore only those
 9 bytes; the tail is used.
@@ -69,7 +69,7 @@ Notation used below:
 | `$D0` | 8 | `$4497` | `DEFDRUM 2` | b,b,b | define slot 2 |
 | `$D1` | 9 | `$449C` | `DEFDRUM 1` | b,b,b | define slot 1 |
 | `$D2` | 10 | `$44A1` | `DEFDRUM 0` | b,b,b | define slot 0 |
-| `$D3` | 11 | `$44B0` | `FIXDUR_OFF` | — | `ch[+$04] = 0` (durations come from the stream again) |
+| `$D3` | 11 | `$44B0` | `FIXDUR_OFF` | - | `ch[+$04] = 0` (durations come from the stream again) |
 | `$D4` | 12 | `$44B7` | `SLIDE 5` | note[,D] | play preset slide slot 5 (`$C81E`) |
 | `$D5` | 13 | `$44BC` | `SLIDE 4` | note[,D] | slot 4 (`$C81B`) |
 | `$D6` | 14 | `$44C1` | `SLIDE 3` | note[,D] | slot 3 (`$C818`) |
@@ -82,28 +82,28 @@ Notation used below:
 | `$DD` | 21 | `$4539` | `DEFSLIDE 2` | b,b,b | |
 | `$DE` | 22 | `$453E` | `DEFSLIDE 1` | b,b,b | |
 | `$DF` | 23 | `$4543` | `DEFSLIDE 0` | b,b,b | |
-| `$E0` | 24 | `$4552` | `PITCHENV_OFF` | — | `ch[+$11] = 0` (null the pitch-envelope base pointer HI) |
-| `$E1` | 25 | `$4558` | `PITCHENV_DELAY 0` | — | `ch[+$0C] = 0` |
-| `$E2` | 26 | `$455E` | `PITCHENV_DELAY 1` | — | `ch[+$0C] = 1` |
-| `$E3` | 27 | `$4565` | `PITCHENV_DELAY 1 + GATE_OFF` | — | `ch[+$0C] = 1`, falls through into `$E4` |
-| `$E4` | 28 | `$456C` | `GATE_OFF` | — | `ch[+$06] = 0` (no key-off) |
-| `$E5` | 29 | `$4576` | `PAN_LEFT` | — | `ch[+$1A] = tbl$4593[hwchan]` = `10 20 40 80` |
-| `$E6` | 30 | `$457B` | `PAN_RIGHT` | — | `ch[+$1A] = tbl$4597[hwchan]` = `01 02 04 08` |
-| `$E7` | 31 | `$4580` | `PAN_CENTER` | — | `ch[+$1A] = tbl$459B[hwchan]` = `11 22 44 88` |
-| `$E8` | 32 | `$459F` | `VIBRATO` | b | `ch[+$19] = b` — signed per-tick delta added to the 16-bit frequency every tick |
-| `$E9` | 33 | `$45AB` | `LEGATO_OFF` | — | `RES 5, ch[+$00]` |
-| `$EA` | 34 | `$45B3` | `LEGATO_ON` | — | `SET 5, ch[+$00]` — suppresses retrigger + key-off |
+| `$E0` | 24 | `$4552` | `PITCHENV_OFF` | - | `ch[+$11] = 0` (null the pitch-envelope base pointer HI) |
+| `$E1` | 25 | `$4558` | `PITCHENV_DELAY 0` | - | `ch[+$0C] = 0` |
+| `$E2` | 26 | `$455E` | `PITCHENV_DELAY 1` | - | `ch[+$0C] = 1` |
+| `$E3` | 27 | `$4565` | `PITCHENV_DELAY 1 + GATE_OFF` | - | `ch[+$0C] = 1`, falls through into `$E4` |
+| `$E4` | 28 | `$456C` | `GATE_OFF` | - | `ch[+$06] = 0` (no key-off) |
+| `$E5` | 29 | `$4576` | `PAN_LEFT` | - | `ch[+$1A] = tbl$4593[hwchan]` = `10 20 40 80` |
+| `$E6` | 30 | `$457B` | `PAN_RIGHT` | - | `ch[+$1A] = tbl$4597[hwchan]` = `01 02 04 08` |
+| `$E7` | 31 | `$4580` | `PAN_CENTER` | - | `ch[+$1A] = tbl$459B[hwchan]` = `11 22 44 88` |
+| `$E8` | 32 | `$459F` | `VIBRATO` | b | `ch[+$19] = b` - signed per-tick delta added to the 16-bit frequency every tick |
+| `$E9` | 33 | `$45AB` | `LEGATO_OFF` | - | `RES 5, ch[+$00]` |
+| `$EA` | 34 | `$45B3` | `LEGATO_ON` | - | `SET 5, ch[+$00]` - suppresses retrigger + key-off |
 | `$EB` | 35 | `$45BB` | `TIE` | D | new duration + new gate, **no pitch change, no retrigger** |
 | `$EC` | 36 | `$45DB` | `DUTY` | b | `ch[+$18]` → NRx1 (bits 7-6 duty, bits 5-0 length) |
-| `$ED` | 37 | `$45E1` | `RET` | — | return to `ch[+$20]/ch[+$21]`+2; **no-op if `ch[+$21] == 0`** |
+| `$ED` | 37 | `$45E1` | `RET` | - | return to `ch[+$20]/ch[+$21]`+2; **no-op if `ch[+$21] == 0`** |
 | `$EE` | 38 | `$45F8` | `CALL` | w | save ptr in `ch[+$20]/+$21`, jump. **1 level deep only** |
 | `$EF` | 39 | `$4608` | `LOOP_B` | b,w | counter `ch[+$23]` |
 | `$F0` | 40 | `$460D` | `LOOP_A` | b,w | counter `ch[+$22]` |
 | `$F1` | 41 | `$462C` | `JUMP` | w | unconditional |
-| `$F2` | 42 | `$4633` | `FIXDUR` | b | `ch[+$04] = b` — all following notes use this duration and consume no duration byte |
-| `$F3` | 43 | `$4639` | `DETUNE` | b | `ch[+$09] = b` — **unsigned** byte added to the 16-bit frequency word (default `$80`) |
-| `$F4` | 44 | `$463F` | `TRANSPOSE` | b | `ch[+$08] = b` — added to the note index before the pitch lookup |
-| `$F5` | 45 | `$4645` | `RELEASE_ENV` | b | `ch[+$1F]` — NRx2 low nibble substituted on REST |
+| `$F2` | 42 | `$4633` | `FIXDUR` | b | `ch[+$04] = b` - all following notes use this duration and consume no duration byte |
+| `$F3` | 43 | `$4639` | `DETUNE` | b | `ch[+$09] = b` - **unsigned** byte added to the 16-bit frequency word (default `$80`) |
+| `$F4` | 44 | `$463F` | `TRANSPOSE` | b | `ch[+$08] = b` - added to the note index before the pitch lookup |
+| `$F5` | 45 | `$4645` | `RELEASE_ENV` | b | `ch[+$1F]` - NRx2 low nibble substituted on REST |
 | `$F6` | 46 | `$464B` | `REST` | D | note off: duration, gate 0, `NRx2 = (ch[+$12] & $F0) \| ch[+$1F]`, null the volume-envelope pointer, retrigger |
 | `$F7` | 47 | `$467C` | `PITCHENV_DELAY` | b | `ch[+$0C] = b` |
 | `$F8` | 48 | `$4682` | `PITCHENV_PTR` | w | `ch[+$10]/+$11` = pitch envelope base |
@@ -113,7 +113,7 @@ Notation used below:
 | `$FC` | 52 | `$46A2` | `VOLENV_PTR` | w | `ch[+$16]/+$17` = volume envelope base |
 | `$FD` | 53 | `$46B1` | `PAN_RAW` | b | `ch[+$1A] = b` (raw NR51 contribution) |
 | `$FE` | 54 | `$46B7` | `VOLUME` | b | `ch[+$17] = 0` (kill volume envelope), `ch[+$12] = b` (static NRx2) |
-| `$FF` | 55 | `$46C9` | `END` | — | `[$C800+hwchan] = 0`, `ch[+$00] = 0` — track stops, releases the APU channel |
+| `$FF` | 55 | `$46C9` | `END` | - | `[$C800+hwchan] = 0`, `ch[+$00] = 0` - track stops, releases the APU channel |
 
 ### Notes ( byte `$00-$C7` ), handler `7:$4182`
 
@@ -151,7 +151,7 @@ ch[+$14],ch[+$15] = ch[+$1E],ch[+$1D]   ; switch to the release envelope
 ch[+$13] = 1
 ```
 
-### The pitch table `7:$46D5` — 84 entries, C2 .. B8
+### The pitch table `7:$46D5` - 84 entries, C2 .. B8
 
 Entries are stored **biased by `-$80`**; the per-channel detune `ch[+$09]`
 defaults to `$80` and un-biases them, so `freq_reg = table[n] + detune`.
@@ -165,12 +165,12 @@ idx 48 = C6, idx 60 = C7, idx 72 = C8, idx 83 = B8
 
 Full listing (raw / +$80 / Hz) is in `rip/pitch_table.txt`.
 `DETUNE` values other than `$80` shift pitch by `(b - $80)` in raw
-frequency-register units — a fine, non-musical detune (used sparingly:
+frequency-register units - a fine, non-musical detune (used sparingly:
 4 sites in the whole ROM).
 
 ---
 
-## 2. CHANNEL STATE — `$C800-$C94C`
+## 2. CHANNEL STATE - `$C800-$C94C`
 
 **8 track slots, stride `$24` (36) bytes, base `$C82D`.**
 `$C82D + 8*$24 = $C94D`, matching the `$014D`-byte clear at `7:$4021`.
@@ -222,12 +222,12 @@ frequency-register units — a fine, non-musical detune (used sparingly:
 |---|---|---|
 | 7 | `$40FA`, resume | **track active** |
 | 6 | pause `$4071` | paused (resume XORs `$C0`) |
-| 5 | `$EA`/`$E9`, `$D4-$D9` | **LEGATO** — no retrigger, no key-off |
+| 5 | `$EA`/`$E9`, `$D4-$D9` | **LEGATO** - no retrigger, no key-off |
 | 4 | `$422D` | freq HI changed this tick ⇒ NRx4 must be rewritten |
-| 3 | `$CB-$CE`, `$D4-$D9` | **auto-note mode** — on duration expiry replay `[$C80B]/[$C80C]` (or `[$C80D]/[$C80E]` on noise) instead of fetching from the stream |
-| 2 | — | never set (survives the `AND $EC` mask, otherwise unused) |
+| 3 | `$CB-$CE`, `$D4-$D9` | **auto-note mode** - on duration expiry replay `[$C80B]/[$C80C]` (or `[$C80D]/[$C80E]` on noise) instead of fetching from the stream |
+| 2 | - | never set (survives the `AND $EC` mask, otherwise unused) |
 | 1 | `$FB`, `$42B4` | wave table upload pending |
-| 0 | many | **retrigger** — write NRx2 and set NRx4 bit 7 this tick |
+| 0 | many | **retrigger** - write NRx2 and set NRx4 bit 7 this tick |
 
 Bits 0, 1 and 4 are cleared at the top of every tick (`$414E AND $EC`).
 Bits 3 and 5 are cleared together by `AND $D7` at `$4389`.
@@ -239,7 +239,7 @@ Bits 3 and 5 are cleared together by `AND $D7` at `$4389`.
 | `$C800-$C803` | **APU channel ownership**, one byte per hardware channel = `owning track index + 1`, `0` = free |
 | `$C804` | track loop cursor 0..7 |
 | `$C805` | **unused** (zero code references) |
-| `$C806` | NR51 AND-mask, `$FF` at hard init — global per-output mute |
+| `$C806` | NR51 AND-mask, `$FF` at hard init - global per-output mute |
 | `$C807` | fade countdown |
 | `$C808` | fade-**in** rate (reload for `$C807`); `$40A0` sets `$0A` |
 | `$C809` | fade-**out** rate; `$40AC` sets `$12` |
@@ -257,7 +257,7 @@ Bits 3 and 5 are cleared together by `AND $D7` at `$4389`.
 |---|---|
 | `$FFD2` | pending command bitmask (written by the Timer IRQ from the queue) |
 | `$FFD3` | pending song/SFX id |
-| `$FFD4` | status latch: `$00` while starting a song, `$FF` when done / paused / resumed. **Written 5×, read 0× anywhere in the ROM** — dead |
+| `$FFD4` | status latch: `$00` while starting a song, `$FF` when done / paused / resumed. **Written 5×, read 0× anywhere in the ROM** - dead |
 | `$FFD5` | current track's hardware channel |
 | `$FFD6` | scratch (note byte / envelope duration / song track index) |
 | `$FFD8` | NRx1 shadow for this tick |
@@ -271,7 +271,7 @@ Bits 3 and 5 are cleared together by `AND $D7` at `$4389`.
 
 ## 3. THE DRIVER
 
-### 3.1 `7:$4000` — hardware init (called once, from `00:019E`)
+### 3.1 `7:$4000` - hardware init (called once, from `00:019E`)
 
 ```
 NR52 = $00 ; NR52 = $80          ; APU off then on
@@ -286,24 +286,24 @@ memset($C800, 0, $014D)          ; all driver RAM
 $FFD2 = 0
 ```
 
-### 3.2 `7:$4036` — soft reset (command bit 1)
+### 3.2 `7:$4036` - soft reset (command bit 1)
 
 Clears `+$00` of all 8 tracks, `$C800-$C803`, `$C80A`, `$C807-$C809`,
-and sets `$FFDC = $77`. Does **not** touch the APU directly — silence comes
+and sets `$FFDC = $77`. Does **not** touch the APU directly - silence comes
 from the per-tick sweep in §3.5 step 6.
 
-### 3.3 `7:$405D` — pause (called from `00:061E`)
+### 3.3 `7:$405D` - pause (called from `00:061E`)
 
 For each of the 8 tracks with bit 7 set: `flags = (flags & $7F) | $43`
 (clear active, set bit 6 "was active", set bits 0/1 which are harmless).
-Then `$FFD4 = $FF`. **The APU registers are left exactly as they are** — a
+Then `$FFD4 = $FF`. **The APU registers are left exactly as they are** - a
 sustained note keeps ringing until its hardware envelope expires.
 
-### 3.4 `7:$4083` — resume (called from `00:063D`)
+### 3.4 `7:$4083` - resume (called from `00:063D`)
 
 For each track with bit 6 set: `flags ^= $C0` (restore bit 7, clear bit 6).
 
-### 3.5 `7:$412B` — the per-tick update (called from the Timer IRQ at `00:0990`)
+### 3.5 `7:$412B` - the per-tick update (called from the Timer IRQ at `00:0990`)
 
 ```
 1.  read $FFD2 command bitmask:
@@ -359,7 +359,7 @@ Tick rate: `rTMA=$BB`, `rTAC=$04` ⇒ `4096/(256-0xBB) = 4096/69 = 59.36 Hz`.
 **All durations in the data are in these ticks. There is no tempo divider and
 no tempo opcode.** A "tempo mod" must patch `$00249` (`rTMA`).
 
-### 3.6 `7:$40B8` — start song (command bit 0)
+### 3.6 `7:$40B8` - start song (command bit 0)
 
 ```
 HL = [$477D + 2*$FFD3]           ; song header pointer
@@ -389,11 +389,11 @@ diffing register writes between the first and second play of each SFX.
 
 ---
 
-## 4. SONG TABLE `7:$477D` — 47 entries
+## 4. SONG TABLE `7:$477D` - 47 entries
 
 Entry `i` = 16-bit LE pointer to a **header**: a list of 4-byte records
 `{track slot 0-7, hardware channel 0-3, stream ptr lo, stream ptr hi}`
-terminated by a single `$FF` byte. There is no bank field — everything is
+terminated by a single `$FF` byte. There is no bank field - everything is
 bank 7.
 
 **47 is proven twice**: `$477D + 47*2 = $47DB`, exactly where the shared
@@ -424,7 +424,7 @@ channel, and the music resumes control automatically when the SFX hits `END`.
 | `$09` | `$6601` | 0-3 | **death jingle** | `00:2A05`, right after `$C712 = $78` death countdown |
 | `$0A` | `$677E` | 0-3 | **ending / staff roll** | `00:36A3`, after a 180-frame hold, before the credits VRAM script |
 | `$0B` | `$6E4B` | 6 / ch1 | **pause** (ascending arpeggio, fading) | `00:062E`, inside the Start-pressed branch |
-| `$0C` | `$6E96` | 6 / ch0, 7 / ch1 | *no call site* — sound-test only | |
+| `$0C` | `$6E96` | 6 / ch0, 7 / ch1 | *no call site* - sound-test only | |
 | `$0D` | `$6EE3` | 5 / ch2, 4 / ch3 | title "start game" confirm | `00:0318` |
 | `$0E` | `$6F34` | 6 / ch0, 5 / ch1 | **menu cursor move** | `00:02F3`, `00:0406`, `00:041B`, `00:38DE` |
 | `$0F` | `$6F79` | 4 / ch3 | **jump** | `00:1A38` (jump code), `01:404B` (sets AirState=1) |
@@ -438,29 +438,29 @@ channel, and the music resumes control automatically when the SFX hits `END`.
 | `$17` | `$719B` | 5 / ch3 | tile/terrain break | `00:13E9`, `00:14FF`, `00:2D7F`, `01:7930` |
 | `$18` | `$71DB` | 5 / ch3 | **critical hit** | `00:26E0`, inside the `CP $08` crit window |
 | `$19` | `$7219` | 5 / ch2, 6 / ch3 | **enemy hit** | `00:26C1`, `00:3CFB`, `01:5B00` |
-| `$1A` | `$7261` | 5 / ch3 | — | `01:5192` |
-| `$1B` | `$72A1` | 5 / ch1 | — | `01:6CDA` (one of 4 selected ids) |
-| `$1C` | `$72E3` | 5 / ch3 | — | `01:5463`, `01:6F13`, `01:7467` |
+| `$1A` | `$7261` | 5 / ch3 | - | `01:5192` |
+| `$1B` | `$72A1` | 5 / ch1 | - | `01:6CDA` (one of 4 selected ids) |
+| `$1C` | `$72E3` | 5 / ch3 | - | `01:5463`, `01:6F13`, `01:7467` |
 | `$1D` | `$7323` | 5 / ch1 | enemy hit variant | `00:3C8D`, `01:5B00` |
-| `$1E` | `$735F` | 5 / ch3 | — | `01:56FB` (fires 1 frame in 8) |
-| `$1F` | `$7399` | 5 / ch1, 6 / ch3 | — | `01:6CDA` |
-| `$20` | `$73E4` | 5 / ch3 | — | `01:4460` |
+| `$1E` | `$735F` | 5 / ch3 | - | `01:56FB` (fires 1 frame in 8) |
+| `$1F` | `$7399` | 5 / ch1, 6 / ch3 | - | `01:6CDA` |
+| `$20` | `$73E4` | 5 / ch3 | - | `01:4460` |
 | `$21` | `$741C` | 5 / ch3 | **enemy destroyed** | `00:26ED`, `01:4438`, `01:4836` |
 | `$22` | `$7456` | 5 / ch1 | ballistic object thrown | `00:3110` (right after `$0CF3` alloc), `01:57A9` |
 | `$23` | `$7490` | 5 / ch3 | bat-rope release | `00:276C`, then `$C71E = 0` |
-| `$24` | `$74D0` | 6 / ch1, 5 / ch3 | — | `01:4736` |
+| `$24` | `$74D0` | 6 / ch1, 5 / ch3 | - | `01:4736` |
 | `$25` | `$7510` | 5 / ch3 | marker spawn / **debug-menu tone** | `01:7A8C`, `01:7AC7`; also `00:3896`, `00:3918` with cmd `$03` |
-| `$26` | `$754C` | 7 / ch3 | *no call site* — sound-test only | |
-| `$27` | `$7588` | 7 / ch1 | — | `01:62D2`, `01:715A` |
-| `$28` | `$75C4` | 7 / ch1 | — | `01:6CDA` |
-| `$29` | `$7604` | 7 / ch1 | — | `01:73DE` |
-| `$2A` | `$7640` | 7 / ch1 | — | `01:7426` |
-| `$2B` | `$767C` | 7 / ch3 | — | `01:7645` |
-| `$2C` | `$76B6` | 7 / ch1, 6 / ch3 | — | `01:6CDA` |
-| `$2D` | `$7713` | 7 / ch3 | — | `01:50B8`, `01:7150` |
+| `$26` | `$754C` | 7 / ch3 | *no call site* - sound-test only | |
+| `$27` | `$7588` | 7 / ch1 | - | `01:62D2`, `01:715A` |
+| `$28` | `$75C4` | 7 / ch1 | - | `01:6CDA` |
+| `$29` | `$7604` | 7 / ch1 | - | `01:73DE` |
+| `$2A` | `$7640` | 7 / ch1 | - | `01:7426` |
+| `$2B` | `$767C` | 7 / ch3 | - | `01:7645` |
+| `$2C` | `$76B6` | 7 / ch1, 6 / ch3 | - | `01:6CDA` |
+| `$2D` | `$7713` | 7 / ch3 | - | `01:50B8`, `01:7150` |
 | `$2E` | `$774F` | 0-3 / ch0-3 | **game over / continue** | `00:2AC9`, immediately after `DEC [$C767]` (lives) |
 
-Entries marked "—" have a confirmed call site but no determined in-game
+Entries marked "-" have a confirmed call site but no determined in-game
 meaning (UNCONFIRMED); settle by breakpointing the call site in an emulator.
 
 ### 4.2 Level → music table
@@ -485,7 +485,7 @@ under `DI`. If all 4 slots are busy the request is **silently dropped**.
 
 The Timer IRQ (`00:096C`) consumes exactly **one** slot per tick, at read index
 `$FFA1` (0,2,4,6 wrapping), copies the pair to `$FFD3`/`$FFD2`, zeroes the slot
-and advances the index — so it is a fixed-position 4-entry mailbox, not a true
+and advances the index - so it is a fixed-position 4-entry mailbox, not a true
 FIFO: the write side searches from slot 0, the read side round-robins.
 
 ### Command bits (decoded at `7:$412B`)
@@ -500,12 +500,12 @@ FIFO: the write side searches from slot 0, the read side round-robins.
 
 Observed combinations across all 66 call sites:
 
-* `$03` (stop + play) — **music**: ids `$00 $01 $02..$07 $08 $09 $0A $25 $2E`
-* `$01` (play only) — **SFX**: ids `$0B`..`$2D`
-* `$04` (fade out) — 3 sites: `00:336C`, `01:4EE9`, `01:72A3` (id byte `$01`
+* `$03` (stop + play) - **music**: ids `$00 $01 $02..$07 $08 $09 $0A $25 $2E`
+* `$01` (play only) - **SFX**: ids `$0B`..`$2D`
+* `$04` (fade out) - 3 sites: `00:336C`, `01:4EE9`, `01:72A3` (id byte `$01`
   is irrelevant since bit 0 is clear)
 
-Fade-in (`$08`) is **never requested by the game** — dead functionality.
+Fade-in (`$08`) is **never requested by the game** - dead functionality.
 There is no "set tempo" command.
 
 ---
@@ -523,10 +523,10 @@ There is no "set tempo" command.
   three constants as one-entry looping envelopes.
 * NR31 (length) is never written on the wave channel.
 * **The wave channel only retriggers when the waveform is re-uploaded.**
-  Normal notes just rewrite NR33/NR34 — i.e. it is inherently legato.
+  Normal notes just rewrite NR33/NR34 - i.e. it is inherently legato.
 * Waveforms present in the ROM: exactly two, at `7:$47EA` and `7:$47FA`.
   Sweeping all 47 songs finds **13 `WAVE_PTR` opcodes, all pointing at
-  `$47FA`** — `$47EA` is dead data. `$47FA` =
+  `$47FA`** - `$47EA` is dead data. `$47FA` =
   `00 11 12 46 9B DE EE FF FF EE ED B9 64 21 11 00` (a single asymmetric
   hump, 4-bit samples packed two per byte, high nibble first).
 
@@ -534,7 +534,7 @@ There is no "set tempo" command.
 
 * The pitch table is bypassed (`7:$41AC CP $03`). The note byte, **after
   transpose**, is written verbatim to **NR43** (`ch[+$0B]`), and `ch[+$0A]`
-  is forced to `3`, so NR44 gets `$03` (or `$83` when triggering) — bit 6
+  is forced to `3`, so NR44 gets `$03` (or `$83` when triggering) - bit 6
   (length enable) is never set.
 * Because the note range is `$00-$C7`, the reachable NR43 values are
   `$00-$C7`; the divisor-code / shift / width fields are used directly.
@@ -553,7 +553,7 @@ There is no "set tempo" command.
    `$C6FB` is drained and where the ROM bank is restored through `$C703` is
    inside an interruptible window. In JS the clean model is: run the whole
    sound tick atomically at 59.36 Hz, independent of the frame loop. Nothing in
-   the driver reads a video register, so this is safe — but the resulting
+   the driver reads a video register, so this is safe - but the resulting
    command latency (1 tick vs. possibly 2) will differ by a frame in edge
    cases.
 
@@ -563,7 +563,7 @@ There is no "set tempo" command.
 
 3. **The sequence stream is context-sensitive.** Whether a note (or `REST`,
    `TIE`, `DRUM`, `SLIDE`) consumes a duration byte depends on the *runtime*
-   value of `ch[+$04]`, which the `$F2`/`$D3` opcodes set — and which can be
+   value of `ch[+$04]`, which the `$F2`/`$D3` opcodes set - and which can be
    changed inside a `CALL`ed subroutine. A pure static parser can desync. My
    dumper tracks it linearly, which is correct for every song in this ROM
    (verified by coverage: every referenced byte decodes and every stream ends
@@ -584,7 +584,7 @@ There is no "set tempo" command.
    NRx4 gets bit 7. On real hardware that restarts the pulse phase and reloads
    the length counter. A JS APU that only applies NRx2 on trigger will match;
    one that treats NRx2 writes as continuous will not. Conversely, this means
-   **envelope "zombie mode" never occurs** — NRx2 is never written to a running
+   **envelope "zombie mode" never occurs** - NRx2 is never written to a running
    channel without an accompanying trigger (the sole exception, NR32 on the
    wave channel, has no envelope unit).
 
@@ -597,7 +597,7 @@ There is no "set tempo" command.
 
 9. **Pitch envelopes clamp, they do not wrap.** `7:$424F-$425D`: adding
    saturates the frequency LO byte at `$FF`, subtracting saturates at `$00`,
-   and only `$FFDA` is touched — the HI byte is untouched, so a pitch envelope
+   and only `$FFDA` is touched - the HI byte is untouched, so a pitch envelope
    can never cross a 256-unit boundary. Vibrato (`ch[+$19]`, `7:$420A`) *does*
    carry into the HI byte and updates the persistent `ch[+$0A]/+$0B`, so it
    drifts permanently unless reset by the next note.
@@ -606,7 +606,7 @@ There is no "set tempo" command.
     `owner+1`; a track outputs only if `trackIndex+1 >= owner`. Nothing ever
     lowers the value except `END` (`$FF`) and the start-song path. If an SFX
     track is stopped by a `$02` (reset) command instead of reaching `END`,
-    `$C800+hw` is cleared by `7:$4045`, so ownership resets — but a *paused*
+    `$C800+hw` is cleared by `7:$4045`, so ownership resets - but a *paused*
     track keeps its ownership.
 
 11. **No self-modifying code in bank 7.** Verified: no write to `$0000-$7FFF`
@@ -631,7 +631,7 @@ There is no "set tempo" command.
    `CALL`/`JUMP`/`LOOP` target plus every referenced envelope/wave pointer
    accounts for **11 137 of the 14 467 bytes** in `$477D-$7FFF`. The 3 330
    unaccounted bytes are, in full:
-   * `7:$7960-$7FFF` (1 696) — the VRAM script (not sound data)
+   * `7:$7960-$7FFF` (1 696) - the VRAM script (not sound data)
    * `$FF` padding between SFX blocks (1–3 bytes at 40 boundaries)
    * a stock, **unreferenced** template of 2 volume envelopes
      (`{$F1,6}{$90,0}` and `{$A0,0}`) plus 2 vibrato pitch envelopes
@@ -649,7 +649,7 @@ There is no "set tempo" command.
    See `rip/song_00_title.txt`.
 
 3. **Pitch table exactness.** With the `+$80` bias, indices 0/12/24/36/48/60/72
-   give 65.41 / 130.81 / 261.62 / 522.20 / 1048.58 / 2080.51 / 4228.13 Hz —
+   give 65.41 / 130.81 / 261.62 / 522.20 / 1048.58 / 2080.51 / 4228.13 Hz -
    exact C2..C8 within the resolution of the 11-bit frequency register.
    Without the bias the table makes no musical sense at all; this is the single
    most important decode result in this document.
@@ -680,5 +680,5 @@ SONG $0B  header $6E4B..$6E4F  1 track(s)
 | meaning of SFX ids `$1A $1B $1C $1E $1F $20 $24 $27-$2D` | breakpoint each `$0AE1` call site and watch the screen |
 | ~~whether any track relies on field inheritance across `$40B8`~~ | **SETTLED: yes.** `$40B8` leaves the frequency word loaded, and song `$00` opens with a `REST`, which retriggers without writing a pitch -- so it audibly plays the previous song's note. `tools/oracle/sound.py` now snapshots `$C800-$C94C` at the song-start tick and `sounddiff.mjs` seeds the port from it. |
 | `$FFD4` reader | none exists in the ROM; confirm with a read-watchpoint |
-| flag bit 2 of `ch[+$00]` | preserved by `AND $EC` but never set — likely a removed feature |
+| flag bit 2 of `ch[+$00]` | preserved by `AND $EC` but never set - likely a removed feature |
 | why `7:$47EA` (wave A) is dead | possibly used by a cut track; nothing references it |

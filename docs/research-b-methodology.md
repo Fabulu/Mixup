@@ -1,4 +1,4 @@
-# RESEARCH-B — ROM → NATIVE/JS PORTING: PRIOR ART & METHODOLOGY
+# RESEARCH-B - ROM → NATIVE/JS PORTING: PRIOR ART & METHODOLOGY
 
 Scope: what existing work we can *reuse* instead of inventing, for translating
 *Batman: Return of the Joker* (GB, Sunsoft 1992, MBC1, 128 KB) from disassembly
@@ -11,7 +11,7 @@ Every claim is tagged **[V]** = verified (I fetched the page / official docs) or
 
 ## 0. BOTTOM LINE
 
-1. **A Game Boy static recompiler DOES exist and is real** — `gb-recompiled`
+1. **A Game Boy static recompiler DOES exist and is real** - `gb-recompiled`
    (LR35902 → C). It is *not* the right tool for us, because its output is
    machine-generated register-shuffling C (4.2 M lines for one GB game), which
    is the exact opposite of "every routine is a JS function we can modify".
@@ -30,7 +30,7 @@ Every claim is tagged **[V]** = verified (I fetched the page / official docs) or
 
 ---
 
-## 1. STATIC RECOMPILATION — WHAT EXISTS
+## 1. STATIC RECOMPILATION - WHAT EXISTS
 
 ### 1.1 Game Boy: `gb-recompiled` **[V]**
 
@@ -42,7 +42,7 @@ Every claim is tagged **[V]** = verified (I fetched the page / official docs) or
   constant pointers loaded into `HL`/`DE`, and *scans backwards for jump-table
   patterns* to discover branch targets. Claims **>98% code discovery** on complex
   ROMs without dynamic traces. **[V]**
-- Claimed compatibility: recompiles **1592/1609 ROMs (98.9%)** — but the authors
+- Claimed compatibility: recompiles **1592/1609 ROMs (98.9%)** - but the authors
   explicitly state *recompilation success ≠ playability*. Only ~7 titles are
   validated playable (Tetris, Pokémon Blue, DK Land, Kirby's Dream Land, Link's
   Awakening, Castlevania, Super Mario Land). **[V]**
@@ -55,7 +55,7 @@ Every claim is tagged **[V]** = verified (I fetched the page / official docs) or
   one-to-one. Control flow becomes `if` + function calls. **[V]**
 - **Not** supported: RAM-executed code, self-modifying code. Unresolved indirect
   jumps fall back to **a small embedded interpreter**. **[V]**
-- Downstream showcase: `github.com/sp00nznet/LinksAwakening` — full static
+- Downstream showcase: `github.com/sp00nznet/LinksAwakening` - full static
   recompilation of *Link's Awakening DX* to a native Windows app,
   **~4.2 million lines / ~115 MB of generated C**, playable start to finish,
   with a full scanline PPU, 4-channel APU at 44.1 kHz, CGB banking/HDMA/double-
@@ -64,7 +64,7 @@ Every claim is tagged **[V]** = verified (I fetched the page / official docs) or
 **Verdict for us: reject as a translator, mine as a reference.**
 Reasons: (a) it still ships a PPU + APU + timing emulator as `libgbrt`, which is
 exactly the "emulator" the user rejected; (b) 4.2 M lines of `ctx->a = ...` is
-not modifiable game code — you cannot "change the jump height" in it; (c) it
+not modifiable game code - you cannot "change the jump height" in it; (c) it
 targets C/SDL2, not JS. What it *does* prove: our ROM's indirect jumps
 (`JP HL`, jump tables) are tractable by static analysis, and a backwards
 jump-table scan is a known-good technique if we hit an unresolved dispatch.
@@ -89,13 +89,13 @@ jump-table scan is a known-good technique if we hit an unresolved dispatch.
 
 - NES/SNES/Genesis static recompilers exist mostly as academic or abandoned
   one-offs; nothing with the maturity of N64Recomp surfaced. `jitboy`
-  (`sysprog21/jitboy`) is a **dynamic** recompiler (JIT) for GB, not static — it
+  (`sysprog21/jitboy`) is a **dynamic** recompiler (JIT) for GB, not static - it
   is an emulator with a fast core, irrelevant to us.
 - There is no SM83 → JavaScript recompiler of any maturity. **[I, searched]**
 
 ---
 
-## 2. THE REFERENCE ORACLE — CHEAPEST PATH (HIGHEST-VALUE SECTION)
+## 2. THE REFERENCE ORACLE - CHEAPEST PATH (HIGHEST-VALUE SECTION)
 
 We deferred building our own emulator oracle. **We should never build one.**
 Off-the-shelf tooling gives us a better oracle than we would write.
@@ -103,7 +103,7 @@ Off-the-shelf tooling gives us a better oracle than we would write.
 Ranked recommendation: **PyBoy (primary) → BizHawk Lua (secondary/TAS) →
 mGBA Lua (tertiary) → Emulicious/BGB (interactive debugging only)**.
 
-### 2.1 PyBoy — THE RECOMMENDATION **[V]**
+### 2.1 PyBoy - THE RECOMMENDATION **[V]**
 
 `pip install pyboy`. Pure-Python API (Cython core), MIT-ish, actively maintained,
 explicitly designed for "high-speed, **deterministic** emulation for AI/ML
@@ -136,14 +136,14 @@ Everything we need, all verified:
 **Why `hook_register` is the killer feature.** It upgrades us from *frame-level*
 diffing to **function-level differential testing**. We can hook the entry address
 of every routine in the master reference, snapshot the machine state at that
-instant, and compare it against the state our JS function saw — so when a
+instant, and compare it against the state our JS function saw - so when a
 divergence appears we know *which ROM routine* first misbehaved, not just "frame
 900 is wrong". Nothing else in this document is worth as much as that.
 
-#### 2.1.1 Concrete oracle script — per-frame RAM trace
+#### 2.1.1 Concrete oracle script - per-frame RAM trace
 
 ```python
-# tools/oracle_trace.py — writes one binary record per frame
+# tools/oracle_trace.py - writes one binary record per frame
 import hashlib, struct, zlib
 from pyboy import PyBoy
 
@@ -179,10 +179,10 @@ three ranges from `GameState` through the same layout, and diff. First differing
 frame + first differing address = the bug, localised to one routine via the RAM
 map in `docs/recon-2-ram-map.md`.
 
-#### 2.1.2 Concrete oracle script — function-level I/O capture
+#### 2.1.2 Concrete oracle script - function-level I/O capture
 
 ```python
-# tools/oracle_functions.py — capture inputs/outputs of one ROM routine
+# tools/oracle_functions.py - capture inputs/outputs of one ROM routine
 from pyboy import PyBoy
 import json
 
@@ -218,12 +218,12 @@ block. That is how we prove `player.js` before the renderer even exists.
 
 > Accuracy caveat **[I]**: PyBoy is a *good* but not cycle-perfect emulator.
 > For **game-logic RAM state** (what we actually port), it is more than adequate.
-> For anything that depends on sub-scanline PPU/STAT timing — and this game has a
-> STAT raster program at `00:0857` — do not treat PyBoy as authority; cross-check
+> For anything that depends on sub-scanline PPU/STAT timing - and this game has a
+> STAT raster program at `00:0857` - do not treat PyBoy as authority; cross-check
 > against BizHawk/SameBoy or Emulicious. Our port replaces the raster program with
 > a compositor anyway, so this is a low-risk area.
 
-### 2.2 BizHawk — the TAS-grade secondary oracle **[V]**
+### 2.2 BizHawk - the TAS-grade secondary oracle **[V]**
 
 Full Lua 5.4 with the standard `io` library (so it can write files directly,
 unlike mGBA), TASVideos-grade determinism, and a real movie format.
@@ -256,14 +256,14 @@ end)
 while true do emu.frameadvance() end
 ```
 
-BizHawk also has `event.on_bus_exec` — the same function-entry hook trick as
+BizHawk also has `event.on_bus_exec` - the same function-entry hook trick as
 PyBoy, if we want a second opinion on a specific routine.
 
 **Use BizHawk when:** we need a TAS-quality deterministic movie (`.bk2`), or we
-suspect PyBoy inaccuracy. **Use PyBoy for the daily loop** — it scripts in-process,
+suspect PyBoy inaccuracy. **Use PyBoy for the daily loop** - it scripts in-process,
 runs unattended in CI, and needs no GUI.
 
-### 2.3 mGBA Lua — capable but awkward for our use **[V]**
+### 2.3 mGBA Lua - capable but awkward for our use **[V]**
 
 mGBA 0.10+ ships Lua scripting and **does support the Game Boy platform**.
 Verified from `mgba.io/docs/scripting.html`:
@@ -295,7 +295,7 @@ Use mGBA only if we specifically want its GB core as a third opinion.
 ### 2.4 Emulicious / BGB / SameBoy **[I]**
 
 - **Emulicious** has an excellent debugger, trace logging with per-instruction
-  expression evaluation, a memory tracer, and VS Code integration — but no
+  expression evaluation, a memory tracer, and VS Code integration - but no
   general scripting API surfaced. Best for *interactive* investigation of a
   specific routine, not for automated trace generation.
 - **BGB** likewise: superb debugger, no scripting API.
@@ -303,7 +303,7 @@ Use mGBA only if we specifically want its GB core as a third opinion.
   its *reference emulator*, with a "SameBoy reference tracer + comparator" in its
   debug tools **[V, from the LinksAwakening README]**. It has a debugger console
   that accepts command scripts but no Lua/Python binding. Note BizHawk has an
-  open issue about adopting SameBoy as its GB/GBC core **[I]** — worth checking
+  open issue about adopting SameBoy as its GB/GBC core **[I]** - worth checking
   whether current BizHawk already ships it, which would give us SameBoy accuracy
   *plus* Lua in one tool.
 - **All of these accept RGBDS `.sym` files** (`rgbds.gbdev.io/sym`), the same
@@ -326,13 +326,13 @@ can consume.
   The Input Log is **UTF-8 text**; each frame is a line starting with `|`;
   boolean buttons are one character when pressed and `.` when not; analog is a
   5-digit space-padded number followed by a comma. **This is trivially parseable
-  — a 30-line JS reader.** Movies depend on deterministic playback by design.
+  - a 30-line JS reader.** Movies depend on deterministic playback by design.
 - **PyBoy `.replay`** **[V]**: zlib-compressed JSON with frame numbers, key
   events, and base64 160×144 RGB frames. Self-contained (frames included!), so
   it doubles as a golden-frame reference. Recommendation from the docs: start
   from a savestate embedded in the replay for reproducibility.
-- **Recommendation:** define our own trivial canonical format —
-  `[{frame:int, press:[...], release:[...]}]` JSON — and write two 30-line
+- **Recommendation:** define our own trivial canonical format -
+  `[{frame:int, press:[...], release:[...]}]` JSON - and write two 30-line
   converters (`.bk2 → ours`, `ours → PyBoy button calls`). Do **not** adopt a
   vendor format as the source of truth; the Input Log semantics of `.bk2` are the
   only part we need, and both directions are a day's work at most.
@@ -341,7 +341,7 @@ can consume.
 
 ## 4. HAND-DECOMPILATION PROJECTS THAT SHIPPED PLAYABLE PORTS
 
-### 4.1 OpenRCT2 — **the closest methodological analogue to our project** **[V]**
+### 4.1 OpenRCT2 - **the closest methodological analogue to our project** **[V]**
 
 RollerCoaster Tycoon 2 was 100% hand-written x86 assembly. The port strategy:
 
@@ -357,7 +357,7 @@ RollerCoaster Tycoon 2 was 100% hand-written x86 assembly. The port strategy:
 **Why this matters to us:** they were *playable at every commit*. There was never
 a "big bang" integration. The bisect granularity was one function.
 
-**Our equivalent — and this is the concrete recommendation:** a **hybrid harness**
+**Our equivalent - and this is the concrete recommendation:** a **hybrid harness**
 where PyBoy runs the real ROM as the "original binary", and a per-routine switch
 decides whether frame N's `playerUpdate` comes from the ROM or from our JS. Using
 `hook_register` on a routine's entry, we can (a) run the ROM routine, snapshot the
@@ -365,11 +365,11 @@ state delta, (b) run our JS routine on the same input state, (c) assert equality
 and (d) if it passes, flip that routine's switch permanently. The routine list in
 `01-PORT-PLAN.md` becomes a burndown chart with a machine-checked definition of
 "done". *(Note: we cannot literally write our JS results back into PyBoy's RAM to
-let the ROM continue from our state without extra work — PyBoy exposes memory
+let the ROM continue from our state without extra work - PyBoy exposes memory
 writes, so it is feasible, but the honest cheap version is (a)–(c) as a
 *shadow/comparison* harness rather than true substitution. **[I]**)*
 
-### 4.2 Devilution / devilutionX (Diablo) — function-level binary matching **[V]**
+### 4.2 Devilution / devilutionX (Diablo) - function-level binary matching **[V]**
 
 - `diasurgical/devilution-comparer`: given a function, it **disassembles that
   function from the devilution build, then disassembles the original binary at the
@@ -384,7 +384,7 @@ writes, so it is feasible, but the honest cheap version is (a)–(c) as a
   refactored, feature-added game.
 
 **Transferable:** (1) the split between "matching artifact" (devilution) and
-"playable modern port" (devilutionX) as **two separate repos/branches** —
+"playable modern port" (devilutionX) as **two separate repos/branches** -
 refactoring never endangers the proof of correctness; (2) invest in the comparer
 tool early, it is the throughput bottleneck.
 
@@ -397,17 +397,17 @@ tool early, it is the throughput bottleneck.
   was tractable. Optimised builds (OoT) turned matching into trial-and-error
   puzzle solving. **[I]**
 - Once matching source existed, PC ports (`sm64-port`, `sm64ex`) appeared
-  *quickly* — the hard part was the decomp, the port was comparatively cheap.
+  *quickly* - the hard part was the decomp, the port was comparatively cheap.
 
 **Transferable, and directly relevant:** our source is **hand-written assembly**,
-which is the *good* case — there is no compiler between us and the intent, so
+which is the *good* case - there is no compiler between us and the intent, so
 every routine has a direct, readable JS shape. But there is also **no "correct"
 answer to converge on**: a matching decomp has byte-equality of the rebuilt ROM as
 its oracle; we have thrown that away by targeting JS. **We must replace ROM-
 byte-equality with state-trace equality (§2), or we have no oracle at all.** This
 is the single biggest risk in the project and the reason §2 matters so much.
 
-### 4.4 Ship of Harkinian (OoT) — the asset/code split **[V]**
+### 4.4 Ship of Harkinian (OoT) - the asset/code split **[V]**
 
 - Built on the ZRET decomp (21 months to human-readable, recompilable C).
 - The port sits on **`libultraship`**, a reimplementation of the N64 `libultra`
@@ -418,11 +418,11 @@ is the single biggest risk in the project and the reason §2 matters so much.
 
 **Transferable:** (1) build a **thin compatibility shim** that mirrors the shape of
 the original hardware API (our `render/`, `sound/`, `input.js` are exactly this)
-so game code needs minimal edits — this is what `01-PORT-PLAN.md` already does;
-(2) **ship an extractor, not assets** — this is both the legally safe posture and
+so game code needs minimal edits - this is what `01-PORT-PLAN.md` already does;
+(2) **ship an extractor, not assets** - this is both the legally safe posture and
 the one every major project converged on independently.
 
-### 4.5 Another World / "Fabother World" — the architecture-discovery win **[V]**
+### 4.5 Another World / "Fabother World" - the architecture-discovery win **[V]**
 
 Fabien Sanglard spent ~2 weeks reverse-engineering the DOS binary (building on
 Gregory Montoir's binary→C++ work) and found the game was **a bytecode VM**: all
@@ -433,12 +433,12 @@ only the VM, with the bytecode untouched.
 **Transferable, and we should act on it:** *find our project's VM before writing a
 line of code.* We already have two: the **VRAM script interpreter** at `00:0A0E`
 and the **56-opcode sound sequencer** in bank 7. For those two, do **not** port the
-data — port the interpreter and keep the original byte streams as data assets.
+data - port the interpreter and keep the original byte streams as data assets.
 That is dramatically less code, dramatically less risk, and automatically correct
 for every menu/cutscene/song. `01-PORT-PLAN.md` already has this right; this is
 independent confirmation that it is the correct call.
 
-### 4.6 Chocolate Doom — the regression harness to copy **[V]**
+### 4.6 Chocolate Doom - the regression harness to copy **[V]**
 
 Chocolate Doom's fidelity claim rests on **`statcheck`**: a Python script that runs
 the engine over **all the demos in the Compet-N archive** and checks the output
@@ -446,20 +446,20 @@ matches expectations. It uses thousands of recorded demos as desync regression
 tests.
 
 **Honest limitation they document themselves:** `statdump` only captures
-*intermission-screen statistics*, so **a match does not prove no desync — only a
+*intermission-screen statistics*, so **a match does not prove no desync - only a
 mismatch proves one.** They accepted a coarse-but-cheap signal over a perfect,
 expensive one, and it worked.
 
 **Transferable, and this is the model for our CI:** a corpus of recorded input
 scripts (§3) + a cheap per-frame state hash. We get a *far better* signal than
 Chocolate Doom did, because our hash can cover all of WRAM/HRAM/OAM, not just an
-end-of-level summary. Build the corpus early — every playtest session should be
+end-of-level summary. Build the corpus early - every playtest session should be
 recorded and promoted into the regression set.
 
 ### 4.7 Others, briefly **[I]**
 
 - **Cave Story / NXEngine**: reimplementation from reverse-engineering rather than
-  decomp; verified by eye. Lesson is mostly negative — no systematic oracle meant
+  decomp; verified by eye. Lesson is mostly negative - no systematic oracle meant
   long-tail behavioural bugs surfaced for years.
 - **Sonic (Retro Engine / RSDK)**: Christian Whitehead's engine was a
   *reimplementation from observation*, not a decomp, and its fidelity came from
@@ -472,7 +472,7 @@ recorded and promoted into the regression set.
   reimplementation**, *not* based on the decomp. It got a DMCA takedown from
   Nintendo **[V]**. Two lessons: a full hand-reimplementation of a GB action-
   adventure is roughly 100 kLOC of work, and distribution posture matters (ship
-  code + extractor, never assets — see §4.4).
+  code + extractor, never assets - see §4.4).
 
 ---
 
@@ -483,24 +483,24 @@ Ranked by cost/benefit for us:
 | Technique | Cost | Signal | Verdict |
 |---|---|---|---|
 | **Per-frame state-vector hash** (WRAM+HRAM+OAM sha1) vs PyBoy trace | Low | Very high; pinpoints first divergent frame | **Adopt as the primary oracle** |
-| **Function I/O fixtures** via `hook_register` (§2.1.2) | Low | Highest; pinpoints the divergent *routine* | **Adopt — do this first, before frame diffing** |
+| **Function I/O fixtures** via `hook_register` (§2.1.2) | Low | Highest; pinpoints the divergent *routine* | **Adopt - do this first, before frame diffing** |
 | **Deterministic input replay** (own JSON format, §3) | Low | Prerequisite for everything above | **Adopt** |
 | **Golden-frame hashing** (framebuffer PNG/hash per N frames) | Medium | Catches renderer bugs the RAM diff can't | Adopt *later*, once the compositor is real; expect legitimate divergence since we replace the raster program |
 | **Full state-vector diff** (not just hash) stored compressed | Medium | Tells you *which byte* diverged → which variable | Adopt; storage is cheap (§2.1.1 stores it) |
-| **Reference-emulator instruction tracer + comparator** (SameBoy, as gb-recompiled did) | High | Instruction-exact | Skip — we are not producing instruction-exact code |
+| **Reference-emulator instruction tracer + comparator** (SameBoy, as gb-recompiled did) | High | Instruction-exact | Skip - we are not producing instruction-exact code |
 | **ROM byte-equality** (the `pret`/sm64 standard) | N/A | Perfect | **Unavailable to us by construction.** Named here so nobody proposes it later. |
 
 **Sequencing recommendation:** function fixtures → per-frame RAM hash → per-frame
 full state diff → golden frames. Each layer only gets built when the one before it
 starts producing false negatives.
 
-**Divergence-tolerance policy — decide this before writing the harness.** Three
+**Divergence-tolerance policy - decide this before writing the harness.** Three
 categories, and they need different rules:
 1. **Must match exactly**: player/enemy/actor state, collision results, RNG,
    score/HP, gameflow variables.
 2. **Allowed to diverge**: anything downstream of the STAT raster program, VRAM
    contents (we composite differently), OAM ordering *if* our renderer sorts
-   differently — though `01-PORT-PLAN.md` correctly preserves main-loop call order
+   differently - though `01-PORT-PLAN.md` correctly preserves main-loop call order
    precisely to keep OAM ordering identical, so prefer keeping this in category 1.
 3. **Will diverge and that's the point**: everything a mod touches. The harness
    must run against a **"vanilla" mod profile** with all tunables at ROM defaults;
@@ -539,7 +539,7 @@ const add8c = (a, b) => { const r = a + b; return { v: r & 0xFF, c: r > 0xFF }; 
 Store all fixed-point fields as plain integers in their original scale (12.4 for
 positions, per the master reference) and convert to pixels **only at the last
 moment inside the renderer**. Never let a fixed-point value become a float, not
-even transiently — one `/ 16` in the physics path silently destroys reproducibility
+even transiently - one `/ 16` in the physics path silently destroys reproducibility
 and the state diff will catch it 400 frames later in a confusing place.
 
 `01-PORT-PLAN.md` §b already commits to signed 16-bit 12.4 for position and 8-bit
@@ -549,14 +549,14 @@ the physics/collision modules.*
 
 ---
 
-## 7. HAND-WRITTEN JS PORTS OF GAME BOY GAMES — PRIOR ART IS ESSENTIALLY EMPTY
+## 7. HAND-WRITTEN JS PORTS OF GAME BOY GAMES - PRIOR ART IS ESSENTIALLY EMPTY
 
 Searched multiple phrasings. **[V, negative result]**
 
 - Everything that surfaces under "Game Boy game in JavaScript" is an **emulator**
   (Imran Nazar's 8-part series, gbajs2, Boyo, jsGB, etc.).
 - The nearest thing is `tcraven/zelda-game`, a JS demo "based on Link's Awakening"
-  — a fan recreation from observation, not a translation from disassembly, with no
+  - a fan recreation from observation, not a translation from disassembly, with no
   writeup.
 - **There is no published "I rewrote a Game Boy game in JavaScript from its
   disassembly" writeup.** No methodology to borrow, and no cautionary tale either.
@@ -568,7 +568,7 @@ enough to be worth writing up**, and the writeup is close to free if we keep the
 
 ---
 
-## 8. RECOMMENDED ADOPTIONS — CONCRETE, ORDERED
+## 8. RECOMMENDED ADOPTIONS - CONCRETE, ORDERED
 
 1. **Emit an RGBDS `.sym` file from the disassembly.** ~1 hour. Unlocks
    symbol-aware hooking in PyBoy (`symbols=`), Emulicious, BGB, and BizHawk.
@@ -584,7 +584,7 @@ enough to be worth writing up**, and the writeup is close to free if we keep the
 5. **Adopt the devilution two-artifact split (§4.2):** mechanical translation
    first, readability refactor *only* behind a passing diff, and keep the
    mechanical version reachable in git history so a regression can be bisected
-   against it. `01-PORT-PLAN.md` porting-style rule #1 already says this — hold
+   against it. `01-PORT-PLAN.md` porting-style rule #1 already says this - hold
    the line on it.
 6. **Port the two interpreters, not their data (§4.5):** VRAM script `00:0A0E`
    and the bank-7 sequencer. Keep byte streams as assets.
@@ -601,7 +601,7 @@ enough to be worth writing up**, and the writeup is close to free if we keep the
   definition of "correct" and will accrue silent behavioural drift. Do them first.
 - **PyBoy accuracy on STAT/PPU timing is unverified by me.** Low practical risk
   (we replace the raster program), but do not use PyBoy to adjudicate a
-  raster-timing question — use SameBoy or Emulicious.
+  raster-timing question - use SameBoy or Emulicious.
 - **Mods and the oracle are in tension.** The harness must run a locked "vanilla"
   tunables profile, or the diff becomes noise. Bake this into `mods.js` from day
   one rather than retrofitting it.
@@ -610,7 +610,7 @@ enough to be worth writing up**, and the writeup is close to free if we keep the
   bit-exactly** and keep any substitute as a mod-only option.
 - **Legal/distribution.** Every project in §4 that shipped assets got taken down
   (LADX HD) and every one that shipped code + an extractor survived (SoH,
-  devilutionX, OpenRCT2, gb-recompiled — the last of which even gitignores its own
+  devilutionX, OpenRCT2, gb-recompiled - the last of which even gitignores its own
   generated `rom.c`). Ship the extractor; never the extracted assets.
 
 ---
@@ -618,25 +618,25 @@ enough to be worth writing up**, and the writeup is close to free if we keep the
 ## 10. SOURCES
 
 **Fetched directly (VERIFIED):**
-- mGBA Scripting API — https://mgba.io/docs/scripting.html
-- mGBA Scripting API (dev) — https://mgba.io/docs/dev/scripting.html
-- BizHawk Lua Functions — https://tasvideos.org/Bizhawk/LuaFunctions
-- PyBoy source `pyboy/pyboy.py` — https://github.com/Baekalfen/PyBoy/blob/master/pyboy/pyboy.py
-- gb-recompiled (upstream) — https://github.com/arcanite24/gb-recompiled
-- gb-recompiled (fork) — https://github.com/sp00nznet/gb-recompiled
-- LinksAwakening static recomp — https://github.com/sp00nznet/LinksAwakening
+- mGBA Scripting API - https://mgba.io/docs/scripting.html
+- mGBA Scripting API (dev) - https://mgba.io/docs/dev/scripting.html
+- BizHawk Lua Functions - https://tasvideos.org/Bizhawk/LuaFunctions
+- PyBoy source `pyboy/pyboy.py` - https://github.com/Baekalfen/PyBoy/blob/master/pyboy/pyboy.py
+- gb-recompiled (upstream) - https://github.com/arcanite24/gb-recompiled
+- gb-recompiled (fork) - https://github.com/sp00nznet/gb-recompiled
+- LinksAwakening static recomp - https://github.com/sp00nznet/LinksAwakening
 
-**Search-result summaries (INFERRED — not individually fetched):**
-- N64Recomp — https://github.com/N64Recomp/N64Recomp
-- Zelda64Recomp — https://github.com/Zelda64Recomp/Zelda64Recomp
-- BizHawk BK2 format — https://tasvideos.org/Bizhawk/BK2Format
-- OpenRCT2 (Wikipedia / RCT wiki) — https://en.wikipedia.org/wiki/OpenRCT2
-- devilution-comparer — https://github.com/diasurgical/devilution-comparer
-- devilution CONTRIBUTING — https://github.com/diasurgical/devilution/blob/master/docs/CONTRIBUTING.md
-- Ship of Harkinian / Shipwright — https://github.com/HarbourMasters/Shipwright
-- Chocolate Doom statcheck — https://www.chocolate-doom.org/wiki/index.php?title=Statcheck
-- Another World code review — https://fabiensanglard.net/anotherWorld_code_review/
-- RGBDS .sym spec — https://rgbds.gbdev.io/sym
-- pokered build system — https://github.com/pret/pokered
-- PyBoy record_replay plugin — https://docs.pyboy.dk/plugins/index.html
-- Emulicious debugger — https://emulicious.net/home/emulicious-debugger/
+**Search-result summaries (INFERRED - not individually fetched):**
+- N64Recomp - https://github.com/N64Recomp/N64Recomp
+- Zelda64Recomp - https://github.com/Zelda64Recomp/Zelda64Recomp
+- BizHawk BK2 format - https://tasvideos.org/Bizhawk/BK2Format
+- OpenRCT2 (Wikipedia / RCT wiki) - https://en.wikipedia.org/wiki/OpenRCT2
+- devilution-comparer - https://github.com/diasurgical/devilution-comparer
+- devilution CONTRIBUTING - https://github.com/diasurgical/devilution/blob/master/docs/CONTRIBUTING.md
+- Ship of Harkinian / Shipwright - https://github.com/HarbourMasters/Shipwright
+- Chocolate Doom statcheck - https://www.chocolate-doom.org/wiki/index.php?title=Statcheck
+- Another World code review - https://fabiensanglard.net/anotherWorld_code_review/
+- RGBDS .sym spec - https://rgbds.gbdev.io/sym
+- pokered build system - https://github.com/pret/pokered
+- PyBoy record_replay plugin - https://docs.pyboy.dk/plugins/index.html
+- Emulicious debugger - https://emulicious.net/home/emulicious-debugger/

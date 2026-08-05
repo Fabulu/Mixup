@@ -1,4 +1,4 @@
-# THE oracle — one harness, pinned to VERSION-B
+# THE oracle - one harness, pinned to VERSION-B
 
 status: wave 1, built and measured 2026-07-31.
 Evidence, with every command and its actual output:
@@ -20,7 +20,7 @@ games/ddpdoj/tools/oracle/
   dumpcpu.lua      dumps the DECRYPTED :maincpu region for derive.py/unidasm
   landmarks.json   the derived table, ADDRESSES ONLY, committed
   scenarios.json   the corpus
-  .gitignore       out/ *.tsv *.bin *.png *.state — nothing ROM-derived commits
+  .gitignore       out/ *.tsv *.bin *.png *.state - nothing ROM-derived commits
 ```
 
 ```
@@ -29,7 +29,7 @@ python pgm.py landmarks    the per-build landmark table
 python pgm.py trace 900    one probe run
 python pgm.py scen         the whole corpus, lag census on every scenario
 python pgm.py gate         THE determinism gate (add --break-cfg to see it RED)
-python pgm.py snap         framebuffer PNGs — LOOK AT THEM
+python pgm.py snap         framebuffer PNGs - LOOK AT THEM
 python pgm.py seed         produce the VERSION-B-preselected NVRAM
 python pgm.py seedstate    savestate at the game's own sample point + resume
 python pgm.py inputlead    expect 0
@@ -42,8 +42,8 @@ python pgm.py overrun      FORCE AN OVERRUN: the 0-nop control, then a sweep
 
 ## 1. THE TRAP THAT DEFINES THIS CARTRIDGE
 
-`ddpdojblk` contains **two complete games**. It boots to a chooser —
-`1: VERSION-A (OLD)` / `2: VERSION-B (NEW)` — and the countdown's silent default
+`ddpdojblk` contains **two complete games**. It boots to a chooser -
+`1: VERSION-A (OLD)` / `2: VERSION-B (NEW)` - and the countdown's silent default
 is **VERSION-A = 2002.04.05 MASTER VER, which is not Black Label**.
 
 Measured, wave 1, as a controlled pair of runs through the same harness:
@@ -56,14 +56,14 @@ Measured, wave 1, as a controlled pair of runs through the same harness:
 **Every probe run declares which build it is in and fails if it is the wrong
 one.** The discriminator is the top nibble of the PC that armed the frame
 semaphore (`$13xxxx` = A, `$23xxxx` = B), plus the rule that the run must still
-be in the required build on its LAST frame — the chooser itself is build-A code,
+be in the required build on its LAST frame - the chooser itself is build-A code,
 so "some frames were in B" is not enough.
 
 ## 2. The sample point, and why it is a write tap
 
 The main loop's call #5 arms a vblank semaphore at `$803940` with the number of
 vblanks to wait, then busy-waits; the IRQ6 handler releases it. **The sample
-point is the ARM WRITE — the 0 → non-zero transition of `$803940`.** At that
+point is the ARM WRITE - the 0 → non-zero transition of `$803940`.** At that
 instant the frame's work is done and nothing of the next frame has begun.
 
 On the 68000 a *read* tap fires on the **prefetch**, so it cannot prove that an
@@ -77,7 +77,7 @@ run that prints nothing at all and exits 0. Three agents have hit this.
 
 ## 3. The landmark table (`python pgm.py landmarks`)
 
-Re-derived on BOTH builds by `derive.py` from the decrypted `:maincpu` region —
+Re-derived on BOTH builds by `derive.py` from the decrypted `:maincpu` region -
 not copied from any document. The two builds share the RAM layout and not one
 code address; the per-call deltas run from +0xFFC5C to +0x100C94, so **no
 address may be translated by adding 0x100000**.
@@ -87,7 +87,7 @@ RAM, shared by both builds: `$803940` semaphore · `$80390A` frame counter
 frame sync) · `$803970/72/74` P1 raw/edge/prev · `$801470/$801478` IRQ4/IRQ6 RAM
 vectors · `$80FA84` IRQ4 phase · `$800000-$8009FF` sprite display list.
 
-| | build A (`$13xxxx`, MASTER) | build B (`$23xxxx`, **BLACK — the target**) |
+| | build A (`$13xxxx`, MASTER) | build B (`$23xxxx`, **BLACK - the target**) |
 |---|---|---|
 | loop head / tail | `$13C356` / `$13C380` | `$23BFDC` / `$23C006` |
 | counters | `$13BE8C` | `$23BE8C` |
@@ -110,13 +110,13 @@ vectors · `$80FA84` IRQ4 phase · `$800000-$8009FF` sprite display list.
    addresses; these are the matching spin addresses.
 2. **Build B has a THREE-vblank arm (`$23C25C: move.b #$3,$803940`) that build A
    does not have**, and also arms through a register (`$23C38A: moveq #$2,D0 /
-   move.b D0,$803940`). A search for `move.b #imm,$803940` — which is what the
-   recons ran — is blind to the second one. So build B has a 19.7 Hz scheduling
+   move.b D0,$803940`). A search for `move.b #imm,$803940` - which is what the
+   recons ran - is blind to the second one. So build B has a 19.7 Hz scheduling
    path as well as the 29.6 Hz one. **Both are scheduling, not slowdown**, and
    both will masquerade as slowdown to anything that only counts frames. The
    probe reports which value was armed on every frame (`armed_vblanks` census).
 
-## 4. The lag census — printed by every scenario, never optional
+## 4. The lag census - printed by every scenario, never optional
 
 ```
 CENSUS irq6_per_logicframe 1:2584 2:15 3:1
@@ -129,19 +129,19 @@ CENSUS max_sprite_entries=122
 CENSUS build_by_armpc_top_nibble 1:699 2:1901
 ```
 
-* `irq6 > 1` — the logic frame spanned more than one video frame: case (B).
-* `releases == 0` — the IRQ6 (A) gate fired and its four subroutines were
+* `irq6 > 1` - the logic frame spanned more than one video frame: case (B).
+* `releases == 0` - the IRQ6 (A) gate fired and its four subroutines were
   skipped **while the input read before the gate still ran**. A dropped frame is
   not uniform.
-* `armed_vblanks` — 2 or 3 is the deliberate divider, **not** an overrun.
-* `work_cycles` — cycles from the ISR6 release that started the frame to the arm
+* `armed_vblanks` - 2 or 3 is the deliberate divider, **not** an overrun.
+* `work_cycles` - cycles from the ISR6 release that started the frame to the arm
   that ended it, against the exact 337,920-cycle budget (20 MHz ÷ 15625/264 Hz).
   Free: no extra tap. The spin meter measures the same thing from the other side.
 
 **Every one of these numbers is MAME-timed and UNCALIBRATED.** MAME is
 authoritative for WHAT the game computes and not for WHEN.
 
-## 5. Determinism — a gate, seen red
+## 5. Determinism - a gate, seen red
 
 `pgm.py gate` runs the boot→stage-1 VERSION-B scenario twice and compares the
 whole trace byte for byte. Measured: **IDENTICAL**. With `--break-cfg` (MAME's
@@ -163,8 +163,8 @@ $80209B = 08 vs 07     $80209D = 01 vs 1F        (month, day)
 $8020AC..AD   $80211C..1D   $802204..05   $8022C8..C9   = 0801 vs 071F
 ```
 
-Everything else — sprite list, palette, sprite buffer, BG, TX, framebuffer
-pixels, the frame counters, work, spin — was identical. Those five 8-byte words
+Everything else - sprite list, palette, sprite buffer, BG, TX, framebuffer
+pixels, the frame counters, work, spin - was identical. Those five 8-byte words
 are therefore carved out of `d_ram` and reported as their own column `d_date`,
 named in `frame.lua` with the measurement that justifies each. **Reported, not
 hidden.** With the carve-out, two runs 26 hours apart differ in `d_date` and in
@@ -181,7 +181,7 @@ nothing else.
   `$80390E`, `p1raw` identical on all 120. `$80FA84` is a compared column
   (`irq4ph`), not a hidden artifact.
   **Calling `buffer_save()` from inside the memory tap does NOT work**: the
-  state restores but is not resumable — measured, the resumed run diverged on
+  state restores but is not resumable - measured, the resumed run diverged on
   `d_ram` and `$80390E` on all 120 frames. It re-enters the core mid-instruction.
 * **The pixel column is red-validated.** `pgm.py pixred` clears bit 0 of the
   IGS023 control register `$B0E000` (the sprite-DMA enable) from Lua: `pix` and
@@ -200,7 +200,7 @@ Main RAM **is** the NVRAM on this board (`pgm.cpp` maps the same 128 KiB as
 `m_mainram` and as the `sram` NVRAM device), so MAME writing nvram on exit
 persists the game's own state, version choice included.
 
-Procedure, which is the deliverable — the image itself is a snapshot of the
+Procedure, which is the deliverable - the image itself is a snapshot of the
 board's RAM, is ROM-derived, and is **never committed**:
 
 1. Run with `-nvram_save` into a private `-nvram_directory`, scripting the
@@ -220,8 +220,8 @@ silent boot: cursor pre-set on "2: VERSION-B (NEW)", countdown expires,
 
 **`$03810` in the saved image is the versions recon's candidate flag,
 confirmed**: 00 in `ddp3blk_defaults.nv` and in main RAM at boot, 01 after
-choosing VERSION-B. (The `sram` file is word-swapped relative to main RAM —
-`region[i] == mainram[i^1]` — so which of `$803810`/`$803811` it is was not
+choosing VERSION-B. (The `sram` file is word-swapped relative to main RAM -
+`region[i] == mainram[i^1]` - so which of `$803810`/`$803811` it is was not
 established.)
 
 **Caveat, and it is why the scripted chooser stays the default:** the seed is a
@@ -242,14 +242,14 @@ useful independent check.
   survives either way.
 * No overrun of the game's own frame has been forced. `work_cycles` exceeded the
   337,920-cycle budget on 2 of 2,600 frames and `irq6 > 1` on 16, but the loop
-  completed every frame. Case **(C)** — a truncated per-object loop — remains
+  completed every frame. Case **(C)** - a truncated per-object loop - remains
   completely unmeasured, and the top-level object driver is still not located.
   That is wave 2's job, and `docs/knowledge/06` says (C) cannot be retrofitted.
 
 
 ---
 
-## WAVE 2 — the object driver, the overrun, and two defects in this harness
+## WAVE 2 - the object driver, the overrun, and two defects in this harness
 
 Full evidence: `docs/worklog/ddpdoj/02-impl-object-driver-and-overrun.md`.
 
@@ -320,7 +320,7 @@ unless the only columns that moved are `cyc`, `work`, `spin` and `d_top`.
 
 ---
 
-## WAVE 3 — the asset gates, and one finding that changes what an oracle frame means
+## WAVE 3 - the asset gates, and one finding that changes what an oracle frame means
 
 Full evidence: `docs/worklog/ddpdoj/03-impl-asset-export-with-teeth.md`.
 The asset pipeline has its own note: **`games/ddpdoj/NOTES-assets.md`**.
@@ -365,8 +365,8 @@ logic frame, is a FAIL. `gfxgate.py` also fails any frame pair drawn with
 Poking that share with the sprite DMA disabled put our list in the dump and left
 MAME drawing the game's sprites (92.64 %, and the framebuffer PNG showed the
 game's explosion, not our grid). The share is an OUTPUT of the DMA; the draw uses
-what the DMA parsed. On the natural corpus the two always agree — which is
-exactly why the decoder can be validated against the share — but any future
+what the DMA parsed. On the natural corpus the two always agree - which is
+exactly why the decoder can be validated against the share - but any future
 intervention has to go into the game's own list in main RAM, at the sample point.
 
 And **the zoom table reaching the draw is latched one frame AHEAD of the sprite
@@ -383,7 +383,7 @@ about what happens at it.**
 
 ---
 
-## WAVE 4 — the port's side of the comparison, and one census that was blind
+## WAVE 4 - the port's side of the comparison, and one census that was blind
 
 Full evidence: `docs/worklog/ddpdoj/04-impl-skeleton-and-player.md`.
 The port itself is `games/ddpdoj/src/`; its gate is
@@ -401,18 +401,18 @@ node --test games/ddpdoj/tests/
 python games/ddpdoj/tools/export-tables.py   ROM tables -> rip/port/ (gitignored)
 ```
 
-Three new `frame.lua` env vars, **all opt-in and all off by default** — the
+Three new `frame.lua` env vars, **all opt-in and all off by default** - the
 wave-2 gate hash `635bb92f1a9dc81e968bab5e755f807e78c0c18538af5cfc8c29974520d84884`
 was re-run after these edits and is unchanged:
 
-* `PROBE_WATCH="name=hex[:w|:l|:b],..."` — extra compared columns. Wave 4 reads
+* `PROBE_WATCH="name=hex[:w|:l|:b],..."` - extra compared columns. Wave 4 reads
   the spec out of `src/state.js` so the two sides of the comparison cannot drift.
-* `PROBE_PORTIN=1` — the hardware input word at `$C08000`, one per LOGIC frame,
+* `PROBE_PORTIN=1` - the hardware input word at `$C08000`, one per LOGIC frame,
   as the column `portin`. **This is the replay input record.** The port derives
   `$803970/72/76` from it, which is what keeps the input mirrors a compared
   field instead of one fed in from the answer.
   `CENSUS input_port_reads_per_logicframe 1:4184 2:15 3:1`.
-* `PROBE_POKE="hexaddr=hexbyte,..."` + `PROBE_POKE_FROM=lf` — an intervention,
+* `PROBE_POKE="hexaddr=hexbyte,..."` + `PROBE_POKE_FROM=lf` - an intervention,
   written at every sample point AFTER emit(), so the TSV records the game's own
   value and the poke is consumed by the next logic frame. The port applies the
   identical poke at the identical point.
@@ -421,7 +421,7 @@ was re-run after these edits and is unchanged:
 
 `armed_vblanks 1:N` in every run has been read since wave 1 as "the 2- and
 3-vblank divider paths have never executed". **The census only counts the write
-that takes `$803940` from 0 to non-zero, and `$23C212` ALWAYS writes 1 first** —
+that takes `$803940` from 0 to non-zero, and `$23C212` ALWAYS writes 1 first** -
 so the later `move.b #$2,$803940` at `$23C248` and `$23C38A` is a
 non-zero-to-non-zero write it never records. The column that actually bounds the
 divider is `irq6_per_logicframe` (1 on 4,184 of 4,200 fly-around frames: a

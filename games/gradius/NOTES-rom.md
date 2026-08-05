@@ -1,4 +1,4 @@
-# Gradius ROM — first findings
+# Gradius ROM - first findings
 
 Everything here was **read out of the PRG image**, not looked up. Byte evidence is quoted
 so the next person can check it without re-deriving. Nothing here needed an emulator.
@@ -13,7 +13,7 @@ so the next person can check it without re-deriving. Nothing here needed an emul
 | RESET | `$8010` |
 | IRQ/BRK | `$80BD` |
 
-## RESET — `$8010`
+## RESET - `$8010`
 
 ```
 8010  D8         CLD
@@ -29,7 +29,7 @@ so the next person can check it without re-deriving. Nothing here needed an emul
 
 Textbook. Nothing surprising.
 
-## NMI — `$806A`, and it is the frame heartbeat
+## NMI - `$806A`, and it is the frame heartbeat
 
 This is the equivalent of the Game Boy port's VBlank ISR, and it is where the oracle
 should sample. Annotated:
@@ -69,14 +69,14 @@ should sample. Annotated:
 
 ### What this buys us
 
-**Shadow OAM is at `$0200-$02FF`.** `LDY #$02 / STY $4014` — confirmed by the bytes at
+**Shadow OAM is at `$0200-$02FF`.** `LDY #$02 / STY $4014` - confirmed by the bytes at
 `$8085`. That is the standard convention and now it is a measured fact for this cartridge.
 
 **`$04` is a frame lock, and it is the lag-frame mechanism.** The handler *reads* it at
 `$8073` and bails if non-zero; it *raises* it at `$809F` and clears it at `$80B5`. So an
 NMI that arrives while the previous frame's work is still running does almost nothing.
 This is structurally the same as the Game Boy's `$FFE7`/`$C757` lag flag that drops
-actor and enemy updates — and docs/03 lesson 28 says that class is out of scope but must
+actor and enemy updates - and docs/03 lesson 28 says that class is out of scope but must
 be *measured and tagged*, never chased. Expect to do the same here.
 
 **Zero-page fields already identified:**
@@ -89,7 +89,7 @@ be *measured and tagged*, never chased. Expect to do the same here.
 | `$11` | `LDA $11` immediately before `STA $2001` | **PPUMASK shadow** |
 | `$15`, `$5B` | gates at the top of the split routine | mode flags, meaning TBD |
 
-## The status-bar split — sprite-0 hit at `$9AA3`
+## The status-bar split - sprite-0 hit at `$9AA3`
 
 Mapper 3 has **no scanline IRQ**, so any mid-frame change has to come from sprite-0 hit or
 cycle-timed code. It is sprite-0, and here it is:
@@ -114,7 +114,7 @@ cycle-timed code. It is sprite-0, and here it is:
 ```
 
 **This is the single most important structural finding so far.** It means the renderer
-needs a **per-scanline model**, exactly like the Game Boy port's raster bands — the screen
+needs a **per-scanline model**, exactly like the Game Boy port's raster bands - the screen
 is not one flat scroll. The port cannot render Gradius as a single background offset and
 be correct.
 
@@ -122,7 +122,7 @@ It also means the oracle needs a per-scanline register comparison from day one. 
 Game Boy that check compares 335,664 scanlines of `(SCX, SCY, BGP, OBP0, OBP1)` and it
 caught things whole-frame screenshots could not. Build the NES equivalent early.
 
-## Controllers — `$81BF`
+## Controllers - `$81BF`
 
 ```
 81C1  8E 16 40   STX $4016        ; strobe
@@ -132,7 +132,7 @@ caught things whole-frame screenshots could not. Build the NES equivalent early.
 ```
 
 Standard strobe-then-shift. Called from NMI at `$80A4`, so **input is read inside the NMI
-and consumed by the main loop afterwards** — the same shape as the Game Boy, which means
+and consumed by the main loop afterwards** - the same shape as the Game Boy, which means
 the harness will need the same one-frame **input lead** (docs/knowledge/01). Measure it;
 do not assume it is exactly one.
 
@@ -151,12 +151,12 @@ do not assume it is exactly one.
 | `STA $2007` PPU data | 3 | `$887D $888B $8A88` |
 | sprite-0 poll | 1 | `$9AA3` |
 
-Only **one** OAM DMA site and **one** sprite-0 poll — the frame structure is simple and
+Only **one** OAM DMA site and **one** sprite-0 poll - the frame structure is simple and
 centralised, which is good news for building a faithful frame loop.
 
 ## What to do with this next
 
-1. Sample the oracle at the NMI (`$806A`) — but **after** the `$04` lock test at `$8073`,
+1. Sample the oracle at the NMI (`$806A`) - but **after** the `$04` lock test at `$8073`,
    so lag frames are distinguishable rather than silently mixed in.
 2. Find the player's RAM fields by diffing `$0000-$07FF` while holding a direction. The
    zero page is clearly where the game lives (`$04`, `$0D`, `$10`, `$11`, `$15`, `$5B` all

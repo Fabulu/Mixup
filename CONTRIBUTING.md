@@ -2,7 +2,7 @@
 
 The short version: **measure it against the cartridge, or don't change it.**
 
-This project has one unusual property that shapes everything else — there is a
+This project has one unusual property that shapes everything else - there is a
 correct answer to every question, and it is available. An emulator runs the real
 ROM headless and diffs our state against it, field by field, frame by frame. So
 "I think this is how it works" is never the standard; "I hooked it and it does
@@ -18,7 +18,7 @@ There are **three games and three oracles**, one emulator per machine:
 
 ## Before you start
 
-`npm install` once, for everything — it brings in typescript, which the Batman
+`npm install` once, for everything - it brings in typescript, which the Batman
 gate's stage 2 needs. Then set up whichever game you are touching. Each needs a
 ROM **you** own; none of them is in this repository.
 
@@ -39,7 +39,7 @@ node   games/ddpdoj/tools/export-web.mjs
 python games/ddpdoj/tools/setup_mame.py            # unattended, outside the repo
 ```
 
-Read `SAVEPOINT.md` first — it is the map of what is done per game, what is
+Read `SAVEPOINT.md` first - it is the map of what is done per game, what is
 not, and which traps have already cost someone a day. Then
 `docs/knowledge/`, which is the cross-game distillation and the thing to read
 before starting a new game; `docs/03-VERIFICATION.md` is Batman's method and its
@@ -56,7 +56,7 @@ traps, both of which have bitten repeatedly:
 - **Follow the fall-through, not the label.** A routine that looks like it
   returns often falls straight into the next one. **At least thirty distinct
   incidents** across the three games, one of which invalidated an
-  already-shipped handler. Treat thirty as a floor and not a total — see
+  already-shipped handler. Treat thirty as a floor and not a total - see
   `docs/knowledge/02-traps.md` for why the project's own running count of these
   cannot be trusted.
 - **Byte-exact data is not a correct picture.** A screen matched the
@@ -64,7 +64,7 @@ traps, both of which have bitten repeatedly:
   sprites. If you can render it or drive it, do that too.
 
 **2. Cite the ROM address.** Every non-obvious line carries the address it came
-from. This is not decoration — it is how the next person checks your work
+from. This is not decoration - it is how the next person checks your work
 without re-deriving it.
 
 **3. A new check must be seen to fail.** If you add a test or a scenario,
@@ -78,7 +78,7 @@ an argument. A check you have never seen fail proves nothing.
 sprite list. Data travels through `assets/manifest.json`, exported by
 `tools/export_assets.py`, and `tools/verify_assets.py` re-reads each table from
 raw file offsets so the exporter cannot verify itself. A missing table should
-**throw**, never silently default — metasprite id 0, tile 0 and animation id 0
+**throw**, never silently default - metasprite id 0, tile 0 and animation id 0
 are all valid, so a default looks plausible and is wrong.
 
 **5. "The cartridge is like that" is a valid, valuable result.** Several of the
@@ -91,33 +91,33 @@ There is **one gate per game, and they are three separate runners.** Run the one
 for the game you touched.
 
 ```sh
-npm test                                     # Batman unit tests — 740, no ROM
-npm run typecheck                            # tsc over the ports — no ROM either
-npm run test-all                             # Batman gate — 27 stages (PyBoy + cartridge)
+npm test                                     # Batman unit tests - 740, no ROM
+npm run typecheck                            # tsc over the ports - no ROM either
+npm run test-all                             # Batman gate - 27 stages (PyBoy + cartridge)
 npm run test-all -- --fast                   # skip everything that needs PyBoy
 npm run test-all -- --only raster-bands
 
-node --test games/gradius/tests/             # Gradius unit tests — 725
-node games/gradius/tools/test-all.mjs        # Gradius gate — 12 stages
+node --test games/gradius/tests/             # Gradius unit tests - 725
+node games/gradius/tools/test-all.mjs        # Gradius gate - 12 stages
 
-node --test games/ddpdoj/tests/              # DaiOuJou unit tests — 934
+node --test games/ddpdoj/tests/              # DaiOuJou unit tests - 934
 ```
 
 **2,399 unit tests green** at the time of writing: 740 Batman, 725 Gradius, 934
-DaiOuJou. The Gradius gate is deliberately **not** wired into the root runner —
-its header says so and says why — and DaiOuJou has no `test-all` at all yet,
+DaiOuJou. The Gradius gate is deliberately **not** wired into the root runner -
+its header says so and says why - and DaiOuJou has no `test-all` at all yet,
 only its unit tests plus individual gates (`bundlegate.mjs`, `webgate.mjs` and
 a long list of per-wave ones under `games/ddpdoj/tools/`).
 
 `node tools/publish.mjs` is the only thing that runs **all** of them, and it
 refuses to publish on a red gate *or on any skip*. `--only gradius` / `--only
 ddpdoj` / `--only batman` gate one game; `--dry` gates and builds without
-deploying. **A skip is not a pass** — the runners tell apart a legitimate
+deploying. **A skip is not a pass** - the runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
 path, which is a failure. `docs/knowledge/03`.
 
 Every unit suite deliberately never reads `assets/`, so they run on a clean
-checkout and in CI. They use synthetic fixtures — see `SYNTHETIC_TABLES` in
+checkout and in CI. They use synthetic fixtures - see `SYNTHETIC_TABLES` in
 `games/batman/tests/helpers.js`. If your change makes a unit test need real ROM
 data, the fixture is the thing to change, not the suite's independence.
 
@@ -140,19 +140,19 @@ shape against Mesen and MAME. Two habits worth copying:
   that were acted on.
 
 Lag frames (`$C757`) are instruction-level timing and out of scope by
-definition — see `docs/03-VERIFICATION.md` §28. Cap scenarios below the first
+definition - see `docs/03-VERIFICATION.md` §28. Cap scenarios below the first
 one rather than trying to model them.
 
 ## Committing
 
 - **Stage by name.** `git add -A` sweeps up whatever else is in flight.
 - **Then check the index before you commit.** `git commit` commits the *index*, not the
-  files you named — so run `git diff --cached --name-only` and look for anything that is
+  files you named - so run `git diff --cached --name-only` and look for anything that is
   not yours. This is not theoretical: a commit of six documentation files once swallowed a
   65-file rename another writer had staged but not finished fixing up, and shipped a HEAD
   where `npm test` pointed at a directory that no longer existed. Staging by name protects
   you from *unstaged* work; only checking protects you from work someone else staged.
-- **If an automated restructure is running, do not commit from that repo at all** — even
+- **If an automated restructure is running, do not commit from that repo at all** - even
   files it will never touch. Wait, or use a separate worktree.
 - **`git checkout -- <file>` on a dirty tree discards uncommitted work in that file.** It
   is not a safe way to drop a probe.

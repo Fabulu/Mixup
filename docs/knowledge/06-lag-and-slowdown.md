@@ -7,7 +7,7 @@ those are separate claims that need separate evidence.**
 
 An emulator reproducing every value the game computes tells you nothing about
 whether it reproduces *when* the work finished. If the thing you are measuring
-IS the timing, the emulator is not a reference — it is a second opinion.
+IS the timing, the emulator is not a reference - it is a second opinion.
 
 Measured twice in this project, on two machines:
 
@@ -17,7 +17,7 @@ Measured twice in this project, on two machines:
   computation never diverged; only the timing did.
 - **PGM / DoDonPachi DaiOuJou.** MAME's lag behaviour for this board is known to
   be inaccurate. So MAME is authoritative for what DaiOuJou computes and **not**
-  for how much it slows down — on the one game where slowdown is a gameplay
+  for how much it slows down - on the one game where slowdown is a gameplay
   mechanic rather than an artifact.
 
 **What to do about it, in order:**
@@ -25,7 +25,7 @@ Measured twice in this project, on two machines:
 1. **Say which kind of claim you are making.** "State-exact against MAME" and
    "timing-exact against the board" are different sentences. Label every
    slowdown figure with the emulator that produced it and whether it is
-   calibrated — e.g. *"MAME-timed, uncalibrated"*. An unlabelled number becomes
+   calibrated - e.g. *"MAME-timed, uncalibrated"*. An unlabelled number becomes
    a fact by repetition; that is how "about 54 fps" nearly survived.
 2. **Measure the GAME's work, not the emulator's clock.** A counter of the
    game's own idle spins, or of objects processed, is a fact about the game's
@@ -38,7 +38,7 @@ Measured twice in this project, on two machines:
    rewriting the object driver. Mechanism (C) below cannot be retrofitted;
    build the budget in whether or not you can calibrate it yet.
 4. **Cross-check with an independent implementation** wherever one exists. Two
-   emulators disagreeing is not noise — it is the measurement. It is how the
+   emulators disagreeing is not noise - it is the measurement. It is how the
    NES lag frame above was found at all.
 
 
@@ -46,7 +46,7 @@ Measured twice in this project, on two machines:
 
 On Batman we declared lag out of scope and tagged it. That was correct *there* and it is
 the wrong default for what comes next. The eventual target is **DoDonPachi DaiOuJou**, a
-Cave bullet-hell shooter in which **slowdown is a gameplay mechanic, not an artifact** —
+Cave bullet-hell shooter in which **slowdown is a gameplay mechanic, not an artifact** -
 dense bullet patterns are survivable *because* the machine slows down, players time
 their movement against it, and scoring depends on it. A port with the right logic and the
 wrong slowdown is wrong in the way that matters most to the people who care.
@@ -61,7 +61,7 @@ Getting these confused will produce a port that is wrong in a way no field compa
 catches. Name which one you are dealing with before you model anything. They are not
 mutually exclusive: one machine can do (A) to some subsystems and (C) to others.
 
-### A. Dropped updates — "the frame the game gave up on"
+### A. Dropped updates - "the frame the game gave up on"
 
 The game loop did not finish before the next interrupt. A flag is set, and **specific
 subsystems skip that iteration's work entirely**. Other subsystems still run. Time does
@@ -70,23 +70,23 @@ not dilate; *work is selectively discarded*.
 This is what the Game Boy does, and the NES does the same thing. It is discrete, per
 subsystem, and binary: either that driver ran this frame or it did not.
 
-### B. True slowdown — "the whole game runs slower"
+### B. True slowdown - "the whole game runs slower"
 
 The loop misses the display's deadline, so the frame is held and the entire game state
 advances **less often in wall-clock time**. Nothing is skipped mid-sequence; everything is
 uniformly dilated. A 60 Hz game running at 30 Hz for a stretch is not dropping half its
-updates — it is doing all of them, half as often.
+updates - it is doing all of them, half as often.
 
 This is the arcade case, and it is the one that matters for DaiOuJou.
 
-### C. Partial completion — "the loop got through 19 of 32 objects"
+### C. Partial completion - "the loop got through 19 of 32 objects"
 
 The scheduler walks its object table in order and **runs out of time partway through**.
 Objects 0..k update this frame; k+1..31 do not. Next frame it may get further, or less
 far.
 
 This is neither of the above and it is the **most consequential of the three**, because it
-does not merely change *when* things happen — it changes **which things happen and in what
+does not merely change *when* things happen - it changes **which things happen and in what
 order**. Bullet timing, which enemy fires first, which death resolves first, whether a
 pickup spawns before the slot it needed was taken. Slowdown stops being a presentation
 property and becomes a *gameplay* property.
@@ -101,14 +101,14 @@ for (let slot = 0; slot < objectLimit; slot++) {
 ```
 
 **If a game does this, slowdown cannot be retrofitted.** A port that always updates all 32
-slots and then dilates time is not a slower version of the original — it is a *different
+slots and then dilates time is not a slower version of the original - it is a *different
 game* that happens to run slowly. Find out which of the three you have **before** writing
 the object driver, not after.
 
 **Why the difference is load-bearing:** under (A) you must know *which* subsystems skip
 and in what order they are gated. Under (C) you must know the per-object cost and the
 budget, and the *order of the table becomes semantics*. Under (B) you must know *how long
-the work took*, which is a fundamentally harder question — it is cycle accounting, and it presses directly
+the work took*, which is a fundamentally harder question - it is cycle accounting, and it presses directly
 against this project's founding premise that we write a JS function per ROM routine
 rather than emulate. A faithful (B) requires knowing the cost of code we have replaced.
 **That tension is real and unsolved; do not let it be discovered late.**
@@ -119,12 +119,12 @@ rather than emulate. A faithful (B) requires knowing the cost of code we have re
 
 The mechanism, exactly:
 
-- The VBlank ISR fires while `$FFE7` is still 0 — meaning the main loop had not finished
-  its iteration — and `$065C` sets `$C757`.
+- The VBlank ISR fires while `$FFE7` is still 0 - meaning the main loop had not finished
+  its iteration - and `$065C` sets `$C757`.
 - Both the actor driver (`$424D`) and the enemy driver (`$4E39`) then **skip that
   iteration's updates**, doing only their screen tail.
 - **Activation still runs.** `$4E27` tests bit 7 *before* the gate. So "the frame was
-  dropped" is not uniform even within one driver — part of it still executes.
+  dropped" is not uniform even within one driver - part of it still executes.
 - The free-running counter alignment **survives**: the loop catches back up within the
   frame, so only the skipped updates are observable, not the counter phase.
 
@@ -138,12 +138,12 @@ Measured frequencies, which are the useful part:
 | level 4, punch-heavy 640 frames | **1** (at f110) |
 | level 1, warped water run | **3** (f2, f6, f226) |
 
-So on a Game Boy platformer, lag is *rare* — single frames, minutes apart. That is exactly
+So on a Game Boy platformer, lag is *rare* - single frames, minutes apart. That is exactly
 why declaring it out of scope was defensible there.
 
 **But every one of those single frames caused a permanent divergence.** The f226 hit
 freezes a walker for one frame, after which it runs one frame behind a port that never
-lags — forever. One dropped frame at f1254 produced an 18-field "regression" that looked
+lags - forever. One dropped frame at f1254 produced an 18-field "regression" that looked
 like a real bug and cost an investigation before it was traced back.
 
 **The lesson to carry:** lag is not noise. It is a discrete, locatable event with
@@ -170,7 +170,7 @@ Already measured statically in the ROM (`games/gradius/NOTES-rom.md`):
 
 - **`$04` is the lock.** The NMI at `$806A` reads it at `$8073` and **bails immediately**
   if non-zero; it raises it at `$809F` and clears it at `$80B5`.
-- So an NMI arriving while the previous frame's work is unfinished does almost nothing —
+- So an NMI arriving while the previous frame's work is unfinished does almost nothing -
   structurally the same as the Game Boy's `$C757`, and it must be measured the same way.
 
 **Do not repeat Batman's default here.** On Batman, lag was tagged out of scope and the
@@ -178,17 +178,17 @@ work of characterising it was never done properly. On Gradius, treat it as a **p
 measurement target from the first probe**:
 
 1. **Census it.** Hook the `$04` bail path and the `INC $04` and count. Report lag frames
-   per scenario, always, in the standard output — not on request.
+   per scenario, always, in the standard output - not on request.
 2. **Determine exactly what a lag frame skips.** The NMI's bail at `$8073` jumps past OAM
    DMA, the PPU register writes and every `JSR` in the handler. So on a lag frame the
-   *display is not updated* — which is visible, unlike the Game Boy case where only
+   *display is not updated* - which is visible, unlike the Game Boy case where only
    internal updates were dropped. Confirm this by measurement.
 3. **Make lag a COMPARED FIELD in the state vector**, not a diagnostic side-channel. If
    the port cannot reproduce lag, the field will diverge and force an honest decision
    rather than a silent one.
 4. **Find out whether Gradius's difficulty depends on it.** Gradius is famous for
-   slowdown when the screen fills. If the game is *balanced* around it — and shooters
-   generally are — then it has already crossed from artifact to mechanic, and Gradius is a
+   slowdown when the screen fills. If the game is *balanced* around it - and shooters
+   generally are - then it has already crossed from artifact to mechanic, and Gradius is a
    better rehearsal for DaiOuJou than it first appears.
 
 ---
@@ -208,7 +208,7 @@ code computed, never **how long it took**.
 
 Faithful slowdown requires matching how long it took. A JS function does not take the same
 time as the 68000 code it replaces, and no amount of care makes it. So slowdown cannot
-come from our port running out of time — it has to be **modelled**: something must decide
+come from our port running out of time - it has to be **modelled**: something must decide
 "this frame would have overrun" and dilate accordingly.
 
 That is a different kind of fidelity and it needs its own design. Candidates, none
@@ -216,14 +216,14 @@ validated:
 
 - **Cost accounting.** Each routine carries a measured cost (cycles, or a proxy such as
   active object count), the frame sums them, and the loop dilates when the sum exceeds
-  budget. Requires knowing the real cost of every routine — expensive, but it is the only
+  budget. Requires knowing the real cost of every routine - expensive, but it is the only
   option that is *predictive* rather than recorded.
 - **A measured slowdown oracle.** Record, from the real hardware, which frames slowed and
-  by how much, for a corpus of inputs — then verify the port's model against that. This
+  by how much, for a corpus of inputs - then verify the port's model against that. This
   does not produce slowdown; it *checks* a model that does.
 - **Object-count heuristic.** Slowdown in these games tracks sprite and bullet counts
   closely. A fitted function of on-screen object count may reproduce it within tolerance.
-  Cheap and probably close — but it is a *fit*, not a translation, and it should be
+  Cheap and probably close - but it is a *fit*, not a translation, and it should be
   labelled as such rather than dressed up as fidelity.
 
 ### Questions to answer before any DaiOuJou work starts
@@ -237,7 +237,7 @@ validated:
    whole verification strategy changes.
 3. **What is the granularity?** Whole frames held, or something finer?
 4. **Does the game's own logic observe it?** If any counter or RNG advances per *loop
-   iteration* rather than per frame, slowdown changes game state and not just its pace —
+   iteration* rather than per frame, slowdown changes game state and not just its pace -
    which would make it impossible to bolt on afterwards.
 5. **Is there a per-object update budget** that gets truncated under load, i.e. is there
    case-A behaviour hiding inside the case-B slowdown?
@@ -245,13 +245,13 @@ validated:
 ### The one thing to decide early
 
 **Whether "faithful" includes slowdown, and to what tolerance.** For a Cave shooter the
-honest answer is almost certainly yes — but say it out loud, write it into the project's
+honest answer is almost certainly yes - but say it out loud, write it into the project's
 definition of done, and design the harness around it. Retrofitting timing fidelity onto a
 port built without it is a rewrite, not a fix.
 
 ---
 
-## Instrument the signals separately — one flag is not enough
+## Instrument the signals separately - one flag is not enough
 
 **Do not trust an emulator's generic "lag frame" flag.** A game can poll input, advance
 music and update *some* state on a frame its main logic did not complete. One boolean
@@ -267,7 +267,7 @@ Instrument these **separately**, per frame, and compare them as distinct fields:
 | main logic advanced | did the top-level update run at all |
 | script / scheduler advanced | did stage or wave logic step |
 | player advanced | did the player object update |
-| **object slots processed: 0..N** | **how far down the table did it get** — the (C) detector |
+| **object slots processed: 0..N** | **how far down the table did it get** - the (C) detector |
 | sprites prepared / OAM written | did the display list get rebuilt |
 | audio advanced | did the sound driver step |
 
@@ -286,9 +286,9 @@ the same address and emitting the same per-NMI digest.
 
 **They were byte-identical for NMIs 1 through 388.** At 389, Mesen delivers one NMI that
 MAME does not. After skipping it, the sequences realign exactly for all 110 remaining
-samples — so **the game's computation never diverges**. The extra NMI has the frame lock
+samples - so **the game's computation never diverges**. The extra NMI has the frame lock
 already set on entry and a stack pointer 13 bytes deeper than usual: it is the re-entrant
-NMI that hits the lock test and bails. **A lag frame — the first one in the run.**
+NMI that hits the lock test and bails. **A lag frame - the first one in the run.**
 
 So: two respected emulators, in perfect agreement about every value the game computes, and
 in disagreement about **whether a lag frame happened at all**. That is precisely the signal
@@ -310,10 +310,10 @@ DaiOuJou depends on.
 
 Established while proving MAME viable as the DaiOuJou oracle. Useful for any machine:
 
-- **Per-frame CPU cycles: yes**, two independent ways that agree to a constant 4 cycles —
+- **Per-frame CPU cycles: yes**, two independent ways that agree to a constant 4 cycles -
   the debugger's `totalcycles` expression, and `machine.time` read inside a callback (which
   needs no debugger at all).
-- **Execution hooks: yes**, and via an unobvious route — `install_read_tap()` fires on
+- **Execution hooks: yes**, and via an unobvious route - `install_read_tap()` fires on
   **opcode fetches**, so a read tap is an execution hook. Distinguish a fetch from a data
   read by comparing the current PC against the tapped address.
 - **A game-agnostic frame detector: yes.** A tap on the CPU's **interrupt vector fetch**
@@ -324,13 +324,13 @@ Established while proving MAME viable as the DaiOuJou oracle. Useful for any mac
   frames: **518 duplicate frames against 4 real overrun events, and it missed 2 of the 4.**
   A game can redraw an identical picture while advancing perfectly well, and can overrun
   while the picture changes. If you were planning to detect slowdown by comparing
-  consecutive framebuffers — and it is the obvious first idea — this is the measurement
+  consecutive framebuffers - and it is the obvious first idea - this is the measurement
   that says don't.
 
 ## The rules, distilled
 
-1. **Decide which of the THREE kinds you have — dropped updates, partial completion, or
-   time dilation — before modelling anything.** Partial completion changes outcomes, not
+1. **Decide which of the THREE kinds you have - dropped updates, partial completion, or
+   time dilation - before modelling anything.** Partial completion changes outcomes, not
    just pace, and cannot be retrofitted.
 2. **Census it from day one.** Hook the flag, count per scenario, print it always.
 3. **Never diagnose a timing-shaped divergence without checking the lag census first.**
@@ -341,5 +341,5 @@ Established while proving MAME viable as the DaiOuJou oracle. Useful for any mac
 6. **Never model slowdown as a global speed multiplier.** `gameSpeed = 0.7` makes
    everything uniformly sluggish and reproduces none of the three mechanisms.
 7. **Instrument the signals separately.** One "lag frame" boolean cannot tell them apart.
-8. **If slowdown is a mechanic, it is a requirement** — and it must be in the state
+8. **If slowdown is a mechanic, it is a requirement** - and it must be in the state
    vector, in the definition of done, and in the harness design from the start.

@@ -1,10 +1,10 @@
-# What machine IS DoDonPachi DaiOuJou — read from MAME's source
+# What machine IS DoDonPachi DaiOuJou - read from MAME's source
 
 **Status: facts with citations. No ROM was used, sought, or is present.** Everything below
 was read out of MAME's public source tree.
 
 **Source pinned to:** `mamedev/mame` commit `eca6f68d5f96b4eed1d29ee95b320e0a5d195e31`,
-"Merge tag 'mame0289' into HEAD", 2026-07-30 — i.e. **MAME 0.289**.
+"Merge tag 'mame0289' into HEAD", 2026-07-30 - i.e. **MAME 0.289**.
 
 ```
 $ curl -sS https://api.github.com/repos/mamedev/mame/commits/master
@@ -24,15 +24,15 @@ Files read (fetched to scratch, not committed):
 
 The first thing that has to be corrected before anything else. DoDonPachi DaiOuJou does
 **not** run on a Cave board and is **not** in MAME's `cave/` driver folder. It runs on
-**IGS PGM** (Polygame Master) — Cave developed it, IGS built the hardware, and MAME files
+**IGS PGM** (Polygame Master) - Cave developed it, IGS built the hardware, and MAME files
 it under `src/mame/igs/pgm.cpp`.
 
-Measured, not recalled — `src/mame/mame.lst` maps set names to driver files:
+Measured, not recalled - `src/mame/mame.lst` maps set names to driver files:
 
 ```
 $ grep -n "ddpdoj\|ddonpach" mame.lst
-2757:ddonpach          <- @source:atlus/cave.cpp   (DoDonPachi, 1997 — real Cave hw)
-21928:ddpdoj           <- @source:igs/pgm.cpp      (DaiOuJou, 2002 — PGM)
+2757:ddonpach          <- @source:atlus/cave.cpp   (DoDonPachi, 1997 - real Cave hw)
+21928:ddpdoj           <- @source:igs/pgm.cpp      (DaiOuJou, 2002 - PGM)
 22063:ddpdojt          <- @source:igs/pgm2.cpp     (DaiOuJou Tamashii, PGM2)
 ```
 
@@ -56,7 +56,7 @@ All `GAME(...)` lines, `src/mame/igs/pgm.cpp:5677-5685`:
 | 5678 | `ddpdoj` | ddp3 | `pgm_arm_type1_cave` | `init_ddp3` | DoDonPachi Dai-Ou-Jou (Japan, 2002.04.05.Master Ver, 68k Label V101) |
 | 5679 | `ddpdoja` | ddp3 | `pgm_arm_type1_cave` | `init_ddp3` | …(Japan, 2002.04.05.Master Ver, 68k Label V100) |
 | 5680 | `ddpdojb` | ddp3 | `pgm_arm_type1_cave` | `init_ddp3` | …(Japan, 2002.04.05 Master Ver) |
-| 5681 | `ddpdojp` | ddp3 | **`pgm`** | **`init_pgm`** | …(Japan, 2002.04.05 Master Ver, **location test**) — *"unprotected, but still has strings related to the protection ASIC"* |
+| 5681 | `ddpdojp` | ddp3 | **`pgm`** | **`init_pgm`** | …(Japan, 2002.04.05 Master Ver, **location test**) - *"unprotected, but still has strings related to the protection ASIC"* |
 | 5682 | `ddpdojblk` | ddp3 | `pgm_arm_type1_cave` | `init_ddp3` | **Black Label** (Japan, 2002.10.07.Black Ver, newer) |
 | 5683 | `ddpdojblka` | ddp3 | `pgm_arm_type1_cave` | `init_ddp3` | **Black Label** (…, older) |
 | 5684 | `ddpdojblkb` | ddp3 | `pgm_arm_type1_cave` | `init_ddp3` | **Black Label** (Japan, 2002.10.07 Black Ver) |
@@ -71,7 +71,7 @@ Verbatim, `pgm.cpp:5678`:
 GAME( 2002, ddpdoj,       ddp3,      pgm_arm_type1_cave,     ddp3,      pgm_arm_type1_state, init_ddp3,     ROT270, "Cave (AMI license)", "DoDonPachi Dai-Ou-Jou (Japan, 2002.04.05.Master Ver, 68k Label V101)",  MACHINE_IMPERFECT_SOUND | MACHINE_SUPPORTS_SAVE )
 ```
 
-Note `ROT270` — the screen is rotated; the cabinet is tate.
+Note `ROT270` - the screen is rotated; the cabinet is tate.
 
 ### Which one is canonical
 
@@ -98,10 +98,10 @@ ROM_LOAD16_WORD_SWAP( "ddp3_v101.u36",  0x100000, 0x200000, CRC(195b5c1e) SHA1(f
   they say "DOJ".** If the port's audience is that community, canonical should be
   `ddpdojblk` (`ddb10_10_8_434f.u45`, `CRC(d21561db)`,
   `SHA1(66a0103bc5f17b28736b562e32807271a5afa261)`, `pgm.cpp:5364`). Black Label sets also
-  need factory-programmed NVRAM to boot — `pgm.cpp:5359` says *"this expects Magic values
+  need factory-programmed NVRAM to boot - `pgm.cpp:5359` says *"this expects Magic values
   in NVRAM to boot"*, and the set ships `ddp3blk_defaults.nv` for that.
 - **`ddpdojp` (location test) is the only unprotected set.** It uses the plain `pgm`
-  machine config and `init_pgm` — **no ROM decryption and no simulated ARM protection at
+  machine config and `init_pgm` - **no ROM decryption and no simulated ARM protection at
   all** (§2). For oracle purposes that is a genuinely valuable second reference: anything
   the protection simulation could be getting wrong is absent there. Its program ROM is a
   different, larger build (`ca008.cod_prom.u13.27c322`, 0x400000, `CRC(2ba7fa3b)`,
@@ -136,26 +136,26 @@ All from `pgm_state::pgmbase()`, `src/mame/igs/pgm.cpp:497-536`:
 | sound CPU | **Z80** | 33.8688 MHz / 4 = **8.4672 MHz** |
 | sound chip | ICS **WaveFront ICS2115V** wavetable synth | 33.8688 MHz |
 | graphics | **IGS023** custom (QFP256), MAME device `igs023_video_device` | driven from the 50 MHz XTAL |
-| protection | **IGS027A** ARM7 ASIC ("55857G" for ddpdoj) | 20 MHz — **disabled and simulated**, see below |
+| protection | **IGS027A** ARM7 ASIC ("55857G" for ddpdoj) | 20 MHz - **disabled and simulated**, see below |
 | RTC | EM Microelectronic **V3021** + 3.6 V NiCd battery | 32.768 kHz |
 | resolution | **448 × 224**, 15-bit colour (`pgm.cpp:14`); `ROT270` → displayed 224 × 448 | |
 
-There is **no Z80 program ROM** — `pgm.cpp:29`: *"There is no ROM for the Z80, the program
+There is **no Z80 program ROM** - `pgm.cpp:29`: *"There is no ROM for the Z80, the program
 is uploaded by the 68k"* (the 68k writes it through `0xc10000-0xc1ffff`).
 
-### The protection ASIC is NOT emulated — it is simulated, and its ROM is undumped
+### The protection ASIC is NOT emulated - it is simulated, and its ROM is undumped
 
 This is the single largest fidelity caveat in the whole driver, and it needs to be on the
 table before any oracle work.
 
-`pgm.cpp:5253` — the ASIC's internal ROM has **never been dumped**:
+`pgm.cpp:5253` - the ASIC's internal ROM has **never been dumped**:
 
 ```
 	ROM_REGION( 0x4000, "prot", 0 ) /* ARM protection ASIC - internal ROM */
 	ROM_LOAD( "ddp3_igs027a.bin", 0x000000, 0x04000, NO_DUMP )
 ```
 
-`pgmprot_igs027a_type1.cpp:221-227` — the machine config the Cave sets use switches the
+`pgmprot_igs027a_type1.cpp:221-227` - the machine config the Cave sets use switches the
 ARM off:
 
 ```cpp
@@ -211,7 +211,7 @@ Two implications, both good news and bad news:
 ### Memory map (68000), `pgm.cpp:325-360` + `pgmprot_igs027a_type1.cpp:182-187`
 
 For the Cave sets the map is `cavepgm_mem` = `pgm_base_mem` + `map(0x000000, 0x3fffff).rom()`
-(no `bank1` — `pgm_basic_init(false)`).
+(no `bank1` - `pgm_basic_init(false)`).
 
 | range | contents |
 |---|---|
@@ -219,7 +219,7 @@ For the Cave sets the map is `cavepgm_mem` = `pgm_base_mem` + `map(0x000000, 0x3
 | `0x100000-0x3fffff` | game program ROM |
 | `0x500000-0x500005` | ARM7 protection latch (simulated handler installed by `init_ddp3`) |
 | `0x700006-0x700007` | watchdog (`nopw`) |
-| **`0x800000-0x81ffff`** (mirror `0x0e0000`) | **main RAM, 128 KiB, `.share(m_mainram)`** — and it is the **NVRAM** (`m_mainram(*this, "sram")`, `pgm.h:33`; `NVRAM(config, "sram", …)`) |
+| **`0x800000-0x81ffff`** (mirror `0x0e0000`) | **main RAM, 128 KiB, `.share(m_mainram)`** - and it is the **NVRAM** (`m_mainram(*this, "sram")`, `pgm.h:33`; `NVRAM(config, "sram", …)`) |
 | `0x900000-0x907fff` (mirror `0x0f8000`) | IGS023 video RAM |
 | `0xa00000-0xa013ff` | palette RAM (xRGB_555, 0x1400/2 = 2560 entries) |
 | `0xb00000-0xb0ffff` | IGS023 video registers |
@@ -244,12 +244,12 @@ IGS023 register sub-map (`igs023_video.cpp:58-69`), offsets from `0xb00000`:
 | `0xb02000` / `0xb03000` | BG Y / X scroll |
 | `0xb04000` | BG scale |
 | `0xb05000` / `0xb06000` | TX Y / X scroll |
-| **`0xb07000`** | **read-only: current raster line** — `map(0x7000, 0x7001).lr16(NAME([this]() -> u16 { return screen().vpos(); }));` |
-| `0xb0e000` | control register (`m_ctrl`) — bit 0 enables sprite DMA, bit 11 disables TX, bit 12 disables BG, bit 13 *"Disable high priority sprites"* |
+| **`0xb07000`** | **read-only: current raster line** - `map(0x7000, 0x7001).lr16(NAME([this]() -> u16 { return screen().vpos(); }));` |
+| `0xb0e000` | control register (`m_ctrl`) - bit 0 enables sprite DMA, bit 11 disables TX, bit 12 disables BG, bit 13 *"Disable high priority sprites"* |
 
 **`0xb07000` is flagged for the slowdown work.** The hardware lets the program read the
 beam position at any time. If DaiOuJou's main loop reads it, then the game's own logic
-observes how long the frame took — which is exactly question 4 of
+observes how long the frame took - which is exactly question 4 of
 `docs/knowledge/06-lag-and-slowdown.md` §"Questions to answer" ("does the game's own logic
 observe it?"). *Whether ddpdoj reads it is unknown and needs the ROM. The register's
 existence is a source fact; the game's use of it is not.*
@@ -276,7 +276,7 @@ void pgm_state::screen_vblank(int state)
 }
 ```
 
-`igs023_video.cpp:794-811` — the DMA, **256 entries max**, 5 words (10 bytes) each, with a
+`igs023_video.cpp:794-811` - the DMA, **256 entries max**, 5 words (10 bytes) each, with a
 hardware-verified per-word mask and an early terminator:
 
 ```cpp
@@ -329,7 +329,7 @@ Sprites are **not** fixed-size tiles: each entry names a bit-address into the ma
 (`sprmask`) and a width in 16-pixel units and a height in pixels, with optional
 zoom/shrink through a 16-entry table in `zoomram`. Colour comes from the separate
 `sprcol` ROM. Drawing order is the list walked **backwards** (`draw_sprites`,
-line 585-591) — and *(CORRECTED 2026-07-31 by the assets recon, measured)*:
+line 585-591) - and *(CORRECTED 2026-07-31 by the assets recon, measured)*:
 `pgm_draw_pix` sets `destpri |= 1` on every pixel it touches and refuses to
 write where that bit is set, so the FIRST sprite drawn owns the pixel, and the
 first drawn is the LAST list entry. **Higher list index draws IN FRONT, not
@@ -388,10 +388,10 @@ $ python -c "from fractions import Fraction; print(Fraction(10_000_000,640*264),
 ```
 
 > ## **59.185606060606… Hz  (exactly 15625/264 Hz)**
-> ## **frame period exactly 16.896 ms** (168,960 ÷ 10 MHz — an exact number of µs)
+> ## **frame period exactly 16.896 ms** (168,960 ÷ 10 MHz - an exact number of µs)
 
 **This flatly contradicts the "about 54" figure that was floated.** The error would have
-been **5.186 Hz — 8.76% too slow**, i.e. **311 phantom frames of drift per minute of
+been **5.186 Hz - 8.76% too slow**, i.e. **311 phantom frames of drift per minute of
 play**. Real slowdown in a Cave shooter is a handful of frames in a dense pattern; the
 rounding error would have been two orders of magnitude larger than the signal, which is
 precisely the failure `docs/knowledge/07-clocks-and-framerates.md` exists to prevent.
@@ -430,7 +430,7 @@ from Lua as `manager.machine.memory.regions[":<tag>"]`:
 | region tag | declared size | contents |
 |---|---|---|
 | `maincpu` | 0x600000 | 68000 BIOS + program (decrypted in place by `init_ddp3`) |
-| `prot` | 0x4000 | ARM7 internal ROM — **`NO_DUMP`, region is empty** |
+| `prot` | 0x4000 | ARM7 internal ROM - **`NO_DUMP`, region is empty** |
 | `igs023` | 0xa00000 | 8×8 text tiles + 32×32 BG tiles |
 | `igs023:sprcol` | 0x2000000 | sprite colour data |
 | `igs023:sprmask` | 0x1000000 | sprite masks + colour indexes |
@@ -439,15 +439,15 @@ from Lua as `manager.machine.memory.regions[":<tag>"]`:
 
 **Named RAM shares** (`manager.machine.memory.shares[...]`):
 
-- `"sram"` — the 128 KiB 68000 main RAM, `u16` (`pgm.cpp:329`, `pgm.h:57`). **The sprite
+- `"sram"` - the 128 KiB 68000 main RAM, `u16` (`pgm.cpp:329`, `pgm.h:57`). **The sprite
   list is the first 0xa00 bytes of this.** This is the single most important handle for a
   state-trace oracle.
-- `"palette"` — palette RAM (`pgm.cpp:332`).
-- `"arm7_shareram"` — exists in the state class but is **unused on the Cave sets** (ARM
+- `"palette"` - palette RAM (`pgm.cpp:332`).
+- `"arm7_shareram"` - exists in the state class but is **unused on the Cave sets** (ARM
   disabled).
 - Inside the IGS023 device (`igs023_video.cpp:80-84`, created via `memory_share_creator`):
   `bg_videoram` (0x1000), `tx_videoram` (0x2000), `rowscrollram` (0x1000), `spritebuffer`
-  (0x1000), `zoomram` (0x40). `spritebuffer` is the post-DMA sprite list — the display list
+  (0x1000), `zoomram` (0x40). `spritebuffer` is the post-DMA sprite list - the display list
   actually rendered, as distinct from the copy the game maintains in main RAM.
 
 **CPU tags for Lua to attach to** (`manager.machine.devices[":maincpu"]`, etc.):
@@ -456,12 +456,12 @@ from Lua as `manager.machine.memory.regions[":<tag>"]`:
 |---|---|---|
 | `:maincpu` | M68000 @ 20 MHz | the one that matters; `pgm.h:63` |
 | `:soundcpu` | Z80 @ 8.4672 MHz | program uploaded by the 68k, so no static disassembly target |
-| `:prot` | ARM7 @ 20 MHz | `optional_device`, **`set_disable()`d on ddpdoj** — do not expect it to step |
+| `:prot` | ARM7 @ 20 MHz | `optional_device`, **`set_disable()`d on ddpdoj** - do not expect it to step |
 | `:igs023` | video device | `screen_update`, `get_sprites` |
 | `:screen`, `:palette`, `:ics`, `:rtc`, `:sram` (nvram) | | |
 
 **Save states: yes.** Every DaiOuJou set carries `MACHINE_SUPPORTS_SAVE` (`pgm.cpp:5677-5685`),
-and the driver registers state explicitly — `pgm_state::machine_start` saves `m_z80_sync`
+and the driver registers state explicitly - `pgm_state::machine_start` saves `m_z80_sync`
 (`pgm.cpp:479-482`), `pgm_arm_type1_state::machine_start` saves the protection simulation's
 `m_value0/m_value1/m_valuekey/m_valueresponse/m_curslots/m_slots`
 (`pgmprot_igs027a_type1.cpp:190-200`), and `igs023_video_device::device_start` saves the
@@ -469,8 +469,8 @@ scroll/scale/ctrl registers (`igs023_video.cpp:757-762`). That satisfies the
 "save/load state if you can get it" item in `01-the-oracle-method.md`.
 
 **Not answered here, and deliberately so.** Whether MAME's Lua API actually delivers the
-three load-bearing capabilities — *execution hooks at an address*, *mid-run memory
-read/write*, *deterministic headless stepping with a readable framebuffer* — and whether
+three load-bearing capabilities - *execution hooks at an address*, *mid-run memory
+read/write*, *deterministic headless stepping with a readable framebuffer* - and whether
 MAME can be driven with **no GUI window on Windows**, are runtime questions. They are
 answerable on the Game Boy and NES ROMs this project already legally owns, exactly as
 `games/ddpdoj/README.md` proposes, and they are **not** claimed by this document. Reading
@@ -512,16 +512,16 @@ $ find games/batman/src -name '*.js' | xargs wc -l | tail -1
 | | executable code+data | total ROM | ported JS |
 |---|---|---|---|
 | Batman (GB) | 128 KiB banked | 128 KiB | 16,799 lines |
-| Gradius (NES) | 32 KiB PRG | 64 KiB (+CHR) | — |
-| **DaiOuJou (PGM)** | **2.5 MiB of 68000 space** | **42.6 MiB** | — |
+| Gradius (NES) | 32 KiB PRG | 64 KiB (+CHR) | - |
+| **DaiOuJou (PGM)** | **2.5 MiB of 68000 space** | **42.6 MiB** | - |
 
 - **68000-addressable code+data is 20× Batman's entire cartridge** and **80× Gradius's PRG**.
 - **Total ROM is 341× Batman's cartridge.**
 - A naive line-count extrapolation from Batman (16,799 JS lines for 128 KiB) would put the
   translation at a few hundred thousand lines. That extrapolation is almost certainly
-  wrong in both directions — the 68000 is far denser per instruction than the LR35902 and
+  wrong in both directions - the 68000 is far denser per instruction than the LR35902 and
   most of the 2.5 MiB is likely data/tables rather than code, while 40 MiB of graphics is
-  an extraction problem rather than a translation one — but **the honest statement is that
+  an extraction problem rather than a translation one - but **the honest statement is that
   this is one to two orders of magnitude larger than anything the project has completed.**
 
 ---
@@ -530,7 +530,7 @@ $ find games/batman/src -name '*.js' | xargs wc -l | tail -1
 
 1. Does the 68k program read `0xb07000` (raster position)? → decides whether the game's own
    logic observes timing. **Needs the ROM.**
-2. Which of the three lag mechanisms is it? The driver has no lag concept at all — MAME
+2. Which of the three lag mechanisms is it? The driver has no lag concept at all - MAME
    just runs the 68000 at 20 MHz and lets it miss deadlines. Whether DaiOuJou drops
    updates, truncates its object loop, or dilates is a property of the 68k code.
    **Needs the ROM.**
@@ -540,19 +540,19 @@ $ find games/batman/src -name '*.js' | xargs wc -l | tail -1
 4. Is the protection simulation (§2) close enough that a port verified against it is
    verified against the real board? Cross-checking against `ddpdojp` (unprotected location
    test) is the cheapest available answer.
-5. Which set is canonical — `ddpdoj` (release) or `ddpdojblk` (Black Label, what the
+5. Which set is canonical - `ddpdoj` (release) or `ddpdojblk` (Black Label, what the
    community means by "DOJ")? An owner decision, not a source fact.
 
 ---
 
-## WAVE 5 — WHERE THE ENEMIES AND THE WEAPONS ACTUALLY LIVE (2026-08-01)
+## WAVE 5 - WHERE THE ENEMIES AND THE WEAPONS ACTUALLY LIVE (2026-08-01)
 
 Full evidence, with every command and its output:
 `docs/worklog/ddpdoj/05-impl-enemies-and-weapons.md`.
 
 **The top-level object table is a SCHEDULER OF SCHEDULERS.** Wave 2 found the
 20-slot table at `$80E240` driven by `$2410BC`. Measured over the 2,600-frame
-`stage1-open` scenario, it holds exactly **8 live objects in steady state** —
+`stage1-open` scenario, it holds exactly **8 live objects in steady state** -
 dispatch types `10, 2, 1, 5, 11, 4, 4, 0` at priorities `1F 1C 1A 18 0A 09 09
 09`. Only ONE of them is the player. **The enemies and the weapons are in
 SUB-TABLES owned by those handlers:**
@@ -564,7 +564,7 @@ SUB-TABLES owned by those handlers:**
 
 * An enemy's identity is a **function pointer at `+$4C`**, not a type word (the
   word at `+$0` is `slotIndexInBand | $8000`). Measured over `stage1-open`:
-  **5 distinct handlers** — `$2688CC` ×8411, `$268232` ×740, `$26A2E2` ×662,
+  **5 distinct handlers** - `$2688CC` ×8411, `$268232` ×740, `$26A2E2` ×662,
   `$269CEA` ×429, `$275914` ×133. Live enemies peak at 24/frame.
 * A shot's handler comes from a **16-longword table at `$253ADE`** indexed by
   `(A6) & $F`. Only **4 of the 16** are reached in the opening: `$253B1E`,
@@ -592,26 +592,26 @@ corrects the shape wave 2 inferred:
 
 * The 12-byte request queue's write pointer `$80AFC0` caps at `$BC4` = **251
   records**. **WAVE 11 CORRECTS TWO NUMBERS ON THIS LINE.** (a) The filler
-  cadence is `$23D676 moveq #$33` then `$23D67E moveq #$32` — 51 records, a
-  filler, then one filler per 50 — so a full list is **251 records + FOUR
+  cadence is `$23D676 moveq #$33` then `$23D67E moveq #$32` - 51 records, a
+  filler, then one filler per 50 - so a full list is **251 records + FOUR
   fillers + the terminator = 256**, not "a filler every 52 and 251 + 5".
   Measured on a forced 251-record frame (`pgm.py dlgate --cap`, 600 such frames,
   `fillers max 4`, `entries max 256`). (b) The queue BUFFER is **`$80397C..
   $805103` = 6,024 bytes = 502 records**, not ~2,523: `$805104` is bucket 1's
-  staging buffer. The point stands — **the cap is a display-list limit, not a
-  buffer limit** — but the margin is 2×, not 10×.
+  staging buffer. The point stands - **the cap is a display-list limit, not a
+  buffer limit** - but the margin is 2×, not 10×.
 * **The terminator is NEVER SKIPPED.** `$23D6E8 cmpi.w #$BC4,D1 / beq` looks
   like "no terminator when the list is exactly full", and 10-recon-display-list
   §2c read it that way. D1 does not hold the record count there: `$23D6DA
   move.w #$12,D1` loaded it four instructions earlier as the tag argument of a
   dead `bsr $240ADC` (a bare `rts`). $0012 is never $0BC4. Confirmed against the
-  board on 1,901 frames of a forced 251-record run — the terminator write
+  board on 1,901 frames of a forced 251-record run - the terminator write
   `$23D6FA` executed on every one.
 * **All 29 enqueue call sites (`$23D3EC..$23D61A`) are followed by
   `bcs $23D624`** (static scan of every `bsr` targeting `$23D726`). So a full
   queue abandons the current bucket's remainder **and every later bucket**, and
   since buckets are appended in a fixed order, what is lost is a whole
-  low-priority TAIL — not "the last few requests". This closes wave 2's open
+  low-priority TAIL - not "the last few requests". This closes wave 2's open
   "whether any caller acts on it I did not establish".
 * **There is a SECOND appender, `$23D762`, whose `$23D794 addi.w #$c,$80AFC0`
   has NO cap test at all**, reached from the object handlers in main-loop

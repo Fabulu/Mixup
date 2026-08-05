@@ -1,8 +1,8 @@
-# 02 — MOD SYSTEM & SELECTION SCREEN
+# 02 - MOD SYSTEM & SELECTION SCREEN
 
 Premise: we own the JS source, so mods are **not byte patches**. A mod is a
 declarative config over a well-defined parameter surface, plus (optionally)
-hook functions and asset overrides. ROM addresses below are provenance only —
+hook functions and asset overrides. ROM addresses below are provenance only -
 they tell you which extracted constant/record a key controls.
 
 ---
@@ -11,12 +11,12 @@ they tell you which extracted constant/record a key controls.
 
 Three layers, applied in this order at boot:
 
-1. **Params** — key/value overrides of the `tunables` registry (generated
+1. **Params** - key/value overrides of the `tunables` registry (generated
    from master-ref §10). Purely declarative, trivially stackable.
-2. **Data overrides** — replacement/transformation of extracted asset data
+2. **Data overrides** - replacement/transformation of extracted asset data
    (spawn records, level order/exit graph, palettes, metasprite ids). Either
    literal JSON or a seeded transform function (randomizers).
-3. **Hooks** — functions registered on named engine events for behaviour that
+3. **Hooks** - functions registered on named engine events for behaviour that
    isn't a constant. Hooks run in mod-stack order; each receives a context it
    may mutate and the return of the previous hook.
 
@@ -33,26 +33,26 @@ export default {
   stackable: true,                // may combine with other mods
   seedable: false,                // shows a seed field in the launcher
 
-  params: {                       // layer 1 — flat dot-keys into tunables
+  params: {                       // layer 1 - flat dot-keys into tunables
     "player.gravityRisingHeld": 0,
     "player.gravityFalling": 1,
     "player.terminalVelocity": -32,
   },
 
-  data: (assets, seed) => assets, // layer 2 — pure transform, optional
+  data: (assets, seed) => assets, // layer 2 - pure transform, optional
 
-  hooks: {                        // layer 3 — optional
+  hooks: {                        // layer 3 - optional
     onBoot(state) {},             // after state init, before title
     onLevelInit(state, level) {},
     onFrame(state) {},            // main-loop head (≈ $0567)
     onPlayerTick(state, player) {},
     onEnemySpawn(state, enemy) {},          // may edit or veto
-    onDamagePlayer(ctx) {},                 // {amount, source} — mutate amount
+    onDamagePlayer(ctx) {},                 // {amount, source} - mutate amount
     onDamageEnemy(ctx) {},
     onPickup(ctx) {},
-    onLevelExit(ctx) {},                    // {from, edge, to} — mutate to
+    onLevelExit(ctx) {},                    // {from, edge, to} - mutate to
     onRenderFrame(ctx) {},                  // palette/theme, post-effects
-    onSoundRequest(ctx) {},                 // {id, mask} — mutate/veto
+    onSoundRequest(ctx) {},                 // {id, mask} - mutate/veto
   },
 };
 ```
@@ -91,12 +91,12 @@ Generated as `constants/tunables.js`; keys below are the stable public API.
 | `camera.*` | leadX, clampLeft, yWindow[4] |
 | `world.*` | deathPitRow, levelExits (data), routeEntryLevels, startingLevel |
 | `render.*` | palette theme, bgp/obp0/obp1 base, invert, cycleSpeed |
-| `sound.*` | tickHz (59.36 — the "tempo"), sfxEnabled, musicTable[14] |
+| `sound.*` | tickHz (59.36 - the "tempo"), sfxEnabled, musicTable[14] |
 | `meta.*` | gameSpeed (ticks per rAF), difficulty lock, assistFlags |
 
 ---
 
-## 3. LAUNCH LINEUP — 18 curated mods
+## 3. LAUNCH LINEUP - 18 curated mods
 
 Selection criteria: dramatic to play ÷ cheap to build, spread across
 categories. Cost: ● trivial (params only) ◐ small hook ◼ data/logic work.
@@ -122,7 +122,7 @@ categories. Cost: ● trivial (params only) ◐ small hook ◼ data/logic work.
 ### Progression (mode slot, exclusive)
 | mod | pitch | implementation |
 |---|---|---|
-| **Free Roam** ◐ | All 14 levels on the select screen from the start. | launcher passes route/level directly; `onBoot` sets `flow.routeMask` + start level — the JS twin of forcing `$C753` |
+| **Free Roam** ◐ | All 14 levels on the select screen from the start. | launcher passes route/level directly; `onBoot` sets `flow.routeMask` + start level - the JS twin of forcing `$C753` |
 | **Boss Rush** ◼ | Four bosses. Nothing in between. | data: `world.levelExits` rewritten 4→8→11→14; route dispatch neutralised via `onLevelExit` |
 | **Gotham Shuffle** ◼ (seedable) | The routes are randomized. So are the enemies. | data transform: permute level exits within routes + shuffle enemy `state` fields (with matched HP/hitbox from the roster table); seed shown on screen |
 | **One Life** ● | No continues. No second chances. | `startingLives → 1`, `onBoot` disables continue flag |
@@ -133,10 +133,10 @@ categories. Cost: ● trivial (params only) ◐ small hook ◼ data/logic work.
 | **Aggro Mode** ● | Every enemy on the map wakes up angry. | `enemies.activationRange 7→$40`, `despawnRange → $50` |
 | **Noir Gotham** ● | The whole game in photo-negative. | `render.invert = true` (palette LUT inversion at compose time) |
 | **Disco Gotham** ◐ | The palette strobes to the frame counter. | `onRenderFrame`: rotate BGP shades every 8 frames (the raster machine already proves it looks great) |
-| **Robin Protocol** ◐ | The hidden rescue drone, always on call. | force `$C75C`-equivalent flag = 1; relax the HP<3 gate via param — surfaces real cut content |
+| **Robin Protocol** ◐ | The hidden rescue drone, always on call. | force `$C75C`-equivalent flag = 1; relax the HP<3 gate via param - surfaces real cut content |
 | **Speedrun HUD** ◐ | Frame-exact IGT and level splits on screen. | `onFrame` counter + `onLevelExit` split log, drawn via the font tiles (`$80-$89`) |
 
-(Deliberately cut from launch: Mirror Mode and Custom Level Geometry — high
+(Deliberately cut from launch: Mirror Mode and Custom Level Geometry - high
 cost; ship as v2 once the level JSON editor exists. All 40 catalogued ideas
 remain in `recon-5` §7 as backlog.)
 
@@ -156,7 +156,7 @@ Layout & flow:
 3. **Modifier grid** (multi-select toggle cards, grouped by category tabs
    Physics / Combat / Chaos / Assist): each card = name, one-line pitch, small
    icon, and on hover/selection an exact-effects panel (the actual param diff,
-   e.g. "gravity 3 → 1, terminal −66 → −32") — the parameter surface doubles
+   e.g. "gravity 3 → 1, terminal −66 → −32") - the parameter surface doubles
    as honest documentation.
 4. **Stack tray**: selected mods in applied order, drag to reorder; conflict
    badge (⚠ shared keys) with "last wins" explanation. Live count of touched
@@ -165,7 +165,7 @@ Layout & flow:
    start instantly).
 6. **LAUNCH** → builds `ModConfig`, writes URL hash + localStorage, boots the
    game canvas fullscreen. In-game pause menu gets "Back to mod select".
-7. Share: the URL hash IS the loadout — copy to share exact runs (seed
+7. Share: the URL hash IS the loadout - copy to share exact runs (seed
    included).
 
 Combination policy (final): modifiers stack freely (params: last-in-wins,

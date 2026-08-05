@@ -1,4 +1,4 @@
-# Process — repo, gate, and working with agents
+# Process - repo, gate, and working with agents
 
 Rules that are not about any console. All of these were learned by breaking something.
 
@@ -9,14 +9,14 @@ you change gameplay code and the gate goes red, you broke something real.
 
 - **Cheapest first.** A wrong constant or a corrupted export should be reported before
   anything spends a minute inside an emulator.
-- **Name the stage that failed**, and stop there by default — with a flag to keep going.
+- **Name the stage that failed**, and stop there by default - with a flag to keep going.
 - **Every check goes in the gate the day it is written.** See `02-traps.md` § 5.
 - **A stage that cannot run must fail, not skip**, unless the reason is genuinely
   environmental. See `03-checks-that-can-fail.md`.
 
 ## Commits
 
-- **Stage by name.** `git add -A` sweeps up whatever else is in flight — another session,
+- **Stage by name.** `git add -A` sweeps up whatever else is in flight - another session,
   another agent, a half-finished experiment. This bit us with agents running concurrently.
 - **Staging by name is NOT enough with a concurrent writer, and this cost a broken HEAD.**
   `git commit` commits the **index**, not your files. Another agent had `git add`-ed a
@@ -24,7 +24,7 @@ you change gameplay code and the gate goes red, you broke something real.
   files swallowed that rename and shipped it without them. A fresh checkout then had no
   `src/`, a `package.json` pointing at a directory that did not exist, and every oracle
   tool broken. **Before committing, run `git diff --cached --name-only` and look for files
-  that are not yours** — or commit from a separate index (`GIT_INDEX_FILE`). Staging by
+  that are not yours** - or commit from a separate index (`GIT_INDEX_FILE`). Staging by
   name protects you from *unstaged* work; nothing but checking protects you from work
   someone else already staged.
 - **`git checkout -- <file>` on a dirty tree discards uncommitted work in that file.** It
@@ -40,7 +40,7 @@ you change gameplay code and the gate goes red, you broke something real.
 
 ## Comments are the primary asset
 
-Cite the ROM address on every non-obvious line. The port's value is not that it runs — it
+Cite the ROM address on every non-obvious line. The port's value is not that it runs - it
 is that a second person can check any line against the original without re-deriving it.
 
 When you split a file, **the comments go with the code they document**. A refactor that
@@ -56,7 +56,7 @@ time:
 
 - a launcher note telling players a working level was BLOCKED;
 - a banner in a test file claiming 8 scenarios were failing, naming a fix that was already
-  applied — anyone reading it would believe the suite was red;
+  applied - anyone reading it would believe the suite was red;
 - a "not ported" list with three items that had been ported;
 - counts (test totals, stage totals, scenario totals) that had drifted by a factor of two
   and contradicted each other **between files**.
@@ -66,7 +66,7 @@ number in a doc, re-count it from the file rather than copying the previous clai
 
 ## Working with parallel agents
 
-Multi-agent work is effective here — recon fan-out especially, since diagnosing a ROM
+Multi-agent work is effective here - recon fan-out especially, since diagnosing a ROM
 behaviour is naturally parallel. Three hazards, all encountered:
 
 1. **Shared output paths.** The oracle tools write fixed paths (`rip/oracle/trace_L05.json`
@@ -76,7 +76,7 @@ behaviour is naturally parallel. Three hazards, all encountered:
 2. **Concurrent writes to the source tree.** Exactly one agent should write to `src/` at a
    time. Reviewers read; implementers write; do not fan out implementation.
    **And that includes YOU.** The most expensive incident here was not two agents
-   colliding — it was the human committing documentation while an agent had a rename
+   colliding - it was the human committing documentation while an agent had a rename
    staged. If an agent is mid-restructure, do not commit anything from that repo, even
    files it will never touch. Wait, or work in a worktree.
 3. **A confident wrong answer is worse than "unresolved".** Ask explicitly for the second.
@@ -84,7 +84,7 @@ behaviour is naturally parallel. Three hazards, all encountered:
    ones that produced a tidy conclusion, and at least one tidy conclusion was wrong.
 
 **Have someone triage the reviewers.** In one pass, two of the reviewers' findings were
-false alarms and one proposed fix would have reintroduced a bug — caught only because the
+false alarms and one proposed fix would have reintroduced a bug - caught only because the
 final gate re-measured instead of deferring.
 
 ## Ask the player what they saw
@@ -94,6 +94,6 @@ fades out to white, and then we softlock"**. The symptom word sent four investig
 astray; the description of the screen solved it immediately.
 
 Related: when a player says the port looks wrong and your suite says it is perfect,
-**suspect the suite**. Twice the player was right and the measurement was rigged — once by
+**suspect the suite**. Twice the player was right and the measurement was rigged - once by
 a harness setting up state the app never has, once by a unit test that took the answer as
 an argument. Both times the instinct to trust the green number was the expensive one.

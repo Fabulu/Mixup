@@ -1,5 +1,5 @@
-# 00 — MASTER REFERENCE
-## Batman: Return of the Joker (GB, Sunsoft 1992) — authoritative technical spec
+# 00 - MASTER REFERENCE
+## Batman: Return of the Joker (GB, Sunsoft 1992) - authoritative technical spec
 
 Supersedes `recon-1` … `recon-5` (now historical). Every disputed claim was
 re-verified against the ROM/disassembly; the adjudication log is Appendix A.
@@ -23,9 +23,9 @@ address itself; bank N≥2 = `N*$4000 + (A-$4000)`.
   collision LUTs, 4 = tile gfx only, 5 = metatiles + spawns + metasprites +
   VRAM scripts, 6 = tile gfx + menu art.
 * **Bank 7**: sound driver `$4000-$46D4` + pitch/song data `$46D5-$7956` +
-  **VRAM script (ending text) `$7960-$7FFF`** (run by `00:3758` — not audio).
+  **VRAM script (ending text) `$7960-$7FFF`** (run by `00:3758` - not audio).
 
-Bank switching: `LD A,imm / LD [$2000],A / LD [$C703],A` under DI/EI — all 63
+Bank switching: `LD A,imm / LD [$2000],A / LD [$C703],A` under DI/EI - all 63
 sites, all immediate, always returning to bank 1. `$C703` = current-bank shadow,
 read only by the Timer ISR save/restore. The only dynamic bank write is inside
 `sub_00_0B15` (resource loader). MBC1 mode/RAM registers never touched.
@@ -73,13 +73,13 @@ VBlank transfer queues (all drained once per VBlank):
 | `$C100` descriptor | `[$C100]!=0` | **32 tile bytes** down one BG column, stride $20 (one metatile column = 32 tile rows). On levels 9/`$0A`: dest hi forced `$99`, source +8, first 9 writes skipped (top parallax band is static). Skipped entirely on level 6 |
 | `$C61B` script | `[$C61B]!=0` | VRAM script via `$0A0E` |
 | `$C130` 2×2 queue | records present | 6-B records `{destHi,destLo,t0..t3}` → t0/t2 top, t1/t3 bottom (+$20). Cursor `$FF9F`, ~8 records max |
-| `$C5CB` row buffer | `[$FF9B]!=0` | **32 bytes** (2 tiles) to `($FF9B<<8)\|$FF9C` — BG tile animation. `$FF9B` = dest **HIGH** byte |
-| `$C58B` staging | `[$FF99]!=0` | 64 bytes (4 tiles) via generated copier `CALL $C4CB` — player anim tiles. `$FF99` = dest **HIGH** byte |
+| `$C5CB` row buffer | `[$FF9B]!=0` | **32 bytes** (2 tiles) to `($FF9B<<8)\|$FF9C` - BG tile animation. `$FF9B` = dest **HIGH** byte |
+| `$C58B` staging | `[$FF99]!=0` | 64 bytes (4 tiles) via generated copier `CALL $C4CB` - player anim tiles. `$FF99` = dest **HIGH** byte |
 
 ### STAT raster state machine (`$FFC7` = mode, ISR `00:0857`)
 
 Armed per level inside `sub_00_0D50` (which first zeroes `$FFC7`, then branches
-on the level number — the `0:$1015` table feeds `$C73E`, *not* the raster mode):
+on the level number - the `0:$1015` table feeds `$C73E`, *not* the raster mode):
 
 | levels | mode chain | effect |
 |---|---|---|
@@ -88,7 +88,7 @@ on the level number — the `0:$1015` table feeds `$C73E`, *not* the raster mode
 | 6 | 0→1 | 2-band split: lines $22-$6F SCX=`$FFCC`, $70+ SCX=`$FFA9`; SCY-2 bob |
 | stage clear | 5 | window pushed off at line $90 |
 | ending | 7 | per-scanline fractional SCY (8.8 accumulator `$C763/$C764`), BGP switch at line $44 |
-| all others | — | no splits, `rIE=$05` |
+| all others | - | no splits, `rIE=$05` |
 
 Up to ~36 splits/frame (mode 6). **Renderer must support per-scanline SCX/SCY
 and per-scanline BGP/OBP0/OBP1/WX/WY.**
@@ -109,7 +109,7 @@ and per-scanline BGP/OBP0/OBP1/WX/WY.**
 | `$C1C0-$C1E7` | 40 | death/explosion particles, 8×5 B (seed ROM `0:$2AD7`) |
 | `$C1E8-$C267` | 128 | **map-object array**, 8×16 B (§5.1) |
 | `$C268-$C367` | 256 | **enemy array**, 8×32 B (§5.2) |
-| `$C368-$C4AF` | 328 | **metatile definition table**, ≤82 × 4 tile ids (levels 5-8 use all 328 B — `$C4A7-$C4AF` is NOT free) |
+| `$C368-$C4AF` | 328 | **metatile definition table**, ≤82 × 4 tile ids (levels 5-8 use all 328 B - `$C4A7-$C4AF` is NOT free) |
 | `$C4B0-$C4CA` | 27 | batarang pool, 3×9 B (indexed `$C4A7+9*(n+1)`, n=0..2) |
 | `$C4CB-$C58A` | 192 | generated 64-B copier (code) |
 | `$C58B-$C5CA` | 64 | player-anim tile staging (4 tiles) |
@@ -127,7 +127,7 @@ and per-scanline BGP/OBP0/OBP1/WX/WY.**
 | `$C70A-$C767` | 94 | game-state block (§3.1) |
 | `$C768-$C7FF` | 152 | UNUSED (largest free block) |
 | `$C800-$C94C` | 333 | sound-driver RAM (§8) |
-| `$C94D-$CFFF` | — | stack (top `$CFFF`) |
+| `$C94D-$CFFF` | - | stack (top `$CFFF`) |
 | `$D000-$DFFF` | 4096 | level map: `$D000 + (Xhi<<5) + (Yhi&$0F)*2` = `{metatileId, collisionByte}`, column-major, 16 rows, ≤128 cols |
 
 ### Game-state block `$C70A-$C767` (high-confidence entries)
@@ -165,7 +165,7 @@ and per-scanline BGP/OBP0/OBP1/WX/WY.**
 | `$C755` | water-surface screen Y (raster mode 6 stop line; also → WY) |
 | `$C756` | **difficulty** 0/1/2 (default 1) |
 | `$C757` | lag-frame flag |
-| `$C759` | **batarang ammo** (no cap — wraps past 255) |
+| `$C759` | **batarang ammo** (no cap - wraps past 255) |
 | `$C75A` | current `$C1E8` slot index |
 | `$C75C` | hidden rescue-helper cheat flag (title: B+Select+Left) |
 | `$C763-$C766` | raster fraction accumulators / palette-cycle counters |
@@ -238,12 +238,12 @@ top exit.
 | `$FF8F` | turn-around timer ($0F) | |
 | `$FF90` | landing-squat timer ($10) | |
 | `$FF93/94` | screen X/Y (OAM coords) | |
-| `$FF95` | slow/water mode ($80) — halves speed & gravity | |
+| `$FF95` | slow/water mode ($80) - halves speed & gravity | |
 | `$FF96` | OAM attr mask ($80 = behind BG, set by water) | |
 | `$FF97` | attack anim counter (1-15 ring; ==8 fires punch test) | |
 | `$FF98` | air-control throttle | |
 
-Physics constants (ROM file offsets — the canonical tunables list is §10):
+Physics constants (ROM file offsets - the canonical tunables list is §10):
 jump vel `$22`, spring `$32`, wall-jump Y `$22` / X `±$14`; gravity rising
 1 (A held) / 2 (released), falling 3; terminal `−$42` ($BE); walk max
 ±`$18` (1.5 px/f); water: speed ±8, gravity 2 (1 frame in 8), terminal −12.
@@ -267,7 +267,7 @@ or `JP $0150` game over.
 Both arrays preloaded whole at level init from bank-5 blobs that are
 **byte-identical images of the RAM records** (no streaming spawner).
 
-### 5.1 `$C1E8` map objects — 8 × 16 B — driver `1:4230`, dispatch `1:$427B` (11 entries)
+### 5.1 `$C1E8` map objects - 8 × 16 B - driver `1:4230`, dispatch `1:$427B` (11 entries)
 
 | off | field |
 |---|---|
@@ -285,7 +285,7 @@ Types 2 and 10 never placed in shipped data (dead handlers).
 Placed objects: platforms, conveyors, doors (writes metatiles `$3E-$41` +
 collision `(slot<<5)|$1F`), the level-6 vehicle, bat-rope anchors.
 
-### 5.2 `$C268` enemies — 8 × 32 B — driver `1:4E0C`
+### 5.2 `$C268` enemies - 8 × 32 B - driver `1:4E0C`
 
 Loop: alternates ascending/descending by frame parity `$FFA7`; level `$0E`
 reroutes to `1:77BD`. Inactive slots run the activation check `1:6094`
@@ -297,7 +297,7 @@ reroutes to `1:77BD`. Inactive slots run the activation check `1:6094`
 | +0 | flags: b7 active, b6 disabled, b4/b3 hit-state, b2 hit-flash, b1/b0 misc |
 | +1 | always 0 in ROM data |
 | **+2** | **STATE = enemy type 1..13** → primary dispatch **`1:$50D3`** |
-| +3/+4 | speed/period pair (per-instance on L5) — UNCONFIRMED semantics |
+| +3/+4 | speed/period pair (per-instance on L5) - UNCONFIRMED semantics |
 | +5 | facing (b0; knockback dir) |
 | +6 | kill latch (non-zero → death FX) |
 | +7/+8 | screen X/Y (recomputed) |
@@ -306,7 +306,7 @@ reroutes to `1:77BD`. Inactive slots run the activation check `1:6094`
 | +$14 | state timer |
 | +$16 | **HP** |
 | +$17 | hit-flash/stun timer ($3C) |
-| +$1A-$1F | anchor pos / patrol limits / gfx variant — UNCONFIRMED |
+| +$1A-$1F | anchor pos / patrol limits / gfx variant - UNCONFIRMED |
 
 **Primary dispatch `1:$50D3`** (13 entries, on `state−1`):
 
@@ -334,7 +334,7 @@ templates `1:$6CEA+$20*n` (5), copied into slot 6, HP `$FF`.
 
 ## 6. LEVEL DATA
 
-### 6.1 Maps (bank 3) — **no compression anywhere in the game**
+### 6.1 Maps (bank 3) - **no compression anywhere in the game**
 
 `3:$4000`: **14** LE pointers (words 15/16 seen in old dumps are level-1 map
 bytes). Blob = `{width, width×16 metatile ids, column-major, row 0 = top}`.
@@ -344,7 +344,7 @@ Loader `00:0C34` writes 2 B per metatile into `$D000`: the raw id, then
 `$7BB6` L12-14).
 
 Widths: 128, 33, 114, 12, 82, 18, 82, 12, 128, 98, 13, 98, 98, 12.
-(`0:$103F` is the *camera clamp*, ≈ width−1 — not the width.)
+(`0:$103F` is the *camera clamp*, ≈ width−1 - not the width.)
 All levels are 16 metatiles (256 px) tall; only horizontal streaming exists.
 Levels 2 and 6 are vertical (exit through the top).
 
@@ -400,7 +400,7 @@ Levels 3-$0B have no slopes.
 
 Camera: X lead 5 metatiles, left clamp 6, right clamp `$C732`−5; Y window
 tests `$15/$1D`, clamps `$10/$18`. Column streaming (`00:1287`): every 8 px of
-camera X (bit 7 of `$FFA3` flips), queue one 32-byte BG column — lead +$16
+camera X (bit 7 of `$FFA3` flips), queue one 32-byte BG column - lead +$16
 tiles ahead / trail −4 behind. Level entry builds 18 columns via `$C160`
 scripts.
 
@@ -408,7 +408,7 @@ scripts.
 
 ## 7. GRAPHICS PIPELINE
 
-### 7.1 VRAM layout — `rLCDC = $E7` at every write site
+### 7.1 VRAM layout - `rLCDC = $E7` at every write site
 
 BG/window tile data = **SIGNED `$8800` region** (bit4=0):
 `tileAddr(n) = n < $80 ? $9000+n*16 : $8800+(n-$80)*16`.
@@ -419,7 +419,7 @@ Tile `$2F` = blank fill. Font: tiles `$80-$89` = 0-9, `$8A-$A3` = A-Z.
 ### 7.2 Tile resources
 
 `0:$0B43`: 36 × `{bank, ptr}` → 4-B header `{dest16, len16}` + raw 2bpp bytes
-(**plain memcpy — no decompressor exists in the ROM**). 33 valid entries;
+(**plain memcpy - no decompressor exists in the ROM**). 33 valid entries;
 `$0E/$17/$18` unused. Per-level load lists at `1:$7C7D`. Player anim tiles
 live outside this table in bank 2 (§7.4).
 
@@ -429,7 +429,7 @@ Tables `5:$5F5C` (243 ptrs, default) and `5:$736B` (105 ptrs, used for enemies
 on levels `$04/$0B/$0E`). Entry = N × 4-B OAM records `{dy, dx, tile, attr}`,
 `$FF`-terminated; attr OR'd with `$FF9E`. Draw = `sub_00_0BC6` / `$0BAF`:
 append at shadow-OAM cursor `$FF9D`, hard cap 40 sprites, overflow silently
-dropped, no sorting — OAM order = call order.
+dropped, no sorting - OAM order = call order.
 
 ### 7.4 Player animation
 
@@ -462,7 +462,7 @@ decode proofs: the tables in this section are complete; `tools/dumpsong.py`
 implements them and round-trips all 47 songs.
 
 * Tick: Timer IRQ, **59.36 Hz** (`4096/69`). All durations are ticks. No tempo
-  command — tempo mod = change the tick rate.
+  command - tempo mod = change the tick rate.
 * 8 track slots × 36 B at `$C82D` (music = slots 0-3, SFX = slots 4-7).
   Per-track: seq ptr, FIXDUR, duration/gate counters, transpose, detune
   (unsigned, bias `$80`), freq word, pitch envelope (delay+ptr), volume
@@ -494,21 +494,21 @@ envelopes (NRx2 writes always accompany a retrigger), silence is emergent
 depth 0 is a fall-through no-op; active envelope pointers are stored
 big-endian; pitch envelopes clamp at the LO byte, vibrato carries into HI;
 track-start deliberately does NOT clear duty/pan/gate/wave/envelope pointers
-(state inheritance across songs — UNCONFIRMED whether audible).
+(state inheritance across songs - UNCONFIRMED whether audible).
 
 ---
 
 ## 8b. DIFFICULTY (`$C756`)
 
 Three values, cycled 0→1→2 by the options screen (`$3980`/`$3991`). **The
-cartridge boots at 1**, measured on the real machine at gameplay start — not
+cartridge boots at 1**, measured on the real machine at gameplay start - not
 0, despite the RAM clear. Every read, so the setting can be reasoned about:
 
 | site | effect |
 |---|---|
 | `0:$2E81` | water damage only happens when **≠ 0**. Easy takes none at all. |
 | `1:$44D6` | type-7 water-spout step gate: 1 frame when ≠ 0, else 2 |
-| `1:$44FF` | spout pause between pulses: `$50` / `$28` / `$10` — hard pulses 5× as often as easy |
+| `1:$44FF` | spout pause between pulses: `$50` / `$28` / `$10` - hard pulses 5× as often as easy |
 | `0:$1E78` | hazard invulnerability window: `$40` / `$0C` / `$04` |
 | `0:$0D79` | **== 2 only**: enemy HP (`$C27E`) += 5 |
 | `1:$4FCD` | **== 2 only**: sets bit 3 on an enemy flag (extra behaviour) |
@@ -536,7 +536,7 @@ walk off right edge (`Xhi ≥ $C732`) or top (`Yhi < $11`) → `$2820` reads
 `$34D0`; route dispatch `$35E8` sets `$C753` bits (L4/L8/L11) → back to round
 select, or all-3-cleared → level `$0C`. L14 → ending `$3652`. Death `$29E7`
 (120 f) → lives−− → round select (full HP; on a boss level, restart one level
-earlier) or game over → `JP $0150` (wipes HRAM + `$D000` only — `$C753`
+earlier) or game over → `JP $0150` (wipes HRAM + `$D000` only - `$C753`
 route progress survives). Options screen `$3893`: difficulty (`$C756`) +
 **sound test** (the DAA/BCD code is the sound-test number display, not a stage
 select). No password, no attract mode, no score.
@@ -654,7 +654,7 @@ recon-5 §6/§7).
 
 ---
 
-## Appendix A — ADJUDICATION LOG
+## Appendix A - ADJUDICATION LOG
 
 All verdicts re-verified against the ROM/disassembly on 2026-07-26, not taken
 on seniority.
@@ -674,7 +674,7 @@ on seniority.
 | 11 | VBlank row transfer | 33 bytes | 32 bytes / 2 tiles (recon-3) | **32 bytes** | 16 writes + `INC DE` + 16 writes from `$C5CB` |
 | 12 | `$FF99/$FF9B` | dest LOW bytes | dest HIGH bytes (recon-3) | **HIGH** | `00:074E`: `A=[$FF9B] → D`; `00:07BC`: `A=[$FF99] → D` |
 | 13 | `sub_00_0D50` | "InitRasterMode from table `$1015`" | recon-3/5 | **zeroes `$FFC7`; `$1015` low nibble → `$C73E` (boss id); raster modes armed by level-number branches later in the same routine** | code read at `00:0D50-0EEA` |
-| 14 | recon-5 "width" column | — | claimed `$103F` = width | **`$103F` = camera clamp**; real widths come from the map blob byte (128,33,114,12,82,18,82,12,128,98,13,98,98,12) | both read from ROM |
+| 14 | recon-5 "width" column | - | claimed `$103F` = width | **`$103F` = camera clamp**; real widths come from the map blob byte (128,33,114,12,82,18,82,12,128,98,13,98,98,12) | both read from ROM |
 | 15 | BCD/DAA menu | "hidden stage select" (recon-2) | sound test (recon-5) | **sound test** on the normal OPTION screen; the played id is binary `$FF80`, the BCD `$C713` is only the displayed number | `00:3937-3947` |
 | 16 | song table size | ≥24 | 47 (recon-4) | **47** | `$477D + 47*2 = $47DB` = envelope data start; sound test exposes `$00-$2E` |
 | 17 | `0:$7C44/$7C5C/$7C7D/$7CED` bank attribution | bank 0 | bank 1 (recon-5) | **bank 1** (file offsets identical, so no practical impact) | addresses ≥ `$4000` |

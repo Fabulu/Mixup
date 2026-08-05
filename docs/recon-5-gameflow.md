@@ -1,4 +1,4 @@
-# RECON-5 — GAME FLOW, LEVEL PROGRESSION & MOD SURFACE
+# RECON-5 - GAME FLOW, LEVEL PROGRESSION & MOD SURFACE
 
 ROM: `Batman - Return of the Joker (USA, Europe).gb` (128 KB, MBC1).
 Builds on `docs/recon-1-architecture.md` and `docs/recon-2-ram-map.md`.
@@ -8,7 +8,7 @@ Anything not proven twice is marked **UNCONFIRMED** with the test that settles i
 Listings used: `disasm2/bank_XX.asm` (bank-aware; regenerate with
 `python tools/banktrace.py "<rom>" --jt --outdir disasm2`).
 `tools/show.py` now honours `BATDIS=disasm2`.
-New tool: **`tools/leveltables.py`** — dumps every per-level table, all enemy
+New tool: **`tools/leveltables.py`** - dumps every per-level table, all enemy
 records and all map-object records (`--enemies --objects --all`).
 
 ### Address ↔ file-offset convention used throughout
@@ -35,18 +35,18 @@ is `$FFB5` + `$C753`; game over is a jump to the boot vector.
 
 | # | state | entry addr | loop addr | selector var(s) | exit conditions |
 |---|---|---|---|---|---|
-| 0 | Boot / RAM+HW init | `0:$0100`→`0:$0150` | — | — | falls through to 1. `$0150` is also the **soft-reset** target (A+B+Sel+Start held, `0:$0A55`) and the **game-over** target (`0:$2ABA`) |
-| 1 | Sunsoft copyright | `0:$022E` (VRAM script `5:$52F5`) | `0:$0265-$0278` delay | — | timer only → 2 |
-| 2 | Sunsoft logo → title build | `0:$027D` (BG clear `$34A4`, script `5:$5170`, text `1:$7C44`) | — | falls through to 3 |
+| 0 | Boot / RAM+HW init | `0:$0100`→`0:$0150` | - | - | falls through to 1. `$0150` is also the **soft-reset** target (A+B+Sel+Start held, `0:$0A55`) and the **game-over** target (`0:$2ABA`) |
+| 1 | Sunsoft copyright | `0:$022E` (VRAM script `5:$52F5`) | `0:$0265-$0278` delay | - | timer only → 2 |
+| 2 | Sunsoft logo → title build | `0:$027D` (BG clear `$34A4`, script `5:$5170`, text `1:$7C44`) | - | falls through to 3 |
 | 3 | **TITLE / main menu** | `0:$027D` | **`0:$02C4`** | `$C712` (0 = START, 1 = OPTION) | `$FFE2==$26` (**B+Select+Left cheat**) → `$C75C=1`, → 4. Up/Down toggles `$C712`. Start with `$C712==0` → 4; Start with `$C712==1` → 6 (`JP $3893`) |
-| 4 | Title "press start" flash | `0:$031B` | `0:$031D-$034E` (120 frames) | — | timer → 5 |
+| 4 | Title "press start" flash | `0:$031B` | `0:$031D-$034E` (120 frames) | - | timer → 5 |
 | 5 | **ROUND SELECT / CONTINUE** | **`0:$035B`** | **`0:$03DC-$0479`** | `$C712` = route cursor 0..3, `$C713` = 0 START / 1 CONTINUE, `$C753` = route-completion mask, `$FFB5` = continue-available | Start (`$FFE2` bit3, `0:$0477`) → 7. Left/Right cycles `$C712` through *uncleared* routes (`sub_00_0FE6`); Up/Down picks START/CONTINUE (CONTINUE only if `$FFB5!=0`) |
 | 6 | **OPTIONS (difficulty + sound test)** | `0:$3893` | **`0:$38D5-$39E1`** | `$C712` = 0 DIFFICULTY / 1 SOUND TEST / 2 EXIT; `$C756` difficulty 0-2; `$C713` BCD sound no. `$01-$46`; `$FF80` = sound-test cursor 0-$2E | Start with `$C712==2` → back to 3 (`0:$3934 JP $02C4`). A with `$C712==1` plays sound `$FF80` |
-| 7 | **LEVEL INIT** | **`0:$04BB-$0563`** | — | `$FFB0` = level (set at `0:$04B9` or `0:$0499`) | falls through to 8 |
+| 7 | **LEVEL INIT** | **`0:$04BB-$0563`** | - | `$FFB0` = level (set at `0:$04B9` or `0:$0499`) | falls through to 8 |
 | 8 | **IN-LEVEL (main loop)** | `0:$0564` | **`0:$0567 … 0:$0650 JP $0567`** | `$C740` cutscene lock, `$C716` pause, `$C715` death, `$C750` boss mode | walk off right edge (`0:$1745`, `C=0`) or top (`0:$1750`, `C=1`) → 9; HP=0 / pit → 11; boss killed → 10 |
-| 9 | **Level transition** | `0:$2820` | — | `$286D[(lvl-1)*2 + C]` | new `$FFB0`, re-runs the level loaders in place (no LCD-off screen wipe) → 8. Value `$FE` = *no exit*, teleports player to `Y=$1100`, falling (`0:$285B`) |
+| 9 | **Level transition** | `0:$2820` | - | `$286D[(lvl-1)*2 + C]` | new `$FFB0`, re-runs the level loaders in place (no LCD-off screen wipe) → 8. Value `$FE` = *no exit*, teleports player to `Y=$1100`, falling (`0:$285B`) |
 | 10 | **Level-clear / boss-clear sequencer** | `1:$793A`/`1:$7959` → `0:$34D0` | `0:$350F`, `0:$3566`, `0:$35D0` (phase = `$C712` 1/2/3) | `$C712` | → `0:$35E8` |
-| 10b | **Route-clear dispatch** | **`0:$35E8`** | — | `$FFB0`, `$C753` | L4 → `SET 0`; L8 → `SET 1`; L11 → `SET 2` (`0:$3608/$360F/$3616`); if `$C753==$07` → `$FFB0=$0C`, `JP $04BB` (7); else → 5 (`0:$363A JP $035B`). L14 → 12. Any other level → `0:$3605` `LD C,$01; JP $2820` (9) |
+| 10b | **Route-clear dispatch** | **`0:$35E8`** | - | `$FFB0`, `$C753` | L4 → `SET 0`; L8 → `SET 1`; L11 → `SET 2` (`0:$3608/$360F/$3616`); if `$C753==$07` → `$FFB0=$0C`, `JP $04BB` (7); else → 5 (`0:$363A JP $035B`). L14 → 12. Any other level → `0:$3605` `LD C,$01; JP $2820` (9) |
 | 11 | **DEATH** | `0:$29E7` (`$C715=1`, `$C712=$78`) | `0:$2A0D-$2A71` particle loop, 120 frames | `$C715`, `$C712` | `0:$2AAD`: `$FFB5=1`, `$C767--`; if 0 → `JP $0150` (**GAME OVER**, state 0); else → 5 |
 | 12 | **ENDING** | `0:$3652` | `0:$369A`, `0:$36C1`, `0:$3701`, … | `$C712`, `$FFAC` | multi-page ending: BG clears, resources `$02/$1D/$21/$23`, VRAM scripts `7:$7E09`, `7:$7EAF`, `7:$7F70`, BGP fade table `0:$3A31` (`FF AB 5B 1B`) → eventually state 0/3 |
 
@@ -54,10 +54,10 @@ Notes:
 
 * `$0150` clears **HRAM `$FF80-$FFFE`** and **`$D000-$DFFE`** only
   (`0:$0160-$0179`). `$C000-$CFFF` is *not* cleared, so `$C753`
-  (route progress) **survives game over** — but `$C767` (lives=5, `0:$0206`),
+  (route progress) **survives game over** - but `$C767` (lives=5, `0:$0206`),
   `$C756` (difficulty=1, `0:$01D1`) and `$FFB0` (level=1, `0:$01FC`) are
   re-initialised.
-* The title screen has **no attract/demo mode** — `0:$02C4` loops forever.
+* The title screen has **no attract/demo mode** - `0:$02C4` loops forever.
 * Pause: Start toggles `$C716` (`0:$0600-$060A`); `0:$061E`/`0:$063D` call
   `7:$405D`/`7:$4083` to mute/resume. Pause is disabled while `$C750!=0`
   (level `$0E`).
@@ -85,7 +85,7 @@ in the ROM (65 read sites). Proof of 14:
   data begins at `3:$401C`, immediately after the table. (recon-1's "16 entries"
   read two bytes of level-1 map data as pointers 15/16.)
 * `5:$46EC` (enemy lists) row 15 aliases `5:$4716` (object lists) row 1.
-* `1:$7CED` (player start) row 15 = `E5 7E` — garbage.
+* `1:$7CED` (player start) row 15 = `E5 7E` - garbage.
 
 ### 2.2 The route graph
 
@@ -112,7 +112,7 @@ from the menu once cleared (`sub_00_0FE6` returns `$FF` for a route whose
 * `$C753` bits set at `0:$360F` (L4→b0), `0:$3616` (L8→b1), `0:$3608` (L11→b2),
   stored `0:$361B`; the `CP $07` warp is `0:$361E-$3627`.
 * **CONTINUE** (`$C713!=0`, `0:$047C`): restores `$FF8A = $FF8E` (full HP) and,
-  if `$FFB0` ∈ {4, 8, `$0B`, `$0E`}, does `DEC A` — i.e. continuing on a boss
+  if `$FFB0` ∈ {4, 8, `$0B`, `$0E`}, does `DEC A` - i.e. continuing on a boss
   level restarts you on the level before the boss (`0:$0486-$0499`).
 * Within a route, advance is by **walking off the right edge** or **off the
   top**, not by a "level clear" flag: `0:$1740` (`PosXhi >= $C732` → `C=0`),
@@ -124,20 +124,20 @@ from the menu once cleared (`sub_00_0FE6` returns `$FF` for a route whose
 
 | lvl | `$1015` sub | music fresh `$1023` | music cont. `$1031` | width `$103F` | map ptr `3:` | exit R `$286D+0` | exit T `$286D+1` | start X,Y `1:$7CED` | enemies `5:$46EC` | objects `5:$4716` |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 01 | `$80` | 02 | 02 | 127 | `$401C` | 02 | — | 01,12 | `5:$4740` ×6 | `5:$4E80` ×4 |
-| 02 | `$00` | 02 | — | 33 | `$481D` | — | 03 | 01,19 | `5:$4800` ×3 | — |
-| 03 | `$00` | 02 | — | 113 | `$4A2E` | 04 | — | 01,1E | `5:$4860` ×8 | `5:$4EC0` ×8 |
-| 04 | `$81` **BOSS 1** | 06 | 06 | 11 | `$514F` | (05) | — | 01,1E | `5:$50D0` ×1 | — |
-| 05 | `$80` | 03 | 03 | 81 | `$5210` | 06 | — | 01,13 | `5:$4960` ×6 | `5:$4F40` ×4 |
-| 06 | `$05` (vehicle) | 03 | — | 17 | `$5731` | — | 07 | 01,1D | `5:$4A20` ×1 | `5:$4FA0` ×1 |
-| 07 | `$00` | 03 | — | 81 | `$5852` | 08 | — | 01,1D | `5:$4A40` ×6 | `5:$4F80` ×2 |
-| 08 | `$82` **BOSS 2** | 06 | 06 | 11 | `$5D73` | — | — | 01,1E | `5:$50F0` ×1 | — |
-| 09 | `$80` | 04 | 04 | 127 | `$5E34` | 0A | — | 01,12 | `5:$4B00` ×6 | — |
-| 0A | `$00` | 04 | — | 96 | `$6635` | 0B | — | 01,12 | `5:$4BC0` ×8 | — |
-| 0B | `$83` **BOSS 3** | 06 | 06 | 12 | `$6C56` | — | — | 01,12 | `5:$5110` ×1 | — |
-| 0C | `$80` | 05 | 05 | 96 | `$6D27` | 0D | — | 01,12 | `5:$4CC0` ×6 | `5:$4FE0` ×8 |
-| 0D | `$00` | 05 | — | 96 | `$7348` | 0E | — | 01,1E | `5:$4D80` ×8 | `5:$5060` ×7 |
-| 0E | `$84` **FINAL BOSS** | 07 | 07 | 11 | `$7969` | — | — | 01,1E | `5:$5130` ×2 | — |
+| 01 | `$80` | 02 | 02 | 127 | `$401C` | 02 | - | 01,12 | `5:$4740` ×6 | `5:$4E80` ×4 |
+| 02 | `$00` | 02 | - | 33 | `$481D` | - | 03 | 01,19 | `5:$4800` ×3 | - |
+| 03 | `$00` | 02 | - | 113 | `$4A2E` | 04 | - | 01,1E | `5:$4860` ×8 | `5:$4EC0` ×8 |
+| 04 | `$81` **BOSS 1** | 06 | 06 | 11 | `$514F` | (05) | - | 01,1E | `5:$50D0` ×1 | - |
+| 05 | `$80` | 03 | 03 | 81 | `$5210` | 06 | - | 01,13 | `5:$4960` ×6 | `5:$4F40` ×4 |
+| 06 | `$05` (vehicle) | 03 | - | 17 | `$5731` | - | 07 | 01,1D | `5:$4A20` ×1 | `5:$4FA0` ×1 |
+| 07 | `$00` | 03 | - | 81 | `$5852` | 08 | - | 01,1D | `5:$4A40` ×6 | `5:$4F80` ×2 |
+| 08 | `$82` **BOSS 2** | 06 | 06 | 11 | `$5D73` | - | - | 01,1E | `5:$50F0` ×1 | - |
+| 09 | `$80` | 04 | 04 | 127 | `$5E34` | 0A | - | 01,12 | `5:$4B00` ×6 | - |
+| 0A | `$00` | 04 | - | 96 | `$6635` | 0B | - | 01,12 | `5:$4BC0` ×8 | - |
+| 0B | `$83` **BOSS 3** | 06 | 06 | 12 | `$6C56` | - | - | 01,12 | `5:$5110` ×1 | - |
+| 0C | `$80` | 05 | 05 | 96 | `$6D27` | 0D | - | 01,12 | `5:$4CC0` ×6 | `5:$4FE0` ×8 |
+| 0D | `$00` | 05 | - | 96 | `$7348` | 0E | - | 01,1E | `5:$4D80` ×8 | `5:$5060` ×7 |
+| 0E | `$84` **FINAL BOSS** | 07 | 07 | 11 | `$7969` | - | - | 01,1E | `5:$5130` ×2 | - |
 
 `$1015` bit 7 = "zero `$FF80/$FF86/$FF87/$C714` on entry" (`0:$0D66`); low nibble
 → `$C73E` = **boss/room sub-type** (0 = normal, 1-4 = the four bosses,
@@ -168,7 +168,7 @@ $7D21/$7D31/$7D50/$7D60`) holds tile-attribute/collision classes.
 The raw object byte's **top 3 bits** (`AND $E0`, `SRL`, ×16) index the `$C1E8`
 slot to free when the tile is destroyed (`sub_01_4BE8`, `1:$4BE8`).
 
-### 2.5 Is there a stage select? Yes — two of them, both normal features
+### 2.5 Is there a stage select? Yes - two of them, both normal features
 
 * The **round select** (`0:$035B` / `0:$03DC`) is the normal, always-reachable
   screen. It offers only *uncleared* routes, digits from `0:$1008` = `$81 $82
@@ -180,7 +180,7 @@ slot to free when the tile is destroyed (`sub_01_4BE8`, `1:$4BE8`).
   (`LD B,[$FF80]; LD C,3; CALL $0AE1`). It is item 1 of the OPTION screen,
   reached from the title by selecting OPTION and pressing Start. **Not** a debug
   screen, **not** hidden.
-* A genuinely hidden feature *does* exist — see §8.1 (`$FFE2 == $26`).
+* A genuinely hidden feature *does* exist - see §8.1 (`$FFE2 == $26`).
 
 ---
 
@@ -212,17 +212,17 @@ does `A=[slot+2]; DEC A; ADD A,A; LD HL,$50D3; ADD HL,BC; JP HL`):
 | 13 | `$78A7` | boss-2 auxiliary part (slots 1 & 2, drawn only) |
 
 The 12-entry table at `1:$60EF` (recon-1 §6.4) is a **secondary** dispatch,
-entered from `1:$4F1B`/`1:$5044` only when flag bits 3/4 of `+$00` are set —
+entered from `1:$4F1B`/`1:$5044` only when flag bits 3/4 of `+$00` are set -
 it is the *hit-reaction / stunned* variant of the same states.
 
-### 3.2 Enemy record layout (`$C268`, 8 × 32 B) — refined
+### 3.2 Enemy record layout (`$C268`, 8 × 32 B) - refined
 
 | off | field | evidence |
 |---|---|---|
 | `+$00` | flags: b7 active, b6 disabled/ignore, b4/b3 hit-state, b2 hit-flash, b1/b0 misc | `1:$4E27`, `1:$4F11-$4F19` |
-| `+$01` | (always 0 in ROM data) | — |
+| `+$01` | (always 0 in ROM data) | - |
 | **`+$02`** | **STATE = enemy type**, 1..13 → `1:$50D3` | `1:$50C3` |
-| `+$03`,`+$04` | speed / period pair (per-instance on L5) | UNCONFIRMED — watch `$C268+3` during an L5 flyer's cycle |
+| `+$03`,`+$04` | speed / period pair (per-instance on L5) | UNCONFIRMED - watch `$C268+3` during an L5 flyer's cycle |
 | `+$05` | facing (b0), used for knockback dir | `1:$67AD` |
 | `+$06` | "kill me" latch (non-zero → death FX, `1:$4E75`) | `1:$4E71-$4EB7` |
 | `+$07`,`+$08` | screen X / Y (recomputed per frame) | `0:$3C3F` |
@@ -251,13 +251,13 @@ it is the *hit-reaction / stunned* variant of the same states.
 | 8 | 11 (×1) | 1 | `$1C` | 2 | `$0C/$0D`, `$13/$14` | **BOSS 3**; `+$06=$16` |
 | 9 | 14 (×1) | 1 | `$30` | 1 | `$08/$09`, `$0F/$10` | **BOSS 4 (Joker)**; `+$06=$2B` |
 | 10 | 4 (×1) | 1 | `$20` | 2 | `$08/$09`, `$10/$10` | **BOSS 1** |
-| 11 | spawned | — | `$FF` | 1 + level bonus | 4-8 | boss projectile |
-| 13 | 8 (spawned) | 2 | — | — | — | boss-2 arms/parts, slots 1 & 2 |
+| 11 | spawned | - | `$FF` | 1 + level bonus | 4-8 | boss projectile |
+| 13 | 8 (spawned) | 2 | - | - | - | boss-2 arms/parts, slots 1 & 2 |
 
 **Maximum 8 enemies alive per level.** The whole `$C268` array is preloaded from
-ROM at level init — there is no streaming spawner (§4).
+ROM at level init - there is no streaming spawner (§4).
 
-### 3.4 Contact-damage tables — fully decoded
+### 3.4 Contact-damage tables - fully decoded
 
 `sub_01_6666` → `1:$6790`: `C = [slot+$02]` (state), `B = $6BC1[C]`;
 if bit 7 → `B = (B & $7F) + $6BCE[$FFB0-1]`; then `CALL sub_00_2777`
@@ -280,7 +280,7 @@ bonus   0  0  0  0  0  0  0  0  0  0  0  3  1  1
 ```
 
 So boss projectiles (state 11) do 1 damage on levels 1-11, **4 on level 12**,
-2 on levels 13-14. State 13 would read `$6BCE[0] = 0` — a harmless 1-byte
+2 on levels 13-14. State 13 would read `$6BCE[0] = 0` - a harmless 1-byte
 overrun.
 
 Other damage sources: `$C1E8` object contact `0:$15E5 LD B,$02`;
@@ -314,7 +314,7 @@ Everything else in `sub_00_2889` is per-level asset loading:
 
 ### 4.1 Activation / deactivation
 
-**Enemies (`$C268`), `1:$6094`** — runs for every *inactive* slot each frame:
+**Enemies (`$C268`), `1:$6094`** - runs for every *inactive* slot each frame:
 
 ```
 if [slot+$0E] == 0            -> skip (slot empty)
@@ -329,7 +329,7 @@ Deactivation: `1:$4E4D CALL sub_00_11A7` (`|camX+5 − X| < 9`, constants
 `0:$11AA`, `0:$11B1`) → `RES 7`. Falling below `Y hi >= $21` also kills the
 slot (`1:$4E69`).
 
-**Map objects (`$C1E8`), `1:$4257`** — activation half-width is
+**Map objects (`$C1E8`), `1:$4257`** - activation half-width is
 `1:$4BA5[type]`:
 
 ```
@@ -344,7 +344,7 @@ benign (the level-6 vehicle should always be active).
 
 Object types actually used across the whole ROM: 1 (×1), 3 (×3), 4 (×1),
 5 (×6), 6 (×7), 7 (×4), 8 (×8), 9 (×3), 11 (×1) = 34 objects.
-**Types 2 and 10 are never placed** — their handlers `1:$42E3` and
+**Types 2 and 10 are never placed** - their handlers `1:$42E3` and
 `1:$4765` are dead code in shipped data (see §8).
 
 ---
@@ -367,11 +367,11 @@ Common boss setup, `sub_00_0D50` (`0:$0D50`):
   (`0:$0D80-$0D85`, i.e. slot-0 HP +5) and `$C73D = 1`.
 * `$C73E == 2` (level 8) additionally seeds slots 1 and 2:
   `$C284=$38`, `$C285=$14`, `$C288=$80`, `$C2A8=$81`, `$C28A=$C2AA=$0D`
-  (state 13), `$C29E=$C2BE=$FF` (HP of the parts) — `0:$0D94-$0DB5`.
+  (state 13), `$C29E=$C2BE=$FF` (HP of the parts) - `0:$0D94-$0DB5`.
   They are re-armed to `$40` on death (`1:$4F03`).
 * Level `$0E` (`0:$0DDE`): `$C750=1`, `$C740=1`, `$C741=$78`,
   `$FFBA..$FFBD = 08 80 1E 00` (the vehicle position), `$FFAD=$FF`;
-  on difficulty 0 (`$C756==0`) `$C288 = $40` — i.e. **the second entity is
+  on difficulty 0 (`$C756==0`) `$C288 = $40` - i.e. **the second entity is
   disabled on EASY** (`0:$0E01-$0E09`).
 
 Boss projectiles: `sub_01_6BDC` (`1:$6BDC`) copies a 32-byte template into
@@ -408,7 +408,7 @@ Boss phase counters: `$C73D` (phase), `$C72E` (sub-state), `$C72C`
 | **Take damage / knockback** | `sub_00_2777` (`0:$2777`); `0:$1776-$17B6` | invuln `$5A`/`$DA` (`$015F0`,`$015F4`,`$01E2B`,`$01E2F`,`$02E93`,`$067B2`,`$067B6`); knockback X `$10`/`$F0` (`$01791`,`$01795`), Y `$18` (`$017B3`), `$40` on L4 (`$017AD`) |
 | **Slow / water mode** | `$FF95`; set `0:$2E7F` (`$80`), cleared `0:$2E9A` | halves walk speed and gravity, drains 1 HP when `$C756!=0` (`0:$2E8D`) |
 | **Spring / launch pad** | `$C751`; armed on L11 at `0:$2D09` when player is exactly at `X=$0B, Y=$17` | timer `$F0` in `$C717` (`0:$2D20`); jump vel becomes `$32` |
-| **Pickups** | `sub_01_4D4E` (`1:$4D4E`), tile ids `$20`/`$21`/`$22` | `$20` = +6 HP (`$04DB6`); `$21` = +10 batarangs (`$04DA0`); `$22` = **+2 max HP, permanent**, cap 16 (`$04D69`, `$04D6B`, `$04D6F`) — only 3 exist, on levels 3, 5 and 13, tracked by `$C754` bits 0/1/2 (`1:$4D86-$4D91`) and erased from the map on revisit by `sub_01_4DDA` (`$DB84`, `$D4DC`, `$D4DA`) |
+| **Pickups** | `sub_01_4D4E` (`1:$4D4E`), tile ids `$20`/`$21`/`$22` | `$20` = +6 HP (`$04DB6`); `$21` = +10 batarangs (`$04DA0`); `$22` = **+2 max HP, permanent**, cap 16 (`$04D69`, `$04D6B`, `$04D6F`) - only 3 exist, on levels 3, 5 and 13, tracked by `$C754` bits 0/1/2 (`1:$4D86-$4D91`) and erased from the map on revisit by `sub_01_4DDA` (`$DB84`, `$D4DC`, `$D4DA`) |
 | **Soft reset** | `0:$0A55` `CP $0F` | A+B+Select+Start |
 | **Pause** | `0:$0600` bit 3 → `$C716` | disabled when `$C750!=0` |
 
@@ -416,7 +416,7 @@ Ability *not* present: no crouch, no ducking attack, no double jump, no shield.
 
 ---
 
-## 7. THE MOD SURFACE — ranked catalogue
+## 7. THE MOD SURFACE - ranked catalogue
 
 Ranked by (visible impact) ÷ (implementation cost). "file" = raw ROM byte
 offset to patch. All single-byte patches unless stated.
@@ -425,7 +425,7 @@ offset to patch. All single-byte patches unless stated.
 |---|---|---|---|---|
 | 1 | **Moon Gravity** | floaty, huge hang time, slow descent | gravity rising `$01A7D`←`$00`, `$01A79`←`$01`; falling `$01AF4`←`$01`; terminal `$01AFB`←`$E0` | trivial |
 | 2 | **Super Jump** | Batman jumps 2-3× as high | `$01A4E` (`$22`→`$3A`); optionally `$01A4A` (spring) and `$01DA9` (wall-jump) | trivial |
-| 3 | **One-Hit Kill (player deals)** | every punch instantly kills | `$026F1` (`$02`→`$FF`) — or force the crit path by widening `$026D4` (`$08`→`$FF`), which uses the enemy's own HP as damage (`0:$26E3`) | trivial |
+| 3 | **One-Hit Kill (player deals)** | every punch instantly kills | `$026F1` (`$02`→`$FF`) - or force the crit path by widening `$026D4` (`$08`→`$FF`), which uses the enemy's own HP as damage (`0:$26E3`) | trivial |
 | 4 | **Infinite Batarangs** | B always throws, never runs out | NOP the `DEC A` + store at `0:$1996-$1999` (`3D EA 59 C7` → `00 00 00 00`), file `$01996`; or set the pickup to `$FF` at `$04DA0` and start-of-level ammo (`0:$0506` clears `$C759`) | trivial |
 | 5 | **Rapid Fire** | no attack cooldown, batarang stream | `$FF97` ring guard: `0:$191D CP $09` → `CP $01` (file `$0191E`); pool size `0:$19A9 CP $03` → `CP $03` stays but the 9-byte slot loop at `0:$199C` can be widened | trivial |
 | 6 | **Ice Physics** | slippery, no ground friction | over-speed decel step `$01D6A`/`$01D99` (`$02`→`$00`) and the accel at `0:$1D3D` | trivial |
@@ -438,15 +438,15 @@ offset to patch. All single-byte patches unless stated.
 | 13 | **Randomiser (level order)** | shuffled route graph each seed | rewrite `0:$286D` (28 B) + `0:$04AB/$04AF/$04B3/$04B7` route heads. Fully data-driven, no code change | moderate |
 | 14 | **Enemy Roster Randomiser** | any enemy can appear anywhere | rewrite byte `+$02` (state) of each 32-byte record in `5:$4740…$5150` (file `$14740`…`$15150`); also fix `+$16` HP and the `+$0A..+$0D` hitbox to match the new type or the collision box will look wrong | moderate |
 | 15 | **All-Bosses Mode** | bosses spawn as regular enemies mid-level | set `+$02` of ordinary records to 7/8/9/10 and `$C73E` for the level (`0:$1015`, file `$01015`) so the boss code paths arm; bosses read `$C73E`-conditional state (`1:$5049`) so `$C73E` must be non-zero | hard |
-| 16 | **Enemy Density ×N** | up to 8 enemies always on screen | raise the count byte in `5:$46EC + (lvl-1)*3 + 2` (file `$146EE`+) to 8 and append 32-byte records in free space `5:$7F8D` (115 B, only ~3 records) — or repoint `srcLo/srcHi` at a new table. Hard cap is **8 slots** (`1:$60D7 CP $08`, file `$060D8`) | moderate |
-| 17 | **Aggro Mode (activation range)** | enemies wake up a whole screen early | `1:$60AA` (`$07`→`$40`) — enemy activation window; `0:$011AA`/`0:$011B1` — despawn window; `1:$4BA5` table (file `$04BA5`, 11 B) for `$C1E8` objects | trivial |
+| 16 | **Enemy Density ×N** | up to 8 enemies always on screen | raise the count byte in `5:$46EC + (lvl-1)*3 + 2` (file `$146EE`+) to 8 and append 32-byte records in free space `5:$7F8D` (115 B, only ~3 records) - or repoint `srcLo/srcHi` at a new table. Hard cap is **8 slots** (`1:$60D7 CP $08`, file `$060D8`) | moderate |
+| 17 | **Aggro Mode (activation range)** | enemies wake up a whole screen early | `1:$60AA` (`$07`→`$40`) - enemy activation window; `0:$011AA`/`0:$011B1` - despawn window; `1:$4BA5` table (file `$04BA5`, 11 B) for `$C1E8` objects | trivial |
 | 18 | **Hardcore Damage** | every enemy hurts for 4-8 | rewrite `1:$6BC1` (file `$06BC1`, 13 B) and `1:$6BCE` (file `$06BCE`, 14 B). Whole difficulty curve in 27 bytes | trivial |
 | 19 | **Pacifist Run** | enemies do no contact damage, but you cannot hurt them either | zero `1:$6BC1` (13 B) and set `$026F1`←`$00`, `$026D4`←`$00`, `0:$3D0B` (`DEC (HL)`→`NOP`, file `$03D0B`) | trivial |
 | 20 | **No-Jump Challenge** | A does nothing; must wall-cling and bat-rope | `0:$1A2D` `JP Z` → `JP` unconditional (file `$01A2D`: `CA`→`C3`) | trivial |
 | 21 | **Rope-Only Traversal** | bat-rope fires 20 segments, huge reach | `$0195E` (`$05`→`$14`); enlarge `$C5EF` pool (24 B → needs `$C607-$C60A` + free `$C768-$C7FF`) and the segment writer `0:$3DA6` | moderate |
 | 22 | **Invincible / Practice** | permanent invulnerability, HUD unchanged | force `$C714` non-zero every frame: hook the main loop head `0:$0567` or patch `sub_00_2777` at `0:$2777` to `RET` (file `$02777`←`$C9`); also `1:$67A9` call site | trivial |
 | 23 | **No-Invuln (Brutal)** | no mercy frames after a hit | `$015F0`,`$015F4`,`$01E2B`,`$01E2F`,`$02E93`,`$067B2`,`$067B6` ← `$01` | trivial |
-| 24 | **Negative / Inverted Palette** | whole game in photo-negative | BGP/OBP shadows `$FFAD/$FFAE/$FFAF` — patch the fade ramps `0:$0B09` and `0:$0B11` (8 B each, file `$00B09`/`$00B11`) and the direct writes `0:$34C6` (`$E4`→`$1B`), `0:$0E24`-era `$FFAD` writes; also the raster-mode palette writes at `0:$08F0` (`rOBP1=$80`, `rOBP0=$90`) and `0:$0935` (`rBGP=$1B`) | trivial |
+| 24 | **Negative / Inverted Palette** | whole game in photo-negative | BGP/OBP shadows `$FFAD/$FFAE/$FFAF` - patch the fade ramps `0:$0B09` and `0:$0B11` (8 B each, file `$00B09`/`$00B11`) and the direct writes `0:$34C6` (`$E4`→`$1B`), `0:$0E24`-era `$FFAD` writes; also the raster-mode palette writes at `0:$08F0` (`rOBP1=$80`, `rOBP0=$90`) and `0:$0935` (`rBGP=$1B`) | trivial |
 | 25 | **Palette Cycling / Disco** | palettes strobe per frame | STAT state 7 already ping-pongs `$C765` 0..11; add a write of `$FFB1` (frame counter) into `$FFAD` in the main loop tail at `0:$064A` | trivial |
 | 26 | **Big Head Batman / sprite swap** | different player metasprites | `$FFC3` PlayerAnimID is written at 13 sites (`0:$1B63`, `$1B8A`, `$1BA1`, `$1BC4`, …); the metasprite tables are `5:$5F5C` and `5:$736B`. Swapping the anim id at `0:$1BC4` (file `$01BC4`) is a 1-byte "always use anim X" | moderate |
 | 27 | **Speedrun Timer HUD** | on-screen frame/second counter | free RAM `$C768-$C7FF`; increment from the VBlank frame counter (`0:$07FC` region) and draw with the `$C130` 2×2 tile queue via `sub_00_11F1`; digits are tiles `$80-$89` | moderate |
@@ -454,7 +454,7 @@ offset to patch. All single-byte patches unless stated.
 | 29 | **Mirror Mode** | level geometry flipped | camera/scroll and the `$D000` column-major map both index by X hi; flip in `sub_00_11B9` (`0:$11B9`) by `X = $C732 - X`. Metasprite X flip via `$FF9E`/`$FF8B`. Collision probes at `$FFC0/$FFC1` must be mirrored too | hard |
 | 30 | **Difficulty Always Hard / Always Easy** | locks `$C756` | `$001D2` (boot default, `$01`→`$00`/`$02`); or `RET` at `0:$3980` (file `$03980`←`$C9`) to lock the option screen. Effects: +5 boss HP (`0:$0D83`), the level-14 second entity (`0:$0E07`), batarang speed on L14 (`0:$1A04`), water drain (`0:$2E81`) | trivial |
 | 31 | **Sound-Test Jukebox in-game** | play any of 46 tracks with Select | `sub_00_0AE1(B=id, C=cmd)` at `0:$0AE1`; hook the main loop at `0:$05FE` on `$FFE2` bit 2; song pointer table `7:$477D` | moderate |
-| 32 | **Bat-Rope Grapple Anywhere** | rope attaches to any tile, not just anchors | the anchor test lives in the `$C71E` 1→2 transition around `0:$1B6A`/`0:$3D89` and `sub_00_11B9` tile lookups. Needs an emulator trace to pin the exact accept/reject branch — **UNCONFIRMED** | hard |
+| 32 | **Bat-Rope Grapple Anywhere** | rope attaches to any tile, not just anchors | the anchor test lives in the `$C71E` 1→2 transition around `0:$1B6A`/`0:$3D89` and `sub_00_11B9` tile lookups. Needs an emulator trace to pin the exact accept/reject branch - **UNCONFIRMED** | hard |
 | 33 | **Camera Zoom-Out / Lead** | camera sits further ahead | `$01052`,`$0106C`,`$01074` (X lead `$05`), `$0105C` (left clamp `$06`), `$01083`/`$01087`/`$0108F`/`$01093` (Y window) | trivial |
 | 34 | **Bottomless-Pit Removal** | falling off the bottom no longer kills | `$01765` (`$21`→`$FF`) and `$0175E` (level-`$0B` variant `$1B`→`$FF`) | trivial |
 | 35 | **Wall-Cling Forever** | infinite wall hang | the lock word low 5 bits are the countdown: `$01F57` (`$50`→`$5F`), `$02010` (`$30`→`$3F`); or NOP the decrement in `0:$1B8F`'s consumer | trivial |
@@ -468,7 +468,7 @@ offset to patch. All single-byte patches unless stated.
 
 `Moon Gravity`, `Super Jump`, `One-Hit Kill`, `Infinite Batarangs`,
 `Glass Cannon`, `Boss Rush`, `Level Select`, `Hardcore Damage`,
-`Aggro Mode`, `Negative Palette`, `No-Jump` — all of these are ≤10 patched
+`Aggro Mode`, `Negative Palette`, `No-Jump` - all of these are ≤10 patched
 bytes each and mutually independent.
 
 ### 7.2 Free space for mod code / data
@@ -527,7 +527,7 @@ at `1:$7D59-$7D61`:
 7D5F  21 02 7F   LD HL,$7F02
 ```
 
-is **never branched to** — no `JR`/`JP` targets `$7D59`. Its table `1:$7F02`
+is **never branched to** - no `JR`/`JP` targets `$7D59`. Its table `1:$7F02`
 (≈39 bytes of nibble-packed hazard ids, `$7F02-$7F28`) is therefore dead data.
 Almost certainly a cut level or a level whose hazard set was moved. Reachable
 again by adding one `CP nn / JR Z,$7D59` to the dispatcher.
@@ -535,7 +535,7 @@ again by adding one `CP nn / JR Z,$7D59` to the dispatcher.
 ### 8.3 Never-placed map-object types 2 and 10
 
 Handlers `1:$42E3` (type 2) and `1:$4765` (type 10) exist in the 11-entry table
-`1:$427B` but no `$C1E8` record in the ROM uses them (§4.1). Free content —
+`1:$427B` but no `$C1E8` record in the ROM uses them (§4.1). Free content -
 place a type-2 or type-10 record in `5:$4E80`+ and see what appears.
 
 ### 8.4 `1:$4BA5` off-by-one
@@ -551,13 +551,13 @@ changes level-6 behaviour.**
 
 ### 8.6 Other dead things
 
-* `$FF85` — written once (`0:$1333`), never read.
-* `$C4A7-$C4AF` — phantom batarang slot 0, never touched.
-* `$C5EB-$C5EE` — bat-rope segment 0, never used (`n+1` indexing).
-* `$C0A0-$C0FF`, `$C704-$C709`, `$C768-$C7FF` — zero accesses.
+* `$FF85` - written once (`0:$1333`), never read.
+* `$C4A7-$C4AF` - phantom batarang slot 0, never touched.
+* `$C5EB-$C5EE` - bat-rope segment 0, never used (`n+1` indexing).
+* `$C0A0-$C0FF`, `$C704-$C709`, `$C768-$C7FF` - zero accesses.
 * Sound test exposes ids `$00-$2E` (47) but only ~20 are used in-game; songs
   `7:$477D` lists ≥24 pointers while `0:$1023`/`0:$1031` only reference
-  songs `$02-$07`. **Unused music exists** — `$0A` (ending), `$08`, `$09`, `$0B`+
+  songs `$02-$07`. **Unused music exists** - `$0A` (ending), `$08`, `$09`, `$0B`+
   are candidates. UNCONFIRMED which are distinct tracks vs SFX banks; settle by
   playing each id through the sound test.
 * No demo/attract loop, no debug level viewer, no password entry. The DAA code
@@ -568,7 +568,7 @@ changes level-6 behaviour.**
 Because `sub_00_0FE6` hides *cleared* routes, a player who clears routes 1 and 2
 sees only route 3; after clearing all three the menu jumps straight to round 4.
 `$C753` is never cleared except by a WRAM power-cycle (`0:$0150` only wipes
-`$D000-$DFFE` and HRAM), so **route progress survives game over** — a save
+`$D000-$DFFE` and HRAM), so **route progress survives game over** - a save
 system by accident.
 
 ---

@@ -1,4 +1,4 @@
-# RECON-3 — GRAPHICS & LEVEL DATA FORMATS
+# RECON-3 - GRAPHICS & LEVEL DATA FORMATS
 
 ROM: `Batman - Return of the Joker (USA, Europe).gb` (128 KB, MBC1, 8 banks).
 Static analysis + byte-level verification by re-implementation. Every format
@@ -23,7 +23,7 @@ graphics path; `LCDC` is `$E7`, i.e. **BG tile data is the SIGNED `$8800` region
 not `$8000`; the VBlank "18-tile column" is actually **32 tiles**; the VBlank
 "33-byte row transfer" is actually a **32-byte (2-tile) BG-animation transfer**;
 `$FF99`/`$FF9B` are the **high** bytes of their dest pointers, not the low ones;
-`$C4A7-$C4AF` is *not* free — it is the tail of the metatile table at `$C368`.
+`$C4A7-$C4AF` is *not* free - it is the tail of the metatile table at `$C368`.
 
 ---
 
@@ -41,7 +41,7 @@ metatile column**; the **high byte of Y is the metatile row**, taken `& $0F` for
 map lookups (`sub_00_11B9`). Y-hi in play runs `$10..$20`; `$21` = death pit
 (`00:1764`), `$1B` on level `$0B`.
 
-### 1.2 Bank 3 — the level maps
+### 1.2 Bank 3 - the level maps
 
 ```
 3:$4000   16 × LE pointer, indexed by ($FFB0 - 1)          ; consumed by sub_00_0C34
@@ -63,7 +63,7 @@ map lookups (`sub_00_11B9`). Y-hi in play runs `$10..$20`; `$21` = death pit
 | lv 12 | `$6D27` | 98 | `$6D28-$7347` |
 | lv 13 | `$7348` | 98 | `$7349-$7968` |
 | lv 14 | `$7969` | 12 | `$796A-$7A29` |
-| 15,16 | `$4F80`,`$4F4F` | — | **garbage** — inside level 3's data; there are only 14 levels |
+| 15,16 | `$4F80`,`$4F4F` | - | **garbage** - inside level 3's data; there are only 14 levels |
 
 The 14 maps are physically contiguous: level 1's data ends exactly at level 2's
 pointer, …, level 14's ends exactly at `$7A2A` (the collision-pointer table).
@@ -79,7 +79,7 @@ pointer, …, level 14's ends exactly at `$7A2A` (the collision-pointer table).
 
 That is the whole format. **No RLE, no compression.**
 
-### 1.3 `sub_00_0C34` — LoadLevelMap (bank 0)
+### 1.3 `sub_00_0C34` - LoadLevelMap (bank 0)
 
 ```
 0C34  bank := 3
@@ -109,7 +109,7 @@ addr($D000 map)  =  $D000 + (Xhi << 5) + (Yhi & $0F) * 2      ; sub_00_11B9
 Max addressable: Xhi 0..127 → `$D000-$DFFF`. Xhi ≥ 128 would run past `$DFFF`;
 no level is wider than 128.
 
-### 1.4 Bank 5 — the metatile definition table (`$C368`)
+### 1.4 Bank 5 - the metatile definition table (`$C368`)
 
 ```
 5:$4000   14 × 4 bytes {len_lo, len_hi, src_lo, src_hi}     ; sub_00_2889, 00:2893
@@ -138,7 +138,7 @@ $C368 + id*4 + 0  =  top-left      tile
               + 3  =  bottom-right  tile
 ```
 
-Proof — two independent consumers agree:
+Proof - two independent consumers agree:
 
 * `00:1103` (full-screen build) emits `[+0],[+1]` down one BG column with stride
   `$20`, then `[+2],[+3]` down the next column.
@@ -146,7 +146,7 @@ Proof — two independent consumers agree:
   `t3→dest+$21`, and `sub_00_11F1` fills `t0..t3` from `$C368+id*4+0..3`.
 
 `$C368 .. $C4AF` = 328 bytes = 82 entries max. **`$C4A7-$C4AF` is the tail of
-this table, not free RAM** (recon-2 §5 lists it as a "phantom batarang slot" —
+this table, not free RAM** (recon-2 §5 lists it as a "phantom batarang slot" -
 wrong).
 
 *Quirk:* levels 9–14 use metatile id `= len/4` (one past the end of their table),
@@ -172,7 +172,7 @@ VBlank 00:0727 drain:
 
 `$C130` capacity: 8 records fit before `$C160` (the other script buffer).
 
-### 1.6 Full-screen build — `sub_00_104E` (level entry)
+### 1.6 Full-screen build - `sub_00_104E` (level entry)
 
 After clamping the camera it writes 18 (`$12`) BG columns, one per iteration,
 using the `$C160` VRAM-script buffer and `sub_00_0A0E`:
@@ -193,7 +193,7 @@ loop:
 
 `ctrl = $A0` → mode 2 (vertical run), count `$20` = 32 rows, stride `$20`.
 
-### 1.7 Horizontal streaming — `sub_00_121F` (`$1287-$1308`)
+### 1.7 Horizontal streaming - `sub_00_121F` (`$1287-$1308`)
 
 Runs every frame from the main loop. Triggered when **bit 7 of the camera-X low
 byte** (`$FFA3`) flips, i.e. every 8 px of camera movement, and only when
@@ -219,7 +219,7 @@ for r in 0..15:
 VBlank (`00:066E`) then writes those **32 bytes down the BG column** with stride
 `$20` starting at `$98xx`, clears `$C100`, and skips the whole block when
 `$FFB0 == 6`. On levels 9 and `$0A` it instead forces `H = $99` and skips the
-first 8 source bytes (`00:0688`), writing only rows 8..30 — the top 8 tile rows
+first 8 source bytes (`00:0688`), writing only rows 8..30 - the top 8 tile rows
 of those stages are a static parallax band.
 
 Constants: lead ahead `+$16` tiles / `+$0B` metatiles; trail behind `-4` tiles /
@@ -228,7 +228,7 @@ Constants: lead ahead `+$16` tiles / `+$0B` metatiles; trail behind `-4` tiles /
 `$C732` (camera right clamp, `camX_max = $C732 - 5`) comes from the byte table
 **`0:$103F`** (14 bytes): `7F 21 71 0B 51 11 51 0B 7F 60 0C 60 60 0B`.
 
-### 1.8 Spawn tables (bank 5) — completing the level record
+### 1.8 Spawn tables (bank 5) - completing the level record
 
 ```
 5:$46EC   14 × 3 {src_lo, src_hi, count}   -> count × 32 bytes copied to $C268 (enemies)
@@ -247,23 +247,23 @@ layouts); slots beyond `count` are zero-filled.
 | lv | enemies (src ×n) | objects (src ×n) |
 |---|---|---|
 | 1 | `5:$4740` ×6 | `5:$4E80` ×4 |
-| 2 | `5:$4800` ×3 | — |
+| 2 | `5:$4800` ×3 | - |
 | 3 | `5:$4860` ×8 | `5:$4EC0` ×8 |
-| 4 | `5:$50D0` ×1 | — |
+| 4 | `5:$50D0` ×1 | - |
 | 5 | `5:$4960` ×6 | `5:$4F40` ×4 |
 | 6 | `5:$4A20` ×1 | `5:$4FA0` ×1 |
 | 7 | `5:$4A40` ×6 | `5:$4F80` ×2 |
-| 8 | `5:$50F0` ×1 | — |
-| 9 | `5:$4B00` ×6 | — |
-| 10 | `5:$4BC0` ×8 | — |
-| 11 | `5:$5110` ×1 | — |
+| 8 | `5:$50F0` ×1 | - |
+| 9 | `5:$4B00` ×6 | - |
+| 10 | `5:$4BC0` ×8 | - |
+| 11 | `5:$5110` ×1 | - |
 | 12 | `5:$4CC0` ×6 | `5:$4FE0` ×8 |
 | 13 | `5:$4D80` ×8 | `5:$5060` ×7 |
-| 14 | `5:$5130` ×2 | — |
+| 14 | `5:$5130` ×2 | - |
 
 ---
 
-## 2. TILE DATA — inventory, and the compression question
+## 2. TILE DATA - inventory, and the compression question
 
 ### 2.1 There is no compression
 
@@ -288,7 +288,7 @@ Each `ptr` heads a 4-byte header `{dest_lo, dest_hi, len_lo, len_hi}` followed b
 |---|---|---|---|---|---|---|
 | `00` | 2 | `$4000` | `$80C0` | `$0340` | 52 | `2:$4004-$4343` |
 | `01` | 6 | `$4000` | `$8E00` | `$0200` | 32 | `6:$4004-$4203` |
-| `02` | 6 | `$54B0` | `$8800` | `$0470` | 71 | `6:$54B4-$5923` — **FONT** |
+| `02` | 6 | `$54B0` | `$8800` | `$0470` | 71 | `6:$54B4-$5923` - **FONT** |
 | `03` | 3 | `$7E54` | `$8D00` | `$0100` | 16 | `3:$7E58-$7F57` |
 | `04` | 3 | `$7D70` | `$9000` | `$00E0` | 14 | `3:$7D74-$7E53` |
 | `05` | 6 | `$4204` | `$90E0` | `$0720` | 114 | `6:$4208-$4927` |
@@ -300,7 +300,7 @@ Each `ptr` heads a 4-byte header `{dest_lo, dest_hi, len_lo, len_hi}` followed b
 | `0B` | 2 | `$72D6` | `$8E00` | `$0100` | 16 | `2:$72DA-$73D9` |
 | `0C` | 4 | `$45A4` | `$9570` | `$0290` | 41 | `4:$45A8-$4837` |
 | `0D` | 4 | `$4838` | `$8FC0` | `$0040` | 4 | `4:$483C-$487B` |
-| `0E` | — | unused (`$FFFF`) | | | | |
+| `0E` | - | unused (`$FFFF`) | | | | |
 | `0F` | 4 | `$487C` | `$8E00` | `$0200` | 32 | `4:$4880-$4A7F` |
 | `10` | 4 | `$4A80` | `$90E0` | `$0720` | 114 | `4:$4A84-$51A3` |
 | `11` | 4 | `$51A4` | `$8E40` | `$01C0` | 28 | `4:$51A8-$5367` |
@@ -309,7 +309,7 @@ Each `ptr` heads a 4-byte header `{dest_lo, dest_hi, len_lo, len_hi}` followed b
 | `14` | 4 | `$5A70` | `$90E0` | `$06A0` | 106 | `4:$5A74-$6113` |
 | `15` | 4 | `$6398` | `$8400` | `$0680` | 104 | `4:$639C-$6A1B` |
 | `16` | 4 | `$6A1C` | `$8400` | `$0900` | 144 | `4:$6A20-$731F` |
-| `17`,`18` | — | unused (`$FFFF`) | | | | |
+| `17`,`18` | - | unused (`$FFFF`) | | | | |
 | `19` | 6 | `$4928` | `$8400` | `$0460` | 70 | `6:$492C-$4D8B` |
 | `1A` | 6 | `$4D8C` | `$8400` | `$0720` | 114 | `6:$4D90-$54AF` |
 | `1B` | 6 | `$5924` | `$8C70` | `$0690` | 105 | `6:$5928-$5FB7` |
@@ -341,13 +341,13 @@ lv 7: 00 09 04 0A 0D 16      lv14: 00 13 04 14 20
 |---|---|
 | `2:$4D8C-$5073` | player animation table, 31 × 24 B (§4.4) |
 | `2:$5074-$61A3` | player animation tiles, 275 distinct 16-B tiles |
-| `2:$61A4-$61C1` | 14 × LE ptr — per-level BG-animation source table |
+| `2:$61A4-$61C1` | 14 × LE ptr - per-level BG-animation source table |
 | `2:$61C2 …` | BG-animation tile blobs (32 B = 2 tiles each) |
 
-### 2.4 VRAM layout (LCDC = `$E7` — this matters)
+### 2.4 VRAM layout (LCDC = `$E7` - this matters)
 
 `rLCDC` is written as `$E7` at `00:0263, 02BD, 03D5, 0EBC, 0EE3, 0F32, 338D,
-3696, 36F7, 3737, 3778, 3875` — **every single write in the ROM**. `$E7` =
+3696, 36F7, 3737, 3778, 3875` - **every single write in the ROM**. `$E7` =
 `1110 0111`:
 
 | bit | value | meaning |
@@ -410,9 +410,9 @@ Values present in the 6 ROM LUTs (whole-ROM histogram):
 | `$03` | 20 | solid + conveyor **left** (`$C72F := -4`) |
 | `$04` | 8 | level-exit / kill trigger → `00:272C` |
 | `$05` | 8 | trigger → `00:272C` (horizontal probe only), solid to the floor probe |
-| `$06` | 7 | **breakable** — sets the cell to 1 and arms a restore timer |
+| `$06` | 7 | **breakable** - sets the cell to 1 and arms a restore timer |
 | `$07` | 18 | solid (also used as the "invisible wall" id past the metatile table) |
-| `$08` | 54 | **water** — passable, sets `$FF96 = $80` (sprite-priority/behind-BG flag) |
+| `$08` | 54 | **water** - passable, sets `$FF96 = $80` (sprite-priority/behind-BG flag) |
 | `$1F` | 28 | **door / actor-owned destructible** (slot bits filled in at runtime) |
 | `$20` | 14 | pickup: **energy** +6 HP |
 | `$21` | 14 | pickup: **batarangs** +10 |
@@ -422,7 +422,7 @@ Values present in the 6 ROM LUTs (whole-ROM histogram):
 Written at runtime but never in a LUT: `$FF` (plain solid, e.g. `01:43BE`), and
 `$XX|$1F` with non-zero slot bits.
 
-### 3.2 The probe routine — `sub_00_20BA` (bank 0)
+### 3.2 The probe routine - `sub_00_20BA` (bank 0)
 
 ```
 IN : BC = signed Y offset (12.4), DE = signed X offset (12.4), [$C72B] = mode
@@ -461,13 +461,13 @@ sub-tile pixel offset 0..15) and snap the player's Y (or X) to the slope surface
 | level range | metatile id | up-table (`$C72B==3`) | down-table (`$C72B==4`) | X-tables (`mode 1`) |
 |---|---|---|---|---|
 | `$FFB0 < 3` | `$29` | `$225B` | `$224C` | `$23E8` |
-| | `$2C` | — | `$223C` | `$23D8` |
-| | `$2E` | `$224B` | — | `$23D8` |
-| | `$31` | `$223B` | — | `$23C8` |
-| | `$32` | — | `$222C` | `$23C8` |
-| | `$34` | — | `$221C` | `$23B8` |
-| | `$36` | `$222B` | — | `$23B8` |
-| `3 ≤ lvl < $0C` | (none — always `$2418`) | | | |
+| | `$2C` | - | `$223C` | `$23D8` |
+| | `$2E` | `$224B` | - | `$23D8` |
+| | `$31` | `$223B` | - | `$23C8` |
+| | `$32` | - | `$222C` | `$23C8` |
+| | `$34` | - | `$221C` | `$23B8` |
+| | `$36` | `$222B` | - | `$23B8` |
+| `3 ≤ lvl < $0C` | (none - always `$2418`) | | | |
 | `$FFB0 ≥ $0C` | `$3E` | `$226B` | `$225C` | `$23F8` |
 | | `$3F` | `$227B` | `$226C` | `$2408` |
 
@@ -580,10 +580,10 @@ IN : A = attribute OR-mask (stored to $FF9E)
 0C02  $FF9D := E;  bank := 1;  return
 ```
 
-The Y/X adds are 8-bit with wraparound — off-screen sprites are simply parked
+The Y/X adds are 8-bit with wraparound - off-screen sprites are simply parked
 at whatever wrapped value results (OAM Y `0` or `≥ $A0` hides them).
 
-### 4.4 Player animation (`$FFC3` / `$FFC4` / `$FFC5`) — `sub_00_2C13`
+### 4.4 Player animation (`$FFC3` / `$FFC4` / `$FFC5`) - `sub_00_2C13`
 
 The player is **not** a metasprite table entry animation. It is a fixed 6-sprite
 metasprite (index 0 = facing-left, index 1 = facing-right, both in table 1) whose
@@ -618,7 +618,7 @@ sub_00_2C13 (called every frame from the main loop, 00:05C9):
 ```
 
 VBlank (`00:07BC`) then does `DE = ([$FF99]<<8) | [$FF9A]; HL = $C58B;
-CALL $C4CB` — the generated unrolled 64-byte copier — pushing 4 tiles into VRAM.
+CALL $C4CB` - the generated unrolled 64-byte copier - pushing 4 tiles into VRAM.
 So after an animation change it takes **3 frames** to fully repaint the player;
 once `$FFC4` wraps back to 0 with an unchanged id, streaming idles.
 
@@ -666,7 +666,7 @@ more segment.
   HRAM stub at `$FFF0` (`LD A,$C0; LDH [rDMA],A; 40-cycle wait; RET`), called
   first thing in VBlank (`00:0664`). OAM itself is never written directly.
 * **Cursor `$FF9D`**, monotonically increasing, `+4` per sprite, hard-capped at
-  `$A0`. Overflow is silently dropped (`00:0BE7`) — **there is no sorting and no
+  `$A0`. Overflow is silently dropped (`00:0BE7`) - **there is no sorting and no
   priority system**: OAM order == call order, and DMG priority is
   lowest-OAM-index-wins for overlapping sprites.
 * **`sub_00_0C1F` ClearUnusedOAM** zero-fills `$C000 + $FF9D` … `$C0A0` and
@@ -692,7 +692,7 @@ more segment.
 
 ---
 
-## 6. RASTER EFFECTS — the `$0857` STAT/LYC state machine
+## 6. RASTER EFFECTS - the `$0857` STAT/LYC state machine
 
 `rSTAT` is only ever set to `$40` (LYC=LY interrupt). `rIE` is `$05`
 (VBlank+Timer) when no split is armed and `$07` when one is. `$FFC7` holds the
@@ -705,7 +705,7 @@ Mode assignment at level entry (`sub_00_0D50`):
 | 1, 2 | **6** | `$80` | `$FFAC` (WY) = `$80`, `rIE=$07`, `$C328/$C348 = $40` |
 | 9, `$0A`, `$0B` | **2** | `$00` | `rIE=$07`, VRAM script `7:$7A5E` |
 | 6 | **0** | `$22` | `rIE=$07`, `$FFCA=$07`, `$FFCB=$FFC9=0`, script `7:$7B77` |
-| all others | **0** | — | `rIE=$05` — **STAT disabled, no splits** |
+| all others | **0** | - | `rIE=$05` - **STAT disabled, no splits** |
 | stage-clear screen `00:35A0` | **5** | `$90` | `$FFAC=$90`, `$FFAB=$07` |
 | ending scroll `00:38A0` | **7** | `$00` | `$C763=0`, `$C766=0`, `$FFAE=$1B` |
 
@@ -715,44 +715,44 @@ palette-cycle counter `$C765` 0..11 every 8th frame.
 
 ### State-by-state
 
-**0 — `$0878`** (level 6 foreground/background split; also the idle state)
+**0 - `$0878`** (level 6 foreground/background split; also the idle state)
 ```
 if (frameCounter & 7) == 0 and not paused: rSCY := $FFAA - 2
 rSCX := $FFCC                 ; parallax offset, computed by 00:2F4B
 rLYC := $70 ;  $FFC7 := 1
 ```
 
-**1 — `$0898`**
+**1 - `$0898`**
 ```
 rSCX := $FFA9 ; rSCY := $FFAA ; rLYC := $22 ; $FFC7 := 0
 ```
 Net: lines `$22..$6F` scroll at `$FFCC`, lines `$70..$8F` at `$FFA9`.
 
-**2 — `$08A9`** (levels 9/`$0A`/`$0B`, three-layer parallax; fires at LY 0)
+**2 - `$08A9`** (levels 9/`$0A`/`$0B`, three-layer parallax; fires at LY 0)
 ```
 rSCX := [$C742] ; rSCY := $FFAA ; rLYC := $30 ; $FFC7 := 3
 ```
 
-**3 — `$08BC`** (fires at LY `$30`)
+**3 - `$08BC`** (fires at LY `$30`)
 ```
 rSCX := [$C743]
 if (frameCounter & 7) == 0 and not paused: rSCY := $FFAA + 3
 rLYC := $40 ; $FFC7 := 4
 ```
 
-**4 — `$08DD`** (fires at LY `$40`)
+**4 - `$08DD`** (fires at LY `$40`)
 ```
 rSCX := $FFA9 ; rLYC := 0 ; $FFC7 := 2
 ```
 Net per frame: lines 0-47 use `$C742`, 48-63 use `$C743`, 64-143 use `$FFA9`.
 `$C742` is incremented by 1/frame and `$C743` by 3/frame at `00:0597`/`00:059E`.
 
-**5 — `$08EA`** (stage-clear screen only)
+**5 - `$08EA`** (stage-clear screen only)
 ```
 rWX := $A8       ; pushes the window off-screen for the rest of the frame
 ```
 
-**6 — `$08F0`** (levels 1 & 2 — the chemical-vat water)
+**6 - `$08F0`** (levels 1 & 2 - the chemical-vat water)
 ```
 B := rLY
 if rLY >= $90 or [$C755] >= $90: rLYC := $8F; return
@@ -767,14 +767,14 @@ rLYC := (n < $8F) ? n : [$C755]
 00 00 03 05 06 08 09 0A 0A 0A 09 08 06 05 03 00
 00 00 FD FB FA F8 F7 F6 F6 F6 F7 F8 FA FB FD 00
 ```
-`$C755` is the **screen Y of the water surface** — computed at `00:2E36` from the
+`$C755` is the **screen Y of the water surface** - computed at `00:2E36` from the
 16-bit world Y in `$C70A/$C70B` minus the camera, clamped to 0 or `$90`, and it
 is *also* written to `$FFAC` (WY). So: the window (map `$9C00`) draws the water
 body from the surface line down, and the wobble re-arms every 4 scanlines from
 the surface line to line `$8C`. WX is `$FFAB = $07` (set once at boot,
 `00:0215`), i.e. window x = 0.
 
-**7 — `$0935`** (ending credits — fractional vertical scroll)
+**7 - `$0935`** (ending credits - fractional vertical scroll)
 ```
 rLYC++                                   ; fires on EVERY scanline
 [$C765] += [$C763]                       ; 8.8 fraction accumulator
@@ -815,7 +815,7 @@ repeat:
 ```
 
 Note mode 3 consumes the fill byte *after* the loop (`$0A4D INC DE`), mode 1
-before it — both are correct 1-byte RLE.
+before it - both are correct 1-byte RLE.
 
 Callers: `00:023B, 0294, 02AE, 0381, 03BB, 04DA, 071B (VBlank drain of $C61B),
 0E27, 0E97, 0EFB, 115D ($C160 column build), …`
@@ -846,7 +846,7 @@ Verified by rendering `rip/tiles/res02_b6_54B0_to_8800.png`.
   length kept in `$FFA0`), appends the 31-byte boss banner `0:$3485` on levels
   4/8/`$0B`/`$0E`, and draws metasprite `ms1[$F2]` (15 sprites) at `BC = $5858`.
 
-### 7.4 Background tile animation — `loc_00_3127`
+### 7.4 Background tile animation - `loc_00_3127`
 
 Runs right after the player tile stream, using the *same* `$FF9B` VBlank slot as
 nothing else during play.
@@ -877,14 +877,14 @@ VBlank `00:074E` then copies the 32 bytes from `$C5CB` to
 | 3, 5, 7 | `$61F2` | `$321A` | `$326E` | `$12` |
 | 6 | `$623A` | `$3232` | `$3280` | `$09` |
 | 12, 13 | `$6282` | `$323E` | `$3289` | `$0C` |
-| 4, 8, 9, 10, 11, 14 | — | — | — | — |
+| 4, 8, 9, 10, 11, 14 | - | - | - | - |
 
 Sequences: `$3262` = `00 01 02 03` ×3, `$326E` = `00..05` ×3, `$3280` =
 `00 01 02` ×3, `$3289` = `00 01` ×6.
 
 ---
 
-## 8. QUICK REFERENCE — all graphics tables
+## 8. QUICK REFERENCE - all graphics tables
 
 | addr | shape | consumer |
 |---|---|---|
@@ -920,32 +920,32 @@ Sequences: `$3262` = `00 01 02 03` ×3, `$326E` = `00..05` ×3, `$3280` =
 | `5:$4716` | 14 × 3 bytes | object spawn blobs → `$C1E8` |
 | `5:$5F5C` | 243 × LE ptr | metasprite table 1 |
 | `5:$736B` | 105 × LE ptr | metasprite table 2 |
-| `6:$611C` | ≥12 × LE ptr | (`00:3520`, menu/ending art — not graphics-critical) |
+| `6:$611C` | ≥12 × LE ptr | (`00:3520`, menu/ending art - not graphics-critical) |
 
 ---
 
 ## 9. DUMP PROOF
 
 `tools/riplevel.py` and `tools/ripgfx.py` reconstruct the formats above from
-scratch (no emulator, stdlib only — `zlib` for the PNG IDAT).
+scratch (no emulator, stdlib only - `zlib` for the PNG IDAT).
 
 Produced under `rip/`:
 
-* `rip/levels/levelNN.png` — all 14 levels, full-size (`width*16 × 256`),
+* `rip/levels/levelNN.png` - all 14 levels, full-size (`width*16 × 256`),
   built by: bank-3 map → bank-5 metatile defs → per-level `$0B15` resources
   replayed into a simulated VRAM → signed `$8800` BG tile lookup → 2bpp decode.
   Level 1 renders as the recognisable Ace Chemicals interior; level 12 as the
   cave stage with ladders, spikes and `?` item boxes; level 9 as the vehicle
   stage. **This is the proof that §1, §2.4 and the metatile ordering are right.**
-* `rip/levels/levelNN_coll.png` — same image with a per-metatile collision-class
+* `rip/levels/levelNN_coll.png` - same image with a per-metatile collision-class
   corner marker.
-* `rip/levels/levelNN.txt` — width, metatile defs with their collision byte and
+* `rip/levels/levelNN.txt` - width, metatile defs with their collision byte and
   class, and the raw map grid.
-* `rip/tiles/resXX_*.png` — all 34 valid resources as 16-wide tile sheets;
+* `rip/tiles/resXX_*.png` - all 34 valid resources as 16-wide tile sheets;
   `res02` visibly contains the `0-9 A-Z` font, confirming §7.2.
-* `rip/player/animXX.png` + `rip/player_tiles_2_5074_6BB1.png` — the 31 player
+* `rip/player/animXX.png` + `rip/player_tiles_2_5074_6BB1.png` - the 31 player
   animations (3 columns × 4 tiles) and the whole player tile blob.
-* `rip/sprites/t1/*.png`, `rip/sprites/t2/*.png` — every metasprite in both
+* `rip/sprites/t1/*.png`, `rip/sprites/t2/*.png` - every metasprite in both
   tables, composited in 8×16 mode with flips, against the first level VRAM in
   which its tiles are non-blank. `t1/134` is the full energy bar; `t2/000` is a
   walking thug.
@@ -958,7 +958,7 @@ Produced under `rip/`:
 |---|---|
 | Levels 9–14 read metatile id `= len/4`, one past the copied table, so its 4 tile ids are stale `$C368` bytes. | Dump `$C470-$C473` after `sub_00_2889` in an emulator. |
 | `$C130` 2×2 queue capacity is 8 records (bounded by `$C160`); never checked in code. | Log max `$FF9F` over a level. |
-| Which OBJ tiles each enemy type uses — the metasprite tile ids are absolute, and each level loads a different `$8400`-region resource, so table-1 entries are only meaningful for the levels that load the matching sheet. The ripper brute-forces 4 candidate levels per entry. | Per-level enemy-type → metasprite-id mapping from `1:$60EF` handlers. |
+| Which OBJ tiles each enemy type uses - the metasprite tile ids are absolute, and each level loads a different `$8400`-region resource, so table-1 entries are only meaningful for the levels that load the matching sheet. The ripper brute-forces 4 candidate levels per entry. | Per-level enemy-type → metasprite-id mapping from `1:$60EF` handlers. |
 | Metasprite entry counts (243 / 105) are derived from the pointer/data boundary, not from a bound check in code; `$0BC6` will happily read past the table. | Log the max `E` passed to `$0BC6`/`$0BAF`. |
 | STAT state 7's `$C763` (scroll fraction) source. | Trace `00:38A0` on the ending. |
 | `6:$611C` pointer table contents (title/ending art, reached via `00:3520`). | Out of scope for gameplay rendering. |

@@ -1,4 +1,4 @@
-# The renderer — measured
+# The renderer - measured
 
 status: wave 6, built and measured 2026-08-01.
 Evidence, with every command and its actual output:
@@ -28,7 +28,7 @@ PASS: 13647872/13647872 = 100.0000% over 136 frame pair(s);
       biggest palette delta 403 words
 ```
 
-The two sides are independently derived — this side is a transcription of
+The two sides are independently derived - this side is a transcription of
 `igs023_video.cpp` into JS, the other is MAME's C++ executing. It is
 deliberately **not** a comparison against `tools/framerender.py`: that would
 compare a translation with its own source and could only find typos
@@ -38,7 +38,7 @@ compare a translation with its own source and could only find typos
 
 | | |
 |---|---|
-| module | `games/ddpdoj/src/render/` — `regions`, `tiles`, `spritelist`, `sprites`, `igs023`, `capture` |
+| module | `games/ddpdoj/src/render/` - `regions`, `tiles`, `spritelist`, `sprites`, `igs023`, `capture` |
 | screen | 448 × 224, MAME's visible area. The cabinet is **TATE**: the game's long axis (`posY`) is the bitmap's **X** |
 | fill | pen `0x3ff` (`igs023_video.cpp:772`) |
 | BG | 64 × 16 tiles of 32×32, 5bpp, palette base `0x400`, 32 palettes of 32, **transparent pen 31**, per-row scroll |
@@ -49,7 +49,7 @@ compare a translation with its own source and could only find typos
 | ctrl | bit 11 disables TX, bit 12 disables BG, bit 13 draws only `pri` records |
 
 Region assembly is `pgm.cpp:5361-5386`. **`cave_t04401w064.u19` loads at
-`0x180000`, not `0x200000`** — it OVERWRITES the top `0x80000` of
+`0x180000`, not `0x200000`** - it OVERWRITES the top `0x80000` of
 `pgm_t01s.rom`. Getting that wrong still renders a plausible picture: measured
 at **46.7 %** of pixels correct over this corpus.
 
@@ -63,7 +63,7 @@ Both were measured in `00-recon-assets.md` §4 and are re-stated in
    indexed bitmap at the END of the frame.
 
 Wave 6 turned both into mutations. `state-same-frame` costs 27.6 % of the
-pixels. `pal-same-frame` costs 7.4 % — **but only because wave 6 went and found
+pixels. `pal-same-frame` costs 7.4 % - **but only because wave 6 went and found
 a fade**; see §3.
 
 ## 3. Two things the wave-3 corpus does not test, both measured, both fixed
@@ -130,21 +130,21 @@ caught by a gate that reported "about right".
 
 `games/ddpdoj/index.html` + `src/web/app.js` (wave 6 put it at `web/app.js`;
 wave 7 moved it under `src/` because `tools/build-dist.mjs` publishes
-`games/<id>/src` and would have left a module under `web/` behind — a black
-page and no message). The cadence is the board's —
-15625/264 Hz, 16.896 ms per logic frame — and the host clock decides only how
+`games/<id>/src` and would have left a module under `web/` behind - a black
+page and no message). The cadence is the board's -
+15625/264 Hz, 16.896 ms per logic frame - and the host clock decides only how
 many logic frames have come due, never what any of them computes
 (`NOTES-replay.md` constraint 1).
 
 **Simulated live:** the seven-call main loop, the counters and their three
 masks, the ISR model, the input mirrors and edges, the frame-sync governor, the
-object driver with its budget, and the player — position, velocity, tilt,
+object driver with its budget, and the player - position, velocity, tilt,
 clamps, speed modes, options.
 
 **Replayed:** everything else. Wave 11 ported main-loop call #4 (`$23D2AE`, the
-display-list build) WHOLE — the 29-bucket gather, the pre-emptive drop policy,
+display-list build) WHOLE - the 29-bucket gather, the pre-emptive drop policy,
 the equality cap, the emit and the terminator, gated at **0 divergent frames
-over 1,901 build-B frames** by `pgm.py dlgate` — but the port has a simulated
+over 1,901 build-B frames** by `pgm.py dlgate` - but the port has a simulated
 PRODUCER for exactly one of the thirty buckets (14, the shots), and 18 of the 20
 top-level object handlers are still unported. So the pipeline is real and empty:
 the background, the enemies and the HUD still come out of a 161-frame board
@@ -194,7 +194,7 @@ PASS: the port drives the ship and the page's own render path is
 **What that gate cannot tell you**, and it must be said next to the 100 %:
 because the port agrees with the board to the unit, the written list is
 byte-identical to the board's own, so "the port drove the ship" and "nothing was
-spliced" produce the same picture. What is proved is the other direction — the
+spliced" produce the same picture. What is proved is the other direction - the
 pixels DO come from the number the port computed. Moving the port's `py` by one
 pixel moves **691 pixels per frame, 0.6887 % of the frame**, against a ship
 record of 48×32 px plus two 16-px pods. `frozen-player` and `no-input` print the
@@ -212,12 +212,12 @@ half has no port behind it and the page says so on its face.
 
 * **`bg_scale != 0x210`.** MAME does not implement the register. The gate FAILS
   any pair drawn with a different value rather than scoring it.
-* **Mixed x/y zoom levels**, as in `NOTES-assets.md` §6 — unchanged here.
+* **Mixed x/y zoom levels**, as in `NOTES-assets.md` §6 - unchanged here.
 * **The browser page has never been executed.** No headless browser is installed
   and nothing may be downloaded. `demogate.mjs` runs everything except the
   fetch/assembly path, the canvas blit, the keyboard mapping and the
   `requestAnimationFrame` cadence loop; those four were UNTESTED in wave 6.
-  **Wave 7 closed the first of the four** — `tools/webgate.mjs` starts a real
+  **Wave 7 closed the first of the four** - `tools/webgate.mjs` starts a real
   HTTP server over `assets/`, loads the bundle through the page's own
   `httpReader` (same `r.ok` check, same `.gz` naming, same
   `DecompressionStream`) and renders a frame from it, with three breaks that go
@@ -228,7 +228,7 @@ half has no port behind it and the page says so on its face.
   drawer has never walked. Presence, not coverage.
 * **The published bundle vs. the cartridge.** `tools/bundlegate.mjs` proves the
   363 KiB exported bundle renders the same 15,955,968/15,955,968 pixels the
-  58 MiB cartridge does — but only for THIS capture. Any new capture needs
+  58 MiB cartridge does - but only for THIS capture. Any new capture needs
   `node tools/export-web.mjs` re-run; the bundle's boot-time coverage check
   turns a stale bundle into a message naming the frame and the tile rather than
   a blank tile, which is the only reason that is safe.
