@@ -1,4 +1,7 @@
-# 67 — IMPL T1: THE SHIP'S SIX-DEEP AFTERIMAGE TRAIL (`$253604`, BUCKET 12)
+# 67 — IMPL T1: THE SHIP'S AFTERIMAGE TRAIL (`$253604`, BUCKET 12)
+
+*(the brief calls it SIX-DEEP. `[M]` the listing says **FIVE** records off a
+**SIXTEEN**-long ring — §1.)*
 
 status: **IN PROGRESS**
 
@@ -33,7 +36,7 @@ three in the same direction (reading `moveq #$5,D7` as the shape of the thing).
 | "`$253660 moveq #$5,D7` <- SIX entries" / "its 6-entry ring" | the ring is **SIXTEEN** longs. `$253658 lea ($40,A1),A1` walks past `$40` bytes, the shift moves exactly 16 slots (1 + 5x3), and the initialiser `$2536B6` fills 16 (`moveq #$f,D0`). The five records are **taps at slots 15, 12, 9, 6 and 3** — the ship as it was 3, 6, 9, 12 and 15 calls ago |
 | "`$2536AA` … BUCKET 12" and bucket 12 has ONE producer | **CONFIRMED, twice, and there is a SECOND STUB.** `xref.py callers 23FDB2` -> `$2536AA` only; `callers 253604` -> `$24A53E` only. And `$23FDE8` is a **second** enqueue on the same `$80AF24`/`$80AFEA` pair — the ZOOMING register convention — with **zero** absolute-long callers. `xref.py`'s own rule makes that a lower bound, so it is named, not declared dead |
 | "**NO NEW ART IS NEEDED** — verify it" | **TRUE, and now measured rather than argued.** `[M]` the 3,597 records a 1,500-frame run emits ask for **17** distinct streams, `$001200 $001264 … $001840` in steps of `$64` — exactly `$25533A[0]`'s seventeen tilt frames, i.e. the ship's own image. `[M]` **0 named-missing, 0 pending, 3,597 of 3,597 DRAWN** |
-| "`tst.b ($3f,A6)` gates it and I did not find the writer … the trail may only run in a state `fly-around` never entered" | **THE GATE IS THE LASER, and it is armed in ordinary play.** `$24C282 move.b #$1,($3f,A4)` sets it the frame the beam's arm-up completes; `$24C2D6 move.b D0,($3f,A4)` clears it on release. It is the same byte `src/player.js` reads at `$249B40` to switch the shot cadence machine off while a beam is up — the port has known this since W45 and called the field `P.dead`. `[M]` on the shipped seed with fire HELD it is set at **logic frame 17** |
+| "`tst.b ($3f,A6)` gates it and I did not find the writer … the trail may only run in a state `fly-around` never entered" | **THE GATE IS THE LASER, and it is armed in ordinary play.** `$24C282 move.b #$1,($3f,A4)` sets it the frame the beam's arm-up completes; `$24C2D6 move.b D0,($3f,A4)` clears it on release. It is the same byte `src/player.js` reads at `$249B40` to switch the shot cadence machine off while a beam is up — the port has known this since W45 and called the field `P.dead`. `[M]` on the shipped seed with fire HELD it is set **during step 16** (`$24C164`'s sixteen frames of arm-up, then the latch) and is already 1 when a probe reads it before step 17 — the two numbers in this worklog are the same event sampled either side of `Game.step` |
 | W55 §6: "the board draws ZERO colour-31 records" (in 161 captured frames) | **CONSISTENT, NOT CONTRADICTORY.** `$25364A move.w #$1f,D4` really does make the trail colour 31 — and `fly-around` never holds the fire button, so `($3f,A6)` is 0 on all 161 frames and the trail cannot have been in that capture. It is **not** the hitbox box of §6, which is 1x16 at `#$001F/$401F/$201F/$601F`; this is 3x32 at the ship's own offsets |
 
 **AND ONE THING THE PORT ALREADY HAD AND NEVER READ.** The ring INITIALISER
@@ -42,6 +45,20 @@ seedPositionHistory`, called at `$24C288` on the frame the beam arms. So the
 port has been filling two 16-long rings on every laser for twenty-two waves and
 **nothing has ever read them.** That is the same shape as E6's finding one wave
 earlier: state that was right, with no record ever emitted from it.
+
+### 1.1 READ PAST BOTH ENDS — and the routine next door is the HITBOX BOX
+
+`[M]` **After** `$2536B4 rts` comes `$2536B6`/`$2536D0`, the ring INITIALISERS
+(`moveq #$f,D0`, sixteen `move.l ($2,A2),(A0)+` / `($a,A2),(A1)+`) and then
+`$2536FA`, the laser's `($60,A4)` ramp — already ported, both of them.
+`[M]` **Before** `$253604` is the tail of `$253578`: `move.w #$601F,D4 / jmp
+$23F7F4` and a `nop` pad at `$253602`. **That is `55-diag` §6's unreachable
+four-corner HITBOX BOX** — the ROM puts it immediately in front of the trail and
+both write colour `$1F`, which is very likely why §6 and §4.3 read as one
+finding. **They are two routines: the box is 1x16 at `#$001F/$401F/$201F/$601F`
+into bucket 22 with no caller of any kind; the trail is 3x32 at the ship's own
+offsets into bucket 12 with one.** The `jmp` tail means there is **no
+fall-through** into `$253604` — checked because ten incidents say to check.
 
 ## 2. BEFORE AND AFTER — BUCKET 12
 
@@ -86,6 +103,24 @@ enemy bullets for the trail, and the control shots are what caught that):
 `trail N` is new on the page's own status line this wave (`src/web/app.js
 dlTrail`, `index.html`), for W66 §4's reason: the thing that would have shown
 `$253604` missing for fifty-four waves is a number on the page the owner plays.
+
+### 3.0b THE LIVE DEPLOYED BUILD, `20260805175616` — and it AGREES
+
+```
+[M] A nobeam+moving  trail 0     B beam+still  trail 0     D stopped  trail 0
+[M] C4/C5/C7/C8 beam+moving  trail 5 5 5 5    C9  trail 2
+[M] PAGE ERRORS: none
+```
+
+**[M] On the live page the ship banks left out of its orange aura and a blue
+cascade of ghost ships hangs off its right-hand side** — the same picture the
+local build draws, on the machine the owner plays.
+Screenshots `.scratch/t1live-*.png`; local `.scratch/t1ship-*.png`.
+
+**[M] BOTH SERVERS-OF-ONE I STARTED WERE KILLED.** `Get-CimInstance
+Win32_Process` finds **no `http.server` process anywhere** and there is **no
+listener** on 8000, 8766, 8767, 8771 or 8791 — checked by PROCESS and by PORT,
+as W61 §6b, W63, W65 and W66 did.
 
 ### 3.1 THE PIXELS, ISOLATED — `.scratch/t1pixels.mjs`
 
@@ -219,6 +254,34 @@ a real thing to learn rather than a typo:
 - `P.dead` is still the wrong name for `($3f,A6)`; it is the LASER's "beam up"
   flag and renaming it touches six files in a wave whose subject is the trail.
 - **`games/gradius/` NOT TOUCHED.**
+
+## 7. ONE PARAGRAPH
+
+**The ship has had a sixth sprite producer since W12 and nothing in this repo
+could see it.** `$24A53E jsr $253604` is the AFTERIMAGE TRAIL: a sixteen-long
+ring of the ship's own position and image, shifted one slot per draw, tapped at
+slots 15, 12, 9, 6 and 3 and re-emitted as up to **five** records — the ship's
+own 48x32 picture, in **colour 31**, at the positions it held 3, 6, 9, 12 and 15
+calls ago. It is bucket 12's only producer in the cartridge, it needs no new
+art, and it was a counted note for fifty-four waves on a subsystem `pgm.py
+shipgate` had called 0 divergent the whole time — because that gate compares
+buckets 5, 15 and 19, and a gate that compares a NAMED LIST of buckets is
+structurally blind to the buckets not on the list. `55-diag` found it and got
+three numbers wrong in the same direction (six records, a six-entry ring); the
+listing says five and sixteen, and the histogram of a 1,500-frame run never
+reaches six. Its gate is the LASER — `$24C282 move.b #$1,($3f,A4)`, sixteen held
+frames — which closes `55-diag`'s own open question and means **the trail is
+armed on every beam, in ordinary play**. Bucket 12 goes **0 -> 3,597 records,
+3,597 DRAWN, 0 missing**, and in Chrome, local and live, five blue ghost ships
+hang off the ship the moment it banks with the beam up. The check this wave
+leaves behind is not "compare bucket 12 too" — that would be two empty buffers,
+because no capture in this repo holds fire — it is **`w67trailgate.mjs`, THE
+PRODUCER CENSUS: ask the CARTRIDGE which buckets a ported routine can feed, then
+require the PORT to put a record in every one of them.** Run against W12..W66's
+tree it names bucket 12 and measures zero. And it found the next wave on the
+way past: **a ship that BANKS asks for 48 sprite streams nobody has shipped** —
+its own tilted glow and shadow — which E3 and E6 both truthfully reported as
+zero missing, because their scenarios fly straight up.
 
 ## LOG (appended as findings arrive)
 
