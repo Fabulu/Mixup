@@ -574,6 +574,25 @@ not narrow the set.**
 
 ---
 
+## 13b. A MUTANT REACHED HEAD, AND HOW IT WAS CAUGHT
+
+`[M]` `git diff --stat HEAD` after the last commit of the wave showed ONE line
+of `src/bomb.js` different: `$256220 add.w ($30,A5),D0` was `+ 0` in three
+commits of HEAD and correct on disk. I had staged the file while
+`.scratch/mutate65.mjs` was running in the BACKGROUND, and the bytes on disk at
+that instant were mutant 21 of 59, mid-flight. The sweep restored the file and
+verified it sha256 byte-identical a second later, so **every measurement in
+this document ran against the correct line** — the 921 unit tests, the 22/22
+gate, the 59-of-59 mutation round and `ALL GREEN 67/0/0` are all after the
+restore. Only the published commits were wrong, and only for as long as it
+took to notice.
+
+HANDOVER's rule is *"`git commit` commits the INDEX, not your files"*. The one
+this adds is **do not stage a file another process is editing**, and
+`git diff --stat HEAD` at the end of a wave is what catches it when you do.
+
+---
+
 ## 14. ONE PARAGRAPH
 
 **Bombing while holding the beam works.** `$249A80` had been a throw since W64
