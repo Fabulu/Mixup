@@ -790,6 +790,42 @@ SHOT_WINDOWS.extend([
                        "address, so the table ends there"),
 ])
 
+# ======= W57 (M1): ENEMY TYPE $1C -- WHAT THE MIDBOSS'S DEATH SPAWNS =========
+#
+# `$26B7E0 moveq #$1C,D0 / $26B7E2 jsr $263684` is the ONLY enqueuer of type
+# $1C in build B (W56 §2.2 scanned all 44 absolute-long call sites of the two
+# deferred-spawn entries), and the type table's LO entry $267904 is
+# (init $26C1C2, handler $26C20C).  Every byte the port reads for it lives in
+# ONE window, and BOTH ENDS ARE PINNED BY SOMETHING THAT IS NOT A READING:
+#
+#   $26C1C2  the 8-byte init STUB `3B7C 0000 0004 / 4E75` -- run length $0000.
+#            `initDispatch` reads the immediate at init+2 ($26C1C4), which is
+#            the word that threw on the live page before this line existed.
+#            The NEAR end is the type table's own init pointer.
+#   $26C1CA  the init BODY (init+8).  Five instructions, src/initbody.js.
+#   $26C1EE  the RECORD prototype, ONE word ($26C1DC `moveq #$0,D0` -> $26377A
+#            copies D0+1 = 1 word).  [M] $0000.
+#   $26C1F0  the SUB-RECORD prototype.  [M] its flags word is $8000, bit 15 SET,
+#            so $2637A2 takes the LONG form: 28 table bytes for the one
+#            sub-record the run length asks for.  $26C1F0 + 28 == $26C20C,
+#            which IS the handler -- i.e. the FAR end is code, exactly, with no
+#            slack.  That is why the length is $4A and not the $50 the
+#            diagnostic proposed: $50 would claim six bytes of $26C20C's
+#            `cmpi.w #$105,$8130CE` as data.
+#
+# NOT EXPORTED, and named rather than skipped: nothing.  The handler's own
+# source data -- $227AF8, 23 columns x 36 B of the STAGE-1 BG column stream --
+# is already inside the WAVE 13 window $225B78+$22E0 (columns 224..246 of 248;
+# $225B78 + 224*36 == $227AF8 exactly, and 23*36 == 828 == 207 longwords ==
+# 23 columns x 9 rows, which is what $26C23C's two `dbra`s write).
+SHOT_WINDOWS.append(
+    (0x26C1C2, 0x004A, "W57: enemy type $1C -- the init stub $26C1C2 (run "
+                       "length at init+2), the init body $26C1CA, its 1-word "
+                       "record prototype $26C1EE and its 28-byte sub-record "
+                       "prototype $26C1F0, whose far end $26C20C is the "
+                       "handler (code). Spawned ONLY by the midboss's death "
+                       "$26B7E0/$26B7E2"))
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and

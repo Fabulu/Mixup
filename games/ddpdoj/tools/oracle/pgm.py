@@ -1221,6 +1221,31 @@ def _cmd_check(argv: list[str]) -> int:
     stage("enemy stats RED (swap-tables + corrupt-hp + seed-wrong-stage)",
           lambda: (("SKIP", f"{W23TSV.name} missing")
                    if not W23TSV.exists() else _node(STATSGATE, W23TSV, "--break", "all")))
+    # WAVE 57 (M1) -- **THE SCENARIO THAT KILLS THE MIDBOSS.**
+    #
+    # W31 shipped the midboss with "NO RUN IN THIS CORPUS KILLS THE MIDBOSS"
+    # written in its own worklog. Twenty waves later W51 gave the beam the
+    # ability to kill, and the first player who held fire on the live page hit
+    # `UNPORTED $26C1C4` and the game stopped (W56, reproduced three times on
+    # the deployed URL). **The window and the two routines W57 ported are 28
+    # instructions; the reason the defect survived 25 waves behind a green gate
+    # is that nothing in the gate ever killed him.** So the scenario is a stage,
+    # not a number in a worklog.
+    #
+    # It needs NO EMULATOR RUN: it drives the SHIPPED BUNDLE (the same seed and
+    # tables the published page boots from) with fire held, and with fire
+    # suppressed as a control. `--break no-kill` runs the kill window with fire
+    # suppressed, which must turn every assertion about the death, the type-$1C
+    # object and the early release RED -- the proof that the stage measures the
+    # kill and not the clock.
+    MIDBOSSGATE = TOOLS.parent / "tools" / "midbossgate.mjs"
+    stage("midboss DEATH: the scroll release, type $1C and its 207 map longwords",
+          lambda: _node(MIDBOSSGATE))
+    stage("midboss DEATH RED [no-kill]",
+          lambda: (("PASS", "went red without the kill, as it must")
+                   if _node(MIDBOSSGATE, "--break", "no-kill")[0] == "FAIL"
+                   else ("FAIL", "the scenario is GREEN with the midboss alive "
+                                 "-- it is not measuring the kill")))
     if not quick:
         stage("fly-around: port vs board, 0 divergent frames",
               lambda: sub(__file__, "flyaround"))

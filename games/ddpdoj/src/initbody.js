@@ -651,6 +651,28 @@ BODY.set(0x26B484, (ram, rom, a5, a6, unported, tables) => {
   unported?.note(0x24150a, `midboss resource installs $24150A (#$10/11/15) -- data`);
 });
 
+// --- type $1C ($26C1CA): WHAT THE MIDBOSS'S DEATH SPAWNS (runLen 0).  W57.
+//
+// `$26B7E0 moveq #$1C,D0 / $26B7E2 jsr $263684` is the ONLY enqueuer of type
+// $1C in build B, so this body runs on exactly one frame per midboss death and
+// on no other frame in stage 1.  It had never run in this port: until W51 gave
+// the beam the ability to kill, no run in the corpus killed the midboss, and
+// the first one that did stopped the LIVE PAGE with `UNPORTED $26C1C4` (W56).
+//
+// FIVE INSTRUCTIONS AND NO MOVEMENT READER.  It does NOT call `$263808`: the
+// object's position is the LITERAL `$38001C00` written straight over
+// ($2,A6)/($4,A6), so it is pinned to one place on the screen and has no
+// movement script.  Every other stage-1 body in this file reads the stream.
+BODY.set(0x26C1CA, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x26C1F0);            // $26C1CA lea / $26C1D0 jsr $2637A2
+  loadRecordProto(ram, rom, a5, 0x26C1EE, 0x00);       // $26C1D6 lea / $26C1DC moveq #$0,D0
+  // $26C1E4 `move.l #$38001C00,$2(A6)` -- ONE longword over BOTH position
+  // words: ($2,A6) := $3800 and ($4,A6) := $1C00.  Written as a longword
+  // because that is the instruction; splitting it into two `move.w`s would be
+  // the same bytes today and a different routine to read.
+  ram.setU32(a6 + S.posX, 0x38001c00);                 // $26C1E4
+});                                                    // $26C1EC rts
+
 // --- type $0E ($2926E2): THE BOSS (runLen 8).  Loaders, fixed entry position,
 // the bespoke boss state-machine install ($259554, W30) and resource installs
 // are noted (they build RAM tables / scroll lock / the HP bar accumulator --

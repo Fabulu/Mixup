@@ -163,6 +163,13 @@ export class Game {
       rom: this.rom,
       prot: this.prot,          // WAVE 12: the $500000 latch, on the ship's own
                                 // draw path through $24A5B6 (src/protsim.js)
+      // WAVE 57: the BG videoram, because an ENEMY HANDLER writes it.  Type
+      // $1C ($26C20C, what the midboss's death spawns) copies 23 x 9 map
+      // longwords into $9000xx -- the same array `$240D9A` writes through
+      // `writeMapLong`.  It is the first handler in this port that is not a
+      // sprite producer, and a caller that omits `vram` reaches a loud named
+      // throw at $26C226 rather than dropping 207 longwords.
+      vram: this.vram,
       unportedLog: this.unportedLog,
       // WAVE 8: every record the shot spawn creates, and every frame it could
       // not.  Printed by the runner for the same reason `allocEvents` is: a

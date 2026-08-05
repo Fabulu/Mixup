@@ -2627,6 +2627,81 @@ function emit24(ram, rom, a5, a6) {
     0x1488, 0x13);                                     // $2970CA/$2970CE/$2970D0 jmp
 }
 
+// ############################################################################
+// #  W57 (M1) -- TYPE $1C, THE OBJECT THE MIDBOSS'S DEATH SPAWNS             #
+// ############################################################################
+//
+// **THIS IS A BACKGROUND BLIT, NOT A SPRITE.**  W56 §2.4 read `$26C220`'s
+// `lea $9000BC,A0` as "a palette/gradient write into PGM register space
+// `$9000xx` that the port does not model".  IT IS THE PORT'S OWN BG VIDEORAM.
+// `$240D92 lea $900000,A0 / adda.w D0,A0 / move.l D4,(A0)` with
+// `D0 = ((row << 6) + col) * 4` is `src/background.js writeMapLong`, ported
+// since W13, and `BgVram.setLong` is its store.  $26C20C addresses the SAME
+// array with the SAME arithmetic, spelled out of registers instead of out of
+// two loop counters:
+//
+//     A2 = A0 + row * $100       $26C24C adda.w #$100,A2   -> the ROW stride
+//     A0 = A0 + col * 4          $26C254 adda.w #$4,A0     -> the COLUMN stride
+//     byte offset = row * $100 + col * 4  ==  ((row << 6) + col) * 4
+//
+// AND ITS SOURCE IS THE STAGE'S OWN COLUMN STREAM.  `$26C220 lea $227AF8,A1`
+// is column **224** of the WAVE 13 window `$225B78` (248 columns x 36 B;
+// $225B78 + 224*36 == $227AF8, exact), and the 23 x 9 longwords the two `dbra`s
+// copy are 828 bytes == 23 columns x 36 B, exact.  So the routine paints 23
+// map columns into the 64-column ring in ONE frame.  Stage 1's script ends at
+// distance clock $0344 == 836, i.e. about 209 columns at four clocks each, so
+// columns 224..246 are PAST the end of the scrolled map: they are a dedicated
+// 23-column art block, and this is what puts it on the screen.
+//
+// The tile base is the LITERAL `$32A90000` ($26C244 addi.l), not one of the
+// five per-stage bases at `$240D62` ($0AA90000 $12A90000 $1AA90000 $1EA90000
+// $26A90000) -- so it is transcribed as the literal it is.  A port that
+// "tidied" it into `writeMapLong` would look up the wrong bank.
+//
+// THE COLUMN MASK IS LOAD-BEARING.  `$26C258 move.l A0,D0 / $26C25A andi.w
+// #$FF,D0 / $26C25E movea.l D0,A0` masks the LOW WORD only, so A0 walks
+// $9000BC..$9000FC and then WRAPS to $900000..$900014 -- ring columns 47..63
+// then 0..5.  Seventeen of the 23 columns are above the wrap and six are below
+// it; dropping the mask writes six columns into row 1 instead of into the ring.
+//
+// AND IT LEAVES BY ONE ARM ONLY.  `$26C20C cmpi.w #$105,$8130CE / bne $26C220 /
+// jmp $263762` -- the object frees itself when the distance clock is EXACTLY
+// $0105 (261), which is 21 ticks after the crawl's release at $00F0.  Until
+// then it re-paints all 207 longwords every frame.  Read past the apparent end:
+// `$26C264 rts` is the real end, and `$26C266 move.w #$6,($4,A5) / rts` is type
+// **$12**'s init stub ($267824 + 8*$12 == $2678B4 -> ($26C266, $26C3E2)), a
+// different type -- so there is nothing to fall through into.
+/** `$26C20C` -- type $1C's handler. `ctx.vram` is the `BgVram` this writes. */
+function handler1C(ram, rom, a5, ctx) {
+  if (ram.u16(G.clock) === 0x0105) {                   // $26C20C cmpi.w #$105,$8130CE
+    freeEnemy(ram, a5);                                // $26C218 jmp $263762
+    return;                                            // $26C214 bne is the OTHER arm
+  }
+  const vram = ctx?.vram;
+  if (!vram) {
+    unreached(0x26c226, `type $1C's handler reached $26C226 lea $9000BC,A0 `
+      + `without a BgVram. Its 23x9 longwords ARE the background map -- the `
+      + `same array $240D9A writes -- so the caller must pass \`vram\` in ctx `
+      + `(src/main.js #ctx). Refusing to drop 207 map longwords silently`);
+  }
+  let a1 = 0x227af8;                                   // $26C220 lea $227AF8,A1
+  // $26C22C tst.w $803926 / $26C232 beq $26C23C / $26C236 lea $9000A4,A0.
+  // [M] $803926's five build-B writers are $23BE6E (:=0 at boot), $25A7DE
+  // (clr), $25C598 (:=1), $25C7FE (:=0) and $25C8BC (:=0); it is 0 through
+  // stage-1 play, so the $9000A4 arm is transcribed and unexercised.
+  let a0 = ram.u16(0x803926) !== 0 ? 0x9000a4 : 0x9000bc;  // $26C226 / $26C236
+  for (let d6 = 0x16; d6 >= 0; d6--) {                 // $26C23C moveq #$16,D6 / dbra
+    const col = (a0 & 0xff) >>> 2;                     // $26C23E movea.l A0,A2
+    for (let row = 0; row <= 8; row++) {               // $26C240 moveq #$8,D7 / dbra
+      const d4 = rom.u32(a1);                          // $26C242 move.l (A1)+,D4
+      a1 += 4;
+      vram.setLong(row, col, u32(d4 + 0x32a90000));    // $26C244 addi.l / $26C24A move.l D4,(A2)
+    }                                                  // $26C24C adda.w #$100,A2
+    a0 += 4;                                           // $26C254 adda.w #$4,A0
+    a0 = (a0 & ~0xffff) | (a0 & 0xff);                 // $26C258/$26C25A/$26C25E
+  }
+}                                                      // $26C264 rts
+
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
@@ -2653,6 +2728,9 @@ const HANDLERS = new Map([
   [0x275f30, handler88],
   [0x2697f6, handler31],
   [0x29700c, handler24],
+  // W57: type $1C, spawned ONLY by the midboss's death ($26B7E0/$26B7E2).
+  // It is a BACKGROUND blit, not a sprite -- see the W57 block's header.
+  [0x26c20c, handler1C],
 ]);
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a

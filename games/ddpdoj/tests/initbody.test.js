@@ -58,8 +58,17 @@ test('the 21 stage-1 init bodies are all dispatched (no body missing)', () => {
   ]);
   for (const a of want) assert.ok(INIT_BODY_ADDRESSES.includes(a),
     `init+8 body $${a.toString(16)} is not in the dispatch table`);
-  assert.equal(INIT_BODY_ADDRESSES.length, 19,
-    `19 distinct body addresses ($07/$27 share $26A1EA, $20/$21 share $272A4A)`);
+  // W57: $26C1CA is the TWENTIETH, and it is NOT one of the 21 stage-1 SCRIPT
+  // types -- `want` above is unchanged and still all present. Type $1C is
+  // spawned only by the midboss's DEATH ($26B7E0/$26B7E2), so it was outside
+  // every denominator this project has counted, which is exactly why the live
+  // page stopped on it (W56). Asserted separately so the script's 19 and the
+  // deferred one stay two different numbers.
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x26c1ca),
+    'W57: type $1C\'s body $26C1CA -- what the midboss\'s death spawns');
+  assert.equal(INIT_BODY_ADDRESSES.length, 20,
+    `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
+    + `$272A4A) plus W57's deferred $26C1CA`);
 });
 
 test('runInitBodyAddr throws on an unknown (non-stage-1) body address', () => {
