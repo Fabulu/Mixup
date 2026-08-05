@@ -130,20 +130,40 @@
     },
     {
       "name": "stage1-sweep-natural",
-      "why": "WAVE 69, THE CONTROL FOR `stage1-play`. Byte for byte the same script -- Button 1 tapped every 40 frames on top of a sustained stick -- WITH NO POKE. It exists to answer the one question an invulnerable run cannot: how far into stage 1 does a scripted player actually get before dying? Measurement proves presence, so this reports a frame number and never a claim about the stage. Shorter than its twin ON PURPOSE: the answer is a death frame, and running past it buys nothing.",
-      "frames": 8000,
+      "why": "WAVE 69, THE CONTROL. Byte for byte the same script as `stage1-sweep` WITH NO POKE. It exists to answer the one question the invulnerable run cannot: how far into stage 1 does a scripted player actually get before dying? Measurement proves presence, so this reports a frame number and not a claim about the stage.",
+      "frames": 19600,
       "build": "B",
       "seed": 2000,
-      "tail": "1890=",
+      "tail": "1890=C",
       "tailRepeat": {
         "from": 1920,
-        "period": 40,
-        "tap": "A",
-        "hold": 1,
-        "until": 7960,
-        "cycle": ["", "U", "", "L", "", "R", "", "D"]
+        "period": 240,
+        "until": 19560,
+        "cycle": ["C", "CU", "C", "CL", "C", "CR", "C", "CD"]
       },
-      "snap": "3000,5000,7000",
+      "snap": "4000,8000,12000",
+      "meter": true
+    },
+    {
+      "name": "stage1-laser-hold",
+      "why": "WAVE 75. THE OWNER'S OWN SCENARIO, verbatim: \"launch an oracle backed run where you sit at the bottom of the screen and just shoot your laser. That way you should kill the mid boss. Then those invisible things you hit should appear.\" The ship is PARKED ON THE BOTTOM WALL AT THE HORIZONTAL CENTRE and Button 1 is HELD for the whole stage, so the LASER is up continuously and nothing else is pressed. EVERY NUMBER IN THIS SCRIPT WAS MEASURED ON THE BOARD BEFORE THE SCRIPT WAS WRITTEN (out/w75/probe.tsv, walls.tsv, step.tsv): the player record DOES NOT EXIST until lf1968, so an earlier press moves nothing (a 150-frame D from lf1750 left py at its $1179 spawn value); the vertical wall pair is $800 = THE BOTTOM (confirmed on a framebuffer PNG, not inferred) and $6500 = the top; the horizontal pair is $300 left and $3500 right, centre $1C00; and holding Button 1 drives the speed index down its laser ramp 22->12 by lf2052, at which index the horizontal step is EXACTLY 63 units per frame. So: 1970=DA brings the ship to the bottom wall with the laser already ramping; 2200=DAL pins the LEFT wall (200 frames, measured to pin by lf2399); 2400=DAR steps right for 102 frames; 2502=DA parks it at px=$1C1A -- 26 units, 0.2 % of the playfield width, about half a pixel right of the $1C00 centre, the closest an integer number of 63-unit steps can land. D STAYS HELD for the rest of the run and that is deliberate: it is what 'sitting at the bottom' means, it pins the ship so no recoil can drift it, and it keeps the input word constant for 17,000 frames. NOT Button 3: the auto-shot is mirror bit 6 and $2497B2 finds $80380F = $01 on this cartridge, so the port blocks on its first frame (W69 section 4). NOT a tap: the owner asked for the LASER, and the ramp at $24C8BE is ported (W51). THE INTERVENTION, LABELLED: $810424 (the player's ($3e,A6) invulnerability timer) is held at $FF from lf1960 on BOTH sides of every comparison. WITHOUT IT THIS EXACT SCRIPT DIES AT lf2426 (measured: pst 32768 -> 36864 -> 256, respawn at lf2499) -- a ship parked on the bottom wall is a stationary target. docs/knowledge/09: this run yields STATES, not a picture of the game, and it is SCRIPTED INPUT, NOT A HUMAN PLAYING. Its companion control is stage1-laser-hold-natural.",
+      "frames": 19600,
+      "build": "B",
+      "seed": 2000,
+      "tail": "1970=DA;2200=DAL;2400=DAR;2502=DA",
+      "poke": "810424=FF",
+      "pokeFrom": 1960,
+      "snap": "2502,3000,3600,4000,4400,5000,6000,7000,8000,12000,16000,19200",
+      "meter": true
+    },
+    {
+      "name": "stage1-laser-hold-natural",
+      "why": "WAVE 75, THE CONTROL FOR stage1-laser-hold. Byte for byte the same script -- park on the bottom wall at centre, hold the laser -- WITH NO POKE. It answers the one question an invulnerable run cannot: how long does a ship that sits still at the bottom of stage 1 with the laser up actually live? Measurement proves presence, so this reports a frame number and never a claim about the stage. Shorter than its twin ON PURPOSE: the answer is a death frame, and running past it buys nothing.",
+      "frames": 6000,
+      "build": "B",
+      "seed": 2000,
+      "tail": "1970=DA;2200=DAL;2400=DAR;2502=DA",
+      "snap": "2502,3000,4000,5000",
       "meter": true
     }
   ]
