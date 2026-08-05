@@ -132,6 +132,7 @@ import { runType5Tail } from './damage.js';
 import { notePerFrameLedger } from './score.js';
 import { runSegmentDriver, runBeamDraw } from './laser.js';
 import { runSparkDriver } from './spark.js';
+import { runEffectDriver } from './effects.js';
 
 export const TYPE5 = {
   handler: 0x28b5e0,
@@ -146,6 +147,7 @@ export const TYPE5 = {
   segmentDriver: 0x254680,  // $28B61C -- THE BEAM's 32-slot segment driver (W45)
   beamDraw: 0x255042,       // $28B622 -- THE BEAM's draw                   (W45)
   sparkDriver: 0x28a098,    // $28B628 -- POOL E, THE SHOT'S IMPACT SPARK (W53)
+  effectDriver: 0x288e4e,   // $28B5FE -- POOL B, THE DEATH EXPLOSION     (W54)
   laserRampDown: 0x24c8be,  // inside it; $24C8CE is the write
   /** ($4b,A6)'s reload with the measured formation ($5a,A4) = 2: (2-2>>1)+4. */
   laserRampFrames: 4,
@@ -208,6 +210,12 @@ export const TYPE5_PORTED = new Set([
   // `$289F54` (`src/shots.js firstHit` -> `src/spark.js spawnSpark`), because a
   // pool with a producer and no consumer is W33 4's leak.
   0x28a098,   // #12 THE SHOT'S IMPACT SPARK: pool E's driver + bucket 20 (W53)
+  // W54 (E5b).  #5 is `$288E4E`, THE DEATH EXPLOSION's driver.  It ships in the
+  // same commit as its allocator `$289004` (`src/effects.js spawnEffect`, called
+  // from ~25 death arms in `src/handlers.js` and `src/midboss.js`) for W33 §4's
+  // reason.  Note that #6, `$2890F2`, is DELIBERATELY still counted: pool D is
+  // refused rather than half-ported -- `src/effects.js` §THE REFUSAL.
+  0x288e4e,   // #5  THE DEATH EXPLOSION: pool B's driver, buckets 0/1/2/3/7 (W54)
 ]);
 
 /** Handlers this module dispatches to, built once per Game. */
@@ -270,6 +278,22 @@ export function makeType5(rom) {
           // frame of every run before this wave -- and that is measurement, not
           // proof: the board's own writers into bucket 20 are unenumerated.
           ctx.sparkFrame = runSparkDriver(ram, rom, ctx);
+          break;
+        case TYPE5.effectDriver:                        // $28B5FE -> $288E4E
+          // WAVE 54.  FIFTH of twenty-three, and the position is load-bearing
+          // for the opposite reason to the spark's: pool B emits through the
+          // PER-RECORD stubs `$23D762`/`$23D79E`/`$23D7DA`/`$23D816`/`$23D852`,
+          // which APPEND to buckets 0, 1, 2, 3 and 7 (`enqueueThroughStub`), so
+          // every other producer into those five buckets that runs LATER in the
+          // frame stacks on top of these records rather than replacing them.
+          // Running it out of order changes the DEPTH ORDER inside a bucket,
+          // which is exactly what `dlgate`'s staged-bytes replay can see.
+          // The telemetry goes onto ctx AND onto ctx.effectSink if a caller
+          // supplied one -- the pool census (54-impl-E5b) reconciles an
+          // independent 80-slot scan against $81C8EA using `freed` and
+          // `delayed`, and neither is recoverable from RAM after the frame.
+          ctx.effectFrame = runEffectDriver(ram, rom, ctx);
+          ctx.effectSink?.(ctx.effectFrame);
           break;
         case TYPE5.subReaper:                           // $28B5F2 -> $28AD54
           // WAVE 33.  ONLY the reaper half of `$28AD54` runs here -- the twelve

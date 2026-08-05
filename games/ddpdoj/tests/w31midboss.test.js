@@ -489,10 +489,30 @@ test('$26B184 walks the $26B214 list to its $FFFF and counts every allocation',
   const { ctx, log } = ctxOf(ram);
   runHandler(0x26b6fa, ram, ROM, REC, ctx);
   assert.equal(ram.u8(REC + R.deathCtr), 0x70, '$26B184 move.b #$70,($17,A5)');
-  const listNotes = [...log.calls.entries()]
-    .filter(([k]) => k.startsWith('$289004 ') && k.includes('list entry'));
-  assert.equal(listNotes.length, 14,
+  // W54: the burst now ALLOCATES.  Assert the POOL, not a note -- and assert
+  // it against the CARTRIDGE's own list rather than against a literal, so a
+  // wrong stride or a wrong terminator shows up as a wrong count.
+  const want = [];
+  for (let i = 0; ; i++) {
+    const d1 = ROM.u16(MIDBOSS.burstList + i * 8);
+    if (d1 === 0xffff) break;
+    want.push([d1, ROM.u16(MIDBOSS.burstList + i * 8 + 2)]);
+  }
+  assert.equal(want.length, 14,
     '14 records before the $FFFF at $26B284 -- read from the cartridge, not counted here');
+  const live = [];
+  for (let n = 0; n < 80; n++) {
+    const a0 = 0x81b732 + n * 0x38;
+    if (ram.u16(a0) !== 0) live.push(a0);
+  }
+  // 8 arms (all $8000 in this fixture) + the 14 list records
+  assert.equal(live.length, 8 + 14,
+    '$26B184 allocates ONE pool-B record per live arm and one per list entry');
+  const listRecs = live.slice(8);
+  assert.deepEqual(listRecs.map((a) => [ram.u16(a + 0x18), ram.u16(a) & 0xff]),
+    want, "each list record carries the table's own ($18,A0) delay and D0 kind");
+  assert.ok(listRecs.every((a) => ram.u16(a + 0x14) === 0x0800),
+    '$26B20A move.w #$800,($14,A0) on every one');
   assert.ok([...log.calls.keys()].some((k) => k.startsWith('$246410 ')),
     'the ANIMATION-OBJECT install is counted BY ITS OWN ADDRESS');
 });

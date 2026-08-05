@@ -81,6 +81,7 @@ import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { drawByte2431F4, drawSigned242FDE } from './rng.js';
 import { scoreHit, scoreKill } from './score.js';
 import { pushExternalSpeed } from './background.js';
+import { spawnEffect, B } from './effects.js';
 
 /** `addi.l` -- a 32-bit add whose low half CARRIES into the high half. */
 const u32 = (v) => (v >>> 0) % 0x100000000;
@@ -393,10 +394,17 @@ function deathBurst(ram, rom, a5, a6, ctx) {
   for (let n = 0; n < 8; n++) {                        // $26B18E moveq #$7,D7
     const a4 = a6 + S.arms + n * 0x40;
     if (ram.u16(a4 + A.flags) === 0x8000) {            // $26B190 cmpi.w #$8000 / bne
-      // $26B19A jsr $289004 and five writes into the record it returns in A0.
-      note(ctx, 0x289004, `the midboss death burst's per-arm effect (D0=$C, arm `
-        + `${n}) -- the allocator and the five field writes at $26B1A0..$26B1B8 `
-        + `are one gap, not six`);
+      // W54: SPAWNED.  $26B198 moveq #$C / $26B19A jsr $289004, then the
+      // five writes at $26B1A0..$26B1B8 -- and the POSITION comes from the
+      // ARM (A4), not from the body (A6).  ($10,A0) = 2, not 1: the
+      // $24179E hook is armed with a value $2440E0 also uses when
+      // `$813092 == 4`, and the driver only tests it for zero.
+      const e = spawnEffect(ram, ctx, 0x0c, 0x26b19a);
+      ram.setU32(e + B.pos, ram.u32(a4 + A.posX));     // $26B1A0
+      ram.setU16(e + B.hook, 2);                       // $26B1A6
+      ram.setU16(e + B.bucket, 0x0c);                  // $26B1AC
+      ram.setU16(e + B.sub12, 0);                      // $26B1B2
+      ram.setU16(e + B.sub14, 0);                      // $26B1B8
     }
     ram.setU8(a4 + A.dying, 1);                        // $26B1BE (EVERY arm)
   }
@@ -413,10 +421,18 @@ function deathBurst(ram, rom, a5, a6, ctx) {
         + `is wrong -- the list is 14 records of 8 bytes ending at $26B284`);
     }
     const d0 = rom.u16(at + 2);                        // $26B1E2 move.w (A4)+,D0
-    note(ctx, 0x289004, `the midboss death burst's list entry ${i} `
-      + `(D0=$${d0.toString(16).toUpperCase()}, +$18=$${d1.toString(16)
-        .toUpperCase()}, +$26=$${rom.u32(at + 4).toString(16).toUpperCase()}) `
-      + `-- $26B1E4, and the six writes after it are the same gap`);
+    // W54: SPAWNED.  [M] the list's own D0 column carries kinds $5, $7, $9,
+    // $C and $D -- and $9 is in NEITHER `50-recon` 2.4's measured eight nor
+    // anywhere else in this port.  Enumerating the table found it; no run
+    // could have (docs/knowledge/09).
+    const e = spawnEffect(ram, ctx, d0, 0x26b1e4);
+    ram.setU16(e + B.delay, d1);                       // $26B1EA move.w D1
+    ram.setU32(e + B.nudge, rom.u32(at + 4));          // $26B1EE move.l (A4)+
+    ram.setU32(e + B.pos, ram.u32(a6 + S.posX));       // $26B1F2
+    ram.setU16(e + B.hook, 2);                         // $26B1F8
+    ram.setU16(e + B.bucket, 0x0c);                    // $26B1FE
+    ram.setU16(e + B.sub12, 0);                        // $26B204
+    ram.setU16(e + B.sub14, 0x0800);                   // $26B20A
   }
 }
 
@@ -760,8 +776,16 @@ export function handlerMidboss(ram, rom, a5, ctx) {
       kill = true;                                     // fall through to $26B87A
     }
     note(ctx, 0x28c25a, `midboss ARM ${n} death burst $28C25A`);   // $26B87A
-    note(ctx, 0x289004, `midboss ARM ${n} death effect (D0=$85) -- $26B884, and `
-      + `the five writes at $26B88A..$26B8A2 into the record it returns`);
+    // W54: SPAWNED.  $26B880 move.w #$85 / $26B884 jsr $289004, then the
+    // five writes at $26B88A..$26B8A2 -- position from THE ARM (A4).
+    {
+      const e = spawnEffect(ram, ctx, 0x85, 0x26b884);
+      ram.setU32(e + B.pos, ram.u32(a4 + A.posX));     // $26B88A
+      ram.setU16(e + B.hook, 2);                       // $26B890
+      ram.setU16(e + B.bucket, 0x0c);                  // $26B896
+      ram.setU16(e + B.sub12, 1);                      // $26B89C -- TWO pool-D
+      ram.setU16(e + B.sub14, 0);                      // $26B8A2
+    }
     ram.setU16(a4 + A.flags, 0x8000);                  // $26B8A8 (PORTED: the kill)
   }
 

@@ -144,6 +144,7 @@ export class Game {
     this.allocEvents = new Map();
     this.bulletSpawns = new Map();   // WAVE 30, see #ctx()'s bulletSpawn
     this.bulletKinds = new Map();    // WAVE 33, see #ctx()'s bulletKind
+    this.effectSpawns = new Map();   // WAVE 54, see #ctx()'s effectSpawn
     this.kills = { n: 0, score: 0, byValue: new Map() };  // WAVE 34, killEvent
     this.shotSpawns = new Map();
     this.shotTableFull = 0;
@@ -268,6 +269,21 @@ export class Game {
         const e = this.bulletKinds.get(kind) ?? { addr, n: 0 };
         e.n++;
         this.bulletKinds.set(kind, e);
+      },
+      // WAVE 54.  `$288E4E`'s per-frame telemetry, published because THE POOL
+      // CENSUS NEEDS TWO NUMBERS RAM DOES NOT KEEP.  `$81C8EA` counts records
+      // that were live AND past their spawn delay when the driver visited them,
+      // and the three frees never decrement it -- so an independent 80-slot
+      // scan reconciles as `scan == $81C8EA - freed + delayed`, and `freed` and
+      // `delayed` exist only inside the frame.  Kept as a plain field rather
+      // than a callback because nothing in the port reads it.
+      effectSink: (t) => { this.effectFrame = t; },
+      /** Every `$289004` that returned a REAL slot, by kind and by call site.
+       *  The bit-bucket returns are NOT here -- they go to `unportedLog` with
+       *  their own address, which is the whole point of counting them. */
+      effectSpawn: (kind, site) => {
+        const k = `$${kind.toString(16).toUpperCase()}@$${site.toString(16).toUpperCase()}`;
+        this.effectSpawns.set(k, (this.effectSpawns.get(k) ?? 0) + 1);
       },
     };
   }

@@ -33,7 +33,14 @@ function ctx() { return { unportedLog: new UnportedLog() }; }
 function ledgerRom() {
   return new RomWindows({
     windows: [{ base: '$287df0', len: 8, why: 'test',
-      hex: '0038005a00140012' }],
+      hex: '0038005a00140012' },
+    // W54: the death arms now ALLOCATE, and $268864/$2682D2/$2681EE read the
+    // enemy-bucket remap row out of the cartridge.  The bytes are the
+    // cartridge's own, checked against it by tests/w54effects.test.js.
+    { base: '$267fa0', len: 36, why: 'W54 the $267FA0 remap rows',
+      hex: '0000000000040008000c0010'      // $267FA0 the DEATH row
+         + '000400040008000c00100010'      // $267FAC the HIT row
+         + '0000000000040008000c0010' }],  // $267FB8 $289AF4's row
   });
 }
 

@@ -679,6 +679,16 @@ try {
         // harvest still ships the whole table rather than my reading of it.
         8: { streams: 36, records: 8843, distinct: 35, first: 24,
           what: 'THE IMPACT SPARK (pool E, $289F54 -> $28A098, bucket 20)' },
+        // WAVE 54 -- THE ENEMY DEATH EXPLOSION, the SAME window and the SAME
+        // four absolute port-side fields.  `streams` is 269, THE WHOLE OF BOTH
+        // SCRIPT TABLES, while `distinct` is what this window reaches: cutting
+        // the harvest to the reached set is what W53 §1.3 refused one level
+        // down, and [M] the port's own ported arms can pass ELEVEN kinds where
+        // `50-recon` §2.4's RUN measured eight.  `first` is the first frame an
+        // enemy DIES, which is later than the first shot (frame 1) and later
+        // than the first spark (frame 24) because a kill takes several hits.
+        9: { streams: 269, records: 5537, distinct: 204, first: 24,
+          what: 'THE ENEMY DEATH EXPLOSION (pool B, $289004 -> $288E4E)' },
       };
       const runW52 = (frames) => {
         const g = new Game(bundle.seed, bundle.tables, {
@@ -687,7 +697,8 @@ try {
         });
         const st = { 6: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 },
           7: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 },
-          8: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 } };
+          8: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 },
+          9: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 } };
         for (let i = 0; i < frames; i++) {
           const res = portSpriteList(g.ram, map, { out: buf, ...shardOpts });
           for (let k = 0; k < 256; k++) {
@@ -697,7 +708,7 @@ try {
             const offs = ((g.ram.u16(0x800000 + (b + 2) * 2) & 0x7f) << 16)
               | g.ram.u16(0x800000 + (b + 3) * 2);
             const sh = map.get(offs)?.[2];
-            if (sh !== 6 && sh !== 7 && sh !== 8) continue;
+            if (sh !== 6 && sh !== 7 && sh !== 8 && sh !== 9) continue;
             const t = st[sh];
             t.rec++; t.seen.add(offs); if (t.first < 0) t.first = i;
             if (((w4 & 0x7e00) >> 9) === 0 || (w4 & 0x1ff) === 0) continue;
@@ -712,12 +723,13 @@ try {
         return st;
       };
       const w52after = runW52(EXP52.frames);
-      for (const sh of [6, 7, 8]) {
+      for (const sh of [6, 7, 8, 9]) {
         const e = EXP52[sh], a = w52after[sh];
         const ok = bundle.spr.meta[sh].streams === e.streams
           && a.rec === e.records && a.seen.size === e.distinct && a.first === e.first
           && a.drawn === a.rec && a.pend === 0 && a.named === 0;
-        console.log(`${ok ? 'PASS' : 'FAIL'}: ${sh === 8 ? 'W53' : 'W52'} ${e.what} -- over ${EXP52.frames} `
+        const WAVE = { 6: 'W52', 7: 'W52', 8: 'W53', 9: 'W54' }[sh];
+        console.log(`${ok ? 'PASS' : 'FAIL'}: ${WAVE} ${e.what} -- over ${EXP52.frames} `
           + `logic frames from the shipped seed with FIRE TAPPED every 4 frames, `
           + `sprite shard ${sh} holds ${bundle.spr.meta[sh].streams} streams `
           + `(expect ${e.streams}) and the port's own $800000 list carries `
@@ -725,7 +737,9 @@ try {
           + `distinct images (expect ${e.distinct}), first at frame ${a.first} `
           + `(expect ${e.first}). All shards loaded: ${a.drawn} DRAWN of ${a.rec}, `
           + `${a.pend} pending, ${a.named} with no art. Before `
-          + `${sh === 8 ? 'W53 pool E had no driver and bucket 20' : 'W52 this bucket'} `
+          + `${{ 8: 'W53 pool E had no driver and bucket 20',
+            9: 'W54 $289004 was a COUNTED NOTE and pool B' }[sh]
+            ?? 'W52 this bucket'} `
           + 'emitted nothing at all');
         if (!ok) code = 1;
       }

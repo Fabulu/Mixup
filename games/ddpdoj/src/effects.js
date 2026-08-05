@@ -1,0 +1,617 @@
+// THE ENEMY DEATH EXPLOSION -- POOL B, `$289004` + `$288E4E`.  WAVE 54 (E5b).
+//
+// The owner is playing the live build: "Shooting enemies with bullets works,
+// but you can't see the bullets and no explosions."  W52 made the bullets and
+// the shots visible.  W53 made the SHOT'S IMPACT SPARK visible -- the flash
+// where a bullet connects.  **THIS is the other half: what happens when an
+// enemy actually DIES.**
+//
+// ======================= THERE IS NO "SPAWN AN EXPLOSION" ==================
+//
+// `50-recon-effects` §2.1's headline, reproduced from the listing this wave:
+// every enemy's death arm INLINES `moveq #kind,D0 / jsr $289004` and then
+// writes six to nine fields into the record the allocator returned.  [M] 327
+// such sites in the image.  There is no shared spawner, which is why
+// `src/handlers.js` and `src/midboss.js` carry twenty-odd separate
+// `noteEffect(u, 0x289004, ...)` gaps rather than one.
+//
+// So this file is the POOL and the SCRIPT INTERPRETER; the CALLERS stay where
+// they are and each one now writes its own fields, from its own listing.
+//
+// ========================== FIVE POOLS, AND THIS IS ONE ====================
+//
+// `50-recon` §1 enumerates five contiguous effect pools in `$8171BE..$81DB8D`:
+//
+//   A IMPACT     $8171BE  $2C x 80   $27F8F8/$27F92A  driver $27F95A   E4/E7's
+//   B EFFECT     $81B732  $38 x 80   $289004          driver $288E4E   ***THIS***
+//   C sub-record $81CDEE  $30 x 48   (not located)    driver $289B80
+//   D SUB-EFFECT $81C8EC  $40 x 20   $289098          driver $2890F2   §THE REFUSAL
+//   E SHOT SPARK $81D394  $22 x 60   $289F54          driver $28A098   W53, ported
+//
+// **THIS FILE IS POOL B AND ITS TWO CLEARS, AND NOTHING ELSE.**  Pool B's
+// allocator AND its driver are both here, in one commit, because a pool with a
+// producer and no consumer is W33 §4's leak -- 100 of 100 slots consumed by
+// logic frame 2906 and every later spawn silently discarded, through four
+// consecutive green gates.
+//
+//   THE DRAIN PROOF, in the ROM, three ways:
+//     1. `$288F98 bne $288FA2` -- the duration list's `$FFFF` terminator reaches
+//        `$288F9C clr.w (A6)`.  Every script ends; [M] the longest is 36 cells.
+//     2. `$288F74`/`$288F82 bcs $288F9C` -- THE OFF-SCREEN CULL, and it is the
+//        pool's MAIN consumer (`50-recon` §1.3).  A fast effect dies here first.
+//     3. the whole-pool clears `$288E0C` (stage/round boundaries and $2440E0).
+//   All three do the same `clr.w (A6)`; the driver RE-COUNTS `$81C8EA` from
+//   scratch every frame, so a freed slot cannot leave a stale count behind.
+//
+// ============ THE REFUSAL: POOL D IS NOT ALLOCATED FROM, DELIBERATELY =======
+//
+// `$288EF0 jsr $289098` -- inside the driver, once per record, gated on
+// `($12,A6)` being non-negative -- SUB-ALLOCATES INTO POOL D.  `$289004` inits
+// `($12) = $FFFF` so a bare allocation does nothing, but [M] every death arm
+// this port reaches writes `($12,A0) = 0` or `= 1`, which arms it.  Pool D has
+// 20 slots and its ONLY consumer is `$2890F2`, type-5 call #6.
+//
+// **SO PORTING `$289004` + `$288E4E` AND CALLING `$289098` WOULD REBUILD W33's
+// LEAK ONE LEVEL DOWN, after 20 spawns instead of 80** -- `50-recon` §4.2, and
+// the reason this wave exists to navigate it.  There are exactly two ways past
+// it and only one of them fits in a wave:
+//
+//   (a) PORT POOL D TOO.  [M] measured this session, from the listing: the
+//       driver body `$2890F2..$2892D8`, a vector solver `$2892DA..$28930A`, a
+//       four-arm quadrant jump table at stride $40 `$28930A..$2893CF`, 128 words
+//       of `i*8` at `$2893D0`, `$289610..$289657`, and the FILL `$289658..
+//       $2897FB` with its own 5-entry dispatch `$289644`, its 4-entry list table
+//       `$2897D0` and FIVE 144-byte templates `$289810..$289AE0`.  It reads a
+//       pointer table at **`$200920` whose extent nothing in the listing pins**,
+//       and it calls seven routines this port does not have ($241E34 $24397A
+//       $242FDE $242EC2 $242CAC $2431F4 $242B3C).  ~1,800 B plus an unpinned
+//       window plus its own unpriced art.  That is a wave, not a paragraph.
+//
+//   (b) **REFUSE TO ALLOCATE.**  W52 §0.2's shape exactly: it was handed the
+//       impact pool `$27F8F8` and refused it rather than allocate without its
+//       driver.  `subSpawn288ED0` below does everything `$288ED0..$288EFA` does
+//       EXCEPT the `jsr` -- the push/pop of `($1c,A6)`, the `($16,A6) ->
+//       ($1d,A6)` copy and the one-shot `($12,A6) = $FFFF` -- and COUNTS the
+//       call by address.  **Pool D therefore receives zero allocations and
+//       CANNOT leak**, which is a stronger statement than "it leaks slowly".
+//
+// (b) is what ships, and its cost is stated rather than hidden: **the secondary
+// debris/smoke each explosion would spawn is MISSING**, and `$289098`'s own
+// draws off the shared `$803916`/`$803917` counters do not happen, so the RNG
+// trajectory is one step short per death effect on the paths that reach it.
+// That is the same class of defect W53 §0 FIXED for `$289F62`, and it is named
+// here rather than discovered later.  `$289084`, pool D's clear, IS ported --
+// a pool that survives a reset it should not is `50-recon` §4.3 item 6.
+//
+// ================================ THE GEOMETRY =============================
+//
+// [M] read out of instructions this session; every arithmetic closes EXACTLY:
+//
+//   $81B732 + 80 * $38 == $81C8B2 == THE BIT BUCKET ($289078's lea)   EXACT
+//   $81C8B2 +      $38 == $81C8EA == the live count                   EXACT
+//   $288E0C clears ($8DC + 1) * 2 = 4,538 B from $81B732
+//                                 = 80 slots + the bit bucket + the count EXACT
+//   $289084 clears ($280 + 1) * 2 = 1,282 B from $81C8EC
+//                                 = pool D's 20 x $40 + $81CDEC       EXACT
+//   $221520 + 34 * 8 == $221630   (table A ends where table B begins)  EXACT
+//   $221630 + 34 * 8 == $221740   ($221740 IS kind 0's descriptor list) EXACT
+//
+// THE BIT BUCKET IS A REAL SLOT, one past the end, and `$289078` returns it on
+// BOTH failure arms: a range-check failure AND a full pool.  `$289004`'s closing
+// `movem.l (A7)+,D0-D1/A1-A6` deliberately does NOT restore A0, so the caller
+// writes its fields into `$81C8B2` and cannot tell.  There is no carry, no zero
+// return, nothing -- unlike `$27F8F8` (which sets carry) and unlike `$289F54`
+// (which returns `ori #1,SR`).  **This port COUNTS a bit-bucket allocation**,
+// with the kind and the caller, because that is the check W33 §4 says would have
+// caught the sub-record leak four waves earlier.
+//
+// ============================ THE RECORD, $38 BYTES ========================
+//
+//  +$00 w  STATUS.  bit15 = allocated; **bit 6 = "the script has been started"**
+//          ($288E7A `bset #6,(A6)`); low byte = THE KIND, and **bit 7 of the low
+//          byte selects script table $221630 instead of $221520**.
+//          `clr.w (A6)` = FREE, and all three free paths use it.
+//  +$02 l  POSITION.  hi word = long axis, lo word = short axis.
+//  +$06 l  the two sprite OFFSET words, loaded by the $FFFF escape command.
+//  +$0A l  THE SPRITE DESCRIPTOR, re-pointed at every animation step.
+//  +$0E w  width/height, loaded by the same escape.
+//  +$10 w  non-zero -> `jsr $24179E` every frame (the scroll compensation).
+//  +$12 w  SUB-SPAWN PARAMETER; $289004 inits it to $FFFF = NONE, `bmi` skips.
+//  +$14 w  second sub-spawn parameter (the low word of $289098's D0).
+//  +$16 b  init $1E; copied to +$1D at the sub-spawn.
+//  +$18 w  SPAWN DELAY -- counted down before anything else runs.
+//  +$1A b  SPEED index; +$1B b ANGLE.  Non-zero speed -> `$241D34` -> velocity,
+//          then the speed byte is CLEARED so it is a one-shot.
+//          (`50-recon` §1.2 has these two the other way round.  [M] `$288F1A
+//          move.b ($1a,A6),D0` and `$288F24 move.b ($1b,A6),D1`, and `$241D34`
+//          takes D0 = speed index, D1 = angle byte -- `src/vectors.js`.)
+//  +$1C b  pushed/popped across the sub-spawn; +$1D b init $1E.
+//          **THE WORD AT +$1C IS DISPLAY-LIST WORD 5** -- `$23D790 move.w
+//          ($1c,A6)` -- so the pair reads $001E, a palette index, exactly like
+//          pool E's attribute word.
+//  +$1E w  THE BUCKET SELECTOR -- a raw BYTE offset (0/4/8/$C/$10) into $288FF0.
+//  +$20 b  friction countdown; +$21 b its reload.
+//  +$22 l  friction delta (subtracted from the velocity when it reloads).
+//  +$26 l  ONE-SHOT position delta, added to +$02 when the script starts.
+//  +$2A l  cursor into the DESCRIPTOR list.
+//  +$2E l  cursor into the DURATION list.
+//  +$32 w  frames left on the current animation cell.
+//  +$34 l  VELOCITY, hi = long axis, lo = short axis.
+//
+// =========================== WHAT IS *NOT* IN THIS WAVE ====================
+//
+// * **pool D** -- §THE REFUSAL above.  `$289098` and `$2890F2` stay counted.
+// * **`$2440E0`** (E5c) -- 39 blocks over the 624-byte table `$244ACE`, which
+//   `50-recon` §3 read end to end.  It calls `$288E0C` and then `$289004` 39
+//   times, so it is now a ~30-line port -- but [M] its only non-boss caller is
+//   `$275D10`, which recon 50 §10.1 could not attribute, and every other caller
+//   is a boss.  Not this wave's.
+// * **the impact pool A** -- W52 §0.2 refused it for this same reason.
+// * **`$289AF4`** -- the "D0=$4 secondary" two death arms call after this one.
+//   Still a counted note; it is a different allocator with a different pool.
+// * **`$28C25A` / `$28C274` / `$28C2A8` / `$28C2DC` / `$28C310`** -- the
+//   `$28Cxxx` family, which W53 §0 established is SOUND (`$28C714` was the case
+//   that proved it).  Deferred with the rest of the sound wave.
+
+import { u16, i16 } from './ram.js';
+import { unreached } from './unported.js';
+import { enqueueThroughStub } from './spritequeue.js';
+
+export const POOL_B = {
+  base: 0x81b732,          // $289022 / $288E52 lea $81B732
+  stride: 0x38,            // $289070 lea ($38,A0),A0 / $288FE6 lea ($38,A6),A6
+  slots: 80,               // $28901E move.w #$4F,D1 / $288E4E move.w #$4F,D7
+  bitBucket: 0x81c8b2,     // $289078 lea $81C8B2 -- ONE PAST THE END
+  count: 0x81c8ea,         // $288E58 clr.w / $288E74 addq.w #1
+  clearWords: 0x8dd,       // $288E12 move.w #$8DC,D0 + the dbra's own pass
+  kindMax: 0x21,           // $289016 cmpi.w #$21,D1 / bgt -> 34 entries
+  tableA: 0x221520,        // $288E88 lea $221520 (kind bit 7 CLEAR)
+  tableB: 0x221630,        // $288E96 lea $221630 (kind bit 7 SET)
+  tableEntries: 34,
+  emitTable: 0x288ff0,     // $288FDA lea ($288FF0,PC) -- 5 entries
+  laserRec: 0x811f72,      // $288FBC lea $811F72 -- THE LASER INTERLOCK
+  frameParity: 0x80390a,   // $288FC8 move.w $80390A / andi.w #$1
+  scroll: 0x813176,        // $288F00 move.w $813176 -- subtracted from +$04
+  bgFreeze: 0x8130d2,      // $24179E tst.w $8130D2
+  scrollB03C: 0x80b03c,    // $2417A8 move.l $80B03C / swap
+};
+
+export const POOL_D = {
+  base: 0x81c8ec,          // $289084 / $2890AA lea $81C8EC
+  stride: 0x40,            // $2890CC lea ($40,A0),A0
+  slots: 20,               // $2890B0 move.w #$13,D1 (+1)
+  slotsNarrow: 10,         // $2890C4 move.w #$9,D1  (+1), when $813098/$81308C
+  count: 0x81cdec,         // $2890E0 addq.w #1 / $289238 subq.w #1
+  clearWords: 0x281,       // $28908A move.w #$280,D0 + the dbra's own pass
+  allocator: 0x289098,     // THE REFUSAL -- see the header
+  driver: 0x2890f2,        // type-5 call #6, unported
+};
+
+/** Record offsets, from the slot base.  See the map in the header. */
+export const B = {
+  status: 0x00, pos: 0x02, offs: 0x06, descriptor: 0x0a, size: 0x0e,
+  hook: 0x10, sub12: 0x12, sub14: 0x14, f16: 0x16, delay: 0x18,
+  speed: 0x1a, angle: 0x1b, f1c: 0x1c, f1d: 0x1d, bucket: 0x1e,
+  fricCtr: 0x20, fricReload: 0x21, fricDelta: 0x22, nudge: 0x26,
+  descCursor: 0x2a, durCursor: 0x2e, cell: 0x32, vel: 0x34,
+};
+
+/** `$288FF0`'s five entries, as the raw BYTE offsets `($1e,A6)` carries.
+ *  [M] $23D762 $23D79E $23D7DA $23D816 $23D852 -> buckets 0, 1, 2, 3, 7, and
+ *  the longword at $289004 (entry [5]) is `48E7C07E` = $289004's own `movem.l`,
+ *  i.e. CODE.  A selector outside these five `jsr`s into an instruction. */
+export const EMIT_STUB = Object.freeze({
+  0x0: 0x23d762, 0x4: 0x23d79e, 0x8: 0x23d7da, 0xc: 0x23d816, 0x10: 0x23d852,
+});
+
+/** The two enemy-bucket -> effect-bucket remap tables the death arms index.
+ *  Both are ROM windows (`tools/export-tables.py`), both range-checked here.
+ *
+ *  [M] `$267FA0..$267FC3` is THREE 6-word rows and `$267FC4` is `4E75` (rts),
+ *  so its far end is pinned by CODE:
+ *      $267FA0  0000 0000 0004 0008 000C 0010   the DEATH row  ($268848 lea)
+ *      $267FAC  0004 0004 0008 000C 0010 0010   the HIT row    ($2682BC lea)
+ *      $267FB8  0000 0000 0004 0008 000C 0010   $289AF4's row  ($2688B2 lea)
+ *  [M] `$278320..$278337` is the first two of those rows again, and `$278338`
+ *  is `$0022C59C` -- a sprite STREAM address, i.e. a different table. */
+export const REMAP = Object.freeze({
+  death267FA0: 0x267fa0, hit267FAC: 0x267fac, secondary267FB8: 0x267fb8,
+  shared278320: 0x278320,
+  rowBytes: 12,          // 6 words
+});
+
+/**
+ * Read one word out of a 6-word remap row, RANGE-CHECKED.
+ *
+ * The ROM indexes these with `(A1,D0.w)`, a raw BYTE offset, and nothing bounds
+ * D0: `$268860 move.b ($1e,A6),D0` takes a whole byte and `$2767FE add.w D0,D0`
+ * doubles a whole word.  A wrong index reads the NEXT row -- or, for
+ * `$278320`, a sprite stream address -- and lands it in `($1e,A0)`, which is
+ * then `jsr`ed through `$288FF0`.  So it is checked here and throws by address.
+ */
+export function remapBucket(rom, row, byteIndex, siteAddr) {
+  if (byteIndex < 0 || byteIndex >= REMAP.rowBytes || (byteIndex & 1)) {
+    unreached(siteAddr, `a death arm indexed the bucket remap row `
+      + `$${row.toString(16).toUpperCase()} with byte offset `
+      + `$${byteIndex.toString(16).toUpperCase()}. The row is `
+      + `${REMAP.rowBytes} bytes (6 words) and the next 12 bytes are ANOTHER `
+      + `row -- or, at $278320, a sprite stream address. The value lands in `
+      + `($1e,A0) and is jsr'd through $288FF0, so a wrong read calls code`);
+  }
+  return rom.u16(row + byteIndex);
+}
+
+// ============================== THE TWO CLEARS ==============================
+
+/** `$288E0C` -- clear the WHOLE effect pool: 80 slots, the bit bucket AND the
+ *  count word, 4,538 bytes.  [M] five absolute-long callers: `$2440E0`
+ *  (E5c, unported), `$25FD40`, `$27C73A`, `$28B5B4` (object type 5's "not
+ *  started" branch, which `src/type5.js` throws for) and `$2A5A30`. */
+export function clearEffectPool(ram) {
+  for (let i = 0; i < POOL_B.clearWords; i++) {          // $288E1A dbra
+    ram.setU16(POOL_B.base + i * 2, 0);                  // $288E16 move.w #0,(A0)+
+  }
+}
+
+/** `$289084` -- clear pool D: 20 slots and its count word, 1,282 bytes.
+ *  Ported even though NOTHING IN THIS PORT ALLOCATES FROM POOL D (§THE REFUSAL),
+ *  because the clear is what stops a pool surviving a reset it should not, and
+ *  because it is the cheap half of `50-recon` §4.3's item 6. */
+export function clearSubEffectPool(ram) {
+  for (let i = 0; i < POOL_D.clearWords; i++) {          // $289092 dbra
+    ram.setU16(POOL_D.base + i * 2, 0);                  // $28908E move.w #0,(A0)+
+  }
+}
+
+// ============================== THE ALLOCATOR ===============================
+//
+//   289004: movem.l D0-D1/A1-A6,-(A7)     <- A0 IS NOT SAVED.  That is what lets
+//                                            the failure return hand back the
+//                                            bit bucket.
+//   289008: move.w D0,D1 / andi.w #$7f,D1
+//   28900e: cmpi.w #$0,D1 / blt $289078   <- D1 is masked to 0..$7F, so this
+//                                            branch CANNOT be taken.  It is
+//                                            transcribed and named, never taken.
+//   289016: cmpi.w #$21,D1 / bgt $289078  <- 34 script entries.  Kinds $22..$7F
+//                                            (and $A2..$FF) go to the bit bucket.
+//   28901e: move.w #$4f,D1                <- and D1 is REUSED as the loop
+//                                            counter, so the CHECKED value is
+//                                            never read again.  The kind stays
+//                                            in D0, whose bit 7 picks table B.
+//   289022: lea $81B732,A0 / tst.w (A0) / bne $289070 (next slot)
+//   28902e: ori.w #$8000,D0 / move.w D0,(A0)     <- allocated | kind
+//   ...then eleven field initialisations, and NOT the position: every caller
+//   writes `move.l ($2,A6),($2,A0)` itself.
+
+/**
+ * `$289004` -- allocate one effect record.
+ *
+ * @returns {number} the slot address, **or `$81C8B2`, THE BIT BUCKET**, exactly
+ *   as the ROM does.  The caller cannot tell the difference and neither can
+ *   this port; what the port adds is that the event is COUNTED, by address,
+ *   with the kind.  W33 §4: a producer whose failure nobody counts is a leak
+ *   that survives four green gates.
+ */
+export function spawnEffect(ram, ctx, d0, siteAddr = 0x289004) {
+  const d1 = d0 & 0x7f;                                  // $289008/$28900A
+  if (d1 < 0) {                                          // $28900E cmpi.w #$0 / blt
+    unreached(0x289012, `$28900E cmpi.w #$0,D1 / blt $289078 -- D1 is `
+      + `(D0 & $7F) and CANNOT be negative. Reaching this means the mask above `
+      + `has changed, not that the game found a new kind`);
+  }
+  if (d1 > POOL_B.kindMax) {                             // $289016 cmpi.w #$21 / bgt
+    ctx?.unportedLog?.note(0x289078, `$289016 -- effect kind `
+      + `$${d0.toString(16).toUpperCase()} is outside the 34 script entries `
+      + `(kind & $7F must be 0..$21), so $289004 returned THE BIT BUCKET `
+      + `$81C8B2 and the caller's field writes are DISCARDED. Site `
+      + `$${siteAddr.toString(16).toUpperCase()}`);
+    return POOL_B.bitBucket;                             // $289078 lea $81C8B2
+  }
+  for (let n = 0; n < POOL_B.slots; n++) {               // $289074 dbra D1
+    const a0 = POOL_B.base + n * POOL_B.stride;          // $289070 lea ($38,A0),A0
+    if (ram.u16(a0 + B.status) !== 0) continue;          // $289028 tst.w (A0) / bne
+    ram.setU16(a0 + B.status, u16(d0 | 0x8000));         // $28902E/$289032
+    ram.setU16(a0 + B.hook, 0);                          // $289036 move.w D0,($10,A0)
+    ram.setU16(a0 + B.sub12, 0xffff);                    // $28903A -- SUB-SPAWN OFF
+    ram.setU8(a0 + B.f16, 0x1e);                         // $289040 move.b #$1E
+    ram.setU16(a0 + B.delay, 0);                         // $289046 ($18,A0)
+    ram.setU16(a0 + B.speed, 0);                         // $28904A ($1a,A0) -- w
+    ram.setU8(a0 + B.f1c, 0);                            // $28904E move.b D0,($1c,A0)
+    ram.setU8(a0 + B.f1d, 0x1e);                         // $289052 move.b #$1E
+    ram.setU16(a0 + B.bucket, 0);                        // $289058 ($1e,A0)
+    ram.setU32(a0 + B.fricDelta, 0);                     // $28905E ($22,A0)
+    ram.setU32(a0 + B.nudge, 0);                         // $289062 ($26,A0)
+    ram.setU32(a0 + B.vel, 0);                           // $289066 ($34,A0)
+    ctx?.effectSpawn?.(d0, siteAddr, a0);
+    return a0;                                           // $28906A/$28906E rts
+  }
+  // $289074's dbra falls through to $289078 -- THE POOL IS FULL.
+  ctx?.unportedLog?.note(0x289078, `$289004 found NO FREE SLOT in pool B's `
+    + `${POOL_B.slots} and returned THE BIT BUCKET $81C8B2 for kind `
+    + `$${d0.toString(16).toUpperCase()}. The caller writes its fields into a `
+    + `slot nothing drives and CANNOT TELL -- there is no carry and no zero `
+    + `return. This is the event W33 4 says must be counted rather than `
+    + `assumed impossible. Site $${siteAddr.toString(16).toUpperCase()}`);
+  return POOL_B.bitBucket;
+}
+
+// ========================= $288E20, THE DESCRIPTOR WALKER ===================
+//
+//   288e20: movea.l ($2a,A6),A1
+//   288e24: move.l (A1),D0 / bpl $288e48   <- POSITIVE = a stream address, STOP
+//   288e2a: move.w (A1)+,D0
+//   288e2c: cmpi.w #$FFFF,D0 / bne $288e3e
+//   288e34: move.w (A1)+,($e,A6)           <- the SIZE escape: w/h then the two
+//   288e38: move.l (A1)+,($6,A6)              sprite offset words.  8 bytes.
+//   288e3c: bra $288e24
+//   288e3e: addq.w #2,A1                   <- the NUDGE escape: skip a word,
+//   288e40: move.l (A1)+,D1                   then add a LONG to the position.
+//   288e42: add.l D1,($2,A6)                  8 bytes.
+//   288e48: move.l A1,($2a,A6)             <- the cursor stops ON the stream
+//
+// Both commands are 8 bytes, so a descriptor list is 4-byte stream addresses
+// interleaved with 8-byte negative-tagged commands, walked in LOCKSTEP with the
+// duration list: one stream per duration word.
+// [M] verified end to end on kind 0: `$221740` = `FFFF0618 FA00FD00` (w/h
+// $0618, offsets $FA00FD00), then 12 longwords `$21F344..$21F688` step $4C;
+// `$221778` = 12 words of $0000 then $FFFF.  Both lists end at 12.
+
+/** `$288E20` -- consume every escape command at the cursor, leaving it on the
+ *  next STREAM ADDRESS.  Mutates `($e,A6)`, `($6,A6)` and `($2,A6)`. */
+export function walkDescriptor288E20(ram, rom, a6) {
+  let a1 = ram.u32(a6 + B.descCursor);                   // $288E20 movea.l
+  for (let guard = 0; ; guard++) {
+    const d0 = rom.u32(a1);                              // $288E24 move.l (A1),D0
+    if ((d0 & 0x80000000) === 0) break;                  // $288E26 bpl $288E48
+    if (guard > 64) {
+      unreached(0x288e24, `$288E20's descriptor walk consumed 64 escape `
+        + `commands without reaching a stream address, at `
+        + `$${a1.toString(16).toUpperCase()}. Every list in $221740..$222618 `
+        + `is [M] at most 36 cells, so the cursor is not in the script data`);
+    }
+    if (rom.u16(a1) === 0xffff) {                        // $288E2C cmpi.w #$FFFF
+      ram.setU16(a6 + B.size, rom.u16(a1 + 2));          // $288E34 move.w (A1)+
+      ram.setU32(a6 + B.offs, rom.u32(a1 + 4));          // $288E38 move.l (A1)+
+    } else {                                             // $288E3E addq.w #2,A1
+      const d1 = rom.u32(a1 + 4);                        // $288E40 move.l (A1)+,D1
+      ram.setU32(a6 + B.pos, (ram.u32(a6 + B.pos) + d1) >>> 0); // $288E42 add.l
+    }
+    a1 += 8;
+  }
+  ram.setU32(a6 + B.descCursor, a1);                     // $288E48 move.l A1,($2a,A6)
+}
+
+// ================================ THE DRIVER ================================
+//
+// `$288E4E`, type-5 call #5.  418 B.  `move.w #$4F,D7` + `dbra` = **80 SLOTS
+// EVERY FRAME, UNCONDITIONALLY** -- there is no live-count shortcut, and
+// `$81C8EA` is RE-COUNTED from zero each frame (`$288E58 clr.w`, `$288E74
+// addq.w #1` per live slot).  A free slot costs a `dbra` here, unlike pool E's
+// driver, so the walk cannot run off the end.
+//
+// THREE SEMANTICS A TIDY PORT GETS WRONG:
+//
+//  1. **THE COUNT EXCLUDES SPAWN-DELAYED RECORDS.**  `$288E74 addq.w #1` is
+//     BELOW `$288E64 tst.w ($18,A6) / beq $288E74`, so a record still counting
+//     down its delay is live, occupies a slot, and is NOT in `$81C8EA`.  A
+//     census that trusts the count word alone under-reports the pool -- which is
+//     why this wave's census scans all 80 slots as well.
+//  2. **THE OFF-SCREEN CULL IS THE MAIN CONSUMER, and it is two carry tests on
+//     one longword.**  `$288F6C addi.w #$1000 / $288F70 addi.w #-$5800` on the
+//     SHORT axis and `$288F7A addi.w #$1000 / $288F7E addi.w #$7000` on the LONG
+//     axis after a `swap`; only the SECOND `addi` of each pair is branched on.
+//     A port that frees only on the script's `$FFFF` terminator still leaks on
+//     a fast-moving effect.
+//  3. **THE LASER INTERLOCK.**  `$288FBC lea $811F72,A0 / tst.w (A0) / bpl` --
+//     while the beam's record word is NEGATIVE, the effect is emitted only on
+//     frames where `$80390A & 1`.  Effects FLICKER AT HALF RATE while the laser
+//     is on, and the record still MOVES and ANIMATES on the skipped frames.
+//     `$811F72` is `37-recon-laser`'s own record and `src/laser.js` drives it.
+
+/**
+ * `$288E4E` -- step and emit the whole 80-slot effect pool, once per frame.
+ * @returns {{live:number, emitted:number, freed:number, culled:number,
+ *            delayed:number, subRefused:number}} telemetry; the ROM returns none.
+ */
+export function runEffectDriver(ram, rom, ctx) {
+  ram.setU16(POOL_B.count, 0);                           // $288E58 clr.w $81C8EA
+  let live = 0, emitted = 0, freed = 0, culled = 0, delayed = 0, subRefused = 0;
+  const laserOn = (ram.u16(POOL_B.laserRec) & 0x8000) !== 0;   // $288FC2 tst.w / bpl
+  const parityGate = laserOn && (ram.u16(POOL_B.frameParity) & 1) === 0;
+
+  for (let n = 0; n < POOL_B.slots; n++) {               // $288EEA dbra D7
+    const a6 = POOL_B.base + n * POOL_B.stride;          // $288FE6 lea ($38,A6),A6
+    if (ram.u16(a6 + B.status) === 0) continue;          // $288E5E tst.w (A6) / beq
+    if (ram.u16(a6 + B.delay) !== 0) {                   // $288E64 tst.w ($18,A6)
+      ram.setU16(a6 + B.delay, u16(ram.u16(a6 + B.delay) - 1));  // $288E6C subq.w
+      delayed++;
+      continue;                                          // $288E70 bra $288FE6
+    }
+    ram.setU16(POOL_B.count, u16(ram.u16(POOL_B.count) + 1));   // $288E74 addq.w #1
+    live++;
+
+    // --------------------------------------------- $288E7A: THE FIRST FRAME
+    // `bset #6,(A6)` sets Z from the OLD bit, so `bne $288ED0` skips this block
+    // on every frame AFTER the first.
+    //
+    // **IT IS A BYTE OPERATION.**  `08d6 0006` with a MEMORY destination is
+    // always byte-sized on the 68000, so the bit it sets is bit 6 of the HIGH
+    // byte of the status word -- $8000 becomes $C000, not $8040.  `50-recon`
+    // §1.2 says "bit 6" without saying of what, and reading it as bit 6 of the
+    // WORD puts the started flag inside THE KIND, where $289004's own
+    // `andi.w #$7f` would then strip it and the script would reload every frame.
+    if ((ram.u8(a6 + B.status) & 0x40) === 0) {          // $288E7A bset #$6 / bne
+      ram.setU8(a6 + B.status, ram.u8(a6 + B.status) | 0x40);
+      const kind = ram.u16(a6 + B.status) & 0xff;        // $288E82/$288E84
+      // $288E8E bclr #$7,D1 / beq $288E9C -- Z comes from the OLD bit 7, so
+      // bit 7 SET picks table B.  (`bclr` also strips it, which is what makes
+      // the index 0..$21 rather than $80..$A1.)
+      const tbl = (kind & 0x80) ? POOL_B.tableB : POOL_B.tableA;
+      const d1 = (kind & 0x7f) << 3;                     // $288E9C lsl.w #3,D1
+      if ((kind & 0x7f) > POOL_B.kindMax) {
+        unreached(0x288e9e, `$288E9E movea.l ($4,A1,D1.w),A2 -- a LIVE effect `
+          + `record carries kind $${kind.toString(16).toUpperCase()}, whose `
+          + `index ${kind & 0x7f} is past the ${POOL_B.tableEntries}-entry `
+          + `script table $${tbl.toString(16).toUpperCase()}. $289004 range-`
+          + `checks this and returns the bit bucket, so a record holding it `
+          + `means something wrote the status word behind the allocator`);
+      }
+      const durList = rom.u32(tbl + d1 + 4);             // $288E9E movea.l ($4,A1,D1.w)
+      ram.setU16(a6 + B.cell, u16(rom.u16(durList) + 1)); // $288EA2/$288EA6 +1
+      ram.setU32(a6 + B.durCursor, durList + 2);         // $288EAA move.l A2,($2e,A6)
+      ram.setU32(a6 + B.descCursor, rom.u32(tbl + d1));  // $288EAE move.l (A1,D1.w)
+      walkDescriptor288E20(ram, rom, a6);                // $288EB4 bsr $288E20
+      const at = ram.u32(a6 + B.descCursor);             // $288EB8 movea.l ($2a,A6)
+      ram.setU32(a6 + B.descriptor, rom.u32(at));        // $288EBC move.l (A2)+,($a,A6)
+      ram.setU32(a6 + B.descCursor, at + 4);             // $288EC0 move.l A2,($2a,A6)
+      // $288EC4..$288ECC: the ONE-SHOT position delta, a full 32-bit add.
+      ram.setU32(a6 + B.pos,
+        (ram.u32(a6 + B.pos) + ram.u32(a6 + B.nudge)) >>> 0);
+    }
+
+    // ------------------------------------- $288ED0: THE POOL-D SUB-SPAWN
+    if (subSpawn288ED0(ram, ctx, a6)) subRefused++;
+
+    // $288F00: the SCROLL, subtracted from the SHORT axis (the low word).
+    ram.setU16(a6 + B.pos + 2,
+      u16(ram.u16(a6 + B.pos + 2) - ram.u16(POOL_B.scroll)));   // $288F06 sub.w
+
+    // $288F0A tst.w ($10,A6) / beq -- `$24179E`, the per-element scroll
+    // compensation, on A6 DIRECTLY.  (`src/movement.js scrollCompensate` and
+    // `src/background.js elemScrollComp` are the same six instructions wrapped
+    // for an enemy record and for a background element; the effect pool calls
+    // the raw form, so it is written out here rather than bent to fit either.)
+    if (ram.u16(a6 + B.hook) !== 0) {                    // $288F0A / $288F12 jsr
+      if (ram.u16(POOL_B.bgFreeze) === 0) {              // $24179E tst.w $8130D2
+        const hi = ram.u32(POOL_B.scrollB03C) >>> 16;    // $2417A8 move.l / swap
+        ram.setU16(a6 + B.pos,
+          u16(i16(ram.u16(a6 + B.pos)) + i16(hi)));      // $2417B0 add.w D0,($2,A6)
+      }
+    }
+
+    // $288F18: SPEED -> VELOCITY, once.  D0 = ($1a,A6) the SPEED INDEX, D1 =
+    // ($1b,A6) the ANGLE BYTE -- `50-recon` §1.2 names these the other way
+    // round.  `$241D34` is `MoveTables.shotVector`, ported since wave 8, and it
+    // throws by address for a speed index outside the exported level set.
+    const spd = ram.u8(a6 + B.speed);                    // $288F1A move.b ($1a,A6)
+    if (spd !== 0) {                                     // $288F1E beq $288F3A
+      const ang = ram.u8(a6 + B.angle);                  // $288F24 move.b ($1b,A6)
+      const v = ctx.tables.shotVector(spd, ang);         // $288F28 jsr $241D34
+      ram.setU16(a6 + B.vel, u16(v.dy));                 // $288F2E move.w D2,($34,A6)
+      ram.setU16(a6 + B.vel + 2, u16(v.dx));             // $288F32 move.w D3,($36,A6)
+      ram.setU8(a6 + B.speed, 0);                        // $288F36 clr.b ($1a,A6)
+    }
+
+    // $288F3A: FRICTION.  A non-zero delta arms a countdown; on its borrow the
+    // delta is SUBTRACTED from the velocity, high word from high word.
+    const fric = ram.u32(a6 + B.fricDelta);              // $288F3A move.l ($22,A6)
+    if (fric !== 0) {                                    // $288F3E beq $288F5A
+      const c = ram.u8(a6 + B.fricCtr);                  // $288F42 subq.b #1,($20,A6)
+      ram.setU8(a6 + B.fricCtr, (c - 1) & 0xff);
+      if (c === 0) {                                     // $288F46 bcc $288F5A
+        ram.setU8(a6 + B.fricCtr, ram.u8(a6 + B.fricReload));    // $288F4A
+        ram.setU16(a6 + B.vel + 2,
+          u16(ram.u16(a6 + B.vel + 2) - (fric & 0xffff)));       // $288F50 sub.w
+        ram.setU16(a6 + B.vel,
+          u16(ram.u16(a6 + B.vel) - (fric >>> 16)));             // $288F54/$288F56
+      }
+    }
+
+    // $288F5A: position += velocity, as TWO word adds (not one long add), so a
+    // carry out of the short axis never reaches the long axis.
+    const vel = ram.u32(a6 + B.vel);                     // $288F5A move.l ($34,A6)
+    ram.setU16(a6 + B.pos + 2, u16(ram.u16(a6 + B.pos + 2) + (vel & 0xffff)));
+    ram.setU16(a6 + B.pos, u16(ram.u16(a6 + B.pos) + (vel >>> 16)));
+
+    // $288F68: THE OFF-SCREEN CULL.  Only the SECOND `addi.w` of each pair is
+    // branched on, so the window is `(v + $1000) & $FFFF < $5800` on the short
+    // axis and `< $9000` on the long axis.
+    const shortAxis = u16(ram.u16(a6 + B.pos + 2) + 0x1000);     // $288F6C
+    const longAxis = u16(ram.u16(a6 + B.pos) + 0x1000);          // $288F7A
+    if (shortAxis + 0xa800 > 0xffff || longAxis + 0x7000 > 0xffff) {
+      ram.setU16(a6 + B.status, 0);                      // $288F9C clr.w (A6)
+      freed++; culled++;
+      continue;                                          // $288F9E bra $288FE6
+    }
+
+    // $288F86: THE ANIMATION.  `subq.w #1,($32,A6) / bpl` -- advance on the
+    // BORROW, i.e. one frame AFTER the cell counter reaches zero.
+    const cell = i16(ram.u16(a6 + B.cell));              // $288F86 subq.w #1
+    ram.setU16(a6 + B.cell, u16(cell - 1));
+    if (cell - 1 < 0) {                                  // $288F8A bpl $288FBC
+      const cur = ram.u32(a6 + B.durCursor);             // $288F8E movea.l ($2e,A6)
+      const d0 = rom.u16(cur);                           // $288F92 move.w (A0)+,D0
+      if (d0 === 0xffff) {                               // $288F94 cmpi.w #$FFFF
+        ram.setU16(a6 + B.status, 0);                    // $288F9C clr.w (A6)
+        freed++;
+        continue;                                        // THE SCRIPT'S OWN END
+      }
+      ram.setU16(a6 + B.cell, d0);                       // $288FA2 move.w D0,($32,A6)
+      ram.setU32(a6 + B.durCursor, cur + 2);             // $288FA6 move.l A0,($2e,A6)
+      walkDescriptor288E20(ram, rom, a6);                // $288FAA bsr $288E20
+      const at = ram.u32(a6 + B.descCursor);             // $288FAE movea.l ($2a,A6)
+      ram.setU32(a6 + B.descriptor, rom.u32(at));        // $288FB2/$288FB4
+      ram.setU32(a6 + B.descCursor, at + 4);             // $288FB8 move.l A0,($2a,A6)
+    }
+
+    // $288FBC: THE LASER INTERLOCK, then $288FD6: THE EMIT.
+    if (parityGate) continue;                            // $288FD2 beq $288FE6
+    const sel = ram.u16(a6 + B.bucket);                  // $288FD6 move.w ($1e,A6)
+    const stub = EMIT_STUB[sel];
+    if (stub === undefined) {                            // $288FDA..$288FE4
+      unreached(POOL_B.emitTable, `pool B's emitter selector ($1e,A6) = `
+        + `$${sel.toString(16).toUpperCase()} is a raw BYTE offset into the `
+        + `FIVE-entry table $288FF0 and only 0, 4, 8, $C and $10 are entries. `
+        + `The longword at $289004 is \`48E7C07E\` -- $289004's own movem.l, `
+        + `CODE -- so the board would jsr into an instruction. Record at `
+        + `$${a6.toString(16).toUpperCase()}, kind `
+        + `$${(ram.u16(a6 + B.status) & 0xff).toString(16).toUpperCase()}`);
+    }
+    enqueueThroughStub(ram, rom, stub, a6);              // $288FE4 jsr (A0)
+    emitted++;
+  }
+  return { live, emitted, freed, culled, delayed, subRefused };
+}
+
+/**
+ * `$288ED0..$288EFA` -- THE POOL-D SUB-SPAWN, **with the `jsr $289098` REFUSED**.
+ *
+ *   288ed0: move.w ($12,A6),D0 / bmi $288f00     <- $FFFF = disarmed, skip all
+ *   288ed8: move.w ($1e,A6),D1 / lsl.w #8,D1 / or.w D1,D0
+ *   288ee0: move.w ($1c,A6),-(A7)               <- PUSHED across the call
+ *   288ee4: swap D0 / move.w ($14,A6),D0        <- D0 = (bucket<<8|param12) : ($14)
+ *   288eea: move.b ($16,A6),($1d,A6)
+ *   288ef0: jsr $289098                          <- **NOT CALLED.  §THE REFUSAL**
+ *   288ef6: move.w (A7)+,($1c,A6)               <- POPPED
+ *   288efa: move.w #$FFFF,($12,A6)              <- ONE-SHOT: never again
+ *
+ * Everything except the `jsr` is performed, so the pool-B record ends the frame
+ * in exactly the state the board leaves it in.  What is lost is pool D's record
+ * -- the secondary debris -- and the seven RNG draws `$289658` makes off the
+ * shared `$803916`/`$803917` counters.  Both are named in the note.
+ *
+ * [M] `($12,A6)` is a COUNT MINUS ONE, not a flag: `$289098` does
+ * `andi.l #$FF,D3 / addi.l #-$10000,D3` and then `dbra D3`, so 0 asks for ONE
+ * record and 1 asks for TWO.  Six of type `$80`'s death-arm sites write 1.
+ *
+ * @returns {boolean} whether a sub-spawn was refused this record.
+ */
+export function subSpawn288ED0(ram, ctx, a6) {
+  const d0 = ram.u16(a6 + B.sub12);                      // $288ED0 move.w ($12,A6)
+  if ((d0 & 0x8000) !== 0) return false;                 // $288ED4 bmi $288F00
+  const param = ram.u16(a6 + B.sub14);                   // $288EE6 move.w ($14,A6)
+  ram.setU8(a6 + B.f1d, ram.u8(a6 + B.f16));             // $288EEA move.b ($16,A6)
+  ctx?.unportedLog?.note(POOL_D.allocator, `$288EF0 jsr $289098 -- POOL D's `
+    + `allocator, REFUSED (not called). This record asked for ${(d0 & 0xff) + 1} `
+    + `sub-effect record(s) into $81C8EC's ${POOL_D.slots} slots with `
+    + `D0 = $${(((ram.u16(a6 + B.bucket) << 8 | (d0 & 0xff)) >>> 0)
+      .toString(16).toUpperCase())}:$${param.toString(16).toUpperCase()}. `
+    + `W54 ports pool B alone: pool D's ONLY consumer is $2890F2 (type-5 call `
+    + `#6, ~1,800 B, an unpinned $200920 window and seven unported callees), `
+    + `and allocating without it is W33 4's leak one level down. So NOTHING `
+    + `allocates from pool D and it CANNOT leak -- W52 0.2's refusal, applied `
+    + `one pool along. THE COST: the secondary debris this explosion would `
+    + `throw is MISSING, and $289658's RNG draws do not happen`);
+  ram.setU16(a6 + B.sub12, 0xffff);                      // $288EFA -- the one-shot
+  return true;
+}

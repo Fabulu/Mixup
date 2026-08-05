@@ -370,6 +370,10 @@ const SPR_SHARDS = Object.freeze([
     + 'the four ranges the 39 behaviour bodies animate inside (W52).'],
   [8, 'spark', 'THE IMPACT SPARK: pool E 36-frame animation $28A5C2, '
     + 'the flash where a bullet CONNECTS (W53). 0.8 KiB.'],
+  [9, 'explode', 'THE ENEMY DEATH EXPLOSION: pool B\'s 68 script entries at '
+    + '$221520/$221630, 23 distinct scripts of 12..36 cells each, walked the '
+    + 'way $288E4E and $288E20 walk them (W54). What happens when an enemy '
+    + 'actually dies.'],
 ]);
 const SPR_BOOT = [0];
 /** the order the deferred shards are FETCHED in -- measured first need, not
@@ -380,7 +384,13 @@ const SPR_BOOT = [0];
 //  CONNECTS, which is later than the first fire frame (shard 6) and later
 //  than the first enemy bullet (shard 7) -- and it is 0.8 KiB, so it costs
 //  the two ahead of it almost nothing.
-const SPR_ORDER = Object.freeze([0, 7, 6, 8, 1, 2, 3, 4, 5]);
+// W54: shard 9 is the BIGGEST in the bundle (218.4 KiB) and its deadline is the
+// first frame an enemy DIES, which is later than the first bullet (shard 7) and
+// later than the first fire frame (shard 6) but [M] earlier than shard 1's hull
+// need at +7.7 s.  It goes FOURTH, ahead of the 0.8 KiB spark deliberately:
+// the spark's own first need is later than the first kill in a tapped run and
+// `demand()` promotes whichever the simulation actually reaches first anyway.
+const SPR_ORDER = Object.freeze([0, 7, 6, 9, 8, 1, 2, 3, 4, 5]);
 
 // ---------------------------------------------------------------------------
 // 1. COVERAGE.  What can this capture possibly make the renderer read?
@@ -722,6 +732,102 @@ const BULLET_RANGES = Object.freeze([
   harvestReport.push({ shard: 7, base: 0x1bf58c, entries: total, stride: 0,
     runsTo: total, endsAt: 0x1c23d8, distinct: total, added, already,
     why: 'THE ENEMY BULLETS -- 4 chain ranges (W52)' });
+}
+
+// ------------------------------------------------------------------- WAVE 54
+// 1d. THE ENEMY DEATH EXPLOSION -- pool B's 68 SCRIPT ENTRIES, walked.
+//
+// A THIRD SHAPE, and it is neither an index table nor a chain range: an effect
+// KIND selects one of 68 entries in the two tables `$221520`/`$221630`, and an
+// entry is a PAIR of lists walked in LOCKSTEP -- a DESCRIPTOR list of 4-byte
+// stream addresses interleaved with 8-byte negative-tagged escape commands
+// ($288E20), and a DURATION list of words ending in `$FFFF` ($288F94).  One
+// stream is consumed per duration word.  So the harvester has to be the
+// interpreter, and `walkEffectScript` below is `$288E4E` + `$288E20` with the
+// RAM writes removed.
+//
+// **ALL 269 STREAMS SHIP, NOT THE 204 THE PORT'S KINDS REACH.**  That is a
+// decision and here is its reason, which is W53 §1.3's applied one level up:
+//   * [M] `50-recon` §2.4 measured "EIGHT distinct kinds on the port's damage
+//     path" from a RUN.  [M] enumerating the port's own ported arms out of the
+//     listing gives ELEVEN ($1 $2 $3 $4 $5 $7 $9 $C $D $84 $85) -- `$4` is type
+//     $10's death ($2681D6, which the port's own comment called $7 until W54),
+//     `$5` is $275B20's and `$9` is two entries of the midboss's `$26B214`
+//     list.  A harvest cut to a measured kind set is a harvest that goes short
+//     the first time a run reaches a twelfth.
+//   * the 68 entries are the TABLE'S OWN EXTENT, pinned from both ends by
+//     `tools/export-tables.py check_pool_b_extents`, and sizing art off a
+//     reading instead of off the table is `46-diag`'s tank hulls.
+//   * [M] it costs 22.6 KiB gz over the 204 (218.4 against 195.8), all of it
+//     DEFERRED, against 65 streams that would otherwise be a silent wrong
+//     picture the day a boss or a `$2440E0` runs.
+const EFFECT_TABLES = [0x221520, 0x221630];
+const EFFECT_ENTRIES = 34;                    // $289004 `cmpi.w #$21,D1 / bgt`
+const EFFECT_SHARD = 9;
+const EFFECT_DATA_END = 0x222618;             // both lists' far end, [M] exact
+
+/** `$288E4E` + `$288E20`, with the RAM writes removed: the stream addresses one
+ *  script names, in order, plus where each of its two lists stops. */
+function walkEffectScript(desc, dur) {
+  const out = [];
+  let dc = desc, du = dur;
+  for (let n = 0; ; n++) {
+    if (n > 200) throw new Error(`effect script $${desc.toString(16)}/`
+      + `$${dur.toString(16)} has no $FFFF terminator within 200 cells`);
+    const w = romBe16(du); du += 2;
+    if (w === 0xffff) break;                             // $288F94
+    for (let g = 0; ; g++) {                             // $288E20's escapes
+      if (!(romBe32(dc) & 0x80000000)) break;            // $288E26 bpl
+      if (g > 64) throw new Error(`$288E20's walk ran away at $${dc.toString(16)}`);
+      dc += 8;
+    }
+    out.push(romBe32(dc)); dc += 4;                      // $288EBC / $288FB2
+  }
+  return { streams: out, descEnd: dc, durEnd: du };
+}
+{
+  const seen = new Set();
+  const scripts = new Set();
+  let hi = 0, added = 0, already = 0, entries = 0;
+  for (const tbl of EFFECT_TABLES) {
+    for (let i = 0; i < EFFECT_ENTRIES; i++) {
+      const desc = romBe32(tbl + i * 8), dur = romBe32(tbl + i * 8 + 4);
+      const r = walkEffectScript(desc, dur);
+      scripts.add(`${desc}:${dur}`);
+      hi = Math.max(hi, r.descEnd, r.durEnd);
+      entries++;
+      for (const offs of r.streams) {
+        seen.add(offs);
+        if (streams.has(offs)) { already++; continue; }
+        streams.set(offs, romExtent(offs));   // throws unless it is a stream start
+        shardOfStream.set(offs, EFFECT_SHARD);
+        added++;
+      }
+    }
+  }
+  // THE FAR END IS THE CLAIM, exactly as `BULLET_RANGES`' `endsAt` is: a walk
+  // that stopped short would ship a subset and never say so.
+  if (hi !== EFFECT_DATA_END || entries !== 2 * EFFECT_ENTRIES) {
+    throw new Error(`the effect scripts: walking ${entries} entries reaches `
+      + `$${hi.toString(16)}; this file says ${2 * EFFECT_ENTRIES} entries `
+      + `ending at $${EFFECT_DATA_END.toString(16)}. The $221520 ROM window in `
+      + `tools/export-tables.py is sized off the SAME number, so a short walk `
+      + `here ships a truncated script the port then reads past.`);
+  }
+  if (scripts.size !== 23 || seen.size !== 269) {
+    throw new Error(`the ${entries} effect entries resolve to ${scripts.size} `
+      + `distinct scripts over ${seen.size} distinct streams; W54 measured 23 `
+      + `and 269 (reproducing 50-recon-effects §5.1 exactly). A wrong count `
+      + `means the tables or the walk have moved.`);
+  }
+  harvested += added; harvestAlready += already;
+  harvestReport.push({ shard: EFFECT_SHARD, base: 0x221520, entries,
+    stride: 8, runsTo: entries, endsAt: EFFECT_DATA_END, distinct: seen.size,
+    added, already,
+    why: 'THE ENEMY DEATH EXPLOSION -- 68 script entries / 23 scripts (W54)' });
+  console.log(`  effect scripts $221520+$221630: ${entries} entries, `
+    + `${scripts.size} distinct scripts, ${seen.size} streams, data ends exactly `
+    + `at $${EFFECT_DATA_END.toString(16).toUpperCase()}`);
 }
 
 const bgList = [...bgUsed].sort((a, b) => a - b);

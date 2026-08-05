@@ -755,6 +755,41 @@ SHOT_WINDOWS.extend([
                        "spark's heading -- far end $28AC3A is code"),
 ])
 
+# ---------------------------------------------------------------- WAVE 54
+# POOL B -- THE ENEMY DEATH EXPLOSION ($289004 / $288E4E, src/effects.js).
+#
+# ONE WINDOW FOR THE TWO SCRIPT TABLES AND ALL OF THEIR DATA, and the reason is
+# the same one the WAVE 45 block gives: the descriptor lists, the duration lists
+# and the 8-byte escape commands are interleaved and the lists are walked in
+# LOCKSTEP, so naming each by extent would be a schema decision the ROM does not
+# support.  Both ENDS are pinned by data that is not this line -- see
+# `check_pool_b_extents`, which asserts all of it on every export:
+#
+#   $221520 + 34*8 == $221630   table A ends where table B begins
+#   $221630 + 34*8 == $221740   and $221740 IS entry [0][0]'s descriptor list
+#   [M] walking all 68 entries the way $288E4E and $288E20 do, the data runs
+#       $221740..$222618 -- so the whole block is $221520..$222617, 4,344 B
+#
+# AND TWO REMAP ROWS THE DEATH ARMS INDEX, both pinned from the far side:
+#   $267FA0  3 rows of 6 words (death / hit / $289AF4), and $267FC4 is `4E75`
+#   $278320  the first two of those rows again, and $278338 is $0022C59C,
+#            a sprite STREAM address -- a different table
+SHOT_WINDOWS.extend([
+    (0x221520, 0x10F8, "W54 POOL B: the two 34-entry effect SCRIPT TABLES "
+                       "$221520 (kind bit 7 clear) and $221630 (set), plus all "
+                       "68 entries' descriptor and duration lists, "
+                       "$221740..$222617. Read by $288E9E/$288EAE and walked by "
+                       "$288E20"),
+    (0x267FA0, 0x0024, "W54 POOL B: the enemy-bucket -> effect-bucket remap, "
+                       "three 6-word rows $267FA0 (death, $268848 lea), "
+                       "$267FAC (hit, $2682BC lea) and $267FB8 ($289AF4's, "
+                       "$2688B2 lea). $267FC4 is `4E75` -- code"),
+    (0x278320, 0x0018, "W54 POOL B: the same remap's two rows again at "
+                       "$278320, read by $2762D8/$276316/$27635A/$2763A0/"
+                       "$276800/$2774E2. $278338 is $0022C59C, a stream "
+                       "address, so the table ends there"),
+])
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
@@ -1024,7 +1059,65 @@ def speed_index_set(d: bytes) -> list[int]:
     # W36: and the ENEMIES' own levels -- the sub-record prototypes, the
     # movement streams' SPEED opcodes, and the arithmetic ramps between them.
     s.update(enemy_speed_indices(d))
+    # W54: and THE DEATH EXPLOSION's, which is a new reader of $241D34 with a
+    # new index domain.  `$288F18 move.b ($1a,A6),D0 / jsr $241D34` takes the
+    # pool-B record's speed byte, and the death arms fill it two ways.
+    s.update(effect_speed_indices(d))
     return sorted(s)
+
+
+# ---------------------------------------------------------------- WAVE 54
+# `$289004`'s call sites, and what they leave in the effect record's ($1a,A0).
+EFFECT_ALLOC = 0x289004
+EFFECT_SCAN_LO, EFFECT_SCAN_HI, EFFECT_SCAN_AFTER = 0x230000, 0x2B0000, 96
+
+
+def effect_speed_indices(d: bytes) -> set[int]:
+    """W54.  Every speed index `$288F28 jsr $241D34` can be handed.
+
+    ENUMERATED, not measured, and not guessed: walk every absolute-long
+    `jsr/jmp $289004` in the image and read the instruction that fills the new
+    record's `($1a,A0)` out of the bytes that follow it.  There are exactly two
+    forms in the cartridge, and both are here:
+
+      `317C iiii 001A`  move.w #imm,($1a,A0)   -- the HIGH byte is the speed
+                                                  ($273E08's $0754 is speed 7)
+      `1140 001A`       move.b D0,($1a,A0)     -- the damage-first family's
+                                                  `$269D2E addq.b #8,D0` on the
+                                                  DYING ENEMY's own ($1a,A6)
+
+    The second form is why this function exists at all: [M] the port threw
+    `speed index 37 was not exported` on the first family kill, 37 being an
+    enemy speed of 29 plus that `addq.b #8`.  So the whole of
+    `enemy_speed_indices` shifted up by 8 is in the domain, exactly as W12
+    listed the pods' 224 and W31 the midboss's 112.
+    """
+    out: set[int] = set()
+    shifted = False
+    a = EFFECT_SCAN_LO
+    while a < EFFECT_SCAN_HI - 6:
+        if u16(d, a) in (0x4EB9, 0x4EF9) and u32(d, a + 2) == EFFECT_ALLOC:
+            b = a + 6
+            end = min(b + EFFECT_SCAN_AFTER, EFFECT_SCAN_HI - 6)
+            while b < end:
+                if u16(d, b) in (0x4EB9, 0x4EF9):       # the next call ends the arm
+                    break
+                if u16(d, b) == 0x317C and u16(d, b + 4) == 0x001A:
+                    out.add(u16(d, b + 2) >> 8)
+                    b += 6
+                    continue
+                if u16(d, b) == 0x1140 and u16(d, b + 2) == 0x001A:
+                    shifted = True
+                b += 2
+        a += 2
+    if not shifted:
+        raise SystemExit(
+            "W54: no `move.b D0,($1a,A0)` follows any of the $289004 call "
+            "sites. $269D2E's `addq.b #8` on the dying enemy's own speed is "
+            "the reason the effect pool can index $241D34 above every enemy "
+            "level, and the scan can no longer see it.")
+    out.update((s + 8) & 0xFF for s in enemy_speed_indices(d))
+    return out
 
 
 def check_pool_e_extents(d: bytes) -> None:
@@ -1075,8 +1168,103 @@ def check_pool_e_extents(d: bytes) -> None:
                          "(`lea $81DB90,A0`).")
 
 
+def walk_effect_script(d: bytes, desc: int, dur: int) -> tuple[list[int], int, int]:
+    """W54.  Walk ONE effect script the way `$288E4E` + `$288E20` walk it.
+
+    One stream address per duration word, until the duration list's `$FFFF`.
+    A descriptor list is 4-byte stream addresses interleaved with 8-byte
+    NEGATIVE-tagged escape commands (`$288E26 bpl` is the discriminator), and
+    both commands are 8 bytes whichever arm they take.
+
+    Returns (streams, descriptor-list end, duration-list end).
+    """
+    streams: list[int] = []
+    dc, du = desc, dur
+    for _ in range(200):
+        w = u16(d, du)
+        du += 2
+        if w == 0xFFFF:
+            break
+        for _ in range(64):
+            v = u32(d, dc)
+            if not v & 0x80000000:
+                break
+            dc += 8
+        else:
+            raise SystemExit(f"$288E20's walk ran away at ${dc:06X}")
+        streams.append(u32(d, dc))
+        dc += 4
+    else:
+        raise SystemExit(f"effect script ${desc:06X}/${dur:06X} has no $FFFF "
+                         f"terminator within 200 cells")
+    return streams, dc, du
+
+
+def check_pool_b_extents(d: bytes) -> None:
+    """W54 (E5b).  ASSERT POOL B's SCRIPT BLOCK AGAINST THE CARTRIDGE, every export.
+
+    The $221520 window is 4,344 bytes claimed by ONE line in SHOT_WINDOWS, and a
+    wrong extent there ships a truncated script -- which does not throw, it draws
+    the wrong picture and then reads a duration word out of whatever follows.
+    So every number that line rests on is re-derived here from the image:
+
+      * the two tables ABUT ($221520 + 34*8 == $221630) and the second one abuts
+        THE DATA ($221630 + 34*8 == $221740 == entry [0][0]'s own list);
+      * walking all 68 entries in lockstep reaches exactly the window's far end;
+      * and the two remap rows are pinned by what FOLLOWS them -- `4E75` (rts)
+        after $267FA0's three rows, and a sprite stream address after $278320's
+        two.  Neither is a comment: both are read out of `d`.
+    """
+    TA, TB, DATA = 0x221520, 0x221630, 0x221740
+    N, WIN_END = 34, 0x222618
+    if TA + N * 8 != TB or TB + N * 8 != DATA:
+        raise SystemExit(
+            f"the effect script tables no longer abut: ${TA:06X} + {N}*8 = "
+            f"${TA + N * 8:06X} (want ${TB:06X}) and ${TB:06X} + {N}*8 = "
+            f"${TB + N * 8:06X} (want ${DATA:06X}).")
+    if u32(d, TA) != DATA:
+        raise SystemExit(
+            f"$221520[0]'s descriptor list is ${u32(d, TA):06X}, not ${DATA:06X}. "
+            f"The table's far end is pinned by entry [0][0] pointing AT the "
+            f"data that follows it, and that has stopped being true.")
+    hi, scripts, streams = 0, set(), set()
+    for tbl in (TA, TB):
+        for i in range(N):
+            desc, dur = u32(d, tbl + i * 8), u32(d, tbl + i * 8 + 4)
+            ss, dce, due = walk_effect_script(d, desc, dur)
+            if len(ss) != (due - dur - 2) // 2:         # one stream per duration
+                raise SystemExit(
+                    f"effect entry ${tbl:06X}[{i}]: {len(ss)} streams against "
+                    f"{(due - dur - 2) // 2} duration words. The two lists are "
+                    f"walked in LOCKSTEP and must end together.")
+            scripts.add((desc, dur))
+            streams.update(ss)
+            hi = max(hi, dce, due)
+    if hi != WIN_END:
+        raise SystemExit(
+            f"walking all {2 * N} effect script entries reaches ${hi:06X}; "
+            f"this file's $221520 window ends at ${WIN_END:06X}. A SHORT window "
+            f"is a truncated script -- it draws the wrong cell and then reads a "
+            f"duration word out of whatever follows.")
+    if len(scripts) != 23 or len(streams) != 269:
+        raise SystemExit(
+            f"the {2 * N} effect entries resolve to {len(scripts)} distinct "
+            f"scripts over {len(streams)} distinct streams; W54 measured 23 and "
+            f"269 (reproducing 50-recon-effects 5.1 exactly).")
+    if d[0x267FC4:0x267FC6] != b"\x4e\x75":
+        raise SystemExit(
+            f"$267FA0's three 6-word remap rows should end at $267FC4 with "
+            f"`4E75` (rts); the image has {d[0x267FC4:0x267FC6].hex()}. A row "
+            f"that runs on lands a wrong value in ($1e,A0), which $288FE4 jsrs.")
+    if u32(d, 0x278338) & 0xFF000000 or u32(d, 0x278338) < 0x100000:
+        raise SystemExit(
+            f"$278320's two remap rows should end at $278338 with a sprite "
+            f"STREAM address; the image has ${u32(d, 0x278338):08X}.")
+
+
 def build(d: bytes) -> dict:
     check_pool_e_extents(d)                    # W53 -- see the function's docstring
+    check_pool_b_extents(d)                    # W54 -- see the function's docstring
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
     levels = speed_index_set(d)

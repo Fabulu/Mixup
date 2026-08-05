@@ -88,6 +88,7 @@ import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
   enqueueRegistersThroughStub, EMIT_TABLE } from './spritequeue.js';
 import { handlerMidboss } from './midboss.js';
 import { scoreHit, scoreKill } from './score.js';
+import { spawnEffect, remapBucket, REMAP, B } from './effects.js';
 
 /** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
  *  Named because the port also has `addi.w` pairs around a `swap`, which do
@@ -200,6 +201,75 @@ const SPRITE_TAB = {
 function hitMask(ram, a6) { return ram.u8(a6) & 0x5c; }
 function noteEffect(u, addr, a5, what) {
   u?.note(addr, `effect $${addr.toString(16).toUpperCase()} (${what}) (W26) rec $${a5.toString(16)}`);
+}
+
+// =========================================================== WAVE 54 (E5b) ==
+// THE DEATH EXPLOSION, WIRED.  `50-recon-effects` §2.1: **there is no shared
+// spawner.**  Every death arm inlines `moveq #kind,D0 / jsr $289004` and then
+// writes six to nine fields into the record the allocator returned, and [M]
+// there are 327 such sites in the image.  So each arm below is its own
+// transcription, out of its own listing, and the two helpers here exist only
+// because two GROUPS of them are literally the same instructions at several
+// addresses -- the same reason `damageFirstHead` is written once.
+//
+// **A0 MAY BE THE BIT BUCKET.**  `$289004` returns `$81C8B2` on a full pool and
+// on an out-of-range kind, its closing `movem.l` deliberately does not restore
+// A0, and no caller tests anything.  So every field write below may land in a
+// slot nothing drives -- faithfully.  `spawnEffect` COUNTS that event
+// (`src/effects.js`), which is the whole difference between this port and the
+// leak W33 §4 describes.
+
+/** `$268958` (type $11 hit), `$2682C0` (type $10's first zero) and `$2681DC`
+ *  (type $10's death) -- THE SAME NINE INSTRUCTIONS at three addresses, each
+ *  with its own kind and its own remap ROW:
+ *
+ *    move.l ($2,A6),($2,A0)          the dying object's POSITION
+ *    moveq #$0,D0 / move.b ($1e,A6),D0
+ *    move.w (A1,D0.w),($1e,A0)       the enemy's bucket, REMAPPED
+ *    move.w #$1,($10,A0)             arm the $24179E scroll hook
+ *    move.w #$FE00,($26,A0)          a one-shot UPWARD nudge
+ *    move.w #$0,($12,A0)             <- and THIS is what arms the pool-D
+ *    move.w #$0,($14,A0)                sub-spawn (`src/effects.js` §THE REFUSAL)
+ *
+ *  `move.b ($1e,A6)` takes the HIGH byte of the sub-record's `anim` word and
+ *  uses it as a RAW BYTE OFFSET, which `remapBucket` range-checks. */
+function effectArmNine(ram, rom, ctx, a6, kind, row, site) {
+  const a0 = spawnEffect(ram, ctx, kind, site);
+  ram.setU32(a0 + B.pos, ram.u32(a6 + 0x02));
+  const d0 = ram.u8(a6 + 0x1e);
+  ram.setU16(a0 + B.bucket, remapBucket(rom, row, d0, site));
+  ram.setU16(a0 + B.hook, 1);
+  ram.setU16(a0 + B.nudge, 0xfe00);
+  ram.setU16(a0 + B.sub12, 0);
+  ram.setU16(a0 + B.sub14, 0);
+  return a0;
+}
+
+/** `$276916`, `$2767F4`, `$2774D6`, `$2762CC`, `$27630A`, `$27634E`, `$276394`
+ *  -- the OTHER shared prologue: position, then the bucket remapped through
+ *  `$278320` with a WORD index DOUBLED (`move.w ($1e,A6),D0 / add.w D0,D0`),
+ *  not the byte offset the `$267Fxx` arms use.  Callers add their own tail. */
+function effectArmShared278320(ram, rom, ctx, a6, kind, site) {
+  const a0 = spawnEffect(ram, ctx, kind, site);
+  ram.setU32(a0 + B.pos, ram.u32(a6 + 0x02));
+  const d0 = u16(ram.u16(a6 + 0x1e) * 2);
+  ram.setU16(a0 + B.bucket, remapBucket(rom, REMAP.shared278320, d0, site));
+  return a0;
+}
+
+/** `$269D1C`, `$26A616`, `$26A882`, `$26AD4A` -- the DAMAGE-FIRST FAMILY's arm.
+ *  No remap table at all: the bucket is the literal `#$10` (bucket 7) and the
+ *  effect inherits the enemy's SPEED + 8 and its HEADING x 4, which is what
+ *  makes the burst fly on the enemy's own vector. `($12,A0)` is NOT written, so
+ *  `$289004`'s `$FFFF` stands and these never sub-spawn. */
+function effectArmFamily(ram, rom, ctx, a6, kind, site) {
+  const a0 = spawnEffect(ram, ctx, kind, site);
+  ram.setU32(a0 + B.pos, ram.u32(a6 + 0x02));           // $269D24
+  ram.setU8(a0 + B.speed, (ram.u8(a6 + 0x1a) + 8) & 0xff);  // $269D2A/$269D2E
+  ram.setU8(a0 + B.angle, (ram.u8(a6 + 0x1b) * 4) & 0xff);  // $269D34..$269D3A
+  ram.setU16(a0 + B.bucket, 0x10);                      // $269D40 move.w #$10
+  void rom;
+  return a0;
 }
 // W30 REMOVED `noteFireAction` and `noteFan`.  The first named the RECORD- and
 // REGISTER-convention SPRITE EMITTERS at ($2A,A5)/($2E,A5) "indirect
@@ -478,10 +548,10 @@ function handler11(ram, rom, a5, ctx) {
       ram.bset8(a5 + R.deathFlag, 7);                  // $26893C bset #$7,($20,A5)
       if (ram.u16(0x815ea2) === 0) {                   // $268942 tst.w / bne $268990
         ram.setU16(0x815ea2, 1);                       // $26894A move.w #$1
-        noteEffect(u, 0x289004, a5, 'D0=$3 hit effect'); // $268952/$268958
-        // $26895E..$268982: eight writes into the record `$289004` would have
-        // returned in A0, plus the `$267FAC` sprite-index table read.  All of
-        // it is inside the noted allocator gap.
+        // W54: SPAWNED, not noted.  $268952 moveq #$3 / $268954 lea
+        // ($267FAC,PC),A1 -- the HIT row -- / $268958 jsr $289004, then
+        // $26895E..$268982's seven field writes.
+        effectArmNine(ram, rom, ctx, a6, 0x03, REMAP.hit267FAC, 0x268958);
       }
       // $268988 bra.b $268990 -- and on into the fire machine.
     }
@@ -495,9 +565,18 @@ function handler11(ram, rom, a5, ctx) {
 function deathSeq11(ram, rom, a5, a6, ctx, d1) {
   const u = ctx.unported;
   scoreKill(ram, rom, ctx, 0x10, d1);                  // $268844/$268846
-  noteEffect(u, 0x289004, a5, 'D0=$7 death effect');   // $268852
-  // $268858..$268898: pos/anim copy into the (not-spawned) effect record + the
-  // $815EA2 cap bookkeeping -- part of the noted $289004 effect gap.
+  // W54: SPAWNED.  $26884C moveq #$7 / $26884E lea ($267FA0,PC),A1 -- the
+  // DEATH row -- / $268852 jsr $289004, then $268858..$268880's seven writes.
+  const eff = effectArmNine(ram, rom, ctx, a6, 0x07, REMAP.death267FA0, 0x268852);
+  // $268882..$268898 -- THE ONE-PER-FRAME CAP, and it is what makes type $11's
+  // death effect DISARM its own sub-spawn.  `50-recon` §4.2's "every death arm
+  // writes ($12) = 0" is true of the instruction at $26887C and not of the
+  // record: when $815EA2 is ALREADY set this puts $FFFF straight back.
+  if (ram.u16(0x815ea2) !== 0) {                       // $268882 tst.w / beq
+    ram.setU16(eff + B.sub12, 0xffff);                 // $26888A move.w #$FFFF
+  }
+  ram.setU16(0x815ea2, 1);                             // $268890 move.w #$1
+  ram.setU16(0x815ea4, u16(ram.u16(0x815ea4) + 1));    // $268898 addq.w #1
   // $26889E btst #0,$815EA5 -> beq skips $289AF4 when bit 0 is CLEAR, so $289AF4
   // is called only when the cap bit is SET (W25b F6 -- the note was unconditional
   // before; the cap test + spawn are W26-owned, the gating is faithful now).
@@ -655,7 +734,9 @@ function handler10(ram, rom, a5, ctx) {
       ram.setU16(a6 + S.hp, ram.u16(a5 + R.hpReload)); // $2682A6 reload HP
       scoreKill(ram, rom, ctx, 0x08, d1);              // $2682AA/$2682AE
       ram.bset8(a5 + R.deathFlag, 7);                  // $2682B4 bset #7,$20
-      noteEffect(u, 0x289004, a5, 'D0=$3 death effect'); // $2682C0
+      // W54: SPAWNED.  $2682BA moveq #$3 / $2682BC lea ($267FAC,PC),A1 --
+      // the HIT row, the same one $268954 uses -- / $2682C0 jsr $289004.
+      effectArmNine(ram, rom, ctx, a6, 0x03, REMAP.hit267FAC, 0x2682c0);
       // $2682F0 `bra.b $2682F8` -- NOT a return.  Type $10's first trip to zero
       // reloads, scores 8, marks itself and then RUNS ITS FIRE MACHINE on the
       // same frame, exactly as type $11's does.  W34: the `return` that used to
@@ -674,7 +755,11 @@ function handler10(ram, rom, a5, ctx) {
 function deathSeq10(ram, rom, a5, a6, ctx, d1) {
   const u = ctx.unported;
   scoreKill(ram, rom, ctx, 0x10, d1);                  // $2681CE/$2681D0
-  noteEffect(u, 0x289004, a5, 'D0=$7 death effect');
+  // W54: SPAWNED -- **AND THE KIND IS $4, NOT $7.**  [M] $2681D6 is
+  // `moveq #$4,D0`, and the note this line replaced said $7 since W25b.
+  // Kind $4 is not even in `50-recon` 2.4's measured eight; it reached
+  // 137 x $7 because type $11's death arm IS $7 and type $10's is not.
+  effectArmNine(ram, rom, ctx, a6, 0x04, REMAP.death267FA0, 0x2681dc);
   noteEffect(u, 0x289af4, a5, 'D0=$4 secondary');
   noteEffect(u, 0x28c25a, a5, 'death burst');
   freeEnemy(ram, a5);                                  // jmp $263762
@@ -700,7 +785,9 @@ function damageFirstHandler(ram, rom, a5, ctx, label) {
     ram.setU8(a6 + S.palette, d0);                      // $269D08 move.b D0,$1d(A6)
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $269D0C tst.w $18 / bpl
       scoreKill(ram, rom, ctx, 0x08, d1);              // $269D14/$269D16 jsr $28615E
-      noteEffect(u, 0x289004, a5, 'D0=$2 death effect'); // jsr $289004
+      // W54: SPAWNED.  $269D1C moveq #$2 / $269D1E jsr $289004, then
+      // $269D24..$269D44's five writes -- no remap table, bucket 7 flat.
+      effectArmFamily(ram, rom, ctx, a6, 0x02, 0x269d1e);
       noteEffect(u, 0x28c2a8, a5, 'death burst');      // jsr $28C2A8
       freeEnemy(ram, a5);                              // jmp $263762
       return;
@@ -844,7 +931,12 @@ function handler8B(ram, rom, a5, ctx) {
       scoreKill(ram, rom, ctx, 0x01, d1);              // $2768F2/$2768F4 jsr $28615E
       noteEffect(u, 0x28c25a, a5, 'death burst');      // jsr $28C25A
       u?.note(0x27f8ee, `$27F8EE $8B death routine (W29) rec $${a5.toString(16)}`);
-      noteEffect(u, 0x289004, a5, 'D0=$1 death effect'); // jsr $289004
+      // W54: SPAWNED.  $27690E moveq #$1 / $276910 jsr $289004, then
+      // $276916..$276932 -- the $278320 remap and the $24179E hook.
+      {
+        const e = effectArmShared278320(ram, rom, ctx, a6, 0x01, 0x276910);
+        ram.setU16(e + B.hook, 1);                      // $27692E/$276932
+      }
       freeEnemy(ram, a5);                              // jmp $263762
       return;
     }
@@ -1064,9 +1156,31 @@ function deathSeq85(ram, rom, a5, a6, ctx, d1) {
   // $275B20/$275B4C/$275B72: three effect allocations, each followed by field
   // writes into the record `$289004` would have returned in A0.  The writes are
   // part of the noted gap, not a separate one.
-  noteEffect(u, 0x289004, a5, 'D0=$5 death effect');   // $275B22
-  noteEffect(u, 0x289004, a5, 'D0=$C death effect');   // $275B4E
-  noteEffect(u, 0x289004, a5, 'D0=$84 death effect');  // $275B76
+  // W54: SPAWNED, all three.  NO REMAP TABLE -- these hardcode bucket $10
+  // (bucket 7).  [M] kind $5 is NOT in `50-recon` 2.4's measured eight;
+  // it is enumerated from the listing, which is docs/knowledge/09's rule.
+  {
+    const e1 = spawnEffect(ram, ctx, 0x05, 0x275b22);   // $275B20/$275B22
+    ram.setU32(e1 + B.pos, ram.u32(a6 + 0x02));         // $275B28
+    ram.setU16(e1 + B.bucket, 0x10);                    // $275B2E
+    ram.setU16(e1 + B.sub12, 0x0000);                   // $275B34
+    ram.setU16(e1 + B.sub14, 0x0400);                   // $275B3A
+    ram.setU16(e1 + B.nudge, 0x0200);                   // $275B40
+    ram.setU16(e1 + B.nudge + 2, 0x0200);               // $275B46
+    const e2 = spawnEffect(ram, ctx, 0x0c, 0x275b4e);   // $275B4C/$275B4E
+    ram.setU32(e2 + B.pos, ram.u32(a6 + 0x02));         // $275B54
+    ram.setU16(e2 + B.bucket, 0x10);                    // $275B5A
+    ram.setU16(e2 + B.sub12, 0x0000);                   // $275B60
+    ram.setU16(e2 + B.sub14, 0x0000);                   // $275B66
+    ram.setU16(e2 + B.nudge, 0xf600);                   // $275B6C
+    const e3 = spawnEffect(ram, ctx, 0x84, 0x275b76);   // $275B72/$275B76
+    ram.setU32(e3 + B.pos, ram.u32(a6 + 0x02));         // $275B7C
+    ram.setU16(e3 + B.bucket, 0x10);                    // $275B82
+    ram.setU16(e3 + B.sub12, 0x0000);                   // $275B88
+    ram.setU16(e3 + B.sub14, 0x0000);                   // $275B8E
+    ram.setU16(e3 + B.nudge, 0xee00);                   // $275B94
+    ram.setU16(e3 + B.nudge + 2, 0xfe00);               // $275B9A
+  }
   noteEffect(u, 0x28c274, a5, 'death burst');          // $275BA0 jsr $28C274
   freeEnemy(ram, a5);                                  // $275BA6 jmp $263762
 }
@@ -1304,8 +1418,35 @@ function deathSeq80(ram, rom, a5, ctx, d1) {
   const u = ctx.unported;
   scoreKill(ram, rom, ctx, 0x83, d1);                  // $273DAE/$273DB4
   noteEffect(u, 0x28c2dc, a5, 'death burst');          // $273DBA jsr $28C2DC
-  for (const d0 of ['$D', '$84', '$84', '$D', '$D', '$85']) {
-    noteEffect(u, 0x289004, a5, 'D0=' + d0 + ' death effect'); // $273DC2..$273EC8
+  // W54: SPAWNED, all six.  No remap table -- every one hardcodes bucket
+  // $10 (bucket 7).  [M] ALL SIX WRITE `($12,A0) = 1`, i.e. each asks pool
+  // D for TWO records: `50-recon` 4.2's "every death arm writes ($12) = 0"
+  // is falsified by this one arm six times over.  All twelve are refused
+  // and counted (`src/effects.js` THE REFUSAL).
+  // Every `null` below is a field the ROM does NOT write at that site, and
+  // it is not the same as writing 0: `$289004` zeroes a FRESH slot, but a
+  // bit-bucket allocation lands in $81C8B2, which still holds the LAST
+  // discarded record's bytes.
+  //   kind  site      ($26,A0)  ($28,A0)  ($1a,A0)  ($14,A0)  ($18,A0) ($1c,A0)
+  const a6b = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
+  for (const [kind, site, nHi, nLo, spdAng, sub14, delay, f1c] of [
+    [0x0d, 0x273dc2, 0xf800, null, null, 0x0400, null, null],  // $273DC8..$273DE0
+    [0x84, 0x273dea, 0xf600, 0x0600, 0x0754, 0x0000, null, null], // $273DF0..$273E14
+    [0x84, 0x273e1e, 0xf600, 0xfa00, 0x07ac, 0x0400, null, 0x40], // $273E24..$273E4E
+    [0x0d, 0x273e56, 0xf200, 0xfe00, 0x0798, 0x0000, 0x0002, null], // $273E5C..$273E86
+    [0x0d, 0x273e8e, 0xf200, 0x0100, 0x0768, 0x0000, 0x0004, null], // $273E94..$273EBE
+    [0x85, 0x273ec8, 0xf600, 0x0000, 0x0c80, 0x0400, 0x0004, null], // $273ECE..$273EF8
+  ]) {
+    const e = spawnEffect(ram, ctx, kind, site);
+    ram.setU32(e + B.pos, ram.u32(a6b + 0x02));
+    ram.setU16(e + B.bucket, 0x10);
+    if (nHi !== null) ram.setU16(e + B.nudge, nHi);
+    if (nLo !== null) ram.setU16(e + B.nudge + 2, nLo);
+    if (spdAng !== null) ram.setU16(e + B.speed, spdAng);
+    ram.setU16(e + B.sub12, 0x0001);
+    ram.setU16(e + B.sub14, sub14);
+    if (delay !== null) ram.setU16(e + B.delay, delay);
+    if (f1c !== null) ram.setU8(e + B.f1c, f1c);
   }
   freeEnemy(ram, a5);                                  // $273EFE jmp $263762
 }
@@ -1414,11 +1555,17 @@ function playersAlive242884(ram) {
 // field writes into the record `$289004` would have returned; all noted.
 function deathSeq8A(ram, rom, a5, ctx, d1) {
   const u = ctx.unported;
+  const a6 = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
   scoreKill(ram, rom, ctx, 0x01, d1);                  // $2767D0/$2767D2
   noteEffect(u, 0x28c25a, a5, 'death burst');          // $2767D8
   u?.note(0x27f92a, `$27F92A in $8A death (D0 = ($1A,A5), D2 = ($1F,A6)) rec $`
     + a5.toString(16) + ' -- the $816B7A pool family, unported');  // $2767E6
-  noteEffect(u, 0x289004, a5, 'D0=$C death effect');   // $2767EE
+  // W54: SPAWNED.  $2767EC moveq #$C / $2767EE jsr $289004, then
+  // $2767F4..$276810 -- the $278320 remap and the $24179E hook.
+  {
+    const e = effectArmShared278320(ram, rom, ctx, a6, 0x0c, 0x2767ee);
+    ram.setU16(e + B.hook, 1);                         // $27680C/$276810
+  }
   // $2767FA..$276810: `move.w ($1E,A6),D0 / add.w D0,D0 / lea $278320(pc),A1 /
   // move.w (A1,D0.w),($1E,A0)` and `move.w #$1,($10,A0)` -- writes into the
   // record the allocation did not make, so they are inside the same gap.
@@ -1629,7 +1776,9 @@ function damageFirstHead(ram, rom, a5, a6, ctx, score) {
       // allocator would have returned in A0, then jsr $28C2A8.  All of it is
       // inside the ONE noted gap (`$289004` has no driver -- W34 §1.6), so the
       // writes are noted with it rather than aimed at an invented address.
-      noteEffect(u, 0x289004, a5, 'D0=$2 death effect');
+      // W54: SPAWNED.  `$26A616`/`$26A882`/`$26AD4A moveq #$2,D0`, and the
+      // five writes after each are $269D24's, instruction for instruction.
+      effectArmFamily(ram, rom, ctx, a6, 0x02, 0x26a618);
       noteEffect(u, 0x28c2a8, a5, 'death burst');
       freeEnemy(ram, a5);                              // jmp $263762
       return null;
@@ -2049,12 +2198,23 @@ function fire89(ram, rom, a5, a6, ctx) {
  *  only driver is type-5 call #5 `$288E4E` (W34 §1.6). */
 function deathSeq89(ram, rom, a5, ctx, d1) {
   const u = ctx.unported;
+  const a6 = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
   scoreKill(ram, rom, ctx, 0x34, d1);                  // $27749C/$27749E jsr $28615E
   noteEffect(u, 0x28c25a, a5, 'death burst');          // $2774A4
   noteEffect(u, 0x289af4, a5, 'D0=$8 secondary');      // $2774BC (D1 from $278314)
   u?.note(0x27f8ee, `$27F8EE $89 death routine (D0=$8, D2=($1E,A6)) rec $${
     a5.toString(16)}`);                                // $2774C8
-  noteEffect(u, 0x289004, a5, 'D0=$C death effect');   // $2774D0 + 8 field writes
+  // W54: SPAWNED.  $2774CE moveq #$C / $2774D0 jsr $289004, then
+  // $2774D6..$277506's eight writes -- and ($12,A0) = 1 here, i.e. this
+  // arm asks pool D for TWO records (`src/effects.js` §THE REFUSAL).
+  {
+    const e = effectArmShared278320(ram, rom, ctx, a6, 0x0c, 0x2774d0);
+    ram.setU16(e + B.sub12, 0x0001);                   // $2774EE
+    ram.setU16(e + B.sub14, 0x0000);                   // $2774F4
+    ram.setU16(e + B.nudge, 0xfe00);                   // $2774FA
+    ram.setU16(e + B.nudge + 2, 0x0000);               // $277500
+    ram.setU16(e + B.hook, 1);                         // $277506
+  }
   freeEnemy(ram, a5);                                  // $27750C jmp $263762
 }
 
@@ -2295,16 +2455,28 @@ function fire88(ram, rom, a5, a6, ctx) {
  *  writes into the record the allocator would have returned. */
 function deathSeq88(ram, rom, a5, ctx, d1) {
   const u = ctx.unported;
+  const a6 = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
   scoreKill(ram, rom, ctx, 0x115, d1);                 // $27627E/$276284 jsr $28615E
   noteEffect(u, 0x28c2dc, a5, 'death burst');          // $27628A
   noteEffect(u, 0x289b22, a5, 'D0=$C, D2=$FFFFFA00');  // $27629C
   noteEffect(u, 0x289b22, a5, 'D0=$C, D2=$00000600');  // $2762A8
   u?.note(0x27f8fa, `$27F8FA x7 (D0=$8, D1 from $2763E8) in $88's death rec $${
     a5.toString(16)}`);                                // $2762BA (dbra x7)
-  noteEffect(u, 0x289004, a5, 'D0=$D death effect');   // $2762C6
-  noteEffect(u, 0x289004, a5, 'D0=$C death effect');   // $276304
-  noteEffect(u, 0x289004, a5, 'D0=$C death effect');   // $276348
-  noteEffect(u, 0x289004, a5, 'D0=$85 death effect');  // $27638E
+  // W54: SPAWNED, all four.  Same $278320 prologue, four different tails.
+  // Each writes ($12,A0) = 1 -- TWO pool-D records apiece, all refused.
+  for (const [kind, site, sub14, nudge, speedAngle] of [
+    [0x0d, 0x2762c6, 0x0400, 0x02000000, null],        // $2762CC..$2762FC
+    [0x0c, 0x276304, 0x0000, 0xfe00fa00, 0x05c0],      // $27630A..$276340
+    [0x0c, 0x276348, 0x0400, 0xfc000200, 0x0440],      // $27634E..$276384
+    [0x85, 0x27638e, 0x0000, 0xfe000000, 0x0380],      // $276394..$2763CA
+  ]) {
+    const e = effectArmShared278320(ram, rom, ctx, a6, kind, site);
+    ram.setU16(e + B.sub12, 0x0001);
+    ram.setU16(e + B.sub14, sub14);
+    ram.setU32(e + B.nudge, nudge >>> 0);
+    if (speedAngle !== null) ram.setU16(e + B.speed, speedAngle);
+    ram.setU16(e + B.hook, 1);
+  }
   freeEnemy(ram, a5);                                  // $2763D0 jmp $263762
 }
 

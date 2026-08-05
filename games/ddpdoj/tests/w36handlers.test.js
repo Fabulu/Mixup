@@ -228,18 +228,35 @@ test('$2425B2 gates the fire on BOTH axes, and RANK swaps the table pair',
 // 3. THE THREE DAMAGE-FIRST SIBLINGS
 // ===========================================================================
 
-test('$08/$09/$0B: the death arm scores 8, notes BOTH effects, and frees',
+test('$08/$09/$0B: the death arm scores 8, SPAWNS the effect, and frees',
   { skip: SKIP }, () => {
     for (const h of [0x26a5e4, 0x26a860, 0x26ad28]) {
       const ram = fixture();
       ram.setU8(A6, 0x10);                  // a P1 hit bit inside the $5C mask
       ram.setU16(A6 + 0x18, 0x8001);        // HP already negative
+      ram.setU16(A6 + 0x02, 0x1234);        // the position the effect inherits
+      ram.setU16(A6 + 0x04, 0x5678);
+      ram.setU8(A6 + 0x1a, 0x03);           // the enemy's SPEED
+      ram.setU8(A6 + 0x1b, 0x11);           // ...and its HEADING
       const { ctx, log } = ctxOf(ram);
       runHandler(h, ram, ROM, A5, ctx);
       assert.equal(ram.u16(A5), 0, `$${h.toString(16)}: the record was freed`);
+      // W54: `$289004` is no longer a note, it is an ALLOCATION.  Assert the
+      // pool-B slot the family's own arm ($269D24..$269D44) fills -- and note
+      // that not one value below is a constant this test also wrote: the
+      // position, the speed and the heading come out of the enemy, and the
+      // bucket and the two arithmetics come out of the listing.
+      const a0 = 0x81b732;
+      assert.equal(ram.u16(a0), 0x8002, `$${h.toString(16)}: allocated, kind $2`);
+      assert.equal(ram.u32(a0 + 0x02) >>> 0, 0x12345678,
+        "$269D24 move.l ($2,A6),($2,A0) -- the dying enemy's position");
+      assert.equal(ram.u8(a0 + 0x1a), 0x03 + 8, '$269D2E addq.b #8,D0');
+      assert.equal(ram.u8(a0 + 0x1b), (0x11 * 4) & 0xff, '$269D38/$269D3A x4');
+      assert.equal(ram.u16(a0 + 0x1e), 0x10, '$269D40 move.w #$10,($1e,A0)');
+      assert.equal(ram.u16(a0 + 0x12), 0xffff,
+        'and ($12,A0) is UNTOUCHED -- this arm never arms the pool-D sub-spawn');
       const notes = log.report().join('\n');
-      assert.match(notes, /\$289004/, 'the effect allocator is COUNTED');
-      assert.match(notes, /\$28C2A8/, 'and so is the burst');
+      assert.match(notes, /\$28C2A8/, 'the burst is still COUNTED');
     }
   });
 
@@ -600,9 +617,28 @@ test('$88\'s death scores $115 -- a move.l, not a moveq -- and notes five gaps',
     assert.equal(ram.u32(0x81b4c0) >>> 0, 0x00000116,
       'the packed-BCD pending score is $1 (the hit) + $115 (the kill)');
     const n = log.report().join('\n');
-    for (const a of ['$28C2DC', '$289B22', '$27F8FA', '$289004']) {
+    for (const a of ['$28C2DC', '$289B22', '$27F8FA']) {
       assert.match(n, new RegExp(a.replace('$', '\\$')), `${a} is COUNTED`);
     }
+    // W54: `$289004` left that list because it is no longer a gap.  Type $88's
+    // death arm ($2762C6 / $276304 / $276348 / $27638E) makes FOUR allocations,
+    // and all four ask pool D for TWO records apiece -- which is THE REFUSAL.
+    assert.doesNotMatch(n, /\$289004 /, '$289004 is SPAWNED now, not counted');
+    let live = 0;
+    for (let i = 0; i < 80; i++) if (ram.u16(0x81b732 + i * 0x38) !== 0) live++;
+    assert.equal(live, 4, 'four pool-B records, one per $289004 in $2762C4');
+    assert.deepEqual(
+      [0, 1, 2, 3].map((i) => ram.u16(0x81b732 + i * 0x38) & 0xff),
+      [0x0d, 0x0c, 0x0c, 0x85],
+      "the four kinds, in the ROM's own order");
+    assert.ok([0, 1, 2, 3].every((i) => ram.u16(0x81b732 + i * 0x38 + 0x12) === 1),
+      'ALL FOUR write ($12,A0) = 1 -- two pool-D records each, not zero');
+    // $27633A / $27637E / $2763C4 -- three of the four carry a SPEED:ANGLE pair
+    // the driver turns into a velocity through $241D34, and the first does not.
+    assert.deepEqual(
+      [0, 1, 2, 3].map((i) => ram.u16(0x81b732 + i * 0x38 + 0x1a)),
+      [0x0000, 0x05c0, 0x0440, 0x0380],
+      '($1a,A0) is SPEED:ANGLE and $2762C6 alone leaves it at the init 0');
   });
 
 // ===========================================================================
