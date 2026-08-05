@@ -1,6 +1,6 @@
 # 61 — IMPL: I2, THE ITEM ITSELF — dropping it, moving it, drawing it, collecting it
 
-status: **IN PROGRESS**
+status: **DONE** -- gate ALL GREEN 51/0/0, 767 unit tests, webgate 14/14, build-dist clean with PUBLISH_VERBATIM still 5. [M] items DROP, FALL, DRAW and are COLLECTED; the power level goes 0 -> 2 -> 4 and the shot's slot-search window 4 -> 5; NO RANK WRITE became reachable; boot 477.7 -> 480.7 KiB.
 
 started: 2026-08-05
 role: IMPLEMENTER (SOLE writer to `games/ddpdoj/`; `games/gradius/` NOT TOUCHED)
@@ -82,8 +82,29 @@ it latches `bset #0,(A6)`, sets speed `$0A`, and spirals `+$10` of angle per
 | `$242684` | 30 | the off-screen test, returning carry | `offScreen242684` |
 | `$275B06`, `$275B1A` | 20 | **THE DROP** — two counted notes replaced by two calls | `handlers.js deathSeq85` |
 
-**Two ROM-window groups, 1,166 bytes, and one new sprite shard.**
+**Nine new ROM windows, 1,200 bytes, and one new sprite shard.**
 `games/gradius/` NOT TOUCHED.
+
+### 1.1 READ PAST THE APPARENT END — what was there
+
+`docs/knowledge/02`'s fall-through trap, seventeen incidents. Every routine in
+this wave was read to the instruction AFTER its `rts`, and three of them are
+worth writing down:
+
+* **`$27F23C` IS AN `rts`, AND IT IS CALLED.** Kind `$10`'s init is
+  `$27F1B2 bsr $27F23C` and `$27F23C` is `4E75`. That kind has NO init — its
+  speed, angle and lifetime stay at the template's zeroes, which is why it is
+  the only body whose motion is the scroll pair and not `$2417DE`. A reader who
+  took the `bsr` for a routine would go looking for one.
+* **`$27EACA nop / $27EACC rts` (and `$27EC7C`, `$27EE2C`, `$27F23A`) are
+  ALIGNMENT PADDING after a `jmp`,** not code. [M] nothing in
+  `$27E812..$27F7E7` branches to any of them. Kind `$10`'s `$27F23C` is the one
+  that looks identical and is not.
+* **`$27F7E8` is `4E75 204E 4A50 6AF8` — `rts / movea.l A6,A0 / tst.w (A0) /
+  bpl`.** It is where template entries [6] and [7] point, and it is what makes
+  the template range check a real check rather than a precaution: D0 = `$18`
+  copies twenty-six bytes of INSTRUCTIONS into a record's `+$06..+$1F`, which
+  includes the collision half-extents and the lifetime.
 
 ## 2. THE REFUSAL — kinds `$0C` and `$14` are UNREACHABLE BY CONSTRUCTION
 
@@ -102,8 +123,17 @@ a status word behind it. `$2530BE`/`$2530E6` are therefore not merely unreached 
 The refusal is COUNTED with the player, the stock word and the reason
 (`unportedLog`, under `$2530BE`/`$2530E6`).
 
+**AND IT COVERS ONE OF THE TWO DOORS, WHICH IS WORTH SAYING PLAINLY.**
+`$27E812` is the door this wave opened and the refusal shuts it. The OTHER way a
+hyper item exists on the board is `$27E912` — [M] all four of its callers are
+inside the pending-item flush `$2875B4..$287720` — and that allocator is
+**entirely unported**, along with the whole `$81B64A → $287682 → $81B6E0`
+chain that feeds it (§5). Two doors, both shut, for two different reasons.
+
 **AND THE ANSWER TO THE BRIEF'S QUESTION, EXPLICITLY: NO HYPER STOCK BECAME
-REACHABLE, AND NO RANK WRITE BECAME REACHABLE.** §5.
+REACHABLE, AND NO RANK WRITE BECAME REACHABLE.** §5. [M] the whole-port census
+of `$81B65C`/`$81B65E` outside `src/items.js` is `src/score.js:159`, a READ
+(`$286782 cmpi.w #$5`), and nothing else.
 
 ## 3. THE MEASUREMENT — `tools/w61itemgate.mjs`, with a CONTROL and a TREE CONTROL
 
@@ -265,10 +295,33 @@ both trees in every column, including the RNG.
    same enemies a few frames later; what changes is which frame each hit lands
    on, and the earn accumulator counts hits.
 
-   **`$81B64A` is NOT a rank word**, and its only consumer `$287682` is a
-   counted note in `src/score.js` — but the day `$287682` ships it becomes a
-   hyper GRANT, and a grant is stock, and stock is +16 rank. **Named here so
-   wave I3 cannot ship one without re-reading this row.**
+   **`$81B64A` IS NOT A RANK WORD, AND THE CHAIN FROM IT TO RANK IS FIVE LINKS
+   LONG** — `src/score.js`'s own W38 §2.4 correction, which I re-read rather
+   than paraphrased:
+
+   ```
+   $81B64A  --$287682, tested against #$95F and CLEARED-->  $81B6E0
+   $81B6E0  --$2875B4's pending flush-->  $27E912  --> a HYPER ITEM
+            --$2530CA-->  $81B65C (the stock)  --$285A62-->  $81B646
+            --$2608F4's 16x term-->  RANK
+   ```
+
+   **Every one of those five links is unported**, and the first of them is the
+   reason it does not bite here: [M] `$81B64A` ends this window at 2,112 on the
+   W61 tree and 2,136 on HEAD, and **`$287682`'s threshold is `#$95F` = 2,399**,
+   so neither tree reaches it. `src/score.js` already states the consequence of
+   `$287682` being absent — `$81B64A` accumulates with nothing to drain it — and
+   what this wave adds to that statement is a −24 offset, i.e. a run long enough
+   to cross 2,399 crosses it on a slightly later frame than HEAD would.
+   **Named here so wave I3 cannot ship `$287682` without re-reading this row.**
+
+   **AND THE HYPER ITEM HAS TWO DOORS, BOTH SHUT, FOR TWO DIFFERENT REASONS.**
+   `spawnItem` REFUSES D0 = `$C`/`$14` through `$27E812` (§2) — but the chain
+   above does not use `$27E812` at all: [M] all four of the hyper item's spawn
+   sites are `$27E912`, inside `$2875B4..$287720`, and that allocator is
+   **entirely unported, not refused**. So a reader must not take §2's refusal as
+   covering the whole surface: it covers the door this wave opened, and the
+   other door was already bricked up.
 
    And the last row is the RNG's own bisection, free: cutting the ITEM puts
    `$803916` back to HEAD's 231 and cutting only the COLLECT does not, so the
@@ -290,6 +343,35 @@ both trees in every column, including the RNG.
 [M] BOOT AFTER   480.7 KiB   -- +3.0 KiB
 [M] deferred     1,326.9 -> 1,360.2 KiB
 ```
+
+**AND EVERY BOOT BYTE IS NAMED**, measured by re-exporting with the PRE-W61
+exporters (`git show bfda18b:`) and then with this tree's, both sha256'd
+byte-identical on the way back (`.scratch/w61boot.mjs`):
+
+```
+[M] player.tables.json.gz   137,536 ->  138,932    +1,396 B
+[M] spr/streams.u32.gz        1,002 ->    1,055       +53 B
+[M] manifest.json             9,208 ->   10,776    +1,568 B
+[M] TOTAL                                          +3,017 B = 2.9 KiB
+```
+
+* **+1,568 B `manifest.json`** — and it is the biggest of the three because
+  `manifest.json` is the one body served UNCOMPRESSED (W47 §2.4), so every byte
+  of shard 12's `why` prose and its ten harvest ledger rows is a boot byte.
+* **+1,396 B `player.tables.json.gz`** — the nine new ROM windows are 1,200 raw
+  bytes of cartridge, and the JSON hex-encodes them at two characters a byte
+  before gzip, so the compressed cost is a little above the raw size.
+  **They cannot be deferred**: a missing sprite stream is a NAMED SKIP the page
+  draws around, but a missing ROM window is a THROW out of `src/rom.js` — the
+  whole reason `RomWindows` exists (W54 §3's own argument, one wave on).
+* **+53 B `spr/streams.u32.gz`** — 174 more stream entries at 0.3 B each,
+  because W52 made that table planar and delta-coded.
+
+**There is no version of this wave with a flat boot**, and the two claw-backs
+W47 and W53 took are already taken. The one still available is gzipping
+`manifest.json` itself, which W58 §7.2 handed on and priced at roughly 6 KiB —
+more than this wave and W58 together. It is a `src/web/assets.js` change and it
+is still nobody's.
 
 **AND drawn % STAYS AT 100.0 % WITH ZERO MISSING STREAMS**, measured with
 W58's own tool (`.scratch/e3measure.mjs`) on W58's own scenario — 3,000 frames,
@@ -380,6 +462,14 @@ so.
 `.scratch/mutate61.mjs`: apply ONE edit with a single-occurrence anchor, run ONE
 test file, require a NAMED test red, restore, **verify sha256 byte-identical**.
 Every restore matched.
+
+**`games/ddpdoj/.scratch/` IS GITIGNORED**, as it has been since wave 4, so the
+three harnesses this section quotes — `mutate61.mjs`, `gatemut61.mjs` and
+`w61b64a.mjs` — and the tree control `w61tree.mjs` are NOT in the repository and
+a later reader has to rebuild them. That is W60's precedent for a harness that
+edits `src/` (`tools/` holds gates, `.scratch/` holds things that mutate), and
+it is stated rather than assumed: the RESULTS are here, the machinery is not.
+`tools/w61itemgate.mjs` — the measurement itself — IS committed.
 
 ```
 [M] 41 of 41 unit mutants turned a NAMED test RED; survivors 0; SKIPPED 0
@@ -474,12 +564,20 @@ control**, and this one agreed perfectly.
   `$27F642 clr.b ($e,A6)` keeps it there, while the only writers of that word
   (`$27EA96 addq.w #4` masked `$F`) touch the LOW byte. Named, transcribed,
   and not removed.
+* **ONE STRUCTURAL DIFFERENCE IS TRANSCRIBED AND IS PROVABLY UNOBSERVABLE,
+  which is why it has no test.** `$252C96`'s `cmpi.w #$8,$810406 / beq` is
+  OUTSIDE the laser branch and `$252DAC`'s is INSIDE it (`$252DDA` is reached
+  only when `$810408 != 8`). Walking the four (laser, shot) cases: the pair
+  (8, 8) is caught by the sum test above both; (8, <8) and (<8, <8) proceed in
+  both; (<8, 8) returns in both. **So the placement cannot change an answer**,
+  and writing a test for it would be writing a test that cannot fail. It is
+  transcribed the way the ROM has it and named here instead.
 * **NOT transcribed at all, and why:** `$27E88A`, the third allocator — [M]
   recon 59 found NO caller of either kind in `$230000..$2B0000` and I
   re-checked it. `docs/knowledge`'s rule is that an absence proof is a listing
   read, and this is one; writing 136 bytes nothing can call would be worse.
-* **Unit tests 727 -> 766, 0 skipped.** New file `tests/w61items.test.js`
-  (39 tests). `webgate` 13 of 13 -> **14 of 14**.
+* **Unit tests 727 -> 767, 0 skipped.** New file `tests/w61items.test.js`
+  (40 tests). `webgate` 13 of 13 -> **14 of 14**.
 
 ## 9. WHAT THIS WAVE DID NOT DO
 
@@ -512,6 +610,65 @@ control**, and this one agreed perfectly.
 - **Nothing was published by the wave itself.** `tools/publish.mjs` deploys all
   three games and the deploy is the orchestrator's call.
 - **`games/gradius/` was not touched.**
+
+## 10. THE GATE, ON THE FINAL TREE
+
+```
+python games/ddpdoj/tools/oracle/pgm.py check
+VERDICT: ALL GREEN -- 51 passed, 0 failed, 0 SKIPPED
+```
+
+**Nothing was disabled, skipped, narrowed or loosened**, and every stage line
+was read rather than only the verdict. The ones this wave could plausibly have
+broken, all green:
+
+- **`fly-around: port vs board, 0 divergent frames` and its 5 REDs** — the only
+  2,200-frame port-vs-board window this project has. Nothing fires in it, so
+  nothing dies and no item can spawn; its green says this wave changed nothing
+  on the no-input path, which is exactly what §3's 6,184-frame `none` control
+  predicts and what the TREE CONTROL's identical `none` row measures directly.
+- `display list: the staged-bytes replay gate (1,901 frames)` and its 12 REDs.
+  **Bucket 17 is not in `PRODUCED_BUCKETS`**, so the item's writes do not enter
+  the substituted set.
+- `midboss DEATH` and its `RED [no-kill]` control.
+- `assets/integrity` and its four REDs, **including `[rom-byte]`, THE ROM-LEAK
+  GUARD** — two new shard files went through it.
+- `background shard gate` — the stage that FRESH-EXPORTS, i.e. the one an
+  exporter change has to survive.
+- `pixel gate` (100.0000 %) and its 9 REDs; `demo gate` and its 4.
+
+Also green on the final tree, and not part of `pgm.py check`:
+
+```
+node --test games/ddpdoj/tests/     767 pass, 0 fail, 0 SKIPPED   (was 727)
+node games/ddpdoj/tools/webgate.mjs 14 of 14 PASS                 (was 13 of 13)
+node tools/build-dist.mjs           clean, 5 deliberate exception(s)  <- UNMOVED
+BUNDLE                              480.7 KiB before the first frame (was 477.7)
+```
+
+**`PUBLISH_VERBATIM` DID NOT GROW.** [M] neither `spr/mask.shard12.u16.gz` nor
+`spr/col.shard12.u16.gz` is a verbatim ROM slice: the 139 item streams come from
+five disjoint runs (`$1B83xx`, `$1B84xx..$1B8Axx`, `$1B8Bxx`, `$1B8Cxx..$1BC9xx`
+and `$1E3Fxx..$1E42xx`), so the packed shard is not a single contiguous copy.
+That is the accident of packing order W47 §3 explains, and it is luck rather
+than virtue — stated as such.
+
+**AND THE GATE WAS RUN TWICE.** The first run came back ALL GREEN 51/0/0, but I
+had appended a comment block to `src/items.js` and two tests while it was in
+flight. W58 §6's own lesson is that a gate started before the tree settled is
+not evidence about the tree, so it was re-run from a clean tree and **the
+51/0/0 quoted above is the second run.**
+
+## 11. THE DONE-WHEN, EACH AS A MEASUREMENT
+
+| the brief asks for | `[M]` |
+|---|---|
+| items drop, fall, are drawable, can be collected — **say what you SAW in the browser** | §6b: **an item LIVE at +1.3 s, PICKED UP at +32.8 s with `$810406`/`$810408` 0/0 → 2/2 and both ROM cursors advancing, and again at +58.9 s to 4/4**, in Chrome, with the port's own RAM read out of the page. The pre-W61 deployed build on the same script has no item at all |
+| pool census to E5b's standard, over a LONG run | §3.1: **0 count-vs-slots disagreements over 6,100 frames**, back at ZERO on 5,493 of them with a 2,952-frame stretch; under a labelled `--stress`, **10 of the 10 reachable slots, 1,475 frees, 0 disagreements over 5,833 frames**, and the pool returns to zero and stays there once the pressure stops |
+| power level actually changes — shot behaviour at level 0 vs after pickup | §4: the SHOT slot-search window **4 → 5** and the pods' **4 → 5, one power step apart**, read out of the cartridge's own five-word lists; and **+10 kills / +61 score** against the HEAD tree over the same window |
+| **rank: state explicitly whether any rank write became reachable** | §5: **NO.** `$81B646`, `$81B65C`, `$81B65E` and `$81309E` are digit-for-digit identical between HEAD and W61 across three inputs. The hyper kinds are refused AT THE ALLOCATOR, so `$2530BE`/`$2530E6` are unreachable by construction. **One non-rank word DID move** — `$81B64A`, and §5 names the cause and the experiment that found it |
+| art: 139 streams; drawn % STAYS 100 % with zero missing; boot before and after | §6: **139 of 139 shipped**, 27.7 KiB deferred; **drawn 136,329 of 136,329 = 100.0 %, 0 distinct missing streams** on W58's own scenario, with bucket 16 unmoved at 2,606 and **bucket 17 new at 61 of 61**; **boot 477.7 → 480.7 KiB** |
+| gate ALL GREEN, unit tests | §10: **ALL GREEN — 51 passed, 0 failed, 0 SKIPPED**; **767 unit tests, 0 skipped** (was 727); **webgate 14 of 14** (was 13) |
 
 ---
 
@@ -569,3 +726,18 @@ control**, and this one agreed perfectly.
 - §7 [M]: **THE TREE CONTROL COULD NOT FAIL WHEN FIRST WRITTEN** -- a `?t=`
   cache buster reloads the top module and not its imports, so "HEAD" ran W61's
   code and agreed with it digit for digit.
+- §6 [M]: **drawn % STAYS AT 100.0 % with ZERO missing streams** on W58's own
+  scenario, bucket 16 unmoved at 2,606 and **bucket 17 new at 61 of 61**.
+- §6b [M]: **THE OWNER'S WAVE, IN A REAL BROWSER, BOTH BUILDS.** An item LIVE at
+  +1.3 s and PICKED UP at +32.8 s with the power words and BOTH ROM cursors
+  moving, and again at +58.9 s; the pre-W61 deployed build on the same script
+  has none. The missing-art addresses the page names on a 100-second run are
+  **the same ones the pre-W61 build names**, and not one is an item stream.
+- §6b [M]: the local server was killed; **zero `python http.server` processes**
+  and ports 8000/8791/8781/8125 all FREE, checked by process AND by port.
+- §10 [M]: **`pgm.py check` ALL GREEN 51/0/0, 0 SKIPPED**; unit tests
+  727 -> 767; `webgate` 13 of 13 -> **14 of 14**; `build-dist` clean with
+  **5 exceptions, UNMOVED** -- [M] neither shard-12 body is a verbatim ROM
+  slice, checked independently against all three sprite ROMs. **The gate was
+  run TWICE and the second run is the one quoted** (W58 §6's rule: a gate
+  started before the tree settled is not evidence about the tree).

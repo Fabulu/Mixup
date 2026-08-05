@@ -833,6 +833,18 @@ test('$27E99E is type-5 call #18 and it is now MADE, not listed', () => {
   assert.equal(TYPE5.itemDriver, 0x27e99e);
 });
 
+test('BUCKET 17 holds EXACTLY the item family: 25 records of 12 bytes', () => {
+  // `src/spritequeue.js` gives bucket 17 300 capBytes, and `RECORD_BYTES` is
+  // 12, so the bucket's capacity is 25 records -- the same 25 as the pool.
+  // Every item emits at most ONE record per frame (its body ends in `jmp
+  // $23EB06`, and a COLLECTED one goes to the stepper instead), so the pool can
+  // fill the bucket exactly and cannot overrun it into bucket 18's buffer.
+  const B17 = BUCKETS[17];
+  assert.equal(B17.capBytes / 12, ITEM.slots);
+  assert.equal(B17.counter, 0x80afce, '$23EB0C adda.w $80AFCE,A0');
+  assert.equal(B17.buffer, 0x808500, '$23EB06 lea $808500,A0');
+});
+
 test('the item census is a SECOND instrument: it scans all 25 slots and does '
   + 'not consult $8171BA', () => {
   const ram = new Ram();
