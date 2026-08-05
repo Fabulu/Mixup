@@ -148,6 +148,27 @@ function decode(words) {
 }
 
 // ------------------------------------------------------------ one checkpoint
+// ===========================================================================
+// THE RED VALIDATION.  Every one of these THREE mutations is a defect this tool
+// actually shipped and was caught doing, so `--break` is not a hypothetical:
+// it re-runs the report with the mutation on and REQUIRES the answer to move.
+// A tool nobody has seen give the wrong answer is not an instrument.
+// ===========================================================================
+export const MUTATIONS = {
+  'type-from-word0': 'read the enemy type from the WORD at +$0 instead of the '
+    + 'byte at +$C. That word is `(caller D3 + band index) | $8000`, so the '
+    + 'census comes out as a tidy contiguous $00..$29 and looks entirely real.',
+  'desc-only': "diagnostic 68's instrument: match a slot to an entry on "
+    + '(descriptor, width, height) alone instead of on all five hardware words. '
+    + 'It cannot tell two objects carrying the same sprite apart.',
+  'bucket-no-head-search': "do not search for bucket 0's own length: start the "
+    + 'in-order greedy at queue index 0, as this tool first did. Bucket 1 then '
+    + "never matches, the leftover is assigned to bucket 0, and EVERY record on "
+    + 'the screen is attributed to bucket 0 -- which is a plausible-looking '
+    + 'answer, because bucket 0 really is the biggest bucket.',
+};
+let BREAK = null;
+
 function readCheckpoint(ram) {
   // ---- the emitted display list, exactly as the hardware reads it
   const entries = [];
@@ -165,7 +186,7 @@ function readCheckpoint(ram) {
     const rec = ENEMY.table + i * ENEMY.stride;
     const tw = ram.u16(rec);
     if (tw === 0) continue;
-    const type = ram.u8(rec + E.type);
+    const type = BREAK === 'type-from-word0' ? (tw & 0xff) : ram.u8(rec + E.type);
     const runLen = ram.u16(rec + E.runLen);
     const sub = ram.u32(rec + E.subRec);
     const inA = sub >= POOL_A && sub < POOL_A + POOL_A_N * SUB_STRIDE;
@@ -226,20 +247,27 @@ function readCheckpoint(ram) {
     return { marks, placed: cursor - head, end: cursor };
   };
   let best = null;
-  const cands = new Set([nq]);
-  for (const [, get] of scache) {
-    const first = get(0);
-    for (let j = 0; j < nq; j++) if (eq(first, qcache[j])) cands.add(j);
+  const cands = BREAK === 'bucket-no-head-search' ? new Set([0]) : new Set([nq]);
+  if (BREAK !== 'bucket-no-head-search') {
+    for (const [, get] of scache) {
+      const first = get(0);
+      for (let j = 0; j < nq; j++) if (eq(first, qcache[j])) cands.add(j);
+    }
+    cands.add(0);
   }
-  cands.add(0);
   for (const h of [...cands].sort((a, b) => a - b)) {
     const g = greedy(h);
     // score is what buckets 1..29 EXPLAIN.  Scoring `h + placed` instead makes
     // "the whole queue is bucket 0" a maximum and the reconstruction silently
     // returns b0 for everything -- which is exactly what it did first.
-    if (!best || g.placed > best.placed) best = { h, ...g };
+    const score = g.placed;
+    if (!best || score > (best.score ?? -1)) best = { h, score, ...g };
   }
-  const head = best.placed ? best.h : nq;
+  const head = (best.placed || BREAK === 'bucket-no-head-search')
+    ? best.h : nq;
+  if (BREAK === 'bucket-no-head-search' && !best.placed) {
+    for (let j = 0; j < nq; j++) bucketOf[j] = 0;
+  }
   for (let j = 0; j < head; j++) bucketOf[j] = 0;
   if (best.placed) {
     for (const [bi, at, n] of best.marks) for (let j = 0; j < n; j++) bucketOf[at + j] = bi;
@@ -265,7 +293,8 @@ function readCheckpoint(ram) {
 
 // ------------------------------------------------------------------ the sweep
 function args(argv) {
-  const a = { manifest: null, from: null, to: null, types: null, json: null, records: 6 };
+  const a = { manifest: null, from: null, to: null, types: null, json: null,
+    records: 6, break: null, quiet: false };
   for (let i = 0; i < argv.length; i++) {
     const v = () => argv[++i];
     switch (argv[i]) {
@@ -275,6 +304,8 @@ function args(argv) {
       case '--type': a.types = new Set(v().split(',').map((x) => parseInt(x, 16))); break;
       case '--json': a.json = v(); break;
       case '--records': a.records = +v(); break;
+      case '--quiet': a.quiet = true; break;
+      case '--break': a.break = v(); break;
       default: if (argv[i].startsWith('--')) throw new Error(`unknown flag ${argv[i]}`);
     }
   }
@@ -282,8 +313,62 @@ function args(argv) {
   return a;
 }
 
+let LAST = null;
+
+/** THE DIFFERENTIAL RED CHECK.  Run the report unmutated, then mutated, and
+ *  REQUIRE the mutation to move the answer.  Comparing against "all types
+ *  drawn" instead of against the baseline is exactly the defect W69 §9 caught
+ *  in its own red check, so this compares against the baseline. */
+function breakCheck(argv, name) {
+  if (!MUTATIONS[name]) {
+    console.log(`unknown mutation '${name}'. have:`);
+    for (const [k, v] of Object.entries(MUTATIONS)) console.log(`  ${k}
+      ${v}`);
+    return 1;
+  }
+  const rest = argv.filter((x, i) => x !== '--break' && argv[i - 1] !== '--break')
+    .concat(['--quiet']);
+  const silent = (fn) => { const o = console.log; console.log = () => {}; try { return fn(); } finally { console.log = o; } };
+  BREAK = null; silent(() => main(rest)); const base = LAST;
+  BREAK = name; silent(() => main(rest)); const mut = LAST;
+  BREAK = null;
+  console.log(`BREAK '${name}' -- ${MUTATIONS[name]}
+`);
+  const key = (r) => JSON.stringify(r.types.map((t) => [t.type, t.art, t.matched,
+    t.descOnly, t.unmatched, t.buckets]));
+  const moved = [];
+  const bm = new Map(base.types.map((t) => [t.type, t]));
+  for (const t of mut.types) {
+    const b = bm.get(t.type);
+    if (!b) { moved.push(`type $${t.type.toString(16)} EXISTS ONLY UNDER THE MUTATION`); continue; }
+    if (b.art !== t.art || b.matched !== t.matched || b.descOnly !== t.descOnly
+      || b.unmatched !== t.unmatched
+      || JSON.stringify(b.buckets) !== JSON.stringify(t.buckets)) {
+      moved.push(`type $${t.type.toString(16).toUpperCase().padStart(2, '0')}: `
+        + `art ${b.art}->${t.art} exact ${b.matched}->${t.matched} `
+        + `soft ${b.descOnly}->${t.descOnly} notdrawn ${b.unmatched}->${t.unmatched} `
+        + `buckets ${JSON.stringify(b.buckets)}->${JSON.stringify(t.buckets)}`);
+    }
+  }
+  for (const t of base.types) if (!mut.types.some((x) => x.type === t.type)) {
+    moved.push(`type $${t.type.toString(16)} DISAPPEARS under the mutation`);
+  }
+  console.log(`  baseline types ${base.types.length}, mutated types ${mut.types.length}`);
+  for (const l of moved.slice(0, 20)) console.log('  ' + l);
+  if (moved.length > 20) console.log(`  ... and ${moved.length - 20} more`);
+  if (key(base) === key(mut)) {
+    console.log('FAIL: the mutation changed NOTHING. This check cannot fail, '
+      + 'so it is not a check.');
+    return 1;
+  }
+  console.log(`RED OK: the mutation moved ${moved.length} of `
+    + `${base.types.length} types.`);
+  return 0;
+}
+
 function main(argv) {
   const a = args(argv);
+  if (a.break) return breakCheck(argv, a.break);
   const man = JSON.parse(fs.readFileSync(a.manifest, 'utf8'));
   const dir = path.join(path.dirname(a.manifest), man.dir || 'ckpt');
   const rungs = man.rungs.filter((r) => (a.from === null || r.lf >= a.from)
@@ -345,20 +430,35 @@ function main(argv) {
         const soft = byDesc.get(kd);
         const d = decode(p.words);
         const kind = `${hx(d.offs)}/${d.width}x${d.height}/pal${d.color}`;
-        const kk = s.kinds.get(kind) ?? { n: 0, emitted: 0, buckets: new Map(),
-          xs: [], ys: [], lfs: [] };
+        const kk = s.kinds.get(kind) ?? { n: 0, emitted: 0, soft: 0,
+          buckets: new Map(), xs: [], ys: [], lfs: [] };
         kk.n++;
         if (!s.kinds.has(kind)) s.kinds.set(kind, kk);
-        if (hit && hit.length) {
-          s.matched++; emitTot++; kk.emitted++;
-          const b = hit[0].bucket;
-          kk.buckets.set(b, (kk.buckets.get(b) ?? 0) + 1);
-          s.buckets.set(b, (s.buckets.get(b) ?? 0) + 1);
-        } else if (soft && soft.length) { s.descOnly++; } else { s.unmatched++; }
-        if (kk.xs.length < 400) { kk.xs.push(d.x); kk.ys.push(d.y); kk.lfs.push(r.lf); }
+        // THE BOARD'S OWN ENTRY, not my prediction of it.  An exact 80-bit hit
+        // is the strong case; a descriptor+size hit still PROVES THE CARTRIDGE
+        // DREW THIS SPRITE THIS FRAME, and its position and bucket are then
+        // read off the board's entry rather than off the arithmetic that missed
+        // -- five of the ~130 enqueue stubs take a different pair of position
+        // fields ($23DBCA/$23DF86/$23DF58 are type $82's, per W68 §2.3), so a
+        // soft hit is a shortfall of MY predictor, not of the cartridge.
+        const strong = BREAK === 'desc-only' ? soft : hit;
+        const board = (strong && strong.length) ? strong[0]
+          : (soft && soft.length ? soft[0] : null);
+        if (strong && strong.length) { s.matched++; emitTot++; }
+        else if (soft && soft.length) { s.descOnly++; emitTot++; }
+        else s.unmatched++;
+        if (board) {
+          kk.emitted++;
+          if (!(strong && strong.length)) kk.soft++;
+          kk.buckets.set(board.bucket, (kk.buckets.get(board.bucket) ?? 0) + 1);
+          s.buckets.set(board.bucket, (s.buckets.get(board.bucket) ?? 0) + 1);
+        }
+        const shown = board ? board.d : d;
+        if (kk.xs.length < 400) { kk.xs.push(shown.x); kk.ys.push(shown.y); kk.lfs.push(r.lf); }
         if (s.samples.length < a.records) {
-          s.samples.push({ lf: r.lf, ...d, emitted: !!(hit && hit.length),
-            bucket: hit && hit.length ? hit[0].bucket : null, slot: hx(sl.addr),
+          s.samples.push({ lf: r.lf, ...shown, emitted: !!board,
+            exact: !!(strong && strong.length),
+            bucket: board ? board.bucket : null, slot: hx(sl.addr),
             hp: sl.hp, coll: sl.coll });
         }
         s.firstLf = s.firstLf === null ? r.lf : Math.min(s.firstLf, r.lf);
@@ -383,7 +483,7 @@ function main(argv) {
 
   // ------------------------------------------------------------------ report
   const types = [...T.values()].sort((x, y) => y.art - x.art);
-  console.log('TYPE   objF  liveSF  collSF   artSF  EXACT  desc-only  UNMATCHED'
+  console.log('TYPE   objF  liveSF  collSF   artSF  EXACT  desc-only  NOT-DRAWN'
     + '   first..last lf');
   for (const s of types) {
     console.log(`$${s.type.toString(16).toUpperCase().padStart(2, '0')}`
@@ -407,7 +507,8 @@ function main(argv) {
       const xr = k.xs.length ? `x ${Math.min(...k.xs)}..${Math.max(...k.xs)}` : '';
       const yr = k.ys.length ? `y ${Math.min(...k.ys)}..${Math.max(...k.ys)}` : '';
       console.log(`    ${kind.padEnd(30)} n=${String(k.n).padStart(5)} `
-        + `emitted=${String(k.emitted).padStart(5)}  ${bs.padEnd(18)} ${xr} ${yr}`
+        + `drawn=${String(k.emitted).padStart(5)}${k.soft ? `(soft ${k.soft})` : ''} `
+        + ` ${bs.padEnd(18)} ${xr} ${yr}`
         + `  lf ${Math.min(...k.lfs)}..${Math.max(...k.lfs)}`);
     }
   }
@@ -442,7 +543,7 @@ function main(argv) {
         unmatched: s.unmatched, firstLf: s.firstLf, lastLf: s.lastLf,
         handlers: [...s.handlers], buckets: [...s.buckets],
         kinds: [...s.kinds].map(([k, v]) => ({
-          kind: k, n: v.n, emitted: v.emitted, buckets: [...v.buckets],
+          kind: k, n: v.n, emitted: v.emitted, soft: v.soft, buckets: [...v.buckets],
           x: v.xs, y: v.ys, lf: v.lfs,
         })),
         samples: s.samples,
@@ -452,6 +553,16 @@ function main(argv) {
     }, null, 1));
     console.log(`\njson -> ${a.json}`);
   }
+  // the compact signature `--break` compares.  Per type: how many slot-frames
+  // carried a sprite, how many the board drew on an exact 80-bit match, how
+  // many only on the descriptor, how many it did not draw, and the buckets.
+  LAST = {
+    types: types.map((s2) => ({
+      type: s2.type, art: s2.art, matched: s2.matched, descOnly: s2.descOnly,
+      unmatched: s2.unmatched, buckets: [...s2.buckets],
+    })),
+    perLf: perLfTotals,
+  };
   return 0;
 }
 
