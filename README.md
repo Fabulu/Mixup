@@ -1,62 +1,135 @@
 # Mixup
 
 Hand-translating console games from their disassembly into readable, modifiable
-JavaScript — **not** emulation. Every ROM routine becomes a JS function you own,
-so the game can be read, retuned and modded like any other source code.
+JavaScript — **not** emulation. There is no CPU interpreter here. Every ROM
+routine is read out of the original machine code and rewritten as a JS function
+you own, carrying the address it came from, so the game can be read, retuned and
+modded like any other source code.
 
-## Phase 1 — Batman: Return of the Joker
+Fidelity is not a claim, it is a measurement: an emulator runs the real ROM
+headless beside the port and the two are diffed field by field, frame by frame.
 
-Game Boy, Sunsoft 1992. **Complete**, and the reason the rest of this exists:
-it is where the method was worked out. Everything below describes it.
+## The three games
 
-Verified **bit-exact against the original cartridge**, frame by frame — and in
-places pixel by pixel. The game is playable start to finish, title screen to
-end credits.
+| game | machine | state |
+|---|---|---|
+| **Batman: Return of the Joker** — Sunsoft, 1992 | Game Boy | **complete** — title screen to end credits, bit-exact |
+| **Gradius** — Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
+| **DoDonPachi DaiOuJou (Black Label)** — Cave / AMI, 2002 | IGS PGM arcade | stage 1 playable and being finished |
+
+Each game lives in its own directory behind `games/index.json`, and the launcher
+picks a game before it loads any game code. That structure exists for a reason
+beyond tidiness: the long-term goal is games that can be **combined** — Batman
+playable inside Gradius, the Vic Viper playable in Batman.
 
 ## No ROM in this repository
 
-The cartridge is copyrighted Sunsoft material, so neither it nor anything
-derived from it is committed here: no ROM, no disassembly listings, no
-extracted graphics, level maps or music. `.gitignore` enforces that.
+Three cartridges, three rights holders, and none of their material is here: no
+ROM, no disassembly listing, no extracted graphics, level maps, sprite art or
+music. `.gitignore` enforces it, and `tools/build-dist.mjs` enforces it again on
+what gets *published* — it reads every ROM present and refuses to build a site
+containing any file that appears byte-for-byte inside one. There is no
+allowlist.
 
-Everything derived is regenerated from a ROM **you** legally own:
+Everything derived is regenerated from ROMs **you** legally own:
 
 ```sh
-# put your own copy here, named exactly:
+# Batman — put your own copy at the repo root, named exactly:
 #   Batman - Return of the Joker (USA, Europe).gb
-python tools/export_assets.py     # -> games/batman/assets/  (maps, tiles, metasprites, spawns)
-python tools/gen_tunables.py      # -> games/batman/src/tunables.js  (read from the ROM itself)
-python tools/banktrace.py "Batman - Return of the Joker (USA, Europe).gb" --outdir disasm
+python tools/export_assets.py     # -> games/batman/assets/
+python tools/gen_tunables.py      # -> games/batman/src/tunables.js
+
+# Gradius — "Gradius (USA).nes" at the repo root
+python games/gradius/tools/export_assets.py
+
+# DoDonPachi DaiOuJou — the ddpdojblk MAME set
+python games/ddpdoj/tools/export-tables.py
+node   games/ddpdoj/tools/export-web.mjs
 ```
 
-The No-Intro copy this was built against is CRC `5124bbec`, SHA-1
-`345a332175f58304f91111a13b770662e5ea92c3`.
+The copies this was built against: Batman SHA-1
+`345a332175f58304f91111a13b770662e5ea92c3`, Gradius SHA-1
+`92645fe142861c3d3fda209bb906ad2b0e353988`, DaiOuJou MAME set `ddpdojblk`
+(the `maincpu` region is 6 MiB; its FNV-64 is recorded in
+`games/ddpdoj/game.json`). Each game's `game.json` carries the full identity
+block, so a differently-dumped copy announces itself instead of silently
+diverging.
 
 ## Running it
 
-Export the assets from your own cartridge first (see above), then:
+Export the assets from your own cartridges first, then:
 
 ```sh
 python -m http.server 8000     # module imports and fetch need a real server
 # then open http://localhost:8000
 ```
 
-Arrow keys or `A`/`D` move, `X` or Space jumps, `Z`/`Y`/`C` attacks, `Up` fires
-the bat-rope, `Enter` is START. There are touch controls on phones.
+The launcher lists whichever games have assets present. Gradius has its own
+start screen (`games/gradius/start.html`) with level select, a starting
+power-up picker, mod presets and the mod catalogue.
+
+## The method
+
+This is the part worth reading even if you never touch the code.
+
+**The oracle.** An emulator runs the real ROM headless, dumps a per-frame state
+vector, and the port's own vector is diffed against it field by field. The rule
+is to report the **first** divergence per field, not the loudest one — a
+downstream symptom is not the bug. One emulator per machine:
+
+| game | emulator | driven by |
+|---|---|---|
+| Batman | PyBoy | Python |
+| Gradius | Mesen 2.1.1 | Lua |
+| DaiOuJou | MAME 0.288, `-video none -sound none -nothrottle` | Lua |
+
+It exists so that "faithful" is a checkable property rather than a vibe, and it
+has caught a long list of bugs that reading the disassembly did not — from an
+unsigned-byte terminal-velocity clamp, to Batman being drawn mirrored for his
+entire run, to a carry that failed to propagate through an `RTS` and borrowed
+1/256 of a pixel on 243 of 3,826 frames.
+
+**Enumerate statically, validate dynamically.** The ROM is the *inventory* —
+it tells you what exists. The oracle is the *verdict* — it tells you what is
+right. Neither substitutes for the other, and confusing them is how this project
+has produced its most confident wrong answers. `docs/knowledge/09`.
+
+**Coverage is branches, not frames.** A million frames through one arm of a
+dispatch is not coverage. `docs/knowledge/10`.
+
+`docs/knowledge/` is the cross-game distillation — the oracle method, the eight
+trap shapes, what makes a check capable of failing, clocks and frame rates, lag
+and slowdown, rank and dynamic difficulty. `docs/00-MASTER-REFERENCE.md` is the
+authoritative Batman spec; `docs/worklog/` is the per-wave record for the two
+games in flight.
+
+Two traps are worth knowing before reading any of this code:
+
+- **Follow the fall-through, not the label.** A routine that looks like it
+  returns often runs straight on into the next one. This is the most expensive
+  trap in the project's history and it has bitten repeatedly, once invalidating
+  an already-shipped handler.
+- **Byte-exact data is not a correct picture.** A screen can match the
+  cartridge's VRAM to the byte and still render wrong, because what is missing
+  is not data but whether anything *draws* it. That is why several gate stages
+  compare pixels, and why "renders without throwing" is not a check.
 
 ## Layout
 
 | path | what |
 |---|---|
 | `games/index.json` | the registry the launcher reads before it loads any game code |
-| `games/batman/game.json` | the manifest: screen, frame rate, entry point, levels, options |
-| `games/batman/src/` | the port — 60 files, 18,069 lines: player, enemies, collision, actors, doors, the subsystems, both death sequences, every screen, the renderer and the sound driver |
-| `games/batman/tests/` | 32 files, 728 unit tests — they run **without** the ROM, on synthetic fixtures |
-| `games/batman/assets/` | extracted from your own cartridge; never committed |
-| `tools/` | ROM extractors, the disassembler, the coverage audit and the test runner |
-| `tools/oracle/` | the PyBoy-based reference oracle (a test tool; it never ships) |
-| `docs/` | the master reference and the port/verification plans |
+| `games/<id>/game.json` | the manifest: ROM identity, screen, frame rate, entry point, levels, options |
+| `games/<id>/src/` | the port |
+| `games/<id>/tests/` | unit tests — they run **without** any ROM, on synthetic fixtures |
+| `games/<id>/assets/` | extracted from your own copy; never committed |
+| `games/<id>/tools/` | that game's extractors, oracle and gates |
+| `tools/` | Batman's extractors and disassembler, the shared build and publish path |
+| `tools/oracle/` | Batman's PyBoy oracle (a test tool; it never ships) |
+| `docs/knowledge/` | the cross-game lessons — read this before starting a new game |
+| `docs/worklog/` | the per-wave record for Gradius and DaiOuJou |
 | `SAVEPOINT.md` | the working map: what is done, what is not, and the traps |
+| `HANDOVER.md` | the whole project in one file, for picking it up cold |
 
 Two files in `games/batman/src/` are load-bearing for ORDER and say so in their
 headers: `game/frame.js` (the `$0567` main-loop body — call order here is
@@ -64,112 +137,117 @@ shadow-OAM order, which is DMG sprite priority and the ten-sprites-per-line cut)
 and `enemies/driver.js` (the `$FFA7` parity that reverses the slot walk). Each
 names the test that guards it.
 
-`docs/00-MASTER-REFERENCE.md` is the authoritative technical spec — memory map,
-level and metasprite formats, the sound engine, the game state machine.
-`docs/03-VERIFICATION.md` explains how fidelity is measured, and carries a
-running list of ROM behaviours counter-intuitive enough to have caused real
-bugs. Two are worth knowing before reading any of this code:
-
-- **Follow the fall-through, not the label.** A routine that looks like it
-  returns often falls straight into the next one. This has cost real work nine
-  separate times, once invalidating an already-shipped handler.
-- **Byte-exact data is not a correct picture.** A screen can match the
-  cartridge's VRAM to the byte and still render wrong, because what is missing
-  is not data but whether anything draws it. That is why three gate stages
-  compare pixels.
-
 ## Testing
 
+There is **one gate per game**, and they are separate runners:
+
 ```sh
-npm run test-all              # all 27 stages
-npm run test-all -- --fast    # skip every stage that needs PyBoy
-npm run test-all -- --only raster-bands     # one stage
-npm test                      # unit tests only
-npm run typecheck             # tsc over games/batman/src/ — no ROM needed
+npm test                                        # Batman unit tests only
+npm run test-all                                # Batman gate — 27 stages
+node games/gradius/tools/test-all.mjs           # Gradius gate — 12 stages
+node --test games/gradius/tests/                # Gradius unit tests
+node --test games/ddpdoj/tests/                 # DaiOuJou unit tests
+npm run typecheck                               # tsc over the ports — no ROM needed
 ```
 
-27 stages, all green with zero skips: 728 unit tests, a static typecheck, 50
-frame-exact input scenarios, and dedicated oracles for map objects, doors, the per-level subsystems, both death
-sequences, the raster program, progress flow, every screen, and all 47 sound
-ids. Three of them compare **pixels** rather than memory — the stage-intro
-card, the ending and the death sequence — each added after a real bug turned
-out to be invisible to byte-exact VRAM comparison.
+`node tools/publish.mjs` is the only thing that runs **all** of them, and it
+refuses to publish on a red gate *or on any skip*. `--only gradius` /
+`--only ddpdoj` gate one game; `--dry` gates and builds without deploying.
 
-The oracle runs the real ROM headless under PyBoy and diffs our state against
-it frame by frame. It exists so "faithful" is a checkable property rather than
-a vibe — and it has caught a long list of bugs that reading the disassembly did
-not, from an unsigned-byte terminal-velocity clamp to Batman being drawn
-mirrored for his entire run.
+Current: **2,399 unit tests green** — 740 Batman, 725 Gradius, 934 DaiOuJou.
+The Gradius gate is not yet wired into the root runner (its header says so and
+why: two writers in one file).
 
-## Status
+**A skip is not a pass.** Both gate runners tell apart a legitimate
+environmental skip (no emulator, no cartridge) from a skip caused by a moved
+path, which is a failure — because `ALL GREEN — 2 passed, 24 skipped` is the
+most dangerous output a test runner can produce. `docs/knowledge/03`.
 
-**Feature complete.** All fourteen levels are playable, every boss included, and
-the game runs from the title screen through to the end credits.
+**A new check must be seen to fail.** Revert the fix, watch it go red, restore.
+Checks here have sat green through the very bug they were written for, in four
+different ways: one asserted only that rendering did not throw, one set up state
+the application never has, one sampled frames that never changed, and one took
+the answer in as an argument.
 
-Bit-exact and covered by the gate:
+## Where each game stands
 
-- player physics, collision and slopes, camera, wall-cling and wall-jump,
-  the bat-rope, punch and batarangs, and the animation selector
-- all 13 enemy AI states, every boss, and the hearts enemies drop
-- all 11 map-object types, the door sequencer, breakables and pickups
-- the six `sub_00_2CBE` subsystems — conveyors, respawners, the level-11
-  entrance freeze, level 12's collapsing floor
-- both death sequences at their real length, and the boss-clear fanfare
-- all eight arms of the `$0857` raster program — the parallax sky, the water
-  band, level 6's track
-- the sound driver and DMG APU: **all 47 ROM sound ids**, SFX over live music,
-  and the fader, across 52 recordings and 29 800 ticks
-- every screen — the SUNSOFT copyright screen, title, press-start flash, round
-  select, options and its squash, the stage-intro card, STAGE CLEAR, and the
-  ending
+### Batman — complete
+
+27/27 gate stages with zero skips, 50/50 oracle scenarios bit-exact over 14,519
+frames, 96.023% mean pixel match across the 73-frame visual suite. All fourteen
+levels playable, every boss, title screen through to the end credits.
+
+Bit-exact and covered by the gate: player physics, collision and slopes, camera,
+wall-cling and wall-jump, the bat-rope, punch and batarangs; all 13 enemy AI
+states and every boss; all 11 map-object types, the door sequencer, breakables
+and pickups; the six `sub_00_2CBE` subsystems; both death sequences at their
+real length; all eight arms of the `$0857` raster program; the sound driver and
+DMG APU across all 47 ROM sound ids, 52 recordings and 29,800 ticks; and every
+screen from the SUNSOFT copyright card to the ending.
 
 **Nothing is captured.** Every screen is BUILT from ROM data and diffed against
-the cartridge's own VRAM; the two screen captures this project once carried are
-retired and their ripper scripts deleted. `src/` contains no ROM data at all —
-every table travels through `assets/manifest.json`, and `tools/verify_assets.py`
-re-reads each one from raw file offsets so the exporter cannot verify itself.
+the cartridge's own VRAM. `src/` contains no ROM data at all — every table
+travels through `assets/manifest.json`, and `tools/verify_assets.py` re-reads
+each one from raw file offsets so the exporter cannot verify itself.
 
-Known remaining gaps, all small and all documented in `SAVEPOINT.md`: the melee
-hit-spark effect, the OAM ordering of the GAME OVER lettering's own burst (the
-HUD half of that alternation is ported), and coverage — not code — for level 6's alternate
-tile-animation table, which is in fact the DOMINANT arm once the player moves
-(measured: 732 of 800 frames), not the unreachable one this sentence used to
-claim. One deliberate deviation is documented
-in `drawWindow`: the water's 50% dither is reproduced spatially rather than as
-the hardware's 30 Hz alternation, because on a modern display that is a
-photosensitivity hazard rather than the translucency a DMG's slow LCD made of
-it.
+Two deliberate deviations, both documented, neither to be "fixed": the water's
+50% dither is reproduced spatially rather than as the hardware's 30 Hz
+alternation (on a modern display that alternation is a photosensitivity hazard
+rather than the translucency a DMG's slow LCD made of it), and a parallax feeder
+race kept the way that measured better — the lookahead costs 6,288 bad
+scanlines, dropping it costs 8,112.
 
-`tools/audit_coverage.py` answers "what have we missed?" with a number — it
-cross-references every routine the disassembler finds an xref to against every
-address the port cites. It currently reports **no region of the ROM the port
-has never touched**.
+### Gradius — playable end to end
+
+All seven stages, the ending, and the loop back round. Measured, not assumed:
+598 of 598 wave records spawn a ported handler across all seven stages; 41 of 42
+`$AE1C` enemy-dispatch entries; all 16 play sub-states; all 7 `$80D4` game
+modes. `$1A` is no longer pinned, so the game wraps to loop 2 — and loops 2, 3
+and 6 sweep frame-for-frame identically, because every gameplay reader of `$1A`
+has three tiers, so difficulty tops out at loop 3 rather than at the ending
+table's 7.
+
+Six crashes that had shipped were found and fixed after `stageledger.py`'s
+RUNNABLE column turned out to mean "statically guarded", not "plays" — the
+replacement, `stagesweep.mjs`, actually runs 112,000 frames in 2.7 s.
+
+**19 mods** in three categories (physics, combat, chaos) and 4 presets, on a
+start screen with level select and a starting power-up picker. They include
+`heal-gradius-syndrome` (respawn in place with your loadout, instead of the
+checkpoint death-spiral) and `always-on-enemies`, which lifts the NES
+sprite-per-scanline cap without removing the flicker the game uses deliberately.
+
+### DoDonPachi DaiOuJou — stage 1, in flight
+
+The active work. Stage 1 is playable: enemies with bodies that draw, move, fire
+and die; shot, laser and bomb all working and visible; impacts sparking;
+explosions; the midboss killable; P capsules dropping and powering up; the stage
+running to its end at logic frame 19,217.
+
+Honest about what is not done: several enemy types are collidable but still
+emit no sprite record, the stage boss is not ported, and sound has not started.
+The standing bar for this game is **two** conditions — feature complete *and*
+oracle-clean — because satisfying one and reporting the pair is a mistake this
+project has made more than once. `docs/worklog/ddpdoj/` carries the per-wave
+record and the open debts.
 
 ## Contributing
 
 `CONTRIBUTING.md` has the rules that actually matter. The short version:
-**measure it against the cartridge, or don't change it.** There is a correct
-answer to every question in this repository and it is available — a PyBoy
-oracle runs the real ROM and diffs our state against it — so "I think it works
-like this" is never the standard.
+**measure it against the ROM, or don't change it.** There is a correct answer to
+every question in this repository and it is available, so "I think it works like
+this" is never the standard.
 
-Two habits that are not optional:
-
-- **Cite the ROM address** on every non-obvious line. It is how the next person
-  checks your work without re-deriving it.
-- **A new check must be seen to fail.** Revert the fix, watch it go red,
-  restore. Four checks here sat green through the very bug they were written
-  for, in four different ways: one asserted only that rendering did not throw,
-  one set up state the application never has, one sampled frames that never
-  changed, and one took the answer in as an argument. `docs/03-VERIFICATION.md`
-  lessons 37-41.
+Two habits that are not optional: **cite the ROM address** on every non-obvious
+line, and **make a new check fail before you trust it**.
 
 ## Licence
 
-MIT — see `LICENSE`. That covers this repository's own work: the port, the
+MIT — see `LICENSE`. That covers this repository's own work: the ports, the
 tooling, the tests and the docs.
 
-It grants nothing over *Batman: Return of the Joker*, which remains Sunsoft's.
+It grants nothing over *Batman: Return of the Joker*, *Gradius* or *DoDonPachi
+DaiOuJou*, which remain the property of Sunsoft, Konami and Cave respectively.
 No ROM, listing or extracted asset is distributed here, and nothing runs without
-a cartridge image you supply yourself. `NOTICE.md` sets out exactly what is and
-is not included, and what this project is legally.
+ROM images you supply yourself. `NOTICE.md` sets out exactly what is and is not
+included, and what this project is legally.
