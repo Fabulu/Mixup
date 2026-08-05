@@ -97,6 +97,7 @@ import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
 import { handlerMidboss } from './midboss.js';
 import { scoreHit, scoreKill } from './score.js';
 import { spawnEffect, remapBucket, REMAP, B } from './effects.js';
+import { spawnItem } from './items.js';
 
 /** `addi.l` -- a 32-bit add, where the low half's carry REACHES the high half.
  *  Named because the port also has `addi.w` pairs around a `swap`, which do
@@ -1144,23 +1145,40 @@ function fire85(ram, rom, a5, a6, ctx) {
 }
 
 // ---- $275AF2..$275BA6: the DEATH sequence --------------------------------
-// Six unported subsystem calls and a free.  The `$27E812` D0 arithmetic IS
-// transcribed even though `$27E812` itself is a note, because it decides
-// whether the routine is called ONCE or TWICE -- that is this handler's own
-// control flow, not the callee's.
+// **THE DROP THE OWNER WAS MISSING IS TWELVE INSTRUCTIONS ABOVE AN EXPLOSION
+// W54 ALREADY PORTED**, and until W61 the port ran the explosion and skipped
+// the drop in the same twelve.  `$275B06` and `$275B1A jsr $27E812` are the
+// only two of the routine's nine `$27E812` sites this port can reach -- the
+// other seven are the player's own death (behind the unported `$249F8A`), the
+// stage-1 boss (0 of 111 script entry points ported) and two bodies recon 59
+// §9.1 could not attribute.
+//
+//   $275AF2  moveq #$25,D0 / jsr $28615E   THE KILL SCORE.        ported W34
+//   $275AFA  moveq #$0,D0
+//   $275AFC  cmpi.b #$86,($C,A5) / bne     ($C,A5) is THE TYPE BYTE
+//   $275B04  moveq #$8,D0                  type $86 drops KIND $8
+//   $275B06  jsr $27E812                   ** DROP #1 **          W61
+//   $275B0C  tst.w $81308C / bne $275B20   the two-player gate
+//   $275B14  cmpi.w #$8,D0 / beq $275B20
+//   $275B1A  jsr $27E812                   ** DROP #2 **          W61
+//   $275B20  moveq #$5,D0 / jsr $289004    the explosion.         ported W54
+//
+// **THE DROP IS GUARANTEED AND THERE IS NO RNG IN IT** -- [M] no `$242B3C`,
+// `$242E24`, `$803916` or `$803917` appears anywhere in `$275AF2..$275B20`.
+// The only conditions are the enemy's own type byte and `$81308C`, and
+// `src/shots.js` has `$81308C` MEASURED at `$0001` on this tree, so **type `$85`
+// drops ONE power-up here and would drop TWO in a two-player game.**  (The
+// ITEM, once it exists, does draw from the RNG -- `src/items.js init27EACE`.)
 function deathSeq85(ram, rom, a5, a6, ctx, d1) {
   const u = ctx.unported;
   scoreKill(ram, rom, ctx, 0x25, d1);                  // $275AF2/$275AF4
   // $275AFA moveq #$0,D0 / $275AFC cmpi.b #$86,($C,A5) / $275B04 moveq #$8,D0
-  let d0 = ram.u8(a5 + 0x0c) === 0x86 ? 8 : 0;
-  u?.note(0x27e812, `$27E812 pool spawn (D0=$${d0.toString(16)}) in $85/$86 death `
-    + `rec $${a5.toString(16)} -- the $816B7A pool, driven by type-5 call #18 `
-    + `$27E99E, also unported`);                       // $275B06 jsr $27E812
+  const d0 = ram.u8(a5 + 0x0c) === 0x86 ? 8 : 0;
+  spawnItem(ram, rom, ctx, d0, a6, 0x275b06);          // $275B06 jsr $27E812
   // $275B0C tst.w $81308C / bne $275B20 ; $275B14 cmpi.w #$8,D0 / beq $275B20
   if (ram.u16(0x81308c) === 0 && d0 !== 8) {
-    u?.note(0x27e812, `$27E812 SECOND pool spawn (D0=$${d0.toString(16)}) in `
-      + `$85 death rec $${a5.toString(16)} -- two-player path ($81308C == 0)`);
-  }                                                    // $275B1A jsr $27E812
+    spawnItem(ram, rom, ctx, d0, a6, 0x275b1a);        // $275B1A jsr $27E812
+  }
   // $275B20/$275B4C/$275B72: three effect allocations, each followed by field
   // writes into the record `$289004` would have returned in A0.  The writes are
   // part of the noted gap, not a separate one.

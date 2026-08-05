@@ -133,6 +133,7 @@ import { notePerFrameLedger } from './score.js';
 import { runSegmentDriver, runBeamDraw } from './laser.js';
 import { runSparkDriver } from './spark.js';
 import { runEffectDriver } from './effects.js';
+import { runItemDriver } from './items.js';
 
 export const TYPE5 = {
   handler: 0x28b5e0,
@@ -148,6 +149,7 @@ export const TYPE5 = {
   beamDraw: 0x255042,       // $28B622 -- THE BEAM's draw                   (W45)
   sparkDriver: 0x28a098,    // $28B628 -- POOL E, THE SHOT'S IMPACT SPARK (W53)
   effectDriver: 0x288e4e,   // $28B5FE -- POOL B, THE DEATH EXPLOSION     (W54)
+  itemDriver: 0x27e99e,     // $28B64C -- THE ITEM, pool family six       (W61)
   laserRampDown: 0x24c8be,  // inside it; $24C8CE is the write
   /** ($4b,A6)'s reload with the measured formation ($5a,A4) = 2: (2-2>>1)+4. */
   laserRampFrames: 4,
@@ -216,6 +218,13 @@ export const TYPE5_PORTED = new Set([
   // reason.  Note that #6, `$2890F2`, is DELIBERATELY still counted: pool D is
   // refused rather than half-ported -- `src/effects.js` §THE REFUSAL.
   0x288e4e,   // #5  THE DEATH EXPLOSION: pool B's driver, buckets 0/1/2/3/7 (W54)
+  // W61 (I2).  #18 is `$27E99E`, THE ITEM's driver, and it has been LISTED in
+  // `calls` since wave 8 and never made -- recon 59 §7's "one type-5 call
+  // listed but not called".  It ships in the SAME COMMIT as its allocator
+  // `$27E812` (`src/items.js spawnItem`, called from `handlers.js deathSeq85`)
+  // for W33 §4's reason, and the pool it drives is the sixth family, not one of
+  // `50-recon`'s five.
+  0x27e99e,   // #18 THE ITEM: the 25-slot family's driver, bucket 17    (W61)
 ]);
 
 /** Handlers this module dispatches to, built once per Game. */
@@ -294,6 +303,18 @@ export function makeType5(rom) {
           // `delayed`, and neither is recoverable from RAM after the frame.
           ctx.effectFrame = runEffectDriver(ram, rom, ctx);
           ctx.effectSink?.(ctx.effectFrame);
+          break;
+        case TYPE5.itemDriver:                          // $28B64C -> $27E99E
+          // WAVE 61.  EIGHTEENTH of twenty-three, and the position decides two
+          // things a gate can see.  It runs AFTER the explosion (#5) and after
+          // the beam (#10/#11), so an item's bucket-17 records sit on top of
+          // theirs; and it runs BEFORE `$28B670`, the collision pass in this
+          // file's tail, so an item flagged by block 2 on frame N is COLLECTED
+          // on frame N+1 at the earliest -- recon 59 §5.2's open ordering item,
+          // and this port answers it the only way it may: by running the call
+          // where the ROM's own `jsr` list puts it.
+          ctx.itemFrame = runItemDriver(ram, rom, ctx);
+          ctx.itemSink?.(ctx.itemFrame);
           break;
         case TYPE5.subReaper:                           // $28B5F2 -> $28AD54
           // WAVE 33.  ONLY the reaper half of `$28AD54` runs here -- the twelve

@@ -306,6 +306,48 @@ const HARVEST = Object.freeze([
   // depend on my reading of a branch instead of on the table's own extent, and
   // `46-diag`'s tank hulls are what that costs.  Named here, measured in
   // `53-impl-E5a-spark.md`.
+  // -------------------------------------------------------------- WAVE 61 I2
+  // THE ITEM.  Ten flat longword tables, and every `entries` below is pinned by
+  // an INSTRUCTION rather than by the run:
+  //
+  //   the four-frame tables: `$27EA96 addq.w #4,($e,A6) / $27EA9A andi.w #$F`
+  //     -- the cursor can only be 0/4/8/$C, so FOUR entries, and the same two
+  //     instructions appear in all four ported bodies.
+  //   the sixteen-frame one ($27EF10): kinds $0C/$14's `andi.w #$3F` -- and
+  //     those two kinds are REFUSED by `src/items.js`, so nothing in this port
+  //     can ask for its art.  IT IS HARVESTED ANYWAY, for `docs/knowledge/09`'s
+  //     reason and W58 §2.1b's precedent: the table's own extent is the claim,
+  //     not what a run reaches, and wave I3 must not find a hole.
+  //   the collected animations: `$27F64A cmpi.w #$78,($a,A6) / bge` -> 30, and
+  //     `$27F6A2 cmpi.w #$44` -> 17.  Both are the STEPPER'S OWN bound.
+  //
+  // Each list's base is `list + 8` because `$27F5F4` consumes an 8-byte header
+  // (`d.l = pos + (A0)+ ; D3 = (A0)+ ; A0 += 2`) BEFORE `adda.w ($a,A6),A0`.
+  // [M] the four 30-entry lists carry SIX repeated frames each (24 distinct of
+  // 30) and the 17-entry one is a PALINDROME (8 distinct of 17), which is why
+  // 172 table entries are only 139 distinct streams.
+  [12, 0x27ea1a, 4, 4, 4, 0x27ea2a, 'kind $00 THE POWER-UP, 4 frames'],
+  [12, 0x27ebcc, 4, 4, 4, 0x27ebdc, 'kind $04 FULL POWER, 4 frames'],
+  [12, 0x27ed7c, 4, 4, 4, 0x27ed8c, 'kind $08 THE SET ITEM, 4 frames'],
+  [12, 0x27ef10, 16, 4, 16, 0x27ef50,
+    'kinds $0C/$14 THE HYPER STOCK, 16 frames. Those kinds are REFUSED by '
+    + 'src/items.js (the rank error recon 59 5.2 measures), so NOTHING IN THIS '
+    + 'PORT CAN REACH THIS ART -- and it ships anyway, because the harvest is '
+    + 'sized off the table and not off a run'],
+  [12, 0x27f196, 4, 4, 4, 0x27f1a6, 'kind $10 the $8130BE counter, 4 frames'],
+  [12, 0x27f308, 30, 4, 30, 0x27f380,
+    'COLLECTED animation A ($27F300 + its 8-byte header), 30 frames, used by '
+    + 'kind $10. The far end is the NEXT list\'s header'],
+  [12, 0x27f388, 30, 4, 30, 0x27f400, 'COLLECTED animation B, kind $08\'s'],
+  [12, 0x27f408, 30, 4, 30, 0x27f480,
+    'COLLECTED animation C -- kinds $0C/$14\'s, and therefore UNREACHABLE in '
+    + 'this port for the same reason $27EF10 is'],
+  [12, 0x27f488, 30, 4, 30, 0x27f500,
+    'COLLECTED animation D, kinds $00 and $04\'s -- the POWER-UP\'s'],
+  [12, 0x27f508, 17, 4, 17, 0x27f54c,
+    'THE AT-MAXIMUM animation, 17 frames, taken when the thing an item grants '
+    + 'is already at maximum and the pickup scores $1000 instead of $10. '
+    + '$27F508 + 8 + 17*4 == $27F54C == THE COLLECT TAIL ITSELF'],
   [8, 0x28a5c2, 36, 4, 36, 0x28a652,
     'THE IMPACT SPARK, $289F54/$28A098 (src/spark.js). 36 frames, '
     + '$22CA1C..$22CBC0 step $C -- 12 mask words each, which is exactly the '
@@ -330,6 +372,8 @@ const HARVEST = Object.freeze([
 const LASER_STREAMS = Object.freeze([0x01302c, 0x013098, 0x065354, 0x011e8c,
   0x013b94]);
 const LASER_SHARD = 1;
+/** W61: the item shard -- see SPR_SHARDS[12]. */
+const ITEM_SHARD = 12;
 
 /** Shard metadata.  `boot` is awaited by `loadBundle`; the rest are queued from
  *  boot and promoted by the page's miss guard. */
@@ -381,6 +425,10 @@ const SPR_SHARDS = Object.freeze([
   [11, 'structures', 'buckets 2/3/7 -- background structures, midboss and large '
     + 'emplacements, [M] 111 streams = 82.5 % of every missing sprite PIXEL '
     + '(W58). The 288x208 hole in the middle of the playfield.'],
+  [12, 'items', 'THE ITEM: the five four-frame sprite tables the six item '
+    + 'bodies index ($27EA1A $27EBCC $27ED7C $27EF10 $27F196) and the five '
+    + 'COLLECTED animations $27F308/$388/$408/$488 (30 frames) and $27F508 '
+    + '(17) that $27F5F4 and $27F656 walk (W61). What the bigger ships drop.'],
 ]);
 const SPR_BOOT = [0];
 /** the order the deferred shards are FETCHED in -- measured first need, not
@@ -404,7 +452,12 @@ const SPR_BOOT = [0];
 // 256.7 KiB and goes LAST by index, which costs nothing: [M] its first need is
 // +5.3 s and `demand()` promotes whichever shard the simulation actually
 // reaches first, exactly as it has since W47.
-const SPR_ORDER = Object.freeze([0, 7, 6, 10, 9, 8, 1, 2, 3, 4, 5, 11]);
+// W61: shard 12 THE ITEM goes FIFTH among the deferred, immediately behind the
+// explosion, and the reason is that its deadline IS the explosion's: [M] the
+// only drop this port can reach is `$275B06`, twelve instructions above the
+// `$289004` that spawns shard 9's fireball, so the first frame an item needs a
+// picture is the first frame an enemy of type $85/$86 dies. It is also small.
+const SPR_ORDER = Object.freeze([0, 7, 6, 10, 9, 12, 8, 1, 2, 3, 4, 5, 11]);
 
 // ---------------------------------------------------------------------------
 // 1. COVERAGE.  What can this capture possibly make the renderer read?
@@ -580,6 +633,19 @@ for (const offs of LASER_STREAMS) {
   if (streams.has(offs)) { harvestAlready++; continue; }
   streams.set(offs, romExtent(offs));
   shardOfStream.set(offs, LASER_SHARD);
+  harvested++;
+}
+// W61: the item's LAST THREE streams are IMMEDIATES, not a table -- `move.l
+// #$1B8B28,D2` at $27EFBE, `#$1B8C80` at $27F03E and `#$1B8BD4` at $27F2C2,
+// inside kinds $0C/$14's bodies.  Those kinds are REFUSED by `src/items.js`, so
+// nothing in this port can ask for them; they are here so that recon 59 §6's
+// 139 is 139 and wave I3 finds no hole.  Three immediates cannot be a "run",
+// which is why they are a list and not a HARVEST row.
+const ITEM_STREAMS = Object.freeze([0x1b8b28, 0x1b8c80, 0x1b8bd4]);
+for (const offs of ITEM_STREAMS) {
+  if (streams.has(offs)) { harvestAlready++; continue; }
+  streams.set(offs, romExtent(offs));
+  shardOfStream.set(offs, ITEM_SHARD);
   harvested++;
 }
 

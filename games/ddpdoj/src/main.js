@@ -145,6 +145,8 @@ export class Game {
     this.bulletSpawns = new Map();   // WAVE 30, see #ctx()'s bulletSpawn
     this.bulletKinds = new Map();    // WAVE 33, see #ctx()'s bulletKind
     this.effectSpawns = new Map();   // WAVE 54, see #ctx()'s effectSpawn
+    this.itemSpawns = new Map();     // WAVE 61, see #ctx()'s itemSpawn
+    this.itemCollects = new Map();   // WAVE 61, see #ctx()'s itemCollect
     this.kills = { n: 0, score: 0, byValue: new Map() };  // WAVE 34, killEvent
     this.shotSpawns = new Map();
     this.shotTableFull = 0;
@@ -291,6 +293,25 @@ export class Game {
       effectSpawn: (kind, site) => {
         const k = `$${kind.toString(16).toUpperCase()}@$${site.toString(16).toUpperCase()}`;
         this.effectSpawns.set(k, (this.effectSpawns.get(k) ?? 0) + 1);
+      },
+      // WAVE 61 (I2), THE ITEM.  Same shape as the two above and for the same
+      // reason: `$27E812` returning NULL (the pool was full, or the kind was
+      // REFUSED) goes to `unportedLog` under its own address, so this map holds
+      // only the allocations that produced a real slot -- which is what makes
+      // `itemSpawns` minus the census's high-water mark a statement rather than
+      // a restatement.
+      itemSink: (t) => { this.itemFrame = t; },
+      itemSpawn: (kind, site) => {
+        const k = `$${kind.toString(16).toUpperCase()}@$${site.toString(16).toUpperCase()}`;
+        this.itemSpawns.set(k, (this.itemSpawns.get(k) ?? 0) + 1);
+      },
+      /** Every item COLLECTED, by the player mask the collision wrote into the
+       *  status word and by which of `$286128`'s two immediates it scored.
+       *  `$10` is an ordinary pickup and `$1000` is one taken when the thing it
+       *  grants was ALREADY AT MAXIMUM -- recon 59 §4.3's fork. */
+      itemCollect: (mask, score) => {
+        const k = `mask$${mask.toString(16).toUpperCase()}/score$${score.toString(16)}`;
+        this.itemCollects.set(k, (this.itemCollects.get(k) ?? 0) + 1);
       },
     };
   }

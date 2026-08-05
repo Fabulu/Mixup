@@ -826,6 +826,51 @@ SHOT_WINDOWS.append(
                        "handler (code). Spawned ONLY by the midboss's death "
                        "$26B7E0/$26B7E2"))
 
+# ================== W61 (I2): THE ITEM, `$27E812` + `$27E99E` ================
+#
+# `src/items.js` ports the sixth pool family -- the item -- and every one of
+# these windows is here because an INSTRUCTION reads inside it, named on the
+# line.  `check_item_extents` below asserts the geometry these rest on, on every
+# export, out of the image rather than out of a comment.
+SHOT_WINDOWS.extend([
+    # `$23EB06` is the REGISTER-convention enqueue every item body and both
+    # collected-animation steppers end with, and `src/spritequeue.js
+    # resolveEmitStub` READS ITS CODE to learn the bucket and the convention
+    # rather than trusting a number.  It is W36's fifth prologue shape
+    # (`addi.w #$C,<ctr>` BEFORE `move.l D1,D0`), so the resolver needs 22 bytes.
+    (0x23EB00, 0x0020, "W61: the emitter stub $23EB06 (bucket 17), read by "
+                       "spritequeue.js resolveEmitStub"),
+    # `$242B3C`'s canned table.  There is NO MASK -- `move.w $803916,D0` then
+    # `move.b (A0,D0.w),D0` -- so the index is the whole word and the table is
+    # 256 bytes, exactly like $242FDE's.  The far end is pinned by $242CAC,
+    # which is the RNG family's NEXT `addq.b #1,$803917` site (src/rng.js's own
+    # 32-site scan).  Drawn by both item bounce arms and by BOTH collect tails.
+    (0x242BAC, 0x0100, "W61: $242B3C's 256-byte table $242BAC..$242CAB, far end "
+                       "pinned by $242CAC (the next addq.b site)"),
+    # The kind dispatch, the `rts` entry [7] points at, and kind $0's own
+    # four-frame sprite table -- $27E9F8 + $32 == $27EA2A, the first body.
+    (0x27E9F8, 0x0032, "W61: $27E9F8 the 8-entry kind dispatch, the $27EA18 "
+                       "`rts` entry [7] IS, and kind $0's sprite table $27EA1A"),
+    (0x27EBCC, 0x0010, "W61: kind $04 (FULL POWER) sprite table, $27EC64 lea"),
+    (0x27ED7C, 0x0010, "W61: kind $08 (the SET ITEM) sprite table, $27EE14 lea"),
+    (0x27EF10, 0x0040, "W61: kinds $0C/$14's 16-frame sprite table, $27EF00 lea. "
+                       "Those kinds are REFUSED (src/items.js THE REFUSAL) so "
+                       "nothing reads this yet; exported with the other four so "
+                       "the FIVE tables are enumerated in one place"),
+    (0x27F196, 0x0010, "W61: kind $10 (the $8130BE counter) sprite table"),
+    # The five collected-animation lists, $27F300..$27F54B.  Each carries an
+    # 8-byte header $27F5F4 consumes before indexing; the far end is $27F54C,
+    # THE COLLECT TAIL ITSELF ($27F508 + 8 + 17*4).
+    (0x27F300, 0x024C, "W61: the five collected-animation lists $27F300/$380/"
+                       "$400/$480 (30 entries each) and $27F500 (17), walked by "
+                       "$27F5F4/$27F656 -- far end IS $27F54C, the collect tail"),
+    # The template table and its six 26-byte templates.  $27F746 + 8*4 ==
+    # $27F766 == template [0], and six 26-byte templates land on $27F7E8, CODE.
+    (0x27F746, 0x00A2, "W61: $27F746, the 8-entry template pointer table, and "
+                       "the SIX 26-byte templates $27F766..$27F7E7 that $27F6AE "
+                       "copies into a record's +$06..+$1F"),
+])
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
@@ -1310,9 +1355,136 @@ def check_pool_b_extents(d: bytes) -> None:
             f"STREAM address; the image has ${u32(d, 0x278338):08X}.")
 
 
+def check_item_extents(d: bytes) -> None:
+    """W61 (I2).  ASSERT THE ITEM FAMILY'S GEOMETRY AGAINST THE CARTRIDGE.
+
+    Six things `src/items.js` rests on are not checkable from inside the port:
+    the six pool bases, the 25-slot total, both dispatch tables' extents, the
+    26-byte template stride, the collision half-extents and the two
+    collected-animation lengths.  Each is re-derived here from the image, so a
+    cartridge that disagrees stops the EXPORT rather than the player's machine.
+    """
+    # 1. THE SIX POOLS CLOSE EXACTLY ON THE LIVE COUNT WORD.
+    pools = [(0x00, 0x816B7A, 7), (0x04, 0x816D7A, 1), (0x08, 0x816DFA, 1),
+             (0x0C, 0x816E7A, 5), (0x14, 0x816FFA, 5), (0x10, 0x81717A, 0)]
+    at = 0x816B7A
+    for d0, base, dbra in pools:
+        if at != base:
+            raise SystemExit(
+                f"the item pools no longer abut: kind ${d0:02X} should start at "
+                f"${at:06X} and src/items.js says ${base:06X}.")
+        at += (dbra + 1) * 0x40
+    if at != 0x8171BA:
+        raise SystemExit(
+            f"the six item pools total ${at - 0x816B7A:X} bytes and end at "
+            f"${at:06X}; $27F6DC's live count is $8171BA. 25 x $40 == $640.")
+    # $27E990 `move.w #$321,D0` + the dbra's own pass = $322 words = 1,604 B =
+    # the 25 slots PLUS $8171BA PLUS $8171BC.  If that stops being true the
+    # clear leaves a live record or a stale variant counter behind.
+    if u16(d, 0x27E992) != 0x0321:
+        raise SystemExit(
+            f"$27E990 move.w #$321,D0 -- the item family's clear -- now reads "
+            f"#${u16(d, 0x27E992):04X}. It must cover 25 slots + $8171BA + "
+            f"$8171BC = $322 words.")
+    if (0x321 + 1) * 2 != (0x8171BE - 0x816B7A):
+        raise SystemExit("the item clear no longer reaches $8171BE.")
+    # 2. BOTH DISPATCH TABLES, AND BOTH RUN OFF THE END INTO CODE.
+    disp = [u32(d, 0x27E9F8 + 4 * i) for i in range(8)]
+    want = [0x27EA2A, 0x27EBDC, 0x27ED8C, 0x27EF50,
+            0x27F1A6, 0x27F254, 0x27F2F0, 0x27EA18]
+    if disp != want:
+        raise SystemExit(
+            "$27E9F8's eight entries are "
+            + " ".join(f"${x:06X}" for x in disp)
+            + "; src/items.js DISPATCH says "
+            + " ".join(f"${x:06X}" for x in want))
+    if d[0x27EA18:0x27EA1A] != b"\x4e\x75":
+        raise SystemExit(
+            f"$27E9F8[7] points at $27EA18, which must BE the `rts` (4E75); the "
+            f"image has {d[0x27EA18:0x27EA1A].hex()}. Entry [7] is a deliberate "
+            f"no-op, and if it stops being one the driver jsrs into data.")
+    tmpl = [u32(d, 0x27F746 + 4 * i) for i in range(8)]
+    twant = [0x27F766, 0x27F780, 0x27F79A, 0x27F7B4,
+             0x27F7CE, 0x27F7B4, 0x27F7E8, 0x27F7E8]
+    if tmpl != twant:
+        raise SystemExit(
+            "$27F746's eight entries are "
+            + " ".join(f"${x:06X}" for x in tmpl)
+            + "; src/items.js TEMPLATES says "
+            + " ".join(f"${x:06X}" for x in twant))
+    for i in range(4):
+        if twant[i + 1] - twant[i] != 26:
+            raise SystemExit(
+                f"template {i} at ${twant[i]:06X} is "
+                f"{twant[i + 1] - twant[i]} bytes, not the 26 that $27F6C8's "
+                f"six longs and one word copy.")
+    if d[0x27F7E8:0x27F7EA] != b"\x4e\x75":
+        raise SystemExit(
+            f"$27F746[6] and [7] point at $27F7E8, which this port relies on "
+            f"being CODE (`rts`, 4E75) so that its range check has something to "
+            f"be right about; the image has {d[0x27F7E8:0x27F7EA].hex()}.")
+    # 3. THE COLLISION HALF-EXTENTS ARE $0600 x $0600 FOR EVERY KIND, which is
+    #    what `$244D62`'s block 2 reads at +$10/+$12.  A template that stopped
+    #    carrying them would make every item uncollectable and nothing in the
+    #    port could tell.
+    for i, t in enumerate(twant[:5]):
+        if u16(d, t + 0x0A) != 0x0600 or u16(d, t + 0x0C) != 0x0600:
+            raise SystemExit(
+                f"template {i} at ${t:06X} carries half-extents "
+                f"${u16(d, t + 0x0A):04X} x ${u16(d, t + 0x0C):04X}, not "
+                f"$0600 x $0600. Block 2 reads them at +$10/+$12.")
+    # 4. THE TWO COLLECTED-ANIMATION LENGTHS, pinned by the STEPPERS' OWN
+    #    `cmpi.w`, and the five lists closing on the collect tail.
+    if 0x27F500 + 8 + 17 * 4 != 0x27F54C:
+        raise SystemExit(
+            "$27F500 + 8 + 17*4 must land on $27F54C, THE COLLECT TAIL.")
+    if u16(d, 0x27F64C) != 0x0078 or u16(d, 0x27F6A4) != 0x0044:
+        raise SystemExit(
+            f"the collected-animation steppers' own bounds are now "
+            f"${u16(d, 0x27F64C):04X} and ${u16(d, 0x27F6A4):04X}; src/items.js "
+            f"ANIM_END says $78 and $44, and those two immediates are the ONLY "
+            f"things that pin the list lengths.")
+    # 5. THE TWELVE POWER LISTS ARE FIVE WORDS EACH, and the array of twelve
+    #    pointers holds exactly those twelve addresses.  This is what makes
+    #    "five power levels" a fact about the cartridge and not a reading.
+    #
+    # AND THE ARRAY IS **INTERLEAVED**, which recon 59 §9.6 could not settle and
+    # which this check found by being wrong first.  The twelve pointers are NOT
+    # $25523C..$2552AA in order: entry [2n] is the SHOT list (the first six,
+    # $25523C + 10n) and entry [2n+1] is the LASER list (the second six,
+    # $255278 + 10n).  That is exactly why `$252CEC movea.l ($4,A0,D0.w),A1`
+    # and `$252CF4 movea.l (A0,D0.w),A0` read TWO entries 4 bytes apart, and it
+    # is what makes the row index having to be EVEN a fact rather than a
+    # precaution -- an odd row pairs a shot list with the NEXT row's shot list.
+    #
+    # [M] it also corroborates both of the port's own measured cursors from the
+    # other side: `src/options.js` measured $8127E8 = $255278, which is entry
+    # [1] -- row 0's LASER list -- and `src/shots.js` measured the word behind
+    # $8127E4 as 4, which is $25523C's word[0], row 0's SHOT list.  Two
+    # independent RAM measurements landing on the two halves of ONE row.
+    ptrs = [u32(d, 0x25520C + 4 * i) for i in range(12)]
+    want_ptrs = []
+    for r in range(6):
+        want_ptrs.append(0x25523C + 10 * r)      # the SHOT list
+        want_ptrs.append(0x255278 + 10 * r)      # ...and the LASER list beside it
+    if ptrs != want_ptrs:
+        raise SystemExit(
+            "$25520C's twelve longwords are no longer six INTERLEAVED "
+            "(shot, laser) pairs over the five-word lists $25523C..$2552B3: "
+            + " ".join(f"${x:06X}" for x in ptrs))
+    if 0x25523C + 12 * 10 != 0x2552B4:
+        raise SystemExit("twelve five-word lists is not 120 bytes.")
+    declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x255200]
+    if not declared or 0x255200 + declared[0][1] < 0x2552B4:
+        raise SystemExit(
+            f"the $255200 window is {declared} and must reach $2552B4 -- the "
+            f"power cursors $8127E4/$8127E8 walk to word[4] of the LAST list.")
+
+
 def build(d: bytes) -> dict:
     check_pool_e_extents(d)                    # W53 -- see the function's docstring
     check_pool_b_extents(d)                    # W54 -- see the function's docstring
+    check_item_extents(d)                      # W61 -- see the function's docstring
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
     levels = speed_index_set(d)

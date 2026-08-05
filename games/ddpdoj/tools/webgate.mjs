@@ -684,7 +684,7 @@ try {
       // the board, and the two digits are the size of it.
       const EXP52 = {
         frames: 1200,
-        6: { streams: 71, records: 22107, distinct: 20, first: 1,
+        6: { streams: 71, records: 22101, distinct: 20, first: 1,
           what: 'THE PLAYER\'S SHOTS ($2554EA/$255502 + the pods\' $24D2FC/$24D35C)' },
         7: { streams: 298, records: 4387, distinct: 32, first: 98,
           what: 'THE ENEMY BULLETS ($281D9A\'s bulk write, buckets 22/23)' },
@@ -695,7 +695,7 @@ try {
         // can never be drawn.  Asserting 36 would assert a claim the listing
         // contradicts; asserting `streams === 36` beside it is what says the
         // harvest still ships the whole table rather than my reading of it.
-        8: { streams: 36, records: 8843, distinct: 35, first: 24,
+        8: { streams: 36, records: 8817, distinct: 35, first: 24,
           what: 'THE IMPACT SPARK (pool E, $289F54 -> $28A098, bucket 20)' },
         // WAVE 54 -- THE ENEMY DEATH EXPLOSION, the SAME window and the SAME
         // four absolute port-side fields.  `streams` is 269, THE WHOLE OF BOTH
@@ -707,7 +707,29 @@ try {
         // than the first spark (frame 24) because a kill takes several hits.
         9: { streams: 269, records: 5537, distinct: 204, first: 24,
           what: 'THE ENEMY DEATH EXPLOSION (pool B, $289004 -> $288E4E)' },
+        // WAVE 61 -- THE ITEM.  `streams` is 139, THE WHOLE OF ALL TEN TABLES,
+        // including the sixteen frames and the collected animation belonging to
+        // the two HYPER kinds this wave REFUSES to allocate -- W53 §1.3's rule
+        // one level along, and `docs/knowledge/09`'s.  `distinct` is what a
+        // tapped window reaches, which is one kind of item and part of one
+        // collected animation.  `first` is the first frame a type $85/$86 enemy
+        // DIES, which is far later than the first kill because those are the
+        // "bigger ships" and there are few of them.
       };
+      // W61 NEEDS ITS OWN WINDOW AND ITS OWN INPUT, and that is the point.
+      // [M] over the four stages' own tapped window the item is NEVER PICKED
+      // UP -- the ship stands still, the item drifts past it, and the stage
+      // sees 4 of the 139 streams (kind $0's four body frames) and none of the
+      // COLLECTED animation.  So this one is **the owner's own script**
+      // (`docs/knowledge/09`: "sit bottom-centre, hold the shot or laser, and
+      // move left and right a little"): fire tapped every 4 frames with the
+      // ship sweeping LEFT and RIGHT every 60.  [M] that reaches 28 distinct
+      // streams -- the four body frames and 24 of a collected animation -- and
+      // it is the difference between a stage that proves an item EXISTS and one
+      // that proves it is PICKED UP.
+      const EXP61 = { frames: 2400,
+        12: { streams: 139, records: 626, distinct: 28, first: 670,
+          what: 'THE ITEM (pool family six, $27E812 -> $27E99E, bucket 17)' } };
       const runW52 = (frames) => {
         const g = new Game(bundle.seed, bundle.tables, {
           logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
@@ -716,7 +738,8 @@ try {
         const st = { 6: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 },
           7: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 },
           8: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 },
-          9: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 } };
+          9: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 },
+          12: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 } };
         for (let i = 0; i < frames; i++) {
           const res = portSpriteList(g.ram, map, { out: buf, ...shardOpts });
           for (let k = 0; k < 256; k++) {
@@ -726,7 +749,7 @@ try {
             const offs = ((g.ram.u16(0x800000 + (b + 2) * 2) & 0x7f) << 16)
               | g.ram.u16(0x800000 + (b + 3) * 2);
             const sh = map.get(offs)?.[2];
-            if (sh !== 6 && sh !== 7 && sh !== 8 && sh !== 9) continue;
+            if (sh !== 6 && sh !== 7 && sh !== 8 && sh !== 9 && sh !== 12) continue;
             const t = st[sh];
             t.rec++; t.seen.add(offs); if (t.first < 0) t.first = i;
             if (((w4 & 0x7e00) >> 9) === 0 || (w4 & 0x1ff) === 0) continue;
@@ -746,7 +769,7 @@ try {
         const ok = bundle.spr.meta[sh].streams === e.streams
           && a.rec === e.records && a.seen.size === e.distinct && a.first === e.first
           && a.drawn === a.rec && a.pend === 0 && a.named === 0;
-        const WAVE = { 6: 'W52', 7: 'W52', 8: 'W53', 9: 'W54' }[sh];
+        const WAVE = { 6: 'W52', 7: 'W52', 8: 'W53', 9: 'W54', 12: 'W61' }[sh];
         console.log(`${ok ? 'PASS' : 'FAIL'}: ${WAVE} ${e.what} -- over ${EXP52.frames} `
           + `logic frames from the shipped seed with FIRE TAPPED every 4 frames, `
           + `sprite shard ${sh} holds ${bundle.spr.meta[sh].streams} streams `
@@ -756,9 +779,60 @@ try {
           + `(expect ${e.first}). All shards loaded: ${a.drawn} DRAWN of ${a.rec}, `
           + `${a.pend} pending, ${a.named} with no art. Before `
           + `${{ 8: 'W53 pool E had no driver and bucket 20',
-            9: 'W54 $289004 was a COUNTED NOTE and pool B' }[sh]
+            9: 'W54 $289004 was a COUNTED NOTE and pool B',
+            12: 'W61 $27E812 was a COUNTED NOTE, $27E99E was type-5 call #18 '
+              + 'LISTED AND NOT MADE, and bucket 17' }[sh]
             ?? 'W52 this bucket'} `
           + 'emitted nothing at all');
+        if (!ok) code = 1;
+      }
+
+      {
+        const runW61 = (frames) => {
+          const g = new Game(bundle.seed, bundle.tables, {
+            logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
+            bgSeed: bundle.cap.part(0, 'bg'),
+          });
+          const t = { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 };
+          const FIRE = portWordFromBits([BIT.b1]);
+          const LEFT = portWordFromBits([BIT.left]);
+          const RIGHT = portWordFromBits([BIT.right]);
+          for (let i = 0; i < frames; i++) {
+            const res = portSpriteList(g.ram, map, { out: buf, ...shardOpts });
+            for (let k = 0; k < 256; k++) {
+              const b = k * RAM_STRIDE;
+              const w4 = g.ram.u16(0x800000 + (b + 4) * 2);
+              if ((w4 & 0x7fff) === 0) break;
+              const offs = ((g.ram.u16(0x800000 + (b + 2) * 2) & 0x7f) << 16)
+                | g.ram.u16(0x800000 + (b + 3) * 2);
+              if (map.get(offs)?.[2] !== 12) continue;
+              t.rec++; t.seen.add(offs); if (t.first < 0) t.first = i;
+              if (((w4 & 0x7e00) >> 9) === 0 || (w4 & 0x1ff) === 0) continue;
+              if (res.missing.has(offs)) t.named++;
+              else if (bundle.spr.state[12] === 'ready') t.drawn++; else t.pend++;
+            }
+            g.ram.setU8(0x810424, 0xff);
+            let word = 0xffff & ((i % 120 < 60) ? LEFT : RIGHT);
+            if (i % 4 === 0) word &= FIRE;
+            g.step(word);
+          }
+          return t;
+        };
+        const a = runW61(EXP61.frames), e = EXP61[12];
+        const ok = bundle.spr.meta[12].streams === e.streams
+          && a.rec === e.records && a.seen.size === e.distinct && a.first === e.first
+          && a.drawn === a.rec && a.pend === 0 && a.named === 0;
+        console.log(`${ok ? 'PASS' : 'FAIL'}: W61 ${e.what} -- over ${EXP61.frames} `
+          + 'logic frames from the shipped seed with FIRE TAPPED every 4 frames '
+          + 'and the ship SWEEPING left and right every 60, '
+          + `sprite shard 12 holds ${bundle.spr.meta[12].streams} streams `
+          + `(expect ${e.streams}) and the port's own $800000 list carries `
+          + `${a.rec} records of them (expect ${e.records}) over ${a.seen.size} `
+          + `distinct images (expect ${e.distinct}), first at frame ${a.first} `
+          + `(expect ${e.first}). All shards loaded: ${a.drawn} DRAWN of ${a.rec}, `
+          + `${a.pend} pending, ${a.named} with no art. Before W61 $27E812 was a `
+          + 'COUNTED NOTE, $27E99E was type-5 call #18 LISTED AND NOT MADE, and '
+          + 'bucket 17 emitted nothing at all');
         if (!ok) code = 1;
       }
 

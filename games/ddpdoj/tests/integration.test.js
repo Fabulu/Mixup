@@ -319,7 +319,17 @@ test('TYPE5_PORTED is FOURTEEN of the twenty-three, and the list is the ROM\'s',
   // same commit as its allocator `$289004` (src/effects.js), which ~25 death
   // arms in src/handlers.js and src/midboss.js now call.  #6 `$2890F2` is
   // DELIBERATELY still counted: pool D is refused rather than half-ported.
-  assert.equal(TYPE5_PORTED.size, 14);
+  // W61 added #18 `$27E99E`, THE ITEM's driver -- the call recon 59 §7 found
+  // LISTED in `calls` since wave 8 and never made.  It ships in the same commit
+  // as its allocator `$27E812` (src/items.js spawnItem, called from
+  // `handlers.js deathSeq85`), for the same W33 §4 reason as #5 and #12.
+  assert.equal(TYPE5_PORTED.size, 15);
+  assert.ok(TYPE5_PORTED.has(TYPE5.itemDriver));
+  assert.ok(TYPE5.calls.includes(TYPE5.itemDriver));
+  assert.equal(TYPE5.itemDriver, 0x27e99e);
+  assert.equal(TYPE5.calls.indexOf(TYPE5.itemDriver), 17,
+    'it is call #18 of 23 -- $28B64C -- and the POSITION is what decides that '
+    + 'an item flagged by $244D62 block 2 is collected on the NEXT frame');
   assert.ok(TYPE5_PORTED.has(TYPE5.effectDriver));
   assert.ok(TYPE5.calls.includes(TYPE5.effectDriver));
   assert.equal(TYPE5.effectDriver, 0x288e4e);
