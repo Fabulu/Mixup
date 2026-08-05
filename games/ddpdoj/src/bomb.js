@@ -799,7 +799,7 @@ function beamSegments2561AA(ram, rom, ctx, a5) {
       ram.setU32(a6 + 0x0a, rom.u32(ram.u32(a6 + 0x18) + i16(d4)));  // $256212
     }
     let d0 = u16(u16(ram.u16(a6 + 0x02) + 0x200)       // $256218/$25621C
-      + 0);                                            // $256220 add.w ($30,A5)
+      + ram.u16(a5 + P.velY));                         // $256220 add.w ($30,A5)
     if (!beamSegmentAlive(ram, rec, d0, phase2)) {
       ram.setU16(a6, 0); killed++; continue;           // $25623A/$2562D8 clr.w
     }
