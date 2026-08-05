@@ -1318,6 +1318,32 @@ def _cmd_check(argv: list[str]) -> int:
                                     if _node(BOMBGATE, "--break", m)[0] == "FAIL"
                                     else ("FAIL", f"the scenario is GREEN {w} "
                                                   "-- it is not measuring this")))
+    # WAVE 65 (B3).  **THE LASER BOMB** -- bombing while HOLDING the beam, which
+    # W64 left throwing at `$249A80` rather than inventing.  It is a different
+    # weapon and W64's gate cannot reach it: that gate taps fire on purpose,
+    # and holding it is the whole precondition here.  `$255FE2` (the
+    # four-record 131-frame machine), `$2456A6` (the box against pool B, pool A
+    # and the bullets), and the THREE paths `$249A92 bset #$7,($1,A6)` made
+    # reachable for the first time in this port -- `$24D188`, `$24A4E2`,
+    # `$2496A2`.
+    #
+    # FOUR controls; see the gate's own header:
+    #   no-press    Button 2 never pressed -- 12 red
+    #   rank-poke   +1 into each of the FIVE rank words -- 5 red, ALL RANK
+    #   tap-fire    W64's own input: the ORDINARY bomb runs instead -- 11 red
+    #   no-driver   type-5 call #7 counted and not run -- 7 red
+    BEAMGATE = TOOLS.parent / "tools" / "w65beamgate.mjs"
+    stage("THE LASER BOMB: $249A80, $255FE2 and $2456A6",
+          lambda: _node(BEAMGATE))
+    for _m, _why in (("no-press", "with Button 2 never pressed"),
+                     ("rank-poke", "with a rank word poked"),
+                     ("tap-fire", "with fire TAPPED (the ORDINARY bomb)"),
+                     ("no-driver", "without type-5 call #7")):
+        stage(f"THE LASER BOMB RED [{_m}]",
+              lambda m=_m, w=_why: (("PASS", f"went red {w}, as it must")
+                                    if _node(BEAMGATE, "--break", m)[0] == "FAIL"
+                                    else ("FAIL", f"the scenario is GREEN {w} "
+                                                  "-- it is not measuring this")))
     if not quick:
         stage("fly-around: port vs board, 0 divergent frames",
               lambda: sub(__file__, "flyaround"))

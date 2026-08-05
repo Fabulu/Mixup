@@ -172,6 +172,10 @@ export class Game {
     this.bombEvents = new Map();     // WAVE 64, see #ctx()'s bombEvent
     this.bombMarks = [];
     this.bombHits = 0;
+    // WAVE 65 -- `$2456A6`'s three pools, kept apart because they are three
+    // different laws (`$208` once, `$1E0` to everything, ERASE).
+    this.beamHitsA = 0; this.beamHitsB = 0; this.beamErased = 0;
+    this.beamDamageFrames = 0;
     this.bombDraws = 0;
     this.hudMarks = [];
     this.kills = { n: 0, score: 0, byValue: new Map() };  // WAVE 34, killEvent
@@ -360,13 +364,24 @@ export class Game {
       // into, `teardown` the frame `$2564F0` ran and WHICH chains it reset,
       // and `cooldown-expired` `$2564BA`.  A count, because "the record is 0"
       // cannot distinguish a bomb that finished from one that never fired.
+      // W65 adds the LASER BOMB's five: `beam-arm` (the `$243DA0` cancel, once
+      // per press), `beam-init` (`$255FE2`'s install), `beam-phase`, and the
+      // two PER-FRAME ones -- `beam-seg` (`$2561AA`'s drawn/killed) and
+      // `beam-damage` (`$2456A6`'s poolA/poolB/bullets).  The per-frame ones
+      // are counted and NOT marked, for the same reason `damage` is not.
       bombEvent: (kind, v) => {
         const k = `${kind}:${v}`;
         this.bombEvents.set(k, (this.bombEvents.get(k) ?? 0) + 1);
-        if (kind !== 'damage' && kind !== 'draw') {
+        if (kind !== 'damage' && kind !== 'draw'
+          && kind !== 'beam-seg' && kind !== 'beam-damage') {
           this.bombMarks.push([kind, this.logicFrame, v]);
         }
         if (kind === 'damage') this.bombHits += v;
+        if (kind === 'beam-damage') {
+          const [a, b, e] = String(v).split('/').map(Number);
+          this.beamHitsA += a; this.beamHitsB += b; this.beamErased += e;
+          this.beamDamageFrames += 1;
+        }
         if (kind === 'draw') this.bombDraws += 1;
       },
       itemSink: (t) => { this.itemFrame = t; },

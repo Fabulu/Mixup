@@ -1263,6 +1263,7 @@ export function bombDamageAlt2456A6(ram, ctx, a4) {
     const a5 = ram.u32(BOMBRAM.g12954);                // $245802 movea.l
     const d4 = u16(ram.u16(BOMBRAM.hitMask) | 0x400);  // $245808/$24580E ori #$400
     ram.setU16(a5, u16(ram.u16(a5) | d4));             // $245812 or.w D4,(A5)
+    ctx.bombEvent?.('beam-400', 'B');                  // recon 38 1.5 is stale
     ram.setU16(a5 + 0x18, u16(ram.u16(a5 + 0x18) - 0x208));   // $245814 subi.w
     hitsB = 1;
   }
@@ -1298,6 +1299,7 @@ export function bombDamageAlt2456A6(ram, ctx, a4) {
       ram.bset8(a6, 4);                                // $2458D8 bset #$4,(A6)
       const m = u16(ram.u16(BOMBRAM.hitMask) | 0x400); // $2458DC/$2458E2
       ram.setU16(a5, u16(ram.u16(a5) | m));            // $2458E6 or.w D4,(A5)
+      ctx.bombEvent?.('beam-400', 'A');                // recon 38 1.5 is stale
       const hp = u16(ram.u16(a5 + 0x18) - 0x1e0);      // $2458E8 subi.w #$1E0
       ram.setU16(a5 + 0x18, hp);
       hitsA++;
@@ -1527,7 +1529,16 @@ export function fireBomb2498E2(ram, ctx, rec, playerIdx) {
     // is where `$243DA0` is actually reached, so `src/bulletdriver.js`'s
     // thirty-wave-old "the cancel is driven only from a bomb" is true of THIS
     // bomb and of no other.
-    ctx.bombEvent?.('beam-arm', armBombCancel243DA0(ram) ? 'armed' : 'busy');
+    //
+    // **AND IT IS CALLED ON ITS OWN LINE ON PURPOSE.**  The first draft was
+    // `ctx.bombEvent?.('beam-arm', armBombCancel243DA0(ram) ? ... )`, and
+    // optional chaining does NOT evaluate the argument list when the callee is
+    // undefined -- so on any context without an event sink (every unit test,
+    // and any embedder that does not attach one) the SCREEN CLEAR silently did
+    // not happen.  `tests/w64bomb.test.js` caught it; nothing in the gate could
+    // have, because the gate always attaches a sink.
+    const armed = armBombCancel243DA0(ram);            // $249AEA jsr $243DA0
+    ctx.bombEvent?.('beam-arm', armed ? 'armed' : 'busy');
   }
 
   // ---- $249AF6: **A DEAD READ, AND RECON 38 §7.1 ITEM 5 IS NOW ANSWERED.**

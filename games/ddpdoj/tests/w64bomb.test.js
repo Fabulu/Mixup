@@ -11,8 +11,9 @@ import { Ram } from '../src/ram.js';
 import { RAM, P } from '../src/machine.js';
 import { Unreached, UnportedLog } from '../src/unported.js';
 import {
-  BOMB, BOMBRAM, BOMB_TEMPLATES, armBombCancel243DA0, bombCooldownExpiry2564BA,
-  bombDamage24560A, bombDriver255DD8, bombScript255E3E, bombTeardown2564F0,
+  BOMB, BOMBRAM, BOMB_TEMPLATES, BEAM_REC, armBombCancel243DA0,
+  bombCooldownExpiry2564BA, bombDamage24560A, bombDamageAlt2456A6,
+  bombDriver255DD8, bombScript255E3E, bombTeardown2564F0,
   fireBomb2498E2, flushPendingGrants2875B4, resetChain2877D0,
 } from '../src/bomb.js';
 
@@ -192,18 +193,33 @@ test('$249B10: a bomb hands its invulnerability to the OTHER player, and A2 '
   assert.equal(ram2.u8(RAM.player2 + P.invuln), 0);
 });
 
-test('**THE LASER BOMB THROWS** -- ($3f,A6) picks a different weapon', () => {
+// W64 asserted that this THREW.  **W65 ports it**, and what the row has to say
+// now is that the two arms are DIFFERENT -- because a port that ran `$249A62`
+// on both would still pass "it does not throw".
+test('THE LASER BOMB IS A DIFFERENT ARM: ($3f,A6) picks $249A80', () => {
   const ram = new Ram();
   const rec = player(ram, { dead: 1 });
-  try {
-    fireBomb2498E2(ram, ctx(), rec, 0);
-    assert.fail('$249A80 must not be run as if it were $249A62');
-  } catch (err) {
-    assert.ok(err instanceof Unreached);
-    assert.equal(err.romAddress, BOMB.deathArm);
-  }
-  assert.equal(ram.u16(rec + 0x28), 0,
-    'the throw is at the arm\'s FIRST instruction, so no partial state');
+  assert.ok(fireBomb2498E2(ram, ctx(), rec, 0).startsWith('fired'));
+  assert.equal(ram.u16(rec + 0x26), 0x0101, '$249A86, not $249A68\'s 0');
+  assert.equal(ram.u16(rec + 0x28), 0x000c, '$249A8C, not $249A6E\'s $3C');
+  assert.equal(ram.btst8(rec + P.flags1, 7), true, '$249A92 bset #$7');
+  assert.equal(ram.u16(BOMBRAM.rec) & 1, 1,
+    '$249A98 bset #$0,($1,A1) -- INTO THE RECORD, and it is what picks '
+    + '$255FE2 over $255E3E and $2456A6 over $245638');
+  assert.equal(ram.u16(BOMBRAM.modeWord), 0xffff,
+    '$249AEA jsr $243DA0 -- the ordinary arm JUMPS this at $249A7E');
+  assert.equal(ram.u16(0x8104aa + 0x38), 0x26, '$249AD8 into the OPTION block');
+  assert.equal(ram.u16(0x8104aa + 0x56), 0x08, '$249ADE');
+  assert.equal(ram.u16(0x81294c), 1, '$249AE4 move.w #$1,(A2)');
+  // ...and the ORDINARY arm writes NONE of that.
+  const r2 = new Ram();
+  const rec2 = player(r2, { dead: 0 });
+  assert.ok(fireBomb2498E2(r2, ctx(), rec2, 0).startsWith('fired'));
+  assert.equal(r2.u16(rec2 + 0x26), 0, '$249A68 move.w #$0');
+  assert.equal(r2.u16(rec2 + 0x28), 0x3c, '$249A6E move.w #$3C');
+  assert.equal(r2.btst8(rec2 + P.flags1, 7), false, 'no $249A92');
+  assert.equal(r2.u16(BOMBRAM.rec) & 1, 0, 'no $249A98');
+  assert.equal(r2.u16(BOMBRAM.modeWord), 0, 'no $243DA0 -- $249A7E jumped it');
 });
 
 // ===========================================================================
@@ -257,12 +273,29 @@ function bombRom() {
   // $25663A, FOUR longwords and $FFFFFFFF.
   for (let k = 0; k < 4; k++) put(0xfe + k * 4, 0x0002, 0xe2ac + k * 0x100);
   put(0xfe + 16, 0xffff, 0xffff);
-  const at = (a) => a - base;
+  // BOUNDS-CHECKED, and W65 is why: `$255FE2` reads `$256CAA`, an entirely
+  // different window, and an unchecked `bytes[a - base]` returns `undefined`
+  // there -- so a test asserting "entry 1 does something else" passed against
+  // NaN instead of against a difference.
+  // ...and `$255F0E`'s X jitter draws from `$242FDE`'s 256-byte canned table
+  // at `$24301A`, which this fixture served as `undefined` until W65's bounds
+  // check found it: `drawSigned242FDE` was returning NaN and the two FADE rows
+  // below were asserting against arithmetic on NaN.
+  const RNG = 0x24301a, RNGLEN = 256;
+  const byte = (a) => {
+    // The canned table serves a CONSTANT, and the constant is 1 rather than 0
+    // so `$255F16 tst.w D0 / bne` takes its non-zero arm deterministically.
+    if (a >= RNG && a < RNG + RNGLEN) return 1;
+    if (a < base || a >= base + len) {
+      throw new Error(`bombRom: $${a.toString(16)} is outside $25653C+$112`);
+    }
+    return bytes[a - base];
+  };
   return {
-    u8: (a) => bytes[at(a)],
-    u16: (a) => (bytes[at(a)] << 8) | bytes[at(a) + 1],
-    u32: (a) => (((bytes[at(a)] << 24) | (bytes[at(a) + 1] << 16)
-      | (bytes[at(a) + 2] << 8) | bytes[at(a) + 3]) >>> 0),
+    u8: byte,
+    u16: (a) => (byte(a) << 8) | byte(a + 1),
+    u32: (a) => (((byte(a) << 24) | (byte(a + 1) << 16)
+      | (byte(a + 2) << 8) | byte(a + 3)) >>> 0),
   };
 }
 
@@ -295,17 +328,31 @@ test('$2564BA: $FF is cleared on the BOMBER and anything is cleared on the '
   assert.equal(ram.u8(RAM.player2 + P.invuln), 0, '$2564EA clr.b, unguarded');
 });
 
-test('$255E16: the dispatch index is the record AND $7, and entry 1 THROWS',
+// W64 asserted that entry 1 THREW; W65 runs it.  What the row asserts now is
+// that entries 0 and 1 are DIFFERENT ROUTINES: $255E3E installs $25653C on
+// record 0 alone, $255FE2 installs $256CAA on FOUR records.  $256662 is the
+// long $256CAA drops on record 0's ($1E,A6) and $256558 is $25653C's.
+test('$255E16: entry 0 is $255E3E and entry 1 is $255FE2, and they differ',
   () => {
-    const ram = new Ram();
-    ram.setU16(BOMBRAM.rec, 0x8001);                 // the LASER bomb's bit 0
-    try {
-      bombDriver255DD8(ram, bombRom(), ctx());
-      assert.fail('$255E2E[1] = $255FE2 must not be run as if it were $255E3E');
-    } catch (err) {
-      assert.ok(err instanceof Unreached);
-      assert.equal(err.romAddress, BOMB.driverAlt);
-    }
+    const a = new Ram();
+    a.setU16(BOMBRAM.rec, 0x8000);
+    bombDriver255DD8(a, bombRom(), ctx());
+    // $256558 PLUS ONE 12-byte entry: `($22,A6)` is 0 after the install, so
+    // `$255EBA subq.b #$1` borrows on the very frame the script is installed
+    // and `$255ECC move.l A0,($1E,A6)` has already advanced it.  A reader
+    // expecting the raw template value is off by exactly one entry.
+    assert.equal(a.u32(BOMBRAM.rec + 0x1e), 0x256558 + 12, '$25653C[+$10]');
+    assert.equal(a.u16(BOMBRAM.rec + BEAM_REC.tip), 0, 'record 44 untouched');
+    // ...and entry 1 reads a template `bombRom()` does not model, because it
+    // is a different window ($256CAA, not $25653C).  That IS the difference,
+    // stated as the ROM window it needs; `tests/w65beam.test.js` has the
+    // synthetic beam ROM and asserts the four records it installs.
+    const b = new Ram();
+    b.setU16(BOMBRAM.rec, 0x8001);                   // the LASER bomb's bit 0
+    assert.throws(() => bombDriver255DD8(b, bombRom(), ctx()),
+      /256caa|256CAA/, '$255FE2 reads $256CAA, $255E3E reads $25653C');
+    assert.equal(b.u16(BOMBRAM.rec + BEAM_REC.tip), 0,
+      'and nothing of $25653C landed on record 44 on the way');
   });
 
 test('$255E3E: the INIT install lands the script pointer on ($1E,A6) and the '
@@ -514,20 +561,31 @@ test('$24560A\'s three per-slot skips: not live, HP already negative, bit 13 '
   assert.equal(ram.u16(d + 0x18), 0x2000 - 0x50, 'only the fourth');
 });
 
-test('$24560A: bit 0 of the RECORD picks the other 809 bytes, and it throws',
-  () => {
-    const ram = new Ram();
-    ram.setU16(BOMBRAM.rec, 0x8001);
-    ram.bset8(RAM.player1 + 0x01, 6);
-    try {
-      bombDamage24560A(ram, ctx(), RAM.player1);
-      assert.fail('$2456A6 must not be skipped silently');
-    } catch (err) {
-      assert.ok(err instanceof Unreached);
-      assert.equal(err.romAddress, BOMB.damageAlt);
-    }
-  });
-
+// W64 asserted that $2456A6 THREW; W65 runs it.  The row that replaces it has
+// to separate the two arms by their DAMAGE, because that is the only thing a
+// wrong fork would get wrong quietly: $245638 takes $50 off every live enemy
+// whose own box is on screen; $2456A6 takes $1E0 and only inside the beam's
+// box, and it also sets the $400 hit bit that $245638 never sets.
+// W64 asserted that $2456A6 THREW; W65 runs it.  The row that replaces it
+// asserts only the FORK -- that `$245632 btst #$0,D5` reaches a routine with a
+// different SHAPE of result.  The alt arm's own laws (poolA $1E0, poolB $208
+// once, the bullet erase, the $400 bit) are `tests/w65beam.test.js`'s, which
+// has the fixtures for them.
+test('$24560A: bit 0 of the RECORD picks $2456A6, not $245638', () => {
+  const ram = new Ram();
+  ram.setU16(BOMBRAM.rec, 0x8001);
+  ram.bset8(RAM.player1 + 0x01, 6);
+  const r = bombDamageAlt2456A6 && bombDamage24560A(ram, ctx(), RAM.player1);
+  assert.ok('erased' in r, '$2456A6 reports the BULLET erase; $245638 has none');
+  assert.equal(r.hp, 0x1e0, "$2458E8 subi.w #$1E0, not $245696's $50");
+  // ...and bit 0 CLEAR still gets the 150-slot arm.
+  const b = new Ram();
+  b.setU16(BOMBRAM.rec, 0x8000);
+  b.bset8(RAM.player1 + 0x01, 6);
+  const rb = bombDamage24560A(b, ctx(), RAM.player1);
+  assert.ok(!('erased' in rb));
+  assert.equal(rb.hp, 1, "($1E,A6) is 0 with no script installed -- $24564A");
+});
 test('$24560A\'s two guards are checked BEFORE $245622 writes $812952', () => {
   const ram = new Ram();
   ram.setU16(BOMBRAM.g12952, 0x1234);
