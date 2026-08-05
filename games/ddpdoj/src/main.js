@@ -43,6 +43,7 @@ import { buildDisplayList } from './displaylist.js';
 import { ProtLatch } from './protsim.js';
 import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
 import { makeBackground, BgVram, VideoRegs } from './background.js';
+import { makeStageClear } from './stageend.js';
 
 /** THE BUCKETS `pgm.py shipgate` SUBSTITUTES, in drain (= depth) order.
  *
@@ -86,6 +87,14 @@ export function defaultHandlers(rom, vram, opts = {}) {
     // here can throw by address from deep inside a handler nobody has ported --
     // which is the point (docs/knowledge/10: a failure is strong evidence).
     [5, makeType5(rom)],
+    // WAVE 62 (S1).  $240F62[6] = $28D63C, priority $000A (read out of the
+    // cartridge through RomWindows, not carried as a literal).  THE STAGE-CLEAR
+    // OBJECT: `$242952` creates it with the NEXT stage number in ($4,A5), its
+    // init destroys the background object through `$25FCFA`, its state 2 writes
+    // `$813092`/`$813094`/`$813096` through `$25FD0C` and its state 3 rebuilds
+    // the world through `$25FD38`.  It is the machine ALL FIVE stages advance
+    // through -- see src/stageend.js, including its ONE declared deviation.
+    [6, makeStageClear(rom)],
   ]);
 }
 
@@ -147,6 +156,7 @@ export class Game {
     this.effectSpawns = new Map();   // WAVE 54, see #ctx()'s effectSpawn
     this.itemSpawns = new Map();     // WAVE 61, see #ctx()'s itemSpawn
     this.itemCollects = new Map();   // WAVE 61, see #ctx()'s itemCollect
+    this.stageEndEvents = [];        // WAVE 62, see #ctx()'s bossEvent
     this.kills = { n: 0, score: 0, byValue: new Map() };  // WAVE 34, killEvent
     this.shotSpawns = new Map();
     this.shotTableFull = 0;
@@ -300,6 +310,18 @@ export class Game {
       // only the allocations that produced a real slot -- which is what makes
       // `itemSpawns` minus the census's high-water mark a statement rather than
       // a restatement.
+      // WAVE 62 (S1), THE STAGE END.  Two hooks, and they exist because every
+      // link in the chain from the boss's timeout to `$25FD38` happens exactly
+      // ONCE in a whole run: a counter that only ever reads 1 is useless, but
+      // the FRAME each link fired on is the wave's entire result.  `bossEvent`
+      // is `$294F5A`, `$293E16` and `$29291E`; `stageEndEvent` is `$25FCFA`,
+      // `$25FD0C` and `$25FD38`.
+      bossEvent: (kind, clk) => {
+        this.stageEndEvents.push([kind, this.logicFrame, clk]);
+      },
+      stageEndEvent: (kind, v) => {
+        this.stageEndEvents.push([kind, this.logicFrame, v]);
+      },
       itemSink: (t) => { this.itemFrame = t; },
       itemSpawn: (kind, site) => {
         const k = `$${kind.toString(16).toUpperCase()}@$${site.toString(16).toUpperCase()}`;

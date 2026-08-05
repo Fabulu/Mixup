@@ -87,6 +87,7 @@
 import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
 import { freeEnemy } from './initbody.js';
+import { handlerBoss292902 } from './boss.js';
 import { stepMovement, scrollCompensate, applyVelocity } from './movement.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
 import { AimTables, AIM, aim64, aim256, aim64FromCaller, aim64AtTarget,
@@ -2765,6 +2766,12 @@ const HANDLERS = new Map([
   // W57: type $1C, spawned ONLY by the midboss's death ($26B7E0/$26B7E2).
   // It is a BACKGROUND blit, not a sprite -- see the W57 block's header.
   [0x26c20c, handler1C],
+  // W62 (S1): type $0E, THE STAGE-1 BOSS.  W36 left this a loud named throw on
+  // purpose and W57 made it the port's frontier (lf7870 / clk 488).  It lives
+  // in src/boss.js, which ports the FOUR routines the STAGE END rides on --
+  // $294AD8, $294F32 (the 10,800-frame timeout), $294DD4 and D-script 6 -- and
+  // NOT the boss.  Recon 48's 111 script entry points are still three waves.
+  [0x292902, handlerBoss292902],
 ]);
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a

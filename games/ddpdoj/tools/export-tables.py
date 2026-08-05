@@ -818,6 +818,52 @@ SHOT_WINDOWS.extend([
 # is already inside the WAVE 13 window $225B78+$22E0 (columns 224..246 of 248;
 # $225B78 + 224*36 == $227AF8 exactly, and 23*36 == 828 == 207 longwords ==
 # 23 columns x 9 rows, which is what $26C23C's two `dbra`s write).
+# ==================== W62 (S1): THE STAGE END, THREE WINDOWS =================
+#
+# `src/stageend.js` and `src/scheduler.js` read exactly these three, and each is
+# read by an INSTRUCTION named on its line.
+SHOT_WINDOWS.extend([
+    # $241198 `lea ($240F62,PC),A0` / $24119C `move.w ($4,A0,D1.w),D1` -- the
+    # object dispatch table's PRIORITY word, which `$241182` reads for every
+    # create.  20 entries x 8 bytes.  Entry [6] is ($28D63C, priority $000A),
+    # the stage-clear object; entry [1] is ($26127A, $001A), the background.
+    # The port has carried both priorities as literals since W13; W62 is the
+    # first wave to CREATE an object and it reads the word the cartridge has.
+    (0x240F62, 0x00A0, "W62: the object dispatch table $240F62 -- 20 entries of "
+                       "(handler.l, priority.w, pad.w), read by $24119C for "
+                       "every $241182 create"),
+    # $2597F2 `movea.l $812A70,A0 / movea.l (A0,D0.w),A0` -- THE A3 SCRIPT
+    # TABLE, installed by `$29272E jsr $259554` with A3 = $29370A.  Ten
+    # {init, step} pairs; entry [6] is ($293DC6, $293E04), the boss's DEATH
+    # ANIMATION and the only script W62 registers.
+    (0x29370A, 0x0050, "W62: the stage-1 boss's A3 script table $29370A -- ten "
+                       "{init,step} pairs, read through $812A70 by $2597F8. "
+                       "Entry [6] = ($293DC6,$293E04) is D-script 6, the death "
+                       "animation that fires $2595E8"),
+    # $2595B8 `move.l (A2)+,D0 / cmpi.l #$FFFFFFFF` -- the A2 list $259554
+    # PRE-FILLS $8129D0 from.  Seven longwords and the terminator; the walk at
+    # $259682 dispatches through the copy, so the port must read the ROM list to
+    # place the same seven pointers.
+    # $25974A `movea.l $812984,A0 / movea.l (A0,D0.w),A0` -- THE A0 MAIN
+    # SEQUENCER's table, installed with A0 = $293104.  Nine {init,step} pairs;
+    # entry [1] is ($2933C2, $2933C2) -- the SAME longword twice, which is the
+    # boss's death drift and the only one W62 registers.  [10] onward decodes as
+    # code, so nine is the extent.
+    (0x293104, 0x0048, "W62: the stage-1 boss's A0 main-sequencer table "
+                       "$293104 -- nine {init,step} pairs read through $812984 "
+                       "by $259766. Entry [1] = ($2933C2,$2933C2)"),
+    # $2596EE `movea.l $812D38,A0 / movea.l (A0,D0.w),A0` -- the A4 table.  Its
+    # scripts are the boss's own and NONE is ported; the window exists so that
+    # starting one reaches the SCRIPT throw carrying $2954xx rather than a ROM
+    # window throw carrying $294F88, which names the wrong thing.
+    (0x294F68, 0x0028, "W62: the stage-1 boss's A4 script table $294F68 -- five "
+                       "{init,step} pairs. NONE is registered; the window makes "
+                       "the throw name the SCRIPT and not the table"),
+    (0x292932, 0x0020, "W62: the stage-1 boss's A2 routine list $292932 -- "
+                       "SEVEN longwords then $FFFFFFFF, pre-filled into $8129D0 "
+                       "by $2595B8. Every slot's RUN bit stays CLEAR"),
+])
+
 SHOT_WINDOWS.append(
     (0x26C1C2, 0x004A, "W57: enemy type $1C -- the init stub $26C1C2 (run "
                        "length at init+2), the init body $26C1CA, its 1-word "

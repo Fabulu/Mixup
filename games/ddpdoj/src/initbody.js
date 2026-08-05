@@ -32,6 +32,7 @@
 import { unreached } from './unported.js';
 import { initArms, stepArms } from './midboss.js';
 import { u16, i16 } from './ram.js';
+import { installScripts } from './scheduler.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 
@@ -683,7 +684,18 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported) => {
   loadRecordProto(ram, rom, a5, 0x2927F6, 0x07);       // moveq #$7,D0; jsr $26377A
   ram.setU32(a6 + S.posX, 0x97fffe00);                  // move.l #$97fffe00,($2,A6)
   ram.setU16(a6 + S.posY, u16(i16(ram.u16(a6 + S.posY)) - i16(ram.u16(G.scrollDelta))));
-  unported?.note(0x259554, `boss state-machine install $259554 (five tables) -- W30`);
+  // W62 (S1): $259554 IS NOW REAL, and it is the one of this body's five notes
+  // that had to become a call.  It INSTALLS FIVE TABLE POINTERS and RUNS
+  // NOTHING -- every walk in `$2596C6` is gated on `tst.l <pointer>`, and the
+  // A2 pre-fill it performs leaves each slot's RUN bit (bit 0) CLEAR.  Without
+  // `$812A70` the A3 walk is skipped and D-script 6 -- the boss's death
+  // animation, which is what fires `$2595E8` and ends the stage -- could never
+  // step.  The two ACTIVATIONS below are still counted, so A2 slot 6 (the boss
+  // sprite, $292F4A) and A4 script 0 ($294FA0, which starts the boss's whole
+  // attack sequence 192 frames later) stay dormant.  That is the boss, and the
+  // boss is recon 48's three waves.
+  installScripts(ram, rom, { a0: 0x293104, a1: 0x295856, a2: 0x292932,
+    a3: 0x29370a, a4: 0x294f68 });                     // $29272E jsr $259554
   unported?.note(0x2598e6, `boss bespoke $2598E6 -- W30`);
   unported?.note(0x25980c, `boss bespoke $25980C -- W30`);
   unported?.note(0x24150a, `boss resource installs $24150A (#$11/12/15/16/17) -- data`);

@@ -106,9 +106,15 @@ export function updatePlayer(ram, slot, slotIndex, ctx) {
   if (ram.btst8(rec + P.state, 0)) {
     unreached(ROM.playerDead, 'player death / respawn state ($24A130)');
   }
-  // $249508 tst.w $812972 / bne $24A3A2
+  // $249508 tst.w $812972 / bne $24A3A2 -- **THE STAGE-CLEAR ARM.**
+  // W62 (S1) makes this real.  `$812972` has exactly two writers in build B:
+  // `$242968 move.w #$1,$812972` -- the stage advance's fourth instruction --
+  // and `$28D682 clr.w $812972`, object type 6's state 3.  So this path is
+  // ALIVE for exactly the window between `$242952` and the rebuild, and until
+  // this wave nothing in the port could set the word: `FROZEN_GLOBALS` still
+  // lists it as "seeded and frozen", which was true and is not any more.
   if (ram.u16(0x812972) !== 0) {
-    unreached(ROM.playerFrozen, 'global freeze path ($24A3A2); $812972 is non-zero');
+    return stageClearPlayer24A3A2(ram, rec, slot, ctx);
   }
   // $249512 bclr #5,(A6) -- again a BYTE op on $8103E6, and note that it is a
   // DIFFERENT BIT from the `ori.w #$20,(A6)` at $2495EA/$24962A, which sets bit
@@ -207,6 +213,66 @@ export function updatePlayer(ram, slot, slotIndex, ctx) {
   return finish(ram, rec, d2, d3, ctx, false);
 }
 
+/**
+ * `$24A3A2..$24A428` -- THE PLAYER WHILE THE STAGE IS CLEARING.
+ *
+ * `$24A3A2 bset.b #$2,$1(a6)` is both the action and the once-only latch: the
+ * 45-slot wipe below it runs on the FIRST frame of the stage clear and never
+ * again, because `bne $24A3D4` sees the bit it just set.
+ *
+ * **THE WIPE IS THE BEAM.**  `moveq #$2C,D7` + `lea $811F72,A0` + `lea $30(A0)`
+ * is 45 records of `$30` bytes -- `src/laser.js`'s own segment table, the one
+ * `37-recon-laser` named and W45 ported.  So clearing a stage destroys the beam
+ * the player is firing, exactly as `$25270C` does when a power-up is collected
+ * (W61 5, where it moved `$81B64A` by 24).
+ *
+ * `$24A3F0 moveq #$4,D0 / cmp.w $813092,D0 / bne $24A412` is a STAGE-5-ONLY arm
+ * ($813092 == 4 is the fifth stage), so on stage 1 control always takes
+ * `$24A412`: if `$812970` is set -- and `$28D5DC` sets it in type 6's init --
+ * the ship is given the constant velocity pair (`$C00`, D7) and flies off.
+ * D7 is `$E00` or `$2A00` depending on `($7,A5)`, i.e. on WHICH PLAYER.
+ */
+function stageClearPlayer24A3A2(ram, rec, slot, ctx) {
+  if (!ram.bset8(rec + 0x01, 2)) {                   // $24A3A2 bset.b #$2,$1(A6)
+    for (let i = 0; i <= 0x2c; i++) {                // $24A3AC moveq #$2C
+      ram.setU16(0x811f72 + i * 0x30, 0);            // $24A3B6 / $24A3B8 lea $30
+    }
+    ram.setU16(rec, ram.u16(rec) & 0xff3f);          // $24A3C0 andi.w #$FF3F
+    ram.setU8(rec + P.invuln, 1);                    // $24A3C4 move.b #$1,$3E
+    ram.setU16(rec + 0x2a, 0);                       // $24A3CC
+    ram.setU16(rec + 0x34, 0);                       // $24A3D0
+  }
+  ram.bclr8(rec, 4);                                 // $24A3D4 bclr.b #$4,(A6)
+  // $24A3D8/$24A3DC/$24A3E2 -- D7 is the ship's EXIT VELOCITY and it differs
+  // per player: `tst.b $7(a5)` is the object record's player index.
+  const d7 = ram.u8(slot + 0x07) === 0 ? 0x0e00 : 0x2a00;
+  tiltDecay(ram, rec);                               // $24A3E6 bsr $24A42A
+  ram.setU8(rec + 0x1a, 0x10);                       // $24A3EA move.b #$10,$1A
+  if (ram.u16(0x813092) === 4) {                     // $24A3F0/$24A3F2 cmp.w
+    if (u16(ram.u16(rec + P.posY)) < 0x8000) {       // $24A3FA cmpi.w #$8000/bcc
+      ram.setU16(rec + 0x1a, 0x3000);                // $24A404 -- a WORD over the
+      applyPlayerVector2417DE(ram, rec, ctx);        //   byte $24A3EA wrote
+      return;                                        // $24A40A jmp $2417DE
+    }
+  } else if (ram.u16(0x812970) !== 0) {              // $24A412 tst.w $812970/beq
+    // $24A420 `movem.w D2/D7,$2(A6)` -- D2 = $C00 into ($2,A6) and D7 into
+    // ($4,A6).  A `movem.w` to memory, so the register ORDER is D2 then D7,
+    // low-numbered first, and that is what puts $C00 on the Y word.
+    ram.setU16(rec + P.posY, 0x0c00);                // $24A41C/$24A420
+    ram.setU16(rec + P.posX, d7);
+  }
+  tail249E4E(ram, rec, ctx);                         // $24A426 bra $249E4E
+}
+
+/** `$2417DE` as the stage-clear arm reaches it: the same movement vector
+ *  `updatePlayer` applies, including the `$8130D2` zero-vector gate. */
+function applyPlayerVector2417DE(ram, rec, ctx) {
+  if (ram.u16(0x8130d2) !== 0) return;               // $2417EA tst.w/bne
+  const v = ctx.tables.vector(ram.u8(rec + P.speedIdx), ram.u8(rec + P.angle));
+  ram.setU16(rec + P.posY, u16(i16(ram.u16(rec + P.posY)) + v.dy));   // $2417F4
+  ram.setU16(rec + P.posX, u16(i16(ram.u16(rec + P.posX)) + v.dx));   // $2417F8
+}
+
 /** $2495E2 .. $249E7C: the clamps, the store and the animation tail.
  *  `skipClamps` is the `bra $24969C` from the no-direction path. */
 function finish(ram, rec, d2, d3, ctx, skipClamps) {
@@ -298,6 +364,16 @@ function finish(ram, rec, d2, d3, ctx, skipClamps) {
   // the right and vice versa.  Build A's twin table $1549AE holds $00C0 where
   // this holds $0080: Black Label's horizontal hitbox is exactly 2/3 of the
   // original's, 4 px against 6.
+  tail249E4E(ram, rec, ctx);
+}
+
+/** `$249E4E..$249E7C` and the shadow -- THE PLAYER'S TAIL, and it is a real
+ *  branch target and not just the end of `finish`: `$24A400 bcc $249E4E`,
+ *  `$24A418 beq $249E4E` and `$24A426 bra $249E4E` all enter HERE, skipping
+ *  every clamp above.  W62 lifted it out of `finish` unchanged so the
+ *  stage-clear path can reach it without re-running the clamps. */
+function tail249E4E(ram, rec, ctx) {
+  const { unportedLog } = ctx;
   const t = ctx.tables.anim(ram.u16(rec + P.tilt));
   ram.setU16(rec + P.animA, t.a[0]);                 // $249E62
   ram.setU16(rec + P.animA + 2, t.a[1]);
