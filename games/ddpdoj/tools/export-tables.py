@@ -950,6 +950,45 @@ SHOT_WINDOWS.extend([
                        "$2883FE + $10 == $28840E pins the near end"),
 ])
 
+# ============ W64 (B2): THE BOMB'S RECORD TEMPLATES AND SCRIPTS =============
+#
+# ONE window, $25653C..$25664D, and it is a UNION of six extents that are each
+# derived from an instruction.  `check_bomb_extents` asserts every one of them
+# against the image on every export.
+#
+#   $25653C  the INIT install `$255E52..$255E74` copies into the record.  The
+#            sequence is w,(skip $C),l,l,l,w,l,l,(skip 2),l,(skip 2),w == 15
+#            words == **30 bytes**, and the LONG at +$10 is $00256558, which
+#            lands on ($1E,A6) -- THE SCRIPT POINTER.  Counted from the `lea`,
+#            not from a run.
+#   $256558  the phase-0 SCRIPT.  `$255E9C` reads w,w,l,w,w == 12 bytes per
+#            entry and `$255EC6 cmpi.w #$FFFF,(A0)` terminates it.  FOUR
+#            entries and the $FFFF == **50 bytes**, ending at $256589.
+#   $25658A  the ($1,A6)-bit-1 twin of it, same shape, 50 bytes.  UNREACHED in
+#            this port (src/bomb.js throws by address) and exported anyway,
+#            because the union is one window and a hole in it would be a
+#            second window with no reader.
+#   $2565BC  the FADE install `$255ED2..$255EF0`: l,(skip 4),w,l,l,l,w,l,l,l,w
+#            == 17 words == **34 bytes**.  Its +$14 long is $002565DE.
+#   $2565DE  the fade's ANIM table.  `$255F24 move.w ($24,A6),D0 / move.l
+#            (A0,D0.w)` with ($24,A6) seeded $1C by the install and stepped
+#            `subq.w #$4`, so the index space is $1C..$0 -- EIGHT longwords,
+#            **32 bytes**, and $2565FE (the bit-1 twin) abuts it.
+#   $25661E  the BLINK install `$255F4E..$255F6C`: l,(skip 4),w,l,l,l,w,l,w,
+#            (skip 4),w == 14 words == **28 bytes**.  Its +$14 long is
+#            $0025663A.
+#   $25663A  the blink's list, walked `move.l (A0)+` until $FFFFFFFF -- FOUR
+#            longwords and the terminator, **20 bytes**, ending at $25664D.
+SHOT_WINDOWS.append(
+    (0x25653C, 0x0112, "W64: the BOMB's three record templates ($25653C, "
+                       "$2565BC, $25661E), its phase-0 script ($256558) and "
+                       "the two anim lists ($2565DE, $25663A), plus the three "
+                       "($1,A6)-bit-1 twins that sit between them. Every "
+                       "extent is derived from the copy sequence or from a "
+                       "terminator instruction; check_bomb_extents asserts "
+                       "all six"),
+)
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
@@ -1612,11 +1651,75 @@ def check_hud_extents(d: bytes) -> None:
                          "the same DIP) no longer abuts $28840E.")
 
 
+def check_bomb_extents(d: bytes) -> None:
+    """W64 (B2).  ASSERT THE BOMB'S SIX EXTENTS AGAINST THE CARTRIDGE.
+
+    None of these is checkable from inside the port: a SHORT window is not
+    caught at the export, it is caught by `src/rom.js` on a player's machine
+    (W54 6.2, and W63 9b made it a rule).  Every assertion below reads either
+    an INSTRUCTION that produces the extent or the TERMINATOR that ends it.
+    """
+    # 1. The window must cover all six, i.e. reach $25664E.
+    declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x25653C]
+    if not declared or 0x25653C + declared[0][1] < 0x25664E:
+        raise SystemExit(
+            f"the $25653C window is {declared} and must reach $25664E -- "
+            f"$25663A + four longwords + the $FFFFFFFF terminator.")
+    # 2. $255E52 is `lea $25653C,A0`, i.e. the init template's ADDRESS is in
+    #    the instruction and not in this file.
+    if u32(d, 0x255E54) != 0x0025653C:
+        raise SystemExit(
+            f"$255E52 lea now reads ${u32(d, 0x255E54):08X}; the init "
+            f"template's address comes from that instruction.")
+    # 3. ...and the SCRIPT POINTER is the long at template offset $10.
+    if u32(d, 0x25653C + 0x10) != 0x00256558:
+        raise SystemExit(
+            f"$25653C[+$10] is ${u32(d, 0x25653C + 0x10):08X}; it must be "
+            f"$00256558 -- the long the init install drops on ($1E,A6).")
+    # 4. FOUR script entries of 12 bytes and then $FFFF, which is what makes
+    #    the phase-0 extent 50 bytes rather than "whatever a run walked".
+    if u16(d, 0x256558 + 4 * 12) != 0xFFFF:
+        raise SystemExit(
+            f"$256558 + 4*12 is ${u16(d, 0x256558 + 4 * 12):04X} and must be "
+            f"$FFFF -- $255EC6 cmpi.w #$FFFF,(A0) is the only terminator.")
+    # 5. $2565BC's and $25661E's addresses come from their own `lea`s.
+    if u32(d, 0x255ED4) != 0x002565BC:
+        raise SystemExit(f"$255ED2 lea now reads ${u32(d, 0x255ED4):08X}.")
+    if u32(d, 0x255F50) != 0x0025661E:
+        raise SystemExit(f"$255F4E lea now reads ${u32(d, 0x255F50):08X}.")
+    # 6. THE FADE's index space.  $2565BC[+$14] is the table and the WORD at
+    #    +$16 of the same template is ($24,A6)'s seed, $1C -- eight longwords.
+    if u32(d, 0x2565BC + 0x14) != 0x002565DE:
+        raise SystemExit(
+            f"$2565BC[+$14] is ${u32(d, 0x2565BC + 0x14):08X}; it must be "
+            f"$002565DE, the fade's anim table.")
+    if u16(d, 0x2565BC + 0x1A) != 0x001C:
+        raise SystemExit(
+            f"$2565BC[+$1A] -- the word the install drops on ($24,A6) -- is "
+            f"${u16(d, 0x2565BC + 0x1A):04X} and must be $1C. The $2565DE "
+            f"table's EIGHT longwords are derived from it, together with "
+            f"$255F32 subq.w #$4.")
+    if d[0x255F32] != 0x59 or d[0x255F33] != 0x6E:
+        raise SystemExit("$255F32 is no longer `subq.w #$4,($24,A6)`, so the "
+                         "$2565DE table's stride is no longer derived.")
+    # 7. THE BLINK's list ends at the FIRST $FFFFFFFF, and $255F94 is the
+    #    instruction that says so.
+    if u32(d, 0x25661E + 0x14) != 0x0025663A:
+        raise SystemExit(
+            f"$25661E[+$14] is ${u32(d, 0x25661E + 0x14):08X}; it must be "
+            f"$0025663A.")
+    if u32(d, 0x25663A + 4 * 4) != 0xFFFFFFFF:
+        raise SystemExit(
+            f"$25663A + 4 longwords is ${u32(d, 0x25663A + 4 * 4):08X} and "
+            f"must be $FFFFFFFF -- $255F94 cmpi.l is the terminator.")
+
+
 def build(d: bytes) -> dict:
     check_pool_e_extents(d)                    # W53 -- see the function's docstring
     check_pool_b_extents(d)                    # W54 -- see the function's docstring
     check_item_extents(d)                      # W61 -- see the function's docstring
     check_hud_extents(d)                       # W63 -- see the function's docstring
+    check_bomb_extents(d)                      # W64 -- ...and this one's
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
     levels = speed_index_set(d)

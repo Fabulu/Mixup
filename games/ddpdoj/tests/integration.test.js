@@ -301,7 +301,7 @@ test('$2634F4 walks the SPAWN SCRIPT before the 58-slot driver',
 // ===========================================================================
 // type 5 itself: the three calls must RUN, not be counted.
 // ===========================================================================
-test('TYPE5_PORTED is FOURTEEN of the twenty-three, and the list is the ROM\'s', () => {
+test('TYPE5_PORTED is SIXTEEN of the twenty-three, and the list is the ROM\'s', () => {
   assert.equal(TYPE5.calls.length, 23, '$28B5E6..$28B66A');
   // W33 added call #3, `$28AD54` -- and ONLY its first loop, the sub-record
   // reaper.  The rest of that routine ($28AD70 onwards, reached by
@@ -323,7 +323,15 @@ test('TYPE5_PORTED is FOURTEEN of the twenty-three, and the list is the ROM\'s',
   // LISTED in `calls` since wave 8 and never made.  It ships in the same commit
   // as its allocator `$27E812` (src/items.js spawnItem, called from
   // `handlers.js deathSeq85`), for the same W33 §4 reason as #5 and #12.
-  assert.equal(TYPE5_PORTED.size, 15);
+  // W64 added #7 `$255DD8`, THE BOMB's driver -- in the same commit as its
+  // allocator (`src/bomb.js fireBomb2498E2`'s `$249A4A move.w D2,(A1)`) and
+  // its teardown (`$2564F0`, the only thing that frees the record), which
+  // here is not just W33 §4's pool hygiene: the record gates `$24560A`'s
+  // damage and six other subsystems, so a driver-less allocation would leave
+  // all of them on for the rest of the stage.
+  assert.equal(TYPE5_PORTED.size, 16);
+  assert.ok(TYPE5_PORTED.has(TYPE5.bombDriver));
+  assert.equal(TYPE5.calls.indexOf(TYPE5.bombDriver), 6, '$28B5F8 is call #7');
   assert.ok(TYPE5_PORTED.has(TYPE5.itemDriver));
   assert.ok(TYPE5.calls.includes(TYPE5.itemDriver));
   assert.equal(TYPE5.itemDriver, 0x27e99e);

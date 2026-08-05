@@ -134,6 +134,7 @@ import { runSegmentDriver, runBeamDraw } from './laser.js';
 import { runSparkDriver } from './spark.js';
 import { runEffectDriver } from './effects.js';
 import { runItemDriver } from './items.js';
+import { bombDriver255DD8 } from './bomb.js';
 
 export const TYPE5 = {
   handler: 0x28b5e0,
@@ -150,6 +151,7 @@ export const TYPE5 = {
   sparkDriver: 0x28a098,    // $28B628 -- POOL E, THE SHOT'S IMPACT SPARK (W53)
   effectDriver: 0x288e4e,   // $28B5FE -- POOL B, THE DEATH EXPLOSION     (W54)
   itemDriver: 0x27e99e,     // $28B64C -- THE ITEM, pool family six       (W61)
+  bombDriver: 0x255dd8,     // $28B5F8 -- **THE BOMB**, call #7            (W64)
   laserRampDown: 0x24c8be,  // inside it; $24C8CE is the write
   /** ($4b,A6)'s reload with the measured formation ($5a,A4) = 2: (2-2>>1)+4. */
   laserRampFrames: 4,
@@ -225,6 +227,11 @@ export const TYPE5_PORTED = new Set([
   // for W33 ยง4's reason, and the pool it drives is the sixth family, not one of
   // `50-recon`'s five.
   0x27e99e,   // #18 THE ITEM: the 25-slot family's driver, bucket 17    (W61)
+  // W64 (B2).  #7 is `$255DD8`, THE BOMB's driver -- the script machine that
+  // runs the `$811F72` record `$249A4A` allocates, and the ONLY thing that
+  // can free it (`$2564F0`, reached from the script's own terminator).  It
+  // ships with `src/bomb.js`'s allocator in one commit.
+  0x255dd8,   // #7  THE BOMB: $255E3E's three phases and $2564F0's teardown (W64)
 ]);
 
 /** Handlers this module dispatches to, built once per Game. */
@@ -335,6 +342,19 @@ export function makeType5(rom) {
             + `($28AD70 onwards, reached by fall-through): the $81DB90 `
             + `sub-record cue-pool driver, count at $81DD0C. W33 ported only `
             + `the reaper loop $28AD54..$28AD6C ahead of it`);
+          break;
+        // WAVE 64 (B2).  #7 is `$255DD8`, **THE BOMB'S DRIVER**, and it has
+        // been a counted note since wave 8.  It ships in the SAME COMMIT as
+        // its allocator (`src/bomb.js fireBomb2498E2`, the `$249A4A move.w
+        // D2,(A1)` that makes `$811F72` negative) and as its teardown
+        // (`$2564F0`, which wipes all 45 records), for W33 ง4's reason -- and
+        // here the reason is sharper than usual, because the record is not
+        // just a pool slot: while it is live it turns on `$24560A`'s damage,
+        // `$286876`'s chain machine, the explosion pool's interlock and four
+        // more gates.  A driver-less allocation would leave every one of them
+        // on for the rest of the stage.
+        case TYPE5.bombDriver:                          // $28B5F8 -> $255DD8
+          ctx.bombDrove = bombDriver255DD8(ram, rom, ctx);
           break;
         case ROM.shipDrawAltP1:                         // $24A458
           drawShipAlt(ram, RAM.player1);

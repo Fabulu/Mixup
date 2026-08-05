@@ -212,6 +212,7 @@
 
 import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
+import { bombDamage24560A } from './bomb.js';
 
 export const DMG = {
   tail: 0x28b670,            // object type 5's tail
@@ -985,17 +986,8 @@ const SCORE_G30F8 = 0x8130f8;
  * beam's.  If either ever goes true the port throws by address rather than
  * skipping 966 bytes of damage silently.
  */
-function bombLaserBlock(ram, a4) {
-  const d5 = ram.u16(DMG.laserRec);                   // $245612 move.w (A6),D5
-  if ((d5 & 0x8000) === 0) return;                    // $245614 bpl.w $2459CE
-  if ((ram.u8(a4 + 0x01) & 0x40) === 0) return;       // $245618 btst #$6/beq
-  unreached(DMG.bombLaserBody, `$24560A's body -- $244D62's NINTH block, the `
-    + `BOMB-LASER's damage: $245638 walks 150 slots at $81459C with moveq #$50 `
-    + `(or #$1 when ($1e,A6) is set), $2456A6 builds a bounding box over `
-    + `$811F72 as 45 records of $30, and $245720 walks pool B. Both its guards `
-    + `just went true: $811F72 is negative and the player's ($1,A4) bit 6 is `
-    + `set, i.e. weapon (A) is live. That needs the BOMB ($24989E is its only `
-    + `writer) and type-5 call #7 $255DD8, neither of which is ported`);
+function bombLaserBlock(ram, ctx, a4) {
+  return bombDamage24560A(ram, ctx, a4);
 }
 
 /**
@@ -1085,11 +1077,11 @@ function weaponTail(ram, ctx, player, a1, a2, a3) {
   const d0 = ram.u16(player);                         // $24518E move.w (A4),D0
   if ((d0 & 0x8000) === 0) return { weapon: null };   // $245190 bpl.w $2459CE
   if ((d0 & 0x0080) !== 0) {                          // $245194 tst.b D0 / bmi
-    bombLaserBlock(ram, player);
+    bombLaserBlock(ram, ctx, player);
     return { weapon: null };
   }
   if (ram.u8(player + DMG.laserByte) === 0) {         // $24519A tst.b ($3f,A4)
-    bombLaserBlock(ram, player);                      // $24519E beq.w $24560A
+    bombLaserBlock(ram, ctx, player);                 // $24519E beq.w $24560A
     return { weapon: null };
   }
   if (a1 === undefined) {
@@ -1100,8 +1092,7 @@ function weaponTail(ram, ctx, player, a1, a2, a3) {
   const hits27 = weaponObjectPass(ram, a2, d6, { block: 7 });   // $2451A2
   const hits30 = weaponObjectPass(ram, a3, d6, { block: 8 });   // $24525C
   const beam = laserDamagePass(ram, a1, d6);                    // $24530C bsr
-  bombLaserBlock(ram, player);                                  // $245310 bra.w
-  void ctx;
+  bombLaserBlock(ram, ctx, player);                             // $245310 bra.w
   return { weapon: { hits27, hits30, beam } };
 }
 

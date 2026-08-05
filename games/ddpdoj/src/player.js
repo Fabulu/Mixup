@@ -28,6 +28,7 @@ import { i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
 import { spawnShot } from './shots.js';
 import { drawShipShadow, SHIP_MUTATE } from './shipsprite.js';
+import { fireBomb2498E2, BOMBRAM } from './bomb.js';
 
 // Globals the player reads and the port does not write.  Seeded once and
 // FROZEN for the run.  Listed by name so the runner can print them and a
@@ -439,10 +440,43 @@ function bombAndShotGuards(ram, rec, ctx, playerIdx) {
   // now moves every frame because the background object is ported.  So this
   // branch is live for the first time.  The REAL bomb stock is still unlocated
   // (20-plan W28).
+  // **WAVE 64 SPLITS ONE NAME INTO TWO WEAPONS.**  From wave 4 to wave 63 the
+  // line below threw `THE BOMB ($249814)` for BOTH arms of `$249814`, and
+  // `38-recon-bomb-hyper.md` §0.2 is right that a wave which "implements the
+  // bomb at $249814" implements the hyper by accident.  `$249814` is Button 2
+  // and the weapon is decided EIGHT INSTRUCTIONS LATER, by the hyper stock:
+  //
+  //   $249864 move.w (A1),D1   A1 = $81B65C (P1) / $81B65E (P2)
+  //   $249866 beq.b $2498E2    ZERO  -> THE BOMB   (src/bomb.js, W64)
+  //           $249868          NON-0 -> THE HYPER  (a throw, and it says so)
+  //
+  // The `lea` block above the fork is transcribed because the fork READS from
+  // it: the two arms load different stock words, different request words and
+  // different `$255326`/`$255330` tables.
   if (ram.u16(0x8130ce) >= 4 && (btn & (1 << 5))) {
-    unreached(0x249814, 'THE BOMB ($249814); mirror bit 5 went down with the '
-      + 'distance clock $8130CE >= 4');
-  }
+    const stock = ram.u16(playerIdx === 0                 // $249820 / $249846
+      ? BOMBRAM.hyperStockP1 : BOMBRAM.hyperStockP2);
+    if (stock !== 0) {                                    // $249866 beq $2498E2
+      unreached(0x249868, `**THE HYPER** ($249868), NOT the bomb -- `
+        + `$249864's fork found $${(playerIdx === 0 ? 0x81b65c : 0x81b65e)
+          .toString(16).toUpperCase()} = ${stock}. The arm is $249882's `
+        + `$252B44/$252B8A power lookup, $24988A addq.w #$8,$81B410, `
+        + `$249890's $255326[stock-1] into $81B412, jsr $25270C, the REQUEST `
+        + `$24989A move.w #$1,$81B658 that $285A12 consumes, and the bullet `
+        + `cancel $243D14/$243D5A. W63 (B1) throws on $285A12's two arms and `
+        + `recon 38 §6 wave 2 owns this. The only absolute writer of the `
+        + `stock is $2530CA, whose item kinds src/items.js REFUSES at the `
+        + `allocator, so this cannot be reached in this port at all`);
+    }
+    const what = fireBomb2498E2(ram, ctx, rec, playerIdx);     // $2498E2
+    ctx.bombEvent?.('press', what);
+    // **THE TWO EXITS ARE DIFFERENT AND A PORT MUST NOT MERGE THEM.**  A bomb
+    // that FIRES ends at `$249B28 bra.w $249E4E`, the player's tail, so the
+    // shot cadence machine does not run on that frame.  All THREE refusals
+    // (`$2498E6`, `$2498FE`, `$24990A`) branch to `$249B2C`, which IS the
+    // cadence machine -- so a press that is refused still shoots.
+    if (what.startsWith('fired')) return;                 // $249B28 bra $249E4E
+  }                                                       // ...else fall to $249B2C
   // $249B2C..$249B3C -- the "power" byte the tail draws from: ($54,A6), or
   // ($55,A6) when bit 0 of ($1,A6) is set, copied into ($56,A6).
   ram.setU8(rec + 0x56, ram.btst8(rec + P.flags1, 0)     // $249B30 btst #0

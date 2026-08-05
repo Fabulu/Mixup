@@ -246,28 +246,33 @@ test('pool A\'s reach shadows D0, which is why a beam stops at the FIRST thing '
 });
 
 // ======================================================= $24560A
-test('$24560A is transcribed only as far as its two guards, and throws by '
-  + 'address when both go true', () => {
-  const ram = new Ram();
-  ram.setU16(DMG.gate308c, 1);
-  ram.setU16(DMG.p1rec, 0x8000);
-  ram.setU8(DMG.p1rec + DMG.laserByte, 0);  // -> $24519E beq.w $24560A
-  ram.setU16(DMG.laserRec, 0x0000);         // $245614 bpl.w $2459CE
-  assert.doesNotThrow(() => runType5Tail(ram, ctx()),
-    '$811F72 positive returns without touching the 966 bytes');
-  ram.setU16(DMG.laserRec, 0x8000);         // negative now
-  ram.setU8(DMG.p1rec + 0x01, 0x00);        // ...but ($1,A4) bit 6 is clear
-  assert.doesNotThrow(() => runType5Tail(ram, ctx()), '$245618 btst #$6 / beq');
-  ram.setU8(DMG.p1rec + 0x01, 0x40);        // both guards TRUE
-  try {
+//
+// **WAVE 64 REPLACED THIS TEST'S SUBJECT AND THE OLD ONE IS KEPT IN THE NAME.**
+// From W51 to W63 this asserted that `$24560A` was transcribed only as far as
+// its two guards and threw past them.  `src/bomb.js` ports the block, so what
+// is checked now is the pair of GUARDS -- which is the part W51 owned and the
+// part a later wave could still get wrong -- plus the fact that the guarded
+// body is no longer a throw.
+test('$24560A\'s two guards still gate it: $811F72 NEGATIVE and ($1,A4) bit 6',
+  () => {
+    const ram = new Ram();
+    ram.setU16(DMG.gate308c, 1);
+    ram.setU16(DMG.p1rec, 0x8000);
+    ram.setU8(DMG.p1rec + DMG.laserByte, 0);  // -> $24519E beq.w $24560A
+    ram.setU16(DMG.laserRec, 0x0000);         // $245614 bpl.w $2459CE
+    ram.setU16(0x812952, 0x1234);
     runType5Tail(ram, ctx());
-    assert.fail('the ninth block must not be skipped silently');
-  } catch (err) {
-    assert.ok(err instanceof Unreached, 'it is an Unreached, not any Error');
-    assert.equal(err.romAddress, DMG.bombLaserBody,
-      'matched by romAddress, never by message text');
-  }
-});
+    assert.equal(ram.u16(0x812952), 0x1234,
+      '$811F72 POSITIVE returns before $245622 move.w #$7800,$812952');
+    ram.setU16(DMG.laserRec, 0x8000);         // negative now
+    ram.setU8(DMG.p1rec + 0x01, 0x00);        // ...but ($1,A4) bit 6 is clear
+    runType5Tail(ram, ctx());
+    assert.equal(ram.u16(0x812952), 0x1234, '$245618 btst #$6 / beq $2459CE');
+    ram.setU8(DMG.p1rec + 0x01, 0x40);        // BOTH guards TRUE
+    runType5Tail(ram, ctx());
+    assert.equal(ram.u16(0x812952), 0x7800,
+      '$245622 runs, i.e. the ninth block is no longer a throw (W64)');
+  });
 
 // ======================================================= $286876 and $286774
 test('$286876\'s chain step is ONE or TWO, chosen by $286966 btst #$6,D1', () => {
