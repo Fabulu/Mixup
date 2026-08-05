@@ -80,6 +80,11 @@ import { u8 } from './state.js';
 import { cannedPacket } from './hudpackets.js';
 import { fullScreenLoad, titleScreenLoad, clearZeroPage } from './flow.js';
 import { stopAllSound, soundRequest } from './sound.js';
+// MODS -- ONE call, behind `if (state.mods)`, at the TAIL of $82D5 (W44). It is
+// the routine both "START on the title menu" and "CONTINUE on the game-over
+// screen" go through, and $8307's wipe has just erased the two save slots a
+// loadout seeds. See THE SECOND RULE in src/mods.js.
+import { modNewRun } from './mods.js';
 
 // ---------------------------------------------------------------------------
 //  Shared tails
@@ -609,6 +614,11 @@ export function newGame(state) {
   state.zp0A = (state.zp03 & 0x20) ? 0x07 : 0x01;   // $82EE-$82F8
   state.lives[0] = state.lives[1] = 3;              // $82FA-$82FE
   state.extraLife[0] = state.extraLife[1] = 1;      // $8300-$8304
+  // MODS: A NEW GAME IS STARTING, and `$8307` has just wiped `$26,X` and
+  // `$28,X` -- the level and loop the launcher chose. Re-seeded here, along
+  // with the run-scoped runtime state, because BOTH callers of this routine
+  // ($815F's START and $970D's CONTINUE) mean "a new run begins". W44.
+  if (state.mods) modNewRun(state);
 }
 
 // ---------------------------------------------------------------------------

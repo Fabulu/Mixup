@@ -4,7 +4,7 @@
 //
 //   1. THE ONE RULE -- with no loadout attached, `state.mods` is undefined and
 //      every hook in src/mods.js is unreachable. That is what makes the 47
-//      oracle scenarios, the 682 unit tests and `rendergate` still mean what
+//      oracle scenarios, the 732 unit tests and `rendergate` still mean what
 //      they meant before this file existed.
 //   2. One test per mod, each of which FAILS if that mod's hook stops firing.
 //      Seen to fail, one at a time, by mutating src/mods.js -- the mutations
@@ -27,7 +27,7 @@ import { die, collision } from '../src/collision.js';
 import { nmi } from '../src/nmi.js';
 import {
   MODS, PRESETS, CATEGORIES, START_KEYS,
-  resolveLoadout, attachMods, describeMod, loadoutToHash, hashToLoadout,
+  resolveLoadout, attachMods, describeMod, loadoutToHash, hashToLoadout, PLAY_MODE,
   modAfterIntroReset, modRefuseDeath, modHidePlayer,
   modShowPlayer, modFreezeEnemies, modFrameEnd, modInput, modRenderBreaks,
   modPalette, modPostRender,
@@ -36,6 +36,7 @@ import { applyCapsule } from '../src/powerup.js';
 import { resetInput, setTouchButton } from '../src/input.js';
 import { renderFrame, W as PPU_W, H as PPU_H } from '../src/render/ppu.js';
 import { headlessResources } from './helpers.js';
+import { readFileSync } from 'node:fs';
 
 const res = headlessResources(0);
 
@@ -366,6 +367,109 @@ test('...so CONTINUE starts stage 1 at page 0, not at the page you died on', () 
   // there sends `$9A4D` straight into `$81`/`$82` on the first play frame.
   assert.ok(s.cam.hi < res.stages[0].bossPage,
     'the camera is BEFORE stage 1\'s boss page, so $9A4D does not fire at once');
+});
+
+// ---------------------------------------------------------------------------
+//  W44 -- THE REST OF THE CLASS: run scope, audited
+// ---------------------------------------------------------------------------
+//
+// W43 fixed `rt.death` at `$97F1` and named `rt.firstIntro` as carrying the same
+// shape without fixing it. W44 audited all 19 mods and found the leak class has
+// a second half that had never been looked for: state SPENT BY A RUN THE PLAYER
+// IS NOT FLYING, and state the cartridge's own wipes ERASE so that a mod
+// silently never applies at all. Both were measured, both are fixed, and
+// tools/oracle/modscope.mjs drives every mod and every preset through a whole
+// session to hold it. These are the unit-level witnesses.
+
+test('the mod simulation does not run outside a real run ($00 == 5, $09 == 0)', () => {
+  // `$09 != 0` is the attract demo and `$00 != 5` is the front end. Every
+  // simulation hook returns early on both, so nothing the player chose can be
+  // spent by a ship they are not flying. The render layer is NOT gated: it runs
+  // after nmi() has returned and cannot reach the simulation.
+  const s = modded(['heal-gradius-syndrome', 'rank-max', 'stay-calm'], { shield: 5 });
+  s.zp09 = 1;                                     // $82D2 INC $09 -- the demo
+  s.obj.status[0] = 1;
+  introReset(s, res);
+  assert.equal(s.zp.shield, 0, 'the demo ship gets no kit');
+  assert.equal(s.mods.rt.firstIntro, true, '...and the run\'s first intro is unspent');
+  assert.equal(s.mods.rt.invuln, 0, '...and no window was armed');
+  s.zp17 = 3;
+  modFrameEnd(s);
+  assert.equal(s.zp17, 3, 'no rank lock during the demo');
+  assert.equal(modFreezeEnemies(s), false, '$ADAB still runs during the demo');
+  die(s);
+  assert.equal(s.obj.status[0], 2, 'and the demo ship can still die');
+
+  // The other half of the gate: mode 5 is play, and the title screen is not.
+  const t = modded(['rank-max']);
+  t.mode = 0;                                     // $80E2, the title scroll-in
+  t.zp17 = 3;
+  modFrameEnd(t);
+  assert.equal(t.zp17, 3, 'no rank lock on the title screen either');
+});
+
+test('a new game re-seeds the level, the loop and the starting kit ($82D5, W44)', () => {
+  // `$8307`'s wipe covers `$0012-$00EF`, which is `$26,X` AND `$28,X` -- so the
+  // two bytes attachMods() seeds do not survive the cartridge's own new-game
+  // setup. MEASURED: `#mods=loop-three` on the default launch had `$28,X` = 0
+  // by frame 128 and `$1A` = 0 on the first play frame. The mod never applied.
+  const s = modded(['loop-three'], { stage: 3, shield: 5 });
+  assert.equal(s.save26[0], 3);
+  assert.equal(s.save28[0], 2);
+  newGame(s);                                     // $82D5 -> $8307's wipe
+  assert.equal(s.save26[0], 3, '$26,X came back');
+  assert.equal(s.save28[0], 2, '$28,X came back');
+  assert.equal(s.mods.rt.firstIntro, true, 'a new game owes the starting kit again');
+  s.mode = 4;                                     // $9710/$8163 -- the handover
+  st8165(s);                                      // $8165 INC $00 -> mode 5
+  introReset(s, res);
+  assert.equal(s.zp19, 3, '$19 after $9B6E');
+  assert.equal(s.zp1A, 2, '$1A after $9B72');
+  assert.equal(s.zp.shield, 5, 'and the kit landed');
+});
+
+test('...so a CONTINUE gives back what the player chose, not a bare stage 1', () => {
+  const s = modded(['loop-three'], { stage: 3, shield: 5, options: 2 });
+  introReset(s, res);
+  assert.equal(s.zp.shield, 5);
+  // Lose the run: $979D with no lives left -> $97F1.
+  s.obj.status[0] = 1;
+  s.lives[0] = 0;
+  respawn(s, res);
+  assert.equal(s.substate, 0xC0, 'GAME OVER');
+  assert.equal(s.mods.rt.death, null);
+  assert.equal(s.mods.rt.invuln, 0, 'W44: the window is a run-scoped byte too');
+  // $970D CONTINUE.
+  newGame(s);
+  s.mode = 4;
+  st8165(s);
+  introReset(s, res);
+  assert.equal(s.zp19, 3, 'the continue starts on the stage the player picked');
+  assert.equal(s.zp1A, 2, '...on the loop they picked');
+  assert.equal(s.zp.shield, 5, '...with the kit they picked');
+  assert.equal(s.zp.options, 2);
+  assert.equal(s.cam.hi, 0, '...at page 0, which is W43\'s assertion still holding');
+});
+
+test('mods.js\'s PLAY_MODE is state.js\'s MODE_STAGE, and mods.js still imports nothing', () => {
+  // src/mods.js duplicates the 5 rather than importing it, because start.html
+  // imports this module and says "It carries NO game code". The duplication is
+  // pinned here so it cannot drift, and the no-imports claim is checked against
+  // the file's own text rather than trusted.
+  assert.equal(PLAY_MODE, MODE_STAGE);
+  const src = readFileSync(new URL('../src/mods.js', import.meta.url), 'utf8');
+  assert.equal(/^\s*import\s/m.test(src), false,
+    'src/mods.js has grown an import; start.html loads it as a standalone catalogue');
+});
+
+test('every mutable byte the mod layer owns is one of the five in rt', () => {
+  // THE INVENTORY IS THE CHECK. W43's defect was a field whose lifetime nobody
+  // had written down, so this pins the field set itself: a sixth one added
+  // without a lifetime in the table (docs/worklog/gradius/44) fails here.
+  const s = modded(['heal-gradius-syndrome', 'afterimage', 'disco']);
+  assert.deepEqual(Object.keys(s.mods.rt).sort(),
+    ['death', 'discoPal', 'firstIntro', 'ghost', 'invuln']);
+  assert.deepEqual(Object.keys(s.mods).sort(), ['lo', 'rt']);
 });
 
 // ===========================================================================

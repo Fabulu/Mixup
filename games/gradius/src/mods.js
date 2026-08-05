@@ -6,13 +6,13 @@
 //
 // **A MOD MAY NOT EXIST UNLESS IT IS SWITCHED ON.** `state.mods` is UNDEFINED
 // on every state createState() ever made, every one of the 47 oracle scenarios
-// and every one of the 679 unit tests. Every hook this file exports is called
+// and every one of the 732 unit tests. Every hook this file exports is called
 // from src/ behind `if (state.mods)`, so with no loadout attached the port is
 // byte-for-byte the program the gate compares against the cartridge. That is
 // not a nicety: the port's agreement with the ROM is the actual product, and a
 // mod that could perturb it would be a defect in the product, not a feature.
 //
-// The call sites, all six of them inside the simulation, so they can be
+// The call sites, all seven of them inside the simulation, so they can be
 // counted (`grep -n 'state.mods' games/gradius/src/*.js`):
 //
 //   src/nmi.js       modHidePlayer / modShowPlayer around $80A7's display list
@@ -20,10 +20,39 @@
 //   src/nmi.js       modFrameEnd               after $80B5's `STA $04`
 //   src/flow.js      modAfterIntroReset        at the tail of $9B3E
 //   src/flow.js      modAbandonRun             at the top of $97F1   (W43)
+//   src/modes.js     modNewRun                 at the tail of $82D5  (W44)
 //   src/collision.js modRefuseDeath            at the top of $C1D6
 //
 // ...plus src/main.js, which is the HOST and not the simulation: the input
 // word, the frame pacing and the framebuffer.
+//
+// ============================ THE SECOND RULE (W44) =========================
+//
+// **A MOD MAY NOT OUTLIVE THE RUN IT BELONGS TO, AND MAY NOT BE SPENT BY A RUN
+// THE PLAYER IS NOT FLYING.** W43 found one instance of the first half: the
+// Heal Gradius Syndrome death position survived a game over and teleported the
+// next game's camera. W44 audited the whole layer and found the class is real
+// but small -- and found the second half, which nobody had looked for:
+//
+//   * `$09 != 0` IS THE ATTRACT DEMO, and until W44 it ran the full mod
+//     simulation. The picker's STARTING KIT was granted to the demo ship and
+//     `rt.firstIntro` went false, so a player who watched the title screen for
+//     six seconds before pressing START flew a bare Viper. MEASURED: with
+//     `{shield: 5, options: 2}`, the real run's first play frame had
+//     `$45 = $46 = 0`. Every simulation hook now returns early on `$09 != 0`.
+//   * `$8307`'s wipe clears `$26,X` and `$28,X`, so the two bytes attachMods()
+//     seeds do not survive mode 0 -- let alone a continue. MEASURED: with
+//     `loop-three` and no level pick (the default launch, mode 0), `$28,X` was
+//     already 0 by frame 128 and `$1A` was 0 on the first play frame. The mod
+//     did nothing at all. `modNewRun()` re-seeds them at `$82D5`, which is the
+//     one routine that means "a new game is starting" and is what BOTH the
+//     title's START and the game-over screen's CONTINUE go through.
+//
+// Every piece of mutable state a mod owns, and what clears it, is the table in
+// docs/worklog/gradius/44-impl-mod-run-scope.md. `tools/oracle/modscope.mjs`
+// drives all 19 mods and all 4 presets through a demo, a run, a game over and a
+// continue and asserts it, because no oracle scenario can: `state.mods` is
+// undefined on every one of them, by design and by the rule above.
 //
 // ===================== WHY A FRONT END AND NOT AN OVERLAY ====================
 //
@@ -46,6 +75,22 @@
 // The cartridge's own title is not replaced. It is one of the entries: pick
 // "Title screen" and you get mode 0, the 127-frame scroll-in and the attract
 // demo, exactly as W39 ported them.
+
+/**
+ * `$00 == 5` -- MODE 5, PLAY. The same number `src/state.js` exports as
+ * `MODE_STAGE`, and it is spelled here as a literal ON PURPOSE.
+ *
+ * **THIS FILE HAS NO IMPORTS AND MUST KEEP NONE.** `start.html` says so in as
+ * many words -- "It carries NO game code. The only module it imports is
+ * src/mods.js" -- and that is the whole reason the launcher is a front end
+ * instead of an overlay: the catalogue can be rendered without loading the
+ * port. Importing one constant from `src/state.js` would drag the port's state
+ * model onto the start screen to save a five.
+ *
+ * `tests/mods.test.js` asserts this equals `MODE_STAGE`, so the duplication
+ * cannot drift.
+ */
+export const PLAY_MODE = 5;
 
 // ---------------------------------------------------------------------------
 //  The catalogue
@@ -381,24 +426,113 @@ export function attachMods(state, loadout) {
   }
   state.mods = {
     lo: loadout,
+    // EVERY MUTABLE BYTE THE MOD LAYER OWNS IS IN HERE, and each one carries
+    // its LIFETIME, because W43's defect was a field whose lifetime nobody had
+    // written down. RUN-scoped fields are dropped by modAbandonRun() ($97F1)
+    // and re-armed by modNewRun() ($82D5); SESSION-scoped ones are pure render
+    // scratch that cannot reach the simulation.
     rt: {
-      invuln: 0,          // frames of the Heal Gradius Syndrome window left
-      firstIntro: true,   // has $9B3E run once yet?
-      death: null,        // {x, y, camHi} captured at $C1D6
-      hidden: -1,         // saved $0120 while the ship is blinked out
-      ghost: null,        // the previous framebuffer, for Afterimage
-      discoPal: null,     // scratch palette, so state.vram.pal is never touched
+      invuln: 0,          // RUN     frames of the Heal Gradius Syndrome window
+      firstIntro: true,   // RUN     has THIS run's $9B3E run once yet?
+      death: null,        // DEATH   {x, y, camHi} captured at $C1D6, consumed
+                          //         by the next $9B3E, dropped at $97F1 (W43)
+      ghost: null,        // SESSION previous framebuffer, for Afterimage
+      discoPal: null,     // SESSION scratch palette; state.vram.pal is never
+                          //         touched
     },
   };
+  seedSaveSlots(state, loadout);
+  return loadout;
+}
+
+/**
+ * `$26,X` (the stage) and `$28,X` (the loop) -- the two per-player save slots a
+ * loadout seeds, spelled ONCE so attachMods() and modNewRun() cannot drift.
+ *
+ * They are the cartridge's own bytes, written by `$979D` on every death and read
+ * by `$9B3E` on every intro, which is why seeding them is not a parallel system.
+ * It is also why they do not survive on their own: `$8307`'s wipe clears
+ * `$0012-$00EF`, and `$8424`'s clears `$0020-$0097`, so mode 0 alone erases them
+ * (measured, W44).
+ */
+function seedSaveSlots(state, loadout) {
   const p = state.zp.player === 1 ? 1 : 0;
   if (loadout.stage) state.save26[p] = loadout.stage;
   if (loadout.sim.loop !== null) state.save28[p] = loadout.sim.loop;
-  return loadout;
+}
+
+/**
+ * `$82D5`, at the tail -- A NEW GAME IS STARTING.
+ *
+ * `$82D5` has exactly two callers and both of them mean "a new run begins":
+ * `$815F` (mode 3's tail, i.e. START on the title menu) and `$970D` (CONTINUE
+ * on the game-over screen). It runs `$8307`, whose wipe covers `$0012-$00EF`
+ * and therefore `$26,X` and `$28,X` -- the two bytes the launcher's level and
+ * loop selections live in. So without this hook a loadout is erased by the
+ * cartridge's own new-game setup, which is exactly what was measured:
+ *
+ *   `#mods=loop-three`, default launch -> `$28,X` = 0 by frame 128 (mode 0's
+ *   `$8424`), `$1A` = 0 on the first play frame. The mod NEVER APPLIED.
+ *
+ * It is also the right place to re-arm the RUN-scoped runtime state, because a
+ * CONTINUE **is a new game** -- `$8307` wipes `$19`, `$24,X` and `$26,X`, three
+ * lives are re-granted and the score is zeroed -- so "what you start with" is
+ * owed again. W43 named `rt.firstIntro` as carrying the same class of leak and
+ * left it; this is the fix, and the measurement that says it is a defect is the
+ * attract demo, not the continue (see the SECOND RULE at the top of this file).
+ *
+ * `$9721`, THE CONTINUE CHEAT, IS DELIBERATELY NOT A CALLER, and that is not an
+ * omission. It jumps to `$97DD` without going near `$8307`, so `$19`, `$26,X`
+ * and `$28,X` all still hold the run's own values: nothing session-scoped was
+ * lost, so there is nothing to restore, and re-seeding `$26,X` there would drag
+ * a player who died on stage 5 back to whatever stage the picker named. It is a
+ * mid-run restart, not a start.
+ */
+export function modNewRun(state) {
+  const m = state.mods;
+  if (!m) return;
+  m.rt.death = null;
+  m.rt.invuln = 0;
+  m.rt.firstIntro = true;
+  seedSaveSlots(state, m.lo);
 }
 
 // ---------------------------------------------------------------------------
 //  The simulation hooks.  Each one is a no-op unless state.mods is defined.
 // ---------------------------------------------------------------------------
+
+/**
+ * THE MOD SIMULATION RUNS IN ONE PLACE ONLY: `$00 == 5` AND `$09 == 0`.
+ *
+ * Mode 5 is play; `$82D2 INC $09` is the cartridge's own flag for "this is the
+ * attract demo, not a game" (the ROM already branches on it in three places --
+ * `$835E` skips the BGM change, `$846F` skips the score adder, `$9ADA` refuses
+ * to pause). Both halves were MEASURED to be necessary:
+ *
+ *  * THE DEMO WAS SPENDING THE PLAYER'S RUN. With `{shield: 5, options: 2}` and
+ *    the default launch (mode 0, the cartridge's own title), the demo's `$9B3E`
+ *    granted the kit to the DEMO ship and set `rt.firstIntro = false`. The demo
+ *    ended at frame 3624, the player pressed START, and the real run's first
+ *    play frame at 3863 had `$45 = 0` and `$46 = 0`. The starting kit had been
+ *    spent on a ship the player was not flying, on the default path, by waiting
+ *    six seconds.
+ *  * THE TITLE SCREEN WAS LEAKING INTO THE DEMO. `modFrameEnd` used to run on
+ *    every mode-0 and mode-1 frame too, so `rank-max` left `$17 = 6` behind and
+ *    the demo's FIRST frame (`$09` is still 0 there: `$82C7` runs inside mode
+ *    2's own first phase) differed from vanilla by that byte. Found by
+ *    `tools/oracle/modscope.mjs`, which is the only thing in this repo that has
+ *    ever compared a modded simulation against an unmodded one.
+ *
+ * So with any loadout at all, every frame outside a real run is byte-identical
+ * to vanilla, and modscope.mjs asserts exactly that over the whole attract demo
+ * for all 19 mods and all 4 presets.
+ *
+ * The RENDER layer is deliberately NOT gated: it cannot reach the simulation
+ * (it runs after nmi() has returned), and a Game Boy title screen is the point.
+ */
+function notPlaying(state) {
+  return state.mode !== PLAY_MODE || state.zp09 !== 0;
+}
 
 /**
  * `$9B3E`, at the tail -- after `$9BC9`'s `JMP $83AB`, i.e. after the cartridge
@@ -415,7 +549,7 @@ export function attachMods(state, loadout) {
  */
 export function modAfterIntroReset(state) {
   const m = state.mods;
-  if (!m) return;
+  if (!m || notPlaying(state)) return;
   const { sim, zp } = m.lo;
   const rt = m.rt;
   const d = rt.death;
@@ -495,6 +629,13 @@ export function modAbandonRun(state) {
   const m = state.mods;
   if (!m) return;
   m.rt.death = null;
+  // W44: `rt.invuln` is the OTHER run-scoped field, and it is dropped here for
+  // the same reason -- not because a leak was measured (it counts itself down
+  // in modFrameEnd and the game-over screen is ~400 frames, so it always
+  // reached 0 on its own) but so that "the run is over" clears EVERY run-scoped
+  // byte in one place. A field whose lifetime depends on a countdown outlasting
+  // a screen is exactly the shape W43 spent a wave on.
+  m.rt.invuln = 0;
 }
 
 /**
@@ -539,7 +680,7 @@ function applyKit(state, zp) {
  */
 export function modRefuseDeath(state) {
   const m = state.mods;
-  if (!m) return false;
+  if (!m || notPlaying(state)) return false;
   if (m.lo.sim.immortal) return true;
   if (m.rt.invuln > 0) return true;
   if (m.lo.sim.respawnInPlace) {
@@ -560,7 +701,7 @@ export function modRefuseDeath(state) {
  */
 export function modHidePlayer(state) {
   const m = state.mods;
-  if (!m || m.rt.invuln <= 0) return -1;
+  if (!m || notPlaying(state) || m.rt.invuln <= 0) return -1;
   if ((m.rt.invuln & 0x02) === 0) return -1;
   const saved = state.obj.anim[0];
   state.obj.anim[0] = 0;
@@ -574,7 +715,7 @@ export function modShowPlayer(state, saved) {
 
 /** `$9A6D JSR $ADAB` -- true means skip the enemy update loop entirely. */
 export function modFreezeEnemies(state) {
-  return !!(state.mods && state.mods.lo.sim.freezeEnemies);
+  return !!(state.mods && !notPlaying(state) && state.mods.lo.sim.freezeEnemies);
 }
 
 /**
@@ -595,7 +736,7 @@ export function modFreezeEnemies(state) {
  */
 export function modFrameEnd(state) {
   const m = state.mods;
-  if (!m) return;
+  if (!m || notPlaying(state)) return;
   const sim = m.lo.sim;
   if (sim.rankLock !== null) state.zp17 = sim.rankLock & 0xFF;
   if (m.rt.invuln > 0) m.rt.invuln--;
