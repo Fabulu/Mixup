@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 import { createState, ENEMY_BASE, BTN, MODE_STAGE } from '../src/state.js';
 import { bootState, introEntryState, stepLogicFrames } from '../src/main.js';
 import { introReset, respawn } from '../src/flow.js';
+import { newGame, st8165 } from '../src/modes.js';
 import { die, collision } from '../src/collision.js';
 import { nmi } from '../src/nmi.js';
 import {
@@ -296,6 +297,75 @@ test('the flicker stops when the window does', () => {
   s.obj.anim[0] = 1;
   for (let i = 0; i < 180; i++) modFrameEnd(s);
   for (let i = 0; i < 8; i++) assert.equal(modHidePlayer(s), -1);
+});
+
+// ---------------------------------------------------------------------------
+//  W43 -- THE OWNER-REPORTED DEFECT: a death position that outlived its run
+// ---------------------------------------------------------------------------
+//
+// "I went to boss 2, got shot down... suddenly the volcano from level 1 shot at
+// me. Except the volcano wasn't there, it was all black space like level 2
+// boss... when I beat it, level 2 started."
+//
+// `rt.death` is captured at `$C1D6` and consumed at the tail of the next
+// `$9B3E`. On an ordinary death that is this death's own respawn. On the LAST
+// life it is not: `$97F1` never runs `$9B3E`, so the capture survives the whole
+// game-over screen and lands on the FIRST `$9B3E` of the next game -- which,
+// after `$970D` CONTINUE, is a brand-new stage-1 run. See
+// docs/worklog/gradius/43-diag-stage-state-race.md for the frame trace.
+//
+// The two tests below are the defect and its control, and BOTH were seen red
+// against the unfixed src/mods.js (worklog 43 SS5).
+
+test('a game over abandons the death position ($97F1, W43)', () => {
+  const s = modded(['heal-gradius-syndrome']);
+  introReset(s, res);
+  for (let i = 0; i < 180; i++) modFrameEnd(s);   // burn $9B3E's blink off
+  s.obj.status[0] = 1;
+  s.zp19 = 1;                                     // stage 2
+  s.substate = 0x86;                              // its boss is down
+  s.cam.hi = 0x0D; s.cam.lo = 0x0C;               // ...and the camera is high
+  s.obj.x[0] = 120; s.obj.y[0] = 96;
+  s.lives[0] = 0;                                 // $979F's DEC takes it negative
+  die(s);
+  assert.equal(s.mods.rt.death.camHi, 0x0D, '$C1D6 captured the death page');
+  respawn(s, res);                                // $979D -> $97C1 BMI -> $97F1
+  assert.equal(s.substate, 0xC0, 'GAME OVER ($97FD), not a respawn');
+  assert.equal(s.mods.rt.death, null,
+    '$97F1 is the end of the run: there is nothing to come back to');
+});
+
+test('...so CONTINUE starts stage 1 at page 0, not at the page you died on', () => {
+  const s = modded(['heal-gradius-syndrome']);
+  introReset(s, res);
+  for (let i = 0; i < 180; i++) modFrameEnd(s);
+  s.obj.status[0] = 1;
+  s.zp19 = 1; s.substate = 0x86;
+  s.cam.hi = 0x0D; s.cam.lo = 0x0C;
+  s.obj.x[0] = 120; s.obj.y[0] = 96;
+  s.lives[0] = 0;
+  die(s);
+  respawn(s, res);
+  assert.equal(s.substate, 0xC0);
+
+  // `$970D` CONTINUE, spelled as the ROM spells it: `JSR $82D5` then `$00 := 4`.
+  // Then mode 4's three instructions and mode 5's `$1B = 0` intro dispatch.
+  newGame(s);                                     // $970D JSR $82D5
+  s.mode = 4;                                     // $9710/$9712 STA $00
+  st8165(s);                                      // $8165 -- $1B := 0, mode 5
+  assert.equal(s.mode, MODE_STAGE);
+  assert.equal(s.substate, 0);
+  introReset(s, res);                             // the NEW game's $9B3E
+
+  assert.equal(s.zp19, 0, 'a continue is a new game, and new games start on stage 1');
+  assert.equal(s.cam.hi, 0,
+    '$3F is $9B68\'s checkpoint (0), NOT the previous run\'s death page $0D');
+  assert.equal(s.build.hi, 0, '...and $55 agrees, so the terrain streams from page 0');
+  // The consequence the owner actually saw, stated as the assertion that would
+  // have caught it: page $0D is past stage 1's boss page, so a camera left
+  // there sends `$9A4D` straight into `$81`/`$82` on the first play frame.
+  assert.ok(s.cam.hi < res.stages[0].bossPage,
+    'the camera is BEFORE stage 1\'s boss page, so $9A4D does not fire at once');
 });
 
 // ===========================================================================

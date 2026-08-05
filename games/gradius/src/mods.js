@@ -12,13 +12,14 @@
 // not a nicety: the port's agreement with the ROM is the actual product, and a
 // mod that could perturb it would be a defect in the product, not a feature.
 //
-// The call sites, all five of them inside the simulation, so they can be
+// The call sites, all six of them inside the simulation, so they can be
 // counted (`grep -n 'state.mods' games/gradius/src/*.js`):
 //
 //   src/nmi.js       modHidePlayer / modShowPlayer around $80A7's display list
 //   src/nmi.js       modFreezeEnemies          around $9A6D's JSR $ADAB
 //   src/nmi.js       modFrameEnd               after $80B5's `STA $04`
 //   src/flow.js      modAfterIntroReset        at the tail of $9B3E
+//   src/flow.js      modAbandonRun             at the top of $97F1   (W43)
 //   src/collision.js modRefuseDeath            at the top of $C1D6
 //
 // ...plus src/main.js, which is the HOST and not the simulation: the input
@@ -455,6 +456,45 @@ export function modAfterIntroReset(state) {
 
   rt.firstIntro = false;
   rt.death = null;
+}
+
+/**
+ * `$97F1`, at the top -- THE RUN IS OVER.
+ *
+ * `rt.death` is captured at `$C1D6` and consumed at the tail of the NEXT
+ * `$9B3E`, and until W43 that was written as if the next `$9B3E` were always
+ * *this death's respawn*. It is, for an ordinary death: `$96EF`'s countdown
+ * ends `JMP $979D` and `$979D` ends `JMP $9B3E`, 120 frames later, same run,
+ * same stage. IT IS NOT, WHEN THE DEATH IS THE LAST LIFE. `$97F1` sets
+ * `$1B := $C0` and never goes near `$9B3E`; the next one belongs to whatever
+ * leaves the game-over screen, and two of the three exits are A DIFFERENT GAME:
+ *
+ *   `$970D`  CONTINUE   -> `$82D5` (a new game: `$19`, `$24,X` and `$26,X` all
+ *                         wiped) -> mode 4 -> mode 5 with `$1B = 0` -> `$9B3E`
+ *   `$9751`  timeout    -> `$9B3E` and then mode 0
+ *   `$9721`  the cheat  -> `$97DD` -> `$9B3E`, and `$9730` has just written
+ *                         `$24,X := 0` precisely so the player restarts at the
+ *                         START of the stage
+ *
+ * OWNER-REPORTED, AND REPRODUCED FRAME FOR FRAME (docs/worklog/gradius/43): die
+ * at the STAGE 2 boss (`$3F` = `$0D`) on the last life, press START on the
+ * game-over screen, and the brand-new stage-1 game that comes back has its
+ * camera AND its terrain build cursor teleported to page `$0D`. `$9A4D`
+ * compares `$3F` against stage 1's boss page `$0C` on the very first play
+ * frame, so the run enters `$81`/`$82` immediately: the streamer is frozen by
+ * `$99E9`'s `INC $5B`, stage 1's `pageOrder[13]` is the shared empty starfield,
+ * and `$A2F7`'s `CMP #$82` hands the spawn engine to `jt_$C439[0]` -- the
+ * VOLCANO. Erupting rocks over black space, then the stage-1 boss, then
+ * `$96CF INC $19` and stage 2 begins.
+ *
+ * So: when the run ends there is nothing to come back to, and the death
+ * position dies with it. One line, at the one instruction that means "this game
+ * is over".
+ */
+export function modAbandonRun(state) {
+  const m = state.mods;
+  if (!m) return;
+  m.rt.death = null;
 }
 
 /**

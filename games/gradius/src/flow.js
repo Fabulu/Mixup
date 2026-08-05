@@ -72,9 +72,9 @@ import { cannedPacket, copyPacket } from './hudpackets.js';
 import { stLives, stTopScore, stScore, stPowerBar } from './hud.js';
 import { buildBlock } from './terrain.js';
 import { stopAllSound, pauseSaveChannel, pauseRestoreChannel, soundRequest } from './sound.js';
-// MODS -- one call, at the TAIL of $9B3E, behind `if (state.mods)`. See the ONE
-// RULE in src/mods.js.
-import { modAfterIntroReset } from './mods.js';
+// MODS -- two calls, both behind `if (state.mods)`: at the TAIL of $9B3E and at
+// the TOP of $97F1 (W43, the run that ended). See the ONE RULE in src/mods.js.
+import { modAfterIntroReset, modAbandonRun } from './mods.js';
 
 /** `$18`, with the range the per-player arrays assume made explicit. */
 function playerIndex(state) {
@@ -286,6 +286,12 @@ export function continueCheat(state, res) {
  * tail, because `$980B JMP $9C09` RTSes to `$812D` and never reaches `$9A5E`.
  */
 function enterGameOver(state, res, p) {
+  // MODS: THE RUN IS OVER. `$97F1` is the one instruction in the PRG that means
+  // "this game has ended", and it is the only place a death does NOT lead to a
+  // `$9B3E` of its own -- so any per-death state a mod is holding has to be
+  // dropped here or the NEXT game inherits it. See src/mods.js modAbandonRun
+  // and docs/worklog/gradius/43-diag-stage-state-race.md.
+  if (state.mods) modAbandonRun(state);
   const mask = p === 0 ? 0xFE : 0xFD;                // $97F1/$97F3/$97F5/$97F7
   state.zp0A = u8(state.zp0A & mask);                // $97F9 AND $0A / STA $0A
   state.substate = 0xC0;                             // $97FD/$97FF LDA #$C0 / STA $1B
