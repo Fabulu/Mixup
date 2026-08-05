@@ -1,6 +1,12 @@
 # W62 IMPL — S1: MAKE STAGE 1 END
 
-status: **IN PROGRESS**
+status: **DONE** -- **STAGE 1 ENDS**, at logic frame 19,217, via the boss's own
+10,800-frame timeout. Gate ALL GREEN 53/0/0 (was 51), 808 unit tests, webgate
+14/14, build-dist clean with PUBLISH_VERBATIM unmoved at 5. 33 of 33 mutants
+RED, 0 survivors. **NO RANK WRITE BECAME REACHABLE.** Boot +719 B. Verified on
+the LIVE deployed build `20260805095519` at the same frame as local and as the
+headless gate. **ONE DECLARED DEVIATION** (the presentation tier, two invented
+transitions) and one state exit deliberately left broken -- SS2.
 
 wave: 62. role: IMPLEMENTER (sole writer to `games/ddpdoj/`).
 date: 2026-08-05.
@@ -309,6 +315,26 @@ real; the stage-end SCREEN is a wave that has not happened.
 
 Screenshots: `.scratch/w62local-0boot.png`, `.scratch/w62local-STOP.png`.
 
+### 7.2 DEPLOYED — `https://gbtman.pages.dev/games/ddpdoj/`, build `20260805095519`
+
+`node tools/publish.mjs --only ddpdoj`, confirmed live on three consecutive
+polls (and the poll log shows the flapping W61 §6b recorded: polls 4 and 7-9
+read the new id, 5 and 6 read the old). Then the SAME script, the same key:
+
+```
+[M] BOOTED  +0s    lf 2668  clk 170  stage 0  x4 0  $813144=7   spr 13/13
+[M]       +278s    lf18955  clk 836  $8130F8=$C000   <- $294DD4's two bsets
+[M]       +283s    lf19218  clk **0**  stage **1**  x4 **4**  $813144=**$B**
+                   $812E06=1
+[M]              then "$228658 IS NOT PORTED YET"
+```
+
+**THE SAME LOGIC FRAME AS BOTH LOCAL RUNS AND AS THE HEADLESS GATE — 19,218.**
+This is not an E3-class local/deployed gap. `rank`, `rankPower` and the hyper
+stock read 53/0/0 on every one of the 57 samples of this run too.
+
+Screenshot `.scratch/w62live-0boot.png`.
+
 **RE-RUN ON THE SETTLED TREE** (after the `$242976` fix of §11.1b, and after the
 mutation harness had finished touching `src/`): identical, to the digit —
 `+270s lf18770 $8130F8=$C000`, `+280s lf19218 clk 0 stage 1 x4 4 $813144=$B
@@ -572,3 +598,10 @@ node tools/build-dist.mjs           clean, 5 deliberate exception(s)  <- UNMOVED
 
 **`PUBLISH_VERBATIM` DID NOT GROW**: this wave ships no new asset body at all,
 only 384 bytes of ROM windows inside `player.tables.json.gz`.
+
+
+**[M] THE SERVER I STARTED WAS KILLED.** `Get-CimInstance Win32_Process` finds
+ZERO `http.server`/`serve.py` processes and ports 8000/8712/8771/8781/8791/8125
+are all FREE -- checked by PROCESS and by PORT, as W61 §6b did.
+
+status: **DONE**
