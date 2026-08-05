@@ -44,6 +44,7 @@ import { ProtLatch } from './protsim.js';
 import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
 import { makeBackground, BgVram, VideoRegs } from './background.js';
 import { makeStageClear } from './stageend.js';
+import { makeHudObject } from './hud.js';
 
 /** THE BUCKETS `pgm.py shipgate` SUBSTITUTES, in drain (= depth) order.
  *
@@ -74,6 +75,16 @@ export const PRODUCED_BUCKETS = [
  *  $25354C).  4 of the 20 top-level entries. */
 export function defaultHandlers(rom, vram, opts = {}) {
   return new Map([
+    // WAVE 63 (B1).  $240F62[0] = $28D520, priority $0009 -- THE PER-FRAME
+    // LEDGER.  `$28D52E jsr $2842B0` is the pending -> total DRAIN and
+    // `$28D534 jsr $28444E` holds **$284636/$2847D4, THE TWO CHAIN METER
+    // DECREMENTS** and the two `bsr`s the HYPER goes in (`$284460`/`$284464`).
+    // src/score.js has NOTED this entry by address since wave 34 precisely so
+    // that the decrement would land in the cartridge's own slot rather than one
+    // this project chose -- see src/hud.js's header, which also settles recon
+    // 38 3.3's open question about where the player object sits relative to the
+    // RANK object (the answer is this table's own second longword).
+    [0, makeHudObject(rom)],
     // WAVE 13.  $240F62[1] = $26127A, THE BACKGROUND: the scroll VM, both
     // cameras and the tilemap ring (src/background.js).  Adding this entry is
     // what makes $813176 and $8130CE move on every existing gate -- both were
@@ -157,6 +168,8 @@ export class Game {
     this.itemSpawns = new Map();     // WAVE 61, see #ctx()'s itemSpawn
     this.itemCollects = new Map();   // WAVE 61, see #ctx()'s itemCollect
     this.stageEndEvents = [];        // WAVE 62, see #ctx()'s bossEvent
+    this.hudEvents = new Map();      // WAVE 63, see #ctx()'s hudEvent
+    this.hudMarks = [];
     this.kills = { n: 0, score: 0, byValue: new Map() };  // WAVE 34, killEvent
     this.shotSpawns = new Map();
     this.shotTableFull = 0;
@@ -321,6 +334,20 @@ export class Game {
       },
       stageEndEvent: (kind, v) => {
         this.stageEndEvents.push([kind, this.logicFrame, v]);
+      },
+      // WAVE 63 (B1).  The three events object type 0 produces that RAM does
+      // not keep: `meter-` (a chain-meter decrement, `$284636`/`$2847D4`),
+      // `meter0` (the frame it reached zero and `$284640`/`$284646` wiped the
+      // two accumulators) and `extend` (`$284350 addq.w #$1` -- a free life).
+      // A COUNT, because the whole point of this wave is that a chain the port
+      // starts now expires: "the meter is 0" cannot distinguish a chain that
+      // ran out from one that never started, and only the decrement can.
+      hudEvent: (kind, who, v) => {
+        const k = `${kind}/p${who + 1}`;
+        this.hudEvents.set(k, (this.hudEvents.get(k) ?? 0) + 1);
+        if (kind === 'meter0' || kind === 'extend') {
+          this.hudMarks.push([kind, who, this.logicFrame, v]);
+        }
       },
       itemSink: (t) => { this.itemFrame = t; },
       itemSpawn: (kind, site) => {

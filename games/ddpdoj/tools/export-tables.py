@@ -917,6 +917,39 @@ SHOT_WINDOWS.extend([
                        "copies into a record's +$06..+$1F"),
 ])
 
+# ============ W63 (B1): OBJECT TYPE 0, `$28D520` / `$28444E` =================
+#
+# THREE tables, and every extent is pinned by an INSTRUCTION or by the table
+# that abuts it -- never by "what a run reached".
+#
+#   $287E8E  `$285F52`'s HUD animation cursor.  `$285F64 move.w $81B59A,D0 /
+#            lea $287E8E,A0 / move.l (A0,D0.w),$81B59C`, and the index steps
+#            `subq.w #$4` and WRAPS TO $38 on borrow (`$285F80 move.w #$38`).
+#            $38 = byte offset 56 = entry [14], so FIFTEEN longwords, 60 bytes
+#            -- and `$287E8E + $3C == $287ECA`, the next table, confirms it from
+#            the other side.
+#   $287ECA  `$285F8A`'s.  `moveq #$3F,D0 / and.w $80390A,D0 / add.w D0,D0 /
+#            add.w D0,D0` -- the index space IS $00..$FC, so SIXTY-FOUR
+#            longwords, 256 bytes, and there is nothing to guess.
+#   $28840E  `$286FDA`'s EXTEND-INTERVAL table.  `move.w (A4),D0 / lea
+#            $28840E,A5 / move.l (A5,D0.w),D1`, and `$286FFE move.w #$C,(A4)`
+#            names the LAST index.  Entry [3] is $FFFFFFFF (the "no more
+#            extends" terminator) and entry [4] disassembles as
+#            `lea $803824,A0` -- CODE.  FOUR longwords, and the first-threshold
+#            table `$2883FE` that `$286FA6` indexes by the same DIP abuts it
+#            ($2883FE + $10 == $28840E), which pins it from below as well.
+#
+# `check_hud_extents` asserts all three out of the image on every export.
+SHOT_WINDOWS.extend([
+    (0x287E8E, 0x013C, "W63: $287E8E (15 longwords, $285F52's cursor, far end "
+                       "pinned by $287ECA) and $287ECA (64 longwords, $285F8A's "
+                       "cursor, index space $00..$FC from `and.w #$3F` doubled "
+                       "twice)"),
+    (0x28840E, 0x0010, "W63: $28840E, $286FDA's FOUR extend-interval longwords "
+                       "-- [3] is $FFFFFFFF and [4] is code (`lea $803824,A0`); "
+                       "$2883FE + $10 == $28840E pins the near end"),
+])
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
@@ -1527,10 +1560,63 @@ def check_item_extents(d: bytes) -> None:
             f"power cursors $8127E4/$8127E8 walk to word[4] of the LAST list.")
 
 
+def check_hud_extents(d: bytes) -> None:
+    """W63 (B1).  ASSERT OBJECT TYPE 0's THREE TABLES AGAINST THE CARTRIDGE.
+
+    None of these is checkable from inside the port, and all three are the kind
+    of extent `docs/knowledge/09` says to derive from the listing rather than
+    from a run -- a SHORT window is not caught at the export, it is caught on a
+    player's machine, which is W54 6.2's own lesson stated twice.
+    """
+    # 1. $285F52's INDEX WRAP names the last entry, and $287ECA abuts it.
+    #    $285F80 move.w #$38,$81B59A -- byte offset $38 = entry [14].
+    if u16(d, 0x285F82) != 0x0038:
+        raise SystemExit(
+            f"$285F80 move.w #$38,$81B59A -- $285F52's cursor wrap -- now reads "
+            f"#${u16(d, 0x285F82):04X}. The $287E8E table's extent is derived "
+            f"from it (last entry = wrap/4).")
+    if 0x287E8E + (0x38 + 4) != 0x287ECA:
+        raise SystemExit(
+            "$287E8E + 15 longwords != $287ECA, so the two cursor tables no "
+            "longer abut and the first one's extent is unpinned.")
+    # $285F78 subq.w #$4 -- the STRIDE the wrap is divided by.
+    if d[0x285F78] != 0x59 or d[0x285F79] != 0x79:
+        raise SystemExit("$285F78 is no longer `subq.w #$4,$81B59A`.")
+    # 2. $285F8A's index space is the WHOLE $00..$FC: `moveq #$3F,D0 / and.w
+    #    $80390A,D0 / add.w D0,D0 / add.w D0,D0`.
+    if d[0x285F8A] != 0x70 or d[0x285F8B] != 0x3F:
+        raise SystemExit("$285F8A is no longer `moveq #$3F,D0`, so $287ECA's "
+                         "64-entry extent is no longer derived from the mask.")
+    declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x287E8E]
+    if not declared or 0x287E8E + declared[0][1] < 0x287FCA:
+        raise SystemExit(
+            f"the $287E8E window is {declared} and must reach $287FCA -- "
+            f"$287ECA + 64 longwords. A SHORT window is not caught here, it is "
+            f"caught by src/rom.js on a player's machine.")
+    # 3. $28840E: FOUR extend intervals, terminator at the index $286FFE names.
+    if u16(d, 0x287000) != 0x000C:
+        raise SystemExit(
+            f"$286FFE move.w #$C,(A4) -- the extend cursor's last index -- now "
+            f"reads #${u16(d, 0x287000):04X}; $28840E's extent comes from it.")
+    if u32(d, 0x28840E + 0x0C) != 0xFFFFFFFF:
+        raise SystemExit(
+            f"$28840E[3] is ${u32(d, 0x28840E + 0x0C):08X} and must be "
+            f"$FFFFFFFF -- $286FE8 tests for it as the `no more extends` mark.")
+    if u32(d, 0x28840E + 0x10) != 0x41F90080:
+        raise SystemExit(
+            f"$28840E[4] is ${u32(d, 0x28840E + 0x10):08X}; it must be the "
+            f"`lea $803824,A0` that proves the table is FOUR entries and the "
+            f"fifth longword is CODE.")
+    if 0x2883FE + 0x10 != 0x28840E:
+        raise SystemExit("$2883FE (the FIRST-threshold table $286FCC indexes by "
+                         "the same DIP) no longer abuts $28840E.")
+
+
 def build(d: bytes) -> dict:
     check_pool_e_extents(d)                    # W53 -- see the function's docstring
     check_pool_b_extents(d)                    # W54 -- see the function's docstring
     check_item_extents(d)                      # W61 -- see the function's docstring
+    check_hud_extents(d)                       # W63 -- see the function's docstring
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
     levels = speed_index_set(d)

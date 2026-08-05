@@ -45,6 +45,46 @@
 // starts never expires.  `$28D520` is NOTED, by address, on every frame the
 // pass runs, so the gap is counted and not silent.
 //
+// ============ WAVE 63 (B1): **THE PARAGRAPH ABOVE IS NOW HISTORY** ==========
+//
+// `src/hud.js` ports object type 0 -- the whole of `$28D520`, `$2842B0` and
+// `$28444E`'s frame-level machine -- and the decrement landed in the
+// cartridge's own slot for exactly the reason the paragraph above declined to
+// choose one.  `$240F62`'s second longword is the DISPATCH PRIORITY and
+// `$24111E`'s create queue keeps the object table in descending priority
+// order, so the walk order is static: `$260794` (RANK, `$1F`) then `$2491C0`
+// (the player, `$1C`) then `$28D520` (this, `$09`).  W19 §1.5 MEASURED
+// `... > drain > drain0 > (brkT) > meter-`; the port now reproduces it by
+// construction rather than by arrangement.
+//
+// **WHAT THAT CHANGED HERE, MEASURED** (`tools/w63hudgate.mjs`, 6,200 tapped
+// frames from the shipped seed, against the same run on HEAD):
+//
+//   * `$81B5C0` decrements 3,622 times and reaches ZERO 38 times, where before
+//     it was pinned at the cap 56 for the whole run.  `$81B5DA`, the chain,
+//     ends 0 instead of 773 and its high-water `$81B632` is 133 instead of 773;
+//   * `$81B4C0`, the pending score, is DRAINED every frame instead of only
+//     growing: it ends 0, and `$81B440` holds BCD `$00065284`;
+//   * **NO RANK WRITE MOVED**: `$81309E` 53, `$81B646` 0, `$81B65C`/`$81B65E` 0,
+//     digit-identical to HEAD across three inputs;
+//   * **`$81B64A` DID move, 2,112 -> 1,512 on the fire-held run**, and a
+//     five-way cut bisection says the mover is THE DECREMENT and nothing else
+//     (cutting it alone restores 2,112 exactly).  −600 is exactly 25 × `$18`,
+//     i.e. **25 fewer executions of `$28679E add.w D2,$81B64A`** in
+//     `bombRankFeed` below: a chain that now BREAKS re-seeds `$81B636` from
+//     `$286876`'s power word more often, and the divider borrows less.
+//     Both figures are below `$287682`'s `#$95F` = 2,399 threshold, so no
+//     hyper stock is granted either way -- but W61 §5 named a −24 offset for
+//     the same reason and this is −600, so **wave I3 must not ship `$287682`
+//     without re-reading both rows.**
+//
+// AND ONE CLAIM IN `38-recon-bomb-hyper.md` §4.5 IS STALE, not wrong when
+// written: it lists `SCORE.altBomb = $286876` as "note only".  W51 PORTED it
+// and measured it running twice.  So the answer to "does the skeleton make the
+// second chain machine reachable" is that it was ALREADY reachable and ALREADY
+// ported two waves before this one -- what W63 changes is that the meter it
+// floors at 10/25 (`$2869D8`) now falls again.
+//
 // ============================ WHAT IS AND IS NOT HERE =======================
 //
 //   PORTED   $286096  a HIT lands (85 call sites)
@@ -168,7 +208,7 @@ export const SCORE = {
    *  the address is here so the next wave cannot port one without the other. */
   laserRankFeed: 0x2867b4,
   laserRankDivider: 0x81b636,
-  perFrame: 0x28d520,       // NOTED -- object type 0: the drain and the decrement
+  perFrame: 0x28d520,       // **PORTED, W63** -- src/hud.js, object type 0
   drain: 0x2842b0, decrement: 0x284636,
   scratch: 0x81b5aa,        // $286626 lea $81B5AA,A1
   capWord: 0x81b5b2,        // $28616C move.w (A0,D2.w),$81B5B2
@@ -732,15 +772,21 @@ export function scoreByMask(ram, d0, d1) {
   if ((d1 & 0x08) !== 0) bcdAdd(ram, LEDGER.p2.pendingEnd, d0);   // $28613E/$286144
 }
 
-/** Counted once per collision pass: the half of the ledger that is NOT here. */
+/** **W63 (B1) RETIRED THIS NOTE, and the function is kept as the record.**
+ *
+ *  It fired once per collision pass for twenty-nine waves, saying that object
+ *  type 0 was not ported and that "a chain this port starts never expires".
+ *  `$240F62[0] = $28D520` is now DISPATCHED (`src/hud.js`, W63): `$2842B0`
+ *  drains the pending score into the total and `$284636`/`$2847D4` decrement
+ *  both chain meters, in the cartridge's own slot -- which is priority `$0009`,
+ *  the LAST of the three ledger objects, exactly where W19 §1.5 measured the
+ *  meter decrement.
+ *
+ *  The call site (`src/type5.js:371`) is kept and the note is not, because a
+ *  note that has stopped being true is worse than no note: it is the shape of
+ *  claim this project has been wrong about most often.  The function is a
+ *  no-op with its history attached rather than a deletion, so a reader who
+ *  greps `$28D520` in this file finds the answer instead of a hole. */
 export function notePerFrameLedger(ctx) {
-  note(ctx, SCORE.perFrame, `top-level object TYPE 0 $28D520 -- $28D52E `
-    + `jsr $2842B0 (the pending -> total DRAIN) and $28D534 jsr $28444E, `
-    + `inside which $284636 subq.w #1,$81B5C0 is THE CHAIN METER DECREMENT. `
-    + `W19 §1.5 measured both as the LAST ledger events of the frame. Not `
-    + `ported: object type 0 is one of the sixteen top-level entries this port `
-    + `does not have, and calling $284636 from a slot chosen by W34 would bake `
-    + `in an order that later has to be unpicked (W19 §1.6's own reason for `
-    + `declining the rank clock). CONSEQUENCE: a chain this port starts never `
-    + `expires`);
+  void ctx;
 }

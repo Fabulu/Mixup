@@ -1270,6 +1270,28 @@ def _cmd_check(argv: list[str]) -> int:
                    if _node(STAGEENDGATE, "--break", "no-timeout")[0] == "FAIL"
                    else ("FAIL", "the scenario is GREEN with the boss immortal "
                                  "-- it is not measuring the stage ending")))
+    # =============== WAVE 63 (B1) -- THE CHAIN EXPIRES ======================
+    # `src/score.js` said for twenty-nine waves that "with no decrement a chain
+    # the port starts never expires", because `$240F62[0] = $28D520` -- the
+    # object holding `$2842B0` (the pending -> total DRAIN) and `$284636` /
+    # `$2847D4` (the two CHAIN METER DECREMENTS) -- was a counted dispatch miss
+    # on every frame of every run. W63 ports it, in the cartridge's own slot.
+    #
+    # THREE controls, because one cannot separate three claims:
+    #   no-hud        object type 0 is not dispatched, i.e. HEAD -- 18 of 27 red
+    #   frozen-meter  `$81B5C0` restored after every step -- 4 red, all chain
+    #   rank-poke     +1 into each of the four rank words -- all 5 RANK rows red
+    HUDGATE = TOOLS.parent / "tools" / "w63hudgate.mjs"
+    stage("THE CHAIN EXPIRES: object type 0, the drain and $284636",
+          lambda: _node(HUDGATE))
+    for _m, _why in (("no-hud", "without object type 0 (i.e. HEAD)"),
+                     ("frozen-meter", "with the chain meter frozen"),
+                     ("rank-poke", "with a rank word poked")):
+        stage(f"THE CHAIN EXPIRES RED [{_m}]",
+              lambda m=_m, w=_why: (("PASS", f"went red {w}, as it must")
+                                    if _node(HUDGATE, "--break", m)[0] == "FAIL"
+                                    else ("FAIL", f"the scenario is GREEN {w} "
+                                                  "-- it is not measuring this")))
     if not quick:
         stage("fly-around: port vs board, 0 divergent frames",
               lambda: sub(__file__, "flyaround"))
