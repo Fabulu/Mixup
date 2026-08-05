@@ -76,6 +76,20 @@ test('$2459D0 walks (D6+1)*10 slots -- the body is TEN-WAY UNROLLED', () => {
     ram.setU16(DMG.bulletWindow[i], 1);
     assert.equal(bulletWindowSlots(ram), want[i], `rung ${i} -> ${want[i]}`);
   }
+  // AND THE CASCADE STOPS AT THE FIRST ZERO.  Every rung is `tst.w / beq
+  // $245A26`, i.e. a jump straight to the body -- NOT a skip to the next rung.
+  // With the rungs raised in order the two readings agree, which is exactly the
+  // fixture `docs/knowledge/03` warns about, so these two cases leave a GAP.
+  const gap = new Ram();
+  gap.setU16(DMG.bulletWindow[1], 1);
+  gap.setU16(DMG.bulletWindow[2], 1);
+  gap.setU16(DMG.bulletWindow[3], 1);
+  assert.equal(bulletWindowSlots(gap), 70,
+    '$2459FC beq $245A26 -- rung 0 is zero, so the other three never run');
+  const gap2 = new Ram();
+  gap2.setU16(DMG.bulletWindow[0], 1);
+  gap2.setU16(DMG.bulletWindow[2], 1);
+  assert.equal(bulletWindowSlots(gap2), 110, '...and again one rung further on');
 });
 
 test('$2459D0 and $281506 are the SAME ladder, unrolled by DIFFERENT factors', () => {
@@ -215,46 +229,188 @@ test('BLOCK 2\'s guard is $C0 and MUST NOT be tidied to $81', () => {
   assert.equal(flag(0x8040), false, 'bit 6 is, though nothing writes it');
 });
 
-test('BLOCK 2\'s stride is $40 and its EMPTY test is on +$02, not +$00', () => {
-  // `$244DB4 move.w (A6)+,D4 / beq $244DB0` with A6 = base+2.  The driver
-  // `$27E99E` tests +$00 instead, and the two agree only because `$27F2F0`
-  // clears a LONGWORD.  A slot whose +$00 is set but whose +$02 is zero is
-  // SKIPPED here, and the walk goes on to the next slot without consuming the
-  // live count.
+test('BLOCK 2 walks the LIVE COUNT, at a LITERAL $40, testing +$02', () => {
+  // THREE separate readings, and the fixture must not seed any of them:
+  //   * the stride is `$40` -- `$244DF6 lea ($3e,A6),A6` with A6 at base+4.
+  //     **The records here are placed at LITERAL $40 offsets, not at
+  //     `slot * DMG.itemStride`** -- a fixture built from the constant under
+  //     test agrees with itself whatever the constant holds, which is the
+  //     seeded check `docs/knowledge/03` names and which this project has
+  //     already shipped twice.
+  //   * the EMPTY test is `$244DB6 beq` on the word at **+$02**, not on +$00
+  //     the way the driver `$27E99E` tests it.
+  //   * `$244D9C move.w $8171BA,D6` is the LIVE COUNT, and the empty-slot scan
+  //     does NOT consume it, so N live records are processed however many slots
+  //     they are spread over -- and the N+1th is NOT.
+  const put = (ram, byteOffset, y) => {
+    const r = DMG.itemPool + byteOffset;
+    ram.setU16(r, 0x8000);
+    ram.setU16(r + 0x02, y);
+    ram.setU16(r + 0x04, 0x1000);
+    ram.setU16(r + 0x10, 0x600);
+    ram.setU16(r + 0x12, 0x300);
+    return r;
+  };
+  const flagged = (ram, r) => (ram.u16(r) & DMG.maskP1) !== 0;
+
+  // (a) slot 0 has a ZERO +$02 -- an empty slot by THIS block's test, even
+  //     though its +$00 says allocated.  Slot 1 is $40 further on.
   const ram = new Ram();
   putPlayer(ram);
-  const dead = putItem(ram, 0, { y: 0, x: 0x1000 });      // +$02 == 0 -> skipped
-  const good = putItem(ram, 1, { y: 0x2000, x: 0x1000 });
-  ram.setU16(DMG.itemCount, 1);                            // ONE live record
+  const dead = put(ram, 0x00, 0);
+  const good = put(ram, 0x40, 0x2000);
+  ram.setU16(DMG.itemCount, 1);
   runPass(ram);
-  assert.equal(ram.u16(dead) & DMG.maskP1, 0, 'a zero +$02 is an empty slot');
-  assert.equal(ram.u16(good) & DMG.maskP1, DMG.maskP1,
-    'and slot 1 sits exactly $40 further on');
+  assert.equal(flagged(ram, dead), false, 'a zero +$02 is an empty slot');
+  assert.equal(flagged(ram, good), true, 'and the next record is $40 on');
+
+  // (b) THREE records in the box, but the count says ONE.  Only the first.
+  const ram2 = new Ram();
+  putPlayer(ram2);
+  const a = put(ram2, 0x00, 0x2000);
+  const b = put(ram2, 0x40, 0x2000);
+  const c = put(ram2, 0x80, 0x2000);
+  ram2.setU16(DMG.itemCount, 1);
+  runPass(ram2);
+  assert.equal(flagged(ram2, a), true, '$8171BA = 1 -> the dbra runs once');
+  assert.equal(flagged(ram2, b), false, '...and slot 1 is NOT walked');
+  assert.equal(flagged(ram2, c), false, '...nor slot 2');
+
+  // (c) the same three with the count at THREE -- all of them, which is what
+  //     makes (b) a statement about the counter and not about the box.
+  const ram3 = new Ram();
+  putPlayer(ram3);
+  const d = put(ram3, 0x00, 0x2000);
+  const e = put(ram3, 0x40, 0x2000);
+  const f = put(ram3, 0x80, 0x2000);
+  ram3.setU16(DMG.itemCount, 3);
+  runPass(ram3);
+  for (const [n, r] of [['0', d], ['1', e], ['2', f]]) {
+    assert.equal(flagged(ram3, r), true, `count 3 -> slot ${n} is walked`);
+  }
 });
 
-test('BLOCK 3 uses FOUR extents and a bit-7 guard on +$01, not $C0 on +$00', () => {
-  const ram = new Ram();
-  putPlayer(ram);
-  const put = (slot, flags1) => {
-    const r = DMG.impactPool + slot * DMG.impactStride;
+test('BLOCK 2 reads +$10 for BOTH long bounds and +$12 for BOTH short', () => {
+  // Block 2 is the one block that reuses two extents where blocks 3 and 4 read
+  // four.  Driven at each of the four boundaries, one extent at a time, with
+  // the two extents DIFFERENT so any mix-up moves at least one boundary.
+  //   item +$02 = $2000, +$04 = $1000 -> biased IY = $4800, IX = $3800;
+  //   +$10 = $600 (long), +$12 = $300 (short).
+  const flag = (box) => {
+    const ram = new Ram();
+    putPlayer(ram, box);
+    const r = DMG.itemPool;
     ram.setU16(r, 0x8000);
+    ram.setU16(r + 0x02, 0x2000);
+    ram.setU16(r + 0x04, 0x1000);
+    ram.setU16(r + 0x10, 0x600);
+    ram.setU16(r + 0x12, 0x300);
+    ram.setU16(DMG.itemCount, 1);
+    runPass(ram);
+    return (ram.u16(r) & DMG.maskP1) !== 0;
+  };
+  const base = { y: 0x2000, x: 0x1000, yP: 0x100, yM: 0x100, xP: 0x100, xM: 0x100 };
+  // $244DC0 cmp.w D5,D0 / bcs : accept iff D0 >= IY - $600 == $4200
+  assert.equal(flag({ ...base, y: 0x1a00, yP: 0 }), true, 'D0 == $4200');
+  assert.equal(flag({ ...base, y: 0x19ff, yP: 0 }), false, 'D0 == $41FF');
+  // $244DC8 cmp.w D1,D4 / bcs : accept iff D1 <= IY + $600 == $4E00
+  assert.equal(flag({ ...base, y: 0x2600, yM: 0 }), true, 'D1 == $4E00');
+  assert.equal(flag({ ...base, y: 0x2601, yM: 0 }), false, 'D1 == $4E01');
+  // $244DD6 cmp.w D3,D4 / bcs : accept iff D3 <= IX + $300 == $3B00
+  assert.equal(flag({ ...base, x: 0x1300, xM: 0 }), true, 'D3 == $3B00');
+  assert.equal(flag({ ...base, x: 0x1301, xM: 0 }), false, 'D3 == $3B01');
+  // $244DDE cmp.w D5,D2 / bcs : accept iff D2 >= IX - $300 == $3500
+  assert.equal(flag({ ...base, x: 0x0d00, xP: 0 }), true, 'D2 == $3500');
+  assert.equal(flag({ ...base, x: 0x0cff, xP: 0 }), false, 'D2 == $34FF');
+});
+
+test('BLOCK 3 reads FOUR DISTINCT extents, one per boundary', () => {
+  // Record +$02 = $2000, +$04 = $1000 -> biased RY = $4800, RX = $3800.
+  //   ($c,A6) = +$10 = $400   long PLUS      $244E26 add.w ($c,A6),D4
+  //   ($e,A6) = +$12 = $800   long MINUS     $244E1E sub.w ($e,A6),D5
+  //   ($10,A6)= +$14 = $200   short PLUS     $244E34 add.w ($10,A6),D4
+  //   ($12,A6)= +$16 = $100   short MINUS    $244E3C sub.w ($12,A6),D5
+  // All four differ, so ANY offset mix-up moves at least one boundary.  Block
+  // 2's fixture cannot do this: block 2 really does read two words twice.
+  const flag = (box) => {
+    const ram = new Ram();
+    putPlayer(ram, box);
+    const r = DMG.impactPool;
+    ram.setU16(r, 0x8000);
+    ram.setU16(r + 0x02, 0x2000);
+    ram.setU16(r + 0x04, 0x1000);
+    ram.setU16(r + 0x10, 0x400);
+    ram.setU16(r + 0x12, 0x800);
+    ram.setU16(r + 0x14, 0x200);
+    ram.setU16(r + 0x16, 0x100);
+    ram.setU16(DMG.impactCount, 1);
+    runPass(ram);
+    return (ram.u16(r) & DMG.maskP1) !== 0;
+  };
+  const base = { y: 0x2000, x: 0x1000, yP: 0x100, yM: 0x100, xP: 0x100, xM: 0x100 };
+  // $244E22 cmp.w D5,D0 / bcs : accept iff D0 >= RY - $800 == $4000
+  assert.equal(flag({ ...base, y: 0x1800, yP: 0 }), true, 'D0 == $4000');
+  assert.equal(flag({ ...base, y: 0x17ff, yP: 0 }), false, 'D0 == $3FFF');
+  // $244E2A cmp.w D1,D4 / bcs : accept iff D1 <= RY + $400 == $4C00
+  assert.equal(flag({ ...base, y: 0x2400, yM: 0 }), true, 'D1 == $4C00');
+  assert.equal(flag({ ...base, y: 0x2401, yM: 0 }), false, 'D1 == $4C01');
+  // $244E38 cmp.w D3,D4 / bcs : accept iff D3 <= RX + $200 == $3A00
+  assert.equal(flag({ ...base, x: 0x1200, xM: 0 }), true, 'D3 == $3A00');
+  assert.equal(flag({ ...base, x: 0x1201, xM: 0 }), false, 'D3 == $3A01');
+  // $244E40 cmp.w D5,D2 / bcs : accept iff D2 >= RX - $100 == $3700
+  assert.equal(flag({ ...base, x: 0x0f00, xP: 0 }), true, 'D2 == $3700');
+  assert.equal(flag({ ...base, x: 0x0eff, xP: 0 }), false, 'D2 == $36FF');
+});
+
+test('BLOCK 3 guards on +$01 bit 7, NOT on block 2 $C0 over +$00', () => {
+  // `$244E44 tst.b (-$3,A6) / bmi` is a BYTE test of record +$01.  A port that
+  // reused block 2's `andi.w #$C0` over +$00 AGREES with it on bit 7 -- which
+  // is why a fixture that only sets bit 7 cannot tell the two apart -- and
+  // DISAGREES on bit 6, which nothing else in this port sets.
+  const flag = (word, flags1) => {
+    const ram = new Ram();
+    putPlayer(ram);
+    const r = DMG.impactPool;
+    ram.setU16(r, word);
     ram.setU8(r + 0x01, flags1);
     ram.setU16(r + 0x02, 0x2000);
     ram.setU16(r + 0x04, 0x1000);
-    ram.setU16(r + 0x10, 0x0400);   // ($c,A6) -- long PLUS
-    ram.setU16(r + 0x12, 0x0800);   // ($e,A6) -- long MINUS
-    ram.setU16(r + 0x14, 0x0200);   // ($10,A6) -- short PLUS
-    ram.setU16(r + 0x16, 0x0100);   // ($12,A6) -- short MINUS
+    ram.setU16(r + 0x10, 0x400);
+    ram.setU16(r + 0x12, 0x400);
+    ram.setU16(r + 0x14, 0x400);
+    ram.setU16(r + 0x16, 0x400);
+    ram.setU16(DMG.impactCount, 1);
+    runPass(ram);
+    return (ram.u16(r) & DMG.maskP1) !== 0;
+  };
+  assert.equal(flag(0x8000, 0x00), true, 'clean');
+  assert.equal(flag(0x8080, 0x80), false, '+$01 bit 7 -> $244E48 bmi');
+  assert.equal(flag(0x8040, 0x40), true,
+    'bit 6 is NOT tested here, though $244DE6 catches it in block 2');
+  assert.equal(flag(0x80c0, 0xc0), false, 'bit 7 still rejects with bit 6 set');
+});
+
+test('BLOCK 3 stride is $2C, from a LITERAL offset', () => {
+  const ram = new Ram();
+  putPlayer(ram);
+  const put = (byteOffset) => {
+    const r = DMG.impactPool + byteOffset;
+    ram.setU16(r, 0x8000);
+    ram.setU16(r + 0x02, 0x2000);
+    ram.setU16(r + 0x04, 0x1000);
+    ram.setU16(r + 0x10, 0x400);
+    ram.setU16(r + 0x12, 0x400);
+    ram.setU16(r + 0x14, 0x400);
+    ram.setU16(r + 0x16, 0x400);
     return r;
   };
-  const a = put(0, 0x00);
-  const b = put(1, 0x80);
+  const a = put(0x00);
+  const b = put(0x2c);
   ram.setU16(DMG.impactCount, 2);
   runPass(ram);
-  assert.equal(ram.u16(a) & DMG.maskP1, DMG.maskP1, '$244E50 or.w D4,(-$4,A6)');
-  assert.equal(ram.u16(b) & DMG.maskP1, 0, '$244E44 tst.b (-$3,A6) / bmi');
-  // and the stride: slot 1 is $2C on from slot 0, not $40 and not $20.
-  assert.equal(b - a, 0x2c, '$244E54 lea ($28,A6),A6 with A6 at base+4');
+  assert.equal(ram.u16(a) & DMG.maskP1, DMG.maskP1, 'slot 0');
+  assert.equal(ram.u16(b) & DMG.maskP1, DMG.maskP1,
+    'slot 1 is $2C on -- $244E54 lea ($28,A6),A6 with A6 at base+4');
 });
 
 test('BLOCK 4: the $1 type gate, the -1 HP, and it leaves the LOOP', () => {

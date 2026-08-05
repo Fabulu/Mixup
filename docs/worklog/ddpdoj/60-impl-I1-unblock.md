@@ -46,8 +46,10 @@ is **610 bytes, not 52**, and its slot count is `(D6+1)*10`:
 [M] src/bullets.js took the SAME five numbers from the SPAWNER's free-slot
     search at $281506, which is FIVE-way unrolled: 5*(D7+1) with
     D7 = $D/$15/$1F/$25/$29                 ->  70 / 110 / 160 / 190 / 210
-[M] and $245902, inside block 9, walks the same pool NOT unrolled at all:
-    D7 = $45/$6D/$9F/$BD                    ->  70 / 110 / 160 / 190
+[M] and $245902, inside block 9, walks the same pool at the same $40 stride
+    NOT UNROLLED AT ALL ($24593C..$2459CA, one dbra, `lea ($40,A5),A5`):
+    D7 = $45/$6D/$9F/$BD/$D1                ->  70 / 110 / 160 / 190 / 210
+    -- and its `rts` is at $2459CE, two bytes before $2459D0 itself.
 ```
 
 **Three unrollings of one ladder, three instruction streams, one answer**, and
@@ -249,6 +251,75 @@ boundary recon 59 drew between I1 and I2, and I1 does not cross it.
 Block 3 is in the same position for a different reason: `$817F7E` is 0 and stays
 0 because `$27F8F8`, impact pool A's only allocator, is a counted note (W51
 §3.1) whose driver `$27F95A` — type-5 call #4 — is unported.
+
+---
+
+## 7. EVERY CHECK WAS SEEN TO FAIL — 26 mutants, 26 RED, 0 survivors
+
+`games/ddpdoj/.scratch/mutate60.mjs`: apply ONE edit with a single-occurrence
+anchor assertion, run ONE test file, require a NAMED test red, restore, and
+**verify the file's sha256 is byte-identical** (the harness exits 2 on a
+mismatch). Every restore matched; `src/damage.js` is `cb323f36bb3f1ba1` before
+and after all 26.
+
+| # | mutation | first NAMED test red |
+|---|---|---|
+| M1 | `$2459DA` uses `($10,A4)` for both long bounds | `...FOUR different half-extents` |
+| M2 | `$2459E4` uses the LONG extents on the short axis | same |
+| M3 | the ten-way unroll read as a plain `dbra` | `...TEN-WAY UNROLLED` |
+| **M4** | the ladder cascades past a zero rung | **GREEN, then RED** |
+| M5 | `$245A3A moveq #$51` read as `#$50` | `...rejects on $51` |
+| M6 | ...read as `#$D1`, i.e. testing the LIVE bit too | same |
+| M7 | `$245A52 bra` read as a `continue` | `...RETURNS -- one bullet per pass` |
+| M8 | `$245A48 or.b D4,(A4)` dropped | same |
+| M9 | `$245A44 or.b D4,(-$4,A6)` dropped | same |
+| M10 | `$245A28 cmp.w D4,D0/bcs` operands swapped | `...rejects on $51` |
+| M11 | `$244DE6 andi.w #$C0` tidied to `$81` | `BLOCK 2's guard is $C0` |
+| M12 | block 2 `bra`s out after a flag | `BLOCK 2 keeps walking` |
+| **M13** | block 2's stride read as `$3E` (the `lea`) | **GREEN, then RED** |
+| M14 | block 2 empty-tests `+$00` like the driver | `...LIVE COUNT, at a LITERAL $40` |
+| M15 | block 3's stride read as `$28` (the `lea`) | `BLOCK 3 stride is $2C` |
+| **M16** | block 3's guard read as `$C0` over `+$00` | **GREEN, then RED** |
+| **M17** | block 3 reuses two extents where four are read | **GREEN, then RED** |
+| M18 | `$244EB0 andi.w #$1` type gate dropped | `BLOCK 4: the $1 type gate` |
+| M19 | `$244EBE bcc` read as `bcs` | `BLOCK 4 rejects a Y at or above $F800` |
+| M20 | block 4 keeps walking after a ram | `BLOCK 4: ...leaves the LOOP` |
+| M21 | `$244EC4 bset #$4,(A4)` put on the ENEMY | same |
+| M22 | `$244D7E clr.w $80FA7E` dropped | `$244D7E clears $80FA7E` |
+| M23 | `$244D8A tst.w/bne` dropped | `$244D8A: a bullet hit SKIPS...` |
+| M24 | the `$2800` bias applied to the box only | `BLOCK 2 flags an item...` |
+| **M25** | `$244D40` does not run `$2459D0` | **GREEN, then RED** |
+| **M26** | the blocks walk CAPACITY, not the live count | **GREEN, then RED** |
+
+**SIX SURVIVED THE FIRST PASS AND ALL SIX WERE DEFECTIVE CHECKS OF MINE.** None
+was uncatchable, which is the distinction W31 asked later waves to keep:
+
+* **M13 — A CHECK THAT SEEDED ITS OWN ANSWER, and it is the exact shape
+  `docs/knowledge/03` names.** The stride test placed its records at
+  `slot * DMG.itemStride` and then asserted on a record found through the same
+  constant, so it agreed with itself whatever `itemStride` held. The records are
+  now at LITERAL `$40` byte offsets. This project has shipped that shape twice
+  before; it nearly shipped a third time here.
+* **M4, M16 and M17 — fixtures sitting where two readings agree.** M4's ladder
+  was only ever raised in order, where "break at the first zero" and "skip a
+  zero" cannot differ; it now leaves a GAP. M16's rejected record set bit 7,
+  where `tst.b +$01` and `andi.w #$C0` over `+$00` give the same answer; it now
+  also drives BIT 6, where they differ. M17's box was loose enough that both
+  extents fell inside it; block 3's four extents are now four DIFFERENT values
+  and each of the four boundaries is asserted at the boundary and one off it.
+* **M25 — the right assertion, run against the wrong file.** It was pointed at
+  `tests/w34damage.test.js`, whose `$244D40` assertions the mutation leaves
+  true. Pointed at the file that owns the claim.
+* **M26 — no test at all.** Nothing asserted that the blocks walk `$8171BA`
+  rather than the pool's 25 slots. Three items in the box with the count at ONE
+  now pin it, with the count at THREE as the control that makes it a statement
+  about the counter and not about the box.
+
+Unit tests: **706 -> 727 pass, 0 fail, 0 SKIPPED.** New file
+`tests/w60playerbox.test.js` (21 tests); `tests/w34damage.test.js` gained two
+INVERTED assertions rather than deleted ones — `$2459D0` must no longer appear
+as a deferral note, and the `$28B706` arms must now report `boxRun` with no
+`anyShot`.
 
 ---
 
