@@ -273,11 +273,18 @@ test('the two weapon shards are DEFERRED and fetched FIRST among the deferred', 
   // W61 inserted shard 12, THE ITEM, immediately behind the explosion: [M] the
   // only drop this port reaches is `$275B06`, twelve instructions above the
   // `$289004` that spawns shard 9, so the two have the SAME deadline.
-  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 10, 9, 12, 8, 1, 2, 3, 4, 5, 11\]\)/.test(s),
+  // W66 inserted shard 13, THE BOMB, fifth -- behind the explosion and ahead of
+  // the item, because its deadline is a DELIBERATE PRESS rather than an event
+  // the game reaches by itself, and because at 186 KiB it is the second-largest
+  // body in the bundle and must not sit in front of shards the simulation
+  // reaches on its own.  `demand()` promotes it on the frame Button 2 is pressed.
+  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 10, 9, 13, 12, 8, 1, 2, 3, 4, 5, 11\]\)/.test(s),
     'the bullets (+0.7 s), the shots (the first fire frame), the LASER (the '
-    + 'first held frame), the death explosion, THE ITEM and the impact spark '
-    + 'all come before shard 1 (+7.7 s): index order is NOT need order any more');
+    + 'first held frame), the death explosion, THE BOMB, THE ITEM and the '
+    + 'impact spark all come before shard 1 (+7.7 s): index order is NOT need '
+    + 'order any more');
   assert.ok(/\[12, 'items'/.test(s), 'W61: the item is its own shard');
+  assert.ok(/\[13, 'bomb'/.test(s), 'W66: the bomb and the laser bomb are a shard');
   assert.ok(/\[10, 'laser'/.test(s) && /\[11, 'structures'/.test(s),
     'W58: the laser and the big mid-screen structures are their own shards');
   assert.ok(/order: SPR_ORDER\.indexOf\(i\)/.test(s),

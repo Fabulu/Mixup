@@ -861,7 +861,14 @@ try {
         10: { streams: 407, records: 1736, distinct: 34, first: 24,
           what: 'THE LASER BEAM ($24BB0A x4 frames x5 powers + the segment '
             + 'and option blocks, bucket 16)' },
-        11: { streams: 146, records: 12681, distinct: 101, first: 315,
+        // W66: 146 -> 153. The fifth chain range ($12D430, 8 frames of stride
+        // 68, closed by $12D650 being stride 1084) joins shard 11 -- W58 §2.2
+        // identified $12D430 as "the first frame of the next family" and
+        // shipped only that one frame. [M] W66 measured the other seven being
+        // asked for by a run that TAPS fire and never holds it, which E3's own
+        // scenario cannot reach. `records`/`distinct`/`first` are unmoved,
+        // because this window HOLDS fire and never asks for them.
+        11: { streams: 153, records: 12681, distinct: 101, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };
@@ -914,6 +921,114 @@ try {
           + `(expect ${e.first}). All shards loaded: ${a.drawn} DRAWN of ${a.rec}, `
           + `${a.pend} pending, ${a.named} with no art. Before W58 not one of `
           + 'them had a picture');
+        if (!ok) code = 1;
+      }
+
+      // ================================================== WAVE 66 -- E6, THE BOMB
+      //
+      // W64 shipped the BOMB and W65 the LASER BOMB and NEITHER HAD A PICTURE.
+      // [M] W64 §8.3: 174 bucket-13 records over three bombs, every one skipped
+      // for want of a sheet. [M] W65 §7.3: the page's own status line naming
+      // `$042924 $040CC8 $040EAC` during every laser bomb.
+      //
+      // THIS STAGE NEEDS TWO WINDOWS AND THAT IS THE POINT.  `$249A5C tst.b
+      // ($3f,A6)` forks the arm on whether the BEAM IS UP, and [M] the two arms
+      // draw from completely disjoint art -- 16 streams of `$02xxxx`/`$03xxxx`
+      // for the ordinary bomb and 168 of `$04xxxx`/`$05xxxx` for the laser one.
+      // A single window would report one of them and pass on nothing about the
+      // other, which is exactly the shape of `47-impl` §4.1's trap.
+      //
+      // W47 §4.1's OTHER trap, avoided the same way every stage above avoids
+      // it: `records`, `distinct` and `first` are the PORT's own and no bundle
+      // can supply them; `streams` is the one number a short harvest moves.
+      const EXP66 = {
+        frames: 1400, press: [200, 700, 1200],
+        tap: { records: 346, distinct: 18, first: 201,
+          what: 'THE BOMB ($255E3E\'s three phase scripts $256558/$2565DE/'
+            + '$25663A, bucket 13) with fire TAPPED' },
+        hold: { records: 4480, distinct: 75, first: 201,
+          what: 'THE LASER BOMB ($255FE2\'s four heads and 41 segments out of '
+            + '$256662..$256986, + pool E, the bit-7 aura and type $8A) with '
+            + 'fire HELD' },
+        streams: 218,
+      };
+      const runW66 = (frames, hold) => {
+        const g = new Game(bundle.seed, bundle.tables, {
+          logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
+          bgSeed: bundle.cap.part(0, 'bg'),
+        });
+        const t = { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1,
+          stock: [] };
+        const FIRE = portWordFromBits([BIT.b1]), UP = portWordFromBits([BIT.up]);
+        const BOMB = portWordFromBits([BIT.b2]);
+        for (let i = 0; i < frames; i++) {
+          const res = portSpriteList(g.ram, map, { out: buf, ...shardOpts });
+          for (let k = 0; k < 256; k++) {
+            const b = k * RAM_STRIDE;
+            const w4 = g.ram.u16(0x800000 + (b + 4) * 2);
+            if ((w4 & 0x7fff) === 0) break;
+            const offs = ((g.ram.u16(0x800000 + (b + 2) * 2) & 0x7f) << 16)
+              | g.ram.u16(0x800000 + (b + 3) * 2);
+            if (map.get(offs)?.[2] !== 13) continue;
+            t.rec++; t.seen.add(offs); if (t.first < 0) t.first = i;
+            if (((w4 & 0x7e00) >> 9) === 0 || (w4 & 0x1ff) === 0) continue;
+            if (res.missing.has(offs)) t.named++;
+            else if (bundle.spr.state[13] === 'ready') t.drawn++; else t.pend++;
+          }
+          // The page's own intervention (`src/web/app.js`): pin `$810424`, so
+          // `$2564BA`'s cooldown expiry cannot make the ship mortal and stop
+          // this run at `$249F8A` (W64 §8.1, W65 §9).
+          g.ram.setU8(0x810424, 0xff);
+          let word = 0xffff & UP;
+          if (hold || i % 4 === 0) word &= FIRE;
+          if (EXP66.press.includes(i)) { word &= BOMB; t.stock.push(g.ram.u8(0x81040a)); }
+          g.step(word);
+        }
+        return t;
+      };
+      for (const mode of ['tap', 'hold']) {
+        const a = runW66(EXP66.frames, mode === 'hold'), e = EXP66[mode];
+        // THE STOCK ROW IS NOT DECORATION.  Without it a run in which every
+        // press is REFUSED -- because the fork went to the hyper, or because
+        // the beam was not up -- still counts whatever records the previous
+        // bomb left on screen. [M] 3 / 2 / 1 is the seed's three bombs spent.
+        const spent = a.stock.join('/') === '3/2/1';
+        const ok = bundle.spr.meta[13].streams === EXP66.streams
+          && a.rec === e.records && a.seen.size === e.distinct && a.first === e.first
+          && a.drawn === a.rec && a.pend === 0 && a.named === 0 && spent;
+        console.log(`${ok ? 'PASS' : 'FAIL'}: W66 ${e.what} -- over ${EXP66.frames} `
+          + `logic frames from the shipped seed, Button 2 at `
+          + `${EXP66.press.join('/')} (stock ${a.stock.join('/')}, expect 3/2/1), `
+          + `sprite shard 13 holds ${bundle.spr.meta[13].streams} streams `
+          + `(expect ${EXP66.streams}) and the port's own $800000 list carries `
+          + `${a.rec} records of them (expect ${e.records}) over ${a.seen.size} `
+          + `distinct images (expect ${e.distinct}), first at frame ${a.first} `
+          + `(expect ${e.first}). All shards loaded: ${a.drawn} DRAWN of ${a.rec}, `
+          + `${a.pend} pending, ${a.named} with no art. Before W66 every one of `
+          + 'these records was skipped for want of a sheet');
+        if (!ok) code = 1;
+      }
+
+      // AND THE ONE THAT SAYS THE SHARD IS WHAT DID IT -- E5a's check, which
+      // can only pass for the right reason: with the BOOT payload alone the run
+      // is identical up to the press and then every bomb record is PENDING on
+      // shard 13, named by shard rather than by address, and NOT drawn.
+      {
+        const saved = bundle.spr.state[13];
+        bundle.spr.state[13] = 'loading';
+        const a = runW66(EXP66.frames, true);
+        bundle.spr.state[13] = saved;
+        const e = EXP66.hold;
+        const ok = a.rec === e.records && a.first === e.first
+          && a.drawn === 0 && a.pend === e.records && a.named === 0;
+        console.log(`${ok ? 'PASS' : 'FAIL'}: W66 THE BOMB SHARD WITHHELD -- the `
+          + `identical run with sprite shard 13 IN FLIGHT emits the same `
+          + `${a.rec} records (expect ${e.records}) starting on the same frame `
+          + `${a.first} (expect ${e.first}), draws ${a.drawn} of them (expect 0) `
+          + `and reports ${a.pend} PENDING ON SHARD 13 (expect ${e.records}) and `
+          + `${a.named} as MISSING ART (expect 0 -- a shard in flight is not a `
+          + 'missing picture). Nothing before the press differs, which is what '
+          + 'says the shard and not the port is what makes the bomb visible');
         if (!ok) code = 1;
       }
     }

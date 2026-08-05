@@ -429,6 +429,14 @@ const SPR_SHARDS = Object.freeze([
     + 'bodies index ($27EA1A $27EBCC $27ED7C $27EF10 $27F196) and the five '
     + 'COLLECTED animations $27F308/$388/$408/$488 (30 frames) and $27F508 '
     + '(17) that $27F5F4 and $27F656 walk (W61). What the bigger ships drop.'],
+  // The `why` is what the page prints in "SPRITE SHARD n DID NOT LOAD -- it
+  // holds N streams -- ...", and `manifest.json` is the one body served
+  // UNCOMPRESSED, so every character of it is a boot byte. [M] W66: the first
+  // draft of this string cost 329 B and the shipped one costs 174 (E3 §3's
+  // trim-after-measuring, for the same reason).
+  [13, 'bomb', 'THE BOMB AND THE LASER BOMB: $255E3E\'s three phase scripts, '
+    + 'the laser bomb\'s data block $256662..$256986, pool E\'s $28A464, the '
+    + 'ship\'s bit-7 aura and type $8A\'s pair (W66)'],
 ]);
 const SPR_BOOT = [0];
 /** the order the deferred shards are FETCHED in -- measured first need, not
@@ -457,7 +465,15 @@ const SPR_BOOT = [0];
 // only drop this port can reach is `$275B06`, twelve instructions above the
 // `$289004` that spawns shard 9's fireball, so the first frame an item needs a
 // picture is the first frame an enemy of type $85/$86 dies. It is also small.
-const SPR_ORDER = Object.freeze([0, 7, 6, 10, 9, 12, 8, 1, 2, 3, 4, 5, 11]);
+// W66: shard 13 THE BOMB goes FIFTH among the deferred, behind the explosion
+// and ahead of the item. Its deadline is a DELIBERATE PRESS rather than an
+// event the game reaches by itself -- the seed carries three bombs and the
+// owner can press X on frame one, but nothing makes them -- and it is 187 KiB,
+// the second-largest body in the bundle, so it must not sit in front of the
+// shards the simulation reaches on its own. `demand()` promotes it to the head
+// of the queue on the frame Button 2 is pressed, exactly as it has since W47,
+// and until it lands the page NAMES it rather than drawing pen 0.
+const SPR_ORDER = Object.freeze([0, 7, 6, 10, 9, 13, 12, 8, 1, 2, 3, 4, 5, 11]);
 
 // ---------------------------------------------------------------------------
 // 1. COVERAGE.  What can this capture possibly make the renderer read?
@@ -1154,16 +1170,29 @@ const B0_RUN = Object.freeze([0x22c59c, 0x22c6bc]);
  *  stride CHANGING at its far end, so the cartridge sizes them and not a run.
  *  It costs 6.7 KiB gz for 35 more streams. */
 const STRUCTURE_RANGES = Object.freeze([
-  [0x11e1fc, 0x127e7c, '13x96 c16, stride 1252. [M] 32 streams, and $127E7C -- '
+  [0x11e1fc, 0x127e7c, 32, '13x96 c16, stride 1252. [M] 32 streams, and $127E7C -- '
     + 'itself an 18x208 this file ships below -- is stride 3748, a different '
     + 'subject entirely'],
-  [0x12c7b0, 0x12d430, '3x32, stride 100. [M] 32 streams, closed by $12D430 '
+  [0x12c7b0, 0x12d430, 32, '3x32, stride 100. [M] 32 streams, closed by $12D430 '
     + 'being stride 68. ($12D430 is the port\'s single most-emitted missing '
     + 'stream -- [M] 3,600 records in 3,000 frames -- and it is NOT in this run; '
-    + 'it is the first frame of the next family and is shipped by name below.) '
+    + 'it is the first frame of the next family, which the row below walks.) '
     + '55-diag §2.2 calls this "a 38-frame run $12C7B0..$12D3CC"; [M] it is 32'],
-  [0x151e10, 0x152a90, '3x32, stride 100. [M] 32 streams, closed by stride 228'],
-  [0x155c34, 0x156bb4, '3x40 c12, stride 124. [M] 32 streams, closed by $156BB4 '
+  // ------------------------------------------------------------------ WAVE 66
+  // AND THE FAMILY W58's OWN NOTE POINTED AT AND DID NOT WALK.  The row above
+  // says "$12D430 ... is the first frame of the next family" and stops there.
+  // [M] W66: fire TAPPED and never HELD, no bomb, 2,600 frames -- the page asks
+  // for $12D474..$12D60C, seven streams E3's own scenario never reached because
+  // it holds fire twice every 600 frames.  The family is EIGHT frames of stride
+  // 68 and $12D650 is stride 1084, so the cartridge sizes it exactly as it
+  // sizes the other four.  NOT the bomb's; shipped by this wave anyway, because
+  // "zero missing streams" that only holds while the player holds fire is not
+  // the claim.
+  [0x12d430, 0x12d650, 8, '3x32-ish, stride 68. [M] 8 streams, closed by '
+    + '$12D650 being stride 1084. W58 §2.2 identified $12D430 as "the first '
+    + 'frame of the next family" and shipped only that one frame'],
+  [0x151e10, 0x152a90, 32, '3x32, stride 100. [M] 32 streams, closed by stride 228'],
+  [0x155c34, 0x156bb4, 32, '3x40 c12, stride 124. [M] 32 streams, closed by $156BB4 '
     + 'being stride 484. 55-diag §2.2 calls this "a 16-frame 3x40 c12 run '
     + '$155D2C..$1569C4"; [M] it is 32, and it starts $DC lower'],
 ]);
@@ -1179,13 +1208,13 @@ const STRUCTURE_STREAMS = Object.freeze([
   0x22ded4, 0x22e508, 0x22f184, 0x22fe98, 0x23061c, 0x233f34,
 ]);
 {
-  if (STRUCTURE_STREAMS.length !== 18 || STRUCTURE_RANGES.length !== 4) {
+  if (STRUCTURE_STREAMS.length !== 18 || STRUCTURE_RANGES.length !== 5) {
     throw new Error(`STRUCTURE_STREAMS holds ${STRUCTURE_STREAMS.length} `
       + `addresses and there are ${STRUCTURE_RANGES.length} chain ranges; `
-      + 'W58 measured 18 and 4.');
+      + 'W58 measured 18 and 4, and W66 added the fifth ($12D430, 8 frames).');
   }
   let added = 0, already = 0, chained = 0;
-  for (const [base, endsAt, why] of STRUCTURE_RANGES) {
+  for (const [base, endsAt, count, why] of STRUCTURE_RANGES) {
     let a = base, n = 0, prev = base;
     while (a < endsAt) {
       const w = romExtent(a);              // throws unless it is a stream start
@@ -1195,12 +1224,12 @@ const STRUCTURE_STREAMS = Object.freeze([
       if (n > 512) throw new Error(`structure range $${base.toString(16)} did `
         + `not reach $${endsAt.toString(16)} in 512 streams`);
     }
-    if (a !== endsAt || n !== 32) {
+    if (a !== endsAt || n !== count) {
       throw new Error(`structure range $${base.toString(16)}: the cartridge's `
         + `chain runs ${n} streams from $${prev.toString(16)} to `
-        + `$${a.toString(16)}; this file says 32 ending at `
-        + `$${endsAt.toString(16)}. All four of these families are 32-frame `
-        + `animations closed by a stride change, and a walk that stopped short `
+        + `$${a.toString(16)}; this file says ${count} ending at `
+        + `$${endsAt.toString(16)}. Each of these families is closed by a `
+        + `stride change, and a walk that stopped short `
         + `ships a subset the way the MEASURED list did. (${why})`);
     }
   }
@@ -1219,6 +1248,212 @@ const STRUCTURE_STREAMS = Object.freeze([
   console.log(`  buckets 2/3/7: ${chained} streams over 4 closed chains + `
     + `${STRUCTURE_STREAMS.length} measured one-offs, ${added} new -- the `
     + '288x208 hole in the middle of the playfield');
+}
+
+// ------------------------------------------------------------------- WAVE 66
+// 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
+// bomb, and NEITHER HAS A PICTURE: W64 §8.3 counted 174 bucket-13 records with
+// no shard behind them and W65 §7.3 named three missing streams off the page's
+// own top-3 line.  [M] W66: the ordinary bomb asks for SIXTEEN distinct streams
+// and the laser bomb for SEVENTY-FIVE, over six different producers, in two
+// completely disjoint address ranges.
+//
+// EVERY SET BELOW IS DERIVED FROM THE CARTRIDGE AND THEN CHECKED AGAINST THE
+// MEASUREMENT, never sized off it (`docs/knowledge/09`; `46-diag`'s tank hulls
+// and W58 §2.2's four families are what a measured floor costs).
+//
+// **NONE OF IT IS IN OR BEHIND E3's HOLE.**  W58 §7.1 left `$24B900..$24BB0A`
+// unexported on purpose, because the beam's animation blocks for `$24BB0A`
+// entries 7..19 live there and "the window and the art must move together".
+// [M] W66: every address this wave harvests is named by a table inside a window
+// `tools/export-tables.py` ALREADY exports -- `$25653C+$112` (W64),
+// `$256662+$324` (W65), `$28A464+$A2` (W65), `$255330+$900` (W12) and
+// `$2766E0+$30` (W23).  The hole is not this wave's and the throw stays.
+const BOMB_SHARD = 13;
+
+/** (a) THE ORDINARY BOMB.  Each of `$255E3E`'s three phases installs a template
+ *  and the template's own `($1E,A6)` long names the script that phase walks:
+ *
+ *    $25653C[+$10] -> $256558   phase 0: 12-byte entries, anim at +4, to $FFFF
+ *    $2565BC[+$14] -> $2565DE   phase 1: longs at index $1C..0 step 4  (8)
+ *    $25661E[+$14] -> $25663A   phase 2: longs to $FFFFFFFF
+ *
+ *  The `+$10` / `+$14` are counted from `src/bomb.js`'s own INIT/FADE/BLINK
+ *  step lists (the byte position of the `($1E,A6)` long inside each template),
+ *  not guessed, and `tools/export-tables.py check_bomb_extents` already asserts
+ *  `$25653C[+$10] == $256558` against the cartridge on every export.  Each
+ *  walk's END IS THE CLAIM: a script that does not terminate where this file
+ *  says stops the build. */
+const BOMB_PHASES = Object.freeze([
+  [0x25653c, 0x10, 'terminated', 0x256558],
+  [0x2565bc, 0x14, 'indexed', 0x2565de],
+  [0x25661e, 0x14, 'longs', 0x25663a],
+]);
+
+/** (b)..(f), each a `[from, to, why]` scan for MASK-ROM DIRECTORY entries --
+ *  E3 §2.1(b)'s mechanism, and the same completeness argument: the port cannot
+ *  ask for a stream outside these blocks, because the only code that writes
+ *  these records' `($a,A6)` reads them out of exactly these bytes. */
+const BOMB_BLOCKS = Object.freeze([
+  [0x256662, 0x256986, 'THE LASER BOMB. W65\'s own derived data block: the four '
+    + '12-byte head anim tables $256662/$25666E/$25667A/$256686, the '
+    + 'eight-pointer table $256692 and its targets, and $256712\'s twelve '
+    + 'five-longword entries. Its far end $256986 is the ($1,A6)-bit-1 twin\'s '
+    + 'first script -- i.e. the code src/bomb.js THROWS on'],
+  [0x28a464, 0x28a506, 'POOL E\'s OTHER TEMPLATES ($28A464/$28A47A/$28A490 and '
+    + 'their lists), which $289FF4 installs. W65 exported this window for the '
+    + 'STATE and [M] W66 measures buckets 20/23 asking for 21 of its streams '
+    + 'on every laser bomb -- bucket 20 draws 98 of 2,712 without them'],
+  [0x2556ba, 0x2556e2, 'THE SHIP\'S BIT-7 AURA. $24A4F2 reads $2556BA at '
+    + '($58,A6)*2 to get a POINTER and ($28,A6) (seeded $C by $249A8C, stepping '
+    + '-4) indexes THAT, so it is 2 pointers x 4 frames. The block is closed '
+    + 'from BELOW by $25567A + 16*4 == $2556BA and from ABOVE by $2556E2, which '
+    + 'is SHIP_TABLES.glowSprite -- two tables src/shipsprite.js already cites'],
+]);
+
+/** (e) ENEMY TYPE `$8A`, AND WHY IT IS IN THE BOMB'S SHARD.
+ *
+ *  [M] `$1BCA34` and `$1BCA80` appear in buckets 0 and 3 on the exact frame
+ *  Button 2 is pressed, and their first frame MOVES when the press moves.  They
+ *  are not bomb art -- they are the scroll-locked ground gun's two frames --
+ *  and the bomb is what makes them draw: `$276756 tst.w $811F72 / bne $2767A6`
+ *  skips the proximity test while the BOMB's own record is live, so the gun
+ *  falls into `$2767AA bchg #$6` and `$2767B2 eori.l #$B4,($A,A6)` and blinks
+ *  between two frames $B4 apart on every other frame for as long as the bomb
+ *  runs.  [M] the identical input with no press writes `($A,A6)` TWICE in
+ *  1,000 frames; with one press it writes it 102 times.
+ *
+ *  The `eori`'s own immediate IS the second address, which is why this is two
+ *  derived addresses and not two measured ones. */
+const TYPE_8A = Object.freeze({ proto: 0x2766e6, animAt: 6, eor: 0xb4 });
+
+/** [M] ALL 91 distinct stream addresses the port asked for and could not draw
+ *  over four 2,600-frame runs from the shipped seed -- three ORDINARY bombs
+ *  with fire tapped and three LASER bombs with fire held, against controls with
+ *  Button 2 never pressed.  THE HARVEST ABOVE MUST CONTAIN EVERY ONE.  This is
+ *  what makes the block scans non-vacuous, exactly as `B16_MEASURED` does for
+ *  the laser: a wrong range, a wrong terminator or a wrong directory filter
+ *  drops some of them and the build stops naming them. */
+const B13_MEASURED = Object.freeze([
+  0x02467c, 0x025400, 0x026184, 0x026f08, 0x027c8c, 0x028950,
+  0x029614, 0x02a2d8, 0x02af9c, 0x02bc60, 0x02c924, 0x02d5e8,
+  0x02e2ac, 0x02ef70, 0x02fc34, 0x0308f8, 0x0404dc, 0x040780,
+  0x040a24, 0x040cc8, 0x040eac, 0x041090, 0x041274, 0x041458,
+  0x04163c, 0x041820, 0x041a04, 0x041be8, 0x041dcc, 0x041fb0,
+  0x042194, 0x042378, 0x04255c, 0x042740, 0x042924, 0x042bc8,
+  0x042e6c, 0x043110, 0x0433b4, 0x043658, 0x0438fc, 0x043ba0,
+  0x043e44, 0x0440e8, 0x04438c, 0x044630, 0x0448d4, 0x044b78,
+  0x044e1c, 0x0450c0, 0x045184, 0x045248, 0x04530c, 0x0453d0,
+  0x045754, 0x045ad8, 0x045e5c, 0x0461e0, 0x046564, 0x0468e8,
+  0x046c6c, 0x046ff0, 0x047374, 0x0476f8, 0x047a7c, 0x047e00,
+  0x048184, 0x048508, 0x052c1c, 0x052c50, 0x052c84, 0x052cb8,
+  0x052cec, 0x052d20, 0x052d54, 0x052dbc, 0x052df0, 0x052e24,
+  0x052e58, 0x052e8c, 0x052ec0, 0x052ef4, 0x052f5c, 0x052f90,
+  0x052fc4, 0x052ff8, 0x05302c, 0x053060, 0x053094, 0x1bca34,
+  0x1bca80,
+]);
+
+{
+  const dir = new Set(Array.from(walkDirectory(sprmask).starts));
+  const isDirEntry = (v) => v !== 0 && (v >>> 24) === 0
+    && dir.has((v & 0x7fffff) & (MASKW - 1));
+  const bombStreams = new Set();
+  const phaseCounts = [];
+
+  // (a) the three scripts, walked the way `bombScript255E3E` walks them.
+  for (const [tpl, off, kind, expect] of BOMB_PHASES) {
+    const base = romBe32(tpl + off);
+    if (base !== expect) {
+      throw new Error(`the bomb template $${tpl.toString(16)}'s ($1E,A6) long `
+        + `is at byte +$${off.toString(16)} and the cartridge holds `
+        + `$${base.toString(16)} there; this file says $${expect.toString(16)}. `
+        + 'That long IS the script a phase walks, so a wrong offset harvests '
+        + 'the wrong animation -- or none.');
+    }
+    let n = 0;
+    if (kind === 'terminated') {
+      // 12-byte entries: two position offsets, the ANIM LONG, two hardware
+      // words. `$255EC6 cmpi.w #$FFFF` is the terminator test.
+      let a = base;
+      while (romBe16(a) !== 0xffff) {
+        bombStreams.add(romBe32(a + 4) & 0x7fffff);
+        a += 12;
+        if (++n > 64) {
+          throw new Error(`the bomb's phase-0 script $${base.toString(16)} runs `
+            + 'past 64 entries without reaching $FFFF. $255EC6 is the only '
+            + 'thing that ends it and this walk has lost the stride.');
+        }
+      }
+    } else if (kind === 'indexed') {
+      // `$255F24` reads ($24,A6), seeded $1C by the FADE template, and
+      // `$255F32 subq.w #$4` steps it down; `bcc` at $255F36 means index 0 is
+      // the last one drawn. So the table is $1C/4 + 1 = 8 longs.
+      for (let ix = 0x1c; ix >= 0; ix -= 4) {
+        bombStreams.add(romBe32(base + ix) & 0x7fffff);
+        n++;
+      }
+      if (n !== 8) throw new Error('the bomb fade table is not 8 longs');
+    } else {
+      // `$255F94 cmpi.l #$FFFFFFFF` -- the blink list's own terminator.
+      let a = base;
+      while (romBe32(a) !== 0xffffffff) {
+        bombStreams.add(romBe32(a) & 0x7fffff);
+        a += 4;
+        if (++n > 64) {
+          throw new Error(`the bomb's phase-2 list $${base.toString(16)} runs `
+            + 'past 64 longs without reaching $FFFFFFFF.');
+        }
+      }
+    }
+    phaseCounts.push(n);
+  }
+  if (phaseCounts.join(',') !== '4,8,4') {
+    throw new Error(`the bomb's three phases walk ${phaseCounts.join('/')} `
+      + 'entries; [M] W66 measured 4 / 8 / 4, which is 16 distinct streams and '
+      + 'exactly the 16 a bombing run asks bucket 13 for.');
+  }
+  const ordinary = bombStreams.size;
+
+  // (b)(c)(d) the three bounded blocks.
+  for (const [from, to] of BOMB_BLOCKS) {
+    for (let a = from; a + 4 <= to; a += 2) {
+      const v = romBe32(a);
+      if (isDirEntry(v)) bombStreams.add(v & 0x7fffff);
+    }
+  }
+
+  // (e) type $8A's pair.
+  {
+    const proto = romBe32(TYPE_8A.proto + TYPE_8A.animAt) & 0x7fffff;
+    bombStreams.add(proto);
+    bombStreams.add(proto ^ TYPE_8A.eor);
+  }
+
+  const missed = B13_MEASURED.filter((o) => !bombStreams.has(o));
+  if (missed.length) {
+    throw new Error(`the bomb harvest resolves ${bombStreams.size} streams and `
+      + `does NOT contain ${missed.length} of the ${B13_MEASURED.length} `
+      + 'addresses W66 measured the port asking for while bombing: '
+      + `${missed.map((o) => '$' + o.toString(16)).join(' ')}. A range, a `
+      + 'terminator or the directory filter has moved, and the bomb would be '
+      + 'invisible again.');
+  }
+  let added = 0, already = 0;
+  for (const offs of [...bombStreams].sort((a, b) => a - b)) {
+    if (streams.has(offs)) { already++; continue; }
+    streams.set(offs, romExtent(offs));      // throws unless it is a stream start
+    shardOfStream.set(offs, BOMB_SHARD);
+    added++;
+  }
+  harvested += added; harvestAlready += already;
+  harvestReport.push({ shard: BOMB_SHARD, base: 0x25653c,
+    entries: bombStreams.size, stride: 0, runsTo: bombStreams.size,
+    endsAt: 0x28a506, distinct: bombStreams.size, added, already,
+    why: 'THE BOMB and THE LASER BOMB -- 3 scripts + 3 bounded blocks (W66)' });
+  console.log(`  the BOMB: ${ordinary} streams over $255E3E's three phases `
+    + `(${phaseCounts.join('/')}), + the LASER BOMB's $256662..$256986, pool E's `
+    + `$28A464, the bit-7 aura $2556BA and type $8A = ${bombStreams.size} `
+    + `total, and all ${B13_MEASURED.length} measured addresses are in it`);
 }
 
 const bgList = [...bgUsed].sort((a, b) => a - b);
