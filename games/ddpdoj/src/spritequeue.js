@@ -122,6 +122,18 @@ export const NAMED_BUCKETS = Object.freeze({
                  // on EXACTLY the frames bucket 19 has only one -- the
                  // alternation is $80390C, the counter word whose low byte
                  // $23BE92 `bchg #0,$80390D` toggles
+  trail: 12,     // WAVE 67. THE SHIP'S AFTERIMAGE TRAIL, and bucket 12 has
+                 // exactly ONE producer in the whole cartridge: `$2536AA jsr
+                 // $23FDB2`, inside `$253604`, reached only from `$24A53E`.
+                 // Both halves re-derived this wave with `xref.py`:
+                 //   callers 23FDB2 -> $2536AA        (one)
+                 //   callers 253604 -> $24A53E        (one)
+                 // and bucket 12 has a SECOND stub nobody calls, `$23FDE8` --
+                 // the ZOOMING register convention on the same (buffer,
+                 // counter) pair, with ZERO absolute-long callers. `xref.py`'s
+                 // own rule makes that a lower bound, not a proof of death, so
+                 // it is named rather than declared dead. W55 §3.2 counted the
+                 // one producer site and did not see the second stub
   bullets: [22, 23],  // the $281D9A bulk writer; $81B40C counts them
   bulk20: 20,    // $28A098's bulk writer -- THE FIRST PRE-EMPTIVE SACRIFICE
   sacrificedSecond: [6, 9],

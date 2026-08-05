@@ -62,6 +62,17 @@ import { makeHudObject } from './hud.js';
  *  do it only while owning `shipgate`. */
 export const PRODUCED_BUCKETS = [
   NAMED_BUCKETS.shadows,   // 5  -- the ship's and the pods' ground-plane shadows
+  NAMED_BUCKETS.trail,     // 12 -- WAVE 67, the ship's AFTERIMAGE TRAIL
+                           //       ($253604, reached from $24A53E).  Added
+                           //       while owning `shipgate`, as the paragraph
+                           //       above requires.  **It is deliberately NOT in
+                           //       that gate's `CLAIMED_BUCKETS`**: the board
+                           //       capture is `fly-around`, which never holds
+                           //       the fire button, so `($3f,A6)` is 0 on all
+                           //       2,301 frames and both sides are empty --
+                           //       comparing them would be a check that sits
+                           //       where two readings agree (knowledge/03).
+                           //       `tools/w67trailgate.mjs` is the check.
   NAMED_BUCKETS.shots,     // 14 -- wave 8
   NAMED_BUCKETS.options,   // 15 -- the two option pods
   NAMED_BUCKETS.player,    // 19 -- the ship, its aura and its glow
@@ -468,6 +479,12 @@ export class Game {
     // nothing, and the tail runs on ALTERNATE frames by `$80390C`, so `null`
     // is the ordinary answer half the time.
     this.damageFrame = ctx.damage ?? null;
+    // WAVE 67.  How many bucket-12 records `$253604` appended this frame, 0..5
+    // per live player.  Same reason as the three above -- a producer that did
+    // nothing must be visible as having done nothing, and `$253604`'s whole
+    // defect history is that "did nothing" and "was never called" looked the
+    // same.  `tools/w67trailgate.mjs` reads this AND the bucket counter.
+    this.trailRecords = ctx.trailRecords ?? 0;
     this.unportedLog.note(ROM.call3, 'main-loop call #3 ($24683E)');
     // 9: call #4, $23D2AE, THE SPRITE LIST BUILD.  PORTED WHOLE in wave 11
     // (src/displaylist.js): the sum, the pre-emptive drop policy, the 29-bucket
