@@ -1327,30 +1327,50 @@ const BOMB_BLOCKS = Object.freeze([
  *  derived addresses and not two measured ones. */
 const TYPE_8A = Object.freeze({ proto: 0x2766e6, animAt: 6, eor: 0xb4 });
 
-/** [M] ALL 91 distinct stream addresses the port asked for and could not draw
- *  over four 2,600-frame runs from the shipped seed -- three ORDINARY bombs
- *  with fire tapped and three LASER bombs with fire held, against controls with
- *  Button 2 never pressed.  THE HARVEST ABOVE MUST CONTAIN EVERY ONE.  This is
+/** [M] ALL 152 distinct stream addresses the port asks for out of THIS SHARD
+ *  over two 2,600-frame runs from the shipped seed -- three ORDINARY bombs with
+ *  fire tapped and three LASER bombs with fire held.
+ *
+ *  **THIS LIST IS THE PORT'S DEMAND, NOT THE SHARD'S CONTENT**, which is what
+ *  makes it a check: the harvest resolves 218 and the port reaches 152, so a
+ *  range that shrinks below the demand stops the build.  The first version of
+ *  it was the 91 addresses a run measured MISSING before the shard existed, and
+ *  [M] a mutant that cut the laser bomb's block at $256802 SURVIVED it -- all
+ *  91 were below that address, because the beam's forty-one segments were not
+ *  emitting a record at all (§4).  A fixture that sits where two readings agree
+ *  is not a check (`docs/knowledge/03`), for the sixth wave running.
+ *
+ *  THE HARVEST ABOVE MUST CONTAIN EVERY ONE.  This is
  *  what makes the block scans non-vacuous, exactly as `B16_MEASURED` does for
  *  the laser: a wrong range, a wrong terminator or a wrong directory filter
  *  drops some of them and the build stops naming them. */
 const B13_MEASURED = Object.freeze([
   0x02467c, 0x025400, 0x026184, 0x026f08, 0x027c8c, 0x028950,
   0x029614, 0x02a2d8, 0x02af9c, 0x02bc60, 0x02c924, 0x02d5e8,
-  0x02e2ac, 0x02ef70, 0x02fc34, 0x0308f8, 0x0404dc, 0x040780,
-  0x040a24, 0x040cc8, 0x040eac, 0x041090, 0x041274, 0x041458,
-  0x04163c, 0x041820, 0x041a04, 0x041be8, 0x041dcc, 0x041fb0,
-  0x042194, 0x042378, 0x04255c, 0x042740, 0x042924, 0x042bc8,
-  0x042e6c, 0x043110, 0x0433b4, 0x043658, 0x0438fc, 0x043ba0,
-  0x043e44, 0x0440e8, 0x04438c, 0x044630, 0x0448d4, 0x044b78,
-  0x044e1c, 0x0450c0, 0x045184, 0x045248, 0x04530c, 0x0453d0,
-  0x045754, 0x045ad8, 0x045e5c, 0x0461e0, 0x046564, 0x0468e8,
-  0x046c6c, 0x046ff0, 0x047374, 0x0476f8, 0x047a7c, 0x047e00,
-  0x048184, 0x048508, 0x052c1c, 0x052c50, 0x052c84, 0x052cb8,
-  0x052cec, 0x052d20, 0x052d54, 0x052dbc, 0x052df0, 0x052e24,
-  0x052e58, 0x052e8c, 0x052ec0, 0x052ef4, 0x052f5c, 0x052f90,
-  0x052fc4, 0x052ff8, 0x05302c, 0x053060, 0x053094, 0x1bca34,
-  0x1bca80,
+  0x02e2ac, 0x02ef70, 0x02fc34, 0x0308f8, 0x03e4fc, 0x03e540,
+  0x03e584, 0x03e5c8, 0x03e60c, 0x03e650, 0x03e694, 0x03e6d8,
+  0x03e71c, 0x03e760, 0x03e7a4, 0x03e7e8, 0x03e82c, 0x03e870,
+  0x03e8b4, 0x03e8f8, 0x03e93c, 0x03e980, 0x03e9c4, 0x03ea08,
+  0x03ea4c, 0x03ea90, 0x03ead4, 0x03eb18, 0x03eba0, 0x03ecb0,
+  0x03ecf4, 0x03ed38, 0x03ed7c, 0x03edc0, 0x03ee04, 0x03efe0,
+  0x03f024, 0x03f068, 0x03f244, 0x03f288, 0x03f2cc, 0x03f4a8,
+  0x03f4ec, 0x03f530, 0x03f70c, 0x03f750, 0x03f794, 0x03f970,
+  0x03f9b4, 0x03f9f8, 0x03fa3c, 0x03fbd4, 0x03fc18, 0x03fc5c,
+  0x03fca0, 0x03fe38, 0x03fe7c, 0x03fec0, 0x03ff04, 0x0400e0,
+  0x040124, 0x040168, 0x040344, 0x040388, 0x0403cc, 0x0404dc,
+  0x040780, 0x040a24, 0x040cc8, 0x040eac, 0x041090, 0x041274,
+  0x041458, 0x04163c, 0x041820, 0x041a04, 0x041be8, 0x041dcc,
+  0x041fb0, 0x042194, 0x042378, 0x04255c, 0x042740, 0x042924,
+  0x042bc8, 0x042e6c, 0x043110, 0x0433b4, 0x043658, 0x0438fc,
+  0x043ba0, 0x043e44, 0x0440e8, 0x04438c, 0x044630, 0x0448d4,
+  0x044b78, 0x044e1c, 0x0450c0, 0x045184, 0x045248, 0x04530c,
+  0x0453d0, 0x045754, 0x045ad8, 0x045e5c, 0x0461e0, 0x046564,
+  0x0468e8, 0x046c6c, 0x046ff0, 0x047374, 0x0476f8, 0x047a7c,
+  0x047e00, 0x048184, 0x048508, 0x052c1c, 0x052c50, 0x052c84,
+  0x052cb8, 0x052cec, 0x052d20, 0x052d54, 0x052dbc, 0x052df0,
+  0x052e24, 0x052e58, 0x052e8c, 0x052ec0, 0x052ef4, 0x052f5c,
+  0x052f90, 0x052fc4, 0x052ff8, 0x05302c, 0x053060, 0x053094,
+  0x1bca34, 0x1bca80,
 ]);
 
 {
@@ -1414,11 +1434,43 @@ const B13_MEASURED = Object.freeze([
   }
   const ordinary = bombStreams.size;
 
-  // (b)(c)(d) the three bounded blocks.
+  // (b)(c)(d) the three bounded blocks.  The AURA block is the one whose two
+  // ends are ADJACENT TABLES rather than instructions, so both adjacencies are
+  // asserted: `$25567A`'s sixteen invulnerability frames end exactly where the
+  // bit-7 pointers begin, and `$2556E2` is `SHIP_TABLES.glowSprite`.
+  if (0x25567a + 16 * 4 !== 0x2556ba || BOMB_BLOCKS[2][1] !== 0x2556e2) {
+    throw new Error('the ship\'s bit-7 aura block is bounded by its NEIGHBOURS '
+      + 'and one of them has moved: $25567A + 16 x 4 must be $2556BA (the '
+      + 'invulnerability aura\'s sixteen frames, $24A4BA) and the block must end '
+      + 'at $2556E2 (SHIP_TABLES.glowSprite, $24A55C). Without both, the scan '
+      + 'is a guess about where the two pointers stop.');
+  }
   for (const [from, to] of BOMB_BLOCKS) {
+    const before = bombStreams.size;
     for (let a = from; a + 4 <= to; a += 2) {
       const v = romBe32(a);
       if (isDirEntry(v)) bombStreams.add(v & 0x7fffff);
+    }
+    // THE AURA BLOCK'S CONTENT IS DERIVABLE AND THEREFORE ASSERTED, and the
+    // reason it needs its own row is that only ship selector 0's four frames
+    // are ever REACHED (`src/machine.js`: [M] `($58,A6)` is 0 on the whole
+    // corpus), so `B13_MEASURED` cannot see the other four at all -- a range
+    // that dropped them would sit exactly where two readings agree.
+    //   $2556BA and $2556BE are the two POINTERS ($24A4F2 at ($58,A6)*2);
+    //   $249A8C seeds ($28,A6) = $C and $24A526 steps it -4 with a wrap, so
+    //   each pointer names FOUR frames. 2 x 4 = 8.
+    if (from === 0x2556ba) {
+      const got = bombStreams.size - before;
+      const p0 = romBe32(0x2556ba), p1 = romBe32(0x2556be);
+      if (got !== 8 || p0 < from || p0 >= to || p1 < from || p1 >= to) {
+        throw new Error(`the ship's bit-7 aura block $${from.toString(16)}..`
+          + `$${to.toString(16)} resolves ${got} streams and its two pointers `
+          + `are $${p0.toString(16)} and $${p1.toString(16)}. It must be TWO `
+          + 'pointers, both INSIDE the block, naming FOUR frames each: '
+          + '$249A8C seeds ($28,A6) = $C and $24A526 steps it by 4. Only ship '
+          + 'selector 0 is ever reached, so nothing else in this file can '
+          + 'notice the other four going missing.');
+      }
     }
   }
 
