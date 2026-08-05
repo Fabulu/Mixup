@@ -408,4 +408,71 @@ first compared frame, so **the shot columns in this window are not evidence**
 (wave 8's own rule): the board is taking the unported shot-vs-enemy damage
 branch and the port cannot.
 
+### THE WHOLE-STAGE SEGMENT SWEEP
+
+```
+[M] pgm.py ckpt stage1-play --verify
+    LADDER 72 of 72 rungs in 749 s (26.2 logic frames per wall second)
+    VERIFY lf2000 sha256=a826674f5b58fec5... IDENTICAL to wave 4's dumper
+
+[M] node tools/seedcmp.mjs --manifest .../stage1-play/manifest.json     (10.3 s)
+    SEGMENTS 71: 1 green, 25 red, 45 BLOCKED, 0 SEEDBAD, 0 error
+                 6,250 logic frames compared
+    of the red: 24 have DIVERGENT COLUMNS; 1 is red ONLY because the board took
+                an unported branch
+    the single GREEN segment is lf4447..4500 -- which is `stage1-shot`'s own
+    seed frame, arrived at independently
+```
+
+**SEVEN DISTINCT UNPORTED ROM ADDRESSES, reached from board states and counted:**
+
+| address | segments blocked on it |
+|---|---|
+| `$295304` | 17 |
+| `$2956F6` | 11 |
+| `$295120` | 9 |
+| `$295432` | 3 |
+| `$2937AE` | 2 (lf19,000 and lf19,250) |
+| `$296DD6` | 2 |
+| `$294FA6` | 1 |
+
+That is a coverage list for the stage-1 boss that no previous wave could
+produce, because producing it needs the port to START inside the boss fight.
+It is presence, not absence: only the listing can say these are all of them.
+
+---
+
+## 9. MY OWN RED CHECK COULD NOT FAIL, AND IT WAS CAUGHT BY RUNNING IT
+
+`seedcmp --break` originally passed when *"70 of 71 segments"* were non-green
+under the mutation — on a ladder where **70 of 71 were already non-green
+without it**. The mutation had changed the verdict of ZERO segments.
+
+```
+[M] before the fix: green BEFORE mutation [4447], green AFTER mutation [4447],
+    segments whose verdict CHANGED: 0        ... and the check printed RED OK
+```
+
+The check compared against *"all green"* instead of against the baseline, so it
+was **incapable of failing on any ladder whose segments are mostly blocked —
+i.e. on every deep ladder**, which is the only kind this wave builds. It is now
+DIFFERENTIAL: it runs the unmutated baseline and requires the mutation to move
+at least one segment (a changed verdict, an earlier first divergence, or more
+divergent columns).
+
+```
+[M] fly-around                              moved 8 of 8 segments,   exit 0
+[M] stage1-play                             moved 25 of 71 segments, exit 0
+    (the other 46 are BLOCKED on frame one, where no port mutation can show,
+     and the report says so rather than counting them)
+[M] stage1-play --from 12000 --to 15000     changed NOTHING -> FAIL, exit 1
+    (blocked segments only -- THE CHECK SEEN TO FAIL)
+```
+
+**And `clamp-first` is invisible on the one green segment.** 53 frames is not
+long enough for the ship to reach a wall, and the wall is the only place the
+clamp order can show (wave 4 measured that). A 250-frame segment is the right
+size for attribution and the wrong size for that particular mutation; both facts
+are now printed rather than one of them being assumed.
+
 (Findings below are appended as they arrive.)
