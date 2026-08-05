@@ -109,6 +109,26 @@
       "meter": true
     },
     {
+      "name": "stage1-play",
+      "why": "WAVE 69. THE DEEP PORT SCENARIO -- the whole of stage 1 with an input sequence THE PORT CAN ACTUALLY FOLLOW, which `stage1-sweep` turned out not to be. MEASURED this wave, seeding the port at lf4000 of `stage1-sweep`: the port BLOCKS on its very first frame at the named throw $2497AA, the unported $2497BA hyper/auto block, because that block is gated on (operator byte $80380F non-zero) AND (mirror bit 6 held) -- and mirror bit 6 is Button 3, the AUTO-SHOT that `stage1-open`, `stage1-deep`, `overrun` and `stage1-sweep` all hold. $80380F is $01 on this cartridge. So FOUR scenarios in this corpus hold a button the port cannot process, and nobody had noticed, because all four are BOARD-ONLY scenarios (the determinism gate and the load meter) that had never been handed to the port. This one fires with SINGLE-FRAME TAPS of Button 1 (mirror bit 4, the shot edge at $249B48) every 40 logic frames: taps and not a hold, because holding Button 1 starts the laser speed ramp inside the OPTION object ($24C8BE), which is unported and would go red on `pspd` for a reason that is nothing to do with the stage. THE INTERVENTION, LABELLED: $810424 held at $FF from lf1890 on BOTH sides -- the player is INVULNERABLE, so this run produces STATES, not a picture of the game (docs/knowledge/09), and it is valid FOR COVERAGE ONLY. Its companion control is `stage1-sweep-natural`.",
+      "frames": 19600,
+      "build": "B",
+      "seed": 2000,
+      "tail": "1890=",
+      "tailRepeat": {
+        "from": 1920,
+        "period": 40,
+        "tap": "A",
+        "hold": 1,
+        "until": 19560,
+        "cycle": ["", "U", "", "L", "", "R", "", "D"]
+      },
+      "poke": "810424=FF",
+      "pokeFrom": 1890,
+      "snap": "4000,8000,12000,16000,19200",
+      "meter": true
+    },
+    {
       "name": "stage1-sweep-natural",
       "why": "WAVE 69, THE CONTROL. Byte for byte the same script as `stage1-sweep` WITH NO POKE. It exists to answer the one question the invulnerable run cannot: how far into stage 1 does a scripted player actually get before dying? Measurement proves presence, so this reports a frame number and not a claim about the stage.",
       "frames": 19600,

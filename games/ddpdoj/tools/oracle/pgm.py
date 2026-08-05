@@ -466,9 +466,24 @@ def expand_repeat(rep: dict) -> str:
         raise SystemExit("tailRepeat.period must be positive")
     if not rep["cycle"]:
         raise SystemExit("tailRepeat.cycle is empty")
+    # `tap` + `hold` make a TAP ON TOP OF a sustained stick, which is not the
+    # same thing as a short entry in `cycle` and the difference is the whole
+    # scenario: releasing everything after one frame would leave the ship
+    # standing still for 39 frames out of 40, so a "movement script" would
+    # quietly become an idle one.  So the cycle element is what is HELD, and the
+    # tapped button is added to it for `hold` frames and then dropped.
+    tap = rep.get("tap", "")
+    hold = int(rep.get("hold", 0))
+    if hold < 0 or hold >= int(rep["period"]):
+        raise SystemExit("tailRepeat.hold must be in [0, period)")
+    if bool(tap) != bool(hold):
+        raise SystemExit("tailRepeat.tap and .hold must be given together")
     items, lf, i = [], int(rep["from"]), 0
     while lf <= int(rep["until"]):
-        items.append(f"{lf}={rep['cycle'][i % len(rep['cycle'])]}")
+        sustained = rep["cycle"][i % len(rep["cycle"])]
+        items.append(f"{lf}={tap}{sustained}")
+        if hold:
+            items.append(f"{lf + hold}={sustained}")
         lf += int(rep["period"])
         i += 1
     return ";".join(items)
@@ -1380,6 +1395,35 @@ def _cmd_check(argv: list[str]) -> int:
         stage(f"THE LASER BOMB RED [{_m}]",
               lambda m=_m, w=_why: (("PASS", f"went red {w}, as it must")
                                     if _node(BEAMGATE, "--break", m)[0] == "FAIL"
+                                    else ("FAIL", f"the scenario is GREEN {w} "
+                                                  "-- it is not measuring this")))
+    # WAVE 67 (T1).  **THE PRODUCER CENSUS**, and it is not "the trail gate".
+    # `$24A53E jsr $253604` -- the ship's afterimage trail into BUCKET 12 -- was
+    # a counted note from W12 to W66, on a subsystem `pgm.py shipgate` had
+    # reported 0 divergent for fifty-four waves, because that gate compares
+    # buckets 5, 15 and 19 and is structurally blind to a bucket not on its
+    # list.  This stage asks the CARTRIDGE which buckets the ship's draw block
+    # can feed (a two-level `jsr <abs>.l` walk out of `$24A482` and `$249EA0`,
+    # resolving each enqueue stub by the buffer/counter longwords in the image)
+    # and then requires the PORT to stage a record into every one of them.
+    # Run against W12..W66's tree it names bucket 12 and measures ZERO.
+    #
+    # FOUR controls; see the gate's own header:
+    #   no-trail             $253604 emits nothing -- 6 red, (B) BUCKET 12 first
+    #   trail-every-phase    drop `$25368A tst.w $80390C` -- (C4)
+    #   trail-no-coarse-skip drop `$25369C cmp.l D6,D5`   -- (C5)
+    #   census-no-recursion  do not follow a non-stub call -- (A) and (A2), the
+    #                        control that proves the walk is what finds bucket 12
+    TRAILGATE = TOOLS.parent / "tools" / "w67trailgate.mjs"
+    stage("THE PRODUCER CENSUS: $253604's trail and bucket 12",
+          lambda: _node(TRAILGATE))
+    for _m, _why in (("no-trail", "with $253604 emitting nothing"),
+                     ("trail-every-phase", "without the $80390C phase test"),
+                     ("trail-no-coarse-skip", "without the $25369C skip"),
+                     ("census-no-recursion", "with the ROM walk not recursing")):
+        stage(f"THE PRODUCER CENSUS RED [{_m}]",
+              lambda m=_m, w=_why: (("PASS", f"went red {w}, as it must")
+                                    if _node(TRAILGATE, "--break", m)[0] == "FAIL"
                                     else ("FAIL", f"the scenario is GREEN {w} "
                                                   "-- it is not measuring this")))
     if not quick:
