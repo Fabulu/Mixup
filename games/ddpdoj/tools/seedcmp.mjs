@@ -161,6 +161,17 @@ export function sweep(a) {
         : rec.blocked ? 'BLOCKED'
           : (rec.diverged.length || rec.hitex || rec.sprqMissing) ? 'RED'
             : 'GREEN';
+    // WHY it is red, separately, because the three reasons are different
+    // findings and a single colour hides that.  `hitex` in particular is the
+    // board taking the unported shot-vs-enemy damage branch -- which happens on
+    // any scenario where the ship actually kills things, i.e. on every scenario
+    // the owner cares about -- and a segment that is red ONLY for that reason
+    // is saying something about the PORT'S GAPS, not about its arithmetic.
+    rec.why = [
+      rec.diverged.length ? `${rec.diverged.length} column(s)` : null,
+      rec.hitex ? `hitex ${rec.hitex}` : null,
+      rec.sprqMissing ? `sprq ${rec.sprqMissing} missing` : null,
+    ].filter(Boolean).join(' + ');
     results.push(rec);
     if (!a.quiet) {
       const first = rec.diverged[0];
@@ -174,6 +185,7 @@ export function sweep(a) {
         + (first ? `  FIRST ${first.col}@lf${first.lf} `
           + `port=${first.port} board=${first.board}` : '')
         + (rec.diverged.length > 1 ? ` (+${rec.diverged.length - 1} cols)` : '')
+        + (!first && rec.why ? `  ${rec.why}` : '')
         + (rec.error ? `  ${rec.error}` : '')
         + '\n');
     }
@@ -207,6 +219,14 @@ function main() {
   console.log(`SEGMENTS ${n}: ${by('GREEN').length} green, ${by('RED').length} `
     + `red, ${by('BLOCKED').length} blocked, ${by('SEEDBAD').length} seedbad, `
     + `${by('ERROR').length} error -- ${frames} logic frames compared in total`);
+  // The three reasons a segment can be red, counted apart.  A segment that is
+  // red only because the BOARD took an unported branch is a coverage statement
+  // about the port's gaps; a segment with divergent columns is an arithmetic
+  // defect.  Reporting one number for both would hide whichever is rarer.
+  const redOnlyHit = by('RED').filter((r) => !r.diverged.length);
+  console.log(`  of the red: ${by('RED').length - redOnlyHit.length} have `
+    + `DIVERGENT COLUMNS; ${redOnlyHit.length} are red ONLY because the board `
+    + `took an unported branch (hitex / sprq containment)`);
 
   // THE FIRST DIVERGENT FIELD PER SEGMENT, with its logic frame.  This is the
   // deliverable: not "N frames differ" but which field went first, and where.
