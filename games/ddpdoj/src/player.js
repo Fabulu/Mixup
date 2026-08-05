@@ -23,7 +23,7 @@
 // order is the wave's red validation.  The build-A memmap recon called out the
 // same trap independently.
 
-import { P, RAM, CLAMP, ROM } from './machine.js';
+import { P, OPT, RAM, CLAMP, ROM } from './machine.js';
 import { i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
 import { spawnShot } from './shots.js';
@@ -39,7 +39,14 @@ export const FROZEN_GLOBALS = [
   [0x8130d2, 'movement disable; non-zero makes $2417FE return a zero vector'],
   [0x812954, 'the $2496CA -$48 nudge'],
   [0x81308c, 'gate on the post-store X adjust at $2496EE'],
-  [0x80380f, 'operator setting gating the $2497AA bomb/hyper block'],
+  // W79 RENAMED THIS AND THE OLD NAME WAS WRONG FOR SEVENTY-FIVE WAVES.  It is
+  // not "the bomb/hyper block": `$2497AA` is THE AUTO-SHOT, and `$80380F` is
+  // the operator setting that enables it.  `$25707A cmpi.b #$2,$80380F / bge
+  // $257090` is the settings VALIDATOR, and it rejects anything >= 2 -- so the
+  // byte is a two-value on/off dip, sitting in the `$803808..$80380F` operator
+  // block next to `$80380C` = rank.  It is READ-ONLY to this port and stays
+  // frozen; what changed is the name, not the treatment.
+  [0x80380f, 'operator setting: AUTO-SHOT on/off, gating the $2497AA block'],
   // WAVE 13 REMOVED TWO FROM THIS LIST, because the port now writes both:
   //   $813176 -- "the amount that post-store X adjust subtracts".  It is
   //     $26151E, inside the background object's cross-axis routine $26146C,
@@ -464,6 +471,155 @@ function tail249E4E(ram, rec, ctx) {
 }
 
 /**
+ * `$2497AA..$2497F8` -- **THE AUTO-SHOT**, and it is not the hyper.
+ *
+ * WAVE 79 PORTS IT AND CORRECTS ITS NAME.  From wave 4 to wave 78 this block
+ * was a throw labelled "the $2497BA hyper/auto block", and the queue carried it
+ * as "the hyper button".  The listing does not support that reading:
+ *
+ *   2497AA: tst.b   $80380F        the operator AUTO-SHOT setting (0 or 1;
+ *   2497B0: beq.b   $2497FE        $25707A's validator rejects >= 2)
+ *   2497B2: btst.b  #$6,$18(A6)    RAW mirror bit 6 = P1 Button 3, HELD
+ *   2497B8: beq.b   $2497FE
+ *   2497BA: tst.b   $3C(A6)        "the shot arm ran last frame" -- $249B50
+ *   2497BE: bne.b   $2497FE        sets it, $249B96 clears it
+ *   2497C0: lea     $8104AA,A0     P1's OPTION record...
+ *   2497C6: tst.b   $7(A5)
+ *   2497CA: beq.b   $2497D2
+ *   2497CC: lea     $81050E,A0     ...or P2's
+ *   2497D2: bclr.b  #$4,$19(A6)    drop any synthetic edge from last frame
+ *   2497D8: bclr.b  #$3,$1(A6)     player flags1 bit 3 = "edge is synthetic"
+ *   2497DE: bclr.b  #$3,$1(A0)     option flags1 bit 3 = the pods' copy
+ *   2497E4: bchg.b  #$4,$1(A6)     THE DIVIDER
+ *   2497EA: bne.b   $2497FE        old bit SET -> this is the off frame
+ *   2497EC: bset.b  #$3,$1(A6)
+ *   2497F2: bset.b  #$3,$1(A0)
+ *   2497F8: bset.b  #$4,$19(A6)    SYNTHESISE THE BUTTON-1 EDGE
+ *
+ * The hyper is `$249868`, sixteen instructions further on, behind Button 2 and
+ * a non-zero `$81B65C`; it is still a throw and this wave does not touch it.
+ * Button 3 is not a third weapon and it is not "the super": it is Button 1,
+ * emitted by the machine on alternate frames.
+ *
+ * **THE FALL-THROUGH, AND IT IS THE HALF THAT WAS NEVER READ.**  `$2497F8` does
+ * not `bra` anywhere -- it falls into `$2497FE`, the bomb gate, which falls into
+ * `$249B2C`, the ship's cadence machine.  So the synthetic edge this block sets
+ * in `($19,A6)` is consumed EIGHT INSTRUCTIONS LATER, by `$249B48 btst #4,
+ * ($19,A6)`, in the same frame; and bit 3 of `($1,A6)` is consumed by
+ * `$249B74 bclr #3,($1,A6)`, whose arm clears the burst counter `($2b,A6)` and
+ * spawns immediately instead of running the reload. The option-record copy at
+ * `$8104AB` bit 3 is the pods' twin of that, read by `$24C498` in
+ * `options.js fireHandshake`. Nothing here is self-contained: every one of the
+ * four bits it writes is read by code the port already had.
+ *
+ * **WHY EVERY OTHER FRAME, exactly.** `bchg` sets Z from the OLD bit, so
+ * `$2497EA bne` is taken when bit 4 of `($1,A6)` was ALREADY set. The bit is
+ * not a free-running toggle either: `$249B9E bclr #4,($1,A6)` clears it on the
+ * cadence machine's no-edge arm. Traced with Button 3 held and Button 1 idle:
+ *
+ *   frame N   `($3c,A6)`=0, bit4 0->1, edge synthesised, `$249B48` takes the
+ *             shot arm, `$249B50` sets `($3c,A6)`=1, `$249B74` finds bit 3 set
+ *             -> `($2b,A6)`=0 and a shot spawns
+ *   frame N+1 `($3c,A6)`=1 so `$2497BE` skips this block entirely; the real
+ *             edge is absent, so `$249B96` clears `($3c,A6)` and `$249B9E`
+ *             clears bit 4 again
+ *   frame N+2 = frame N
+ *
+ * -- a shot every two frames, which is what an auto-fire dip is for. The
+ * two-frame period is a CONSEQUENCE of three separate instructions in two
+ * routines, not a constant anyone can read off a line, which is why porting
+ * this block without `$249B9E` already being right would have produced a
+ * plausible wrong cadence.
+ *
+ * **THE DEAD BLOCK ABOVE IT, for whoever reads the listing next.**
+ * `$249712..$2497A0` is a SECOND Button-3 path -- `btst #6,($19,A6)`, the EDGE
+ * rather than the held bit, stepping `($20,A6)`/`($22,A6)` and the two pointers
+ * at `$8127E4` through a four-entry `$2497A2(pc)` table. It is UNREACHABLE in
+ * build B: `$24970E bra.w $2497AA` jumps over it unconditionally, and a scan of
+ * `$240000..$2A0000` for every `Bcc.b`/`Bcc.w` landing on `$249712` finds none.
+ * It is not part of this port and it must not be revived by a future reader who
+ * finds it while looking for "the other button-3 handler".
+ */
+export function autoShot2497AA(ram, rec, dir, playerIdx) {
+  // THE WAVE-78 PORT: a `return` where the throw used to be. Kept as a named
+  // mutation because "handle it by doing nothing" is the shape of the fix
+  // somebody reaches for when a throw is in the way of a demo, and it must have
+  // a red half that is reproducible without editing this file.
+  if (AUTOSHOT_MUTATE.value === 'autoshot-dropped') return;
+  // $2497AA tst.b $80380F / $2497B0 beq $2497FE
+  if (ram.u8(0x80380f) === 0) return;
+  // WAVE 78's ACTUAL CODE, restored as a mutation: the throw that stopped the
+  // owner playing and blocked 69 of `stage1-sweep`'s 71 rungs.  It is here so
+  // `playgate.mjs --break autoshot-unported` has a red half -- a playability
+  // gate that has never seen a throw is not a playability gate.
+  if (AUTOSHOT_MUTATE.value === 'autoshot-unported'
+    && (dir & (1 << 6)) && ram.u8(rec + 0x3c) === 0) {
+    unreached(ROM.playerBomb, 'the $2497BA hyper/auto block (setting $80380F is '
+      + 'on AND mirror bit 6 is held) -- WAVE 78, restored by --break');
+  }
+  // $2497B2 btst #6,($18,A6) / $2497B8 beq $2497FE -- the RAW held byte, not
+  // the edge: auto-shot repeats for as long as the button is down.  Testing the
+  // EDGE byte instead fires once per press, which is what a hand-written
+  // "rapid fire" would do and is not what this is.
+  const held = AUTOSHOT_MUTATE.value === 'autoshot-on-edge'
+    ? ram.u8(rec + P.btnByte) : dir;
+  if ((held & (1 << 6)) === 0) return;
+  // $2497BA tst.b ($3c,A6) / $2497BE bne $2497FE.  ($3c,A6) is written by the
+  // cadence machine below -- 1 on its shot arm ($249B50), 0 on its no-edge arm
+  // ($249B96) -- so this reads LAST frame's value and is what makes a real
+  // Button-1 press suppress the synthesiser rather than doubling with it.
+  if (AUTOSHOT_MUTATE.value !== 'autoshot-no-3c-gate'
+    && ram.u8(rec + 0x3c) !== 0) return;
+  // $2497C0 lea $8104AA,A0 / $2497C6 tst.b ($7,A5) / $2497CC lea $81050E,A0
+  const opt = playerIdx === 0 ? RAM.p1Options : RAM.p2Options;
+  ram.bclr8(rec + P.btnByte, 4);                         // $2497D2 bclr #4,($19,A6)
+  ram.bclr8(rec + P.flags1, 3);                          // $2497D8 bclr #3,($1,A6)
+  if (AUTOSHOT_MUTATE.value !== 'autoshot-no-optbit') {
+    ram.bclr8(opt + OPT.flags1, 3);                      // $2497DE bclr #3,($1,A0)
+  }
+  // $2497E4 bchg #4,($1,A6) / $2497EA bne $2497FE.  `bchg8` returns the OLD
+  // bit, which is exactly what the 68000's Z is built from; a port that tested
+  // the NEW bit would invert the cadence and still fire every other frame --
+  // `autoshot-inverted` is that port, and it is red on the FIRST compared frame
+  // rather than "half the time", which is the useful thing about pinning phase.
+  const old = ram.bchg8(rec + P.flags1, 4);
+  if (AUTOSHOT_MUTATE.value === 'autoshot-every-frame') {
+    ram.bset8(rec + P.flags1, 4);                        // never let it divide
+  } else if (AUTOSHOT_MUTATE.value === 'autoshot-inverted' ? old === 0 : old !== 0) {
+    return;
+  }
+  ram.bset8(rec + P.flags1, 3);                          // $2497EC bset #3,($1,A6)
+  if (AUTOSHOT_MUTATE.value !== 'autoshot-no-optbit') {
+    ram.bset8(opt + OPT.flags1, 3);                      // $2497F2 bset #3,($1,A0)
+  }
+  ram.bset8(rec + P.btnByte, 4);                         // $2497F8 bset #4,($19,A6)
+  // ...and FALLS THROUGH to $2497FE.  No return value: the whole effect of this
+  // routine is the four bits above.
+}
+
+/**
+ * THE MUTATION HOOK for `$2497AA`, in the shipped file for the reason
+ * `CLAMP_ORDER`, `SHIP_MUTATE` and `FIRE_MUTATE` are: a mutation that needs a
+ * source edit is a claim about a tree nobody else can reproduce, and
+ * `docs/knowledge/03` says a check never seen red is not a check.  `null` is
+ * the ROM and the only value shipped.  Drive them with
+ * `seedcmp.mjs --break <name>` or `breakage.mjs`.
+ *
+ *   autoshot-unported     WAVE 78's OWN CODE: the named throw, restored
+ *   autoshot-dropped      the block does nothing -- wave 78 minus the throw
+ *   autoshot-edge-cached  **THE BUG THIS WAVE ACTUALLY HAD.**  `$249B48` reads
+ *                         the copy of ($19,A6) taken BEFORE $2497AA ran, so the
+ *                         synthesised edge is invisible to the cadence machine
+ *   autoshot-every-frame  `$2497E4`'s divider dropped: fire on every held frame
+ *   autoshot-inverted     `$2497EA` branches on the NEW bit, not the old
+ *   autoshot-on-edge      `$2497B2` tests ($19,A6) instead of ($18,A6)
+ *   autoshot-no-3c-gate   `$2497BA`'s ($3c,A6) suppression dropped
+ *   autoshot-no-optbit    `$2497DE`/`$2497F2` dropped -- the OPTION record's
+ *                         bit 3, the pods' half of the handshake ($24C498)
+ */
+export const AUTOSHOT_MUTATE = { value: null };
+
+/**
  * $2497AA .. $249BE2 -- the weapon block, as far as wave 5 translates it.
  *
  * THE BUTTON MAP, measured in wave 4 and re-stated because wave 2 item 5 left
@@ -475,15 +631,25 @@ function tail249E4E(ram, rec, ctx) {
  *     frames (`bchg #4,($1,A6)` then `bset #4,($19,A6)`).  So Button 3 is not a
  *     third weapon; it is Button 1 on a 2-frame cadence.
  */
-function bombAndShotGuards(ram, rec, ctx, playerIdx) {
+export function bombAndShotGuards(ram, rec, ctx, playerIdx) {
   const { unportedLog } = ctx;
   const dir = ram.u8(rec + P.dirByte);
-  const btn = ram.u8(rec + P.btnByte);
-  // $2497AA tst.b $80380F / beq $2497FE ; $2497B2 btst #6,($18,A6)
-  if (ram.u8(0x80380f) !== 0 && (dir & (1 << 6)) && ram.u8(rec + 0x3c) === 0) {
-    unreached(ROM.playerBomb, 'the $2497BA hyper/auto block (setting $80380F is on '
-      + 'AND mirror bit 6 is held)');
-  }
+  // **($19,A6) IS NOT A CONSTANT ACROSS THIS FUNCTION AND CACHING IT WAS THE
+  // WAVE-79 BUG.**  Waves 4-78 read the edge byte ONCE here into `btn`, which
+  // was harmless only because `$2497AA` was a throw: the auto-shot block WRITES
+  // ($19,A6) -- `$2497D2 bclr #4` and `$2497F8 bset #4` -- and the ROM re-reads
+  // the byte from memory at `$24980A` and `$249B48`.  A cached copy makes the
+  // synthesised edge invisible to the very cadence machine it exists to drive,
+  // which reproduces EXACTLY as a port that fires the synthesiser every frame
+  // and never spawns: `pf1` sticks at $08 where the board alternates $10/$00,
+  // and `p3c` never leaves 0.  MEASURED as that, on stage1-sweep lf2001..2010,
+  // before this comment existed.  Read it where the ROM reads it.
+  const btnStale = ram.u8(rec + P.btnByte);              // ...the wave-4 read
+  autoShot2497AA(ram, rec, dir, playerIdx);              // $2497AA..$2497F8
+  /** `($19,A6)` as the ROM reads it -- FROM MEMORY, at the instruction that
+   *  reads it. `autoshot-edge-cached` is the wave-4..78 shape. */
+  const btn = () => (AUTOSHOT_MUTATE.value === 'autoshot-edge-cached'
+    ? btnStale : ram.u8(rec + P.btnByte));
   // $2497FE cmpi.w #$4,$8130CE / bcs $249B2C ; $24980A btst #5,($19,A6)
   //
   // WAVE 13, AND THE NAME WAS WRONG SINCE WAVE 4.  $8130CE is not bomb stock:
@@ -508,7 +674,7 @@ function bombAndShotGuards(ram, rec, ctx, playerIdx) {
   // The `lea` block above the fork is transcribed because the fork READS from
   // it: the two arms load different stock words, different request words and
   // different `$255326`/`$255330` tables.
-  if (ram.u16(0x8130ce) >= 4 && (btn & (1 << 5))) {
+  if (ram.u16(0x8130ce) >= 4 && (btn() & (1 << 5))) {
     const stock = ram.u16(playerIdx === 0                 // $249820 / $249846
       ? BOMBRAM.hyperStockP1 : BOMBRAM.hyperStockP2);
     if (stock !== 0) {                                    // $249866 beq $2498E2
@@ -564,7 +730,9 @@ function bombAndShotGuards(ram, rec, ctx, playerIdx) {
   // part that runs EVERY frame the button is held or released and that decides,
   // per frame, whether a shot is emitted; the emission itself ($249BFC /
   // $249D2C) is not ported and throws below.
-  if (btn & (1 << 4)) {                                  // $249B48 btst #4,($19,A6)
+  // $249B48 btst #4,($19,A6) -- RE-READ, not the wave-4 cached copy: the
+  // auto-shot block above may have just set this bit.
+  if (btn() & (1 << 4)) {
     ram.setU8(rec + 0x3c, 1);                            // $249B50
     // $249B56..$249B70: the RELOAD value for the shot counter ($2b,A6).
     //   D0 = ($21,A6), or 8 if bit 0 of ($1,A6) is set;

@@ -11,7 +11,7 @@
 // expect to see move.  A mutation that does NOT go red is a finding.
 
 import { RAM, P } from '../src/machine.js';
-import { CLAMP_ORDER, updatePlayer } from '../src/player.js';
+import { AUTOSHOT_MUTATE, CLAMP_ORDER, updatePlayer } from '../src/player.js';
 import { SHIP_MUTATE } from '../src/shipsprite.js';
 
 export const MUTATIONS = {
@@ -169,6 +169,24 @@ export const MUTATIONS = {
   // that the framebuffer cannot show is the argument for compared columns in
   // one line.
   'pod-asr-toward-zero': () => { SHIP_MUTATE.value = 'pod-asr-toward-zero'; },
+
+  // ----------------------------------------------------------------- WAVE 79
+  // `$2497AA`, THE AUTO-SHOT.  Seven mutations, all declared in `player.js`
+  // itself (`AUTOSHOT_MUTATE`) so a reviewer can read the wrong port next to
+  // the right one.  They only bite on a scenario that HOLDS BUTTON 3 -- on
+  // `fly-around` and `stage1-play` the block never runs and every one of them
+  // is a provable no-op, which is the honest reason `stage1-sweep` is the
+  // ladder they are validated on.
+  'autoshot-unported': () => { AUTOSHOT_MUTATE.value = 'autoshot-unported'; },
+  'autoshot-dropped': () => { AUTOSHOT_MUTATE.value = 'autoshot-dropped'; },
+  'autoshot-edge-cached':
+    () => { AUTOSHOT_MUTATE.value = 'autoshot-edge-cached'; },
+  'autoshot-every-frame':
+    () => { AUTOSHOT_MUTATE.value = 'autoshot-every-frame'; },
+  'autoshot-inverted': () => { AUTOSHOT_MUTATE.value = 'autoshot-inverted'; },
+  'autoshot-on-edge': () => { AUTOSHOT_MUTATE.value = 'autoshot-on-edge'; },
+  'autoshot-no-3c-gate': () => { AUTOSHOT_MUTATE.value = 'autoshot-no-3c-gate'; },
+  'autoshot-no-optbit': () => { AUTOSHOT_MUTATE.value = 'autoshot-no-optbit'; },
 };
 
 /** Mutations that are EXPECTED to leave the RESULT line green, with the reason.
@@ -204,9 +222,39 @@ export const FIRE_EXPECTED_GREEN = {
     + 'tests/fire.test.js "$24C4E4 compares the WORD ($20,A4) against 8"',
 };
 
+/** WAVE 79 -- the `$2497AA` mutations that are EXPECTED to leave `stage1-sweep`
+ *  GREEN, each with the MEASUREMENT that says why and the test that DOES see it
+ *  fail.  Declared before the run, for the same reason `EXPECTED_GREEN` and
+ *  `FIRE_EXPECTED_GREEN` are: an unexplained pass is not evidence.
+ *
+ *  Both are the same finding about the ROM.  `$2497BA`'s ($3c,A6) gate and
+ *  `$2497E4`'s bchg divider each enforce the SAME alternation when Button 3 is
+ *  simply held, so on a ladder that holds it and nothing else, dropping either
+ *  one is a provable no-op.  They come apart only where one of them stops
+ *  running -- and `stage1-sweep` never enters either of those states.
+ *
+ *  MEASURED: `seedcmp.mjs --manifest .../stage1-sweep --segment 3250 --break
+ *  <name>` returns `1 green, 0 red` for both, against `1 green` clean and
+ *  `1 red` for the other five. */
+export const AUTOSHOT_EXPECTED_GREEN = {
+  'autoshot-every-frame': 'MEASURED: `$2497BA` already suppresses the frame '
+    + 'AFTER a fire, because `$249B50` set ($3c,A6) on it -- so dropping '
+    + '`$2497E4` divider changes nothing while the cadence machine is '
+    + 'running. It is observable only when `$249B40 bne $249E4E` returns before '
+    + '`$249B50`, i.e. while the LASER holds ($3f,A6) non-zero. Seen red '
+    + 'instead by tests/w79autoshot.test.js under the `laser-hold` scenario',
+  'autoshot-no-3c-gate': 'MEASURED: the converse -- with `$2497E4` divider '
+    + 'intact, dropping ($3c,A6) leaves the same 1,0,1,0 alternation for a '
+    + 'pure hold. It is observable when a REAL Button-1 edge sets ($3c,A6) '
+    + 'while the block is inert, which `stage1-sweep` never does (it holds '
+    + 'Button 3 alone from lf1890). Seen red instead by '
+    + 'tests/w79autoshot.test.js under the `after-real-edge` scenario',
+};
+
 export function breakage(name, game) {
   CLAMP_ORDER.value = 'rom';   // never leak a mutation between runs
   SHIP_MUTATE.value = null;    // ...and the same for wave 12's seam
+  AUTOSHOT_MUTATE.value = null;  // ...and wave 79's
   const m = MUTATIONS[name];
   if (!m) {
     throw new Error(`unknown mutation "${name}"; have: ${Object.keys(MUTATIONS).join(', ')}`);
