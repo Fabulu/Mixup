@@ -2691,7 +2691,13 @@ function handler1C(ram, rom, a5, ctx) {
   // stage-1 play, so the $9000A4 arm is transcribed and unexercised.
   let a0 = ram.u16(0x803926) !== 0 ? 0x9000a4 : 0x9000bc;  // $26C226 / $26C236
   for (let d6 = 0x16; d6 >= 0; d6--) {                 // $26C23C moveq #$16,D6 / dbra
-    const col = (a0 & 0xff) >>> 2;                     // $26C23E movea.l A0,A2
+    // $26C23E movea.l A0,A2.  The column index is the low WORD of the address
+    // over four, NOT the low BYTE: taking the byte here would apply $26C25A's
+    // mask a second time and make dropping it unobservable, which is a check
+    // that cannot fail (`docs/knowledge/03`, and W31's own M22).  `setLong`'s
+    // `((row << 6) + col) & $3FF` is the address arithmetic, so an unmasked
+    // $900100 lands where the 68000 would put it -- row+1, column 0.
+    const col = (a0 & 0xffff) >>> 2;
     for (let row = 0; row <= 8; row++) {               // $26C240 moveq #$8,D7 / dbra
       const d4 = rom.u32(a1);                          // $26C242 move.l (A1)+,D4
       a1 += 4;
