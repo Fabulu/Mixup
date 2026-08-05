@@ -350,7 +350,7 @@ export function resetChain2877D0(ram, p2) {
 /** The shared tail of all three: append one 12-byte record to bucket 13 and
  *  bump `$80AFEC` by `$C`.  `src/spritequeue.js` entry 13 is `$80A8DC` /
  *  `$80AFEC`, cap 1,080 bytes -- 90 records. */
-function emitBucket13(ram, pos, animLong, w4, w5) {
+function emitBucket13(ram, ctx, pos, animLong, w4, w5) {
   const a0 = BOMBRAM.bucket13 + ram.u16(BOMBRAM.bucket13Counter);  // $23FF0C adda.w
   ram.setU16(BOMBRAM.bucket13Counter,
     u16(ram.u16(BOMBRAM.bucket13Counter) + 0x0c));      // $23FF12 addi.w #$C
@@ -358,6 +358,11 @@ function emitBucket13(ram, pos, animLong, w4, w5) {
   ram.setU32(a0 + 4, animLong >>> 0);                   // $23FF38
   ram.setU16(a0 + 8, w4);                               // $23FF3A
   ram.setU16(a0 + 10, w5);                              // $23FF3C
+  // The counter is REBUILT every frame by the display-list pass, so "read
+  // $80AFEC after the step" measures nothing.  The event is how a gate can see
+  // that the bomb drew at all -- and it carries the record's own hardware
+  // words, so a wrong `asr.l #$6` is visible and not just a count.
+  ctx.bombEvent?.('draw', `${pos.toString(16)}/${animLong.toString(16)}`);
 }
 
 /** `$23FF06`'s and `$23FF42`'s shared arithmetic: the record's own position,
@@ -378,18 +383,18 @@ function packedPos23FF06(ram, a6) {
   return d0;
 }
 
-function draw23FF06(ram, a6) {
-  emitBucket13(ram, packedPos23FF06(ram, a6), ram.u32(a6 + B.anim),
+function draw23FF06(ram, ctx, a6) {
+  emitBucket13(ram, ctx, packedPos23FF06(ram, a6), ram.u32(a6 + B.anim),
     ram.u16(a6 + B.size), ram.u16(a6 + B.flipColour));
 }
 
 /** `$23FFB4` -- the same record shape but every field comes in a REGISTER
  *  (D1 packed position, D2 the anim long, D3/D4 the two words), which is why
  *  the script walk at `$255E9C` can draw a position the record does not hold. */
-function draw23FFB4(ram, d1, d2, d3, d4) {
+function draw23FFB4(ram, ctx, d1, d2, d3, d4) {
   let d0 = (d1 >= 0x80000000 ? (d1 - 0x100000000) : d1) >> 6;   // $23FFCE asr.l #$6
   d0 = ((d0 & 0x07ff03ff) | 0x80008000) >>> 0;          // $23FFD0 / $23FFD6
-  emitBucket13(ram, d0, d2, d3, d4);
+  emitBucket13(ram, ctx, d0, d2, d3, d4);
 }
 
 // ===========================================================================
@@ -556,7 +561,7 @@ export function bombScript255E3E(ram, rom, ctx) {
     const d3 = rom.u16(a0 + 8);                        // $255EB0 movem.w (A0)+
     const d4 = rom.u16(a0 + 10);
     a0 += 12;
-    draw23FFB4(ram, (((d1hi << 16) >>> 0) + d1lo) >>> 0, d2, d3, d4);  // $255EB4
+    draw23FFB4(ram, ctx, (((d1hi << 16) >>> 0) + d1lo) >>> 0, d2, d3, d4);  // $255EB4
     // `bcc` after `subq.b` tests the BORROW, so the script advances on the
     // frame the tick wraps PAST zero and not on the frame it reaches it.  With
     // the seed's reload of 1 that is every other frame.
@@ -588,12 +593,12 @@ export function bombScript255E3E(ram, rom, ctx) {
     ram.setU32(rec + B.anim, rom.u32(a0 + i16(idx)));      // $255F2C move.l
     const n = u16(idx - 4);                            // $255F32 subq.w #$4
     ram.setU16(rec + B.animIdx, n);
-    if (idx >= 4) { draw23FF06(ram, rec); return; }    // $255F36 bcc -> $255F44
+    if (idx >= 4) { draw23FF06(ram, ctx, rec); return; }    // $255F36 bcc -> $255F44
     const loops = u16(ram.u16(rec + B.loops) - 1);     // $255F38 subq.w #$1
     ram.setU16(rec + B.loops, loops);
     if (loops !== 0) {                                 // $255F3C beq $255F4E
       ram.setU16(rec + B.animIdx, 0x1c);               // $255F3E move.w #$1C
-      draw23FF06(ram, rec);                            // $255F44 jmp $23FF06
+      draw23FF06(ram, ctx, rec);                       // $255F44 jmp $23FF06
       return;
     }
     // ---- $255F4E: install the BLINK and fall into $255F7E.
@@ -613,7 +618,7 @@ export function bombScript255E3E(ram, rom, ctx) {
   let a0 = ram.u32(rec + B.script);                    // $255F86 movea.l $1E
   ram.setU32(rec + B.anim, rom.u32(a0));           // $255F8A move.l (A0)+
   a0 += 4;
-  draw23FF06(ram, rec);                                // $255F8E jsr $23FF42
+  draw23FF06(ram, ctx, rec);                       // $255F8E jsr $23FF42
   if (rom.u32(a0) !== 0xffffffff) {                // $255F94 cmpi.l
     ram.setU32(rec + B.script, a0);                    // $255F9C move.l A0,$1E
     return;                                            // $255FA0 rts

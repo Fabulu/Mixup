@@ -172,6 +172,7 @@ export class Game {
     this.bombEvents = new Map();     // WAVE 64, see #ctx()'s bombEvent
     this.bombMarks = [];
     this.bombHits = 0;
+    this.bombDraws = 0;
     this.hudMarks = [];
     this.kills = { n: 0, score: 0, byValue: new Map() };  // WAVE 34, killEvent
     this.shotSpawns = new Map();
@@ -362,8 +363,11 @@ export class Game {
       bombEvent: (kind, v) => {
         const k = `${kind}:${v}`;
         this.bombEvents.set(k, (this.bombEvents.get(k) ?? 0) + 1);
-        if (kind !== 'damage') this.bombMarks.push([kind, this.logicFrame, v]);
+        if (kind !== 'damage' && kind !== 'draw') {
+          this.bombMarks.push([kind, this.logicFrame, v]);
+        }
         if (kind === 'damage') this.bombHits += v;
+        if (kind === 'draw') this.bombDraws += 1;
       },
       itemSink: (t) => { this.itemFrame = t; },
       itemSpawn: (kind, site) => {

@@ -571,3 +571,120 @@ test('the port declares the same window the exporter does', () => {
   assert.equal(BOMB_TEMPLATES.blink + BOMB_TEMPLATES.blinkLen, 0x25663a,
     '...and the BLINK template ends exactly where its list begins');
 });
+
+// ===========================================================================
+// EIGHT CHECKS THAT COULD NOT FAIL -- found by `.scratch/mutate64.mjs` and
+// replaced here.  `docs/knowledge/03`: a check that has never been seen red is
+// not a check, and a FIXTURE SITTING WHERE TWO READINGS AGREE is not one
+// either (W61's M4/M33, W63's D and E, and these).
+// ===========================================================================
+
+test('$24991A: $2875B4 runs ONLY on the bomb that takes the stock to ZERO', () => {
+  // M5 SURVIVED "`left === 0` -> `left !== 0`": every fixture had $81B6E0 = 0,
+  // so `$2875B4` was a no-op on both sides of the branch and the two readings
+  // agreed on every one of them.
+  const ram = new Ram();
+  const rec = player(ram, { stock: 2 });
+  ram.setU16(BOMBRAM.pending1, 1);              // ONE pending hyper-stock grant
+  assert.equal(fireBomb2498E2(ram, ctx(), rec, 0), 'fired',
+    'stock 2 -> 1: $24991A bne $249930, so $249922 is NOT called');
+  ram.setU16(BOMBRAM.rec, 0);
+  try {
+    fireBomb2498E2(ram, ctx(), rec, 0);
+    assert.fail('stock 1 -> 0 must call $249922 jsr $2875B4');
+  } catch (err) {
+    assert.equal(err.romAddress, BOMB.itemSpawner);
+  }
+});
+
+test('$24990E: the queue word $803938 is set BEFORE the stock is consumed', () => {
+  // M6 SURVIVED "`queue, 1` -> `queue, 0`": nothing read $803938 back.
+  const ram = new Ram();
+  const rec = player(ram);
+  ram.setU16(BOMBRAM.queue, 0);
+  fireBomb2498E2(ram, ctx(), rec, 0);
+  assert.equal(ram.u16(BOMBRAM.queue), 1, '$24990E move.w #$1,$803938');
+  // ...and a REFUSED press leaves it alone, which is what "before the consume,
+  // after the three vetoes" means.
+  ram.setU16(BOMBRAM.queue, 0);
+  ram.setU16(BOMBRAM.rec, 0x8000);
+  assert.equal(fireBomb2498E2(ram, ctx(), rec, 0), 'bomb-already-up');
+  assert.equal(ram.u16(BOMBRAM.queue), 0);
+});
+
+test('$255E74: the INIT install\'s LAST word lands on ($2E,A6) and NOT ($30,A6)',
+  () => {
+    // M28 SURVIVED "`[0x2e, 2]` -> `[0x30, 2]`": nothing in the port reads
+    // either offset, so the gate could not see a 15th word going two bytes
+    // wide.  A record field with no reader is still a field the board writes.
+    const ram = new Ram();
+    ram.setU16(BOMBRAM.rec, 0x8000);
+    bombScript255E3E(ram, bombRom(), ctx());
+    assert.equal(ram.u16(BOMBRAM.rec + 0x2e), 0xdc00,
+      'the 15th word of $25653C -- $255E74 move.w (A0)+,(A1)+');
+    assert.equal(ram.u16(BOMBRAM.rec + 0x30), 0,
+      '...and $30 is the NEXT RECORD\'s type word: writing it would make slot '
+      + '1 of the 45 look live and $2564F0 would clear it without anyone '
+      + 'noticing');
+  });
+
+test('$255F38: the FADE loops SIX times, reloading ($24,A6) to $1C each time',
+  () => {
+    // M29 SURVIVED "`animIdx, 0x1c` -> `0x18`": the gate counted PHASES, not
+    // the length of one, so a fade seven eighths as long was invisible.
+    const ram = new Ram();
+    ram.setU16(BOMBRAM.rec, 0x8100);                 // initialised already
+    ram.setU16(BOMBRAM.rec + 0x28, 1);               // phase 1
+    ram.setU32(BOMBRAM.rec + 0x1e, 0x002565de);
+    ram.setU16(BOMBRAM.rec + 0x24, 0x1c);
+    ram.setU16(BOMBRAM.rec + 0x2a, 6);               // ($2a,A6) from the install
+    const rom = bombRom();
+    const phases = [];
+    const c = { ...ctx(), bombEvent: (k, v) => { if (k === 'phase') phases.push(v); } };
+    // SEVEN steps spend $1C,$18..$4; the EIGHTH uses index 0 and borrows.
+    for (let f = 0; f < 7; f++) bombScript255E3E(ram, rom, c);
+    assert.equal(ram.u16(BOMBRAM.rec + 0x2a), 6, 'still on loop 1');
+    assert.equal(ram.u16(BOMBRAM.rec + 0x24), 0, 'index 0 is the LAST longword');
+    bombScript255E3E(ram, rom, c);
+    assert.equal(ram.u16(BOMBRAM.rec + 0x2a), 5, '$255F38 subq.w #$1,($2a,A6)');
+    assert.equal(ram.u16(BOMBRAM.rec + 0x24), 0x1c,
+      '$255F3E move.w #$1C,($24,A6) -- the RELOAD, and $18 would make every '
+      + 'loop one frame short');
+    assert.deepEqual(phases, []);
+    // ...and the sixth borrow is the one that installs the blink.
+    for (let f = 0; f < 8 * 5; f++) bombScript255E3E(ram, rom, c);
+    assert.deepEqual(phases, [2], 'six loops of eight steps, then $255F4E');
+  });
+
+test('$24567A and $245688 are DIFFERENT comparisons on DIFFERENT registers',
+  () => {
+    // M41 and M42 SURVIVED ("$9800 -> $9900", "bit 15 -> bit 14"): the fixture
+    // in the four-rejection test was so far outside each bound that the
+    // mutated bound rejected it too.  A boundary needs a case ON it.
+    const ram = new Ram();
+    ram.setU16(BOMBRAM.rec, 0x8000);
+    ram.setU32(BOMBRAM.rec + 0x1e, 0x00256558);
+    ram.bset8(RAM.player1 + 0x01, 6);
+    const only = (over) => {
+      for (let k = 0; k < 150; k++) ram.setU16(BOMBRAM.poolA + k * 0x20, 0);
+      enemy(ram, 0, over);
+      return bombDamage24560A(ram, ctx(), RAM.player1).hits;
+    };
+    // d1 = y - $40 + $2800.  y = $7040 -> d1 = $9800, which `bhi` ACCEPTS.
+    assert.equal(only({ y: 0x7040 }), 1, '$24567A bhi -- $9800 is not ABOVE $9800');
+    // y = $7041 -> d1 = $9801, rejected.  A bound of $9900 would accept it.
+    assert.equal(only({ y: 0x7041 }), 0, '...and $9801 is');
+    // d2 = x + ($14,A5) and d3 = x - ($16,A5) + $2800 are built from
+    // DIFFERENT extents, which is the only way to put bit 14 of d2 on without
+    // pushing d3 past $6000: x = $1000 with a +X reach of $6000 gives
+    // d2 = $7000 (bit 14 SET, bit 15 clear) and d3 = $37C0.
+    const reach = (plusX) => {
+      for (let k = 0; k < 150; k++) ram.setU16(BOMBRAM.poolA + k * 0x20, 0);
+      const a5 = enemy(ram, 0, { x: 0x1000, y: 0x2000 });
+      ram.setU16(a5 + 0x14, plusX);
+      return bombDamage24560A(ram, ctx(), RAM.player1).hits;
+    };
+    assert.equal(reach(0x6000), 1,
+      '$245688 bmi is bit 15; d2 = $7000 has bit 14 SET and must still be hit');
+    assert.equal(reach(0x7100), 0, '...and d2 = $8100 is rejected');
+  });

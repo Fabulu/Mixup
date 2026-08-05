@@ -123,7 +123,7 @@ function run() {
     stockSeen: [], recLiveFrames: 0, recFirstLive: null,
     bit6Frames: 0, invulnClearedAt: null, invulnFF: 0,
     rankMoved: [], rankStart: null, rankEnd: null,
-    poolDirtyAtEnd: 0, chainLatchAtTeardown: [],
+    poolDirtyAtEnd: 0, chainLatchAtTeardown: [], cadenceAfterPress: [],
     meterBeforeTeardown: [], meterAfterTeardown: [],
     shotsAfterRefusal: 0, cadenceAfterRefusal: 0,
   };
@@ -148,6 +148,14 @@ function run() {
       r.frames = i;
       break;
     }
+    // `($3c,A6)` is `$249B50 move.b #$1,($3c,A6)`, the FIRST instruction of
+    // the shot cadence machine at `$249B2C`.  Every press frame also holds
+    // fire, and the frame before it does not (`$249B96 clr.b`), so this byte
+    // says whether the cadence machine ran on the press frame -- i.e. whether
+    // the press took `$249B28 bra $249E4E` (FIRED, the tail) or fell through
+    // to `$249B2C` (REFUSED).  A port that returns on both is invisible to
+    // every other row in this file.
+    if (PRESS.includes(i)) r.cadenceAfterPress.push(ram.u8(0x8103e6 + 0x3c));
     if (game.bombMarks.filter((m) => m[0] === 'teardown').length > teardownBefore) {
       r.chainLatchAtTeardown.push(ram.u16(0x81b5ae));
       r.meterBeforeTeardown.push(meterPre);
@@ -195,7 +203,31 @@ function run() {
 // `rank-poke` moves the five words at step 1000 and the run's own baseline is
 // the SEED, so all five rows must see the move.  A "nothing moved" row that
 // cannot be made to move is not a check.
+/** `$249864 move.w (A1),D1 / $249866 beq.b $2498E2` -- THE FORK.  A separate
+ *  short run with `$81B65C` poked to 1 before the first press: it must stop at
+ *  `$249868`, THE HYPER, and not fire a bomb.  Without this row nothing in the
+ *  gate can tell a port that reads the stock from one that ignores it, because
+ *  the stock is 0 on every frame of every ordinary run. */
+function forkRun() {
+  const game = new Game(bundle.seed, bundle.tables, {
+    logicFrame: bundle.cap.frames[0].lf,
+    videoFrame: bundle.cap.frames[0].vf,
+    bgSeed: bundle.cap.part(0, 'bg'),
+  });
+  const bomb = portWordFromBits([BIT.b1, BIT.b2]);
+  const none = portWordFromBits([]);
+  for (let i = 0; i < PRESS[0]; i++) game.step(none);
+  game.ram.setU16(0x81b65c, 1);                       // ONE hyper stock
+  try {
+    game.step(bomb);
+  } catch (e) {
+    return { addr: e.romAddress ?? null, fired: game.bombEvents.size };
+  }
+  return { addr: null, fired: game.bombEvents.size };
+}
+
 const r = run();
+const fork = brk ? null : forkRun();
 const g = r.game;
 const R = g.ram;
 const ev = (k) => g.bombEvents.get(k) ?? 0;
@@ -230,6 +262,10 @@ console.log(`  RANK start ${JSON.stringify(r.rankStart)}  end `
   + `${JSON.stringify(r.rankEnd)}  moved ${JSON.stringify(r.rankMoved)}`);
 
 const rows = [];
+if (fork) {
+  console.log(`  THE FORK with $81B65C = 1: stop $${(fork.addr ?? 0)
+    .toString(16).toUpperCase()}, bomb events ${fork.fired}`);
+}
 const ck = (name, ok, detail) => { rows.push([name, ok, detail]); };
 
 // **THE ROW THAT SAYS WHAT THIS WAVE BROKE.**  `$2564BA clr.b ($3e,A0)` is the
@@ -247,6 +283,16 @@ ck('the ONLY stop is $249F8A, the hit path a BOMB makes reachable',
 ck('...and the three bombs all COMPLETE before it',
   marks('teardown').length === 3,
   `${marks('teardown').length} teardowns before lf ${r.stopFrame ?? 'end'}`);
+ck('THE FORK IS $81B65C: with a hyper stock the press is the HYPER ($249868)',
+  brk !== null || (fork.addr === 0x249868 && fork.fired === 0),
+  brk !== null ? '(not run under a --break)'
+    : `stop $${(fork.addr ?? 0).toString(16).toUpperCase()}, `
+      + `${fork.fired} bomb events`);
+ck('A REFUSED PRESS STILL SHOOTS: $249B2C runs, a FIRED one takes $249B28',
+  r.cadenceAfterPress.length === 4
+  && r.cadenceAfterPress.slice(0, 3).every((v) => v === 0)
+  && r.cadenceAfterPress[3] === 1,
+  `($3c,A6) on the four press frames: ${JSON.stringify(r.cadenceAfterPress)}`);
 ck('BUTTON 2 FIRES A BOMB: three presses accepted',
   ev('press:fired') + ev('press:fired+partner') === 3,
   `fired ${ev('press:fired')} + ${ev('press:fired+partner')}`);

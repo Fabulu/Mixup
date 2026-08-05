@@ -856,9 +856,25 @@ SHOT_WINDOWS.extend([
     # scripts are the boss's own and NONE is ported; the window exists so that
     # starting one reaches the SCRIPT throw carrying $2954xx rather than a ROM
     # window throw carrying $294F88, which names the wrong thing.
-    (0x294F68, 0x0028, "W62: the stage-1 boss's A4 script table $294F68 -- five "
-                       "{init,step} pairs. NONE is registered; the window makes "
-                       "the throw name the SCRIPT and not the table"),
+    # **W64 (B2) WIDENED THIS FROM $28 TO $38 AND THE OLD EXTENT WAS SHORT.**
+    # W62 declared FIVE {init,step} pairs.  [M] entries [5] and [6] are
+    # ($295616,$295626) and ($295684,$2956F6) -- both perfectly ordinary
+    # pointer pairs into the same $295xxx script region as [0]..[4] -- and [7]
+    # is $397C00C0, i.e. `move.w #$C0,...`, CODE.  So the table is SEVEN pairs
+    # and the far end is pinned by the first longword that is an instruction,
+    # the same rule W63 used for $28840E[4].
+    #
+    # It was found by W64's own bomb: a run that bombs kills the midboss
+    # sooner, the boss arrives sooner, and `$2596F4 movea.l (A0,D0.w),A0`
+    # asked for [5] at logic frame 9,153, where a run that does not bomb had
+    # never got past lf 19,533's `$228658`. A SHORT WINDOW IS NOT CAUGHT AT THE
+    # EXPORT -- it is caught by `src/rom.js` on a player's machine (W54 §6.2),
+    # and this is that lesson arriving for the third time.
+    (0x294F68, 0x0038, "W62/W64: the stage-1 boss's A4 script table $294F68 -- "
+                       "SEVEN {init,step} pairs (W62 said five; [7] is the "
+                       "first longword that decodes as code). NONE is "
+                       "registered; the window makes the throw name the "
+                       "SCRIPT and not the table"),
     (0x292932, 0x0020, "W62: the stage-1 boss's A2 routine list $292932 -- "
                        "SEVEN longwords then $FFFFFFFF, pre-filled into $8129D0 "
                        "by $2595B8. Every slot's RUN bit stays CLEAR"),
@@ -1651,6 +1667,33 @@ def check_hud_extents(d: bytes) -> None:
                          "the same DIP) no longer abuts $28840E.")
 
 
+def check_boss_a4_extent(d: bytes) -> None:
+    """W64 (B2).  W62's `$294F68` window was FIVE pairs and the table is SEVEN.
+
+    Not this wave's table -- but this wave's bomb is what reached entry [5],
+    and a short window is a throw on a player's machine rather than a failure
+    here.  The extent is pinned from ABOVE by the first longword that decodes
+    as an instruction, exactly as `$28840E`'s is.
+    """
+    for i in (5, 6):
+        v = u32(d, 0x294F68 + i * 8)
+        if not 0x295000 <= v < 0x296000:
+            raise SystemExit(
+                f"$294F68[{i}] is ${v:08X} and must be a $295xxx script "
+                f"pointer -- the seven-pair extent is derived from it.")
+    if u32(d, 0x294F68 + 7 * 8) != 0x397C00C0:
+        raise SystemExit(
+            f"$294F68[7] is ${u32(d, 0x294F68 + 7 * 8):08X}; it must be the "
+            f"`move.w #$C0,...` that proves the table is SEVEN pairs and the "
+            f"eighth longword is CODE.")
+    declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x294F68]
+    if not declared or declared[0][1] < 0x38:
+        raise SystemExit(
+            f"the $294F68 window is {declared} and must be at least $38 -- "
+            f"seven {{init,step}} pairs. W62 declared $28 and [M] W64 reached "
+            f"entry [5] at lf9153 of a run that bombs.")
+
+
 def check_bomb_extents(d: bytes) -> None:
     """W64 (B2).  ASSERT THE BOMB'S SIX EXTENTS AGAINST THE CARTRIDGE.
 
@@ -1720,6 +1763,7 @@ def build(d: bytes) -> dict:
     check_item_extents(d)                      # W61 -- see the function's docstring
     check_hud_extents(d)                       # W63 -- see the function's docstring
     check_bomb_extents(d)                      # W64 -- ...and this one's
+    check_boss_a4_extent(d)                    # W64 -- W62's window was SHORT
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
     levels = speed_index_set(d)
