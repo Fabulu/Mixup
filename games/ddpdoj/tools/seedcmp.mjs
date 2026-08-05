@@ -275,16 +275,47 @@ function main() {
   }
 
   if (a.break) {
-    // RED VALIDATION.  Under a mutation, a sweep that stays green is a hole in
-    // the comparison and is reported as a FAILURE OF THE TOOL, not a pass.
-    const stillGreen = by('GREEN').length;
-    if (stillGreen === n) {
-      console.log(`FAIL mutation '${a.break}' left ALL ${n} segments green -- `
-        + `this sweep cannot see it, so it proves nothing`);
+    // RED VALIDATION, AGAINST THE BASELINE AND NOT AGAINST "ALL GREEN".
+    //
+    // THE FIRST VERSION OF THIS CHECK COULD NOT FAIL, and it was caught by
+    // running it: it passed when `70 of 71` segments were non-green under the
+    // mutation, on a ladder where 70 of 71 were ALREADY non-green without it.
+    // The mutation had changed the verdict of ZERO segments and the check said
+    // "RED OK". docs/knowledge/03, exactly: a check that has never been seen to
+    // fail is not a check, and this one was incapable of failing on any ladder
+    // whose segments were mostly blocked -- which is every deep ladder.
+    //
+    // The correct question is DIFFERENTIAL: does the mutation change at least
+    // one segment's verdict, or make at least one segment's first divergence
+    // arrive earlier?  Anything less is agreeing with itself.
+    const base = sweep({ ...a, break: null, quiet: true });
+    let moved = 0;
+    const detail = [];
+    for (let i = 0; i < results.length; i++) {
+      const b = base.results[i], m = results[i];
+      if (!b || b.from !== m.from) continue;
+      const bl = b.diverged[0]?.lf ?? Infinity;
+      const ml = m.diverged[0]?.lf ?? Infinity;
+      if (b.verdict !== m.verdict || ml < bl
+          || m.diverged.length > b.diverged.length) {
+        moved++;
+        if (detail.length < 6) {
+          detail.push(`lf${m.from}: ${b.verdict}->${m.verdict}`
+            + (ml < bl ? ` first divergence ${bl === Infinity ? 'none' : `lf${bl}`}`
+              + ` -> lf${ml}` : '')
+            + (m.diverged.length > b.diverged.length
+              ? ` cols ${b.diverged.length}->${m.diverged.length}` : ''));
+        }
+      }
+    }
+    if (moved === 0) {
+      console.log(`FAIL mutation '${a.break}' changed NOTHING on any of the ${n} `
+        + `segments -- same verdicts, same first divergences. This sweep cannot `
+        + `see it, so it proves nothing about this ladder.`);
       return 1;
     }
-    console.log(`RED OK: mutation '${a.break}' turned ${n - stillGreen} of ${n} `
-      + `segments non-green, as it must`);
+    console.log(`RED OK: mutation '${a.break}' moved ${moved} of ${n} segments `
+      + `RELATIVE TO THE UNMUTATED BASELINE. ${detail.join('; ')}`);
     return 0;
   }
   return by('GREEN').length === n ? 0 : 1;
