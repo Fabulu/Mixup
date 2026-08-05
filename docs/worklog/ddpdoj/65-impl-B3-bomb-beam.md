@@ -8,7 +8,9 @@ bullets**, the ship's flags bit 7 goes on for the bomb and off at the teardown,
 `PAGE ERRORS []`, 60 Hz. **NO RANK WORD MOVED** — all five, on every one of
 2,200 headless frames and every one of 21 browser samples, against a
 `rank-poke` control that reddens all five and nothing else. Unit tests 878 →
-**900**, 0 skipped. Boot +7,495 B.
+**921**, 0 skipped. 59 of 59 mutants RED, 0 survivors — **two of my own
+controls and eleven of my own fixtures could not fail, and one of the mutants
+found a MISSING RAM WRITE in the port.** Boot +7,495 B.
 
 wave: 65. role: IMPLEMENTER (sole writer to `games/ddpdoj/`).
 date: 2026-08-05.
@@ -360,7 +362,15 @@ embedder that does not attach one) the SCREEN CLEAR silently did not happen.
 sink. It is now on its own line, with the reason in the file. The other
 thirteen `bombEvent?.(...)` sites were audited: all pure values.
 
-**SIX MORE OF MY OWN CHECKS COULD NOT FAIL**, all found while writing them:
+**AND ONE MUTANT FOUND A SECOND REAL DEFECT.** `$2456AA lea $80FA74,A5` and
+the four `move.w D?,(-$2,A5)` stores put the bounding box **in RAM** — the
+same four words `src/damage.js` `BOX` uses and `$245760`/`$245866`/`$24595A`
+re-read through A6. The port built it in a JS array and never stored it:
+correct arithmetic, four missing stores, and invisible to every row that only
+counted hits. Found by the row that asserts all four words exactly.
+
+**ELEVEN MORE OF MY OWN CHECKS COULD NOT FAIL**, and the mutation sweep took
+three rounds to say so — **23 survivors, then 11, then 1**:
 
 | | what was wrong | the check that exists now |
 |---|---|---|
@@ -371,15 +381,26 @@ thirteen `bombEvent?.(...)` sites were audited: all pure values.
 | **E** | every bullet row ran against a fresh all-zero `Ram`, i.e. 211 bullets sitting live at (0,0) inside the box — `[M]` **70 erasures reported** where the row wanted 1, and a port that ignored the box entirely would have passed | `parkBullets()` writes `$FFFF` to all 210 `+$2` words first (`$24593E bmi` skips a negative one), so the row is about the box |
 | **F** | the three direct-call rows on `$2456A6` left `$812952` at 0, and `$245622 move.w #$7800,$812952` runs in `$24560A` BEFORE the fork — so `$2457C6 cmp/bcc` rejected every pool-B enemy | the fixture stands in for `$245622`/`$24562C`, with the reason in a comment |
 
-C and D and E are W61's M4/M33, W63's D/E and W64's F/G for the fourth time:
-**a fixture sitting where two readings agree is not a check.**
+| **G** | the two gate rows for the pods' and the player's knockback read the CURSORS `($46,A6)` and `($38,A1)` — which are `$249AA4`'s and `$249AD8`'s writes, not the ramps' — so DELETING both ramps left them green | the player's row measures `($6,A6)`, which only `$2496B6` moves; the pods' is a UNIT row on `$24D188` itself, because `[M]` `$24C33A` puts the pods back on the ship every frame and one frame of ramp is `$200` against a `$24D146` step of `$800` — no aggregate over 2,200 frames separates them |
+| **H** | `liveMax > 4` for the 41 segments: `[M]` a `dbra` one short still peaks at 29, because the `$7800` CULL is the binding constraint and not the loop | the loops' far end is proved by the **CLEAR**: a hand-placed live record in slot 41 must be zeroed by `$25623A` (phase 1) and by `$2563D4` (phase 2) |
+| **I** | the segment-step row used `$400 + velY` and `[M]` `($30,A5)` is 0 on every frame of a run with no vertical input, so the third term was never exercised | a unit row that SETS `($30,A5)` to `$123` |
+| **J** | `$25606C`'s `-$200` bias and `$2560C6`'s short-axis-only write are not observable from the gate at all: `$2563A4 move.w D0,($7E2,A0)` overwrites record 42's Y from record 44's in the SAME frame | unit rows after exactly one driver frame |
+| **K** | four bound constants (`$7800` twice, `$7E00`, `$256460`'s `$1C`) and `$2563F8`'s `+$400` all survived the gate: a `$100` change moves no count it measures | unit rows that place a record by hand ON each bound and one step under it |
+| **L** | ...and the LAST survivor of all three rounds was `$256224`'s arm of the cull — the one taken when `$812954` is SET. Every fixture reached the OTHER arm, because setting that word routes the same frame into `$289FF4` and pool E | `beamRom()` now serves pool E's three canned RNG tables and three templates, and the row walks both arms |
+
+C, D, E, H and I are W61's M4/M33, W63's D/E and W64's F/G for the fifth time:
+**a fixture sitting where two readings agree is not a check**, and **a
+parameter the corpus never varies is not covered** (`docs/knowledge/03`).
 
 `.scratch/mutate65.mjs` applies ONE edit with a single-occurrence anchor, runs
 ONE check, requires a NAMED test or a NAMED gate row RED, restores, and
 verifies the file sha256 byte-identical; 180-second timeout per child.
 
 ```
-[M] 59 of 59 mutants turned a NAMED check RED; survivors 0; SKIPPED 0
+[M] round 1   36 of 59 RED, 23 survivors
+[M] round 2   48 of 59 RED, 11 survivors
+[M] round 3   58 of 59 RED,  1 survivor
+[M] round 4   **59 of 59 mutants turned a NAMED check RED; survivors 0**
 ```
 
 ---
@@ -440,13 +461,18 @@ wave did not make it worse.**
 * **Transcribed and unexercised, NAMED:** P2's whole laser arm; `$255FE2`'s
   bit-1 twin; `$28A252`'s `$28A2A8`-alternative; `$2417D4`'s no-move arm;
   `$2456A6`'s pool-A bit-13-clear arm.
-* **Unit tests 878 → 900, 0 skipped.** New file `tests/w65beam.test.js` (22);
+* **Unit tests 878 → 921, 0 skipped.** New file `tests/w65beam.test.js` (43);
   three of W64's "it throws" rows are REPLACED, not deleted, by rows that
   separate the two arms. `webgate` **14 of 14**, unmoved.
 
 ---
 
 ## 11. THE GATE, ON THE SETTLED TREE
+
+W58 §6's rule: a gate started before the tree settled is not evidence about the
+tree.  The run below started **after** `.scratch/mutate65.mjs` had finished
+touching `src/` (and it verifies every file sha256 byte-identical on the way
+out) and after the last test edit; nothing was edited while it ran.
 
 ```
 python games/ddpdoj/tools/oracle/pgm.py check
@@ -459,10 +485,29 @@ VERDICT: ALL GREEN -- 67 passed, 0 failed, 0 SKIPPED
 ```
 
 **62 → 67 stages, and the five new ones are this wave's scenario and its four
-REDs.** Nothing was disabled, skipped, narrowed or loosened.
+REDs.** Nothing was disabled, skipped, narrowed or loosened. The ones this wave
+could plausibly have broken, all green:
+
+- **`fly-around: port vs board, 0 divergent frames` and its 5 REDs** — the only
+  port-vs-board window this project has. It presses no button and holds no
+  fire, so `($3f,A6)` stays 0, `$249A92` never runs and none of §4's three
+  newly reachable paths is on it.
+- **`THE BOMB` and its 4 REDs** (W64's) — the ORDINARY arm, and `[M]` 21 of 21
+  after this wave rewired `$249A5C`'s other side.
+- **`THE CHAIN EXPIRES` and its 3 REDs**; **`STAGE 1 ENDS`**; `display list`,
+  `pixel gate` (100.0000 %), `demo gate`, `midboss DEATH`, `zoom coverage`,
+  `replay determinism`, and `assets/integrity` with its `[rom-byte]` ROM-LEAK
+  GUARD — **six new ROM windows and twenty new speed levels went through it**.
+- **`background shard gate`** — the stage that FRESH-EXPORTS, i.e. where
+  `check_beam_bomb_extents` actually runs against the cartridge.
+
+**[M] THE SERVER I STARTED WAS KILLED.** `Get-CimInstance Win32_Process` finds
+**zero** `python http.server` processes and `netstat` shows nothing listening
+on 8000/8763/8764/8765 — checked by PROCESS and by PORT, as W61 §6b and W63 did.
+The deployed run used no server of mine at all.
 
 ```
-node --test games/ddpdoj/tests/     900 pass, 0 fail, 0 SKIPPED   (was 878)
+node --test games/ddpdoj/tests/     921 pass, 0 fail, 0 SKIPPED   (was 878)
 node games/ddpdoj/tools/webgate.mjs 14 of 14 PASS                 (unmoved)
 node tools/build-dist.mjs           clean, 5 deliberate exception(s)  <- UNMOVED
 ```
