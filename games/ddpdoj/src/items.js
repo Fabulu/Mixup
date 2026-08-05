@@ -30,6 +30,12 @@
 //   $27E98A clears #$321+1 words = 1,604 B = 25 slots + $8171BA + $8171BC EXACT
 //   $8171BE is IMPACT POOL A's base -- so the item family and the five effect
 //   pools are ONE contiguous 25 + 240 slot region.
+//   $816B2A + $50 == $816B7A  -- and the family's LOWER neighbour closes on it
+//   too: `src/spawn.js`'s `DEFQ_DUMMY` ($2636CA lea $816B2A,A0, the record the
+//   deferred spawn queue drops into when it is full) is one $50-byte entry and
+//   it ends EXACTLY where item slot 0 begins.  Nothing in this repo had noticed;
+//   `tests/w61items.test.js` pins it, because a wave that widened either would
+//   silently corrupt the other.
 //
 // **THE SIX POOLS ARE WALKED AS ONE 25-SLOT ARRAY** by the driver (`$27E9A8 lea
 // $816B7A,A6`, stride `$40`) and by `$244D62`'s block 2 (`src/damage.js`), so

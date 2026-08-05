@@ -237,17 +237,43 @@ both trees in every column, including the RNG.
    from `src/`, so rank is frozen at its seeded 53. W60 said this and it is
    still true; a later wave must not read it as a W61 result.
 2. **`$81B64A` — THE HYPER EARN ACCUMULATOR — MOVED, 2,136 → 2,112 in the hold
-   run, and the cause is the POWER LEVEL.** Recon 59 §5.3 measured that
-   `$810408`'s readers include `$2868C6`/`$286912`/`$286ADC`/`$286B40`, the
-   parallel bomb chain machine whose hits-per-link is `(8 − $810408)×1.5 + $12`
-   — **so a power-up SHORTENS the bomb chain's link**, which changes how often
-   `$286774`/`$2867B4` fire. [M] the hold run's kills, score and chain are
-   IDENTICAL on both trees (242 / 5,132 / 583) and only `$81B64A` differs,
-   which is what makes this the power word and not a timing shift.
+   run, AND THE CAUSE IS `$25270C`, THE BEAM RESET.**
+
+   I first wrote here that the cause was the POWER LEVEL, from recon 59 §5.3:
+   `$810408`'s readers include the parallel bomb chain machine whose
+   hits-per-link is `(8 − $810408)×1.5 + $12`, so a power-up shortens the link.
+   **That was a guess with a citation attached, and one experiment refuted it.**
+   `.scratch/w61b64a.mjs` cuts each of the five things this wave adds to the
+   hold run, one at a time, and re-runs — `src/items.js` sha256'd
+   byte-identical after every cut:
+
+   ```
+   [M] W61 as shipped                          $81B64A = 2112   rng 234
+   [M] CUT $810408, the LASER power word only   $81B64A = 2112   rng 234
+   [M] CUT $810406, the SHOT power word only    $81B64A = 2112   rng 234
+   [M] CUT $25270C, THE BEAM RESET only         $81B64A = 2136   rng 234  <=
+   [M] CUT the whole collect ($252C96 refuses)  $81B64A = 2136   rng 234
+   [M] CUT the item entirely (no allocation)    $81B64A = 2136   rng 231
+       ...and kills 242 / score 5,132 / chain 583 on EVERY ONE of those rows.
+   ```
+
+   **So: picking up a power-up while the beam is firing WIPES the 32-slot
+   segment pool `$8112F2` and the beam record `$811EF2`, and the beam's own
+   damage ledger moves.** `$81B64A` is fed by `$286774`/`$2867B4`, inside
+   `$286096`'s `$400`-bit arm — which W51 measured as THE BEAM's, not the
+   bomb's. The kills are the same because the beam re-latches and kills the
+   same enemies a few frames later; what changes is which frame each hit lands
+   on, and the earn accumulator counts hits.
+
    **`$81B64A` is NOT a rank word**, and its only consumer `$287682` is a
    counted note in `src/score.js` — but the day `$287682` ships it becomes a
    hyper GRANT, and a grant is stock, and stock is +16 rank. **Named here so
    wave I3 cannot ship one without re-reading this row.**
+
+   And the last row is the RNG's own bisection, free: cutting the ITEM puts
+   `$803916` back to HEAD's 231 and cutting only the COLLECT does not, so the
+   draws that move it are the item's INIT and its BOUNCES, not the collect tail
+   — which is what `$27EACE jsr $242E24` and `$27EB5C jsr $242B3C` say.
 3. **THE RNG MOVED, and it had to.** [M] `$27EACE`/`$27EC7E jsr $242E24` is the
    item's launch angle, `$242B3C` is drawn by every bounce and by BOTH collect
    tails. The shared `$803916`/`$803917` counters therefore advance on frames
@@ -265,6 +291,25 @@ both trees in every column, including the RNG.
 [M] deferred     1,326.9 -> 1,360.2 KiB
 ```
 
+**AND drawn % STAYS AT 100.0 % WITH ZERO MISSING STREAMS**, measured with
+W58's own tool (`.scratch/e3measure.mjs`) on W58's own scenario — 3,000 frames,
+fly UP, tap fire every 4th, two 120-frame HOLDS in every 600:
+
+```
+                              W58 (its own final figure)      W61
+[M] display-list records              136,685              136,329
+[M] DRAWN                       136,685 (100.0 %)     136,329 (100.0 %)
+[M] distinct missing streams              0                    0
+[M] drawn % at f1000..1499            100.0 %              100.0 %
+[M] BUCKET 16 -- THE BEAM        2,606 of 2,606       2,606 of 2,606
+[M] BUCKET 17 -- THE ITEM        (absent entirely)       61 of 61
+```
+
+**Bucket 17 was not in that table at all before this wave**, and bucket 16's
+2,606 is unmoved to the digit — which is the check that says the item did not
+displace the beam. The 356-record fall in the total is the RNG shift and the
+power level (§5), not a lost picture: `distinct missing streams` is 0 on both.
+
 Ten flat tables, and **every `entries` is pinned by an INSTRUCTION**: the four
 four-frame tables by `$27EA96 addq.w #4 / $27EA9A andi.w #$F`, the sixteen-frame
 one by the hyper bodies' `andi.w #$3F`, and the five collected animations by
@@ -276,6 +321,59 @@ against the cartridge by `checkTableExtent` on every export.
 `$27EFBE`/`$27F03E`/`$27F2C2`). That is `docs/knowledge/09` and W58 §2.1b's
 precedent: the harvest is sized off the TABLE and not off a run, so wave I3
 finds no hole. It costs [M] about 8 KiB of DEFERRED bytes and zero boot bytes.
+
+## 6b. THE PAGE, IN A REAL BROWSER — WHAT I SAW  `[M]`
+
+Chrome + Python `playwright`, W42's recipe. **BOTH the LOCAL build and the
+DEPLOYED one**, the same 100-second script, the same keys: the owner's own from
+`docs/knowledge/09` — hold fire, sweep left and right. The server I started was
+killed and [M] `Get-CimInstance Win32_Process` finds **zero `python http.server`
+processes** and ports 8000/8791/8781/8125 all FREE, checked by process AND by
+port.
+
+**AND THE PAGE IS READ, NOT ONLY PHOTOGRAPHED.** `index.html` now exposes the
+app on `window.__mixup` — a debugging handle nothing inside the page reads — so
+the script samples `$8171BA`, `$810406`/`$810408` and both ROM cursors every
+frame it takes a screenshot. A screenshot can show that something is on the
+screen; it cannot show that the power word moved.
+
+### LOCAL (`python -m http.server 8791`), `spr 13/13`
+
+```
+[M] +1.3 s  lf 2663   ITEM {items: 1, shot: 0, laser: 0, cur $25523C, pod $255278}
+                      *** AN ITEM IS LIVE ***
+[M] +32.8 s lf 4529   ITEM {items: 0, shot: 2, laser: 2, cur $25523E, pod $25527A}
+                      *** PICKED UP -- THE POWER WORDS AND BOTH CURSORS MOVED ***
+[M] +52.4 s lf 5686   ITEM {items: 1, ...}            a SECOND one drops
+[M] +58.9 s lf 6072   ITEM {items: 1, shot: 4, laser: 4, cur $255240, pod $25527C}
+                      *** PICKED UP AGAIN -- power level 2 of 4 ***
+[M] +94.8 s lf 8185   STOPS at `$292902 IS NOT PORTED YET` -- the stage-1 boss,
+                      W34's own frontier and the same wall every run in §3 hits
+```
+
+**That is the owner's report answered in the browser, with the RAM to back it:
+the bigger ships drop something, it falls, it is drawn, the ship walks into it,
+and the ship gets stronger.** Six screenshots of the item on screen are in
+`.scratch/w61local-item0..5.png`.
+
+### DEPLOYED, `https://gbtman.pages.dev/games/ddpdoj/` — THE CONTROL
+
+The same script against the build that was live before this wave (`spr 12/12`,
+no shard 12): `FIRST LIVE ITEM: None`, and it stops at the same `$292902` at
++95.1 s.
+
+**AND THE CONTROL EARNED ITS KEEP.** The local run's status line names missing
+art on most samples — `NO ART 1: $002380`, `$00208C`, `$0650E4`, `$17D480`,
+`$151C70`, `$1725CC`, `$07E8AC`, `$233630`, `$231520` … — and my first reaction
+was that this wave had broken E3's "zero missing streams". **It has not.**
+[M] the DEPLOYED PRE-W61 build names the SAME addresses at the same points of
+the same script (`$17D480`, `$233630`, `$07E8AC`, `$231520`, `$00235C`,
+`$065134`, `$12D4FC` …), and **not one of them is in the item range
+`$1B8318..$1E4258`.** They are late-stage content past E3's own 3,000-frame
+window: E3 §7.3 said its 0-missing figure was "a statement about the same
+scenario, not about the game", and this is that limit showing up. This wave adds
+no missing stream, and §6's 100.0 % on E3's own scenario is the number that says
+so.
 
 ## 7. EVERY CHECK WAS SEEN TO FAIL — 41 unit mutants, 8 exporter/gate mutants
 
@@ -338,6 +436,83 @@ process afterwards, and only then did the table above have two different rows in
 it. **A control that agrees with the thing it is controlling for is not a
 control**, and this one agreed perfectly.
 
+## 8. COVERAGE — branches and table entries, never frames
+
+* **`$27E812`'s NINE call sites: 2 WIRED, and [M] 1 of the 2 REACHED.**
+  `$275B1A` is behind `tst.w $81308C / bne`, and `$81308C` is `$0001` in this
+  port's own measured state, so the SECOND drop never happens — which is the
+  live semantic recon 59 §2.1 warned an implementer would get wrong. The other
+  seven are the player's own death (`$24A10E`, behind the unported `$249F8A`),
+  the stage-1 boss's four (0 of 111 boss entry points ported) and the two
+  bodies recon 59 §9.1 could not attribute.
+* **`$27E9F8`'s dispatch: 8 of 8 TRANSCRIBED — 4 bodies, 2 REFUSED throws, the
+  free and the `rts`.** [M] 1 of 8 reached in a playing run (kind `$0`), 2 of 8
+  under `--stress` (kinds `$0` and `$8`). The other two ported bodies, kind
+  `$4` (FULL POWER) and kind `$10` (the `$8130BE` counter), are
+  **transcribed-and-unexercised, and by CONSTRUCTION**: no `$27E812` site this
+  port can reach passes `$4` or `$10`. Their unit tests are the only thing that
+  has ever run them.
+* **`$27F746`'s template table: 6 of 6 templates exported, 8 of 8 entries
+  range-checked.** [M] entries [0] and [2] reached.
+* **The ten collect routines: 8 PORTED, 2 REFUSED.** [M] `$252C96` reached in
+  a playing run; `$252E9A` under stress. The four P2 mirrors cannot run in a
+  one-player game and `$252DAC`/`$252E26` need a kind-`$4` drop.
+* **BOTH collect tails and BOTH steppers are EXERCISED**: `$27F54C`/`$27F5F4`
+  in a playing run, `$27F582`/`$27F656` under `--stress` (1,290 at-max
+  collections).
+* **The pool: 10 of 25 slots reachable, and 10 of 10 reached.** 12 of the other
+  15 belong to the refused hyper kinds; 2 to kind `$4`; 1 to `$81717A`'s
+  catch-all, whose only caller (`$27B4A0`) is unported.
+* **The art: 139 of 139 streams EXPORTED; [M] 28 reached in `webgate`'s W61
+  window and 61 under `--stress`.** The gap is the two refused kinds' 43 and the
+  frames of the collected animations a short run does not walk.
+* **Transcribed and unexercised, NAMED:** kind `$4`'s whole body and its
+  210-byte motion; kind `$10`'s body; `$27E98A` (both its callers are unported);
+  the `$81717A` catch-all arm; the FULL-POWER cursor write; and
+  **`$27F624 addi.w #$20,($2,A6)`, which is PROVABLY unreachable rather than
+  merely unmeasured** — both collect tails write `move.b #$0,($e,A6)` and
+  `$27F642 clr.b ($e,A6)` keeps it there, while the only writers of that word
+  (`$27EA96 addq.w #4` masked `$F`) touch the LOW byte. Named, transcribed,
+  and not removed.
+* **NOT transcribed at all, and why:** `$27E88A`, the third allocator — [M]
+  recon 59 found NO caller of either kind in `$230000..$2B0000` and I
+  re-checked it. `docs/knowledge`'s rule is that an absence proof is a listing
+  read, and this is one; writing 136 bytes nothing can call would be worse.
+* **Unit tests 727 -> 766, 0 skipped.** New file `tests/w61items.test.js`
+  (39 tests). `webgate` 13 of 13 -> **14 of 14**.
+
+## 9. WHAT THIS WAVE DID NOT DO
+
+- **Nothing is compared against MAME.** No gate in this repo compares the port's
+  item records against a board frame, and this wave did not build one. I have
+  proved the port allocates from the cartridge's own pools, fills from its own
+  templates, dispatches through its own tables, draws stream addresses the
+  cartridge's own tables contain, and moves the two power cursors the cartridge's
+  own lists bound. **A record with a correct descriptor can still be the wrong
+  record**, and whether the board drops the same item on the same frame is
+  unmeasured.
+- **KINDS `$0C` AND `$14` ARE REFUSED, not ported** (§2), and with them
+  `$2530BE`/`$2530E6`, `$27F8EE`'s refusal spawn, `$27E912`, `$27F6E4` and the
+  `$8171BC` spawn-variant counter.
+- **The `$28Cxxx` SOUNDS are counted, not run** — `$28C5CA`, `$28C9F8`,
+  `$28CA12`, `$28C678` and the beam-reset cue off `$2527BE`. W53 §0 established
+  that family is SOUND; it is deferred whole.
+- **The HUD draws are counted** — `$25349A`/`$2534AC`, `$2533C8`/`$2533D4` and
+  `$2878CC`/`$28795C`, all of which reach `$240DC2`, a text/sprite subsystem no
+  wave has touched. So the set item's icons and the `$8130BE` row are absent
+  even though both counters move.
+- **`$81040B` still has no writer.** [M] recon 59 §9.2's finding holds: its only
+  absolute sites are `$252EA2`, `$252EB6` and `$2534A6`, all reads. Both arms of
+  `$252E9A` are transcribed and the port cannot say which one a real game takes.
+  [M] in the shipped seed `$81040A` and `$81040B` are both `3`, so the
+  already-complete arm is the one that runs.
+- **`$2440E0`, the impact pool A, `$289AF4` and `$2890F2`** are exactly where
+  W52/W53/W54 left them.
+- **`$292902` is still the wall.** Every run in §3 stops there.
+- **Nothing was published by the wave itself.** `tools/publish.mjs` deploys all
+  three games and the deploy is the orchestrator's call.
+- **`games/gradius/` was not touched.**
+
 ---
 
 ## LOG (appended as findings arrive)
@@ -375,11 +550,14 @@ control**, and this one agreed perfectly.
   of ONE row.
 - §5 [M]: **NO RANK WRITE BECAME REACHABLE.** `$81B646`, `$81B65C`, `$81B65E`
   and `$81309E` identical between HEAD and W61 across three inputs.
-- §5 [M]: **BUT `$81B64A` MOVED, 2,136 -> 2,112, AND THE CAUSE IS THE POWER
-  LEVEL** -- `$810408` shortens the BOMB CHAIN's link (recon 59 §5.3), and the
-  hold run's kills/score/chain are identical on both trees, which is what makes
-  it the power word and not a timing shift. It is not a rank word; its consumer
-  `$287682` is a counted note, and the day that ships it becomes a hyper grant.
+- §5 [M]: **BUT `$81B64A` MOVED, 2,136 -> 2,112 -- AND MY FIRST EXPLANATION OF
+  IT WAS WRONG.** I wrote that `$810408` shortened the bomb chain's link (recon
+  59 §5.3) and then cut that write to check: `$81B64A` did NOT move back. A
+  five-way bisection says the mover is **`$25270C`, THE BEAM RESET** -- a
+  power-up wipes the 32-slot segment pool mid-beam and the beam's own damage
+  ledger shifts, while kills/score/chain stay identical. It is not a rank word;
+  its consumer `$287682` is a counted note, and the day that ships it becomes a
+  hyper grant.
 - §5 [M]: **THE RNG MOVED, and it had to** -- the item's init, its bounces and
   both collect tails draw. W53 `$289F62`'s shape one wave on.
 - §6 [M]: 139 streams, 27.7 KiB DEFERRED, **boot 477.7 -> 480.7 KiB**; all 139

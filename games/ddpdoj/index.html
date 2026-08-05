@@ -649,6 +649,14 @@ try {
   statusEl.textContent = '';
   fit();
 
+  // A DEBUGGING HANDLE, and nothing reads it inside the page.  The browser
+  // gates (`.scratch/w61browser.py`, W61) drive the LIVE page and need to read
+  // the port's own RAM -- $8171BA, $810406/$810408, $8127E4/$8127E8 -- because
+  // a screenshot can show that something is on the screen and cannot show that
+  // the power word moved.  Exposing the app costs no behaviour and turns "I saw
+  // a sprite" into a measurement.
+  window.__mixup = app;
+
   // The toggle is wired only AFTER boot, so it cannot be pressed while the
   // canvas has no Demo behind it to resize the backing store.
   rotBtn.addEventListener('click', () => {

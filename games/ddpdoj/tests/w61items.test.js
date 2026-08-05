@@ -41,6 +41,7 @@ import {
   collect25310E, collect253126, beamReset25270C, bcd242AC6, drawByte242B3C,
 } from '../src/items.js';
 import { TYPE5, TYPE5_PORTED } from '../src/type5.js';
+import { SPAWN } from '../src/spawn.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TABLES = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
@@ -91,6 +92,14 @@ test('the six item pools abut EXACTLY and close on $8171BA, the live count', () 
     '$27F6DC addq.w #1,$8171BA -- the live count sits ONE PAST the 25 slots');
   assert.equal(at - ITEM.base, 25 * 0x40);
   assert.equal(POOLS.reduce((n, p) => n + p.slots, 0), ITEM.slots);
+  // AND THE FAMILY'S LOWER NEIGHBOUR CLOSES ON IT TOO, which nothing has
+  // written down: `src/spawn.js`'s DEFQ_DUMMY -- `$2636CA lea $816B2A,A0`, the
+  // record the deferred spawn queue drops into when it is full -- is $50 bytes
+  // ($2634BA addi.w #$50,D2) and $816B2A + $50 == $816B7A EXACTLY. So the
+  // silent-drop record ends where item slot 0 begins, and a wave that widened
+  // either would corrupt the other.
+  assert.equal(SPAWN.DEFQ_DUMMY + SPAWN.DEFQ_STRIDE, ITEM.base,
+    'the deferred spawn queue drop record abuts item slot 0');
 });
 
 test('$27E98A clears the 25 slots AND both counters, and lands on impact pool '
@@ -759,8 +768,9 @@ test('a POWER-UP tears the BEAM down -- $25270C clears all 32 segment slots, '
   assert.equal(ram.u16(0x811ef2), 0);
   assert.equal(ram.u16(0x811f32), 0);
   assert.equal(ram.u16(0x811f48), 0, '($16,A1)');
-  assert.equal(ram.u16(0x8104aa), 0xdffb & 0xff7f | (0xdffb & 0xff00),
-    '$25270C andi.w #$DFFB then $25279A bclr #$7,($1,A2)');
+  assert.equal(ram.u16(0x8104aa), 0xdf7b,
+    '$FFFF andi.w #$DFFB is $DFFB, and $25279A bclr #$7,($1,A2) then clears '
+    + 'bit 7 of the LOW byte -- $DF7B');
   assert.ok([...log.calls.keys()].some((k) => k.startsWith('$2527BE')),
     'and its sound cue is COUNTED');
 });
