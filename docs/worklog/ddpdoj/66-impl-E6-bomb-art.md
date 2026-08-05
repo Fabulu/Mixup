@@ -277,7 +277,10 @@ inside the block, four frames each, from `$249A8C`'s `#$C` seed and `$24A526`'s
 
 Chrome + Python `playwright`, W64/W65's recipe. Two inputs, because
 `$249A5C tst.b ($3f,A6)` forks the arm: **fire TAPPED** (the ordinary bomb) and
-**fire HELD** (the laser bomb). Button 2 is `x`.
+**fire HELD** (the laser bomb). Button 2 is `x`. **Both inputs on the LOCAL
+build AND on the LIVE deployed one** (`https://gbtman.pages.dev/games/ddpdoj/`,
+build `20260805164603`) -- E3 found the deployed build showing no beam while the
+same code drew one locally, so the deployed run is the one that counts.
 
 ### 7.1 THE ORDINARY BOMB
 
@@ -314,6 +317,25 @@ a braided cream-and-brown column about 60 px wide, with the ship sitting inside
 a glowing oval at the bottom of it and a mass of orange fire boiling out of its
 head two thirds of the way up the screen. That is the four heads and
 twenty-seven live segments of §4, drawn.
+
+### 7.2b THE LIVE DEPLOYED BUILD, `20260805164603` -- and it AGREES
+
+```
+[M] TAP  BOOTED lf 2259  spr 14/14  dl 78 drawn 78   BOMB3+3.5s bombDraws 174
+[M] HOLD BOOTED lf 2267  spr 14/14  dl 79 drawn 79   FINAL      bombDraws 9,818
+[M] rank 53 / 0 / 0 / 0 / 0 on every sample of both runs
+[M] PAGE ERRORS []  on BOTH -- no throw, no console error, 60.0-60.1 Hz
+```
+
+**[M] On the live page the ordinary bomb's second detonation is a wall of
+overlapping yellow-white fireballs covering the whole emplacement at the top of
+the playfield, with one blue enemy still visible inside it**, and the laser
+bomb is the same braided column §7.2 describes, live. `bombDraws 174` on the
+tapped run is W64 §12.1's own figure to the record, now with pictures behind
+every one of them.
+
+Screenshots: `.scratch/e6live-tap-*.png`, `.scratch/e6live-hold-*.png` (live)
+and `.scratch/e6local-tap-*.png`, `.scratch/e6local-hold2-*.png` (local).
 
 ### 7.3 **E5a's CHECK, BUILT FOR THE BOMB SHARD** — and it can only pass for one reason
 
@@ -425,3 +447,31 @@ W47 §4.1's trap, avoided the way every stage since has avoided it.
   checked by PROCESS and by PORT.
 - §8 [M]: gate ALL GREEN 67/0/0; 922 unit tests; webgate 17/17; bundlegate
   100.0000 % unmoved; `PUBLISH_VERBATIM` still 5.
+- §7.2b [M]: **THE LIVE DEPLOYED BUILD `20260805164603` AGREES.** Both inputs,
+  `spr 14/14`, `drawn == dl`, `rank 53/0/0/0/0`, `PAGE ERRORS []`,
+  `bombDraws 174` tapped and 9,818 held.
+
+## 10. ONE PARAGRAPH
+
+**The owner can see the bomb.** W64 and W65 put 174 and 1,179 display-list
+records on the screen a bomb at a time and the renderer skipped every one of
+them, because bucket 13 had no sprite shard. This wave derives the art from the
+cartridge rather than from a run -- the three phase scripts each template's own
+`($1E,A6)` long names, the laser bomb's whole `$256662..$256986` data block,
+pool E's other templates, the ship's bit-7 aura and enemy type `$8A`'s pair --
+**226 streams against the 91 a run could see missing**, and ships 218 of them as
+a deferred shard 13 for **+517 B of boot and no new ROM window at all**. The
+over-derivation is what paid: the first browser run showed the laser bomb as a
+flame ring with nothing above it, because **W65's forty-one beam segments had
+never emitted a record** -- three `jsr $23FF42` sites transcribed as a bare
+counter, invisible to 921 unit tests and 67 gate stages for exactly one reason,
+that a record with no picture and a record that was never written look identical
+on a screen. Fixing it took bucket 13 from 48 distinct streams to 109 and the
+harvest already held all of them. Two other things this port had never had are
+in here as well: `$276756 tst.w $811F72` makes an ENEMY animate while a bomb is
+up, and the family that begins where W58's own `$12C7B0` chain ends is eight
+frames, not one. **Hold Z on `https://gbtman.pages.dev/games/ddpdoj/` until the
+beam is up, press X, and watch a braided column of light run from the ship's
+nose to the top of the screen with the emplacement burning at its head.**
+
+status: **DONE**

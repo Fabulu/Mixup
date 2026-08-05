@@ -128,9 +128,21 @@ number for those is port-vs-listing.
   `$400` hit bit has exactly two setters" is STALE**: `$24580E` and `$2458E2`
   are a third and fourth, so a laser-bomb kill runs `score.js`'s SECOND chain
   machine and the score goes UP 23 % where the ordinary bomb takes it down.
-  **The beam has no picture** -- three named missing sprite streams. Boot
-  +7,495 B, most of it twenty new `$241812` speed levels that `$28A252`
+  Boot +7,495 B, most of it twenty new `$241812` speed levels that `$28A252`
   needs. See `docs/worklog/ddpdoj/65`
+- **AND BOTH OF THEM ARE NOW VISIBLE (W66).** Sprite shard 13 harvests 218
+  streams -- `$255E3E`'s three phase scripts (16), the laser bomb's whole
+  `$256662..$256986` data block (168), pool E's `$28A464` templates, the ship's
+  bit-7 aura `$2556BA` and enemy type `$8A`'s pair -- **derived from the
+  cartridge, 226 against the 91 a run could see missing**, for +517 B of boot
+  and NO NEW ROM WINDOW. [M] on build `20260805164603`: the ordinary bomb is a
+  screen-filling blast ring and the laser bomb a braided column from the ship's
+  nose to the top of the playfield. **drawn% 100.0 %, ZERO missing streams, on
+  five scenarios.** And it found a defect no gate here could have: **W65's
+  forty-one beam segments never emitted a display-list record** -- three
+  `jsr $23FF42` sites transcribed as a bare counter, invisible because bucket 13
+  had no shard, so a record that was never written and a record with no picture
+  looked identical. See `docs/worklog/ddpdoj/66`
 - the ship, its two option pods, two exhaust records and three ground shadows
   are simulated; **everything else in the picture is still a 161-frame capture**
   that loops (the CAPTURE LEDGER in `games/ddpdoj/PLAN-no-recordings.md` tracks
