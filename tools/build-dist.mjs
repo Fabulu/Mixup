@@ -175,6 +175,26 @@ const PUBLISH_VERBATIM = new Map([
    'enemy type $31\'s 70-frame animation ($26990E), same reasoning. The '
    + 'largest of the three at 118.9 KiB, and DEFERRED -- [M] the port first '
    + 'asks for it 103 s into stage 1.'],
+  // ------------------------------------------------------------- WAVE 54
+  // A FOURTH DaiOuJou COLOUR SHARD, AND IT IS THE SAME PROPERTY AGAIN.
+  //
+  // W54 ported the ENEMY DEATH EXPLOSION (pool B, `$289004`/`$288E4E`) and
+  // harvested the 269 sprite streams its 68 script entries name, out of
+  // `$221520`/`$221630`. [M] those 269 lie in one long consecutive run of
+  // `cave_a04402w064.u8` -- a DIFFERENT colour ROM from W47's three -- so the
+  // packed shard is a single verbatim slice and this guard blocked the build.
+  // It was right to, and the W47 block above is the whole analysis: the
+  // property tested is PACKING ORDER, not provenance, and the answer that
+  // would retire all four lines is decoding the colour half, which is a wave.
+  //
+  // THE LIST IS FIVE ENTRIES NOW, WAS FOUR, AND THAT IS THE OWNER'S CALL TO
+  // REVERSE -- flagged rather than buried, exactly as W47 flagged one to four.
+  ['games/ddpdoj/assets/spr/col.shard9.u16.gz',
+   'THE ENEMY DEATH EXPLOSION\'s art (pool B\'s 68 script entries at '
+   + '$221520/$221630, 269 streams, 218.4 KiB). Fetched by src/web/assets.js '
+   + 'SprShards and DEFERRED; without it every enemy death is a named skip and '
+   + 'the page stops on the first kill. Verbatim only because those 269 streams '
+   + 'are consecutive in cave_a04402w064.u8 -- see the W47 block above.'],
 ]);
 
 const substituted = [];
