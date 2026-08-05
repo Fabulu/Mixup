@@ -347,14 +347,23 @@ export function makeType5(rom) {
         // been a counted note since wave 8.  It ships in the SAME COMMIT as
         // its allocator (`src/bomb.js fireBomb2498E2`, the `$249A4A move.w
         // D2,(A1)` that makes `$811F72` negative) and as its teardown
-        // (`$2564F0`, which wipes all 45 records), for W33 §4's reason -- and
+        // (`$2564F0`, which wipes all 45 records), for W33 ï¿½4's reason -- and
         // here the reason is sharper than usual, because the record is not
         // just a pool slot: while it is live it turns on `$24560A`'s damage,
         // `$286876`'s chain machine, the explosion pool's interlock and four
         // more gates.  A driver-less allocation would leave every one of them
         // on for the rest of the stage.
         case TYPE5.bombDriver:                          // $28B5F8 -> $255DD8
-          ctx.bombDrove = bombDriver255DD8(ram, rom, ctx);
+          // `no-bomb-driver` is W64's control and it is HEAD's behaviour: the
+          // call is COUNTED and not run, exactly as it was from wave 8 to
+          // wave 63.  It has to live here for the same reason
+          // `no-option-object` does -- the dispatch is a `switch` over the
+          // ROM's own list and there is no seam outside this file.
+          if (SHIP_MUTATE.value === 'no-bomb-driver') {
+            ctx.unportedLog.note(c, 'MUTATION no-bomb-driver');
+          } else {
+            ctx.bombDrove = bombDriver255DD8(ram, rom, ctx);
+          }
           break;
         case ROM.shipDrawAltP1:                         // $24A458
           drawShipAlt(ram, RAM.player1);

@@ -1292,6 +1292,32 @@ def _cmd_check(argv: list[str]) -> int:
                                     if _node(HUDGATE, "--break", m)[0] == "FAIL"
                                     else ("FAIL", f"the scenario is GREEN {w} "
                                                   "-- it is not measuring this")))
+    # ==================== WAVE 64 (B2) -- THE BOMB =========================
+    # `39-OWNER-visible-play-before-sound.md`'s test of done is "load the page,
+    # fly, shoot, laser, BOMB, and kill a visible enemy". No gate this project
+    # owns had ever pressed Button 2: `src/player.js` threw on it, for BOTH
+    # arms of `$249814`, from wave 4 to wave 63. W64 ports the bomb arm --
+    # `$2498E2`, type-5 call #7 `$255DD8`, the ninth block of `$244D62`
+    # (`$24560A`) and the teardown `$2564F0` that resets the chain and drains
+    # the 45-record pool.
+    #
+    # FOUR controls, and see the gate's own header for what each one reddens:
+    #   no-driver     call #7 counted and not run, i.e. HEAD -- 11 red
+    #   no-press      Button 2 never pressed -- 12 red
+    #   rank-poke     +1 into each of the FIVE rank words -- all 5 RANK rows
+    #   frozen-stock  `($24,A6)` restored every step -- 9 red
+    BOMBGATE = TOOLS.parent / "tools" / "w64bombgate.mjs"
+    stage("THE BOMB: $2498E2, $255DD8, $24560A and $2564F0",
+          lambda: _node(BOMBGATE))
+    for _m, _why in (("no-driver", "without type-5 call #7 (i.e. HEAD)"),
+                     ("no-press", "with Button 2 never pressed"),
+                     ("rank-poke", "with a rank word poked"),
+                     ("frozen-stock", "with the bomb stock frozen")):
+        stage(f"THE BOMB RED [{_m}]",
+              lambda m=_m, w=_why: (("PASS", f"went red {w}, as it must")
+                                    if _node(BOMBGATE, "--break", m)[0] == "FAIL"
+                                    else ("FAIL", f"the scenario is GREEN {w} "
+                                                  "-- it is not measuring this")))
     if not quick:
         stage("fly-around: port vs board, 0 divergent frames",
               lambda: sub(__file__, "flyaround"))

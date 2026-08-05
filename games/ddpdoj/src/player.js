@@ -133,7 +133,33 @@ export function updatePlayer(ram, slot, slotIndex, ctx) {
   } else {
     ram.setU8(rec + P.dirLatch, ram.u8(rec + 0x3b)); // $24953C
     if (ram.bclr8(rec + P.state, 4)) {               // $249542 bclr #4,(A6)/bne
-      unreached(ROM.playerBit4, 'state bit 4 path ($249F8A)');
+      // **WAVE 64 MADE THIS REACHABLE AND IT IS THE BIGGEST THING THE BOMB
+      // OPENS.**  `$249524 tst.b ($3e,A6)` sends an INVULNERABLE player to
+      // `$24952A bclr #4,(A6)`, which clears the same bit without branching --
+      // so while the invulnerability holds, this arm is dead.  `[M]` the
+      // shipped seed has `($3e,A6) = $FF`, and `$249530 cmpi.b #$FF / beq`
+      // means $FF NEVER counts down, so from wave 4 to wave 63 nothing in this
+      // port could clear it and this line could not fire.
+      //
+      // `$2564BA clr.b ($3e,A0)` -- **the BOMB's cooldown expiry**, 40 frames
+      // after the bomb's script ends -- is the FIRST instruction this port has
+      // ever run that clears it.  So a bomb makes the ship MORTAL, and bit 4
+      // is what the collision pass sets when it is hit.
+      //
+      // `$249F8A` is 212 instructions and twenty callees, and among them are
+      // `$24A00C lsr.w #$2,$81B646` (**death QUARTERS the rank power word**,
+      // recon 38 §3.2), `$24A01C clr.w $81B65C` and `$249FDA jsr $287682` --
+      // i.e. it is rank-critical and item-granting, which is exactly the
+      // ground `20-OWNER-scoring-must-be-exact.md` says not to guess on.
+      unreached(ROM.playerBit4, 'the player was HIT: $249542 bclr #$4,(A6) '
+        + 'found the bit set, so control goes to $249F8A -- the hit/death '
+        + 'path, 212 instructions, which QUARTERS $81B646 at $24A00C, clears '
+        + 'the hyper stock at $24A01C and calls the item machine $287682. '
+        + 'W64 (B2) is what made this reachable: $2564BA, the BOMB\'s cooldown '
+        + 'expiry, is the only thing in this port that clears the seed\'s '
+        + '($3e,A6) = $FF, and while that held $249524\'s arm cleared bit 4 '
+        + 'every frame without branching. Bomb, then get hit, and you are '
+        + 'here');
     }
   }
   // $24954A andi.w #$ffdf,(A6): clears bit 5 of the WORD (i.e. of $8103E7).

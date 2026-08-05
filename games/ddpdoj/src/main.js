@@ -169,6 +169,9 @@ export class Game {
     this.itemCollects = new Map();   // WAVE 61, see #ctx()'s itemCollect
     this.stageEndEvents = [];        // WAVE 62, see #ctx()'s bossEvent
     this.hudEvents = new Map();      // WAVE 63, see #ctx()'s hudEvent
+    this.bombEvents = new Map();     // WAVE 64, see #ctx()'s bombEvent
+    this.bombMarks = [];
+    this.bombHits = 0;
     this.hudMarks = [];
     this.kills = { n: 0, score: 0, byValue: new Map() };  // WAVE 34, killEvent
     this.shotSpawns = new Map();
@@ -348,6 +351,19 @@ export class Game {
         if (kind === 'meter0' || kind === 'extend') {
           this.hudMarks.push([kind, who, this.logicFrame, v]);
         }
+      },
+      // WAVE 64 (B2).  What the BOMB does that RAM does not keep.  `press` is
+      // every press of Button 2 with its OUTCOME ('fired', 'fired+partner' or
+      // one of the three refusals), `damage` the number of pool slots
+      // `$24560A` hit on a frame, `phase` the script phase `$255E3E` moved
+      // into, `teardown` the frame `$2564F0` ran and WHICH chains it reset,
+      // and `cooldown-expired` `$2564BA`.  A count, because "the record is 0"
+      // cannot distinguish a bomb that finished from one that never fired.
+      bombEvent: (kind, v) => {
+        const k = `${kind}:${v}`;
+        this.bombEvents.set(k, (this.bombEvents.get(k) ?? 0) + 1);
+        if (kind !== 'damage') this.bombMarks.push([kind, this.logicFrame, v]);
+        if (kind === 'damage') this.bombHits += v;
       },
       itemSink: (t) => { this.itemFrame = t; },
       itemSpawn: (kind, site) => {
