@@ -337,7 +337,13 @@ path is demonstrably indifferent to it, over a window in which 130 enemies died.
 
 Chrome + Python `playwright`, the recipe W42 established. Nothing downloaded.
 **Both servers were killed afterwards and [M] zero `python -m http.server` and
-zero `srv53` node processes remain** — checked with `Get-CimInstance
+zero `srv53` node processes remain — AND ONE ORPHAN THAT WAS NOT MINE.** The
+final sweep found `python serve.py 8125 404` still listening, started at 22:45
+by **`pgm.py check`'s own background-shard `--break shard-404` stage**, which had
+outlived its parent run. Killed with the rest. The eight orphans of 4 Aug that
+locked `dist/` are the reason this sweep exists; this one says the gate leaks
+them too, and that the sweep has to be by process, not by "did I start it".**
+[M] zero listeners on 8125, 8753 or 8754 afterwards.** — checked with `Get-CimInstance
 Win32_Process`, not with `ps`, which does not see them on this machine and would
 have reported the orphan as gone while it was still holding the port. (It did:
 the first kill attempt "succeeded" and the server was still serving.)
