@@ -278,4 +278,66 @@ description disagree by 731 frames**, and at the seed its description names the
 gate is red on seven shot columns with the hit path never taken. Recorded here
 as a measurement; `src/` belongs to T1 this wave and I have not touched it.
 
+---
+
+## 7. THE FIRST WHOLE-STAGE LADDER, AND WHAT A FAITHFUL SEED COSTS
+
+```
+[M] pgm.py ckpt stage1-sweep --verify
+    LADDER 72 of 72 rungs taken in 1196 s (16.4 logic frames per wall second)
+    rungs lf2000..19,500 every 250 frames, 0 missing
+    VERIFY lf2000 sha256=3d521775c461de26... IDENTICAL to wave 4's dumper
+```
+
+Twenty minutes of emulator, once, for a ladder that spans the whole of stage 1.
+The ladder is 72 x 135,168 B = **9.3 MB**, all under gitignored `out/`.
+
+### WHAT A FAITHFUL SEED COSTS HERE — the answer, with its evidence
+
+`seedcmp` over all 71 segments of that ladder:
+
+```
+[M] SEGMENTS 71 -- 0 SEEDBAD
+```
+
+**`SEEDBAD` is the seed-fidelity test and it is not a soft one.** `portdiff.mjs`
+builds the port from the checkpoint and compares its state vector against the
+board's row for that same logic frame BEFORE stepping anything; any compared
+column that already disagrees is `SEEDBAD` and the segment is not evidence about
+the port. Zero, at **72 distinct board states spanning lf2000 to lf19,500** — the
+last of them deep inside the boss.
+
+So, concretely, on this game a faithful seed costs:
+
+| the brief asked about | answer |
+|---|---|
+| RNG state | **free** — `$2433AE` is not a generator, its entire state is the word at `$803916` (`src/rng.js`), which is main RAM |
+| deferred queues | **free** — `$240F08`'s deferred write list lives at `CAM.deferHead`/`deferCursor`, main RAM |
+| pool cursors | **free** — the object table is `$80E240`, main RAM |
+| the scheduler's channel records | **free** — main RAM |
+| `$80390C`-style semaphores | **free** — `$80390C` is main RAM and is printed on every `CKPT` line so that this is a number, not a claim |
+| the `$803940` vblank ARM semaphore | **one line of code, already there.** It is the ONE byte a naive dump gets wrong: `frame.lua` reads RAM from inside the arm's own write tap, so the dump holds the PRE-arm `0` (`sem=00` on every CKPT line, measured). `src/main.js` restores it to 1 and says why. That is the whole of the "what is NOT captured" list for the compared set |
+| `$900000`, the BG tilemap ring | **4,096 B, now captured** — genuinely not main RAM. And **measured not to matter** to any compared column (`--no-bg` is green). It matters to the picture |
+| the IGS027A latch at `$500000` | **not captured, and named.** `src/protsim.js` is 32 write-then-read slots; nothing in this corpus carries a slot across a frame boundary. Only the listing can prove that, and this file does not claim it |
+| the ICS2115 / Z80 sound state | **not captured, and named.** No ported subsystem reads it |
+| MAME's own scheduler / DRC state | **not captured, and out of scope.** A checkpoint reseeds the PORT; it cannot resume the EMULATOR. `PROBE_SAVEAT`/`PROBE_LOAD` are the other thing, and they already existed (wave 1) |
+
+**That is the answer to "is a savestate the right mechanism": no, and it was
+already not the mechanism.** A MAME savestate resumes MAME. What makes a
+comparison cheap here is a dump the PORT can start from, and because
+`src/ram.js` kept the board's layout, that dump is a memcpy.
+
+### And the auto-shot ladder's own verdict, which is a result
+
+```
+[M] SEGMENTS 71: 0 green, 0 red, 71 BLOCKED, 0 seedbad
+    69 segments BLOCKED at $2497AA  (lf2000..19,000)
+     2 segments BLOCKED at $2943B0  (lf19,000 and lf19,250)
+```
+
+Every segment blocks on its first frame — Button 3, §4. The two deepest blocks
+on a DIFFERENT address are worth keeping: from lf19,000 the port reaches
+**`$2943B0`** before the Button-3 gate, which is the boss's own unported code,
+and no wave had put the port there.
+
 (Findings below are appended as they arrive.)
