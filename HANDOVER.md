@@ -102,6 +102,19 @@ number for those is port-vs-listing.
   exits are DECLARED DEVIATIONS** -- see `docs/worklog/ddpdoj/62` SS2 and
   `src/stageend.js`'s header; and the boss itself is still recon 48's three
   waves, so the only way stage 1 ends is the timeout
+- **THE BOMB WORKS (W64).** Button 2 on the LIVE page: `$2498E2`, type-5 call
+  #7 `$255DD8`, `$24560A` (the ninth block of `$244D62`, a throw from W51 to
+  W63) and the teardown `$2564F0`. [M] on build `20260805122418`: the stock
+  falls 3 -> 2 -> 1 -> 0, a `$8100` record lives ~113 frames in `$811F72`,
+  549 enemy-slot hits over three bombs, the chain the bomb was thrown into is
+  RESET at the teardown, all 45 records drain, no rank word moves. **TWO THINGS
+  ARE DECLARED BROKEN, not faked:** bombing WHILE HOLDING THE BEAM throws at
+  `$249A80` (it is a different weapon -- `$255FE2` + `$2456A6`, ~630
+  instructions, wave B3), and `$2564BA` is the first thing this port has ever
+  run that clears the seed's `$FF` invulnerability, which makes `$249F8A` --
+  the HIT/DEATH path, and it QUARTERS `$81B646` -- reachable in a headless
+  harness. The page pins `$FF` (`src/web/app.js:699`), so a player does not
+  meet it; the day that poke goes, it arrives. See `docs/worklog/ddpdoj/64`
 - the ship, its two option pods, two exhaust records and three ground shadows
   are simulated; **everything else in the picture is still a 161-frame capture**
   that loops (the CAPTURE LEDGER in `games/ddpdoj/PLAN-no-recordings.md` tracks
