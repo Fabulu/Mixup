@@ -1066,6 +1066,14 @@ SHOT_WINDOWS.extend([
     (0x28A030, 0x000C, "W65: $289FF4's THREE template pointers. Entry 3 reads "
                        "$48E7FFFE -- `movem.l D0-D7/A0-A6,-(A7)`, i.e. "
                        "$289FF4 itself -- so the table is three, not four"),
+    (0x28A464, 0x00A2, "W65: $289FF4's three pool-E templates ($28A464 / "
+                       "$28A47A / $28A490, 22 bytes each -- $28A1DA reads "
+                       "+$00..+$15) and the three 32-byte descriptor lists "
+                       "their +$10 longs name ($28A4A6 / $28A4C6 / $28A4E6). "
+                       "The lists are EIGHT longwords because the templates' "
+                       "+$0C long puts $001C on the cursor and $28A162 steps "
+                       "it -4; the far end $28A506 is the NEXT family's "
+                       "template, whose own list pointer is $28A51C"),
     (0x24D282, 0x003C, "W65: the OPTION PODS' knockback tables. $24D282 is "
                        "$24D200's settle pair (indices 8/4/0, `movem.w` of TWO "
                        "words each) and $24D28E is $24D188's 20-word ramp "
@@ -2000,6 +2008,30 @@ def check_beam_bomb_extents(d: bytes) -> None:
             f"$249AD8/$249ADE now seed ${u16(d, 0x249ADA):04X}/"
             f"${u16(d, 0x249AE0):04X} into ($38,A1)/($56,A1); the two pod "
             f"tables' index spaces come from those two immediates.")
+    # 12. `$289FF4`'s THREE pool-E templates and their three lists, all six
+    #     extents derived: 22 bytes per template (the fields $28A1DA reads),
+    #     eight longwords per list (the cursor's `$001C` seed and $28A162's
+    #     `-4`), and the three list POINTERS are the templates' own +$10 longs.
+    for i in range(3):
+        t = 0x28A464 + i * 22
+        if u32(d, 0x28A030 + i * 4) != t:
+            raise SystemExit(
+                f"$28A030[{i}] is ${u32(d, 0x28A030 + i * 4):08X} and must be "
+                f"${t:06X} -- the templates are 22 bytes apart.")
+        if u32(d, t + 0x10) != 0x28A4A6 + i * 32:
+            raise SystemExit(
+                f"template ${t:06X}'s list pointer is ${u32(d, t + 0x10):08X}, "
+                f"not ${0x28A4A6 + i * 32:06X}.")
+        if u32(d, t + 0x0C) & 0xFFFF != 0x001C:
+            raise SystemExit(
+                f"template ${t:06X}'s cursor seed is "
+                f"${u32(d, t + 0x0C) & 0xFFFF:04X} and must be $001C -- the "
+                f"lists' EIGHT longwords are derived from it.")
+    if u32(d, 0x28A506 + 0x10) != 0x28A51C:
+        raise SystemExit(
+            f"$28A506 is not the next family's template (its +$10 reads "
+            f"${u32(d, 0x28A506 + 0x10):08X}, not $0028A51C), so the "
+            f"$28A464 window's far end is no longer pinned.")
     if u16(d, 0x24D2BE) != 0x7000:
         raise SystemExit(
             f"$24D2BE is ${u16(d, 0x24D2BE):04X} and must be $7000 "
