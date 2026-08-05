@@ -1,6 +1,7 @@
 # 60 — IMPL: I1, `$2459D0` — THE PLAYER'S OWN BOX, the thing items wait on
 
-status: **IN PROGRESS**
+status: **DONE** — see §4 (the measurement), §5 (collection is reachable),
+§6 (what still blocks items) and §7 (26 mutants, 26 red).
 
 started: 2026-08-05
 role: IMPLEMENTER (SOLE writer to `games/ddpdoj/`; `games/gradius/` NOT TOUCHED)
@@ -323,6 +324,79 @@ as a deferral note, and the `$28B706` arms must now report `boxRun` with no
 
 ---
 
+## 8. THE GATE, AND THE PAGE
+
+```
+python games/ddpdoj/tools/oracle/pgm.py check
+VERDICT: ALL GREEN -- 51 passed, 0 failed, 0 SKIPPED
+node --test games/ddpdoj/tests/     727 pass, 0 fail, 0 SKIPPED   (was 706)
+```
+
+**Nothing was disabled, skipped, narrowed or loosened.** No compared column set,
+window or frame count moved and no stage was added. The stages this wave could
+plausibly have broken all pass, and two are worth naming because the player's
+box is now live inside them:
+
+* **`fly-around: port vs board, 0 divergent frames`** — the 2,200-frame
+  port-vs-board window, with `$2459D0` now running on EVERY frame of it (once
+  through `$244D62`, once through `$244D40`). It stays 0 divergent.
+* **`midboss DEATH` and its `RED [no-kill]` control**, whose enemies are the
+  ones block 4 can now ram.
+
+### 8.1 THE BROWSER, LOCAL AND DEPLOYED
+
+E3 found the deployed build showing no beam where the same code drew one
+locally, so both were driven, with the same script: 10 s boot, 15 s idle, then
+**45 s of Button 1 HELD with the ship sweeping left and right** — the owner's
+own script from `docs/knowledge/09`, and the input that makes the ship RAM
+things, which is block 4. Chrome via `playwright`; the local server was killed
+afterwards (`.scratch/w60browser.py`).
+
+| | LOCAL (`python -m http.server`) | **DEPLOYED** `https://gbtman.pages.dev/games/ddpdoj/` |
+|---|---|---|
+| boot | lf 2550, clk 162 | lf 2548, clk 162 |
+| after 45 s of held fire + sweeping | **lf 6190, clk 361** | **lf 6160, clk 359** |
+| `#err` panel | **EMPTY** | **EMPTY** |
+| page errors | one 404, `/favicon.ico` | **NONE** |
+| shards | 8/8 | 8/8 |
+
+Build `20260805053512`, confirmed on three consecutive polls. The two runs agree
+to the frame-pacing noise, so this is not an E3-class local/deployed gap. The
+screenshots show the ship firing at the bottom of the road with enemy bullets on
+screen and tanks coming apart — i.e. **the frames on which `$2459D0` is
+flagging the player are ordinary playing frames, and the build does not stop.**
+
+---
+
+## 9. WHAT I COULD NOT DETERMINE
+
+* **Whether the board flags the same bullet on the same frame.** Nothing in this
+  wave is compared against the cartridge. No scenario in this repo records
+  `$80FA7E`, `$8103E6` bit 4 or the bullet pool's type-word bytes, and I did not
+  build one. `fly-around` is 0-divergent with `$2459D0` live, but its compared
+  columns do not include any of the three words this wave writes, so that is
+  **evidence of no regression, not evidence of agreement.** The obvious next
+  measurement is one write tap on `$245A44` on both sides.
+* **What the board does when the invulnerability expires.** §3: the port's
+  `($3e,A4)` is `$FF` forever because nothing writes it, so `$249F8A` is
+  reachable in the ROM and unreached in the port. I did not port `$249F8A`
+  (it is `$24A0E0`'s whole death/respawn machine, and its `$24A10E jsr $27E812`
+  is item work), and I did not clamp anything to keep it away — it is the same
+  loud named throw `src/player.js` has carried since wave 4.
+* **The frame position of `$244D62` relative to type 10.** Recon 59 §9.4 and
+  `38-recon` §7.1 both leave the object slot order unresolved, and this wave
+  did not settle it. It does not bite yet — no rank write became reachable —
+  but it will the moment `$2608D2` ships.
+* **`$8171BC`.** Recon 59 §1 calls it a separate spawn-variant counter written
+  by fill B (`$27F6E4`). `$244D62` never reads it, so I neither ported nor
+  modelled it; I only checked that it sits between the item count and impact
+  pool A's base, which is what makes the 25-slot geometry close.
+* **Whether the two extra kills in §4.1 are the board's.** They are a
+  consequence of `$244ED2`, which is transcribed; whether the board's ram lands
+  on the same enemy on the same frame is the first bullet above.
+
+---
+
 ## LOG (appended as findings arrived)
 
 - opened. Read `59-recon-items`, `34-impl-damage`, `51-impl-laser-damage`,
@@ -348,3 +422,16 @@ as a deferral note, and the `$28B706` arms must now report `boxRun` with no
 - **[M] A PORT NOTE FIXED**, recon 59 §0 row 4 reproduced independently:
   `$27F92A` is impact pool A's reserved ten at `$817DC6`
   (`$8171BE + 70*$2C`), not the `$816B7A` item family.
+- **[M] 26 MUTANTS, 26 RED, 0 SURVIVORS** — and six survived the first pass,
+  all six defective checks of mine (§7). One of them, M13, was a check that
+  seeded its own answer through the very constant it was testing: the shape
+  `docs/knowledge/03` names and that this project has shipped twice before.
+- **[M] GATE ALL GREEN — 51 passed, 0 failed, 0 SKIPPED**; unit tests
+  706 -> 727. Nothing disabled, skipped, narrowed or loosened.
+- **[M] DRIVEN IN CHROME, LOCAL AND DEPLOYED**, 45 s of held fire with the ship
+  sweeping: `#err` EMPTY on both, lf 6190/clk 361 local against lf 6160/clk 359
+  on build `20260805053512`. No E3-class local/deployed gap.
+- `games/gradius/` NOT TOUCHED (`git diff --name-only` over both W60 commits
+  returns no `games/gradius/` path).
+
+status: **DONE**
