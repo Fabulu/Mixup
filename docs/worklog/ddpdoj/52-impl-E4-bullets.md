@@ -1,6 +1,6 @@
 # 52 — IMPL E4: the player's shots and the enemy bullets, VISIBLE
 
-status: IN PROGRESS
+status: **DONE**
 started: 2026-08-05
 role: IMPLEMENTER. SOLE writer to `games/ddpdoj/`. `games/gradius/` NOT TOUCHED.
 target: `ddpdojblk` VERSION-B. Every address is build B (`$23xxxx`–`$2Axxxx`)
@@ -260,26 +260,45 @@ overrule the schedule.
 
 ### 3.1 Emitted vs drawn vs NAMED-missing, over a run
 
-[M] From the shipped seed, `$810424 = $FF` each step, fire TAPPED every 4 frames,
-through the page's own `portSpriteList` and the page's own map, to the run's
-honest end — a **loud named throw at `$26C1C4` on step 2,204**, which is L3
-§3.2's enemy-layer export frontier and not this wave's:
+Method, once: the shipped seed, `$810424 = $FF` each step, the streams read off
+the live records themselves (`$810572 + $0A` for shots, `$817F8C + $0A` for
+bullets) and checked against the shipped bundle's own map. **ONE WINDOW PER
+COLUMN, said explicitly, because these numbers are only comparable inside a
+window.**
+
+**WINDOW A — 1,200 logic frames, fire TAPPED every 4 frames** (the owner's
+actual input), before and after, both measured:
 
 ```
-                         BEFORE (this tree, W51)      AFTER
-[M] bucket 14 records           25,631                25,631
-[M]   ...distinct streams           20                    20
-[M]   ...with art                    0                    20      <- 0 -> ALL
-[M] bucket 23 records                0                 7,465      <- the sink
-[M] bucket 22 records                0                     0      (§1.2)
-[M] bullet descriptors, distinct   153                    65
-[M]   ...with art                   87                    65      <- 0 MISSING
+                                    BEFORE (W51 tree)      AFTER (this tree)
+[M] bucket 14 records                     21,691                 21,691
+[M] bucket 22 records                          0                      0
+[M] bucket 23 records                          0                  6,655   <- the sink
+[M] shot streams, distinct                    20                     20
+[M]   ...WITH ART                              0                     20   <- 0 -> ALL
+[M] bullet descriptors, distinct              68                     34
+[M]   ...WITH ART                              6                     34   <- 0 MISSING
 ```
 
-The bullet descriptor count FALLING from 153 to 65 is the two ring fixes: 88 of
-the 153 were the port walking off the end of kind 7's and kind 19's animations.
+**WINDOW B — 1,200 frames, NOTHING PRESSED** (bullets only): bucket 23 goes
+**0 → 14,057 records, max 36 per frame**, 34 distinct descriptors, **0 missing**,
+first at lf+40 = +0.7 s.
 
-And over the 300-step no-input window `webgate` pins:
+**WINDOW C — to the run's honest end**, a loud named throw at **`$26C1C4` on step
+2,204** (L3 §3.2's enemy-layer export frontier, not this wave's), fire tapped:
+[M] bucket 14 **39,891** records / bucket 22 **0** / bucket 23 **26,998** (max 65
+per frame); 20 shot streams and 65 bullet descriptors, **all 85 with art, 0
+NAMED-missing**.
+
+**THE BULLET DESCRIPTOR COUNT FALLING — 68 → 34 in window A — IS THE TWO RING
+FIXES.** Half the descriptors the port used to produce were addresses no ROM
+table names: `$1C1E5C`/`$1C1E80`/`$1C1EA4` past kind 19's wrap, and 66 more from
+`$1C0158` to `$1C0B9C` past kind 7's. A wave that only shipped art would have
+had to harvest those too, and they are not pictures.
+
+And over the 300-step no-input window `webgate` pins (the totals there are taken
+from the HELD list, i.e. one frame behind `perBucketRecords` — the same
+measurement one frame apart, and both are asserted):
 
 ```
 [M] 18,893 display-list records (was 16,457), 20..82 per frame (was 20..69)
@@ -291,16 +310,59 @@ And over the 300-step no-input window `webgate` pins:
 ### 3.2 Coverage — streams, records and table entries, never frames
 
 * **shot art: 71 of 71 harvested streams are exported and resolvable; [M] 20 of
-  the 71 are REACHED** in a 1,200-frame tapped window from this seed (one
-  formation, one power level, and some chains need a hit). 20 of 20 draw.
-* **bullet art: 306 of 306 harvested streams exported; [M] 32 of the 306 are
-  REACHED** in the same window, 65 over the longer 2,204-step one. All draw.
+  the 71 are REACHED** in window A (one formation, one power level, and some
+  chains need a hit). 20 of 20 draw.
+* **bullet art: 306 of 306 harvested streams exported; [M] 34 of the 306 are
+  REACHED** in window A, 65 in window C. All draw.
 * **`$281956`'s 39 kinds:** unchanged by this wave — the sink is downstream of
   the dispatch. The 32 unported behaviour INITIALISERS still throw by address.
 * **the four bullet ranges: 4 of 4 close exactly on their stated end.**
 * **the four shot template tables: 4 of 4 walked, 20 of 20 templates admitted;
   4 of 4 laser arms REFUSED and asserted to stay refused.**
 * **unit tests 618 → 635, 0 skipped.**
+
+### 3.3 THE GATE, ON THE FINAL TREE
+
+```
+python games/ddpdoj/tools/oracle/pgm.py check
+VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED
+```
+
+Unchanged from W32..W51's 49/0/0. **Nothing was disabled, skipped, narrowed or
+loosened**, and every stage line was read rather than only the verdict. The ones
+this wave could plausibly have broken, all green:
+
+- `bullet mover: per-frame pool drive vs the board` and its 3 REDs — the gate
+  that owns `runMover`. **It passes no `spriteOut`**, and its compared set is
+  alive / kind / speed (+$1A) / dir (+$1B) / posA / posB, so it CANNOT see this
+  wave's work. Its green says the emit has no bullet-state side effect; it is
+  **not** evidence that the two ring fixes are right, and it must not be quoted
+  as such. What settles those is the listing (§1.1) and M8/M9/M10;
+- `display list: the staged-bytes replay gate (1,901 frames)` and its 12 REDs —
+  the port's own `$800000` build, still byte-exact against the board. It
+  substitutes the board's staged bytes for `PRODUCED_BUCKETS` only, and 22/23
+  are not in that array, so the new writes do not enter it;
+- `assets/integrity` and its four REDs, **including `[rom-byte]`, the ROM-leak
+  guard** — two new shard files went through it;
+- `background shard gate: published tiles past px 160 (+ RED)` — the stage that
+  fresh-exports, i.e. the one the exporter rewrite had to survive;
+- `pixel gate` (100.0000 %) and its 9 REDs; `demo gate` and its 4.
+
+Also green on the final tree, and not part of `pgm.py check`:
+
+```
+node --test games/ddpdoj/tests/     635 pass, 0 fail, 0 SKIPPED   (was 618)
+node tools/webgate.mjs              9 of 9 PASS                   (was 7 of 7)
+node tools/bundlegate.mjs           15955968/15955968 = 100.0000%  <- UNMOVED
+node tools/build-dist.mjs           clean, 4 deliberate exception(s)
+BUNDLE                              473.2 KiB before the first frame (was 473.7)
+```
+
+**A FIRST GATE RUN WAS THROWN AWAY, for W47's own reason.** It came back ALL
+GREEN, but the exporter red-validations and the browser session had re-exported
+`assets/` while it ran, and `export-web.mjs` removes `gfx/` and `spr/` before
+rewriting them. The 49/0/0 above is a clean re-run with nothing else touching
+`assets/`.
 
 ---
 
@@ -373,7 +435,35 @@ before it**. Category (a) of the brief's three — a defective check — and it 
 named here because the next person to move that constant deserves to know the
 export will not stop them.
 
-### 4.4 `bundlegate` and the ROM-leak guard, both untouched
+### 4.4 THE NEW GATE STAGE, SEEN TO FAIL — and a DEFECTIVE MUTANT worth keeping
+
+W47 §4.1 is this project's own warning: a stage that asks *"is everything the
+shard holds drawn?"* agrees with itself whatever the shard holds. So the W52
+stages assert three ABSOLUTE, PORT-SIDE numbers each — records, distinct images
+and first frame — none of which any bundle can supply. Both were cut and
+re-exported for real:
+
+| cut | what the stage printed |
+|---|---|
+| **both** pod template tables removed | `FAIL: W52 THE PLAYER'S SHOTS -- shard 6 holds 31 streams (expect 71) and the port's list carries 10872 records (expect 22071) over 9 distinct images (expect 20)` |
+| the bullet HIGH range cut at `$1C1E38` | `FAIL: W52 THE ENEMY BULLETS -- shard 7 holds 242 streams (expect 298)` |
+
+**AND THE FIRST ATTEMPT AT THE SHOT CUT SURVIVED, WHICH IS A FACT ABOUT THE
+CARTRIDGE, NOT ABOUT THE CHECK.** Removing **pod 0's** table alone left all
+three numbers at 71 / 22,071 / 20. [M] The reason: pod 0 and pod 1 share every
+one of their five animation pointers (`$24F650`, `$24F654`, `$24F658`,
+`$24F65C`, `$24F660`) and their spawn tables (`$24F5E4`, `$24F5F0`, `$24F5FC`) —
+the two halves of `$24D480` differ only in `tableIdx` and in which slot run they
+scan. So the mutant removed nothing. Recorded as category (b), a defective
+mutant, and the working cut removes both.
+
+**AND THE BULLET CUT MOVED ONLY ONE OF THE THREE NUMBERS.** The 56 streams it
+removed are not reached in a 1,200-frame window, so `records` and `distinct`
+held and only the bundle-side `streams` count caught it. That is the check
+working through its weakest arm, and it is said here rather than left to look
+like three independent confirmations.
+
+### 4.5 `bundlegate` and the ROM-leak guard, both untouched
 
 ```
 node tools/bundlegate.mjs --assets assets --dump rip/pix-demo --tsv .../demo.tsv
@@ -480,4 +570,37 @@ correct descriptor can still be the wrong record.**
 - §5 [M]: **THE OWNER'S WAVE, IN A REAL BROWSER. Two arcs of blue enemy bullets
   with nothing pressed; two white shot streaks with red tips and a spread of red
   pod shots with fire tapped; an orange muzzle burst on a tank.** The page names
-  no shot or bullet address at any sample.
+  no shot or bullet address at any sample. The server was killed; [M] zero
+  `python -m http.server` processes remain.
+- §4.4 [M]: **the new gate stage SEEN TO FAIL** -- 31/10,872/9 against
+  71/22,071/20 with both pod tables cut, and 242 against 298 with the bullet
+  range cut. **And a DEFECTIVE MUTANT recorded**: cutting pod 0 ALONE changes
+  nothing, because the two pods share all five animation pointers and all three
+  spawn tables.
+- §3.3 [M]: **`pgm.py check` ALL GREEN 49/0/0, 0 SKIPPED, on a CLEAN re-run** --
+  the first run was thrown away because the exporter red-validations had
+  re-exported `assets/` underneath it (W47's own hazard). Unit tests 618 -> 635;
+  `webgate` 9 of 9; `bundlegate` 100.0000 %, unmoved; `build-dist` clean with
+  W47's same four exceptions.
+
+## 6. WHAT THIS WAVE DID NOT DO
+
+- **Nothing is compared against MAME.** No gate compares the port's own list
+  against a board frame, and this wave did not build one (§5.3).
+- **BUCKET 22 IS UNREACHED.** Ported, unit-tested, and 0 in every run: the trail
+  block is kinds 27/36/37/38's and none spawns in stage 1's opening.
+- **`26-review` F3 is still open** -- `freeSlot` notes `$27F8F8` on the bounds
+  and bit-12 kills where `$281EC4` has no such call. Note accounting, not this
+  wave's path, named rather than quietly swept in.
+- **The LASER's own shot templates are not harvested** and the exporter asserts
+  they stay unported (§0.1).
+- **The impact pool `$27F95A`/`$27F8F8` is NOT ported** (§0.2). E5/E7's, with
+  its driver.
+- **The 32 unported bullet behaviour INITIALISERS still throw by address**, and
+  the enemy-layer export frontier `$26C1C4` is still the first wall a tapped run
+  hits at step 2,204.
+- **Nothing was published.** The bundle on disk is the one that would ship;
+  `tools/publish.mjs` deploys all three games and another agent may have
+  `games/gradius/` in flight, so the deploy is the orchestrator's call.
+- **`games/gradius/` was not touched** -- [M] `git diff --name-only 07c2b15..HEAD`
+  is entirely `games/ddpdoj/` and `docs/worklog/ddpdoj/`.
