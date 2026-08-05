@@ -168,4 +168,87 @@ THIS column set it is dead weight, and saying so is the point. It matters to the
 PICTURE, and the picture is not in this comparison. `--no-bg` exists so that
 claim stays falsifiable when the compared set grows.
 
+---
+
+## 4. THE FINDING THAT CHANGED THE WAVE: FOUR CORPUS SCENARIOS HOLD A BUTTON THE PORT CANNOT PROCESS
+
+The first deep ladder, `stage1-sweep`, holds **Button 3** from lf1890 — because
+`stage1-open`, `stage1-deep` and `overrun` all do, so it looked like the
+corpus's own idiom for "the ship is firing". Seeding the port at its lf4000
+rung:
+
+```
+[M] SEED   lf=4000  0 logic frames compared
+[M] BLOCKED at lf4001 by the named throw $2497AA -- 0 frames compared before it
+```
+
+`src/player.js` `bombAndShotGuards`: `$2497AA tst.b $80380F / beq $2497FE` then
+`$2497B2 btst #6,($18,A6)`. Mirror bit 6 **is** Button 3 — the AUTO-SHOT — and
+`$80380F` is `$01` on this cartridge (it is in the port's own FROZEN globals
+list as *"operator setting gating the `$2497AA` bomb/hyper block"*). So the
+unported `$2497BA` block is entered on the **first frame** Button 3 is held.
+
+**Four scenarios in `scenarios.json` hold Button 3 and the port cannot run a
+single frame of any of them.** Nobody had noticed, and the reason is exactly the
+kind of gap this project keeps finding: all four are BOARD-ONLY scenarios — the
+determinism gate, the load meter, the overrun injector — that had never been
+handed to the port at all. The two scenarios the port IS driven from
+(`fly-around`, `stage1-shot`) press Button 3 never and Button 1 in taps.
+
+That is a tooling defect this wave caused and then found, and the fix is a
+scenario the port can follow: `stage1-play` — single-frame taps of **Button 1**
+on top of a sustained stick, every 40 logic frames, for the whole stage.
+
+---
+
+## 5. PER-SEGMENT COVERAGE: WHAT HAS EVER BEEN COMPARED AGAINST THE BOARD
+
+Measured by reading every corpus file in `tools/oracle/out/` and every gate that
+consumes one — not from any document.
+
+### The FULL state vector (all 94 CLAIMED columns, frame by frame)
+
+| window | scenario | how |
+|---|---|---|
+| lf2001..4200 | `fly-around` | `portdiff.mjs`, 2,200 frames, 0 divergent |
+| lf4448..4572 | `stage1-shot` | `shotgate`, 125 frames |
+| **everything else in stage 1** | — | **NEVER** |
+
+Stage 1 is 19,217 logic frames. The full-state comparison covers **2,325 of
+them, 12.1 %**, and all of it is in the first quarter.
+
+### Narrower field sets against deeper board corpora
+
+These are real comparisons and it would be wrong to call the deep stage
+uncompared without them — but each compares a few fields, not the state vector:
+
+| corpus | deepest lf | what compares against it |
+|---|---|---|
+| `w17-stage1-invuln.tsv` | 16,133 | the W17 stage ledger |
+| `w23-stats-stage1.tsv` | 15,999 | `w23statsgate` — spawn-time fields **per record**, with the rank/stage globals re-seeded from the board's own line each time |
+| `w20map-whole.tsv` | 10,996 | `w20mapgate` — the scroll/column map |
+| `w20-turret-play.tsv` | 6,000 | `w20turretgate` — turret angle |
+| `w21-bullets-play.tsv` | 6,000 | `w21patterngate` — bullet kinds |
+| `w26-premidboss.tsv` | 4,959 | `w26movergate` |
+| `w25-handler-stage1.tsv` | 5,199 | `w25handlergate` |
+| `w24-mover-stage1.tsv` | 2,327 | `w24movegate` |
+
+### And the number that most needed checking
+
+The shipped web bundle (`rip/web/capture.json`) is `scenario fly-around,
+frames 161, seedLf 2000` — a **161-frame** board reference, lf2000..2160.
+
+`midbossgate`, `w61itemgate`, `w62stageendgate`, `w63hudgate`, `w64bombgate`,
+`w65beamgate` and W47's **6,185-frame** run all construct their `Game` from
+`bundle.cap.frames[0]` — i.e. **they seed at lf2000 and run the PORT FORWARD
+ALONE.** They assert against the LISTING, not against the board. That is a
+legitimate and valuable kind of check; it is not an oracle comparison, and the
+figures those gates produce for the midboss, items, the stage end, the bomb and
+the beam have **never been diffed against the cartridge frame by frame**.
+
+**So the brief's premise about the measurement window is right even though its
+premise about the mechanism was wrong.** Every full-state figure this project
+holds was measured over lf2001..4200, and the owner's reported degradation
+begins at ~lf3800-4200 — at the far edge of it.
+
 (Findings below are appended as they arrive.)
