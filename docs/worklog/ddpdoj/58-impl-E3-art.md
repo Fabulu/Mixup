@@ -1,6 +1,6 @@
 # 58 — IMPL E3: THE ART. THE LASER FIRST.
 
-status: **IN PROGRESS**
+status: **DONE** -- gate ALL GREEN 51/0/0, 706 unit tests, webgate 13/13, bundlegate 100.0000 % unmoved, PUBLISH_VERBATIM still 5. [M] records drawn 84.0 % -> 100.0 %, the beam 5.0 % -> 100.0 %, boot 476.3 -> 477.7 KiB.
 
 started: 2026-08-05
 role: IMPLEMENTER. I own **`games/ddpdoj/tools/`** and the ART PIPELINE (harvest,
@@ -445,7 +445,50 @@ GATE had left.
 
 ---
 
-## 6. THE GATE
+## 6. THE GATE, ON THE FINAL TREE
+
+```
+python games/ddpdoj/tools/oracle/pgm.py check
+VERDICT: ALL GREEN -- 51 passed, 0 failed, 0 SKIPPED
+```
+
+51, not W54's 49, because **W57 added two stages** (`midboss DEATH` and its
+`RED [no-kill]`) between that wave and this one. **Nothing was disabled,
+skipped, narrowed or loosened here**, and every stage line was read rather than
+only the verdict. The ones this wave could plausibly have broken, all green:
+
+- **`assets/integrity` and its four REDs, including `[rom-byte]`, THE ROM-LEAK
+  GUARD** — four new shard files went through it;
+- `pixel gate: the port's JS renderer vs MAME` (100.0000 %) and its 9 REDs;
+- `background shard gate: published tiles past px 160 (+ RED)` — the stage that
+  FRESH-EXPORTS, i.e. the one an exporter change has to survive;
+- `display list: the staged-bytes replay gate (1,901 frames)` and its 12 REDs;
+- `fly-around: port vs board, 0 divergent frames` and its 5 REDs;
+- `midboss DEATH` and `midboss DEATH RED [no-kill]` — W57's, and [M] I confirmed
+  the stage is indifferent to this wave by running it against **both** bundles:
+  0 failed assertions on the W58 bundle and 0 on the saved pre-W58 one.
+
+Also green on the final tree, and not part of `pgm.py check`:
+
+```
+node --test games/ddpdoj/tests/       706 pass, 0 fail, 0 SKIPPED
+node games/ddpdoj/tools/webgate.mjs   13 of 13 PASS              (was 12)
+node games/ddpdoj/tools/bundlegate.mjs
+                                      15955968/15955968 = 100.0000%  <- UNMOVED
+node tools/build-dist.mjs             clean, 5 deliberate exception(s)  <- UNMOVED
+BUNDLE                                477.7 KiB before the first frame (was 476.3)
+```
+
+**A FIRST GATE RUN WAS THROWN AWAY, and the reason is worth recording because it
+is not W47's or W53's.** It came back with `W57 midboss-death` red. **That was
+not my wave and it was not W57's either**: the run started at 06:19 but I had
+launched an *earlier* one while M1's `src/handlers.js` was still dirty, and I
+read the two logs' tails as if they were the same run. [M] Run standalone
+immediately afterwards the stage passes on the W58 bundle AND on the pre-W58
+one, and the 51/0/0 above is a clean run on the committed tree. **The lesson is
+the one `HANDOVER` §10 gives for two agents and which applies just as well to one
+agent with two log files: a gate started before the tree settled is not evidence
+about the tree.**
 
 ---
 
@@ -562,7 +605,7 @@ stays; the missing picture is gone.**
 | overall drawn %, before and after | **84.0 % → 100.0 %** of records; **63.1 % → 0.0 %** of sprite PIXELS; 145 → 0 distinct missing streams |
 | ... specifically at f1000–1499 | **64.6 % → 100.0 %** |
 | boot before and after | **476.3 → 477.7 KiB, +1.4 KiB**, every byte named. §3 |
-| gate ALL GREEN, unit tests | §6 |
+| gate ALL GREEN, unit tests | **ALL GREEN -- 51 passed, 0 failed, 0 SKIPPED** (51 and not 49 because W57 added two stages); **706 unit tests, 0 skipped**; **webgate 13 of 13** (was 12). §6 |
 | `bundlegate` 100.0000 % unmoved | **15955968/15955968 = 100.0000 %.** Shard 0 was not touched, so `capture.bin` is byte-identical and this number could not have moved |
 | ROM leak guard intact, `PUBLISH_VERBATIM` named if it grows | **STILL FIVE. It did not grow.** [M] neither shard 10 nor shard 11 is a verbatim ROM slice, because each packs several disjoint runs — the same accident of packing order W47 §3 explains, and it is luck rather than virtue, stated as such |
 
@@ -636,3 +679,6 @@ as "the laser art is complete."**
 - §8: **the done-when, and the sentence that must not be over-read**: 100 % is
   measured AT BASE POWER; all five power levels are HARVESTED. Those are two
   different claims and both are stated.
+
+
+status: **DONE**
