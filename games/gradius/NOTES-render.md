@@ -3,8 +3,9 @@
 **Everything in this file was read out of the running cartridge**, either as PRG bytes or
 through the oracle (`tools/oracle/videoprobe.py`, `palprobe.lua`, `chrsheet.py`,
 `rendercheck.py`, `rendergate.py`). Where a number came from the listing it says so, and it
-was then confirmed against the hardware. Nine fall-through incidents on Batman are the
-reason for that rule.
+was then confirmed against the hardware. At least thirty fall-through incidents across the
+three games are the reason for that rule — see `docs/knowledge/02-traps.md`, which explains
+why that is a deduplicated floor rather than a running count.
 
 **The claim this file makes, and the evidence for it:** the model below rebuilds a Gradius
 frame **pixel for pixel**. `rendercheck.py` renders 256×240 from the measured PPU state and

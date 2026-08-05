@@ -7,9 +7,20 @@
 // your own cartridge with `python tools/export_assets.py` first.
 //
 // "ROM-derived" here means DERIVED: decoded tables, a built VRAM image, a
-// transcribed sound script. Nothing published is a verbatim slice of a
-// cartridge, the guard below measures that rather than trusting it, and there
-// is no allowlist -- see SUBSTITUTE and the note above the guard.
+// transcribed sound script. The guard below MEASURES that rather than trusting
+// it -- every published file is checked byte-for-byte against every ROM present.
+//
+// THIS COMMENT USED TO SAY "nothing published is a verbatim slice of a cartridge
+// ... and there is no allowlist". BOTH HALVES WERE FALSE, and had been since the
+// owner reverted the placeholder swap. SUBSTITUTE is empty; PUBLISH_VERBATIM
+// holds FIVE enumerated files that ARE verbatim cartridge slices and ARE
+// published, each with its reasoning, printed on every build. The old wording
+// propagated into README.md and NOTICE.md before anyone checked it.
+//
+// The rule that IS absolute, and the one to keep: nothing ROM-derived is ever
+// COMMITTED. The site and the repo are governed differently, on purpose -- the
+// live site may serve real cartridge art, the repo may not. Do not collapse the
+// two again, and do not describe this guard as having no exceptions.
 //
 // Usage:  node tools/build-dist.mjs
 

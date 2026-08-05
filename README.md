@@ -26,10 +26,23 @@ playable inside Gradius, the Vic Viper playable in Batman.
 
 Three cartridges, three rights holders, and none of their material is here: no
 ROM, no disassembly listing, no extracted graphics, level maps, sprite art or
-music. `.gitignore` enforces it, and `tools/build-dist.mjs` enforces it again on
-what gets *published* — it reads every ROM present and refuses to build a site
-containing any file that appears byte-for-byte inside one. There is no
-allowlist.
+music. `.gitignore` enforces it, and it is checked rather than assumed —
+`tools/verify_assets.py` and the `asset-integrity` gate stage both operate on
+files that only exist after *you* run an exporter against *your* own copy.
+
+**The published site is a separate question, and the answer is not the same.**
+`tools/build-dist.mjs` reads every ROM present and blocks any file that appears
+byte-for-byte inside one — against 12 ROM files, 245 files checked, 42 of them
+also checked decompressed. It is not, however, absolute: **five files are
+published verbatim on purpose**, each enumerated in `PUBLISH_VERBATIM` with its
+own line of reasoning, and the list is printed on every single build. They are
+Batman's player animation tile pool and four DaiOuJou sprite colour shards —
+art the ports cannot draw their own characters, enemies or death explosions
+without. That is a deliberate owner decision: **the live site may serve real
+cartridge art; the repository may not, and does not.**
+
+The guard blocks everything not named in that list, and the load-bearing rule is
+unchanged — nothing ROM-derived is ever committed here.
 
 Everything derived is regenerated from ROMs **you** legally own:
 

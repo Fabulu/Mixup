@@ -248,7 +248,12 @@ python games/gradius/tools/oracle/scen.py          re-record Gradius oracle
    "7 of 8" against a 13-entry map.
 
 ### The trap that keeps winning
-**THE FALL-THROUGH TRAP — ten incidents.** The label you land on is not where the
+**THE FALL-THROUGH TRAP — at least thirty incidents, and STOP INCREMENTING THE
+COUNT.** "Ten" stood here until a 2026-08-05 recount found the running ordinal
+had forked when Gradius and DaiOuJou began running in parallel — `$282DCE` and
+`$24560A` are both recorded as "the twelfth", and the highest ordinal ever
+claimed (nineteen) sits *below* the deduplicated floor. Thirty is a floor, not a
+total. `docs/knowledge/02-traps.md` carries the reasoning. The label you land on is not where the
 routine ends; a `JMP`/`JSR` target with nothing returning to it is a
 continuation. Read PAST the apparent end of every routine you port. The most
 recent case was found by a reviewer *after* the implementer had written "none is
