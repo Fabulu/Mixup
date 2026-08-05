@@ -130,18 +130,20 @@
     },
     {
       "name": "stage1-sweep-natural",
-      "why": "WAVE 69, THE CONTROL. Byte for byte the same script as `stage1-sweep` WITH NO POKE. It exists to answer the one question the invulnerable run cannot: how far into stage 1 does a scripted player actually get before dying? Measurement proves presence, so this reports a frame number and not a claim about the stage.",
-      "frames": 19600,
+      "why": "WAVE 69, THE CONTROL FOR `stage1-play`. Byte for byte the same script -- Button 1 tapped every 40 frames on top of a sustained stick -- WITH NO POKE. It exists to answer the one question an invulnerable run cannot: how far into stage 1 does a scripted player actually get before dying? Measurement proves presence, so this reports a frame number and never a claim about the stage. Shorter than its twin ON PURPOSE: the answer is a death frame, and running past it buys nothing.",
+      "frames": 8000,
       "build": "B",
       "seed": 2000,
-      "tail": "1890=C",
+      "tail": "1890=",
       "tailRepeat": {
         "from": 1920,
-        "period": 240,
-        "until": 19560,
-        "cycle": ["C", "CU", "C", "CL", "C", "CR", "C", "CD"]
+        "period": 40,
+        "tap": "A",
+        "hold": 1,
+        "until": 7960,
+        "cycle": ["", "U", "", "L", "", "R", "", "D"]
       },
-      "snap": "4000,8000,12000",
+      "snap": "3000,5000,7000",
       "meter": true
     }
   ]
