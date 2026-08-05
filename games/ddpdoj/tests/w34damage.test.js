@@ -304,9 +304,18 @@ test('$28B670: P1 runs the pass when $80390C is ZERO, P2 when it is NOT', () => 
     return runType5Tail(ram, ctx());
   };
   assert.equal(mk(0, 0x8000, 0)?.anyShot, true, 'P1 arm, $80390C == 0');
-  assert.equal(mk(1, 0x8000, 0), null, '$28B6B6 bne -> $28B706 -> $244D40');
   assert.equal(mk(1, 0, 0x8000)?.anyShot, true, 'P2 arm, $80390C != 0');
-  assert.equal(mk(0, 0, 0x8000), null, '$28B6FC beq -> $28B706');
+  // WAVE 60 INVERTED THE OTHER TWO rather than deleting them.  Until W60 both
+  // `$28B706` arms returned null, because `$244D40` was a whole-routine note.
+  // It is ported now, so the assertion that can still fail is "the $28B706 arm
+  // runs $2459D0 and NO shot loop" -- `anyShot` must be absent, `boxRun` set.
+  for (const [m, p1, p2, why] of [[1, 0x8000, 0, '$28B6B6 bne -> $28B706'],
+    [0, 0, 0x8000, '$28B6FC beq -> $28B706']]) {
+    const r = mk(m, p1, p2);
+    assert.equal(r?.anyShot, undefined, `${why}: $244D40 has NO shot loop`);
+    assert.equal(r?.player?.boxRun, true, `${why}: but it DOES run $2459D0`);
+    assert.equal(r?.player?.entry, DMG.passNoPlayer, `${why}: via $244D40`);
+  }
 });
 
 test('$28B670: with $81308C zero the pass runs with NO player-liveness test', () => {
@@ -329,10 +338,12 @@ test('the deferred blocks are COUNTED BY ADDRESS, not silently skipped', () => {
   const c = ctx();
   runType5Tail(ram, c);
   const keys = [...c.unportedLog.calls.keys()];
-  for (const a of [DMG.playerBox]) {
-    assert.ok(keys.some((k) => k.startsWith(`$${a.toString(16).toUpperCase()} `)),
-      `$${a.toString(16).toUpperCase()} is filed under its OWN address`);
-  }
+  // WAVE 60 RETIRED THE LAST OF THIS TEST'S ORIGINAL ADDRESSES.  `$2459D0` was
+  // a note from W34 to W58; it is PORTED now, together with `$244D62`'s blocks
+  // 1, 2, 3 and 4, so a note filed under it would mean L16 had been deferred
+  // again.  Inverted, not deleted -- the same treatment W51 gave `$24518A`.
+  assert.ok(!keys.some((k) => k.startsWith('$2459D0 ')),
+    '$2459D0 is PORTED since wave 60 and must no longer be a deferral note');
   // WAVE 51 RETIRED ONE OF THIS TEST'S TWO ADDRESSES, and the assertion is
   // INVERTED rather than deleted so it can still fail.  `$24518A` was a note
   // from W34 to W45; it is now PORTED (blocks 7, 8 and `$2453AC`), so a note

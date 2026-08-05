@@ -67,7 +67,15 @@
 //     294 callers), `$289AF4`, `$28C25A`/`$274`/`$2A8`/`$2DC` (death effects)
 //   * `$28AC72` (types `$82`, `$85`, `$80`) -- the SUB-RECORD spawn engine, a
 //     ten-slot pool at `$81DB90` whose driver is type-5 call #3 `$28AD54`
-//   * `$27F8EE` (type `$8B`), `$27F92A`/`$27E812` (the `$816B7A` pool family)
+//   * `$27F8EE` (type `$8B`) and `$27F92A` (type `$8A`) -- **IMPACT POOL A's
+//     RESERVED TEN**, not the item family.  [M] W60 re-read `$27F936 lea
+//     $817DC6,A0 / move.w #$9,D7`: `$8171BE + 70*$2C == $817DC6`, so those
+//     ten slots sit one past pool A's hundred (`50-recon-effects` §1.1).
+//     Recon 59 §0 caught this file filing them under the ITEM pools twice;
+//     both notes are corrected.
+//   * `$27E812` (types `$85`/`$86` death) -- THE ITEM allocator, and the one
+//     that really is the `$816B7A` family: six pools, 25 slots of `$40`,
+//     driven by type-5 call #18 `$27E99E`.  Wave I2.
 // The fire/state machines of `$10`, `$82` and `$05`/`$07` are still whole-block
 // notes: W30 wired `$11`, `$85` and `$80` and did NOT touch those three.
 // The fields those routines would have written (HP after a hit, spawned
@@ -1559,7 +1567,9 @@ function deathSeq8A(ram, rom, a5, ctx, d1) {
   scoreKill(ram, rom, ctx, 0x01, d1);                  // $2767D0/$2767D2
   noteEffect(u, 0x28c25a, a5, 'death burst');          // $2767D8
   u?.note(0x27f92a, `$27F92A in $8A death (D0 = ($1A,A5), D2 = ($1F,A6)) rec $`
-    + a5.toString(16) + ' -- the $816B7A pool family, unported');  // $2767E6
+    + a5.toString(16) + ' -- IMPACT POOL A, the reserved ten at $817DC6 '
+    + '($8171BE + 70*$2C), NOT the $816B7A item family; its filler is '
+    + '$280B3E and its driver type-5 call #4 $27F95A, unported');  // $2767E6
   // W54: SPAWNED.  $2767EC moveq #$C / $2767EE jsr $289004, then
   // $2767F4..$276810 -- the $278320 remap and the $24179E hook.
   {

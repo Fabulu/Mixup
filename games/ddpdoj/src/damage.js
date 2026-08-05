@@ -140,6 +140,76 @@
 // its own two guards, both of which are FALSE on this tree, and throws by
 // address beyond them.  `$2459D0` and blocks 2-4 are unchanged (L16).
 
+// ================= WAVE 60 (I1): `$2459D0` AND BLOCKS 1, 2, 3, 4 =============
+//
+// Recon 59 §10 sized the item subsystem at three waves and said the FIRST one
+// is not items: **`$2459D0` is the gate.**  `$244D62`'s block 2 is the item
+// COLLECTION -- one `or.w $80FA72,(status)` -- and the note above deferred it
+// with blocks 1, 3 and 4 because all three consume the box block 1 computes.
+// This wave computes the box.  L16 is retired.
+//
+// ------------------- WHAT `$2459D0` ACTUALLY IS, and it is not "a box" -------
+//
+// It is **the player's box against the ENEMY BULLET POOL**, i.e. the routine
+// that decides the player has been shot.  [M] `$2459EC lea $817F8E,A6` is
+// `src/bullets.js`'s own `BUL.pool` ($817F8C) **plus 2**, and the four-rung
+// ladder at `$2459F6`/`$245A02`/`$245A0E`/`$245A1A` is `BUL.window`
+// ($81B414/$81B416/$81B418/$81B41A) instruction for instruction.  Its D6 values
+// are `#$6 / #$A / #$F / #$12 / #$14` and **the body is TEN-WAY UNROLLED** --
+// ten identical 52-byte copies, `$245A26`..`$245C2A`, with a single
+// `$245C2E dbra D6,$245A26` at the bottom -- so the slot counts are
+// `(D6+1)*10` = **70 / 110 / 160 / 190 / 210**, which reproduces
+// `BUL.windowIters` (`$D/$15/$1F/$25/$29`, the non-unrolled `dbra` counts at
+// `$281332`) EXACTLY, from a different instruction stream.  A reader who took
+// `$2459D0` for a 52-byte routine would have walked ONE bullet.
+//
+// The ten copies are byte-identical except for their branch displacements; this
+// port writes the loop once and says so here, which is the only place the
+// unrolling is visible.
+//
+// ------------------------- WHAT IT WRITES, all four things ------------------
+//
+//   `$245A44 or.b #$10,(-$4,A6)`  the BULLET's type-word high byte, bit 4
+//   `$245A48 or.b #$10,(A4)`      **the PLAYER's** state-word high byte, bit 4
+//   `$245A4A move.w #$1,$80FA7E`  the "player was hit" flag block 1 tests
+//   `$245A52 bra $245C32`         and it RETURNS -- at most ONE bullet a pass
+//
+// `$245A3A moveq #$51,D4 / and.b (-$4,A6),D4 / bne` is the reject: bits 0, 4
+// and 6 of the bullet's high byte.  Bit 4 is the one this routine SETS, so a
+// bullet that has already hit is skipped -- the mask is its own idempotence.
+//
+// ------- THE CONSEQUENCE, MEASURED, AND WHY IT DOES NOT STOP THE BUILD ------
+//
+// `$8103E6` bit 4 (byte op) is exactly the bit `src/player.js` tests at
+// `$249542 bclr #$4,(A6) / bne $249F8A` -- **a loud named throw**, the PLAYER
+// DEATH routine (`$24A006 lsr.w #2,$81B646` quarters the rank power;
+// `$24A10E jsr $27E812` is the player's own item drop).  So `$2459D0` is the
+// instruction that makes player death reachable.
+//
+// [M] It does not reach it on this tree, and the reason is a SEED PROPERTY and
+// not a fact about the cartridge: `($3e,A4)`, the invulnerability byte, is
+// `$FF` in the shipped bundle seed on all 3,001 measured frames, nothing under
+// `src/` writes it, and `$FF` is the "hold" value `$24952E cmpi.b #$FF` refuses
+// to decrement.  So `$249524`'s arm runs, `$24952A bclr #$4,(A6)` clears the
+// flag, and `$249542` is never reached.  **On the board the invulnerability
+// expires and the player dies.**  That is stated here rather than relied on.
+//
+// ------------------------------- BLOCK 4 IS REAL ----------------------------
+//
+// Blocks 2 and 3 walk pools whose live counts (`$8171BA`, `$817F7E`) are 0 on
+// this tree, so they are transcribed-and-unexercised.  **Block 4 is not**:
+// `$815E9E` is 31 in the fly-around seed, so ramming now costs an enemy
+// `$244ED2 subq.w #1,($16,A6)` -- one HP -- and can kill it.  Note it exits the
+// whole pass on its first hit (`$244ED6 bra $244EE0`), takes at most ONE enemy
+// per pass, and requires bit 0 of the enemy's type word (`$244EB0 andi.w #$1`)
+// plus a Y that is not off the top (`$244EBE cmpi.w #-$800,D4 / bcc`).
+//
+// **THE ORDER, for `20-OWNER-scoring-must-be-exact`:** block 4 writes an HP
+// word and the player's hit bit and NOTHING ELSE -- no `$286096`, no `$28615E`,
+// no rank word.  A ram-kill's score is written later, by the ENEMY's own death
+// arm, at the enemy driver's dispatch position -- which is W34 §5's argument
+// unchanged, and no write this wave adds chose its own place in the frame.
+
 import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 
@@ -169,6 +239,20 @@ export const DMG = {
   shotHitBit: 0x245044,      // bset #$7,(-$3,A6)   -- state.js taps this
   // the globals
   fa72: 0x80fa72,            // $244D62 move.w D0,$80FA72   (the hit mask)
+  // ---- WAVE 60 (I1).
+  fa7e: 0x80fa7e,            // $244D7E clr / $245A4A move.w #$1 -- "player hit"
+  bulletPool: 0x817f8c,      // $2459EC lea $817F8E,A6 is this PLUS 2
+  bulletStride: 0x40,        // $245A56 lea ($3e,A6),A6 with A6 at base+2
+  // $2459F6/$245A02/$245A0E/$245A1A -- the four rungs, and the five D6 values
+  bulletWindow: [0x81b414, 0x81b416, 0x81b418, 0x81b41a],
+  bulletD6: [0x06, 0x0a, 0x0f, 0x12, 0x14],
+  bulletUnroll: 10,          // ten copies of the body per `dbra`
+  itemPool: 0x816b7a,        // $244DA8 lea $816B7C,A6 is this PLUS 2
+  itemCount: 0x8171ba,       // $244D9C move.w $8171BA,D6
+  itemStride: 0x40,          // $244DF6 lea ($3e,A6),A6 with A6 at base+4
+  impactPool: 0x8171be,      // $244E06 lea $8171BE,A6
+  impactCount: 0x817f7e,     // $244DFE move.w $817F7E,D6
+  impactStride: 0x2c,        // $244E54 lea ($28,A6),A6 with A6 at base+4
   b6e6: 0x81b6e6,            // $244D68 move.w D1,$81B6E6
   b6e8: 0x81b6e8,            // $244D6E move.w D2,$81B6E8
   box: 0x80fa74,             // the 36 shots' bounding box: maxY minY maxX minX
@@ -211,6 +295,245 @@ export const DMG = {
 const BOX = { maxY: 0x80fa74, minY: 0x80fa76, maxX: 0x80fa78, minX: 0x80fa7a };
 
 function note(ctx, addr, what) { ctx?.unportedLog?.note(addr, what); }
+
+// ---------------------------------------------------------------------------
+// `$2459D0` -- THE PLAYER'S OWN BOX, and the enemy-bullet pool it is tested
+// against.  Ledger row L16, deferred since W34, and the gate recon 59 named for
+// the whole item subsystem.
+//
+// NO ABSOLUTE CALLER EXISTS.  Both entries are PC-relative:
+// `$244D84 jsr ($2459D0,PC)` (block 1) and `$244D5A jmp ($2459D0,PC)`
+// (`$244D40`, the no-shot entry) -- which is why `xref.py callers 2459D0`
+// returns nothing and why a census that stopped there would call it dead.
+//
+// Returns the box in D0..D3 AND the hit flag, because the caller needs both:
+// `$244D8A tst.w $80FA7E / bne.w $244EE0` skips blocks 2-4 on a hit, and
+// `$244D94..$244D9A add.w D7,D0/D1/D2/D3` then biases what is left.
+// ---------------------------------------------------------------------------
+
+/** `$2459F2..$245A24` -- the ACTIVE-WINDOW ladder, four rungs, five outcomes.
+ *  Returns the number of pool slots `$2459D0` walks: `(D6+1) * 10`, because the
+ *  body is ten-way unrolled.  This is `src/bullets.js`'s `windowIters` written
+ *  as the other instruction stream; `tests/w60playerbox.test.js` asserts the
+ *  two agree, which is the only check that can catch one of them drifting. */
+export function bulletWindowSlots(ram) {
+  let rung = 0;                                       // $2459F2 move.w #$6,D6
+  for (const w of DMG.bulletWindow) {                 // $2459F6/$245A02/...
+    if (ram.u16(w) === 0) break;                      // ...beq $245A26
+    rung++;
+  }
+  return (DMG.bulletD6[rung] + 1) * DMG.bulletUnroll;
+}
+
+export function playerBox(ram, a4) {
+  // $2459D0..$2459EA.  D0/D1 are the LONG axis (record +$02) and D2/D3 the
+  // SHORT (+$04), and each pair uses its OWN two half-extents: +$10/+$12 for
+  // the long, +$14/+$16 for the short.  `machine.js`'s P.hitYPlus..P.hitXMinus
+  // name these four and `10-recon-combat` §3 corrected three waves of reading
+  // them as animation.
+  const d0 = u16(ram.u16(a4 + 0x02) + ram.u16(a4 + 0x10));   // $2459D0/$2459D6
+  const d1 = u16(ram.u16(a4 + 0x02) - ram.u16(a4 + 0x12));   // $2459D4/$2459DA
+  const d2 = u16(ram.u16(a4 + 0x04) + ram.u16(a4 + 0x14));   // $2459DE/$2459E4
+  const d3 = u16(ram.u16(a4 + 0x04) - ram.u16(a4 + 0x16));   // $2459E2/$2459E8
+  const slots = bulletWindowSlots(ram);
+  for (let s = 0; s < slots; s++) {
+    // A6 walks base+2, so `(A6)+` is record +$02, `(A6)` is +$04 and
+    // `(-$4,A6)` -- after the one post-increment -- is +$00's HIGH BYTE.
+    const rec = DMG.bulletPool + s * DMG.bulletStride;
+    const y = ram.u16(rec + 0x02);                    // $245A26 move.w (A6)+,D4
+    if (d0 < y) continue;                             // $245A28 cmp.w D4,D0/bcs
+    if (y < d1) continue;                             // $245A2C cmp.w D1,D4/bcs
+    const x = ram.u16(rec + 0x04);                    // $245A30 move.w (A6),D4
+    if (x < d3) continue;                             // $245A32 cmp.w D3,D4/bcs
+    if (d2 < x) continue;                             // $245A36 cmp.w D4,D2/bcs
+    // $245A3A `moveq #$51,D4 / and.b (-$4,A6),D4 / bne` -- bits 0, 4 and 6 of
+    // the bullet's high byte.  Bit 4 is the one the next instruction SETS, so
+    // this mask is what stops one bullet hitting twice; it is NOT $50 and it is
+    // NOT the bullet's live bit (that is bit 7, and it is NOT tested here --
+    // a FREE slot whose stale position falls inside the box is a hit, which is
+    // the board's behaviour and is why the pool's clear at $28131E matters).
+    if ((ram.u8(rec) & 0x51) !== 0) continue;         // $245A3C/$245A40
+    ram.setU8(rec, ram.u8(rec) | 0x10);               // $245A44 or.b D4,(-$4,A6)
+    ram.setU8(a4, ram.u8(a4) | 0x10);                 // $245A48 or.b D4,(A4)
+    ram.setU16(DMG.fa7e, 1);                          // $245A4A move.w #$1
+    return { d0, d1, d2, d3, hit: true, slots };      // $245A52 bra $245C32 rts
+  }
+  return { d0, d1, d2, d3, hit: false, slots };       // $245C32 rts
+}
+
+// ---------------------------------------------------------------------------
+// BLOCK 2 -- `$244D94..$244DFE`: **THE ITEM COLLECTION**, and the whole reason
+// recon 59 scheduled this wave first.
+//
+// `$8171BA` is the item live count and `$816B7A` the six item pools walked as
+// ONE 25-slot array of `$40` (recon 59 §1, six arithmetics that close exactly).
+// The collision is one `or.w $80FA72,(status)` -- the caller's own player mask,
+// which `$244D62` has been writing to `$80FA72` since W34.  So the port has had
+// the mask for twenty-six waves and no pool to OR it into.
+//
+// **`$244DE6 andi.w #$C0,D4` IS TRANSCRIBED AS `$C0` AND MUST NOT BE TIDIED.**
+// Recon 59 §4.2: `$27F54C` sets status bit 0 (collected normally) and `$27F582`
+// bit 7 (collected at maximum), and this guard tests bits 6 AND 7 -- so it
+// catches the at-max flag and NOT the normal one, and recon 59 could find no
+// writer of bit 6 anywhere in `$27E812..$27F801` or here.  A port that
+// "corrected" it to `$81` changes behaviour on the frame a normally-collected
+// item is still inside the player's box.
+//
+// The free test is on **`+$02`**, not `+$00` -- `$244DB6 beq $244DB0` on the
+// word `(A6)+` just read from base+2 -- while the driver `$27E99E` tests `+$00`
+// and the FREE `$27F2F0` clears a LONGWORD so that both agree.  Two different
+// emptiness tests on one record, and they are consistent only because of the
+// longword clear.
+// ---------------------------------------------------------------------------
+function itemCollisionBlock(ram, box, d7) {
+  let d6 = ram.u16(DMG.itemCount);                    // $244D9C move.w $8171BA
+  if (d6 === 0) return 0;                             // $244DA2 beq $244DFE
+  const { d0, d1, d2, d3 } = box;
+  let flagged = 0;
+  let idx = 0;
+  for (let n = 0; n < d6; n++) {                      // $244DA6 subq.w #1 / dbra
+    // `$244DB6 beq $244DB0` scans forward over EMPTY slots WITHOUT consuming
+    // the `dbra`, exactly like blocks 6a/6b -- the counter is the live count.
+    let rec = -1;
+    for (; idx < 25; idx++) {
+      const r = DMG.itemPool + idx * DMG.itemStride;
+      if (ram.u16(r + 0x02) !== 0) { rec = r; break; }
+    }
+    if (rec < 0) break;   // the count over-reports; the board would run off
+    idx++;
+    let d4 = u16(ram.u16(rec + 0x02) + d7);           // $244DB8 add.w D7,D4
+    let d5 = u16(d4 - ram.u16(rec + 0x10));           // $244DBC sub.w ($c,A6),D5
+    if (d0 < d5) continue;                            // $244DC0 cmp.w D5,D0/bcs
+    d4 = u16(d4 + ram.u16(rec + 0x10));               // $244DC4 add.w ($c,A6),D4
+    if (d4 < d1) continue;                            // $244DC8 cmp.w D1,D4/bcs
+    d4 = u16(ram.u16(rec + 0x04) + d7);               // $244DCC/$244DCE
+    d5 = d4;                                          // $244DD0 move.w D4,D5
+    d4 = u16(d4 + ram.u16(rec + 0x12));               // $244DD2 add.w ($e,A6),D4
+    if (d4 < d3) continue;                            // $244DD6 cmp.w D3,D4/bcs
+    d5 = u16(d5 - ram.u16(rec + 0x12));               // $244DDA sub.w ($e,A6),D5
+    if (d2 < d5) continue;                            // $244DDE cmp.w D5,D2/bcs
+    if ((ram.u16(rec) & 0x00c0) !== 0) continue;      // $244DE2/$244DE6 andi #$C0
+    ram.setU16(rec, u16(ram.u16(rec) | ram.u16(DMG.fa72)));  // $244DEC/$244DF2
+    flagged++;
+    // NO `bra` out: `$244DF6 lea ($3e,A6),A6 / dbra` -- the walk CONTINUES, so
+    // one pass can flag EVERY overlapping item.  Block 4 is the one that exits.
+  }
+  return flagged;
+}
+
+// ---------------------------------------------------------------------------
+// BLOCK 3 -- `$244DFE..$244E5C`: the same shape against IMPACT POOL A,
+// `$8171BE` x `$817F7E`, 70 slots of `$2C` (`50-recon-effects` §1.1, and
+// `$27F8F8`'s `moveq #$45,D7` from the other side).
+//
+// Three differences from block 2, none of them cosmetic:
+//   1. the live test is `$244E12 tst.w (A6)+ / bpl` -- bit 15 of `+$00` -- and
+//      THEN `$244E16 move.w (A6)+,D4 / beq` on `+$02`.  Two tests, not one;
+//   2. the half-extents are `+$10`/`+$12` for the LONG axis and `+$14`/`+$16`
+//      for the SHORT, i.e. four distinct words where block 2 reuses two;
+//   3. the guard is `$244E44 tst.b (-$3,A6) / bmi` -- bit 7 of `+$01` -- not
+//      block 2's `andi.w #$C0` on `+$00`.
+//
+// `$817F7E` is 0 on this tree and stays 0: `$27F8F8`, the only allocator into
+// this pool, is a COUNTED NOTE (W51 §3.1) because its driver `$27F95A` -- type-5
+// call #4 -- is unported.  So this block is transcribed and unexercised, and it
+// will stay that way until that call ships.
+// ---------------------------------------------------------------------------
+function impactCollisionBlock(ram, box, d7) {
+  const d6 = ram.u16(DMG.impactCount);                // $244DFE move.w $817F7E
+  if (d6 === 0) return 0;                             // $244E04 beq $244E5C
+  const { d0, d1, d2, d3 } = box;
+  let flagged = 0;
+  let idx = 0;
+  for (let n = 0; n < d6; n++) {                      // $244E58 dbra
+    let rec = -1;
+    for (; idx < 70; idx++) {                         // $244E12 tst.w (A6)+/bpl
+      const r = DMG.impactPool + idx * DMG.impactStride;
+      if ((ram.u16(r) & 0x8000) !== 0) { rec = r; break; }
+    }
+    if (rec < 0) break;
+    idx++;
+    let d4 = ram.u16(rec + 0x02);                     // $244E16 move.w (A6)+,D4
+    if (d4 === 0) continue;                           // $244E18 beq $244E54
+    d4 = u16(d4 + d7);                                // $244E1A add.w D7,D4
+    let d5 = u16(d4 - ram.u16(rec + 0x12));           // $244E1E sub.w ($e,A6),D5
+    if (d0 < d5) continue;                            // $244E22 cmp.w D5,D0/bcs
+    d4 = u16(d4 + ram.u16(rec + 0x10));               // $244E26 add.w ($c,A6),D4
+    if (d4 < d1) continue;                            // $244E2A cmp.w D1,D4/bcs
+    d4 = u16(ram.u16(rec + 0x04) + d7);               // $244E2E/$244E30
+    d5 = d4;                                          // $244E32 move.w D4,D5
+    d4 = u16(d4 + ram.u16(rec + 0x14));               // $244E34 add.w ($10,A6)
+    if (d4 < d3) continue;                            // $244E38 cmp.w D3,D4/bcs
+    d5 = u16(d5 - ram.u16(rec + 0x16));               // $244E3C sub.w ($12,A6)
+    if (d2 < d5) continue;                            // $244E40 cmp.w D5,D2/bcs
+    if ((ram.u8(rec + 0x01) & 0x80) !== 0) continue;  // $244E44 tst.b (-$3,A6)
+    ram.setU16(rec, u16(ram.u16(rec) | ram.u16(DMG.fa72)));  // $244E4A/$244E50
+    flagged++;
+  }
+  return flagged;
+}
+
+// ---------------------------------------------------------------------------
+// BLOCK 4 -- `$244E5C..$244EE0`: RAMMING.  The player's body against the enemy
+// pool, and `$244ED2 subq.w #1,($16,A6)` costs the enemy exactly ONE HP.
+//
+// The pool walk is `$81459C` with the count `$815E9E + $815EA0` -- pool A's
+// live count PLUS pool B's, over ONE contiguous array, because
+// `$81459C + 100*$20 = $81521C` is pool B's base.  Same trick blocks 7/8 use
+// with their 150, but as a LIVE COUNT rather than as capacity.
+//
+// THREE GUARDS a "tidy" port drops, in ROM order:
+//   `$244EB0 andi.w #$1,D4`  -- bit 0 of the enemy's TYPE WORD.  Without it
+//        every enemy is rammable, including the ones that are scenery.
+//   `$244EBE cmpi.w #-$800,D4 / bcc` -- recomputes `Y + D7 - ($10,A6)` and
+//        rejects at or above `$F800` UNSIGNED, i.e. the wrap-around top.
+//   `$244ED6 bra $244EE0` -- **it leaves the LOOP**, so at most one enemy is
+//        rammed per pass.  `$244EE0` is block 5's first instruction, the same
+//        one the `dbra` falls through to, so the shot loops still run.  The
+//        natural misreading of a `bra` out of a `dbra` is "it leaves the
+//        routine"; it does not, and that is worth one line here.
+// ---------------------------------------------------------------------------
+function ramCollisionBlock(ram, box, d7, a4) {
+  let d6 = u16(ram.u16(DMG.poolACount) + ram.u16(DMG.poolBCount));  // $244E62/$244E68
+  if (d6 === 0) return { rammed: false };             // $244E6E beq $244EE0
+  const { d0, d1, d2, d3 } = box;
+  let idx = 0;
+  for (let n = 0; n < d6; n++) {                      // $244E72 subq.w #1 / dbra
+    let rec = -1;
+    for (; idx < 150; idx++) {                        // $244E7A move.w (A6)+/bpl
+      const r = DMG.poolA + idx * DMG.enemyStride;
+      if ((ram.u16(r) & 0x8000) !== 0) { rec = r; break; }
+    }
+    if (rec < 0) break;
+    idx++;
+    let d4 = u16(ram.u16(rec + 0x02) + d7);           // $244E7E/$244E80
+    let d5 = u16(d4 - ram.u16(rec + 0x12));           // $244E84 sub.w ($10,A6)
+    if (d0 < d5) continue;                            // $244E88 cmp.w D5,D0/bcs
+    d4 = u16(d4 + ram.u16(rec + 0x10));               // $244E8C add.w ($e,A6),D4
+    if (d4 < d1) continue;                            // $244E90 cmp.w D1,D4/bcs
+    d4 = u16(ram.u16(rec + 0x04) + d7);               // $244E94/$244E98
+    d5 = d4;                                          // $244E9A move.w D4,D5
+    d4 = u16(d4 + ram.u16(rec + 0x14));               // $244E9C add.w ($12,A6)
+    if (d4 < d3) continue;                            // $244EA0 cmp.w D3,D4/bcs
+    d5 = u16(d5 - ram.u16(rec + 0x16));               // $244EA4 sub.w ($14,A6)
+    if (d2 < d5) continue;                            // $244EA8 cmp.w D5,D2/bcs
+    if ((ram.u16(rec) & 0x0001) === 0) continue;      // $244EAC/$244EB0 andi #$1
+    const yTop = u16(u16(ram.u16(rec + 0x02) + d7) - ram.u16(rec + 0x12));
+    if (yTop >= 0xf800) continue;                     // $244EBE cmpi.w #-$800/bcc
+    // `$244EC4 bset #$4,(A4)` is on the PLAYER record, not the enemy -- the
+    // SAME bit `$2459D0` sets and `$249542` throws on.  So ramming is a second,
+    // independent producer of the player-hit flag, and it does NOT go through
+    // `$80FA7E`: block 4 runs only when `$80FA7E` was ZERO.
+    ram.bset8(a4, 4);                                 // $244EC4 bset #$4,(A4)
+    // A6 is rec+2 here, so `(-$2,A6)` is +$00 and `($16,A6)` is +$18.
+    ram.setU16(rec, u16(ram.u16(rec) | ram.u16(DMG.fa72)));  // $244EC8/$244ECE
+    const hp0 = ram.u16(rec + 0x18);
+    ram.setU16(rec + 0x18, u16(hp0 - 1));             // $244ED2 subq.w #1
+    return { rammed: true, rec, hp0, hp1: u16(hp0 - 1) };  // $244ED6 bra $244EE0
+  }
+  void d6;
+  return { rammed: false };
+}
 
 // ---------------------------------------------------------------------------
 // BLOCK 5 -- `$244EE0..$244F66`: the 36 shot records' BOUNDING BOX.
@@ -688,21 +1011,37 @@ export function collisionPass(ram, ctx, { table, mask, d1, d2, player, a1, a2, a
   let d7 = 0x2800;                                    // $244D74 move.w #$2800,D7
   // $244D78 `tst.w (A4) / bpl.w $244EE0` -- A4 is the PLAYER record.  A live
   // player runs blocks 1..4 first; a dead one goes straight to the shot loops.
+  const pbox = { boxRun: false, hitPlayer: false, items: 0, impacts: 0, rammed: false };
   if ((ram.u16(player) & 0x8000) !== 0) {
-    note(ctx, DMG.playerBox, `$244D84 jsr $2459D0(pc) -- the PLAYER's own box `
-      + `vs the 70-slot pool $817F8E, and with it the three loops that consume `
-      + `it: $244DB4 ($816B7C x $8171BA), $244E12 ($8171BE x $817F7E) and `
-      + `$244E5C, whose $244ED2 subq.w #1,$16(A6) is the ONE HP an enemy loses `
-      + `to being RAMMED. Ledger row L16, W28's wave 9. The port cannot run `
-      + `blocks 2-4 without block 1's box, so all four defer together`);
-    // $244D8A `tst.w $80FA7E / bne.w $244EE0` -- $2459D0 sets $80FA7E when the
-    // player was hit, and that skips blocks 2..4.  Not simulated: the block
-    // that writes it is the block above.
+    ram.setU16(DMG.fa7e, 0);                          // $244D7E clr.w $80FA7E
+    const box = playerBox(ram, player);               // $244D84 jsr ($2459D0,PC)
+    pbox.boxRun = true; pbox.hitPlayer = box.hit;
+    // $244D8A `tst.w $80FA7E / bne.w $244EE0`.  NOTE it re-reads the WORD --
+    // it does not use $2459D0's carry or a register -- so a routine that set
+    // $80FA7E on an earlier frame and never cleared it would skip blocks 2-4
+    // forever.  `$244D7E` is why that cannot happen HERE, and `$244D40` is why
+    // it is worth saying: that entry has no `clr.w`.
+    if (ram.u16(DMG.fa7e) === 0) {
+      // $244D94..$244D9A: the box is biased by D7 ($2800) before blocks 2-4.
+      const b = {
+        d0: u16(box.d0 + d7), d1: u16(box.d1 + d7),
+        d2: u16(box.d2 + d7), d3: u16(box.d3 + d7),
+      };
+      pbox.items = itemCollisionBlock(ram, b, d7);           // $244D9C block 2
+      pbox.impacts = impactCollisionBlock(ram, b, d7);      // $244DFE block 3
+      const r = ramCollisionBlock(ram, b, d7, player);       // $244E5C block 4
+      pbox.rammed = r.rammed; pbox.ram = r.rammed ? r : null;
+      // `$244ED6 bra $244EE0` from block 4's hit lands on the SAME instruction
+      // its fall-through does, so a ram does not skip the shot loops.  (An
+      // earlier reading of `bra $244EE0` as "leaves the pass" was wrong: the
+      // pass CONTINUES at block 5.  Kept as a comment because the wrong reading
+      // is the natural one for a `bra` out of a `dbra`.)
+    }
   }
   // ---- $244EE0: the shot bounding box.
   if (!shotBoundingBox(ram, table, d7)) {             // $244EF0 bra.w $24518A
     const w = weaponTail(ram, ctx, player, a1, a2, a3);
-    return { hitsA: 0, hitsB: 0, anyShot: false, ...w };
+    return { hitsA: 0, hitsB: 0, anyShot: false, player: pbox, ...w };
   }
   const gate = ram.u16(DMG.gate308c);
   // ---- $244F68: pool A, $81459C, 100 slots.
@@ -723,7 +1062,7 @@ export function collisionPass(ram, ctx, { table, mask, d1, d2, player, a1, a2, a
       gate, 'B');
   }
   const w = weaponTail(ram, ctx, player, a1, a2, a3);
-  return { hitsA, hitsB, anyShot: true, ...w };
+  return { hitsA, hitsB, anyShot: true, player: pbox, ...w };
 }
 
 /**
@@ -780,35 +1119,46 @@ function weaponTail(ram, ctx, player, a1, a2, a3) {
 export function runType5Tail(ram, ctx) {
   const g308c = ram.u16(DMG.gate308c);                // $28B670 tst.w $81308C
   const mirror = ram.u16(DMG.mirror2);
+  // The registers `$244D40` inherits.  `null` means A4 IS STALE -- see
+  // `tailNoPlayer`.  Nothing else in this function needs them, which is why
+  // they were not carried before W60.
+  let p1args = null, d40args = null;
   if (g308c !== 0) {
     const p1 = ram.u16(DMG.p1rec);                    // $28B67A move.w $8103E6,D4
     if (p1 !== 0) {                                   // $28B680 beq $28B6C0
+      p1args = {
+        table: DMG.p1shots, mask: DMG.maskP1,
+        d1: ram.u16(DMG.hyper1), d2: ram.u16(DMG.hyperLvl1), player: DMG.p1rec,
+        a1: DMG.beamRecP1, a2: DMG.laserSlot27, a3: DMG.laserSlot30 };
       if (mirror === 0) {                             // $28B6B0 tst.w / bne $28B706
-        return collisionPass(ram, ctx, {              // $28B6B8 jmp $244D62
-          table: DMG.p1shots, mask: DMG.maskP1,
-          d1: ram.u16(DMG.hyper1), d2: ram.u16(DMG.hyperLvl1), player: DMG.p1rec,
-          a1: DMG.beamRecP1, a2: DMG.laserSlot27, a3: DMG.laserSlot30 });
+        return collisionPass(ram, ctx, p1args);       // $28B6B8 jmp $244D62
       }
+      d40args = p1args;
     } else {
       const p2 = ram.u16(DMG.p2rec);                  // $28B6C0 move.w $810448,D4
-      if (p2 === 0) return tailNoPlayer(ram, ctx);    // $28B6C6 beq.b $28B728
+      // $28B6C6 `beq.b $28B728` -- and it jumps STRAIGHT to `$244D40` from
+      // BEFORE the seven `lea`s, so A4/D0/D1/D2 are whatever the caller left.
+      // That is the one arm the port cannot model, and it says so.
+      if (p2 === 0) return tailNoPlayer(ram, ctx, null);
       // $28B6FC `beq.b $28B706` -- and the sense is the OPPOSITE of P1's
       // `$28B6B6 bne.b $28B706` twenty-six bytes earlier.  P1 runs the pass
       // when $80390C is ZERO; P2 runs it when $80390C is NON-zero.  Reading
       // the second as a copy of the first inverts which table gets damaged.
+      const p2args = {
+        table: DMG.p2shots, mask: DMG.maskP2,
+        d1: ram.u16(DMG.hyper2), d2: ram.u16(DMG.hyperLvl2), player: DMG.p2rec,
+        a1: DMG.beamRecP2, a2: DMG.laserSlot27P2, a3: DMG.laserSlot30P2 };
       if (mirror !== 0) {
-        return collisionPass(ram, ctx, {              // $28B6FE jmp $244D62
-          table: DMG.p2shots, mask: DMG.maskP2,
-          d1: ram.u16(DMG.hyper2), d2: ram.u16(DMG.hyperLvl2), player: DMG.p2rec,
-          a1: DMG.beamRecP2, a2: DMG.laserSlot27P2, a3: DMG.laserSlot30P2 });
+        return collisionPass(ram, ctx, p2args);       // $28B6FE jmp $244D62
       }
+      d40args = p2args;
     }
     // $28B706: the two-player interaction arm.
     if (ram.u16(DMG.loop98) !== 0) {                  // $28B706 tst.w $813098
       if (ram.u16(DMG.g393a) === 0) return null;      // $28B710 beq $28B726 rts
       if (ram.u16(DMG.g309c) === 1) return null;      // $28B71A cmpi.w #$1 / bne
     }
-    return tailNoPlayer(ram, ctx);                    // $28B728 jmp $244D40
+    return tailNoPlayer(ram, ctx, d40args);           // $28B728 jmp $244D40
   }
   // ---- $28B730: the `$81308C == 0` pair.  NO player-liveness test at all.
   if (mirror === 0) {                                 // $28B730 tst.w / bne $28B76E
@@ -823,11 +1173,34 @@ export function runType5Tail(ram, ctx) {
     a1: DMG.beamRecP2, a2: DMG.laserSlot27P2, a3: DMG.laserSlot30P2 });
 }
 
-/** `$244D40` -- the same three global writes, then the PLAYER's box and
- *  nothing else.  It damages no enemy, so the port counts it whole. */
-function tailNoPlayer(ram, ctx) {
-  note(ctx, DMG.passNoPlayer, `$28B728 jmp $244D40 -- the no-shot entry: it `
-    + `writes $80FA72/$81B6E6/$81B6E8 and then jmp $2459D0(pc), the PLAYER's `
-    + `own box. It contains no shot loop and damages no enemy; ledger row L16`);
-  return null;
+/**
+ * `$244D40` -- the same three global writes, then `$244D5A jmp ($2459D0,PC)`
+ * and nothing else: no `clr.w $80FA7E`, no blocks 2-4, no shot loop.
+ *
+ * **THIS IS WHY THE PLAYER IS CHECKED TWICE A FRAME.**  `$81308C` is 1 on this
+ * tree, so the tail alternates on `$80390C`: the frames P1 does NOT get
+ * `$244D62` it gets `$244D40` instead, and `$2459D0` runs on BOTH.  The
+ * shot-vs-enemy check is a 30 Hz check (W34 §2.1); the player-vs-bullet check
+ * is a 59 Hz one, and reading `$244D40` as "the pass, minus everything" hides
+ * that.
+ *
+ * `args` is null only for `$28B6C6`, which jumps here from before the `lea`s
+ * with **A4 stale**.  The port refuses to invent an A4 and counts that arm.
+ */
+function tailNoPlayer(ram, ctx, args) {
+  if (!args) {
+    note(ctx, DMG.passNoPlayer, `$28B6C6 beq $28B728 -- $244D40 entered with `
+      + `BOTH player words zero, i.e. from before $28B6C8's seven lea's, so A4 `
+      + `(and D0/D1/D2) still hold the caller's values. $244D56 tst.w (A4) `
+      + `reads an address this port cannot name, so $2459D0 is not run`);
+    return null;
+  }
+  ram.setU16(DMG.fa72, args.mask);                    // $244D40 move.w D0
+  ram.setU16(DMG.b6e6, args.d1);                      // $244D46 move.w D1
+  ram.setU16(DMG.b6e8, args.d2);                      // $244D4C move.w D2
+  // $244D52 move.w #$2800,D7 -- loaded and never used on this path.
+  if ((ram.u16(args.player) & 0x8000) === 0) return null;  // $244D56/$244D58 bpl
+  const box = playerBox(ram, args.player);            // $244D5A jmp ($2459D0,PC)
+  return { player: { boxRun: true, hitPlayer: box.hit, items: 0, impacts: 0,
+    rammed: false, entry: DMG.passNoPlayer } };
 }
