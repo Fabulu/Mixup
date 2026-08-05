@@ -1,14 +1,39 @@
 # The traps
 
-Eight failure shapes that cost this project real work. None of them is Game Boy specific.
-`docs/03-VERIFICATION.md` holds the 41 concrete instances; this is the generalisation.
+Eight failure shapes that cost this project real work. None of them is Game Boy specific —
+and none turned out to be Batman specific either: every one has since recurred on the NES
+and the arcade port.
+
+This is the generalisation. The concrete instances live per game:
+`docs/03-VERIFICATION.md` holds Batman's **45 numbered lessons**, and
+`docs/worklog/gradius/` and `docs/worklog/ddpdoj/` carry the per-wave record for the other
+two. There is no single cross-game registry, which is the reason for the counting note
+under trap 1.
 
 ---
 
 ## 1. Follow the fall-through, not the label
 
-A routine that looks like it returns often runs straight on into the next one. **Nine
-separate incidents**, one of which invalidated an already-shipped handler.
+A routine that looks like it returns often runs straight on into the next one. **At least
+thirty separate incidents** across the three games, one of which invalidated an
+already-shipped handler. It is the most expensive trap in the project's history and it has
+not stopped happening: it recurs on every new machine, in every wave, in a new costume.
+
+> **On that number, because it used to be wrong here.** This line said "nine" for a long
+> time. Nine was Batman's count, and it stopped being the project's count the moment a
+> second game started. Thirty is a **deduplicated floor**, arrived at by sweeping
+> `docs/03-VERIFICATION.md`, `docs/knowledge/`, `docs/worklog/**`, `SAVEPOINT.md` and
+> `HANDOVER.md` and collapsing the same incident described in several files into one; a
+> further dozen candidates were left out because they are ROM behaviours found by reading
+> ahead rather than defects that shipped, and the boundary between those two is a judgement
+> call.
+>
+> **Do not increment this by claiming "the Nth incident" in a worklog.** The project tried
+> that and the ordinal forked: once Gradius and DaiOuJou were being worked in parallel, each
+> incremented its own counter, and the series now collides — `$282DCE` and `$24560A` are
+> both written down as "the twelfth", and the highest ordinal ever claimed, nineteen, is
+> below the deduplicated floor. An ordinal maintained in two places is not a count. Either
+> build one canonical list, or say "again" and describe the shape.
 
 The nastiest version: four routines that look like four handlers turn out to be *two*
 routines with two entry points each, whose halves jump into one another. One half
@@ -19,9 +44,19 @@ The variant that catches you inside your own port: an arm that "skips the update
 borrows the update's *tail*. The ROM's early return does not run the tail; ours did. That
 drew a player the cartridge does not draw, for 45 consecutive frames.
 
+The version that scales, found on the arcade port: it can be **systemic rather than
+incidental**. All 256 entries in DaiOuJou's object type table are exactly 8 bytes — a run
+length and an `rts` — and the real initialisation begins at +8, reached by an `addq.w #8,A1`
+in the caller. Read only the table address and you get *none* of any enemy's setup, not half
+of it. The same census walked every handler twice, linearly to the first terminator and then
+by following edges: **105 of 111 run past their first terminator**, one of them by 4,014
+bytes. When a trap turns out to be a property of the whole table rather than one routine,
+measure the table — do not fix the routine you noticed.
+
 **Practice:** when you port a branch that returns early, ask what the ROM's return
 actually skips — not just what it skips *computing*, but what it skips *doing* at the end
-of the caller.
+of the caller. And when a routine "looks finished", say what *ended* it: a terminator you
+saw, or a label you stopped at.
 
 ## 2. Byte-exact data is not a correct picture
 

@@ -1,17 +1,47 @@
 # SAVEPOINT — where this project is, and how to pick it up
 
-> ## STATE: COMPLETE AND GREEN
+> ## STATE: THREE GAMES — ONE COMPLETE, TWO IN FLIGHT
 >
-> `npm run test-all` is **27/27 stages green, zero skipped** — 739 unit tests,
-> 50/50 oracle scenarios bit-exact over 14,519 frames, 96.023% mean pixel match
-> across the 73-frame visual suite. Tree clean, everything pushed, live at
-> gbtman.pages.dev.
+> **This box said COMPLETE AND GREEN, and "there is no in-flight work", for a
+> long time. That was true of Batman and has not been true of the repository
+> since the second game started.** Three games sit behind `games/index.json`
+> now, and two of them are live work.
 >
-> The tree is now `games/batman/{src,tests,assets}` under a `games/index.json`
-> registry, and the launcher picks a game before it loads one. 60 source files,
-> 18,069 lines, 33 test files. See "The layout" below.
+> | game | machine | state |
+> |---|---|---|
+> | **Batman: Return of the Joker** | Game Boy | **complete** — title screen to end credits, bit-exact. Nothing in flight. |
+> | **Gradius** | NES | all seven stages play, the game ends and loops back round; no known divergences. 19 mods, 4 presets, its own start screen. |
+> | **DoDonPachi DaiOuJou (Black Label)** | IGS PGM arcade | **THE STANDING PRIORITY.** Stage 1 playable; the stage boss is not ported and sound has not started. |
 >
-> There is no in-flight work and nothing failing on purpose. Start from here.
+> **The gate is three separate runners — there is no single `test-all`:**
+>
+> ```sh
+> npm run test-all                        # Batman  — 27 stages, 27/27, zero skips
+> node games/gradius/tools/test-all.mjs   # Gradius — 12 stages, NOT wired into the root
+> node --test games/ddpdoj/tests/         # DaiOuJou — unit tests; no test-all exists yet,
+>                                         #   the gates are individual (bundlegate.mjs,
+>                                         #   webgate.mjs, and many more in tools/)
+> node tools/publish.mjs                  # THE ONLY thing that runs all of them.
+>                                         #   Refuses on a red gate OR ANY SKIP.
+> ```
+>
+> **2,399 unit tests green** — 740 Batman, 725 Gradius, 934 DaiOuJou. Source:
+> Batman 60 files / 18,069 lines, Gradius 25 / 17,956, DaiOuJou 61 / 30,934.
+>
+> **Where the in-flight work is written down:** `docs/worklog/ddpdoj/` and
+> `docs/worklog/gradius/`, per wave, with the open debts. Start there, not here.
+> DaiOuJou's standing bar is **two** conditions — feature complete *and*
+> oracle-clean — because satisfying one and reporting the pair is a mistake this
+> project has made more than once.
+>
+> **Three oracles, one per machine:** PyBoy (Batman, Python), Mesen 2.1.1
+> (Gradius, Lua), MAME 0.288 (DaiOuJou, Lua, `-video none -sound none
+> -nothrottle`). `docs/knowledge/` is the cross-game distillation and is the
+> thing to read before starting a fourth.
+>
+> **Everything below this box is BATMAN unless it says otherwise.** It is
+> accurate and still worth reading — the boss notes and the traps especially —
+> but do not read a "done" in it as a statement about the repository.
 >
 > ### How you beat the bosses — asked in play, so it goes at the top
 >
@@ -32,7 +62,7 @@
 >   punch is **24 connecting punches**, and nothing can be damaged at all before
 >   f728.
 >
-> ### What is left, and it is all deliberate
+> ### What is left in BATMAN, and it is all deliberate
 >
 > Two families in `pixeldiff`, both excluded on purpose — do NOT "fix" either:
 >
@@ -75,8 +105,10 @@
 >
 > ### Ground rules that keep being re-learned
 >
-> - **Measure; do not infer from the listing.** Nine fall-through incidents, one
->   of which invalidated shipped code.
+> - **Measure; do not infer from the listing.** At least thirty fall-through
+>   incidents across the three games, one of which invalidated shipped code. Do
+>   not try to increment that number in a worklog — the project tried and the
+>   ordinal forked; `docs/knowledge/02-traps.md` explains why it is a floor.
 > - **Byte-exact data is not a correct picture.**
 > - **Validate a new check by making it fail** — revert, watch it go red,
 >   restore. If it cannot go red it is not a check.
@@ -104,25 +136,37 @@ routine becomes a JS function we own, so the game can be retuned and modded.
 
 Repo: **https://github.com/Fabulu/Mixup** (public, MIT — see `NOTICE.md`)
 
-The project is called **Mixup**; Batman is phase 1. There is also a private
-demo build at gbtman.pages.dev — it ships extracted assets, so it is
-deliberately NOT linked from the public README. The public site, when it
+The project is called **Mixup**. Batman was phase 1; Gradius (NES) is phase 2
+and DoDonPachi DaiOuJou (IGS PGM arcade) is phase 3 and the current work. The
+long-term goal beyond tidiness is games that can be **combined** — Batman
+playable inside Gradius, the Vic Viper playable in Batman — which is why the
+launcher picks a game from `games/index.json` before it loads any game code.
+
+There is also a demo build at gbtman.pages.dev — it ships extracted assets, so
+it is deliberately NOT linked from the public README. The public site, when it
 exists, will take an uploaded ROM and extract in the browser instead.
 
-What that build ships is now *derived* data only — decoded level tables, a
-built VRAM image, a transcribed sound script — and no longer any verbatim slice
-of the cartridge. The one that was left, the player's tile pool, is replaced at
-build time by original placeholder art; see "Deploy" below.
+**Careful with what that build ships, because this paragraph was wrong for a
+while.** It is mostly *derived* data — decoded level tables, a built VRAM
+image, a transcribed sound script — but it is **not** free of verbatim
+cartridge bytes. `build-dist.mjs`'s `PUBLISH_VERBATIM` list has five entries:
+Batman's player tile pool and four DaiOuJou sprite colour shards, each with a
+written reason, each printed on every build. The placeholder-art machinery
+(`SUBSTITUTE`, `tools/make-placeholder-tiles.mjs`) is still there and is
+deliberately **empty** — player.tiles.bin was taken back out of it by an owner
+decision: the live site may serve real cartridge art, the repo may not. See
+`NOTICE.md`, which is the accurate statement of this.
 
-Nothing ROM-derived is committed. `assets/`, `disasm/`, `rip/`, `dist/` and the
-ROM itself are gitignored and regenerated from your own cartridge — and as of
-now that is true of `src/` too: no ROM table, sprite list or script survives as
-a literal anywhere in the port. Every one travels through
-`assets/manifest.json`, and `tools/verify_assets.py` re-reads each from raw
-file offsets so the exporter cannot verify itself.
+Nothing ROM-derived is committed, and that part is unchanged. `assets/`,
+`disasm/`, `rip/`, `dist/` and the ROMs themselves are gitignored for every game
+and regenerated from your own copies — and that is true of `src/` too: no ROM
+table, sprite list or script survives as a literal anywhere in the port. Every
+one travels through `assets/manifest.json`, and `tools/verify_assets.py`
+re-reads each from raw file offsets so the exporter cannot verify itself.
 
-**STATE: feature complete.** All fourteen levels play, every boss included,
-title screen through to end credits. 27 gate stages green — 739 unit tests, 50
+**STATE (Batman): feature complete.** All fourteen levels play, every boss
+included, title screen through to end credits. 27 gate stages green — 740 unit
+tests, 50
 frame-exact input scenarios, all 47 sound ids, a static typecheck, and two
 stages that compare PIXELS rather than memory. Nothing is captured: every screen is built from ROM
 data and diffed against the cartridge's own VRAM. The remaining gaps are
@@ -162,13 +206,23 @@ games/batman/
     player/               anim.js ($1B4A, a JP target) and death.js
                           (sub_00_29E7, driven by the main loop, not the chain).
     input.js              BTN lives here now, not in player.js.
-  tests/  33 files, 739 tests
+  tests/  33 files, 740 tests
   assets/                 untracked, regenerated from your own cartridge
-shared/  platform/gb/     named, deliberately EMPTY -- the second consumer does
-                          not exist yet, and phase 2 is NES.
+games/gradius/            phase 2, NES. 25 source files, 17,956 lines, 725
+                          tests, its own start.html and its own gate under
+                          tools/test-all.mjs.
+games/ddpdoj/             phase 3, IGS PGM arcade. 61 files, 30,934 lines, 934
+                          tests. THE CURRENT WORK.
 tools/                    stays at the root; tools/oracle/_env.mjs is the one
                           place that decides where a game's files are.
+                          tools/publish.mjs is the only runner that gates all
+                          three games.
 ```
+
+`shared/platform/gb/` was described here as an empty placeholder for a second
+consumer. **It no longer exists** — two more games arrived and nothing was
+hoisted into it, which is the honest answer about how much the ports actually
+share: the manifest shape and the launcher contract, and not much else.
 
 **player.js and main.js were cut exactly three and two ways, and no further.**
 player.js keeps its ~700-line `$1438..$1B4A` region as ONE file because that
@@ -191,9 +245,11 @@ after every move.
 
 ## The one thing that makes this project work
 
-**A PyBoy-based oracle runs the real ROM headless and diffs our state against
-it frame by frame.** It never ships. Everything below was found by it, not by
-reading the listing:
+**An oracle runs the real ROM headless and diffs our state against it frame by
+frame.** It never ships. Each game has its own — PyBoy for Batman, Mesen for
+Gradius, MAME for DaiOuJou — and the method is written up once, cross-game, in
+`docs/knowledge/01-the-oracle-method.md`. Batman's is PyBoy, and everything
+below was found by it, not by reading the listing:
 
 ```
 python tools/oracle/trace.py  --frames 620 --script "20:,600:R" --level 5
@@ -204,7 +260,7 @@ npm run test-all                        # 27 stages, the gate for everything
 npm run typecheck                       # tsc over games/batman/src/ (stage 2)
 ```
 
-**Current state: 50/50 oracle scenarios bit-exact, 739 unit tests, 27/27 stages
+**Current state: 50/50 oracle scenarios bit-exact, 740 unit tests, 27/27 stages
 green with zero skips.** The corpus covers levels 1, 3, 4, 5, 6, 8, 9, 11, 12
 and 14 over 14,519 frames.
 
@@ -234,22 +290,44 @@ python tools/export_sound.py      # -> assets/sound.json (bank-7 sound data)
 python -m http.server 8000        # module imports need a real origin
 ```
 
+That is Batman's setup. Gradius and DaiOuJou each need their own ROM and their
+own emulator (Mesen, MAME); `CONTRIBUTING.md` has all three setup blocks in one
+place. The launcher lists whichever games have assets present, so a checkout
+with one game's assets exported works fine.
+
 Deploy: `node tools/build-dist.mjs` then
 `npx wrangler@3 pages deploy dist --project-name=gbtman --branch=main`
 (wrangler@4 needs Node ≥22).
 
-`build-dist` reads every ROM in the repo root and refuses to publish any file
-that appears byte-for-byte inside one. **There is no allowlist.** There was one,
-holding `games/batman/assets/player.tiles.bin` — 6974 B of the player's tile
-pool, lifted verbatim out of bank 2, which every deploy since the first one
-served publicly. It is gone, and so is the mechanism. In its place
-`tools/make-placeholder-tiles.mjs` draws an ORIGINAL blocky-robot placeholder of
-the same 6974 bytes with the same tile indexing, and `build-dist` substitutes it
-**at the copy**: the local tree keeps the cartridge's real tiles, so the oracle
-and `pixeldiff.mjs` still measure against the real thing (73 frames / 66894
-wrong px / 96.023%, unchanged by the swap). The shipped file shares no run
-longer than 50 B with the ROM. `node tools/make-placeholder-tiles.mjs --png
-rip/placeholder/sheet.png` draws a contact sheet of all 31 poses.
+`build-dist` reads every ROM in the repo root **and** every ROM a game has
+extracted into `games/<id>/rip/rom/` — 42 MiB of arcade mask ROM, once DaiOuJou
+arrived — inflates any `.gz` before checking it, and refuses to publish a file
+that appears byte-for-byte inside one.
+
+**This paragraph used to say "there is no allowlist", and that is no longer the
+whole truth.** The old blanket mechanism (`SHIPPED_ANYWAY`) is gone. What
+exists now is `PUBLISH_VERBATIM`: an enumerated list, five entries, each with a
+written reason, each printed on every single build rather than folded into a
+count — Batman's `player.tiles.bin` (6974 B of player animation art, without
+which the port cannot draw its protagonist) and four DaiOuJou sprite colour
+shards. Those are verbatim cartridge bytes and they are served by the live site,
+by an explicit owner decision: **the site may serve real cartridge art, the repo
+may not** — and the repo does not. Separately, `prg.bin`/`chr.bin`/`prg.asm`
+(together the whole Gradius cartridge) are dropped outright via `NEVER_SHIP`.
+
+`SUBSTITUTE` and `tools/make-placeholder-tiles.mjs` — which draws an ORIGINAL
+blocky-robot placeholder of the same 6974 bytes with the same tile indexing —
+are still there, working, and deliberately **empty**: player.tiles.bin was taken
+back out by that same owner decision. Kept as the worked example for the next
+asset where substituting IS the right answer. If it is ever used again, note
+that it substitutes **at the copy**, so the local tree keeps the cartridge's
+real tiles and the oracle and `pixeldiff.mjs` still measure against the real
+thing (73 frames / 66894 wrong px / 96.023%, unchanged by the swap).
+`node tools/make-placeholder-tiles.mjs --png rip/placeholder/sheet.png` draws a
+contact sheet of all 31 poses.
+
+`NOTICE.md` is the accurate statement of all of this and is the one to keep
+current — it is the legal file.
 
 ---
 
@@ -660,13 +738,18 @@ rather than against the listing.
 
 ---
 
-## Suggested next steps
+## Suggested next steps — BATMAN ONLY
 
-**Every task on the original list is done, and so is everything found on the
-way.** The items still open are listed under "What is NOT ported" above;
-all four are small and none blocks play.
+**If you are picking the project up cold, this is not where to start.** The
+standing priority is DaiOuJou and after that Gradius; `docs/worklog/ddpdoj/` and
+`docs/worklog/gradius/` carry the live task lists and the open debts. What
+follows is Batman's residue, and Batman is complete.
 
-If you are picking this up cold, the useful work now is not porting — it is
+**Every task on Batman's original list is done, and so is everything found on
+the way.** The items still open are listed under "What is NOT ported" above;
+all of them are small and none blocks play.
+
+Within Batman, the useful work left is not porting — it is
 proving. Two of the last three real bugs were invisible to every memory
 comparison in the suite and only appeared when someone rendered a frame or
 drove the game. So:
@@ -676,9 +759,10 @@ drove the game. So:
    gameplay has nothing equivalent. A per-frame shade diff against PyBoy over a
    route playthrough would be the single highest-value harness left.
 2. **Validate any check you add by making it fail.** Revert the fix, watch the
-   check go red, restore. Two checks in this project's history sat green
-   through the bug they were written for. This is not optional diligence; it is
-   the difference between a test and a decoration.
+   check go red, restore. Checks in this project's history have sat green
+   through the very bug they were written for in FOUR distinct ways — the four
+   listed at the top of this file. This is not optional diligence; it is the
+   difference between a test and a decoration.
 3. **Re-run `tools/audit_coverage.py` after any porting wave.** It answers
    "what have we missed" with a number, and it is how the stage-intro screen
    was found after sitting unported *and* uncatalogued for the whole project.

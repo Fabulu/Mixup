@@ -2,6 +2,23 @@
 
 How we know the port behaves like the original.
 
+**Scope: this file is BATMAN's.** Every command, address, stage and numbered
+lesson below is the Game Boy port. The repository holds three games now, and
+each has its own oracle, its own gate and its own record:
+
+| game | emulator | gate | record |
+|---|---|---|---|
+| Batman (Game Boy) | PyBoy, Python | `npm run test-all` — 27 stages | this file |
+| Gradius (NES) | Mesen 2.1.1, Lua | `node games/gradius/tools/test-all.mjs` — 12 stages | `docs/worklog/gradius/` |
+| DaiOuJou (IGS PGM) | MAME 0.288, Lua, `-video none -sound none -nothrottle` | no `test-all` yet; unit tests plus individual gates under `games/ddpdoj/tools/` | `docs/worklog/ddpdoj/` |
+
+The method is the same for all three and is written up once, cross-game, in
+`docs/knowledge/`. What is *below* is Batman's application of it — including the
+45 numbered lessons, which are the concrete instances behind
+`docs/knowledge/02-traps.md`. **Do not read a count here as a project-wide
+count**; the other two games' instances are in their worklogs and have never
+been merged into one list.
+
 ## The oracle
 
 PyBoy (`pip install pyboy`) runs the real ROM headless and deterministically.
@@ -648,7 +665,13 @@ now — the fix narrative lives on its entry in `regress.mjs`.
 | `oracle/animmap.mjs` | derive the ROM's animation-id mapping from a trace |
 | `oracle/regress.mjs` | the whole scenario corpus, port vs ROM, frame-exact |
 | `verify_assets.py` | `assets/` vs the real ROM, all 14 levels (see below) |
-| `test-all.mjs` | single entry point for every stage (`npm run test-all`) |
+| `test-all.mjs` | single entry point for every **Batman** stage (`npm run test-all`) |
+
+`tools/test-all.mjs` is not the project's gate, only Batman's. Gradius has its
+own runner, deliberately not wired into this one (its header says why: two
+writers in one file), and DaiOuJou has no aggregate runner at all yet.
+**`node tools/publish.mjs` is the only thing that runs all three**, and it
+refuses to deploy on a red gate *or on any SKIP*.
 
 ## Next: function-level fixtures
 
@@ -676,7 +699,7 @@ node tools/test-all.mjs --only asset-integrity
 
 | stage | command | what it proves | needs PyBoy |
 |---|---|---|---|
-| `unit-tests` | `node --test games/batman/tests/` | each `src/*.js` routine in isolation, 728 of them | no |
+| `unit-tests` | `node --test games/batman/tests/` | each `src/*.js` routine in isolation, 740 of them | no |
 | `typecheck` | `node node_modules/typescript/bin/tsc -p tsconfig.json` | `checkJs` over `games/batman/src/` -- catches JSDoc that has drifted from the code it documents (see 45) | no |
 | `tunables-check` | `python tools/gen_tunables.py --check` | all 44 constants still equal the ROM bytes at their cited file offsets | no |
 | `sound-driver` | `node tools/oracle/sounddiff.mjs --all` | every recorded sound id, all four channels plus NR50/NR51 | no |

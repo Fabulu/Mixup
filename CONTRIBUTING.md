@@ -3,26 +3,49 @@
 The short version: **measure it against the cartridge, or don't change it.**
 
 This project has one unusual property that shapes everything else — there is a
-correct answer to every question, and it is available. A PyBoy oracle runs the
-real ROM headless and diffs our state against it. So "I think this is how it
-works" is never the standard; "I hooked it and it does this" is.
+correct answer to every question, and it is available. An emulator runs the real
+ROM headless and diffs our state against it, field by field, frame by frame. So
+"I think this is how it works" is never the standard; "I hooked it and it does
+this" is.
+
+There are **three games and three oracles**, one emulator per machine:
+
+| game | emulator | driven by |
+|---|---|---|
+| Batman: Return of the Joker (Game Boy) | PyBoy | Python |
+| Gradius (NES) | Mesen 2.1.1 | Lua |
+| DoDonPachi DaiOuJou (IGS PGM arcade) | MAME 0.288, `-video none -sound none -nothrottle` | Lua |
 
 ## Before you start
 
+`npm install` once, for everything — it brings in typescript, which the Batman
+gate's stage 2 needs. Then set up whichever game you are touching. Each needs a
+ROM **you** own; none of them is in this repository.
+
 ```sh
-# your own cartridge, named exactly:
-#   Batman - Return of the Joker (USA, Europe).gb
-python tools/export_assets.py      # -> games/batman/assets/
-python tools/gen_tunables.py       # -> games/batman/src/tunables.js
-npm install                        # pyboy is a python dep: pip install pyboy
-                                   # npm install also brings in typescript,
-                                   # which gate stage 2 needs
+# --- Batman. Your own cartridge at the repo root, named exactly:
+#     Batman - Return of the Joker (USA, Europe).gb
+pip install pyboy
+python tools/export_assets.py            # -> games/batman/assets/
+python tools/gen_tunables.py             # -> games/batman/src/tunables.js
+
+# --- Gradius. "Gradius (USA).nes" at the repo root.
+python games/gradius/tools/export_assets.py
+python games/gradius/tools/oracle/setup_mesen.py   # unattended, outside the repo
+
+# --- DoDonPachi DaiOuJou. The ddpdojblk MAME set.
+python games/ddpdoj/tools/export-tables.py
+node   games/ddpdoj/tools/export-web.mjs
+python games/ddpdoj/tools/setup_mame.py            # unattended, outside the repo
 ```
 
-Read `SAVEPOINT.md` first — it is the map of what is done, what is not, and
-which traps have already cost someone a day. Then `docs/03-VERIFICATION.md`,
-which is the method and a numbered list of ROM behaviours counter-intuitive
-enough to have caused real bugs.
+Read `SAVEPOINT.md` first — it is the map of what is done per game, what is
+not, and which traps have already cost someone a day. Then
+`docs/knowledge/`, which is the cross-game distillation and the thing to read
+before starting a new game; `docs/03-VERIFICATION.md` is Batman's method and its
+numbered list of ROM behaviours counter-intuitive enough to have caused real
+bugs. `docs/worklog/gradius/` and `docs/worklog/ddpdoj/` are the per-wave record
+for the two games still in flight.
 
 ## The rules that actually matter
 
@@ -31,8 +54,11 @@ project's history came from a plausible reading nobody checked. Two specific
 traps, both of which have bitten repeatedly:
 
 - **Follow the fall-through, not the label.** A routine that looks like it
-  returns often falls straight into the next one. Nine incidents, one of which
-  invalidated an already-shipped handler.
+  returns often falls straight into the next one. **At least thirty distinct
+  incidents** across the three games, one of which invalidated an
+  already-shipped handler. Treat thirty as a floor and not a total — see
+  `docs/knowledge/02-traps.md` for why the project's own running count of these
+  cannot be trusted.
 - **Byte-exact data is not a correct picture.** A screen matched the
   cartridge's VRAM to the byte and rendered wrong, because nothing drew its
   sprites. If you can render it or drive it, do that too.
@@ -42,9 +68,11 @@ from. This is not decoration — it is how the next person checks your work
 without re-deriving it.
 
 **3. A new check must be seen to fail.** If you add a test or a scenario,
-revert the fix, watch it go red, then restore. Two checks in this project's
-history sat green through the bug they were written for. A check you have never
-seen fail proves nothing.
+revert the fix, watch it go red, then restore. Checks here have sat green
+through the very bug they were written for in **four** distinct ways: one
+asserted only that rendering did not throw, one set up state the application
+never has, one sampled frames that never changed, and one took the answer in as
+an argument. A check you have never seen fail proves nothing.
 
 **4. Nothing ROM-derived gets committed.** Not a table, not a tile, not a
 sprite list. Data travels through `assets/manifest.json`, exported by
@@ -59,29 +87,51 @@ simply hard, or ugly, or strange. Do not invent a fix to match an expectation.
 
 ## Verifying a change
 
+There is **one gate per game, and they are three separate runners.** Run the one
+for the game you touched.
+
 ```sh
-npm test                       # 728 unit tests — these run WITHOUT the ROM
-npm run typecheck              # tsc over games/batman/src/ — no ROM either
-npm run test-all               # all 27 stages (needs PyBoy + your cartridge)
-npm run test-all -- --fast     # skip everything that needs PyBoy
+npm test                                     # Batman unit tests — 740, no ROM
+npm run typecheck                            # tsc over the ports — no ROM either
+npm run test-all                             # Batman gate — 27 stages (PyBoy + cartridge)
+npm run test-all -- --fast                   # skip everything that needs PyBoy
 npm run test-all -- --only raster-bands
+
+node --test games/gradius/tests/             # Gradius unit tests — 725
+node games/gradius/tools/test-all.mjs        # Gradius gate — 12 stages
+
+node --test games/ddpdoj/tests/              # DaiOuJou unit tests — 934
 ```
 
-The unit suite deliberately never reads `assets/`, so it runs on a clean
-checkout and in CI. It uses synthetic fixtures — see `SYNTHETIC_TABLES` in
-`games/batman/tests/helpers.js`. If your change makes a unit test need real ROM
-data, the
-fixture is the thing to change, not the suite's independence.
+**2,399 unit tests green** at the time of writing: 740 Batman, 725 Gradius, 934
+DaiOuJou. The Gradius gate is deliberately **not** wired into the root runner —
+its header says so and says why — and DaiOuJou has no `test-all` at all yet,
+only its unit tests plus individual gates (`bundlegate.mjs`, `webgate.mjs` and
+a long list of per-wave ones under `games/ddpdoj/tools/`).
 
-The PyBoy stages cannot run in CI, because CI has no cartridge. **Run them
-locally and say in your PR what they reported.** CI runs the two that need
-neither ROM nor assets: the unit suite and the typecheck.
+`node tools/publish.mjs` is the only thing that runs **all** of them, and it
+refuses to publish on a red gate *or on any skip*. `--only gradius` / `--only
+ddpdoj` / `--only batman` gate one game; `--dry` gates and builds without
+deploying. **A skip is not a pass** — the runners tell apart a legitimate
+environmental skip (no emulator, no cartridge) from a skip caused by a moved
+path, which is a failure. `docs/knowledge/03`.
+
+Every unit suite deliberately never reads `assets/`, so they run on a clean
+checkout and in CI. They use synthetic fixtures — see `SYNTHETIC_TABLES` in
+`games/batman/tests/helpers.js`. If your change makes a unit test need real ROM
+data, the fixture is the thing to change, not the suite's independence.
+
+No emulator stage can run in CI, because CI has no ROM for any of the three
+games. **Run them locally and say in your PR what they reported.** CI runs what
+needs neither ROM nor assets: the unit suites and the typecheck.
 
 ## Writing an oracle harness
 
-The existing ones are the templates, and `objregress.mjs`, `doordiff.mjs`,
-`flowdiff.mjs`, `deathdiff.mjs` and `rasterdiff.mjs` are the best-built. Two
-habits worth copying:
+The existing ones are the templates. For Batman, `objregress.mjs`,
+`doordiff.mjs`, `flowdiff.mjs`, `deathdiff.mjs` and `rasterdiff.mjs` are the
+best-built; the Gradius and DaiOuJou harnesses live under
+`games/gradius/tools/oracle/` and `games/ddpdoj/tools/` and follow the same
+shape against Mesen and MAME. Two habits worth copying:
 
 - **Event-cap, don't frame-cap.** Stop when the ROM's own sequencer lands, plus
   settling frames. A frame count goes stale the moment anything shifts.
@@ -115,7 +165,7 @@ this project has no shortage of plausible guesses that turned out wrong.
 Small and cited beats large and sweeping. If you are touching the frame order
 in `games/batman/src/game/frame.js`, be aware it determines OAM priority and
 carry ordering, and has caused subtle bugs twice. That file and
-`src/enemies/driver.js` are the only two that know any order; both name the
-test that guards them (`tests/frameorder.test.js`,
-`tests/enemy-order.test.js`). Those tests exist because FIVE distinct order
+`games/batman/src/enemies/driver.js` are the only two that know any order; both
+name the test that guards them (`games/batman/tests/frameorder.test.js`,
+`games/batman/tests/enemy-order.test.js`). Those tests exist because FIVE distinct order
 mutations passed the entire unit suite before they were written.
