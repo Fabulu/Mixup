@@ -58,6 +58,9 @@
 --   PROBE_PALDELTA "N" -- census the N video frames whose palette moved most,
 --                  so the wave-6 pixel gate's FADE frames are chosen by
 --                  measurement (see PALETTE-DELTA CENSUS below)
+--   PROBE_CKPT     directory for CHECKPOINTS -- see THE CHECKPOINT LADDER
+--   PROBE_CKPT_AT  "lf,lf,..." -- take a checkpoint at each of those logic
+--                  frames.  MANY per run, which is the whole point.
 --   PROBE_PRICOV   "startLF" -- THE PRIORITY COVERAGE POKER: two rows of the
 --                  same sprite, pri=0 and pri=1, over gameplay background.
 --                  The natural corpus contains NO pri=1 record at all.
@@ -502,6 +505,51 @@ do
   if s2 then DUMP_LF, DUMP_PATH = s2:match("^(%d+):(.*)$"); DUMP_LF = tonumber(DUMP_LF) end
 end
 
+-- ============================================================================
+-- THE CHECKPOINT LADDER  (wave 69)
+-- ============================================================================
+-- PROBE_CKPT=<dir> + PROBE_CKPT_AT="lf,lf,..." -- take a CHECKPOINT at each
+-- listed logic frame, at the sample point, MANY PER RUN.
+--
+-- WHY THIS IS NOT `PROBE_RAMDUMP` WITH A LOOP.  `PROBE_RAMDUMP` takes exactly
+-- one logic frame, so a seed at frame N costs a whole MAME run to N, and the
+-- deepest seed anyone has ever paid for in this repo is lf3716 of a 19,217-
+-- frame stage.  The cartridge run is the expensive half of every comparison
+-- (MEASURED this wave: 23 logic frames of wall clock per second, so the whole
+-- of stage 1 is ~14 minutes); the port is the cheap half.  Harvesting the
+-- ladder from ONE run inverts the cost: pay MAME once, then re-seed the port
+-- anywhere, as often as you like, with no emulator in the loop at all.
+--
+-- WHAT A CHECKPOINT IS, and what it deliberately is NOT:
+--   .ram.bin  the whole 128 KiB of main RAM.  On this board main RAM IS the
+--             NVRAM (pgm.cpp `.share(m_mainram)`), and `src/ram.js` keeps the
+--             board's own layout, so this file IS the port's state -- seeding
+--             is a memcpy, not a translation.
+--   .bg.bin   `:igs023:bg_videoram`, 4,096 bytes.  NOT main RAM and therefore
+--             NOT in a RAM dump: it is `$900000`, the 64x16 longword tilemap
+--             ring the scroll program has spent N frames painting.  This is
+--             the exact analogue of the PPU nametable that Gradius's wave 10
+--             found missing from ITS seed, and it is the one thing a naive
+--             128 KiB dump silently loses.
+--   .regs.txt the six IGS023 scroll registers, so `src/background.js`
+--             VideoRegs's hard-coded constants are CHECKED against the board
+--             at every rung rather than assumed to hold for 19,000 frames.
+--
+-- NOT captured here, said out loud rather than left to be discovered:
+--   * the ICS2115 / Z80 sound state -- no ported subsystem reads it
+--   * the IGS027A latch at $500000 -- 32 write-then-read slots (src/protsim.js);
+--     nothing in the corpus carries a slot across a frame boundary, and this
+--     file cannot prove that, only the listing can
+--   * MAME's own scheduler/DRC state -- a checkpoint is NOT a savestate and
+--     cannot resume the EMULATOR.  It reseeds the PORT.  Use PROBE_SAVEAT for
+--     the other thing.
+-- ============================================================================
+local CKPT_DIR = os.getenv("PROBE_CKPT")
+local ckptat, ckpt_n = {}, 0
+for tok in (os.getenv("PROBE_CKPT_AT") or ""):gmatch("[^,]+") do
+  ckptat[tonumber(tok)] = true
+end
+
 local snapat = {}
 for tok in (os.getenv("PROBE_SNAP") or ""):gmatch("[^,]+") do snapat[tonumber(tok)] = true end
 
@@ -582,6 +630,57 @@ local function gfx_dump()
   wr(pre .. "pixels.bin", SCR:pixels())
   gfx_n = gfx_n + 1
   p("GFXDUMP vf=%d lf=%d %s", v, lf, table.concat(rl, " "))
+end
+
+-- ---------------------------------------------------------------- checkpoints
+-- Written from the SAMPLE-POINT TAP, never from a frame notifier: by the time a
+-- video-frame notifier runs, the vblank has already DMA'd a new sprite list and
+-- the next frame's camera is half-built.  `gfx_dump` above documents the same
+-- hazard for the video state and answers it the other way (it WANTS the drawn
+-- frame); a checkpoint wants the state the game itself is standing on.
+local function ckpt_write(name, bytes)
+  local fh = io.open(CKPT_DIR .. "/" .. name, "wb")
+  if not fh then p("CKPT_OPEN_FAILED [%s]", CKPT_DIR .. "/" .. name); return false end
+  fh:write(bytes); fh:close()
+  return true
+end
+
+local function ckpt_dump(at_lf, at_vf)
+  local pre = string.format("c%06d.", at_lf)
+  -- main RAM, chunked: a 128 Ki-element Lua table of one-char strings is the
+  -- slow way and this runs up to a hundred times per run.
+  local c, out = {}, {}
+  for a = 0, RAM.size - 1 do
+    c[#c + 1] = string.char(RAM:read_u8(a))
+    if #c == 65536 then out[#out + 1] = table.concat(c); c = {} end
+  end
+  if #c > 0 then out[#out + 1] = table.concat(c) end
+  local ram = table.concat(out)
+  if #ram ~= RAM.size then
+    p("FAIL ckpt lf=%d main RAM came back %d bytes, expected %d",
+      at_lf, #ram, RAM.size)
+    return
+  end
+  local bg = share_bytes(BG)
+  if not ckpt_write(pre .. "ram.bin", ram) then return end
+  if not ckpt_write(pre .. "bg.bin", bg) then return end
+  local regs = string.format(
+    "bg_yscroll=%04x\nbg_xscroll=%04x\nbg_scale=%04x\n"
+    .. "tx_yscroll=%04x\ntx_xscroll=%04x\nctrl=%04x\n",
+    PROG:read_u16(0xb02000), PROG:read_u16(0xb03000), PROG:read_u16(0xb04000),
+    PROG:read_u16(0xb05000), PROG:read_u16(0xb06000), PROG:read_u16(0xb0e000))
+  ckpt_write(pre .. "regs.txt", regs)
+  ckpt_n = ckpt_n + 1
+  -- The semaphore byte is REPORTED, not silently fixed up.  `src/main.js` says
+  -- the dump is taken inside the arm's own write tap so the byte on disk is the
+  -- PRE-arm value; printing it is what turns that sentence into a measurement.
+  -- sem  = $803940, the vblank ARM semaphore (machine.js `semaphore`)
+  -- alt  = $80390C, the player-alternation phase the brief asks about; it is
+  --        ordinary main RAM and therefore already inside ram.bin -- printed so
+  --        that "is it captured?" is answered by a number and not by a claim
+  p("CKPT lf=%d vf=%d ram=%d bg=%d sem=%02X alt=%04X bg_scale=%04x",
+    at_lf, at_vf, #ram, #bg, RAM:read_u8(0x3940), RAM:read_u16(0x390c),
+    PROG:read_u16(0xb04000))
 end
 
 -- ============================================================================
@@ -1114,6 +1213,9 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x803940, 0x803941, "sem", function(off
         p("RAMDUMP lf=%d bytes=%d path=%s", lf, RAM.size, DUMP_PATH)
       else p("RAMDUMP_OPEN_FAILED path=[%s]", tostring(DUMP_PATH)) end
     end
+    -- THE CHECKPOINT LADDER (wave 69).  Same instant as PROBE_RAMDUMP above and
+    -- for the same reason; the difference is that this one fires many times.
+    if CKPT_DIR and ckptat[lf] then ckpt_dump(lf, vf) end
     -- SEEDING AT THE GAME'S OWN SAMPLE POINT.  The save is ARMED here, at the
     -- arm write, and TAKEN in the next frame notifier.  Calling buffer_save()
     -- from inside a memory tap re-enters the emulation core mid-instruction;
@@ -1520,6 +1622,20 @@ local function finish()
     bgscale.writes, bgscale.bad, hist(bgscale.vals), hist(bgscale.seen))
   if bgscale.bad > 0 then p("CENSUS bg_scale_bad_pcs %s", hist(bgscale.pcs)) end
   if GFXDIR then p("CENSUS gfx_dumps=%d dir=%s", gfx_n, GFXDIR) end
+  if CKPT_DIR then
+    -- REQUESTED vs TAKEN, not just taken.  A ladder that silently has holes in
+    -- it produces "the segment could not be compared" reports that look like
+    -- port defects.  A rung is missed when the run ends before its logic frame
+    -- -- i.e. when the RUN was too short, which is a fact about the run.
+    local want = 0
+    for _ in pairs(ckptat) do want = want + 1 end
+    p("CENSUS checkpoints taken=%d requested=%d dir=%s", ckpt_n, want, CKPT_DIR)
+    if ckpt_n < want then
+      p("WARN %d of %d requested checkpoints were NOT taken -- the run ended "
+        .. "before those logic frames. The ladder has holes; do not read a "
+        .. "missing segment as an unported path.", want - ckpt_n, want)
+    end
+  end
   -- THE PALETTE-DELTA CENSUS.  Reported as (video frame, logic frame, words
   -- changed since the previous video frame), biggest first.  This is how the
   -- wave-6 gate's fade frames are CHOSEN rather than guessed.

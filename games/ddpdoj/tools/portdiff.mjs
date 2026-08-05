@@ -50,10 +50,26 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
       + 'PROBE_PORTIN=1, or the port would be fed its own answer');
   }
 
+  // WAVE 69, ADDITIVE.  `bgSeed` and `untilLf` are undefined for every caller
+  // that existed before this wave, and `new BgVram(undefined)` / "run to the end
+  // of the trace" are exactly what those callers already got -- so the wave-4
+  // gate's behaviour is unchanged by construction, not by inspection.
+  //
+  //   bgSeed   $900000, the 64x16 longword tilemap ring, 2,048 big-endian
+  //            words.  NOT main RAM, so a 128 KiB seed does not contain it;
+  //            without it a port seeded at lf12,000 paints fifteen columns into
+  //            an empty ring and the other forty-nine are blank.  This is the
+  //            DaiOuJou analogue of the PPU nametable Gradius's wave 10 found
+  //            missing from ITS seed.
+  //   untilLf  the last logic frame to compare, so ONE trace can be sliced into
+  //            independent segments, each re-seeded from the board.  That is
+  //            what stops one early divergence from painting every later
+  //            segment red and reporting a blast radius as a finding.
   const game = new Game(seed, tables, {
     logicFrame: seedLf,
     videoFrame: Number(start.vf),
     budgetUnits: opts.budgetUnits,
+    bgSeed: opts.bgSeed,
   });
   // `CLAMP_ORDER` is a module-level mutable switch, so an in-process caller that
   // ran `--break clamp-first` and then a clean run would carry the mutation
@@ -109,7 +125,8 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
   const sprqLen = (RAWDUMP_SPEC.find((r) => r[0] === 'sprq') ?? [, , 0])[2];
   const hitEx = { frames: 0, total: 0, first: null, any: 0, anyFrames: 0 };
 
-  for (let lf = seedLf + 1; ; lf++) {
+  const untilLf = opts.untilLf ?? Infinity;
+  for (let lf = seedLf + 1; lf <= untilLf; lf++) {
     const row = byLf.get(lf);
     if (!row) break;
     const prevBoardVf = boardVf;

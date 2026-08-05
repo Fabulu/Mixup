@@ -89,6 +89,40 @@
       "snap": "2100,2400,2590",
       "pixels": 20,
       "meter": true
+    },
+    {
+      "name": "stage1-sweep",
+      "why": "WAVE 69. THE WHOLE OF STAGE 1, ONCE, so that everything downstream is a JavaScript re-seed rather than another emulator run. Stage 1 is 7,317 logic frames to the boss lock and the boss's own $294F32 timeout ends it at lf19,218 (W62), and NOTHING IN THIS REPO HAS EVER COMPARED PAST lf6,185: every art, coverage and divergence figure this project holds was measured over 3,000-6,185 frames from boot, and the owner reports the picture degrading progressively AFTER THE MIDBOSS DIES (~lf3800-4200) -- i.e. the trouble starts almost exactly where the measurement window ends. MEASURED this wave: MAME does 23 logic frames per second of wall clock with -video none, so this run costs ~14 minutes ONCE and every later comparison costs nothing. THE INTERVENTION, LABELLED: $810424 (the player's ($3e,A6) invulnerability timer) is held at $FF from lf1890 on BOTH sides, exactly as `fly-around` does and for the same reason -- without it a scripted run dies long before the stage ends and the deep frames cannot be reached at all. docs/knowledge/09 is explicit that this gives STATES, not a picture of the game: an invulnerable run produces game states a player cannot produce (no death, no respawn, no rank drop) and is valid FOR COVERAGE ONLY. The companion scenario `stage1-sweep-natural` is the same script with no poke and exists to MEASURE where a scripted player actually dies, which is the number this one cannot produce. AUTO-SHOT, not tapped fire: Button 3 (mirror bit 6) is the auto-shot the corpus's own `stage1-open` and `stage1-deep` already hold, so the ship is FIRING for the whole stage (owner decision 4: a passive run is pinned at minimum rank with nothing dying -- a different game). Movement is `tailRepeat`, an eight-phase 240-frame cycle, because a literal 19,000-frame script would not fit in a Windows environment block.",
+      "frames": 19600,
+      "build": "B",
+      "seed": 2000,
+      "tail": "1890=C",
+      "tailRepeat": {
+        "from": 1920,
+        "period": 240,
+        "until": 19560,
+        "cycle": ["C", "CU", "C", "CL", "C", "CR", "C", "CD"]
+      },
+      "poke": "810424=FF",
+      "pokeFrom": 1890,
+      "snap": "2000,4000,6000,8000,12000,16000,19200,19560",
+      "meter": true
+    },
+    {
+      "name": "stage1-sweep-natural",
+      "why": "WAVE 69, THE CONTROL. Byte for byte the same script as `stage1-sweep` WITH NO POKE. It exists to answer the one question the invulnerable run cannot: how far into stage 1 does a scripted player actually get before dying? Measurement proves presence, so this reports a frame number and not a claim about the stage.",
+      "frames": 19600,
+      "build": "B",
+      "seed": 2000,
+      "tail": "1890=C",
+      "tailRepeat": {
+        "from": 1920,
+        "period": 240,
+        "until": 19560,
+        "cycle": ["C", "CU", "C", "CL", "C", "CR", "C", "CD"]
+      },
+      "snap": "4000,8000,12000",
+      "meter": true
     }
   ]
 }

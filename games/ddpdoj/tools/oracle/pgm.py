@@ -68,6 +68,11 @@ Commands
   sprites       THE SPRITE HARVEST: every offs the game used, for the atlas
   sound         THE SOUND MAP: mailbox -> keyon, the Z80 blob, ICS in order
   check         THE CHECK RUNNER: every gate, cheapest first, skips counted
+  ckpt          WAVE 69: ONE cartridge run over a whole stage, a LADDER of
+                checkpoints out of it (main RAM + $900000 + the IGS023 regs
+                every 250 logic frames), and a manifest.  Every later
+                comparison re-seeds the port from a rung and needs no emulator.
+                `--verify` proves the new dumper byte-identical to wave 4's.
 
  7. THE OBJECT DRIVER IS MAIN-LOOP CALL #2, $2410BC (build A: $1413FE): 20 slots
     of $50 bytes at $80E240, dispatched through a 20-entry table at $240F62,
@@ -92,6 +97,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -441,9 +447,41 @@ def scenarios() -> dict:
     return json.loads((HERE / "scenarios.json").read_text(encoding="utf8"))
 
 
+def expand_repeat(rep: dict) -> str:
+    """WAVE 69.  A scenario tail as a REPEATING CYCLE rather than a literal.
+
+    A stage-length script written out frame by frame does not fit: 19,000 logic
+    frames of movement is ~1,900 `lf=NAMES` items, and the whole Windows
+    environment block -- which is how `frame.lua` receives PROBE_INPUT -- caps
+    at 32,767 characters.  The cycle form is also the honest one: the pattern IS
+    periodic, and writing it out longhand would hide that behind a wall of
+    numbers nobody would read.
+
+    Deterministic and total: same dict in, same string out, no clock, no random.
+    """
+    for k in ("from", "period", "until", "cycle"):
+        if k not in rep:
+            raise SystemExit(f"tailRepeat is missing '{k}'")
+    if rep["period"] <= 0:
+        raise SystemExit("tailRepeat.period must be positive")
+    if not rep["cycle"]:
+        raise SystemExit("tailRepeat.cycle is empty")
+    items, lf, i = [], int(rep["from"]), 0
+    while lf <= int(rep["until"]):
+        items.append(f"{lf}={rep['cycle'][i % len(rep['cycle'])]}")
+        lf += int(rep["period"])
+        i += 1
+    return ";".join(items)
+
+
 def build_script(defs: dict, s: dict) -> str:
     pre = defs["bootPrefix"][s.get("boot", "versionB")]
-    return (pre + ";" + s["tail"]) if s.get("tail") else pre
+    parts = [pre]
+    if s.get("tail"):
+        parts.append(s["tail"])
+    if s.get("tailRepeat"):
+        parts.append(expand_repeat(s["tailRepeat"]))
+    return ";".join(parts)
 
 
 def run_scenario(defs: dict, s: dict, *, out: Path, tag: str = "",
@@ -2802,7 +2840,208 @@ def _cmd_firegate(argv: list[str]) -> int:
     return res.returncode
 
 
+# --------------------------------------------------------------------------- wave 69
+# THE CHECKPOINT LADDER.
+#
+# THE CADENCE IS 250 LOGIC FRAMES, and it is a decision with reasons rather than
+# a round number:
+#
+#  * SPACE.  19,600 frames / 250 = 79 rungs x (131,072 B RAM + 4,096 B BG) =
+#    10.2 MB.  `games/ddpdoj/tools/oracle/out/` already holds 158 MB, so the
+#    ladder is 6 % of what is there and the cadence is not space-limited.  A
+#    100-frame cadence would be 26 MB and still affordable; a 1,000-frame one
+#    would save nothing worth having.  So space does not decide it.
+#  * BISECTION.  What decides it is what you do with a divergence.  The ladder
+#    exists so that "first divergent field at lf12,431" can be re-run from the
+#    rung BEFORE it in isolation.  A rung every 250 frames puts every frame in
+#    the stage within 250 frames of a restartable state -- about four seconds of
+#    game time, and a segment that size takes the port well under a second.
+#  * ATTRIBUTION.  Segments are compared INDEPENDENTLY, each re-seeded from the
+#    board.  That is the property that makes a deep sweep readable: a divergence
+#    in segment 7 does not poison segments 8..79, so the report is "which parts
+#    of the stage diverge" and not "everything after the first bug".  Coarser
+#    rungs blur that; finer rungs stop distinguishing anything, because a
+#    re-seed every few frames re-seeds away the very drift being hunted.
+#
+# ALIGNMENT IS NOT OPTIONAL.  The ladder always contains the corpus's OWN seed
+# frames (`seed` in scenarios.json: lf2000 for `fly-around`, lf3716 for
+# `stage1-shot`).  A ladder that could not land on an existing seed frame could
+# never reproduce an existing result, and the first thing this mechanism has to
+# do is reproduce one.
+CKPT_EVERY = 250
+
+
+def ckpt_rungs(defs: dict, s: dict, every: int = CKPT_EVERY,
+               extra: list[int] | None = None) -> list[int]:
+    """The logic frames to checkpoint, sorted and unique."""
+    start = int(s.get("seed", 2000))
+    end = int(s["frames"])
+    rungs = set(range(start, end, every))
+    rungs.add(start)
+    # Every seed frame any scenario in the corpus declares, so a reproduction is
+    # always possible.  Named from the file, never typed in here.
+    for x in defs["scenarios"]:
+        if x.get("seed") is not None and start <= int(x["seed"]) < end:
+            rungs.add(int(x["seed"]))
+    for x in extra or []:
+        if start <= x < end:
+            rungs.add(x)
+    return sorted(rungs)
+
+
+def _cmd_ckpt(argv: list[str]) -> int:
+    """WAVE 69.  ONE cartridge run over a whole stage; a ladder of checkpoints
+    out of it; every later comparison is JavaScript over files that exist.
+
+        python pgm.py ckpt [scenario] [--every K] [--also LF,LF] [--verify]
+
+    `--verify` additionally asks the SAME RUN for a wave-4 `PROBE_RAMDUMP` at
+    the scenario's own seed frame and asserts it is BYTE-IDENTICAL to the rung
+    the new dumper wrote there.  That is the reproduction-first check: the new
+    mechanism has to agree with the old one on a frame the old one can reach,
+    before anything it says about a frame the old one cannot reach is worth
+    reading.
+    """
+    defs = scenarios()
+    name = argv[0] if argv and not argv[0].startswith("--") else "stage1-sweep"
+    s = next((x for x in defs["scenarios"] if x["name"] == name), None)
+    if s is None:
+        raise SystemExit(f"unknown scenario {name}; have "
+                         f"{[x['name'] for x in defs['scenarios']]}")
+    every = int(argv[argv.index("--every") + 1]) if "--every" in argv else CKPT_EVERY
+    extra = ([int(x) for x in argv[argv.index("--also") + 1].split(",")]
+             if "--also" in argv else [])
+    verify = "--verify" in argv
+
+    out = OUT / "w69" / name
+    ck = out / "ckpt"
+    if ck.exists():
+        shutil.rmtree(ck)          # never mix two runs' rungs in one directory
+    ck.mkdir(parents=True, exist_ok=True)
+    rungs = ckpt_rungs(defs, s, every, extra)
+    tsv = out / "trace.tsv"
+    seed_lf = int(s.get("seed", 2000))
+    vseed = out / f"verify.ramdump.lf{seed_lf}.bin"
+
+    env = {
+        # THE PORT'S INPUT.  Without this the port would be fed its own answer
+        # rather than the hardware's input word -- portdiff.mjs refuses a trace
+        # that lacks the column, and that refusal is why this is not optional.
+        "PROBE_PORTIN": "1",
+        "PROBE_WATCH": w4_watch(),
+        "PROBE_RAWDUMP": w8_rawdump(),
+        "PROBE_EXEC": w8_exec(),
+        "PROBE_POKE": s.get("poke", ""),
+        "PROBE_POKE_FROM": str(s.get("pokeFrom", 0)),
+        "PROBE_CKPT": str(ck),
+        "PROBE_CKPT_AT": ",".join(str(x) for x in rungs),
+    }
+    if verify:
+        env["PROBE_RAMDUMP"] = f"{seed_lf}:{vseed}"
+
+    print(f"=== {name}: {s['why'][:160]}...")
+    print(f"    {s['frames']} logic frames, build {s.get('build', 'B')}")
+    print(f"    {len(rungs)} rungs every {every} frames, lf{rungs[0]}..{rungs[-1]}")
+    if s.get("poke"):
+        print(f"    INTERVENTION: poke {s['poke']} from lf{s.get('pokeFrom', 0)} "
+              f"-- this run yields STATES, not a picture of the game "
+              f"(docs/knowledge/09)")
+    t0 = time.time()
+    r, _ = run_scenario(defs, s, out=out, tag="", extra_env=env)
+    # `run_scenario` names the file after the scenario; the manifest wants a
+    # stable name, so move rather than guess later.
+    got = out / f"{name}.tsv"
+    if got.exists():
+        tsv.unlink(missing_ok=True)
+        got.replace(tsv)
+    check(r, f"ckpt/{name}")
+    census(r)
+    wall = time.time() - t0
+
+    taken = {}
+    for l in r.find("CKPT "):
+        d = dict(kv.split("=", 1) for kv in l.split()[1:])
+        taken[int(d["lf"])] = d
+        print("  " + l)
+    for l in r.find("CENSUS checkpoints") + r.find("WARN "):
+        print("  " + l)
+
+    missing = [x for x in rungs if x not in taken]
+    print(f"\nLADDER {len(taken)} of {len(rungs)} rungs taken in {wall:.0f} s "
+          f"({s['frames'] / max(wall, 1):.1f} logic frames per wall second)")
+    if missing:
+        print(f"  MISSING {len(missing)} rungs: lf"
+              + ",".join(str(x) for x in missing[:10])
+              + (" ..." if len(missing) > 10 else "")
+              + "  -- the run ended before them. That is a fact about the RUN.")
+
+    # The per-frame video-frame map, so a seeded port can be given the board's
+    # own videoFrame instead of counting from zero.
+    rows = tsv.read_text(encoding="utf8").splitlines()
+    cols = {c: i for i, c in enumerate(rows[0].split("\t"))}
+    vf = {}
+    for ln in rows[1:]:
+        f = ln.split("\t")
+        vf[int(f[cols["lf"]])] = int(f[cols["vf"]])
+
+    man = {
+        "wave": 69,
+        "scenario": name,
+        "why": s["why"],
+        "set": defs["set"],
+        "build": s.get("build", "B"),
+        "frames": s["frames"],
+        "script": build_script(defs, s),
+        "poke": s.get("poke", ""),
+        "pokeFrom": s.get("pokeFrom", 0),
+        # LABELLED AT THE SOURCE, so no consumer can present this as ordinary
+        # play by accident.  docs/knowledge/09.
+        "intervention": (
+            f"$810424 held at $FF from lf{s.get('pokeFrom', 0)} -- the player is "
+            f"INVULNERABLE. This ladder gives STATES, not a picture of the game; "
+            f"a seeded comparison from it validates the CODE from that state, "
+            f"never the route to it."
+        ) if s.get("poke") else "",
+        "every": every,
+        "lastLf": max(vf) if vf else 0,
+        "rungs": [{"lf": x, "vf": vf.get(x),
+                   "ram": f"c{x:06d}.ram.bin", "bg": f"c{x:06d}.bg.bin",
+                   "regs": f"c{x:06d}.regs.txt"}
+                  for x in rungs if x in taken],
+        "missing": missing,
+        "trace": tsv.name,
+        "dir": "ckpt",
+    }
+    (out / "manifest.json").write_text(json.dumps(man, indent=1), encoding="utf8")
+    print(f"  manifest -> {out / 'manifest.json'}")
+
+    rc = 0
+    if verify:
+        # THE REPRODUCTION CHECK, and it is the reason --verify exists.
+        rung = ck / f"c{seed_lf:06d}.ram.bin"
+        if not vseed.exists() or not rung.exists():
+            print(f"FAIL verify: {vseed.name} exists={vseed.exists()} "
+                  f"{rung.name} exists={rung.exists()}")
+            rc = 1
+        else:
+            a = hashlib.sha256(vseed.read_bytes()).hexdigest()
+            b = hashlib.sha256(rung.read_bytes()).hexdigest()
+            print(f"VERIFY wave-4 PROBE_RAMDUMP  lf{seed_lf}  sha256={a}")
+            print(f"VERIFY wave-69 ladder rung   lf{seed_lf}  sha256={b}")
+            if a != b:
+                print("FAIL the two dumpers disagree at the same logic frame -- "
+                      "the ladder is NOT the seed the corpus already trusts")
+                rc = 1
+            else:
+                print("VERIFY IDENTICAL -- the new dumper reproduces the old one "
+                      "byte for byte at a frame the old one can reach")
+    if r.fails:
+        rc = 1
+    return rc
+
+
 COMMANDS = {
+    "ckpt": _cmd_ckpt,
     "verify": _cmd_verify, "landmarks": _cmd_landmarks, "trace": _cmd_trace,
     "snap": _cmd_snap, "seed": _cmd_seed, "scen": _cmd_scen, "gate": _cmd_gate,
     "inputlead": _cmd_inputlead, "rtc": _cmd_rtc, "drc": _cmd_drc,
