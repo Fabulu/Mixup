@@ -1433,6 +1433,53 @@ def _cmd_check(argv: list[str]) -> int:
                   "dy-off-by-one", "no-phase-mask"):
             stage(f"fly-around RED [{m}]",
                   lambda m=m: sub(__file__, "flyaround", "--reuse", "--break", m))
+
+        # WAVE 69 -- THE SEGMENT SWEEP, over whatever checkpoint ladders exist.
+        #
+        # It runs NO EMULATOR: a ladder costs ~22 minutes of MAME for a whole
+        # stage and a gate must not pay that, so this stage consumes ladders
+        # that `pgm.py ckpt` already left behind and SKIPS -- counted, with the
+        # command to fix it -- when there are none.  A SKIP IS NOT A PASS and
+        # the runner's last line says how many there were.
+        def _ladders() -> list[Path]:
+            root = OUT / "w69"
+            return sorted(root.glob("*/manifest.json")) if root.exists() else []
+
+        def _sweep():
+            mans = _ladders()
+            if not mans:
+                return ("SKIP", "no checkpoint ladder on disk -- build one with "
+                                "`pgm.py ckpt <scenario>` (~22 min of MAME for a "
+                                "whole stage, once)")
+            worst, notes = "PASS", []
+            for m in mans:
+                st, note = _node(TOOLS / "seedcmp.mjs", "--manifest", m,
+                                 "--quiet")
+                notes.append(f"{m.parent.name}:{st}")
+                if st == "FAIL":
+                    worst = "FAIL"
+            return (worst, " ".join(notes))
+
+        stage("segment sweep: the port re-seeded from the board at every rung",
+              _sweep)
+
+        def _sweep_red():
+            mans = _ladders()
+            if not mans:
+                return ("SKIP", "no checkpoint ladder on disk")
+            # A mutation must turn segments non-green on AT LEAST ONE ladder.
+            # `seedcmp --break` already returns non-zero when a mutation leaves
+            # everything green, so a PASS here IS the red validation.
+            for m in mans:
+                st, _ = _node(TOOLS / "seedcmp.mjs", "--manifest", m,
+                              "--quiet", "--break", "clamp-first")
+                if st == "PASS":
+                    return ("PASS", f"clamp-first went red on {m.parent.name}, "
+                                    f"as it must")
+            return ("FAIL", "clamp-first left every segment of every ladder "
+                            "green -- the sweep cannot see it")
+
+        stage("segment sweep RED [clamp-first]", _sweep_red)
         # WAVE 11.  THE DISPLAY-LIST KEYSTONE, and its two FORCED scenarios --
         # the cap policy is gameplay and the natural corpus reaches 120 of 251
         # records, so `dlgate` alone would leave the drop policy, the equality
