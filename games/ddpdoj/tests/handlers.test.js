@@ -76,10 +76,17 @@ test('the ported handler addresses are registered (W25 six + W30 three + W31 the
   // midboss's own death (`$26B7E0 moveq #$1C,D0 / $26B7E2 jsr $263684`), which
   // is why it is not in the script walk's denominator and why 25 waves shipped
   // without it. It is not in SIX either -- it reads 207 real ROM longwords.
+  // W62 (S1) adds `$292902`, THE STAGE-1 BOSS, and it IS the nineteenth of the
+  // nineteen the stage-1 script resolves to -- so the script denominator goes
+  // 18 of 19 to **19 of 19**. What was ported behind it is NOT the boss: it is
+  // `$294AD8`, `$294F32`'s 10,800-frame timeout, `$294DD4` and D-script 6, the
+  // four routines the STAGE END rides on (src/boss.js's header, and recon 48's
+  // 111 script entry points are still three waves). It is not in SIX -- it
+  // dispatches into the scheduler, which reads two real ROM tables.
   assert.deepEqual([...HANDLER_ADDRESSES].sort((a, b) => a - b),
     [...SIX, 0x26b6fa, 0x272aac,
       0x26a5e4, 0x26a860, 0x26ad28, 0x27733e, 0x275f30, 0x2697f6, 0x29700c,
-      0x26c20c,
+      0x26c20c, 0x292902,
     ].sort((a, b) => a - b));
 });
 

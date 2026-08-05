@@ -758,12 +758,35 @@ test('$24 frees itself on a SIGNED short-axis test, and $297086 is signed too',
   });
 
 // ===========================================================================
-// 7. THE BOSS IS STILL A LOUD NAMED THROW
+// 7. THE BOSS -- W36 LEFT IT A LOUD NAMED THROW; W62 (S1) PORTED IT
 // ===========================================================================
+//
+// W36 wrote "the 44th is the stage-1 BOSS $292902, which stays a loud named
+// throw" and shipped, and W57 walked the port into it on logic frame 7,870 --
+// on the LIVE PAGE, with fire held. This test is UPDATED rather than deleted,
+// and it asserts the opposite claim on the same address, because the
+// nineteenth handler being reachable is what makes stage 1 able to END.
+//
+// **WHAT IS BEHIND IT IS NOT THE BOSS.** See src/boss.js: recon 48's 111
+// script entry points and 257-routine closure are still three waves, and what
+// W62 ported is the four routines the STAGE END rides on.
 
-test('$292902 -- the nineteenth handler -- still throws BY ITS OWN ADDRESS',
-  { skip: SKIP }, () => {
+test('$292902 -- THE NINETEENTH HANDLER -- RUNS, and its first dispatch spends '
+  + 'one frame of the 10,800-frame timeout', { skip: SKIP }, () => {
     const ram = fixture();
-    assert.throws(() => runHandler(0x292902, ram, ROM, A5, ctxOf(ram).ctx),
-      (e) => e instanceof Unreached && e.romAddress === 0x292902);
+    const { ctx } = ctxOf(ram);
+    // The boss's record as $2926EE's `moveq #$7,D0 / jsr $26377A` leaves it.
+    ram.setU32(A5 + 0x16, 0x00016c00);            // part 0 HP  93,184
+    ram.setU32(A5 + 0x1a, 0x0000a000);            // part 1 HP  40,960
+    ram.setU32(A5 + 0x1e, 0x0000a000);            // part 2 HP  40,960
+    ram.setU16(A5 + 0x22, 0x2a30);                // **THE TIMEOUT**
+    ram.setU16(A6, 0xa001); ram.setU16(A6 + 0x20, 0xa001);
+    ram.setU16(A6 + 0x60, 0xa001);
+    ram.setU16(0x8103e6, 0x8000);                 // a live P1, for $2428A6
+    runHandler(0x292902, ram, ROM, A5, ctx);
+    assert.equal(ram.u16(A5 + 0x22), 0x2a2f,
+      '$294F3C subq.w #$1,$22(a5), reached through $294AD8 fall-through '
+      + '$294DCC jmp $294F32(pc) -- there is no other caller');
+    assert.ok(Unreached.prototype instanceof Error);
   });
+

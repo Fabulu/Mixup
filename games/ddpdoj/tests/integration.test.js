@@ -245,17 +245,17 @@ test('the handler adapter covers every address in handlerMap(), and only those',
   { skip: SKIP }, () => {
     const m = enemyHandlerMap(ROM);
     assert.deepEqual([...m.keys()].sort(), [...HANDLER_ADDRESSES].sort());
-    assert.equal(m.size, 19, 'W25 ported six of stage 1\'s nineteen SCRIPT '
+    assert.equal(m.size, 20, 'W25 ported six of stage 1\'s nineteen SCRIPT '
       + 'handlers; W30 added $275914, $2739C0 and $276702 -- the three that '
       + 'BLOCKED the fly-around gate -- W31 added $26B6FA, the MIDBOSS, the '
       + 'fourth, W33 added $272AAC, the scripted carrier, and W36 added the '
       + 'seven remaining NON-BOSS handlers ($26A5E4 $26A860 $26AD28 $27733E '
       + '$275F30 $2697F6 $29700C): 18 OF THE 19 SCRIPT HANDLERS. The nineteenth '
-      + 'is the stage-1 BOSS $292902, ten instructions of dispatch into '
-      + '$294AD8, and it still throws. W57 added $26C20C, which is NOT one of '
+      + 'is the stage-1 BOSS $292902 -- and W62 ADDED IT, so the script '
+      + 'denominator is now 19 OF 19. W57 added $26C20C, which is NOT one of '
       + 'the nineteen: nothing in the script spawns type $1C -- the midboss\'s '
-      + 'own death does ($26B7E0/$26B7E2) -- so the map has 19 entries against '
-      + 'a script denominator that is still 18 of 19');
+      + 'own death does ($26B7E0/$26B7E2) -- so the map has 20 entries against '
+      + 'a script denominator of 19 of 19');
   });
 
 test('an enemy whose ($4C,A5) handler is unported throws BY THAT ADDRESS',

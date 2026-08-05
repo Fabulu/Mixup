@@ -1246,6 +1246,30 @@ def _cmd_check(argv: list[str]) -> int:
                    if _node(MIDBOSSGATE, "--break", "no-kill")[0] == "FAIL"
                    else ("FAIL", "the scenario is GREEN with the midboss alive "
                                  "-- it is not measuring the kill")))
+    # ==================== WAVE 62 (S1) -- STAGE 1 ENDS ======================
+    # The owner's binding directive (docs/worklog/ddpdoj/39) is that stage 1 be
+    # FEATURE COMPLETE and ORACLE-CLEAN, and a stage that never finishes is not
+    # complete. Before W62 the port STOPPED at `UNPORTED $292902` on logic frame
+    # 7,870 -- on the deployed page, with fire held (W57 SS7.3) -- and every
+    # stage in this gate was green over a game that could not reach its own end.
+    #
+    # This stage drives the SHIPPED BUNDLE for 21,000 frames and asserts, as
+    # EXACT FRAMES, the whole chain: the boss's 10,800-frame timeout expiring,
+    # D-script 6's seven states, `$2595E8`, `$242952` running ONCE, the
+    # background object being DESTROYED and a DIFFERENT one built, and
+    # `$813092` going 0 -> 1 with the distance clock back at zero.
+    #
+    # `--break no-timeout` re-floors `$22(a5)` every frame so the timeout can
+    # never expire; 15 of its 24 assertions must go RED, which is the proof
+    # that the stage measures the ENDING and not the clock.
+    STAGEENDGATE = TOOLS.parent / "tools" / "w62stageendgate.mjs"
+    stage("STAGE 1 ENDS: the boss timeout, $242952, and the rebuild",
+          lambda: _node(STAGEENDGATE))
+    stage("STAGE 1 ENDS RED [no-timeout]",
+          lambda: (("PASS", "went red without the timeout, as it must")
+                   if _node(STAGEENDGATE, "--break", "no-timeout")[0] == "FAIL"
+                   else ("FAIL", "the scenario is GREEN with the boss immortal "
+                                 "-- it is not measuring the stage ending")))
     if not quick:
         stage("fly-around: port vs board, 0 divergent frames",
               lambda: sub(__file__, "flyaround"))

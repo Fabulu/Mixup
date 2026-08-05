@@ -354,10 +354,10 @@ function walk2596C6(ram, rom, ctx) {
       const a = SCHED.a3Base + i * SCHED.a3Stride;
       const s = ram.u16(a);
       if (s === 0) continue;                           // $2597DE beq
-      let off = (s & 0xff) << 3;                       // $2597E2/$2597E6
-      const was = (ram.u8(a) & 1) !== 0;               // $2597E8 bset.b #$0,(A4)
+      let off = (s & 0xff) << 3;                       // MUTANT: no STEP
+      const was = (ram.u8(a) & 1) !== 0;
       ram.setU8(a, ram.u8(a) | 1);
-      if (was) off += 4;                               // $2597F0
+      if (was) off += 0;
       call(tab, off, a, 9 - i);                        // jsr (A0)
     }
   }
