@@ -762,6 +762,9 @@ try {
       // bundle, and [M] with it withheld the page runs normally and stops on
       // the exact frame the first shot connects, naming it.
       `[${s.spriteSource}] dl ${s.dlRecords} drawn ${s.dlDrawn} b0 ${s.dlBuckets}`
+        // WAVE 67: bucket 12, the ship's afterimage trail.  0 until the laser
+        // arms it ($24C282) and 0..5 after, 0 whenever the ship is not moving.
+        + (s.dlTrail ? ` trail ${s.dlTrail}` : '')
         + (s.sprShards ? ` spr ${s.sprShards.ready}/${s.sprShards.total}` : '')
         + (s.dlPending ? ` <b>SPR SHARD ${s.dlPending}</b>` : '')
         + (s.dlMissing

@@ -856,6 +856,12 @@ class Demo {
         : '',
       sprShards: this.bundle.spr?.status() ?? null,
       dlBuckets: g.displayList?.perBucketRecords?.[0] ?? 0,
+      // WAVE 67.  Bucket 12, THE SHIP'S AFTERIMAGE TRAIL, on the status line
+      // for one reason: `$24A53E jsr $253604` was a counted note for fifty-four
+      // waves and the thing that would have shown it is a number on the page
+      // the owner plays.  It is 0 until the beam arms and 0..5 after -- and
+      // ZERO ON A STATIONARY SHIP, which is `$25369C` and not a fault.
+      dlTrail: g.trailRecords ?? 0,
       capture: this.capFrame,
       unported: g.unportedLog.report(),
       // WAVE 13 -- the scroll program, live.
