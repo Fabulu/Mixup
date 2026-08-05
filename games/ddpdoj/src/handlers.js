@@ -91,7 +91,7 @@ import { handlerBoss292902 } from './boss.js';
 import { stepMovement, scrollCompensate, applyVelocity } from './movement.js';
 import { fire as fireBulletFan, WriteLog } from './bullets.js';
 import { AimTables, AIM, aim64, aim256, aim64FromCaller, aim64AtTarget,
-  slew64 } from './aim.js';
+  aim64TurnStore, slew64 } from './aim.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
   enqueueRegistersThroughStub, EMIT_TABLE } from './spritequeue.js';
@@ -782,9 +782,43 @@ function deathSeq10(ram, rom, a5, a6, ctx, d1) {
 // These handlers drive position via `$2417DE` applyVelocity (CONSTANT init
 // velocity -- they do NOT call `$2638A6` stepMovement), then run the onscreen
 // test, the damage branch, and the fire machine.
-function damageFirstHandler(ram, rom, a5, ctx, label) {
-  const { tables, unported: u } = ctx;
-  const a6 = ram.u32(a5 + 0x06);
+//
+// ===========================================================================
+// WAVE 80 -- **THE SHARED PART IS `$269CEA..$269D6E` == `$26A2E2..$26A366`,
+// AND IT ENDS THERE.**  Diagnostics 68 §2.3 and 75 §3.2 both say `$05`/`$07`/
+// `$27` are one job -- *"the same two [enqueue sites]; its span
+// `$269B3E..$26A4B0` contains them"* -- and W68 §10 costs the whole of it as
+// "thirty instructions inside `$269D84..$269E1C`".  READ OUT OF THE ROM, THAT
+// IS FALSE, and it is false in the way `docs/knowledge/02` keeps naming:
+// CONTAINMENT IS NOT REACHABILITY.
+//
+//   $269D6E move.b #$1,($16,A5)          <- the last shared instruction
+//   $269D74 tst.w $8130D2 / bne.w $269E16   -- $05 frozen -> **$269E16**
+//   $269D7E jsr $2417DE / $269D84 ...       -- $05's OWN fire machine
+//
+//   $26A366 move.b #$1,($16,A5)          <- the last shared instruction
+//   $26A36C move.b ($23,A5),D1
+//   $26A370 tst.w $8130D2 / bne.w $269E20   -- $07 frozen -> **$269E20**
+//   $26A37A jsr $2417DE / $26A380 ...       -- $07/$27's OWN fire machine
+//
+// `$26A2E2` NEVER EXECUTES ONE BYTE OF `$269D84..$269E1C`.  It has its own
+// 51-instruction machine at `$26A380..$26A4B0`, which is `$26A5E4`'s (type
+// `$08`, ported at W36) with two changes, and it ends in `$269E20` where
+// `$05`'s ends in `$269E16` -- a DIFFERENT block, one that does not touch the
+// sprite pointer at all.  So this is two ports, not one, and the frozen exits
+// differ between them.  Wiring only `$269D84` would have left 47 of the 72
+// objects invisible and every wave list would still have read "done".
+// ===========================================================================
+//
+// `($16,A5)` IS A BYTE HERE, AND THE PORT HAD IT AS A WORD.  `$269D62` is
+// `4A2D 0016` (`tst.b`) and `$269D6E` is `1B7C 0001 0016` (`move.b #$1`); the
+// port wrote `setU16(...,1)`, i.e. `($16,A5)=0` and `($17,A5)=1`.  Self-
+// consistent inside the port -- which is why no gate saw it -- and two wrong
+// bytes against the board on every live record of the family.  Type `$11`'s
+// `$2688F2`/`$268900` really ARE `tst.w`/`move.w`, so the two are not a
+// copy-paste of each other and only this family moves.
+function damageFirstHead269CEA(ram, rom, a5, a6, ctx) {
+  const u = ctx.unported;
   // $269CEA/$26A2E2 entry: the damage/hit branch FIRST (before movement).
   if ((ram.u8(a6) & 0x5c) !== 0) {                     // $269CEA moveq #$5c / and.b
     const d1 = hitMask(ram, a6);
@@ -800,32 +834,160 @@ function damageFirstHandler(ram, rom, a5, ctx, label) {
       effectArmFamily(ram, rom, ctx, a6, 0x02, 0x269d1e);
       noteEffect(u, 0x28c2a8, a5, 'death burst');      // jsr $28C2A8
       freeEnemy(ram, a5);                              // jmp $263762
-      return;
+      return null;
     }
   } else {
-    ram.setU8(a6 + S.palette, ram.u8(a5 + 0x2a));      // move.b $2a(A5),$1d(A6)
+    ram.setU8(a6 + S.palette, ram.u8(a5 + 0x2a));      // $269D54/$26A34C
   }
-  // $269D5A: the onscreen test $242684 -> free if off-screen-after-on-screen.
+  // $269D5A/$26A352: the onscreen test $242684 -> free if off-screen-after-on.
   if (onScreen242684(ram, a6)) {                       // jsr $242684 / bcc
-    if (ram.u16(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; } // jmp $263762
+    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return null; } // tst.b/jmp
   } else {
-    ram.setU16(a5 + R.onScreen, 1);                    // move.b #$1,$16(A5)
+    ram.setU8(a5 + R.onScreen, 1);                     // move.b #$1,$16(A5)
   }
-  // $269D74: freeze gate, then APPLY VELOCITY (the position driver for this family).
-  if (ram.u16(G.freeze) === 0) {                       // tst.w $8130D2 / bne
-    applyVelocityBody(ram, tables, a5);                // jsr $2417DE (W24)
-  }
-  // $269D84.. : the fire/state machine (cooldown +$28, aim $242178, sprite tables,
-  // bullet fan $2814AC).  All fire paths note (W26/W27).
-  u?.note(0x2417de, `${label} fire/state machine $269D84.. (W26/W27 effects+fans) rec $${a5.toString(16)}`);
+  return 'ran';                                        // -> $269D74 / $26A36C
 }
 // applyVelocity is exported by movement.js; re-export through the body for the
 // damage-first family (so the call site reads as the listing's `jsr $2417DE`).
 function applyVelocityBody(ram, tables, a5) {
   applyVelocity(ram, tables, a5);
 }
-function handler05(ram, rom, a5, ctx) { damageFirstHandler(ram, rom, a5, ctx, '$05'); }
-function handler07(ram, rom, a5, ctx) { damageFirstHandler(ram, rom, a5, ctx, '$07/$27'); }
+
+/**
+ * TYPE `$05` -- `$269CEA`, tail `$269D74..$269E1C`.
+ * The frozen exit is `$269E16`, NOT `$269E20`: a frozen `$05` enqueues and
+ * draws with WHATEVER sprite pointer it already carries.  Follow the
+ * fall-through, not the label -- `$269E1C bra.w $269B3E` is the last
+ * instruction of the block and `$269E20` is the NEXT routine, reached only by
+ * the other five members of the family.
+ */
+function handler05(ram, rom, a5, ctx) {
+  const { tables } = ctx;
+  const a6 = ram.u32(a5 + 0x06);
+  if (damageFirstHead269CEA(ram, rom, a5, a6, ctx) === null) return;
+  if (ram.u16(G.freeze) !== 0) {                       // $269D74 tst.w / bne.w $269E16
+    drawFamily269E16(ram, rom, a5, a6); return;
+  }
+  applyVelocityBody(ram, tables, a5);                  // $269D7E jsr $2417DE (W24)
+  // $269D84: the SLEW clock.  ($28,A5) is a countdown of turns REMAINING and
+  // ($1A,A5)/($1B,A5) the frames between them; when both fire, `$242178` aims,
+  // slews one step, stores the new heading into ($1B,A6) and hands D1 back --
+  // and D1 is what picks BOTH the sprite pointer and the bucket long.  That is
+  // the whole of why this type is invisible: `($A,A6)` is only ever written
+  // here.
+  if (ram.u16(a5 + 0x28) !== 0) {                      // $269D84 tst.w / beq.b $269DC2
+    const c = ram.u8(a5 + 0x1a);                       // $269D8A subq.b #$1,($1A,A5)
+    ram.setU8(a5 + 0x1a, (c - 1) & 0xff);
+    if (c === 0) {                                     // $269D8E bcc.b $269DC2
+      ram.setU8(a5 + 0x1a, ram.u8(a5 + 0x1b));         // $269D90
+      ram.setU16(a5 + 0x28, u16(ram.u16(a5 + 0x28) - 1));  // $269D96 subq.w #$1
+      const r = aim64TurnStore(aimTables(rom), ram, a5, a6); // $269D9A jsr $242178
+      if (r.carry) { drawFamily269E16(ram, rom, a5, a6); return; } // $269DA0 bcs.w
+      // $269DA4 lea $269E48 / andi.w #$3E,D1 / add.w D1,D1 -- the SAME two
+      // tables `$269E20` reads, indexed by the SLEWED heading rather than by a
+      // caller's D1.
+      const idx = u16((r.dir & 0x3e) * 2);             // $269DAA/$269DAE
+      ram.setU32(a6 + S.sprite0a, rom.u32(FAM.sprite + idx));  // $269DB0
+      ram.setU32(a5 + 0x2c, rom.u32(FAM.bucket + idx));        // $269DB6/$269DBC
+    }
+  }
+  // $269DC2: the fire cooldown, then RANK's reload ($58 - $8130B4 + 2, low byte).
+  const cd = ram.u8(a5 + R.cooldown);                  // $269DC2 subq.b #$1,($18,A5)
+  ram.setU8(a5 + R.cooldown, (cd - 1) & 0xff);
+  if (cd !== 0) { drawFamily269E16(ram, rom, a5, a6); return; }  // $269DC6 bcc.w
+  ram.setU8(a5 + R.cooldown,
+    u16(0x58 - ram.u16(G.b4) + 2) & 0xff);             // $269DCA/$269DCC/$269DD2/$269DD4
+  if (boxTest2425B2(ram, rom, a6).carry) {             // $269DD8 jsr $2425B2 / bcs.w
+    drawFamily269E16(ram, rom, a5, a6); return;
+  }
+  const r = aim64AtTarget(aimTables(rom), ram, a5, a6); // $269DE2 jsr $24202C
+  if (r.carry) { drawFamily269E16(ram, rom, a5, a6); return; }   // $269DE8 bcs.w
+  // $269DEC..$269E10.  The muzzle index is ($1B,A6) -- the heading `$242178`
+  // just stored -- and NOT D1; D1 is $24202C's raw aim and is what the
+  // generator reads.  The two are different numbers on any frame the slew has
+  // not caught up, so the pair is passed separately.
+  fireFamily2814AC(ram, rom, a5, a6, ctx,
+    ram.u8(a6 + S.heading), r.dir, 0x0003000d, 0x269e10);
+  drawFamily269E16(ram, rom, a5, a6);                  // $269E16 fall-through
+}
+
+/**
+ * TYPES `$07`/`$27` -- `$26A2E2`, tail `$26A36C..$26A4B0`.
+ * `$26A380..$26A4B0` is `$26A5E4`'s machine (type `$08`, ported at W36) with
+ * exactly two differences, both transcribed below: `move.w #$3,($24,A5)` where
+ * `$08` has `#$2`, and the extra `$26A3C2..$26A3D2` block that picks the sign
+ * of the per-frame heading step.  `state26A40C` is not a lookalike -- both
+ * types branch to the SAME address, so it is literally shared.
+ */
+function handler07(ram, rom, a5, ctx) {
+  const { tables } = ctx;
+  const a6 = ram.u32(a5 + 0x06);
+  if (damageFirstHead269CEA(ram, rom, a5, a6, ctx) === null) return;
+  // $26A36C `move.b ($23,A5),D1` comes BEFORE the freeze test, so the frozen
+  // exit draws with the facing byte -- and it goes to $269E20, which rewrites
+  // the sprite pointer, where $05's frozen exit goes to $269E16, which does
+  // not.  Two handlers, two frozen exits, and the family shares neither.
+  if (ram.u16(G.freeze) !== 0) {                       // $26A370 tst.w / bne.w $269E20
+    drawFamily269E20(ram, rom, a5, a6, ram.u8(a5 + R.rec23)); return;
+  }
+  applyVelocityBody(ram, tables, a5);                  // $26A37A jsr $2417DE
+  if (ram.u16(a5 + 0x26) !== 0) {                      // $26A380 tst.w ($26,A5) / bne
+    state26A40C(ram, rom, a5, a6);                     // $26A384 bne.w $26A40C
+    return;
+  }
+  if (ram.u8(a6 + S.speed) !== 0) {                    // $26A388 tst.b ($1A,A6) / beq
+    const c = ram.u8(a5 + 0x24);                       // $26A38E subq.b #$1,($24,A5)
+    ram.setU8(a5 + 0x24, (c - 1) & 0xff);
+    if (c === 0) {                                     // $26A392 bcc.b $26A3D8
+      ram.setU8(a5 + 0x24, ram.u8(a5 + 0x25));         // $26A394
+      const n = (ram.u8(a6 + S.speed) - 1) & 0xff;     // $26A39A subq.b #$1,($1A,A6)
+      ram.setU8(a6 + S.speed, n);
+      if (n === 0) {                                   // $26A39E bne.b $26A3D8
+        ram.setU16(a5 + 0x24, 3);                      // $26A3A0 move.w #$3 (**$08 has #$2**)
+        ram.setU8(a5 + R.cooldown, 0x10);              // $26A3A6 move.b #$10,($18,A5)
+        // $26A3AC `move.w #$3000,D1` then $26A3B0 `move.b ($23,A5),D1`: the
+        // BYTE move leaves D1's high byte $30, and nothing downstream reads
+        // past D1's low byte, so the $3000 is vestigial and is not modelled.
+        const d1 = ram.u8(a5 + R.rec23) & 0x3c;        // $26A3B0/$26A3B4 andi.b #$3C
+        ram.setU8(a6 + S.heading, d1);                 // $26A3B8 move.b D1,($1B,A6)
+        ram.setU8(a5 + 0x1a, 0x30);                    // $26A3BC move.b #$30,($1A,A5)
+        // $26A3C2 `cmp.b ($22,A5),D1` -- UNSIGNED, and the two arms are the
+        // two SIGNS of the same step: `bhi` -> +4, else -4 ($FC).  `$08` has
+        // no such block; its ($1F,A5) is whatever the init body left.
+        const tgt = ram.u8(a5 + 0x22);                 // $26A3C2
+        if (d1 !== tgt) {                              // $26A3C6 beq.b $26A3D8
+          ram.setU8(a5 + 0x1f, d1 > tgt ? 0x04 : 0xfc); // $26A3C8/$26A3CA/$26A3D2
+        }
+      }
+    }
+  }
+  let d1 = ram.u8(a5 + R.rec23);                       // $26A3D8 move.b ($23,A5),D1
+  if (ram.u16(0x803910) === 0) {                       // $26A3DC tst.w $803910 / bne.w
+    // $26A3E6 `jsr $24202C` with NO `bcs` -- the same carry-blind call
+    // `$26A6CE` makes: when both players are dead D1 survives and the slew is
+    // `slew64(x, x)`.
+    const r = aim64AtTarget(aimTables(rom), ram, a5, a6);  // $26A3E6
+    const tgt = r.carry ? d1 : r.dir;
+    d1 = slew64(ram.u8(a5 + R.rec23), tgt);            // $26A3EC/$26A3F0 jsr $242190
+    ram.setU8(a5 + R.rec23, d1 & 0xff);                // $26A3F6 move.b D1,($23,A5)
+  }
+  if (ram.u8(a6 + S.speed) === 0) ram.setU16(a5 + 0x26, 1);  // $26A3FA/$26A402
+  // $26A460..$26A4B0 -- byte for byte $26A738..$26A788, type $08's fire.
+  const cd = ram.u8(a5 + R.cooldown);                  // $26A460 subq.b #$1,($18,A5)
+  ram.setU8(a5 + R.cooldown, (cd - 1) & 0xff);
+  if (cd !== 0) { drawFamily269E20(ram, rom, a5, a6, d1); return; }  // $26A464 bcc.w
+  ram.setU8(a5 + R.cooldown,
+    u16(0x58 - ram.u16(G.b4) + 2) & 0xff);             // $26A468/$26A46A/$26A470/$26A472
+  if (boxTest2425B2(ram, rom, a6).carry) {             // $26A476 jsr $2425B2 / bcs.w
+    drawFamily269E20(ram, rom, a5, a6, d1); return;
+  }
+  const r = aim64AtTarget(aimTables(rom), ram, a5, a6);   // $26A480 jsr $24202C
+  if (r.carry) { drawFamily269E20(ram, rom, a5, a6, d1); return; }   // $26A486 bcs.w
+  // $26A490 `move.b D1,D2` -- the MUZZLE index is $24202C's D1 here, unlike
+  // $05's, which reads ($1B,A6).
+  fireFamily2814AC(ram, rom, a5, a6, ctx, r.dir, r.dir, 0x0003000d, 0x26a4aa);
+  drawFamily269E20(ram, rom, a5, a6, r.dir);           // $26A4B0 bra.w $269E20
+}
 
 // ============================================================ TYPE $82 (33)
 // `$2747C6`.  A script-mover (stepMovement) that aims with aim256 (`$2422A2`)
@@ -1720,14 +1882,25 @@ function handler20(ram, rom, a5, ctx) {
 // the per-frame alternation word (`src/shipsprite.js`) -- so each of these
 // enemies emits ONE of two sprites per frame at 30 Hz, never both.
 //
-// NOTE WHAT THIS DOES **NOT** TOUCH.  `$269CEA`/`$26A2E2` (types `$05`/`$07`/
-// `$27`, 92 of the 339 records) still `note()` their fire machine at
-// `$269D84..$269E1C` and therefore never reach either block.  Wiring them is
-// thirty instructions and it is deliberately NOT part of this wave: the machine
-// stores a slewed heading into `($1B,A6)` via `$242178`, and `($1B,A6)` is a
-// column the `fly-around` gate compares on handlers that pass it today.  That
-// is a change that needs its own before/after measurement, and taking it here
-// would have mixed it into seven new handlers' first gate run.
+// W36 NOTED WHAT IT DID **NOT** TOUCH: `$269CEA`/`$26A2E2` (types `$05`/`$07`/
+// `$27`, 92 of the 339 records) still `note()`d their fire machines and
+// therefore never reached either block.  **WAVE 80 WIRED BOTH**, and found
+// while doing it that they are TWO machines and not one -- `$26A2E2` never
+// executes a byte of `$269D84..$269E1C`; see the header above `handler05`.  The
+// hazard W36 named is real and was measured rather than argued: `$242178`
+// stores a slewed heading into `($1B,A6)`, a column the `fly-around` gate
+// compares, so W80's before/after on that gate is the evidence, not this note.
+//
+// AND THERE ARE THREE ENTRY POINTS INTO THIS TAIL, NOT TWO:
+//   $269E16  enqueue + draw, sprite pointer UNTOUCHED   -- $05's every exit
+//   $269E20  heading -> sprite pointer, then $269E16    -- everyone else's
+//   $269B3E  the two draw arms alone
+// `$269E16` is INSIDE `$269CEA`'s span, so a sweep that lists routines by their
+// heads never names it; it is reached six times from `$269D84..$269E10` and
+// once from the freeze gate, and every one of those is a `bcs.w`/`bcc.w` into
+// the middle of a block.  Reading only the labels gives `$269E20` for all of
+// them and silently rewrites the sprite pointer of a type that must not have
+// it rewritten.
 
 /** `$269E20..$269E46` -- heading -> the sub-record's sprite pointer and the
  *  record's bucket long, then the per-record enqueue, then fall into the draw.
@@ -1737,8 +1910,15 @@ function drawFamily269E20(ram, rom, a5, a6, d1) {
   const idx = u16((d1 & 0x3e) * 2);                    // $269E26 andi.w / $269E2A add.w
   ram.setU32(a6 + S.sprite0a, rom.u32(FAM.sprite + idx));  // $269E2C move.l (A0,D1.w),($a,A6)
   ram.setU32(a5 + 0x2c, rom.u32(FAM.bucket + idx));    // $269E38 move.l (A0,D1.w),($2c,A5)
-  enqueueThroughStub(ram, rom, 0x23d852, a6);          // $269E3E jsr $23D852
-  drawFamily269B3E(ram, rom, a5, a6);                  // $269E44 bra.w $269B3E
+  drawFamily269E16(ram, rom, a5, a6);                  // $269E3E/$269E44 fall-through
+}
+
+/** `$269E16..$269E1C` -- the enqueue and the draw, with the sprite pointer left
+ *  exactly as it was.  `$269E20` falls into this; type `$05` enters it directly
+ *  from seven places. */
+function drawFamily269E16(ram, rom, a5, a6) {
+  enqueueThroughStub(ram, rom, 0x23d852, a6);          // $269E16/$269E3E jsr $23D852
+  drawFamily269B3E(ram, rom, a5, a6);                  // $269E1C/$269E44 bra.w $269B3E
 }
 
 /** `$269B3E..$269BB4` -- the two draw arms. */

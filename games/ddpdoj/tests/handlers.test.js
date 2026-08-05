@@ -24,14 +24,31 @@ const SIX = [0x2688cc, 0x268232, 0x269cea, 0x26a2e2, 0x2747c6, 0x27687e,
 // synthetic record therefore throws BY ADDRESS now, which is correct: the ROM
 // would `jsr 0`.  The fixture installs `$267F70[0]` (the bucket-0 pair) and
 // STUB_ROM answers exactly those two stubs.
-const EMIT_REC = 0x23d762, EMIT_REG = 0x23dece;
+// W80 adds `$23D852`, the damage-first family's own emitter -- `$269E16 jsr
+// $23D852` and `$269E3E`, the only two enqueue sites types $05/$07/$27 have.
+// Its two longwords are READ OUT OF THE CARTRIDGE and transcribed here, not
+// invented: `$23D852 41F9 00807450 / D0F9 0080AFC8 / 43EE 0002`, and
+// `spritequeue.BUCKETS` resolves that pair to **bucket 7** -- which is the
+// bucket W75 measured all 490 of the family's slot-frames in on the BOARD.
+// Two independent derivations, one number.
+// and `$269B3E`'s two draw arms use two REGISTER-convention stubs -- `$23DF86`
+// (arm A, bucket 7) and `$23DF58` (arm B, **bucket 3**).  Arm B being a
+// different bucket from arm A is the ROM's, not a typo: `$80688C`/`$80AFC6`.
+const EMIT_REC = 0x23d762, EMIT_REG = 0x23dece, EMIT_FAM = 0x23d852;
+const EMIT_A = 0x23df86, EMIT_B = 0x23df58;
 const STUB_WORDS = new Map([
   [EMIT_REC, 0x41f9], [EMIT_REC + 6, 0xd0f9], [EMIT_REC + 12, 0x43ee],
   [EMIT_REG, 0x41f9], [EMIT_REG + 6, 0xd0f9], [EMIT_REG + 12, 0x2001],
+  [EMIT_FAM, 0x41f9], [EMIT_FAM + 6, 0xd0f9], [EMIT_FAM + 12, 0x43ee],
+  [EMIT_A, 0x41f9], [EMIT_A + 6, 0xd0f9], [EMIT_A + 12, 0x2001],
+  [EMIT_B, 0x41f9], [EMIT_B + 6, 0xd0f9], [EMIT_B + 12, 0x2001],
 ]);
 const STUB_LONGS = new Map([
   [EMIT_REC + 2, 0x80397c], [EMIT_REC + 8, 0x80afc0],
   [EMIT_REG + 2, 0x80397c], [EMIT_REG + 8, 0x80afc0],
+  [EMIT_FAM + 2, 0x807450], [EMIT_FAM + 8, 0x80afc8],
+  [EMIT_A + 2, 0x807450], [EMIT_A + 8, 0x80afc8],
+  [EMIT_B + 2, 0x80688c], [EMIT_B + 8, 0x80afc6],
 ]);
 
 function makeRam(over = {}) {
@@ -49,6 +66,15 @@ function makeRam(over = {}) {
                                       // are SMOKE tests against a synthetic ROM
                                       // that cannot answer aim64's five tables.
   ram.setU16(SUB + 0x18, 0x0100);     // HP positive (alive)
+  // W80.  `$803910` non-zero is the SAME device as ($18,A5)=2 above, for the
+  // aim `$26A3DC` reaches: `$26A3E6 jsr $24202C` is CARRY-BLIND, so it is not
+  // gated by a cooldown and a zeroed synthetic ROM cannot construct AimTables
+  // (its constructor validates `$2420C6`'s eight longwords and would throw by
+  // address).  Zero here made $07/$27 a `rom.bytes is not a function` the
+  // moment their fire machine was wired -- which is the fixture speaking, not
+  // the port.  The gate-level aim evidence is `w80emitgate.mjs`, against the
+  // cartridge; this file stays a smoke test and says so.
+  ram.setU16(0x803910, 1);
   for (const [k, v] of Object.entries(over)) ram.setU16(parseInt(k), v);
   return ram;
 }

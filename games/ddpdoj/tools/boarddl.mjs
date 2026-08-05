@@ -569,4 +569,7 @@ function main(argv) {
 if (process.argv[1] && process.argv[1].endsWith('boarddl.mjs')) {
   process.exit(main(process.argv.slice(2)));
 }
-export { readCheckpoint, predictEntry, decode, Ram };
+
+// W80: the emission gate reads the PORT's RAM with the SAME instrument this
+// tool reads the BOARD's with, so the two reports cannot drift apart.
+export { readCheckpoint, predictEntry, decode, Ram, GLOBAL_OFFSET };
