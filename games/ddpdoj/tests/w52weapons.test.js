@@ -260,9 +260,11 @@ test('the two weapon shards are DEFERRED and fetched FIRST among the deferred', 
   assert.ok(/\[6, 'shots'/.test(s) && /\[7, 'bullets'/.test(s));
   assert.ok(/SPR_BOOT = \[0\]/.test(s),
     'shard 0 stays the ONLY boot shard, so capture.bin and bundlegate cannot move');
-  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 1, 2, 3, 4, 5\]\)/.test(s),
-    'the bullets (+0.7 s) and the shots (the first fire frame) come before '
-    + 'shard 1 (+7.7 s): index order is NOT need order any more');
+  // W53 inserted shard 8, THE IMPACT SPARK, fourth: its deadline is the first
+  // frame a shot CONNECTS, which is behind both weapons and ahead of shard 1.
+  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 8, 1, 2, 3, 4, 5\]\)/.test(s),
+    'the bullets (+0.7 s), the shots (the first fire frame) and then the impact '
+    + 'spark come before shard 1 (+7.7 s): index order is NOT need order any more');
   assert.ok(/order: SPR_ORDER\.indexOf\(i\)/.test(s),
     'and the order is PUBLISHED in the manifest rather than assumed by the queue');
 });

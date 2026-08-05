@@ -297,7 +297,7 @@ test('$2634F4 walks the SPAWN SCRIPT before the 58-slot driver',
 // ===========================================================================
 // type 5 itself: the three calls must RUN, not be counted.
 // ===========================================================================
-test('TYPE5_PORTED is TWELVE of the twenty-three, and the list is the ROM\'s', () => {
+test('TYPE5_PORTED is THIRTEEN of the twenty-three, and the list is the ROM\'s', () => {
   assert.equal(TYPE5.calls.length, 23, '$28B5E6..$28B66A');
   // W33 added call #3, `$28AD54` -- and ONLY its first loop, the sub-record
   // reaper.  The rest of that routine ($28AD70 onwards, reached by
@@ -308,7 +308,13 @@ test('TYPE5_PORTED is TWELVE of the twenty-three, and the list is the ROM\'s', (
   // `$254C1E bset #5,(A4)`, which is the ONE instruction in build B that opens
   // #9's builders, and #11 draws what they lay down.  Any two of the three is a
   // machine that arms and never fires.
-  assert.equal(TYPE5_PORTED.size, 12);
+  // W53 added #12 `$28A098`, THE SHOT'S IMPACT SPARK -- pool E's driver, in the
+  // same commit as its allocator `$289F54` (src/spark.js), for the reason W33 §4
+  // gives about a pool with a producer and no consumer.
+  assert.equal(TYPE5_PORTED.size, 13);
+  assert.ok(TYPE5_PORTED.has(TYPE5.sparkDriver));
+  assert.ok(TYPE5.calls.includes(TYPE5.sparkDriver));
+  assert.equal(TYPE5.sparkDriver, 0x28a098);
   assert.ok(TYPE5_PORTED.has(TYPE5.segmentDriver));
   assert.ok(TYPE5_PORTED.has(TYPE5.beamDraw));
   assert.ok(TYPE5.calls.includes(TYPE5.segmentDriver));

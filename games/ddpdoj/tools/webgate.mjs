@@ -648,12 +648,37 @@ try {
       // the four template tables can reach and this window reaches 20 of them
       // (one formation, one power level, no hits on some chains). Asserting 71
       // here would be asserting a different claim than the one measured.
+      //
+      // ================== WAVE 53 RE-STATED TWO OF THESE NUMBERS =================
+      //
+      // `records` for shards 6 and 7 MOVED when W53 ported the impact spark, and
+      // it moved for a reason worth writing down rather than absorbing:
+      // `$289F62 addq.b #1,$803917` is the first instruction of `$289F54`, so
+      // every shot that CONNECTS now advances the board's shared draw counter --
+      // which the cartridge has always advanced and this port never did. Every
+      // later draw in the frame shifts by one table entry, and 1,200 frames of
+      // that is 22,071 -> 22,107 shot records and 4,388 -> 4,387 bullet records.
+      // `streams`, `distinct` and `first` did NOT move on either shard.
+      //
+      // These are RE-MEASURED absolute numbers, not widened ones: the assertion
+      // is still `===` on all four fields. `src/rng.js`'s own header has named
+      // $289F62 as a desync source since wave 8; this is the port moving TOWARD
+      // the board, and the two digits are the size of it.
       const EXP52 = {
         frames: 1200,
-        6: { streams: 71, records: 22071, distinct: 20, first: 1,
+        6: { streams: 71, records: 22107, distinct: 20, first: 1,
           what: 'THE PLAYER\'S SHOTS ($2554EA/$255502 + the pods\' $24D2FC/$24D35C)' },
-        7: { streams: 298, records: 4388, distinct: 32, first: 98,
+        7: { streams: 298, records: 4387, distinct: 32, first: 98,
           what: 'THE ENEMY BULLETS ($281D9A\'s bulk write, buckets 22/23)' },
+        // WAVE 53 -- THE IMPACT SPARK, the SAME window and the SAME four
+        // absolute port-side fields.  `distinct` is 35 and not 36 ON PURPOSE:
+        // `$28A15C` samples the animation cursor BEFORE `$28A160 subq.w #4` and
+        // `$28A164` frees the record on the borrow, so list entry 0 ($22CBC0)
+        // can never be drawn.  Asserting 36 would assert a claim the listing
+        // contradicts; asserting `streams === 36` beside it is what says the
+        // harvest still ships the whole table rather than my reading of it.
+        8: { streams: 36, records: 8843, distinct: 35, first: 24,
+          what: 'THE IMPACT SPARK (pool E, $289F54 -> $28A098, bucket 20)' },
       };
       const runW52 = (frames) => {
         const g = new Game(bundle.seed, bundle.tables, {
@@ -661,7 +686,8 @@ try {
           bgSeed: bundle.cap.part(0, 'bg'),
         });
         const st = { 6: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 },
-          7: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 } };
+          7: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 },
+          8: { rec: 0, drawn: 0, pend: 0, named: 0, seen: new Set(), first: -1 } };
         for (let i = 0; i < frames; i++) {
           const res = portSpriteList(g.ram, map, { out: buf, ...shardOpts });
           for (let k = 0; k < 256; k++) {
@@ -671,7 +697,7 @@ try {
             const offs = ((g.ram.u16(0x800000 + (b + 2) * 2) & 0x7f) << 16)
               | g.ram.u16(0x800000 + (b + 3) * 2);
             const sh = map.get(offs)?.[2];
-            if (sh !== 6 && sh !== 7) continue;
+            if (sh !== 6 && sh !== 7 && sh !== 8) continue;
             const t = st[sh];
             t.rec++; t.seen.add(offs); if (t.first < 0) t.first = i;
             if (((w4 & 0x7e00) >> 9) === 0 || (w4 & 0x1ff) === 0) continue;
@@ -686,19 +712,20 @@ try {
         return st;
       };
       const w52after = runW52(EXP52.frames);
-      for (const sh of [6, 7]) {
+      for (const sh of [6, 7, 8]) {
         const e = EXP52[sh], a = w52after[sh];
         const ok = bundle.spr.meta[sh].streams === e.streams
           && a.rec === e.records && a.seen.size === e.distinct && a.first === e.first
           && a.drawn === a.rec && a.pend === 0 && a.named === 0;
-        console.log(`${ok ? 'PASS' : 'FAIL'}: W52 ${e.what} -- over ${EXP52.frames} `
+        console.log(`${ok ? 'PASS' : 'FAIL'}: ${sh === 8 ? 'W53' : 'W52'} ${e.what} -- over ${EXP52.frames} `
           + `logic frames from the shipped seed with FIRE TAPPED every 4 frames, `
           + `sprite shard ${sh} holds ${bundle.spr.meta[sh].streams} streams `
           + `(expect ${e.streams}) and the port's own $800000 list carries `
           + `${a.rec} records of them (expect ${e.records}) over ${a.seen.size} `
           + `distinct images (expect ${e.distinct}), first at frame ${a.first} `
           + `(expect ${e.first}). All shards loaded: ${a.drawn} DRAWN of ${a.rec}, `
-          + `${a.pend} pending, ${a.named} with no art. Before W52 this bucket `
+          + `${a.pend} pending, ${a.named} with no art. Before `
+          + `${sh === 8 ? 'W53 pool E had no driver and bucket 20' : 'W52 this bucket'} `
           + 'emitted nothing at all');
         if (!ok) code = 1;
       }
