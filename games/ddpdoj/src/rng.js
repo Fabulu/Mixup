@@ -139,6 +139,26 @@ export function drawSigned242FDE(ram, rom) {
 //
 // `$28AB86` is a fourth twin ($3F mask, table $28ABA0..$28ABDF, whose far end is
 // $28ABE0 itself).  Nothing in this wave's path reaches it and it is NOT ported.
+//
+// ---- W65 (B3): AND TWO MORE, BOTH ON THE LASER BOMB'S PATH -----------------
+//
+// The LASER BOMB (`$249A80`) reaches `$289FF4`, whose fill tail `$28A252` draws
+// from `$242EC2` and from `$28AB86` -- the twin the paragraph above says
+// "NOTHING in this wave's path reaches", which was true of W53 and is not true
+// of W65.  Both are transcribed below and both get a ROM window.
+//
+//   $242EC2  **NO MASK** -- `move.w $803916,D0` then `move.b (A0,D0.w),D0`,
+//            the same unmasked read `$242FDE` makes, and safe for the same
+//            reason (`$23BE36 clr.w $803916` zeroes the high byte and `addq.b`
+//            never carries into it).  Table `$242EDE`, and its far end is
+//            **`$242FDE`, the next `addq.b` site** -- 256 bytes exactly.
+//   $28AB86  mask $3F -> 64 bytes `$28ABA0..$28ABDF`, far end pinned by
+//            `$28ABE0`, which is the routine above.
+//   $24311A  mask $7F -> 128 bytes `$243174..$2431F3`, far end pinned by
+//            `$2431F4`, ANOTHER member of the family (`src/rng.js` already
+//            names it).  Its bytes are `[M] 0, 1 and 2 only`, which is what
+//            makes `$28A000`'s `*4` index into the THREE-entry table at
+//            `$28A030` safe -- entry 3 is `$48E7FFFE`, i.e. code.
 
 /** `$242E24`'s table: `moveq #$7f` masks the index, so 128 bytes,
  *  `$242E42..$242EC1`, and `$242EC2` is the next `addq.b` (far end PINNED). */
@@ -196,4 +216,57 @@ export function drawByte28ABE0(ram, rom) {
   ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $28ABE0
   const i = u16(ram.u16(RNG.state)) & 0x3f;                   // $28ABE6/$28ABE8
   return rom.u8(RNG_28ABE0.table + i);                        // $28ABF6
+}
+
+// ======================= W65 (B3): THE LASER BOMB'S THREE ===================
+
+/** `$242EC2`'s table.  **NO MASK** -- `$242EC8 move.w $803916,D0`.  256 bytes,
+ *  `$242EDE..$242FDD`, and `$242FDE` (the next `addq.b`) pins the far end. */
+export const RNG_242EC2 = { table: 0x242ede, entries: 256 };
+/** `$28AB86`'s table: `moveq #$3F`, 64 bytes `$28ABA0..$28ABDF`, far end pinned
+ *  by `$28ABE0` -- `drawByte28ABE0`'s own `addq.b`. */
+export const RNG_28AB86 = { table: 0x28aba0, entries: 64 };
+/** `$24311A`'s table: `moveq #$7F`, 128 bytes `$243174..$2431F3`, far end pinned
+ *  by `$2431F4`.  `[M]` every byte in it is 0, 1 or 2. */
+export const RNG_24311A = { table: 0x243174, entries: 128 };
+
+/**
+ * `$242EC2` -- bump the shared counter, return `$242EDE[state]` SIGN-EXTENDED.
+ *
+ *   242ec2: addq.b #1,$803917
+ *   242ec8: move.w $803916,D0             <-- NO MASK, exactly like $242FDE
+ *   242ed0: lea ($242EDE,PC),A0 / move.b (A0,D0.w),D0 / rts
+ *
+ * **AND THERE IS NO `ext.w`.**  `$242FDE` ends `move.b (A0,D0.w),D0 / ext.w D0`;
+ * this one ends `move.b (A0,D0.w),D0 / rts`.  So D0's upper bits are whatever
+ * `move.w $803916,D0` left there -- and `$803916`'s high byte is 0, so D0 is
+ * 0..255 with the byte in the low half.  `$28A25E bpl.b` then tests bit 15 of
+ * D0, which is ALWAYS clear, so `$28A260 moveq #$28,D3` is UNREACHABLE while
+ * `$803916` stays a byte.  Transcribed with both arms rather than folded away.
+ * @returns {number} D0, 0..65535 (in practice 0..255).
+ */
+export function drawWord242EC2(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $242EC2
+  const i = u16(ram.u16(RNG.state));                          // $242EC8, whole word
+  const idx = i >= 0x8000 ? i - 0x10000 : i;                  // (A0,D0.w) is signed
+  return (i & 0xff00) | rom.u8(RNG_242EC2.table + idx);       // $242ED6 move.b
+}
+
+/** `$28AB86` -- `$28ABE0`'s twin, one table earlier.  Identical shape:
+ *  `moveq #$3F,D1 / and.w $803916,D1 / lea ($28ABA0,PC),A2 / adda.w D1,A2 /
+ *  move.b (A2),D1`.
+ *  @returns {number} D1, 0..255. */
+export function drawByte28AB86(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $28AB86
+  const i = u16(ram.u16(RNG.state)) & 0x3f;                   // $28AB8C/$28AB8E
+  return rom.u8(RNG_28AB86.table + i);                        // $28AB9C
+}
+
+/** `$24311A` -- `moveq #$7F,D0 / and.w $803916,D0 / lea ($243174,PC),A0 /
+ *  move.b (A0,D0.w),D0`.  `[M]` the table holds only 0, 1 and 2.
+ *  @returns {number} D0, 0..2 for every byte of the real table. */
+export function drawByte24311A(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $24311A
+  const i = u16(ram.u16(RNG.state)) & 0x7f;                   // $243120/$243122
+  return rom.u8(RNG_24311A.table + i);                        // $243130
 }

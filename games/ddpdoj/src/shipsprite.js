@@ -125,12 +125,51 @@ export function drawShip(ram, rec, ctx) {
 
   const stateHi = ram.u16(rec + P.state);
   // $24A48A `tst.b D0` -- a BYTE test on D0, i.e. on ($1,A6), NOT on the word.
+  // ---- $24A48C bmi $24A4E2 -- **THE BIT-7 AURA, AND W65 MADE IT REACHABLE.**
+  //
+  // W12 measured this bit 0 "on every frame of fly-around and of stage1-open"
+  // and that was true right up to W64: nothing in the port ever set it.
+  // `$249A92 bset #$7,($1,A6)` -- the LASER BOMB's arm (`src/bomb.js`) -- is
+  // the first instruction this port has ever run that does, and `$2564AA
+  // bclr #$7,($1,A0)` inside `$256468` clears it 132 frames later.  So this
+  // block is exactly "what the ship looks like while a beam bomb is running".
+  //
+  // FOUR DIFFERENCES FROM `$24A4A0`, and every one of them matters:
+  //  1. **IT IS NOT GATED ON THE INVULNERABILITY OR ON `$80390C`.**  `bmi`
+  //     jumps PAST `$24A48E tst.b ($3e,A6)` and `$24A496 tst.w $80390C`, so
+  //     this aura draws on every frame, where `$24A4A0`'s draws on alternate
+  //     ones and only while invulnerable.
+  //  2. `addi.l #$F800FA00,D1` is ONE LONG add ($24A4E6), where `$24A4A4`/
+  //     `$24A4AA` are two WORD adds around a `swap`.  A borrow out of the
+  //     short axis carries into the long one here and cannot there.
+  //  3. The sprite table is INDIRECT: `$2556BA[($58,A6)*2]` is a POINTER (read
+  //     with `movea.l` at a *2 index, which is the ROM's own oddity) and
+  //     `($28,A6)` then indexes THAT.
+  //  4. **TWO counters, not one.**  `($26,A6)` is a BYTE with its own reload
+  //     at `($27,A6)`, and only when it borrows does `($28,A6)` step -- and
+  //     its reload is `$C`, not `$3C`.  `$249A86 move.w #$101,($26,A6)` and
+  //     `$249A8C move.w #$C,($28,A6)` are the bomb arm's two seeds.
   if (ram.i8(rec + P.flags1) < 0) {                       // $24A48C bmi $24A4E2
-    unreached(ROM.shipKnocked, `the ($1,A6) bit-7 aura block ($24A4E2): a `
-      + `different sprite table ($2556BA, indexed by the SHIP TYPE and not by `
-      + `($28,A6)) and a different size word ($830 = 4x48 against the $A28 = `
-      + `5x40 of $24A4A0). MEASURED 0 on every frame of fly-around and of `
-      + `stage1-open; it is the same bit player.js already throws on at $2496A2`);
+    let d1 = ram.u32(rec + P.posY);                       // $24A4E2 move.l
+    d1 = ((d1 + 0xf800fa00) >>> 0);                       // $24A4E6 addi.l
+    const a0 = ctx.rom.u32(SHIP_TABLES.knockSprite        // $24A4F2/$24A4F8
+      + ram.u16(rec + P.shipSel) * 2);                    // $24A4EC add.w D2,D2
+    const d2 = ctx.rom.u32(a0 + ram.u16(rec + P.auraPhase));   // $24A4FC/$24A500
+    const d4 = ctx.rom.u16(SHIP_TABLES.knockFlip          // $24A510/$24A516
+      + ram.u8(rec + P.playerIdx) * 2);                   // $24A50A ($57,A6)*2
+    const t = (ram.u8(rec + 0x26) - 1) & 0xff;            // $24A51A subq.b #$1
+    ram.setU8(rec + 0x26, t);
+    if (t === 0xff) {                                     // $24A51E bcc $24A532
+      ram.setU8(rec + 0x26, ram.u8(rec + 0x27));          // $24A520 move.b
+      const ph = ram.u16(rec + P.auraPhase);              // $24A526 subq.w #$4
+      ram.setU16(rec + P.auraPhase, ph < 4 ? 0x0c : u16(ph - 4));   // $24A52C
+    }
+    enqueueRegisters(ram, NAMED_BUCKETS.player, d1, d2,   // $24A532 jsr $23F1FA
+      SHIP_SIZES.knock, d4);                              // $24A504 #$830
+    enqueueRequest(ram, NAMED_BUCKETS.player, rec);       // $24A538 jsr $23F104
+    ctx.unportedLog.note(0x253604, `$24A53E jsr $253604, on the bit-7 arm`);
+    if (!(ram.u16(0x80390c) !== 0)) return;               // $24A544 tst.w / beq
+    return drawGlow(ram, rec, ctx, stateHi);              // $24A54E
   }
 
   // $24A48E tst.b ($3e,A6) / beq $24A538 -- the INVULNERABILITY AURA, and

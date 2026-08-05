@@ -660,11 +660,84 @@ function movePod(ram, ctx, b, pod) {
 
   if (ram.u16(0x812970) !== 0) return;                     // $24D170 -> rts
   if (ram.i8(player + P.flags1) < 0) {                     // $24D178 tst.b/bmi
-    unreached(0x24d188, `$24D188: the knockback path takes the pod through the `
-      + `$24D28E ramp and a SECOND enqueue at $24D1F8 instead of $24D17E. `
-      + `MEASURED: ($1,A4) bit 7 is 0 on every sampled frame`);
+    return podKnockback24D188(ram, ctx, b, pod);           // $24D17C bmi $24D188
   }
   enqueueRequest(ram, NAMED_BUCKETS.options, pod);         // $24D17E jmp $23F2CA
+  return undefined;
+}
+
+/** `$24D28E` -- the knockback ramp, and `$24D282` -- the settle table, which
+ *  ABUT it.  Index spaces are both derived from instructions: `($38,A6)` is
+ *  seeded `$26` by `$249AD8` and stepped `subq.w #$2` at `$24D19C`, so 20
+ *  words; `($56,A6)` is seeded `$8` by `$249ADE`/`$24D20A` and stepped
+ *  `subq.w #$4`, so indices 8/4/0 and a `movem.w` of TWO words at each -- five
+ *  words.  `$24D2BE` (`moveq #$0,D0`) is code and pins the far end. */
+export const POD_KNOCK = { settle: 0x24d282, ramp: 0x24d28e, end: 0x24d2be };
+
+/**
+ * `$24D188` -- **THE POD KNOCKBACK, AND W65 IS WHAT MADE IT REACHABLE.**
+ *
+ * `$24D178 tst.b ($1,A4) / bmi $24D188` reads bit 7 of the PLAYER's flags byte,
+ * and W12 measured it 0 on every sampled frame -- correctly, because until this
+ * wave nothing in the port ever set it.  **`$249A92 bset #$7,($1,A6)` -- the
+ * LASER BOMB's arm -- is the first instruction this port has ever run that
+ * does**, and `$2564AA bclr #$7,($1,A0)` inside `$256468` is what clears it
+ * again 132 frames later.  So the pods are thrown backwards for exactly the
+ * length of the beam bomb, and `src/bomb.js`'s `$249AD8 move.w #$26,($38,A1)`
+ * and `$249ADE move.w #$8,($56,A1)` are the two counters this reads: they are
+ * writes into the OPTION record (`$8104AA`), not into the bomb record, which
+ * is why A1 is reloaded at `$249AB2`.
+ *
+ * TWO ARMS, and `$24D200` is not a fall-through of `$24D188` -- `$24D18C beq`
+ * jumps to it, so the RAMP runs while `($38,A6)` lasts and the SETTLE runs
+ * afterwards, for ever, until the bomb clears bit 7.
+ */
+function podKnockback24D188(ram, ctx, b, pod) {
+  const { rom } = ctx;
+  let d0 = ram.u16(pod + 0x38);                            // $24D188 move.w
+  if (d0 !== 0) {
+    // ---- $24D18E: THE RAMP.  20 words, walked from $26 DOWN by 2, so the
+    // first frame's push is `$24D28E[19]` = 256 and the second is [18] = 512 --
+    // it gets BIGGER before it tails off, which a reader who assumed a decay
+    // would smooth away.
+    const push = rom.u16(POD_KNOCK.ramp + i16(d0));        // $24D194 (A0,D0.w)
+    ram.setU16(pod + OPT.posY, u16(ram.u16(pod + OPT.posY) - push));  // $24D198
+    ram.setU16(pod + 0x38, u16(d0 - 2));                   // $24D19C subq.w #$2
+  } else {
+    // ---- $24D200: THE SETTLE.  `movem.w` reads TWO words -- D0 the speed and
+    // D1 the angle -- and `$2417D4` adds that vector to the pod's position.
+    d0 = ram.u16(pod + 0x56);                              // $24D200 move.w
+    const n = u16(d0 - 4);                                 // $24D204 subq.w #$4
+    ram.setU16(pod + 0x56, (n & 0x8000) ? 8 : n);          // $24D208 bpl/$24D20A
+    const spd = rom.u16(POD_KNOCK.settle + i16(d0));       // $24D216 movem.w
+    const ang = rom.u16(POD_KNOCK.settle + i16(d0) + 2);
+    // $2417D4 tst.w $8130D2 / beq $2417F2 -- and its OTHER arm is
+    // `moveq #$0,D2 / moveq #$0,D3 / rts`, i.e. NO MOVE AT ALL.  Transcribed
+    // as the two arms it is; `$8130D2` is 0 on this tree.
+    if (ram.u16(0x8130d2) === 0) {                         // $2417D4 tst.w/beq
+      const v = ctx.tables.vector(spd, ang);               // $2417F2 bsr $241812
+      ram.setU16(pod + OPT.posY,
+        u16(i16(ram.u16(pod + OPT.posY)) + i16(v.dy)));    // $2417F4 add.w D2
+      ram.setU16(pod + OPT.posX,
+        u16(i16(ram.u16(pod + OPT.posX)) + i16(v.dx)));    // $2417F8 add.w D3
+    }
+  }
+  // ---- The four gates and the SHADOW, identical at $24D1A0 and $24D222.
+  if (ram.u16(0x812970) === 0 && ram.u16(0x813098) === 0    // $24D1A0/$24D1AA
+    && ram.u16(0x80390c) === 0 && ram.u16(0x813092) !== 2) { // $24D1B2/$24D1BA
+    // $24D1C4..$24D1E0.  Both halves are `(v - K) >> 1 + K` with K = $1C00 on
+    // the SHORT axis and $1400 on the LONG one, and then ONE `addi.l
+    // #$FE00FE00` -- a LONG add, so a borrow out of the short half carries into
+    // the long one.  Two `subi.w #$200`s would not.
+    const px = i16(ram.u16(pod + OPT.posX)), py = i16(ram.u16(pod + OPT.posY));
+    const lo = u16(asr(u16(px - 0x1c00) << 16 >> 16, 1) + 0x1c00);
+    const hi = u16(asr(u16(py - 0x1400) << 16 >> 16, 1) + 0x1400);
+    const d1 = ((((hi << 16) >>> 0) + lo) + 0xfe00fe00) >>> 0;   // $24D1E0
+    enqueueRegisters(ram, NAMED_BUCKETS.shadows, d1,       // $24D1F2 jsr $23EFEE
+      ram.u32(pod + OPT.shadow0), 0x210, 0x18);            // $24D1E6/$24D1EA/$24D1EE
+  }
+  enqueueRequest(ram, NAMED_BUCKETS.options, pod);         // $24D1F8/$24D27A jmp
+  return undefined;
 }
 
 /**

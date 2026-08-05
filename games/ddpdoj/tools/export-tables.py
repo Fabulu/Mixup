@@ -1005,6 +1005,74 @@ SHOT_WINDOWS.append(
                        "all six"),
 )
 
+# ========== W65 (B3): THE LASER BOMB -- `$249A80`, `$255FE2`, `$2456A6` ======
+#
+# W64 left "bomb while HOLDING THE BEAM" throwing at `$249A80` rather than
+# inventing it.  W65 ports it, and it is a DIFFERENT WEAPON with its own
+# templates, its own 132-frame script and its own damage pass, so it needs its
+# own windows.  Every extent below is derived from an INSTRUCTION or a
+# TERMINATOR and `check_beam_bomb_extents` asserts each one against the image.
+#
+#   $256662  THE DATA BLOCK, 804 bytes, and it is ONE contiguous run:
+#              $256662 $25666E $25667A $256686   four 12-byte anim tables, one
+#                        per head record.  The index space is {8,4,0}: the
+#                        install puts $0008 on ($24,A6) and $2560D2 is
+#                        `subq.w #$4` with $2560D8 reloading from ($26,A6),
+#                        which the install sets to $0008.  THREE longwords.
+#              $256692  eight pointers.  $2561AA's own cursor is ($80A,A6),
+#                        seeded $1C by $2561B0 and stepped `subq.w #$4`, so the
+#                        index space is $1C..0 -- EIGHT.
+#              $2566B2  those eight pointers' targets, 12 bytes each = 96.
+#              $256712  TWELVE five-longword entries, walked one per frame by
+#                        $25617A..$25618E, and $256802 is the $FFFFFFFF that
+#                        $256170 `cmpi.l` tests.
+#              $256806..$256985  the twelve tables each entry's fifth long
+#                        names, eight pointers each = 384 bytes, ending exactly
+#                        at $256986 -- which is the ($1,A6)-bit-1 twin's first
+#                        script, i.e. the far end is pinned by the code
+#                        `src/bomb.js` throws on.
+#   $256CAA  the RECORD INSTALL, 158 bytes, counted from the copy sequence
+#            $255FEA..$256062 (12 moves, then `lea ($7B0,A1),A1`, then three
+#            blocks of 13/12/13) and NOT from a run.  It ends exactly at:
+#   $256D48  the 18-byte SEGMENT template, read at $2561EE, $256282 and
+#            $2563F0 with three different splices of the same 18 bytes.
+SHOT_WINDOWS.extend([
+    (0x256662, 0x0324, "W65: the LASER BOMB's data -- four head anim tables "
+                       "($256662/$25666E/$25667A/$256686), $256692's eight "
+                       "pointers and their targets, $256712's twelve "
+                       "five-longword script entries and the twelve "
+                       "eight-pointer tables they name. Far end pinned by "
+                       "$256986, the bit-1 twin's own script"),
+    (0x256CAA, 0x00B0, "W65: the LASER BOMB's 158-byte record install "
+                       "($255FEA..$256062) and the 18-byte segment template "
+                       "$256D48 that abuts it"),
+])
+
+# The three canned RNG tables `$28A252` (pool E's fill tail for kind 0) needs.
+# `src/rng.js` already had `$242E42` and `$28ABFA`; these are the three the
+# LASER BOMB's spark adds, and every extent is pinned by the NEXT `addq.b
+# #1,$803917` site in the same family.
+SHOT_WINDOWS.extend([
+    (0x242EDE, 0x0100, "W65: $242EC2's canned table. NO MASK ($242EC8 move.w "
+                       "$803916,D0), so 256 bytes; far end pinned by $242FDE, "
+                       "the next addq.b site"),
+    (0x28ABA0, 0x0040, "W65: $28AB86's canned table, `moveq #$3F` -> 64 bytes; "
+                       "far end pinned by $28ABE0, which src/rng.js already "
+                       "ports"),
+    (0x243174, 0x0080, "W65: $24311A's canned table, `moveq #$7F` -> 128 "
+                       "bytes; far end pinned by $2431F4. Every byte is 0, 1 "
+                       "or 2, which is what makes $28A030's THREE entries its "
+                       "whole domain"),
+    (0x28A030, 0x000C, "W65: $289FF4's THREE template pointers. Entry 3 reads "
+                       "$48E7FFFE -- `movem.l D0-D7/A0-A6,-(A7)`, i.e. "
+                       "$289FF4 itself -- so the table is three, not four"),
+    (0x24D282, 0x003C, "W65: the OPTION PODS' knockback tables. $24D282 is "
+                       "$24D200's settle pair (indices 8/4/0, `movem.w` of TWO "
+                       "words each) and $24D28E is $24D188's 20-word ramp "
+                       "(($38,A6) seeded $26 by $249AD8, stepped `subq.w #$2`). "
+                       "They ABUT, and $24D2BE (`moveq #$0,D0`) is code"),
+])
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
@@ -1278,7 +1346,42 @@ def speed_index_set(d: bytes) -> list[int]:
     # new index domain.  `$288F18 move.b ($1a,A6),D0 / jsr $241D34` takes the
     # pool-B record's speed byte, and the death arms fill it two ways.
     s.update(effect_speed_indices(d))
+    # W65: and THE LASER BOMB'S SPARK's, which is a new reader of $241812 with
+    # a new index domain.  `$28A252` (pool E's fill tail for kind 0, reached
+    # only from $289FF4) calls $241812 TWICE:
+    #   $28A26C jsr $242E24 / $28A272 addq.b #$4,D0   -> $242E42[i] + 4, byte
+    #   $28A284 move.w #$C0,D0                        -> the CONSTANT $C0
+    # Both are ENUMERATED out of the image, not guessed and not measured: the
+    # first is the whole 128-byte canned table plus the instruction's own 4,
+    # the second is the instruction's own immediate.  W12 listed the pods' 224
+    # the same way and W31 the midboss's 112.
+    s.update(beam_spark_speed_indices(d))
     return sorted(s)
+
+
+BEAM_SPARK_DRAW_TABLE = 0x242E42      # $242E24's canned bytes
+BEAM_SPARK_ADD_AT = 0x28A272          # `addq.b #$4,D0`
+BEAM_SPARK_CONST_AT = 0x28A284        # `move.w #$C0,D0`
+
+
+def beam_spark_speed_indices(d: bytes) -> set[int]:
+    """W65.  Every speed index `$28A252`'s two `$241812` calls can be handed."""
+    # `addq.b #$4,D0` is $5800 -- the immediate is IN the opcode, so read it
+    # rather than writing 4 here.
+    op = u16(d, BEAM_SPARK_ADD_AT)
+    if (op & 0xF1FF) != 0x5000:
+        raise SystemExit(
+            f"$28A272 is ${op:04X}, not an `addq.b #n,D0`; the LASER BOMB "
+            f"spark's speed domain is derived from that immediate.")
+    add = (op >> 9) & 7 or 8
+    if u16(d, BEAM_SPARK_CONST_AT) != 0x303C:
+        raise SystemExit(f"$28A284 is ${u16(d, BEAM_SPARK_CONST_AT):04X}, not "
+                         f"`move.w #imm,D0`.")
+    const = u16(d, BEAM_SPARK_CONST_AT + 2)
+    out = {(b + add) & 0xFF for b in d[BEAM_SPARK_DRAW_TABLE:
+                                       BEAM_SPARK_DRAW_TABLE + 128]}
+    out.add(const)
+    return out
 
 
 # ---------------------------------------------------------------- WAVE 54
@@ -1757,6 +1860,152 @@ def check_bomb_extents(d: bytes) -> None:
             f"must be $FFFFFFFF -- $255F94 cmpi.l is the terminator.")
 
 
+def s16(v: int) -> int:
+    """A 16-bit value as a signed displacement (PC-relative `lea`s use one)."""
+    return v - 0x10000 if v >= 0x8000 else v
+
+
+def check_beam_bomb_extents(d: bytes) -> None:
+    """W65 (B3).  ASSERT THE LASER BOMB'S EXTENTS AGAINST THE CARTRIDGE.
+
+    Same rule as `check_bomb_extents`: a unit test can only read this file's
+    source, so every number the port depends on is re-derived here from the
+    INSTRUCTION or the TERMINATOR that produces it, against the real image, on
+    every export.  W54 6.2 -- a short window is caught on a player's machine.
+    """
+    # 1. $255FEA is `lea $256CAA,A0`, so the install template's address is in
+    #    the instruction and not in this file.
+    if u32(d, 0x255FEC) != 0x00256CAA:
+        raise SystemExit(f"$255FEA lea now reads ${u32(d, 0x255FEC):08X}; the "
+                         f"LASER BOMB's install template comes from it.")
+    # 2. ...and $2561DE/$256270/$2563EA are all `lea $256D48,A2`, the ONE
+    #    segment template three loops share.
+    for at in (0x2561E0, 0x256272, 0x2563EC):
+        if u32(d, at) != 0x00256D48:
+            raise SystemExit(
+                f"the segment-template `lea` at ${at - 2:06X} reads "
+                f"${u32(d, at):08X} and must be $00256D48.")
+    # 3. THE INSTALL IS 158 BYTES, i.e. it ends exactly where $256D48 begins.
+    #    Derived by replaying the copy sequence's sizes, which is the only
+    #    honest way to get it: 12 moves (4,2,4,4,4,2,4,4,2,4,4 == 38 with the
+    #    two `addq` holes skipped) and then three record blocks.
+    seq = ([4, 2, 4, 4, 4, 2, 4, 4, 2, 4, 4]
+           + [2, 4, 2, 4, 4, 4, 2, 4, 4, 4, 4, 2]
+           + [2, 4, 2, 4, 4, 4, 2, 4, 4, 2, 4, 4]
+           + [2, 4, 2, 4, 4, 4, 2, 4, 4, 4, 4, 2])
+    if 0x256CAA + sum(seq) != 0x256D48:
+        raise SystemExit(
+            f"the $255FEA install sequence consumes {sum(seq)} bytes, so it "
+            f"ends at ${0x256CAA + sum(seq):06X} and not at $256D48. Either "
+            f"the sequence changed or src/bomb.js `installBeamTemplate` is "
+            f"out of step with it.")
+    # 4. THE FOUR SCRIPT POINTERS the install drops on the four heads.  They
+    #    are longs INSIDE the template, at the offsets the copy sequence lands
+    #    them on, and they are what make $256662..$256691 four 12-byte tables
+    #    (three longs each) rather than one long one: consecutive, in the
+    #    record order 0 / 42 / 43 / 44, 12 bytes apart, in THAT order.
+    heads = [(0x256CAA + 0x14, 0x00256662, "record 0"),
+             (0x256CAA + 0x3C, 0x0025667A, "record 42"),
+             (0x256CAA + 0x64, 0x0025666E, "record 43"),
+             (0x256CAA + 0x8C, 0x00256686, "record 44")]
+    for at, want, who in heads:
+        if u32(d, at) != want:
+            raise SystemExit(
+                f"the install template's script pointer for {who} is at "
+                f"${at:06X} and reads ${u32(d, at):08X}; it must be "
+                f"${want:08X}. src/bomb.js `BEAM_REC` depends on it.")
+    if sorted(w for _, w, _ in heads) != [0x256662, 0x25666E, 0x25667A,
+                                          0x256686]:
+        raise SystemExit("the four head tables are no longer 12 bytes apart.")
+    # 5. ($24,A6)'s SEED and its step, which give the head tables THREE entries.
+    #    $2560D2 is `subq.w #$4,($24,A6)`; the seed is the install's own long.
+    if d[0x2560D2] != 0x59 or d[0x2560D3] != 0x6E:
+        raise SystemExit("$2560D2 is no longer `subq.w #$4,($24,A6)`, so the "
+                         "head tables' three entries are no longer derived.")
+    # 6. $2561AA's cursor: seeded $1C by $2561B0 and stepped `subq.w #$4`,
+    #    so $256692 holds EIGHT pointers.
+    if u16(d, 0x2561B2) != 0x001C:
+        raise SystemExit(
+            f"$2561B0 now writes ${u16(d, 0x2561B2):04X} to ($80A,A6); "
+            f"$256692's eight entries are derived from $1C and `subq.w #$4`.")
+    if d[0x2561AA] != 0x59 or d[0x2561AB] != 0x6E:
+        raise SystemExit("$2561AA is no longer `subq.w #$4,($80A,A6)`.")
+    # 7. $256712's TWELVE five-longword entries and the terminator $256170
+    #    tests.  Walk it here rather than trusting the count.
+    a, n = 0x256712, 0
+    while u32(d, a) != 0xFFFFFFFF:
+        n, a = n + 1, a + 20
+        if n > 64:
+            raise SystemExit("$256712 has no $FFFFFFFF within 64 entries; "
+                             "$256170 cmpi.l is the only terminator.")
+    if n != 12 or a != 0x256802:
+        raise SystemExit(
+            f"$256712 walks {n} entries and terminates at ${a:06X}; it must "
+            f"be 12 and $256802.")
+    # 8. THE FAR END.  The last entry's fifth long names an eight-pointer
+    #    table, and that table's end is the window's end -- pinned by $256986,
+    #    which is `$256086 move.l #$256986,($1E,A6)`, the bit-1 twin.
+    last = u32(d, 0x256712 + 11 * 20 + 16)
+    if last + 32 != 0x256986:
+        raise SystemExit(
+            f"the last $256712 entry names ${last:06X}, whose eight pointers "
+            f"end at ${last + 32:06X}; the window's far end must be $256986.")
+    if u32(d, 0x256088) != 0x00256986:
+        raise SystemExit(
+            f"$256086 now writes ${u32(d, 0x256088):08X}; $256986 is what pins "
+            f"the $256662 window's far end.")
+    declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x256662]
+    if not declared or 0x256662 + declared[0][1] != 0x256986:
+        raise SystemExit(
+            f"the $256662 window is {declared} and must end exactly at "
+            f"$256986.")
+    # 9. `$28A030` has THREE entries because `$28A03C` is CODE, and $243174's
+    #    bytes are 0/1/2 -- the two halves of one claim.
+    if u32(d, 0x28A03C) != 0x48E7FFFE:
+        raise SystemExit(
+            f"$28A03C is ${u32(d, 0x28A03C):08X} and must be $48E7FFFE "
+            f"(`movem.l D0-D7/A0-A6,-(A7)`, i.e. $289FF4 itself). $28A030's "
+            f"THREE entries are derived from it.")
+    bad = sorted(set(d[0x243174:0x243174 + 128]) - {0, 1, 2})
+    if bad:
+        raise SystemExit(
+            f"$243174 holds {bad} as well as 0/1/2, so $28A000's `add.w D0,D0` "
+            f"twice can index past $28A030's three entries.")
+    # 10. $242EC2's table is UNMASKED and $28AB86's is `moveq #$3F`; every far
+    #     end is the next `addq.b #1,$803917` in the family, which is the same
+    #     way W31 pinned $24324E and $24301A and W53 pinned $28ABFA.
+    for tbl, ln, nxt in ((0x242EDE, 0x100, 0x242FDE), (0x28ABA0, 0x40, 0x28ABE0),
+                         (0x243174, 0x80, 0x2431F4)):
+        if tbl + ln != nxt:
+            raise SystemExit(f"${tbl:06X} + ${ln:X} is ${tbl + ln:06X}, not "
+                             f"the ${nxt:06X} that pins it.")
+        if d[nxt] != 0x52 or d[nxt + 1] != 0x39 or u32(d, nxt + 2) != 0x00803917:
+            raise SystemExit(
+                f"${nxt:06X} is not `addq.b #1,$803917`, so ${tbl:06X}'s far "
+                f"end is no longer pinned by the next RNG entry point.")
+    # 11. THE POD KNOCKBACK's two tables, which W65 made reachable by setting
+    #     the player's flags bit 7 at $249A92.  $24D282's five words and
+    #     $24D28E's twenty ABUT, and $24D2BE is `moveq #$0,D0` -- CODE.
+    if u16(d, 0x24D18E) != 0x41FA or 0x24D190 + s16(u16(d, 0x24D190)) != 0x24D28E:
+        raise SystemExit(
+            f"$24D18E is not `lea ($24D28E,PC),A0`; the ramp's address comes "
+            f"from that instruction.")
+    if u16(d, 0x24D210) != 0x41FA or 0x24D212 + s16(u16(d, 0x24D212)) != 0x24D282:
+        raise SystemExit("$24D210 is not `lea ($24D282,PC),A0`.")
+    if d[0x24D19C] != 0x55 or d[0x24D19D] != 0x6E:
+        raise SystemExit("$24D19C is no longer `subq.w #$2,($38,A6)`, so the "
+                         "$24D28E ramp's 20 entries are no longer derived.")
+    if u16(d, 0x249ADA) != 0x0026 or u16(d, 0x249AE0) != 0x0008:
+        raise SystemExit(
+            f"$249AD8/$249ADE now seed ${u16(d, 0x249ADA):04X}/"
+            f"${u16(d, 0x249AE0):04X} into ($38,A1)/($56,A1); the two pod "
+            f"tables' index spaces come from those two immediates.")
+    if u16(d, 0x24D2BE) != 0x7000:
+        raise SystemExit(
+            f"$24D2BE is ${u16(d, 0x24D2BE):04X} and must be $7000 "
+            f"(`moveq #$0,D0`) -- it is what pins the $24D282 window's end.")
+
+
 def build(d: bytes) -> dict:
     check_pool_e_extents(d)                    # W53 -- see the function's docstring
     check_pool_b_extents(d)                    # W54 -- see the function's docstring
@@ -1764,6 +2013,7 @@ def build(d: bytes) -> dict:
     check_hud_extents(d)                       # W63 -- see the function's docstring
     check_bomb_extents(d)                      # W64 -- ...and this one's
     check_boss_a4_extent(d)                    # W64 -- W62's window was SHORT
+    check_beam_bomb_extents(d)                 # W65 -- THE LASER BOMB's
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
     levels = speed_index_set(d)

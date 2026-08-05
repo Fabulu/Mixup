@@ -350,11 +350,40 @@ function finish(ram, rec, d2, d3, ctx, skipClamps) {
     }
   }
 
-  // $24969C tst.b ($1,A6) / bpl $2496E8 -- bit 7 of $8103E7 gates the knockback
-  // block.  MEASURED 0 across the whole corpus; the block reads the $2552EC
-  // ramp and is not ported.
+  // ---- $24969C tst.b ($1,A6) / bpl $2496E8 -- **THE KNOCKBACK, AND W65 IS
+  // WHAT MADE IT REACHABLE.**  Bit 7 of `$8103E7` measured 0 across the whole
+  // corpus for sixty waves because nothing in the port set it; `$249A92 bset
+  // #$7,($1,A6)` -- the LASER BOMB's arm -- is the first thing that ever has,
+  // and `$2564AA bclr #$7,($1,A0)` (inside `$256468`) clears it at the end.
+  //
+  // It is TWO effects, and only the first is the ramp:
+  //   $2496A2  ($46,A6) -- seeded `$2E` by `$249AA4` and stepped `subq.w #$2`
+  //            -- indexes the 24-word ramp `$2552EC` and SUBTRACTS it from the
+  //            knock field ($6,A6), which `$23F104` adds to the drawn position.
+  //            So the ship is thrown backwards for 24 frames on a curve.
+  //   $2496C2  **AND `$812954` COSTS SPEED.**  While the beam bomb is holding
+  //            a pool-B target (`src/bomb.js` `$2457E2`), the ship loses `$48`
+  //            of velocity AND `$48` of this frame's Y every frame -- so the
+  //            ship is dragged while the beam is locked on.  That word is the
+  //            LASER BOMB's own, which is why this arm could not fire before.
   if (ram.i8(rec + P.flags1) < 0) {
-    unreached(0x2496a2, 'the knockback / $2552EC ramp block (bit 7 of ($1,A6))');
+    if (ram.u16(rec + 0x46) !== 0) {                 // $2496A2 tst.w / beq
+      const idx = ram.u16(rec + 0x46);               // $2496A8 move.w ($46,A6)
+      const d0 = ctx.rom.u16(0x2552ec + i16(idx));   // $2496B2 (A0,D0.w)
+      ram.setU16(rec + P.knock, u16(ram.u16(rec + P.knock) - d0));  // $2496B6
+      ram.setU16(rec + 0x5e, d0);                    // $2496BA move.w D0
+      ram.setU16(rec + 0x46, u16(idx - 2));          // $2496BE subq.w #$2
+    }
+    if (ram.u16(0x812954) !== 0) {                   // $2496C2 tst.w / beq
+      ram.setU16(rec + P.velY,
+        u16(ram.u16(rec + P.velY) - 0x48));          // $2496CA subi.w #$48
+      d2 = u16(d2 - 0x48);                           // $2496D0 subi.w #$48,D2
+    }
+    if (d2 < 0x800) {                                // $2496D4 cmpi.w / bcc
+      ram.setU16(rec + P.velY,
+        u16(ram.u16(rec + P.velY) + u16(0x800 - d2)));  // $2496DA..$2496E0
+      d2 = 0x800;                                    // $2496E4 move.w #$800
+    }
   }
 
   ram.setU16(rec + P.posY, u16(d2));                 // $2496E8 movem.w D2-D3,($2,A6)

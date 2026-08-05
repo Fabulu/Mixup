@@ -119,7 +119,10 @@
 import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { BUCKETS, ENQUEUE_MASK, NO_ZOOM_OR } from './spritequeue.js';
-import { drawByte242E24, drawSigned242FFC, drawByte28ABE0 } from './rng.js';
+import {
+  drawByte242E24, drawSigned242FFC, drawByte28ABE0,
+  drawWord242EC2, drawByte28AB86, drawByte24311A,
+} from './rng.js';
 
 export const SPARK = {
   p1Base: 0x81d394,        // $289F7C / $28A0E6 lea
@@ -204,7 +207,7 @@ export function clearPool(ram) {
  * not an accident -- it is what lets `$28A08A dbra D2,$28A06C` keep scanning
  * from the right place when D1 asks for a second record.
  */
-function fillSlot(ram, rom, ctx, slot, tpl, spawner, d0) {
+function fillSlot(ram, rom, ctx, slot, tpl, spawner, d0, d7 = 0) {
   //                                                 $28A1DC move.w D0,D3
   ram.setU16(slot + E.status, u16(d0 | 0x8000));   // $28A1DE ori.w #$8000
   ram.setU16(slot + E.selector, rom.u16(tpl));     // $28A1E4 move.w (A2)+,(A0)+
@@ -234,15 +237,147 @@ function fillSlot(ram, rom, ctx, slot, tpl, spawner, d0) {
   ram.setU16(slot + E.delayB, rom.u16(tpl + 0x14));      // $28A21A move.w (A2)+,(A0)+
   ram.setU16(SPARK.count, u16(ram.u16(SPARK.count) + 1)); // $28A21C addq.w #1
   // $28A222 lea ($28A232,PC),A2 / adda.w D0,A2 / movea.l (A2),A2 / jmp (A2)
+  // $28A222 lea ($28A232,PC),A2 / adda.w D0,A2 / movea.l (A2),A2 / jmp (A2).
+  // W53 transcribed entry 5 ($14, the shot spark); **W65 adds entry 0**, which
+  // is the one and only kind `$289FF4` passes ($28A012 moveq #$0,D0) and so the
+  // one the LASER BOMB reaches.  The remaining six still throw by address.
+  if (d0 === 0) return fillTail28A252(ram, rom, ctx, slot, d7);   // $28A232[0]
   if (d0 !== SPARK.kindSpark) {
     unreached(SPARK.fillTable + d0,
       `$28A22C jmp (A2) -- pool E's fill tail for kind $${d0.toString(16)
-        .toUpperCase()} (entry ${d0 / 4} of the eight at $28A232). WAVE 53 `
-      + `transcribed entry 5 only, the kind all eight $289F54 call sites pass. `
-      + `The other seven belong to $289F96/$289FC0/$289FDA/$289FF4, the LASER's `
-      + `three producers and the bomb's, none of which this wave ports`);
+        .toUpperCase()} (entry ${d0 / 4} of the eight at $28A232). W53 `
+      + `transcribed entry 5 ($14, every $289F54 site) and W65 entry 0 `
+      + `($289FF4, the LASER BOMB's). The other six belong to $289F96 / `
+      + `$289FC0 / $289FDA -- the BEAM's three producers -- which no wave has `
+      + `ported`);
   }
   return fillTail28A39E(ram, rom, ctx, slot, spawner);
+}
+
+/**
+ * `$28A252` -- the fill tail for kind **0**, i.e. THE LASER BOMB'S SPARK.
+ * `$28A232[0]`, reached by `$28A1DA`'s `jmp (A2)` and returning to `$28A1DA`'s
+ * CALLER (`$28A2D2 movea.l (A7)+,A2` pops the A2 `$28A1DA` pushed at its own
+ * first instruction -- the same continuation shape as `$28A39E`).
+ *
+ *   28a252: movem.l D0-D2,-(A7)
+ *   28a256: moveq #$18,D3
+ *   28a258: jsr $242EC2 / bpl $28A262 / moveq #$28,D3
+ *   28a262: bsr $28AB86 / add.b D3,D1 / andi.b #$3F,D1      the ANGLE
+ *   28a26c: jsr $242E24 / addq.b #4,D0                      the SPEED
+ *   28a274: move.w D1,-(A7)                                 <- the angle, SAVED
+ *   28a276: jsr $241812 -> D2,D3
+ *   28a27c: move.w D2,(A0)+ / move.w D3,(A0)+   the velocity, rec+$1C/+$1E
+ *   28a280: add.w D2,(-$1c,A0)                  rec+$04 nudged by the LONG axis
+ *   28a284: move.w #$C0,D0                      <- A SECOND SPEED, and it is
+ *                                                  the CONSTANT $C0 = 192
+ *   28a288: tst.w D7 / bmi $28A2A8              <- D7 is the CALLER's
+ *   28a2a8: moveq-style #$2,D3 / btst #$7,$811F73 / #$3,D3
+ *   28a2bc: move.b D3,(-$11,A0)                 rec+$0F, the attribute's LOW byte
+ *   28a2c0: move.w (A7)+,D1 / jsr $241812       the SAME angle, speed $C0
+ *   28a2c8: add.w D3,(-$1a,A0)                  rec+$06 nudged by the SHORT axis
+ *   28a2cc: addq.w #2,A0                        -> rec+$22, THE NEXT SLOT
+ *
+ * **THREE THINGS A TIDY PORT GETS WRONG HERE.**
+ *
+ *  1. `$28A25E bpl.b` tests D0 after `$242EC2`, and `$242EC2` has **no
+ *     `ext.w`** (`$242FDE` does; this one ends `move.b (A0,D0.w),D0 / rts`).
+ *     So D0's high byte is `$803916`'s, which is 0, and bit 15 is ALWAYS
+ *     clear -- `moveq #$28,D3` is unreachable while that holds.  Both arms are
+ *     transcribed; `src/rng.js` `drawWord242EC2` returns the whole word so the
+ *     test is a real test and not a constant this file decided.
+ *  2. **`$241812` IS CALLED TWICE WITH THE SAME ANGLE AND TWO DIFFERENT
+ *     SPEEDS**, and only the FIRST call's result reaches the velocity.  The
+ *     second call's D3 nudges rec+$06 and its D2 is discarded.  A port that
+ *     called it once and reused D2/D3 would be one `$241812` short and would
+ *     also leave `$803916` -- no; `$241812` does not draw.  But it would put
+ *     the wrong short-axis nudge on every spark.
+ *  3. `$28A2BC move.b D3,(-$11,A0)` lands on rec+$0F -- the **LOW byte of the
+ *     attribute word** `E.attr` (+$0E) that `$28A210` has just written in full.
+ *     It is a partial overwrite of a field, not a field of its own.
+ *
+ * @param d7 the caller's D7.  `$289FF4` sets `$FFFF` ($28A00E), which is the
+ *        only value this port produces, so `$28A28C beq` and `$28A28E`'s
+ *        `$81046A`/`$810408` arm are transcribed and THROW.
+ * @returns {number} A0 after the tail, i.e. the next slot's base.
+ */
+function fillTail28A252(ram, rom, ctx, slot, d7) {
+  let d3 = 0x18;                                   // $28A256 moveq #$18,D3
+  const draw = drawWord242EC2(ram, rom);           // $28A258 jsr $242EC2
+  if ((draw & 0x8000) !== 0) d3 = 0x28;            // $28A25E bpl / $28A260
+  let d1 = drawByte28AB86(ram, rom);               // $28A262 bsr $28AB86
+  d1 = ((d1 + d3) & 0xff) & 0x3f;                  // $28A266 add.b / $28A268 andi.b
+  let d0 = (drawByte242E24(ram, rom) + 4) & 0xff;  // $28A26C jsr / $28A272 addq.b
+  const v = ctx.tables.vector(d0, d1);             // $28A276 jsr $241812
+  ram.setU16(slot + E.vel, u16(v.dy));             // $28A27C move.w D2,(A0)+
+  ram.setU16(slot + E.vel + 2, u16(v.dx));         // $28A27E move.w D3,(A0)+
+  // A0 is now slot+$20, so (-$1c,A0) is slot+$04 -- E.pos, the LONG axis.
+  ram.setU16(slot + E.pos, u16(ram.u16(slot + E.pos) + v.dy));   // $28A280
+  d0 = 0xc0;                                       // $28A284 move.w #$C0,D0
+  if ((d7 & 0x8000) === 0) {                       // $28A288 tst.w D7 / bmi
+    unreached(0x28a28c, `$28A28C -- $28A252's NON-NEGATIVE D7 arm. It reads `
+      + `$81046A (D7 > 0) or $810408 (D7 == 0) and indexes the eight-word `
+      + `table $28A2D6 with it, then jumps to $28A2C0 with a table WORD as D0 `
+      + `-- a third speed domain. The only producer of this tail in this port `
+      + `is $289FF4, whose $28A00E sets D7 := $FFFF, so the arm needs one of `
+      + `$289F96 / $289FC0 / $289FDA -- the BEAM's three producers, unported. `
+      + `D7 was $${(d7 & 0xffff).toString(16).toUpperCase()}`);
+  }
+  d3 = ram.btst8(0x811f73, 7) ? 3 : 2;             // $28A2A8/$28A2AC/$28A2B8
+  ram.setU8(slot + E.attr + 1, d3);                // $28A2BC move.b D3,(-$11,A0)
+  const v2 = ctx.tables.vector(d0, d1);            // $28A2C0/$28A2C2 jsr $241812
+  ram.setU16(slot + E.pos + 2, u16(ram.u16(slot + E.pos + 2) + v2.dx));  // $28A2C8
+  return slot + SPARK.stride;                      // $28A2CC addq.w #2,A0
+}
+
+/** `$28A030` -- `$289FF4`'s THREE template pointers.  `[M]` entry 3 reads
+ *  `$48E7FFFE`, which is `movem.l D0-D7/A0-A6,-(A7)` -- i.e. `$289FF4` itself.
+ *  The index is `$24311A`'s canned byte doubled twice, and `[M]` every byte of
+ *  `$243174` is 0, 1 or 2, so the table's three entries are exactly its
+ *  domain.  `check_beam_bomb_extents` asserts both facts on every export. */
+export const BEAM_SPARK_TEMPLATES = { table: 0x28a030, entries: 3 };
+
+/**
+ * `$289FF4` -- **THE LASER BOMB'S SPARK**, `$256162 jmp $289FF4`.
+ *
+ * It is `$289F54`'s sibling and it differs in four ways that all matter:
+ *
+ *  1. **NO `$813098` GATE.**  `$289F54` opens `tst.w $813098 / bne $289F4E`
+ *     (a reported failure).  `$289FF4` has no such test, so a bomb spark is
+ *     allocated on loop 2+ where a shot spark is not.
+ *  2. **THE TEMPLATE COMES FROM `$24311A`, NOT FROM `$803916 * 4`.**  Three
+ *     templates ($28A030) against `$289F54`'s 256 pointers ($28A786).
+ *  3. **THE POOL HALF IS PICKED BY THE BOMB RECORD**, `$28A01A btst #$7,
+ *     $811F73` -- the record's own P2 bit -- and not by comparing A4 against
+ *     `$8103E6`.  So a P2 laser bomb's sparks land in P2's 30 slots even
+ *     though nothing about the CALLER says which player it is.
+ *  4. **D7 := `$FFFF`** (`$28A00E`), which is what routes `$28A252` to its
+ *     `$28A2A8` arm.
+ *
+ * From `$28A060` on it is byte-for-byte `$289F54`'s tail, so this function and
+ * `spawnSpark` share it below rather than duplicating it.
+ *
+ * @param spawner A6 at the `jmp`.  `[M]` `$255FE2` has walked A6 forward three
+ *        times by then (`$256136 lea $7E0`, `$256146 lea $30`, `$256150 lea
+ *        $30`), so it is **record 44**, `$811F72 + $840 = $8127B2`, and NOT the
+ *        `$811F72` the driver started with.  The caller passes it rather than
+ *        this file assuming it, because that walk is the caller's.
+ * @returns {boolean} false on the "no free slot" failure return.
+ */
+export function spawnBeamBombSpark289FF4(ram, rom, ctx, spawner) {
+  const kind = drawByte24311A(ram, rom);                  // $289FFA jsr $24311A
+  const idx = u16(u16(kind + kind) + u16(kind + kind));   // $28A000/$28A002 add.w
+  if (kind >= BEAM_SPARK_TEMPLATES.entries) {
+    unreached(0x28a00c, `$28A00C movea.l (A2),A2 -- $24311A returned `
+      + `${kind}, so $28A030 + ${idx} is read as a template pointer, and the `
+      + `table has only ${BEAM_SPARK_TEMPLATES.entries} entries ($28A03C is `
+      + `$48E7FFFE -- CODE). Every byte of $243174 is 0, 1 or 2 in the `
+      + `cartridge; this one is not`);
+  }
+  const tpl = rom.u32(BEAM_SPARK_TEMPLATES.table + idx);  // $28A00C movea.l (A2)
+  const p2 = ram.btst8(0x811f73, 7);                      // $28A01A btst #$7
+  return poolETail(ram, rom, ctx, p2 ? SPARK.p2Base : SPARK.p1Base,
+    tpl, spawner, 0, 0xffff, 0x289ff4);                   // $28A00E move.w #$FFFF
 }
 
 /**
@@ -318,29 +453,45 @@ export function spawnSpark(ram, rom, ctx, spawner, player, d0 = SPARK.kindSpark)
   // that ever stops being true.
   const d5 = i16(u16(u16(ram.u16(0x803916)) * 2) * 2);   // $289F68..$289F70
   const tpl = rom.u32(SPARK.ptrTable + d5);              // $289F78 movea.l (A2,D5.w)
-  let a0 = player === SPARK.p1PlayerRec                  // $289F82 cmpa.l
+  const a0 = player === SPARK.p1PlayerRec                // $289F82 cmpa.l
     ? SPARK.p1Base : SPARK.p2Base;
-  // $28A060: THE SHARED TAIL, and recon 50 has the sense of the branch BACKWARDS
-  // ("30 slots, or 15 when $81308C is set").  `$28A068 bne $28A06C` SKIPS the
-  // `moveq #$E`, so it is 30 slots when $81308C is NON-ZERO and 15 when it is 0.
-  // [M] $81308C reads 1 on this tree, and the call site itself is behind
-  // `tst.w $81308C / beq`, so the spark can only spawn in the 30-slot case.
+  return poolETail(ram, rom, ctx, a0, tpl, spawner, d0, 0, 0x289f54);
+}
+
+/**
+ * `$28A060..$28A08E` -- **THE SHARED TAIL**, and it is shared in the cartridge
+ * too: `$289F54` reaches it by `$289F88 bra`, `$289FF4` by `$28A02C bra`, and
+ * `$289F96`/`$289FC0`/`$289FDA` (the beam's three, unported) the same way.
+ * One body, five heads, and a port that copied it per head would have five
+ * places to get the `dbra`'s off-by-one wrong.
+ *
+ * recon 50 has the sense of the width branch BACKWARDS ("30 slots, or 15 when
+ * `$81308C` is set").  `$28A068 bne $28A06C` SKIPS the `moveq #$E`, so it is
+ * 30 slots when `$81308C` is NON-ZERO and 15 when it is 0.  `[M]` `$81308C`
+ * reads 1 on this tree.
+ *
+ * @param d7 the head's D7 -- 0 from `$289F54`, `$FFFF` from `$289FF4`.
+ * @returns {boolean} false on the `$28A078` "no free slot" failure return.
+ */
+function poolETail(ram, rom, ctx, base, tpl, spawner, d0, d7, site) {
+  let a0 = base;
   let d2 = ram.u16(SPARK.gateWidth) !== 0                // $28A062/$28A068
     ? SPARK.perPlayer - 1 : SPARK.perPlayerNarrow - 1;   // $28A060/$28A06A moveq
-  let d1 = 0;                                            // $289F60 moveq #$0,D1
+  let d1 = 0;                                            // $289F60/$289FF8 moveq
   for (;;) {
     if (ram.u16(a0 + E.status) === 0) {                  // $28A06C tst.w (A0)
-      a0 = fillSlot(ram, rom, ctx, a0, tpl, spawner, d0);   // $28A082 bsr $28A1DA
+      a0 = fillSlot(ram, rom, ctx, a0, tpl, spawner, d0, d7);  // $28A082 bsr
       if (--d1 < 0) return true;                         // $28A086 subq/bcs
       if (d2-- === 0) return true;                       // $28A08A dbra -> $28A08E
       continue;
     }
     a0 += SPARK.stride;                                  // $28A070 lea ($22,A0),A0
     if (d2-- === 0) {                                    // $28A074 dbra D2
-      ctx?.unportedLog?.note(0x28a078, `$28A078 -- pool E's allocator found NO `
-        + `FREE SLOT in the player's ${ram.u16(SPARK.gateWidth) !== 0 ? 30 : 15
-        } and returned FAILURE (ori #1,SR). The spark was DISCARDED. This is `
-        + `the event W33 4 says must be counted rather than assumed impossible`);
+      ctx?.unportedLog?.note(0x28a078, `$28A078 -- pool E's allocator (entered `
+        + `at $${site.toString(16).toUpperCase()}) found NO FREE SLOT in the `
+        + `player's ${ram.u16(SPARK.gateWidth) !== 0 ? 30 : 15} and returned `
+        + `FAILURE (ori #1,SR). The record was DISCARDED. This is the event `
+        + `W33 4 says must be counted rather than assumed impossible`);
       return false;
     }
   }

@@ -120,8 +120,10 @@
 import { RAM, P } from './machine.js';
 import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
-import { bcd242AC6 } from './items.js';
+import { bcd242AC6, beamReset25270C } from './items.js';
 import { drawSigned242FDE } from './rng.js';
+import { wipeSegmentPool } from './laser.js';
+import { spawnBeamBombSpark289FF4 } from './spark.js';
 
 const note = (ctx, addr, what) => ctx.unportedLog.note(addr, what);
 
@@ -155,7 +157,20 @@ export const BOMB = {
   chainResetP1: 0x2877d0,
   chainResetP2: 0x2877fe,
   damage: 0x24560a,        // the NINTH block of $244D62
-  damageAlt: 0x2456a6,     // its btst #$0,D5 arm
+  damageAlt: 0x2456a6,     // its btst #$0,D5 arm -- W65, THE BEAM BOMB'S
+  // ---- W65 (B3): the LASER BOMB's own addresses ----------------------------
+  beamArm: 0x249a80,       // ($3f,A6) non-zero -- bomb WHILE HOLDING THE BEAM
+  beamScript: 0x255fe2,    // $255E2E[1] and [3]
+  beamSeg2561AA: 0x2561aa, // the 41 segment records, phase 1
+  beamHead2562FC: 0x2562fc, // record 42's mover
+  beamHead256348: 0x256348, // record 44's mover, and $256346 IS A BARE `rts`
+  beamNop256346: 0x256346,
+  beamSeg2563B6: 0x2563b6, // the 41 segment records, phase 2
+  beamReset256468: 0x256468,
+  beamSpark: 0x289ff4,     // $256162 jmp -- pool E, kind 0
+  beamScriptAltP1: 0x256986, // the ($1,A6)-bit-1 twin's six script pointers
+  beamCue28C528: 0x28c528, // $256078 lea / $2560BC jsr (A0) -- SOUND
+  beamCue28C542: 0x28c542, // ...the bit-1 arm's
   draw23FF06: 0x23ff06,
   draw23FF42: 0x23ff42,
   draw23FFB4: 0x23ffb4,
@@ -191,6 +206,50 @@ export const BOMBRAM = {
   hitMask: 0x80fa72,                        // $24563E move.w $80FA72,D6
   box: 0x80fa74,                            // $2456AA -- the alt arm's box
   g12952: 0x812952, g12954: 0x812954,       // $245622 / $24562C
+  // ---- W65 (B3) ------------------------------------------------------------
+  poolB: 0x81521c, poolBStride: 0x20,       // $24571A lea / $245724 lea $20
+  bulletPool: 0x817f8c,                     // $245902 lea $817F8E is this PLUS 2
+  bulletStride: 0x40,                       // $2459C6 lea ($40,A5),A5
+  bulletWindow: [0x81b414, 0x81b416, 0x81b418, 0x81b41a],   // $24590C..$245936
+  g12968: 0x812968,                         // $256072 move.w D0
+  g8127e2: 0x8127e2,                        // $249A9E clr.w
+  soundQueueP2: 0x81294e,                   // $2564A4 clr.w -- $256468's P2 half
+  optP1: 0x8104aa, optP2: 0x81050e,         // $249AB2 / $249AC6 lea -- A1
+};
+
+/** The FOUR records the LASER BOMB uses, as byte offsets from `$811F72`.
+ *
+ *  `[M]` and this is the fact that makes the whole weapon legible: the first
+ *  block of `$255FE2`'s install ends with A1 at `+$30`, `$25600C lea ($7B0,A1)`
+ *  puts the next at `+$7E0`, and the remaining two follow at `+$30` each.
+ *  `$7E0 / $30 = 42`.  So the heads are records **0, 42, 43 and 44**, and
+ *  `$2561AA`/`$2563B6`'s `lea $811FA2,A6` + `moveq #$28,D7` + `dbra` is records
+ *  **1..41**.  **1 + 41 + 3 = 45** -- the whole table, which is why `$2564F0`
+ *  wipes forty-five and not one. */
+export const BEAM_REC = { head: 0x000, tail: 0x7e0, mid: 0x810, tip: 0x840,
+  seg0: 0x030, segs: 41 };
+
+/** `$255FE2`'s two ROM extents and the data block behind them.
+ *
+ *  `$256CAA` is counted from the copy SEQUENCE (`$255FEA lea` to `$256062`),
+ *  not from a run: 158 bytes, ending exactly at `$256D48`, which is the
+ *  18-byte segment template `$2561EE`/`$256282`/`$2563F0` all read.
+ *
+ *  `$256662..$256985` is the DATA the install's four script pointers name --
+ *  four 12-byte anim tables ($256662/$25666E/$25667A/$256686, index space
+ *  {8,4,0} from `($24,A6) = 8` and `$2560D2 subq.w #$4`), the eight-pointer
+ *  table `$256692` (index space $1C..0 from `$2561AA`'s own `subq.w #$4` and
+ *  `move.w #$1C`), its eight 12-byte targets, and `$256712`'s TWELVE
+ *  five-longword entries plus the `$FFFFFFFF` terminator at `$256802`.  Each of
+ *  the twelve names a further eight-pointer table, and the last of those ends
+ *  at `$256986` -- which is the ($1,A6)-bit-1 twin's first script, i.e. the far
+ *  end is pinned by the code this port throws on. */
+export const BEAM_TEMPLATES = {
+  install: 0x256caa, installLen: 158,
+  seg: 0x256d48, segLen: 18,
+  data: 0x256662, dataLen: 0x324,
+  animStride: 12, ptrEntries: 8, listStride: 20, listEntries: 12,
+  listEnd: 0x256802,
 };
 
 /** The record's own fields.  A6 = `$811F72` throughout `$255E3E`. */
@@ -467,12 +526,13 @@ export function bombDriver255DD8(ram, rom, ctx) {
   }
   const idx = d0 & 0x7;                                // $255E16 andi.w #$7,D0
   if (idx === 1 || idx === 3) {
-    unreached(BOMB.driverAlt, `$255E2E[${idx}] = $255FE2, the OTHER bomb `
-      + `handler (302 instructions, its own $256CAA/$256D.. installs and its `
-      + `own $81296C reload at $25619A). The index is the record's type word `
-      + `AND $7, whose low bits are ($58,A6) -- the ship selector -- and that `
-      + `is 0 on every frame of every run in this corpus, exactly as `
-      + `src/player.js's $249D2C shot throw says. Ports selector 0 only`);
+    // `$255E2E[1]` and `[3]` are both `$255FE2` -- **THE LASER BOMB**, W65.
+    // The index's bit 0 is `$249A98 bset #$0,($1,A1)`'s and bit 1 is the ship
+    // selector's, so entry 3 needs a selector this port has never seen; the
+    // handler is the same routine either way and the bit-1 forks INSIDE it
+    // throw on their own addresses.
+    bombScriptAlt255FE2(ram, rom, ctx, (d0 & 0x80) !== 0);
+    return true;
   }
   if (idx >= 4) {
     unreached(BOMB.driver, `$255E16 andi.w #$7,D0 gave ${idx}, but the table `
@@ -638,6 +698,361 @@ export function bombScript255E3E(ram, rom, ctx) {
 }
 
 // ===========================================================================
+// W65 (B3) -- `$255FE2`, **THE LASER BOMB'S DRIVER**
+// ===========================================================================
+//
+// `$255E2E[1]`.  A6 is `$811F72`, A5 is the PLAYER RECORD (`$8103E6`/`$810448`,
+// `$255DFE`/`$255E10`) and A4 is the OPTION BLOCK -- and A4 is never read here.
+//
+// It runs for **132 logic frames** and the number is derived, not measured:
+// `$256CAA`'s install puts `$0078` on `($1A,A6)` and `$256112 subq.w #$1` takes
+// one per frame, so phase 1 is 120 frames; then `($28,A6)` walks `$256712`'s
+// TWELVE five-longword entries at one per frame and hits `$FFFFFFFF`.
+// 120 + 12 = 132, against the ordinary bomb's ~113.
+//
+// THE FOUR HEADS AND THE FORTY-ONE SEGMENTS (see `BEAM_REC`) are what the
+// weapon is: records 42/43/44 are drawn sprites that march up the screen, and
+// records 1..41 are the BEAM -- one new segment seeded per frame at the
+// player's position `+$600` on the long axis (`$2561F4 addi.l #$6000000`), each
+// existing one advanced `+$400` plus the player's own `($30,A5)` velocity and
+// killed when it passes `$7800` or the nearest struck enemy `$812952`.
+
+/** `$255FEA..$256062` -- the install.  The sequence is the ROM's, byte for
+ *  byte, and the `addq.w #$4,A1` SKIPS are holes a memcpy would fill.
+ *  `[M]` it consumes exactly 158 bytes and stops at `$256D48`. */
+function installBeamTemplate(ram, rom) {
+  const rec = BOMBRAM.rec;
+  let s = BEAM_TEMPLATES.install, a1 = 0x06;           // $255FF0 lea $6(A6),A1
+  const w = () => { ram.setU16(rec + a1, rom.u16(s)); s += 2; a1 += 2; };
+  const l = () => { ram.setU32(rec + a1, rom.u32(s)); s += 4; a1 += 4; };
+  const skip = (n) => { a1 += n; };
+  l(); skip(4); w(); l(); l(); l(); w(); l(); l(); w(); l(); l();  // $255FF4..
+  skip(0x7b0);                                         // $25600C lea ($7B0,A1)
+  w(); skip(4); l(); skip(4); w(); l(); l(); l(); w(); l(); l(); l(); l(); w();
+  w(); skip(4); l(); skip(4); w(); l(); l(); l(); w(); l(); l(); w(); l(); l();
+  w(); skip(4); l(); skip(4); w(); l(); l(); l(); w(); l(); l(); l(); l(); w();
+  return s - BEAM_TEMPLATES.install;                   // ...$256062
+}
+
+/** `$2561EE..$256208` / `$256282..$25629C` / `$2563F0..$256442` -- the ONE
+ *  18-byte segment template, read three times with three different splices.
+ *  `steps` is `[recordOffset, size|'skip']` in instruction order; `anim` is the
+ *  long the ROM drops between them and `ptr` the long at `+$18` (which
+ *  `$25629A`/`$256440` SKIP -- and skipping it is why a segment seeded in
+ *  phase 2 keeps whatever pointer phase 1 left). */
+function fillSegment(ram, rom, slot, pos, anim, ptr) {
+  const t = BEAM_TEMPLATES.seg;
+  ram.setU16(slot + 0x00, rom.u16(t));                 // $2561EE move.w (A2)+
+  ram.setU32(slot + 0x02, pos >>> 0);                  // $2561FA move.l D0
+  ram.setU32(slot + 0x06, rom.u32(t + 2));             // $2561FC move.l (A2)+
+  ram.setU32(slot + 0x0a, anim >>> 0);                 // $2561FE move.l (A0)
+  ram.setU16(slot + 0x0e, rom.u16(t + 6));             // $256200 move.w (A2)+
+  ram.setU32(slot + 0x10, rom.u32(t + 8));             // $256202 move.l (A2)+
+  ram.setU32(slot + 0x14, rom.u32(t + 12));            // $256204 move.l (A2)+
+  if (ptr !== null) ram.setU32(slot + 0x18, ptr >>> 0); // $256206 move.l D5
+  ram.setU16(slot + 0x1c, rom.u16(t + 16));            // $256208 move.w (A2)+
+}
+
+/**
+ * `$2561AA` -- the 41 BEAM SEGMENTS.  Two arms, forked on `($18,A6)`, and they
+ * are NOT the same loop with a flag:
+ *
+ *   `($18,A6) == 0` (phase 1)  `$2561C8 movea.l (A0,D0.w),A0` DEREFERENCES the
+ *     pointer table, saves the pointer in D5, writes it to the segment's
+ *     `+$18`, and a LIVE segment re-reads its anim through it every frame.
+ *   `($18,A6) != 0` (phase 2)  `$256262 adda.w` does NOT dereference -- the
+ *     POINTER ITSELF becomes the anim long -- `+$18` is skipped, and a live
+ *     segment never re-reads.
+ *
+ * Transcribed as two loops for that reason.  `$2561B6 movea.l A6,A3` /
+ * `$25625A movea.l A3,A6` is the ROM restoring the table base it walked off.
+ */
+function beamSegments2561AA(ram, rom, ctx, a5) {
+  const rec = BOMBRAM.rec;
+  // $2561AA subq.w #$4,($80A,A6) -- and ($80A,A6) is record 42's own +$2A.
+  const t = u16(ram.u16(rec + 0x80a) - 4);             // $2561AA subq.w #$4
+  ram.setU16(rec + 0x80a, (t & 0x8000) ? 0x1c : t);    // $2561AE bcc / $2561B0
+  const cursor = ram.u16(rec + 0x80a);                 // $2561C0 / $256262
+  const phase2 = ram.u16(rec + 0x18) !== 0;            // $2561B8 tst.w ($18,A6)
+  const tbl = ram.u32(rec + 0x2c);                     // $2561C4 / $25625E
+  const d4 = ram.u16(rec + 0x24);                      // $2561CE move.w ($24,A6)
+  let ptr = 0, animSrc = 0;
+  if (!phase2) {
+    ptr = rom.u32(tbl + i16(cursor));                  // $2561C8 movea.l (A0,D0.w)
+    animSrc = ptr + i16(d4);                           // $2561D2 adda.w D4,A0
+  } else {
+    animSrc = tbl + i16(cursor);                       // $256262 adda.w
+  }
+  let seeded = false, drawn = 0, killed = 0;           // $2561D6 moveq #$0,D6
+  for (let n = 0; n < BEAM_REC.segs; n++) {            // $2561D4 moveq #$28,D7
+    const a6 = rec + BEAM_REC.seg0 + n * BOMBRAM.stride;   // $2561D8 lea $811FA2
+    if ((ram.u16(a6) & 0x8000) === 0) {                // $2561E4 tst.w / bmi
+      if (seeded) continue;                            // $2561E8 tst.w D6 / bne
+      const pos = (((u16(ram.u16(a5 + P.posY) + 0x600) << 16) >>> 0)
+        + ram.u16(a5 + P.posX)) >>> 0;                 // $2561F0/$2561F4 addi.l
+      fillSegment(ram, rom, a6, pos, rom.u32(animSrc),
+        phase2 ? null : ptr);                          // $25629A skips +$18
+      seeded = true;                                   // $25620A moveq #$1,D6
+      drawn++; continue;                               // $25620C bra -> $23FF42
+    }
+    if (!phase2) {                                     // $25620E movea.l ($18,A6)
+      ram.setU32(a6 + 0x0a, rom.u32(ram.u32(a6 + 0x18) + i16(d4)));  // $256212
+    }
+    let d0 = u16(u16(ram.u16(a6 + 0x02) + 0x200)       // $256218/$25621C
+      + ram.u16(a5 + P.velY));                         // $256220 add.w ($30,A5)
+    if (!beamSegmentAlive(ram, rec, d0, phase2)) {
+      ram.setU16(a6, 0); killed++; continue;           // $25623A/$2562D8 clr.w
+    }
+    d0 = u16(d0 + 0x200);                              // $25623E addi.w #$200
+    ram.setU32(a6 + 0x02, (((d0 << 16) >>> 0)
+      + ram.u16(a5 + P.posX)) >>> 0);                  // $256244/$256248
+    drawn++;                                           // $25624C jsr $23FF42
+  }
+  ctx.bombEvent?.('beam-seg', `${drawn}/${killed}`);
+  return { drawn, killed, seeded };
+}
+
+/** `$256224..$256238` (phase 1) and `$2562AE..$2562D6` (phase 2) -- the cull.
+ *  **THE TWO ARE NOT THE SAME TEST** and merging them is the mistake this
+ *  function exists to prevent: phase 2 adds a whole `$812954 == 0` branch that
+ *  reads record 44's `($28)` and record 0's bit 6 and compares against record
+ *  44's Y, and phase 1 goes straight to the `$7800` bound. */
+function beamSegmentAlive(ram, rec, d0, phase2) {
+  if (ram.u16(BOMBRAM.g12954) !== 0) {                 // $256224 / $2562AE tst.w
+    if (d0 > ram.u16(BOMBRAM.g12952)) return false;    // $25622C / $2562CA bhi
+    return d0 < 0x7800;                                // $256234 / $2562D2 bcs
+  }
+  if (!phase2) return d0 < 0x7800;                     // $256234 cmpi.w / bcs
+  if (ram.u16(rec + BEAM_REC.tip + 0x28) !== 0        // $2562B6 tst.w ($868,A3)
+    && !ram.btst8(rec, 6)) {                           // $2562BA btst #$6,(A3)
+    if (d0 > ram.u16(rec + BEAM_REC.tip + 0x02)) return false;   // $2562C2 bhi
+  }
+  return d0 < 0x7800;                                  // $2562D2 cmpi.w / bcs
+}
+
+/** `$2562FC` -- record 42's mover.  Twenty-one instructions and every one of
+ *  its three RAM writes is a bit or a word of that record. */
+function beamHead2562FC(ram) {
+  const rec = BOMBRAM.rec, a6 = rec + BEAM_REC.tail;
+  if (ram.u16(a6 + 0x28) !== 0) return;                // $256302 tst.w / bne
+  if (ram.u16(BOMBRAM.g12954) === 0) {                 // $256308 tst.w / bne
+    // $256310 tst.w ($868,A0) / beq $25631C  -- record 44's ($28).
+    // $256316 btst #$6,(A0) / beq $25633C    -- record 0's bit 6.
+    // NOTE THE SENSE: a non-zero ($868,A0) does NOT skip; it goes on to test
+    // the bit, and only a CLEAR bit stops the move.
+    if (ram.u16(rec + BEAM_REC.tip + 0x28) !== 0 && !ram.btst8(rec, 6)) {
+      ram.bset8(a6, 1); return;                        // $25633C bset #$1,(A6)
+    }
+  } else { ram.bset8(a6, 1); return; }                 // $25633C
+  ram.bclr8(a6, 1);                                    // $25631C bclr #$1,(A6)
+  const d0 = u16(u16(ram.u16(a6 + 0x02) + 0x400)       // $256320/$256324
+    + ram.u16(RAM.player1 + P.velY));                  // $256328 add.w ($30,A5)
+  ram.setU16(a6 + 0x02, d0);                           // $25632C move.w D0
+  if (d0 >= 0x7e00) ram.setU16(a6 + 0x28, 1);          // $256330 cmpi / $256336
+}
+
+/** `$256348` -- record 44's mover, **and `$256346` two bytes in front of it is
+ *  a BARE `rts` that `$256128 bsr.w $256346` calls on purpose.**  READ PAST THE
+ *  APPARENT END, in the other direction: a reader who starts at `$256348`
+ *  never sees that the ROM has a call to a no-op immediately before it, and a
+ *  reader who starts at `$256346` reads the `rts` as this routine's. */
+function beamHead256348(ram, ctx) {
+  const rec = BOMBRAM.rec, a6 = rec + BEAM_REC.tip;
+  note(ctx, BOMB.beamNop256346, `$256128 bsr.w $256346, and $256346 is ONE `
+    + `instruction -- a bare rts, two bytes in front of $256348, which the `
+    + `very next instruction ($25612C) calls. Transcribed as the call it is`);
+  let d1 = ram.u16(BOMBRAM.g12952);                    // $25634E move.w $812952
+  if (ram.u16(BOMBRAM.g12954) === 0) {                 // $256354 tst.w / bne
+    if (ram.u16(a6 + 0x28) === 0) return beamTip256386(ram);   // $25635C beq
+    d1 = ram.u16(a6 + 0x02);                           // $256362 move.w ($2,A6)
+    if (ram.bset8(rec, 5)) return beamTip256386(ram);  // $256366 bset #$5 / bne
+  } else {
+    ram.bclr8(rec, 5);                                 // $25636E bclr #$5,(A0)
+  }
+  ram.bclr8(rec, 6);                                   // $256372 bclr #$6,(A0)
+  ram.bclr8(a6, 1);                                    // $256376 bclr #$1,(A6)
+  ram.setU16(a6 + 0x02, d1);                           // $25637A move.w D1
+  ram.setU16(a6 + 0x28, 1);                            // $25637E move.w #$1
+  return undefined;                                    // $256384 bra $2563B0
+}
+
+/** `$256386` -- the other arm, and its `bset` reads the OLD bit exactly the way
+ *  `$255F7E`'s `bchg` does (W64 2.1's fourth trap, same family). */
+function beamTip256386(ram) {
+  const rec = BOMBRAM.rec, a6 = rec + BEAM_REC.tip;
+  if (ram.bset8(a6, 1)) return undefined;              // $256386 bset #$1 / bne
+  ram.bclr8(rec + BEAM_REC.tail, 1);                   // $25638C bclr #$1,($7E0)
+  let d0 = u16(ram.u16(a6 + 0x02) + 0x400);            // $256392/$256396
+  if (ram.u16(rec + 0x18) !== 0) d0 = u16(d0 - 0x800); // $25639A tst / $2563A0
+  ram.setU16(rec + BEAM_REC.tail + 0x02, d0);          // $2563A4 move.w
+  ram.setU16(rec + BEAM_REC.tail + 0x28, 0);           // $2563A8 clr.w ($808,A0)
+  ram.bset8(rec, 6);                                   // $2563AC bset #$6,(A0)
+  return undefined;
+}
+
+/** `$2563B6` -- phase 2's segment builder.  It REBUILDS all 41 from the ship
+ *  outward every frame, `+$400` apart, and the first one that fails the bound
+ *  sets D5, after which the remaining segments are CLEARED rather than skipped
+ *  -- so the beam has a hard end and nothing past it survives. */
+function beamRebuild2563B6(ram, rom, a5) {
+  const rec = BOMBRAM.rec;
+  // $2563BE..$2563CC: D6 = (playerY + $600 - velY) : playerX, built by SWAPPING
+  // twice around the two word ops.  The long axis is the HIGH word.
+  let hi = u16(u16(ram.u16(a5 + P.posY) + 0x600) - ram.u16(a5 + P.velY));
+  const lo = ram.u16(a5 + P.posX);
+  let d5 = false, built = 0, cleared = 0;              // $2563CE moveq #$0,D5
+  const tbl = ram.u32(rec + 0x2c);                     // $2563E2 movea.l ($2C,A6)
+  for (let n = 0; n < BEAM_REC.segs; n++) {            // $2563B6 moveq #$28,D7
+    const a1 = rec + BEAM_REC.seg0 + n * BOMBRAM.stride;
+    if (d5) {                                          // $2563D0 tst.w D5 / beq
+      ram.setU16(a1, 0); cleared++; continue;          // $2563D4 clr.w (A1)
+    }
+    const anim = rom.u32(tbl + i16(ram.u16(rec + 0x80a)));   // $2563E6/$256438
+    const pos = (((hi << 16) >>> 0) + lo) >>> 0;
+    // $2563F6 swap D6 / $2563F8 addi.w #$400,D6 -- the NEXT segment's Y, and
+    // the bound below is tested against THAT and not against this segment's.
+    hi = u16(hi + 0x400);
+    if (ram.u16(BOMBRAM.g12954) !== 0) {               // $2563FC tst.w / bne
+      if (hi >= 0x7800) d5 = true;                     // $25642E cmpi.w / bcs
+    } else if (!ram.btst8(rec + BEAM_REC.tip, 1)) {    // $256404 btst #$1,($840)
+      if (hi < ram.u16(rec + BEAM_REC.tip + 0x02)) {   // $25640A cmp.w / bcs
+        // falls to $256436 with D5 still 0
+      } else {
+        ram.setU16(rec + BEAM_REC.tip + 0x02, hi);     // $256412 move.w D6
+        d5 = true;                                     // $256416 bra $256434
+      }
+    } else if (ram.btst8(rec + BEAM_REC.tail, 1)) {    // $256418 btst #$1,($7E0)
+      if (hi >= 0x7800) d5 = true;                     // $25642E
+    } else {
+      const bound = u16(ram.u16(rec + BEAM_REC.tail + 0x02) + 0x800);  // $25641E
+      if (hi >= bound) d5 = true;                      // $256428 cmp.w / bcs
+    }
+    fillSegment(ram, rom, a1, pos, anim, null);        // $256440 SKIPS +$18
+    built++;
+    const c = u16(ram.u16(rec + 0x80a) + 4);           // $256448 addq.w #$4
+    ram.setU16(rec + 0x80a, c === 0x20 ? 0 : c);       // $25644C cmpi / $256454
+  }
+  ram.setU16(rec + 0x80a, 0x1c);                       // $256460 move.w #$1C
+  return { built, cleared };
+}
+
+/** `$256468` -- the LASER BOMB's own reset, one instruction before the shared
+ *  teardown.  It is NOT `$2564F0`: it wipes the BEAM (through `$25270C`, the
+ *  entry with the `andi.w #$DFFB` on it that `src/items.js` owns), clears the
+ *  bomb bit 6 the damage pass reads, clears the sound queue word and clears
+ *  `$812954` -- the "nearest enemy the beam struck" pointer `$2456A6` sets. */
+function beamReset256468(ram, ctx) {
+  const p2 = (ram.u8(BOMBRAM.rec + B.low) & 0x80) !== 0;   // $25646E tst.b / bmi
+  beamReset25270C(ram, ctx, p2 ? 1 : 0);               // $25647A / $256496 jsr
+  ram.bclr8((p2 ? RAM.player2 : RAM.player1) + 0x01, 6);  // $256480 / $25649C
+  ram.setU16(p2 ? BOMBRAM.soundQueueP2 : BOMBRAM.soundQueue, 0);  // $256488/$2564A4
+  ram.bclr8((p2 ? RAM.player2 : RAM.player1) + 0x01, 7);  // $2564AA bclr #$7
+  ram.setU32(BOMBRAM.g12954, 0);                       // $2564B2 move.l D0
+}
+
+/**
+ * `$255FE2` -- **THE LASER BOMB**, one frame.
+ * @param p2 the record's own bit 7, which is the ONLY thing that says which
+ *        player fired -- the driver's A4/A5 came from the same byte.
+ */
+export function bombScriptAlt255FE2(ram, rom, ctx, p2) {
+  const rec = BOMBRAM.rec;
+  const a5 = p2 ? RAM.player2 : RAM.player1;           // $255DFE / $255E10 lea
+  if (!ram.bset8(rec, 0)) {                            // $255FE2 bset #$0 / bne
+    installBeamTemplate(ram, rom);                     // $255FEA..$256062
+    // $256064 move.w ($2,A5),D0 / addi.w #$FE00,D0 -- the PLAYER's long axis
+    // minus $200, dropped on record 42's +$02.  `#$FE00` is $-200 as a word.
+    ram.setU16(rec + BEAM_REC.tail + 0x02,
+      u16(ram.u16(a5 + P.posY) + 0xfe00));             // $25606C move.w
+    ram.setU16(BOMBRAM.g12968, 0);                     // $256072 move.w D0
+    if (ram.btst8(rec + B.low, 1)) {                   // $25607E btst #$1
+      unreached(BOMB.beamScriptAltP1, `$256086 -- the LASER BOMB's ($1,A6)-`
+        + `bit-1 twin: six move.l script pointers ($256986, $256A36, $2569B6, `
+        + `$25699E, $256992, $2569AA) and a different sound cue ($28C542 `
+        + `rather than $28C528). Bit 1 of $811F73 is bit 1 of ($58,A6), the `
+        + `SHIP SELECTOR, 0 on every frame of every run in this corpus -- the `
+        + `same argument $255E84's twin throws on`);
+    }
+    note(ctx, BOMB.beamCue28C528, `$2560BC jsr (A0) with A0 = $28C528 -- the `
+      + `LASER BOMB's sound cue. The $28Cxxx family is item 6 of `
+      + `39-OWNER-visible-play-before-sound.md and is deferred whole (W53)`);
+    ctx.bombEvent?.('beam-init', 0);
+  }
+  // ---- $2560BE: the four heads follow the ship.  THREE of the four writes are
+  // `move.w`, so records 42 and 44 get only the SHORT axis (D0's low word).
+  const pos = ram.u32(a5 + P.posY);                    // $2560BE move.l ($2,A5)
+  ram.setU32(rec + 0x02, pos);                         // $2560C2 move.l
+  ram.setU16(rec + BEAM_REC.tail + 0x04, pos & 0xffff);   // $2560C6 move.w
+  ram.setU32(rec + BEAM_REC.mid + 0x02, pos);          // $2560CA move.l
+  ram.setU16(rec + BEAM_REC.tip + 0x04, pos & 0xffff); // $2560CE move.w
+  const t = u16(ram.u16(rec + 0x24) - 4);              // $2560D2 subq.w #$4
+  ram.setU16(rec + 0x24, (t & 0x8000) ? ram.u16(rec + 0x26) : t);  // $2560D8
+
+  if (ram.u16(rec + 0x18) === 0) {                     // $2560DE tst.w / bne
+    const d0 = ram.u16(rec + 0x24);                    // $2560E6 move.w ($24,A6)
+    ram.setU32(rec + 0x0a, rom.u32(ram.u32(rec + 0x1e) + i16(d0)));      // $2560EA
+    ram.setU32(rec + BEAM_REC.tail + 0x0a,
+      rom.u32(ram.u32(rec + BEAM_REC.tail + 0x1e) + i16(d0)));           // $2560F4
+    ram.setU32(rec + BEAM_REC.mid + 0x0a,
+      rom.u32(ram.u32(rec + BEAM_REC.mid + 0x1e) + i16(d0)));            // $2560FE
+    ram.setU32(rec + BEAM_REC.tip + 0x0a,
+      rom.u32(ram.u32(rec + BEAM_REC.tip + 0x1e) + i16(d0)));            // $256108
+    const life = u16(ram.u16(rec + 0x1a) - 1);         // $256112 subq.w #$1
+    ram.setU16(rec + 0x1a, life);
+    if (life === 0) {                                  // $256116 bne $256120
+      ram.setU16(rec + 0x18, 1);                       // $256118 move.w #$1
+      ctx.bombEvent?.('beam-phase', 2);
+      return beamListStep25616C(ram, rom, ctx, a5);    // $25611E bra $25616C
+    }
+    return beamFrame256120(ram, rom, ctx, a5);         // $256120 bsr $2561AA
+  }
+  return beamListStep25616C(ram, rom, ctx, a5);        // $2560E2 bne.w $25616C
+}
+
+/** `$256120..$25616A` -- the shared per-frame tail: the segments, the two head
+ *  movers, `$256346`'s bare `rts`, and FOUR conditional `$23FF06` draws.  The
+ *  fourth is followed by `moveq #$2,D0 / jmp $289FF4` -- and D0 is DEAD, because
+ *  `$289FF4`'s own `$28A012 moveq #$0,D0` overwrites it before the fill. */
+function beamFrame256120(ram, rom, ctx, a5) {
+  const rec = BOMBRAM.rec;
+  beamSegments2561AA(ram, rom, ctx, a5);               // $256120 bsr $2561AA
+  beamHead2562FC(ram);                                 // $256124 bsr $2562FC
+  beamHead256348(ram, ctx);                            // $256128/$25612C bsr
+  draw23FF06(ram, ctx, rec);                           // $256130 jsr $23FF06
+  if (!ram.btst8(rec + BEAM_REC.tail, 1)) {            // $25613A btst #$1 / bne
+    draw23FF06(ram, ctx, rec + BEAM_REC.tail);         // $256140 jsr
+  }
+  draw23FF06(ram, ctx, rec + BEAM_REC.mid);            // $25614A jsr
+  if (ram.btst8(rec + BEAM_REC.tip, 1)) return;        // $256154 btst / $25616A
+  draw23FF06(ram, ctx, rec + BEAM_REC.tip);            // $25615A jsr
+  // $256160 moveq #$2,D0 -- DEAD.  $28A012 `moveq #$0,D0` is the kind $28A1DA
+  // actually sees, which is why `fillSlot` gets 0 and not 2.
+  spawnBeamBombSpark289FF4(ram, rom, ctx, rec + BEAM_REC.tip);   // $256162 jmp
+}
+
+/** `$25616C` -- phase 2.  Twelve five-longword entries at ONE PER FRAME, and
+ *  the fifth long of each is a NEW eight-pointer table for `($2C,A6)`. */
+function beamListStep25616C(ram, rom, ctx, a5) {
+  const rec = BOMBRAM.rec;
+  let a0 = ram.u32(rec + 0x28);                        // $25616C movea.l ($28,A6)
+  if (rom.u32(a0) === 0xffffffff) {                    // $256170 cmpi.l / beq
+    ram.setU16(BOMBRAM.cooldown, 0x28);                // $25619A move.w #$28
+    beamReset256468(ram, ctx);                         // $2561A2 bsr $256468
+    bombTeardown2564F0(ram, ctx);                      // $2561A6 bra $2564F0
+    return;
+  }
+  ram.setU32(rec + 0x0a, rom.u32(a0));                 // $25617A move.l (A0)+
+  ram.setU32(rec + BEAM_REC.tail + 0x0a, rom.u32(a0 + 4));    // $25617E
+  ram.setU32(rec + BEAM_REC.mid + 0x0a, rom.u32(a0 + 8));     // $256182
+  ram.setU32(rec + BEAM_REC.tip + 0x0a, rom.u32(a0 + 12));    // $256186
+  ram.setU32(rec + 0x2c, rom.u32(a0 + 16));            // $25618A move.l (A0)+
+  a0 += 20;
+  ram.setU32(rec + 0x28, a0);                          // $25618E move.l A0
+  beamRebuild2563B6(ram, rom, a5);                     // $256192 bsr $2563B6
+  beamFrame256120(ram, rom, ctx, a5);                  // $256196 bra $256120
+}
+
+// ===========================================================================
 // `$24560A` -- **THE NINTH BLOCK OF `$244D62`, THE BOMB'S DAMAGE**
 // ===========================================================================
 /**
@@ -680,12 +1095,7 @@ export function bombDamage24560A(ram, ctx, a4) {
   ram.setU32(BOMBRAM.g12954, 0);                       // $24562C move.l D0
 
   if ((d5rec & 0x1) !== 0) {                           // $245632 btst #$0,D5
-    unreached(BOMB.damageAlt, `$2456A6 -- $24560A's OTHER arm. It builds a `
-      + `bounding box at $80FA74 over all 45 records of $811F72 ($2456C0, `
-      + `moveq #$2C) and then walks pool A and pool B against it ($245720, `
-      + `moveq #$31). The fork is btst #$0,D5 on the RECORD's type word, `
-      + `whose low bits are ($58,A6) -- 0 on every frame of every run in this `
-      + `corpus. Record word $${d5rec.toString(16).toUpperCase()}`);
+    return bombDamageAlt2456A6(ram, ctx, a4);          // $245636 bne.b $2456A6
   }
 
   const d6 = ram.u16(BOMBRAM.hitMask);                 // $24563E move.w $80FA72
@@ -722,6 +1132,210 @@ export function bombDamage24560A(ram, ctx, a4) {
   }
   ctx.bombEvent?.('damage', hits);
   return { hits, hp: d5 };
+}
+
+// ===========================================================================
+// W65 (B3) -- `$2456A6`, **THE LASER BOMB'S DAMAGE**
+// ===========================================================================
+//
+// 266 instructions, no calls, and it is a completely different weapon from
+// `$245638`'s.  `$245638` walks 150 fixed slots and takes `$50` off anything
+// whose own box is on screen.  `$2456A6` builds a BOUNDING BOX over the beam,
+// then asks THREE pools whether they intersect it:
+//
+//   POOL B  `$81521C`, 50 slots -- finds the NEAREST intersecting one, records
+//           it in `$812952`/`$812954`, and hits **exactly one** for `$208`.
+//   POOL A  `$81459C`, 100 slots -- hits **every** intersecting one for `$1E0`.
+//   BULLETS `$817F8C`, 70/110/160/190/210 slots -- **ERASES** every one inside.
+//
+// **AND IT IS THE THIRD AND FOURTH SETTER OF THE `$400` HIT BIT.**  W64 6.1
+// says "the `$400` bit has exactly two setters and both are in the A2/A3 weapon
+// loops (`$245242`, `$2452F2`)", quoting recon 38 1.5.  `[M]` a census of
+// `ori.w #$400`/`#$4400` over `$230000..$2B0000` finds SIX in the damage
+// family, and two of them are `$24580E` and `$2458E2` -- **here**.  So a LASER
+// BOMB kill goes through `$286876`, `src/score.js`'s SECOND chain machine, and
+// an ordinary bomb kill does not.  That is measured in the worklog's 6.
+//
+// D6 IS `$2800` AND IT IS THE CALLER'S.  `$24563E move.w $80FA72,D6` -- the
+// hit mask -- is on the OTHER arm, past `$245636 bne`.  On every path into
+// `$24560A` D6 was set by `$24518A move.w #$2800,D6`, so this arm's D6 is the
+// COORDINATE BIAS and never the mask.  A port that hoisted the `move.w
+// $80FA72,D6` above the fork would bias every box by the mask.
+
+/** `$2456A6..$245708` -- the box, over all 45 records.  Note `$2456C6 tst.w
+ *  (A6)+`: the pointer advances by 2 BEFORE the fields are read, which is why
+ *  `$245704 lea ($2E,A6),A6` is $2E and not $30, and why `($E,A6)` is record
+ *  offset `+$10`. */
+function beamBox2456A6(ram) {
+  const box = [0xf800, 0x4000, 0xf800, 0x7c00];        // $2456A6..$2456B8
+  let live = 0;
+  for (let n = 0; n < BOMBRAM.slots; n++) {            // $2456BC move.w #$2C,D5
+    const a6 = BOMBRAM.rec + n * BOMBRAM.stride;
+    if ((ram.u16(a6) & 0x8000) === 0) continue;        // $2456C6 tst.w (A6)+/bpl
+    live++;
+    const d0 = i16(u16(ram.u16(a6 + 0x02) + ram.u16(a6 + 0x10)));   // $2456D6
+    const d1 = i16(u16(ram.u16(a6 + 0x02) - ram.u16(a6 + 0x12)));   // $2456D8
+    const d2 = i16(u16(ram.u16(a6 + 0x04) + ram.u16(a6 + 0x14)));   // $2456DA
+    const d3 = i16(u16(ram.u16(a6 + 0x04) - ram.u16(a6 + 0x16)));   // $2456DC
+    // `ble`/`bge` are SIGNED, so this is a signed max/min and the seeds
+    // ($F800 = -2,048 and $4000/$7C00) are signed too.  Transcribed as signed.
+    if (d2 > i16(box[0])) box[0] = u16(d2);            // $2456E4 cmp/ble/move
+    if (d3 < i16(box[1])) box[1] = u16(d3);            // $2456EC cmp/bge/move
+    if (d0 > i16(box[2])) box[2] = u16(d0);            // $2456F4 cmp/ble/move
+    if (d1 < i16(box[3])) box[3] = u16(d1);            // $2456FC cmp/bge/move
+  }
+  return { box, live };
+}
+
+/** `$245788..$2457EC`, `$24589E..$2458F4` and `$245978..$2459C0` -- the SAME
+ *  AABB against ONE bomb record, at three call sites with three different
+ *  starting records and counts.  The bullets' site passes `d0 === d1` and
+ *  `d2 === d3`, i.e. a POINT, and that is the only difference. */
+function recordHitsBox(ram, a6, d6, d0, d1, d2, d3) {
+  const d4y = i16(u16(u16(ram.u16(a6 + 0x02) + d6) + ram.u16(a6 + 0x10)));
+  if (d4y < i16(d1)) return false;                     // $24579E cmp.w D1,D4/bcs
+  const d5y = i16(u16(u16(ram.u16(a6 + 0x02) + d6) - ram.u16(a6 + 0x12)));
+  if (i16(d0) < d5y) return false;                     // $2457A6 cmp.w D5,D0/bcs
+  const d4x = i16(u16(u16(ram.u16(a6 + 0x04) + d6) + ram.u16(a6 + 0x14)));
+  if (d4x < i16(d3)) return false;                     // $2457B6 cmp.w D3,D4/bcs
+  const d5x = i16(u16(u16(ram.u16(a6 + 0x04) + d6) - ram.u16(a6 + 0x16)));
+  if (i16(d2) < d5x) return false;                     // $2457BE cmp.w D5,D2/bcs
+  return true;
+}
+
+/** The record-walk guard all three sites share: `move.b (A6),D4 / bpl` (the
+ *  record must be LIVE) and `btst #$1,D4 / bne` (**and its bit 1 must be
+ *  CLEAR** -- the same bit `$2562FC`/`$256348` toggle, so a head that is
+ *  "parked" does no damage). */
+function beamRecordArmed(ram, a6) {
+  const d4 = ram.u8(a6);                               // $245788 move.b (A6),D4
+  return (d4 & 0x80) !== 0 && (d4 & 0x02) === 0;       // $24578A bpl / $24578C
+}
+
+/**
+ * `$2456A6` -- the LASER BOMB's damage pass, one frame.
+ * @param a4 the PLAYER record; `$2457CE move.w ($2,A4),D5` is the only read.
+ */
+export function bombDamageAlt2456A6(ram, ctx, a4) {
+  const d6 = 0x2800;                                   // $24518A move.w #$2800
+  const { box, live } = beamBox2456A6(ram);
+  for (let i = 0; i < 4; i++) box[i] = u16(box[i] + d6);   // $24570C add.w D6
+
+  // ---- $24571A: POOL B, 50 slots.  It does NOT damage inside the loop; it
+  // finds the NEAREST intersecting enemy and damages that one at $2457FA.
+  for (let n = 0; n < 50; n++) {                       // $245720 moveq #$31,D7
+    const a5 = BOMBRAM.poolB + n * BOMBRAM.poolBStride;
+    const d0w = ram.u16(a5);                           // $245730 move.w (A5),D0
+    if ((d0w & 0x8000) === 0) continue;                // $245732 bpl
+    if ((ram.u16(a5 + 0x18) & 0x8000) !== 0) continue; // $245734 tst.w/bmi
+    // $24573A btst #$D,D0 / bne $245746 -- bit 13 SET goes straight on; only a
+    // CLEAR bit 13 needs bit 0, and a clear bit 0 rejects.
+    if ((d0w & 0x2000) === 0 && (d0w & 0x1) === 0) continue;   // $245740 btst #$0
+    const d0 = u16(u16(ram.u16(a5 + 0x02) + d6) + ram.u16(a5 + 0x10));  // $245758
+    const d1 = u16(u16(ram.u16(a5 + 0x02) + d6) - ram.u16(a5 + 0x12));  // $24575A
+    const d2 = u16(u16(ram.u16(a5 + 0x04) + d6) + ram.u16(a5 + 0x14));  // $24575C
+    const d3 = u16(u16(ram.u16(a5 + 0x04) + d6) - ram.u16(a5 + 0x16));  // $24575E
+    if (d3 > box[0]) continue;                         // $245766 cmp/bhi
+    if (d2 < box[1]) continue;                         // $24576A cmp/bcs
+    if (d1 > box[2]) continue;                         // $24576E cmp/bhi
+    if (d0 < box[3]) continue;                         // $245772 cmp/bcs
+    if (d1 >= 0x9800) continue;                        // $245776 cmpi/bcc
+    for (let k = 1; k < 1 + BEAM_REC.segs; k++) {      // $245780 lea $30 / #$28
+      const a6 = BOMBRAM.rec + k * BOMBRAM.stride;
+      if (!beamRecordArmed(ram, a6)) continue;
+      if (!recordHitsBox(ram, a6, d6, d0, d1, d2, d3)) continue;
+      // $2457C2: D4 = D1 - D6, the enemy's own un-biased near edge, FLOORED at
+      // the player's Y + $C00.  The floor is why the beam cannot report a
+      // target behind the ship.
+      let d4 = u16(d1 - d6);                           // $2457C2/$2457C4
+      if (d4 >= ram.u16(BOMBRAM.g12952)) continue;     // $2457C6 cmp/bcc
+      const d5 = u16(ram.u16(a4 + P.posY) + 0xc00);    // $2457CE/$2457D2
+      if (d4 <= d5) d4 = d5;                           // $2457D6 bhi / $2457DA
+      ram.setU16(BOMBRAM.g12952, d4);                  // $2457DC move.w
+      ram.setU32(BOMBRAM.g12954, a5);                  // $2457E2 move.l A5
+      break;                                           // ...$2457E8 continues,
+    }                                                  // but a hit cannot beat
+  }                                                    // itself, so this is it
+
+  // ---- $2457FA: **ONE** pool-B enemy, and it is the one $812954 names.
+  let hitsB = 0;
+  if (ram.u16(BOMBRAM.g12954) !== 0) {                 // $2457FA tst.w / beq
+    const a5 = ram.u32(BOMBRAM.g12954);                // $245802 movea.l
+    const d4 = u16(ram.u16(BOMBRAM.hitMask) | 0x400);  // $245808/$24580E ori #$400
+    ram.setU16(a5, u16(ram.u16(a5) | d4));             // $245812 or.w D4,(A5)
+    ram.setU16(a5 + 0x18, u16(ram.u16(a5 + 0x18) - 0x208));   // $245814 subi.w
+    hitsB = 1;
+  }
+
+  // ---- $24581C: POOL A, 100 slots, and EVERY intersecting one is hit.
+  let hitsA = 0;
+  for (let n = 0; n < 100; n++) {                      // $245822 move.w #$63,D7
+    const a5 = BOMBRAM.poolA + n * BOMBRAM.poolAStride;
+    const d1w = ram.u16(a5);                           // $245834 move.w (A5),D1
+    if ((d1w & 0x8000) === 0) continue;                // $245836 bpl
+    // $245838: bit 13 SET -> also require ($18,A5) NON-negative; bit 13 clear
+    // -> bit 0 must be SET and ($18,A5) is NOT tested.  The two arms are not
+    // symmetric and `$245844 bra $245828` is the third.
+    if ((d1w & 0x2000) !== 0) {
+      if ((ram.u16(a5 + 0x18) & 0x8000) !== 0) continue;   // $245846 tst/bmi
+    } else if ((d1w & 0x1) === 0) continue;            // $24583E btst #$0/$245844
+    const d0 = u16(u16(ram.u16(a5 + 0x02) + d6) + ram.u16(a5 + 0x10));  // $24585E
+    const d1 = u16(u16(ram.u16(a5 + 0x02) + d6) - ram.u16(a5 + 0x12));  // $245860
+    const d2 = u16(u16(ram.u16(a5 + 0x04) + d6) + ram.u16(a5 + 0x14));  // $245862
+    const d3 = u16(u16(ram.u16(a5 + 0x04) + d6) - ram.u16(a5 + 0x16));  // $245864
+    if (d3 > box[0] || d2 < box[1] || d1 > box[2] || d0 < box[3]) continue;
+    const d4 = ram.u16(a5 + 0x02);                     // $24587C move.w $2(A5)
+    if (d4 >= 0x7000) continue;                        // $245880 cmpi/bcc
+    // **AND THE POOL-B TARGET SHADOWS POOL A**: with $812954 set, a pool-A
+    // enemy BEHIND the nearest pool-B one takes nothing.  The beam stops at
+    // the first big thing it hits.
+    if (ram.u16(BOMBRAM.g12954) !== 0                  // $245886 tst.w / beq
+      && d4 >= ram.u16(BOMBRAM.g12952)) continue;      // $24588E cmp/bcc
+    for (let k = 0; k < BOMBRAM.slots; k++) {          // $245898 / move.w #$2C
+      const a6 = BOMBRAM.rec + k * BOMBRAM.stride;
+      if (!beamRecordArmed(ram, a6)) continue;
+      if (!recordHitsBox(ram, a6, d6, d0, d1, d2, d3)) continue;
+      ram.bset8(a6, 4);                                // $2458D8 bset #$4,(A6)
+      const m = u16(ram.u16(BOMBRAM.hitMask) | 0x400); // $2458DC/$2458E2
+      ram.setU16(a5, u16(ram.u16(a5) | m));            // $2458E6 or.w D4,(A5)
+      const hp = u16(ram.u16(a5 + 0x18) - 0x1e0);      // $2458E8 subi.w #$1E0
+      ram.setU16(a5 + 0x18, hp);
+      hitsA++;
+      if ((hp & 0x8000) !== 0) break;                  // $2458EE bmi $2458F8
+    }
+  }
+
+  // ---- $245902: THE BULLETS.  The count is the same four-rung ladder
+  // `src/damage.js` `playerBox` and `src/bullets.js` already carry, and the
+  // ONLY thing this pass does to a bullet is ERASE it.
+  let d7 = 0x45;                                       // $245908 move.w #$45,D7
+  for (const [i, lim] of [[0, 0x6d], [1, 0x9f], [2, 0xbd], [3, 0xd1]]) {
+    if (ram.u16(BOMBRAM.bulletWindow[i]) === 0) break; // $24590C/$245918/...
+    d7 = lim;                                          // $245914/$245920/...
+  }
+  let erased = 0;
+  for (let n = 0; n <= d7; n++) {                      // $2459CA dbra D7
+    const a5 = BOMBRAM.bulletPool + 2 + n * BOMBRAM.bulletStride;   // $245902 lea
+    const raw = ram.u16(a5);                           // $24593C move.w (A5),D0
+    if ((raw & 0x8000) !== 0) continue;                // $24593E bmi $2459C6
+    if (ram.u16(BOMBRAM.g12954) !== 0                  // $245942 tst.w / beq
+      && raw >= ram.u16(BOMBRAM.g12952)) continue;     // $24594A cmp/bcc
+    const d0 = u16(raw + d6);                          // $245952 add.w D6,D0
+    const d2 = u16(ram.u16(a5 + 0x02) + d6);           // $245954/$245958
+    if (d2 > box[0] || d2 < box[1]) continue;          // $245960/$245964
+    if (d0 > box[2] || d0 < box[3]) continue;          // $245968/$24596C
+    for (let k = 0; k < BOMBRAM.slots; k++) {          // $245974 move.w #$2C,D7
+      const a0 = BOMBRAM.rec + k * BOMBRAM.stride;
+      if (!beamRecordArmed(ram, a0)) continue;         // $245978/$24597C
+      if (!recordHitsBox(ram, a0, d6, d0, d0, d2, d2)) continue;   // a POINT
+      ram.setU16(a5 - 2, 0);                           // $2459B2 clr.w (-$2,A5)
+      ram.setU16(a5, 0xffff);                          // $2459B6 move.w #$FFFF
+      erased++;
+      break;                                           // $2459BA bra $2459C4
+    }
+  }
+  ctx.bombEvent?.('beam-damage', `${hitsA}/${hitsB}/${erased}`);
+  return { hits: hitsA + hitsB, hitsA, hitsB, erased, boxLive: live, hp: 0x1e0 };
 }
 
 // ===========================================================================
@@ -875,19 +1489,45 @@ export function fireBomb2498E2(ram, ctx, rec, playerIdx) {
     //   $245632 btst #$0,D5 -> `$2456A6`, the OTHER 809 bytes of `$24560A`.
     //
     // So this arm is not "the same bomb with one extra flag" -- it is a
-    // different weapon with a different driver and a different damage pass,
-    // and inventing either would be exactly the plausible wrong answer.
-    unreached(BOMB.deathArm, `$249A80 -- **THE LASER BOMB**. ($3f,A6) is `
-      + `$${ram.u8(rec + P.dead).toString(16).toUpperCase()}: src/laser.js `
-      + `sets it at $24C282 when the beam's arm-up completes and clears it at `
-      + `$24C2D6 on release, so this is "bomb WHILE HOLDING FIRE". The arm is `
-      + `jsr $26085C, ($26,A6)=$101, ($28,A6)=$C, bset #$7,($1,A6), `
-      + `**bset #$0,($1,A1) INTO THE BOMB RECORD**, clr.w $8127E2, `
-      + `($46,A6)=$2E, then the pool wipe $252714 and the SCREEN CLEAR `
-      + `$243DA0 -- thirteen instructions the ordinary arm jumps over at `
-      + `$249A7E. That record bit routes the driver to $255FE2 and the damage `
-      + `to $2456A6, ~630 instructions W64 does not port. TAP fire rather `
-      + `than holding it and the bomb at $249A62 runs`);
+    // different weapon with a different driver and a different damage pass.
+    // **W65 (B3) PORTS ALL THREE.**  W64 left it throwing rather than guessing
+    // and that was right; what follows is the cartridge's own seventeen
+    // instructions, and the throw that used to be here is gone.
+    note(ctx, BOMB.install26085C, `$249A80 jsr $26085C -- lea $222AB8,A0 / `
+      + `move.w #$6,D0 / jmp $24150A, the SAME 64-byte RESOURCE INSTALL (data) `
+      + `$249A62 does from $222A78. $24150A is a counted note in six files`);
+    ram.setU16(rec + 0x26, 0x0101);                    // $249A86 move.w #$101
+    ram.setU16(rec + 0x28, 0x000c);                    // $249A8C move.w #$C
+    ram.bset8(rec + P.flags1, 7);                      // $249A92 bset #$7,($1,A6)
+    // **THE ONE INSTRUCTION THAT MAKES IT A DIFFERENT WEAPON.**  A1 is still
+    // `$811F72` here ($249902's `lea`, reloaded three instructions later at
+    // $249AB2), so this sets bit 0 of the BOMB RECORD's low byte -- which is
+    // the type word's bit 0, which is what `$255E16 andi.w #$7,D0` turns into
+    // dispatch entry 1 ($255FE2) and what `$245632 btst #$0,D5` turns into
+    // $2456A6.  One `bset`, two whole machines.
+    ram.bset8(BOMBRAM.rec + B.low, 0);                 // $249A98 bset #$0,($1,A1)
+    ram.setU16(BOMBRAM.g8127e2, 0);                    // $249A9E clr.w $8127E2
+    ram.setU16(rec + 0x46, 0x2e);                      // $249AA4 move.w #$2E
+    // $249AAA move.l A2,-(A7) ... $249AE8 movea.l (A7)+,A2.  A2 is PUSHED and
+    // POPPED around the block, so `$249B10 tst.w (A2)` reads the same OTHER
+    // PLAYER's record on both arms and `a2` above needs no special case.
+    // $249AB2 lea $8104AA,A1 / $249AC6 lea $81050E,A1 -- **A1 IS RELOADED**,
+    // and it is the OPTION BLOCK, not the bomb record.  A port that kept using
+    // A1 for the record would write $811FAA and $811FC8.
+    const opt = p2 ? BOMBRAM.optP2 : BOMBRAM.optP1;    // $249AB2 / $249AC6
+    const q = p2 ? BOMBRAM.soundQueueP2 : BOMBRAM.soundQueue;  // $249AB8/$249ACC
+    wipeSegmentPool(ram, ctx, p2                       // $249ABE / $249AD2
+      ? { pool: 0x8118f2, rec: 0x811f12, blk: 0x811f52, opt, d7: 1 }
+      : { pool: 0x8112f2, rec: 0x811ef2, blk: 0x811f32, opt, d7: 0 });
+    ram.setU16(opt + 0x38, 0x26);                      // $249AD8 move.w #$26
+    ram.setU16(opt + 0x56, 0x08);                      // $249ADE move.w #$8
+    ram.setU16(q, 1);                                  // $249AE4 move.w #$1,(A2)
+    // **AND THE LASER BOMB DOES CANCEL BULLETS.**  W64 1.3 measured that the
+    // ORDINARY bomb jumps over this `jsr` at `$249A7E bra.b $249AF6`; this arm
+    // is where `$243DA0` is actually reached, so `src/bulletdriver.js`'s
+    // thirty-wave-old "the cancel is driven only from a bomb" is true of THIS
+    // bomb and of no other.
+    ctx.bombEvent?.('beam-arm', armBombCancel243DA0(ram) ? 'armed' : 'busy');
   }
 
   // ---- $249AF6: **A DEAD READ, AND RECON 38 §7.1 ITEM 5 IS NOW ANSWERED.**
