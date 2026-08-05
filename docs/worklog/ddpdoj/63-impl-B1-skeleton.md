@@ -1,6 +1,12 @@
 # W63 IMPL — B1: the SKELETON `$28444E`
 
-status: **IN PROGRESS**
+status: **DONE** -- **THE CHAIN EXPIRES AND THE SCORE DRAINS.** Gate ALL GREEN
+57/0/0 (was 53), 844 unit tests (was 808), webgate 14/14, build-dist clean with
+PUBLISH_VERBATIM unmoved at 5. 50 of 50 mutants RED, 0 survivors; 7 of 7 exporter
+assertions RED against the cartridge. **NO RANK WRITE BECAME REACHABLE.**
+**RECON 38 7.1's OPEN QUESTION IS CLOSED** -- the rank object always runs before
+the player, so the bomb's debit lands on frame N+1 like the hyper's gain. Boot
++464 B. Verified on the LIVE build `20260805111446` as well as locally.
 
 wave: 63. role: IMPLEMENTER (sole writer to `games/ddpdoj/`).
 date: 2026-08-05.
@@ -461,8 +467,249 @@ this wave), the seed's own `$81B6EE`, and the meter CAP, which is
   on the same frame is unmeasured.**
 - **`games/gradius/` was not touched.**
 
-## 10. THE DONE-WHEN, EACH AS A MEASUREMENT
+## 9b. THE EXPORTER'S OWN CHECKS, SEEN RED AGAINST THE CARTRIDGE
 
-(filled in as the remaining measurements land)
+A unit test can only read the exporter's source. `check_hud_extents` runs against
+the real image on every export; here it is with each of its seven assertions
+broken in turn, in memory, the image restored and re-checked clean after.
 
-status: **IN PROGRESS**
+```
+[M] check_hud_extents PASSES on the real cartridge
+[M] 7 of 7 mutants RED:
+      $285F80's wrap constant $38 -> $3C   ($287E8E's extent comes from it)
+      $285F78 is no longer `subq.w #$4`    (the stride the wrap is divided by)
+      $285F8A is no longer `moveq #$3F`    ($287ECA's 64 entries come from it)
+      $286FFE `move.w #$C` -> `#$8`        ($28840E's last index)
+      $28840E[3] is not $FFFFFFFF          (the no-more-extends mark $286FE8 tests)
+      $28840E[4] is not `lea $803824,A0`   (the CODE that proves FOUR entries)
+      the $287E8E window declared 8 bytes SHORT
+```
+
+The last one exists because W54 §6.2's lesson is that **a short window is not
+caught at the export; it is caught by `src/rom.js` on a player's machine.** The
+declared LENGTH is compared against the derived one, out of variables.
+
+## 10. THE BOOT COST — two ROM windows, 332 raw bytes, every byte named
+
+`.scratch/w63boot.mjs`, W61 §6/W62 §12's method: re-export with the PRE-W63
+exporter (`git show b0dfb42~1:`) and with this tree's, both sha256'd
+byte-identical on the way back.
+
+```
+[M] manifest.json            10,776 ->  10,776      +0   (no new shard)
+[M] player.tables.json.gz   139,651 -> 140,115    +464
+[M] spr/streams.u32.gz         1,055 ->   1,055     +0
+[M] seed.bin.gz                6,878 ->   6,878     +0
+[M] capture.json.gz            3,920 ->   3,920     +0
+[M] TOTAL                   162,280 -> 162,744    +464 B = 0.45 KiB
+```
+
+**+464 B, all of it the two ROM windows** — 332 raw cartridge bytes, hex-encoded
+at two characters a byte before gzip. **They cannot be deferred**: a missing
+sprite stream is a NAMED SKIP the page draws around, but a missing ROM window is
+a THROW out of `src/rom.js` (W54 §3, W61 §6, W62 §12). **No new sprite shard**,
+so `manifest.json` — the one body served uncompressed — does not move at all.
+This is the cheapest wave for boot since W62.
+
+## 11. THE PAGE, IN A REAL BROWSER — WHAT I SAW `[M]`
+
+Chrome + Python `playwright`, W61/W62's recipe, **fire TAPPED** (80 ms down /
+240 ms up, the owner's own `z`) rather than held, because a chain has to be
+STARTED before it can be watched to expire. The page is READ, not only
+photographed: every five seconds the script pulls the port's own RAM through
+`window.__mixup` — a screenshot cannot show that a meter fell.
+
+### 11.1 LOCAL (`python -m http.server 8763`) — **THE CHAIN FILLS AND EXPIRES**
+
+```
+[M] +58s  lf 6144  meter  0/56  chain  0  dec 1738  zero 24  total 0x12511  pending 0x0
+[M] +63s  lf 6453  meter 44/56  chain 36  dec 1934  zero 24  total 0x17662  pending 0x0
+[M] +68s  lf 6761  meter  0/56  chain  0  dec 2224  zero 27  total 0x22822  pending 0x0
+[M] +73s  lf 7070  meter 37/56  chain 21  dec 2423  zero 29  total 0x24103  pending 0x0
+[M] +78s  lf 7379  meter  8/56  chain  0  dec 2682  zero 32  total 0x26631  pending 0x0
+[M] +84s  lf 7686  meter 49/56  chain 16  dec 2805  zero 36  total 0x27287  pending 0x0
+[M] +89s  lf 7991  meter  0/56  chain  0  dec 2984  zero 38  total 0x30718  pending 0x0
+[M] FINAL lf14569  200 s of continuous play, NO throw, NO page error
+[M] rank 53 / rankPower 0 / hyperStock 0 / earn 0 on EVERY ONE of the 40 samples
+[M] the digit records read `___30730` -- the port's own nine records spelling
+    the port's own total, out of the page
+[M] $81B5A4 and $81B59C -- the two cursors -- hold a DIFFERENT longword on
+    every sample, out of $287ECA and $287E8E
+```
+
+**That is the wave's whole result, on a screen: the meter goes UP when things
+die and COMES BACK DOWN, thirty-eight times, and the pending score is 0x0 on
+every sample because it has already been drained into a total that climbs.**
+Before this wave the meter sat at 56 and the pending only ever grew.
+
+What is NOT there, and a reader should hear it from me: **no score row, no chain
+meter, no bomb icons.** The HUD's STATE is now this port's; its PICTURE is
+`$240DC2` and bucket 25, and those are counted notes. A player sees exactly what
+they saw before.
+
+Screenshots: `.scratch/w63local-0boot.png`, `-chain.png`, `-scored1.png`,
+`-final.png`.
+
+### 11.2 DEPLOYED — `https://gbtman.pages.dev/games/ddpdoj/`, build `20260805111446`
+
+`node tools/publish.mjs --only ddpdoj`, confirmed live on three consecutive
+polls. Then the SAME script, the same key, `spr 13/13`:
+
+```
+[M] BOOTED  lf 2665  slide 0  bannerT 0   meter  0/0   pending 0x0    total 0x0
+[M] +5s     lf 2990  meter 51/56  chain   9  dec  259  zero  1  total 0x1944
+[M] +10s    lf 3319  meter 44/56  chain   6  dec  540  zero  2  total 0x8265
+[M] +16s    lf 3662  meter  0/56  chain   3  dec  724  zero  5  total 0x8882
+[M] +33s    lf 4662  meter 39/56  chain   4  dec  955  zero 15  total 0x9428
+[M] +44s    lf 5324  meter  0/56  chain   5  dec 1520  zero 21  total 0x11789
+[M] +61s    lf 6324  meter  3/56  chain   6  dec 1821  zero 28  total 0x13452
+[M] pending 0x0 on EVERY sample;  digits `___13452`;  both cursors moving
+[M] rank 53 / rankPower 0 / hyperStock 0 / earn 0 on EVERY sample
+```
+
+**The deployed build does what the local one does: the meter fills, the meter
+falls, the chain expires, and the pending score never sits.** This is not an
+E3-class local/deployed gap.
+
+### 11.3 **AND THE FIRST DEPLOYED RUN WAS A STALE EDGE — a SHARPER instance of W61 §6b**
+
+The run taken immediately after `publish.mjs` confirmed the build id on three
+consecutive polls came back with **`slide` = 1 and `bannerT` = 48 on every one of
+its forty samples, `dec` = 0, `zero` = 0, and `pending` growing to `0x299641`
+with `total` stuck at `0x0`** — i.e. **exactly HEAD's behaviour**, on a page
+whose stats line read `spr 13/13`.
+
+W61 §6b already recorded that "three consecutive good polls of the build id can
+still coexist with a stale `index.html` on another node". **What this adds is
+worse:** [M] fetching `src/main.js` and `src/hud.js` **at that same moment**
+returned HTTP 200 with the NEW bodies (`makeHudObject` ×2 in `main.js`, 63,938 B
+of `hud.js`) — so **the direct fetch and the browser's own fetch disagreed at the
+same instant.** "I fetched it and it is the new file" is NOT proof the browser
+got the new file. Re-running four minutes later gave §11.2, from the same URL,
+with no republish.
+
+A wave that took the first run as its result would have reported itself broken;
+a wave that took the direct fetch as reassurance would have reported the first
+run as a real regression. Both are recorded because the next wave will hit it.
+
+## 12. THE DONE-WHEN, EACH AS A MEASUREMENT
+
+| the brief asks for | `[M]` |
+|---|---|
+| **What `$28444E` now runs, and what remains a loud named throw** | §2: the object's three states, `$2842B0` + `$2842FE` + both digit routines + `$286FDA`, both cursors, the `$81B6EE` slide-in, the `$81B5B4` drain, **BOTH players' blocks and BOTH chain-meter decrements**, both banner machines, the extend counter, `$2877B8`, and `$2853D2`'s guard. **SEVEN LOUD NAMED THROWS**: the hyper's tail ×2 (`$285A96`/`$285BC0`), its activation ×2 (`$285A24`/`$285B4E`), its end-flash body ×2 (`$2873B4`/`$287492`) and the stage-clear tally (`$2853DC`). Plus the boss HP bar's null-pointer refusal (`$284A3E`). **[M] none has fired in 21,000 frames of play** |
+| **Whether any rank write became reachable, to I2's standard** | §6: **NO.** `$81309E` 53, `$81B646` 0, `$81B65C` 0, `$81B65E` 0 — digit-identical between HEAD and W63 across THREE inputs (none/tap/hold), and 53/0/0/0 on all 40 browser samples. `$81309E` still cannot move at all: `$2608D2`/`$260794` remain absent from `src/`. **ONE non-rank word DID move — `$81B64A`, 2,112 → 1,512 — and §6.1 bisects it to THE DECREMENT alone** (cutting it restores 2,112 exactly; −600 is exactly 25 × `$18`) |
+| **The bomb-debit vs rank-object SLOT ORDER, settled by measurement** | §1: **THE RANK OBJECT IS ALWAYS FIRST.** `$240F62`'s second longword is the DISPATCH PRIORITY (`$28D520` `$09`, `$2491C0` `$1C`, `$260794` `$1F`) and `$24111E`'s create queue keeps the table descending, so rank > player > ledger **statically**; [M] **6,200/6,200 frames, 0 bad**, asserted every frame. ⇒ **the bomb's `$249976` debit lands AFTER the frame's rank recompute, so it reaches `$81309E` on frame N+1 — the same answer as the hyper's**, which recon 38 §3.3 said did not transfer |
+| **Whether score.js's second chain machine became reachable** | §5.4: **it was ALREADY reachable and ALREADY ported, by W51, two waves before this one.** Recon 38 §4.5/§5's "note only" is STALE. No fix was needed; three stale comments in `score.js` are corrected in place. What W63 changes is that the meter `$2869D8` floors at 10/25 now FALLS again — measured, and its one consequence bisected in §6.1 |
+| **Say what you SAW in the browser, LIVE as well as local** | §11 |
+| **Gate ALL GREEN (53/0/0 → and the unit tests)** | §13: **ALL GREEN — 57 passed, 0 failed, 0 SKIPPED** (was 53). The four new stages are this wave's scenario and its THREE REDs. **844 unit tests, 0 skipped** (was 808); `webgate` **14 of 14**, unmoved; `build-dist` clean with **5 deliberate exceptions, UNMOVED** |
+| **If you allocate from any pool, prove it drains** | This wave allocates from no pool. It DRAINS two: [M] `$81B4C0` (the pending score) is **0x0 on every one of the 40 browser samples and at the end of all three tree-control runs**, where HEAD leaves BCD `$00551518` sitting in it for ever; and `$81B5B4 → $81B610` at four per frame, whose four unrolled copies are unit-tested at 10, 4, 1 and 0 pending |
+
+## 13. THE GATE, ON THE SETTLED TREE
+
+W58 §6's rule: a gate started before the tree settled is not evidence about the
+tree. The run below started **after** `.scratch/mutate63.mjs` had finished
+touching `src/` and after the last test edit; nothing was edited while it ran.
+
+```
+python games/ddpdoj/tools/oracle/pgm.py check
+VERDICT: ALL GREEN -- 57 passed, 0 failed, 0 SKIPPED
+  [PASS] THE CHAIN EXPIRES: object type 0, the drain and $284636
+  [PASS] THE CHAIN EXPIRES RED [no-hud]        -- went red without object type 0
+  [PASS] THE CHAIN EXPIRES RED [frozen-meter]  -- went red with the meter frozen
+  [PASS] THE CHAIN EXPIRES RED [rank-poke]     -- went red with a rank word poked
+```
+
+**53 → 57 stages, and the four new ones are this wave's scenario and its three
+REDs.** Nothing was disabled, skipped, narrowed or loosened, and every stage line
+was read rather than only the verdict. The ones this wave could plausibly have
+broken, all green:
+
+- **`fly-around: port vs board, 0 divergent frames` and its 5 REDs** — the only
+  port-vs-board window this project has. Nothing fires in it, so nothing dies,
+  no chain starts and no score is pending; its green says this wave changed
+  nothing on the no-input path, which is exactly what §6's `none` row measures
+  directly on both trees (identical in every column, including the RNG).
+- **`STAGE 1 ENDS` and its `RED [no-timeout]`** — W62's, and the one this wave
+  had most reason to break: `$81DF1E` bit 3 opens `$2847FE`'s arm at lf19144 and
+  `$8130F8` bit 3 opens `$284B5E`'s. [M] the port still reaches **lf 19,218** and
+  still stops on `UNPORTED $228658`, at the same frame, with the same seven
+  type-6 states.
+- `display list: the staged-bytes replay gate (1,901 frames)` and its 12 REDs.
+  **Bucket 25 is not in `PRODUCED_BUCKETS`**, so nothing this file does enters
+  the substituted set.
+- `midboss DEATH` and its `RED [no-kill]`; `bullet mover`, `turret angle`,
+  `bullet spawns` and `spawn walker` against the board.
+- `assets/integrity` and its four REDs, including `[rom-byte]`, THE ROM-LEAK
+  GUARD: two new ROM windows went through it.
+- `background shard gate` — the stage that FRESH-EXPORTS, i.e. the one an
+  exporter change has to survive, and where `check_hud_extents` runs.
+- `pixel gate` (100.0000 %) and its 9 REDs; `demo gate` and its 4.
+
+Also green on the final tree, and not part of `pgm.py check`:
+
+```
+node --test games/ddpdoj/tests/     844 pass, 0 fail, 0 SKIPPED   (was 808)
+node games/ddpdoj/tools/webgate.mjs 14 of 14 PASS                 (unmoved)
+node tools/build-dist.mjs           clean, 5 deliberate exception(s)  <- UNMOVED
+BOOT PAYLOAD                        158.9 KiB (was 158.5)
+```
+
+**`PUBLISH_VERBATIM` DID NOT GROW**: this wave ships no new asset body at all,
+only 332 bytes of ROM windows inside `player.tables.json.gz`.
+
+**[M] THE SERVER I STARTED WAS KILLED.** `Get-CimInstance Win32_Process` finds
+**zero** real `python http.server` processes and ports 8000/8763/8712/8791/8781/
+8125/8771 are all FREE — checked by PROCESS and by PORT, as W61 §6b and W62 did.
+The deployed runs used no server of mine at all.
+
+## 14. WHAT I COULD NOT DETERMINE
+
+* **Anything against the board.** No MAME run in this repo has ever compared a
+  chain meter, a pending score, a HUD cursor or a digit record against the board,
+  and this wave did not build one. What is proved is that the port runs the
+  cartridge's own instructions in the cartridge's own slot and that the words
+  move the way the listing says. **Whether the board's `$81B5C0` reads 44 on the
+  same frame is unmeasured**, and so is whether its `$81B440` holds `$00030730`
+  after the same inputs. The score this port now shows is very different from
+  the one it showed yesterday (§6) and **neither has been checked against the
+  board**; the new one is the one the listing produces.
+* **Whether `$81B64F` is EVER non-zero.** Recon 38 §4.4's open item. The port now
+  carries the tap and [M] it has not fired in 21,000 frames — but no run in this
+  repo has ever had a hyper up, so that is a statement about the runs and not
+  about the game. It stays open, with the instrument in place.
+* **`($2,A5) := 2`, object type 0's own DESTROY state.** [M] no writer in
+  `$230000..$2B0000` outside `$28D520` itself. Either something builds the record
+  in state 2 (nothing this port runs does) or the state is dead in build B. I did
+  not resolve which; the port transcribes it either way and it is unit-tested.
+* **`$2926E2`'s tail** (§5.3) — found, declared, not ported, and the three boss
+  routines it needs are named.
+* **What `$81B612` is FOR.** `$284AFE`/`$284B3E` write 8 and 7 into it and nothing
+  in `$28444E`'s closure reads it. Transcribed; its reader is elsewhere.
+* **`$284D48`'s D6 slide arithmetic and the eleven `$240DC2` immediates.**
+  Transcribed as notes with their addresses, not as geometry: the TX printer is
+  unported, and inventing a layout for it would be exactly the plausible wrong
+  answer this project's method exists to prevent.
+
+## 15. ONE PARAGRAPH
+
+**The chain expires.** `$240F62[0] = $28D520` had been a counted dispatch miss on
+every frame of every run since wave 4, so the pending score only ever grew and a
+chain the port started never ended — `src/score.js` had said so, in those words,
+for twenty-nine waves. `src/hud.js` ports the object and everything under it: the
+three states, the four-`abcd` drain and its nine-record digit machine, the extend
+intervals, the two HUD cursors, the 48-frame HUD slide-in nobody had noticed is
+the shipped seed's DEFAULT arm, both players' blocks, both banner machines, and
+**`$284636` and `$2847D4`, the two chain-meter decrements**, in the slot the
+cartridge puts them in. That slot is the answer to recon 38's one unresolved
+question: `$240F62`'s second longword is the dispatch PRIORITY, the create queue
+keeps the table descending, and so the rank object runs before the player and the
+player before this one — **which means the bomb's `−3` lands after the frame's
+rank recompute, exactly like the hyper's gain, and W19's measured "the meter
+decrements LAST" is now true by construction.** The hyper's two guards are
+transcribed and every arm past them throws by address. No rank write moved.
+**Load the page, fly, shoot, and watch the meter fill and fall** — thirty-eight
+times in two hundred seconds, locally and on the deployed build. What it does not
+do is draw any of it: the HUD's state is this port's and its picture is still
+`$240DC2`.
+
+status: **DONE**
