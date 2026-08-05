@@ -44,7 +44,7 @@ both are a floor.
 | the brief / W64 / W65 says | `[M]` this session |
 |---|---|
 | W64 §8.3: 174 bucket-13 records over three bombs, no shard | **CONFIRMED TO THE RECORD.** [M] 174, over **16** distinct streams |
-| W65 §7.3: "three named missing sprite streams" `$042924 $040CC8 $040EAC` | **THREE IS THE PAGE'S TOP-3 LINE, NOT THE COUNT.** [M] a laser bomb asks for **48** distinct bucket-13 streams, and 27 more outside bucket 13 — **75 in all** |
+| W65 §7.3: "three named missing sprite streams" `$042924 $040CC8 $040EAC` | **THREE IS THE PAGE'S TOP-3 LINE, NOT THE COUNT.** [M] a laser bomb asks for **48** distinct bucket-13 streams and 27 more outside bucket 13 — **75 in all**, on the tree as W65 left it. On the FIXED tree (§4) it is **109** in bucket 13 and **152** out of this shard altogether |
 | W65 §1: the driver runs 1 + 41 + 3 = 45 records | HOLDS, and the art is not one set: [M] the ordinary bomb's 16 streams are all `$02xxxx`/`$03xxxx` and the laser bomb's are all `$04xxxx`. **They share a bucket and NOTHING else** |
 | E3 §7.1: the beam's blocks for `$24BB0A` entries 7..19 sit in the unexported hole `$24B900..$24BB0A` | **NOT MINE.** §9 — [M] every address this wave harvests is named by a table inside a window `tools/export-tables.py` ALREADY exports, so the window and the art never had to move together here. I moved neither and the throw stays |
 
@@ -61,6 +61,9 @@ Five runs, 2,600 frames each, the shipped seed, the page's own
 [M] fire TAPPED, THREE ORDINARY BOMBS                          18 missing
 [M] fire TAPPED, no bomb                                        7 missing
 ```
+
+Every figure in this section is on the tree as W64 and W65 left it, i.e. BEFORE
+§4's fix; the AFTER figures are §5 and §8.
 
 **Held fire with no bomb is 100.0 % on every bucket, so every one of the 75 is
 the LASER BOMB's** — the control is the same input with Button 2 never pressed,
