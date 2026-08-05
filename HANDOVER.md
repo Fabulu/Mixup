@@ -107,14 +107,30 @@ number for those is port-vs-listing.
   W63) and the teardown `$2564F0`. [M] on build `20260805122418`: the stock
   falls 3 -> 2 -> 1 -> 0, a `$8100` record lives ~113 frames in `$811F72`,
   549 enemy-slot hits over three bombs, the chain the bomb was thrown into is
-  RESET at the teardown, all 45 records drain, no rank word moves. **TWO THINGS
-  ARE DECLARED BROKEN, not faked:** bombing WHILE HOLDING THE BEAM throws at
-  `$249A80` (it is a different weapon -- `$255FE2` + `$2456A6`, ~630
-  instructions, wave B3), and `$2564BA` is the first thing this port has ever
-  run that clears the seed's `$FF` invulnerability, which makes `$249F8A` --
-  the HIT/DEATH path, and it QUARTERS `$81B646` -- reachable in a headless
-  harness. The page pins `$FF` (`src/web/app.js:699`), so a player does not
-  meet it; the day that poke goes, it arrives. See `docs/worklog/ddpdoj/64`
+  RESET at the teardown, all 45 records drain, no rank word moves. `$2564BA`
+  is the first thing this port has ever run that clears the seed's `$FF`
+  invulnerability, which makes `$249F8A` -- the HIT/DEATH path, and it
+  QUARTERS `$81B646` -- reachable in a headless harness. The page pins `$FF`
+  (`src/web/app.js:699`), so a player does not meet it; the day that poke goes,
+  it arrives. See `docs/worklog/ddpdoj/64`
+- **AND THE LASER BOMB WORKS (W65).** Bombing WHILE HOLDING THE BEAM is a
+  DIFFERENT WEAPON -- `$249A98 bset #$0,($1,A1)` routes the driver to `$255FE2`
+  and the damage to `$2456A6` -- and W64 left it throwing at `$249A80` rather
+  than inventing it. [M] on build `20260805133936`: hold Z until the beam is
+  up, press X, and 31 of the 45 records go live (4 heads + 27 of the 41 BEAM
+  SEGMENTS; **1 + 41 + 3 = 45 is what the table is sized for**) for 131 frames,
+  while `$2456A6` takes `$1E0` off every pool-A enemy in the beam's own
+  bounding box, `$208` off the nearest pool-B one and **ERASES every enemy
+  bullet it touches** (54 over three bombs). It also turned on three routines
+  this port had called "measured 0 on every frame" for up to sixty waves --
+  `$2496A2` (the ship's knockback), `$24D188` (the pods') and `$24A4E2` (the
+  bit-7 aura), all behind `$249A92 bset #$7,($1,A6)`. **Recon 38 §1.5's "the
+  `$400` hit bit has exactly two setters" is STALE**: `$24580E` and `$2458E2`
+  are a third and fourth, so a laser-bomb kill runs `score.js`'s SECOND chain
+  machine and the score goes UP 23 % where the ordinary bomb takes it down.
+  **The beam has no picture** -- three named missing sprite streams. Boot
+  +7,495 B, most of it twenty new `$241812` speed levels that `$28A252`
+  needs. See `docs/worklog/ddpdoj/65`
 - the ship, its two option pods, two exhaust records and three ground shadows
   are simulated; **everything else in the picture is still a 161-frame capture**
   that loops (the CAPTURE LEDGER in `games/ddpdoj/PLAN-no-recordings.md` tracks
