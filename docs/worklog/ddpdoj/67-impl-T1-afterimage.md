@@ -3,7 +3,18 @@
 *(the brief calls it SIX-DEEP. `[M]` the listing says **FIVE** records off a
 **SIXTEEN**-long ring — §1.)*
 
-status: **IN PROGRESS**
+status: **DONE** — **THE OWNER CAN SEE THE TRAIL.** `[M]` in Chrome, local AND
+on the live build `20260805175616`: hold fire until the beam is up, bank left,
+and **five overlapping blue ghost ships** hang off the ship — its own picture at
+the positions it held 3, 6, 9, 12 and 15 draw calls ago, drawn behind it.
+**Bucket 12: 0 -> 3,597 records, 3,597 DRAWN, 0 named-missing, 17 distinct
+streams, NO NEW ART.** The check this wave leaves is **the PRODUCER CENSUS**
+(`tools/w67trailgate.mjs`), which asks the cartridge which buckets a ported
+routine can feed and requires the port to fill every one — run against
+W12..W66's tree it names bucket 12 and measures zero. 934 unit tests (was 922),
+webgate 17/17 and bundlegate 100.0000 % unmoved, 11 of 11 mutants red,
+**and two of my own checks could not fail.** The gate's one red row is a
+concurrent wave's (§5.3, proven).
 
 started: 2026-08-05
 wave: 67. role: IMPLEMENTER (sole writer to `games/ddpdoj/`).
@@ -220,12 +231,62 @@ NAMED row. `[M]`:
 | `trail-no-coarse-skip` — drop `$25369C cmp.l D6,D5` | (C5): the MOTIONLESS ship emits 2,210 records (expect 0) |
 | `census-no-recursion` — do not follow a non-stub call | (A) the census names `[5, 19]` over 8 sites instead of `[5, 12, 19]` over 9, and (A2). **The control that proves the walk, not a typed table, is what finds bucket 12** |
 
-**AND ONE OF MY OWN COULD NOT FAIL AS FIRST WRITTEN** — the seventh wave running
+### 5.1 THE UNIT TESTS, MUTATED — 11 of 11 RED, 0 survivors
+
+`.scratch/mutate67.mjs`, W66's rules: ONE edit with a single-occurrence anchor,
+ONE check, a NAMED assertion required red, restore, **sha256 verified
+byte-identical both ways** (the script throws if a restore does not match).
+
+```
+[M] 11 of 11 mutants turned a NAMED test RED; survivors 0
+```
+
+| mutated | what went red |
+|---|---|
+| `d7 = TRAIL.passes` — SIX emitting passes | *FIVE records, not six* + 5 more |
+| `pairs = 3` on the first pass — the `bra $253674` entry dropped | *the ring is SIXTEEN longs and the taps are 15/12/9/6/3* |
+| the `$80390C` test dropped | *the trail is on the aura/glow phase* |
+| the `$25369C` coarse skip dropped | *a STATIONARY ship has no trail at all* |
+| **the `$FA00FC00` bias as TWO 16-bit adds** | *addi.l is ONE LONG add* — **see §5.2** |
+| `$25360E bne` takes the wrong ring pair | the taps test + 6 more |
+| the head taken from the RING, not from `($a,A6)` | *`$253680`/`$253684` store the NEW head* |
+| `$253608 tst.b/beq` inverted | *THE GATE IS THE LASER* + 7 more |
+| colour 30 instead of 31 | *3x32 in COLOUR 31* |
+| the size word off by one | the same |
+| `$2536B6`'s seed cut to EIGHT of sixteen longs | *the port and the LASER agree on the four ring addresses* |
+
+### 5.2 **THE `addi.l` FIXTURE COULD NOT FAIL, AND WHY IS A FACT ABOUT THE ROUTINE**
+
+The two-16-bit-add mutant **SURVIVED** the first version of that test, which
+used ring position `$30001000`. The reason is not a typo:
+
+```
+[M] LONG add   $30001000 + $FA00FC00 = $2A010C00
+[M] TWO adds   $2A00 | $0C00          = $2A000C00     <- a DIFFERENT D1
+[M] ...but $23FDB2 does asr.l #6 then andi.l #$07FF03FF, and the carry's
+[M]    bit 16 lands on bit 10 -- inside the SHORT axis's 10-bit mask, which
+[M]    throws it away.  SAME RECORD.
+```
+
+**The long-vs-word distinction in `$2536A2` is observable at exactly 1 position
+in 64** — the long axis only moves when the carry crosses bit 22, i.e. when the
+long half's low six bits are all 1. The fixture is `$303F1000` now, where
+`[M]` the long axis reads `$0A9` for the ROM's add and `$0A8` for the wrong one,
+and the mutant goes red. It is the same shape as `shipgate`'s
+`shadow-no-borrow` ("RED on 10 of 2,200 frames") and it is written down here so
+the next reader does not delete the odd-looking constant.
+
+**AND ONE OF MY GATE'S OWN CONTROLS COULD NOT FAIL AS FIRST WRITTEN** — the
+seventh wave running
 (`66-impl` §6.1, and `docs/knowledge/03`). `--break census-depth-1` was meant to
 be that control and was **GREEN**: `walk(lo, hi, 1, [])` still recurses one
 level, which is exactly the level `$24A53E jsr $253604` needs, so cutting the
 depth from two to one changed nothing at all. It is `census-no-recursion`
 (depth 0) now, and it goes red. Recorded rather than quietly repaired.
+
+**So TWO of my own checks could not fail: `census-depth-1` and the `addi.l`
+fixture.** Both are fixed, both were re-run red, and both are recorded rather
+than quietly repaired.
 
 Three of my own unit-test expectations were also wrong on first run and each was
 a real thing to learn rather than a typo:
@@ -237,6 +298,58 @@ a real thing to learn rather than a typo:
   the ROM gives `$2A01`;
 * a P2 test must not assert that P1's rings hold P1's data when nothing seeded
   them.
+
+## 5.3 THE GATE — and the one red row is **NOT THIS WAVE'S**
+
+```
+[M] node --test games/ddpdoj/tests/        934 pass, 0 fail, 0 SKIPPED  (was 922)
+[M] node games/ddpdoj/tools/w67trailgate.mjs      13 of 13 PASS  (new)
+[M]   --break no-trail / trail-every-phase / trail-no-coarse-skip /
+[M]         census-no-recursion                   all four EXPECTED-RED
+[M] node games/ddpdoj/tools/webgate.mjs           17 of 17 PASS  <- UNMOVED
+[M] node games/ddpdoj/tools/bundlegate.mjs        15955968/15955968 = 100.0000%  <- UNMOVED
+[M] node games/ddpdoj/tools/w64bombgate.mjs exit 0   w65beamgate exit 0
+[M] node tools/build-dist.mjs   clean, 5 deliberate exception(s)  <- UNMOVED
+[M] python games/ddpdoj/tools/oracle/pgm.py check
+[M]     BEFORE this wave (baseline, 67 stages)        ALL GREEN 67 / 0 / 0
+[M]     WITH the trail, 67 stages (the runner as it stood)  ALL GREEN 67 / 0 / 0
+[M]     FINAL, 74 stages                             73 passed, 1 FAILED, 0 SKIPPED
+```
+
+**The 74 is not 67 + my 5.** A concurrent agent (W69) wired **two** more stages
+(`82afbc3`, the segment sweep) while this wave was running, so the runner went
+67 -> 72 (mine) -> 74 (theirs).
+
+**THE ONE RED ROW IS THEIRS, and here is the proof rather than the claim:**
+
+```
+[M] [FAIL] segment sweep: the port re-seeded from the board at every rung
+[M]        fly-around:PASS  stage1-play:FAIL  stage1-sweep:FAIL
+[M] FIRST DIVERGENT, stage1-play, segment lf2000..2250:
+[M]        s14y @ lf2016   port=26122  board=25738   (+8 columns)
+```
+
+`s14y`/`s21y`/`shot1`/`shot2` are **SHOT TABLE SLOTS**. This wave writes exactly
+two things — bucket 12's staging buffer `$80AF24..` and the two 16-long rings —
+and neither is a compared column. And the decisive measurement, because a
+column list is an argument and this is not:
+
+```
+[M] 4,000 steps under W69's own stage1-play input shape (ONE-FRAME Button-1
+[M] taps every 40 logic frames, stick cycled):
+[M]     frames with ($3f,A6) set : 0
+[M]     $253604 records emitted  : 0
+[M]     bucket 12 staged records : 0
+```
+
+**The trail's gate never opens in that scenario, so `drawTrail` returns at its
+first instruction and writes nothing at all.** `[M]` The same three ladders
+exited **0** when I ran `seedcmp.mjs` directly at 20:10 and **1** at 20:47 with
+the ladder files unchanged (mtimes 19:30 / 19:50 / 20:03) — because W69
+committed `a3de6c6 the red validation could not fail; make it differential` and
+`365a749 separate the three reasons a segment is red` in between. It is their
+gate, their tooling and their in-flight finding. **Nothing was narrowed,
+loosened or disabled to restore green.**
 
 ## 6. WHAT THIS WAVE DID NOT DO
 
@@ -309,6 +422,17 @@ zero missing, because their scenarios fly straight up.
   first written**, the seventh wave running.
 - `[M]` BOOT **532.0 KiB, unmoved** -- no asset changed. The JS source costs
   **+4,186 B gzipped**, almost all of it the transcription's comment block.
+- §5.1 `[M]`: **11 of 11 unit-test mutants RED, 0 survivors**, every restore
+  sha256-identical.
+- §5.2 `[M]`: **the `addi.l` fixture could not fail as first written** -- the
+  long-vs-word carry is observable at **1 position in 64**, because `asr.l #6`
+  puts bit 16 on bit 10 and `andi.l #$07FF03FF` masks it off. Second defective
+  check of my own this wave.
+- §5.3 `[M]`: **gate 73 passed / 1 FAILED / 0 SKIPPED over 74 stages** -- the one
+  red is **W69's segment sweep**, first divergent `s14y@lf2016 port=26122
+  board=25738`, and `[M]` the trail's gate never opens under that scenario's
+  input (0 frames armed, 0 records, 0 staged over 4,000 steps). Baseline and the
+  67-stage run with the trail were both **ALL GREEN 67/0/0**.
 - **A CONCURRENT AGENT (W69) COMMITTED MY `pgm.py` HUNK INSIDE ITS OWN COMMIT**
   (`ec25618`) while I was working. Nothing was lost and nothing of theirs was
   clobbered, but the census stages are in HEAD under someone else's message.

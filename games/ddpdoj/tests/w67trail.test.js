@@ -194,29 +194,47 @@ test('W67: $253646/$25364A -- 3x32 in COLOUR 31, the ship\'s own picture', () =>
   assert.equal(TRAIL.flip, 0x001f);
 });
 
-test('W67: $2536A2 addi.l #$FA00FC00 is ONE LONG add -- the borrow carries', () => {
+test('W67: $2536A2 addi.l #$FA00FC00 is ONE LONG add -- and the carry only '
+  + 'SHOWS at 1 position in 64', () => {
   // The ship's own record carries $FA00/$FC00 at ($6,A6)/($8,A6) (machine.js,
   // MEASURED constant over fly-around), so the afterimage lands where the ship
-  // WAS.  It is a LONG add, so a borrow out of the short axis reaches the long
+  // WAS.  It is a LONG add, so a carry out of the short axis reaches the long
   // one -- the same trap as $249EBC's ground plane and $24A4E6's bit-7 aura.
+  //
+  // **THIS FIXTURE COULD NOT FAIL AS FIRST WRITTEN** (see the worklog): with
+  // `$30001000` the two-16-bit-add port gives a DIFFERENT D1 and the SAME
+  // record, because `$23FDB2` does `asr.l #6` and then `andi.l #$07FF03FF`, so
+  // the carry's bit 16 lands on bit 10 of the result -- which the short axis's
+  // 10-bit mask throws away.  The long axis only moves when the carry crosses
+  // bit 22, i.e. when the long half's low SIX bits are all 1.  So the position
+  // has to be chosen for that, and `$303F1000` is such a position:
+  //
+  //   LONG add   $303F1000 + $FA00FC00 = $2A400C00  -> long axis $0A9
+  //   TWO adds   $2A3F | $0C00         = $2A3F0C00  -> long axis $0A8
+  //
+  // 63 of every 64 positions cannot tell the two apart, which is why the first
+  // mutant survived and is why this comment exists.
+  const POS = 0x303f1000;
+  const long1 = (POS + TRAIL.bias) >>> 0;
+  const long2 = ((((POS >>> 16) + (TRAIL.bias >>> 16)) & 0xffff) << 16
+    | (((POS & 0xffff) + (TRAIL.bias & 0xffff)) & 0xffff)) >>> 0;
+  const enc = (d1) => ((((d1 | 0) >> 6) & 0x07ff03ff) | 0x80008000) >>> 0;
+  assert.notEqual(enc(long1), enc(long2),
+    'the two-16-bit-add port must produce a DIFFERENT RECORD at this position, '
+    + 'or this test is a restatement rather than a check');
+  assert.equal((enc(long1) >>> 16) & 0x07ff, 0x0a9);
+  assert.equal((enc(long2) >>> 16) & 0x07ff, 0x0a8);
+
   const ram = bench();
   ram.setU32(RAM.player1 + P.posY, 0x7f000000);
-  for (let k = 0; k < 16; k++) ram.setU32(TRAIL_RINGS.p1.pos + k * 4, 0x30001000);
+  for (let k = 0; k < 16; k++) ram.setU32(TRAIL_RINGS.p1.pos + k * 4, POS);
   drawTrail(ram, RAM.player1);
-  const want = (0x30001000 + 0xfa00fc00) >>> 0;
-  assert.equal(want, 0x2a010c00,
-    '$1000 + $FC00 = $10C00, and the CARRY reaches the long axis: $3000 + $FA00 '
-    + '+ 1 = $2A01.  Two independent 16-bit adds give $2A00 -- one unit of '
-    + '1/64 px, and the WRONG one');
-  assert.notEqual(want,
-    ((((0x3000 + 0xfa00) & 0xffff) << 16) | ((0x1000 + 0xfc00) & 0xffff)) >>> 0,
-    'the two-16-bit-add port is a DIFFERENT number here, which is what makes '
-    + 'this a check rather than a restatement');
-  const asr6 = (want | 0) >> 6;
-  const w = ((asr6 & 0x07ff03ff) | 0x80008000) >>> 0;
-  for (const r of staged(ram)) {
-    assert.equal((r.w0 << 16 | r.w1) >>> 0, w,
-      '$23FDB2 asr.l #6 / andi.l #$07FF03FF / ori.l #$80008000');
+  const recs = staged(ram);
+  assert.equal(recs.length, 5);
+  for (const r of recs) {
+    assert.equal((r.w0 << 16 | r.w1) >>> 0, enc(long1),
+      '$2536A2 addi.l (ONE 32-bit add), then $23FDB2 asr.l #6 / '
+      + 'andi.l #$07FF03FF / ori.l #$80008000');
   }
   assert.equal(TRAIL.bias, 0xfa00fc00);
 });
