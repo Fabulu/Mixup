@@ -186,9 +186,14 @@ function run() {
       // the pods are thrown behind the ship (`$24D198 sub.w D0,($2,A6)`).
       const k = ram.u16(P1 + 0x06);
       r.maxKnock = Math.max(r.maxKnock, k >= 0x8000 ? 0x10000 - k : k);
-      const gap = ram.u16(0x8104aa + 0x02) - ram.u16(P1 + 0x02);
-      r.maxPodGap = Math.max(r.maxPodGap, Math.abs(gap > 0x8000 ? gap - 0x10000
-        : (gap < -0x8000 ? gap + 0x10000 : gap)));
+      // The pods are put back ON the ship every frame ($24C33A move.l), so
+      // the knockback is one frame of ramp at a time and it is always
+      // BACKWARD -- the pod Y goes BELOW the ship Y and nothing else in the
+      // frame does that.  |gap| was the first draft and stayed green with the
+      // ramp deleted, because the ordinary $24D146 move is the same size.
+      let gap = ram.u16(0x8104aa + 0x02) - ram.u16(P1 + 0x02);
+      if (gap > 0x8000) gap -= 0x10000; else if (gap < -0x8000) gap += 0x10000;
+      r.maxPodGap = Math.max(r.maxPodGap, -gap);
     }
     // The FIRST frame of each bomb: record 42's own two words, which
     // `$25606C move.w` (Y, biased $FE00) and `$2560C6 move.w` (X only) write
@@ -364,10 +369,15 @@ ck('$249A92 SETS ($1,A6) BIT 7 for the length of the bomb',
 ck('...and $2496A2, THE PLAYER KNOCKBACK, MOVES ($6,A6)',
   r.knockSeen > 0 && r.maxKnock >= 0x800,
   `${r.knockSeen} ramp frames, max |($6,A6)| = $${r.maxKnock.toString(16)}`);
-ck("...and $24D188, THE PODS' knockback, THROWS THEM BEHIND THE SHIP",
-  r.podKnockSeen > 0 && r.maxPodGap >= 0x800,
-  `${r.podKnockSeen} ramp frames, max pod-ship gap = `
-  + `$${r.maxPodGap.toString(16)}`);
+// The RAMP's own effect is a unit-test row (`tests/w65beam.test.js`, '$24D188
+// walks the $24D28E ramp'): [M] the pods are put back ON the ship every frame
+// ($24C33A move.l), so one frame of ramp is at most $200 against a $24D146
+// step of about $800, and no aggregate of the pod's position in a 2,200-frame
+// run separates them.  What this row can say is that the CURSOR is walked,
+// which is $24D19C's own `subq.w #$2` and nothing else in the port touches.
+ck("...and $24D188, THE PODS' knockback cursor, is WALKED by $24D19C",
+  r.podKnockSeen > 0 && r.podKnockSeen < r.bit7Frames,
+  `${r.podKnockSeen} ramp frames of ${r.bit7Frames} with bit 7`);
 // `$25621C addi.w #$200` twice and `$256220 add.w ($30,A5),D0` are the whole
 // per-frame step, so the SET of (observed step - ($400 + velY)) is {0}.
 ck('every live segment steps EXACTLY $400 + the player velocity',

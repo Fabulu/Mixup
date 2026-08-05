@@ -692,7 +692,7 @@ export const POD_KNOCK = { settle: 0x24d282, ramp: 0x24d28e, end: 0x24d2be };
  * jumps to it, so the RAMP runs while `($38,A6)` lasts and the SETTLE runs
  * afterwards, for ever, until the bomb clears bit 7.
  */
-function podKnockback24D188(ram, ctx, b, pod) {
+export function podKnockback24D188(ram, ctx, b, pod) {
   const { rom } = ctx;
   let d0 = ram.u16(pod + 0x38);                            // $24D188 move.w
   if (d0 !== 0) {

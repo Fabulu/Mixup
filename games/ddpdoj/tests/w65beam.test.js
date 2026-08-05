@@ -14,12 +14,17 @@ import fs from 'node:fs';
 import { Ram } from '../src/ram.js';
 import { RAM, P, OPT } from '../src/machine.js';
 import { UnportedLog, Unreached } from '../src/unported.js';
+import { podKnockback24D188, POD_KNOCK } from '../src/options.js';
 import {
   BOMB, BOMBRAM, BEAM_REC, BEAM_TEMPLATES, bombDriver255DD8,
   bombDamageAlt2456A6, fireBomb2498E2,
 } from '../src/bomb.js';
 
-const ctx = (extra = {}) => ({ unportedLog: new UnportedLog(), ...extra });
+const ctx = (extra = {}) => ({
+  unportedLog: new UnportedLog(),
+  tables: { vector: () => ({ dy: 7, dx: 11 }) },
+  ...extra,
+});
 
 // ===========================================================================
 // THE SYNTHETIC BEAM ROM
@@ -107,6 +112,21 @@ function beamRom() {
     for (let k = 0; k < 8; k++) l(LIST_TABLES + i * 0x20 + k * 4, 0xc00 + i * 8 + k);
   }
   l(LIST + 12 * 20, 0xffffffff);
+  // ---- POOL E, because $255FE2 reaches $289FF4 whenever $812954 is set
+  // ($256354 -> $25636E clears record 44's bit 1 -> $256162 jmp).  The
+  // three canned RNG tables and the three templates are served as CONSTANTS,
+  // which is enough for the rows here and honest about being enough.
+  for (let i = 0; i < 128; i++) { mem.set(0x243174 + i, 0); mem.set(0x242e42 + i, 3); }
+  for (let i = 0; i < 256; i++) { mem.set(0x242ede + i, 0); mem.set(0x24301a + i, 0); }
+  for (let i = 0; i < 64; i++) mem.set(0x28aba0 + i, 0);
+  for (let i = 0; i < 3; i++) {
+    const t = 0x28a464 + i * 22;
+    l(0x28a030 + i * 4, t);
+    w(t, 0); w(t + 2, 0xfc00); w(t + 4, 0xfd00); w(t + 6, 0x0418);
+    w(t + 8, 0x0006); w(t + 10, 0x0606);
+    l(t + 12, 0x0002001c); l(t + 16, 0x28a4a6 + i * 32); w(t + 20, 0);
+    for (let k = 0; k < 8; k++) l(0x28a4a6 + i * 32 + k * 4, 0x50000 + k);
+  }
   const need = (a) => {
     if (!mem.has(a)) throw new Error(`beamRom: $${a.toString(16)} not modelled`);
     return mem.get(a);
@@ -705,4 +725,241 @@ test('the LASER BOMB SPARK speed domain is DERIVED, not listed', () => {
   // out of this file: `$28A272 addq.b #$4,D0` and `$28A284 move.w #$C0,D0`.
   assert.ok(/op = u16\(d, BEAM_SPARK_ADD_AT\)/.test(TOOL));
   assert.ok(/const = u16\(d, BEAM_SPARK_CONST_AT \+ 2\)/.test(TOOL));
+});
+
+// ---- and the ELEVEN more the second sweep demanded ------------------------
+//
+// These are all AFTER ONE DRIVER FRAME, because `$255FE2` installs and then
+// runs `$2562FC` and `$256348` in the same frame -- there is no observable
+// moment between them, which is exactly why the gate could not see any of it.
+
+test('$25606C biases record 42 by -$200 and $2560C6 writes the SHORT axis',
+  () => {
+    const ram = new Ram();
+    ram.setU16(BOMBRAM.rec, 0x8001);
+    ram.setU16(RAM.player1 + P.posY, 0x3000);
+    ram.setU16(RAM.player1 + P.posX, 0x1234);
+    bombDriver255DD8(ram, beamRom(), ctx());
+    // The install puts (playerY + $FE00) on +$02 and then `$2562FC` adds $400
+    // and the player's velocity (0 here).  A `+$200` bias would land $400
+    // higher and a `move.l` at `$2560C6` would overwrite the bias entirely.
+    assert.equal(ram.u16(BOMBRAM.rec + BEAM_REC.tail + 0x02),
+      (0x3000 + 0xfe00 + 0x400) & 0xffff, '$256064/$25606C addi.w #$FE00');
+    assert.equal(ram.u16(BOMBRAM.rec + BEAM_REC.tail + 0x04), 0x1234,
+      '$2560C6 move.w D0 -- the LOW word, i.e. the SHORT axis');
+  });
+
+test('a live segment advances $400 PLUS the player velocity, per frame', () => {
+  const ram = new Ram();
+  ram.setU16(BOMBRAM.rec, 0x8001);
+  ram.setU16(RAM.player1 + P.posY, 0x1000);
+  ram.setU16(RAM.player1 + P.velY, 0x0123);      // ($30,A5) -- NOT ZERO
+  const rom = beamRom();
+  bombDriver255DD8(ram, rom, ctx());             // seeds segment 1
+  const s = BOMBRAM.rec + BEAM_REC.seg0;
+  const y0 = ram.u16(s + 0x02);
+  bombDriver255DD8(ram, rom, ctx());
+  // $256218 move.w ($2,A6),D0 / $25621C addi.w #$200 / $256220 add.w ($30,A5)
+  // / $25623E addi.w #$200 -- TWO $200s and the velocity.  A corpus in which
+  // the ship is not moving holds ($30,A5) at 0 and cannot see the third term,
+  // which is why this row sets it and why the gate's own row could not.
+  assert.equal(ram.u16(s + 0x02), (y0 + 0x400 + 0x123) & 0xffff);
+});
+
+test('$256234 culls a segment at $7800, and $7700 is NOT culled', () => {
+  const mk = (y) => {
+    const ram = new Ram();
+    ram.setU16(BOMBRAM.rec, 0x8001);
+    ram.setU16(RAM.player1 + P.posY, 0x1000);
+    const rom = beamRom();
+    bombDriver255DD8(ram, rom, ctx());           // seeds segment 1
+    const s = BOMBRAM.rec + BEAM_REC.seg0;
+    ram.setU16(s + 0x02, y);                     // ...and place it by hand
+    bombDriver255DD8(ram, rom, ctx());
+    return (ram.u16(s) & 0x8000) !== 0;
+  };
+  // The bound is tested on the value after ONE `addi.w #$200` and the
+  // velocity (0 here), so $7600 + $200 = $7800 is the first culled one.
+  assert.equal(mk(0x7500), true, '$7700 survives $256234 cmpi.w #$7800 / bcs');
+  assert.equal(mk(0x7600), false, '$7800 does not');
+});
+
+test('$256330 stops record 42 at $7E00, not at $7F00', () => {
+  const mk = (y) => {
+    const ram = new Ram();
+    ram.setU16(BOMBRAM.rec, 0x8001);
+    const rom = beamRom();
+    bombDriver255DD8(ram, rom, ctx());
+    ram.setU16(BOMBRAM.rec + BEAM_REC.tail + 0x02, y);
+    ram.setU16(BOMBRAM.rec + BEAM_REC.tail + 0x28, 0);
+    bombDriver255DD8(ram, rom, ctx());
+    return ram.u16(BOMBRAM.rec + BEAM_REC.tail + 0x28);
+  };
+  // $256324 addi.w #$400 runs first, so $7A00 -> $7E00 is the first stop.
+  assert.equal(mk(0x7900), 0, '$7D00 keeps going');
+  assert.equal(mk(0x7a00), 1, '$7E00 sets ($28,A6) := 1');
+});
+
+test('$256386 bset #$1 READS THE OLD BIT, like $255F7E bchg', () => {
+  const ram = new Ram();
+  ram.setU16(BOMBRAM.rec, 0x8001);
+  // Record 44's install word is $8200, i.e. bit 1 ALREADY SET, so `$256386
+  // bset` must find it set and RETURN.  Everything past it -- `$25638C bclr`,
+  // the `$7E2` write and `$2563AC bset #$6,(A0)` -- must NOT run on frame 1.
+  // Record 0's bit 6 is the cleanest witness: nothing else in the frame
+  // touches it.
+  bombDriver255DD8(ram, beamRom(), ctx());
+  assert.equal(ram.btst8(BOMBRAM.rec + BEAM_REC.tip, 1), true, 'the $8200 bit');
+  assert.equal(ram.btst8(BOMBRAM.rec, 6), false,
+    '$2563AC bset #$6,(A0) is behind the `bne` and did not run -- a port that '
+    + 'read the NEW bit would have fallen through on the very first frame');
+});
+
+test('$2563B6 rebuilds $400 apart, and ($80A,A6) ends the frame at $18', () => {
+  const ram = new Ram();
+  ram.setU16(BOMBRAM.rec, 0x8001);
+  ram.setU16(RAM.player1 + P.posY, 0x0400);
+  const rom = beamRom();
+  // Run out the 120-frame phase so `($18,A6)` is 1 and `$256192 bsr $2563B6`
+  // is on the path.
+  for (let n = 0; n < 121; n++) bombDriver255DD8(ram, rom, ctx());
+  assert.equal(ram.u16(BOMBRAM.rec + 0x18), 1, 'phase 2');
+  // `$256460 move.w #$1C,($80A,A6)` is the LAST thing the rebuild does, and
+  // then `$256196 bra $256120` runs `$2561AA`, whose own `subq.w #$4` takes
+  // it to $18 before the frame ends.  So the OBSERVABLE value is $18 and the
+  // instruction's own is $1C -- both are stated because a reader who checks
+  // only the listing will expect $1C here.
+  assert.equal(ram.u16(BOMBRAM.rec + 0x80a), 0x18);
+  const y1 = ram.u16(BOMBRAM.rec + BEAM_REC.seg0 + 0x02);
+  const y2 = ram.u16(BOMBRAM.rec + BEAM_REC.seg0 + BOMBRAM.stride + 0x02);
+  assert.equal((y2 - y1) & 0xffff, 0x400, '$2563F8 addi.w #$400,D6');
+});
+
+test('BOTH 41-segment loops reach segment 41, and the proof is the CLEAR',
+  () => {
+    // The seeder cannot show it: `[M]` a segment is culled at $7800 and the
+    // step is $400, so at most 29 are ever live at once and a `dbra` one
+    // short is invisible in the count.  What IS visible is that segment 41
+    // gets CLEARED -- by `$25623A clr.w (A6)` in $2561AA and by `$2563D4
+    // clr.w (A1)` in $2563B6.  Both loops are exercised with a hand-placed
+    // live record in slot 41.
+    const seg41 = BOMBRAM.rec + 41 * BOMBRAM.stride;
+    // (a) $2561AA, phase 1: a live segment past $7800 must be cleared.
+    const a = new Ram();
+    a.setU16(BOMBRAM.rec, 0x8001);
+    const rom = beamRom();
+    bombDriver255DD8(a, rom, ctx());
+    a.setU16(seg41, 0x8000);
+    a.setU16(seg41 + 0x02, 0x7700);              // + $200 -> $7900, past $7800
+    a.setU32(seg41 + 0x18, 0x2566b2);            // a pointer $256212 can read
+    bombDriver255DD8(a, rom, ctx());
+    assert.equal(a.u16(seg41), 0, '$25623A clr.w (A6) reached slot 41');
+    // (b) $2563B6, phase 2: everything past the beam's end is cleared.
+    const b = new Ram();
+    b.setU16(BOMBRAM.rec, 0x8001);
+    b.setU16(RAM.player1 + P.posY, 0x0400);
+    for (let n = 0; n < 121; n++) bombDriver255DD8(b, rom, ctx());
+    assert.equal(b.u16(seg41), 0, '$2563D4 clr.w (A1) reached slot 41');
+    assert.equal(BEAM_REC.segs, 41, 'moveq #$28,D7 plus the dbra');
+  });
+
+// ===========================================================================
+// $24D188 -- THE PODS' KNOCKBACK
+// ===========================================================================
+/** `$24D282`'s five words and `$24D28E`'s twenty, as the cartridge holds them.
+ *  `[M]` read out of the image this session; the exporter asserts the two
+ *  `lea`s, the `subq.w #$2` and `$24D2BE`'s `moveq #$0,D0` on every export. */
+// SIX words, not five: the `movem.w (A0,D0.w),D0-D1` at index 8 reads words
+// 4 AND 5, so the settle table runs $24D282..$24D28D and $24D28E abuts it.
+const SETTLE = [0, 0, 8, 32, 8, 0];
+const RAMP = [0, 0, 8, 16, 32, 48, 64, 88, 112, 136,
+  160, 192, 224, 256, 288, 320, 384, 448, 512, 256];
+function realRom() {
+  const at = (a) => {
+    if (a >= POD_KNOCK.ramp && a < POD_KNOCK.ramp + 40) {
+      return RAMP[(a - POD_KNOCK.ramp) >> 1];
+    }
+    if (a >= POD_KNOCK.settle && a < POD_KNOCK.settle + 12) {
+      return SETTLE[(a - POD_KNOCK.settle) >> 1];
+    }
+    throw new Error(`realRom: $${a.toString(16)} is outside $24D282+$3C`);
+  };
+  return { u8: (a) => at(a & ~1) & 0xff, u16: at, u32: (a) => at(a) };
+}
+let lastVector = { spd: null, ang: null };
+const fakeTables = () => ({
+  vector: (spd, ang) => { lastVector = { spd, ang }; return { dy: 7, dx: 11 }; },
+});
+
+test('$24D188 walks the $24D28E ramp, and the FIRST push is the LAST entry',
+  () => {
+    const ram = new Ram();
+    const rom = realRom();
+    const pod = 0x8104aa;
+    ram.setU16(pod + OPT.posY, 0x4000);
+    ram.setU16(pod + 0x38, 0x26);                  // $249AD8's seed
+    ram.setU16(0x812970, 1);                       // the draw freeze, so the
+    // four gates below the ramp skip the shadow enqueue and this row is about
+    // the ramp alone.
+    podKnockback24D188(ram, ctx({ rom }), { player: RAM.player1 }, pod);
+    // `($38,A6)` is $26 and the table is indexed in BYTES, so the first read
+    // is `$24D28E[19]` -- and [19] is $0100 while [18] is $0200, i.e. the push
+    // gets BIGGER on the second frame.  A reader who assumed a decay would
+    // have written the table backwards.
+    assert.equal(ram.u16(pod + OPT.posY), 0x4000 - 0x0100, 'frame 1: $100');
+    assert.equal(ram.u16(pod + 0x38), 0x24, '$24D19C subq.w #$2');
+    podKnockback24D188(ram, ctx({ rom }), { player: RAM.player1 }, pod);
+    assert.equal(ram.u16(pod + OPT.posY), 0x4000 - 0x0100 - 0x0200,
+      'frame 2: $200, which is LARGER');
+    assert.equal(ram.u16(pod + 0x38), 0x22);
+  });
+
+test('...and when the ramp is spent, $24D200 SETTLES through $2417D4', () => {
+  const ram = new Ram();
+  const rom = realRom();
+  const pod = 0x8104aa;
+  ram.setU16(pod + OPT.posY, 0x4000);
+  ram.setU16(pod + OPT.posX, 0x2000);
+  ram.setU16(pod + 0x38, 0);                       // the ramp is over
+  ram.setU16(pod + 0x56, 0x08);                    // $249ADE's seed
+  ram.setU16(0x812970, 1);
+  podKnockback24D188(ram, ctx({ rom, tables: fakeTables() }),
+    { player: RAM.player1 }, pod);
+  // `$24D200 move.w ($56,A6),D0` reads BEFORE `$24D204 subq.w #$4`, so the
+  // first `movem.w` is at index 8 -- $24D282[4] and [5] -- and the cursor
+  // ends at 4.
+  assert.equal(ram.u16(pod + 0x56), 4, '$24D204 subq.w #$4');
+  assert.equal(lastVector.spd, 8, '$24D282 + 8 -> the speed word');
+  assert.equal(lastVector.ang, 0, '...and the angle word beside it');
+  assert.equal(ram.u16(pod + OPT.posY), 0x4000 + 7, '$2417F4 add.w D2');
+  assert.equal(ram.u16(pod + OPT.posX), 0x2000 + 11, '$2417F8 add.w D3');
+  // ...and it RELOADS to 8 when the cursor borrows.
+  ram.setU16(pod + 0x56, 0);
+  podKnockback24D188(ram, ctx({ rom, tables: fakeTables() }),
+    { player: RAM.player1 }, pod);
+  assert.equal(ram.u16(pod + 0x56), 8, '$24D208 bpl / $24D20A move.w #$8');
+});
+
+test('$256224: with $812954 SET the cull is $812952 AND STILL $7800', () => {
+  // `$256224 tst.w $812954 / beq $256234` -- with a pool-B target held, a
+  // segment is culled if it passes THAT target ($25622C cmp/bhi) **or** the
+  // $7800 bound ($256234).  The row above only reaches the second arm, and a
+  // mutant that widened the FIRST arm's own $7800 to $7900 survived it.
+  const mk = (y, g12952) => {
+    const ram = new Ram();
+    ram.setU16(BOMBRAM.rec, 0x8001);
+    ram.setU16(RAM.player1 + P.posY, 0x1000);
+    const rom = beamRom();
+    bombDriver255DD8(ram, rom, ctx());             // seeds segment 1
+    const s = BOMBRAM.rec + BEAM_REC.seg0;
+    ram.setU16(s + 0x02, y);
+    ram.setU32(BOMBRAM.g12954, 0x00815300);        // a pool-B target IS held
+    ram.setU16(BOMBRAM.g12952, g12952);
+    bombDriver255DD8(ram, rom, ctx());
+    return (ram.u16(s) & 0x8000) !== 0;
+  };
+  assert.equal(mk(0x7500, 0x7f00), true, '$7700 is under both bounds');
+  assert.equal(mk(0x7600, 0x7f00), false, '$7800 fails $256234 even so');
+  assert.equal(mk(0x5000, 0x5100), false, '$5200 fails $25622C cmp/bhi');
+  assert.equal(mk(0x5000, 0x5300), true, '...and $5200 under it survives');
 });
