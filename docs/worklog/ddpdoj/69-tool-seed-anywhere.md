@@ -340,4 +340,72 @@ on a DIFFERENT address are worth keeping: from lf19,000 the port reaches
 **`$2943B0`** before the Button-3 gate, which is the boss's own unported code,
 and no wave had put the port there.
 
+---
+
+## 8. THE DEEP RUN — WHAT IS PAST FRAME 6,185
+
+`stage1-play`: the whole stage, Button 1 tapped every 40 frames on a sustained
+stick, invulnerability poked on both sides. **LABEL: an intervention run. These
+are STATES, not a picture of the game, and a seeded segment validates the CODE
+from its rung, never the route to it.**
+
+### THE PORT'S REACH ENDS AT lf8,250, AND THE WALL IS THE BOSS
+
+Seeding at successive rungs and running to the end of the trace:
+
+```
+[M] rung lf7000  -> 6,382+ frames compared, no block
+[M] rung lf7250  -> no block
+[M] rung lf7500  -> no block
+[M] rung lf7750  -> no block
+[M] rung lf8000  -> no block
+[M] rung lf8250  -> BLOCKED at lf8251, named throw $294FA6
+[M] rung lf8500  -> BLOCKED at lf8501, named throw $295120
+[M] rung lf8750  -> BLOCKED at lf8751, named throw $295120
+[M] rung lf9000  -> BLOCKED at lf9001, named throw $296DD6
+```
+
+Three distinct unported addresses, all the stage-1 boss. Stage 1 is 7,317 logic
+frames to the boss lock, so this is the boss arriving and the port stopping at
+it — **loudly and by address, which is what this project's named throws are
+for.**
+
+### `$296DD6` WAS DOCUMENTED AS UNREACHABLE, AND IT IS NOT
+
+`src/handlers.js` (W36):
+
+> *type `$1E` at `$2963C2`/`$2963F4`/`$29642C`/`$29645E`, inside the boss —
+> handler **`$296DD6`, unreachable while `$292902` is unported.***
+
+The port reaches it, at lf9,001. **The comment is right about a port running
+from boot and wrong as an absolute** — and the distinction is exactly the one
+`docs/knowledge/09` insists on. Seeding from the board hands the port a live
+type-`$1E` object it could never have spawned for itself, and the "unreachable"
+path runs immediately. This is the seeding caveat working in the useful
+direction: a seeded run finds code a self-driven run cannot.
+
+### THE FIRST DIVERGENT FIELD AT DEPTH IS SLOWDOWN, NOT ARITHMETIC
+
+Seeded at lf7000, comparing 6,382+ frames (lf7001..13,382+):
+
+```
+[M] DIVERGE shot1/shot2  first at lf7006     the shot records
+[M] DIVERGE s14y s14x s14v s21y s21x  lf7043
+[M] DIVERGE s14t s21t    first at lf7723
+[M] DIVERGE vf, irq6     first at lf8227  port=1 board=2
+[M] DIVERGE b19 b15 b5   first at lf13945     the sprite buckets
+[M] HITEX $245044 fired 156 times on 88 frames, FIRST AT lf7001
+```
+
+`irq6 port=1 board=2` at **lf8,227** is the board spending TWO video frames on
+one logic frame — **slowdown**, which `portdiff.mjs` already says the port's
+budget cannot predict. It is the first non-shot field to move, and it is the
+deepest such measurement this project has: nothing before this wave compared
+`irq6` past lf4,200.
+
+The shot columns move from the first tap onward, and `HITEX` fires on the very
+first compared frame, so **the shot columns in this window are not evidence**
+(wave 8's own rule): the board is taking the unported shot-vs-enemy damage
+branch and the port cannot.
+
 (Findings below are appended as they arrive.)
