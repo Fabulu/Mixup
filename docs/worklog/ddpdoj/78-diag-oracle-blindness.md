@@ -77,6 +77,15 @@ one routine and should not be briefed as if they were):
   bytes apart — **that spacing is a jump table, not 26 unrelated routines**, and
   porting its dispatch is likely one job rather than twenty-six).
 
+  **CORRECTION, same day, from W75.** The `$28A520`–`$28A5A0` run is not an
+  unidentified jump table: it is **the laser's own impact-spark list, and it is
+  an already-declared deferral in `src/spark.js`**. W75 counts 66 of the 182
+  blocks there. The structural read above was right and the "we don't know what
+  this is" framing was wrong — it was written down, in the source, by an earlier
+  wave. Anybody briefing it should start from `src/spark.js`, not from a fresh
+  disassembly. This is the fourth time this project has treated something
+  already recorded as an open question.
+
 ## WHAT THIS CHANGES
 
 **`$2497AA` moves to the front of the queue.** It was ranked behind the
