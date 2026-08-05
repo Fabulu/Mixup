@@ -490,6 +490,92 @@ comment block says the same thing.
 
 ---
 
+## 7b. THE OWNER'S SHADOW FLICKER — **(A) AUTHENTIC. DO NOT "FIX" IT.**
+
+Mid-wave the owner asked: *"some enemies' shadows flicker. Don't know if that's
+in the original but we have to check"*, and the coordinator set out the three
+answers — (A) the board's own alternate-frame transparency, (B) missing art,
+(C) an emission defect — with the instruction to settle it from the board and
+not from the genre.
+
+**[M] IT IS (A), AND THE BOARD IS UNAMBIGUOUS.** `capture.bin` is 161 frames of
+the real machine's post-DMA sprite buffer. Every ground shadow on this board is
+colour 24 (`[M]` the board uses `c10:6166 c0:653 c24:281 c26:217 c11:174 c9:100
+c2:80` in that window, and c24 is used by these four classes and nothing else):
+
+| class | on N of 161 frames | lf EVEN | lf ODD | consecutive gaps |
+|---|---|---|---|---|
+| `1x16 c24 p0 f0` THE SHIP'S SHADOW | 81 | **81** | **0** | +1 x**0**, +2 x**80** |
+| `1x8 c24 p0 f0` option shadow | 81 | **81** | **0** | +1 x**0**, +2 x**80** |
+| `1x8 c24 p0 f2` option shadow | 81 | **81** | **0** | +1 x**0**, +2 x**80** |
+| **`2x16 c24 p0 f0` AN ENEMY'S SHADOW** | **27** | **27** | **0** | +1 x**0**, +2 x**26** |
+
+```
+[M] shadow records per BOARD frame, first 40:  3 0 3 0 3 0 3 0 3 0 3 0 ...
+[M] board frames carrying NO shadow record at all: 80 of 161
+[M] every shadow record in the capture is on an EVEN logic frame: TRUE
+[M] every shadow record in the capture is on an ODD  logic frame: FALSE
+```
+
+**Not one shadow record on the real machine ever appears on two consecutive
+frames.** Every gap between consecutive appearances is exactly +2, 80 of 80 and
+26 of 26. **The enemy's shadow obeys the same rule as the ship's.** That is the
+alternate-frame 50 %-transparency trick on hardware with no alpha blending, and
+`src/render/capture.js` has documented it since W12 — this is the first time it
+has been measured for an ENEMY's shadow specifically, which is what the owner
+asked about.
+
+**THE FLICKER IS THE CARTRIDGE. Supplying more art or drawing shadows every
+frame would REMOVE authentic behaviour and look like an improvement.** The
+precedent is Batman's water dither: a deliberate, documented, owner-owned
+fidelity decision. Nobody should "correct" this without the owner saying so.
+
+**AND THE SECOND HALF, WHICH IS THE ONE THAT COULD HAVE HIDDEN A REAL DEFECT —
+the port's cadence is right too.** [M] 1,200 frames, the port's own bucket 5:
+
+```
+[M] bucket-5 records per frame, first 40:  3 0 3 0 3 0 3 0 3 0 3 0 ...
+[M] frames with NO bucket-5 record: 600 of 1,200 = 50.0 %
+[M] frames WITH one, by logic-frame parity: EVEN 600 / ODD 0
+```
+
+**Three records on exactly every other frame, on the EVEN parity, never two in a
+row — the board's phase and the board's duty cycle, both exact.** Flickering at
+the wrong cadence would have been a real defect wearing a correct-looking one,
+and it is not happening.
+
+**ONE THING WAS (B) AS WELL, AND THIS WAVE FIXED IT.** [M] Before W58, bucket 5
+drew **3,440 of 3,970** records — 86.6 % — because **`$065388`, the option pod's
+own ground shadow, had no picture at all** (530 records over 3,000 frames). So on
+top of the authentic 50 % alternation, that shadow was additionally absent on
+every one of its own frames. It is `$24C906`'s twelve-byte template pair —
+`($a,A6)` is the pod muzzle `$065354`, which has shipped since W45, and
+`($5c,A6)` is the shadow beside it, which had not. Shard 10's option-block scan
+picks it up. [M] Bucket 5 is now **3,970 of 3,970**. **The authentic flicker
+stays; the missing picture is gone.**
+
+## 8. THE DONE-WHEN, EACH AS A MEASUREMENT — and exactly what each one CLAIMS
+
+| the brief asks for | `[M]` |
+|---|---|
+| laser art coverage → 100 %, flicker gone | **bucket 16: 131 of 2,606 (5.0 %) → 2,606 of 2,606 (100.0 %)**, and in Chrome a **solid full-length beam on five of six consecutive held-fire frames where the deployed build had zero in eight**. §5. **This is 100 % AT BASE POWER** — see below |
+| overall drawn %, before and after | **84.0 % → 100.0 %** of records; **63.1 % → 0.0 %** of sprite PIXELS; 145 → 0 distinct missing streams |
+| ... specifically at f1000–1499 | **64.6 % → 100.0 %** |
+| boot before and after | **476.3 → 477.7 KiB, +1.4 KiB**, every byte named. §3 |
+| gate ALL GREEN, unit tests | §6 |
+| `bundlegate` 100.0000 % unmoved | **15955968/15955968 = 100.0000 %.** Shard 0 was not touched, so `capture.bin` is byte-identical and this number could not have moved |
+| ROM leak guard intact, `PUBLISH_VERBATIM` named if it grows | **STILL FIVE. It did not grow.** [M] neither shard 10 nor shard 11 is a verbatim ROM slice, because each packs several disjoint runs — the same accident of packing order W47 §3 explains, and it is luck rather than virtue, stated as such |
+
+**AND THE SENTENCE THAT MUST NOT BE OVER-READ.** "100 % laser coverage" here
+means: **over a 3,000-frame playing run at BASE POWER, every record bucket 16
+emits has a picture.** Items do not drop in this build, so no run can power the
+ship up and no measurement in this project has ever seen power 1..4 emitted.
+What is *harvested* is broader than what is *measured*: the bundle contains the
+art for **all five power steps** of the beam (§2.1b) and of the shots (W52), and
+for the segment blocks at every power by construction. What is **not** there is
+the `+$28`/`+$50`/`+$78` ship/formation groups. **Nobody should read this wave
+as "the laser art is complete."**
+
 ## LOG (appended as findings arrive)
 
 - opened.
@@ -514,3 +600,39 @@ comment block says the same thing.
 - §3 [M]: **BOOT 476.3 -> 477.7 KiB, +1.4 KiB**, every byte of it accounted for
   (manifest +1.0, stream table +0.4) and the `why` strings trimmed after
   measuring.
+- §4.1 [M]: 10 mutants, **10 NAMED reds**, every restore byte-identical by
+  sha256 -- and **one DEFECTIVE mutant recorded**: a wrong end address that
+  happens to land on a stream boundary is invisible to the chain check.
+- §4.2 [M]: **BOTH gate cuts SEEN RED against the real bundle** -- 391 vs 407
+  with the beam cut to the one block the audit measured, and 101/8103/95/346 vs
+  146/12681/101/315 with the structures cut. Each cut left the other stage green.
+- §5 [M]: **THE OWNER'S WAVE, IN A REAL BROWSER, BOTH BUILDS.** On the LIVE
+  DEPLOYED page, eight consecutive held-fire frames with the gauge at MAX and
+  **not one beam**, under a black rectangle filling the upper playfield. On the
+  local build, **a solid full-length beam on five of six**, planted on the
+  midboss with impact flashes, over a complete picture -- roofs, a brick
+  building with a painted poster, stone steps, foliage, tanks on a road.
+  `drawn == dl` and no `NO ART` line on any sample. Server killed; [M] zero
+  `http.server` processes and port 8781 free, checked by process AND by port.
+- §2.2 [M]: **THE BROWSER CAUGHT THE MEASURED FLOOR GOING SHORT** -- with the
+  111-address list shipped the page still named `$1567D4 $156ABC $156B38
+  $155C34`. Four families are CLOSED CHAINS now, [M] 32 streams each, ended by a
+  stride change, +6.7 KiB. And `55-diag` §2.2 is wrong twice: the `$12C7B0` run
+  is 32 frames not 38, and the 3x40 run is 32 not 16 and starts $DC lower.
+- §2.1b [M]: **THE COORDINATOR'S POWER-LADDER QUESTION, ANSWERED FROM THE ROM.**
+  The SHOTS: 5 levels, 24 streams each, **71 distinct, 47 of them above base --
+  and all 71 have shipped since W52**. The BEAM: 5 levels x 4 frames, **20
+  distinct, 16 above base, and the beam GROWS 3x32 -> 6x64** -- all 20 ship in
+  this wave. Power 0 alone would have been 1.7 KiB of 15.0.
+- §7b [M]: **THE OWNER'S SHADOW FLICKER IS THE CARTRIDGE'S OWN. (A), settled
+  against the board.** All 161 captured frames: every colour-24 shadow record --
+  the ship's, both pods' AND AN ENEMY'S -- is on an EVEN logic frame, 189 of
+  189, and **not one ever appears on two consecutive frames** (every gap is
+  exactly +2, 80 of 80 and 26 of 26). 80 of 161 board frames carry no shadow at
+  all. **It must NOT be "fixed".** And the port's cadence is exact: [M] 3
+  records on every other frame, EVEN 600 / ODD 0 over 1,200 frames.
+  **But one shadow was ALSO (B)**: `$065388`, the pod's own ground shadow, had
+  no picture -- bucket 5 was 86.6 % and is now 100 %.
+- §8: **the done-when, and the sentence that must not be over-read**: 100 % is
+  measured AT BASE POWER; all five power levels are HARVESTED. Those are two
+  different claims and both are stated.
