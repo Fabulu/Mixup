@@ -734,11 +734,11 @@ try {
       // get two different sentences because they are two different bugs:
       //   NO ART $166840x3        the bundle does not contain this picture
       //   SPR SHARD 1x27          it does, and that shard is still in flight
-      // `spr n/9` is how many sprite shards have landed (it prints the bundle's
-      // own total, so it has never needed editing; this COMMENT said 6 until
-      // W52, 8 until W53, and is the only number in this block that has ever
-      // been wrong -- which is what a hand-maintained count next to a computed
-      // one always ends up being).  The tank hulls the owner
+      // `spr n/10` is how many sprite shards have landed (it prints the
+      // bundle's own total, so it has never needed editing; this COMMENT said 6
+      // until W52, 8 until W53, 9 until W54, and is the only number in this
+      // block that has ever been wrong -- which is what a hand-maintained count
+      // next to a computed one always ends up being).  The tank hulls the owner
       // reported missing are shard 1: at boot they read as SPR SHARD 1 for as
       // long as 28 KiB takes, and then they are simply there.
       //

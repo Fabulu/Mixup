@@ -355,6 +355,12 @@ export function spawnEffect(ram, ctx, d0, siteAddr = 0x289004) {
 // [M] verified end to end on kind 0: `$221740` = `FFFF0618 FA00FD00` (w/h
 // $0618, offsets $FA00FD00), then 12 longwords `$21F344..$21F688` step $4C;
 // `$221778` = 12 words of $0000 then $FFFF.  Both lists end at 12.
+//
+// **BOTH ARMS ARE EXERCISED, and W54 nearly claimed otherwise.**  [M] the 23
+// distinct scripts hold 31 SIZE escapes and 27 NUDGE escapes, and nine of the
+// eleven kinds this port's death arms can pass carry at least one nudge (all
+// but `$1` and `$2`).  The nudge LOOKED unexercised because no list OPENS with
+// it -- it appears mid-list, which no "does entry 0 use it" check can see.
 
 /** `$288E20` -- consume every escape command at the cursor, leaving it on the
  *  next STREAM ADDRESS.  Mutates `($e,A6)`, `($6,A6)` and `($2,A6)`. */

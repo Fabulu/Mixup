@@ -1,6 +1,6 @@
 # 54 — IMPL E5b: THE ENEMY DEATH EXPLOSION (pool B, `$289004` + `$288E4E`)
 
-status: **IN PROGRESS**
+status: **DONE**
 
 started: 2026-08-05
 role: IMPLEMENTER. SOLE writer to `games/ddpdoj/`. `games/gradius/` NOT TOUCHED.
@@ -55,7 +55,7 @@ Everything below about pools B and D is reproduced independently from
 |---|---|
 | "EIGHT distinct kinds on the port's damage path: `$1 $2 $3 $7 $C $D $84 $85`" | That is what its RUN reached. **STATICALLY, from the listing, the port's OWN ported arms pass ELEVEN**: `$1 $2 $3 $4 $5 $7 $9 $C $D $84 $85`. `$5` is `$275B20`'s (`handlers.js`, ported since W30), `$9` is two entries of the midboss's own `$26B214` list, `$4` is the row below. **[M] AND ALL ELEVEN ARE REACHED IN A 2,192-FRAME TAPPED RUN** (§2) — so this is not a theoretical margin, it is three kinds recon 50's harvest would have shipped no art for. `docs/knowledge/09` in one line. |
 | the port's own note: type `$10`'s death arm is `D0=$7` (`handlers.js:677`, since W25b) | **[M] `$2681D6 moveq #$4,D0`. It is kind `$4`, not `$7`** — read out of the image, and pinned in `tests/w54effects.test.js` by reading it out of the image again and requiring `src/handlers.js` to pass the same byte. Kind `$4` is in nobody's list. |
-| "every death arm I read writes `move.w #$0,($12,A0)`" (§4.2, the leak argument) | **[M] TEN of the twenty-five ported sites write `#$1`** — `$273DDA $273E0E $273E42 $273E7A $273EB2 $273EEC` (type `$80`), `$2762E4 $276322 $276366 $2763AC` (type `$88`), `$2774EE` (type `$89`) and `$26B89C` (the midboss arm) — which asks pool D for **TWO** records, not one. And **type `$11`'s death arm puts `$FFFF` BACK** at `$26888A` when `$815EA2` is already set, i.e. it DISARMS the sub-spawn on the second effect of a frame. The leak is real and its rate is not the one recon 50 computed. |
+| "every death arm I read writes `move.w #$0,($12,A0)`" (§4.2, the leak argument) | **[M] TWELVE of the twenty-seven ported sites write `#$1`** — `$273DDA $273E0E $273E42 $273E7A $273EB2 $273EEC` (type `$80`'s six), `$2762E4 $276322 $276366 $2763AC` (type `$88`'s four), `$2774EE` (type `$89`) and `$26B89C` (the midboss arm) — and `($12,A0)` is a COUNT MINUS ONE (`$289098 andi.l #$FF / addi.l #-$10000 / dbra`), so each of those asks pool D for **TWO** records, not one. And **type `$11`'s death arm puts `$FFFF` BACK** at `$26888A` when `$815EA2` is already set, i.e. it DISARMS the sub-spawn on the second effect of a frame. [M] over 2,192 tapped frames that is **126 sub-spawns for 146 pool-D records**, against a 20-slot pool. The leak is real and its rate is not the one recon 50 computed. |
 | `$28925E..$28960F` is "434 bytes; I did not find the table that reaches it" (§10.3) | **It is not reached by a table. `$28915A bpl $28925E` and `$28915E bra $289292` branch to it directly**, out of `$289152 tst.w ($1e,A6)`. Recon 50 looked for a dispatch; the answer is a conditional branch two instructions earlier. |
 | pool D core is "474 B, 4 routines" | **[M] far larger** — §4. ~1,800 B of code and tables, an unpinned `$200920` window and seven unported callees. |
 | `$81C8EA` is "re-counted each frame, `addq.w #1` per live slot" | True, **and the `addq` is BELOW the spawn-delay skip** (`$288E64`/`$288E74`), so a record counting down its `($18,A6)` is live, holds a slot, and is NOT in the count. A census that trusts the count word alone under-reports the pool. §2 scans all 80 slots as well. |
@@ -98,7 +98,7 @@ script reloads its cursors every frame. Mutant M14.
 | `$288FF0` | 20 | the 5-entry emitter table, range-checked | `effects.js EMIT_STUB` |
 | `$289004..$289083` | 128 | THE ALLOCATOR, its eleven field inits, its range check and **its BIT BUCKET, counted** | `effects.js spawnEffect` |
 | `$289084..$289097` | 20 | pool D's clear | `effects.js clearSubEffectPool` |
-| ~25 death-arm sites | ~600 | the six-to-nine field writes each one makes into the record the allocator returned | `handlers.js`, `midboss.js` |
+| 27 death-arm sites | ~600 | the six-to-nine field writes each one makes into the record the allocator returned | `handlers.js`, `midboss.js` |
 | `$267FA0`, `$278320` | 60 | the two enemy-bucket → effect-bucket remap tables, as ROM windows | `export-tables.py` |
 | `$221520..$222617` | 4,344 | the two script tables and ALL 68 entries' data, as ONE ROM window | `export-tables.py` |
 
@@ -109,8 +109,9 @@ script reloads its cursors every frame. Mutant M14.
 
 `50-recon` §2.1's headline is right and it is the shape of this wave: **there is
 no shared spawner.** Every arm inlines `moveq #kind,D0 / jsr $289004` and then
-writes its own fields, so there are twenty-five separate transcriptions here and
-not one. Three GROUPS share instructions and are written once:
+writes its own fields, so there are twenty-five separate transcriptions here
+covering twenty-seven ROM sites, and not one. Three GROUPS share instructions
+and are written once:
 
 * **`effectArmNine`** — `$268958` (type `$11` hit, kind `$3`, the `$267FAC` HIT
   row), `$2682C0` (type `$10`'s first zero, `$3`, the same row) and `$2681DC`
@@ -166,6 +167,8 @@ a restatement**, and it is asserted on every frame rather than summarised.
 [M] BIT BUCKET $81C8B2 non-zero      0 frames       0 frames       0 frames
 [M] $289004 allocations               171            147             0
 [M]   ...distinct kind@site pairs      22             19             0
+[M]   ...distinct CALL SITES           18             15             0  (of 27)
+[M] pool-D sub-spawns REFUSED         126            117             0
 [M] POOL D live slots, MAX          0 of 20        0 of 20        0 of 20
 [M] bucket 0/1/2/3/7 records    31,708 / 1,152 / 4,926 / 15,195 / 3,457   (tap)
 [M] distinct effect streams           204            176             0
@@ -300,8 +303,11 @@ including the 4,200-frame control. Nothing fills it, so it cannot leak.
 
 **THE COST, NAMED RATHER THAN DISCOVERED LATER:**
 
-1. **the secondary debris every explosion would throw is MISSING.** [M] 55
-   refusals in the tapped run, 48 of them asking for one record and 7 for two.
+1. **the secondary debris every explosion would throw is MISSING.** [M] 126
+   refusals in the 2,192-frame tapped run — 106 asking for ONE pool-D record and
+   20 asking for TWO — so **146 pool-D records the board would have made, and
+   this port makes none.** Against a 20-slot pool with `$2890F2` unported, those
+   146 would have been 20 allocations and then 126 silent discards.
 2. **`$289658` makes SIX RNG DRAWS** off the shared `$803916`/`$803917` counters
    (`$242FDE`, `$242EC2` ×2, `$242CAC`, `$2431F4` ×2, `$242B3C`), and the port
    does not make them. That is the same class of defect W53 §0 FIXED for
@@ -564,23 +570,43 @@ fifth `PUBLISH_VERBATIM` entry afterwards. No gate stage reads that file, so the
 first run was almost certainly still valid — and "almost certainly" is what W47,
 W52 and W53 each threw a run away over.
 
+**AND THE COMMITTED TREE IS A FEW LINES AHEAD OF THE ONE THE SECOND RUN SAW,
+ALL OF THEM COMMENTS.** §8's nudge-escape correction went into
+`src/effects.js` and a stale `spr n/9` count into `index.html`'s comments after
+the run started; for both files `git diff -U0` filtered for lines that are not
+`//` is EMPTY, and unit tests (697/0/0), `webgate` (11 of 11) and `bundlegate`
+(100.0000 %) were all re-run on the final tree. That is stated rather than
+glossed, because "only a comment" is exactly the sentence a wave regrets.
+
 ---
 
 ## 8. COVERAGE — branches and table entries, never frames
 
-* **`$289004`'s call sites: 25 of 327 wired.** The other 302 are in handlers,
-  bosses and `$2440E0` that this port does not run; every one of them is behind
-  an existing loud named throw or an unported handler, not behind a quiet return.
+* **`$289004`'s call sites: 27 of 327 wired**, through 25 transcriptions — the
+  damage-first family's three (`$26A616`/`$26A882`/`$26AD4A`) are the same
+  instructions at three addresses and are written once, as `damageFirstHead`
+  already is. **[M] 18 of the 27 are REACHED** in the 2,192-frame tapped run,
+  over 22 distinct (kind, site) pairs — `$26B1E4` alone appears with five kinds
+  because it walks the `$26B214` list.
+  The other 300 are in handlers, bosses and `$2440E0` this port does not run;
+  every one is behind an existing loud named throw or an unported handler, not
+  behind a quiet return.
 * **the 34+34 script entries: 68 of 68 EXPORTED**, 23 of 23 scripts, 269 of 269
   streams. **[M] 204 of the 269 REACHED** in a 2,192-frame tapped run.
 * **the effect KINDS: 11 of 34 reached**, and 11 of 11 that the port's own
   ported arms can pass. The other 23 belong to arms this port does not run.
-* **`$288FF0`'s emitter table: 5 of 5 entries EXPORTED, 4 of 5 EXECUTED** —
-  [M] buckets 0, 2, 3 and 7 carry records in the tapped run and bucket 1
-  (selector 4) does too; **all five are exercised.**
+* **`$288FF0`'s emitter table: 5 of 5 entries EXPORTED AND ALL FIVE EXECUTED.**
+  [M] over the 2,192-frame tapped run the five buckets carry 31,708 / 1,152 /
+  4,926 / 15,195 / 3,457 records — selectors 0, 4, 8, `$C` and `$10` — so no
+  entry is transcribed-and-unexercised.
+* **`$288E20`'s two escape arms: BOTH exercised.** [M] the 23 distinct scripts
+  contain **31 SIZE escapes and 27 NUDGE escapes**, and nine of the eleven
+  reached kinds carry at least one nudge (`$3 $4 $5 $7 $9 $C $D $84 $85`; only
+  `$1` and `$2` have none). **I nearly shipped the opposite claim** — the arm
+  looked unexercised because no LIST OPENS with it, and it appears in the middle
+  of a list instead. Counted rather than assumed, which is the whole rule.
 * **transcribed and unexercised, named:** `$28900E`'s `blt` (provably
-  unreachable, §0.3, not merely unmeasured); `$288E3E`'s NUDGE escape (no entry
-  of the 68 opens with it — pinned by a hand-built fixture instead);
+  unreachable, §0.3, not merely unmeasured);
   `$288F3A`'s friction (no death arm writes `($22,A0)`); `$288FBC`'s laser
   interlock (the beam is a named skip in these runs); and `$288E0C` itself,
   whose five callers are `$2440E0` (E5c), `$25FD40`, `$27C73A`, `$28B5B4`
@@ -634,7 +660,7 @@ W52 and W53 each threw a run away over.
 - §0.4 [M]: `$288E7A bset #6,(A6)` is a BYTE op on the HIGH byte -- $8000 ->
   $C000. Read as a word bit it lands inside the KIND.
 - §1 [M]: pool B ported whole -- allocator, driver, walker, emitter table, both
-  clears -- and ~25 death arms wired, each from its own listing.
+  clears -- and 27 death-arm sites wired (25 transcriptions), each from its own listing.
 - §2 [M]: **THE CENSUS. 23 of 80 slots at the high-water mark over 2,192 tapped
   frames; an independent 80-slot scan reconciles with `$81C8EA` on 2,192 of
   2,192 frames through `scan == count - freed + delayed`; 0 bit-bucket returns;
@@ -677,3 +703,9 @@ W52 and W53 each threw a run away over.
 - §6.5 [M]: **`pgm.py check` ALL GREEN 49/0/0, 0 SKIPPED**, on a clean re-run;
   unit tests 666 -> 697; `webgate` 10 of 10 -> 11 of 11; `bundlegate`
   15955968/15955968 = 100.0000 %, UNMOVED; `build-dist` clean with 5 exceptions.
+- §8 [M]: **a coverage claim of mine was WRONG and was caught by counting it.**
+  I had `$288E3E`'s NUDGE escape down as transcribed-and-unexercised because no
+  script LIST OPENS with it; [M] the 23 scripts contain **27 of them**, in the
+  middle of their lists, and nine of the eleven reached kinds carry one.
+
+status: **DONE**
