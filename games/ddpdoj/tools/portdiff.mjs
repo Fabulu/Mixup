@@ -37,11 +37,20 @@ function readTsv(path) {
   });
 }
 
-export function run(tsvPath, seedPath, tablesPath, opts = {}) {
+/** Parse a trace once so a caller comparing many windows of it can hand the
+ *  same rows back.  WAVE 69: `seedcmp.mjs` runs up to 78 segments over ONE
+ *  19,500-row x 136-column trace, and re-reading it per segment made the sweep
+ *  quadratic -- it spent all its time in the parser and none in the port. */
+export function readTrace(tsvPath) {
   const rows = readTsv(tsvPath);
+  return { rows, byLf: new Map(rows.map((r) => [Number(r.lf), r])) };
+}
+
+export function run(tsvPath, seedPath, tablesPath, opts = {}) {
+  const parsed = opts.trace ?? readTrace(tsvPath);
+  const { rows, byLf } = parsed;
   const seed = new Uint8Array(readFileSync(seedPath));
-  const tables = JSON.parse(readFileSync(tablesPath, 'utf8'));
-  const byLf = new Map(rows.map((r) => [Number(r.lf), r]));
+  const tables = opts.tables ?? JSON.parse(readFileSync(tablesPath, 'utf8'));
   const seedLf = opts.seedLf ?? Number(rows[0].lf);
   const start = byLf.get(seedLf);
   if (!start) throw new Error(`the trace has no logic frame ${seedLf}`);

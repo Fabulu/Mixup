@@ -39,7 +39,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { run as portdiff } from './portdiff.mjs';
+import { run as portdiff, readTrace } from './portdiff.mjs';
 
 function args(argv) {
   const a = {
@@ -104,6 +104,13 @@ export function sweep(a) {
       + `${rungs.length}`);
   }
 
+  // ONCE, not once per segment.  A whole-stage trace is ~90 MB of TSV and 78
+  // segments; parsing it per segment made the sweep spend its entire runtime in
+  // the parser (MEASURED: >120 s and unfinished, against 12 s for the same work
+  // afterwards).  The tables JSON is half a megabyte and gets the same treatment.
+  const trace = readTrace(tsv);
+  const tablesJson = JSON.parse(fs.readFileSync(tables, 'utf8'));
+
   const results = [];
   for (let i = 0; i + 1 < rungs.length; i++) {
     const lo = rungs[i], hi = rungs[i + 1];
@@ -114,6 +121,8 @@ export function sweep(a) {
       untilLf: hi.lf,
       poke: man.poke || undefined,
       break: a.break ?? undefined,
+      trace,
+      tables: tablesJson,
     };
     // THE BG RING IS PART OF THE SEED, and `--no-bg` exists so that claim can
     // be FALSIFIED rather than asserted: drop it and watch whichever columns
