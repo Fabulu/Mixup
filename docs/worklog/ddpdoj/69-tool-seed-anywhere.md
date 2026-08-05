@@ -1,6 +1,16 @@
 # 69 — TOOL: CHECKPOINTS THROUGH STAGE 1, AND SEEDING THE PORT FROM ANY OF THEM
 
-status: **IN PROGRESS**
+status: **DONE** -- a comparison can now start at any rung of a 250-frame ladder
+spanning the whole of stage 1, built from ONE 13-minute cartridge run and
+consumed with no emulator (10.3 s for 71 segments). Reproduced wave 4's
+`fly-around` result through the new path to the byte and to the digest. Deep:
+**0 SEEDBAD at 72 board states from lf2,000 to lf19,500**, the port's reach ends
+at **lf8,250**, seven distinct unported boss addresses enumerated, and the first
+non-shot field to move at depth is `irq6` at **lf8,227** — the board's slowdown.
+Found: four corpus scenarios hold a button the port cannot process; `$296DD6`
+is documented "unreachable" and is not; `stage1-shot`'s window disagrees with
+its own description by 731 frames; and **my own red check could not fail and was
+caught doing it**. Gate unweakened (`flyaround` 0 divergent, 934 unit tests).
 
 started: 2026-08-05
 role: TOOLING (scope: `games/ddpdoj/tools/` and the oracle harness ONLY;
@@ -475,4 +485,94 @@ clamp order can show (wave 4 measured that). A 250-frame segment is the right
 size for attribution and the wrong size for that particular mutation; both facts
 are now printed rather than one of them being assumed.
 
-(Findings below are appended as they arrive.)
+---
+
+## 10. THE CONTROL: WHERE A SCRIPTED PLAYER ACTUALLY GETS TO
+
+`stage1-sweep-natural` — the same tap script, **no poke**, 8,000 frames.
+
+```
+[M] objlive == 0 (the whole 20-slot object table gone) at lf3,722 and lf3,926
+[M] from lf3,800 to lf8,000 the run sits at objlive 1, sprites 32
+    (the poked twin holds objlive 8 and 55-132 sprites over the same frames)
+[M] BUILD required=B frames_on_required=7301 -- the machine is fine; the GAME
+    is over
+```
+
+**A scripted player on this input reaches lf3,722 of 19,217 — 19.4 % of stage 1
+— and then plays no more of it.** Everything past that in this project, in this
+wave and in every wave before it, is reachable only by intervention. That is the
+label the coverage table needed and it is now a measured frame number instead of
+an impression.
+
+It also puts the owner's report in its place: the degradation begins at
+~lf3,800-4,200, which is *just past where an unaided scripted run dies* and
+*just past where the entire measured corpus ends*.
+
+---
+
+## 11. COVERAGE, AFTER THIS WAVE
+
+Full 94-column state-vector comparison against the cartridge, per segment of
+stage 1 (`stage1-play` ladder, 250-frame rungs):
+
+| range | segments | verdict | note |
+|---|---|---|---|
+| lf2,000..4,447 | 10 | **RED** | shot records diverge from the first tap (lf2016); `HITEX` fires, so wave 8's rule says the shot columns here are not evidence |
+| lf4,447..4,500 | 1 | **GREEN** | the only green segment; it is `stage1-shot`'s own seed frame, found independently |
+| lf4,500..8,250 | 14 | **RED** | 13 with divergent columns; `vf`/`irq6` join at **lf8,227** — the board's slowdown, which the port's budget cannot predict |
+| lf8,250..19,500 | 45 | **BLOCKED** | the boss. 7 distinct unported addresses |
+| lf19,500..19,600 | — | **NEVER COMPARED** | past the last rung |
+| stages 2-5 | — | **NEVER COMPARED, NEVER TRACED** | |
+
+Before this wave the same table read: lf2,001..4,200 compared, everything else
+never. **6,250 logic frames of stage 1 are now compared against the board where
+2,325 were before**, and the 45 blocked segments are a *measured* statement
+about where the port stops rather than an absence of data.
+
+What is still true and must not be rounded off:
+* `midbossgate`, `w61itemgate`, `w62stageendgate`, `w63hudgate`, `w64bombgate`,
+  `w65beamgate` and the 6,185-frame figure remain **port-vs-listing**. They seed
+  at lf2000 from a 161-frame capture and run the port alone. This wave did not
+  change that; it measured it.
+* Every deep number here comes from an **invulnerable** run. States, not a
+  picture of the game.
+
+---
+
+## 12. WHAT DID NOT CHANGE
+
+* `games/ddpdoj/src/` — **not written to.** T1 owns it this wave.
+* `games/gradius/` — read only (`09-DECIDED-seed-anywhere.md`,
+  `10-impl-seed-anywhere.md`, `stagepoke.py`, `stagecmp.mjs`).
+* `docs/worklog/ddpdoj/68-*` — not touched.
+* The wave-4 gate: `pgm.py flyaround --reuse` still prints
+  **`RESULT 0 DIVERGENT FRAMES on 88 columns over 2200 logic frames`**. (88, not
+  94: the wave-4 trace requests fewer columns than the wave-69 ladder does. Both
+  numbers are real and neither is the other.)
+* `node --test games/ddpdoj/tests/` — **934 pass, 0 fail, 0 skipped.**
+* Nothing ROM-derived is committed: every ladder is under
+  `games/ddpdoj/tools/oracle/out/`, which `git check-ignore` was asked about
+  before the first run.
+
+---
+
+## 13. HOW TO USE IT
+
+```
+# ONCE per scenario, ~13-20 minutes of MAME:
+python games/ddpdoj/tools/oracle/pgm.py ckpt stage1-play --verify
+
+# then, as often as you like, with NO emulator (~10 s for a whole stage):
+node games/ddpdoj/tools/seedcmp.mjs --manifest <out>/w69/stage1-play/manifest.json
+node games/ddpdoj/tools/seedcmp.mjs --manifest ... --segment 8000     # one rung
+node games/ddpdoj/tools/seedcmp.mjs --manifest ... --from 8000 --to 9000
+node games/ddpdoj/tools/seedcmp.mjs --manifest ... --break clamp-first
+node games/ddpdoj/tools/seedcmp.mjs --manifest ... --no-bg            # falsify the BG seed
+```
+
+`pgm.py check` runs the sweep over every ladder on disk and **skips, counted,
+with the command to fix it**, when there are none. Gradius's poke harness went
+unused for three waves because it was named after one stage; nothing here names
+a stage — `ckpt` takes any scenario, `seedcmp` takes any manifest, and the
+cadence is a flag.
