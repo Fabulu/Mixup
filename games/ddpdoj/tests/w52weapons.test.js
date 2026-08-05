@@ -262,9 +262,14 @@ test('the two weapon shards are DEFERRED and fetched FIRST among the deferred', 
     'shard 0 stays the ONLY boot shard, so capture.bin and bundlegate cannot move');
   // W53 inserted shard 8, THE IMPACT SPARK, fourth: its deadline is the first
   // frame a shot CONNECTS, which is behind both weapons and ahead of shard 1.
-  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 8, 1, 2, 3, 4, 5\]\)/.test(s),
-    'the bullets (+0.7 s), the shots (the first fire frame) and then the impact '
-    + 'spark come before shard 1 (+7.7 s): index order is NOT need order any more');
+  // W54 inserted shard 9, THE DEATH EXPLOSION, fourth -- ahead of the spark
+  // even though it is 218.4 KiB against 0.8, because [M] the first frame an
+  // enemy DIES is the same frame the first shot connects (24 in webgate's own
+  // tapped window) and `demand()` promotes whichever the simulation reaches.
+  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 9, 8, 1, 2, 3, 4, 5\]\)/.test(s),
+    'the bullets (+0.7 s), the shots (the first fire frame), the death '
+    + 'explosion and the impact spark all come before shard 1 (+7.7 s): index '
+    + 'order is NOT need order any more');
   assert.ok(/order: SPR_ORDER\.indexOf\(i\)/.test(s),
     'and the order is PUBLISHED in the manifest rather than assumed by the queue');
 });

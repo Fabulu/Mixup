@@ -448,6 +448,33 @@ test("type $11's death is TWO STAGES: reload+score first, kill second", () => {
   try { h(b.ram, rom, b.rec, { tables: null, unported: cb.unportedLog, rom }); }
   catch (e) { if (e.name !== 'Unreached') throw e; }
   assert.equal(b.ram.u16(b.rec), 0, '$2688C6 jmp $263762 -- freed this time');
+  // W54: and the death arm now SPAWNS.  Kind $7, the HIT effect having already
+  // put a kind $3 in the first slot on trip one -- so this window is the two
+  // kinds side by side, out of two different `moveq`s.
+  assert.equal(b.ram.u16(0x81b732) & 0xff, 0x07,
+    "$26884C moveq #$7,D0 -- type $11's DEATH kind");
+  assert.equal(a.ram.u16(0x81b732) & 0xff, 0x03,
+    "$268952 moveq #$3,D0 -- and its HIT kind, on the FIRST trip to zero");
+});
+
+test("$268882 DISARMS type $11's pool-D sub-spawn when $815EA2 is already set",
+  () => {
+  const rom = ledgerRom();
+  const h = handlerMap().get(0x2688cc);
+  const run = (ea2) => {
+    const f = handlerFixture({ hp: 0xff00, deathFlag: 0x80 });
+    f.ram.setU16(0x815ea2, ea2);
+    const c = ctx();
+    try { h(f.ram, rom, f.rec, { tables: null, unported: c.unportedLog, rom }); }
+    catch (e) { if (e.name !== 'Unreached') throw e; }
+    return f.ram;
+  };
+  assert.equal(run(0).u16(0x81b732 + 0x12), 0x0000,
+    '$26887C move.w #$0,($12,A0) -- ARMED when this is the frame\'s first effect');
+  assert.equal(run(1).u16(0x81b732 + 0x12), 0xffff,
+    '$26888A move.w #$FFFF,($12,A0) -- DISARMED when $815EA2 is already set');
+  assert.equal(run(0).u16(0x815ea2), 1, '$268890 move.w #$1,$815EA2');
+  assert.equal(run(0).u16(0x815ea4), 1, '$268898 addq.w #1,$815EA4');
 });
 
 test("type $82's $274822 clamp writes min(HP, ($38,A6)) to BOTH", () => {

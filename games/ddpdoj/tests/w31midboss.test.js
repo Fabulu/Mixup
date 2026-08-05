@@ -513,6 +513,18 @@ test('$26B184 walks the $26B214 list to its $FFFF and counts every allocation',
     want, "each list record carries the table's own ($18,A0) delay and D0 kind");
   assert.ok(listRecs.every((a) => ram.u16(a + 0x14) === 0x0800),
     '$26B20A move.w #$800,($14,A0) on every one');
+  // $26B1A0 `move.l ($2,A4),($2,A0)` takes THE ARM's position (A4), while
+  // $26B1F2 takes THE BODY's (A6).  The eight arms in this fixture sit at
+  // ($20,A6) + n*$40 and carry their own coordinates, so a port that used the
+  // body for both would put all eight explosions on top of each other.
+  // The fixture put the BODY at $40002000 and left the arms at 0 at the moment
+  // the burst runs, so the two sources are distinguishable -- which is the only
+  // reason this assertion can fail at all.
+  assert.equal(ram.u32(SUB + S.posX) >>> 0, 0x40002000, 'the body');
+  assert.ok(live.slice(0, 8).every((a) => ram.u32(a + 0x02) >>> 0 === 0),
+    '$26B1A0 move.l ($2,A4),($2,A0) -- the per-arm effects take THE ARM (A4)');
+  assert.ok(listRecs.every((a) => ram.u32(a + 0x02) >>> 0 === 0x40002000),
+    '$26B1F2 move.l ($2,A6),($2,A0) -- while the LIST records take THE BODY');
   assert.ok([...log.calls.keys()].some((k) => k.startsWith('$246410 ')),
     'the ANIMATION-OBJECT install is counted BY ITS OWN ADDRESS');
 });

@@ -1251,6 +1251,18 @@ def check_pool_b_extents(d: bytes) -> None:
             f"the {2 * N} effect entries resolve to {len(scripts)} distinct "
             f"scripts over {len(streams)} distinct streams; W54 measured 23 and "
             f"269 (reproducing 50-recon-effects 5.1 exactly).")
+    # AND THE DECLARED WINDOW MUST COVER EXACTLY THAT.  Without this the walk
+    # above proves where the data ends and the SHOT_WINDOWS line beside it can
+    # still claim any length it likes -- and a SHORT window does not throw at
+    # the export, it throws on the player's machine, on whichever frame first
+    # reaches the last script.  Both numbers come out of variables here.
+    declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == TA]
+    if len(declared) != 1 or declared[0][1] != WIN_END - TA:
+        raise SystemExit(
+            f"SHOT_WINDOWS declares {declared} for ${TA:06X}; walking all "
+            f"{2 * N} script entries says it must be ${WIN_END - TA:04X} bytes "
+            f"(${TA:06X}..${WIN_END - 1:06X}). A SHORT window is not caught at "
+            f"the export -- it is caught by src/rom.js on a player's machine.")
     if d[0x267FC4:0x267FC6] != b"\x4e\x75":
         raise SystemExit(
             f"$267FA0's three 6-word remap rows should end at $267FC4 with "
