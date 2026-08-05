@@ -299,9 +299,21 @@ seconds. A screenshot can show a picture; only the RAM shows the stage.
 **280 seconds of continuous play, no throw, no page error, until the frame the
 new background object asks for stage 2's map.** Every number matches the
 headless gate to the digit, including the stopping frame (lf19218). `rank`,
-`rankPower` and the hyper stock read 53/0/0 on EVERY sample of the run.
+`rankPower` and the hyper stock read 53/0/0 on EVERY one of the 57 samples.
+
+What is NOT there, and a reader should hear it from me rather than notice it:
+**no stage-clear banner, no result screen, no tally.** With the presentation
+tier unported the transition is the ship being flung away by `$24A420`'s
+constant velocity pair, a beat, and then stage 2's throw. The stage END is
+real; the stage-end SCREEN is a wave that has not happened.
 
 Screenshots: `.scratch/w62local-0boot.png`, `.scratch/w62local-STOP.png`.
+
+**RE-RUN ON THE SETTLED TREE** (after the `$242976` fix of §11.1b, and after the
+mutation harness had finished touching `src/`): identical, to the digit —
+`+270s lf18770 $8130F8=$C000`, `+280s lf19218 clk 0 stage 1 x4 4 $813144=$B
+$812E06=1`, then the same `$228658`. W58 §6's rule applies to browser runs as
+much as to gates, and this is the run that is quoted.
 
 ## 8. WHAT "VERIFIED" HAS A SHELF LIFE MEANT HERE
 
@@ -367,9 +379,17 @@ mutation harness is running.
 
 `.scratch/mutate62.mjs`: apply ONE edit with a single-occurrence anchor, run ONE
 check, require a NAMED test (or a named gate assertion) RED, restore, **verify
-sha256 byte-identical**. `games/ddpdoj/.scratch/` is gitignored (W60's precedent
-for a harness that edits `src/`), so the RESULTS are here and the machinery is
-not.
+sha256 byte-identical**. `games/ddpdoj/.scratch/` is UNCOMMITTED, so the RESULTS
+are here and the machinery is not — a later reader has to rebuild it.
+
+**AND A CORRECTION TO W60/W61's WORDING, because it matters to anyone who
+believes it: `games/ddpdoj/.scratch/` IS NOT GITIGNORED.** [M] `git check-ignore
+-v games/ddpdoj/.scratch/mutate62.mjs` matches nothing, `.gitignore` has no
+`scratch` entry (only `assets/`, `rip/`, `disasm/`, `**/tests/visual/golden/`)
+and `.git/info/exclude` holds only `.claude/` paths. It shows up as `??` in
+every `git status` and it has stayed out of the repository purely because five
+waves in a row stated files BY NAME. That is a convention, not a guard, and the
+wave that runs `git add -A` will commit a mutation harness.
 
 ### 11.1 ONE OF MY OWN TESTS COULD NOT FAIL — IT HUNG INSTEAD
 
@@ -474,6 +494,12 @@ does not move at all. This is the cheapest wave for boot since W47.
   stage-2 throw. The picture is compared against nothing.
 * **`$28E7F8`'s banner** (299 instructions), whose `$28EAD4 clr.w $81DFF6` is
   the only writer that could let object type 6 leave state 4. §2.
+* **Whether `$242952`'s `bset #$5` on the two player records has a CONSUMER
+  this port can see.** §11.1b fixed the instruction; nothing in the gate or the
+  browser run moved as a result, so what bit 5 of `$8103E6` is FOR is
+  transcribed and unmeasured. (It is not `$249512 bclr #5`, which is the same
+  bit on the same byte and runs every frame of a NON-frozen player — so on the
+  stage-clear path, where `$249508` diverts before it, the bit survives.)
 * **`$81DFFC..$81E023`**, the five per-stage byte lists `$28ECB2` indexes by
   `$813096`. They are RAM, they are ZERO in the shipped seed, and **I did not
   find their writer** — so `$28ECCE` picks art entry [0] every time and whether
@@ -495,3 +521,54 @@ started before the tree settled is not evidence about the tree.** The first
 `pgm.py check` of this session ran while `.scratch/mutate62.mjs` was editing
 `src/`; the second ran while I was still reading `$242970`. Both were killed and
 neither is quoted. The run below is the third, on a tree nothing was editing.
+
+## 16. ONE PARAGRAPH
+
+**Stage 1 ends.** The boss arrives at logic frame 7,870 — where the port has
+stopped since W57 — and does nothing for 10,800 frames, because that is what
+`$22(a5) = $2A30` from his own record prototype buys him. At lf18,669
+`$294F3C` spends the last one, `$294DD4` kills him, and 474 frames of death
+animation later `$293E16 jsr $2595E8` sets `$812E06`. On the next frame
+`$25962E` returns carry set for the first time in the port's life, `$292922 jsr
+$242952` runs exactly once, and object type 6 — the machine all five stages
+advance through — destroys the background object, writes `$813092 := 1` and
+builds a new background with entry clock zero. **Logic frame 19,217, and you
+can watch it happen in Chrome.** What it does not do is end *correctly*: the
+result screen is 819 instructions this wave did not port, two of type 6's state
+exits are declared deviations standing in for it, a third is left broken on
+purpose, and the boss is still a thing that cannot be shot.
+
+```
+python games/ddpdoj/tools/oracle/pgm.py check
+VERDICT: ALL GREEN -- 53 passed, 0 failed, 0 SKIPPED
+  [PASS] STAGE 1 ENDS: the boss timeout, $242952, and the rebuild
+  [PASS] STAGE 1 ENDS RED [no-timeout] -- went red without the timeout, as it must
+```
+
+**51 -> 53 stages, and the two new ones are this wave's scenario and its RED.**
+Nothing was disabled, skipped, narrowed or loosened, and every stage line was
+read rather than only the verdict. The ones this wave could plausibly have
+broken, all green:
+
+- **`fly-around: port vs board, 0 divergent frames` and its 5 REDs** — the only
+  port-vs-board window this project has. Nothing fires in it, so the boss is
+  never reached and none of W62's code runs; its green says this wave changed
+  nothing on the no-input path.
+- `display list: the staged-bytes replay gate (1,901 frames)` and its 12 REDs.
+- `midboss DEATH` and its `RED [no-kill]` — W57's, untouched.
+- `assets/integrity` and its four REDs, including `[rom-byte]`, THE ROM-LEAK
+  GUARD: five new ROM windows went through it.
+- `background shard gate` — the stage that FRESH-EXPORTS, i.e. the one an
+  exporter change has to survive.
+- `pixel gate` (100.0000 %) and its 9 REDs; `demo gate` and its 4.
+
+Also green on the final tree, and not part of `pgm.py check`:
+
+```
+node --test games/ddpdoj/tests/     808 pass, 0 fail, 0 SKIPPED   (was 767)
+node games/ddpdoj/tools/webgate.mjs 14 of 14 PASS                 (unmoved)
+node tools/build-dist.mjs           clean, 5 deliberate exception(s)  <- UNMOVED
+```
+
+**`PUBLISH_VERBATIM` DID NOT GROW**: this wave ships no new asset body at all,
+only 384 bytes of ROM windows inside `player.tables.json.gz`.
