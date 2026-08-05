@@ -793,7 +793,10 @@ function beamSegments2561AA(ram, rom, ctx, a5) {
       fillSegment(ram, rom, a6, pos, rom.u32(animSrc),
         phase2 ? null : ptr);                          // $25629A skips +$18
       seeded = true;                                   // $25620A moveq #$1,D6
-      drawn++; continue;                               // $25620C bra -> $23FF42
+      // $25620C bra.b $25624C -- INTO the draw, not past it.  W66: W65 counted
+      // this branch and never emitted the record; see the block comment below.
+      draw23FF06(ram, ctx, a6);                        // $25624C jsr $23FF42
+      drawn++; continue;
     }
     if (!phase2) {                                     // $25620E movea.l ($18,A6)
       ram.setU32(a6 + 0x0a, rom.u32(ram.u32(a6 + 0x18) + i16(d4)));  // $256212
@@ -806,7 +809,22 @@ function beamSegments2561AA(ram, rom, ctx, a5) {
     d0 = u16(d0 + 0x200);                              // $25623E addi.w #$200
     ram.setU32(a6 + 0x02, (((d0 << 16) >>> 0)
       + ram.u16(a5 + P.posX)) >>> 0);                  // $256244/$256248
-    drawn++;                                           // $25624C jsr $23FF42
+    // ---------------------------------------------------------------- WAVE 66
+    // **THE FORTY-ONE SEGMENTS NEVER EMITTED A RECORD.**  Both arms of this
+    // loop end on a `jsr $23FF42` -- `$25624C` for the deref arm and `$2562EA`
+    // for the no-deref one, with `$25620C bra.b $25624C` taking the freshly
+    // seeded segment INTO the same call -- and W65 transcribed all three as a
+    // bare `drawn++`.  The state was right (`[M]` W65 measured 31 of 45 records
+    // live on the deployed page); there was simply no display-list record for
+    // any segment, so the beam was four heads and nothing between them.
+    //
+    // NO GATE IN THIS REPO COULD HAVE SEEN IT BEFORE W66: bucket 13 had no
+    // sprite shard, so every record it emitted was skipped anyway and a
+    // MISSING record and a SKIPPED record look identical on the screen.  It
+    // was found by opening the page with the art shipped -- `47-impl` §2.3 and
+    // W58 §5.2 for the third and fourth time.
+    draw23FF06(ram, ctx, a6);                          // $25624C jsr $23FF42
+    drawn++;
   }
   ctx.bombEvent?.('beam-seg', `${drawn}/${killed}`);
   return { drawn, killed, seeded };

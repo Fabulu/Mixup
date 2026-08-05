@@ -963,3 +963,73 @@ test('$256224: with $812954 SET the cull is $812952 AND STILL $7800', () => {
   assert.equal(mk(0x5000, 0x5100), false, '$5200 fails $25622C cmp/bhi');
   assert.equal(mk(0x5000, 0x5300), true, '...and $5200 under it survives');
 });
+
+// ===========================================================================
+// WAVE 66 -- **THE FORTY-ONE SEGMENTS NEVER EMITTED A RECORD**
+// ===========================================================================
+// W65 transcribed `$25624C jsr $23FF42`, `$2562EA jsr $23FF42` and
+// `$25620C bra.b $25624C` as a bare counter and never appended anything to
+// bucket 13.  Nothing in this file, in `tools/w65beamgate.mjs` or in
+// `pgm.py check` could see it: bucket 13 had no sprite shard until W66, so
+// every record it DID emit was skipped for want of a picture and a MISSING
+// record looked exactly like a SKIPPED one.  It was found by opening the page
+// with the art shipped.
+//
+// The row below is about the RECORD, not about the count: it reads bucket 13's
+// own counter `$80AFEC` and the twelve bytes at `$80A8DC`, so a port that
+// bumps `drawn` without emitting fails it, and so does one that emits the
+// wrong record.
+test('W66: $25624C jsr $23FF42 -- EACH LIVE SEGMENT APPENDS A BUCKET-13 RECORD',
+  () => {
+    const ram = new Ram();
+    ram.setU16(BOMBRAM.rec, 0x8001);
+    ram.setU16(RAM.player1 + P.posY, 0x2000);
+    ram.setU16(RAM.player1 + P.posX, 0x1800);
+    const rom = beamRom();
+    const draws = [];
+    const c = ctx({ bombEvent: (k, v) => { if (k === 'draw') draws.push(v); } });
+    const live = () => {
+      let n = 0;
+      for (let k = 1; k <= BEAM_REC.segs; k++) {
+        if (ram.u16(BOMBRAM.rec + k * BOMBRAM.stride) & 0x8000) n++;
+      }
+      return n;
+    };
+    // Three driver frames: one segment is seeded per frame, so the SEGMENT
+    // records go 1, 2, 3 and the four heads are constant. The counter is the
+    // claim -- `$23FF12 addi.w #$C` -- not the event.
+    // [M] the heads: `$256130`/`$25614A`/`$25615A` draw unconditionally and
+    // `$256140` is behind `$25613A btst #$1,($7E0,A6)`, so this fixture's
+    // three frames all carry the same number.
+    const HEADS = 3;
+    let prevSegs = 0, prevRecords = 0;
+    for (let f = 1; f <= 3; f++) {
+      ram.setU16(BOMBRAM.bucket13Counter, 0);
+      draws.length = 0;
+      bombDriver255DD8(ram, rom, c);
+      const records = ram.u16(BOMBRAM.bucket13Counter) / 0x0c;
+      assert.equal(records, draws.length,
+        `frame ${f}: $80AFEC counts ${records} records and $23FF36 wrote `
+        + `${draws.length} -- the counter and the writes must agree`);
+      assert.equal(live(), f, `frame ${f}: one segment seeded per frame`);
+      // THE EXACT NUMBER, not an inequality: [M] the four heads emit HEADS
+      // records a frame and every live segment emits exactly one more, so a
+      // port that keeps W65's bare `drawn++` reports HEADS on all three frames
+      // and this row goes red on frame 1.
+      assert.equal(records, HEADS + live(),
+        `frame ${f}: ${live()} segments are live, so bucket 13 must hold `
+        + `${HEADS} head records + ${live()} segment records = `
+        + `${HEADS + live()}, and it holds ${records}. W65 counted the three `
+        + '`jsr $23FF42` sites and emitted none of them');
+      prevSegs = live(); prevRecords = records;
+    }
+    void prevSegs;
+    // And the record's own bytes: `$23FF36 move.l D0,(A0)+` writes the packed
+    // position with BOTH live bits set, which is what makes it a real
+    // display-list entry rather than a zeroed slot.
+    const a0 = BOMBRAM.bucket13;
+    assert.equal((ram.u32(a0) & 0x80008000) >>> 0, 0x80008000,
+      '$23FF30 ori.l #$80008000 -- the two live bits');
+    assert.notEqual(ram.u32(a0 + 4), 0,
+      '$23FF38 -- the anim long, i.e. the segment\'s PICTURE');
+  });

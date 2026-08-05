@@ -946,7 +946,7 @@ try {
         tap: { records: 346, distinct: 18, first: 201,
           what: 'THE BOMB ($255E3E\'s three phase scripts $256558/$2565DE/'
             + '$25663A, bucket 13) with fire TAPPED' },
-        hold: { records: 4480, distinct: 75, first: 201,
+        hold: { records: 5906, distinct: 136, first: 201,
           what: 'THE LASER BOMB ($255FE2\'s four heads and 41 segments out of '
             + '$256662..$256986, + pool E, the bit-7 aura and type $8A) with '
             + 'fire HELD' },
