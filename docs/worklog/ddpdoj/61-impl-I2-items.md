@@ -438,11 +438,53 @@ the bigger ships drop something, it falls, it is drawn, the ship walks into it,
 and the ship gets stronger.** Six screenshots of the item on screen are in
 `.scratch/w61local-item0..5.png`.
 
-### DEPLOYED, `https://gbtman.pages.dev/games/ddpdoj/` — THE CONTROL
+**AND WHAT THE ITEM LOOKS LIKE, because a number is not a picture:** [M] it is
+a **red-and-white capsule with a large orange `P` on it**, about the size of the
+ship, drifting down the road. On `w61live-item1.png` it is at the left of the
+playfield beside the beam with six tanks coming up the road; on
+`w61live-item4.png` it is at the bottom right with one of the owner's "bigger
+ships" — a large grey twin-engined jet — filling the top of the screen and blue
+star-bits on the road between them. **That is the DoDonPachi power-up, and it is
+the thing the owner said was not there.**
 
-The same script against the build that was live before this wave (`spr 12/12`,
-no shard 12): `FIRST LIVE ITEM: None`, and it stops at the same `$292902` at
-+95.1 s.
+### DEPLOYED, `https://gbtman.pages.dev/games/ddpdoj/` — TWICE, AND BOTH MATTER
+
+**FIRST, AS THE CONTROL**, before publishing: the same script against the build
+that was live before this wave (`spr 12/12`, no shard 12) gives
+`FIRST LIVE ITEM: None` and stops at the same `$292902` at +95.1 s.
+
+**THEN, AFTER PUBLISHING** (`node tools/publish.mjs --only ddpdoj`, build
+`20260805074840`, `spr 13/13`):
+
+```
+[M] +1.9 s  lf 2676  ITEM {items: 1, shot: 0, laser: 0, cur $25523C, pod $255278}
+[M] +20.0 s lf 3751  ITEM {items: 0, shot: 2, laser: 2, cur $25523E, pod $25527A}
+[M] +46.1 s lf 5292  a SECOND item drops
+[M] +59.0 s lf 6057  ITEM {items: 0, shot: 4, laser: 4, cur $255240, pod $25527C}
+[M] +95.2 s lf 8185  STOPS at `$292902`, the same wall
+```
+
+**The deployed build reaches the same power level, through the same two
+cursors, as the local one. This is not an E3-class local/deployed gap.**
+
+### AND THE FIRST DEPLOYED RUN WAS A HALF-PROPAGATED EDGE — worth recording
+
+[M] the run I made **immediately after `publish.mjs` printed "PUBLISHED and
+confirmed: build 20260805074840"** came back `spr 12/12`, with no
+`window.__mixup` and with stack traces at `type5.js:234`/`main.js:351` — the
+PRE-W61 line numbers. Fetched directly at the same moment, the edge was serving
+the NEW `manifest.json` (13 shards, shard 12 = 139 streams) and the NEW
+`src/items.js`, but the OLD `index.html` and `src/type5.js` on the node the
+browser hit. `publish.mjs`'s own poll log shows it: polls 6 and 9 read the OLD
+build id between polls that read the new one.
+
+**So the build-id poll confirms that ONE file has propagated, not that the
+bundle has.** HANDOVER §6 already says Cloudflare deploys are not atomic and
+that a single check has twice confirmed a stale edge; what this adds is that
+**three consecutive good polls of the build id can still coexist with a stale
+`index.html` on another node**, and the symptom is a browser run that looks
+exactly like a regression. Re-run a minute later and it is fine — but a wave
+that took the first run as its result would have reported the wave broken.
 
 **AND THE CONTROL EARNED ITS KEEP.** The local run's status line names missing
 art on most samples — `NO ART 1: $002380`, `$00208C`, `$0650E4`, `$17D480`,
@@ -741,3 +783,17 @@ not evidence about the tree, so it was re-run from a clean tree and **the
   slice, checked independently against all three sprite ROMs. **The gate was
   run TWICE and the second run is the one quoted** (W58 §6's rule: a gate
   started before the tree settled is not evidence about the tree).
+- §6b [M]: **PUBLISHED and VERIFIED ON THE LIVE URL** -- build `20260805074840`,
+  `spr 13/13`, an item LIVE at +1.9 s and the power at 4/4 by +59 s, the same
+  as local. **And the FIRST deployed run, taken seconds after publish.mjs
+  confirmed the build id on three consecutive polls, was a HALF-PROPAGATED
+  EDGE** -- new `manifest.json` and new `src/items.js` beside an OLD
+  `index.html` and `src/type5.js`. The build-id poll confirms one file, not the
+  bundle. A wave that took that run as its result would have reported itself
+  broken.
+- §6 [M]: **BOOT 477.7 -> 480.7 KiB, +3,017 B**, every byte named by
+  re-exporting with the pre-W61 exporters: manifest +1,568 (the one
+  uncompressed body), `player.tables.json.gz` +1,396 (nine ROM windows, which
+  CANNOT be deferred), the stream table +53.
+
+status: **DONE**
