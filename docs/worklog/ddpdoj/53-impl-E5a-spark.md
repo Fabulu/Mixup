@@ -1,6 +1,6 @@
 # 53 — IMPL E5a: THE SHOT SPARK (pool E, `$289F54` + `$28A098`)
 
-status: **IN PROGRESS**
+status: **DONE**
 
 started: 2026-08-05
 role: IMPLEMENTER. SOLE writer to `games/ddpdoj/`. `games/gradius/` NOT TOUCHED.
@@ -428,6 +428,56 @@ and whether this spark looks like the board's spark is unmeasured.
 
 ---
 
+## 6.1 THE GATE, ON THE FINAL TREE
+
+```
+python games/ddpdoj/tools/oracle/pgm.py check
+VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED
+```
+
+Unchanged from W32..W52's 49/0/0. **Nothing was disabled, skipped, narrowed or
+loosened**, and every stage line was read rather than only the verdict. The ones
+this wave could plausibly have broken, all green:
+
+- `display list: the staged-bytes replay gate (1,901 frames)` and its 12 REDs --
+  the port's own `$800000` build, still byte-exact against the board. **Bucket
+  20 is not in `PRODUCED_BUCKETS`**, so the spark's writes do not enter it;
+- `bullet mover: per-frame pool drive vs the board` and its 3 REDs. It passes no
+  `spriteOut` and compares alive/kind/speed/dir/posA/posB, so it cannot see this
+  wave -- **but it CAN see the shared draw counter**, and it is green, which is
+  the evidence that `$289F62`'s bump does not move a bullet's own state;
+- `fly-around: port vs board, 0 divergent frames` and its 5 REDs -- the only
+  2,200-frame port-vs-board window this project has. It never fires, so no shot
+  can connect and no spark can spawn; its green says this wave changed nothing
+  on the no-input path, which is what `$253C10 tst.w $81308C / beq` predicts;
+- `assets/integrity` and its four REDs, **including `[rom-byte]`, the ROM-leak
+  guard** -- two new shard files went through it;
+- `background shard gate: published tiles past px 160 (+ RED)` -- the stage that
+  fresh-exports, i.e. the one the exporter change had to survive;
+- `pixel gate` (100.0000 %) and its 9 REDs; `demo gate` and its 4.
+
+Also green on the final tree, and not part of `pgm.py check`:
+
+```
+node --test games/ddpdoj/tests/     666 pass, 0 fail, 0 SKIPPED   (was 635)
+node games/ddpdoj/tools/webgate.mjs 10 of 10 PASS                 (was 9 of 9)
+node games/ddpdoj/tools/bundlegate.mjs
+                                    15955968/15955968 = 100.0000%  <- UNMOVED
+node tools/build-dist.mjs           clean, 4 deliberate exception(s)
+BUNDLE                              472.0 KiB before the first frame (was 473.2)
+```
+
+**`PUBLISH_VERBATIM` is still W47's four entries and this wave added none.**
+Shard 8's colour body is 652 B and does not appear verbatim in the colour ROM,
+which is luck about packing rather than virtue and is stated as such.
+
+**A FIRST GATE RUN WAS THROWN AWAY, for W47's and W52's reason.** It came back
+ALL GREEN, but it had been started before this wave's last two source edits.
+The 49/0/0 above is a clean re-run on the tree that is committed, with nothing
+else touching `assets/`.
+
+---
+
 ## 7. WHAT THIS WAVE DID NOT DO
 
 - **Nothing is compared against MAME.** §5.3.
@@ -476,3 +526,32 @@ and whether this spark looks like the board's spark is unmeasured.
 - §3 [M]: **BOOT 473.2 -> 472.0 KiB. It went DOWN while 36 streams and two ROM
   windows were added**, because the manifest lost 2.5 KiB of indentation. And
   base64 for the ROM windows was measured and REJECTED: 14.4 KB bigger gzipped.
+- §4.1 [M]: 38 mutants, **37 turned a NAMED test red**, every restore
+  byte-identical by sha256. **FOUR of my own checks could not fail when written**
+  and the mutation cycle caught all four -- three of them because the RNG
+  fixture was FLAT, which cannot see a mask. One survivor, `$28A180`'s 32-bit
+  `asr.l`, **provably uncatchable**: the `$07FF03FF` mask removes exactly the
+  bits two 16-bit shifts would differ in (3,000,000 random longs plus an
+  exhaustive high-word sweep, 0 differences).
+- §4.2 [M]: three exporter assertions seen red against the CARTRIDGE -- **and
+  one of my own messages was defective**, printing the same range on both sides
+  when the EXPECTATION was mutated. Both sides come out of variables now.
+- §4.3 [M]: **the W53 gate stage SEEN TO FAIL** -- 9/2,963/8 against
+  36/8,843/35 with the harvest cut, and 0 records with the spawn removed. **And
+  that second cut is the proof of the RNG claim**: W52's stages snapped straight
+  back to 22,071 and 4,388 with one line gone.
+- §4.4 [M]: **THE SCORING RE-MEASURED, not inherited.** 130 kills, `$00077515`
+  pending, chain 304, meter 56/56 -- IDENTICAL with and without the spark over
+  1,500 tapped frames, and `$803916` the only thing that moved ($14 -> $C2).
+- §5 [M]: **THE OWNER'S WAVE, IN A REAL BROWSER. Two bright yellow-white
+  starbursts, one on each side of the ship, exactly where the pods' shots meet
+  the enemies flanking it -- and NEITHER of them on any frame of the same flight
+  with fire never pressed.** With shard 8 withheld the page ran normally and
+  stopped at logic frame 2715, the exact first frame a shot connected, naming
+  the shard by what it holds. Both servers killed; zero orphans.
+- §6.1 [M]: **`pgm.py check` ALL GREEN 49/0/0, 0 SKIPPED**, on a clean re-run of
+  the committed tree; unit tests 635 -> 666; `webgate` 9 of 9 -> 10 of 10;
+  `bundlegate` 15955968/15955968 = 100.0000 %, UNMOVED; `build-dist` clean with
+  W47's same four exceptions.
+
+status: **DONE**
