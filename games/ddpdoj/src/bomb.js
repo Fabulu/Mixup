@@ -799,7 +799,7 @@ function beamSegments2561AA(ram, rom, ctx, a5) {
       ram.setU32(a6 + 0x0a, rom.u32(ram.u32(a6 + 0x18) + i16(d4)));  // $256212
     }
     let d0 = u16(u16(ram.u16(a6 + 0x02) + 0x200)       // $256218/$25621C
-      + ram.u16(a5 + P.velY));                         // $256220 add.w ($30,A5)
+      + 0);                                            // $256220 add.w ($30,A5)
     if (!beamSegmentAlive(ram, rec, d0, phase2)) {
       ram.setU16(a6, 0); killed++; continue;           // $25623A/$2562D8 clr.w
     }
@@ -1184,6 +1184,13 @@ function beamBox2456A6(ram) {
     if (d0 > i16(box[2])) box[2] = u16(d0);            // $2456F4 cmp/ble/move
     if (d1 < i16(box[3])) box[3] = u16(d1);            // $2456FC cmp/bge/move
   }
+  // **THE BOX IS RAM, NOT A REGISTER.**  `$2456AA lea $80FA74,A5` and the four
+  // `move.w D?,(-$2,A5)` stores put it at `$80FA74`, which is the SAME four
+  // words `src/damage.js` `BOX` uses for the player's own box and which
+  // `$245760`/`$245866`/`$24595A` then re-read through A6.  The first draft
+  // kept it in a JS array and left the RAM untouched -- correct arithmetic,
+  // four missing stores, and invisible to every row that only counted hits.
+  for (let i = 0; i < 4; i++) ram.setU16(BOMBRAM.box + i * 2, box[i]);
   return { box, live };
 }
 
@@ -1219,7 +1226,10 @@ function beamRecordArmed(ram, a6) {
 export function bombDamageAlt2456A6(ram, ctx, a4) {
   const d6 = 0x2800;                                   // $24518A move.w #$2800
   const { box, live } = beamBox2456A6(ram);
-  for (let i = 0; i < 4; i++) box[i] = u16(box[i] + d6);   // $24570C add.w D6
+  for (let i = 0; i < 4; i++) {                        // $24570C add.w D6,(A5)+
+    box[i] = u16(box[i] + d6);
+    ram.setU16(BOMBRAM.box + i * 2, box[i]);           // ...and it is IN PLACE
+  }
 
   // ---- $24571A: POOL B, 50 slots.  It does NOT damage inside the loop; it
   // finds the NEAREST intersecting enemy and damages that one at $2457FA.

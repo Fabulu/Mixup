@@ -96,6 +96,7 @@ const STEPS = 2200;
 // spaced well past one bomb's 132-frame life.
 const PRESS = [380, 700, 1020];
 const P1 = 0x8103e6;
+const P_POSY = 0x02;
 const RANK = [
   [0x81309e, '$81309E rank'], [0x81b646, '$81B646 power P1'],
   [0x81b648, '$81B648 power P2'], [0x81b65c, '$81B65C stock P1'],
@@ -123,10 +124,14 @@ function run() {
     auraSeen: 0, bit7Frames: 0, poolDirtyAtEnd: 0, cooldownAtTeardown: [],
     rankMoved: [], rankStart: null, rankEnd: null, chainLatch: [],
     scoreEnd: 0, chainCount: 0, altChainFrames: 0,
+    maxKnock: 0, maxPodGap: 0, r42Bias: [], segStep: new Set(), segCulled: 0,
+    poolBHitsAt: [],
   };
   const snap = () => RANK.map(([a]) => game.ram.u16(a));
   r.rankStart = snap();
   let liveSince = null;
+  let prevSeg = [];
+  const justSeeded = [];
   for (let i = 0; i < STEPS; i++) {
     const ram = game.ram;
     // HELD fire, every frame -- that is the whole point.  `tap-fire` is W64's
@@ -172,7 +177,55 @@ function run() {
       if (ram.u16(P1 + 0x46) !== 0) r.knockSeen++;
       if (ram.u16(0x8104aa + 0x38) !== 0) r.podKnockSeen++;
       r.auraSeen++;
+      // **THE CURSORS ARE NOT THE EFFECT.**  `($46,A6)` and `($38,A1)` are
+      // written by the ARM ($249AA4 / $249AD8), so a port that deleted
+      // `$2496A2` and `$24D188` outright leaves both of them exactly as they
+      // are -- and the two rows above stayed GREEN under precisely that
+      // mutant.  These two measure what the ramps DO: the player's knock field
+      // `($6,A6)` (only `$2496B6 sub.w D0,($6,A6)` moves it) and the distance
+      // the pods are thrown behind the ship (`$24D198 sub.w D0,($2,A6)`).
+      const k = ram.u16(P1 + 0x06);
+      r.maxKnock = Math.max(r.maxKnock, k >= 0x8000 ? 0x10000 - k : k);
+      const gap = ram.u16(0x8104aa + 0x02) - ram.u16(P1 + 0x02);
+      r.maxPodGap = Math.max(r.maxPodGap, Math.abs(gap > 0x8000 ? gap - 0x10000
+        : (gap < -0x8000 ? gap + 0x10000 : gap)));
     }
+    // The FIRST frame of each bomb: record 42's own two words, which
+    // `$25606C move.w` (Y, biased $FE00) and `$2560C6 move.w` (X only) write
+    // out of the player's position long.  Both are exact and both are
+    // derivable from the two instructions, so they pin the arithmetic without
+    // a golden number.
+    // ...and `$25606C`'s -$200 bias is NOT observable here: `$256348`'s
+    // `$2563A4 move.w D0,($7E2,A0)` overwrites record 42's Y from record 44's
+    // in the same frame.  It is a unit-test row instead
+    // (`tests/w65beam.test.js`, "$25606C biases record 42").
+    // Every LIVE segment's Y step, as a set.  `$25621C addi.w #$200` twice
+    // plus `$256220 add.w ($30,A5)` is the whole law, so the set is
+    // {$400 + velY} and a mutant that drops the velocity or changes either
+    // `$200` moves every member of it.
+    // PHASE 1 ONLY.  Phase 2's `$2563B6` REBUILDS all 41 from the ship
+    // outward every frame, so its frame-to-frame differences are not steps.
+    if ((ram.u16(BOMBRAM.rec) & 0x8000) !== 0
+      && ram.u16(BOMBRAM.rec + 0x18) === 0) {
+      const vel = ram.u16(P1 + 0x30);
+      for (let k = 1; k <= BEAM_REC.segs; k++) {
+        const a = BOMBRAM.rec + k * BOMBRAM.stride;
+        const y = ram.u16(a + 0x02);
+        if ((ram.u16(a) & 0x8000) === 0) {
+          prevSeg[k] = null; justSeeded[k] = true; continue;
+        }
+        if (prevSeg[k] !== null && prevSeg[k] !== undefined && !justSeeded[k]) {
+          r.segStep.add(((y - prevSeg[k]) & 0xffff) - ((0x400 + vel) & 0xffff));
+        }
+        justSeeded[k] = false;
+        prevSeg[k] = y;
+      }
+      let n = 0;
+      for (let k = 1; k <= BEAM_REC.segs; k++) {
+        if ((ram.u16(BOMBRAM.rec + k * BOMBRAM.stride) & 0x8000) === 0) n++;
+      }
+      r.segCulled = Math.max(r.segCulled, n);
+    } else { prevSeg = []; justSeeded.length = 0; }
     const now = snap();
     for (let k = 0; k < RANK.length; k++) {
       if (now[k] !== r.rankStart[k] && !r.rankMoved.some((m) => m[0] === k)) {
@@ -228,6 +281,9 @@ console.log(`  teardowns ${marks('teardown').length} at lf `
 console.log(`  $81B636 (the ALT chain machine's divider) non-zero on `
   + `${r.altChainFrames} frames; total $${r.scoreEnd.toString(16)}; chain `
   + `count ${r.chainCount}`);
+console.log(`  maxKnock $${r.maxKnock.toString(16)} maxPodGap `
+  + `$${r.maxPodGap.toString(16)} segStep ${JSON.stringify([...r.segStep])} `
+  + `segCulled ${r.segCulled} r42 ${JSON.stringify(r.r42Bias)}`);
 console.log(`  RANK start ${JSON.stringify(r.rankStart)}  end `
   + `${JSON.stringify(r.rankEnd)}  moved ${JSON.stringify(r.rankMoved)}`);
 
@@ -267,8 +323,11 @@ ck('BUTTON 2 FIRES WHILE THE BEAM IS HELD: three presses accepted',
   beamPresses === PRESS.length, `${beamPresses} accepted`);
 ck('$255FE2 INSTALLS (it was a throw until this wave)',
   ev('beam-init:0') === PRESS.length, `${ev('beam-init:0')} installs`);
-ck('FOUR HEADS AND 41 SEGMENTS: more than 4 records live at once',
-  r.liveMax > 4, `max ${r.liveMax} of 45`);
+// [M] 31, and it is EXACT rather than "> 4": four heads plus twenty-seven
+// segments, the other fourteen already past $7800.  A `dbra` one short, a cull
+// bound $100 wider or a seeder that runs twice all move this number.
+ck('FOUR HEADS AND 41 SEGMENTS: exactly 29 records live at the peak',
+  r.liveMax === 29, `max ${r.liveMax} of 45`);
 // [M] 131 frames from the press to the frame the record reads 0 again.  The
 // DERIVATION is 120 + 12 = 132 script steps (`$256CAA` seeds `($1A,A6)` =
 // `$78` and `$256712` has twelve entries) and the record is cleared ON the
@@ -297,10 +356,26 @@ ck('$243DA0 IS REACHED, and ONLY from the laser arm ($249A7E jumps it)',
   + `${beamPresses} presses`);
 ck('$249A92 SETS ($1,A6) BIT 7 for the length of the bomb',
   r.bit7Frames > 300, `${r.bit7Frames} frames`);
-ck('...and $2496A2, THE PLAYER KNOCKBACK, runs (a throw until this wave)',
-  r.knockSeen > 0, `${r.knockSeen} frames with ($46,A6) non-zero`);
-ck("...and $24D188, THE PODS' knockback, runs (a throw until this wave)",
-  r.podKnockSeen > 0, `${r.podKnockSeen} frames with ($38,A1) non-zero`);
+// The two rows below assert the RAMPS' EFFECT and not their cursors: the
+// cursors are `$249AA4`/`$249AD8`'s, so a port with no knockback at all still
+// has them.  [M] with both ramps running the player's knock field reaches
+// $23A8 and the pods sit up to $1B70 behind the ship; with `$24D17C bmi`
+// deleted, 0 and ~$150.
+ck('...and $2496A2, THE PLAYER KNOCKBACK, MOVES ($6,A6)',
+  r.knockSeen > 0 && r.maxKnock >= 0x800,
+  `${r.knockSeen} ramp frames, max |($6,A6)| = $${r.maxKnock.toString(16)}`);
+ck("...and $24D188, THE PODS' knockback, THROWS THEM BEHIND THE SHIP",
+  r.podKnockSeen > 0 && r.maxPodGap >= 0x800,
+  `${r.podKnockSeen} ramp frames, max pod-ship gap = `
+  + `$${r.maxPodGap.toString(16)}`);
+// `$25621C addi.w #$200` twice and `$256220 add.w ($30,A5),D0` are the whole
+// per-frame step, so the SET of (observed step - ($400 + velY)) is {0}.
+ck('every live segment steps EXACTLY $400 + the player velocity',
+  r.segStep.size === 1 && r.segStep.has(0),
+  `deltas seen: ${JSON.stringify([...r.segStep])}`);
+ck('...and the beam is CULLED at $7800: some of the 41 are dead at once',
+  r.segCulled > 0 && r.segCulled < BEAM_REC.segs,
+  `${r.segCulled} of ${BEAM_REC.segs} culled at the peak`);
 ck('$256468 + $2564F0 TEAR DOWN and reload $81296C := $28',
   marks('teardown').length === PRESS.length
   && r.cooldownAtTeardown.length === PRESS.length

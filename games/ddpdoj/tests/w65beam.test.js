@@ -10,6 +10,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
 import { Ram } from '../src/ram.js';
 import { RAM, P, OPT } from '../src/machine.js';
 import { UnportedLog, Unreached } from '../src/unported.js';
@@ -508,4 +509,200 @@ test('$249A92 bset #$7 is what turns on $2496A2, $24D188 and $24A4E2', () => {
   assert.equal(ram.u16(rec + 0x26), 0x0101,
     '$249A86 -- $24A4E2 reads BOTH bytes of this word, ($26) and ($27)');
   void OPT;
+});
+
+// ===========================================================================
+// THE ROWS THE MUTATION SWEEP DEMANDED
+// ===========================================================================
+// `.scratch/mutate65.mjs` ran 59 single-instruction mutants and TWENTY-THREE
+// survived the first pass.  Everything below exists because one of them did.
+
+test('$2456A6 leaves the WHOLE box at $80FA74, all four words exact', () => {
+  const ram = new Ram();
+  // One record, deliberately ASYMMETRIC in all four extents so no two of the
+  // four words can be swapped without showing, at a position that is not the
+  // origin so the +D6 bias cannot hide in a zero.
+  const a = BOMBRAM.rec;
+  ram.setU16(a, 0x8001);
+  ram.setU16(a + 0x02, 0x1000); ram.setU16(a + 0x04, 0x0800);
+  ram.setU16(a + 0x10, 0x0100); ram.setU16(a + 0x12, 0x0200);
+  ram.setU16(a + 0x14, 0x0300); ram.setU16(a + 0x16, 0x0400);
+  ram.bset8(RAM.player1 + 0x01, 6);
+  bombDamageAlt2456A6(ram, ctx(), RAM.player1);
+  // $2456E4 keeps the MAX of (x + $14) against the seed $F800 (SIGNED -2,048);
+  // $2456EC the MIN of (x - $16) against $4000; $2456F4 the MAX of (y + $10)
+  // against $F800; $2456FC the MIN of (y - $12) against $7C00.  Then
+  // `$24570C add.w D6,(A5)+` x4 with D6 = $2800.
+  assert.equal(ram.u16(BOMBRAM.box + 0), (0x0800 + 0x0300 + 0x2800) & 0xffff,
+    'max X');
+  assert.equal(ram.u16(BOMBRAM.box + 2), (0x0800 - 0x0400 + 0x2800) & 0xffff,
+    'min X');
+  assert.equal(ram.u16(BOMBRAM.box + 4), (0x1000 + 0x0100 + 0x2800) & 0xffff,
+    'max Y');
+  assert.equal(ram.u16(BOMBRAM.box + 6), (0x1000 - 0x0200 + 0x2800) & 0xffff,
+    'min Y');
+});
+
+test('...and with NO live record the four SEEDS survive, biased by D6', () => {
+  const ram = new Ram();
+  ram.bset8(RAM.player1 + 0x01, 6);
+  bombDamageAlt2456A6(ram, ctx(), RAM.player1);
+  // $2456A6 move.w #$F800,D0 / $2456B2 #$4000 / $2456B8 #$7C00, and D6 is
+  // `$24518A move.w #$2800,D6` -- the CALLER's, because `$24563E move.w
+  // $80FA72,D6` is on the OTHER arm of `$245636`.
+  assert.deepEqual([0, 2, 4, 6].map((o) => ram.u16(BOMBRAM.box + o)),
+    [(0xf800 + 0x2800) & 0xffff, (0x4000 + 0x2800) & 0xffff,
+      (0xf800 + 0x2800) & 0xffff, (0x7c00 + 0x2800) & 0xffff]);
+});
+
+test('the pools are FIFTY and ONE HUNDRED slots, and the last one counts',
+  () => {
+    const ram = new Ram();
+    beamRec(ram, BOMBRAM.stride);
+    ram.bset8(RAM.player1 + 0x01, 6);
+    // $245720 `moveq #$31,D7` + `dbra` is 50, and $245822 `move.w #$63,D7` is
+    // 100 -- so slots 49 and 99 are the LAST ones and a loop one short misses
+    // exactly them.
+    const b = enemyAt(ram, BOMBRAM.poolB, 49);
+    // NEARER than the pool-B one: with $812954 set, $24588E drops any
+    // pool-A enemy behind it (the row above this file has for that).
+    const a = enemyAt(ram, BOMBRAM.poolA, 99, { y: 0x0800 });
+    const r = bombDamageAlt2456A6(ram, ctx(), RAM.player1);
+    assert.equal(r.hitsB, 1, 'pool B slot 49');
+    assert.equal(r.hitsA, 1, 'pool A slot 99');
+    assert.equal(ram.u16(b + 0x18), 0x2000 - 0x208);
+    assert.equal(ram.u16(a + 0x18), 0x2000 - 0x1e0);
+  });
+
+test('POOL B walks records 1..41 and POOL A walks 0..44 -- both ends', () => {
+  // record 0 ONLY: pool A hits, pool B cannot.
+  const only0 = new Ram();
+  beamRec(only0, 0);
+  only0.bset8(RAM.player1 + 0x01, 6);
+  enemyAt(only0, BOMBRAM.poolA, 3);
+  enemyAt(only0, BOMBRAM.poolB, 3);
+  const r0 = bombDamageAlt2456A6(only0, ctx(), RAM.player1);
+  assert.equal(r0.hitsA, 1, '$245898 movea.l A0,A6 -- pool A starts at 0');
+  assert.equal(r0.hitsB, 0, '$245780 lea ($30,A6),A6 -- pool B starts at 1');
+  // record 41 ONLY, the LAST of pool B's `moveq #$28,D7` + `dbra`.
+  const only41 = new Ram();
+  beamRec(only41, 41 * BOMBRAM.stride);
+  only41.bset8(RAM.player1 + 0x01, 6);
+  enemyAt(only41, BOMBRAM.poolB, 3);
+  assert.equal(bombDamageAlt2456A6(only41, ctx(), RAM.player1).hitsB, 1);
+  // record 44, which pool A reaches and pool B does not.
+  const only44 = new Ram();
+  beamRec(only44, 44 * BOMBRAM.stride);
+  only44.bset8(RAM.player1 + 0x01, 6);
+  enemyAt(only44, BOMBRAM.poolA, 3);
+  enemyAt(only44, BOMBRAM.poolB, 3);
+  const r44 = bombDamageAlt2456A6(only44, ctx(), RAM.player1);
+  assert.equal(r44.hitsA, 1, 'pool A reaches record 44');
+  assert.equal(r44.hitsB, 0, 'pool B stops at 41');
+});
+
+test('$2457C2 uses D1 (the enemy near edge), not D0 (its far one)', () => {
+  const ram = new Ram();
+  beamRec(ram, BOMBRAM.stride);
+  ram.bset8(RAM.player1 + 0x01, 6);
+  ram.setU16(RAM.player1 + P.posY, 0x0000);      // the floor is + $C00
+  // ASYMMETRIC extents: +Y $800, -Y $100.  D0 = y + $2800 + $800 and
+  // D1 = y + $2800 - $100, so `D1 - D6` is y - $100 and `D0 - D6` is y + $800
+  // -- $900 apart, and both are above the $C00 floor.
+  const e = enemyAt(ram, BOMBRAM.poolB, 4, { y: 0x2000 });
+  ram.setU16(e + 0x10, 0x800); ram.setU16(e + 0x12, 0x100);
+  bombDamageAlt2456A6(ram, ctx(), RAM.player1);
+  assert.equal(ram.u16(BOMBRAM.g12952), 0x2000 - 0x100,
+    '$2457C2 move.w D1,D4 / $2457C4 sub.w D6,D4');
+});
+
+test('$2458D8 bset #$4 marks the RECORD that scored, and it is bit 4', () => {
+  const ram = new Ram();
+  beamRec(ram, 0);
+  beamRec(ram, 7 * BOMBRAM.stride);
+  ram.bset8(RAM.player1 + 0x01, 6);
+  enemyAt(ram, BOMBRAM.poolA, 3);
+  bombDamageAlt2456A6(ram, ctx(), RAM.player1);
+  // Record 0 hits first and `$2458EE bmi` does NOT fire ($2000 - $1E0 is
+  // positive), so record 7 hits too -- both are marked.
+  assert.equal(ram.u8(BOMBRAM.rec) & 0x10, 0x10, 'record 0');
+  assert.equal(ram.u8(BOMBRAM.rec + 7 * BOMBRAM.stride) & 0x10, 0x10);
+});
+
+test('$2560D2 steps ($24,A6) by FOUR and reloads from ($26,A6)', () => {
+  const ram = new Ram();
+  ram.setU16(BOMBRAM.rec, 0x8001);
+  const rom = beamRom();
+  const seen = [];
+  for (let n = 0; n < 4; n++) {
+    bombDriver255DD8(ram, rom, ctx());
+    seen.push(ram.u16(BOMBRAM.rec + 0x24));
+  }
+  // The install seeds ($24,A6) = 8 and ($26,A6) = 8, so `subq.w #$4` gives
+  // 4, 0, then BORROWS and reloads 8, then 4.  A step of 8 would give 0, then
+  // reload for ever and never read the middle entry of the three-long tables.
+  assert.deepEqual(seen, [4, 0, 8, 4]);
+});
+
+test('$2561AA reloads ($80A,A6) to $1C, which is $256692 eight entries',
+  () => {
+    const ram = new Ram();
+    ram.setU16(BOMBRAM.rec, 0x8001);
+    const rom = beamRom();
+    const seen = [];
+    for (let n = 0; n < 9; n++) {
+      bombDriver255DD8(ram, rom, ctx());
+      seen.push(ram.u16(BOMBRAM.rec + 0x80a));
+    }
+    // Seeded $1C by the install, `subq.w #$4` per frame, and `$2561B0 move.w
+    // #$1C` on the borrow -- so the cursor is $18,$14,$10,$C,$8,$4,$0,$1C,$18
+    // and $256692's EIGHT entries are exactly its range.
+    assert.deepEqual(seen, [0x18, 0x14, 0x10, 0x0c, 8, 4, 0, 0x1c, 0x18]);
+  });
+
+// ===========================================================================
+// THE EXPORTER'S OWN CLAIMS
+// ===========================================================================
+// A unit test can only read the exporter's SOURCE; the run against the real
+// cartridge is `check_beam_bomb_extents`, and the worklog 11 has it green.
+// These pin the claims so a later edit that narrows a window or drops the
+// check has to say so here too.
+const TOOL = fs.readFileSync(
+  new URL('../tools/export-tables.py', import.meta.url), 'utf8');
+
+test('the exporter ASSERTS the LASER BOMB extents against the cartridge',
+  () => {
+    assert.ok(/def check_beam_bomb_extents/.test(TOOL));
+    assert.ok(/-> dict:\n(?:\s*check_\w+\(d\)[^\n]*\n)*\s*check_beam_bomb_extents\(d\)/
+      .test(TOOL), 'and it runs on EVERY export, not behind a flag');
+  });
+
+test('the eight W65 ROM windows are declared with the lengths the port reads',
+  () => {
+    for (const [a, n] of [['0x256662', '0x0324'], ['0x256CAA', '0x00B0'],
+      ['0x242EDE', '0x0100'], ['0x28ABA0', '0x0040'], ['0x243174', '0x0080'],
+      ['0x28A030', '0x000C'], ['0x28A464', '0x00A2'], ['0x24D282', '0x003C']]) {
+      assert.ok(TOOL.includes(`(${a}, ${n},`), `${a} + ${n}`);
+    }
+    // $256662's length is the one the port's own walk depends on: four
+    // 12-byte head tables, $256692's eight pointers, their eight 12-byte
+    // targets, $256712's twelve 20-byte entries and the twelve 32-byte tables
+    // they name -- 4*12 + 32 + 96 + 12*20 + 4 + 12*32 == $324.
+    assert.equal(4 * 12 + 32 + 96 + 12 * 20 + 4 + 12 * 32, 0x324);
+    assert.equal(BEAM_TEMPLATES.dataLen, 0x324);
+    // ...and $256CAA's is the install sequence plus the 18-byte segment
+    // template, which must abut it.
+    assert.equal(BEAM_TEMPLATES.install + BEAM_TEMPLATES.installLen,
+      BEAM_TEMPLATES.seg);
+    assert.equal(BEAM_TEMPLATES.installLen + BEAM_TEMPLATES.segLen, 0xb0);
+  });
+
+test('the LASER BOMB SPARK speed domain is DERIVED, not listed', () => {
+  assert.ok(/def beam_spark_speed_indices/.test(TOOL));
+  assert.ok(/s\.update\(beam_spark_speed_indices\(d\)\)/.test(TOOL),
+    'and speed_index_set() uses it');
+  // The two immediates come out of the OPCODE and the extension word, never
+  // out of this file: `$28A272 addq.b #$4,D0` and `$28A284 move.w #$C0,D0`.
+  assert.ok(/op = u16\(d, BEAM_SPARK_ADD_AT\)/.test(TOOL));
+  assert.ok(/const = u16\(d, BEAM_SPARK_CONST_AT \+ 2\)/.test(TOOL));
 });
