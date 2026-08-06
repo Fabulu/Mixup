@@ -138,7 +138,7 @@ import {
   Renderer, paletteRgb, resolveRgb, rotateCCW, rgbToRgba, SCREEN_W, SCREEN_H,
   parseSpriteList, BUFFER_STRIDE, RAM_STRIDE, SPRITE_LIMIT,
 } from '../render/index.js';
-import { mergePalette, agreeWithBoard } from '../palette.js';
+import { mergePalette } from '../palette.js';
 import { loadBundle, httpReader, AssetError } from './assets.js';
 import { attachKeyboard, currentPortWord } from './input.js';
 
