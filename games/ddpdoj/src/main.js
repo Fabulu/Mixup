@@ -42,7 +42,7 @@ import { PLAYER_SLOTS } from './shots.js';
 import { buildDisplayList } from './displaylist.js';
 import { ProtLatch } from './protsim.js';
 import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
-import { makeBackground, BgVram, VideoRegs } from './background.js';
+import { makeBackground, BgVram, TxVram, VideoRegs } from './background.js';
 import { makeStageClear } from './stageend.js';
 import { makeHudObject } from './hud.js';
 import {
@@ -155,6 +155,13 @@ export class Game {
     // own ring at the seed frame: without it the port would draw fifteen
     // columns into an empty ring and the other forty-nine would be blank.
     this.vram = new BgVram(opts.bgSeed);
+    // W115: `$904000`, the TX (text) tilemap.  Starts BLANK -- the score-digit
+    // flush `$185DC4` (ISR6-gated) writes the P1/P2 score cells into it each
+    // frame; the OTHER text (lives, bombs, credits, chain-high-water) still
+    // goes through the unported `$240DC2` / `$141258` path, so those cells
+    // stay zero (transparent) until Wave C'.  PER GAME, like `vram` and
+    // `video`, for NOTES-replay.md §2's reason.
+    this.txvram = new TxVram();
     this.video = opts.video ?? new VideoRegs();
     this.scrollEvents = [];
     this.bgMutate = opts.bgMutate ?? null;
@@ -267,7 +274,11 @@ export class Game {
       // sprite producer, and a caller that omits `vram` reaches a loud named
       // throw at $26C226 rather than dropping 207 longwords.
       vram: this.vram,
-      // WAVE 91: the palette hardware, because FIVE ported subsystems install
+      // W115: the TX tilemap, because the ISR6-gated score-digit flush
+      // `$185DC4` writes the P1/P2 score cells into it.  A caller that omits
+      // it (every main-loop handler) does not reach the flush; the flush is
+      // dispatched from `irq6`, which reads `ctx.txvram` itself.
+      txvram: this.txvram,
       // colour banks -- the scroll VM's object stream ($2620F2), the bomb
       // ($260852/$26085C), three enemy init bodies, the boss and the stage
       // banner.  A caller that omits it gets the counted note it always had

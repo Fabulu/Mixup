@@ -194,6 +194,13 @@ export const HUD = {
   kill: 0x241292,           // $28D518 jmp
   drain: 0x2842b0, drainOne: 0x2842fe, drainNull: 0x2842ae,
   digitsP1: 0x2843a8, digitsP2: 0x2843be,
+  // W114/W115: the score-digit FLUSH, build A.  It is the 4th routine behind
+  // the ISR6 `$803940` gate (`src/machine.js` `isr6Gated[3]`), reached by a
+  // direct `jsr $185dc4.l` at `$13C800`.  It drains the 18 dirty records at
+  // `HUDRAM.digitsP1`/`digitsP2` plus the two standalone records straight into
+  // `$904000`.  Ported in `flushScoreDigits185DC4` below.
+  scoreFlush: 0x185dc4,
+  scoreMarkP1: 0x185e16, scoreMarkP2: 0x185e3c,  // "mark all 9 dirty" arms
   extendStep: 0x286fda,
   extendTable: 0x28840e,    // $286FDE lea -- FOUR longwords, then $FFFFFFFF
   romPoke: 0x287020,
@@ -269,6 +276,11 @@ export const HUDRAM = {
   savedOvf: 0x81b594,       // $284318 move.w (A6),$81B594
   digitsP1: 0x81b4c8, digitsP2: 0x81b522,   // 9 records of stride $A
   digitStateP1: 0x81b49a, digitStateP2: 0x81b49e, digitStateHi: 0x81b49c,
+  // W114/W115: the two STANDALONE score records, $A bytes each, right after
+  // P2's nine ($81B522 + 9*$A == $81B57C).  The flush $185DC4 walks them after
+  // the 18 player records; each carries the same (dirty, dest, tile) shape.
+  extraRecA: 0x81b57c,   // -> $9049D8 (row 9 col 54); hi-score / extend digit
+  extraRecB: 0x81b586,   // -> $905AD8 (row 26 col 54); P2 mirror
   // the two words $284C82/$284C88/$284C8E clear, and the asymmetry is the ROM's
   popupTimerP1: 0x81b5c2, popupTimerP2: 0x81b5ec,
   // the boss HP bar, whose two words $2926E2's UNPORTED TAIL would write
@@ -443,7 +455,7 @@ function extendStep286FDA(ram, rom, idxAddr, thrAddr, ctx) {
  *  the player index the drain put there.  Returns D4, which `$28437C`'s
  *  high-score compare reads back OUT of this routine -- a cross-routine
  *  register dependency, transcribed as a return value rather than re-derived. */
-function digits2843A8(ram, who) {
+export function digits2843A8(ram, who) {
   const p = who === 0
     ? { base: HUDRAM.digitsP1, total: HUDRAM.totalP1, state: HUDRAM.digitStateP1,
       ovf: HUDRAM.ovfP1 }
@@ -547,6 +559,85 @@ export function drain2842B0(ram, rom, ctx) {
   drainOne2842FE(ram, rom, 0, ctx);                     // $2842D6 bsr.b  (D7 = 0)
   drainOne2842FE(ram, rom, 1, ctx);                     // $2842FC FALLS THROUGH (D7 = 1)
 }
+
+// ===========================================================================
+// W114/W115 -- $185DC4, THE SCORE-DIGIT FLUSH (build A, IRQ6-gated)
+//
+// The score digits do NOT use `$240DC2`. They have their own deferred-write
+// flush `$185DC4` (the 4th routine behind the ISR6 `$803940` gate), which
+// drains the dirty records at `$81B4C8` (populated by `digits2843A8` above)
+// directly into the text tilemap `$904000`. So the score ships INDEPENDENTLY
+// of the general text defer buffer (`$80B058` / `$240DC2` / flush `$141258`)
+// which is what lives / bombs / credits / chain-high-water use (Wave C').
+//
+// Verbatim logic in `docs/worklog/ddpdoj/114-recon-score-digit-mame.md`
+// section 1.  Each record is `$A` bytes: `+$0` dirty word, `+$2` dest-address
+// longword, `+$6` tile longword.  The flush walks 18 (P1's 9 + P2's 9) plus
+// two standalone records, and for each DIRTY one writes the `+$6` tile longword
+// to the `+$2` dest address (in `$904000`) and clears `+$0`.
+// ===========================================================================
+
+/** The FIXED `+$2` dest addresses, measured by W114 (recdump.lua, lf=2020).
+ *  Set ONCE at HUD init by an un-ID'd routine and never changing, so a port
+ *  can hardcode them.  P1 col 54 rows 0..8; P2 col 54 rows 17..25; the two
+ *  extras at rows 9 and 26.  (Row = destIndex / 64, col = destIndex % 64,
+ *  destIndex = (dest - $904000) / 4.) */
+function scoreDigitDest(who, i) {
+  // $9040D8 + i*$100 for P1, $9051D8 + i*$100 for P2.  One column, nine rows.
+  return who === 0 ? 0x9040d8 + i * 0x100 : 0x9051d8 + i * 0x100;
+}
+
+/** Seed the 20 records' `+$2` dest addresses from the measured table.  The
+ *  board's HUD init does this once at boot via an un-ID'd routine; the values
+ *  are FIXED (W114 section 3 / section 6 OPEN DETAILS), so they are hardcoded
+ *  here and installed at HUD-object creation.  On a seeded run the HUD object
+ *  is already in state 1 (running) and the seed already carries the correct
+ *  `+$2` values, so this is only the cold-boot / fresh-RAM path; on either
+ *  path the flush finds populated dests before it first runs. */
+export function initScoreDigitDests(ram) {
+  for (let i = 0; i < 9; i++) {
+    ram.setU32(HUDRAM.digitsP1 + i * 0x0a + 2, scoreDigitDest(0, i));
+    ram.setU32(HUDRAM.digitsP2 + i * 0x0a + 2, scoreDigitDest(1, i));
+  }
+  ram.setU32(HUDRAM.extraRecA + 2, 0x9049d8);            // row 9 col 54
+  ram.setU32(HUDRAM.extraRecB + 2, 0x905ad8);            // row 26 col 54
+}
+
+/** `$185DC4` -- the score-digit flush, transcribed from the listing (W114
+ *  section 1).  Walks the 18 player dirty records (P1 then P2) plus the two
+ *  standalone records; for each DIRTY one writes the `+$6` tile longword into
+ *  `txvram` at the `+$2` dest address and clears `+$0`.
+ *
+ *  Gated on `HUDRAM.objFlag` (`$81B6F0`): the flush only runs while the HUD
+ *  object is alive.  (W114 section 6 speculated this was a dedicated
+ *  dirty-pending flag; it is the HUD-alive word, already named `objFlag` --
+ *  the existing "$81B6F0 has ONE reader" comment was simply incomplete.)
+ *
+ *  @param txvram  the `TxVram` for `$904000` (src/background.js). */
+export function flushScoreDigits185DC4(ram, txvram) {
+  if (ram.u16(HUDRAM.objFlag) === 0) return;             // $185DC4 tst.w $81B6F0 / beq rts
+  // 18 records: P1's 9 then P2's 9, stride $A.  ($185DD4 tst.w (a0) / beq skip
+  // / clr.w (a0)+ / movea.l (a0)+,a1 / move.l (a0)+,(a1) / dbra $11).
+  for (const base of [HUDRAM.digitsP1, HUDRAM.digitsP2]) {
+    for (let i = 0; i < 9; i++) {
+      const rec = base + i * 0x0a;
+      if (ram.u16(rec) === 0) continue;                  // $185DD6 beq.b SKIP
+      ram.setU16(rec, 0);                                // $185DD8 clr.w (a0)+
+      const dest = ram.u32(rec + 2);                     // $185DDA movea.l (a0)+,a1
+      const tile = ram.u32(rec + 6);                     // $185DDC move.l (a0)+,(a1)
+      txvram.setLong(dest, tile);
+    }
+  }
+  // Two standalone records after the 18 ($185DEC..$185E14).
+  for (const rec of [HUDRAM.extraRecA, HUDRAM.extraRecB]) {
+    if (ram.u16(rec) === 0) continue;                    // $185DEC/$185E00 tst.w / beq
+    ram.setU16(rec, 0);                                  // $185DFA/$185E0E clr.w (a0)+
+    const dest = ram.u32(rec + 2);                       // $185DFC/$185E10 movea.l (a0)+,a1
+    const tile = ram.u32(rec + 6);                       // $185DFE/$185E12 move.l (a0)+,(a1)
+    txvram.setLong(dest, tile);
+  }
+}
+
 
 // ===========================================================================
 // $285F8A / $285F52 -- the two per-frame HUD animation cursors
@@ -1286,7 +1377,9 @@ export function gates2844A6(ram, ctx, rom = null) {
  *      $28D534 jsr $28444E                           ...and the per-frame ledger
  *
  *  `$81B6F0` is the object's own "I exist" word: `$28D508` raises it, `$28D512`
- *  drops it, and its ONE reader is `$287286 tst.w $81B6F0`.
+ *  drops it, and its readers are `$287286 tst.w $81B6F0` and (W114/W115) the
+ *  score-digit flush `$185DC4 tst.w $81B6F0`, which gates on it to mean "only
+ *  flush while the HUD is alive".
  *  [M] the shipped seed has object SLOT 7 = type 0 with `($2,A5) = 1`, so the
  *  port lands in state 1 on its first frame -- it simply was not dispatching
  *  it, and `runObjectDriver` counted the miss under `$240F62 + 0` every frame. */
@@ -1296,6 +1389,12 @@ export function makeHudObject(rom) {
     if (st === 0) {                                     // $28D520 tst.b / beq.b
       ram.setU8(a5 + 0x02, 1);                          // $28D502 move.b #$1,$2(A5)
       ram.setU16(HUDRAM.objFlag, 1);                    // $28D508 move.w #$1,$81B6F0
+      // W115: seed the 20 score-record `+$2` dest addresses.  The board's HUD
+      // init does this via an un-ID'd one-time routine; the values are FIXED
+      // (W114 section 3) so they are hardcoded here.  On a seeded run the HUD
+      // object is already in state 1, so this is the cold-boot path only and
+      // the seed's own dests are used otherwise.
+      initScoreDigitDests(ram);
       return;                                           // $28D510 rts
     }
     if (st === 2) {                                     // $28D526 cmpi.b #$2 / beq.b

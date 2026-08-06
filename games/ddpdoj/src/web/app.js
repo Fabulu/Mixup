@@ -915,9 +915,25 @@ class Demo {
     // with `st.tx`.  **Not one palette word is removed by this and none may
     // be** -- the picture and the colours are two separate retirements and only
     // the picture is retired here.
+    //
+    // ----------------------------------------------------- WAVE 115 (score digits)
+    // THE SCORE DIGITS COME BACK ON, and only them.  W114 found that the score
+    // numbers have their OWN IRQ6-gated flush `$185DC4` (the 4th routine behind
+    // the `$803940` gate) that drains the dirty records at `$81B4C8` straight
+    // into `$904000`, parallel to the `$240DC2`/`$141258` text path the rest of
+    // the HUD still uses.  So the port's own `TxVram` now sources `st.tx` in
+    // the `port` source, and `wantTx` flips back to true: the P1/P2 score
+    // number renders as real text tiles.  The OTHER text (lives, bombs,
+    // credits, chain-high-water) is still blank -- those ride the unported
+    // `$141258` flush (Wave C') and the cells stay zero / transparent here.
+    if (usedPort) st.tx = this.game.txvram.w;
     const idx = this.renderer.renderIndexed(st,
-      usedPort ? { spriteStride: RAM_STRIDE, wantTx: false } : undefined);
-    this.txDropped = usedPort;
+      usedPort ? { spriteStride: RAM_STRIDE } : undefined);
+    // `txDropped` now means "the WHOLE TX layer is the recording's".  In
+    // `port` the score digits are the port's own (`TxVram`); in `capture` the
+    // whole layer is the recording's, as it has been since W98.
+    this.txDropped = false;   // W115: never fully dropped now; kept for the stat
+    this.txPort = usedPort;   // W115: score digits are the port's (TxVram)
     // The palette that applies is the NEXT frame's -- the measured sample-point
     // offset (00-recon-assets.md §4).  On a looping capture the next frame is
     // the next captured one.
@@ -987,6 +1003,11 @@ class Demo {
       // with no explanation is the same defect class as an empty enemy layer
       // with no explanation.
       txDropped: this.txDropped ?? false,
+      // W115: the P1/P2 score digits are the port's own (rendered from
+      // `TxVram` via the ported `$185DC4` flush); the other text is still
+      // blank pending Wave C' (`$240DC2`/`$141258`).  `hud-rec` (capture) vs
+      // `hud-score` (port) is what the status line prints now.
+      txPort: this.txPort ?? false,
       // WAVE 44.  The port's own list, and the honest part is `missed`: a
       // display-list record whose sprite stream is not in the shipped sheet is
       // NOT DRAWN, and its CARTRIDGE address is on the status line. That is

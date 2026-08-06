@@ -36,6 +36,7 @@
 import { RAM, ROM } from './machine.js';
 import { isr6InputRead } from './input.js';
 import { uploadRegs } from './background.js';
+import { flushScoreDigits185DC4 } from './hud.js';
 
 /**
  * One IRQ6 dispatch.  Returns true if it RELEASED the semaphore (i.e. the main
@@ -63,6 +64,17 @@ export function irq6(ram, portWord, ctx) {
     // invisible for 10,696 frames and wrong for 42.
     if (a === ROM.isr6RegUpload) {
       uploadRegs(ram, ctx.video, { subtractShake: ctx.bgMutate === 'upload-subtracts-shake' });
+      continue;
+    }
+    // W114/W115.  THE FOURTH OF THE FOUR is THE SCORE-DIGIT FLUSH.  It drains
+    // the dirty records at $81B4C8 (populated by `digits2843A8` on the main
+    // loop) straight into the TX tilemap `$904000` via `ctx.txvram`, and is
+    // the route the P1/P2 score numbers ship -- INDEPENDENTLY of the general
+    // text flush `$141258` (still gated-routine #3 here, still a counted note,
+    // Wave C').  Reached by a direct `jsr $185dc4.l` at `$13C800`, NOT the
+    // indirect `jsr (An)` W112 hypothesised.
+    if (a === ROM.isr6ScoreFlush) {
+      if (ctx.txvram) flushScoreDigits185DC4(ram, ctx.txvram);
       continue;
     }
     unportedLog.note(a, 'ISR6 gated routine');

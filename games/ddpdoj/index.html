@@ -820,7 +820,11 @@ try {
       // WAVE 98 -- and `hud-` says the REPLAYED HUD is off. The port computes
       // the score, the chain and the bomb stock (src/hud.js) and draws none of
       // them, so the upper left is EMPTY ON PURPOSE until the real one lands.
-      `rec-${s.stripped} keep ${s.kept}${s.txDropped ? ' hud-rec' : ''}`,
+      // WAVE 115 -- the score digits are now the port's own (`hud-score`):
+      // `$185DC4` drains the dirty records into `TxVram` and they render as
+      // real text tiles. The OTHER text is still blank (Wave C'). `hud-rec`
+      // marks the capture source, where the whole TX layer is the recording.
+      `rec-${s.stripped} keep ${s.kept}${s.txPort ? ' hud-score' : (s.txDropped ? ' hud-rec' : '')}`,
       // WAVE 44 -- THE PORT'S OWN DISPLAY LIST.  `dl` is how many records the
       // port emitted this frame, `drawn` how many had art in the shipped sheet,
       // and `NO ART` names the cartridge stream addresses of the ones that did

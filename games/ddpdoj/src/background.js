@@ -215,6 +215,46 @@ export class BgVram {
 }
 
 /**
+ * `$904000`, the TX (text) tilemap.  64 columns x 32 rows of longwords =
+ * `$2000` bytes, which is the shape `render/tiles.js` `buildTxMap` reads and
+ * the shape `capture.js` hands it, so the page can hand the renderer the PORT's
+ * own TX map in place of the recording's with no translation layer.
+ *
+ * Stored BIG-ENDIAN, word for word the same convention as `BgVram`: the HIGH
+ * word of each tile longword is the tile number (`txram[ti*2]`) and the LOW
+ * word is the attribute (`txram[ti*2+1]`), exactly as `buildTxMap` reads and
+ * as the board's `move.l (a0)+,(a1)` writes them.
+ *
+ * WAVE 115 -- the score digits ship here.  `$185DC4` (the IRQ6-gated score
+ * flush, ported in `src/hud.js` `flushScoreDigits185DC4`) writes one longword
+ * per dirty record via `setLong(dest, tile)`, where `dest` is the record's
+ * measured `+$2` address (a `$904xxx` offset).  The OTHER text (lives, bombs,
+ * credits, chain high-water) still goes through the unported `$240DC2` /
+ * `$141258` path, so those cells stay blank in this map until Wave C'.
+ */
+export class TxVram {
+  constructor(words) {
+    this.w = words ? Uint16Array.from(words) : new Uint16Array(64 * 32 * 2);
+    if (this.w.length !== 64 * 32 * 2) {
+      throw new Error(`tx videoram is ${this.w.length} words, expected ${64 * 32 * 2}`);
+    }
+  }
+  /** `$185DDC move.l (a0)+,(a1)` with A1 = a `$904xxx` destination address.
+   *  `dest` is the ABSOLUTE address (e.g. `$9047D8`); the longword index is
+   *  `(dest - $904000) / 4`, matching W114's measured layout (P1 col 54 rows
+   *  0..8, P2 col 54 rows 17..25, extras rows 9/26). */
+  setLong(dest, v) {
+    const i = ((dest - 0x904000) >>> 2) * 2;
+    this.w[i] = (v >>> 16) & 0xffff;
+    this.w[i + 1] = v & 0xffff;
+  }
+  long(dest) {
+    const i = ((dest - 0x904000) >>> 2) * 2;
+    return u32((this.w[i] << 16) | this.w[i + 1]);
+  }
+}
+
+/**
  * The IGS023 scroll registers the game uploads: `$B02000` bg_yscroll,
  * `$B03000` bg_xscroll, `$B04000` bg_scale, `$B05000` tx_yscroll,
  * `$B06000` tx_xscroll, `$B0E000` ctrl.  Register NAMES are MAME's

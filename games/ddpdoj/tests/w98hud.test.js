@@ -84,21 +84,33 @@ test('W98/H2 the HUD comes off in the `port` source and STAYS in `capture`', () 
   const s = SRC('web/app.js');
   const m = s.match(/renderIndexed\(st,\s*\n?\s*usedPort \? \{([^}]*)\}[^;]*\);/);
   assert.ok(m, 'Demo.draw still renders through one renderIndexed call');
-  assert.ok(/wantTx: false/.test(m[1]),
-    'the port source passes wantTx: false');
+  // W115: the port source NO LONGER passes `wantTx: false`. The score digits
+  // now render from the port's own `TxVram` (the ported `$185DC4` flush), so
+  // `wantTx` is back to its default (true). The other HUD text is still blank
+  // (Wave C'); only the score numbers are the port's.
+  assert.ok(!/wantTx:\s*false/.test(m[1]),
+    'the port source no longer suppresses TX (W115: score digits render)');
   assert.ok(/usedPort \?/.test(s.slice(m.index, m.index + 200)),
     'and it is CONDITIONAL on the port source -- `capture` is deliberately the '
     + 'recording and is the only correctness check here that does not need MAME');
   assert.ok(/undefined\);/.test(s.slice(m.index, m.index + 300)),
     'the capture source passes no options at all, exactly as before');
+  // W115: the port source now overrides st.tx with the port's TxVram.
+  assert.ok(/usedPort\) st\.tx = this\.game\.txvram\.w/.test(s),
+    'the port source sources st.tx from the port\'s TxVram (W115)');
 });
 
-test('W98/H3 the page keeps SAYING the HUD is gone', () => {
+test('W98/H3 the page keeps SAYING what the HUD layer is', () => {
   assert.ok(/txDropped/.test(SRC('web/app.js')),
-    'the stats object publishes it');
-  assert.ok(/txDropped \? ' hud-rec'/.test(PAGE()),
-    'and the status line prints it -- an empty upper left with no explanation '
-    + 'is the same defect class as a black screen with no explanation');
+    'the stats object still publishes txDropped');
+  assert.ok(/txPort/.test(SRC('web/app.js')),
+    'and W115\'s txPort flag (score digits are the port\'s)');
+  // W115: the status line now distinguishes `hud-score` (port: score digits
+  // live, other text blank) from `hud-rec` (capture: whole layer recorded).
+  assert.ok(/hud-score/.test(PAGE()),
+    'the status line prints hud-score for the port source');
+  assert.ok(/hud-rec/.test(PAGE()),
+    'and still prints hud-rec for the capture source');
 });
 
 test('W98/H4 NOT ONE PALETTE WORD IS REMOVED, and the two paths are separate',

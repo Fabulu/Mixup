@@ -194,6 +194,8 @@ export const ROM = {
   isr6Third: 0x18acc0,       // jsr #3  -- UNPORTED
   isr6Gate: 0x13c7e6,        // THE (A) GATE, beq $13C80C
   isr6Gated: [0x141676, 0x140ffe, 0x141258, 0x185dc4],
+  isr6ScoreFlush: 0x185dc4,   // W114/W115: the 4th gated routine -- score digits
+  isr6TextFlush: 0x141258,    // the 3rd -- general text defer flush (Wave C')
   // WAVE 13: the SECOND of those four is now PORTED -- it is the IGS023 scroll
   // register upload, and it is build A's copy, which differs from build B's
   // $240CC0 by the two screen-shake subtractions $240CDE/$240CE4.  See
