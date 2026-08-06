@@ -55,10 +55,28 @@
 //     the scroll VM's own column cursor promotes whichever one is next.  What
 //     the recording still supplies for the background is the ring's initial
 //     contents (`bgSeed`, 63 columns the board wrote before the recording
-//     started) and the PALETTE -- the cartridge's own palette block IS shipped
-//     and checked (1020 of its 1024 entries equal the board's), but four
-//     entries (bank 21 pens 0..3) are ANIMATED by an unported routine, so the
-//     capture's palette is still what draws.
+//     started) and the PALETTE.
+//
+//     **WAVE 90 CORRECTED THIS PARAGRAPH, AND THE CORRECTION IS THE POINT.**
+//     It used to end: "the cartridge's own palette block IS shipped and checked
+//     (1020 of its 1024 entries equal the board's), but four entries (bank 21
+//     pens 0..3) are ANIMATED by an unported routine, so the capture's palette
+//     is still what draws."  [M] **Both numbers are exactly right -- 1020 of
+//     1024, and the four ARE bank 21 pens 0..3 -- and the paragraph still
+//     misled**, because it never said WHICH palette.  $227E58 is 1,024 words
+//     and $2415E8 uploads it into palette RAM **$400..$7FF, the BACKGROUND
+//     third**.  It contains no sprite entry at all.
+//
+//     **SO THE SPRITE PALETTE ($000..$3FF) HAS NO CARTRIDGE SOURCE IN THIS
+//     BUNDLE**, and it is the palette the ship, the pods, every enemy, every
+//     shot and THE BOMB are drawn through.  Every sprite colour on this page
+//     comes from one frozen instant of `capture.bin`, and the port models no
+//     palette RAM at all: $24150A -- the cartridge's 64-byte bank upload into
+//     the staging area $80E886, with its dirty flag $80FA66 -- is a COUNTED
+//     NOTE in seven files and has never executed.  A reader acting on the old
+//     sentence would have gone hunting four wrong entries and never found the
+//     cause of a wrong SPRITE colour.  W90 went looking for exactly that, for
+//     the owner's grey bomb, and that is what it found: `90-impl` §2.
 //
 //     A SHARD THAT HAS NOT LANDED IS NAMED, NEVER BLACK.  Tiles whose shard is
 //     still in flight are drawn as the transparent pen and the shard number

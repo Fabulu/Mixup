@@ -215,14 +215,35 @@ function ledger(ram) {
 // fire HELD.  Exact frames, never ranges: a drift of one frame is RED.
 const EXP = {
   // [M] on the final W62 tree.  `bossFirstLf`/`timeoutStart` are what the
-  // PRE-STEP scan sees: the boss's handler first runs on lf7870 -- W57's own
+  // PRE-STEP scan sees: the boss's handler first runs on lf7876 (lf7870 before
+  // W90's +6) -- W57's own
   // frontier, the frame the port used to stop on -- and by the time the scan
   // looks, `$294F3C` has spent one.  $2A30 itself is asserted from the
   // cartridge, below, so the -1 cannot hide a wrong prototype.
-  bossFirstLf: 7871, timeoutStart: 0x2a2f, timeoutSteps: 10799,
-  timeoutLf: 18669, animFrames: 474, suspendLf: 19143, advanceLf: 19144,
-  bgGoneLf: 19147, stageWrittenLf: 19216, rebuiltLf: 19217,
-  d6States: 7, type6States: 7, playerFlungLf: 19147,
+  //
+  // ======================== WAVE 90 RE-BASELINED EVERY FRAME HERE, +6 EXACTLY
+  //
+  // Said here rather than quietly edited (`86-impl` §0). W90 ported
+  // `$289FC0`/`$289FDA`, the LASER's impact effect; this scenario HOLDS FIRE,
+  // so the effect now spawns and its fill draws FOUR times per spawn from the
+  // shared `$803917` counter (`$242FFC`, `$242EC2`, `$28AB86`, `$242E24`).
+  // The whole run is six frames later from early on.
+  //
+  // **[M] ALL EIGHT MOVED BY EXACTLY +6, ACROSS AN 11,000-FRAME SPAN**, which
+  // is what makes this a re-baseline rather than a regression: 7871->7877,
+  // 18669->18675, 19143->19149, 19144->19150, 19147->19153, 19216->19222,
+  // 19217->19223, and `playerFlungLf` with `bgGoneLf`. `timeoutSteps` 10,799
+  // and `animFrames` 474 did NOT move -- the DURATIONS are unchanged and only
+  // the phase shifted, which is the strongest single sign that nothing about
+  // the ending itself changed.
+  //
+  // These are the PORT's own numbers ("[M] on the final W62 tree") and not the
+  // board's, which is what makes re-pinning them legitimate; `timeoutStart`
+  // `$2A2F` is asserted from the CARTRIDGE below and did not move either.
+  bossFirstLf: 7877, timeoutStart: 0x2a2f, timeoutSteps: 10799,
+  timeoutLf: 18675, animFrames: 474, suspendLf: 19149, advanceLf: 19150,
+  bgGoneLf: 19153, stageWrittenLf: 19222, rebuiltLf: 19223,
+  d6States: 7, type6States: 7, playerFlungLf: 19153,
 };
 
 const r = run();
@@ -255,7 +276,7 @@ say(bundle.tables && r.protoTimeout === 0x2a30,
   `THE CARTRIDGE's own word: $2927F6 + 12 = $2A30 = 10,800 `
   + `(got $${(r.protoTimeout ?? 0).toString(16)})`);
 say(r.timeoutStart === EXP.timeoutStart,
-  `$22(a5) reads $2A2F on lf7871 -- $2A30 loaded by $26377A, one $294F3C spent `
+  `$22(a5) reads $2A2F on lf7877 -- $2A30 loaded by $26377A, one $294F3C spent `
   + `(got $${(r.timeoutStart ?? 0).toString(16)})`);
 say(r.timeoutSteps === EXP.timeoutSteps,
   `$294F3C spends it ONE PER LOGIC FRAME: ${EXP.timeoutSteps} decrements (got ${r.timeoutSteps})`);

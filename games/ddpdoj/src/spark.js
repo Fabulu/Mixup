@@ -95,17 +95,63 @@
 // which is the honest coverage sentence, not "both sites ported".
 //
 // AND THREE MORE PRODUCERS FILL THIS POOL, all of them the LASER's, all of them
-// inside code W45 ALREADY PORTED, all of them still counted notes:
+// inside code W45 ALREADY PORTED:
 //
-//   $25485E jsr $289F96   inside $254680, the beam's segment driver (PORTED)
-//   $255066 jsr $289FC0   inside $255042, the beam's draw          (PORTED)
-//   $2550F0 jsr $289FDA   inside $255042                            (PORTED)
+//   $25485E jsr $289F96   inside $254680, the beam's segment driver  UNPORTED
+//   $255066 jsr $289FC0   inside $255042, the beam's draw            W90
+//   $2550F0 jsr $289FDA   inside $255042                             W90
 //
 // They read a DIFFERENT template ($28A506) and a DIFFERENT 36-entry descriptor
-// list ($28A51C, streams $22C6BC..$22C860), and this wave neither ports them nor
-// harvests their art.  **The laser's own impact spark is therefore still
-// missing, deliberately, and it is named here rather than left to look done.**
-// The driver in this file WOULD step their records correctly the day they land.
+// list ($28A51C, streams $22C6BC..$22C860 step $C, DESCENDING).
+//
+// ===================== WAVE 90: TWO OF THE THREE NOW RUN ====================
+//
+// W86 §6.3 named `$289FC0`/`$289FDA` as the OTHER HALF of the owner's "the
+// laser shoots through them": W86 made the fighter DIE, and this makes the beam
+// SHOW that it connected.  [M] W86 counted the pair reached 1,789 times in
+// 6,500 steps as a note.
+//
+// **THE HEADS ARE SEVEN INSTRUCTIONS AND THE WORK IS AT THE OTHER END**, which
+// is why this wave is small and why reading only the label would have missed
+// it.  Both heads `bra $28A060` into the shared tail with D0 = 0 -- KIND 0 --
+// so their fill tail is `$28A232[0]` = `$28A252`, **the one W65 already
+// transcribed for the LASER BOMB**.  What was missing is the arm INSIDE it that
+// `$289FF4` can never take:
+//
+//   $28A288 tst.w D7 / $28A28A bmi $28A2A8     <- $289FF4 sets D7 := $FFFF and
+//                                                 goes here.  W65's arm.
+//   $28A28C beq $28A296                        <- $289FC0 sets D7 := 0
+//   $28A28E move.w $81046A,D1                  <- $289FDA sets D7 := 1  (P2)
+//   $28A296 move.w $810408,D1                  <- ...P1
+//   $28A29C lea $28A2D6,A2 / adda.w D1,A2 / move.w (A2),D0 / bra $28A2C0
+//
+// **SO D7 IS THE PLAYER, TWICE OVER**: it picks the pool half at the head AND
+// the power word here, and the two must agree.  And D1 -- the LASER POWER WORD,
+// `+= 2, refuse at 8` (`src/items.js` POWER) -- is a RAW BYTE OFFSET into a
+// word table, so the impact effect's speed is **32 / 64 / 96 / 128 / 176, one
+// per power step**.
+//
+// [M] AND THE TABLE IS FIVE WORDS, NOT EIGHT.  This file said "the eight-word
+// table $28A2D6" from W53 until W90 measured it, and that is the eighth comment
+// on this project to have been wrong or ignored.  The far end is pinned by the
+// cartridge's own dispatch: [M] `$28A232[1]` -- fill tail entry 1 -- IS
+// `$28A2E0`, and `$28A2E0` is `addq.w #$6,A0 / rts`, the NULL fill tail (it
+// walks A0 from rec+$1C to rec+$22 and returns).  The sixth "word" is an
+// instruction the cartridge names as code.  From the other side the power word
+// caps at 8.  `tools/export-tables.py beam_impact_speed_indices` asserts both.
+//
+// THE ARM ALSO SKIPS `$28A2A8..$28A2BC`, and that is a semantic difference a
+// tidy port loses: the bomb's arm writes `move.b D3,(-$11,A0)` -- rec+$0F, the
+// LOW BYTE of the attribute -- and the impact's arm never reaches it.  So an
+// impact spark keeps the whole attribute word `$28A210` wrote, and a bomb spark
+// does not.
+//
+// STILL UNPORTED, and named rather than left to look done: **`$289F96`**, the
+// beam's SEGMENT driver's producer ($25485E).  It shares this template and this
+// list, so its ART is in the bundle from this wave, but it differs in the one
+// field that matters -- `moveq #$1,D1`, i.e. it allocates TWO records per call
+// -- and it picks its pool half from `($1A,A6)` rather than from D7.  It is a
+// counted note in `src/laser.js`.
 //
 // `$28A1DA`'s fill dispatch `$28A232` has EIGHT entries; only entry 5 (D0 = $14)
 // is transcribed.  The other seven throw by address.
@@ -145,7 +191,21 @@ export const SPARK = {
   cullY: 0x7000,           // $28A0CA move.w #$7000,D5 / swap -- D5's HIGH word
   posShift: 6,             // $28A0D6 moveq #$6,D4 -> $28A180 asr.l D4,D0
   p1PlayerRec: 0x8103e6,   // $289F82 cmpa.l #$8103E6,A4
+  // ------------------------------------------------------------------ WAVE 90
+  beamImpactTpl: 0x28a506,   // $289FC6/$289FE0 lea $28A506(PC),A2 -- ONE template
+  beamImpactList: 0x28a51c,  // ...which is $28A506+$16, its own +$10 long
+  speedByPower: 0x28a2d6,    // $28A29C lea, indexed by the POWER WORD as BYTES
+  speedByPowerEntries: 5,    // [M] $28A2E0 is fill tail $28A232[1] -- CODE
+  p1Power: 0x810408,         // $28A296 move.w $810408,D1   (D7 == 0)
+  p2Power: 0x81046a,         // $28A28E move.w $81046A,D1   (D7 > 0)
 };
+
+/** `$289FC0` and `$289FDA`, the two heads, and the fields they differ in.
+ *  Exported so `tests/` and `tools/export-tables.py` name them once. */
+export const BEAM_IMPACT = Object.freeze([
+  { at: 0x289fc0, caller: 0x255066, base: SPARK.p1Base, d7: 0, power: SPARK.p1Power },
+  { at: 0x289fda, caller: 0x2550f0, base: SPARK.p2Base, d7: 1, power: SPARK.p2Power },
+]);
 
 /** Record offsets, from the slot base.  See the map in the header. */
 export const E = {
@@ -314,14 +374,44 @@ function fillTail28A252(ram, rom, ctx, slot, d7) {
   // A0 is now slot+$20, so (-$1c,A0) is slot+$04 -- E.pos, the LONG axis.
   ram.setU16(slot + E.pos, u16(ram.u16(slot + E.pos) + v.dy));   // $28A280
   d0 = 0xc0;                                       // $28A284 move.w #$C0,D0
-  if ((d7 & 0x8000) === 0) {                       // $28A288 tst.w D7 / bmi
-    unreached(0x28a28c, `$28A28C -- $28A252's NON-NEGATIVE D7 arm. It reads `
-      + `$81046A (D7 > 0) or $810408 (D7 == 0) and indexes the eight-word `
-      + `table $28A2D6 with it, then jumps to $28A2C0 with a table WORD as D0 `
-      + `-- a third speed domain. The only producer of this tail in this port `
-      + `is $289FF4, whose $28A00E sets D7 := $FFFF, so the arm needs one of `
-      + `$289F96 / $289FC0 / $289FDA -- the BEAM's three producers, unported. `
-      + `D7 was $${(d7 & 0xffff).toString(16).toUpperCase()}`);
+  if ((d7 & 0x8000) === 0) {
+    // ------------------------------------------------------------- WAVE 90
+    // $28A28C..$28A2A6 -- the arm $289FF4 can NEVER take, because $28A00E sets
+    // its D7 to $FFFF.  $289FC0 (D7 = 0) and $289FDA (D7 = 1) are its only
+    // producers, and D7 is the PLAYER: it picked the pool half at the head and
+    // it picks the power word here.
+    //
+    // THE POWER WORD IS A RAW BYTE OFFSET WITH NO MASK AND NO RANGE CHECK.
+    // $810408/$81046A are `+= 2, refuse at 8` ($252C96/$252C9C), so the domain
+    // is {0,2,4,6,8} and $28A2D6's five words are exactly it.  A power outside
+    // that would read $28A2E0 -- `addq.w #$6,A0`, fill dispatch entry 1, CODE
+    // -- as a speed.  That is a LOUD NAMED THROW here and not a clamp: the
+    // cartridge would take the wrong number and this port says so instead.
+    const d1p = ram.u16(d7 === 0 ? SPARK.p1Power : SPARK.p2Power); // $28A28E/$28A296
+    if ((d1p & 1) !== 0 || d1p > (SPARK.speedByPowerEntries - 1) * 2) {
+      unreached(0x28a29c, `$28A2A2 adda.w D1,A2 -- the laser POWER word `
+        + `$${(d7 === 0 ? SPARK.p1Power : SPARK.p2Power).toString(16)
+          .toUpperCase()} reads $${d1p.toString(16).toUpperCase()}, and it is a `
+        + `RAW BYTE OFFSET into the FIVE-word table $28A2D6. $252C96/$252C9C `
+        + `make that word "+= 2, refuse at 8", so 0/2/4/6/8 is its whole `
+        + `domain; $28A2E0 -- the next word -- is fill dispatch $28A232's `
+        + `entry 1, \`addq.w #$6,A0 / rts\`, i.e. CODE, and the board would `
+        + `take an instruction as a speed`);
+    }
+    d0 = rom.u16(SPARK.speedByPower + d1p);        // $28A2A4 move.w (A2),D0
+    // $28A2A6 bra $28A2C0 -- and it JUMPS $28A2A8..$28A2BC, so the impact
+    // spark never gets the bomb's `move.b D3,(-$11,A0)` partial overwrite of
+    // rec+$0F.  Its attribute word stays exactly what $28A210 wrote.
+    //
+    // D1 IS THE ANGLE AGAIN HERE, NOT THE POWER.  The ROM clobbers D1 with the
+    // power word at $28A28E/$28A296 and then RESTORES the angle at `$28A2C0
+    // move.w (A7)+,D1` off the push `$28A274` made.  Keeping the power in its
+    // own variable is that pop; reusing `d1` would hand $241812 the power as a
+    // heading and every impact spark would fly the same way.
+    const vBeam = ctx.tables.vector(d0, d1);       // $28A2C0/$28A2C2 jsr $241812
+    ram.setU16(slot + E.pos + 2,
+      u16(ram.u16(slot + E.pos + 2) + vBeam.dx));  // $28A2C8 add.w D3,(-$1a,A0)
+    return slot + SPARK.stride;                    // $28A2CC addq.w #2,A0
   }
   d3 = ram.btst8(0x811f73, 7) ? 3 : 2;             // $28A2A8/$28A2AC/$28A2B8
   ram.setU8(slot + E.attr + 1, d3);                // $28A2BC move.b D3,(-$11,A0)
@@ -378,6 +468,55 @@ export function spawnBeamBombSpark289FF4(ram, rom, ctx, spawner) {
   const p2 = ram.btst8(0x811f73, 7);                      // $28A01A btst #$7
   return poolETail(ram, rom, ctx, p2 ? SPARK.p2Base : SPARK.p1Base,
     tpl, spawner, 0, 0xffff, 0x289ff4);                   // $28A00E move.w #$FFFF
+}
+
+/**
+ * `$289FC0` (P1) and `$289FDA` (P2) -- **THE LASER'S IMPACT EFFECT**, W90.
+ *
+ * Seven instructions each, and they differ in exactly two fields:
+ *
+ *   289fc0: movem.l D0-D7/A0-A6,-(A7)
+ *   289fc4: moveq #$0,D1              ONE record ($289F96 says #$1 -- TWO)
+ *   289fc6: lea ($28A506,PC),A2       the template, an IMMEDIATE, not a table
+ *   289fcc: moveq #$0,D0              KIND 0 -> fill tail $28A252 (W65's)
+ *   289fce: lea $81D394,A0            <- THE POOL HALF   } the two
+ *   289fd4: moveq #$0,D7              <- THE PLAYER      } that differ
+ *   289fd6: bra $28A060               the shared tail
+ *
+ * **THERE IS NO `$813098` GATE**, exactly as `$289FF4` has none and `$289F54`
+ * does -- so an impact spark is allocated on loop 2+ where a shot spark is not.
+ *
+ * **AND THERE IS NO GATE IN HERE AT ALL.**  Everything that decides whether the
+ * beam flashes is at the CALL SITE, `$25504E..$255064` in `src/laser.js`, and
+ * the middle one of its three conditions is `$80390C` -- the per-frame
+ * alternation word.  P1's block runs on the frames it is NON-zero and P2's on
+ * the frames it is zero.  **That is the owner's "sometimes".**
+ *
+ * @param spawner the ROM's A6 at the `jsr`: `$811F32` (P1) or `$811F52` (P2),
+ *        the BEAM BLOCK.  `$28A1E6` reads its +$2/+$4 as the spark's position
+ *        and, because this template's attribute word is $FFFF (negative),
+ *        `$28A1FE` reads its +$1D as the COLOUR.  The caller passes it rather
+ *        than this file assuming it, exactly as `spawnBeamBombSpark289FF4` does.
+ * @param at WHICH HEAD, by address: `$289FC0` or `$289FDA`.  It is deliberately
+ *        NOT a player flag or a boolean.  `src/laser.js`'s `BEAM[].d7` is the
+ *        SEGMENT RECORD's player word and is **1 for P1**, the exact inverse of
+ *        this routine's D7, so a caller that passed a "d7" would have had two
+ *        opposite conventions meeting at one argument. The caller names the ROM
+ *        address it is standing at.
+ * @returns {boolean} false on the "no free slot" failure return.
+ */
+export function spawnBeamImpact289FC0(ram, rom, ctx, spawner, at) {
+  const head = BEAM_IMPACT.find((h) => h.at === at);
+  if (!head) {
+    unreached(at, `the laser impact effect was entered at $${(at >>> 0)
+      .toString(16).toUpperCase()}, and the cartridge has exactly TWO heads: `
+      + `$289FC0 (D7 = 0, P1's $81D394 and $810408) and $289FDA (D7 = 1, P2's `
+      + `$81D790 and $81046A). $289F96 -- the beam's SEGMENT producer, which `
+      + `shares this template -- is a THIRD head and is unported: it allocates `
+      + `TWO records and picks its half from ($1A,A6)`);
+  }
+  return poolETail(ram, rom, ctx, head.base, SPARK.beamImpactTpl, spawner,
+    0, head.d7, head.at);                         // $289FCC moveq #$0,D0
 }
 
 /**

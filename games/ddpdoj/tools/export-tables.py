@@ -751,11 +751,35 @@ SHOT_WINDOWS.extend([
 #   $28ABFA..$28AC39, 64 B, $28ABE0's draw table (`moveq #$3f` masks the index).
 #       [M] $28ABFA + 64 == $28AC3A == `lea $81DB90,A0`, code.  EXACT.
 #
-# NOT EXPORTED, and named rather than skipped: $28A506's template and its own
-# 36-longword list at $28A51C ($22C6BC..$22C860).  They belong to $289F96 /
-# $289FC0 / $289FDA -- the LASER's three pool-E producers, which this wave does
-# not port.  Exporting data for a routine that does not exist is E2's $268594.
+# W90 EXPORTS THE ONE THING THIS BLOCK USED TO NAME AS DELIBERATELY ABSENT.
+# The paragraph here used to read: "NOT EXPORTED, and named rather than skipped:
+# $28A506's template and its own 36-longword list at $28A51C
+# ($22C6BC..$22C860). They belong to $289F96 / $289FC0 / $289FDA -- the LASER's
+# three pool-E producers, which this wave does not port."  W90 ports $289FC0 and
+# $289FDA, so the data is exported now and the sentence would otherwise have
+# become the eighth comment on this project that stopped being true and stayed.
+# $289F96 is still unported -- see the W90 window's `why`.
 SHOT_WINDOWS.extend([
+    (0x28A2D6, 0x000A, "W90: $28A252's SPEED-BY-POWER table, five words, read "
+                       "by $28A2A4 `move.w (A2),D0` at the byte offset the "
+                       "player's laser power word ($810408/$81046A) supplies. "
+                       "FIVE because that word is `+= 2, refuse at 8`, and the "
+                       "far end $28A2E0 is fill dispatch $28A232's ENTRY 1 -- "
+                       "`addq.w #$6,A0 / rts`, the null tail. Both pins are "
+                       "asserted by beam_impact_speed_indices()"),
+    (0x28A506, 0x00A6, "W90: the LASER IMPACT EFFECT's template ($28A506, 22 "
+                       "bytes) and its own 36-longword descriptor list "
+                       "($28A51C -> $22C6BC..$22C860 step $C). $289FC0/$289FDA "
+                       "`lea $28A506(PC),A2` name the template as an "
+                       "IMMEDIATE, not through a pointer table, so there is "
+                       "one. Both extents are the cartridge's: $28A506 + $16 "
+                       "== $28A51C (the template ABUTS the list its own +$10 "
+                       "names) and $28A51C + 36*4 == $28A5AC, which is W53's "
+                       "template 0 and the base of the window below. THREE "
+                       "windows now abut: $28A464..$28A506..$28A5AC..$28AB86. "
+                       "$289F96 shares this template and is still unported -- "
+                       "it allocates TWO records (`moveq #$1,D1`) and is "
+                       "reached from $25485E, the beam's SEGMENT driver"),
     (0x28A5AC, 0x05DA, "W53 POOL E: the 15 spark templates, their shared "
                        "36-entry descriptor list $28A5C2, and the 256-entry "
                        "pointer table $28A786 -- $28A5AC..$28AB85, whose far "
@@ -1444,12 +1468,77 @@ def speed_index_set(d: bytes) -> list[int]:
     # the second is the instruction's own immediate.  W12 listed the pods' 224
     # the same way and W31 the midboss's 112.
     s.update(beam_spark_speed_indices(d))
+    # W90: and THE LASER'S IMPACT EFFECT's.  $289FC0/$289FDA reach the SAME
+    # fill tail $28A252 with D7 = 0/1 rather than $FFFF, which routes them past
+    # $28A28A's `bmi` into the arm $289FF4 never takes: $28A28E/$28A296 read the
+    # PLAYER'S LASER POWER WORD ($810408 / $81046A) and use it as a BYTE OFFSET
+    # into the word table $28A2D6, and $28A2A4's `move.w (A2),D0` makes that
+    # word the SECOND $241812 call's speed.  So the beam's spark has five more
+    # speed levels than the bomb's, one per power step, and they are read out of
+    # the table rather than typed here.
+    s.update(beam_impact_speed_indices(d))
     return sorted(s)
 
 
 BEAM_SPARK_DRAW_TABLE = 0x242E42      # $242E24's canned bytes
 BEAM_SPARK_ADD_AT = 0x28A272          # `addq.b #$4,D0`
 BEAM_SPARK_CONST_AT = 0x28A284        # `move.w #$C0,D0`
+
+# W90.  THE SPEED-BY-POWER TABLE, and its extent is pinned from BOTH SIDES by
+# things that are not this line.
+#
+#   FROM ABOVE: the power word itself.  $810408/$81046A are `+= 2, refuse at 8`
+#   ($252C96/$252C9C, src/items.js POWER), so the byte offset $28A2A2 `adda.w
+#   D1,A2` can form is 0, 2, 4, 6 or 8 and nothing else -- FIVE words.
+#   FROM BELOW: $28A2D6 + 10 == $28A2E0, and [M] $28A2E0 is ENTRY 1 OF THE FILL
+#   DISPATCH $28A232 -- `addq.w #$6,A0 / rts`, the NULL fill tail (it moves A0
+#   from rec+$1C to rec+$22 and returns).  So the sixth word is CODE that the
+#   cartridge's own dispatch table names, which is a stronger pin than "the
+#   value looks wrong".
+#
+# `src/spark.js` called this an EIGHT-word table from W53 until W90 measured it.
+BEAM_IMPACT_SPEED_TABLE = 0x28A2D6
+BEAM_IMPACT_POWERS = (0, 2, 4, 6, 8)  # $810408's own domain
+BEAM_IMPACT_TABLE_END = 0x28A2E0      # fill dispatch $28A232 entry 1
+BEAM_IMPACT_NULL_TAIL = (0x5C48, 0x4E75)   # `addq.w #$6,A0` / `rts`
+BEAM_IMPACT_CURSOR = 0x008C                # $28A506+$0C's low word -> 36 longs
+BEAM_IMPACT_TPL = 0x28A506                 # both heads' `lea (d16,PC),A2`
+BEAM_IMPACT_LIST = 0x28A51C                # ...and the template's own +$10
+
+
+def beam_impact_speed_indices(d: bytes) -> set[int]:
+    """W90.  The five speeds `$28A2D6` can hand `$241812`, read out of the
+    table, with the table's own far end asserted first."""
+    if u32(d, 0x28A232 + 4) != BEAM_IMPACT_TABLE_END:
+        raise SystemExit(
+            f"$28A232[1] is ${u32(d, 0x28A232 + 4):08X} and must be "
+            f"${BEAM_IMPACT_TABLE_END:06X} -- that entry being a fill tail is "
+            f"what pins $28A2D6 at FIVE words from below.")
+    got = (u16(d, BEAM_IMPACT_TABLE_END), u16(d, BEAM_IMPACT_TABLE_END + 2))
+    if got != BEAM_IMPACT_NULL_TAIL:
+        want = " ".join(f"${w:04X}" for w in BEAM_IMPACT_NULL_TAIL)
+        raise SystemExit(
+            f"${BEAM_IMPACT_TABLE_END:06X} is ${got[0]:04X} ${got[1]:04X} and "
+            f"must be {want} (`addq.w #$6,A0 / rts`, the NULL fill tail). "
+            f"$28A2D6's far end is no longer pinned by code.")
+    out = set()
+    for p in BEAM_IMPACT_POWERS:
+        v = u16(d, BEAM_IMPACT_SPEED_TABLE + p)
+        # A SPEED LEVEL, and $200D20's table has 256 of them. Anything past the
+        # five real words is an INSTRUCTION being read as a speed, and it must
+        # be named here rather than blowing up 900 lines later inside the
+        # quadrant export with a struct.error that says nothing. [M] that is
+        # exactly what happened when this check was mutated to allow power 10.
+        levels = speed_levels(d)
+        if v >= levels:
+            raise SystemExit(
+                f"$28A2D6 + {p} is ${v:04X} ({v}), which is not a speed level "
+                f"-- $200D20 has {levels}. The power word's domain is "
+                f"{BEAM_IMPACT_POWERS} and the table has "
+                f"{len(BEAM_IMPACT_POWERS)} words; reading past them reads the "
+                f"null fill tail at ${BEAM_IMPACT_TABLE_END:06X} as data.")
+        out.add(v)
+    return out
 
 
 def beam_spark_speed_indices(d: bytes) -> set[int]:
@@ -2187,6 +2276,98 @@ def check_beam_bomb_extents(d: bytes) -> None:
             f"(`moveq #$0,D0`) -- it is what pins the $24D282 window's end.")
 
 
+# W90's own heads, read out of the instructions rather than named here.
+#   $289FC0 / $289FDA differ in EXACTLY two fields and this asserts both:
+#   the pool half (`lea $81D394` vs `lea $81D790`) and D7 (`moveq #$0` vs
+#   `moveq #$1`).  D7 is not decoration: $28A28C `beq` uses it to pick WHICH
+#   PLAYER'S POWER WORD indexes $28A2D6, so a port that swapped the two heads
+#   would draw P2's power on P1's beam and no test of the pool half would see it.
+BEAM_IMPACT_HEADS = (
+    #  addr      pool half   D7   the caller
+    (0x289FC0, 0x81D394, 0, 0x255066),
+    (0x289FDA, 0x81D790, 1, 0x2550F0),
+)
+
+
+def check_beam_impact_extents(d: bytes) -> None:
+    """W90.  $289FC0/$289FDA, their shared template and their list -- every
+    extent taken out of the cartridge, none of it typed in twice."""
+    for head, pool, d7, caller in BEAM_IMPACT_HEADS:
+        if u32(d, head) != 0x48E7FFFE:
+            raise SystemExit(
+                f"${head:06X} does not open `movem.l D0-D7/A0-A6,-(A7)` "
+                f"(it is ${u32(d, head):08X}); it is not a pool-E head.")
+        # `moveq #$0,D1` -- ONE record.  $289F96, which shares the template,
+        # says `moveq #$1,D1` and allocates two; that is the difference.
+        if u16(d, head + 4) != 0x7200:
+            raise SystemExit(
+                f"${head + 4:06X} is ${u16(d, head + 4):04X}, not `moveq "
+                f"#$0,D1` -- ${head:06X} no longer allocates exactly ONE "
+                f"record and src/spark.js's d1 is wrong.")
+        # `lea $28A506(PC),A2` -- the template, as a PC-relative immediate.
+        if u16(d, head + 6) != 0x45FA:
+            raise SystemExit(
+                f"${head + 6:06X} is not `lea (d16,PC),A2`.")
+        disp = u16(d, head + 8)
+        tpl = head + 8 + (disp - 0x10000 if disp & 0x8000 else disp)
+        if tpl != BEAM_IMPACT_TPL:
+            raise SystemExit(
+                f"${head:06X} names template ${tpl:06X}, not "
+                f"${BEAM_IMPACT_TPL:06X} -- the window and the harvest row are "
+                f"both written under that address.")
+        # `moveq #$0,D0` -- KIND 0, i.e. fill tail $28A232[0] = $28A252, the
+        # one the LASER BOMB already reaches.  This is why W90 is small.
+        if u16(d, head + 12) != 0x7000:
+            raise SystemExit(
+                f"${head + 12:06X} is ${u16(d, head + 12):04X}, not `moveq "
+                f"#$0,D0`; ${head:06X}'s fill tail is no longer $28A252.")
+        if u16(d, head + 14) != 0x41F9 or u32(d, head + 16) != pool:
+            raise SystemExit(
+                f"${head + 14:06X} is not `lea ${pool:06X}.l,A0` -- "
+                f"${head:06X}'s POOL HALF moved, so its player did.")
+        if u16(d, head + 20) != (0x7E00 | d7):
+            raise SystemExit(
+                f"${head + 20:06X} is ${u16(d, head + 20):04X}, not `moveq "
+                f"#${d7},D7`. D7 picks which power word ($810408 vs $81046A) "
+                f"indexes $28A2D6, so this is the PLAYER and not a flag.")
+        if u16(d, caller) != 0x4EB9 or u32(d, caller + 2) != head:
+            raise SystemExit(
+                f"${caller:06X} is not `jsr ${head:06X}.l` -- src/laser.js "
+                f"calls it from there.")
+    # The template's own fields, and the two abuttals that size the list.
+    tpl = BEAM_IMPACT_TPL
+    if u16(d, tpl) != 0x0004:
+        raise SystemExit(
+            f"$28A506's emitter selector is ${u16(d, tpl):04X}, not $0004. "
+            f"src/spark.js EMIT_ENTRY has four entries (0/4/8/$C) and $28A150 "
+            f"-- selector 4's -- is the delay-counter-B path.")
+    if u32(d, tpl + 0x10) != BEAM_IMPACT_LIST or tpl + 0x16 != BEAM_IMPACT_LIST:
+        raise SystemExit(
+            f"$28A506's list pointer is ${u32(d, tpl + 0x10):08X} and the "
+            f"template does not abut it at +$16; the window is unpinned.")
+    cur = u32(d, tpl + 0x0C) & 0xFFFF
+    if cur != BEAM_IMPACT_CURSOR:
+        raise SystemExit(
+            f"$28A506's cursor seed is ${cur:04X}, not ${BEAM_IMPACT_CURSOR:04X}"
+            f". $28A160 steps it -4, so the list's length is derived from it "
+            f"and {BEAM_IMPACT_CURSOR // 4 + 1} is wrong.")
+    if 0x28A51C + (cur // 4 + 1) * 4 != 0x28A5AC:
+        raise SystemExit(
+            f"$28A51C + (${cur:04X}/4 + 1) longwords does not land on $28A5AC, "
+            f"W53's template 0 -- the impact list and the shot-spark block no "
+            f"longer abut and the harvest row's 36 is a guess.")
+    # [M] the 36 entries are $22C6BC..$22C860 step $C, DESCENDING (entry 0 is
+    # the far end).  Asserted as a step rather than as 36 typed addresses.
+    for i in range(BEAM_IMPACT_CURSOR // 4 + 1):
+        want = 0x22C860 - i * 0xC
+        got = u32(d, 0x28A51C + i * 4)
+        if got != want:
+            raise SystemExit(
+                f"$28A51C[{i}] is ${got:08X}, not ${want:06X}; the impact "
+                f"animation is not the descending $C-step run "
+                f"$22C860..$22C6BC that the harvest row exports.")
+
+
 def build(d: bytes) -> dict:
     check_pool_e_extents(d)                    # W53 -- see the function's docstring
     check_pool_b_extents(d)                    # W54 -- see the function's docstring
@@ -2197,6 +2378,7 @@ def build(d: bytes) -> dict:
     check_boss_script_table_extents(d)         # W82 -- ...and so were A3 and A1
     check_boss_object_tables(d)                # W82 -- the OBJECT sprite tables
     check_beam_bomb_extents(d)                 # W65 -- THE LASER BOMB's
+    check_beam_impact_extents(d)               # W90 -- THE LASER's IMPACT
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
     levels = speed_index_set(d)

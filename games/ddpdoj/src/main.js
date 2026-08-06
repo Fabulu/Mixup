@@ -485,6 +485,13 @@ export class Game {
     // defect history is that "did nothing" and "was never called" looked the
     // same.  `tools/w67trailgate.mjs` reads this AND the bucket counter.
     this.trailRecords = ctx.trailRecords ?? 0;
+    // WAVE 90.  How many LASER IMPACT EFFECTS ($289FC0/$289FDA) the beam draw
+    // spawned this frame, 0..2. Same reason as the four above, and here it is
+    // sharper than usual: the call site's middle gate is `$80390C`, the
+    // per-frame alternation word, so **ZERO IS THE CORRECT ANSWER ON HALF THE
+    // FRAMES A BEAM IS ON** and a reader who saw only a total could not tell
+    // that from "it never fired". The owner's word for this is "sometimes".
+    this.beamImpacts = ctx.beamImpacts ?? 0;
     this.unportedLog.note(ROM.call3, 'main-loop call #3 ($24683E)');
     // 9: call #4, $23D2AE, THE SPRITE LIST BUILD.  PORTED WHOLE in wave 11
     // (src/displaylist.js): the sum, the pre-emptive drop policy, the 29-bucket

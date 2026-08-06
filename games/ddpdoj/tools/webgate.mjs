@@ -797,7 +797,15 @@ try {
         // helicopters moved (see the block above); `distinct` and `first` did
         // not move, which is what says this is the same animation more often
         // and not a different one.
-        8: { streams: 36, records: 9271, distinct: 35, first: 24,
+        // W90: 36 -> 72, AND THE THREE PORT-SIDE FIELDS DID NOT MOVE.  The
+        // new 36 are `$28A51C`'s -- the LASER's impact effect, the other
+        // template that fills this same pool.  `records` 9,271, `distinct` 35
+        // and `first` 24 are all unchanged BECAUSE THIS WINDOW TAPS FIRE AND
+        // NEVER RAISES A BEAM, so `$289FC0` is never entered in it.  That is
+        // the W86 §2.4 shape again and it is stated rather than left implied:
+        // this stage is structurally blind to what W90 shipped, and the W90
+        // stage below (fire HELD) is the window that can see it.
+        8: { streams: 72, records: 9271, distinct: 35, first: 24,
           what: 'THE IMPACT SPARK (pool E, $289F54 -> $28A098, bucket 20)' },
         // WAVE 54 -- THE ENEMY DEATH EXPLOSION, the SAME window and the SAME
         // four absolute port-side fields.  `streams` is 269, THE WHOLE OF BOTH
@@ -994,7 +1002,19 @@ try {
         // a stage that only re-pinned `streams` here would be re-pinning the
         // number that moved and staying blind to the reason. The W86 stage
         // below is the window that can see them.
-        11: { streams: 158, records: 12769, distinct: 101, first: 315,
+        // W90: 12,769 -> 12,805, AND IT IS AN RNG SHIFT RATHER THAN NEW ART.
+        // `streams` 158, `distinct` 101 and `first` 315 all held; only
+        // `records` moved, by 36 in 12,769 (0.28 %).  This window HOLDS fire
+        // twice in every 600 frames, so from W90 the beam's impact effect
+        // spawns -- and its fill draws four times from the shared `$803917`
+        // counter (`$242FFC`, `$242EC2`, `$28AB86`, `$242E24`).  Every later
+        // draw therefore steps differently.  **THAT IS THE PORT GETTING CLOSER
+        // TO THE BOARD, NOT FURTHER**: those four `addq.b #1,$803917` sites
+        // execute on the cartridge every time the effect spawns, and until W90
+        // the port skipped them -- the same defect `src/spark.js`'s header
+        // records W53 fixing for `$289F54` ("every draw after a shot hit was
+        // one step out").  Re-pinned with the reason, not quietly.
+        11: { streams: 158, records: 12805, distinct: 101, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };
@@ -1167,6 +1187,125 @@ try {
         if (!mutOk) code = 1;
       }
 
+      // ============================ WAVE 90 -- THE LASER'S IMPACT EFFECT
+      //
+      // THE OWNER, on the live build: *"the laser shoots through them, the
+      // normal shot hits them"*.  W86 fixed the second half of that sentence
+      // (`$274AF0`, the fighter can die) and named the first half as still
+      // open: `$289FC0`/`$289FDA` is the flash where the BEAM connects, and
+      // until W90 it was a counted note reached [M] 1,790 times in 6,500 steps
+      // with nothing on the screen at the end of it.
+      //
+      // WHAT IS ASSERTED, and none of it can be satisfied by a bundle:
+      //   * the port ENTERS the effect `entries` times -- its own count;
+      //   * it emits `records` of them over `distinct` images.  [M] DISTINCT IS
+      //     **35, NOT 36**, and that is an assertion about the ANIMATION rather
+      //     than about the art: `$28A15C` reads the cursor BEFORE `$28A160
+      //     subq.w #4` and `$28A164 bcs` frees the slot on the borrow, so a
+      //     record seeded at $8C walks list entries 35..1 and NEVER entry 0.
+      //     A harvest that shipped 35 streams would pass a record count and
+      //     fail this;
+      //   * every one DRAWS and none is named as missing art;
+      //   * **ADJACENT == 0.**  The call site's middle gate is `$80390C`, the
+      //     per-frame alternation word, so the effect can fire on AT MOST every
+      //     other frame.  This is the owner's "sometimes" as a number, and it
+      //     is asserted so that a future wave which "fixes" the flicker by
+      //     spawning every frame reddens here instead of looking better.
+      // and the MUTATION: `--break drop-impact-art` takes the 36 streams back
+      // out of the map, which is the bundle exactly as it stood before W90.
+      // The SAME records must be emitted and all of them named as MISSING ART.
+      {
+        // The 36 descriptors, DERIVED from the cartridge's own step rather than
+        // imported from `src/`: this gate must be able to disagree with the
+        // port (`docs/knowledge/03`).  [M] $28A51C is $22C860 down to $22C6BC
+        // step $C, and `tools/export-tables.py check_beam_impact_extents`
+        // asserts that against the image on every export.
+        const IMPACT_ART = Array.from({ length: 36 }, (_, i) => 0x22c860 - i * 0xc);
+        // [M] all six absolute, out of the port's own emitter over THIS
+        // window's input (fire HELD, no sweep). They are NOT the numbers
+        // `.scratch/w90/impact.mjs` reports, because that probe also sweeps
+        // left and right and a different route makes a different beam.
+        const EXP90 = { frames: 1500, entries: 520, records: 17286,
+          distinct: 35, first: 31, beamLive: 1039 };
+        const runW90 = (frames, drop) => {
+          const g = new Game(bundle.seed, bundle.tables, {
+            logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
+            bgSeed: bundle.cap.part(0, 'bg'),
+          });
+          const useMap = new Map(map);
+          if (drop) for (const o of IMPACT_ART) useMap.delete(o);
+          const t = { rec: 0, drawn: 0, pend: 0, named: 0, entries: 0,
+            beamLive: 0, seen: new Set(), first: -1, adjacent: 0, phaseZero: 0 };
+          let prev = -2;
+          const FIRE = portWordFromBits([BIT.b1]);
+          for (let i = 0; i < frames; i++) {
+            // THE LASER: fire HELD for the whole window.
+            g.ram.setU8(0x810424, 0xff);
+            g.step(0xffff & FIRE);
+            if ((g.ram.u16(0x811f32) & 0x8000) !== 0) t.beamLive++;
+            const n = g.beamImpacts ?? 0;
+            if (n > 0) {
+              t.entries += n;
+              if (t.first < 0) t.first = i;
+              if (i === prev + 1) t.adjacent++;
+              prev = i;
+              // P1's block spawns only while $80390C is NON-zero ($25504E).
+              if (g.ram.u16(0x80390c) === 0) t.phaseZero++;
+            }
+            const res = portSpriteList(g.ram, useMap, { out: buf, ...shardOpts });
+            for (let k = 0; k < 256; k++) {
+              const b = k * RAM_STRIDE;
+              const w4 = g.ram.u16(0x800000 + (b + 4) * 2);
+              if ((w4 & 0x7fff) === 0) break;
+              const offs = ((g.ram.u16(0x800000 + (b + 2) * 2) & 0x7f) << 16)
+                | g.ram.u16(0x800000 + (b + 3) * 2);
+              if (!IMPACT_ART.includes(offs)) continue;
+              t.rec++; t.seen.add(offs);
+              if (((w4 & 0x7e00) >> 9) === 0 || (w4 & 0x1ff) === 0) continue;
+              if (res.missing.has(offs)) t.named++;
+              else if (bundle.spr.state[8] === 'ready') t.drawn++; else t.pend++;
+            }
+          }
+          return t;
+        };
+        const a90 = runW90(EXP90.frames, false);
+        const ok90 = a90.entries === EXP90.entries && a90.rec === EXP90.records
+          && a90.seen.size === EXP90.distinct && a90.first === EXP90.first
+          && a90.beamLive === EXP90.beamLive && a90.adjacent === 0
+          && a90.phaseZero === 0
+          && a90.drawn === a90.rec && a90.pend === 0 && a90.named === 0;
+        console.log(`${ok90 ? 'PASS' : 'FAIL'}: W90 THE LASER'S IMPACT EFFECT `
+          + '($289FC0/$289FDA -> pool E, template $28A506, list $28A51C) -- '
+          + `over ${EXP90.frames} logic frames from the shipped seed with fire `
+          + `HELD, the beam is up on ${a90.beamLive} of them (expect `
+          + `${EXP90.beamLive}) and the port ENTERS the effect ${a90.entries} `
+          + `times (expect ${EXP90.entries}), first at step ${a90.first} `
+          + `(expect ${EXP90.first}), emitting ${a90.rec} records (expect `
+          + `${EXP90.records}) over ${a90.seen.size} distinct images (expect `
+          + `${EXP90.distinct} -- THIRTY-FIVE of the 36 harvested, because `
+          + `$28A164 frees the slot before entry 0 is ever read). `
+          + `${a90.drawn} DRAWN, ${a90.pend} pending, ${a90.named} with NO ART. `
+          + `ADJACENT-FRAME entries ${a90.adjacent} (expect 0) and entries on `
+          + `the WRONG $80390C phase ${a90.phaseZero} (expect 0): the effect `
+          + 'fires on at most every other frame and that is the owner\'s '
+          + '"sometimes", not a defect. This is the owner\'s "the laser shoots '
+          + 'through them"');
+        if (!ok90) code = 1;
+
+        // THE MUTATION.  The bundle exactly as it stood before W90.
+        const m90 = runW90(EXP90.frames, true);
+        const mut90 = m90.named === EXP90.records && m90.drawn === 0
+          && m90.rec === a90.rec && m90.entries === a90.entries;
+        console.log(`${mut90 ? 'PASS' : 'FAIL'}: W90 --break drop-impact-art -- `
+          + 'with $28A51C\'s 36 streams taken back out of the map the SAME '
+          + `${m90.rec} records are emitted (expect ${a90.rec} -- the port does `
+          + `not change) and ${m90.named} of them are named as MISSING ART `
+          + `(expect ${EXP90.records}), ${m90.drawn} drawn. That is what the `
+          + 'beam looked like before this wave: the records were always right '
+          + 'and there was no picture at the end of them');
+        if (!mut90) code = 1;
+      }
+
       // ================================================== WAVE 66 -- E6, THE BOMB
       //
       // W64 shipped the BOMB and W65 the LASER BOMB and NEITHER HAD A PICTURE.
@@ -1189,7 +1328,13 @@ try {
         tap: { records: 346, distinct: 18, first: 201,
           what: 'THE BOMB ($255E3E\'s three phase scripts $256558/$2565DE/'
             + '$25663A, bucket 13) with fire TAPPED' },
-        hold: { records: 5906, distinct: 136, first: 201,
+        // W90: 5,906 -> 5,948.  SAME CAUSE AS W58's above and NOT new art:
+        // this stage filters on `map.get(offs)?.[2] !== 13` and W90's streams
+        // are SHARD 8, so not one of the 42 is an impact spark.  The run HOLDS
+        // fire, the beam is up, `$289FC0` now draws four times per spawn from
+        // `$803917`, and the bomb's own segment lifetimes step differently.
+        // `distinct` 136 and `first` 201 held.
+        hold: { records: 5948, distinct: 136, first: 201,
           what: 'THE LASER BOMB ($255FE2\'s four heads and 41 segments out of '
             + '$256662..$256986, + pool E, the bit-7 aura and type $8A) with '
             + 'fire HELD' },

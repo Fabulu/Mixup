@@ -703,6 +703,13 @@ export async function loadBundle(readRaw, opts = {}) {
   // and named the four; this re-checks it in the browser, because a shipped
   // asset that nothing reads is one nobody notices has gone wrong.  A wrong
   // address or a byte-swap drops it to a few hundred.
+  //
+  // W90: AND NOTE WHAT THIS DOES NOT CHECK, because `src/web/app.js`'s version
+  // of this paragraph was read for 76 waves as though it did.  `$400..$7FF` is
+  // the BACKGROUND third of palette RAM.  **The SPRITE palette `$000..$3FF` has
+  // no cartridge source in this bundle at all** -- it is `capture.bin`'s frozen
+  // instant and nothing else, because `$24150A` (the 64-byte bank upload into
+  // `$80E886`) is unported.  That is why the owner's bomb is grey: `90-impl` §2.
   let palAgree = 0;
   {
     const p = cap.part(0, 'palette');

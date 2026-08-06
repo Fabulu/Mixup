@@ -112,6 +112,7 @@ import { P, RAM, OPT } from './machine.js';
 import { i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueThroughStub } from './spritequeue.js';
+import { spawnBeamImpact289FC0 } from './spark.js';
 
 // --------------------------------------------------------------- ADDRESSES
 export const LASER = {
@@ -165,12 +166,20 @@ export const SEG = {
   headOffset: 0x510,        // $24CCD0 lea ($510,A1),A1 -- 27 slots
 };
 
+// **`d7` HERE IS NOT `$289FC0`'s D7, AND THE TWO ARE INVERTED.**  This one is
+// the SEGMENT RECORD's player word (`$24CC50 move.w D7,(A1)+`, `S.player`) and
+// it is **1 for P1**.  `$289FC0`/`$289FDA`'s D7 -- which picks the pool half at
+// the head and the POWER WORD at `$28A28C` -- is **0 for P1**.  W90 hit this
+// while wiring `$255066`: passing `b.d7` straight through would have given P1's
+// beam P2's power word and P2's 30 pool slots, and neither the pool-half test
+// nor the record count would have shown it.  So the head is named PER ROW, by
+// address, rather than derived from a flag that means something else here.
 export const BEAM = [
   { d7: 1, pool: 0x8112f2, rec: 0x811ef2, blk: 0x811f32, pair: 0x811892,
-    word: 0x812964, player: RAM.player1, opt: RAM.p1Options,
+    word: 0x812964, player: RAM.player1, opt: RAM.p1Options, impact: 0x289fc0,
     dispatch: LASER.dispatchP1, sound2: 0x81294c, sound1: 0x81294e },
   { d7: 0, pool: 0x8118f2, rec: 0x811f12, blk: 0x811f52, pair: 0x811e92,
-    word: 0x812966, player: RAM.player2, opt: RAM.p2Options,
+    word: 0x812966, player: RAM.player2, opt: RAM.p2Options, impact: 0x289fda,
     dispatch: LASER.dispatchP2, sound2: 0x81294e, sound1: 0x81294c },
 ];
 
@@ -995,19 +1004,27 @@ function startBeamRecords(ram, ctx, b, a6) {
  * borrows the second `rts` as its own and is reached from neither.
  */
 export function runBeamDraw(ram, ctx) {
-  let emitted = 0;
+  let emitted = 0, impacts = 0;
   for (const b of BEAM) {
     const a6 = b.blk;
     if ((ram.u16(a6) & 0x8000) === 0) continue;             // $255048 tst.w/bpl
     // $25504E..$255066 -- the effect, on the OTHER half of $80390C from the
     // draw and only while $81308C says the collision pass is live.
+    // WAVE 90 RUNS IT.  Three conditions, and the MIDDLE ONE IS THE OWNER'S
+    // "SOMETIMES": `$80390C` is the per-frame alternation word this port uses
+    // in eleven other places, so P1's block spawns the impact effect on the
+    // frames it is NON-zero and P2's on the frames it is zero.  The effect
+    // therefore fires on AT MOST EVERY OTHER FRAME while the beam is on, by the
+    // cartridge's own arithmetic -- it is not a defect and it is not tuned here.
+    //
+    // A6 at the `jsr` is the BEAM BLOCK, and it still holds LAST frame's +$2/+$4
+    // because `$255092`/`$255094` overwrite them twelve instructions later.
+    // That one-frame lag is the ROM's and is preserved by calling here.
     const phase = ram.u16(0x80390c) !== 0;
     if ((b.d7 ? phase : !phase) && ram.u16(0x81308c) !== 0
         && ram.u16(b.sound2) === 0) {
-      ctx.unportedLog.note(b.d7 ? LASER.fxBeamP1 : LASER.fxBeamP2,
-        `$255066/$2550F0 jsr $289FC0/$289FDA -- the beam's own effect. The `
-        + `$289xxx family is unported (W34 §1.6) and is COUNTED, not thrown: `
-        + `it fires on the frames the beam is drawn`);
+      spawnBeamImpact289FC0(ram, ctx.rom, ctx, a6, b.impact);  // $255066/$2550F0
+      impacts++;
     }
     // $25506C..$255084 -- the top of the drawn beam, clamped to the pod.
     let d0 = u16(ram.u16(b.word) + (b.d7 ? 0x180 : 0));     // $255072 / $2550F6
@@ -1031,6 +1048,9 @@ export function runBeamDraw(ram, ctx) {
     enqueueThroughStub(ram, ctx.rom, LASER.emitStub, a6);   // $2550C6 jsr
     emitted++;
   }
+  // W90 telemetry, per frame, and the ROM returns nothing at all. `emitted`'s
+  // meaning is unchanged because `ctx.laserDrawn` is a compared column.
+  ctx.beamImpacts = impacts;
   return emitted;
 }
 

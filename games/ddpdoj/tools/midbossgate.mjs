@@ -180,15 +180,46 @@ function run(fire) {
 
 // ============================================================ THE MEASUREMENTS
 // [M] on the final W57 tree, from the shipped bundle's own seed (boot lf2001).
+//
+// ============================ WAVE 90 RE-BASELINED THE `held` ROW, +8 FRAMES
+//
+// AND IT IS SAID HERE RATHER THAN QUIETLY EDITED, because "a number moved and
+// I updated it" is the shape `86-impl` §0 blames for forty briefs going wrong.
+//
+// W90 ported `$289FC0`/`$289FDA`, the LASER's impact effect. This scenario
+// HOLDS FIRE, so from W90 the effect spawns -- and its fill draws FOUR times
+// from the shared `$803917` counter (`$242FFC`, `$242EC2`, `$28AB86`,
+// `$242E24`). Every later draw therefore steps differently, the shots land
+// differently, and the midboss dies EIGHT FRAMES LATER.
+//
+// **THE WHOLE CHAIN MOVED TOGETHER AND THAT IS WHY THIS IS A RE-BASELINE AND
+// NOT A REGRESSION:** [M] death 3830 -> 3838, the scroll push 3830 -> 3838, the
+// crawl 156 -> 164 frames, type $1C's spawn 3767 -> 3775 -- all +8 -- and its
+// free 4271 -> 4277, which moves +6 because `$26C20C cmpi.w #$105,$8130CE`
+// clocks it by DISTANCE and not by frames. A corrupted run does not move a
+// causal chain coherently.
+//
+// **AND IT IS THE PORT MOVING TOWARD THE BOARD, NOT AWAY.** Those four
+// `addq.b #1,$803917` sites execute on the cartridge every time the beam's
+// impact effect spawns; until W90 the port skipped them. It is the same defect
+// `src/spark.js`'s header records W53 fixing for `$289F54` ("every draw after a
+// shot hit was one step out"), one producer further on.
+//
+// **WHAT THIS RE-BASELINE IS ALLOWED TO BE, and what it is not.** Lines 28-29
+// of this file say it plainly: no MAME run in this repo has ever killed the
+// midboss, so THERE IS NO BOARD COLUMN HERE and every number below is the
+// PORT's own. Re-pinning a port-side regression baseline to the current tree is
+// what it is for. It would NOT have been allowed if any of these were the
+// board's, and none is.
 const EXP = {
   control: {
     crawlFrom: 3675, crawlTo: 4251, crawlLen: 576,   // 9 ticks x 64 f, W56's
     deathLf: null, spawn1c: null,
   },
   held: {
-    crawlFrom: 3675, crawlTo: 3831, crawlLen: 156,
-    deathLf: 3830, pushLf: 3830, pushD0: FAST_SPEED, pushD1: FAST_SPEED,
-    spawn1c: 3767, free1c: 4271, freeClk: FREE_CLOCK,
+    crawlFrom: 3675, crawlTo: 3839, crawlLen: 164,   // W90: 3831 / 156
+    deathLf: 3838, pushLf: 3838, pushD0: FAST_SPEED, pushD1: FAST_SPEED,
+    spawn1c: 3775, free1c: 4277, freeClk: FREE_CLOCK,  // W90: 3830/3767/4271
     vramChanged: 207, vramCols: [0, 1, 2, 3, 4, 5, 47, 48, 49, 50, 51, 52, 53,
       54, 55, 56, 57, 58, 59, 60, 61, 62, 63],
   },

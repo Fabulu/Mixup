@@ -426,6 +426,34 @@ const HARVEST = Object.freeze([
     + '(A0,D0.w),($2a,A6)` indexed by ($28,A6) as a BYTE offset. Both ends are '
     + 'the cartridge\'s: $2763D0 is the handler\'s `jmp $263762` and [M] '
     + '$2763E8 is $00000800, which is not a stream start'],
+  // ------------------------------------------------------- WAVE 90, AND IT IS
+  // THE OTHER HALF OF "THE LASER SHOOTS THROUGH THEM".  W86 made the fighter
+  // die; this is the flash that says the BEAM connected. Same pool, same
+  // driver, same shard -- a DIFFERENT template ($28A506) and a different list.
+  // [M] 36 longwords, $22C860 down to $22C6BC step $C, DESCENDING, and the
+  // template's own cursor seed $008C is where 36 comes from ($28A160 steps it
+  // -4). Both ends are the cartridge's: $28A506+$16 == $28A51C (the template
+  // ABUTS its own list) and $28A51C+144 == $28A5AC, W53's template 0 below.
+  // `tools/export-tables.py check_beam_impact_extents` asserts every one of
+  // those, plus both heads' seven instructions.
+  //
+  // ENTRY 0 ($22C860) IS NEVER DRAWN and is harvested anyway, for exactly the
+  // reason the row below gives: `$28A15C` reads the cursor BEFORE `$28A160
+  // subq.w #4` and `$28A164 bcs` frees the slot on the borrow, so a record
+  // walks entries 35..1 and never 0. Trimming it would make the harvested
+  // length a consequence of a control-flow argument rather than of the
+  // template's own field, and W86 §0.2 is what happens when a list's extent
+  // stops being the cartridge's.
+  [8, 0x28a51c, 36, 4, 36, 0x28a5ac,
+    'THE LASER\'S IMPACT EFFECT, $289FC0/$289FDA (src/spark.js, W90). The '
+    + 'flash where the BEAM connects, against the row below\'s flash where a '
+    + 'BULLET connects -- different template, different list, same 60-slot '
+    + 'pool E and same driver $28A098. $22C6BC..$22C860 step $C. [M] W53 §6 '
+    + 'named these as deliberately absent and W86 §6.3 as the owner\'s '
+    + '"the laser shoots through them"; the records were always emitted '
+    + 'correctly and there was no picture at the end of them. '
+    + 'NOTE $289F96 -- the beam\'s SEGMENT producer -- shares this template '
+    + 'and list, so ITS art ships here too although it is still unported'],
   [8, 0x28a5c2, 36, 4, 36, 0x28a652,
     'THE IMPACT SPARK, $289F54/$28A098 (src/spark.js). 36 frames, '
     + '$22CA1C..$22CBC0 step $C -- 12 mask words each, which is exactly the '

@@ -98,12 +98,33 @@
 // 3. WHAT THIS FILE DOES **NOT** DO
 // ============================================================================
 //
-//  * **IT DOES NOT DRAW THE BOMB.**  `$23FF06`, `$23FF42` and `$23FFB4` are
-//    PORTED -- they are twelve bytes each into BUCKET 13 (`$80A8DC`, counter
-//    `$80AFEC`) and the state is real -- but bucket 13 has no harvested sprite
-//    shard, so `src/render/index.js` SKIPS every record whose stream is not in
-//    the sheet.  The records are there and countable; the picture is not.  Same
-//    shape as W63's HUD.
+//  * **IT DOES NOT DRAW THE BOMB.**  -- THIS WAS TRUE IN W64 AND HAS BEEN
+//    FALSE SINCE W66, AND W90 IS WHAT NOTICED.  It used to read: "bucket 13 has
+//    no harvested sprite shard, so `src/render/index.js` SKIPS every record
+//    whose stream is not in the sheet. The records are there and countable; the
+//    picture is not."  `tools/export-web.mjs` `BOMB_SHARD = 13` has harvested
+//    218 streams since W66 and `[M]` W90 measured **0 of 3,368 bucket-13
+//    records lacking art** on a laser bomb and 0 of 58 on an ordinary one.
+//    **THE BOMB DRAWS.**  That is the ninth comment on this project to outlive
+//    what it described (`docs/knowledge/02-traps.md`).
+//
+//  * **IT DOES NOT COLOUR THE BOMB, AND THAT IS THE OWNER'S "GREY".**  W90's
+//    own finding, measured and NOT fixed:
+//      - the bomb's records draw in **sprite palette bank 6** [M];
+//      - `$249A62 jsr $260852` (ordinary) and `$249A80 jsr $26085C` (laser)
+//        both fall into `$260862 move.w #$6,D0 / jmp $24150A`, which copies
+//        **64 bytes = one 32-entry xRGB555 bank** into `$80E886 + 6*64` and
+//        sets the dirty flag `$80FA66`.  `moveq #$6` IS the bank number;
+//      - `[M]` the source blocks `$222A78` / `$222AB8` open `FFFF FFB6 FF91
+//        FF6C FF48 FEE7 FE87 FE04` = white -> pale yellow -> gold -> ORANGE.
+//        **That is the owner's "bright orange with yellowish highlights", read
+//        straight out of the cartridge;**
+//      - `$24150A` is a COUNTED NOTE in seven files and has never executed, so
+//        bank 6 keeps whatever the capture froze -- `[M]` the seed's own
+//        `$80E886 + 6*64` is `5EF3 5EF3 5EF3 5EEF ...`, a desaturated khaki
+//        ramp, which is the STAGE-TITLE card's palette.
+//    Fixing it is a subsystem, not a line: see `90-impl` §2.4.  Nothing here
+//    hand-patches a palette, because a typed-in colour is a fabricated one.
 //  * **THE HYPER.**  Every arm of `$249868` throws by address.
 //  * `$2456A6` -- `$24560A`'s OTHER arm, behind `btst #$0,D5` (bit 0 of the
 //    record's own type word, i.e. bit 0 of `($58,A6)`).  `[M]` `($58,A6)` is 0
