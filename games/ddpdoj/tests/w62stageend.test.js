@@ -199,10 +199,16 @@ test('$25962E dispatches an UNREGISTERED script as a LOUD NAMED THROW',
   { skip: SKIP }, () => {
     const ram = new Ram();
     installScripts(ram, ROM, { a3: 0x29370a });
-    a3Start259962(ram, 0);                        // entry [0] = ($2937B6,$2937CC)
+    // W62 used entry [0] here (D script 0, $2937B6) as its example of an
+    // unregistered script, and W96 gave D 0..3 bodies -- so this test fired.
+    // That is the assertion doing its job; the CLAIM is about the scheduler's
+    // behaviour on an unregistered address and not about which script is one.
+    // Moved to entry [10] (D script 10, $2944DE), which is the LATE ARRIVAL's
+    // and still a loud named throw; the wave that ports it will move it again.
+    a3Start259962(ram, 10);                       // entry [10] = ($2944DE,$2944E6)
     const c = { rom: ROM, unportedLog: new UnportedLog() };
     assert.throws(() => runScheduler25962E(ram, ROM, c),
-      (e) => e instanceof Unreached && e.romAddress === ROM.u32(0x29370a));
+      (e) => e instanceof Unreached && e.romAddress === ROM.u32(0x29370a + 10 * 8));
   });
 
 test('the A3 slot protocol: INIT on the first frame, STEP on every one after',

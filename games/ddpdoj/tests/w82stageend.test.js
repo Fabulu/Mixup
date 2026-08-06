@@ -263,13 +263,24 @@ test('the five new bodies throw by ADDRESS when no A6 has been published', () =>
   }
 });
 
-test('OBJECT 0, 1 and 6 stay UNPORTED and named -- this wave did four of seven',
-  () => {
-    for (const a of [0x292972, 0x292b08, 0x292f4a]) {
-      assert.ok(!scriptAddresses().includes(a),
-        `$${a.toString(16).toUpperCase()} must remain a loud named throw`);
-    }
-  });
+// W82 wrote its own SCOPE down as an assertion -- "OBJECT 0, 1 and 6 stay
+// UNPORTED and named" -- and it fired the moment W96 registered all three.
+// That is the test doing its job, exactly as W94's did when W95 landed the ten
+// (`tests/w95boss.test.js` §8.1).  Rewritten to the claim that SURVIVES:
+// **the OBJECT list is a closed set of seven and every one of them now has a
+// body**, so a wave that drops one is caught the same way an extra one was.
+test('the OBJECT list is SEVEN routines and all seven are registered', () => {
+  for (const a of [0x292952, 0x292bfa, 0x292e0a, 0x292e3e,   // W82's four
+    0x292972, 0x292b08, 0x292f4a]) {                          // W96's three
+    assert.ok(scriptAddresses().includes(a),
+      `$${a.toString(16).toUpperCase()} is one of $292932's seven and must `
+      + 'have a body');
+  }
+  // ...and the NEGATIVE case is untouched, so this is not weaker: an address
+  // that is NOT one of the seven must still be absent.
+  assert.ok(!scriptAddresses().includes(0x292f84),
+    '$292F84 is OBJECT 6\'s DATA table, not a routine');
+});
 
 // ========================= THE ROM WINDOWS, ASSERTED AGAINST THE CARTRIDGE ===
 

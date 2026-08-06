@@ -32,7 +32,7 @@
 import { unreached } from './unported.js';
 import { initArms, stepArms } from './midboss.js';
 import { u16, i16 } from './ram.js';
-import { installScripts } from './scheduler.js';
+import { installScripts, a2Run2598E6, a4Start25980C } from './scheduler.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
@@ -739,7 +739,7 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported, tables, palette) => {
   // step.
   installScripts(ram, rom, { a0: 0x293104, a1: 0x295856, a2: 0x292932,
     a3: 0x29370a, a4: 0x294f68 });                     // $29272E jsr $259554
-  // ============ THE TWO ACTIVATIONS -- W95 MADE THEM REAL AND PUT THEM BACK ==
+  // ============ THE TWO ACTIVATIONS -- REAL SINCE W96, AND HERE IS THE HISTORY
   //
   // `$292734 moveq #$6,D0 / jsr $2598E6` arms A2 slot 6 (OBJECT routine
   // `$292F4A`, the boss's own sprite) and `$29273C moveq #$0,D0 / jsr $25980C`
@@ -768,8 +768,13 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported, tables, palette) => {
   // > the arrival's -- F 0, then `MAIN.start 0`, then `$293204`'s whole arm-up
   // > and OBJECT 0/1/6 and D 0..3.  Turning them on is one line each and the
   // > next wave inherits a measurement rather than a question.
-  unported?.note(0x2598e6, `boss bespoke $2598E6 -- W30; W95 ran it and reverted`);
-  unported?.note(0x25980c, `boss bespoke $25980C -- W30; W95 ran it and reverted`);
+  //
+  // **W96 SHIPPED 3B's FIRST HALF AND TURNED THEM ON.**  `src/bossarrival.js`
+  // is every path W95 listed above, and it is imported by `src/boss.js` for
+  // exactly that reason.  This is the ONE line in the port whose behaviour
+  // depends on that file existing, so it is named here rather than only there.
+  a2Run2598E6(ram, 6);                                 // $292734/$292738
+  a4Start25980C(ram, 0);                               // $29273C/$292740
   // W92: the BOSS's five.  Install 4 is $246BF8, the WHITE constant bank the
   // $24xxxx code segment holds as data -- comment ten's other half.
   installBank(ram, rom, palette, unported, 0x15, 0x222B38, 0x29274E,

@@ -967,3 +967,10 @@ import './bossphase.js';
 // more entry points, in their own file because E 13 is BULLET KIND 11 and the
 // first execution of any of W27's 39 transcribed bodies.
 import './bossguns.js';
+// W96 -- THE ARRIVAL registers itself, last, for the same reason: OBJECT 0/1/6,
+// F 0, MAIN 0 and D 0..3, plus the two emitters they reach.  It imports `BS`,
+// `dist242494` and `bodyTail29314C` out of `bossscripts.js` and `bossA5`/
+// `bossA6` back out of this file, so it comes after both.  **This import is
+// what makes `$2926E2`'s two ACTIVATIONS safe to turn on**, which they now are
+// -- see `src/initbody.js`.
+import './bossarrival.js';

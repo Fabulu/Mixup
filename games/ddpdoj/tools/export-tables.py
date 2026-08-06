@@ -1399,6 +1399,114 @@ SHOT_WINDOWS.extend([
 ])
 
 
+# ============ W96: THE ARRIVAL'S SIX TABLES ==================================
+#
+# Same rule as W95's nine -- every constant `src/bossarrival.js` uses is read at
+# the address the instruction computes.  **What is different here is that FIVE
+# OF THE SIX PIN EACH OTHER IN ONE CHAIN**, and the chain's two ends are a
+# pointer the cartridge publishes in the OBJECT list and a longword it publishes
+# in the boss's init body:
+#
+#   $2929E8 + $20 = $292A08 + $80 = $292A88 + $80 = $292B08 = $292932[1]
+#   $292B7A + $80 = $292BFA = $292932[3]
+#   $292F84 + $180 = $293104 = `$292710 lea $293104,A0` (the MAIN script table)
+#   $23E78C + $100 = $23E88C, the x1 size routine, which is CODE
+#
+# So no window's far end is a number this file chose; each is the next thing the
+# cartridge itself names.  `check_boss_arrival_tables` asserts all six.
+SHOT_WINDOWS.extend([
+    # $2929D2 `lea $2929E8(pc),A0 / movea.l (A0,D0.w),A0 / jmp (A0)` with D0 =
+    # `(($4B,A6) >> 5) * 4` -- a BYTE is shifted to 0..7 and scaled, so 0..$1C,
+    # and a longword read at $1C ends at $20.  EIGHT sprite emitters, of which
+    # [M] the arrival reaches exactly one ($23E3E2 at entries 2, 3, 4 and 5 --
+    # and entry 2 is the one $4B = $40 selects).
+    (0x2929E8, 0x0020, "W96: OBJECT 0/1's EMITTER table $2929E8 -- eight "
+                       "longwords indexed by (($4B,A6) >> 5) * 4. Far end "
+                       "ABUTS $292A08, the sprite table below it"),
+    # $2929AA / $292B40 `lea $292A08(pc),A0 / move.l (A0,D0.w),$46(A6)` with
+    # D0 = `(($4B,A6) >> 3) * 4` -- a byte to 0..31, scaled, so 0..$7C and the
+    # longword ends at $80.  THIRTY-TWO sprite longwords, and OBJECT 1 reads
+    # OBJECT 0's table ($292B40's `lea` displacement is negative).
+    (0x292A08, 0x0080, "W96: the PART SPRITE table $292A08 -- 32 longwords "
+                       "indexed by (($4B,A6) >> 3) * 4, shared by OBJECT 0 and "
+                       "OBJECT 1. Far end ABUTS $292A88"),
+    # $292972 `lea $292A88(pc),A2 / move.w $2A(A6),D2 / move.l (A2,D2.w),D2` --
+    # a WORD index used as a raw byte offset.  D 2 cycles ($2A,A6) 0,4,8,$C
+    # ($293868/$29386C) and the LATE arrival's D 8/12/16/18 take it to $10..$68
+    # in the same steps ($294450/$2947D2/$294918/$294A1A); [M] the board's own
+    # RAM over all 72 rungs shows 0..$70.  $7C + 4 = $80, which is the whole
+    # window and exactly where OBJECT 1's routine begins.
+    (0x292A88, 0x0080, "W96: OBJECT 0's FRAME table $292A88 -- 32 longwords "
+                       "indexed by ($2A,A6), a raw byte offset. Far end pinned "
+                       "by $292B08, OBJECT 1's routine, which $292932[1] "
+                       "publishes"),
+    (0x292B7A, 0x0080, "W96: OBJECT 1's FRAME table $292B7A -- 32 longwords "
+                       "indexed by ($6A,A6). Far end pinned by $292BFA, OBJECT "
+                       "3's routine, which $292932[3] publishes"),
+    # $292F4A `lea $292F84(pc),A2 / adda.w $11A(A6),A2` then reads THREE WIDTHS
+    # out of one record: `(A2)` a long, `$4(A2)` a long, `$8(A2)` a WORD.  MAIN
+    # 0 drives ($11A,A6) 0,$10,$20..$180 ($2932C6) and the handoff at $180 stops
+    # OBJECT 6 in the same frame BEFORE the A2 walk reaches it ($2596C6 walks
+    # A4/A0/A1/A3 then A2), so the last index actually drawn is $170 and $17C is
+    # the last byte read.  The window is the full $180 because that is where the
+    # cartridge's own next object begins.
+    (0x292F84, 0x0180, "W96: OBJECT 6's FRAME table $292F84 -- 12-byte records "
+                       "at stride $10, indexed by ($11A,A6). Far end pinned by "
+                       "$293104, the MAIN script table, which $292710 "
+                       "publishes"),
+    # $23E3E6 / $23E406 `lea $23E78C(pc),A0 / adda.w D4,A0 / movea.l (A0),A0 /
+    # jsr (A0)` with D4 = `(D3 & $1FF) >> 1` and `(D3 & $3E00) >> 6` -- both
+    # 0..$FF byte offsets, i.e. 64 longword entries.
+    (0x23E78C, 0x0100, "W96: the SPRITE SIZE routine table $23E78C -- 64 "
+                       "longwords indexed by (D3 & $1FF) >> 1 and "
+                       "(D3 & $3E00) >> 6. Far end pinned by $23E88C, the x1 "
+                       "routine, which is CODE"),
+])
+
+
+def check_boss_arrival_tables(d: bytes) -> None:
+    """W96: the six windows above, pinned from the image on every export."""
+    PINS = (
+        (0x2929E8, 0x0020, 0x292A08, "$292A08, the part SPRITE table"),
+        (0x292A08, 0x0080, 0x292A88, "$292A88, OBJECT 0's frame table"),
+        (0x292A88, 0x0080, u32(d, 0x292932 + 1 * 4), "$292932[1], OBJECT 1"),
+        (0x292B7A, 0x0080, u32(d, 0x292932 + 3 * 4), "$292932[3], OBJECT 3"),
+        (0x292F84, 0x0180, u32(d, 0x292710 + 2), "$292710's lea, $293104"),
+    )
+    for base, length, pin, who in PINS:
+        if pin != base + length:
+            raise SystemExit(
+                f"W96: ${base:06X} + ${length:X} must be ${base + length:06X}, "
+                f"which is {who} -- but that reads ${pin:06X}. Either the table "
+                f"moved or the window is the wrong length; widen it HERE, with "
+                f"a new pin, never in src/rom.js")
+    # $23E78C + $100 = $23E88C, and $23E88C must be the x1 size routine --
+    # `add.w D7,D7 / add.w D7,D7 / move.w D7,D4 ...` is what the OTHERS look
+    # like; the x1 one is a bare `rts` preceded by nothing, so the pin is that
+    # $23E88C is exactly `4E75` and that the table's OWN entry 0 points at it.
+    if u16(d, 0x23E88C) != 0x4E75:
+        raise SystemExit(
+            f"W96: $23E88C must be `rts` (4E75), the x1 size routine that pins "
+            f"the far end of the $23E78C table at 64 longwords; it reads "
+            f"${u16(d, 0x23E88C):04X}")
+    if u32(d, 0x23E78C) != 0x23E88C:
+        raise SystemExit(
+            f"W96: $23E78C[0] must be $23E88C -- the table's own first entry is "
+            f"the second half of the pin, and it reads "
+            f"${u32(d, 0x23E78C):08X}")
+    # AND THE SIZE MULTIPLIERS THEMSELVES.  src/bossarrival.js maps a routine
+    # ADDRESS to a multiplier; [M] the two entries the arrival reaches are 12
+    # and 20 and both really are `x12` and `x20`.  Assert the two byte
+    # sequences, because a table that moved a routine by one entry would give a
+    # plausible sprite at the wrong size and nothing else would notice.
+    for at, want, mul in ((0x23E8E2, bytes.fromhex("de47de473807de47de444e75"), 12),
+                          (0x23E930, bytes.fromhex("de47de473807de47de47de44"), 20)):
+        if d[at:at + len(want)] != want:
+            raise SystemExit(
+                f"W96: ${at:06X} is the x{mul} size routine and must be "
+                f"{want.hex()}; it reads {d[at:at + len(want)].hex()}")
+
+
 def check_boss_phase_tables(d: bytes) -> None:
     """W95: the nine windows above, pinned from the image on every export.
 
@@ -1758,7 +1866,149 @@ def speed_index_set(d: bytes) -> list[int]:
     # speed levels than the bomb's, one per power step, and they are read out of
     # the table rather than typed here.
     s.update(beam_impact_speed_indices(d))
+    # W96: and THE STAGE-1 BOSS'S TWO SIDE PARTS', which is a domain no walk
+    # above can see, because it is neither a template nor a stream nor an
+    # in-code constant -- it is a RAMPED BYTE inside the boss's own sub-record.
+    # `$29319E jsr $241D34` (the MAIN tail `$29314C`, W94's) passes `($4A,A6)`
+    # and `($8A,A6)`; W95 §3 met the throw and left it, deriving a "$82 +- 44"
+    # band from a LOCKSTEP with `($2A,A6)` that DOES NOT EXIST -- see
+    # `boss_part_speed_indices` for the two sites that break it.
+    s.update(boss_part_speed_indices(d))
     return sorted(s)
+
+
+# W96 -- THE BOSS'S PART SPEED BYTES.  The prototype base and the four ramps.
+#
+# `$2926E2`'s init copies the prototype at $292806 through $2637A2; [M] that
+# puts $82 in BOTH `+$4A` and `+$8A`, and the same simulation puts $40 in `+$4B`
+# and $C0 in `+$8B` -- which are exactly what `$294722 move.b #$40,$4B(A6)` and
+# `$294728 move.b #$C0,$8B(A6)` write, so the decode is validated against two
+# instructions it is not derived from.
+#
+# [M] AND OVER THE WHOLE IMAGE ($200000..$2B0000) THE ONLY WRITERS OF
+# `($4A,A6)`/`($8A,A6)` INSIDE THE BOSS'S OWN CODE ARE THESE EIGHT, ALL `+-2`:
+#
+#     $294448 addq.b #$2,$4a(a6)      $2944C0 addq.b #$2,$8a(a6)
+#     $2947CA subq.b #$2,$4a(a6)      $294854 subq.b #$2,$8a(a6)
+#     $294910 subq.b #$2,$4a(a6)      $294988 subq.b #$2,$8a(a6)
+#     $294A12 addq.b #$2,$4a(a6)      $294A9C addq.b #$2,$8a(a6)
+#
+# (the other `($4A,A6)` writers in the image -- $25D0AA, $25D6C8, $266xxx,
+# $26Cxxx, $2A3EB0 -- are OTHER records' A6 and cannot reach the boss's.)
+#
+# **SO THE BYTES ARE ALWAYS EVEN, AND THAT IS THE WHOLE DERIVATION.**  An even
+# base plus steps of +-2 is closed under the even numbers and under nothing
+# smaller.  W95 tried to bound the WALK instead, from the `$2A` gates at
+# $294450/$2947D2/$294918/$294A1A -- but [M] $294910 moves `$4A` DOWN while it
+# moves `$2A` UP, and $294A12 does the mirror, so `$4A` is not a function of
+# `$2A` and no band around $82 is provable.  [M] the board's own RAM over all 72
+# `stage1-sweep` rungs already carries FOUR values -- $6A, $76, $82, $AE -- so a
+# band fitted to the one value W95 saw would have thrown three more times.
+#
+# The cost is 70 quadrant tables the port did not have, [M] +36 KB of JSON on a
+# 538 KB asset that ships gzipped.  That buys the whole even domain and a class
+# of throw that cannot recur, instead of a number someone has to widen again.
+BOSS_PART_PROTO = 0x292806            # $2926E2's `lea $292806(pc),A0`
+BOSS_PART_SPEED_OFFS = (0x4A, 0x8A)   # the two sub-record bytes $29319E reads
+BOSS_PART_RAMP_SITES = (              # every writer, with its signed step
+    (0x294448, +2), (0x2947CA, -2), (0x294910, -2), (0x294A12, +2),
+    (0x2944C0, +2), (0x294854, -2), (0x294988, -2), (0x294A9C, +2),
+)
+
+
+def boss_part_speed_indices(d: bytes) -> set[int]:
+    """Every speed level `($4A,A6)`/`($8A,A6)` can hold: the EVEN ones.
+
+    The claim is checked against the image before it is used -- the base must
+    be even and every one of the eight ramp sites must really be a `+-2` on one
+    of the two bytes.  If the cartridge is not what this comment says, this
+    raises instead of exporting a set that is quietly too small."""
+    for at, step in BOSS_PART_RAMP_SITES:
+        op = u16(d, at)
+        off = u16(d, at + 2)
+        # addq.b #n,(d16,A6) = 0101 nnn 0 00 101110 ; subq is bit 8 set
+        want_n = (abs(step) % 8) << 9
+        want = 0x5000 | want_n | (0x0100 if step < 0 else 0) | 0x2E
+        if op != want or off not in BOSS_PART_SPEED_OFFS:
+            raise SystemExit(
+                f"${at:06X} is ${op:04X} ${off:04X} and W96 read it as "
+                f"`{'addq' if step > 0 else 'subq'}.b #{abs(step)},"
+                f"${off:02X}(a6)`. The boss's part speed bytes are exported as "
+                f"THE EVEN LEVELS because an even base plus steps of +-2 is "
+                f"closed under them; a site that is not a +-2 breaks that "
+                f"derivation and the set must be re-measured, not widened.")
+    rec = _boss_sub_record(d)
+    base = {rec[o] for o in BOSS_PART_SPEED_OFFS}
+    if any(b & 1 for b in base):
+        raise SystemExit(
+            f"the boss's prototype at ${BOSS_PART_PROTO:06X} decodes to "
+            + ", ".join(f"${b:02X}" for b in sorted(base))
+            + " in $4A/$8A and W96's export depends on the base being EVEN.")
+    # The cross-check W95 found and this wave keeps: the SAME decode must put
+    # $40 in +$4B and $C0 in +$8B, which are what $294722/$294728 write with
+    # immediates.  Two instructions this simulation is not derived from.
+    for off, at in ((0x4B, BOSS_PART_FACE_L), (0x8B, BOSS_PART_FACE_R)):
+        want = d[at + 3]                      # `move.b #imm,(d16,A6)`'s immediate
+        if rec[off] != want:
+            raise SystemExit(
+                f"the boss's prototype decodes ${rec[off]:02X} into +${off:02X} "
+                f"and ${at:06X} writes ${want:02X} there. The two disagreeing "
+                f"means $2637A2 was simulated wrongly and the $4A/$8A base "
+                f"below cannot be trusted.")
+    return set(range(0, 256, 2))
+
+
+BOSS_PART_FACE_L = 0x294722           # `move.b #$40,$4B(A6)`
+BOSS_PART_FACE_R = 0x294728           # `move.b #$C0,$8B(A6)`
+BOSS_TYPE = 0x0E                      # the stage-1 boss's enemy type
+BOSS_BODY = 0x2926E2                  # ...whose init STUB's body is here
+
+
+def _boss_sub_record(d: bytes) -> bytearray:
+    """`$2637A2` over `$292806`, simulated exactly as src/enemyproto.js's
+    `loadSubProto` runs it, for `runLen+1` sub-records of $20 bytes each.
+
+    The run length is the init STUB's own `move.w #$N,($4,A5)`, read the way
+    `proto_speed_indices` reads every other type's -- not typed here."""
+    init = u32(d, _type_entry(BOSS_TYPE))
+    if init + 8 != BOSS_BODY:
+        raise SystemExit(
+            f"type ${BOSS_TYPE:02X}'s init stub is ${init:06X}, whose body is "
+            f"${init + 8:06X} and not ${BOSS_BODY:06X}. W96's part-speed "
+            f"derivation is about the STAGE-1 BOSS and the table has moved.")
+    n = u16(d, init + 2)
+    rec = bytearray(0x20 * (n + 2))
+    a0 = BOSS_PART_PROTO
+    a1 = 0
+    for _ in range(n + 1):
+        flags = u16(d, a0)
+        rec[a1:a1 + 2] = d[a0:a0 + 2]
+        a0 += 2
+        a1 += 2
+        if flags & 0x8000:                            # $2637AC, the LONG form
+            a1 += 4
+            for _i in range(6):
+                rec[a1:a1 + 4] = d[a0:a0 + 4]
+                a0 += 4
+                a1 += 4
+            rec[a1:a1 + 2] = d[a0:a0 + 2]
+            a0 += 2
+            a1 += 2
+        else:                                         # $2637C2, the SHORT form
+            rec[a1 - 2] |= 0x80
+            a1 += 4
+            for _i in range(2):
+                rec[a1:a1 + 4] = d[a0:a0 + 4]
+                a0 += 4
+                a1 += 4
+            rec[a1:a1 + 2] = d[a0:a0 + 2]
+            a0 += 2
+            a1 += 2
+            a1 += 12                                  # three zero longwords
+            rec[a1:a1 + 4] = d[a0:a0 + 4]
+            a0 += 4
+            a1 += 4
+    return rec
 
 
 BEAM_SPARK_DRAW_TABLE = 0x242E42      # $242E24's canned bytes
@@ -3355,6 +3605,7 @@ def build(d: bytes) -> dict:
     check_boss_object_tables(d)                # W82 -- the OBJECT sprite tables
     check_boss_waypoint_extent(d)              # W94 -- MAIN 7's eight waypoints
     check_boss_phase_tables(d)                 # W95 -- the steady state's nine
+    check_boss_arrival_tables(d)               # W96 -- the arrival's six
     check_beam_bomb_extents(d)                 # W65 -- THE LASER BOMB's
     check_beam_impact_extents(d)               # W90 -- THE LASER's IMPACT
     check_palette_upload_family(d)             # W91 -- THE SPRITE PALETTE

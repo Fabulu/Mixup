@@ -92,18 +92,27 @@ test('all TWENTY-SIX of this wave\'s entry points are registered', () => {
   }
 });
 
-test('the ARRIVAL population is STILL a loud named throw', { skip: SKIP }, () => {
-  // The wave's scope said out loud.  W94 §3B: the 15 arrival rungs need these
-  // as well, and none of them is this wave's.  If one quietly acquires a body,
-  // this test says so -- which is exactly what W94's own scope test did when
-  // W95 registered the ten (see `tests/w94boss.test.js`).
+// W95 wrote its own SCOPE down as an assertion and it fired the moment W96
+// registered the arrival's half -- the third time on this boss that a wave's
+// scope test has caught the next wave (W94's caught W95, W82's caught W96).
+// Rewritten to the claim that SURVIVES and is still a scope statement:
+// **W96 took EXACTLY the arrival's eight rungs, and the LATE ARRIVAL is still
+// a loud named throw.**  The division is not a judgement -- it is the ladder's
+// own blocking census (`src/bossarrival.js` header).
+test('the LATE ARRIVAL is STILL a loud named throw', { skip: SKIP }, () => {
   const reg = new Set(scriptAddresses());
-  for (const a of [0x292972, 0x292b08, 0x292f4a, 0x2937cc, 0x293816, 0x293852,
-    0x293884, 0x2944e6, 0x29451a, 0x294658, 0x294878, 0x2948c4, 0x29493c,
-    0x293506, 0x2936be, 0x294fa6, 0x295304, 0x295432, 0x2960f4, 0x296200,
-    0x2968fe]) {
+  // F 2, F 3, MAIN 4, MAIN 8, D 10/11/14/15/16/17, E 5/6/14 -- the seven rungs
+  // W96 §0.1 measured as waiting on the STEADY STATE's remainder.
+  for (const a of [0x295304, 0x295432, 0x293506, 0x2936be, 0x2944e6, 0x29451a,
+    0x294658, 0x294878, 0x2948c4, 0x29493c, 0x2960f4, 0x296200, 0x2968fe]) {
     assert.ok(!reg.has(a),
-      `$${a.toString(16).toUpperCase()} is registered -- update W95's scope`);
+      `$${a.toString(16).toUpperCase()} is registered -- update the scope`);
+  }
+  // ...and the arrival's own half IS registered, so this test cannot pass by
+  // the whole boss being unported.
+  for (const a of [0x292972, 0x292b08, 0x292f4a, 0x294fa0, 0x294fa6,
+    0x293204, 0x29321c, 0x2937cc, 0x293816, 0x293852, 0x293884]) {
+    assert.ok(reg.has(a), `$${a.toString(16).toUpperCase()} is W96's`);
   }
 });
 
