@@ -225,24 +225,31 @@ stage('every stage survives its own chunks (stagesweep.mjs)', () => {
 // reported a corrupted run, the `$9751` scenario was sitting at 599/599 frames
 // with 800/800 tier-1 fields exact INCLUDING THE GAME MODE ACROSS A RESTART,
 // and the cause was the mod layer replaying a dead run's camera page into a
-// brand-new game. Nineteen mods and four presets had ZERO coverage of any kind
+// brand-new game. Every mod and every preset had ZERO coverage of any kind
 // beyond unit tests that call the hooks directly.
 //
-// This stage drives the port WITH a loadout -- all 19 mods, all 4 presets, plus
-// a picker-only launch -- through the session a player actually has: the attract
-// demo in full, START, a run, four deaths, the game over, CONTINUE, and the
-// first play frame of the next run. It asserts at each boundary that the
-// loadout's own promises hold and that nothing from the previous run survived.
-// It also holds the attract demo byte-identical to the unmodded port, because
-// the demo is not the player's run.
+// This stage drives the port WITH a loadout -- every mod, every preset, six
+// hand-picked COMPOSITIONS and a picker-only launch -- through the session a
+// player actually has: the attract demo in full, START, a run, four deaths, the
+// game over, CONTINUE, and the first play frame of the next run. It asserts at
+// each boundary that the loadout's own promises hold and that nothing from the
+// previous run survived. It also holds the attract demo byte-identical to the
+// unmodded port, because the demo is not the player's run.
+//
+// W45 ADDED BOUNDARY R, THE RESPAWN, because two mods now live there
+// (`heal-gradius-syndrome`, no checkpoint rollback; `hard-won`, no loadout
+// wipe). It is checked BOTH ways: the mod's own contract on its rows, and the
+// cartridge's own `$97BB` -> `$9B68` rollback on every other row -- so a mod
+// that changed the stock respawn for everybody cannot hide. A seven-stage sweep
+// of boundary R covers the one stage-dependent read in the new code.
 //
 // It proves NOTHING about the cartridge and must never be read as if it did.
 // Stage 3 is that gate; this one is about behaviour this repo added.
 //
-// Four neuters undo W43's and W44's fixes in a throwaway copy of src/ and the
-// tool fails if any of them does not turn it red FOR ITS OWN REASON. It needs
-// only assets/ (it runs the port headlessly), so ROM-absent is not a reason to
-// skip it. ~90 s for 120 sessions.
+// Six neuters undo W43's, W44's and W45's fixes in a throwaway copy of src/ and
+// the tool fails if any of them does not turn it red FOR ITS OWN REASON. It
+// needs only assets/ (it runs the port headlessly), so ROM-absent is not a
+// reason to skip it. ~4 min for 213 sessions.
 stage('mods do not corrupt the next run (modscope.mjs)', () => {
   if (!assetsPresent) return { status: 'SKIP', note: 'needs assets/' };
   return run(process.execPath, ['games/gradius/tools/oracle/modscope.mjs'])

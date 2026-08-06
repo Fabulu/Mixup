@@ -30,7 +30,7 @@ import {
   resolveLoadout, attachMods, describeMod, loadoutToHash, hashToLoadout, PLAY_MODE,
   modAfterIntroReset, modRefuseDeath, modHidePlayer,
   modShowPlayer, modFreezeEnemies, modFrameEnd, modInput, modRenderBreaks,
-  modPalette, modPostRender,
+  modPalette, modPostRender, modFlyIn, modAbandonRun, FLY_IN_X,
 } from '../src/mods.js';
 import { applyCapsule } from '../src/powerup.js';
 import { resetInput, setTouchButton } from '../src/input.js';
@@ -124,8 +124,35 @@ test('the owner named two mods and the names are exact', () => {
   assert.equal(MODS['always-on-enemies'].name, 'Always on enemies');
 });
 
+test('the start screen and game.json cannot go stale, because neither lists mods', () => {
+  // `game.json` carries `"code": { "mods": "src/mods.js", "page": "start.html" }`
+  // and NO catalogue of its own, and start.html builds its cards by walking
+  // `Object.entries(MODS)`. So a mod added to src/mods.js appears on the start
+  // screen, in its category, with its blurb, and there is no second list to
+  // update. Pinned here because "remember to update the start screen" is a
+  // maintenance instruction and this is the reason there is not one.
+  const gj = JSON.parse(readFileSync(new URL('../game.json', import.meta.url), 'utf8'));
+  assert.equal(gj.code.mods, 'src/mods.js');
+  assert.equal(gj.code.page, 'start.html');
+  const raw = readFileSync(new URL('../game.json', import.meta.url), 'utf8');
+  for (const id of Object.keys(MODS)) {
+    assert.ok(!raw.includes(`"${id}"`), `game.json names the mod ${id}; it must not`);
+  }
+  const page = readFileSync(new URL('../start.html', import.meta.url), 'utf8');
+  assert.ok(page.includes('Object.entries(MODS)'), 'start.html walks the catalogue');
+  assert.ok(page.includes('Object.entries(PRESETS)'), '...and the presets');
+  for (const id of Object.keys(MODS)) {
+    assert.ok(!page.includes(`'${id}'`), `start.html names the mod ${id}; it must not`);
+  }
+  // ...and the two W45 mods really are in a category the page has a grid for.
+  for (const id of ['heal-gradius-syndrome', 'hard-won']) {
+    assert.ok(page.includes(`data-cat="${MODS[id].category}"`),
+      `${id} is in category ${MODS[id].category}, which start.html has no grid for`);
+  }
+});
+
 test('the hash round-trips a selection', () => {
-  const ids = ['full-power', 'heal-gradius-syndrome'];
+  const ids = ['full-power', 'heal-gradius-syndrome', 'hard-won'];
   const back = hashToLoadout('#' + loadoutToHash(ids, 4));
   assert.deepEqual(back.ids, ids);
   assert.equal(back.level, 4);
@@ -221,12 +248,20 @@ test('$45 is clamped to 2, because slot 3 is a SHOT slot', () => {
 //  4. HEAL GRADIUS SYNDROME
 // ===========================================================================
 
-test('Heal Gradius Syndrome respawns where you died, not at the checkpoint', () => {
+// W45 REPLACED THE MECHANISM. The mod used to capture the death position at
+// `$C1D6` and replay it into the tail of the NEXT `$9B3E` -- a position replay
+// bolted onto a stage intro, which is why the owner said it "still put you back
+// at some scene". It now does not run `$9B3E` at all: `$97DB` hands the respawn
+// to modRespawnInPlace, which wipes the six power-up bytes, seeds the ship at
+// the left edge and returns to `$80` on the same frame.
+
+test('Heal Gradius Syndrome does not roll the camera back to the checkpoint', () => {
   const s = modded(['heal-gradius-syndrome']);
   introReset(s, res);
   s.obj.status[0] = 1;
-  // Fly out to camera high byte 7 and die at (200, 40).
-  s.cam.hi = 7; s.cam.lo = 0x80;
+  // Fly out to camera high byte 7 and die there.
+  s.cam.hi = 7; s.cam.lo = 0x80; s.cam.sub = 0x40;
+  s.build.hi = 7; s.build.lo = 0x90; s.build.ahead = 3; s.build.prog = 5;
   s.obj.x[0] = 200; s.obj.y[0] = 40;
   s.substate = 0x80;
   // $9B3E's tail armed the blink; burn it off, or the death is refused and
@@ -234,24 +269,221 @@ test('Heal Gradius Syndrome respawns where you died, not at the checkpoint', () 
   for (let i = 0; i < 180; i++) modFrameEnd(s);
   die(s);
   assert.equal(s.obj.status[0], 2, 'the death itself is not refused');
+  assert.equal(respawn(s, res), false,
+    'the frame carries on into $9A5E: this is a play frame, not a stage intro');
+  assert.equal(s.lives[0], 2, 'it still cost a life -- $979F DEC $20,X');
+  // THE ONE THING THE MOD IS FOR.
+  assert.equal(s.cam.hi, 7, '$3F is untouched: $9B68 never ran to read $24,X');
+  assert.equal(s.cam.lo, 0x80, '...and so is $3E, so the camera did not even snap');
+  assert.equal(s.cam.sub, 0x40);
+  assert.equal(s.build.hi, 7, 'the terrain build cursor is where the streamer left it');
+  assert.equal(s.build.lo, 0x90);
+  assert.equal(s.build.ahead, 3, '$57 is not re-seeded: $9C09 never ran');
+  assert.equal(s.build.prog, 5);
+  assert.equal(s.save24[0], 6,
+    '$97BB still WROTE min(7 AND $0E, 8) -- the cartridge is unchanged, it is '
+    + 'just never read');
+  assert.equal(s.substate, 0x80, '$1B := $80, which is $9C3C');
+  assert.equal(s.spawn.z60, 1, '...and $60 := 1 with it');
+});
+
+test('...and the new ship comes in from the left of the screen, blinking', () => {
+  const s = modded(['heal-gradius-syndrome']);
+  introReset(s, res);
+  s.obj.status[0] = 1;
+  s.cam.hi = 7; s.obj.x[0] = 200; s.obj.y[0] = 40;
+  for (let i = 0; i < 180; i++) modFrameEnd(s);
+  die(s);
   respawn(s, res);
-  assert.equal(s.obj.x[0], 200, 'the ship came back where it fell');
-  assert.equal(s.obj.y[0], 40);
-  assert.equal(s.ring.x[0], 200, 'and so did the Option ring $A08C walks');
-  assert.equal(s.cam.hi, 7, '$3F is the death camera, not min($3F AND $0E, 8)');
-  assert.equal(s.build.hi, 7, '...and $55 agrees, so the streamer lead is still 0');
-  assert.equal(s.cam.lo, 0, '$3E/$54 stay 0 -- the same shape a checkpoint has');
+  assert.equal(s.obj.status[0], 1, '$0100 := 1 -- a new ship, alive');
+  assert.equal(s.obj.anim[0], 1, '$0120 := 1, the level-ship metasprite ($9B83)');
+  // THE ENTRY X IS `$A03A`'s OWN LEFT CLAMP. It was 0 for one draft and
+  // modscope.mjs threw on seven loadouts: `$C3AD` uses a non-zero `$0360` as
+  // its "this is the PLAYER" test, so X = 0 is not a position this game has.
+  assert.equal(FLY_IN_X, 0x10, 'the leftmost pixel $A03A lets the Viper occupy');
+  assert.equal(s.obj.x[0], FLY_IN_X, 'INVENTED: it enters at the left wall');
+  assert.equal(s.ring.x[0], FLY_IN_X, 'and both 24-entry rings $A08C walks agree');
+  assert.equal(s.ring.y[0], s.obj.y[0]);
+  // The Y is the CARTRIDGE's: $9BD4[$9BCC[$19] + ($24,X >> 1)] AND $F0, i.e.
+  // exactly what $9B92 would have produced for this stage and checkpoint.
+  const y = res.flowTables.read(0x9BCC + s.zp19) + (s.save24[0] >> 1);
+  assert.equal(s.obj.y[0], res.flowTables.read(0x9BD4 + y) & 0xF0,
+    'the Y is $9B92\'s own table byte, not an invented one');
+  assert.equal(s.mods.rt.flyInTo, (res.flowTables.read(0x9BD4 + y) << 4) & 0xFF,
+    '...and the fly-in aims at $9BAB\'s own X for the same byte');
+  assert.equal(s.mods.rt.invuln, 180, 'blinking and invulnerable');
+  assert.ok(s.mods.rt.flyIn > 0, 'and the autopilot is holding RIGHT');
+});
+
+test('the fly-in is $9C88: RIGHT written into $05/$07, and it lets go on arrival', () => {
+  const s = modded(['heal-gradius-syndrome']);
+  introReset(s, res);
+  s.obj.status[0] = 1;
+  s.cam.hi = 7;
+  for (let i = 0; i < 180; i++) modFrameEnd(s);
+  die(s);
+  respawn(s, res);
+  const target = s.mods.rt.flyInTo;
+  assert.ok(target > 0);
+
+  // A player mashing LEFT cannot fight it: $9C88 overwrites the latched byte.
+  s.input.held = BTN.LEFT; s.input.pressed = BTN.LEFT;
+  modFlyIn(s);
+  assert.equal(s.input.held, BTN.RIGHT, '$9C8D STA $07');
+  assert.equal(s.input.pressed, BTN.RIGHT, '$9C8B STA $05');
+  assert.equal(s.input.held & (BTN.A | BTN.B), 0,
+    'no fire and no power meter while the autopilot has it');
+
+  // Fly it in for real, through $9FFC's own X code.
+  for (let i = 0; i < 300 && s.mods.rt.flyIn > 0; i++) nmi(s, 0, res);
+  assert.equal(s.mods.rt.flyIn, 0, 'the autopilot let go');
+  assert.ok(s.obj.x[0] >= target, `the ship arrived (${s.obj.x[0]} >= ${target})`);
+  assert.ok(s.obj.x[0] < target + 16, '...and did not overshoot the screen');
+  // ...and the player has the stick back.
+  s.input.held = BTN.LEFT; s.input.pressed = BTN.LEFT;
+  modFlyIn(s);
+  assert.equal(s.input.held, BTN.LEFT, 'the pad is the player\'s again');
+});
+
+test('the fly-in reads $9BD4 through $9BCC[$19], per stage AND per checkpoint', () => {
+  // The one stage-dependent thing in the new code, pinned against the ROM's own
+  // bytes rather than against itself. `$9BCC` is [0, 5, 10, 0, 0, 15, 20, 0] and
+  // `$9BD4` is five entries per stage, so a respawn deep in stage 3 or stage 6
+  // is a DIFFERENT row from the one every early death produces:
+  //
+  //   stage 3, $3F = 5 -> $24,X = 4 -> $9BD4[10 + 2] = $75 -> (80, 112)
+  //   stage 6, $3F = 7 -> $24,X = 6 -> $9BD4[15 + 3] = $A3 -> (48, 160)
+  //
+  // modscope.mjs's stage sweep drives all seven stages but its deaths are all
+  // early, so it only ever reaches checkpoint 0. These are the other rows.
+  for (const [stage, cam, wantY, wantX] of [[2, 5, 112, 80], [5, 7, 160, 48]]) {
+    const s = modded(['heal-gradius-syndrome']);
+    introReset(s, res);
+    s.zp19 = stage;                      // $9B6E has already run; $96CF INC $19
+    s.obj.status[0] = 1;
+    s.cam.hi = cam;
+    for (let i = 0; i < 180; i++) modFrameEnd(s);
+    die(s);
+    respawn(s, res);
+    assert.equal(s.save24[0], Math.min(cam & 0x0E, 8), `stage ${stage + 1}: $97BB`);
+    assert.equal(s.obj.y[0], wantY, `stage ${stage + 1}: $9B92's own table Y`);
+    assert.equal(s.mods.rt.flyInTo, wantX, `stage ${stage + 1}: $9BAB's own table X`);
+    assert.equal(s.obj.x[0], FLY_IN_X, '...and it still enters at the left wall');
+  }
+});
+
+test('the in-place respawn takes $9B47 over the PLAYER\'S twelve slots, and no more', () => {
+  // FOUND BY MEASUREMENT, NOT BY READING. The first draft seeded the ship and
+  // left every other object alone, so a respawn came back with `$45 = 0` but
+  // `$0121 = 4` and `$0122 = 5` still set -- and `$8B10` draws object i whenever
+  // `$0120+i` is non-zero, while `$A0C8`'s loop (`LDX $45 / DEX / BPL`) writes
+  // nothing at all at `$45 = 0`. Two ghost Options, welded to the new ship.
+  const s = modded(['heal-gradius-syndrome']);
+  introReset(s, res);
+  s.obj.status[0] = 1;
+  s.cam.hi = 5;
+  s.zp.options = 2;
+  s.obj.anim[1] = 4; s.obj.anim[2] = 5;            // the Options, mid-animation
+  s.obj.status[1] = 1; s.obj.status[2] = 1;
+  s.obj.anim[3] = 0x20; s.obj.type[3] = 1; s.obj.x[3] = 120;   // a shot in flight
+  s.obj.anim[9] = 0x30; s.obj.x[9] = 130;                      // and a missile
+  // An enemy, which must be left exactly where it is -- that is the whole mod.
+  const e = ENEMY_BASE;
+  s.obj.type[e] = 0x83; s.obj.status[e] = 1; s.obj.anim[e] = 0x10;
+  s.obj.x[e] = 200; s.obj.y[e] = 60;
+  for (let i = 0; i < 180; i++) modFrameEnd(s);
+  die(s);
+  respawn(s, res);
+  assert.equal(s.zp.options, 0, '$45 was wiped');
+  assert.deepEqual([...s.obj.anim.slice(1, 12)], new Array(11).fill(0),
+    'slots 1-11 are clear: no ghost Options, no orphan shots, no orphan missile');
+  assert.deepEqual([...s.obj.status.slice(1, 12)], new Array(11).fill(0));
+  assert.deepEqual([...s.obj.type.slice(1, 12)], new Array(11).fill(0));
+  // ...and the enemy is untouched, unlike $9B47's own LDX #$7F.
+  assert.equal(s.obj.type[e], 0x83, 'the enemy is still there');
+  assert.equal(s.obj.x[e], 200, '...at the same pixel');
+  assert.equal(s.obj.anim[e], 0x10);
+});
+
+test('Heal Gradius Syndrome still wipes the loadout: that is the OTHER mod', () => {
+  // The owner's split, as an assertion. `heal-gradius-syndrome` does not touch
+  // weapons; `$9B3E`'s five capsule stores happen anyway.
+  const s = modded(['heal-gradius-syndrome']);
+  introReset(s, res);
+  s.obj.status[0] = 1;
+  s.zp.speed = 3; s.zp.missile = 1; s.zp.weapon = 2;
+  s.zp.options = 2; s.zp.shield = 5; s.zp.meter = 4;
+  s.cam.hi = 7;
+  for (let i = 0; i < 180; i++) modFrameEnd(s);
+  die(s);
+  respawn(s, res);
+  assert.deepEqual(
+    [s.zp.speed, s.zp.missile, s.zp.weapon, s.zp.options, s.zp.shield],
+    [0, 0, 0, 0, 0], 'stock rules: the bar is gone');
+  assert.equal(s.zp.meter, s.save22[0],
+    '$42 comes back from $22,X, which is $9B64/$9B66 -- 1, never the real cursor');
 });
 
 test('...and a stock run does exactly what the cartridge does', () => {
-  // The control. Same death, no mod: $97BB stores min($3F AND $0E, 8) and the
-  // ship comes back at $9BD4's table position.
+  // The control. Same death, no mod: $97BB stores min($3F AND $0E, 8), $9B68
+  // reads it back into $3F and $55, and the ship comes back at $9BD4's table
+  // position with the whole stage intro in front of it.
   const s = bootState(res.manifest);
   s.obj.status[0] = 1;
-  s.cam.hi = 7; s.obj.x[0] = 200; s.obj.y[0] = 40;
-  respawn(s, res);
+  s.cam.hi = 7; s.cam.lo = 0x80; s.obj.x[0] = 200; s.obj.y[0] = 40;
+  assert.equal(respawn(s, res), true, 'the stage intro owns the frame');
   assert.equal(s.save24[0], 6, 'min(7 AND $0E, 8) = 6');
+  assert.equal(s.cam.hi, 6, 'THE ROLLBACK: $3F is the checkpoint');
+  assert.equal(s.cam.lo, 0, '...and $3E was wiped with the other 90 bytes');
   assert.notEqual(s.obj.x[0], 200);
+  assert.notEqual(s.obj.x[0], FLY_IN_X, 'and the cartridge teleports; it does not fly in');
+});
+
+// ---------------------------------------------------------------------------
+//  HARD WON -- the other half of Gradius syndrome
+// ---------------------------------------------------------------------------
+
+test('Hard Won carries the six power-up bytes across the death, on $979D\'s own wire', () => {
+  const s = modded(['hard-won']);
+  introReset(s, res);
+  s.obj.status[0] = 1;
+  s.cam.hi = 7;
+  s.zp.speed = 3; s.zp.missile = 1; s.zp.weapon = 1;
+  s.zp.options = 2; s.zp.shield = 4; s.zp.meter = 5;
+  die(s);
+  respawn(s, res);                                // $979D -> $97DD -> $9B3E
+  assert.equal(s.zp.speed, 3, '$40');
+  assert.equal(s.zp.missile, 1, '$41');
+  assert.equal(s.zp.meter, 5, '$42 IN FULL -- $97A5 degrades it to 1 and this does not');
+  assert.equal(s.zp.weapon, 1, '$44');
+  assert.equal(s.zp.options, 2, '$45');
+  assert.equal(s.zp.shield, 4, '$46');
+  assert.equal(s.lives[0], 2, 'and it still cost a life');
+  assert.equal(s.mods.rt.savedKit, null, 'the capture is consumed, not kept');
+});
+
+test('Hard Won does NOT stop the checkpoint rollback: that is the OTHER mod', () => {
+  const s = modded(['hard-won']);
+  introReset(s, res);
+  s.obj.status[0] = 1;
+  s.cam.hi = 7; s.zp.shield = 4;
+  assert.equal(respawn(s, res), true, 'the stage intro still runs, in full');
+  assert.equal(s.save24[0], 6, '$97BB');
+  assert.equal(s.cam.hi, 6, '$9B68 -- you are dragged back down the stage');
+  assert.equal(s.build.hi, 6);
+  assert.equal(s.zp.shield, 4, '...you just arrive there with your shield');
+});
+
+test('a stock run loses all six, which is what Hard Won is for', () => {
+  const s = bootState(res.manifest);
+  s.obj.status[0] = 1;
+  s.zp.speed = 3; s.zp.missile = 1; s.zp.weapon = 1;
+  s.zp.options = 2; s.zp.shield = 4; s.zp.meter = 5;
+  respawn(s, res);
+  assert.deepEqual(
+    [s.zp.speed, s.zp.missile, s.zp.weapon, s.zp.options, s.zp.shield],
+    [0, 0, 0, 0, 0]);
+  assert.equal(s.zp.meter, 1, '$42 comes back as $97A5\'s 0-or-1, not as 5');
 });
 
 test('the invulnerability window refuses every death route', () => {
@@ -308,42 +540,42 @@ test('the flicker stops when the window does', () => {
 // me. Except the volcano wasn't there, it was all black space like level 2
 // boss... when I beat it, level 2 started."
 //
-// `rt.death` is captured at `$C1D6` and consumed at the tail of the next
-// `$9B3E`. On an ordinary death that is this death's own respawn. On the LAST
-// life it is not: `$97F1` never runs `$9B3E`, so the capture survives the whole
-// game-over screen and lands on the FIRST `$9B3E` of the next game -- which,
-// after `$970D` CONTINUE, is a brand-new stage-1 run. See
+// The DEFECT was a capture consumed by "the next `$9B3E`", written as if the
+// next `$9B3E` were always this death's respawn. On the LAST life it is not:
+// `$97F1` never runs `$9B3E`, so the capture survives the whole game-over
+// screen and lands on the FIRST `$9B3E` of the next game -- which, after
+// `$970D` CONTINUE, is a brand-new stage-1 run. See
 // docs/worklog/gradius/43-diag-stage-state-race.md for the frame trace.
 //
-// The two tests below are the defect and its control, and BOTH were seen red
-// against the unfixed src/mods.js (worklog 43 SS5).
+// W45 REPLACED THE FIELD AND KEPT THE WIRE. `rt.death` is gone with the
+// mechanism that needed it; `hard-won`'s `rt.savedKit` has the identical
+// lifetime, is captured at `$979D` (before `$97C1`'s game-over branch, on
+// purpose) and is dropped by the same two lines. So the two tests below are the
+// same two tests, against the capture that exists now.
 
-test('a game over abandons the death position ($97F1, W43)', () => {
-  const s = modded(['heal-gradius-syndrome']);
+test('a game over abandons the death capture ($97F1, W43)', () => {
+  const s = modded(['hard-won']);
   introReset(s, res);
-  for (let i = 0; i < 180; i++) modFrameEnd(s);   // burn $9B3E's blink off
   s.obj.status[0] = 1;
   s.zp19 = 1;                                     // stage 2
   s.substate = 0x86;                              // its boss is down
   s.cam.hi = 0x0D; s.cam.lo = 0x0C;               // ...and the camera is high
-  s.obj.x[0] = 120; s.obj.y[0] = 96;
+  s.zp.shield = 4; s.zp.options = 2;
   s.lives[0] = 0;                                 // $979F's DEC takes it negative
   die(s);
-  assert.equal(s.mods.rt.death.camHi, 0x0D, '$C1D6 captured the death page');
   respawn(s, res);                                // $979D -> $97C1 BMI -> $97F1
   assert.equal(s.substate, 0xC0, 'GAME OVER ($97FD), not a respawn');
-  assert.equal(s.mods.rt.death, null,
+  assert.equal(s.mods.rt.savedKit, null,
     '$97F1 is the end of the run: there is nothing to come back to');
 });
 
-test('...so CONTINUE starts stage 1 at page 0, not at the page you died on', () => {
-  const s = modded(['heal-gradius-syndrome']);
+test('...so CONTINUE starts a bare stage 1, not the dead run\'s bar', () => {
+  const s = modded(['hard-won']);
   introReset(s, res);
-  for (let i = 0; i < 180; i++) modFrameEnd(s);
   s.obj.status[0] = 1;
   s.zp19 = 1; s.substate = 0x86;
   s.cam.hi = 0x0D; s.cam.lo = 0x0C;
-  s.obj.x[0] = 120; s.obj.y[0] = 96;
+  s.zp.speed = 3; s.zp.shield = 4; s.zp.options = 2; s.zp.weapon = 2;
   s.lives[0] = 0;
   die(s);
   respawn(s, res);
@@ -359,14 +591,35 @@ test('...so CONTINUE starts stage 1 at page 0, not at the page you died on', () 
   introReset(s, res);                             // the NEW game's $9B3E
 
   assert.equal(s.zp19, 0, 'a continue is a new game, and new games start on stage 1');
-  assert.equal(s.cam.hi, 0,
-    '$3F is $9B68\'s checkpoint (0), NOT the previous run\'s death page $0D');
+  assert.equal(s.cam.hi, 0, '$3F is $9B68\'s checkpoint (0)');
   assert.equal(s.build.hi, 0, '...and $55 agrees, so the terrain streams from page 0');
-  // The consequence the owner actually saw, stated as the assertion that would
-  // have caught it: page $0D is past stage 1's boss page, so a camera left
-  // there sends `$9A4D` straight into `$81`/`$82` on the first play frame.
+  assert.deepEqual(
+    [s.zp.speed, s.zp.missile, s.zp.weapon, s.zp.options, s.zp.shield],
+    [0, 0, 0, 0, 0],
+    'a new game flies a bare Viper, not the bar the LAST run died holding');
+  // The W43 consequence in its own terms: page $0D is past stage 1's boss page,
+  // so a camera left there sends `$9A4D` straight into `$81`/`$82`.
   assert.ok(s.cam.hi < res.stages[0].bossPage,
     'the camera is BEFORE stage 1\'s boss page, so $9A4D does not fire at once');
+});
+
+test('a game over abandons the run even with the WHOLE cure on', () => {
+  // Both new mods at once, on the last life. Heal Gradius Syndrome must not
+  // rescue a run that is over: `$97C1 BMI $97F1` is upstream of `$97DB` and
+  // stays that way.
+  const s = modded(['heal-gradius-syndrome', 'hard-won']);
+  introReset(s, res);
+  s.obj.status[0] = 1;
+  s.cam.hi = 0x0D;
+  s.zp.shield = 4;
+  s.lives[0] = 0;
+  for (let i = 0; i < 180; i++) modFrameEnd(s);
+  die(s);
+  assert.equal(respawn(s, res), false, '$97F1 ends IN the mode-5 body');
+  assert.equal(s.substate, 0xC0, 'GAME OVER, not an in-place respawn');
+  assert.equal(s.mods.rt.savedKit, null);
+  assert.equal(s.mods.rt.invuln, 0);
+  assert.equal(s.mods.rt.flyIn, 0, 'and no autopilot outlives the run');
 });
 
 // ---------------------------------------------------------------------------
@@ -437,7 +690,7 @@ test('...so a CONTINUE gives back what the player chose, not a bare stage 1', ()
   s.lives[0] = 0;
   respawn(s, res);
   assert.equal(s.substate, 0xC0, 'GAME OVER');
-  assert.equal(s.mods.rt.death, null);
+  assert.equal(s.mods.rt.savedKit, null);
   assert.equal(s.mods.rt.invuln, 0, 'W44: the window is a run-scoped byte too');
   // $970D CONTINUE.
   newGame(s);
@@ -462,41 +715,130 @@ test('mods.js\'s PLAY_MODE is state.js\'s MODE_STAGE, and mods.js still imports 
     'src/mods.js has grown an import; start.html loads it as a standalone catalogue');
 });
 
-test('every mutable byte the mod layer owns is one of the five in rt', () => {
+test('every mutable byte the mod layer owns is one of the seven in rt', () => {
   // THE INVENTORY IS THE CHECK. W43's defect was a field whose lifetime nobody
-  // had written down, so this pins the field set itself: a sixth one added
-  // without a lifetime in the table (docs/worklog/gradius/44) fails here.
-  const s = modded(['heal-gradius-syndrome', 'afterimage', 'disco']);
+  // had written down, so this pins the field set itself: an eighth one added
+  // without a lifetime in the table (docs/worklog/gradius/45) fails here.
+  const s = modded(['heal-gradius-syndrome', 'hard-won', 'afterimage', 'disco']);
   assert.deepEqual(Object.keys(s.mods.rt).sort(),
-    ['death', 'discoPal', 'firstIntro', 'ghost', 'invuln']);
+    ['discoPal', 'firstIntro', 'flyIn', 'flyInTo', 'ghost', 'invuln', 'savedKit']);
   assert.deepEqual(Object.keys(s.mods).sort(), ['lo', 'rt']);
+});
+
+test('every RUN-scoped byte is dropped at $97F1 and re-armed at $82D5', () => {
+  // The table in the worklog, as an assertion over the object rather than over
+  // a list somebody has to keep current. `ghost`/`discoPal` are SESSION-scoped
+  // render scratch and are deliberately not in either set.
+  const RUN = ['firstIntro', 'flyIn', 'flyInTo', 'invuln', 'savedKit'];
+  const s = modded(['heal-gradius-syndrome', 'hard-won'], { stage: 2 });
+  // Dirty every one of them, then end the run.
+  s.mods.rt.invuln = 99; s.mods.rt.flyIn = 99; s.mods.rt.flyInTo = 99;
+  s.mods.rt.savedKit = { 0x46: 5 }; s.mods.rt.firstIntro = false;
+  modAbandonRun(s);
+  for (const k of RUN) {
+    if (k === 'firstIntro') continue;              // re-armed at $82D5, not here
+    assert.ok(!s.mods.rt[k], `$97F1 left rt.${k} = ${JSON.stringify(s.mods.rt[k])}`);
+  }
+  s.save26[0] = 0; s.save28[0] = 0;                // $8307's wipe
+  newGame(s);                                      // $82D5
+  assert.equal(s.mods.rt.firstIntro, true, 'a new game owes the starting kit again');
+  assert.equal(s.save26[0], 2, '...and the level select is back');
+  for (const k of RUN) {
+    if (k === 'firstIntro') continue;
+    assert.ok(!s.mods.rt[k], `$82D5 left rt.${k} = ${JSON.stringify(s.mods.rt[k])}`);
+  }
 });
 
 // ===========================================================================
 //  5. THE COMPOSITION THE OWNER ASKED ABOUT
 // ===========================================================================
 
-test('Full Kit + Heal Gradius Syndrome compose: back where you fell, fully armed, blinking', () => {
-  const s = modded(['full-power', 'heal-gradius-syndrome']);
+/**
+ * ONE DEATH, ONE LOADOUT, ONE ANSWER. Drives the real routines and reports the
+ * camera page and the six bytes a respawn came back with.
+ */
+function dieAndRespawn(ids, opts = {}, before = {}) {
+  const s = modded(ids, opts);
   introReset(s, res);
   s.obj.status[0] = 1;
-  s.cam.hi = 5;
-  s.obj.x[0] = 176; s.obj.y[0] = 120;
+  s.cam.hi = 5; s.cam.lo = 0x40;
+  s.zp.speed = 3; s.zp.missile = 1; s.zp.weapon = 1;
+  s.zp.options = 2; s.zp.shield = 4; s.zp.meter = 5;
+  Object.assign(s.zp, before);
   s.substate = 0x80;
-  // Burn the window off first, or the death is refused and there is nothing to
+  // Burn any window off first, or the death is refused and there is nothing to
   // compose. That is itself the interaction: while blinking you cannot die.
-  for (let i = 0; i < 180; i++) modFrameEnd(s);
+  for (let i = 0; i < 200; i++) modFrameEnd(s);
   die(s);
-  respawn(s, res);
-  assert.equal(s.obj.x[0], 176, 'position: Heal Gradius Syndrome');
-  assert.equal(s.obj.y[0], 120);
-  assert.equal(s.cam.hi, 5);
-  assert.equal(s.zp.shield, 5, 'kit: Full Kit');
-  assert.equal(s.zp.options, 2);
-  assert.equal(s.zp.speed, 1);
-  assert.equal(s.mods.rt.invuln, 180, 'and the new window is armed');
-  assert.equal(s.lives[0], 2, 'it still cost a life');
-  assert.equal(s.mods.lo.conflicts.size, 0, 'the two touch disjoint state');
+  const died = s.obj.status[0] === 2;
+  const rc = respawn(s, res);
+  return {
+    s, died, ranIntro: rc,
+    cam: s.cam.hi, x: s.obj.x[0], lives: s.lives[0],
+    kit: [s.zp.speed, s.zp.missile, s.zp.meter, s.zp.weapon, s.zp.options, s.zp.shield],
+  };
+}
+
+test('THE MATRIX: every combination of the four respawn mods has one answer', () => {
+  // `respawnKit()` is a LADDER, not a merge -- full-power > hard-won >
+  // muscle-memory > the picker's one grant. The picker is on every row so that
+  // "what muscle-memory restores" and "what hard-won restores" are different
+  // numbers and a row cannot pass by coincidence.
+  // Every one of the six is non-zero in the picker on purpose: a zero means
+  // "leave it to the cartridge" (resolveLoadout drops it), and a byte nobody
+  // writes would come back from `$9B3E`/`$9B66` and make a row pass by luck.
+  const P = { speed: 2, missile: 1, meter: 3, weapon: 2, options: 1, shield: 5 };
+  const START = [2, 1, 3, 2, 1, 5];              // what the picker grants
+  const DIED = [3, 1, 5, 1, 2, 4];               // what dieAndRespawn was holding
+  const FULL = [1, 1, 6, 2, 2, 5];               // full-power's own six
+  const BARE = [0, 0, 1, 0, 0, 0];               // stock: $9B3E, $42 from $22,X
+  const ROLLED = 4, KEPT = 5;                    // min(5 AND $0E, 8) vs no rollback
+
+  const rows = [
+    // ids                                              kit      camera
+    [[],                                                BARE,    ROLLED],
+    [['heal-gradius-syndrome'],                         BARE,    KEPT],
+    [['hard-won'],                                      DIED,    ROLLED],
+    [['muscle-memory'],                                 START,   ROLLED],
+    [['full-power'],                                    FULL,    ROLLED],
+    [['heal-gradius-syndrome', 'hard-won'],             DIED,    KEPT],
+    [['heal-gradius-syndrome', 'full-power'],           FULL,    KEPT],
+    [['heal-gradius-syndrome', 'muscle-memory'],        START,   KEPT],
+    [['hard-won', 'full-power'],                        FULL,    ROLLED],
+    [['hard-won', 'muscle-memory'],                     DIED,    ROLLED],
+    [['full-power', 'muscle-memory'],                   FULL,    ROLLED],
+    [['heal-gradius-syndrome', 'hard-won', 'full-power'], FULL,  KEPT],
+    [['heal-gradius-syndrome', 'hard-won', 'muscle-memory'], DIED, KEPT],
+  ];
+  for (const [ids, kit, cam] of rows) {
+    const label = ids.length ? ids.join('+') : 'stock';
+    const r = dieAndRespawn(ids, ids.length ? P : {});
+    assert.ok(r.died, `${label}: the death itself must not be refused`);
+    assert.equal(r.lives, 2, `${label}: a life, at full price`);
+    // The BARE row's $42 comes from $22,X, which is 1 because $42 was 5.
+    assert.deepEqual(r.kit, kit, `${label}: the kit`);
+    assert.equal(r.cam, cam, `${label}: $3F`);
+    assert.equal(r.x === FLY_IN_X, ids.includes('heal-gradius-syndrome'),
+      `${label}: only Heal Gradius Syndrome flies in from the left wall`);
+    assert.equal(r.ranIntro, !ids.includes('heal-gradius-syndrome'),
+      `${label}: only Heal Gradius Syndrome skips $9B3E`);
+  }
+});
+
+test('...and immortal beats both of them, by never reaching $C1D6 at all', () => {
+  const r = dieAndRespawn(['immortal', 'heal-gradius-syndrome', 'hard-won'], { shield: 5 });
+  assert.equal(r.died, false, '$C1D6 is refused, so there is no respawn to have');
+  assert.equal(r.s.mods.lo.conflicts.size, 0, 'the three touch disjoint sim keys');
+});
+
+test('the two new mods report no conflict, because they are two mechanisms', () => {
+  const lo = resolveLoadout(['heal-gradius-syndrome', 'hard-won']);
+  assert.equal(lo.sim.respawnInPlace, true);
+  assert.equal(lo.sim.keepLoadout, true);
+  assert.equal(lo.conflicts.size, 0,
+    'the rollback lives in $979D/$9B68 and the wipe in $9B3E: no shared byte');
+  assert.deepEqual(PRESETS['the-full-cure'].mods,
+    ['heal-gradius-syndrome', 'hard-won']);
 });
 
 // ===========================================================================

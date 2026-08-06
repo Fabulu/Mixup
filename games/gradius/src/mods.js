@@ -12,13 +12,17 @@
 // not a nicety: the port's agreement with the ROM is the actual product, and a
 // mod that could perturb it would be a defect in the product, not a feature.
 //
-// The call sites, all seven of them inside the simulation, so they can be
+// The call sites, all ten of them inside the simulation, so they can be
 // counted (`grep -n 'state.mods' games/gradius/src/*.js`):
 //
+//   src/nmi.js       modFlyIn                  after $80A4's JSR $81BF  (W45)
 //   src/nmi.js       modHidePlayer / modShowPlayer around $80A7's display list
 //   src/nmi.js       modFreezeEnemies          around $9A6D's JSR $ADAB
 //   src/nmi.js       modFrameEnd               after $80B5's `STA $04`
 //   src/flow.js      modAfterIntroReset        at the tail of $9B3E
+//   src/flow.js      modSaveLoadout            after $97BF, the last store of
+//                                              $979D's own save block   (W45)
+//   src/flow.js      modRespawnInPlace         at $97DB, INSTEAD of $97DD (W45)
 //   src/flow.js      modAbandonRun             at the top of $97F1   (W43)
 //   src/modes.js     modNewRun                 at the tail of $82D5  (W44)
 //   src/collision.js modRefuseDeath            at the top of $C1D6
@@ -49,10 +53,67 @@
 //     title's START and the game-over screen's CONTINUE go through.
 //
 // Every piece of mutable state a mod owns, and what clears it, is the table in
-// docs/worklog/gradius/44-impl-mod-run-scope.md. `tools/oracle/modscope.mjs`
-// drives all 19 mods and all 4 presets through a demo, a run, a game over and a
-// continue and asserts it, because no oracle scenario can: `state.mods` is
-// undefined on every one of them, by design and by the rule above.
+// docs/worklog/gradius/45-impl-respawn-mods.md (44 has the first version).
+// `tools/oracle/modscope.mjs` drives every mod, every preset and six
+// compositions through a demo, a run, a RESPAWN, a game over and a continue and
+// asserts it, because no oracle scenario can: `state.mods` is undefined on
+// every one of them, by design and by the rule above.
+//
+// ======= THE THIRD RULE (W45): PORTED, OR DECLARED AN INVENTION =============
+//
+// **"GRADIUS SYNDROME" IS TWO STACKED MECHANICS AND THE ROM KEEPS THEM IN TWO
+// DIFFERENT ROUTINES.** Checked before anything was written, because the wave
+// brief said to doubt that they were separable at all:
+//
+//   THE CHECKPOINT ROLLBACK is `$97B1-$97BB` -- `LDA $3F / AND #$0E / CMP #$08 /
+//   BCC / LDA #$08 / STA $24,X` -- read back by `$9B68 LDA $24,X / STA $3F /
+//   STA $55`. Two instructions in `$979D` and one load in `$9B3E`.
+//
+//   THE LOADOUT WIPE is `$9B3E LDX #$5A / LDA #$00 / STA $3D,X`, 91 bytes, of
+//   which `$40 $41 $44 $45 $46` are the capsule bytes; `$42` is separately
+//   knocked down to 0-or-1 by `$97A5-$97AB` (`$22,X`) and restored by `$9B66`.
+//
+// They share no byte and no branch, so the two mods below can each take one
+// without touching the other -- which is the whole point of the split:
+//
+//   heal-gradius-syndrome   NO ROLLBACK.   The wipe still happens.
+//   hard-won                NO WIPE.       The rollback still happens.
+//
+// Both on is the full cure; either alone is playable. `respawnKit()` is the one
+// function that decides what a respawn is owed, so neither can quietly do the
+// other's job.
+//
+// WHAT THE CARTRIDGE PROVIDED, AND WHAT IS INVENTED. This file's rule is the
+// port's: a deviation is named where it lives, never presented as ported.
+//
+//   PORTED, driven rather than re-implemented:
+//     * the death itself, the life, the 120-frame countdown and the game-over
+//       branch -- `$C1D6`, `$96EF`, `$979F`, `$97C1`. Untouched by both mods.
+//     * the power-up wipe an in-place respawn performs: the same five stores
+//       `$9B3E` makes, plus `$9B64/$9B66`'s `$42 := $22,X`.
+//     * the ship's respawn Y and its target X: `$9B88-$9BB5`'s own formula
+//       (`$9BD4[$9BCC[$19] + ($24,X >> 1)]`), read out of the ROM's own table.
+//     * the SAVE-AND-RESTORE SHAPE hard-won uses: `$979D` already saves four
+//       bytes across a death (`$22,X $24,X $26,X $28,X`) and `$9B62-$9B74`
+//       already restores them. hard-won adds five more passengers to a coach
+//       the cartridge drives; it does not build a coach.
+//     * the AUTOPILOT CHANNEL the fly-in uses: `$9C88 STA $05 / STA $07`, the
+//       attract demo's own scripted-button routine. The fly-in is `$0007` held
+//       at RIGHT, so the ship moves through `$9FFC`'s own X code at the game's
+//       own `$A006` speed. There is no parallel animation anywhere.
+//
+//   INVENTED, and there was no cartridge behaviour to port:
+//     * THE FLY-IN ITSELF. Stock Gradius TELEPORTS the ship to `$9BD4`'s table
+//       position and hands control over on the same frame; the PRG contains no
+//       entry animation for the player at all. GREPPED AND READ before
+//       concluding: the only writers of `$0360` are `$9BAF` (the intro's
+//       teleport), `$A02E`/`$A040` (the player's own stick) and `$82A1` (the
+//       menu cursor). `$9B3E`'s intro path has none. So the mod starts the ship
+//       at X = 0 and holds RIGHT until it reaches the ROM's own start X.
+//     * THE INVULNERABILITY WINDOW, which W41 already declared: the cartridge
+//       has no player i-frames anywhere (see modRefuseDeath).
+//     * hard-won's five extra save slots (`rt.savedKit`). The bytes are the
+//       cartridge's; the storage is this file's.
 //
 // ===================== WHY A FRONT END AND NOT AN OVERLAY ====================
 //
@@ -159,15 +220,30 @@ export const MODS = {
   },
   'heal-gradius-syndrome': {
     name: 'Heal Gradius Syndrome',
-    blurb: 'The section that killed you is the section you come back to, not '
-         + 'the one you already beat. Blink for three seconds, touch nothing, '
-         + 'get out of the way.',
+    blurb: 'You explode, you lose a life, and a new Viper flies in from the '
+         + 'left of the screen right where you fell. No checkpoint, no rewind, '
+         + 'no third lap of terrain you already beat. It blinks for three '
+         + 'seconds and nothing can touch it. The bar is still empty, because '
+         + 'the wipe is the other mod.',
     category: 'combat',
-    // NOT a checkpoint value: `$97BB` stores min($3F AND $0E, 8), which can
-    // only ever name five places in a stage. This restores the camera and the
-    // ship, and then hands the player the invulnerability the cartridge has
-    // never had (see modRefuseDeath).
+    // NO ROLLBACK: `$97BB`'s min($3F AND $0E, 8) still lands in `$24,X` (the
+    // cartridge writes it and this mod does not stop it) but `$9B68` never runs
+    // to read it, because this respawn does not go through `$9B3E` AT ALL. See
+    // modRespawnInPlace, and the THIRD RULE at the top of this file for which
+    // half of it is ported and which half is invented.
     sim: { respawnInPlace: true, invulnFrames: 180 },
+  },
+  'hard-won': {
+    name: 'Hard Won',
+    blurb: 'Speed, missile, the laser or double, both Options and the shield '
+         + 'all survive your death. The checkpoint still drags you back down '
+         + 'the stage; you just do not arrive there naked.',
+    category: 'combat',
+    // The other half of Gradius syndrome, and the other routine. `$9B3E`'s
+    // 91-byte wipe still runs; the six bytes are captured at `$979D` (beside
+    // the four the cartridge already saves there) and written back at the tail
+    // of `$9B3E`, where `$9B66` puts `$42` back. See modSaveLoadout.
+    sim: { keepLoadout: true },
   },
   'muscle-memory': {
     name: 'Muscle Memory',
@@ -272,6 +348,13 @@ export const PRESETS = {
     name: "The Owner's Run",
     mods: ['full-power', 'heal-gradius-syndrome', 'always-on-enemies'],
   },
+  // BOTH HALVES OF THE CURE, and nothing else. The two mods are separable on
+  // purpose (see the THIRD RULE); this is the card for the player who wanted
+  // the disease gone rather than half of it.
+  'the-full-cure': {
+    name: 'The Full Cure',
+    mods: ['heal-gradius-syndrome', 'hard-won'],
+  },
   'nightmare': {
     name: 'Nightmare Fuel',
     mods: ['loop-three', 'rank-max', 'overtime'],
@@ -314,7 +397,7 @@ export function resolveLoadout(ids = [], opts = {}) {
   const zp = {};
   const sim = {
     swapLR: false, swapUD: false,
-    grantEveryIntro: false, stickyStart: false,
+    grantEveryIntro: false, stickyStart: false, keepLoadout: false,
     respawnInPlace: false, invulnFrames: 0,
     immortal: false, rankLock: null, loop: null,
     overtime: false, freezeEnemies: false,
@@ -434,8 +517,14 @@ export function attachMods(state, loadout) {
     rt: {
       invuln: 0,          // RUN     frames of the Heal Gradius Syndrome window
       firstIntro: true,   // RUN     has THIS run's $9B3E run once yet?
-      death: null,        // DEATH   {x, y, camHi} captured at $C1D6, consumed
-                          //         by the next $9B3E, dropped at $97F1 (W43)
+      flyIn: 0,           // RUN     frames of forced RIGHT left in the fly-in.
+                          //         A CAP, not the length: modFlyIn stops the
+                          //         moment $0360 reaches flyInTo (W45)
+      flyInTo: 0,         // RUN     the X the fly-in is aiming at -- $9BD4's
+                          //         own byte for this stage and checkpoint
+      savedKit: null,     // DEATH   Hard Won's six power-up bytes, captured at
+                          //         $979D, consumed by the next $9B3E, dropped
+                          //         at $97F1 (W43's lifetime) and $82D5 (W44's)
       ghost: null,        // SESSION previous framebuffer, for Afterimage
       discoPal: null,     // SESSION scratch palette; state.vram.pal is never
                           //         touched
@@ -491,8 +580,10 @@ function seedSaveSlots(state, loadout) {
 export function modNewRun(state) {
   const m = state.mods;
   if (!m) return;
-  m.rt.death = null;
+  m.rt.savedKit = null;
   m.rt.invuln = 0;
+  m.rt.flyIn = 0;
+  m.rt.flyInTo = 0;
   m.rt.firstIntro = true;
   seedSaveSlots(state, m.lo);
 }
@@ -525,7 +616,7 @@ export function modNewRun(state) {
  *
  * So with any loadout at all, every frame outside a real run is byte-identical
  * to vanilla, and modscope.mjs asserts exactly that over the whole attract demo
- * for all 19 mods and all 4 presets.
+ * for all 32 loadouts it drives.
  *
  * The RENDER layer is deliberately NOT gated: it cannot reach the simulation
  * (it runs after nmi() has returned), and a Game Boy title screen is the point.
@@ -538,66 +629,341 @@ function notPlaying(state) {
  * `$9B3E`, at the tail -- after `$9BC9`'s `JMP $83AB`, i.e. after the cartridge
  * has finished seeding the ship, both rings and the screen.
  *
- * Three things, in this order:
- *   1. the ship goes back where it died (Heal Gradius Syndrome)
- *   2. the starting kit is written into the six power-up bytes the wipe just
- *      cleared (Full Kit / Muscle Memory / the picker)
- *   3. the invulnerability window is armed
+ * Two things: the kit the loadout is owed, and the blink.
  *
- * Order 1-before-2 matters not at all (the two touch disjoint state) and is
- * fixed anyway so that the composition is deterministic rather than incidental.
+ * **HEAL GRADIUS SYNDROME NO LONGER APPEARS HERE AND THAT IS THE WHOLE OF W45.**
+ * Until W45 this hook restored a captured camera page and ship position into the
+ * TAIL OF A STAGE INTRO -- a position replay bolted onto `$9B3E`, which meant
+ * the player still watched the 27-frame blanked intro, still had the screen
+ * reloaded by `$882C` and still had the terrain restreamed from a page boundary.
+ * That is the "put you back at some scene" the owner reported, and it is also
+ * the shape that leaked across a game over in W43. The mechanism is gone, not
+ * tuned: a death respawn under this mod never reaches `$9B3E` at all. See
+ * modRespawnInPlace.
+ *
+ * `$9B3E` still runs for the things it is actually for -- the run's first
+ * intro, `$96CF`'s next stage, `$9721`'s continue cheat (which writes
+ * `$24,X := 0` at `$9730` precisely so the player restarts at the START of the
+ * stage) and `$9751`'s timeout. The blink is armed on all of them, because
+ * every one of them is a moment the player is put somewhere and shot at.
  */
 export function modAfterIntroReset(state) {
   const m = state.mods;
   if (!m || notPlaying(state)) return;
-  const { sim, zp } = m.lo;
   const rt = m.rt;
-  const d = rt.death;
 
-  // ---- 1. respawn in place ------------------------------------------------
-  //
-  // `$24,X` IS DELIBERATELY LEFT ALONE. `$97BB` stores min($3F AND $0E, 8) --
-  // five places in a whole stage -- and it is tempting to write the real camera
-  // there instead and let `$9B68` do the work. It is also wrong: `$9B88` uses
-  // `$3F >> 1` to index the start-position table at `$9BD4`, whose domain is
-  // exactly the five checkpoint values, so a larger `$24,X` reads off the end
-  // of a ROM table for a position this hook is about to overwrite anyway.
-  // Cheaper and safer to let the cartridge finish its own intro and then move
-  // the camera and the ship, which is all this does.
-  if (sim.respawnInPlace && d) {
-    // `$9B68` has put the checkpoint into BOTH `$3F` and `$55`, so the
-    // streamer's lead is 0; these two only have to keep agreeing with each
-    // other at the 256 px boundary the intro always starts from.
-    state.cam.hi = d.camHi;
-    state.build.hi = d.camHi;
-    state.cam.lo = 0; state.build.lo = 0; state.cam.sub = 0;
-    // The ship, and the 24-entry Option rings `$A08C` walks. `$9B97`/`$9BAF`
-    // wrote the table position into slots 0-2 and `$9BA0`/`$9BB8` filled both
-    // rings from it; this is the same six stores with the death position.
-    for (let i = 0; i < 3; i++) { state.obj.x[i] = d.x; state.obj.y[i] = d.y; }
-    state.ring.x.fill(d.x);
-    state.ring.y.fill(d.y);
-  }
+  const kit = respawnKit(state);
+  if (kit) applyKit(state, kit);
 
-  // ---- 2. the kit ---------------------------------------------------------
-  // `grantEveryIntro` is Full Kit's and `stickyStart` is Muscle Memory's; with
-  // neither, the picker is a STARTING kit and lands on the first intro only,
-  // because that is what "what you start with" means.
-  if (sim.grantEveryIntro || sim.stickyStart || rt.firstIntro) applyKit(state, zp);
-
-  // ---- 3. the blink -------------------------------------------------------
-  if (sim.invulnFrames > 0) rt.invuln = sim.invulnFrames;
+  if (m.lo.sim.invulnFrames > 0) rt.invuln = m.lo.sim.invulnFrames;
 
   rt.firstIntro = false;
-  rt.death = null;
+  rt.savedKit = null;
+  // The fly-in belongs to modRespawnInPlace and to nothing else. An intro
+  // teleports the ship to `$9BD4`'s position with the stick in the player's
+  // hands, exactly as the cartridge does; dropping the counter here means a
+  // stage change during a fly-in cannot leave the autopilot holding RIGHT.
+  rt.flyIn = 0;
+}
+
+/**
+ * WHICH KIT A RESPAWN IS OWED. **ONE FUNCTION, BECAUSE FOUR MODS ANSWER IT AND
+ * TWO CALL SITES ASK IT** -- the tail of `$9B3E` and the in-place respawn. If
+ * the two disagreed, `heal-gradius-syndrome` would silently do (or fail to do)
+ * `hard-won`'s job, which is exactly what the split exists to prevent.
+ *
+ * Precedence, highest first, and it is a LADDER rather than a merge so that
+ * every combination has one answer:
+ *
+ *   full-power    `grantEveryIntro`  the whole bar, every single time. Its own
+ *                 blurb promises "Re-granted on every single respawn", and it
+ *                 is the one mod whose entire point is that it wins.
+ *   hard-won      `keepLoadout`      what you were holding when you died. Only
+ *                 when there IS a capture: the run's first intro has none, so
+ *                 hard-won falls through to the picker there, which is right.
+ *   muscle-memory `stickyStart`      what you STARTED the run with.
+ *   (none)        `rt.firstIntro`    the picker, once, on this run's first
+ *                 intro -- because that is what "what you start with" means.
+ *
+ * `full-power` + `hard-won` therefore gives the full bar (full-power wins), and
+ * `hard-won` + `muscle-memory` gives what you died holding, never less than
+ * nothing and never a merge of two different bars. `resolveLoadout` reports no
+ * `conflicts` entry for these because they are three DIFFERENT sim keys; the
+ * ordering is the contract and tests/mods.test.js walks the whole matrix.
+ *
+ * @returns an object keyed by zero-page address, or null for "write nothing".
+ */
+function respawnKit(state) {
+  const m = state.mods;
+  const { sim, zp } = m.lo;
+  const rt = m.rt;
+  if (sim.grantEveryIntro) return zp;                 // full-power
+  if (sim.keepLoadout && rt.savedKit) return rt.savedKit;  // hard-won
+  if (sim.stickyStart || rt.firstIntro) return zp;    // muscle-memory / the picker
+  return null;
+}
+
+/**
+ * `$979D`, immediately after `$97BF STA $28,X` -- the last store of the
+ * cartridge's own per-death save block, and BEFORE `$97C1 BMI $97F1`.
+ *
+ * **THIS IS THE ROM'S OWN CHANNEL WITH FIVE MORE PASSENGERS.** `$979D` already
+ * carries four bytes across a death and `$9B62-$9B74` already hands them back:
+ *
+ *   $97A5-$97AB  $22,X := ($42 ? 1 : 0)   ->  $9B64/$9B66  $42 := $22,X
+ *   $97B1-$97BB  $24,X := min($3F&$0E,8)  ->  $9B68        $3F := $55 := $24,X
+ *   $97AD        $26,X := $19             ->  $9B6E        $19 := $26,X
+ *   $97BD        $28,X := $1A             ->  $9B72        $1A := $28,X
+ *
+ * So the cartridge's own answer to "what survives a death" is a list, and Hard
+ * Won lengthens it. `$42` is on the ROM's list already but DEGRADED -- `$97A5`
+ * stores 0 or 1, never the cursor's real value -- so it is captured here in
+ * full and restored in full, which is why a Hard Won run comes back with the
+ * bar still parked where the player left it.
+ *
+ * IT IS DELIBERATELY BEFORE THE GAME-OVER BRANCH. The last life captures too,
+ * and `$97F1` then drops it (modAbandonRun). That is W43's lifetime, kept on
+ * purpose: a capture that only happened on survivable deaths would be a second
+ * shape to reason about, and the whole lesson of W43 is that the shape with
+ * fewer cases is the one that does not leak.
+ */
+export function modSaveLoadout(state) {
+  const m = state.mods;
+  if (!m || notPlaying(state) || !m.lo.sim.keepLoadout) return;
+  const z = state.zp;
+  m.rt.savedKit = {
+    0x40: z.speed, 0x41: z.missile, 0x42: z.meter,
+    0x44: z.weapon, 0x45: z.options, 0x46: z.shield,
+  };
+}
+
+/**
+ * `$10` -- WHERE THE NEW SHIP COMES IN FROM. **THE FLY-IN IS INVENTED. THIS
+ * NUMBER IS NOT, AND IT IS NOT 0, BECAUSE THE PORT PROVED 0 ILLEGAL.**
+ *
+ * Established before it was written rather than assumed: the only writers of
+ * `$0360` in the whole PRG are `$9BAF` (the intro's teleport), `$A02E`/`$A040`
+ * (the player's own stick, through `$A285`/`$A297`) and `$82A1` (the menu
+ * cursor). `$9B3E`'s intro path teleports and hands control over on the same
+ * frame; there is no entry animation for the player in Gradius. The owner asked
+ * for one ("go ham"), so it is built, and it is named as built.
+ *
+ * IT WAS 0 FOR ONE DRAFT AND `tools/oracle/modscope.mjs` THREW ON IT, on seven
+ * of the thirty-two loadouts, on the first frame after the first respawn:
+ *
+ *   $C3AD: $0360 = 0, so `LDA $0360 / BNE $C3D3` falls through into $C3AF
+ *   (the SHOT probe) with X whatever the caller left. The player X clamp is
+ *   [16, 240] ($A03A), so this is unreachable on the cartridge too.
+ *
+ * That throw is src/collision.js refusing to guess, and it is right: `$C3A5`'s
+ * terrain probe uses a non-zero `$0360` as its own "this is the PLAYER" test,
+ * so X = 0 is not a position this game has. `$10` is `$A03A`'s own LEFT clamp
+ * -- the leftmost pixel the Vic Viper is ever allowed to occupy -- so the new
+ * ship enters AT the wall and flies in from there. Nothing clamps X on the way
+ * RIGHT (`$A028` only caps at `$F0`), so the rest is the cartridge's own X code
+ * with the stick held.
+ *
+ * Exported because modscope.mjs asserts the entry position, and the same
+ * literal in two files is how a check stops checking.
+ */
+export const FLY_IN_X = 0x10;
+
+/**
+ * A HARD BOUND ON THE AUTOPILOT, in frames. The fly-in normally ends because
+ * `$0360` reached its target; this is what stops `rt.flyIn` from being a flag
+ * with no lifetime if it ever does not. At `$40 = 0` the ship moves exactly
+ * 1.00 px a frame (`$A006`'s `min($40+2, $10) * 128`), so 80 px of fly-in is 80
+ * frames and 240 is three times the slowest case there is.
+ */
+const FLY_IN_CAP = 240;
+
+/**
+ * `$9B88-$9BB5`'s OWN START POSITION, read out of the ROM's own tables.
+ *
+ *   9B88  A4 19 / A5 3F / 4A / 18 / 79 CC 9B / A8    Y := $9BCC[$19] + $3F/2
+ *   9B92  B9 D4 9B / 29 F0                           py := $9BD4[Y] AND $F0
+ *   9BA8  B9 D4 9B / ASL x4                          px := $9BD4[Y] << 4
+ *
+ * ONE table byte carries both coordinates. The port's `introReset()` passes
+ * `$3F` because `$9B68` has just loaded it from `$24,X`; here `$3F` is the LIVE
+ * camera (the whole point of the mod) so the CHECKPOINT is passed instead --
+ * the byte `$97BB` wrote one instruction ago. That keeps the index inside
+ * `$9BD4`'s five-entry-per-stage domain, which a live camera page would walk
+ * straight out of.
+ */
+function romStartPos(res, stage, checkpoint) {
+  const flow = res.flowTables;
+  const y = (flow.read(0x9BCC + stage) + (checkpoint >> 1)) & 0xFF;   // $9B88-$9B90
+  const packed = flow.read(0x9BD4 + y);                               // $9B92
+  return { y: packed & 0xF0, x: (packed << 4) & 0xFF };               // $9B95 / $9BAB
+}
+
+/**
+ * `$97DB`, in place of `$97DD` -- THE IN-PLACE RESPAWN. Returns true when it
+ * handled the respawn, in which case `$97DD` and `$9B3E` DO NOT RUN.
+ *
+ * The owner's words: *"ship explodes, lose a life, new ship comes flying in
+ * from the left screen. It is blinking and invulnerable."*
+ *
+ * WHAT STILL RUNS, UNCHANGED, BECAUSE THE CARTRIDGE ALREADY DOES IT:
+ *   $C1D6   the explosion, the `$F7` sound, `$0100 := 2`, `$4C := 120`
+ *   $96EF   the 120-frame countdown, with the mode-5 body running under it, so
+ *           the camera keeps scrolling and the wave keeps flying past the wreck
+ *   $979F   `DEC $20,X` -- a life, at full price
+ *   $97A5.. the whole save block, including `$97BB`'s checkpoint. It is written
+ *           and simply never read: `$9B68` is the only reader and `$9B68` does
+ *           not run. Suppressing the STORE instead would be a second deviation
+ *           for no gain, and it would break `$9721`'s cheat, which restarts a
+ *           stage through `$97DD` and needs `$24,X` to mean something.
+ *   $97C1   the game-over branch. The last life is still the last life.
+ *
+ * WHAT THIS DOES INSTEAD OF `$97DD` -> `$9B3E`, in the ROM's own stores:
+ *   1. the POWER-UP WIPE ONLY. `$9B3E`'s 91-byte clear covers the camera, the
+ *      terrain cursor, the whole spawn-engine zero page and the six power-up
+ *      bytes; this takes the six and leaves the other 85 alone, which is what
+ *      "you come back where you fell" IS. `$42` comes back from `$22,X` exactly
+ *      as `$9B64/$9B66` does.
+ *      `$35 := $14` ($9B5E, the autofire reload) goes with them.
+ *   2. the kit the loadout is owed (respawnKit -- so `hard-won` composes)
+ *   3. `$9B47`'s OBJECT CLEAR OVER SLOTS 0-11 ONLY, i.e. the ship, both
+ *      Options, both shot chains and the three missiles, and NOT the ten enemy
+ *      slots the cartridge's version also takes. Measured, not assumed: without
+ *      it a respawn with `$45 = 0` still had `$0121`/`$0122` set and drew two
+ *      ghost Options for the rest of the run.
+ *   4. the ship: `$0100 := 1` ($9BC0), `$0120 := 1` ($9B83), slots 0-2 and both
+ *      24-entry rings ($9B97-$9BBE) -- the same six stores the intro makes, at
+ *      the fly-in's entry position
+ *   5. `$1B := $80` and `$60 := 1`, which is `$9C3C` verbatim: it is the one
+ *      routine in the PRG whose meaning is "the intro is over, play". `$60`
+ *      matters because `$C1DC` zeroes it on a death taken at `$1B >= $81`.
+ *   6. the blink, and the fly-in
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO, each for a reason:
+ *   `$97DF STA $39` / `$97E1 STA $3A`  the warp flag and the build gate. A
+ *       player who earned `$AF7E`'s warp keeps it; clearing them would cancel a
+ *       warp mid-route, which is the opposite of carrying on where you were.
+ *   `$97EB JSR $9C09`  `$57` is the streamer's "far enough ahead" flag and `$5E`
+ *       the despawn cursor. Both belong to a terrain stream that is still
+ *       running; re-seeding them would stall or double-emit it.
+ *   `$9B78 JSR $882C`  the full-screen load, and `$9BC9`'s stop-all-sound. This
+ *       respawn shows no intro, so it blanks nothing and silences nothing. The
+ *       music is whatever `$C1F5`'s explosion left, exactly as during the 120
+ *       dying frames, and `$9A4D`'s own per-frame `JSR $8357` is untouched.
+ *   `$0500-$06FF`  the collision map and the arm pool. They belong to enemies
+ *       that are still on screen.
+ */
+export function modRespawnInPlace(state, res) {
+  const m = state.mods;
+  if (!m || notPlaying(state) || !m.lo.sim.respawnInPlace) return false;
+  const p = state.zp.player === 1 ? 1 : 0;
+  const z = state.zp;
+
+  // ---- 1. the power-up wipe, and ONLY the power-up wipe --------------------
+  z.speed = 0;                                      // $40 \
+  z.missile = 0;                                    // $41  |  inside $9B3E's
+  z.weapon = 0;                                     // $44  |  LDX #$5A wipe
+  z.options = 0;                                    // $45  |
+  z.shield = 0;                                     // $46 /
+  z.meter = state.save22[p];                        // $9B64/$9B66  $42 := $22,X
+  z.autofire = 0x14;                                // $9B5E LDA #$14 / STA $35
+
+  // ---- 2. the kit the loadout is owed -------------------------------------
+  const kit = respawnKit(state);
+  if (kit) applyKit(state, kit);
+  m.rt.firstIntro = false;
+  m.rt.savedKit = null;
+
+  // ---- 3. `$9B47`'s OBJECT CLEAR, RESTRICTED TO THE PLAYER'S OWN SLOTS ----
+  //
+  // `$9B47` walks X = $7F..0 over `$0100` and `$0300`, i.e. ALL 32 slots -- the
+  // enemies too, which is exactly what an in-place respawn must not do. Slots
+  // 0-11 are the player's and nobody else's (src/state.js, src/weapons.js:
+  // 0 ship, 1-2 Options, 3-5 shot A, 6-8 shot B, 9-11 missiles; ENEMY_BASE is
+  // $0C), so this is the same six stores over the first twelve indices.
+  //
+  // **IT IS NOT COSMETIC AND IT WAS MEASURED.** The first draft seeded the ship
+  // and left the rest, and with two Options collected the respawn came back
+  // with `$45 = 0` but `$0121 = 4` and `$0122 = 5` still set -- and `$8B10`
+  // draws object i whenever `$0120+i` is non-zero, while `$A0C8`'s animation
+  // loop (`LDX $45 / DEX / BPL`) writes nothing at all at `$45 = 0`. Two ghost
+  // Options, stuck on the new ship, for the rest of the run. Shots and missiles
+  // in flight go the same way, because the ROM's own wipe takes them and they
+  // belong to the ship that fired them.
+  const PLAYER_SLOTS = 12;                          // ENEMY_BASE
+  for (let i = 0; i < PLAYER_SLOTS; i++) {
+    state.obj.status[i] = 0; state.obj.anim[i] = 0;         // $0100 / $0120
+    state.obj.timer[i] = 0; state.obj.animFrame[i] = 0;     // $0140 / $0160
+    state.obj.type[i] = 0;                                  // $0300
+    state.obj.y[i] = 0; state.obj.yf[i] = 0;                // $0320 / $0340
+    state.obj.x[i] = 0;                                     // $0360
+  }
+  // `$0180` (attrMask) and `$0380` (xf) SURVIVE on the cartridge too -- `$9B47`
+  // is `LDX #$7F`, 128 bytes, so it stops one byte short of both. The port says
+  // so at introReset(); the same two are left alone here. `$03A0` (carrier, the
+  // autofire reload) is past `$037F` and survives for the same reason.
+  state.ring.cursor = 0;                            // $0160, aliased
+
+  // ---- 4. the ship, at the fly-in's entry position ------------------------
+  const home = romStartPos(res, state.zp19, state.save24[p]);
+  const px = FLY_IN_X, py = home.y;
+  state.obj.status[0] = 1;                          // $9BC0/$9BC2 STA $0100
+  state.obj.anim[0] = 1;                            // $9B83/$9B85 STA $0120
+  for (let i = 0; i < 3; i++) { state.obj.x[i] = px; state.obj.y[i] = py; }
+  state.ring.x.fill(px);                            // $9BB8-$9BBE
+  state.ring.y.fill(py);                            // $9BA0-$9BA6
+
+  // ---- 5. play, this frame ------------------------------------------------
+  state.spawn.z60 = 1;                              // $9C3C/$9C3E STA $60
+  state.substate = 0x80;                            // $9C40/$9C42 STA $1B
+
+  // ---- 6. the blink, and the fly-in ---------------------------------------
+  if (m.lo.sim.invulnFrames > 0) m.rt.invuln = m.lo.sim.invulnFrames;
+  m.rt.flyIn = FLY_IN_CAP;
+  m.rt.flyInTo = home.x;
+  return true;
+}
+
+/**
+ * `$80A4`, immediately after `JSR $81BF` -- THE FLY-IN, and it is `$9C88`.
+ *
+ *   9C88  B9 B5 9C  LDA $9CB5,Y
+ *   9C8B  85 05     STA $05          <- the EDGE byte
+ *   9C8D  85 07     STA $07          <- the HELD byte
+ *
+ * That is the attract demo's scripted-button routine, and it is the cartridge's
+ * own answer to "drive the ship without a player". The fly-in writes the same
+ * two bytes with `$01` (RIGHT -- src/state.js BTN), so the new Viper crosses the
+ * screen through `$A021`'s own `AND #$01` arm, at `$A006`'s own speed, with
+ * `$A082`'s ring advancing and the Options trailing it. NOTHING ANIMATES THE
+ * SHIP; the ship flies.
+ *
+ * Writing `$05` as well as `$07` is `$9C88`'s own pairing and it is what makes
+ * the autopilot a clean hand-over: `$05` is normally `now & ~prev`, so the
+ * frame the fly-in ENDS produces the player's real edge again.
+ *
+ * The A and B bits are 0 for the duration, so the ship does not fire and
+ * `$897F`'s power-meter arm cannot be spent by the autopilot.
+ */
+export function modFlyIn(state) {
+  const m = state.mods;
+  if (!m || notPlaying(state) || m.rt.flyIn <= 0) return;
+  // Arrived, or died again inside the window: the autopilot lets go. The X test
+  // is what normally ends it; `rt.flyIn` is only the bound (see FLY_IN_CAP).
+  if (state.obj.status[0] !== 1 || state.obj.x[0] >= m.rt.flyInTo) {
+    m.rt.flyIn = 0;
+    return;
+  }
+  state.input.pressed = 0x01;                       // $9C8B STA $05
+  state.input.held = 0x01;                          // $9C8D STA $07
 }
 
 /**
  * `$97F1`, at the top -- THE RUN IS OVER.
  *
- * `rt.death` is captured at `$C1D6` and consumed at the tail of the NEXT
- * `$9B3E`, and until W43 that was written as if the next `$9B3E` were always
- * *this death's respawn*. It is, for an ordinary death: `$96EF`'s countdown
+ * `rt.savedKit` is captured at `$979D` and consumed at the tail of the NEXT
+ * `$9B3E`, and until W43 the equivalent field was written as if the next
+ * `$9B3E` were always *this death's respawn*. It is, for an ordinary death:
+ * `$96EF`'s countdown
  * ends `JMP $979D` and `$979D` ends `JMP $9B3E`, 120 frames later, same run,
  * same stage. IT IS NOT, WHEN THE DEATH IS THE LAST LIFE. `$97F1` sets
  * `$1B := $C0` and never goes near `$9B3E`; the next one belongs to whatever
@@ -621,14 +987,21 @@ export function modAfterIntroReset(state) {
  * VOLCANO. Erupting rocks over black space, then the stage-1 boss, then
  * `$96CF INC $19` and stage 2 begins.
  *
- * So: when the run ends there is nothing to come back to, and the death
- * position dies with it. One line, at the one instruction that means "this game
- * is over".
+ * W45 REPLACED THE MECHANISM AND KEPT THE LESSON. `rt.death` is gone -- the
+ * respawn no longer goes through `$9B3E` at all, so there is no position to
+ * replay -- but `hard-won` puts a NEW capture on exactly the same wire, and it
+ * is the same wire because a second lifetime would be a second thing to get
+ * wrong. Without this line a player who game-overs with `hard-won` on and
+ * presses CONTINUE starts a brand-new stage-1 game holding the dead run's bar.
+ *
+ * So: when the run ends there is nothing to come back to, and what the dead run
+ * was carrying dies with it. Three lines, at the one instruction that means
+ * "this game is over".
  */
 export function modAbandonRun(state) {
   const m = state.mods;
   if (!m) return;
-  m.rt.death = null;
+  m.rt.savedKit = null;
   // W44: `rt.invuln` is the OTHER run-scoped field, and it is dropped here for
   // the same reason -- not because a leak was measured (it counts itself down
   // in modFrameEnd and the game-over screen is ~400 frames, so it always
@@ -636,6 +1009,12 @@ export function modAbandonRun(state) {
   // byte in one place. A field whose lifetime depends on a countdown outlasting
   // a screen is exactly the shape W43 spent a wave on.
   m.rt.invuln = 0;
+  // W45, and the same argument: the autopilot is run-scoped. It cannot survive
+  // on its own (`$97F1` is only reached with the ship dead, and modFlyIn drops
+  // the counter the first frame it sees `$0100 != 1`) and it is dropped here so
+  // that the inventory has no field whose lifetime is an argument.
+  m.rt.flyIn = 0;
+  m.rt.flyInTo = 0;
 }
 
 /**
@@ -675,17 +1054,18 @@ function applyKit(state, zp) {
  * $C290's arm segment and $C2C1's terrain) rather than at the four sweeps, so
  * there is exactly one thing to reason about and it cannot be half-applied.
  *
- * It is also where the death POSITION is captured, because `$979D` does not run
- * for another 120 frames and `$9B3E` clears `$0360`/`$0320` before it is asked.
+ * **IT USED TO CAPTURE THE DEATH POSITION HERE AND IT DOES NOT ANY MORE (W45).**
+ * That capture existed only because the old Heal Gradius Syndrome replayed a
+ * position into the tail of `$9B3E`, and `$9B3E` clears `$0360`/`$0320` before
+ * anyone can ask. The mod's respawn no longer goes through `$9B3E`, so the ship
+ * is simply never moved and there is nothing to remember. Two mods and one
+ * window are all that is left here, which is the whole routine.
  */
 export function modRefuseDeath(state) {
   const m = state.mods;
   if (!m || notPlaying(state)) return false;
   if (m.lo.sim.immortal) return true;
   if (m.rt.invuln > 0) return true;
-  if (m.lo.sim.respawnInPlace) {
-    m.rt.death = { x: state.obj.x[0], y: state.obj.y[0], camHi: state.cam.hi };
-  }
   return false;
 }
 
@@ -733,6 +1113,9 @@ export function modFreezeEnemies(state) {
  *             (`$98`, which the plan named, is the per-frame SUBTRACT, not the
  *             countdown, and three other routines reuse it as scratch inside
  *             the same frame -- poking it does nothing. See the worklog.)
+ *   FLY-IN    the autopilot's HARD BOUND, not its length: modFlyIn normally
+ *             ends it by arrival. Decremented here beside `rt.invuln` so that
+ *             both run-scoped counters are spent in one place (W45).
  */
 export function modFrameEnd(state) {
   const m = state.mods;
@@ -740,6 +1123,7 @@ export function modFrameEnd(state) {
   const sim = m.lo.sim;
   if (sim.rankLock !== null) state.zp17 = sim.rankLock & 0xFF;
   if (m.rt.invuln > 0) m.rt.invuln--;
+  if (m.rt.flyIn > 0) m.rt.flyIn--;
   if (sim.overtime) {
     const slot = state.frame % 10;                 // $BBEE walks X = 9..0
     const i = slot + 0x0C;                         // ENEMY_BASE

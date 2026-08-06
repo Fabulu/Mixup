@@ -104,9 +104,10 @@ import { chrBank } from './render/ppu.js';
 import { modeDispatch, newGame } from './modes.js';
 // MODS. Every call to this import in this file is behind `if (state.mods)`, and
 // `state.mods` is undefined on every state createState() makes -- see the ONE
-// RULE at the top of src/mods.js. With no loadout attached these three hooks
-// are three branch-not-taken tests per frame and nothing else.
-import { modHidePlayer, modShowPlayer, modFrameEnd, modFreezeEnemies } from './mods.js';
+// RULE at the top of src/mods.js. With no loadout attached these four hooks
+// are four branch-not-taken tests per frame and nothing else.
+import { modHidePlayer, modShowPlayer, modFrameEnd, modFreezeEnemies,
+         modFlyIn } from './mods.js';
 
 // $80D4 jt_80D4 -- the 7-entry GAME-MODE jump table, indexed by `$00` (the
 // mode byte) after `$83E4`'s `ASL A`. Verified straight out of assets/prg.bin
@@ -263,6 +264,12 @@ export function nmi(state, buttons, res, lag = false) {
   soundDriver(state, res);                        // $80A1 JSR $ED02
 
   readJoypad(state, buttons);                     // $80A4 JSR $81BF
+  // MODS: the respawn FLY-IN, and it is the cartridge's own channel. `$9C88`
+  // (the attract demo's scripted button) writes `$05` and `$07` straight over
+  // whatever `$81BF` just latched; this does the same with RIGHT held, so the
+  // new Viper crosses the screen through $9FFC's own X code. src/mods.js
+  // modFlyIn, and the THIRD RULE there on which half of it is invented.
+  if (state.mods) modFlyIn(state);
 
   // $80A7: JSR $8B10 -- build the shadow-OAM display list, BEFORE the state
   // machine below moves anything. See consequence 2 above.
@@ -1194,10 +1201,11 @@ function continueTimeout(state, res) {
  */
 function dyingArm(state, res) {
   if (state.zp4C === 0) {                         // $96EF/$96F1
-    // respawn() returns false on GAME OVER ($97F1 -> JMP $9A5E): the game-over
-    // entry ends in the mode-5 body, so run it here. A normal respawn (true)
-    // runs the intro and does NOT reach the body -- the next frame's dispatch
-    // takes the intro states.
+    // respawn() returns false when its tail ends IN the mode-5 body, so run it
+    // here. That is GAME OVER ($97F1 -> $9827 JMP $9A5E) and, with W45's Heal
+    // Gradius Syndrome, the in-place respawn -- which is an ordinary play frame
+    // and must not stall. A normal respawn (true) runs the intro and does NOT
+    // reach the body: the next frame's dispatch takes the intro states.
     if (!respawn(state, res)) mode5Body(state, res);  // $96F3 -> $979D / $9827 JMP $9A5E
     return;
   }

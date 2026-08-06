@@ -72,9 +72,12 @@ import { cannedPacket, copyPacket } from './hudpackets.js';
 import { stLives, stTopScore, stScore, stPowerBar } from './hud.js';
 import { buildBlock } from './terrain.js';
 import { stopAllSound, pauseSaveChannel, pauseRestoreChannel, soundRequest } from './sound.js';
-// MODS -- two calls, both behind `if (state.mods)`: at the TAIL of $9B3E and at
-// the TOP of $97F1 (W43, the run that ended). See the ONE RULE in src/mods.js.
-import { modAfterIntroReset, modAbandonRun } from './mods.js';
+// MODS -- four calls, all behind `if (state.mods)`: at the TAIL of $9B3E, at
+// the end of $979D's own save block and at $97DB in place of $97DD (W45, the
+// respawn split), and at the TOP of $97F1 (W43, the run that ended). See the
+// ONE RULE in src/mods.js.
+import { modAfterIntroReset, modAbandonRun, modSaveLoadout,
+         modRespawnInPlace } from './mods.js';
 
 /** `$18`, with the range the per-player arrays assume made explicit. */
 function playerIndex(state) {
@@ -163,9 +166,17 @@ export function introStep(state, res) {
  * is what makes the respawn's stage intro request the BGM again instead of
  * being de-duplicated into silence.
  *
- * RETURNS `true` for a normal respawn (the intro ran; the caller does NOT run
- * the mode-5 body) and `false` for GAME OVER ($97F1 ran; the caller MUST run
- * the mode-5 body, because $97F1 ends `JMP $9A5E`). Wave 24 ported $97F1.
+ * RETURNS `true` when the STAGE INTRO ran and the caller must NOT run the
+ * mode-5 body, `false` when it must. The three cases, and they are the ROM's
+ * three tails, not a convention:
+ *
+ *   normal respawn   `$97EE JMP $9B3E`   -> true   (the intro owns the frame)
+ *   GAME OVER        `$9827 JMP $9A5E`   -> false  ($97F1 ends IN the body)
+ *   the demo's over   `$980B JMP $9C09`  -> true   (its RTS lands at $812D)
+ *
+ * ...plus one that is not the ROM's: W45's IN-PLACE RESPAWN returns false, so
+ * the frame carries on into `$9A5E` exactly as an ordinary play frame does.
+ * That is the whole difference between "respawn" and "stage intro".
  */
 export function respawn(state, res) {
   const p = playerIndex(state);                     // $979D LDX $18
@@ -178,6 +189,11 @@ export function respawn(state, res) {
   if (cp >= 8) cp = 8;                              // $97B5/$97B7/$97B9
   state.save24[p] = cp;                             // $97BB STA $24,X
   state.save28[p] = state.zp1A;                     // $97BD/$97BF
+  // MODS: the cartridge's own save block ends here, having carried four bytes
+  // across the death. `hard-won` adds the six power-up bytes to the same list,
+  // and it is captured BEFORE $97C1's game-over branch on purpose -- see
+  // src/mods.js modSaveLoadout.
+  if (state.mods) modSaveLoadout(state);
   if (state.lives[p] & 0x80) {                      // $97C1/$97C3 BMI $97F1
     // $97F1: GAME OVER. MEASURED (wave 12, throwaudit.py): executes twice in
     // 27,400 cartridge frames, at game frames 3379 and 3967; each time $96FB
@@ -201,6 +217,13 @@ export function respawn(state, res) {
     x = 1;                                          // $97D9 LDX #$01
   }
   state.zp.player = x;                              // $97DB STX $18
+  // MODS: HEAL GRADIUS SYNDROME REPLACES `$97DD` -> `$9B3E` ENTIRELY. When it
+  // handles the respawn there is no stage intro at all: no `$882C` screen load,
+  // no 27 blanked frames, no terrain restream, no camera rollback. It returns
+  // FALSE so the caller runs the mode-5 body ($9A5E) on this very frame, which
+  // is what makes it an immediate respawn rather than a one-frame stall. See
+  // src/mods.js modRespawnInPlace.
+  if (state.mods && modRespawnInPlace(state, res)) return false;
   restartStage(state, res);                         // $97DD
   return true;
 }
