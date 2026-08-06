@@ -1,6 +1,11 @@
 # 91 -- IMPL: the sprite palette, and where the bomb's orange actually lives
 
-status: **IN PROGRESS**
+status: **DONE** -- §0 checks the brief (one of its claims is refuted and one
+is off by three), §1 is what `$24150A` turned out to be, **§2 is the finding a
+reviewer should read first** (the colour was never missing), §4.2 is the board
+agreement figure, §4.4 is every check seen to fail including one that was
+DEFECTIVE, §5 is what is still on the capture and exactly what each piece needs,
+§6 is which bar condition I met and why.
 
 started: 2026-08-06. wave: 91. role: IMPLEMENTER.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Every address is build B.
@@ -322,11 +327,18 @@ comparable claim is the one above: no record moved on any of five gated windows.
 ### 4.6 `pgm.py check`: 72 / 2 / 0, AND THE TWO ARE THE OLD TWO
 
 `[M]` The verdict is **72 passed, 2 failed, 0 SKIPPED** -- the baseline W90 left.
-`[M]` One of the two is `segment sweep` (43 blocked + 19 red rungs), reported
-verbatim as `fly-around:PASS stage1-laser-hold:FAIL stage1-play:FAIL
-stage1-sweep:FAIL`; the other is `THE LASER BOMB: $249A80, $255FE2 and $2456A6`,
-which `[cited: W79 §6.5]` filed as a concurrent wave's and W84, W85, W86 and W90
-each re-established. **NO THIRD RED, AND NO GATE WAS RE-BASELINED BY THIS WAVE.**
+`[M]` The two, read off the top-level gate list rather than inferred from the
+count:
+
+```
+[M] [FAIL] THE LASER BOMB: $249A80, $255FE2 and $2456A6 -- exit 1
+[M] [FAIL] segment sweep: the port re-seeded from the board at every rung
+           -- fly-around:PASS stage1-laser-hold:FAIL stage1-play:FAIL
+              stage1-sweep:FAIL
+```
+
+`[cited: W79 §6.5]` filed the first as a concurrent wave's and W84, W85, W86 and
+W90 each re-established it; the second is the 43 blocked + 19 red rungs. **NO THIRD RED, AND NO GATE WAS RE-BASELINED BY THIS WAVE.**
 W90 had to re-baseline two and wrote §1.7 about it; this wave changed no number
 in any gate file, which is the consequence of §4.5's argument.
 
@@ -512,7 +524,8 @@ order was changed anywhere, and no colour was typed in.**
   line.
 - `[M]` §1: **`$24150A` is one of NINE**, and `$24133C` is the only writer of
   palette RAM. Three regions, three flags, and the sprite third is `$A00000`.
-- `[M]` §0: **"seven files" is SIX** -- the other two are W90's own prose.
+- `[M]` §0: **"a counted note in seven files" is FOUR** when counted by note
+  ADDRESS, and two of the misses are the bomb's own two call sites.
 - `[M]` §0.1: **`src/background.js` called `$246BB8`/`$246BF8` "64 zero bytes"**
   and they are BLACK and WHITE, the fade's two endpoints. Comment ten.
 - `[M]` §2: **31 of the 32 seed banks match a cartridge block exactly**, and the
@@ -521,3 +534,25 @@ order was changed anywhere, and no colour was typed in.**
 - `[M]` §3: ported. Catch-up 576/576 identical to the seed's staging; **576 of
   576 sourced entries equal the BOARD's palette RAM on all 161 recorded
   frames**; the bomb's bank 6 is `$FFFF $FFB6 ...` = white/gold/ORANGE.
+- `[M]` §4.2: **576 of 576 sourced sprite entries equal the BOARD's own palette
+  RAM, on all 161 recorded frames** -- the first time this project has compared
+  a COLOUR against the board. And §4.2 states what that figure cannot prove.
+- `[M]` §4.3: **0 words differ from the recording at boot.** The 576 entries
+  changed provenance, not appearance, which is what makes the number credible.
+- `[M]` §4.4: nine exporter mutations, nine `src/palette.js` mutations, three
+  webgate mutations. **One exporter check was DEFECTIVE and red-validation is
+  what found it**: the window bound was typed twice, so shortening the window
+  left the check green. It derives the bound from the declaration now.
+- `[M]` §5.2: **the background's four animated entries are `$241404`, inside
+  `$24133C` itself** -- `$80F086+$540` = bank 21 pen 0, located to the
+  instruction at last, and still unported. The sprite side's equivalents are
+  `$28D7D6` and `$25C896`, and neither fires in 6,500 steps.
+- `[M]` §6.1: **THE BOMB, IN CHROME.** A column of fire, orange-red edges and a
+  yellow-white core. Brightest decile 245/219/138 to 244/205/115, chroma 93 to
+  129, against W90's 199/198/164 at chroma 49 with R = G.
+- `[M]` §4.5/4.6: 1,047 tests 0 fail; `pgm.py check` **72/2/0 with the same two,
+  read off the gate list**; webgate GREEN 24 stages; seedcmp byte-identical;
+  `publish --dry` GREEN; no seventh `PUBLISH_VERBATIM` entry; **no gate
+  re-baselined.**
+
+status: **DONE**
