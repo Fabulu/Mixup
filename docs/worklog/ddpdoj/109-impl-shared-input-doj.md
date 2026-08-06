@@ -1,6 +1,6 @@
 # W109 -- shared input layer + DaiOuJou end-to-end (keyboard + gamepad + touch + picker)
 
-status: IN PROGRESS
+status: DONE
 role: implementer (shared/input.js + DOJ adapter)
 date: 2026-08-06
 
@@ -165,10 +165,21 @@ was REPLACED (not modified), so no existing assertion needed editing.
 - `node tools/build-dist.mjs`: **264 files, ROM leak guard clean** (261 files
   checked, 49 also decompressed, against 12 ROMs; 6 deliberate exceptions;
   shared/input.js pulls NO ROM-derived data).
-- `node tools/publish.mjs --dry`: see report below.
+- `node tools/publish.mjs --dry`: **GREEN** (all gates pass, build clean).
+  Gradius 745 tests + gate GREEN; DOJ 1211 tests + bundle gate PASS; Batman
+  27/27 0 skipped. Build: 264 files, ROM leak guard clean (260 checked, 49
+  decompressed, 12 ROMs, 6 deliberate exceptions; shared/ pulls NO ROM data).
+
+## COMMIT
+
+`a08ac9d` on main, pushed. 7 files, 877 insertions, 57 deletions.
 
 ## WHAT LANDED
 
 The full wave: shared module + DOJ keyboard (from shared) + DOJ gamepad (new) +
 fixed D-pad (kept) + floating stick (new) + CTRL picker + build line. Nothing
 deferred.
+
+The owner live-plays DOJ (keyboard, a pad on desktop + mobile, and the touch
+schemes) as the final verification. The CTRL button cycles the touch scheme
+live during play.
