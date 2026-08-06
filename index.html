@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mixup — game select</title>
+<title>Mixup - game select</title>
 <style>
   :root {
     --bg: #0d0f14; --panel: #161a22; --line: #262d3a;
@@ -123,7 +123,7 @@
 
   <div id="gamesel">
     <header>
-      <h1>Mixup <span>— game select</span></h1>
+      <h1>Mixup <span>- game select</span></h1>
       <div class="sub">Console games hand-translated from their disassembly and
         verified against the original cartridge · pick one</div>
     </header>
@@ -135,7 +135,7 @@
 
   <div id="picker" class="gone">
     <header>
-      <h1><span id="gname"></span> <span>— mod select</span></h1>
+      <h1><span id="gname"></span> <span>- mod select</span></h1>
       <div class="sub"><span id="gmeta"></span> · hand-translated from disassembly · every
         modifier below changes a constant read straight out of the original ROM</div>
     </header>
@@ -145,7 +145,7 @@
       <button class="card original" type="button" id="vanilla">
         <div class="nm"><span>Original Game</span><i>✓</i></div>
         <div class="bl">The 1992 cartridge, untouched. Every constant exactly as Sunsoft
-          shipped it — verified bit-exact against the ROM.</div>
+          shipped it - verified bit-exact against the ROM.</div>
       </button>
     </div>
 
@@ -154,7 +154,7 @@
     <h2>Chaos</h2><div class="grid" data-cat="chaos"></div>
 
     <div class="bar">
-      <div class="stack" id="stack">No modifiers — <b>original game</b></div>
+      <div class="stack" id="stack">No modifiers - <b>original game</b></div>
       <label>Level
         <select id="level"></select>
       </label>
@@ -177,7 +177,7 @@
         <button id="back">◂ mod select</button>
       </div>
       <div style="margin-top:.5rem;font-size:11px">
-        Batarangs need ammo — find a pickup, or switch on <b>Batarang Storm</b>.
+        Batarangs need ammo - find a pickup, or switch on <b>Batarang Storm</b>.
       </div>
     </div>
     <!-- The on-screen pad's LAYOUT is hand-written; only the joypad MASKS come
@@ -417,7 +417,7 @@ function buildEntries(restore) {
   for (const e of game.manifest.entries) {
     const o = document.createElement('option');
     o.value = String(e.id);
-    o.textContent = e.note ? `${e.label} — ${e.note}` : e.label;
+    o.textContent = e.note ? `${e.label} - ${e.note}` : e.label;
     sel.appendChild(o);
   }
   const want = String(restore ?? 0);
@@ -518,14 +518,14 @@ function sync() {
   el('vanilla').setAttribute('aria-pressed', ids.length ? 'false' : 'true');
 
   if (!ids.length) {
-    stack.innerHTML = '<b>Original Game</b> — unmodified, bit-exact';
+    stack.innerHTML = '<b>Original Game</b> - unmodified, bit-exact';
   } else {
     const names = ids.map((i) => MODS[i].name).join(' · ');
     const nParams = new Set(ids.flatMap((i) => Object.keys(MODS[i].params || {}))).size;
-    let txt = `<b>${ids.length}</b> active — ${names} &nbsp;·&nbsp; ${nParams} params changed`;
+    let txt = `<b>${ids.length}</b> active - ${names} &nbsp;·&nbsp; ${nParams} params changed`;
     if (lo.conflicts.size) {
       const keys = [...lo.conflicts.keys()].join(', ');
-      txt += ` &nbsp;<span class="warn">⚠ ${lo.conflicts.size} shared key(s): ${keys} — last wins</span>`;
+      txt += ` &nbsp;<span class="warn">⚠ ${lo.conflicts.size} shared key(s): ${keys} - last wins</span>`;
     }
     stack.innerHTML = txt;
   }

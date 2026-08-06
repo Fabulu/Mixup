@@ -619,7 +619,7 @@ function showError(e, when) {
 // background shards are fetched through the SAME `httpReader(base, onProgress)`
 // the boot set used (src/web/assets.js:286). So the `statusEl.textContent = ''`
 // below really does run -- and then shards 2..7 land over the next several
-// seconds, each one writing `loading gfx/bg.shard<n>.tiles.u8.gz — …` back into
+// seconds, each one writing `loading gfx/bg.shard<n>.tiles.u8.gz - …` back into
 // the element, and the last one to arrive stays there forever. There is no
 // later point to clear it at: the writes are asynchronous and the last is
 // whenever the network says.
@@ -638,7 +638,7 @@ try {
     onProgress: (name, n, total) => {
       if (!booting) return;              // the deferred shards are not the
       statusEl.textContent = total       // loading screen's business
-        ? `loading ${name} — ${(n / 1024).toFixed(0)}/${(total / 1024).toFixed(0)} KiB`
+        ? `loading ${name} - ${(n / 1024).toFixed(0)}/${(total / 1024).toFixed(0)} KiB`
         : `loading ${name}…`;
     },
     // The named throws are the port's most useful output. Losing them to a

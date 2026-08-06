@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Gradius (NES) — start</title>
+<title>Gradius (NES) - start</title>
 <!--
   THE START SCREEN. Gradius's half of the Batman parity item.
 
@@ -93,11 +93,11 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>Gradius <span>— start screen</span></h1>
+    <h1>Gradius <span>- start screen</span></h1>
     <div class="sub">NES, Konami 1986 · hand-translated from the disassembly and
       verified frame-by-frame against the cartridge ·
       <a href="../../index.html">◂ all games</a><br>
-      Every modifier below writes a real byte of the machine — the zero-page
+      Every modifier below writes a real byte of the machine - the zero-page
       address is printed on the card. Nothing here is on unless you switch it
       on, and with nothing on this is the cartridge.</div>
   </header>
@@ -115,11 +115,11 @@
   <h2>Combat</h2><div class="grid" data-cat="combat"></div>
   <h2>Chaos</h2><div class="grid" data-cat="chaos"></div>
 
-  <h2>Starting kit <span style="text-transform:none;letter-spacing:0">— what you begin the run with</span></h2>
+  <h2>Starting kit <span style="text-transform:none;letter-spacing:0">- what you begin the run with</span></h2>
   <div class="kit" id="kit">
     <div class="note">These are the six power-up bytes <code>$9B3E</code>'s wipe
       clears and the capsule arms at <code>$8974</code> write. They land on the
-      first stage intro only — switch on <b>Muscle Memory</b> to get them back
+      first stage intro only - switch on <b>Muscle Memory</b> to get them back
       after every death, or <b>Full Kit, One Speed</b> to have the lot.</div>
   </div>
 
@@ -248,12 +248,12 @@ function sync() {
   const bytes = Object.keys(lo.zp)
     .map((a) => `$${Number(a).toString(16).toUpperCase()}=${lo.zp[a]}`).join(' ');
   let txt = ids.length
-    ? `<b>${ids.length}</b> active — ${ids.map((i) => MODS[i].name).join(' · ')}`
-    : '<b>Original Game</b> — nothing switched on';
+    ? `<b>${ids.length}</b> active - ${ids.map((i) => MODS[i].name).join(' · ')}`
+    : '<b>Original Game</b> - nothing switched on';
   if (bytes) txt += ` &nbsp;·&nbsp; zero page: <b>${bytes}</b>`;
   if (level) txt += ` &nbsp;·&nbsp; <b>$19 = ${level - 1}</b>`;
   if (lo.conflicts.size) {
-    txt += ` &nbsp;<span class="warn">⚠ ${[...lo.conflicts.keys()].join(', ')} — last wins</span>`;
+    txt += ` &nbsp;<span class="warn">⚠ ${[...lo.conflicts.keys()].join(', ')} - last wins</span>`;
   }
   el('stack').innerHTML = txt;
   location.hash = hashFor(ids, level, kit);

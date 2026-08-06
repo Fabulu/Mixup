@@ -75,17 +75,17 @@
     { "id": 1, "kind": "level", "label": "1", "note": "playable" },
     { "id": 2, "kind": "level", "label": "2", "note": "playable" },
     { "id": 3, "kind": "level", "label": "3", "note": "playable" },
-    { "id": 4, "kind": "level", "label": "4", "note": "Boss 1 — playable" },
+    { "id": 4, "kind": "level", "label": "4", "note": "Boss 1 - playable" },
     { "id": 5, "kind": "level", "label": "5", "note": "playable" },
     { "id": 6, "kind": "level", "label": "6", "note": "playable" },
     { "id": 7, "kind": "level", "label": "7", "note": "playable" },
-    { "id": 8, "kind": "level", "label": "8", "note": "Boss 2 — playable" },
+    { "id": 8, "kind": "level", "label": "8", "note": "Boss 2 - playable" },
     { "id": 9, "kind": "level", "label": "9", "note": "playable" },
     { "id": 10, "kind": "level", "label": "10", "note": "playable" },
-    { "id": 11, "kind": "level", "label": "11", "note": "Boss 3 — playable; one sky band sits a pixel off" },
+    { "id": 11, "kind": "level", "label": "11", "note": "Boss 3 - playable; one sky band sits a pixel off" },
     { "id": 12, "kind": "level", "label": "12", "note": "playable" },
     { "id": 13, "kind": "level", "label": "13", "note": "playable" },
-    { "id": 14, "kind": "level", "label": "14", "note": "Boss 4 / Joker — playable" },
+    { "id": 14, "kind": "level", "label": "14", "note": "Boss 4 / Joker - playable" },
     { "id": 99, "kind": "ending", "label": "Ending",
       "note": "4 pictures, the credit crawl and THE END" }
   ],
@@ -97,9 +97,9 @@
       "default": 1,
       "note": "$C756. The cartridge boots at 1 -- read off the real machine at gameplay start, not assumed. NOT cosmetic: 0 turns off water damage entirely and stretches level 1's water-spout pause from $10 to $50 frames, and 2 gives bosses +5 HP.",
       "values": [
-        { "value": 0, "label": "Easy — no water damage, slow spouts" },
-        { "value": 1, "label": "Normal — the cartridge default" },
-        { "value": 2, "label": "Hard — +5 boss HP, fastest spouts" }
+        { "value": 0, "label": "Easy - no water damage, slow spouts" },
+        { "value": 1, "label": "Normal - the cartridge default" },
+        { "value": 2, "label": "Hard - +5 boss HP, fastest spouts" }
       ]
     }
   ],
@@ -124,7 +124,7 @@
       "module": "src/enemies/states/walker.js", "shared": "src/enemies/states/walkershared.js" },
     { "id": 3, "state": 3, "label": "Flyer (levels 9, 10)", "rom": "1:$55AA",
       "module": "src/enemies/states/flyer.js" },
-    { "id": 4, "state": 4, "label": "Chaser — the Joker's grab-balloon (level 14)", "rom": "1:$7750",
+    { "id": 4, "state": 4, "label": "Chaser - the Joker's grab-balloon (level 14)", "rom": "1:$7750",
       "module": "src/enemies/states/chaser14.js" },
     { "id": 5, "state": 5, "label": "Vehicle (level 6 truck)", "rom": "1:$575C",
       "module": "src/enemies/states/vehicle6.js" },
