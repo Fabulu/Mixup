@@ -55,3 +55,11 @@ dist/
 
 # Wrangler's local deploy cache
 .wrangler/
+
+# Agent scratch. `.scratch/` holds harnesses that MUTATE src/, live-page
+# screenshots and rendered frames -- i.e. ROM-derived imagery -- and it has
+# been described as ignored since wave 4 in games/ddpdoj's worklogs (61 §7
+# says so in as many words). [M] W84: IT WAS NEVER IN THIS FILE. 591 untracked
+# files across two of them, PNGs of the running game among them, one
+# `git add -A` from being committed. Not anchored, so it covers every game's.
+.scratch/

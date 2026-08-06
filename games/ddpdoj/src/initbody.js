@@ -144,7 +144,9 @@ function damageFirstFamily(ram, rom, a5, a6, unported, p) {
   // makes the sub-record palette track the record's draw bucket.
   ram.setU8(a6 + S.palette, ram.u8(a5 + 0x2a));        // move.b ($2a,A5),($1d,A6)
   readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24 no-op)
-  // the heading-indexed sprite + bucket tables $269E48 / $269EC8.
+  // the heading-indexed BODY and ARM-B tables $269E48 / $269EC8.  W84: the
+  // second one is the family's second draw arm's DESCRIPTOR, not a bucket
+  // long -- see FAM.armBArt in handlers.js and the harvest row in export-web.
   const d1q = (ram.u8(a6 + S.heading) & 0x3e) << 1;
   const sp = headingLongAddr(rom, 0x269E48, ram.u8(a6 + S.heading));
   ram.setU32(a6 + 0x0a, rom.u32(sp));                  // move.l (A0,D1.w),($a,A6)

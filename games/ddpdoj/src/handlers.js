@@ -1028,9 +1028,9 @@ function handler05(ram, rom, a5, ctx) {
   // $269D84: the SLEW clock.  ($28,A5) is a countdown of turns REMAINING and
   // ($1A,A5)/($1B,A5) the frames between them; when both fire, `$242178` aims,
   // slews one step, stores the new heading into ($1B,A6) and hands D1 back --
-  // and D1 is what picks BOTH the sprite pointer and the bucket long.  That is
-  // the whole of why this type is invisible: `($A,A6)` is only ever written
-  // here.
+  // and D1 is what picks BOTH the body's sprite pointer and ARM B's descriptor
+  // (W84).  That is the whole of why this type is invisible: `($A,A6)` is only
+  // ever written here.
   if (ram.u16(a5 + 0x28) !== 0) {                      // $269D84 tst.w / beq.b $269DC2
     const c = ram.u8(a5 + 0x1a);                       // $269D8A subq.b #$1,($1A,A5)
     ram.setU8(a5 + 0x1a, (c - 1) & 0xff);
@@ -1044,7 +1044,7 @@ function handler05(ram, rom, a5, ctx) {
       // caller's D1.
       const idx = u16((r.dir & 0x3e) * 2);             // $269DAA/$269DAE
       ram.setU32(a6 + S.sprite0a, rom.u32(FAM.sprite + idx));  // $269DB0
-      ram.setU32(a5 + 0x2c, rom.u32(FAM.bucket + idx));        // $269DB6/$269DBC
+      ram.setU32(a5 + 0x2c, rom.u32(FAM.armBArt + idx));      // $269DB6/$269DBC
     }
   }
   // $269DC2: the fire cooldown, then RANK's reload ($58 - $8130B4 + 2, low byte).
@@ -2185,13 +2185,14 @@ function handler20(ram, rom, a5, ctx) {
 // it rewritten.
 
 /** `$269E20..$269E46` -- heading -> the sub-record's sprite pointer and the
- *  record's bucket long, then the per-record enqueue, then fall into the draw.
+ *  record's ARM B descriptor (W84), then the per-record enqueue, then the draw.
  *  `d1` is the caller's D1: a BYTE moved into D1 in every caller, masked to
  *  `$3E` here, so only the low byte can matter. */
 function drawFamily269E20(ram, rom, a5, a6, d1) {
   const idx = u16((d1 & 0x3e) * 2);                    // $269E26 andi.w / $269E2A add.w
   ram.setU32(a6 + S.sprite0a, rom.u32(FAM.sprite + idx));  // $269E2C move.l (A0,D1.w),($a,A6)
-  ram.setU32(a5 + 0x2c, rom.u32(FAM.bucket + idx));    // $269E38 move.l (A0,D1.w),($2c,A5)
+  // $269E38 move.l (A0,D1.w),($2c,A5)
+  ram.setU32(a5 + 0x2c, rom.u32(FAM.armBArt + idx));
   drawFamily269E16(ram, rom, a5, a6);                  // $269E3E/$269E44 fall-through
 }
 
@@ -2238,7 +2239,15 @@ function drawFamily269B3E(ram, rom, a5, a6) {
 /** The damage-first family's ROM tables.  Extents pinned in export-tables.py. */
 const FAM = {
   sprite: 0x269e48,   // $269E20 lea -- 16-heading sprite pointers
-  bucket: 0x269ec8,   // $269E32 lea -- the matching ($2c,A5) longs
+  // W84: THIS IS ART, AND IT WAS CALLED A BUCKET TABLE FOR FIFTY WAVES.
+  // `$269E32 lea` loads ($2C,A5) from it, and its only reader in this family's
+  // code is `$269B9E move.l ($2C,A5),D2` in ARM B of the draw block, where D2
+  // is the DESCRIPTOR `$23DF58` writes into hardware words 2 and 3 -- the same
+  // slot arm A fills from `anim4`. [M] the board's own display list carries 54
+  // of these addresses over the stage1-laser-hold ladder. The field is renamed
+  // rather than re-commented because the old name is what kept 32 streams out
+  // of the sprite sheet: `tools/export-web.mjs` cited it as the reason.
+  armBArt: 0x269ec8,  // $269E32/$269DB6 lea -- ARM B's per-heading descriptor
   anim4: 0x269bb6,    // $269B64 -- FOUR longwords, ($20,A5) cycling 0/4/8/$C
   muzzle: 0x269f48,   // $269DEC/$26A762/$26A922/$26ADEC/$26AEB0 -- 32 longs
 };

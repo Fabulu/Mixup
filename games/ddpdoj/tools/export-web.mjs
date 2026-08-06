@@ -209,6 +209,9 @@ const tables = fs.readFileSync(tablesFile);
 //                ALL 32 ARE ALREADY IN THE SHEET; it is listed so the pair is
 //                enumerated in one place and so the assertion covers both.
 //   $269E48  32  the damage-first family's heading table ($269E20 lea).
+//   $269EC8  32  THE SAME FAMILY'S SECOND DRAW ARM ($269B8C -> $23DF58).  W84.
+//                This block used to say these longs were BUCKET values; they
+//                are art, and the board's own display list draws them.
 //   $269BB6   4  the same family's `anim4` ($269B64).  All 4 already shipped.
 //   $272E7A  32  type $89's body, $27740E `andi.w #$3E,D1 / add.w D1,D1`.
 //   $26990E  70  type $31's animation, 8 bytes per entry.  THE EXTENT IS THE
@@ -241,9 +244,18 @@ const tables = fs.readFileSync(tablesFile);
 // The two numbers together are what makes this non-vacuous: `entries` alone
 // could be any wrong number and still export something plausible, and `runsTo`
 // alone would over-harvest into the neighbouring table.  `$269E48` is the case
-// that proves the point -- [M] its run is 64, but the second 32 are `FAM.bucket`
-// ($269EC8), which are BUCKET longs that merely happen to look like stream
-// starts, and the index `(d1 & $3E) * 2` cannot reach them.
+// that proves the point -- [M] its run is 64 and only the first 32 are reachable
+// through its own index `(d1 & $3E) * 2`.
+//
+// **AND IT IS ALSO THE CASE THAT PROVES THE OTHER HALF, WHICH THIS BLOCK GOT
+// WRONG FOR FORTY WAVES.**  "The index cannot reach them" is a statement about
+// ONE lea.  It is not a statement about the ART, and this block used it as one:
+// the second 32 ($269EC8) are read by a DIFFERENT lea ($269E32) into ($2C,A5)
+// and drawn by a DIFFERENT emitter ($269B8C -> $23DF58), so they were dismissed
+// here as bucket values that only resembled stream starts, and left out of the
+// sheet.  [M] The board draws them.  A run of valid stream starts that
+// no INDEX reaches still has to be asked WHICH INDEX -- every lea in the
+// handler, not the one the row is written under.
 //
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
@@ -268,9 +280,31 @@ const HARVEST = Object.freeze([
     + 'reach. [M] first needed lf4938'],
   [3, 0x269e48, 32, 4, 64, 0x269f48,
     'the damage-first family\'s heading table, $269E20 lea, index $269E26 '
-    + '`(d1 & $3E) * 2` -> $7C -> 32. The run of 64 walks straight on into '
-    + 'FAM.bucket ($269EC8), whose longs are BUCKET values, and stops exactly at '
+    + '`(d1 & $3E) * 2` -> $7C -> 32. The run of 64 walks straight on into the '
+    + 'SECOND DRAW ARM\'s table ($269EC8, harvested below) and stops exactly at '
     + 'FAM.muzzle ($269F48). [M] first needed lf6426'],
+  // ------------------------------------------------- WAVE 84, AND IT IS A FIX
+  // THIS ROW REFUTES THE LINE ABOVE IT.  Until this wave both the comment block
+  // and $269E48's own `why` said the second 32 longs "are BUCKET values that
+  // merely happen to look like stream starts", and that is why they were never
+  // harvested.  They are ART.  $269B8C -- ARM B of the family's shared draw --
+  // does `move.l ($2C,A5),D2 / move.w #$410,D3 / jmp $23DF58`, and D2 is the
+  // DESCRIPTOR the emitter writes into hardware words 2 and 3; ($2C,A5) is
+  // loaded from this table by $269E32 and by $269DB6, at the same heading index
+  // as the body.  [M] THE BOARD'S OWN DISPLAY LIST CARRIES THEM: over the 210
+  // checkpoints of the `stage1-laser-hold` ladder, 54 entries have a descriptor
+  // out of this table (and 359 out of $269BB6, arm A's, which ships already).
+  // W80 wired the family's two machines, both draw arms started running, and
+  // every one of arm B's records had no picture in the bundle -- all 186 of
+  // `webgate`'s "NO ART ANYWHERE" and 12 of the 13 addresses its guard names.
+  [3, 0x269ec8, 32, 4, 32, 0x269f48,
+    'the damage-first family\'s SECOND DRAW ARM ($269B8C, `move.l ($2C,A5),D2 / '
+    + 'jmp $23DF58`), heading-indexed by $269E32 and $269DB6 at the same '
+    + '`(d1 & $3E) * 2` -> $7C -> 32 as the body. The run of 32 stops exactly at '
+    + 'FAM.muzzle ($269F48), which is $269E48\'s run of 64 minus this table -- '
+    + 'the two extents pin each other. [M] the BOARD draws 54 of them over '
+    + 'stage1-laser-hold; [M] first needed lf2107 from the shipped seed, which '
+    + 'is why shard 3 moved ahead of shard 1 in SPR_ORDER'],
   [3, 0x269bb6, 4, 4, 4, 0x269bc6,
     'the same family\'s anim4, $269B64, ($20,A5) cycling 0/4/8/$C -> 4. '
     + 'ALREADY SHIPPED IN FULL. Here the run and the index agree exactly'],
@@ -472,7 +506,8 @@ const SPR_SHARDS = Object.freeze([
   [1, 'type11', 'type $11\'s hull $268B9E + turret $268C9E, and the laser\'s 5 '
     + '(W45). The owner\'s missing tank bodies.'],
   [2, 'type89', 'type $89\'s body table $272E7A'],
-  [3, 'family', 'the damage-first family, $269E48 + $269BB6'],
+  [3, 'family', 'the damage-first family, $269E48 + $269EC8 + $269BB6 -- the '
+    + 'body, the SECOND DRAW ARM (W84) and anim4'],
   [4, 'type24', 'type $24\'s table $2970D8'],
   [5, 'type31', 'type $31\'s 70-frame animation $26990E'],
   [6, 'shots', 'THE PLAYER\'S SHOTS: the ship\'s own $2554EA/$255502 and the '
@@ -557,8 +592,16 @@ const SPR_BOOT = [0];
 // ladder), against shard 1's own first need at +7.7 s = lf~2,456 (W47). Type
 // $82 arrives at lf3,825 -- 30 s of slack on 2.7 KiB -- and goes behind them.
 // Shard 14 is 52 KiB and its deadline is the earliest of the three, so it leads.
-const SPR_ORDER = Object.freeze([0, 7, 6, 10, 9, 13, 12, 8, 14, 16, 15,
-  1, 2, 3, 4, 5, 11]);
+// W84: SHARD 3 MOVES AHEAD OF SHARD 1, and the reason is that its deadline
+// changed under it.  It was written down as `[M] first needed lf6426` -- true
+// when nothing in the port emitted for the damage-first family at all.  W80
+// wired the family's two machines and [M] its first record now lands at lf2106
+// from the SHIPPED SEED (lf2000), i.e. 1.8 s after boot, against shard 1's own
+// first need at +7.7 s.  It is 4.3 KiB.  A shard whose deadline moved because a
+// handler was ported is exactly the case the ORDER-IS-A-CLAIM assertion in
+// `tests/w52weapons.test.js` exists to catch, and it is asserted there.
+const SPR_ORDER = Object.freeze([0, 7, 6, 10, 9, 13, 12, 8, 14, 16, 15, 3,
+  1, 2, 4, 5, 11]);
 
 // ---------------------------------------------------------------------------
 // 1. COVERAGE.  What can this capture possibly make the renderer read?

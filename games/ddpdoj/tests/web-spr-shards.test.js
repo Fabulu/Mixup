@@ -441,6 +441,39 @@ test('W81: type $82 and type $88 harvest what their INDEX reaches, not what a ru
     + '11 (STRUCTURE_RANGES); re-harvesting it would duplicate 32 streams');
 });
 
+// W84 INVERTS A SECOND ONE, and this one had been written down as a REASON.
+// `export-web.mjs`'s extent block used $269E48 as its worked example: "its run
+// is 64, but the second 32 are FAM.bucket ($269EC8), which are BUCKET longs
+// that merely happen to look like stream starts, and the index (d1 & $3E) * 2
+// cannot reach them".  Every clause of that is true except the conclusion.
+//
+// [M] $269B8C -- ARM B of the family's shared draw block -- is
+// `move.l ($2C,A5),D2 / move.w #$410,D3 / jmp $23DF58`, and D2 is the
+// DESCRIPTOR the emitter writes into hardware words 2 and 3.  ($2C,A5) is
+// loaded out of $269EC8 by $269E32 and by $269DB6, at the same heading index as
+// the body.  A SECOND lea, a SECOND emitter, and art.
+//
+// [M] THE BOARD DRAWS THEM: 54 display-list entries over the 210 checkpoints of
+// the `stage1-laser-hold` ladder carry a descriptor out of this table.  W80
+// wired the family's machines, arm B started running, and all 186 of
+// `webgate`'s "NO ART ANYWHERE" records were this one table.
+test('$269EC8 is the family\'s SECOND DRAW ARM, and it is ART, not buckets', () => {
+  const src = read('tools/export-web.mjs');
+  const code = src.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, '');
+  assert.ok(/\[3, 0x269ec8, 32, 4, 32, 0x269f48,/.test(code),
+    'the second draw arm\'s table is 32 entries at stride 4, and its run of 32 '
+    + 'ends exactly at FAM.muzzle $269F48 -- which is $269E48\'s run of 64 '
+    + 'minus this table, so the two extents pin each other');
+  assert.ok(/\[3, 0x269e48, 32, 4, 64, 0x269f48,/.test(code),
+    'and the body table is unchanged at 32 of its own 64-long run');
+  assert.ok(!/BUCKET longs that merely happen to look like stream starts/.test(src),
+    'the claim that made this table unexportable must be GONE from the file, '
+    + 'not merely contradicted somewhere else in it');
+  assert.match(src, /SECOND DRAW ARM/,
+    'and the file must say what the table is, so the next reader does not '
+    + 'have to re-derive it from $269B8C');
+});
+
 test('SHARD 0 IS THE BOOT SHARD and holds the recording plus the ship', () => {
   const src = read('tools/export-web.mjs');
   assert.match(src, /const SPR_BOOT = \[0\];/);

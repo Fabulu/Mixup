@@ -280,9 +280,44 @@ try {
     // records are correctly skipped as "in flight" rather than drawn out of
     // zeroed words. Collapsing the two back into one count would let a bundle
     // that has LOST a picture pass as a bundle that is merely still loading it.
+    //
+    // ============ WAVE 84 RE-BASELINED FOUR OF THESE, AND ONE OF THEM WAS A
+    // ============ DEFECT RATHER THAN A NUMBER
+    //
+    // EVERY NUMBER BELOW WAS ATTRIBUTED TO A COMMIT BEFORE IT WAS TOUCHED.
+    // [M] this gate, unchanged, run against `git worktree`s of W79, W80, W81 and
+    // W82 with the SAME bundle: every moved number here first moves at W80
+    // (`e1276da`, the damage-first family's two machines) and three of them move
+    // again at W81 (`fa298a5`, types $10/$82/$88).  W82 moved nothing.  A wave
+    // that re-pinned these against its own output would have been re-pinning
+    // them against two OTHER waves' output.
+    //
+    //   records  18,893 -> 19,868 (W80) -> 20,794 (W81)
+    //   max/frame    82 -> 89 -> 99
+    //   b23       2,432 -> 2,599 -> 3,001
+    //   pending      14 -> 390 -> 1,028 -> **1,214** (W84's own art, below)
+    //
+    // `records`, `max` and `pending` are the same fact three ways: types $05,
+    // $07, $27 (W80) and $10, $82, $88 (W81) emit display-list records now and
+    // did not before.  `b23` is the ENEMY BULLETS' own bucket and it moved
+    // because those handlers' FIRE machines are ported too -- [M] +167 at W80
+    // and +402 at W81.
+    //
+    // AND `pending` MOVED A FOURTH TIME, IN THIS WAVE, FOR THE OPPOSITE REASON.
+    // 186 of W80's new records had NO PICTURE ANYWHERE and this stage was red on
+    // `missing === 0`, correctly.  [M] all 186 carried a descriptor out of
+    // `$269EC8` -- the family's SECOND DRAW ARM ($269B8C -> $23DF58), which the
+    // exporter had dismissed as "BUCKET longs that merely happen to look like
+    // stream starts" and never harvested.  [M] The BOARD's own display list
+    // carries 54 of them over the `stage1-laser-hold` ladder, so the port is
+    // right to emit them and the bundle was wrong to lack them.  W84 harvests
+    // the table into shard 3; the records become PENDING-in-flight in this
+    // window (which fetches nothing on purpose) instead of MISSING, and
+    // `missing === 0` is asserted unchanged.  **The rule this stage enforces
+    // did not move: zero records with no art anywhere.**
     const EXP = {
-      steps: 300, records: 18893, min: 20, max: 82, b0min: 14,
-      b23: 2432, pending: 14, pendingShard: 7, pendingFrom: 59,
+      steps: 300, records: 20794, min: 20, max: 99, b0min: 14,
+      b23: 3001, pending: 1214, pendingShards: [3, 7, 14], pendingFrom: 59,
     };
     // WAVE 47: SHARD-AWARE, and this is not optional. `loadBundle` awaited the
     // BOOT sprite shard only -- exactly what the page does -- so the other five
@@ -359,8 +394,11 @@ try {
     }
     const named = [...misses.entries()].sort((a, b) => b[1] - a[1])
       .map(([o, c]) => `$${o.toString(16).toUpperCase().padStart(6, '0')}x${c}`);
+    // The shard set is asserted as a SET EQUALITY and not as an "includes":
+    // a shard that stops being in flight is as much a change as one that starts.
     const pendOk = pPend === EXP.pending && pPendFrom === EXP.pendingFrom
-      && pendShards.size === 1 && pendShards.has(EXP.pendingShard);
+      && pendShards.size === EXP.pendingShards.length
+      && EXP.pendingShards.every((s) => pendShards.has(s));
     const portOk = pRec === EXP.records && pMin >= EXP.min && pMax <= EXP.max
       && pMiss === 0 && b0Min >= EXP.b0min && b23 === EXP.b23 && pendOk;
     console.log(`${portOk ? 'PASS' : 'FAIL'}: W44 the PORT'S OWN display list `
@@ -369,7 +407,8 @@ try {
       + `(expect ${EXP.min}..${EXP.max}), ${pDrawn} drawn, ${pMiss} with NO ART `
       + `ANYWHERE (expect 0), ${pPend} skipped as IN FLIGHT from step ${pPendFrom} `
       + `on shard(s) ${[...pendShards].join('+') || '-'} (expect ${EXP.pending} `
-      + `from ${EXP.pendingFrom} on ${EXP.pendingShard}), bucket 0 >= ${b0Min} on `
+      + `from ${EXP.pendingFrom} on ${EXP.pendingShards.join('+')}), `
+      + `bucket 0 >= ${b0Min} on `
       + `every frame (expect >= ${EXP.b0min}), W52 bucket 23 THE ENEMY BULLETS `
       + `${b23} records (expect ${EXP.b23}; it was 0 before W52), `
       + `the seed's own held list ${seedRec} records`);
@@ -682,11 +721,70 @@ try {
       // is still `===` on all four fields. `src/rng.js`'s own header has named
       // $289F62 as a desync source since wave 8; this is the port moving TOWARD
       // the board, and the two digits are the size of it.
+      //
+      // ============== WAVE 84 RE-BASELINED SIX OF THESE, AND TWO OF THEM WENT
+      // ============== DOWN.  THE DECREASES ARE THE ONLY INTERESTING PART.
+      //
+      // [M] Attribution first, by running this gate unchanged against worktrees
+      // of W79 / W80 / W81 / W82 over the SAME bundle:
+      //
+      //   shard  6 shots     22,101 -> 22,000 (W80)          **FELL by 101**
+      //   shard  7 bullets    4,387 ->  4,401 (W80) -> 7,070 (W81), 32 -> 36 img
+      //   shard  8 spark      8,817 ->  9,271 (W80)
+      //   shard  9 explosion  5,537 ->  5,921 (W80)
+      //   shard 12 item         626 ->    506 (W80), first 670 -> 666  **FELL**
+      //   shard 10 laser      1,736 ->  1,737 (W80) -> 1,749 (W81)
+      //   shard 11 structures12,681 -> 12,769 (W80)
+      //
+      // AND THE CAUSE IS NOT "WE ADDED EMITTERS", WHICH IS WHAT A RISE WOULD
+      // HAVE LET ME ASSUME.  [M] With W80's own tree and the family's enqueue
+      // DISABLED, every one of these numbers is unchanged (22,000 / 4,401 /
+      // 9,271 / 5,921 / 506).  Emission moves the family's OWN records and
+      // nothing else, which is what it should do.
+      //
+      // W80 changed the game's STATE, and in one measurable direction:
+      //
+      //  * IT FIRES.  [M] With W80's two `fireFamily2814AC` calls disabled the
+      //    bullets go back to 4,387 -- so +14 of shard 7 is exactly the
+      //    helicopters' own fan and nothing else.
+      //  * IT MOVES THE WAY THE CARTRIDGE MOVES, and this is the one that moves
+      //    everything else.  `$26A388..$26A3D8` counts ($1A,A6) -- the SPEED
+      //    byte `$2417F2`'s vector table is indexed by -- down; the pre-W80 port
+      //    never ran that block, so its helicopters flew at their init speed for
+      //    ever.  **PROVED AGAINST THE BOARD, NOT ASSERTED:** [M] seed the port
+      //    from a `stage1-laser-hold` checkpoint, step 100 frames on the BOARD'S
+      //    OWN per-frame input, and compare the family's ($1A,A6) and its
+      //    sub-record position against the board's next checkpoint --
+      //      W79  speed 0 of 12 pairs, position 0 of 12
+      //      W80  speed 12 of 12,      position 12 of 12 EXACT
+      //    (`.scratch/w84decay.mjs`; the same 12 pairs, the same ladder.)
+      //
+      // So the helicopters are somewhere else now, and everything downstream of
+      // "what did the shots hit" moved with them: more connections (+454 spark),
+      // more kills (+384 explosion), 101 fewer shot records because a shot that
+      // connects is consumed, and a laser beam that stops on a different enemy.
+      // [M] NOTHING IS BEING SILENTLY TRUNCATED: over these windows the port
+      // fires the 251-record cap 0 times and the ROM's own preemptive bucket-20
+      // and 6/9 drops 0 times, at W79 and at HEAD alike, and the peak is 116
+      // records against a 251 cap.
+      //
+      // THE ITEM'S FOUR FRAMES ARE ONE KILL, AND IT IS THE SAME KILL.  [M] the
+      // first item in this window is dropped by enemy slot 18, a type $85, and
+      // that object dies at frame 669 on W79 and 665 on HEAD -- same slot, same
+      // type, four frames earlier, one volley fewer.  [M] the item is ONE object
+      // with ONE continuous span: 670..1296 before, 666..1172 now.  It is
+      // therefore collected 124 frames sooner, and 626 - 506 = 120 is that span.
+      // **THIS NUMBER IS FRAGILE AND IT IS RECORDED AS SUCH**: it is a lifetime,
+      // and the ship sweeps every 60 frames, so any shift in the drop phase
+      // moves it by a whole sweep. `first`, `distinct` and `streams` are the
+      // stable three and all three are still asserted.
       const EXP52 = {
         frames: 1200,
-        6: { streams: 71, records: 22101, distinct: 20, first: 1,
+        6: { streams: 71, records: 22000, distinct: 20, first: 1,
           what: 'THE PLAYER\'S SHOTS ($2554EA/$255502 + the pods\' $24D2FC/$24D35C)' },
-        7: { streams: 298, records: 4387, distinct: 32, first: 98,
+        // 36 distinct images, not 32: W81 wired type $10's and $82's fans and
+        // [M] they reach four bullet images this window had never produced.
+        7: { streams: 298, records: 7070, distinct: 36, first: 98,
           what: 'THE ENEMY BULLETS ($281D9A\'s bulk write, buckets 22/23)' },
         // WAVE 53 -- THE IMPACT SPARK, the SAME window and the SAME four
         // absolute port-side fields.  `distinct` is 35 and not 36 ON PURPOSE:
@@ -695,7 +793,11 @@ try {
         // can never be drawn.  Asserting 36 would assert a claim the listing
         // contradicts; asserting `streams === 36` beside it is what says the
         // harvest still ships the whole table rather than my reading of it.
-        8: { streams: 36, records: 8817, distinct: 35, first: 24,
+        // W84: 8,817 -> 9,271. [M] W80. A spark is a shot CONNECTING, and the
+        // helicopters moved (see the block above); `distinct` and `first` did
+        // not move, which is what says this is the same animation more often
+        // and not a different one.
+        8: { streams: 36, records: 9271, distinct: 35, first: 24,
           what: 'THE IMPACT SPARK (pool E, $289F54 -> $28A098, bucket 20)' },
         // WAVE 54 -- THE ENEMY DEATH EXPLOSION, the SAME window and the SAME
         // four absolute port-side fields.  `streams` is 269, THE WHOLE OF BOTH
@@ -705,7 +807,9 @@ try {
         // `50-recon` §2.4's RUN measured eight.  `first` is the first frame an
         // enemy DIES, which is later than the first shot (frame 1) and later
         // than the first spark (frame 24) because a kill takes several hits.
-        9: { streams: 269, records: 5537, distinct: 204, first: 24,
+        // W84: 5,537 -> 5,921. [M] W80, and it is the spark's own consequence:
+        // more connections, more kills. `distinct` 204 and `first` 24 unmoved.
+        9: { streams: 269, records: 5921, distinct: 204, first: 24,
           what: 'THE ENEMY DEATH EXPLOSION (pool B, $289004 -> $288E4E)' },
         // WAVE 61 -- THE ITEM.  `streams` is 139, THE WHOLE OF ALL TEN TABLES,
         // including the sixteen frames and the collected animation belonging to
@@ -728,7 +832,12 @@ try {
       // it is the difference between a stage that proves an item EXISTS and one
       // that proves it is PICKED UP.
       const EXP61 = { frames: 2400,
-        12: { streams: 139, records: 626, distinct: 28, first: 670,
+        // W84: 626 -> 506 and first 670 -> 666. [M] W80. ONE item, ONE span:
+        // 670..1296 before, 666..1172 now -- dropped four frames earlier by
+        // the same kill (slot 18, type $85, f669 -> f665) and collected 124
+        // frames earlier because the drop lands in a different phase of the
+        // ship's 60-frame sweep. See the EXP52 block.
+        12: { streams: 139, records: 506, distinct: 28, first: 666,
           what: 'THE ITEM (pool family six, $27E812 -> $27E99E, bucket 17)' } };
       const runW52 = (frames) => {
         const g = new Game(bundle.seed, bundle.tables, {
@@ -858,7 +967,10 @@ try {
       // run measured moves `streams` from 415 to 29 and `distinct` with it.
       const EXP58 = {
         frames: 1500,
-        10: { streams: 407, records: 1736, distinct: 34, first: 24,
+        // W84: 1,736 -> 1,737 (W80) -> 1,749 (W81). [M] The beam's length is
+        // where it STOPS, and it stops on an enemy: both waves put enemies in
+        // front of it that were not there. `distinct` 34 and `first` 24 unmoved.
+        10: { streams: 407, records: 1749, distinct: 34, first: 24,
           what: 'THE LASER BEAM ($24BB0A x4 frames x5 powers + the segment '
             + 'and option blocks, bucket 16)' },
         // W66: 146 -> 153. The fifth chain range ($12D430, 8 frames of stride
@@ -868,7 +980,10 @@ try {
         // asked for by a run that TAPS fire and never holds it, which E3's own
         // scenario cannot reach. `records`/`distinct`/`first` are unmoved,
         // because this window HOLDS fire and never asks for them.
-        11: { streams: 153, records: 12681, distinct: 101, first: 315,
+        // W84: 12,681 -> 12,769. [M] W80 alone; W81 did not move it. Same
+        // cause as the spark -- this window's structures live and die by what
+        // the shots reach. `distinct` 101 and `first` 315 unmoved.
+        11: { streams: 153, records: 12769, distinct: 101, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };

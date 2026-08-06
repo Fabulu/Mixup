@@ -282,16 +282,23 @@ test('the two weapon shards are DEFERRED and fetched FIRST among the deferred', 
   // BETWEEN the spark and shard 1, in that order, because the BOARD's own
   // ladder puts type $10 on screen from lf2,200 and type $88 from lf2,500 --
   // both ahead of shard 1's measured +7.7 s -- and type $82 not until lf3,825.
-  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 10, 9, 13, 12, 8, 14, 16, 15,\s*1, 2, 3, 4, 5, 11\]\)/.test(s),
+  // W84 MOVED SHARD 3 AHEAD OF SHARD 1, and THIS ASSERTION IS WHAT CAUGHT IT.
+  // Shard 3 is the damage-first family, and the exporter's own note said "[M]
+  // first needed lf6426" -- true while the port emitted nothing for that family
+  // at all. W80 wired its two machines and [M] its first record now lands at
+  // lf2106 from the shipped seed, 1.8 s after boot, against shard 1's +7.7 s.
+  // The shard whose deadline moved is not the shard whose code changed, which
+  // is exactly why the ORDER-IS-A-CLAIM loop below exists.
+  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 10, 9, 13, 12, 8, 14, 16, 15, 3,\s*1, 2, 4, 5, 11\]\)/.test(s),
     'the bullets (+0.7 s), the shots (the first fire frame), the LASER (the '
     + 'first held frame), the death explosion, THE BOMB, THE ITEM, the impact '
-    + 'spark and W81\'s three enemy-art shards all come before shard 1 '
-    + '(+7.7 s): index order is NOT need order any more');
+    + 'spark, W81\'s three enemy-art shards and W84\'s shard 3 all come before '
+    + 'shard 1 (+7.7 s): index order is NOT need order any more');
   // and the ORDER IS A CLAIM ABOUT DEADLINES, not a literal: whatever the array
   // says, every shard whose first need is earlier than shard 1's must precede
   // it. This is the assertion the literal above cannot make on its own.
   const order = JSON.parse(s.match(/SPR_ORDER = Object\.freeze\((\[[\s\S]*?\])\)/)[1]);
-  for (const early of [7, 6, 10, 9, 13, 12, 8, 14, 16, 15]) {
+  for (const early of [7, 6, 10, 9, 13, 12, 8, 14, 16, 15, 3]) {
     assert.ok(order.indexOf(early) < order.indexOf(1),
       `shard ${early}'s first need is earlier than shard 1's +7.7 s, so it must `
       + 'be fetched first');
