@@ -254,6 +254,80 @@ anyway** because it belongs to a different script than the one blocking. The
 owner mandated it believing otherwise; that mandate is now superseded by
 measurement and needs re-putting to them.
 
+## 7a. UPDATE -- session 2026-08-06 evening: W101-W104 + a publish landed
+
+Four waves and a publish went out after section 7 was written. All committed,
+pushed, and LIVE. The live site is current. A returning session should read
+this section, then section 8, then start the queue at the bottom.
+
+**W101, boot the page at any ladder rung. DONE.** The page and
+`webgate --rung N` boot from any of the 72 checkpoint rungs on any ladder, so a
+wave photographs the boss in ~300 steps instead of an 8,500-frame walk. LOCAL
+DEV ONLY: the ladder is board-memory dumps (ROM-derived), gitignored under
+`tools/oracle/out/` and never bundled; the published page keeps its single
+seed. The verbatim leak guard does NOT catch RAM dumps, so the structural
+INCLUDE-list exclusion in `build-dist.mjs` is the real defence. The seed is
+128 KiB work RAM and nothing else (BG and regs are separate Game inputs).
+Provenance (SEEDED / INVULNERABLE) is printed on screen and in every capture:
+a seeded page proves CODE, never a ROUTE.
+
+**W102, a static coverage SYSTEM. DONE.** `games/ddpdoj/tools/bosscoverage.py`
+is a config block on a general M68K walker (line 86: "Generalize by adding a
+config block; the walker below it is general"). It reproduces W99 exactly and
+has a gate with two red conditions wired into `pgm.py check`: (a) coverage
+regression, (b) inventory regression (the oracle ran something the enumerator
+never listed -- this is how the tool validates itself). The join found zero
+ported-but-unexercised scripts and zero enumerator holes. Port-side dispatch
+instrumentation was added to `scheduler.js` (dump via `seedcmp
+--dump-dispatched`). To cover the rest of the game, add a config block per
+subsystem; non-stride-8 tables need the walker extended (flag the hole
+honestly, never fake).
+
+**W103, the boss F 2/F 3 wave. DONE.** Ported all 44 live-unported scheduler
+entries W99 listed, plus the two accessors (`$2599B4`, `$259B08`) and the
+type-`$1E` spawn closure. bosscoverage went 59 -> 103 ported, 0 unported. The
+`$29540C` throw is gone. `$29540C` was just F 3, one of the 44; the old
+"port `$29540C` to clear the gate" mandate is moot (its closure was only 21 of
+the 44).
+
+**W104, the boss's remaining sprite emitters. DONE.** Ported `$23E36A` and
+`$23E45A` (refactored into a shared `emitScaled`). The boss fight now runs
+clean from rung 8500 to ~lf19533 (essentially stage 1's end); the only
+remaining throw is `$229DF8`, a 2 KB ROM data window the exporter has not
+exported, reached at the stage-1 tail -- a data-export fix, not boss logic.
+
+**Publish. DONE, GREEN.** Build `20260806192552`, live at gbtman.pages.dev.
+Batman 27/27, all gates green, deploy confirmed (3/3 polls). Ships the boss
+art (W98), the HUD removal (W100) and the complete boss fight.
+
+**NEW PROCESS RULE (owner): every wave snapshots its result from a rung, not
+from boot.** Seeded snapshots prove "it draws / runs," not "a player reaches
+it"; label which kind of evidence each is.
+
+**Queue (next session, in order):**
+1. Whole-game static coverage pass -- point `bosscoverage` at the HUD, items,
+   medals and every other stage-1 subsystem. The yellow 500-pt medals and the
+   real HUD are KNOWN-missing (owner play reports; "medal" appears nowhere in
+   the port) and are ground-truth targets the tool MUST flag, or it has a hole.
+   Surface every other unknown.
+2. Port the yellow 500-pt medals (recon first).
+3. Port the real HUD (score / chain / combo).
+4. Publish.
+Then sound, then lag, then a MAME replay as the capstone.
+
+**The hourly cron was session-only and is gone on restart.** Recreate it:
+recurring at :17, fires only when idle, does nothing if a wave or publish is
+already running, otherwise verifies the last wave and dispatches the next.
+
+**Launch directory.** This session was launched from `C:\programmieren\GLMInst`
+(an unrelated Go repo), which forced a `cd` into batman on every command and
+caused repeated mistakes. Launch the next session FROM batman. The launcher is
+`C:\programmieren\GLMInst\glm-temp.ps1` (sets the GLM endpoint env vars and
+runs `claude`; reads its key via `$PSScriptRoot`, so it is location-independent).
+From a `C:\programmieren\GLMInst>` prompt:
+
+    cd C:\programmieren\batman; & C:\programmieren\GLMInst\glm-temp.ps1 --dangerously-skip-permissions
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
