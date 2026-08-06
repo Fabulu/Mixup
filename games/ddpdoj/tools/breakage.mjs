@@ -15,6 +15,7 @@ import { AUTOSHOT_MUTATE, CLAMP_ORDER, updatePlayer } from '../src/player.js';
 import { SHIP_MUTATE } from '../src/shipsprite.js';
 import { W82_MUTATE } from '../src/boss.js';
 import { B2_MUTATE } from '../src/background.js';
+import { W94_MUTATE } from '../src/bossscripts.js';
 
 export const MUTATIONS = {
   // THE ONE THE BRIEF ASKS FOR.  $2495CA moves first ($2417F4 adds the vector
@@ -221,6 +222,42 @@ export const MUTATIONS = {
   // this wave is red-validated over the part of the stage the boss never
   // reaches, and not only at the one place it was built for.
   'elem-no-kind': () => { B2_MUTATE.value = 'elem-no-kind'; },
+
+  // -------------------------------------------------------------- WAVE 94
+  // THE STAGE-1 BOSS'S MOVEMENT LAYER -- MAIN scripts 6 and 7, their shared
+  // tail `$29314C`, the waypoint draw `$2933DE`, the speed ramp `$293400` and
+  // the distance `$242494`.
+  //
+  // **NONE OF THESE CAN GO RED ON ANY LADDER THIS REPO HOLDS, AND THAT IS
+  // REPORTED RATHER THAN HIDDEN.**  MAIN 6 and 7 run only while the boss is
+  // ALIVE, i.e. from lf~7,870 -- and every rung in that range is still BLOCKED
+  // on the other ten of the steady state's twelve entry points.  The two rungs
+  // that are not blocked (lf19,000 and lf19,250) are past the death, where the
+  // MAIN sequencer is on id 1.  So the seam exists, the mutations are named,
+  // and `tests/w94boss.test.js` is what actually drives each of them red.
+  // W94's worklog 6.2 says this plainly instead of reporting a green.
+  'ring-reversed': () => { W94_MUTATE.value = 'ring-reversed'; },
+  'tail-both-plus80': () => { W94_MUTATE.value = 'tail-both-plus80'; },
+  'tail-same-shift': () => { W94_MUTATE.value = 'tail-same-shift'; },
+  'pick-one-draw': () => { W94_MUTATE.value = 'pick-one-draw'; },
+  'ramp-unsigned': () => { W94_MUTATE.value = 'ramp-unsigned'; },
+  'dist-no-aspect': () => { W94_MUTATE.value = 'dist-no-aspect'; },
+  'main6-unsigned-arrive': () => { W94_MUTATE.value = 'main6-unsigned-arrive'; },
+  // DECLARED EXPECTED-GREEN, with the measurement, BEFORE it was run --
+  // see `W94_EXPECTED_GREEN` below and `src/bossscripts.js`'s own note.
+  'main7-stale-target': () => { W94_MUTATE.value = 'main7-stale-target'; },
+};
+
+/** W94's one mutation that is EXPECTED to change nothing, and the proof.
+ *  Declared here so "it passed" cannot be read after the fact as evidence. */
+export const W94_EXPECTED_GREEN = {
+  'main7-stale-target': 'PROVABLE no-op: [M] $293642..$293690 touches (A4) at '
+    + 'exactly two instructions and both are `adda.w (A4),A0` -- READS, at '
+    + '$293648 and $293678. Nothing in the span writes it and none of the four '
+    + 'callees can ($24203E/$242190 are pure, $293400 writes ($1a,A6), $2417DE '
+    + 'writes ($2,A6)/($4,A6)), so the re-read at $293672 returns the same two '
+    + 'words. Seen green deliberately by tests/w94boss.test.js, which asserts '
+    + 'BYTE-IDENTICAL output under the mutation rather than "did not go red"',
 };
 
 /** Mutations that are EXPECTED to leave the RESULT line green, with the reason.
@@ -312,6 +349,7 @@ export function breakage(name, game) {
   AUTOSHOT_MUTATE.value = null;  // ...and wave 79's
   W82_MUTATE.value = null;       // ...and wave 82's
   B2_MUTATE.value = null;        // ...and wave 85's
+  W94_MUTATE.value = null;       // ...and wave 94's
   const m = MUTATIONS[name];
   if (!m) {
     throw new Error(`unknown mutation "${name}"; have: ${Object.keys(MUTATIONS).join(', ')}`);

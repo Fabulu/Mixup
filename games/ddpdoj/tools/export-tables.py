@@ -1272,6 +1272,44 @@ SHOT_WINDOWS.extend([
                        "the first byte past the end and stays outside"),
 ])
 
+# ============ W94: THE STAGE-1 BOSS'S EIGHT WAYPOINTS ========================
+#
+# `$293642 lea $293694(pc),A0 / adda.w (A4),A0 / movem.w (A0),D2-D3` -- MAIN
+# script 7's destination table.  BOTH BOUNDS COME OUT OF THE ARITHMETIC and
+# neither is a guess:
+#
+#  * the index is `(A4)`, and its ONLY writer is `$2933EC move.w D0,(A4)` with
+#    D0 = `($242E24 & $7) * 4`.  Eight values, 0,4,..,$1C, and `movem.w` reads
+#    TWO words -- so the reachable extent is exactly $1C + 4 = $20 bytes.
+#  * the far end is pinned by CODE: `$2936B4` is MAIN script 8's INIT, the next
+#    longword in `$293104`'s own pointer table, so the cartridge publishes it.
+#
+# `check_boss_waypoint_extent` asserts the pin from the image on every export.
+SHOT_WINDOWS.extend([
+    (0x293694, 0x0020, "W94: the stage-1 boss's MAIN-7 waypoint table $293694 "
+                       "-- EIGHT (Y,X) word pairs, indexed by (A4) = "
+                       "($242E24 & $7) * 4. The far end is pinned by $2936B4, "
+                       "MAIN script 8's INIT, which $293104[8] publishes"),
+])
+
+
+def check_boss_waypoint_extent(d: bytes) -> None:
+    """W94: $293694 + $20 must stop exactly where MAIN 8's INIT begins.
+
+    A unit test cannot read the cartridge, so it cannot catch a short window
+    (`check_bomb_extents`'s docstring says why).  This one is derived from the
+    A0 table rather than from the data: `$293104[8]` is MAIN script 8's
+    {init,step} pair and its INIT is the first byte past the waypoints.
+    """
+    init8 = u32(d, 0x293104 + 8 * 8)
+    if init8 != 0x293694 + 0x20:
+        raise SystemExit(
+            f"$293104[8].INIT reads ${init8:06X}; W94's $293694 window is $20 "
+            f"bytes and its far end is PINNED by that pointer being "
+            f"${0x293694 + 0x20:06X}. Either the table moved or the window is "
+            f"the wrong length -- widen it here, with a new pin, never in "
+            f"src/rom.js")
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
@@ -3157,6 +3195,7 @@ def build(d: bytes) -> dict:
     check_boss_a4_extent(d)                    # W64 -- W62's window was SHORT
     check_boss_script_table_extents(d)         # W82 -- ...and so were A3 and A1
     check_boss_object_tables(d)                # W82 -- the OBJECT sprite tables
+    check_boss_waypoint_extent(d)              # W94 -- MAIN 7's eight waypoints
     check_beam_bomb_extents(d)                 # W65 -- THE LASER BOMB's
     check_beam_impact_extents(d)               # W90 -- THE LASER's IMPACT
     check_palette_upload_family(d)             # W91 -- THE SPRITE PALETTE

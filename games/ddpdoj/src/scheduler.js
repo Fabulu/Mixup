@@ -87,6 +87,12 @@ export const SCHED = {
   seqDst: 0x81298c,       // $25973A lea -- A4 for the dispatched routine
   // the four slot tables
   a1Base: 0x812bd8, a1Slots: 10, a1Stride: 0x20,
+  // W94: the three OVERFLOW blocks recon 48 1.3 names.  A start into a full
+  // table returns one of these and the request is DROPPED -- the block is a
+  // $20-byte scratch no walk ever visits.
+  a1Overflow: 0x812d18,   // $259A3E lea $812D18,A0
+  a3Overflow: 0x812bb4,   // $2599A8 lea $812BB4,A0
+  a4Overflow: 0x812ddc,   // $259832 lea $812DDC,A0
   a2Base: 0x8129d0, a2Slots: 20, a2Stride: 0x08,
   a3Base: 0x812a74, a3Slots: 10, a3Stride: 0x20,
   a4Base: 0x812d3c, a4Slots: 5,  a4Stride: 0x20,
@@ -221,6 +227,76 @@ export function a4Running25983E(ram, d0) {
 export function a4Clear2598A2(ram) {
   for (let i = 0; i < SCHED.a4Slots; i++) ram.setU16(SCHED.a4Base + i * SCHED.a4Stride, 0);
 }
+
+// ---------------------------------------------------------------------- W94
+// **W62 SHIPPED TEN OF THE TWENTY-SEVEN ACCESSORS recon 48 1.7 enumerates, and
+// the brief for W94 said "the scheduler shipped in W62".  It shipped the WALKS
+// and ten primitives.**  These four are the ones the boss's steady-state phase
+// needs, and one of them has a return value the other ten do not.
+
+/**
+ * `$259A18` -- START A1 (table E) SCRIPT D0, and **RETURN THE SLOT'S ADDRESS**.
+ *
+ * > THE RETURN VALUE IS LOAD-BEARING AND ONLY THE CALLERS SAY SO.
+ * > `$2957D2 jsr $259A18` is followed four instructions later by
+ * > `$2957D8 move.b $8(a4),$4(a0)` -- F-script 6 writing PARAMETERS into the
+ * > slot the scheduler has just claimed.  A primitive that returned a boolean,
+ * > the way W62's ten do, cannot express that at all, and the gun would fire
+ * > with whatever the previous occupant of that slot left behind.
+ *
+ * **AND IT DOES NOT CHECK FOR AN EXISTING COPY.**  `$259962` (the A3 start)
+ * scans for a slot already carrying D0 and returns early; `$259A18` does not.
+ * Ten copies of one E script can be running at once, and that is how the boss's
+ * fans are built.
+ *
+ * When all ten are taken, `$259A3E` returns `$812D18` -- the OVERFLOW block --
+ * so the caller's parameter writes land somewhere no walk visits and the start
+ * is a SILENT DROP.  Recon 48 1.3: a port must reproduce the drop, not grow the
+ * array.
+ * @returns {number} the RAM address of the claimed slot, or the overflow block.
+ */
+export function a1Start259A18(ram, d0) {
+  for (let i = 0; i < SCHED.a1Slots; i++) {            // $259A22 moveq #$9
+    const a = SCHED.a1Base + i * SCHED.a1Stride;
+    if (ram.u16(a) !== 0) continue;                    // $259A24 tst.w / bne
+    ram.setU16(a, u16(d0 | 0x8000));                   // $259A2A ori / $259A2E move.w
+    return a;
+  }
+  return SCHED.a1Overflow;                             // $259A3E lea $812D18,A0
+}
+
+/** `$259A4A` -- IS A1 SCRIPT D0 RUNNING?  Returns the C flag: true when a slot
+ *  carries it.  Same shape as `$25983E`, ten slots instead of five. */
+export function a1Running259A4A(ram, d0) {
+  for (let i = 0; i < SCHED.a1Slots; i++) {            // $259A54 moveq #$9
+    const a = SCHED.a1Base + i * SCHED.a1Stride;
+    const s = ram.u16(a);                              // $259A56 move.w (a0),d2
+    if (s !== 0 && (s & 0xff) === u16(d0)) return true;  // $259A5C andi / $259A60 cmp
+  }
+  return false;                                        // $259A7C andi #$FFFE,sr
+}
+
+/** `$2598C8` -- read the MAIN sequencer's CURRENT id into D0.  Two
+ *  instructions.  `$FFFF` means idle; F-script 6's first state is a rendezvous
+ *  on this returning 7. */
+export function seqCurrent2598C8(ram) { return ram.u16(SCHED.seqCursor); }
+
+/**
+ * `$2595F2` -- **IT ALWAYS RETURNS 4.**
+ *
+ * Four computed branches over `$80380C` (the player count) and `$81309E`, with
+ * a `divs.w`, two clamps and a `#$7` ceiling -- and every one of them falls into
+ * `$25962A moveq #$4,D0`, which nothing branches over.  Bytes: `$259628` is
+ * `70 07` (`moveq #7,D0`, the last real answer) and `$25962A` is `70 04`.
+ *
+ * Recon 48 1.7 measured this and the port must CITE it rather than implement the
+ * arithmetic: a port that computes the value is wrong on every call, and it
+ * would look right, because 4 is in the middle of the range it computes.  This
+ * is `docs/knowledge/02`'s fall-through trap wearing a different hat.
+ *
+ * The callers pass `#$58` in D0 and it is discarded with everything else.
+ */
+export function spread2595F2() { return 4; }           // $25962A moveq #$4,d0
 
 /** `$259B34` -- clear all ten A1 slots. */
 export function a1Clear259B34(ram) {

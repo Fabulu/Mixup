@@ -604,12 +604,25 @@ function partScriptStep(ram, ctx, a4, a6, id) {
     - ram.u16(a4 + 0x0c)));                            // $293AE4/$293AE8
 }
 
-function bossA6(ctx, addr) {
+export function bossA6(ctx, addr) {
   if (ctx.bossSubRec === undefined || ctx.bossSubRec === null) {
     unreached(addr, 'a boss A3 part script was dispatched with no A6 published '
       + 'by $292902 -- the scheduler ran outside the boss handler\'s frame');
   }
   return ctx.bossSubRec;
+}
+
+/** W94: the same for A5, the boss's own enemy RECORD.  `$2417DE` takes A5 (it
+ *  re-reads A6 from `($6,A5)`) and `$295948`/`$296614` gate on `($16,A5)`, the
+ *  HP longword, so the movement and gun scripts need it exactly as the part
+ *  scripts need A6.  A6 alone is not enough and deriving A5 back out of it
+ *  would be a guess -- `$292902` has both in registers, so it publishes both. */
+export function bossA5(ctx, addr) {
+  if (ctx.bossRec === undefined || ctx.bossRec === null) {
+    unreached(addr, 'a boss script was dispatched with no A5 published by '
+      + '$292902 -- the scheduler ran outside the boss handler\'s frame');
+  }
+  return ctx.bossRec;
 }
 
 registerScript(0x29393a, (ram, rom, ctx, a4) => partScriptInit(ram, a4));
@@ -921,6 +934,7 @@ export function handlerBoss292902(ram, rom, a5, ctx) {
   // publishes it for the frame it owns and `bossA6` throws by address if a
   // script is ever dispatched when nothing did.
   ctx.bossSubRec = a6;
+  ctx.bossRec = a5;                                    // W94 -- see bossA5
   bossDamage294AD8(ram, rom, ctx, a5, a6);             // $292902 jsr $294AD8
   if (ram.u16(a5 + BOSS.hitStop) !== 0) {              // $292908 tst.w/beq
     ram.setU16(a5 + BOSS.hitStop, u16(ram.u16(a5 + BOSS.hitStop) - 1));  // $29290E
@@ -934,3 +948,11 @@ export function handlerBoss292902(ram, rom, a5, ctx) {
 }
 
 export { SCHED as BOSS_SCHED };
+
+// W94 -- THE MOVEMENT LAYER registers itself.  This import is for its SIDE
+// EFFECT (four `registerScript` calls) and it is at the FOOT of the file on
+// purpose: `src/bossscripts.js` imports `bossA5`/`bossA6` back out of here, and
+// both are hoisted function declarations, so the cycle resolves whichever
+// module the loader reaches first.  Anything that needed a `const` from this
+// file would have to be passed in instead.
+import './bossscripts.js';
