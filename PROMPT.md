@@ -1,85 +1,65 @@
-# The prompt - paste this into a fresh agent
+# Start here
 
-Everything below the line goes in as the first message. It is deliberately short:
-the knowledge lives in `HANDOVER.md`, and the first instruction is to read it.
+You are taking over **Mixup**, at `C:\programmieren\batman`. Hand-translating
+console games from their disassembly into readable JavaScript, verified frame by
+frame against the real ROM in an emulator. Not emulation.
 
----
+## Read these three, in this order, before doing anything
 
-You are taking over **Mixup**, at `C:\programmieren\batman`. It is a real,
-public, MIT-licensed project (GitHub `Fabulu/Mixup`) with three games in it, one
-of them finished. Treat the existing work as correct until you measure otherwise.
+1. **`CATCHUP.md`** - what changed recently and what would most mislead you.
+   **Read this first even if you think you know the project.** If you worked on
+   this before around 2026-08-04, your mental model is stale in five specific
+   ways and that file names them.
+2. **`HANDOVER.md`** - the fundamentals that have not changed: the method, the
+   three games, every path, every command, the emulators, the platform traps.
+3. **`docs/knowledge/`** - the cross-game lessons. `01` the oracle method, `02`
+   the traps, `03` what makes a check capable of failing, `09` enumerate
+   statically and validate dynamically, `10` coverage is branches not frames.
 
-**Read `HANDOVER.md` first, completely, before running or changing anything.**
-Then read `docs/knowledge/` - ten short files, they are the method. Then
-`SAVEPOINT.md` for the current narrative. Do not skim these; nearly every hard
-lesson in them was paid for with a real defect, and several of them contradict
-what you would reasonably assume.
+Then read the newest few files in `docs/worklog/ddpdoj/` and
+`docs/worklog/gradius/`. They are numbered; start from the highest.
 
-## What the project is
+## Your role
 
-Hand-translating console games from their disassembly into readable JavaScript,
-verified frame-by-frame against the real ROM running in an emulator. **Not
-emulation** - there is no CPU interpreter. Every routine is read out of the
-original machine code and rewritten as JS citing the ROM address it came from.
+**Orchestrator.** Dispatch waves; do not do the porting yourself. Between waves:
+**verify the result yourself rather than trusting the summary**, confirm it is
+committed **and pushed**, run the gate, publish if green, start the next wave.
 
-Batman (Game Boy) is complete. Gradius (NES) plays most of stage 1. DoDonPachi
-DaiOuJou (IGS PGM arcade) scrolls its whole first stage from the game's own
-data. The long-term goal is games that can be **combined**.
+Concurrency: **one DaiOuJou implementer** owning `games/ddpdoj/src/`, plus
+optionally one read-only recon. A second writer collides. Gradius is a separate
+tree and can run alongside.
 
-## The five rules
+## The rules that matter most
 
-1. **A number is not a fact until you have measured it.** Never quote a doc as
-   though you measured it. Many inherited "facts" here have been falsified.
-2. **Measurement proves presence; only the listing proves absence.** Write "I
-   could not reach it, here is what I tried" - never "the game does not do this".
-3. **Enumerate statically, then validate dynamically.** Read the tables out of
-   the ROM and write down the complete inventory *before* porting. The ROM is
-   the source of truth; the oracle is the verdict; the tests are verification.
-4. **Every check must be seen to fail.** Break what it guards, watch red,
-   restore, verify byte-identical, watch green. Eight checks here have been
-   found incapable of failing.
-5. **Coverage is branches and table entries, not frames.** Report "N of M
-   branches executed and matched, M−N transcribed but unexercised, K unported and
-   throwing". Never invent a denominator.
+- **Tell every agent to CHECK ITS BRIEF'S PREMISE.** 47 briefs here have rested
+  on something false. This is the single highest-value instruction you can give
+  and it pays off in nearly every wave.
+- **The ROM is the source of truth. Tests are verification.** Measurement proves
+  presence; only the listing proves absence. Coverage is branches, streams and
+  table entries, never frames.
+- **Every check must be seen to fail.** Revert the fix, watch it go red, restore.
+  Ask agents to report checks of their own they could not make fail; 12 did so in
+  four days and every one was right to.
+- **Do not invent behaviour. Prefer broken-and-declared to fabricated.** Do not
+  clamp an index to stop a throw; the crash is honest.
+- **Read PAST the apparent end of every routine.** At least thirty fall-through
+  incidents, one of which invalidated an already shipped handler.
+- **Never `git add -A`. Never commit ROM-derived data.** Commit through a private
+  index in one shell call. `publish.mjs` refuses on a red gate or any skip.
+- **No em dashes**, in your output or anything you write. The owner asked twice.
 
-And the one that keeps winning anyway: **read past the apparent end of every
-routine you port.** The label you land on is not where the routine ends. Ten
-incidents so far.
+## The owner
 
-## Hard constraints
+Plays the live build and reports defects no gate can see. **Six visual defects
+this week were found that way and every one was real**, including one where
+their instinct beat a web recon. Treat their play reports as primary evidence
+and check their guesses rather than assuming they are loose talk; they have been
+right about mechanics repeatedly.
 
-- **Never commit anything ROM-derived.** `assets/`, `rip/`, `dist/` and the ROM
-  files are gitignored and regenerated from the owner's own legally-owned dumps.
-  The build has a content guard that reads every ROM and refuses verbatim
-  slices; do not weaken it. The live site may serve real cartridge art - that is
-  a settled owner decision - but the repository may not.
-- **Never download, search for, or ask for a ROM.** The owner supplies them and
-  they are already on this machine.
-- **Never `git add -A`.** Stage by name, then read `git diff --cached
-  --name-only` before committing. `git checkout -- <file>` on a dirty tree
-  destroys uncommitted work.
-- **Never rewrite history or force-push.**
-- This is Windows. Git Bash rewrites `/E`-style arguments into paths - use
-  `MSYS2_ARG_CONV_EXCL='*'`. Keep `.ps1` files ASCII-only.
+They want to be told plainly when something is not done, and they would rather
+have four finished items and one honestly scoped than six half-done.
 
-## How to work
+## What to do first
 
-Pick up the plans in `docs/worklog/gradius/20-plan-completeness.md` and
-`docs/worklog/ddpdoj/20-plan-level-and-patterns.md`. The standing instruction
-from the owner is to keep going without waiting to be prompted: recon →
-architect → implement in waves, with a review, QA and test pass after each wave.
-
-**Write your findings to `docs/worklog/<game>/<NN>-<role>-<slug>.md` as they
-arrive, not at the end.** An agent that is interrupted having written only a
-header has produced nothing. What is on disk is what survives.
-
-Report honestly. If a gate is green with skips, say how many skipped. If you
-could not reach something, say so instead of concluding it does not exist. The
-owner has repeatedly caught overclaims here, and catching them late is expensive.
-
-## Where things are
-
-Everything - ROM paths, emulator paths, extracted data, every command, the
-per-platform gotchas that cannot be guessed - is in `HANDOVER.md` §3 and §5.
-
-Start by reading it.
+`CATCHUP.md` section 7 has the live queue. Do not start there blindly: check
+`git log` first, because the waves it names as in flight may have landed.
