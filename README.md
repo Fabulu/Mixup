@@ -32,14 +32,21 @@ files that only exist after *you* run an exporter against *your* own copy.
 
 **The published site is a separate question, and the answer is not the same.**
 `tools/build-dist.mjs` reads every ROM present and blocks any file that appears
-byte-for-byte inside one - against 12 ROM files, 245 files checked, 42 of them
-also checked decompressed. It is not, however, absolute: **five files are
+byte-for-byte inside one - against 12 ROM files, 251 files checked, 47 of them
+also checked decompressed. It is not, however, absolute: **six files are
 published verbatim on purpose**, each enumerated in `PUBLISH_VERBATIM` with its
 own line of reasoning, and the list is printed on every single build. They are
-Batman's player animation tile pool and four DaiOuJou sprite colour shards -
+Batman's player animation tile pool and five DaiOuJou sprite colour shards -
 art the ports cannot draw their own characters, enemies or death explosions
 without. That is a deliberate owner decision: **the live site may serve real
 cartridge art; the repository may not, and does not.**
+
+The exceptions exist because of what the guard actually measures, which is
+**packing order, not provenance**: every sprite these pages draw is cartridge
+art, and a shard trips the check only when its streams happen to sit
+consecutively in the ROM so the packed buffer is one contiguous run. Decoding
+the colour data to one pixel per byte would retire all six at once, and is
+recorded in `build-dist.mjs` with its measured cost.
 
 The guard blocks everything not named in that list, and the load-bearing rule is
 unchanged - nothing ROM-derived is ever committed here.

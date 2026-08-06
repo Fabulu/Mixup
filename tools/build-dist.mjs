@@ -206,6 +206,37 @@ const PUBLISH_VERBATIM = new Map([
    + 'SprShards and DEFERRED; without it every enemy death is a named skip and '
    + 'the page stops on the first kill. Verbatim only because those 269 streams '
    + 'are consecutive in cave_a04402w064.u8 -- see the W47 block above.'],
+  // ------------------------------------------------------------- WAVE 81
+  // OWNER DECISION, 2026-08-06, asked and answered explicitly. W81 gave the
+  // 96x88 fighter and the gold mech their pictures; SIX shards were added and
+  // this guard caught exactly one of them.
+  //
+  // WHY ONLY THIS ONE, and it is the same reason as the W47 block above: the
+  // property this guard measures is PACKING ORDER, not provenance. Every
+  // sprite this page has ever drawn is cartridge art. mask.shard14,
+  // col.shard14, mask.shard15, mask.shard16 and col.shard16 all pass because
+  // their streams have HOLES and stitch into a buffer that matches nothing.
+  // Shard 15 holds two streams whose colour data happens to sit consecutively
+  // in the ROM, so the packed buffer is one contiguous run and the guard --
+  // correctly -- sees a slice.
+  //
+  // THE ALTERNATIVE, recorded because it is still the better answer and is now
+  // the only thing standing between this project and an EMPTY exception list:
+  // decode the colour half to one 5-bit pixel per byte (W41 2.2). That makes it
+  // stop being a verbatim slice at all and would retire ALL SIX of these lines
+  // at once. Cost, measured by W81: raw +50 %, gzipped -9.7 %, and it changes
+  // SpriteDrawer's inner loop, which is on bundlegate's and pixgate's
+  // 100.0000 % pixel path. The owner chose to unblock the site now and keep
+  // that wave available rather than couple the two.
+  ['games/ddpdoj/assets/spr/col.shard15.u16.gz',
+   'enemy type $82\'s body $1735FC and its bucket-3 record $173810 (2 streams, '
+   + '2.6 KiB). Fetched by src/web/assets.js SprShards; without it the 96x88 '
+   + 'forward-swept-wing fighter -- the object the owner reported shooting at '
+   + 'and never seeing -- is a named skip. Verbatim only because those two '
+   + 'streams are consecutive in cave_a04401w064.u7; see the W47 block above. '
+   + 'Owner decision: the live site may serve real cartridge art; the repo may '
+   + 'not, and does not (assets/ is gitignored and nothing ROM-derived is ever '
+   + 'committed).'],
 ]);
 
 const substituted = [];
