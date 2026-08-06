@@ -1145,6 +1145,64 @@ function handler07(ram, rom, a5, ctx) {
   drawFamily269E20(ram, rom, a5, a6, r.dir);           // $26A4B0 bra.w $269E20
 }
 
+// ---- $274AF0..$274B64: TYPE $82's DEATH ARM ------------------------------
+//
+// **THE OWNER'S "no splosions", FOR THE ONE TYPE IT WAS STILL TRUE OF.**
+// W68 §9 signal 5 measured `$274AF0` as a counted note reached 213 times in
+// 7,000 frames and wrote the consequence down: *"a $82 never dies, so it never
+// explodes"*.  W81 gave the fighter its picture and left this untouched and
+// said so (§9.2), so since W81 the owner has been able to SEE a 96x88 fighter,
+// shoot it, watch its HP go negative and watch nothing happen.
+//
+// Read out of the cartridge (`tools/oracle/w27disasm.py 274AF0 274B70`), and it
+// is twenty-two instructions with no branch in it:
+//
+//   $274AF0 moveq #$42,D0 / jsr $28615E    THE KILL SCORE.  D0 = $42, the
+//           fighter's own packed-BCD value; D1 is still the hit mask
+//           `$2747EE..$2747F4` built, and `$286096` at $27481C does not touch
+//           D1 (it works in D2/A0), so it reaches here intact.  Same shape as
+//           `deathSeq85`, which is why that function takes `d1` too.
+//   $274AF8 jsr $28C274                    a SOUND cue -- `$28C274` is
+//           `movem / move.w #1,D0 / #$9E,D1 / #$1E,D2 / jsr $28C0AE`, i.e. one
+//           request into the sound driver, which `39-OWNER` puts LAST.  It
+//           stays a counted note, exactly as `$275BA0` does in `deathSeq85`.
+//   $274AFE moveq #$D,D0  / jsr $289004    effect kind $0D, then six fields
+//   $274B2A move.w #$8,D0 / jsr $289004    effect kind $08, then eight
+//   $274B64 jmp $263762                    free the record
+//
+// **BOTH KINDS ARE INSIDE POOL B's 34 SCRIPT ENTRIES** (`$289016 cmpi.w #$21`),
+// so neither goes to the bit bucket for being out of range and `src/effects.js`
+// drives both off the cartridge's own script table -- there is no per-kind code
+// to write.  The ORDER differs from `deathSeq85`'s and is transcribed as it
+// stands: `$28C274` fires BEFORE the two allocations here and AFTER all three
+// there.  It matters if the pool is full, because the note is what records the
+// bit bucket, and a reordering would move which spawn is credited.
+function deathSeq82(ram, rom, a5, a6, ctx, d1) {
+  const u = ctx.unported;
+  scoreKill(ram, rom, ctx, 0x42, d1);                  // $274AF0/$274AF2
+  noteEffect(u, 0x28c274, a5, 'death burst');          // $274AF8 jsr $28C274
+  const e1 = spawnEffect(ram, ctx, 0x0d, 0x274b00);    // $274AFE/$274B00
+  ram.setU32(e1 + B.pos, ram.u32(a6 + 0x02));          // $274B06
+  ram.setU16(e1 + B.bucket, 0x0010);                   // $274B0C
+  ram.setU16(e1 + B.nudge, 0xf600);                    // $274B12
+  ram.setU16(e1 + B.nudge + 2, 0x0000);                // $274B18
+  ram.setU16(e1 + B.sub12, 0x0001);                    // $274B1E
+  ram.setU16(e1 + B.sub14, 0x0400);                    // $274B24
+  const e2 = spawnEffect(ram, ctx, 0x08, 0x274b2e);    // $274B2A/$274B2E
+  ram.setU32(e2 + B.pos, ram.u32(a6 + 0x02));          // $274B34
+  ram.setU16(e2 + B.bucket, 0x0010);                   // $274B3A
+  ram.setU16(e2 + B.nudge, 0xf600);                    // $274B40
+  ram.setU16(e2 + B.nudge + 2, 0x0000);                // $274B46
+  ram.setU16(e2 + B.speed, 0x0680);                    // $274B4C  ($1A,A0) is a
+                                                       //   WORD here: speed $06
+                                                       //   and angle $80, the
+                                                       //   pair `$289004` cleared
+  ram.setU16(e2 + B.sub12, 0x0001);                    // $274B52
+  ram.setU16(e2 + B.sub14, 0x0400);                    // $274B58
+  ram.setU8(e2 + B.f1c, 0x40);                         // $274B5E  a BYTE
+  freeEnemy(ram, a5);                                  // $274B64 jmp $263762
+}
+
 // ============================================================ TYPE $82 (33)
 // `$2747C6`.  A script-mover (stepMovement) that aims with aim256 (`$2422A2`)
 // and fires multiple bullet fans (`$281708` x4, `$281764` x2, `$281484`).  flow.py
@@ -1208,10 +1266,7 @@ function handler82(ram, rom, a5, ctx) {
     ram.setU16(a6 + S.hp, d4);                         // $274844
     ram.setU16(a6 + S.f38, d4);                        // $274848
     if ((d4 & 0x8000) !== 0) {                         // $27484C tst.w / bmi $274AF0
-      u?.note(0x274af0, `$82's DEATH ARM $274AF0 -- reached for the first time `
-        + `by W34's damage path. $274AF0..$274B64 is the effect/score/free `
-        + `sequence and is not ported; the enemy therefore stays alive with `
-        + `negative HP instead of dying. rec $${a5.toString(16)}`);
+      deathSeq82(ram, rom, a5, a6, ctx, dmg);          // $274850 bmi.w $274AF0
       return;
     }
     ram.setU8(a6 + S.palette, d0);                     // $274854
