@@ -1464,6 +1464,81 @@ SHOT_WINDOWS.extend([
 ])
 
 
+# ============ W103: THE F 2/F 3 WAVE'S TABLES ================================
+#
+# Same rule as W95/W96 -- every constant `src/bossf23.js` uses is read at the
+# address the instruction computes.  Eight windows, all in the boss bank.
+SHOT_WINDOWS.extend([
+    # $293506 `lea $293558(pc),A0 / adda.w (A4),A0 / movem.w (A0),D2-D3` -- MAIN
+    # script 4's waypoints.  Same shape as MAIN 7's $293694 (W94) and MAIN 2's
+    # $293482 (W95): index (A4) = ($242E24 & $7) * 4, eight pairs, $20 bytes.
+    # Far end pinned by $293578, MAIN script 5's INIT.
+    (0x293558, 0x0020, "W103: MAIN script 4's waypoint table $293558 -- EIGHT "
+                       "(Y,X) word pairs, same shape as $293694. Far end pinned "
+                       "by $293578, MAIN script 5's INIT, which $293104[5] "
+                       "publishes"),
+    # $2945BA `lea $294546(pc),A0` -- D 14's cadence BYTE table, indexed by
+    # spread (always 4).  Far end pinned by $29454E, the count table below.
+    (0x294546, 0x0008, "W103: D script 14's cadence BYTE table $294546 -- read "
+                       "at $2945BE with index $2595F2 pins at 4. Far end ABUTS "
+                       "$29454E, the count table"),
+    # $2945E8 `lea $29454E(pc),A0` -- D 14's count BYTE table.  Far end pinned
+    # by $294556, the fan table below.
+    (0x29454E, 0x0008, "W103: D script 14's count BYTE table $29454E -- read "
+                       "at $2945EC with index $2595F2 pins at 4. Far end ABUTS "
+                       "$294556, the fan table"),
+    # $294616 `lea $294556(pc),A0` -- D 14's fan WORD table (D0 = spread * 2).
+    # Far end pinned by $294566, which is DATA within D 14's own body.
+    (0x294556, 0x0010, "W103: D script 14's fan WORD table $294556 -- read at "
+                       "$29461A with index $2595F2 * 2 pins at 8. Eight word "
+                       "entries of which only [4] is reachable"),
+    # $2960EA/$2961F6 `lea $29607A(pc),A0` -- E 5/E 6's cadence BYTE table.
+    # Indexed by spread (always 4).  Far end pinned by $296082, E script 5's INIT.
+    (0x29607A, 0x0008, "W103: E scripts 5/6 cadence BYTE table $29607A -- read "
+                       "at $2960EE/$2961FA with index $2595F2 pins at 4. Far "
+                       "end pinned by $296082, E script 5's INIT"),
+    # $29636E/$296378 `lea` -- E 8's two WORD tables (count, cadence), abutting.
+    # Indexed by spread * 2 = 8.  Far end pinned by $296362, E script 8's INIT.
+    (0x296342, 0x0020, "W103: E script 8's two WORD tables $296342 (cadence) "
+                       "and $296352 (count), read at $29637C/$296372 with index "
+                       "$2595F2 * 2 pins at 8. They ABUT; far end pinned by "
+                       "$296362, E script 8's INIT"),
+    # $2966A8 `lea $29668C(pc),A0` -- E 12's count WORD table.  The muzzles at
+    # $29667C/$296680 are already covered by W95's $29667C+$10 window.
+    (0x29668C, 0x0010, "W103: E script 12's count WORD table $29668C -- read "
+                       "at $2966AC with index $2595F2 * 2 pins at 8. Far end "
+                       "pinned by $29669C, E script 12's INIT"),
+    # $296F44 `lea $296F68(pc),A0 / adda.w $20(A5),A0 / move.l (A0),D2` -- the
+    # type-$1E sprite table.  $20(A5) advances by 4 and wraps at $3F, so the
+    # reachable extent is $40 bytes (indices 0..$3C).  The window extends to
+    # $296FA8 to cover all 16 entries.
+    (0x296F68, 0x0040, "W103: the type-$1E sprite LONGWORD table $296F68 -- "
+                       "indexed by $20(A5) which wraps at $3F, so 16 entries. "
+                       "Read by handler $296DD6 at $296F4E"),
+    # $296D82: the type-$1E init STUB (`move.w #$0,$4(a5) / rts`, 8 bytes),
+    # its init+8 BODY ($296D8A, `lea $296DBC / jsr $2637A2 / ...`, 46 bytes),
+    # and the sub-record PROTOTYPE it loads ($296DBC, 26 bytes of HP/hitbox/
+    # speed/heading/palette data that `loadSubProto` copies).  The three ABUT
+    # and the far end is $296DD6, the handler the type table publishes.
+    (0x296D82, 0x0056, "W103: type $1E's init stub + body + sub-record proto "
+                       "$296D82..$296DD7. The stub's runLen (0) is read by "
+                       "initDispatch at init+2; loadSubProto reads the proto at "
+                       "$296DBC (6 longs + 1 word, the last word landing at "
+                       "$296DD6, the handler's first instruction word). The "
+                       "handler itself is $296DD6 in handlers.js"),
+    # $296EBC/$296EE6/$296F18 `lea $2736FA/$2735FA/$2734FA,A0` then
+    # `move.l (A0,D3.w),D3` with D3 = (angle & $3F) * 4 -- the THREE fan tables
+    # the type-$1E death fan reads.  Each is 64 longwords ($100 bytes).  Table A
+    # ($2736FA) is already inside $2735F0+$220, but table C ($2734FA) extends
+    # below that window.  Declared as one $300-byte window to cover all three.
+    (0x2734FA, 0x0300, "W103: the three bullet-fan lookup tables $2734FA (C) "
+                       "$2735FA (B) $2736FA (A) -- each 64 longwords indexed by "
+                       "(angle & $3F) * 4. Read by the type-$1E handler's death "
+                       "fan and by E 13. Table A was already inside $2735F0+$220; "
+                       "this window covers all three uniformly"),
+])
+
+
 def check_boss_arrival_tables(d: bytes) -> None:
     """W96: the six windows above, pinned from the image on every export."""
     PINS = (

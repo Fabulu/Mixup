@@ -99,17 +99,18 @@ test('all TWENTY-SIX of this wave\'s entry points are registered', () => {
 // **W96 took EXACTLY the arrival's eight rungs, and the LATE ARRIVAL is still
 // a loud named throw.**  The division is not a judgement -- it is the ladder's
 // own blocking census (`src/bossarrival.js` header).
-test('the LATE ARRIVAL is STILL a loud named throw', { skip: SKIP }, () => {
+test('W103 ported the LATE ARRIVAL scripts (former throws now registered)',
+  { skip: SKIP }, () => {
   const reg = new Set(scriptAddresses());
   // F 2, F 3, MAIN 4, MAIN 8, D 10/11/14/15/16/17, E 5/6/14 -- the seven rungs
-  // W96 §0.1 measured as waiting on the STEADY STATE's remainder.
+  // W96 measured as waiting on the steady state's remainder. W103 ported all
+  // of them, so they are now REGISTERED where they used to be throws.
   for (const a of [0x295304, 0x295432, 0x293506, 0x2936be, 0x2944e6, 0x29451a,
     0x294658, 0x294878, 0x2948c4, 0x29493c, 0x2960f4, 0x296200, 0x2968fe]) {
-    assert.ok(!reg.has(a),
-      `$${a.toString(16).toUpperCase()} is registered -- update the scope`);
+    assert.ok(reg.has(a),
+      `$${a.toString(16).toUpperCase()} should be registered by W103`);
   }
-  // ...and the arrival's own half IS registered, so this test cannot pass by
-  // the whole boss being unported.
+  // ...and the arrival's own half IS registered too.
   for (const a of [0x292972, 0x292b08, 0x292f4a, 0x294fa0, 0x294fa6,
     0x293204, 0x29321c, 0x2937cc, 0x293816, 0x293852, 0x293884]) {
     assert.ok(reg.has(a), `$${a.toString(16).toUpperCase()} is W96's`);

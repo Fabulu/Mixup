@@ -790,6 +790,24 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported, tables, palette) => {
   unported?.note(0x294ad6, `boss bespoke $294AD6/$294EEA/$294F0A -- W30`);
 });
 
+// --- type $1E ($296D8A): THE BOSS'S CARRIER (runLen 0).  W103.
+//
+// E 8 (`$2963A2`) spawns type $1E via `$263684`, writing the part position
+// plus a bias into +$16, a speed/facing word into +$1A, and two script
+// parameters into +$1C/+`$1E` of the deferred queue entry.  This body loads
+// the sub-record prototype (HP/hitbox from `$296DBC`), copies the position
+// and speed/facing from the record into the sub-record, and sets up the
+// lifetime/sprite-cursor fields the handler `$296DD6` reads.
+BODY.set(0x296d8a, (ram, rom, a5, a6) => {
+  loadSubProto(ram, rom, a5, a6, 0x296dbc);             // $296D8A lea / $296D90 jsr $2637A2
+  ram.setU32(a6 + S.posX, ram.u32(a5 + 0x16));          // $296D96 move.l $16(a5),$2(a6)
+  ram.setU16(a6 + S.speed, ram.u16(a5 + 0x1a));         // $296D9C move.w $1a(a5),$1a(a6)
+  ram.setU16(a5 + 0x24, ram.u16(a5 + 0x1e));            // $296DA2 move.w $1e(a5),$24(a5)
+  ram.setU16(a5 + 0x26, 0);                             // $296DA8 move.w #$0,$26(a5)
+  ram.setU16(a5 + 0x1e, 0x0101);                        // $296DAE move.w #$101,$1e(a5)
+  ram.setU16(a5 + 0x20, 0);                             // $296DB4 move.w #$0,$20(a5)
+});
+
 // ============================================================ the entry point
 /** Run the init+8 body at `addr`.  Replaces spawn.js's throwing stub.  Returns
  *  FREED if the body freed the enemy (a stage-kill gate fired); otherwise

@@ -32,6 +32,7 @@ import {
 import {
   SCHED, installScripts, runScheduler25962E, registerScript, scriptAddresses,
   a3Start259962, a3Stop2599EC, a4Start25980C, a4Running25983E, a4Clear2598A2,
+  a1Start259A18,
   a1Clear259B34, a2Run2598E6, a2Stop25994A, seqStart2598D0, suspend2595E8,
   fadeArm259B7E, fadeDone259B9E, fadeStep259BB4,
 } from '../src/scheduler.js';
@@ -198,17 +199,16 @@ test('$25962E returns C=1 the moment $812E06 is set, and runs NOTHING else',
 test('$25962E dispatches an UNREGISTERED script as a LOUD NAMED THROW',
   { skip: SKIP }, () => {
     const ram = new Ram();
-    installScripts(ram, ROM, { a3: 0x29370a });
-    // W62 used entry [0] here (D script 0, $2937B6) as its example of an
-    // unregistered script, and W96 gave D 0..3 bodies -- so this test fired.
-    // That is the assertion doing its job; the CLAIM is about the scheduler's
-    // behaviour on an unregistered address and not about which script is one.
-    // Moved to entry [10] (D script 10, $2944DE), which is the LATE ARRIVAL's
-    // and still a loud named throw; the wave that ports it will move it again.
-    a3Start259962(ram, 10);                       // entry [10] = ($2944DE,$2944E6)
+    installScripts(ram, ROM, { a1: 0x295856 });
+    // W62 used D script 0, W96 moved it to D script 10, and W103 ported ALL
+    // remaining D entries (8..19).  So the test now uses E script 2 ($295CAC),
+    // one of the four DEAD scripts W99 proved have no start site anywhere in
+    // the image.  A dead script is deliberately NEVER registered, so it is the
+    // permanent test case for "the scheduler throws on an unregistered address".
+    a1Start259A18(ram, 2);                          // E script 2 = $295CAC (DEAD)
     const c = { rom: ROM, unportedLog: new UnportedLog() };
     assert.throws(() => runScheduler25962E(ram, ROM, c),
-      (e) => e instanceof Unreached && e.romAddress === ROM.u32(0x29370a + 10 * 8));
+      (e) => e instanceof Unreached && e.romAddress === ROM.u32(0x295856 + 2 * 8));
   });
 
 test('the A3 slot protocol: INIT on the first frame, STEP on every one after',

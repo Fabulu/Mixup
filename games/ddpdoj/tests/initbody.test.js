@@ -66,9 +66,11 @@ test('the 21 stage-1 init bodies are all dispatched (no body missing)', () => {
   // deferred one stay two different numbers.
   assert.ok(INIT_BODY_ADDRESSES.includes(0x26c1ca),
     'W57: type $1C\'s body $26C1CA -- what the midboss\'s death spawns');
-  assert.equal(INIT_BODY_ADDRESSES.length, 20,
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x296d8a),
+    'W103: type $1E\'s body $296D8A -- the boss\'s carrier enemy (E 8 spawns)');
+  assert.equal(INIT_BODY_ADDRESSES.length, 21,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
-    + `$272A4A) plus W57's deferred $26C1CA`);
+    + `$272A4A) plus W57's deferred $26C1CA plus W103's boss-spawned $296D8A`);
 });
 
 test('runInitBodyAddr throws on an unknown (non-stage-1) body address', () => {

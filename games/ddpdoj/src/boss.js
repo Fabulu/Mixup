@@ -974,3 +974,9 @@ import './bossguns.js';
 // what makes `$2926E2`'s two ACTIVATIONS safe to turn on**, which they now are
 // -- see `src/initbody.js`.
 import './bossarrival.js';
+// W103 -- THE F 2/F 3 WAVE registers itself: the remaining 44 live-unported
+// boss scheduler entries (MAIN 3/4/8, F 2/3, D 8..19, E 5/6/8/12/14), plus the
+// type-$1E handler the carrier spawn reaches.  It imports `BS`,
+// `dist242494`, `bodyTail29314C` and `pickWaypoint2933DE` out of
+// `bossscripts.js`, and `bossA5`/`bossA6` back out of this file.
+import './bossf23.js';

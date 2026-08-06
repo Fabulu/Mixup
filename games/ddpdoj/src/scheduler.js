@@ -199,6 +199,32 @@ export function a3Stop2599EC(ram, d0) {
   }
 }
 
+/** `$2599B4` -- IS A3 (D-table) SCRIPT D0 RUNNING?  Returns the C flag: true
+ *  (C=1) when a slot carries it, false (C=0) when none does.  Same shape as
+ *  `$25983E` (A4 running) but for the ten A3 slots at `$812A74`.  Needed by
+ *  F 2 (`$29534E`/`$29535A`) and F 3 (`$29547C`/`$295488`) to gate the phase
+ *  advance on the limb scripts finishing. */
+export function a3Running2599B4(ram, d0) {
+  for (let i = 0; i < SCHED.a3Slots; i++) {
+    const a = SCHED.a3Base + i * SCHED.a3Stride;       // $2599B8 lea / $2599DA lea $20(a0)
+    const s = ram.u16(a);                              // $2599C0
+    if (s !== 0 && (s & 0xff) === u16(d0)) return true;  // $2599C6/$2599CA -> ori #$1,sr
+  }
+  return false;                                        // $2599E6 andi #$FFFE,sr
+}
+
+/** `$259B08` -- stop every A1 (E-table) slot carrying script D0.  Same walk
+ *  as `$2599EC` (A3 stop) but for the ten A1 slots at `$812BD8`.  Needed by
+ *  D 14's state-2 finish arm (`$294734`/`$29473C`/`$294746`) to retire the
+ *  part guns (E 5, E 6, E 14) when the rotation completes. */
+export function a1Stop259B08(ram, d0) {
+  for (let i = 0; i < SCHED.a1Slots; i++) {
+    const a = SCHED.a1Base + i * SCHED.a1Stride;       // $259B0C lea / $259B26 lea $20(a0)
+    const s = ram.u16(a);                              // $259B14
+    if (s !== 0 && (s & 0xff) === u16(d0)) ram.setU16(a, 0);  // $259B24 clr.w
+  }
+}
+
 /** `$25980C` -- START A4 SCRIPT D0 in the first empty slot.  FIVE slots, and
  *  the full-table arm at `$259832` just loads A0 with `$812DDC` and returns --
  *  a silent drop, exactly like `$259962`'s. */
