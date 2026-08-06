@@ -40,12 +40,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { run as portdiff, readTrace } from './portdiff.mjs';
+import { dumpDispatched } from '../src/scheduler.js';
 
 function args(argv) {
   const a = {
     manifest: null, from: null, to: null, segment: null, every: null,
     bg: true, break: null, json: null, quiet: false, tables: null,
-    maxSegments: null,
+    maxSegments: null, dumpDispatched: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const v = () => argv[++i];
@@ -61,6 +62,7 @@ function args(argv) {
       case '--json': a.json = v(); break;
       case '--tables': a.tables = v(); break;
       case '--quiet': a.quiet = true; break;
+      case '--dump-dispatched': a.dumpDispatched = v(); break;
       default: throw new Error(`unknown argument ${argv[i]}`);
     }
   }
@@ -299,6 +301,18 @@ function main() {
   if (a.json) {
     fs.writeFileSync(a.json, JSON.stringify({ manifest: man, results }, null, 1));
     console.log(`\nwrote ${a.json}`);
+  }
+
+  // W102: dump the set of script addresses the port dispatched across this
+  // whole sweep, for the static/dynamic coverage join (bosscoverage.py).  This
+  // is the PORT's per-frame record; it catches scripts that run between rungs
+  // that the board-observed (sampled every 250 frames) set misses.
+  if (a.dumpDispatched) {
+    const addrs = dumpDispatched();
+    fs.writeFileSync(a.dumpDispatched,
+      JSON.stringify({ dispatched: addrs }, null, 1));
+    console.log(`\nDISPATCHED  ${addrs.length} unique script address(es) the port `
+      + `ran across this sweep -> ${a.dumpDispatched}`);
   }
 
   if (a.break) {

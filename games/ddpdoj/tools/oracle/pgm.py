@@ -1153,6 +1153,31 @@ def _cmd_check(argv: list[str]) -> int:
 
     stage("port unit tests", lambda: _node("--test", TOOLS.parent / "tests"))
     stage("player tables export", lambda: sub(TOOLS / "export-tables.py", "--verify"))
+    # WAVE 102.  STATIC COVERAGE SYSTEM -- the join that makes "how much of the
+    # boss is ported" a number with a ROM-derived denominator instead of a guess
+    # measured from what threw (plan 100).  Two red conditions: (a) a ported
+    # script is no longer registered, (b) the oracle ran an entry the enumerator
+    # never listed.  Needs NO EMULATOR; reads maincpu.bin + src/ + ckpt dumps.
+    BOSSCOV = TOOLS.parent / "tools" / "bosscoverage.py"
+    MAINCPU = OUT / "maincpu.bin"
+
+    def _bosscov(*extra):
+        if not MAINCPU.exists():
+            return ("SKIP", f"{MAINCPU.name} missing -- run any oracle command once")
+        return sub(BOSSCOV, *extra)
+
+    stage("boss coverage: 111 entry points, ROM-derived denominator",
+          lambda: _bosscov())
+    stage("boss coverage RED [coverage regression]",
+          lambda: (("PASS", "went red on a dropped registration, as it must")
+                   if _bosscov("--break-coverage")[0] == "FAIL"
+                   else ("FAIL", "GREEN with a registration dropped "
+                                 "-- it is not measuring coverage")))
+    stage("boss coverage RED [inventory regression]",
+          lambda: (("PASS", "went red on an unknown dynamic entry, as it must")
+                   if _bosscov("--break-inventory")[0] == "FAIL"
+                   else ("FAIL", "GREEN with an unknown dynamic entry "
+                                 "-- it is not measuring the inventory")))
     # WAVE 13.  THE SCROLL PROGRAM, and it is here rather than under `if not
     # quick` because it needs NO EMULATOR RUN: it replays src/background.js
     # against TSVs already on disk (the wave-17 whole-stage corpus, the attract

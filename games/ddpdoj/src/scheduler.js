@@ -489,7 +489,17 @@ const SCRIPTS = new Map();
 export function registerScript(addr, fn) { SCRIPTS.set(addr & 0xffffff, fn); }
 export function scriptAddresses() { return [...SCRIPTS.keys()]; }
 
+// W102: every dispatched script address, for the static/dynamic coverage join.
+// Populated as a side effect of runScript; dump it after a sweep with
+// dumpDispatched().  This is the PORT's record of what it ran, which catches
+// scripts that execute between rungs (the board-observed set samples every 250
+// frames and misses them).  See games/ddpdoj/tools/bosscoverage.py.
+const dispatched = new Set();
+export function dumpDispatched() { return [...dispatched].sort((x, y) => x - y); }
+export function clearDispatched() { dispatched.clear(); }
+
 function runScript(ram, rom, ctx, addr, a4, d7) {
+  dispatched.add(addr & 0xffffff);
   const fn = SCRIPTS.get(addr & 0xffffff);
   if (!fn) {
     unreached(addr & 0xffffff, `boss SCRIPT at $${(addr & 0xffffff).toString(16)
