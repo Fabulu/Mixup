@@ -298,11 +298,11 @@ export const W94_EXPECTED_GREEN = {
     + 'BYTE-IDENTICAL output under the mutation rather than "did not go red"',
 };
 
-/** W96's FOUR mutations that do NOT move a `stage1-sweep` segment, each with
- *  the measured reason.  **Six of W96's ten DO move one** -- `d-init-fallthrough`
- *  and `d0-one-draw` (1 segment each), `d0-same-speed` and `d2-wrap-blt` (8
- *  each), `emit-one-axis` (1) and `obj6-no-bias` -- and all four below are
- *  driven RED in `tests/w96boss.test.js`, so the transcription is checked.
+/** W96's FIVE mutations that do NOT move a `stage1-sweep` segment, each with
+ *  the measured reason.  **Five of W96's ten DO move one** -- `d0-same-speed`
+ *  and `d2-wrap-blt` (8 segments each), `d-init-fallthrough` (1, 88 records),
+ *  `d0-one-draw` (1, 143 records) and `emit-one-axis` (1) -- and all five below
+ *  are driven RED in `tests/w96boss.test.js`, so the transcription is checked.
  *  What is declared here is only why the LADDER cannot see them.
  *
  *  **AND TWO OF THE FOUR NAME A HOLE IN THE INSTRUMENT, NOT IN THE WAVE.**
@@ -333,6 +333,16 @@ export const W96_EXPECTED_GREEN = {
     + '`sprq2` column and no bucket-7 column -- W85 section 8 note 3 already '
     + 'listed bucket 7 as one of the four that are "the same job and the same '
     + 'three-file change", and this is the first wave with a reason to do it.',
+  'obj6-no-bias': 'BUCKET 7 IS NOT TRACED, the same reason as main0-arm-obj6 '
+    + 'and the second of the two: $292F4A is the ONLY consumer of the $292F60 '
+    + 'bias and its only output is a bucket-7 record through $23E08C. [M] the '
+    + 'mutation changes no verdict, no first divergence and no bucket-2 count '
+    + 'on any of the 71 segments. It is also the mutation that most wants a '
+    + 'bucket-7 column, because [M] OBJECT 6 is the ONLY producer running at '
+    + 'all during MAIN 0 -- the whole descent, 81 frames of segment lf8,250, '
+    + 'emits nothing the ladder can compare. THE ARRIVAL IS THE PART OF THIS '
+    + 'BOSS THE INSTRUMENT IS BLIND TO, and naming that is this wave second '
+    + 'measurement about the oracle rather than about the port.',
   'main0-one-target': 'PROVABLE NO-OP, and the claim it falsifies was WITHDRAWN '
     + '(src/bossarrival.js item 5): the target is ($5400, $1C00 - $813172) and '
     + 'its only input is $813172, which src/background.js writes once a frame '

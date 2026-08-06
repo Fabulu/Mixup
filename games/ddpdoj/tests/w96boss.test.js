@@ -555,11 +555,11 @@ test('every W96 mutation name resolves and resets to null', { skip: SKIP }, () =
 
 // ================ THE FOUR DECLARED GREENS, DRIVEN RED HERE INSTEAD
 
-test('W96_EXPECTED_GREEN names exactly the four the ladder cannot see',
+test('W96_EXPECTED_GREEN names exactly the five the ladder cannot see',
   { skip: SKIP }, () => {
     assert.deepEqual(Object.keys(W96_EXPECTED_GREEN).sort(),
       ['main0-arm-obj6', 'main0-one-target', 'main0-phase1-mask',
-        'main0-speed-byte']);
+        'main0-speed-byte', 'obj6-no-bias']);
     for (const [k, why] of Object.entries(W96_EXPECTED_GREEN)) {
       assert.equal(typeof MUTATIONS[k], 'function', `${k} is a real mutation`);
       assert.ok(why.length > 120, `${k} carries its measurement, not a shrug`);
