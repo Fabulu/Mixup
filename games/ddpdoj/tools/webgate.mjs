@@ -802,7 +802,7 @@ try {
         // template that fills this same pool.  `records` 9,271, `distinct` 35
         // and `first` 24 are all unchanged BECAUSE THIS WINDOW TAPS FIRE AND
         // NEVER RAISES A BEAM, so `$289FC0` is never entered in it.  That is
-        // the W86 §2.4 shape again and it is stated rather than left implied:
+        // the W86 ï¿½2.4 shape again and it is stated rather than left implied:
         // this stage is structurally blind to what W90 shipped, and the W90
         // stage below (fire HELD) is the window that can see it.
         8: { streams: 72, records: 9271, distinct: 35, first: 24,
@@ -1442,6 +1442,143 @@ try {
           + `the two mechanisms are independent and the gate has to be able to `
           + `tell them apart`);
         if (!okMut) code = 1;
+      }
+
+      // ======================= WAVE 92 -- THE BACKGROUND THIRD, AND THE FOUR
+      // ======================= ENTRIES THAT STARTED ALL OF THIS
+      //
+      // W14 shipped `$227E58` as an ASSET and measured it at 1020 of 1024
+      // against the board.  W90 re-measured the same four.  W91 LOCATED them --
+      // `$241404`, the tail of `$24133C` itself.  Nothing had ever uploaded the
+      // block, so the page drew all 1,024 background words out of `capture.bin`.
+      //
+      // WHAT IS ASSERTED, and every number is independent of `src/`:
+      //   * `$2611C4` is replayed and takes NOTHING from the recording: D0 and
+      //     D1 are the immediates `#$0`/`#$1F` and the block is
+      //     `$261252[$813096]`, a cartridge pointer.  It writes bytes IDENTICAL
+      //     to the staging the seed carries -- 1,024 of 1,024;
+      //   * **THE STATIC THIRD AGREES WITH THE BOARD ON 1,020 OF 1,024 ON ALL
+      //     161 FRAMES, AND THE FOUR THAT DO NOT ARE EXACTLY THE FADE'S.**  [M]
+      //     those four are the only words of all 2,560 that ever move across
+      //     the recording, so this is not a comparison sitting where two
+      //     readings agree;
+      //   * **STEPPED, IT IS 1,024 OF 1,024 ON EVERY ONE OF 160 FRAMES** -- the
+      //     port advanced one `step()` per recorded frame, compared at LAG 1.
+      //     The lag is the write-then-advance order of `$241404` and is stated
+      //     rather than tuned away: the board wrote frame 0's palette with the
+      //     level the seed's `$80FA6C` has ALREADY stepped past, and recovering
+      //     it would mean inverting a divider whose reload is 1 and therefore
+      //     ambiguous.  LAG 0 and LAG 2 are printed beside it so a reader can
+      //     see the fade is a real state machine and not a constant.
+      // and the MUTATION: with the catch-up refused the background third has
+      // zero sourced words, which is the page before this wave.
+      {
+        const BG0 = 0x400, BGN = 0x400;
+        const mkG = (opts) => new Game(bundle.seed, bundle.tables, {
+          logicFrame: bundle.cap.frames[0].lf,
+          videoFrame: bundle.cap.frames[0].vf,
+          bgSeed: bundle.cap.part(0, 'bg'), ...opts,
+        });
+        // [M] read off the cartridge and the seed, not typed:
+        const EXP92 = {
+          block: 0x227e58, banks: 32, same: 1024, total: 1024,
+          staticAgree: 1020, steppedAgree: 1024, steppedFrames: 160,
+          fadeWords: 4, fadeBase: 0x400 + 0x540 / 2,
+        };
+        const g92 = mkG();
+        const bc = g92.palette.bgCatchUp;
+        const led = g92.palette.ledger();
+        // STATIC: the boot palette against every recorded frame.
+        let sWorst = Infinity, sFrame = -1, sN = 0;
+        for (let f = 0; f < bundle.cap.length; f++) {
+          const cp = bundle.cap.part(f, 'palette');
+          let ok = 0, n = 0;
+          for (let i = BG0; i < BG0 + BGN; i++) {
+            if (!g92.palette.sourced[i]) continue;
+            n++; if (g92.palette.words[i] === cp[i]) ok++;
+          }
+          sN = n;
+          if (ok < sWorst) { sWorst = ok; sFrame = f; }
+        }
+        const okStatic = bc && bc.block === EXP92.block
+          && bc.banks === EXP92.banks && bc.same === EXP92.same
+          && bc.total === EXP92.total && led.bg === BGN
+          && sN === BGN && sWorst === EXP92.staticAgree;
+        console.log(`${okStatic ? 'PASS' : 'FAIL'}: W92 THE BACKGROUND THIRD -- `
+          + `$2611C4 replayed the stage's own block $${bc.block.toString(16)
+            .toUpperCase()} (from $261252 + $${bc.stageX4.toString(16)
+            .toUpperCase()}, a CARTRIDGE pointer) into ${bc.banks} banks `
+          + `(expect ${EXP92.banks}) and wrote ${bc.same} of ${bc.total} `
+          + `bytes-as-words IDENTICAL to the staging the seed carries (expect `
+          + `${EXP92.same}/${EXP92.total}). That sources ${led.bg} of ${BGN} `
+          + `background words, and they equal the BOARD'S OWN $A00800 on `
+          + `${sWorst} of ${sN} on all ${bundle.cap.length} recorded frames `
+          + `(worst frame ${sFrame}; expect ${EXP92.staticAgree} -- the four `
+          + `that differ are $241404's, and a STATIC palette cannot have them)`);
+        if (!okStatic) code = 1;
+
+        // STEPPED, at three lags.  Only one can be right and the gate says so.
+        const lagRow = [];
+        for (const LAG of [0, 1, 2]) {
+          const g = mkG();
+          let worst = Infinity, wf = -1, n = 0, fadeOk = 0, fadeTot = 0;
+          for (let k = 0; k + LAG < bundle.cap.length; k++) {
+            if (k > 0) g.step(0);
+            const cp = bundle.cap.part(k + LAG, 'palette');
+            let ok = 0; n = 0;
+            for (let i = BG0; i < BG0 + BGN; i++) {
+              if (!g.palette.sourced[i]) continue;
+              n++; if (g.palette.words[i] === cp[i]) ok++;
+            }
+            for (let q = 0; q < EXP92.fadeWords; q++) {
+              fadeTot++;
+              if (g.palette.words[EXP92.fadeBase + q] === cp[EXP92.fadeBase + q]) fadeOk++;
+            }
+            if (ok < worst) { worst = ok; wf = k; }
+          }
+          lagRow.push({ LAG, worst, wf, n, fadeOk, fadeTot });
+        }
+        const one = lagRow[1];
+        const okStep = one.worst === EXP92.steppedAgree && one.n === BGN
+          && one.fadeOk === one.fadeTot
+          && one.fadeTot === EXP92.steppedFrames * EXP92.fadeWords
+          // ...and the OTHER two lags must NOT be perfect, or the fade is a
+          // constant and this whole stage proves nothing.
+          && lagRow[0].worst < EXP92.steppedAgree
+          && lagRow[2].worst < EXP92.steppedAgree;
+        console.log(`${okStep ? 'PASS' : 'FAIL'}: W92 THE FOUR ANIMATED ENTRIES `
+          + `-- the port stepped one frame per recorded frame, background third `
+          + `against the board: `
+          + lagRow.map((r) => `LAG ${r.LAG} ${r.worst}/${r.n} (fade `
+            + `${r.fadeOk}/${r.fadeTot})`).join(', ')
+          + `. **LAG 1 IS ${one.worst} OF ${one.n} ON EVERY ONE OF `
+          + `${EXP92.steppedFrames} FRAMES, INCLUDING ALL FOUR ANIMATED WORDS**, `
+          + `and LAG 0 and LAG 2 are not, which is what says $241404 is a real `
+          + `state machine. The one-frame lag is $241404's write-then-advance `
+          + `order: the board wrote the seed frame with the level $80FA6C has `
+          + `already stepped past, and inverting the divider to recover it `
+          + `would be inventing state`);
+        if (!okStep) code = 1;
+
+        // THE MUTATION -- the background third before this wave.
+        const gm92 = mkG({ palCatchUp: false });
+        const lm = gm92.palette.ledger();
+        const okMut92 = lm.bg === 0 && gm92.palette.bgCatchUp === null;
+        console.log(`${okMut92 ? 'PASS' : 'FAIL'}: W92 --break palCatchUp:false `
+          + `-- with the catch-up refused the port sources ${lm.bg} of ${BGN} `
+          + `background words (expect 0), which is the page before this wave: `
+          + `every background colour, and the four that pulse, one frozen `
+          + `instant of capture.bin`);
+        if (!okMut92) code = 1;
+
+        // THE LEDGER, printed rather than asserted piecemeal, because the
+        // number `39-OWNER` cares about is "how much of capture.bin is still
+        // load-bearing" and that is a per-third question.
+        console.log(`  W92 LEDGER at boot: ${led.total} of 2560 palette words `
+          + `CARTRIDGE-SOURCED -- sprites ${led.spr}/${led.of.spr}, background `
+          + `${led.bg}/${led.of.bg}, text ${led.tx}/${led.of.tx}, and `
+          + `${led.of.unwritten} words ($8F0..$9FF) that NO region of $24133C `
+          + `copies on the board either`);
       }
 
       // ================================================== WAVE 66 -- E6, THE BOMB

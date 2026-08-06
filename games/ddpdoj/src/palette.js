@@ -13,10 +13,20 @@
 // 1. THE HARDWARE, both ends, read off the listing rather than from the label
 // ============================================================================
 //
-// Palette RAM is `$A00000..$A011DF` and NOTHING writes it directly.  Everything
-// writes a STAGING COPY in main RAM and sets a DIRTY FLAG; `$24133C`, called
-// once a frame from `$23C454`, copies a dirty region wholesale and clears its
-// flag.  [M] `python tools/oracle/w27disasm.py 24133C 241404`:
+// Palette RAM is `$A00000..$A011DF` and almost nothing writes it directly.
+// Everything writes a STAGING COPY in main RAM and sets a DIRTY FLAG;
+// `$24133C`, called once a frame from `$23C454`, copies a dirty region
+// wholesale and clears its flag.  [M] `python tools/oracle/w27disasm.py 24133C
+// 241404`:
+//
+// **AND "NOTHING WRITES PALETTE RAM DIRECTLY" IS W91's, AND IT IS WRONG BY ONE
+// ROUTINE -- COMMENT ELEVEN.**  [M] W92 disassembled `$241404..$2414BC`, the
+// tail `$2413CC`'s `beq` falls into, and it is `lea $A00800,A1 / adda.w #$540,
+// A1` followed by four `move.w D0,$n(A1)`.  It writes palette RAM DIRECTLY,
+// bypassing the staging area and the dirty flag entirely, which is exactly why
+// those four words are the only ones in the whole 2,560 that move: see
+// `bgFade241404` below.  W91 located the routine correctly and described its
+// mechanism in one word too strong.
 //
 //   [M] 24133c  tst.w $80FA66 / beq $241384
 //   [M] 241346  lea $80E886,A0 / lea $A00000,A1
@@ -65,8 +75,13 @@
 // so a text bank is SIXTEEN entries, not 32 -- `$2414BE`, and `moveq #$E`
 // upstream is what pins the region at 15 of them.)
 //
-// **This module implements `$24150A` and `$24133C` and NOTHING ELSE of the
-// nine.** The table above is CHECKED against the cartridge on every export
+// **W92: this module implements `$24150A`, `$2415E8`, `$24133C` and its
+// `$241404` tail, and NOTHING ELSE of the nine.**  `$2415E8` is the whole
+// BACKGROUND third in ONE call -- [M] `$2611C4 moveq #$0,D0 / moveq #$1F,D1 /
+// jsr $2415E8`, 32 banks = 2048 bytes, from the per-stage block the cartridge
+// publishes at `$261252[$813096]` (stage 1: `$227E58`, which this bundle has
+// shipped as an ASSET since W14 and never uploaded).  The table above is
+// CHECKED against the cartridge on every export
 // (`tools/export-tables.py check_palette_upload_family`) so that it cannot rot
 // the way the project's TEN lying comments did (`docs/knowledge/02-traps.md`;
 // the standing count was seven, W90 found two and **W91 found the tenth one
@@ -145,6 +160,11 @@ export class PaletteState {
     this.copies = { spr: 0, bg: 0, tx: 0 };
     /** `catchUpObjectStream`'s own result, for the gate to assert on. */
     this.catchUp = null;
+    /** ...and `catchUpBgPalette`'s.  W92. */
+    this.bgCatchUp = null;
+    /** `bgFade241404`'s last result: whether both its gates were open, the
+     *  level it wrote with, and whether the divider borrowed.  W92. */
+    this.lastFade = null;
   }
 
   /** How many palette words currently come from the cartridge. */
@@ -152,6 +172,24 @@ export class PaletteState {
     let n = 0;
     for (let i = 0; i < this.sourced.length; i++) n += this.sourced[i];
     return n;
+  }
+
+  /** THE LEDGER, by third, because "N of 2,560" hides which third is still the
+   *  recording's and that is the number `39-OWNER` cares about.  The fourth row
+   *  is words $8F0..$9FF, which [M] NO region of $24133C copies and which are 0
+   *  on all 161 recorded frames -- they can never be sourced and saying so is
+   *  the point. */
+  ledger() {
+    const rows = { spr: 0, bg: 0, tx: 0, unwritten: 0 };
+    for (let i = 0; i < this.sourced.length; i++) {
+      if (!this.sourced[i]) continue;
+      rows[i < 0x400 ? 'spr' : i < 0x800 ? 'bg' : i < 0x8f0 ? 'tx' : 'unwritten']++;
+    }
+    return {
+      ...rows,
+      total: rows.spr + rows.bg + rows.tx + rows.unwritten,
+      of: { spr: 0x400, bg: 0x400, tx: 0xf0, unwritten: PAL_WORDS - 0x8f0 },
+    };
   }
 
   /** The sprite banks a ported install has sourced, ascending. */
@@ -215,6 +253,171 @@ export function install24150A(ram, pal, d0, src, site, why) {
 }
 
 /**
+ * `$2415E8` -- THE BACKGROUND THIRD, and the whole of it arrives in one call.
+ *
+ * [M] `$2415E8` is `$24150A`'s shape with two differences and no third:
+ * `lea $80F086,A1` instead of `$80E886`, and an OUTER `dbra D1` around the
+ * sixteen `move.l`s, so it uploads (D1+1) consecutive 64-byte banks.  Its
+ * dirty flag is `$80FA68` and `$24133C` copies its region to `$A00800`.
+ *
+ * [M] It has THREE absolute-long call sites in the whole 6 MiB image and two of
+ * them are the stage fade's endpoints (`$24639A`, `$2463D4`, D1 = $1F from the
+ * BLACK/WHITE constant banks).  The third is the one that matters:
+ *
+ *   [M] $2611B2 lea ($261252,PC),A0 / adda.w $813096,A0 / movea.l (A0),A0
+ *   [M] $2611C0 moveq #$0,D0 / moveq #$1F,D1 / $2611C4 jsr $2415E8
+ *
+ * -- inside `$261136`, the scroll VM's per-stage init, which `src/background.js`
+ * already ports and which had this as a counted note.  D1 = $1F is THIRTY-TWO
+ * banks: 1,024 words, the entire background third, out of one cartridge block
+ * chosen by the seed's own stage index.
+ *
+ * D0 IS NOT MASKED AND D1 IS NOT BOUNDED ON THE BOARD, and the port throws by
+ * address rather than clamping for `install24150A`'s reason.  `$80F086 + $800`
+ * is the TEXT staging area, so an over-long upload would scribble on it here
+ * exactly as it would there.
+ */
+export function install2415E8(ram, pal, d0, d1, src, site, why) {
+  const banks = d1 + 1;
+  if (!(d0 >= 0 && d0 < SPR_BANKS) || !(banks >= 1 && d0 + banks <= SPR_BANKS)) {
+    unreached(0x2415e8, `$2415E8 was handed D0=${d0} D1=${d1} from $${site
+      .toString(16).toUpperCase()}, which is ${banks} banks starting at bank `
+      + `${d0}. The background staging area $80F086 is ${SPR_BANKS} banks; `
+      + `past it is the TEXT staging at $80F886 and the board would scribble `
+      + `on it. The caller resolved the wrong table; clamping would hide it`);
+  }
+  if (src.length !== banks * 64) {
+    unreached(0x2415e8, `$2415E8 from $${site.toString(16).toUpperCase()} was `
+      + `handed ${src.length} source bytes for ${banks} banks and it copies `
+      + `${banks} x 16 longwords = ${banks * 64}. A short read means the ROM `
+      + `window is narrower than the block`);
+  }
+  const base = PALSTAGE.bg.stage + d0 * 64;
+  for (let i = 0; i < banks * 32; i++) {
+    ram.setU16(base + i * 2, (src[i * 2] << 8) | src[i * 2 + 1]);
+    pal.stageSourced.bg[d0 * BANK_WORDS + i] = 1;
+  }
+  ram.setU16(PALSTAGE.bg.dirty, 1);                        // $241602
+  const k = `$${site.toString(16).toUpperCase()} BG banks ${d0}..${d0 + banks - 1
+    } <- ${why}`;
+  const e = pal.installs.get(k) ?? { n: 0, bank: d0 };
+  e.n++;
+  pal.installs.set(k, e);
+  pal.installCount++;
+}
+
+/**
+ * `$246292` -- the per-entry BRIGHTNESS transform, transcribed instruction for
+ * instruction because its arithmetic is not the obvious one.
+ *
+ * D0 is an xRGB555 word and D1 is a LEVEL.  Each 5-bit channel is widened by
+ * `asl.w #$8` then `asr.w #$5` (a net times-8, through the word, with the sign
+ * extension that pairing implies), multiplied by the level, shifted back down
+ * by 8, masked to `$7FFF` and clamped to `$1F`.  [M] so level `$20` is exactly
+ * the identity -- checked on eight words in `.scratch/w92/probe2.mjs` -- and
+ * the `$18`..`$3C` the caller ping-pongs through is 0.75x to 1.875x.
+ *
+ * The `andi.w #$7FFF` between the shift and the clamp does nothing for any
+ * value this game reaches (the largest product is 31*8*60 = 14,880) and is
+ * transcribed anyway: a reader who drops it has changed the routine.
+ */
+export function fade246292(d0, d1) {
+  const i16 = (v) => (v << 16) >> 16;
+  const chans = [(d0 & 0x7c00) >>> 10, (d0 & 0x03e0) >>> 5, d0 & 0x1f];
+  const out = chans.map((v) => {
+    let x = i16((v << 8) & 0xffff) >> 5;         // $2462B2 asl.w #8 / asr.w #5
+    x = i16((x * i16(d1)) & 0xffff) >> 8;        // $2462BE muls.w D7 / asr.w #8
+    x &= 0x7fff;                                 // $2462CA andi.w #$7FFF
+    if (x > 0x1f) x = 0x1f;                      // $2462D6 cmpi/ble/move #$1F
+    return x;
+  });
+  return ((out[0] << 10) & 0x7c00) | ((out[1] << 5) & 0x03e0) | (out[2] & 0x1f);
+}
+
+/** Where `$241422 adda.w #$540,A1` lands: `$540/2` = 672 words into the
+ *  background region = bank 21, pens 0..3.  Named rather than spelled `0x2a0`
+ *  in four places, because `$540` is the number in the instruction and 672 is
+ *  the number a reader has to re-derive. */
+export const FADE_OFFSET_BYTES = 0x540;
+export const FADE_WORDS = 4;
+
+/**
+ * `$241404..$2414BC` -- **THE FOUR ANIMATED ENTRIES**, and they are the thread
+ * the owner's grey bomb was pulled out of: W14 measured four background words
+ * that disagree with the shipped block, W90 re-measured them, W91 located the
+ * routine, and this is it.
+ *
+ * IT IS THE TAIL OF `$24133C` ITSELF.  `$2413CC tst.w $80FA6A / beq $241404`
+ * falls here whether or not the TEXT region was dirty, and `$241400 jsr
+ * $24132A(pc)` falls here too, so it runs EVERY frame -- there is no dirty flag
+ * and there is no staging copy.  Both gates are its own:
+ *
+ *   [M] $241404 cmpi.w #$0,$813092 / bne $2414BC   -- only while unfrozen
+ *   [M] $241410 cmpi.w #$130,$8130CE / bge $2414BC -- only for the first $130
+ *
+ * **AND IT WRITES PALETTE RAM DIRECTLY** (`lea $A00800,A1 / adda.w #$540,A1`),
+ * reading its four sources back out of the STAGING area at the same offset.  So
+ * the staging keeps the block's own colour and palette RAM shows the faded one,
+ * which is precisely why `$227E58` agrees with the board on 1020 of 1024 and
+ * has since W14 -- [M] the four that disagree are bank 21 pens 0..3 and they
+ * are the ONLY four words of all 2,560 that ever move across the 161 recorded
+ * frames (`.scratch/w92/probe.mjs`).
+ *
+ * THE ORDER IS WRITE-THEN-ADVANCE and getting it backwards costs one frame of
+ * phase.  [M] the seed carries `$80FA6C` = `$1E`, and the recording's frame 0
+ * is `fade(base, $1F)` -- the level BEFORE that frame's advance.  The board
+ * wrote palette RAM with `$1F` and then stepped to `$1E`, so a port that
+ * advances first is a frame early on every one of the 161.
+ *
+ * The four stores are `$6,$4,$2,(A1)` in that order.  Transcribed in that order
+ * even though the routine is memoryless per entry, because the next reader
+ * should see the listing.
+ */
+export function bgFade241404(ram, pal) {
+  const res = { ran: false, level: ram.u16(0x80fa6c), wrote: 0 };
+  if (ram.u16(0x813092) !== 0) return res;                 // $241404 / $24140C
+  const i16 = (v) => (v << 16) >> 16;
+  if (i16(ram.u16(0x8130ce)) >= 0x130) return res;         // $241410 / $241418
+  const level = ram.u16(0x80fa6c);                         // $241430
+  const stage = PALSTAGE.bg.stage + FADE_OFFSET_BYTES;     // $241426 / $24142C
+  const dst = PALSTAGE.bg.dst + FADE_OFFSET_BYTES / 2;     // $24141C / $241422
+  const bgSrcWord = FADE_OFFSET_BYTES / 2;                 // into stageSourced.bg
+  for (const k of [3, 2, 1, 0]) {                          // $241436..$241468
+    pal.words[dst + k] = fade246292(ram.u16(stage + k * 2), level);
+    // PROVENANCE SURVIVES THE TRANSFORM.  A faded word is cartridge-sourced
+    // exactly when the word it was computed FROM is; if nothing has uploaded
+    // the background block, these four stay the recording's like the other
+    // 1,020 and `mergePalette` leaves them alone.
+    pal.sourced[dst + k] = pal.stageSourced.bg[bgSrcWord + k];
+    res.wrote++;
+  }
+  res.ran = true;
+  // $24146A subq.b #$1,$80FA70 / bcc $2414BC -- a frame divider, reloaded from
+  // $80FA71.  W91 named the level and the step and not this pair; [M] the seed
+  // carries $01/$01, so it advances every frame, and a port that dropped the
+  // divider would be right on this seed and wrong on any other.
+  const ctr = (ram.u8(0x80fa70) - 1) & 0xff;
+  ram.setU8(0x80fa70, ctr);
+  if (ctr !== 0xff) return res;                            // bcc: no borrow
+  ram.setU8(0x80fa70, ram.u8(0x80fa71));                   // $241474
+  const step = i16(ram.u16(0x80fa6e));                     // $24147E
+  const next = (level + step) & 0xffff;
+  ram.setU16(0x80fa6c, next);                              // $241488 / $2414A4
+  // $241484 bpl: the SIGN OF THE STEP picks which bound is tested, and the two
+  // arms are not symmetric -- `bge $18` on the way down, `blt $3C` on the way
+  // up.  Both are "still inside, do nothing"; the else is `neg.w $80FA6E`.
+  if (step < 0) {
+    if (i16(next) < 0x18) ram.setU16(0x80fa6e, u16neg(step));   // $24148E/$24149A
+  } else if (i16(next) >= 0x3c) {
+    ram.setU16(0x80fa6e, u16neg(step));                         // $2414AA/$2414B6
+  }
+  res.advanced = true;
+  return res;
+}
+
+const u16neg = (v) => (-v) & 0xffff;
+
+/**
  * `$24133C` -- the once-a-frame upload, called from `$23C454`.
  *
  * THE GATE AT THE CALL SITE IS NOT MODELLED AND THAT IS DELIBERATE.  `$23C44C
@@ -240,6 +443,17 @@ export function flush24133C(ram, pal) {
     did[key] = true;
     pal.copies[key]++;
   }
+  // $2413CC's `beq` and $241400's `jsr $24132A(pc)` BOTH fall into $241404, so
+  // the fade runs whether or not any region was dirty.  It is inside this
+  // function rather than beside it because it is inside $24133C in the ROM:
+  // there is no second call site and no second caller.
+  //
+  // ITS RESULT GOES ON `pal`, NOT INTO `did`, and that is deliberate: `did`
+  // means "which of the three REGION COPIES ran" and W91's tests assert its
+  // exact shape.  The fade is not a region copy -- it writes four words of
+  // palette RAM directly -- so widening `did` would have made two of those
+  // tests fail for a reason that has nothing to do with what they check.
+  pal.lastFade = bgFade241404(ram, pal);                   // $241404
   pal.flushes++;
   return did;
 }
@@ -347,6 +561,70 @@ export function catchUpObjectStream(ram, rom, pal, opts = {}) {
   }
   res.banks.sort((a, b) => a - b);
   return (pal.catchUp = res);
+}
+
+/** The per-stage BACKGROUND palette table, and the one call that reads it.
+ *  `$2611B2 lea ($261252,PC),A0` -- the same shape as every other per-stage
+ *  table in `src/background.js` BGTAB, indexed by `$813096`. */
+export const BGPAL_TABLE = 0x261252;
+
+/**
+ * THE BACKGROUND CATCH-UP -- the middle third, and it needs no cursor.
+ *
+ * `$2611C4` is one call inside the scroll VM's per-stage init `$261136`, which
+ * ran on the board before the seed instant and will never run here.  Unlike the
+ * object stream it takes NOTHING from the recording at all: D0 and D1 are the
+ * immediates `#$0` and `#$1F`, and the source block is `$261252[$813096]` --
+ * a cartridge pointer indexed by a stage number the port already reads for the
+ * column stream, the element table and the tile base.  So this is a strictly
+ * weaker bargain than `catchUpObjectStream`'s (which takes one integer) and
+ * very much weaker than `bgSeed`'s (which takes 63 columns of board pixels).
+ *
+ * WHY REPLAYING IT IS SOUND AND NOT AN ASSUMPTION.  [M] on the shipped seed the
+ * 1,024 words this writes are IDENTICAL to the background staging area
+ * `$80F086` the seed already carries -- 1,024 of 1,024 -- so the board reached
+ * the same state by running this same routine over this same block, and nothing
+ * between `$261136` and the seed instant overwrote any of it.  That equality is
+ * the model's proof exactly as it is for the sprite third, with the same
+ * limitation, stated in `92-impl` §4.2.
+ *
+ * WHAT IT DOES **NOT** SOURCE: the four words `$241404` animates.  The staging
+ * gets the block's own colour and `bgFade241404` computes palette RAM from it,
+ * so those four are sourced through the transform rather than by the copy.
+ */
+export function catchUpBgPalette(ram, rom, pal, opts = {}) {
+  const STAGE_X4 = 0x813096;                        // $2611B8 adda.w $813096,A0
+  const stageX4 = ram.u16(STAGE_X4);
+  const res = { stageX4, block: 0, banks: 0, same: 0, total: 0 };
+  const block = rom.u32(BGPAL_TABLE + stageX4);     // $2611BE movea.l (A0),A0
+  res.block = block;
+  const banks = 0x1f + 1;                           // $2611C2 moveq #$1F,D1
+  let src;
+  try {
+    src = rom.bytes(block, banks * 64);
+  } catch (e) {
+    // NAMED, never silent, and never fatal: the background third simply stays
+    // the recording's and the page prints that it did.
+    res.skipped = true;
+    opts.note?.(0x2611c4, `the stage's background palette block $${block
+      .toString(16).toUpperCase()} (from $261252 + $${stageX4.toString(16)
+      .toUpperCase()}) is outside every ROM window: ${e.message.slice(0, 120)}. `
+      + `All 1,024 background words stay the recording's`);
+    return (pal.bgCatchUp = res);
+  }
+  // The equality check against the staging the seed carries, BEFORE the write
+  // and never a gate on it -- a seed from another instant may disagree.
+  for (let i = 0; i < banks * 32; i++) {
+    res.total++;
+    if (ram.u16(PALSTAGE.bg.stage + i * 2) === ((src[i * 2] << 8) | src[i * 2 + 1])) {
+      res.same++;
+    }
+  }
+  install2415E8(ram, pal, 0, 0x1f, src, 0x2611c4,
+    `$${block.toString(16).toUpperCase()} (the stage's own block, $261252[`
+    + `$${stageX4.toString(16).toUpperCase()}])`);
+  res.banks = banks;
+  return (pal.bgCatchUp = res);
 }
 
 /**

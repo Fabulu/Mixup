@@ -1217,6 +1217,24 @@ SHOT_WINDOWS.extend([
                        "sites). 64 zero bytes each; they ABUT"),
 ])
 
+# ============ W92: THE BACKGROUND THIRD'S OWN BLOCK, ONE WINDOW ==============
+#
+# `$2611C4 moveq #$0,D0 / moveq #$1F,D1 / jsr $2415E8` uploads THIRTY-TWO banks
+# -- the entire middle third of palette RAM, 2,048 bytes -- from the per-stage
+# block at `$261252[$813096]`.  Stage 1's is `$227E58`, which this bundle has
+# shipped as a RENDER ASSET since W14 and which nothing has ever UPLOADED: the
+# page drew the background palette out of `capture.bin` instead.
+#
+# [M] the extent is exactly 2,048 and both ends are pinned by neighbours, not
+# rounded: the W15 column-stream window ends AT $227E58 ($225B78 + $22E0) and
+# stage 2's own block begins at $228658 = $227E58 + $800.
+SHOT_WINDOWS.append(
+    (0x227E58, 0x0800, "W92: the stage-1 BACKGROUND palette block, 32 banks x "
+                       "64 bytes. $2611C4 uploads all of it through $2415E8; "
+                       "src/palette.js catchUpBgPalette replays that one call. "
+                       "The per-stage table $261252 is what chooses it"),
+)
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
@@ -2706,6 +2724,147 @@ def check_palette_upload_family(d: bytes) -> None:
                 f"32-bank sprite staging area and into the BACKGROUND's.")
 
 
+# ============ W92: THE BACKGROUND THIRD AND ITS FOUR ANIMATED ENTRIES ========
+#
+# The four background words W14 measured as disagreeing with `$227E58`, W90
+# re-measured and W91 finally LOCATED, are `$241404` -- the tail of `$24133C`
+# itself.  This checks the three things `src/palette.js` transcribes from it and
+# the one call site that fills the third the fade runs on top of.
+BGPAL_TABLE = 0x261252            # $2611B2 lea ($261252,PC),A0
+BGPAL_SITE = 0x2611C4             # jsr $2415E8.l
+BGPAL_STAGE1 = 0x227E58           # [M] $261252[0]
+FADE_OFFSET = 0x540               # $241422 adda.w #$540,A1  -> bank 21 pen 0
+FADE_LO, FADE_HI = 0x18, 0x3C     # $24148E / $2414AA, the two bounds
+
+
+def check_bg_palette_and_fade(d: bytes) -> None:
+    """W92.  `$2611B2..$2611C4` (the whole middle third in one call) and
+    `$241404..$2414BC` (the only routine on this board that writes palette RAM
+    without going through a staging area)."""
+    # ---- the window, derived from the declaration rather than typed twice.
+    decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == BGPAL_STAGE1]
+    if decl != [(BGPAL_STAGE1, 0x800)]:
+        raise SystemExit(
+            f"the W92 background-palette window is declared {decl} and must be "
+            f"(${BGPAL_STAGE1:06X}, $800) -- `moveq #$1F,D1` at $2611C2 is "
+            f"THIRTY-TWO banks of 64 bytes and src/palette.js reads exactly "
+            f"that many. A short window and catchUpBgPalette skips the third.")
+    # ---- $2611B2: the per-stage table, then D0/D1, then the jsr.
+    if u16(d, 0x2611B2) != 0x41FA or 0x2611B4 + u16(d, 0x2611B4) != BGPAL_TABLE:
+        raise SystemExit(
+            f"$2611B2 is not `lea (${BGPAL_TABLE:06X},PC),A0` -- the per-stage "
+            f"BACKGROUND palette table moved. src/palette.js BGPAL_TABLE and "
+            f"src/background.js BGTAB.palette are both written under it.")
+    if u16(d, 0x2611B8) != 0xD0F9 or u32(d, 0x2611BA) != 0x813096:
+        raise SystemExit(
+            "$2611B8 is not `adda.w $813096.l,A0` -- the background palette is "
+            "no longer chosen by the stage index, so replaying it at boot "
+            "would install some other stage's colours.")
+    if u16(d, 0x2611BE) != 0x2050:
+        raise SystemExit("$2611BE is not `movea.l (A0),A0`; the table holds "
+                         "POINTERS to blocks, not the blocks.")
+    if u16(d, 0x2611C0) != 0x7000 or u16(d, 0x2611C2) != 0x721F:
+        raise SystemExit(
+            f"$2611C0/$2611C2 are ${u16(d, 0x2611C0):04X}/"
+            f"${u16(d, 0x2611C2):04X}, not `moveq #$0,D0 / moveq #$1F,D1`. "
+            f"**D1 IS HOW MANY BANKS MINUS ONE**: $1F is all 32 = the whole "
+            f"1,024-word background third, and src/palette.js asks $2415E8 for "
+            f"exactly that many bytes or throws.")
+    if u16(d, BGPAL_SITE) != 0x4EB9 or u32(d, BGPAL_SITE + 2) != 0x2415E8:
+        raise SystemExit(
+            f"${BGPAL_SITE:06X} is not `jsr $2415E8.l` -- it is the ONLY call "
+            f"site of the counted BACKGROUND upload that is not a stage fade, "
+            f"and src/background.js calls install2415E8 from there.")
+    if u32(d, BGPAL_TABLE) != BGPAL_STAGE1:
+        raise SystemExit(
+            f"${BGPAL_TABLE:06X}[0] is ${u32(d, BGPAL_TABLE):06X}, not "
+            f"${BGPAL_STAGE1:06X} -- stage 1's background palette block is not "
+            f"the one W14 shipped and the W92 window is declared for.")
+    # ---- $241404: the two gates, the two `lea`s, and the FOUR stores.
+    if u16(d, 0x241404) != 0x0C79 or u16(d, 0x241406) != 0 \
+            or u32(d, 0x241408) != 0x813092:
+        raise SystemExit("$241404 is not `cmpi.w #$0,$813092.l` -- the freeze "
+                         "gate on the background fade moved.")
+    if u16(d, 0x241410) != 0x0C79 or u16(d, 0x241412) != 0x130 \
+            or u32(d, 0x241414) != 0x8130CE:
+        raise SystemExit("$241410 is not `cmpi.w #$130,$8130CE.l` -- the fade "
+                         "runs for a BOUNDED stretch of the stage and that is "
+                         "the bound src/palette.js bgFade241404 tests.")
+    if u16(d, 0x24141C) != 0x43F9 or u32(d, 0x24141E) != 0xA00800:
+        raise SystemExit(
+            "$24141C is not `lea $A00800.l,A1`. **THIS ROUTINE WRITES PALETTE "
+            "RAM DIRECTLY**, which is the one exception to the staging-area "
+            "rule W91's header stated without one; if it targeted $80F086 it "
+            "would be a fifth upload and not a fade.")
+    if u16(d, 0x241422) != 0xD2FC or u16(d, 0x241424) != FADE_OFFSET:
+        raise SystemExit(
+            f"$241422 is not `adda.w #${FADE_OFFSET:X},A1`. **THAT OFFSET IS "
+            f"WHICH FOUR ENTRIES ANIMATE**: ${FADE_OFFSET:X}/2 = "
+            f"{FADE_OFFSET // 2} words into the background region = bank "
+            f"{FADE_OFFSET // 64} pens 0..3, which is where W14 measured 1020 "
+            f"of 1024 and never found the other four.")
+    if u16(d, 0x241426) != 0x41F9 or u32(d, 0x241428) != 0x80F086 \
+            or u16(d, 0x24142C) != 0xD0FC or u16(d, 0x24142E) != FADE_OFFSET:
+        raise SystemExit(
+            "$241426/$24142C are not `lea $80F086.l,A0 / adda.w "
+            f"#${FADE_OFFSET:X},A0` -- the fade reads its SOURCE back out of "
+            "the staging area at the same offset it writes, which is why the "
+            "block keeps agreeing with the board on the other 1,020.")
+    if u16(d, 0x241430) != 0x3239 or u32(d, 0x241432) != 0x80FA6C:
+        raise SystemExit("$241430 is not `move.w $80FA6C.l,D1` -- the LEVEL "
+                         "src/palette.js reads before writing, not after.")
+    for i, off in enumerate((6, 4, 2, 0)):
+        p = 0x241436 + i * 14
+        rd = 0x3028 if off else 0x3010          # move.w $n(A0),D0 / move.w (A0),D0
+        if u16(d, p) != rd or (off and u16(d, p + 2) != off):
+            raise SystemExit(
+                f"${p:06X} is not the read of entry +${off:X} -- $241404 "
+                f"transforms FOUR entries in the order +$6,+$4,+$2,(A0) and "
+                f"src/palette.js walks them in that order.")
+        q = p + (4 if off else 2)
+        if u16(d, q) != 0x4EB9 or u32(d, q + 2) != 0x246292:
+            raise SystemExit(
+                f"${q:06X} is not `jsr $246292.l` -- entry +${off:X} of the "
+                f"fade no longer goes through the transform src/palette.js "
+                f"fade246292 transcribes.")
+    # ---- $246292: level $20 is the identity, and that is the whole claim.
+    if u16(d, 0x2462AC) != 0x700A or u16(d, 0x2462AE) != 0xE06A \
+            or u16(d, 0x2462B0) != 0xEA4B:
+        raise SystemExit("$2462AC..$2462B0 are not `moveq #$A,D0 / lsr.w D0,D2 "
+                         "/ lsr.w #$5,D3` -- $246292 no longer unpacks xRGB555 "
+                         "and fade246292's channel split is wrong.")
+    for p, op, what in ((0x2462B2, 0xE142, "asl.w #$8,D2"),
+                        (0x2462B8, 0xEA42, "asr.w #$5,D2"),
+                        (0x2462BE, 0xC5C7, "muls.w D7,D2"),
+                        (0x2462C4, 0xE042, "asr.w #$8,D2"),
+                        (0x2462CA, 0x0242, "andi.w #$7FFF,D2")):
+        if u16(d, p) != op:
+            raise SystemExit(
+                f"${p:06X} is ${u16(d, p):04X}, not `{what}` "
+                f"(${op:04X}). **THAT SEQUENCE IS WHY LEVEL $20 IS THE "
+                f"IDENTITY** -- x8, times the level, /256 -- and it is the one "
+                f"property fade246292 is checked on.")
+    for p, imm, what in ((0x24148E, FADE_LO, "the DOWN bound"),
+                         (0x2414AA, FADE_HI, "the UP bound")):
+        if u16(d, p) != 0x0C79 or u16(d, p + 2) != imm \
+                or u32(d, p + 4) != 0x80FA6C:
+            raise SystemExit(
+                f"${p:06X} is not `cmpi.w #${imm:X},$80FA6C.l` -- {what} of "
+                f"the fade's ping-pong. The two arms are NOT symmetric (bge on "
+                f"the way down, blt on the way up) and src/palette.js writes "
+                f"them separately for that reason.")
+    if u16(d, 0x24146A) != 0x5339 or u32(d, 0x24146C) != 0x80FA70:
+        raise SystemExit(
+            "$24146A is not `subq.b #$1,$80FA70.l` -- the FRAME DIVIDER. W91 "
+            "named the level and the step and not this pair; a port without it "
+            "advances every frame, which is right on the shipped seed "
+            "($80FA71 = 1) and wrong on any other.")
+    if u16(d, 0x241474) != 0x13F9 or u32(d, 0x241476) != 0x80FA71 \
+            or u32(d, 0x24147A) != 0x80FA70:
+        raise SystemExit("$241474 is not `move.b $80FA71.l,$80FA70.l` -- the "
+                         "divider's reload.")
+
+
 def build(d: bytes) -> dict:
     check_pool_e_extents(d)                    # W53 -- see the function's docstring
     check_pool_b_extents(d)                    # W54 -- see the function's docstring
@@ -2718,6 +2877,7 @@ def build(d: bytes) -> dict:
     check_beam_bomb_extents(d)                 # W65 -- THE LASER BOMB's
     check_beam_impact_extents(d)               # W90 -- THE LASER's IMPACT
     check_palette_upload_family(d)             # W91 -- THE SPRITE PALETTE
+    check_bg_palette_and_fade(d)               # W92 -- THE BACKGROUND THIRD
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
     levels = speed_index_set(d)

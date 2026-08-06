@@ -83,12 +83,37 @@
 //     `$260852`/`$26085C` the moment a bomb is dropped**.  [M] the 18 agree
 //     with the board's own palette RAM on **576 of 576** entries.
 //
-//     **THE OTHER THIRTEEN BANKS ARE STILL THE RECORDING'S AND THE PAGE SAYS
-//     SO EVERY FRAME.**  `mergePalette` starts from the capture and overwrites
-//     only what a ported install sourced, so a bank nothing has sourced stays
-//     visibly on the recording instead of silently becoming zeroes; the status
-//     line prints `pal N/2560 cart banks ...` and the ones not in that list
-//     are named in `91-impl` §5 with the call site each needs.
+//     **WAVE 92 TOOK THE BACKGROUND THIRD AND THE FOUR ENTRIES THIS WHOLE
+//     PARAGRAPH HAS BEEN ABOUT SINCE W14.**  The block above was shipped and
+//     never uploaded; [M] `$2611C4 moveq #$0,D0 / moveq #$1F,D1 / jsr $2415E8`
+//     inside the scroll VM's per-stage init uploads all 32 banks of it, and
+//     `catchUpBgPalette` replays that one call.  It takes NOTHING from the
+//     recording: both counts are immediates and the block is
+//     `$261252[$813096]`.  [M] the 1,024 words it writes are identical to the
+//     staging the seed carries and equal the board's own `$A00800` on **1,020
+//     of 1,024 statically -- and on 1,024 of 1,024, all four animated entries
+//     included, once the port is stepped** (`92-impl` §4.2).
+//
+//     **AND THE FOUR ARE `$241404`, THE TAIL OF `$24133C` ITSELF** -- the one
+//     routine on this board that writes palette RAM without a staging area.  It
+//     reads `$80F086+$540`, scales each channel through `$246292` by a level
+//     that ping-pongs between `$18` and `$3C`, and writes `$A00800+$540`.  That
+//     is why the block kept agreeing on 1,020 and why nobody found the rest.
+//
+//     [M] SO THE LEDGER AT BOOT IS **1,600 of 2,560 palette words CARTRIDGE-
+//     SOURCED: sprites 576/1,024, background 1,024/1,024, text 0/240**, and the
+//     page prints it by third every frame.  W92 also threaded a `PaletteState`
+//     down to the enemy init bodies, so the MIDBOSS, the BOSS and types
+//     $24/$31 install their own eleven banks live: [M] 1,760 of 2,560 and 23 of
+//     32 sprite banks after 6,500 steps of stage-1 flight.
+//
+//     **WHAT IS STILL THE RECORDING'S: the TEXT strip (240 words) and nine
+//     sprite banks (0..9 less 6), AND THE PAGE SAYS SO EVERY FRAME.**
+//     `mergePalette` starts from the capture and overwrites only what a ported
+//     install sourced, so a bank nothing has sourced stays visibly on the
+//     recording instead of silently becoming zeroes; the status line prints
+//     `pal N/2560 cart [spr .. bg .. tx ..] banks ...` and what is missing is
+//     named in `92-impl` §5 with the call site each piece needs.
 //
 //     A SHARD THAT HAS NOT LANDED IS NAMED, NEVER BLACK.  Tiles whose shard is
 //     still in flight are drawn as the transparent pen and the shard number
@@ -935,6 +960,13 @@ class Demo {
       palTotal: this.paletteTotal ?? 0,
       palBanks: g.palette?.sourcedBanks() ?? [],
       palInstalls: g.palette?.installCount ?? 0,
+      // WAVE 92 -- BY THIRD, because "N of 2,560" is the number that misled a
+      // reader for 76 waves.  `capture.bin` going away is the formal definition
+      // of stage 1 being done (`39-OWNER`), and which THIRD is still on it is
+      // the question that answers.  [M] the last 272 words ($8F0..$9FF) are
+      // never written by any of `$24133C`'s three copies on the board either,
+      // so they can never be sourced and the page says which they are.
+      palLedger: g.palette?.ledger() ?? null,
     };
   }
 

@@ -48,7 +48,7 @@
 // build-B one; this is that rule with a number attached.
 
 import { unreached } from './unported.js';
-import { install24150A } from './palette.js';
+import { install24150A, install2415E8 } from './palette.js';
 
 // ---------------------------------------------------------------- addresses
 /** The background OBJECT RECORD, A5-relative.  Every offset is cited at the
@@ -1008,9 +1008,22 @@ export function backgroundInit(ram, rom, vram, ctx, a5, mut) {
   camBgAccumulate(ram, d0, 0x800);                         // $2611A2 D1=$800
   ram.setU16(a5 + BGO.accTick, 0);                         // $2611AC
   const stage = ram.u16(BGRAM.stageX4);
-  ctx.unportedLog.note(0x2415e8, `$2415E8 BG palette upload (block $`
-    + `${rom.u32(BGTAB.palette + stage).toString(16).toUpperCase()}, D0=0 `
-    + `D1=$1F) -- W15`);                                   // $2611C4
+  // W92: THE BACKGROUND PALETTE, and it was a counted note from W15 to W91.
+  // `$2611B2 lea ($261252,PC),A0 / adda.w $813096,A0 / movea.l (A0),A0 /
+  // moveq #$0,D0 / moveq #$1F,D1 / jsr $2415E8` -- thirty-two banks, the whole
+  // middle third of palette RAM, out of one per-stage cartridge block.  This is
+  // the LIVE site; `Game` also replays it at boot through `catchUpBgPalette`,
+  // because on a mid-stage seed this init has already happened on the board.
+  const bgBlock = rom.u32(BGTAB.palette + stage);
+  if (ctx.palette) {
+    install2415E8(ram, ctx.palette, 0, 0x1f, rom.bytes(bgBlock, 32 * 64),
+      0x2611c4, `$${bgBlock.toString(16).toUpperCase()} ($261252[$${stage
+        .toString(16).toUpperCase()}])`);                   // $2611C4
+  } else {
+    ctx.unportedLog.note(0x2415e8, `$2415E8 BG palette upload (block $`
+      + `${bgBlock.toString(16).toUpperCase()}, D0=0 D1=$1F) -- no PaletteState `
+      + `on this ctx, so the background third stays whatever it was`);
+  }
   ram.bclr8(a5 + BGO.init2, 0);                            // $2611CA
   // colptr = stream + (clock >> 2) * 36   ($2611E0..$2611F2)
   let colptr = u32(rom.u32(BGTAB.colStream + stage)

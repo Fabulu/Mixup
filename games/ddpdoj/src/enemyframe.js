@@ -102,8 +102,13 @@ export function runEnemyFrame(ram, rom, ctx, handlers) {
   // W33: `ctx.spawnEvent` counts the two SILENT drop arms (band full, and the
   // sub-record pool refusing the run).  Optional, so the gates that call this
   // without one are unchanged.
+  // W92: `ctx.palette` reaches the walker because FOUR init bodies install
+  // colour banks through `$24150A` -- type $24, type $31, the MIDBOSS and the
+  // BOSS, eleven sites between them, every one a counted note from W23 to W91.
+  // Appended like `tables` and `spawnEvent`; a caller that omits it gets those
+  // notes back.
   const { script, deferred } = runSpawnWalker(ram, rom, u, ctx.tables,
-    ctx.spawnEvent);                                           // $2634F6
+    ctx.spawnEvent, ctx.palette);                              // $2634F6
   const driven = runEnemyDriver(ram, handlers, hctx(ctx));    // $2634FA
   return { script, deferred, driven };
 }

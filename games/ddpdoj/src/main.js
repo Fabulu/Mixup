@@ -45,7 +45,9 @@ import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
 import { makeBackground, BgVram, VideoRegs } from './background.js';
 import { makeStageClear } from './stageend.js';
 import { makeHudObject } from './hud.js';
-import { PaletteState, flush24133C, catchUpObjectStream } from './palette.js';
+import {
+  PaletteState, flush24133C, catchUpObjectStream, catchUpBgPalette,
+} from './palette.js';
 
 /** THE BUCKETS `pgm.py shipgate` SUBSTITUTES, in drain (= depth) order.
  *
@@ -214,9 +216,24 @@ export class Game {
     if (opts.palCatchUp !== false) {
       catchUpObjectStream(this.ram, this.rom, this.palette,
         { note: (a, w) => this.unportedLog.note(a, w) });
+      // WAVE 92 -- THE BACKGROUND THIRD, and it is one call with no cursor in
+      // it: `$2611C4 moveq #$0,D0 / moveq #$1F,D1 / jsr $2415E8` inside the
+      // scroll VM's per-stage init, 32 banks from the cartridge block
+      // `$261252[$813096]`.  That init ran before the seed and will never run
+      // here, so it is replayed for the same reason the object stream is --
+      // and this one takes NOTHING from the recording, not even an integer.
+      catchUpBgPalette(this.ram, this.rom, this.palette,
+        { note: (a, w) => this.unportedLog.note(a, w) });
       // The first flush, so the port has a palette before frame 1 rather than
       // one frame late.  $23C454 runs it once per loop iteration and the board
       // had run it thousands of times before the seed was taken.
+      //
+      // W92: THIS ALSO RUNS `$241404` ONCE, which is a frame of the background
+      // fade the board had already run -- so the port's four animated words are
+      // one step ahead of the recording's frame 0 and level with its frame 1.
+      // That is stated rather than corrected: correcting it would mean winding
+      // `$80FA6C` backwards by a step the seed does not carry, which is
+      // inventing state to make a number look better.  `92-impl` §4.3.
       flush24133C(this.ram, this.palette);
     }
   }

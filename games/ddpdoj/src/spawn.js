@@ -186,7 +186,7 @@ export function resolveMovementPtr(ram, rom, recCursor, unported) {
  *
  * Returns `{init, initBody, runLen}` so a caller (or test) can name the body.
  */
-export function initDispatch(ram, rom, rec, unported, bodyFn, tables) {
+export function initDispatch(ram, rom, rec, unported, bodyFn, tables, palette) {
   const type = ram.u8(rec + E.typeByte);            // $2635f8 move.b ($c,A5),D7
   const lo = type < 0x80;                           // $263602 cmpi.w #$80,D7 / blt
   const tab = lo ? SPAWN.TYPE_LO : SPAWN.TYPE_HI;   // $2635fc / $263608 lea
@@ -218,7 +218,8 @@ export function initDispatch(ram, rom, rec, unported, bodyFn, tables) {
   // state the mechanism wrote BEFORE the body runs (which is everything the +8
   // rule is).  The body takes `rom` because the prototype loaders + the
   // sprite/bucket/palette table lookups read ROM the way the 68000 does.
-  const freed = (bodyFn ?? runInitBody)(initBody, ram, rom, rec, unported, tables);
+  const freed = (bodyFn ?? runInitBody)(initBody, ram, rom, rec, unported,
+    tables, palette);
   // If a stage-kill gate inside the body freed the enemy (`jmp $263762`), the
   // type word is already clear and the slot will be skipped by the driver; the
   // scroll-locked fixup below is a position op on a dead record, so skip it.
@@ -241,9 +242,9 @@ export function initDispatch(ram, rom, rec, unported, bodyFn, tables) {
  * it returns undefined (not freed).  Any non-stage-1 address is a LOUD NAMED
  * THROW (never a silence).
  */
-export function runInitBody(addr, ram, rom, rec, unported, tables) {
+export function runInitBody(addr, ram, rom, rec, unported, tables, palette) {
   if (addr === SPAWN.NULL_INIT + 8 || addr === SPAWN.NULL_INIT2 + 8) return;
-  return runInitBodyAddr(addr, ram, rom, rec, unported, tables);
+  return runInitBodyAddr(addr, ram, rom, rec, unported, tables, palette);
 }
 
 // ------------------------------------------- $28AD54: THE SUB-RECORD REAPER
@@ -366,7 +367,7 @@ export function allocSubRecord(ram, classByte, runLen) {
  * @returns {{ok:boolean, slot:number, type:number, initBody:number}}
  */
 export function dispatchScriptRecord(ram, rom, recCursor, unported, tables,
-  spawnEvent) {
+  spawnEvent, palette) {
   const type = rom.u8(recCursor + REC.type);       // $2633e0
   const flags = rom.u8(recCursor + REC.flags);     // (the high byte of the +4 longword)
   const param = rom.u16(recCursor + REC.param);    // $263428
@@ -378,7 +379,8 @@ export function dispatchScriptRecord(ram, rom, recCursor, unported, tables,
   }
   ram.setU16(r.addr + E.param, param);             // $263428 move.w ($2,A2),($a,A0)
   ram.setU32(r.addr + E.movement, mov);            // $26342e move.l A1,($12,A0)
-  const init = initDispatch(ram, rom, r.addr, unported, undefined, tables); // $263438
+  const init = initDispatch(ram, rom, r.addr, unported, undefined, tables,
+    palette);                                      // $263438
   // `$263622 bcs $263674` -- the sub-record run did not fit and the record was
   // cleared.  The init BODY never ran, so this spawn produced nothing at all.
   if (init.failed) spawnEvent?.('sub-record-pool-full', type);
@@ -428,7 +430,7 @@ export function enqueueDeferred(ram, type, d1mode, callerD1 = 0) {
  * AFTER the walker this frame.
  * @returns {number} the number of deferred spawns processed
  */
-export function processDeferred(ram, rom, unported, tables, spawnEvent) {
+export function processDeferred(ram, rom, unported, tables, spawnEvent, palette) {
   let n = 0;
   for (;;) {
     let count = ram.u16(SPAWN.DEFQ_COUNT);         // $263446 move.w $815ea8,D6
@@ -454,7 +456,8 @@ export function processDeferred(ram, rom, unported, tables, spawnEvent) {
                        0x2a, 0x2e, 0x32, 0x36, 0x3a, 0x3e, 0x42, 0x46])  // $26349c..$2634c6
       ram.setU32(r.addr + off, ram.u32(a + off));
     ram.setU16(r.addr + 0x4a, ram.u16(a + 0x4a));  // $2634cc move.w ($4a,A4),($4a,A0)
-    const init = initDispatch(ram, rom, r.addr, unported, undefined, tables); // $2634e4
+    const init = initDispatch(ram, rom, r.addr, unported, undefined, tables,
+      palette);                                    // $2634e4
     spawnEvent?.(init.failed ? 'deferred-sub-record-pool-full' : 'deferred', type);
     n++;
     // re-read count: the loop tests $815ea8 at $2634e8
@@ -477,9 +480,10 @@ export function processDeferred(ram, rom, unported, tables, spawnEvent) {
  * move.l A2,(A3)` writes the cursor back and drops straight into `$263446
  * move.w $815EA8,D6`, the deferred drain, which is what reaches `$2634F2 rts`.
  */
-export function runSpawnWalker(ram, rom, unported, tables, spawnEvent) {
+export function runSpawnWalker(ram, rom, unported, tables, spawnEvent, palette) {
   const script = walkScriptLoop(ram, rom, (cur, rec) =>
-    dispatchScriptRecord(ram, rom, cur, unported, tables, spawnEvent));
-  const deferred = processDeferred(ram, rom, unported, tables, spawnEvent);
+    dispatchScriptRecord(ram, rom, cur, unported, tables, spawnEvent, palette));
+  const deferred = processDeferred(ram, rom, unported, tables, spawnEvent,
+    palette);
   return { script, deferred };
 }

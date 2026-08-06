@@ -775,7 +775,14 @@ try {
       // attribute.  `pal N/2560 cart` is how many palette words came out of
       // the cartridge this frame and `banks` names which sprite banks; every
       // word not counted here is still one frozen instant of `capture.bin`.
+      // WAVE 92 added the BY-THIRD breakdown: `spr/bg/tx` is where the sourced
+      // words are, and a third reading 0 is a third the recording still owns.
       `pal ${s.palSourced}/${s.palTotal} cart`
+        + (s.palLedger
+          ? ` [spr ${s.palLedger.spr}/${s.palLedger.of.spr}`
+            + ` bg ${s.palLedger.bg}/${s.palLedger.of.bg}`
+            + ` tx ${s.palLedger.tx}/${s.palLedger.of.tx}]`
+          : '')
         + (s.palBanks?.length ? ` banks ${s.palBanks.join(',')}` : ' <b>NONE</b>')
         + (s.palInstalls ? ` inst ${s.palInstalls}` : ''),
       `${s.logicHz.toFixed(1)}Hz`,

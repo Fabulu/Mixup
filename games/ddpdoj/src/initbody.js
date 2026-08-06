@@ -35,6 +35,7 @@ import { u16, i16 } from './ram.js';
 import { installScripts } from './scheduler.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
+import { install24150A } from './palette.js';
 
 // ----------------------------------------------------------- the record layout
 // A5 = enemy record, A6 = sub-record (= ($6,A5)).  The offsets the init bodies
@@ -116,6 +117,31 @@ function rankByte242E24(ram, rom) {
 function headingLongAddr(rom, table, heading) {
   const d1 = (heading & 0x3e) << 1;                 // andi #$3e; add.w D1,D1
   return table + d1;
+}
+
+// ------------------------------------------------- $24150A, from an init body
+//
+// **WAVE 92, AND IT IS THE SEAM W91 §5.1 NAMED RATHER THAN THE ANALYSIS.**  Ten
+// of the eleven `jsr $24150A` sites inside this file's four bodies had been
+// counted notes since W23: the colour was in the cartridge the whole time and
+// nothing carried a `PaletteState` down here.  `palette` is now threaded from
+// `Game` through `runEnemyFrame` -> `runSpawnWalker` -> `dispatchScriptRecord`/
+// `processDeferred` -> `initDispatch` -> `runInitBody` -> `runInitBodyAddr`,
+// six signatures, all APPENDED so no existing caller changed.
+//
+// A caller WITHOUT one keeps the counted note it always had, naming the bank
+// and the block, so "this bank is still the recording's" stays visible instead
+// of becoming a silent hole.  `install24150A` throws by address on a bank
+// outside 0..31 and on a short ROM read; neither is clamped here.
+function installBank(ram, rom, palette, unported, bank, block, site, what) {
+  if (!palette) {
+    unported?.note(0x24150a, `$${site.toString(16).toUpperCase()} jsr $24150A `
+      + `-- ${what}: bank $${bank.toString(16).toUpperCase()} <- $${block
+        .toString(16).toUpperCase()}. No PaletteState on this call chain, so `
+      + `that bank stays whatever it was`);
+    return;
+  }
+  install24150A(ram, palette, bank, rom.bytes(block, 64), site, what);
 }
 
 // ============================================================ THE 21 BODIES
@@ -427,10 +453,11 @@ BODY.set(0x272A4A, (ram, rom, a5, a6, unported) => {
 
 // --- type $24 ($296FB0): boss-approach prop.  Sub-proto, resource install,
 // record clears, position.  The resource install ($24150A) is noted (data).
-BODY.set(0x296FB0, (ram, rom, a5, a6, unported) => {
+BODY.set(0x296FB0, (ram, rom, a5, a6, unported, tables, palette) => {
   loadSubProto(ram, rom, a5, a6, 0x296FF2);            // jsr $2637A2
-  unported?.note(0x24150a, `resource install $24150A (#$13 <- $222BF8) in type `
-    + `$24 init -- a data resource, not a done-when stat`);
+  // W92: `$296FBC lea $222BF8.l,A0 / moveq #$13,D0 / $296FC6 jsr $24150A`.
+  installBank(ram, rom, palette, unported, 0x13, 0x222BF8, 0x296FC6,
+    'enemy type $24\'s init body $296FB0');
   ram.setU16(a5 + R.rec18, 0);                          // move.w #$0,($18,A5)
   ram.setU16(a5 + R.rec1A, 0);                          // move.w #$0,($1a,A5)
   ram.setU16(a5 + R.rec1C, 0x0120);                     // move.w #$120,($1c,A5)
@@ -440,16 +467,26 @@ BODY.set(0x296FB0, (ram, rom, a5, a6, unported) => {
 
 // --- type $31 ($269754): boss-approach prop.  Loaders, fixed position, a
 // palette lookup from $2697B0/$2697BA indexed by $813094, two resource installs.
-BODY.set(0x269754, (ram, rom, a5, a6, unported) => {
+BODY.set(0x269754, (ram, rom, a5, a6, unported, tables, palette) => {
   loadSubProto(ram, rom, a5, a6, 0x2697DA);            // jsr $2637A2
   loadRecordProto(ram, rom, a5, 0x2697CE, 0x05);       // moveq #$5,D0; jsr $26377A
   ram.setU32(a6 + S.posX, 0x40001c00);                 // move.l #$40001c00,($2,A6)
   unported?.note(0x28ca60, `$28CA60 in type $31 init -- bespoke; not a stat`);
-  unported?.note(0x24150a, `resource installs $24150A in type $31 init (data)`);
   const lp = ram.u16(G.loop);
   // $26978A: `move.w (A1,D6.w),D0 / move.b D0,($1d,A6)` -- reads a WORD at
   // $2697B0+lp and takes its LOW byte (not a direct byte read like $11/$80).
-  ram.setU8(a6 + S.palette, rom.u16(0x2697B0 + lp) & 0xff);
+  // **AND D0 IS STILL THAT WORD AT `$269792 jsr $24150A`** (W92): the ONE
+  // read feeds the sub-record's palette byte and the colour bank number both,
+  // which is why this site's bank is `None` in the exporter's PALETTE_SITES --
+  // it comes out of a table, not an immediate.
+  const bank1 = rom.u16(0x2697B0 + lp);
+  ram.setU8(a6 + S.palette, bank1 & 0xff);             // $26978E
+  installBank(ram, rom, palette, unported, bank1, 0x2251B8, 0x269792,
+    'type $31\'s first install, bank from $2697B0[$813094]');
+  // $269798 lea $2250B8.l,A0 / $2697A4 move.w ($2697BA,D6.w),D0 -- the second
+  // install takes its bank from a DIFFERENT table and writes no record field.
+  installBank(ram, rom, palette, unported, rom.u16(0x2697BA + lp), 0x2250B8,
+    0x2697A8, 'type $31\'s second install, bank from $2697BA[$813094]');
 });
 
 // --- the aim->bucket types.  Each calls $24200A (or $24202C) with a per-site
@@ -624,7 +661,7 @@ BODY.set(0x277278, (ram, rom, a5, a6, unported) => {
 // body, not done-when stats), and it SETS $8130D8/$8130DA -- the stage-kill
 // flags the regulars gate on.  Those writes ARE ported (semantically load-bearing
 // for which spawns land after the midboss).
-BODY.set(0x26B484, (ram, rom, a5, a6, unported, tables) => {
+BODY.set(0x26B484, (ram, rom, a5, a6, unported, tables, palette) => {
   loadSubProto(ram, rom, a5, a6, 0x26B50E);            // jsr $2637A2
   ram.setU32(a5 + R.rec44, 0x26B50E + 28 * 17);        // move.l A0,($44,A5)
   loadRecordProto(ram, rom, a5, 0x26B4FA, 0x09);       // move.w #$9,D0; jsr $26377A
@@ -651,7 +688,14 @@ BODY.set(0x26B484, (ram, rom, a5, a6, unported, tables) => {
   stepArms(ram, rom, a5, a6, tables);                   // $26B4B4 bsr $26B304
   ram.setU16(G.d8, 1);                                  // move.w #$1,$8130d8  (LOAD-BEARING)
   ram.setU16(G.da, 0);                                  // move.w #$0,$8130da
-  unported?.note(0x24150a, `midboss resource installs $24150A (#$10/11/15) -- data`);
+  // W92: the MIDBOSS's three colour banks.  $26B4CC/$26B4DC/$26B4EC each
+  // `lea <block>,A0 / move.w #<bank>,D0` and fall into $24150A.
+  installBank(ram, rom, palette, unported, 0x10, 0x223338, 0x26B4D2,
+    'the MIDBOSS, install 1 of 3');
+  installBank(ram, rom, palette, unported, 0x11, 0x223378, 0x26B4E2,
+    'the MIDBOSS, install 2 of 3');
+  installBank(ram, rom, palette, unported, 0x0F, 0x2233B8, 0x26B4F2,
+    'the MIDBOSS, install 3 of 3');
 });
 
 // --- type $1C ($26C1CA): WHAT THE MIDBOSS'S DEATH SPAWNS (runLen 0).  W57.
@@ -681,7 +725,7 @@ BODY.set(0x26C1CA, (ram, rom, a5, a6) => {
 // are noted (they build RAM tables / scroll lock / the HP bar accumulator --
 // none are done-when SPAWN stats).  The boss's spawn hitbox/HP/speed/heading/
 // palette/anim come entirely from its prototype, which the loaders copy.
-BODY.set(0x2926E2, (ram, rom, a5, a6, unported) => {
+BODY.set(0x2926E2, (ram, rom, a5, a6, unported, tables, palette) => {
   loadSubProto(ram, rom, a5, a6, 0x292806);            // jsr $2637A2
   loadRecordProto(ram, rom, a5, 0x2927F6, 0x07);       // moveq #$7,D0; jsr $26377A
   ram.setU32(a6 + S.posX, 0x97fffe00);                  // move.l #$97fffe00,($2,A6)
@@ -700,7 +744,18 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported) => {
     a3: 0x29370a, a4: 0x294f68 });                     // $29272E jsr $259554
   unported?.note(0x2598e6, `boss bespoke $2598E6 -- W30`);
   unported?.note(0x25980c, `boss bespoke $25980C -- W30`);
-  unported?.note(0x24150a, `boss resource installs $24150A (#$11/12/15/16/17) -- data`);
+  // W92: the BOSS's five.  Install 4 is $246BF8, the WHITE constant bank the
+  // $24xxxx code segment holds as data -- comment ten's other half.
+  installBank(ram, rom, palette, unported, 0x15, 0x222B38, 0x29274E,
+    'the BOSS, install 1 of 5');
+  installBank(ram, rom, palette, unported, 0x16, 0x222B78, 0x29275E,
+    'the BOSS, install 2 of 5');
+  installBank(ram, rom, palette, unported, 0x17, 0x222BB8, 0x29276E,
+    'the BOSS, install 3 of 5');
+  installBank(ram, rom, palette, unported, 0x12, 0x246BF8, 0x29277E,
+    'the BOSS, install 4 of 5 -- the WHITE constant bank');
+  installBank(ram, rom, palette, unported, 0x11, 0x222C38, 0x29278E,
+    'the BOSS, install 5 of 5');
   unported?.note(0x294ad6, `boss bespoke $294AD6/$294EEA/$294F0A -- W30`);
 });
 
@@ -712,7 +767,13 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported) => {
 // unaffected.  Exactly one body needs it -- the MIDBOSS's `$26B4B4 bsr
 // $26B304`, whose arm placement reads `$241D34`.  A caller that omits it
 // reaches a LOUD NAMED THROW inside that body rather than a silent skip.
-export function runInitBodyAddr(addr, ram, rom, a5, unported, tables) {
+// W92: `palette` is APPENDED after `tables` for exactly the same reason and
+// with exactly the same consequence -- every existing call site is unaffected.
+// FOUR bodies need it (type $24, type $31, the MIDBOSS and the BOSS), each of
+// which does `lea <64-byte block>,A0 / moveq #<bank>,D0 / jsr $24150A` and
+// carried a counted note from W23 to W91.  A caller that omits it gets that
+// note back rather than a silently missing colour install.
+export function runInitBodyAddr(addr, ram, rom, a5, unported, tables, palette) {
   const a6 = ram.u32(a5 + R.subRec);                  // A6 = ($6,A5)
   const fn = BODY.get(addr);
   if (!fn) {
@@ -720,7 +781,7 @@ export function runInitBodyAddr(addr, ram, rom, a5, unported, tables) {
       + `the W23 stage-1 body table (21 bodies). Either a non-stage-1 type was `
       + `spawned, or a body was missed; do NOT smooth`);
   }
-  const r = fn(ram, rom, a5, a6, unported, tables);
+  const r = fn(ram, rom, a5, a6, unported, tables, palette);
   return r === FREED ? FREED : undefined;
 }
 
