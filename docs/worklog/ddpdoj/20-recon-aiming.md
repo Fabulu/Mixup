@@ -1,9 +1,9 @@
-# RECON 20 (wave 20, recon 4 of 5) — PLAYER-TRACKING: the aim routines, and why the oracle cannot enumerate them
+# RECON 20 (wave 20, recon 4 of 5) - PLAYER-TRACKING: the aim routines, and why the oracle cannot enumerate them
 
 status: **DONE** on the five questions asked, with six named gaps in
 "What I could NOT do". Every number below was produced by a command in this
 file. Nothing is quoted from another worklog as if it were measured here.
-wave: 20   role: recon (READER — nothing in `games/ddpdoj/src/` was edited)
+wave: 20   role: recon (READER - nothing in `games/ddpdoj/src/` was edited)
 started: 2026-08-01
 
 All addresses are **VERSION-B** (`$23xxxx`–`$2Axxxx`, 2002.10.07 BLACK VER).
@@ -16,12 +16,12 @@ New tools, all under `games/ddpdoj/tools/recon20/` (nothing in `src/` touched):
 | file | what it is |
 |---|---|
 | `aimref.py` | enumerates the player-tracking library's 43 entry points and **every call site of each**, absolute-long AND PC-relative, over the decrypted image |
-| `aimmodel.py` | THE AIM, transcribed from the listing: `aim64()`, `aim256()`, the three ROM tables each reads, an exhaustive back-half census, and `check` — a row-by-row diff against a board capture |
+| `aimmodel.py` | THE AIM, transcribed from the listing: `aim64()`, `aim256()`, the three ROM tables each reads, an exhaustive back-half census, and `check` - a row-by-row diff against a board capture |
 | `aimcheck.lua` + `runaimcheck.py` | the capture: every completed atan2 with the registers and the live player position at that instant |
 
 ---
 
-## THE HEADLINE — three results
+## THE HEADLINE - three results
 
 **1. The aim is a PURE FUNCTION of two 16-bit deltas, and the transcription is
 now EXACT against the cartridge on 6,139 live calls with zero mismatches.**
@@ -36,7 +36,7 @@ $ (the offset-aware check, section 4)
 ```
 
 **2. THE AXIS SCALE.** The aim does not compute `atan2(Δy, Δx)`. It computes
-`atan2(Δy, 1.5·Δx)` — `$24205C move.w D1,D2 / asr.w #1,D2 / add.w D2,D1`. That
+`atan2(Δy, 1.5·Δx)` - `$24205C move.w D1,D2 / asr.w #1,D2 / add.w D2,D1`. That
 is not a bug and not a deliberate miss: **the direction→velocity table
 `$200920` carries the same 1.5**, and the two cancel exactly, so the shot flies
 down the true line. Measured over all 120 speed rows of that table:
@@ -55,13 +55,13 @@ the ROM and not in the port. They must be ported as a PAIR.
 **3. THE DENOMINATOR.** The library has **43 entry points; 20 are called from
 anywhere in the 6 MB image and 23 have no reference at all.** Of the 260 aim
 call sites, a 3,600-frame stage-1 corpus with a full stick sweep reached
-**16 — 6 %.** The 256-direction aim has **111 call sites and executed 12 times**
+**16 - 6 %.** The 256-direction aim has **111 call sites and executed 12 times**
 in 3,600 frames. This is the owner's rule in one table: the corpus is not a
 census.
 
 ---
 
-## 1. THE INVENTORY — 43 entry points, counted from the ROM
+## 1. THE INVENTORY - 43 entry points, counted from the ROM
 
 `$241F00`–`$242A70` is one self-contained player-tracking library: an atan2 in
 two precisions, four target selectors, eleven distance functions, five
@@ -117,7 +117,7 @@ ENTRY     n  by form                     what
 ENTRY POINTS: 43   CALL SITES (candidates): 400
 ```
 
-**Twenty-three of the 43 have NO REFERENCE ANYWHERE IN THE 6 MB IMAGE** — not a
+**Twenty-three of the 43 have NO REFERENCE ANYWHERE IN THE 6 MB IMAGE** - not a
 branch, not a `jsr`, and not a longword in any pointer table (a separate scan of
 every longword in the image; that is what would catch a `jsr (A0)` dispatch).
 Among the dead: both fixed-target variants (`$242022` aim-at-P1,
@@ -141,7 +141,7 @@ External build-B call sites, excluding the library's own internal branches:
 
 ---
 
-## 2. THE FUNCTION — `$24203E`, twelve instructions and three tables
+## 2. THE FUNCTION - `$24203E`, twelve instructions and three tables
 
 ```
 24203e: move.w #$1800,D4 / add.w D4,D0..D3      THE BIAS  (see "domain" below)
@@ -196,7 +196,7 @@ BASE256$242352[8]   = [64, 128, 64, 0, 192, 128, 192, 0]
   256-direction variant keeps 256 steps = 1.40625° and does not shift.
 * **the LUT is an arctan.** `LUT64[i]` versus `512·atan(i/128)/2π`: worst error
   **+1.65 units of 512 (1.16°) at i=10**, and ≤ ±0.55 for i ≥ 19. It is not a
-  clean formula and must be **shipped as data** — the deviation at small ratios
+  clean formula and must be **shipped as data** - the deviation at small ratios
   is exactly the near-axis region a shooter's shots spend most of their life in.
 * **the divide rounds to nearest**, not toward zero (`$24207C` doubles quotient
   and remainder and compares against the divisor). Getting that wrong shifts one
@@ -205,14 +205,14 @@ BASE256$242352[8]   = [64, 128, 64, 0, 192, 128, 192, 0]
   300 px of separation is 15 px. A port that keeps float angles and rounds at
   the end will disagree with the board on a large fraction of shots.
 * **the 1.5 is on the `+$4` axis.** `+$2` is the vertical axis and `+$4` the
-  horizontal — established independently by 10-recon-combat's measurement that
+  horizontal - established independently by 10-recon-combat's measurement that
   the tilt table `$2553F2` writes the `+$14/+$16` pair (which pairs with `+$4`)
   and that pair is the ship's 4-px WIDTH.
 
 ### The domain, stated because "pure function" needs one
 
 The `#$1800` bias cancels in every subtraction, but it is not dead: it makes the
-`bcc` after `sub.w` — an UNSIGNED borrow — behave as a sign test for coordinates
+`bcc` after `sub.w` - an UNSIGNED borrow - behave as a sign test for coordinates
 in `[-$1800, $E7FF]`. Measured on the model:
 
 ```
@@ -226,7 +226,7 @@ function of the four absolute coordinates. A port must keep the bias.
 
 ---
 
-## 3. TARGET SELECTION — three live selectors, and the 1P fallback carries half the calls
+## 3. TARGET SELECTION - three live selectors, and the 1P fallback carries half the calls
 
 ```
 24270a: lea $8103e6,A0 / lea $810448,A1
@@ -237,8 +237,8 @@ function of the four absolute coordinates. A port must keep the bias.
 ```
 
 `$242730` and `$242748` are the same routine keyed on `($2E,A6)` and `($2A,A6)`
-instead. `$242760` — the one that picks by a **256-byte pseudo-random table at
-`$242784`, exactly 128 ones and 128 zeros, stepped by `addq.b #1,$803917`** — is
+instead. `$242760` - the one that picks by a **256-byte pseudo-random table at
+`$242784`, exactly 128 ones and 128 zeros, stepped by `addq.b #1,$803917`** - is
 **dead in this cartridge** (no reference anywhere). Two enemy handlers,
 `$2759D0` and `$273C04`, carry an **inline copy** of `$24270A`, so the selector
 is not always reached by a call and a static caller count of `$24270A` is a
@@ -253,22 +253,22 @@ P2 alive word $810448       : 0000 on ALL 12,281 rows
 
 **48 % of all aims nominally target P2 and are rescued onto P1 by
 `$242722`.** In a one-player game the fallback is not an edge case, it is half
-the traffic — and the model reproduces it, which is part of what the 0-mismatch
+the traffic - and the model reproduces it, which is part of what the 0-mismatch
 result validates.
 
 ---
 
-## 4. THE VALIDATION — 6,139 rows, zero mismatches
+## 4. THE VALIDATION - 6,139 rows, zero mismatches
 
 **The hook.** `$242086 move.l A0,-(A7)` is a stack WRITE between the divide and
 the LUT, so it is a genuine execution hook (00-recon-hard §3: a read tap only
-proves prefetch). At that instant `D4` is the octant and `D0` the 0..128 ratio —
+proves prefetch). At that instant `D4` is the octant and `D0` the 0..128 ratio -
 together the complete output of the front half. `$2422EA` is the same
 instruction in the 256-direction core.
 
 **Why the inputs are recoverable.** The routine never touches A5/A6, so the
 shooter's `($2,A6)/($4,A6)` are still readable at the tap, and the target is
-whichever player `$24270A` picked — reproducible from `($3,A5)` and the two
+whichever player `$24270A` picked - reproducible from `($3,A5)` and the two
 alive words, all read at the same instant. The longword above the pushed A0 is
 the caller's return address, so every row is attributable to a call site.
 
@@ -284,7 +284,7 @@ ENTRY     rows   mismatch
 ```
 
 `$24202C` loads the shooter position itself; `$24200A` and the two CORE entries
-take it from the caller — and every one of those callers **biases it first**.
+take it from the caller - and every one of those callers **biases it first**.
 Reading the `addi.w` pair immediately before each call out of the listing and
 feeding it to the model:
 
@@ -312,14 +312,14 @@ That is one result and two by-products.
 
 * **The result:** the transcription in `aimmodel.py` is byte-exact against the
   cartridge for both cores, over 8 octants, 128 of the 129 ratio indices, and
-  738 of the 1,032 reachable internal states — including the P2→P1 fallback.
+  738 of the 1,032 reachable internal states - including the P2→P1 fallback.
 * **By-product 1: MUZZLE OFFSETS ARE REAL AND PER-SITE.** `$268A30` aims from
   `($2,A6) + $200`; `$273C4A`/`$273C74` are two turrets at `+$680, ±$500`
   alternated by `bchg #6,($1,A6)`; `$27584E`/`$2759FE` aim from `−$700`. An
   enemy does not aim from its origin, and a port that does will be one to three
   direction steps off for every one of those sites.
 * **By-product 2: 10-recon-enemies' aim COUNT is 2× too high.** The
-  `$242086` tap fires **twice** per aim — `move.l A0,-(A7)` is two word writes on
+  `$242086` tap fires **twice** per aim - `move.l A0,-(A7)` is two word writes on
   a 16-bit bus. 5,546 of 6,128 adjacent row pairs are byte-identical except for
   the (word-swapped) return-address read. The true rate is **6,128 aims in 3,600
   logic frames = 1.70 per frame**, not 3.5. Recon 10's "14,922" and "12,884" are
@@ -327,11 +327,11 @@ That is one result and two by-products.
 
 ---
 
-## 5. WHAT THE CALLERS DO WITH THE ANSWER — three more quantisers
+## 5. WHAT THE CALLERS DO WITH THE ANSWER - three more quantisers
 
 The aim's 6-bit output is almost never used raw.
 
-**(a) The slew limiter `$242190` — 84 call sites, the single most-called entry
+**(a) The slew limiter `$242190` - 84 call sites, the single most-called entry
 in the library.**
 
 ```
@@ -342,17 +342,17 @@ in the library.**
 2421a4: subq.b #2,D0                                  no -> ONE STEP DOWN
 ```
 
-**A tracking enemy turns at most one direction step — 5.625° — per call**, and
+**A tracking enemy turns at most one direction step - 5.625° - per call**, and
 the call is per frame. `$2421AC` is the 256-step version. The multi-step
 versions `$2421C6`/`$242206` (D5 steps) are dead. So the port needs the aim AND
 a per-record facing byte AND the slew, or turrets snap instantly and look wrong
 even with a perfect atan2.
 
 **(b) The sprite quantiser.** `$268A46 addq.b #1,D1 / andi.w #$3e,D1 /
-add.w D1,D1 / move.l (A0,D1.w),($22,A5)` — the facing is rounded to **32
+add.w D1,D1 / move.l (A0,D1.w),($22,A5)` - the facing is rounded to **32
 directions** to index a longword graphic table. `$268424` goes further:
-`addq.b #2,D2 / and.w #$3c,D2` on both the new aim and the current facing —
-**16 directions** — and only redraws when those disagree.
+`addq.b #2,D2 / and.w #$3c,D2` on both the new aim and the current facing -
+**16 directions** - and only redraws when those disagree.
 
 **(c) The two-argument entries.** `$24203E`/`$2422A2` take BOTH positions in
 registers, so they are not always player-tracking: `$293224` loads
@@ -362,7 +362,7 @@ fixed-point core calls is not established** (see gaps).
 
 ---
 
-## 6. RANK — what it does to aiming HERE, which is nothing, and what it does instead
+## 6. RANK - what it does to aiming HERE, which is nothing, and what it does instead
 
 **The aim core reads no global.** `$24203E`…`$2420C4` and `$2422A2`…`$242318`
 touch only D0–D4, A0, A7 and three PC-relative tables in ROM. There is no rank
@@ -379,11 +379,11 @@ aim sites with an RNG READ or CALL within +-0x60 bytes: 2
    275CE0 -> 275D02 jsr $23D17E     after `jsr $242A48`, not on the aim
 ```
 
-and `$23D17E` is not a generator, it is `move.w $803976,D0` — a read of a
+and `$23D17E` is not a generator, it is `move.w $803976,D0` - a read of a
 system word. The only randomness near a direction in this library is
 `$242A48`, which **replaces** the aim rather than perturbing it: `jsr $23D17E /
 andi.w #$f,D0 / move.b ($242A70,PC,D0.w),($1b,A6)` with the 16-byte table
-`FF 00 20 FF 30 38 28 FF 10 08 18 FF FF FF FF FF` — the eight 45° directions and
+`FF 00 20 FF 30 38 28 FF 10 08 18 FF FF FF FF FF` - the eight 45° directions and
 seven `$FF` "stationary" slots (`$2638DA cmpi.w #$40,D1 / bcc` treats ≥ `$40` as
 no movement). 7 call sites.
 
@@ -391,15 +391,15 @@ no movement). 7 call sites.
 
 | word | what it is | how it reaches aiming |
 |---|---|---|
-| `$813092` / `$813094` / `$813096` | STAGE ×1 / ×2 / ×4 (10-recon-flow §5) | `$813094` indexes the distance-gate tables `$242410` = `1A00 1800 1400 1000 0E00` and `$24242E` = `1400 1400 1200 0E00 0A00` — **but all three routines that read them (`$2423A4`, `$2423FA`, `$24241A`) are DEAD**. It also indexes the frame-pacing thresholds at `$23C36E`. |
-| `$813098` | the LOOP flag, 0/1 (10-recon-flow §6) | picks the alternate off-screen window tables at `$2425C0`/`$2425E8` (`$242562`→`$24258A`, `$242576`→`$24259E`) — i.e. on loop 2 enemies stay live further off screen, so **more of them aim**. Never the aim itself. |
+| `$813092` / `$813094` / `$813096` | STAGE ×1 / ×2 / ×4 (10-recon-flow §5) | `$813094` indexes the distance-gate tables `$242410` = `1A00 1800 1400 1000 0E00` and `$24242E` = `1400 1400 1200 0E00 0A00` - **but all three routines that read them (`$2423A4`, `$2423FA`, `$24241A`) are DEAD**. It also indexes the frame-pacing thresholds at `$23C36E`. |
+| `$813098` | the LOOP flag, 0/1 (10-recon-flow §6) | picks the alternate off-screen window tables at `$2425C0`/`$2425E8` (`$242562`→`$24258A`, `$242576`→`$24259E`) - i.e. on loop 2 enemies stay live further off screen, so **more of them aim**. Never the aim itself. |
 | `$81B414`..`$81B41A` | the player's power ladder | selects 6/10/15/18/20 hitbox entries (10-recon-enemies §4d) and 13/21/31/37/41 at `$2814D4`. Not aiming. |
 | `$803932` / `$803940` | the per-frame pacing/throttle engine `$23C212` | reads `$81295C` (shot count), `$815EA0` (live enemy sub-records), thresholds by stage and loop, and writes `$803940` = 1/2/3, the value the frame loop spins on. Not aiming. |
 | `$803910` | gates whether the damage-first handlers RE-AIM at all (`$26A3DE`, `$26A6C6`, `$26A9A8`, `$26AB78`, `$26AE62`) | it is a whether, not a what. Unidentified; see gaps. |
 
 Measured across all 12,281 captured aims: `$813094 = 0` and `$813098 = 0` on
 every row. **Every number in this document is at stage 1, loop 1.** An unforced
-corpus never leaves it — exactly the caveat 10-recon-enemies raised, restated
+corpus never leaves it - exactly the caveat 10-recon-enemies raised, restated
 here with the count.
 
 ---
@@ -410,7 +410,7 @@ The question is worth answering precisely because the answer changes what the
 oracle is for.
 
 **The input space is 2^32** (two 16-bit deltas). **The internal state space is
-1,032** — the front half provably factors through `(octant ∈ 8, ratio ∈ 0..128)`,
+1,032** - the front half provably factors through `(octant ∈ 8, ratio ∈ 0..128)`,
 and everything after `$242086` is three table reads and four instructions:
 
 ```
@@ -428,8 +428,8 @@ So:
    above, in 0.1 s.
 2. **The front half is exhaustively testable in the MODEL.** Measured Python
    throughput **201,340 evaluations/s**, so all 2^32 delta pairs is **6 hours
-   single-core Python** and minutes in numpy or C. A ±512 window — 1,050,625
-   pairs, ~5 s — already reaches **1,029 of the 1,032** internal states.
+   single-core Python** and minutes in numpy or C. A ±512 window - 1,050,625
+   pairs, ~5 s - already reaches **1,029 of the 1,032** internal states.
 3. **Against the BOARD, exhaustive over 2^32 is not affordable and does not
    need to be.** Two routes, in order of cost:
    * **Free, and already done:** the natural corpus. 3,600 frames gave 6,139
@@ -438,18 +438,18 @@ So:
      would give ~16,000 calls; the states it cannot reach are the ones no enemy
      is ever positioned to ask for.
    * **Complete, and buildable in one sitting:** the routine from `$24203E` is a
-     **pure leaf** — after the bias it reads no RAM, writes no RAM except the A0
+     **pure leaf** - after the bias it reads no RAM, writes no RAM except the A0
      push, and calls nothing. So an in-emulator evaluator only has to set
      D0–D3, run to the `rts`, and read D1. The clean way is `pgm.run(...,
      debugger=True)` with a breakpoint at `$24203E`: set the four registers,
      step to `$2420AC`, read D1, restore. At even 1,000 evaluations/s the whole
      1,032-state cover takes **one second**, and a 1-million-pair delta sweep
-     takes 17 minutes. **I designed this and did not build it** — the
+     takes 17 minutes. **I designed this and did not build it** - the
      0-mismatch result on 6,139 live rows made it unnecessary for THIS wave, but
      it is the right harness for the next person who changes `aimmodel.py`.
 
 **The general lesson, in the owner's terms.** A player-tracking generator is
-exactly the thing a corpus cannot enumerate — the capture never shows the same
+exactly the thing a corpus cannot enumerate - the capture never shows the same
 input twice, and 16 of 260 call sites ever ran. But it is also exactly the thing
 that is *cheapest* to prove correct once you have read it, because it is pure:
 the ROM gives you the whole domain, and the board only has to arbitrate. Read
@@ -458,7 +458,7 @@ on the parts that are not pure.
 
 ---
 
-## 8. THE DISTANCE FUNCTIONS — measured, because they gate firing
+## 8. THE DISTANCE FUNCTIONS - measured, because they gate firing
 
 Seven live entries, all reducing to `$24249A`:
 
@@ -470,7 +470,7 @@ Seven live entries, all reducing to `$24249A`:
 2424b2: lsr.w #1,D1 / add.w D1,D0               max + min/2
 ```
 
-An **octagonal** metric — and note it uses **3/4 on the vertical axis where the
+An **octagonal** metric - and note it uses **3/4 on the vertical axis where the
 aim uses 3/2 on the horizontal**. Those are not the same anisotropy (3/4 = 1÷1.333
 against 1÷1.5), so the distance metric and the aim disagree about the shape of a
 circle. Translate both as written; do not unify them.
@@ -499,7 +499,7 @@ python games/ddpdoj/tools/oracle/xref.py dasm 241812  60     direction+speed -> 
 
 The intervention is unchanged from 10-recon-enemies and is stated on every
 number: `$810424` (the player's invulnerability timer) is held at `$FF` from
-lf1990 — a value the game writes itself at `$2495A2` — and Button 3 (auto-shot)
+lf1990 - a value the game writes itself at `$2495A2` - and Button 3 (auto-shot)
 from lf1800, plus the `--move` stick sweep. Without them the ship dies and stage
 1 never runs.
 
@@ -549,20 +549,20 @@ from lf1800, plus the `--move` stick sweep. Without them the ship dies and stage
    `$23BE26`..`$23BEC0`. One write tap names it.
 5. **Why the arctan LUT deviates near the axes** (up to +1.65/512 at i=10, in a
    table that is otherwise ±0.5) is unexplained. It does not matter for the
-   port — ship the bytes — but it means the table is not reconstructible from a
+   port - ship the bytes - but it means the table is not reconstructible from a
    formula and a port that generates it will be wrong by one direction step in
    the near-axis band.
 6. **Everything is at stage 1, loop 1, one player.** `$813094` and `$813098`
    read 0 on all 12,281 rows and `$810448` (P2 alive) is 0 on all of them. The
-   two-player branch of `$24270A` — where `($3,A5)` actually selects rather than
-   falls back — has never executed in this project's corpus.
+   two-player branch of `$24270A` - where `($3,A5)` actually selects rather than
+   falls back - has never executed in this project's corpus.
 
-## 12. THE WORK LIST — in the order the measurements support
+## 12. THE WORK LIST - in the order the measurements support
 
 1. **Port `aim64` and its three tables verbatim, WITH the 1.5 and WITH the
    `$1800` bias.** 12 instructions, 129 + 8 + 8 table entries, all in
    `aimmodel.py` already and validated at 6,139/6,139. *Removes from the
-   capture: nothing on its own — it is the prerequisite for every tracking
+   capture: nothing on its own - it is the prerequisite for every tracking
    enemy.*
 2. **Port the direction→velocity table `$200920` in the same sitting.** 120
    speeds × 65 direction slots × 2 longwords, plus `$2418B4`'s triangle index
@@ -578,7 +578,7 @@ from lf1800, plus the `--move` stick sweep. Without them the ship dies and stage
    until it is wrong. *Removes: nothing; prevents a class of near-miss.*
 6. **Then, and only then, use the oracle.** With the generator ported, the
    comparison finally means something: run `aimcheck.lua` against the port's own
-   aim on the same frames. *This is the whole point of the round — the ROM gave
+   aim on the same frames. *This is the whole point of the round - the ROM gave
    the inventory, the board gives the verdict.*
 7. **Classify the 91 core call sites** (gap 2) before costing the enemy
    handlers, because an unknown fraction of them are not tracking at all.

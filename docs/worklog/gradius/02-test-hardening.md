@@ -1,4 +1,4 @@
-# Wave 2 test hardening — the HUD, the packets, the queue
+# Wave 2 test hardening - the HUD, the packets, the queue
 
 status: DONE
 wave: 2   role: test   started: 2026-07-31   base: HEAD = 43bc718
@@ -6,7 +6,7 @@ wave: 2   role: test   started: 2026-07-31   base: HEAD = 43bc718
 ## The task, as I understood it
 
 Harden the checks around commit `43bc718` (wave 2: `$8898`'s rotation, the canned
-packets, the `$0700` queue rewrite). I write **tests only** — files under
+packets, the `$0700` queue rewrite). I write **tests only** - files under
 `games/gradius/tests/`. I did not touch `games/gradius/src/` (see "What I could
 not do"). Every test added is **seen red**: mutate the source in place, run the
 whole unit suite, restore, sha256-verify byte-identical.
@@ -19,7 +19,7 @@ reported as a break-that-passes, I reproduced myself before fixing it.
 
 ### The mutation harness
 
-`<scratchpad>/mut.py` — takes a label, a file, an exact old string and a new
+`<scratchpad>/mut.py` - takes a label, a file, an exact old string and a new
 string; asserts the anchor appears **exactly once** (docs/knowledge/03: never
 regex a structured file); writes the mutation; runs `node --test
 games/gradius/tests/`; restores the original bytes in a `finally`; and asserts
@@ -33,7 +33,7 @@ is empty at the end.
 ### 1. The bit-7 blanker: a test that could not see its own subject
 
 `tests/hud.test.js`'s `$8617-$8624` test drove index `$80|$11`, and packet `$11`
-is `23 A2 00 00 00 00 FE` — every byte after the address is already `$00`, so
+is `23 A2 00 00 00 00 FE` - every byte after the address is already `$00`, so
 the blanked and un-blanked images are identical. Census I ran over every packet
 the port can emit:
 
@@ -53,7 +53,7 @@ The comment above the `$0E` per-frame test quoted the cartridge's whole-run
 histogram and glossed `45 = a block plus the 8-byte lives packet` and `13` as if
 both were mode-5 numbers. Re-measured from
 `tools/oracle/out/scen/long-idle.json`, split by the recorded `mode` field, all
-1000 rows — see "What I MEASURED". 45 never occurs in mode 5; 13 occurs only in
+1000 rows - see "What I MEASURED". 45 never occurs in mode 5; 13 occurs only in
 mode 3. Comment replaced with the per-mode table and an explicit statement that
 the fixture produces a SUBSET of the mode-5 buckets.
 
@@ -64,7 +64,7 @@ own compared window (long-idle f400-f999, 600 rows, all mode 5) has
 `$0E {1:244, 9:75, 15:150, 38:56, 40:75}`; the port reproduces `9:75, 15:150,
 40:75` exactly on its own 600 frames. The test asserts those three counts, that
 all 300 HUD frames are odd, and that no frame produces a size outside
-`{1, 9, 15, 38, 40}`. It deliberately does NOT assert `38` — the port builds a
+`{1, 9, 15, 38, 40}`. It deliberately does NOT assert `38` - the port builds a
 block on 168 even frames against the cartridge's 56, because the 384 px lead
 throttle is not reproduced by a bare `bootState`. That difference is written
 into the test comment rather than hidden inside a green assertion.
@@ -72,14 +72,14 @@ into the test comment rather than hidden inside a green assertion.
 ### 4. New: the two producers that patch bytes they have already written
 
 `$88E5/$88ED/$88F2` and `$8A46` index off `$0E`. Every existing test started the
-tick on an EMPTY queue, where `$0E - 2` is the constant 6 — so all four "write
+tick on an EMPTY queue, where `$0E - 2` is the constant 6 - so all four "write
 it at a constant instead" mutations were green. `$8898`'s own gate
 (`CMP #$04 / BCC`) admits leads of 1, 2 and 3 bytes, so the new tests run inside
 what the ROM permits. The first draft of the lives one used only `$20 = 3`,
 whose tens digit is suppressed, and `q[y-3] -> q[5]` stayed GREEN; adding
 `$20 = 12` closed it. That is in the test comment too.
 
-### 5. New file `tests/vram.test.js` — the decoder's five unpinned parameters
+### 5. New file `tests/vram.test.js` - the decoder's five unpinned parameters
 
 Reviewer F3 and QA F5 listed five parameters of the rewritten `src/vram.js` that
 could be changed with all 80 tests green. All five now have a test named for the
@@ -135,7 +135,7 @@ $ node games/gradius/tools/test-all.mjs
   self-check: lead1 -> RED 153, seed-x+1 -> RED 116, laginject=450 -> RED 163
 ```
 
-`python .../oracle/scen.py` NOT re-run — it re-records the oracle side through
+`python .../oracle/scen.py` NOT re-run - it re-records the oracle side through
 Mesen and I changed nothing on that side. Figures below come from the recorded
 `out/scen/long-idle.json` and from my own disassembly of the cartridge.
 
@@ -169,7 +169,7 @@ $16 $17 $18 $19 $1B   ditto, all differ
 $1A plain 01 23 F8 00 x7 FF           blanked IDENTICAL                BLIND
 ```
 
-### A length check is not a byte check — measured, not quoted
+### A length check is not a byte check - measured, not quoted
 
 The file header claims the recon's length-only check caught a one-entry table
 shift on only 4 of 10 packets. Re-derived for the 12 packets the port can emit,
@@ -262,7 +262,7 @@ byte-identical. "before" = the suite as it stood at 43bc718 (80 tests);
 | P2 | hudpackets.js:101 | `$FF` treated like `$FE` | - | RED 14 | |
 | P3 | hud.js:256 | `$0100 >= 2` -> `> 2` | - | RED 1 | `$89E3 $0100 >= 2 ...` |
 | P4 | hud.js:187 | `scoreTail` trailing `'0'` -> `'1'` | - | RED 6 | |
-| P5 | hud.js:147 | drop the `break` from the >= 100 cap | - | **GREEN — EQUIVALENT MUTANT**, see below | |
+| P5 | hud.js:147 | drop the `break` from the >= 100 cap | - | **GREEN - EQUIVALENT MUTANT**, see below | |
 | P5b | hud.js:147 | cap `x >= 0x0A` -> `x >= 0x0B` | - | RED 1 | `$88C9-$88F2 the lives digits...` |
 | P6 | hud.js:288 | `$42 == 0` early return dropped | - | RED 6 | |
 | P7 | hud.js:175 | BCD nibbles swapped | - | RED 5 | |
@@ -275,7 +275,7 @@ byte-identical. "before" = the suite as it stood at 43bc718 (80 tests);
 | P16 | vram.js:102 | `queuePacket` always writes mode 1 | - | RED 2 | `mode 2 strides...`, `14 bits...` |
 
 Eleven deliberate breaks were GREEN when I started (M1 M2 M4 M5 M6 M7 M8 M9 M11
-M13 M16 M17 M18 M19 — fourteen counting the three cursor-relative ones and P14).
+M13 M16 M17 M18 M19 - fourteen counting the three cursor-relative ones and P14).
 All are red now. **P5 is the one green I did NOT close, because it is an
 equivalent mutant, not a hole**: removing the `break` after `{ x = 9; a = 9; }`
 changes nothing, since `a = 9` already fails the `while (a >= 0x0A)` condition
@@ -301,7 +301,7 @@ nothing I changed touches it. I re-derived every figure I quote either from the
 recorded `out/scen/long-idle.json` or from my own disassembly of the cartridge.
 
 **`tests/page-wiring.test.js` cannot run standalone from a path containing a
-space** (`ERR_INVALID_URL_SCHEME` out of `fileURLToPath`) — QA hit this too. It
+space** (`ERR_INVALID_URL_SCHEME` out of `fileURLToPath`) - QA hit this too. It
 runs fine under `node --test games/gradius/tests/`, which is how the gate runs
 it, so this only affected how I scoped ad-hoc runs.
 
@@ -318,7 +318,7 @@ it, so this only affected how I scoped ad-hoc runs.
 3. The three cartridge nametable comparisons still SKIP on a tree with no
    `tools/oracle/out/video/` captures (pre-existing `helpers.js` policy). That
    is why the `$2800` fold and the `$8A4B` increments are pinned in
-   `tests/vram.test.js` as well — those tests need no captures and cannot skip.
+   `tests/vram.test.js` as well - those tests need no captures and cannot skip.
 4. `assets/hud/packets.json` reaching `dist/` is unchanged and is a policy
    question for whoever owns rule 1, not a port bug.
 

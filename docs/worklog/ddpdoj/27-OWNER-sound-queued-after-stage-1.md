@@ -1,4 +1,4 @@
-# OWNER DECISION — DaiOuJou SOUND is queued for the END of stage 1
+# OWNER DECISION - DaiOuJou SOUND is queued for the END of stage 1
 
 owner, 2026-08-04. Binding on whoever picks up the queue.
 
@@ -9,7 +9,7 @@ owner, 2026-08-04. Binding on whoever picks up the queue.
 
 ## THE TRIGGER
 
-**Not now.** Sound starts when DaiOuJou stage 1 is COMPLETE — the capture ledger
+**Not now.** Sound starts when DaiOuJou stage 1 is COMPLETE - the capture ledger
 empty, `capture.bin` deleted, the stage playable start to finish from ported
 code. Until then it stays out of the queue entirely.
 
@@ -28,7 +28,7 @@ code. Until then it stays out of the queue entirely.
 - **Then a FABLE architect** to consolidate all ten into one plan.
 - **Then waves**, per the standing loop: implement, then review + QA + tests.
 
-The owner's instruction on scale is explicit — "I want all the info we can get
+The owner's instruction on scale is explicit - "I want all the info we can get
 for it." This is deliberately more recon than any previous round on either
 game, because the subsystem is less like anything already ported than any other
 remaining work.
@@ -41,7 +41,7 @@ usual five:
 > "The sound side is no longer comparable to reproducing a handful of Game Boy
 > sound channels."
 
-Batman's audio was a small number of DMG channels driven by a table — fully
+Batman's audio was a small number of DMG channels driven by a table - fully
 transcribable. The PGM's ICS2115 is a wavetable synthesiser with sample memory,
 per-voice envelopes and its own command interface. The port's existing sound
 work (`games/ddpdoj/NOTES-sound.md`) is a starting point, not a foundation.

@@ -1,4 +1,4 @@
-# Wave 4 review: flow structure ($1B ladder, stage intro, pause) — fidelity lens
+# Wave 4 review: flow structure ($1B ladder, stage intro, pause) - fidelity lens
 status: DONE
 wave: 4   role: review   started: 2026-07-31
 
@@ -7,7 +7,7 @@ wave: 4   role: review   started: 2026-07-31
 Read commit `1c699fe` **by content**, not by its report. Verify the new code
 against the cartridge's bytes; hunt the fall-through trap; confirm no existing
 behaviour moved; break at least two new checks and see them red; find anything
-silently unported that reads as finished. READER — no edits to `src/` survive
+silently unported that reads as finished. READER - no edits to `src/` survive
 this run, no commits.
 
 ## What I MEASURED
@@ -50,10 +50,10 @@ sha1  intro-boot.json before  9c8fe634f25e9e808291d80973c1f1c53c955a12
 sha1  intro-boot.json after   9c8fe634f25e9e808291d80973c1f1c53c955a12
 ```
 
-Byte-identical, and `lag = 1 at game frame 283` is confirmed from my own run —
+Byte-identical, and `lag = 1 at game frame 283` is confirmed from my own run -
 the `$882C` frame drop is real and is where the commit says it is.
 
-### 2. `intro-boot` is NOT vacuous — the ship's position is computed
+### 2. `intro-boot` is NOT vacuous - the ship's position is computed
 
 `docs/knowledge/03` shape 2 is "the harness sets up state the application never
 has". Checked directly, out of the recorded `seedRam` at align 282:
@@ -67,7 +67,7 @@ rows: f282 x=0 y=0 $1B=0 | f283 x=80 y=96 $1B=1 | f309 $1B=128
 So the port has to COMPUTE `$9BD4[$9BCC[$19] + ($3F>>1)]` -> (80, 96) on the
 first compared frame. That check has teeth.
 
-### 3. ROM spot-checks — read out of `Gradius (USA).nes` at
+### 3. ROM spot-checks - read out of `Gradius (USA).nes` at
 `file offset = 16 + (addr - $8000)`, not out of any doc
 
 Every one of these matched the port's cited listing:
@@ -89,7 +89,7 @@ Every one of these matched the port's cited listing:
 | `$9C12/$9C1E/$9C24/$9C3C` | as listed | ✔, incl. the `4C 8E 9D` tail call and the `$9C38 -> $9C3C` fall-through |
 | `$9AD1-$9B3D` | full listing | ✔ incl. `$9B27 85 B2` with A = 0 |
 | `$9765-$9784` + `$9785` | `89 97 93 97`, `$9793` = `08 08 04 04 02 01 02 01 40 80` | the Konami code ✔ |
-| `$882C-$886E`, `$81B5`, `$8333`, `$83B0`, `$83AB` | as listed | ✔ ($8333 is `JSR $83B0` FIRST, then the two register zeros — the port's comment has that order reversed, harmless) |
+| `$882C-$886E`, `$81B5`, `$8333`, `$83B0`, `$83AB` | as listed | ✔ ($8333 is `JSR $83B0` FIRST, then the two register zeros - the port's comment has that order reversed, harmless) |
 | `$9D83/$9D8E` | `$9D90 STA $57`, threshold `$0180` at `$9DA3-$9DAD` | ✔ |
 | `$8B08` | `F4 F4 F4 F4 CE 6D 23 F8` | `$F4 AND $E3 = $E0 = 224` ✔ |
 | `$83E4` | pulls its own return, `Y = (A*2)+1` | so every handler's RTS returns to `$80AD` ✔ |
@@ -116,7 +116,7 @@ sub_9C09:                          <- a NAMED subroutine with its own xrefs
 ```
 
 Neither store is ported and neither is named as a gap. This is
-`docs/knowledge/02` trap 1 verbatim — a routine that looks like it returns runs
+`docs/knowledge/02` trap 1 verbatim - a routine that looks like it returns runs
 straight on into the next one.
 
 **Impact today: none observable, and I checked why rather than assuming.**
@@ -134,13 +134,13 @@ wave has to land, and `$96E6 JSR $9BF0` (the next-stage arm) reaches it too.
 `04-impl-*.md` "Smaller measurements worth keeping":
 
 > `$5E` has two writers (`$99B5`, `$9C0F`) and zero readers … It changed
-> 0 → 63 at f615 on the respawn run **with no `STA $5E` on that path —
+> 0 → 63 at f615 on the respawn run **with no `STA $5E` on that path -
 > presumably an indexed store I did not chase.** Unresolved, and harmless.
 
 It is `$9C0F STA $5E` with `A = #$3F = 63`, i.e. the very writer the same
 sentence names, sitting inside the routine the port implements as
 `introPackets()`. f615 is the respawn's state-1 frame. Labelled unresolved
-rather than asserted, so it cost nothing — but it is resolvable in one line and
+rather than asserted, so it cost nothing - but it is resolvable in one line and
 it is the same omission as finding 4.
 
 ### 6. A number that disagrees with itself inside the commit
@@ -162,22 +162,22 @@ and f309 is the exit. The impl's own worklog says 21 and the scenario note says
 22. Also `"4 x $9D8E on each of 287-308 = 88 calls"` in the same note is right,
 which is what makes the 22 a typo rather than a model disagreement.
 
-`$0D` f283..f316, from the cartridge: `6,3,3,3, 5 x23, 4,3,2,1,0, 0,0` — the
+`$0D` f283..f316, from the cartridge: `6,3,3,3, 5 x23, 4,3,2,1,0, 0,0` - the
 port's comment is exact.
 
 ### 7. Two checks broken, seen RED, restored byte-identical
 
-**(a) the headline test — `counter-not-57`.** The commit says a 23-frame counter
+**(a) the headline test - `counter-not-57`.** The commit says a 23-frame counter
 is green on both intro scenarios and that `tests/flow.test.js` is the only thing
 holding the loop shape. I built the mutation myself.
 
-*First attempt* (21 building frames, 1 empty, exit): **the corpus caught it** —
+*First attempt* (21 building frames, 1 empty, exit): **the corpus caught it** -
 `intro-boot w_0057@308`, `intro-respawn w_0057@639`. Worth recording: `$57` is
 itself a watched byte, so a counter that also skips the throttled frame's four
 `$9D8E` calls is visible.
 
 *Faithful attempt* (four `buildBlock` calls per frame, exit when the counter
-hits 23 — reproduces the measured trace exactly):
+hits 23 - reproduces the measured trace exactly):
 
 ```
 node --test games/gradius/tests/flow.test.js
@@ -230,7 +230,7 @@ Restored from a scratchpad backup and verified:
 * **`mode5Tail(…, test1B)` being an invented entry point.** `$9A88 LDA $1B /
   10 38` branches to `$9AC4`; `$9660`, `$96A2` and `$98E2` all `JMP $9A8C`,
   past it. The default `false` is the three-arm entry and `true` is the
-  fall-through. Correct — and the commit is honest that it is unfalsifiable
+  fall-through. Correct - and the commit is honest that it is unfalsifiable
   today.
 
 ## What I could not do, and why
@@ -239,7 +239,7 @@ Restored from a scratchpad backup and verified:
   are. Named at `src/flow.js fullScreenLoad()` and in the impl worklog, and the
   oracle rows carry no nametable, so **no check in the gate can see it**. On a
   respawn the port keeps the previous screen's tiles outside the 384 px the
-  intro rebuilds. Disclosed, not hidden — but it is a picture-level gap under a
+  intro rebuilds. Disclosed, not hidden - but it is a picture-level gap under a
   green gate, which is `docs/knowledge/02` trap 2, and it should not be allowed
   to go quiet.
 * **`$9B3E` on the respawn is not compared** (`intro-respawn` aligns at 614,

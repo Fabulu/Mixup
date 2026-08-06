@@ -1,11 +1,11 @@
-# W21b REVIEW — CLEARING THE PATTERN REVIEW'S OPEN FINDINGS
+# W21b REVIEW - CLEARING THE PATTERN REVIEW'S OPEN FINDINGS
 
 status: **DONE**
 wave: 21b   role: reviewer (DAIOUJOU)   started/finished: 2026-08-02
 target of review: `21b-impl-clear-review-findings.md`, files `src/bullets.js`,
 `src/bulletmath.js`, `tests/bullets.test.js`, `tools/w21patterngate.mjs`,
 `tools/w21patterns.py`.  target build: `ddpdojblk` VERSION-B; every address is
-build B unless the line says otherwise.  READER ONLY — nothing in `src/` was
+build B unless the line says otherwise.  READER ONLY - nothing in `src/` was
 left changed, no commit was made.
 
 VERDICT: **all-four-open-findings-cleared.** F1, F2, F3 and F5 are each
@@ -39,7 +39,7 @@ confirmed it instruction for instruction); 21b fixes CHECKS and one PROOF.
 
 ---
 
-## 1. F1 — RESOLVED. The denominator is the real map and the fractions are true.
+## 1. F1 - RESOLVED. The denominator is the real map and the fractions are true.
 
 `w21patterngate.mjs` line 468 prints `${base.bodies.size}/${BODIES.size}`.
 `BODIES` is the 13-entry map (8 shared fan bodies + 5 inline/single arms); the
@@ -49,7 +49,7 @@ hardcoded `/8` is gone, with a comment naming the map's composition.
 
 | corpus | spawns | rank!=0 bodies reached | the bodies |
 |---|---|---|---|
-| play | 197 | **0/13** | — |
+| play | 197 | **0/13** | - |
 | fanplay | 245 | **2/13** | `$2813A6 $281402` |
 | faninvuln | 10057 | **7/13** | `$2813A6 $2813D4 $281402 $281668 $2816C0 $2816DE $281708` |
 | **union** | | **7/13** | as above |
@@ -57,10 +57,10 @@ hardcoded `/8` is gone, with a comment naming the map's composition.
 Six bodies never reached: `$28134E $281366 $281450 $281680 $281726 $281776`.
 Their live fire-site counts (from `w21patterns.py gens`, entries that `bra` to
 each body): `$281420`/4, `$281432`/**0**, `$281450`/10, `$281754`/**0**,
-`$281726`/4, `$281776`/1 — so **four of the six have live fire sites** and two
+`$281726`/4, `$281776`/1 - so **four of the six have live fire sites** and two
 (the triples) have zero. This reproduces the worklog's honest sentence exactly.
 
-> INFORMATIONAL — a latent inconsistency, not a defect today. `BODY_RETURNS`
+> INFORMATIONAL - a latent inconsistency, not a defect today. `BODY_RETURNS`
 > maps 14 distinct bodies (the 13 in `BODIES` PLUS the orphan `$281494`, via
 > rets `$281498/$2814A4`), but the denominator is `BODIES.size` (13, which
 > excludes the orphan). I confirmed the orphan's two return addresses appear
@@ -71,7 +71,7 @@ each body): `$281420`/4, `$281432`/**0**, `$281450`/10, `$281754`/**0**,
 
 ---
 
-## 2. F3 — RESOLVED. The $284190 fixture disagrees with the subject when the fold constant is wrong.
+## 2. F3 - RESOLVED. The $284190 fixture disagrees with the subject when the fold constant is wrong.
 
 `mathRom()` in `tests/bullets.test.js:486` now seeds the fold window at the
 **literal** `FOLD = 0x283f50`, the pointer table at the literal `PTRS =
@@ -95,16 +95,16 @@ Restored, SHA-verified: `675664e4...` for `bulletmath.js`.
 
 ---
 
-## 3. F5 — RESOLVED (code correct). The twelve arms restore D0/D1/A0 as the cartridge does.
+## 3. F5 - RESOLVED (code correct). The twelve arms restore D0/D1/A0 as the cartridge does.
 
 Two independent confirmations.
 
 ### 3.1 The test goes RED without `restoreFan`
 
-* `restoreFan` made a no-op (no save/restore): **1 test RED** —
+* `restoreFan` made a no-op (no save/restore): **1 test RED** -
   `the twelve rank!=0 fan entries restore D0/D1/A0 (the movem frame)`,
   `error: '$281420: D0 not restored by the movem frame'`.
-* `restoreFan` restoring D0 but NOT D1: **1 test RED** at `$281442` —
+* `restoreFan` restoring D0 but NOT D1: **1 test RED** at `$281442` -
   `error: '$281442: D1 not restored by the movem frame'`. (The pair/triple
   entries `$281420/$281432` pass because D0 is restored and D1's bank-A
   `x4`/`/4` round trip is lossless at the test's `d1 = $11`; the first
@@ -132,12 +132,12 @@ $2816A4                                  (the adaptive body, entry $2817B8's bne
 
 Eleven `0x4CDF/0x0103` pops (the two adaptive pushes are popped by the pair /
 spread3 body tails they branch into; the twelfth pop `$2814A6` is the orphan
-`$281494`'s, which pops three longwords it never pushed — that is why it is an
+`$281494`'s, which pops three longwords it never pushed - that is why it is an
 orphan). Every push and every pop carries the **same** register list D0-D1/A0.
 So on return D0, D1 and A0 are the caller's originals, exactly as `restoreFan`
 models.
 
-The three entries the fix does NOT wrap — `$281402 $281708 $281726` — have
+The three entries the fix does NOT wrap - `$281402 $281708 $281726` - have
 **no** `0x48E7` in their own bytes (verified with a window that cannot overlap
 the next entry); they are `tst.w $813098 / beq / addi.l #imm,D0 / jsr core /
 nop / subi.l #imm,D0 / rts`. They restore D0 themselves with the
@@ -155,9 +155,9 @@ needed and none is ported.
 > **F5-NIT-B (MINOR).** Worklog §3's "seen RED before the fix" reads
 > *"8 of 12 entries fail: D0 not restored"* and *"4 of 12 fail: D1 not
 > restored"*. **These are reversed.** Only the pair/triple bodies mutate D0
-> (net); the spread/adaptive/inline bodies mutate D1. The actual split —
+> (net); the spread/adaptive/inline bodies mutate D1. The actual split -
 > confirmed both by static analysis of the body functions and empirically by
-> the D0-only-restore probe above — is **4 entries fail on D0**
+> the D0-only-restore probe above - is **4 entries fail on D0**
 > (`$281420 $281432 $281744 $281754`) **and 8 on D1** (the rest). The shipped
 > test asserts both registers per entry and passes all twelve with
 > `restoreFan` present, so this is a narrative error in the worklog's
@@ -165,7 +165,7 @@ needed and none is ported.
 
 ---
 
-## 4. F2 — RESOLVED. The absence proof is now exhaustive and honestly restated.
+## 4. F2 - RESOLVED. The absence proof is now exhaustive and honestly restated.
 
 `w21patterns.py rewrites` widens the opcode allowlist to every 68000 class
 that can write through `(A6)` / `(d16,A6)`: ori/andi/subi/addi/eori
@@ -173,7 +173,7 @@ that can write through `(A6)` / `(d16,A6)`: ori/andi/subi/addi/eori
 and btst/bchg/bclr/bset (both forms). The scan is a byte-pattern sweep over
 **every word boundary** in `$282104..$283BAF` (alignment-independent), so it
 over-approximates (it will catch data that looks like an opcode) and therefore
-cannot miss a real writer — the right direction for an absence claim.
+cannot miss a real writer - the right direction for an absence claim.
 
 **The result, reproduced:**
 
@@ -185,15 +185,15 @@ clr.w/l (A6) -> 0 (FREE SLOT / death):           11
 HIGH byte (A6) bit ops (bits 8..15):             48
 ```
 
-* The **11 `clr.w (A6)` addresses** — `$282496 $282552 $28260E $2826CA $282BDC
-  $282DEE $282EAA $282F5C $2834EC $2835BA $283696` — are **exactly** the
+* The **11 `clr.w (A6)` addresses** - `$282496 $282552 $28260E $2826CA $282BDC
+  $282DEE $282EAA $282F5C $2834EC $2835BA $283696` - are **exactly** the
   review's own capstone-multi-start list. The old allowlist hid all eleven.
 * **Zero writers to the LOW byte (`$1,A6`) and zero whole-word LIVE writes**
   are now exhaustively proven: any real kind-bit writer would be one of those
   encodings at an even boundary and would be caught.
 
-The load-bearing assumption — that the 27 longword writes to `(A6)` land on
-the sprite descriptor, not the type word — I verified at the canonical
+The load-bearing assumption - that the 27 longword writes to `(A6)` land on
+the sprite descriptor, not the type word - I verified at the canonical
 continuation `$2813E`:
 
 ```
@@ -252,7 +252,7 @@ ATTEMPTED with the structural reason and the unit tests that do cover it.
 
 ---
 
-## 6. MY MUTATION TABLE — every check I broke, watched red, and restored
+## 6. MY MUTATION TABLE - every check I broke, watched red, and restored
 
 Baseline `node --test games/ddpdoj/tests/` = **308 pass, 0 fail**.
 
@@ -261,8 +261,8 @@ Baseline `node --test games/ddpdoj/tests/` = **308 pass, 0 fail**.
 | 1 | F3 | `VEC.fold` `$283F50 -> $283F60` | **3 RED** (quadrants, asr.l, ellipse) | `675664e4` ✓ |
 | 2 | F5 | `restoreFan` body -> no-op | **1 RED** (`$281420 D0 not restored`) | `768a6936` ✓ |
 | 3 | F5 | `restoreFan` restores D0 only (not D1) | **1 RED** (`$281442 D1 not restored`) | `768a6936` ✓ |
-| 4 | F1 | (no code mutation — re-derived counts from corpora) | 0/13, 2/13, 7/13 confirmed | — |
-| 5 | F2 | (no code mutation — current scan already shows 11 clr + 27 longword) | old allowlist hid them; new one sees them | — |
+| 4 | F1 | (no code mutation - re-derived counts from corpora) | 0/13, 2/13, 7/13 confirmed | - |
+| 5 | F2 | (no code mutation - current scan already shows 11 clr + 27 longword) | old allowlist hid them; new one sees them | - |
 
 All file SHAs after restore:
 
@@ -285,7 +285,7 @@ e9ab3792dfdf8a3c5d0463ef3f8119c61b7a6a7b2dfacdd63bac7fa9e5f8e53f  tests/bullets.
 > board-executed (the mover is unported) but is exhaustively compared over its
 > whole 65,536-point domain, and its fixture now disagrees with the subject
 > when the fold-table constant is wrong (F3). The kind of a live bullet is
-> fixed at spawn — proven exhaustively (F2): zero writers to the kind byte,
+> fixed at spawn - proven exhaustively (F2): zero writers to the kind byte,
 > zero whole-word live writes to the type word.
 
 Every number above was re-derived independently in this review.

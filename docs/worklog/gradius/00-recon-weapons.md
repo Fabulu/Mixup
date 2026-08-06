@@ -1,14 +1,14 @@
-# RECON 2 of 5 — player weapons: shots, missiles, power-up meter, Options
+# RECON 2 of 5 - player weapons: shots, missiles, power-up meter, Options
 status: DONE (with named open questions)
 wave: 0   role: recon   started: 2026-07-31
 
 READER role. Nothing under `games/*/src/` was touched. New files, both probes:
 
-* `games/gradius/tools/oracle/weapons.lua` + `weapons.py` — per-game-frame dump
+* `games/gradius/tools/oracle/weapons.lua` + `weapons.py` - per-game-frame dump
   of the weapon RAM (the flat object arrays + the weapon zero page), with pokes,
   exec counters and per-frame exec samples. Sample point `$80B5`, the one
   `PROBE.md §1` proves.
-* `games/gradius/tools/oracle/zpxref.py` — decoded zero-page cross-reference over
+* `games/gradius/tools/oracle/zpxref.py` - decoded zero-page cross-reference over
   the PRG (`dis6502.py xref` only handles absolute operands).
 
 Nothing was committed.
@@ -56,7 +56,7 @@ shot, fired together). Raw rows, `$44 = 2`, frames 400-403:
 ```
 
 **Slot B is skipped when `$44 != 2`, not when `$44 == 2`.** `$A124: LDA $44 /
-CMP #$02 / BEQ $A134` — the branch *into* the slot-B block is taken **on** 2.
+CMP #$02 / BEQ $A134` - the branch *into* the slot-B block is taken **on** 2.
 
 `NOTES-player.md §9` also says a 90-frame hold of A produced **3** shot spawns.
 Measured with exec hooks on the two spawn routines, 300 frames of held A from
@@ -71,7 +71,7 @@ interleaved gaps      = [21, 23, 21, 23, 21, 21, 21, 23, 21, 23, 21, 21, 21]
 Frames 400..489 contain **5** spawns, not 3.
 
 `NOTES-player.md §9`'s missile line ("`+2` or `+8`/`$80` per frame from the table
-at `$A1A4`") is a misreading of the table — see §4.
+at `$A1A4`") is a misreading of the table - see §4.
 
 ---
 
@@ -98,7 +98,7 @@ the array bases:
 | `$0360+i` / `$0380+i` | X / X-sub | `$0363,X` … |
 | `$03A0+i` | **autofire timer** | `$03A3,X` `$03A6,X` |
 
-## 2. `$A0E9` — the weapon parameter fetch
+## 2. `$A0E9` - the weapon parameter fetch
 
 ```
 A0E9  LDX $44 / LDA $A0E0,X -> $98   slot-A type
@@ -118,7 +118,7 @@ A0E6 (sfx id)     : 01 02 01
 ```
 
 The loop runs **from `$45` down to 0**, so all Options fire on the same frame as
-the player. Measured with `$45` forced to 2 — three shots, one per object, on
+the player. Measured with `$45` forced to 2 - three shots, one per object, on
 frame 400, at each object's own X:
 
 ```
@@ -126,7 +126,7 @@ frame 400, at each object's own X:
   400   2  1  4  4  6  6  6      82 77 6C 89 7E 73      0 0 0 14 14 14 14 14 14
 ```
 
-## 3. Firing, `$A10A-$A16D` — the timer only ticks while the slot is EMPTY
+## 3. Firing, `$A10A-$A16D` - the timer only ticks while the slot is EMPTY
 
 Per object X:
 
@@ -135,11 +135,11 @@ Per object X:
 * on a slot-A fire: `$03A3,X = $35`; **if `$44 != 2`** also `$03A6,X = $35` and
   jump past slot B; **if `$44 == 2`** fall into slot B and let it fire too.
 * **slot B** (`$0126,X`): identical shape with `$03A6,X`, and on a fire it
-  reloads `$03A3,X` too when `$44 != 2` — and then **falls into `DEC $03A6,X`**,
+  reloads `$03A3,X` too when `$44 != 2` - and then **falls into `DEC $03A6,X`**,
   so the timer reads `$35 - 1` on the spawn frame. Slot A does not do this
   (`$A12F: BNE $A15C` jumps over the `DEC`).
 
-That last asymmetry is visible in the dump — on the slot-B spawn frame 421,
+That last asymmetry is visible in the dump - on the slot-B spawn frame 421,
 `tm[3] = $14` but `tm[6] = $13`:
 
 ```
@@ -156,7 +156,7 @@ when a shot hits something.
 `$35` measured **20** (`$14`) in stage 1 and re-set to `$14` at `$9B60` on every
 respawn.
 
-Missiles, `$A15C`: gated on `$41 != 0`, `$0129,X == 0`, and **A HELD** (`$9B`) —
+Missiles, `$A15C`: gated on `$41 != 0`, `$0129,X == 0`, and **A HELD** (`$9B`) -
 *not* the edge, and **no timer at all**. The rate limit is purely the flight
 time of the one live missile per object.
 
@@ -175,9 +175,9 @@ volley calls `$EC1E` six times in one frame. The missile spawn plays nothing.
 **The X-sub byte `$0380+i` is not initialised on spawn** for shots (only the
 missile uses it, and it inherits whatever the previous missile left).
 
-## 4. Movement — `$A16F` missiles, `$A1E6` shots. Both run while dead.
+## 4. Movement - `$A16F` missiles, `$A1E6` shots. Both run while dead.
 
-`$9FFC: LDA $0100 / CMP #$02 / BCC $A006 / JMP $A16F` — with the player at
+`$9FFC: LDA $0100 / CMP #$02 / BCC $A006 / JMP $A16F` - with the player at
 status ≥ 2 the update jumps straight into these two loops.
 
 **Missile loop `$A173`**, loop index `$A8` = 8 → 6, i.e. objects 11 → 9
@@ -199,7 +199,7 @@ Killed at `y >= $C8`, or `x` carry, or `x >= $F8`.
 
 Measured (`$41` forced to 1, A held, player at Y `$60`): missile spawns at
 `x = $50, y = $68` (= player Y + 6, then +2 the same frame) and thereafter
-`y += 2` every frame with `$0380+9` alternating `$80 / $00` — exactly the fly
+`y += 2` every frame with `$0380+9` alternating `$80 / $00` - exactly the fly
 row.
 
 **The crawl path is never taken in stage 1's opening.** Over 1000 game frames of
@@ -216,7 +216,7 @@ exec $A1D6 (missile killed)          n=20
 
 **Missile fired at the floor is born dead.** With the ship clamped at `Y = $C0`,
 the missile spawns at `y = $C6 + 2 = $C8` and the `CMP #$C8 / BCS` kills it on
-the spawn frame — the slot is free again next frame, so it silently respawns and
+the spawn frame - the slot is free again next frame, so it silently respawns and
 dies every single frame. No sfx, so it is inaudible; but a port that models the
 missile as "one per N frames" will diverge here.
 
@@ -228,10 +228,10 @@ missile as "one per N frames" will diverge here.
 | 2 | `y -= 4`, then `x += 4` | `y < $10` (tested first), or `x >= $F8` |
 | else (1) | `x += $0C` | carry out of the add, **or `x >= $F0`** |
 
-Note the two different X kill thresholds — `$F8` for subs 0/2, `$F0` for sub 1.
+Note the two different X kill thresholds - `$F8` for subs 0/2, `$F0` for sub 1.
 Sub 3 (missiles) never reaches this loop; the loop stops at object 8.
 
-## 5. The power-up meter — `$8974`, and the `$8989` jump table
+## 5. The power-up meter - `$8974`, and the `$8989` jump table
 
 `$8974` runs once per game frame from `$9A73` (measured: 1036 hits in a
 1000-frame gameplay window).
@@ -246,7 +246,7 @@ Table bytes at `$8989`: `83 89 A1 89 AF 89 BB 89 CF 89 D3 89 97 89`
 
 | `$42` | target | bar label | arm |
 |---|---|---|---|
-| 0 | `$8983` | — | RTS |
+| 0 | `$8983` | - | RTS |
 | 1 | `$89A1` | SPEED UP | `INC $40`, `$42 = 0`, sfx `$0E`, `JMP $8A30` (cursor redraw). **No cap, no "already owned" test.** |
 | 2 | `$89AF` | MISSILE | if `$41 != 0` → RTS **without consuming `$42`**; else `INC $41` |
 | 3 | `$89BB` | DOUBLE | if `$44 == 2` → RTS (kept); else `$44 = 2` |
@@ -287,7 +287,7 @@ while B is held increments `$40` every frame:
   420   0  18   0
 ```
 
-In real play the arm zeroes `$42`, so one capsule is still one power-up — but the
+In real play the arm zeroes `$42`, so one capsule is still one power-up - but the
 distinction is observable: **holding B while touching a capsule consumes it on
 the touch frame.** Measured on a natural pickup (frame 1366) with B held: `$42`
 is never seen non-zero at the sample point and `$40` goes 0 → 1 on 1366.
@@ -295,7 +295,7 @@ is never seen non-zero at the sample point and `$40` goes 0 → 1 on 1366.
 ### The capsule, `$894B`
 
 Reached from the player/enemy collision at `$C1AF`, which is the arm for
-`$030C,Y & $7F == 1` and `$010C,Y == 6` — **object type `$06` in the `$010C`
+`$030C,Y & $7F == 1` and `$010C,Y == 6` - **object type `$06` in the `$010C`
 array is the power-up capsule**. It does `JSR $C1FD` (kill the object) then
 `JSR $894B`:
 
@@ -318,7 +318,7 @@ play run; `$894B` and `$C1AF` each fired exactly once and `$42` went 0 → 1.
 
 **The 7th capsule wraps the meter to 1 and pays a bonus that depends on a digit
 of the SCORE.** `$CE89` reads `$07E5` (the middle byte of the current player's
-3-byte BCD score — `$07E4..$07E6` for P1, `$07E8..$07EA` for P2; the adder at
+3-byte BCD score - `$07E4..$07E6` for P1, `$07E8..$07EA` for P2; the adder at
 `$8474` builds its pointer as `$07E4 + 4*$18` and adds 3 BCD bytes) and masks the
 low nibble. Measured, and then **proved by intervention**:
 
@@ -328,8 +328,8 @@ poke 42=6 AND 07E5=5 just before the same pickup  -> $8958 n=0, $8960 n=1, $35 s
 ```
 
 That is a real, reproducible behaviour of the cartridge. I am flagging it as
-**semantically surprising** — it reads like a routine that was meant to return
-the stage number and reads the score instead — but it is what the ROM does, and
+**semantically surprising** - it reads like a routine that was meant to return
+the stage number and reads the score instead - but it is what the ROM does, and
 both arms have been made to fire on demand.
 
 ### The bar itself
@@ -339,12 +339,12 @@ Each label is queued as string id `$15` MISSILE / `$16` DOUBLE / `$17` LASER /
 `$18` OPTION / `$1B` ? , replaced by id `$19` (the "owned" form) when the
 corresponding variable says you already have it. SPEED UP has no owned form.
 `$8A30` is `$89E3`'s tail and also the target of `JMP` from `$8971` and `$89AC`:
-it queues string `$1A` and then patches one byte of the just-queued run —
-`$0700[$0E - (8 - $42)] = $55` — which is the cursor tile. `$0E` is the VRAM
+it queues string `$1A` and then patches one byte of the just-queued run -
+`$0700[$0E - (8 - $42)] = $55` - which is the cursor tile. `$0E` is the VRAM
 queue write cursor; `$85E8`/`$85F3` are the string-queue entry points and the
 pointer table is at `$864E`.
 
-## 6. Options — `$45`, and the ring
+## 6. Options - `$45`, and the ring
 
 Confirmed unchanged from `NOTES-player.md §7` (ring length 24 at `$0160`,
 history at `$07A0`/`$07C0`, Options trail by 11 and 22, ring advances only while
@@ -358,7 +358,7 @@ a direction is held). What this recon adds:
 * `$45` is capped at 2 by the meter arm only (`CMP #$02 / BCS`); nothing else
   bounds it, and `$A108: LDX $45` would happily loop over more slots.
 
-## 7. The shield `$46` — reachable in stage 1 only via the meter
+## 7. The shield `$46` - reachable in stage 1 only via the meter
 
 Consumed in the collision routine:
 
@@ -373,7 +373,7 @@ C1C8  LDX $A8 / INC $046C,X
 Death (`$C1D6`): `$0100 = 2`, `$0160 = 0`, `$0140 = 0`, `$1B = $A0`, `$4C = $78`,
 sfx `$F7`.
 
-Proved by intervention — identical script, `$46` forced to 5 for two frames:
+Proved by intervention - identical script, `$46` forced to 5 for two frames:
 
 ```
 baseline ($46 = 0)        forced $46 = 5
@@ -388,7 +388,7 @@ Five hits absorbed, sixth kills. The player's sprite emitter reads `$46` at
 `$8B6B` to draw the force field and sets `$9E = 3` when `$46 == 1` (last-hit
 flash).
 
-In stage 1's opening a shield is **not reachable naturally** — it is meter entry
+In stage 1's opening a shield is **not reachable naturally** - it is meter entry
 6, i.e. the sixth capsule. One capsule was collected in ~1000 frames of scripted
 play. It is reachable by the Konami-code grant at `$9C5E` (`$46 = 5`, `$41 = 1`,
 `$40 = 1`, `$45 = 2`), which is out of this recon's scope.
@@ -403,7 +403,7 @@ at frame **2174** all of `$40 $41 $42 $44 $45 $46` go to 0 in one frame and
 $0040..$0046 <- pc $9B44   n=1 each   frame 2174   chain = [$80AD, $8068]
 ```
 
-`$9B3E: LDX #$5A / LDA #$00 / STA $3D,X / DEX / BPL` — zeroes `$003D-$0097`.
+`$9B3E: LDX #$5A / LDA #$00 / STA $3D,X / DEX / BPL` - zeroes `$003D-$0097`.
 Then `$9B5E: LDA #$14 / STA $35` restores the autofire delay (so **the `$35 = 4`
 rapid-fire bonus is lost on death**), and `$9B66: LDA $22,X / STA $42` restores
 the meter cursor from a per-player save at `$22`.
@@ -412,8 +412,8 @@ the meter cursor from a per-player save at `$22`.
 
 * `$19` is 0 for the whole of stage 1 (measured over 2600 frames). It is loaded
   from `$26,X` at `$9B70` on stage/respawn init. `$A17C` compares it to 4 to
-  bypass the missile terrain probe entirely — **never taken in stage 1**.
-* `$9C45` computes `$17 = ($44 != 0) + $45 + ($46 != 0) + ($19 != 0)` — a rank
+  bypass the missile terrain probe entirely - **never taken in stage 1**.
+* `$9C45` computes `$17 = ($44 != 0) + $45 + ($46 != 0) + ($19 != 0)` - a rank
   derived from how powered-up you are. `$BBE5: LDA $17 / CMP #$03` uses it
   inside `$BBB7` (the routine `$9A67` calls one step before the player update).
   **Collecting power-ups changes enemy behaviour.** That belongs to the enemy
@@ -439,8 +439,8 @@ produced six different variables changing, and the untouched ones stayed put.
 ## What I could not do, and why
 
 * **`$C3AF` / `$C3D3` are described from the listing, not measured.** The probe
-  returned 0 on all 916 calls in stage 1, so the non-zero path — and therefore
-  the crawling missile, sprite `$08`, and the `$A199` wall-kill — is **entirely
+  returned 0 on all 916 calls in stage 1, so the non-zero path - and therefore
+  the crawling missile, sprite `$08`, and the `$A199` wall-kill - is **entirely
   unexercised**. Do not port the crawl from my reading without a scenario that
   makes it fire; the honest state is "shape known, constants unverified".
 * **`$19 == 4`** never happened. The bypass is unverified.

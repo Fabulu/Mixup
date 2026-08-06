@@ -1,4 +1,4 @@
-# DIAGNOSTIC 78 — the whole-stage oracle compares ONE logic frame
+# DIAGNOSTIC 78 - the whole-stage oracle compares ONE logic frame
 
 status: DONE. Measured 2026-08-05 by the orchestrator, reproducing a red that
 W67 (T1) reported in passing. Not a wave; no code changed. This exists because
@@ -8,8 +8,8 @@ the number at the bottom of W69 is not the number anybody has been quoting.
 
 W67 closed with `final 74-stage run 73/1/0`, and named the red as W69's segment
 sweep, `s14y@lf2016 port=26122 board=25738`, shot slots. That is accurate as far
-as it goes. I went to reproduce it and aimed at the wrong ladder — `--segment
-2000` on `stage1-sweep` — and got not a red but a **BLOCKED** segment. Chasing
+as it goes. I went to reproduce it and aimed at the wrong ladder - `--segment
+2000` on `stage1-sweep` - and got not a red but a **BLOCKED** segment. Chasing
 why produced this.
 
 **T1's red is real and correctly identified.** What it is not is the story.
@@ -27,37 +27,37 @@ checkpoint ladders already on disk.
 | `stage1-play` | 71 | 1 | 25 | **45** | 6,250 |
 | `stage1-sweep` | 71 | 0 | 0 | **71** | **1** |
 
-Three of four exit non-zero. 298 of 359 segments are BLOCKED — the sweep never
+Three of four exit non-zero. 298 of 359 segments are BLOCKED - the sweep never
 gets to the point of agreeing or disagreeing, because the port throws on a
 routine it has not ported and the segment is abandoned.
 
-**`stage1-sweep` is the ladder built to answer the owner's request** — *"We need
+**`stage1-sweep` is the ladder built to answer the owner's request** - *"We need
 to oracle through the whole stages. Ideally with saved states so we don't have
 to run everything fully all the time."* It cost ~14 minutes of MAME to build,
 covers lf2,000 to lf19,500 at a cadence of 250, and it currently compares
 **one logic frame in total.**
 
-## WHY — AND IT IS ONE ROUTINE
+## WHY - AND IT IS ONE ROUTINE
 
 Census of the blocking throw per ladder:
 
-**`stage1-sweep` — 69 of 71 rungs blocked by a single address.**
+**`stage1-sweep` - 69 of 71 rungs blocked by a single address.**
 
 | count | address |
 |---|---|
 | 69 | `$2497AA` |
-| 2 | `$2943B0` (the last two rungs, lf19,000+ — the stage end) |
+| 2 | `$2943B0` (the last two rungs, lf19,000+ - the stage end) |
 
 `$2497AA` throws at the **first frame of every rung** from lf2,001 onward.
 
 The ladder's own script explains it exactly. `tail: "1890=C"`, then a
 `tailRepeat` cycling `C / CU / C / CL / C / CR / C / CD` every 240 frames until
-lf19,560 — so **`C` is held continuously from lf1,890 to the end of the stage**.
+lf19,560 - so **`C` is held continuously from lf1,890 to the end of the stage**.
 And the manifest says what `C` is, in its own words: *"AUTO-SHOT, not tapped
 fire: Button 3 (mirror bit 6) is the auto-shot the corpus's own `stage1-open`
 and `stage1-deep` already hold, so the ship is FIRING for the whole stage."*
 
-**So: holding the auto-shot button — the ordinary way this game is played —
+**So: holding the auto-shot button - the ordinary way this game is played -
 reaches an unported routine that throws.**
 
 This is the same `$2497AA` the owner reported from the live site by pasting the
@@ -69,19 +69,19 @@ comparison.
 **The other two ladders block on different, larger families** (these are not
 one routine and should not be briefed as if they were):
 
-- `stage1-play`, 45 blocked: the `$295xxx` family — `$295304` ×17, `$2956F6`
+- `stage1-play`, 45 blocked: the `$295xxx` family - `$295304` ×17, `$2956F6`
   ×11, `$295120` ×9, `$295432` ×3, `$296DD6` ×2, `$2937AE` ×2, `$294FA6` ×1.
 - `stage1-laser-hold`, 182 blocked: a long tail. Largest clusters are
   `$2627CA`/`$26286E`/`$26281C`/`$2629AE`/`$26294E`/`$2628DE` (62 together) and
   a dense run through `$28A520`–`$28A5A0` (~50 across 26 addresses spaced 4–8
-  bytes apart — **that spacing is a jump table, not 26 unrelated routines**, and
+  bytes apart - **that spacing is a jump table, not 26 unrelated routines**, and
   porting its dispatch is likely one job rather than twenty-six).
 
   **CORRECTION, same day, from W75.** The `$28A520`–`$28A5A0` run is not an
   unidentified jump table: it is **the laser's own impact-spark list, and it is
   an already-declared deferral in `src/spark.js`**. W75 counts 66 of the 182
   blocks there. The structural read above was right and the "we don't know what
-  this is" framing was wrong — it was written down, in the source, by an earlier
+  this is" framing was wrong - it was written down, in the source, by an earlier
   wave. Anybody briefing it should start from `src/spark.js`, not from a fresh
   disassembly. This is the fourth time this project has treated something
   already recorded as an open question.
@@ -100,7 +100,7 @@ it cannot see.
 
 ## THE TRAP THIS IS AN INSTANCE OF
 
-`docs/knowledge/10` — coverage is branches, not frames — has a companion this
+`docs/knowledge/10` - coverage is branches, not frames - has a companion this
 project keeps re-learning: **a green from a comparison that never ran is not a
 green.** The sweep is honest (`BLOCKED` is printed, blocked drives a non-zero
 exit, and the summary line prints the count), so nothing lied here. But
@@ -129,16 +129,16 @@ vf, irq6                                      first at lf8227  (segment from lf8
 
 `s14`/`s21` are shot slots; `port=26122 board=25738` on `s14y` is a difference of
 384 = `$180`, a suspiciously round number that suggests a wrap or a spawn-origin
-offset rather than accumulated drift — worth checking before anything harder.
+offset rather than accumulated drift - worth checking before anything harder.
 
 `vf`/`irq6` at lf8,227 is the already-known slowdown divergence (W69), and
 `76-recon-mister-timing.md` now says what the board's mechanism is.
 
 ## NEXT
 
-1. **`$2497AA`** — unblocks 69 rungs of `stage1-sweep` and the owner's crash.
-2. **`$28A520`–`$28A5A0`** — port the dispatch, not the leaves; ~50 segments.
-3. **`$2627xx`–`$2629xx`** — 62 segments on the laser-hold ladder.
-4. **`$295xxx`** — 45 segments on `stage1-play`.
-5. **`$2943B0`** — 2 rungs, but they are the stage END.
+1. **`$2497AA`** - unblocks 69 rungs of `stage1-sweep` and the owner's crash.
+2. **`$28A520`–`$28A5A0`** - port the dispatch, not the leaves; ~50 segments.
+3. **`$2627xx`–`$2629xx`** - 62 segments on the laser-hold ladder.
+4. **`$295xxx`** - 45 segments on `stage1-play`.
+5. **`$2943B0`** - 2 rungs, but they are the stage END.
 6. The lf2,016 shot-slot cluster, once the sweep can see past it.

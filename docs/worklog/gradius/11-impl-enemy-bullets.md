@@ -1,4 +1,4 @@
-# Wave 11 (follow-up) — enemy bullets: slots 22-31, the $BC59 allocator, the $BDD5 mover
+# Wave 11 (follow-up) - enemy bullets: slots 22-31, the $BC59 allocator, the $BDD5 mover
 status: DONE
 wave: 11   role: impl   started: 2026-08-01
 
@@ -28,19 +28,19 @@ of all ten bullet slots. It also speaks the corpus's own poke syntax.
 
 ### 2. The port
 
-* **`src/enemies.js`** — `allocBullet()` (`$BC59-$BCAE`, including the `$BC63`
+* **`src/enemies.js`** - `allocBullet()` (`$BC59-$BCAE`, including the `$BC63`
   failure arm), `aimBullet()` (`$BCB5-$BDD1`, both rank arms and both speed
   bumps), `divide83B5()` (`$83B5`, transcribed instruction by instruction), and
   `moveBullet()` (`$BDD5-$BE6D`). `bulletUpdate()` (`$BC19`) stopped being a
   tripwire and became the loop it always was.
-* **`src/collision.js`** — the bodies of `$C20A` (player vs bullets, `$C24B`
+* **`src/collision.js`** - the bodies of `$C20A` (player vs bullets, `$C24B`
   death and `$C24E` shield), `$C2FF` (bullets vs terrain) and `$BF75` (a shot vs
   a bullet: `$BF97`'s type-2 arm, `$BF9F`'s INC `$5D` + score + sfx, `$BFBB`'s
   `$59` arm).
-* **`src/state.js`** — `work.bulletSlots` and `work.bulletAllocFail`.
+* **`src/state.js`** - `work.bulletSlots` and `work.bulletAllocFail`.
 * **Assets**: four new ROM ranges through `export_assets.py`, each anchored on
-  the opcodes around it — `bulletMuzzle $BC32-$BC43`, `bulletKind $BC64-$BC67`,
-  `bulletAnim $BDD1-$BDD4`, `bulletBoxes $C202-$C209` — with re-read,
+  the opcodes around it - `bulletMuzzle $BC32-$BC43`, `bulletKind $BC64-$BC67`,
+  `bulletAnim $BDD1-$BDD4`, `bulletBoxes $C202-$C209` - with re-read,
   offset-re-derivation and measured-consequence arms in `verify_assets.py` and
   six new self-test mutations.
 * **Watch list**: 872 -> **1022** addresses. Fifteen arrays x ten slots.
@@ -58,7 +58,7 @@ $BC44 n=7  at f1158 1223 1285 1354 1734 1799 1862 -- and $BC58 RTS all seven
 ```
 
 The countdown is the reason. `$04EC` is `style AND $FE`, and **every stage-1
-squadron's style is `$C8`/`$C9`** — read out of `$A5BC` through the descriptors
+squadron's style is `$C8`/`$C9`** - read out of `$A5BC` through the descriptors
 for all 22 pattern entries, and confirmed on the cartridge by those seven rows.
 So an enemy reaches its shot 200 frames after its `$F0` spawn, by which time it
 has marched to X ≈ 35, and `$BC56` needs the ship STRICTLY further left. Five
@@ -73,7 +73,7 @@ scripted attempts to get there:
 | `RD` to 1740 then `L`, `$40 = 6` | dies **f1800**, X = 72 |
 
 Stage 1's opening kills anything in the left half long before frame 1158. So the
-scenarios poke `$040C,X` — the countdown itself, one frame before the borrow the
+scenarios poke `$040C,X` - the countdown itself, one frame before the borrow the
 cartridge was always going to take. `POKEABLE_RANGES` carries that reasoning.
 
 ### 2. WHAT THE CARTRIDGE DOES, measured before a line was written
@@ -102,7 +102,7 @@ $BD1F over the ten:  (16,53)->77  (18,45)->102  (23,35)->168  (25,28)->228
 `divide83B5()` reproduces **all ten exactly**, `$98` and `$99` zero on every one
 (tests/enemies.test.js replays them).
 
-With `$46 = 5` poked: `$C24E` at f493, 494, 498, 500, 503 — five absorptions —
+With `$46 = 5` poked: `$C24E` at f493, 494, 498, 500, 503 - five absorptions -
 and `$C24B` kills at f513. With `$45 = 2` and `$46 = 5` (rank `$17` = 3):
 `$BCBE` n=10, `$BD65` n=5, `$BDB9` n=5, `$BE01` n=124.
 
@@ -126,10 +126,10 @@ node tools/oracle/compare.mjs --only enemy-bullet,enemy-bullets-full,enemy-bulle
 flight, their aim vectors, their sprites in the display list, two deaths, five
 shield absorptions and four allocation failures. **Zero divergent fields.**
 
-### 4. SEEN RED — 17 breaks against the corpus, 6 survived
+### 4. SEEN RED - 17 breaks against the corpus, 6 survived
 
 `scratchpad/break11.mjs`: edit `src/`, run the four scenarios, read the failure
-count off the SUMMARY LINE (never off prose — wave 10's near miss), restore from
+count off the SUMMARY LINE (never off prose - wave 10's near miss), restore from
 the bytes read before the edit, sha256 every `src/**/*.js`.
 **`SRC RESTORED byte-identical: true`.**
 
@@ -189,7 +189,7 @@ three are real corpus blind spots now covered by unit tests, and the seventh
   same box one pixel bigger. Three new unit tests separate them, each written
   from the ROM's own arithmetic and each seen red (the block above).
 * **`$C312` was MY BUG, in the scenario, not in the port.** `enemy-bullet-wall`
-  poked `$05B3 = $FF`, and `$FF` sets all four 2-bit fields — so the `+ 8` that
+  poked `$05B3 = $FF`, and `$FF` sets all four 2-bit fields - so the `+ 8` that
   moves the probe from tile row 13 to row 14 (the same cell either way, because
   the cell index is `trow >> 2`) could not change the answer. Re-measured on the
   cartridge with `$10`: `$C327` still fires at f496, and the break is red. The
@@ -207,7 +207,7 @@ The bullets entered page `$02` for free: `$8B47` walks slots 0-31 and the port's
   [PASS] 0 Y mismatches, 0 live-slot content mismatches
 ```
 
-193,997 live slot-frames against wave 10's 178,577 — the difference is the
+193,997 live slot-frames against wave 10's 178,577 - the difference is the
 bullets' own sprites, byte-exact including the OAM slot they landed in, which is
 what makes the allocator's downward scan a compared fact rather than a comment.
 
@@ -245,7 +245,7 @@ marginally inside the frame and what tips them over is a cycle question this por
 has no model for (docs/knowledge/06). I did NOT invent a condition. The scenario's
 window was shortened to f401-f600, which is before its own respawn and still
 contains everything it exists for (the four `$BC63` failures at f501/507/511/516,
-ten live bullets, and the death at f493) — and the other two scenarios still
+ten live bullets, and the death at f493) - and the other two scenarios still
 compare a respawn with the lag exact. The scenario's `why` says all of this and
 says explicitly: **do not "fix" it by making `frameDrops` conditional on
 something plausible.**
@@ -333,7 +333,7 @@ JSON. `node --test` was re-run after it (303/303).
    dodges; a fixed hold cannot.
 2. **`$BF75`'s body ($BF7D/$BF97/$BF9F) is ported and NO SCENARIO REACHES IT.**
    Measured: two runs with A held and ten bullets converging give `$BF75` n=6651
-   and n=1473, and `$BF7D` **n=0** both times — the shot's `$10 x $10` box and a
+   and n=1473, and `$BF7D` **n=0** both times - the shot's `$10 x $10` box and a
    bullet aimed at the ship do not overlap in these geometries. It is held by
    three unit tests (the destroy arm, the type-2 clink, the `$59` laser arm) and
    by nothing else. **This is the weakest part of the wave.**
@@ -375,7 +375,7 @@ JSON. `node --test` was re-run after it (303/303).
   --dumpslots` is how every number above was taken. `$040C+j` = 0 makes enemy
   slot `j` fire on the next frame.
 * To see the new checks bite in ten seconds:
-  `node tools/oracle/compare.mjs --only enemy-bullet --neuter …` is not needed —
+  `node tools/oracle/compare.mjs --only enemy-bullet --neuter …` is not needed -
   change `for (let x = 9; x >= 0; x--)` in `allocBullet()` to count up and run
   `--only enemy-bullet,enemy-bullets-full,enemy-bullet-rank,enemy-bullet-wall`.
 * **The next thing to do here is `$BF7D`**: find a geometry where a player shot

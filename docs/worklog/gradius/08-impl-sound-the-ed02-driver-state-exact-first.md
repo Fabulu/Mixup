@@ -1,4 +1,4 @@
-# Wave 8 — Sound: the $ED02 driver, state-exact first
+# Wave 8 - Sound: the $ED02 driver, state-exact first
 status: DONE
 wave: 8   role: impl   started: 2026-08-01 (date given in-session)
 
@@ -26,7 +26,7 @@ grown to 35 and 11695 since. Re-measured, not quoted.)
 
 ## What I did
 
-### 1. The data — `assets/sound/tables.json`
+### 1. The data - `assets/sound/tables.json`
 
 `tools/export_assets.py` gained `sound_tables()`. Three blocks, all read at CPU
 addresses by `src/sound.js`:
@@ -34,7 +34,7 @@ addresses by `src/sound.js`:
 | block | range | why |
 |---|---|---|
 | `bgm` | `$833F-$8355` | the three interleaved 7-entry tables `$8357` reads with `Y = $19` (area theme, CHR select `$2D`, the `$3F` page the area theme takes over at) |
-| `chanBase` | `$ECB2-$ECB5` | `$EC42 LDX $ECB2,Y` — and reading one past the end of *those four bytes* IS the index-0 crash |
+| `chanBase` | `$ECB2-$ECB5` | `$EC42 LDX $ECB2,Y` - and reading one past the end of *those four bytes* IS the index-0 crash |
 | `data` | `$EFB8-$FFF9` | pitch table + the 64 sound records + every sequence stream, **in one block** |
 
 The single `data` block is deliberate: `$EFCD-$EFCF` is simultaneously record 0
@@ -65,11 +65,11 @@ A *static* decode of dialect B goes out of phase inside the `$2E-$34` group.
 That is the same class of unresolved item `00-recon-sound.md` records for index
 `$24` ("either my decoder desynchronises inside that stream's `$FD`
 sub-phrases, or the data path was not reached in 500 frames"). The PORT does not
-care — it executes `$ED77` rather than pre-decoding it — but the exporter must
+care - it executes `$ED77` rather than pre-decoding it - but the exporter must
 not claim a number it cannot derive, so the block is anchored on the vectors and
 the filler run instead, with the two failures written into the code.
 
-### 2. `src/sound.js` — the driver
+### 2. `src/sound.js` - the driver
 
 `state.snd` is `$00B0-$00FF` **as one flat array indexed by address**, because
 the structs deliberately overlap the globals and a port with four struct objects
@@ -78,7 +78,7 @@ plus separate fields cannot express it:
 * `$DD/$DE` is the triangle struct's `+$B/+$C`, reused as the ONE GLOBAL
   sub-phrase return address shared by all four channels;
 * `$F0-$F3` is the noise struct's `+$D..+$10`, reused as the fade globals;
-* `$DF/$E0/$E1/$E8` — `$EC1E`'s own scratch — sit on the triangle's `+$D..+$F`
+* `$DF/$E0/$E1/$E8` - `$EC1E`'s own scratch - sit on the triangle's `+$D..+$F`
   and the noise's `+$5`. **This one bit me** (see MEASURED below).
 
 Ported: `$EC1E` (index/count split, the priority test, STOP records, the
@@ -95,14 +95,14 @@ Callers wired: `$8357`/`$839B`/`$83AB`/`$8398` (the BGM selector, the `$1C`
 de-dupe, stop-all, the fade setter), `$9AF0`/`$9AFA` and `$9B27-$9B3B` (the
 pause struct save/restore), `$97E9` (`$1C` cleared on the respawn), and the nine
 existing `$EC1E` sites in weapons/collision/enemies/powerup/score, which used to
-`state.sfx.push(id)` and now call `soundRequest(state, id)`. `state.sfx` stays —
+`state.sfx.push(id)` and now call `soundRequest(state, id)`. `state.sfx` stays -
 it is what the weapon and power-up tests hold the CALL SITES to, and that
 matters more now that most requests are correctly REJECTED.
 
 ### 3. The comparison
 
 `scenarios.json` watch gained `$001C`, `$00B0-$00FB` (the whole driver zero
-page) and `$01A0-$01B0` (the pause save area) — 616 watched addresses, up from
+page) and `$01A0-$01B0` (the pause save area) - 616 watched addresses, up from
 518. `porttrace.mjs` seeds all of it from the cartridge's RAM at the align frame,
 so the port does not *start* a track: it **picks the stage-1 BGM up in flight**
 (owners `$13/$14/$15`, pointers mid-stream, counters mid-note) and has to stay
@@ -111,12 +111,12 @@ in phase for hundreds of frames.
 `objloop.lua` gained four counters, merged by `scen.py`, produced by
 `porttrace.mjs`, compared as TIER 1:
 
-* `audioTicks` — `$ED02` executions. The lag rule. `scen.py` now ABORTS if the
+* `audioTicks` - `$ED02` executions. The lag rule. `scen.py` now ABORTS if the
   cartridge ever reports anything but 1 on a sampled frame.
-* `audioChannels` — `$ED46` executions: owned channels PLUS every control
+* `audioChannels` - `$ED46` executions: owned channels PLUS every control
   command chained inside the tick (`$ECE5` re-enters by `BNE`, not `JSR`).
-* `apuWrites` — writes to `$4000-$400F` ($4014/$4015/$4017 excluded on purpose).
-* `apuDigest` — a rolling hash of (offset, value) over those writes IN ORDER,
+* `apuWrites` - writes to `$4000-$400F` ($4014/$4015/$4017 excluded on purpose).
+* `apuDigest` - a rolling hash of (offset, value) over those writes IN ORDER,
   `h = (h*31 + (off<<8) + v) & $FFFF`. This is the register-level comparison:
   the shadow itself is not comparable (write-only registers, and the port's
   starts at zero), but the writes made during the frame are.
@@ -164,7 +164,7 @@ distinct apuDigest      50 distinct values over 239 frames
 
 The brief and the plan both say "consecutive records". The RECORDS are
 consecutive; the OWNER BYTES ARE NOT. `$EC91 LDA $DF / STA $02,X` reads `$DF`,
-and `$DF` is written once at `$EC2F` and never reloaded inside the loop — so a
+and `$DF` is written once at `$EC2F` and never reloaded inside the loop - so a
 multi-channel request stamps the FIRST index on every channel it takes.
 
 I wrote the test asserting `[$13, $14, $15]` and it went red. Both sides agree
@@ -214,7 +214,7 @@ Baseline: 0 failures.
 | B14 the release ramp runs on the triangle too | **40** | 0 |
 
 Thirteen of fifteen reddened. **B7 is the interesting green-to-red one:** the
-retrigger guard is an APU-WRITE-ONLY behaviour — it changes no RAM at all — and
+retrigger guard is an APU-WRITE-ONLY behaviour - it changes no RAM at all - and
 it was caught by `apuDigest`, i.e. by the register-level field. Without that
 field the guard would have been unfalsifiable. B4 and B8 are caught only by
 `tests/sound.test.js`, which is the reason that file exists.
@@ -222,19 +222,19 @@ field the guard would have been unfalsifiable. B4 and B8 are caught only by
 **THE TWO THAT SURVIVED, and what I did about them.** Per the brief, a break
 that passes is the most valuable finding of the day.
 
-* **B3 — `$ECB6 STY $02,X` reads Y, not a literal 0.** Y is 0 on every path the
+* **B3 - `$ECB6 STY $02,X` reads Y, not a literal 0.** Y is 0 on every path the
   corpus reaches. The one path with Y != 0 is the TRIANGLE's `$Dn vv` handler:
   `$EE9D` jumps back to the DISPATCHER at `$ED77` with Y at 2, so a triangle
   stream whose `$Dn vv` is immediately followed by `$FF` frees the channel to
-  **2** and writes 2 to `$4008`. **No stream in this cartridge does that** — a
+  **2** and writes 2 to `$4008`. **No stream in this cartridge does that** - a
   scan of the whole `$EFB8-$FFBF` data region finds exactly ONE `$Dx ?? $FF`
   triple, at `$F74E`, and it is inside index `$30`, a PULSE 2 stream where `$Dn`
   is three bytes and the `$FF` is its decay operand. Closed by a unit test that
   builds the case from those real ROM bytes; seen red against B3.
-* **B6 — the `$EF56` octave loop.** `LDY $10,X ... INY / BNE $EF56`: for an
+* **B6 - the `$EF56` octave loop.** `LDY $10,X ... INY / BNE $EF56`: for an
   octave above 4 the loop wraps Y through 256 and shifts ~253 times, zeroing the
   period. Whether real data reaches it is 00-recon-sound.md's own unresolved
-  item and it is STILL unresolved (the static decode desynchronises — see
+  item and it is STILL unresolved (the static decode desynchronises - see
   above). Closed by a unit test that forces `$10,X = 7` on a live channel and
   asserts `$F4/$F5` come out `$08/$00` rather than a pitch-table value; seen red
   against B6.
@@ -259,7 +259,7 @@ now also reddens `audioTicks`, and `lead1` reddens the driver's zero page.
 ## What I could not do, and why
 
 * **A static decode of dialect B desynchronises**, on index `$23` (`$FC66`) at
-  least — it walks to `$01E2`, i.e. out of the ROM. Two independent decoders
+  least - it walks to `$01E2`, i.e. out of the ROM. Two independent decoders
   (mine, twice, and the recon's, which needed a step limit) hit it. The PORT is
   unaffected because it executes the parser; what it cost is the ability to
   anchor the exported block's end on the stream data, so it is anchored on the
@@ -268,12 +268,12 @@ now also reddens `audioTicks`, and `lead1` reddens the driver's zero page.
   run that forces `$23`/`$24` on to a channel and hooks `$ED77` to record the
   real byte sequence.
 * **No audio is synthesised.** The APU register writes are reproduced exactly
-  (address, value and order — that is what `apuDigest` compares), but nothing
+  (address, value and order - that is what `apuDigest` compares), but nothing
   turns them into samples. The wave brief calls that the stretch and it is not
   attempted.
 * **The `$F0` fade is still only reachable by intervention.** What game
   situation sets it (`$1B < $82` at `$8390`, on a frame where `$3F + 1` equals
-  the area-theme page) is not established — stage 1's threshold is page 4 and
+  the area-theme page) is not established - stage 1's threshold is page 4 and
   nothing in this corpus gets past page 0. `tests/sound.test.js` drives it by
   poking `$F0`, exactly as the recon did.
 * **Two-channel `$FD` sub-phrases at once.** `$DD/$DE` is one slot for all four

@@ -1,18 +1,18 @@
-# W48 RECON — stage-1 boss `$292902` and the `$294AD8` "script format"
+# W48 RECON - stage-1 boss `$292902` and the `$294AD8` "script format"
 
-status: **DONE** — see the WAVE ESTIMATE at the foot. Headline: **the brief's
-premise is wrong — `$294AD8` is not a script interpreter and there is no opcode
+status: **DONE** - see the WAVE ESTIMATE at the foot. Headline: **the brief's
+premise is wrong - `$294AD8` is not a script interpreter and there is no opcode
 set**; the format is a task scheduler (`$259554`/`$25962E`) over INIT/STEP
 pointer pairs, the stage-1 boss's five tables hold **52 script ids / 111 entry
 points, 0 ported**, its static closure is **257 routines / 31,768 B**, and it
-reaches bullet kinds **9 and 11** at 10 sites — the first execution of any of
+reaches bullet kinds **9 and 11** at 10 sites - the first execution of any of
 W27's 29 transcribed bodies.
 
 wave: 48. role: RECON (READ-ONLY; the only file I write is this one).
 date: 2026-08-04.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Every address below is
 build B (`$23xxxx..$2Axxxx`) unless a line says otherwise.
-instrument: `games/ddpdoj/tools/oracle/out/maincpu.bin` — the decrypted build-B
+instrument: `games/ddpdoj/tools/oracle/out/maincpu.bin` - the decrypted build-B
 image, **address == file offset**, 6,291,456 B, produced by `derive.py`
 (gitignored). Disassembly: `tools/oracle/w27disasm.py` (capstone 5.0.7,
 `CS_MODE_M68K_030`); cross-references: `tools/oracle/xref.py`.
@@ -25,7 +25,7 @@ statement is a snapshot of a tree that may be mid-edit.**
 ## 0. THE HEADLINE, AND THE BRIEF'S PREMISE
 
 **THE BRIEF'S PREMISE IS WRONG IN ITS CENTRAL WORD, AND THE CORRECTION IS GOOD
-NEWS.** The brief — and W36 §2.2, W28 §6 and W33 §8 behind it — call `$294AD8`
+NEWS.** The brief - and W36 §2.2, W28 §6 and W33 §8 behind it - call `$294AD8`
 "the boss BRAIN / the installed script tables" and ask for "the opcode set,
 operand layout, record stride, terminator, and how the interpreter walks it",
 with the 7-opcode scroll VM as the precedent to match.
@@ -33,7 +33,7 @@ with the 7-opcode scroll VM as the precedent to match.
 **There is no bytecode and there are no opcodes.** I looked for them and §1.5
 says exactly where I looked. What is there is a **cooperative task/coroutine
 scheduler living in RAM at `$812980..$812E07`**, installed by **`$259554`**,
-stepped once per logic frame by **`$25962E`** — and the "scripts" are ordinary
+stepped once per logic frame by **`$25962E`** - and the "scripts" are ordinary
 68000 subroutines reached through **pointer-PAIR tables**, one (INIT, STEP) pair
 per script id, 8-byte stride.
 
@@ -43,22 +43,22 @@ So the enumerable inventory is not an opcode set. It is:
   (`$259554` has exactly five callers, §1.1);
 - **five tables per boss**, and for the stage-1 boss they are
   `$293104` / `$295856` / `$292932` / `$29370A` / `$294F68` (§2), holding
-  **52 script ids and 7 object routines** — a complete, closed, countable list.
+  **52 script ids and 7 object routines** - a complete, closed, countable list.
 
 `$294AD8` is not the interpreter either. It is the boss's **per-frame damage and
 part-destruction routine** (§3.2): three destructible parts, three HP longwords,
 three death chains, and the whole-boss death chain at `$294DD4`.
 
-**`$292902` really is ten instructions** — W36 §2.2 is right about that, and §3.1
+**`$292902` really is ten instructions** - W36 §2.2 is right about that, and §3.1
 reproduces it.
 
 ---
 
-## 1. THE SCHEDULER — `$259554..$259C1F`
+## 1. THE SCHEDULER - `$259554..$259C1F`
 
 ### 1.1 Five callers of the installer, i.e. five bosses
 
-`python xref.py callers 259554` — absolute-long `jsr`/`jmp` only, so a LOWER
+`python xref.py callers 259554` - absolute-long `jsr`/`jmp` only, so a LOWER
 BOUND (the `xref.py` rule):
 
 ```
@@ -72,7 +72,7 @@ $2A432E
 Five sites, all in the boss bank. DaiOuJou has five stages. **I did not confirm
 which of the other four belongs to which stage** and did not try.
 
-### 1.2 `$259554` — THE INSTALLER. Five tables in five address registers.
+### 1.2 `$259554` - THE INSTALLER. Five tables in five address registers.
 
 ```
 $259554 movem.l d0-d7/a0-a6,-(a7)
@@ -98,7 +98,7 @@ that class"**; the base longword stays 0 and every runner tests its base for 0
 first. That is the whole optional-table mechanism, and it is why a port must
 model five independently-present tables rather than five mandatory ones.
 
-### 1.3 THE RAM BLOCK — `$812980..$812E07`, `$488` bytes, cleared on install
+### 1.3 THE RAM BLOCK - `$812980..$812E07`, `$488` bytes, cleared on install
 
 Every offset below is one I read out of an instruction this session.
 
@@ -107,10 +107,10 @@ Every offset below is one I read out of an instruction this session.
 | `$812980` | w | MAIN: "a start is pending" |
 | `$812982` | w | MAIN: the pending script id |
 | `$812984` | l | MAIN table base (A0) |
-| `$812988` | w | MAIN: sub-offset in the entry — 0 (INIT) or 4 (STEP) |
+| `$812988` | w | MAIN: sub-offset in the entry - 0 (INIT) or 4 (STEP) |
 | `$81298A` | w | MAIN: current id, **`$FFFF` = none** |
 | `$81298C..$8129AB` | $20 | MAIN: the live 16-word local block (A4 for main scripts) |
-| `$8129AC..$8129CB` | $20 | MAIN: the 16-word ARGUMENT staging block — `$2598D0` returns A0 = here |
+| `$8129AC..$8129CB` | $20 | MAIN: the 16-word ARGUMENT staging block - `$2598D0` returns A0 = here |
 | `$8129CC` | l | OBJECT list base (A2) |
 | `$8129D0..$812A6F` | 20 × 8 | OBJECT slots: status word, routine ptr at `+2` |
 | `$812A70` | l | table D base (A3) |
@@ -123,16 +123,16 @@ Every offset below is one I read out of an instruction this session.
 | `$812D3C..$812DDB` | 5 × $20 | table F channels |
 | `$812DDC..$812DFB` | $20 | table F OVERFLOW block (`$259832`) |
 | `$812DFC` `$812DFE` `$812E00` `$812E02` `$812E04` | w | the `$259B7E`/`$259BB4` timed effect |
-| `$812E06` | w | GLOBAL SUSPEND — `$2595E8` sets it; `$25962E` then returns C=1 having done nothing |
+| `$812E06` | w | GLOBAL SUSPEND - `$2595E8` sets it; `$25962E` then returns C=1 having done nothing |
 
 **The three OVERFLOW blocks are why "the table is full" is silent rather than a
 crash.** `$25980C`, `$259962` and `$259A18` walk their slot array for a free
 one and, finding none, return A0 pointing at a `$20`-byte scratch block that no
 runner ever visits. The start request is DROPPED. **A port must reproduce the
-drop, not grow the array** — this is exactly the shape of defect W33 §4 found in
+drop, not grow the array** - this is exactly the shape of defect W33 §4 found in
 the sub-record pool.
 
-### 1.4 THE CHANNEL RECORD — `$20` bytes; the status word IS the format
+### 1.4 THE CHANNEL RECORD - `$20` bytes; the status word IS the format
 
 ```
 +$00  w   STATUS.  bit15 = allocated (the start call writes `id | $8000`)
@@ -146,10 +146,10 @@ the sub-record pool.
 
 **A script ENDS by `clr.w (a4)`.** Status 0 means free. The idiom
 `42 54 4E 75` = `clr.w (a4) / rts` sits immediately before the first routine of
-table D (`$2937B2`) and of table E (`$2958CE`) — the shared "script done" tail,
+table D (`$2937B2`) and of table E (`$2958CE`) - the shared "script done" tail,
 and a useful landmark for bounding the tables.
 
-### 1.5 THE DISPATCH — the "record stride" and the "terminator"
+### 1.5 THE DISPATCH - the "record stride" and the "terminator"
 
 Identical in all four channel classes (table F shown, `$2596D8`):
 
@@ -168,7 +168,7 @@ $2596FA jsr (a0)                  a4 = channel record, d7 = slot index
 
 > **The "record" is A PAIR OF LONGWORDS per script id: `[+0]` runs on the first
 > frame after the start call, `[+4]` on every frame after that.** There is no
-> terminator inside these tables — **their extent is bounded by where their own
+> terminator inside these tables - **their extent is bounded by where their own
 > code begins**, which is how I bounded all four (§2). The only terminator in
 > the whole format is the `$FFFFFFFF` ending the A2 OBJECT list.
 
@@ -181,7 +181,7 @@ only pointer indirections are `movea.l (a0,d0.w),a0` with `d0 = id<<3 (+4)` and
 say no boss anywhere carries a byte stream; I can say **the SCHEDULER has no
 opcode fetch**.
 
-### 1.6 `$25962E` — the per-frame entry, and it can run the scripts TWICE
+### 1.6 `$25962E` - the per-frame entry, and it can run the scripts TWICE
 
 Called by `$292902`; returns the carry flag the boss handler branches on.
 
@@ -208,19 +208,19 @@ and it is **not** the order the tables are installed in.
 Two consequences a port must not miss:
 
 1. **The OBJECT slots still run when the double pass is skipped and when
-   `$8130D2` pauses** — `$259644`'s branch goes to `$259682`, not to the `rts`.
+   `$8130D2` pauses** - `$259644`'s branch goes to `$259682`, not to the `rts`.
 2. **`$8130F8` bit 6 is set by `$294DD4`**, the boss death chain, so the "run
    the scripts twice" arm switches itself off the instant the boss dies.
 
-### 1.7 THE COMPLETE API — 27 routines, all read this session
+### 1.7 THE COMPLETE API - 27 routines, all read this session
 
 | routine | class | what it does |
 |---|---|---|
-| `$259554` | — | install the five tables |
-| `$2595E8` | — | `$812E06 := 1` — SUSPEND the whole scheduler |
-| `$2595F2` | — | difficulty/spread index — **always returns 4, see below** |
-| `$25962E` | — | the per-frame entry (§1.6) |
-| `$2596C6` | — | one pass over F, MAIN, E, D |
+| `$259554` | - | install the five tables |
+| `$2595E8` | - | `$812E06 := 1` - SUSPEND the whole scheduler |
+| `$2595F2` | - | difficulty/spread index - **always returns 4, see below** |
+| `$25962E` | - | the per-frame entry (§1.6) |
+| `$2596C6` | - | one pass over F, MAIN, E, D |
 | `$25980C` | F | start id d0 in the first free of 5 |
 | `$25983E` | F | is id d0 running? C=1 yes |
 | `$259876` | F | stop id d0 |
@@ -250,18 +250,18 @@ Two consequences a port must not miss:
 `$259BB4` runs past `$259BFC` and I have not walked it to its `rts` (§9).
 
 **A GENUINE ODDITY, AND IT IS NOT AN ARTEFACT OF SOMETHING BEING UNPORTED.**
-`$2595F2` — which the boss calls at `$295018` to pick an index from `$80380C`
-and `$81309E` — computes an elaborate clamped value across four branches and
+`$2595F2` - which the boss calls at `$295018` to pick an index from `$80380C`
+and `$81309E` - computes an elaborate clamped value across four branches and
 then **every path falls into `$25962A moveq #$4,d0`**, which discards it.
 `$2595F2` ALWAYS RETURNS 4. Bytes: `$259628 = 70 07` (`moveq #7,d0`, 2 B), then
 `$25962A = 70 04`. Nothing branches over `$25962A`. **A port must return the
 constant 4 and cite this**; a port that implements the arithmetic will be wrong.
-This is the `docs/knowledge/02` fall-through trap wearing a different hat — the
+This is the `docs/knowledge/02` fall-through trap wearing a different hat - the
 computed value looks like the answer and the last two bytes decide it.
 
 ---
 
-## 2. THE STAGE-1 BOSS'S FIVE TABLES — the complete inventory
+## 2. THE STAGE-1 BOSS'S FIVE TABLES - the complete inventory
 
 Installed at `$292710..$29272E` (§3.0). Each extent is bounded by where that
 table's own first routine begins; I checked the boundary longword decodes as
@@ -277,7 +277,7 @@ code in every case.
 
 **52 script ids, 104 pointers, plus 7 object routines = 111 entry points.**
 
-### 2.1 A2 — the OBJECT list, `$292932`
+### 2.1 A2 - the OBJECT list, `$292932`
 
 ```
 $292932: 00292972  00292B08  00292952  00292BFA
@@ -287,7 +287,7 @@ Seven routines, index 0..6. **Index 6 = `$292F4A` is the only one the init arms*
 (`$292734 moveq #6 / jsr $2598E6`); the other six are installed with bit 0 clear
 and stay dormant until some script arms them.
 
-### 2.2 A4 — table F, `$294F68`, 7 ids
+### 2.2 A4 - table F, `$294F68`, 7 ids
 
 | id | INIT | STEP |
 |---|---|---|
@@ -303,10 +303,10 @@ and stay dormant until some script arms them.
 (INIT: load a 192-frame timer) falls straight through into
 `$294FA6 subq.w #$1,$2(a4) / bne.w $294FC8` (STEP: count it down); on expiry it
 does `moveq #0,d0 / jsr $2598D0` (start MAIN script 0), loads stream `$13` from
-`$222AF8` via `$24150A`, and `clr.w (a4)` — the channel retires itself. INIT at
+`$222AF8` via `$24150A`, and `clr.w (a4)` - the channel retires itself. INIT at
 `+0`, STEP at `+4`, and STEP is INIT plus the length of the init-only prologue.
 
-### 2.3 A0 — the MAIN script table, `$293104`, 9 ids
+### 2.3 A0 - the MAIN script table, `$293104`, 9 ids
 
 | id | INIT | STEP |
 |---|---|---|
@@ -320,9 +320,9 @@ does `moveq #0,d0 / jsr $2598D0` (start MAIN script 0), loads stream `$13` from
 | 7 | `$293634` | `$293642` |
 | 8 | `$2936B4` | `$2936BE` |
 
-Id 1's two pointers are EQUAL — a script with no separate init.
+Id 1's two pointers are EQUAL - a script with no separate init.
 
-### 2.4 A3 — table D, `$29370A`, 21 ids
+### 2.4 A3 - table D, `$29370A`, 21 ids
 
 | id | INIT | STEP | | id | INIT | STEP |
 |---|---|---|---|---|---|---|
@@ -338,11 +338,11 @@ Id 1's two pointers are EQUAL — a script with no separate init.
 | 9 | `$294466` | `$294474` | | 20 | `$294ABA` | `$294AC0` |
 | 10 | `$2944DE` | `$2944E6` | | | | |
 
-Id 7's pointers are equal. Id 14's pair is out of address order — the STEP
-(`$294658`) is far from the INIT (`$294566`) — which is a reason to read that
+Id 7's pointers are equal. Id 14's pair is out of address order - the STEP
+(`$294658`) is far from the INIT (`$294566`) - which is a reason to read that
 one carefully rather than assume adjacency.
 
-### 2.5 A1 — table E, `$295856`, 15 ids
+### 2.5 A1 - table E, `$295856`, 15 ids
 
 | id | INIT | STEP |
 |---|---|---|
@@ -363,14 +363,14 @@ one carefully rather than assume adjacency.
 | 14 | `$2968E6` | `$2968FE` |
 
 **Table E is where the boss's own spawns are.** W36 §2.3 measured type `$1E`
-being enqueued at `$2963C2 $2963F4 $29642C $29645E` — all four inside table E
+being enqueued at `$2963C2 $2963F4 $29642C $29645E` - all four inside table E
 id 8's STEP routine `$2963A2`.
 
 ---
 
 ## 3. THE BOSS ITSELF
 
-### 3.0 `$2926E2` — the init body (type `$0E`), and where the tables come from
+### 3.0 `$2926E2` - the init body (type `$0E`), and where the tables come from
 
 Already in the port as a `note()` (`src/initbody.js:654`, read at a moment when
 an implementer may have been editing it). What it actually does:
@@ -410,7 +410,7 @@ right to defer it but will mislead an implementer into looking for a body.
 **There is no body.** A port should transcribe it as an empty routine with this
 address and this measurement, not merge it into `$294AD8`.
 
-### 3.1 `$292902` — the handler, exactly ten instructions, 46 bytes
+### 3.1 `$292902` - the handler, exactly ten instructions, 46 bytes
 
 ```
 $292902 jsr $294AD8.l            the boss's DAMAGE / PART-DESTRUCTION pass
@@ -430,7 +430,7 @@ $292930 rts
 read past it, as `docs/knowledge/02` requires, and the next code is `$292952`,
 which is OBJECT index 2.
 
-### 3.2 `$294AD8` — the damage pass. Three parts, three HP words, three deaths.
+### 3.2 `$294AD8` - the damage pass. Three parts, three HP words, three deaths.
 
 Not an interpreter. `$294AD8..$294F31`, and its structure is three near-identical
 blocks, one per destructible part, at object offsets `(a6)+$00`, `+$20`, `+$60`:
@@ -453,26 +453,26 @@ negative run that part's death. Below the "critical" threshold **and** with
 `$8130CA` clear, the animation byte is forced to `$19`.
 
 **Part 0's death is the BOSS's death** (`$294B9A`/`$294BA4 bra $294DD4`), guarded
-by `jsr $2428A6` — when that returns 0 the HP is instead re-floored to `$200`, so
+by `jsr $2428A6` - when that returns 0 the HP is instead re-floored to `$200`, so
 **there is a condition under which the boss cannot die**; I did not read
 `$2428A6` (§9).
 
 `$294D70..$294DCC` is the part-destroyed bookkeeping: when both side parts are
 gone (`$3F(a6) + $7F(a6) == 2`) it starts F script 5, and each individual
-destruction starts F script 4 — this is the **phase driver** (§4).
+destruction starts F script 4 - this is the **phase driver** (§4).
 
-`$294DCC jmp $294F32(pc)` — **a fall-through the address would not tell you
+`$294DCC jmp $294F32(pc)` - **a fall-through the address would not tell you
 about**. `$294F32` is a `$8130D2`-gated countdown on `$22(a5)` which, on expiry
-and with `$2428A6` non-zero, `jmp $294DD4(pc)` — a **timeout kill**.
+and with `$2428A6` non-zero, `jmp $294DD4(pc)` - a **timeout kill**.
 
-`$294DD4` — the whole-boss death chain, in order: `bset #6,$8130F8`,
+`$294DD4` - the whole-boss death chain, in order: `bset #6,$8130F8`,
 `bset #7,$8130F8`, `jsr $23C4D0`, `jsr $253564` (clamps `$811F8C` up to `$14`),
 `jsr $242922`, `bsr $294F2A`, `bsr $294E3E`, `bsr $294E94` (kill the other two
 parts), `jsr $259B34` (E.stopAll), `jsr $2598A2` (F.stopAll),
 `$16(a5) := $FFFFFFFF`, `$1F(a6) := 1`, `(a6) := $8000`, `MAIN.start 1`,
 `D.start 6`.
 
-### 3.3 SIZE — N of M, with the denominators I counted
+### 3.3 SIZE - N of M, with the denominators I counted
 
 `tools/…/w27disasm.py`-based closure walk (`walk.py`, scratch; method: per
 routine, closure over its OWN intra-routine branches; `jsr`/`bsr`/`jmp`/tail-`bra`
@@ -495,9 +495,9 @@ ported side (a `note()` or a throw counts) and it is the direction that makes my
 
 | | routines | cited in `src/` | NOT cited |
 |---|---|---|---|
-| boss-local | 131 | **6** (all of them notes/throws — `$2926E2 $292902 $294AD6 $294AD8 $294EEA $294F0A`) | **125** (16,380 B) |
+| boss-local | 131 | **6** (all of them notes/throws - `$2926E2 $292902 $294AD6 $294AD8 $294EEA $294F0A`) | **125** (16,380 B) |
 | shared/engine | 126 | 61 (7,986 B) | **65** (6,190 B) |
-| **total** | **257** | 67 | **190 — 22,570 B** |
+| **total** | **257** | 67 | **190 - 22,570 B** |
 
 > **THE BOSS IS 0 OF 111 SCRIPT ENTRY POINTS AND 0 OF 131 BOSS-LOCAL
 > ROUTINES PORTED.** The port has 61 of the 126 shared routines it calls.
@@ -508,7 +508,7 @@ For scale, `docs/worklog/ddpdoj/28` measured the whole rest of stage 1's
 thirteen unported handlers at **2,063 instructions** (that figure is CITED, not
 mine). The boss's boss-local code alone is **4,065**, ~2× all of them together.
 
-### 3.4 THE ACTIVATION GRAPH — 134 scheduler calls, every argument resolved
+### 3.4 THE ACTIVATION GRAPH - 134 scheduler calls, every argument resolved
 
 `api.py` (scratch) resolves the immediate reaching D0 at every call to the 27
 scheduler entry points inside the closure. **134 sites; every one that takes an
@@ -523,14 +523,14 @@ The full listing is reproducible from the ROM with that script; the shape is:
   `F0 → MAIN 0`, `MAIN 0 → MAIN 2`, `F1 → MAIN 5`, `F2 → MAIN 8 / MAIN 5`,
   `F3 → MAIN 3 / MAIN 5`, `F6 → MAIN 6`, `MAIN 3 → MAIN 4`, `MAIN 5 → MAIN 2`,
   `MAIN 6 → MAIN 7`, `MAIN 8 → MAIN 4`, and the death chain `→ MAIN 1`.
-- **D (10 slots, 21 ids) is the MOVEMENT/limb layer** — ids 0,1,2,3,7 start at
+- **D (10 slots, 21 ids) is the MOVEMENT/limb layer** - ids 0,1,2,3,7 start at
   the arrival, 8/9/12..20 later, and the death chain stops
   0,1,2,3,8,9,10,11,12,13 by name.
 - **E (10 slots, 15 ids) is the GUNS.** Every one of the 49 bullet sites is in a
   table-E routine.
-- **OBJECT (20 slots, 7 installed)** — index 6 armed at init, then at arrival
+- **OBJECT (20 slots, 7 installed)** - index 6 armed at init, then at arrival
   0..5 armed and 6 disarmed; `$293ABA`/`$293CFE`/`$293F20`/`$293F28`/`$293F30`/
-  `$294108` disarm 0,1,2,4,5,3 one at a time — **the parts falling off**.
+  `$294108` disarm 0,1,2,4,5,3 one at a time - **the parts falling off**.
 
 ---
 
@@ -546,20 +546,20 @@ Nine MAIN ids = nine boss states. The transitions I resolved statically are in
    `$10`; at exactly `$180` it does the whole arm-up at `$2932D6`:
    `bset #4,$8130F8` (**the flag `$25962E` needs to run the scripts TWICE**),
    `bset #1,$8130F8`, `$81B6E4 := 1`, `MAIN.start 2`, `F.start 1`,
-   `$294EF2` (`$E8(a6) := 0` — **damage now lands**), `$294EFA`
-   (`or #$A001` into all three part words — **the parts become hittable**),
+   `$294EF2` (`$E8(a6) := 0` - **damage now lands**), `$294EFA`
+   (`or #$A001` into all three part words - **the parts become hittable**),
    `D.start 0,1,2,3,7`, `OBJ.arm 0..5`, `OBJ.disarm 6`.
 2. **HP.** `cmpi.l #$48CC,$16(a5)` gates table-E id 0's STEP (`$295948`) and
-   ids 11/12's STEPs (`$296614`, `$2966B8`) — i.e. some guns only fire once the
+   ids 11/12's STEPs (`$296614`, `$2966B8`) - i.e. some guns only fire once the
    boss is below `$48CC` HP. `$294AD8` uses the same `$48CC` and `$3000` for the
    "critical" animation.
-3. **PART DESTRUCTION.** `$294D70` — one side part gone starts **F 4**, both
+3. **PART DESTRUCTION.** `$294D70` - one side part gone starts **F 4**, both
    gone starts **F 5**; F 5 and F 6 then re-cut the D and E sets.
 
 **HP is `$1A0` = 416 on the bar** (`$2927AC move.l #$1A0,$81B626`) with the bar
 reading `$16(a5)` directly (`$2927B6`).
 
-### 4.2 The scroll — the owner's question, answered and part-unresolved
+### 4.2 The scroll - the owner's question, answered and part-unresolved
 
 **The stage-1 boss does NOT stop the scroll. The LEVEL DATA does, before the
 boss exists, and the port already models that.** `src/background.js:745` (which
@@ -578,14 +578,14 @@ What I measured about the boss's side of it:
   closure list. `$8130D2` appears only as a `tst.w` at `$294F34`, `$296AF8`,
   `$296E94`.
 - The death chain's only progress write I can name is
-  `$253564 cmpi.w #$14,$811F8C / bcs / move.w #$14,$811F8C` — and `$811F8C` has
+  `$253564 cmpi.w #$14,$811F8C / bcs / move.w #$14,$811F8C` - and `$811F8C` has
   **exactly two absolute-long references in the whole of build B, both inside
   `$253564` itself**, so I cannot say from an absolute-long search who reads it.
 
 > **UNRESOLVED, AND IT IS THE MOST IMPORTANT THING I COULD NOT SETTLE:** *what
 > ends stage 1 after the boss dies.* No statically visible path from the boss
 > releases the scroll lock. Either the stage transition is driven from outside
-> the boss (most likely — `$8130F8` bit 7 is set by `$294DD4` and
+> the boss (most likely - `$8130F8` bit 7 is set by `$294DD4` and
 > `src/handlers.js:813` already models bit 7 as a "stage kill" gate that frees
 > enemies), or the release goes through a `jsr (An)` I cannot see. **What I
 > tried:** the full closure walk, exact-address membership tests for all five
@@ -598,7 +598,7 @@ camera rather than freezing it.
 
 ---
 
-## 5. BULLET KINDS — CONFIRMED. The boss reaches 9 and 11.
+## 5. BULLET KINDS - CONFIRMED. The boss reaches 9 and 11.
 
 `kinds.py` (scratch): linear disassembly of every routine in the closure,
 reporting the most recent instruction that WROTE D0 at each `jsr`/`bsr` to one
@@ -640,26 +640,26 @@ D0 before their `jsr`s.
 `src/mover.js:848` `// ----- kind 9 ($2827E0 init / $28281C cont)` and
 `src/mover.js:880` `// ----- kind 11 ($2828A0 init / $2828EA cont)`.
 **Porting this boss would be the first time any of W27's 29 transcribed bodies
-runs anywhere.** The boss's kind set is `{3,4,7,9,11,12,19}` — five of the seven
+runs anywhere.** The boss's kind set is `{3,4,7,9,11,12,19}` - five of the seven
 are already live, and **9 and 11 are the two additions**.
 
 **The boss's own spawned enemy adds nothing.** Type `$1E`'s handler `$296DD6`
 (W36 §2.3: enqueued at `$2963C2 $2963F4 $29642C $29645E`, all four inside table
-E id 8's STEP `$2963A2`) is a separate closure — **9 routines, 367 instructions,
-1,274 bytes**, of which `$23F7C6` and `$296DD6` are new — and its three
+E id 8's STEP `$2963A2`) is a separate closure - **9 routines, 367 instructions,
+1,274 bytes**, of which `$23F7C6` and `$296DD6` are new - and its three
 generator sites are kinds **3, 4, 5**, all already live
 (`$296EBC $296EEA $296F18` → `$2813F0`).
 
 ---
 
-## 6. DEPENDENCIES — what the boss needs that the port has not got
+## 6. DEPENDENCIES - what the boss needs that the port has not got
 
 **65 shared routines, 6,190 bytes.** Ranked by size, the ones that are
 subsystems rather than leaves:
 
 | routine | insn | B | what it is / where it is reached |
 |---|---|---|---|
-| **`$2440E0`** | 555 | 2,542 | reached ONLY from table-D id 6's STEP `$293E04` — the **death explosion**. It calls `$289004`, the allocator W36 deliberately did NOT port (its only other driver is type-5 call #5 `$288E4E`, and allocating without it rebuilds W33 §4's leak). This is the `$243E7C`/`$2440AE` family `src/midboss.js:177` already `note()`s. **This is L12, the effects subsystem, arriving as a boss dependency.** |
+| **`$2440E0`** | 555 | 2,542 | reached ONLY from table-D id 6's STEP `$293E04` - the **death explosion**. It calls `$289004`, the allocator W36 deliberately did NOT port (its only other driver is type-5 call #5 `$288E4E`, and allocating without it rebuilds W33 §4's leak). This is the `$243E7C`/`$2440AE` family `src/midboss.js:177` already `note()`s. **This is L12, the effects subsystem, arriving as a boss dependency.** |
 | `$28CF36` | 193 | 558 | via `$28B884`; the `$28Bxxx`/`$28Cxxx` cluster (14 + 7 routines) |
 | **`$2596C6`** | 81 | 326 | the scheduler pass itself |
 | `$28B4BE` | 62 | 234 | also calls `$289004` |
@@ -667,14 +667,14 @@ subsystems rather than leaves:
 | `$287722` | 35 | 150 | the `$286xxx`/`$287xxx` effect cluster (17 + 6 routines) |
 | `$259BB4` | 24 | 140 | the timed effect, tail of every scheduler frame |
 | `$23E3E2` | 43 | 120 | leaf |
-| the 20 remaining `$259xxx` | — | ~700 | the scheduler API (§1.7) |
+| the 20 remaining `$259xxx` | - | ~700 | the scheduler API (§1.7) |
 
 **The live-but-unmodelled reach the brief asked me to check for (the `$26C20C` /
 `$900000` shape): I found none.** No routine in the boss's closure writes a
 `$900000`-region address by absolute long, and `$26C20C` is not in the closure.
 **What I looked at:** the 257-routine list and every absolute-long operand my
 walker recorded. `jsr (An)` remains invisible, so this is a lower bound, and
-`$2440E0` at 2,542 bytes is the one I have NOT read instruction by instruction —
+`$2440E0` at 2,542 bytes is the one I have NOT read instruction by instruction -
 if a `$900000` write is hiding anywhere, it is in there.
 
 **`$289004` is the hard one and it is not new.** Three of the boss's shared
@@ -683,15 +683,15 @@ W36 §2 carries the owner-visible reason it is deferred.
 
 ---
 
-## 7. SIZE IT — the wave estimate
+## 7. SIZE IT - the wave estimate
 
 **NOT one wave. THREE, and they have a forced order.**
 
 | wave | scope | why it is its own wave |
 |---|---|---|
-| **A — THE SCHEDULER** | `$259554..$259C1F`: install, `$25962E`, `$2596C6`, the 27 accessors, the `$812980..$812E07` RAM block, the three overflow blocks, the double-pass gate, the `$2595F2 == 4` constant | ~1,740 B, ~27 routines, **zero boss content**. It is testable on its own (start/stop/full-table-drop/init-vs-step/`clr.w (a4)` retirement), it is shared by all five bosses, and it is the thing every later wave sits on. It also has a genuinely nasty semantic — the ORDER F→MAIN→E→D and the twice-per-frame arm — that deserves its own mutation set. |
-| **B — THE BOSS BODY** | the 111 entry points, 131 boss-local routines, 17,592 B, plus the ~40 small shared leaves | This is 2× the code of all thirteen of stage 1's other unported handlers put together (W28's 2,063 instructions, CITED, vs 4,065 measured here). It should be cut by TABLE if it must split — F+MAIN first (the phase machine, 16 ids), then D (21 ids, the limbs), then E (15 ids, the guns and both new bullet kinds). |
-| **C — THE DEATH** | `$2440E0` (2,542 B) + `$289004` + the `$28Bxxx`/`$28Cxxx` cluster | This is L12/the effects subsystem, it is the pre-existing `$289004` decision, and it is reached from exactly one script (D id 6). Until it lands, `$293E04` is a loud named throw and the boss simply does not explode. |
+| **A - THE SCHEDULER** | `$259554..$259C1F`: install, `$25962E`, `$2596C6`, the 27 accessors, the `$812980..$812E07` RAM block, the three overflow blocks, the double-pass gate, the `$2595F2 == 4` constant | ~1,740 B, ~27 routines, **zero boss content**. It is testable on its own (start/stop/full-table-drop/init-vs-step/`clr.w (a4)` retirement), it is shared by all five bosses, and it is the thing every later wave sits on. It also has a genuinely nasty semantic - the ORDER F→MAIN→E→D and the twice-per-frame arm - that deserves its own mutation set. |
+| **B - THE BOSS BODY** | the 111 entry points, 131 boss-local routines, 17,592 B, plus the ~40 small shared leaves | This is 2× the code of all thirteen of stage 1's other unported handlers put together (W28's 2,063 instructions, CITED, vs 4,065 measured here). It should be cut by TABLE if it must split - F+MAIN first (the phase machine, 16 ids), then D (21 ids, the limbs), then E (15 ids, the guns and both new bullet kinds). |
+| **C - THE DEATH** | `$2440E0` (2,542 B) + `$289004` + the `$28Bxxx`/`$28Cxxx` cluster | This is L12/the effects subsystem, it is the pre-existing `$289004` decision, and it is reached from exactly one script (D id 6). Until it lands, `$293E04` is a loud named throw and the boss simply does not explode. |
 
 **What must ship together:** A and the F+MAIN half of B, or nothing observable
 happens. The kind-9/11 payoff is in **E**, so if a wave has to be chosen for
@@ -705,30 +705,30 @@ the stage transition. They are outside the boss and unresolved.
 ## 8. IMPLEMENTER-READY WORK LIST
 
 1. **Port the scheduler**, `$259554..$259C1F`. Model the RAM block at its real
-   addresses (§1.3) — the boss's own code reads `$8129AC` through the pointer
+   addresses (§1.3) - the boss's own code reads `$8129AC` through the pointer
    `$2598D0` returns, so a JS-object channel that is not backed by those
    addresses will diverge the moment a script writes an argument.
 2. **Reproduce the three OVERFLOW blocks as DROPS.** A sixth F start, an
    eleventh D or E start, must go nowhere and must be COUNTED (the `spawnEvent`
-   precedent from W33 §4 — the check that would have caught the sub-record leak
+   precedent from W33 §4 - the check that would have caught the sub-record leak
    four waves earlier).
 3. **`$2595F2` returns the constant 4.** Transcribe the arithmetic as a comment,
    return 4, and cite `$25962A`. A test should pin the constant, not the
    arithmetic.
-4. **Export the five tables as ROM WINDOWS, not as JS literals** —
+4. **Export the five tables as ROM WINDOWS, not as JS literals** -
    `$293104` ($48), `$295856` ($78), `$292932` ($20), `$29370A` ($A8),
    `$294F68` ($38). They are pointer tables in the cartridge and the port should
    read the pointers out of the cartridge, exactly as `resolveEmitStub` reads
    stub shapes (W36 §4.2). That way a wrong extent throws by address.
 5. **Port `$292902` (10 insns) and `$294AD8` (three parts, §3.2) together.**
-   `$294AD6` is an empty `rts` — transcribe it as one.
+   `$294AD6` is an empty `rts` - transcribe it as one.
    `$294DCC jmp $294F32(pc)` is a FALL-THROUGH: `$294F32` is a timeout kill and
    is part of the same routine's control flow.
 6. **`$2926E2`'s init**: the two loaders are already ported (`$2637A2`,
    `$26377A`), and the HP-bar pair `$81B626 = $1A0` / `$81B62A = &$16(a5)` is
    the boss health bar's whole contract.
 7. **F then MAIN then E then D**, in the order `$2596C6` runs them.
-8. **Kinds 9 and 11 will execute for the first time** — `src/mover.js:848` and
+8. **Kinds 9 and 11 will execute for the first time** - `src/mover.js:848` and
    `:880`. Expect W27's transcriptions to be exercised, and treat the first run
    of each as a finding, not a pass.
 9. **Every unported script id is a loud named throw carrying its table base and
@@ -759,7 +759,7 @@ the stage transition. They are outside the boss and unresolved.
   include `$81B63E | $81B640` and `$80390C`, none of which I traced. If it does
   fire, the boss's scripts run at TWICE the rate of everything else in the
   frame, which is a semantics difference no frame count would reveal.
-- **`$811F8C`** — two absolute-long references in build B, both inside
+- **`$811F8C`** - two absolute-long references in build B, both inside
   `$253564`. Its readers, if any, go through a base register.
 - **Anything dynamic.** This wave ran no emulator and no port. Every number is
   from the decrypted image or from a listing; the two figures I take from other
@@ -776,10 +776,10 @@ the stage transition. They are outside the boss and unresolved.
   script id is a PAIR of longwords (INIT, STEP), stride 8, id = low byte of a
   `$20`-byte channel record's status word; a script ends with `clr.w (a4)`.
   **No opcode fetch exists anywhere in `$259554..$259C1F`.**
-- **[M] five callers of `$259554`** — five bosses share the one scheduler.
+- **[M] five callers of `$259554`** - five bosses share the one scheduler.
 - **[M] the stage-1 boss's five tables are enumerated COMPLETE: 52 script ids /
   104 pointers / 7 object routines = 111 entry points.**
-- **[M] `$2595F2` always returns 4** — four computed branches all fall into
+- **[M] `$2595F2` always returns 4** - four computed branches all fall into
   `$25962A moveq #$4,d0`, which nothing branches over.
 - **[M] three silent OVERFLOW blocks** (`$812BB4`/`$812D18`/`$812DDC`): a start
   request into a full table is DROPPED, not queued.
@@ -790,7 +790,7 @@ the stage transition. They are outside the boss and unresolved.
   `$48CC`/`$3000`/`$3000`, three death routines, and a
   `jmp $294F32(pc)` FALL-THROUGH into a timeout kill.
 - **[M] THE CLOSURE: 257 routines, 7,816 instructions, 31,768 bytes** from the
-  111 entry points. Boss-local 131 routines / 4,065 insn / 17,592 B — **0
+  111 entry points. Boss-local 131 routines / 4,065 insn / 17,592 B - **0
   ported**. Shared 126, of which 61 are cited in `src/` and **65 (6,190 B) are
   not**. For scale, W28's figure for ALL THIRTEEN other unported stage-1
   handlers is 2,063 instructions [CITED].
@@ -804,13 +804,13 @@ the stage transition. They are outside the boss and unresolved.
   (`move.l #$80009,d0`, `#$20009`, `#$FFF9000B`) rather than a data read.
   **Porting the boss would be the first execution of any of W27's 29 bodies.**
 - **[M] type `$1E` (`$296DD6`, the boss's own spawn) adds nothing new**: 9
-  routines / 367 insn / 1,274 B, kinds 3, 4, 5 — all already live.
+  routines / 367 insn / 1,274 B, kinds 3, 4, 5 - all already live.
 - **[M] the boss does NOT stop the scroll.** Nothing in the closure writes
   `$813172`; `$261142`, `$261100`, `$25FD82`, `$25FD8C`, `$26C7F4` and
   `$26D254` are all absent from the 257. The boss arrives into a camera the
   scroll program already froze. **What RELEASES it after the boss dies is
   UNRESOLVED and is this wave's biggest open item.**
-- **[M] no `$900000`-shaped live-but-unmodelled reach found** — the check the
+- **[M] no `$900000`-shaped live-but-unmodelled reach found** - the check the
   brief asked for, by absolute-long operand over the closure. `$2440E0`'s 555
   instructions are the one body I did not read and the one place a
   counter-example could hide.
@@ -818,12 +818,12 @@ the stage transition. They are outside the boss and unresolved.
 ## WAVE ESTIMATE
 
 **THREE waves, ordered.**
-**A** — the scheduler `$259554..$259C1F` (~1,740 B, 27 routines, no boss
+**A** - the scheduler `$259554..$259C1F` (~1,740 B, 27 routines, no boss
 content, independently testable, shared by all five bosses).
-**B** — the boss body: 111 entry points, 131 routines, 17,592 B. Cut by TABLE if
+**B** - the boss body: 111 entry points, 131 routines, 17,592 B. Cut by TABLE if
 it splits: F+MAIN (the phase machine, 16 ids) → E (15 ids, the guns and both new
 bullet kinds) → D (21 ids, the limbs).
-**C** — the death: `$2440E0` (2,542 B) + `$289004` + the `$28Bxxx`/`$28Cxxx`
+**C** - the death: `$2440E0` (2,542 B) + `$289004` + the `$28Bxxx`/`$28Cxxx`
 cluster. This is L12 arriving as a boss dependency and it carries W36's standing
 `$289004` decision.
 

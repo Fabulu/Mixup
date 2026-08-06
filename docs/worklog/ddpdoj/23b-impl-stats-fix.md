@@ -1,4 +1,4 @@
-# W23b IMPL — STATS-FIX: the W23 review's three findings (F3 / F1 / F2)
+# W23b IMPL - STATS-FIX: the W23 review's three findings (F3 / F1 / F2)
 
 status: **DONE.** A surgical fix-pass on the W23 enemy-stats
 port addressing the three findings the W23 review (`23-review.md`) raised.

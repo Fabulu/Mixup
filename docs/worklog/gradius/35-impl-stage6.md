@@ -1,9 +1,9 @@
-# Wave 35 IMPLEMENTER — stage 6 (`$19 = 5`)
+# Wave 35 IMPLEMENTER - stage 6 (`$19 = 5`)
 
 status: DONE
 implementer, 2026-08-04
 
-Brief: make stage 6 play start to finish. The plan calls this "W33 — Stage 6"
+Brief: make stage 6 play start to finish. The plan calls this "W33 - Stage 6"
 (`29-plan-whole-game.md` §3); W33 and W34 were spent on the QA sweep and the
 shipped-crash fixes, so this wave is numbered 35.
 
@@ -11,7 +11,7 @@ shipped-crash fixes, so this wave is numbered 35.
 
 ## BASELINE, MEASURED BY ME BEFORE ANY EDIT
 
-`python games/gradius/tools/oracle/stageledger.py` (note the path — the brief
+`python games/gradius/tools/oracle/stageledger.py` (note the path - the brief
 says `games/gradius/tools/stageledger.py`; the tool lives in `tools/oracle/`):
 
 ```
@@ -23,7 +23,7 @@ PER-STAGE STATIC ADMISSION
 ```
 
 `node games/gradius/tools/oracle/stagesweep.mjs` → `80 chunk runs, 112000
-nmi() frames, 4.72 s, OK -- 0 undecided throws` — **and it sweeps stages 0..4
+nmi() frames, 4.72 s, OK -- 0 undecided throws` - **and it sweeps stages 0..4
 only**, because it parses `runEngine`'s `if (stageIndex >= 5)` bound live. So
 the baseline sweep says NOTHING about stage 6. Forcing it onto stage 6 is the
 first thing in §2.
@@ -46,7 +46,7 @@ unknown.
 `stagesweep.mjs` parses `runEngine`'s `if (stageIndex >= 5)` live, so on the
 shipped tree it sweeps stages 0..4 and stage 6 is not in it at all. Driven at
 stage 6 directly, all 16 runs (8 chunks x PASSIVE/PLAYING) throw **at frame 0**
-on the scope guard itself — no information.
+on the scope guard itself - no information.
 
 So: a COPY at `C:/tmp/w35sweep` (`games/gradius/{src,assets,tools,tests}`), the
 guard alone lifted to `>= 7`, nothing else touched, 1400 frames per chunk:
@@ -82,17 +82,17 @@ the enemy scope. The other two pieces are `jt_$C439[5]` = `$C6DE` (throws) and
 
 `28-recon-stages-2-7.md` §5c calls `$CDA5` "5 lines... a small scroll/scroll-
 target check" and the plan repeats "**`$CDA5` (5-line stage-end hook)**".
-`$CDA5`-`$CDB2` really is five instructions — and four of them are
+`$CDA5`-`$CDB2` really is five instructions - and four of them are
 `JSR $CDB3` / `JSR $CDB3` / `RTS`. **`sub_$CDB3` is the routine**: `$CDB3`-
 `$CE2C`, ~40 instructions, and it needs an 92-byte data run (`$CE2D`-`$CE88`)
 that was not exported. Thirteen-plus incidents; this is the fourteenth. §5.
 
-## §3. THE RANK BOUND — WHY entry 26's SEVEN-ROW TABLE IS NOT AN OVERRUN
+## §3. THE RANK BOUND - WHY entry 26's SEVEN-ROW TABLE IS NOT AN OVERRUN
 
 `$B48F`/`$B4BE LDA $B4E4,Y` and `$B4D6 LDA $B4EB,Y`, both with `Y = $17`.
 `$B4E4`-`$B4F1` is **14 bytes = two 7-entry rows**, and `$B4F2` is dispatch
 entry 27's first instruction. A rank of 7 would read entry 27's opcode through
-the second row — precisely W34's `$B415` shape, and the export
+the second row - precisely W34's `$B415` shape, and the export
 (`dwellByRank`, `$B4E4`-`$B4F2`) would throw "not in any exported range".
 
 **It cannot happen, and the listing settles it without an emulator.** `$17` has
@@ -104,7 +104,7 @@ $17 = ($44 != 0) + $45 + ($46 != 0) + ($19 != 0)
 
 `$45` has exactly two writers: `$9C6A STA $45` (the immediate `#$02`) and
 `$89D9 INC $45`, which is guarded one instruction earlier by
-`$89D3 LDA $45 / CMP #$02 / BCS $8983` — **`$45` is capped at 2**. So
+`$89D3 LDA $45 / CMP #$02 / BCS $8983` - **`$45` is capped at 2**. So
 
 ```
 max $17 = 1 + 2 + 1 + 1 = 5
@@ -112,10 +112,10 @@ max $17 = 1 + 2 + 1 + 1 = 5
 
 and Y is 0..5 against a 7-entry row. Entry 6 of each row is transcribed and
 unreachable; **nothing is clamped and nothing is widened.** (Note the other
-rank rows in this ROM are 8 or 9 wide — `$B787`, `$B852`, `$B8F8` — so entry 26
+rank rows in this ROM are 8 or 9 wide - `$B787`, `$B852`, `$B8F8` - so entry 26
 is the narrowest of them and the only one where a rank of 7 would land on code.)
 
-## §4. `$C6DE` — TWO DEAD INSTRUCTIONS AND AN ENEMY-BULLET SLOT
+## §4. `$C6DE` - TWO DEAD INSTRUCTIONS AND AN ENEMY-BULLET SLOT
 
 ```
 C6DE  A5 69     LDA $69
@@ -127,8 +127,8 @@ C6E6  20 4F C4  JSR $C44F     X=6 -> pointer $C44D -> the stream at $C752
 ```
 
 It does not fill the enemy slot `lateSpawner` cleared for it. It scans
-`$0136,X` for X = 9..0 — the **ENEMY-BULLET** slots (object index `$16 + X`,
-the same ten `allocBullet` uses) — and writes one:
+`$0136,X` for X = 9..0 - the **ENEMY-BULLET** slots (object index `$16 + X`,
+the same ten `allocBullet` uses) - and writes one:
 
 ```
 $03C6:$03F6  (yvel:yvelf)  := $A9 * 32 + $02      a 16-bit velocity
@@ -145,7 +145,7 @@ $0136  (anim)              := $8D   <-- the metasprite the plan names
 `approachStage5` (`$C750`-`$C772`) was already exported by W25, including the
 two-byte row and the 32-byte stream, so `$C6DE` needs no new asset.
 
-## §5. `$CDA5` — THE STAGE-6 EXIT APERTURE, AND WHAT IT ACTUALLY DRAWS
+## §5. `$CDA5` - THE STAGE-6 EXIT APERTURE, AND WHAT IT ACTUALLY DRAWS
 
 `$9904` (play sub-state `$86`, the stage-end crawl) calls it every frame while
 `$19 == 5`. `$CDA5` gates on `$66 >= $58` and otherwise runs `sub_$CDB3`
@@ -154,10 +154,10 @@ two-byte row and the 32-byte stream, so `$C6DE` needs no new asset.
 Each cell reads one byte `t = $CE31[$66]`, `hi = t >> 4`, `lo = t & $0F`, and:
 
 1. queues a five-byte VRAM packet `01 hi lo 00 FF` at PPU address
-   `$2400 + 32*hi + lo + $F0`  — i.e. **nametable 1, row `hi+7`, column
+   `$2400 + 32*hi + lo + $F0`  - i.e. **nametable 1, row `hi+7`, column
    `lo+16`**, blanked to tile `$00`. (The `$CDC5`-`$CDD9` shift/ORA/ADC chain
    reduces to exactly that; the port derives it the reduced way so the two
-   cannot agree through the same shifts — the same discipline W34 used on
+   cannot agree through the same shifts - the same discipline W34 used on
    `$C353`.)
 2. clears the matching 2-bit collision cell: `$0600 + $81 + 8*lo +
    ((hi+3) >> 2)`, masked with `$CE2D[(hi+3) & 3]` (`FC F3 CF 3F`).
@@ -185,13 +185,13 @@ question.** Plotting `(row hi+7, col lo+16)`:
       (columns 16..31; the leftmost cell touched is column 21)
 ```
 
-A bevelled cross — a **horizontal corridor four tiles high opening out of a
+A bevelled cross - a **horizontal corridor four tiles high opening out of a
 two-tile vertical shaft**: the stage-6 exit aperture, carved out of both the
 nametable and the collision map so the ship can fly through it. It is opened in
 a scrambled order, not left-to-right (the first four bytes are (8,6), (9,10),
 (7,12), (4,10)), which is why it reads as an iris rather than a wipe.
 
-**AND FOUR OF THE 88 ENTRIES ARE DUPLICATES** — 84 distinct cells, 88 reads.
+**AND FOUR OF THE 88 ENTRIES ARE DUPLICATES** - 84 distinct cells, 88 reads.
 Four cells are blanked twice. That is the cartridge's table, not a decode error;
 the port re-reads and re-clears them exactly as the ROM does, which is
 observable as four extra VRAM packets and four idempotent map writes.
@@ -201,7 +201,7 @@ observable as four extra VRAM packets and four idempotent map writes.
 `state.coll` is `$0500-$06FF` (the terrain collision map) and `state.arm` /
 `ARM_POOL` is `$0600-$06BF` (W32b's stage-5 articulated arms). On the cartridge
 those are **the same bytes**. They do not collide because the arm pool is
-`$19 == 4` only and `$CDA5` is `$19 == 5` only — but the two models are not
+`$19 == 4` only and `$CDA5` is `$19 == 5` only - but the two models are not
 aliased in the port, so a future wave that makes both live in one stage will get
 a silent wrong answer. Recorded, not fixed: nothing in this wave needs it, and
 inventing an alias without a stage that exercises it would be a guess.
@@ -220,7 +220,7 @@ inventing an alias without a stage that exercises it would be a guess.
 
 `$A2F0`'s scope guard moves `>= 5` → `>= 6`.
 
-### `$B480` — a three-phase cycle whose dispatch is a DOUBLE `DEY`
+### `$B480` - a three-phase cycle whose dispatch is a DOUBLE `DEY`
 
 ```
 $B4A5  LDY $048C,X / DEY / BEQ $B4AE / DEY / BEQ $B4C8
@@ -229,46 +229,46 @@ $B4A5  LDY $048C,X / DEY / BEQ $B4AE / DEY / BEQ $B4C8
 Phase 1 branches on the first `DEY`, phase 2 on the second, and **phase 0 falls
 past both into `$B4AE`**. So phases 0 and 1 SHARE an arm and only phase 2 is
 different. A port written as `switch (phase)` passes every timing check in this
-suite and takes the wrong arm on the one frame the creature re-aims — which is
+suite and takes the wrong arm on the one frame the creature re-aims - which is
 mutant M7, and it reddens two checks only because one of them was written for
 exactly this.
 
 The cycle: **phase 2** = `$AEE1`'s generic drift for `$B4EB[rank]` frames, then
 phase 0. **Phase 0** = one frame, in which `$B4A0 LDA $A8 / JSR $BCB5` aims the
-CREATURE ITSELF at the ship (A is the enemy's own index — the jellyfish's
+CREATURE ITSELF at the ship (A is the enemy's own index - the jellyfish's
 `$B3B4` call shape, not a bullet), then `$B4AE` flies it and stores 1. **Phase
 1** = `$BDFA` along that fixed course for `$B4E4[rank]` frames, then back to 2.
 It swims a straight leg toward where the ship *was*, drifts, re-aims, repeats.
 
 Only the DRIFT arm ends on `$B251` (`$B4E1 JMP $B251`); both other arms `RTS`.
 So a creature that leaves the box during a flight leg stays allocated until its
-next drift. That asymmetry is the ROM's and it has a check of its own — see M10
+next drift. That asymmetry is the ROM's and it has a check of its own - see M10
 in §9, which survived the first mutation run precisely because nothing tested it.
 
-### `$C6DE` — see §4. `$CDA5` — see §5.
+### `$C6DE` - see §4. `$CDA5` - see §5.
 
-### `$C099` — the crash the port work UNCOVERED
+### `$C099` - the crash the port work UNCOVERED
 
 The sweep found this the moment `$B480` landed: 8 of 8 PLAYING stage-6 chunks
 red, earliest at frame 54, PASSIVE clean. Type `$9A` is `$1A | $80`, the
 initialised form of the creature, and its throw read *"`$C099` ran 0 times in
-every measured run"* — true of the corpus, and nothing could shoot one until
+every measured run"* - true of the corpus, and nothing could shoot one until
 this wave. `$C099 INC $04AC,X`, then `$C0A1 CMP $BFC5,Y / BCC $C0AE`: under the
 rank threshold the score and the kill are both skipped and the shot is still
 eaten (`$C0AE` falls into `$C0B7`). `$BFC5` is `rankHits`, exported since W6.
 
-### `$99C4` — the crash STATIC SCANNING found and no sweep could
+### `$99C4` - the crash STATIC SCANNING found and no sweep could
 
 `st99C0` threw for `$19 >= 5` with *"Unreachable: the port loads one stage"*.
 Stage 6 IS `$19 == 5`, and `$83` is the sub-state the `$82` countdown hands to,
 so it sat on the ordinary stage-6 path from the moment the stage was admitted.
-**`stagesweep.mjs` cannot reach it** — it seeds `$1B = $80` and never leaves the
+**`stagesweep.mjs` cannot reach it** - it seeds `$1B = $80` and never leaves the
 wave stream. What found it was scanning `assets/prg.bin` for every
 `CMP/CPX/CPY #imm` with a `$19` load within 16 bytes above it (29 sites), then
 reading each one. Per the brief: the listing answered it statically.
 
 **And `$99CF` FALLS INTO `$99D3`.** No branch, no RTS, between `$99D1 STA $1B`
-and `$99D3 INC $5B`. The docstring being replaced said *"else INC $5B"* — the
+and `$99D3 INC $5B`. The docstring being replaced said *"else INC $5B"* - the
 fifteenth incident of the fall-through family, and it would have left `$5B` and
 the spawn scratch wrong on the only two stages that take the shortcut.
 
@@ -300,7 +300,7 @@ already takes. `$97B5` and `$8B9B` are false positives (both reload A first).
 ```
 
 Before: 16 of 16 stage-6 runs threw, earliest frame 9 (§1). Between those two
-states the sweep also went red on `$C099` for 8 of 8 PLAYING chunks — that
+states the sweep also went red on `$C099` for 8 of 8 PLAYING chunks - that
 intermediate run is the evidence in §7, and it is the reason the sweep is worth
 having: `$C099` was found by the check, not by reading.
 
@@ -313,22 +313,22 @@ The sweep never leaves `$1B = $80`. So stage 6 was also driven through **all
 sixteen `jt_$982F` play sub-states**, seeded directly, 400 frames each, both
 modes. Results, and the one finding in them:
 
-* `$80 $81 $82 $84 $85 $86 $8E $8F` — **clean**, 400 frames, both modes.
-* `$87 $88 $89 $8A $8B $8C $8D` — the intro/ending arms, throwing with their own
+* `$80 $81 $82 $84 $85 $86 $8E $8F` - **clean**, 400 frames, both modes.
+* `$87 $88 $89 $8A $8B $8C $8D` - the intro/ending arms, throwing with their own
   ROM addresses. Decided out of scope (`$9872` is the plan's W35 end-of-game
   chain; the intro arms are reached through `$96C5`, not `$982A`). Unchanged by
   this wave.
 * **`$83` throws at frame 0 with `enemy tables: $0000 is not in any exported
-  range` — AND IT DOES THE SAME ON STAGES 0, 1 AND 4.** See §10 item 1. This
+  range` - AND IT DOES THE SAME ON STAGES 0, 1 AND 4.** See §10 item 1. This
   PREDATES the wave and is not a stage-6 property.
 
-Pass B — the ladder driven from `$80` for 1200 frames on chunks 0, 4 and 7 —
+Pass B - the ladder driven from `$80` for 1200 frames on chunks 0, 4 and 7 -
 is clean in both modes and reaches `$80 $A0 $1 $2 $3 $4` (i.e. death and
 respawn), the same set stage 1 reaches.
 
 ---
 
-## §9. THE MUTATION TABLE — 35 MUTANTS, 34 RED, 1 PROVABLY UNCATCHABLE
+## §9. THE MUTATION TABLE - 35 MUTANTS, 34 RED, 1 PROVABLY UNCATCHABLE
 
 Harness `scratchpad/mut35.py`, on a COPY at `C:/tmp/w35mut`
 (`games/gradius/{src,tests,assets,tools,index.html,game.json}` plus the repo
@@ -341,16 +341,16 @@ identical before and after all 35: `enemies.js 7265b5388bcb`,
 |---|---|---|
 | M1 | `$B488` seeds phase 0, not 2 | 1 |
 | M2 | the init reads row B (`$B4EB`), not row A | 1 |
-| M3 | `$B4D6` reads row A — one row for both dwells | 1 |
+| M3 | `$B4D6` reads row A - one row for both dwells | 1 |
 | M4 | `$B4DC` stores 2: the creature never re-aims | 1 |
 | M5 | `$B49E`'s guard dropped: it re-aims every frame | 1 |
 | M6 | `$B4C4` stores 1: the drift phase is unreachable | 2 |
-| M7 | phase 0 routed to `$B4C8` — the double-`DEY` misread | 2 |
+| M7 | phase 0 routed to `$B4C8` - the double-`DEY` misread | 2 |
 | M8 | animator row 3 (`$B4FD`'s), not 6 | 1 |
 | M9 | `$B4B6` stores 2: the flight leg is one frame | 1 |
 | M10 | `$B4E1 JMP $B251` dropped | **1, after §9a** |
 | M11 | the `$C6EB` scan reads the ENEMY band | 1 |
-| M12 | `A9 98` read as `LDA $98` — zero page, not immediate | 2 |
+| M12 | `A9 98` read as `LDA $98` - zero page, not immediate | 2 |
 | M13 | `$C712`'s ADC loses the low half's carry | **1, after §9a** |
 | M14 | metasprite `$8E`, not `$8D` | 5 |
 | M15 | `$C6E4` X = 4 selects stage 4's stream | **1, after §9a** |
@@ -371,7 +371,7 @@ identical before and after all 35: `enemies.js 7265b5388bcb`,
 | M30 | the under-threshold arm forgets `$C0B7` | 1 |
 | M31 | `$99CF` read as an else-branch, not a fall-through | 1 |
 | M32 | `$99C8`'s BNE dropped: stage 7 plays stage 6's sfx | 1 |
-| M33 | `$1B` left at `$84` — the shortcut does not shortcut | 1 |
+| M33 | `$1B` left at `$84` - the shortcut does not shortcut | 1 |
 | M34 | the `$A2F0` guard walks back to `>= 5` | 4 |
 | M35 | the guard admits stage 7 (`>= 7`) | 4 |
 
@@ -381,7 +381,7 @@ Recorded rather than quietly fixed, because the green run before the fix was
 worthless and looked identical to the green run after it.
 
 * **M10 survived.** Nothing exercised entry 26's off-screen box. Only the DRIFT
-  arm ends on `$B251`, so the asymmetry needed its own check — one creature at
+  arm ends on `$B251`, so the asymmetry needed its own check - one creature at
   x `$F8` in phase 2 (freed) and the same creature at the same x in phase 1
   (kept).
 * **M13 survived, and it is an arithmetic blind spot.** The velocity is
@@ -396,7 +396,7 @@ worthless and looked identical to the green run after it.
   2 (`$69` = 4 or 5): high nibble 1 against `$E`. The new check walks there.
 * **M19 survived, and the reason is a PARITY.** `$66` starts at 0 and steps by
   TWO, so it only ever takes EVEN values and `sub_$CDB3`'s own `CPX #$58` never
-  arbitrates — the outer gate always gets there first. That makes the inner
+  arbitrates - the outer gate always gets there first. That makes the inner
   bound look redundant, **and it is not**: `$66` is the spawn engine's third
   descriptor byte and `$A397` writes it from a wave record, and the wave engine
   runs during `$86` (`$A2F0` is entered for every `$1B` that is not `$81`/`$82`).
@@ -426,20 +426,20 @@ transcribed because the ROM has it. Same category as W34's M19 and W32c's M34.
 
 ---
 
-## §10. WHAT I COULD NOT REACH — attempts, not absences
+## §10. WHAT I COULD NOT REACH - attempts, not absences
 
 1. **`$1B = $83` throws `enemy tables: $0000 is not in any exported range`, ON
    EVERY STAGE, AND IT PREDATES THIS WAVE.** `$99D9 JSR $99DF` clears `$63-$6F`,
    which zeroes the wave cursor `$6A:$6B`; the same frame's `$9A5E` runs the
    spawn engine, and with `$60 = 2` `$A2F0` dereferences the null cursor.
    **On the cartridge `LDA ($6A),Y` with `$6A:$6B` = 0 reads zero page and does
-   not crash** — the port models the cursor as a ROM-only pointer, so it throws.
+   not crash** - the port models the cursor as a ROM-only pointer, so it throws.
    MEASURED identical on stages 0, 1, 4 and 5, so it is not a stage-6 property
    and not a regression; and it is invisible to `compare.mjs`, whose stage-1
    clear is GREEN. I could NOT determine whether ordinary play reaches a frame
    in that state: passive runs die and end at the decided `$9751` boundary
    first, and with the ship forced alive the `$82` countdown did not expire
-   inside 4,000 frames in my fixture. **Not clamped and not widened** — the fix
+   inside 4,000 frames in my fixture. **Not clamped and not widened** - the fix
    is a substrate decision (letting the wave cursor address RAM) that needs its
    own evidence, and guessing it here would be exactly the move the brief
    forbids. Handed forward as the highest-value open item.
@@ -449,10 +449,10 @@ transcribed because the ROM has it. Same category as W34's M19 and W32c's M34.
    single most visible thing in this wave.
 3. **The stage-6 BOSS and the `$86` → `$90` hand-off, end to end.** `$84`, `$85`
    and `$86` each sweep clean for 400 frames when seeded, and `$9A3D[5]` =
-   `$0B` / `$98FD[5]` = `$0C` are read from the export — but I did not drive one
+   `$0B` / `$98FD[5]` = `$0C` are read from the export - but I did not drive one
    continuous run from `$80` through the boss to the next stage, because item 1
    sits in the middle of that path at `$83`.
-4. **`$B7B5`/`$B797`** — W34's OPEN finding, printed by `tablecoverage.py` every
+4. **`$B7B5`/`$B797`** - W34's OPEN finding, printed by `tablecoverage.py` every
    run. Untouched: nothing in stage 6 reaches type `$97`.
 5. **Whether the four DUPLICATE cells in `$CE31` matter.** 84 distinct cells,
    88 reads, so four tiles are blanked twice and four map cells cleared twice.
@@ -464,12 +464,12 @@ transcribed because the ROM has it. Same category as W34's M19 and W32c's M34.
 
 ## §11. OPEN ITEMS HANDED FORWARD
 
-1. **The `$83` null wave cursor** (§10 item 1) — every stage, pre-existing, and
+1. **The `$83` null wave cursor** (§10 item 1) - every stage, pre-existing, and
    the thing most likely to stop a real stage-6 clear.
-2. **`$B7B5 LDA $B797,Y`** — W34's item 1, unchanged.
-3. **The cartridge comparison for stages 2-6** — W32c/W33/W34's standing item,
+2. **`$B7B5 LDA $B797,Y`** - W34's item 1, unchanged.
+3. **The cartridge comparison for stages 2-6** - W32c/W33/W34's standing item,
    unchanged and still the highest-value unclaimed work.
-4. **`$9751` is a crash a real player reaches on every stage** — W34's item 3,
+4. **`$9751` is a crash a real player reaches on every stage** - W34's item 3,
    unchanged. Stage 6's passive runs end there like every other stage's.
 5. **`stagewaves.py` is still broken on the inline-5 stride**; `wavecensus.py`
    and `handlerclosure.py` are still not CI-wired (W34 items 4 and 5, untouched

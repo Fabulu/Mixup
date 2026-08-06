@@ -1,4 +1,4 @@
-# W25 IMPL — THE SIX ENEMY HANDLERS = 79% of stage-1 spawns
+# W25 IMPL - THE SIX ENEMY HANDLERS = 79% of stage-1 spawns
 
 > **HONESTY CORRECTION (W25b, 2026-08-03).** Two framings in this log were
 > materially over-stated and are corrected by the W25b fix-pass

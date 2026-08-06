@@ -1,4 +1,4 @@
-# Wave 3 — Enemies exist: pool substrate, spawn engine, update loop, the fan
+# Wave 3 - Enemies exist: pool substrate, spawn engine, update loop, the fan
 status: DONE
 wave: 3   role: impl   started: 2026-07-31
 
@@ -35,7 +35,7 @@ node games/gradius/tools/test-all.mjs
 ```
 
 NOTE FOR THE PLAN: the brief says "the 16 existing scenarios (3341/3341)".
-That number is stale — waves 1-2 added `long-idle` and `s0-handover`, so the
+That number is stale - waves 1-2 added `long-idle` and `s0-handover`, so the
 baseline is **17 scenarios, 3580 of 4423**. That is the number I held myself to.
 
 ### 1. The plan's ">= 1400 compared frames" needed three facts nobody had
@@ -52,7 +52,7 @@ death frame over a 1460-frame hold (`probe.py --frames 1460 --script
 | RU   | 445 |
 | U    | 1076 |
 | L    | ~1180 (deduced: the L run respawned before frame 1299) |
-| **RD** | **SURVIVED all 1460** — and, extended, dies at **1866** |
+| **RD** | **SURVIVED all 1460** - and, extended, dies at **1866** |
 
 `RD` (bottom-right corner, X=240 Y=192) is the only hold that survives, and it
 is not luck: `$BC44`'s stage-0/1 gate and the fan's return leg both depend on
@@ -83,7 +83,7 @@ ev 1786 cmd $84    ev 1850 cmd $83
 ```
 
 So the window needs handlers **1, 2, 3, 5, 8 AND 4**, and handler 4 ($B205) is
-interleaved with handler 6 ($B198) — $B205 jumps into $B1B1, $B1DF and $B1F1.
+interleaved with handler 6 ($B198) - $B205 jumps into $B1B1, $B1DF and $B1F1.
 I ported 4's entry and the shared body; **6's ENTRY is a loud throw** because
 no run has ever dispatched it. The plan's "handlers 1/2/3/5, everything else a
 throw" is not compatible with its own ">= 1400 frames"; I chose the frames and
@@ -96,7 +96,7 @@ wrote down which handlers that forced.
 like ($A335 INC $5D) and concluded the `$BBE5` arm was unreachable after frame
 378. **It is the other way round.** `$9656 STA $5D` clears it at the top of
 EVERY mode-5 frame, so `$5D` is non-zero at `$BBB7` only on a frame a wave has
-just fired on — i.e. the "unreachable" arm runs on ~99% of frames.
+just fired on - i.e. the "unreachable" arm runs on ~99% of frames.
 
 The wave-1 knownFail in `tests/frame-gates.test.js` had this written down
 already ("$9656-$965A: mode 5 clears $5D/$5B/$5C at entry") and it is why I
@@ -154,7 +154,7 @@ $A569  STA $0460,X   X = j + 12    ->  $046C..$0475  ==  s0460[j + 12]
 
 `$0496 = $0480 + 22`. So they are the **enemy-bullet** and **shot** slots'
 entries in two arrays that already exist, not two new arrays. Modelling them as
-separate arrays puts them at addresses the cartridge does not use — and the
+separate arrays puts them at addresses the cartridge does not use - and the
 watch list compares addresses. `state.js` says this at the code.
 
 Also measured while writing the substrate: page $0300 is **not** eight arrays of
@@ -213,7 +213,7 @@ has to pick the same metasprite ids, at the same positions, in the same order.
 `w_0036` stays INFO but its stated reason was WRONG and having enemies is what
 proved it. The three counters match exactly and `$36` still differs on every
 frame. Measured on `idle`, the cartridge's `$36` at the sample point reads
-240, 52, 120, 188, 4, 72, 140, 208 — exactly `$2F`'s own `+$44` rotation, not
+240, 52, 120, 188, 4, 72, 140, 208 - exactly `$2F`'s own `+$44` rotation, not
 the display list's end cursor. What moves it is `$80AD JSR $8BAB`, the BLANK
 PASS, which walks `$36` across the slots it fills with `$F4` and stores the
 walked cursor back at `$8BC0`; how far comes from `$37`, i.e. from `$9F`, the
@@ -223,7 +223,7 @@ sprite budget `src/oam.js` does not model. Fixed in `compare.mjs` and in
 (`$9F` is nowhere near biting: measured 48 of 62 at the end of the busiest
 frame of the 1900-frame enemy run.)
 
-### 7. Work budget — docs/knowledge/06 mechanism (C), answered NO
+### 7. Work budget - docs/knowledge/06 mechanism (C), answered NO
 
 `$ADE5` is now a hooked counter in `objloop.lua` and a compared field
 (`enemySlots`), and `scen.py` asserts it is 0 or 10 on every frame of every
@@ -243,7 +243,7 @@ Unit tests (`node --test games/gradius/tests/enemies.test.js`, 14 tests):
 
 (a) is the plan's own "must diverge on the FIRST wave": with `$64 = $01` the
 conditional branch is not taken and nothing spawns. Note it did NOT redden the
-trigger test — that test is about the cursor walk, which still happens; worth
+trigger test - that test is about the cursor walk, which still happens; worth
 knowing which check owns which fact.
 
 The SAME three breaks, run against the 1465-frame comparison
@@ -273,7 +273,7 @@ Frame gates (`node --test games/gradius/tests/`, 96 tests):
 | delete the `$5B` term from the `$9A9C` camera gate | test 10 |
 
 Assets (`verify_assets.py --self-test`): four new mutations, all seen red on
-the new `enemies` family — `enemy-shift` (re-cite the whole spawn-data block
+the new `enemies` family - `enemy-shift` (re-cite the whole spawn-data block
 one byte along, consistently, so only the cartridge's measured wave records and
 descriptors can tell), `enemy-byte`, `enemy-dispatch`, `enemy-anim`.
 **25 of 25 mutations reddened their target; 10 of 10 families seen red.**
@@ -285,7 +285,7 @@ descriptors can tell), `enemy-byte`, `enemy-dispatch`, `enemy-anim`.
   has never been dispatched by any run made here, so I did not invent the
   conditions under which it is.
 * **34 of the 42 dispatch entries are loud throws**, naming the type, the entry
-  number and the ROM address. Same for `$A3B1` (single spawn — stage 1's first
+  number and the ROM address. Same for `$A3B1` (single spawn - stage 1's first
   `cmd < $80` record is chunk 1's `C0 00` at scroll `$0380`, past this corpus),
   the `cmd >= $F0` spawners, `$C413`, `$BC59` (enemy bullets) and `$BBC3-$BBEB`
   (the `$17`/`$46` arms of the shot-countdown rate).
@@ -305,13 +305,13 @@ descriptors can tell), `enemy-byte`, `enemy-dispatch`, `enemy-anim`.
   `hud` test 16 used `s.build.gate = 1` ($3A) to hold the streamer off inside a
   whole NMI. `$A2C0`'s FIRST instruction is `LDA $3A / BEQ / JMP $C413`, so on
   the cartridge that also diverts the entire enemy spawn path into the
-  stage-end spawner — a much broader intervention than those tests intended.
+  stage-end spawner - a much broader intervention than those tests intended.
   They now use the streamer's other measured refusal (the 384-px lead at
   `$9D96-$9DAD`). `$3A`'s effect on the streamer is still covered directly, by
   the `$3A` / `$57` test that calls `streamBlock()` without an NMI.
 * **Wave 1's written-down coverage debt is closed**, by its own option 2:
   `src/nmi.js` now exports `mode5Tail()` (the `$9A88-$9ACE` block). `$9A8C` is a
-  real jump target — `$96A2`, `$98E2` and `$9660` all land there — so calling
+  real jump target - `$96A2`, `$98E2` and `$9660` all land there - so calling
   it with `$5B` raised is the state three ROM arms create, not invented state.
 
 ## If someone picks this up cold
@@ -327,5 +327,5 @@ descriptors can tell), `enemy-byte`, `enemy-dispatch`, `enemy-anim`.
   window is still 1465.
 * The next enemy work that needs a cartridge measurement rather than a port:
   slots 22-31 (drive a run with the ship LEFT of an enemy that has counted its
-  `$040C` down — that is now a known-reachable state, not a mystery), and
+  `$040C` down - that is now a known-reachable state, not a mystery), and
   handler 6's entry.

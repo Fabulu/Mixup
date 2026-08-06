@@ -1,13 +1,13 @@
-# 68 — DIAG: the invisible collidables, and what "drawn% 100 %" does not mean
+# 68 - DIAG: the invisible collidables, and what "drawn% 100 %" does not mean
 
-status: **DONE** — §9 ranks the causes, §10 is the wave list, §8 is the corrected
+status: **DONE** - §9 ranks the causes, §10 is the wave list, §8 is the corrected
 way to state coverage.
 
-role: DIAGNOSTIC. **READ-ONLY on `games/ddpdoj/`** — T1 is writing `src/`
+role: DIAGNOSTIC. **READ-ONLY on `games/ddpdoj/`** - T1 is writing `src/`
 concurrently. This worklog is the only file I wrote or committed; every probe
 lives in the session scratchpad, outside the repo. `games/gradius/` not touched.
-**No web server was started** — every browser measurement is against the LIVE
-DEPLOYED URL — so none was left running.
+**No web server was started** - every browser measurement is against the LIVE
+DEPLOYED URL - so none was left running.
 
 target: `ddpdojblk` VERSION-B. Every measurement is against **the live build
 `20260805170024`**: either `dist/games/ddpdoj/` (the exact published tree, run
@@ -17,18 +17,18 @@ was measured against the working tree, deliberately.
 `[M]` = measured by me, this session. Anything from another document is marked
 `[cited]` and named.
 
-brief: the owner, playing the live build —
+brief: the owner, playing the live build -
 
 > "also my shots seem to hit invisible things"
 
-and, mid-audit —
+and, mid-audit -
 
 > "particularly after killing the first boss, more and more invisible stuff
 > shows up, some invisible enemies, some terrain starts being black after the
 > golden terrain, some tanks are on the golden terrain but also invisible stuff
 > that gets hit. Sometimes with hit sparks, sometimes not, but no splosions."
 
-and —
+and -
 
 > "the blades that draw are only a background element. Funny thing is that boss
 > part of background element is also missing."
@@ -57,24 +57,24 @@ unported counted note.** `[M]` Over 7,000 logic frames of a playing run:
 [M] at 7,000 frames   319,035 records  305,024 drawn   95.61 %  63 missing streams
 ```
 
-Same code, same bundle, **same input** — only the run length changed. W66's
+Same code, same bundle, **same input** - only the run length changed. W66's
 figure reproduces to the record and stops being true 1,400 frames later.
 
 **3. The black terrain is not the background.** `[M]` With all eight BG shards
 installed, the port's own BG map is **100.00 % covered by the shipped tile sheet
-on all fourteen bins of a 7,000-step run — 512,000 map entries per bin, ZERO
+on all fourteen bins of a 7,000-step run - 512,000 map entries per bin, ZERO
 orphan tiles.** The black is missing **background-ELEMENT SPRITE art** in
 buckets 2 and 3, whose drawn% collapses `100 → 85 → 26 → 0` over the same window.
 
 ---
 
-## 1. THE BRIEF'S PREMISE, CHECKED — right in shape, wrong in mechanism
+## 1. THE BRIEF'S PREMISE, CHECKED - right in shape, wrong in mechanism
 
 | the brief says | `[M]` verdict |
 |---|---|
 | objects the port simulates but never emits a record for are invisible AND absent from the drawn/missing denominator | **TRUE, and it is the owner's report.** §2 enumerates them |
 | recon 40's "24 of 30 buckets have ROM producers; the port fills 11" | `[cited: W40 §2, W55 §3.2]`. **`[M]` 25 of 30 have ROM producers; the port fills 14** (§3). The figure has now moved 2 → 8 → 11 → 14 |
-| "those buckets' objects are exactly what the owner's shots are hitting" | **FALSE, and this is the correction.** `[M]` The invisible collidables are **not** in unfilled buckets. They belong to buckets **7 and 3, which the port fills 100 % and 93.8 % of the time.** The gap is not a missing bucket — it is a missing THIRTY INSTRUCTIONS inside five handlers the port already runs (§2) |
+| "those buckets' objects are exactly what the owner's shots are hitting" | **FALSE, and this is the correction.** `[M]` The invisible collidables are **not** in unfilled buckets. They belong to buckets **7 and 3, which the port fills 100 % and 93.8 % of the time.** The gap is not a missing bucket - it is a missing THIRTY INSTRUCTIONS inside five handlers the port already runs (§2) |
 | the cause is "unported producers" | **HALF.** The producer (the enqueue stub) is ported and running; what is unported is the block that CALLS it. That distinction is what makes the fix cheap |
 
 **The brief's premise is therefore checked and partly refused.** Bucket coverage
@@ -90,16 +90,16 @@ and §2 is the first time this project has measured it.
 A collidable object in this game is a **sub-record**: a `$20`-byte slot in pool A
 (`$81459C`, 100 slots) or pool B (`$81521C`, 50), allocated by `$2635B2` and
 walked by the collision pass `$244F68`/`$24507A`. The same `$20` bytes are BOTH
-the collision box AND the sprite record — `+$0A`/`+$0C` the descriptor, `+$0E`
+the collision box AND the sprite record - `+$0A`/`+$0C` the descriptor, `+$0E`
 the size, `+$10..$16` the hit half-extents, `+$18` the HP.
 
 `[M]` My test is the ROM's, instruction for instruction:
 
-* **live** — `(word0 & $8000)`, `$244F8C bmi`
-* **collidable** — `(word0 & $2000)`, `$244F90 andi.w #$2000,D0 / beq`
-* **carries a sprite** — `+$0A/+$0C` non-zero AND `+$0E`'s width and height both
+* **live** - `(word0 & $8000)`, `$244F8C bmi`
+* **collidable** - `(word0 & $2000)`, `$244F90 andi.w #$2000,D0 / beq`
+* **carries a sprite** - `+$0A/+$0C` non-zero AND `+$0E`'s width and height both
   non-zero (`$23D78E move.w $E(A6)`; `SpriteDrawer.draw` returns on either being 0)
-* **emitted** — the frame's own `$800000..$8009FF` list, parsed by the port's own
+* **emitted** - the frame's own `$800000..$8009FF` list, parsed by the port's own
   `parseSpriteList(words, RAM_STRIDE)`, contains a record with that `offs`
 
 **THE ONE THING THIS OVER-COUNTS, CORRECTED BEFORE IT REACHED THE HEADLINE.**
@@ -110,7 +110,7 @@ and `$010000` which are not stream addresses at all. **The midboss draws and is
 not in the finding.** The size filter removes it; it is recorded here so nobody
 re-finds it.
 
-### 2.2 THE ENUMERATION — `[M]` 7,000 logic frames, playing input, live build
+### 2.2 THE ENUMERATION - `[M]` 7,000 logic frames, playing input, live build
 
 ```
 type/handler       spawns  coll-sf  emitted  INVISIBLE  no-art  hitbox-only  invis%
@@ -134,10 +134,10 @@ $88/$275F30             3      844      844          0     844            0     
 $85/$275914             2     1386      693          0       0          693     0.0
 ```
 
-`*` the midboss's 1,436 are the four garbage "descriptors" of §2.1 — a
+`*` the midboss's 1,436 are the four garbage "descriptors" of §2.1 - a
 measurement artefact, not a finding.
 
-### 2.3 WHY — the ROM says it, and so does the port's own source
+### 2.3 WHY - the ROM says it, and so does the port's own source
 
 `[M]` I swept `$200000..$2B0000` for every `addi.w #$C,$80AFxx` (160 enqueue
 stubs) and every `jsr`/`jmp` absolute-long and `bsr` caller of each (664 sites),
@@ -185,12 +185,12 @@ sheet's own map:
 [M] $82            ->  $1735FC   not in the sheet
 ```
 
-So types `$05`/`$07`/`$27` — **72 spawned objects, 7,078 invisible collidable
-slot-frames** — need **thirty instructions and ZERO new bytes of art.**
+So types `$05`/`$07`/`$27` - **72 spawned objects, 7,078 invisible collidable
+slot-frames** - need **thirty instructions and ZERO new bytes of art.**
 
 ---
 
-## 3. THE BUCKET CENSUS, NOW — measured, not cited
+## 3. THE BUCKET CENSUS, NOW - measured, not cited
 
 ### 3.1 The ROM side `[M]`
 
@@ -204,7 +204,7 @@ slot-frames** — need **thirty instructions and ZERO new bytes of art.**
 ```
 
 W55 §3.2 `[cited]` reports 24 of 30 from absolute-long callers alone; adding
-`bsr` gives 25. **This is still a LOWER BOUND** — indirect `jsr (A0)` sites are
+`bsr` gives 25. **This is still a LOWER BOUND** - indirect `jsr (A0)` sites are
 invisible to it, and type `$11`'s own emit (`$2689C6 jsr (A0)` through
 `($2A,A5)`) is exactly one of those, which is why the tank draws while my sweep
 finds no direct site for it.
@@ -230,11 +230,11 @@ number that was already stale.
 
 **4, 8, 12, 18, 22, 24, 25, 26, 28, 29.** Two of them have names now:
 
-* **bucket 25 is THE HUD** — 33 ROM call sites `$28490E..$285FAE`, all into
+* **bucket 25 is THE HUD** - 33 ROM call sites `$28490E..$285FAE`, all into
   `$23FA96`/`$23FAC4`. W11 §6 measured it as the third-largest ablation figure
   (4,472 px) and W40 §7.3 `[cited]` recorded that *"nobody knows what it is"*.
   `[M]` It is `src/hud.js`, and §7 is how it is invisible.
-* **bucket 12 is the ship's afterimage trail** `$253604` — W55 §4.3 `[cited]`,
+* **bucket 12 is the ship's afterimage trail** `$253604` - W55 §4.3 `[cited]`,
   still open, and `[M]` `7,000 x $253604` in my own note log.
 
 ---
@@ -251,11 +251,11 @@ Splitting the 50,804 that did not:
 
 | | slot-frames | what it is |
 |---|---:|---|
-| carries a real sprite record, never enqueued | **16,808** | §2 — the five handler tails |
-| collidable but the sprite pointer was never written | **12,760** | types `$10`, `$8B`, `$0E` — same cause, one step earlier |
+| carries a real sprite record, never enqueued | **16,808** | §2 - the five handler tails |
+| collidable but the sprite pointer was never written | **12,760** | types `$10`, `$8B`, `$0E` - same cause, one step earlier |
 | extra HITBOX slots of objects that DO draw | 21,236 | not a defect (§2.1) |
 
-### 4.2 As a function of time — the owner's "more and more" `[M]`
+### 4.2 As a function of time - the owner's "more and more" `[M]`
 
 Per 1,000 steps of the playing run (step i ≈ logic frame 2000+i):
 
@@ -272,7 +272,7 @@ Per 1,000 steps of the playing run (step i ≈ logic frame 2000+i):
                 $294F32's 10,800-frame timeout with only buckets 0,5,14,15,16,19
 ```
 
-drawn% by bucket, same bins — **this is the owner's report, one column at a
+drawn% by bucket, same bins - **this is the owner's report, one column at a
 time**:
 
 ```
@@ -286,11 +286,11 @@ time**:
    6000     87%     0%   100%    81%    87%   100%
 ```
 
-**Bucket 2 — the big background structures — goes to ZERO and stays there.**
+**Bucket 2 - the big background structures - goes to ZERO and stays there.**
 
 ---
 
-## 5. THE BLACK TERRAIN, AND THE BOSS'S BACKDROP — ONE CAUSE, AND IT IS NOT TILES
+## 5. THE BLACK TERRAIN, AND THE BOSS'S BACKDROP - ONE CAUSE, AND IT IS NOT TILES
 
 ### 5.1 The background TILE supply is complete, verified not cited `[M]`
 
@@ -326,7 +326,7 @@ Bucket 2 has **five** distinct missing streams and they arrive one at a time:
 [M] $233630  bucket 2  first at step 5274
 ```
 
-Bucket 3 has **42**, from step 3561 — the `$151xxx`, `$172xxx` and `$17Dxxx`
+Bucket 3 has **42**, from step 3561 - the `$151xxx`, `$172xxx` and `$17Dxxx`
 families, arriving on a cadence of one every 4–8 steps (`$1723D4..$17277C` is a
 19-frame animation run, every frame of it absent).
 
@@ -337,18 +337,18 @@ take the whole left half of the playfield to black.
 
 **The boss's backdrop is the same subsystem.** The owner's *"the blades that draw
 are only a background element, and the boss part of that same element is also
-missing"* is bucket 2/3 with some streams present and some absent — exactly what
+missing"* is bucket 2/3 with some streams present and some absent - exactly what
 `$231520`/`$231C44` arriving at steps 3626/3754 while their neighbours draw
 produces. `[M]` I did not isolate which element index owns the blades; the boss
 OBJECT is out of scope by instruction.
 
 ---
 
-## 6. THE LIVE PAGE, DRIVEN DEEP — WHAT I SAW `[M]`
+## 6. THE LIVE PAGE, DRIVEN DEEP - WHAT I SAW `[M]`
 
 `https://gbtman.pages.dev/games/ddpdoj/` in Chrome, build `20260805170024`
 confirmed from inside the page. Fire tapped, ship swept left and right, **110
-seconds — 6,600 logic frames past the seed, i.e. two and a half times the window
+seconds - 6,600 logic frames past the seed, i.e. two and a half times the window
 every "100 % drawn" claim was measured in.**
 
 ```
@@ -365,20 +365,20 @@ every "100 % drawn" claim was measured in.**
 **Same addresses as the headless probe, on the machine the owner plays.**
 `$231520` and `$231C44` are the two my probe first saw at steps 3754 and 3626;
 the page names them at lf 6093, which is step 4093. Nothing is stuck in
-delivery — the pictures are not in the bundle.
+delivery - the pictures are not in the bundle.
 
 **WHAT IS ON THE SCREEN AT 65 s** (`.scratch`-equivalent
 `d68-65s-t3900.png` in the session scratchpad): the right half of the playfield
 is the golden rock terrain, drawn correctly. **The left half is a large black
 polygon** with two big grey emplacements hanging over it and **twenty-odd blue
-enemy bullets fanning out of the black** — bullets from things that are not
+enemy bullets fanning out of the black** - bullets from things that are not
 drawn. At 80 s the same shape appears as a black wedge over the blue stonework.
 That is the owner's *"terrain starts being black after the golden terrain"* and
 *"shots come out of nowhere"* in one frame.
 
 ---
 
-## 7. E6's DEFECT SHAPE, SWEPT — one systematic family, and it is DECLARED
+## 7. E6's DEFECT SHAPE, SWEPT - one systematic family, and it is DECLARED
 
 E6's defect was three `jsr $23FF42` sites transcribed as a bare counter, so a
 record was never written. `[M]` I swept for more: every one of the 664 enqueue
@@ -413,7 +413,7 @@ bucket 25 carries **zero records on every frame of every run I made.**
 this one names every site in its own `DRAWS` table and counts every call
 (`[M] 6,951 x $285C5E`, `6,951 x $286040`, `2,653 x $2859DC`,
 `1,604 x $2855B6`). It is a DECLARED deferral. The observable is identical from
-outside — a bucket with 33 ROM producers and no records — which is exactly why
+outside - a bucket with 33 ROM producers and no records - which is exactly why
 the drawn/missing metric cannot see either.
 
 **What the player sees as a HUD today is `st.tx`, the 161-frame recording's TEXT
@@ -436,11 +436,11 @@ ready shard) / (display-list records emitted)`, over N frames of one input.
 **It is a statement about the ART, conditioned on the port having emitted the
 record.** It cannot see:
 
-1. an object the port simulates and never emits a record for — §2, `[M]` 16,808
+1. an object the port simulates and never emits a record for - §2, `[M]` 16,808
    collidable slot-frames in 7,000 frames;
-2. an emit call site transcribed without emitting — §7, `[M]` 33 sites;
-3. anything past the last frame of the run — §0.2, `[M]` 100.00 % → 95.61 %;
-4. a record with a correct descriptor that is the WRONG record — nothing in this
+2. an emit call site transcribed without emitting - §7, `[M]` 33 sites;
+3. anything past the last frame of the run - §0.2, `[M]` 100.00 % → 95.61 %;
+4. a record with a correct descriptor that is the WRONG record - nothing in this
    repo compares the port's list against the board.
 
 **E6's own defect is the proof that (1) and (2) hide inside it**: the beam's 41
@@ -474,7 +474,7 @@ the thing the port DRAWS instead of the thing it RUNS.
 
 Two cheap gates fall out of it and neither exists today:
 
-* **an EMISSION gate** — assert per type, from the ROM's own type table, that a
+* **an EMISSION gate** - assert per type, from the ROM's own type table, that a
   type with an enqueue site in its handler's span produces a record when one of
   its objects is collidable. `[M]` It would go red on five types right now.
 * **drawn% at TWO window lengths.** `[M]` A stage that asserts drawn% at 2,600
@@ -493,9 +493,9 @@ transcribed without emitting, (e) a regression:
 | **1** | "my shots hit invisible things" / "invisible enemies" | the fire/state tails of `$2747C6` `$269CEA` `$26A2E2` `$268232` `$27687E` are counted notes, and the enqueue sites are inside them | **(a)** | **141 of 295 spawned objects; 16,808 + 12,760 collidable slot-frames** |
 | **2** | "terrain starts being black after the golden terrain" + "the boss part of the background element is missing" | bucket 2's five and bucket 3's 42 background-element streams, arriving from step 3561 | **(b)** | bucket 2 **100 % → 0 %**; the biggest area of screen |
 | **3** | "more and more" | signals 1 and 2 are both time-ordered: the stage scrolls into unharvested structures, and the invisible types spawn later | (a)+(b) | the whole progression |
-| **4** | "sometimes with hit sparks, sometimes not" | **NOT a defect in the spark.** `[M]` pool E runs 1.05–6.29 live records/frame, bucket 20 is **99.0 % drawn** over 25,155 records. A spark on a §2 enemy lands in empty space, which is what "sometimes" looks like | — | small |
-| **5** | "but no splosions" | `[M]` pool B runs 0.47–3.26 live/frame, so E5b did NOT regress. But `[M]` **`$274AF0`, type `$82`'s death arm, is an unported note reached 213 times in 7,000 frames — a `$82` never dies, so it never explodes.** The types the owner is shooting are the invisible ones | **(a)** | every kill of the five types |
-| **6** | (not reported — found here) | bucket 25, the whole HUD, 33 emit sites transcribed as notes | **(d)**, declared | the HUD on screen is the recording's |
+| **4** | "sometimes with hit sparks, sometimes not" | **NOT a defect in the spark.** `[M]` pool E runs 1.05–6.29 live records/frame, bucket 20 is **99.0 % drawn** over 25,155 records. A spark on a §2 enemy lands in empty space, which is what "sometimes" looks like | - | small |
+| **5** | "but no splosions" | `[M]` pool B runs 0.47–3.26 live/frame, so E5b did NOT regress. But `[M]` **`$274AF0`, type `$82`'s death arm, is an unported note reached 213 times in 7,000 frames - a `$82` never dies, so it never explodes.** The types the owner is shooting are the invisible ones | **(a)** | every kill of the five types |
+| **6** | (not reported - found here) | bucket 25, the whole HUD, 33 emit sites transcribed as notes | **(d)**, declared | the HUD on screen is the recording's |
 
 **Nothing is class (c) and nothing is class (e).** `[M]` `shards 8/8`,
 `spr 14/14`, `PAGE ERRORS none` on every live sample; the BG tile sheet is
@@ -503,42 +503,42 @@ transcribed without emitting, (e) a regression:
 
 ---
 
-## 10. THE WAVE LIST — ranked by measured payoff
+## 10. THE WAVE LIST - ranked by measured payoff
 
-**W69 — THE THIRTY INSTRUCTIONS. `$269D84..$269E1C`, TYPES `$05` `$07` `$27`.**
+**W69 - THE THIRTY INSTRUCTIONS. `$269D84..$269E1C`, TYPES `$05` `$07` `$27`.**
 Wire the fire/state machine so it reaches `$269E20` → `$269E3E` → `$269B3E`.
 **The port ALREADY HAS both blocks** (`drawFamily269E20`, `drawFamily269B3E`,
 running today for types `$08`/`$09`/`$0B`). `[M]` **Payoff: 72 spawned objects
 and 7,078 invisible collidable slot-frames become visible, and `$1718F4` IS
-ALREADY IN THE SHIPPED SHEET — zero new bytes of art, zero new ROM window.**
+ALREADY IN THE SHIPPED SHEET - zero new bytes of art, zero new ROM window.**
 `handlers.js:1726` names the one hazard: the machine slews a heading into
 `($1B,A6)`, which the `fly-around` gate compares, so it needs its own
 before/after. **This is the highest payoff per line in the project right now.**
 Gate: types `$05`/`$07`/`$27` emit ≥1 bucket-7 record per collidable frame.
 
-**W70 — TYPE `$82`, `$2747FA..$274B64`.** `[M]` The single largest: 21 objects,
+**W70 - TYPE `$82`, `$2747FA..$274B64`.** `[M]` The single largest: 21 objects,
 9,730 invisible slot-frames, three enqueue sites `$274A28`/`$274A4A` (bucket 7)
-and `$274A7E` (bucket 3), **and the death arm `$274AF0` in the same block** — so
+and `$274A7E` (bucket 3), **and the death arm `$274AF0` in the same block** - so
 it fixes signal 5 for this type at the same time. Needs art: `[M]` `$1735FC` is
 not in the sheet. Harvest it from the cartridge by address, never off the run
 (W66 §2's rule).
 
-**W71 — THE BACKGROUND ELEMENTS' ART.** `[M]` bucket 2's five
+**W71 - THE BACKGROUND ELEMENTS' ART.** `[M]` bucket 2's five
 (`$231520 $231C44 $232578 $232EAC $233630`) and bucket 3's 42 (`$151894..$151DA8`,
 `$1723D4..$17277C`, `$17D480..$17D8E0`). Bucket 2's are the 18x208-class records,
 so five streams buy the largest area of screen in the list. An EXPORT wave with
 no `src/` change, behind the shard machinery that already exists. **This is the
 black terrain and the boss's backdrop.**
 
-**W72 — TYPES `$10` AND `$8B`.** `[M]` 47 objects, 10,315 collidable slot-frames
+**W72 - TYPES `$10` AND `$8B`.** `[M]` 47 objects, 10,315 collidable slot-frames
 whose sprite pointer is never written. `$2682F8..$268490` and `$27687E`'s tail.
 Both emit through indirect `jsr (A0)`, so the stub comes out of the record.
 
-**W73 — BUCKET 25, THE HUD.** 33 sites, `src/hud.js`'s `draw()`. It is the last
+**W73 - BUCKET 25, THE HUD.** 33 sites, `src/hud.js`'s `draw()`. It is the last
 thing on screen that is still the recording's, and naming it closes W40 §7.3 and
 W11 §6's unresolved bucket.
 
-**W74 — THE MEASUREMENT.** The emission gate and the two-window drawn% of §8.3.
+**W74 - THE MEASUREMENT.** The emission gate and the two-window drawn% of §8.3.
 `[M]` Both go red on today's tree.
 
 ---
@@ -559,7 +559,7 @@ W11 §6's unresolved bucket.
    I did not separate "a hit that spawns no spark" from "a spark drawn over an
    invisible enemy". The cheap test is to count `$289F54` allocations per hit
    per enemy type in the same run.
-5. **The three types with 0 collidable slot-frames in my window** — `$8A` (9
+5. **The three types with 0 collidable slot-frames in my window** - `$8A` (9
    spawns), `$20` (5), `$24`, `$31`, `$21` (1 each). Presence, not absence: my
    window did not make them collidable.
 6. **One input.** 7,000 and 17,533 frames of one playing route. Another route
@@ -579,7 +579,7 @@ W11 §6's unresolved bucket.
 - §3 `[M]`: **25 of 30 buckets have ROM producers; the port fills 14** (15 with a
   bomb press). The figure has moved 2 → 8 → 11 → 14.
 - §2 `[M]`: **THE ANSWER.** Types `$82` `$05` `$07` `$27` are collidable,
-  damageable and never emit a record — their only enqueue sites lie inside the
+  damageable and never emit a record - their only enqueue sites lie inside the
   fire/state tail the port replaces with a counted note. `$10`, `$8B` and the
   boss are the same one step earlier. **141 of 295 spawned objects.**
 - §2.4 `[M]`: **`$1718F4` IS ALREADY IN THE SHIPPED SHEET**, so `$05`/`$07`/`$27`
@@ -587,15 +587,15 @@ W11 §6's unresolved bucket.
 - §0.2 `[M]`: **E3/E6's own input reproduces 100.00 % / ZERO missing at 2,600
   frames and gives 95.61 % / 63 missing at 7,000.** The figure was true; the
   window was short.
-- §5.1 `[M]`: **the BG tile sheet is 100.00 % complete, 0 orphans** — L7 verified,
+- §5.1 `[M]`: **the BG tile sheet is 100.00 % complete, 0 orphans** - L7 verified,
   not cited. **And my own first probe said 43.99 % because it had not fetched the
-  deferred BG shards** — recorded so nobody repeats it.
+  deferred BG shards** - recorded so nobody repeats it.
 - §5.2 `[M]`: **the black terrain is bucket 2/3 background-ELEMENT SPRITE art**,
   five streams and 42, arriving from step 3561. Bucket 2 goes 100 % → 0 %.
-- §7 `[M]`: **bucket 25 is the HUD** — 33 emit sites transcribed as `note()` in
+- §7 `[M]`: **bucket 25 is the HUD** - 33 emit sites transcribed as `note()` in
   `src/hud.js`. E6's shape, but DECLARED, not silent. Closes W40 §7.3.
 - §6 `[M]`: **the live build, driven 110 s past the boot window, names the same
-  addresses** — `$231520 $231C44 $17D480` — with `shards 8/8`, `spr 14/14` and no
+  addresses** - `$231520 $231C44 $17D480` - with `shards 8/8`, `spr 14/14` and no
   page errors. A screenshot at 65 s shows the black half-playfield with enemy
   bullets fanning out of it.
 - §9 `[M]`: **signals 1, 3 and 5 are ONE cause.** The sparks did not regress and

@@ -1,7 +1,7 @@
-# Wave 8 review — Sound: the $ED02 driver, state-exact first (FIDELITY LENS)
+# Wave 8 review - Sound: the $ED02 driver, state-exact first (FIDELITY LENS)
 status: DONE
 wave: 8   role: review   started: 2026-08-01
-verdict: SOUND — no behavioural defect found; three unfalsifiable lines reported
+verdict: SOUND - no behavioural defect found; three unfalsifiable lines reported
 
 Reviewing commit `54353fc` "gradius wave 8: the $ED02 driver runs, and four bytes
 of zero page that were JS variables".
@@ -56,7 +56,7 @@ capsule-die      6f14e66e5a081f0f -> 6f14e66e5a081f0f SAME
 `long-idle.json`, 1000 frames: 51 of the 77 new `w_00Bx..w_00Fx` addresses take
 more than one value; `w_00C1` and `w_00CE` take 105 distinct values each.
 `audioChannels` takes {0,2,3,4}; `audioTicks` is {1} on every sampled frame (by
-construction — scen.py now raises if it is not); `apuWrites` {0..10,16};
+construction - scen.py now raises if it is not); `apuWrites` {0..10,16};
 `apuDigest` 77 distinct values.
 
 ### 4. The code against the cartridge, instruction by instruction
@@ -78,13 +78,13 @@ and walked against `src/sound.js`:
   - `$EE76 LDA $08,X / E9 01 SBC #$01` has **no** `SEC`; the carry is inherited
     from `$EE71` and is provably set on the only path that reaches it. The
     port's plain `-1` is correct.
-  - `$EF62` is entered two ways — `JSR` from `$EE2F` and **fall-through** from
+  - `$EF62` is entered two ways - `JSR` from `$EE2F` and **fall-through** from
     `$EF60`'s not-taken `BNE`. The port calls `writePeriod()` on both.
   - `$ECD2`'s arm falls through into `$ECE5`; `$EC93` falls through into
     `$EC95`; `$EE1F` falls through into `$EE22`; `$EED7 BEQ $EEDB` is always
     taken; `$8357` falls through into `$9A5E`. All five handled.
-  - `$EDED BNE $EDBE` — the Y-wrap fall-through with A still holding the detune
-    operand — is reproduced (`c = $0C,X`), not turned into a `continue`.
+  - `$EDED BNE $EDBE` - the Y-wrap fall-through with A still holding the detune
+    operand - is reproduced (`c = $0C,X`), not turned into a `continue`.
 
 Independent ROM scans I ran rather than took on trust:
 ```
@@ -116,12 +116,12 @@ frame    ($B2, $C3, $D4, $E5)
   310    (19, 19, 19, 0)     the stage's $93         -> index $13 on three
   823    (0, 19, 19, 0)
 ```
-So the records are consecutive but the OWNER BYTES ARE NOT — all three read
+So the records are consecutive but the OWNER BYTES ARE NOT - all three read
 $13, not $13/$14/$15. The implementer's correction to the plan is right, and
 310..822 inclusive is 513 frames, which is the number `snddata.py --selfcheck`
 independently derives as 512 ticks + `$EC63`'s one setup frame.
 
-### 6. Deliberate breaks — eight, each run and restored
+### 6. Deliberate breaks - eight, each run and restored
 `sha256(src/sound.js)` before and after every break:
 `27df2a8f8400f64c432c5bd90f303d85ea1d3ff9d15d5f3ad440aacba169dd1a`.
 Subset used for the corpus column: idle, pause, long-idle, autofire-normal,
@@ -133,9 +133,9 @@ capsule-die (2235 compared frames; baseline 0 failures).
 | 2 | `$ECB6` frees the owner to a literal 0 instead of Y | **RED** (1) | GREEN |
 | 3 | `$EF56` octave loop clamps (`yo >= 4`) instead of wrapping | **RED** (1) | GREEN |
 | 4 | `snddata.py` decodes `base << exp` instead of `base*(exp+1)` | n/a | **RED**, gate stage FAIL, exit 1 |
-| 5 | `$EEFC` release rate always `$05` (never the `$C3 == $13` `$0D`) | pass | **GREEN — NOTHING CATCHES IT** |
-| 6 | `$EEF8` fade `RELOFF := 0` instead of 6 | pass | **GREEN — NOTHING CATCHES IT** |
-| 7 | `$EEEE` `$F2` clamp `$0B` -> `$0A` | pass | **GREEN — NOTHING CATCHES IT** |
+| 5 | `$EEFC` release rate always `$05` (never the `$C3 == $13` `$0D`) | pass | **GREEN - NOTHING CATCHES IT** |
+| 6 | `$EEF8` fade `RELOFF := 0` instead of 6 | pass | **GREEN - NOTHING CATCHES IT** |
+| 7 | `$EEEE` `$F2` clamp `$0B` -> `$0A` | pass | **GREEN - NOTHING CATCHES IT** |
 | 8 | `$EE62` release-ramp `d <= rate` inverted to `d >= rate` | pass | RED, 8 failures on idle+long-idle |
 | 9 | `$ED70` freeze arm writes `$400C = 0` instead of `$30` | pass | RED, 1 failure (pause) |
 
@@ -144,7 +144,7 @@ Breaks 1-4 confirm the implementer's own results (with one correction, below).
 find.** Details in the findings section.
 
 Correction to the implementer's B7 note: it says the retrigger guard is "caught
-by `apuDigest` alone". It is caught by `apuWrites` as well — an unsuppressed
+by `apuDigest` alone". It is caught by `apuWrites` as well - an unsuppressed
 write changes the per-frame count, not only the digest. Both fields are new
 this wave, so the conclusion (the register side had to be compared) stands.
 
@@ -159,13 +159,13 @@ the final full-corpus pass, not a covered area.**
    so the port side is fully compared; what is unverified is whether the other
    30 recordings came off the cartridge. Given five out of five reproduced
    byte-identically, the risk is low, but a regression there would look like a
-   scenario that is green against a doctored artifact — invisible until a
+   scenario that is green against a doctored artifact - invisible until a
    re-record.
 2. **I did not run `rendergate.py` (the pixel-exact renderer).** Wave 8 touches
    the renderer only through `state.ppu.chrSel`, which `setBgm` now loads from
    `$8346[$19]`; `$8346[0] = 0` (verified against the ROM), and `w_002D`
    compares clean at 0 on all 35 scenarios, so the renderer's input is
-   unchanged. A regression would look like a wrong CHR bank on stage 1 — which
+   unchanged. A regression would look like a wrong CHR bank on stage 1 - which
    `w_002D` would already have caught, but only for stage 0.
 3. **I did not exercise stage index != 0 at all.** `setBgm` indexes three new
    tables with `$19`. `$833F[1..6]` = 59 5B 5D 5F 61 63, `$8346[1..6]` = 00 02

@@ -1,6 +1,6 @@
-# WAVE 8 — REVIEW (reader; does not commit)
+# WAVE 8 - REVIEW (reader; does not commit)
 
-status: **DONE — DEFECTS FOUND.** The shot work itself reproduces exactly as
+status: **DONE - DEFECTS FOUND.** The shot work itself reproduces exactly as
 claimed, to the digest, on a freshly re-traced run. But **`pgm.py flyaround` is
 RED at HEAD** and the worklog reports it as UNMOVED, and three of the wave's
 headline "facts" are not visible to any check it ships. Working tree verified
@@ -36,7 +36,7 @@ $ python games/ddpdoj/tools/oracle/pgm.py shotgate     (FRESH, no --reuse)
     sha256 stage1-shot.tsv      fb61357eaa3ab364cf938be31ff031dd585df69fa9c3834091ff577172fe79e4
     sha256 stage1-shot.seed4447.bin
                                 1d13a4e3092ddc3b1e981ee74a95c2a44996f315547456548014d5328734755c
-  (both identical before and after the re-run — MAME determinism holds.)
+  (both identical before and after the re-run - MAME determinism holds.)
 
 $ node tools/determinism.mjs ... (stage1-shot)
   IN-PROCESS 1 = IN-PROCESS 2 = SUBPROCESS = bcd6afe3...   IDENTICAL
@@ -77,7 +77,7 @@ gitignored; the commit contains only source, tools, tests and the worklog).
 
 ---
 
-## 2. BLOCKING — `pgm.py flyaround` IS RED AT HEAD
+## 2. BLOCKING - `pgm.py flyaround` IS RED AT HEAD
 
 The worklog line 41 and the commit message both say:
 
@@ -97,7 +97,7 @@ PGM EXIT=1
 
 **WHY.** Wave 8 added `scroll` (`$813176`) to `WATCH_SPEC` *and* to `CLAIMED` in
 `src/state.js`. `_cmd_flyaround` builds its `PROBE_WATCH` from `w4_watch()`,
-which reads `WATCH_SPEC` out of `src/state.js` — so the fly-around trace now
+which reads `WATCH_SPEC` out of `src/state.js` - so the fly-around trace now
 carries the column and `portdiff.mjs` compares it. `$813176` is written by
 `$26151E` inside the unported background object, and the fly-around scenario is
 the one that DOES move horizontally (284 wall hits):
@@ -113,7 +113,7 @@ is false either way. The most likely explanation for the report is that the
 `flyaround` line was run before `scroll` entered `WATCH_SPEC`, or against a
 pre-wave-8 cached `out/w4/fly-around.tsv`; it was not re-run at the end.
 
-Everything else in that gate is intact — the divergence is exactly one column,
+Everything else in that gate is intact - the divergence is exactly one column,
 `scroll`, and the 34 wave-4 columns are all green. The fix is a decision, not a
 puzzle: either `scroll` is a REPORTED column (like `nshot`/`rng`) because the
 port cannot compute it, or `fly-around` needs its own carve-out. It cannot be a
@@ -121,7 +121,7 @@ CLAIMED column for a scenario where the board moves it.
 
 ---
 
-## 3. CHECKS THAT CANNOT FAIL — three headline facts nobody's gate can see
+## 3. CHECKS THAT CANNOT FAIL - three headline facts nobody's gate can see
 
 The brief's standing rule is wave 6's: *every check must be seen to fail.* I
 added seven new mutations to `tools/breakage.mjs`, ran them against the shot
@@ -142,7 +142,7 @@ before and after; `src/shots.js` likewise back to
 | `rv-no-scroll-sub` | `$253AA6 sub.w D6,($4,A6)` | **GREEN** (declared in the worklog) |
 
 Plus an eighth, on the gate rather than the port: I injected `hitex=2` into one
-row of the trace. The gate went **RED** and exited 1 —
+row of the trace. The gate went **RED** and exited 1 -
 `HITEX $245044 fired 2 time(s) ... this window is NOT evidence`. **The HITEX
 gate can fail.** It is a real check.
 
@@ -164,7 +164,7 @@ low nibbles:     8 x500, 0 x74          <- only TWO of the four handlers
 quadrant; `$01` is quadrant 0 under both. So the two fields are indistinguishable
 on every angle the window contains, which is exactly what `rv-shot-quadrant-3f`
 measured. The *fold table* difference IS load-bearing and IS caught
-(`rv-shotfold-is-playerfold` RED) — but the quadrant-field difference is not,
+(`rv-shotfold-is-playerfold` RED) - but the quadrant-field difference is not,
 and the worklog presents both as measured facts of the same standing.
 
 ### 3.2 `$81308C = 1 → five slots` is not load-bearing in this window
@@ -190,7 +190,7 @@ handler253EC6 ($253EC6, dispatch [10])  WAS reached  -> throws, node exit 1
 handler253E34 ($253E34, dispatch [2])   WAS reached  -> throws, node exit 1
 ```
 
-So they DO execute — but only on records the gate does not compare (the seeded
+So they DO execute - but only on records the gate does not compare (the seeded
 OPTION-POD shots in slots 0..13, whose sprite requests are also excluded from
 the containment check *by name*). `handler253E34`, `handler253EC6`,
 `body253E96`, its `$7800` Y clamp and its `$24FC8E` table lookup are therefore
@@ -217,7 +217,7 @@ cannot see it. Worth listing next to the scroll gap rather than left implicit.
 
 while the same object carries `"seed": 4447` and the gate prints **125** compared
 frames. The worklog (§4) has the correct story (126-frame longest hit-free
-stretch, seed 4447) — but the artifact a future wave will read first says 856.
+stretch, seed 4447) - but the artifact a future wave will read first says 856.
 The same `why` also asserts `$813176` "is 0 on every frame of this run", which is
 true of `stage1-shot` and false of `fly-around` (473 frames), and it is the
 `fly-around` reading that matters for §2.
@@ -257,7 +257,7 @@ true of `stage1-shot` and false of `fly-around` (473 frames), and it is the
 7. **THE SHARED GIT INDEX CURRENTLY HOLDS STAGED DELETIONS OF `games/ddpdoj/`
    FILES THAT ARE IN HEAD** (`git status --porcelain games/ddpdoj/` shows
    `D games/ddpdoj/game.json`, `D games/ddpdoj/index.html`,
-   `D games/ddpdoj/src/budget.js`, `D NOTES-*.md`, ...). I did not touch it —
+   `D games/ddpdoj/src/budget.js`, `D NOTES-*.md`, ...). I did not touch it -
    `git checkout -- <path>` even failed with *"pathspec did not match any
    file(s) known to git"*. Anyone committing must `read-tree HEAD` immediately
    before `git add`, exactly as the brief says.
@@ -276,7 +276,7 @@ true of `stage1-shot` and false of `fly-around` (473 frames), and it is the
 * **Not a build-A leak.** No `$13xxxx`/`$14xxxx` address in any wave-8 file.
 * **Not a silent gap in the deliberately-unported list.** Every item the worklog
   says it left is a throw or a counted note that I found in the source: laser
-  `$254078` (twice — spawn and dispatch), bomb `$249814`, ship-2 `$249D2C`,
+  `$254078` (twice - spawn and dispatch), bomb `$249814`, ship-2 `$249D2C`,
   P2 `$249C0E`, formation-4 `$249CC8`, the hit path `$253BDE`/`$253ECA`, the
   twelve unmapped dispatch entries (thrown by `runShotDriver`), the 22 type-5
   calls and `$28B670` (counted through `UnportedLog`, printed every run).
@@ -298,6 +298,6 @@ $ python games/ddpdoj/tools/oracle/pgm.py demogate
 
 NOT re-run:
 
-* `tools/build-dist.mjs` (the leak guard) — not touched by this wave.
+* `tools/build-dist.mjs` (the leak guard) - not touched by this wave.
 * The `04/05-review` leftovers the worklog lists as still leftover; confirmed
   still leftover, not re-investigated.

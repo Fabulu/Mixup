@@ -1,4 +1,4 @@
-# RECON 20 — the enemy census: 256 types, 111 handlers, the pattern tables, the boss
+# RECON 20 - the enemy census: 256 types, 111 handlers, the pattern tables, the boss
 
 status: **DONE** on the five things asked, with six named gaps in "What I could
 NOT do". Every number below is produced by a command shown in this file.
@@ -45,7 +45,7 @@ $263650 jsr (A1)`. Recon 10 wrote the mechanism down correctly and warned that
 enemy's initialisation". **It is worse than half: the first entry point is 8
 bytes of run-length and nothing else. 115 real init bodies are 100% at +8.**
 
-And the trap is not confined to the inits. Walking every handler twice — once
+And the trap is not confined to the inits. Walking every handler twice - once
 linearly to the first `rts`/`jmp`/`bra` (what a lazy port reads) and once by
 following all edges:
 
@@ -77,7 +77,7 @@ share one prologue at `$269B3E`.
 
 ---
 
-## 1. THE DENOMINATOR — the type table, counted
+## 1. THE DENOMINATOR - the type table, counted
 
 ```
 $ python games/ddpdoj/tools/recon20/census.py table
@@ -112,12 +112,12 @@ Handlers serving more than one type (the aliases a port must not duplicate):
   $26AD28 x2   $0B $2B     $26B034 x2  $0C $2C     $275914 x2  $85 $86
 ```
 
-`$05`–`$0C` and `$25`–`$2C` are **exact aliases** — same init AND same handler.
+`$05`–`$0C` and `$25`–`$2C` are **exact aliases** - same init AND same handler.
 `$85`/`$86` share a handler but have different inits (`$275812`/`$275BAE`).
 
 ---
 
-## 2. THE PER-TYPE STAT TABLES — found, and this is the answer to "where are the
+## 2. THE PER-TYPE STAT TABLES - found, and this is the answer to "where are the
 tables kept"
 
 Every init body begins by loading two prototypes through two library routines at
@@ -160,7 +160,7 @@ TYPE $10  sub proto @$2681B2 / rec proto @$268192
   speed $04 heading $10 palette $14            HP reload ($26,A5) = $00E0 = 224
 ```
 
-`($2A,A5)` and `($2E,A5)` are **not** "a behaviour sub-routine" — recon 10
+`($2A,A5)` and `($2E,A5)` are **not** "a behaviour sub-routine" - recon 10
 guessed that from the `jsr (A0)` at `$2689C2`. They are **display-list bucket
 emitters** in the shared `$23Dxxx` library:
 
@@ -183,7 +183,7 @@ reload, and the draw bucket. 208 tables, all located.**
 
 ---
 
-## 3. THE PATTERNS — the generators and their 39-entry parameter table
+## 3. THE PATTERNS - the generators and their 39-entry parameter table
 
 The owner's instruction was to find the tables, not to trace shots. They are at
 `$281956` and `$2815C6`, behind two emitters and nineteen rank-gated wrappers.
@@ -197,7 +197,7 @@ POOL A   $817F8C   211 slots x $40   emitters $2814B6 and $2817C2
            x5 unrolled slots per dbra ->  70 / 110 / 160 / 190 / 210 SLOTS
          cleared by $28131E ($1A4A+1 words), sentinel $FFFF at +2, stride $40
          swept for hits by $2459D0, whose own count 6/$A/$F/$12/$14 on the SAME
-         four words x10 unrolled = 70/110/160/190/210 — an EXACT match, so the
+         four words x10 unrolled = 70/110/160/190/210 - an EXACT match, so the
          allocator and the hit test walk the same active prefix.
 
 POOL B   $8171BE   70 slots x $2C  (+ a 10-slot annex at $817DC6)
@@ -207,7 +207,7 @@ POOL B   $8171BE   70 slots x $2C  (+ a 10-slot annex at $817DC6)
 
 **Correction to recon 10 §6/§4d:** recon 10 called `$817F8E` "the player-shot
 list". It is not. The player's own shot list is **`$810572`**, walked by
-`$253A70` with `moveq #$23,D7` (36 entries) — the eighth call in `$28B5E0`.
+`$253A70` with `moveq #$23,D7` (36 entries) - the eighth call in `$28B5E0`.
 `$817F8C`/`$817F8E` is Pool A above. The `$30`-vs-`$3E` stride disagreement
 recon 10 left open is resolved: `$2459D0` advances `+2` then `lea ($3e,A6),A6`
 = **stride $40**, matching `$28131E`'s `lea ($40,A0),A0`.
@@ -253,7 +253,7 @@ $27F99E  20 valid pointers -> Pool B PER-FRAME handlers  (recon 10 said 32; the
 $280BB6   6 pointers -> the display-list bucket emitters, indexed by D2
 ```
 
-### 3c. THE RANK GATE — and why no measurement so far has seen a pattern
+### 3c. THE RANK GATE - and why no measurement so far has seen a pattern
 
 Nineteen wrapper entry points sit in front of the two emitters. **Every one of
 them opens with `tst.w $813098` and every one of them collapses to a single shot
@@ -289,7 +289,7 @@ when that word is zero.**
 type `$11`'s fire block picks `D0 = $0000000D` normally and `D0 = $FFFC000D`
 (angle −4, same kind 13) when `$813092 >= 3` (`$268AFC`).
 
-### 3d. A worked pattern, end to end — type `$11`, the commonest stage-1 enemy
+### 3d. A worked pattern, end to end - type `$11`, the commonest stage-1 enemy
 
 ```
 268a16: D1 = ($33,A5)                 the facing, stepped toward the aim by $242190
@@ -302,12 +302,12 @@ type `$11`'s fire block picks `D0 = $0000000D` normally and `D0 = $FFFC000D`
 268b14: jsr $281402                   1 shot, or 1 shot at angle+4 when ranked
 ```
 
-The aim that feeds `($33,A5)` is `$268A30 jsr $24200A` — recon 10 measured that
+The aim that feeds `($33,A5)` is `$268A30 jsr $24200A` - recon 10 measured that
 call reading the LIVE player position 14,922 times in 4,200 frames.
 
 ---
 
-## 4. STAGE 1 — which of the 126, where, in what order
+## 4. STAGE 1 - which of the 126, where, in what order
 
 ```
 $ python games/ddpdoj/tools/recon20/census.py script
@@ -331,7 +331,7 @@ distinct handlers reachable from the stage-1 script: 19
 
 **47 live types are never named by any script.** Recon 10 measured one of them
 (`$1E`, handler `$296DD6`) arriving anyway, through the deferred queue
-`$815EAA` — an enemy spawned by another enemy. So "read the scripts" is a lower
+`$815EAA` - an enemy spawned by another enemy. So "read the scripts" is a lower
 bound by at least 47 types, and the queue is the only other door.
 
 ### The 21 stage-1 types, in order of first appearance
@@ -351,7 +351,7 @@ odometer** (+1 per `$200` units of background scroll at `$26132C`), not a timer.
 | `$8A` | 10 | 173–452 | `$2766AE` | `$276702` | **scroll-locked** ground gun | Pool B `$27F8EE`/`$27F92A` |
 | `$8B` | 25 | 179–378 | `$276824` | `$27687E` | **scroll-locked** ground gun | Pool B `$27F8EE` |
 | `$20` | 5 | 188–376 | `$272A4A` | `$272AAC` | scripted carrier: reads its own params from `($12,A5)`, spawns via the deferred queue | none |
-| `$0D` | **1** | 197 | `$26B484` | `$26B6FA` | **THE MIDBOSS** — 437 insns, `$26B6FA..$26BF40` | `$281764` `$2817A8` `$2817B8` |
+| `$0D` | **1** | 197 | `$26B484` | `$26B6FA` | **THE MIDBOSS** - 437 insns, `$26B6FA..$26BF40` | `$281764` `$2817A8` `$2817B8` |
 | `$82` | 33 | 227–434 | `$27462A` | `$2747C6` | script-mover | `$281484` `$281708` `$281764` |
 | `$89` | 7 | 283–402 | `$277278` | `$27733E` | script-mover, also allocates Pool B | `$2813F0` + Pool B |
 | `$88` | 3 | 322–390 | `$275DA0` | `$275F30` | script-mover, 303 insns, 4 indirect calls | `$2813F0` `$281442` |
@@ -396,7 +396,7 @@ the midboss `$0D`, the boss `$0E`, and the two props `$24`/`$31`.
 **Stage 1's boss is type `$0E`, one record at `$2316FC`, trigger 488 (the last
 record in the script), init body `$2926E2`, handler `$292902`.** Recon 10
 measured `$292902` dispatched 1,315 times and the wave clock freezing at 836
-with one live enemy — that is this.
+with one live enemy - that is this.
 
 The handler is 10 instructions. All of the boss is behind it:
 
@@ -448,19 +448,19 @@ Damage accounting is a longword, not the usual word:
 **The boss fires nothing through the shared wrappers**: its handler's call
 closure contains no `$281xxx` entry. Its patterns come out of `$25962E` /
 `$294AD8` driving the five installed tables (`$293104` `$295856` `$292932`
-`$29370A` `$294F68`) — a bespoke script engine at `$2595xx`/`$294xxx` that this
+`$29370A` `$294F68`) - a bespoke script engine at `$2595xx`/`$294xxx` that this
 recon located but did not decode. That is the largest single unread block left.
 
 **The stage-1 MIDBOSS is type `$0D`, one record at trigger 197, init body
 `$26B484`, handler `$26B6FA`** (437 instructions, `$26B6FA..$26BF40`, +2,046
 bytes past its first `rts`). Unlike the boss it does use the shared library:
-`$281764`, `$2817A8`, `$2817B8` — three of the rank-gated Pool-A-B wrappers —
+`$281764`, `$2817A8`, `$2817B8` - three of the rank-gated Pool-A-B wrappers -
 plus the deferred-spawn queue.
 
 Types `$20`–`$23` share handler `$272AAC` and recon 10 reported them selecting
 the 8-slot "boss band" in `$2636DA`. **They are not bosses.** Their init reads
-position and up to three parameters out of `($12,A5)` — the movement-script
-pointer — and advances it, i.e. they are generic scripted carriers. Stage 1
+position and up to three parameters out of `($12,A5)` - the movement-script
+pointer - and advances it, i.e. they are generic scripted carriers. Stage 1
 spawns five `$20` and one `$21` at triggers 188–377, in the middle of the level.
 
 ---
@@ -488,13 +488,13 @@ spawns five `$20` and one `$21` at triggers 188–377, in the middle of the leve
 ## What I could NOT do
 
 1. **The boss's own pattern engine.** `$259554`'s five tables, `$25962E`,
-   `$294AD8`, `$2598E6`, `$25980C` — located and their RAM destinations read;
+   `$294AD8`, `$2598E6`, `$25980C` - located and their RAM destinations read;
    the script format is NOT decoded. This is the single largest unread block.
 2. **The 39 pattern prototypes' field meanings beyond the store sequence.** I
    decoded the 20-byte record layout from `$281554`'s stores and dumped three of
    them; I did not correlate the fields to observed bullet behaviour, and 2 of
    the 20 bytes are unaccounted for.
-3. **The 20 Pool-B per-frame handlers at `$27F99E`** and `$280BCE`'s 20 inits —
+3. **The 20 Pool-B per-frame handlers at `$27F99E`** and `$280BCE`'s 20 inits -
    counted, not read. Recon 10's "second dispatch behind `$2810CA`" is still
    unread.
 4. **Any rank-nonzero measurement.** Every claim about the wrappers' multi-shot

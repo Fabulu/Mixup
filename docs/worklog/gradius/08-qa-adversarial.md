@@ -1,4 +1,4 @@
-# Wave 8 QA — adversarial review of the $ED02 sound driver port
+# Wave 8 QA - adversarial review of the $ED02 sound driver port
 status: DONE
 wave: 8   role: qa   started: 2026-08-01
 
@@ -40,7 +40,7 @@ NOTE for the record: "0 SKIPPED" is the STAGE count. Inside the compare stage
 splitSpins). That is pre-existing, not wave 8's, and `NOT_PRODUCED` in
 porttrace.mjs carries the reason for each.
 
-### 2. The oracle side is reproducible — I re-recorded it
+### 2. The oracle side is reproducible - I re-recorded it
 
 ```
 $ python games/gradius/tools/oracle/scen.py --only pause idle long-idle
@@ -76,7 +76,7 @@ wrong:
   the caller's carry (the carry lands in bit 2 and is ANDed away).
 * `$EC33 ASL A / CLC / ADC $DF` is `index*3` with no wrap for index <= $3F.
 * `$EDED BNE $EDBE` falls THROUGH into the `$10` test with A still holding the
-  detune operand when Y wraps to 0 — the port reproduces the fall-through.
+  detune operand when Y wraps to 0 - the port reproduces the fall-through.
 * `$EE76 LDA $08,X / SBC #$01` relies on the carry left set by `$EE71`; that
   carry is provably 1 on the only path that reaches it, so `shadow - 1` is right.
 * `$EF16 SBC $F2` after the `$EEF0` clamp can only produce -11..+15, so the
@@ -84,7 +84,7 @@ wrong:
 * `$ED2C CMP #$07 / BPL` is the SIGN of ($F3 - 7), and the port spells it that
   way rather than as `>= 7`.
 * `$ECD6-$ECE3` (the $FE loop exit) adds `u8(y+3)` to $FA with the carry into
-  $FB — the port's `(fa|fb<<8) + u8(y+3)` is equivalent.
+  $FB - the port's `(fa|fb<<8) + u8(y+3)` is equivalent.
 
 I also re-derived, from the cartridge, the load-bearing claim behind the
 `$ECB6 STY $02,X` argument:
@@ -117,7 +117,7 @@ tests fail there for path reasons unrelated to sound; all break deltas below are
 against that constant baseline, and `sound.test.js` was run separately and is
 clean at baseline.)
 
-**35 deliberate breaks. 24 went red. ELEVEN went green** — and nine of those
+**35 deliberate breaks. 24 went red. ELEVEN went green** - and nine of those
 eleven survive the FULL 35-scenario / 11695-frame corpus AND all 280 unit tests.
 The implementer reported two such survivors. There are eleven.
 
@@ -150,7 +150,7 @@ RED (the wave is doing these things, and something can see it):
 | `$ED0A` owner-0 gate removed | $ED0C | 869 fields + 4 unit tests |
 | `$EE02 AND #$10` -> `#$08` / `#$40` | $EE02 | 10 fields |
 
-GREEN — SURVIVED THE FULL CORPUS AND ALL 280 UNIT TESTS:
+GREEN - SURVIVED THE FULL CORPUS AND ALL 280 UNIT TESTS:
 
 | # | break | ROM | why nothing sees it |
 |---|---|---|---|
@@ -201,7 +201,7 @@ eleven scripted runs)"), `src/sound.js` line ~999 ("what game situation reaches
 it is not established"), `tests/sound.test.js` line 7 ("none reaches the $F0
 fade"), and the impl worklog's open-items list. Only 16 frames of it are
 reached and the `$F1 == $30` step, the `$F2` clamp and the triangle kill are
-still unreached — but "unreached" and "unreachable" are different claims and the
+still unreached - but "unreached" and "unreachable" are different claims and the
 file makes the wrong one.
 
 **(b) "no measured stream reaches it" on `$ECF7` is FALSE.** Break V (`stored =
@@ -211,19 +211,19 @@ $ECF7 SEC SBC #$01` arm IS taken, once, by a real stream.
 
 ### 7. CHECKS THAT CANNOT FAIL (docs/knowledge/03)
 
-* `scen.py` build(): `if r["audioChannels"] < 0: raise` — objloop.lua's counter
+* `scen.py` build(): `if r["audioChannels"] < 0: raise` - objloop.lua's counter
   is a non-negative Lua integer, so this can never fire. Its own comment says
   the bound worth asserting is "a frame with no owned channel is 0"; it does not
   assert that. Shape (a).
 * `tests/sound.test.js` "the work counters are per-FRAME": `assert.ok(
   s.work.apuWrites < 1000)` is vacuous. Shape (a).
 * `tests/sound.test.js` fade test: `assert.ok(rd(t, 0xF2) >= 0x0B)` is one-sided
-  and passes for a clamp of `$0C` (measured, break P). Shape (d)-adjacent — the
+  and passes for a clamp of `$0C` (measured, break P). Shape (d)-adjacent - the
   test does not pin the ROM's constant.
 * `tests/sound.test.js` fade test: the triangle-kill assertion passes for a
   `$F3 < 8` threshold as well as `$F3 < 7` (measured, break R).
 * `tests/sound.test.js` fade test line 328:
-  `steps.push(f - (steps.length ? 0 : 0))` — a dead ternary, both arms 0.
+  `steps.push(f - (steps.length ? 0 : 0))` - a dead ternary, both arms 0.
 * `tests/sound.test.js` `$EC95` test: the comment block describes `$7D` (records
   `$3D $3E`) but the call is `soundRequest(s, 0x1D)`. The test is still valid
   ($1D is a pulse-2 record), the prose is not.
@@ -233,7 +233,7 @@ $ECF7 SEC SBC #$01` arm IS taken, once, by a real stream.
 * **No instruction-level divergence.** I read every ported routine out of the
   cartridge and compared it against the port line by line (section 3). I did not
   find one wrong branch, one wrong constant, one wrong register or one missing
-  store. The eleven survivors above are COVERAGE holes, not port bugs — the port
+  store. The eleven survivors above are COVERAGE holes, not port bugs - the port
   is right; nothing checks that it is right.
 * **The oracle side is not fabricated.** I re-recorded `pause`, `idle` and
   `long-idle` from the cartridge myself and got byte-identical artifacts.
@@ -241,7 +241,7 @@ $ECF7 SEC SBC #$01` arm IS taken, once, by a real stream.
   triangle-REST value ($EF3B) and the request-time silencing value ($EC85);
   nothing in the RAM layer sees either. The digest multiplier itself is pinned
   (31 -> 33 is 35 failures).
-* **The nmi.js counter-clear placement is defended** — moving the four clears
+* **The nmi.js counter-clear placement is defended** - moving the four clears
   below the lock bail reddens `tests/sound.test.js` (fail=1). The implementer's
   reviewer item #4 stands.
 * **`bindSoundRom` as a module-level binding is safe on the frame order I could
@@ -255,7 +255,7 @@ $ECF7 SEC SBC #$01` arm IS taken, once, by a real stream.
   against all 35 recorded artifacts (0 failures), and I re-recorded 3 of them
   from the cartridge and got identical bytes. A regression in the other 32
   would look like: the ROM side of a scenario silently changing (it cannot
-  without the cartridge or Mesen changing) — this is low risk and is exactly
+  without the cartridge or Mesen changing) - this is low risk and is exactly
   what the final full-corpus pass covers.
 * **I did not reach the $F1 == $30 fade step, the $F2 clamp, the triangle kill,
   the $F8 dialect-A prefix, an octave > 4, or $ECB6/$ED5E with Y != 0 in
@@ -275,7 +275,7 @@ $ECF7 SEC SBC #$01` arm IS taken, once, by a real stream.
 ## If someone picks this up cold
 
 The break harness is at
-`%TEMP%/claude/C--programmieren-batman/<session>/scratchpad/gq` — a full copy of
+`%TEMP%/claude/C--programmieren-batman/<session>/scratchpad/gq` - a full copy of
 `games/gradius` plus the ROM plus all 35 oracle artifacts, with
 `sound.js.pristine` / `nmi.js.pristine` and `brk.py`. `python runA.py` etc.
 re-run each break batch. That directory is disposable; the method is:

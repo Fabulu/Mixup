@@ -1,4 +1,4 @@
-# Wave 28b IMPL — the per-stage ledger + non-mode-5 loudness
+# Wave 28b IMPL - the per-stage ledger + non-mode-5 loudness
 
 status: DONE
 wave: 28b   role: implementer (sole src/ writer)   started: 2026-08-03

@@ -1,8 +1,8 @@
-# Wave 10 recon — the playfield: tilemaps, scroll, stage-1 layout data
+# Wave 10 recon - the playfield: tilemaps, scroll, stage-1 layout data
 
 status: **DONE on the six questions asked, with the BLOCKERS named in §8.**
 started / finished: 2026-08-01
-role: recon (READER — nothing under `games/ddpdoj/src/` was touched)
+role: recon (READER - nothing under `games/ddpdoj/src/` was touched)
 target: `ddpdojblk`, **VERSION-B** (2002.10.07 BLACK VER), the `$2xxxxx` build.
 Every address below is build B unless the line says otherwise. Build-A twins are
 given where the xref found them, because the A build is a free second reading.
@@ -24,7 +24,7 @@ python bgrecon2.py 7000 bg-deep    play     -> out/bg-deep.tsv     (play,   7000
 ```
 
 13,600 logic frames total. `bgrecon.lua` uses only WRITE taps and sample-point
-reads — a read tap on the 68000 fires on the prefetch and CURPC does not
+reads - a read tap on the 68000 fires on the prefetch and CURPC does not
 identify an opcode fetch (`00-recon-hard.md` §3). Tap handles and the frame
 notifier live in globals.
 
@@ -43,7 +43,7 @@ The brief says *"the bg_scale register at $B07000"*. Measured:
 
 Everything below about scale is about `$B04000`.
 
-## 1. THE MAP — measured, not assumed
+## 1. THE MAP - measured, not assumed
 
 `bgrecon.lua` prints the MAME share sizes on every run:
 
@@ -58,21 +58,21 @@ and the game's own VRAM clear/RAM-test routines fix the 68k side of it
 
 | 68k range | what | clear routine (B / A) |
 |---|---|---|
-| `$900000..$903FFF` | **BG videoram** — 64×16 entries of 4 bytes; the tilemap the renderer reads is the first `$1000` bytes | `$23C638` / `$13C9A4` |
-| `$904000..$905FFF` | **TX videoram** — 64×32 entries of 4 bytes | `$23C622` / `$13C98E` |
-| `$907000..$9073FF` | **rowscroll** — 256 longwords cleared | `$23C668` / `$13C9D4` |
+| `$900000..$903FFF` | **BG videoram** - 64×16 entries of 4 bytes; the tilemap the renderer reads is the first `$1000` bytes | `$23C638` / `$13C9A4` |
+| `$904000..$905FFF` | **TX videoram** - 64×32 entries of 4 bytes | `$23C622` / `$13C98E` |
+| `$907000..$9073FF` | **rowscroll** - 256 longwords cleared | `$23C668` / `$13C9D4` |
 | `$B02000` | `bg_yscroll` | written by `$240CEC` |
 | `$B03000` | `bg_xscroll` | written by `$240CEA` |
 | `$B04000` | `bg_scale` | `$23C5EE` (game), `$0065E2` (BIOS) |
 | `$B05000` / `$B06000` | `tx_yscroll` / `tx_xscroll` | `$23C5F8` / `$23C602` |
-| `$B0E000` | `ctrl` | `$23C00E` — the **main-loop head**, every iteration |
+| `$B0E000` | `ctrl` | `$23C00E` - the **main-loop head**, every iteration |
 
 **The cabinet is TATE, so read the register names rotated.** `bg_xscroll`
 (`$B03000`) is the raster X axis = **the game's vertical scroll**, and it is the
 one the stage program drives. `bg_yscroll` is the game's horizontal axis and
 carries the camera's sideways drift.
 
-## 2. WHO WRITES THE TILEMAPS PER FRAME — one PC each, measured
+## 2. WHO WRITES THE TILEMAPS PER FRAME - one PC each, measured
 
 `play, 2600 lf`:
 
@@ -88,13 +88,13 @@ CENSUS rowscroll writes/logic frame max=1024  0:2596  512:2  1024:1  768:1
 `deep play, 7000 lf` and `attract, 4000 lf` reproduce the same three sets
 (`240D9A:2214` / `240D9A:936`, `25BB98:392` / `25BB98:588`, rowscroll unchanged).
 
-* **BG, in play, has exactly ONE per-frame writer: `$240D9A`** — the store inside
+* **BG, in play, has exactly ONE per-frame writer: `$240D9A`** - the store inside
   `$240D76`. It fires **18 word-writes on 97 of 2,600 frames and 0 on the other
   2,499** (18 = 9 longwords × 2 word-writes on a 16-bit space). That is **one
   column of 9 tiles, written once per 32 px of scroll**, and nothing else.
   `$23C642`/`$13C9AE` are the clear loops; `$25BB98` is the static
   title/menu-screen loader at `$25BB7E` (a 14×7 block from `$2302E0`).
-* **TX is rewritten every frame** by `$240D10` — the store inside `$240CF0`,
+* **TX is rewritten every frame** by `$240D10` - the store inside `$240CF0`,
   a "draw a `D3+1 × D2+1` block of consecutive tile numbers at (D0,D1)" printer
   with 8 absolute-long call sites (`$23CDA0 $256F3E $256F68 $256F8E $257BAE
   $259FE8 $25A13A $25A166`) plus `$240D2C` from `$24101E`. This is the HUD /
@@ -102,7 +102,7 @@ CENSUS rowscroll writes/logic frame max=1024  0:2596  512:2  1024:1  768:1
 * **rowscroll is written by three PCs in 13,600 logic frames and all three are
   CLEAR LOOPS** (`$23C672` build B, `$13C9DE` build A, `$000F44` BIOS).
 
-## 3. ROWSCROLL — all zero, every frame, in three scenarios
+## 3. ROWSCROLL - all zero, every frame, in three scenarios
 
 The probe reads `rowscrollram[0..223]` (the 224 raster lines
 `src/render/igs023.js` actually indexes) at the sample point and reports the
@@ -125,7 +125,7 @@ this corpus has ever produced a non-zero rowscroll value, and no absolute-long
 site in build B writes one outside the clear.* Not "the game does not use
 rowscroll".
 
-## 4. `bg_scale` AND `ctrl` — measured across the whole corpus
+## 4. `bg_scale` AND `ctrl` - measured across the whole corpus
 
 ```
 CENSUS bg_scale at sample point (1) 0210:2600 / 0210:4000 / 0210:7000
@@ -151,11 +151,11 @@ BIOS's, before the first logic frame, exactly as wave 3 recorded. `bg_scale` is
 not a gameplay register in this corpus and the port can hold it at `0x210`.
 
 `ctrl` is written **every main-loop iteration** from `$23C00E` (the loop head)
-and is `0x001F` at every sample point. Bits 11/12/13 — TX disable, BG disable,
-priority-only — are never set (no value above `0x7B` was ever written). The port
+and is `0x001F` at every sample point. Bits 11/12/13 - TX disable, BG disable,
+priority-only - are never set (no value above `0x7B` was ever written). The port
 must still write it per iteration, because `ctrl` is in the renderer's contract.
 
-## 5. THE SCROLL ENGINE — three layers, all read out of the listing and
+## 5. THE SCROLL ENGINE - three layers, all read out of the listing and
 ## then confirmed frame-by-frame against the TSV
 
 ### 5a. The register upload, `$240CC0`, gated inside IRQ6
@@ -177,9 +177,9 @@ the scroll registers"). Disassembled:
 
 Its only caller is `$23C45A`, inside the IRQ6 (A)-gate. `$B05000`/`$B06000` (TX
 scroll) are written **once each at init** (`tx_yscroll=0`, `tx_xscroll=1`) and
-never again — measured: `txy@23C5F8:1  txx@23C602:1` over 2,600 frames.
+never again - measured: `txy@23C5F8:1  txx@23C602:1` over 2,600 frames.
 
-### 5b. The camera accumulators — TWO layers, `$80B010` (BG) and `$80B032` (TX)
+### 5b. The camera accumulators - TWO layers, `$80B010` (BG) and `$80B032` (TX)
 
 ```
 240b0e  RESET      zero $80B012 $80B016 $80B026 $80B028 $80B02A $80B02E
@@ -199,7 +199,7 @@ Callers: `$240B94` ← `$2611A6` (init) and `$261314` (per frame); `$240C22` ←
 `$26119C` and `$26139A`. `$240B0E` ← `$23BF56 $25AC2E $25BB78 $25C7C2 $261174`.
 
 Measured, and this is the fractional accumulator caught in the act: at script
-speed `$20` the register advances `$40` on alternate frames and `$0` between —
+speed `$20` the register advances `$40` on alternate frames and `$0` between -
 exactly `(accum & ~$3F)`.
 
 ### 5c. The scroll object is a TOP-LEVEL OBJECT, type 1, priority `$1A`
@@ -239,7 +239,7 @@ jsr ($260EC8,PC)                                    THE SCREEN SHAKE
 
 `$800` = 2,048 sub-units = **32 px = one BG tile**, `$200` = 512 = **8 px**.
 So `$8130CE` counts 8-pixel steps of travelled distance and `$81318A` is a
-**mod-64 ring cursor into the BG map's column axis** — the map is a 64-column
+**mod-64 ring cursor into the BG map's column axis** - the map is a 64-column
 ring and the game writes the column just entering the screen.
 
 ### 5d. The screen shake, `$260EC8`
@@ -249,9 +249,9 @@ a word-pair stream; the pairs land in `$80B054`/`$80B056`, which `$240CC0`
 subtracts. `$813186 == 1` uses the pair as-is, anything else halves it
 (`asr.w #1`). Terminator: a zero word → `$813186 = 0`, offsets cleared,
 `jsr $23C4D0`. **Measured: `$813186 == 0` and `$80B054/$80B056 == 0` on all
-7,000 deep-play frames — the shake never fired in this corpus.**
+7,000 deep-play frames - the shake never fired in this corpus.**
 
-### 5e. The camera follow, `$2614C0` — and what `$813176` actually is
+### 5e. The camera follow, `$2614C0` - and what `$813176` actually is
 
 ```
 2614c0: if $8103E6 >= 0: A6 = $810448          ; the two player records
@@ -270,11 +270,11 @@ subtracts. `$813186 == 1` uses the pair as-is, anything else halves it
 camera's *cross* (game-horizontal) offset, in 1/64 px, and it is what the enemy
 driver (`$26352E`), the shot driver (`$253AA6`) and the background-element driver
 (`$26234E`) subtract from their records. Measured over 7,000 deep frames:
-`0000:6886  0040:73  FFC0:41` — i.e. ±1 px on 114 frames and zero on the rest.
+`0000:6886  0040:73  FFC0:41` - i.e. ±1 px on 114 frames and zero on the rest.
 The main vertical scroll needs no such compensation because objects are already
 in camera space along that axis. `$81316E` carries identical values.
 
-## 6. THE STAGE PROGRAM — a byte-coded VM, and where stage 1's data lives
+## 6. THE STAGE PROGRAM - a byte-coded VM, and where stage 1's data lives
 
 ### 6a. The interpreter, `$262062`, clocked by DISTANCE not by frames
 
@@ -295,7 +295,7 @@ in camera space along that axis. `$81316E` carries identical values.
 Record layout: `time:u16, cond:u16 (always $FFFF in stage 1), op:u16, payload`.
 The op word is a byte offset into a 7-entry longword table at `$2620C2`:
 
-| op | handler | payload | what it does — read from the listing |
+| op | handler | payload | what it does - read from the listing |
 |---|---|---|---|
 | `$0000` | `$2620DE` | 1 w | **SPAWN N OBJECTS**: walk N `(ptr:long, param:word)` from the script's object stream (block `+$4`), `jsr $24150A` each; `$FFFFFFFF` ends the stream |
 | `$0004` | `$262102` | 3 w | **REWIND + REPEAT the tilemap column stream**: `ptr += (signed w)*36`, repeat count `w+1`, loop count `w` (`$FFFF` = forever) |
@@ -307,7 +307,7 @@ The op word is a byte offset into a 7-entry longword table at `$2620C2`:
 
 `$261F76` is the freeze/repeat partner: it counts `($14,A0)` down each new column,
 decrements the loop count `($10,A0)`, and when it expires clears `($8,A5)` and
-**writes `($16,A0)` back into `$8130CE`** — i.e. the script resumes at the time
+**writes `($16,A0)` back into `$8130CE`** - i.e. the script resumes at the time
 op `$000C` stashed.
 
 **The fast-forward path is real and load-bearing**: `$26200E`, at init, if
@@ -315,7 +315,7 @@ op `$000C` stashed.
 with `$813190 = 1` (which suppresses op `$0010`). That is how a mid-stage restart
 rebuilds the background state.
 
-### 6b. Where stage 1's data lives — every offset checked for consistency
+### 6b. Where stage 1's data lives - every offset checked for consistency
 
 `$26152C` (called from `$261FDA`): a 5-entry pointer table at `$26153E` indexed by
 `$813096` (stage index × 4). Each entry is a 2-longword struct = the two scripts:
@@ -328,7 +328,7 @@ stage2 $261562 -> [$261A62, $261B36]
 
 Each script begins with two longwords (object stream, cue stream) and then the
 records. A walker written from the payload sizes above lands **exactly** on both
-terminators, which is the structural check that the sizes are right — get any
+terminators, which is the structural check that the sizes are right - get any
 one of them wrong and the walk desyncs and never sees `$FFFF`:
 
 ```
@@ -375,7 +375,7 @@ why I am confident in the layout rather than merely plausible. Total BG map data
 for the whole game: 906 columns, 32,616 bytes, plus 10,240 bytes of palette.
 
 The first three columns of stage 1 read `0052 0053 0054 0055 0056 0057 0058 0059
-005A | 0049..0051 | 0040..0048` — contiguous runs, as a hand-drawn map is.
+005A | 0049..0051 | 0040..0048` - contiguous runs, as a hand-drawn map is.
 
 ### 6c. THE SCRIPT, DECODED AND THEN CONFIRMED FRAME-BY-FRAME
 
@@ -409,17 +409,17 @@ lf=1938 speed=$100 d0ce=0054
 ```
 
 **`003C 0044 004C 0054 005C 0060 0068 0098` in the ROM against
-`003C 0045 004C 0054 005C 0060 0068 0098` measured** — the one-off at `$0045` is
+`003C 0045 004C 0054 005C 0060 0068 0098` measured** - the one-off at `$0045` is
 the sample point reading the counter after the increment. That is the script,
 executing, in the numbers.
 
 And the freeze/repeat, which is the part that would have been impossible to guess:
 `$8130CE` sits at **`$0034` from lf1700 to lf1899** while `$81318A` keeps
 advancing (columns keep being written from the rewound stream), and then
-**jumps straight to `$0038` at lf1900** — exactly `$34 + 4`, the value op `$000C`
+**jumps straight to `$0038` at lf1900** - exactly `$34 + 4`, the value op `$000C`
 stashed. Both halves of the mechanism, observed.
 
-## 7. ATTRACT vs PLAY — the same code, measured
+## 7. ATTRACT vs PLAY - the same code, measured
 
 `bgrecon2.py 4000 bg-attract attract` chooses VERSION-B and then presses nothing.
 
@@ -433,7 +433,7 @@ speed changes at d0ce = 003C 0045 004C 0054 005C 0060 0068 0098   <- identical
 **The attract/demo path runs the same object type 1, the same `$26127A`, the same
 stage-1 script and the same column stream.** The only difference the census shows
 is `$25BB98` running more (the title/menu tilemap loader) and `$813176` moving on
-300 frames instead of 114 — a demo player that flies further sideways than my
+300 frames instead of 114 - a demo player that flies further sideways than my
 scripted one. Nothing in the background is attract-specific.
 
 Consequence for the port: **there is no separate "attract renderer" to build.**
@@ -459,8 +459,8 @@ The demo page's background can come from the same simulation the game uses.
    certainly sound) were not opened.
 5. **I did not resolve why MAME's `bg_videoram` share is 4,096 bytes while the
    game's own clear loop writes `$4000` bytes at `$900000`.** It does not affect
-   the port — the per-frame writer's index is `(row*64 + col)*4` with `row ≤ 8`
-   and `col ≤ 63`, i.e. always below `$1000` — but the discrepancy is real and I
+   the port - the per-frame writer's index is `(row*64 + col)*4` with `row ≤ 8`
+   and `col ≤ 63`, i.e. always below `$1000` - but the discrepancy is real and I
    am not going to invent a mirror to explain it.
 6. **No port code was written and nothing was gated.** This wave adds
    `bgrecon.lua/.py/2.py` as readers only. The TSV columns proposed in the work
@@ -486,7 +486,7 @@ Six things that will save you the hours they cost me:
    `$80B012` → `$B03000`.
 3. **The stage script is clocked by DISTANCE (`$8130CE`, 8-px steps), not by
    frames**, and the clock can be frozen and rewritten. A port that ticks it per
-   frame will desync the moment the first repeat block runs — at time `$0034`,
+   frame will desync the moment the first repeat block runs - at time `$0034`,
    about 200 frames into stage 1.
 4. **`$240F62` is a table of `(handler, priority)` PAIRS with stride 8.** Reading
    it as 20 longword handlers gives you `$090000` as a function pointer.

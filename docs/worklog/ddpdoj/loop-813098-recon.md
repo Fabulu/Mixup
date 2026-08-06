@@ -1,6 +1,6 @@
-# `$813098` RECON — the loop flag, its writers, and what it selects
+# `$813098` RECON - the loop flag, its writers, and what it selects
 
-status: **DONE (static)**   wave: ad-hoc recon   role: recon (READER — no `src/` edits, no commit)
+status: **DONE (static)**   wave: ad-hoc recon   role: recon (READER - no `src/` edits, no commit)
 target: `ddpdojblk` VERSION-B (`$23xxxx`-`$2Axxxx`, 2002.10.07 BLACK VER). Every address
 is build B unless the line says build A. Every static read is against the decrypted
 image `games/ddpdoj/tools/oracle/out/maincpu.bin` (6,291,456 bytes) via capstone
@@ -11,7 +11,7 @@ and removed.
 
 > Who writes the loop/rank flag `$813098`, and what tables/branches does it select?
 > `$813098` has read 0 on every frame ever measured (16,000+, including a boss
-> fight). The DOJ pattern inventory is stated as "39 kinds" — is it really
+> fight). The DOJ pattern inventory is stated as "39 kinds" - is it really
 > "39 kinds × N loop variants"? Are the never-driven fan bodies and never-fired
 > kinds LOOP-2 content or genuinely unreachable?
 
@@ -20,7 +20,7 @@ and removed.
 `$813098` is the **second-loop flag**, binary (writers only ever store 0 or 1; all
 388 reads are `tst.w`). It has **exactly three writer opcodes in build B**
 (`$259DB0`, `$259DC6` inside the debug stage-select, and `$290762` on the normal
-object-dispatch path) and **zero** of any other writer class — exhaustively proven
+object-dispatch path) and **zero** of any other writer class - exhaustively proven
 statically below, matching the W21 rosetta recon. The flag **does not multiply the
 39 kinds** (a kind-4 bullet is the same kind-4 bullet in both loops; kinds are
 fixed at spawn). What it multiplies is **generator output**: 17 of the 19 generator
@@ -31,13 +31,13 @@ LOOP-2 content** (they have live fire call sites that reach them when the flag i
 set) and **2 are genuinely dead** (zero call sites in the whole 6 MB image). The
 real pattern denominator is **39 kinds × (1 loop-1 generator output + N loop-2 fan
 shapes per generator)**, with N=2 loop states; the loop-2 half of the bullet
-subsystem is **transcribed and unit-tested but board-unvalidated** naturally — so
+subsystem is **transcribed and unit-tested but board-unvalidated** naturally - so
 "~90%" is true only on a transcription accounting and "~45-55%" is the honest
 board-validated figure.
 
 ---
 
-## 1. THE WRITERS — exhaustively, statically (RULE 2 satisfied)
+## 1. THE WRITERS - exhaustively, statically (RULE 2 satisfied)
 
 A direct opcode sweep of the whole 6,291,456-byte image for every instruction class
 that can store to `$813098` (abs.long, since `$813098` is outside abs.short range):
@@ -59,7 +59,7 @@ $290762  move.w #$1,$813098      object type 7, sub-state 2  -- the REACHABLE on
 
 Build A's sole counterpart is `$18F230` (`move.w #$1,$813098`), the same
 object-type-7 path. The debug-select pair `$259DB0`/`$259DC6` has **no build-A
-counterpart** — Black Label added the DIP-gated stage select (W21 §6a).
+counterpart** - Black Label added the DIP-gated stage select (W21 §6a).
 
 This is an **exhaustive** static result: the scan walked every even byte of the
 image. There is no `move.l`, no `st`, no `clr`, no register-source `move.w` to
@@ -70,19 +70,19 @@ all init" are both superseded by W21 §6 and re-confirmed here.
 The non-purposeful "writer" a dynamic tap sees: `$2603E4 move.w #$0,(A0)+ / dbra`
 in the `$81308C..$8131BC` clear loop (`lea $81308C,A0 / move.w #$65,D0` at
 `$2603DA`; build-A twin `$15F734`). It sweeps `$813098` on the way past and is the
-only PC a write-tap ever caught — but it is an init sweep, not a flag setter.
+only PC a write-tap ever caught - but it is an init sweep, not a flag setter.
 
-## 2. THE TRIGGER — who sets it, and when (W21 §6c, dynamic)
+## 2. THE TRIGGER - who sets it, and when (W21 §6c, dynamic)
 
 `$259DB0`/`$259DC6` sit inside the **debug stage-select handler `$259D04`**, which
 is **DIP-gated** (`$259D14 move.w $C08006,D0 / btst #7,D0 / bne $259D30`; MAME's
 `:DSW` "Unknown" mask `$0080`, default OFF). It is the operator's stage/loop
 selector: stages 0-5 (`< 6`) → `$813098 := 0`; stages 6-11 (`>= 6`, "STAGE R*") →
-`$813098 := 1`. **`$259D04` has no caller in build B** — `rosetta.py codexref` finds
+`$813098 := 1`. **`$259D04` has no caller in build B** - `rosetta.py codexref` finds
 none and a full-image longword scan for `$00259D04` finds none. (Build A's twin
 `$159250` IS called, by a second main-loop body `$13C7A8` that build B does not
 have.) So in build B the debug-select writers are reachable only via a computed
-`jmp (d8,PC,Xn)` dispatch no address search can see — **listing-only, never
+`jmp (d8,PC,Xn)` dispatch no address search can see - **listing-only, never
 observed to fire**.
 
 `$290762` is the **normal-path writer**, reached through the object dispatch table
@@ -100,7 +100,7 @@ $290774: jmp   $241292           ; driver tail
 
 `$81E116` is set at `$2911CA`; `$81E112` is a counter incremented off the masked-input
 readers. The gate is *"the end-of-stage message sequence finished AND no input
-intervened"* — i.e. the **second-lap transition**. Cross-build `align` pins
+intervened"* - i.e. the **second-lap transition**. Cross-build `align` pins
 `$290746 -> $18F214` HIGH and build A's `$18F230` is the same writer. **Both builds
 have this path; it is not a Black-Label addition.** Reaching it dynamically is a
 play-through problem (get to whatever sequence sets `$81E116`), not a recon one;
@@ -108,19 +108,19 @@ W30 (the loop-gate hunt) owns it.
 
 A 3,000-logic-frame VERSION-B write-tap on `$813098` (W21 §6, boot+coin+coin+start)
 saw only the init sweep (`$2603E4`, value 0). **None of the three real writers has
-ever been observed to fire** — consistent with `$813098 == 0` on all 16,000+
+ever been observed to fire** - consistent with `$813098 == 0` on all 16,000+
 measured frames.
 
 ---
 
-## 3. WHAT `$813098` SELECTS — the 17 generator branches
+## 3. WHAT `$813098` SELECTS - the 17 generator branches
 
 Every `tst.w $813098` (`4A79 00813098`) site in the generator bank `$281000-$282000`,
 with the branch and both arms:
 
 | entry | branch | rank==0 (branch TAKEN) | rank!=0 (fall-through) | fan body |
 |---|---|---|---|---|
-| `$2813F0` | `beq.w $2814B6` | 1 bullet (core) | `$2813FA: jmp $2814B6` | **NONE — no-op gate** |
+| `$2813F0` | `beq.w $2814B6` | 1 bullet (core) | `$2813FA: jmp $2814B6` | **NONE - no-op gate** |
 | `$281402` | `beq.w $2814B6` | 1 bullet | `$28140C` inline: `addi.l #$40000,D0 / jsr core / subi / rts` | single, **speed +4** |
 | `$281420` | `beq.w $2814B6` | 1 bullet | `$28142A: movem / bra $28134E` | pair (shared body) |
 | `$281432` | `beq.b $2814B6` | 1 bullet | `$28143A: movem / bra $281366` | triple (shared, **DEAD**) |
@@ -128,7 +128,7 @@ with the branch and both arms:
 | `$281450` | `beq.b $2814B6` | 1 bullet | `$281458` inline: spread2 + speed +4 | spread2, speed +4 |
 | `$281484` | `beq.b $2814B6` | 1 bullet | `$28148C: movem / bra $2813A6` | spread3 (shared body) |
 | `$2814AC` | `bne.w $28138A` | 1 bullet (fall to core) | `$28138A` adaptive (`($D,A5)&$81`) | flags-adaptive |
-| `$2816F6` | `beq.w $2817C2` | 1 bullet | `$281700: jmp $2817C2` | **NONE — no-op gate** |
+| `$2816F6` | `beq.w $2817C2` | 1 bullet | `$281700: jmp $2817C2` | **NONE - no-op gate** |
 | `$281708` | `beq.w $2817C2` | 1 bullet | `$281712` inline: `addi.l #$40000,D0 / jsr / subi / rts` | single, speed +4 |
 | `$281726` | `beq.w $2817C2` | 1 bullet | `$281730` inline: `addi.l #$20000,D0 / jsr / subi / rts` | single, speed +2 |
 | `$281744` | `beq.b $2817C2` | 1 bullet | `$28174C: movem / bra $281668` | pair (shared body) |
@@ -139,19 +139,19 @@ with the branch and both arms:
 | `$2817B8` | `bne.w $2816A4` | 1 bullet (fall to core) | `$2816A4` adaptive | flags-adaptive |
 
 **17 generator entries open with `tst.w $813098`** (the W21-impl "sixteen"
-undercounts by one, OR defines "rank-gated" as "has a distinct fan variant" — see
+undercounts by one, OR defines "rank-gated" as "has a distinct fan variant" - see
 the two no-op gates below). The 19 entry points are these 17 plus the two spawn
-cores `$2814B6` / `$2817C2`. (The orphan `$281494` is not an entry — W21 §5.1.)
+cores `$2814B6` / `$2817C2`. (The orphan `$281494` is not an entry - W21 §5.1.)
 
 **Two of the 17 are no-op gates.** `$2813F0` and `$2816F6` (the plain "single"
-entries, 86 + 120 = 206 call sites — the most-common in each bank) carry the
+entries, 86 + 120 = 206 call sites - the most-common in each bank) carry the
 `tst`/`beq` but their rank-`!=0` fall-through is just `jmp <core>`: **both arms
 emit one bullet.** The flag has no effect on their output. They account for the
 17-vs-16 difference; they look like a template copied to every entry and never
 given a fan body for the single. Everything below counts them as "rank-gated in
 code, not in effect."
 
-## 4. THE FAN BODIES — the 8 shared bodies + inline arms (verified by disassembly)
+## 4. THE FAN BODIES - the 8 shared bodies + inline arms (verified by disassembly)
 
 Each fan body is a 2-4 instruction sequence of `jsr <core>` with `addi.l`/`subi.l`
 speed biases around the calls and `subq.b`/`addi.b` angle offsets on D1. The full
@@ -184,16 +184,16 @@ set, disassembled from the listing:
 
 `$28138A` (bank A) / `$2816A4` (bank B): `($D,A5) & $81` picks 2-way, else bit 1 of
 the enemy sub-record byte 0 picks 2-way, else 3-way. **Which enemies pick which fan
-is still listing-only** — every corpus took the rank-0 arm.
+is still listing-only** - every corpus took the rank-0 arm.
 
-**Every fan body, at rank==0, collapses to the entry's single `jsr <core>`** — one
+**Every fan body, at rank==0, collapses to the entry's single `jsr <core>`** - one
 bullet. Rank is the single variable that turns a shot into a fan. This is the
 gameplay-shaping fact W20 §2 stated and it is confirmed instruction-for-instruction
 here.
 
 ---
 
-## 5. THE 6 NEVER-DRIVEN BODIES — LOOP-2 vs DEAD (the key question)
+## 5. THE 6 NEVER-DRIVEN BODIES - LOOP-2 vs DEAD (the key question)
 
 The 21b-review established that across all three corpora (`play`, `fanplay`,
 `faninvuln`), **7 of 13 ported rank-`!=0` bodies were driven** and six were not:
@@ -204,9 +204,9 @@ entry which reaches the body):
 | body | reached via entry | fire sites | verdict |
 |---|---|---|---|
 | `$28134E` (pair) | `$281420` | **4** | **LOOP-2 CONTENT** |
-| `$281366` (triple) | `$281432` | **0** | **DEAD** — no caller anywhere in 6 MB |
+| `$281366` (triple) | `$281432` | **0** | **DEAD** - no caller anywhere in 6 MB |
 | `$281450` (spread2+4) | `$281450` | **10** | **LOOP-2 CONTENT** |
-| `$281680` (triple) | `$281754` | **0** | **DEAD** — no caller anywhere in 6 MB |
+| `$281680` (triple) | `$281754` | **0** | **DEAD** - no caller anywhere in 6 MB |
 | `$281726` (single+2) | `$281726` | **4** | **LOOP-2 CONTENT** |
 | `$281776` (spread2+6) | `$281776` | **1** | **LOOP-2 CONTENT** |
 
@@ -215,7 +215,7 @@ are reachable the moment `$813098 != 0` AND the calling enemy fires: the entry's
 rank-`!=0` fall-through runs straight into the body. They were not driven in the
 poked stage-1 corpus because their call sites belong to later stages (or stage-1
 enemies the corpus did not reach), not because the path is closed. **The two
-triples `$281366` / `$281680` have zero call sites in either bank of either build —
+triples `$281366` / `$281680` have zero call sites in either bank of either build -
 they are dead code as the cartridge ships**, the orphan cousins of `$281494`
 (W21 §5.1). A computed-dispatch invisibility caveat applies (no scan sees
 `jmp (d8,PC,Xn)`), but the W21 §5.2 exhaustive opcode sweep of the behaviour range
@@ -235,11 +235,11 @@ sees. The loop-2 multiplier does not touch the kind count.
 
 ---
 
-## 6. THE TABLES `$813098` INDEXES — and a third reader W21 did not catalogue
+## 6. THE TABLES `$813098` INDEXES - and a third reader W21 did not catalogue
 
 `$813098` is read by **388 `tst.w` sites** in the image (build A + B) and **3
 `move.w $813098,Dn` direct reads** in build B. The 388 span the whole game, not
-just the generators — `$813098` gates a vast surface of loop-2 enemy AI, bosses and
+just the generators - `$813098` gates a vast surface of loop-2 enemy AI, bosses and
 stage scripts. This is the general point: loop 2 is not "stage 1 again harder", it
 is a second pass through roughly half the behavioural cartridge.
 
@@ -256,7 +256,7 @@ same ladder). Both builds agree byte-for-byte, so the loop-2 CONSTANTS are
 extractable at HIGH confidence with no poking.
 
 **A third direct reader W21 did not list: `$287C3E move.w $813098,(A4)`.** This is
-not a table index — it is a **state-record builder** inside the `$287C08`
+not a table index - it is a **state-record builder** inside the `$287C08`
 `movem.l D0-D7/A0-A6` routine:
 
 ```
@@ -270,7 +270,7 @@ $287C5A: move.w #$5,$2(A4)
 $287C60: ... (d0..d3 -> record[4..$A]) ; jsr $287CEE
 ```
 
-It snapshots `(loop, stage, ...)` into `$81B430` — almost certainly the **stage
+It snapshots `(loop, stage, ...)` into `$81B430` - almost certainly the **stage
 banner / HUD status object** that displays the current loop and stage, with a
 special case forcing "loop 1 / stage 5" when `$81309A` is set. It reads the flag to
 SHOW it, not to branch on it. So `$813098` feeds four consumers: the 17 generator
@@ -291,7 +291,7 @@ kind-4 bullet.
 
 What DOES multiply is **generator output**, per entry, per loop:
 
-- 2 entries (`$2813F0`, `$2816F6`): no-op gate, 1 bullet in both loops — **no
+- 2 entries (`$2813F0`, `$2816F6`): no-op gate, 1 bullet in both loops - **no
   loop variant**.
 - 15 entries: rank-`==0` emits **1 bullet**, rank-`!=0` emits a **fan** (2 or 3
   bullets at angle/speed offsets, or the flags-adaptive 2/3-way). These each have
@@ -299,12 +299,12 @@ What DOES multiply is **generator output**, per entry, per loop:
 - The wider-than-3 fans (midboss 8-way ring `$273B44`, boss unrolled 8-way
   `$264084`, etc.) live at the **call site** as `dbra` loops calling a generator.
   Their fan count is loop-independent in their own code, but each iteration through
-  a gated generator doubles its output in loop 2 — so an 8-way ring of singles in
+  a gated generator doubles its output in loop 2 - so an 8-way ring of singles in
   loop 1 becomes an 8-way ring of fans in loop 2.
 
 So the honest pattern surface is roughly:
 **39 kinds** (loop-invariant) **× {1 bullet (loop 1) | fan-of-N (loop 2)} per
-generator**, over **912 fire call sites** — and the loop-2 fan shapes are ~15
+generator**, over **912 fire call sites** - and the loop-2 fan shapes are ~15
 distinct bodies the cartridge contains but no natural run has executed.
 
 The cleanest one-line correction to the existing inventory:
@@ -330,16 +330,16 @@ Two honest readings, and both numbers are defensible if labelled:
   behaviour is board-unvalidated naturally**: `$813098` has never been non-zero on
   any unforced frame, so none of the 15 fan bodies, neither loop-2 table row, and
   none of the 388 other `tst.w $813098` gates across the game have been observed.
-  The poked corpus (`faninvuln`) drove 7 of 13 fan bodies — coverage of the
+  The poked corpus (`faninvuln`) drove 7 of 13 fan bodies - coverage of the
   transcription, not of the natural game. Reaching `$290762` (the only normal-path
   writer) needs the second-lap transition W30 has not found.
 
 The number to quote depends on which gate the phase requires, and the project's
 own rule (`docs/knowledge/03`: "MEASUREMENT PROVES PRESENCE, ONLY THE LISTING
-PROVES ABSENCE — write 'I could not reach it', never 'the game does not do this'")
+PROVES ABSENCE - write 'I could not reach it', never 'the game does not do this'")
 makes the board-validated reading the load-bearing one. **For a Phase B that
 claims the bullet subsystem "done" the way the determinism gate claims the frame
-sync done, the loop-2 fan bodies and tables are the unpaid half — call it 45-55%,
+sync done, the loop-2 fan bodies and tables are the unpaid half - call it 45-55%,
 not 90%.** The unpaid half is cheap to board-validate once W30 lands the loop
 transition or the debug warp reaches R-stages with `$813098` live: the port already
 emits every fan body and the gate already compares them spawn-for-spawn under a
@@ -367,7 +367,7 @@ poke.
   observe it fire.
 - **Did NOT scan computed `jmp (d8,PC,Xn)` dispatches.** No address search sees
   them (W21 §4 `codexref` caveat). So "no caller for `$259D04` / for the two dead
-  triples" is a strong reading, not a proof — stated as such in §5.
+  triples" is a strong reading, not a proof - stated as such in §5.
 
 ## Files / commands (reproduction)
 

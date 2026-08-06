@@ -1,4 +1,4 @@
-# WAVE 2 — the measurements that decide the architecture
+# WAVE 2 - the measurements that decide the architecture
 
 status: DONE (items 1,2,3,4,7 measured; 5 partial; 6,8 BLOCKED -- see below)
 wave: 2   role: impl (recon, oracle-assisted)   started: 2026-07-31
@@ -9,7 +9,7 @@ BLACK VER) unless a line says build A. Machine pin on every run:
 
 ## The task, as I understood it
 
-`PLAN-vertical-slice.md` §"Wave 2" — eight questions, on VERSION-B, through the
+`PLAN-vertical-slice.md` §"Wave 2" - eight questions, on VERSION-B, through the
 wave-1 harness. No port code. The three that HARD-GATE wave 5 are items 1
 (object driver), 2 (force an overrun) and 4 (phase order).
 
@@ -32,7 +32,7 @@ columns, the artificial-load injector, the dead-stack guard), `pgm.py`
 
 ## What I MEASURED
 
-### 1. THE TOP-LEVEL OBJECT DRIVER — located. `$2410BC`, main-loop call #2.
+### 1. THE TOP-LEVEL OBJECT DRIVER - located. `$2410BC`, main-loop call #2.
 
 **How it was found, in order, because the order is the method:**
 
@@ -56,7 +56,7 @@ MARK sync       n=1901 mean=341685      $23C212  arms + spins
 CENSUS sr_mask_main 0:2289861      CENSUS sr_mask_isr 6:44760 7:24164 4:16487
 ```
 
-and the write attribution was unambiguous — **every object-ish writer is in
+and the write attribution was unambiguous - **every object-ish writer is in
 call2, every sprite-list writer is in call4**:
 
 ```
@@ -113,7 +113,7 @@ Dispatch table `$240F62`, **8-byte entries = {handler long, priority word, 0}**,
 ```
 
 > **THERE IS NO BUDGET TEST AND NO TIME TEST IN THAT LOOP.** `moveq #$13,D0 …
-> dbra` — 20 slots, unconditionally, every frame. That is the LISTING's answer
+> dbra` - 20 slots, unconditionally, every frame. That is the LISTING's answer
 > to mechanism (C) at the top level. The runtime column below is the
 > measurement, because only a measurement can carry it.
 
@@ -149,7 +149,7 @@ cap; the object table is the game's.
 2411e0: rts
 ```
 
-**Allocation failure #1 — the pending-create queue is full (20 spawns already
+**Allocation failure #1 - the pending-create queue is full (20 spawns already
 staged this frame): `$2411D4` hands back a DUMMY record at `$80D51C` and D0=0.
 The caller fills in the dummy, the object never enters the table, and the spawn
 is SILENTLY DROPPED. Nothing is evicted, nothing is signalled.**
@@ -178,13 +178,13 @@ Two consequences that a port cannot invent:
 * **Insertion memmoves the tail DOWN by one slot, so slot 19's contents are
   overwritten and lost.** When the table is full, spawning a higher-priority
   object DESTROYS the lowest-priority one, with no notification.
-* **If the `dbra D6` runs out — every slot's priority is higher than the new
-  object's — control falls through to `$241172` and the staged record is
+* **If the `dbra D6` runs out - every slot's priority is higher than the new
+  object's - control falls through to `$241172` and the staged record is
   discarded.** Second silent-drop path.
 
 Deletion (`$2411E2`, matching an object by its `+$4C` ID) memmoves the tail
 **UP** and clears the now-vacant last slot. So **slot indices are not stable
-identities, but the ORDER is semantics** — precisely the shape
+identities, but the ORDER is semantics** - precisely the shape
 `docs/knowledge/06` warns about, and the reason `objord` hashes the *sequence*
 and not a set.
 
@@ -192,7 +192,7 @@ The kill side has its own queue: push at `$241238` with the same
 `cmpi.w #$640 / bge` full-check that **silently drops the request**, drained at
 `$24126C`.
 
-#### The runtime column — `objn` / `objord` / `objlive`
+#### The runtime column - `objn` / `objord` / `objlive`
 
 `frame.lua` now hooks `$2410D8` (`move.w D0,-(A7)`), reads A5 and derives the
 slot index, and emits three columns in the standard state vector:
@@ -203,23 +203,23 @@ CENSUS object_slots_live      0:2   1:1201 2:1 5:1396
 ```
 
 (the `0:699` are the boot frames that run in **build A**, whose driver is at a
-different address — a build-B hook cannot see them, and that is stated rather
+different address - a build-B hook cannot see them, and that is stated rather
 than papered over.)
 
 > **A TRAP PAID FOR HERE, worth its own line.** The obvious hook is `$2410D6`,
-> `move.l A5,-(A7)` — also a write, also a legitimate 68000 execution hook. It
+> `move.l A5,-(A7)` - also a write, also a legitimate 68000 execution hook. It
 > gave `object_slots_processed 10` against `object_slots_live 5` on 796 frames.
 > **The program space is 16 bits wide, so a longword write is two bus cycles and
 > fires a write tap TWICE.** Read as "the driver processes twice as many slots as
 > exist", that would have been a plausible, stable, entirely wrong number. Hook
 > the WORD push.
 
-### 2. THE OVERRUN — forced, and the tool it took
+### 2. THE OVERRUN - forced, and the tool it took
 
 **MAME's `-speed` is not the tool.** It is a host throttle; the emulated frame
 is still exactly 337,920 cycles, so it produces no in-game slowdown at all.
 
-**The intended tool — a per-CPU clock scale — is NOT REACHABLE in MAME 0.288.**
+**The intended tool - a per-CPU clock scale - is NOT REACHABLE in MAME 0.288.**
 Four places looked, all measured on this machine:
 
 ```
@@ -289,7 +289,7 @@ W pc=000CA6 n=2    off=81FEB2..81FEB4 span=2     <- the BIOS IRQ4 TRAMPOLINE
 So the boundary moved to `$81FE00` (54 bytes of headroom under the deepest
 observed push) and a **guard tap on the 256 bytes below it FAILS the run** if
 the stack ever goes deeper. **This changes every digest in the corpus against
-wave 1's recorded hashes** — that is the price of the correction and it is
+wave 1's recorded hashes** - that is the price of the correction and it is
 stated rather than hidden.
 
 **Second version** (the NOP sled) then produced the intended control:
@@ -311,7 +311,7 @@ outside `{cyc, work, spin, d_top}`.
 
 Wave 1's `emit()` computed `t = M.time.attoseconds + M.time.seconds * 1e18`.
 int64's maximum is 9.223e18, so **that product overflows once `seconds` reaches
-10** and `t` goes negative — roughly every 9.2 emulated seconds, i.e. every ~546
+10** and `t` goes negative - roughly every 9.2 emulated seconds, i.e. every ~546
 logic frames. `cyc` survived because it is a difference and two's-complement
 subtraction wraps correctly. `work` is guarded by `rel_t > 0`, which is FALSE
 whenever the clock is in a wrapped stretch. Measured on the unpatched gate
@@ -324,7 +324,7 @@ lf=1603 work=0          lf=2148 work=161616
 
 **1,254 of 2,600 frames had `work = 0`**, and the `work_cycles` census line was
 computed over whichever half of the run happened to have a positive clock.
-Fixed by computing cycles directly and exactly — the 68000 is 20 MHz, so one
+Fixed by computing cycles directly and exactly - the 68000 is 20 MHz, so one
 cycle is 5e10 attoseconds:
 
 ```lua
@@ -343,7 +343,7 @@ after:   CENSUS work_cycles min=7338  max=2580102 budget=337920 over_budget=624
 `phase.lua` had the same expression and is fixed too (its numbers were deltas
 and so were already right, but the expression should not survive anywhere).
 
-#### THE SWEEP — the overrun, characterised
+#### THE SWEEP - the overrun, characterised
 
 `python pgm.py overrun 25000 45000 60000`, injected before the object driver
 from logic frame 1900, 2,600-frame `overrun` scenario, VERSION-B.
@@ -399,7 +399,7 @@ NOPS=60000 cyc mean=676980  irq6 {2}  rel {1}   (2 video frames per logic frame)
 1. **The overrun is (B) time dilation at whole-video-frame granularity.** At
    240,012 added cycles the logic frame takes 676,980 cycles = exactly two video
    frames (2 × 337,920 = 675,840), and the game runs at **0.5309 logic frames
-   per video frame — ~31.4 Hz against the display's 59.1856 Hz**.
+   per video frame - ~31.4 Hz against the display's 59.1856 Hz**.
 2. **The IRQ6 (A) gate fires on every missed vblank: 614 firings in 696 frames.**
    A dilated logic frame sees N vblanks and gets exactly ONE release; the other
    N−1 IRQ6s find `$803940 == 0`, take the `beq` at `$23C44C`, and skip
@@ -417,7 +417,7 @@ NOPS=60000 cyc mean=676980  irq6 {2}  rel {1}   (2 video frames per logic frame)
    The one frame where they differ has `objn = 11 > objlive = 8` (spawn/kill
    churn within the frame), never `objn < objlive`.
 4. **YES, THE GAME'S OWN LOGIC OBSERVES THE SLOWDOWN.** `$80390A` advanced 695
-   over the same stretch in which **1,309 video frames** passed — it tracks
+   over the same stretch in which **1,309 video frames** passed - it tracks
    LOGIC frames exactly and falls 614 frames behind the display. It is
    incremented at `$23BE8C` inside the loop body and has 83 reference sites, and
    `$80390E` is read back by the frame sync itself. So animation phase,
@@ -428,7 +428,7 @@ NOPS=60000 cyc mean=676980  irq6 {2}  rel {1}   (2 video frames per logic frame)
    diverges from the control **three frames after the injection starts**
    (lf1903), the framebuffer from lf2000, and the object population by lf2512.
    Note that `d_pal`, `d_bg`, `d_tx`, `d_spr`, `d_spb` and `sprites` did **not**
-   diverge in this scenario — the gated subroutines are themselves conditional
+   diverge in this scenario - the gated subroutines are themselves conditional
    (`$24133C` begins `tst.w $80FA66 / beq`), so "the gate skipped the palette
    upload" is a fact about which code ran, and on this scenario it happened to
    have no palette-visible effect. Both halves of that are stated.
@@ -458,7 +458,7 @@ Full cycle, from one sample point (the `$803940` arm) to the next:
 | 2 | **hardware sprite DMA** | `pgm.cpp screen_vblank` | vblank rising edge, `$800000-$8009FF` → IGS023. **Not double-buffered in RAM** |
 | 3 | **IRQ6** dispatch | vector `$801478` | |
 | 4 | `jsr $23CC4E` | reads `$C08004` (service/coin) → `$803950/52/54` | |
-| 5 | **`jsr $23D0F8` — THE INPUT READ** | `lea $C08000,A0` → `$803970` (P1), `$803976` (P2) | runs BEFORE any gate |
+| 5 | **`jsr $23D0F8` - THE INPUT READ** | `lea $C08000,A0` → `$803970` (P1), `$803976` (P2) | runs BEFORE any gate |
 | 5b | …inside it: `$23D10C tst.b $803940 / beq $23D11C / jsr $25C60C` | | **a SECOND (A) gate, inside the input read**: on an overrun frame `$25C60C` is skipped, but the mirrors are still stored |
 | 6 | `jsr $28C19A` | | |
 | 7 | **THE (A) GATE** `$23C44C tst.b $803940 / beq $23C472` | | |
@@ -468,13 +468,13 @@ Full cycle, from one sample point (the `$803940` arm) to the next:
 | 11 | …gated: `$287286` | `$81B4C8` list, 18 entries | |
 | 12 | …gated: `$23C46C subq.b #1,$803940` | THE RELEASE | |
 | 13 | `jmp $23C158` | ISR tail | |
-| 14 | `jsr $23D12A` — **post-vblank** | derives `$803972/74` (P1 edge/prev) and `$803978/7A` from the mirrors | main-loop call #6 |
+| 14 | `jsr $23D12A` - **post-vblank** | derives `$803972/74` (P1 edge/prev) and `$803978/7A` from the mirrors | main-loop call #6 |
 | 15 | `bra` → `jsr $23BE8C` **counters** | `$80390A++`, `bchg $80390D` bit 0, `$80390E` mod 3 | 293 cyc |
 | 16 | `jsr $256D5A` (call 1) | | 218 cyc |
-| 17 | **`jsr $2410BC` (call 2) — THE OBJECT DRIVER** | | **77,725 cyc mean** |
+| 17 | **`jsr $2410BC` (call 2) - THE OBJECT DRIVER** | | **77,725 cyc mean** |
 | 18 | `jsr $24683E` (call 3) | | 1,734 cyc |
-| 19 | **`jsr $23D2AE` (call 4) — THE SPRITE LIST BUILD** | emitters `$23D6B4`/`$23D680` write `$800000-$8004C2` | 15,594 cyc |
-| 20 | `jsr $23C212` (call 5) — arm `$803940`, spin | **THE SAMPLE POINT is this arm write** | |
+| 19 | **`jsr $23D2AE` (call 4) - THE SPRITE LIST BUILD** | emitters `$23D6B4`/`$23D680` write `$800000-$8004C2` | 15,594 cyc |
+| 20 | `jsr $23C212` (call 5) - arm `$803940`, spin | **THE SAMPLE POINT is this arm write** | |
 
 Two consequences for the port that fall straight out of this:
 
@@ -487,7 +487,7 @@ Two consequences for the port that fall straight out of this:
   If the loop overruns, vblank arrives while call4 is still rebuilding the list,
   and the hardware snapshots a half-built list. Nothing in software prevents it.
 
-### 3. THE SPRITE-LIST CAP — answered from the listing, and there are TWO paths
+### 3. THE SPRITE-LIST CAP - answered from the listing, and there are TWO paths
 
 The plan asks what the game does as the display list approaches the hardware's
 256 entries. The corpus peak is 133/256 and I did not reach the cap by playing
@@ -498,7 +498,7 @@ sprite requests** into a queue at `$80397C`, with the running byte offset in
 `$80AFC0` (`$23D726`), and main-loop call #4 (`$23D2AE`) turns the queue into
 the 10-byte hardware entries at `$800000`.
 
-**Path 1 — the enqueue tells the caller, `$23D726`:**
+**Path 1 - the enqueue tells the caller, `$23D726`:**
 
 ```
 23d726: move.w (A1),D0            ; how many records to append
@@ -516,7 +516,7 @@ the 10-byte hardware entries at `$800000`.
 23d760: rts
 ```
 
-**Path 2 — the emit clamps regardless, `$23D664`:**
+**Path 2 - the emit clamps regardless, `$23D664`:**
 
 ```
 23d64e: move.w $80AFC0,D0
@@ -531,7 +531,7 @@ the 10-byte hardware entries at `$800000`.
 
 So: **the cap is 251 requests, enforced twice; requests past it are dropped, the
 ones enqueued LAST lose, and nothing already queued is evicted.** The
-`ori #$1,SR` is a real overflow signal to the caller — whether any caller acts
+`ori #$1,SR` is a real overflow signal to the caller - whether any caller acts
 on it I did not establish (the callers reach it by `bsr`, which the
 absolute-long xref cannot see).
 
@@ -545,7 +545,7 @@ against each other.
 by `$23D712` (`moveq #0,D1 / move.w #$1D,D0 / move.w D1,(A0)+ / dbra`) and summed
 at the top of call #4 (`$23D2B4`: 30 `add.w` of `$80AFC0..$80AFFA`).
 
-### 7. THE RANK BYTE — `$80380C`, found in the listing, plus a dead computation
+### 7. THE RANK BYTE - `$80380C`, found in the listing, plus a dead computation
 
 The build-B rank string pointer table `$25C042` has **no absolute-long
 reference** (`xref.py abs 25C042` → the table's own 4 entries and nothing else)
@@ -629,7 +629,7 @@ listing result about ONE routine; it is a lead about dynamic rank in VERSION-B,
 not a proof that no dynamic rank exists anywhere. I did not run the read tap on
 `$80380C` during play, and I did not enumerate `$81309E`'s writers.
 
-### 5. PLAYER FACTS ON VERSION-B — partial
+### 5. PLAYER FACTS ON VERSION-B - partial
 
 Write tap on `$8103E0-$8104FF` with CURPC attribution, 2,600-frame gate
 scenario, build B:
@@ -644,8 +644,8 @@ W pc=249E62 n=1122 off=8103F0..8103F2   W pc=249E78 off=8103FA..8103FC
 ```
 
 So on build B the position store is `$2496E8`, and it is `movem.w D2-D3,($2,A6)`
-— **the player is an object record based at `$8103E6`**, position at +2/+4
-(`$8103E8` vertical, `$8103EA` horizontal — the RAM addresses the memmap recon
+- **the player is an object record based at `$8103E6`**, position at +2/+4
+(`$8103E8` vertical, `$8103EA` horizontal - the RAM addresses the memmap recon
 measured on build A, confirmed to be shared). The **two option pods** are
 written by `$24D146`/`$24D16C` with a **stride of $20 = 32 bytes**
 (`$8104AC`/`$8104CC` and `$8104AE`/`$8104CE`), which is the build-B analogue of
@@ -661,7 +661,7 @@ One clamp is visible immediately above the store:
 2496e8: movem.w D2-D3,($2,A6)
 ```
 
-`$800 = 2048 = 32.0 px` in the measured 1/64-px fixed point — and the clamp is
+`$800 = 2048 = 32.0 px` in the measured 1/64-px fixed point - and the clamp is
 **move-past-then-clamp with a compensating write to another field**, the same
 order trap the memmap recon called out on build A.
 
@@ -672,17 +672,17 @@ not exercised, and **the button map (which of B1/B2/B3 is shot / laser / bomb)
 was not established.** Wave 4 needs all of those and they are cheap through
 `objhunt.lua` with `OBJ_REGS` on `$2496E8`.
 
-### 6. THE HITBOX — BLOCKED, not attempted
+### 6. THE HITBOX - BLOCKED, not attempted
 
 I did not write-tap the lives/death state, did not find the player-hit routine,
 and did not step a bullet across a pinned ship. Nothing here bears on the
 owner's smaller-hitbox claim. The VERSION-A/VERSION-B controlled-experiment idea
 in the plan is untouched.
 
-### 8. PROTECTION CROSS-CHECK (`ddpdojp` vs `ddpdojblk`) — BLOCKED, not attempted
+### 8. PROTECTION CROSS-CHECK (`ddpdojp` vs `ddpdojblk`) - BLOCKED, not attempted
 
 Not run. `ddpdojp` needs a different boot script (no version chooser, different
-BIOS) and its own landmark derivation — `derive.py`'s build A/B ranges and every
+BIOS) and its own landmark derivation - `derive.py`'s build A/B ranges and every
 landmark in `landmarks.json` are `ddpdojblk`-specific, and `frame.lua`'s build
 assertion would fail on it by construction. That is half a day of harness work
 and I spent the time on items 1/2/4 instead, as the plan's hard gate says to.
@@ -704,9 +704,9 @@ and I spent the time on items 1/2/4 instead, as the plan's hard gate says to.
 3. **(C) is proven absent only at the TOP-LEVEL driver, and only over what this
    corpus reached.** The 20-slot walk at `$2410C4` has no budget test in the
    listing and never truncated in 696 measured overrun frames. But each of the
-   20 handlers walks its own sub-tables — the write map shows at least
+   20 handlers walks its own sub-tables - the write map shows at least
    `$813660` (24 × $50), `$8145A0` (25 × $20), `$810570` (25 × $30),
-   `$81C8FC` (10 × $40), `$80B058` — **and I did not disassemble those loops
+   `$81C8FC` (10 × $40), `$80B058` - **and I did not disassemble those loops
    looking for budget tests.** The honest sentence is "the top-level object
    driver does not truncate", never "the game has no (C)". The instrument to
    settle it exists: the same write-tap-plus-CURPC method, one sub-table at a
@@ -718,7 +718,7 @@ and I spent the time on items 1/2/4 instead, as the plan's hard gate says to.
    be the strongest available evidence for or against a hidden budget test. Not
    run.
 5. **Items 6 and 8 were not attempted at all** (see their sections). Item 5 is
-   partial and its missing half — the button map — is a prerequisite for wave 4,
+   partial and its missing half - the button map - is a prerequisite for wave 4,
    not wave 5.
 6. **The rank result is from the listing.** `$80380C` is the operator rank byte
    and `$2595F2`'s dynamic-rank arithmetic is overwritten by `moveq #$4,D0`. I
@@ -760,7 +760,7 @@ Five things that will save you the hours they cost me:
 **The gate for wave 5 is OPEN.** The object driver is located, its geometry and
 allocator are read out of the ROM, `object slots processed` is a compared column
 in the standard state vector, the overrun exists as a permanent scenario, and
-the phase order is fixed. **Mechanism (C) is measured ABSENT at the top level** —
+the phase order is fixed. **Mechanism (C) is measured ABSENT at the top level** -
 so `PLAN-vertical-slice.md` §5's instruction stands unchanged: wave 4 still
 builds the work budget in, because it costs nothing if it never triggers, and
 because item 3 of "what I could not do" means the sub-drivers are unexamined.

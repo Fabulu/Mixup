@@ -1,6 +1,6 @@
-# WAVE 12.5 REVIEW — the $24C476 fall-through
+# WAVE 12.5 REVIEW - the $24C476 fall-through
 
-status: **DONE** — the port of `$24C476` is correct instruction for instruction
+status: **DONE** - the port of `$24C476` is correct instruction for instruction
 and its gate is real and can fail; but the commit ships a **JavaScript syntax
 error in `tools/breakage.mjs`** that kills `portdiff.mjs`, and with it
 `pgm.py flyaround`, `pgm.py shotgate`, `tools/determinism.mjs` and seven stages
@@ -61,7 +61,7 @@ pgm.py flyaround --reuse  DIVERGE scroll first at lf=2321  RESULT 1 of 72   exit
 pgm.py shotgate  --reuse  RESULT 0 of 72 diverged; BLOCKED at lf4461 by $24C180
 ```
 
-## 2. THE BLOCKING DEFECT — `tools/breakage.mjs` does not parse
+## 2. THE BLOCKING DEFECT - `tools/breakage.mjs` does not parse
 
 ```
 $ node --check games/ddpdoj/tools/breakage.mjs
@@ -85,7 +85,7 @@ the commit introduced it.
 | `node tools/determinism.mjs` | dies |
 | `pgm.py check` stages: fly-around, 5x fly-around RED, replay determinism | 7 FAIL |
 
-`pgm.py firegate` and `pgm.py shipgate` are unaffected — `firegate.mjs` does not
+`pgm.py firegate` and `pgm.py shipgate` are unaffected - `firegate.mjs` does not
 import it and `pgm.py` reads `FIRE_EXPECTED_GREEN` out of the file **as text**,
 which is why the EXPECTED-GREEN declarations still work and why the wave never
 noticed. The wave's §8 "no regression" section reports
@@ -105,7 +105,7 @@ including the branch senses:
 | `24c482 btst #0,($1,A4) / beq` → `24c48a move.w #$8,D0` | `if (btst8(player+P.flags1,0)) d0 = 8` ✓ |
 | `24c48e lsr.b #1` **no `andi.b #6`** | `(d0 & 0xff) >>> 1` ✓ |
 | `24c498 bclr #3 / beq $24c4ac` (Z from the OLD bit) | `bclr8` returns the old bit; `if (b3)` falls into `$24C4A0` ✓ |
-| `24c4ac bclr #4 / beq $24c4d8`; `24c4b4 move.b #1,($34,A4) / bra $24c4f6` | ✓ — the only path to the `rts` |
+| `24c4ac bclr #4 / beq $24c4d8`; `24c4b4 move.b #1,($34,A4) / bra $24c4f6` | ✓ - the only path to the `rts` |
 | `24c4bc bclr #4` (read-modify-write, runs every no-edge frame) | ✓ |
 | `24c4c2 tst.b/beq`, `24c4c8 subq/bne`, `24c4ce subq`, `24c4d2 bset #4` | ✓ |
 | `24c4dc btst #0,($1,A4) / bne`; `24c4e4 cmpi.w #$8,($20,A4)` **no `tst.w ($58,A4)`** | ✓ |
@@ -114,7 +114,7 @@ including the branch senses:
 
 Register convention verified from `$24C096`: `lea $8104AA,A6` / `lea $8103E6,A4`
 (P1, D7=1) and `$24C0B0 lea $81050E,A6 / lea $810448,A4` (P2, D7=0). So A6 IS
-the option block and A4 the player, as the wave says — the opposite of the ship
+the option block and A4 the player, as the wave says - the opposite of the ship
 twin. Ship twin `$249B48` re-read: `lsr.w #1` + `andi.b #$6` at `$249B66/8`,
 `bset #3,(A6)` at `$249B7C` (a *different byte*), and `tst.w ($58,A6)` at
 `$249BCE`. All four claimed differences are real.
@@ -152,27 +152,27 @@ C  formation2: `return fireHandshake(...)` on the $813098 gate -> bare `return;`
 
 B is the useful one: it proves the eleven-arm instrument is genuinely
 independent of the value instrument, which is the wave's best idea.
-C confirms the implementer's own §9.1 warning — **and refutes one of the
+C confirms the implementer's own §9.1 warning - **and refutes one of the
 tests**, see §5.
 
 `tools/breakage.mjs` was patched locally to run `flyaround`/`shotgate` and
 restored from the HEAD blob: `ba0dd8e7caa4251992c920c87cbf23629aafbb94e746192c…`
 before and after, identical. (Note for later readers: `git checkout -- <path>`
-in this repo restores from a **stale main index**, not from HEAD — it silently
+in this repo restores from a **stale main index**, not from HEAD - it silently
 handed me the parent's `breakage.mjs`. Use `git show HEAD:<path>`.)
 
 ## 5. `tests/fire.test.js` TEST 31 IS A CHECK THAT CANNOT FAIL
 
 "all four early gates of formation 2 still reach `$24C476`" never calls
-`formation2()`. It writes `$812970`/`$80390C`/`$813098`/`$813092` — four words
-that **nothing in `fireHandshake()` reads** — and then calls `fireHandshake()`
+`formation2()`. It writes `$812970`/`$80390C`/`$813098`/`$813092` - four words
+that **nothing in `fireHandshake()` reads** - and then calls `fireHandshake()`
 directly. All four loop iterations are literally the same assertion. Mutation C
 above proves it: with the `$813098` gate's call site replaced by a bare
 `return;`, test 31 passed.
 
 The property IS covered, by the *other* test (the source-shape assertion, five
 textual `fireHandshake(ram, ctx, b)` call sites and zero bare `return;` in
-`formation2`'s body) — which is exactly the test the implementer flagged as
+`formation2`'s body) - which is exactly the test the implementer flagged as
 load-bearing, and which went red under C. So the coverage is real; the *named*
 test is theatre and its name and comment claim coverage it does not have.
 
@@ -191,7 +191,7 @@ pgm.py shotgate --reuse
 
 `$24C164 btst #4,($40,A6)` fires on the tap frame, before `noLaser`/`formation2`
 runs at all, so the port never reaches `$24C476` on a firing frame. The
-conclusion — no live gate can exercise this block — is still right, and in fact
+conclusion - no live gate can exercise this block - is still right, and in fact
 more strongly right; the sentence given as its evidence is wrong.
 
 **(b) `firegate speedmodes` has an undisclosed divergence.** §4 quotes the
@@ -215,14 +215,14 @@ lf    oflg1 ohold oedge fhb4x
 
 Bit 2 of `$8104AB` is the LASER LATCH (`$24C1A8`), set while the board is on a
 path the port does not have. Re-seed mode takes its entry state from
-`win[i-1]` — the previous **window** row, which here is a frame the board spent
-in another routine — so it seeds a bit the port can never clear. Two things
+`win[i-1]` - the previous **window** row, which here is a frame the board spent
+in another routine - so it seeds a bit the port can never clear. Two things
 follow: the instrument should seed from the previous **in-block** frame (or
 refuse), and the output was quoted selectively. Harmless on the headline
 scenario (`stage1-shot` has 2,572 of 2,572 frames in-block, so `win[i-1]` is
 always in-block) but it is a latent hole in the second mode.
 
-## 7. THE AUDIT — real, and narrower than it reads
+## 7. THE AUDIT - real, and narrower than it reads
 
 Reproduced independently:
 
@@ -244,12 +244,12 @@ range ends: 249f88 rts, 241180 rts, 253bd2 jmp $23f3ae, 24a632 jmp $23f1fa
 ```
 
 Two caveats on the method. (i) The enumeration is `return;` only. Value returns
-that are equally ROM branch exits are outside it — `drawShipShadow`'s five exits
+that are equally ROM branch exits are outside it - `drawShipShadow`'s five exits
 are `return false;`, not `return;`, and are in the table only because they were
 already known; `isr.js:49`, `objalloc.js:172/187` and `framesync.js`'s
 `return 1/2/3` were never enumerated. (ii) Two of the 40 are `FIRE_MUTATE`
 hooks, not translations, and have no row. Neither turns up a second
-fall-through, and I did not find one either — but "the only fall-through into
+fall-through, and I did not find one either - but "the only fall-through into
 live code" rests on a sweep that did not cover every shape of ROM exit.
 
 12-review **F1** re-confirmed OPEN at HEAD: `shipsprite.js:201` returns when bit

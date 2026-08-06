@@ -1,7 +1,7 @@
-# WAVE 4 — the port skeleton and the player: "fly around"
+# WAVE 4 - the port skeleton and the player: "fly around"
 
 status: DONE (with two named gaps: the OPTION object and the SPRITE-LIST entries
-are not ported — §"What I could not do")
+are not ported - §"What I could not do")
 wave: 4   role: impl   started: 2026-08-01
 
 All addresses are **VERSION-B** (`$23xxxx`–`$28xxxx`, 2002.10.07 BLACK VER)
@@ -69,11 +69,11 @@ execute. Confirmed independently here, and the port is written against build A's
 chain accordingly:
 
 * `$13D464` (build A's input read) and `$23D0F8` (build B's) are the **same
-  eleven instructions**, byte pattern for byte pattern — `lea $C08000,A0 /
+  eleven instructions**, byte pattern for byte pattern - `lea $C08000,A0 /
   move.w (A0),D0 / move.w D0,D1 / lsr.w #8,D1 / ror.w #1,D0 / ror.w #1,D1 /
   not.w D0 / not.w D1 / tst.b $803940 / beq / jsr / move.w D0,$803970 /
   move.w D1,$803976`. So the arithmetic would have been right either way and
-  **only the addresses in the comments would have been wrong** — which is
+  **only the addresses in the comments would have been wrong** - which is
   exactly how the wave-2 table survived review of its own numbers.
 * The chain the port implements, read from the vector's value:
   `$13BDBA → $13C7D4 → jsr $13CFBA / jsr $13D464 / jsr $18ACC0 /
@@ -125,8 +125,8 @@ $2417F4 add.w D2,($2,A6)       THE MOVE, straight into the record
 $2417F8 add.w D3,($4,A6)
 ```
 
-`$241812` was the one piece whose addressing looked wrong on paper — it indexes
-a 65-entry table with `angle*4` — and the fold table settled it:
+`$241812` was the one piece whose addressing looked wrong on paper - it indexes
+a 65-entry table with `angle*4` - and the fold table settled it:
 
 * `$200920` is a pointer table; entry *s* is `$200D20 + $208*s`, and each table
   is **65 entries of {dx:int32, dy:int32} covering ONE QUADRANT**, `(r,0)` at 0°
@@ -136,14 +136,14 @@ a 65-entry table with `angle*4` — and the fold table settled it:
   quadrant negation at `$241850/$241870/$241890/$2418B0` is not a double count.
   For the eight angles the stick can produce it returns
   `0, $100, $200, $100, 0, $100, $200, $100`.
-* `asr.l #4` then narrows to a word. **Arithmetic, not logical** — the
+* `asr.l #4` then narrows to a word. **Arithmetic, not logical** - the
   `lsr-not-asr` mutation exists because of it.
 
 `$2552DC` = `ff 00 20 ff 30 38 28 ff 10 08 18 ff ff ff ff ff`. `$FF` is
 "no direction" and it is returned for nibble 3 (up+down) and 0xC (left+right)
-**while the direction bits are still set**, which matters — see §5.
+**while the direction bits are still set**, which matters - see §5.
 
-### 4. THE SPEED MODES — measured, three of them, and the ramp's writer found
+### 4. THE SPEED MODES - measured, three of them, and the ramp's writer found
 
 Scenario `speedmodes` (new, permanent), holding each button in turn while
 pushing the stick. `pgm.py` + `PROBE_WATCH` on `$810400` (`$1A`, the index) and
@@ -176,11 +176,11 @@ $24C8BE  move.b ($1a,A4),D0 / cmp.b ($38,A4),D0 / beq
 $24C8E4  ... cmp.b ($39,A4),D0 / beq ; addq.b #1,($1a,A4)   <- UP, every frame
 ```
 
-A4 is the player record and **A6 is the OPTION record** — the ramp lives inside
+A4 is the player record and **A6 is the OPTION record** - the ramp lives inside
 the option object's update, which is one more reason the option is the next
 thing to port.
 
-### 5. THE CLAMPS — move past, then clamp, and give the overshoot back
+### 5. THE CLAMPS - move past, then clamp, and give the overshoot back
 
 ```
 $2495CA jsr $2417DE           the position is ALREADY MOVED here
@@ -204,8 +204,8 @@ Two order traps a port gets wrong silently, both now pinned by tests:
    validation and it took two attempts: the obvious mutation ("clamp the
    position on entry") **PASSED the whole 2,200-frame comparison**, because the
    position is already inside the box every frame. The mutation had to be the
-   one a person would actually write — clamp, then add the vector, then store
-   unclamped — which is why `src/player.js` carries a named `CLAMP_ORDER` seam.
+   one a person would actually write - clamp, then add the vector, then store
+   unclamped - which is why `src/player.js` carries a named `CLAMP_ORDER` seam.
    Once it was the right mutation it went red at **lf 2087** on `py`/`paccy`
    (`port=25875 board=25856`, i.e. 19 units of overshoot the board gave back).
 2. **The no-direction path branches PAST the clamps** (`$2495C6 bra $24969C`),
@@ -225,7 +225,7 @@ throw is for.
 
 **And the census that supports "the divider paths have never executed" cannot
 see them.** `armed_vblanks` counts the value of the write that takes `$803940`
-from 0 to non-zero — and `$23C212` **always writes 1 first**, so the later
+from 0 to non-zero - and `$23C212` **always writes 1 first**, so the later
 `move.b #$2,$803940` at `$23C248`/`$23C38A` is a non-zero→non-zero write the
 census never records. The column that actually bounds it is
 `irq6_per_logicframe` (1 on 4,184 of 4,200 fly-around frames). *The conclusion
@@ -241,13 +241,13 @@ all 4,200 frames, so the governor runs on one frame in three and takes the
 Ported as wave 2 measured it: 20 slots × `$50` at `$80E240`, walked forward,
 **with the work budget checked in the original order before every dispatch**
 (`src/budget.js`, `unitsPerFrame = NEVER_TRIGGERS`, truncation is a named throw
-because (C) is unmeasured — wave 2 got `slots processed == slots live` on all
+because (C) is unmeasured - wave 2 got `slots processed == slots live` on all
 696 forced-overrun frames). Only types 2 and 3 are implemented; every other
 dispatch is COUNTED (`$240F62 + type*8`) and printed by the runner.
 
 For the comparison to mean anything the table has to be static, and it is:
 `object_slots_live` is **8 from lf1969 to lf4200** on the fly-around run. That
-was not free — see §8.
+was not free - see §8.
 
 ### 8. THE SCENARIO, and the two things that had to be true for it to exist
 
@@ -259,11 +259,11 @@ cases. Two design facts, both bought with a failed run:
   (`$2497FE`), and **bit 6 is AUTO-SHOT**: `$2497B2` finds the byte at `$80380F`
   set to `$01` and synthesises a shot edge into `($19,A6)` on alternate frames
   (`bchg #4,($1,A6) / bset #4,($19,A6)`). Every button drives wave 5's code. The
-  port's guard threw `Unreached $2497AA` the first time Button 3 was held —
+  port's guard threw `Unreached $2497AA` the first time Button 3 was held -
   which is how this was found rather than assumed.
 * **AN INTERVENTION: `$810424` (the player's `($3e,A6)` invulnerability timer)
   is held at `$FF` from lf1990, at the sample point, ON BOTH SIDES.** Without
-  it, a button-free run of this script **dies at lf2469** — measured: the player
+  it, a button-free run of this script **dies at lf2469** - measured: the player
   record goes blank (`pspd 22 → 0`), the object table drops a slot, and every
   player column follows. `$FF` is a value the game itself writes at `$2495A2`
   and the branch that reads it (`$249524 cmpi.b #$ff`) is ported, so the poke
@@ -271,7 +271,7 @@ cases. Two design facts, both bought with a failed run:
   rule wave 2 applied to the NOP sled. New `PROBE_POKE`/`PROBE_POKE_FROM` in
   `frame.lua`; `portdiff.mjs` applies the identical poke at the identical point.
 
-### 8b. COVERAGE of the compared window � counted, not asserted
+### 8b. COVERAGE of the compared window � counted, not asserted
 
 "The scenario pins the walls" is a claim, so here is the count over the 2,200
 compared frames:
@@ -313,7 +313,7 @@ clamps -- the Y walls have no such call, and the 44/992 above are their evidence
   ship survives. Collision is not ported in wave 4 (the brief says "the ship's
   hitbox IF REACHABLE"). The player handler clears the bit again at `$24952A`
   before any ported branch reads it, so the mask changes nothing the port
-  computes — and the runner PRINTS the count on every run, because a carve-out
+  computes - and the runner PRINTS the count on every run, because a carve-out
   nobody counts is a carve-out that grows.
 
 ---
@@ -343,7 +343,7 @@ games/ddpdoj/tests/player.test.js      18 tests, 0 skipped
 ```
 
 Oracle changes (all opt-in; `pgm.py gate`'s recorded hash is unaffected because
-every new column is off by default — re-verified, §"What I could not do" item 6):
+every new column is off by default - re-verified, §"What I could not do" item 6):
 `frame.lua` gains `PROBE_WATCH`, `PROBE_PORTIN`, `PROBE_POKE`/`PROBE_POKE_FROM`;
 `pgm.py` gains `flyaround` (which reads the watch spec OUT OF `src/state.js`, so
 the two sides of the comparison cannot drift, and asserts its own copy of the
@@ -361,7 +361,7 @@ symbols against `src/machine.js`); `scenarios.json` gains `fly-around` and
    down: the option is its own object with a `$20`-byte record at `$8104AA`,
    moved by `$24D130` through the SAME `$241812` vector routine with its own
    `($1A,A6)/($1B,A6)` and an `asr` scale (`#3`, then `#2` or `#1`), and snapped
-   to the player by `$24C33E/$24C342` (`move.l ($2,A4),($2,A6)` — a LONGWORD, so
+   to the player by `$24C33E/$24C342` (`move.l ($2,A4),($2,A6)` - a LONGWORD, so
    both coordinates at once, and it fires the write tap twice), with a
    per-formation offset routine dispatched from `$24C384`. Its turn logic is
    `$24C310` (`($36,A6)` is the target angle, `($1B,A6)` steps 2 toward it).
@@ -369,16 +369,16 @@ symbols against `src/machine.js`); `scenarios.json` gains `fly-around` and
    after the frame-sync governor turned out to be a governor.
 2. **THE PLAYER'S SPRITE-LIST ENTRIES ARE NOT COMPARED.** They are built by
    main-loop call #4 (`$23D2AE`) out of a 12-byte request queue at `$80397C`
-   that object handlers enqueue into — the whole sprite pipeline, which is wave
+   that object handlers enqueue into - the whole sprite pipeline, which is wave
    6's integration job. What IS compared, and is the strongest available proxy,
    is the player's **animation records** `$8103F0`/`$8103FA` (`anima0/1`,
    `animb0/1`): `$249E4E` looks them up out of `$25533A`/`$2553CA` indexed by
    the bank counter `($4E,A6)`, so they move whenever the ship's drawn attitude
    moves, and `no-tilt-decay` red-validates exactly that.
 3. **THE HITBOX IS NOT MEASURED.** Wave 2 item 6 was BLOCKED and stayed blocked.
-   I did locate the collision test — `$2458C0`: `D4 = ($4,A6) + D6;
+   I did locate the collision test - `$2458C0`: `D4 = ($4,A6) + D6;
    D5 = D4; D4 += ($14,A6); cmp.w D3,D4 / bcs; D5 -= ($16,A6); cmp.w D5,D2 /
-   bcs; bset #4,(A6)` — so the box half-extents are `($14,A6)` and `($16,A6)` of
+   bcs; bset #4,(A6)` - so the box half-extents are `($14,A6)` and `($16,A6)` of
    the record being tested, and the entry point for wave 5 is one write tap on
    those two words. That is a lead, not a measurement: I did not step a bullet
    across a pinned ship and I did not compare VERSION-A.
@@ -390,7 +390,7 @@ symbols against `src/machine.js`); `scenarios.json` gains `fly-around` and
    already says the ship-select offers what is verified.
 5. **P2 is ported but never exercised.** Dispatch type 3 shares the code path
    (`updatePlayer` keys off `($7,A5)`); no scenario has a second player.
-6. *(not a gap — a check I owed and ran.)* **`frame.lua`'s three new env vars are
+6. *(not a gap - a check I owed and ran.)* **`frame.lua`'s three new env vars are
    inert by default, MEASURED.** Every new column is behind a variable the
    standard `trace()` does not set, so wave 2's recorded gate hash must survive
    this wave's edits, and it does:

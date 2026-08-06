@@ -1,8 +1,8 @@
-# W33 — IMPL: stage-1 enemy handlers, CHOSEN BY THE BULLET KINDS THEY FIRE
+# W33 - IMPL: stage-1 enemy handlers, CHOSEN BY THE BULLET KINDS THEY FIRE
 
-status: **DONE** — gate **`ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED`**, unit
+status: **DONE** - gate **`ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED`**, unit
 tests **492/0/0**. Stage-1 handlers **10 of 19 → 11 of 19**. The live bullet-kind
-set is **{3,4,5,7,13,19} before and after**, 0 of W27's 29 bodies — **and that
+set is **{3,4,5,7,13,19} before and after**, 0 of W27's 29 bodies - **and that
 was PREDICTED from the ROM before any code was written**: §2 measures that no
 non-boss stage-1 handler fires a kind outside the W26 eight. The wave's real
 product is that measurement and the defect it uncovered on the way: **the port
@@ -16,7 +16,7 @@ unless the line says why not.
 ## THE BRIEF
 
 W27's review finding **F1**: 517,445 live-slot rows across every recorded mover
-corpus contain exactly the behaviour kinds `{3,4,5,6,7,12,13,19}` — the eight
+corpus contain exactly the behaviour kinds `{3,4,5,6,7,12,13,19}` - the eight
 W26 bodies. W27 transcribed 29 more and W30/W31 wired the fire path, and the
 live set has only reached `{3,4,5,7,13,19}`. **Zero of W27's 29 bodies have
 executed anywhere.** The cause is upstream: the enemies that fire those kinds
@@ -30,7 +30,7 @@ gate ALL GREEN 49/0/0, unit tests 479/0/0.
 
 ---
 
-## 1. THE ENUMERATION — 10 OF 19, AND THE REAL DENOMINATOR
+## 1. THE ENUMERATION - 10 OF 19, AND THE REAL DENOMINATOR
 
 Measured this wave, capstone 5.0.7 over `tools/oracle/out/maincpu.bin` (the
 decrypted build-B image, address == file offset). The stage-1 spawn script
@@ -49,24 +49,24 @@ independently.
 | `$269CEA` | 28 | `$05` | **yes** (W25) |
 | `$27687E` | 25 | `$8B` | **yes** (W25) |
 | `$268232` | 16 | `$10` | **yes** (W25) |
-| `$26A5E4` | 12 | `$08` | — |
-| `$26AD28` | 12 | `$0B` | — |
+| `$26A5E4` | 12 | `$08` | - |
+| `$26AD28` | 12 | `$0B` | - |
 | `$276702` | 10 | `$8A` | **yes** (W30) |
-| `$27733E` | 7 | `$89` | — |
-| `$26A860` | 7 | `$09` | — |
+| `$27733E` | 7 | `$89` | - |
+| `$26A860` | 7 | `$09` | - |
 | `$2739C0` | 6 | `$80` | **yes** (W30) |
-| `$272AAC` | 6 | `$20` `$21` | — |
-| `$275F30` | 3 | `$88` | — |
+| `$272AAC` | 6 | `$20` `$21` | - |
+| `$275F30` | 3 | `$88` | - |
 | `$275914` | 2 | `$85` | **yes** (W30) |
 | `$26B6FA` | 1 | `$0D` (midboss) | **yes** (W31) |
-| `$29700C` | 1 | `$24` | — |
-| `$2697F6` | 1 | `$31` | — |
-| `$292902` | 1 | `$0E` (boss) | — |
+| `$29700C` | 1 | `$24` | - |
+| `$2697F6` | 1 | `$31` | - |
+| `$292902` | 1 | `$0E` (boss) | - |
 
 **PORTED: 10 of 19 handlers, owning 289 of 339 records (85.3 %).** The nine that
 remain own 50 records.
 
-## 2. THE SELECTION CRITERION — WHICH KINDS DOES EACH FIRE?
+## 2. THE SELECTION CRITERION - WHICH KINDS DOES EACH FIRE?
 
 `kind = D0 & $3F` at the generator entry (`$281556 andi.w #$3F,D0` in
 `emitRecord`; the template's type word is `$8100|kind`, so the mover's
@@ -88,7 +88,7 @@ tracking the last immediate into D0):
 | `$26A5E4` | `$08` | **13** (`$26A782`) |
 | `$26A860` | `$09` | **13** (`$26A93E`) |
 | `$26AD28` | `$0B` | **13** (`$26AE0A`, `$26AECC`) |
-| `$272AAC` | `$20`/`$21` | **none — it fires no bullet at all** |
+| `$272AAC` | `$20`/`$21` | **none - it fires no bullet at all** |
 | `$275F30` | `$88` | **4** (`$2761DE $2761E6 $2761EE $27622E $276236 $27623E`) |
 | `$27733E` | `$89` | **6** (`$27745C`, `$277464`) |
 | `$2697F6` | `$31` | **none** |
@@ -101,12 +101,12 @@ tracking the last immediate into D0):
 Every one of the eight fires 13, 4, 6, or nothing. The ONLY stage-1 route to a
 W27 body is the **boss `$292902`** (kinds **9** and **11**), and it reaches its
 fire sites through installed script tables (`$294AD8` and friends) whose format
-nobody has read — the D0 at those sites is `move.l $C(A4),D0`, not an immediate,
+nobody has read - the D0 at those sites is `move.l $C(A4),D0`, not an immediate,
 so even the boss's kind set cannot be bounded from the listing without reading
 that format first.
 
-**So the brief's premise — "the enemies that would fire those kinds are not
-ported" — is false for stage 1.** Porting stage-1 enemy handlers cannot make a
+**So the brief's premise - "the enemies that would fire those kinds are not
+ported" - is false for stage 1.** Porting stage-1 enemy handlers cannot make a
 W27 body execute. That is the wave's first finding and it is measured, not
 argued.
 
@@ -119,7 +119,7 @@ is a `note()`" is the other way a kind could be one deferral away:
 |---|---|---|
 | `$2682F8..$268490` | type `$10` | **12** (one site) |
 | `$269D84..` | types `$05`/`$07`/`$27` | **13** |
-| `$28AC72` (sub-record spawn engine) | types `$82`/`$85`/`$80` | **none** — the whole of `$28xxxx` contains 0 of the 519 generator call sites |
+| `$28AC72` (sub-record spawn engine) | types `$82`/`$85`/`$80` | **none** - the whole of `$28xxxx` contains 0 of the 519 generator call sites |
 
 So no deferral inside a ported stage-1 handler is hiding a W27 kind either.
 What those deferrals ARE hiding is **kind 12**, which is why the port has never
@@ -130,18 +130,18 @@ dispatched it (§6).
 Enemies spawn enemies. Read out of the ROM (every `jsr` to the three deferred
 enqueues `$263678`/`$263684`/`$263690`, with the D0 immediate at each site):
 
-- `$0D.hand` (the midboss) enqueues **type `$1C`** — its own death burst,
+- `$0D.hand` (the midboss) enqueues **type `$1C`** - its own death burst,
   `$26B184`'s 14-record list at `$26B214`. Type `$1C` has no fire site.
 - `$0E.hand` (the boss) enqueues **type `$1E`**, whose handler `$296DD6` fires
-  kinds **3, 4, 5** — all W26.
+  kinds **3, 4, 5** - all W26.
 - `$20`/`$21`/`$23` enqueue a type the MOVEMENT STREAM names, not an immediate.
   Resolved through the aux table `$23170C` and resource `$231852` for all six
   stage-1 records: five spawn type `$11`, one spawns type `$10`. **Both ported.**
 
 Confirmed dynamically from the board's own `w22-spawn-stage1.tsv`: over stage 1
 the recorded run spawns exactly the 21 scripted types plus `$1C` and `$1E`.
-(The `$84`/`$8D`/`$8F`/`$90`/`$95`/`$96` in that file — three of which DO fire
-W27 kinds — all appear after lf12379, i.e. in **stage 2**.)
+(The `$84`/`$8D`/`$8F`/`$90`/`$95`/`$96` in that file - three of which DO fire
+W27 kinds - all appear after lf12379, i.e. in **stage 2**.)
 
 ## 3. AND EIGHT OF THE NINE ARE BEHIND A WALL THE PORT CANNOT PASS
 
@@ -163,13 +163,13 @@ clk <= 239 : 138 of 339 records (40.7 %), and they use exactly TWELVE types:
 ```
 
 **Eleven of those twelve are ported. The twelfth is `$20` (`$272AAC`).**
-The other eight unported handlers — `$08 $09 $0B $88 $89 $24 $31 $0E` — have
+The other eight unported handlers - `$08 $09 $0B $88 $89 $24 $31 $0E` - have
 their FIRST trigger at clk 283, 322, 420, 424, 464, 481, 488… i.e. **every one
 of them is behind the midboss halt.**
 
 ### 3.1 A CLAIM I WROTE AND THEN FALSIFIED MYSELF, RECORDED RATHER THAN DELETED
 
-I first wrote here that "the board corpora stop at the same wall — clk `$00E3`
+I first wrote here that "the board corpora stop at the same wall - clk `$00E3`
 = 227 at lf16000". **That was wrong, and it was wrong because I read the last
 line of a TSV whose `S` rows and frame rows have the clock in DIFFERENT
 COLUMNS.** Measured properly:
@@ -183,11 +183,11 @@ w22-spawn-stage1.tsv, clk trajectory:  lf2401 clk $0099   lf8001 clk $01DA
 
 **The board's own recorded run kills the midboss, finishes stage 1 and enters
 stage 2.** All 21 scripted types spawn in it, plus `$1C` (the midboss's own
-death burst, `$26B184`) and `$1E` (spawned by the boss handler) — so stage 1's
+death burst, `$26B184`) and `$1E` (spawned by the boss handler) - so stage 1's
 true type set is **23**, not 21.
 
 And that makes the finding *stronger*, not weaker.
-`w26-mover-invuln.tsv` — the corpus F1 counted 485,422 live-slot rows in —
+`w26-mover-invuln.tsv` - the corpus F1 counted 485,422 live-slot rows in -
 covers **lf1618..8999**, i.e. it contains **813 frames of a LIVE stage-1 boss**
 (spawned lf8186). The boss ran, on the board, inside the corpus, and the corpus
 still contains only `{3,4,5,6,7,12,13,19}`. So:
@@ -217,7 +217,7 @@ lf4000  100     (15 live enemies)
 ```
 
 100 slots held by 15 enemies. **From lf2906 onward every new enemy in the port
-fails its sub-record allocation and is silently cleared** — `initDispatch`
+fails its sub-record allocation and is silently cleared** - `initDispatch`
 returns `failed:true`, `$263622 bcs $263674` clears the record, and nothing
 throws, notes or counts it. Measured for the type-`$20` record at clk 188:
 
@@ -228,12 +228,12 @@ DBG init {"init":$272A42,"initBody":$272A4A,"runLen":0,"failed":true} h=0 word=0
 
 ### THE CAUSE, OUT OF THE LISTING
 
-- `$2635D8 tst.b (A6) / beq` — the allocator's FREE test is **byte 0 == 0**.
+- `$2635D8 tst.b (A6) / beq` - the allocator's FREE test is **byte 0 == 0**.
 - `$263762` (free the enemy) writes **1**, not 0:
   `moveq #$1,D0 / move.w ($4,A5),D1 / move.b D0,(A6) / lea $20(A6),A6 / dbra`.
 - So a freed slot reads 1 and the allocator still calls it occupied.
 
-**The routine that turns 1 into 0 is `$28AD54` — TYPE-5 CALL #3 — and it is
+**The routine that turns 1 into 0 is `$28AD54` - TYPE-5 CALL #3 - and it is
 one of the 22 unported subsystem calls.** Its first twelve instructions are a
 reaper over all **150** slots (`move.w #$95,D0`, i.e. the 100-slot common pool
 `$81459C` and the 50-slot special pool `$81521C` are CONTIGUOUS and walked as
@@ -251,7 +251,7 @@ $28AD70 ...                             falls through into the $81DB90 sub-recor
 ```
 
 `$28AD54` was a `note()` in `src/type5.js` labelled only "the sub-record spawn
-engine driver". **It is two routines by fall-through** — the classic trap — and
+engine driver". **It is two routines by fall-through** - the classic trap - and
 the half nobody read is the half the allocator depends on.
 
 **Consequence for every coverage number since W29.** Any port run longer than
@@ -264,22 +264,22 @@ the surviving enemies write.
 
 Chosen by the criterion the brief set, applied to the measurements above.
 
-### 5.1 `$28AD54`'s reaper — type-5 call #3, FIRST LOOP ONLY
+### 5.1 `$28AD54`'s reaper - type-5 call #3, FIRST LOOP ONLY
 
 Not a handler, and the wave's most important line of code: without it no
 handler ported after lf2906 could ever run. `src/spawn.js reapSubRecords`,
 wired in `src/type5.js` at its ROM position in the 23-call list (after call #2,
-the enemy frame — the order is the cartridge's).
+the enemy frame - the order is the cartridge's).
 
 **The rest of `$28AD54` is still a note, under its own address `$28AD70`**, so
 the port is visibly a partial one. `TYPE5_PORTED` 9 → **10 of 23**.
 
-### 5.2 `$272AAC` — types `$20`, `$21` and `$23`, the SCRIPTED CARRIER
+### 5.2 `$272AAC` - types `$20`, `$21` and `$23`, the SCRIPTED CARRIER
 
 The **only** unported stage-1 handler a port run can reach (§3). It fires no
 bullet; it spawns other enemies, one per cooldown, of the type its movement
 stream names. Extent `$272AAC..$272B46 rts`, with `$272B48` the NEXT type's
-8-byte init stub immediately after it — read past the `rts` to see that, and
+8-byte init stub immediately after it - read past the `rts` to see that, and
 stop there. The one structural surprise: `$272B44 beq $272AF6` branches
 BACKWARD `$50` bytes into the middle of the bounds block, so "the salvo ran
 out" and "it left the screen" are literally the same exit.
@@ -289,8 +289,8 @@ out" and "it left the screen" are literally the same exit.
 > "record +$16/+$18/+$1A params are not loader-written, so the port leaves them
 > at the pool default"
 
-They *are* loader-written — by `$272A7E`/`$272A82`/`$272A86`, out of the
-movement stream — and the handler reads all three every frame. With them at the
+They *are* loader-written - by `$272A7E`/`$272A82`/`$272A86`, out of the
+movement stream - and the handler reads all three every frame. With them at the
 pool default the carrier would spawn type 0 forever. Replaced with the real
 stream read, including the `$272A68 cmpi.w #$2` escape (a param-1 of 2 sets
 `($8,A6)`, which the handler's first instruction reads to SKIP scroll
@@ -307,16 +307,16 @@ compensation, and the real type is the next word).
 | `$23145C` clk 376 | `$071` | `$232126` | type `$11` |
 | `$23146C` clk 377 | `$072` | `$232148` | type `$10` |
 
-Both already ported — so this handler adds no new kind either, and that was
+Both already ported - so this handler adds no new kind either, and that was
 known before it was written rather than discovered after.
 
 **Stage-1 handlers: 10 of 19 → 11 of 19**, owning 295 of 339 records.
 
-## 6. THE MEASUREMENT — THE WAVE'S REAL OUTPUT
+## 6. THE MEASUREMENT - THE WAVE'S REAL OUTPUT
 
 `tools/w33kindgate.mjs`, on `fly-around` (lf2001..4200, the invulnerability
 poke `$810424=FF` on both sides, as the scenario declares). The hook is
-`ctx.bulletKind` at `src/mover.js`'s `$281F0E jsr (A1)` — the one instant a
+`ctx.bulletKind` at `src/mover.js`'s `$281F0E jsr (A1)` - the one instant a
 behaviour body executes.
 
 | | BEFORE | AFTER |
@@ -335,10 +335,10 @@ VOLUME: with the sub-record leak fixed the stage keeps spawning, so type `$80`'s
 three fire sites run three times as often and kinds 4, 5, 7, 13 and 19 are
 dispatched 40–200 % more.
 
-**Which kinds I expected to see, and did not, and why** — stated per the brief:
+**Which kinds I expected to see, and did not, and why** - stated per the brief:
 
 - **6 and 12** are the two W26 bodies the port has still never dispatched.
-  Kind 12 is fired from `$268232` (type `$10`, PORTED) — but from inside its
+  Kind 12 is fired from `$268232` (type `$10`, PORTED) - but from inside its
   `$2682F8..$268490` fire/state machine, which is a whole-block `note()`, so
   the fire never happens. Kind 6 is fired only by types `$89`/`$8E`/`$45`/`$54`,
   all behind the midboss halt. Neither is reachable by porting a handler.
@@ -355,32 +355,32 @@ one (`src/spawn.js` `32e45e8aa28e7520`, `src/initbody.js` `0f23ac74ed3a043f`,
 
 | # | mutation | result |
 |---|---|---|
-| M1 | reaper: the `$28AD64 bmi` arm dropped — ALIVE slots get reaped | RED — 2 |
-| M2 | reaper: `$28AD66` read as `move.b`, so byte 1 survives | RED — 1, alone |
-| M3 | reaper: 100 slots (the common pool only), not 150 | RED — 1, alone |
-| M4 | init: the params take the whole word, not `and.w #$FF` | RED — 1, alone |
-| M5 | init: the `$0002` escape does not consume the extra word | RED — 1, alone |
-| M6 | init: the three params stored as BYTES, not words | RED — 2 |
-| M7 | carrier: `$272B10 bcc` read as `bne` | RED — 4 |
-| M8 | carrier: `$272B34` sets bit 6 of the LOW byte of the type word | RED — 1, alone |
-| M9 | carrier: `$263690`'s D1 fixed at 0 instead of `($D,A5)` | RED — 1, alone |
-| M10 | carrier: the salvo test reads `($19,A5)` as a byte, not the word | RED — 2 |
-| M11 | carrier: `$272ACC bcs` read as `bcc` | RED — 5 |
-| **M12** | carrier: `$272AD2 ext.l` dropped — axis A read UNSIGNED | **GREEN, then RED — 1** |
-| **M13** | carrier: `($8,A6)`'s sense inverted | **GREEN, then RED — 1** |
+| M1 | reaper: the `$28AD64 bmi` arm dropped - ALIVE slots get reaped | RED - 2 |
+| M2 | reaper: `$28AD66` read as `move.b`, so byte 1 survives | RED - 1, alone |
+| M3 | reaper: 100 slots (the common pool only), not 150 | RED - 1, alone |
+| M4 | init: the params take the whole word, not `and.w #$FF` | RED - 1, alone |
+| M5 | init: the `$0002` escape does not consume the extra word | RED - 1, alone |
+| M6 | init: the three params stored as BYTES, not words | RED - 2 |
+| M7 | carrier: `$272B10 bcc` read as `bne` | RED - 4 |
+| M8 | carrier: `$272B34` sets bit 6 of the LOW byte of the type word | RED - 1, alone |
+| M9 | carrier: `$263690`'s D1 fixed at 0 instead of `($D,A5)` | RED - 1, alone |
+| M10 | carrier: the salvo test reads `($19,A5)` as a byte, not the word | RED - 2 |
+| M11 | carrier: `$272ACC bcs` read as `bcc` | RED - 5 |
+| **M12** | carrier: `$272AD2 ext.l` dropped - axis A read UNSIGNED | **GREEN, then RED - 1** |
+| **M13** | carrier: `($8,A6)`'s sense inverted | **GREEN, then RED - 1** |
 
 **13 mutations, 13 RED. TWO SURVIVED THE FIRST PASS AND BOTH WERE DEFECTIVE
-CHECKS OF MINE, NOT UNCATCHABLE MUTATIONS** — the distinction W31 asked later
+CHECKS OF MINE, NOT UNCATCHABLE MUTATIONS** - the distinction W31 asked later
 waves to keep:
 
-- **M13 — a check driven with the difference switched off.** Every carrier test
+- **M13 - a check driven with the difference switched off.** Every carrier test
   ran with a zero scroll accumulator, so `scrollCompensate` moved nothing and
   running it or skipping it looked identical. Fixed by setting `$80B03C` and
   asserting `($2,A6)` under BOTH senses of `($8,A6)` in one loop.
-- **M12 — a bounds fixture outside the band it was about.** My off-screen value
+- **M12 - a bounds fixture outside the band it was about.** My off-screen value
   was `$F000`, and `$F000` is off screen under the signed AND the unsigned
-  reading. The two disagree only on `$F801..$FFFF` — **2,047 half-words,
-  counted exhaustively in the test** — where `ext.l` makes the value negative
+  reading. The two disagree only on `$F801..$FFFF` - **2,047 half-words,
+  counted exhaustively in the test** - where `ext.l` makes the value negative
   and it lands back inside `($3800,$B800)`. The test now enumerates the band,
   pins both ends, and then drives the handler at `$FC00`. My first instinct was
   to write this up as "provably uncatchable" like W31's M11/M12; the exhaustive
@@ -400,19 +400,19 @@ Unchanged from W32's 49/0/0. **Nothing was disabled, skipped, narrowed or
 loosened**; no compared column set, window or frame count moved. The stages
 this wave could plausibly have broken all pass on their own recordings:
 
-- `enemy stats: hitbox/HP/palette/HP-reload at spawn (W23)` — the gate that
+- `enemy stats: hitbox/HP/palette/HP-reload at spawn (W23)` - the gate that
   W31's `tables` thread broke, and which runs the type-`$20` init body this
   wave rewrote;
-- `spawn walker: cursor + spawn counter vs the whole of stage 1` — the walker
+- `spawn walker: cursor + spawn counter vs the whole of stage 1` - the walker
   whose two failure arms are now counted;
-- `fly-around: port vs board, 0 divergent frames` — 2,200 frames with the
+- `fly-around: port vs board, 0 divergent frames` - 2,200 frames with the
   reaper and the carrier live;
 - `bullet mover: per-frame pool drive vs the board`, and the pattern gate over
   three corpora.
 
 **Unit tests: 479 → 492 pass, 0 fail, 0 SKIPPED.**
 
-**A SKIP APPEARED AND WAS CHASED, NOT TOLERATED** — for the fourth wave
+**A SKIP APPEARED AND WAS CHASED, NOT TOLERATED** - for the fourth wave
 running: `movement.test.js`'s W24 stream inventory skipped because its
 gitignored input `assets/w24-movement/stage1-streams.json` had vanished during
 the check. Regenerated with `python games/ddpdoj/tools/oracle/w24streams.py`
@@ -429,7 +429,7 @@ not repeating the inherited attribution as though I had.
   a lead, not a fact: the boss dispatches through installed script tables and
   the D0 at those sites is `move.l ($C,A4),D0`, a data read. **I could not
   reach it; what I tried:** the recursive call closure from `$292902` (48
-  routines, 0 generator sites — it never reaches one by a static branch), the
+  routines, 0 generator sites - it never reaches one by a static branch), the
   519-site kind resolution, and a pc-relative scan that found 0 further sites.
   Bounding the boss's kind set needs the script format read first, which is the
   recon's waves 12–13.
@@ -439,7 +439,7 @@ not repeating the inherited attribution as though I had.
   boss's at all. I did not distinguish the two.
 - **Whether the 57 unresolved generator call sites carry a new kind.** They are
   the ones whose D0 comes from a struct (`$29DAFA move.l ($C,A4),D0`), i.e.
-  data-driven, and all 57 are in `$264xxx` or `$299xxx..$29Exxx` — outside
+  data-driven, and all 57 are in `$264xxx` or `$299xxx..$29Exxx` - outside
   stage 1's handlers. So they do not bear on this wave's question, and I did not
   read the tables behind them.
 - **Whether the board drops the same spawns the port now drops.** `spawnEvent`
@@ -468,21 +468,21 @@ not repeating the inherited attribution as though I had.
   `w26-mover-invuln.tsv` contains **813 frames of a live stage-1 boss** and
   still only the eight kinds.
 - **THE PORT LEAKS SUB-RECORDS** (§4). `$263762` marks DYING (1), the allocator
-  wants FREE (0), and the 1 -> 0 reaper is the first loop of `$28AD54` — a
+  wants FREE (0), and the 1 -> 0 reaper is the first loop of `$28AD54` - a
   routine the port had noted as something else entirely. 100 of 100 slots from
   lf2906; every spawn after that silently discarded, for four waves.
 - reaper ported; the pool now tracks the live population (37 occupied / 36
   live, 26 / 27), and the type-`$20` record at clk 188 reaches `$272AAC` and
-  throws BY ADDRESS — the loud-throw mechanism doing exactly its job.
+  throws BY ADDRESS - the loud-throw mechanism doing exactly its job.
 - `$272AAC` ported (types `$20`/`$21`/`$23`), and its init body's note replaced
   with code: the note's claim that +$16/+$18/+$1A "are not loader-written" was
   wrong and the handler reads all three.
-- AFTER measurement: **KINDSET {3,4,5,7,13,19} — UNCHANGED, as predicted in
+- AFTER measurement: **KINDSET {3,4,5,7,13,19} - UNCHANGED, as predicted in
   §2 before any code was written.** Dispatch COUNTS up 40-200 % because the
   stage keeps spawning again.
 - 13 mutations, 13 RED; two survived the first pass and both were defective
   checks of mine (§7), neither uncatchable.
-- `spawnEvent` added so the two silent drop arms are COUNTED — the check that
+- `spawnEvent` added so the two silent drop arms are COUNTED - the check that
   would have caught §4's defect four waves ago.
 
 ## 9. WHERE THE WAVE ENDED
@@ -497,7 +497,7 @@ No W27 body executed for the first time. **It could not have**: §2 enumerates
 all 519 generator call sites (and proves there are no pc-relative ones) and
 measures that every non-boss stage-1 handler fires only 4, 6, 13 or nothing.
 The only stage-1 producer of a W27 kind is the boss `$292902`, through a script
-format nobody has read — and `w26-mover-invuln.tsv` contains 813 recorded frames
+format nobody has read - and `w26-mover-invuln.tsv` contains 813 recorded frames
 of that boss and still shows only the eight.
 
 **C. THE GATE: 49 passed / 0 failed / 0 SKIPPED. Unit tests 492/0/0.**
@@ -514,13 +514,13 @@ of that boss and still shows only the eight.
    a recursive closure per handler. If a handler reaches a generator through an
    indirect `jsr (A0)` off a table I did not follow, the claim is wrong. I found
    no such construct in these eight bodies; that is what I tried, not a proof.
-3. **§7's M12/M13** — two of my own checks could not fail on the first pass, and
+3. **§7's M12/M13** - two of my own checks could not fail on the first pass, and
    M12 nearly went into this worklog as "provably uncatchable" when it is
    catchable on 2,047 of 65,536 inputs.
-4. **§5.2** — a W23 `note()` that asserted three record fields "are not
+4. **§5.2** - a W23 `note()` that asserted three record fields "are not
    loader-written" when the loader writes all three. Notes carry claims and
    claims rot.
-5. **§6** — kind 12 is fired by a PORTED handler (`$268232`) from inside a
+5. **§6** - kind 12 is fired by a PORTED handler (`$268232`) from inside a
    deferral. It is the cheapest remaining kind, and it is a fire-machine port,
    not a handler port.
 
@@ -530,7 +530,7 @@ W28's recon put "the 13 remaining stage-1 handlers" at waves 5–6 of 15. This
 wave's measurements reorder that:
 
 - **8 of the 9 remaining are unreachable by any port run** until the port can
-  DAMAGE an enemy — `$286096` is a note in every handler, so the midboss never
+  DAMAGE an enemy - `$286096` is a note in every handler, so the midboss never
   dies, the scroll never resumes, and clk stops at 239. Collision/damage (the
   recon's wave 7) is a hard prerequisite, not a follow-on.
 - **Porting them is therefore transcription with no dynamic check available**,

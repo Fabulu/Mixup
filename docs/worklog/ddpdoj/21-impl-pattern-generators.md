@@ -1,4 +1,4 @@
-# W21 IMPL — THE BULLET PATTERN GENERATORS
+# W21 IMPL - THE BULLET PATTERN GENERATORS
 
 status: **DONE**
 wave: 21   role: implementer (DAIOUJOU)   started: 2026-08-02
@@ -13,7 +13,7 @@ angle/speed maths exactly right.
 
 ---
 
-## 1. HOW THIS GAME STORES ITS PATTERNS — written for someone who has never
+## 1. HOW THIS GAME STORES ITS PATTERNS - written for someone who has never
 ##    read the ROM
 
 The owner asked, and it is the most interesting thing in the subsystem: *"there
@@ -24,8 +24,8 @@ bullet.**
 
 There is no pattern table. Nowhere in the 6 MB is there a record saying
 `{count: 8, step: 11.25°, kind: 4}`. What exists instead is a small vocabulary
-of **generators** — nineteen entry points, about two hundred instructions in
-total — and every one of the game's 912 firing moments is a `jsr` to one of them
+of **generators** - nineteen entry points, about two hundred instructions in
+total - and every one of the game's 912 firing moments is a `jsr` to one of them
 with five registers set up:
 
 ```
@@ -85,8 +85,8 @@ game and every number in it is an instruction operand:
 
 A ring, a fan, a spiral and a "wall with a gap in it" are all this loop with
 different immediates. That is the answer to the owner's question: **the patterns
-are stored the way a demoscene coder stores them — as unrolled code and loop
-counters — and the only DATA involved is what each individual bullet IS.**
+are stored the way a demoscene coder stores them - as unrolled code and loop
+counters - and the only DATA involved is what each individual bullet IS.**
 
 ### What IS stored as data: the 39 KINDS
 
@@ -99,7 +99,7 @@ is the game's entire per-bullet data model:
 | `$2815C6[k]` | → a **SPAWN-INIT** | up to five stores of the caller's D3/D4/D5 into the record's parameter area. Nine distinct routines behind 39 entries. |
 | `$282030[k]` | → a **BEHAVIOUR** | run once by the mover; it installs a per-bullet CONTINUATION at record +$22 that the mover then `jmp`s every frame |
 
-The 20-byte template, in full — and every one of the 39 is this shape:
+The 20-byte template, in full - and every one of the 39 is this shape:
 
 ```
 +$00  w   type word    $8100 | kind, plus bit 7 for six of them
@@ -118,8 +118,8 @@ interesting half of a bullet is its behaviour routine, and that is code too.**
 
 ### The separation, stated once
 
-> An **entry point** chooses the SHAPE — how many bullets, at what angle and
-> speed offsets. A **kind** chooses what each bullet IS — its picture, and its
+> An **entry point** chooses the SHAPE - how many bullets, at what angle and
+> speed offsets. A **kind** chooses what each bullet IS - its picture, and its
 > per-frame behaviour. They are orthogonal, and a call site picks both with two
 > immediates. Nineteen shapes × thirty-nine kinds, from about two hundred
 > instructions and 780 bytes of table.
@@ -135,14 +135,14 @@ beq   <the spawn core>
 
 **At `$813098 == 0` every single generator emits exactly ONE bullet.** The fan
 body is skipped entirely. `$813098` is the loop flag (second lap of the game),
-and it has read **0 on every frame this project has ever measured** — sixteen
+and it has read **0 on every frame this project has ever measured** - sixteen
 thousand of them, including a whole boss fight. So every spread described above
 is code the cartridge has never been *observed* to run, and validating it needs
 the flag forced. See §7.
 
 ---
 
-## 2. THE ANGLE AND SPEED MATHS — `$284190`, and the four conventions
+## 2. THE ANGLE AND SPEED MATHS - `$284190`, and the four conventions
 
 This is fourteen instructions and three tables, and a rounding difference here
 is a bullet in the wrong place a second later.
@@ -167,11 +167,11 @@ unit*: bank A (`$2813F0`…) takes the angle in **1/64** turn and the core
 multiplies it by four (`$281586 add.b D1,D1` twice); bank B (`$2816F6`…) takes
 it already in 1/256 and does not. Confusing the two puts every bank-A bullet at
 four times its angle. The core then **divides it back** (`$28159A lsr.b #2,D1`)
-so a generator can call the core twice with the same register — and that round
+so a generator can call the core twice with the same register - and that round
 trip is lossy above `$40`, which is why it is written as a shift.
 
 **2. SPEED IS AN INDEX, NOT A VELOCITY.** Record `+$1A` is a byte 0..255 that
-selects one of **256 tables of 65 records of 8 bytes** — 133,120 bytes of
+selects one of **256 tables of 65 records of 8 bytes** - 133,120 bytes of
 velocity field at `$200D20..$22151F`, with the pointer table at `$200920`. The
 mover **recomputes the velocity from (`+$1A`, `+$1B`) every single frame**
 (`$281EF6..$281F02`). Nothing ever stores a heading vector. That is exactly how
@@ -190,11 +190,11 @@ wrong. They port as a pair or not at all.
 
 **4. THE QUANTISATION IS ONE TABLE AND NOTHING ELSE.** `$283F50` is 256 words,
 verified against the model over **all 256 entries** to be exactly
-`8 × triangle(i)`, period 128, peaking at 64 — so the 256 directions fold onto
+`8 × triangle(i)`, period 128, peaking at 64 - so the 256 directions fold onto
 65 quarter-angle records (0..64 **inclusive**, which is why the stride is
 `65×8 = $208` and not `64×8`). Direction 37 reads record 37; there is no
-interpolation and no rounding anywhere else. The `asr.l #4` is **arithmetic** —
-`>>>` would differ by one unit on any negative entry — and it discards the
+interpolation and no rounding anywhere else. The `asr.l #4` is **arithmetic** -
+`>>>` would differ by one unit on any negative entry - and it discards the
 table's 1/16ths before anything uses them. The four quadrants are then
 `dir & $C0` into a jump table of three `neg.w`s and an `rts`:
 
@@ -215,8 +215,8 @@ the right), so aim and velocity agree by construction.
 | file | what |
 |---|---|
 | `games/ddpdoj/src/bullets.js` | the two spawn cores `$2814B6` / `$2817C2` (freeze gate, active-window ladder, unrolled free-slot search, template copy, speed arithmetic, angle scaling, D3 delta, spawn-init dispatch), all **19** generator entry points and the **8 shared fan bodies** they branch into, the **9 spawn-inits**, the `$40`-byte record layout, the 20-byte template layout, the type-word bit names, the pool clear `$28131E` and park `$281330`, and the `$282030` behaviour DISPATCH |
-| `games/ddpdoj/src/bulletmath.js` | `$284190` — the velocity lookup, the `$283F50` fold, the four-quadrant negate `$2841C2`, with the four conventions of §2 written out |
-| `games/ddpdoj/src/rom.js` | `+ i32()` — the velocity field's entries are SIGNED longwords and `asr.l #4` is arithmetic |
+| `games/ddpdoj/src/bulletmath.js` | `$284190` - the velocity lookup, the `$283F50` fold, the four-quadrant negate `$2841C2`, with the four conventions of §2 written out |
+| `games/ddpdoj/src/rom.js` | `+ i32()` - the velocity field's entries are SIGNED longwords and `asr.l #4` is arithmetic |
 | `games/ddpdoj/tools/export-tables.py` | **+5 ROM windows, 96 → 165,424 bytes**: the 39 template pointers and the 39 templates, the 39 spawn-init pointers, the 39 behaviour pointers, the 256-word fold table, and **the whole 134,144-byte velocity field**. Plus twelve new export-time invariants (§6). |
 | `games/ddpdoj/tools/w21patterns.py` | the static enumeration: `tables inits gens field fold rewrites sites` |
 | `games/ddpdoj/tools/oracle/w21bullets.lua` + `w21run.py` | THE SPAWN LEDGER: every pool write made from inside the spawn path, with the full input register set and a 210-bit pool occupancy bitmap per spawn |
@@ -228,7 +228,7 @@ the right), so aim and velocity agree by construction.
 transition validated against the board and not yet producing anything on the
 page: it needs the spawn walker (W21 in the plan's numbering), the enemy
 handlers that call the generators, and the bullet MOVER. `state.js`'s
-`WATCH_SPEC`/`CLAIMED` are therefore unchanged — there is no new ported write
+`WATCH_SPEC`/`CLAIMED` are therefore unchanged - there is no new ported write
 inside the live frame and adding one would be a claim I could not back.
 
 ### What is DELIBERATELY not ported, and throws by address
@@ -238,13 +238,13 @@ inside the live frame and adding one would be a claim I could not back.
   `runBehaviour()` throws carrying it. Those routines are what make a bullet
   curve, split, track or spawn an enemy, and they are a wave of their own.
 * **The mover `$281DDE`.** The velocity recompute is ported (`bulletmath.js`)
-  and the mover's own loop — the `$5180` dispatch mask, the kill path, the
-  sprite emit, the `$81B40E` cadence — is not.
+  and the mover's own loop - the `$5180` dispatch mask, the kill path, the
+  sprite emit, the `$81B40E` cadence - is not.
 * **`$281494`.** It is not an entry point; see §5.
 
 ---
 
-## 4. THE VERDICT — spawn for spawn, WRITE FOR WRITE
+## 4. THE VERDICT - spawn for spawn, WRITE FOR WRITE
 
 The gate does **not** compare the finished record. `w21bullets.lua` captures
 every store into the bullet pool made by an instruction inside the spawn path,
@@ -254,7 +254,7 @@ cartridge's, address by address, in order.
 
 That shape is the point. **A gate that seeds a record through `REC.attribute`
 and reads it back through `REC.attribute` agrees with itself whatever
-`REC.attribute` holds** — which is the defect two of the last three waves on
+`REC.attribute` holds** - which is the defect two of the last three waves on
 this project shipped. Here the board says "a word, value `$001A`, at
 `$817F8C+$1C`", and a port with the wrong constant writes a different ADDRESS.
 
@@ -289,9 +289,9 @@ FANS grouped 190 generator invocations over 2 bodies;
 
 | run | kind | frames | spawns | rank | deaths |
 |---|---|---|---|---|---|
-| `w21-bullets-play` | **PLAYING — on-distribution. No poke of any sort.** | 6,000 | 197 | `$813098` = 0 throughout | **2 (real)** |
-| `w21-bullets-fanplay` | PLAYING, **`$813098` POKED to 1 from lf1850** — off-distribution | 6,000 | 245 | `$813098` = 1 on all 245 | *(see §8)* |
-| `w21-bullets-faninvuln` | INVULNERABLE **and** `$813098` POKED — coverage only | 9,500 | *(§8)* | 1 | 0 |
+| `w21-bullets-play` | **PLAYING - on-distribution. No poke of any sort.** | 6,000 | 197 | `$813098` = 0 throughout | **2 (real)** |
+| `w21-bullets-fanplay` | PLAYING, **`$813098` POKED to 1 from lf1850** - off-distribution | 6,000 | 245 | `$813098` = 1 on all 245 | *(see §8)* |
+| `w21-bullets-faninvuln` | INVULNERABLE **and** `$813098` POKED - coverage only | 9,500 | *(§8)* | 1 | 0 |
 
 All three press the VERSION-B chooser, coin, start, then run the owner's own
 routine: sit bottom-centre, hold auto-shot, drift left/right on 12-frame legs,
@@ -307,9 +307,9 @@ $ grep -o "b2=[0-9A-F]*" w21-bullets-fanplay.tsv | sort | uniq -c
     245 b2=0001
 ```
 
-**`$812950` — one of the two global speed biases added to EVERY bullet in the
-game — read 1 on every spawn of the poked run and 0 on every spawn of the
-unpoked one.** `20-plan` §7 item 8 recorded it as "value 0 throughout stage 1 —
+**`$812950` - one of the two global speed biases added to EVERY bullet in the
+game - read 1 on every spawn of the poked run and 0 on every spawn of the
+unpoked one.** `20-plan` §7 item 8 recorded it as "value 0 throughout stage 1 -
 do NOT compile the constant in". This is the first measurement anywhere on this
 project of it being non-zero, and it is what turns `no-global-bias` from an
 invisible mutation into a red one.
@@ -321,7 +321,7 @@ invisible mutation into a red one.
 Every one is from the listing, and each was found by porting rather than by
 reading, which is the argument for porting.
 
-### 5.1 `$281494` IS NOT AN ENTRY POINT — there are NINETEEN, not twenty
+### 5.1 `$281494` IS NOT AN ENTRY POINT - there are NINETEEN, not twenty
 
 ```
 281494: jsr ($2814B6,PC) / nop / addi.l #$40000,D0 / jsr ($2814B6,PC) / nop
@@ -331,7 +331,7 @@ reading, which is the argument for porting.
 
 Nothing in the 6 MB image branches to it or calls it, and it is not reachable
 by fall-through (`$281490` is an unconditional `bra $2813A6`). It is an orphan
-BODY — the rank≠0 arm of a generator whose head this build does not contain.
+BODY - the rank≠0 arm of a generator whose head this build does not contain.
 The recon lists it among "twenty entry points" with 0 sites. **The callable
 inventory is 19 entry points behind 912 fire call sites** (the recon's 911 plus
 one `jsr (d16,PC)` site inside kind 28's own behaviour, which an
@@ -341,7 +341,7 @@ absolute-long-only scan cannot see).
 ### THERE ARE NO IN-FLIGHT TYPE REWRITES.
 
 The recon's §6 says the other 20 kinds "are reached by IN-FLIGHT
-TRANSFORMATION — the continuation at rec+`$22` rewrites the type word (e.g.
+TRANSFORMATION - the continuation at rec+`$22` rewrites the type word (e.g.
 `$2824DC bchg #$3,(A6)`, measured 1,608 times in 3,200 frames)".
 
 `w21patterns.py rewrites` decodes **every** instruction in `$282104..$283BAF`
@@ -353,7 +353,7 @@ whose destination is the type word. There are **53**, and:
 ```
 
 Every one is a BYTE operation on `(A6)`. On a big-endian 68000 that addresses
-the **HIGH** byte — word bits 8..15 — so `bchg #$3,(A6)` is **word bit 11**,
+the **HIGH** byte - word bits 8..15 - so `bchg #$3,(A6)` is **word bit 11**,
 not a kind bit, and bit 11 is not even in the mover's `$5180` dispatch mask. It
 is a private per-bullet FLIP-FLOP that four continuations toggle to alternate
 between two behaviours on successive frames (`$2824DC bchg #3,(A6) / bne
@@ -377,29 +377,29 @@ honest status of those 20 kinds is in §7.
 
 Eight of the 39 carry a 1 there, and neither core reads it (the last word read
 is +`$10`, after six loads totalling `$10` bytes). Kind 38's +`$12` is `$4A79`,
-which is `tst.w abs.l` — **the first opcode after the table**, which is how the
+which is `tst.w abs.l` - **the first opcode after the table**, which is how the
 template block's far end is pinned. Calling it "padding" is a claim nobody has
 evidence for; it is an unread field and the port says so.
 
 ### 5.4 TYPE-WORD BIT 7 IS SET FOR **SIX** KINDS, NOT FIVE PLUS ONE ODDITY
 
 The recon reads kind 35's template type word `$81A3` as "bit 5". Kind 35 is
-`$23`, whose own bits are 5, 1 and 0 — so `$81A3` is `$8100 | 35 | $80` and
+`$23`, whose own bits are 5, 1 and 0 - so `$81A3` is `$8100 | 35 | $80` and
 kind 35 has **bit 7**, exactly like 16, 17, 18, 20 and 21. Six kinds take the
 `$281F3E` mover path, not five.
 
-### 5.5 KINDS 14 AND 15 ARE PURE ALIASES OF KIND 10 — 39 INDICES, 37 BULLETS
+### 5.5 KINDS 14 AND 15 ARE PURE ALIASES OF KIND 10 - 39 INDICES, 37 BULLETS
 
 Kinds 10, 14 and 15 share template `$281ABC`, **whose type word is `$810A`**.
 The mover dispatches on the LIVE type word (`$281F08 moveq #$3F,D0 / and.w
 (A6),D0`), so a bullet spawned as kind 14 IS kind 10 from the instant it
 exists: same template, same spawn-init, same behaviour, same everything. The
-recon notes the shared template; the consequence — that the kind index is
-erased at spawn — is what matters to a port that indexes anything by kind.
+recon notes the shared template; the consequence - that the kind index is
+erased at spawn - is what matters to a port that indexes anything by kind.
 
 ### 5.6 (a smaller one) THE SPAWN-INIT OFFSETS ARE ALL +$10
 
-`A0` is record base + `$10` when a spawn-init runs — the six-load copy sequence
+`A0` is record base + `$10` when a spawn-init runs - the six-load copy sequence
 left it there and nothing restores it. So `$2818B4 move.l D3,($18,A0)` writes
 record +`$28`. The recon's §4 table has the record offsets right; its §1
 register table lists kind 28's target index at "+`$1A`" where the instruction is
@@ -408,7 +408,7 @@ byte-for-byte DUPLICATE of `$2818B4`, checked mechanically, not a variant.
 
 ---
 
-## 6. COVERAGE — IN KINDS AND BRANCHES, NOT FRAMES
+## 6. COVERAGE - IN KINDS AND BRANCHES, NOT FRAMES
 
 `docs/knowledge/10` is explicit that a frame count is not coverage, so here is
 the sentence in the form that file asks for.
@@ -422,13 +422,13 @@ the sentence in the form that file asks for.
 > offsets +$00/+$02/+$06/+$0A/+$0C/+$0E/+$10 and asserts the port's write log at
 > LITERAL record addresses +$00/+$02/+$06/+$0A/+$0E/+$1C/+$1A/+$1B/+$3A/+$3B).
 >
-> **9 of 39 kinds — {3,4,5,6,7,11,12,13,19} — are additionally compared against
+> **9 of 39 kinds - {3,4,5,6,7,11,12,13,19} - are additionally compared against
 > the LIVE BOARD**, spawn for spawn and write for write, over 10,499 spawns in
 > three corpora, at 0 divergent.
 >
 > **The remaining 30 are transcribed and driven, but no board run has produced
 > one.** For 20 of them (§7) that is because no fire call site passes them at
-> any back-scan width and — contrary to `20-recon-pattern-tables` §6 — nothing
+> any back-scan width and - contrary to `20-recon-pattern-tables` §6 - nothing
 > in the 39 behaviours rewrites a live bullet's kind either. For the other 10
 > it is because they belong to later stages, which `$813096` never left.
 
@@ -440,10 +440,10 @@ the three corpora:
 | routine | branches present | executed by a board run | how the rest are covered |
 |---|---|---|---|
 | the two spawn cores `$2814B6`/`$2817C2` | 4 freeze arms, 5 window-ladder steps, slot-found / pool-full, D3 zero / non-zero, init-flag 0 / 1, bank A / B = **17** | **10** (freeze open; ladder steps 0, 1 and 3; slot found; D3 applied; init flag both ways; both banks) | 7 by unit test: the three freeze-decline arms, ladder steps 2 and 4, the pool-full drop, D3 == 0 |
-| the 19 generator entry points | 16 rank-gated entries x 2 arms + 3 ungated = **35** | **11** (9 distinct rank-0 arms attributed, 7 rank-not-0 bodies, less overlap) | 24 by unit test — `SHAPES` asserts every entry at `$813098` = 0 and = 1, from the listing |
+| the 19 generator entry points | 16 rank-gated entries x 2 arms + 3 ungated = **35** | **11** (9 distinct rank-0 arms attributed, 7 rank-not-0 bodies, less overlap) | 24 by unit test - `SHAPES` asserts every entry at `$813098` = 0 and = 1, from the listing |
 | the flags-adaptive pair `$2814AC`/`$2817B8` | 3 arms x 2 banks = **6** | **2** (both banks' rank-0 arm) | 4 by unit test, all six combinations |
 | the 9 spawn-inits | **9** | **3** (`$2818AC`, `$2818B4`, `$2818E0`) | 6 by unit test, each asserted at its record offsets |
-| `$284190` | 4 quadrants, speed 0, the byte-domain guard = **6** | 0 — *the mover is not ported, so no board run drives it* | all 6 by unit test, plus the exported-field check over all 256 speeds and all 256 fold entries |
+| `$284190` | 4 quadrants, speed 0, the byte-domain guard = **6** | 0 - *the mover is not ported, so no board run drives it* | all 6 by unit test, plus the exported-field check over all 256 speeds and all 256 fold entries |
 | **total** | **73** | **26** | 47 transcribed, unit-tested, and unexercised on the board |
 
 > **26 of 73 branches in the ported routines have been executed by some board run
@@ -455,7 +455,7 @@ the three corpora:
 
 > **7 of the 8 rank-not-0 generator BODIES have been driven on the board and
 > match both the listing's immediates and the port's output, over 4,135 grouped
-> generator invocations, at 0 divergent — under `$813098` POKED.** The eighth,
+> generator invocations, at 0 divergent - under `$813098` POKED.** The eighth,
 > `$281366`/`$281680` (three bullets at speed +0/+5/+10), has zero fire call
 > sites in the entire image and cannot be reached without inventing one.
 
@@ -466,7 +466,7 @@ checked against the triangle.**
 
 ---
 
-## 7. THE 20 KINDS NO FIRE SITE PASSES — the honest status
+## 7. THE 20 KINDS NO FIRE SITE PASSES - the honest status
 
 ```
 $ python tools/w21patterns.py sites
@@ -477,7 +477,7 @@ $ python tools/w21patterns.py sites
 ```
 
 The brief says to drive these by "constructing the in-flight rewrite state".
-**I could not, because the rewrite does not exist** — §5.2: there is not one
+**I could not, because the rewrite does not exist** - §5.2: there is not one
 instruction in `$282104..$283BAF` that writes the kind bits of a live bullet's
 type word, and the `bchg #$3,(A6)` the recon cites is word bit 11. The kind is
 fixed at spawn, in `$281568`/`$28187A`.
@@ -493,7 +493,7 @@ So the status of those 20, stated as its own category:
   a computed `jmp (d8,PC,Xn)` dispatch is invisible to every scan this project
   owns. "No site passes it" is a strong lead and not a proof.
 * **ONE PRODUCER NOBODY HAD LISTED:** kind 28's own behaviour re-spawns through
-  `$2817C2` at `$2832CE` with `D0 = 0` — a `jsr (d16,PC)` the recon's
+  `$2817C2` at `$2832CE` with `D0 = 0` - a `jsr (d16,PC)` the recon's
   absolute-long scan could not see. **Bullets spawn bullets.**
 
 Nothing in the port depends on either number: `spawnCore` accepts any kind
@@ -502,9 +502,9 @@ ROM's own table ends and the cartridge would copy 20 bytes of garbage.
 
 ---
 
-## 8. THE MUTATION TABLE — every check seen to fail
+## 8. THE MUTATION TABLE - every check seen to fail
 
-### 8.1 GATE MUTATIONS — ten, each red in at least one corpus
+### 8.1 GATE MUTATIONS - ten, each red in at least one corpus
 
 A mutation that is green on one corpus is not automatically a defective check:
 `no-global-bias` cannot fail on a run where both globals read 0, because on that
@@ -528,7 +528,7 @@ $ node tools/w21patterngate.mjs --matrix <play>,<fanplay>,<faninvuln>
 
 | mutation | what it does |
 |---|---|
-| `attribute-raw-displacement` | writes the sprite attribute at the instruction's literal `$0C` instead of `$10+$0C` — the "A0 is base+$10" trap |
+| `attribute-raw-displacement` | writes the sprite attribute at the instruction's literal `$0C` instead of `$10+$0C` - the "A0 is base+$10" trap |
 | `init-raw-displacement` | runs the nine spawn-inits with A0 = the record base, i.e. takes every displacement at face value |
 | `no-angle-scale` | bank A stops multiplying the angle by four |
 | `scale-both-banks` | ...and bank B starts |
@@ -551,7 +551,7 @@ an outcome when the lowest free slot is PAST the window, and on that path
 cannot observe a shot that was dropped, so no corpus this probe can produce
 contains the row. It is covered by two unit tests, both seen red (break E).
 
-### 8.2 SOURCE BREAKS — five constants, changed one at a time
+### 8.2 SOURCE BREAKS - five constants, changed one at a time
 
 ```
 sha256 BEFORE and AFTER all five, verified both ways, byte-identical:
@@ -565,7 +565,7 @@ sha256 BEFORE and AFTER all five, verified both ways, byte-identical:
 | B | `TPL.baseSpeed` `+$0E` -> `+$10` | **38 of 69** | 197/197 divergent |
 | C | `VEC.quadStride` 65 -> 64 records | **2 of 69** | (the mover is unported, so the gate never drives `$284190`) |
 | D | `REC.param28` `+$28` -> `+$18`, the raw displacement | **6 of 69** | 66/197 divergent |
-| E | `BUL.windowIters` last entry `$29` -> `$28` (210 -> 205 slots) | **1 of 69** | 0/197 — the one the gate cannot see, §8.1 |
+| E | `BUL.windowIters` last entry `$29` -> `$28` (210 -> 205 slots) | **1 of 69** | 0/197 - the one the gate cannot see, §8.1 |
 
 Break A is what this wave's test design exists for. The layout tests seed the
 template at literal offsets and assert on a write log of literal ADDRESSES, so
@@ -592,25 +592,25 @@ Recorded because the brief asks whether the checks were *watched* failing.
 ## 9. WHAT I LEFT UNPORTED, AND WHY
 
 1. **The 39 behaviour bodies and their continuations**, `$282104..$283BAF`,
-   ~6.7 KB — the routines that make a bullet curve, split, home, or (kind 18)
+   ~6.7 KB - the routines that make a bullet curve, split, home, or (kind 18)
    SPAWN AN ENEMY through `$263684`. `runBehaviour()` throws with the exact
    `$282030[k]` address. It is the largest unread block left in the subsystem;
    the recon did not read them either.
 2. **The mover `$281DDE`.** Its velocity recompute is ported; its loop, the
    `$5180` dispatch mask, the kill path, the `$81B40E` cadence and the sprite
    emit at `$281E96..$281EB8` are not. Without it nothing here runs in the live
-   frame, which is why `WATCH_SPEC`/`CLAIMED` are unchanged — there is no new
+   frame, which is why `WATCH_SPEC`/`CLAIMED` are unchanged - there is no new
    ported write inside the frame and adding one would be a claim I cannot back.
 3. **The 912 fire call sites as data.** They are the *instances*, and the whole
    argument of this wave is that porting the generator turns each site into a
    five-tuple. They arrive with the enemy handlers.
 4. **The muzzle ellipse tables** (`$2735FA` 64 entries, `$2736FA`, `$268B1E`).
    They belong to the call sites, not to the generators.
-5. **`$281494`**, on purpose — it is not an entry point (§5.1), and calling it
+5. **`$281494`**, on purpose - it is not an entry point (§5.1), and calling it
    throws by address.
 6. **The velocity field is exported in FULL (134,144 B), deliberately.** A
-   derived subset — the trick `speed_index_set()` plays for the player's own
-   shots — would be a guess, and `$812950` reading 1 on the poked run is the
+   derived subset - the trick `speed_index_set()` plays for the player's own
+   shots - would be a guess, and `$812950` reading 1 on the poked run is the
    measurement that says the guess would have been wrong. ROM windows went
    96 -> **165,424 bytes**; `player.tables.json` is **402,635 B**.
 

@@ -1,4 +1,4 @@
-# 45 — IMPL: the BEAM (laser L1+L2) and the score arms it changes
+# 45 - IMPL: the BEAM (laser L1+L2) and the score arms it changes
 
 status: **DONE**
 
@@ -8,7 +8,7 @@ role: implementer (SOLE writer to `games/ddpdoj/`; I do not touch
 target: `ddpdojblk` VERSION-B. Every address is build B (`$23xxxx`–`$2Axxxx`)
 unless the line says otherwise.
 
-Brief: port **(B) THE BEAM** — the owner's blocker. Holding fire currently
+Brief: port **(B) THE BEAM** - the owner's blocker. Holding fire currently
 throws `$24C180` on the first held frame, so the game cannot be shot at all.
 Scope is W37's **L1 + L2 shipped together** plus the score/chain/rank
 differences W37 §4.3–4.6 measured.
@@ -36,8 +36,8 @@ handlers**", and prices L2 on that denominator. Read out of `$254680`:
 ```
 
 `$254762 − $254712 = $50 = 20 longwords`. So **P1's table is `$254712`+20
-entries and P2's is `$254762`+20 entries**, and `$2547B2` — W37's "first
-handler" — is exactly `$254762 + 20*4`, i.e. the byte after P2's table. W37 read
+entries and P2's is `$254762`+20 entries**, and `$2547B2` - W37's "first
+handler" - is exactly `$254762 + 20*4`, i.e. the byte after P2's table. W37 read
 32 longs from `$254712`, which is P1's 20 followed by P2's first 12, and its
 "17 distinct handlers" is the union of P1's ten and seven of P2's ten.
 
@@ -67,7 +67,7 @@ term the ROM has not got.
 W37 §7.4 leaves the extent open ("`$255042..~$2551FD`; I did not find its
 `rts`"). It is `$255042..$255157`: P1's block `$255042..$2550CA`, P2's
 `$2550CC..$255154`, and **two `rts` at `$255154` and `$255156`**. `$25515A`
-begins a different routine (`tst.w (A0) / bpl $255158` — it borrows the previous
+begins a different routine (`tst.w (A0) / bpl $255158` - it borrows the previous
 routine's `rts` as its own, the twelfth instance of that idiom in this module)
 and is reached from neither.
 
@@ -97,7 +97,7 @@ $24BF4A: anim $00065354  shadow $00065388  ($1e)=$0000  ($12)=$FFFF
 
 **`$FFFF` is negative, so `$24C906` returns carry set on its very first call and
 `($16,A6)` never advances.** The latch therefore fires on the first frame after
-the arm-up completes — **+17, by a different route than W37's, and the number is
+the arm-up completes - **+17, by a different route than W37's, and the number is
 the same.** It also means the pod's sprite is re-forced to `$00065354` (the
 muzzle image) and its shadow to `$00065388` on **every** lasering frame, and
 `($1e,A6)` is 0 so `$24C36C add.w ($1e,A6),($2,A6)` is a no-op for formation 2.
@@ -112,7 +112,7 @@ port's own live record (`($1b,A6)=$10`, `($3b,A6)=$30`, `($3e,A6)=$02`,
 ### 0.4 THE THING NEITHER W37 NOR THE BRIEF NAMES: **`btst #5,(A6)` GATES BOTH
 ### BUILDERS, AND ONLY A SEGMENT HANDLER CAN SET IT.** [M]
 
-`$24CB3A` and `$24CDC0` both open `btst #5,(A6) / beq <the pod tail>` — bit 5 of
+`$24CB3A` and `$24CDC0` both open `btst #5,(A6) / beq <the pod tail>` - bit 5 of
 the **high** byte of the option block's state word (`$8104AA`), measured `$80`,
 i.e. **clear**. The only writer in build B is **`$254C1E bset #5,(A4)`** (and its
 twin `$254D06`), reached from the segment handlers with `A4 = $8104AA`.
@@ -155,10 +155,10 @@ word comes from `$254C5C move.w (A1)+,(A2)`, i.e. the first word of the
 `$8000` [M, read out of the image]. `($22,A4)` selects which family-1 entry the
 seed uses and it is 0 in this port's seed; the board's trace was taken at a
 different power. **So `$0200` is a per-power bit of the sub-template, not a
-divergence** — but I have not reproduced the board's state to prove it, and that
+divergence** - but I have not reproduced the board's state to prove it, and that
 is a one-line check for whoever next has a board run.
 
-### 0.5 WHAT THE PORT ACTUALLY REACHES — measured from the shipped seed [M]
+### 0.5 WHAT THE PORT ACTUALLY REACHES - measured from the shipped seed [M]
 
 ```
 ($22,A4)=0   ($20,A4)=0   shipSel($58,A4)=0   ($5b,A4)=$02 (bit 2 CLEAR)
@@ -186,14 +186,14 @@ exist.
 ## 1. **THE BRIEF'S CENTRAL PREMISE IS FALSE, AND IT COST THE WAVE A ROUTINE**
 
 > "THIS UNBLOCKS PLAY. Right now any press of fire throws `$24C180` … The recon
-> sizes this as 3 waves for the beam, with L1+L2 required to ship together —
+> sizes this as 3 waves for the beam, with L1+L2 required to ship together -
 > that is your scope."
 
 **Porting L1+L2 does NOT unblock play, and I found that by running it.** [M]
 
 `$24C164`'s gate is tested BEFORE the formation dispatch, so the instant
-`$24C180` stopped throwing, the FIRST held frame reached `$24C476` — the pods'
-cadence machine — whose edge arm falls through to `$24C4F2 bra $24D480`, **the
+`$24C180` stopped throwing, the FIRST held frame reached `$24C476` - the pods'
+cadence machine - whose edge arm falls through to `$24C4F2 bra $24D480`, **the
 PODS' SHOT SPAWN, a loud named throw since W12.5.** The beam does not take over
 until `($1b,A6)` reaches 0 at +16, so **sixteen of the seventeen arm-up frames
 run the pod cadence machine**, and a single-frame tap runs it too. Porting the
@@ -202,16 +202,16 @@ cannot shoot.
 
 So `$24D480..$24D5D8` is ported in this wave as well. It is two near-identical
 halves, one per pod, writing 44 bytes into the SAME 36-slot shot table
-`$810572` the ship's own `$249BFC` writes — pod 0 scanning from slot 0 and pod 1
+`$810572` the ship's own `$249BFC` writes - pod 0 scanning from slot 0 and pod 1
 from slot 7 (`$24D4A0 move.w #$150,D0`, `$150 = 7 * $30`), which is where
 `src/type5.js`'s eight-wave-old comment "the option pods' shots go into slots
 7..12" comes from. **Both templates carry type word `$8002`** [M] = shot
 dispatch entry [2] = `$253E34`, which `src/shots.js` has ported since wave 8, so
-the records it writes are driven by code that already exists — and its two
+the records it writes are driven by code that already exists - and its two
 template tables `$24D2FC`/`$24D35C` were already exported by wave 8's
 `(0x24D2E0, 0x00E0)` window.
 
-`$24D4A4 tst.w ($58,A4) / beq $24D4AE / move.w #$150,D0` — BOTH arms load `$150`
+`$24D4A4 tst.w ($58,A4) / beq $24D4AE / move.w #$150,D0` - BOTH arms load `$150`
 [M]. Translated with the branch, because a no-op arm is a property of the
 cartridge.
 
@@ -220,7 +220,7 @@ cartridge.
 The next thing a hold reached, at +17, was
 `UNPORTED $249B40: the ($3f,A6) dead flag is set`.
 
-**`$249B40 tst.b ($3f,A6)` is `bne $249E4E` — a branch to the player's own
+**`$249B40 tst.b ($3f,A6)` is `bne $249E4E` - a branch to the player's own
 TAIL**, which is the very next thing `player.js`'s caller does. So the arm has
 always meant "skip the shot cadence machine this frame", i.e. `return`. Calling
 `($3f,A6)` "the dead flag" and throwing on it was a guess that stood since wave
@@ -230,7 +230,7 @@ precisely so the ship stops spawning ordinary shots while it is firing a beam.
 
 **That completes `37-recon-laser` §3.4.** W37 is right that `$81295C` falling to
 0 is the shot table DRAINING and not a laser write; what it does not say is why
-nothing REFILLS the table after +16, and this is why — the cadence machine is
+nothing REFILLS the table after +16, and this is why - the cadence machine is
 switched off at its head, by the laser, on purpose. The six shots at
 lf2001..2007 are the pre-arm burst.
 
@@ -258,7 +258,7 @@ lf2001..2007 are the pre-arm burst.
 | `$24C33A..$24C382` | the tail every arm converges on, incl. `$24C368` | `podsOnShip` |
 | `$24CC68..$24CCCC` | the beam's pod tail (shadow `$210`/`$18` + bucket 15) | `beamPodTail` |
 | `$24D480..$24D5D8` | THE PODS' SHOT SPAWN (§1) | `options.js podShotSpawn` |
-| `$249B40` | `bne $249E4E` — a return, not a throw (§2) | `player.js` |
+| `$249B40` | `bne $249E4E` - a return, not a throw (§2) | `player.js` |
 
 Six new export windows in `tools/export-tables.py` (107 -> 114 windows,
 188,390 B): `$24A800+$1100` (the hitbox table, the type scripts, all five
@@ -272,7 +272,7 @@ learn its bucket). `export-web.mjs` re-run; only `manifest.json` and
 
 ### 3.1 What is a THROW, and what is a counted NOTE
 
-Throws, at their own addresses: **`$24CDC0`** (beam builder 2 — its only caller
+Throws, at their own addresses: **`$24CDC0`** (beam builder 2 - its only caller
 `$24C37A` has no inbound reference W37 §7.3 could find, and `$24C368`'s
 `bra $24C37E` jumps it; it is NOT called dead code, because two comments on this
 project have claimed unreachability and been artifacts), and the whole L3
@@ -291,13 +291,13 @@ held out of scope on purpose.
 
 ## 4. **THE DRAWN BEAM COLUMN NEEDS L3, AND THAT IS A STRUCTURAL FACT**
 
-`$254F48`'s tail — the only thing that ever calls `$254FE6`, which builds the
-five-word request `$255042` walks — opens `btst #4,(A2)` with A2 = `$811EF2`,
+`$254F48`'s tail - the only thing that ever calls `$254FE6`, which builds the
+five-word request `$255042` walks - opens `btst #4,(A2)` with A2 = `$811EF2`,
 and its `else` arm requires `($16,A0)` non-zero, which is itself written only
 inside the bit-4 arm (`$254E68`/`$254ED4`/`$254F84`). **[M] The ONLY instructions
 in build B that set bit 4 of `$811EF2` are `$2454AC` and `$2455AE
 ori.w #$1001,(A1)`** (a whole-image scan for that encoding), and both are inside
-`$2453AC`, the beam's damage pass — W37's L3.
+`$2453AC`, the beam's damage pass - W37's L3.
 
 So on this tree the beam's SEGMENTS are laid, driven and emitted, and the bright
 column `$811F32` never lights up. `$9201 = $8201 | $1001` is W37 §3.3's own
@@ -335,7 +335,7 @@ frame   released   held   delta
   70        42      51      +9
 ```
 
-## 6. THE PAGE, IN A REAL BROWSER — WHAT I SAW
+## 6. THE PAGE, IN A REAL BROWSER - WHAT I SAW
 
 Chrome + Python `playwright` over `python -m http.server`, the recipe W42
 established and W44 re-used. Nothing downloaded.
@@ -363,14 +363,14 @@ ported vehicles on it, `PLAYER-1`, the score, `PRESS START`, the bomb count
 list are the LASER's own art: `$065354` is the pod's muzzle sprite (the long
 `$24C906` forces onto `($a,A6)` every lasering frame) and `$013098` is one of
 the ten segment images at `$24ACE8`. **[M] Not one of the beam's streams is in
-the shipped 166-stream sheet** — checked against `manifest.spr.streams` for
+the shipped 166-stream sheet** - checked against `manifest.spr.streams` for
 `$01302C`, `$013098`, `$065354`, `$011E8C`, `$013B94`. So every beam record is a
 NAMED SKIP with a live address on the page, exactly as W44's guard is built to
 do for data with no art, and the beam is computed, driven, queued and invisible.
 **That is the enemy-layer ART wave's row (E2), not this one's**, and this wave
 added zero art bytes.
 
-## 7. WHAT CHANGED IN `src/score.js` — AND WHY IT IS NOT BEHAVIOUR
+## 7. WHAT CHANGED IN `src/score.js` - AND WHY IT IS NOT BEHAVIOUR
 
 The wave brief is binding on this and it is **wrong about which laser**, in
 exactly the way `37-recon-laser` §0 warns:
@@ -379,15 +379,15 @@ exactly the way `37-recon-laser` §0 warns:
 > `$2862EA` ZEROES THE CHAIN … If you port the beam without fixing score.js,
 > you ship a silently wrong chain.
 
-Every laser fork in that file — `$2860A8`, `$2862DC`, and `$286A82`, `$2867B4`,
-`$286DA8` behind them — reads **`$811F72`**, and `$811F72` is the **BOMB-LASER's**
+Every laser fork in that file - `$2860A8`, `$2862DC`, and `$286A82`, `$2867B4`,
+`$286DA8` behind them - reads **`$811F72`**, and `$811F72` is the **BOMB-LASER's**
 45 x `$30` record: driven by type-5 call #7 `$255DD8`, walked as 45 records of
 `$30` by `$244D62`'s ninth block, and selected only by
 `$24989E bset #$0,($1,A6)` INSIDE THE BOMB (W37 §4.2, §1.1). **The beam lives in
 `$811EF2`/`$811F12`, `$811F32`/`$811F52` and the two 32 x `$30` pools.**
 
 MEASURED, twice: `$811F72` was 0 on all 600 held frames of the running beam, and
-`$8130F8` bit 2 — the OTHER gate on `$2860A8`'s arm — was 0 on all 600 as well.
+`$8130F8` bit 2 - the OTHER gate on `$2860A8`'s arm - was 0 on all 600 as well.
 **Two independent gates, both off.** A wave that "fixed" those arms now would be
 adding a rank feed and a chain break the beam has not got.
 
@@ -400,11 +400,11 @@ being retired rather than a preference:
    `$2867B4` ships a laser that scores and does not raise rank. The `$2860C8`
    note now says both, and says that `$2860CC bra.b $2860DE` means BOTH run.
 3. `capClamp`'s note said "`$287682` … grants a hyper stock (`$81B65C`, capped
-   at 5 at `$28768C`)" — **W38 §2.4 falsified both halves** and nobody had
+   at 5 at `$28768C`)" - **W38 §2.4 falsified both halves** and nobody had
    corrected the file. `$287682` never writes `$81B65C`; `$28768C` is a REFUSAL
    test; the only absolute writer of the stock is `$2530CA` and it is UNCAPPED;
    what `$287682` increments is `$81B6E0`.
-4. `scoreHit`'s "ONE POINT PLUS THE HYPER LEVEL" — **W38 §4.3**: `$81B63E` is
+4. `scoreHit`'s "ONE POINT PLUS THE HYPER LEVEL" - **W38 §4.3**: `$81B63E` is
    the 0/1 ACTIVE flag, the level is `$81B654`, and the value is 1 or 2.
 
 **ORDER WITHIN THE FRAME, and how I established every write this wave adds.**
@@ -418,7 +418,7 @@ later), all of them BEFORE `$28B670`'s tail where `$244D62` and the score arms
 live. The order is a property of `$28B5E0`'s instruction stream, not of a
 measurement, and `TYPE5.calls` is that stream.
 
-## 8. EVERY CHECK SEEN TO FAIL — 15 mutants, 14 red, 1 named survivor
+## 8. EVERY CHECK SEEN TO FAIL - 15 mutants, 14 red, 1 named survivor
 
 `node .scratch/mutate.mjs`: apply, run ONE test file, require a NAMED test red,
 restore, **verify the file's sha256 is byte-identical**. Every restore matched.
@@ -442,8 +442,8 @@ restore, **verify the file's sha256 is byte-identical**. Every restore matched.
 
 **M2 IS A SURVIVOR AND IT IS PROVABLY UNCATCHABLE.** The mutant clamps
 `type & $1F` to 19, i.e. removes the two tables' overrun. No template in the
-five families produces an index ≥ 20 — the reachable set is
-`{0,1,2,5,6,7,10,11,12,15,16,17}` — so on this cartridge the clamp is a no-op
+five families produces an index ≥ 20 - the reachable set is
+`{0,1,2,5,6,7,10,11,12,15,16,17}` - so on this cartridge the clamp is a no-op
 and no dynamic check can see it. The test that proves it is present and named:
 `every template family's type word lands INSIDE its own 20-entry table`.
 Category (c) of the brief's three, and the port keeps the ROM's arithmetic
@@ -459,9 +459,9 @@ caught by this cycle rather than by review:
   arm never runs at all. It now asserts `($6,A3) == 0`, the CLAMPED value, which
   the unclamped arm's `+= $800` per frame cannot produce;
 - and one assertion in it was simply wrong about the ROM (`$24AF68 + $0C` is the
-  wrap LIMIT, not the size — the size is at `+$0A`), which the run caught.
+  wrap LIMIT, not the size - the size is at `+$0A`), which the run caught.
 
-## 9. COVERAGE — branches and table entries, never frames
+## 9. COVERAGE - branches and table entries, never frames
 
 - **type-5 calls: 12 of 23 RUN**, 11 counted (was 10/13).
 - **segment dispatch: 40 entries over 20 distinct bodies, all 20 implemented.**
@@ -491,7 +491,7 @@ loosened.** Every stage read individually, not just the verdict line. The ones
 this wave could plausibly have broken, all green: `fly-around: port vs board, 0
 divergent frames` and its five REDs (the option object is on that path);
 `display list: the staged-bytes replay gate (1,901 frames)`, its FORCED cap and
-FORCED drop cases and its 12 RED mutations over 3 scenarios — **the port's own
+FORCED drop cases and its 12 RED mutations over 3 scenarios - **the port's own
 `$800000` build is still byte-exact against the board**, which is what makes a
 new sprite producer safe; `demo gate: the port drives the ship, pixel-exact` and
 its four REDs; `pixel gate` and its nine; `assets/integrity` (the ROM-leak
@@ -506,7 +506,7 @@ node games/ddpdoj/tools/webgate.mjs     5 of 5 PASS
 ```
 
 `webgate`'s W44 stage still reports **16,457 records / 0 MISSED over 300 steps
-with nothing pressed**, digit for digit — which is the evidence that this wave
+with nothing pressed**, digit for digit - which is the evidence that this wave
 changed nothing on the no-input path.
 
 **A SKIP IS NOT A PASS.** 0 skipped, read rather than assumed.
@@ -530,11 +530,11 @@ changed nothing on the no-input path.
 - §0.1 **[M] W37's "32-entry dispatch / 17 distinct handlers" is wrong**: it is
   TWO 20-entry tables, `$254712` (P1) and `$254762` (P2), 40 entries over 20
   bodies, indexed by `type & $1F` which overruns both.
-- §0.2 **[M] `$255042` ends at `$255158`** — 278 bytes, W37's open item 4 closed.
+- §0.2 **[M] `$255042` ends at `$255158`** - 278 bytes, W37's open item 4 closed.
 - §0.3 **[M] the +17 latch needs `$24C906` to return CARRY SET**, which it does
   because `($30,A6)`'s first record is the `$FFFF` terminator. Same number, a
   mechanism W37's derivation skipped.
-- §0.4 **[M] `btst #5,(A6)` gates BOTH builders and only `$254C1E` sets it** —
+- §0.4 **[M] `btst #5,(A6)` gates BOTH builders and only `$254C1E` sets it** -
   which is W37 §3.3's UNRESOLVED "+17 -> +20 three-frame gap", resolved.
 - §0.5 [M] the port reaches exactly three of the twenty handlers from the
   shipped seed, through template families 1, 2 and 3 entry 0.

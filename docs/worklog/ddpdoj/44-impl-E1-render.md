@@ -1,6 +1,6 @@
-# 44 — IMPL: RENDER THE PORT'S OWN DISPLAY LIST (enemy layer, wave E1)
+# 44 - IMPL: RENDER THE PORT'S OWN DISPLAY LIST (enemy layer, wave E1)
 
-status: **DONE** — gate `ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED`, unit
+status: **DONE** - gate `ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED`, unit
 tests 553 -> 568, `webgate` 5 of 5, and **ported enemies were seen on the screen
 in a real browser**.
 started: 2026-08-04. WAVE 44 / enemy-layer E1.
@@ -42,7 +42,7 @@ corrections, none of which changes the work.
   `verifyCoverage` (destructures the tuple) and two `.length` prints. Changing
   the tuple's shape is a two-line change plus the page's new map.
 
-### CORRECTION 1 — [M] the manifest cost is **+2,160 B, not +1,328 B**
+### CORRECTION 1 - [M] the manifest cost is **+2,160 B, not +1,328 B**
 
 `43-plan` §3.1(a)/§4 gives `manifest.json` 10,112 -> 11,440 B and boot
 470.0 -> 471.3 KiB. **Measured on this tree: 10,112 -> 12,272 B, boot
@@ -50,19 +50,19 @@ corrections, none of which changes the work.
 
 The plan measured the delta on the COMPACT JSON of `spr.streams`
 (1,706 -> 3,034 = +1,328) and applied it to a file `export-web.mjs` writes with
-`JSON.stringify(manifest, null, 1)` — i.e. PRETTY. A third array element is a
+`JSON.stringify(manifest, null, 1)` - i.e. PRETTY. A third array element is a
 whole indented line per stream, not a comma and a number. (Its compact figure is
 also 209 B high: measured 1,706 -> **2,825**.)
 
 **[M] What does NOT change: not one `.gz` asset moves a byte.** All 21 files
 hashed before and after; `manifest.json` is the only one that differs. So
-`bundlegate`'s pixels cannot have moved — the line adds a KEY, it re-bases
+`bundlegate`'s pixels cannot have moved - the line adds a KEY, it re-bases
 nothing.
 
-### CORRECTION 2 — the plan's headline counts are a ONE-FRAME-WINDOW restatement
+### CORRECTION 2 - the plan's headline counts are a ONE-FRAME-WINDOW restatement
 
 `43-plan` §3.2.1 asks `webgate` to assert **16,457 records over 300 logic
-frames**. **[M] I reproduce 16,457 EXACTLY** — but only for the lists produced by
+frames**. **[M] I reproduce 16,457 EXACTLY** - but only for the lists produced by
 300 STEPS read with NO lag. A page that renders one frame late, over its first
 300 DRAWN frames, sees **16,412** records: the 299 lists the port built in that
 window, plus **the 23-record list the BOARD's own seed already had in `$800000`**
@@ -70,20 +70,20 @@ window, plus **the 23-record list the BOARD's own seed already had in `$800000`*
 first drawn frame is a real list rather than an empty one).
 
 Both numbers are in the gate. They are the same measurement one frame apart, and
-saying which is which is the point — the lag is the thing most likely to be got
+saying which is which is the point - the lag is the thing most likely to be got
 wrong here.
 
-### CORRECTION 3 — the miss set has **184** addresses, not 183
+### CORRECTION 3 - the miss set has **184** addresses, not 183
 
 `43-plan` §1.1 gives 302 distinct streams of which 119 are in the sheet, i.e.
 183 absent. **[M] the guard names 184.** The extra is **`$000000` itself**, which
 IS in the sheet (packed base 0, 10 mask words) and is still a miss on ten of its
-1,075 emissions — the 3x40 records §1.4 found. That is the plan's own landmine,
+1,075 emissions - the 3x40 records §1.4 found. That is the plan's own landmine,
 caught by the general rule rather than by a special case, and it is the
 difference between a correct guard and one that reads 122 mask words out of a
 10-word stream.
 
-### CORRECTION 4 — `$0166EE4` in §3.2.4 is `$166EE4` (a stray digit)
+### CORRECTION 4 - `$0166EE4` in §3.2.4 is `$166EE4` (a stray digit)
 
 **[M] `$166EE4` is the port's most-drawn SHIPPED stream: 9,643 records in 3,000
 frames** (the plan's 9,644, one frame of window apart). Used as the
@@ -95,11 +95,11 @@ Method, once. `loadBundle` over the real `games/ddpdoj/assets/`; `new
 Game(bundle.seed, bundle.tables, {logicFrame: 2000, videoFrame, bgSeed})`;
 the page's own standing intervention `$810424 = $FF` each frame; input word
 `$FFFF` (nothing pressed); the list read out of `game.ram` at
-`$800000..$8009FF` and remapped by `src/web/app.js portSpriteList` — **the same
+`$800000..$8009FF` and remapped by `src/web/app.js portSpriteList` - **the same
 function the page calls**, not a second implementation. NO MAME. No
 `--stub-unported`, no `--no-pods`.
 
-### 2.1 300 frames from the shipped seed — THE CRITICAL-PATH NUMBER
+### 2.1 300 frames from the shipped seed - THE CRITICAL-PATH NUMBER
 
 ```
 [M] 300 STEPS, no input:  16,457 display-list records, 20..69 per frame,
@@ -119,14 +119,14 @@ function the page calls**, not a second implementation. NO MAME. No
 
 Digit for digit `43-plan` §1.2. It is the 5x80 background element, not an enemy.
 
-### 2.3 400 frames — the guard is ALIVE
+### 2.3 400 frames - the guard is ALIVE
 
 ```
 [M] 23,281 records, 22,992 drawn, 289 MISSED, 6 distinct missing streams
     $233F34x85 $22DA70x69 $1928BCx54 $1523ECx53 $192A48x27 $152450x1
 ```
 
-### 2.4 3,000 frames — and this is E2's denominator, measured not estimated
+### 2.4 3,000 frames - and this is E2's denominator, measured not estimated
 
 ```
 [M] 139,219 records, 73,138 drawn = 52.53 %, 66,081 MISSED
@@ -138,14 +138,14 @@ Digit for digit `43-plan` §1.2. It is the 5x80 background element, not an enemy
 [M] most-emitted stream overall $12D430, 14,104 records, AND IT HAS NO ART
 ```
 
-## 3. THE LONG RUN — E2's DENOMINATOR, MEASURED
+## 3. THE LONG RUN - E2's DENOMINATOR, MEASURED
 
 The architect's R1 asks for this inside E1, "the single cheapest de-risking
 available in this plan": log the guard's missing-address set over a long run so
 E2 has a real denominator instead of a floor under a moving target.
 
 **[M] One run, from the shipped seed, nothing pressed, 7,400 frames requested.**
-It got **6,185 logic frames — lf2000 to lf8185, 104.6 s** and then stopped at a
+It got **6,185 logic frames - lf2000 to lf8185, 104.6 s** and then stopped at a
 LOUD NAMED THROW, which is the honest end of the window:
 
 ```
@@ -160,7 +160,7 @@ record at $81387C (slot 17 of 58).
 [M] bucket 0: min 0, max 62, mean 22.72 per frame over 6,185 frames
 ```
 
-### 3.1 WHY THIS IS STILL A FLOOR, AND BY HOW MUCH — read before pricing E2
+### 3.1 WHY THIS IS STILL A FLOOR, AND BY HOW MUCH - read before pricing E2
 
 `43-plan` R1 is right that the art denominator is a function of WHICH HANDLERS
 ARE PORTED, and this run proves it from the other side: **it ended ON an unported
@@ -190,14 +190,14 @@ and the boss would emit is NOT in the 326 below. So:
 
 The first ten seconds cost **fourteen** streams. That is the cheapest possible
 first shard and it is a much smaller number than `43-plan` §1.3's "60 new streams
-to buy 10 s" — because that figure counts streams the *3,000-frame* run reached,
+to buy 10 s" - because that figure counts streams the *3,000-frame* run reached,
 and because this run's handler set differs. **Do not price off either without
 re-running it; they disagree and only the listing settles which handlers are in.**
 
 ### 3.3 THE MISS SET, BY ADDRESS AND BY COUNT  [M]
 
 326 cartridge stream addresses, most-drawn first, over 6,185 logic frames.
-`$12D430` alone is 14,104 records — **the port's single most-emitted stream is
+`$12D430` alone is 14,104 records - **the port's single most-emitted stream is
 one the sheet does not contain.**
 
 ```
@@ -246,14 +246,14 @@ $1D6AE0x3 $1D6E64x3 $1D71E8x3 $1D7FF8x3 $1D837Cx3 $155C34x1
 
 ## 4. THE CHANGE
 
-### 4.1 `tools/export-web.mjs` — one line, and it is the whole remap
+### 4.1 `tools/export-web.mjs` - one line, and it is the whole remap
 
 `manifest.spr.streams` was `[packedBase, maskWords]`; it is now
 `[romOffs, packedBase, maskWords]`. `offsMap` has always been built there (lines
 582-605) and the ROM key was discarded on the emit line. Cost §1's +2,160 B;
 no `.gz` moves.
 
-### 4.2 `src/web/app.js` — `portSpriteList(ram, map, opts)`, pure and exported
+### 4.2 `src/web/app.js` - `portSpriteList(ram, map, opts)`, pure and exported
 
 Copies `$800000..$8009FF` (0x500 words) out of `game.ram`, walks the five-word
 entries, and per record:
@@ -267,7 +267,7 @@ entries, and per record:
   `(word4 & $7FFF)` is still non-zero because the height is untouched, so the
   record is skipped and **everything behind it still draws**.
 - **width or height already zero** -> left completely alone and counted as
-  `blank`. It reads no ROM word, so it needs no art — and zeroing the width of a
+  `blank`. It reads no ROM word, so it needs no art - and zeroing the width of a
   zero-HEIGHT record would turn word 4 into the hardware TERMINATOR.
 
 The extent rule is the general form of `43-plan` §1.4's landmine and is the same
@@ -279,7 +279,7 @@ a background element with no art must not take the page down for a picture nobod
 is asking about. The honest analogue is a named skip with a count, and every one
 of them is printed.
 
-### 4.3 `Demo` — the one-frame hold, and the A/B
+### 4.3 `Demo` - the one-frame hold, and the A/B
 
 `step()` snapshots `$800000` **before** `g.step()`, so what `draw()` renders is
 the list the PREVIOUS frame built. That is `render/capture.js`'s measured DMA lag
@@ -290,32 +290,32 @@ The splice and W37's strip still run every frame and the page can draw either
 source: **`port` is the DEFAULT, `capture` is a labelled diagnostic on `KeyL`.**
 Both are kept because the ship must land in the same place in both, which is the
 only correctness check this wave has that does not need MAME. `KeyL` is bound in
-`index.html` by `e.code`, not in `src/web/input.js` — that module owns which
+`index.html` by `e.code`, not in `src/web/input.js` - that module owns which
 CONTROL is which BIT of the board's port word, and this must never reach the
 68000.
 
 ### 4.4 The status line
 
 `[port] dl N drawn D b0 B` every frame, and when anything is missing,
-**`NO ART n: $ADDRxCOUNT ...`** — the addresses, live, on the page.
+**`NO ART n: $ADDRxCOUNT ...`** - the addresses, live, on the page.
 
 ### 4.5 The stale comments `43-plan` §3.1(e) names
 
 `src/render/index.js:8` ("one of the thirty buckets has a ported feeder"),
 `src/render/capture.js:8` ("call #4 is unported"), `src/main.js` (`FOUR`
 produced buckets, "NINE of its 23"). All corrected. **Per C4 the
-`PRODUCED_BUCKETS` ARRAY IS UNTOUCHED** — it is what `tools/shipgate.mjs`
-substitutes, not a census — and the comment now says so.
+`PRODUCED_BUCKETS` ARRAY IS UNTOUCHED** - it is what `tools/shipgate.mjs`
+substitutes, not a census - and the comment now says so.
 
 ## 5. TWO DEFECTS FOUND, NEITHER OF THEM THIS WAVE'S
 
-### 5.1 `G.b8` — type $80 has been reading the DISPLAY LIST as a rank word
+### 5.1 `G.b8` - type $80 has been reading the DISPLAY LIST as a rank word
 
 **This is the find of the wave and it is not in the brief.**
 
 `src/handlers.js` reads the board's globals through a table `G`. Type $80 cites
 `G.b8` at two sites. **`b8` was not in the table.** So `a5 + undefined` is `NaN`,
-and `Ram.#off`'s bounds test was `o < 0 || o >= size` — **`NaN` fails BOTH
+and `Ram.#off`'s bounds test was `o < 0 || o >= size` - **`NaN` fails BOTH
 comparisons**, so the read went through and `DataView.getUint16(NaN)` returned
 offset ZERO, i.e. **`$800000`, the head of the display list.**
 
@@ -337,8 +337,8 @@ silently. Fixed: `b8: 0x8130b8` added to `handlers.js`'s `G`, cited to both
 listing addresses.
 
 **How it surfaced, and it is `docs/knowledge/03` exactly.** I tightened
-`Ram.#off` to `!(o >= 0 && o < size)` — same two comparisons, same cost, NaN now
-caught — because a shadowed constant in my own gate had just cost me a red run
+`Ram.#off` to `!(o >= 0 && o < size)` - same two comparisons, same cost, NaN now
+caught - because a shadowed constant in my own gate had just cost me a red run
 the same way. The port then stopped **loudly, at logic frame 2753**, inside
 `handler80`, in a real browser. Before that change nothing anywhere could see it.
 
@@ -348,7 +348,7 @@ the same way. The port then stopped **loudly, at logic frame 2753**, inside
 ### 5.2 The first version of that test COULD NOT FAIL
 
 The scan was built with a `\b` inside a **template literal**, where it is a
-BACKSPACE character and not a word boundary — so it matched nothing and the test
+BACKSPACE character and not a word boundary - so it matched nothing and the test
 agreed with everything. It passed on a tree where `G.b8` really was missing.
 Caught by mutating it (M1 below), fixed with `String.raw`, and the test now also
 asserts the scan found something.
@@ -364,13 +364,13 @@ asserts the scan found something.
 | `no-remap` | **16,250 of 16,457** records have no key at all (unbroken: 0), across 102 addresses. Only 207 draw |
 | `drop-one-stream` | `$166EE4` skipped **3,664** times; drawn **12,793 = 16,457 - 3,664**, exactly |
 | `lag-0` | the ship's offset from the previous frame's `$8103E8` breaks on **126 of 200** frames |
-| `terminate-instead-of-zero-width` | the renderer sees **9,406 of 24,889** records — 62 % of every frame silently lost behind the first gap |
+| `terminate-instead-of-zero-width` | the renderer sees **9,406 of 24,889** records - 62 % of every frame silently lost behind the first gap |
 | `no-extent-check` | the `$000000` over-read stops being named (5 occurrences to lf2700) |
 
 **AND ONE OF THEM COULD NOT FAIL WHEN I FIRST WROTE IT.** My `no-remap` passed an
 IDENTITY map (`rom -> rom`), which makes `portSpriteList` write the ROM address
 back and count the record DRAWN: the records then index the packed array at
-`offs & 16383` and draw garbage — the real defect — while `skipped` stays 0 and
+`offs & 16383` and draw garbage - the real defect - while `skipped` stays 0 and
 every assertion stays green. The break is now **the map keyed on the packed
 base**, which is literally what a pre-W44 bundle gives you. A mutation that
 leaves the counters alone tests nothing.
@@ -382,7 +382,7 @@ came back "NOTHING MOVED". The window is lf2700, and it also counts the records
 the RENDERER would see (`gVisible`), because `skipped` is incremented either way
 and could never see a truncation.
 
-### 6.2 Unit mutations — 13, each turning a NAMED test red, each restored byte-identical
+### 6.2 Unit mutations - 13, each turning a NAMED test red, each restored byte-identical
 
 | # | mutation | the test that went red |
 |---|---|---|
@@ -408,14 +408,14 @@ pairs, bundle RE-EXPORTED, `webgate` run: it stops at load with
 6510, which is not an exported stream base.` Loud and named. Restored and
 re-exported.
 
-## 7. THE PAGE, IN A REAL BROWSER — WHAT I SAW
+## 7. THE PAGE, IN A REAL BROWSER - WHAT I SAW
 
 Chrome + Python `playwright` over `python -m http.server`, the recipe W42
 established. Nothing downloaded.
 
 **PORTED ENEMIES ARE ON THE SCREEN.** At lf2196, `[port] dl 67 drawn 67 b0 60`:
 **about forty ported vehicles in formation on the road**, drawn ON the road
-surface where ground vehicles belong — which is exactly what the recorded ones
+surface where ground vehicles belong - which is exactly what the recorded ones
 had stopped doing (W42's before-shot has them floating over the rooftops and
 across the HUD). The ship, its exhaust plume, its two pods and its shadows are at
 the bottom. `PLAYER-1`, the score, `PRESS START`, the bomb count `B B B` and the
@@ -433,7 +433,7 @@ canvas   224x448, 82,594 of 100,352 px lit, 143 distinct colours
 ```
 
 - **The guard is visible, live, and correct.** `NO ART` first appears a few
-  seconds in and the first address on it is `$233F34` — the same address the
+  seconds in and the first address on it is `$233F34` - the same address the
   headless run names at lf2315.
 - **The A/B works and the ship agrees.** `KeyL` -> `[capture]` and the sky goes
   empty (only the ship, pods and shadows survive W37's strip); the canvas drops
@@ -442,7 +442,7 @@ canvas   224x448, 82,594 of 100,352 px lit, 143 distinct colours
   both**, which is `43-plan` §3.4's check, passed by eye.
 - **The ship still flies**: 69.9,83.0 -> 32.0,12.0 px on the arrows, tilt -32.
 - **No new throw.** The page ran the whole session. HOLDING fire still reaches
-  `$24C180 IS NOT PORTED YET` in the page's own error panel — `39-OWNER`'s known
+  `$24C180 IS NOT PORTED YET` in the page's own error panel - `39-OWNER`'s known
   laser blocker, unchanged by this wave. A single `press` is too short to span a
   logic frame and does not reach it.
 - **THE OWNER'S LOADING-TEXT REPORT IS FIXED, AND VERIFIED BY EYE.** `#status` is
@@ -488,15 +488,15 @@ verdict line. The ones this wave could plausibly have broken, all green:
 
 - `pixel gate: the port's JS renderer vs MAME` and its 9 RED mutations;
 - `demo gate: the port drives the ship, pixel-exact` and its 4 REDs;
-- `assets/integrity` and its 4 REDs — the manifest is the file this wave
-  changed and `assets/integrity RED [rom-byte]` is the ROM-leak guard — plus
+- `assets/integrity` and its 4 REDs - the manifest is the file this wave
+  changed and `assets/integrity RED [rom-byte]` is the ROM-leak guard - plus
   `background shard gate`;
 - `display list: the staged-bytes replay gate (1,901 frames)`, its FORCED cap
   and FORCED drop cases, and its 12 RED mutations over 3 scenarios. **The port's
   own `$800000` build is still byte-exact against the board**, which is what
   makes drawing it mean anything;
 - `enemy stats`, `spawn walker`, `bullet mover`, `turret angle`, `fly-around`
-  and their REDs — the handlers the `G.b8` fix touches.
+  and their REDs - the handlers the `G.b8` fix touches.
 
 **`bundlegate`'s `exact === total` is untouched and a unit test asserts it.** It
 could not have moved anyway: no `.gz` asset changed a byte (§1).
@@ -528,7 +528,7 @@ than assumed.
   not build it.
 - **The splice and W37's strip are NOT deleted** (`43-plan` §3.4 says so): they
   are the A/B, and E6 reclaims them.
-- **`PRODUCED_BUCKETS` is NOT widened.** Comment only — C4.
+- **`PRODUCED_BUCKETS` is NOT widened.** Comment only - C4.
 - **The palette uploader, the shard, the bullet sink, the effect pool and the
   shots' art are all downstream and untouched.**
 - **`games/gradius/` was not touched.**
@@ -536,16 +536,16 @@ than assumed.
 ## LOG (appended as findings arrive)
 
 - opened.
-- §1 [M]: the exporter change lands. **ONE file in the bundle changes —
+- §1 [M]: the exporter change lands. **ONE file in the bundle changes -
   `manifest.json`, 10,112 -> 12,272 B (+2,160, not the plan's +1,328). Every
   `.gz` is byte-identical**, verified by hashing all 21 files both ways, so
   `bundlegate`'s pixel identity cannot have moved.
 - §2 [M]: **300 steps from the shipped seed: 16,457 records, 20..69 per frame,
   ZERO MISSED**, and bucket 0 runs min 14 / max 62 / mean 48.67. The plan's
   §3.2.1 and §3.2.3 reproduce exactly.
-- §2.2 [M]: the first record with no art is **`$233F34` at lf2315 = +5.32 s** —
+- §2.2 [M]: the first record with no art is **`$233F34` at lf2315 = +5.32 s** -
   `43-plan` §1.2 to the digit, independently.
-- §2.4 [M]: 3,000 frames — **302 distinct streams**, 52.53 % of records drawn,
+- §2.4 [M]: 3,000 frames - **302 distinct streams**, 52.53 % of records drawn,
   **184 named missing addresses**, and the `$000000` 3x40 landmine caught 10
   times out of 1,075 emissions.
 - §3 [M]: the long run R1 asked for. **6,185 frames to a loud named throw at
@@ -553,7 +553,7 @@ than assumed.
   It ended ON an unported handler, so 326 is a floor and this file says so.
 - §5 [M]: **a real port defect, found because a check was tightened.**
   `handlers.js` had no `G.b8`, so type $80's salvo reload and second turret
-  cadence have been reading `$800000` — the display list — instead of `$8130B8`
+  cadence have been reading `$800000` - the display list - instead of `$8130B8`
   since W30. Both sites confirmed in the listing. Fixed, and a static test now
   covers the whole class.
 - §5.2 [M]: **and the test that catches it could not fail when first written.**
@@ -565,24 +565,24 @@ than assumed.
   the road, from the port's own `$800000` list.** The A/B toggle shows the
   capture path empty at 93 colours against the port's 143, with the ship in the
   same place in both.
-- §8 [M]: the owner's loading-text report — the DEFERRED shards were re-writing
+- §8 [M]: the owner's loading-text report - the DEFERRED shards were re-writing
   the element after boot. Fixed, red-validated, and seen gone in the browser.
 
-## 11. THE PALETTE BANKS — `43-plan` §1.5 REPRODUCED, WITH ONE CORRECTION
+## 11. THE PALETTE BANKS - `43-plan` §1.5 REPRODUCED, WITH ONE CORRECTION
 
 Not on E1's path, and cheap enough to settle while the guard was being measured.
 
 **[M] 3,000 frames from the shipped seed, nothing pressed: the port's own records
 ask for 16 of the 32 sprite colour banks**, which is `43-plan` §1.5's count
 exactly. Fifteen of them have a full set of non-zero pens in the capture's own
-palette and the sixteenth is **bank 24 — 5,731 records, ZERO non-zero pens, the
-three ground shadows** — independently reproducing RECON 2 §4.2's ROM-side
+palette and the sixteenth is **bank 24 - 5,731 records, ZERO non-zero pens, the
+three ground shadows** - independently reproducing RECON 2 §4.2's ROM-side
 finding from the other side.
 
 **CORRECTION 5.** `43-plan` §1.5 lists the set as
 `0 2 10 12 14 15 16 17 18 19 20 21 22 26 28` + 24. **[M] mine is
 `0 2 9 10 12 14 15 16 17 18 19 20 21 22 26` + 24**: I see **bank 9 (2 records)**
-and **not bank 28**. Same size, one member apart, and both are rare banks — 2
+and **not bank 28**. Same size, one member apart, and both are rare banks - 2
 records in 3,000 frames is the sort of number a one-frame window difference
 moves. Nothing on E1's path depends on which; it matters to whoever ships the
 sprite-palette uploader, and the honest statement is that the SET is not settled
@@ -594,13 +594,13 @@ to the last member while the COUNT and bank 24 are.
 in this wave rewrote them **LF**, so `git diff` shows the whole file changed.
 `git diff --ignore-cr-at-eol` is the settling command (`HANDOVER` §10, which
 records 53 files of real work nearly discarded on exactly this confusion) and it
-gives the true sizes: **handlers.test.js 63 added / 0 deleted — a pure append —
+gives the true sizes: **handlers.test.js 63 added / 0 deleted - a pure append -
 and webgate.mjs 279 / 12.** No other file's endings moved. The tree has no
 `.gitattributes`, `core.autocrlf` is `false`, and `games/ddpdoj/` is 169 LF files
 to 28 CRLF, so these two moved TOWARDS the majority; they are not re-converted,
 because doing so would be a second whole-file churn for nothing.
 
-### 5.3 IS `G.b8` THE ONLY ONE? — the whole tree, scanned  [M]
+### 5.3 IS `G.b8` THE ONLY ONE? - the whole tree, scanned  [M]
 
 Presence is not absence, so I looked rather than assumed. **All 52 files under
 `games/ddpdoj/src/`, 63 hex-valued field tables**, every `NAME.field` reference
@@ -613,19 +613,19 @@ regex only recognising `field: 0x…`: `ENEMY.slots` is `slots: 58`,
 object, and so on. Each was opened and confirmed present.
 
 The scanner was **seen to find `G.b8`** with the fix backed out, which is the
-only reason the negative result above is worth anything — my first attempt at
+only reason the negative result above is worth anything - my first attempt at
 this scan was silently matching nothing (§5.2's `\b` again, in a shell one-liner
 this time) and reported a clean tree while `G.b8` really was missing.
 
 The runtime backstop covers what a static scan cannot: `Ram.#off` now refuses a
 NaN address, so any field constant that is undefined anywhere in the port stops
 by name on the frame it is read. **[M] 6,185 logic frames from the shipped seed
-produced no such stop** — presence, not absence.
+produced no such stop** - presence, not absence.
 
-- §9 [M]: **`pgm.py check` ALL GREEN 49/0/0, 0 SKIPPED** — unchanged from
+- §9 [M]: **`pgm.py check` ALL GREEN 49/0/0, 0 SKIPPED** - unchanged from
   W32..W37. Unit tests **553 -> 568**, 0 skipped. `webgate` 5 of 5 PASS.
   `bundlegate`'s `exact === total` untouched, and no `.gz` asset moved a byte.
-- §11 [M]: 16 of 32 sprite colour banks, bank 24 all-zero — `43-plan` §1.5's
+- §11 [M]: 16 of 32 sprite colour banks, bank 24 all-zero - `43-plan` §1.5's
   count reproduced, its SET one member apart (correction 5).
 - §5.3 [M]: 52 files, 63 field tables scanned; `G.b8` was the only genuine miss.
   The scanner was seen to find it with the fix backed out.

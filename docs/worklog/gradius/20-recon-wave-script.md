@@ -1,6 +1,6 @@
-# Recon 2/5 — the COMPLETE stage wave script, every stage, every record
+# Recon 2/5 - the COMPLETE stage wave script, every stage, every record
 
-status: DONE (one item unresolved — see section 6)
+status: DONE (one item unresolved - see section 6)
 date: 2026-08-01
 role: READER. Nothing in `games/gradius/src/` was edited. Two new tools under
 `games/gradius/tools/oracle/`: `wavedump.py` (the inventory, ROM only) and
@@ -26,7 +26,7 @@ $A7D0[$19*2]                 7 stage entries, $A7DE $A7EE $A7FE $A80C $A81A $A82
 fires on the first frame `$3F:$3E >= $99:$98`.
 
 `$A346` reads the command byte and `$A34B CMP #$F0 / BCS $A37A` splits three
-ways — the brief said two, it is three:
+ways - the brief said two, it is three:
 
 | cmd | descriptor | route | record size |
 |---|---|---|---|
@@ -38,7 +38,7 @@ The 5-byte case is the fall-through trap in this subsystem: a decoder that
 assumes a fixed 2-byte stride desynchronises the whole list from the first
 `>= $F0` record onward. Stage 3 is 53/87 such records; stage 5 is 20/44.
 
-`$A466` then splits again on the STAGE: `LDA $19 / CMP #$02 / BEQ $A46F` —
+`$A466` then splits again on the STAGE: `LDA $19 / CMP #$02 / BEQ $A46F` -
 stage 3 (index 2) gets `$A46F`, which forces **type `$96`**; every other stage
 gets `$A4A6`, whose type is the 4th inline byte.
 
@@ -59,7 +59,7 @@ $98FD[$19] = 0E 0E 0E 0E 0D 0C 0D   $3F at which $9904 advances the stage
 ```
 
 chunk `k` is live for `$3F` in `[2k, 2k+1]`, so the last live chunk index is
-`floor(($98FD[$19]-1)/2)`. Stage 1: chunks **0-6** of the 8 in its table —
+`floor(($98FD[$19]-1)/2)`. Stage 1: chunks **0-6** of the 8 in its table -
 **chunk 7 is dead data**.
 
 ---
@@ -96,7 +96,7 @@ Stage 1's own list, chunk by chunk, is in the tool output; the summary is:
 | 4 | `$A8C6` | 19 | `$0820` | `$09F0` |
 | 5 | `$A8ED` | 10 | `$0A00` | `$0B00` |
 | 6 | `$A8ED` (again) | 10 | `$0C00` | `$0D00` | post-boss scroll |
-| 7 | `$A8ED` (again) | — | — | — | **dead: `$98FD[0]=$0E`** |
+| 7 | `$A8ED` (again) | - | - | - | **dead: `$98FD[0]=$0E`** |
 
 Stage 1 authors **92 distinct records**; chunk 6 replays chunk 5's ten during
 the post-boss scroll, for 102 live firings.
@@ -114,7 +114,7 @@ S6 $A828: ABFD AC16 AC39 AC6A AC8F ACBA ACBA
 S7 $A836: ACC7 ACE8 AD0F AD36 AD61 AD8A AD8A
 ```
 
-## 3. The enemy types stage 1 uses — and the ones the script does not name
+## 3. The enemy types stage 1 uses - and the ones the script does not name
 
 Wave-script types, stage 1: `$04 $05 $06 $07 $08 $0F $10 $11 $12 $13 $27 $29`
 = **12**, mapping to **12 distinct handler routines**.
@@ -122,13 +122,13 @@ Wave-script types, stage 1: `$04 $05 $06 $07 $08 $0F $10 $11 $12 $13 $27 $29`
 That is not the whole set. Two of those handlers are SPAWNERS and produce types
 that appear nowhere in any wave list:
 
-* `$AF2E` (entry 15, type `$0F`) — `$AF43 LDY #$08 / LDA #$09 / JSR $AF98`
+* `$AF2E` (entry 15, type `$0F`) - `$AF43 LDY #$08 / LDA #$09 / JSR $AF98`
   spawns up to five children of **type `$09` -> `$B311`** (entry 9).
-* `$AF88` (entry 16, type `$10`) — `$AF8D LDY #$F6 / LDA #$0C / JSR $AF98`
+* `$AF88` (entry 16, type `$10`) - `$AF8D LDY #$F6 / LDA #$0C / JSR $AF98`
   spawns children of **type `$0C` -> `$B3CB`** (entry 12).
-* `$AEC1 LDA #$01 / STA $030C,X` — any enemy whose `$03AC` bit is set becomes
+* `$AEC1 LDA #$01 / STA $030C,X` - any enemy whose `$03AC` bit is set becomes
   **type `$01` -> `$AEDD`** (the power-up capsule) when it dies.
-* `$B0B4 LDA #$80 / CLC / ADC $030C,X` — twelve handlers add `$80` to their own
+* `$B0B4 LDA #$80 / CLC / ADC $030C,X` - twelve handlers add `$80` to their own
   type on first update; `AND $7F` sends them back to the same routine.
 
 **Stage 1's transitive handler closure is 13 routines, not 12.** Wave 12's
@@ -145,7 +145,7 @@ outright (`src/enemies.js:367`).
 * **7 of the 13** handler routines stage 1 needs.
 * **80 of the 102** live records spawn something the port can run (78%).
 * The first record it cannot run is **`$A87E`, chunk 2, scroll `$0440`, cmd
-  `$03`, type `$07` -> `$B6E1`** — 1088 px into a 3072-px stage, i.e. **35% of
+  `$03`, type `$07` -> `$B6E1`** - 1088 px into a 3072-px stage, i.e. **35% of
   the way in**. Measured, not computed: that record fired at **cartridge frame
   2490**, scroll 1088, `$61 = 4`, route `$A3B1`
   (`out/wavelog-shield.json`). Wave 12 measured `$B6E1`'s first execution at
@@ -165,7 +165,7 @@ Missing, with the count of stage-1 live records each blocks:
 | `$B3CB` | 12 | `$0C` | (child of `$10`, never in a wave list) |
 
 22 blocked, 80 clean, of 102. If chunk 6 turns out not to run (section 6), the
-denominators are 18 / 74 / 92 — 80%. Neither reading moves the first blocker.
+denominators are 18 / 74 / 92 - 80%. Neither reading moves the first blocker.
 
 ### And the other six stages, same measurement
 
@@ -179,7 +179,7 @@ denominators are 18 / 74 / 92 — 80%. Neither reading moves the first blocker.
 | 6 | 9 | 6 | 53 of 98 | `$0340`, 30% in |
 | 7 | 14 | 7 | 61 of 127 | `$0220`, 18% in |
 
-**Stage 1 is not special — it is roughly the best case, and the best case gets
+**Stage 1 is not special - it is roughly the best case, and the best case gets
 35% of the way in.** Stage 2 is the only one with fewer blocked records (12 of
 113); stage 5's very FIRST record is a throw; stage 3 is unplayable past 7%
 because more than half its script is the unported `cmd >= $F0` route. Whatever
@@ -194,7 +194,7 @@ records** and **7 of 24 handler routines**.
 `wavelog.lua` hooks `$A335` (record fired; `$6A:$6B` still points at it),
 `$A3B1`/`$A3E4`/`$A466` (which route ran), `$AE19` (the type byte) and `$9A56`
 (boss page). `wavelog.py` diffs every firing against `wavedump.py`'s table.
-`$46` is the shield counter — `$C1BF`, `$C249`, `$C28E` all read it — so poking
+`$46` is the shield counter - `$C1BF`, `$C249`, `$C28E` all read it - so poking
 it holds the ship alive past the openings that kill every scripted run.
 
 ```
@@ -209,7 +209,7 @@ Type histogram from `$AE19` on that run:
 $10:4 $11:14 $12:17 $13:15 $29:633 $84:6766 $85:10300 $86:2675 $87:7331
 $88:16277 $89:3783 $8C:1720 $8F:2320 $90:1860 $91:5228 $92:7486 $93:6378`
 
-`$09` and `$0C` are in that histogram and in no wave list — section 3's claim,
+`$09` and `$0C` are in that histogram and in no wave list - section 3's claim,
 measured. The six unreached records are chunk 5's `$0A68` onward; the run
 stopped 3 pixels short of the first of them.
 
@@ -219,7 +219,7 @@ Two more things fell out of that run's per-record `$1B` and `$61` columns:
   live set section 1 predicts for a run that never reaches the boss.
 * records fired with `$1B` = `$80` (224 times) **and `$1B` = `$A0` (8 times)**.
   `$A0` is the death/respawn mode (`$C1F3`). So the spawn engine keeps running
-  through a death — and the last record of the 16k run fired at scroll `$0420`
+  through a death - and the last record of the 16k run fired at scroll `$0420`
   at frame 15957, long after `maxScroll` `$0A65`, because a death rewinds the
   camera to the checkpoint and the chunk is reloaded from the start. Any
   scenario that measures "records fired" without also measuring `$3E:$3F` is
@@ -231,13 +231,13 @@ Two more things fell out of that run's per-record `$1B` and `$61` columns:
   entry is bounded by the stage pointer table at `$A7D0`: `(A7D0-A662-4)/3` =
   **cmd `$00`-`$78`, 121 entries**. Scripts use **119 of them**; `$32` and
   `$52` are the only two never referenced. The highest, `$78`, is used by
-  stage 7 at `$ACBA`. So this table has no slack — a decoder that assumed a
+  stage 7 at `$ACBA`. So this table has no slack - a decoder that assumed a
   round number would be wrong at both ends.
 * **Table B (`$A602`, formation, 4 bytes).** `$A602-$A661` = 96 bytes =
   **24 entries, cmds `$80`-`$97`, and all 24 are used.**
 * **Formation table `$A592`** (2 bytes): 21 entries, `$A592-$A5BB`; 16 used.
 * **Pattern table `$A5BC`** (3 bytes): 22 entries, `$A5BC-$A5FD`; 13 used.
-* **Inline records:** 73 in the ROM, and only in two stages — 53 in stage 3,
+* **Inline records:** 73 in the ROM, and only in two stages - 53 in stage 3,
   20 in stage 5. Stage 3's all become type `$96` (`$A46F`); stage 5's carry
   type `$14` in the fourth byte (`$A4A6`).
 
@@ -253,8 +253,8 @@ Two more things fell out of that run's per-record `$1B` and `$61` columns:
 * **Chunk 7 is dead, also by reading.** `$9926` (the `$3F >= $98FD[$19]` test)
   runs BEFORE `$9A5E`/`$A2C0` in the same frame, so by the time the spawn engine
   sees `$3F = $0E` the stage has already advanced and `$3F` is 0. The one
-  residual path — `$39 == 0` at `$9939`, which sets `$1B = $90` without
-  resetting `$3F` — does reach `$A302` with `Y == $3F == $0E` and reloads chunk
+  residual path - `$39 == 0` at `$9939`, which sets `$1B = $90` without
+  resetting `$3F` - does reach `$A302` with `Y == $3F == $0E` and reloads chunk
   7, but `$A2D1` returns immediately after loading, and `$1B` bit 4 sends the
   next frame to `$96CF` (NEXT STAGE). So chunk 7's list can be *loaded* and
   never *run*. Not measured.
@@ -268,7 +268,7 @@ Two more things fell out of that run's per-record `$1B` and `$61` columns:
   its last pointer**, which is only useful if the post-boss window spawns, and
   records were measured firing in mode `$A0` (death/respawn), so `$A2F0`'s
   refusal really is only `$81`/`$82`.
-* I did not enumerate what the OTHER 14 `STA $030C` sites in the ROM spawn —
+* I did not enumerate what the OTHER 14 `STA $030C` sites in the ROM spawn -
   only the two reachable from stage 1's handler set (`$AF98`'s two callers) and
   the capsule at `$AEC1`. A full type-production graph is the obvious next
   recon and it is the thing that turns "12 types in the script" into "15 types

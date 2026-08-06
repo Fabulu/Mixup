@@ -1,4 +1,4 @@
-# Wave 1 — ONE oracle, pinned to VERSION-B
+# Wave 1 - ONE oracle, pinned to VERSION-B
 status: DONE (with four named open items, all listed below)
 wave: 1   role: impl   started: 2026-07-31
 
@@ -51,7 +51,7 @@ three harnesses stay as the record of how their numbers were produced.
 
 ## What I MEASURED
 
-### 1. Landmarks re-derived on BOTH builds — and two corrections to the recons
+### 1. Landmarks re-derived on BOTH builds - and two corrections to the recons
 
 `derive.py` dumps the decrypted image and derives the frame architecture by byte
 patterns + `unidasm`, asserting at each step (unique `addq.w #1,$80390a.l`;
@@ -83,14 +83,14 @@ $ python derive.py
    input port lea    ['$23D0F8']   P1 mirror store ['$23D11C']
 ```
 
-**Correction 1 — there are THREE wait loops per build, not one.**
+**Correction 1 - there are THREE wait loops per build, not one.**
 `00-recon-oracle.md` listed this as an open item and named the ARM addresses
 (`$13C5A4`, `$13C6AC`, `$13C6BE`); these are the matching SPIN addresses
 (`$13C5AC`, `$13C6B4`, `$13C6C6` in A; `$23C208`, `$23C390`, `$23C3BC` in B).
-My first version of `derive.py` asserted exactly one and aborted — recorded here
+My first version of `derive.py` asserted exactly one and aborted - recorded here
 because the abort is what found it.
 
-**Correction 2 — build B has a THREE-vblank arm that build A does not have**,
+**Correction 2 - build B has a THREE-vblank arm that build A does not have**,
 and also arms through a register:
 
 ```
@@ -112,7 +112,7 @@ the opcode in front of the operand instead of by one assumed encoding.
 **Both are SCHEDULING, not slowdown**, and both will masquerade as slowdown to
 anything that only counts frames. The census reports the armed value per frame.
 
-### 2. A scripted run provably lands in VERSION-B — as a controlled pair
+### 2. A scripted run provably lands in VERSION-B - as a controlled pair
 
 ```
 $ python pgm.py scen chooser-a          (no chooser input, countdown expires)
@@ -133,12 +133,12 @@ $ python pgm.py seed  (silent boot from the seeded NVRAM)
 
 I looked at all of these PNGs as images. `lf001750` is the ship-select screen,
 `lf002400` is unmistakable stage-1 gameplay (player ship firing, tanks,
-explosions, HUD). **This closes `PLAN` assumption 3** — VERSION-B's own version
+explosions, HUD). **This closes `PLAN` assumption 3** - VERSION-B's own version
 screen says `2002.10.07.BLACK VER`.
 
 The build assertion is *last-frame* as well as *any-frame*: the chooser runs
 from build-A code, so "some frames were in B" would let a timeout fall-through
-pass. An earlier 900-frame seed check reported "still build A" — that was the
+pass. An earlier 900-frame seed check reported "still build A" - that was the
 run ending before the countdown expired (the countdown ticks about once every
 115 logic frames: "6" at lf560, "4" at lf790, "3" at lf850), not the seed
 failing. Recorded because the wrong conclusion was one sentence away.
@@ -175,7 +175,7 @@ hides the rest, which is exactly the shape `docs/knowledge/08` warns about.
 `--break-cfg` writes into MAME's install `cfg/`+`nvram/` (both already existed
 from wave 0). Nothing in this harness reads those directories.
 
-### 4. THE DATE — the wave-0 open item that turned out to be a real bug
+### 4. THE DATE - the wave-0 open item that turned out to be a real bug
 
 `00-recon-oracle.md` left "a run tomorrow is not proven to agree with a run
 today" as a scheduled check. It does **not** agree, and I localised it to ten
@@ -206,7 +206,7 @@ DIVERGED across the date change
   col d_ram: first differs at row 1 (lf=1)
 ```
 
-Only `d_ram` differed — every other column agreed on all 2,600 frames. A full
+Only `d_ram` differed - every other column agreed on all 2,600 frames. A full
 128 KiB RAM dump at logic frame 2600 from both runs:
 
 ```
@@ -219,7 +219,7 @@ differing bytes: 10
   $8022C8..$8022C9  len=2  A=0801  B=071f
 ```
 
-Month 08 day 01 versus month 07 day 31 — the calendar, five copies of it. The
+Month 08 day 01 versus month 07 day 31 - the calendar, five copies of it. The
 five 8-byte words containing them are carved out of `d_ram` and emitted as their
 own column `d_date`, named in `frame.lua` with the measurement that justifies
 each hole. Re-run after the carve-out:
@@ -237,7 +237,7 @@ passes only when `d_date` is the sole differing column.
 ### 5. The other wave-0 open items
 
 **(b) Savestate seeding at the game's own sample point.**
-Saving from *inside* the write tap does not work — measured, not assumed:
+Saving from *inside* the write tap does not work - measured, not assumed:
 
 ```
   aligned on $80390A: 120 frames compared
@@ -258,7 +258,7 @@ Arming the save at the arm write and TAKING it in the next frame notifier:
 identical on all 120 frames. `$80FA84` is a compared column (`irq4ph`), which is
 the plan's stated alternative to fixing the phase.
 
-**(c) Pixel layer — dumped, looked at, and RED-VALIDATED.** `PROBE_PIXELS=N`
+**(c) Pixel layer - dumped, looked at, and RED-VALIDATED.** `PROBE_PIXELS=N`
 hashes the *whole* framebuffer (every 8 bytes of the 401,408-byte pixel string)
 every Nth logic frame. Sensitivity, measured:
 
@@ -268,7 +268,7 @@ stage1-open: pix sampled 130x, distinct 88
 stage1-deep: pix sampled 100x, distinct 70;  >50 entries: 38, distinct pix 38
 ```
 
-and the real test — `pgm.py pixred` clears bit 0 of the IGS023 control register
+and the real test - `pgm.py pixred` clears bit 0 of the IGS023 control register
 `$B0E000` (the sprite-DMA enable, `igs023_video.cpp sprite_dma()`) from Lua, so
 the game's RAM is untouched but the picture loses its whole sprite layer:
 
@@ -277,7 +277,7 @@ the game's RAM is untouched but the picture loses its whole sprite layer:
 PIXEL LAYER RED-VALIDATED: pix moved, the RAM digests did not
 ```
 
-`d_spb` is the post-DMA sprite buffer — the DMA's destination — so it moving is
+`d_spb` is the post-DMA sprite buffer - the DMA's destination - so it moving is
 confirmation the poke did what it claimed.
 
 **(d) Speed.** The wave-0 probe ran at 17–21 % of real time; the digest loop was
@@ -291,7 +291,7 @@ real 1m19s        -> ~107 % of real time; 10,000 frames ≈ 2.6 min
 
 Comfortably inside the plan's "10,000-frame scenario in ≤5 minutes".
 (`read_u64` raises "integer value will be misrepresented in lua" for values with
-the top bit set — use `read_i64` and `string.unpack("<i8", …)`.)
+the top bit set - use `read_i64` and `string.unpack("<i8", …)`.)
 
 **(e) `-drc` vs `-nodrc`:** byte-identical traces, same sha256
 `13f8ef743e0b3a53...`.
@@ -315,7 +315,7 @@ $03810 = 01 after choosing VERSION-B, 00 in the factory blob and at boot
    not exercise a month/year rollover and it depends on MAME's CRT honouring
    `TZ`. If a future run disagrees with a number here, check the date first.
 2. **I did not prove the three wait routines per build are unreachable.**
-   `armpc` was `$13C5B6`/`$23C212` on every frame of every scenario — a
+   `armpc` was `$13C5B6`/`$23C212` on every frame of every scenario - a
    PRESENCE result. The probe keys on the semaphore rather than on the PC, so it
    survives either way, but **do not write "the game only waits at $23C212"**.
 3. **No overrun was forced.** `work_cycles` exceeded the budget on 2 of 2,600
@@ -372,7 +372,7 @@ Five things that will save you the hours they cost me:
    clean, plausible, entirely worthless numbers from a halted machine and from
    the INPUT TEST screen, twice.
 
-## Postscript — the shared-index hazard, seen live
+## Postscript - the shared-index hazard, seen live
 
 My work was committed as `ac60c4e` through a private index, correctly. The very
 next commit, `3761405` (another workflow, the rank/loops/replay recon), was built
@@ -388,13 +388,13 @@ $ git show --numstat 3761405 | grep ddpdoj/tools/oracle
 ...
 ```
 
-Restored verbatim in `f552714` — re-applying `ac60c4e`'s ten paths on top of
+Restored verbatim in `f552714` - re-applying `ac60c4e`'s ten paths on top of
 `3761405`, through a private index, touching nothing of theirs
 (`git diff ac60c4e HEAD -- <my paths>` is empty; `git diff 3761405 HEAD` is
 exactly my ten paths). `NOTES-slowdown-oracle.md` needed nothing: `3761405`
 committed a working tree that already contained wave 1's append to it.
 
-**The lesson is narrower than "use a private index" — I did use one.**
+**The lesson is narrower than "use a private index" - I did use one.**
 `git read-tree HEAD` has to happen **immediately before** staging, not at the
 start of a session: an index read even a few minutes early silently reverts
 whatever landed in between, and `git commit` will not warn you. Worth checking

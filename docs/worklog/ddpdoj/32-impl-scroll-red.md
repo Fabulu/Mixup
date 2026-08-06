@@ -1,6 +1,6 @@
-# W32 — IMPL: the four scroll-program gate failures
+# W32 - IMPL: the four scroll-program gate failures
 
-status: **DONE** — the DaiOuJou gate is **`VERDICT: ALL GREEN -- 49 passed, 0
+status: **DONE** - the DaiOuJou gate is **`VERDICT: ALL GREEN -- 49 passed, 0
 failed, 0 SKIPPED`**. All four scroll-program stages were ONE defect, and it was
 in the HARNESS: `tools/scrollportgate.mjs` never ran main-loop call #4's tail
 (`$23D70C..$23D71C`), so the background object's own bucket-2 producer walked
@@ -39,13 +39,13 @@ failed, 0 SKIPPED`, and the four named stages are exactly the four above.
 **All four are ONE defect, and it is in the HARNESS, not in the port**:
 `tools/scrollportgate.mjs` simulates the board's frame as *IRQ6 upload* +
 *main-loop call #2*, and omits **main-loop call #4's tail, `$23D70C..$23D71C`**
-— `moveq #0,D1 / move.w #$1D,D0 / move.w D1,(A0)+ / dbra`, the thirty words
+- `moveq #0,D1 / move.w #$1D,D0 / move.w D1,(A0)+ / dbra`, the thirty words
 `$80AFC0..$80AFFB`, the sprite-staging counters, zeroed once per frame.
 
 Since W18 the background object has been a **PRODUCER** of sprite bucket 2:
 each of the thirteen background elements reaches `$23DF2A` (`elemStage` in
 `src/background.js`), which stages twelve bytes at `$805CC8 + $80AFC4` and does
-`addi.w #$C,$80AFC4`. **Nothing in the ROM caps that offset** — `capBytes` in
+`addi.w #$C,$80AFC4`. **Nothing in the ROM caps that offset** - `capBytes` in
 `src/spritequeue.js` is derived from the next buffer's address and no
 instruction checks it; the board's only bound is that call #4 zeroes the counter
 every single frame. A harness that runs the producer and never the clear lets
@@ -64,7 +64,7 @@ untranscribed board behaviour. The port was doing exactly what the ROM does.
 Per the brief: the scenario, the field, the FIRST divergent logic frame, and the
 two values. No frame counts, no percentages.
 
-### FAILURE 1 — `scroll program: the port vs the whole of stage 1`
+### FAILURE 1 - `scroll program: the port vs the whole of stage 1`
 
 Scenario `tools/oracle/out/w17-stage1-invuln-p2.tsv`, entry clock 0, k = 1620.
 
@@ -80,8 +80,8 @@ Scenario `tools/oracle/out/w17-stage1-invuln-p2.tsv`, entry clock 0, k = 1620.
 | `d18a` | lf3248 | `$3F34` | `$003A` |
 | `d18c` | lf3248 | `$94AE` | `$04C0` |
 
-and the run then **BLOCKED at lf3254** with a loud named throw —
-`UNPORTED $80100023: longword at $80100023 is outside every ROM window` — i.e.
+and the run then **BLOCKED at lf3254** with a loud named throw -
+`UNPORTED $80100023: longword at $80100023 is outside every ROM window` - i.e.
 the corrupted `$80B016` was read back as a pointer. That throw is the port's
 own guard doing its job on garbage the harness had scribbled into RAM.
 
@@ -102,15 +102,15 @@ A write watch on `$80B012` (scratch probe, not committed) over lf2963..2967:
 ```
 
 `$1690` and `$13` are not camera values. They are **`d3` and `d4` of a
-`$23DF2A` sprite request** — a background element's `yPos` constant and its
+`$23DF2A` sprite request** - a background element's `yPos` constant and its
 `kind` byte. At lf2965 `$80AFC4` had reached **`$5340`** = 12 × 1,776, and
 `$805CC8 + $5340` = `$80B008`, so that record's last two words landed on
 `$80B010` (`d3`, at +8) and `$80B012` (`d4`, at +10).
 
 Four elements were live, each staging one record per frame, so the counter grew
-by 48 a frame from the first `bgelem` spawn — a straight line to the camera.
+by 48 a frame from the first `bgelem` spawn - a straight line to the camera.
 
-### FAILURE 3 — `the ATTRACT entry clock $0038`
+### FAILURE 3 - `the ATTRACT entry clock $0038`
 
 Scenario `tools/oracle/out/bg-attract.tsv`, `--entry 0x38 --k 2636`. **The same
 defect, the same signature, a different frame** because the element spawns are
@@ -122,14 +122,14 @@ at a different clock:
 | `b016` | lf3702 | `$80100023` | `$006109C0` |
 | `b034` | lf3702 | `$16900013` | `$00010980` |
 
-Again the high word of `$80B012` becomes `$0013` — the element kind — and the
+Again the high word of `$80B012` becomes `$0013` - the element kind - and the
 low word is untouched, because the twelve-byte record straddles the boundary.
 
-### FAILURES 2 AND 4 — the two RED-SWITCH stages
+### FAILURES 2 AND 4 - the two RED-SWITCH stages
 
 Neither had a defect of its own. Both are **consequences of failures 1 and 3**,
 and each failed for a reason worth writing down separately, because both are the
-`docs/knowledge/03` shape — a check that had stopped meaning what it claimed.
+`docs/knowledge/03` shape - a check that had stopped meaning what it claimed.
 
 **FAILURE 2** (`--break all` on the wave-17 corpus) failed because (a) the clean
 baseline inside it was red, and (b) **`no-fast-forward` is DECLARED
@@ -138,7 +138,7 @@ as `*** DECLARED EXPECTED-GREEN AND WENT RED -- one of the two is wrong.` It was
 red on the corruption, not on the mutation: `$26200E` returns immediately when
 `$8130CE` is 0, so the mutation genuinely removes nothing at that entry clock.
 
-**AND TWO MORE OF THE NINE WERE GOING RED FOR THE WRONG REASON** — they passed
+**AND TWO MORE OF THE NINE WERE GOING RED FOR THE WRONG REASON** - they passed
 the gate's `moved.length > 0` test while contradicting their own declared
 signature. This is the finding I would rank first for a reviewer, because a red
 switch that reddens on unrelated damage is exactly as useless as one that cannot
@@ -146,8 +146,8 @@ redden at all:
 
 | mutation | its declaration | what it actually did (before the fix) | after |
 |---|---|---|---|
-| `upload-subtracts-shake` | "Must move bgx/bgy on **exactly the boss's 42 shake frames and NOTHING else**" | RED on **9 columns**, first `b012@lf2965` — the corruption, 8,958 frames before the shake | **RED on 2 columns: `bgx=42 bgy=35`, first `bgx@lf11923`** — the 42 shake frames, exactly as declared |
-| `commit-the-fraction` | "Must move `b012` and `b034` **ONLY** — if it moves the clock, the columns are not independent" | RED on **9 columns** including `b016`/`b038`/`b03c`/`d18a`/`d18c` | **RED on 3: `b012=9673 b034=9673 bgx=9670`**, first `b012@lf2379` (`bgx` is `b012 >> 6`) |
+| `upload-subtracts-shake` | "Must move bgx/bgy on **exactly the boss's 42 shake frames and NOTHING else**" | RED on **9 columns**, first `b012@lf2965` - the corruption, 8,958 frames before the shake | **RED on 2 columns: `bgx=42 bgy=35`, first `bgx@lf11923`** - the 42 shake frames, exactly as declared |
+| `commit-the-fraction` | "Must move `b012` and `b034` **ONLY** - if it moves the clock, the columns are not independent" | RED on **9 columns** including `b016`/`b038`/`b03c`/`d18a`/`d18c` | **RED on 3: `b012=9673 b034=9673 bgx=9670`**, first `b012@lf2379` (`bgx` is `b012 >> 6`) |
 
 **FAILURE 4** (`--break no-fast-forward` on the attract entry) failed only
 because the clean baseline it runs first was red; the mutation itself was
@@ -177,7 +177,7 @@ git log -S "B2_COUNT" -- games/ddpdoj/src/background.js
   1dab88c  feat(ddpdoj): W18 port the 13 stage-1 background elements
 ```
 
-`1dab88c` is **99 commits back from HEAD** and `4766bae` is **118** — so the
+`1dab88c` is **99 commits back from HEAD** and `4766bae` is **118** - so the
 gate's last edit is OLDER than the commit that made the background object a
 bucket-2 producer. **The gate went red when W18's elements landed, and the gate
 was never revisited.** W22 is where somebody first wrote it down, not where it
@@ -185,7 +185,7 @@ started.
 
 **I did not check out `1dab88c` and run it.** What I did instead is stronger and
 is in the tree: the new `no-counter-clear` mutation is precisely "the harness as
-it was", and it reproduces the failure to the frame and to the value —
+it was", and it reproduces the failure to the frame and to the value -
 `first b012@lf2965` on the wave-17 corpus, `first b012@lf3701` on the attract
 entry. The producer alone is sufficient; nothing between W18 and W31 is
 implicated.
@@ -203,11 +203,11 @@ upload:
 if (mutate !== 'no-counter-clear') resetSpriteQueueCounters(ram);
 ```
 
-`resetSpriteQueueCounters` is not new — `src/displaylist.js` has exported it
+`resetSpriteQueueCounters` is not new - `src/displaylist.js` has exported it
 since W11 with the comment *"$23D70C..$23D71C on its own"*, and the PRODUCT
 (`src/main.js`) has always run call #4 whole, which is why **the page was never
 affected: this was only ever a defect of one gate**. `tools/w18gate.mjs`, W18's
-own gate, drains bucket 2 by hand at its line 150 — so W18 knew, and the
+own gate, drains bucket 2 by hand at its line 150 - so W18 knew, and the
 knowledge did not reach the scroll gate.
 
 On the board call #4 runs at the END of the frame, after the objects have
@@ -241,12 +241,12 @@ over the same window, which is the thing W13 set out to be worth having.
 
 ---
 
-## 5. COVERAGE — TABLE ENTRIES, NOT FRAMES
+## 5. COVERAGE - TABLE ENTRIES, NOT FRAMES
 
 The old gate stopped at lf3254 and therefore never dispatched most of the
 script. Because "10,431 frames" is not a coverage number
 (`docs/knowledge/10`), the gate now reports the unit that is one. `src/
-background.js` gained an optional `ctx.scrollRecord` hook at `$262084` — the
+background.js` gained an optional `ctx.scrollRecord` hook at `$262084` - the
 same shape as the existing `scrollEvent`, reporting the record's own ROM address
 so a consumer can fold `$26200E`'s replay instead of inflating a dispatch count.
 
@@ -258,13 +258,13 @@ COVERAGE 57 DISTINCT script records dispatched (by ROM address, replays folded);
 ```
 
 **57 of stage 1's 57 records** (HANDOVER §2: "57 stage-1 records of 186 across
-ten scripts") — the whole script, dispatched and matched. **6 of the 7 opcodes**
+ten scripts") - the whole script, dispatched and matched. **6 of the 7 opcodes**
 at `$2620C2`; **`$18 FLAG` (`$2621D6`, the `$81B414` power ladder) is never
 taken in stage 1** and is transcribed-but-unexercised by this corpus, with one
 unit test of its own.
 
 The attract entry, for contrast, dispatches **27 distinct records** and takes
-**5 of 7** (no `$14 CUE`, no `$18 FLAG`) — which is what a 1,364-frame window
+**5 of 7** (no `$14 CUE`, no `$18 FLAG`) - which is what a 1,364-frame window
 into the middle of the script should look like, and is why the two corpora are
 both in the gate.
 
@@ -289,7 +289,7 @@ frames across them.
 
 ### 6.1 THE GATE'S OWN NEW RED SWITCH
 
-`no-counter-clear` was added to `MUTATIONS` with its declaration — *"THIS IS THE
+`no-counter-clear` was added to `MUTATIONS` with its declaration - *"THIS IS THE
 MISREADING THIS GATE ITSELF SHIPPED FOR TEN WAVES"*. Measured, on both corpora:
 
 | corpus | result |
@@ -309,11 +309,11 @@ one** (`src/background.js` `3a79aedbff44bde1`).
 
 | # | mutation | result |
 |---|---|---|
-| M1 | `$23DF4E` dropped — the bucket-2 counter is never stepped | RED — 2 |
-| M2 | `$23DF4A`/`$23DF4C` — `d3` and `d4` written in the other order | RED — 1, alone |
-| M3 | `$23DF2A`'s `lea` reads bucket 1's buffer `$805104` | RED — 2 |
-| M4 | the `$262084` hook reports the cursor, not the record address | RED — 1, alone |
-| M5 | the hook's script number: `d6`'s sense inverted | RED — 1, alone |
+| M1 | `$23DF4E` dropped - the bucket-2 counter is never stepped | RED - 2 |
+| M2 | `$23DF4A`/`$23DF4C` - `d3` and `d4` written in the other order | RED - 1, alone |
+| M3 | `$23DF2A`'s `lea` reads bucket 1's buffer `$805104` | RED - 2 |
+| M4 | the `$262084` hook reports the cursor, not the record address | RED - 1, alone |
+| M5 | the hook's script number: `d6`'s sense inverted | RED - 1, alone |
 
 **5 mutations, 5 RED, no survivors.**
 
@@ -321,7 +321,7 @@ Two shapes were designed out of these tests on purpose, both because this
 project keeps re-finding them:
 
 - **The overrun test does not seed its own answer.** Its load-bearing assertion
-  is `assert.equal(B2_BASE + 0x5340 + 8, CAM.bgId)` — the ADDRESS arithmetic —
+  is `assert.equal(B2_BASE + 0x5340 + 8, CAM.bgId)` - the ADDRESS arithmetic -
   and it runs *before* anything executes. It then runs **two identical games
   that differ in one word of setup** (counter 0 vs counter `$5340`) and asserts
   the difference is confined to the high word of `$80B012`, so it cannot pass by
@@ -358,8 +358,8 @@ project keeps re-finding them:
   the port replayed against TSVs already on disk, or the ROM listing.
 - **`--break all` on the ATTRACT corpus** reports 4 of the 11 mutations still
   green (`loop-word-as-iterations`, `len-not-lenplus1`, `reload-lenplus1`,
-  `freeze-stops-the-scroll`). **That is not one of the four gate stages** — the
-  gate runs only `no-fast-forward` there — and it is expected: a 1,364-frame
+  `freeze-stops-the-scroll`). **That is not one of the four gate stages** - the
+  gate runs only `no-fast-forward` there - and it is expected: a 1,364-frame
   window that takes 5 of 7 opcodes cannot exercise the repeat/freeze arms the
   wave-17 corpus covers. Recorded because a later wave that widens that stage
   will meet it.
@@ -368,13 +368,13 @@ project keeps re-finding them:
 
 ## 8. WHAT THIS WAVE WROTE
 
-- **`tools/scrollportgate.mjs`** — the missing `$23D70C..$23D71C` clear; the
+- **`tools/scrollportgate.mjs`** - the missing `$23D70C..$23D71C` clear; the
   `no-counter-clear` red switch; a `COVERAGE` line reporting distinct records
   and opcode-table entries; ~25 lines of header explaining the mechanism.
-- **`src/background.js`** — the optional `ctx.scrollRecord` coverage hook at
+- **`src/background.js`** - the optional `ctx.scrollRecord` coverage hook at
   `$262084`. Behaviour-neutral: nothing reads it back and no arm depends on it.
-- **`tests/background.test.js`** — four tests (§6.2).
-- **`docs/worklog/ddpdoj/32-impl-scroll-red.md`** — this file.
+- **`tests/background.test.js`** - four tests (§6.2).
+- **`docs/worklog/ddpdoj/32-impl-scroll-red.md`** - this file.
 
 No ROM window was added or widened, so `export-web.mjs` did not need re-running
 (W30 §7.3's trap does not apply).
@@ -385,14 +385,14 @@ No ROM window was added or widened, so `export-web.mjs` did not need re-running
 - baseline re-measured on the untouched tree: 45 passed / 4 failed / 0 SKIPPED,
   the four being exactly the scroll-program stages.
 - failure 1 characterised: `b012` first at **lf2965, port `$00133940` board
-  `$00033940`**, and the run BLOCKED at lf3254 on `$80100023` — the corrupted
+  `$00033940`**, and the run BLOCKED at lf3254 on `$80100023` - the corrupted
   `$80B016` read back as a pointer.
 - the writer NAMED with a write watch: `elemStage` (`$23DF2A`), not the camera.
 - root cause: `$80AFC4` reached `$5340` because the harness never runs call #4's
   tail `$23D70C`. **A harness artefact, not a port defect.**
 - failure 3 is the same defect at lf3701 on the attract entry; failures 2 and 4
   are consequences of 1 and 3.
-- **and two of the nine red switches had been reddening for the WRONG REASON** —
+- **and two of the nine red switches had been reddening for the WRONG REASON** -
   `upload-subtracts-shake` and `commit-the-fraction` both contradicted their own
   declared signatures while still "passing".
 - fixed; **10,431 of 10,431 frames, 0 of 12 columns divergent**, and
@@ -428,10 +428,10 @@ ok 19 - the 163 stage-1 streams: no run-off-end; EXIT streams EXIT
 ```
 
 Fixed the same way (`python games/ddpdoj/tools/oracle/w24streams.py`, **from the
-REPO ROOT** — its paths are repo-relative), and the suite is back to 479 pass /
+REPO ROOT** - its paths are repo-relative), and the suite is back to 479 pass /
 0 fail / **0 SKIPPED**.
 
-**But W29's and W31's attribution — "deleted by a concurrent `pgm.py check`" —
+**But W29's and W31's attribution - "deleted by a concurrent `pgm.py check`" -
 is not something I could confirm, and I looked.** A grep for `rmtree` / `unlink`
 / `os.remove` / `rmSync` across `games/ddpdoj/tools/`, `games/ddpdoj/tools/
 oracle/` and the repo-root `tools/` finds **no site that removes anything under

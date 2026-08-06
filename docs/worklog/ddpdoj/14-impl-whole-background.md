@@ -1,4 +1,4 @@
-# Wave 14 — the WHOLE stage-1 background
+# Wave 14 - the WHOLE stage-1 background
 
 status: **COMPLETE.** PART ONE (§0–§7, below) was written by an agent stopped at
 a usage limit and is left EXACTLY as it stood, because §7 was the handover that
@@ -38,7 +38,7 @@ What is PROVEN by this agent's own runs:
 | the test suite AFTER the working-tree changes | **NOT RE-RUN by this agent** |
 | bundlegate / demogate / webgate after the changes | **NOT RE-RUN by this agent** |
 | `node tools/build-dist.mjs` leak guard | **NOT RE-RUN by this agent** |
-| a human LOOKING at the PNGs | **NOT DONE — see §6** |
+| a human LOOKING at the PNGs | **NOT DONE - see §6** |
 
 Nothing ROM-derived is committed. `games/ddpdoj/assets/` and
 `games/ddpdoj/rip/` are gitignored twice over (repo root `.gitignore` matches an
@@ -113,7 +113,7 @@ python's and the recon's figures are python's (§4c states this).
 **The two JSON bodies are now gzipped**, which they were not at HEAD:
 `player.tables.json` 121,397 → 34,300 B and `capture.json` 38,202 → 3,895 B.
 That is 121,404 B recovered, and it is what pays for the whole-stage background
-at boot. `manifest.json` deliberately stays PLAIN — it is the file that says how
+at boot. `manifest.json` deliberately stays PLAIN - it is the file that says how
 everything else is encoded.
 
 ### The boot arithmetic
@@ -149,7 +149,7 @@ BUNDLE C:\programmieren\batman\games\ddpdoj\assets: 887.2 KiB total,
     7 secondmap second map      205 tiles    81271 B =  79.4 KiB
 ```
 
-**887.2 KiB total, 377.0 KiB boot against today's 433.1 KiB — 56.1 KiB LESS
+**887.2 KiB total, 377.0 KiB boot against today's 433.1 KiB - 56.1 KiB LESS
 before the first frame, while carrying 4.9x the background.** Slots:
 289+275+174+219+288+288+288 = 1,821 for the scrolling map (1,820 map tiles plus
 the recording's one orphan, tile $0000) + 205 second-map = **2,026 slots**.
@@ -161,7 +161,7 @@ capture, the seed, the sprite streams and the player tables.
 
 ---
 
-## 3. THE LAYOUT DATA — every address, so nobody re-derives it
+## 3. THE LAYOUT DATA - every address, so nobody re-derives it
 
 All from `docs/worklog/ddpdoj/20-recon-level-data.md`, which is the brief for
 this wave and whose numbers were NOT re-derived here.
@@ -200,11 +200,11 @@ stage 1 = stage INDEX 0
 are nine consecutive tile numbers. That is WHY sharding on scroll position is
 exact and nearly free: a scroll range *is* a tile range. Measured overhead of 8
 shards over one blob: **+865 B = +0.13 %**. Do not go looking for tile-reuse
-savings — deduplicating stage 1 saves **two tiles**.
+savings - deduplicating stage 1 saves **two tiles**.
 
 ### The schedule the lazy loader is cut against
 
-From the validated scroll simulation — first logic frame at which each shard's
+From the validated scroll simulation - first logic frame at which each shard's
 first column is written:
 
 ```
@@ -227,18 +227,18 @@ shard  cols       needed at          gap to previous
 ### 4.1 `games/ddpdoj/tools/export-web.mjs`
 
 * Reads the **decrypted 68000 image** `games/ddpdoj/tools/oracle/out/maincpu.bin`
-  (6,291,456 B) for the map, second map and palette — they are 68000 DATA, not
+  (6,291,456 B) for the map, second map and palette - they are 68000 DATA, not
   tile ROM.
 * `decodeMap(at, n, base)` → `[[tile,attr] x 9] x n`, big-endian, base added to
   the high word.
-* **CHECK 1** — every attribute word of both maps must have no bit outside
+* **CHECK 1** - every attribute word of both maps must have no bit outside
   `$3E`. This one check catches a wrong stride, a wrong base AND a swapped
   tile/attr half at once, because all three turn the attribute into noise.
-* **CHECK 2** — 1,820 tiles in `$0AA9..$11C6` and 205 in `$32A9..$3381`, or it
+* **CHECK 2** - 1,820 tiles in `$0AA9..$11C6` and 205 in `$32A9..$3381`, or it
   throws.
-* **PALETTE CHECK A** — 0 of 1,024 words may have bit 15 set (xRGB555 never
+* **PALETTE CHECK A** - 0 of 1,024 words may have bit 15 set (xRGB555 never
   does; a block of map entries read as colours sets it on a third of them).
-* **PALETTE CHECK B** — the block must agree with the BOARD's own palette RAM
+* **PALETTE CHECK B** - the block must agree with the BOARD's own palette RAM
   `$400..$7FF` at capture frame 0 on ≥ 1,000 of 1,024 entries. Measured **1020**;
   the four that differ are **bank 21 pens 0..3**, which the game ANIMATES
   through an unported routine. A wrong palette address drops this to ~370.
@@ -247,8 +247,8 @@ shard  cols       needed at          gap to previous
   the exporter asserts disjointness.
 * **The capture's own tiles are folded into the BOOT set.** 414 of the 415 tiles
   the recording uses are in columns 0..63 (shards 0-1). The 415th is **tile
-  $0000** — the value `$23C668`'s ring clear leaves behind, which no map column
-  ever names — and it is forced into shard 0. If more than 32 such orphans ever
+  $0000** - the value `$23C668`'s ring clear leaves behind, which no map column
+  ever names - and it is forced into shard 0. If more than 32 such orphans ever
   appear the exporter throws: that would mean the capture is not of stage 1.
 * Slots are contiguous across shards in shard order, so **one** `bg.tileno.u16`
   describes every slot and the loader can build its tile→slot table before a
@@ -273,7 +273,7 @@ spans the second map too) and writes `$900000` itself, the way `$26135A` does.
 
 `cave_t04401w064.u19` loads at **0x180000, NOT 0x200000**, and SHADOWS the top
 of `pgm_t01s.rom`. A wrong base shifts every tile index above 0xC000 and still
-renders a **plausible** picture — wave 3 measured that mutation at **52.86 % of
+renders a **plausible** picture - wave 3 measured that mutation at **52.86 % of
 pixels correct**. The layout lives in `src/render/regions.js`
 (`IGS023_LAYOUT`, `IGS023_SIZE = 0xA00000`) and is repeated in
 `games/ddpdoj/tools/bgstrip.py`.
@@ -283,9 +283,9 @@ shard pixels are decoded: the assembled region must be exactly `IGS023_SIZE`
 bytes and the highest tile number any shard names must have all 5,120 of its
 bits inside it. **THIS ASSERTION HAS NOT BEEN SEEN RED.** It is a weaker form of
 `bgstrip.py --check --break u19`, which HAS been (§5). If you distrust it,
-delete it — the pixel check is the real one.
+delete it - the pixel check is the real one.
 
-### 4.4 `games/ddpdoj/src/web/assets.js` — the `BgShards` class
+### 4.4 `games/ddpdoj/src/web/assets.js` - the `BgShards` class
 
 Three states, three different messages, and that distinction is the whole point:
 
@@ -301,13 +301,13 @@ failed   the next draw that needs that shard THROWS an AssetError naming the
   `bg.tileno.u16` + the manifest's `firstSlot` runs, and requires the runs to
   tile the slot space exactly. So the page always knows WHICH shard a tile is
   in even before that shard exists.
-* A tile in **no** shard at all is a different bug — an EXPORT gap — and is
+* A tile in **no** shard at all is a different bug - an EXPORT gap - and is
   counted in `bg.orphans` / `missingBgTiles` rather than reported as a late
   fetch.
 * `fetch()` resolves even on failure; the failure is raised by `demand()` at the
   moment a draw needs it. A shard nobody has reached cannot kill a running page
   from a background fetch.
-* `pump()` is deliberately **serial** — one fetch at a time — because the point
+* `pump()` is deliberately **serial** - one fetch at a time - because the point
   of the queue is that a promoted shard jumps ahead, and eight parallel fetches
   over one connection make promotion meaningless.
 * `followColumn(col)` promotes the shard covering `col` and the one 32 columns
@@ -320,7 +320,7 @@ failed   the next draw that needs that shard THROWS an AssetError naming the
 * `Demo.streamColumn()` turns `game.vram.streamPtr` (the ROM address `$26134E`
   loaded for the current column, `$225B78 + 36*col`) into a map column, and
   returns **-1** rather than a plausible number when the pointer is outside
-  stage 1's own stream — the boss lock rewinds it and stages 2..5 are not
+  stage 1's own stream - the boss lock rewinds it and stages 2..5 are not
   exported at all.
 * `step()` calls `bundle.bg.followColumn(this.streamColumn())`.
 * `boot()` calls `bundle.bg.prefetchAll()` AFTER `loadBundle` returns, so the
@@ -331,26 +331,26 @@ failed   the next draw that needs that shard THROWS an AssetError naming the
 ### 4.6 the gates
 
 * `tools/bundlegate.mjs` gained two breaks:
-  * `--break shard-404` — a deferred shard 404s, then a frame needs one of its
+  * `--break shard-404` - a deferred shard 404s, then a frame needs one of its
     tiles → the draw must THROW an `AssetError` **naming the file**.
-  * `--break shard-late` — a deferred shard is simply not fetched → the draw
+  * `--break shard-late` - a deferred shard is simply not fetched → the draw
     must NOT throw, must return the transparent pen, and the shard must appear
     in `bg.status().waiting`.
   * **and it fixed `--break drop-tile`, which the sharding had silently
     disarmed.** The victim used to be the middle slot of the exported sheet,
     which was safe while all 415 sheet tiles came from the recording. The sheet
     is now the whole stage's ~2,026 tiles and only 415 are the capture's, so the
-    middle slot is a tile `verifyCoverage` never looks at — **the break would
+    middle slot is a tile `verifyCoverage` never looks at - **the break would
     have gone quietly GREEN**. The victim is now measured from the capture
     itself. This is the single most important line of the whole diff to keep.
 * `tools/webgate.mjs`'s missing-file VICTIM moved from `gfx/bg.tiles.u8.gz` to
-  `gfx/bg.shard0.tiles.u8.gz` — a BOOT shard, because a deferred shard's 404 is
+  `gfx/bg.shard0.tiles.u8.gz` - a BOOT shard, because a deferred shard's 404 is
   a different check (`bundlegate --break shard-404`) and would not throw at
   load.
 
 ---
 
-## 5. THE PICTURE — `games/ddpdoj/tools/bgstrip.py`
+## 5. THE PICTURE - `games/ddpdoj/tools/bgstrip.py`
 
 ```
 python games/ddpdoj/tools/bgstrip.py 0 32            columns 0..31 -> PNG
@@ -362,7 +362,7 @@ python games/ddpdoj/tools/bgstrip.py 0 224 --check --break planes|base|u19
 ```
 
 It renders **out of the published bundle**, including reading the map from
-`assets/player.tables.json.gz`'s ROM window — so a picture from it is a picture
+`assets/player.tables.json.gz`'s ROM window - so a picture from it is a picture
 of exactly the bytes the page has. `--check` re-decodes the same columns
 straight out of the CARTRIDGE (region assembled from the ROM files, `bgTile`'s
 5bpp LSB-first bitstream) and requires **0 differing pixels**.
@@ -376,12 +376,12 @@ bg.0_223.break-base.png   bg.0_223.break-planes.png  bg.0_223.break-u19.png
 
 **A RED SWITCH THAT WAS DELETED BECAUSE IT COULD NOT FAIL.** The first version
 had a `swap` break that read the map longword's tile and attr halves the other
-way round. It came back **100.0000 % identical** — because it mutates the MAP,
+way round. It came back **100.0000 % identical** - because it mutates the MAP,
 and BOTH SIDES of the comparison read the same map. *A mutation of a shared
 input is not a mutation at all; it moves both answers together.* The three
 surviving breaks are all one-sided: `planes` and `u19` change only how the
 cartridge is decoded, `base` changes only which bundle slot is asked for. The
-tile/attr split is instead checked where it can be — `export-web.mjs`'s
+tile/attr split is instead checked where it can be - `export-web.mjs`'s
 attribute-bit assertion, which a swap destroys. **Write this down somewhere
 permanent; it is the most transferable thing this wave learned.**
 
@@ -394,7 +394,7 @@ permanent; it is the most transferable thing this wave learned.**
    a real connection, or that the status line reads sensibly. A human must open
    the page, scroll past 160 px, and watch. §7 lists it.
 2. **I did not look at the PNGs with my own eyes.** They exist and the
-   `--check` gate they came with is a stronger check than eyeballing — but the
+   `--check` gate they came with is a stronger check than eyeballing - but the
    brief asked for the eyeball check specifically, on the grounds that a wrong
    decode produces plausible garbage, and it is NOT DONE.
 3. **I did not re-run the test suite, the three pixel gates, or the leak guard
@@ -408,7 +408,7 @@ permanent; it is the most transferable thing this wave learned.**
    that the scroll VM's op `$10` spawns (recon §4a). They are a real part of the
    stage-1 background and this wave does not ship them. The background will be
    missing its big objects even when this wave is finished.
-7. **The palette block is shipped, validated, and NOT USED** — the page still
+7. **The palette block is shipped, validated, and NOT USED** - the page still
    draws with the capture's palette, because bank 21 pens 0..3 are animated by
    an unported routine.
 8. **Column 247** (`$227E34..$227E57`, 36 B) is accounted for by neither the
@@ -424,19 +424,19 @@ committed but the worklog.** Start by reading §0.
 Exactly what I was about to do next, in order:
 
 1. **`node games/ddpdoj/tools/export-web.mjs`** and capture its final three
-   lines verbatim — the `BUNDLE ... N KiB total, M KiB BEFORE THE FIRST FRAME`
+   lines verbatim - the `BUNDLE ... N KiB total, M KiB BEFORE THE FIRST FRAME`
    line is the number the whole wave is judged on, and it is the one measurement
    §2 estimates rather than states.
-2. **`node --test games/ddpdoj/tests/`** — must be > 200 pass, 0 fail,
+2. **`node --test games/ddpdoj/tests/`** - must be > 200 pass, 0 fail,
    0 skipped. If it is exactly 200, tests still have to be written (item 5).
 3. **`node games/ddpdoj/tools/bundlegate.mjs`** at 15955968/15955968, then each
    of `--break drop-tile drop-stream zero-col blank-tile shard-404 shard-late`
    SEEN RED. `shard-404` and `shard-late` are new and have never been run by
    me. **`--break drop-tile` is the one to distrust**: §4.6 explains how the
    sharding disarmed it once already.
-4. **`node games/ddpdoj/tools/demogate.mjs`** and **`webgate.mjs`** — both were
+4. **`node games/ddpdoj/tools/demogate.mjs`** and **`webgate.mjs`** - both were
    100.0000 % and must stay there. webgate's VICTIM changed (§4.6).
-5. **`node tools/build-dist.mjs`** — the ROM-leak guard must stay clean. It
+5. **`node tools/build-dist.mjs`** - the ROM-leak guard must stay clean. It
    inflates `.gz` bodies and checks them; a 64 KiB slice of mask ROM once
    gzipped to 96 B and slipped under an earlier threshold. **Do not weaken it.**
    The eight new `.gz` shard bodies are the new thing it will see.
@@ -454,7 +454,7 @@ Exactly what I was about to do next, in order:
      a pointer that is not a multiple of 36, and the right column for
      `$225B78 + 36*c`.
    All four run on synthetic objects; none needs the cartridge.
-7. **LOOK AT THE PNGs.** `bg.96_127.png` is the one that matters — those columns
+7. **LOOK AT THE PNGs.** `bg.96_127.png` is the one that matters - those columns
    are past the 160 px the recording covered, so they are exactly what used to
    be black. Also `bg.second.png` ($227AF8, base $32A9) and at least one
    `--break` image for contrast.
@@ -507,16 +507,16 @@ why the private index and the late `read-tree` are not optional here.
 
 ---
 
-# PART TWO — the finish, by the agent that picked it up cold
+# PART TWO - the finish, by the agent that picked it up cold
 
 started: 2026-08-02, from `87900ab` (which landed all of PART ONE's code).
 Everything below is this agent's own run. Nothing in PART ONE was re-derived.
 
-## 8. THE PICTURES — LOOKED AT, WITH EYES
+## 8. THE PICTURES - LOOKED AT, WITH EYES
 
 §6 item 2 and §7 item 7. **DONE. Verdict: SCENERY, not plausible noise.**
 
-`bg.96_127.png` — columns 96..127, the shard-3 range, which is 3,072..4,095 px
+`bg.96_127.png` - columns 96..127, the shard-3 range, which is 3,072..4,095 px
 into a stage the recording only ever covered the first 160 px of. **This is
 exactly the stretch that used to render black, and it is a picture of a place.**
 A brick viaduct runs diagonally across the top with a chain-link/girder deck
@@ -524,7 +524,7 @@ above it; a blue-grey riveted metal retaining wall runs down the right in
 perspective, with its own highlight band and shadow; a pale stone-block kerb
 edges a rubble-and-sand riverbed that runs the length of the strip; a small
 railed structure appears bottom right. The black is the map's own empty
-entries, not a decode failure — it has straight tile-aligned edges where the
+entries, not a decode failure - it has straight tile-aligned edges where the
 map ends and organic edges nowhere.
 
 **The tell that matters is CONTINUITY ACROSS TILE SEAMS.** A wrong plane order
@@ -535,23 +535,23 @@ unbroken, the metal wall's highlight band runs continuous for hundreds of
 pixels across many cells, and the kerb's stone joints continue through every
 seam. Nothing in a mis-decode survives that.
 
-`bg.second.png` — the $227AF8 / base $32A9 map, 23 columns. A blast crater:
+`bg.second.png` - the $227AF8 / base $32A9 map, 23 columns. A blast crater:
 molten orange lava pooled at the centre with a soft glow gradient, charred
 concrete, scattered wreckage and girders, hexagonal revetment walls, and an
 ornate gold-and-cream architectural border along the top left. Deliberate art,
 correct palette (the orange has a real hot-to-dark ramp, not banded noise), and
-again continuous across seams. **It also draws nothing in the page yet** — the
+again continuous across seams. **It also draws nothing in the page yet** - the
 painter $26C20C is unported (§6 item 5). This is shard 7's pixels, shipped and
 unread.
 
-`bg.0_223.png` — the whole stage. Reads top-to-bottom as: a pocked grey
+`bg.0_223.png` - the whole stage. Reads top-to-bottom as: a pocked grey
 asteroid/rock surface; an industrial deck with catwalks and lit windows; a city
 block with green-lit signage; a long diagonal rail/bridge span with blue running
 lights; the metal-wall-and-riverbed stretch of `bg.96_127`; a large circular
 plaza/arena; a red-brick district; and a gold-lit industrial complex at the end.
 That is a stage with a designed progression, not 224 columns of anything else.
 
-### the break images — and a correction to §5
+### the break images - and a correction to §5
 
 `bg.0_223.break-planes.png` and `bg.0_223.break-u19.png` are **byte-identical
 to `bg.0_223.png`** (sha1 `9d8d865a…` for all three). **That is correct and it
@@ -559,15 +559,15 @@ is the point**, but it is not stated in §5 and it will mislead the next reader:
 `planes` and `u19` are ONE-SIDED breaks that change only how the CARTRIDGE side
 is decoded. The PNG is rendered from the BUNDLE. So the break moves the
 `--check` diff count and cannot move the picture. **Do not read those two files
-as "what a break looks like" — they are not.** The red is in `--check`'s output,
+as "what a break looks like" - they are not.** The red is in `--check`'s output,
 not in the image.
 
 `bg.0_223.break-base.png` is the only break that DOES change the picture,
 because `base` is the one that mutates the bundle side: it is a solid **magenta**
-column with black holes — magenta being bgstrip's "this tile is not in the
+column with black holes - magenta being bgstrip's "this tile is not in the
 bundle" marker. Dropping the $0AA9 stage base asks for tile numbers no shard
 holds, so essentially every lookup misses. Unmistakable, and 20,063 B against
-the good picture's 1,254,769 B — even the FILE SIZE says it.
+the good picture's 1,254,769 B - even the FILE SIZE says it.
 
 **Stale artifact:** `bg.0_223.break-swap.png` (539,652 B) is still on disk. It
 is the output of the `swap` break §5 says was DELETED for being unable to fail.
@@ -575,7 +575,7 @@ It is a leftover from before the deletion, it is in gitignored `rip/`, and it
 should not be cited as evidence of anything. Left in place; noted here so the
 next reader does not go looking for a `--break swap` that no longer exists.
 
-## 9. THE TESTS — 200 -> 207, and TWO MORE DEFECTIVE CHECKS FOUND
+## 9. THE TESTS - 200 -> 207, and TWO MORE DEFECTIVE CHECKS FOUND
 
 §6 item 4 and §7 item 6. **DONE. `node --test games/ddpdoj/tests/` is now
 207 pass / 0 fail / 0 skipped / 0 todo**, against the 200/0/0 baseline this
@@ -583,7 +583,7 @@ agent re-confirmed at `87900ab` before touching anything.
 
 New file: `games/ddpdoj/tests/web-shards.test.js`, 7 tests. All four items §7
 specced, plus three the specced ones needed anyway. Synthetic manifests,
-synthetic shard bodies, and the exporter's own SOURCE TEXT — no cartridge, no
+synthetic shard bodies, and the exporter's own SOURCE TEXT - no cartridge, no
 `assets/`, no network, in the house style.
 
 | test | what it pins |
@@ -601,10 +601,10 @@ synthetic shard bodies, and the exporter's own SOURCE TEXT — no cartridge, no
 `Demo.streamColumn()` was a method on a class `app.js` does not export, so it
 could not be reached from a test. The arithmetic is now
 **`export function streamColumnOf(map, ptr)`** and the method is a one-line call
-to it — the same shape, and for the same reason, as `pickScale`. No behaviour
+to it - the same shape, and for the same reason, as `pickScale`. No behaviour
 changed.
 
-### THE MUTATION RUN — every assertion was made to go RED before it was believed
+### THE MUTATION RUN - every assertion was made to go RED before it was believed
 
 The brief said to assume the sixth defective check until it has been watched
 going red. It was right twice. 16 single-line mutations of `src/web/assets.js`
@@ -617,7 +617,7 @@ Deleting `promote()`'s `state === 'failed'` early return changed nothing:
 `promote()` unshifts the shard, `pump()` discards it on the very same tick
 because it is not `idle`, and the queue is empty either way. The assertion was
 reading a variable that is empty for a reason unrelated to the guard it claimed
-to test. **Deleted and replaced by a FETCH COUNT** — the observable property is
+to test. **Deleted and replaced by a FETCH COUNT** - the observable property is
 "a failed shard is never requested twice", and counting requests is the only way
 to see it.
 
@@ -630,19 +630,19 @@ body so nobody reads a green run as "each of those two lines is covered".
 **(7) `assert.equal(streamColumnOf(map, 0), -1)` as a test of the `if (!ptr)`
 guard.** Deleting the guard changes no answer: `off = 0 - $225B78` is negative
 and the `off < 0` arm returns -1 anyway. The same is true for `NaN` and
-`undefined`. The assertion is a TRUE statement about behaviour and is kept —
+`undefined`. The assertion is a TRUE statement about behaviour and is kept -
 but its comment now says it pins the behaviour and not that line, because the
 line is unreachable as a difference.
 
 **The generalisation, which is §5's lesson in a second costume.** §5 found a
 red switch that could not fail because it mutated a SHARED INPUT. These two
 could not fail because they asserted on a value that a REDUNDANT SIBLING already
-forces. Both are the same disease — *an assertion whose subject is not what it
-names* — and both are only findable by mutating the source and watching. **A
+forces. Both are the same disease - *an assertion whose subject is not what it
+names* - and both are only findable by mutating the source and watching. **A
 test that has never been seen red is a comment.** Defective checks in this
 project now number seven.
 
-## 10. THE GATES — ALL RUN, ALL GREEN
+## 10. THE GATES - ALL RUN, ALL GREEN
 
 §6 item 3 and §7 items 1-5. Every gate PART ONE listed as NOT RE-RUN has now
 been run against the committed tree. **Paths are relative to `games/ddpdoj/`,
@@ -665,11 +665,11 @@ and the first invocation died on it. The working line is in the table above.
 `bg.shard*.tiles.u8.gz`; the guard was not weakened to accommodate them and did
 not need to be.
 
-`webgate` fetches **14** files, which is the boot set and nothing else — shards
+`webgate` fetches **14** files, which is the boot set and nothing else - shards
 0 and 1 appear in its list and shards 2..7 do not. That is the deferred split
 visible from outside the loader.
 
-## 11. THE BREAK TABLE — EVERY SWITCH SEEN RED
+## 11. THE BREAK TABLE - EVERY SWITCH SEEN RED
 
 `bundlegate --break <b>`, all six, exit 0 = "the break was correctly detected":
 
@@ -677,9 +677,9 @@ visible from outside the loader.
 |---|---|---|
 | `drop-tile` | 0 | `AssetError: capture frame 0 (lf2000) uses BG tile 2936 ($b78) at map entry 531, which BG shard 0 is supposed to hold and does not` |
 | `drop-stream` | 0 | `AssetError: capture frame 91 (lf2091) record 51 points at packed sprite offset 0, which is not an exported stream base` |
-| `zero-col` | 0 | **14280066/15955968 = 89.4967 %** — diverged |
-| `blank-tile` | 0 | **15804494/15955968 = 99.0507 %** — diverged |
-| `shard-404` | 0 | **NEVER RUN BEFORE.** `AssetError: BG SHARD 2 DID NOT LOAD (assets/gfx/bg.shard2.tiles.u8.gz: HTTP 404 ...)` — and the message names the file, which the gate checks separately |
+| `zero-col` | 0 | **14280066/15955968 = 89.4967 %** - diverged |
+| `blank-tile` | 0 | **15804494/15955968 = 99.0507 %** - diverged |
+| `shard-404` | 0 | **NEVER RUN BEFORE.** `AssetError: BG SHARD 2 DID NOT LOAD (assets/gfx/bg.shard2.tiles.u8.gz: HTTP 404 ...)` - and the message names the file, which the gate checks separately |
 | `shard-late` | 0 | **NEVER RUN BEFORE.** `BG tile 3261 ($cbd) of shard 2 drew the transparent pen and the shard is named in bg.status().waiting = [2]` |
 
 `bgstrip.py 0 224 --check --break <b>`, the three surviving one-sided switches:
@@ -691,7 +691,7 @@ visible from outside the loader.
 | `base` | 193536/2064384 = **9.3750 %**, and **1,819 tiles NOT IN THE BUNDLE** | red |
 | `u19` | 101517/2064384 = **4.9175 %** | red |
 
-Note `u19` at **4.9 %** here against wave 3's 52.86 %. Not a contradiction —
+Note `u19` at **4.9 %** here against wave 3's 52.86 %. Not a contradiction -
 wave 3 measured one FRAME, most of which is not the shifted region; this
 measures all 224 columns, where nearly every tile index is above 0xC000 and
 therefore moves. The 4.9 % is close to what two unrelated pictures share.
@@ -700,7 +700,7 @@ therefore moves. The 4.9 % is close to what two unrelated pictures share.
 
 PART ONE §4.6 claims sharding silently disarmed this break and that the fix is
 unverified. **Verified, by re-running the OLD victim choice.** `bundlegate.mjs`
-was temporarily reverted to `nos[count / 2]` — the pre-wave-14 line — and run:
+was temporarily reverted to `nos[count / 2]` - the pre-wave-14 line - and run:
 
 ```
 OLD-VICTIM EXPERIMENT: middle slot of the 2026-tile sheet is tile 3743;
@@ -719,7 +719,7 @@ from the capture itself and throws.
 the disarmed break "would have gone quietly GREEN". It would not have gone
 *quietly*: bundlegate's fall-through prints `NOTHING THREW -- the coverage check
 is fake` and **returns exit 1**. The trap is subtler and worse for a human
-reader — **both the working and the disarmed outcome print a line beginning
+reader - **both the working and the disarmed outcome print a line beginning
 `EXPECTED-RED [--break drop-tile]:`**, and only the exit code and the sentence
 after the colon separate them. An operator scanning output for the string
 `EXPECTED-RED` sees the same prefix either way. **Check the exit code, not the
@@ -730,16 +730,16 @@ exactly this reason.)
 
 `bundlegate.mjs` was the only file mutated, and it was restored from a copy
 taken before the edit: `git diff --quiet HEAD -- tools/bundlegate.mjs` is clean.
-The bundle was hashed before and after the whole break session —
+The bundle was hashed before and after the whole break session -
 `find assets -type f | sort | xargs sha1sum | sha1sum` =
 **`49303b089adce7922c88e133d4b1ed34d6014792`** both times. No break writes to
 `assets/`; `shard-404` injects its 404 in the READER, not on disk, which is why.
 
-## 12. STILL UNDONE — carried forward from §6, unchanged
+## 12. STILL UNDONE - carried forward from §6, unchanged
 
 Not this agent's job and not fixed:
 
-1. **The 13 BG ELEMENTS are still unported** — 143,102 B gzipped of sprite
+1. **The 13 BG ELEMENTS are still unported** - 143,102 B gzipped of sprite
    streams that the scroll VM's op `$10` spawns. The background is still
    missing its big objects. `bundlegate`'s unported-call census names the
    driver: `160 x $26233A the 8-slot background-element driver -- W18`.
@@ -747,7 +747,7 @@ Not this agent's job and not fixed:
    unported.** **Shard 7 ships 205 tiles of pixels and 207 decoded map entries
    that NOTHING DRAWS.** `bg.second.png` is a picture of art the page cannot
    currently show. That is 79.4 KiB of deferred bundle doing nothing yet, by
-   design, and it is not a defect — but it is not a feature either until W18.
+   design, and it is not a defect - but it is not a feature either until W18.
 3. **No browser has opened this page.** There is none on this machine. Every
    claim about the shard schedule holding over a real connection is a
    simulation. `webgate` proves the fetch/assembly path over a real HTTP origin

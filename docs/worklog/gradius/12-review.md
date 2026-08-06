@@ -1,4 +1,4 @@
-# Review of wave 12 — $A3B1 single-enemy spawn + the throw audit (commit f6558dd)
+# Review of wave 12 - $A3B1 single-enemy spawn + the throw audit (commit f6558dd)
 status: DONE
 wave: 12   role: review   started: 2026-08-01
 

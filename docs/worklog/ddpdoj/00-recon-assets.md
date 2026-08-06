@@ -1,12 +1,12 @@
-# RECON 3/5 — DaiOuJou assets: what is in the graphics/sound ROMs and how to extract them
-status: DONE (graphics) / PARTIAL (sound — see "What I could not do")
+# RECON 3/5 - DaiOuJou assets: what is in the graphics/sound ROMs and how to extract them
+status: DONE (graphics) / PARTIAL (sound - see "What I could not do")
 wave: 0   role: recon   started: 2026-07-31
 
 ## The task, as I understood it
 
 For `ddpdojblk` (Black Label, the port target):
 
-1. Say what each ROM file **actually** contains — verified, not guessed from its letter.
+1. Say what each ROM file **actually** contains - verified, not guessed from its letter.
 2. Document the IGS023 sprite format and the tile format: bit depth, block size, how a
    sprite record in RAM addresses ROM data, how palettes apply.
 3. Check whether MAME's own driver source documents the decode.
@@ -31,7 +31,7 @@ background, text overlay). Tiles, sprites, palette and priority are all confirme
 | whole-frame re-renderer + differ | `games/ddpdoj/tools/framerender.py` |
 | sound-path probe (Lua) | `games/ddpdoj/tools/soundprobe.lua` |
 | MAME capability probe (Lua) | `games/ddpdoj/tools/vidprobe.lua` |
-| **all ROM-derived output** | `games/ddpdoj/rip/` — gitignored twice over |
+| **all ROM-derived output** | `games/ddpdoj/rip/` - gitignored twice over |
 
 `games/ddpdoj/rip/` is covered by the repo-root `.gitignore` rule `rip/` (unanchored,
 so it matches at any depth) AND by a `games/ddpdoj/rip/.gitignore` containing `*`
@@ -44,7 +44,7 @@ $ git check-ignore -v games/ddpdoj/rip/rom/cave_t04401w064.u19
 
 ## What I MEASURED
 
-### 0. The inventory changed under me — `ddpdojblk` now verifies
+### 0. The inventory changed under me - `ddpdojblk` now verifies
 
 `NOTES-versions.md` records `ddpdojblk BAD (0 OK)` because `ddp3blk_defaults.nv` had
 the wrong checksum. **That is no longer true on this machine.** Between two of my own
@@ -77,10 +77,10 @@ pgm_t01s.rom          2097152  CRC32=1a7123a0  SHA1=cc567f577bfbf45427b54d6695b1
 `ddb10_10_8_434f.u45` and `ddp3blk_defaults.nv` both match `pgm.cpp:5364/5385` exactly.
 The only remaining gap is the undumped ARM7 internal ROM, which MAME simulates.
 
-### 1. Region assembly — the offset nobody would guess
+### 1. Region assembly - the offset nobody would guess
 
 `pgm.cpp:5369-5382`, `ROM_START( ddpdojblk )`. **`cave_t04401w064.u19` loads at
-`0x180000`, not `0x200000`** — it OVERWRITES the top `0x80000` of `pgm_t01s.rom`.
+`0x180000`, not `0x200000`** - it OVERWRITES the top `0x80000` of `pgm_t01s.rom`.
 Getting this wrong silently shifts every tile index above 0xC000.
 
 | MAME region | size | files (offset, length) |
@@ -103,40 +103,40 @@ dev :ics spaces=[data]                    :prot spaces=[program]
 screen w=448 h=224 refresh=59.185606061
 ```
 
-### 2. What each ROM actually contains — VERIFIED BY LOOKING
+### 2. What each ROM actually contains - VERIFIED BY LOOKING
 
-- **`pgm_t01s.rom` (2 MB) — 8×8 4bpp text tiles, and it is the PGM BIOS font.**
+- **`pgm_t01s.rom` (2 MB) - 8×8 4bpp text tiles, and it is the PGM BIOS font.**
   Decoded as `gfx_8x8x4_packed_lsb` it renders readable ASCII + katakana.
   `games/ddpdoj/rip/sheets/tx_zoom_lomsb.png` shows `<=>?@ABCDEFG / HIJKLMNOPQRSTUVW /
   XYZ[\]^_`, anti-aliased, perfectly aligned to 8×8 cells. The **wrong** nibble order
-  (`hi,msb`) renders unreadable noise — that is the red-validation of this claim, and
+  (`hi,msb`) renders unreadable noise - that is the red-validation of this claim, and
   both sheets are on disk.
   65536 tiles × 32 B = 0x200000 exactly, so the TX layer's 16-bit tile number spans
   precisely this ROM (indices ≥0xC000 land in u19 because of the 0x180000 overlap).
-- **`cave_t04401w064.u19` (8 MB) — the 32×32 5bpp background tiles**, plus TX tiles
+- **`cave_t04401w064.u19` (8 MB) - the 32×32 5bpp background tiles**, plus TX tiles
   0xC000-0xFFFF. `rip/sheets/bg_4096_contig.png` (tiles 4096-4159) shows sharp,
   cell-aligned industrial art: hazard stripes, concrete, girders, machinery.
   `rip/sheets/bg_survey_stride64.png` is a whole-region survey; tile indices below
   ~2400 are the t01s font read as 32×32 and are noise, as expected.
-- **`cave_a04401w064.u7` + `cave_a04402w064.u8` (8 MB each) — sprite COLOUR data**,
+- **`cave_a04401w064.u7` + `cave_a04402w064.u8` (8 MB each) - sprite COLOUR data**,
   a packed 5-bit-per-pixel stream (`m_adata`), 3 pixels per 16-bit LE word.
-- **`cave_b04401w064.u1` (8 MB) — sprite TRANSPARENCY MASKS plus the per-sprite
+- **`cave_b04401w064.u1` (8 MB) - sprite TRANSPARENCY MASKS plus the per-sprite
   pointer header** (`m_bdata`). Not "colour indexes" despite the ROM_REGION comment.
-- **`cave_m04401b032.u17` + `pgm_m01s.rom` — ICS2115 wavetable samples.** MAME's
+- **`cave_m04401b032.u17` + `pgm_m01s.rom` - ICS2115 wavetable samples.** MAME's
   comment says "8 bit mono 11025Hz"; **the first keyon I captured is 16-bit**
   (`conf=20`, no ulaw, no eightbit). The comment is boilerplate, not a measurement.
-- **`ddp3_bios.u37`** — PGM BIOS, 68000 code, logos hacked out.
-- **`ddp3blk_defaults.nv`** — factory NVRAM; the set does not boot without it.
+- **`ddp3_bios.u37`** - PGM BIOS, 68000 code, logos hacked out.
+- **`ddp3blk_defaults.nv`** - factory NVRAM; the set does not boot without it.
 
 ### 3. The formats, from MAME's own source (mame0289, `igs023_video.cpp`)
 
 MAME **does** document the decode, and reading it was the fast path.
 
-**TX tiles** — `GFXDECODE_DEVICE(DEVICE_SELF, 0, gfx_8x8x4_packed_lsb, 0x800, 32)`
+**TX tiles** - `GFXDECODE_DEVICE(DEVICE_SELF, 0, gfx_8x8x4_packed_lsb, 0x800, 32)`
 (line 102). 8×8, 4bpp, 32 B/tile, low nibble = left pixel. Colour base 0x800,
 16 entries per palette. Transparent pen 15. Tilemap 64×32, 8×8.
 
-**BG tiles** — `GFXDECODE_DEVICE_REVERSEBITS(DEVICE_SELF, 0, pgm32_charlayout, 0x400, 32)`
+**BG tiles** - `GFXDECODE_DEVICE_REVERSEBITS(DEVICE_SELF, 0, pgm32_charlayout, 0x400, 32)`
 (line 103) with (line 35-44):
 ```
 32,32, RGN_FRAC(1,1), 5, { 4,3,2,1,0 }, { STEP32(0,5) }, { STEP32(0,5*32) }, 32*32*5
@@ -154,7 +154,7 @@ Tilemap 64×16, 32×32, `set_scroll_rows(512)`.
 ```
 Screen is cleared to palette entry **0x3ff** (line 772).
 
-**Sprites** — the interesting one. A record does **not** name a tile; it names a bit
+**Sprites** - the interesting one. A record does **not** name a tile; it names a bit
 position in a *compressed* stream and a size in pixels.
 
 - List: 5 × u16 per entry in main RAM `0x800000-0x8009ff`, DMA'd on vblank rise into
@@ -166,13 +166,13 @@ position in a *compressed* stream and a size in pixels.
   units (6 bits), height in pixels (9 bits), plus zoom mode + 4-bit zoom-table select
   per axis.
 - **`offs` points at a 2-word HEADER, not at mask data**:
-  `aoffset = ((sprmask[offs+1] << 16) | sprmask[offs+0]) >> 2` — a **word index into
+  `aoffset = ((sprmask[offs+1] << 16) | sprmask[offs+0]) >> 2` - a **word index into
   `sprcol`**. Mask data starts at `offs+2` (lines 354-358 / 537-541).
 - Per line: `wide` mask words are consumed, bit **LSB first**; a SET bit is
   transparent and consumes nothing, a CLEAR bit consumes the next 5-bit pixel from
   the `sprcol` stream (3 px per u16, bits 0-4 / 5-9 / 10-14, bit 15 unused, line 276-286).
   **So sprite data is length-compressed and cannot be random-accessed within a
-  sprite** — you must decode from the header forward. That is why MAME draws in ROM
+  sprite** - you must decode from the header forward. That is why MAME draws in ROM
   order rather than pre-decoding.
 - Zoom: a 16-entry table in `zoomram` gives a 32-bit bitmask per zoom level; a set bit
   means "double this pixel" (grow) or "drop this pixel" (shrink). Entry 0xf is
@@ -181,11 +181,11 @@ position in a *compressed* stream and a size in pixels.
   `pgm_draw_pix` sets `destpri |= 1` for every pixel it touches, refusing to write
   where that bit is already set. So **the first sprite drawn owns the pixel, and the
   first sprite drawn is the LAST list entry**. `games/ddpdoj/NOTES-machine.md` says
-  "later entries are behind earlier ones" — **that is backwards**; higher list index
+  "later entries are behind earlier ones" - **that is backwards**; higher list index
   draws in front.
 - `pri` bit: 0 = over background, 1 = only where the BG did not draw.
 
-### 4. The pixel proof — 100.000%, and what it cost to get there
+### 4. The pixel proof - 100.000%, and what it cost to get there
 
 `framerender.py` re-renders a whole frame from ROM + a MAME state dump using only
 our Python, then diffs against `screen:pixels()` from the same run. The two sides are
@@ -205,7 +205,7 @@ state f3599 vs pixels f3599:  86500/100352 =  86.197%
 written the NEXT frame's video state.** So the state you read at emulator frame N is
 what MAME will draw in frame N+1, and the framebuffer you read at frame N was drawn
 from frame N-1's state. The tell was `bg_xscroll` stepping `00f0 → 00f8 → 0100`,
-exactly 8 per frame — the same 8-pixel offset I was chasing in the background layer.
+exactly 8 per frame - the same 8-pixel offset I was chasing in the background layer.
 This is `01-the-oracle-method.md`'s "sample at a stable point in the game's own loop"
 and `02-traps.md` §3 "when one field will not converge, suspect the measurement",
 reproduced from scratch inside two hours. **Any ddpdoj oracle must fix its sample
@@ -243,7 +243,7 @@ OK   state f5800 -> pixels f5801: 100352/100352 = 100.0000%  sprites= 87 zoomed=
 ALL EXACT: 802816/802816 = 100.0000% over 8 frame pair(s)
 ```
 
-**Red-validated by mutation** (`03-checks-that-can-fail.md` — a check never seen fail
+**Red-validated by mutation** (`03-checks-that-can-fail.md` - a check never seen fail
 is not evidence). Each mutation applied by monkey-patch over frames 4300 and 5800,
 then reverted:
 
@@ -275,10 +275,10 @@ whatever a previous run left behind.
 `NOTES-mame-oracle.md` §6.1 records that a discarded `install_read_tap` handle is
 silently collected. **The same is true of `emu.add_machine_frame_notifier`.** With the
 handle discarded my dumper fired at frame 60 and never again, with no error of any
-kind — and an earlier 50-second run produced *zero* output and looked like a script
+kind - and an earlier 50-second run produced *zero* output and looked like a script
 that had simply not matched anything. Keep the subscription in a global.
 
-### 7. Sound — the arrangement, and a first live capture
+### 7. Sound - the arrangement, and a first live capture
 
 Architecture, from `pgm.cpp` (all source-read, not guessed):
 
@@ -289,7 +289,7 @@ Architecture, from `pgm.cpp` (all source-read, not guessed):
   copied into Z80 RAM. Nothing to disassemble statically without finding that blob.
 - Z80 I/O map (`pgm.cpp:315-320`): `0x8000-0x8003` ICS2115; `0x8100` latch3 (Z80→68k);
   `0x8200` latch1; `0x8400` latch2.
-- 68k side: `0xc00002/3` latch1 **and it pulses the Z80 NMI** — that is the
+- 68k side: `0xc00002/3` latch1 **and it pulses the Z80 NMI** - that is the
   "play sound N" doorbell; `0xc00004/5` latch2; `0xc0000c/d` latch3;
   `0xc00008` Z80 reset; `0xc0000a` Z80 bus control.
 - Sound chip: **ICS2115V WaveFront wavetable @ 33.8688 MHz**, 32 voices, its own
@@ -301,7 +301,7 @@ Architecture, from `pgm.cpp` (all source-read, not guessed):
 
 `soundprobe.lua` mirrors that register file from a write tap on the Z80's I/O space
 and logs every keyon with its real ROM addresses. First capture (30 s, attract, no
-input — the game sat on the version-select screen, so only one sound fired):
+input - the game sat on the version-select screen, so only one sound fired):
 
 ```
 SND keyon vf=1316 n=1 voice=8 conf=20 fmt=16bit loop=0 fc=0100
@@ -313,9 +313,9 @@ the 8-bit the ROM comment claims.** `fc=0x0100` → 256×33075/1024 = 8268.75 Hz
 32-voice mode.
 
 **110-second in-game capture** (`rip/sound/snd110.log`): **1,490 keyons, 67 distinct
-`(start, end, format, bank)` tuples, ALL 16-bit** — not one ulaw or 8-bit voice in the
+`(start, end, format, bank)` tuples, ALL 16-bit** - not one ulaw or 8-bit voice in the
 whole run. Sample banks used: `saddr` 0x40, 0x44, 0x45, 0x46, 0x47, 0x50…0x7x, i.e.
-byte addresses `0x400000-0x7fffff` — **every single one inside
+byte addresses `0x400000-0x7fffff` - **every single one inside
 `cave_m04401b032.u17`. No keyon in 110 s touched `pgm_m01s.rom` (0x000000-0x1fffff).**
 That is a presence measurement over one run, NOT a claim that the BIOS sample ROM is
 unused; only a listing of the sound driver could establish that.
@@ -336,14 +336,14 @@ $ python games/ddpdoj/tools/sampledump.py --rom <rip>/rom --log <rip>/sound/snd1
   sfx_46809b_474637_fc0100_loop0    samples=  25294  rate=  8268.8Hz  rms= 9651.2  plays=3
 ```
 
-1. **Long, non-looping, 200k-365k samples in bank 0x45 starting at `0x500000`** —
+1. **Long, non-looping, 200k-365k samples in bank 0x45 starting at `0x500000`** -
    12 to 22 seconds of audio. `rip/wav/s_500000_584980_16bit_fc0200.png` is a
    waveform plot I looked at: ~30 evenly spaced percussive hits with decaying
    envelopes, symmetric about zero. **That is streamed BGM, not a sequenced score.**
 2. **Tiny LOOPING samples (143-1476 samples, `loop=1`) retriggered hundreds of times**
-   — 0x5ffed6 played 416 times, 0x6eef3c 136 times. Classic wavetable instrument
+   - 0x5ffed6 played 416 times, 0x6eef3c 136 times. Classic wavetable instrument
    loops. So the driver does both streaming and wavetable synthesis.
-3. **Medium non-looping samples (1k-25k)** — SFX and voice.
+3. **Medium non-looping samples (1k-25k)** - SFX and voice.
 
 **The 68k→Z80 command protocol is a mailbox, not a byte.** A write tap on `0xc00003`
 (`m68k_latch1_w`, which pulses the Z80 NMI) fired 31 times in 70 s and **every single
@@ -357,14 +357,14 @@ SND cmd vf=924  n=2 off=c00002 data=0001 mask=ffff pc=18ad7e
 
 So the latch is a doorbell; **which** sound to play must be passed through the shared
 Z80 RAM window at `0xc10000-0xc1ffff`. `PC=0x18ad7e` is inside the game program ROM
-(`0x100000-0x3fffff`), i.e. file offset `0x8ad7e` of `ddb10_10_8_434f.u45` — that is
+(`0x100000-0x3fffff`), i.e. file offset `0x8ad7e` of `ddb10_10_8_434f.u45` - that is
 the doorbell call site and the anchor for finding the sound driver's mailbox layout.
 
 ## What I could not do, and why
 
 - **17 of 67 captured samples have `end <= start`** and I did not extract them.
   The ICS2115 banks by `(saddr << 20) | (addr & 0xfffff)`, so a sample cannot cross a
-  1 MiB boundary — it wraps inside the bank. Those 17 are either genuine wraps or an
+  1 MiB boundary - it wraps inside the bank. Those 17 are either genuine wraps or an
   artefact of my mirroring the register file (the driver may reprogram `saddr` between
   the start-high and end-high writes and my model applies one bank to both).
   **`sampledump.py` reports and skips them rather than guessing.** Resolving this needs
@@ -373,11 +373,11 @@ the doorbell call site and the anchor for finding the sound driver's mailbox lay
   the mapping needs a write tap on `0xc10000-0xc1ffff` correlated with the doorbell at
   `PC=0x18ad7e`. One run, not done.
 - **The BGM "distinct samples" count is probably inflated.** Several entries share a
-  start (`0x500000`, `0x51b0c6`) with different ends and high replay counts — that
+  start (`0x500000`, `0x51b0c6`) with different ends and high replay counts - that
   looks like one logical stream whose end/loop point the driver moves, split by my
   `(start,end)` dedup key. Per-voice, per-time-window capture would settle it.
 - **I did not find the Z80 program blob in the 68k ROM.** The route is a write tap on
-  `0xc10000-0xc1ffff` recording the 68k PC and the source data — one run, not done.
+  `0xc10000-0xc1ffff` recording the 68k PC and the source data - one run, not done.
 - **I did not exercise the sprite zoom path deliberately.** The 100% frame contains
   four zoomed sprites (one grow at table entry 1, three shrinks at entry 0xa), which
   is presence, not coverage. `03-checks-that-can-fail.md` would want a frame per
@@ -387,7 +387,7 @@ the doorbell call site and the anchor for finding the sound driver's mailbox lay
 - **BG `bg_scale` is unimplemented in MAME itself** (`igs023_video.cpp:193` "TODO: not
   implemented, unknown algorithm"). It reads `0x210` (=100%) in every frame I captured.
   If the game ever writes something else, **our oracle is comparing against an emulator
-  that does not implement the feature** — that is a fidelity hole to watch for, not a
+  that does not implement the feature** - that is a fidelity hole to watch for, not a
   port bug.
 - **Sprites cannot be enumerated statically.** There is no sprite table in ROM: the
   record lives in 68k RAM and points into a compressed stream. Extracting "all

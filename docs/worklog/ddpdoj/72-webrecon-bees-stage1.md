@@ -1,6 +1,6 @@
-# 72 — WEB RECON: BEES, STAGE 1 SPECIFICS / VISUAL BEHAVIOUR / SOURCE QUALITY
+# 72 - WEB RECON: BEES, STAGE 1 SPECIFICS / VISUAL BEHAVIOUR / SOURCE QUALITY
 
-status: **DONE** — see the CONFIRMATION LIST (§8) and the SOURCE-QUALITY
+status: **DONE** - see the CONFIRMATION LIST (§8) and the SOURCE-QUALITY
 RATING (§7).
 
 started / finished: 2026-08-05
@@ -24,16 +24,16 @@ CONFIRM IT IN THE ROM** / **WHERE SOURCES CONFLICT**. Web findings are LEADS.
 
 **Why the flicker half matters more than it sounds:** this project has already
 established, by measuring 189 of 189 records across 161 board frames, that
-**enemy shadow flicker is AUTHENTIC** — the cartridge draws shadows on even
-frames only, a hardware trick for faking translucency — and that "fixing" it
+**enemy shadow flicker is AUTHENTIC** - the cartridge draws shadows on even
+frames only, a hardware trick for faking translucency - and that "fixing" it
 would have been a regression. If bees flicker on the real board, the same
 applies.
 
 **And the precedent that governs the whole file:** an owner question about a
 player hitbox marker was settled by finding four unreachable copies in the ROM
 and confirming the board draws none across 161 frames. The correct answer was
-"it does not exist here — do not add one." **Bees may behave differently in
-this game than the series' reputation suggests — and §3 is exactly that case.**
+"it does not exist here - do not add one." **Bees may behave differently in
+this game than the series' reputation suggests - and §3 is exactly that case.**
 
 ---
 
@@ -52,34 +52,34 @@ this game than the series' reputation suggests — and §3 is exactly that case.
 3. **No source describes a destructible object covering a bee, or any shimmer,
    marker or differently-coloured tile marking the spot.** Every guide's method
    is *memorise the location*. The owner's "something destructible supposed to
-   cover these" is **not supported for this game** (§4) — though it is a fair
+   cover these" is **not supported for this game** (§4) - though it is a fair
    description of a *later* game in the series.
 4. **The bee is probably NOT one of `59-recon-items`' six pool kinds.** Five of
-   the six map cleanly onto named items in the published item roster — and one
+   the six map cleanly onto named items in the published item roster - and one
    of those mappings independently corroborates a ROM measurement recon 59
-   already made — which leaves exactly one unattributed kind against **six**
+   already made - which leaves exactly one unattributed kind against **six**
    roster items still unaccounted for (§6). **That is a structural lead worth
    more than anything else here, and it is cheap to falsify.**
 
 ---
 
-## 1. WHERE STAGE 1'S BEES ARE — ten, fixed, and the back two-thirds only
+## 1. WHERE STAGE 1'S BEES ARE - ten, fixed, and the back two-thirds only
 
 ### WHAT THE WEB CLAIMS
 
 **Count: TEN per stage, and the sources are unanimous.** Shmups Wiki's
 DaiOuJou page, its separate Black Label page, Hardcore Gaming 101, Japanese
-Wikipedia (*"各ステージに10個隠れている蜂アイテム"* — "10 bee items hidden in
+Wikipedia (*"各ステージに10個隠れている蜂アイテム"* - "10 bee items hidden in
 each stage") and iPhone AC all say ten. **I found no source claiming any other
 number for DaiOuJou.**
 
 **Positions: FIXED, and tied to background scenery, not to enemies.** I have
 two independent descriptions and they agree item-for-item and side-for-side.
 
-*Source A — the map image.* Shmups Wiki hosts `DojStage1map.png` (201 × 1,625
+*Source A - the map image.* Shmups Wiki hosts `DojStage1map.png` (201 × 1,625
 px, uploaded by user `Ggmaximo`, 31 May 2024), cited on-wiki as *"Ripped from
 DoDonPachi DaiOuJou Re:Incarnation Strategy Guide"*. **The wiki page's text
-says nothing at all — the page is an image carrier.** I downloaded the image
+says nothing at all - the page is an image carrier.** I downloaded the image
 and read it. It is a vertical strip of the stage, `START` at the bottom,
 `BOSS` at the top, with `AREA-1/2/3` boundary markers and yellow bee icons
 placed on the map. **I counted the icons: exactly TEN.** In stage order
@@ -98,9 +98,9 @@ placed on the map. **I counted the icons: exactly TEN.** In stage order
 | 9 | left | just before/at the wall |
 | 10 | left | top of the pale-blue wall, immediately before the boss band |
 
-*Source B — iPhone AC, `iphoneac.com/daioujo8.html`, "怒首領蜂 大往生 蜂アイテム
+*Source B - iPhone AC, `iphoneac.com/daioujo8.html`, "怒首領蜂 大往生 蜂アイテム
 出現場所一覧" (a screenshot-by-screenshot Japanese location list).* Its ten
-entries, translated: **1–2** on the highway stretch just before the midboss —
+entries, translated: **1–2** on the highway stretch just before the midboss -
 right end of the stair-walled structure, left end behind it; **3** after the
 midboss is destroyed, right end; **4–5** immediately after, two in a row on the
 left building rooftop; **6–9** two on the next left rooftop, one at the right
@@ -113,8 +113,8 @@ vs. a fan's own screenshots), so this is genuine corroboration, not one source
 echoed twice.
 
 **THE FINDING THE OWNER'S REPORT MAKES LOAD-BEARING:** on the map, **the
-entire bottom fifth of stage 1 — the opening highway/cityscape run from `START`
-up to the first `AREA-1` marker — carries NO bee icon at all.** The first bee
+entire bottom fifth of stage 1 - the opening highway/cityscape run from `START`
+up to the first `AREA-1` marker - carries NO bee icon at all.** The first bee
 is not near the start. Both sources put the earliest pair "just before the
 midboss".
 
@@ -122,7 +122,7 @@ midboss".
 
 * Ten fixed positions implies **ten static placements in a stage-1 data
   structure**, not ten runtime drops. The natural home is the stage script the
-  project has already located (`$263336`, walker `$2633BE`, 8-byte records —
+  project has already located (`$263336`, walker `$2633BE`, 8-byte records -
   `PLAN` W18). **Look for ten records in stage 1's script that share a type
   byte no other record uses**, and check whether their spawn clock values sort
   into the map's start→boss order with the first one well after the stage
@@ -144,7 +144,7 @@ midboss".
 
 ---
 
-## 2. WHAT REVEALS A BEE — "the tip of the laser", with a real dispute
+## 2. WHAT REVEALS A BEE - "the tip of the laser", with a real dispute
 
 *(Recon 1 owns this. Recorded here only because it bounds §3 and §4, and
 because one source disagrees with the consensus in a way recon 1 should see.)*
@@ -152,17 +152,17 @@ because one source disagrees with the consensus in a way recon 1 should see.)*
 ### WHAT THE WEB CLAIMS
 
 **Consensus: the LASER, and specifically its TIP.** iPhone AC: *"レーザーの先端
-を当てると出現"* — "they appear when you hit [the spot] with the **tip** of the
+を当てると出現"* - "they appear when you hit [the spot] with the **tip** of the
 laser". Hardcore Gaming 101: bees are *"uncovered by hitting them with the
 Laser weapon"*. Shmups Wiki (Black Label page, verbatim): *"Uncovering a bee
 item with the Laser will add a HIT to the current chain counter, and it will
 refill the chain gauge by 50%."*
 
 **Japanese Wikipedia documents the bees, the count, the scoring and Bee
-Perfect — and says NOTHING about how they are revealed.** Worth stating: the
+Perfect - and says NOTHING about how they are revealed.** Worth stating: the
 single most encyclopaedic Japanese source omits the mechanic entirely.
 
-### WHERE SOURCES CONFLICT — and this one is substantive
+### WHERE SOURCES CONFLICT - and this one is substantive
 
 * iPhone AC adds a hedge: *if a bee does not appear promptly under the laser,
   **switch to shot and attack the spot again***.
@@ -173,14 +173,14 @@ single most encyclopaedic Japanese source omits the mechanic entirely.
 **So three positions exist: laser-only, laser-with-a-shot-fallback, and
 shot-then-laser-mandatory.** They are not reconcilable from text. Note that
 `xy2_` was working frame-by-frame in a re-recording emulator, which normally
-makes them the more careful observer — but the thread contains **no RAM
+makes them the more careful observer - but the thread contains **no RAM
 addresses and no disassembly**, so it is still gameplay observation.
 
 **A ROM answer settles this and nothing else will.** Flagged for recon 1.
 
 ---
 
-## 3. THE FLICKER — the headline negative, and how the trap was sprung
+## 3. THE FLICKER - the headline negative, and how the trap was sprung
 
 ### WHAT THE WEB CLAIMS: **for DaiOuJou, nothing at all.**
 
@@ -188,13 +188,13 @@ I looked specifically for a bee blinking, flashing, pulsing, oscillating,
 changing colour, or animating in *DaiOuJou*, in both languages. **Every
 DaiOuJou source I found is silent on bee appearance beyond a static icon.**
 
-* Shmups Wiki, DaiOuJou page — item roster with an icon, no visual description.
-* Shmups Wiki, **DaiOuJou Black Label** page — detailed on bee scoring, chain
+* Shmups Wiki, DaiOuJou page - item roster with an icon, no visual description.
+* Shmups Wiki, **DaiOuJou Black Label** page - detailed on bee scoring, chain
   and hyper-gauge percentages, **no colour states, no flashing, no oscillation**.
-* Hardcore Gaming 101 — *"no description of bee item appearance, colors,
+* Hardcore Gaming 101 - *"no description of bee item appearance, colors,
   flashing behavior, or other visual characteristics."*
-* Japanese Wikipedia — count, scoring, Bee Perfect. No visual description.
-* iPhone AC's location list — screenshots only; **no mention of 点滅
+* Japanese Wikipedia - count, scoring, Bee Perfect. No visual description.
+* iPhone AC's location list - screenshots only; **no mention of 点滅
   (blinking), no animation states, no pre-appearance marker.**
 
 ### **THE TRAP, AND I WALKED INTO IT BEFORE CATCHING IT**
@@ -217,21 +217,21 @@ stars"* is a DaiFukkatsu mechanic, and that is what exposed the substitution.
 
 > **THEREFORE, stated as plainly as the brief demands: I could not establish
 > that bees flicker in DoDonPachi DaiOuJou. I also could not establish that
-> they do not. The documentation is ABSENT, not negative — and absent
+> they do not. The documentation is ABSENT, not negative - and absent
 > documentation of a visual detail is exactly what one expects for a detail
 > nobody writing a scoring guide would ever mention.** The shadow-flicker
 > precedent cannot be extended to bees on this evidence, in either direction.
 
-### WHAT WOULD CONFIRM IT IN THE ROM — and this is where the answer actually is
+### WHAT WOULD CONFIRM IT IN THE ROM - and this is where the answer actually is
 
 The web cannot settle this; the ROM can, and `59-recon-items` has already
 measured the machinery that would produce a flicker. **All three of these are
-already-measured facts in that recon — I am pointing at them, not adding to
+already-measured facts in that recon - I am pointing at them, not adding to
 them:**
 
 1. **Every item record carries a two-byte animation countdown/reload at
    `+$0C`/`+$0D`, measured `#$202` = 2/2**, and an animation cursor at `+$0E`
-   advancing `addq.w #4` masked `$F` — i.e. **a 4-frame animation stepping
+   advancing `addq.w #4` masked `$F` - i.e. **a 4-frame animation stepping
    every 2 frames**. Kinds `$00`, `$04`, `$08` and `$10` each have a **4-entry**
    sprite table; kinds `$0C`/`$14` have **16**. **A 4-frame cycle at 2 frames
    per step is an 8-frame loop, and if two of those four images differ in
@@ -276,16 +276,16 @@ scenery landmarks; the Re:Incarnation guide contributed a full-stage map with
 icons drawn on. SaiDaiOuJou guidance is explicit that the player *"should
 memorize each bee's location"*. **Ten memorised map coordinates and a ripped
 strategy-guide map are not what a game needs if the bee's spot is visibly
-marked.** That is an inference, and it is labelled as one — but it is the
+marked.** That is an inference, and it is labelled as one - but it is the
 consistent shape of every source I found.
 
 **On "something destructible supposed to cover these" specifically:** the map
 places the bees on a stair-walled structure, two building rooftops, and a
-pale-blue wall — **background scenery, and none of it is described anywhere as
+pale-blue wall - **background scenery, and none of it is described anywhere as
 destructible.** No source mentions a breakable object, a lid, a panel or a
 container over a bee in this game.
 
-**The owner's instinct is not baseless, though — it is one game off.** Marker
+**The owner's instinct is not baseless, though - it is one game off.** Marker
 panels and visible bee indicators are a *DaiFukkatsu*-era feature, which is
 precisely the corpus that dominates the search results (§3).
 
@@ -300,7 +300,7 @@ precisely the corpus that dominates the search results (§3).
   the laser collision block **executed ZERO times across 580 frames of a live
   beam on the board and nobody knows why** (`PLAN` §6.3, W24). If bees are
   laser-revealed, a laser-only collision path that never fires is a strong
-  candidate for *where the reveal lives* — and it means a laser corpus alone
+  candidate for *where the reveal lives* - and it means a laser corpus alone
   may not reveal a bee even when it should. **Recon 1 and W24 should be told
   these two facts are probably the same fact.**
 * **If a hidden bee is drawn at all before reveal, it is a display-list record
@@ -347,7 +347,7 @@ bee worth `8,000` is held as `$8000`, doubled to `$10000`, and reads out as
 `10,000` instead of `16,000`. Stated to affect **AC, PS2 and Xbox 360
 identically**, biting at base values of 6,000–9,000 (stages 2-1 … 2-4), with a
 measured-loss example of ~44 % in a named hit range on stage 2-2. **Scoring is
-recon 2's lane and I am not developing it — but this is the one web source that
+recon 2's lane and I am not developing it - but this is the one web source that
 reasons about the machine rather than the screen, and it predicts a specific,
 checkable ROM behaviour.** Note it aligns with recon 59's measurement that kind
 `$08`'s collect performs **three `$242AC6` BCD conversions**.
@@ -359,7 +359,7 @@ checkable ROM behaviour.** Note it aligns with recon 59's measurement that kind
   collect are two separate events**, which shapes the whole subsystem.
 * The 3 %→30 % ladder implies a **table or a shift keyed to the chain count** on
   the collect path. Recon 59 measured that kinds `$0C`/`$14` set the hyper
-  gauge outright (`$81B642 := $95F`) — **a bee's fractional fill is a different
+  gauge outright (`$81B642 := $95F`) - **a bee's fractional fill is a different
   arithmetic and would be a different writer.** If nothing in the six kinds'
   collect routines does fractional gauge arithmetic, that is another point
   against the bee being one of the six (§6).
@@ -369,11 +369,11 @@ checkable ROM behaviour.** Note it aligns with recon 59's measurement that kind
 ### WHERE SOURCES CONFLICT
 
 * `NOTES-progression.md` §3 already records the loop-2 350,000,000-point
-  condition as *"reported as White Label only — so possibly NOT applicable to
+  condition as *"reported as White Label only - so possibly NOT applicable to
   our Black Label target; verify"*. **Nothing I found this session resolves
   that**, and nothing I found contradicts the rest of that file's bee section.
 * Shmups Wiki's own citation list for these pages is *"Twitter posts, blogs,
-  Discord channels, and forum discussions"* — see §7.
+  Discord channels, and forum discussions"* - see §7.
 
 ---
 
@@ -393,46 +393,46 @@ railguns in 1-4/2-4); **Ground Star** (500); **Large Ground Star** (10,000, in
 from the top of the screen"*); **Max Power** (*"only appears after the player
 loses their last life"*); **1UP** (hidden extend in stage 4).
 
-Laid against recon 59 §1's six kinds — **their ROM facts are recon 59's
+Laid against recon 59 §1's six kinds - **their ROM facts are recon 59's
 measurements, cited, not mine:**
 
 | kind | recon 59 measured | roster item it matches | strength |
 |---|---|---|---|
 | `$00` | +1 shot level, +1 laser level | **Power-up** | exact |
-| `$04` | both to max; **its caller is `$24A10E`, the PLAYER'S OWN DEATH** | **Max Power** — *"only appears after the player loses their last life"* | **exact, and this one is a real cross-check** |
+| `$04` | both to max; **its caller is `$24A10E`, the PLAYER'S OWN DEATH** | **Max Power** - *"only appears after the player loses their last life"* | **exact, and this one is a real cross-check** |
 | `$0C` | P1 hyper stock, `$2530BE`, cap 5 | **Hyper** | exact |
 | `$14` | P2 hyper stock | **Hyper** (P2) | exact |
-| `$10` | `$8130BE` += 1, **refuses at 20**, HUD draw laying out up to 5 icons a row | **1UP** — and `PLAN` W27 treats `$8130BE` as the lives word, with a 20-lives extend cap at `$28433C` | strong |
-| `$08` | counts `$81040A` toward target `$81040B`; completion sets player-state bits and does three BCD conversions; **homing motion**; dropped by enemy type `$86` exactly once | **unattributed** | — |
+| `$10` | `$8130BE` += 1, **refuses at 20**, HUD draw laying out up to 5 icons a row | **1UP** - and `PLAN` W27 treats `$8130BE` as the lives word, with a 20-lives extend cap at `$28433C` | strong |
+| `$08` | counts `$81040A` toward target `$81040B`; completion sets player-state bits and does three BCD conversions; **homing motion**; dropped by enemy type `$86` exactly once | **unattributed** | - |
 
 > **THE `$04` ↔ Max Power MATCH IS THE INTERESTING PART.** Recon 59 measured,
 > from the listing alone, that kind `$04`'s spawn site is the player's own death
 > routine. The published roster says, from play alone, that Max Power *"only
 > appears after the player loses their last life"*. **Two completely independent
 > methods landed on the same fact.** That materially raises my confidence in the
-> other five rows of that table — and therefore in the arithmetic below.
+> other five rows of that table - and therefore in the arithmetic below.
 
 **THE ARITHMETIC: five of six kinds are spoken for, and SIX roster items are
-not — Bomb, four kinds of Star, and the Bee.** One free slot, six claimants.
+not - Bomb, four kinds of Star, and the Bee.** One free slot, six claimants.
 
 > **THEREFORE, AS A LEAD: the bee is most likely NOT a member of the
 > `$816B7A..$8171B9` six-kind pool at all**, and stars almost certainly are not
 > either. A hidden, statically-placed, laser-revealed, scenery-anchored object
 > is a poor fit for a pool whose fill copies its position **from a dying
-> object's `($2,A6)`** (recon 59 §1.2) — bees do not come from dying objects,
+> object's `($2,A6)`** (recon 59 §1.2) - bees do not come from dying objects,
 > they come from fixed map coordinates.
 
 **The one candidate worth testing before discarding, and the test that kills
 it:** kind `$08` is a *count toward a target with a completion bonus*, which is
 the shape of "ten per stage, Bee Perfect on the last one". **But recon 59
-measured its drop site as enemy type `$86`'s death, exactly once per kill** —
+measured its drop site as enemy type `$86`'s death, exactly once per kill** -
 and *"Bombs are always dropped by bomb carriers"* plus *"predictable rectangular
 movement before leaving"* fits kind `$08`'s homing/drift motion and its lifetime
 timer (`$27EACE`, `move.l #$7000B00,($18,A6)`) at least as well.
 
 **The discriminating test, and it is one read:** `$81040B` is the TARGET kind
 `$08` counts toward, and **recon 59 §9.2 records that it could not find its
-writer** — its only absolute sites are two reads and a HUD read. **Find
+writer** - its only absolute sites are two reads and a HUD read. **Find
 `$81040B`'s writer and read its value. If it is 10 and it is reloaded per
 stage, kind `$08` is the bee. If it is a bomb-stock or set-piece number, it is
 not, and the bee lives outside the pool entirely.** Recon 59 already flagged
@@ -440,15 +440,15 @@ this address as blocking; **§6 gives it a second reason to be resolved and a
 concrete expected value to test against.**
 
 **Also worth putting in front of the ROM recon:** recon 59 §2 lists **two drop
-sites it could not attribute to any enemy type — `$267CAC` (passing
+sites it could not attribute to any enemy type - `$267CAC` (passing
 `$0`/`$4`/`$8`/`$C`/`$10`, behind `$23D18E` bit 6 and `$259C42`) and `$27B4A0`
-(passing `$10`)** — and §9.1 estimates about an hour of listing work to close
+(passing `$10`)** - and §9.1 estimates about an hour of listing work to close
 them. If a bee is *not* in the pool, neither of these is it; if it somehow is,
 `$267CAC` is where it would come from.
 
 ---
 
-## 7. SOURCE-QUALITY RATING — explicit, because the project asked
+## 7. SOURCE-QUALITY RATING - explicit, because the project asked
 
 **Overall: THIN-TO-MODERATE on mechanics, GOOD on stage-1 positions, ABSENT on
 visual behaviour, and NON-EXISTENT on anything ROM-level.**
@@ -456,29 +456,29 @@ visual behaviour, and NON-EXISTENT on anything ROM-level.**
 | source | what it gave | rating | why |
 |---|---|---|---|
 | **`DojStage1map.png`** (Shmups Wiki, from the *Re:Incarnation Strategy Guide*) | all ten stage-1 positions | **A− for positions** | a scan of a **published commercial strategy guide**; primary-ish, and the wiki page hosting it is otherwise empty |
-| **iPhone AC, `daioujo8.html`** | all ten positions, in prose + screenshots; the "laser tip" mechanic | **B+** | careful fan documentation from own screenshots; **independently corroborates the map** — that agreement is what earns the grade |
+| **iPhone AC, `daioujo8.html`** | all ten positions, in prose + screenshots; the "laser tip" mechanic | **B+** | careful fan documentation from own screenshots; **independently corroborates the map** - that agreement is what earns the grade |
 | **Shmups Wiki, DaiOuJou Black Label page** | the Black Label hyper-gauge ladder, chain-on-reveal, bee scoring | **B** | version-aware and specific; but its own reference list is *"Twitter posts, blogs, Discord channels, and forum discussions"* |
 | **Shmups Wiki, DaiOuJou page** | count, scoring, Bee Perfect, the item roster used in §6 | **B−** | same citation weakness; the item roster proved unexpectedly useful |
-| **`rokulpg.blogspot.com` bee-overflow post, crediting trap15** | the BCD ×2 overflow bug, per-stage | **B+, and the only mechanically-reasoned source found** | attributes to a known Cave RE; makes a **falsifiable ROM claim**. Second-hand attribution — I did not find trap15's own writing |
+| **`rokulpg.blogspot.com` bee-overflow post, crediting trap15** | the BCD ×2 overflow bug, per-stage | **B+, and the only mechanically-reasoned source found** | attributes to a known Cave RE; makes a **falsifiable ROM claim**. Second-hand attribution - I did not find trap15's own writing |
 | **Japanese Wikipedia** | count, scoring, Bee Perfect | **C+** | encyclopaedic but shallow; **says nothing about reveal or appearance** |
 | **Hardcore Gaming 101** | count, laser reveal, scoring | **C+** | editorial retrospective, explicitly no external citations |
-| **TASVideos thread 17578 (`xy2_`)** | the dissenting "shot-then-laser" reveal claim | **C+ / high-value dissent** | a frame-by-frame worker, so worth listening to — but **the TAS was abandoned in stage 1-1**, and the thread has **no RAM addresses and no disassembly** |
+| **TASVideos thread 17578 (`xy2_`)** | the dissenting "shot-then-laser" reveal claim | **C+ / high-value dissent** | a frame-by-frame worker, so worth listening to - but **the TAS was abandoned in stage 1-1**, and the thread has **no RAM addresses and no disassembly** |
 
 **Things that DO NOT EXIST, as far as I could find, and this is a finding:**
 
 * **No completed TAS of DoDonPachi DaiOuJou Black Label.** The only project I
   found (TASVideos 17578, `xy2_`, FBA-RR) **stalled inside stage 1-1** and was
-  abandoned over emulator limits — the author's own stated blocker was that
+  abandoned over emulator limits - the author's own stated blocker was that
   *FBA lacks RAM search*, with BizHawk-plus-a-MAME-core named as the hoped-for
   successor. **There is no frame-accurate artefact to compare against.**
 * **No public disassembly, RAM map, symbol list or memory-watch file for this
   game.** Not on Shmups Wiki, not on TASVideos, not on any of the Japanese
   sites. The nearest thing is the second-hand trap15 attribution above.
-* **No frame-level superplay annotation** of bee reveals — replays and superplay
+* **No frame-level superplay annotation** of bee reveals - replays and superplay
   videos exist in quantity, but written frame-accurate notes do not.
-* **The two shmups.system11 forum threads most likely to help — "Dodonpachi
+* **The two shmups.system11 forum threads most likely to help - "Dodonpachi
   Daioujou & Black Label No Laser Challenge" (t=41258) and "Dodonpachi
-  dai-ou-jou from zero to best ending" (t=59983) — returned HTTP 403 to
+  dai-ou-jou from zero to best ending" (t=59983) - returned HTTP 403 to
   automated fetching.** The first in particular would directly bear on §2's
   laser-only question (*can a no-laser run get bees at all?*). **This is a real
   gap in my coverage and a human with a browser could close it in minutes.**
@@ -524,7 +524,7 @@ not one of them is a licence to change anything.**
 6. **Is a hidden bee DRAWN before reveal?** Check every one of the 30 display
    buckets for any record at the ten map positions before a laser touches them.
    **A clean negative is the §4 answer, in the hitbox-marker spirit: no
-   indicator exists — do not add one.**
+   indicator exists - do not add one.**
 7. **Do the ten candidates have HP and route through the damage path**
    (`$286096`, `$244FEC`/`$2450B4`), or are they inert until a laser-specific
    test? **This is the direct answer to "wasn't something destructible supposed
@@ -532,7 +532,7 @@ not one of them is a licence to change anything.**
 8. **Connect the reveal to `$2453C2`.** The laser collision block that fired
    **zero times in 580 frames of live beam** is the prime suspect for where a
    laser-only reveal lives (`PLAN` §6.3 / W24). **Recon 1 and W24 are probably
-   chasing the same routine — tell them.**
+   chasing the same routine - tell them.**
 9. **Look for a chain-gauge 50 % refill on REVEAL**, separate from the collect
    path (§5). Its existence proves reveal and collect are two events.
 10. **Look for fractional hyper-gauge arithmetic keyed to the chain** (3 %→30 %).
@@ -540,14 +540,14 @@ not one of them is a licence to change anything.**
     bee's fractional fill is a different writer. **Its absence from all six
     kinds' collect routines is further evidence for §6.**
 11. **Close recon 59 §9.1's two unattributed drop sites** (`$267CAC`,
-    `$27B4A0`) — about an hour of listing work, and it bounds what can drop in
+    `$27B4A0`) - about an hour of listing work, and it bounds what can drop in
     stage 1 at all.
 12. **The trap15 BCD ×2 overflow** (§5): look for a doubling applied to a BCD
     accumulator without a BCD-correct add. Recon 2's lane; listed so it is not
     lost.
 
 **AND THE LEDGER FACT THAT FRAMES ALL OF THE ABOVE:** `PLAN-no-recordings.md`'s
-capture ledger has **no row for bees** — L12 covers *"Explosions, death
+capture ledger has **no row for bees** - L12 covers *"Explosions, death
 effects, items"* as a bucket-20 bulk-writer row and nothing names a bee. **Bees
 have never been captured, never been tracked, and appear in no measured run
 this project has made.** `PLAN` §5.6 says so outright: *"Bee behaviour before a
@@ -557,7 +557,7 @@ against a subsystem with zero measurements behind it. Weight it accordingly.**
 
 ---
 
-## 9. WHAT I COULD NOT DETERMINE — stated the way `docs/knowledge` requires
+## 9. WHAT I COULD NOT DETERMINE - stated the way `docs/knowledge` requires
 
 1. **Whether bees flicker, blink, pulse or change colour in DaiOuJou.**
    *What I tried:* both languages; `点滅`, flashing, blinking, flickering,
@@ -566,7 +566,7 @@ against a subsystem with zero measurements behind it. Weight it accordingly.**
    TASVideos thread. **Every flicker claim I found traced back to DaiFukkatsu
    or SaiDaiOuJou (§3).** No DaiOuJou source describes bee appearance beyond a
    static icon. **ABSENT, not negative.**
-2. **Whether the laser is strictly required to reveal a bee** — three
+2. **Whether the laser is strictly required to reveal a bee** - three
    incompatible positions in §2, and the one thread that would settle it
    ("No Laser Challenge", shmups.system11 t=41258) **returned 403**.
 3. **Whether a revealed bee has a lifetime, drifts, or flashes before
@@ -579,25 +579,25 @@ against a subsystem with zero measurements behind it. Weight it accordingly.**
 5. **Whether Black Label changed bee appearance or positions.** No source
    addresses it either way; all documented version differences are hyper-gauge
    and scoring (§5).
-6. **`NOTES-progression.md` §3's open question** — whether the 350,000,000-point
-   loop-2 condition is White Label only — **is exactly as open as it was.**
+6. **`NOTES-progression.md` §3's open question** - whether the 350,000,000-point
+   loop-2 condition is White Label only - **is exactly as open as it was.**
    Nothing this session touched it.
 
 ---
 
 ## 10. THE ONE-PARAGRAPH ANSWER TO THE OWNER'S QUESTION
 
-Stage 1 has **ten bees, at fixed positions, and none in the opening stretch** —
+Stage 1 has **ten bees, at fixed positions, and none in the opening stretch** -
 so bees appearing early, or in numbers other than ten, is worth a hard look.
 **"You were supposed to shoot them" is essentially right**: every source says
 the laser (its tip) uncovers them, though one frame-by-frame worker insists a
 shot must land first. **"Something destructible supposed to cover these" is not
-supported for this game** — no source describes a breakable cover, a marker or
+supported for this game** - no source describes a breakable cover, a marker or
 a shimmer; the guides all work by memorised map coordinates, and visible bee
 markers are a *later* game's feature. **On the flicker I must decline to
 answer from the web: no DaiOuJou source documents bee appearance at all, and
 every flashing-bee description the search engines return is DaiFukkatsu's or
-SaiDaiOuJou's wearing DaiOuJou's name.** The flicker question is answerable —
+SaiDaiOuJou's wearing DaiOuJou's name.** The flicker question is answerable -
 just not here: **every item record in this cartridge already carries a 4-frame
 animation stepping every 2 frames, and this board is already proven to draw
 some things on even frames only.** Check those two before concluding the

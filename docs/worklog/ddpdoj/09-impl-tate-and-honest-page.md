@@ -1,4 +1,4 @@
-# WAVE 9 — TATE, an honest page, the missing exhaust, and the silent laser
+# WAVE 9 - TATE, an honest page, the missing exhaust, and the silent laser
 
 status: **DONE**
 wave: 9   role: impl   started: 2026-08-01
@@ -24,12 +24,12 @@ here. The human-check list at the end is the honest boundary.
 ## The task, as I understood it
 
 Five jobs from one phone session, plus five mid-flight corrections from the
-coordinator (three of which were wrong and were withdrawn — see §7, which is the
+coordinator (three of which were wrong and were withdrawn - see §7, which is the
 process finding).
 
 ---
 
-## 1. JOB 1 — TATE. AND THE FIRST THING I RULED OUT
+## 1. JOB 1 - TATE. AND THE FIRST THING I RULED OUT
 
 **The brief's premise was wrong and it mattered.** It said "the page currently
 shows the unrotated buffer, which is why it is a tiny horizontal strip". It does
@@ -46,7 +46,7 @@ $ grep -n 'canvas id="screen"' dist/games/ddpdoj/index.html
 The DEPLOYED page was already TATE. Had I "fixed" it by rotating, the picture
 would have come out sideways. **The tiny picture was JOB 2 all along**: the body
 was a flex column, the banner was four paragraphs of 13 px monospace, and
-`#stage` got whatever was left — on a 390 px phone that is a hundred-odd pixels,
+`#stage` got whatever was left - on a 390 px phone that is a hundred-odd pixels,
 so `fitCanvas` floored to scale 1 and drew the game at 224/dpr CSS px wide.
 
 MAME's own declaration, confirmed as instructed:
@@ -82,7 +82,7 @@ Not automatic on orientation or pointer. Three reasons:
    sideways buffer would have made the desktop page worse than it is today.
 2. The owner's "PCs will of course play horizontal" I read as *the window* being
    landscape, not as wanting a sideways game. **This is the one place I am
-   guessing at intent** — if it is wrong it is a one-line change of
+   guessing at intent** - if it is wrong it is a one-line change of
    `DEFAULT_MODE`, and the toggle already exists either way.
 3. Automatic switching on `orientationchange` means a phone tilted in a hand
    changes what the picture *is* mid-play. The two modes are different pictures,
@@ -93,7 +93,7 @@ so private mode does not fail the boot.
 
 ---
 
-## 2. JOB 2 — the layout
+## 2. JOB 2 - the layout
 
 `body` is now `display: grid; grid-template-rows: auto minmax(0,1fr) auto` on
 `height: 100dvh` (with `100vh` before it as the fallback). Three rows:
@@ -114,7 +114,7 @@ The error box and the loading status are also overlays, for the same reason.
 
 ---
 
-## 3. JOB 3 — THE MATCHER WAS ASKING THE WRONG QUESTION
+## 3. JOB 3 - THE MATCHER WAS ASKING THE WRONG QUESTION
 
 **Read §3B first; §3A is the first, incomplete answer and is kept because the
 way it was wrong is the finding.**
@@ -184,7 +184,7 @@ Nothing was overlooked; the acceptance rule was wrong for half the set.
 So the player's own exhaust stayed on the RECORDED ship's path and flew off
 across the screen. At **1515 drawn pixels against the ship's 517** it is the
 biggest player-attached thing on screen, which is why it dominated the report.
-The pods, at 165 and 175 px, were spliced correctly all along — the owner is
+The pods, at 165 and 175 px, were spliced correctly all along - the owner is
 right, and D1 is right too, about a different thing (§3.4).
 
 Rendered on their own, ASCII, to check they are what the numbers say:
@@ -199,7 +199,7 @@ Rendered on their own, ASCII, to check they are what the numbers say:
 
 `Capture.attached()` re-derives the tracking set at LOAD TIME from the bundle it
 already has (`frameList[].refPy/refPx` and the sprite buffers are both already
-shipped), at `ATTACH_MIN_FRACTION = 0.45`. **No asset rebuild is required** —
+shipped), at `ATTACH_MIN_FRACTION = 0.45`. **No asset rebuild is required** -
 the owner's existing `assets/` and any deployed bundle keep working.
 
 Measured on the real capture:
@@ -215,7 +215,7 @@ packer records missing from the re-derivation: 0      (a strict SUPERSET)
 rejected is 41/161, and `tests/web-page.test.js` asserts the threshold sits
 inside that gap.
 
-The parser used is `parseSpriteList`, imported — not a private copy. A second
+The parser used is `parseSpriteList`, imported - not a private copy. A second
 parser could drift on the terminator or the sign extension in silence.
 
 ### 3.4 Review defect D1: right about the WORDS, wrong if read as "the pods are broken"
@@ -224,7 +224,7 @@ D1 says the page claimed the pods are "computed live, by the port". That claim
 IS false: the option object is `$24C096`, one of `type5.js`'s 22 counted-and-not-
 run subsystem calls, and `grep p1Options src/` finds only the address constant.
 But the pods are SPLICED, they sit at the board's own fixed offset from the
-ship, and on screen they are correct — which is what the owner saw.
+ship, and on screen they are correct - which is what the owner saw.
 
 **So D1 is a WORDING defect. The fix is the text, not the code.** Both the
 banner and `app.js`'s header now say the pods are relocated recorded sprites.
@@ -244,7 +244,7 @@ Both true. And the second one is the key to the first.
 
 * **(a) is it PRESENT this frame?** On this hardware the dominant reason a
   sprite is absent is that **alternate-frame drawing is how transparency was
-  faked** — a sprite drawn every other frame at 59.185606 Hz reads as ~50 %
+  faked** - a sprite drawn every other frame at 59.185606 Hz reads as ~50 %
   translucent on a CRT. Shadows and exhaust plumes are exactly what gets done
   that way. So an entire CLASS of player-attached records can never score above
   ~50 % on (a), for a reason that says nothing about attachment.
@@ -256,8 +256,8 @@ constant offset from the ship at all** (§3B.3). The threshold was never the bug
 
 ### 3B.2 The new test, and the eight records
 
-Identity is the record's **appearance class** — `width x height, colour,
-priority, flip` — because display-list slots are rebuilt from scratch every
+Identity is the record's **appearance class** - `width x height, colour,
+priority, flip` - because display-list slots are rebuilt from scratch every
 frame and an index is not an identity. Score = of the frames in which a record
 of that class exists at all, the fraction in which one sits at the modal
 predicted position. Minimum sample 8 frames, so a class seen twice cannot pass
@@ -300,13 +300,13 @@ ordering: ground-plane (shadow) records drawn BEHIND the ship 243, IN FRONT 0
 ```
 
 **EIGHT, exactly as the owner predicted: ship + 2 pods + 2 exhaust + ship shadow
-+ 2 option shadows.** Every accepted class scores **100.0 %** — not 96, not 98.
++ 2 option shadows.** Every accepted class scores **100.0 %** - not 96, not 98.
 The best rejected-on-score is 58.6 %, a 41-point gap. There is no tuned constant
 left anywhere near a cliff.
 
 Note `2x16 c24 p0 f0` at 7.4 %: an ENEMY's shadow, same palette as the player's,
 correctly rejected. That is the class-collision risk the identity scheme has,
-and the conditional score handles it — and the failure direction is safe: a
+and the conditional score handles it - and the failure direction is safe: a
 collision LOWERS the score, so the outcome is a lost splice that shows up in the
 reject list, never an enemy dragged around behind the ship.
 
@@ -323,7 +323,7 @@ frame  ship_x  shadow_x        frame  ship_x  shadow_x
 ```
 
 `shadow_x = (ship_x >> 1) + 32` on every frame, in both directions. I could have
-curve-fitted that and shipped it. Instead — `unidasm` on the player tail, which
+curve-fitted that and shipped it. Instead - `unidasm` on the player tail, which
 `player.js:278` already names as *"the shadow-sprite emit ($23EFC0)"*:
 
 ```
@@ -346,14 +346,14 @@ $249E7E's arithmetic vs the SHIP SHADOW record, over 161 frames:
   present 81, EXACT 81, wrong 0, absent 80
 ```
 
-**81 of 81 exact.** Not a fit — a transcription.
+**81 of 81 exact.** Not a fit - a transcription.
 
 **AND READING THE LISTING IS WHAT SAVED IT.** The X halving is INVISIBLE in this
 capture: the recorded ship's `px` is 5312 on all 161 frames (§3.5), so
 `rigid-y` and `half-y` fit the data equally well and the correlation alone had
 to guess. The listing does not guess. Had I shipped `rigid-y`, the shadow would
 have tracked the player's lateral movement at **twice** the correct rate and
-been wrong by up to ~50 px the moment the player moved sideways — a defect
+been wrong by up to ~50 px the moment the player moved sideways - a defect
 invisible to every gate, because the gates only ever replay a ship that does not
 move sideways.
 
@@ -363,7 +363,7 @@ constants occurs **thirty times in `$24C40E..$24D25A`**, which is `$24C096`'s
 body. Their offsets from the ship's shadow are constant, measured on all 81
 frames: `(0,+20)` and `(0,−12)`.
 
-### 3B.4 THE FLICKER — phase measured, and the rendering question NOT answered
+### 3B.4 THE FLICKER - phase measured, and the rendering question NOT answered
 
 ```
 PHASE  shadow: 81/161 frames, ALL EVEN   first: 0,2,4,6,8,10,12,14
@@ -383,19 +383,19 @@ reproduces the flicker exactly, because the splice moves records and never
 invents them. On the arcade CRT at 59.185606 Hz that alternation reads as
 translucency. On a 60 Hz LCD it may read as visible strobing instead. Drawing
 these records every frame at half opacity would look better and would be
-something **the board never did** — an invention that diverges while flattering.
+something **the board never did** - an invention that diverges while flattering.
 There is a precedent in this repo for the other choice: Batman's water dither
 was deliberately NOT reproduced, for photosensitivity reasons, and it is
 documented as a considered deviation rather than a bug.
 
-Measured, so the decision can be made on numbers: **five records flicker** — the
+Measured, so the decision can be made on numbers: **five records flicker** - the
 80x40 exhaust plume (1515 px, ODD), the 16x32 exhaust glow (145 px, ODD), and
-the three shadows (16x16 + two 16x8, ~180 px total, EVEN) — at 29.6 Hz each,
+the three shadows (16x16 + two 16x8, ~180 px total, EVEN) - at 29.6 Hz each,
 against a ship and pods drawn solid on every frame. **Nobody should change this
 without the owner saying so**, and `src/render/capture.js`'s header says that in
 the source too.
 
-### 3B.5 Ordering — checked, and safe by construction
+### 3B.5 Ordering - checked, and safe by construction
 
 A higher display-list index draws IN FRONT on this hardware, so a shadow moved
 in front of the ship would be obviously wrong. `splice` rewrites position words
@@ -418,7 +418,7 @@ table with the accept/reject line drawn in it, and the page's provenance line
 says how many classes were rejected and names the tool. **A rejected candidate
 is a finding.**
 
-### 3.5 THE TILT — measured, and NOT fixed this wave
+### 3.5 THE TILT - measured, and NOT fixed this wave
 
 The owner is right that the ship you steer does not bank. The cause:
 
@@ -453,19 +453,19 @@ frame that moves" rather than letting it look inert.**
 
 ---
 
-## 4. JOB 4 — the page's claims
+## 4. JOB 4 - the page's claims
 
 Rewritten. What it now says, all of it checkable against this file:
 
 * one ship is simulated and verified frame-exact; everything else is a 161-frame
   recording that loops;
 * the enemies are pixels, cannot see you and cannot be shot;
-* FIVE records are relocated — ship, two pods, two exhaust — and the pods and
+* FIVE records are relocated - ship, two pods, two exhaust - and the pods and
   exhaust are relocated recordings, not simulation;
 * the ship does not bank, and why;
 * no weapon is drawn and there is no sound;
 * what each fire button actually does, as four separate cases (§5);
-* **a `$` address in the red box means NOT PORTED YET** — the box now leads with
+* **a `$` address in the red box means NOT PORTED YET** - the box now leads with
   `"$24C8BE IS NOT PORTED YET."` and the sentence "This is not a crash", keeps
   the full message, and still `console.error`s the trace.
 
@@ -478,7 +478,7 @@ regains the word "options". D1 would have been caught by that test.
 
 ---
 
-## 5. JOB 5 — THE SILENT LASER. It was (b), and here is the measurement.
+## 5. JOB 5 - THE SILENT LASER. It was (b), and here is the measurement.
 
 ### 5.1 (a) is ruled out: the held bit arrives
 
@@ -591,20 +591,20 @@ Every `unportedLog.note` site in `src/`, and whether it CAN be a throw.
 
 | path | ROM addr | throws? | reachable only by INPUT? | can it be a throw? |
 |---|---|---|---|---|
-| ISR6 inner input gate | `$15B980` | no | no — overrun frames | no: every frame |
+| ISR6 inner input gate | `$15B980` | no | no - overrun frames | no: every frame |
 | ISR6 coin/service | `$13CFBA` | no | no | no: every frame |
 | ISR6 jsr #3 / tail | `$18ACC0`,`$13C4FC` | no | no | no: every frame |
 | ISR6 gated routines (4) | `$141676` etc | no | no | no: every frame |
 | main-loop call #1 | `$256D5A` | no | no | no: every frame |
 | main-loop call #3 | `$24683E` | no | no | no: every frame |
-| **main-loop call #4, the display-list build** | `$23D2AE` | no | no | no: every frame — it is WHY the picture is a replay |
+| **main-loop call #4, the display-list build** | `$23D2AE` | no | no | no: every frame - it is WHY the picture is a replay |
 | object dispatch entries (18 of 20) | `$240F62`+8n | no | no | no: every frame |
 | player tail: shadow emit + BCD | `$249E7E` | no | no | no: every frame |
 | shot: bra to the tail | `$249B8C` | no | yes | harmless: a translated branch, not a gap |
 | shot: idle, no counter running | `$249BA4` | no | yes | harmless: the idle path IS ported |
 | shot fire SOUND | `$28C3BA` | no | yes | no: audio is out of slice by design |
 | type 5's tail | `$28B670` | no | no | no: every frame |
-| **type 5's 22 subsystem calls** | 22 addrs incl. `$24C096` | no | no | **no as a group — but the LASER RAMP inside `$24C096` now throws on its own condition. This wave's fix.** |
+| **type 5's 22 subsystem calls** | 22 addrs incl. `$24C096` | no | no | **no as a group - but the LASER RAMP inside `$24C096` now throws on its own condition. This wave's fix.** |
 
 **The audit's conclusion: exactly one silent path was reachable by a button and
 had a visible board effect, and it was the laser. The rest are unconditional
@@ -652,7 +652,7 @@ webgate --break missing-file / truncated / not-gzip   all EXPECTED-RED, by name
 
 ### The two deliberate breaks, seen red, restored byte-identical
 
-**BREAK 1 — the integer floor** (`app.js`, `Math.floor` removed):
+**BREAK 1 - the integer floor** (`app.js`, `Math.floor` removed):
 
 ```
 before  sha256 9b28573a6a3dd992c95d6b65ac4cb1260463ae4f31292f54911a5fd93a0d4746
@@ -662,7 +662,7 @@ restored  sha256 9b28573a6a3dd992c95d6b65ac4cb1260463ae4f31292f54911a5fd93a0d474
           # pass 16 # fail 0                                       (identical)
 ```
 
-**BREAK 2 — score on PRESENCE instead of conditionally** (`capture.js`,
+**BREAK 2 - score on PRESENCE instead of conditionally** (`capture.js`,
 `hit / present` → `hit / usable.length`). That is the OLD question, and it
 reproduces wave 7's defect exactly:
 
@@ -680,7 +680,7 @@ restored  sha256 1c909eaed1a54e99688226cdeb0f3f1cb7e287bcc3021e2e478e3c35ea2016d
           # pass 23 # fail 0                                       (identical)
 ```
 
-**BREAK 3 — drop the `ground` model**, leaving only `rigid`. That reproduces
+**BREAK 3 - drop the `ground` model**, leaving only `rigid`. That reproduces
 §3A's incomplete fix exactly:
 
 ```
@@ -693,8 +693,8 @@ restored  sha256 1c909eaed1a54e99688226cdeb0f3f1cb7e287bcc3021e2e478e3c35ea2016d
           # pass 23 # fail 0                                       (identical)
 ```
 
-The two breaks reproducing the two previous defective states — 3 records and 5
-records — is the strongest evidence I have that the tests are testing the thing
+The two breaks reproducing the two previous defective states - 3 records and 5
+records - is the strongest evidence I have that the tests are testing the thing
 that actually went wrong twice.
 
 ---
@@ -703,39 +703,39 @@ that actually went wrong twice.
 
 Ruled out, each with the measurement:
 
-* **"the page shows the unrotated buffer"** — no; `HEAD` and `dist/` are both
+* **"the page shows the unrotated buffer"** - no; `HEAD` and `dist/` are both
   224x448 and both call `rotateCCW`. §1.
-* **"the option pods are detached / fly the recorded path"** — no; their offsets
+* **"the option pods are detached / fly the recorded path"** - no; their offsets
   hold on 161/161 frames and the splice moves them. They were always correct.
-* **"the captured ship is still being drawn / the splice is additive"** — no;
+* **"the captured ship is still being drawn / the splice is additive"** - no;
   every frame has exactly ONE ship record, and 0 records outside the tracking
   set use the ship's artwork. §3.1.
-* **"the fireball is a second ship-and-options set"** — no; it is two records,
+* **"the fireball is a second ship-and-options set"** - no; it is two records,
   80x40 and 16x32, at fixed offsets, flashing on alternate frames. §3.2.
-* **"the fireball may not be player-attached at all"** — no; both records hold a
+* **"the fireball may not be player-attached at all"** - no; both records hold a
   single constant offset on every frame they appear on.
-* **"the held bit never registers" (JOB 5 candidate (a))** — no; set on 400/400
+* **"the held bit never registers" (JOB 5 candidate (a))** - no; set on 400/400
   held frames. §5.1.
-* **"the tilt is being taken from the ghost"** — no ghost; the recorded ship
+* **"the tilt is being taken from the ghost"** - no ghost; the recorded ship
   simply never banked (`px` has ONE distinct value across the capture). §3.5.
-* **"pixpack never tested the exhaust"** — no; it tested it and its threshold
+* **"pixpack never tested the exhaust"** - no; it tested it and its threshold
   rejected it. That is the finding. §3.2.
-* **"the shadows are just another record the threshold missed"** — no. No
+* **"the shadows are just another record the threshold missed"** - no. No
   threshold on the old question could have found them at any value, because
   they are not at a constant offset from the ship at all. §3B.3.
-* **"the shadows track the ship rigidly on the short axis"** — this FITS the
+* **"the shadows track the ship rigidly on the short axis"** - this FITS the
   capture perfectly and is WRONG. The recorded ship never moved sideways, so
   the data cannot distinguish it from the half-rate rule; the listing can, and
   says half. §3B.3. This is the closest I came to shipping a defect that no
   gate in this project could ever have caught.
-* **"the exhaust and the shadow share a phase"** — no; exhaust ODD, shadow
+* **"the exhaust and the shadow share a phase"** - no; exhaust ODD, shadow
   EVEN, zero frames carrying both. §3B.4.
 
 **The process finding, and it is the same one `docs/knowledge/05` keeps
 recording.** Between them, the brief and seven mid-flight corrections proposed
 eight different causes for one symptom. Every wrong one came from reading a
 function signature, a review note or a screenshot description; every right one
-came from a measurement. I very nearly implemented two of the wrong ones — I had
+came from a measurement. I very nearly implemented two of the wrong ones - I had
 already written and tested the code to HIDE the option pods before the
 correction arrived, and it would have removed a feature that worked.
 
@@ -753,18 +753,18 @@ project owns:
 **All three were found by the OWNER LOOKING AT THE SCREEN, and two of the three
 were then settled by reading the 68000 listing, not by more statistics.** The
 gates score 15,955,968/15,955,968 either way, because the gates replay a ship
-that flies the recorded path — the one path on which every one of these defects
+that flies the recorded path - the one path on which every one of these defects
 is invisible. `docs/knowledge/03` is about checks that pass while the game is
 broken; this is a whole class of them, and the class is "the corpus contains no
 frame in which the answer differs".
 
 The durable defences, both shipped: the matcher **prints what it rejected**
-(§3B.6), and where the capture cannot decide, **the listing decides** — with the
+(§3B.6), and where the capture cannot decide, **the listing decides** - with the
 disassembly quoted next to the code.
 
 ---
 
-## 8. THE HUMAN CHECK LIST — riskiest first
+## 8. THE HUMAN CHECK LIST - riskiest first
 
 Nobody has run any of this in a browser. Ordered so that a failure early stops
 you wasting time on the rest.
@@ -774,28 +774,28 @@ you wasting time on the rest.
    still small, the grid rows are wrong and nothing below matters. Tap INFO and
    confirm the text OVERLAYS the game rather than shrinking it.
 2. **The picture is sharp, not chunky.** The stats line ends with `x4`, `x5`…
-   — that is the integer scale. Zoom right in on the HUD text: the pixels must
+   - that is the integer scale. Zoom right in on the HUD text: the pixels must
    be exact squares. Any softness or uneven pixel widths means the scale is
    landing on fractional device pixels and the whole JOB 1 argument is wrong.
 3. **Nothing detaches any more.** THIS IS THE FIX. Move the ship hard left and
    right and hold it away from where the recording goes, then look for anything
    left behind. Eight things must stay glued to you: the ship, two pods, the big
    fire cloud, the small glow, and three shadows. If anything still flies off,
-   run `node games/ddpdoj/tools/attachreport.mjs` and send me the table — the
+   run `node games/ddpdoj/tools/attachreport.mjs` and send me the table - the
    stray record's class will be in the reject list with its score, which is
    exactly what the old matcher could not tell anybody.
 4. **The shadows track you SIDEWAYS at half rate.** Move left and right slowly
    and watch the three shadows below the ship: they should slide about half as
    far as you do. This is the one thing in the whole wave with no test coverage
-   from the capture — the recorded ship never moved sideways, so the gates
+   from the capture - the recorded ship never moved sideways, so the gates
    cannot see it. It comes from the listing (`$249EA8`), not from a fit. If the
    shadows move the SAME distance as the ship, or twice as far, that half is
    wrong.
-5. **The pods stay on the ship** — they did before; this must not have broken
+5. **The pods stay on the ship** - they did before; this must not have broken
    them.
 6. **The flicker.** The fire cloud and the shadows are drawn on alternate
    frames, on opposite phases. On the arcade CRT that is translucency. Tell me
-   whether it reads as translucency or as strobing on your phone — this is a
+   whether it reads as translucency or as strobing on your phone - this is a
    deliberate open question and the page says so.
 7. **TATE/WIDE.** Press it. The picture must switch orientation immediately, stay
    sharp (check the scale number changes and the art stays square), and survive a
@@ -805,7 +805,7 @@ you wasting time on the rest.
 9. **HOLD fire for about a second.** The red box must appear saying
    `$24C8BE IS NOT PORTED YET` and `This is not a crash`. If it stays silent, the
    guard is not reached and §5.3 is wrong.
-10. **AUTO.** Hold it. The game must keep running indefinitely — that is the one
+10. **AUTO.** Hold it. The game must keep running indefinitely - that is the one
    way to keep firing without stopping the port.
 11. **Bomb.** Red box, `$249814`. Unchanged, but confirm the new box wording reads
    as an explanation and not as a crash.
@@ -828,7 +828,7 @@ the stray sprite is relative to the ship; the offset is all I need.
   the accept/reject line drawn between them. If something on screen is not
   following the ship, its class is in that table with a number next to it.
 * The splice set is re-derived in `src/render/capture.js` `attached()`. It reads
-  only the shipped bundle — no rebuilt `assets/` needed. Its header carries the
+  only the shipped bundle - no rebuilt `assets/` needed. Its header carries the
   whole measurement table.
 * The thresholds are `ATTACH_MIN_SCORE = 0.95` and `ATTACH_MIN_FRAMES = 8`, and
   the measured gap around them is 100 % accepted vs 58.6 % rejected.
@@ -848,4 +848,4 @@ the stray sprite is relative to the ship; the offset is all I need.
   laser, the pods and `OPTION_COLUMNS` in one move.
 * `MODES`/`PICTURES`/`pickScale` are exported from `src/web/app.js`; if a third
   presentation is ever wanted, add it there and the tests will cover it
-  automatically — they loop over `MODES`.
+  automatically - they loop over `MODES`.

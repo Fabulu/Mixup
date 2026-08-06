@@ -1,4 +1,4 @@
-# Wave 21 review — Export the tables the handlers index, and the metasprite that vanishes
+# Wave 21 review - Export the tables the handlers index, and the metasprite that vanishes
 
 status: DONE
 
@@ -29,8 +29,8 @@ Target commit f3497f0 (parent 9c893f0). READER: no src/ edits, no commits.
   `$982F` + `$80D4`):** ZERO code bytes fall inside any of the 25 blocks, and
   the byte immediately BEFORE every block start is the last byte of a real
   instruction (20x `RTS`, 5x `JMP abs`). So no block starts too late.
-  `$B461` (phaseB45C's anchor) is genuinely code — `LDA $044C,X / SEC /
-  SBC $048C,X / STA $044C,X / BCS / DEC $042C,X / RTS`, a 16-bit subtract —
+  `$B461` (phaseB45C's anchor) is genuinely code - `LDA $044C,X / SEC /
+  SBC $048C,X / STA $044C,X / BCS / DEC $042C,X / RTS`, a 16-bit subtract -
   it is just not reachable from my seeds.
 * Metasprite `$A2`: `$8EE2 -> $95FB`, count byte `18`, `$95FB+1+72 = $9644` ==
   `$A3`'s pointer. Export has id 162 with 18 records, byte-identical to ROM.
@@ -52,7 +52,7 @@ Target commit f3497f0 (parent 9c893f0). READER: no src/ edits, no commits.
   delete `walkerTables` -> tablecoverage names `$B6D2/$B6D9/$B6DD` + 4 node
   tests red. Assets restored, sha1 identical both ways.
 
-### DEFECT 1 (moderate) — tablecoverage.py's root walk misses 5 of the 7
+### DEFECT 1 (moderate) - tablecoverage.py's root walk misses 5 of the 7
 `$C413` arms, so 5 exported blocks can be DELETED and it stays exit 0.
 
 `walk()` follows `JSR`/`JMP abs`/branches but not the inline `$83E4` dispatch.
@@ -75,14 +75,14 @@ the tool:
 Adding the 7 arms + `$C44F` as roots takes the base count 66 -> **81**; the 15
 extra bases are `$C447 $C448 $C4F4 $C4F6 $C4F7 $C4F8 $C56D $C56E $C601 $C603
 $C604 $C605 $C67A $C67B $C750`. All 15 happen to be exported, so there is no
-gap in the shipped data today — but only because the implementer exported them
+gap in the shipped data today - but only because the implementer exported them
 from the census, i.e. from the hand-maintained list the tool's docstring says
 it supersedes. `20-plan-completeness.md` §1a now cites "**66** distinct PRG
 bases (measured by tablecoverage.py, supersedes the census's 45 rows)" as THE
 denominator. That number is under-measured; the closure is at least 81.
 
 Second-order: the metasprite half filters on `base not in indexed`, so id
-tables inside those five arms are never checked — including
+tables inside those five arms are never checked - including
 `$C556/$C55C LDA $C56D/$C56E,Y -> $012C,X`. That is the exact `$A2` class of
 bug the tool exists to catch.
 
@@ -92,7 +92,7 @@ $DC $E0 $EF $FE $FF`) out of the merged `$C58D`/`$C752` nibble streams, and the
 tool goes red on all of them. The two W21 decisions (merge the streams into the
 block; take the extent as "to the next indexed base or block end") interact.
 
-### DEFECT 2 (moderate) — the anchor does not pin the extent; a block cited
+### DEFECT 2 (moderate) - the anchor does not pin the extent; a block cited
 SHORT passes the whole gate.
 
 The guard asserts only "the bytes I claim are at the address I claim". It never
@@ -100,8 +100,8 @@ asserts the anchor is the start of a reachable instruction. So any address can
 be anchored by copying the ROM bytes there.
 
 Demonstrated: truncated `approachStage5` from `$C750-$C771` (34 B) to
-`$C750-$C752` (3 B) — dropping the ENTIRE 32-byte packed-nibble spawn stream
-`$C447[3]` points at, the thing the implementer added the block extension for —
+`$C750-$C752` (3 B) - dropping the ENTIRE 32-byte packed-nibble spawn stream
+`$C447[3]` points at, the thing the implementer added the block extension for -
 and set `anchor = {rom: $C753, bytes: <the ROM's bytes at $C753>}`. Result with
 the manifest sha regenerated (i.e. exactly what shipping a short citation in
 `ENEMY_BLOCKS_W21` would look like):
@@ -111,7 +111,7 @@ the manifest sha regenerated (i.e. exactly what shipping a short citation in
     node --test       391 pass, 0 fail
 
 `tests/tables.test.js`'s `$C439` test does `assert.doesNotThrow(rom().read(s))`
-for the four stream heads, which is why I had to keep `$C752` itself — one byte
+for the four stream heads, which is why I had to keep `$C752` itself - one byte
 of a 32-byte stream is enough to satisfy every check in the tree.
 
 The `$B61E`/`$C686` catches the implementer reports are real, but they are
@@ -121,7 +121,7 @@ merged ones are exactly where extent is the risk, and extent is unguarded.
 A guard that would work: assert the anchor address is an instruction start in a
 recursive-decode closure (my check above already computes it).
 
-### DEFECT 3 (minor) — `tablecoverage.py`'s id scan matches only opcodes
+### DEFECT 3 (minor) - `tablecoverage.py`'s id scan matches only opcodes
 `B9`/`BD`, so the shared animator's metasprite bases are invisible to it.
 
 Source (c) is `if rom.b(a) not in (0xB9, 0xBD): continue`. The `$B628` animator
@@ -130,7 +130,7 @@ that entries 26/28/29/38 share computes its id as `$B644 ADC $B651,Y` (opcode
 and their wrap runs are therefore never demanded. Likewise the `$BB0F` path
 script's `AND #$0F / ADC #$96 / JMP $B647`.
 
-Both are CLEAN today — I resolved them by hand:
+Both are CLEAN today - I resolved them by hand:
 
     animRecords Y=0 base $8E wrap 8 -> $8E..$95   all exported
                 Y=3 base $4A wrap 8 -> $4A..$51   all exported
@@ -153,13 +153,13 @@ Both are CLEAN today — I resolved them by hand:
   approachStage2 2+2+16 = 20, page600Object 32+7+7+7 = 53.
 * `$C447` -> `$C526 $C58D $C633 $C752`; every stream head is inside its block.
   `$C893` -> `$C89B $C8F1 $C8BD $C8E0`; all four inside stage2Object.
-* `$C67A..$C685` = `02 80 00 40 01 80 00 C0 12 40 28 0A` — the two unnamed
+* `$C67A..$C685` = `02 80 00 40 01 80 00 C0 12 40 28 0A` - the two unnamed
   bytes `12 40` confirmed, and they could be a FIFTH `(x,y)` pair for
   `$C664/$C66D LDA $C67A/$C67B,X` (X steps by 2). Extent unaffected.
 * GATE, re-run by me end to end: `node --test` 391/0/0; `test-all.mjs`
   **GREEN, 10 passed, 0 failed, 0 SKIPPED**; 42 scenarios, 14,098/14,098
   frames, 0 failures. Display list summed from the 42 per-scenario lines:
-  **902,272 slot-frames, 201,161 live, 0 Y mismatches, 0 content mismatches** —
+  **902,272 slot-frames, 201,161 live, 0 Y mismatches, 0 content mismatches** -
   the implementer's numbers reproduce exactly.
 * `deep-page4` still stops at `$B6E1` frame 2490, as it must.
 * commit f3497f0 touches 9 files, ZERO under `assets/` or `rip/`.
@@ -167,7 +167,7 @@ Both are CLEAN today — I resolved them by hand:
 ### NOTES (not defects of this wave)
 
 * `page600Object`'s "8 rows x 4 columns": the four `,X` loads make `$CA2B,X`
-  the BNE gate, and `$CA2B+X` is `00` for X in {0,8,16,24} — consistent with
+  the BNE gate, and `$CA2B+X` is `00` for X in {0,8,16,24} - consistent with
   FOUR rows of stride 8 as much as with eight of stride 4. The impl flagged
   this as unproven; it still is. The 53-byte EXTENT is right either way.
 * `phaseB45C`'s anchor `$B461` is the weakest of the 25: the routine there
@@ -181,7 +181,7 @@ Both are CLEAN today — I resolved them by hand:
 * The SHARED `.git/index` currently stages DELETION of 8 gradius worklogs
   including `20-plan-completeness.md`, the five `20-recon-*.md` and
   `21-impl-tables-and-metasprite.md`. All are present on disk and in f3497f0's
-  tree — the private-index commit was done correctly — but anyone who commits
+  tree - the private-index commit was done correctly - but anyone who commits
   through `.git/index` will wipe them.
 
 status: DONE
@@ -209,7 +209,7 @@ GREEN when it should not be (the two findings above):
 
 sha1 before/after, both files: `enemies/tables.json`
 `0d72a933729f36247bc8fd18b6a58cdca14bcdc1`, `metasprites.json`
-`54f19309d98883099995387d22e3d2fda341d574` — identical both ways.
+`54f19309d98883099995387d22e3d2fda341d574` - identical both ways.
 
 Cosmetic: the anchor ABORT message prints `want` uppercase and `got` via
 `bytes.hex(' ')` lowercase ("...i.e. 1F at $B6DA, but the ROM has 1c there").
@@ -218,7 +218,7 @@ Cosmetic: the anchor ABORT message prints `want` uppercase and `got` via
 
 `python games/gradius/tools/oracle/scen.py` run to completion (exit 0), then
 `node games/gradius/tools/test-all.mjs` against the fresh recordings:
-**GREEN — 10 passed, 0 failed, 0 SKIPPED**; 42 scenarios,
+**GREEN - 10 passed, 0 failed, 0 SKIPPED**; 42 scenarios,
 14,098/14,098 frames, 0 failures; display list re-summed from the 42
 per-scenario lines: **902,272 slot-frames, 201,161 live, 0 Y mismatches, 0
 live-slot content mismatches.** Identical to the pre-re-record run and to the
@@ -236,6 +236,6 @@ a full re-record.
 
 **Two of the CHECKS are weaker than claimed** (defects 1 and 2 above), and one
 ledger number in `20-plan-completeness.md` ("66 distinct PRG bases", "64
-exported") is under-measured — the closure with the `$C439` arms as roots is
+exported") is under-measured - the closure with the `$C439` arms as roots is
 at least 81. Neither hides a real gap today; both are exactly the "check that
 cannot fail" the project keeps finding, and this makes seven and eight.

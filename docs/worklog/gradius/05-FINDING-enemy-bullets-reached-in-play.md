@@ -1,4 +1,4 @@
-# FINDING — enemy bullets are reached in ordinary play, and the plan says they are not
+# FINDING - enemy bullets are reached in ordinary play, and the plan says they are not
 
 status: DONE -- and the port work is done too, in wave 11.
         See `11-impl-enemy-bullets.md`: $BC59, $BCB5, $83B5, $BDD5, $C20A, $C2FF
@@ -11,7 +11,7 @@ role: bug report from play   found: 2026-07-31
 
 ## What happened
 
-The owner flew around the live build — left, right, up, down, nothing exotic —
+The owner flew around the live build - left, right, up, down, nothing exotic -
 and after 10-30 seconds the game **froze**. No message, no error box, just a
 still picture. The console had this the whole time:
 
@@ -33,13 +33,13 @@ plan excludes them pending a recon).
 
 `00-plan.md` excludes enemy bullets with this reasoning:
 
-> **Enemy bullets (slots 22-31), the armoured branch, ... All listing-only — no
+> **Enemy bullets (slots 22-31), the armoured branch, ... All listing-only - no
 > run has exercised them. They are loud throws.**
 
 and the wave-3 notes repeat "no measured run has ever populated slots 22-31".
 
 That was true of **our corpus**. It is not true of **the game**. `$BC56 BCC`
-fires whenever the player is to the LEFT of an enemy — which is most of the
+fires whenever the player is to the LEFT of an enemy - which is most of the
 time for a real player, and never for our scenarios, because they hold the ship
 at X≈70-100 in short scripted windows near the start.
 
@@ -55,7 +55,7 @@ than speculative, and it has a reproduction: fly left of an enemy.
 ### 2. The throw was INVISIBLE, and Batman already fixed this exact thing
 
 Every unported path here is a loud named throw, deliberately, so that running
-out is a precise pointer instead of a mystery. That design worked — the message
+out is a precise pointer instead of a mystery. That design worked - the message
 names `$BC59` and `$BDD5`.
 
 But a throw inside `tick()` escapes into `requestAnimationFrame`'s callback,
@@ -63,7 +63,7 @@ where nothing is listening: `boot()` resolved long before, so the page's
 `await boot(canvas)` try/catch cannot see it. The loop stops being rescheduled
 and the canvas holds its last frame. **A perfect named error, delivered nowhere.**
 
-Batman's launcher carries a comment about precisely this failure — an async
+Batman's launcher carries a comment about precisely this failure - an async
 failure after `boot()` resolves "used to leave the frame loop dead with the
 music still playing, and nothing on screen said so ... it needs its own
 channel." Gradius's page was written later and did not inherit it.
@@ -83,7 +83,7 @@ used to be.
   **DONE, wave 11.** The reproduction in this file is now four oracle scenarios;
   `$BC63`, the allocation failure that drops a shot when all ten slots are full,
   is one of them. What is still unreached by any scenario is `$BF7D`, a player
-  shot destroying an enemy bullet — ported, unit-tested, and measured n=0 in two
+  shot destroying an enemy bullet - ported, unit-tested, and measured n=0 in two
   runs with A held and ten bullets converging.
 - **Re-audit every other "no measured run has exercised this" throw** the same
   way. The armoured branch, the type-`$9A` hit counter, `$A3B1`, the two

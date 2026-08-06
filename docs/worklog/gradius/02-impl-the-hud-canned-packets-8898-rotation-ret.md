@@ -1,4 +1,4 @@
-# Wave 2 — The HUD: canned packets + the $8898 rotation. Retire the knownFail.
+# Wave 2 - The HUD: canned packets + the $8898 rotation. Retire the knownFail.
 status: DONE
 wave: 2   role: impl   started: 2026-07-31
 
@@ -14,7 +14,7 @@ From `00-plan.md` §Wave 2:
    `$85F3` copier (`$FF`/`$FE`/`$FD`, index bit 7 blanker) + the `$863D`/
    `$8641`/`$8645`/`$8647`/`$864B` append primitives. Byte-for-byte unit tests
    against the measured queue images (f572=8, f574=14, f576=39, f578=14).
-3. New `src/hud.js`: `$8898` — `$0E < 4` gate, `$02 & 1` odd parity,
+3. New `src/hud.js`: `$8898` - `$0E < 4` gate, `$02 & 1` odd parity,
    `$48 = ($48+1) & 3`, four producers `st_88B6`/`st_88F6`/`st_89E3`+`$8A30`/
    `st_892C`. Called at the `$9AC7` position, BEFORE the streamer.
 4. Seed the producer inputs from the cartridge seed, with an honesty comment.

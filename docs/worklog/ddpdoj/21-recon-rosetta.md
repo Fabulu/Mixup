@@ -1,4 +1,4 @@
-# W21 recon — the Rosetta stone: cross-build comparison as a method
+# W21 recon - the Rosetta stone: cross-build comparison as a method
 
 status: DONE
 agent: recon (read-only; no edits to games/*/src; no commits)
@@ -32,8 +32,8 @@ gitignored; nothing ROM-derived is committed.
 
 **The raw ROM files are NOT plaintext.** `ca008.cod_prom.u13.27c322`
 (ddpdojp's 4 MiB "unprotected" program) has no ASCII strings at all. "UNPROTECTED"
-in the brief means *no ARM7 ASIC* — MAME loads ddpdojp with no
-`ddp3_igs027a.bin` warning, where every other set warns — **it does not mean
+in the brief means *no ARM7 ASIC* - MAME loads ddpdojp with no
+`ddp3_igs027a.bin` warning, where every other set warns - **it does not mean
 un-encrypted.** The 68k program is still `pgm_py2k2`-encrypted and still has to
 come out of a running machine. (ddpdojblkbl, the bootleg, also loads with no
 ASIC warning.)
@@ -53,25 +53,25 @@ Content map, MEASURED (4 KiB blocks with >4 distinct byte values):
 decryption noise over unloaded region bytes; in ddpdojp it is `$FF`.)
 
 **CORRECTION TO THE BRIEF.** ddpdojp is NOT a second program build sitting at
-`$2xxxxx`. It carries ONE build, at `$10xxxx-$1C7FFF`, with DATA at `$2xxxxx` —
+`$2xxxxx`. It carries ONE build, at `$10xxxx-$1C7FFF`, with DATA at `$2xxxxx` -
 the same shape as ddp3/ddpdoj/ddpdojb. The `$2xxxxx` *code* region is unique to
 ddpdojblk/ddpdojblkbl, which relocated the Black-Label build there to sit beside
 the Master build. So the Rosetta candidates are:
 
-* **ddpdojblkbl** — a relayout of BOTH our builds. 97.53 % of `$100000-$1C7FFF`
+* **ddpdojblkbl** - a relayout of BOTH our builds. 97.53 % of `$100000-$1C7FFF`
   is byte-identical *at the same offset* to ddpdojblk. Closest relative by far.
-* **ddpdojp / ddpdojb / ddpdoj / ddp3** — independent relayouts of the Master
+* **ddpdojp / ddpdojb / ddpdoj / ddp3** - independent relayouts of the Master
   build. Pairwise same-offset identity is ~30 % (i.e. no fixed offset; ~30 % is
   the zero-padding floor, not a signal).
 
-### 2. THE ALIGNMENT METHOD — RAM-reference sequence alignment
+### 2. THE ALIGNMENT METHOD - RAM-reference sequence alignment
 
 The invariant the brief needs: **code addresses relocate between builds, RAM and
 I/O addresses do not.** So take, per image, the ordered list of every 4-byte
 big-endian value at an even offset in the code range that lands in
 `$800000-$8FFFFF` / `$A00000-$AFFFFF` / `$C00000-$C0FFFF`. That is the
 absolute-long operand stream, and it is a build-invariant token sequence.
-ddpdojblk yields 24,992 such tokens over both builds; ddpdojp 12,334 — about one
+ddpdojblk yields 24,992 such tokens over both builds; ddpdojp 12,334 - about one
 token per 60 bytes of code, dense enough to align on.
 
 Same caveat as `xref.py`/`derive.py`, and it must be quoted every time: this sees
@@ -84,12 +84,12 @@ PC-relative are invisible. So a match is evidence; a gap is not absence.
 * build A `$13xxxx-$1Axxxx`: 190 sites. build B `$23xxxx-$2Axxxx`: 190 sites.
 * they align **one-for-one in address order with identical preceding opcode
   words**: `13C61C↔23C2BC`, `1428FC↔2425C2`, `149534↔249E90`, `14BAA6↔24C3F2`,
-  `15F794↔26043A`, `18F234↔290766`, … — including the two `3439` (`move.w
+  `15F794↔26043A`, `18F234↔290766`, … - including the two `3439` (`move.w
   abs.l,D2`) sites and the one `38B9` site, in the same relative positions.
 
 That is the alignment method in miniature, and the next section is what it found.
 
-### 3. $813098 — THE ANSWER. A THIRD WRITER, AND W10's "EXACTLY TWO" IS WRONG
+### 3. $813098 - THE ANSWER. A THIRD WRITER, AND W10's "EXACTLY TWO" IS WRONG
 
 MEASURED, statically, from the decrypted ddpdojblk image. `move.w #imm,$813098`
 is `33FC iiii 0081 3098`. In build B there are **three**, not two:
@@ -101,15 +101,15 @@ $290762   move.w #$1,$813098      <-- NEW. W10 MISSED IT.
 ```
 
 W10 (`10-recon-flow.md` §6) wrote "written at **exactly two**" and stated its
-filter in the same sentence — "filtered to `$23xxxx-$28xxxx`". **`$290762` is at
+filter in the same sentence - "filtered to `$23xxxx-$28xxxx`". **`$290762` is at
 `$29xxxx` and fell outside the filter.** The claim was never wrong about what it
 searched; it was quoted afterwards as if it were a claim about build B.
 
-And build A has the same third writer, at **`$18F230`** — same opcode, same
+And build A has the same third writer, at **`$18F230`** - same opcode, same
 neighbours (`$18ECC4 ↔ $2901E2`, both `4A79`/`2D80`). The debug-select pair
 `$259DB0`/`$259DC6` has **no build-A counterpart** in the aligned list.
 
-### 4. THE TOOL — `games/ddpdoj/tools/rosetta.py`
+### 4. THE TOOL - `games/ddpdoj/tools/rosetta.py`
 
 ```
 python rosetta.py dump [set ...]      dump the decrypted :maincpu per set
@@ -125,14 +125,14 @@ python rosetta.py dasm ADDR N --set S
 
 `align` works in three stages:
 
-1. **anchor** — difflib longest-matching-blocks over the two RAM-token VALUE
+1. **anchor** - difflib longest-matching-blocks over the two RAM-token VALUE
    streams. The block containing the query gives an exact token-to-token pin.
-2. **refine** — the anchor pins a token, not an entry point. Prologues differ:
+2. **refine** - the anchor pins a token, not an entry point. Prologues differ:
    measured, `$2410BC`'s nearest anchor is 8 bytes past its true entry. So score
    every even candidate within +/-$60 by masked word agreement, where a 32-bit
    value landing in CODE space on BOTH sides counts as a wildcard (a relocated
    pointer in the same slot).
-3. **confidence** — HIGH needs run>=8 AND identical preceding opcode words AND a
+3. **confidence** - HIGH needs run>=8 AND identical preceding opcode words AND a
    unique 6-token n-gram AND a refine margin >= 2. Anything less is MEDIUM/LOW.
    **A LOW pairing may not be quoted as a fact.**
 
@@ -147,7 +147,7 @@ identical for 40 bytes (`bsr / bsr / lea $80E240,A5 / moveq #$13,D0 / ... /
 lea ($240F62,PC),A0` vs `lea ($141294,PC),A0`). Wave 2's build-A object driver
 "`$1413FE`" is the THIRD instruction of that routine, not its entry; the entry
 pair is **`$2410BC <-> $1413F6`** and the dispatch-table pair is
-**`$240F62 <-> $141294`** — the latter is the address wave 2 quoted, so that one
+**`$240F62 <-> $141294`** - the latter is the address wave 2 quoted, so that one
 was right.
 
 ### 5. THE MAIN LOOP, PAIRED CALL FOR CALL. HIGH.
@@ -165,10 +165,10 @@ Build A `$13C356`, build B `$23BFDC`: seven calls and a `bra` back, same order.
 | 7 | `jsr $13D496` | `jsr $23D12A` | the input latch (disassembled: `$23D12A`) |
 
 Independent confirmation: the arm-PC census printed by every probe run on this
-project is `13C5B6` (build A) / `23C212` (build B) — call #6 in this table,
+project is `13C5B6` (build A) / `23C212` (build B) - call #6 in this table,
 derived here with no reference to any existing landmark file.
 
-### 6. $813098 — THE FULL ANSWER
+### 6. $813098 - THE FULL ANSWER
 
 **Three writers in build B, not two, and one of them is a `dbra` clear loop.**
 
@@ -197,12 +197,12 @@ of `$813098` in any useful sense:
 ```
 
 a `dbra` clear loop over $66 words that sweeps across `$813098` on its way past.
-`$15F73E` is **the same loop in build A** — `$15F734` and `$2603DA` are
+`$15F73E` is **the same loop in build A** - `$15F734` and `$2603DA` are
 instruction-for-instruction identical and `rosetta.py align 2603DA` pins them
 HIGH. So the dynamic tap has never seen a purposeful writer at all, and nothing
 about "`$813098` = 0 on 16,000 frames" is explained by those two PCs.
 
-#### 6a. THE DEBUG STAGE SELECT IS GATED ON A REAL DIP SWITCH — and MAME has it
+#### 6a. THE DEBUG STAGE SELECT IS GATED ON A REAL DIP SWITCH - and MAME has it
 
 ```
 259d14: move.w $C08006,D0
@@ -210,7 +210,7 @@ about "`$813098` = 0 on 16,000 frames" is explained by those two PCs.
 259d1e: bne    $259D30          ; bit 7 SET -> clear state, rts. FEATURE OFF.
 ```
 
-MAME's `ddpdojblk` exposes port `:DSW` with exactly two fields — MEASURED by
+MAME's `ddpdojblk` exposes port `:DSW` with exactly two fields - MEASURED by
 enumerating `machine.ioport.ports` at runtime:
 
 ```
@@ -222,9 +222,9 @@ So the stage select is a DIP-SWITCH feature and MAME can set it. **That is not a
 poke.** The same read appears at `$259CBE`, in the display half `$259CB8`.
 
 **BUILD A HAS NO SUCH GATE.** Build A's counterpart `$159250` reads
-`jsr ($159204,PC) / jsr $15960E / lea $812E08,A4 / tst.b ($1,A4)` — straight past
+`jsr ($159204,PC) / jsr $15960E / lea $812E08,A4 / tst.b ($1,A4)` - straight past
 where build B inserts the `$C08006` test. Black Label added the DIP gate.
-(Confidence: MEDIUM on the routine pairing — `align` reports LOW for the entry
+(Confidence: MEDIUM on the routine pairing - `align` reports LOW for the entry
 and the pairing rests on the shared `$812E08` state block, the identical `$28`-frame
 hold, the identical `btst #4/#5` buttons and the identical `$8130C6` clear.
 HIGH on "build B reads `$C08006` there and build A does not", which is two
@@ -255,7 +255,7 @@ whose caller is a SECOND main-loop body that build B does not have:
 ```
 
 Build A calls the object driver from **two** sites (`$13C362`, `$13C7C2`); build
-B from **one** (`$23BFE8` — which is `frame.lua`'s `PROBE_INJECT_SITE` default,
+B from **one** (`$23BFE8` - which is `frame.lua`'s `PROBE_INJECT_SITE` default,
 so that landmark is independently re-confirmed here). The byte pattern
 `33C7 0080 3944` (`move.w D7,$803944`) occurs exactly once in the whole 6 MiB,
 at `$13C7A8`; `23FC 00000000 0081 30C6` occurs at `$13C7AE`, `$1592EA`, `$259DCE`
@@ -270,7 +270,7 @@ SEL 812E0A:259C58 n=2 firstlf=699    SEL 812E48:259CA6 n=2 firstlf=699   (...)
 ```
 
 **every writer is the INITIALISER `$259C4A`, twice, at logic frame 699. Not one
-write from `$259D04`'s body — `$259D28`, `$259D48`, `$259D7C`, `$259D84`,
+write from `$259D04`'s body - `$259D28`, `$259D48`, `$259D7C`, `$259D84`,
 `$259D88` all write that block and would fire every frame the handler ran.**
 The handler did not run.
 
@@ -311,10 +311,10 @@ addition.** Build A's type-7 handler is `$18F698` (table entry [7]).
 
 This is the writer a later wave should try to reach: it needs no DIP switch, it
 is on the normal object-dispatch path, and both builds agree on it. I did not
-reach it in this wave — reaching it means getting to whatever sequence sets
+reach it in this wave - reaching it means getting to whatever sequence sets
 `$81E116`, and that is a play-through problem, not a recon problem.
 
-### 7. ROUTINE BOUNDARIES — the fall-through, checked from a second build
+### 7. ROUTINE BOUNDARIES - the fall-through, checked from a second build
 
 `rosetta.py bounds 24C390 --span 0x300`:
 
@@ -326,16 +326,16 @@ ENTRY $24C390 [ddpdojblk:B] <-> $14BA44 [ddpdojblk:A]  HIGH
 ```
 
 **Both builds place their first `rts` at +$166, which is PAST `$24C476` (+$E6).**
-W12.5's finding — that `$24C390` falls through into `$24C476` — is confirmed by
+W12.5's finding - that `$24C390` falls through into `$24C476` - is confirmed by
 an independent implementation of the same routine. That is the check the brief
 asked for, and here the two readings agree, so the reading stands.
 
 The general recipe: `bounds` prints the first N terminators of both builds as
 OFFSETS FROM THE ENTRY. Agreement on the offsets is the check. Disagreement
-means one reading is wrong OR the builds genuinely differ — and the tool says
+means one reading is wrong OR the builds genuinely differ - and the tool says
 so rather than picking.
 
-### 8. TABLE EXTENTS — pinned from both ends, and one real disagreement
+### 8. TABLE EXTENTS - pinned from both ends, and one real disagreement
 
 #### 8a. THE OBJECT DISPATCH TABLE IS 20 ENTRIES IN BUILD B AND 21 IN BUILD A
 
@@ -358,7 +358,7 @@ Both tables are followed by the identical instruction `move.w $80E880,D3` at
 listing. So the extent is pinned from the far end in both builds, independently,
 and **they differ by one entry.** Build A's extra type `$14` is real: build A
 allocates it at `$13C34C` (`move.w #$14,D0 / jsr $1414BC`) immediately before
-entering the main loop, and `$13BEEA` opens `tst.w ($2,A5)` — the object
+entering the main loop, and `$13BEEA` opens `tst.w ($2,A5)` - the object
 convention. Build B's counterpart `$23BFC4` allocates type 8 with `($4,A0)=$D`
 instead.
 
@@ -367,7 +367,7 @@ cross-checks against build A will find a 21st that must NOT be added.** This is
 precisely the "a build-A reading quoted as a build-B fact" failure the brief
 warns about, caught before it happened.
 
-#### 8b. THE $813098-INDEXED TABLES — loop-2 data is READABLE even though the
+#### 8b. THE $813098-INDEXED TABLES - loop-2 data is READABLE even though the
 flag never rises
 
 Two tables are indexed by `$813098` directly:
@@ -394,7 +394,7 @@ PTR TABLE   [0] -> B $2880A6 / A $186BE4     (loop 1)
   loop 2: 0000 083C 083C 083C 07F8 07F8 07F8 07B4 07B4 07B4 0770 0770 ...
 ```
 
-Loop 2 repeats each value **three** times where loop 1 repeats it twice — a
+Loop 2 repeats each value **three** times where loop 1 repeats it twice - a
 slower ramp over the same value ladder. Both builds agree byte for byte.
 
 **This is the general unlock for W31.** `$813098` has read 0 on every frame ever
@@ -402,7 +402,7 @@ measured, but every table it indexes carries its loop-2 row in ROM, and build A
 carries the same row. So loop-2 CONSTANTS can be extracted at HIGH confidence
 with no poking at all; only loop-2 BEHAVIOUR still needs the flag forced.
 
-### 9. THE ISR QUESTION — SETTLED, on the run type NOTES-build-split asked for
+### 9. THE ISR QUESTION - SETTLED, on the run type NOTES-build-split asked for
 
 `games/ddpdoj/NOTES-build-split.md` says the measurement it needed had not been
 taken: "Reading the interrupt vectors on a default boot does not test this
@@ -433,7 +433,7 @@ B $23BDBA  movem / jsr $23C43A / movem / rte      <-- exists, never vectored
 
 `align 13BDAA -> $23BDAA` HIGH, delta **exactly +$100000**, run=376. `$23C43A`
 is the routine whose body is `jsr $23CC4E / $23D0F8 / $28C19A / tst.b $803940 /
-jsr $24133C / $240CC0 / $240F26 / $287286 / subq.b #1,$803940 / jmp $23C158` —
+jsr $24133C / $240CC0 / $240F26 / $287286 / subq.b #1,$803940 / jmp $23C158` -
 i.e. **every build-B ISR address wave 2's phase table names is inside `$23C43A`,
 and `$23C43A` is never vectored.** The note is right and now has its measurement.
 
@@ -444,7 +444,7 @@ and `$23C43A` is never vectored.** The note is right and now has its measurement
 | IRQ4 body `$1453A6` | `$245CC8` | HIGH (trampoline pairing is byte-identical) |
 | IRQ6 body `$13C7D4` | `$23C43A` | HIGH (same) |
 
-### 10. HOW WELL THE METHOD WORKS — MEASURED, not asserted
+### 10. HOW WELL THE METHOD WORKS - MEASURED, not asserted
 
 `rosetta.py calibrate` takes every `jsr abs.l` TARGET in the source build (a
 routine entry both builds must have if they implement the same routine), aligns
@@ -488,7 +488,7 @@ everything else                ~30 %   [~19 %]
 ### 11. THE ROSETTA STONE IS NOT ddpdojp. IT IS BUILD A, IN OUR OWN CARTRIDGE.
 
 This is the correction the brief most needs. **The other five sets do not share
-our RAM map.** MEASURED — every absolute-long site of six landmark RAM addresses,
+our RAM map.** MEASURED - every absolute-long site of six landmark RAM addresses,
 across all six images:
 
 | RAM | blk A | blk B | blkbl | ddpdojp | ddp3 | ddpdoj | ddpdojb |
@@ -513,8 +513,8 @@ and the object driver, located in every set by the byte pattern
 | ddpdojb | `$140F2A` | `$80E1A8` | 20 |
 
 (The `lea` site is the third instruction of the driver; the ENTRY is 8 bytes
-earlier — `$2410BC` / `$1413F6` for our cart.) **Every build has 20 object
-slots.** And the RAM bases differ by $4, $8C, $98, $1C2 — I tested whether a
+earlier - `$2410BC` / `$1413F6` for our cart.) **Every build has 20 object
+slots.** And the RAM bases differ by $4, $8C, $98, $1C2 - I tested whether a
 single constant rebase recovers the alignment and it does **not**: rebasing
 ddpdojblkbl by -4 drops the token match from 52.2 % to 44.6 % and the longest run
 from 1081 to 108. The other sets' RAM maps are relaid out, not shifted.
@@ -570,11 +570,11 @@ Every row confirmed by reading BOTH listings unless the note says otherwise.
 | `$23BFDC..$23C006` | `$13C356..$13C380` | THE MAIN LOOP, 7 calls in order | HIGH |
 | `$23C212` | `$13C5B6` | frame sync (= the arm PC every probe prints) | HIGH |
 | `$23D12A` | `$13D496` | input latch | HIGH |
-| `$23D0F8` | — | input read `$C08000` -> `$803970`/`$803976` | build B listing |
+| `$23D0F8` | - | input read `$C08000` -> `$803970`/`$803976` | build B listing |
 | `$23BDAA` | `$13BDAA` | IRQ4 trampoline (A's runs) | HIGH, delta +$100000 |
 | `$23BDBA` | `$13BDBA` | IRQ6 trampoline (A's runs) | HIGH, delta +$100000 |
 | `$245CC8` | `$1453A6` | IRQ4 body | HIGH (from the trampolines) |
-| `$23C43A` | `$13C7D4` | IRQ6 body — **build B's is never vectored** | HIGH |
+| `$23C43A` | `$13C7D4` | IRQ6 body - **build B's is never vectored** | HIGH |
 | `$24C390` | `$14BA44` | the fall-through routine; first `rts` at +$166 in BOTH | HIGH |
 | `$2603DA` | `$15F734` | the `$81308C` dbra clear loop (W17's "writers") | HIGH |
 | `$290746` | `$18F214` | the `$813098 = 1` path, type 7 sub-state 2 | HIGH |
@@ -585,7 +585,7 @@ Every row confirmed by reading BOTH listings unless the note says otherwise.
 | `$2429C4` | `$142D14` | stage starter (`bset #3,$8130F8`, alloc type 6) | MEDIUM |
 | `$23EFEE` | `$13F33C` | sprite emit called from `$24C390` twice | MEDIUM |
 | `$259D04` | `$159250` | debug stage select handler | MEDIUM (state block + logic; `align` LOW) |
-| `$259C4A` | `$1591E0` | its initialiser — **and this one DOES run**, lf 699 | MEDIUM + measured |
+| `$259C4A` | `$1591E0` | its initialiser - **and this one DOES run**, lf 699 | MEDIUM + measured |
 | `$259C42` | `$1591D8` | reads the selector `$812E0A`; 5 abs.l callers in B | HIGH |
 
 ### 14. WHAT THIS UNLOCKS, AND WHAT IT DOES NOT
@@ -594,7 +594,7 @@ Every row confirmed by reading BOTH listings unless the note says otherwise.
 1. The writer inventory is now complete and correct: `$259DB0`/`$259DC6` (debug
    select, handler unreferenced in build B) and **`$290762` (object type 7
    sub-state 2, reachable, present in both builds)**. W10's "exactly two" and
-   W17's "3 writes, all init" are both superseded — the latter was a `dbra`
+   W17's "3 writes, all init" are both superseded - the latter was a `dbra`
    clear loop.
 2. Every `$813098`-INDEXED CONSTANT can be read now, at HIGH confidence, from
    two builds, with no poking: meter cap 56 -> 90, and the 58-word ramp whose
@@ -610,7 +610,7 @@ the port has translated; it costs seconds each.
 
 **Table extents (the Gradius W21 problem).** `table` reads a table in both builds
 and stops where the entries stop being pointers. The dispatch table came out 20
-(B) / 21 (A) — a real difference that would have become a phantom object type if
+(B) / 21 (A) - a real difference that would have become a phantom object type if
 anyone had cross-checked naively.
 
 **The ISR.** Settled with the measurement the notes asked for, plus the exact
@@ -626,27 +626,27 @@ build-B twins so nobody ports them by mistake.
 
 ### 15. THINGS IN THE CORPUS THIS WAVE CONTRADICTS
 
-1. `10-recon-flow.md` §6: "`$813098` ... is written at **exactly two**" — three,
+1. `10-recon-flow.md` §6: "`$813098` ... is written at **exactly two**" - three,
    `$290762` was outside the stated `$23xxxx-$28xxxx` filter.
 2. `17-impl-invuln-stage-run.md` §7: "`$813098` ... 3 writes, all init
-   (`$15F73E`, `$2603E4` x2)" — those are one `dbra` clear loop sweeping the
+   (`$15F73E`, `$2603E4` x2)" - those are one `dbra` clear loop sweeping the
    word, in build B and build A respectively; neither is a writer of the flag.
 3. Wave 2 / the brief: "build A ... same table, same 20 slots ... allocator
-   `$1414BC`" — the allocator is right; the driver ENTRY is `$1413F6`, and
+   `$1414BC`" - the allocator is right; the driver ENTRY is `$1413F6`, and
    `$1413FE` is its third instruction. Build A's dispatch table has **21**
    entries, not 20.
-4. The brief: "ddpdojp ... **4 MiB UNPROTECTED program**" — unprotected means no
+4. The brief: "ddpdojp ... **4 MiB UNPROTECTED program**" - unprotected means no
    ARM7 ASIC. The program is still encrypted and must be dumped from a running
    machine, and only ~1.7 MiB of the 4 MiB EPROM is programmed.
-5. The brief: ddpdojp as a second build at `$2xxxxx` — it has one build at
+5. The brief: ddpdojp as a second build at `$2xxxxx` - it has one build at
    `$10xxxx-$1C7FFF`; its `$2xxxxx` region is data.
 
 ## Files
 
-* `games/ddpdoj/tools/rosetta.py` — the tool (new)
-* `games/ddpdoj/tools/oracle/w21loop.lua` — the DIP + P2 + `$813098` + vector
+* `games/ddpdoj/tools/rosetta.py` - the tool (new)
+* `games/ddpdoj/tools/oracle/w21loop.lua` - the DIP + P2 + `$813098` + vector
   probe (new)
-* `games/ddpdoj/rip/rosetta/img-*.bin` — six decrypted images (gitignored,
+* `games/ddpdoj/rip/rosetta/img-*.bin` - six decrypted images (gitignored,
   reproducible with `python rosetta.py dump`)
 
 status: DONE

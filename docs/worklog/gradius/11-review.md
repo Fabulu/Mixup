@@ -1,4 +1,4 @@
-# Wave 11 review — enemy bullets: slots 22-31, the $BC59 allocator, the $BDD5 mover
+# Wave 11 review - enemy bullets: slots 22-31, the $BC59 allocator, the $BDD5 mover
 status: DONE
 wave: 11   role: review   started: 2026-08-01
 

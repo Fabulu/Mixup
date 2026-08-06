@@ -1,17 +1,17 @@
-# Wave 3 test hardening — the enemy code nothing was watching
+# Wave 3 test hardening - the enemy code nothing was watching
 status: DONE
 wave: 3   role: test   started: 2026-07-29
 
 ## The task, as I understood it
 
 TEST WRITER for wave 3 (Enemies exist: pool substrate, spawn engine, update
-loop, the fan). I write tests ONLY — files under `games/gradius/tests/` and, if
+loop, the fan). I write tests ONLY - files under `games/gradius/tests/` and, if
 a scenario is needed, entries in `games/gradius/tools/oracle/scenarios.json`
 plus harness support. I do NOT change `games/gradius/src/`.
 
 Wave 3 shipped a GREEN gate at `e1d0772`. Two independent readers then mutated
 the source on scratch copies and found a long list of ported routines that could
-be corrupted — in one case three ways at once — with the whole gate still green.
+be corrupted - in one case three ways at once - with the whole gate still green.
 My job was to close that list, and every check I write must be SEEN TO FAIL.
 
 ## What I did
@@ -25,7 +25,7 @@ My job was to close that list, and every check I write must be SEEN TO FAIL.
 3. Dumped the ROM tables the new tests pin (`assets/enemies/tables.json`, which
    is the cartridge cache) and wrote the MEASURED values into the tests rather
    than deriving them through the same code under test.
-4. Wrote `games/gradius/tests/enemies-unwitnessed.test.js` — 30 tests.
+4. Wrote `games/gradius/tests/enemies-unwitnessed.test.js` - 30 tests.
 5. Strengthened the one existing test that had docs/knowledge/03 shape 4
    (`'$5B freezes handler 1 (the capsule) but NOT handler 3'`).
 6. Extended the oracle watch list by 30 addresses and RE-RECORDED the whole
@@ -74,7 +74,7 @@ printed reason; the stage skip count is 0. Unchanged from the pre-wave baseline.
 
 `enemy-waves` compared field count went **351 → 381 TIER 1** (382 compared),
 because of the watch-list extension below. **143 of 382** compared fields never
-change value in that scenario, up from 113 — the 30 new ones are all constant,
+change value in that scenario, up from 113 - the 30 new ones are all constant,
 which is stated explicitly in `scenarios.json`'s note rather than left to be
 discovered.
 
@@ -99,7 +99,7 @@ every mutation that survived wave 3.
 repo's at the start). Runner: `…\scratchpad\w3t_mut.py` +
 `w3t_muts{,2,3,4}.json`. Every mutation asserts its anchor appears **exactly
 once** before writing (docs/knowledge/03: never regex a structured file), and
-the runner **re-hashes the file after restoring and aborts if it differs** —
+the runner **re-hashes the file after restoring and aborts if it differs** -
 `all md5-restored: True` for all 65. The repo's `src/` was never edited; final
 `md5sum games/gradius/src/enemies.js` = `90a2b77f732d7d77d7ad8ae18612f1fd`,
 identical to the start.
@@ -177,7 +177,7 @@ where the copy lives, not of any mutation.
 Every one of the 30 new tests, and the strengthened `$5B` test, appears in the
 right-hand column at least once. No new test is decoration.
 
-### THE FIVE DELIBERATE BREAKS THAT PASSED — and why
+### THE FIVE DELIBERATE BREAKS THAT PASSED - and why
 
 Per the brief these are the most valuable finding. All five are cases where the
 CARTRIDGE'S OWN DATA makes the parameter inert, not cases where a scenario is
@@ -198,11 +198,11 @@ point.
    myself: the 21 real formations are
    `f4 f4 f3 f2 f2 f4 f4 f4 f4 f5 f5 f3 b5 f3 f3 f3 f4 f4 f4 f4 b3`, so the
    member counts (low nibble) are `4 4 3 2 2 4 4 4 4 5 5 3 5 3 3 3 4 4 4 4 3`
-   — **max 5**. No formation in the game has 8 or more members, so `AND #$F0`
+   - **max 5**. No formation in the game has 8 or more members, so `AND #$F0`
    and `AND #$F8` are the same function on every input the ROM can supply.
 3. **`form-x-nowrap`** (`$A3E6 ASL` written as a 32-bit `* 2`). GREEN, same
    shape. MEASURED, dumping `$66` from all 24 descriptors in table B at `$A602`:
-   `0 1 2 3 4 0 1 2 3 9 10 11 12 17 18 8 8 18 19 20 14 15 4 3` — **max 20**, so
+   `0 1 2 3 4 0 1 2 3 9 10 11 12 17 18 8 8 18 19 20 14 15 4 3` - **max 20**, so
    `$66 << 1` never leaves 8 bits. Also not reachable from a test at all:
    `formationSetup` is not exported and `$66` is only ever written by
    `loadDescriptor` out of ROM. Pinning it would need `src/` to export the
@@ -216,7 +216,7 @@ point.
 
 `src/enemies.js` `clearSlot()` justifies its reading of the two Y-indexed stores
 with "the watch list compares addresses". For `$0460+j` (`$A52E`) and
-`$0480+22+j` (`$A52B`) it did not — neither range was watched — and `$044C-$0455`
+`$0480+22+j` (`$A52B`) it did not - neither range was watched - and `$044C-$0455`
 (the X sub-pixel velocity `$B154` adds) was the one of the twenty-one X-indexed
 arrays missing too. I added all 30 addresses and re-recorded from the ROM:
 324 → **354 watched**, `enemy-waves` 351 → **381 TIER 1 fields**.
@@ -238,7 +238,7 @@ addresses are watched. The detection still comes from
 `tests/enemies.test.js`'s 21-array enumeration, which reddens on all three.
 
 The extension is still worth having, and I proved the addresses are LIVE rather
-than decorative with a positive control — `$B1B9 STA $044C,X` storing `$40`
+than decorative with a positive control - `$B1B9 STA $044C,X` storing `$40`
 instead of `0`:
 
 ```
@@ -257,7 +257,7 @@ wrong. `scenarios.json` says all of this at the data, per rule 5.
 
 ## What I could not do, and why
 
-* **`$A408 AND #$F0` and `$A3E6 ASL` cannot be pinned by any check** — see the
+* **`$A408 AND #$F0` and `$A3E6 ASL` cannot be pinned by any check** - see the
   measurements above. They are inert on every input the cartridge's own tables
   can produce. Left unpinned and documented, not papered over.
 * **`work.enemySlots` is reset only inside `updateEnemies()`** (the reviewer's
@@ -284,7 +284,7 @@ wrong. `scenarios.json` says all of this at the data, per rule 5.
   `playerX >= enemyX` on every call. I pinned the BOUNDARY in a unit test (the
   equal case must not fire, one pixel left must reach the unported throw), which
   is the most a test writer can do without a scenario that flies the ship past a
-  squadron — and that needs `$BDD5` ported first, or the throw fires.
+  squadron - and that needs `$BDD5` ported first, or the throw fires.
 
 ## What I RULED OUT
 
@@ -310,7 +310,7 @@ wrong. `scenarios.json` says all of this at the data, per rule 5.
   mutated wave 3's source and found ported code with nothing on it.
 * Every test comment carries a `RED WHEN:` line naming the mutation that reddens
   it. If you change one of those lines and the test still passes, the test has
-  rotted — re-derive it, do not delete it.
+  rotted - re-derive it, do not delete it.
 * The mutation rig is at `…\scratchpad\w3t_mut.py` with
   `w3t_muts{,2,3,4}.json`, operating on `…\scratchpad\g`, a `tar` copy of
   `games/gradius` plus a `{"type":"module"}` package.json. It asserts anchors,

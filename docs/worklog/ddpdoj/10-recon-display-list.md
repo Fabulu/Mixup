@@ -1,23 +1,23 @@
-# WAVE 10 RECON 1/5 — the sprite request pipeline
+# WAVE 10 RECON 1/5 - the sprite request pipeline
 
-> **CORRECTED BY WAVE 11 — read
+> **CORRECTED BY WAVE 11 - read
 > `docs/worklog/ddpdoj/11-impl-display-list-keystone.md` §2 before acting on
 > §2c, §5 item 7 or §7.5 of this document.** Three findings below did not
 > survive the port:
 > 1. **§2c and "seven things" item 7: THE TERMINATOR IS NEVER SKIPPED.**
->    `$23D6E8 cmpi.w #$BC4,D1` does not compare the record count — D1 was
+>    `$23D6E8 cmpi.w #$BC4,D1` does not compare the record count - D1 was
 >    reloaded with `$12` four instructions earlier by `$23D6DA`, the tag
 >    argument of a dead `bsr $240ADC`. Measured on 1,901 forced 251-record
 >    frames: the terminator write executed on every one.
 > 2. **§2c: 251 records carry FOUR fillers, not five.** The cadence is `moveq
->    #$33` then `moveq #$32` — 51 records, a filler, then one per 50 — so
+>    #$33` then `moveq #$32` - 51 records, a filler, then one per 50 - so
 >    251 + 4 + the terminator = 256.
 > 3. **§7.5: the nine abs-long-less buckets are NOT "fed entirely by `bsr`".**
 >    The scan was run and found ZERO `bsr` callers for any of their stubs.
 >    Bucket 20, the only one of them that carries records, is fed by the BULK
 >    WRITER `$28A098`; the rest measured zero records on all 1,901 frames.
 >
-> Everything else in this recon was reproduced independently by wave 11 —
+> Everything else in this recon was reproduced independently by wave 11 -
 > including the whole §3 bucket census, max for max.
 
 status: **DONE** on the pipeline mechanics, the bucket map, the cap and the zoom
@@ -72,21 +72,21 @@ lives in `$23D2AE..$23D724`. In execution order:
 
 | step | ROM | what |
 |---|---|---|
-| a | `$23D2AE` | `jsr $23C1A2` — clears bit 0 of `$80393C` (an IRQ/section flag). Not sprite work |
+| a | `$23D2AE` | `jsr $23C1A2` - clears bit 0 of `$80393C` (an IRQ/section flag). Not sprite work |
 | b | `$23D2B4..$23D366` | **the SUM**: `$80AFC0` + the 29 bucket counters `$80AFC2..$80AFFA`, in *counter-address* order (NOT drain order) → D0 = total pending BYTES |
-| c | `$23D36E/$23D37C/$23D398` | `bsr $240ADC` three times — **`$240ADC` is a bare `rts`**. A stripped profiling hook. Three dead calls, four more later. They cost cycles and nothing else |
+| c | `$23D36E/$23D37C/$23D398` | `bsr $240ADC` three times - **`$240ADC` is a bare `rts`**. A stripped profiling hook. Three dead calls, four more later. They cost cycles and nothing else |
 | d | `$23D372..$23D38C` | `D0 -= $BD0`; store to `$80B000` (bytes over budget) and `$80B000/12` to `$80AFFE` (records over budget) |
-| e | `$23D39C..$23D3DE` | **THE PRE-EMPTIVE OVERFLOW POLICY** — see §4 |
+| e | `$23D39C..$23D3DE` | **THE PRE-EMPTIVE OVERFLOW POLICY** - see §4 |
 | f | `$23D3E0..$23D622` | **THE DRAIN**: 29 × `lea BUF,A0 / lea CTR,A1 / bsr $23D726 / bcs $23D624`, in a fixed hand-written order |
 | g | `$23D624..$23D6CC` | **THE EMIT**: queue → `$800000`, 12-byte request → 10-byte hardware entry, one filler inserted every 52 records |
-| h | `$23D6E8..$23D6FC` | the terminator — **skipped if the list is exactly full** |
+| h | `$23D6E8..$23D6FC` | the terminator - **skipped if the list is exactly full** |
 | i | `$23D70C..$23D71C` | clear all 30 counters (`moveq #0,D1 / move.w #$1D,D0 / move.w D1,(A0)+ / dbra`) |
-| j | `$23D71E` | `jsr $23C194` — sets bit 0 of `$80393C` back |
+| j | `$23D71E` | `jsr $23C194` - sets bit 0 of `$80393C` back |
 
 Measured cost, wave 2: **15,594 cycles mean**, against call #2 (the object
 driver) at 77,725. Call #4 is ~4.6 % of the frame.
 
-## 2. The record format — 12-byte REQUEST in, 10-byte HARDWARE ENTRY out
+## 2. The record format - 12-byte REQUEST in, 10-byte HARDWARE ENTRY out
 
 ### 2a. The enqueue: object record → 12-byte request
 
@@ -120,8 +120,8 @@ does not get to choose them:**
 | `(A6+$4)` word | SHORT-axis position, 1/64 px |
 | `(A6+$6)` word | LONG-axis offset, added before the shift |
 | `(A6+$8)` word | SHORT-axis offset |
-| `(A6+$A)` long | hardware words 2 and 3 — `pri` bit 7, `offs` bits 22..16, `offs` low 16 |
-| `(A6+$E)` word | hardware word 4 — `width` (bits 14..9), `height` (bits 8..0) |
+| `(A6+$A)` long | hardware words 2 and 3 - `pri` bit 7, `offs` bits 22..16, `offs` low 16 |
+| `(A6+$E)` word | hardware word 4 - `width` (bits 14..9), `height` (bits 8..0) |
 | `(A6+$1C)` word | its **two bytes are OR-ed together** at emit time into hardware word 2's HIGH byte = flip (14,13) + color (12..8) |
 
 Three traps in fourteen instructions:
@@ -141,13 +141,13 @@ Three traps in fourteen instructions:
 There are **three** enqueue conventions, not one:
 
 * **per-record stubs**, ~130 of them, the shape above. Some are preceded by
-  `movem.l D0/A0-A1,-(A7)` (register-preserving variants) — same body.
+  `movem.l D0/A0-A1,-(A7)` (register-preserving variants) - same body.
 * **`$23D9E2`**, a *zooming* variant: it builds the flags in D6 from two
   PC-relative jump tables (`$23E54A`) indexed by `($E,A6)` and `or.l D6,D1`
   instead of `ori.l #$80008000`, so the zoom/flip/colour fields come from the
   object rather than being hard-zero.
 * **BULK writers**: a loop writing `(A4)+` that sets the counter *at the end*
-  from the pointer difference — `suba.l (A7)+,A4 / move.w A4,$80AFxx`.
+  from the pointer difference - `suba.l (A7)+,A4 / move.w A4,$80AFxx`.
   `$28A098`→`$28A198` (bucket 20), `$281D9A`→`$281DCE/$281DD6` (buckets 22 and
   23). **Bucket 23's counter `$80AFE2` has no `addi` stub at all** and would be
   invisible to a scan that only looked for the common shape.
@@ -170,13 +170,13 @@ There are **three** enqueue conventions, not one:
 ```
 
 * **`$80B054` is a global position offset added to every sprite in the frame.**
-  Measured `$00000000` on all 1,901 build-B frames of `stage1-open` — but it has
+  Measured `$00000000` on all 1,901 build-B frames of `stage1-open` - but it has
   writers at `$240CE0` (inside `$240CC0`, the *IRQ-gated* BG-scroll routine) and
   at `$260E4A/$260E6C/$260E8E/$260EB0/$260EFC/$260F26`. **Presence, not
   coverage: this recon never saw it non-zero and cannot say it never is.**
 * **The short axis is masked to `$3FFF` here, 14 bits, but the hardware field is
   10 bits and bits 13..11 are the ZOOM field.** A position that overflows 10 bits
-  after the `$80B054` add — a negative short-axis coordinate, for instance — will
+  after the `$80B054` add - a negative short-axis coordinate, for instance - will
   OR garbage into the zoom nibble. Not observed (because `$80B054` was 0 and the
   enqueue pre-masks to `$03FF`), and worth a standing assertion in the port.
 * `add.l` means a carry out of the short axis propagates into the long axis.
@@ -195,7 +195,7 @@ There are **three** enqueue conventions, not one:
 ```
 
 One fixed filler entry every 52 records. **251 records + 5 fillers = 256**, the
-IGS023 maximum — the two numbers are designed against each other, re-confirmed
+IGS023 maximum - the two numbers are designed against each other, re-confirmed
 here from the listing and measured (`fillers max/frame=2` at 120 records).
 
 ```
@@ -209,7 +209,7 @@ to the hardware's own 256-entry limit. A port that unconditionally writes a
 terminator is wrong in exactly the case that only happens when the screen is
 full.
 
-## 3. THE 29 BUCKETS — the drain order IS the depth order
+## 3. THE 29 BUCKETS - the drain order IS the depth order
 
 `$23D3E0..$23D622`, read out of the ROM by `w10/buckets.py`; capacities derived
 from consecutive staging-buffer addresses; the last three columns measured over
@@ -223,16 +223,16 @@ is furthest BACK, drain #29 is furthest FRONT.**
 
 | drain | staging buffer | counter | cap (recs) | max | mean | frames≠0 | who feeds it (abs-long callers = LOWER BOUND) |
 |---:|---|---|---:|---:|---:|---:|---|
-| 0 | `$80397C` (the queue itself) | `$80AFC0` | 502 | **100** | 27.38 | 1595 | `$23D762` (10 sites, `$267CB2 $267ED0 $267F68 $269058 $2755B2 $2799A6 $27C7FE $27CA9C $27CAAE $27CB72` — enemy code), `$23D88E` (5 sites `$24D56E…` — the option object), `$23DECE` (83 sites `$258062 $25B4E6 $25BF40 $25C3B0 …`), `$23DFB4`, `$23E2F2` |
+| 0 | `$80397C` (the queue itself) | `$80AFC0` | 502 | **100** | 27.38 | 1595 | `$23D762` (10 sites, `$267CB2 $267ED0 $267F68 $269058 $2755B2 $2799A6 $27C7FE $27CA9C $27CAAE $27CB72` - enemy code), `$23D88E` (5 sites `$24D56E…` - the option object), `$23DECE` (83 sites `$258062 $25B4E6 $25BF40 $25C3B0 …`), `$23DFB4`, `$23E2F2` |
 | 1 | `$805104` | `$80AFC2` | 251 | 3 | 0.34 | 419 | `$23D79E` (4), `$23DEFC` (26, `$262848 $262B96 …`) |
 | 2 | `$805CC8` | `$80AFC4` | 251 | 3 | 0.36 | 286 | `$23D7DA` (6), `$23D916` (1), `$23DF2A` (35, `$2623F4 …`) |
 | 3 | `$80688C` | `$80AFC6` | 251 | 7 | 0.32 | 301 | `$23D816` (8), `$23DF58` (34, `$262A44 $266048 $26959E $26BF3A $26D2BE …`) |
 | 4 | `$8083D4` | `$80AFCC` | 25 | 0 | 0 | 0 | `$23E9D8` (2, `$2810A2 $2810B4`) |
-| 5 | `$80862C` | `$80AFD0` | 6 | 3 | 0.44 | 280 | `$23EFC0` (1, `$249EE2` — the player block) |
-| 6 | `$808674` | `$80AFD2` | 20 | 0 | 0 | 0 | `$23EC84 $23ECFC $23ED84 $23EDE0` (bsr only) — **sacrificed second** |
+| 5 | `$80862C` | `$80AFD0` | 6 | 3 | 0.44 | 280 | `$23EFC0` (1, `$249EE2` - the player block) |
+| 6 | `$808674` | `$80AFD2` | 20 | 0 | 0 | 0 | `$23EC84 $23ECFC $23ED84 $23EDE0` (bsr only) - **sacrificed second** |
 | 7 | `$807450` | `$80AFC8` | 251 | **18** | 1.87 | 1035 | `$23D852` (10, `$269E16 $273C94 $274E4E $275A24 $277CA6 $278634`), `$23DF86` (29, `$25F5E0 $265690 $26EDF2 $2709xx`) |
 | 8 | `$808014` | `$80AFCA` | 80 | 0 | 0 | 0 | `$23EBA0` (13, `$27FAB2 … $281xxx`), `$23EC20` (4) |
-| 9 | `$808764` | `$80AFD4` | 20 | 0 | 0 | 0 | `$23ECC0 $23ED40 $23EDB2 $23EE16` — **sacrificed second** |
+| 9 | `$808764` | `$80AFD4` | 20 | 0 | 0 | 0 | `$23ECC0 $23ED40 $23EDB2 $23EE16` - **sacrificed second** |
 | 10 | `$80A864` | `$80AFE8` | 10 | 0 | 0 | 0 | 8 stubs, bsr only |
 | 11 | `$80AD8C` | `$80AFF0` | 10 | 0 | 0 | 0 | 8 stubs, bsr only |
 | 12 | `$80AF24` | `$80AFEA` | 10 | 0 | 0 | 0 | `$23FDB2 $23FDE8` |
@@ -242,20 +242,20 @@ is furthest BACK, drain #29 is furthest FRONT.**
 | 16 | `$808BB4` | `$80AFD8` | 64 | 0 | 0 | 0 | `$23F508` (9, `$2548BA $25497C $254A56 … $25514C`) |
 | 17 | `$808500` | `$80AFCE` | 25 | 1 | 0.06 | 123 | `$23EB06` (9, `$27EAC4 … $27F66E`) |
 | 18 | `$80AEAC` | `$80AFF8` | 10 | 0 | 0 | 0 | `$240A5A` (4, `$287374 $2873F4 $287452 $2874D2`) |
-| **19** | `$808EE4` | `$80AFDC` | 16 | 3 | 0.60 | 599 | `$23F104` (2, `$24A538 $24A6C4`), `$23F1FA` (2, `$24A532 $24A632`) — **the player's own block** |
-| **20** | `$808FA4` | `$80AFDE` | 60 | **24** | 2.00 | 460 | the BULK writer `$28A098` → `$28A198/$28A1B4/$28A1D0` — **SACRIFICED FIRST** |
+| **19** | `$808EE4` | `$80AFDC` | 16 | 3 | 0.60 | 599 | `$23F104` (2, `$24A538 $24A6C4`), `$23F1FA` (2, `$24A532 $24A632`) - **the player's own block** |
+| **20** | `$808FA4` | `$80AFDE` | 60 | **24** | 2.00 | 460 | the BULK writer `$28A098` → `$28A198/$28A1B4/$28A1D0` - **SACRIFICED FIRST** |
 | 21 | `$80A624` | `$80AFE4` | 16 | 0 | 0 | 0 | `$23F896` (4, `$2698C4 $2698E2 $2698F6 $269906`) |
 | 22 | `$809274` | `$80AFE0` | 210 | 0 | 0 | 0 | BULK `$281D9A`→`$281DCE`; also `$23F746` (7), `$23F782` (4), `$23F7C6` (2) |
-| 23 | `$809C4C` | `$80AFE2` | 210 | **11** | 0.80 | 431 | BULK `$281D9A`→`$281DD6` — **no `addi` stub exists for this bucket** |
+| 23 | `$809C4C` | `$80AFE2` | 210 | **11** | 0.80 | 431 | BULK `$281D9A`→`$281DD6` - **no `addi` stub exists for this bucket** |
 | 24 | `$80AF9C` | `$80AFFA` | 3 | 0 | 0 | 0 | `$23FE5C $23FE92` |
-| 25 | `$80A6E4` | `$80AFE6` | 32 | 5 | 1.50 | 633 | `$23FA96` (21 sites, `$28490E $284AB0 … $2856CC` — the `$284/$285xxx` block wave 5 named as the BOMB's callees) |
+| 25 | `$80A6E4` | `$80AFE6` | 32 | 5 | 1.50 | 633 | `$23FA96` (21 sites, `$28490E $284AB0 … $2856CC` - the `$284/$285xxx` block wave 5 named as the BOMB's callees) |
 | 26 | `$80AD14` | `$80AFEE` | 10 | 0 | 0 | 0 | 8 stubs, bsr only |
 | 27 | `$80AE04` | `$80AFF2` | 10 | 0 | 0 | 0 | 8 stubs, bsr only |
 | 28 | `$80AE7C` | `$80AFF4` | 2 | 0 | 0 | 0 | `$240892` (2, `$2529BC $252A48`) |
 | 29 | `$80AE94` | `$80AFF6` | 2 | 0 | 0 | 0 | `$240976` (2, `$252AC8 $252B3C`) |
 
 **377 absolute-long call sites reach the enqueue family**, and that is a lower
-bound — a `bsr` or a call through a register is invisible to it. Ten of the
+bound - a `bsr` or a call through a register is invisible to it. Ten of the
 thirty buckets have **zero** abs-long callers and are fed entirely by `bsr`.
 
 Three of these identifications are cross-confirmed by an independent number and
@@ -265,16 +265,16 @@ are the ones I would build on first:
   completely separate census of the 36-slot shot driver `$253A70` reported
   `SHOT live per logic frame max=20`. Same number, two instruments.
 * **bucket 15 = the two option pods.** Capacity **4 records**, measured max **2**,
-  fed only by `$24C096`'s handler — and there are exactly two pods.
+  fed only by `$24C096`'s handler - and there are exactly two pods.
 * **bucket 19 = the player ship.** Fed only from `$24A5xx/$24A6xx`, inside the
   player object's own block, max 3.
 * **buckets 22 and 23 = the ENEMY BULLETS.** Their only feeder is the bulk
-  writer `$281D9A`, and its first act is `clr.w $81B40C` before the emit loop —
+  writer `$281D9A`, and its first act is `clr.w $81B40C` before the emit loop -
   `$81B40C` is one of the three terms wave 5 found the frame-sync governor
   `$23C272` summing (`$81B40C + $81295C + 2*$81295E`), the second of which wave 5
   identified as the live **player-shot** count. So `$81B40C` is the live
   **enemy-bullet** count, the two 210-record buckets are what it counts, and they
-  drain at #22/#23 — near the very front, which is how DDP looks.
+  drain at #22/#23 - near the very front, which is how DDP looks.
 
 And the depth ordering that falls out of them is a sanity check on the whole
 "higher index = front" rule: shots (#14) behind options (#15) behind the ship
@@ -285,22 +285,22 @@ priority (from the dispatch table's per-type word, `$240F62+4`) decides which
 HANDLER RUNS FIRST. The bucket decides where its sprites LAND IN DEPTH. They
 coincide only for bucket 0, whose records are appended in object-execution order.
 
-### The queue's real geometry — a wave-5 number corrected
+### The queue's real geometry - a wave-5 number corrected
 
 Wave 5 wrote *"the queue buffer `$80397C..$80AFBF` is 30,276 bytes ≈ 2,523
 records, far larger than the cap"*. **That is wrong.** `$80397C` runs into
 bucket 1's staging buffer at `$805104`, so the queue has **6,024 bytes = 502
 records** before it starts overwriting bucket 1. Wave 5's `POKE $0B40` runs
 reached 355–365 records = `$1A94..$1B24` bytes → `$805410..$8054A0`, which **is
-inside bucket 1's staging area**. It happens to be harmless — bucket 1 is drained
+inside bucket 1's staging area**. It happens to be harmless - bucket 1 is drained
 FIRST, so by the time the pointer gets there its records are already copied, and
-the counters are zeroed wholesale the next frame — but the reasoning that made
+the counters are zeroed wholesale the next frame - but the reasoning that made
 it safe was not the reasoning wave 5 gave, and the 2,523 figure should not be
 quoted again.
 
-## 4. THE CAP — there are TWO policies, and the first one is design, not accident
+## 4. THE CAP - there are TWO policies, and the first one is design, not accident
 
-### 4a. The PRE-EMPTIVE policy (`$23D39C..$23D3DE`) — this is the interesting one
+### 4a. The PRE-EMPTIVE policy (`$23D39C..$23D3DE`) - this is the interesting one
 
 ```
 23d372: subi.w #$BD0,D0            $BD0 = 3024 bytes = 252 records
@@ -324,19 +324,19 @@ specific class of object is chosen by hand to vanish when the screen is full,
 and it is the same class every time.**
 
 `$80B002` and `$80B004` are the flags saying it happened. `xref.py abs` finds
-**four** absolute-long sites for each — two writes in build B's call #4, two in
-build A's — and **no reader anywhere**. Same for `$80AFFE` (`$23D38E` writes it,
+**four** absolute-long sites for each - two writes in build B's call #4, two in
+build A's - and **no reader anywhere**. Same for `$80AFFE` (`$23D38E` writes it,
 `$13D6FA` in build A, nothing reads it) and `$80B000` (written and read only
 inside call #4). They are telemetry. Absolute-long is a lower bound, so this is
 "I found no reader", not "nothing reads them".
 
-### 4b. The RUNTIME cap (`$23D726` / `$23D75A`) — wave 5's result, re-derived
+### 4b. The RUNTIME cap (`$23D726` / `$23D75A`) - wave 5's result, re-derived
 
 Confirmed unchanged: `$23D746 cmpi.w #$BC4,$80AFC0 / beq $23D75A`, EQUALITY not
 `>=`; `$23D75A` zeroes the current bucket's remaining count and sets carry; all
 29 drain sites `bcs $23D624`, so **the current bucket's remainder and every
-later bucket are abandoned wholesale**. In depth terms — and wave 5 did not say
-this — **what is abandoned is the FRONT-MOST part of the picture**, because the
+later bucket are abandoned wholesale**. In depth terms - and wave 5 did not say
+this - **what is abandoned is the FRONT-MOST part of the picture**, because the
 later a bucket drains the closer to the viewer it draws.
 
 ### 4c. Does it ever fire? Measured: NO, not in natural play
@@ -357,11 +357,11 @@ path with the rest of the frame untouched. It is one `PROBE_*` env var in
 `frame.lua` plus a pixel diff, and it is the single highest-value follow-up in
 this recon.
 
-## 5. THE 20 TOP-LEVEL DISPATCH ENTRIES — what I established
+## 5. THE 20 TOP-LEVEL DISPATCH ENTRIES - what I established
 
 `$240F62`, 8-byte entries `{handler long, priority word, 0}` (wave 2). Every one
-of the 20 handlers opens with the same three lines — `tst.b ($2,A5) / beq <init>`
-and usually `cmpi.b #$2,($2,A5) / beq <teardown>` — so **`(A5+$2)` is the object's
+of the 20 handlers opens with the same three lines - `tst.b ($2,A5) / beq <init>`
+and usually `cmpi.b #$2,($2,A5) / beq <teardown>` - so **`(A5+$2)` is the object's
 lifecycle state: 0 = construct, 2 = destruct, anything else = run.**
 
 Wave 5 measured the live set over lf1960..2600: types `10, 2, 1, 5, 11, 4, 4, 0`
@@ -370,16 +370,16 @@ opening needs.
 
 | # | handler | pri | what it is (evidence) |
 |---|---|---|---|
-| 0 | `$28D520` | 09 | `jsr $2842B0 / $28444E`; the init path at `$28D566` clears `$81DEBE..` (0x77 words) and `bset` s `$81DF1E` bits 0 and 3 — a screen/section manager |
-| 1 | `$26127A` | 1a | reads `$8130D2`, `$813180/82/84`, calls `$26146C` and `$262062`, writes `($1C,A5)/($22,A5)` — **not identified** |
+| 0 | `$28D520` | 09 | `jsr $2842B0 / $28444E`; the init path at `$28D566` clears `$81DEBE..` (0x77 words) and `bset` s `$81DF1E` bits 0 and 3 - a screen/section manager |
+| 1 | `$26127A` | 1a | reads `$8130D2`, `$813180/82/84`, calls `$26146C` and `$262062`, writes `($1C,A5)/($22,A5)` - **not identified** |
 | **2** | `$2491C0` | 1c | **PLAYER 1.** `lea $8103E6,A6` (the player record), `lea $8104AA,A2` (the option pair), `ori.w #$1,$813090`, `jsr $253A1E` |
 | 3 | `$249246` | 1b | **PLAYER 2**, the same code against `$810448` / `$81050E` / `$253A3A` |
 | 4 | `$260B30` | 09 | a 4-entry PC-relative state machine at `$260B6A`; **two instances live at once** in the opening |
 | **5** | `$28B5E0` | 18 | **THE WEAPONS/ENEMY SUBSYSTEM LIST.** Wave 5 counted 15 `jsr`s; it is **23**, `$28B5E6..$28B66A`: `$289B80 $2634F4 $28AD54 $27F95A $288E4E $2890F2 $255DD8 $253A70 $24C096 $254680 $255042 $28A098 $2527CE $24A458 $24A46C $24A440 $24A44C $27E99E $252BD0 $281D9A $25354C $25292A $252A52`. Then, NOT a `jsr` and therefore easy to miss, the **collision block** at `$28B670`: `tst.w $81308C / move.w $8103E6,D4 / lea $810572,A0` (the shot table) `/ lea $811EF2,A1 / lea $811802,A2 / lea $811892,A3 / lea $8103E6,A4` (the player) `/ ... / jmp $244D62` |
-| 6 | `$28D63C` | 0a | calls `$28EDC0 / $28E7E6 / $25FD38 / $25FD0C / $27F8C4`, touches `$81DF1E`, `$812972` — a mode/flow manager |
+| 6 | `$28D63C` | 0a | calls `$28EDC0 / $28E7E6 / $25FD38 / $25FD0C / $27F8C4`, touches `$81DF1E`, `$812972` - a mode/flow manager |
 | 7 | `$290BE8` | 1e | `lea $81E0DC,A6`, PC-relative jump table at `$290C8E` on `($8,A6)` |
-| 8 | `$25A770` | 0a | reads `$812E56`, `$803808` (an operator byte), calls `$24107C` (the object-table INIT) — the boot/attract sequencer |
-| 9 | `$25CACA` | 0a | `lea $812EA0,A6`, `moveq #1,D7` — a 2-slot driver dispatching on `($1,A6)` to `$25D306/$25D402/$25D39C/$25D4F0/$25D560` |
+| 8 | `$25A770` | 0a | reads `$812E56`, `$803808` (an operator byte), calls `$24107C` (the object-table INIT) - the boot/attract sequencer |
+| 9 | `$25CACA` | 0a | `lea $812EA0,A6`, `moveq #1,D7` - a 2-slot driver dispatching on `($1,A6)` to `$25D306/$25D402/$25D39C/$25D4F0/$25D560` |
 | **10** | `$260794` | 1f | **THE STAGE/SCROLL DIRECTOR.** `$8130CA = $80390A & $E` (an animation phase), `addq.l #1,$8130C6` (a 32-bit stage clock), `jsr $2608D2 / $288610`, sets `$81B414` |
 | 11 | `$25DBB4` | 0a | `jsr $28D53C` then `$260ACA / $260A88 / $260A9A` on `($7,A5)` |
 | 12 | `$28F3AC` | 09 | dispatches on `($5,A5)` bits to `$28F3F8` / `$28F450`; `lea $81E056,A4` |
@@ -408,7 +408,7 @@ $ python xref.py callers 2634F4
 the wrong one. **The enemies, the player's shots, the options, the bomb and the
 first-sacrificed bucket 20 are ALL inside one top-level handler, type 5.**
 
-## 6. THE ZOOM TABLE — HARDWARE FACT. Reproduce it.
+## 6. THE ZOOM TABLE - HARDWARE FACT. Reproduce it.
 
 ### The MAME comment, fetched verbatim
 
@@ -430,7 +430,7 @@ m_sprite_ptr_pre->yzoom = (yzom < 0x10) ? (yzom == 0xf) ? 1 : ((u32(m_zoomram[yz
 
 MAME states the question and does not answer it. Two things settle it from here.
 
-### (a) The table, from the ROM and from the running machine — they agree
+### (a) The table, from the ROM and from the running machine - they agree
 
 The zoom table is **ROM data uploaded once**, not computed:
 
@@ -455,11 +455,11 @@ image: **`$00DF2C` (the BIOS), `$13C8F4` (build A), `$23C588` (build B)**.
 
 `w10zoom.lua` read `:igs023:zoomram` at the sample point of every logic frame
 and got **one distinct table over 5,000 frames**, byte-identical to the ROM
-literal. So for the port the zoom table is a constant blob — with the standard
+literal. So for the port the zoom table is a constant blob - with the standard
 caveat that 5,000 frames of stage 1 is presence, not coverage, and `$B01000`'s
 only writer found is this one.
 
-**The table is a monotone popcount ramp 16, 15, 14 … 2 — a Bresenham-even
+**The table is a monotone popcount ramp 16, 15, 14 … 2 - a Bresenham-even
 distribution of N set bits across 32.** Entry `$F` is the one place the ramp
 breaks, and the value that would continue it is a 32-bit word with **exactly one
 bit set: `0x00000001`**. That is precisely the constant MAME substitutes.
@@ -483,7 +483,7 @@ EFF y index 16 distinct: 01:549  02:18 03:18 04:18 05:18 06:18 07:2245 08:1099
   reached both ways (`grow=1,zom=1` 18×, and `grow=0,zom=$F` 16× on the x axis).
 * The flat 18-per-value bands across `$02..$0E` are one scripted sweep, not
   gameplay. The 800-frame `chooser` scenario shows **`EFF x/y index 1 distinct:
-  10:1201`** — no zoom at all during boot — so the sweep and the `$F` records are
+  10:1201`** - no zoom at all during boot - so the sweep and the `$F` records are
   somewhere after the chooser and before lf5000. **I did not bracket it further.**
 * Natural gameplay zooms are `$01`, `$07`, `$08`, `$0A`. Wave 3's "the corpus
   covers entries 1 and 0xa" is confirmed by a second instrument, and extended:
@@ -491,7 +491,7 @@ EFF y index 16 distinct: 01:549  02:18 03:18 04:18 05:18 06:18 07:2245 08:1099
 
 ### The classification
 
-**HARDWARE FACT — reproduce it.** The argument, stated so it can be attacked:
+**HARDWARE FACT - reproduce it.** The argument, stated so it can be attacked:
 the table is an arithmetic ramp whose last term is missing; the value MAME
 inserts is exactly the term the ramp predicts; three independently-built program
 images (the PGM BIOS and both games on this cartridge) ship the same zero; and
@@ -501,8 +501,8 @@ sprite at that zoom level would lose every source pixel and vanish, not shrink.
 MAME's behaviour, not a hardware capture, and it should be labelled that way
 wherever it is quoted.
 
-The port already does the right thing — `src/render/sprites.js` `zoomWord()`
-returns `1` for `z === 0xf` — but there is **no gate on it**: `zoomcov`'s
+The port already does the right thing - `src/render/sprites.js` `zoomWord()`
+returns `1` for `z === 0xf` - but there is **no gate on it**: `zoomcov`'s
 coverage table treats `$F` as one of sixteen anonymous combinations. Making it a
 NAMED case with a red-validated mutation (`zoom-f-literal`, i.e. read the table
 value 0 instead of substituting 1) is a small, well-specified unit and is listed
@@ -518,7 +518,7 @@ below.
 2. **Five of the twenty dispatch entries are unopened** (`$256E7A`, `$25CEB8`,
    `$24902A`, `$28EE88` and, in substance, `$26127A`). Three of those five are
    not in wave 5's live set for the stage-1 opening, so they are not on the
-   critical path — but "not in the live set over lf1960..2600" is a statement
+   critical path - but "not in the live set over lf1960..2600" is a statement
    about one window of one scenario.
 3. **`$80B054` was zero in every frame I measured.** It has six writers I did not
    disassemble, one of them inside the IRQ-gated `$240CC0`. If it is ever
@@ -530,12 +530,12 @@ below.
    four more lines.
 5. **The caller lists in §3 are absolute-long only.** Ten of thirty buckets have
    none at all and are fed entirely by `bsr`. A static `bsr`-target scan of
-   `$200000-$2A0000` per stub — the same scan wave 5 ran for `$23D726` and got 29
-   hits — would close this and I did not run it.
+   `$200000-$2A0000` per stub - the same scan wave 5 ran for `$23D726` and got 29
+   hits - would close this and I did not run it.
 6. **I did not re-run `pgm.py check`, `gate`, `flyaround` or `pixslice`.** This
    recon added two new Lua probes and two new Python drivers and edited nothing
    under `src/` or in the existing harness, so no corpus digest should have
-   moved — but I did not prove that, and the next commit should.
+   moved - but I did not prove that, and the next commit should.
 7. **The `$23D9E2` zooming enqueue variant is read but not traced.** It is the
    only path that puts a non-zero zoom field into a request, so it is the only
    path that can reach the `$F` entry, and I did not enumerate its callers.
@@ -570,7 +570,7 @@ python games/ddpdoj/tools/oracle/xref.py dasm 23D762 60    one enqueue stub
 5. **`asr.l #6` and `add.l $80B054` are 32-BIT operations across both coordinate
    fields.** Two independent 16-bit versions agree only because of the masks
    either side. Translate the long form.
-6. **"No zoom" is `grow=1, zom=0`, not `zom=0`** — 201,205 of 205,434 measured
+6. **"No zoom" is `grow=1, zom=0`, not `zom=0`** - 201,205 of 205,434 measured
    records. And **zoom entry `$F` reads 0 from the table but must be treated as
    1**; the game reaches it 34 times in 5,000 frames, which is exactly rare
    enough that a natural corpus will tell you nothing is wrong.

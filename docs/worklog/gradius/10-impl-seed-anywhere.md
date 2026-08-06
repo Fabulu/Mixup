@@ -1,4 +1,4 @@
-# Wave 10 (follow-up) — seed the port at ANY cartridge frame
+# Wave 10 (follow-up) - seed the port at ANY cartridge frame
 
 status: DONE
 wave: 10   role: impl   started: 2026-08-01
@@ -8,52 +8,52 @@ wave: 10   role: impl   started: 2026-08-01
 `09-DECIDED-seed-anywhere.md`: the scenario artifact carries `seedRam`
 ($0000-$07FF at the align frame) and `align` is already per-scenario, so the CPU
 side of "start deep" exists. What does not exist is the VIDEO state the port
-rebuilds by running from the beginning — PPU nametable, palette RAM, OAM, CHR
-bank — plus the terrain build cursor.
+rebuilds by running from the beginning - PPU nametable, palette RAM, OAM, CHR
+bank - plus the terrain build cursor.
 
 This wave runs FIRST of the three follow-ups because it is what makes the other
 two testable: both crashing paths ($BC59 enemy bullets, $A3B1 single-enemy
 spawn) need the ship somewhere the corpus never goes.
 
 Done-condition that must not be weakened: a deep-seeded scenario being green is
-NOT enough. Seeding INVERTS the usual trap — the risk is that the seed HIDES a
+NOT enough. Seeding INVERTS the usual trap - the risk is that the seed HIDES a
 bug. So I must prove the seed is not doing the work.
 
 Deliverable: at least one scenario aligned PAST scroll $0380.
 
 ## What I did
 
-1. **`probe.lua`** — `PROBE_VIDEO` + `PROBE_VIDEO_AT` (a LIST of game frames). At
+1. **`probe.lua`** - `PROBE_VIDEO` + `PROBE_VIDEO_AT` (a LIST of game frames). At
    the $80B5 sample point of each listed frame it writes a 2336-byte blob: PPU
-   $2000-$27FF (2 KB, the two physical nametables — vertical mirroring makes
+   $2000-$27FF (2 KB, the two physical nametables - vertical mirroring makes
    $2800/$2C00 aliases), palette RAM $3F00-$3F1F (32 B), hardware OAM (256 B).
    Written from the exec hook, not the endFrame handler, because by endFrame
    $8087 has DMA'd a new OAM and $8A51 has drained a new queue into VRAM.
-2. **`probe.py`** — plumbs it through and asserts the blob length.
-3. **`scen.py`** — asks for TWO dumps: the align frame (the SEED) and the last
+2. **`probe.py`** - plumbs it through and asserts the blob length.
+3. **`scen.py`** - asks for TWO dumps: the align frame (the SEED) and the last
    frame of the window (the CHECK). New artifact fields: `seedVram`,
    `seedPalette`, `seedOam`, `seedChrBank`, `seedChrOffset`, `seedSplitRan`,
    `finalFrame`, `finalVram`, `finalPalette`, `finalOam`, `finalColl`,
    `ntChanged`, `ntHalvesDiffer`, `collChanged`. `finalColl` costs no extra
-   emulator time — the per-frame RAM dump was already being taken for the seed
+   emulator time - the per-frame RAM dump was already being taken for the seed
    and thrown away.
-4. **`porttrace.mjs`** — `seedFromRam(state, ram)` → `seedFromCartridge(state,
+4. **`porttrace.mjs`** - `seedFromRam(state, ram)` → `seedFromCartridge(state,
    seed)`. Installs the nametable (+ its mirror), palette, hardware OAM, both
    render bands, **and the terrain collision map $0500-$06FF, which was already
    inside `seedRam` and had been deliberately skipped**. `loadOracle` REFUSES a
    pre-wave-10 artifact by name instead of seeding nothing. `tracePort` returns
    `finalVideo` and gained `stopOnThrow`.
-5. **`compare.mjs`** — three new blocks, all counting into the verdict:
-   * **VIDEO** — the port's nametable, palette and hardware OAM at the last frame
+5. **`compare.mjs`** - three new blocks, all counting into the verdict:
+   * **VIDEO** - the port's nametable, palette and hardware OAM at the last frame
      of the window against the cartridge's. **Nothing had ever compared these.**
-   * **TERRAIN MAP** — $0500-$06FF at the same frame, for the same reason.
-   * **DEEP REACH** — scenarios may carry `expectThrow: {rom, atFrame}`; they are
+   * **TERRAIN MAP** - $0500-$06FF at the same frame, for the same reason.
+   * **DEEP REACH** - scenarios may carry `expectThrow: {rom, atFrame}`; they are
      not field-compared, they are asserted to hit a named unported ROM address at
      a named frame, with knownFail's surprise-success rule. Plus a corpus check
      that at least one scenario aligns past scroll $0380.
 6. **Three new scenarios**: `deep-page3` (align 1900, camera $0319),
    `deep-ground` (align 1700, camera $02B5, dies on real terrain),
-   `deep-page4` (align 2300, camera $03E1 — past $0380). The corpus is 39.
+   `deep-page4` (align 2300, camera $03E1 - past $0380). The corpus is 39.
 7. **Four new neuters** that delete or corrupt what the seed installs:
    `seed-nt+1`, `seed-pal+1`, `seed-coll0`, `seed-oam0`. Three of them are wired
    into the gate's self-check stage.
@@ -67,7 +67,7 @@ Deliverable: at least one scenario aligned PAST scroll $0380.
   rather than left implying a gap.
 * **The CHR bank.** `$2D` is inside `seedRam` and `src/render/ppu.js chrBank()`
   derives the offset from it; `chrOffset` is already TIER 1 on every frame. So it
-  is not an input — it is now a seed-time ASSERTION instead.
+  is not an input - it is now a seed-time ASSERTION instead.
 
 ## What I MEASURED
 
@@ -94,7 +94,7 @@ Deliverable: at least one scenario aligned PAST scroll $0380.
 
 **`coll 0/512` at align 400 and `65/512` at align 1900 is the whole argument for
 seeding the collision map.** The old note said seeding it would "copy 512 zeros
-and hide the one initialisation the comparison wants to see" — true of a corpus
+and hide the one initialisation the comparison wants to see" - true of a corpus
 that only ever aligned at 400.
 
 ### 2. THE DEEP SCENARIOS
@@ -105,7 +105,7 @@ that only ever aligned at 400.
 | `deep-page3` | 1900 | **$0319** (793) | 1901-2105, 205 frames | PASS, all TIER 1 exact |
 | `deep-page4` | 2300 | **$03E1** (993) | 2301-2479 | the port throws on its FIRST frame |
 
-Before this wave every align was 282, 400 or 614 — camera $0000 or $002B — and
+Before this wave every align was 282, 400 or 614 - camera $0000 or $002B - and
 the deepest camera the corpus had ever COMPARED was $0308, reached by
 `enemy-waves` playing 1465 frames. `deep-page3` is handed the machine and
 compares camera $0319..$0380 in 205 frames.
@@ -131,7 +131,7 @@ survives past that. Hence `1350:RD,324:RU,80:RD,326:R`.
 Read straight out of `assets/enemies/tables.json` (not guessed): stage 1's chunk
 `$61=2` is the wave list at `$A859`, records are `[trigger, cmd]` firing at
 `($61 + trigger>>7)*256 + (trigger*2 AND $FF)`. The first twelve are cmd
-$80..$84. The thirteenth, trigger $C0, fires at **scroll $0380 with cmd $00** —
+$80..$84. The thirteenth, trigger $C0, fires at **scroll $0380 with cmd $00** -
 the first command < $80 in the whole stage. **Wave 3's measured boundary, in the
 throw message at `src/enemies.js`, is exactly right.**
 
@@ -143,7 +143,7 @@ frame. A second unported type, **$86 → `$B198`**, joins at frame 2234.
 `$A3B1` itself is just out of reach on purpose: the engine reloads chunk `$61=4`
 (`$A87A`) when `$3F` hits 4 at frame 2361, fires its cmd $82 records at $0400 and
 $0420, and would hit trigger $20 → scroll $0440, cmd $03 next. The window's last
-camera is **$043B — five pixels short**. Extending the tail by ~15 frames reaches
+camera is **$043B - five pixels short**. Extending the tail by ~15 frames reaches
 `$A3B1` once `$B098` and `$B198` are ported.
 
 **So there is no green field-compared window past scroll $0380 with the port as
@@ -162,11 +162,11 @@ This is the done-condition and it is answered two ways.
 
 | neuter | what it deletes | deep-page3 + idle | 5-scenario gate subset |
 |---|---|---|---|
-| *(none)* | — | 0 | 0 |
+| *(none)* | - | 0 | 0 |
 | `seed-nt+1` | one nametable byte | **1** | **1** |
 | `seed-pal+1` | one palette byte | **2** | red |
-| `seed-coll0` | the whole collision map | **0 — INVISIBLE** | **104** |
-| `seed-oam0` | hardware OAM | **0 — INVISIBLE** | 0 |
+| `seed-coll0` | the whole collision map | **0 - INVISIBLE** | **104** |
+| `seed-oam0` | hardware OAM | **0 - INVISIBLE** | 0 |
 | `seed-x+1` | the ship's X | 5 | red |
 | `seed-nosub` | both sub-pixel accumulators | 12 | red |
 | `lead1` | the input lead | 64 | 249 |
@@ -175,7 +175,7 @@ This is the done-condition and it is answered two ways.
 `seed-coll0` being INVISIBLE on `deep-page3` is why **`deep-ground` exists**. It
 aligns at 1700 with 32/512 collision bytes non-zero and the cartridge's ship dies
 on the ground at f1866. With the map seeded: 0 failures, 84 dying frames, exact.
-With `seed-coll0` — i.e. the port exactly as it was before this wave —
+With `seed-coll0` - i.e. the port exactly as it was before this wave -
 **104 failures, 101 TIER 1 fields divergent, `w_0100` and `w_001B` first at
 f1866**: the port flies straight through the ground. `deep-ground` is now in the
 gate's self-check subset for exactly this reason; the four scenarios that subset
@@ -197,24 +197,24 @@ after every batch.**
 
 | # | break | scenarios | result |
 |---|---|---|---|
-| 1 | `$9DBC` nametable address `row * 128` → `row * 129` | deep-page3, idle, enemy-waves | **RED 17** — TIER 1 *and* the new VIDEO block (34 / 63 / 296 nametable bytes) |
+| 1 | `$9DBC` nametable address `row * 128` → `row * 129` | deep-page3, idle, enemy-waves | **RED 17** - TIER 1 *and* the new VIDEO block (34 / 63 / 296 nametable bytes) |
 | 2 | `$9E94` attribute packet address `+$C0/$C4` → `+$C1/$C5` | deep-page3, idle, enemy-waves | **RED 6** (3 / 19 / 68 nametable bytes) |
 | 3 | `$8087` OAM attribute mask `& $E3` dropped | + deep-ground, terrain-death | **RED 1** |
 | 4 | `$C3E9` collision probe `+$14` → `+$24` | deep-ground, terrain-death | **RED 317** |
 | 5 | `$C3F3` collision index `tileRow>>2` → `>>1` | deep-ground, terrain-death | **RED 317** |
 | 6 | `$C3D3` collision worldLo `+8` → `+16` | deep-ground, terrain-death | **RED 213** |
-| 7 | `$9F94` build cursor `+= $1A` → `+= $19` | deep-page3, idle | **RED (crash)** — `terrain: no block undefined in stages.json`, the port's own loud throw |
-| 8 | `$9F7F` collision base `u8($54+$58)` → `+1` | deep-ground, terrain-death, deep-page3 | **GREEN — SURVIVED**, then **RED 2** after the fix below |
-| 9 | `$9F81` collision stride `c*8` → `c*4` | deep-ground, terrain-death, deep-page3 | **GREEN — SURVIVED**, then **RED 2** after the fix below |
-| 10 | `$8A88` nametable mirror mask `& $7FF` → `& $3FF` | deep-page3, idle, enemy-waves, deep-ground | **GREEN — SURVIVED**, still does |
+| 7 | `$9F94` build cursor `+= $1A` → `+= $19` | deep-page3, idle | **RED (crash)** - `terrain: no block undefined in stages.json`, the port's own loud throw |
+| 8 | `$9F7F` collision base `u8($54+$58)` → `+1` | deep-ground, terrain-death, deep-page3 | **GREEN - SURVIVED**, then **RED 2** after the fix below |
+| 9 | `$9F81` collision stride `c*8` → `c*4` | deep-ground, terrain-death, deep-page3 | **GREEN - SURVIVED**, then **RED 2** after the fix below |
+| 10 | `$8A88` nametable mirror mask `& $7FF` → `& $3FF` | deep-page3, idle, enemy-waves, deep-ground | **GREEN - SURVIVED**, still does |
 
 #### The three breaks that PASSED, diagnosed rather than noted
 
-**8 and 9 — the collision WRITE path — passed BECAUSE OF THE SEED. This is the
+**8 and 9 - the collision WRITE path - passed BECAUSE OF THE SEED. This is the
 trap this wave was warned about, caught in the act.** Every collision cell that
 kills the ship in `deep-ground` was written by `$9F55` hundreds of frames before
 the align frame and is now handed to the port. The two `terrain-death` scenarios
-cannot see it either — they POKE a cell into an all-zero map and never run
+cannot see it either - they POKE a cell into an all-zero map and never run
 `$9F55` at all. So after seeding, `$9F55-$9F92` was tested by nothing.
 
 **Fixed in this commit**, and the fix costs no emulator time: `scen.py` slices
@@ -237,13 +237,13 @@ and unbroken, over the whole corpus:
          those windows
 ```
 
-89 cells is the whole corpus's `$9F55` output inside a compared window —
+89 cells is the whole corpus's `$9F55` output inside a compared window -
 `deep-ground` 37, `deep-page4` 32, `deep-page3` 4, and 16 spread over the rest.
 **Every one of them comes from a scenario this wave added.** Before wave 10 that
 number was 0 and the check would have been vacuous, which is why `compare.mjs`
 fails outright if it ever returns to 0.
 
-**10 — the nametable mirror mask — passed for a reason that is purely about
+**10 - the nametable mirror mask - passed for a reason that is purely about
 where the corpus goes.** Measured directly by counting the port's own queue
 output per window:
 
@@ -256,11 +256,11 @@ enemy-waves: port QUEUED 11629 bytes to $2000-$23FF and 952 to $2400-$27FF
 ```
 
 Three of four windows never write to the second nametable at all, and the one
-that does writes bytes identical to what is already there — stage 1's pages 0-3
+that does writes bytes identical to what is already there - stage 1's pages 0-3
 are all screen 0 (`pageOrder = [0,0,0,0,1,6,2,3,4,5,6,7,8,0]`) and the nametable
 is 512 px wide, so page N and page N+2 hold the same tiles. **Folding $2400 onto
 $2000 is invisible until a window's build cursor sits in an ODD page carrying a
-different screen — cursor page 5 (screen 6), i.e. camera $0380..$047F. That is
+different screen - cursor page 5 (screen 6), i.e. camera $0380..$047F. That is
 exactly the region `$B098`/`$A3B1` currently block.** LEFT OPEN, with the
 measurement, rather than half-fixed.
 
@@ -273,11 +273,11 @@ pictures from **Mesen's** video state and imports no `src/`, so it could not see
 this either.
 
 First full-corpus run with the VIDEO block: **879 nametable bytes differ across 7
-of 37 scenarios** — `terrain-death` 179, `speed6-right` 356, `right-wall` 84,
+of 37 scenarios** - `terrain-death` 179, `speed6-right` 356, `right-wall` 84,
 `autofire-die` 84, `lr-both` 80, `capsule-die` 69, `diag-ru-ld` 27.
 
 Diagnosed, not assumed: on every one of them the differing bytes are cells the
-CARTRIDGE blanked (rom 0) and the port left at the seed's star tiles (58..63) —
+CARTRIDGE blanked (rom 0) and the port left at the seed's star tiles (58..63) -
 **port == seed on 84/84, 69/69, 356/356 and 179/179 of them**, i.e. the port
 wrote nothing there at all. That is `src/flow.js fullScreenLoad()`'s own declared
 gap: *"$8849-$886B: PPUADDR = $2000 and six JSR $8871 chunks. NOT PORTED."*
@@ -286,8 +286,8 @@ gap: *"$8849-$886B: PPUADDR = $2000 and six JSR $8871 chunks. NOT PORTED."*
 Treated as `knownFail $8871`, with the excuse **DERIVED, not listed**: it applies
 exactly when the cartridge's `$1B` re-enters the intro set {1,2,3,4} inside the
 window. That is 10 of 37 scenarios and three of those ten (`intro-boot`,
-`intro-respawn`, `capsule-shield`) are byte-exact anyway. **The other 27 —
-including all three deep scenarios and every long one — are graded strictly, and
+`intro-respawn`, `capsule-shield`) are byte-exact anyway. **The other 27 -
+including all three deep scenarios and every long one - are graded strictly, and
 all 27 are 0/2048.** The annotation is held to account at corpus level: if no
 excused window diverges any more, the run fails as STALE.
 
@@ -299,21 +299,21 @@ excused window diverges any more, the run fails as STALE.
    offset in force is band B's (`$9ABF LDY #$02` → bank 1 → 8192), not `$2D`'s.
    The artifact carries `seedSplitRan` and the assertion picks the band.
 2. **"The two nametables are never identical" was wrong.** I made it a hard error
-   in `scen.py` and it fired on `intro-respawn` (align 614, ntdiff 0) — a REAL
+   in `scen.py` and it fired on `intro-respawn` (align 614, ntdiff 0) - a REAL
    state: `$8871` pushes 2304 bytes from $2000, past $23FF, filling both halves
    with one image. Moved to corpus level: identical in ONE scenario proves
    nothing, identical in ALL of them is a mirrored read.
 
 ### 7. A NEAR MISS I CAUSED AND FIXED: prose that broke a regex the gate reads
 
-`test-all.mjs`'s self-check stage read `/(\d+) failures/` — **the first match
+`test-all.mjs`'s self-check stage read `/(\d+) failures/` - **the first match
 anywhere in stdout**. `compare.mjs` prints each scenario's `why`, and
 `deep-ground`'s `why` quotes its own evidence ("seed-coll0 -> 104 failures").
 The stage would have graded every deliberate break against a number baked into a
 description. I hit it in my own break harness first, which is the only reason I
 looked. Now anchored on the summary line:
 `/frames compared \([^)]*\), (\d+) failures/`. This is the exact shape that
-stage's own header already warns about — validating a check with a signal that
+stage's own header already warns about - validating a check with a signal that
 means something else.
 
 ### 8. THE GATE, run cold, at the end
@@ -367,7 +367,7 @@ node games/gradius/tools/test-all.mjs
   GREEN -- 8 passed, 0 failed, 0 SKIPPED
 ```
 
-**0 SKIPPED at both levels** — 0 skipped stages and 0 skipped tests.
+**0 SKIPPED at both levels** - 0 skipped stages and 0 skipped tests.
 `38 scenarios` in compare.mjs and `39` in scen.py is not a discrepancy:
 `deep-page4` is recorded like every other scenario and graded by DEEP REACH
 rather than field by field, because the port cannot execute its window.
@@ -380,7 +380,7 @@ rather than field by field, because the port cannot execute its window.
    `deep-page4` delivers the align frame past $0380 and pins the throw; it cannot
    deliver a comparison until waves 11/12 land.
 2. **The second nametable page ($2400-$27FF) is not distinguishable** by any
-   compared window — §4, break 10. Same root cause as (1).
+   compared window - §4, break 10. Same root cause as (1).
 3. **`$0500-$06FF` is still not in the WATCH list.** The end-of-window comparison
    added here catches a wrong derivation but not the frame it first went wrong
    on. Watching the range is 512 more addresses and ~60% artifact growth
@@ -389,14 +389,14 @@ rather than field by field, because the port cannot execute its window.
    concept; `src/main.js` still boots into the cartridge's own intro. Nothing
    asked for a deep start in the browser and no ROM-derived seed may be shipped.
 5. **`games/ddpdoj/` and `games/batman/`: not touched, not measured.** The shared
-   index still carries another agent's staged deletions — **67 entries**, mostly
+   index still carries another agent's staged deletions - **67 entries**, mostly
    `D` on files that exist on disk, exactly as `99-final-verification.md` §9
    described. I committed through a private index (`.git/gradius.index`),
    read-tree'd immediately before the commit.
 
    **One consequence worth knowing, because it is not obvious.** Committing from
    a private index MOVES HEAD, and the shared index still describes the OLD
-   HEAD — so straight after my commit, `git status` showed my 13 files as `MM`
+   HEAD - so straight after my commit, `git status` showed my 13 files as `MM`
    and `10-impl-seed-anywhere.md` as `D`, i.e. the shared index had become armed
    to revert this whole wave. I fixed only my own 14 paths (`git add` them into
    the shared index, working tree already == HEAD, so they simply become clean)

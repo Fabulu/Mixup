@@ -1,18 +1,18 @@
-# 42 — IMPL: strip the recorded enemies out of the DRAW path
+# 42 - IMPL: strip the recorded enemies out of the DRAW path
 
-status: **DONE** — gate `ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED`, unit
+status: **DONE** - gate `ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED`, unit
 tests 546 -> 553, and the page was driven in a real browser.
 started / finished: 2026-08-04. WAVE 37.
-mandate: owner, `39-OWNER-visible-play-before-sound.md` — "Also we have to get rid
+mandate: owner, `39-OWNER-visible-play-before-sound.md` - "Also we have to get rid
 of the recorded enemies, they look retarded." + "go removal first."
 spec: `41-recon-sprite-art.md` §5, work item **W-A**.
 
 Scope: `games/ddpdoj/src/web/app.js` `Demo.draw()` only, AFTER the splice.
-**NOT** `tools/export-web.mjs` — see recon §5.3: `bundlegate.mjs` demands
+**NOT** `tools/export-web.mjs` - see recon §5.3: `bundlegate.mjs` demands
 100.0000 % pixel identity from the published bundle, and stripping in the DATA
 path would turn that gate red for the right reason.
 
-## 1. THE RECON'S NUMBERS, RE-MEASURED INDEPENDENTLY — CONFIRMED TO THE DIGIT
+## 1. THE RECON'S NUMBERS, RE-MEASURED INDEPENDENTLY - CONFIRMED TO THE DIGIT
 
 Before touching `app.js` I wrote a SECOND implementation of the strip (a
 scratchpad harness, not the one under test) and drove it through the page's own
@@ -47,7 +47,7 @@ divergence from the recon.
 
 `games/ddpdoj/src/web/app.js`:
 
-- **`stripToAttached(st, recs)`** — exported and PURE, for the same reason
+- **`stripToAttached(st, recs)`** - exported and PURE, for the same reason
   `pickScale` and `streamColumnOf` are: a method on an unexported class cannot
   be tested and this one decides what the player sees. It compacts the records
   `cap.attached()[fi]` names to the front of `st.spritebuffer` and writes the
@@ -73,17 +73,17 @@ divergence from the recon.
 
 **NOT** `tools/export-web.mjs`, and a test asserts that it stays that way.
 
-## 3. THE PAGE, IN A REAL BROWSER — the check no gate in this repo makes
+## 3. THE PAGE, IN A REAL BROWSER - the check no gate in this repo makes
 
 The brief asked whether the actual page could be observed. **It can.**
 
 **This falsifies a premise six documents in this repo rest on.**
 `tools/webgate.mjs`'s header, `tests/web-page.test.js`'s header, and worklogs
-07, 09, 14 and 27 all say "there is no browser on this machine" — 07 twice, and
+07, 09, 14 and 27 all say "there is no browser on this machine" - 07 twice, and
 09 says it "governs everything below". Measured today: **Chrome and Edge are
 both installed**
 (`C:\Program Files\Google\Chrome\Application\chrome.exe`) and the Python
-`playwright` package (1.58.0) is already present — nothing was downloaded. I am
+`playwright` package (1.58.0) is already present - nothing was downloaded. I am
 not claiming nobody has ever done this; I am claiming the documents that say it
 is impossible are wrong, and that is worth more than this wave.
 
@@ -91,7 +91,7 @@ So the page was served over `python -m http.server`, loaded in a real headless
 Chrome, driven with the keyboard, and read back through its own DOM.
 
 `chrome --headless --screenshot` ALONE IS NOT ENOUGH and that is worth writing
-down: under `--virtual-time-budget` the boot never completes — at budgets of
+down: under `--virtual-time-budget` the boot never completes - at budgets of
 8 s, 12 s, 16 s and 20 s the shot came back on `loading gfx/bg.pal.u16.gz…` and
 `loading gfx/bg.tileno.u16.gz…`, i.e. mid-`loadBundle`, and at 120 s Chrome
 exited 2. Virtual time and the loader's `DecompressionStream` do not get along.
@@ -113,7 +113,7 @@ canvas   224x448, 83,399 of 100,352 px lit, 115 distinct colours
 - **The ship survives and FLIES**: 69.9,83.0 -> 32.0,12.0 px on the arrows, with
   its exhaust flame, its pods and its shadows.
 - **The recorded enemies are gone.** `rec-22..48` records dropped per frame.
-- **No new throw.** Pressing fire reaches `UNPORTED $24C180: THE LASER` — which
+- **No new throw.** Pressing fire reaches `UNPORTED $24C180: THE LASER` - which
   is `39-OWNER`'s already-known blocker, and it is reached identically on the
   PRE-CHANGE tree, so it is not this wave's.
 - **And the error box works.** The screenshot after fire shows the page's own
@@ -123,7 +123,7 @@ canvas   224x448, 83,399 of 100,352 px lit, 115 distinct colours
   player hits is a named, readable stop, not a freeze.
 
 **BEFORE the change, same script, same 12 s**: no `rec-` field, 81,953 px lit,
-**151 distinct colours** (vs 115 after) — and the screenshot is the owner's
+**151 distinct colours** (vs 115 after) - and the screenshot is the owner's
 complaint made visible: a swarm of recorded tanks floating **over the rooftops
 and across the HUD**, in a part of the picture where no ground vehicle can be.
 That is what a 161-frame loop replayed against a 7,317-frame computed scroll
@@ -145,7 +145,7 @@ byte-identical after every one:
 | M6 the page claims the recorded enemies are still on screen | `the page says the recorded enemies were REMOVED...` |
 
 And the whole-file red: with `HEAD`'s `app.js` restored, the new test file does
-not even load and `webgate` fails at import — the checks cannot pass on the
+not even load and `webgate` fails at import - the checks cannot pass on the
 pre-change tree.
 
 **Where the real-bundle numbers live.** `tests/` must pass on a tree with no
@@ -173,7 +173,7 @@ corrections, none of which changes the work:
 2. **The recon's §3.2 lists L4 (player shot sprites) among the rows removal
    empties. It is not**: the player's shots were never in the capture, so there
    was nothing to remove. L4 stays `open` in the ledger with a note.
-3. The brief says "HUD / background / scroll untouched". Confirmed — but the
+3. The brief says "HUD / background / scroll untouched". Confirmed - but the
    stronger statement, which only the browser could make, is that they are
    untouched **and still correct on screen** after 850 logic frames of live
    play with all eight background shards landed.
@@ -187,14 +187,14 @@ VERDICT: ALL GREEN -- 49 passed, 0 failed, 0 SKIPPED
 
 Unchanged from W32/W33/W34/W35/W36's 49/0/0. **Nothing was disabled, skipped,
 narrowed or loosened.** Every stage read individually, not just the verdict
-line — including `pixel gate ... vs MAME`, `demo gate: the port drives the ship,
+line - including `pixel gate ... vs MAME`, `demo gate: the port drives the ship,
 pixel-exact` and its four REDs, and `background shard gate`, all of which are
 the pixel-identity gates a strip in the DATA path would have broken. They are
 green because the strip is in the PAGE, which is the whole point of §5.3 of the
 recon.
 
 **One honesty note about the count.** The runner's `port unit tests` stage
-executed at **552** — it ran early in a ~40-minute gate, before the last test
+executed at **552** - it ran early in a ~40-minute gate, before the last test
 (`a broken attached set THROWS by name...`) was added. The final tree is
 **553 passed, 0 failed, 0 skipped**, re-run afterwards. No other stage reads
 any file this wave touched (`app.js` is imported by no gate; `demogate.mjs`
@@ -223,7 +223,7 @@ player position first and §1's harness did not. Same measurement, 1.4e-3 apart.
   is the recon's own rule (§6).
 - **`bundlegate`'s tolerance is untouched**, and a new test asserts that
   `exact === total` is still in it.
-- **The drift RATE against the board was not measured** — that needs MAME and
+- **The drift RATE against the board was not measured** - that needs MAME and
   stays open (`41-recon-sprite-art.md` §7.5). What this wave adds is a
   screenshot showing recorded ground vehicles drawn across the ROOFTOPS, which
   is direct visual evidence for the mechanism without measuring its magnitude.
@@ -232,12 +232,12 @@ player position first and §1's harness did not. Same measurement, 1.4e-3 apart.
 
 - opened.
 - §1 [M]: the recon's numbers reproduce **exactly** on an independent
-  implementation — 7,671 -> 886 records, 8.9899 % of pixels, 0 throws, the 8
+  implementation - 7,671 -> 886 records, 8.9899 % of pixels, 0 throws, the 8
   attached classes survive.
 - §2: implemented in `app.js` only. The exporter is untouched and a test now
   asserts it stays untouched, alongside `bundlegate`'s `exact === total`.
 - §3 [M]: **the actual browser page was driven, for the first time on this
-  project** — Chrome + Python playwright. HUD, background, scroll, shards and
+  project** - Chrome + Python playwright. HUD, background, scroll, shards and
   ship all survive; the recorded swarm is gone; the fire throw is unchanged and
   pre-existing. The BEFORE screenshot shows recorded tanks drawn over the
   rooftops, which is `39-OWNER`'s drift explanation confirmed by eye.
@@ -251,7 +251,7 @@ player position first and §1's harness did not. Same measurement, 1.4e-3 apart.
 - §6 [M]: **`pgm.py check` ALL GREEN 49/0/0, 0 SKIPPED**; unit tests
   546 -> **553**, 0 skipped; `webgate` green on both its stages.
 - **CARRIED FORWARD, and it is bigger than this wave:** a browser-driven
-  PLAYABILITY gate — load the page, run frames, press fire, fail on any throw —
+  PLAYABILITY gate - load the page, run frames, press fire, fail on any throw -
   is BUILDABLE on this machine today. `39-OWNER` §"THE GAP THIS EXPOSES" asks
   for exactly that and every document here said it was impossible. The recipe
   is `python -m http.server` + Python `playwright` + `channel="chrome"`; not

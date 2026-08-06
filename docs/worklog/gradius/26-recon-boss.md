@@ -1,10 +1,10 @@
-# Wave 26 RECON — the boss (head `$B914`, body `$B913`)
+# Wave 26 RECON - the boss (head `$B914`, body `$B913`)
 
-status: DONE (recon, READ-ONLY — no src/ edits, no commit)
+status: DONE (recon, READ-ONLY - no src/ edits, no commit)
 recon, 2026-08-02
 
 Scope (from the W26 brief / `20-plan-completeness.md` §3): decode +
-enumerate the boss script format — the head handler `$B914`, the inert body
+enumerate the boss script format - the head handler `$B914`, the inert body
 `$B913`, the three-slot layout, the script/morph/rank tables, the damage
 ladder, the death chain, and every fall-through in the region. Deliver the
 DENOMINATOR (record counts, rank rows, parts) and a per-piece inventory, and
@@ -15,7 +15,7 @@ and cross-checked against the recorded cartridge artifacts
 (`tools/oracle/scenarios.json`, the W24/W25b worklogs). The PGM-style
 addresses in the brief (`$259554`, `$294AD8`, `$25962E`, `$81B626/$81B62A`)
 are confirmed NOT in this mapper's address space (32 KB PRG at `$C000`-`$FFFF`,
-mapper 3 CNROM, no PRG banking) — they are placeholders. The real addresses
+mapper 3 CNROM, no PRG banking) - they are placeholders. The real addresses
 are mapped in §7.
 
 ---
@@ -36,7 +36,7 @@ are mapped in §7.
 
 ---
 
-## 2. THE SLOT / RECORD LAYOUT — confirmed, and the `$030B,X` trick
+## 2. THE SLOT / RECORD LAYOUT - confirmed, and the `$030B,X` trick
 
 The boss occupies **3 slots**, but only one is a "live" dispatched enemy:
 
@@ -46,13 +46,13 @@ The boss occupies **3 slots**, but only one is a "live" dispatched enemy:
   `STA $0375` (= `$036C[9]` = `$F0` Y). Only the head is spawned here.
 - **Body = slots 8 and 7, type `$99`.** Created by the head handler itself
   (`sub_B9B7` → `sub_B9F2`, every frame), and they dispatch to `[25] $B913`,
-  which is a single `RTS` (line 6532) — **inert**. They are rendered and
+  which is a single `RTS` (line 6532) - **inert**. They are rendered and
   collision-checked but execute no logic of their own.
 
 **The `$030B,X` slot-N-1 trick (load-bearing).** The object arrays are 1 byte
 per slot at bases `$010C, $012C, $030C, $032C, …` (the despawn sweep at
 `$994A` clears exactly `$010C,X / $012C,X / $030C,X`). `STA $030B,X` computes
-address `$030B+X` = `$030C+(X-1)` — i.e. it writes the **previous** slot's
+address `$030B+X` = `$030C+(X-1)` - i.e. it writes the **previous** slot's
 `$030C`. So:
 
 - `sub_B9F2` at `$B9FD`: `LDA #$99 / STA $030B,X`. Entered **twice** (§10
@@ -73,7 +73,7 @@ dropping bit-7 as carry; line 702-720). `$98`→entry 24, `$99`→25, `$02`→2.
 
 ---
 
-## 3. THE HEAD HANDLER `st_B914` — per-frame flow (line 6535)
+## 3. THE HEAD HANDLER `st_B914` - per-frame flow (line 6535)
 
 ```
 B914  LDX $A8                 ; X = head slot (9)
@@ -112,12 +112,12 @@ The body of the handler (`loc_B9A8` onwards, §4/§8) only runs while the boss
 is alive (phase < 6): the intro Y-descent + body-sync, then the rank-indexed
 horizontal movement, then the fire cycle.
 
-`st_B913` (line 6531) is **`RTS`** — the body slots (7, 8) dispatch here and
+`st_B913` (line 6531) is **`RTS`** - the body slots (7, 8) dispatch here and
 do nothing. Confirmed inert.
 
 ---
 
-## 4. THE DAMAGE SYSTEM — `$046C` is the boss HP, NOT rank-indexed
+## 4. THE DAMAGE SYSTEM - `$046C` is the boss HP, NOT rank-indexed
 
 The head handler never writes `$046C[9]`. It is incremented by the **player-shot
 collision** routine `sub_C055` (line 7587), called from the bullet/enemy
@@ -150,7 +150,7 @@ So:
 
 ---
 
-## 5. THE MORPH / DAMAGE-LADDER TABLE `$B8EF` — 7 entries, damage-indexed (NOT rank)
+## 5. THE MORPH / DAMAGE-LADDER TABLE `$B8EF` - 7 entries, damage-indexed (NOT rank)
 
 ```
 B8EF:  6C 6D 6E 6F 70 71 00     ; 7 bytes, indexed Y = $046C,X (phase 0..6)
@@ -167,13 +167,13 @@ B8EF:  6C 6D 6E 6F 70 71 00     ; 7 bytes, indexed Y = $046C,X (phase 0..6)
 | 6 | `$00` | **terminator** → `BEQ $B962` death gate |
 
 Each value is a metasprite/anim id written to `$012C,X` (the displayed
-metasprite). The morph advances one step **per damage point** — the boss
+metasprite). The morph advances one step **per damage point** - the boss
 visibly opens as it takes hits, and dies on the 6th.
 
 **CORRECTION to the plan.** `20-plan-completeness.md` §3 / W26 row says
 "the damage ladder `$B8EF` (boss HP / damage per hit, **rank-indexed via
 `$17`**)." That is wrong on two counts: `$B8EF` is indexed by `$046C`
-(cumulative **damage**), and the table is **fixed across ranks** — the boss
+(cumulative **damage**), and the table is **fixed across ranks** - the boss
 takes the same 6 damage points to die at every rank. The rank-indexed tables
 are `$B8F8` / `$B901` / `$B90A` (§6). The brief's listing of `$B8EF` among
 the "rank tables" repeats this conflation. (This is a documentation defect in
@@ -187,7 +187,7 @@ abut the boss tables but are not boss data. `$B900` (one `$00`) and `$B912`
 
 ---
 
-## 6. THE RANK TABLES — 8 rows each, indexed by `$17`
+## 6. THE RANK TABLES - 8 rows each, indexed by `$17`
 
 All three are read with `LDY $17` in the movement block `$BA18-$BA73`. They
 control **movement speed** and **fire interval**, not HP.
@@ -200,19 +200,19 @@ B90A:  5A 50 46 3C 32 28 23 23     ; fire-interval threshold    (rank 0..7)
 
 - `$B8F8`/`$B901` form a 16-bit signed horizontal step, applied by `SBC`/`ADC`
   at `$BA3E`/`$BA50` depending on the direction flag `$03EC,X`. The combined
-  magnitudes (lo:hi) are `$0100 $0120 $0140 $0160 $0180 $01A0 $01C0 $02F0` —
+  magnitudes (lo:hi) are `$0100 $0120 $0140 $0160 $0180 $01A0 $01C0 $02F0` -
   the boss paces faster at higher rank. Result clamped to `[$18, $A8]`
   (`$BA5C`/`$BA62`).
 - `$B90A` is the fire cadence: the charge counter `$042C,X` increments each
   non-firing frame and the boss fires when it reaches `$B90A[rank]`
   (`CMP $B90A,Y` at `$BA1D` and `$BA73`). Rank 0 = `$5A` (90f), rank 7 =
-  `$23` (35f) — same shape as the hatch fire table `$B01D` (W22 / loop-1a).
+  `$23` (35f) - same shape as the hatch fire table `$B01D` (W22 / loop-1a).
   Lower rank value in the table would mean faster fire; here higher rank →
   smaller value → faster fire. Consistent rank-row, finite, 8 entries.
 
 These three are the rank tables the plan names; `$B8EF` is not one of them
 (§5). All four addresses (`$B8EF/$B8F8/$B901/$B90A`) are the W21 export set
-`$B8EF/$B8F8/$B901/$B90A` — confirm they are present in
+`$B8EF/$B8F8/$B901/$B90A` - confirm they are present in
 `assets/enemies/tables.json` before porting (W21 was to export them).
 
 ---
@@ -226,21 +226,21 @@ The brief's script-format addresses are **not in this ROM** (they exceed
 |---|---|---|
 | "brain `$294AD8`" | **`$B914`** (`st_B914`, line 6535) | head per-frame handler (entry `[24]`) |
 | "inert body" | **`$B913`** (`st_B913`, line 6531) | `RTS` (entry `[25]`) |
-| "stepper `$25962E`" | **`$B92F`-`$B95F`** (the `LDY $046C,X` / `LDA $B8EF,Y` / `CMP $012C,X` block) | the morph stepper — advances `$012C` one value per damage point |
+| "stepper `$25962E`" | **`$B92F`-`$B95F`** (the `LDY $046C,X` / `LDA $B8EF,Y` / `CMP $012C,X` block) | the morph stepper - advances `$012C` one value per damage point |
 | "$259554's five installed tables" | **`$B8EF` `$B8F8` `$B901` `$B90A`** (§5/§6) + the armament quartet `$BAF7`/`$BAFB`/`$BAFF`/`$BB07` (§8) | the boss's data tables (4 logic + 4 armament) |
 | "the parts list" | the 3-slot layout: head `$98` slot 9, bodies `$99` slots 7 & 8 (§2) + 4 armament bullets (§8) | |
 | "HP at `$81B626`/`$81B62A`" | **`$046C,X`** (per-object, slot 9 = `$046C[9]`) is the HP/damage counter; **`$04CC,X`** is the volley/timeout counter; **`$048C,X`** is the vulnerability gate | HP is in object RAM, not a fixed table address |
 
 There is no separate "brain" object or pointer-driven script interpreter here
-— the boss is a single per-frame handler (`$B914`) with a fixed 7-entry morph
+- the boss is a single per-frame handler (`$B914`) with a fixed 7-entry morph
 table and four rank tables, exactly the shape `loop-1a-recon.md` predicts
 (rank-indexed, finite, table-driven; the boss damage ladder is rank-indexed
-the same way `$82`'s `$9A35[$17]` is — except here it is the *movement/fire*
+the same way `$82`'s `$9A35[$17]` is - except here it is the *movement/fire*
 that is rank-indexed, and the HP/morph sequence is fixed).
 
 ---
 
-## 8. THE ARMAMENT (the 4-bullet fire cycle) — `loc_BAA0` (line 6769)
+## 8. THE ARMAMENT (the 4-bullet fire cycle) - `loc_BAA0` (line 6769)
 
 Reached when the charge counter hits the threshold (`$BA76 BCS $BAA0`). It
 resets the counter and re-positions **4** sub-objects (the boss's guns /
@@ -292,13 +292,13 @@ runs). This is the second, "no-credit" death trigger in §1.
 
 ---
 
-## 9. THE DEATH CHAIN — confirmed end to end (line 6590-6620)
+## 9. THE DEATH CHAIN - confirmed end to end (line 6590-6620)
 
 For the normal stage-1 kill (boss damaged to phase 6, `$B962 → $B97A`):
 
 1. **Warp-route gate** (`$B962`-`$B978`): on stage 1, if `$04CC[9]==1` AND
    `$04AC[9]<$78` at the moment of death, the code does `INC $39` (the warp
-   flag). **It then falls straight into `$B97A`** — `INC $39` at `$B978` is
+   flag). **It then falls straight into `$B97A`** - `INC $39` at `$B978` is
    immediately followed by `loc_B97A` (line 6590), no branch between them, so
    the warp does NOT skip the score/kill/explosion; it sets `$39` *and then*
    runs the full normal death. Any other stage, any other volley count, or
@@ -307,25 +307,25 @@ For the normal stage-1 kill (boss damaged to phase 6, `$B962 → $B97A`):
    stage-end warp (`$984F`/`$C686`) to read; the death itself is identical
    either way. (Matches the W23 `$39` recon's "kill during the window"
    condition.) **The timeout death (`$BA9C → $B983`) is the ONLY death path
-   that skips `$B97A`** — it jumps straight to the explosion, with no score,
+   that skips `$B97A`** - it jumps straight to the explosion, with no score,
    no `INC $3B`, and no warp-gate evaluation.
-2. **Score** (`$B97A`): `LDA #$10 / JSR $8455` — queues score +$10 (×player
+2. **Score** (`$B97A`): `LDA #$10 / JSR $8455` - queues score +$10 (×player
    multiplier `$18` inside `$8455`/`$8469`).
-3. **Kill counter** (`$B97F`-`$B981`): `LDX $18 / INC $3B,X` — per-player kill
+3. **Kill counter** (`$B97F`-`$B981`): `LDX $18 / INC $3B,X` - per-player kill
    tally.
 4. **Falls into `$B983`** (real fall-through, §10): `LDA #$AC / JSR $CB26`.
 5. **Explosion conversion** (`sub_CB26` → `sub_CB28` → `sub_CB2B`, line 9121):
    `JSR $EC1E` (sfx `$AC`), then `sub_CB2B` clears the head's `$042C/$014C/
    $018C/$046C/$04AC/$010C/$03AC/$040C`, sets `$030C[9]=$02` (explosion),
    `$016C[9]=$02`.
-6. **Script-4 override** (`$B988`-`$B98A`): `LDA #$04 / STA $016C,X` —
+6. **Script-4 override** (`$B988`-`$B98A`): `LDA #$04 / STA $016C,X` -
    overrides the `$02` from `sub_CB2B` to **explosion script 4**.
 7. **Body clear** (`$B991` loop): clears body slots 8 & 7 via the `$030B,X`
    trick (§2).
 8. **`$85 → $86` advance** (`$B99E`-`$B9A5`): `LDA $0100 / CMP #$02 /
    BCS $B9A7 / INC $1B`. `$0100` is a transition flag (set to `$03` in the
    `$8C` ending-chain state at `$98C9`; `0` during ordinary stage-1 play), so
-   the `INC $1B` fires on a normal clear — confirming the W24 recon's "boss
+   the `INC $1B` fires on a normal clear - confirming the W24 recon's "boss
    death advances `$1B` `$85→$86` via an external `INC`, not via `$997E`."
    The `$0100≥2` guard is an ending-chain edge case (skip the advance if a
    stage transition is already in progress).
@@ -341,7 +341,7 @@ AE8B:  A2 6B 6A 69 68 6A 00     ; script 4: A2, 6B, 6A, 69, 68, 6A, terminator
 ```
 
 `sub_CB2B` zeroed `$042C[9]`, so the **first frame of the boss explosion is
-metasprite `$A2`** — the big boss explosion W21 exported. (Normal enemies use
+metasprite `$A2`** - the big boss explosion W21 exported. (Normal enemies use
 `$016C` 0/1/3 → scripts `$AE7D`/`$AE81`/`$AE86`, 4-5 small frames; the boss
 uniquely starts with `$A2` and runs 6 frames + terminator.) `$A2` is the W21
 export prerequisite made live here.
@@ -358,10 +358,10 @@ damage, so the `$B97A` path is the one exercised.
 1. **`sub_B9F2` double-execution (`$B9EE` JSR + `$B9F1` DEX fall-through).**
    `sub_B9B7` calls `JSR $B9F2` with X=9 (sets up body slot 8 via the `$030B`
    trick), `sub_B9F2` ends `LDX $A8 / RTS` (restores X=9), then `$B9F1 DEX`
-   (X=8) and control **drops straight into `sub_B9F2` again** — running it
+   (X=8) and control **drops straight into `sub_B9F2` again** - running it
    with X=8 (sets up body slot 7), whose `RTS` then pops `sub_B9B7`'s caller.
    This is how both body slots get created from one written-once subroutine.
-   Not a trap — intentional — but exactly the shape RULE "read past the
+   Not a trap - intentional - but exactly the shape RULE "read past the
    apparent end" warns about.
 2. **`$B97A` → `$B983`** (the score/kill falls into the explosion code). Real
    fall-through; both the damage-death path and the `$BA9C` timeout jump land
@@ -369,7 +369,7 @@ damage, so the `$B97A` path is the one exercised.
 3. **`$BA0A` → `$BA12`/`$BA15` → `$BA18`**: the Y-position catch-up (`INC
    $036C,X` twice if below the player) falls into the rank-movement block at
    `$BA18`. Real, benign.
-4. **`$B913` (RTS) → `$B914`**: NOT a fall-through issue — `$B913` is a
+4. **`$B913` (RTS) → `$B914`**: NOT a fall-through issue - `$B913` is a
    dispatched `RTS`, control returns to the per-frame loop, it does not drop
    into `$B914`.
 5. **`sub_CB26` → `sub_CB28` → `sub_CB2B`** (line 9121-9142): three labels on
@@ -382,7 +382,7 @@ No other accidental drop-into-the-next-routine found in `$B914`-`$BAF6` or
 
 ---
 
-## 11. THE IN-SITU DONE-WHEN — achievable, confirmed
+## 11. THE IN-SITU DONE-WHEN - achievable, confirmed
 
 The endchain scenario (`tools/oracle/scenarios.json`, name `endchain`) is
 configured:
@@ -398,7 +398,7 @@ f8252** (scroll `$0D00`, zero deaths), which is the `$84`→`$85` advance that
 spawns the boss (slot 9, type `$98`) and routes the enemy engine to `$B914`.
 The `compareUntilThrow` mechanism field-compares every frame the port CAN run
 (through `$81`/`$82`/`$83`/`$84`) and asserts the throw fires at `$B914` on
-f8252 — **GREEN, 2091 frames compared, 0 divergent TIER-1 fields**
+f8252 - **GREEN, 2091 frames compared, 0 divergent TIER-1 fields**
 (`25b-recon-reaching-script.md` §4). The scenario's own `_` field states the
 W26 contract verbatim: *"If W26 ports `$B914`, delete `compareUntilThrow` and
 extend the window: the boss fight becomes an ordinary comparison."*
@@ -411,7 +411,7 @@ dump covers **748 frames past `$85` entry** (f8252 → ~f9000).
 
 **MUST-CONFIRM for the implementer (the one genuine unknown).** The dump
 window past `$85` is 748 frames. The fight length is *not* a fixed ROM
-constant — it depends on when the player damages the boss to phase 6 during
+constant - it depends on when the player damages the boss to phase 6 during
 the `$04CC∈[1,4]` vulnerability window. With this scenario's load (RUA hold +
 the `$41=1` missile poke → missiles do 2 damage, 3 hits to kill once
 vulnerable), the boss should die well inside 748 frames, but the **exact
@@ -438,21 +438,21 @@ the window.
   endchain scenario reaches `$85` @ f8252 and throws at `$B914` (GREEN);
   `$0100` is a transition flag (`0` in ordinary play → `INC $1B` fires); the
   `$82`/rank system is loop-invariant for the boss (`loop-1a-recon.md`).
-- **NOT measured dynamically here** (out of recon scope — port cannot run the
+- **NOT measured dynamically here** (out of recon scope - port cannot run the
   fight yet): the exact death frame inside the 748-frame window (§11); the
   `$82`-countdown / fight behaviour at rank ≠ 4 (the endchain run is rank 4;
   other rank rows ship read-from-ROM per `20-plan` §6); whether the
   stage-1 warp arm (`INC $39`) fires on this specific run (it needs
-  `$04CC==1 && $04AC<$78` at death — a tight window the RUA+missile kill may
+  `$04CC==1 && $04AC<$78` at death - a tight window the RUA+missile kill may
   or may not hit; if it fires, W27's warp route lights up as a side effect,
   which the implementer should watch for).
 - **Exports CONFIRMED present** (verified in `assets/`, not assumed): the
   `$B8E6` block in `assets/enemies/tables.json` carries `$B8EF`/`$B8F8`/
   `$B901`/`$B90A` (bytes `[108,109,110,111,112,113,0]` = `$6C..$00` for the
-  morph ladder — exact match); the `$BAF7` block carries the armament quartet
+  morph ladder - exact match); the `$BAF7` block carries the armament quartet
   (`$BAF7`/`$BAFB`/`$BAFF`/`$BB07`); the `$AE71` block carries the
   explosion-script pointer table. `assets/metasprites.json` has `$A2` (decimal
-  key `"162"`, **18 records** — the one the W21 `n > 16` guard fix was for).
+  key `"162"`, **18 records** - the one the W21 `n > 16` guard fix was for).
   The exporter's own `note` on `$B8E6` independently calls `$B8EF` the
   "damage frames," confirming the §5 correction. W26's data prerequisites are
   met; no re-export needed.
@@ -462,8 +462,8 @@ the window.
 ## 13. WHAT W26 PORTS (the implementer's to-do, distilled)
 
 1. **`$B914` head handler** (entry `[24]`) and **`$B913` body** (entry `[25]`,
-   `RTS` — a no-op arm, but wire it so the dispatch is complete and loud).
-2. The **`$030B,X` slot-N-1 trick** for body create/clear — port the alias
+   `RTS` - a no-op arm, but wire it so the dispatch is complete and loud).
+2. The **`$030B,X` slot-N-1 trick** for body create/clear - port the alias
    explicitly or model body slots 7/8 as their own slots whose type anim/etc.
    mirror the head minus one.
 3. The **morph stepper** (`$B92F`-`$B95F`): `$012C,X := $B8EF[$046C,X]`, sfx on
@@ -478,13 +478,13 @@ the window.
    `$0100<2`); plus the `$BA9C` timeout death and the stage-1 `$39` warp arm
    (the warp arm's effect is W27, but its *firing* must not throw).
 8. **Damage intake** is already routed by the port's collision if/when the
-   shot-vs-boss overlap (`sub_C055`) is ported — confirm the port's collision
+   shot-vs-boss overlap (`sub_C055`) is ported - confirm the port's collision
    adds 1/2 to `$046C[9]` only while `$048C[9]≠0` and `$0460[9]≠0` (missile
    bonus). If the port's collision is generic, this may already be correct;
    if not, it is part of W26's closure.
 
 **Call closure for the boss** (supersedes the plan's partial list
-`$B0B4/$ADAB/$9A8C/$CB26/$839F/$A527/$8455` — several of those are not
+`$B0B4/$ADAB/$9A8C/$CB26/$839F/$A527/$8455` - several of those are not
 boss-specific): spawn `$A527` (via `$9982`), dispatch `$ADAB`/`$83E4`/`jt_AE1C`,
 sfx `$845B`/`$EC1E`, score `$8455`, explosion `$CB26`/`$CB2B`/`st_AE99`,
 body-sync `$B9B7`/`$B9F2`, damage `sub_C055`. `$B0B4` (state-flip) and

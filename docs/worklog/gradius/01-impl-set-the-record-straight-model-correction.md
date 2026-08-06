@@ -1,4 +1,4 @@
-# Wave 1 — Set the record straight: model corrections and queue plumbing
+# Wave 1 - Set the record straight: model corrections and queue plumbing
 status: DONE
 wave: 1   role: impl   started: 2026-07-31
 
@@ -15,7 +15,7 @@ byte), so wave 2 is judged on the `$8898` alternation alone.
 ## What I did
 
 Every ROM fact below I re-dumped from `Gradius (USA).nes` myself before writing
-a line — I did not take the recons' bytes on trust. The dumps:
+a line - I did not take the recons' bytes on trust. The dumps:
 
 ```
 $806A  08 48 8A 48 98 48 AD 02 20 A4 04 D0 40 ... 20 AB 8B 20 41 86 A9 00 85 04
@@ -43,7 +43,7 @@ tables.
 
 ### Code
 
-* **`src/nmi.js`** — the split/camera block rewritten as `$9A88-$9AC1`. `split`
+* **`src/nmi.js`** - the split/camera block rewritten as `$9A88-$9AC1`. `split`
   = `$1B` bit 7 && `$1E` != 0 && `$1F` != 0 && `$0D` == 0; `advanceCamera()`
   moved *inside* it behind `$15 == 0 && $5B == 0`; `bandB.ran = split`. Added
   `queueTerminator()` at the `$80B0` position and the `$9ACA` `$5B` gate around
@@ -52,29 +52,29 @@ tables.
   comment no longer claims `$0D` was never non-zero (the intro runs it).
   `$5C >= 2` throw re-worded: it is stage-5-only, which closes NOTES-player 12
   open question 1.
-* **`src/vram.js`** — `state.vram.cursor` is now a real `$0E`. `queuePacket`
+* **`src/vram.js`** - `state.vram.cursor` is now a real `$0E`. `queuePacket`
   advances it by `4 + n`; new `queueTerminator()` = `$8641`; `drainQueue` zeroes
   it (`$8A7B`). `QUEUE_LIMIT` (a packet count) renamed `QUEUE_GATE_BYTES`.
   I went one step past the plan here: the plan said reuse porttrace's byte sum,
   I made `$0E` a stored byte instead, so the port and the harness cannot drift.
-* **`src/terrain.js`** — gate reads `state.vram.cursor` (bytes); `$57` written
+* **`src/terrain.js`** - gate reads `state.vram.cursor` (bytes); `$57` written
   `= 0` at the `$9D90` position and `+= 1` at `$9DAF`; the lead test rewritten
   branch-for-branch (`BMI` / `CMP #$01 BCC` / `BNE` / `CMP #$80 BCC`).
-* **`src/oam.js`** — `$8B1A-$8B2B` ported literally, so `$1E`/`$1F` are real
+* **`src/oam.js`** - `$8B1A-$8B2B` ported literally, so `$1E`/`$1F` are real
   bytes and `spriteZeroOn` is derived from the X register the ROM uses. This
   was needed to *state* the split gate at all; it also turned two permanently
   SKIPPED comparison fields into compared ones.
-* **`src/state.js`** — `zp1E`/`zp1F`/`vram.cursor` added; the `$15`/`$5B`
+* **`src/state.js`** - `zp1E`/`zp1F`/`vram.cursor` added; the `$15`/`$5B`
   comment replaced with the ROM bytes and the correct meaning; `$3A` and `$57`
   documented; the `$44` comment corrected to 0 / 1 LASER / 2 DOUBLE.
-* **`tools/oracle/porttrace.mjs`** — seeds and peeks `$1E`/`$1F`; `$0E` reads
+* **`tools/oracle/porttrace.mjs`** - seeds and peeks `$1E`/`$1F`; `$0E` reads
   the cursor; `UNMODELLED` loses `001E`/`001F` and gains `0019`/`0020`/`0024`/
   `004C` with per-address reasons and the wave that will fix each.
-* **`tools/oracle/scenarios.json`** — watch += `0000 0019 0020 0024 004C`;
+* **`tools/oracle/scenarios.json`** - watch += `0000 0019 0020 0024 004C`;
   the knownFail `why` rewritten as the two-cause split with `$8898` named as
   the sole remaining cause; `expect` now says w_000E first diverges on an ODD
   frame (402), not 401.
-* **`tests/frame-gates.test.js`** — new, 9 tests, one per corrected fact.
+* **`tests/frame-gates.test.js`** - new, 9 tests, one per corrected fact.
 
 ### Notes (rule 6, same commit)
 
@@ -116,13 +116,13 @@ node -e "... out/scen/*.json, frames > 400 ..."
 `1` is the `$8641` byte alone on an even frame; `9/15/40` are the HUD's 8/14/39
 plus it; `38` is a terrain block's 37 plus it. That arithmetic is what pins the
 `4 + n` packet cost and the terminator at the same time. `$02 = 145` at frame
-400, so frame 401 is even — which is why the cartridge reads exactly 1 there and
+400, so frame 401 is even - which is why the cartridge reads exactly 1 there and
 the port read 0.
 
 ### Live-window constancy (why these fixes were invisible)
 
 Over the live window of all 16 scenarios: `$1E` = 1, `$1F` = 2, `$0D` = 0,
-`$15` = 0, `$5B` = 0, `$3A` = 0, `$1B` = $80 — every one of them a constant.
+`$15` = 0, `$5B` = 0, `$3A` = 0, `$1B` = $80 - every one of them a constant.
 
 ### After
 
@@ -139,19 +139,19 @@ node games/gradius/tools/test-all.mjs  GREEN -- 5 passed, 0 failed, 0 SKIPPED
 ```
 
 `w_000E` moved 401 → **402**, the first ODD frame, and its divergence count on
-long-idle fell from 599/599 to **327/599** — the even frames now match exactly,
+long-idle fell from 599/599 to **327/599** - the even frames now match exactly,
 which is the shape the diagnosis predicts. `w_0057` moved 571 → 599. Same 3341
 frames, same 6 truncations, 0 failures. Two fields (`w_001E`, `w_001F`) moved
 from SKIPPED to compared and are exact.
 
-### SEEN RED — every fix, deliberately broken and watched fail
+### SEEN RED - every fix, deliberately broken and watched fail
 
 Scripted (`<scratchpad>/break.py`), src restored from a backup between each.
 
 | break | effect |
 |---|---|
 | `no-8641` (drop the `$80B0` call) | unit test 1 RED; **corpus `w_000E@401` returns, 239/239 and 599/599 differ** |
-| `peek-0e-no-term` (harness-side twin) | same corpus result — the two sides agree about where the byte comes from |
+| `peek-0e-no-term` (harness-side twin) | same corpus result - the two sides agree about where the byte comes from |
 | `gate-packets` (`queue.length >= 4`) | unit tests 3 and 5 RED |
 | `lead-unsigned` (`BMI` arm refuses) | unit tests 1 and 4 RED |
 | `no-57` (drop `$9D90 STA $57`) | unit tests 4 and 5 RED; corpus `w_0057` 599 → 401 |
@@ -184,14 +184,14 @@ green). **Only the `$8641` fix is observable in the oracle comparison at all.**
 The reason is the constancy table above: `$15`, `$5B`, `$0D` are 0, `$1E`/`$1F`
 are 1/2, and `$0E` is 0 at the one instant the gate reads it, on every one of
 the 3341 compared frames. The corpus reaches all of this code and interrogates
-none of its parameters — docs/knowledge/03's third shape, exactly. That is why
+none of its parameters - docs/knowledge/03's third shape, exactly. That is why
 `tests/frame-gates.test.js` exists and why it sets the gate bytes by hand: it is
 the *only* thing in the gate that can see six of these seven fixes. Reviewers
 should treat it as load-bearing, not as decoration.
 
 ### A latent bug the `BMI` fix closed, found by the red run
 
-Under `lead-unsigned`, unit test 1 also went red — and that was not planned.
+Under `lead-unsigned`, unit test 1 also went red - and that was not planned.
 From `bootState()` the build cursor and the camera both start at 0, so within
 two frames the camera has overtaken the cursor and the lead is negative. With
 the old unsigned test the streamer refuses, the cursor never moves, the camera
@@ -208,7 +208,7 @@ ahead, and because no test drove the streamer from a bare `bootState()`. The
   comment in `src/nmi.js` says so rather than implying it is understood.
 * **`$1B` bit 7 clear is modelled in two incompatible places.** The ROM reaches
   `$9A88` from the *intro* path too, where bit 7 is clear: no camera, no split,
-  but `$9AC4` onward — including the streamer at `$9ACE` — still runs. The
+  but `$9AC4` onward - including the streamer at `$9ACE` - still runs. The
   port's `stagePlay()` returns at `$96B7` and runs none of it. I wrote the
   `substate & 0x80` term out anyway so wave 4 does not have to rediscover it,
   and both the code and the test say the term is currently redundant. Do not

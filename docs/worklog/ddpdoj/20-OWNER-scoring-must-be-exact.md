@@ -1,6 +1,6 @@
-# OWNER REQUIREMENT — scoring, combo and chain must be frame-exact, possibly sub-frame
+# OWNER REQUIREMENT - scoring, combo and chain must be frame-exact, possibly sub-frame
 
-status: REQUIREMENT (not a finding) — binding on every wave from here
+status: REQUIREMENT (not a finding) - binding on every wave from here
 raised: 2026-08-01 by the repo owner
 **The architect must read this before planning. It changes what "done" means.**
 
@@ -14,7 +14,7 @@ raised: 2026-08-01 by the repo owner
 
 ## Why this is an architecture requirement and not a polish item
 
-In a Cave shooter the score system is not a readout — it is **the game**. Players
+In a Cave shooter the score system is not a readout - it is **the game**. Players
 route a stage around chain maintenance, and a route is a frame-by-frame plan. A
 chain that drops one frame early is a different game, and a rank value that is
 one step high because a bomb was counted wrongly changes bullet speed, aim and
@@ -35,7 +35,7 @@ machine. Three separate requirements now converge on the same design.
 
 **2. "Possibly sub-frame" means ORDER WITHIN A FRAME is semantics.** Whether a
 hit registers before or after the chain timer decrements, whether a bomb's rank
-contribution lands before or after the frame's rank read — those are ordering
+contribution lands before or after the frame's rank read - those are ordering
 questions inside one frame, and the port must reproduce the board's order, not
 merely its per-frame totals. This is the same class as the display list's drain
 order being the depth order, and as Batman's `$0567` call order deciding sprite
@@ -43,7 +43,7 @@ priority. **Enumerate the order; do not assume a frame is atomic.**
 
 **3. Rank is an accumulator fed by player ACTIONS, so every action's rank
 contribution must be exact.** `docs/knowledge/08` already says rank errors are
-amplifiers — a wrong rank does not produce a small divergence, it produces
+amplifiers - a wrong rank does not produce a small divergence, it produces
 different enemy behaviour and possibly different spawns, after which
 first-divergence analysis points at symptoms. The owner names the specific case:
 **a wrong rank gain from using super**. So the rank ledger needs every credit and
@@ -60,14 +60,14 @@ debit enumerated from the ROM, not sampled.
   that moves rank. A COMPLETE list with a denominator, from the ROM. A sampled
   list is worthless here for the same reason a sampled bullet-pattern list is.
 - **Wave 5's finding stands and must be closed:** the score/chain words it needed
-  DO NOT EXIST in our notes — wave 2 never produced them. Nobody has located
+  DO NOT EXIST in our notes - wave 2 never produced them. Nobody has located
   them. That is now a first-order gap, not a footnote.
 - **The verification bar rises.** Comparing score bytes per frame on one scripted
   path is necessary and not sufficient, because the chain depends on which
   enemies died in which order at which frame. The strong test is a REPLAY: a
   recorded input sequence that produces a known chain on the board must produce
   the identical chain, frame for frame, in the port. `NOTES-replay.md` is
-  therefore not a nice-to-have either — **it is the only test that can prove this
+  therefore not a nice-to-have either - **it is the only test that can prove this
   requirement is met.**
 
 ## The one-line version for anyone skimming

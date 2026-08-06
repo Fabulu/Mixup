@@ -1,4 +1,4 @@
-# Wave 4 QA (adversarial): flow structure — the $1B ladder, the stage intro, pause
+# Wave 4 QA (adversarial): flow structure - the $1B ladder, the stage intro, pause
 status: DONE
 wave: 4   role: qa   started: 2026-07-29
 
@@ -54,10 +54,10 @@ layout-relative reason in the copy and are **not** wave 4; every mutation below
 is scored against that same baseline, and `novel=` lists only failures the
 mutation itself introduced.
 
-### FINDING 1 (moderate) — `state.bandB.ran` is never cleared by the intro dispatch, and both intro scenarios pass only because the port enters the intro from a fresh `createState()`
+### FINDING 1 (moderate) - `state.bandB.ran` is never cleared by the intro dispatch, and both intro scenarios pass only because the port enters the intro from a fresh `createState()`
 
 `mode5Tail()` is the only writer of `state.bandB.ran`, and `introStep()` never
-calls it (correctly — `$96C2 JSR $83E4`'s handlers RTS to `$80AD`, skipping
+calls it (correctly - `$96C2 JSR $83E4`'s handlers RTS to `$80AD`, skipping
 `$9A5E-$9ACE`). So the raster-split record from the LAST played frame stands for
 every frame of an intro entered from play. `porttrace.mjs sampleRow()` reads it
 for two compared fields:
@@ -93,13 +93,13 @@ frames of a respawn intro**, i.e. `intro-respawn` frames 614-640.
 
 Why the wave's own scenarios are blind: `seedFromRam()` seeds no band state, so
 both intro scenarios start the port at `createState()`'s default
-`bandB.ran = false` — which happens to be the right answer. The field is right
+`bandB.ran = false` - which happens to be the right answer. The field is right
 by luck, not by code. It becomes live the moment wave 5's `$979D` lets the port
 reach `$9B3E` from a play frame, and `intro-respawn`'s own note already plans to
 re-align to ~611 "the moment `$979D` lands". `introStep()` needs the equivalent
 of "no `$9A88` this frame", i.e. `state.bandB.ran = false`.
 
-### FINDING 2 (moderate) — `$9B8B LSR` (`+ ($3F >> 1)`) has no check anywhere: deleting the shift is green on the whole gate, INCLUDING the unit test written to exercise it
+### FINDING 2 (moderate) - `$9B8B LSR` (`+ ($3F >> 1)`) has no check anywhere: deleting the shift is green on the whole gate, INCLUDING the unit test written to exercise it
 
 ```
 M31-drop-the->>1-shift   ($9B8E: `(state.cam.hi >> 1)` -> `(state.cam.hi)`)
@@ -110,8 +110,8 @@ M31-drop-the->>1-shift   ($9B8E: `(state.cam.hi >> 1)` -> `(state.cam.hi)`)
 ("$19 = 1 with checkpoint 4 is index $9BCC[1] + 2 = 7 -> $66"). It does not
 hold it: with the shift the index is `5 + (4>>1) = 7`; without it, `5 + 4 = 9`.
 `$9BD4[7]` and `$9BD4[9]` are **both `$66`** (`65 65 65 65 65 65 65 66 66 66`),
-so the assertion `u.obj.y[0] === (packed & 0xF0)` — where `packed` is read at a
-**hardcoded** `0x9BD4 + 5 + 2` — passes either way. That is
+so the assertion `u.obj.y[0] === (packed & 0xF0)` - where `packed` is read at a
+**hardcoded** `0x9BD4 + 5 + 2` - passes either way. That is
 `docs/knowledge/03` shape (d): the test computes its expectation from an index
 it supplies itself, and never compares the index the port used.
 
@@ -130,10 +130,10 @@ Smallest fix that would have caught it: assert the index, or add a `$19`/`$24`
 pair whose correct and shift-free indices land on different bytes, e.g.
 `$19 = 1, $24 = 6` -> 5+3 = 8 (`$66`) vs 5+6 = 11.
 
-### FINDING 3 (moderate) — the `$0700` VRAM queue IMAGE is not compared anywhere; only `$0E`, its length. Three orderings/IDs of the intro's packets are green
+### FINDING 3 (moderate) - the `$0700` VRAM queue IMAGE is not compared anywhere; only `$0E`, its length. Three orderings/IDs of the intro's packets are green
 
 `scenarios.json`'s `watch` has 366 addresses. Page 7 holds 57 of them and
-`min = $07A0`, `max = $07EA` — the position rings and the score. **Not one
+`min = $07A0`, `max = $07EA` - the position rings and the score. **Not one
 address in `$0700-$079F` is watched**, and that is where all 149 queue bytes
 live. `$0E` is watched; its contents are not.
 
@@ -151,11 +151,11 @@ M23-copyPacket-19+9       $9BF5: `$19 + 8` -> `$19 + 9` (a different packet)
 All three keep `$0E` at 37/49 and are invisible. `tests/hud.test.js` checks each
 producer's own emitted image, but nothing checks the intro's COMPOSITION, which
 is what `$9BF0`/`$9C12` are. M23 in particular means the second canned packet's
-identity — the one thing in `introPackets()` that depends on `$19` — is
+identity - the one thing in `introPackets()` that depends on `$19` - is
 unfalsifiable. The wave's own note calls `$0E = 49 / 37 / 40 / 149` its
 evidence; length is all it is.
 
-### FINDING 4 (moderate) — every `$9B3E`/`$882C` store whose source or target is already zero is unfalsifiable, and four of them have no unit test either
+### FINDING 4 (moderate) - every `$9B3E`/`$882C` store whose source or target is already zero is unfalsifiable, and four of them have no unit test either
 
 Measured from the recorded seeds:
 
@@ -168,8 +168,8 @@ $22 / $24 / $28 over the whole compared window: the single value 0
 ```
 
 Wave 4 added eight watched addresses `$22-$29` whose value is `0` on 100% of
-5726 compared frames. So the largest single thing the wave added — the
-wipe-and-restore block at `$9B62-$9B74` — is proved by the corpus only in the
+5726 compared frames. So the largest single thing the wave added - the
+wipe-and-restore block at `$9B62-$9B74` - is proved by the corpus only in the
 sense that 0 equals 0. Four stores are held by NOTHING:
 
 ```
@@ -180,7 +180,7 @@ M52-drop-882C-STA-0E       $883B STA $0E           units_fail=5  compare 0
 ```
 
 M52 is the sharp one: `tests/flow.test.js` line 147 asserts
-`s.vram.cursor === 1` and names `'$883B STA $0E, then $8641 adds one byte'` —
+`s.vram.cursor === 1` and names `'$883B STA $0E, then $8641 adds one byte'` -
 but the 1 is produced by `drainQueue()` zeroing the cursor at `$8099`, three
 calls earlier in the same frame, so the assertion is satisfied whether or not
 the store under test exists. `docs/knowledge/03` shape (c)/(d).
@@ -188,7 +188,7 @@ the store under test exists. `docs/knowledge/03` shape (c)/(d).
 Two more restores (`$9B70 STA $19`, `$9B6A/$9B6C STA $3F/$55`) are corpus-blind
 too, but ARE held by `tests/flow.test.js` (M16, M31b go red on the unit suite).
 
-### FINDING 5 (minor) — `AND #$F0` is unfalsifiable in width
+### FINDING 5 (minor) - `AND #$F0` is unfalsifiable in width
 
 ```
 M33-AND-F0-to-F8   `packed & 0xF0` -> `packed & 0xF8`
@@ -199,7 +199,7 @@ distinguished from any mask covering bits 5-7 on stage 1's table. The unit
 test's stated red condition is "the `AND #$F0` / `ASL x4` pair is **swapped**",
 which is a different mistake.
 
-### FINDING 6 (minor) — `$9B01 LDA $3B,X / BMI` modelled as a zero test
+### FINDING 6 (minor) - `$9B01 LDA $3B,X / BMI` modelled as a zero test
 
 ```
 M37-cheat-test-eq0   `!(state.cheat[p] & 0x80)` -> `state.cheat[p] === 0`
@@ -209,7 +209,7 @@ M37-cheat-test-eq0   `!(state.cheat[p] & 0x80)` -> `state.cheat[p] === 0`
 state in which the ROM runs the matcher and the mutant does not. The unit test
 only uses 0 and `$FF`. `$3B/$3C` read 0 on all 5726 frames.
 
-### FINDING 7 (informational) — the commit message's "FIVE DELIBERATE BREAKS PASSED" is stale against its own tests
+### FINDING 7 (informational) - the commit message's "FIVE DELIBERATE BREAKS PASSED" is stale against its own tests
 
 Re-run individually, three of the five now go RED on `node --test`:
 
@@ -223,14 +223,14 @@ Re-run individually, three of the five now go RED on `node --test`:
 ```
 Only #5 is still a break that passes the gate. #1-#4 pass the ORACLE COMPARISON
 and are caught by `tests/flow.test.js`. The list should say which layer it means
-— this repo's own rule is that a stale note has misled somebody every time.
+- this repo's own rule is that a stale note has misled somebody every time.
 
 Also dead-but-harmless, green as expected, worth naming so nobody re-derives
 them: `M9` (`fullScreenLoad`'s `$886E` ctrl store, overwritten 2 lines later by
 `$9B7F`), `M10` (both `$0D = $10` stores, overwritten by `$9BC5`), `M58`
-(`$9AD1`'s bit-7 gate — `pauseCheck` is only ever reached with bit 7 set).
+(`$9AD1`'s bit-7 gate - `pauseCheck` is only ever reached with bit 7 set).
 
-### FINDING 8 (informational) — every one of the 681 new compared frames carries one tolerated divergent field
+### FINDING 8 (informational) - every one of the 681 new compared frames carries one tolerated divergent field
 
 ```
 intro-boot     w_0036: 357/357 frames differ, first at 283
@@ -238,7 +238,7 @@ intro-respawn  w_0036:  85/85  frames differ, first at 615
 pause          w_0036: 239/239 frames differ, first at 401
 ```
 Pre-existing (`$36`, the OAM write cursor, downstream of the unmodelled `$9F`
-sprite budget) and correctly classed INFO rather than TIER 1 — but the wave's
+sprite budget) and correctly classed INFO rather than TIER 1 - but the wave's
 "all TIER 1 fields exact" line is worth reading next to it.
 
 ### Coverage vs content
@@ -265,8 +265,8 @@ Behaviours the wave added, and whether a scenario exercises them:
 | `oamDma & $E3` | YES (intro-boot, 2 failures when removed) |
 | `enemySlots` per-frame reset | YES (pause, 1 failure when removed) |
 
-Seven of ~17 are corpus-exercised. That is not itself a defect — the wave says
-as much — but three of the unexercised seven (`$3F>>1`, the `$22`/`$28`
+Seven of ~17 are corpus-exercised. That is not itself a defect - the wave says
+as much - but three of the unexercised seven (`$3F>>1`, the `$22`/`$28`
 restores, `$0160`) have no unit test either, which is the gap.
 
 ## What I RULED OUT (and how)
@@ -274,7 +274,7 @@ restores, `$0160`) have no unit test either, which is the gap.
 * **`clearZeroPage()` completeness.** Enumerated every `state.js` field carrying
   a `$3D`-`$97` address against the function: `$3D $3E $3F $40 $41 $42 $44 $45
   $46 $47 $48 $49 $4A $4B $4C $54 $55 $57 $58 $5B $5C $5D $60 $61 $64-$67 $69
-  $6A-$6F` — all present. `$98/$99` (`zp.step`), `$9B` (`tilt`), `$A8`, `$AE`
+  $6A-$6F` - all present. `$98/$99` (`zp.step`), `$9B` (`tilt`), `$A8`, `$AE`
   are past `$97` and correctly absent; `$3A` (`build.gate`) and `$35`
   (`autofire`) are below `$3D` and correctly absent (`$35` is set explicitly at
   `$9B5E`). No missing field.
@@ -291,7 +291,7 @@ restores, `$0160`) have no unit test either, which is the gap.
 * **`$10` / `$11` ordering through `$882C`.** `$886E -> $81B5` sets `$10 = $88`
   and `$9B7F` then sets `$A8`; the port does both in that order and ends at
   `$A8`. `M43` (`$A8 -> $A9`) is caught by the corpus, so `$10` is real
-  coverage. (`$11` is NOT a compared field — only the `bootState()`
+  coverage. (`$11` is NOT a compared field - only the `bootState()`
   cross-check holds it; `M42` `$1E -> $18` was corpus-green.)
 * **Dropped-NMI / input alignment.** A cartridge NMI dropped at `$8073` never
   reaches `$80A4 JSR $81BF`, so it consumes no script entry and never advances

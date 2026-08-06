@@ -1,4 +1,4 @@
-# Wave 26 REVIEW — the boss (head `$B914`, body `$B913`)
+# Wave 26 REVIEW - the boss (head `$B914`, body `$B913`)
 
 status: DONE (verdict: APPROVE)
 reviewer (read-only), 2026-08-03
@@ -9,12 +9,12 @@ of the endchain done-when. Everything below was re-derived and re-measured, not
 quoted back from the worklogs. No `src/` edit was left in place (the one
 temporary RED mutation was restored and SHA-verified; see §4).
 
-Verdict up front: **APPROVE.** The boss port is byte-faithful — every routine,
+Verdict up front: **APPROVE.** The boss port is byte-faithful - every routine,
 table and the script-4 decode were re-derived from the ROM and match the impl.
 The endchain done-when is met on the cartridge's frame, the RED mutation was
 seen, and the full corpus is GREEN with zero skips. Findings are all
 MINOR/INFORMATIONAL documentation defects in the *recon text* or honestly-
-disclosed coverage limits — none is a correctness defect in the ported code.
+disclosed coverage limits - none is a correctness defect in the ported code.
 
 ## Baseline re-measured (independent of the worklog's numbers)
 
@@ -38,7 +38,7 @@ The `(X_MIN/Y_MAX/video) FAIL` lines on the `--only endchain` subset run are
 `fullRun=false` artifacts (those gates need the whole corpus); they were all
 PASS with 0 clamps uncovered in the full `test-all` run.
 
-## Criterion 1 — head/body/script/rank-tables/damage-ladder/death-chain byte-faithful. PASS.
+## Criterion 1 - head/body/script/rank-tables/damage-ladder/death-chain byte-faithful. PASS.
 
 Re-derived from `rip/prg.asm` (lines 6531-6808, 9121-9142) and the raw PRG
 (`assets/prg.bin`, base `$8000`). Every boss data table was read byte-for-byte
@@ -67,7 +67,7 @@ that `sub_CB2B` just wrote (impl `bossDeathTail`: `explodeInPlace` then
 pointer at `$AE71+8` = `$AE79` = `8B AE` -> **`$AE8B`**, and the byte stream
 there is `A2 6B 6A 69 68 6A 00`. `sub_CB2B` zeroed `$042C[9]`, so frame 0 of the
 explosion reads `$A2`. Verified end to end. The impl reuses the existing
-`explodeInPlace` (`$CB2B`) and overrides `$016C` to 4 afterward — faithful.
+`explodeInPlace` (`$CB2B`) and overrides `$016C` to 4 afterward - faithful.
 
 The **`$030B,X` slot-N-1 trick** (the load-bearing addressing oddity) is handled
 by the impl's raw-address resolver `bossGet/bossSet`, which mirrors
@@ -77,21 +77,21 @@ the `$B9EE JSR` + `$B9F1 DEX` fall-through) and the death body-clear (`$B991`
 loop) write the previous slot's `$030C` through the `+$0B` alias; the impl
 reproduces both passes exactly (`bodySyncSlot` called with x=9 then x=8; the
 clear loop `for (xx=x,y=1; y>=0; xx--,y--)`). Enemy index 9 resolves to absolute
-slot 21 (`ENEMY_BASE=0x0C`), bodies to 20/19 — consistent across the boss
+slot 21 (`ENEMY_BASE=0x0C`), bodies to 20/19 - consistent across the boss
 resolver, `explodeInPlace` and `hitEnemy`.
 
 The **death chain** (`$B962`-`$B9A7`) is faithful step by step: the stage-1 warp
 gate (`$19==1 && $04CC==1 && $04AC<$78` -> `INC $39`, then falls straight into
-`$B97A` — the warp does NOT skip the score/kill/explosion), score `LDA #$10 /
+`$B97A` - the warp does NOT skip the score/kill/explosion), score `LDA #$10 /
 JSR $8455` (mid byte `$10` = +$001000, verified against `$8455` at line 806:
 `STA $9A / LDA #$00 / BEQ $8469`), `INC $3B,X`, `$CB26` sfx+$02 conversion,
 script-4 override, body clear, and `INC $1B` gated by `$0100<2`. The timeout
-death (`$04CC>=6 -> JMP $B983`) skips `$B97A` (no score/kill/warp) — the impl's
+death (`$04CC>=6 -> JMP $B983`) skips `$B97A` (no score/kill/warp) - the impl's
 `scored` flag selects exactly this. Both `$8455` (death, +$001000) and `$845B`
 (morph step, +$0050; verified `$845B` ignores A and loads `#$50` at line 814)
 are correct.
 
-**The rank-move carry** (`loc_BA18`-`$BA68`) is the one genuinely subtle piece —
+**The rank-move carry** (`loc_BA18`-`$BA68`) is the one genuinely subtle piece -
 the `SBC`/`ADC` carry in is path-dependent and `LDA` does not touch it. The impl
 tracks `carry` explicitly through both entry paths (charge-vs-threshold and the
 player-Y comparison) and threads the borrow/carry through the lo-then-hi
@@ -99,14 +99,14 @@ subtract/add. I traced all four (dir × charge-vs-thr) cases against the 6502
 `SBC`/`ADC` semantics; all four match, including the "charge under threshold
 subtracts one extra sub-pixel" case the impl's block comment calls out. Correct.
 
-## Criterion 2 — the done-when met on the cartridge's frame; RED verified. PASS.
+## Criterion 2 - the done-when met on the cartridge's frame; RED verified. PASS.
 
 MEASURED on the re-recorded 12000-frame cartridge artifact
 (`out/scen/endchain.json`, `gameFrames: 12000`, re-recorded 2026-08-03 00:06):
 
 - The port runs the boss handler `$B914` for ~2760 frames (boss spawned `$85` @
   f8252; the port is GREEN through every one of them) and the boss **dies by
-  TIMEOUT** at f11012 (`$04CC` reaches 6, the `$BA9C -> $B983` path) — matching
+  TIMEOUT** at f11012 (`$04CC` reaches 6, the `$BA9C -> $B983` path) - matching
   the impl worklog. The player's RUA hold drives the ship to the right wall and
   no missile connects, so HP stays 0 the whole fight.
 - `$1B` advances **`$85 -> $86` at f11012** on the cartridge's frame (the port's
@@ -116,7 +116,7 @@ MEASURED on the re-recorded 12000-frame cartridge artifact
   (or a throw elsewhere) is the failure.
 - 4851 of 4852 compared frames GREEN, **TIER 1 800 fields, 0 divergent**; the
   +1 is the `$86` frame itself (the W27 truncation point). Display list 0 Y / 0
-  live-slot mismatches across 310464 slot-frames — the `$8BAB` blank-pass fix
+  live-slot mismatches across 310464 slot-frames - the `$8BAB` blank-pass fix
   (impl §5) holds.
 
 **RED mutation (RULE 4).** With `state.substate + 1` -> `+ 0` in
@@ -135,12 +135,12 @@ git status --porcelain games/gradius/src/enemies.js : (empty)
 ```
 
 The done-when went RED exactly because the port never reaches `$86`, so the
-`$9904` throw does not fire — while every TIER 1 field still matched (the boss
+`$9904` throw does not fire - while every TIER 1 field still matched (the boss
 behaviour is identical; only the death advance broke). Seen RED, restored,
 SHA-verified both ways. No `git checkout`/`restore`/`stash`/`add -A` used; the
 file was restored from a byte-identical backup copy and verified against `HEAD`.
 
-## Criterion 3 — no regression; corpus unaffected. PASS.
+## Criterion 3 - no regression; corpus unaffected. PASS.
 
 ```
 node --test games/gradius/tests/        : 468 pass / 0 fail / 0 skipped
@@ -148,14 +148,14 @@ node games/gradius/tools/test-all.mjs   : GREEN, 10 passed / 0 failed / 0 SKIPPE
 ```
 
 The 46-scenario corpus compares **22830 of 22831 frames** (the +2 truncated are
-`endchain@11012` and `gameover@4364` — both W27-ish boundaries, expected); 0
+`endchain@11012` and `gameover@4364` - both W27-ish boundaries, expected); 0
 failures, 0 stale annotations, 0 display-list failures, 0 video failures. The
 `$8BAB` blank-pass change touched `oam.js` and the impl worklog §5 explains why
 it left the other 45 scenarios green (none had cull-ghosts; the old top-of-pass
 `$F4` fill had been equivalent for them). Confirmed: the display list is 0/0
 across the corpus.
 
-## Criterion 4 — the non-scenario paths are pinned. PASS.
+## Criterion 4 - the non-scenario paths are pinned. PASS.
 
 The endchain boss dies by **timeout**, so the DAMAGE death, the morph ladder
 and the warp arm are not exercised by any scenario. `tests/w26-boss.test.js`
@@ -180,25 +180,25 @@ it is simply not reached by any corpus scenario. See F4.
 
 ## Findings
 
-**F1 — MINOR (recon doc): `$B901` rank-7 high byte transcribed as `$02`; the ROM
+**F1 - MINOR (recon doc): `$B901` rank-7 high byte transcribed as `$02`; the ROM
 has `$01`.** `26-recon-boss.md` §6 prints `B901: 01 01 01 01 01 01 01 02` and
 the "combined magnitudes" list ends `$02F0`. The raw PRG (`assets/prg.bin`,
-`$B901-$B908`) is `01 01 01 01 01 01 01 01` — rank 7's high byte is `$01`, so
+`$B901-$B908`) is `01 01 01 01 01 01 01 01` - rank 7's high byte is `$01`, so
 the rank-7 step magnitude is `$01F0`, not `$02F0`. *No GREEN impact*: the impl
 reads `rom.read(0xB901 + rank)` directly (line 2635) and gets `$01`; rank 7 is
 not exercised by the endchain run anyway (it is rank 4). Pure recon-text defect.
 
-**F2 — MINOR (recon doc, already corrected by impl): `$032C`/`$036C` X/Y roles
+**F2 - MINOR (recon doc, already corrected by impl): `$032C`/`$036C` X/Y roles
 swapped in the recon.** `26-recon-boss.md` §2/§8 labels `$032C`=X, `$036C`=Y
 (and the armament offsets follow that). The actual roles are `$032C`=Y (the
 rank move clamps it to `[$18,$A8]` vertically, tracking the player) and
 `$036C`=X (the intro `$F0->$A3` descent; the `$BA0A` catch-up reads player X at
-`$0360`). The impl corrected this — it uses `state.obj.x[0]` for `$0360` and
-treats the rank move as vertical — and operates throughout on RAW addresses via
+`$0360`). The impl corrected this - it uses `state.obj.x[0]` for `$0360` and
+treats the rank move as vertical - and operates throughout on RAW addresses via
 `bossGet/bossSet`, so byte-faithfulness does not depend on the label. Impl
 worklog §3 records the correction. No code impact.
 
-**F3 — INFORMATIONAL (stale worklog): the "`$B9C8` mis-printed as `#$32`" claim.**
+**F3 - INFORMATIONAL (stale worklog): the "`$B9C8` mis-printed as `#$32`" claim.**
 Impl worklog §3 says the `prg.asm` listing mis-printed `$B9C8` as `LDA #$32`
 ("two consecutive `A9 32`"). The CURRENT committed listing shows
 `B9C8: A9 03 LDA #$03` (line 6640) and the raw PRG byte at `$B9C9` is `$03`. So
@@ -208,21 +208,21 @@ post-impl or misremembered). The lone `$A9 32` nearby is `$B9D4`, which is
 correct (`$012A[9]=$32`). No code impact; noted so the next reader is not
 confused by the worklog hunting for a defect that is not there.
 
-**F4 — INFORMATIONAL (coverage, honestly disclosed): only the TIMEOUT death
+**F4 - INFORMATIONAL (coverage, honestly disclosed): only the TIMEOUT death
 trigger is scenario-validated; the DAMAGE death trigger is unit-test-only.**
 The endchain boss self-destructs at `$04CC=6` (timeout) because the RUA hold
 never lands a missile. The damage death (`$B97A` path: score +`INC $3B` + warp
 gate), the morph ladder and the warp arm are pinned only by `w26-boss.test.js`.
 This is disclosed in the impl worklog §4 and the test file header, and the
 damage path is fully ported in `collision.js` (so it is reachable, just
-unexercised). Not a defect — flagging the denominator per RULE 5: the done-when
+unexercised). Not a defect - flagging the denominator per RULE 5: the done-when
 proves the timeout death, not the damage death.
 
-**F5 — INFORMATIONAL (stale scenario prose): `endchain.why` still says
+**F5 - INFORMATIONAL (stale scenario prose): `endchain.why` still says
 "compareUntilThrow B914".** The operative `compareUntilThrow` field is `"9904"`
 (the `$1B=$86` stage-end arm, changed when `$B914` was ported) and the `_` field
 documents the change correctly. Only the `why` prose was not updated. No
-behavioural impact — the field that `compare.mjs` reads is correct.
+behavioural impact - the field that `compare.mjs` reads is correct.
 
 ## Must-fix
 

@@ -1,4 +1,4 @@
-# Wave 24 IMPL — the play sub-state machine (jt_$982F) and the game-over arm
+# Wave 24 IMPL - the play sub-state machine (jt_$982F) and the game-over arm
 
 status: DONE
 implementer, 2026-08-02
@@ -76,7 +76,7 @@ python games/gradius/tools/census.py dispatch
        machine jt_$982F, not the enemy dispatch $AE1C)
 ```
 
-### THE DELIBERATE BREAKS — 18 mutations, 17 seen RED (RULE 4)
+### THE DELIBERATE BREAKS - 18 mutations, 17 seen RED (RULE 4)
 `tools/w24-breaks.py` applies one source mutation at a time (binary mode, so
 SHA-256 restores byte-identical), runs the affected test files, restores, and
 asserts the SHA matches both ways. **17 of 18 went red; the one survivor is
@@ -88,15 +88,15 @@ named below with its reason.** Every mutation was SHA-256-verified restored
 | 1 | `$80` exit `$81` -> `$82` | RED (1) |
 | 2 | `$81` `$4D` reads `rankCountdown[0]` not `[rank]` | **RED** (after re-aim to rank 2: `$9A35[0]==$9A35[1]==$03`, so rank 1 could not tell; rank 2 = `$04` distinguishes) |
 | 3 | `$81` `$4C` not cleared (`=1`) | RED (1) |
-| 4 | `$82` 16-bit borrow dropped | RED (1) — the load-bearing half of the countdown |
+| 4 | `$82` 16-bit borrow dropped | RED (1) - the load-bearing half of the countdown |
 | 5 | `$82` `$60` not reset | RED (1) |
 | 6 | `$82` sfx gate fires on stage 1 not 0 | RED (2) |
 | 7 | `$83` `$62 := 1` not 2 | RED (1) |
 | 8 | `$84` BEQ polarity inverted | RED (5) |
 | 9 | `$84` boss type `$98` -> `$99` | RED (1) |
 | 10 | `$84` `$5E` seed `$3F` -> `$3E` | RED (1) |
-| 11 | `$994A` guard `$D0` -> `$D1` | **RED** (after re-aim to the `$D0` boundary: `$D0` runs, `$D1` would refuse it — `cam.lo=$E0` passed either way) |
-| 12 | `$994A` object-clear bound `$14` -> `$15` | **GREEN — the one survivor** (see below) |
+| 11 | `$994A` guard `$D0` -> `$D1` | **RED** (after re-aim to the `$D0` boundary: `$D0` runs, `$D1` would refuse it - `cam.lo=$E0` passed either way) |
+| 12 | `$994A` object-clear bound `$14` -> `$15` | **GREEN - the one survivor** (see below) |
 | 13 | `$85` `INC $5B` dropped | RED (1) |
 | 14 | `$96FB` `$B0` gate inverted | RED (6) |
 | 15 | `$96FB` `$4C` not decremented | RED (1) |
@@ -122,7 +122,7 @@ listing (`$9970 CPX #$14`), not on a test.
 - **#11 $D0->$D1:** at `cam.lo=$E0` the test was GREEN (>= both). Re-aimed to
   the boundary `cam.lo=$D0` (>= `$D0`, < `$D1`): now RED.
 
-### What I could NOT reach (RULE 2 — never as an absence claim)
+### What I could NOT reach (RULE 2 - never as an absence claim)
 
 - **The endchain `scen/` field dump + compare scenario (done-when #1, #2, #7).**
   I did not record a `scen/endchain.json` field dump, so the `$1B` timeline is

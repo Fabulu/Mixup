@@ -1,4 +1,4 @@
-# 54 — IMPL E5b: THE ENEMY DEATH EXPLOSION (pool B, `$289004` + `$288E4E`)
+# 54 - IMPL E5b: THE ENEMY DEATH EXPLOSION (pool B, `$289004` + `$288E4E`)
 
 status: **DONE**
 
@@ -7,10 +7,10 @@ role: IMPLEMENTER. SOLE writer to `games/ddpdoj/`. `games/gradius/` NOT TOUCHED.
 target: `ddpdojblk` VERSION-B. Every address is build B (`$23xxxx`–`$2Axxxx`)
 unless the line says otherwise.
 
-brief: the owner is playing the live build — "Shooting enemies with bullets
+brief: the owner is playing the live build - "Shooting enemies with bullets
 works, but you can't see the bullets and no explosions." E4 made the bullets
 visible; E5a made the shot's impact spark visible. **Mine is the DEATH
-EXPLOSION** — the thing that happens when an enemy actually dies.
+EXPLOSION** - the thing that happens when an enemy actually dies.
 
 inputs read in full: 53-impl-E5a-spark, 50-recon-effects, 47-impl-E2-art,
 52-impl-E4-bullets, HANDOVER, `docs/knowledge/09` and `10`.
@@ -21,7 +21,7 @@ inputs read in full: 53-impl-E5a-spark, 50-recon-effects, 47-impl-E2-art,
 
 ## 0. THE BRIEF'S PREMISE, CHECKED
 
-Recon 50's SHAPE is right and I reproduced its headline numbers to the digit —
+Recon 50's SHAPE is right and I reproduced its headline numbers to the digit -
 worth saying, because W53 found five of its statements about pool E wrong.
 Everything below about pools B and D is reproduced independently from
 `maincpu.bin` this session.
@@ -53,13 +53,13 @@ Everything below about pools B and D is reproduced independently from
 
 | recon 50 / the brief says | [M] this session |
 |---|---|
-| "EIGHT distinct kinds on the port's damage path: `$1 $2 $3 $7 $C $D $84 $85`" | That is what its RUN reached. **STATICALLY, from the listing, the port's OWN ported arms pass ELEVEN**: `$1 $2 $3 $4 $5 $7 $9 $C $D $84 $85`. `$5` is `$275B20`'s (`handlers.js`, ported since W30), `$9` is two entries of the midboss's own `$26B214` list, `$4` is the row below. **[M] AND ALL ELEVEN ARE REACHED IN A 2,192-FRAME TAPPED RUN** (§2) — so this is not a theoretical margin, it is three kinds recon 50's harvest would have shipped no art for. `docs/knowledge/09` in one line. |
-| the port's own note: type `$10`'s death arm is `D0=$7` (`handlers.js:677`, since W25b) | **[M] `$2681D6 moveq #$4,D0`. It is kind `$4`, not `$7`** — read out of the image, and pinned in `tests/w54effects.test.js` by reading it out of the image again and requiring `src/handlers.js` to pass the same byte. Kind `$4` is in nobody's list. |
-| "every death arm I read writes `move.w #$0,($12,A0)`" (§4.2, the leak argument) | **[M] TWELVE of the twenty-seven ported sites write `#$1`** — `$273DDA $273E0E $273E42 $273E7A $273EB2 $273EEC` (type `$80`'s six), `$2762E4 $276322 $276366 $2763AC` (type `$88`'s four), `$2774EE` (type `$89`) and `$26B89C` (the midboss arm) — and `($12,A0)` is a COUNT MINUS ONE (`$289098 andi.l #$FF / addi.l #-$10000 / dbra`), so each of those asks pool D for **TWO** records, not one. And **type `$11`'s death arm puts `$FFFF` BACK** at `$26888A` when `$815EA2` is already set, i.e. it DISARMS the sub-spawn on the second effect of a frame. [M] over 2,192 tapped frames that is **126 sub-spawns for 146 pool-D records**, against a 20-slot pool. The leak is real and its rate is not the one recon 50 computed. |
+| "EIGHT distinct kinds on the port's damage path: `$1 $2 $3 $7 $C $D $84 $85`" | That is what its RUN reached. **STATICALLY, from the listing, the port's OWN ported arms pass ELEVEN**: `$1 $2 $3 $4 $5 $7 $9 $C $D $84 $85`. `$5` is `$275B20`'s (`handlers.js`, ported since W30), `$9` is two entries of the midboss's own `$26B214` list, `$4` is the row below. **[M] AND ALL ELEVEN ARE REACHED IN A 2,192-FRAME TAPPED RUN** (§2) - so this is not a theoretical margin, it is three kinds recon 50's harvest would have shipped no art for. `docs/knowledge/09` in one line. |
+| the port's own note: type `$10`'s death arm is `D0=$7` (`handlers.js:677`, since W25b) | **[M] `$2681D6 moveq #$4,D0`. It is kind `$4`, not `$7`** - read out of the image, and pinned in `tests/w54effects.test.js` by reading it out of the image again and requiring `src/handlers.js` to pass the same byte. Kind `$4` is in nobody's list. |
+| "every death arm I read writes `move.w #$0,($12,A0)`" (§4.2, the leak argument) | **[M] TWELVE of the twenty-seven ported sites write `#$1`** - `$273DDA $273E0E $273E42 $273E7A $273EB2 $273EEC` (type `$80`'s six), `$2762E4 $276322 $276366 $2763AC` (type `$88`'s four), `$2774EE` (type `$89`) and `$26B89C` (the midboss arm) - and `($12,A0)` is a COUNT MINUS ONE (`$289098 andi.l #$FF / addi.l #-$10000 / dbra`), so each of those asks pool D for **TWO** records, not one. And **type `$11`'s death arm puts `$FFFF` BACK** at `$26888A` when `$815EA2` is already set, i.e. it DISARMS the sub-spawn on the second effect of a frame. [M] over 2,192 tapped frames that is **126 sub-spawns for 146 pool-D records**, against a 20-slot pool. The leak is real and its rate is not the one recon 50 computed. |
 | `$28925E..$28960F` is "434 bytes; I did not find the table that reaches it" (§10.3) | **It is not reached by a table. `$28915A bpl $28925E` and `$28915E bra $289292` branch to it directly**, out of `$289152 tst.w ($1e,A6)`. Recon 50 looked for a dispatch; the answer is a conditional branch two instructions earlier. |
-| pool D core is "474 B, 4 routines" | **[M] far larger** — §4. ~1,800 B of code and tables, an unpinned `$200920` window and seven unported callees. |
+| pool D core is "474 B, 4 routines" | **[M] far larger** - §4. ~1,800 B of code and tables, an unpinned `$200920` window and seven unported callees. |
 | `$81C8EA` is "re-counted each frame, `addq.w #1` per live slot" | True, **and the `addq` is BELOW the spawn-delay skip** (`$288E64`/`$288E74`), so a record counting down its `($18,A6)` is live, holds a slot, and is NOT in the count. A census that trusts the count word alone under-reports the pool. §2 scans all 80 slots as well. |
-| "+$1A angle, +$1B speed" (§1.2's record map) | **BACKWARDS.** `$288F1A move.b ($1a,A6),D0` and `$288F24 move.b ($1b,A6),D1`, and `$241D34` takes **D0 = the SPEED INDEX, D1 = the ANGLE** (`src/vectors.js shotVector`, ported since wave 8). Type `$88`'s own literal `#$05C0` is speed 5 / angle $C0, and every one of the eleven literals in the death arms is ≤ `$0C` in its high byte — i.e. a speed index, not an angle. |
+| "+$1A angle, +$1B speed" (§1.2's record map) | **BACKWARDS.** `$288F1A move.b ($1a,A6),D0` and `$288F24 move.b ($1b,A6),D1`, and `$241D34` takes **D0 = the SPEED INDEX, D1 = the ANGLE** (`src/vectors.js shotVector`, ported since wave 8). Type `$88`'s own literal `#$05C0` is speed 5 / angle $C0, and every one of the eleven literals in the death arms is ≤ `$0C` in its high byte - i.e. a speed index, not an angle. |
 
 ### 0.3 `$289004`'s OWN DEAD BRANCH  [M]
 
@@ -78,7 +78,7 @@ Everything below about pools B and D is reproduced independently from
 
 ### 0.4 AND ONE THING A "TIDY" PORT GETS WRONG, WHICH RECON 50 LEFT AMBIGUOUS
 
-`$288E7A bset #6,(A6)` — recon 50 §1.2 calls it "bit 6 = the script has been
+`$288E7A bset #6,(A6)` - recon 50 §1.2 calls it "bit 6 = the script has been
 started" without saying of what. **`08d6 0006` with a MEMORY destination is
 BYTE-sized on the 68000**, so the bit is bit 6 of the HIGH byte: `$8000` becomes
 `$C000`, not `$8040`. Reading it as bit 6 of the WORD puts the started flag
@@ -94,7 +94,7 @@ script reloads its cursors every frame. Mutant M14.
 | `$288E0C..$288E1F` | 20 | the whole-pool clear: 80 slots + the bit bucket + `$81C8EA` | `effects.js clearEffectPool` |
 | `$288E20..$288E4D` | 46 | THE DESCRIPTOR WALKER and both 8-byte escapes | `effects.js walkDescriptor288E20` |
 | `$288E4E..$288FEF` | 418 | THE DRIVER: the 80-slot walk, the spawn delay, the first-frame script load, the scroll, `$24179E`, speed→velocity, friction, the off-screen cull, the animation, THE LASER INTERLOCK, the emit | `effects.js runEffectDriver` |
-| `$288ED0..$288EFA` | 42 | the pool-D sub-spawn — **everything except the `jsr`** (§4) | `effects.js subSpawn288ED0` |
+| `$288ED0..$288EFA` | 42 | the pool-D sub-spawn - **everything except the `jsr`** (§4) | `effects.js subSpawn288ED0` |
 | `$288FF0` | 20 | the 5-entry emitter table, range-checked | `effects.js EMIT_STUB` |
 | `$289004..$289083` | 128 | THE ALLOCATOR, its eleven field inits, its range check and **its BIT BUCKET, counted** | `effects.js spawnEffect` |
 | `$289084..$289097` | 20 | pool D's clear | `effects.js clearSubEffectPool` |
@@ -113,15 +113,15 @@ writes its own fields, so there are twenty-five separate transcriptions here
 covering twenty-seven ROM sites, and not one. Three GROUPS share instructions
 and are written once:
 
-* **`effectArmNine`** — `$268958` (type `$11` hit, kind `$3`, the `$267FAC` HIT
+* **`effectArmNine`** - `$268958` (type `$11` hit, kind `$3`, the `$267FAC` HIT
   row), `$2682C0` (type `$10`'s first zero, `$3`, the same row) and `$2681DC`
   (type `$10`'s death, **`$4`**, the `$267FA0` DEATH row). Nine instructions,
-  identical at all three, including `($12,A0) = 0` — the pool-D arm.
-* **`effectArmShared278320`** — `$276910`, `$2767EE`, `$2774D0`, `$2762C6`,
+  identical at all three, including `($12,A0) = 0` - the pool-D arm.
+* **`effectArmShared278320`** - `$276910`, `$2767EE`, `$2774D0`, `$2762C6`,
   `$276304`, `$276348`, `$27638E`. Position, then the bucket remapped through
   `$278320` with a WORD index DOUBLED, not the byte offset the `$267Fxx` arms
   use. Each caller adds its own tail.
-* **`effectArmFamily`** — `$269D1E`, `$26A618`, `$26A882`, `$26AD4A`. No remap
+* **`effectArmFamily`** - `$269D1E`, `$26A618`, `$26A882`, `$26AD4A`. No remap
   at all: bucket `$10` flat, plus the enemy's SPEED + 8 and its HEADING × 4,
   which is what makes the burst fly on the dying enemy's own vector. `($12,A0)`
   is NOT written, so these never sub-spawn.
@@ -138,7 +138,7 @@ record's bytes.
 
 ---
 
-## 2. THE POOL CENSUS — the drain proof, over long runs  [M]
+## 2. THE POOL CENSUS - the drain proof, over long runs  [M]
 
 The shipped bundle seed, `$810424 = $FF` each step, three inputs, to each run's
 honest end. **Per frame the probe scans ALL 80 SLOTS and reads `$81C8EA`, and
@@ -150,7 +150,7 @@ reconciles them through an identity the ROM's own semantics force:**
 
 `$81C8EA` is NOT "how many slots are live now": it counts records that were live
 AND past their spawn delay when the driver visited them (`$288E74` is below
-`$288E64`'s skip), and the three frees never decrement it — the count is rebuilt
+`$288E64`'s skip), and the three frees never decrement it - the count is rebuilt
 from zero next frame. Every term on the right of that identity comes from the
 driver, every term on the left from an independent scan. **That is a census, not
 a restatement**, and it is asserted on every frame rather than summarised.
@@ -183,7 +183,7 @@ frames and for 265 consecutive frames at a stretch, while being filled 171
 times. 23 of 80 is the high-water mark of a pool under continuous pressure.
 
 **And the structural half, which is what makes 23 of 80 not luck:** every record
-is freed by one of three paths and there is no fourth — `$288F9C` reached from
+is freed by one of three paths and there is no fourth - `$288F9C` reached from
 the off-screen cull (`$288F74`/`$288F82`), `$288F9C` reached from the duration
 list's `$FFFF` terminator (`$288F98`), and `$288E0C`'s whole-pool clear. [M] the
 longest script in the two tables is 36 cells and every one of the 23 ends in
@@ -192,16 +192,16 @@ longest script in the two tables is 36 cells and every one of the 23 ends in
 **THE ELEVEN KINDS ARE THE HEADLINE OF §0.2 MEASURED FROM THE OTHER SIDE.** [M]
 `$1 $2 $3 $4 $5 $7 $9 $C $D $84 $85` all appear as live records in the tapped
 run. Recon 50's eight would have shipped no art for `$4`, `$5` and `$9`, and
-`$4` is type `$10`'s death — one of the two most common enemies in the stage.
+`$4` is type `$10`'s death - one of the two most common enemies in the stage.
 
 **THE CONTROL DOES WHAT A CONTROL MUST.** 4,200 frames with nothing pressed:
-0 allocations, 0 live slots, 0 records, 0 streams — and the run does not stop,
+0 allocations, 0 live slots, 0 records, 0 streams - and the run does not stop,
 so it is 4,200 frames of evidence rather than a short one that happened not to
 break. Nothing dies without the player shooting it.
 
 ---
 
-## 3. THE ART — 269 streams, 218.4 KiB, and BOOT WENT UP BY 4.1 KiB
+## 3. THE ART - 269 streams, 218.4 KiB, and BOOT WENT UP BY 4.1 KiB
 
 ```
 [M] BOOT BEFORE   472.0 KiB   (W53's own final figure, export-web.mjs's number)
@@ -213,27 +213,27 @@ break. Nothing dies without the player shooting it.
 **Boot rose, on the fifth deploy after four falls, and the brief asks by how much
 and why. It is +4,194 B in three named parts:**
 
-* **+1,781 B — the `$221520..$222617` ROM WINDOW**, 4,344 bytes of script tables
+* **+1,781 B - the `$221520..$222617` ROM WINDOW**, 4,344 bytes of script tables
   and script data (`player.tables.json.gz` 133,612 → 135,393). **It cannot be
   deferred, and that is a mechanism fact rather than a preference**: a missing
   sprite stream is a NAMED SKIP the page draws around, but a missing ROM window
-  is a THROW out of `src/rom.js` — the whole reason `RomWindows` exists. Shard 9
+  is a THROW out of `src/rom.js` - the whole reason `RomWindows` exists. Shard 9
   can arrive late; the script data cannot.
-* **+1,953 B — SEVEN MORE SPEED LEVELS** (65 → 72 exported). `$288F28 jsr
+* **+1,953 B - SEVEN MORE SPEED LEVELS** (65 → 72 exported). `$288F28 jsr
   $241D34` is a NEW READER of the speed table with a NEW INDEX DOMAIN: the
   damage-first family's `$269D2E addq.b #8,D0` hands it the dying enemy's own
   speed plus eight. [M] the port threw `speed index 37 was not exported` on the
   first family kill. `effect_speed_indices` DERIVES the domain from the listing
-  — every `move.w #imm,($1a,A0)` after a `jsr $289004`, plus the whole of
-  `enemy_speed_indices` shifted up by 8 — rather than widening it by hand, and
+  - every `move.w #imm,($1a,A0)` after a `jsr $289004`, plus the whole of
+  `enemy_speed_indices` shifted up by 8 - rather than widening it by hand, and
   it REFUSES TO EXPORT if the `move.b D0,($1a,A0)` form has stopped appearing.
-* **+460 B — `manifest.json`** for shard 9's entry and the fetch order. That file
+* **+460 B - `manifest.json`** for shard 9's entry and the fetch order. That file
   is the one body served UNCOMPRESSED (W47 §2.4), so every byte of it is a boot
   byte.
 
 **WHAT WAS TRIED AND DID NOT HELP, so nobody re-derives it:** W53 already took
-the two savings that were available — the stream table is a typed array (W47)
-and `manifest.json` is written compact (W53) — and W53 measured base64 for the
+the two savings that were available - the stream table is a typed array (W47)
+and `manifest.json` is written compact (W53) - and W53 measured base64 for the
 ROM windows as **14.4 KB BIGGER gzipped**. There is no third one here. The
 honest statement is that this wave costs 4.1 KiB of boot for the death
 explosion, and the thing that would retire most of it is a TABLES SHARD with a
@@ -245,12 +245,12 @@ W53 §1.3's decision, one level up. The harvest is the TABLE'S OWN EXTENT:
 
 * [M] the port's ported arms can pass ELEVEN kinds and recon 50's run measured
   eight (§0.2). A harvest cut to a measured kind set goes short the first time a
-  run reaches a twelfth — and this wave's own run already reached three of them.
+  run reaches a twelfth - and this wave's own run already reached three of them.
 * both ends are pinned by data that is not the harvest's own line:
   `$221520 + 34*8 == $221630`, `$221630 + 34*8 == $221740` (entry [0][0]'s own
   descriptor list), and walking all 68 entries in lockstep lands EXACTLY on
   `$222618`. `check_pool_b_extents` asserts all of it on every export, **and
-  asserts the declared window LENGTH against the walk** — because a short window
+  asserts the declared window LENGTH against the walk** - because a short window
   is not caught at the export, it is caught on a player's machine.
 * [M] it costs **22.6 KiB gz** over the 204 (218.4 against 195.8), all of it
   DEFERRED, against 65 streams that would otherwise be a wrong picture the day a
@@ -265,10 +265,10 @@ pixel identity cannot have moved.
 
 ---
 
-## 4. THE REFUSAL — pool D is NOT ported, and NOT allocated from
+## 4. THE REFUSAL - pool D is NOT ported, and NOT allocated from
 
 The brief's own trap: *"`$288E4E` sub-allocates into pool `$81C8EC` (20 slots)
-whose ONLY consumer is `$2890F2` — so porting `$289004 + $288E4E` alone REBUILDS
+whose ONLY consumer is `$2890F2` - so porting `$289004 + $288E4E` alone REBUILDS
 W33's LEAK ONE LEVEL DOWN."* It does. There are exactly two ways past it.
 
 **(a) PORT POOL D TOO.** [M] measured from the listing this session, because
@@ -290,7 +290,7 @@ callees this port does not have: $241E34 $24397A $242FDE $242EC2 $242CAC
 ~1,800 B of code and tables, an unpinned ROM window and its own unpriced art.
 **That is a wave, not a paragraph.**
 
-**(b) REFUSE TO ALLOCATE.** W52 §0.2's shape exactly — it was handed the impact
+**(b) REFUSE TO ALLOCATE.** W52 §0.2's shape exactly - it was handed the impact
 pool `$27F8F8` and refused it rather than allocate without its driver.
 `subSpawn288ED0` does everything `$288ED0..$288EFA` does EXCEPT the `jsr`: the
 `($1c,A6)` push/pop (a no-op without the call), the `($16,A6) → ($1d,A6)` copy,
@@ -304,14 +304,14 @@ including the 4,200-frame control. Nothing fills it, so it cannot leak.
 **THE COST, NAMED RATHER THAN DISCOVERED LATER:**
 
 1. **the secondary debris every explosion would throw is MISSING.** [M] 126
-   refusals in the 2,192-frame tapped run — 106 asking for ONE pool-D record and
-   20 asking for TWO — so **146 pool-D records the board would have made, and
+   refusals in the 2,192-frame tapped run - 106 asking for ONE pool-D record and
+   20 asking for TWO - so **146 pool-D records the board would have made, and
    this port makes none.** Against a 20-slot pool with `$2890F2` unported, those
    146 would have been 20 allocations and then 126 silent discards.
 2. **`$289658` makes SIX RNG DRAWS** off the shared `$803916`/`$803917` counters
    (`$242FDE`, `$242EC2` ×2, `$242CAC`, `$2431F4` ×2, `$242B3C`), and the port
    does not make them. That is the same class of defect W53 §0 FIXED for
-   `$289F62` — and it is why §5's "the RNG did not move" is a statement about
+   `$289F62` - and it is why §5's "the RNG did not move" is a statement about
    the REFUSAL and not a proof of correctness.
 
 `$289084`, pool D's clear, IS ported: a pool that survives a reset it should not
@@ -319,7 +319,7 @@ is `50-recon` §4.3 item 6, and it is 20 bytes.
 
 ---
 
-## 5. THE SCORING, RE-MEASURED — the brief's "VERIFIED HAS A SHELF LIFE"
+## 5. THE SCORING, RE-MEASURED - the brief's "VERIFIED HAS A SHELF LIFE"
 
 W51 measured the ledger and W53 re-measured it; this wave changes what runs on
 every kill, so it was re-read rather than inherited. Same 1,500-frame tapped
@@ -336,7 +336,7 @@ window as W53 §4.4:
 [M] $803916 RNG state            $C2                 $C2
 ```
 
-**Every column identical, INCLUDING the RNG state — and that is the interesting
+**Every column identical, INCLUDING the RNG state - and that is the interesting
 one.** It is not vacuous: the intervention is demonstrably live (171 allocations
 and 5,537 display-list records over overlapping windows). It is unmoved because
 every death arm calls `scoreKill` BEFORE `jsr $289004`, and neither `$289004`
@@ -370,7 +370,7 @@ position += velocity's two word adds, the laser interlock three ways, the
 emitter range check and the 80-slot walk (M14–M32); the refusal's four
 instructions (M33–M36); the remap rows (M37–M38); seven call-site semantics
 including **type `$10`'s kind `$4`** and **type `$11`'s `$FFFF` disarm**
-(M39–M45); and the delivery — `TYPE5_PORTED`, the harvest extent, the boot
+(M39–M45); and the delivery - `TYPE5_PORTED`, the harvest extent, the boot
 shard, the fetch order and both exporter assertions (M46–M53).
 
 **FIVE OF MY OWN CHECKS COULD NOT FAIL WHEN FIRST WRITTEN, and so could the
@@ -387,14 +387,14 @@ were:
   agreed. There is one now, and it has its own test.
 * **the escape-tag test used `$FFFF` and `$8000` only**, neither of which
   separates `cmpi.w #$FFFF` from a high-byte test. A `$FF00` NUDGE case now does.
-* **three call-site semantics had no assertion at all** — type `$10`'s kind,
+* **three call-site semantics had no assertion at all** - type `$10`'s kind,
   type `$11`'s `$FFFF` disarm and the midboss's `A4`-vs-`A6` position. All three
   are the kind of thing a reviewer finds after shipping; the mutation cycle
   found them in twenty minutes.
 
 **AND ONE MUTANT WAS DEFECTIVE, recorded rather than quietly repaired.** M29's
 first form was `if (parityGate) { a6; continue; }` against `if (parityGate)
-continue;` — behaviourally identical, because the record's stepping is already
+continue;` - behaviourally identical, because the record's stepping is already
 ABOVE that line. It is aimed at hoisting the gate above the stepping now, which
 is the mistake it was supposed to model.
 
@@ -411,7 +411,7 @@ against the real ROM; each file was sha256'd byte-identical after.
 | the walk stops one entry early per table | `the effect scripts: walking 66 entries reaches $222618; this file says 68 entries ending at $222618. The $221520 ROM window in tools/export-tables.py is sized off the SAME number, so a short walk here ships a truncated script the port then reads past.` |
 
 **AND THE SECOND ONE EXISTS BECAUSE THE FIRST ATTEMPT DID NOT CATCH IT.**
-Shortening the declared window by 8 bytes originally exported cleanly — the walk
+Shortening the declared window by 8 bytes originally exported cleanly - the walk
 proved where the data ends and the `SHOT_WINDOWS` line beside it could still
 claim any length. `check_pool_b_extents` now compares the declared length
 against the walk, with both numbers out of variables.
@@ -423,7 +423,7 @@ with fire tapped every 4 frames: **shard 9 holds 269 streams**, the port's own
 `$800000` list carries **5,537 records of them** over **204 distinct images**,
 first at **frame 24**, all drawn, 0 pending, 0 with no art. `records`,
 `distinct` and `first` come out of the port's own emitter and no bundle can
-supply them — W47 §4.1's rule about a stage that agrees with itself.
+supply them - W47 §4.1's rule about a stage that agrees with itself.
 
 **AND W52's AND W53's NUMBERS DID NOT MOVE**, which is the evidence that pool B
 has no side effect on the weapons' trajectory: shots 22,107 / 20 / frame 1 and
@@ -431,18 +431,18 @@ bullets 4,387 / 32 / frame 98 and the spark 8,843 / 35 / frame 24, all `===`.
 
 ---
 
-## 7. THE PAGE, IN A REAL BROWSER — WHAT I SAW  [M]
+## 7. THE PAGE, IN A REAL BROWSER - WHAT I SAW  [M]
 
 Chrome + Python `playwright`, the recipe W42 established. Nothing downloaded.
 **Both servers were killed afterwards and [M] zero `python -m http.server` and
 zero `serve404.py` processes remain, and zero listeners on 8000/8125/8753/8754/
-8761/8762** — checked with `Get-CimInstance Win32_Process` and
+8761/8762** - checked with `Get-CimInstance Win32_Process` and
 `Get-NetTCPConnection`, not with `ps`, which does not see them on this machine.
 
 ### 7.1 **ENEMIES EXPLODE**
 
 **[M] Flying the ship UP into the tanks and tapping fire: BIG YELLOW-ORANGE
-FIREBALLS where the enemies were — a bright molten core with ragged flame edges
+FIREBALLS where the enemies were - a bright molten core with ragged flame edges
 and a spray of small yellow sparks thrown out of it, easily four times the size
 of the ship.** In one frame there are two of them side by side at the top of the
 screen, one directly over a green enemy that is mid-death; a few frames later
@@ -454,24 +454,24 @@ has too), the small white-hot impact sparks W53 added where a shot connects, the
 blue and pink enemy bullets, and the tanks' own bodies. The explosion is the
 only large object in the frame.
 
-**[M] THE CONTROL — the same seed with fire never pressed — has NO fireball on
+**[M] THE CONTROL - the same seed with fire never pressed - has NO fireball on
 any sample**, at boot, at +3 s or at +6 s: tanks with bodies rolling down the
 road, enemy bullets, the ship's exhaust, and nothing else. That is the same
 shape as §2's measurement: 171 allocations with fire and 0 without.
 
-`spr 10/10` on the status line at every sample — all ten sprite shards land —
+`spr 10/10` on the status line at every sample - all ten sprite shards land -
 and **not one address the page names is an effect stream.** The remaining
 `NO ART` list is W47/W52's own leftovers (`$233F34`, `$22DA70`, `$22DED4`,
 `$12D430`, `$12CF80`, `$12D0AC`, `$172D18`) plus **`$22C5C0`**, which is a row of
-the table at `$278338` — the four stream addresses immediately after the
-`$278320` remap this wave exports — and belongs to a producer this wave did not
+the table at `$278338` - the four stream addresses immediately after the
+`$278320` remap this wave exports - and belongs to a producer this wave did not
 touch. Named rather than swept in.
 
-### 7.2 THE FAILURE MODE, SEEN — and it names the shard by what it IS
+### 7.2 THE FAILURE MODE, SEEN - and it names the shard by what it IS
 
 Served with `spr/*.shard9.u16.gz` held back, the page **booted normally
 (`spr 9/10`), ran the whole no-fire window for six seconds with no error at all,
-and then stopped at logic frame 2886 — the first frame an enemy died — with:**
+and then stopped at logic frame 2886 - the first frame an enemy died - with:**
 
 ```
 AN ASSET IS MISSING OR BROKEN.
@@ -486,7 +486,7 @@ dies. -- and a record has asked for one of them.
 ```
 
 **That is the check that can only pass for the right reason**: the page itself
-saying, unprompted, that an effect record exists and is asking for art — and
+saying, unprompted, that an effect record exists and is asking for art - and
 saying it on the exact frame the simulation first needs it, six seconds after
 boot, not at boot. `demand()` raised it from inside that frame, which is
 `BgShards`' contract (W47 §2.2) still holding for a shard built seven waves
@@ -513,13 +513,13 @@ REFUSING TO BUILD: dist/ contains verbatim cartridge data.
 ```
 
 W47 §3's finding, one shard on: [M] the 269 effect streams lie in one long
-CONSECUTIVE run of `cave_a04402w064.u8` — a **different colour ROM** from the
-three W47 hit — so the packed shard is a single verbatim slice. **The property
+CONSECUTIVE run of `cave_a04402w064.u8` - a **different colour ROM** from the
+three W47 hit - so the packed shard is a single verbatim slice. **The property
 this guard tests is PACKING ORDER, not provenance**, and reordering the blocks
 to make it quiet would be gaming it. W47's four answers, in its own order:
 not an intermediate (`SprShards` fetches it); the COPY-that-should-be-a-
 TRANSLATION is real and is a wave (decode the colour half, [M] −9.7 % gz,
-`41-recon` §2.2 — it would retire all five lines); a SUBSTITUTE for 269 frames
+`41-recon` §2.2 - it would retire all five lines); a SUBSTITUTE for 269 frames
 of explosion is a different game; so it is `PUBLISH_VERBATIM`, with its reason,
 printed on every build.
 
@@ -539,17 +539,17 @@ Unchanged from W32..W53's 49/0/0. **Nothing was disabled, skipped, narrowed or
 loosened**, and every stage line was read rather than only the verdict. The ones
 this wave could plausibly have broken, all green:
 
-- `display list: the staged-bytes replay gate (1,901 frames)` and its 12 REDs —
+- `display list: the staged-bytes replay gate (1,901 frames)` and its 12 REDs -
   the port's own `$800000` build, still byte-exact against the board. **Buckets
   0, 1, 2, 3 and 7 are not in `PRODUCED_BUCKETS`**, so pool B's writes do not
   enter the substituted set;
 - `bullet mover: per-frame pool drive vs the board` and its 3 REDs;
-- `fly-around: port vs board, 0 divergent frames` and its 5 REDs — the only
+- `fly-around: port vs board, 0 divergent frames` and its 5 REDs - the only
   2,200-frame port-vs-board window this project has. It never fires, so nothing
   dies and no effect can spawn; its green says this wave changed nothing on the
   no-input path, which is exactly what §2's 4,200-frame control predicts;
 - `assets/integrity` and its four REDs, **including `[rom-byte]`**;
-- `background shard gate: published tiles past px 160 (+ RED)` — the stage that
+- `background shard gate: published tiles past px 160 (+ RED)` - the stage that
   fresh-exports, i.e. the one the exporter change had to survive;
 - `pixel gate` (100.0000 %) and its 9 REDs; `demo gate` and its 4.
 
@@ -567,7 +567,7 @@ BUNDLE                              476.1 KiB before the first frame (was 472.0)
 **THE GATE WAS RUN TWICE AND THE SECOND RUN IS THE ONE QUOTED**, for W47's own
 reason: the first came back ALL GREEN but `tools/build-dist.mjs` gained its
 fifth `PUBLISH_VERBATIM` entry afterwards. No gate stage reads that file, so the
-first run was almost certainly still valid — and "almost certainly" is what W47,
+first run was almost certainly still valid - and "almost certainly" is what W47,
 W52 and W53 each threw a run away over.
 
 **AND THE COMMITTED TREE IS A FEW LINES AHEAD OF THE ONE THE SECOND RUN SAW,
@@ -580,13 +580,13 @@ glossed, because "only a comment" is exactly the sentence a wave regrets.
 
 ---
 
-## 8. COVERAGE — branches and table entries, never frames
+## 8. COVERAGE - branches and table entries, never frames
 
-* **`$289004`'s call sites: 27 of 327 wired**, through 25 transcriptions — the
+* **`$289004`'s call sites: 27 of 327 wired**, through 25 transcriptions - the
   damage-first family's three (`$26A616`/`$26A882`/`$26AD4A`) are the same
   instructions at three addresses and are written once, as `damageFirstHead`
   already is. **[M] 18 of the 27 are REACHED** in the 2,192-frame tapped run,
-  over 22 distinct (kind, site) pairs — `$26B1E4` alone appears with five kinds
+  over 22 distinct (kind, site) pairs - `$26B1E4` alone appears with five kinds
   because it walks the `$26B214` list.
   The other 300 are in handlers, bosses and `$2440E0` this port does not run;
   every one is behind an existing loud named throw or an unported handler, not
@@ -597,12 +597,12 @@ glossed, because "only a comment" is exactly the sentence a wave regrets.
   ported arms can pass. The other 23 belong to arms this port does not run.
 * **`$288FF0`'s emitter table: 5 of 5 entries EXPORTED AND ALL FIVE EXECUTED.**
   [M] over the 2,192-frame tapped run the five buckets carry 31,708 / 1,152 /
-  4,926 / 15,195 / 3,457 records — selectors 0, 4, 8, `$C` and `$10` — so no
+  4,926 / 15,195 / 3,457 records - selectors 0, 4, 8, `$C` and `$10` - so no
   entry is transcribed-and-unexercised.
 * **`$288E20`'s two escape arms: BOTH exercised.** [M] the 23 distinct scripts
   contain **31 SIZE escapes and 27 NUDGE escapes**, and nine of the eleven
   reached kinds carry at least one nudge (`$3 $4 $5 $7 $9 $C $D $84 $85`; only
-  `$1` and `$2` have none). **I nearly shipped the opposite claim** — the arm
+  `$1` and `$2` have none). **I nearly shipped the opposite claim** - the arm
   looked unexercised because no LIST OPENS with it, and it appears in the middle
   of a list instead. Counted rather than assumed, which is the whole rule.
 * **transcribed and unexercised, named:** `$28900E`'s `blt` (provably
@@ -621,7 +621,7 @@ glossed, because "only a comment" is exactly the sentence a wave regrets.
 ## 9. WHAT THIS WAVE DID NOT DO
 
 - **Nothing is compared against MAME.** §7.3.
-- **POOL D IS REFUSED, not ported.** §4 — and with it the secondary debris and
+- **POOL D IS REFUSED, not ported.** §4 - and with it the secondary debris and
   six RNG draws per sub-spawn.
 - **`$2440E0` (E5c) is not ported.** It is now a ~30-line port (it calls
   `$288E0C` and then `$289004` 39 times off the 624-byte table `$244ACE`, all
@@ -629,14 +629,14 @@ glossed, because "only a comment" is exactly the sentence a wave regrets.
   could not attribute its only non-boss caller `$275D10` and every other caller
   is a boss.
 - **The impact pool A (`$27F8F8`/`$27F95A`) is untouched**, as W52 §0.2 left it.
-- **`$289AF4`** — the "D0=$4 secondary" two death arms call — is still a counted
+- **`$289AF4`** - the "D0=$4 secondary" two death arms call - is still a counted
   note. It is a different allocator over a different pool.
 - **The `$28Cxxx` family (`$28C25A`, `$28C274`, `$28C2A8`, `$28C2DC`,
   `$28C310`) is still counted.** W53 §0 established that family is SOUND.
 - **`$22C5C0` has no art**, and it is not this wave's: it is a row of the table
   at `$278338`. §7.1.
 - **`$26C1C4` is still the wall.** A tapped run reaches it at step 2,192,
-  unchanged from W53 — this wave moves no RNG (§5).
+  unchanged from W53 - this wave moves no RNG (§5).
 - **Nothing was published.** The bundle on disk is the one that would ship;
   `tools/publish.mjs` deploys all three games and the deploy is the
   orchestrator's call.
@@ -647,7 +647,7 @@ glossed, because "only a comment" is exactly the sentence a wave regrets.
 ## LOG (appended as findings arrive)
 
 - opened.
-- §0.1 [M]: **recon 50's pool-B numbers reproduce EXACTLY** — 68 entries, 23
+- §0.1 [M]: **recon 50's pool-B numbers reproduce EXACTLY** - 68 entries, 23
   scripts, 269 streams, 0 of 269 in the sheet, 218.4 KiB gz for all of them and
   195.8 KiB for its eight kinds, and both pool clears closing on their count word.
 - §0.2 [M]: **SEVEN corrections.** The port's ported arms pass ELEVEN kinds and

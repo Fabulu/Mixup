@@ -1,5 +1,5 @@
-# WAVE 5 REVIEW — enemies and the three weapons (commit 3fd078c)
-status: DONE — defects found, none blocking; the wave's own BLOCKED status is honest
+# WAVE 5 REVIEW - enemies and the three weapons (commit 3fd078c)
+status: DONE - defects found, none blocking; the wave's own BLOCKED status is honest
 wave: 5   role: review   started: 2026-08-01
 
 ## The task, as I understood it
@@ -66,14 +66,14 @@ POKE $0B40 / $0B70 / $0BB8   $10A4 / $10D4 / $111C, full=0
 ```
 
 Identical to the worklog, digit for digit. The command's own refusal to read
-`d_ram`/`d_spr`/`pix` as evidence is real — I checked the code path, it prints
+`d_ram`/`d_spr`/`pix` as evidence is real - I checked the code path, it prints
 those columns as "moved" and then explicitly says the only claim is that
 `$23D75A` executed and the machine survived.
 
 ### The recon: re-run with my own driver, reproduces exactly
 
 The wrappers the worklog cites (`.../w5/hunt.py`, `.../w5/recon.py`) are **not
-in the tree** — only `w5recon.lua` is committed. I wrote my own driver in the
+in the tree** - only `w5recon.lua` is committed. I wrote my own driver in the
 scratchpad from the lua's ENV contract plus `scenarios.json`'s `stage1-open`
 script (`bootPrefix.versionB + ";" + tail`, 2600 frames, `W5_REQUIRE_BUILD=B`):
 
@@ -105,18 +105,18 @@ bsr sites targeting $23D726: 29
   $23D3EC $23D400 ... $23D61A
 ```
 
-### Listing spot-checks — every cited address matches the image
+### Listing spot-checks - every cited address matches the image
 
 `$263502..$263582` (enemy driver), `$2636D6..$263752` (enemy allocator),
 `$2410BC..$2410F0` (object driver head: `bsr $241262` then `bsr $24111E`, in
-that order — the port's `commitKills` then `commitCreates` is right),
+that order - the port's `commitKills` then `commitCreates` is right),
 `$2410F2`/`$24110A` (the memmoves), `$24111E..$241180`, `$241182..$2411E0`,
 `$2411E2..$241236`, `$241238..$241290`, `$253A70..$253ADC` + the 16-entry table
 at `$253ADE`, `$249B2C..$249BF8` (including the `bra $249BFC` / `bra $249D2C`
 jump table and the `$249CA8`/`$249CEA` free-slot failure), `$23BE8C..$23BEE8`
 (the three masks), `$23D726..$23D760`, `$23D762..$23D79C`, `$23D65E` clamp,
 `$28B5E0` (type 5), dispatch table `$240F62` (entry [5] = `$28B5E0` pri `$18`;
-types 10/2/1/5/11/4/0 map to priorities 1F/1C/1A/18/0A/09/09 — the census
+types 10/2/1/5/11/4/0 map to priorities 1F/1C/1A/18/0A/09/09 - the census
 matches).
 
 **Fall-through trap: nothing claims a false end.** `$263582 rts`,
@@ -175,17 +175,17 @@ converted back to LF, which is what reproduces the pre-review hashes.)
    governor `$23C272` reads `$815EA0` (`$23C27A`), `$81295C`, `$81295E`. The
    wrong attribution is now in `NOTES-machine.md`.
 3. `enemies.js` hoists the `$813176` read out of the per-enemy loop; the ROM
-   re-reads it at `$263528` inside the loop. (`weapons.js` hoists correctly —
+   re-reads it at `$263528` inside the loop. (`weapons.js` hoists correctly -
    `$253A76` really is outside its loop.)
 4. "type 5 is 15 subsystem calls" does not reproduce: 23 consecutive `jsr`s at
    `$28B5E6..$28B66A`.
 5. `NOTES-machine.md`: "poking `$0A80` or higher ... the equality guard is
-   stepped over entirely" — at `$0A80` it fired 31 times, in the same run.
+   stepped over entirely" - at `$0A80` it fired 31 times, in the same run.
 6. The recon wrappers are not committed; `ctx.allocEvent?.()` re-introduces
    silence for a caller that omits the callback; `src/main.js`'s `77,725 cyc` /
    `15,594 cyc` still carry no "MAME-timed, uncalibrated" label.
 
-## ENVIRONMENT — the shared git index is dangerous right now
+## ENVIRONMENT - the shared git index is dangerous right now
 
 Not caused by this wave and not fixed by me:
 

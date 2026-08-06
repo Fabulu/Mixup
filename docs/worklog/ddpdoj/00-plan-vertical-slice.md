@@ -10,7 +10,7 @@ assume, falsified inherited claims marked, oracle as wave 1, waves sized for one
 implementer each with measurable done-when conditions, the slowdown/rank
 architecture consequences, a deliberately-excluded section, honest risks.
 Then commit the plan, the five recon worklogs, `NOTES-versions.md`, and the
-tools the recons left under `games/ddpdoj/` — staged BY NAME, diff read before
+tools the recons left under `games/ddpdoj/` - staged BY NAME, diff read before
 committing, nothing ROM-derived.
 
 ## What I did
@@ -21,7 +21,7 @@ committing, nothing ROM-derived.
 - Verified the git state before staging anything:
   - branch is `main` (the "Current branch: HEAD" in my briefing snapshot was
     stale; `git branch --show-current` → `main`, and HEAD had already moved to
-    `21c6672` — the concurrent workflow is committing live).
+    `21c6672` - the concurrent workflow is committing live).
   - `git check-ignore -v` on the ROM-derived paths:
     `games/ddpdoj/rip/...` → ignored by root `.gitignore:29:rip/`;
     `games/ddpdoj/tools/hard/out/maincpu_ddpdojblk.bin` (the decrypted 68000
@@ -29,7 +29,7 @@ committing, nothing ROM-derived.
     So staging the tool directories by name cannot pick up ROM bytes.
 - Wrote `games/ddpdoj/PLAN-vertical-slice.md`.
 - Fixed the one sentence in `games/ddpdoj/NOTES-machine.md` that recon 3
-  measured to be backwards (sprite draw order), as a dated correction — per
+  measured to be backwards (sprite draw order), as a dated correction - per
   worklog rule 5, a known-false doc does not get left behind.
 
 ## Key synthesis decisions (and why)
@@ -39,7 +39,7 @@ committing, nothing ROM-derived.
    (VERSION-A = 2002.04.05 Master). Recon 1's oracle landmarks and recon 2's
    player facts are VERSION-A numbers. The plan therefore makes "pin VERSION-B
    and re-derive every landmark on it" part of wave 1, not an afterthought.
-2. **Oracle recon came back DONE, so the project is not blocked** — wave 1 is
+2. **Oracle recon came back DONE, so the project is not blocked** - wave 1 is
    consolidation (three parallel harnesses exist: `tools/oracle/`, `tools/` +
    `probes/`, `tools/hard/`), not bring-up. Its named open items (RTC,
    flag bisection, savestate phase byte, pixel layer) are wave-1 exit criteria.
@@ -55,12 +55,12 @@ committing, nothing ROM-derived.
    measurements: the ISR drops some of ITS work on overrun, the main loop
    dilates. The port's ISR model must carry the gate; the loop model dilates.
 5. **Excluded-with-reasons section names sound, stage 2+, TYPE-B, dynamic-rank
-   coverage, slowdown magnitude, and the sprite-cap behaviour** — each with the
+   coverage, slowdown magnitude, and the sprite-cap behaviour** - each with the
    measurement that is missing, so silence cannot be read as coverage.
 
 ## What I MEASURED
 
-Nothing new about the game — this is a synthesis role. Git facts measured above
+Nothing new about the game - this is a synthesis role. Git facts measured above
 (branch, ignore rules). Staged file list captured below before committing.
 
 ## What I could not do, and why
@@ -68,7 +68,7 @@ Nothing new about the game — this is a synthesis role. Git facts measured abov
 - Could not re-run any recon number; I marked every number in the plan with the
   worklog it came from so it stays checkable.
 - Did not stage `games/ddpdoj/NOTES-slowdown-oracle.md` (modified in the tree)
-  or `docs/knowledge/*` — they are another workflow's edits, not named in my
+  or `docs/knowledge/*` - they are another workflow's edits, not named in my
   commit list.
 - `games/ddpdoj/rip/.gitignore` cannot be committed (it is itself inside the
   ignored `rip/` tree); the root `rip/` rule is what protects the repo, noted in

@@ -1,7 +1,7 @@
-# RECON 10 — game flow: stage structure, death, respawn, continue, loop-2 gate
+# RECON 10 - game flow: stage structure, death, respawn, continue, loop-2 gate
 
 status: **DONE on the mode machine, death, lives, respawn, score and the stage
-script — BLOCKED on the loop-2 decision routine and BLOCKED on the bees**, with
+script - BLOCKED on the loop-2 decision routine and BLOCKED on the bees**, with
 the measurements that say so in §11. Two 7,000-frame VERSION-B runs, both
 `fails=0`, `frames_on_required=6301`.
 wave: 10   role: recon   started: 2026-08-01
@@ -18,7 +18,7 @@ build-A-ISR exception does not apply to any line in this file.
 
 1. the stage/mode state machine on VERSION-B; stage start and stage end
 2. player death, explosion, respawn; lives
-3. the CONTINUE path (this is a coin-op — the oracle can use it)
+3. the CONTINUE path (this is a coin-op - the oracle can use it)
 4. the loop-2 decision routine and the counters it reads
 5. the bees: 10 per stage, laser-revealed, cross-stage carry
 
@@ -39,7 +39,7 @@ python games/ddpdoj/tools/flowrecon.py snaps 7000 "" 500     (new, this wave)
 python games/ddpdoj/tools/flowrecon.py watch "<18 columns>" 7000
 python games/ddpdoj/tools/oracle/xref.py dasm|abs|lea|ptrtable   (many)
 plus three ad-hoc scanners over out/maincpu.bin (opcode-form write scan,
-  PC-relative bsr/jsr scan, allocation-site scan) — inline in this log
+  PC-relative bsr/jsr scan, allocation-site scan) - inline in this log
 ```
 
 `games/ddpdoj/tools/flowrecon.py` is new and is a thin wrapper over
@@ -49,7 +49,7 @@ It adds no oracle of its own.
 
 ---
 
-## 1. THE TOP-LEVEL MODE MACHINE — `$812E56`, 15 modes, driver `$25A770`
+## 1. THE TOP-LEVEL MODE MACHINE - `$812E56`, 15 modes, driver `$25A770`
 
 The main loop's own init (`$23BFCC`) allocates **object type 8** and writes
 `($4,A0) = $D`:
@@ -58,7 +58,7 @@ The main loop's own init (`$23BFCC`) allocates **object type 8** and writes
 23bfcc: move.w #$8,D0 / jsr $241182 / move.w #$d,($4,A0)
 ```
 
-Type 8 is dispatch entry [8] of the 20-entry object table — and the table's
+Type 8 is dispatch entry [8] of the 20-entry object table - and the table's
 stride is **8, not 4** (`$2410D4 lsl.w #3,D1`). Re-derived here because a
 stride-4 read doubles every index:
 
@@ -100,20 +100,20 @@ stride is right.
 
 | mode | handler | what it is | next |
 |---|---|---|---|
-| 0 | `$25A8AE` | the ENTER path (adopt `($4,A5)`) | — |
+| 0 | `$25A8AE` | the ENTER path (adopt `($4,A5)`) | - |
 | 1 | `$25A8E6` | `$25BBB4`/`$25BD7C` | 5 |
 | 2 | `$25A912` | `$25B3DC`/`$25B412`, palette `$222638` | $C |
-| 3 | `$25A94A` | **credits inserted, waiting for START** (calls the start check itself) | — |
-| 4,6,7,8,10,11 | `rts` | **unused — no handler at all** | — |
+| 3 | `$25A94A` | **credits inserted, waiting for START** (calls the start check itself) | - |
+| 4,6,7,8,10,11 | `rts` | **unused - no handler at all** | - |
 | 5 | `$25A97C` | `$25C592`/`$25C6D4` | respawns the director as mode 2 |
 | 9 | `$25A9E6` | `$25C3E8`/`$25C424` | 1 |
 | 12 | `$25AA10` | `$25C2AE`/`$25C2EA` | 9 |
 | 13 | `$25ABF6` | **the "FOR USE IN JAPAN ONLY" warning**, text at `$25AA36`, `($4,A5)=$12C` = 300-frame timer | 2 |
-| 14 | `$25AC92` | **START THE GAME**: `$24107C`, then allocate **type 9** with `($4,A0) = $812E5A` | — |
+| 14 | `$25AC92` | **START THE GAME**: `$24107C`, then allocate **type 9** with `($4,A0) = $812E5A` | - |
 
 The attract cycle is therefore `2 → C → 9 → 1 → 5 → 2 → …`, mode 3 is the
 credits-inserted screen and mode $E is the one-frame launcher. A string
-`"DODONPACHI 3"` sits at `$25A8D8`, inside this routine's data — a useful
+`"DODONPACHI 3"` sits at `$25A8D8`, inside this routine's data - a useful
 landmark that says you are in the right object.
 
 `$25ACAC` (the start/credit check) is worth writing out because it is the
@@ -133,7 +133,7 @@ CONTINUE-adjacent code path:
 So `$23C98E`/`$23C9F0` are **the credit consumers** and `$23C956`/`$23C932` the
 credit readers. Those four are the oracle's coin-op levers.
 
-## 2. THE SELECT/INTRO DIRECTOR — object type 9, `$25CACA`, players at `$812EA0`
+## 2. THE SELECT/INTRO DIRECTOR - object type 9, `$25CACA`, players at `$812EA0`
 
 Two player blocks, **`$812EA0` and `$812F10`, stride `$70`**, walked by
 `dbra D7` with D7=1 (`$25CADE`..`$25CBFE`).
@@ -163,11 +163,11 @@ Two player blocks, **`$812EA0` and `$812F10`, stride `$70`**, walked by
 | 5 | `$25D39C` | erase "DOLL SELECT" (`$25D3EA`) | → 6 |
 | 6 | `$25D4F0` | start the intro | → 7 |
 | 7 | `$25D560` | the intro animation, `($32,A6)` frame counter | → 8 |
-| 8 | — | done |
+| 8 | - | done |
 
 When **both** players are in state 8 (`$25CC12`/`$25CC28`), `($2,A5)=2` and the
-next dispatch takes `$25CAC2: jmp $241292` — the director **deletes itself**.
-Before that, `$25CA78` has allocated **object type 10 with `($4,A0)=0`** — the
+next dispatch takes `$25CAC2: jmp $241292` - the director **deletes itself**.
+Before that, `$25CA78` has allocated **object type 10 with `($4,A0)=0`** - the
 real game. `$25CBB8`/`$25CBE6` are the **mid-game join**: START pressed while
 `(A6)==0` consumes a credit and sets `(A6)=1`.
 
@@ -175,7 +175,7 @@ MEASURED: `flow_lf001250.png` is the PLAYER SELECT screen with a **`599`**
 readout, which is `($2E,A6)=$0599` on the glass. That is the confirmation that
 this block is what I think it is.
 
-## 3. THE GAME DIRECTOR — object type 10, `$260794`
+## 3. THE GAME DIRECTOR - object type 10, `$260794`
 
 Init `$2605C8`:
 
@@ -193,7 +193,7 @@ Init `$2605C8`:
 25fd0c: move.w D0,$813092 / add D0,D0 -> $813094 / add D0,D0 -> $813096
 ```
 
-**`$813092` = the STAGE INDEX** (`$813094` = ×2, `$813096` = ×4 — the two
+**`$813092` = the STAGE INDEX** (`$813094` = ×2, `$813096` = ×4 - the two
 pre-scaled table indices). An opcode-form scan of the whole build-B range for
 every write form to `$00813092` finds **exactly one**: `$25FD0C`. And a
 PC-relative `bsr/jsr(d16,PC)` scan finds exactly one caller of `$25FD0C`:
@@ -207,10 +207,10 @@ computation `$2608D2`, `$288610` (the continue/game-over banners, §6).
 `$81315C` indexed by `$813092`, adds `$8130C6 >> 8` (the game frame counter),
 adds a term from `$81B646`/`$81B648`, and stores the result in **`$81309E`**,
 clamped. `$2608A0` picks the table from the operator rank byte `$80380C`
-(wave 2's finding, re-read here, unchanged) — the two tables are at `$260886`
+(wave 2's finding, re-read here, unchanged) - the two tables are at `$260886`
 (longwords) and `$260896` (words).
 
-## 4. DEATH, LIVES, RESPAWN — the life machine at `$8130FA`, driver `$25FF7A`
+## 4. DEATH, LIVES, RESPAWN - the life machine at `$8130FA`, driver `$25FF7A`
 
 ```
 25ff7a: lea $8130FA,A6 / moveq #$1,D7
@@ -241,16 +241,16 @@ The parameter table is at `$25FE22`, copied by `$25FE42`:
 
 | state | handler | what |
 |---|---|---|
-| 0 | — | idle (`(A6)==0` skips dispatch entirely) |
+| 0 | - | idle (`(A6)==0` skips dispatch entirely) |
 | 1 | `$25FFA8` | **THE MISS** |
-| 2 | `$260056` | **out of stock — game over / continue** |
+| 2 | `$260056` | **out of stock - game over / continue** |
 | 3 | `$26010E` | spawn with a fresh stock from the DIP |
-| 4 | `$2601F4` | **CONTINUE** — reload the stock and respawn |
-| 5 | `$2602B6` | — |
-| 6 | `$260348` | — |
-| 7 | `$26035A` | — |
-| 8 | `$26037C` | — |
-| 9 | `$2603B0` | — |
+| 4 | `$2601F4` | **CONTINUE** - reload the stock and respawn |
+| 5 | `$2602B6` | - |
+| 6 | `$260348` | - |
+| 7 | `$26035A` | - |
+| 8 | `$26037C` | - |
+| 9 | `$2603B0` | - |
 
 State 1, verbatim, because this is the whole death mechanism:
 
@@ -270,7 +270,7 @@ State 1, verbatim, because this is the whole death mechanism:
 ```
 
 So a MISS is `subq.w #1` on `$8130BE`, and **the stock is "lives remaining"
-with -1 meaning exhausted** (`bpl` — 0 is still playable).
+with -1 meaning exhausted** (`bpl` - 0 is still playable).
 
 The **stock size is the operator DIP `$80380E`** through a 5-entry word table at
 `$2600CE`:
@@ -280,7 +280,7 @@ The **stock size is the operator DIP `$80380E`** through a 5-entry word table at
 26010e: move.b $80380E,D0 / add D0,D0 / lea ($2600CE,PC),A1 / move.w (A1,D0),(A0)
 ```
 
-`$2601F4` (state 4) does the same load, **except**: `tst.w $813098 / beq` — in
+`$2601F4` (state 4) does the same load, **except**: `tst.w $813098 / beq` - in
 loop 2 the stock comes from `$8130C2` (P1) / `$8130C4` (P2) instead, and
 `$28EF38` is what fills those: `move.w $8130BE,$8130C2` when `$813098 == 0`.
 **The lives you finish loop 1 with are the lives you start loop 2 with.**
@@ -289,10 +289,10 @@ loop 2 the stock comes from `$8130C2` (P1) / `$8130C4` (P2) instead, and
 
 `$25FD94` counts how many of the two `($18,A6)` pointers are non-zero into
 `$81308C`, mirrors it to `$81308E`, and sets `$8130D2` when `$81308E == -1`
-(no ship on screen at all) — `$8130D2` gates the game-frame counter `$8130C6`
+(no ship on screen at all) - `$8130D2` gates the game-frame counter `$8130C6`
 and the `$8130D4` countdown at `$2607B2`.
 
-## 5. THE SCORE — `$81B440`, 9 BCD digits, and the EXTEND
+## 5. THE SCORE - `$81B440`, 9 BCD digits, and the EXTEND
 
 `$2842B0` is the score accumulator and it runs both players:
 
@@ -319,7 +319,7 @@ and the `$8130D4` countdown at `$2607B2`.
 | extend threshold | `$81B4AC` (l) | `$81B4B0` (l) |
 | extend index | `$81B4B4` (w) | `$81B4B6` (w) |
 
-**Nine digits is 999,999,999 — so the reported 350,000,000 loop-2 threshold
+**Nine digits is 999,999,999 - so the reported 350,000,000 loop-2 threshold
 does fit this representation.** A four-byte-only score would not have.
 
 The staging routine `$249EE8` (in the player object) copies `$8128F6` (P1) /
@@ -332,7 +332,7 @@ gated by `$80392C`, `$8130F8` bit 0, `$81309C`, `(A6)` bit 6, `$812914`/
 249f3c: addq.l #4,A0 / addq.l #4,A1 / sub.w D2,D2 / abcd x4
 ```
 
-**In loop 2 the pending increment is added a SECOND time — score is doubled.**
+**In loop 2 the pending increment is added a SECOND time - score is doubled.**
 
 ## 6. THE LOOP FLAG `$813098`, and the only two instructions that write it
 
@@ -369,16 +369,16 @@ STAGE  1  STAGE  2  STAGE  3  STAGE  4  STAGE  5  STAGE  E
 STAGE R1  STAGE R2  STAGE R3  STAGE R4  STAGE R5  STAGE RE
 ```
 
-So the game's own view of its structure is **six stages per loop — five
-numbered plus "E" — and two loops, the second labelled "R"**. `$2429C4` is the
+So the game's own view of its structure is **six stages per loop - five
+numbered plus "E" - and two loops, the second labelled "R"**. `$2429C4` is the
 stage starter: it sets `$8130F8` bit 3, clears bit 4, sets `$812972 = 1`, and
-allocates **object type 6 with `($4,A0) = D7`** — the stage script.
+allocates **object type 6 with `($4,A0) = D7`** - the stage script.
 
 **This is the single most useful thing in this log for the corpus.** It is a
 built-in warp to any stage of either loop, it needs no skill, and it writes the
 loop flag itself.
 
-## 7. THE CONTINUE / GAME-OVER BANNERS — `$81B706`, driver `$288610`
+## 7. THE CONTINUE / GAME-OVER BANNERS - `$81B706`, driver `$288610`
 
 ```
 288610: lea $81B706,A4 / moveq #$1,D7
@@ -395,7 +395,7 @@ directly; `$2885C6` maps state 1→2 and 3→4 (the "accepted / expired"
 transitions). `$288574` clears both blocks and is called from the type-10 init.
 
 `$28D53C` (`tst.w $81DF20`, carry if non-zero) gates both the continue banner
-and the debug warp — the same interlock.
+and the debug warp - the same interlock.
 
 Related strings, all present in build B: `"      CONTINUE REQUIRES     "`
 `$25AE1A`, `" GAME OVER    "` `$288DC8`, `"    PRESS 1P OR 2P START    "`
@@ -426,7 +426,7 @@ That is the cheapest death scenario this project has, and it costs one run.
 
 ---
 
-## 9. THE MEASUREMENT — every claim above, checked against the board
+## 9. THE MEASUREMENT - every claim above, checked against the board
 
 `python games/ddpdoj/tools/flowrecon.py watch "<18 cols>" 7000`, VERSION-B,
 `BOOT_B` only (**no input at all after START**), 7,000 logic frames.
@@ -466,10 +466,10 @@ lf     mode  join  p1blk  stage loop liv1   lst1  alive alldead cont
 1. `$812E56` is the mode word and its values are 0 → 13 → 2 → 3 → 14. The
    warning screen (13) really is the first mode.
 2. `$812E5A` = the join mask; it reads `$0100` as a word because it is a
-   **byte** — P1 = `$01`. So a port must not treat `$812E5A` as a word.
+   **byte** - P1 = `$01`. So a port must not treat `$812E5A` as a word.
 3. `$812EA0` (byte) = joined, `$812EA1` (byte) = the select state, and the
    sequence 0 → 1 → 3 → 4 → 7 → 8 is exactly the table in §2 (states 2, 5 and 6
-   last less than one logic frame and never appear at the sample point — a port
+   last less than one logic frame and never appear at the sample point - a port
    that only ever samples once per frame will never see them, which is worth a
    named test).
 4. `$8130BE` = **lives**, `2 → 1 → 0 → $FFFF` over three deaths.
@@ -479,11 +479,11 @@ lf     mode  join  p1blk  stage loop liv1   lst1  alive alldead cont
    frame after a spawn.
 6. `$81308C` = ships alive, `$8130D2` = "nobody on screen".
 7. **The continue window is `lf 5388 .. 6199` = 812 logic frames ≈ 13.7 s.**
-8. `$8130CC` stayed 0 for the whole run — nobody continued.
+8. `$8130CC` stayed 0 for the whole run - nobody continued.
 9. `$813092` (stage) and `$813098` (loop) stayed 0, consistent with never
    leaving stage 1 of loop 1.
 10. Independently, the snapshot run's `flow_lf006750.png` shows the title with
-    `CREDITS:1` — two separate runs, same conclusion.
+    `CREDITS:1` - two separate runs, same conclusion.
 
 **And the mode machine dies when the game starts.** `$25AC92` (mode $E) calls
 `$24107C`, which is a **destroy-every-object**: it zeroes all 20 type words,
@@ -493,7 +493,7 @@ exactly once and `$812E56` sits at 14 as a **stale value for the entire game**.
 It is the object table, not the mode word, that carries the state during play.
 A port that drives gameplay off `$812E56` will be driving off a corpse.
 
-## 10. THE STAGE SCRIPT — object type 6, `$28D63C`, `($6,A5)` sub-state
+## 10. THE STAGE SCRIPT - object type 6, `$28D63C`, `($6,A5)` sub-state
 
 `$2429C4` (the stage starter, called from the debug warp) ends in
 `move.w #$6,D0 / jsr $241182 / move.w D7,($4,A0)`. Type 6 is `$28D63C`:
@@ -522,7 +522,7 @@ stage index advances.
 
 `$81DF20` is 1 while a stage script is live. `$28D53C` returns CARRY when
 `$81DF20 != 0`, and **both** the continue banner (`$28864C`) and the debug
-stage warp (`$259DA6`) are gated on it — the same interlock, two users.
+stage warp (`$259DA6`) are gated on it - the same interlock, two users.
 
 `$28D5FA` is the big teardown: `$24631C`, `$24107C` (destroy everything),
 `$28D552`, `$27F8C4`, `$287DDC`, `clr.w $8130F8`, `$25313E`, `$25318E`,
@@ -543,17 +543,17 @@ stage warp (`$259DA6`) are gated on it — the same interlock, two users.
   ninth, capped at 9 with `$99999999`. A port with a 32-bit BCD score cannot
   represent the reported 350,000,000 threshold; this one can.
 * **`$812EA0+$56` is not the running score.** It is initialised to `$FFFFFFFF`
-  and the watch shows it holding `$36000066`-shaped values during the intro —
+  and the watch shows it holding `$36000066`-shaped values during the intro -
   it is reused as animation state. The running score is `$81B440`.
 * **Object dispatch stride is 8, not 4.** Re-derived from `lsl.w #3,D1`.
 * **`$803808 == $12`** gates the start check at `$25A796`; I did not identify
   what `$803808` is, only that the check exists.
 
-**Could NOT reach — measurement proves presence, only the listing proves
+**Could NOT reach - measurement proves presence, only the listing proves
 absence, so these are gaps in MY work, not statements about the cartridge:**
 
 1. **THE BEES. Not found at all.** What I tried: (a) a full ASCII sweep of
-   `$230000-$290000` for `BEE`/`PERFECT`/`BONUS`/`SPECIAL` — the sweep found
+   `$230000-$290000` for `BEE`/`PERFECT`/`BONUS`/`SPECIAL` - the sweep found
    the stage names, the service menu, `CONTINUE`, `GAME OVER`, `FIGHTER
    SELECT`, `DOLL SELECT` and the two `NO EXTEND` strings, and **no bee string**
    (which proves nothing: the bee is a sprite, not text); (b) the constant hunt
@@ -569,15 +569,15 @@ absence, so these are gaps in MY work, not statements about the cartridge:**
    are typical: all inside index tables of consecutive small integers). So
    **there is no plain `cmpi` against 350,000,000 anywhere in this ROM.** That
    is evidence against the "≥350,000,000 points" condition being implemented
-   the obvious way in Black Label — consistent with the third-party note that it
-   may be White Label only — but it is NOT proof of absence: the compare could
+   the obvious way in Black Label - consistent with the third-party note that it
+   may be White Label only - but it is NOT proof of absence: the compare could
    be against a table entry, or digit-by-digit, or on the 9th-digit word
    `$81B44C` alone (a `cmpi.w #$3` there would be indistinguishable from a
    hundred other small compares).
 3. **The miss counter, the bomb counter and the bee-perfect counter.** I found
    the LIVES word and the stock reload; a *cumulative* miss counter that
    survives a respawn is a different variable and I did not find it. Candidates
-   I did not resolve: `$813142` (`subq.w #1` at `$260112`, one per spawn — it
+   I did not resolve: `$813142` (`subq.w #1` at `$260112`, one per spawn - it
    moves the right way but I never saw it non-zero), and the block
    `$81308C..$8130BC` that `$2603DA` clears wholesale at loop start.
 4. **The normal loop-1 → loop-2 transition.** `$813098` is READ at 130
@@ -585,7 +585,7 @@ absence, so these are gaps in MY work, not statements about the cartridge:**
    `$259DC6`, **both inside the debug stage-warp**. I ran an opcode-form scan
    for every write addressing mode with an absolute-long operand
    (`move.w Dn,`, `move.w #imm,`, `addq`, `subq`, `clr`, `addi`, `andi`, `ori`,
-   `bset/bclr/bchg`) — two hits, both in the warp. **A write through an address
+   `bset/bclr/bchg`) - two hits, both in the warp. **A write through an address
    register is invisible to that scan**, and there is no `lea $813098` anywhere
    in build B either, so if the normal transition exists it uses a base register
    loaded from somewhere I did not follow. I did not reach loop 2 and I did not
@@ -594,11 +594,11 @@ absence, so these are gaps in MY work, not statements about the cartridge:**
    entered in the measured run and I did not disassemble them. State 6
    (`$260348`) I only identified from the measurement (continue expiry), not
    from its listing.
-6. **`$288610`'s banner states 2, 3, 4** (`$28871C`, `$28875E`, `$288952`) —
+6. **`$288610`'s banner states 2, 3, 4** (`$28871C`, `$28875E`, `$288952`) -
    named, not read.
 7. **The CONTINUE-accept path.** I found the banner, the countdown digit
    (`($a,A4)`), the `$28D53C` interlock and the 812-frame window by measurement,
-   and `$23C98E`/`$23C9F0` as the credit consumers — but I never scripted a
+   and `$23C98E`/`$23C9F0` as the credit consumers - but I never scripted a
    START press inside the window, so **I have not measured a continue actually
    happening**, and therefore have not measured what `$8130CC` becomes or
    whether life state 4 is what a continue takes.
@@ -614,7 +614,7 @@ absence, so these are gaps in MY work, not statements about the cartridge:**
 | continuing disqualifies loop 2 | **UNRESOLVED.** `$8130CC` exists, is set by `ori.b #1/#2` at `$260080`/`$260096` and `$28F32C`/`$28F348`, and stayed 0 in a run with no continue. I did not find anything that reads it against a loop decision. |
 | a miss is not a continue | **CONFIRMED structurally**: a miss is `subq.w #1,$8130BE` in life state 1; running out is life state 2; they are different states with different code. |
 | ≤2 misses / ≤3 bombs / Bee Perfect ×3 / ≥350,000,000 | **NOT FOUND.** See §11.2 and §11.3. The score threshold specifically: no plain compare against that constant exists in the image. |
-| 5 stages | **CONTRADICTED as stated**: the game's own selector names **six** per loop — `STAGE 1..5` plus `STAGE E` — and two loops, `STAGE R1..RE` (`$259F44`, 12 × 10 bytes). |
+| 5 stages | **CONTRADICTED as stated**: the game's own selector names **six** per loop - `STAGE 1..5` plus `STAGE E` - and two loops, `STAGE R1..RE` (`$259F44`, 12 × 10 bytes). |
 | 10 hidden bees per stage, laser-revealed, cross-stage carry | **NOT FOUND.** §11.1. |
 | scoring is a progression input | **UNRESOLVED**, but the score representation (9 BCD digits) is now measured and does have the range. |
 | extend exists | **CONFIRMED and it was not in the notes**: `$28433C`, threshold `$81B4AC`, `$FFFFFFFF` = disabled, lives capped at `$14` = 20, and the service menu carries `2. EXTEND` with `OLD:`/`NEW:` variants. |
@@ -664,7 +664,7 @@ $80380C b  operator RANK       $80380E b  operator LIVES DIP (table $2600CE: 2,3
 4. **The lives word is reached through a POINTER** at `+$08` of the life block,
    and the block's parameter table is at `$25FE22`. Do not hard-code `$8130BE`
    into the death path; the board does not.
-5. **`$FFFF` is "stock exhausted", `0` is "last ship".** `tst.w / bpl` — zero is
+5. **`$FFFF` is "stock exhausted", `0` is "last ship".** `tst.w / bpl` - zero is
    still alive. An off-by-one here is a whole extra life.
 6. **The game names six stages per loop, not five.** `STAGE E` is in the
    selector table with the others.

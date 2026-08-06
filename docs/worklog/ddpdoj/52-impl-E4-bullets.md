@@ -1,11 +1,11 @@
-# 52 — IMPL E4: the player's shots and the enemy bullets, VISIBLE
+# 52 - IMPL E4: the player's shots and the enemy bullets, VISIBLE
 
 status: **DONE**
 started: 2026-08-05
 role: IMPLEMENTER. SOLE writer to `games/ddpdoj/`. `games/gradius/` NOT TOUCHED.
 target: `ddpdojblk` VERSION-B. Every address is build B (`$23xxxx`–`$2Axxxx`)
 unless the line says otherwise.
-brief: the owner is playing the live build — "Shooting enemies with bullets
+brief: the owner is playing the live build - "Shooting enemies with bullets
 works, but you can't see the bullets and no explosions." The explosions are E5.
 **Mine is that nothing draws the shot itself, or the enemy bullet.**
 inputs read in full: 43-plan §4 E4, 40-recon, 44-impl-E1, 47-impl-E2,
@@ -16,17 +16,17 @@ inputs read in full: 43-plan §4 E4, 40-recon, 44-impl-E1, 47-impl-E2,
 
 ---
 
-## 0. THE BRIEF'S PREMISE — TWO OF ITS THREE NUMBERS ARE WRONG, BOTH LOW
+## 0. THE BRIEF'S PREMISE - TWO OF ITS THREE NUMBERS ARE WRONG, BOTH LOW
 
 The brief's *shape* is exactly right: the shots and the bullets go down the same
 emission path, nothing draws them, and E2's harvest-by-address + shard machinery
 is the answer. Its **sizes** are a floor, and one of them by a factor of seven.
 
-### 0.1 "bucket 14, nine streams, 2,184 bytes raw" — [M] it is **71 streams**
+### 0.1 "bucket 14, nine streams, 2,184 bytes raw" - [M] it is **71 streams**
 
 Recon 40 §5 measured the shots under `--no-pods` with a tap every four frames,
 on a tree where any fire press threw `$24C180`. W45 and L3 removed that throw,
-so **the OPTION PODS now fire too** — and they are a second shot producer
+so **the OPTION PODS now fire too** - and they are a second shot producer
 (`$24D480`, `src/options.js podShotSpawn`), writing type-`$8002` records into the
 same 36-slot table `$810572`, dispatch entry [2] `$253E34`.
 
@@ -53,13 +53,13 @@ not 2,184 bytes. The chain, with what pins each end:
 
 and per 38-byte template three chains, each with its own extent:
 
-* the SPAWN's own descriptor — `$24A238 move.l (A2,D0.w),(A0)+` / `$24D548`,
+* the SPAWN's own descriptor - `$24A238 move.l (A2,D0.w),(A0)+` / `$24D548`,
   D0 = the player's ($42,A6) or the pod's ($52/$54,A6), which cycle **8,4,0** →
   3 longs;
-* the per-frame animation — ($1e,A6) indexed by ($24,A6), which counts DOWN by
+* the per-frame animation - ($1e,A6) indexed by ($24,A6), which counts DOWN by
   4 and reloads to 4 on borrow (`$253BC6`), so **0..(what the spawn installed)**:
   {0,4} for the ship, {0,4,8} for the pods;
-* the HIT re-point — `$253C76`'s `$24DEB2[tableIdx]` (nibble 0/8) or
+* the HIT re-point - `$253C76`'s `$24DEB2[tableIdx]` (nibble 0/8) or
   `$253F34`'s `$25014C[tableIdx]` (nibble 2/10). The block's
   `move.l (A0)+,$22(A6)` is a LONG whose **LOW word is the index the hit
   animation starts at**, counting down to 0: [M] 16 for the ship, 28 for the pods.
@@ -71,11 +71,11 @@ the enumeration bounds absence.
 all four tables (`$25556E`, `$255582`, `$24D334`, `$24D394`). [M] Their templates
 carry type words `$8004` / `$8006` = shot dispatch entries [4] and [6], and
 `src/shots.js` throws `$254078` for [4] and has no [6] at all. Harvesting art for
-a handler that does not exist is E2's `$268594` all over again — and the exporter
+a handler that does not exist is E2's `$268594` all over again - and the exporter
 now **asserts they stay unported**, so the day `$254078` lands the export stops
 and says so rather than leaving the laser's shots a silent named skip (§4.3).
 
-### 0.2 "the impact pool `$27F95A` is E4's" — [M] IT IS NOT, AND IT IS NOT MINE
+### 0.2 "the impact pool `$27F95A` is E4's" - [M] IT IS NOT, AND IT IS NOT MINE
 
 Recon 50 assigns me `$27F95A` because "its callers are the bullet block's". [M]
 The callers are `$281D2E` (the screen clear) and `$281E3A` (the mover's
@@ -85,10 +85,10 @@ reason L3 §3.1 already wrote down and this wave re-checked:
 * `$27F8F8` is the ALLOCATOR over the impact pool `$8171BE` (70 × `$2C`);
 * its only DRIVER is `$27F95A`, type-5 call #4, unported;
 * allocating without the driver consumes all 70 slots and then fails silently
-  forever — W33's leak one level down, which is recon 50's own warning.
+  forever - W33's leak one level down, which is recon 50's own warning.
 
 **THIS WAVE ALLOCATES FROM NO POOL, AND HERE IS THE DRAIN PROOF.** It writes into
-two buffers that already exist and are already sized by the board — `$809C4C`
+two buffers that already exist and are already sized by the board - `$809C4C`
 (bucket 23's staging buffer, which IS the mover's A4) and `$809274 + $80AFE0`
 (bucket 22's, the trail cursor). Both are **DRAINED EVERY FRAME by call #4**,
 `$23D2AE`, which sums the thirty counters, emits the records and clears all
@@ -109,9 +109,9 @@ No allocator is called; `$27F8F8` stays the counted note L3 made it. Porting
 
 ### 0.3 What the brief is right about
 
-* the shots and the bullets are the SAME path — buckets 14, 22 and 23 of the
+* the shots and the bullets are the SAME path - buckets 14, 22 and 23 of the
   same thirty, drained by the same call #4, into the same `$800000` list;
-* the art is the real cost — [M] 369 new streams, 26.0 KiB gz, against ~40 lines
+* the art is the real cost - [M] 369 new streams, 26.0 KiB gz, against ~40 lines
   of sink;
 * E2's machinery is the answer and it needed no new mechanism.
 
@@ -132,7 +132,7 @@ wrote both counters from cursors that never moved.
 
 **[M] ENUMERATED FROM THE CARTRIDGE AND FROM THE PORT'S OWN TRANSCRIPTION (every
 line of which cites its ROM address): 213 distinct bullet streams**, from six
-sources — `$281956[k]+6` (39 templates), `$283D4C` (32 × 12 B), 31 `setU32(base
+sources - `$281956[k]+6` (39 templates), `$283D4C` (32 × 12 B), 31 `setU32(base
 +$0a, imm)` immediates, 20 `animateRenderOffsWrap` runs, the `$283C4C` dir tables
 `$282714`/`$2830EA` and the `$2822EC` dir rings `$2821FA`/`$282C8E`, and
 `$283704`.
@@ -143,18 +143,18 @@ in gives **306 streams and contains all 213**, and the walk is what ships:
 
 | range | streams | pinned by |
 |---|---:|---|
-| `$1BF58C`..`$1C0E9C` | 228 | bottom `$282118 move.l #$1BF58C`; top `$282E4A cmpi.l #$1C0E9C`, the highest wrap limit in the family — **and the cartridge's chain closes EXACTLY on it** |
+| `$1BF58C`..`$1C0E9C` | 228 | bottom `$282118 move.l #$1BF58C`; top `$282E4A cmpi.l #$1C0E9C`, the highest wrap limit in the family - **and the cartridge's chain closes EXACTLY on it** |
 | `$1C1418`..`$1C143C` | 1 | kind 1's `$281FDC` immediate, alone |
 | `$1C1658`..`$1C167C` | 1 | kind 1's `$281FC4` immediate, alone |
-| `$1C1B68`..`$1C23D8` | 76 | the bouncers' `$282F80 #$1C1B68` and the tracker's `$282D46 #$1C1E38`; the chain closes exactly on `$1C23D8`, whose stride is **6,276 words against the 20 of every bullet before it** — 313× — i.e. a different subject |
+| `$1C1B68`..`$1C23D8` | 76 | the bouncers' `$282F80 #$1C1B68` and the tracker's `$282D46 #$1C1E38`; the chain closes exactly on `$1C23D8`, whose stride is **6,276 words against the 20 of every bullet before it** - 313× - i.e. a different subject |
 
 The reason is `46-diag`'s lesson about the tank hulls, applied one level up: **an
 animation ring sized off a reading is how you ship a quarter of the art.** The
-chain cannot be read wrong — `streamExtent` solves each stream's stride out of
-the cartridge — and the walk must END EXACTLY on the stated address or the build
+chain cannot be read wrong - `streamExtent` solves each stream's stride out of
+the cartridge - and the walk must END EXACTLY on the stated address or the build
 stops. [M] That check was seen to fail (§4.3).
 
-### 1.1 **`26-review` F2 IS NOT LATENT — AND THERE ARE THREE OF THEM, NOT TWO**
+### 1.1 **`26-review` F2 IS NOT LATENT - AND THERE ARE THREE OF THEM, NOT TWO**
 
 The plan asks for `26-review` F1 and F2 to be fixed in the same change because
 both are latent only while no sink exists. Both are fixed here **from the
@@ -162,22 +162,22 @@ listing**, and the sink found a THIRD of the same family that no review had.
 
 | # | ROM | the defect | how it was found |
 |---|---|---|---|
-| F1 | `$28428E`/`$284292` | the port added word@+$6 to posB and word@+$8 to posA — **the two axes swapped** | `26-review`, re-derived here from `swap D0 / add.w (A1)+,D0` |
-| F2 | `$282B7A` | kind 19 stepped `+$24` past the wrap `cmpi.l #$1C1E38 / move.l #$1C1BF8` | **[M] MEASURED, not latent:** with the sink on, the port emits `$1C1E5C`, `$1C1E80` and `$1C1EA4` — three descriptors that are **not stream starts in the cartridge's own chain and are in no ROM animation table**, i.e. the port reading off the end of the ring |
+| F1 | `$28428E`/`$284292` | the port added word@+$6 to posB and word@+$8 to posA - **the two axes swapped** | `26-review`, re-derived here from `swap D0 / add.w (A1)+,D0` |
+| F2 | `$282B7A` | kind 19 stepped `+$24` past the wrap `cmpi.l #$1C1E38 / move.l #$1C1BF8` | **[M] MEASURED, not latent:** with the sink on, the port emits `$1C1E5C`, `$1C1E80` and `$1C1EA4` - three descriptors that are **not stream starts in the cartridge's own chain and are in no ROM animation table**, i.e. the port reading off the end of the ring |
 | **NEW** | `$282748` | kind 7's ring is bounded by the LIMIT at +$10 and the SPAN at +$14 (`cmp.l (A0)+,D0 / sub.l (A0),D0`) and reloads the delay byte `+$19 := +$18` (`$282758 move.b (A0)+,(A0)+`). The port did a bare `+$24` and neither of the other two | **[M] the sink found it, on its first run**: kind 7 emitted **2,478 records over 66 descriptors from `$1C0158` to `$1C0B9C`**, none of them a stream start, i.e. up to sixty frames off the end of a THREE-frame ring |
 
 The third one is exactly kind 26's `$283128`, which this file already
-transcribed correctly — so the port contained both readings of the same
+transcribed correctly - so the port contained both readings of the same
 instruction sequence and only one of them was right.
 
 ### 1.2 What the sink also reached, and what it did NOT
 
 **`epilogueSprite283C0E` was gated `if (ctx.sprites)`, so `$283C38`'s read of
 `$282714` had never executed in this port.** The first sink run stopped at
-`UNPORTED $282718` — a loud named throw, correct behaviour, at step 1,417. Sized
+`UNPORTED $282718` - a loud named throw, correct behaviour, at step 1,417. Sized
 exactly like the two windows beside it (`$2830EA+$24`, `$2822EC`): the `$283C4C`
 offsets top out at `$20` and the read is a longword, so the extent is `$24`, and
-`$282714 + $24 = $282738` is kind 7's own continuation — an abutting bound.
+`$282714 + $24 = $282738` is kind 7's own continuation - an abutting bound.
 Added to `tools/export-tables.py` with that reasoning.
 
 **[M] BUCKET 22 IS STILL 0** over every run this wave made, and that is presence,
@@ -231,7 +231,7 @@ Boot fell while 369 streams were added, and the whole of it is one decision:
   base: column 1 is strictly increasing and column 0 nearly so, but interleaved
   gzip sees `rom, base, words, rom, base, words…` and can exploit neither.
   [M] **interleaved 4,152 B · planes without delta 4,502 B · PLANES + DELTA
-  500 B.** Column 2 (maskWords) is deliberately NOT differenced — small,
+  500 B.** Column 2 (maskWords) is deliberately NOT differenced - small,
   unordered, and differencing makes it bigger. `spr.streamsFormat` names the
   encoding, and the loader refuses any other **by name**, because a wrong stream
   table draws the wrong picture and never throws.
@@ -240,7 +240,7 @@ Boot fell while 369 streams were added, and the whole of it is one decision:
   `export-web.mjs` (W47's own rule).
 
 **SHARD 0 IS UNTOUCHED and remains the only boot shard**, so `capture.bin` is
-byte-identical and `bundlegate`'s pixel identity cannot have moved — verified,
+byte-identical and `bundlegate`'s pixel identity cannot have moved - verified,
 §4.4.
 
 ### 2.3 THE FETCH ORDER IS PUBLISHED NOW, BECAUSE INDEX ORDER STOPPED BEING NEED ORDER
@@ -266,7 +266,7 @@ bullets) and checked against the shipped bundle's own map. **ONE WINDOW PER
 COLUMN, said explicitly, because these numbers are only comparable inside a
 window.**
 
-**WINDOW A — 1,200 logic frames, fire TAPPED every 4 frames** (the owner's
+**WINDOW A - 1,200 logic frames, fire TAPPED every 4 frames** (the owner's
 actual input), before and after, both measured:
 
 ```
@@ -280,24 +280,24 @@ actual input), before and after, both measured:
 [M]   ...WITH ART                              6                     34   <- 0 MISSING
 ```
 
-**WINDOW B — 1,200 frames, NOTHING PRESSED** (bullets only): bucket 23 goes
+**WINDOW B - 1,200 frames, NOTHING PRESSED** (bullets only): bucket 23 goes
 **0 → 14,057 records, max 36 per frame**, 34 distinct descriptors, **0 missing**,
 first at lf+40 = +0.7 s.
 
-**WINDOW C — to the run's honest end**, a loud named throw at **`$26C1C4` on step
+**WINDOW C - to the run's honest end**, a loud named throw at **`$26C1C4` on step
 2,204** (L3 §3.2's enemy-layer export frontier, not this wave's), fire tapped:
 [M] bucket 14 **39,891** records / bucket 22 **0** / bucket 23 **26,998** (max 65
 per frame); 20 shot streams and 65 bullet descriptors, **all 85 with art, 0
 NAMED-missing**.
 
-**THE BULLET DESCRIPTOR COUNT FALLING — 68 → 34 in window A — IS THE TWO RING
+**THE BULLET DESCRIPTOR COUNT FALLING - 68 → 34 in window A - IS THE TWO RING
 FIXES.** Half the descriptors the port used to produce were addresses no ROM
 table names: `$1C1E5C`/`$1C1E80`/`$1C1EA4` past kind 19's wrap, and 66 more from
 `$1C0158` to `$1C0B9C` past kind 7's. A wave that only shipped art would have
 had to harvest those too, and they are not pictures.
 
 And over the 300-step no-input window `webgate` pins (the totals there are taken
-from the HELD list, i.e. one frame behind `perBucketRecords` — the same
+from the HELD list, i.e. one frame behind `perBucketRecords` - the same
 measurement one frame apart, and both are asserted):
 
 ```
@@ -307,14 +307,14 @@ measurement one frame apart, and both are asserted):
 [M] bucket 23: 2,432 records (it was 0 on every frame of every run before)
 ```
 
-### 3.2 Coverage — streams, records and table entries, never frames
+### 3.2 Coverage - streams, records and table entries, never frames
 
 * **shot art: 71 of 71 harvested streams are exported and resolvable; [M] 20 of
   the 71 are REACHED** in window A (one formation, one power level, and some
   chains need a hit). 20 of 20 draw.
 * **bullet art: 306 of 306 harvested streams exported; [M] 34 of the 306 are
   REACHED** in window A, 65 in window C. All draw.
-* **`$281956`'s 39 kinds:** unchanged by this wave — the sink is downstream of
+* **`$281956`'s 39 kinds:** unchanged by this wave - the sink is downstream of
   the dispatch. The 32 unported behaviour INITIALISERS still throw by address.
 * **the four bullet ranges: 4 of 4 close exactly on their stated end.**
 * **the four shot template tables: 4 of 4 walked, 20 of 20 templates admitted;
@@ -332,19 +332,19 @@ Unchanged from W32..W51's 49/0/0. **Nothing was disabled, skipped, narrowed or
 loosened**, and every stage line was read rather than only the verdict. The ones
 this wave could plausibly have broken, all green:
 
-- `bullet mover: per-frame pool drive vs the board` and its 3 REDs — the gate
+- `bullet mover: per-frame pool drive vs the board` and its 3 REDs - the gate
   that owns `runMover`. **It passes no `spriteOut`**, and its compared set is
   alive / kind / speed (+$1A) / dir (+$1B) / posA / posB, so it CANNOT see this
   wave's work. Its green says the emit has no bullet-state side effect; it is
   **not** evidence that the two ring fixes are right, and it must not be quoted
   as such. What settles those is the listing (§1.1) and M8/M9/M10;
-- `display list: the staged-bytes replay gate (1,901 frames)` and its 12 REDs —
+- `display list: the staged-bytes replay gate (1,901 frames)` and its 12 REDs -
   the port's own `$800000` build, still byte-exact against the board. It
   substitutes the board's staged bytes for `PRODUCED_BUCKETS` only, and 22/23
   are not in that array, so the new writes do not enter it;
 - `assets/integrity` and its four REDs, **including `[rom-byte]`, the ROM-leak
-  guard** — two new shard files went through it;
-- `background shard gate: published tiles past px 160 (+ RED)` — the stage that
+  guard** - two new shard files went through it;
+- `background shard gate: published tiles past px 160 (+ RED)` - the stage that
   fresh-exports, i.e. the one the exporter rewrite had to survive;
 - `pixel gate` (100.0000 %) and its 9 REDs; `demo gate` and its 4.
 
@@ -398,7 +398,7 @@ require a NAMED test red, restore, **verify the file's sha256 is byte-identical*
 | M20 | the pod ring sized off the SHIP's two frames | `the shot harvest walks the four template tables` |
 
 **20 of 20 red, 0 survivors.** Three of them (M1, M5, M6) were SKIPPED on the
-first pass with "pattern absent" — `src/mover.js` is one of this tree's 28 CRLF
+first pass with "pattern absent" - `src/mover.js` is one of this tree's 28 CRLF
 files (`HANDOVER` §10) and a multi-line anchor written with `\n` matches nothing.
 A skipped mutant is not a passed one; the harness now converts.
 
@@ -409,7 +409,7 @@ records against its hard-coded 16,457**, and 14 `skipped`. Both are correct
 consequences and neither is a loosening:
 
 * the record count moved because bucket 23 emits. It is not absorbed into the
-  total — the stage now also asserts **bucket 23 = 2,432 records** as its own
+  total - the stage now also asserts **bucket 23 = 2,432 records** as its own
   absolute number, which was 0 on every frame of every run before this wave.
 * `skipped === 0` is split into `missing === 0` AND `pending === 14 on shard 7
   from step 59`. Collapsing the two would let a bundle that has LOST a picture
@@ -431,16 +431,16 @@ range D at `$1C23C4` instead of `$1C23D8` exports 305 streams instead of 306 and
 catches an end that is not on the chain; it cannot catch an end that is on the
 chain in the wrong place. That second half is pinned by evidence, not by the
 check: the stride at `$1C23D8` is **6,276 words against the 20 of every stream
-before it**. Category (a) of the brief's three — a defective check — and it is
+before it**. Category (a) of the brief's three - a defective check - and it is
 named here because the next person to move that constant deserves to know the
 export will not stop them.
 
-### 4.4 THE NEW GATE STAGE, SEEN TO FAIL — and a DEFECTIVE MUTANT worth keeping
+### 4.4 THE NEW GATE STAGE, SEEN TO FAIL - and a DEFECTIVE MUTANT worth keeping
 
 W47 §4.1 is this project's own warning: a stage that asks *"is everything the
 shard holds drawn?"* agrees with itself whatever the shard holds. So the W52
-stages assert three ABSOLUTE, PORT-SIDE numbers each — records, distinct images
-and first frame — none of which any bundle can supply. Both were cut and
+stages assert three ABSOLUTE, PORT-SIDE numbers each - records, distinct images
+and first frame - none of which any bundle can supply. Both were cut and
 re-exported for real:
 
 | cut | what the stage printed |
@@ -452,7 +452,7 @@ re-exported for real:
 CARTRIDGE, NOT ABOUT THE CHECK.** Removing **pod 0's** table alone left all
 three numbers at 71 / 22,071 / 20. [M] The reason: pod 0 and pod 1 share every
 one of their five animation pointers (`$24F650`, `$24F654`, `$24F658`,
-`$24F65C`, `$24F660`) and their spawn tables (`$24F5E4`, `$24F5F0`, `$24F5FC`) —
+`$24F65C`, `$24F660`) and their spawn tables (`$24F5E4`, `$24F5F0`, `$24F5FC`) -
 the two halves of `$24D480` differ only in `tableIdx` and in which slot run they
 scan. So the mutant removed nothing. Recorded as category (b), a defective
 mutant, and the working cut removes both.
@@ -482,7 +482,7 @@ verbatim. That is luck about packing order, not virtue, and it is stated as such
 
 ---
 
-## 5. THE PAGE, IN A REAL BROWSER — WHAT I SAW [M]
+## 5. THE PAGE, IN A REAL BROWSER - WHAT I SAW [M]
 
 Chrome + Python `playwright` over `python -m http.server`, the recipe W42
 established. Nothing downloaded. **The server was killed afterwards and [M] zero
@@ -492,7 +492,7 @@ established. Nothing downloaded. **The server was killed afterwards and [M] zero
 
 **[M] With NOTHING PRESSED, +4 s from boot: TWO SWEEPING ARCS OF BLUE ROUND
 ENEMY BULLETS**, about eighteen of them, curving across the upper third of the
-screen — the classic DoDonPachi aimed spread — plus small pink bullets close to
+screen - the classic DoDonPachi aimed spread - plus small pink bullets close to
 the ship. Six tanks with bodies on the road below them. This is the first time
 anything in this port has drawn an enemy bullet.
 
@@ -500,7 +500,7 @@ anything in this port has drawn an enemy bullet.
 travelling up the screen from the ship, a spread of **red diamond pod shots**
 beside them, and an **orange muzzle burst** where a shot met a tank. At the same
 instant the blue bullet arcs are still there, so both producers draw in the same
-frame, in the right depth order — the shots pass IN FRONT of the road and BEHIND
+frame, in the right depth order - the shots pass IN FRONT of the road and BEHIND
 the HUD.
 
 **[M] Flying while tapping** moves the ship to the top of the road with its two
@@ -515,7 +515,7 @@ pods and their muzzle flashes; the tanks keep their bodies; no throw.
 [M] FLY+TAP    lf 3083  [port] dl 35 drawn 25 b0 10  spr 8/8  NO ART 10: ...
 ```
 
-`spr 8/8` — all eight sprite shards land. **Not one address the page names is a
+`spr 8/8` - all eight sprite shards land. **Not one address the page names is a
 shot or a bullet stream**; every remaining `NO ART` is a background element
 (`$233F34`, `$22DA70`, `$22DED4`, `$22C608`) or `$12Dxxx`/`$12Cxxx`, which is
 W47's own leftover list and belongs to producers this wave did not touch.
@@ -534,7 +534,7 @@ correct descriptor can still be the wrong record.**
 
 - opened.
 - §0.1 [M]: **the brief's "nine streams / 2,184 bytes" is a floor.** 20 streams
-  measured, **71 enumerated from the cartridge, 10.5 KiB gz** — and the reason
+  measured, **71 enumerated from the cartridge, 10.5 KiB gz** - and the reason
   is that L3 unblocked the OPTION PODS, a second shot producer recon 40's
   `--no-pods` intervention had deleted.
 - §0.2 [M]: **the brief's `$27F95A` assignment is refused, with L3's reason.**
@@ -545,11 +545,11 @@ correct descriptor can still be the wrong record.**
   without fire, while 14,172 live bullet record-frames went past. 213 bullet
   streams enumerated; **306 shipped by walking the cartridge's own chain**, both
   ranges closing EXACTLY on their stated end.
-- §1.1 [M]: **`26-review` F2 is observable** — three descriptors past the wrap —
+- §1.1 [M]: **`26-review` F2 is observable** - three descriptors past the wrap -
   **and there is a THIRD of the same family** at `$282748`, which the sink found
   on its first run: 2,478 records over 66 addresses that are not stream starts.
 - §1.2 [M]: the sink reached `$283C38`'s read of `$282714` for the first time in
-  this port's history — a loud named throw, and a new export window sized by an
+  this port's history - a loud named throw, and a new export window sized by an
   abutting bound. **And bucket 22 is still 0**: kinds 27/36/37/38 do not spawn
   here. Presence, not absence.
 - §2.2 [M]: **BOOT 473.7 → 473.2 KiB. It went DOWN while 369 streams of art were
@@ -563,7 +563,7 @@ correct descriptor can still be the wrong record.**
   byte-identical by sha256. Three were SKIPPED on the first pass because
   `mover.js` is CRLF; a skipped mutant is not a passed one.
 - §4.3 [M]: two exporter mutations seen red against the cartridge, **and one
-  that did NOT go red, recorded as a defective check** — an end address that is
+  that did NOT go red, recorded as a defective check** - an end address that is
   a stream boundary in the wrong place is not caught.
 - §4.4 [M]: `bundlegate` **15955968/15955968 = 100.0000 %, unmoved**; the ROM-leak
   guard clean with W47's same four exceptions.

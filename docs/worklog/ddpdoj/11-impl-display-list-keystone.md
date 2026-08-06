@@ -1,6 +1,6 @@
-# WAVE 11 — THE DISPLAY-LIST KEYSTONE
+# WAVE 11 - THE DISPLAY-LIST KEYSTONE
 
-status: **DONE** — every done-when in `PLAN-no-recordings.md` §W11 met, with
+status: **DONE** - every done-when in `PLAN-no-recordings.md` §W11 met, with
 three of that section's own instructions corrected against the listing (§2) and
 one gate (`pgm.py flyaround`) left RED for a reason that predates this wave and
 belongs to W14 (§8.2).
@@ -9,7 +9,7 @@ target: **`ddpdojblk`, VERSION-B** (2002.10.07 BLACK VER). Every address is
 build B unless the line says otherwise (`games/ddpdoj/NOTES-build-split.md`).
 Machine pin printed on every run: `maincpu_fnv64=D4C25CA9C91B9D47`, 6,291,456 B.
 
-Brief: `games/ddpdoj/PLAN-no-recordings.md` §W11 — port main-loop call #4
+Brief: `games/ddpdoj/PLAN-no-recordings.md` §W11 - port main-loop call #4
 (`$23D2AE`) WHOLE, with no producers; the enqueue API; the zoom table as a baked
 constant with a boot assertion; the bucket ablation; the staged-bytes replay
 gate at 0 divergent frames.
@@ -76,13 +76,13 @@ truncated display list on exactly the frames that matter.
 | `pgm.py dlgate` / `pgm.py ablate` | the two new commands |
 | `tests/displaylist.test.js` | 30 listing-derived unit tests, including the two cases the board cannot supply |
 
-`node --test games/ddpdoj/tests/` — **142 tests, 142 pass** (was 101).
+`node --test games/ddpdoj/tests/` - **142 tests, 142 pass** (was 101).
 
 ---
 
 ## 2. THREE CORRECTIONS TO `10-recon-display-list.md`, FROM THE LISTING
 
-### 2a. THE TERMINATOR IS NEVER SKIPPED — the recon's §2c and its "seven things" item 7 are wrong
+### 2a. THE TERMINATOR IS NEVER SKIPPED - the recon's §2c and its "seven things" item 7 are wrong
 
 The recon reads
 
@@ -106,7 +106,7 @@ assumption that D1 still holds the byte count `$23D678 move.w D0,D1` put there.
 
 So the terminator is written at **every** length. Measured, not only read:
 `pgm.py dlgate --cap` forces 251-record frames and the probe counts executions of
-`$23D6FA` (`move.w #$0,(A0)+`, exactly one per terminator) — **1,901 of 1,901
+`$23D6FA` (`move.w #$0,(A0)+`, exactly one per terminator) - **1,901 of 1,901
 frames terminated**, 600 of them at exactly 251 records.
 
 The plan's mutation name `always-terminate` assumes the recon's baseline, so it
@@ -119,7 +119,7 @@ dropped, and the mutation that carries the finding is **`terminator-by-count`**
 `$23D676 moveq #$33` (51) then `$23D67E moveq #$32` (50), with a second
 `subq.w #1,D4` at `$23D694` inside the filler path: the cadence is **51 records,
 a filler, then one filler per 50**. At the cap that is 251 + 4 = 255 entries,
-and the terminator makes **exactly 256** — the IGS023 maximum, which is a better
+and the terminator makes **exactly 256** - the IGS023 maximum, which is a better
 fit than the recon's "251 + 5 = 256" (which would already have been 256 without
 the terminator). Measured on the forced scenario: `fillers max 4`,
 `entries max 256`.
@@ -136,7 +136,7 @@ A2 advances 16 per iteration while the counter advances 12, so the copy is an
 identity map `S[j] -> Q[q0+j]` that simply RUNS 4n BYTES PAST the accounted end;
 the stray tail is overwritten by the next bucket's copy, whose A2 starts exactly
 at the accounted end. The net effect is the plain 12-byte-per-record
-concatenation everyone assumes — but "it works out" is a conclusion and the
+concatenation everyone assumes - but "it works out" is a conclusion and the
 instruction is the fact, so the port copies 16.
 
 This is also what makes the gate's PREFIX dump sound: the emit provably reads
@@ -148,7 +148,7 @@ would be red, which is what a gate is for.
 
 The recon says the sum is "in *counter-address* order (NOT drain order)".
 `$23D2B4..$23D362` is neither: `C0 C2 C4 C6 **D2** C8 **D4 D0** CA CC CE D6 ...`
-It does not matter — `add.w` is commutative mod 2^16 — and the port keeps the
+It does not matter - `add.w` is commutative mod 2^16 - and the port keeps the
 ROM's order anyway so a reviewer can check it line for line. A unit test asserts
 it is *not* the drain order, so nobody "tidies" one into the other.
 
@@ -157,7 +157,7 @@ it is *not* the drain order, so nobody "tidies" one into the other.
 ## 3. THE GATE, AND THE TWO THINGS IT COST TO MAKE IT HONEST
 
 **The transform is pure, so the capture becomes the INPUT.** `w11dl.lua` taps
-`$23D382` (`move.w D0,$80B000` — the one instant all thirty counters are live,
+`$23D382` (`move.w D0,$80B000` - the one instant all thirty counters are live,
 after the sum and before the drop policy) and buffers the thirty counters,
 `$80B054` and each bucket's live prefix; at the semaphore arm it writes that
 buffer, then `$800000..$8009FF`, then call #4's OTHER outputs. `dlgate.mjs`
@@ -168,7 +168,7 @@ replays each frame through `buildDisplayList` and compares.
 1. **THE BOARD NEVER CLEARS THE DISPLAY LIST.** First run: 1,534 divergent
    frames, every one of them *past the terminator*. Call #4 writes as many
    entries as it has records plus the terminator, and everything beyond is
-   RESIDUE from an earlier, longer frame — invisible to the hardware, which
+   RESIDUE from an earlier, longer frame - invisible to the hardware, which
    stops parsing at the terminator. A gate starting from zeroed RAM sees it as a
    divergence. Fixed by carrying ONE 128 KiB image across the whole run, seeded
    once at the first compared frame; from frame two on the residue is produced
@@ -181,7 +181,7 @@ replays each frame through `buildDisplayList` and compares.
    `terminator-by-count` moves ten bytes that are usually already zero. So the
    probe also dumps `$80AFC0..$80AFFF`, `$80B000..$80B005`, `$80393C` and the
    emit's OWN per-frame counts of records / fillers / terminators (from
-   `$23D6BE`, `$23D68C`, `$23D6FA` — three instructions that execute exactly once
+   `$23D6BE`, `$23D68C`, `$23D6FA` - three instructions that execute exactly once
    per thing). All are compared. `$80393C` is compared **by mask, bit 0 only**,
    because it is a shared bitfield: call #4 clears bit 0 at `$23C1A2` and sets it
    back at `$23C194` and touches nothing else, and the board's other bits ($1E of
@@ -192,11 +192,11 @@ replays each frame through `buildDisplayList` and compares.
 at the arm are call #4's output and nobody else's. Measured, not assumed: a write
 tap over the region, censused only inside the compared window, reports **ten
 distinct PCs and every one is inside the emit** (`23D6B4 23D6B6 23D6B8 23D6BE
-23D6EE 23D6F4 23D6FA 23D680 23D686 23D68C`). Outside the window — during the
-chooser, which is build A — `$13DA02..$13DA48`, `$23C65C`, `$13C9C8` and the
+23D6EE 23D6F4 23D6FA 23D680 23D686 23D68C`). Outside the window - during the
+chooser, which is build A - `$13DA02..$13DA48`, `$23C65C`, `$13C9C8` and the
 BIOS at `$000E5C..$000E7A` write it too. That is why the window starts at lf700.
 
-### THE FORCED SCENARIOS — the cap policy is gameplay, so it is tested
+### THE FORCED SCENARIOS - the cap policy is gameplay, so it is tested
 
 The queue never fills in natural play (max **120 of 251** over 1,901 frames), so
 three code paths cannot be reached by any recording. Both forcings poke a value
@@ -211,17 +211,17 @@ sled rule, wave 4's invulnerability rule).
   fillers, 256 entries. **Wave 5 had to sweep six values to reach the cap
   because it poked `$80AFC0`, which the UNGUARDED appender `$23D762` consumes
   first; poking a bucket counter has no such problem.**
-* `--cap0` pokes **`$80AFC0` = `$0B40`** (240 records — bucket 0's buffer holds
+* `--cap0` pokes **`$80AFC0` = `$0B40`** (240 records - bucket 0's buffer holds
   502). The pointer is already past `$BC4` when the drain starts, so the guarded
   `beq` can never match all frame: `runtime_cap_carry=0`, both pre-emptive drops
   fire, and 251 records are emitted from the clamp at `$23D65E`.
 
 **AND ONE QUESTION THE BOARD CANNOT BE ASKED.** `cmpi.w #$BC4 / beq` versus a
 hypothetical `bge` fire on exactly the same record whenever the pointer starts on
-the 12-byte grid — which it always does. They are indistinguishable *in the
+the 12-byte grid - which it always does. They are indistinguishable *in the
 display list* by construction. `--cap0` is where they differ, and the difference
 is only visible in **`$80AFFC`** (the post-drain queue length, written at
-`$23D62A` before the emit and NOT reached by the thirty-word clear) — which is
+`$23D62A` before the emit and NOT reached by the thirty-word clear) - which is
 why the gate compares call #4's other outputs and not only the list. The
 straddling case (a pointer off the 12-byte grid) is genuinely unreachable and is
 tested in `tests/displaylist.test.js` against the LISTING, labelled as such.
@@ -230,8 +230,8 @@ tested in `tests/displaylist.test.js` against the LISTING, labelled as such.
 
 Declared with the reason **before** the run, in `pgm.py`:
 
-* `always-terminate` — §2a: the board already terminates at every length.
-* `b054-two-16bit-adds` — `$80B054` was `$00000000` on all 1,901 frames here and
+* `always-terminate` - §2a: the board already terminates at every length.
+* `b054-two-16bit-adds` - `$80B054` was `$00000000` on all 1,901 frames here and
   on all 5,000 of `stage1-deep` (10-recon-display-list §6), and adding zero one
   way or the other is the same answer. Red-validated in a unit test with
   `$80B054 = $0000FFFF` and a short axis of `$0001`, chosen so the low word wraps
@@ -241,7 +241,7 @@ Declared with the reason **before** the run, in `pgm.py`:
 
 ---
 
-## 4. THE STANDING ASSERTION THAT FIRED — and was wrong, and the right one
+## 4. THE STANDING ASSERTION THAT FIRED - and was wrong, and the right one
 
 The plan asks for *"a standing assertion that the short axis never exceeds 10
 bits after the `$80B054` add"*. Written that way it fires **764 times on
@@ -253,14 +253,14 @@ lf1204: UNPORTED $23D6AC: the emit's $3FFF re-mask left $10b8 in hardware word 1
 
 That is not pollution, it is a **zoomed record**. `$23D69A andi.l #$F800F800,D3`
 keeps a COPY of grow+zoom, `$23D6A0` keeps bits 13..0 of the same word, and
-`$23D6B2 or.l D3,D1` puts the zoom bits back — so bits 13..11 being SET in the
+`$23D6B2 or.l D3,D1` puts the zoom bits back - so bits 13..11 being SET in the
 masked field is exactly what a record with a real zoom field looks like, and
 **stage 1 contains them** (which is the first direct evidence in this project
 that the zooming enqueue `$23D9E2` or a bulk writer is live in stage-1 play).
 
 The hazard 10-recon-display-list §2b names is real but it is about the **delta**:
 `add.l $80B054` can carry out of the ten-bit position field into bits 13..10, and
-because the recombination is an OR the extra bits can only be ADDED — a sprite
+because the recombination is an OR the extra bits can only be ADDED - a sprite
 that overflows its position quietly changes SIZE. So the assertion compares bits
 13..10 **across the add**, not the value. It is red-validated in a unit test
 (`$80B054 = 1`, short axis `$3FF`) and it cannot fire on the board while
@@ -268,7 +268,7 @@ that overflows its position quietly changes SIZE. So the assertion compares bits
 
 ---
 
-## 5. THE ZOOM TABLE — reproduced, and now gated
+## 5. THE ZOOM TABLE - reproduced, and now gated
 
 `$23C588`, 16 longwords, baked into `src/zoomtable.js`. Re-measured in this wave
 rather than quoted: the same 64 bytes at `$00DF2C` (BIOS), `$13C8F4` (build A)
@@ -285,14 +285,14 @@ this wave `zoomWord`'s `if (z === 0xf) return 1` was covered by nothing:
   covered through BOTH encodings (`grow=0,zom=$F` and `grow=1,zom=1`) on BOTH
   axes with pixels drawn and zoom word 1, and `eff-index-10` (the no-zoom
   encoding, 97.9 % of all records) must be covered by the basic path.
-* `tools/gfxgate.py` gained `zoom-f-literal` — read entry `$F` literally (0)
-  instead of substituting 1 — and `pgm.py zoomcov` runs it as an EXPECTED-RED
+* `tools/gfxgate.py` gained `zoom-f-literal` - read entry `$F` literally (0)
+  instead of substituting 1 - and `pgm.py zoomcov` runs it as an EXPECTED-RED
   against MAME's own framebuffer.
 * It is in gfxgate's `EXTRA_MUTATIONS`, **not** in the `--mutate all` sweep, for
   a measured reason: the natural 16-pair gfx corpus contains no frame that
   reaches effective index `$F`, so putting it in `MUTATIONS` would make
   `pgm.py gfx --mutate all` report a permanent false failure. Where the case
-  exists — the zoomcov poker, which drives `$F` on purpose — is where it is
+  exists - the zoomcov poker, which drives `$F` on purpose - is where it is
   red-validated.
 
 RUN, on this machine, `pgm.py zoomcov`:
@@ -318,14 +318,14 @@ the same zero, and `src/zoomtable.js` says so at the top.
 
 ---
 
-## 6. THE BUCKET ABLATION — what each bucket DRAWS
+## 6. THE BUCKET ABLATION - what each bucket DRAWS
 
 10-recon-display-list §7.1: *"I did not prove what any bucket DRAWS in pixels …
 the ablation experiment settles all 30 in one run and I did not run it."*
 
-`pgm.py ablate` zeroes one bucket's counter at `$23D382` — after the sum, so the
+`pgm.py ablate` zeroes one bucket's counter at `$23D382` - after the sum, so the
 budget arithmetic is bit-identical to the control, and before the drop policy and
-the drain, so exactly that bucket's records disappear — and diffs the raw
+the drain, so exactly that bucket's records disappear - and diffs the raw
 framebuffer against a control whose only difference is the missing poke.
 
 Two passes, because a bucket can only lose pixels on a frame where it HAD
@@ -334,7 +334,7 @@ per-bucket census (`node tools/dlgate.mjs <dump> --census --at …`, which
 reproduces 10-recon-display-list §3's max/mean/frames≠0 column for column from an
 independent instrument) is what chose pass 2's frames.
 
-**PASS 1** — `pgm.py ablate`, 31 MAME runs, framebuffers at lf 1900 / 2100 /
+**PASS 1** - `pgm.py ablate`, 31 MAME runs, framebuffers at lf 1900 / 2100 /
 2300 / 2500. `pixels_lost` is over all four frames; the boxes are what vanished,
 in the UNROTATED 448×224 bitmap (the game's "vertical" is the bitmap's X).
 
@@ -354,7 +354,7 @@ bucket   counter  pixels_lost  per-frame                bounding boxes
   3 4 5 6 8 9 10 11 12 13 16 18 21 22 24 26 27 28 29        0 pixels
 ```
 
-**PASS 2** — `pgm.py ablate --at 2107,2201,2401,2581 3 5 17`, at frames the
+**PASS 2** - `pgm.py ablate --at 2107,2201,2401,2581 3 5 17`, at frames the
 per-bucket census says those buckets are LIVE on (pass 1's four frames were
 chosen before the census existed).
 
@@ -370,25 +370,25 @@ chosen before the census existed).
   positions, and it moves. Third independent instrument agreeing with the
   recon's "fed only from `$24A5xx/$24A6xx` inside the player's own block".
 * **Bucket 15 is the TWO OPTION PODS.** A 22×79 strip flanking the ship at
-  exactly the ship's other axis, at (289,43) and (90,42) — it moves WITH the
+  exactly the ship's other axis, at (289,43) and (90,42) - it moves WITH the
   78×36 box. Capacity 4 records, measured max 2, and there are two pods.
 * **Bucket 5 is the SHIP'S EXHAUST.** 14×38, moving with the ship, 3 records a
   frame from `$23EFC0` ← `$249EE2` (the player block). Invisible in pass 1
   because none of pass 1's four frames had a bucket-5 record.
-* **Bucket 14 is the SHOTS** — wide, forward of the ship, biggest when firing.
+* **Bucket 14 is the SHOTS** - wide, forward of the ship, biggest when firing.
 * **Bucket 0 is the ENEMIES and the whole screen**: 87,545 px, 71 % of every
   sprite pixel measured here, up to the full 448×224 frame. It is fed
   direct-to-queue by 83 abs-long sites in `$25Bxxx..$27Cxxx` and it drains FIRST,
   i.e. FURTHEST BACK.
-* **Bucket 23 is the ENEMY BULLETS** — scattered small boxes across the
+* **Bucket 23 is the ENEMY BULLETS** - scattered small boxes across the
   playfield, and its counter `$80AFE2` has no `addi` stub at all (§7).
 * **Buckets 1, 2, 3, 7, 17, 25** are real, named-by-address only: their boxes
   are formation-shaped rather than object-shaped and this wave does not claim to
   know which handler owns them. Bucket 25's box at lf2100 and lf2500 is
-  IDENTICAL — `316,1..429,71`, 400 frames apart — so it is something static or
+  IDENTICAL - `316,1..429,71`, 400 frames apart - so it is something static or
   cyclic, which does not match wave 5's "the BOMB's callees" label for the
   `$284/$285xxx` block; nobody bombed in this run. **Recorded as unresolved.**
-* **Bucket 20 loses only 195 px** — and it is the one the game SACRIFICES FIRST
+* **Bucket 20 loses only 195 px** - and it is the one the game SACRIFICES FIRST
   when the screen is full. The degradation policy gives up the cheapest thing on
   the screen first, which is a design decision this table makes visible.
 * **The nineteen buckets at 0 px measured ZERO RECORDS on all 1,901 frames**
@@ -405,14 +405,14 @@ The bounding boxes are what a reader can check without the dumps.
 
 ---
 
-## 7. THE `bsr` SCAN — a NEGATIVE result, and it corrects the recon
+## 7. THE `bsr` SCAN - a NEGATIVE result, and it corrects the recon
 
 10-recon-display-list §7.5 left this open: *"Ten of thirty buckets have no
 absolute-long callers at all and are fed entirely by `bsr`. A static `bsr`-target
 scan … would close this and I did not run it."*
 
 `tools/w11/bsrscan.py` runs it. The scanner is validated against a known answer
-first — **29 `bsr` sites target `$23D726`**, exactly wave 5's number, and 8 target
+first - **29 `bsr` sites target `$23D726`**, exactly wave 5's number, and 8 target
 `$240ADC`.
 
 ```
@@ -437,7 +437,7 @@ bucket 22 $80AFE0  move.w D0,_                     $281DCE
 bucket 23 $80AFE2  move.w A4,_ (THE BULK WRITER)   $281DD6
 ```
 
-So bucket 20 — the one of these nine that carries records (max 24/frame) — is fed
+So bucket 20 - the one of these nine that carries records (max 24/frame) - is fed
 by the **bulk writer `$28A098`**, and its four `addi` stubs are simply never
 called. The remaining eight measured **zero records on every one of 1,901
 frames**. That is "I found no caller", never "nothing calls it": a call through a
@@ -452,7 +452,7 @@ register or a jump table is invisible to any static scan.
    the direct-to-queue append) and unit-tested against hand-computed values, but
    nothing in the corpus calls it, so the translation is LISTING-ONLY. Two things
    inside it are named throws rather than guesses:
-   * the `$23E54A` scale table's **entry 25 multiplies by 21, not 25** —
+   * the `$23E54A` scale table's **entry 25 multiplies by 21, not 25** -
      decoded by symbolically executing all 64 routines out of the ROM; entries
      32..63 are 128 bytes of the literal `$0023E64A` (×1), a deliberate guard for
      the out-of-range indices the second dispatch can produce;
@@ -489,9 +489,9 @@ register or a jump table is invisible to any static scan.
 
 | row | status | why |
 |---|---|---|
-| **L17** — the zoom table blob + the entry-`$F` quirk | **REPLACED** | baked as the `$23C588` constant in `src/zoomtable.js`, asserted against `:igs023:zoomram` on every `dlgate` run, named `zoomcov` cases `eff-index-0F` (both encodings, both axes) and `eff-index-10`, and the `zoom-f-literal` mutation |
-| **L18** — the identity of 25 of the 30 sprite buckets | **REPLACED** | the ablation table in §6 plus the `bsr`/counter-writer census in §7 |
-| **L1** — the hardware display list itself | **CONVERTED** | the port BUILDS it, gated at 0 divergent frames; it is now "the source of bucket CONTENTS" instead of "the only source of pixels" |
+| **L17** - the zoom table blob + the entry-`$F` quirk | **REPLACED** | baked as the `$23C588` constant in `src/zoomtable.js`, asserted against `:igs023:zoomram` on every `dlgate` run, named `zoomcov` cases `eff-index-0F` (both encodings, both axes) and `eff-index-10`, and the `zoom-f-literal` mutation |
+| **L18** - the identity of 25 of the 30 sprite buckets | **REPLACED** | the ablation table in §6 plus the `bsr`/counter-writer census in §7 |
+| **L1** - the hardware display list itself | **CONVERTED** | the port BUILDS it, gated at 0 divergent frames; it is now "the source of bucket CONTENTS" instead of "the only source of pixels" |
 
 ---
 
@@ -521,7 +521,7 @@ node   --test games/ddpdoj/tests/
    It works out to a plain copy; translate the instruction anyway.
 5. **Poke a BUCKET counter, not `$80AFC0`, to force the cap.** The unguarded
    appender `$23D762` eats a `$80AFC0` poke first and can carry the pointer past
-   `$BC4`, after which `beq` can never match — which is why wave 5 needed a sweep.
+   `$BC4`, after which `beq` can never match - which is why wave 5 needed a sweep.
 6. **A zoomed record has bits 13..11 set in the `$3FFF`-masked short axis and
-   that is NORMAL** — `or.l D3,D1` puts them back. The hazard is the DELTA across
+   that is NORMAL** - `or.l D3,D1` puts them back. The hazard is the DELTA across
    `add.l $80B054`, not the value.

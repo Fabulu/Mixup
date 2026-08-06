@@ -1,10 +1,10 @@
-# WAVE 3 — asset export with teeth (the gfx gate, zoom coverage, manifest, sound map)
+# WAVE 3 - asset export with teeth (the gfx gate, zoom coverage, manifest, sound map)
 status: DONE
 wave: 3   role: impl   started: 2026-08-01
 
 ## The task, as I understood it
 
-`PLAN-vertical-slice.md` §"Wave 3 — asset export with teeth", five items:
+`PLAN-vertical-slice.md` §"Wave 3 - asset export with teeth", five items:
 
 1. `gfxgate.py` becomes a **gate stage**: one command runs MAME with a scripted
    input, dumps >=12 frame pairs spread over boot + stage 1 **on VERSION-B**,
@@ -12,9 +12,9 @@ wave: 3   role: impl   started: 2026-08-01
    fewer than N pairs were produced. Red-validate with a known mutation.
 2. **Zoom coverage**: force all 16 zoom-table entries x grow/shrink x both axes
    x flips; red-validate by breaking the zoom loop. (Wave 0's corpus covered
-   entries 1 and 0xa only — presence, not coverage.)
+   entries 1 and 0xa only - presence, not coverage.)
 3. **Export + manifest**: TX tiles, BG tiles, palettes, and a consciously
-   decided sprite policy — **harvest every `offs` the game uses across the
+   decided sprite policy - **harvest every `offs` the game uses across the
    scenario corpus** (measurement) rather than statically walking the mask ROM
    (a guess); the manifest records which. Integrity checker re-reads the ROMs at
    raw file offsets, deliberately NOT through `pgmgfx.py`'s helpers
@@ -91,7 +91,7 @@ romset ddpdojblk [ddp3] is best available    1 romsets found, 1 were OK.
   refresh_hz=59.185606061 frame_attos=16896000000000000 cycles_per_frame=337920
 ```
 
-### 1. The gfx gate — 16 pairs over boot AND stage 1, 100.0000 %
+### 1. The gfx gate - 16 pairs over boot AND stage 1, 100.0000 %
 
 ```
 $ python games/ddpdoj/tools/oracle/pgm.py gfx
@@ -118,7 +118,7 @@ FAIL: 0/0 = 0.0000% over 0 frame pair(s)  -- TOO FEW PAIRS: 0 < 12 required.
 rc=1
 ```
 
-### 2. Red validation of the gfx gate — six mutations, every one caught
+### 2. Red validation of the gfx gate - six mutations, every one caught
 
 ```
 $ python games/ddpdoj/tools/oracle/pgm.py gfx --mutate all
@@ -134,11 +134,11 @@ RED VALIDATION: every mutation was caught
 ```
 
 `spr-order` (list drawn forwards) and `u19-at-200000` are the two traps named in
-my brief, turned into standing tests. **`zoom-off` costs only 2.72 %** — that is
+my brief, turned into standing tests. **`zoom-off` costs only 2.72 %** - that is
 the measured argument for item 2: the natural corpus barely touches the zoom
 path, so a decoder with a dead zoom loop passes the frame gate 97 % of the time.
 
-### 3. Zoom coverage — 384 combinations, twice, COMPLETE
+### 3. Zoom coverage - 384 combinations, twice, COMPLETE
 
 ```
 $ python games/ddpdoj/tools/oracle/pgm.py zoomcov 2000
@@ -170,7 +170,7 @@ not a green one.
 
 **(a) MAME's `draw_sprites` does not re-read `:igs023:spritebuffer` at draw
 time.** My first zoom poker switched the sprite DMA off (`ctrl` bit 0) and wrote
-the post-DMA buffer directly. The poke landed — parsing the dumps back:
+the post-DMA buffer directly. The poke landed - parsing the dumps back:
 
 ```
 f2036 n=18 ctrl=001e   {'i':0,'x':8,'y':8,'xzom':0,'ygrow':True,'offs':15868,...}
@@ -178,8 +178,8 @@ f2037 n=18 ctrl=001e   (same 18 synthetic entries)
 ```
 
 and every pair scored **92.64 %**. I looked at the framebuffer PNG
-(`rip/render/f002036.mame.png`): MAME had drawn the GAME's sprites — an
-explosion and the ship — not our 6x3 grid. So the share is an OUTPUT of the DMA,
+(`rip/render/f002036.mame.png`): MAME had drawn the GAME's sprites - an
+explosion and the ship - not our 6x3 grid. So the share is an OUTPUT of the DMA,
 not the INPUT of the draw. Fixed by poking the game's own list in main RAM
 (`$800000`, 5 u16/entry) at the sample point, which is the one instant between
 the list build (main-loop call #4) and the vblank DMA.
@@ -196,11 +196,11 @@ state f2082 -> pixels f2083:  zr(f2081)=100352  zr(f2082)=100352  zr(f2083)=1003
 ```
 
 The draw of f2081 used the table dumped at f2079. Poking at the sample point
-instead of in the notifier changed nothing — the same 978 pixels, the same one
+instead of in the notifier changed nothing - the same 978 pixels, the same one
 pair. Rather than model an offset I could not pin, each coverage run now holds
 its table constant for its whole length and `zoomcov` runs twice.
 
-### 5. `bg_scale` — the watch tripped on its very first run
+### 5. `bg_scale` - the watch tripped on its very first run
 
 ```
 CENSUS bg_scale writes=4 non_0210=2 values_written[0210:2 0610:2]
@@ -214,7 +214,7 @@ WARN bg_scale was written non-0x210 2 time(s) BEFORE the first logic frame ...
 `$0065E2` is inside `ddp3_bios.u37` (the 512 KiB PGM BIOS at `$000000`), and
 both writes are at `lf=0`. **The PGM BIOS programs a non-100 % background scale
 during boot**, and MAME does not implement the register at all
-(`igs023_video.cpp:193`, "TODO: not implemented, unknown algorithm") — so those
+(`igs023_video.cpp:193`, "TODO: not implemented, unknown algorithm") - so those
 BIOS boot frames are rendered by MAME without a feature the hardware has.
 
 My first version FAILED the run on any non-0x210 write, which made every run
@@ -306,13 +306,13 @@ Z80 BLOB: needle = 32 bytes at z80 RAM $010F
   odd  byte lane (stride 2, +1)  hits=0
 ```
 
-**23,314 contiguous bytes, verbatim, at two addresses — one per build.** For
+**23,314 contiguous bytes, verbatim, at two addresses - one per build.** For
 VERSION-B the driver image is at decrypted `:maincpu` **$2C3510 = z80 RAM
 $0086** (so z80 $0000 would be $2C348A). The run stops at z80 $0086/$5B97
 because by the end of the run the Z80 has overwritten those areas with runtime
 state: that bound is on the DUMP, not on the copy. The first attempt anchored
 the run at z80 $0000 and reported 6 bytes, which would have been read as "not
-found" — the anchor has to be the needle, not the origin.
+found" - the anchor has to be the needle, not the origin.
 
 **The 17 `end <= start` samples: BOTH wave-0 hypotheses measured FALSE.**
 
@@ -331,7 +331,7 @@ up. What the ICS2115 does with `end < start` is NOT established here.
 `sampledump.py` must keep reporting and skipping them; `rip/sound/ics.tsv` now
 carries all 191,367 register writes in order for whoever picks it up.
 
-### 8. The check runner — ALL GREEN, and seen RED
+### 8. The check runner - ALL GREEN, and seen RED
 
 On a **fresh extraction of the ROMs from `ddpdojblk.7z`**:
 
@@ -367,13 +367,13 @@ VERDICT: FAILURES -- 7 passed, 1 failed, 0 SKIPPED     (rc=1)
    on both axes when it zooms both, so "grow in x while shrinking in y" is
    absent from the coverage table. The frame gate would still catch it if the
    game did it; coverage does not claim it.
-4. **Only two zoom tables were exercised** — the one live at logic frame 2000
+4. **Only two zoom tables were exercised** - the one live at logic frame 2000
    and a synthetic one. Other tables the game may install elsewhere in the game
    are not covered.
 5. **The Z80 driver is located, not disassembled.** §7 gives its address in both
    builds; nothing was decoded out of it. Audio playback is out of the slice by
    `PLAN` §6 item 2 anyway.
-6. **The sprite atlas is bounded by the corpus** — 1,211 records from
+6. **The sprite atlas is bounded by the corpus** - 1,211 records from
    `stage1-open` + `stage1-deep`. That is stated in the manifest as the policy's
    consequence, not hidden.
 7. **The wave-2 BLOCKING OPEN (build-A ISRs on a VERSION-B run) is untouched.**

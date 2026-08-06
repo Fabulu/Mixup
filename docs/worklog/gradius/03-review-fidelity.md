@@ -29,7 +29,7 @@ skipped, each with a printed reason, and `w_004C` is newly watched this wave.
 That is the documented mechanism (compare.mjs puts the count on the verdict
 line), not a hidden skip.
 
-### 2. The oracle side reproduces from the ROM — this was the load-bearing check
+### 2. The oracle side reproduces from the ROM - this was the load-bearing check
 I md5'd all 18 recordings, then re-recorded the whole corpus from
 `Gradius (USA).nes` myself and diffed:
 ```
@@ -52,13 +52,13 @@ Every instruction in `src/enemies.js` matches. Spot-check highlights:
   with Y=$FF, N set, so `$A36B`/`$A378 BMI` ARE always taken. The port's
   unconditional calls are right.
 * `$83E4` = `ASL A / ... / LDA ($98),Y` with Y = A+1 off the pulled return
-  address `$AE1B` — i.e. `word($AE1C + (type<<1) & $FF)`. The 8-bit ASL claim
+  address `$AE1B` - i.e. `word($AE1C + (type<<1) & $FF)`. The 8-bit ASL claim
   (type $85 == type $05) is correct.
-* `$9650: A9 0C 85 13 A9 00 85 5D 85 5B 85 5C` — `$5D` IS cleared every mode-5
+* `$9650: A9 0C 85 13 A9 00 85 5D 85 5B 85 5C` - `$5D` IS cleared every mode-5
   frame. The implementer's headline correction is right against the bytes.
 * `$BC44: LDA $1A / BNE / LDA $19 / CMP #$02 / BCS / LDX $A8 / LDA $0360 /
-  CMP $036C,X / BCC $BC59 / RTS` — fires only when playerX < enemyX. Correct.
-* `$B2A5 DEC $046C,X / BEQ $B2AF / LDA #$00 / STA $046C,X` — the "stores zero
+  CMP $036C,X / BCC $BC59 / RTS` - fires only when playerX < enemyX. Correct.
+* `$B2A5 DEC $046C,X / BEQ $B2AF / LDA #$00 / STA $046C,X` - the "stores zero
   when the DEC did NOT reach zero" reading is what the bytes say.
 * Dispatch table dumped: 42 entries, entry 0 and 31 = `$AE70` (byte `60` = RTS),
   1/39/41 = `$AEDD`, 2 = `$AE99`, 3 = `$AEE1`, 4 = `$B205`, 5 = `$B0AF`,
@@ -80,7 +80,7 @@ Every `EXPECT_ENEMY_*` constant in verify_assets.py matches the cartridge.
 `python games/gradius/tools/verify_assets.py --self-test` -> 25 of 25 mutations
 reddened their target; 10 of 10 families seen red (I ran it).
 
-### 5. MUTATION TESTING — 20 deliberate breaks on a scratch copy
+### 5. MUTATION TESTING - 20 deliberate breaks on a scratch copy
 Method: copy of `games/gradius` under the scratchpad with its own `package.json`
 (`type: module`) and a copy of `out/scen`, so the repo's `src/` was never
 touched. `corpus` = `compare.mjs --only enemy-waves` failure count;
@@ -105,7 +105,7 @@ RED (the check works):
 | `$A572`/`$A52B`/`$A52E`/`$A566` clearSlot stores dropped | 0 | 1 each |
 | `$AEE3 SBC #$80` -> `#$40` | 0 | 1 |
 
-**PASSED — i.e. no check anywhere caught them:**
+**PASSED - i.e. no check anywhere caught them:**
 | break | corpus | unit |
 |---|---|---|
 | handler 2 `$AE99` corrupted three ways (timer 5->99, gold threshold `AND $0F`->`AND $03`, script cursor frozen at 0) | 0 | 0 |
@@ -136,7 +136,7 @@ e1d0772 18 scenarios watch=324
 ```
 3341 + 239 (s0-handover) = 3580. Truncation is driven purely by the ORACLE rows
 (`compare.mjs` stops at `w_0100 != 1` or `$1B` bit 7 clear), never by the port
-throwing, so wave 3 structurally cannot have silently shortened a window — and
+throwing, so wave 3 structurally cannot have silently shortened a window - and
 the totals confirm it did not.
 
 ### 8. Rule 1
@@ -174,8 +174,8 @@ commit's `--stat` contains no `assets/`, `rip/`, `dist/` or ROM file.
 
 ## What I FOUND (see the structured verdict for the ranked list)
 1. Handler 2 (`$AE99`, ~20 lines) has ZERO coverage in either layer.
-2. Handler 1's fall-through into `$AEE1` — the file's own headline "TWO HANDLERS
-   FALL THROUGH INTO EACH OTHER", docs/knowledge/02 trap 1 — is guarded by
+2. Handler 1's fall-through into `$AEE1` - the file's own headline "TWO HANDLERS
+   FALL THROUGH INTO EACH OTHER", docs/knowledge/02 trap 1 - is guarded by
    nothing. The test named for it only exercises the `$5B != 0` arm.
 3. `$B154`'s fraction-carry (the "that is what makes this a real 16-bit add"
    comment) is never exercised: `xvelf` is 0 on every call in the corpus.
@@ -193,7 +193,7 @@ commit's `--stat` contains no `assets/`, `rip/`, `dist/` or ROM file.
 
 ## What I could not do, and why
 * I could not exercise `$BC44`'s fire path or slots 22-31. That is by
-  construction — `enemy-waves` parks the ship at X=240 so `playerX >= enemyX`
+  construction - `enemy-waves` parks the ship at X=240 so `playerX >= enemyX`
   on every call. It is disclosed in the code and the commit message, and the
   unported side is a loud throw, so it fails loudly rather than silently. It
   does mean a REACHABLE cartridge state has no scenario. Owner: whoever ports
@@ -201,7 +201,7 @@ commit's `--stat` contains no `assets/`, `rip/`, `dist/` or ROM file.
 * No pixel layer for Gradius exists yet (`games/gradius/tests/` has no visual
   test; `tests/visual/renderer.test.js` is the Batman port). The enemies now
   reach OAM via `msExpanded`/`spriteRecords`/`spritesStored`, which were
-  promoted INFO -> TIER 1 this wave and are exact on 5045 of 5045 frames — that
+  promoted INFO -> TIER 1 this wave and are exact on 5045 of 5045 frames - that
   is a display-LIST check, not a picture check (docs/knowledge/01's table:
   the state-trace layer is blind to drawing). Not a wave-3 regression; noting it
   because trap 2 is exactly this.
@@ -212,7 +212,7 @@ the corpus has real teeth on the three handlers stage 1 actually runs. The gap
 is entirely in what the corpus can REACH: handlers 1, 2 and 3 are capsule /
 explosion code that only `$BE93` (the kill routine, wave 6) can produce, so they
 are ported-but-unwitnessed. Do not "clean up" `h_AEDD`'s fall-through or
-`addX16`'s carry — I verified both against the disassembly and both are right;
+`addX16`'s carry - I verified both against the disassembly and both are right;
 they are simply unguarded. Add unit tests for them (cheap: type $81 with
 `$5B = 0` must drift; `xvelf = $80` twice must carry into X) before wave 6
 touches that code.

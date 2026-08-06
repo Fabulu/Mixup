@@ -1,6 +1,6 @@
-# WAVE 7 REVIEW — publish
+# WAVE 7 REVIEW - publish
 
-status: **DONE** — verdict **defects-found** (nothing blocking; the page boots,
+status: **DONE** - verdict **defects-found** (nothing blocking; the page boots,
 renders, reports its errors, and no gate of wave 7's is fake)
 wave: 7   role: review   started: 2026-08-01   commit under review: `b7263e9`
 
@@ -70,7 +70,7 @@ is EMPTY; `assets/.gitignore` is `*` and root `.gitignore:22` ignores `assets/`.
 
 ## 2. THREE CHECKS BROKEN, ALL SEEN RED, ALL RESTORED BYTE-IDENTICAL
 
-### BREAK A (new check, mine) — the onError channel
+### BREAK A (new check, mine) - the onError channel
 
 I wrote a headless page harness (stub canvas/rAF, real `node:http` origin,
 the page's own `src/web/app.js` + `src/web/input.js`) and deleted
@@ -83,7 +83,7 @@ baseline   SHOT HELD: onError called 1 time(s); loop still running = false
 restored   sha256 5122d057cfe52b7f938d2955cc90cc2626699ae647d594bd696347c2f2f55a38  (identical)
 ```
 
-### BREAK B (new check, mine) — `KeyY`
+### BREAK B (new check, mine) - `KeyY`
 
 Removed `KeyY: 'SHOT'` from `src/web/input.js`'s `KEYMAP`.
 
@@ -93,7 +93,7 @@ Removed `KeyY: 'SHOT'` from `src/web/input.js`'s `KEYMAP`.
 restored   sha256 a47f7c90428101d5472b50ef46b66feca6a44117a6c88979174f835621e020c4  (identical)
 ```
 
-### BREAK C — the leak guard, with MY OWN bytes
+### BREAK C - the leak guard, with MY OWN bytes
 
 Planted `games/ddpdoj/assets/REVIEW-leak.bin.gz` = 64 KiB of
 `cave_a04402w064.u8` at $200000, gzipped to 44,403 B on the wire.
@@ -112,7 +112,7 @@ Removed, rebuilt: 170 files, 2414 KB, clean. The guard is real and its new
 
 ---
 
-## 3. THE THREE THINGS THE IMPLEMENTER LEFT TO A HUMAN — two of them now measured
+## 3. THE THREE THINGS THE IMPLEMENTER LEFT TO A HUMAN - two of them now measured
 
 Harness: real HTTP origin over `assets/`, `boot(canvas,{base,gameJson,target,onError})`,
 a manual rAF pump, a stub 2d context counting `putImageData`.
@@ -149,7 +149,7 @@ and `devicePixelRatio`.
 
 ### D1 (moderate) THE PAGE OVERCLAIMS: the option pods are NOT computed live
 
-`games/ddpdoj/index.html:150` banner —
+`games/ddpdoj/index.html:150` banner -
 
 > "Its position, velocity, tilt, clamps, speed modes **and its two option pods**
 > are computed **live, by the port**"
@@ -158,14 +158,14 @@ and `src/web/app.js:13` lists "options" under **SIMULATED**. Against the tree:
 
 * `docs/worklog/ddpdoj/04-impl-skeleton-and-player.md` §"What I could not do" 1
   is titled **"THE OPTION OBJECT IS NOT PORTED."**
-* `games/ddpdoj/src/state.js:95` — *"The option columns. Separate because the
+* `games/ddpdoj/src/state.js:95` - *"The option columns. Separate because the
   option OBJECT is not ported in wave 4"*; `OPTION_COLUMNS` are excluded from the
   34 compared columns the same banner cites.
 * No writer exists: `grep p1Options games/ddpdoj/src/` finds only the address
   constant and the two read-only comparison columns. `$24D130`, `$24C33E`,
   `$24C310`, `$24C900` appear nowhere in `src/`.
-* `src/render/capture.js:80` `splice(st,i,py,px)` moves all THREE records —
-  ship and both pods — to `(py>>6)+dx, (px>>6)+dy` where `dx,dy` are the
+* `src/render/capture.js:80` `splice(st,i,py,px)` moves all THREE records -
+  ship and both pods - to `(py>>6)+dx, (px>>6)+dy` where `dx,dy` are the
   **captured** per-frame offsets from `frames[i].player`. The pods replay the
   board's recorded offsets from the port's ship. That is replay, not simulation.
 
@@ -200,11 +200,11 @@ A static-file CDN that pre-compresses sends the length. So worklog §2's *"if a
 CDN ever does set that header, the failure is a named message saying exactly
 that"* and human-check item 8 hold only for the chunked variant, and
 `webgate --break not-gzip` only ever exercises that variant. The user still sees
-a message (the boot `try/catch` catches it) — it just says "offset is out of
+a message (the boot `try/catch` catches it) - it just says "offset is out of
 bounds". Fix: size `out` from the manifest, or drop the streaming path when
 `content-encoding` is present, or wrap the `out.set` in the named AssetError.
 
-### D3 (minor) `spr/col.u16.gz` DOES contain a verbatim cartridge slice — 22,040 bytes of it
+### D3 (minor) `spr/col.u16.gz` DOES contain a verbatim cartridge slice - 22,040 bytes of it
 
 The guard asks "is the WHOLE file a slice". I asked the stricter question, from
 high-entropy seeds only so zero padding cannot masquerade (300 probes/file,
@@ -219,8 +219,8 @@ window 5145..27185: distinct bytes 127, zeros 684/22040 (3.1%)   <- real art, no
 ```
 
 Half of the 44,226 used bytes of the colour file is one unbroken copy of the
-sprite-colour ROM. That is inherent — only the mask **headers** are rewritten,
-colour blocks are copied — and it is the same class as Batman's documented
+sprite-colour ROM. That is inherent - only the mask **headers** are rewritten,
+colour blocks are copied - and it is the same class as Batman's documented
 deliberate exception, with `assets/` gitignored and uncommitted either way. But
 worklog §2's heading *"The output is not a slice of the cartridge"* is true at
 file granularity and true for the tiles, and NOT true for `spr/col.u16`. The
@@ -234,7 +234,7 @@ direction, tested independently by the mover at `$141B2E`"*. `$141B2E` is
 own `rom.note` says an address in `$13xxxx/$14xxxx` is a defect unless a comment
 says why, and the worklog's header says the same. The VERSION-B mover writes are
 `$2417F4/$2417F8` (`src/player.js:187-188`), clamp store `$2496E8`.
-(`$13D464` in `src/web/input.js` is build A and IS labelled as such — correct,
+(`$13D464` in `src/web/input.js` is build A and IS labelled as such - correct,
 per 02/04-review: a VERSION-B run really does execute build A's IRQ6.)
 
 ### D5 (minor) The guard's allowlist bypass runs BEFORE the gz inflate
@@ -248,7 +248,7 @@ same shape as the hole wave 7 just closed.
 ### D6 (informational) `tools/publish.mjs:106-110` comment is stale
 
 *"It has NO allowlist... The pool is now replaced at copy time by original
-placeholder art"* — the build prints `published verbatim, deliberately:
+placeholder art"* - the build prints `published verbatim, deliberately:
 games/batman/assets/player.tiles.bin (6974 B)` and `1 deliberate exception(s)`.
 `PUBLISH_VERBATIM` still holds it. Pre-existing, untouched by wave 7, and it
 concerns Batman, so I left it alone per the brief.
@@ -258,7 +258,7 @@ concerns Batman, so I left it alone per the brief.
 `publish.mjs` runs bundlegate and webgate against `games/ddpdoj/assets`;
 `build-dist` re-minifies `manifest.json` on the way into `dist/` (5666 → 2722 B),
 so the gated bytes are not the deployed bytes. I ran both gates against
-`dist/games/ddpdoj/assets` — 100.0000 % and PASS — so this is a gap in the gate,
+`dist/games/ddpdoj/assets` - 100.0000 % and PASS - so this is a gap in the gate,
 not a live defect.
 
 ### D8 (informational) Four modules ship unreachable
@@ -277,5 +277,5 @@ module graph. `buildid.js` was disclosed; the other three are dead weight.
 * **A real browser.** None on this machine, downloading forbidden. Human-check
   items 1, 2, 6, 7, 8, 9 remain open; items 3, 4 and 5 are now closed headlessly
   (§3).
-* **`games/gradius/` and `games/batman/`** — untouched, per the brief. Gradius's
+* **`games/gradius/` and `games/batman/`** - untouched, per the brief. Gradius's
   suite re-run only to confirm the shared-tool edits are harmless (292/0/0).

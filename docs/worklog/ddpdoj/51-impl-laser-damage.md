@@ -1,4 +1,4 @@
-# 51 — IMPL: the beam DAMAGES (L3, `$2453AC`), and what it reaches
+# 51 - IMPL: the beam DAMAGES (L3, `$2453AC`), and what it reaches
 
 status: **DONE**
 
@@ -50,12 +50,12 @@ the laser's routine. Its only reachable caller is **`$24530C bsr.w`, inside
 So the work is **three routines and a guard, in `src/damage.js`**, not one
 routine in `src/laser.js`.
 
-**`($3f,A4)` GATES ALL OF IT** [M] — the byte `$24C282 move.b #$1,($3f,A4)`
+**`($3f,A4)` GATES ALL OF IT** [M] - the byte `$24C282 move.b #$1,($3f,A4)`
 sets when the arm-up completes and `$24C2D6` clears on release. W45 §2 found
 that byte from the other end (`$249B40` is `bne $249E4E`, a return, not "the
 dead flag"); this is the other thing it gates. It is why W34 could defer the
-whole tail without losing one hit — until W45 nothing in this port could hold
-fire — and it is why porting it **cannot change a frame of any no-input gate**.
+whole tail without losing one hit - until W45 nothing in this port could hold
+fire - and it is why porting it **cannot change a frame of any no-input gate**.
 
 **The 150 is not a third pool** [M]: `$81459C + 100*$20 = $81521C`, pool B's
 base, so `moveq #$95,D7` walks pool A's hundred and pool B's fifty
@@ -77,21 +77,21 @@ bit it leaves behind is **`$0200`**.
 
 W45 §0.4 measured the port's `$811EF2` as `$8000` where `10-recon-combat §2`'s
 board trace has **`$8200`**, and wrote: "So `$0200` is a per-power bit of the
-sub-template, not a divergence — but I have not reproduced the board's state to
+sub-template, not a divergence - but I have not reproduced the board's state to
 prove it, and that is a one-line check for whoever next has a board run."
 **The guess was wrong and it needed no board run.** `$0200` is `$2453BA`, and
 the board's trace has it because the board's beam had run its damage pass.
 [M] With this wave the port's record goes `$8000` (+21) → **`$8201`** (+22) →
-**`$9201`** on a hit — all three of the board's traced values, for the ROM's own
+**`$9201`** on a hit - all three of the board's traced values, for the ROM's own
 reasons. `$9201 = $8201 | $1001` and `ori.w #$1001,(A1)` at `$2454AC`/`$2455AE`
 are, per W45 §4's own whole-image encoding scan, the ONLY setters of bit 4 of
-`$811EF2` in build B — the bit `$254F48 btst #4,(A2)` uses to light the drawn
+`$811EF2` in build B - the bit `$254F48 btst #4,(A2)` uses to light the drawn
 column.
 
 **AND IT MEANS `$245314`/`$24536E` ARE NOT NEEDED.** W37 §4.1 calls those two
 "the laser's damage entries"; their only callers are `$254DA2` (inside
 `$254D06`) and `$24CE46` (inside `$24CDC0`). [M] My sweep for any
-`bra`/`bsr`/`Bcc`/`jsr`/`jmp` targeting `$254D06` returns **0 sites** — the same
+`bra`/`bsr`/`Bcc`/`jsr`/`jmp` targeting `$254D06` returns **0 sites** - the same
 shape as W37 §7.3's result for `$24C37A`. Both stay unported and neither is
 called dead code; the pass arms itself without either.
 
@@ -115,13 +115,13 @@ enemies. What went live is `$2860F2 bsr $286876`:
 `src/score.js` has called that arm "the BOMB hit bit ($400), which is set only
 at `$245242`/`$2452F2`, both inside the A2/A3 weapon loops `src/damage.js` does
 not run" since W34. **Both halves of that sentence are now false.** [M] It fired
-2 times in 601 steps of the held run (0 in the control), and `$286674` — the
-cap-clamp tail — went from 2 to 55.
+2 times in 601 steps of the held run (0 in the control), and `$286674` - the
+cap-clamp tail - went from 2 to 55.
 
 **It is ported, not noted, and the reason is that `$2860F0 beq $2860F8` makes it
 run INSTEAD of the plain add, never as well** (unlike `$2860C8`'s laser arm,
 whose `$2860CC bra` rejoins). A note there silently drops the whole ledger event
-— score, chain, meter and hi-water — on every laser hit. `$286774`, its rank
+- score, chain, meter and hi-water - on every laser hit. `$286774`, its rank
 feeder and the exact twin of `$2867B4`, is ported with it.
 
 ---
@@ -131,8 +131,8 @@ feeder and the exact twin of `$2867B4`, is ported with it.
 | ROM | bytes | what | where |
 |---|---|---|---|
 | `$245188..$2451A0` | 26 | the weapon tail's three gates, incl. `($3f,A4)` | `damage.js weaponTail` |
-| `$2451A2..$24525A` | 185 | BLOCK 7 — slot 27 vs 150 enemy slots | `weaponObjectPass(7)` |
-| `$24525C..$24530A` | 175 | BLOCK 8 — slot 30 vs 150 enemy slots | `weaponObjectPass(8)` |
+| `$2451A2..$24525A` | 185 | BLOCK 7 - slot 27 vs 150 enemy slots | `weaponObjectPass(7)` |
+| `$24525C..$24530A` | 175 | BLOCK 8 - slot 30 vs 150 enemy slots | `weaponObjectPass(8)` |
 | `$2453AC..$2453C0` | 22 | the pass's entry and its self-arming `bset` | `laserDamagePass` |
 | `$2453C2..$245608` | 584 | THE BODY: both hyper recomputes, pool A (100), pool B (50) | `laserDamageBody`/`laserPool` |
 | `$24560A..$245620` | 24 | the NINTH block's two guards, then a throw | `bombLaserBlock` |
@@ -148,10 +148,10 @@ A "tidy" port makes these consistent and is wrong four times:
 
 | site | reduction | gate |
 |---|---|---|
-| blocks 6a/6b (W34) | `lsr.w #2` — a QUARTER | `$81308C == 0` |
-| block 7 `$245236` | `lsr.w #1` — a HALF | `$81308C == 0` |
-| block 8 `$2452E6` | `lsr.w #1` — a HALF, after `add.w D5,D5` on `$81B6E6` | `$81308C == 0` |
-| `$2453AC` `$2454D4` | `lsr.w #2` — a QUARTER | `$81308C == 0` |
+| blocks 6a/6b (W34) | `lsr.w #2` - a QUARTER | `$81308C == 0` |
+| block 7 `$245236` | `lsr.w #1` - a HALF | `$81308C == 0` |
+| block 8 `$2452E6` | `lsr.w #1` - a HALF, after `add.w D5,D5` on `$81B6E6` | `$81308C == 0` |
+| `$2453AC` `$2454D4` | `lsr.w #2` - a QUARTER | `$81308C == 0` |
 
 and the two hyper recomputes of `($e,A1)` use **different shift ladders**:
 `$2453FA` is `lsr #2` then a conditional `lsr #1` on `$81309C`'s sign;
@@ -164,7 +164,7 @@ move.w D4,($e,A1)`. After the first **pool B** hit the beam's damage word is
 stored **negated and an eighth of its size**; the next pool-B hit re-negates it
 (`$2455D2 neg.w D5`) without rewriting it. Pool A reads the same word with no
 `neg`, so a beam that has hit anything in pool B then **subtracts a negative in
-pool A — it heals**. Nothing resets `($e,A1)` between frames except `$254C1E`
+pool A - it heals**. Nothing resets `($e,A1)` between frames except `$254C1E`
 (a new beam) or the hyper arms. Read four times; transcribed, **not** guarded,
 and recorded here so the next person to see an enemy gain HP knows which
 instruction did it. Stage 1 holds `$815EA0` at 0 throughout, so no run in this
@@ -180,18 +180,18 @@ unobservable and is transcribed anyway.
 ### 1.4 NO POOL IS ALLOCATED FROM
 
 The brief's pool-leak warning is answered by not allocating. The three routines
-ported here **write into records that already exist** — the 100+50 enemy slots
-at `$81459C`, the beam record `$811EF2`, the enemy type words — and call no
+ported here **write into records that already exist** - the 100+50 enemy slots
+at `$81459C`, the beam record `$811EF2`, the enemy type words - and call no
 allocator. `$27F8F8`, the only allocator this wave came near, is explicitly NOT
 ported for exactly Recon 50's reason (§3).
 
 ---
 
-## 2. THE MEASUREMENTS — the W34 control method [M]
+## 2. THE MEASUREMENTS - the W34 control method [M]
 
 Same tree, same shipped bundle seed, `$810424 = $FF` each step (the page's own
 intervention); the only difference is the input word. "W45 tree" is
-`a3df8ab~1`, checked out into the worktree, not a stash — **an earlier version
+`a3df8ab~1`, checked out into the worktree, not a stash - **an earlier version
 of this section had the baseline wrong because `git stash` cannot revert a file
 that is already committed, and every "baseline" number taken after the first
 commit was silently the new tree. Re-measured from the commit.**
@@ -227,7 +227,7 @@ The beam record's timeline reproduces: live `$8000` at +21, `$8201` at +22 (the
 
 W33 §3 predicted that "the midboss halts the scroll at clk 197 and the port
 cannot kill it". W34 falsified the *consequence* it drew from that. **The
-premise is now falsified too: the beam kills it** — the body and all eight arms,
+premise is now falsified too: the beam kills it** - the body and all eight arms,
 each with its own `$289004`/`$28C25A` death note, at step 1,773 of a held run.
 
 The midboss's death arms run `$243E7C move.w #$1,$81B410`
@@ -240,7 +240,7 @@ whose comment read:
 
 **That sentence was false when it was written.** `$243E7C` is the second writer
 and W31 ported it; what was missing was the death. And [M] **the throw was
-already live on the W45 tree by ORDINARY TAPPED SHOTS, at step 2,203** — W34's
+already live on the W45 tree by ORDINARY TAPPED SHOTS, at step 2,203** - W34's
 own control input, on a path that has been shipping since W34 and that no test
 or gate walked far enough to reach. So this wave did not create it; it found it.
 
@@ -249,8 +249,8 @@ or gate walked far enough to reach. So this wave did not create it; it found it.
 Two reasons, both from the project's own rules:
 
 1. **It must not be ported.** `$27F8F8` is a SLOT ALLOCATOR over the impact pool
-   `$8171BE` — `moveq #$45,D7` = 70 slots of `$2C`, free test `tst.w (A0)`,
-   filled at `$280B3E`, which also bumps the live count `$817F7E` — and its only
+   `$8171BE` - `moveq #$45,D7` = 70 slots of `$2C`, free test `tst.w (A0)`,
+   filled at `$280B3E`, which also bumps the live count `$817F7E` - and its only
    driver is **`$27F95A`, type-5 call #4, unported**. Porting the allocator
    without the driver consumes all 70 slots and then fails silently forever:
    W33's defect one level down, which is `50-recon-effects`'s own warning and
@@ -258,8 +258,8 @@ Two reasons, both from the project's own rules:
 2. **A note here invents nothing**, which is `src/unported.js`'s test for the
    difference. The caller reads neither A0 nor the carry
    (`$281D34 move.w (A7)+,D7` is followed by no `bcc`), and the two writes that
-   actually clear the bullet — `$281D36 clr.w (A6)` and
-   `$281D38 move.w #$FFFF,($2,A6)` — are ported. Every other member of this
+   actually clear the bullet - `$281D36 clr.w (A6)` and
+   `$281D38 move.w #$FFFF,($2,A6)` - are ported. Every other member of this
    effect family in the port (`$289004`, `$28C25A`, `$289F54`, `$27F8EE`,
    `$289F96`) is already a counted note for the same reason.
 
@@ -267,24 +267,24 @@ Two reasons, both from the project's own rules:
 
 One instruction later the run reaches
 **`UNPORTED $26C1C4: word at $26C1C4 is outside every ROM window exported by
-tools/export-tables.py`** — `src/spawn.js initDispatch` reading the run-length
+tools/export-tables.py`** - `src/spawn.js initDispatch` reading the run-length
 immediate of an enemy type's init stub. Killing the midboss lets stage 1 advance
 past clk 197 and spawn types the export has never covered.
 
 [M] **That frontier is not this wave's either.** With ONLY the `$27F8F8`
 downgrade applied to the W45 damage tree, fire merely TAPPED reaches `$26C1C4`
-at step **2,204** — the same step as the full W51 tree with taps. The beam
+at step **2,204** - the same step as the full W51 tree with taps. The beam
 reaches it sooner (step 1,774 held) because it kills the midboss sooner.
 
-Porting past it is the enemy layer beyond the midboss — item 5 of
-`39-OWNER-visible-play-before-sound.md` — because the window is one line but the
+Porting past it is the enemy layer beyond the midboss - item 5 of
+`39-OWNER-visible-play-before-sound.md` - because the window is one line but the
 init body `$26C1CA` and its handler are W23's work, and a wider export with no
 body is churn. **It is left as a loud named throw, which is the correct answer
 to an unported path, and it is now the first thing a held-fire run hits.**
 
 ---
 
-## 4. EVERY CHECK SEEN TO FAIL — 19 mutants, 18 red, 1 named survivor
+## 4. EVERY CHECK SEEN TO FAIL - 19 mutants, 18 red, 1 named survivor
 
 `node games/ddpdoj/.scratch/mutate.mjs`: apply ONE edit, run ONE test file,
 require a NAMED test red, restore, **verify the file's sha256 is byte-identical**
@@ -321,7 +321,7 @@ from pool A into pool B (§1.3). The argument is two instructions:
 
 Every write that changes D0 (`$2454C2`, `$2455C4`) writes `($10,A1)` with the
 **same value two instructions earlier** (`$2454BE`, `$2455C0`), and pool B has no
-arm that skips the second test — pool A's `$2454A2 bra $2454C4` is pool A's
+arm that skips the second test - pool A's `$2454A2 bra $2454C4` is pool A's
 alone. So whenever the carry could matter (after a pool-A hit) D0 and `($10,A1)`
 are equal and the reach test is at least as strict; when no pool-A hit happened,
 the mutation has nothing to drop. Category (c) of the brief's three. The port
@@ -340,14 +340,14 @@ cycle caught both rather than review:
 
 **AND ONE OF MY OWN CHECKS FOUND A REAL DEFECT BEFORE ANY RUN DID.** The first
 version of this wave wired A1/A2/A3 into only TWO of `$28B670`'s four
-`$244D62` call sites — the `$81308C == 0` pair `$28B766`/`$28B79C` has different
+`$244D62` call sites - the `$81308C == 0` pair `$28B766`/`$28B79C` has different
 indentation and a `str.replace` missed it. `$81308C` is 1 in every scenario in
 this corpus, so no measurement would have found it; the unit test that drives
 the tail with `$81308C = 0` threw on the first run.
 
 ---
 
-## 5. THE PAGE, IN A REAL BROWSER — WHAT I SAW [M]
+## 5. THE PAGE, IN A REAL BROWSER - WHAT I SAW [M]
 
 Chrome + Python `playwright` over `python -m http.server`, the recipe W42
 established. Nothing downloaded. The server was killed afterwards.
@@ -362,7 +362,7 @@ fire HELD           87    2505..3774      14.99    $26C1C4 (§3.2)
 fire SUPPRESSED     90    2517..3834      23.20    empty
 ```
 
-and on the W45 tree, fire held, the same 19 s: **`$27F8F8 IS NOT PORTED YET`** —
+and on the W45 tree, fire held, the same 19 s: **`$27F8F8 IS NOT PORTED YET`** -
 i.e. the build the owner is playing already dies there, one instruction in front
 of the frontier this wave names.
 
@@ -376,21 +376,21 @@ displayed SCORE stays 0 in both, and that is a different gap with a name:
 
 ---
 
-## 6. COVERAGE — branches and table entries, never frames
+## 6. COVERAGE - branches and table entries, never frames
 
 - **`$244D62`'s blocks: 6 of 9 ported** (5, 6a, 6b, 7, 8, and the ninth's two
   guards), was 3 of 9. Blocks 1–4 remain one L16 deferral naming four addresses.
 - **`$2453AC`: all 606 bytes transcribed.** Both hyper recomputes and pool A's
   `$245494` double are transcribed-and-unexercised (`$81B6E6` and `$81B410` are
   0 on this tree); everything else executes.
-- **`$286096`'s four arms: 3 of 4 now ported** — the plain P1 add, the plain P2
+- **`$286096`'s four arms: 3 of 4 now ported** - the plain P1 add, the plain P2
   add and `$286876`. `$286A82`/`$286DA8` stay notes (both gates measured 0), and
   `$2860CE`'s P2 mirror stays a comment because nothing branches into it.
 - **unported and throwing, by address:** `$245622` (the ninth block's body),
   `$286AAA` (`$286876`'s `$8130F8` arm), `$26C1C4` (the enemy-layer export
   frontier, §3.2), and W45's `$24CDC0`, `$245314`, `$24536E`, `$24560A`,
   `$254078`, `$255DD8`.
-- **downgraded from throw to counted note: `$27F8F8`** — one address, with §3.1's
+- **downgraded from throw to counted note: `$27F8F8`** - one address, with §3.1's
   two reasons and the two writes behind it ported.
 - **unit tests 606 → 618, 0 skipped.** New file `tests/w51laserdamage.test.js`,
   12 tests; `tests/integration.test.js`'s `$27F8F8` test inverted rather than
@@ -413,7 +413,7 @@ node games/ddpdoj/tools/webgate.mjs 7 of 7 PASS
 ```
 
 `webgate`'s W44 stage still reports **16,457 records / 0 MISSED over 300 steps
-with nothing pressed**, digit for digit — which is the evidence that this wave
+with nothing pressed**, digit for digit - which is the evidence that this wave
 changed nothing on the no-input path, as §0.1's gate predicted it could not.
 
 ---
@@ -423,7 +423,7 @@ changed nothing on the no-input path, as §0.1's gate predicted it could not.
 - **No art.** The beam's own streams are E2/E3's row; zero asset bytes here.
 - **`$287682` is still unported** and is now reached from a sixth caller
   (`$2867A4`, inside `$286774`). It is COUNTED with its consequence spelled out:
-  `$81B64A` accumulates — [M] 840 over 1,700 held frames — with nothing to drain
+  `$81B64A` accumulates - [M] 840 over 1,700 held frames - with nothing to drain
   it at `#$95F`, so a long chain banks rank the board would have spent. That is
   W28's wave 8 and it is the last link of `20-OWNER-scoring-must-be-exact`'s
   chain.
@@ -451,7 +451,7 @@ changed nothing on the no-input path, as §0.1's gate predicted it could not.
 - §2 **a measurement method error, corrected in place:** `git stash` cannot
   revert a file already committed, so every "W45 baseline" taken after this
   wave's first commit was the new tree. Re-measured from `a3df8ab~1`.
-- §3 **[M] the beam kills the MIDBOSS** — body and all eight arms — which arms
+- §3 **[M] the beam kills the MIDBOSS** - body and all eight arms - which arms
   `$81B410` and reached `$27F8F8`, a throw whose "unreachable" comment had been
   false since W31. **[M] It was already live on the W45 tree by TAPPED shots at
   step 2,203.** Downgraded to a counted note; the allocator is NOT ported

@@ -41,7 +41,7 @@ frame 101; lead = 0 extra frames
 
 ## What I MEASURED
 
-### 1. THE SAMPLING POINT — `$803940`, armed at `$13C5B6`
+### 1. THE SAMPLING POINT - `$803940`, armed at `$13C5B6`
 
 Found without reading any disassembly first, in three steps.
 
@@ -60,8 +60,8 @@ the 68000, exactly as `NOTES-slowdown-oracle.md` §3c predicted. IRQ4 and IRQ6
 fire exactly once per video frame each. No frame in 900 delivered more or fewer.
 
 **(b) Where was the main loop when the interrupt hit.** At the IAK moment the
-68000 has **not yet pushed the exception frame** — `SP_at_iack=00820000 n=1769`,
-i.e. the stack is empty — so the interrupted PC is *not* on the stack there.
+68000 has **not yet pushed the exception frame** - `SP_at_iack=00820000 n=1769`,
+i.e. the stack is empty - so the interrupted PC is *not* on the stack there.
 It is in a register instead. Tapping the handler's first instruction
 (`tapcal.lua`) shows:
 
@@ -92,7 +92,7 @@ $13C6BC  rts
 That is the **fall-through trap in its other direction**: the spin lives inside a
 routine whose head (`$13C6AC`, which arms with **2**) is jumped *over*. Over 1,200
 frames of attract **and** gameplay the arming site was `$13C5B6` every single
-time (`armpc histogram Counter({'13C5B6': 1200})`) — but the probe keys on the
+time (`armpc histogram Counter({'13C5B6': 1200})`) - but the probe keys on the
 *semaphore*, not on that PC, so a different wait site would still be sampled.
 
 **The IRQ6 handler is the other half, and it contains an (A)-style gate:**
@@ -120,13 +120,13 @@ next frame has begun. It is the exact analogue of Gradius's `$80B5`.
 
 This also hands us the lag instrumentation for free, and it is **case (A) as
 well as case (B)**: four subroutines in the IRQ6 handler are skipped when the
-main loop overran, while the input read at `$13D464` still runs — the same
+main loop overran, while the input read at `$13D464` still runs - the same
 "the dropped frame is not uniform even within one driver" shape as Batman's
 `$C757`. `docs/knowledge/06` says name which of the three you have before
 modelling: **on this game, at least (A) and (B) are both present in the same
-handler.** (C) — a truncated object loop — is **not measured either way**.
+handler.** (C) - a truncated object loop - is **not measured either way**.
 
-### 2. EXECUTION HOOKS — the inherited rule is WRONG on this CPU
+### 2. EXECUTION HOOKS - the inherited rule is WRONG on this CPU
 
 `NOTES-mame-oracle.md` says a read tap is an execution hook and `CURPC`
 discriminates fetch from data read. **That is true on the 6502 and false on the
@@ -146,7 +146,7 @@ Measured behaviour of `install_read_tap` on `:maincpu`'s `program` space:
 | **exception entry** fetch | handler | **the vector address** ($78) | **the interrupted PC** |
 
 Evidence for the data case, from the same run: `DATAhit off=800000 data=0000
-CURPC=00C036 PC=00C038` — `CURPC` is the reader, `PC` is `CURPC+2`.
+CURPC=00C036 PC=00C038` - `CURPC` is the reader, `PC` is `CURPC+2`.
 
 **So on the 68000 the discriminator is `PC == offset`, not `CURPC == offset`.**
 And even then a read tap only proves the address *entered the prefetch queue*.
@@ -170,11 +170,11 @@ Two more tap traps, both of which produced **completely silent** failures:
   ranges).
 * **`emu.add_machine_frame_notifier` returns a subscription that must be kept
   alive**, exactly like a tap handle. Dropped on the floor it is
-  garbage-collected and never fires — two of my runs produced *no output at all
+  garbage-collected and never fires - two of my runs produced *no output at all
   and no error*. `NOTES-mame-oracle.md` §6 records this for taps; it is true for
   notifiers too.
 
-### 3. FRAME RATE — 15625/264 Hz, and it IS a derivation
+### 3. FRAME RATE - 15625/264 Hz, and it IS a derivation
 
 From MAME's own machine database on this machine (`-listxml ddpdojblk`):
 
@@ -186,7 +186,7 @@ From MAME's own machine database on this machine (`-listxml ddpdojblk`):
 ```
 
 `pixclock`/`htotal`/`vtotal` being present is the proof that the driver used
-`set_raw(...)` and not a rounded `set_refresh_hz(literal)` — `docs/knowledge/07`'s
+`set_raw(...)` and not a rounded `set_refresh_hz(literal)` - `docs/knowledge/07`'s
 distinction, checked rather than assumed. There is **no `<feature type="timing">`**
 on this driver.
 
@@ -208,10 +208,10 @@ column, computed from `machine.time` deltas between sample points:
 cyc min 133962  max 738420  mean 341853   budget 337920      (1200-frame run)
 ```
 
-Steady-state rows read 337498 / 338382 / 337518 — straddling 337920 because the
+Steady-state rows read 337498 / 338382 / 337518 - straddling 337920 because the
 sample point drifts a few hundred cycles inside the frame, exactly as expected.
 
-### 4. DETERMINISM — yes, once you isolate MAME's writable state
+### 4. DETERMINISM - yes, once you isolate MAME's writable state
 
 **This is the finding that would have silently poisoned the corpus.** My first
 two runs of the same script with the same arguments produced *different* traces:
@@ -250,7 +250,7 @@ board carries a **V3021 RTC** that MAME feeds from the host clock. Eight minutes
 of runs agreed; **a run tomorrow is not proven to agree with a run today.** That
 is a scheduled check, not a settled fact.
 
-### 5. INPUT INJECTION — works mid-frame, and the LEAD IS ZERO
+### 5. INPUT INJECTION - works mid-frame, and the LEAD IS ZERO
 
 The game reads `$C08000` once per logic frame, inside the IRQ6 handler:
 
@@ -273,15 +273,15 @@ lf  vf  p1raw p1edge p1prev
 ```
 
 **Lead = 0.** A button set at the sample point of frame N is latched by the ISR
-that runs while the main loop waits, and is consumed by frame N+1's work — i.e.
+that runs while the main loop waits, and is consumed by frame N+1's work - i.e.
 identically to a port that reads input at the top of its tick. Same result for
 Start (`p1raw=32768` at lf 101 for a press at lf 100). Gradius measured zero;
 the Game Boy needed one; **this machine needs zero**, measured, not assumed.
 
 `field:set_value()` takes effect immediately for a bus read later in the same
-video frame — MAME does not defer it to a frame boundary.
+video frame - MAME does not defer it to a frame boundary.
 
-### 6. SAVESTATES — restore works; resume differs by ONE byte plus dead stack
+### 6. SAVESTATES - restore works; resume differs by ONE byte plus dead stack
 
 `machine:buffer_save()` from the **frame notifier** (not from inside a tap):
 
@@ -304,7 +304,7 @@ differing bytes: 28    runs: 13
   $81FF7D..$81FFF7  (12 runs, 27 bytes, all above the live stack pointer)
 ```
 
-* The 27 bytes are **dead stack** — garbage below SP left by a different call
+* The 27 bytes are **dead stack** - garbage below SP left by a different call
   history. `frame.lua` therefore digests `$800000-$81FF00` as `d_ram` and the top
   page separately as `d_top`, so the artifact is *reported, not hidden*.
 * The one live byte is `$80FA84/85`, written by the **IRQ4** chain
@@ -340,7 +340,7 @@ frames over 400k cycles: 28   e.g. lf=663 vf=679 cyc=738420 irq6=2 sprites=95
 ```
 
 **15 logic frames out of 1,200 spanned more than one video frame** (14 spanned
-two, 1 spanned three) — a measured **(B) time-dilation** event set on the real
+two, 1 spanned three) - a measured **(B) time-dilation** event set on the real
 game, and `cyc=738420 ≈ 2.19 × 337920` on the worst one. One frame had the IRQ6
 gated block skipped (`gated=0`). The `sprites` column (the hardware's own
 sprite-list terminator rule from `igs023_video.cpp`) reached 95.
@@ -368,7 +368,7 @@ the digest loop is the cost and is the obvious first optimisation.
    not a settled fact.**
 2. **Whether the original a≠b divergence was the coin counter** specifically. I
    applied five isolation flags at once and did not bisect them.
-3. **Case (C) — a truncated per-object loop — is completely unmeasured.** I found
+3. **Case (C) - a truncated per-object loop - is completely unmeasured.** I found
    (A) and (B). I did *not* look for a `for slot < limit { if (!budget) break }`
    shape. `docs/knowledge/06` says this is the one that cannot be retrofitted, so
    it is next-steps item 3. **I am not claiming it is absent.**
@@ -376,12 +376,12 @@ the digest loop is the cost and is the obvious first optimisation.
    first stage.** That is a *presence* result. There are three other wait sites in
    the same routine (`$13C5A4`, `$13C6AC`, `$13C6BE`); I have not shown they are
    never used. The probe keys on the semaphore, not the PC, so it survives either
-   way — but do not write "the game only waits at $13C5B6" anywhere.
+   way - but do not write "the game only waits at $13C5B6" anywhere.
 5. **The ARM7 (`:prot`) is `set_disable()`d on this set** and its internal ROM is
    `NO_DUMP`. Nothing here measures it. `NOTES-slowdown-oracle.md` §8.1 assumed
    the ARM7 is a live second CPU whose workload must be modelled; for the Cave
    sets **it is switched off and simulated in C++**, so that risk is smaller than
-   recorded — but the simulation is still not the silicon.
+   recorded - but the simulation is still not the silicon.
 6. **No pixel layer.** `PROBE_PIXELS=1` hashes a sparse sample of
    `screen:pixels()`; I did not verify the framebuffer contains a real picture on
    this driver (`docs/knowledge/02` trap 2 says assert on the output). Unverified.
@@ -396,13 +396,13 @@ the digest loop is the cost and is the obvious first optimisation.
    a run that prints nothing at all and exits 0.
 3. `install_*_tap` on a 16-bit space needs a word-aligned end address.
 4. **MSYS/Git-Bash mangles `VAR="120:/c/path/file"`** into something `io.open`
-   cannot open — and `io.open` returns nil with no message, so the failure
+   cannot open - and `io.open` returns nil with no message, so the failure
    surfaces as `attempt to index a nil value (local 'fh')` several lines later.
    Pass Windows paths (`cygpath -w`).
 5. `emu.add_machine_stop_notifier` produced **no output** under
    `-seconds_to_run`. Dump from the frame notifier and call `machine:exit()`.
 6. MAME's `cfg` directory is live machine state (coin counters). Isolate it or
-   your runs are not reproducible — and another process using the same MAME
+   your runs are not reproducible - and another process using the same MAME
    install will rewrite it underneath you.
 
 ## If someone picks this up cold
@@ -417,15 +417,15 @@ The addresses that matter, all measured today, all on `ddpdojblk`:
 
 | address | what |
 |---|---|
-| `$803940` | **the vblank semaphore — THE SAMPLE POINT** (0 → non-zero = frame done) |
+| `$803940` | **the vblank semaphore - THE SAMPLE POINT** (0 → non-zero = frame done) |
 | `$13C5B6` | the main loop's arm site (the only one seen in 1,200 frames) |
 | `$13C6B4` / `$13C6BA` | the busy-wait spin, entered by branch, not fall-through |
 | `$13C806` | the IRQ6 release (`subq.b #1,$803940`) |
-| `$13C7E6` | **the (A) gate** — four ISR subroutines skipped if the loop overran |
+| `$13C7E6` | **the (A) gate** - four ISR subroutines skipped if the loop overran |
 | `$13D464` / `$13D46A` | the input read, inside IRQ6 |
 | `$803970 / $803972 / $803974` | P1 raw / newly-pressed / previous |
 | `$803976 / $803978 / $80397A` | P2 raw / newly-pressed / previous |
-| `$80390A` | the game's own frame counter — align resumed runs on this, not on `vf` |
+| `$80390A` | the game's own frame counter - align resumed runs on this, not on `vf` |
 | `$80FA84` | IRQ4 phase counter; the one live byte a savestate resume gets wrong |
 | `$801470 / $801478` | RAM vectors: the real IRQ4 / IRQ6 handlers (`$13BDAA` / `$13BDBA`) |
 | `$000CA6 / $000CBE` | BIOS autovector trampolines that jump through them |

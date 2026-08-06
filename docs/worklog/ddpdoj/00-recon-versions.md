@@ -1,5 +1,5 @@
-# RECON 4/5 — versions, "unlocked", and what Black Label changes
-status: BLOCKED — versions / NVRAM / ROM-diff answered; the Black Label HITBOX is NOT measured
+# RECON 4/5 - versions, "unlocked", and what Black Label changes
+status: BLOCKED - versions / NVRAM / ROM-diff answered; the Black Label HITBOX is NOT measured
 wave: 0   role: recon   started: 2026-07-31
 
 ## Answers to the two owner claims, up front
@@ -7,12 +7,12 @@ wave: 0   role: recon   started: 2026-07-31
 1. **"`ddp3` is the location test, it is unlocked, our atlas to cheat."**
    **FALSE as stated, and better than stated in one respect.** `ddp3` is the World
    release "DoDonPachi III", banner `2002.05.15 MASTER VER`, ordinary attract loop.
-   The location test is **`ddpdojp`** — a different, unprotected, 4 MiB build with its
-   own 128 KiB BIOS — and **we have it, and it verifies `good`**, not merely "best
+   The location test is **`ddpdojp`** - a different, unprotected, 4 MiB build with its
+   own 128 KiB BIOS - and **we have it, and it verifies `good`**, not merely "best
    available". I found **nothing** that makes stages/modes/weapons reachable without
    playing to them, in any set. Where I looked is listed below; that is a "did not
    find", not a "does not exist".
-2. **"Black Label has a smaller hitbox."** **UNRESOLVED — I could not reach the
+2. **"Black Label has a smaller hitbox."** **UNRESOLVED - I could not reach the
    hitbox.** What I *did* find is bigger news for the port: `ddpdojblk` is a
    **two-version cartridge** that boots to a `VERSION-A (OLD)` / `VERSION-B (NEW)`
    chooser and **defaults to the OLD `2002.04.05 MASTER VER` after a 5-second
@@ -64,7 +64,7 @@ Somebody (another workflow, or the owner) renamed `ddpdojblk.zip` out of the way
 dropped in a `.7z`. **Every measurement below is timestamped against that state.**
 Re-verify before quoting.
 
-### 1. ALL NINE SETS VERIFY — we have far more than four
+### 1. ALL NINE SETS VERIFY - we have far more than four
 
 ```
 $ cd "%LOCALAPPDATA%\Mixup\mame"
@@ -81,7 +81,7 @@ ddpdojp     romset ddpdojp [ddp3] is GOOD            1 were OK.
 ddpdojblkbl romset ddpdojblkbl [ddp3] is GOOD        1 were OK.
 ```
 
-**`ddp3.zip` is a MERGED romset** — 33 files, 108,281,856 B uncompressed, with the
+**`ddp3.zip` is a MERGED romset** - 33 files, 108,281,856 B uncompressed, with the
 clone-specific ROMs in `clonename/` subdirectories exactly as MAME's merged
 convention requires:
 
@@ -104,7 +104,7 @@ $ unzip -l /c/oldpcsx2/ddp3.zip | tail -40
 `ddpdojblkbl` and `ddpdojp` verify **"good"**, not "best available", because neither
 uses `ddp3_igs027a.bin`: `ddpdojp` is unprotected, `ddpdojblkbl` ships the KOVSH ASIC.
 
-### 2. OWNER CLAIM 1 IS FALSE AS STATED — `ddp3` is NOT the location test
+### 2. OWNER CLAIM 1 IS FALSE AS STATED - `ddp3` is NOT the location test
 
 Booted headless, 61 emulated seconds of attract mode, snapshotting the framebuffer:
 
@@ -191,7 +191,7 @@ ddpdoj  vs ddpdojb   : SAME 255,208 / DIFF 20,711 / SAME 5,936 / DIFF 533,885 / 
 1. **The raw (encrypted) file diff and the decrypted region diff give the SAME byte
    counts, offset by 0x100000** (e.g. ddp3-vs-ddpdoj = 1,802,384 in both). So
    `pgm_py2k2_decrypt` is a per-address bijection and a diff of the raw files is
-   positionally faithful. Measured, not assumed — useful, because raw diffs are cheap.
+   positionally faithful. Measured, not assumed - useful, because raw diffs are cheap.
 2. **The first ~236 KiB of program (0x100000..~0x139FB8) is identical in all seven
    68k builds.** Whatever lives there is shared by DoDonPachi III, every DaiOuJou
    revision and every Black Label revision. That is the first place to look for the
@@ -200,7 +200,7 @@ ddpdoj  vs ddpdojb   : SAME 255,208 / DIFF 20,711 / SAME 5,936 / DIFF 533,885 / 
    mirror of 0x100000 (checked: not equal). Do not assume mirroring; establish the
    real map before pointing a disassembler at it.
 
-### 4. THE ARCADE TEST MENU DRIVES HEADLESS — and it is how you configure a run
+### 4. THE ARCADE TEST MENU DRIVES HEADLESS - and it is how you configure a run
 
 `:DSW` bit 0 is Service Mode. Setting it from Lua works:
 
@@ -256,7 +256,7 @@ reach a FREE PLAY value in the ~16 presses I made, and I am not claiming there
 isn't one. It does not matter operationally: `Coin 1` can be pressed from Lua
 (measured below), so credits are free anyway.
 
-### 6. THE BLACK LABEL CARTRIDGE IS A **TWO-VERSION** ROM — the biggest finding here
+### 6. THE BLACK LABEL CARTRIDGE IS A **TWO-VERSION** ROM - the biggest finding here
 
 A plain headless boot of `ddpdojblk` does **not** go to a title screen. It goes to
 a **boot-time version chooser with a 5-second countdown**:
@@ -283,7 +283,7 @@ boots `ddpdojblk` and does nothing is measuring the **2002.04.05 Master Ver**, n
 Black Label. This is exactly the kind of thing that would have been discovered
 three weeks into a port.
 
-`ddp3` shows no such chooser — its legal screen reads
+`ddp3` shows no such chooser - its legal screen reads
 `THIS GAME IS FOR USE IN ALL COUNTRIES EXCEPTING JAPAN` / `2002.05.15 MASTER VER`,
 then score ranking, title, demo. `ddpdojp` (location test) goes straight to score
 ranking and a DEMONSTRATION.
@@ -305,7 +305,7 @@ Average speed: 150.28% (74 emulated seconds)
 `ioport_field:set_value(1)` works for buttons and coins; `field.user_value = 0`
 works for DIP switches. **Corpus construction is not blocked on anything.**
 
-### 8. NVRAM — measured, and it kills the "unlocked lives in the .nv" hypothesis
+### 8. NVRAM - measured, and it kills the "unlocked lives in the .nv" hypothesis
 
 The three factory blobs, all 131,072 bytes:
 
@@ -337,8 +337,8 @@ looked at the screen:
 
 `NOTES-versions.md` says of the bad-checksum set: *"It still boots (below), with a
 warning."* **It does not.** MAME exits 0 and reports an average speed, and the game
-sits on `ROM ERROR !`. That is `docs/knowledge/02-traps.md` trap 2 verbatim —
-"renders without throwing" is not "renders a picture" — and it was in a NOTES file
+sits on `ROM ERROR !`. That is `docs/knowledge/02-traps.md` trap 2 verbatim -
+"renders without throwing" is not "renders a picture" - and it was in a NOTES file
 four hours old. **Always look at the framebuffer.**
 
 **Can a correct `.nv` be produced from the machine itself? YES, for practical use.**
@@ -354,11 +354,11 @@ MAME writes the whole 128 KiB main RAM back out on exit, magic intact
 factory blob (score table, coin counters, settings). So: boot a set whose factory
 `.nv` IS present, configure it in the TEST MENU, exit, and the resulting `sram` is a
 reusable NVRAM image. **What that CANNOT do is manufacture a blob matching MAME's
-expected CRC for a set whose factory dump you do not have** — the magic is not
+expected CRC for a set whose factory dump you do not have** - the magic is not
 derivable, it has to come from a dump. Here that is moot: `ddp3.zip` contains the
 correct `c2282720` blob for `ddpdojblk` and `verifyroms` is clean.
 
-### 9. THE "1 DOT" ROM — no hitbox display observed
+### 9. THE "1 DOT" ROM - no hitbox display observed
 
 `ddb_1dot.u45` is `ddpdojblka`, which MAME calls the *older* 2002.10.07 Black Ver.
 I ran an identical 2,800-frame scripted session (VERSION-B, coin, start, player
@@ -382,7 +382,7 @@ differing PIXELS 1922 of 100352 (1.915%)
 bounding box  x 83..139   y 241..298   (224x448 tate frame)
 ```
 
-— a 57×58 box around one propeller/fan enemy in mid-screen, not the player ship.
+- a 57×58 box around one propeller/fan enemy in mid-screen, not the player ship.
 So `ddpdojblk` differs from `ddpdojblkb` in one enemy's state at that instant, and
 the ship is where both put it.
 
@@ -391,7 +391,7 @@ one scenario, stage 1, VERSION-B. `docs/knowledge/08` is explicit: measurement p
 presence, only the listing proves absence. Someone should still look for a
 hitbox-draw path in the listing before this is called settled.
 
-### 10. THE HITBOX ITSELF — **NOT MEASURED. I could not reach it.**
+### 10. THE HITBOX ITSELF - **NOT MEASURED. I could not reach it.**
 
 What I tried:
 
@@ -403,7 +403,7 @@ What I tried:
   reads like a sub-pixel fraction rather than a position.
 - Decoded the hardware sprite list (first 0xA00 bytes of main RAM, 10-byte entries,
   X = word0 & 0x7FF signed, Y = word1 & 0x3FF signed, terminated by word4 == 0). It
-  decodes cleanly — 17 entries idle, 88 mid-stage — but the list is rebuilt in
+  decodes cleanly - 17 entries idle, 88 mid-stage - but the list is rebuilt in
   priority order every frame, so entry *indices* are not stable identities and I
   could not follow the ship by index across checkpoints.
 

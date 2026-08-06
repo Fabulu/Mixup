@@ -1,17 +1,17 @@
-# RECON 2/5 — DaiOuJou memory map and architecture (player, objects, game loop)
-status: DONE (partial — items 1 and 3 only partly answered; see "What I could not do")
+# RECON 2/5 - DaiOuJou memory map and architecture (player, objects, game loop)
+status: DONE (partial - items 1 and 3 only partly answered; see "What I could not do")
 wave: 0   role: recon   started: 2026-07-31
 
 ## The task, as I understood it
 
 Find, BY MEASUREMENT against the real board image under MAME, on `ddpdojblk`:
 
-1. The main loop — entry, phase order within a frame, where per-frame work is dispatched.
-2. THE PLAYER — the routine that moves the ship, found the Gradius way (hook writes to the
+1. The main loop - entry, phase order within a frame, where per-frame work is dispatched.
+2. THE PLAYER - the routine that moves the ship, found the Gradius way (hook writes to the
    coordinate, record the PC), position representation, sub-pixel, speed, clamps, hitbox.
-3. The object/entity model — layout in RAM, capacity, allocation-failure behaviour.
-4. Stage 1's start — what is on screen and what code path produces it.
-5. Shot types — weapon modes, ship types, and what selects them.
+3. The object/entity model - layout in RAM, capacity, allocation-failure behaviour.
+4. Stage 1's start - what is on screen and what code path produces it.
+5. Shot types - weapon modes, ship types, and what selects them.
 
 **Verify, do not inherit:** "bullets are sprites in the first 0xa00 bytes of main RAM,
 256 entries, 10 bytes each". That is a claim about the IGS023 *hardware*, read from MAME's
@@ -25,9 +25,9 @@ to a scratch directory outside the repo. **Nothing ROM-derived is in the repo.**
 
 | file | what it does |
 |---|---|
-| `tools/pgm.py` | headless MAME driver for the PGM sets — the *hermetic* flag set |
+| `tools/pgm.py` | headless MAME driver for the PGM sets - the *hermetic* flag set |
 | `probes/pgm_survey.lua` | what the PGM driver exposes to Lua (devices, shares, ports) |
-| `probes/pgm_shots.lua` | input script + PNG snapshots — *look at the screen* |
+| `probes/pgm_shots.lua` | input script + PNG snapshots - *look at the screen* |
 | `probes/pgm_determinism.lua` | per-frame RAM digest; run twice and diff |
 | `probes/pgm_ramdiff.lua` | 3-snapshot endpoint diff (kept as the example of a WEAK filter) |
 | `probes/pgm_ramp.lua` | pin/sweep/rest filter for a coordinate; rejects frame counters |
@@ -82,11 +82,11 @@ stage 1. This is the only cross-run channel I found.
 
 Ruled out as causes of that nondeterminism, each by measurement:
 
-- *Autoboot start jitter.* Five runs, all reporting `vf=1 time=0.016896000 pc=F48` — the
+- *Autoboot start jitter.* Five runs, all reporting `vf=1 time=0.016896000 pc=F48` - the
   first frame-notifier callback lands at exactly one frame period every time. (0.016896 s
   is also an independent confirmation of the derived `15625/264 Hz`.)
 - *The V3021 RTC reading the host clock.* Full 128 KiB RAM dumps at video frames 20 and 200
-  from runs at 21:12:48 / 21:13:03 / 21:14:27 — spanning a wall-clock minute boundary —
+  from runs at 21:12:48 / 21:13:03 / 21:14:27 - spanning a wall-clock minute boundary -
   **0 differing bytes** in all three pairwise comparisons.
 
 After the fixes: three consecutive 2000-frame runs with the full boot script were
@@ -94,7 +94,7 @@ After the fixes: three consecutive 2000-frame runs with the full boot script wer
 That is not yet a standing check and it should become one.
 
 **(c) TWO ways a memory tap silently never fires.** Both produce zero output, no error, and
-a *faster* run — the only visible symptom.
+a *faster* run - the only visible symptom.
 
 1. **`local TAPS` at chunk scope is collectable.** `NOTES-mame-oracle.md` §6.1 already warns
    that a dropped tap handle is garbage-collected. The subtle version, which I walked into:
@@ -114,7 +114,7 @@ count 800010-8000FF = 1728     count 808000-80FFFF = 19987
 count 800100-800FFF = 3072     count 810000-81FFFF = 600709
 ```
 
-### 1. What the PGM driver exposes to Lua — measured, not inherited
+### 1. What the PGM driver exposes to Lua - measured, not inherited
 
 `probes/pgm_survey.lua` on `ddpdojblk`, MAME 0.288:
 
@@ -140,7 +140,7 @@ port :Service fields=Coin 1 | Coin 2 | Service | Test
 consistency share[0x1000]=0000 space[0x801000]=0000 same=true
 ```
 
-- **`refresh_attoseconds = 16,896,000,000,000,000` = 16.896 ms exactly** — the running
+- **`refresh_attoseconds = 16,896,000,000,000,000` = 16.896 ms exactly** - the running
   machine confirms the derived `15625/264 Hz`.
 - **`share :sram` byte offset N == 68k address `0x800000 + N`**, checked directly against
   the CPU program space rather than assumed.
@@ -156,10 +156,10 @@ Measured by snapshotting. Video frames at 59.185606 Hz.
 
 | vf | on screen |
 |---|---|
-| 250–420 | **VERSION SELECT** — `> 1: VERSION-A (OLD)` / `2: VERSION-B (NEW)`, `SELECT = UP or DOWN`, `START = SHOT`, 5-second countdown |
+| 250–420 | **VERSION SELECT** - `> 1: VERSION-A (OLD)` / `2: VERSION-B (NEW)`, `SELECT = UP or DOWN`, `START = SHOT`, 5-second countdown |
 | ~700 | Japan-only legal notice ending `2002.04.05.MASTER VER` (so VERSION-A **is** the Master version) |
-| ~1300 | title — `PRESS 1P OR 2P START`, `1ST 10000000 PTS / 2ND 30000000 PTS`, `RANK: NORMAL`, `C BUTTON FULL-AUTO`, `CREDITS:2` |
-| ~1450 | **ship select** — `TYPE-A` art panel, `RIGHT ➜` prompt, 5-second countdown |
+| ~1300 | title - `PRESS 1P OR 2P START`, `1ST 10000000 PTS / 2ND 30000000 PTS`, `RANK: NORMAL`, `C BUTTON FULL-AUTO`, `CREDITS:2` |
+| ~1450 | **ship select** - `TYPE-A` art panel, `RIGHT ➜` prompt, 5-second countdown |
 | ~1480 | pressing Right gives **`TYPE-B`** with a `LEFT` prompt only → **exactly two ship types** |
 | ~1620 | `PLEASE WAIT` and the stage 1 background already scrolling |
 | ~1750 | in-stage fly-in, ship drawn, two picture-in-picture panels at the top |
@@ -175,29 +175,29 @@ The reproducible script (video frames, `FROM-TO:FIELD[+FIELD]`):
 
 **`ddpdojblk` is two games in one ROM and it asks which one at boot.** Everything below was
 measured on **VERSION-A / TYPE-A**, which is the *Master* build reached through the Black
-Label ROM — *not* the Black version. Anything measured here must be re-measured on
+Label ROM - *not* the Black version. Anything measured here must be re-measured on
 VERSION-B before it is called a Black Label fact.
 
-### 3. THE PLAYER — found, and its arithmetic
+### 3. THE PLAYER - found, and its arithmetic
 
 Chain of measurements, each one closing the previous one's hole:
 
 1. `pgm_ramp.lua` v1 asked for a monotone series during a sweep. Over all 65,536 words of
-   main RAM **exactly one survived** — and it stepped `+1` every frame: a **frame counter**
+   main RAM **exactly one survived** - and it stepped `+1` every frame: a **frame counter**
    at `$80390A`. A filter that cannot tell a coordinate from a clock is a check that cannot
    fail. v2 requires *constant while pinned against a wall*, *monotone while sweeping*,
    *constant again at rest*.
 2. `pgm_rammap.lua` gave the write map (below), and `pgm_writers.lua` attributed the
    candidates.
 3. **Poke intervention:** writing `$808EB4/$808EB6` every frame is overwritten on the next
-   frame by PC `$13F648` — so that longword is a **derived, per-frame draw position**, not
+   frame by PC `$13F648` - so that longword is a **derived, per-frame draw position**, not
    state. (Bonus: my own pokes were attributed to CURPC `$13C6B4`/`$13C6BA`, i.e. the CPU
-   was in the main-loop spin when Lua wrote — which independently locates the frame wait.)
+   was in the main-loop spin when Lua wrote - which independently locates the frame wait.)
 4. `pgm_track.lua` then took the drawn coordinate as a reference series and searched all of
    RAM for anything whose per-frame **delta sign** matches it exactly (scale-free, so the
    fixed-point format need not be guessed).
 
-**Result — horizontal (P1 Left/Right; the 224-wide axis; sprite `Y` field):**
+**Result - horizontal (P1 Left/Right; the 224-wide axis; sprite `Y` field):**
 
 ```
 reference $808EB6 & 3FF : 107,110,112,115,117,120,122,125,...,183,183,...,107,107,...
@@ -205,7 +205,7 @@ width=16 exact_sign_matches=5   -> $808EB6  $808EC2  $8103EA  $8104AE  $8104CE
 $8104AE series: 7394,7394,7557,7720,7883,8046,8209,...   (+163 per frame)
 ```
 
-**Result — vertical (P1 Up/Down; the 448-tall axis; sprite `X` field):**
+**Result - vertical (P1 Up/Down; the 448-tall axis; sprite `X` field):**
 
 ```
 reference $808EB4 & 7FF : 53,57,61,65,69,73,76,80,...,169,169,...,53,53,...
@@ -221,7 +221,7 @@ So:
 | player position, horizontal | **`$8103EA`**, u16 | tracked, then writer-attributed |
 | **units** | **1/64 pixel** (10.6 fixed point) | 163 units ÷ 2.546875 px = 64.0; 246 ÷ 3.84375 = 64.0 |
 | the two options | `$8104AC/$8104AE` and `$8104CC/$8104CE` | identical vertical, horizontal ±2082 = **±32.53 px**; the player is the middle of the three |
-| **THE MOVER** | **PC `$141B2E` (vertical) / `$141B32` (horizontal)** | writes only on frames the stick is deflected — 80 writes over 120 frames with 4×20-frame holds |
+| **THE MOVER** | **PC `$141B2E` (vertical) / `$141B32` (horizontal)** | writes only on frames the stick is deflected - 80 writes over 120 frames with 4×20-frame holds |
 | the store/clamp | PC `$148D9C` | writes **every** frame, after the mover |
 | the draw-position writer | PC `$13F648`, `move.l D0,(A0)` with `A0=$00808EB4`, `D0=$8035_8038` | trace |
 
@@ -233,10 +233,10 @@ LEFT wall  : $141B32 writes 025D (=605 = 9.453 px), then $148D9C writes 0300 (=7
 RIGHT wall : $141B32 writes 35A3 (=13731 = 214.547 px), then $148D9C writes 3500 (=13568 = 212.000 px)
 ```
 
-The mover adds the full step and the clamp writes back the bound — and the bound is an
+The mover adds the full step and the clamp writes back the bound - and the bound is an
 **exact whole number of pixels** (768 = 12×64, 13568 = 212×64) while the pre-clamp value is
 not. So: **horizontal clamp = [12.0 px, 212.0 px] on a 224-wide field.** The order matters
-and is measurable, which is exactly the fall-through hazard `02-traps.md` warns about — do
+and is measurable, which is exactly the fall-through hazard `02-traps.md` warns about - do
 not port "clamp then move".
 
 **Speed depends on which button is held. Vertical axis, TYPE-A:**
@@ -271,10 +271,10 @@ page $813000..$813F00  10-20 each
 ```
 
 A second run with the shot button held reached 90 pages and 5,194 writes/frame, and the
-sprite-list writes spread to `$800400` — i.e. **the write map is load-dependent**, which is
+sprite-list writes spread to `$800400` - i.e. **the write map is load-dependent**, which is
 itself the (C)-detector signal `06-lag-and-slowdown.md` asks for.
 
-### 5. The sprite list — the inherited claim, VERIFIED and CORRECTED
+### 5. The sprite list - the inherited claim, VERIFIED and CORRECTED
 
 `pgm_sprites.lua` decoded main RAM at 10 bytes/entry using the field layout from
 `igs023_video.cpp` and the results are coherent: X in 0..447, Y in 0..223 (signed, so
@@ -298,7 +298,7 @@ vf=2140 livelen=73   vf=2160 livelen=80   vf=2180 livelen=85   vf=2220 livelen=8
   ran. Peak observed live length is **85 entries**. I have not seen what happens at the cap,
   so I cannot say what the game does when the list is full. *Measurement proves presence.*
 - **The `spritebuffer` share lags by one frame.** `mismatching` came out exactly equal to
-  `livelen` every time, with the dead tail matching — i.e. every live entry differs and
+  `livelen` every time, with the dead tail matching - i.e. every live entry differs and
   every zero entry agrees. That is the signature of comparing this frame's main RAM against
   last frame's DMA'd copy, not of a decode error. Any oracle that compares the two must
   align them by one frame.
@@ -319,7 +319,7 @@ ddpdojb     PC ∈ { $13C310, $13C312 }
 ```
 
 Independently corroborated: every Lua poke I made from the frame notifier was attributed by
-the write tap to CURPC `$13C6B4` or `$13C6BA` — the CPU is in that loop at the moment
+the write tap to CURPC `$13C6B4` or `$13C6BA` - the CPU is in that loop at the moment
 MAME's video frame ends. **That is a spin loop and it is the natural sample point.** I did
 **not** confirm which flag it spins on, nor hook IRQ6/IRQ4, nor establish the phase order
 within a frame. See below.
@@ -335,7 +335,7 @@ within a frame. See below.
 - **The object/entity model.** I have the write map and the sprite *display list*, but not
   the object table itself: I did not attribute `$803900-$803EFF` or `$80AF00-$80B1FF` to
   code, did not find the struct stride, the slot count, or the allocator. **I therefore do
-  not know what happens when allocation fails** — and that is exactly the behaviour the
+  not know what happens when allocation fails** - and that is exactly the behaviour the
   brief says must be preserved. Do not let anyone read the sprite-list cap as the answer;
   the display list is not the object table.
 - **The hitbox.** Not attempted. The two owner claims in `NOTES-versions.md` (ddp3 being

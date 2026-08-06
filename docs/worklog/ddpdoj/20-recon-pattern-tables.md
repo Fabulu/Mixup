@@ -1,14 +1,14 @@
-# RECON 20 — THE ENEMY-BULLET PATTERN TABLES
+# RECON 20 - THE ENEMY-BULLET PATTERN TABLES
 
 status: **DONE as recon**, with five named gaps in "What I could NOT do".
-wave: 20 (recon 3 of 5)   role: recon (READER — nothing in `games/ddpdoj/src/` touched)
+wave: 20 (recon 3 of 5)   role: recon (READER - nothing in `games/ddpdoj/src/` touched)
 started / finished: 2026-08-01
 
 All addresses are **VERSION-B** (`$23xxxx`–`$2Axxxx`, 2002.10.07 BLACK VER)
 unless a line says build A. Every static read is against the decrypted image
 `games/ddpdoj/tools/oracle/out/maincpu.bin`, 6,291,456 bytes.
 
-New tooling, `games/ddpdoj/tools/recon20b/` — a PRIVATE directory. A sibling
+New tooling, `games/ddpdoj/tools/recon20b/` - a PRIVATE directory. A sibling
 agent was concurrently writing `games/ddpdoj/tools/recon20/`, so this wave's
 files were copied out of the shared path mid-run to avoid clobbering. Nothing
 in `src/` was touched.
@@ -49,12 +49,12 @@ THE ENEMY BULLET SYSTEM, counted from the ROM:
 **Wave 10 §6's `$8171BE` is the IMPACT/EFFECT pool, not the bullet pool.** It is
 80 records of `$2C` (70 at `$8171BE` + 10 at `$817DC6`; allocators `$27F8F8` and
 `$27F92A`; spawner `$280B3E`; 20-entry tables `$280E4A` and `$280BCE`; mover
-`$27F95A` with a **20**-entry dispatch at `$27F99E`, not 32 — entry 20 at
+`$27F95A` with a **20**-entry dispatch at `$27F99E`, not 32 - entry 20 at
 `$27F9EE` disassembles as `moveq #1,D0 / lea $817F86,A0`, i.e. code). Its
 callers include `$281D2E`, which sits **inside the loop over the player-shot
 pool, on expiry**.
 
-The proof that `$817F8C` is the enemy bullets is the bomb — nothing else is
+The proof that `$817F8C` is the enemy bullets is the bomb - nothing else is
 worth points to a bomb:
 
 ```
@@ -67,27 +67,27 @@ worth points to a bomb:
 ```
 
 **And the structural headline for the port:** there is no bullet-pattern DATA
-record. A pattern is a *call* — an entry point (the fan shape) plus five
-registers — and the fan counts and angle steps are immediates in unrolled or
+record. A pattern is a *call* - an entry point (the fan shape) plus five
+registers - and the fan counts and angle steps are immediates in unrolled or
 `dbra`-looped code at 911 sites. The tables are the 39 bullet KINDS, the
 velocity field, and the muzzle ellipses. Port the generator bank and the kind
 tables once and every call site becomes a five-tuple.
 
 ---
 
-## 1. HOW A BULLET IS SPAWNED — the parameter record IS the register set
+## 1. HOW A BULLET IS SPAWNED - the parameter record IS the register set
 
 The call convention, read off `$281554` (core `$2814B6`) and `$281860`
 (core `$2817C2`):
 
 | reg | meaning | evidence |
 |---|---|---|
-| **D0.l** | the PATTERN WORD. `D0 & $3F` = **BULLET KIND** (0..38); `D0 >> 16` = a signed **SPEED BIAS** | `$281556 andi.w #$3F,D0`; `$281578 add.w (A7),D7` — `(A7)` is the HIGH word of the `move.l D0,-(A7)` pushed at `$281554` |
+| **D0.l** | the PATTERN WORD. `D0 & $3F` = **BULLET KIND** (0..38); `D0 >> 16` = a signed **SPEED BIAS** | `$281556 andi.w #$3F,D0`; `$281578 add.w (A7),D7` - `(A7)` is the HIGH word of the `move.l D0,-(A7)` pushed at `$281554` |
 | **D1.b** | the **ANGLE**. Bank A (`$2813F0`…) takes it in **1/64 turn** and scales it (`add.b D1,D1` twice at `$281586`); bank B (`$2816F6`…) takes it already in **1/256 turn** | `$281586`, `$2813D4`, `$281862` |
 | **D2.l** | the spawn POSITION, axis A in the high word, axis B in the low | `$28156A move.l D2,(A0)+` |
 | **D3.l** | a position DELTA applied after the copy; for some kinds also a pattern parameter stored at rec+`$28` | `$28159C tst.l D3 / $2815A0`; `$2818B4` |
 | **D4.l / D5.l** | per-kind extra parameters, written by the spawn-init | `$2818B4 move.l D4,($1c,A0)`; `$2818F4 move.w D5,($26,A0)` |
-| **A5** | the FIRING ENEMY's record — kind 28's init copies `($3,A5)`, the target-player index | `$281930 move.b ($3,A5),($1a,A0)` |
+| **A5** | the FIRING ENEMY's record - kind 28's init copies `($3,A5)`, the target-player index | `$281930 move.b ($3,A5),($1a,A0)` |
 
 Both cores:
 
@@ -102,7 +102,7 @@ Both cores:
 5. `jsr` the per-kind SPAWN-INIT from `$2815C6[kind]` iff the template's last
    word is non-zero.
 
-### The bullet record — `$40` bytes
+### The bullet record - `$40` bytes
 
 | off | field | written by |
 |---|---|---|
@@ -114,12 +114,12 @@ Both cores:
 | `+$1A` b | **SPEED INDEX** (0..255) | `$28158A` / `$281898` |
 | `+$1B` b | **DIRECTION**, 8-bit = 1/256 turn | `$28158E` / `$28189C` |
 | `+$1C` w | sprite attribute | `$281572` |
-| `+$1E` l | VELOCITY, dA high / dB low — **recomputed from `+$1A`/`+$1B` every frame** | `$281F02 movem.w D2-D3,($1e,A6)` |
-| `+$22` l | **THE PER-BULLET CONTINUATION** — `jmp`ed every frame | installed by the behaviour, jumped at `$281EBC` |
+| `+$1E` l | VELOCITY, dA high / dB low - **recomputed from `+$1A`/`+$1B` every frame** | `$281F02 movem.w D2-D3,($1e,A6)` |
+| `+$22` l | **THE PER-BULLET CONTINUATION** - `jmp`ed every frame | installed by the behaviour, jumped at `$281EBC` |
 | `+$28`..`+$36` | per-kind pattern parameters (D3/D4/D5, `$8130D8`/`$8130DA`, the target index) | `$2818B4`..`$281942` |
 | `+$3A` b, `+$3B` b | the ORIGINAL speed / direction | `$281592` / `$281596` |
 
-### The TEMPLATE record — 20 bytes, at `$2819F4 + kind*$14`
+### The TEMPLATE record - 20 bytes, at `$2819F4 + kind*$14`
 
 | off | size | meaning | across all 39 |
 |---|---|---|---|
@@ -137,12 +137,12 @@ Kinds 10, 14 and 15 share template `$281ABC`, so **37 distinct templates behind
 
 ---
 
-## 2. THE TWENTY GENERATORS — the "patterns", and they are code
+## 2. THE TWENTY GENERATORS - the "patterns", and they are code
 
 `$2813F0..$2814B6` (bank A, angle in 1/64 turn) and `$2816F6..$2817C2` (bank B,
 angle in 1/256 turn) are two banks of entry points. Each is a fixed sequence of
 core calls with angle and speed deltas, and most are gated on the RANK word
-`$813098` — the scan that found them:
+`$813098` - the scan that found them:
 
 ```
 $ python - (byte scan for `tst.w $813098` in $281000-$282000)
@@ -162,7 +162,7 @@ rank-gated entry heads: 281264 2813F0 281402 281420 281432 281442 281450
 | `$281484` | 3 bullets: centre speed +2, then −8 / +8 | 1 | 8 |
 | `$281494` | 2 bullets, same angle, speed +0/+4 | 1 | 0 |
 | `$2814AC` | flags-adaptive: `($D,A5) & $81` picks 2-way, else bit 1 of the sub-record picks 2-way, else 3-way | 1 | 42 |
-| `$2814B6` | the core | — | 0 |
+| `$2814B6` | the core | - | 0 |
 | `$2816F6` | 1 bullet | 1 | **120** |
 | `$281708` | 1 bullet, speed +4 | 1 | **111** |
 | `$281726` | 1 bullet, speed +2 | 1 | 4 |
@@ -172,7 +172,7 @@ rank-gated entry heads: 281264 2813F0 281402 281420 281432 281442 281450
 | `$281776` | 2 bullets, angle −8/+8, speed +6 | 1 | 1 |
 | `$2817A8` | 3 bullets: centre, −8, +8 | 1 | 17 |
 | `$2817B8` | flags-adaptive, as `$2814AC` | 1 | **271** |
-| `$2817C2` | the core, called directly | — | 48 |
+| `$2817C2` | the core, called directly | - | 48 |
 | | | **TOTAL** | **911** |
 
 **Every rank-0 path emits ONE bullet.** Rank is what turns a single into a fan.
@@ -181,8 +181,8 @@ was never exercised: `$813098` measured **0** in every run below.
 
 ### The fans above 3-way are LOOPS at the call site, with immediates
 
-Two idioms, both parameterised exactly the way the owner predicted — count,
-step, base offset, kind, speed — but as instruction operands, not table rows.
+Two idioms, both parameterised exactly the way the owner predicted - count,
+step, base offset, kind, speed - but as instruction operands, not table rows.
 
 `$273B44`, the stage-1 midboss (type `$80`), a `dbra` ring:
 
@@ -205,7 +205,7 @@ and immediately after it, the same shape with **KIND 5, base = aim − 36, step
 `subq.b #4,D1` / `addi.b #$10,D1` / `addq.b #4,D1`.
 
 `$2735FA` is a **64-entry table of (dA,dB) muzzle offsets forming an ELLIPSE**,
-semi-axes 716 and 476 — ratio 1.504:
+semi-axes 716 and 476 - ratio 1.504:
 
 ```
  0:(  716,    0)   8:(  500,  336)  16:(    0,  476)  24:( -500,  336)
@@ -217,7 +217,7 @@ other entry by `andi.w #$3C,D1 / D2 = D1*2`. `$2736FA` is a third.
 
 ---
 
-## 3. THE ANGLE AND SPEED MATHS — `$284190`, exactly
+## 3. THE ANGLE AND SPEED MATHS - `$284190`, exactly
 
 ```
 284190: D0 = speed * 4
@@ -255,7 +255,7 @@ speed 32 @204e20: (358,0) (348,44) (330,88) (296,132) (250,168) (198,196) (134,2
 speed 63 @208d18: (704,0) (685,86) (649,173) (582,259) (492,330) (389,385) (263,433) (129,456) (0,468)
 ```
 
-  magnitude ≈ **11.17·s along axis A and 7.43·s along axis B** — **the field is
+  magnitude ≈ **11.17·s along axis A and 7.43·s along axis B** - **the field is
   an ELLIPSE, 1.5:1, the same ratio as every muzzle table.** Speed 0 is all
   zeros. Template base speed 20 ⇒ ≈3.5 px/frame before biases; speed 63 ⇒ 11
   px/frame on axis A.
@@ -266,7 +266,7 @@ speed 63 @208d18: (704,0) (685,86) (649,173) (582,259) (492,330) (389,385) (263,
 
 ---
 
-## 4. THE 39 KINDS — the complete inventory
+## 4. THE 39 KINDS - the complete inventory
 
 `$281956[39]` templates, `$2815C6[39]` spawn-inits, `$282030[39]` behaviours.
 All three end at index 38: `$281956+39*4 = $2819F2` is immediately followed by
@@ -280,7 +280,7 @@ then `jmp`s every frame at `$281EBC movea.l ($22,A6),A0 / jmp (A0)`. Measured
 statically: **all 39 install exactly one continuation** (`move.l #imm,($22,A6)`),
 and kinds 2 and 21 share `$283CE4`.
 
-Nine distinct SPAWN-INITs — this is the closest thing to a per-kind parameter
+Nine distinct SPAWN-INITs - this is the closest thing to a per-kind parameter
 record:
 
 | init | writes (offsets from the record base) | kinds |
@@ -315,7 +315,7 @@ record:
 | 15 | `$281ABC` | `810A` | `$282840` | `$28287C` | `$2818AC` | shares kind 10 |
 | 16 | `$281B0C` | `8190` | `$2829BC` | `$2829FE` | `$2818AC` | bit 7 ⇒ `$281F3E` mover path |
 | 17 | `$281B20` | `8191` | `$282A1E` | `$282A66` | `$2818C8` | bit 7 |
-| 18 | `$281B34` | `8192` | `$282AAE` | `$282AF6` | `$2818D4` | bit 7; **calls `$263684` — SPAWNS AN ENEMY** |
+| 18 | `$281B34` | `8192` | `$282AAE` | `$282AF6` | `$2818D4` | bit 7; **calls `$263684` - SPAWNS AN ENEMY** |
 | 19 | `$281B48` | `8113` | `$282B30` | `$282B64` | `$2818E0` | |
 | 20 | `$281B5C` | `8194` | `$282BEE` | `$282C2A` | `$2818AC` | bit 7 |
 | 21 | `$281B70` | `8195` | `$282C56` | `$283CE4` | `$2818AC` | bit 7 |
@@ -324,8 +324,8 @@ record:
 | 24 | `$281BAC` | `8118` | `$282EBC` | `$282EF0` | `$2818F4` | |
 | 25 | `$281BC0` | `8119` | `$282F6E` | `$282F9E` | `$2818AC` | 324 bytes |
 | 26 | `$281BD4` | `811A` | `$2830B2` | `$28310E` | `$2818AC` | |
-| 27 | `$281BE8` | `811B` | `$283148` | `$283194` | `$28190C` | inlines `$283F50`+`$2841C2` — CURVES |
-| 28 | `$281BFC` | `811C` | `$283260` | `$283290` | `$281930` | **calls `$242748` (AIM) and `$2817C2` — the TRACKING bullet** |
+| 27 | `$281BE8` | `811B` | `$283148` | `$283194` | `$28190C` | inlines `$283F50`+`$2841C2` - CURVES |
+| 28 | `$281BFC` | `811C` | `$283260` | `$283290` | `$281930` | **calls `$242748` (AIM) and `$2817C2` - the TRACKING bullet** |
 | 29 | `$281C10` | `811D` | `$28330C` | `$28333C` | `$2818AC` | |
 | 30 | `$281C24` | `811E` | `$283430` | `$28349A` | `$281942` | |
 | 31 | `$281C38` | `811F` | `$2834FE` | `$283568` | `$281942` | |
@@ -333,8 +333,8 @@ record:
 | 33 | `$281C60` | `8121` | `$2836A8` | `$2836D0` | `$2818AC` | |
 | 34 | `$281C74` | `8122` | `$28371C` | `$28374C` | `$2818AC` | |
 | 35 | `$281C88` | `81A3` | `$283850` | `$28388A` | `$2818B4` | |
-| 36 | `$281C9C` | `8124` | `$2838C6` | `$283912` | `$28190C` | inlines the angle maths — CURVES |
-| 37 | `$281CB0` | `8125` | `$2839DE` | `$283A2A` | `$28190C` | inlines the angle maths — CURVES |
+| 36 | `$281C9C` | `8124` | `$2838C6` | `$283912` | `$28190C` | inlines the angle maths - CURVES |
+| 37 | `$281CB0` | `8125` | `$2839DE` | `$283A2A` | `$28190C` | inlines the angle maths - CURVES |
 | 38 | `$281CC4` | `8126` | `$283AF6` | `$283B42` | `$28190C` | |
 
 Behaviours + continuations occupy `$282104..$283BAF`, ≈6.7 KB.
@@ -345,11 +345,11 @@ Behaviours + continuations occupy `$282104..$283BAF`, ≈6.7 KB.
 
 Four choices; three are static and one is not:
 
-1. **Which enemy fires** — the type table `$267824`/`$27E412` (wave 10) gives the
+1. **Which enemy fires** - the type table `$267824`/`$27E412` (wave 10) gives the
    handler; the handler contains the fire call sites.
-2. **Which generator** — the `jsr` target, one of the 20, hard-coded.
-3. **Which kind and speed** — D0, a hard-coded immediate at 903 of 911 sites.
-4. **Which ANGLE** — D1, and this is the half a recording cannot supply. The
+2. **Which generator** - the `jsr` target, one of the 20, hard-coded.
+3. **Which kind and speed** - D0, a hard-coded immediate at 903 of 911 sites.
+4. **Which ANGLE** - D1, and this is the half a recording cannot supply. The
    common shape, from `$2688CC` (type `$11`, the most-dispatched stage-1 enemy):
 
 ```
@@ -369,11 +369,11 @@ in one listing.
 
 ---
 
-## 6. STAGE 1 — the subset, statically
+## 6. STAGE 1 - the subset, statically
 
 `firemap.py` partitions build-B code by the sorted set of all 512 type-table
 entries (256 inits + 256 handlers) and attributes each fire site to the region
-it lands in. **This is an ADDRESS PARTITION, not a call graph** — a fire site in
+it lands in. **This is an ADDRESS PARTITION, not a call graph** - a fire site in
 a helper between two handlers is attributed to the earlier one, and a handler
 that calls a far-away helper loses its sites. It is a LOWER BOUND.
 
@@ -412,7 +412,7 @@ back=600  sites=911 unknown=  8 kinds=19 -> 0:8 1:12 2:16 3:28 4:202 5:90 6:30
 ```
 
 **So at most 19 of the 39 kinds are reachable from a fire call site at all.**
-The other 20 are reached by IN-FLIGHT TRANSFORMATION — the continuation at
+The other 20 are reached by IN-FLIGHT TRANSFORMATION - the continuation at
 rec+`$22` rewrites the type word (e.g. `$2824DC bchg #$3,(A6)`, measured 1,608
 times in 3,200 frames) or re-spawns (kind 28 calls `$2817C2` itself). That is a
 second, independent way patterns are produced and a port that only implements
@@ -424,13 +424,13 @@ kinds 3,4,7,9,11,12,19; the midboss is type `$0D`, region `$26B6FA`, kinds
 
 ---
 
-## 7. THE MEASUREMENT — and the still/moving A/B
+## 7. THE MEASUREMENT - and the still/moving A/B
 
 `recon20.lua` taps `$28158A` and `$281898` (the SPEED-byte store in each core),
 capturing D7 (speed), D1 (direction), A0−`$10` (the record), A5 (the firing
 enemy) and `(SP+16)` (the return address, which identifies the generator).
 Interventions, both labelled: `$810424` (the invulnerability timer) held at
-`$FF` from lf1990 — a value the game writes itself at `$2495A2` — and button 3
+`$FF` from lf1990 - a value the game writes itself at `$2495A2` - and button 3
 (auto-shot) held from lf1800.
 
 ```
@@ -477,13 +477,13 @@ a stick sweep.
 | distinct kinds | 5 | 5 |
 | distinct speeds | 4 (20,19,22,23) | 4 (same four) |
 
-**The kind and speed sets are IDENTICAL — they are constants in the ROM. The
+**The kind and speed sets are IDENTICAL - they are constants in the ROM. The
 direction distribution is not, and neither is the bullet count.** A recording
 supplies the second and cannot supply the first correctly; the ROM supplies the
 first and the second falls out of it. That is exactly the split the method note
 predicts, measured.
 
-### The long run — to the stage-1 boss
+### The long run - to the stage-1 boss
 
 ```
 $ python games/ddpdoj/tools/recon20b/run.py 9500 --autofire --invuln --continues --tag long
@@ -508,7 +508,7 @@ $ python games/ddpdoj/tools/recon20b/run.py 9500 --autofire --invuln --continues
   SPname=SP tapErrors=0   DONE logicframes=9500
 ```
 
-**MEASURED stage-1 usage: 9 of 39 kinds — {3,4,5,6,7,11,12,13,19} — from 15
+**MEASURED stage-1 usage: 9 of 39 kinds - {3,4,5,6,7,11,12,13,19} - from 15
 firing enemy types in 26 type/kind pairs, 249 of 256 direction values, 25 of
 256 speed values, up to 106 live bullets.** The static partition of §6 predicted
 **9** kinds too, {3,4,6,7,9,11,12,13,19}; the two lists differ in one entry
@@ -516,12 +516,12 @@ firing enemy types in 26 type/kind pairs, 249 of 256 direction values, 25 of
 not in the ROM: `$273BC2` really is **kind 5** (`$273B8E move.l #$FFFF0005,D0`),
 but `firemap.py` picked the nearer `$273BA0 move.l #$FFFE0004,D0` on the
 `$813092 == 4` branch that was not taken. **The nearest preceding immediate is
-not always the taken one** — a static back-decode over branchy code is a
+not always the taken one** - a static back-decode over branchy code is a
 heuristic and this is the measured proof of its failure rate: 1 in 91 stage-1
 sites. Kind 9 (four `$2965xx` sites in the boss) is real and simply was not
 reached in 9,500 frames.
 
-The measured firing set includes type `$1E` (96 spawns, kinds 3/4/5) — the type
+The measured firing set includes type `$1E` (96 spawns, kinds 3/4/5) - the type
 wave 10 found is spawned by ANOTHER ENEMY through the deferred queue and that
 stage 1's script never names. **A fire-site inventory built only from the spawn
 script would miss it.**
@@ -536,7 +536,7 @@ denominator is the ROM's; the numerators are these runs'.
 
 The first census run reported `BULLET spawns total: 0` while its own frame
 sampler reported `LIVE bullets max=106`. A run that contradicts itself is a bug,
-not a finding. `pcprobe.lua` — every PC that writes `$817F8C..$81B40B` —
+not a finding. `pcprobe.lua` - every PC that writes `$817F8C..$81B40B` -
 settled it:
 
 ```
@@ -554,7 +554,7 @@ $ python games/ddpdoj/tools/recon20b/runpc.py 3200 --autofire --invuln --tag pc
 ```
 
 The taps and the pool identification were right; the callback was throwing.
-Cause: **`CPU.state["A7"]` does not exist on this device — the name is `SP`** —
+Cause: **`CPU.state["A7"]` does not exist on this device - the name is `SP`** -
 so the callback's first statement raised and MAME swallowed it silently. Fixed
 by resolving the name once (`A7`, else `SP`) and wrapping the body in `pcall`
 with an error counter that is now printed (`SPname=SP tapErrors=0`).
@@ -562,10 +562,10 @@ with an error counter that is now printed (`SPname=SP tapErrors=0`).
 Three things that diagnostic establishes on its own:
 
 1. `$2824DC` (1,608), `$282B6C` (1,523), `$282598` (1,232) and five more
-   **rewrite the type word of a live bullet** — the in-flight transformation of
+   **rewrite the type word of a live bullet** - the in-flight transformation of
    §6, 4,363 rewrites against 82 fresh spawns in the same 3,200 frames.
 2. `$245A44`/`$245A78`/`$245AAC`/`$245B7C`/`$245BB0` write into the pool address
-   range once each — that is `$2459D0`'s `or.b D4,(A4)` hit-marking, so wave
+   range once each - that is `$2459D0`'s `or.b D4,(A4)` hit-marking, so wave
    10's "enemy hit test" walks a list overlapping this pool. **Named, not
    resolved.**
 3. `$81B414..$81B41A` read `0 0 0 0` after 3,200 frames and `0001 0001 0000

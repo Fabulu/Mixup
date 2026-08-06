@@ -1,11 +1,11 @@
-# RECON 1/5 — Enemies: spawn tables, formations, per-type movement and death
-status: DONE (with named gaps — see "What I could not do")
+# RECON 1/5 - Enemies: spawn tables, formations, per-type movement and death
+status: DONE (with named gaps - see "What I could not do")
 wave: 0   role: recon   started: 2026-07-31
 
 ## The task, as I understood it
 
 Map the enemy system of `Gradius (USA).nes` from the two entry points earlier
-work located — `$A2C0` (spawn engine, called from `$9A64`) and `$ADAB` (enemy
+work located - `$A2C0` (spawn engine, called from `$9A64`) and `$ADAB` (enemy
 update, called from `$9A6D`). Answer: spawn tables and wave format; slot
 allocation and **what happens when it fails**; per-type dispatch; movement;
 hit/death and what it spawns; the `$0100+i` / `$0300`-page arrays; and the
@@ -47,11 +47,11 @@ python games/gradius/tools/oracle/enemyprobe.py --frames N --script "..." \
 | 6-8 | shot B | `$0126,X` |
 | 9-11 | missiles | `$0129,X` |
 | **12-21** | **enemies (10)** | `$A527`: `LDA $A8 / ADC #$0C / TAX` then 21 `STA $0xxx,X`; `$ADB3: LDX #$09` |
-| **22-31** | **enemy bullets (10)** | `$C327`: `LDA #$0A / ADC $A8 / TAX / JSR $AEF8` — the *same* free routine, index +10, so `$0316+j == $030C+(j+10)` |
+| **22-31** | **enemy bullets (10)** | `$C327`: `LDA #$0A / ADC $A8 / TAX / JSR $AEF8` - the *same* free routine, index +10, so `$0316+j == $030C+(j+10)` |
 
 Measured over a 3000-frame run: the only slots that ever held a non-zero
 `$0300+i` were **13-21** (and slot 0 is the player, whose `$0300` stays 0).
-Slots 22-31 stayed empty — stage 1's opening has no shooting enemies. So the
+Slots 22-31 stayed empty - stage 1's opening has no shooting enemies. So the
 22-31 claim is **read-from-ROM, not measured**; see open questions.
 
 ```
@@ -92,7 +92,7 @@ Measured, from the ROM bytes at `$A844` on the left and the emulator on the righ
 | `C0 82` | `$0180` | 1082, `$0180`, `$A854` |
 | `D0 82` | `$01A0` | 1146, `$01A0`, `$A856` |
 | `E0 80` | `$01C0` | 1210, `$01C0`, `$A858` |
-| `FF` | terminator | — |
+| `FF` | terminator | - |
 | chunk 1 `$A859` `00 81` | `$0200` | 1339, `$0200`, `$A85B` |
 
 Ten for ten, plus the chunk switch. The `$61 = $3F AND $0E` model (512-pixel
@@ -111,19 +111,19 @@ $A356  BMI $A36D                cmd >= $80 -> table B
        ... table A path ...
 ```
 
-* `cmd < $80` — table A at `[$A5FE]` = **`$A662`**, offset `3*cmd`, **4 bytes
+* `cmd < $80` - table A at `[$A5FE]` = **`$A662`**, offset `3*cmd`, **4 bytes
   read** (stride 3, records overlap by one byte) → single-enemy spawn `$A3B1`.
-* `cmd $80-$EF` — table B at `[$A600]` = **`$A602`**, offset `(4*cmd) AND $FF`
+* `cmd $80-$EF` - table B at `[$A600]` = **`$A602`**, offset `(4*cmd) AND $FF`
   (so `cmd AND $3F` selects one of 64; only 24 records exist, `$A602-$A661`, i.e.
   cmds `$80-$97`) → formation spawn `$A3E4`.
-* `cmd >= $F0` — 5 bytes copied inline from the wave stream to `$63-$67`,
+* `cmd >= $F0` - 5 bytes copied inline from the wave stream to `$63-$67`,
   `$6A += 5`, `$64 -= $70`, then `$A466`.
 
 **The trap.** `$A36B: BMI $A3B1` and `$A378: BMI $A3E4` look like tests of the
 descriptor's first byte. They are not. The loader `$A397` ends with
 `DEY / BPL $A3A8`; the final `DEY` leaves `Y = $FF`, so **N is always set on
 return and both BMIs are always taken.** Stage-1 descriptors have `$64 = $01`
-and `$64 = $00` — bit 7 *clear* — and the branches were still taken. Measured:
+and `$64 = $00` - bit 7 *clear* - and the branches were still taken. Measured:
 
 ```
 total.tabB = 11   total.formSetup = 11   total.raw5 = 0
@@ -135,7 +135,7 @@ very first wave of stage 1.
 
 ### 3. The descriptor tables
 
-**Table B (formation), 4 bytes, `$A602 + 4*(cmd AND $3F)`** — measured live at
+**Table B (formation), 4 bytes, `$A602 + 4*(cmd AND $3F)`** - measured live at
 `$A3E4` with the emulator reading `$64-$67`:
 
 | cmd | bytes | `$64` status | `$65` type | `$66` formation | `$67` pattern |
@@ -161,7 +161,7 @@ F4 2A | B3 2C`
 > `games/gradius/tests/tables.test.js`.
 
 `$67` indexes a **3-byte** table at **`$A5BC`**: `[delay, dY, styleByte]`.
-Entry 0 = `0A 00 C8` — measured: `$6C` reloads to **10** and the four members of
+Entry 0 = `0A 00 C8` - measured: `$6C` reloads to **10** and the four members of
 the `cmd $80` squadron appeared on frames 378, 389, 400, 411 (11 frames apart,
 i.e. delay+1). `$6E` accumulates `dY` so members are stacked vertically.
 
@@ -169,12 +169,12 @@ i.e. delay+1). `$6E` accumulates `dY` so members are stacked vertically.
 `$03AC+i = b AND $01`, and if odd `$018C+i = 3`. **`$03AC` odd = "this one
 carries a power-up".**
 
-**Table A (single), 4 bytes at `$A662 + 3*cmd`** — `$A662` = `B2 80 12 A6 …`.
+**Table A (single), 4 bytes at `$A662 + 3*cmd`** - `$A662` = `B2 80 12 A6 …`.
 `$A3B1` path: type = `$64 - $A0` (spawn X = **`$F0`**, from the right) or, if
 that is `>= $30`, `$64 - $D0` (spawn X = **`$10`**, from the left); `$66` → Y;
 `$65` → `$A579`. It writes **no** `$0100+i`, so a single-spawn enemy has
 status 0 and `$ADE5`'s auto-animation is skipped.
-**Never executed in any run I made** (`total.allocP_try = 0` at 3000 frames) —
+**Never executed in any run I made** (`total.allocP_try = 0` at 3000 frames) -
 stage 1's first two chunks are all `cmd >= $80`.
 
 ### 4. Allocation, and what happens when it FAILS
@@ -182,7 +182,7 @@ stage 1's first two chunks are all `cmd >= $80`.
 There are **four** free-slot searches. All scan `$030C,X` (type byte, 0 = free)
 and all start at `X = $09`, i.e. **the highest enemy slot (21) is filled first**.
 Measured `allocSlotHist` over 3000 frames:
-`Q1=3 Q2=3 Q3=9 Q4=10 Q5=14 Q6=17 Q7=13 Q8=17 Q9=16` — and
+`Q1=3 Q2=3 Q3=9 Q4=10 Q5=14 Q6=17 Q7=13 Q8=17 Q9=16` - and
 `firstNonZeroType` shows slot 21 first (frame 378), then 20, 19, 18, …
 
 They are **not identical**:
@@ -192,7 +192,7 @@ They are **not identical**:
 | `$A3B1` (single) | `DEX / BPL` | yes |
 | `$A415` (formation member) | `DEX / BPL` | yes |
 | `$A46F` (`$19 == 2` special) | `DEX / BPL` | yes |
-| **`$A4A6`** (the `$0600` special) | **`DEX / BNE`** | **no — slot 12 is never tested** |
+| **`$A4A6`** (the `$0600` special) | **`DEX / BNE`** | **no - slot 12 is never tested** |
 
 `$A4A6`'s `BNE` exits with `X = 0` unexamined, so that spawner can only ever use
 slots 13-21. Never executed here (`allocS_try = 0`); recorded because it is a
@@ -211,10 +211,10 @@ total.allocQ_fail = 12   total.allocQ_ok = 0   total.slotClear = 0
 ```
 
 So on failure:
-* the member is **dropped silently** — no retry, no queue;
+* the member is **dropped silently** - no retry, no queue;
 * `$69` (members remaining) **is still decremented**;
-* `$6C` (inter-spawn delay) is **not** reloaded — it is loaded at `$A42F`, i.e.
-  *after* a successful allocation — so it stays 0 and `$A32F: JMP $A411` fires
+* `$6C` (inter-spawn delay) is **not** reloaded - it is loaded at `$A42F`, i.e.
+  *after* a successful allocation - so it stays 0 and `$A32F: JMP $A411` fires
   again **on the very next frame**;
 * net effect: **a 4-member squadron that cannot allocate burns its whole count in
   4 consecutive frames and spawns nothing**, instead of over 44 frames.
@@ -233,15 +233,15 @@ $ADB7  LDX $A8 / JSR $ADE5 / DEC $A8 / BPL $ADB7 / RTS      <- 10 slots, 9 down 
 ```
 
 Measured: `total.enemyUpdate = 2663`, `total.perSlot = 26630` over 2663 game
-frames — exactly 10 per frame, unconditionally, occupied or not.
+frames - exactly 10 per frame, unconditionally, occupied or not.
 
 `$ADE5` per slot (X = 0..9, actor slot = X+12):
 
-1. `LDA $010C,X` — if bit 7 set **or** zero, skip the animator.
+1. `LDA $010C,X` - if bit 7 set **or** zero, skip the animator.
 2. otherwise, every `$014C,X` frames (reload **6**), advance `$016C,X` and set
    `$012C,X` (metasprite) from **`$ADC1 + status*4 + ($016C AND 3)`**. A `0`
    byte in the group means "wrap and re-read", so short groups work.
-3. `LDA $030C,X` — 0 → RTS. else `JSR $83E4` with the inline table at `$AE1C`.
+3. `LDA $030C,X` - 0 → RTS. else `JSR $83E4` with the inline table at `$AE1C`.
 
 The animation table `$ADC1`, per status:
 
@@ -257,7 +257,7 @@ The animation table `$ADC1`, per status:
 | 8 | `7D 7E 7F 80` | 125-128 |
 
 Measured: `statusHist = 0=23039 1=6184 5=460 6=317`, and
-`slotAnim.17 = 12=220 13=250 14=242 15=234 … 32=6 33=12 34=12 35=12 …` — status
+`slotAnim.17 = 12=220 13=250 14=242 15=234 … 32=6 33=12 34=12 35=12 …` - status
 1 and status 5 produce exactly the table's metasprite sets.
 
 **The handler index is `type AND $7F`.** `$83E4` does `ASL A` (which wraps at
@@ -268,11 +268,11 @@ handler. Proved by counting entries rather than by reading the listing:
 typeHist            = 2=535 5=28 8=12 133=3088 136=1075
 total.hdlr05_B0AF   = 3116      (= 28 + 3088, exact)
 total.hdlr08_B26C   = 1087      (= 12 + 1075, exact)
-total.hdlr04_B205   = 0         (type $04/$84 absent from this run — no false hits)
+total.hdlr04_B205   = 0         (type $04/$84 absent from this run - no false hits)
 ```
 
 **Bit 7 of `$030C+i` is an "initialised" flag, and it is also the collision
-gate.** `$B0AF: LDA $030C,X / BMI (run) ; else LDA #$80 / ADC $030C,X / STA` —
+gate.** `$B0AF: LDA $030C,X / BMI (run) ; else LDA #$80 / ADC $030C,X / STA` -
 the first update after a spawn only sets bit 7 and returns. `$C011: LDA $030C,Y
 / BPL $C030` skips the shot sweep for any enemy without bit 7. So **an enemy is
 untouchable and motionless for exactly its spawn frame.** The measured 5→133 /
@@ -292,7 +292,7 @@ and 31 point at, and it is also the byte immediately after the table):
 
 Exercised in my runs: **1, 2, 4, 5, 8** only.
 
-Two of the generic handlers **fall through into each other** — trap #9 territory:
+Two of the generic handlers **fall through into each other** - trap #9 territory:
 
 ```
 $AE99 (type 2, explosion) ... $AEDA DEC $014C,X
@@ -332,20 +332,20 @@ The shared off-screen check, `$B251`, tail-called by several handlers:
 Worked example, the type `$05`/`$85` fan (`$B0AF`), which is what stage 1 opens
 with. `$048C+i` is its sub-state:
 
-* state 0 — `X += $FE` (2 px/frame left) until `X < $60`; then `$046C+i = $40`
+* state 0 - `X += $FE` (2 px/frame left) until `X < $60`; then `$046C+i = $40`
   and `$048C += 1`, or `+= 2` if `Y >= $80`.
-* state 1 — home toward the player's Y (`$B109` compares `$032C,X` to `$0320`),
+* state 1 - home toward the player's Y (`$B109` compares `$032C,X` to `$0320`),
   `Y += 2`, `X += 1`; after 64 frames (`$046C` counts down) → state 3.
-* state 2 — same but reversed sign.
-* state 3 — `X += 3` then `$B251`.
+* state 2 - same but reversed sign.
+* state 3 - `X += 3` then `$B251`.
 
 Measured at frame 500-502 (4-member squadron, spawned 378/389/400/411):
-slot 21 (oldest) X = 185→188→191, slot 18 (newest) X = 110→111→112 — right-moving
+slot 21 (oldest) X = 185→188→191, slot 18 (newest) X = 110→111→112 - right-moving
 phase, older members further right, consistent with fly-left-then-curve-back.
 
 ### 7. The hit path and the death path
 
-**`$BFE2`** — shots vs enemies. Outer loop `$A8 = 8..0` over `$0123,X`
+**`$BFE2`** - shots vs enemies. Outer loop `$A8 = 8..0` over `$0123,X`
 (slots 3-11: shot A, shot B, missiles); inner loop `$A9 = 9..0` over enemies.
 
 Box: `A0 = shotX + $BFCE[t]`, `A3 = $BFD2[t]` (width), `A1 = shotY + $BFD6[t]`,
@@ -365,7 +365,7 @@ where `t = $0163,X` is the shot subtype;
 * after the kill, `$0163,X == 1` (laser) makes the shot **survive**; anything
   else is consumed (`$0123,X = 0`).
 
-**`$BE93` — the death routine.** Measured 50 times.
+**`$BE93` - the death routine.** Measured 50 times.
 
 ```
 sound   = $BE6E[type AND $7F]  (only for type AND $7F < $22)
@@ -382,7 +382,7 @@ the member count for any formation of **>= 4 members** whose type isn't `$0B`
 (`$A3F1`, `$A450`). `$49` alternates the group id 2/3 per squadron
 (`INC $49 / AND #$01 / ORA #$02`).
 
-Measured, natural play — every kill denied:
+Measured, natural play - every kill denied:
 
 ```
 ev  487 DEATH slot=20 type=$85 carrier=$03 …   ev 487 capsuleDeny $4B=1(pre-DEC)
@@ -429,10 +429,10 @@ with status **7** every 16th time (`INC $47 / AND #$0F / BEQ`) and **6**
 otherwise.
 
 **The squadron counter underflows.** Measured: after `$4B` hit 0 at frame 487, a
-later kill of the same group id printed `capsuleDeny $4B=255` — `DEC $48,X` on 0
+later kill of the same group id printed `capsuleDeny $4B=255` - `DEC $48,X` on 0
 wraps and the group can never award another capsule until it is re-seeded.
 
-### 8. The parallel arrays — the complete list
+### 8. The parallel arrays - the complete list
 
 `$A527` is the authority: it clears **21** arrays at `X = $A8 + $0C`, plus two at
 `Y = $A8`. Enemy slots use base `+$0C`, enemy bullets base `+$16`.
@@ -465,7 +465,7 @@ Two arrays are indexed by the **enemy index j (0..9), not the slot**:
 `$0460+j` (hit-box height class → `$BFDE`) and `$0496+j` (bullet-pattern index,
 `$BC90`). `$A527` clears both, `STA $0460,Y` / `STA $0496,Y` with `Y = $A8`.
 Note `$0460,Y` (j) and `$0460,X` (j+12) are *different bytes* and both are
-cleared in the same routine — this is not a typo in the ROM and a port that
+cleared in the same routine - this is not a typo in the ROM and a port that
 merges them will be wrong.
 
 ### 9. Two spawners I could not exercise
@@ -479,7 +479,7 @@ merges them will be wrong.
   right 4 bits at a time, and on success sets `$030C = $66`, `$010C = $80`,
   `$012C = $89`, `$036C = $F0`, `$0460+j = 1`. The `$0600` page is a second
   object table (`$0600/$0601/$0602/$0610/$0618/$061A/$0622` are all touched)
-  that `$BF4C` also reads — almost certainly the Moai / multi-part bosses.
+  that `$BF4C` also reads - almost certainly the Moai / multi-part bosses.
 
 Both are `total.allocR_try = total.allocS_try = 0` in every run I made.
 
@@ -493,7 +493,7 @@ Both are `total.allocR_try = total.allocS_try = 0` in every run I made.
   claim is read-from-ROM.
 * **The single-enemy path `$A3B1` never ran.** Stage 1 chunks 0 and 1 are all
   `cmd >= $80`. Its table (`$A662`, stride 3) is decoded from the listing only.
-* **`total.armourHit = 0`** — the `$0100+i` bit-7 armoured branch, the type-`$9A`
+* **`total.armourHit = 0`** - the `$0100+i` bit-7 armoured branch, the type-`$9A`
   multi-hit counter and `$BFC5[$17]` are unexercised.
 * **37 of the 42 handlers are unexercised.** I have their entry addresses and
   nothing else. `$B205`, `$B26C`, `$B198`, `$AF2E`, `$AF88` are the next ones a
@@ -503,7 +503,7 @@ Both are `total.allocR_try = total.allocS_try = 0` in every run I made.
 * **`$5D`** is incremented at `$A335` (wave fired) and `$BF9F` (enemy bullet
   destroyed) and set to 1 at `$A47C`; I did not find its consumer.
 * I did not run the gate (`node --test games/gradius/tests/`,
-  `node games/gradius/tools/test-all.mjs`) — I wrote no source and no test; the
+  `node games/gradius/tools/test-all.mjs`) - I wrote no source and no test; the
   two files I added are probes, not checks. **Nothing here has been guarded by a
   check that was seen to fail**, which is the honest status of a recon.
 

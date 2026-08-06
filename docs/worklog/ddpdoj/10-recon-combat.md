@@ -1,8 +1,8 @@
-# WAVE 10 RECON 4/5 — weapons, hitboxes, collision, damage, scoring, HELD fire
+# WAVE 10 RECON 4/5 - weapons, hitboxes, collision, damage, scoring, HELD fire
 
 status: **DONE as recon** -- five questions answered with measurements, four
 named gaps at the end that each need one run or one tap.
-wave: 10   role: recon (READER — nothing in `games/ddpdoj/src/` was edited)
+wave: 10   role: recon (READER - nothing in `games/ddpdoj/src/` was edited)
 started: 2026-08-01
 
 All addresses are **VERSION-B** (`$23xxxx`–`$28xxxx`, 2002.10.07 BLACK VER)
@@ -10,7 +10,7 @@ unless a line says build A. Machine pin printed on every run:
 `maincpu_fnv64=D4C25CA9C91B9D47`, 6,291,456 bytes.
 
 New tooling added (reader-safe, under `tools/`):
-`games/ddpdoj/tools/oracle/w10combat.py` — one `frame.lua` run per invocation
+`games/ddpdoj/tools/oracle/w10combat.py` - one `frame.lua` run per invocation
 through `pgm.trace`, PROBE_WATCH / PROBE_EXEC / PROBE_RAWDUMP / PROBE_RAMDUMP
 only. **It pokes nothing.**
 
@@ -72,7 +72,7 @@ cleared at `$25329A bclr #0,$8103E7`. The templates in [1]/[3] carry type word
 
 ---
 
-## 1. THE SHIP-TYPE JUMP TABLE — what its arms actually are
+## 1. THE SHIP-TYPE JUMP TABLE - what its arms actually are
 
 ```
 249be2: move.w ($58,A6),D0
@@ -103,10 +103,10 @@ and `$001264`, not ROM addresses).
 
 `$2497AA..$2497FE` is the AUTO-SHOT block: operator byte `$80380F` non-zero AND
 **raw** bit 6 (Button 3) held AND `($3c,A6) == 0` synthesises an edge with
-`bchg #4,($1,A6)` / `bset #4,($19,A6)` on alternate frames — and also sets bit 3
+`bchg #4,($1,A6)` / `bset #4,($19,A6)` on alternate frames - and also sets bit 3
 of `($1,A6)` on the player **and on the option record `$8104AA`**.
 
-## 2. HELD vs EDGE — the diagnosis, with the numbers
+## 2. HELD vs EDGE - the diagnosis, with the numbers
 
 `$803970` is the RAW HELD mirror, `$803972` the EDGE (`$23D146 not.w D2 /
 $23D156 and.w D0,D2`). `$249558` copies raw into `($18,A6)` and edge into
@@ -117,7 +117,7 @@ nibble, `$2495E2`/`$249622`/`$249666`/`$249682` the four directions, `$2497B2`
 bit 6).
 
 **A from-scratch byte scan of `$200000-$2A0000` finds ZERO instructions of the
-form `btst #4,($18,An)`** — nothing tests the raw held Button-1 bit through a
+form `btst #4,($18,An)`** - nothing tests the raw held Button-1 bit through a
 `(d16,An)` bit test anywhere in build B. `$803970` itself has only two
 absolute-long readers in build B, `$23D16C` and `$23D174`, and `$23D174` has no
 absolute-long caller. (Both are LOWER BOUNDS: a base-register or PC-relative
@@ -168,18 +168,18 @@ Read that as three separate results:
    `$249B48` tests the EDGE. What follows is the cadence machine's own release
    path (`$249B96`), which drains `($2b,A6)` = 2 and emits a **burst of six
    shots** (`$81295C` 2,4,6,8,10,12) and then goes quiet.
-2. **The raw held bit DOES arrive at the laser gate on every frame** — `ohold`
+2. **The raw held bit DOES arrive at the laser gate on every frame** - `ohold`
    is `$10` on all 600. `PROBE_EXEC` on `$24C160` (`clr.w ($40,A6)`, the
    *not-taken* side of `$24C15A`) is **0 on every frame of the run**, which is
    the proof that the copy is not cleared before `$24C164` reads it.
-   `PROBE_EXEC` on `$24C134` is **1 every frame** — the option object runs.
+   `PROBE_EXEC` on `$24C134` is **1 every frame** - the option object runs.
 3. **The laser then comes up, 17–20 frames later**, and the ship stops firing
    shots for as long as it is held. That is the behaviour the owner expects and
    the port does not have.
 
 ### The diagnosability answer
 
-The port's held-fire path is **not** silent as of wave 9 — `type5.js:140` now
+The port's held-fire path is **not** silent as of wave 9 - `type5.js:140` now
 throws. But the trigger it uses is the SPEED RAMP, not the laser gate:
 
 ```js
@@ -192,7 +192,7 @@ Two measured problems with that trigger, both fixable in one sitting:
 * it fires on the **4th** held frame, whereas the board's laser gate `$24C164`
   is entered on the **1st**; and
 * `speedIdx !== laserFloor` means **a player already at the speed floor holds
-  fire and still gets silence** — the exact failure mode the throw exists to
+  fire and still gets silence** - the exact failure mode the throw exists to
   prevent, narrowed rather than removed.
 
 The honest trigger is the one the board uses: `($18,A6) bit 4` set, i.e.
@@ -206,16 +206,16 @@ call sites, and the middle column is what a player can do that lands there:
 
 | site | reachable by | what is lost |
 |---|---|---|
-| `type5.js:65` **$24C096** | HOLDING fire | **THE LASER** — the whole option object |
+| `type5.js:65` **$24C096** | HOLDING fire | **THE LASER** - the whole option object |
 | `type5.js:65` **$2634F4** | always | the ENEMY driver ($263502) |
 | `type5.js:65` (20 more) | always | `$289B80 $28AD54 $27F95A $288E4E $2890F2 $255DD8 $254680 $255042 $28A098 $2527CE $24A458 $24A46C $24A440 $24A44C $27E99E $252BD0 $281D9A $25354C $25292A $252A52` |
-| `type5.js:72` **$28B670** | always | the tail — and **$244D62, THE PLAYER-vs-BULLET COLLISION**, is reached only from here (`$28B6B8/$28B6FE/$28B766/$28B79C jmp $244D62`) |
+| `type5.js:72` **$28B670** | always | the tail - and **$244D62, THE PLAYER-vs-BULLET COLLISION**, is reached only from here (`$28B6B8/$28B6FE/$28B766/$28B79C jmp $244D62`) |
 | `objdriver.js:105` | always | the unported top-level dispatch entries |
 | `main.js:204/206/213` | always | main-loop calls #1, #3 and the sprite-list build |
 | `shots.js:256` **$28C3BA** | TAPPING fire | the shot's SOUND ($28C3EE for the hyper) |
 | `player.js:278` **$249E7E** | always | the shadow emit **and THE SCORE BCD ADD $249F16..$249F88** |
 | `isr.js:45/47/51/54`, `input.js:72` | always | four ISR6 routines |
-| `player.js:336/345` | firing | **not holes** — these are the ROM's own `bra $249E4E` |
+| `player.js:336/345` | firing | **not holes** - these are the ROM's own `bra $249E4E` |
 
 Two of those deserve to be read twice. **`player.js:278` is where the score
 lives**: the port counts "player tail: shadow emit + the BCD block" once per
@@ -226,7 +226,7 @@ other caller.
 
 ---
 
-## 3. THE HITBOX — measured, and the Black Label number
+## 3. THE HITBOX - measured, and the Black Label number
 
 ### Where it is
 
@@ -272,7 +272,7 @@ So the ship's own box is **X +/-$80 = +/-2.0 px (4 px wide)** and
 (`$244DBC`/`$244DC4` use one word, `($c,A6)`, for BOTH Y edges and `($e,A6)`
 for both X edges -- the bullets are symmetric, the ship is not).
 
-### THE X EXTENTS ARE ANIMATION-DRIVEN — and the port already writes them
+### THE X EXTENTS ARE ANIMATION-DRIVEN - and the port already writes them
 
 ```
 249e68: lea $2553ca,A0
@@ -311,7 +311,7 @@ init by a path I did not find -- no absolute-long writer, no matching immediate
 in the image -- so the A-vs-B comparison above is X only. Measuring A's Y
 extents needs one VERSION-A probe run; see BLOCKERS.)
 
-## 4. THE COLLISION LOOPS — five of them, one layout
+## 4. THE COLLISION LOOPS - five of them, one layout
 
 `$244D62` (the player's pass, reached ONLY from `$28B670`, the type-5 tail):
 
@@ -348,7 +348,7 @@ other's numbers, and `$81308C` decides whether the shot spends 100 % or 75 % of
 its power. `$81308C` is 1 in this corpus. **Nothing in this corpus has ever run
 the 75 % path**, which is the wave-6 lesson repeating: a rule no frame can see.
 
-## 5. THE SCORE AND THE CHAIN — located, in the routine the port counts
+## 5. THE SCORE AND THE CHAIN - located, in the routine the port counts
 
 Wave 2 did not produce them, wave 5 refused to guess, wave 8 did not look.
 They are in the PLAYER's own tail, twelve instructions past where the port
@@ -401,7 +401,7 @@ same four bytes again**. When `$813098` is non-zero the score gain is doubled,
 not extended to eight bytes. I did not watch `$813098` and do not know when it
 is set.
 
-## 6. THE SHOT SUB-DRIVER `$253A70` — re-verified, plus one correction
+## 6. THE SHOT SUB-DRIVER `$253A70` - re-verified, plus one correction
 
 Re-derived rather than taken on trust. `$253A70` is unchanged from wave 5:
 `lea $810572,A6` / `move.w #$1,D6` in D6's HIGH word / `moveq #$23,D7` /
@@ -502,7 +502,7 @@ move.l (A0,D0.w),($14,A6)  WHOLE IMAGE: $14951C (build A), $249E78 (build B)
    word `$8201`/`$9201` never has it. **This is presence-of-absence and I am
    flagging it, not concluding from it.**
 
-## 9. THE SCORE — corrected by the RAM images, and MEASURED non-zero
+## 9. THE SCORE - corrected by the RAM images, and MEASURED non-zero
 
 Section 5 named `$81B4C0` as the score. The two 128 KiB RAM images say it is
 the **PENDING** accumulator, not the total, and the total is four bytes lower:
@@ -552,7 +552,7 @@ has exactly one absolute-long reference in build B, `$2842B8`). Finding them is
 a one-sitting job with a write tap on `$81B4C0..$81B4C3`; I did not run it.
 
 
-### THE CONTROL LANDED — and it is the proof
+### THE CONTROL LANDED - and it is the proof
 
 `dump-none-2999` is the same 3,000-frame script with Button 1 never pressed:
 
@@ -599,7 +599,7 @@ per-frame WATCH of it would have looked dead and why sec 9's correction matters.
    linear sweep", NOT "the game never looks at the held button". The game
    demonstrably does look at it -- through `$24C134`'s byte copy.
 
-## 11. THE WORK LIST — in the order the measurements support
+## 11. THE WORK LIST - in the order the measurements support
 
 Each item is sized for one implementer in one sitting, and each says what the
 `capture.bin` recording no longer has to supply once it lands.

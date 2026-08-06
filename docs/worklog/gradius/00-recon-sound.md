@@ -1,4 +1,4 @@
-# RECON 3/5 — the $ED02 sound driver: request protocol, data format, per-frame contract
+# RECON 3/5 - the $ED02 sound driver: request protocol, data format, per-frame contract
 status: DONE (with three named unresolved items)
 wave: 0   role: recon   started: 2026-07-31 (date given in-session)
 
@@ -8,7 +8,7 @@ Map (NOT port) the audio driver called from the Gradius NMI at `$80A1`
 (`JSR $ED02`). Answer, by MEASUREMENT against `Gradius (USA).nes` under headless
 Mesen 2.1.1:
 
-1. How music and SFX are *requested* — which RAM byte(s), which values.
+1. How music and SFX are *requested* - which RAM byte(s), which values.
 2. The sequence data format and where the tracks live in PRG.
 3. How many channels, and how the NES APU registers get written.
 4. What the driver does per *frame* vs per *tick*.
@@ -51,7 +51,7 @@ nmiEntries = 601   lagFrames = 1   driverCalls = 600   gameFrames = 600
 
 i.e. `driverCalls == nmiEntries - lagFrames`. One tick per *non-dropped* NMI.
 
-### 1. The request protocol — one byte in A, through `$EC1E`
+### 1. The request protocol - one byte in A, through `$EC1E`
 
 `$EC1E` is the entry (`STA $DF` is its first instruction; the request arrives in
 **A**, not in a RAM byte). 28 call sites; `dis6502 xref EC1E`.
@@ -73,7 +73,7 @@ Table record at `$EFCD + 3*index` = `{apuOffset, ptrLo, ptrHi}` where
 skip`: `$02,X` holds the index of the sound currently owning that channel, and a
 new request is **rejected unless its index is >= the current owner's**. Cleared
 to 0 when a stream hits `$FF` (`$ECB6`). Measured on a 1200-frame autofire run
-(`--tag census`): **123 requests, 51 channel-records accepted** — and, decisively:
+(`--tag census`): **123 requests, 51 channel-records accepted** - and, decisively:
 
 ```
 shot SFX ($01) requests: 83 total, 73 issued while pulse-1's owner byte was > 1
@@ -95,7 +95,7 @@ crash-shaped bug**; the game never issues one (measured: every observed request
 was `$01 $06 $0D $3B $7D $90 $93 $F7 $FC`).
 
 **The RAM byte that does exist** is `$1C`, at the *caller* level, not in the
-driver: `$839B` is "set BGM" — `CPX $1C / BEQ ret / STX $1C / LDA #$7D /
+driver: `$839B` is "set BGM" - `CPX $1C / BEQ ret / STX $1C / LDA #$7D /
 JSR $EC1E / LDA $1C / JMP $EC1E`, i.e. it de-duplicates against `$1C`, sends
 `$7D` (stop pulse2+triangle) and then the new code. `$83AB` is "stop everything"
 (`LDA #$FC / JMP $EC1E`), 6 call sites. `$8381 LDX #$93` is the stage BGM,
@@ -114,13 +114,13 @@ Observed request codes and their meaning:
 | `$01 $06 $0D` | 1 record | SFX on pulse 1 |
 
 `$3C-$3F` all point at `$F08F`, whose first byte is `$00`. `$EC74` sees the 0,
-forces `$DF = 0`, so `$02,X` is left at 0 (channel free) — **the stream is never
+forces `$DF = 0`, so `$02,X` is left at 0 (channel free) - **the stream is never
 parsed**; the silencing is done by `$EC83-$EC8E` writing `$30` (or `$00` for
 triangle) to `$4000+off` and `$4001+off`. `$F08F` is literally two bytes into the
 middle of the `$3B` pause jingle; that is fine precisely because it is never read
 as a sequence.
 
-### 2. Channels and APU registers — four, no DMC
+### 2. Channels and APU registers - four, no DMC
 
 Every absolute access to `$4000-$401F` in the whole 32 KB PRG (scanned):
 
@@ -136,7 +136,7 @@ ED36 $4008  ED39 $4009  ED6B $4008  ED70 $400C
 
 **No `$4010-$4013` anywhere → the DMC channel is never used**, even though
 `$4015 = $1F` enables it. `$4017 = $C0` = 5-step frame sequencer, frame IRQ
-inhibited — so the APU frame counter is not used as a clock either.
+inhibited - so the APU frame counter is not used as a clock either.
 
 Per-run write census (900 frames, `--tag base`): `$4014` exactly once per game
 frame; `$4015`/`$4017` exactly once for the whole run; everything else is
@@ -147,13 +147,13 @@ frame; `$4015`/`$4017` exactly once for the whole run; everything else is
 `$ED02` is a flat 4-iteration loop over the channel bases (`$F8` = struct base,
 `$F9` = APU offset 0/4/8/$0C; `$F8 += $11` per iteration, terminating on `$F4`).
 Per channel it does `DEC $00,X`; when that reaches 0 it parses the next event.
-**There is no tempo divider anywhere** — one tick == one non-dropped NMI, and
+**There is no tempo divider anywhere** - one tick == one non-dropped NMI, and
 tempo lives entirely in the duration bytes.
 
 Independent confirmation, and this is the check I made fail on purpose:
 `snddata.py --selfcheck` decodes index `$13` (stage-1 pulse-1 part) purely from
 the ROM bytes and gets **512 ticks**; the cartridge held `$B2 = $13` for
-**513 game frames** (310..822 inclusive) — 1 setup frame (`$EC63` seeds
+**513 game frames** (310..822 inclusive) - 1 setup frame (`$EC63` seeds
 `$00,X = 1`, so the first command is parsed on the *next* driver call) + 512.
 
 ```
@@ -168,7 +168,7 @@ loop while c == cnt + 1  (instead of c == cnt)       -> 640 ticks  [FAIL] rc=1
 restored                                             -> 512 ticks  [PASS] rc=0
 ```
 
-### 4. The channel struct — 17 bytes, and it overlaps on purpose
+### 4. The channel struct - 17 bytes, and it overlaps on purpose
 
 Four structs, `$B0`, `$C1`, `$D2`, `$E3`, stride `$11` = 17.
 
@@ -198,7 +198,7 @@ Two deliberate overlaps, both confirmed by the code paths that skip the fields:
 * **noise** (`$E3`) ends at `$F3`, and `+$D..+$10` are the globals
   **`$F0` `$F1` `$F2` `$F3`** used by the fade epilogue.
 
-### 5. The sequence format — two dialects, one discriminator
+### 5. The sequence format - two dialects, one discriminator
 
 `$EC72-$EC7F`: `$09,X` is set to **0 if the stream's first byte has high nibble
 `$2`**, else **1**. That flag picks the parser: `$EDBE` (dialect A) or `$EE82`
@@ -210,19 +210,19 @@ are dialect B (music), `$28-$2D` and `$35-$3A` are dialect A.
 
 | byte | operands | effect |
 |---|---|---|
-| `$FF` | — | if inside a sub-phrase, return to `$DD/$DE`; else **end stream, `$02,X := 0`, silence the channel** (`$ECB6`) |
+| `$FF` | - | if inside a sub-phrase, return to `$DD/$DE`; else **end stream, `$02,X := 0`, silence the channel** (`$ECB6`) |
 | `$FD` | `lo hi` | call sub-phrase; return address = stream+3 stored in the **global** `$DD/$DE` |
 | `$FE` | `cnt lo hi` | loop: `cnt` **total passes** through the block; on the last pass, skip 4 bytes |
 
 `$FD`/`$FE`/`$FF` all end with `$ECE5` (`$00,X := 1`) and `JMP $ED46`, so control
-commands are chained and executed **within the same tick** — by `JMP`, not `JSR`,
+commands are chained and executed **within the same tick** - by `JMP`, not `JSR`,
 so no stack growth.
 
 **Dialect B (music), `$EE82`:** optional `$Dn vv [dd]` (n → base duration,
-vv → `$4000+off` volume/envelope byte, dd → release offset/rate nibbles —
+vv → `$4000+off` volume/envelope byte, dd → release offset/rate nibbles -
 **absent on the triangle channel**, `$EE9D`), optional `$En` (octave), then one
 **note byte** `NNNNdddd`: `NNNN` = pitch 0-11 (`$0C` = rest), `dddd` = duration
-multiplier. **`duration = base * (dddd + 1)`** — `$EECE-$EED5` is a repeated
+multiplier. **`duration = base * (dddd + 1)`** - `$EECE-$EED5` is a repeated
 `ADC $0A,X`, *not* a shift. Pitch table `$EFB8`, 12 big-endian 11-bit periods,
 C..B, one octave (1710 … 906; ratio 1.888 = 2^(11/12)); the octave is applied as
 `(4 − $10,X)` right-shifts of the 16-bit period (`$EF54`).
@@ -235,7 +235,7 @@ vv → `$4000+off`), `$11 vv` (detune added to the period low byte), `$10 vv`
 Worked example, printed by `snddata.py --stream 13`, is the stage-1 riff
 E B E F# B F# E B E B E F#, base 4, `$FE 4 $F396` (4 passes), `$FF`.
 
-### 6. Pause — `$15`, and it freezes the driver rather than stopping it
+### 6. Pause - `$15`, and it freezes the driver rather than stopping it
 
 Measured (`--tag pause`, START at game frame 500 and again at 560):
 
@@ -248,14 +248,14 @@ f 561 $15=0 c0=13 c1=13 c2=13  d1=42
 
 `$9AE2`: START sets `$15 = 1`, copies the **pulse-1 struct** `$B0..$C0` to
 `$01A0..$01B0`, and requests `$3B`. `$ED54-$ED5E`: with `$15` set the driver
-**`INC $00,X` to undo its own `DEC`** — all durations freeze — and writes
+**`INC $00,X` to undo its own `DEC`** - all durations freeze - and writes
 silence, **except** for the channel whose owner is `$3B` (`$ED58 CMP #$3B`),
 which is how the pause jingle plays. `$9B21` clears `$15`, restores `$B0..$C0`
 from `$01A0`, restores `$4008` from `$D7`. The driver-cycle sequence for frames
-491-499 and 562-570 is byte-identical (466,466,466,447,745,787,466,436,436) —
+491-499 and 562-570 is byte-identical (466,466,466,447,745,787,466,436,436) -
 the music resumes on exactly the tick it stopped on.
 
-### 7. The `$F0` fade — reached only by intervention
+### 7. The `$F0` fade - reached only by intervention
 
 `INC $F0` at `$8398` is the only setter, gated on `$1B < $82`. **`$F0` was 0 in
 every one of my 11 scripted runs**, so I forced it (`SND_POKE="F0=1@400-400"`):
@@ -268,10 +268,10 @@ f 879 $F0=1 $F2=10 ...    triangleOwner=00   <- triangle killed
 
 `$ED1A-$ED3C`: `$F1` counts to `$30` (**48 frames**), then `$F2++` (clamped to
 `$0B` at `$EEF0`). `$F2` is subtracted from pulse-2's volume nibble at `$EF16`,
-result in `$F3`; when `$F3 < 7` the driver zeroes `$D4`, `$4008`, `$4009` —
+result in `$F3`; when `$F3 < 7` the driver zeroes `$D4`, `$4008`, `$4009` -
 **killing the triangle channel**. Every step landed exactly 48 frames apart.
 
-### 8. THE LAG QUESTION — measured three ways, answer: no
+### 8. THE LAG QUESTION - measured three ways, answer: no
 
 **(a) Absolute cost.** 1600-frame gameplay runs:
 
@@ -280,12 +280,12 @@ driverCycles.min = 157   mean = 411..477   max = 1450 (at f311, stage-BGM start:
                                             three channels initialising at once)
 ```
 
-`157` is not just a measured floor — I hand-counted the empty path off the
+`157` is not just a measured floor - I hand-counted the empty path off the
 listing (2+2, then 39 cycles ×3 channels, 24 for the fourth, `LDA $F0`/`BEQ`/
 `RTS` = 12) and got **exactly 157**. Two independent derivations, one number.
 A frame is 29780.5 CPU cycles, so the driver is **0.5 % to 4.9 %** of a frame.
 
-**(b) Where it sits.** `driverStartOffsetFromNmi.max = 3132` cycles — the driver
+**(b) Where it sits.** `driverStartOffsetFromNmi.max = 3132` cycles - the driver
 finishes ≲4600 cycles into the NMI. The NMI then **busy-waits on sprite-0 at
 `$9AA3`**: measured `sprite0SpinIters.min = 1481` (≈11,850 cycles of pure
 waiting), mean ≈1760-1911, max ≈2129. So the driver's whole cost budget is
@@ -323,12 +323,12 @@ driverRamReads  = $0000-$0010 $0015 $00B0-$00E5 $00F0 $00F4-$00F5 $00F8-$00FB $0
 driverRamWrites = $00B0-$00E2 $00F4-$00F5 $00F8-$00FB $01F3-$01F6
 ```
 
-`$0000-$0010` is **not** semantic — it is the 6502's dummy read at the
+`$0000-$0010` is **not** semantic - it is the 6502's dummy read at the
 un-indexed address during `zp,X` addressing. Proved by attributing each one to a
 PC: `$0002@ED0C x2000` is `LDA $02,X` executed 4×/frame over 500 frames;
 `$0000@ED52 x719` is `DEC $00,X`. Every effective address is in `$B0-$F5`.
 So the driver's footprint is **its own four structs + `$15` + the stack**, and
-its cost is a function of the *music data* alone — never of object count,
+its cost is a function of the *music data* alone - never of object count,
 sprite count or collision work.
 
 **Conclusion for `docs/knowledge/06`:** Gradius's audio driver is a **fixed-shape
@@ -337,7 +337,7 @@ positioned *before* an elastic busy-wait that absorbs it. It is not a lag source
 in stage 1. The observed lag frame (game frame 283, the stage load) had the
 driver at its **157-cycle minimum**. What the driver *does* do to lag is the
 other direction: **a dropped NMI drops a music tick**, so lag stretches note
-durations by one frame each — a permanent, audible phase shift of the music
+durations by one frame each - a permanent, audible phase shift of the music
 relative to a port that never lags.
 
 ---
@@ -355,13 +355,13 @@ relative to a port that never lags.
   note. Measured across everything I could make play: `octaveLoopIters.max = 13`
   per frame. My static decoder claims index `$24` (`$FCD9`, triangle) contains
   octave operands 7 and 8; I forced that stream onto the triangle by poking the
-  struct (`c2 = $24` from f400, verified) and saw **no** spike — so either my
+  struct (`c2 = $24` from f400, verified) and saw **no** spike - so either my
   decoder desynchronises inside that stream's `$FD` sub-phrases, or the data path
   in question was not reached in 500 frames. **Unresolved.** It is the only place
   I found where the driver could cost thousands of cycles instead of hundreds.
 * **`$F0` is only characterised by intervention**, not by reaching it in play.
   What game situation sets it (`$1B < $82` at `$8390`) is not established.
-* `$28-$2D`/`$35-$3A` are dialect-A "music" — I did not identify what they are.
+* `$28-$2D`/`$35-$3A` are dialect-A "music" - I did not identify what they are.
 * Whether the `$F0`/`$F2` fade and the `$DD`/`$DE` **global** sub-phrase return
   are safe when two channels are inside `$FD` sub-phrases at once: `$DD/$DE` is
   one slot shared by all four channels, written at `$ED8D` and read at `$EDAA`

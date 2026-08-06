@@ -1,6 +1,6 @@
-# Wave 24 PLAN — the play sub-state machine (jt_$982F) and the game-over arm
+# Wave 24 PLAN - the play sub-state machine (jt_$982F) and the game-over arm
 
-status: DONE (plan; ARCHITECT, READ-ONLY — no src/ edits, no commit)
+status: DONE (plan; ARCHITECT, READ-ONLY - no src/ edits, no commit)
 architect, 2026-08-02
 
 Consolidates `24-recon-substate-machine.md` (DONE) into an implementer wave
@@ -14,7 +14,7 @@ The denominator is settled: **16 play sub-states at jt_$982F; 1 ported; 15
 throw.** The stage-1-clear critical path through the table is **7 states**
 (`$80`→`$81`→`$82`→`$83`→`$84`→`$85`→`$86`, then it leaves for `$90`→`$96CF`).
 W24 lands 6 of those 7 bodies plus the `$80` exit; **`$86` stays a throw
-(W27 — the exit).** The game-over arm `$96FB` (the `$1B & $40` ladder arm, not
+(W27 - the exit).** The game-over arm `$96FB` (the `$1B & $40` ladder arm, not
 a jt_$982F entry) also lands in W24.
 
 > **CORRECTION TO THE RECON (measured here, RULE 1).** The endchain run is
@@ -22,11 +22,11 @@ a jt_$982F entry) also lands in W24.
 > carries `160 ($A0): 118` frames (one death) and `$19` flips 0→1
 > (`{0:4235, 1:1765}`). It cleared stage 0, advanced to stage 1, played ~1600
 > frames there and died. The recon's §5 table wrote `$80: 2676 frames,
-> 310-1338` — that conflates the **cross-stage histogram total** (`128:2676`,
+> 310-1338` - that conflates the **cross-stage histogram total** (`128:2676`,
 > stage-0 play + stage-1 play before the death) with the **stage-0 frame
 > range** (f310-1338 = ~1029 frames). The W24 done-when is **stage-0-only**;
 > every frame range and every non-`$80` count below is stage-0 and correct.
-> The `128:2676` histogram value is real but spans two stages — do not quote it
+> The `128:2676` histogram value is real but spans two stages - do not quote it
 > as the stage-0 `$80` duration.
 >
 > **ARCHITECT RE-VERIFIED 2026-08-02** against `throwaudit-endchain.json`:
@@ -36,7 +36,7 @@ a jt_$982F entry) also lands in W24.
 > cross-stage arithmetic closes: `$80` 2676 = 1029 (stage 0, f310–1338) + 1647
 > (stage 1, f4235–5882). All stage-0 hook `first`-frames below match the file.
 > The recon's three MUST-CONFIRMs ((a) `$9658`, (b) `$98FD` byte count, (c) the
-> 14-key histogram) are CLOSED — see §5, §4 and §2 respectively.
+> 14-key histogram) are CLOSED - see §5, §4 and §2 respectively.
 
 ---
 
@@ -55,7 +55,7 @@ transition) with a throw. Both are W24 work items.
 
 ---
 
-## 2. THE MEASURED `$1B` TIMELINE — the primary DONE-WHEN, reproduced to the frame
+## 2. THE MEASURED `$1B` TIMELINE - the primary DONE-WHEN, reproduced to the frame
 
 Read out of `tools/oracle/out/throwaudit-endchain.json` (6000-frame cartridge
 run that cleared stage 0, advanced to stage 1 and died there; `maxScroll` =
@@ -63,8 +63,8 @@ run that cleared stage 0, advanced to stage 1 and died there; `maxScroll` =
 exec hooks' `first` frames (which fire once per stage-0 transition). The `$1B`
 gate histogram over the WHOLE run is `{0:283, 1:1, 2:1, 3:1, 4:23, 128:2676,
 129:1, 130:768, 131:1, 132:512, 133:1101, 134:513, 144:1, 160:118}` (**14
-keys, sum exactly 6000** — re-verified against `throwaudit-endchain.json`;
-keys `1`/`2`/`3` are one-frame boot transients) — note `128` = 2676 spans
+keys, sum exactly 6000** - re-verified against `throwaudit-endchain.json`;
+keys `1`/`2`/`3` are one-frame boot transients) - note `128` = 2676 spans
 BOTH stages and `160` = 118 is a stage-1 death; only the stage-0 segment of
 `$80` (f310-1338) is W24's concern.
 
@@ -101,15 +101,15 @@ The numbers that make the timeline exact, all confirmed:
   `INC $1B` → `$85`. The arithmetic is self-consistent.
 - **`$85` entry is frame 2621.** `$1B` = `$85`. `$85`'s own code is one
   instruction (`INC $5B`); it exits 1101 frames later via the **boss-death
-  `INC $1B`**, which lives in the boss death chain (`$B914`, W26) — NOT in
+  `INC $1B`**, which lives in the boss death chain (`$B914`, W26) - NOT in
   `$997E`. `$997E` has no `$1B` writer.
 
 **PRIMARY DONE-WHEN:** drive the port through the endchain button script; the
 port's `$1B` byte matches the timeline above **to the frame** for the states
 W24 owns (`$80` f310–1338, `$81` f1339, `$82` f1340–2107, `$83` f2108, `$84`
-f2109–2620, `$85` entry f2621) — all **stage-0**; the stage-1 segment (where
+f2109–2620, `$85` entry f2621) - all **stage-0**; the stage-1 segment (where
 `$80` re-runs and the run dies) is out of scope. The 1022-address field
-comparison is **exact through the end of `$84` (frame 2620)** — the countdown
+comparison is **exact through the end of `$84` (frame 2620)** - the countdown
 with the frozen camera and the 512-frame despawn crawl. **`$85` field-exactness
 is W26's done-when, not W24's** (see §7): on frame 2621 `$84`'s advance path
 creates the boss object and the boss handler (`$B914`) is unported, so the
@@ -128,15 +128,15 @@ out of scope.
 
 ---
 
-## 3. Arm-by-arm — what LANDS and what stays a LOUD THROW
+## 3. Arm-by-arm - what LANDS and what stays a LOUD THROW
 
 ### LANDS in W24
 
 | arm | `$1B` | target | what W24 ports |
 |---|---|---|---|
-| dispatch | — | jt_$982F | Replace `playArm`'s single `$80` test with the real 16-entry table; every arm not implemented below throws loudly **with its ROM target**. |
-| `$80` exit | `$80` | `$9A4D` | Body already ported. **Port the `$9A56` arm**: `$1B := $9A45[$19]` (all `$81`), then `$9A5B` (= `setBgm`, already ported). The convergence at `$9A5B` (BCC-taken "keep playing" vs the `$9A56` advance) is two roads, one tail — NOT a fall-through. |
-| `$81` | `$81` | `$9A0E` | `X=$17`; stage≠6 (the port loads one stage, so the `$19==6` special case at `$9A12` is unreachable — throw on `$19==6` rather than skip); `$4D := $9A35[$17]`, `$4C := 0`; `INC $5B`; `INC $1B`; `$62 := 1`; clear `$63-$6F` (`sub_$99DF`); `JMP $9A5B`. |
+| dispatch | - | jt_$982F | Replace `playArm`'s single `$80` test with the real 16-entry table; every arm not implemented below throws loudly **with its ROM target**. |
+| `$80` exit | `$80` | `$9A4D` | Body already ported. **Port the `$9A56` arm**: `$1B := $9A45[$19]` (all `$81`), then `$9A5B` (= `setBgm`, already ported). The convergence at `$9A5B` (BCC-taken "keep playing" vs the `$9A56` advance) is two roads, one tail - NOT a fall-through. |
+| `$81` | `$81` | `$9A0E` | `X=$17`; stage≠6 (the port loads one stage, so the `$19==6` special case at `$9A12` is unreachable - throw on `$19==6` rather than skip); `$4D := $9A35[$17]`, `$4C := 0`; `INC $5B`; `INC $1B`; `$62 := 1`; clear `$63-$6F` (`sub_$99DF`); `JMP $9A5B`. |
 | `$82` | `$82` | `$99E9` | `INC $5B`; 16-bit decrement `$4C:$4D` via `$840C` (`X=$4C`, A=1); when `$4C\|$4D == 0`: `STA $60` (zero), `INC $1B`; stage 0 or 3 → `JSR $EC1E` with A=`$3F` (`loc_$9A06`); `JMP $9A5E`. |
 | `$83` | `$83` | `$99C0` | `INC $1B`; `$19 >= 5` → `$1B := $86` (stage 5 also fires sfx `$AC`); else `INC $5B`, `$62 := 2`, clear `$63-$6F` (`$99DF`); `JMP $9A5E`. (Stage≥5 is unreachable in the port; throw on it.) |
 | `$84` | `$84` | `$9982` | `CMP $9A3D,X`; **BEQ** (`$3F == boss page`) → `JSR $994A` despawn + stay; **else** the advance path (`$998B`): two HUD packets (`$1E`,`$05` via `$85E8`), `$2D := 1`, allocate via `$A527` with `$A8 := 9`, write the boss object (`$0315 := $98`, `$0335 := $80`, `$0375 := $F0`), `INC $5B`, `INC $1B` → `$85`, `$5E := #$3F`; `JMP $9A5E`. **Includes the despawn sweep `sub_$994A`** (§6). |
@@ -148,7 +148,7 @@ out of scope.
 | arm | `$1B` | target | why it throws / where it goes |
 |---|---|---|---|
 | `$86` | `$86` | `$9904` | **W27 (the exit).** Stage-end: despawn on `$1C==$93`; `CMP $98FD,X`; `$39==0` → `$1B := $90` (next stage), else `INC $19`, `$1B := $8E` (warp). 513 hits in the endchain run but its port is W27. Throw naming `$9904`/W27. |
-| `$87`-`$8A` | `$87`-`$8A` | `$9B3E`/`$9BED`/`$9C12`/`$9C1E` | **Routine bodies already ported** via the intro dispatch jt_$96C5 (`flow.js` introReset/introPackets/introHud/introMeter). 0 hits in the endchain run — off the stage-1 clear path. **May delegate to the existing intro code** (cheap) OR throw "reached via jt_$982F arm `$87`-`$8A`; delegate to `introStep` or leave for the stage-transition wave". Default: throw; delegation is the implementer's option and is unvalidated either way (0 hits). |
+| `$87`-`$8A` | `$87`-`$8A` | `$9B3E`/`$9BED`/`$9C12`/`$9C1E` | **Routine bodies already ported** via the intro dispatch jt_$96C5 (`flow.js` introReset/introPackets/introHud/introMeter). 0 hits in the endchain run - off the stage-1 clear path. **May delegate to the existing intro code** (cheap) OR throw "reached via jt_$982F arm `$87`-`$8A`; delegate to `introStep` or leave for the stage-transition wave". Default: throw; delegation is the implementer's option and is unvalidated either way (0 hits). |
 | `$8B`-`$8D` | `$8B`-`$8D` | `$988C`/`$98DD`/`$98E5` | 0 hits; off the stage-1 clear path. `$8D` (`$98E5`) is reset-to-intro (`$1B := 0 / JMP $9B3E`). Throw. |
 | `$8E`,`$8F` | `$8E`,`$8F` | `$984F` | **W27 (the warp route).** Throw naming `$984F`/W27. |
 | `$96CF` | `$90`+ | `$96CF` | The `$1B & $10` next-stage ladder arm. **W27.** Already a throw (nmi.js line 320). |
@@ -169,28 +169,28 @@ tail (`$9A3D`, boss page). They never collide (rank vs stage index disjoint
 halves).
 
 **EXPORT STATUS (measured against `assets/manifest.json` 2026-08-02):**
-- `stage.bossPage` (`$9A3D`) — **EXPORTED as 7 values** `[12,12,12,12,11,11,12]`
+- `stage.bossPage` (`$9A3D`) - **EXPORTED as 7 values** `[12,12,12,12,11,11,12]`
   (`tables.stage.bossPage.values`, len 7), read by the port as
   `res.stage.bossPage`. The 8th ROM byte `$02` at `$9A44` is beyond stage 6 and
   is NOT shipped. (This corrects recon §10, which said the manifest "shows 8
-  entries" — it ships 7.) **The ROM column is 8 bytes**; the manifest drops the
+  entries" - it ships 7.) **The ROM column is 8 bytes**; the manifest drops the
   unused 8th. `$9A3D[0]=$0C`=3072 px (the `$80`→`$81` exit).
-- `stage.endPage` (`$98FD`) — **EXPORTED as 7 values** `[14,14,14,14,13,12,13]`
+- `stage.endPage` (`$98FD`) - **EXPORTED as 7 values** `[14,14,14,14,13,12,13]`
   (`tables.stage.endPage.values`, len 7). **ARCHITECT-CLOSED (recon
-  MUST-CONFIRM (b)): `$98FD` is exactly 7 bytes — `st_9904` abuts at `$9904`
+  MUST-CONFIRM (b)): `$98FD` is exactly 7 bytes - `st_9904` abuts at `$9904`
   (`$98FD+7`, line 2656); no 8th entry, no shift.** Not yet READ by the port
   (`$86`/`$9904` is a W27 throw) but the data is in the tree.
-- **`$9A35` (rank countdown, first 8 bytes `03 03 04 04 05 05 06 06`) — NOT
+- **`$9A35` (rank countdown, first 8 bytes `03 03 04 04 05 05 06 06`) - NOT
   EXPORTED** (no `stage.rankCountdown` key exists). This is the load-bearing
   data for `$82`. **W24 must add it** to `export_assets.py` (e.g.
   `stage.rankCountdown`) and regenerate the manifest; a unit test pins the 8
   bytes.
-- `$9A45` — NOT exported, but trivially the constant `$81` for every stage. A
+- `$9A45` - NOT exported, but trivially the constant `$81` for every stage. A
   literal is honest; an export is cheaper to defend. Implementer's call.
 
 ---
 
-## 5. THE DEAD `$997E` FALL-THROUGH — must NOT be implemented
+## 5. THE DEAD `$997E` FALL-THROUGH - must NOT be implemented
 
 `st_$997E` (`$85`) is two instructions:
 
@@ -203,14 +203,14 @@ halves).
 This is an **ABSENCE proof from the listing, not just the 0/1101 empirical
 sample** (the endchain run reproduced 1101 `$85` frames, 0 fall-throughs):
 `$5B` is zeroed EVERY mode-5 frame at `$9658 STA $5B` (line 2221, inside
-`stagePlay`) BEFORE the `$96A5` ladder — and therefore before `$997E`. So at
+`stagePlay`) BEFORE the `$96A5` ladder - and therefore before `$997E`. So at
 the `INC`, `$5B` is always 0 → becomes 1 → `BNE` (test ≠ 0) is ALWAYS taken.
 The fall-through requires `$5B` to wrap `$FF`→`$00` on the `INC`, impossible
 when `$5B` was just cleared. Every entry to `$997E` passes through `$9658`.
 
 > **ARCHITECT-CLOSED (recon MUST-CONFIRM (a)).** Verified against
 > `rip/prg.asm`: `st_9650` (line 2216) runs `9658: 85 5B STA $5B`
-> unconditionally (no branch skips it), and `st_9650` IS `jt_80D4[5]` — the
+> unconditionally (no branch skips it), and `st_9650` IS `jt_80D4[5]` - the
 > mode-5 arm of the `$80D1` mode dispatch (`.word $9650 ; [5]`, line 147). So
 > `$5B` is cleared on every mode-5 frame before `$997E`; the dead-branch claim
 > is structural, not just the 0/1101 sample. The implementer need not re-confirm.
@@ -222,7 +222,7 @@ every 256 frames and **re-spawn the boss every 256 frames** (the §6 hazard in
 
 ---
 
-## 6. THE DESPAWN SWEEP `sub_$994A` — keep the `$3E >= $D0` guard
+## 6. THE DESPAWN SWEEP `sub_$994A` - keep the `$3E >= $D0` guard
 
 Called from `$9982`'s `BEQ $99BA` (when `$3F ==` boss page) and from `$9904`'s
 `$1C==$93` arm (`JSR $994A` at `$9923`, the latter is W27). Body (line 2709):
@@ -240,14 +240,14 @@ Called from `$9982`'s `BEQ $99BA` (when `$3F ==` boss page) and from `$9904`'s
 - **KEEP the `$3E >= $D0` guard** (`CPX #$D0 / BCC`): the sweep only runs in
   the last ~¼ of a scroll page. `$3E` is the scroll LOW byte; at 0.5 px/frame
   the sweep is armed for the tail of `$84`.
-- **The immediate `$5E := #$3F`** is set at `$99B3` (`A9 3F LDA #$3F` — the
+- **The immediate `$5E := #$3F`** is set at `$99B3` (`A9 3F LDA #$3F` - the
   CONSTANT `$3F`, not the register) on the `$84`→`$85` transition, seeding the
-  cursor. (`$5E` has two writers — `$99B5`, `$9C0F` — and zero readers in the
+  cursor. (`$5E` has two writers - `$99B5`, `$9C0F` - and zero readers in the
   PRG; it is the sweep's own cursor, confirmed by `src/flow.js:155`.)
 
 ---
 
-## 7. The `$84` boss spawn couples to W26 — scope boundary
+## 7. The `$84` boss spawn couples to W26 - scope boundary
 
 `$84`'s advance path (`$998B`) creates an object: `JSR $A527` with `$A8 := 9`,
 then absolute stores `$0315 := $98`, `$0335 := $80`, `$0375 := $F0` (slot 9:
@@ -263,7 +263,7 @@ ports the CREATION; the boss per-frame handler (`$B914`) and the death chain
   dispatch's unported entry) OR the fields diverge. Either is correct and
   expected; `$85` field-exactness is **W26's done-when, not W24's**.
 - The W24 measurement at frame 2621 is the **`$1B` value** (`$85`) matching the
-  cartridge — that is what "reproduces the timeline to … `$85` entry" means.
+  cartridge - that is what "reproduces the timeline to … `$85` entry" means.
 
 The implementer should confirm at port time how `$98`/`$99` route through the
 enemy update sweep (`$ADAB`), so the throw (if any) is the expected one and
@@ -271,18 +271,18 @@ carries the ROM address.
 
 ---
 
-## 8. THE GAME-OVER ARM `$96FB` — the secondary DONE-WHEN
+## 8. THE GAME-OVER ARM `$96FB` - the secondary DONE-WHEN
 
 `$96FB` is the `$1B & $40` ladder arm (nmi.js line 326), NOT a jt_$982F entry.
 **Re-summed across all 11 `throwaudit-*.json` recordings (50,100 frames):
-`$96FB` executes 794 times** — 397 in `deep-survivor` (first@3380) + 397 in
+`$96FB` executes 794 times** - 397 in `deep-survivor` (first@3380) + 397 in
 `deep-autofire` (first@3968). `$97F1` (lives went negative) executes 2 times.
 This is the **highest-traffic unported arm in the whole port**: two ordinary
 "lose three lives" runs each sit in `$96FB` for ~400 frames. It needs nothing
-exotic — a player who is not very good.
+exotic - a player who is not very good.
 
 `$96FD` gates both the timeout and START on `$B0` (pulse-1's duration counter,
-`src/sound.js` — "wait until the game-over jingle finishes"); neither the
+`src/sound.js` - "wait until the game-over jingle finishes"); neither the
 timeout arm nor the continue screen is ported today (the current throw names
 both).
 
@@ -310,7 +310,7 @@ implementer picks as the machine-check; both are recorded.
    frozen-camera countdown + the despawn crawl). `$85` field-exactness is W26.
 3. **Game-over.** The `deep-survivor`/`deep-autofire` `$96FB` windows compare
    field-exact; `$96FB` runs 794× across the 11 recordings (397+397), `$97F1`
-   2× — the port reproduces the `$B0`-gated hold, not a throw.
+   2× - the port reproduces the `$B0`-gated hold, not a throw.
 4. **The dispatch is real.** `playArm` dispatches all 16 arms; the 8 throwing
    arms (`$86`, `$8B`-`$8F`, and `$87`-`$8A` unless delegated) throw **with
    their ROM target** (`$9904`/`$988C`/`$98DD`/`$98E5`/`$984F`/`$9B3E`/`$9BED`/
@@ -324,9 +324,9 @@ implementer picks as the machine-check; both are recorded.
    run. (The hook recordings prove the timeline; the `scen` dumps make the
    fields machine-checkable.)
 8. **The gate.** `node --test` and `test-all.mjs` GREEN, **0 skipped**; census
-   unchanged at 19/42 dispatch entries (W24 ports no enemy handler — it ports
+   unchanged at 19/42 dispatch entries (W24 ports no enemy handler - it ports
    the STATE machine). The `deep-powered`/`deep-page4` scenarios stay green
-   (regression — W24 changes `playArm`, which they exercise).
+   (regression - W24 changes `playArm`, which they exercise).
 
 Every DONE-WHEN must be SEEN TO FAIL: the implementer breaks the `$82` count
 (`$9A35[1]` $03 → $04: 768 → 1024 frames, red), the `$84` despawn guard
@@ -340,7 +340,7 @@ restores each with SHA-256 verified both ways (RULE 4).
 1. **The fall-through trap.** Three fall-throughs in this region (recon §9),
    read past every one:
    - **`$997E` → `$9982`: STRUCTURALLY DEAD** (§5). Must NOT be implemented.
-   - **`$9BED` → `$9BF0`: REAL** — but that is arm `$88`, off the stage-1 clear
+   - **`$9BED` → `$9BF0`: REAL** - but that is arm `$88`, off the stage-1 clear
      path (0 hits), already ported via `introPackets`. If `$88` delegates, the
      fall-through is already handled.
    - **`$9A4D`'s `$9A56` → `$9A5B`: convergence**, not a trap (both paths land
@@ -355,11 +355,11 @@ restores each with SHA-256 verified both ways (RULE 4).
    **Every deep measurement pins rank `$17` = 1** (the endchain run is
    unpowered) → `$9A35[1]` = `$03` → 768. At rank 4 (a powered run: `$44=2,
    $45=2, $46=5, $41=1`) it would be `$9A35[4]` = `$05` → **1280 frames**,
-   *unverified dynamically* — no powered endchain run has ever been recorded.
+   *unverified dynamically* - no powered endchain run has ever been recorded.
    The `$82` countdown AND the boss damage ladder (W26) are rank-indexed; W24's
    done-when is **EXACT only at the measured rank row (rank 1)**. Other rows
    ship read-from-ROM (the table is exported) until a higher-rank run exists.
-   Say "exact at rank 1; rank 4 = 1280 fr is table-derived, unmeasured" — not
+   Say "exact at rank 1; rank 4 = 1280 fr is table-derived, unmeasured" - not
    "the countdown is 768 frames".
 
 3. **The `$997E` dead fall-through (must NOT be implemented).** Named separately
@@ -368,7 +368,7 @@ restores each with SHA-256 verified both ways (RULE 4).
    (per-frame `$5B` clear), an absence proof from the listing. See §5.
 
 4. **The repo-index hazard (W22 review finding 1, LIVE).** The shared git index
-   is poisoned — it carries staged deletions of files that exist on disk, so
+   is poisoned - it carries staged deletions of files that exist on disk, so
    `git status` lies and `git checkout -- <path>` / `git restore` / `git stash`
    SILENTLY REVERT W22's work. Commit through a **private index**:
    `GIT_INDEX_FILE=.git/grad.index`; `git read-tree HEAD` immediately before;
@@ -386,7 +386,7 @@ restores each with SHA-256 verified both ways (RULE 4).
 6. **Stage-unreachable arms.** `$83`'s stage≥5 shortcut (`$1B := $86`) and
    `$81`'s `$19==6` special case (`$4D=1,$4C=$CA`) cannot fire in a port that
    loads one stage. Throw on those conditions (`$19==5`/`$19==6`) with the ROM
-   address — do NOT silently skip. A skipped arm is a quiet future defect.
+   address - do NOT silently skip. A skipped arm is a quiet future defect.
 
 7. **`$87`-`$8A` delegation is unvalidated.** If the implementer delegates the
    four intro-shared arms to `introStep`, that path has **0 dynamic hits** in

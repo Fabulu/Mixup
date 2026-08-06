@@ -1,4 +1,4 @@
-# Wave 32 RECON — stage 5 (`$19 = 4`) and the `$0600` substrate
+# Wave 32 RECON - stage 5 (`$19 = 4`) and the `$0600` substrate
 
 status: DONE
 recon agent, READ-ONLY (no `src/` edits, no commit; only this file is written)
@@ -23,7 +23,7 @@ stage-5 enemy `$CA5E`. Nothing in it touches the terrain map, the nametable, or
 the VRAM queue.
 
 **The plan's §3 W32 table lists four coupled pieces. One of them is wrong:**
-`$C32F`/`$C2DC` (the breakable-wall VRAM patch) is *excluded* on stage 5 —
+`$C32F`/`$C2DC` (the breakable-wall VRAM patch) is *excluded* on stage 5 -
 `$C2AB CMP #$04 / BNE $C2B5 / $C2AF RTS` means `$19 == 4` skips the entire
 terrain-collision block. `src/collision.js:822` already transcribes that RTS
 correctly. So `$C32F` is a stage-2/4/6/7 item, not a stage-5 item.
@@ -45,18 +45,18 @@ Full verdict in §8.
 
 Four groups, base `B ∈ {$0600, $0630, $0660, $0690}`, `$30` bytes each. The
 `-$30` walk appears verbatim in five routines (`$8BEA`, `$A4C7`, `$BF04`,
-`$C29E`, `$CB83`, `$CBC3` — six sites), always `LDX #$90 … SBC #$30 … BPL`, so
+`$C29E`, `$CB83`, `$CBC3` - six sites), always `LDX #$90 … SBC #$30 … BPL`, so
 the group count and stride are the ROM's, not an inference.
 
 Field map, from the 71 instruction sites that reference `$0600`-`$06BF`
-(counted this session; the offsets below are the complete set — there is no
+(counted this session; the offsets below are the complete set - there is no
 access at any other offset):
 
 | offset | meaning | written by | read by |
 |---|---|---|---|
 | `B+$00` | **owner enemy slot** (0 = group free) | `$A50E`, `$CB5F`=0, `$CC1B`=0, `$BF5A`=0 | `$8BDF $966B $9671 $9677 $967D $A4BD $BEF9 $BF52 $C269 $CB54 $CB9B` |
 | `B+$01` | **shape** = (nibble − 1) | `$A509` | `$CC56 $CC5B` |
-| `B+$02` | cleared, no reader found | `$A51A` | — |
+| `B+$02` | cleared, no reader found | `$A51A` | - |
 | `B+$03` | update-parity counter (`DEC`, odd frame → skip) | `$CC3B` | `$CC38 $CC3E` |
 | `B+$04` | fire timer vs `$CBCA,$17` | `$CBA5` `$CBBA` | `$CBA8` |
 | `B+$05` | **hit counter** vs `$BEEA,$17` | `$BF3C` | `$BF3F` |
@@ -67,10 +67,10 @@ access at any other offset):
 `B+$06..$0F`, `B+$16..$17`, `B+$1E..$1F`, `B+$26..$2F` are never touched.
 
 Two segment indices are special and both are the ROM's constants:
-* **segment 2** (`B+$1A`/`B+$22`) is the only vulnerable one — `$BF31 LDA $AB /
+* **segment 2** (`B+$1A`/`B+$22`) is the only vulnerable one - `$BF31 LDA $AB /
   CMP #$02 / BEQ $BF3A`, and it is also where the explosion and the replacement
   object are placed on destruction (`$BF5F`/`$BF65`, `$CB6E`/`$CB74`);
-* **segment 5** (`B+$15`, `B+$1D`, `B+$25`) is the TIP — it selects the head
+* **segment 5** (`B+$15`, `B+$1D`, `B+$25`) is the TIP - it selects the head
   sprite (`$8C0E`) and it is the muzzle the arm fires from (`$CBDE`/`$CBE9`).
 
 ### 1b. `$06C0`-`$06FF` is NOT part of it
@@ -78,7 +78,7 @@ Two segment indices are special and both are the ROM's constants:
 `$06C0`-`$06FF` is the tail of the **`$0700` VRAM queue page**, addressed
 backwards (`$06FE,Y` with `Y = $0E` etc). The 16 instruction sites there belong
 to `$88E5` (HUD digits), `$9818`, `$B5A9`/`$B5DF` (which is `$B569`, **stage
-7's** handler, reached only via `$B574` — *not* `$B559`) and `$CEF8`. Group 3
+7's** handler, reached only via `$B574` - *not* `$B559`) and `$CEF8`. Group 3
 ends at `$06B5` used / `$06BF` reserved, so there is no overlap. Ruled out by
 reading each of the 16 sites.
 
@@ -87,7 +87,7 @@ reading each of the 16 sites.
 * `$9B49` (inside `st_9B3E`, the stage/life reload) zeroes `$0600`-`$06FF` with
   `STA $0600,X / STA $0680,X`, X = `$7F..0`. Already ported.
 * `$994A` (the despawn sweep) zeroes `$0600,X / $0640,X / $0680,X / $06C0,X`
-  with X = `$5E`. Stride `$40`, not `$30` — this is a page sweep, not the group
+  with X = `$5E`. Stride `$40`, not `$30` - this is a page sweep, not the group
   structure. Already ported (`src/nmi.js:549`, `:669`).
 
 Neither needs changing for stage 5. (Their stores land in the offset table
@@ -100,17 +100,17 @@ above only as an artefact of my base arithmetic; they are not fields.)
 There are exactly two ways a group leaves play, and neither writes a nametable
 or a VRAM packet:
 
-1. **Shot destroys the arm** — `$BEF3` → `$BF0B`. Per group, walk segments
+1. **Shot destroys the arm** - `$BEF3` → `$BF0B`. Per group, walk segments
    `B+5` down to `B+0` (`$AA = B + $AB`, `$AB = 5..0`). Reject unless the shot
    box hits; then only `$AB == 2` counts. `INC $0605,X`, compare against
-   `$BEEA,$17` (9 rank rows `02 02 03 04 05 06 07 08 09` — so 2 to 9 hits by
+   `$BEEA,$17` (9 rank rows `02 02 03 04 05 06 07 08 09` - so 2 to 9 hits by
    rank). Below threshold → `JMP $C0B7` (shot consumed). At threshold:
    `JSR $8453`, `LDX $0600,Y` → `DEC $016C,X` (the OWNER's arm count),
    `STA $0600,Y` = 0 (group freed), then segment 2's X/Y are copied into
    **object slot 0** and `LDA #$0C / LDX #$00 / JSR $CB28` turns slot 0 into the
    explosion. **`$CB28` is a fall-through** (`JSR $EC1E` then straight into
-   `$CB2B`) — already noted and ported in `src/enemies.js:2466`.
-2. **Owner dies** — `$CA5E` → `$CB1B` → `$CB4E`. Walks the 4 groups; for each
+   `$CB2B`) - already noted and ported in `src/enemies.js:2466`.
+2. **Owner dies** - `$CA5E` → `$CB1B` → `$CB4E`. Walks the 4 groups; for each
    whose `B+$00` equals the dying slot `$A8`, frees it and converts a free
    object slot (`X = 7..0`, `$030C,X == 0`) into an explosion via `$CB2B`,
    positioned at segment 2 (`$061A`/`$0622`).
@@ -141,41 +141,41 @@ and the wave's real denominator is **12 routines**.
 |---|---|---|---|---|
 | 1 | `$9663` (`loc_9663`, inside `st_9650`) | census of the 4 headers → `$5C`; the **half-rate fork** | `$19==4` | **THROWS** `src/nmi.js:341` |
 | 2 | `$8BD9` (`loc_8BD9`) | walk headers, call `$8C06` | `$19==4` at `$8B8D` | **THROWS** `src/oam.js:211` |
-| 3 | `$8C06` (`sub_8C06`) | draw 6 sprites for one group | — | not ported (behind #2) |
+| 3 | `$8C06` (`sub_8C06`) | draw 6 sprites for one group | - | not ported (behind #2) |
 | 4 | `$A4A6` (`sub_A4A6` + `loc_A500`) | allocate groups, spawn the owner | `$A466`: any `$19 != 2` | **THROWS** `src/enemies.js:685` |
 | 5 | `$BEF3`/`$BF0B` | shot vs segments, the kill | `$19==4` at `$C037` | **THROWS** `src/collision.js:227` |
 | 6 | `$C267` (`loc_C267`) | player body vs segments | `$19==4` at `$C25D` | **THROWS** `src/collision.js:416` |
 | 7 | `$CB4E` (`loc_CB4E`) | free groups when the owner dies | via `$CB23` | not ported |
 | 8 | `$CB8A`/`$CB91` (`sub_CB91`) | per-frame group driver + fire timer | `$C772` (`$19==4`) or `$9691` | not ported |
-| 9 | `$CBD1` (`sub_CBD1`) | the arm's tip fires a bullet (`$BCB1`) | — | not ported |
-| 10 | `$CC33` (+ `$CC19`, `$CC99`-`$CD64`) | segment kinematics | — | not ported |
+| 9 | `$CBD1` (`sub_CBD1`) | the arm's tip fires a bullet (`$BCB1`) | - | not ported |
+| 10 | `$CC33` (+ `$CC19`, `$CC99`-`$CD64`) | segment kinematics | - | not ported |
 | 11 | `$CA5E` (`st_CA5E`, dispatch entry 20) | the owner enemy | wave/late records | not ported (entry 20 throws) |
 | 12 | `$C653` (`st_C653`, `jt_$C439[4]`) | stage-5 late spawner → `$A4A6` | `$19==4` | **THROWS** `src/enemies.js:450` |
 
 **PORTED: 0 of 12**, measured against `games/gradius/src/` as it stood while a
-W30 implementer was concurrently writing to it — `$B402`/`$B434` were still
+W30 implementer was concurrently writing to it - `$B402`/`$B434` were still
 unported at the moment I read (`stageledger.py`: `stage 2: 28/78`,
 `stage 3: 96/98`), `$B4FD`/`loc_B502` had already landed. None of the twelve is
 in W30's scope, so the 0/12 is stable; the stage-3 numbers I quote are not.
 Six of the twelve are already **loud named throws** (rows
-1, 2, 4, 5, 6, 12) — W28's loudness work landed, including the sprite pass that
+1, 2, 4, 5, 6, 12) - W28's loudness work landed, including the sprite pass that
 the plan listed as a "silent gap". Rows 3, 7, 8, 9, 10, 11 are unreachable
 behind those throws, so they are covered, not silent.
 
 Corrections to the plan's W32 table:
-* `$C32F`/`$C2DC` — **not a stage-5 piece.** See §0 and §5.
-* `$8BD9`/`$8C06` — **no longer a silent gap**; it throws today.
-* `$9663`'s half-rate fork — **missing from the plan's table entirely.**
+* `$C32F`/`$C2DC` - **not a stage-5 piece.** See §0 and §5.
+* `$8BD9`/`$8C06` - **no longer a silent gap**; it throws today.
+* `$9663`'s half-rate fork - **missing from the plan's table entirely.**
 
 One more `$5C` reader exists that no plan document names: `$C04B` (inside
-`$BFE2`'s tail) — `LDA $5C / CMP #$02 / BCC $C052 / RTS`, i.e. `$5C >= 2`
+`$BFE2`'s tail) - `LDA $5C / CMP #$02 / BCC $C052 / RTS`, i.e. `$5C >= 2`
 suppresses `JMP $C0C7`. `src/collision.js:125` already has it, correctly.
 
 ---
 
 ## 4. WHAT STAGE 5 NEEDS THAT STAGES 1-4 DID NOT
 
-### 4a. The half-rate frame fork — THE thing the plan missed
+### 4a. The half-rate frame fork - THE thing the plan missed
 
 `$5C` (the count of live arm groups) is read in **three** places and written in
 **two**, all read out of the listing this session (`$5C` appears at exactly five
@@ -218,13 +218,13 @@ The port has it as a tripwire in all three places today
 
 | need | source | new? |
 |---|---|---|
-| the arm pool (12 routines, §3) | — | **entirely new** |
+| the arm pool (12 routines, §3) | - | **entirely new** |
 | the inline-5 stride route `$A37A`/`$A466` | W30 decodes it for stage 3 | shared |
 | `$B402` / `$B434` (entries 13/14) | W30 | shared, still unported today |
 | `$B559` (entry 29, 10 records) | `$B55C BPL $B502`; **`loc_B502` is already ported** (`src/enemies.js:2299`) | 16 bytes, 6 instructions |
 | the boss | identical to stages 1-4 (`$B914`) | FREE |
 | stage-end | `$98FD[4] = $0D`, `$9A3D[4] = $0B` (measured from `assets/prg.bin` this session) | FREE |
-| terrain collision | **none** — `$C2AB CMP #$04 / RTS` | FREE (already right) |
+| terrain collision | **none** - `$C2AB CMP #$04 / RTS` | FREE (already right) |
 | breakable walls `$C32F` | **not reached on stage 5** | not applicable |
 
 ### 4c. The stage-5 wave stream, decoded with the correct stride
@@ -247,7 +247,7 @@ chunks 3,4,5,6    ALL point at $ABE8 -- the same four records replayed
 exactly. **The stage splits cleanly in two:** scroll `$0000`-`$03FF` has *no
 arms at all* (24 records, needing only `$B559` + W30's `$B402`/`$B434`), and
 scroll `$0400`-`$0DFF` is the arm section. `stageledger.py` reports stage 5's
-first unported record at **scroll `$0000` (`$ABB6`)** — a `$B559`, not an arm.
+first unported record at **scroll `$0000` (`$ABB6`)** - a `$B559`, not an arm.
 
 `$C653`, the late spawner, adds arms independently every `$28` frames from
 `$C67A` (12 bytes, index `$69 & $06`, so 4 live rows): `(02,80)` 1 arm shape 1,
@@ -262,39 +262,39 @@ is, in practice, stage 5's alone.
 
 ---
 
-## 5. HIDDEN COUPLING — WHAT COULD BREAK WHAT ALREADY PASSES
+## 5. HIDDEN COUPLING - WHAT COULD BREAK WHAT ALREADY PASSES
 
 I looked for coupling in four ways: every reader of `$5C`; every xref of every
 routine in §3; every shared subroutine the substrate calls; and every RAM range
 it writes. Results:
 
-**LOW RISK — shared code the substrate only calls, all already ported:**
-`$A527` (slot clear), `$CB28`/`$CB2B` (score + explosion conversion — and
+**LOW RISK - shared code the substrate only calls, all already ported:**
+`$A527` (slot clear), `$CB28`/`$CB2B` (score + explosion conversion - and
 `$CB28` is a *fall-through* into `$CB2B`, already documented at
 `src/enemies.js:2466`), `$C0B7`/`$C0BD` (shot free), `$AEF8`, `$8453`, `$844B`,
 `$AEE1`, `$BCB1` (itself a documented fall-through into `$BCB5`), `$EC1E`,
 `$8402`, `$B0B4`, `$B628`, `$B251`, `$loc_B502`. Porting W32 calls them; it does
 not change them.
 
-**LOW RISK — `$5C` on stages 1-4.** `$965A STA $5C` runs on *every* mode-5
+**LOW RISK - `$5C` on stages 1-4.** `$965A STA $5C` runs on *every* mode-5
 frame before `$9663`, and `$9683` is the only other writer and is behind
 `$19 == 4`. So `$5C` is provably 0 on every other stage and the two new
 branches (`$9A5E`, `$C04B`) are no-ops there. Replacing the two throws with the
 real branches cannot regress stages 1-4.
 
-**MEDIUM RISK — the OAM budget.** `$8BD9` is *not* a subroutine: `$8B91 BEQ
+**MEDIUM RISK - the OAM budget.** `$8BD9` is *not* a subroutine: `$8B91 BEQ
 $8BD9` jumps into it and `$8BF0 BMI $8B93` falls back into the shared sprite
 tail. It consumes the shared OAM cursor `$9C` and the remaining-sprite counter
 `$9F`, up to 6 sprites per group × 4 groups = 24 sprites. Stage-5 only, but it
 sits inside a routine stage 1 depends on, so an edit there is an edit to shipped
 code. **Read `$8B47`-`$8BC2` before touching `src/oam.js`.**
 
-**MEDIUM RISK — `$BF49`'s hard-coded slot 0.** On the frame an arm is
+**MEDIUM RISK - `$BF49`'s hard-coded slot 0.** On the frame an arm is
 destroyed the explosion is written into **enemy slot 0 unconditionally**
 (`$BF5D LDX #$00`, `$BF6D LDX #$00`), clobbering whatever occupies it. That is
 the cartridge's behaviour and the port must reproduce it, not "fix" it. Note
 also `$BF4C LDX #$00 / $BF4E LDA #$00` are dead (overwritten two instructions
-later by `$BF52 LDX $0600,Y`) — a transcription trap that reads like a slot-0
+later by `$BF52 LDX $0600,Y`) - a transcription trap that reads like a slot-0
 default and is not one.
 
 **NOT COUPLED (ruled out by reading):** the terrain map (`$C3D3` and the
@@ -322,8 +322,8 @@ from those roots (read-only, its own `walk()` and `exported_blocks()`):
 
 | table | size | reader | exported? |
 |---|---|---|---|
-| `$C67A` stage-5 late-spawner rows | 12 | `$C664`/`$C66D` | **yes** — `enemies/tables.json/approachStage4` |
-| `$CA49` / `$CA50` / `$CA57` rank rows for `$CA5E` | 7 each | `$CA60`/`$CA65`/`$CAE9`,`$CB03` | **yes** — `enemies/tables.json/page600Object` (`$CA29`+53) |
+| `$C67A` stage-5 late-spawner rows | 12 | `$C664`/`$C66D` | **yes** - `enemies/tables.json/approachStage4` |
+| `$CA49` / `$CA50` / `$CA57` rank rows for `$CA5E` | 7 each | `$CA60`/`$CA65`/`$CAE9`,`$CB03` | **yes** - `enemies/tables.json/page600Object` (`$CA29`+53) |
 | `$8BF2` arm-head tile by angle | 16 | `$8C19` | **NO** |
 | `$8C02` arm-head attribute | 4 | `$8C1E` | **NO** |
 | `$BEEA` rank → hits to destroy an arm (`02 02 03 04 05 06 07 08 09`) | 9 | `$BF44` | **NO** |
@@ -389,26 +389,26 @@ not have: it is 1,320 bytes of ordinary 6502 over a 4×`$30`-byte RAM structure
 whose every field I could account for, with 120 bytes of table to export and no
 nametable, VRAM, terrain-map or compression involvement anywhere. The plan's
 "single biggest risk" framing was right about the size and wrong about the
-mechanism — it is not destructible terrain, and the one piece that *was* about
+mechanism - it is not destructible terrain, and the one piece that *was* about
 terrain (`$C32F`) turns out not to run on stage 5 at all.
 
-**Recommended split — three sub-waves, ROM-derived, each with its own
+**Recommended split - three sub-waves, ROM-derived, each with its own
 first-divergence measurement:**
 
-* **W32a — stage 5's first two chunks (small).** `$B559` (16 bytes, over the
+* **W32a - stage 5's first two chunks (small).** `$B559` (16 bytes, over the
   already-ported `loc_B502`) plus whatever W30 leaves of `$B402`/`$B434`.
   DONE-WHEN: a stage-5 scenario runs from scroll `$0000` and the first throw
   moves from `$ABB6` (scroll `$0000`) to `$ABE8` (scroll `$0480`), TIER-1 0
   divergent. This is one afternoon and it buys a *validated cartridge-aligned
   stage-5 scenario* before the expensive part starts.
-* **W32b — the arm substrate (the big one, ~1,040 bytes).** The `$5C` half-rate
+* **W32b - the arm substrate (the big one, ~1,040 bytes).** The `$5C` half-rate
   machine (`$9663` + `$9A5E` + `$C04B`), `$A4A6`, `$C653`, `$CA5E`,
   `$CB8A`/`$CB91`, `$CC33`, `$CB4E`, `$8BD9`/`$8C06`, and the 7 table exports.
   Arms spawn, move, draw and die with their owner. DONE-WHEN: the four `$ABE8`
   records place 6 arms across a stage-5 pass, field-exact on `$0600`-`$06BF`
-  against the cartridge, **including the two-parity frame split** — the
+  against the cartridge, **including the two-parity frame split** - the
   comparison must be shown to cover both parities with ≥ 2 arms alive.
-* **W32c — the interactions (~285 bytes).** `$CBD1` (arms fire), `$BEF3`/`$BF0B`
+* **W32c - the interactions (~285 bytes).** `$CBD1` (arms fire), `$BEF3`/`$BF0B`
   (shot destroys an arm, `$BEEA` rank rows), `$C263` (arm kills the player).
   DONE-WHEN: stage 5 clears to the BigCore death at `$9A3D[4] = $0B`, stage-end
   `$98FD[4] = $0D`, TIER-1 0 divergent, and `stageledger.py` prints
@@ -423,7 +423,7 @@ half-rate fork.**
 What would change it:
 * **Down to LOW on the fork** if the port's frame harness cannot express "this
   frame skips the `$1B` dispatch and half the engine". I could not settle that
-  by reading — it is a property of `src/nmi.js`'s structure and the oracle's
+  by reading - it is a property of `src/nmi.js`'s structure and the oracle's
   frame alignment, not of the ROM. **This is the single biggest unknown left.**
 * **Down** if a producer exists that puts a shape ≥ 2 into `$0601`. `$CC1F,Y`
   and `$CC21,Y` have four rows; the only producers I found (stage 5's four
@@ -433,7 +433,7 @@ What would change it:
   all seven stages, all seven `jt_$C439` arms, and both xrefs of `$A4A6`
   (`$A46C`, `$C676`). I did *not* scan for an indirect or computed write to
   `$65`.
-* **Up** once a stage-5 scenario exists (W32a) — the fork's behaviour becomes
+* **Up** once a stage-5 scenario exists (W32a) - the fork's behaviour becomes
   measurable rather than argued.
 
 ### Open items handed forward
@@ -443,8 +443,8 @@ What would change it:
    non-monotonic triggers ($40, $01, $80, $F0, $14, …) where the ROM has 4, and
    `--stage 3` **crashes** with a `TypeError` at line 182. `wavecensus.py` and
    the CI-wired `stageledger.py` both get it right (28/24/4 for stage 5,
-   verified against my own independent decoder this session). Not blocking —
-   `stagewaves.py` is not in `test-all.mjs` — but it is a diagnostic that lies.
+   verified against my own independent decoder this session). Not blocking -
+   `stagewaves.py` is not in `test-all.mjs` - but it is a diagnostic that lies.
 2. **`tablecoverage.py`'s root set misses six of the twelve routines** (§6).
 3. **No reader found for `B+$02`, `B+$06`, `B+$07`.** They are cleared by
    `$A517` and I found no load from them. Stated as "not found", not "unused".

@@ -1,4 +1,4 @@
-# OWNER DIRECTIVE — scenarios must PLAY, not just move
+# OWNER DIRECTIVE - scenarios must PLAY, not just move
 
 status: BINDING on every scenario from here (approvals + directive)
 raised: 2026-08-02 by the repo owner
@@ -15,8 +15,8 @@ on the board AND the port at the same instant, then compare per frame.
 
 **Two claims, kept separate, always:**
 
-- *the generator is correct* — what a poked run proves, and it is a real proof;
-- *the game reaches this state in play* — what a poked run does NOT prove.
+- *the generator is correct* - what a poked run proves, and it is a real proof;
+- *the game reaches this state in play* - what a poked run does NOT prove.
 
 Label every fan measurement `$813098 poked` in the worklog and the gate output.
 Same discipline as Gradius's rank thresholds, which are unreachable below rank 2
@@ -34,19 +34,19 @@ two-for-two across different machines:
 > every UNPOWERED Gradius run stalled at scroll ~`$04BD`; the run carrying
 > power-ups reached `$0A64` and four otherwise-unreached handlers
 
-Our scripted runs have been *passive* — hold a direction, observe. A player
+Our scripted runs have been *passive* - hold a direction, observe. A player
 **fires**, and firing is not cosmetic:
 
 - **killing enemies** removes them, which changes what is on screen, which
   changes what spawns, what aims, and what the sprite budget holds;
 - **kills feed score, chain and rank**, and rank feeds aim, bullet speed and
-  enemy HP — so a run that never kills anything is pinned at the bottom of a
+  enemy HP - so a run that never kills anything is pinned at the bottom of a
   feedback loop the whole game is built around;
 - **bombs move rank** (the owner: "one wrong rank gain from using super and the
   entire route breaks");
 - **death paths, drops and explosion scripts** are unreachable without kills.
 
-So a passive run does not merely cover less — it samples a *different game*,
+So a passive run does not merely cover less - it samples a *different game*,
 one held at minimum rank with nothing dying. Every "0 divergent frames" from
 such a run is a statement about that game.
 
@@ -60,12 +60,12 @@ left and right. That clears most of what appears without needing a route.
 
 **Note the tension with `docs/knowledge/09`:** an INVULNERABLE run is off-
 distribution and valid only for coverage. A *playing* run is on-distribution and
-valid for both — so a scripted run that fires and survives is worth more than an
+valid for both - so a scripted run that fires and survives is worth more than an
 invulnerable one, wherever it can be produced. Prefer it.
 
 ## 3. The first enemies already exercise the aim system
 
-> "The first enemies in the game that you captured on your recording — those
+> "The first enemies in the game that you captured on your recording - those
 > have rotating turrets that point at you the whole time."
 
 **That is the aim system, live, in the opening seconds**, and it is the single
@@ -73,7 +73,7 @@ most useful thing in this note.
 
 - The aim recon called the aim "a pure function with a census to test against".
   Here is a continuous, per-frame, *visible* consumer of it, available at the
-  very start — no deep seeding, no invulnerability, no poking required.
+  very start - no deep seeding, no invulnerability, no poking required.
 - A rotating turret exposes the function's OUTPUT as an animation frame or
   angle index in the object record. Watching one turret across a run where the
   ship moves sweeps a large slice of the input space cheaply.

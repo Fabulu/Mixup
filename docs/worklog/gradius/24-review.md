@@ -1,4 +1,4 @@
-# Wave 24 review — the play sub-state machine (jt_$982F) and the game-over arm
+# Wave 24 review - the play sub-state machine (jt_$982F) and the game-over arm
 
 status: DONE
 reviewer, 2026-08-02
@@ -10,11 +10,11 @@ re-derived from `games/gradius/rip/prg.asm` instruction-by-instruction and
 matches; the `$1B` timeline checks against the cartridge hook dump to the frame;
 13 of 16 independent mutations went RED and were SHA-256-verified both ways.
 Three findings, all coverage / test-quality (no ported line is wrong): the
-load-bearing one is that the `$82` countdown's *zero-test* half is unpinned — a
-mutant that ends the timer 512 frames early passes every test — and the
+load-bearing one is that the `$82` countdown's *zero-test* half is unpinned - a
+mutant that ends the timer 512 frames early passes every test - and the
 implementer's "17 of 18" table does not name it.
 
-## What I re-ran (executed here, 2026-08-02 — not quoted from the worklog)
+## What I re-ran (executed here, 2026-08-02 - not quoted from the worklog)
 
 ```
 node --test games/gradius/tests/            445 pass, 0 fail, 0 skipped
@@ -38,15 +38,15 @@ myself (the implementer's gate dump, 6000 frames, `maxScroll=3584`):
 | `$84` | boss-page scroll | 512 | `$9982`+`$994A` (W24) |
 | `$85` | boss fight | 1101 | `$997E` (W24; handler W26) |
 | `$86` | stage end | 513 | `$9904` (W27 throw) |
-| `$90` | next-stage | 1 | `$96CF` (W27 throw — bit-4 arm) |
+| `$90` | next-stage | 1 | `$96CF` (W27 throw - bit-4 arm) |
 | `$A0` | dying | 118 | `$96EF` (pre-W24) |
 
-The two numbers the wave brief made done-when — `$82` = 768 frames and `$81`/`$83`
-= 1 frame each — reproduce exactly. The `$96FB` traffic the worklog cites also
+The two numbers the wave brief made done-when - `$82` = 768 frames and `$81`/`$83`
+= 1 frame each - reproduce exactly. The `$96FB` traffic the worklog cites also
 reproduces: `$1B=$C0` runs **397** times in `deep-survivor` and **397** in
 `deep-autofire` = 794, read out of those two hook dumps myself.
 
-## Does the code match the ROM? — every routine re-derived from rip/prg.asm
+## Does the code match the ROM? - every routine re-derived from rip/prg.asm
 
 Read the listing for every address W24 cites and reconstructed each routine
 before opening the impl. **All match.** The load-bearing details, verified:
@@ -76,7 +76,7 @@ before opening the impl. **All match.** The load-bearing details, verified:
   `cam.lo`=`$3E` / `cam.hi`=`$3F`, `coll` = `$0500-$06FF` (so `$0600,X` =
   `coll[0x100+x]`), `SLOTS` = 32, `pulse1Dur` = `snd[OFF.DUR]` = `$B0`.
 
-### The fall-through trap — read past every apparent end myself
+### The fall-through trap - read past every apparent end myself
 
 * **`st997E` → `st9982` is the one the plan pre-charted, and it is genuinely
   dead.** `$9658 STA $5B` zeroes `$5B` on every mode-5 frame BEFORE the ladder
@@ -84,14 +84,14 @@ before opening the impl. **All match.** The load-bearing details, verified:
   `$5B`, so `$997E INC $5B` makes it 1 and `BNE $99B7` is always taken. The
   fall-through into `$9982` would re-fire the boss spawn every 256 frames; it is
   correctly NOT ported. (Mutating the port to advance `$1B` from `$85` went RED
-  — F11 below.)
+  - F11 below.)
 * Every other W24 routine ends in an explicit `JMP $9A5E` / `JMP $9A5B` (→
   setBgm → `$9A5E`), and the port calls `mode5Body` after each. `$9A5B JSR $8357`
   is JSR+RTS, not a fall-through; modelled correctly.
 * `sub994A` ends `RTS`; `gameOverArm`'s two non-throw tails (`$975D`,
   `$975B`→`$975D`) both `JMP $9A5E` via `codeMatch(0)`+body. All handled.
 * **`clearSlot(state, 9)` is a faithful model of `$A8:=9; JSR $A527`:** I read
-  `sub_A527` (lines 4548-4578) — it is *not* a free-slot search, it clears exactly
+  `sub_A527` (lines 4548-4578) - it is *not* a free-slot search, it clears exactly
   the slot named by `$A8`. So the boss allocation is right, and the absolute
   `$0315/$0335/$0375` writes land in slot 9 after the clear.
 
@@ -106,13 +106,13 @@ the SHA matches baseline. Baseline files restored byte-identical (re-checked).
 | 1 | `$80` exit `>=` → `>` (BCC polarity) | **RED** |
 | 2 | `$81` `$4D` reads `rankCountdown[0]` not `[rank]` | **RED** |
 | 3 | `$82` 16-bit borrow dropped (`$4C:=$FF` only, no DEC `$4D`) | **RED** |
-| 4 | **`$82` zero-test reads only `$4C` (drops `\| $4D`)** | **GREEN — see F1** |
-| 5 | **`$83` boundary `>=5` → `>=4`** | **GREEN — see F2** |
+| 4 | **`$82` zero-test reads only `$4C` (drops `\| $4D`)** | **GREEN - see F1** |
+| 5 | **`$83` boundary `>=5` → `>=4`** | **GREEN - see F2** |
 | 6 | `$84` BEQ polarity `===` → `!==` | **RED** |
 | 7 | `$84` boss type `$98` → `$99` | **RED** |
 | 8 | `$994A` guard `$D0` → `$D1` | **RED** |
 | 9 | `$994A` guard `<` → `<=` (refuses at `$D0`) | **RED** |
-| 10 | `$994A` object-clear bound `$14` → `$15` | **GREEN — the documented survivor (F3)** |
+| 10 | `$994A` object-clear bound `$14` → `$15` | **GREEN - the documented survivor (F3)** |
 | 11 | `$85` dead fall-through implemented (advance `$1B`) | **RED** |
 | 12 | `$96FB` `$B0` gate inverted | **RED** |
 | 13 | `$9715` `$4C!=0` → `==0` | **RED** |
@@ -133,12 +133,12 @@ findings.** F1 is load-bearing.
 
 ## Findings
 
-### F1 — (moderate) the `$82` countdown's zero-test half is unpinned: a mutant ending the timer 512 frames early passes every test
+### F1 - (moderate) the `$82` countdown's zero-test half is unpinned: a mutant ending the timer 512 frames early passes every test
 
 `st99E9` continues the countdown while `(zp4C | zp4D) !== 0`. Mutating that to
 `(zp4C) !== 0` (dropping `| zp4D`) is GREEN on all 68 tests. The implementer's
 mutation #4 broke the *borrow* direction (RED) and called it "the load-bearing
-half" — but the *zero-test* direction is equally load-bearing: with only `$4C`
+half" - but the *zero-test* direction is equally load-bearing: with only `$4C`
 tested, the countdown ends the first frame `$4C` reaches 0 with `$4D` still
 nonzero, i.e. after **256 frames instead of 768** at rank 1.
 
@@ -147,11 +147,11 @@ I confirmed the gap with a distinguishing probe (`$4C:$4D = $01:$01`):
 REAL   substate=$82 (130), zp4C=0, zp4D=1   -- stays $82 ($4D nonzero)
 MUTANT substate=$83 (131), zp4C=0, zp4D=1   -- advances early
 ```
-This state is not exotic — the countdown passes through it three times at rank 1
+This state is not exotic - the countdown passes through it three times at rank 1
 (every time `$4C` wraps `$00→$FF` while `$4D>0`). No unit test drives it, because
 the two `$82` tests use `$0002` (two frames, `$4D` always 0) and `$00:$01` (one
 frame, after which `$4C=$FF`). The worklog also discloses that the in-situ `scen/`
-field comparison for `$82` was **not** recorded — so the 768-frame duration rests
+field comparison for `$82` was **not** recorded - so the 768-frame duration rests
 on the borrow test alone, and the zero-test is a check that cannot fail its test
 (RULE 4: such a check is a decoration). The ported line is *correct* (verified
 against `$99F2 LDA $4C / ORA $4D`); the verification is incomplete.
@@ -159,18 +159,18 @@ against `$99F2 LDA $4C / ORA $4D`); the verification is incomplete.
 Fix: add a test that pre-sets `$4C:$4D = $01:$01`, runs one frame, and asserts
 `substate` stays `$82` (and `$4C=0,$4D=1`). One assertion pins it.
 
-### F2 — (minor/informational) the `$83` stage boundary `CMP #$05` is pinned only from above; stage-4 (normal) is untested
+### F2 - (minor/informational) the `$83` stage boundary `CMP #$05` is pinned only from above; stage-4 (normal) is untested
 
 `st99C0` throws for `zp19 >= 5`. Mutating `>= 5` → `>= 4` is GREEN: the test
 drives stage 0 (normal) and stages 5/6 (throw), but never stage 4, which on the
 cartridge takes the normal path (`4 < 5`) and under the mutant would wrongly
 throw. Same shape as the documented survivor: faithful transcription whose
-mutant is silent because the distinguishing input (stage 4) is unreachable — the
+mutant is silent because the distinguishing input (stage 4) is unreachable - the
 port loads one stage, `$19` is always 0. Not a defect; recording it so the
 `#$05` boundary is not read as a covered fact. (The implementer's mutation #7
 pinned `$62:=2`, not this boundary.)
 
-### F3 — (minor, test quality) the boss-handler assertion matches almost any throw in the port
+### F3 - (minor, test quality) the boss-handler assertion matches almost any throw in the port
 
 `w24-substate.test.js:253`:
 ```js
@@ -178,18 +178,18 @@ assert.throws(() => nmi(s, 0, res), /undefined|handler|\$|Error/);  // boss hand
 ```
 The alternation includes a literal `\$`, and **every** throw message in the port
 carries a ROM address containing `$`. So this regex passes for essentially any
-throw, not specifically the boss handler's. The throw itself is genuine — I ran
+throw, not specifically the boss handler's. The throw itself is genuine - I ran
 the `$84` advance path and got `unimplemented enemy handler $B914 for type $98
 (entry 24 ...)` (census agrees: `24 $B914 THROWS`). But the test would not catch
 a *wrong* throw (e.g. if the advance path threw at `$A527` instead of routing
 type `$98` to entry 24). Tighten to `/handler \$B914|entry 24/` to pin it.
 
-### F4 — (informational, already disclosed) the game-over window and states `$81-$85` are unit-tested only; no in-situ field comparison exists
+### F4 - (informational, already disclosed) the game-over window and states `$81-$85` are unit-tested only; no in-situ field comparison exists
 
 Stated per RULE 2, and the worklog states it too. Confirming the boundary: the
 44-scenario compare.mjs corpus does **not** include `deep-survivor`/`deep-
 autofire` (those are `throwaudit.py` hook runs, not `scenarios.json` entries),
-and `deep-powered` — the deepest compared scenario — holds `$1B=$80` for all
+and `deep-powered` - the deepest compared scenario - holds `$1B=$80` for all
 3099 frames. So no compared frame traverses `$81-$85` or `$C0`. This is
 unavoidable for the game-over window as long as modes 0/4 are out of scope (the
 port correctly throws at `$970D`/`$9751`, so a field comparison there is

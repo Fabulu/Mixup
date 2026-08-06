@@ -1,4 +1,4 @@
-# Wave 4 — Flow structure: the $1B ladder, the stage intro, pause
+# Wave 4 - Flow structure: the $1B ladder, the stage intro, pause
 status: DONE
 wave: 4   role: impl   started: 2026-07-31
 
@@ -23,7 +23,7 @@ have reached.
 | `src/terrain.js` | `$9D8E` split out of `$9D83` as `buildBlock()`; **`preloadTerrain()` deleted** and its "NEITHER has been measured" note replaced with the measurements |
 | `src/main.js` | `introEntryState()`; `boot()` plays the real intro instead of preloading |
 | `src/state.js` | `$19 $4C $09 $16 $33 $3B,X $22/$24/$26/$28,X`, and `frameDrops` |
-| `src/oam.js` | hardware OAM masks attribute bits 2-4 (`& $E3`) — see MEASURED 3 |
+| `src/oam.js` | hardware OAM masks attribute bits 2-4 (`& $E3`) - see MEASURED 3 |
 | `src/hud.js` | the four producers exported (the intro calls them directly) |
 | `src/assets.js`, `tools/export_assets.py`, `tools/verify_assets.py` | new `flow` asset family: `$9BCC-$9BEC` (start positions) and `$9785-$979C` (button codes), with a `check_flow` family and three mutations |
 | `tools/oracle/scenarios.json` | three new scenarios, per-scenario `align`, 13 new watched addresses, three UNMODELLED entries retired |
@@ -35,7 +35,7 @@ have reached.
 
 ### Deliberately NOT ported, each a named throw carrying its ROM address
 
-`$96CF` (next stage), `$96FB` (game over — gated on `$B0`, uncharacterised),
+`$96CF` (next stage), `$96FB` (game over - gated on `$B0`, uncharacterised),
 `$979D` (respawn, wave 5), play sub-states `$81-$8F` (`$9A0E`… the boss chain),
 `$9663`'s stage-5 `$5C` census, `$9C5E` (the pause-screen cheat), `$8871`'s 2304
 PPU writes, `$8357` (CHR select + BGM), every `$EC1E` request.
@@ -65,27 +65,27 @@ python games/gradius/tools/oracle/flowprobe.py --frames 660 \
 ```
 
 **THE PLAN'S FRAME COUNTS ARE WRONG AND I AM CORRECTING THEM.** It carries
-"boot = 28 frames, respawn = 26 frames — a data-dependent exit, not a fixed 28".
+"boot = 28 frames, respawn = 26 frames - a data-dependent exit, not a fixed 28".
 Measured, twice each: **both intros are 27 mode-5 frames** (283-309 and
 614-640), of which 23 are state 4. The recon's "f282 $1B=0" is the MODE-4
-handover frame, not a mode-5 frame — `$8165` is three instructions and mode 5's
+handover frame, not a mode-5 frame - `$8165` is three instructions and mode 5's
 own handler first runs at 283.
 
-The exit *is* data-dependent — `$9C24` reads `$57` and there is no counter
-anywhere in the ROM — but on stage 1 it always lands on the same number, and
+The exit *is* data-dependent - `$9C24` reads `$57` and there is no counter
+anywhere in the ROM - but on stage 1 it always lands on the same number, and
 the reason is structural rather than lucky: **`$9B3E` sets `$3F` and `$55` from
 the SAME byte** (`$24`, the checkpoint, at `$9B6A`/`$9B6C`) **and clears
 `$3E`/`$54`/`$58`, so the streamer's 16-bit lead is exactly 0 at every intro,
 whatever the checkpoint.** From a zero lead `$9DA7` first refuses on block 85
 (`$0180` = 384 px = three 128-px half-pages of 28 blocks) and `$9C24` emits four
 a frame: 84 blocks over 21 frames, all four calls of frame 22 throttled, frame
-23 reads `$57` and leaves. Verified from the other side — a 23-frame counter is
+23 reads `$57` and leaves. Verified from the other side - a 23-frame counter is
 GREEN on both scenarios (see MEASURED 6).
 
 ### 2. The one lag frame in the corpus, and what it is
 
 `probe.lua` and `objloop.lua` independently report `lag.dropAtGameFrame = 283`
-on every boot script and `283, 614` on the death script — i.e. exactly the two
+on every boot script and `283, 614` on the death script - i.e. exactly the two
 frames that run `$9B3E`, and no others. `$882C` is what costs it: `h_8871 = 6`
 chunks and `h_888B = 2304` `$2007` writes in one NMI.
 
@@ -95,7 +95,7 @@ belongs on THAT frame's row and does not consume a row of its own. The port
 models it as `state.frameDrops = 1` inside `fullScreenLoad()`, and
 `porttrace.mjs`'s `lagged` became a per-frame count instead of a boolean. With
 the store removed, `intro-boot` reports `lag: cartridge 1 in window; port 0
-[FAIL]` and `w_lagged@283` — seen red.
+[FAIL]` and `w_lagged@283` - seen red.
 
 ### 3. HARDWARE OAM MASKS ATTRIBUTE BITS 2-4, and the intro is what found it
 
@@ -106,7 +106,7 @@ port 244`. `$F4` is the byte `$8B08[0..3]` stores to park sprite 0
 read back as 0; Mesen models it and the port did not.
 
 It had never cost a frame because the corpus's sprite 0 is always the LIVE
-record, whose attribute byte is `$23` — and `$23 AND $E3 = $23`. A parked
+record, whose attribute byte is `$23` - and `$23 AND $E3 = $23`. A parked
 sprite 0 only happens while `$1F` is 0, which before this wave was outside every
 compared window. docs/knowledge/03 shape 3, found by widening the window.
 
@@ -155,22 +155,22 @@ fields**, 396 fields each:
   PASS  pause          239 frames  all TIER 1 fields exact
 ```
 
-### 6. Every check seen red — and the FIVE deliberate breaks that PASSED
+### 6. Every check seen red - and the FIVE deliberate breaks that PASSED
 
 Method: patch `src/`, run the scenario comparison and/or `flow.test.js`,
 restore. Full script kept in the scratchpad; results:
 
 | break | scenario | unit | verdict |
 |---|---|---|---|
-| drop `frameDrops = 1` | RED (lag FAIL, `lagged@283`) | — | |
+| drop `frameDrops = 1` | RED (lag FAIL, `lagged@283`) | - | |
 | `streamBlock` for all four `$9C24` calls | RED, 110 fields | RED | |
 | `$85E8` prologue on `$9BFA` | RED, `w_000E@284` | RED | |
 | swap the X/Y nibbles at `$9B95`/`$9BAB` | RED, 120 fields | RED | |
 | drop `$9C24`'s `$0D = 5` | RED, 98 fields | RED | |
 | move `$96C0`'s `$0D = 3` after the dispatch | RED, `w_000D@284` | RED | |
-| remove the `$9660` pause jump | RED, 71 fields | — | |
-| remove the OAM `& $E3` | RED, `s0a@283` | — | |
-| remove the `work.enemySlots` reset | RED, `enemySlots@451` | — | |
+| remove the `$9660` pause jump | RED, 71 fields | - | |
+| remove the OAM `& $E3` | RED, `s0a@283` | - | |
+| remove the `work.enemySlots` reset | RED, `enemySlots@451` | - | |
 | clear `$0380` in `$9B3E` too | GREEN | RED | |
 | drop `$9B6A`'s `$3F` restore | GREEN | RED | |
 | drop `$9B47`'s `$0100`/`$0300` page clears | GREEN | RED (after fix) | |
@@ -178,24 +178,24 @@ restore. Full script kept in the scratchpad; results:
 
 **Five breaks that PASSED. These are the findings.**
 
-1. **`counter-not-57`** — replacing `$9C24`'s `$57` test with a 23-frame counter
+1. **`counter-not-57`** - replacing `$9C24`'s `$57` test with a 23-frame counter
    is GREEN on `intro-boot` AND `intro-respawn`. Both measured intros are 23
    state-4 frames, for the structural reason in MEASURED 1, so the corpus cannot
    tell a loop from a counter. Closed by `tests/flow.test.js`, which starts the
    phase with a `$0100` lead (a state `$9F94`'s own advance produces) and pins
    the phase at 9 frames instead of 23. **A reviewer should check that test
    first: it is the only thing holding the loop shape.**
-2. **`no-882C-1F`** — dropping `$883F STA $1F` is GREEN. The cartridge's `$1F`
+2. **`no-882C-1F`** - dropping `$883F STA $1F` is GREEN. The cartridge's `$1F`
    is ALREADY 0 at frame 282 (measured: `seed $1F = 0`), so the store is a no-op
    in this window. Unfalsifiable, not wrong.
-3. **`no-clear-48`** — dropping `$48` from `$9B3E`'s zero-page clear is GREEN
+3. **`no-clear-48`** - dropping `$48` from `$9B3E`'s zero-page clear is GREEN
    for the same reason: `$48` is 0 at frame 282 (`$88A4` only runs from
    `$9AC7`, which modes 0-4 never reach). Closed by a unit assertion.
-4. **`no-page-clear-0300`** — dropping the `$0300` page clear is GREEN: nothing
+4. **`no-page-clear-0300`** - dropping the `$0300` page clear is GREEN: nothing
    is spawned at either seed. It stays unfalsifiable by the corpus until wave 5
    drives a respawn intro from BEFORE `$9B3E`, with ten enemy slots live.
    Closed by a unit assertion (added after this run).
-5. **`always-test-1B`** — making `mode5Tail`'s `$9A88` test unconditional is
+5. **`always-test-1B`** - making `mode5Tail`'s `$9A88` test unconditional is
    GREEN, and it is genuinely unreachable: the only `JMP $9A8C` the port takes
    is `$9660` (pause), where `$1B` is `$80`. The other two (`$96A2` stage 5,
    `$98E2` play sub-state `$8C`) are unported. Recorded, not closed.
@@ -229,13 +229,13 @@ Two more that were green on a check I then strengthened:
   bytes); with +4 it lands exactly on the last byte.
 * `$5E` has **two writers (`$99B5`, `$9C0F`) and zero readers** in the whole
   PRG. It changed 0 → 63 at f615 on the respawn run with no `STA $5E` on that
-  path — presumably an indexed store I did not chase. Not modelled; nothing can
+  path - presumably an indexed store I did not chase. Not modelled; nothing can
   read it. Unresolved, and harmless.
 * `$0E` per intro frame, measured and now reproduced: 1, 49, 37, 40, then 149
   for 21 frames, then 1. 149 = 4 × 37 + `$8641`'s one byte, which is where
   `frame-gates.test.js`'s "the cartridge's own `$0E` reaches 149" came from.
 * `$0D` at the `$80B5` sample: 6, 3, 3, 3, then 5 for 23 frames, then
-  4, 3, 2, 1, 0 — and the split first fires on the frame it reaches 0
+  4, 3, 2, 1, 0 - and the split first fires on the frame it reaches 0
   (cartridge f314), always at scanline 207.
 
 ## What I could not do, and why
@@ -251,7 +251,7 @@ Two more that were green on a check I then strengthened:
 * **`$9B3E` on the RESPAWN is not compared.** `intro-respawn` aligns at 614,
   which is the frame `$979D` ran, because `$979D` jumps into `$9B3E` in the same
   frame and `$979D` is wave 5. Wave 5 should re-align this scenario to ~611 the
-  moment `$979D` lands — that is the cheapest coverage in the next wave.
+  moment `$979D` lands - that is the cheapest coverage in the next wave.
 * **The `$9A88`-vs-`$9A8C` entry distinction is unfalsifiable today** (finding
   5 above). It stays in the code because the two ROM arms that would exercise it
   are named and unported.

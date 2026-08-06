@@ -1,4 +1,4 @@
-# RECON 10 — enemies: the wave script, the dispatch, the handlers, the aim
+# RECON 10 - enemies: the wave script, the dispatch, the handlers, the aim
 
 status: **DONE** on the seven questions asked, with five named gaps in
 "What I could NOT do". Every number below was produced by a command in this
@@ -13,7 +13,7 @@ New tools, all under `games/ddpdoj/tools/recon10/` (nothing in `src/` touched):
 
 | file | what it is |
 |---|---|
-| `pcref.py` | the scan `xref.py` says it CANNOT do: `bsr`/`bra`/`Bcc`/`jsr (d16,PC)`/`lea (d16,PC)` by brute force. A byte scan — every hit must be confirmed by disassembling backwards. |
+| `pcref.py` | the scan `xref.py` says it CANNOT do: `bsr`/`bra`/`Bcc`/`jsr (d16,PC)`/`lea (d16,PC)` by brute force. A byte scan - every hit must be confirmed by disassembling backwards. |
 | `enemytypes.py` | reads THE ENEMY TYPE TABLE and any stage's spawn script out of the image |
 | `dump.py` | hex / record / word dumps of the decrypted image |
 | `recon10.lua` + `run.py` | the runtime census: handlers, types, bands, spawns, alloc failures, the wave clock |
@@ -41,8 +41,8 @@ $ python games/ddpdoj/tools/recon10/run.py 9500 --tag long --autofire --invuln -
 ```
 
 `$813096` (the stage word) is **0 for all 9,500 frames** and the script cursor
-`$8132CC` walks from `$230C6C` to `$231704` — the terminator address the static
-walk predicted — so **all twenty are stage 1**. Wave 5's `stage1-open` reached
+`$8132CC` walks from `$230C6C` to `$231704` - the terminator address the static
+walk predicted - so **all twenty are stage 1**. Wave 5's `stage1-open` reached
 wave-clock 165 of 488; this run reached 488 and then the clock ran on to 836
 and froze with one live enemy (the boss).
 
@@ -57,14 +57,14 @@ $ python games/ddpdoj/tools/recon10/enemytypes.py table
 ```
 
 19 from the script + 1 that the script does not name (`$296DD6`, type `$1E`,
-56 dispatches, 2 spawns) — that one arrives through the SECOND spawn path,
+56 dispatches, 2 spawns) - that one arrives through the SECOND spawn path,
 the deferred queue at `$815EAA`, i.e. **an enemy spawned by another enemy**.
 That is the mechanism that makes "read the script" a lower bound and it is
 measured, not assumed.
 
 ---
 
-## 1. THE PER-TYPE DISPATCH — a static table, contradicting wave 5
+## 1. THE PER-TYPE DISPATCH - a static table, contradicting wave 5
 
 Wave 5: *"An enemy's identity is a FUNCTION POINTER at `+$4C`, not a type word …
 Enumerate the handlers by measurement; there is no table to read."* The pointer
@@ -93,14 +93,14 @@ both spawn paths with A5 = the fresh record:
 ```
 
 **Runtime check: `HANDLER-vs-TYPETABLE mismatches: 0` over 190,952 dispatches**
-— `recon10.lua` recomputes `table[($c,A5)]` from the image on every dispatched
+- `recon10.lua` recomputes `table[($c,A5)]` from the image on every dispatched
 enemy and compares it to `($4c,A5)`. The table is authoritative.
 
 Consequences for the port:
 
 * the handler set is 113 routines for the whole game, **19–20 for stage 1**;
 * `($C,A5)` (the type byte) and `($D,A5)` (a flags byte) come straight out of
-  the spawn record — wave 5's `allocEnemy(ram, d0, d1, d3)` already stores them;
+  the spawn record - wave 5's `allocEnemy(ram, d0, d1, d3)` already stores them;
 * `addq.w #8,A1` means every INIT routine has a **second entry point 8 bytes
   in**, called after the sub-record exists and with A0 = the target player's
   record. A port that translates only the first entry point silently loses half
@@ -108,7 +108,7 @@ Consequences for the port:
 
 ---
 
-## 2. THE STAGE-1 SPAWN SCRIPT — `$230C6C`, 339 records of 8 bytes
+## 2. THE STAGE-1 SPAWN SCRIPT - `$230C6C`, 339 records of 8 bytes
 
 `$2634F4` is the whole enemy subsystem's per-frame entry, and it is TWO things:
 
@@ -128,7 +128,7 @@ $2634F4 / $28AD54 / $27F95A / $288E4E / $2890F2 / $255DD8 / $253A70 / $24C096 /
 …`, re-disassembled here. **Enemies AND player shots AND enemy bullets are all
 under top-level type 5.**
 
-### The stage table — `$263336`, 4 longwords per stage
+### The stage table - `$263336`, 4 longwords per stage
 
 ```
 263386: lea $8132cc,A4
@@ -151,12 +151,12 @@ $ python games/ddpdoj/tools/recon10/enemytypes.py ...   (dump.py ptrtable)
 
 **Five stages, 16 bytes each, fourth longword always 0.** Stage 1 = script
 `$230C6C`, aux table `$23170C`, resource list `$231852`. The `*4` against a
-16-byte stride means `$813096` holds **stage × 4**, not the stage number — a
+16-byte stride means `$813096` holds **stage × 4**, not the stage number - a
 port that stores the stage index there is off by 4× and lands in the middle of
 the previous stage's triple. NOT independently confirmed: `$813096` measured 0
 throughout the run, so only stage 1 is exercised.
 
-### The walker — `$2633BE`, and the record format
+### The walker - `$2633BE`, and the record format
 
 ```
 2633be: lea $8132cc,A3 / movea.l (A3),A2          A2 = the cursor
@@ -168,7 +168,7 @@ throughout the run, so only stage 1 is exercised.
 2633de: moveq #0,D0 / move.b ($4,A2),D0            D0 = byte +4
 2633e4: move.l ($4,A2),D1 / andi.l #$fff000,D1 / lsr.l #16,D1
                                                    D1 = byte +5  (the $FFF000
-                                                   mask's low nibble is dead —
+                                                   mask's low nibble is dead -
                                                    the shift discards it)
 2633f2: move.w ($6,A2),D7 / andi.w #$fff,D7        D7 = 12-bit DATA INDEX
 2633fa: movea.l ($4,A3),A1 / add.w D7,D7
@@ -195,11 +195,11 @@ triggers 96…488.
 [ 45] 230dd4: 00 9d 00 19 05 00 00 97   trig=157 type=$05 flags=$00 idx=$097
 ```
 
-`($12,A5)` is a pointer INTO the resource loaded as `#$1F` — the enemy's
+`($12,A5)` is a pointer INTO the resource loaded as `#$1F` - the enemy's
 per-frame movement script, read by `$2638A6` (section 4). The aux table
 `$23170C` maps the 12-bit index to a word offset inside that resource.
 
-### The wave clock `$8130CE` — measured
+### The wave clock `$8130CE` - measured
 
 ```
 2,600-frame run:  WAVECLOCK ticks: 163 values, lf 1..2586 -> 15.667 lf/tick
@@ -240,13 +240,13 @@ address at instruction+2, so an instruction with a longer prefix (`$26114C`'s
 incrementer" is therefore strong but not exhaustive** -- a write tap on
 `$8130CE` closes it and I did not run one.
 
-### The SECOND spawn path — the deferred queue `$815EAA`
+### The SECOND spawn path - the deferred queue `$815EAA`
 
 ```
 263444: move.l A2,(A3)
 263446: move.w $815ea8,D6 / beq $2634f2         the queue's byte length
 263450: subi.w #$50,D6 / lea $815eaa,A4 / adda.w D6,A4   drained LIFO
-26345c: D0 = ($2,A4) & $FF   D1 = ($4,A4)       (D1 is a WORD here — this path
+26345c: D0 = ($2,A4) & $FF   D1 = ($4,A4)       (D1 is a WORD here - this path
 263468: jsr ($2636d6,PC)                         CAN pick the 2-slot special band)
 26346e: bcs $2634d2
 263472..2634cc:  copies ($2,A4)->($2,A0) and every longword $12..$4A, i.e. a
@@ -261,7 +261,7 @@ in D1 = `$80` / `$0` / caller's) and it has **13 absolute-long callers in the
 enemy region** (`$259E14 $265C22 $26DEC6` / `$259E08 $265A4C $26B7E2 $26CB16
 $26D004 $26E9E4 $26F9EE $26FA0A` / `$265C46 $272B22`), so enemies spawning
 enemies is normal, not exotic. Cap `$815EA8 == $C80` = **64 entries of `$50`**,
-overflow returns the dummy `$816B2A` — **a FOURTH allocation-failure convention**
+overflow returns the dummy `$816B2A` - **a FOURTH allocation-failure convention**
 on top of wave 5's three (objects: D0=0 + `$80D51C`; enemies: carry + `$81454C`;
 sprite queue: carry + count zeroed). It is a *fifth* if you count `$289004`'s
 80×`$38` pool at `$81B732` returning `$81C8B2`.
@@ -277,7 +277,7 @@ land in the 8-slot BOSS band (types `$20`/`$21`, `$2636DA cmpi.w #$20 / cmpi.w #
 
 ---
 
-## 3. THE SUB-RECORD ALLOCATOR `$2635B2` — and a table that overruns its neighbour
+## 3. THE SUB-RECORD ALLOCATOR `$2635B2` - and a table that overruns its neighbour
 
 Every enemy owns a RUN of `($4,A5)+1` consecutive 32-byte sub-records; A6 in
 every handler is the first of them.
@@ -292,7 +292,7 @@ every handler is the first of them.
 2635e8: lea (-$20,A6),A6 / move.w #$8000,(A6) / dbra D0       mark the run
 ```
 
-`$81459C + 100 × $20 = $81521C` — **the 101st slot the loop tests is slot 0 of
+`$81459C + 100 × $20 = $81521C` - **the 101st slot the loop tests is slot 0 of
 the OTHER table.** `$263584` walks the same base with `moveq #$63,D3` (100
 slots) and `$28AD54` walks it with `move.w #$95,D0` (150 slots). Three different
 lengths for one table in three routines. I did not resolve which is intended;
@@ -305,12 +305,12 @@ committed it**. Measured 0 times in 9,500 frames.
 
 ---
 
-## 4. WHAT THE HANDLERS DO — the shared machinery, then the families
+## 4. WHAT THE HANDLERS DO - the shared machinery, then the families
 
 Every stage-1 handler is a thin shell over four shared routines. The shell is
 what differs; the machinery is common and is where the port's leverage is.
 
-### 4a. `$2638A6` — THE MOVEMENT SCRIPT INTERPRETER
+### 4a. `$2638A6` - THE MOVEMENT SCRIPT INTERPRETER
 
 ```
 2638a6: tst.w $8130d2 / bne  ->                    a global FREEZE flag
@@ -349,7 +349,7 @@ A direction byte with bit 7 set is an ESCAPE (`$263926`):
 **13 movement opcodes** (12 escapes + set-speed), a byte-code the port has to
 interpret rather than 19 hand-written movement functions.
 
-### 4b. `$241812` — DIRECTION+SPEED → VELOCITY
+### 4b. `$241812` - DIRECTION+SPEED → VELOCITY
 
 ```
 2417de: moveq #0,D0 / move.b ($1a,A6),D0           SPEED index
@@ -364,7 +364,7 @@ interpret rather than 19 hand-written movement functions.
 **`($1A,A6)` = speed index, `($1B,A6)` = 8-bit heading (6-bit angle + 2 quadrant
 bits).** Both live in the SUB-record, not the enemy record.
 
-### 4c. `$286096` — DAMAGE AND SCORE
+### 4c. `$286096` - DAMAGE AND SCORE
 
 ```
 2688cc handler:  moveq #$5c,D1 / and.b (A6),D1 / beq (no hit)
@@ -390,7 +390,7 @@ switches on `$81B65C == 5`, and ends `add.w D0,$81B64A`. **`$81B64A` and
 `$81B65C` are strong score/chain candidates from the LISTING. I did not put a
 tap on them and I am not claiming them.** One write tap closes it.
 
-### 4d. `$2459D0` — THE HIT TEST, and the enemy hitbox
+### 4d. `$2459D0` - THE HIT TEST, and the enemy hitbox
 
 ```
 2459d0: move.w ($2,A4),D0 / D1 = D0
@@ -406,12 +406,12 @@ tap on them and I am not claiming them.** One write tap closes it.
 
 **The enemy hitbox is four half-extents at `($10,A4)`, `($12,A4)`, `($14,A4)`,
 `($16,A4)` of the SUB-record, asymmetric on both axes**, and the hit is recorded
-as bit 4 of the sub-record's byte 0 — exactly the bit `$286096` consumes. Wave 2
+as bit 4 of the sub-record's byte 0 - exactly the bit `$286096` consumes. Wave 2
 item 6 and waves 4 and 5 all left "the hitbox" open; this is the enemy half of
 it, from the listing, with the write (`or.b D4,(A4)`) that makes it a clean
 execution hook for the next wave. The player-shot list it walks is `$817F8E`
 and its ACTIVE LENGTH is 6/10/15/18/20 entries selected by the four power words
-`$81B414..$81B41A` — i.e. **the number of shot hitboxes tested scales with the
+`$81B414..$81B41A` - i.e. **the number of shot hitboxes tested scales with the
 player's power**, which is a rank-shaped amplifier and belongs in the state
 vector.
 
@@ -420,7 +420,7 @@ vector.
 Fields marked (L) are from the listing with the instruction that touches them;
 nothing here was guessed from a name.
 
-**Enemy record — 58 x `$50` at `$81332C`, A5 in every handler**
+**Enemy record - 58 x `$50` at `$81332C`, A5 in every handler**
 
 | off | what | evidence |
 |---|---|---|
@@ -443,7 +443,7 @@ nothing here was guessed from a name.
 | `+$40`/`+$42` w | the cached velocity D2/D3 | `$2638E8`, `$263906` |
 | `+$4C` l | **THE PER-FRAME HANDLER** | `$263532`, `$26362C` |
 
-**Sub-record — `$20` bytes, `$81459C` (100/101/150 slots, see 3) or `$81521C`
+**Sub-record - `$20` bytes, `$81459C` (100/101/150 slots, see 3) or `$81521C`
 (51), A6 in every handler**
 
 | off | what | evidence |
@@ -462,7 +462,7 @@ nothing here was guessed from a name.
 
 **Freeing is two-phase and that is a trap.** `$263762` writes `$01` to every
 sub-record byte 0 of the run and then `clr.w (A5)`; `$263754` writes `$00`
-instead. `$28AD54` — the call immediately AFTER `$2634F4` in `$28B5E0` — sweeps
+instead. `$28AD54` - the call immediately AFTER `$2634F4` in `$28B5E0` - sweeps
 `$81459C` and turns any byte 0 that is non-zero-and-positive into 0. So a
 sub-record freed by a handler stays "used" until the next subsystem call, and a
 port that frees immediately will hand out different slots.
@@ -478,7 +478,7 @@ port that frees immediately will hand out different slots.
 
 `$263762` is the FREE path and it is not one instruction: it walks the enemy's
 whole sub-record run writing `$01` to each byte 0 (`$263754` writes `$00`
-instead — two different free flavours), then `clr.w (A5)`.
+instead - two different free flavours), then `clr.w (A5)`.
 
 **Every enemy record carries THREE function pointers, not one:** `($4C,A5)` the
 per-frame handler, `($2A,A5)` a behaviour sub-routine (`$2689C2: movea.l
@@ -488,7 +488,7 @@ D3 = `$620`/`$410`, D4 = `($1C,A6)`). Wave 5 costed the job at `+$4C` only.
 
 ---
 
-## 5. THE AIM — found, and measured against the LIVE player
+## 5. THE AIM - found, and measured against the LIVE player
 
 This is the owner's own lesson from play, so it gets the most evidence.
 
@@ -514,7 +514,7 @@ This is the owner's own lesson from play, so it gets the most evidence.
 2420ae: sub.w D0,D1 / addq #4 / lsr.w #3 / andi.w #$3f    -> D1 = 0..63
 ```
 
-Callers, by `xref.py callers` (absolute-long only — a lower bound):
+Callers, by `xref.py callers` (absolute-long only - a lower bound):
 `$24200A` has 12+ enemy-region callers, `$24202C` has 12+, and the variants
 `$242730` (target from `($2E,A6)`), `$242748` (from `($2A,A6)`) and `$242760`
 (alternating, driven by `$803916`/`$803917`) exist too. `$241FEA`/`$241FF4`/
@@ -565,12 +565,12 @@ poke, same 4,200 frames; the only difference is a stick sweep.
 |---|---|---|
 | player position at the aim | **1** distinct value | **489** distinct values |
 | aims executed | 14,922 | 12,884 |
-| octants reached (D4/2) | **6** — octants 2 and 3 NEVER occur | **8** — octant 2 occurs 1,105 times, octant 3 seventy-two |
+| octants reached (D4/2) | **6** - octants 2 and 3 NEVER occur | **8** - octant 2 occurs 1,105 times, octant 3 seventy-two |
 | octant 0 share | 380 | 1,600 |
 | octant 5 share | 6,864 | 3,595 |
 
-The aim's own pre-LUT output — D4 the octant and D0 the min/max ratio, which
-together ARE the direction — is a different distribution, and reaches two
+The aim's own pre-LUT output - D4 the octant and D0 the min/max ratio, which
+together ARE the direction - is a different distribution, and reaches two
 octants that the still run cannot reach at all. **The enemies' aim is a
 function of where the player IS, sampled inside the call, and a recording
 cannot supply it.**
@@ -603,7 +603,7 @@ as well as to fire. Both are pixels the capture is currently faking.
 
 ---
 
-## 6. THE ENEMY BULLETS — located, not yet characterised
+## 6. THE ENEMY BULLETS - located, not yet characterised
 
 `$27F95A`, the fourth call in `$28B5E0`:
 
@@ -620,13 +620,13 @@ as well as to fire. Both are pixels the capture is currently faking.
 
 **Stride `$2C` at `$8171BE`, live count `$817F7E`, a 32-entry PC-relative
 dispatch at `$27F99E` plus a second one behind `$2810CA`.** Wave 5's
-`$289004` (80 × `$38` at `$81B732`, dummy `$81C8B2`) is a DIFFERENT pool —
+`$289004` (80 × `$38` at `$81B732`, dummy `$81C8B2`) is a DIFFERENT pool -
 measured 5 allocations in 9,500 frames, so it is not the bullet pool.
 
 I did not disassemble the 32 bullet handlers or find the bullet-vs-player hit
 test. `$245900`'s loop (base `$817F8E`, 45 inner entries of stride `$30`, outer
 count 69/109/159/189/209 gated on the same four power words) is adjacent to it
-and reads the player position 2,233 times — one per frame — but its stride
+and reads the player position 2,233 times - one per frame - but its stride
 disagrees with `$2459D0`'s `$3E` on the same base and **I did not resolve that
 disagreement.** Named here rather than guessed.
 
@@ -644,7 +644,7 @@ disagreement.** Named here rather than guessed.
 4. **The 2-slot "special" band is not reachable from the stage script.** The
    script path forces `D1 = byte +5 ≥ 0` (`$2633E8`'s mask/shift), and
    `$2636F6 tst.w D1 / bpl` needs it negative. Only the deferred queue
-   (`$263464 move.w ($4,A4),D1`, a signed word) can select it — and it never
+   (`$263464 move.w ($4,A4),D1`, a signed word) can select it - and it never
    did in 9,500 frames.
 5. **`$81B732` is not the enemy-bullet pool.** 5 allocations in 9,500 frames.
 
@@ -674,7 +674,7 @@ disagreement.** Named here rather than guessed.
 
 `$810424` (the player's `($3E,A6)` invulnerability timer) is held at `$FF` from
 lf1990 at the game's own sample point, exactly as the `fly-around` scenario
-already does and for the same reason — `$FF` is a value the game writes itself
+already does and for the same reason - `$FF` is a value the game writes itself
 at `$2495A2`. Without it the ship dies and the stage-1 script never reaches its
 terminator. Button 3 (auto-shot, `$2497B2`) is held from lf1800. Both are
 labelled on every number that depends on them.

@@ -1,4 +1,4 @@
-# Wave 1 QA — adversarial review of `15f88dc`
+# Wave 1 QA - adversarial review of `15f88dc`
 
 status: DONE
 wave: 1   role: qa   started: 2026-07-31
@@ -74,7 +74,7 @@ its own `$FF` at `$9F40` -> `4 * 8 + 5 = 37`, then `$9F4D STX $0E`. So `4 + n`
 and 37 are right, independently of the implementer's cartridge sample. `$8A76
 A9 00 / 8D 00 07 / 85 0E` confirms the drain zeroes `$0E`.
 
-### Mutation sweep — 25 breaks, each scored three ways
+### Mutation sweep - 25 breaks, each scored three ways
 
 `gates_fail` = `tests/frame-gates.test.js`; `units_fail` = the other six test
 files; corpus = full `compare.mjs`.
@@ -151,7 +151,7 @@ the mode dispatcher. **The intro never reaches `$9A88` or `$9AC4`.**
 
 ## Findings
 
-1. **BLOCKING-ish — `$5B` is reset every frame and the port never resets it;
+1. **BLOCKING-ish - `$5B` is reset every frame and the port never resets it;
    test 7 locks the wrong model in.** `$9658 STA $5B`. In the port a single
    `$5B = 1` freezes the camera and the streamer permanently (measured, 60
    frames). Adding `state.zp5B = 0` at the top of `stagePlay()` turns

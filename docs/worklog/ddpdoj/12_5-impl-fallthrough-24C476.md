@@ -1,6 +1,6 @@
-# WAVE 12.5 — THE $24C476 FALL-THROUGH
+# WAVE 12.5 - THE $24C476 FALL-THROUGH
 
-status: **DONE** — `$24C476` ported, gated at 0 divergent over 2,571 board
+status: **DONE** - `$24C476` ported, gated at 0 divergent over 2,571 board
 frames with five red mutations, and the whole of `games/ddpdoj/src/` audited for
 other quiet returns. One further inaccuracy found and fixed (`player.js`'s
 `$249F16` note understated its own region); one confirmed defect left for its
@@ -64,7 +64,7 @@ The whole block, transcribed (`xref.py dasm 24C476 130`):
 24c4f6: rts
 ```
 
-**A6 is the OPTION BLOCK and A4 is the PLAYER here** — the opposite of the
+**A6 is the OPTION BLOCK and A4 is the PLAYER here** - the opposite of the
 ship's twin at `$249B48`, where A6 is the player. So `($1,A6)` bits 3/4 are
 `$8104AB` and `($34,A4)/($35,A4)` are `$81041A/$81041B`.
 
@@ -72,11 +72,11 @@ ship's twin at `$249B48`, where A6 is the player. So `($1,A6)` bits 3/4 are
 
 | | ship `$249B48` (`player.js`) | pods `$24C476` (this wave) |
 |---|---|---|
-| gate | `btst #4,($19,A6)` | `btst #4,($41,A6)` — `$24C13A`'s copy |
+| gate | `btst #4,($19,A6)` | `btst #4,($41,A6)` - `$24C13A`'s copy |
 | burst / delay | `($2b,A6)` / `($2a,A6)` | `($35,A4)` / `($34,A4)` |
-| handshake bits | `($1,A6).3` + `(A6).3` — two records | `($1,A6).3` + `($1,A6).4` — one byte |
+| handshake bits | `($1,A6).3` + `(A6).3` - two records | `($1,A6).3` + `($1,A6).4` - one byte |
 | reload | `lsr.w #1` then `andi.b #6`, `+ ($2d,A6)` | `lsr.b #1`, **no mask**, `+ ($37,A4)` |
-| delay guard | bit 0 **or** (`($58,A6)==0` **and** `($20,A6)==8`) | bit 0 **or** `($20,A4)==8` — **no `($58,A4)` test** |
+| delay guard | bit 0 **or** (`($58,A6)==0` **and** `($20,A6)==8`) | bit 0 **or** `($20,A4)==8` - **no `($58,A4)` test** |
 | the spawn | `$249BFC`, ported (W8) | `$24D480`, **not** ported (W20) |
 
 Two of those four differences are one instruction wide and both are now covered
@@ -89,41 +89,41 @@ by a test that separates them (§5).
 | `src/options.js` | `fireHandshake()` = `$24C476..$24C4F6` and `fireSpawn()` = `$24C4D8..$24C4F2`; all FIVE exits of `formation2()` route into it; `$24D480` is a loud named throw; `FIRE_MUTATE` (8 mutations, in the shipped file) and `FIRE_ARMS` (the eleven ported write sites, counted) |
 | `src/machine.js` | `ROM.optionFireHandshake = $24C476`, `ROM.optionSpawn = $24D480` |
 | `src/state.js` | `WATCH_SPEC` += `p20`, `p34`, `p35`, `p36`, `p37`, `oflg1`; all six join `CLAIMED`. `EXEC_SPEC` += the block's **eleven write sites**, named `FIRE_EXEC` |
-| `tools/firegate.mjs` | new — the board-trace replay, two modes, two instruments |
+| `tools/firegate.mjs` | new - the board-trace replay, two modes, two instruments |
 | `tools/oracle/pgm.py` | new command `firegate`; `_W4_SYMS` gains `OPT.flags1` and asserts it against `machine.js` |
-| `tools/oracle/frame.lua` | new knob **`PROBE_WRITERS`** — a CURPC census of every write to a RAM range. `xref.py` cannot see `(d8,An)` writes at all, so before this there was no way to ask "who writes `$8104AB`?" |
-| `tools/breakage.mjs` | `FIRE_EXPECTED_GREEN` — three mutations declared green **before** the run, each with its measurement and the test that does see it fail |
-| `tests/fire.test.js` | new — 11 tests, aimed at the arms and mutations the board window cannot reach |
+| `tools/oracle/frame.lua` | new knob **`PROBE_WRITERS`** - a CURPC census of every write to a RAM range. `xref.py` cannot see `(d8,An)` writes at all, so before this there was no way to ask "who writes `$8104AB`?" |
+| `tools/breakage.mjs` | `FIRE_EXPECTED_GREEN` - three mutations declared green **before** the run, each with its measurement and the test that does see it fail |
+| `tests/fire.test.js` | new - 11 tests, aimed at the arms and mutations the board window cannot reach |
 | `src/player.js` | the `$249F16` note's address corrected to `$249EE8` (§6) |
 | `docs/.../12-impl-ship-fully-real.md` | §8's "none is a quiet return" corrected in place; `$24D480` added to its table |
 | `games/ddpdoj/PLAN-no-recordings.md` | ledger row **L3**'s note corrected |
 
 ### What I did NOT port, and why
 
-* **`$24D480` — the pods' shot spawn.** `movem.l D6-D7/A3/A5-A6,-(A7)` /
+* **`$24D480` - the pods' shot spawn.** `movem.l D6-D7/A3/A5-A6,-(A7)` /
   `lea $810572,A0` (P1) or `$810C32` (P2, via `tst.w D7` at `$24D490`) /
   `movea.l $8127E8,A1`, then the `$24D2FC`/`$24D35C` template tables indexed by
   `($58,A4)*4` (+4 when `($1,A4)` bit 0) and again by `($20,A4)*2`, two sub-4
   phase counters `($52,A6)`/`($54,A6)`, and a `jsr $23D88E` per record. It is
   W20's whole subject. **Loud named throw carrying `$24D480`**, and the throw
   text prints the two cadence bytes W20 will read.
-* **`$24C16E..$24C178` + `$24C310..$24C338` — the held-fire debounce and its
+* **`$24C16E..$24C178` + `$24C310..$24C338` - the held-fire debounce and its
   rejoin.** `$24C172 tst.b ($3f,A6) / beq $24C180` is the LASER, but for the
   first 9 held frames `$24C178 bne $24C310` rejoins the ordinary pod path and
   the board **does** reach `$24C476` while fire is held. The port throws at
   `$24C164` instead. That is LOUD (not a quiet return) and porting it would
   move the block from `$24C180` to `$24D480` on the same frame, so it buys
-  nothing this wave — but it is why `shotgate` compares 13 frames, and W20 has
+  nothing this wave - but it is why `shotgate` compares 13 frames, and W20 has
   to port it. Recorded here rather than left to be rediscovered.
 
-## 3. THE MEASUREMENT — `pgm.py firegate`
+## 3. THE MEASUREMENT - `pgm.py firegate`
 
 ### Why it is a trace replay and not a live gate (the honest limit)
 
 `$24C4F2 bra $24D480` is reached on the **first** fire frame: a one-frame tap
 sets the edge byte, `$24C498 bclr #3` finds bit 3 clear, `$24C4AC bclr #4`
 finds bit 4 clear, and control falls into `$24C4D8` and out through the `bra`.
-So no full-port run can execute this block and survive — before this wave
+So no full-port run can execute this block and survive - before this wave
 `shotgate` blocked on the first tap at `$24C180`, after it the same tap blocks
 at `$24D480`. Calling any existing gate's green a result for `$24C476` would be
 the wave-12 mistake repeated, so the block is driven directly off the board's
@@ -133,7 +133,7 @@ own columns.
   then carry the PORT's outputs forward and compare every frame. Nothing
   re-synchronises it.
 * **re-seeded**: entry state from the board at frame N−1, inputs from frame N,
-  outputs compared at frame N — every frame an independent board transition.
+  outputs compared at frame N - every frame an independent board transition.
 
 Two instruments: the VALUES, and the **eleven `PROBE_EXEC` counters** that say
 which write sites the BOARD executed, against `FIRE_ARMS`'s count of the same
@@ -170,8 +170,8 @@ python games/ddpdoj/tools/oracle/pgm.py firegate            (FRESH, stage1-shot)
 the port executed it zero times. That single census line is the defect, and it
 is a number rather than a reading of the listing.
 
-The done-when the plan set for this block — *"the bytes must be seen NON-ZERO
-in-window, stated on the scenario"* — is met and stated: `($34,A4)`/`($35,A4)`
+The done-when the plan set for this block - *"the bytes must be seen NON-ZERO
+in-window, stated on the scenario"* - is met and stated: `($34,A4)`/`($35,A4)`
 are non-zero on **2,572 of 2,572** compared board frames, `($35,A4)` reaching 2;
 128 fire edges; `$8104AB` alternating `$03`/`$13`, i.e. bit 4 moving.
 
@@ -192,17 +192,17 @@ pgm.py firegate --reuse --break delay-no-two        EXPECTED-GREEN OK
 source file. It is red on the first divergent frame of the window.
 
 The three EXPECTED-GREENs are declared in `tools/breakage.mjs
-FIRE_EXPECTED_GREEN` with the measurement that makes them invisible here — all
+FIRE_EXPECTED_GREEN` with the measurement that makes them invisible here - all
 three from the same 2,572-frame TSV:
 
 | mutation | why `stage1-shot` cannot see it | where it IS seen red |
 |---|---|---|
-| `edge-on-raw` | `($40,A6)` and `($41,A6)` agree on bit 4 on **all 2,572 frames** — one-frame taps make every held frame an edge frame (0 disagreements measured) | `tests/fire.test.js` "the gate is the EDGE byte", raw `$10` with edge `$00` |
+| `edge-on-raw` | `($40,A6)` and `($41,A6)` agree on bit 4 on **all 2,572 frames** - one-frame taps make every held frame an edge frame (0 disagreements measured) | `tests/fire.test.js` "the gate is the EDGE byte", raw `$10` with edge `$00` |
 | `burst-mask-6` | `($21,A4)` is 0 on all 2,572 frames (the whole word `($20,A4)` is 0), so `lsr.b #1` and `lsr.w #1 / andi.b #6` both give 0 | same file, `($21,A4)` = `$0E`: `$0E>>1` = 7, `7&6` = 6 → 9 vs 8 |
 | `delay-no-two` | bit 0 of `($1,A4)` is 0 on all 2,572 frames and `($20,A4)` is never 8, so `$24C4EC` is never taken | same file, `($20,A4)` = 8 with `($58,A4)` = 2 (which the ship's twin would reject and this one must not) |
 
 **The first draft of `handshake-dropped` was itself a check that could not
-fail** — it lived in `formation2()`, which `firegate` bypasses, and it printed
+fail** - it lived in `formation2()`, which `firegate` bypasses, and it printed
 `0 DIVERGENT`. It was moved into `fireHandshake()` and re-run before being
 believed. Recorded because the brief says to assume a check cannot fail until
 it has been watched go red, and this one had to be fixed to earn it.
@@ -220,7 +220,7 @@ RESULT free-running: 618 frames compared, 0 DIVERGENT
 ```
 
 `$24C476` only ever **clears** bit 3 (`$24C498`). So the bit-3 arm firing at all
-proves an outside writer, and `PROBE_WRITERS` — the knob this wave added —
+proves an outside writer, and `PROBE_WRITERS` - the knob this wave added -
 names it:
 
 ```
@@ -243,7 +243,7 @@ PROBE_WRITERS=8104AA-8104AB,81041A-81041B  on speedmodes, 3,400 logic frames
 
 So the pods' bit-3 arm is the **auto-shot** handshake, and `src/player.js`
 already throws on `$2497BA`. `firegate` blocks rather than comparing against a
-state the port cannot produce — the `shotgate`-at-`$24C180` idiom — and exits
+state the port cannot produce - the `shotgate`-at-`$24C180` idiom - and exits
 non-zero even with 0 divergent frames, because a gate that stops early and says
 PASS is what this project keeps being bitten by. `speedmodes` is therefore a
 **measurement in this file, not a shipped gate**; `stage1-shot` is the gate.
@@ -256,35 +256,35 @@ tests instead (§5) and that limit is stated on the gate's own output line.
 ## 5. THE TESTS
 
 `node --test games/ddpdoj/tests/` → **174 tests, 174 pass** (163 before; 11 new
-in `tests/fire.test.js`, and one wave-12 test corrected — see below).
+in `tests/fire.test.js`, and one wave-12 test corrected - see below).
 
 The new tests exist for what the board window cannot reach:
 
-* the **bit-3 arm** (`$24C4A0`/`$24C4A6`) — `fhb4s`/`fh35z`, 0 on the gate;
-* the **rts arm** (`$24C4B4`) — `fh34i`, 0 on the gate, and the only path out of
+* the **bit-3 arm** (`$24C4A0`/`$24C4A6`) - `fhb4s`/`fh35z`, 0 on the gate;
+* the **rts arm** (`$24C4B4`) - `fh34i`, 0 on the gate, and the only path out of
   `$24C476` that does not end at `$24D480`;
 * the three EXPECTED-GREEN mutations, each with inputs that separate them;
 * the four gate conditions of formation 2, each asserted to still reach
   `$24C4BC`;
 * **the wiring itself**: `formation2()`'s body must contain five calls to
-  `fireHandshake` and **zero bare `return;`** — a test that only drove the block
+  `fireHandshake` and **zero bare `return;`** - a test that only drove the block
   would have passed on wave 12's code, which had the gates and no tail;
 * `$8104AB` bits 0, 1, 2, 5, 6, 7 must survive the block untouched across four
-  seed values and both edge states (bit 2 is the LASER LATCH — a port that wrote
+  seed values and both edge states (bit 2 is the LASER LATCH - a port that wrote
   the whole byte would silently drop W24's state).
 
 **One wave-12 test changed meaning and had to be rewritten.**
 `tests/ship.test.js` "the gate is on the RAW byte $24C134 copies, never on the
-EDGE" asserted `doesNotThrow` for an edge-only frame — and it held **for the
+EDGE" asserted `doesNotThrow` for an edge-only frame - and it held **for the
 wrong reason**: the edge reached `$24C476`, which the port did not have, so the
 routine returned. With `$24C476` ported, an edge alone runs the pods' cadence
 machine and the board spawns a pod shot on that frame. The test now asserts the
 throw is `$24D480` (never `$24C180`) for the edge and `$24C180` for the raw
 byte. The distinction it exists for is sharper, not weaker. This is the same
-shape as 11-review F1 and 12-review F1 — a passing test that encoded the port's
-gap — and it is exactly why the audit below reads the ROM and not the port.
+shape as 11-review F1 and 12-review F1 - a passing test that encoded the port's
+gap - and it is exactly why the audit below reads the ROM and not the port.
 
-## 6. THE AUDIT — every `return` in `games/ddpdoj/src/`, against the listing
+## 6. THE AUDIT - every `return` in `games/ddpdoj/src/`, against the listing
 
 Method: enumerate 40 bare `return`s across `src/**/*.js`, take the ROM address
 cited on or above each, disassemble the branch target, and ask **is it an
@@ -295,20 +295,20 @@ against the listing; only the listing proves absence.
 
 | site | ROM branch → target | board continues? | throw / note? | verdict |
 |---|---|---|---|---|
-| `options.js` `formation2` ×5 | `$24C3E2/$24C3EC/$24C3F6/$24C402` + fall-through `$24C474` → **`$24C476`** | **YES** | **none** | **THE DEFECT — fixed** |
-| `shipsprite.js` `drawShipShadow` ×5 | `$249E84/$249E8C/$249E94/$249E9E` + fall-through `$249EE6` → **`$249EE8`** | **YES** | `note($249F16)`, reached on all five paths | **not** a quiet return; the note understated its region (`$249EE8..$249F14` is five more gates, `$249F4C..$249F88` is P2's copy) — **address corrected this wave** |
-| `options.js` `rampUp` ×2 | `$24C8F4`/`$24C8FE` → `$24C904` | no — `rts` | — | clean |
-| `options.js` `movePod` | `$24D176` → `$24D186` | no — `rts` | — | clean |
-| `options.js` `fireHandshake` ×3 | `$24C4BA`/`$24C4C6`/`$24C4CC` → `$24C4F6` | no — `rts` | — | clean (new) |
-| `player.js` tilt ×3 | `$24A432`/`$24A434` → `$24A43E` | no — `rts` | — | clean |
-| `player.js` `bombAndShotGuards` ×3 | `bra $249E4E` ×3 | **YES** — `$249E4E` is the ship's image/hitbox tail | the CALLER (`finish`) runs `$249E4E..$249EE2`; 2 of the 3 also `note()` | clean **by structure**: the `return` returns to the caller that continues |
+| `options.js` `formation2` ×5 | `$24C3E2/$24C3EC/$24C3F6/$24C402` + fall-through `$24C474` → **`$24C476`** | **YES** | **none** | **THE DEFECT - fixed** |
+| `shipsprite.js` `drawShipShadow` ×5 | `$249E84/$249E8C/$249E94/$249E9E` + fall-through `$249EE6` → **`$249EE8`** | **YES** | `note($249F16)`, reached on all five paths | **not** a quiet return; the note understated its region (`$249EE8..$249F14` is five more gates, `$249F4C..$249F88` is P2's copy) - **address corrected this wave** |
+| `options.js` `rampUp` ×2 | `$24C8F4`/`$24C8FE` → `$24C904` | no - `rts` | - | clean |
+| `options.js` `movePod` | `$24D176` → `$24D186` | no - `rts` | - | clean |
+| `options.js` `fireHandshake` ×3 | `$24C4BA`/`$24C4C6`/`$24C4CC` → `$24C4F6` | no - `rts` | - | clean (new) |
+| `player.js` tilt ×3 | `$24A432`/`$24A434` → `$24A43E` | no - `rts` | - | clean |
+| `player.js` `bombAndShotGuards` ×3 | `bra $249E4E` ×3 | **YES** - `$249E4E` is the ship's image/hitbox tail | the CALLER (`finish`) runs `$249E4E..$249EE2`; 2 of the 3 also `note()` | clean **by structure**: the `return` returns to the caller that continues |
 | `shots.js` :247/:254 | `bra $249E4E` | same | same | clean by structure |
-| `shots.js` :282/:288 | `$253B90 clr.w (A6) / rts` | no | — | clean |
-| `shots.js` :339/:343 | `$253E92 clr.w (A6) / rts` | no | — | clean |
-| `shipsprite.js` `drawShip` :121/:124 | `$24A448 bmi $24A482` (fall-through is `$24A44A rts`) / `$24A488 bne $24A480` | no — `rts` | — | clean |
-| `shipsprite.js` `drawShip` :184 | `$24A54A bne $24A54E` (fall-through `$24A54C rts`) | no — `rts` | — | clean |
-| `shipsprite.js` `drawShipAlt` :201 | `$24A460 bmi $24A46A` | no — `rts` | — | **the `return` is clean; the BRANCH SENSE IS INVERTED — 12-review F1, still open, see §7** |
-| `main.js`, `render/*`, `web/*` (17 sites) | — | port-native code, no ROM counterpart | — | n/a |
+| `shots.js` :282/:288 | `$253B90 clr.w (A6) / rts` | no | - | clean |
+| `shots.js` :339/:343 | `$253E92 clr.w (A6) / rts` | no | - | clean |
+| `shipsprite.js` `drawShip` :121/:124 | `$24A448 bmi $24A482` (fall-through is `$24A44A rts`) / `$24A488 bne $24A480` | no - `rts` | - | clean |
+| `shipsprite.js` `drawShip` :184 | `$24A54A bne $24A54E` (fall-through `$24A54C rts`) | no - `rts` | - | clean |
+| `shipsprite.js` `drawShipAlt` :201 | `$24A460 bmi $24A46A` | no - `rts` | - | **the `return` is clean; the BRANCH SENSE IS INVERTED - 12-review F1, still open, see §7** |
+| `main.js`, `render/*`, `web/*` (17 sites) | - | port-native code, no ROM counterpart | - | n/a |
 
 Range-end sweep, 79 citations: every whole-routine end terminates in `rts`
 (`$24C382`, `$24C4F6`, `$23D724`, `$241180`, `$2411E0`, `$241236`, `$241260`,
@@ -332,7 +332,7 @@ the record:
 
 ## 7. WHAT I DID NOT FIX, DELIBERATELY
 
-**12-review F1 — `$24A460`'s `bmi` is inverted in `drawShipAlt`.** Confirmed
+**12-review F1 - `$24A460`'s `bmi` is inverted in `drawShipAlt`.** Confirmed
 again this session, from the image:
 
 ```
@@ -353,7 +353,7 @@ brief, it is still open, and a reviewer should not read this wave's green
 particular `pgm.py check` still does not run `shipgate`, and it does not run
 `firegate` either.
 
-## 8. NO REGRESSION — the gates that already existed
+## 8. NO REGRESSION - the gates that already existed
 
 ```
 python pgm.py flyaround                                   (FRESH)
@@ -375,20 +375,20 @@ node --test games/ddpdoj/tests/    174 tests, 174 pass
 ```
 
 `fly-around` is button-free, so `$24C476` runs its no-edge arm on every one of
-those 2,200 frames and changes nothing — which is precisely why wave 12's gate
+those 2,200 frames and changes nothing - which is precisely why wave 12's gate
 was green over a routine it had dropped, and why this wave needed an instrument
 of its own.
 
 ## 9. WHAT THE REVIEWER SHOULD LOOK AT HARDEST
 
 1. **`firegate` drives `fireHandshake()` directly.** It therefore cannot see a
-   defect in how `formation2()` *reaches* it — that is covered only by
+   defect in how `formation2()` *reaches* it - that is covered only by
    `tests/fire.test.js`'s source-shape assertion (five calls, zero bare
    `return;`). Try deleting one of the four `return fireHandshake(...)` lines
    and check that something goes red. I believe only the unit test does.
 2. **The window is chosen by `sum(FIRE_EXEC) > 0`**, a board-side execution
    fact about the unported `$24C934` path. On `stage1-shot` it excludes zero
-   frames, so it is inert there — but it is a filter, and filters grow.
+   frames, so it is inert there - but it is a filter, and filters grow.
 3. **Three of eleven arms are 0/0 on the gate.** Everything asserted about
    `$24C4A0`, `$24C4A6` and `$24C4B4` rests on `tests/fire.test.js`, i.e. on my
    reading of the listing, not on the board.
@@ -397,6 +397,6 @@ of its own.
    and the column, not a person, should say so.
 5. **`bclr` is read-modify-write.** The whole `fhb4x` = 2,448 argument depends
    on the 68000 writing a byte back when the bit was already clear. It is
-   measured (the tap fired), not assumed — but check the reasoning.
+   measured (the tap fired), not assumed - but check the reasoning.
 6. **The `$249F16` → `$249EE8` note change** touches `player.js`, another
    wave's file, and changes an unported-census key string. It compares nothing.

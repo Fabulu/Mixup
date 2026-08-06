@@ -1,12 +1,12 @@
-# Wave 14 — Input granularity, and what a logic frame costs
-status: DONE, with §4 SUPERSEDED — see the correction below
+# Wave 14 - Input granularity, and what a logic frame costs
+status: DONE, with §4 SUPERSEDED - see the correction below
 wave: 14   role: impl   started: 2026-08-01 (date given in-session)
 
 > **CORRECTION, added by wave 15 (2026-08-01).** §4 and item 2 of "the three
 > things a reviewer should look at hardest" claimed a fix that was measured, by
 > wave 14's own reviewer, to work only for an isolated tap from a drained queue.
 > **The overwrite-the-tail rule destroyed every sub-frame tap while any other
-> control was moving** — on the touch d-pad, always. Measured, k=1, no host
+> control was moving** - on the touch d-pad, always. Measured, k=1, no host
 > load: a sliding finger plus FIRE tapped ten times a second fired **0 of 20**
 > shots. Wave 15 replaced the rule (`tail := w | (tail & ~prev)`, so a press
 > survives its own release) and the same rig now fires **20 of 20**. §4 below is
@@ -44,7 +44,7 @@ check to the gate so it cannot silently regress.
    6-11 added firing, the kill chain, power-ups, sound and enemy bullets ... it
    is entirely possible the port now needs more than 16.6 ms per frame") is
    FALSE, and it is measured false.
-2. **`renderFrame()` was.** Median **6.074 ms — 36% of the whole frame budget**,
+2. **`renderFrame()` was.** Median **6.074 ms - 36% of the whole frame budget**,
    more than `nmi()` and the wave-13 synthesiser put together. Its background
    loop called `tileRow()` once per PIXEL, filling an 8-byte scratch array to
    read one byte of it, 61,440 times a frame. One line, bit-identical by
@@ -53,7 +53,7 @@ check to the gate so it cannot silently regress.
 3. **The input mechanism was real and the FINDING understated it.** k frames
    sharing one word is the mild version. The severe version is that a press and
    its release that BOTH land between two animation frames were **never seen at
-   all** — the live mask went 0 → A → 0 with nothing looking, so the shot was
+   all** - the live mask went 0 → A → 0 with nothing looking, so the shot was
    never fired. Fixed by queueing transitions in the DOM handlers and handing
    out one word per logic frame.
 4. **k itself is still unmeasured and I could not measure it.** It needs a
@@ -77,17 +77,17 @@ of claim this repo keeps being bitten by.
 | `games/gradius/tools/framecost.mjs` | **NEW.** The cost measurement and the gate's cost check. Times `nmi()`, the synthesiser and `renderFrame()` separately, N passes, best pass wins; gates on a ratio to a reference kernel timed in the same loop iteration. |
 | `games/gradius/src/input.js` | the transition queue: `noteInput()` in every handler, `nextInputWord()`, `inputQueueStats()`, `resetInput()`. `currentButtons()` stays and its docstring now says the loop does not call it. |
 | `games/gradius/src/main.js` | `FramePacer` (the accumulator, the clamp, and the **k census**) and `stepLogicFrames()` (the loop body, extracted so it can be tested at all). |
-| `games/gradius/src/render/ppu.js` | `tileBase()` / `tilePixel()`; the background loop reads one byte instead of eight. **Cost only** — 0 pixels differ. |
+| `games/gradius/src/render/ppu.js` | `tileBase()` / `tilePixel()`; the background loop reads one byte instead of eight. **Cost only** - 0 pixels differ. |
 | `games/gradius/index.html` | `k <avg>avg/<max>max/<n>clamped` and `inq <depth>/<n>lost` on the stats line. |
 | `games/gradius/tests/loop.test.js` | **NEW**, 17 checks: the pacer with a fake clock, the queue, and `stepLogicFrames` driving the real `nmi()`. |
-| `games/gradius/tests/ppu.test.js` | `tilePixel` vs `tileRow` over the whole 131,072-byte tile pool — the guard that does not need a capture. |
+| `games/gradius/tests/ppu.test.js` | `tilePixel` vs `tileRow` over the whole 131,072-byte tile pool - the guard that does not need a capture. |
 | `games/gradius/tests/page-wiring.test.js` | the stats line is now executed and asserted, not just built. |
 | `games/gradius/tools/test-all.mjs` | stage 1d, `framecost.mjs`. |
 | `docs/worklog/gradius/13-FINDING-...md` | status NOT INVESTIGATED → SETTLED, with the measurements (rule 5, same commit). |
 
 ## What I MEASURED
 
-### 1. The cost of a frame — the thing nobody had ever measured
+### 1. The cost of a frame - the thing nobody had ever measured
 
 `node games/gradius/tools/framecost.mjs`, best of five passes of 600 frames of
 `audiohash.mjs`'s scripted run (a CONSTANT: firing, moving, the driver busy):
@@ -113,7 +113,7 @@ and the same run **before** the one-line renderer fix:
 node, before `putImageData` and before the compositor.** That is the number the
 owner's "really unresponsive" report was about, and it is not `nmi()`.
 
-### 1b. "Why when it starts" — candidate 1 is also FALSE for `nmi()`
+### 1b. "Why when it starts" - candidate 1 is also FALSE for `nmi()`
 
 The FINDING's other candidate was that the first second is the most expensive
 second (the blanked 27-frame intro, the terrain streamer filling a screen it has
@@ -127,13 +127,13 @@ frames 300-899  min 0.0094  med 0.0729  p99 0.2413  max 9.6994  mean 0.1041
 ```
 
 The first second is the CHEAPEST of the three by mean and by max. The ten most
-expensive frames are 516, 581, 221, 698, 407, 602, 246, 556, 225, 676 — spread
+expensive frames are 516, 581, 221, 698, 407, 602, 246, 556, 225, 676 - spread
 across the run and not clustered at the start, and the top three (9.70, 4.76,
 2.40 ms) are two orders of magnitude above the median, which is a scheduler
 steal, not a workload. **So neither of the FINDING's two "why at the start"
 candidates survives for `nmi()`.** What IS true at the start is that the browser
-has just been handed a fresh page — JIT warm-up is real and this tool measures
-it (pass 0 costs 1.5-3x pass 4 for the same work) — and that is the frame loop's
+has just been handed a fresh page - JIT warm-up is real and this tool measures
+it (pass 0 costs 1.5-3x pass 4 for the same work) - and that is the frame loop's
 first second in a browser, not the game's.
 
 ### 2. The renderer defect, and why it is a translation-free fix
@@ -145,7 +145,7 @@ tileRow(tiles, bgBank, bgHalf, tile, fineY, px);   // copies EIGHT bytes
 bgpix[x] = px[fxb & 7];                            // reads ONE of them
 ```
 
-61,440 times a frame — 491,520 byte copies where 61,440 reads would do, plus a
+61,440 times a frame - 491,520 byte copies where 61,440 reads would do, plus a
 function call per pixel. The fix indexes the same byte by the same arithmetic
 (`tileBase()`, now shared with `tileRow()`), so it is bit-identical by
 construction and not by hope. Verified three ways:
@@ -160,7 +160,7 @@ Measured effect, isolated benchmark, best of five passes each:
 
 Where the remaining time goes, measured by isolating pieces (200 frames each,
 best of six): full 3.581, background loop 1.144, multiplex 0.562, so ~1.9 ms is
-sprite evaluation and the per-scanline `fill()`s. **Not pursued** — see
+sprite evaluation and the per-scanline `fill()`s. **Not pursued** - see
 "What I could not do".
 
 ### 3. The gate's cost check, and why it is a RATIO
@@ -187,7 +187,7 @@ and with four deliberate CPU hogs running:
 That is wave 13's 2x host spread, reproduced a third time. **An absolute
 millisecond limit tight enough to catch a regression is looser than the host's
 own swing.** So `framecost.mjs` times a fixed reference kernel (61,440 table
-reads + 61,440 word stores — one screen's worth) **in the same loop iteration**
+reads + 61,440 word stores - one screen's worth) **in the same loop iteration**
 as the stages it normalises, and gates on the ratio. Limits, in reference frames:
 
 ```
@@ -220,7 +220,7 @@ margins are the weakness and the file says so**: 1.3x will not notice a 20%
 regression; it will notice a stage that starts costing a multiple of what it
 did, which is the failure that had already happened.
 
-### 4. The input fix — SUPERSEDED BY WAVE 15, see the correction at the top
+### 4. The input fix - SUPERSEDED BY WAVE 15, see the correction at the top
 
 `src/input.js` now queues every CHANGE to the mask as it happens, inside the DOM
 handler, and `nextInputWord()` hands out one word per logic frame.
@@ -228,7 +228,7 @@ handler, and `nextInputWord()` hands out one word per logic frame.
 
 **The queue is two deep, and the number is a trade with two named cases:**
 
-* a TAP shorter than an animation frame is `[mask, 0]` — two entries. It must
+* a TAP shorter than an animation frame is `[mask, 0]` - two entries. It must
   survive, so the cap cannot be 1.
 * a FINGER SLIDING ACROSS THE D-PAD emits a `pointermove` per direction, many
   per animation frame. Whatever the queue cannot drain is steering LAG: at the
@@ -238,11 +238,11 @@ handler, and `nextInputWord()` hands out one word per logic frame.
 Two is the smallest that keeps the tap and the largest that keeps the slide
 honest. At the cap the NEWEST state overwrites the tail, never the head, so the
 transient is still delivered and the current truth is always last. What that
-loses — a press-release-press inside one 16 ms animation frame — is written down
+loses - a press-release-press inside one 16 ms animation frame - is written down
 in the file rather than discovered later. Both halves are tests, and both were
 seen red (B2 cap=1, B3 cap=8).
 
-### 5. Deliberate breaks — SIXTEEN, and one of them PASSED
+### 5. Deliberate breaks - SIXTEEN, and one of them PASSED
 
 Each break applied to `src/`/`index.html`, the relevant test files re-run, the
 file restored, and the restore verified by sha256. Baseline: 0 failures on all
@@ -257,7 +257,7 @@ one-line edit anyone can repeat by hand.
 | B1 `stepLogicFrames` reads the live mask again (the wave-13 defect, restored) | RED, 2 |
 | B2 the input queue caps at 1 (a tap cannot fit) | RED, 5 |
 | B3 the input queue caps at 8 (steering lag unbounded) | RED, 1 |
-| B4 keyup no longer queues its transition | **SURVIVED — see below** |
+| B4 keyup no longer queues its transition | **SURVIVED - see below** |
 | B5 the touch d-pad no longer queues its transition | RED, 3 |
 | B6 the queue drains newest-first (`pop`, not `shift`) | RED, 4 |
 | B7 the clear backstop bypasses the queue | RED, 1 |
@@ -277,12 +277,12 @@ one-line edit anyone can repeat by hand.
 `src/input.js`'s **keyup** handler left `loop.test.js`, `input.test.js` and
 `page-wiring.test.js` **all green**. On a desktop keyboard that means releasing
 a key stops being a queued transition, and the release is delivered only when
-some other event happens to push one — i.e. exactly the dropped-input defect
+some other event happens to push one - i.e. exactly the dropped-input defect
 this wave exists to fix, on the path most players use.
 
 The reason is structural and worth naming: `src/input.js` deliberately keeps
 **two masks** (`held` for the keyboard, `touchHeld` for the pad, with separate
-recovery paths — see the file's own note), so there are **two ways to lose an
+recovery paths - see the file's own note), so there are **two ways to lose an
 edge**, and every queue test I had written went through `setTouchButton()`.
 Closed by `THE SAME DEFECT ON THE KEYBOARD PATH -- a keyup queues its
 transition too`, which drives `attachInput()` with a fake target and covers
@@ -354,7 +354,7 @@ consumed that recording and was green.
   (`tools/node_modules` has `jsnes` and nothing else). Everything I can say about
   k is arithmetic, not measurement: `FramePacer` is now exercised with a fake
   clock in `tests/loop.test.js`, including the case a real 60.000 Hz display
-  produces (**k=2 about six times a minute, k=0 never** — the display is SLOWER
+  produces (**k=2 about six times a minute, k=0 never** - the display is SLOWER
   than the game's 60.0988 Hz, so it accumulates a surplus, not a deficit; k>1 is
   therefore NOT by itself evidence of a problem and the page's readout must not
   be read that way).
@@ -380,7 +380,7 @@ consumed that recording and was green.
   4.02 under four hogs, where the reference only inflated 2.12x). I did not
   chase why; the limit is set at 8.0 to accommodate it and that is stated. A
   reviewer who wants a tighter audio limit needs to find out what makes it
-  scale super-linearly with load — allocation and GC are the obvious suspects.
+  scale super-linearly with load - allocation and GC are the obvious suspects.
 * **The two-deep input queue is a judgement, not a measurement.** The two cases
   that bound it are named and tested, but the right number for a real phone
   under a real finger is something only a phone can say.
@@ -401,8 +401,8 @@ node games/gradius/tools/test-all.mjs            # the gate, ~5 min
    free of assumptions: it assumes `reference()` degrades under contention the
    way `renderFrame()` does. I measured that it does (1.08x ratio drift across a
    2.12x load) and that the audio stage it does NOT (1.9x ratio drift). If the
-   kernel and the renderer ever stop degrading alike — a different machine, a
-   different node — the gate becomes wrong in a way that no test will say. The
+   kernel and the renderer ever stop degrading alike - a different machine, a
+   different node - the gate becomes wrong in a way that no test will say. The
    raw milliseconds are printed on every run precisely so a human can notice.
 2. **The two-deep input queue, and specifically the overwrite-the-tail rule.**
    It throws away a press-release-press inside one animation frame. I argued
@@ -411,7 +411,7 @@ node games/gradius/tools/test-all.mjs            # the gate, ~5 min
    likely to be wrong.
    **IT WAS WRONG, and the sentence above understates what it threw away.** The
    rule discarded any press+release inside one animation frame while ANY other
-   control was producing a transition — i.e. the whole time a finger is on the
+   control was producing a transition - i.e. the whole time a finger is on the
    d-pad. The reviewer measured 0 of 20 shots; wave 15 fixed the rule and
    measured 20 of 20. The instinct to name this as the thing most likely to be
    wrong was right; the analysis of WHY was not, and only the measurement found

@@ -1,8 +1,8 @@
-# Wave 20 recon — the stage-1 layout data and the asset budget to ship it
+# Wave 20 recon - the stage-1 layout data and the asset budget to ship it
 
 status: **DONE** on all four questions, with six named gaps in §8.
 started: 2026-08-01 · finished: 2026-08-02
-role: recon (READER — nothing under `games/ddpdoj/src/`, `games/gradius/` or
+role: recon (READER - nothing under `games/ddpdoj/src/`, `games/gradius/` or
 `games/batman/` was touched; nothing committed)
 target: `ddpdojblk`, **VERSION-B** (2002.10.07 BLACK VER). Every address is
 build B unless the line says otherwise (`NOTES-build-split.md`); `$22xxxx` and
@@ -23,9 +23,9 @@ New tools this wave, all READERS, all under `games/ddpdoj/tools/oracle/`:
 | file | what it is |
 |---|---|
 | `w20price.py` | the from-ROM tile-decode check (+RED), the CONTENT-HASH sharing test, the per-stage export price, the encoding comparison, the shard price, and the two extra map painters |
-| `w20elemart.py` | sizes the 13 stage-1 BG-ELEMENT sprite streams (scroll-VM op `$10`) — the part of the background that is not in the column stream |
-| `w20mapgate.py` | VALIDATOR 1 — the static stream vs the board's `bg_videoram` in the 161-frame capture, three mutations |
-| `w20maprec.lua` + `w20maprun.py` | VALIDATOR 2 — a write tap on `$900000..$900FFF` logging **every** map longword the board writes for a whole stage-1 run |
+| `w20elemart.py` | sizes the 13 stage-1 BG-ELEMENT sprite streams (scroll-VM op `$10`) - the part of the background that is not in the column stream |
+| `w20mapgate.py` | VALIDATOR 1 - the static stream vs the board's `bg_videoram` in the 161-frame capture, three mutations |
+| `w20maprec.lua` + `w20maprun.py` | VALIDATOR 2 - a write tap on `$900000..$900FFF` logging **every** map longword the board writes for a whole stage-1 run |
 | `w20mapgate2.py` | judges that run against the static stream, three mutations |
 
 One two-line, behaviour-free addition to a sibling's tool: `scrollmap.py` grew a
@@ -70,8 +70,8 @@ WEIGHT  whole stage 1, encoded exactly as export-web.mjs encodes today
 SHARD   YES.  8 shards of 32 map columns: 110.5 102.1 66.1 77.8 97.7 76.3
         119.6 0.4 KiB, plus the second map as a 9th (80.9 KiB).  Sharding
         costs +865 B (+0.13 %) over one blob because the shards share almost no
-        tiles.  Only shards 0-1 (212.6 KiB) are needed in the first 5 s — LESS
-        than the page loads today — and every later shard has >= 4.3 s of lead.
+        tiles.  Only shards 0-1 (212.6 KiB) are needed in the first 5 s - LESS
+        than the page loads today - and every later shard has >= 4.3 s of lead.
 
 SHARED  NOTHING.  7,634 tile numbers across the five stages hold 7,325 distinct
         PICTURES, and the cross-stage intersections are 0 or 1 tile each:
@@ -163,7 +163,7 @@ carry the map as `(u16 tile, u8 bank)` and lose nothing.
 
 ---
 
-## 2. THE FORMAT FINDING — a painted strip, not a tile set
+## 2. THE FORMAT FINDING - a painted strip, not a tile set
 
 ```
 stage 0: 2232 entries, 1820 distinct, reuse 1.23x
@@ -185,7 +185,7 @@ stage 2:  28 of  28 (100 %)               stage 3: 210 of 210 (100 %)
 stage 4: 252 of 252 (100 %)               deltas [-9 x226, 171 x24, 99 x1]
 ```
 
-Ten columns descend `82, 73, …, 1` — covering tile offsets 1..90 — then `+171`
+Ten columns descend `82, 73, …, 1` - covering tile offsets 1..90 - then `+171`
 starts the next block at 172 covering 91..180. The tile ROM holds each stage as
 a sequence of **90-tile blocks, 10 map columns each, columns stored
 back-to-front**. Stage 1 (index 0) is the only stage with hand edits: 59 of its
@@ -196,14 +196,14 @@ Three consequences that matter more than the observation:
 
 1. **Tile data is proportional to scroll distance**, not to level complexity.
    1,820 tiles is a 288 px × ~6,500 px painting.
-2. **There is no tile set to share** — not with another stage, barely with
+2. **There is no tile set to share** - not with another stage, barely with
    itself.
 3. **Sharding on scroll position is exact**, because tile number is very nearly
    a linear function of map column. §4d.
 
 ---
 
-## 3. VALIDATOR 1 — the static stream vs the board's map RAM (the capture)
+## 3. VALIDATOR 1 - the static stream vs the board's map RAM (the capture)
 
 `w20mapgate.py` takes the MEASURED `bg_videoram` out of the wave-6 board capture
 (161 frames of `fly-around`, stage 1, `rip/web/capture.bin`) and requires every
@@ -224,12 +224,12 @@ Red-validated by mutation (`03-checks-that-can-fail.md`):
 
 | break | what it changes | result |
 |---|---|---|
-| — | baseline | **10,304 matched / 0 unmatched** |
+| - | baseline | **10,304 matched / 0 unmatched** |
 | 1 | drop the `$0AA90000` tile base | 0 matched / 10,304 unmatched |
 | 2 | swap the tile and attr halves | 0 matched / 10,304 unmatched |
 | 3 | read the ring column-major, not row-major | 0 matched / 5,796 unmatched |
 
-## 3b. VALIDATOR 2 — the WHOLE stage, and it found something
+## 3b. VALIDATOR 2 - the WHOLE stage, and it found something
 
 `w20maprec.lua` taps **every write to `$900000..$900FFF`** for an entire
 invulnerable stage-1 run and logs the map longword with its logic frame and
@@ -247,7 +247,7 @@ final $8130CE=0344  $813096(stage)=0000  $8130D2=0000  $81318A=003D
 DONE logicframes=11000
 ```
 
-`$8130CE` finished at **`$0344`** — the run reached the stage-1 boss lock, i.e.
+`$8130CE` finished at **`$0344`** - the run reached the stage-1 boss lock, i.e.
 the end of the scroll program (`20-recon-scroll-engine.md` §5).
 
 ```
@@ -263,12 +263,12 @@ w20map-whole.tsv: 207050 16-bit writes to $900000..$900FFF, max lf 10996, max $8
 ```
 
 **573 complete ring columns, 0 unmatched, and the 224 columns proven are exactly
-0..223** — a measured confirmation of `w20consume.py`'s listing-derived claim
+0..223** - a measured confirmation of `w20consume.py`'s listing-derived claim
 that the script reaches columns 0..223 and never the tail. Mutations:
 
 | break | matched columns | stream columns proven |
 |---|---|---|
-| — baseline | **573** | **224 of 248** |
+| - baseline | **573** | **224 of 248** |
 | 1 drop the tile base | 0 | 0 |
 | 2 read the stream with a 32-byte column record | 57 | 28 of 279 |
 | 3 swap tile/attr | 0 | 0 |
@@ -276,7 +276,7 @@ that the script reaches columns 0..223 and never the tail. Mutations:
 (Break 2 is a partial red on purpose: `lcm(32,36)` realigns every ninth column,
 so a wrong stride still lands on 10 % of the stream. 573 → 57 is still red.)
 
-### And the 93,248 unexplained writes — the SECOND MAP
+### And the 93,248 unexplained writes - the SECOND MAP
 
 Those writes come from `$26C24A`, not from the ring writer `$240D9A`, and carry
 tile numbers `$32A9..$370B`, above every stage bank. Disassembled:
@@ -306,17 +306,17 @@ measured writes NOT in the stage-1 stream: explained by $227AF8/base $32A9: 9315
 ```
 
 **93,150 of 93,248, exactly.** So `20-recon-scroll-engine.md` §9.3's "24 of
-stage 1's 248 map columns are unreachable — do not delete them on my say-so"
+stage 1's 248 map columns are unreachable - do not delete them on my say-so"
 resolves: **23 of the 24 are a second map with a different tile base, painted in
 one shot by a different routine.** The instinct not to delete them was right.
 
 The painter is a normal enemy-type handler: `census.py`'s type table gives
 **type `$1C`, table entry `$267904`, init `$26C1C2`, handler `$26C20C`**. It is
-in **no stage's spawn script** (checked all five, 2,237 records) — see §8.5.
+in **no stage's spawn script** (checked all five, 2,237 records) - see §8.5.
 
 The remaining 98 writes are `$25BB98`, at lf1014 (before the stage), base
 `$36A9`: `$25BB6C` paints **14 columns × 7 rows from `$2302E0` = exactly one
-448×224 screen** into ring column 0 — the pre-stage page. A byte scan of the
+448×224 screen** into ring column 0 - the pre-stage page. A byte scan of the
 whole image for `addi.l #$xxA90000,Dn` finds exactly four sites, two per build:
 
 ```
@@ -334,7 +334,7 @@ so **there are exactly two extra BG-map bases in each build and I have both.**
 
 ### 4a. What a whole stage weighs
 
-`python w20price.py price` — the encoding is the one `export-web.mjs` already
+`python w20price.py price` - the encoding is the one `export-web.mjs` already
 ships: BG tiles DECODED to one byte per pixel (1,024 B/tile), tile numbers as
 u16, everything gzip level 9.
 
@@ -351,7 +351,7 @@ stage  tiles   sheet raw    sheet gz    map raw  map gz  tileno gz  pal gz   TOT
 ```
 
 (`w20level.py budget` reports the same tile figures and a slightly larger map
-figure — 3,764 vs 3,544 — because it packs the map big-endian and this packs it
+figure - 3,764 vs 3,544 - because it packs the map big-endian and this packs it
 little-endian. Both are honest; the port will pick one.)
 
 The **second map** (§3b), which no earlier pass counted:
@@ -368,7 +368,7 @@ pre-stage screen  $25BB6C
     content shared with stage 0..4: 0 0 0 0 0
 ```
 
-And the **13 BG elements** — the big background objects the scroll VM's op `$10`
+And the **13 BG elements** - the big background objects the scroll VM's op `$10`
 spawns, which are sprite streams, not map columns:
 
 ```
@@ -395,8 +395,8 @@ Each handler's `($10,A6) = #<long>` is a **sprmask word offset** and its
 `($14,A6) = #<word>` is the same packed extent word `export-web.mjs` already
 models for the ship (`wide = bits 14..9`, `high = bits 8..0`). Two checks that
 this reading is right and not a coincidence: the thirteen mask blocks are
-**contiguous with two-word gaps** — id 0 at `$22CBCC` + 3,746 words lands at
-`$22DA6E` and id 1 begins at `$22DA70`, all thirteen in a row — and their
+**contiguous with two-word gaps** - id 0 at `$22CBCC` + 3,746 words lands at
+`$22DA6E` and id 1 begins at `$22DA70`, all thirteen in a row - and their
 thirteen colour blocks **coalesce into exactly one** run of 100,327 words. A
 wrong `wide`/`high` split makes neither true.
 
@@ -450,7 +450,7 @@ firing enemy types and a boss (`20-recon-enemy-census.md`,
 stage  form                       raw        gzip-9     brotli-11
   0   decoded 1 B/px          1,863,680    656,958      563,420   (br/gz 85.8 %)
   0   packed 5bpp (ROM)       1,164,800    792,954      674,529
-  0   planar 5x1bpp           1,164,800    815,177          —
+  0   planar 5x1bpp           1,164,800    815,177          -
   3   decoded 1 B/px          1,935,360    670,531      405,373   (br/gz 60.5 %)
   4   decoded 1 B/px          2,322,432    855,266      714,455
 ```
@@ -458,16 +458,16 @@ stage  form                       raw        gzip-9     brotli-11
 (gzip differs ~0.7 % between python `zlib` and node `zlib`; §4a's table is
 python's, this one is node's, both quoted as measured.)
 
-* **Shipping the ROM's own packed 5bpp is WORSE by 21 %** — 792,954 vs 656,958.
+* **Shipping the ROM's own packed 5bpp is WORSE by 21 %** - 792,954 vs 656,958.
   Decoding to a byte per pixel costs 60 % more raw and gzip more than wins it
   back: a byte-aligned stream is compressible, a 5-bit bitstream is not.
   `export-web.mjs`'s existing choice is right and should not be "optimised".
 * **Planar is worse still.**
-* **Brotli is worth 14 % on stage 1 and 40 % on stage 3** — but
+* **Brotli is worth 14 % on stage 1 and 40 % on stage 3** - but
   `DecompressionStream` has no brotli, so that is a server-side
   `Content-Encoding` lever, not a file-format one. Noted, not assumed.
 
-### 4d. THE SHARD DECISION — shard it, and here are the boundaries
+### 4d. THE SHARD DECISION - shard it, and here are the boundaries
 
 `python w20price.py shard 0 32`:
 
@@ -486,13 +486,13 @@ shard  cols        tiles  new-tiles  sheet gz  map gz  TOTAL gz    KiB
 
 **The shards are disjoint.** Six of the eight introduce every tile they use as a
 new tile; two introduce all but one or two. Sharding costs **865 bytes** over
-the single-blob 665,346 B — **0.13 %** — which is what §2 predicted: the map is
+the single-blob 665,346 B - **0.13 %** - which is what §2 predicted: the map is
 a strip, so a scroll range *is* a tile range. (Shard 7 shows 0 new tiles because
 those columns are the second map read with the wrong base; its real cost is the
 80.9 KiB in §4a.)
 
 The schedule, from the validated simulation (`scrollmap.cmd_sim(0)` with the
-`TRACE` hook) — the first logic frame at which each shard's first column is
+`TRACE` hook) - the first logic frame at which each shard's first column is
 written:
 
 ```
@@ -518,7 +518,7 @@ shard  cols       needed at            gap to the previous shard
 * **The second map (80.9 KiB) is its own shard**, first painted at lf≈3000
   ≈ sim frame 1380 ≈ 23 s in. Ample lead.
 * **The 13 BG elements (143.1 KiB) ship as one blob.** They are *events*, not
-  scroll range — the first fires at frame 694 and the last at 5,654 — and 11 s
+  scroll range - the first fires at frame 694 and the last at 5,654 - and 11 s
   of lead on 140 KiB does not justify a second scheduler.
 * **32 columns is a choice, not a boundary the data forces.** The data's own
   boundary is the 90-tile / 10-column block (§2), which would give 25 shards of
@@ -529,11 +529,11 @@ shard  cols       needed at            gap to the previous shard
 
 ---
 
-## 5. WHAT IS SHARED BETWEEN STAGES — nothing, and here is the right proof
+## 5. WHAT IS SHARED BETWEEN STAGES - nothing, and here is the right proof
 
 Tile NUMBERS *cannot* collide: `$240D62` gives each stage its own base and the
 five ranges are disjoint by construction. **An empty intersection of tile
-numbers therefore proves nothing about sharing** — it is a restatement of the
+numbers therefore proves nothing about sharing** - it is a restatement of the
 table. The question can only be answered on CONTENT. `w20price.py share` hashes
 each tile's 1,024 decoded bytes:
 
@@ -571,7 +571,7 @@ GAPS BETWEEN CONSECUTIVE STAGE RANGES
 **Three duplicate pictures in 7,328.** Every off-diagonal cell is 0 or 1. The
 309-tile difference between the number union (7,634) and the content union
 (7,325) is **intra-stage**: stage 2 has 1,404 numbers for 1,274 pictures,
-stage 4 has 1,890 for 1,806, stage 5 has 2,268 for 2,178 — the artists painted
+stage 4 has 1,890 for 1,806, stage 5 has 2,268 for 2,178 - the artists painted
 the same cell twice inside one strip. Stage 1 has 1,820 numbers for 1,818
 pictures; deduplicating it saves **two tiles**.
 
@@ -595,11 +595,11 @@ full cost. There is no "load the tile set once" saving to design for:
 could reuse `$32A9`.)
 
 Stage 3 (index 2) is the outlier and it is not an error: 28 map columns of
-scenery and **fourteen** BG elements totalling 804 KiB raw — the arena stage
+scenery and **fourteen** BG elements totalling 804 KiB raw - the arena stage
 `20-recon-scroll-engine.md` §8c found locking after 14 seconds. Its background
 is built out of big objects rather than a long strip.
 
-The whole game's backgrounds are **3.58 MiB gzipped** — a per-stage download,
+The whole game's backgrounds are **3.58 MiB gzipped** - a per-stage download,
 not a boot download, and §4d's shard machinery is the same machinery for it.
 
 ---
@@ -609,8 +609,8 @@ not a boot download, and §4d's shard machinery is the same machinery for it.
 Every byte figure above rests on `rip/assets/bg.tiles.bin` being a correct
 decode. `w20price.py verify` re-assembles the `igs023` region from the ROM files
 (with `cave_t04401w064.u19` at **`0x180000`**, `00-recon-assets.md` §1) and
-re-decodes 100 tiles — the ten range endpoints of the five stages plus 90 at
-random — straight out of the bitstream:
+re-decodes 100 tiles - the ten range endpoints of the five stages plus 90 at
+random - straight out of the bitstream:
 
 ```
 $ python games/ddpdoj/tools/oracle/w20price.py verify
@@ -622,11 +622,11 @@ igs023 region assembled  = 10485760 B
 
 ---
 
-## 7. WHAT I RULED OUT — including three claims of the earlier pass
+## 7. WHAT I RULED OUT - including three claims of the earlier pass
 
 1. **"Every pairwise tile-set intersection between stages is ZERO, therefore
    nothing is shared."** (interim pass §2.) The conclusion is right; **the proof
-   was not** — disjoint tile *numbers* are a restatement of `$240D62`'s
+   was not** - disjoint tile *numbers* are a restatement of `$240D62`'s
    per-stage bases and are compatible with every stage using identical art. The
    content-hash test in §5 is the proof, and it gives a different number:
    3 shared pictures, not 0.
@@ -634,7 +634,7 @@ igs023 region assembled  = 10485760 B
    That is tiles + map + palette only. It omits the 13 BG elements (143,102 B)
    and the second map (82,823 B). The measured figure is **895,803 B**, 34 %
    higher.
-3. **"sum-of-parts gz = 2,864,820 vs union gz = 2,864,447 — sharding per stage
+3. **"sum-of-parts gz = 2,864,820 vs union gz = 2,864,447 - sharding per stage
    costs nothing."** True, but that comparison cannot detect sharing: gzip's
    union figure would be smaller than sum-of-parts if tiles were shared, and it
    is not, which is a *consequence* of §5 rather than evidence for it. The
@@ -658,8 +658,8 @@ igs023 region assembled  = 10485760 B
 
 1. **Price the sprite art a live stage 1 needs.** §4b's 1,024 KiB covers the
    BACKGROUND. Enemy, boss, explosion and pickup streams are not in it. The
-   method is proven — §4a did exactly this for the 13 background elements from
-   `($10,A6)`/`($14,A6)` — but the enemy side needs the per-type
+   method is proven - §4a did exactly this for the 13 background elements from
+   `($10,A6)`/`($14,A6)` - but the enemy side needs the per-type
    `($a,A6)`/`($e,A6)` pairs across `20-recon-enemy-census.md`'s 111 handlers,
    which is a wave, not a paragraph.
 2. **The last 24 columns are 23 + 1.** Column 247 (`$227E34..$227E57`, 36 B) is
@@ -680,18 +680,18 @@ igs023 region assembled  = 10485760 B
 5. **Find what spawns type `$1C`.** It is in none of the five stage scripts
    (all 2,237 records checked). The scroll VM's own SPAWN op reads a 22-entry
    object stream at `$26157A` whose eleventh entry is `$224338` with param
-   `$001C` — suggestive, but the params of the other entries do not look like
+   `$001C` - suggestive, but the params of the other entries do not look like
    type numbers and the pointers themselves (`$2238B8`, `$224338`, …) dump as
    colour data, not object records. `$24150A`'s record format is still unopened
    (`20-recon-scroll-engine.md` §9.5). **Named, not resolved.**
 6. **Loop 2, and stages 2–5 dynamically.** Every dynamic number here is loop 1,
    stage 1. `$813092` (loop) and `$813096` (stage) read 0 throughout the run.
    The scroll program is indexed by `$813096` alone, so I have no reason to
-   expect different layout data on loop 2 — but "no reason to expect" is not a
+   expect different layout data on loop 2 - but "no reason to expect" is not a
    measurement.
 7. **The inter-bank tile gaps** (227, 536, 772, 158 tile numbers between the five
    stage ranges, 1,693 tiles = 1.06 MB packed) are referenced by no stage's
-   column stream. Title screens, endings, a sixth map, or padding — I did not
+   column stream. Title screens, endings, a sixth map, or padding - I did not
    look for their readers.
 8. **The TX layer beyond the bundle's current 159 tiles.** It is the HUD and the
    PGM BIOS font, it does not scroll with the stage, and I did not price a full
@@ -726,7 +726,7 @@ Six things that will save the hours they cost me:
    (type `$1C`) paints 23×9 columns with its own tile base every frame it lives,
    and `$25BB6C` paints a whole screen before the stage. A port that implements
    only the column stream renders a hole where a background structure should be.
-3. **MAME splits `move.l` into TWO 16-bit tap callbacks** — byte offset +0
+3. **MAME splits `move.l` into TWO 16-bit tap callbacks** - byte offset +0
    carries the tile word, +2 the attribute, both in the low half of `data`. A
    tap reading `(data >> 16)` gets zero for every tile number in the game. This
    cost one full 11,000-frame run.
@@ -735,5 +735,5 @@ Six things that will save the hours they cost me:
 5. **Decoded-and-gzipped beats the cartridge's own packing by 21 %.** Do not
    "save space" by shipping the 5bpp bitstream. §4c.
 6. **`cave_t04401w064.u19` loads at `0x180000`.** `rip/assets/bg.tiles.bin` is
-   already right — §6 re-decodes 100 tiles from the assembled region and gets
+   already right - §6 re-decodes 100 tiles from the assembled region and gets
    100/100, and the plane-order mutation gets 15/100.

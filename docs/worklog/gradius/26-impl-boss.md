@@ -1,4 +1,4 @@
-# Wave 26 IMPLEMENTER — the boss
+# Wave 26 IMPLEMENTER - the boss
 
 status: DONE
 implementer, 2026-08-02/03
@@ -18,22 +18,22 @@ is the implementer's measurement log.
 `games/gradius/src/enemies.js` (appended after the W22/W23 handlers, plus two
 cases wired into `dispatch`):
 
-- **`h_B914`** (entry 24, type `$98`, slot 9) — the head per-frame handler.
+- **`h_B914`** (entry 24, type `$98`, slot 9) - the head per-frame handler.
   Morph stepper (`$B8EF` damage ladder, 6 HP), the loop-2 shield arm, and the
   dispatch into the alive body / death paths.
-- **`h_B913`** (entry 25, type `$99`) — a no-op (`RTS`); the body slots are
+- **`h_B913`** (entry 25, type `$99`) - a no-op (`RTS`); the body slots are
   inert, every visible byte written by the head's body-sync.
-- **`bossAliveBody`** (`loc_B9A8`) — the intro X-descent and the rank/fire path.
-- **`bossRankAndFire`** (`loc_BA0A`-`$BA9F`) — Y catch-up, rank movement,
+- **`bossAliveBody`** (`loc_B9A8`) - the intro X-descent and the rank/fire path.
+- **`bossRankAndFire`** (`loc_BA0A`-`$BA9F`) - Y catch-up, rank movement,
   body-sync, the charge/fire decision, and the volley/vulnerability/timeout
   ladder on `$04AC`/`$04CC`/`$048C`.
-- **`bossRankMove`** (`loc_BA18`-`$BA68`) — rank-indexed vertical movement with
+- **`bossRankMove`** (`loc_BA18`-`$BA68`) - rank-indexed vertical movement with
   the load-bearing CARRY tracked explicitly (LDA preserves carry; two paths into
   the fractional SBC/ADC carry different carry bits).
-- **`bodySync`** + **`bodySyncSlot`** (`sub_B9B7`/`sub_B9F2`) — the body-sync,
+- **`bodySync`** + **`bodySyncSlot`** (`sub_B9B7`/`sub_B9F2`) - the body-sync,
   written once and run twice (X=9 then X=8) via the `$030B,X` slot-N-1 trick.
-- **`bossFire`** (`loc_BAA0`-`$BAF6`) — the 4-bullet armament cycle.
-- **`bossDeath`** / **`bossTimeoutDeath`** / **`bossDeathTail`** — both death
+- **`bossFire`** (`loc_BAA0`-`$BAF6`) - the 4-bullet armament cycle.
+- **`bossDeath`** / **`bossTimeoutDeath`** / **`bossDeathTail`** - both death
   triggers (damage: score + `INC $3B` + warp-gate + explosion; timeout: none),
   sharing the `$B983` explosion conversion → script 4 → metasprite `$A2`,
   body clear, and `INC $1B` (`$85`→`$86`, gated `$0100 < 2`).
@@ -64,16 +64,16 @@ mis-routes the overflow cases.
   movement modifies `$032C,X` (Y) to track the player vertically; `$036C,X` (X)
   is the intro descent. Verified against the cartridge's head X ($F0→$A3) and
   the rank-move clamp `[$18,$A8]` on Y.
-- **`$B9C8` is `LDA #$03`, not `LDA #$32`** — the `prg.asm` listing mis-printed
+- **`$B9C8` is `LDA #$03`, not `LDA #$32`** - the `prg.asm` listing mis-printed
   it (two consecutive `A9 32` where the first is `A9 03`). Raw PRG byte at
   `$B9C9` is `$03`; the cartridge's `attrMask[19] = 3` confirms it. The oracle
   caught this on the first run (port wrote `$32 = 50`, rom had `3`). Every other
-  boss immediate was then re-verified against the raw PRG — all correct.
+  boss immediate was then re-verified against the raw PRG - all correct.
 - **The morph step scores `+$50` AND sfx `$08`** (`$B947 JSR $845B` = scoreCapsule,
   then `$B94A LDA #$08 / JSR $EC1E`). The recon §3 labelled the pair "morph-
   changed sfx" and elided the score; both are ported.
 
-## 4. THE DONE-WHEN — MET
+## 4. THE DONE-WHEN - MET
 
 MEASURED end-to-end on the endchain run (re-recorded to 12000 frames so the
 death is in the cartridge artifact):

@@ -1,11 +1,11 @@
-# Wave 13 review — the audio output path
+# Wave 13 review - the audio output path
 status: DONE
 wave: 13   role: review   started: 2026-08-01
 
 Reviewed commits `237250a` and `2b35269` on `main`. I am a reader: I edited
 `src/` only to apply and revert deliberate breaks, and every file is
 byte-identical to HEAD afterwards (`git hash-object` vs `git rev-parse HEAD:<f>`
-for all ten wave-13 files — all SAME). Nothing committed.
+for all ten wave-13 files - all SAME). Nothing committed.
 
 ## The two questions I was asked first
 
@@ -15,7 +15,7 @@ for one rather than taking the claim. `grep -rl "wav\|pcm"` over
 (which hashes its own output and holds no reference) plus unrelated oracle
 probes and `node_modules/jsnes`. `jsnes` is imported by five `tools/probe*.mjs`
 recon scripts and by nothing in `tests/`. The sha256 `c75b7ab4…` appears in
-exactly two places — a comment in `src/audio/apu.js` and the impl worklog — and
+exactly two places - a comment in `src/audio/apu.js` and the impl worklog - and
 in **no** test, so there is not even a self-golden hash to rot.
 
 **Is the synthesiser deterministic across processes or only within one?**
@@ -34,7 +34,7 @@ The file uses only `+ - * / Math.PI Math.floor` and IEEE-754 doubles (no
 `Math.exp`, no clock, no `Math.random`), so cross-engine determinism is
 well-founded rather than lucky.
 
-## Did the corpus regress? No — I re-ran the whole gate
+## Did the corpus regress? No - I re-ran the whole gate
 
 ```
 node --test games/gradius/tests/        349 pass, 0 fail, 0 skipped
@@ -50,10 +50,10 @@ node games/gradius/tools/test-all.mjs   GREEN -- 8 passed, 0 failed, 0 SKIPPED
 ```
 
 The display list is watched and it is clean. `scen.py` was not re-run and does
-not need to be — I checked the mtimes myself: `objloop.lua` 01:56,
+not need to be - I checked the mtimes myself: `objloop.lua` 01:56,
 `probe.lua` 06:33, `scenarios.json` 12:42, `out/scen/*.json` 12:56-12:57.
 
-## FINDING 1 — B13's stated cartridge fact is FALSE, and the test window is 92 frames short
+## FINDING 1 - B13's stated cartridge fact is FALSE, and the test window is 92 frames short
 
 This is the wave's headline finding and the reason given for it does not hold.
 
@@ -75,7 +75,7 @@ $4001 distinct=1   30 x7      $4005 distinct=1  30 x9
 with divider period 4, and `$400F = $08` gives it length index 1 = 254 half
 frames. So an envelope genuinely decays on cartridge data. Over the run the
 noise channel spends 15 frames in envelope mode, all of them with `length > 0`.
-(The `$4001`/`$4005` half of the claim — sweep always `$30`, disabled — holds.)
+(The `$4001`/`$4005` half of the claim - sweep always `$30`, disabled - holds.)
 
 I then re-ran B13 itself, without touching `src/`: I copied `apu.js` to a
 sibling module, deleted the `dirty = true` at the frame-counter clock in the
@@ -96,10 +96,10 @@ that `frames: 400` to ≥ 520 makes the cartridge-stream half catch B13 on its
 own, with no constructed case needed.
 
 The constructed case is still worth keeping. What must change is the three
-places that record a cartridge fact that is not one — a wrong note in this repo
+places that record a cartridge fact that is not one - a wrong note in this repo
 has misled somebody every time one was left behind (README rule 5).
 
-## FINDING 2 — the backlog valve cannot open, and the thing that does grow has no ceiling
+## FINDING 2 - the backlog valve cannot open, and the thing that does grow has no ceiling
 
 `src/main.js` clamps `acc = Math.min(acc + dt, period * 8)`, so at most **8**
 logic frames are handed over per animation-frame callback, and `pump()` runs
@@ -112,8 +112,8 @@ shows `q0` for ever and `drop` never appears.
 Simulated 10 minutes of the page's real loop shape against a fake context:
 `maxQueue=1  dropped=0  underruns=0`, in every run.
 
-The quantity that actually grows is `apu.out` — rendered samples not yet
-scheduled — and it has no ceiling at all (`push()` just doubles the array).
+The quantity that actually grows is `apu.out` - rendered samples not yet
+scheduled - and it has no ceiling at all (`push()` just doubles the array).
 Production is paced by `performance.now()`, consumption by the AudioContext's
 own clock, and those are two different clocks in a browser:
 
@@ -131,13 +131,13 @@ player will hear, and **not one of the three numbers on the page moves**.
 `drain()` also `copyWithin`s the whole remaining buffer per 1024-sample chunk,
 so the cost grows with the backlog.
 
-The test that covers the valve queues 40 frames with no pump in between — state
+The test that covers the valve queues 40 frames with no pump in between - state
 `main.js` cannot produce. That is the "harness sets up state the app never has"
 shape this project has been bitten by before. The valve belongs on
 `apu.outLen`, not on `queue.length`, or `queue.length`'s ceiling belongs below
 8 where it can be reached.
 
-## FINDING 3 — the whole output filter stage is uncovered (2 breaks, both GREEN)
+## FINDING 3 - the whole output filter stage is uncovered (2 breaks, both GREEN)
 
 | break | result |
 |---|---|
@@ -146,10 +146,10 @@ shape this project has been bitten by before. The valve belongs on
 
 A 3 kHz low-pass instead of 14 kHz, or no filter stage at all, passes every
 check in the repo. These are exactly the "audible as balance and tone, not as a
-wrong note" class the file's own header says only a human can catch — and there
+wrong note" class the file's own header says only a human can catch - and there
 is nothing at all constraining them, not even a coefficient assertion.
 
-## FINDING 4 — the sweep unit's negate arms are uncovered (2 breaks, both GREEN)
+## FINDING 4 - the sweep unit's negate arms are uncovered (2 breaks, both GREEN)
 
 | break | result |
 |---|---|
@@ -159,27 +159,27 @@ is nothing at all constraining them, not even a coefficient assertion.
 The comment at that line calls it *"the only behavioural difference between the
 two channels and it is why they are one class with a flag"*, and it has no
 witness. Measured above: the driver writes only `$30` to `$4001`/`$4005`, so no
-cartridge-driven test can ever reach it — it needs a constructed case exactly
+cartridge-driven test can ever reach it - it needs a constructed case exactly
 like B13's. The implementer named this as the next candidate; it is as bad as
 suspected, and both arms are dead, not just the `-1`.
 
-## The breaks that DID go red — the suite is live
+## The breaks that DID go red - the suite is live
 
 | break | result |
 |---|---|
 | R1 `FC_HALF` step 4 → 0 (one half frame per sequence) | **RED, 2 tests** (`96/192 Hz`, backlog) |
 | R2 `apu()` skips logging `$400B` | **RED, 5 tests** + `audiohash.mjs` aborts with the named bridge error |
-| R3 B13 re-applied (`dirty = true` deleted at the FC clock) | **RED, 1 test** — and the cartridge-stream halves were byte-identical, exactly as reported |
+| R3 B13 re-applied (`dirty = true` deleted at the FC clock) | **RED, 1 test** - and the cartridge-stream halves were byte-identical, exactly as reported |
 
 R2 is the one the brief asked about: the bridge is not decorative. R3 reproduces
-the implementer's account precisely — the constructed-envelope assertion is what
+the implementer's account precisely - the constructed-envelope assertion is what
 makes it red at 400 frames.
 
 After each break the file was restored and verified:
 `sha256 ca23ed0c…` for `apu.js`, `3ec3a895…` for `output.js`, and every wave-13
 `src/` blob equal to its HEAD blob.
 
-## FINDING 5 (informational) — the "stable ratio" is not that stable
+## FINDING 5 (informational) - the "stable ratio" is not that stable
 
 Re-measured, best of 5 warm passes, 600 frames, same script:
 
@@ -190,8 +190,8 @@ worklog: logic 0.031  cache-on 1.075  cache-off 1.807        ratio ~1.7
 
 The absolute numbers sit inside the recorded 2x host-load spread, but the RATIO
 the worklog nominates as *the* stable measurement moved 15%. The conclusion is
-unaffected — the synthesiser costs 1-2 ms against a 16.64 ms budget and `nmi()`
-well under 0.1 ms — but "the stable measurement is the ratio" should be softened
+unaffected - the synthesiser costs 1-2 ms against a 16.64 ms budget and `nmi()`
+well under 0.1 ms - but "the stable measurement is the ratio" should be softened
 to "the ratio is stable to about 20%".
 
 ## What I verified as claimed, and did not find fault with
@@ -208,7 +208,7 @@ to "the ratio is stable to about 20%".
   match the published mode-1 table doubled to CPU cycles, period 37282 → 48.0 Hz
   sequence, 96.0 Hz half, 192 Hz quarter.
 * **`nmi()` clears `apuLog` above the `$8073` lock**, so a lag frame hands over
-  an empty batch and still costs audio time — which is what the cartridge does.
+  an empty batch and still costs audio time - which is what the cartridge does.
 * **The stale shared `.git/index` hazard is real.** `git status` reports the
   wave-13 files as `D`/`??`. I confirmed by blob hash that the working tree
   equals HEAD for all of them, and I did not touch the shared index.

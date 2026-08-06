@@ -1,13 +1,13 @@
-# FINDING (hypothesis) — why a slow host makes the port feel UNRESPONSIVE, not just slow
+# FINDING (hypothesis) - why a slow host makes the port feel UNRESPONSIVE, not just slow
 
 status: SETTLED by wave 15. Wave 14 found the mechanism and built a fix that was
-        measured — by its own reviewer, and only afterwards — to be incomplete;
+        measured - by its own reviewer, and only afterwards - to be incomplete;
         wave 15 completed it. The CAUSE was not the one this page suspected.
         See `14-impl-input-granularity.md`, `14-review.md` §6 and
         `15-impl-input-queue-fix.md`.
 role: bug report from play   raised: 2026-08-01
 
-## THE LEDGER — what was measured, and when
+## THE LEDGER - what was measured, and when
 
 **Do not read this page's status as a verdict on a day.** It has been three
 different things and the sequence is the useful part:
@@ -26,7 +26,7 @@ time; this is the fifth, and it cost the review that found it.
 ## WHAT WAVES 14 AND 15 MEASURED (read this before the hypothesis below)
 
 1. **The input mechanism was real, and worse than described.** The page below
-   says k frames share one input word. They did — but the sharper defect is
+   says k frames share one input word. They did - but the sharper defect is
    that a press and its release that BOTH land between two animation frames were
    never seen at all: the live mask went 0 -> A -> 0 with nothing looking.
    `src/input.js` now queues every transition as it arrives and
@@ -36,7 +36,7 @@ time; this is the fifth, and it cost the review that found it.
    **Wave 14's version of that queue still dropped the tap, and it took a
    reviewer to measure it.** At the queue's two-deep cap the rule was "the newest
    state overwrites the tail", so a press and its release arriving while full
-   wrote the tail twice — `A`, then `0` — and the press never occupied a slot.
+   wrote the tail twice - `A`, then `0` - and the press never occupied a slot.
    A finger on the touch d-pad emits several `pointermove`s per animation frame
    and therefore holds the queue at the cap continuously, so on a phone this was
    not a corner case. Measured, k=1, no host load:
@@ -52,20 +52,20 @@ time; this is the fifth, and it cost the review that found it.
    (30, not 60: `$8206` is `pressed = now & ~prev`, so two edges need a word
    with the bit clear between them and sixty frames hold at most thirty.)
    Wave 15's rule is that a bit may never leave the queue while it is still an
-   undelivered press — at the cap, `tail := w | (tail & ~prev)` — so a press
+   undelivered press - at the cap, `tail := w | (tail & ~prev)` - so a press
    survives its own release. The cap is still 2 and the memory bound is still
    exactly two words.
 2. **`nmi()` was NOT the cost.** Measured over 600 frames, best of five passes,
    `tools/framecost.mjs`: **median 0.039 ms, p99 0.138 ms** against a 16.639 ms
-   budget — 0.24% of a frame. Candidate 2 on this page ("waves 6-11 added
+   budget - 0.24% of a frame. Candidate 2 on this page ("waves 6-11 added
    firing, the kill chain, power-ups, sound and enemy bullets ... it is entirely
    possible the port now needs more than 16.6 ms") is **FALSE**, and measured
    false rather than argued away.
 3. **`renderFrame()` WAS the cost, and nobody had ever looked.** Median
    **6.074 ms, 36% of the whole frame budget**, more than `nmi()` and the wave-13
    synthesiser put together. Its background loop called `tileRow()` once per
-   PIXEL — filling an 8-byte scratch array to read one byte of it, 61,440 times
-   a frame — and threw seven eighths of every read away. One line, bit-identical
+   PIXEL - filling an 8-byte scratch array to read one byte of it, 61,440 times
+   a frame - and threw seven eighths of every read away. One line, bit-identical
    by construction, took it to **2.481 ms**. The pixel gate (`tests/ppu.test.js`,
    61,440 px x 10 captured frames) is 0 px different before and after.
 4. **k itself is still unmeasured** and cannot be measured from node. The port
@@ -86,7 +86,7 @@ Owner, playing the live Gradius build: **"when it starts is really unresponsive
 ... might be my browser being slowed down by all the agents running around, but
 might be worth a look into."**
 
-Host contention is very plausible — five MAME recons, an architect and a wave
+Host contention is very plausible - five MAME recons, an architect and a wave
 implementer were running emulators on the same machine. **But "unresponsive" is
 a different symptom from "slow", and the difference points at something real.**
 
@@ -103,7 +103,7 @@ updates the key/touch masks between animation frames. So when the host falls
 behind and the loop runs k logic frames in one callback, **all k frames consume
 the SAME input word.**
 
-At k=1 the port samples input 60 times a second. At k=8 — the clamp — it samples
+At k=1 the port samples input 60 times a second. At k=8 - the clamp - it samples
 it **7.5 times a second** while still advancing the game at full speed. That is
 not the game running slowly; that is the game running at full speed while
 listening 8x less often. A tap shorter than 8 logic frames can be seen once,
@@ -127,7 +127,7 @@ Unverified, but two candidates worth measuring before assuming host load:
    now needs more than 16.6 ms per frame on a loaded machine, and no check in
    this repo would notice.
 
-## How to settle it — cheap, and in this order
+## How to settle it - cheap, and in this order
 
 1. **Measure the cost.** Time `nmi()` over a few thousand frames headlessly and
    report min/median/p99 in ms against the 16.64 ms budget (59.7 Hz... note
@@ -136,7 +136,7 @@ Unverified, but two candidates worth measuring before assuming host load:
 2. **Log k.** Instrument how many logic frames run per animation frame in the
    browser. If k > 1 happens at all on an idle machine, the loop is already
    behind.
-3. Only then blame contention — and confirm by playing with no agents running.
+3. Only then blame contention - and confirm by playing with no agents running.
 
 ## If it is real, the fix is NOT to make the loop faster first
 
@@ -146,7 +146,7 @@ granularity from host jitter, and it is the same discipline
 `games/ddpdoj/NOTES-replay.md` already requires for determinism: **input belongs
 to a logic frame, not to a wall-clock moment.** A port that samples the live
 mask inside a catch-up loop cannot produce a deterministic replay either, so
-this is one fix serving two requirements — the same shape as the counted-not-
+this is one fix serving two requirements - the same shape as the counted-not-
 timed work budget.
 
 Note the DaiOuJou page was written later and states the constraint correctly in
@@ -157,5 +157,5 @@ under catch-up is ALSO unverified.
 ## Status
 
 Not investigated. Recorded because "probably my machine" is exactly how a real
-performance bug survives — and because the mechanism above would produce this
+performance bug survives - and because the mechanism above would produce this
 symptom whether or not the host was loaded.

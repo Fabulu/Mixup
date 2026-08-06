@@ -1,4 +1,4 @@
-# Wave 25b recon — crack the "reaching the boss page" blocker
+# Wave 25b recon - crack the "reaching the boss page" blocker
 
 status: DONE
 wave: 25b   role: recon/tooling   started: 2026-08-02
@@ -22,7 +22,7 @@ I am a READER on `games/gradius/src/` (no game-logic edits). Deliverables are
 all measurements: a reaching-method confirmation, two `scen/` field dumps
 (endchain + game-over), and the gate's 1022-field comparison result.
 
-## Deliverable 1 — reconstruct + confirm the reaching method (DONE)
+## Deliverable 1 - reconstruct + confirm the reaching method (DONE)
 
 The reaching method is `bossreach.py`'s `boss` run (`sweep.py --only boss`):
 
@@ -55,7 +55,7 @@ terrain `$C2C1` at scroll `$0A28` (frame 5514), and W24b/W25's reaching attempts
 all used that tail or the poke without the `RUA` switch. The `RUA` hold flies
 the ship above the death corridor.
 
-## Deliverable 2 — record `scen/endchain.json` through `$82`/`$84`/`$85` (DONE)
+## Deliverable 2 - record `scen/endchain.json` through `$82`/`$84`/`$85` (DONE)
 
 A deep-align scenario seeded at frame 6160 (scroll `$0B6B`, the CLEAN boss
 approach band the wave-20 sweep measured), driven by the reaching tail, with the
@@ -71,7 +71,7 @@ blocked W24b and W25. `probe.lua` and `porttrace.mjs` both already spoke this
 absolute form (the sweep uses `@400-8999`); `scen.py` just had to stop rewriting
 it. The `--timeout` for deep scenarios was also raised from 300s to 1800s.
 
-## Deliverable 3 — record the `$96FB` game-over window as a scen dump (DONE)
+## Deliverable 3 - record the `$96FB` game-over window as a scen dump (DONE)
 
 An unpowered run (`1350:RDA,324:RUA,80:RDA,2246:RA`, no poke, align 3800) reaches
 `$1B = $C0` (`$96FB`) at frame 3967 and holds for ~397 frames before the
@@ -80,7 +80,7 @@ continue-window timeout at `$9751` restarts to title. Recorded as
 RAM dump, the `$1B` ladder through the window is `$80 -> $A0 -> $C0 -> mode 0`,
 four deaths deep.
 
-## Deliverable 4 — wire the gate + run it (DONE: GREEN)
+## Deliverable 4 - wire the gate + run it (DONE: GREEN)
 
 Both scenarios use a new `compareUntilThrow` mechanism added to `compare.mjs`
 (W25b): unlike `expectThrow` (which is NOT field-compared), a
@@ -108,7 +108,7 @@ The one INFO field on both scenarios is `w_0036` (the blank-pass cursor, which
 depends on the sprite budget `src/oam.js` does not model) -- a pre-existing
 INFO, not a new divergence.
 
-## Deliverable 5 — W25 eruption spawn-for-spawn (DONE, bonus)
+## Deliverable 5 - W25 eruption spawn-for-spawn (DONE, bonus)
 
 The endchain comparison's 1280-frame `$82` window IS the eruption comparison.
 `$C486` (the late spawner, W25) runs every 4th frame during `$82`, spawning

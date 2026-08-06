@@ -1,9 +1,9 @@
-# Wave 36 IMPLEMENTER — stage 7 (`$19 = 6`)
+# Wave 36 IMPLEMENTER - stage 7 (`$19 = 6`)
 
 status: DONE
 implementer, 2026-08-04
 
-Brief: make stage 7 play start to finish. The plan calls this "W34 — Stage 7
+Brief: make stage 7 play start to finish. The plan calls this "W34 - Stage 7
 core" (`29-plan-whole-game.md`); W33/W34/W35 consumed those numbers, so this
 wave is 36.
 
@@ -47,7 +47,7 @@ guard alone lifted `>= 6` → `>= 7`, **nothing else touched**, 1400 frames/chun
 **All three predate this wave.** The first two are the plan's named scope. The
 third is not in the plan at all and is investigated in §2.
 
-## §2. THE CHUNK-7 `$8010` THROW — STAGE 7'S CHUNK TABLE HAS SEVEN ENTRIES
+## §2. THE CHUNK-7 `$8010` THROW - STAGE 7'S CHUNK TABLE HAS SEVEN ENTRIES
 
 `$A7D0` holds 7 stage pointers; each stage's subtable is read with
 `$61 = $3F AND $0E` as a BYTE offset, so chunk `c` is the word at

@@ -1,4 +1,4 @@
-# Wave 24 QA / ADVERSARIAL — the play sub-state machine (jt_$982F) and game-over
+# Wave 24 QA / ADVERSARIAL - the play sub-state machine (jt_$982F) and game-over
 
 status: DONE
 qa / adversarial (read-only on src/), 2026-08-02

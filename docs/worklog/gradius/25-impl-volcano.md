@@ -1,4 +1,4 @@
-# Wave 25 IMPL — the volcano finale: the late spawner $C413 and type $0A
+# Wave 25 IMPL - the volcano finale: the late spawner $C413 and type $0A
 
 status: IN PROGRESS
 implementer (sole src/ writer this wave), 2026-08-02

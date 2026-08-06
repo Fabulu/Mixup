@@ -1,4 +1,4 @@
-# W37 — RECON: the player's LASER
+# W37 - RECON: the player's LASER
 
 status: DONE
 
@@ -6,7 +6,7 @@ Role: recon (READ-ONLY; the only file I wrote is this one; no commits).
 Target: `ddpdojblk` VERSION-B. Every address is build B (`$23xxxx`–`$28xxxx`)
 unless the line says otherwise.
 
-**PRIORITY, mid-task:** the coordinator raised this from recon to blocker — the
+**PRIORITY, mid-task:** the coordinator raised this from recon to blocker - the
 owner loaded the live site, pressed fire and got the `$24C180` throw, and the
 gate fires on the FIRST held frame, so the game cannot be played at all. §9 is
 written as an implementer brief for that reason.
@@ -40,16 +40,16 @@ may already be stale.
 
 ---
 
-## 0. THE HEADLINE — THE BRIEF'S PREMISE IS HALF WRONG
+## 0. THE HEADLINE - THE BRIEF'S PREMISE IS HALF WRONG
 
 The brief treats "the laser" as one thing. **[M] It is TWO weapons, in two
 subsystems, selected by two different bits, damaged by two different passes, and
 scored through two different arms.**
 
-| | **(A) the BOMB-LASER** | **(B) THE BEAM** — what the owner means |
+| | **(A) the BOMB-LASER** | **(B) THE BEAM** - what the owner means |
 |---|---|---|
-| selector | bit 0 of the PLAYER record's `($1,A6)` | `$24C164 btst #4,($40,A6)` — Button 1 **HELD** |
-| set by | `$24989E bset #$0,($1,A6)` — inside the **BOMB** | nothing latches on the player; the raw held bit is re-copied every frame at `$24C134` |
+| selector | bit 0 of the PLAYER record's `($1,A6)` | `$24C164 btst #4,($40,A6)` - Button 1 **HELD** |
+| set by | `$24989E bset #$0,($1,A6)` - inside the **BOMB** | nothing latches on the player; the raw held bit is re-copied every frame at `$24C134` |
 | lives in | the player's shot spawn `$249BFC` | the OPTION OBJECT `$24C096` (type-5 call #9) |
 | records | the 36-slot shot table `$810572` | `$811EF2`/`$811F12` control + a 32-slot × `$30` segment pool per player at `$8112F2`/`$8118F2` |
 | handler | shot dispatch `[4]`=`$254078`, `[12]`=`$254136` | its own 32-entry dispatch `$254712`, driven by type-5 call #10 `$254680` |
@@ -58,8 +58,8 @@ scored through two different arms.**
 | templates | `$24E8BC..`, **exported** by Wave 8 | `$24A932`/`$24AF68`/`$24B0A0`/`$24B1E0`, **NOT exported** |
 
 Wave 8's "LASER TEMPLATES" export and `shots.js`'s `$254078` throw are **(A)**.
-The thing a player gets by holding fire — the thing that throws on the live site
-— is **(B)**, and Wave 8 exported none of (B)'s tables.
+The thing a player gets by holding fire - the thing that throws on the live site
+- is **(B)**, and Wave 8 exported none of (B)'s tables.
 
 Both are unported. They interact: (A)'s bit changes four of (B)'s decisions.
 
@@ -67,7 +67,7 @@ Both are unported. They interact: (A)'s bit changes four of (B)'s decisions.
 
 ## 1. WHAT SELECTS THE LASER
 
-### 1.1 (A) — bit 0 of the player's `($1,A6)`, and the BOMB sets it
+### 1.1 (A) - bit 0 of the player's `($1,A6)`, and the BOMB sets it
 
 `$249BFC` (`src/shots.js spawnShot`) reads it twice **[M]**:
 
@@ -94,7 +94,7 @@ demonstrably the player record:
 | `$24C4DC` | the POD cadence delay is forced to 2 |
 | `$24C482` | the POD burst count is forced to 8 |
 | `$24CBEC`, `$24CCFC`, `$24CEB0` | **(B)'s** segment templates change |
-| `$24D14A` | each pod's motion gains `dx += dx>>2` — the pods splay wider |
+| `$24D14A` | each pod's motion gains `dx += dx>>2` - the pods splay wider |
 
 **[M] The only writer of that bit in the whole of build B that I could find is
 `$24989E`, and it is inside the BOMB.** The sweep for
@@ -125,7 +125,7 @@ sites** [M]:
 
 and `$25270C` **is itself a laser routine** [M]: `andi.w #$DFFB,$8104AA` then
 `$25273A lea $8112F2,A6 / lea $811EF2,A0 / lea $811F32,A1 / lea $8104AA,A2`,
-ending in `$2527AA move.w #$1F,D7 / move.w D0,(A6) / lea ($30,A6),A6 / dbra` —
+ending in `$2527AA move.w #$1F,D7 / move.w D0,(A6) / lea ($30,A6),A6 / dbra` -
 **it zeroes 32 records of `$30` at `$8112F2`, i.e. (B)'s whole segment pool.**
 So the bomb tears the beam down and switches the ship into bomb-laser mode in
 the same breath.
@@ -134,12 +134,12 @@ the same breath.
 bit.** Where I looked: the 9-site bit-op sweep above; `xref.py abs 8103e6` /
 `810448` (267 decode sites, none a bit-clear on `+$1`); and the player's own
 `$2491C0..$24A430`. It may be cleared by a whole-word write through a base
-register, which no absolute search can see — `$249A2E bset #$6,(A6)` and
+register, which no absolute search can see - `$249A2E bset #$6,(A6)` and
 `$24C2F4 andi.w #$DFDB,(A6)` are the shape of instruction that would do it, but
 neither touches bit 0. **UNRESOLVED, and it matters**: it decides whether (A) is
 momentary or sticky.
 
-### 1.2 (B) — the RAW HELD Button-1 bit, no latch on the player at all
+### 1.2 (B) - the RAW HELD Button-1 bit, no latch on the player at all
 
 ```
 24c134: move.b ($18,A4),($40,A6)     the PLAYER's RAW held byte -> the option block
@@ -195,17 +195,17 @@ $24D0AE  10 longs  -> $24B1E0 + $20*n
 $24D0D6  ...                              the (A)-bit variant
 ```
 
-### 2.3 WHAT THE WAVE 8 EXPORT COVERS — measured against all 107 windows
+### 2.3 WHAT THE WAVE 8 EXPORT COVERS - measured against all 107 windows
 
 I parsed every `(0x…, 0x…, "…")` window out of
-`games/ddpdoj/tools/export-tables.py` — **107 windows [M]** — and tested each
+`games/ddpdoj/tools/export-tables.py` - **107 windows [M]** - and tested each
 laser address against them:
 
 | address | what | covered? |
 |---|---|---|
-| `$24E8BC..$24EA37` | (A) ship laser templates | **YES** — `$24E740..$24EA5F` |
-| `$24E744`, `$24E7D4` | (A) laser anim tables | **YES** — same window |
-| `$251184..` | (A) option-pod laser templates | **YES** — `$251100..$2513FF` |
+| `$24E8BC..$24EA37` | (A) ship laser templates | **YES** - `$24E740..$24EA5F` |
+| `$24E744`, `$24E7D4` | (A) laser anim tables | **YES** - same window |
+| `$251184..` | (A) option-pod laser templates | **YES** - `$251100..$2513FF` |
 | **`$24EC72`** | **(A) handler `[4]`'s sprite table (`$2540B2 lea`)** | **NOT COVERED** |
 | **`$24ED4E`** | **(A) handler `[12]`'s hit table (`$25419E lea`)** | **NOT COVERED** |
 | **`$24CFBA..$24D12D`** | (B) all five pointer tables | **NOT COVERED** |
@@ -216,7 +216,7 @@ laser address against them:
 **So the answer to "do the Wave 8 exports cover the fire path" is: they cover
 (A)'s templates and NOT (A)'s two handler tables, and NOTHING of (B).**
 Wave 8 exported the templates the *spawn* reads and not the tables the
-*handler* re-points from — the same shape of gap as `$24DDD6`/`$24DEB2`, which
+*handler* re-points from - the same shape of gap as `$24DDD6`/`$24DEB2`, which
 Wave 8 *did* export for the ordinary shot. That looks like an oversight rather
 than a decision, and it is one line of `SHOT_WINDOWS` to fix
 (`$24EC70, 0x0200`, by analogy with `(0x24DDD0, 0x01B0)`).
@@ -238,7 +238,7 @@ Differences from the shot, all [M] from the listing:
 | | shot `$253B1E` | laser `$254078` |
 |---|---|---|
 | Y kill | `cmpi.w #-$8000,($2,A6) / bcc` | same (`$2540FA`) |
-| X kill | `+$400 / -$4000 / bcs` | **`+$C00 / -$5000 / bcs`** (`$25410A`) — a wider corridor |
+| X kill | `+$400 / -$4000 / bcs` | **`+$C00 / -$5000 / bcs`** (`$25410A`) - a wider corridor |
 | sprite table | `$24DDD6` | **`$24EC72`** |
 | hit table | `$24DEB2` | **`$24ED4E`** |
 | first-hit effect | `$289F54` D0=`$14` | same D0=`$14` (`$254174`) |
@@ -256,18 +256,18 @@ Read out of `$24CB3A` and `$24CDC0` **[M]**:
   every frame: `$24CE18 move.l ($2,A4),D0 / addi.l #$8000000,D0 / move.l D0,($2,A3)`;
 - the segment chain is laid down by a `dbra` over **30 of the 32 pool slots**
   (`$24CBEA / $24CEA0 moveq #$1D,D0`), each `$30` bytes, at `$8112F2` (P1) /
-  `$8118F2` (P2) — `$8112F2 + 32*$30 = $8118F2` and `$8118F2 + 32*$30 = $811EF2`,
+  `$8118F2` (P2) - `$8112F2 + 32*$30 = $8118F2` and `$8118F2 + 32*$30 = $811EF2`,
   so the two pools are exactly 32 slots each and butt against the control
   records **[M]**;
 - each iteration steps the write position `$24CF2A addi.w #$800,($2,A6)` and
-  stops at `$24CF30 cmpi.w #$7800,($2,A6) / bcc` — **the beam terminates at the
+  stops at `$24CF30 cmpi.w #$7800,($2,A6) / bcc` - **the beam terminates at the
   top of the playfield, not after a fixed length**;
-- when it does, `$24CF40 move.w #$1,($c,A3)` and `($50,A6)` is reset to 4 —
+- when it does, `$24CF40 move.w #$1,($c,A3)` and `($50,A6)` is reset to 4 -
   `($c,A3)` is then the "beam is complete" flag the retract path tests at
   `$24CF02`;
 - the beam's HEAD is written at pool slot 27: `$24CCD0 movea.l A1,A2 / lea
   ($510,A1),A1` and `$510 = 27*$30`, so `$811802` = P1 slot 27 **[M]**. That is
-  the same `$811802` `src/damage.js` calls "the A2 weapon object" — it is not a
+  the same `$811802` `src/damage.js` calls "the A2 weapon object" - it is not a
   weapon object, it is the beam's muzzle record.
 
 **What updates it per frame:** three separate type-5 calls, all unported.
@@ -275,7 +275,7 @@ Read out of `$24CB3A` and `$24CDC0` **[M]**:
 | call | routine | what it does |
 |---|---|---|
 | #9 | `$24C096` | the gate, the arm-up, and the two beam BUILDERS (`$24CB3A`, `$24CDC0`) |
-| #10 | `$254680` | **THE SEGMENT DRIVER** — 32 slots per player, `type & $1F` into a **32-entry dispatch at `$254712`** |
+| #10 | `$254680` | **THE SEGMENT DRIVER** - 32 slots per player, `type & $1F` into a **32-entry dispatch at `$254712`** |
 | #11 | `$255042` | the beam's DRAW: `$811F32`/`$811F52` into the sprite queue via `$23F508`/`$23EB6A` |
 | #7 | `$255DD8` | the **bomb-laser** record `$811F72`, `(A6)&7` into a 4-entry dispatch at `$255E2E` |
 
@@ -289,10 +289,10 @@ back up) and, if `(A6)` bit 6 is set, `$24C2C4`'s teardown: five player cadence
 bytes zeroed, `$252714`/`$25275C` called (the pool wipe of §1.1), `($4a,A6)=8`,
 `($4b,A6)=4`, `andi.w #$DFDB,(A6)`, and then the pods swing BACK by
 `($3e,A6)` per frame at `$24C310..$24C338`. The segments themselves are not
-freed there — they are driven to death individually by call #10's handlers,
+freed there - they are driven to death individually by call #10's handlers,
 which is why the pool wipe exists as a separate routine.
 
-### 3.3 THE ARM-UP SEQUENCE — and it reproduces the cited +17 EXACTLY
+### 3.3 THE ARM-UP SEQUENCE - and it reproduces the cited +17 EXACTLY
 
 This is the part the implementer needs frame-by-frame, and **I derived it from
 ROM constants alone, with no run** [M]:
@@ -349,7 +349,7 @@ the OTHER arm of the formation dispatch, and `$24C368 bsr $24D12E / add
 > MEASURED `$10` on every sampled frame". The measurement is right and the name
 > is wrong: `$24C368` is not a curiosity, it is **the second half of the
 > laser**, and it is unreachable in every corpus run for exactly the reason the
-> laser is — nobody held the button for 17 frames. This is the third time on
+> laser is - nobody held the button for 17 frames. This is the third time on
 > this project a path has been labelled inert because the thing that reaches it
 > was unported.
 
@@ -379,7 +379,7 @@ does not exist. The six shots at lf2001..2007 are that same burst.
 
 ---
 
-## 4. DAMAGE AND SCORING — THE PART THAT MATTERS MOST
+## 4. DAMAGE AND SCORING - THE PART THAT MATTERS MOST
 
 ### 4.1 The laser has its OWN damage pass, and it is not `$244D62`'s shot loops
 
@@ -392,26 +392,26 @@ $2453AC  606 B   THE PASS itself, ending $245608 rts. Reached the OTHER way from
 ```
 
 `$80FA7C` is the discriminator between "the beam just started" and "the beam is
-already running", and it gates `$2455C6 tst.w $80FA7C / bne $2455FC` — the
+already running", and it gates `$2455C6 tst.w $80FA7C / bne $2455FC` - the
 knockback the beam applies to what it is melting. **[M]**
 
 The pass walks **pool A `$81459C`, 100 slots (`$245426 move.w #$63,D7`) and pool
-B `$81521C`, 50 slots (`$245548 move.w #$31,D7`)** — and unlike `$244D62`'s
+B `$81521C`, 50 slots (`$245548 move.w #$31,D7`)** - and unlike `$244D62`'s
 loops it walks the SLOTS, not the live count. Damage is `sub.w D5,($18,A5)` with
 D5 derived from `($1c,A1)`, reduced by `lsr #2` when `$81308C` is 0 and again by
 `lsr #1` when `$81309C` is negative **[M]**.
 
-### 4.2 **`$244D62` DOES NOT END AT `$245310`** — a ninth block nobody has named
+### 4.2 **`$244D62` DOES NOT END AT `$245310`** - a ninth block nobody has named
 
 W34 §1.4 tabulates `$244D62` as eight blocks ending at `$245310`, and
 `src/damage.js` reproduces that table. **[M] `$245310` is `bra.w $24560A`, and
-`$24560A..$2459CE` is 966 more bytes of the same routine** — a ninth block that
+`$24560A..$2459CE` is 966 more bytes of the same routine** - a ninth block that
 begins `lea $811F72,A6 / move.w (A6),D5 / bpl $2459CE`, i.e. **it runs only when
 the BOMB-LASER is live**, and then:
 
-- `$245638 lea $81459C,A5 / move.w #$95,D7` — **150 slots**, `moveq #$50,D5`
+- `$245638 lea $81459C,A5 / move.w #$95,D7` - **150 slots**, `moveq #$50,D5`
   (or `#$1` when `($1e,A6)` is non-zero): the bomb-laser's per-frame damage;
-- `$2456A6..$245708` — a bounding box over **`$811F72` as 45 records of `$30`**
+- `$2456A6..$245708` - a bounding box over **`$811F72` as 45 records of `$30`**
   (`$2456BC moveq #$2C,D5`, `$245704 lea ($2e,A6),A6` after a post-incrementing
   `tst.w (A6)+`), which **CONFIRMS `src/options.js`'s cited "45 × `$30` segment
   table `$811F72`"** [M];
@@ -423,10 +423,10 @@ published, and `damage.js`'s `noteWeapons()` deferral names `$24518A`,
 `$24525C` and `$2453AC` but not `$24560A`. **This is the twelfth fall-through
 incident on this project and it has the usual shape: the routine looked
 finished because the table said it was.** It is not a defect in what W34
-shipped — the block is behind a flag the port holds at 0 — but the ledger is
+shipped - the block is behind a flag the port holds at 0 - but the ledger is
 under-counted by 966 bytes and the deferral note is silent about it.
 
-### 4.3 THE SCORE ARM — the laser scores through a DIFFERENT accumulator
+### 4.3 THE SCORE ARM - the laser scores through a DIFFERENT accumulator
 
 ```
 286096: btst #$1,(A6) / bne -> rts
@@ -446,7 +446,7 @@ ordinary `$2860E4..$2860FE` pending-score add, in that order.** `src/score.js`
 already transcribes this correctly, including the unreachable P2 mirror at
 `$2860CE`.
 
-`$286A82` (**282 bytes, `$286A82..$286B9B`**, 0 absolute callers — reached only
+`$286A82` (**282 bytes, `$286A82..$286B9B`**, 0 absolute callers - reached only
 by `$2860C8 bsr`) is a **completely separate machine** [M]:
 
 ```
@@ -458,7 +458,7 @@ $286AF8   bsr $2867B4            <<-- and this is the RANK feeder
 $286B86   bsr $286626 into $81B4C4   the ordinary BCD adder, P1's pending score
 ```
 
-### 4.4 **THE LASER FEEDS RANK ON ITS OWN CLOCK** — the owner's named failure
+### 4.4 **THE LASER FEEDS RANK ON ITS OWN CLOCK** - the owner's named failure
 
 `$2867B4` (42 bytes, `$2867B4..$2867DD`; 0 absolute callers, reached by
 `$286AF8 bsr`) **[M]**:
@@ -477,16 +477,16 @@ $286B86   bsr $286626 into $81B4C4   the ordinary BCD adder, P1's pending score
 "the routine that GRANTS a hyper stock (`$81B65C`, capped at 5) and therefore
 feeds `$285A62`'s +16 rank. That is the owner's own case." **[M] `$287682` has
 six absolute callers in build B: `$249FDA`, `$27FBE4`, `$2866CA`, `$2867A4`,
-`$2867CE`, `$2867E4`** — and `$2867CE` is the laser's.
+`$2867CE`, `$2867E4`** - and `$2867CE` is the laser's.
 
 **So: holding the laser accrues `$81B64A` at 4 per 8 frames (48 per 8 frames
 under hyper) and grants hyper stock, which grants rank. The shot path reaches
-`$287682` only through `$2866CA`, the chain-meter cap clamp — a different
+`$287682` only through `$2866CA`, the chain-meter cap clamp - a different
 trigger with a different cadence.** This is precisely the "one wrong rank gain
 from using super and the entire route breaks" case, and it is unported on both
 sides today.
 
-### 4.5 **THE LASER BREAKS THE CHAIN** — measured at the chain machine
+### 4.5 **THE LASER BREAKS THE CHAIN** - measured at the chain machine
 
 `$2862C6`, the per-hit chain machine, **[M] verbatim**:
 
@@ -504,7 +504,7 @@ hit CLEARS the chain counter and skips both the meter test and the refill.**
 `src/score.js` transcribes this correctly today, and because `$811F72` is
 permanently 0 in the port that branch has never been taken.
 
-### 4.6 ORDER WITHIN THE FRAME — the answer to the brief's question
+### 4.6 ORDER WITHIN THE FRAME - the answer to the brief's question
 
 W19's measured order is
 `rankclk > rank= > [ CHAIN+ > score+ > meter+ > (meter=cap) > score+ ]* > drain
@@ -514,7 +514,7 @@ W19's measured order is
 listing:**
 
 1. **The chain decrement is still last.** It lives in `$284636`, inside
-   `$28444E`, inside top-level object **type 0 `$28D520`** — a different
+   `$28444E`, inside top-level object **type 0 `$28D520`** - a different
    dispatch entry from type 5, and nothing in the laser's chain touches it.
 2. **The laser's own writes are all INSIDE the bracketed hit group**, because
    they are reached from `$286096`, which is called from an enemy handler or
@@ -527,13 +527,13 @@ listing:**
    the shot's.** The shot pass is `$28B670`, type 5's TAIL, after all 23 calls
    (`src/type5.js` already places it there). The laser's per-frame pass is
    `$24530C bsr $2453AC` and the ninth block `$24560A`, both **inside**
-   `$244D62`, i.e. also in the tail — *but* the beam's start-of-beam pass
+   `$244D62`, i.e. also in the tail - *but* the beam's start-of-beam pass
    `$24536E` is called from `$24CE46`, inside **type-5 call #9**, which runs
    **fourteen calls earlier**. So on the frame a beam starts, a laser hit can
    register before the enemy driver's own damage reactions for that frame.
 
 **[M] `$811F72` is read at 32 absolute sites in build B** (sweep for
-`$811f72.l`), and **not one of them writes it** — every write is through a base
+`$811f72.l`), and **not one of them writes it** - every write is through a base
 register. The readers are not confined to the score code:
 
 ```
@@ -552,7 +552,7 @@ regression surface the implementer must be told about up front.
 
 ---
 
-## 5. WHAT IS ALREADY THERE — checked, not assumed
+## 5. WHAT IS ALREADY THERE - checked, not assumed
 
 I read `src/shots.js`, `src/damage.js`, `src/score.js`, `src/options.js`,
 `src/type5.js`, `src/machine.js` and `src/weapons.js` in full.
@@ -570,42 +570,42 @@ I read `src/shots.js`, `src/damage.js`, `src/score.js`, `src/options.js`,
 | `$24C1A8`'s latch, `$811EF2`, the 45×`$30` table | `options.js:132` throw text | named, not implemented |
 | the laser arms of `$286096` and `$2862C6` | `score.js:263,358` | **transcribed correctly**, both as live code (`$2862DC`) and as a note (`$2860C8`) |
 | `$2453AC` / `$24536E` | `damage.js:91,364` | named in a deferral note |
-| `laserRampWouldMove` | `type5.js:164` | a pure predicate, **no callers in the shipped path** — dead, and says so |
+| `laserRampWouldMove` | `type5.js:164` | a pure predicate, **no callers in the shipped path** - dead, and says so |
 
 **ABSENT:**
 
 - every routine in §6's table except `$24C8E4` and `$25370A`;
-- `$2536FA` — **16 bytes**, and its sibling `$25370A` is already ported;
-- the ninth block `$24560A` (966 B) — not even named;
-- `$24EC72`/`$24ED4E`/`$24CFBA..$24D12D` and the four (B) template families —
+- `$2536FA` - **16 bytes**, and its sibling `$25370A` is already ported;
+- the ninth block `$24560A` (966 B) - not even named;
+- `$24EC72`/`$24ED4E`/`$24CFBA..$24D12D` and the four (B) template families -
   not exported;
-- type-5 calls **#7 `$255DD8`, #10 `$254680`, #11 `$255042`** — counted as three
+- type-5 calls **#7 `$255DD8`, #10 `$254680`, #11 `$255042`** - counted as three
   of the thirteen unported calls, with no indication that they are the laser.
 
 **WRONG OR STALE, and I checked rather than assumed:**
 
-1. `src/type5.js:81-84` — "the spawn's laser selector is `btst #$0,($1,A6)` …
+1. `src/type5.js:81-84` - "the spawn's laser selector is `btst #$0,($1,A6)` …
    the flag is READ in four places in `src/` and **WRITTEN IN NONE**, so `laser`
    in `shots.js` is permanently whatever the seed says (0), and the `$254078`
    throw sitting behind it is unreachable." **True of `src/` and false as a
    statement about the cartridge**: the cartridge writes it at `$24989E`, inside
    the bomb, which `src/player.js` throws on. The sentence reads as a fact about
    the game and is a fact about the port.
-2. `src/options.js:178` — `$24C368` called "the pods-stowed path". It is the
+2. `src/options.js:178` - `$24C368` called "the pods-stowed path". It is the
    beam builder (§3.3).
-3. `src/damage.js:59-67` and W34 §1.4 — the six/eight-block table of `$244D62`
+3. `src/damage.js:59-67` and W34 §1.4 - the six/eight-block table of `$244D62`
    stops at `$245310`, which is a `bra` into 966 more bytes (§4.2).
-4. `src/damage.js:364` deferral text — describes `$811802`/`$811892` as "the A2
+4. `src/damage.js:364` deferral text - describes `$811802`/`$811892` as "the A2
    weapon object" / "the A3 object". They are pool slots 27 and 30 of the
    laser's own segment pool (`$28B690`/`$28B696 lea`), not separate weapons.
 
 ---
 
-## 6. SIZE THE WAVE — the routine ledger
+## 6. SIZE THE WAVE - the routine ledger
 
 All spans **[M]**, start..last byte inclusive, from `unidasm` boundaries.
 
-### (B) THE BEAM — the owner's blocker
+### (B) THE BEAM - the owner's blocker
 
 | # | routine | bytes | state |
 |---|---|---|---|
@@ -650,13 +650,13 @@ entries** (`$24CFBA` family), **32 pool slots × 2 players**.
 | `$2867B4..$2867DD` the rank feeder | 42 | absent |
 | `$287682..?` the hyper-stock grant | ? | absent (already named by `score.js`) |
 | `$286B9C..$286DA7` the P2 mirror | 524 | note |
-| `$2862DC`'s chain fork | — | **already ported and correct** |
+| `$2862DC`'s chain fork | - | **already ported and correct** |
 
 ### DEPENDENCIES THAT ARE THEMSELVES UNPORTED
 
 | needed by | dependency | size |
 |---|---|---|
-| `$24C180` | `$2536FA` | 16 B — trivial, do it in the same wave |
+| `$24C180` | `$2536FA` | 16 B - trivial, do it in the same wave |
 | beam draw #11 | `$23F508`, `$23EB6A` (sprite-queue entries) | check `spritequeue.js`; `$23EFEE` and `$23F2CA` are already there |
 | beam builders | `$289FC0`/`$289FDA` (effects, from `$255066`/`$2550F0`) | the `$289xxx` family, unported for W34 §1.6's reason |
 | the segment handlers | `$245314` (one of them calls the damage pass) | in this wave |
@@ -665,7 +665,7 @@ entries** (`$24CFBA` family), **32 pool slots × 2 players**.
 | (A)'s handler | `$24EC72`/`$24ED4E` | export-only, one edit |
 | (A) | the whole BOMB (`$2497AA`, `$25270C`, `$28C8DA`) | `player.js` throws on it today |
 
-### **ONE WAVE OR THREE? — THREE, and here is the split**
+### **ONE WAVE OR THREE? - THREE, and here is the split**
 
 **It is not one wave.** 5,234 bytes and 17 handlers behind three unported
 type-5 calls is larger than W34 (which was 1,456 bytes and one call) and larger
@@ -673,7 +673,7 @@ than W31 (the 576-instruction midboss).
 
 | wave | scope | why the cut is here |
 |---|---|---|
-| **L1** | export the tables; port `$24C164..$24C29D`, `$2536FA`, `$24C8BE`, `$24C906`, `$24CAAE`, `$24CAFC` and the arm-up; the throw moves from `$24C180` to `$24C368`/`$24CB3A` | the whole 17-frame arm-up is deterministic from ROM constants (§3.3), so it is checkable without the beam existing. **This alone does NOT unblock the owner** — see below. |
+| **L1** | export the tables; port `$24C164..$24C29D`, `$2536FA`, `$24C8BE`, `$24C906`, `$24CAAE`, `$24CAFC` and the arm-up; the throw moves from `$24C180` to `$24C368`/`$24CB3A` | the whole 17-frame arm-up is deterministic from ROM constants (§3.3), so it is checkable without the beam existing. **This alone does NOT unblock the owner** - see below. |
 | **L2** | the two builders `$24CB3A`/`$24CDC0`, call #10 `$254680` + its 32 entries + 17 handlers, call #11 `$255042` | this is the beam. It is the big one and it may split again at the 17 handlers. |
 | **L3** | `$24536E`/`$2453AC`, `$244D62`'s ninth block `$24560A`, `$286A82`, `$2867B4` and the `$287682` rank feed | damage and the ledger, which is where the owner's frame-exactness constraint bites and which needs `$287682`'s machine (W28 wave 8) beside it |
 
@@ -686,7 +686,7 @@ frames. If the goal is "the owner can press fire", **L1 and L2 must ship
 together**, and L3 can follow (a beam that draws and does not damage is
 visibly wrong but not a lie, provided `$2453AC` stays a loud named throw).
 
-There is a tempting shortcut — route the held case to `$24C29E`, the no-laser
+There is a tempting shortcut - route the held case to `$24C29E`, the no-laser
 path, so nothing throws. **Do not.** That is a quiet wrong answer of exactly
 the class `HANDOVER` §4 forbids: the game would behave as though fire had been
 tapped, and no gate would ever see it.
@@ -703,7 +703,7 @@ tapped, and no gate would ever see it.
    ship's shot spawn is in laser mode after a bomb.
 2. **The +17 → +20 gap** (§3.3). The latch is pinned to the instruction; the
    three frames after it are not. Candidates: `($42,A6)`/`($43,A6)`, `($4e,A6)`.
-3. **RESOLVED, and it changes L3 — `$24C37A` has no inbound reference I could
+3. **RESOLVED, and it changes L3 - `$24C37A` has no inbound reference I could
    find.** `$24CB3A` and `$24CDC0` have exactly one `bsr` each and both are in
    the same six bytes:
 
@@ -716,10 +716,10 @@ tapped, and no gate would ever see it.
 
    What I looked at: (a) an every-even-offset capstone sweep of
    `$230000..$2A0000` for any instruction whose decoded operand text contains
-   `24c37a` — **0 sites** (capstone prints absolute targets for PC-relative
+   `24c37a` - **0 sites** (capstone prints absolute targets for PC-relative
    branches, so this covers `bra`/`bsr`/`bcc` as well as absolute operands);
-   (b) a raw search of the whole 6 MB image for the longword `$0024C37A` —
-   **0 occurrences**; (c) the same for `$0024CDC0` — **0**; (d) the formation
+   (b) a raw search of the whole 6 MB image for the longword `$0024C37A` -
+   **0 occurrences**; (c) the same for `$0024CDC0` - **0**; (d) the formation
    dispatch `$24C384`, whose three entries are `bra.w $24C390/$24C4F8/$24C690`.
 
    **I am NOT writing "`$24CDC0` is dead code."** Two comments on this project
@@ -729,7 +729,7 @@ tapped, and no gate would ever see it.
    caller is `$24CE46`, which is inside `$24CDC0`.** If `$24C37A` really is
    unreachable in build B, then the beam's start-of-beam damage entry never
    runs, the beam is damaged ONLY by `$24530C bsr $2453AC` from the collision
-   pass — and `10-recon-combat §8.7`'s cited "`$2453C2` executed ZERO times in
+   pass - and `10-recon-combat §8.7`'s cited "`$2453C2` executed ZERO times in
    580 live-beam frames" is explained by structure rather than by sampling.
    **Check this against build A with `tools/rosetta.py` before porting
    `$24CDC0`; a HIGH pairing is a lead to confirm by reading, not a fact.**
@@ -737,7 +737,7 @@ tapped, and no gate would ever see it.
    `$255042..~$2551FD` from where data begins; I did not find its `rts`.
 5. **`$255DD8`'s full extent** and how many of its 4 dispatch entries are
    distinct (I measured 2 distinct bodies, `$255E3E` and `$255FE2`).
-6. **RESOLVED — `$81B5AE` is "you bombed while a chain was alive".** [M] It has
+6. **RESOLVED - `$81B5AE` is "you bombed while a chain was alive".** [M] It has
    **three absolute build-B sites**: `$249958`, `$2564F4`, `$2862EC`.
    `$249958 lea $81B5AE,A3` is in the BOMB/HYPER block, and thirty instructions
    later:
@@ -759,7 +759,7 @@ tapped, and no gate would ever see it.
    and it must not be simplified.** (P2's is `$81B5B0`, `$249958`'s twin at
    `$2499A6`.)
 7. **Any dynamic number at all.** I ran no MAME, no gate and no test, by design.
-8. **Whether `$2453C2` really ran zero times in 580 live-beam frames** — that is
+8. **Whether `$2453C2` really ran zero times in 580 live-beam frames** - that is
    `10-recon-combat §8.7` [CITED] and I did not re-measure it. Structurally it
    is unsurprising: `$2453C2` is only reached from `$245364`, i.e. from the
    beam's *start* pass, not its per-frame one.
@@ -784,12 +784,12 @@ meantime; (A) last, behind the bomb.
 
 1. **Add the missing export windows FIRST.** `$24EC70,0x0200`;
    `$24CFB0,0x0180`; `$24A930,0x03C0`; `$24AF60,0x00F0`; `$24B0A0,0x0260`;
-   `$254710,0x00A0`. Widths are mine and deliberately generous — "wider than
+   `$254710,0x00A0`. Widths are mine and deliberately generous - "wider than
    measured fails at the export, narrower than used fails on the player's
    machine" is `export-tables.py`'s own rule.
 2. **Gate on the RAW byte, never the edge, and never on the speed index.**
    `$24C164 btst #4,($40,A6)`. The wave-9 guard failed because it added a
-   `speedIdx !== laserFloor` term the ROM has not got — a player already at the
+   `speedIdx !== laserFloor` term the ROM has not got - a player already at the
    floor got silence. **Do not add a term the listing does not have**, even one
    that looks safe.
 3. **The arm-up is 9 + 8 = 17 frames** and every constant comes from the
@@ -805,7 +805,7 @@ meantime; (A) last, behind the bomb.
    order.
 8. **The laser feeds rank on its own 8-frame divider** (`$2867B4`), separately
    from the chain-meter cap. Any wave that ports `$286A82` without `$2867B4`
-   ships a laser that scores and does not raise rank — which is the owner's
+   ships a laser that scores and does not raise rank - which is the owner's
    named failure with the sign flipped.
 9. **Six already-ported branches change the day `$811F72` can be non-zero**
    (`bullets.js`, `mover.js`, `handlers.js`). Re-run those gates.
@@ -823,16 +823,16 @@ meantime; (A) last, behind the bomb.
   BOMB-LASER; the held-fire BEAM is a different subsystem.
 - **[M] the (A) selector's only writer in build B is `$24989E`, inside the
   BOMB**; I could not find a clearer (§7.1).
-- **[M] `$24C164`'s gate confirmed exactly as the throw message states** — raw
+- **[M] `$24C164`'s gate confirmed exactly as the throw message states** - raw
   byte, no speed term, first held frame.
 - **[M] the cited "+17 latch" reproduces from ROM constants alone**: 9 delay
   frames (`($3f,A6)=$0A`) + 8 swing frames (`($3b,A6)` `$30`→`$40` by 2).
 - **[M] `$9201` = `$8201 | $1001` and the only `ori.w #$1001` into `$811EF2` is
-  `$2455AE`, inside the laser damage pass** — so the quoted trace contains a hit.
+  `$2455AE`, inside the laser damage pass** - so the quoted trace contains a hit.
 - **CORRECTION**: "`$81295C` falls to 0" is the shot table draining, not a laser
   write (§3.4).
 - **[M] Wave 8 covers (A)'s templates and NOT (A)'s two handler tables, and
-  covers NOTHING of (B)** — tested against all 107 export windows (§2.3).
+  covers NOTHING of (B)** - tested against all 107 export windows (§2.3).
 - **[M] `$244D62` has a NINTH block, `$24560A..$2459CE`, 966 bytes**, behind the
   bomb-laser flag, named nowhere in `src/` (§4.2). Twelfth fall-through.
 - **[M] the laser feeds RANK through `$2867B4 → $287682` on its own 8-frame
@@ -844,7 +844,7 @@ meantime; (A) last, behind the bomb.
 - **[M] `$81B5AE` identified**: it is set to 1 at `$2499D8` when a bomb/hyper is
   used while the chain meter is non-zero, so the laser's chain-break at
   `$2862EA` is "unless you bombed with a live chain" (§7.6).
-- **[M] `$24C37A bsr $24CDC0` has NO inbound reference I could find** — a
+- **[M] `$24C37A bsr $24CDC0` has NO inbound reference I could find** - a
   build-B-wide operand sweep, a whole-image longword search and the formation
   dispatch all came back empty. If that holds, `$24536E` (the beam's own damage
   entry, one caller `$24CE46`, inside `$24CDC0`) never runs and the beam is

@@ -1,11 +1,11 @@
-# Wave 42 IMPL — `$CA5E`, the 1/256 px borrow
+# Wave 42 IMPL - `$CA5E`, the 1/256 px borrow
 
 status: DONE
 impl, 2026-08-04
 
 Scope: `games/gradius/` ONLY. `games/ddpdoj/` belongs to concurrent agents.
 
-Task: fix the ONE known cartridge divergence in Gradius — W40 §5a, `$CA5E`
+Task: fix the ONE known cartridge divergence in Gradius - W40 §5a, `$CA5E`
 (dispatch entry 20, types `$14`/`$94`, stage 5's articulated-arm owner):
 **237 field divergences of 207,606**, all `yf`/`y`, the port one LOW per frame.
 W40 measured the obvious fix WRONG (PROBE-1: 237 -> 3,580, wrong the other way).
@@ -45,7 +45,7 @@ is decided **before `$CADC`**, and the listing gives exactly THREE ways in:
 | **A2** | `$04AC,X != 0` and `$016C,X == 0` -> **`$CAB8 JSR $AEE1` runs** | inside `$AEE1` | **1** |
 | **B**  | `$04AC,X == 0`, `$CACD`-`$CAD9` runs | `$CAD2 CMP $0320` | `$032C,X >= $0320` |
 
-The port modelled A1 and B and **had no model of A2 at all** — `carry` kept its
+The port modelled A1 and B and **had no model of A2 at all** - `carry` kept its
 initialiser of 0 across the `JSR`. That is the whole defect. 1/256 px per frame
 on 243 of 3,826 frames.
 
@@ -59,7 +59,7 @@ AEF1 CMP #$08 / AEF6 BCS $AF09        -> C = 1
 AEF6 not taken -> falls into $AEF8    -> C = 0
 ```
 
-The third leaves C = 0 — **and it is unreachable at `$CAE9`.** `$AEF8` writes
+The third leaves C = 0 - **and it is unreachable at `$CAE9`.** `$AEF8` writes
 `$012C,X := 0` (`$AF00`), and the very next thing `$CAB8` does is
 `$CABB LDA $012C,X / $CABE BNE $CAC1`, which is then NOT taken, so `$CAC0 RTS`
 returns before any arithmetic. Nothing in `$AEF8`-`$AF06` is other than
@@ -67,7 +67,7 @@ returns before any arithmetic. Nothing in `$AEF8`-`$AF06` is other than
 
 **So on every path that reaches `$CAE9` through `$CAB8`, C = 1.** That is why
 W40's PROBE-1 (initialiser := 1 unconditionally) measured WRONG in the other
-direction — it made A2 right and A1 wrong, and A1 is 3,269 of the frames:
+direction - it made A2 right and A1 wrong, and A1 is 3,269 of the frames:
 237 -> 3,580 is 3,269 A1 frames plus clamp/spawn edges, not a tuning failure.
 
 ### AND IT WAS MEASURED, FROM THE SAME BOARD FILM
@@ -91,7 +91,7 @@ run after the edit.**
 Mostly right, one correction. The wrong *arithmetic* is in `$CA5E`, but the
 missing *information* was in `h_AEE1`, which the port wrote as returning
 nothing. The fix therefore makes `h_AEE1` return its RTS carry (derived at each
-of its three exits) and `$CA5E` consume it — rather than hardcoding a 1 at
+of its three exits) and `$CA5E` consume it - rather than hardcoding a 1 at
 `$CAB8`, which would have been the same number with none of the proof.
 `$AEE1` has exactly three `JSR` sites in the 32 KB (`$B4C8`, `$CAB8`, `$CB17`);
 `$B4C8` is followed by `DEC $04CC,X` and `$CB17` by `RTS`, so **`$CAB8` is the
@@ -115,7 +115,7 @@ node games/gradius/tools/oracle/stagecmp.mjs --tag s5-chunks --pipeline tail --o
 
 `games/gradius/src/enemies.js`, two functions:
 
-* **`h_AEE1`** now RETURNS its RTS carry — derived at each of its three exits
+* **`h_AEE1`** now RETURNS its RTS carry - derived at each of its three exits
   from the listing, with the derivation in its header, plus the note that
   `$CAB8` is the only one of the 32 KB's three `JSR $AEE1` sites whose carry is
   ever read (`$B4C8` -> `DEC $04CC,X`, `$CB17` -> `RTS`).
@@ -124,8 +124,8 @@ node games/gradius/tools/oracle/stagecmp.mjs --tag s5-chunks --pipeline tail --o
   `$AEF8`'s C = 0 exit cannot reach `$CAE9`, and the board histogram.
 
 `games/gradius/tests/w32b-arms.test.js`, two new named tests (section 7). Both
-are DIFFERENCES BETWEEN TWO PORT RUNS — the step `$CA57[$17]` cancels, leaving
-only the carry — so neither can agree with itself through a constant the port
+are DIFFERENCES BETWEEN TWO PORT RUNS - the step `$CA57[$17]` cancels, leaving
+only the carry - so neither can agree with itself through a constant the port
 also reads (`docs/knowledge/03`).
 
 **A FACT THE TEST FOUND WHILE BEING WRITTEN:** on the A2 path `$AEE1` runs
@@ -135,7 +135,7 @@ test asserted the half-pixel and went red. It is now pinned.
 
 ---
 
-## 5. THE MUTATION TABLE — EVERY CHECK SEEN TO FAIL
+## 5. THE MUTATION TABLE - EVERY CHECK SEEN TO FAIL
 
 `games/gradius/tools/oracle/mutants-w42.json`, run two ways: through
 `mutgate.py` (a scratch COPY, real dump, `src/` re-hashed either side) for the
@@ -148,19 +148,19 @@ golden `src/enemies.js` sha256 `6a3b96c187746ba4d0f9961f71c643b513169587c5981ef4
 
 | id | what it breaks | `stagecmp` s5-chunks | unit test |
 |---|---|---:|---|
-| W42-1 | **the defect itself** — `$CAB8`'s carry dropped | **RED 237** | RED (both) |
-| W42-2 | **W40's PROBE-1 rebuilt** — initialiser := 1 | **RED 3,580** | RED |
-| W42-3 | `$AEEC`'s exit returns C = 0 | GREEN — **a hole, §5a** | RED (both) |
+| W42-1 | **the defect itself** - `$CAB8`'s carry dropped | **RED 237** | RED (both) |
+| W42-2 | **W40's PROBE-1 rebuilt** - initialiser := 1 | **RED 3,580** | RED |
+| W42-3 | `$AEEC`'s exit returns C = 0 | GREEN - **a hole, §5a** | RED (both) |
 | W42-4 | `$AEF6`'s exit returns C = 0 | **RED 237** | RED |
-| W42-5 | `$AEF8`'s exit returns C = 1 | GREEN | GREEN — **(c) uncatchable, §5b** |
-| W42-6 | `$CAD2`'s path-B carry forced to 0 | **RED 31** | GREEN — comparison only |
+| W42-5 | `$AEF8`'s exit returns C = 1 | GREEN | GREEN - **(c) uncatchable, §5b** |
+| W42-6 | `$CAD2`'s path-B carry forced to 0 | **RED 31** | GREEN - comparison only |
 | W42-NEG | CONTROL, comment only | GREEN as designed | GREEN as designed |
 
 W42-1 reproducing **237** and W42-2 reproducing **3,580** are the two numbers
 W40 printed. The explanation in §2 predicts both, so the fix is not a constant
 that happened to zero the counter.
 
-### 5a. SURVIVOR W42-3 — (a) A DEFECTIVE CHECK, and it is the COMPARISON's
+### 5a. SURVIVOR W42-3 - (a) A DEFECTIVE CHECK, and it is the COMPARISON's
 
 `$AEEC`'s C = 1 is never exercised **at `$CAB8`** by this dump. Measured from
 the board film, not inferred:
@@ -172,25 +172,25 @@ A2 frames, $038C,X entering $CAB8:  {'< $80 -> $AEF6 exit': 247}
 
 All 247 A2 frames enter with the fraction below `$80`, so `$CAB8`'s
 `SBC #$80` always borrows and always returns through `$AEF6`. It is not
-structural — an A2 stretch holds `$038C,X` constant (two calls = one whole
+structural - an A2 stretch holds `$038C,X` constant (two calls = one whole
 pixel) and an A1 stretch alternates it by `$80`, so which exit a stretch uses
 is the parity it happened to start on. A different trajectory would flip it.
 **The unit test catches it RED**, which is why the mutant is reported as a
 defective CHECK and not as an unguarded path.
 
-### 5b. SURVIVOR W42-5 — (c) PROVABLY UNCATCHABLE
+### 5b. SURVIVOR W42-5 - (c) PROVABLY UNCATCHABLE
 
 `$AEF8` leaves C = 0 and also writes `$012C,X := 0` (`$AF00`). `$CAB8`'s very
 next instructions are `$CABB LDA $012C,X / $CABE BNE $CAC1`, not taken, so
 `$CAC0 RTS` returns before any arithmetic; and the other two `JSR` sites
 discard the flag. **No comparison of object bytes, and no test of observable
 port state, can distinguish the two values.** The listing is the only proof.
-The test pins the consequence that IS observable — that the frame does no
+The test pins the consequence that IS observable - that the frame does no
 arithmetic at all.
 
 ---
 
-## 6. REGRESSIONS — EVERYTHING W40 MEASURED, RE-MEASURED
+## 6. REGRESSIONS - EVERYTHING W40 MEASURED, RE-MEASURED
 
 | run | W40 | W42 |
 |---|---|---|
@@ -213,8 +213,8 @@ divergence this project had is gone, and it went by transcription.
 
 W40 §2b prints `frames compared 2371` for `stagecmp --tag w32arepro` and 2,374
 with `--pipeline tail`. This tree prints **2,364** and **2,375**. The difference
-is `$19 == 4 frames skipped: 7` (and 8 on the tail pipeline) — `$9663`'s census
-frames, W40 §6a hole 1 — which `b559cmp.mjs` does compare and `stagecmp.mjs`
+is `$19 == 4 frames skipped: 7` (and 8 on the tail pipeline) - `$9663`'s census
+frames, W40 §6a hole 1 - which `b559cmp.mjs` does compare and `stagecmp.mjs`
 skips. 2385 − 12 − 2 − 7 = 2364. **Verified not to be my change:** `git show
 HEAD:...enemies.js` swapped in produces byte-identical counts (2375, 8 skipped).
 2,371 is `b559cmp.mjs`'s number, quoted in `stagecmp.mjs`'s row.
@@ -228,11 +228,11 @@ node games/gradius/tools/test-all.mjs   ->  GREEN -- 12 passed, 0 failed, 0 SKIP
 node --test games/gradius/tests/        ->  725 pass, 0 fail, 0 skipped  (was 723)
 ```
 
-**A SKIP IS NOT A PASS — the two levels, reported separately:**
+**A SKIP IS NOT A PASS - the two levels, reported separately:**
 
 * **gate-level SKIPPED: 0.** All twelve stages ran.
 * **field-level: 6 fields still SKIPPED** inside `compare.mjs`'s 29,693-frame
-  run — `pad2 oamBudget spriteOverflow scanline cpuCycle splitSpins`. Inherited,
+  run - `pad2 oamBudget spriteOverflow scanline cpuCycle splitSpins`. Inherited,
   not touched by this wave, and the gate's own summary line still does not say
   it where a reader will see it.
 * **`stagecmp.mjs` skips `$9663`'s census frames**: 142 on `s5-chunks`, 7-8 on
@@ -242,15 +242,15 @@ node --test games/gradius/tests/        ->  725 pass, 0 fail, 0 skipped  (was 72
 
 ---
 
-## 8. BUDGET REMAINING — THE HARNESS POINTED AT THE CHEAPEST OPEN ITEM
+## 8. BUDGET REMAINING - THE HARNESS POINTED AT THE CHEAPEST OPEN ITEM
 
-W40 §7 item 4: "the six unreached late spawners — `--mode spawn --window
+W40 §7 item 4: "the six unreached late spawners - `--mode spawn --window
 6460-7730` per stage". Cheapest, so it went first: **stage 5's**, one 3-minute
 board run.
 
 **ENUMERATE FIRST (`docs/knowledge/09`).** `jt_$C439[4]` = `$C653`, and reading
 it settles what to capture before anything runs: `$C653 INC $68 / CMP #$28 /
-BCC RTS` fires one frame in `$28`, then `LDA #$14 / STA $66` — it spawns
+BCC RTS` fires one frame in `$28`, then `LDA #$14 / STA $66` - it spawns
 **exactly one type, `$14`**, the arm owner, through `$A4A6`, cycling `$69` over
 `$C67A`'s four pairs. So the run wanted `--types 14`, and the seven spawns it
 produced used **4 of 4** `$C67A` rows.
@@ -258,10 +258,10 @@ produced used **4 of 4** `$C67A` rows.
 That one run turned up **three defects, none of them in `src/`, all of them in
 the machinery that produces this project's cartridge numbers.**
 
-### 8a. `seedFromCartridge` NEVER SEEDED `$68` — the SHARED seeder, every scenario
+### 8a. `seedFromCartridge` NEVER SEEDED `$68` - the SHARED seeder, every scenario
 
 `porttrace.mjs` seeds `$5D $60 $61 $64 $65 $66 $67 $69 $6A-$6F`. **`$68` is not
-in the list**, and it has two ROM writers — `$C653` (above) and `$C686 INC $68 /
+in the list**, and it has two ROM writers - `$C653` (above) and `$C686 INC $68 /
 CMP $C684,Y` (the warp rain). Both are one-in-N throttles, so an unseeded `$68`
 of 0 makes the port's spawner **do nothing for up to `$28` frames after any
 seed**, silently. There was no readback case for `$68` either.
@@ -275,14 +275,14 @@ exactly why it survived to W42. Fixed, with the derivation written at the line.
 Spawn mode hand-builds a state with `$1B := $82` and the pre-INC `$69`, which
 fits `$C486 / $C546 / $C5AD / $C6DE` (W31's stage-4 entry among them) and
 nothing else. `$C653` gates on `$68`, so it did nothing: seven spawns, 78
-divergent, `$69: port 1 vs cart 2` — the cursor never even advanced. `$68` is
+divergent, `$69: port 1 vs cart 2` - the cursor never even advanced. `$68` is
 now seeded there from the film too, which took it to 53.
 
 **AND IT STILL CANNOT VALIDATE `$C653`**, because the board's spawn row is
 sampled AFTER `$ADAB` dispatched and `$CA5E` has already run one frame on the
 new object, while spawn mode's row is pre-dispatch. The residue is systematic:
 every field is exactly one `$CA5E` + `$AEE1` frame (`x $F0/$EF`, `xf $00/$80`,
-`y $40/$3F` — a whole half-pixel in each axis).
+`y $40/$3F` - a whole half-pixel in each axis).
 
 The fix is not to patch spawn mode but to use the SEEDED path: the seven rows
 re-expressed as STEP rows over the same film, so the whole machine is seeded
@@ -297,9 +297,9 @@ node stagecmp.mjs --tag s5-late-step --dir .../out/stagepoke/s5-late-step --pipe
 **`jt_$C439[4]` = `$C653` is the FIRST late spawner other than stage 4's ever
 compared against the board.** 7 of 7 spawns, 4 of 4 `$C67A` rows, 0 divergent.
 
-### 8c. TWO `$5C >= 2` GATES THE HARNESS WAS NOT MODELLING — and W40's two "window edge" frames explained
+### 8c. TWO `$5C >= 2` GATES THE HARNESS WAS NOT MODELLING - and W40's two "window edge" frames explained
 
-W40 skipped every `$19 == 4` frame ("`$9663`'s census is not replayed") — 142
+W40 skipped every `$19 == 4` frame ("`$9663`'s census is not replayed") - 142
 frames on `s5-chunks`. **`$19 == 4` IS NOT THE FORK.** `$9663` is three
 conditions and the harness was skipping on the first:
 
@@ -314,7 +314,7 @@ condition: **142 skipped -> 10**, and `$9663`'s census is REPLAYED (`armCensus`)
 and **compared against the `$5C` the board wrote at `$9683`** instead of being
 assumed. Hole 1 of W40 §6a is closed.
 
-Narrowing it exposed **16 field divergences at f2321 and f4371** — precisely the
+Narrowing it exposed **16 field divergences at f2321 and f4371** - precisely the
 two frames W40's own source comment names as "the only non-`$CA5E` divergences
 the stage-5 run had", without saying why. Two more listing facts, both real:
 
@@ -329,7 +329,7 @@ the stage-5 run had", without saying why. Two more listing facts, both real:
 
 Measured, and this is what makes it a fact rather than a story: at f2321 the
 board's `$5C` = 3 and `$02` = `$12` (EVEN), so `$968C`'s BCC was taken and there
-was no `$968E` fork — and **every live slot's 21 bytes are byte-identical
+was no `$968E` fork - and **every live slot's 21 bytes are byte-identical
 between f2320 and f2321.** The board's whole object chain was skipped. With
 `$9A5E`'s gate transcribed into the tail, all 16 go to 0.
 
@@ -339,8 +339,8 @@ between f2320 and f2321.** The board's whole object chain was skipped. With
 |---|---|---|
 | `s5-chunks` frames compared | 9,886 (142 skipped) | **10,405 (10 skipped)** |
 | `s5-chunks` `$CA5E` frames | 3,826 | **3,962** |
-| `w32arepro` type `$1D` frames | 2,364 | **2,371 — `b559cmp.mjs`'s number exactly** |
-| every run's divergences | — | **0** |
+| `w32arepro` type `$1D` frames | 2,364 | **2,371 - `b559cmp.mjs`'s number exactly** |
+| every run's divergences | - | **0** |
 
 §6a's "one W40 number corrected" is now moot: `stagecmp.mjs` and `b559cmp.mjs`
 agree at 2,371, because the frames one skipped and the other compared are now
@@ -373,7 +373,7 @@ the mutant file records both numbers so neither reads later as drift.
    `$C752` remain.
 3. **Spawn mode proper.** It compares a pre-dispatch port row against a
    post-`$ADAB` board row. That is sound only for handlers whose init arm does
-   not move the object on its spawn frame — true of W31's `$0A`/`$15`, false of
+   not move the object on its spawn frame - true of W31's `$0A`/`$15`, false of
    `$14`. Either dispatch inside spawn mode or retire it for the step path.
 4. **`$968E`'s fork itself** is still not replayed: 10 frames on `s5-chunks`, 0
    everywhere else. It is a different call ORDER, not a subset, so it needs

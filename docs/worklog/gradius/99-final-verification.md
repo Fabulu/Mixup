@@ -6,7 +6,7 @@ wave: 99   role: verify   started: 2026-07-29
 ## The task, as I understood it
 
 From wave 5 onward the per-wave reviewers were deliberately NARROWED: they
-re-ran only the scenarios their own wave touched. That was an explicit trade —
+re-ran only the scenarios their own wave touched. That was an explicit trade -
 find bugs later and in a batch rather than spend five hours per wave. I am the
 batch. Everything those waves did not re-measure is my remit.
 
@@ -79,7 +79,7 @@ node --test games/gradius/tests/
   # tests 292   # pass 292   # fail 0   # skipped 0   # todo 0
 ```
 
-**The skip count is 0 at both levels** — 0 skipped stages and 0 skipped tests.
+**The skip count is 0 at both levels** - 0 skipped stages and 0 skipped tests.
 Inside the gate: `verify_assets.py --self-test` reports **39 of 39 mutations
 reddened their target; 14 of 14 families seen red**, and 0 mismatches across
 14 families / 17 tables / 42 constants / 12 palettes / 2048 CHR tiles / 425
@@ -108,7 +108,7 @@ gx802   [PASS] 0 of 61440 pixels differ      painted boundary, other jitter
 ```
 
 **THE PIXEL NUMBERS DID NOT MOVE.** Every natural frame is still exactly 0, and
-the synthetic residual is 6 px on scanline 212 — the number `NOTES-render.md`
+the synthetic residual is 6 px on scanline 212 - the number `NOTES-render.md`
 §7 already states, at its stated bound. All 11 negative controls are still seen
 by at least one frame. No wave moved anything here, which is expected:
 `rendergate.py` validates the render MODEL against Mesen and imports no `src/`.
@@ -117,7 +117,7 @@ by at least one frame. No wave moved anything here, which is expected:
 
 It was in the tree and in no runner from the day it was written.
 `docs/knowledge/02` trap 5 says a check outside the gate rots, and this is not
-hypothetical — **four consecutive waves recorded, in their own worklogs, that
+hypothetical - **four consecutive waves recorded, in their own worklogs, that
 they did not run it** (05, 06, 07 and 08 review-fidelity, quoted in the stage's
 comment). It is now stage 2b of `test-all.mjs`, with an environmental SKIP when
 the cartridge is absent, like the other ROM-driven stages. It costs ~4 min.
@@ -130,14 +130,14 @@ That is cheaper than four waves of not running it.
 This is the one that mattered, and it is the hole every narrowed wave named.
 w5: "$0200-$02FF (shadow OAM) is not in the 447-address watch list". w6: "page
 $02 has zero watched addresses ... a shot, missile or explosion sprite drawn at
-the wrong OAM slot, tile, attribute or Y while the counts all match — green
+the wrong OAM slot, tile, attribute or Y while the counts all match - green
 everywhere". w7: "compare.mjs reads sprite 0's four bytes plus four work
 counters and nothing else ... this is the highest-value hole".
 
 **The port modelled the page all along.** `src/state.js:564` has
 `shadowOam: new Uint8Array(256)`, and `porttrace.mjs`'s `peek()` has mapped
 `$0200-$02FF` to it since it was written. Nobody had ever asked the CARTRIDGE
-for it — page $02 simply was not in the watch list.
+for it - page $02 simply was not in the watch list.
 
 ### What I did
 
@@ -148,10 +148,10 @@ for it — page $02 simply was not in the watch list.
    `knownFail` would be dangerous. `src/oam.js:146` does `oam.fill(0xF4)` and
    says so; the cartridge's blank pass `$8BAB` writes `$F4` into the **Y byte
    only** of slots past the cursor and leaves their tile/attribute/X stale. So
-   hidden slots differ in bytes 1-3 *by construction* — 36,244 slot-frames of
+   hidden slots differ in bytes 1-3 *by construction* - 36,244 slot-frames of
    it on `idle` alone. What is compared instead is exact and is not weaker:
 
-   * **(A)** the Y byte of all 64 slots, every frame, always — the byte `$8BAB`
+   * **(A)** the Y byte of all 64 slots, every frame, always - the byte `$8BAB`
      actually writes, so nothing excuses it;
    * **(B)** all four bytes (tile, attribute, X, Y) of every slot the
      **CARTRIDGE** is showing. Liveness is read off the oracle side on purpose:
@@ -161,7 +161,7 @@ for it — page $02 simply was not in the watch list.
 3. Added DISPLAY LIST COVERAGE, a corpus-level check in the same family as
    CLAMP and DEATH coverage, that fails when a scenario's artifact has no
    watched page $02 (a stale artifact would otherwise make the whole block stop
-   running silently — the exact regression shape w5 wrote down about `$0A`), or
+   running silently - the exact regression shape w5 wrote down about `$0A`), or
    when the corpus contains zero live slots.
 
 ### The measured result
@@ -174,7 +174,7 @@ for it — page $02 simply was not in the watch list.
 ```
 
 **Zero.** Across all 36 scenarios and 12,294 frames, every sprite the cartridge
-draws — slot, tile, palette, flips, priority, X and Y — is byte-exact in the
+draws - slot, tile, palette, flips, priority, X and Y - is byte-exact in the
 port. **There was no display-list regression hiding in the blind spot.**
 
 ### SEEN RED, and this is the proof the blind spot was real
@@ -192,7 +192,7 @@ Every sprite in the game moved to the wrong OAM slot and the 616-address corpus
 reported **`all TIER 1 fields exact` on all four scenarios**. 43,809 wrong
 bytes, invisible. That is the blind spot, measured rather than asserted.
 
-Second break — drop the attribute OR mask at `$8AE3` (`attr | orMask` ->
+Second break - drop the attribute OR mask at `$8AE3` (`attr | orMask` ->
 `attr`), which is a CONTENT error, not a placement error:
 
 ```
@@ -201,7 +201,7 @@ enemy-waves   [PASS] TIER 1: 650 fields, 0 divergent
               ATTR  f1787 slot 13: rom 35 port 34
 ```
 
-Third — the coverage arm. Restoring a pre-wave-99 artifact for one scenario:
+Third - the coverage arm. Restoring a pre-wave-99 artifact for one scenario:
 
 ```
 [DISPLAY LIST] page $02 is NOT in the watch list -- not compared
@@ -236,8 +236,8 @@ three ways.
    `$0400`-page arrays including `$0460`-`$0469` and `$046C`-`$0475` (100
    addresses), and the `$0700` HUD/VRAM queue image `$0700-$074F` plus the two
    rings and the score (137 addresses).
-3. **The one interaction point that was NOT watched — enemies vs the display
-   list and the OAM rotation — is exactly where I found the hole**, and having
+3. **The one interaction point that was NOT watched - enemies vs the display
+   list and the OAM rotation - is exactly where I found the hole**, and having
    closed it, it is clean too (§4). The OAM rotation `$2F` itself was already
    compared as `oamBase`; what was not was where each sprite LANDED.
 
@@ -267,7 +267,7 @@ restored. `sha256sum -c` over all 21 `src/*.js` files after every batch:
 | 11 | 1 | `$8B39` OAM rotation `+$44` -> `+$40` | **RED** 1 test |
 
 Numbers 1, 2, 6 and 7 are the four the reviewers specifically flagged as
-corpus-GREEN and held by a single unit test each — w5's breaks D and S, w7's
+corpus-GREEN and held by a single unit test each - w5's breaks D and S, w7's
 armoured accumulator, w8's octave wrap. **All four still bite.** The unit
 suite is load-bearing, not decorative.
 
@@ -280,7 +280,7 @@ survivors.
 
 ## 7. Did the narrowing cost us?
 
-**No — and I can put a number on it rather than an opinion.**
+**No - and I can put a number on it rather than an opinion.**
 
 The narrowing's stated risk was that a wave would break someone else's
 subsystem and nobody would look until the batch. I re-recorded the whole corpus
@@ -301,14 +301,14 @@ on every scenario I tried it on. So "no regression found by the corpus" was a
 weaker statement than it sounded for waves 5-8, and *nobody would have found a
 display-list regression whether they re-ran 8 scenarios or 36.* The narrowing
 was not what put that hole there, and re-running the full corpus every wave
-would not have closed it — only watching the page does, which is what this pass
+would not have closed it - only watching the page does, which is what this pass
 did. The four waves that skipped `rendergate.py` are a closer call: that IS a
 check going unrun, and it IS the shape trap 5 warns about, though it happens to
 be a check the port's own code cannot regress.
 
 **The real lesson is not about narrowing at all.** It is that every wave from 5
 to 8 wrote down the same blind spot, in almost the same words, and correctly
-identified it as the highest-value hole — and it stayed open for four waves
+identified it as the highest-value hole - and it stayed open for four waves
 because writing a blind spot down is not the same as closing it. The worklog
 discipline worked perfectly: I found this in fifteen minutes because four
 agents had told me exactly where to look. What was missing was anyone whose job
@@ -323,11 +323,11 @@ Honest list, measured where I could measure it.
 
 1. **`$0500-$06FF`, the terrain collision map.** Still unwatched. MEASURED this
    pass: it is **0/512 non-zero in the cartridge's own seed RAM at the align
-   frame of `idle`, `terrain-death`, `enemy-waves` and `long-idle`** — stage 1's
+   frame of `idle`, `terrain-death`, `enemy-waves` and `long-idle`** - stage 1's
    camera pages 0-3 contain no solid tile bits, as `00-recon-terrain.md` says.
    Adding the 512 addresses would be a constant-zero watch. It is not
-   worthless — it would catch a streamer writing a block at the wrong index,
-   which is precisely the regression w5 named — but it costs 512 addresses and
+   worthless - it would catch a streamer writing a block at the wrong index,
+   which is precisely the regression w5 named - but it costs 512 addresses and
    ~60% artifact growth to check a constant. `peek()` does not map the range;
    the one-line change is
    `if (addr >= 0x0500 && addr < 0x0700) return state.terrain.coll[addr - 0x0500];`.
@@ -338,7 +338,7 @@ Honest list, measured where I could measure it.
    diverging on every frame of every scenario, still for the stated reason.
    `w_0036` is not a regression; it is the unmodelled budget. Nobody has
    measured how close the force field's second `$8AAC` drives `$9F` to its `$3E`
-   seed (w7's open item) — I did not either.
+   seed (w7's open item) - I did not either.
 4. **Everything behind a loud throw.** Unchanged and unchangeable from a button
    script: game over `$97F1`/`$96FB`, two-player `$18 == 1` anywhere, stage-5
    `$C03D`/`$C290`, armoured `$C05F-$C08D`, wall-break `$C2DC`/`$C32F`, enemy
@@ -359,7 +359,7 @@ Honest list, measured where I could measure it.
 10. **The browser path.** `loadResources()` over HTTP, the launcher, and
     `games/gradius/index.html` booting in a real browser are still untested by
     anything; everything goes through `tests/helpers.js`.
-11. **`tools/build-dist.mjs` and its ROM-leak guard — I DID NOT RUN THEM.**
+11. **`tools/build-dist.mjs` and its ROM-leak guard - I DID NOT RUN THEM.**
     Wave 99 added no assets and touched no asset tooling, but I am recording the
     omission rather than implying coverage. `assets/` remains gitignored and
     `git status` confirms nothing under it is tracked.
@@ -388,7 +388,7 @@ the broken HEAD `docs/worklog/README.md` rule 2 exists to prevent, and it was
 one command away.
 
 **I did not clear it and I did not commit it.** Clearing another agent's index
-is as destructive as committing it — it may be mid-operation. I committed with
+is as destructive as committing it - it may be mid-operation. I committed with
 an explicit pathspec (`git commit -- <files>`), which commits only the named
 paths and leaves the rest of the index untouched, and I verified the resulting
 commit's file list afterwards. **Whoever owns ddpdoj: your index is still

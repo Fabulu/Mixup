@@ -1,4 +1,4 @@
-# W21b IMPL — CLEARING THE PATTERN REVIEW'S OPEN FINDINGS
+# W21b IMPL - CLEARING THE PATTERN REVIEW'S OPEN FINDINGS
 
 status: **DONE**
 wave: 21b   role: implementer (DAIOUJOU)   started/finished: 2026-08-02
@@ -7,13 +7,13 @@ target: `ddpdojblk` VERSION-B.  Every address is build B unless the line says
 otherwise.  No build-A address introduced.
 
 Four open MODERATE findings from the wave-21 review, all cleared.  The
-transcription itself was right — the review confirmed it instruction for
-instruction — so this wave changes no ported behaviour.  It fixes four CHECKS
+transcription itself was right - the review confirmed it instruction for
+instruction - so this wave changes no ported behaviour.  It fixes four CHECKS
 and one PROOF so they say what they mean.
 
 ---
 
-## 1. F1 — the coverage denominator (w21patterngate.mjs)
+## 1. F1 - the coverage denominator (w21patterngate.mjs)
 
 **The defect.** `w21patterngate.mjs` printed `BODIES reached ${size}/8` over a
 13-entry map.  The hardcoded `/8` made the coverage fraction wrong in every
@@ -41,12 +41,12 @@ now prints the real map size.
 
 ---
 
-## 2. F3 — the self-agreeing $284190 fixture (tests/bullets.test.js)
+## 2. F3 - the self-agreeing $284190 fixture (tests/bullets.test.js)
 
 **The defect.** `mathRom()` seeded the synthetic fold window at `VEC.fold`, the
 pointer table at `VEC.speedPtrs`, and the rows at `VEC.quadStride`.
 `velocity()` read back through the SAME constants.  Fixture and subject shared
-the constant, so they agreed whatever it held — proven: with `VEC.fold` moved
+the constant, so they agreed whatever it held - proven: with `VEC.fold` moved
 from `$283F50` to `$283F60` AND the real-cartridge tables moved aside, the suite
 was fully green reading the fold table from the wrong address.
 
@@ -79,7 +79,7 @@ with the subject).  Restored, SHA-verified: `675664e4...` for `bulletmath.js`.
 
 ---
 
-## 3. F5 — the register contract (src/bullets.js)
+## 3. F5 - the register contract (src/bullets.js)
 
 **The defect.** Twelve rank!=0 arms (`pair06`, `triple05`, `spread2A/3A`,
 `spread2B/3B`, `adaptive`, the two inlined arms) left `regs.d0` / `regs.d1`
@@ -90,7 +90,7 @@ register writeback correctly; the restore was missing ONE LEVEL UP.
 **The fix.** A `restoreFan(regs, body)` wrapper saves D0/D1/(A0) before the body
 runs and restores them after, exactly as `movem.l` does.  All twelve entries
 call through it; the four single/inline-bias entries (`$281402 $281708 $281726`)
-do NOT wrap — they restore D0 themselves with an `addi.l`/`subi.l` pair and no
+do NOT wrap - they restore D0 themselves with an `addi.l`/`subi.l` pair and no
 `movem`.
 
 **The test, seen RED before the fix.** A new test fires all twelve entries under
@@ -106,26 +106,26 @@ With `restoreFan`: 308 pass, 0 fail.
 
 ---
 
-## 4. F2 — the partial absence proof (tools/w21patterns.py rewrites)
+## 4. F2 - the partial absence proof (tools/w21patterns.py rewrites)
 
 **The defect.** The `rewrites` scan used a partial opcode allowlist (ori/andi/
 eori .b/.w, move.b/w #imm and Dn, and the bit ops) with NO clr, neg, not, addi
 or move.l form.  It HID 11 `clr.w (A6)`, 14 `move.l (A6)` and 12 `addi.l (A6)`
 sites, and its header falsely claimed "A6 = the record base for the whole of
-the mover" (it is not — continuation tails advance it).
+the mover" (it is not - continuation tails advance it).
 
 A capstone linear disassembly was tried first but found only 20 of the ~80
 sites: $282104..$283BAF is 6.7 KB of mixed code and continuation data, and a
 linear pass loses sync at the first data island.
 
-**The fix.** The byte-pattern scan (which checks EVERY word boundary — it is
+**The fix.** The byte-pattern scan (which checks EVERY word boundary - it is
 alignment-independent) is kept, and the allowlist is widened to cover every
 68000 instruction class that can write through (A6) or (d16,A6):
 
-  * ori/andi/subi/addi/eori #imm — byte/word/LONG, both EAs
-  * clr/neg/not — byte/word/long, both EAs
-  * move.b/w/l — any source, dest (A6)/(d16,A6)
-  * btst/bchg/bclr/bset — static #n and Dn forms
+  * ori/andi/subi/addi/eori #imm - byte/word/LONG, both EAs
+  * clr/neg/not - byte/word/long, both EAs
+  * move.b/w/l - any source, dest (A6)/(d16,A6)
+  * btst/bchg/bclr/bset - static #n and Dn forms
 
 The false premise is corrected.  Each match is classified by WHERE it lands and
 WHAT it writes.
@@ -148,14 +148,14 @@ writes because A6 is advanced in the tails.
 
 ---
 
-## 5. THE MUTATION TABLE — every changed check seen RED
+## 5. THE MUTATION TABLE - every changed check seen RED
 
 | # | finding | the mutation | result |
 |---|---|---|---|
 | 1 | F3 | `VEC.fold` `$283F50` -> `$283F60` | **3 RED** (quadrants, asr.l, ellipse).  Before the fix: 0 RED. |
 | 2 | F5 | remove `restoreFan` from the 12 entries | **12 assertions RED** (D0/D1 not restored). |
-| 3 | F1 | restore the hardcoded `/8` denominator | gate prints `0/8` — numerically wrong vs the real `0/13`. |
-| 4 | F2 | restore the partial allowlist | scan reports 0 clr.w, 0 move.l — HIDES the 11+27 real sites. |
+| 3 | F1 | restore the hardcoded `/8` denominator | gate prints `0/8` - numerically wrong vs the real `0/13`. |
+| 4 | F2 | restore the partial allowlist | scan reports 0 clr.w, 0 move.l - HIDES the 11+27 real sites. |
 
 All restored, SHA-verified:
 
@@ -198,8 +198,8 @@ python games/ddpdoj/tools/w21patterns.py rewrites
 > **8 of 19 rank-0 entry arms** and **7 of 13 rank!=0 bodies/arms** have been
 > executed by a board run; six rank!=0 arms have not, and **four of those six
 > have live fire sites** (`$28134E`/4, `$281450`/10, `$281726`/4, `$281776`/1).
-> The `$284190` half has **0 of 6** branches board-executed — the mover is
-> unported — but is exhaustively compared as a function over its entire
+> The `$284190` half has **0 of 6** branches board-executed - the mover is
+> unported - but is exhaustively compared as a function over its entire
 > 65,536-point domain, and its fixture now disagrees with the subject when the
 > fold table constant is wrong (F3).
 

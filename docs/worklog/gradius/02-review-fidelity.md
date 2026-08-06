@@ -1,4 +1,4 @@
-# Wave 2 review — the HUD: canned packets + $8898 rotation (fidelity lens)
+# Wave 2 review - the HUD: canned packets + $8898 rotation (fidelity lens)
 status: DONE
 wave: 2   role: review   started: 2026-07-29
 verdict: defects-found (4: one moderate, three minor). NOTHING BLOCKING.
@@ -53,11 +53,11 @@ node tools/build-dist.mjs
 ```
 
 The 9 SKIPs are field-level, each with a written reason; no STAGE skipped.
-`python .../oracle/scen.py` NOT re-run — it re-records the oracle side and needs
+`python .../oracle/scen.py` NOT re-run - it re-records the oracle side and needs
 Mesen; the recorded artifacts under `tools/oracle/out/scen/` are what compare.mjs
 read, and I re-derived my own numbers straight out of them (below).
 
-### ROM spot-checks — every address the commit cites
+### ROM spot-checks - every address the commit cites
 
 | claim | ROM | verdict |
 |---|---|---|
@@ -70,13 +70,13 @@ read, and I re-derived my own numbers straight out of them (below).
 | `$8641`/`$863D`/`$8645`/`$8647` | `A9 00 F0 00 / A9 FF D0 04 / A6 0E / 9D 00 07 E8 86 0E 60`; `$8641` has exactly one caller, `$80B0` | exact |
 | `$8A51` drain + the `$8A93` escape | `LDX $0700,Y / BEQ $8A76 ... $8A93 LDA $0700,Y / CMP #$03 / BCS $8A86` | exact |
 | `$8A4B` mode table | `60 00 04 00 04 00` -> QUEUE_INC `[null,1,32,1,32,1]` | exact |
-| `$9E94`/`$9EC2` ROWS | `$9EC6 A9 01` (mode 1 = inc 1) and `$9ED8 A9 20 18 65 AA` between packets; attribute packet queued first at `$9E94` | exact — the rows reading is right |
-| the collision transpose | `$9F5A LDY $AF / $9F66 LDA $0703,Y / $9F77 ADC #$08 / $9F88 INC $AF` — first data byte of each of the 4 packets, then step within them | exact — the transpose IS the ROM's |
+| `$9E94`/`$9EC2` ROWS | `$9EC6 A9 01` (mode 1 = inc 1) and `$9ED8 A9 20 18 65 AA` between packets; attribute packet queued first at `$9E94` | exact - the rows reading is right |
+| the collision transpose | `$9F5A LDY $AF / $9F66 LDA $0703,Y / $9F77 ADC #$08 / $9F88 INC $AF` - first data byte of each of the 4 packets, then step within them | exact - the transpose IS the ROM's |
 | the canned-packet table | re-read at raw offset `16+$064E`, all ten stage-1 streams match `EXPECT_HUD_STREAMS` and `hud.test.js`'s IMAGES byte for byte; 39 entries is provable ($864E + 2*39 = $869C = entry 37's own target) | exact |
 
 ### The frame model (I doubted it, then confirmed it)
 
-`$8067 4C 67 80` — RESET ends in an empty spin, so the whole game runs inside the
+`$8067 4C 67 80` - RESET ends in an empty spin, so the whole game runs inside the
 NMI. `$80AA JSR $80BE`, and `$80BE E6 02 INC $02` precedes `$80D1`'s mode
 dispatch, so `$8898` reads the ALREADY-incremented `$02`. `$8099` drains and
 zeroes `$0E`; the producers run at `$9AC7`/`$9ACE`; `$80B0` appends the stop byte
@@ -131,8 +131,8 @@ blanker-count-4        *** GREEN, 80/80 -- THE BREAK SURVIVED ***
 
 ## Findings
 
-### 1. MODERATE — "the whole 4 KB" is 2 KB, and the untested half hides a live line
-`tests/terrain.test.js:83-84` — `diffByRow` iterates `nt < 2` over `0x400` each,
+### 1. MODERATE - "the whole 4 KB" is 2 KB, and the untested half hides a live line
+`tests/terrain.test.js:83-84` - `diffByRow` iterates `nt < 2` over `0x400` each,
 i.e. bytes `0..0x7FF`. The file header ("compare the whole 4 KB nametable image",
 "the comparison below is over the FULL 4 KB, no rows held back") and the commit
 message ("the whole 4 KB matches on all three captures") both overstate it.
@@ -152,16 +152,16 @@ queue -> nametable -> renderer chain is never joined end to end.
 The line is pre-existing; the CLAIM to cover it is new. Fix is one character:
 `for (let nt = 0; nt < 4; nt++)`.
 
-### 2. MINOR — a documented RED-WHEN that is measurably false
+### 2. MINOR - a documented RED-WHEN that is measurably false
 `tests/hud.test.js:401-416` says "RED WHEN: the $9B countdown starts at 1 or 3".
 Measured: `zp9B = 1` -> RED; `zp9B = 3` -> GREEN 80/80; `zp9B = 4` -> GREEN 80/80.
 The test blanks packet `$11 = 23 A2 00 00 00 00 FE`, whose data bytes 2..5 are
 ALREADY `$00`, so every countdown >= 2 yields the same image. Packet `$12`
 (`23 B4 64 65 00 FF`) or `$1C` would separate them. The blanker is declared
-unported/unexercised so no shipped behaviour is at risk — but the stated red arm
+unported/unexercised so no shipped behaviour is at risk - but the stated red arm
 was never seen red, which is what this repo says not to ship.
 
-### 3. MINOR — the `$8A93` escape threshold is unpinned
+### 3. MINOR - the `$8A93` escape threshold is unpinned
 `src/vram.js:170` `if (q[y & 0xFF] >= 3)` transcribes `$8A96 CMP #$03`. Changing
 it to `>= 2` leaves all 80 tests green. Nothing in stage 1 emits a mode-2 packet
 any more (terrain moved to mode 1 in this very commit) and no stage-1 packet
@@ -169,7 +169,7 @@ contains a data byte `$FF`, so the arm is modelled and never executed. This is
 NEW code in 43bc718 and it deserves the same explicit "unexercised" note the
 `$FD` arm and the bit-7 blanker were honestly given, or a unit test.
 
-### 4. MINOR — a fall-through cited as a branch, in the file about fall-throughs
+### 4. MINOR - a fall-through cited as a branch, in the file about fall-throughs
 `src/hud.js:204` annotates `scoreTail(state)` inside `stTopScore` as
 `// $8949 BMI $8906`. `$8949` is st_892C's branch. st_88F6 reaches `$8906` by
 FALL-THROUGH: `$8904 10 F7 BPL $88FD` fails when Y = $FF and `$8906` is the next
@@ -190,7 +190,7 @@ every time.
 - `src/terrain.js` collision write uses `& 0x1FF`; the ROM's `$9F81 ADC $A8 /
   STA $A8` has no carry into `$A9`, so it wraps within ONE page. Pre-existing and
   UNREACHABLE on stage 1 (max `u8($54+$58) = 0xE6`, `+24 = 0xFE`), so not raised
-  as a defect — recorded so nobody re-derives it.
+  as a defect - recorded so nobody re-derives it.
 - `knownFail: []` is retained as an empty list with the closed diagnosis kept in
   the notes. Rule 6 satisfied for `export_assets.py` (the NOT_EXPORTED entry is
   deleted in the same commit).

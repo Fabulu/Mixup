@@ -1,4 +1,4 @@
-# RECON 5 of 5 — the two hard systems: slowdown and rank (DaiOuJou / ddpdojblk)
+# RECON 5 of 5 - the two hard systems: slowdown and rank (DaiOuJou / ddpdojblk)
 status: DONE (slowdown instrument built and calibrated) / BLOCKED (rank unresolved; no overrun reached)
 wave: 0   role: recon   started: 2026-07-31
 
@@ -7,13 +7,13 @@ wave: 0   role: recon   started: 2026-07-31
 Not to SOLVE slowdown or rank. To establish **how they would be measured**, so
 nobody designs an architecture that cannot express them. Specifically:
 
-SLOWDOWN — which of the three mechanisms of `docs/knowledge/06` this hardware
+SLOWDOWN - which of the three mechanisms of `docs/knowledge/06` this hardware
 does (A dropped updates / B time dilation / C partial completion of an object
 loop); is it deterministic; what the real signal is (NOT consecutive-framebuffer
 comparison, already falsified); and **does the game's own logic observe it**
 (does any counter or RNG advance per LOOP ITERATION rather than per frame).
 
-RANK — the table in `docs/knowledge/08`: what feeds it, where computed, WHO
+RANK - the table in `docs/knowledge/08`: what feeds it, where computed, WHO
 READS IT, does it reach SPAWNS, how many thresholds, can it go down, what resets
 it. With the rule: **the LISTING establishes the complete reader set; measurement
 can only prove presence.**
@@ -34,7 +34,7 @@ this tree). At 20:47 it held `ddpdojblk.zip`, `ddpdojblk2.zip` and
 `ddpdojblk.7z`; by 21:00 the two zips had been renamed
 `ddpdojblk.zip.SHADOWED-bad-nv` / `ddpdojblk2.zip.dup-of-above`, leaving the
 `.7z`. **Everything I measured before ~20:56 was taken on the bad-NVRAM set and
-is invalid — see "The first result was of a halted machine" below.** Every
+is invalid - see "The first result was of a halted machine" below.** Every
 number below the line was re-measured after the change.
 
 ```
@@ -46,7 +46,7 @@ romset ddpdojblk [ddp3] is best available
 
 ## What I did
 
-New code, all mine, all under `games/ddpdoj/tools/hard/` (a private directory —
+New code, all mine, all under `games/ddpdoj/tools/hard/` (a private directory -
 another agent was creating `games/ddpdoj/tools/oracle/` and `tools/pgm.py` at the
 same minute, and a shared module that changes mid-run makes a measurement
 unreproducible):
@@ -61,12 +61,12 @@ unreproducible):
 | `work.lua` | the LOAD METER + sprite-list writer map |
 
 `games/ddpdoj/tools/hard/.gitignore` ignores `out/` in the same breath, per the
-worklog rule. `out/` holds the decrypted 68000 image and every probe report —
+worklog rule. `out/` holds the decrypted 68000 image and every probe report -
 ROM-derived, never committed.
 
 ## What I MEASURED
 
-### 0. The first result was of a HALTED MACHINE — trap 4, live
+### 0. The first result was of a HALTED MACHINE - trap 4, live
 
 The first two runs (600 and 10,000 video frames) reported a beautiful, stable
 signal: only **six** distinct interrupted PCs in 9,988 interrupts, 9,983 of them
@@ -98,8 +98,8 @@ Disassembling the decrypted image showed what `$13C398` is:
 So that run measured a machine sitting in a **"ROM ERROR" halt loop**, and every
 number it produced (including `raster_reads=0`) was worthless. `pgm.cpp:5359`'s
 note that Black Label *"expects Magic values in NVRAM to boot"* is exactly this
-gate, and `NOTES-versions.md`'s live question — "a wrong `.nv` may be the
-difference between an unlocked set and a locked one" — is now answered for the
+gate, and `NOTES-versions.md`'s live question - "a wrong `.nv` may be the
+difference between an unlocked set and a locked one" - is now answered for the
 stronger case: **with the bad `ddp3blk_defaults.nv`, ddpdojblk does not boot at
 all.** With the `.7z` copy it does:
 
@@ -163,7 +163,7 @@ The main context's frame boundary:
 
 `$803940` is the frame-sync flag; the caller writes the number of vblanks to
 wait and spins until an interrupt handler zeroes it. **Two entry points, one
-writing 2 and one writing 1** — i.e. the game has a "wait two vblanks" mode,
+writing 2 and one writing 1** - i.e. the game has a "wait two vblanks" mode,
 which is a 29.6 Hz cadence on a 59.19 Hz display. That is a scheduling fact the
 port has to carry, and it is not slowdown.
 
@@ -175,7 +175,7 @@ stackframe irq6=1200 SP=81FFF6 SR=2600 stack=[2000 0013 C6BA 0013] CURPC=13C6B4
 ```
 
 The 68000 group-2 exception frame is `[SR][PC_hi][PC_lo]`, so the interrupted PC
-is `$13C6BA` — inside the wait loop — on both samples. **Reading the interrupted
+is `$13C6BA` - inside the wait loop - on both samples. **Reading the interrupted
 PC off the supervisor stack at the vector fetch works, and it is game-agnostic.**
 
 A counter that advances with the game's own frame:
@@ -204,7 +204,7 @@ in §3 by write-site attribution, not assumed.**
 ### 3. The SECOND trap: the 68000 prefetch, and it read as "the game never runs"
 
 Every execution hook in the first version of `work.lua` was gated on
-`CURPC == tapped address` — the discriminator `capability_probe.lua` uses on the
+`CURPC == tapped address` - the discriminator `capability_probe.lua` uses on the
 6502 and the one that is **wrong on the 68000**. `NOTES-slowdown-oracle.md` §3a
 already records why (the tap fires on the *prefetch*, one to two instructions
 ahead of `CURPC`) and I walked into it anyway. Result:
@@ -214,7 +214,7 @@ video_frames=1500 irq6=1486 spin_iterations_total=0
 loop_head_fetches=0
 ```
 
-i.e. "the game executes neither its main loop nor its wait loop" — while the
+i.e. "the game executes neither its main loop nor its wait loop" - while the
 write-tap in the same run showed `$80390A` being incremented 1,483 times from
 `$13BE8C`. Two counters in one script disagreeing is what caught it.
 
@@ -223,7 +223,7 @@ write-tap in the same run showed `$80390A` being incremented 1,483 times from
 instruction and count raw fetches; one fetch is then one execution.** With that
 fix the same taps read exactly as expected.
 
-### 4. THE FRAME ARCHITECTURE — and it is not what a port would guess
+### 4. THE FRAME ARCHITECTURE - and it is not what a port would guess
 
 The complete main loop, disassembled and confirmed by xref (`$13BE8C` has
 exactly one caller in the whole image, at `$13C358`):
@@ -248,7 +248,7 @@ $0CBE  move.l $801478,-(A7) ; rts        IRQ6  (vblank)
 ```
 
 so a hook on the game's own interrupt code has to read those two longwords at
-runtime — they are not static addresses. Measured: IRQ4 and IRQ6 each dispatch
+runtime - they are not static addresses. Measured: IRQ4 and IRQ6 each dispatch
 **exactly once per video frame**, on 9,987 of 10,000 frames (the other 13 are
 before interrupts are enabled).
 
@@ -270,15 +270,15 @@ The frame sync is *not* a plain "wait for vblank". `$13C5B6` is:
 
 and the IRQ side releases it with `13c806: subq.b #1,$803940 ; jmp $13c4fc`.
 
-**There is a software frame-rate divider here — a code path that waits TWO
-vblanks — gated on a mod-3 phase counter and a countdown, entirely independent of
+**There is a software frame-rate divider here - a code path that waits TWO
+vblanks - gated on a mod-3 phase counter and a countdown, entirely independent of
 how long the frame's work took.** Anyone modelling "DaiOuJou runs at 59.19 Hz"
 will be wrong wherever that path is taken, and it will look exactly like
 slowdown. It is not.
 
 ### 5. THE LOAD METER, and it works
 
-`$13C6B4` is `tst.b $803940` — the head of the wait loop. One opcode-fetch tap
+`$13C6B4` is `tst.b $803940` - the head of the wait loop. One opcode-fetch tap
 there counts **spin iterations per video frame**: how much of the frame the game
 spent with nothing left to do. Measured over 5,000 video frames:
 
@@ -304,14 +304,14 @@ continuous, not binary: ~9,000–12,000 idle iterations means a nearly empty
 frame; the number falling toward 0 is the frame filling up; **0 with the
 interrupted PC outside `$13C6B4/$13C6BA` is an overrun.** It costs one tap.
 
-### 6. Does the game's own logic observe the slowdown? — the mechanism is there
+### 6. Does the game's own logic observe the slowdown? - the mechanism is there
 
 `$80390A`, `$80390D` bit 0 and `$80390E` (mod 3) are incremented **inside the
 main loop body**, at `$13BE8C`, whose only caller in the image is the loop head
 `$13C356`. They are *not* incremented by the interrupt handler.
 
 So they count **loop iterations, not vblanks**. In every state measured so far
-the two coincide exactly (1:1 on 4,982 of 4,982 non-boot frames) — but the
+the two coincide exactly (1:1 on 4,982 of 4,982 non-boot frames) - but the
 coupling is the thing: if the loop ever fails to complete within a frame, these
 counters fall behind the display, and `$80390E` in particular is read *by the
 frame sync itself* (`13c5be: tst.w $80390e`). That is a per-loop-iteration
@@ -322,7 +322,7 @@ counter feeding back into scheduling.
 
 **Status of the headline question: the MECHANISM by which the game's own logic
 observes its own pace is present and located. Whether an overrun actually
-occurs in play, I have not yet reached — see "What I could not do".**
+occurs in play, I have not yet reached - see "What I could not do".**
 
 ### 7. The raster register `$B07000`
 
@@ -337,15 +337,15 @@ counted **0 reads** in every run: 10,000 frames (halted machine, worthless),
 address register, which the xref cannot see. **Do not write "the game does not
 read the beam position" anywhere.**
 
-### 8. Getting into the game at all — two more output-not-throw lessons
+### 8. Getting into the game at all - two more output-not-throw lessons
 
 `ddpdojblk` does **not** boot into an attract loop. Framebuffer snapshots
 (`scr:snapshot`) show:
 
-* frame 600 — a **VERSION SELECT** menu: `1: VERSION-A (OLD)` /
+* frame 600 - a **VERSION SELECT** menu: `1: VERSION-A (OLD)` /
   `2: VERSION-B (NEW)`, `SELECT = UP or DOWN`, `START = SHOT`, on a 5-second
   countdown that falls through to VERSION-A;
-* frame 1500 — the Japan-only legal screen, `2002.04.05.MASTER VER` — i.e. the
+* frame 1500 - the Japan-only legal screen, `2002.04.05.MASTER VER` - i.e. the
   timeout picked the **old** version, not Black Label's own build.
 
 **The port target's own ROM contains two selectable game versions and the
@@ -353,7 +353,7 @@ default is the one that is NOT Black Label.** Any corpus scenario must state
 which arm it took.
 
 And the first 5,000-frame "gameplay" run, which pressed 1P-START and SHOT
-together, spent the whole time in the board's **INPUT TEST** screen — total
+together, spent the whole time in the board's **INPUT TEST** screen - total
 sprite entries emitted: 59. It reported clean, plausible numbers throughout.
 Only the snapshot showed it.
 
@@ -417,7 +417,7 @@ $13C0DE:  jmp $23BEEA          the ONLY abs-long jmp/jsr from $1xxxxx into $2xxx
 
 **Consequence for the plan, and it is not small: "port Black Label" means
 porting the `$2xxxxx` build. Every address in this worklog's §4-§6 is the
-VERSION-A build and is the wrong target** — they are still useful, because the A
+VERSION-A build and is the wrong target** - they are still useful, because the A
 build is a free second implementation of the same design to cross-check a
 reading against, which is a luxury this project has never had.
 
@@ -431,7 +431,7 @@ $ python xref.py 0x00B07000
 
 **Two of the four are at ODD file offsets, which cannot be 68000 instruction
 operands**, and disassembly around all four shows a data region
-(`1ba500: ae70 dc.w; 1ba502: move.l ($713a,A3),(A0); 1ba506: ab70 dc.w`) — a
+(`1ba500: ae70 dc.w; 1ba502: move.l ($713a,A3),(A0); 1ba506: ab70 dc.w`) - a
 table, not code. So: **no code site in the image reaches `$B07000` by
 absolute-long addressing**, and the read tap counted 0 in every booted run.
 
@@ -439,7 +439,7 @@ That is as far as it can honestly be pushed. A pointer in an address register
 would be invisible to both halves. The correct sentence is "no absolute-long
 reference and no observed read", never "the game does not read the beam".
 
-### 11. DETERMINISM — measured on this game, not inherited
+### 11. DETERMINISM - measured on this game, not inherited
 
 Two identical 3,000-video-frame runs of the same scripted scenario (version
 select → coin → start → autofire), each emitting a **per-frame** trace line of
@@ -454,8 +454,8 @@ $ wc -l out/det1.txt
 3036 out/det1.txt
 ```
 
-**Bit-identical, including the load meter.** So on this driver — 68000 + Z80 +
-(disabled) ARM7, three devices in MAME's scheduler — the same inputs produce the
+**Bit-identical, including the load meter.** So on this driver - 68000 + Z80 +
+(disabled) ARM7, three devices in MAME's scheduler - the same inputs produce the
 same work profile. Frame-exact verification of slowdown is possible here. This
 is the ddpdoj-specific version of a claim `NOTES-mame-oracle.md` had only
 measured on the NES.
@@ -463,7 +463,7 @@ measured on the NES.
 **Not tested:** `-drc` vs `-nodrc` (the ARM7 is disabled on this set, so there
 may be no DRC in play at all), and determinism across MAME's other host knobs.
 
-### 12. THE LOAD METER UNDER REAL PLAY — and what it did and did not show
+### 12. THE LOAD METER UNDER REAL PLAY - and what it did and did not show
 
 12,000 video frames, VERSION-B, scripted into stage 1 with autofire (framebuffer
 snapshots at 2,600 and 5,000 confirm dense on-screen action; the 11,000 snapshot
@@ -484,11 +484,11 @@ Read that carefully, because it is the whole slowdown answer for this session:
 
 * **The meter has enormous dynamic range and it responds to content.** Idle
   spin iterations run ~10,000–12,000 on a quiet frame and fall to under 1,000
-  on 55 frames — one isolated cluster, `f3713–f3848`, i.e. a specific ~2.3
+  on 55 frames - one isolated cluster, `f3713–f3848`, i.e. a specific ~2.3
   second stretch of stage 1. That is a frame going from ~10% utilised to >90%
   utilised, visible per frame, from one tap.
 * **No overrun occurred.** `loop_iters_per_video_frame` is 1 on every one of the
-  11,247 post-boot frames — never 0, never 2 — and every interrupted PC in the
+  11,247 post-boot frames - never 0, never 2 - and every interrupted PC in the
   gameplay portion is `$23C390`/`$23C396`, the wait loop. So on everything this
   corpus reached, the game finished its frame every frame.
 * **Therefore I cannot yet name which of (A)/(B)/(C) this game does under
@@ -505,7 +505,7 @@ From the code, not from the run:
 * **(B) time dilation is the natural failure mode.** The loop's five work calls
   run, then `$23C212` sets `$803940` and spins at `$23C390` until the vblank IRQ
   decrements it. If the work takes longer than a frame, the wait is simply
-  already satisfied and the next iteration starts late — the whole game state
+  already satisfied and the next iteration starts late - the whole game state
   advances less often in wall-clock time, uniformly. That is textbook (B).
 * **(C) partial completion is not visible at the site I found.** The sprite
   emitter's loop in build B ends:
@@ -522,7 +522,7 @@ From the code, not from the run:
   ```
 
   A **data count in D0**, not a budget. **This is one site, not the object
-  driver**, and it is a presence observation — it does not license "the game has
+  driver**, and it is a presence observation - it does not license "the game has
   no (C) anywhere". The top-level object loop has not been located.
 
 The object system's code map, produced by measurement (write tap over the
@@ -544,11 +544,11 @@ sprite_writes_per_frame_bucketed200 0:2057 200:252 400:1078 600:704 800:106 1000
 
 **The (C) detector is one tap away from existing**: put a fetch tap on the
 object driver's per-slot instruction and read the slot index out of a register
-at that point (`cpu.state["D0"]` etc. — §3b of `NOTES-slowdown-oracle.md` proved
+at that point (`cpu.state["D0"]` etc. - §3b of `NOTES-slowdown-oracle.md` proved
 registers are readable at a hook). What is missing is the address, not the
 capability.
 
-### 14. RANK — what the ROM itself calls rank
+### 14. RANK - what the ROM itself calls rank
 
 The title screen (framebuffer snapshot, frame 11,000) prints **`RANK : NORMAL`**
 along with `1ST 20000000PTS / 2ND 20000000PTS` and `C BUTTON FULL-AUTO`. So the
@@ -572,12 +572,12 @@ and the strings, with a 4-entry pointer table immediately before them:
 ```
 
 **So the operator rank setting has exactly FOUR values: EASY / NORMAL / HARD /
-VERY HARD** — a measured answer to one row of `docs/knowledge/08`'s table, for
+VERY HARD** - a measured answer to one row of `docs/knowledge/08`'s table, for
 the *static* setting.
 
 Neither pointer table (`$15B3B6`, `$25C042`) has a single absolute-long
 reference anywhere in the image, so both are reached PC-relative or through a
-base register — which is the same limitation §10 hit, and the reason the next
+base register - which is the same limitation §10 hit, and the reason the next
 step for rank is a **read tap on the table with CURPC attribution**, not more
 scanning.
 
@@ -595,13 +595,13 @@ whether DaiOuJou also has a runtime-varying difficulty value. Everything in
    (B) cleanly or has (A)/(C) behaviour hiding inside it. What exists now is a
    calibrated meter and a baseline, which is what the next attempt needs.
 2. **I did not locate the top-level object driver**, only the sprite-list
-   emitter it feeds. So the (C) detector — "object slots processed: 0..N", which
-   `docs/knowledge/06` names the field most likely to be missing — is **not yet
+   emitter it feeds. So the (C) detector - "object slots processed: 0..N", which
+   `docs/knowledge/06` names the field most likely to be missing - is **not yet
    in the state vector**. It is the single most important thing still owed.
 3. **Rank is unresolved beyond the four-value operator setting** (§14).
 4. **I could not close any ABSENCE claim.** The absolute-long xref covers 1,310
    distinct RAM addresses over 16,463 sites, but the sprite emitter at `$13DA02`
-   / `$23D6B4` is `move.l (A1)+,(A0)+` — invisible to it. Any "nothing reads X"
+   / `$23D6B4` is `move.l (A1)+,(A0)+` - invisible to it. Any "nothing reads X"
    sentence needs the register-relative case closed first, and none is.
 5. **`-drc` vs `-nodrc` not compared**, and cross-emulator validation of the
    timing (`06-lag-and-slowdown.md`'s two-emulators lesson) is impossible: there
@@ -631,7 +631,7 @@ and `unidasm.exe` read. Regenerate it with `dump.lua` if it is missing.
 Five things that will save you the hours they cost me:
 
 1. **Take a snapshot in every run and LOOK AT IT.** Two separate runs produced
-   clean, plausible, entirely worthless numbers — one from a machine halted on
+   clean, plausible, entirely worthless numbers - one from a machine halted on
    "ROM ERROR", one from the board's INPUT TEST screen.
 2. **Do not gate 68000 execution hooks on CURPC.** Prefetch. Tap the first word
    of the instruction and count raw fetches.
@@ -640,7 +640,7 @@ Five things that will save you the hours they cost me:
    crossing is `$13C0DE: jmp $23BEEA`. Landmarks are per build.
 4. **The frame flag is `$803940` and the loop counter is `$80390A`, and both are
    shared by the two builds.** The counter advances once per MAIN LOOP
-   ITERATION, not once per vblank — that is the coupling that makes slowdown a
+   ITERATION, not once per vblank - that is the coupling that makes slowdown a
    state change rather than a pace change.
 5. **There is a software 2-vblank path** (`move.b #$2,$803940` at `$13C6AC` /
    `$23C248`, gated on `$80390E` mod 3 and `$80392E`/`$803930`). It is a

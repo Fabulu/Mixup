@@ -1,4 +1,4 @@
-# RECON 4/5 — Game flow: mode machine, stage intro, HUD, death/respawn
+# RECON 4/5 - Game flow: mode machine, stage intro, HUD, death/respawn
 status: DONE
 wave: 0   role: recon   started: 2026-07-29
 
@@ -7,7 +7,7 @@ wave: 0   role: recon   started: 2026-07-29
 Map everything around gameplay that is not gameplay in `Gradius (USA).nes`, and
 say what the port at `games/gradius/src/` has and does not have:
 
-- the mode dispatch at `$80AA`/`$80BE`/`$80D1` — every mode value, what each does
+- the mode dispatch at `$80AA`/`$80BE`/`$80D1` - every mode value, what each does
 - the stage-intro sub-state gated by `$96B7: LDA $1B / BPL $96BE`
 - `$8871`'s full-screen load (the port replaces it with `preloadTerrain()`)
 - the status bar at `$864E` and its canned packets
@@ -25,7 +25,7 @@ Wrote two new probes (allowed by my brief):
 - `games/gradius/tools/oracle/flowprobe.py`
 
 Same sample point as `probe.lua` (`$80B5`, the last instruction of the NMI's
-own frame), same zero input lead, and the same `$04 == 1` assertion — it printed
+own frame), same zero input lead, and the same `$04 == 1` assertion - it printed
 `guardViolations = 0` on every run below, so the hook is where I think it is.
 The probe adds:
 
@@ -37,16 +37,16 @@ The probe adds:
 - an "arghook" that logs A/X/Y **and `ppu.scanline`/`ppu.cycle`** at every
   execution of one address (this is how the packet indices and the split
   scanline below were taken);
-- `PROBE_VRAM=2380-23BF` — a PPU nametable read at the last sampled frame;
+- `PROBE_VRAM=2380-23BF` - a PPU nametable read at the last sampled frame;
 - `--poke ADDR=VAL@FROM-TO` (same grammar as `probe.py`).
 
 Static side: `python games/gradius/tools/nesdis.py "Gradius (USA).nes" --out
-<scratchpad>/prg.asm` (11,121 lines, written OUTSIDE the repo — it is
+<scratchpad>/prg.asm` (11,121 lines, written OUTSIDE the repo - it is
 ROM-derived).
 
 ## What I MEASURED
 
-### 1. The mode machine — `$00`, dispatched at `$80D1`
+### 1. The mode machine - `$00`, dispatched at `$80D1`
 
 `$80BE` is the whole of it:
 
@@ -65,14 +65,14 @@ ROM-derived).
 ```
 
 `$83E4` is `ASL A / TAY / INY / PLA PLA (the return address) / LDA ($98),Y ...
-JMP ($0098)` — index = `A`, table immediately after the `JSR`. **The table has
+JMP ($0098)` - index = `A`, table immediately after the `JSR`. **The table has
 exactly 7 entries, `$80D4-$80E1`**, because `$80E2` is mode 0's own code.
 
 | `$00` | handler | what it does | measured |
 |---|---|---|---|
 | 0 | `$80E2` | `$01==0`: `JSR $882C` (full-screen load), `JSR $8256` (title screen + palette fade + menu cursor), `$2D=3`, `$12=$FE`, `INC $01`. Then per frame: `$12 -= 2` until 0 → mode 1. | frames **0-127**, 128 frames, `$12` $FE→0 at 2/frame |
 | 1 | `$8116` | title menu: redraw the 1P/2P cursor (`$82A1`), 16-bit `DEC $4C:$4D`; at 0 → mode 2 (attract). | frames **128-384**, timer is **`$4C:$4D = $0100` = 256**, not 511 |
-| 2 | `$8121` | attract/demo. `$01==0`: `INC $01`, `JMP $82C7` (clear RAM, `INC $20`, `INC $09` = demo flag). Then `JSR $964D` every frame; if `$0B != 0` → `$00 = 0`. | entered f385; **`$964D` is `JSR $9C6D` FALLING THROUGH INTO `$9650`** — the demo *is* mode 5 with a canned input source |
+| 2 | `$8121` | attract/demo. `$01==0`: `INC $01`, `JMP $82C7` (clear RAM, `INC $20`, `INC $09` = demo flag). Then `JSR $964D` every frame; if `$0B != 0` → `$00 = 0`. | entered f385; **`$964D` is `JSR $9C6D` FALLING THROUGH INTO `$9650`** - the demo *is* mode 5 with a canned input source |
 | 3 | `$8137` | the "PLAYER 1" banner: `$4C = $50` (80), blink packet 1 on/off on bit 3 of `$4C`, sound cue `$90`; at 0 `INC $01`; then `JSR $82D5` and → mode 4. | frames **200-280** after START at 200; 81 samples |
 | 4 | `$8165` | **`$1B = 0`, `INC $00`.** Three instructions. | frame **281**, exactly one frame |
 | 5 | `$9650` | stage play. | from frame **282** |
@@ -81,7 +81,7 @@ exactly 7 entries, `$80D4-$80E1`**, because `$80E2` is mode 0's own code.
 **Mode 6 looks unreachable.** The only writes to `$00` in PRG are `$8059` (=0,
 RESET), `$8186` (`INC`, reached only from modes 0→1, 1→2, 3→4, 4→5), `$818F`
 (=0 or =3), `$852E` (=0), `$9712` (=4, continue) and `$9756` (=0, game over).
-Nothing produces 6. I did not chase `$ED5E: INC $00,X` in the sound driver — see
+Nothing produces 6. I did not chase `$ED5E: INC $00,X` in the sound driver - see
 open questions.
 
 `$01` is the per-mode init step; `$8186`/`$8188` clears it and `$0B` on every
@@ -104,7 +104,7 @@ BNE $8248               ; mode 0 or 2: $0E=0, JSR $8256 (rebuild title), $00 = 1
 ```
 
 Measured with START held for 10 frames from game frame 200: `mode 1 -> 3` at
-frame **200** — zero input lead, on a *flow* consequence this time.
+frame **200** - zero input lead, on a *flow* consequence this time.
 
 Full boot chain, measured (`--script "200:,10:S,210:"`):
 
@@ -124,13 +124,13 @@ f387 $1B=1 ... f413 $1B=$80   f414 first $982A
 The demo runs the real mode-5 handler; `$9C6D` runs first and is the demo's
 input source. It had not died after 1386 demo frames.
 
-### 3. Mode 5's sub-state `$1B` — the whole of it
+### 3. Mode 5's sub-state `$1B` - the whole of it
 
 `$9650` first: `$13 = $0C`, `$5D = $5B = $5C = 0`, then `LDA $15 / BNE -> JMP
 $9A8C` (**pause**, see 8). Then, if stage `$19 == 4`, `$5C` = the number of
 non-zero `$0600/$0630/$0660/$0690` and, if `$5C >= 2` on an odd frame, a
 completely separate half-rate call sequence at `$968E`. **`$5C >= 2` is
-stage-5-only** — that answers `nmi.js`'s `throw` and `NOTES-player.md` open
+stage-5-only** - that answers `nmi.js`'s `throw` and `NOTES-player.md` open
 question 1: the path is not reachable in stage 1 at all.
 
 Then `$96A5` tests `$1B` bit by bit, in this order:
@@ -158,20 +158,20 @@ $8B $988C  $8C $98DD  $8D $98E5  $8E/$8F $984F  fast forced scroll:
 
 `$9A3D` (stage-end threshold on `$3F`) reads `0C 0C 0C 0C 0B 0B 0C 02` and
 `$9A45` reads `81 81 81 81 81 81 81 81`. **Stage 1 ends at `$3F >= $0C`**, i.e.
-world X ≥ 3072 px — confirmed by intervention: poking `$3F = 20` during play
+world X ≥ 3072 px - confirmed by intervention: poking `$3F = 20` during play
 made `$1B` step `$80 → $81 → $82` on the next two frames.
 
-### 4. The stage intro — 28 frames, and it is NOT a fixed 28
+### 4. The stage intro - 28 frames, and it is NOT a fixed 28
 
 `$96BE: LDX #$03 / STX $0D / JSR $83E4`, table `$96C5`, 5 entries:
 
 | `$1B` | handler | what it does |
 |---|---|---|
-| 0 | `$9B3E` | clears `$3D-$97` and `$0100-$017F`/`$0300-$037F`/`$0500-$06FF`; `$35=$14`; restores `$42←$22,X`, **`$3F←$24,X` and `$55←$24,X`** (the checkpoint), `$19←$26,X`, `$1A←$28,X`; `INC $1B`; **`JSR $882C` — THE FULL-SCREEN LOAD**; `$11=$1E`, `$10=$A8`, `$0120=1`; start position from `$9BD4[$9BCC[$19] + ($3F>>1)]` (`&$F0` for Y, `<<4` for X) written into slots 0/1/2 **and into all 24 entries of both rings**; `$0100 = 1`; `$0D = 6`; sound `$FC` |
+| 0 | `$9B3E` | clears `$3D-$97` and `$0100-$017F`/`$0300-$037F`/`$0500-$06FF`; `$35=$14`; restores `$42←$22,X`, **`$3F←$24,X` and `$55←$24,X`** (the checkpoint), `$19←$26,X`, `$1A←$28,X`; `INC $1B`; **`JSR $882C` - THE FULL-SCREEN LOAD**; `$11=$1E`, `$10=$A8`, `$0120=1`; start position from `$9BD4[$9BCC[$19] + ($3F>>1)]` (`&$F0` for Y, `<<4` for X) written into slots 0/1/2 **and into all 24 entries of both rings**; `$0100 = 1`; `$0D = 6`; sound `$FC` |
 | 1 | `$9BED` | sound `$FC`, then **falls through into `sub_9BF0`** (also called from `$96E6`): queue canned packets 16, `8+$19`, 7, 5; `INC $1B` |
 | 2 | `$9C12` | `JSR $88B6` (lives), `$88F6` (top score), `$892C` (score); `INC $1B` |
 | 3 | `$9C1E` | `JSR $89E3` (the power-up meter); `INC $1B` |
-| 4 | `$9C24` | `$0D = 5`; **if `$57 == 0`: `JSR $9D8E` ×3 then `JMP $9D8E` — four ungated terrain blocks, and `$1B` is NOT advanced**; else `$1F = 1` and **fall through into `sub_9C3C`**: `$60 = 1`, `$1B = $80` |
+| 4 | `$9C24` | `$0D = 5`; **if `$57 == 0`: `JSR $9D8E` ×3 then `JMP $9D8E` - four ungated terrain blocks, and `$1B` is NOT advanced**; else `$1F = 1` and **fall through into `sub_9C3C`**: `$60 = 1`, `$1B = $80` |
 
 Measured, boot run (`--script "200:,10:S,110:"`):
 
@@ -184,7 +184,7 @@ f310         first $982A
 ```
 
 So **the intro is mode-5 frames 282..309 = 28 frames**, `main.js`'s number is
-right — but state 4 is a *loop with a data-dependent exit*, not a fixed count.
+right - but state 4 is a *loop with a data-dependent exit*, not a fixed count.
 Measured again after a death: intro ran f614..f639, **26 frames**. The number
 is not a constant.
 
@@ -192,7 +192,7 @@ is not a constant.
 and the NMI's `$808E-$8096` arm forces `PPUMASK = 0` while it counts. **The
 screen is BLANK for the whole intro** and for four frames after it (`$0D`
 5→0 across f310-f314). `state.js` says `$0D` "was never non-zero in any
-measured run" — that is only true because the corpus seeds at frame 400.
+measured run" - that is only true because the corpus seeds at frame 400.
 
 ### 5. `$8871`, the full-screen load
 
@@ -214,7 +214,7 @@ frame 283  h_882E=1  h_8871=6   h_887D=0    h_888B=2304   (stage load)
 ```
 
 So the stage load is **2304 `$2007` writes, all of them run bytes, no
-literals**, starting at `$2000` — i.e. more than one nametable. Six chunks per
+literals**, starting at `$2000` - i.e. more than one nametable. Six chunks per
 load, always six (`h_8856 = 7` per load = 6 iterations + the exit test).
 
 `src/terrain.js` says of `preloadTerrain()`: "*$9C24 calls the streamer four
@@ -222,10 +222,10 @@ times back to back and $8871 pushes a full-screen RLE image before that;
 NEITHER has been measured*". Both are measured now, and the "four times" is
 four times **per frame for 22 frames**, not four times total.
 
-### 6. The status bar — `$864E` and the canned packets
+### 6. The status bar - `$864E` and the canned packets
 
 `$864E` is a **table of 39 little-endian pointers** (`$864E-$869B`; entry 37 is
-`$869C`, which is where the packet data starts — that is how the length is
+`$869C`, which is where the packet data starts - that is how the length is
 pinned). The producer is:
 
 ```
@@ -249,7 +249,7 @@ The queue consumer `$8A51` is the mirror image: control byte 0 ends the queue,
 1 and 2 select `$8A4B+X` = `$00`/`$04` → PPUCTRL increment 1 or 32, then two
 address bytes, then data until `$FF`; an `$FF` followed by a byte ≥ 3 is a
 literal `$FF` (`$8A86`) and `$FF` followed by 0/1/2 starts the next packet.
-Measured: `h_8A86 = 0` over 300 frames — the escape never fires in practice.
+Measured: `h_8A86 = 0` over 300 frames - the escape never fires in practice.
 
 **The bar itself, read out of PPU memory at frame 340:**
 
@@ -262,9 +262,9 @@ $23A0  00 00 00 61 00 33 00 00 31 66 00 30 30 30 30 30 30 30 00 00 64 65 00 30
 
 - `$2384` + 24 tiles = the power-up bar, built by `$89E3` as **one open VRAM
   run**: packet 15 (`$8732`, addr `$2384`, data `09 0A 0B 0C`, terminator `$FF`
-  → stays open), then five `$85F3` calls appending 4 bytes each — packet 21/25,
+  → stays open), then five `$85F3` calls appending 4 bytes each - packet 21/25,
   22/25, 23/25, 24/25, 27/25 depending on `$41`, `$44==2`, `$44==1`, `$45>=2`,
-  `$46` — then `$863D` closes it with `$FF`. Packet 25 (`$8766: 1D 1E 1E 1F`) is
+  `$46` - then `$863D` closes it with `$FF`. Packet 25 (`$8766: 1D 1E 1E 1F`) is
   the unlit box.
 - `$23A2`: packet 17, 4 tiles, then `$88B6` **patches the queue in place** at
   `$0700+$0E-4/-3/-2` with the life icon `$61`, tens and ones. With 3 lives the
@@ -275,10 +275,10 @@ $23A0  00 00 00 61 00 33 00 00 31 66 00 30 30 30 30 30 30 30 00 00 64 65 00 30
   tile `32`) + 6 BCD digits from `$07E4-$07E6` + a fixed trailing `30`.
 - `$23B4`: packet 18 (`64 65 00`) + 6 digits from `$07E0-$07E2` + `30`.
 
-Rotation during play: `$9AC7: JSR $8898` — `if $0E < 4 and ($02 & 1)` then
+Rotation during play: `$9AC7: JSR $8898` - `if $0E < 4 and ($02 & 1)` then
 `INC $48` and dispatch `$48 & 3` through `$88AD` = `{$88B6, $88F6, $89E3,
 $892C}`. **One HUD job every other frame, four-way round robin.** Measured
-`h_8898 = 363` on the 700-frame `right-wall` run — it is called on every frame
+`h_8898 = 363` on the 700-frame `right-wall` run - it is called on every frame
 that reaches `$9AC4`, including the 120 death frames; the `$0E`/`$02` gates are
 inside it, not around the call.
 
@@ -287,12 +287,12 @@ terrain streamer running at double rate in the port. Confirmed from the other
 side: the HUD producer is what puts bytes in `$0E`.
 
 **The split.** `$9AA3` first fires at game frame **314**, not 310, and always at
-**`ppu.scanline = 207`** (dot 267-287, i.e. in the horizontal blank) — measured
+**`ppu.scanline = 207`** (dot 267-287, i.e. in the horizontal blank) - measured
 with the arghook on `$9AAA` over 104 frames, `sl=207` on every one. The gate is
 `$9A8C`: `$1E != 0 && $1F != 0 && $0D == 0`; the split waits for `$0D` to finish
 counting out of the intro.
 
-### 7. Death → respawn — the exact sequence
+### 7. Death → respawn - the exact sequence
 
 The killer is **`$C1D6`** (xrefs `$C1BF $C24B $C290 $C2C1`, all collision):
 
@@ -345,12 +345,12 @@ i.e. `$24 = min($3F & $0E, 8)` and `$9B3E` restores `$3F` (and `$55`) from it
 while `$3E` is cleared. **Five checkpoints per stage: `$3F` ∈ {0,2,4,6,8}.**
 
 `$9B3E`'s `LDX #$5A / STA $3D,X` loop clears `$3D-$97`, which includes `$40`
-(speed), `$41`, `$44`, `$45`, `$46` — **all power-ups are lost on death**, and
+(speed), `$41`, `$44`, `$45`, `$46` - **all power-ups are lost on death**, and
 only `$42` survives, restored as 0 or 1 from `$22,X`.
 
 ### 8. Game over, continue, and PAUSE
 
-`$97C1: LDA $20,X / BMI $97F1` — lives went negative:
+`$97C1: LDA $20,X / BMI $97F1` - lives went negative:
 
 ```
 $97F1  $0A &= $FE (X=0) or $FD (X=1)   ; that player is out
@@ -379,13 +379,13 @@ f950  h_970D=1  JSR $82D5  ->  $0A 0 -> 1, lives $FF -> 3, $1B -> 0, $00 = 4
 f951  mode 5    f952-f977 the intro    f978 play
 ```
 
-`$82D5` calls `$8307`, which zeroes `$0012-$00EF` — **including `$19`, `$24`,
+`$82D5` calls `$8307`, which zeroes `$0012-$00EF` - **including `$19`, `$24`,
 `$26`**. So the "continue" is a full restart at stage 1, checkpoint 0, with the
 title screen skipped. The 120-frame `$4C` window is how long you have.
 
-`$9721` is the other continue: if `$33 == $0A` — the **Konami code**, matched by
+`$9721` is the other continue: if `$33 == $0A` - the **Konami code**, matched by
 `$9765` against `$9793 = 08 08 04 04 02 01 02 01 40 80` (UP UP DOWN DOWN LEFT
-RIGHT LEFT RIGHT B A, in this ROM's own button bits) — you get 3 lives and
+RIGHT LEFT RIGHT B A, in this ROM's own button bits) - you get 3 lives and
 `$0A |= $9749,X` and go straight to `$97DD`. Not exercised.
 
 **PAUSE, which nothing in the port or the notes mentions.** `$9AD1` (after the
@@ -421,7 +421,7 @@ the split first fired at frame 314, the frame `$0D` reached 0, while `$15` and
 `$5B` were 0 throughout.
 
 It has never cost the corpus anything, because `$15` and `$5B` are 0 on every
-compared frame — which is exactly the shape of `docs/knowledge/03`: a field
+compared frame - which is exactly the shape of `docs/knowledge/03`: a field
 that is a constant in the corpus can carry a wrong model indefinitely.
 
 ### 9. The gate, re-run as found
@@ -435,7 +435,7 @@ node games/gradius/tools/test-all.mjs
   GREEN -- 5 passed, 0 failed, 0 SKIPPED
 ```
 
-My own independent measurement of `right-wall` put the death at frame **493** —
+My own independent measurement of `right-wall` put the death at frame **493** -
 same number, two derivations. **843 of 4184 frames (20%) of the corpus are lost
 to the death path**, and every one of those frames is `$1B = $A0` or later.
 
@@ -472,5 +472,5 @@ python games/gradius/tools/oracle/flowprobe.py --arghook 9AAA ...   # sl=207
 
 The `out/*.tsv` it writes are ROM-derived; `tools/oracle/out/` is gitignored.
 
-Start with the `$15`/`$5B` correction in section 8 — it is the only thing here
+Start with the `$15`/`$5B` correction in section 8 - it is the only thing here
 that makes an existing line of `src/` wrong.

@@ -1,6 +1,6 @@
-# W35 — RECON (+IMPL if clear): the SPRITE ATLAS — where do the 166 streams come from?
+# W35 - RECON (+IMPL if clear): the SPRITE ATLAS - where do the 166 streams come from?
 
-status: **DONE** — see §8.
+status: **DONE** - see §8.
 wave: 35. role: RECON + IMPLEMENTER (sole writer to `games/ddpdoj/`).
 date: 2026-08-04.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Build B = `$23xxxx..$2Axxxx`.
@@ -8,7 +8,7 @@ Any build-A address is flagged as such.
 
 ## THE BRIEF, AND ITS PREMISE
 
-W28 §6 concluded: *"The largest unknown is not the boss. It is item 4 — whether
+W28 §6 concluded: *"The largest unknown is not the boss. It is item 4 - whether
 every sprite the stage draws can be enumerated by address from the ROM."* The
 current atlas is **166 sprite streams enumerated from the RECORDING's own
 display list**, and no wave has been assigned to replace that provenance. That
@@ -28,13 +28,13 @@ Order of work:
 
 ---
 
-## 1. WHERE THE 166 COME FROM TODAY — measured, not cited
+## 1. WHERE THE 166 COME FROM TODAY - measured, not cited
 
 `games/ddpdoj/tools/export-web.mjs`:
 
 | line | what |
 |---|---|
-| 154 | `const streams = new Map();` — the atlas, keyed by `offs` |
+| 154 | `const streams = new Map();` - the atlas, keyed by `offs` |
 | 190–212 | the loop: `for i in 0..cap.length` → `parseSpriteList(cap.state(i).spritebuffer)` → `streams.set(s.offs, walkStream(s.offs, s.width, s.height))` |
 | 235–258 | the ship's 17 `$25533A` tilt entries, harvested BY ADDRESS out of `player.tables.json` (`anim.a.shipSel0`) |
 | 772 | `streams: [...streams.entries()]` → `assets/manifest.json` |
@@ -50,7 +50,7 @@ sprite addresses that appeared in a 161-frame recording of `fly-around`**, plus
 one by-address harvest that W12 had to add precisely because the recording could
 not supply it.
 
-## 2. WHAT IN THE ROM DECIDES WHICH STREAMS EXIST — THERE IS NO STAGE LIST
+## 2. WHAT IN THE ROM DECIDES WHICH STREAMS EXIST - THERE IS NO STAGE LIST
 
 **[M] There is no per-stage sprite table, and no build-time list.** The sprite
 address is a per-object DESCRIPTOR FIELD: the display-list record's hardware
@@ -60,16 +60,16 @@ longword; bit 23 is the priority bit.
 
 Four kinds of writer put a value there, all of them ROM data or ROM immediates:
 
-1. **Prototype tables** copied at spawn by `$2637A2` (`src/enemyproto.js`) — the
+1. **Prototype tables** copied at spawn by `$2637A2` (`src/enemyproto.js`) - the
    third longword of each `$20`-byte sub-record prototype IS `(A6+$A)`.
-2. **Direction-indexed longword tables** — `move.l (A0,D1.w),($a,A6)` with
+2. **Direction-indexed longword tables** - `move.l (A0,D1.w),($a,A6)` with
    `D1 = (heading & $3E) << 1`, i.e. **16 longwords**. e.g. `$269E48`
    (`src/initbody.js:149`), `$268B9E` and `$268C9E` (`src/handlers.js:151-152`),
    `$272E7A` (`src/initbody.js:608`).
-3. **Immediates inside handler / bullet-behaviour bodies** — e.g.
+3. **Immediates inside handler / bullet-behaviour bodies** - e.g.
    `$275A76 move.l #$192A48,D2` (`src/handlers.js:891`), and W28 §3 counted
    **29** such literals inside `src/mover.js` alone.
-4. **Arithmetic on a base** — `$2767B2 eori.l #$B4,($A,A6)` toggles a sprite
+4. **Arithmetic on a base** - `$2767B2 eori.l #$B4,($A,A6)` toggles a sprite
    pointer between two images (`src/handlers.js:1299`), and the bullet bodies
    step a base by a fixed stride.
 
@@ -95,7 +95,7 @@ satisfying
   hdr(o + L) - hdr(o) == ceil(clearBits(mask[o+2 .. o+L-2]) / 3)
 ```
 
-— the colour words the drawer consumes for that stream (one 5-bit pixel per
+- the colour words the drawer consumes for that stream (one 5-bit pixel per
 CLEAR mask bit, three pixels to a colour word: `export-web.mjs walkStream`).
 That is a closed chain, and walking it from `$000000`:
 
@@ -112,7 +112,7 @@ That is a closed chain, and walking it from `$000000`:
 - **[M] All 329 port-emitted streams (§4) are directory entries**, same extent
   check, 0 mismatches.
 
-The only row that is not a picture is `$000000`, drawn 1x1 by the recording — a
+The only row that is not a picture is `$000000`, drawn 1x1 by the recording - a
 null/placeholder pointer.
 
 ## 4. THE ROM-DERIVED SET vs THE RECORDING-DERIVED SET
@@ -120,12 +120,12 @@ null/placeholder pointer.
 `tools/w35atlas.mjs diff` runs the PORT for 12,000 logic frames from
 `fly-around`'s lf2000 seed and collects every `offs` its own emitter writes to
 `$800000..$8009FF`, parsed by the same `parseSpriteList` the capture side uses.
-**Not one of those values comes from `capture.bin`** — they come from the
+**Not one of those values comes from `capture.bin`** - they come from the
 prototype tables, the direction tables and the immediates of §2.
 
 INTERVENTIONS, named (`docs/knowledge/09`): single-frame Button-1 tap every 4
 logic frames, the owner's stick script (DOWN + a 512-frame left/right sweep),
-`--no-pods` (the option object counted and not run — it throws at `$24C164` on a
+`--no-pods` (the option object counted and not run - it throws at `$24C164` on a
 raw held Button 1), `--stub-unported` (the 8 unported stage-1 handlers count
 their dispatch and free the enemy, as the cartridge's own dummy `$26781C`
 does), and a free run past the end of the 2,200-frame trace. Nothing is compared
@@ -150,10 +150,10 @@ table or immediate it comes from:
 
 | source | streams | what |
 |---|---|---|
-| table `$24BBBA` | 64 | the OPTION pods' images and their shadows — **the port run had `--no-pods`**, so this is an artefact of the intervention, not a gap |
+| table `$24BBBA` | 64 | the OPTION pods' images and their shadows - **the port run had `--no-pods`**, so this is an artefact of the intervention, not a gap |
 | table `$269E48` | 10 | the damage-first family's 16-heading table (types `$05/$07/$08/$09/$0B`) |
 | table `$268594` | 6 | enemy type `$10` |
-| **no literal anywhere** | 6 | `$1C07A4` and `$1C0D30/44/58/6C/80` — see §4.3 |
+| **no literal anywhere** | 6 | `$1C07A4` and `$1C0D30/44/58/6C/80` - see §4.3 |
 | table `$269BB6` | 4 | the damage-first family, second table |
 | table `$268B9E` | 2 | type `$11`'s fire sprites at two headings the port never took |
 | immediates | 3 | `$1C03C8` (`$283D50`), `$1C0D1C` (`$28298E`), `$1CF060` (`$284F88`) |
@@ -165,13 +165,13 @@ table or immediate it comes from:
 |---|---|---|
 | table `$268B9E` | 54 | type `$11` at headings the recording never showed |
 | table `$272C7A` | 49 | types `$20/$21` (handler `$272AAC`) |
-| tables `$26BE70`/`$26BF42`/`$26BFE8` | 77 | **the MIDBOSS** — the recording ends before it appears |
+| tables `$26BE70`/`$26BF42`/`$26BFE8` | 77 | **the MIDBOSS** - the recording ends before it appears |
 | tables `$25572E`/`$255342`/`$255462` | 64 | the ship's other tilts and the pods' other images |
 | table `$24D8AC` | 9 | the option object's second bank |
 | table `$278338` | 4 | |
 | immediates | 19 | incl. 12 background-element streams at `$22CBCC..$233F34` (`$2623A6..$262760`) |
 
-### 4.3 THE SIX WITH NO LITERAL — and they are NOT a hole
+### 4.3 THE SIX WITH NO LITERAL - and they are NOT a hole
 
 `$1C0D30 $1C0D44 $1C0D58 $1C0D6C $1C0D80` are frames 2..6 of a bullet
 animation whose **base, step and wrap are three immediates in one routine**:
@@ -184,7 +184,7 @@ $2829BC  move.l #$1C0D1C,(A1)
 ```
 
 (`src/mover.js:683-688`, `animateRenderOffsWrap`). So they are statically
-enumerable *exactly* — base, step, wrap — and a literal scan alone would have
+enumerable *exactly* - base, step, wrap - and a literal scan alone would have
 called them absent. **That is the one place in this analysis where a scan and
 the listing disagree, and the listing wins.** `$1C07A4` is the same shape from
 the other direction: one 2x24 stream past `$1C0770`, which IS a literal in the
@@ -192,15 +192,15 @@ the other direction: one 2x24 stream past `$1C0770`, which IS a literal in the
 
 ## 4.4 A THIRD INSTRUMENT, AND IT SAYS THE SAME THING ABOUT THE DIRECTORY
 
-`games/ddpdoj/rip/assets/manifest.json` — wave 3's sprite atlas, harvested from
-`stage1-deep.tsv` + `stage1-open.tsv` — holds **1,211 distinct streams**.
+`games/ddpdoj/rip/assets/manifest.json` - wave 3's sprite atlas, harvested from
+`stage1-deep.tsv` + `stage1-open.tsv` - holds **1,211 distinct streams**.
 
 > **[M] All 1,211 are directory entries.** 1,163 of them draw their stream's
 > full length exactly; 48 draw a prefix; **0 read more than the ROM chain
 > gives**, which is the only direction that would ship a short sheet.
 
-So across three independent instruments — 150 + 329 + 1,211 = **1,690
-observations** — the chain has zero exceptions.
+So across three independent instruments - 150 + 329 + 1,211 = **1,690
+observations** - the chain has zero exceptions.
 
 **And that manifest states the claim this wave falsifies, in its own words:**
 
@@ -210,7 +210,7 @@ observations** — the chain has zero exceptions.
 > `Walking the mask ROM would be a GUESS."`
 
 Half of that is right and half is not, and the halves matter separately.
-**There is indeed no sprite table in ROM** — §2 confirms it from the other side.
+**There is indeed no sprite table in ROM** - §2 confirms it from the other side.
 **But a header CAN be told from two arbitrary words**, because it is not an
 isolated value: it has to equal the previous stream's colour pointer plus the
 colour words that stream's own mask bits consume. Walking the mask ROM is not a
@@ -231,7 +231,7 @@ ROM LIST 2035 distinct stage-1 sprite streams, from 52 tables (2246 entries)
 
 | | streams |
 |---|---|
-| **M — the cartridge's whole inventory**, walked from the mask ROM | **8,073** |
+| **M - the cartridge's whole inventory**, walked from the mask ROM | **8,073** |
 | build-B literal scan (every longword that is a directory start) | 5,915 |
 | **the committed stage-1 list** (52 tables + 22 immediates + 15 anim ranges) | **2,035** |
 | wave 3's harvest, 2 scenarios | 1,211 |
@@ -241,7 +241,7 @@ ROM LIST 2035 distinct stage-1 sprite streams, from 52 tables (2246 entries)
 
 **[M] The committed list covers 149 of 149 capture streams, 328 of 328 port
 streams, and 848 of 1,182 wave-3 harvest streams**, and contains **1,058 streams
-no instrument has ever reached** — which is the whole argument for enumerating
+no instrument has ever reached** - which is the whole argument for enumerating
 statically. Those 1,058 are what a recording-derived atlas is missing and cannot
 know it is missing.
 
@@ -257,24 +257,24 @@ know it is missing.
 3. The literal scan's own false-positive floor is measured, not assumed: running
    the same scan against a DECOY directory (every start shifted by `$4`, `$8`,
    `$100`, `$1000`) scores **624–1,273** hits where the true directory scores
-   **8,598**. The signal is 7–14x the decoy, so the bulk of the 5,915 is real —
+   **8,598**. The signal is 7–14x the decoy, so the bulk of the 5,915 is real -
    but "the bulk" is not "all", and no number here treats a literal hit as proof
    on its own.
 
 ## 6. WHAT WAS PORTED
 
-**`src/render/spritedir.js` (NEW)** — the chain solver, `streamStride`,
+**`src/render/spritedir.js` (NEW)** - the chain solver, `streamStride`,
 `streamExtent`, `walkDirectory`, `colourBase`. Export-time only; nothing under
 `src/web/` imports it.
 
-**`tools/export-web.mjs`** — a stream's extents no longer come from the
+**`tools/export-web.mjs`** - a stream's extents no longer come from the
 recording's display-list record. `walkStream(offs, wide, high)` is gone;
 `streamExtent(sprmask, COLW, offs)` replaces it, and the record's reading is
 kept ONLY as a cross-check:
 
 - `checkAgainstRecord` throws if any record would read MORE mask words than the
   ROM chain gives that stream (the direction that ships a SHORT sheet).
-- the ship harvest no longer *uses* `SHIP_SIZE = $0620`; it **asserts** it —
+- the ship harvest no longer *uses* `SHIP_SIZE = $0620`; it **asserts** it -
   all 17 tilt streams must be exactly `3 x 32` by the chain.
 - the exporter prints the split: **7,601 of 7,671 records match their stream's
   full length exactly; 70 read a prefix**, and all 70 are the null stream
@@ -283,9 +283,9 @@ kept ONLY as a cross-check:
 **[M] The bundle is unchanged except by 14 bytes.** Only `$000000`'s extent
 moved (maskWords 3 → 10); `maskUsed` 12,893 → 12,900, `colUsed` 24,794 →
 24,794, all 165 other streams byte-identical. `tools/webgate.mjs`: 14 files,
-one frame, 98.8 % non-black — unchanged.
+one frame, 98.8 % non-black - unchanged.
 
-**`tools/w35atlas.mjs` (NEW)** — `capture` / `port` / `diff` / `rom`.
+**`tools/w35atlas.mjs` (NEW)** - `capture` / `port` / `diff` / `rom`.
 
 ### 6.1 EVERY CHECK WAS SEEN TO FAIL
 
@@ -296,17 +296,17 @@ sha256-verified identical after every one (`src/render/spritedir.js`
 
 | # | mutation | result |
 |---|---|---|
-| M1 | `maskWords` ships the 2-word trailer too | RED — 1 |
-| M2 | colour rounding `floor(npix/3)` instead of `ceil` | RED — 2 |
-| **M3** | the chain is searched every 2 words, not 4 | **GREEN, then RED — 1** |
-| M4 | the trailer's clear bits are counted | RED — 9 |
-| M5 | the header is not shifted right by 2 | RED — 9 |
-| M6 | `streamStride` returns 4 instead of throwing | RED — 3 |
-| M7 | the chain returns a stride 4 words SHORT | RED — `export-web.mjs` exit 1, "a display-list record reads N mask words but the ROM chain gives this stream only M" |
-| M8 | the chain returns a stride 4 words LONG | RED — `export-web.mjs` exit 1, "ship tilt stream: the ROM chain says N, the MEASURED `($e,A6)` = `$0620` says 3 x 32" |
+| M1 | `maskWords` ships the 2-word trailer too | RED - 1 |
+| M2 | colour rounding `floor(npix/3)` instead of `ceil` | RED - 2 |
+| **M3** | the chain is searched every 2 words, not 4 | **GREEN, then RED - 1** |
+| M4 | the trailer's clear bits are counted | RED - 9 |
+| M5 | the header is not shifted right by 2 | RED - 9 |
+| M6 | `streamStride` returns 4 instead of throwing | RED - 3 |
+| M7 | the chain returns a stride 4 words SHORT | RED - `export-web.mjs` exit 1, "a display-list record reads N mask words but the ROM chain gives this stream only M" |
+| M8 | the chain returns a stride 4 words LONG | RED - `export-web.mjs` exit 1, "ship tilt stream: the ROM chain says N, the MEASURED `($e,A6)` = `$0620` says 3 x 32" |
 
 **8 mutations, 8 RED. ONE SURVIVED THE FIRST PASS AND IT WAS A DEFECTIVE CHECK
-OF MINE, not an uncatchable one** — the distinction W31 asked later waves to
+OF MINE, not an uncatchable one** - the distinction W31 asked later waves to
 keep. M3 survived because every stream in the synthetic region had an even mask
 count, so a 2-word grid found the same answer. The fix is a test that builds the
 ambiguity on purpose: stream 0's first six mask words consume 18 colour words,
@@ -363,7 +363,7 @@ boot cost is 467.9 KiB. The owner's standing constraint is "boot must not get sl
 than it is today", and the approval for sharding covers the BACKGROUND. So this
 is not a drop-in: the sprite sheet needs the same deferred-shard treatment
 `gfx/bg.shard*` already has (`src/web/assets.js`), keyed by something other than
-scroll position — most plausibly by source table, since a table is one object
+scroll position - most plausibly by source table, since a table is one object
 type's whole image set. **That is a wave, and it is a wave about loading, not
 about sprites.**
 
@@ -373,19 +373,19 @@ about sprites.**
 census, every stage-1 producer's `($a,A6)` writers have to be read out of the
 listing, and the ones nobody has read are:
 
-- **the 8 unported stage-1 handlers** — `$27733E $275F30 $26A5E4 $26AD28
+- **the 8 unported stage-1 handlers** - `$27733E $275F30 $26A5E4 $26AD28
   $26A860 $29700C $2697F6 $292902` (W34 §4.2: all 8 are dispatched today, all 8
   are loud named throws), 2,063 instructions;
-- **the effect pool** — `$289004` (34 kinds, 80 slots, 294 call sites) and its
+- **the effect pool** - `$289004` (34 kinds, 80 slots, 294 call sites) and its
   driver `$288E4E`, which W34 §1.6 deliberately left together. Every explosion's
   images are behind it;
-- **the boss `$292902`** — 10 instructions of dispatch over a script format
+- **the boss `$292902`** - 10 instructions of dispatch over a script format
   nobody has read;
 - **the option object's laser arm `$24C180`**, which is where `$24BBBA`'s and
   `$24D8AC`'s remaining entries are indexed from.
 
 Until those are read, any static list is a floor with a known name for every
-piece missing from it — which is a better state than a recording-derived list,
+piece missing from it - which is a better state than a recording-derived list,
 because a recording-derived list has no such names.
 
 ### 7.3 WHAT I COULD NOT DETERMINE
@@ -407,10 +407,10 @@ because a recording-derived list has no such names.
 
 **A. THE BRIEF'S PREMISE HELD, AND ITS PESSIMISM DID NOT.** The 166 streams are
 exactly what the brief said: 150 walked out of `capture.bin`'s own display lists
-plus 16 ship frames harvested by address. But the standing claim behind that —
+plus 16 ship frames harvested by address. But the standing claim behind that -
 wave 3's *"walking the mask ROM would be a GUESS"*, carried into
 `PLAN-no-recordings.md` §6 risk 2 as *"sprites CANNOT be statically
-enumerated"* — is false, and §3 is the construction.
+enumerated"* - is false, and §3 is the construction.
 
 **B. THE CARTRIDGE'S OWN INVENTORY IS 8,073 STREAMS**, walked from
 `$000000..$33A6E4` with one unique solution at every step, validated against
@@ -436,7 +436,7 @@ sharding decision extended to sprites.
    anywhere in this document, that is the defect.
 3. **§4.3.** Six streams have no literal anywhere in build B and a scan alone
    would have called them absent. Measurement proves presence; only the listing
-   proves absence — arriving from the direction where the *scan* is the
+   proves absence - arriving from the direction where the *scan* is the
    measurement.
 4. **§6.1's survivor.** M3 passed because the fixture had no ambiguity in it,
    which is the same shape as W34's M3/M7/M13.
@@ -451,7 +451,7 @@ sharding decision extended to sprites.
 - §2 [M]: there is NO per-stage sprite list in the ROM. The address is a
   per-object descriptor at `(A6+$A)`, written from prototype tables,
   16-entry direction tables, immediates, and arithmetic on a base.
-- §3 [M]: **the mask ROM is a self-describing chain** — stride = `w*h + 4`, and
+- §3 [M]: **the mask ROM is a self-describing chain** - stride = `w*h + 4`, and
   the colour pointer in each stream's own header closes the chain. Walked:
   **8,073 streams**, `$000000..$33A6E4`. Validated by 150/150 capture streams
   and 329/329 port streams landing exactly on entries with exactly the right
@@ -462,7 +462,7 @@ sharding decision extended to sprites.
   to the ROM table or immediate it comes from (§4.1/§4.2), and the six with no
   literal anywhere are a bullet animation whose base/step/wrap are three
   immediates in one routine (§4.3).
-- §4.4 [M]: a THIRD instrument — wave 3's 1,211-stream harvest — is also 1,211
+- §4.4 [M]: a THIRD instrument - wave 3's 1,211-stream harvest - is also 1,211
   of 1,211 directory entries, 0 reading past the chain. 1,690 observations,
   0 exceptions. And its own manifest carries the claim this wave falsifies.
 - §5 [M]: the committed ROM list is **2,035 stage-1 streams** (52 tables /
@@ -472,7 +472,7 @@ sharding decision extended to sprites.
   calibration of the literal scan (624–1,273 hits vs 8,598).
 - §6 PORTED: `src/render/spritedir.js`; `export-web.mjs` takes stream extents
   from the ROM chain and keeps the recording's records only as a cross-check
-  (7,601 of 7,671 exact, 70 prefix — all 70 the null stream). Bundle moved by
+  (7,601 of 7,671 exact, 70 prefix - all 70 the null stream). Bundle moved by
   **14 bytes**, webgate unchanged.
 - §7 NOT PORTED, with the cost measured: shipping the ROM list is **+1.13 MiB
   gzipped at boot**, which needs sprite sharding; and a COMPLETE stage-1

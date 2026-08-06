@@ -1,4 +1,4 @@
-# Wave 7 — The power-up loop closed: capsule pickup, the meter, the shield
+# Wave 7 - The power-up loop closed: capsule pickup, the meter, the shield
 status: DONE
 wave: 7   role: impl   started: 2026-07-31
 

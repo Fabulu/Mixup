@@ -41,7 +41,7 @@ Stage `$19 = 4` (in-game stage 5): **14 of 28, first unported at scroll `$0000`
 
 1. **`$B559` is ported.** Ledger stage 4: **14/28 → 24/28**, first unported
    **`$0000` (`@$ABB6`) → `$0480` (`@$ABE8`)**, which is the first of the four
-   inline-5 arm records — exactly the boundary the recon predicted, at exactly
+   inline-5 arm records - exactly the boundary the recon predicted, at exactly
    the scroll it predicted.
 2. **THE SCENARIO DID NOT MATERIALISE, AND IT COULD NOT HAVE.** The recon's
    W32a done-when says "a stage-5 scenario runs from scroll `$0000`". It cannot,
@@ -53,7 +53,7 @@ Stage `$19 = 4` (in-game stage 5): **14 of 28, first unported at scroll `$0000`
 3. **The ledger's first-unported column was reporting the WRONG SCROLL for any
    record reached from more than one chunk**, and had been since W28. Fixed, with
    a check that can fail. §5.
-4. **`$9A76 JSR $C772` had no call site in the port at all** — a comment and
+4. **`$9A76 JSR $C772` had no call site in the port at all** - a comment and
    nothing else. It is covered today only by a throw W32b is going to delete.
    Made loud. §4.
 
@@ -72,11 +72,11 @@ st_B559:                          16 bytes, 6 instructions, $B559-$B568
 ```
 
 Entry 29 of `$AE1C`, types `$1D`/`$9D`. **Ten of stage 5's 28 distinct records**
-are type `$1D` — every record in chunks 0 and 1, i.e. the whole of scroll
+are type `$1D` - every record in chunks 0 and 1, i.e. the whole of scroll
 `$0000`-`$047F` (`$ABB6 $ABB8 $ABC2 $ABC4 $ABCE $ABD0 $ABD3 $ABD5 $ABDF $ABE1`,
 decoded out of `assets/prg.bin` this session; all ten have descriptor byte 0 =
 `$00`, so `status` is 0 and `$ADE8 BEQ $AE14` skips the `$ADC1` status animator
-entirely — `$012C` is driven by `$B628` alone).
+entirely - `$012C` is driven by `$B628` alone).
 
 ### READING PAST THE APPARENT END -- what I checked
 
@@ -85,7 +85,7 @@ entirely — `$012C` is driven by `$B628` alone).
   The routine really is 16 bytes.
 * **`$B55C BPL $B502` is a BACKWARD branch into the MIDDLE of entry 28**, which
   begins 92 bytes earlier. This is the fall-through family's shape for the
-  fifteenth time on this project — and the first time it was caught *before* the
+  fifteenth time on this project - and the first time it was caught *before* the
   port was written, because W30/W31 had already factored `loc_B502` out for
   exactly this. The port re-uses it and does not re-transcribe it.
 * **`sub_B628` with Y = 9 reads `$B659`/`$B65A`/`$B65B`.** `$B650`'s table is
@@ -101,11 +101,11 @@ entirely — `$012C` is driven by `$B628` alone).
 | | `$B4FD` (entry 28, stage 3) | `$B559` (entry 29, stage 5) |
 |---|---|---|
 | animator row | Y = 3 → `$B653`/`$B654`/`$B655` = **`$08` / `$4A` / `$08`** | Y = 9 → `$B659`/`$B65A`/`$B65B` = **`$08` / `$52` / `$06`** |
-| the box | `$B518 **JSR** $B251`, and the routine KEEPS GOING on a freed slot | `$B566 **JMP** $B251` — nothing follows |
+| the box | `$B518 **JSR** $B251`, and the routine KEEPS GOING on a freed slot | `$B566 **JMP** $B251` - nothing follows |
 | body | a four-phase lander (`$046C` 0-4, `$04AC` countdown) | animate + move + box, nothing else |
 
 **The thresholds are EQUAL.** A port that used row 3 would keep the right
-cadence — one step every eight frames — and show the wrong sprite for the wrong
+cadence - one step every eight frames - and show the wrong sprite for the wrong
 number of frames. No timing check can see that, which is why test 5 asserts the
 `$012C` SEQUENCE and not a count.
 
@@ -118,7 +118,7 @@ delegation to `h_B4FD` would break.
 **A cartridge detail that corrected my own first draft:** the first metasprite a
 fresh `$1D` shows is **`$53`, not the base `$52`**. `$B633 LDA $016C,X / CLC /
 ADC #$01` increments the frame FIRST, `$B640` stores it, and only then `$B644
-ADC $B651,Y` adds the base — so frame 0 (= `$52`) is reached only after the
+ADC $B651,Y` adds the base - so frame 0 (= `$52`) is reached only after the
 count-`$06` wrap. My first test expected `$52` first and went red against the
 port, and the ROM said the port was right.
 
@@ -132,7 +132,7 @@ It cannot, and this is a listing result, not a failed experiment.
 `runEngine`'s scope guard (`if (stageIndex >= 4) throw`) is the wall W31 moved
 forward one stage at a time, and the natural W32a move is to lower it to `>= 5`.
 **That would buy nothing.** FOUR other stage-5 gates fire *unconditionally*,
-every frame, before the spawn engine reads a single wave record — and every one
+every frame, before the spawn engine reads a single wave record - and every one
 of them walks the four `$0600` arm-group headers:
 
 | ROM | port | gate | fires |
@@ -148,13 +148,13 @@ Porting the empty-walk half of each is ~200 bytes of **half-ported subsystem**,
 which the brief names as the thing to stop for. **So I did not lower the guard**,
 and that is a decision with a measurement behind it rather than caution: lowering
 it would move the crash from a wave record to `$9663` while making
-`stageledger.py`'s runnability column print stage 5 as "admitted" — the exact lie
+`stageledger.py`'s runnability column print stage 5 as "admitted" - the exact lie
 W31 built that column to kill.
 
 ### `$9A76 JSR $C772` WAS A SILENT GAP WEARING A COMMENT
 
 `src/nmi.js` had, at the `$9A76` position, a comment and *nothing else*: no call,
-no throw. It is COVERED today (not silent) because `$9663` throws first — but it
+no throw. It is COVERED today (not silent) because `$9663` throws first - but it
 is covered by **the very throw W32b deletes**. The moment W32b ports the `$5C`
 census, `$CB8A`/`$CB91` (the arm driver, its `$5C >= 2` skip, the `$CBCA` fire
 timer and `$CBD1`) becomes a genuine quiet no-op with nothing left to announce
@@ -164,7 +164,7 @@ Mutant M15 (neuter the new guard) reddens check 12.
 ### What this changes about W32b's estimate
 
 Nothing about the fork's SIZE, but it moves an item off "later" onto "first":
-W32b cannot ship `$9663` alone. The four walkers are a package — the first frame
+W32b cannot ship `$9663` alone. The four walkers are a package - the first frame
 of stage 5 needs all four present, even if all four do nothing.
 
 `$5C` and `$B559`: **no interaction.** `$B559` reads and writes only `$030C`,
@@ -180,7 +180,7 @@ The recon predicted the first-unported record would move to **scroll `$0480`**.
 After the port the ledger printed **`$0C80`**. The port was right and the tool
 was wrong.
 
-`_stage_records()` keys records by ROM address (the honest denominator — chunk
+`_stage_records()` keys records by ROM address (the honest denominator - chunk
 streams share tails) and did `recs[p] = r`. **Chunk POINTERS are shared too**:
 stage 5's chunks 2, 3, 4, 5 and 6 are all the same pointer `$ABE8`, so the record
 was written five times and the LAST chunk's scroll won. Decoded out of
@@ -206,15 +206,15 @@ reporting stage 6 as 512 px more finished than it is for four waves**, and the
 error flatters the port in both cases, which is why nobody noticed.
 
 Fixed (keep the earliest scroll), and the BASELINE rows for stages 4 and 6
-updated — **row 6 is lowered, which the file's own docstring says never to do**,
+updated - **row 6 is lowered, which the file's own docstring says never to do**,
 so the reason is written into the dict next to it: the number was wrong, not the
 port.
 
 **AND THE FIX ARRIVED UNGUARDED.** Mutant M12 (revert it) originally REDDENED
 NOTHING: both stages' numbers move FORWARD under the old code, and `gate()` reads
-forward as "coverage advanced". So `_scroll_convention_check()` was added — a
+forward as "coverage advanced". So `_scroll_convention_check()` was added - a
 second, structurally different computation of the minimum, plus the two
-shared-pointer records pinned as hand-checkable literals — and wired into
+shared-pointer records pinned as hand-checkable literals - and wired into
 `main()` ahead of the ledger. M12 reddens it now.
 
 ---
@@ -224,7 +224,7 @@ shared-pointer records pinned as hand-checkable literals — and wired into
 | file | change |
 |---|---|
 | `src/enemies.js` | `h_B559()` new; `case 0xB559` in `dispatch()`; the scope-guard comment and message rewritten (it named `$B559` as missing and called `$0600` "destructible terrain") |
-| `src/nmi.js` | **`$9A76 -> $C772` given a loud named throw** — it had no call site |
+| `src/nmi.js` | **`$9A76 -> $C772` given a loud named throw** - it had no call site |
 | `src/oam.js` | `$8BD9`'s comment and throw corrected: "terrain-object sprite pass / moai wall / destructible scenery" → the arm-segment pass; the `$8B91`-jumps-in / `$8BF0`-falls-back structure and the shared `$9C`/`$9F` cursors written down for W32b |
 | `src/collision.js` | `$C037`/`$C263`'s throws corrected off "destructible blocks" |
 | `tools/oracle/stageledger.py` | earliest-scroll fix + `_scroll_convention_check()` + BASELINE rows 4 and 6 |
@@ -238,7 +238,7 @@ shared-pointer records pinned as hand-checkable literals — and wired into
 ## THE MUTATION TABLE
 
 Harness: patch the file as BYTES (an earlier text-mode version silently converted
-two CRLF sources to LF — HANDOVER §10's Windows note, caught with
+two CRLF sources to LF - HANDOVER §10's Windows note, caught with
 `git diff --ignore-cr-at-eol` and repaired), run the named check, restore,
 sha256 before and after every one. All five hashes identical before and after
 all 17: `enemies.js 3fbdf393e99b`, `stageledger.py ea41e6321288`,
@@ -265,13 +265,13 @@ all 17: `enemies.js 3fbdf393e99b`, `stageledger.py ea41e6321288`,
 | M17 | `$8BD9`'s throw loses its ROM address | 12 |
 | M18 | `$C263`'s throw loses its ROM address | 12 |
 
-**No mutant reddened nothing** — after M12 was fixed. M12's first run reddened
+**No mutant reddened nothing** - after M12 was fixed. M12's first run reddened
 NOTHING and that is recorded above rather than quietly repaired: the ledger fix
 had no check behind it until `_scroll_convention_check()` was written.
 
 **Check 4 is not reddened by any mutant, by construction.** It asserts the three
 bytes of `$B650` row 9 (and row 3, the trap) against `assets/prg.bin`. It is a
-FIXTURE check — it pins the cartridge constants that check 5 reasons about — and
+FIXTURE check - it pins the cartridge constants that check 5 reasons about - and
 no mutation of the port can move it. Stated rather than dressed up.
 
 ---
@@ -295,12 +295,12 @@ f2362  scroll $0400  $61 = 4
 f3867  scroll $0600  $61 = 6
 ```
 
-**Run 1 opened the window at f1400 — one frame group too late — and got the
+**Run 1 opened the window at f1400 - one frame group too late - and got the
 wrong stage-5 chunk.** The f2362 crossing loaded chunk **2** (`$ABE8`, the four
 INLINE-5 ARM records), the board spent **2,533 frames with live `$0600` arm
 groups**, and produced **zero** type-`$1D` objects. That is W32b's whole
 subsystem running on the cartridge, and it is a free confirmation of the recon's
-§2/§4c — the four inline-5 records really do allocate arm groups — but it is
+§2/§4c - the four inline-5 records really do allocate arm groups - but it is
 exactly the wrong window for W32a.
 
 Run 2 holds `$19 = 4` across f1338 only (`0019=4@1300-1345,0019=0@1346-…`; the
@@ -357,15 +357,15 @@ one.
 | C9 `loc_B502` `$04AC` `$14` → `$15` | 12 |
 | C10 `case 0xB559` removed (the handler throws) | 2,383 |
 
-**C1 is the one to pause on.** Using `$B4FD`'s animator row — the single most
-likely copy-paste error in a 16-byte routine that shares a body — moves only
+**C1 is the one to pause on.** Using `$B4FD`'s animator row - the single most
+likely copy-paste error in a 16-byte routine that shares a body - moves only
 **330 of 2,371** frames, because rows 3 and 9 have the SAME threshold `$08`. The
 cadence is identical and only the sprite and the wrap point differ. A comparison
 that sampled a shorter window could easily have missed it.
 
 **C8 AND C9 ORIGINALLY REDDENED NOTHING, AND THAT WAS A DEFECT IN THE CHECK.**
 The first version of the spawn-frame check compared the BOARD's `$048C`/`$04AC`
-against `$80`/`$14` written as literals *in the comparator* — so it agreed with
+against `$80`/`$14` written as literals *in the comparator* - so it agreed with
 itself through the very constants it was testing, `docs/knowledge/03`'s named
 failure mode, and mutating `loc_B502` left the cartridge run green. It now RUNS
 the port's own init arm and puts its three outputs next to the board's. Recorded
@@ -399,7 +399,7 @@ Stated as attempts, not absences.
   will until a stage-5-reaching input script exists. §6 is the fallback and it is
   labelled as one.
 * **`$B559` at any rank but the endchain's.** All 2,371 frames are one run's
-  rank. `$B559` reads no rank table and I found none in the listing — but I did
+  rank. `$B559` reads no rank table and I found none in the listing - but I did
   not measure a second rank either.
 * **`$B559`'s Y-axis free arms.** `$B251`'s `y < $08` and `y >= $C4` arms are
   taken 0 times on the board (these drifters exit left); unit check 10 covers
@@ -407,6 +407,6 @@ Stated as attempts, not absences.
 * **The 7 unexported tables the recon lists (§6 of the recon).** None of them is
   read by `$B559`: its only table is `$B650`, which `sub_B628` reads straight out
   of `rom` (no export needed), and its six metasprites `$52`-`$57` are already in
-  `assets/metasprites.json` (checked, and check 6 pins it — M14 reddens it).
+  `assets/metasprites.json` (checked, and check 6 pins it - M14 reddens it).
   `tablecoverage.py` stays green and its root set is untouched; the six routines
   outside its walk are still outside it, and that remains W32b's item.

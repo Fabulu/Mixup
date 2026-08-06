@@ -1,4 +1,4 @@
-# Wave 21 — Export the tables the handlers index, and the metasprite that vanishes
+# Wave 21 - Export the tables the handlers index, and the metasprite that vanishes
 
 status: DONE
 implementer, 2026-08-02
@@ -38,8 +38,8 @@ $B747  entries [19]  indexes: $B6D2 x1 $B6D9 x1 $B6DD x1
 
 `$ECB2`/`$EFCD`-`$EFCF` are the sound driver's and were already in
 `assets/sound/tables.json`. So the wave-22 MINIMUM was exactly three new
-blocks — `$B01D`, `$B33B`, `$B6D2` (which is one 15-byte run holding
-`$B6D2`+`$B6D9`+`$B6DD`) — and they are all in.
+blocks - `$B01D`, `$B33B`, `$B6D2` (which is one 15-byte run holding
+`$B6D2`+`$B6D9`+`$B6DD`) - and they are all in.
 
 Everything else below is the "export the rest if it is cheap" half. It was
 cheap: the 49 addresses the census lists collapse into **25 contiguous data
@@ -47,7 +47,7 @@ runs**, because the ROM stores its tables in blocks bounded by code.
 
 ---
 
-## 2. WHAT I EXPORTED — 25 blocks, all 49 census addresses
+## 2. WHAT I EXPORTED - 25 blocks, all 49 census addresses
 
 `assets/enemies/tables.json`: **9 blocks / 2,073 bytes → 34 blocks / 3,060
 bytes**. `ENEMY_BLOCKS_W21` in `tools/export_assets.py`.
@@ -86,11 +86,11 @@ comment. The check runs inside `enemy_tables()` at export time. It is not
 ceremony:
 
 > **TWO ANCHORS I WROTE WERE WRONG AND THE GUARD CAUGHT BOTH.**
-> * `gateTiles` — I wrote `$B61E = A9 00 (LDA #$00)`. The ROM has `A0 00`:
+> * `gateTiles` - I wrote `$B61E = A9 00 (LDA #$00)`. The ROM has `A0 00`:
 >   entry 38 opens `LDY #$00 / JSR $B628`. Had the anchor not been checked, a
 >   two-byte error in either direction here would have shipped `FF FF` or `A0`
 >   as gate tiles and looked fine.
-> * `approachStage4` — I wrote `$C686 = A5 68 (LDA $68)`. The ROM has `E6 68`
+> * `approachStage4` - I wrote `$C686 = A5 68 (LDA $68)`. The ROM has `E6 68`
 >   (`INC $68`). The anchor is four bytes now, because `$C653` (the stage-4
 >   arm) *also* opens `INC $68`.
 
@@ -127,7 +127,7 @@ next code boundary rather than stopping at the last named base:
 * `approachStage0/1/3/5` also carry the **packed-nibble spawn streams**
   `$C526`/`$C58D`/`$C633`/`$C752` that `$C447` points at. Those are read through
   `($9A),Y`, not through an indexed load, so `tablecoverage.py` would never have
-  flagged them missing — a handler ported without them would have thrown at run
+  flagged them missing - a handler ported without them would have thrown at run
   time on the first eruption. Including them costs 128 bytes and removes a trap.
 * `stage2Object` carries the four `$FF`-terminated id streams `$C893`'s
   pointers name, for the same reason. `$C878` is `JMP $C856` and `$C906` is
@@ -135,7 +135,7 @@ next code boundary rather than stopping at the last named base:
 
 ### What I did NOT export, and why
 
-* **`$CF2D`/`$CF2E`** — the ending chain's canned-packet pointers, read by
+* **`$CF2D`/`$CF2E`** - the ending chain's canned-packet pointers, read by
   `$CEB6`/`$CEBB`, reachable only through entry 40 (`$BB0F` → `$CE94`, when
   `$048C != 0` and `$4F != $FF`). `20-plan-completeness.md` §5 excludes the
   ending chain, and exporting the 14-byte pointer table without the flat
@@ -159,7 +159,7 @@ next code boundary rather than stopping at the last named base:
 
 ---
 
-## 3. METASPRITE `$A2` — and the bound that is actually in the ROM
+## 3. METASPRITE `$A2` - and the bound that is actually in the ROM
 
 `export_metasprites.py:85` had `if n == 0 or n > 16: continue`. The 16 is
 invented; `$8AC6`'s loop has no upper limit on the record count, and `$A2` is
@@ -177,14 +177,14 @@ $8EE6   ...  id $A1's RECORD, 9 bytes, $8EE6..$8EEF
 ```
 
 The table points at its own last slot + 2. Slots `$A4`-`$A8` would be
-`$8EE6`-`$8EEF`, which is `$A1`'s payload — and reading those five slots as
+`$8EE6`-`$8EEF`, which is `$A1`'s payload - and reading those five slots as
 pointers gives `$0402 $01DB $0400 $01DD $0108`, i.e. `02 04 DB 01 00 04 DD 01
 08`, `$A1`'s nine bytes exactly. So **the high table is `$8E9E-$8EE5`, 36
 entries, ids `$80-$A3`, and there is nothing above `$A3`.** That is now the
 export bound, asserted at export time from `$8EE0` itself.
 
 **The census's "the high table `$8E9E` holds only four real entries
-(`$A0-$A3`)" is wrong** — it holds 36; `$80-$9F` were being exported all along.
+(`$A0-$A3`)" is wrong** - it holds 36; `$80-$9F` were being exported all along.
 Corrected in place.
 
 Consequences, all measured:
@@ -193,7 +193,7 @@ Consequences, all measured:
 * the 162-vs-170 denominator in the plan's ledger is **neither**. 170 = every
   slot in `$00-$FF` with a non-zero count; **157** = every slot in `$00-$A3`
   with one. `$00 $31 $37 $3B $3C $3D $3E` point at the shared null record
-  `$8D9D` (count 0) and draw nothing — which is `$8AC8 BEQ $8B02`, the ROM's
+  `$8D9D` (count 0) and draw nothing - which is `$8AC8 BEQ $8B02`, the ROM's
   own behaviour, not an exporter decision.
 * the old guard dropped 9 ids **and wrongly kept 5** (`$B8 $C9 $D4 $F2 $FB`,
   small counts pointing into CHR/sound). The id bound removes all 13.
@@ -209,15 +209,15 @@ to script 2, sharing its terminator at `$AE91`:
 ```
 
 `$A2` is one byte in front of a script that already worked. Six scripts, 28
-non-zero id bytes over the six walks — fewer distinct positions than that,
+non-zero id bytes over the six walks - fewer distinct positions than that,
 because of the overlap.
 
 ---
 
-## 4. THE CHECK — `tools/tablecoverage.py` (and it goes both ways)
+## 4. THE CHECK - `tools/tablecoverage.py` (and it goes both ways)
 
 The `$A2` bug is not visible from the port's side. `drawMetasprite` does
-`if (!rec || rec.length === 0) return cursor` — a missing id draws nothing and
+`if (!rec || rec.length === 0) return cursor` - a missing id draws nothing and
 throws nothing. No test that asks "is what we shipped right?" can see it. The
 only way to see it is to ask the ROM what it NAMES and demand the export
 contain it.
@@ -257,7 +257,7 @@ is machine-derived from the same walk that decides the answer.
 
 The highest metasprite id **named anywhere in the ROM** is `$A3` (`$C14D
 LDA #$A3 -> $012C`). That is arrived at from the code side and agrees exactly
-with the `$8EE0` argument from the data side — two routes to the same number,
+with the `$8EE0` argument from the data side - two routes to the same number,
 which is what `docs/knowledge/03` asks for. `$A2` is named only by the two
 explosion scripts, `$A0` only by script 5, `$A1` by `$C15E`.
 
@@ -270,7 +270,7 @@ explosion scripts, `$A0` only by script 5, `$A1` by `$C15E`.
   `$CA2C` are four parallel columns and the run reaches exactly `$CA49`, where
   the three 7-rank rows start.
 * **`$B6D9` is a METASPRITE table, not a walker speed row.** `$B6C5 LDA
-  $B6D9,Y` stores into `$012C,X`. It is `1C 1C 1F 1F` — two ids. `$B6D2` is the
+  $B6D9,Y` stores into `$012C,X`. It is `1C 1C 1F 1F` - two ids. `$B6D2` is the
   rank row (`-> $04EC,X`/`$040C,X`, the 16-bit X velocity) and `$B6DD` the
   `bulletMuzzle` index (`-> $0496,X`). W22 needs to know which is which.
 * **The census has `$B5A9` and `$B5DC` the wrong way round.** It says "`$B5A9
@@ -283,7 +283,7 @@ explosion scripts, `$A0` only by script 5, `$A1` by `$C15E`.
   $B651,Y -> STA $012C,X`. All three `readBy` strings above were copied from
   the census by me before I read the listing; all three are now the listing's.
 
-### EVERY CHECK WAS SEEN TO FAIL — and one of them had already lied to me
+### EVERY CHECK WAS SEEN TO FAIL - and one of them had already lied to me
 
 The rule is that a check is assumed broken until it has been watched go red.
 These were, on a copy of the shipped assets, restored byte-identically
@@ -291,18 +291,18 @@ afterwards (sha1 compared both ways, both files, `True True`).
 
 | break | what went red |
 |---|---|
-| delete metasprite `$A2` from `metasprites.json` | 3 node tests + `tablecoverage.py` exit 1: *"metasprite $A2 is named by explosion script 4 ($AE8B); explosion script 5 ($AE94) and is NOT in metasprites.json — drawMetasprite() would draw nothing and throw nothing"* |
+| delete metasprite `$A2` from `metasprites.json` | 3 node tests + `tablecoverage.py` exit 1: *"metasprite $A2 is named by explosion script 4 ($AE8B); explosion script 5 ($AE94) and is NOT in metasprites.json - drawMetasprite() would draw nothing and throw nothing"* |
 | re-apply the historical `n > 16` guard | the id cross-reference names `$A2` and its two scripts |
 | delete the `walkerTables` block | 3 node tests + *"`$B6D2` is indexed by `$B6A4` and is in NO exported range"* (and `$B6D9`, `$B6DD`) |
 | delete the `rankSpeed` block | *"`$B01D` is in NO exported range"* |
 | cite `rankSpeed` one byte short | the anchor test: *"rankSpeed anchor must be the first byte past it"*, and `$B025` reads as out of range |
-| drop metasprite `$6C` (a `$B8EF` boss damage frame) | red **only after a fix** — see below |
+| drop metasprite `$6C` (a `$B8EF` boss damage frame) | red **only after a fix** - see below |
 | the two export-time anchors | red for real, `gateTiles` and `approachStage4`, before I corrected them |
 
 **The check that could not fail, found and fixed:** source (c) of the id scan
 originally stopped walking at the first conditional branch after an
 `LDA <table>,Y`. `$B936` is `LDA $B8EF,Y / BEQ $B962 / CMP $012C,X / BEQ $B9A8 /
-STA $012C,X` — the store is two branches downstream on the fall-through path.
+STA $012C,X` - the store is two branches downstream on the fall-through path.
 So the boss core's own damage metasprites `$6C`-`$71` were invisible to the
 check and dropping `$6C` produced no complaint at all. Fixed by walking forward
 past conditional branches with a 6-instruction window; the named-id count went
@@ -313,11 +313,11 @@ the seventh check in this project that could not fail, and it was mine.
 branches walked through, the window ran off the end of one load/store pair into
 the *next* one: `$C6A6 LDA $C6CE,Y / STA $032C,X` … `$C6B3 LDA $C6CA,Y /
 STA $012C,X` six bytes later, so the tool claimed `$C6CE`'s **position bytes**
-were metasprite ids. Wrong direction is the safe direction — it can only invent
-demands, never excuse a gap — but it was attributing to the wrong table. The
+were metasprite ids. Wrong direction is the safe direction - it can only invent
+demands, never excuse a gap - but it was attributing to the wrong table. The
 window now stops at a competing non-immediate `LDA`. It deliberately does NOT
 stop at `LDA #imm`, because `$AF21` is `LDA $AF0A,Y / BNE $AF28 / LDA #$00 /
-STA $012C,X` and the immediate is the blink-OFF path (`$AF18 BCS $AF26`) — my
+STA $012C,X` and the immediate is the blink-OFF path (`$AF18 BCS $AF26`) - my
 first attempt at the tightening broke there and silently lost all six blinking
 pickup ids. Final count **64**, and `$C6CE`'s two bogus claims are gone.
 
@@ -328,13 +328,13 @@ test partly green and `tablecoverage.py` catches it. Both are in the gate.
 
 ---
 
-## 5. `$A592` = 21 — corrected, and the correction was itself off
+## 5. `$A592` = 21 - corrected, and the correction was itself off
 
 `($A5BC - $A592) / 2 = 21`, and both bases are cited by real instructions
 (`$A3E8 LDA $A592,X`, `$A42F LDA $A5BC,Y`), so the count is forced.
 
 `00-recon-enemies.md` §3 listed 20 and has been fixed in place. The
-**missing entry is index 19 (`F4 2A`)** — `B3 2C` is index 20. The wave-20
+**missing entry is index 19 (`F4 2A`)** - `B3 2C` is index 20. The wave-20
 census described this as "off by one from index 17 on"; re-measured, indices 17
 and 18 in the old list are correct and only 19 was wrong. Both worklogs now say
 so. Pinned by `tests/tables.test.js`.
@@ -349,16 +349,16 @@ and `$A7CE`/`$A7CF` are two slack bytes before the stage pointer table at
 
 ## 6. Files
 
-* `games/gradius/tools/export_assets.py` — `ENEMY_BLOCKS_W21` (25 blocks),
+* `games/gradius/tools/export_assets.py` - `ENEMY_BLOCKS_W21` (25 blocks),
   the anchor guard, the overlap guard.
-* `games/gradius/tools/export_metasprites.py` — id bound `$A3` replaces
+* `games/gradius/tools/export_metasprites.py` - id bound `$A3` replaces
   `n > 16`; `$8EE0` / `$A2`-extent assertions; `referenced_ids()` +
   `check_ids()` and a non-zero exit when an id the ROM names is missing.
-* `games/gradius/tools/tablecoverage.py` — NEW.
-* `games/gradius/tools/test-all.mjs` — stage 1b2.
-* `games/gradius/tests/tables.test.js` — NEW, 13 tests.
+* `games/gradius/tools/tablecoverage.py` - NEW.
+* `games/gradius/tools/test-all.mjs` - stage 1b2.
+* `games/gradius/tests/tables.test.js` - NEW, 13 tests.
 * `docs/worklog/gradius/00-recon-enemies.md`, `20-recon-enemy-census.md`,
-  `20-plan-completeness.md` — corrections, in this commit.
+  `20-plan-completeness.md` - corrections, in this commit.
 
 Nothing ROM-derived is committed; `assets/` and `rip/` stay gitignored.
 
@@ -400,24 +400,24 @@ underneath it: the export went 161 → 157 records, which is `+$A2` and **−5**
 drawn one of those five, the sprite output would have moved. It did not:
 `0 nametable (over 30 strictly graded scenarios), 0 palette, 0 hardware-OAM
 bytes differ`, and the 1,022-address display-list watch is clean. `$A2` is not
-drawn either, because entries 24 and 40 are still unported — it is exported
+drawn either, because entries 24 and 40 are still unported - it is exported
 *ahead* of W26, which is the point.
 
-`deep-page4` still stops where it did — `port reaches $B6E1 at frame 2490,
+`deep-page4` still stops where it did - `port reaches $B6E1 at frame 2490,
 unimplemented enemy handler $B6E1 for type $07 (entry 7 of the 42-entry table
-at $AE1C) in slot 19` — because this wave ported no handler. What changed is
+at $AE1C) in slot 19` - because this wave ported no handler. What changed is
 that when W22 writes `$B6E1`, `$B6D2`/`$B6D9`/`$B6DD` will read.
 
 The display-list numbers, in full, from the run **after** `scen.py` re-recorded
 the whole corpus (`exit 0`, 45 recordings): **42/42 scenarios compared,
-902,272 slot-frames, 201,161 live — every byte of those compared: Y, tile,
-attribute, X — 0 differences.** So the metasprite export moving 161 → 157 was
+902,272 slot-frames, 201,161 live - every byte of those compared: Y, tile,
+attribute, X - 0 differences.** So the metasprite export moving 161 → 157 was
 looked at with the instrument that would have seen it, not asserted.
 
 `python games/gradius/tools/oracle/scen.py`: re-run to completion, then the
 whole gate re-run against the fresh recordings. Still GREEN, 10/10, 0 skipped.
-Expected — nothing in `src/` changed and the cartridge side does not depend on
-the export — but "expected" is not a measurement, so it was measured.
+Expected - nothing in `src/` changed and the cartridge side does not depend on
+the export - but "expected" is not a measurement, so it was measured.
 
 ## 9. What the reviewer should look at hardest
 
@@ -435,14 +435,14 @@ the export — but "expected" is not a measurement, so it was measured.
    exceed 7, the run is longer and the block is short.
 3. **`approachStage4`'s `$C682`/`$C683` (`12 40`).** Two bytes inside the block
    I cannot name. They are between `$C67A`'s four pairs and `$C684`'s gate.
-4. **The two heuristics in `tablecoverage.py` source (c)** — the weakest lines
+4. **The two heuristics in `tablecoverage.py` source (c)** - the weakest lines
    in the tool, and both were wrong once before they were right.
    *Window:* six instructions, walking past conditional branches, stopping at a
    competing non-immediate `LDA`. *Extent:* a table's ids run "up to the next
    indexed base in the same block". For `$B8EF` that gives 9 bytes instead of 7
    (the two filler `00`s at `$B8F6`/`$B8F7` are skipped as zeros, harmless
    here). Both can only over-claim, i.e. produce a FALSE FAILURE, never a false
-   pass. Wrong direction is the safe direction — but check them.
+   pass. Wrong direction is the safe direction - but check them.
 5. **`$96`/`$97` are not covered by the id check.** `$BB0F` computes its
    metasprite as `$96 + nibble` from the `$BB82` path script rather than
    loading a table byte into `$012C,X`, so source (c) cannot see it. Those ids

@@ -1,4 +1,4 @@
-# Wave 27 IMPLEMENTER — the exits (stage-end + warp route)
+# Wave 27 IMPLEMENTER - the exits (stage-end + warp route)
 
 status: DONE
 implementer, 2026-08-03

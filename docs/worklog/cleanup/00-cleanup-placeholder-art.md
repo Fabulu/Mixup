@@ -36,7 +36,7 @@ column 1 at -4, column 2 at +4; within a column t = 0..3 top to bottom (dy -16,
 
 ## What I built
 
-`tools/make-placeholder-tiles.mjs` — draws a blocky robot placeholder: head with
+`tools/make-placeholder-tiles.mjs` - draws a blocky robot placeholder: head with
 a right-offset visor, shoulders, torso with a right-pointing chevron, belt,
 hips, two arms and two legs, plus the **anim id in binary along the very top
 pixel row** so you can tell which pose the game is showing once the cartridge
@@ -46,14 +46,14 @@ every pose is distinguishable. Exports `makePlaceholderPool(manifest)` and
 decoded back OUT of the pool through the manifest's own offsets.
 
 It never opens `player.tiles.bin` and never opens a ROM. It reads only
-`manifest.player.tilePoolBytes` and `manifest.player.anims` — the INDEX, i.e.
+`manifest.player.tilePoolBytes` and `manifest.player.anims` - the INDEX, i.e.
 the machine's addressing scheme. Every pixel comes from the constants in the
 file.
 
 Two things fall out of the shared-slot structure and are handled explicitly:
 
 * An offset used at >= 3 different (col,row) positions can only be the blank
-  tile — nothing sits at a head position and a foot position at once. Exactly
+  tile - nothing sits at a head position and a foot position at once. Exactly
   one offset qualifies (4384). It is emitted empty. **Inferred from the index,
   not from pixels.**
 * An offset shared by several anims at the same position takes the art of the
@@ -87,7 +87,7 @@ Rejected alternatives and why:
   entry and that entry is the whole problem this task exists for.
 
 So `SHIPPED_ANYWAY` and its `.has()` check are **deleted outright**, not
-emptied — the identifier survives only inside the comment that explains its
+emptied - the identifier survives only inside the comment that explains its
 removal (`grep -n SHIPPED_ANYWAY tools/build-dist.mjs` -> line 56, a comment).
 The guard now has no bypass at all, and the refusal message tells the next
 person the three real answers (drop an intermediate / fix the exporter / draw a
@@ -156,7 +156,7 @@ images. A blocky green robot: head + visor, chest chevron, belt, separated legs,
 light hands and feet; arms out / up / reaching, legs standing / striding /
 crouching / crossed; the anim-id ticks visible above the head. Legible, clearly
 a placeholder, and nothing like Sunsoft's Batman. First pass had both legs
-merged into one dark column when standing — hips moved to x10/x13 so the 2px
+merged into one dark column when standing - hips moved to x10/x13 so the 2px
 brush leaves a 1px gap. Some poses show a borrowed leg or a missing head; that
 is the cartridge's own tile sharing, documented above, not a rendering fault.
 
@@ -178,11 +178,11 @@ they guard and watched. First round:
 # pass 9  # fail 1   <- tail left zero-filled
 ```
 
-Both green-through-a-break cases were the same shape — *the check reached the
+Both green-through-a-break cases were the same shape - *the check reached the
 code and interrogated none of its parameters*:
 
 1. **"a shared slot is emitted blank"** asserted blankness at anim 0's
-   (col 0, row 0) — the top-left corner, which the figure never covers. That
+   (col 0, row 0) - the top-left corner, which the figure never covers. That
    slot is blank whether the rule fires or not. Fixed to use anim 0's HEAD, and
    the test now first asserts the slot it is about to check is non-empty art, so
    it cannot go vacuous again.
@@ -205,7 +205,7 @@ Second round, after the fixes:
 ```
 
 Generator and `build-dist` were restored from byte-identical backups after each
-break (`diff` clean, verified — not `git checkout`, the tree was dirty).
+break (`diff` clean, verified - not `git checkout`, the tree was dirty).
 
 The test file is deliberately ROM-FREE, matching `tests/helpers.js`'s contract
 that the whole suite runs without `assets/`: it drives the generator with a
@@ -219,12 +219,12 @@ Every file >= 1 KB in the tree (2160 of them, excluding `node_modules`, `.git`,
 
 | file | size | in INCLUDE? | reaches dist? |
 |---|---|---|---|
-| `games/batman/assets/player.tiles.bin` | 6974 | yes | **no — substituted** |
-| `games/gradius/assets/chr/bank0..3.bin` | 8192 x4 | yes | no — `/^bank\d+\.bin$/` filter in `copy()` |
-| `games/gradius/assets/chr.bin` | 32768 | yes | no — `NEVER_SHIP` |
-| `games/gradius/assets/prg.bin` | 32768 | yes | no — `NEVER_SHIP` |
-| `games/gradius/tools/oracle/out/video/*/chr.bin` | 8192 x16 | no | no — `tools/` is never copied |
-| the two ROMs themselves | — | no | no |
+| `games/batman/assets/player.tiles.bin` | 6974 | yes | **no - substituted** |
+| `games/gradius/assets/chr/bank0..3.bin` | 8192 x4 | yes | no - `/^bank\d+\.bin$/` filter in `copy()` |
+| `games/gradius/assets/chr.bin` | 32768 | yes | no - `NEVER_SHIP` |
+| `games/gradius/assets/prg.bin` | 32768 | yes | no - `NEVER_SHIP` |
+| `games/gradius/tools/oracle/out/video/*/chr.bin` | 8192 x16 | no | no - `tools/` is never copied |
+| the two ROMs themselves | - | no | no |
 
 Nothing else in the repo is a verbatim slice. I also checked the 9 `dist` files
 under 1 KB (below the guard's size floor) against both ROMs by hand: none
@@ -233,7 +233,7 @@ matches.
 So the four Gradius `bank*.bin` are the remaining "shippable but for a basename
 filter" case: they live inside `games/gradius/assets/`, which IS in `INCLUDE`,
 and only a regex on the basename keeps them out. That is acceptable **because
-the guard is downstream of the filter** — delete the regex and the build refuses
+the guard is downstream of the filter** - delete the regex and the build refuses
 rather than leaking. Verified by reading `build-dist.mjs`: the walk over `dist/`
 happens after every `copy()`.
 
@@ -241,15 +241,15 @@ happens after every `copy()`.
 
 ## What I could not do, and why
 
-* **`levels/NN.vram.bin`** (8192 B x 14) is a BUILT image — the result of
-  replaying each level's resource loads — so it is not verbatim (measured: not
+* **`levels/NN.vram.bin`** (8192 B x 14) is a BUILT image - the result of
+  replaying each level's resource loads - so it is not verbatim (measured: not
   found in either ROM) and nothing here removes it. It is nevertheless the
   cartridge's entire background tileset, rearranged. **This is the biggest
   remaining pile of cartridge pixels in a published build and I did not touch
   it.** Replacing it needs real level art, not a robot; whoever continues this
   line should start there and should expect a much larger job than this one.
 * **`assets/manifest.json` still carries ROM-derived tables and is still
-  published** — level metatiles, metasprite records, the sine table, base64
+  published** - level metatiles, metasprite records, the sine table, base64
   enemy/object spawn blobs. None is a verbatim slice (the guard clears it), so
   it is outside "verbatim cartridge graphics". It is *derived data*, a different
   and larger question whose answer the SAVEPOINT already names: browser-side
@@ -270,6 +270,6 @@ happens after every `copy()`.
   px / 96.023%, the substitution has leaked into the dev tree. That is a bug in
   the change, not a new baseline.
 * If `export_assets.py` ever changes the pool's length or the offsets in
-  `manifest.player.anims`, `build-dist` fails loudly on the length assertion —
+  `manifest.player.anims`, `build-dist` fails loudly on the length assertion -
   regenerate the contact sheet and look at it.
 * Do not add an allowlist back.

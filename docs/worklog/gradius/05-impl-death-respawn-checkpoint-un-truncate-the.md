@@ -1,4 +1,4 @@
-# Wave 5 — Death, respawn, checkpoint: un-truncate the corpus
+# Wave 5 - Death, respawn, checkpoint: un-truncate the corpus
 status: DONE
 wave: 5   role: impl   started: 2026-07-31
 
@@ -31,7 +31,7 @@ node games/gradius/tools/test-all.mjs
 
 ## What I MEASURED, before writing a line
 
-### 1. WHO CALLS `$C0C7` — the fall-through trap, again
+### 1. WHO CALLS `$C0C7` - the fall-through trap, again
 
 `dis6502.py xref C0C7`:
 
@@ -52,7 +52,7 @@ C052  JMP $C0C7
 ```
 
 `src/nmi.js` said at `$9A70`: *"the shot-vs-enemy sweep. Not ported (wave 6). ... on the
-cartridge it is ten iterations of nothing."* That is wrong twice — the outer loop is
+cartridge it is ten iterations of nothing."* That is wrong twice - the outer loop is
 NINE iterations, and what follows it is the entire collision subsystem including the
 thing that kills the player. Corrected in this commit (rule 6).
 
@@ -90,8 +90,8 @@ So the route is **`$C101` -> `$C16E` -> `$C1B8` -> `$C1BF` -> `$C1D6`**: the
 player-vs-ENEMY sweep with no shield. Terrain kills NOBODY in the whole corpus, which
 is why the poke scenario below had to be built.
 
-`--arghook C1D6`: `arg 493 a=00 x=00 y=09` — Y = 9, i.e. enemy index 9 = object slot 21.
-`--arghook C16E`: `arg 493 a=05 x=00 y=09` — at `$C16E` A is the **dy** the CMP at
+`--arghook C1D6`: `arg 493 a=00 x=00 y=09` - Y = 9, i.e. enemy index 9 = object slot 21.
+`--arghook C16E`: `arg 493 a=05 x=00 y=09` - at `$C16E` A is the **dy** the CMP at
 `$C131` accepted (5) and X is the box index `$0460,Y` (**0**).
 
 The boxes, read out of the PRG at `$BFDA`/`$BFDE`:
@@ -115,7 +115,7 @@ f493  playerX 174 playerY 96   slot21 X 164 Y 98   ->  dx = (174+4)-164 = 14 < $
 
 **The `-1` in dy is real and is the carry**: `$C127 CMP $BFDA,X` leaves carry CLEAR when
 it falls through, and `$C12C LDA $A1 / SBC $032C,Y` is a subtract-with-borrow. And the
-box is exercised **exactly at its boundary** by this scenario — f492's dx is $10, the
+box is exercised **exactly at its boundary** by this scenario - f492's dx is $10, the
 first value the CMP rejects. A port with a 17-wide box dies one frame early.
 
 ### 3. The explosion walk `$C0FA`, per frame
@@ -141,13 +141,13 @@ f613  $0120 0     $0140 186   $0160 6      <- 255 counting down, 69 frames later
 into `$C0F4 DEC $0140`. It is a compared field (`w_0140`) and a port that returns early
 there reads 0 for the last 70 frames of every death.
 
-`$0160` is the position-ring cursor (`ring.cursor` in the port) — the ROM reuses slot
+`$0160` is the position-ring cursor (`ring.cursor` in the port) - the ROM reuses slot
 0's animation-frame byte as the explosion cursor while the ship is dead. Safe because
 `$A082`'s ring advance is inside `$9FFC`, which bails at `$0100 >= 2`.
 
 ### 4. `$C1D6` does NOT clear `$60` here
 
-`$C1D6 LDA $1B / CMP #$81 / BCC $C1E0 / LDA #$00 / STA $60` — the store only happens for
+`$C1D6 LDA $1B / CMP #$81 / BCC $C1E0 / LDA #$00 / STA $60` - the store only happens for
 `$1B >= $81`. Measured `w_0060`: **2 at f492, 2 at f493, 2 through the whole death**,
 and 0 only at f614 when `$9B3E`'s zero-page wipe clears it. A port that cleared `$60`
 unconditionally would stall the spawn engine for 120 frames.
@@ -157,11 +157,11 @@ unconditionally would stall the spawn engine for 120 frames.
 `w_0020` (lives) 3 -> 2, `w_001B` $A0 -> 1, `w_0100` 2 -> 1, `w_000D` 0 -> 6,
 `w_0048` 152 -> 0 (wiped), `w_0035` 20, playerX 174 -> 80, playerY 96,
 `w_0022 = w_0024 = w_0026 = w_0028 = 0`, `w_0057` 0, `w_0055`/`w_0054`/`w_0058` 0.
-`lag.dropAtGameFrame = 283 AND 614` — the respawn pays `$882C`'s dropped NMI too.
+`lag.dropAtGameFrame = 283 AND 614` - the respawn pays `$882C`'s dropped NMI too.
 
 The checkpoint table from 00-recon-flow.md (`$24 = min($3F AND $0E, 8)`) is re-checked
 by `tests/collision.test.js` with the recon's own three inputs (3 -> 2, 7 -> 6,
-$14 -> 4), not replayed on the cartridge — `$3F` at every death in this corpus is 0.
+$14 -> 4), not replayed on the cartridge - `$3F` at every death in this corpus is 0.
 
 ### 6. The terrain-death poke, measured with kill.py on the scenario's OWN script
 
@@ -179,7 +179,7 @@ python games/gradius/tools/oracle/kill.py --frames 640 \
 
 So the cell is **$05B3**, the field shift is 4, and `$10` in it is a solid cell. That
 address is derived from kill.lua's INDEPENDENT re-implementation of `$C3D3` and then
-confirmed by the cartridge actually dying — it is not taken from `src/terrain.js`'s
+confirmed by the cartridge actually dying - it is not taken from `src/terrain.js`'s
 own arithmetic, which is the thing the new scenario has to falsify.
 
 ### 7. The loop shapes, measured rather than assumed (docs/knowledge/06 model C)

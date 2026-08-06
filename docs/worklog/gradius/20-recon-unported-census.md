@@ -1,4 +1,4 @@
-# 20 — RECON: the unported census (static)
+# 20 - RECON: the unported census (static)
 
 status: DONE (static; nothing validated against the cartridge -- see §9)
 scope: READER. Nothing under `games/gradius/src/` was edited. New tools only.
@@ -44,8 +44,8 @@ owner's bug report expressed as a denominator, and it was in the ROM on day one.
 
 ## 1. Where stage 1 breaks, to the record
 
-`wavecensus.py` decodes stage 0's 92 distinct records. The first eleven —
-chunk 0 and chunk 1, scroll `$0000`-`$03FF` — are 100 % ported. From chunk 2 on:
+`wavecensus.py` decodes stage 0's 92 distinct records. The first eleven -
+chunk 0 and chunk 1, scroll `$0000`-`$03FF` - are 100 % ported. From chunk 2 on:
 
 ```
 $A87E  trig $20 scroll $0440  cmd $03  SINGLE type $07 -> entry  7 $B6E1  MISS
@@ -69,12 +69,12 @@ from wave-fire frames already recorded in `03-impl-…`: 378 @ scroll 32,
 | `$AF88` | `$0930` = 2352 | **5018** | **5018** |
 
 Four for four, no slack. Wave 12 needed 27,400 emulated frames to find these;
-`wavecensus.py` finds them in well under a second from the PRG image — and finds
+`wavecensus.py` finds them in well under a second from the PRG image - and finds
 the ones no run has reached with the same confidence.
 
 Wave 12's note that `$B311`/`$AF2E`/`$AF88` were reached "only on a run carrying
 power-ups" is **wrong** and this pass retires it: all three are plain stage-1
-wave records, `$AF2E` and `$AF88` directly and `$B311` at one remove — see §3.
+wave records, `$AF2E` and `$AF88` directly and `$B311` at one remove - see §3.
 
 ## 2. The spawn-script inventory
 
@@ -106,7 +106,7 @@ ALL    598       370      179      49       61.9%
 Structural facts established while decoding, each with its ROM evidence:
 
 * `$A7D0` holds **eight** words but there are **seven** stages. The eighth is
-  `$A844`, which is stage 1's chunk-0 stream — the chunk tables are packed back
+  `$A844`, which is stage 1's chunk-0 stream - the chunk tables are packed back
   to back and the 8th word is just the byte after the 7th table. Chunk counts
   are therefore `(next table − this table)/2` = **8, 8, 7, 7, 7, 7, 7**.
 * A record is 2 bytes `[trigger, cmd]` **unless `cmd >= $F0`, in which case it
@@ -119,13 +119,13 @@ Structural facts established while decoding, each with its ROM evidence:
   2's and chunk 3's start addresses. So "record reads" and "distinct record
   addresses" are different denominators and both are given.
 * `assets/manifest.json` tags `enemy.stageStreams` / `enemy.stage1Streams`
-  "listing only — never hooked, do not treat as measured". They are now decoded
+  "listing only - never hooked, do not treat as measured". They are now decoded
   end to end, and independently: `tools/oracle/wavedump.py` (written this same
   wave by another recon) reproduces stage 0 byte for byte, and its stage-1
   unported list is the same 18 records once its chunk-tail duplicates are
   removed. **Two decoders written independently from the same ROM, one answer.**
 
-## 3. The spawner inventory — 9 sites, 2 ported
+## 3. The spawner inventory - 9 sites, 2 ported
 
 Every spawn in the game calls `$A527` (clear the slot) first.
 `grep "JSR \$A527" rip/prg.asm` returns **exactly nine** sites, and that is the
@@ -135,12 +135,12 @@ complete list of spawners in the cartridge:
 |---|---|---|
 | `$A3BE` | `$A3B1` single wave spawn (`cmd < $80`) | **yes** |
 | `$A422` | `$A411` formation member (`cmd $80-$EF`) | **yes** |
-| `$A480` | `$A46F`, the inline-5 arm for `$19 = 2`, forces type `$96` | no — `enemies.js:368` throws |
-| `$A4D7` | `$A4A6`, the inline-5 arm that fills the `$0600` terrain-object array | no — same throw |
+| `$A480` | `$A46F`, the inline-5 arm for `$19 = 2`, forces type `$96` | no - `enemies.js:368` throws |
+| `$A4D7` | `$A4A6`, the inline-5 arm that fills the `$0600` terrain-object array | no - same throw |
 | `$AFD9` | **`$AF98`, a handler spawning a handler** | no |
-| `$9897`, `$989C` | `$988C`, the end-of-stage chain (`$1B = $0B`) | no — `nmi.js:379` throws |
-| `$999D` | the `$99xx` boss-approach chain | no — `nmi.js:379` throws |
-| `$C42A` | `$C413`, the stage-advance engine | no — `enemies.js:306/323` throw |
+| `$9897`, `$989C` | `$988C`, the end-of-stage chain (`$1B = $0B`) | no - `nmi.js:379` throws |
+| `$999D` | the `$99xx` boss-approach chain | no - `nmi.js:379` throws |
+| `$C42A` | `$C413`, the stage-advance engine | no - `enemies.js:306/323` throw |
 
 `$AF98` is the finding the wave census alone cannot produce, and it is the
 missing half of wave 12's power-up theory:
@@ -155,12 +155,12 @@ AF8F: A9 0C      LDA #$0C      <- type $0C
 AF91: 20 98 AF   JSR $AF98     <- st_AF88 (entry 16, type $10) SPAWNS type $0C
 ```
 
-So stage 1's handler set is not the twelve types its script names — it is those
+So stage 1's handler set is not the twelve types its script names - it is those
 plus `$09` (entry 9, `$B311`), `$0C` (entry 12, `$B3CB`), `$01` (the capsule,
 `$AEC3`) and `$02` (the explosion, `$BED3`). Sixteen entries. `handlerclosure.py`
 computes that closure per stage; §0's table is its output.
 `throwaudit.py` measured `$B311` first at frame 2783, five frames after
-`$AF2E`'s 2778 — the edge, measured, without anyone knowing it was there.
+`$AF2E`'s 2778 - the edge, measured, without anyone knowing it was there.
 
 ## 4. The enemy-handler table, in full
 
@@ -184,12 +184,12 @@ targets ported**.
 13 $B402 --              27 $B4F2 --
 ```
 
-`$83E4`'s `ASL A` is eight bit, so the index is `type AND $7F` — type `$85` and
+`$83E4`'s `ASL A` is eight bit, so the index is `type AND $7F` - type `$85` and
 type `$05` share entry 5. Ten entries (0, 3, 10, 21, 24, 25, 27, 31, 38, 40) are
 needed by NO stage script; they are boss/terrain-object types or the two
 bare-RTS slots. **22 of the 42 are needed by a stage script and unported.**
 
-## 5. The call graph — what the port has never even mentioned
+## 5. The call graph - what the port has never even mentioned
 
 ```
 $ python games/gradius/tools/oracle/callcensus.py
@@ -226,47 +226,47 @@ Instruction-level proxy, same walk: **3231 of 5708 reachable mode-5 instruction
 addresses (56.6 %) sit in a basic block that `src/` mentions at least once**;
 496 of 878 blocks (56.5 %). NMI-wide it is 3874 of 6604 (58.7 %).
 
-## 6. Silent non-implementations — the search, and what it found
+## 6. Silent non-implementations - the search, and what it found
 
 `silentgaps.py` cuts the mode-5 reachable code into 878 basic blocks and reports
 the 98 that live in a region the port CLAIMS and that `src/` never mentions.
 Each was read by hand. The triage:
 
-**RULED OUT — guarded by a named throw upstream, the port cannot get there:**
+**RULED OUT - guarded by a named throw upstream, the port cannot get there:**
 
-* `$BF0B`/`$BEF3` (shot vs. the `$0600` destructible blocks) — reached only from
+* `$BF0B`/`$BEF3` (shot vs. the `$0600` destructible blocks) - reached only from
   `$C044`, gated `$19 == 4`; `collision.js:226` throws.
-* `$C267`-`$C299` (bullet vs. `$0600`) — `$C263`, gated `$19 == 4`;
+* `$C267`-`$C299` (bullet vs. `$0600`) - `$C263`, gated `$19 == 4`;
   `collision.js:394` throws.
-* `$C32F`-`$C39A` (the breakable-wall VRAM patch) — from `$C2DC`;
+* `$C32F`-`$C39A` (the breakable-wall VRAM patch) - from `$C2DC`;
   `collision.js:847` throws.
-* `$C166` — reached only from `$C13D`, which throws.
-* `$82D5`/`$8307`, `$9715`-`$9746`, `$975D` — under `$96FB` (game over);
+* `$C166` - reached only from `$C13D`, which throws.
+* `$82D5`/`$8307`, `$9715`-`$9746`, `$975D` - under `$96FB` (game over);
   `nmi.js:339` throws.
-* `$840C`, `$9872`, `$9893`-`$98DA`, `$994A`, `$99DF`, `$9A1E` — under `$982A`
+* `$840C`, `$9872`, `$9893`-`$98DA`, `$994A`, `$99DF`, `$9A1E` - under `$982A`
   (`$1B != $80`); `nmi.js:379` throws.
-* `$A37C`-`$A394`, `$A471`-`$A524`, `$A4CD` — the inline-5 form;
+* `$A37C`-`$A394`, `$A471`-`$A524`, `$A4CD` - the inline-5 form;
   `enemies.js:368` throws.
-* `$843F` and all 25 blocks in `$C900-$CFFF` — bosses, behind `$9A56`.
-* `$AF10`, `$B31E` … `$BB0F` (38 blocks) — enemy handlers, behind the `$AE1C`
+* `$843F` and all 25 blocks in `$C900-$CFFF` - bosses, behind `$9A56`.
+* `$AF10`, `$B31E` … `$BB0F` (38 blocks) - enemy handlers, behind the `$AE1C`
   default throw, which prints the exact target address at runtime.
 
-**RULED OUT — implemented, just not quoted at that exact address:**
+**RULED OUT - implemented, just not quoted at that exact address:**
 
-* `$BCD3` (the `LDA #$F8` target-X saturation in `$BC44`) — `enemies.js:850` has
+* `$BCD3` (the `LDA #$F8` target-X saturation in `$BC44`) - `enemies.js:850` has
   `tx = sum > 0xFF ? 0xF8 : sum` with the `$BCCF` citation.
-* `$C2D1`-`$C2D6` (the 2-bit field shift) — `collision.js` folds it into
+* `$C2D1`-`$C2D6` (the 2-bit field shift) - `collision.js` folds it into
   `probeCollision()` and says so.
 * `$9F02`-`$9F34` (terrain RLE control codes `$07`-`$0A` and the `$9D73` fill
-  table) — ported, but in `tools/oracle/terrain.py`, not `src/`; `src/terrain.js`
+  table) - ported, but in `tools/oracle/terrain.py`, not `src/`; `src/terrain.js`
   consumes the exported `stages.json`. My scan only reads `src/`, so this is a
   false positive of the tool and is recorded as one.
-* `$8943` — the two-player arm of `st_892C`; `$8915`, the BCD digit-pair
+* `$8943` - the two-player arm of `st_892C`; `$8915`, the BCD digit-pair
   expander it jumps into, IS named (`hud.js`, `vram.js`), and `player.js:121`
   throws on `$18 != 0`. Listed here because it was my first candidate and it
   did not survive the check.
 
-**NOT RULED OUT — genuinely silent, in code that runs every frame:**
+**NOT RULED OUT - genuinely silent, in code that runs every frame:**
 
 1. **`$8B91 → $8BD9 → $8C06`, the `$0600` terrain-object sprite pass.** It runs
    unconditionally inside `$8BAB` on every frame of every stage. `src/oam.js`
@@ -282,7 +282,7 @@ Each was read by hand. The triage:
    `$37`/`$36` divergence `oam.js` already documents is the visible tail of this.
 3. **`st_984F`'s 4 px/frame camera adder** (`camera.js:26`, "not ported: stage
    1's normal path never uses it"). Named in a comment, guarded only by
-   `playArm`'s `$982A` throw — correct today, but the note states it as a
+   `playArm`'s `$982A` throw - correct today, but the note states it as a
    stage-1 fact when the guard is a sub-state fact. Same sentence shape that has
    cost this project five bugs.
 
@@ -298,7 +298,7 @@ throw new Error() sites: 69
 
 The 12 without a ROM address are asset-loader and range assertions
 (`assets.js` ×6, `terrain.js` ×2, `sound.js` ×2, `player.js` `$18 != 0`,
-`apu.js` sample rate) — none is an unported-path gate. So **57 named gates
+`apu.js` sample rate) - none is an unported-path gate. So **57 named gates
 covering 134 ROM addresses** is the port's honest self-report, and this pass
 adds the four §6 items that self-report does not cover.
 
@@ -321,7 +321,7 @@ adds the four §6 items that self-report does not cover.
 | enemy handlers `$AE1C` | 42 entries / 34 targets | 13 / 10 | §4 |
 | spawners (`JSR $A527`) | 9 | 2 | §3 |
 
-## 9. What I could not do — blockers
+## 9. What I could not do - blockers
 
 * **Nothing here was validated against the cartridge.** Every number is
   read-from-ROM. The next step is `wavelog.py` (already written by the parallel

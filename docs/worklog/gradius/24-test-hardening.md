@@ -1,6 +1,6 @@
-# Wave 24 TEST HARDENING — can each W24 check actually FAIL?
+# Wave 24 TEST HARDENING - can each W24 check actually FAIL?
 
-status: DONE (audit; READ-ONLY on src/ and on tests — recommendations only)
+status: DONE (audit; READ-ONLY on src/ and on tests - recommendations only)
 test-hardening, 2026-08-02
 
 Subject: `games/gradius/tests/w24-substate.test.js` (28 tests). Audited against
@@ -21,7 +21,7 @@ sound; the solid checks are credited in the coverage sentence.
 
 ---
 
-## FINDING A — MODERATE (shape: decoration / close kin of "takes-the-answer-
+## FINDING A - MODERATE (shape: decoration / close kin of "takes-the-answer-
 as-an-argument"). Test at line 47, "jt_$982F is a 16-entry table; the dispatch
 is the low nibble of $1B", IS A TAUTOLOGY THAT NEVER CALLS nmi().
 
@@ -37,19 +37,19 @@ test('jt_$982F is a 16-entry table; the dispatch is the low nibble of $1B', () =
 ```
 
 `atSubstate(0x80 | n)` sets `s.substate = 0x80 | n`. The assertion is then
-`(0x80 | n) & 0x0F === n` — a JavaScript bitwise identity that is true for every
+`(0x80 | n) & 0x0F === n` - a JavaScript bitwise identity that is true for every
 integer 0..15 by the language definition. **It never calls `nmi()`**, so it
 guards nothing in `playArm`. The cited RED WHEN ("the mask is wrong, e.g.
 `& 0x07`") does NOT turn this red: the port's `switch (substate & 0x0F)` (the
 thing actually under suspicion) is never executed. The `void prg;` is the test
 admitting it pins no ROM byte. A check that cannot fail is a decoration (RULE 4).
 
-### Exact replacement (option 1 — preferred: delete)
+### Exact replacement (option 1 - preferred: delete)
 Delete the test. The dispatch-routing fact it claims to pin is already covered
 by the line-62 test, which routes each arm through `nmi()` and matches its
 specific ROM address. Nothing is lost.
 
-### Exact replacement (option 2 — make it assert separation)
+### Exact replacement (option 2 - make it assert separation)
 ```js
 test('the dispatch separates arms: $88 does not run $80\'s body', () => {
   // $80's body advances $1B when cam.hi >= bossPage. $88 must throw at $9BED,
@@ -73,7 +73,7 @@ fires for collapsing `case 0x8` into `case 0x0`.
 
 ---
 
-## FINDING B — MODERATE (shape: "asserts a throw, but not WHICH throw" — the
+## FINDING B - MODERATE (shape: "asserts a throw, but not WHICH throw" - the
 inverse of lesson 37). Test at line 245, "$84 advance path spawns the boss
 object", uses a regex that matches ANY throw.
 
@@ -89,11 +89,11 @@ whose message renders `unimplemented enemy handler B914 for type $98 (entry 24
 of the 42-entry table at $AE1C)`. The test should pin THAT address. As written,
 a regression that throws EARLIER (a bad HUD packet at `$998B`, a wrong boss byte
 that dispatches a different unported type) still matches `\$`/`Error` and the
-test passes — exactly the "check that agrees with the code by construction"
+test passes - exactly the "check that agrees with the code by construction"
 smell of lesson 5 in `22-review.md`.
 
 The boss-byte side-effect asserts after the throw (`type[bi] === 0x98` etc.) DO
-pin the spawn and would catch an early throw before the writes — that part is
+pin the spawn and would catch an early throw before the writes - that part is
 sound. Only the throw-matching line is weak.
 
 ### Exact replacement
@@ -103,19 +103,19 @@ sound. Only the throw-matching line is weak.
 assert.throws(() => nmi(s, 0, res), /B914/,
   'type $98 must dispatch to $B914 (entry 24), the W26 boss handler');
 ```
-(Confirm the exact rendering against enemies.js:1155 — `hex4(target)` emits the
+(Confirm the exact rendering against enemies.js:1155 - `hex4(target)` emits the
 bare hex; match `B914`, not `\$B914`.)
 ### Red I would expect
 Make the boss byte wrong (`state.obj.type[bi] = 0x99` at nmi.js:541): `$99`
 dispatches to a different entry/target, the throw message names that other
 address, and `/B914/` fails. Also red if anyone makes the boss throw a quiet
-return (assert.throws fails outright) — which is the whole point.
+return (assert.throws fails outright) - which is the whole point.
 
 ---
 
-## FINDING C — HIGH (shape: "sets up state that masks the line under test",
+## FINDING C - HIGH (shape: "sets up state that masks the line under test",
 lesson 38). Test at line 348, "$85 the BNE is always taken", pre-sets `zp5B=0`
-and so CANNOT detect removal of the `$9658` clear — the one line the entire
+and so CANNOT detect removal of the `$9658` clear - the one line the entire
 dead-branch proof rests on.
 
 ```js
@@ -131,7 +131,7 @@ test('$85 the BNE is always taken: $5B (cleared to 0 by $9658) becomes 1, != 0',
 The `$997E` fall-through-is-dead proof (recon §6, plan §5, the comment block at
 nmi.js:587-602) rests on a single instruction: `$9658 STA $5B`, ported at
 **nmi.js:293 `state.zp5B = 0;`** inside `stagePlay()`, BEFORE the `$96A5` ladder
-reaches `$997E`. The test pre-sets `s.zp5B = 0` — exactly the value `$9658`
+reaches `$997E`. The test pre-sets `s.zp5B = 0` - exactly the value `$9658`
 would have produced. So the post-frame `zp5B === 1` is identical whether `$9658`
 ran or not:
 
@@ -143,9 +143,9 @@ harness supplies the value the application's own per-frame logic would supply,
 and the absence of that logic becomes invisible. The load-bearing line is
 unguarded. (The `substate === 0x85` assert is no help either: the port's
 `st997E` (nmi.js:603) does not implement the fall-through at all, so substate
-never advances regardless — see Finding D.)
+never advances regardless - see Finding D.)
 
-### Exact replacement — pre-set a residue ONLY `$9658` can clear
+### Exact replacement - pre-set a residue ONLY `$9658` can clear
 ```js
 test('$85 is safe because $9658 clears $5B every frame BEFORE the INC', () => {
   // Pre-set $5B = $FE. Only the $9658 per-frame clear (nmi.js:293) turns this
@@ -176,9 +176,9 @@ absence of the code, not on this (or any) unit test.
 
 ---
 
-## FINDING D — MODERATE (shape: "sampled frames with no transitions", lesson
+## FINDING D - MODERATE (shape: "sampled frames with no transitions", lesson
 39's genus). Test at line 337, "$85 ... does NOT advance to $86", samples 5
-frames — too short for the hazard its own RED WHEN comment names.
+frames - too short for the hazard its own RED WHEN comment names.
 
 ```js
 for (let i = 0; i < 5; i++) nmi(s, 0, res);        // 5 frames of boss fight
@@ -192,10 +192,10 @@ cannot reach a 256-frame wrap. With `zp5B` pre-set to 0 (and `$9658` clearing
 it each frame), the five frames walk `0 -> 1 -> 1 -> 1 -> 1 -> 1` and never
 approach the boundary. The test catches only a DIRECT `$1B` advance (someone
 adding `state.substate++` to `st997E`), which the one-frame line-348 test also
-catches. It does not catch the cited accumulation-then-wrap hazard, and — per
-Finding C — it stays green if `$9658` is removed.
+catches. It does not catch the cited accumulation-then-wrap hazard, and - per
+Finding C - it stays green if `$9658` is removed.
 
-### Exact replacement — push the boundary to within one INC of the wrap
+### Exact replacement - push the boundary to within one INC of the wrap
 ```js
 test('$85 does not fall through across the $5B wrap boundary', () => {
   // Park $5B at $FE each frame (2 INCs from the wrap) and confirm $1B never
@@ -213,16 +213,16 @@ test('$85 does not fall through across the $5B wrap boundary', () => {
 ```
 (Keep the existing line-337 test too if you want the direct-advance guard, but
 **rewrite its RED WHEN comment** to say what it actually catches: "a direct
-`INC $1B` added to `st997E`" — not the 256-frame wrap.)
+`INC $1B` added to `st997E`" - not the 256-frame wrap.)
 ### Red I would expect
 Only red in combination with Finding C's regression (delete `$9658`) AND a
 hypothetical added fall-through; alone it stays green because the port has no
-fall-through. Say it that way — do not let the comment claim it guards the wrap
+fall-through. Say it that way - do not let the comment claim it guards the wrap
 on its own.
 
 ---
 
-## FINDING E — the coverage gap (INFORMATIONAL, the big one). NO test drives
+## FINDING E - the coverage gap (INFORMATIONAL, the big one). NO test drives
 the `$80 -> $81 -> $82 -> $83 -> $84 -> $85` CHAIN, and no in-situ cartridge
 comparison exists.
 
@@ -248,7 +248,7 @@ I confirmed the mechanical reason: there is **no `endchain` entry in
 `throwaudit-endchain.json` proves the `$1B` timeline; it is not a per-frame
 field dump and cannot make the 1022-field comparison machine-checkable.
 
-### Recommendation (not a test edit — a scenario/tooling addition for W28 or a
+### Recommendation (not a test edit - a scenario/tooling addition for W28 or a
 follow-up wave)
 1. Re-derive the boss-killing RUA-hold button script (the sweep map proved it
    reachable from ~frame 5000) and record `scen/endchain.json` via `scen.py`,
@@ -260,19 +260,19 @@ Until those exist, the coverage sentence below is the honest one.
 
 ---
 
-## FINDING F — MINOR. Test at line 62 is titled "the 8 unported play arms throw
+## FINDING F - MINOR. Test at line 62 is titled "the 8 unported play arms throw
 with their ROM target" but the loop iterates **10** arms
 (`[0x86..0x8F]`). Ported play arms are `$80`-`$85` (6); unported are
 `$86`-`$8F` (10). Rename to "the 10 unported play arms throw with their ROM
 target". (The test body is correct and sound; only the count in the name is
 stale.)
 
-## FINDING G — MINOR. The `assert.deepEqual(RANK_CD, [3,3,4,4,5,5,6,6])` pin
-appears twice — line 133 (inside the rank-indexed duration test) and line 450
+## FINDING G - MINOR. The `assert.deepEqual(RANK_CD, [3,3,4,4,5,5,6,6])` pin
+appears twice - line 133 (inside the rank-indexed duration test) and line 450
 (the export pin). Redundant. Consolidate into the export test; have the
 duration test assert only the `* 256` arithmetic. Not a defect.
 
-## FINDING H — MINOR (same shape as C, lower stakes). Test at line 361
+## FINDING H - MINOR (same shape as C, lower stakes). Test at line 361
 ("$96FB INCs $5B every frame") pre-sets `zp5B = 0`. It catches a dropped INC
 (zp5B stays 0 -> assert fails) but, like Finding C, cannot detect removal of
 the `$9658` clear. Lower priority than C because `gameOverArm`'s correctness
@@ -312,7 +312,7 @@ These looked like possible defects and are NOT:
   `$87` is asserted to throw at `$9B3E`, and if the dispatch sent `$87` to the
   `$88` handler (`$9BED`) the regex would fail. Solid.
 
-## The W24 coverage sentence (RULE 5 — branches and table entries, not frames)
+## The W24 coverage sentence (RULE 5 - branches and table entries, not frames)
 
 > 28 tests in `w24-substate.test.js`, all green (audited against the
 > implementer's measured `445 pass, 0 fail, 0 skipped`; I did not re-run).
@@ -324,8 +324,8 @@ These looked like possible defects and are NOT:
 > sub-paths (`$970D`/`$9751`/`$9721`/`$97C5`/`$97F1`-demo) throw with their
 > address.
 >
-> UNEXERCISED: the in-situ SEQUENCE — the chained `$80 -> $85` timeline and the
-> 1022-field cartridge comparison through frame 2620 — because no
+> UNEXERCISED: the in-situ SEQUENCE - the chained `$80 -> $85` timeline and the
+> 1022-field cartridge comparison through frame 2620 - because no
 > `scen/endchain.json` field dump or `endchain` compare scenario exists (only
 > `deep-ground`/`deep-page3`/`deep-page4`/`deep-powered`). The 768-frame `$82`
 > duration and the 512-frame `$84` despawn crawl are unit-confirmed only in
@@ -334,21 +334,21 @@ These looked like possible defects and are NOT:
 > (`throwaudit-endchain.json`), not field-compared.
 >
 > 4 of 28 checks are decorative or under-aimed and would stay green on the
-> regression they name (lines 47, 245, 337, 348 — Findings A/B/D/C). The
+> regression they name (lines 47, 245, 337, 348 - Findings A/B/D/C). The
 > load-bearing `$9658` clear that the `$997E` dead-branch proof rests on is
 > currently UNguarded by any test that can see it fail (Finding C).
 
 ## Must-fix priority
 
-1. **Finding C** (line 348) — the `$9658` clear is the foundation of the
+1. **Finding C** (line 348) - the `$9658` clear is the foundation of the
    `$997E` absence proof and no test can currently see it fail. Re-aim to
    `zp5B = 0xFF`, assert `=== 1`. (Exact code above.)
-2. **Finding A** (line 47) — delete the tautology, or replace with a dispatch-
+2. **Finding A** (line 47) - delete the tautology, or replace with a dispatch-
    separation assertion. (Exact code above.)
-3. **Finding B** (line 245) — tighten the throw regex to `/B914/`. (Exact code
+3. **Finding B** (line 245) - tighten the throw regex to `/B914/`. (Exact code
    above.)
-4. **Finding E** — record `scen/endchain.json` + the `endchain` and `$96FB`
+4. **Finding E** - record `scen/endchain.json` + the `endchain` and `$96FB`
 >   compare scenarios (plan done-when #7; W28 or a follow-up). This is the only
    path to the in-situ coverage the unit suite structurally cannot provide.
-5. Findings D, F, G, H — minor cleanups; D's RED WHEN comment should be
+5. Findings D, F, G, H - minor cleanups; D's RED WHEN comment should be
    rewritten to claim only what it catches.

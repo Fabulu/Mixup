@@ -1,5 +1,5 @@
-# WAVE 3 REVIEW — asset export with teeth
-status: DONE — defects found, none blocking the wave's own gates
+# WAVE 3 REVIEW - asset export with teeth
+status: DONE - defects found, none blocking the wave's own gates
 wave: 3   role: review   started: 2026-08-01
 
 ## The task, as I understood it
@@ -22,7 +22,7 @@ deletions** (already flagged in wave 1, commit `977d005`) and it now also covers
 wave 3's new files: `games/ddpdoj/tools/assets.py`, `tools/zoomcov.py`,
 `NOTES-assets.md`, `docs/worklog/ddpdoj/03-impl-*.md`. Working-tree content is
 byte-identical to HEAD for all of them (`git hash-object` == `git rev-parse
-HEAD:<path>`), so what I ran is what was committed — but a `git commit` from the
+HEAD:<path>`), so what I ran is what was committed - but a `git commit` from the
 gradius workflow using this index would delete wave 3 from HEAD.
 
 `git show --name-only 7e496e4` touches only `games/ddpdoj/` and
@@ -32,7 +32,7 @@ and `games/ddpdoj/rip/.gitignore` is `*`.
 
 ## What I MEASURED
 
-### 1. The whole check runner, re-run from scratch — reproduces exactly
+### 1. The whole check runner, re-run from scratch - reproduces exactly
 
 ```
 $ python games/ddpdoj/tools/oracle/pgm.py check
@@ -47,7 +47,7 @@ PASS: 1605632/1605632 = 100.0000% over 16 frame pair(s)
 VERDICT: ALL GREEN -- 10 passed, 0 failed, 0 SKIPPED          rc=0
 ```
 
-The six mutations reproduce to the pixel — identical totals to the report:
+The six mutations reproduce to the pixel - identical totals to the report:
 tx-msb 1536030 (95.6651 %), bg-planes 1162525 (72.4030 %), spr-mask 821491
 (51.1631 %), zoom-off 1561899 (97.2763 %), spr-order 1392295 (86.7132 %),
 u19-at-200000 848682 (52.8566 %). `RED VALIDATION: every mutation was caught`.
@@ -62,7 +62,7 @@ Zoom coverage re-ran green: `ZOOM COVERAGE: COMPLETE`, `EXPECTED-RED zoom-off:
 diverged, as it must`, 90 dumped frames / 1488 zoom-path sprites / 2 tables.
 Determinism gate re-ran green.
 
-### 2. Fresh 7z extraction — the "Done when" clause, verified
+### 2. Fresh 7z extraction - the "Done when" clause, verified
 
 ```
 $ python games/ddpdoj/tools/assets.py extract     # C:\oldpcsx2\ddpdojblk.7z, 15,094,333 B
@@ -73,7 +73,7 @@ ASSET INTEGRITY OK: 0 failing check(s) []                     rc=0
 
 ### 3. Two checks broken by me, seen RED, restored (nothing in the repo touched)
 
-**(a) `gfxgate.py`'s bg_scale pair-level FAIL — never red-validated by the
+**(a) `gfxgate.py`'s bg_scale pair-level FAIL - never red-validated by the
 implementer.** Copied `rip/gfx-gate` to the scratchpad, forged one
 `f000215.regs.txt` from `bg_scale=0210` to `0610`:
 
@@ -85,7 +85,7 @@ FAIL: 1605632/1605632 = 100.0000% over 16 frame pair(s)       rc=1
 It really does fail at a 100.0000 % score. (Cosmetic: the verdict line still
 prints the percentage with no hint of why it is FAIL.)
 
-**(b) `frame.lua`'s bg_scale run-level FAIL branch — also never seen red.**
+**(b) `frame.lua`'s bg_scale run-level FAIL branch - also never seen red.**
 Copied `frame.lua` to the scratchpad with `BGSCALE_OK = 0x9999`, ran 900 logic
 frames through `pgm.run()` with a private `PGM_SCRATCH`:
 
@@ -97,7 +97,7 @@ DONE logicframes=900 videoframes=922 fails=1
 ```
 
 That run also produced a fact the wave-3 material does not state: **the GAME
-writes `$B04000` too — once from `$13C95A` (build A) and once from `$23C5EE`
+writes `$B04000` too - once from `$13C95A` (build A) and once from `$23C5EE`
 (build B), both with 0x0210.** So the register is actively programmed to 100 %
 by both builds, which strengthens the WARN/FAIL split rather than weakening it.
 
@@ -113,7 +113,7 @@ ASSET INTEGRITY FAILED: 2 failing check(s)                    rc=1
 **(d) `--min-pairs`** against an empty directory: `TOO FEW PAIRS: 0 < 12
 required`, rc=1.
 
-### 4. ROM bytes at the addresses the wave cites — spot-checked
+### 4. ROM bytes at the addresses the wave cites - spot-checked
 
 **`$0065E2` (the bg_scale writer) is real.** `ddp3_bios.u37` is loaded
 word-swapped, so the file bytes at 0x65E2 (`f933 8000 0e34 b000 0040`) unswap to
@@ -135,7 +135,7 @@ A blob == B blob over 23314 bytes: True
 ```
 
 Same two addresses, same 23,314 bytes, from every needle. The claim holds and no
-end is claimed that the data does not support — the bound is explicitly on the
+end is claimed that the data does not support - the bound is explicitly on the
 dump, not the copy, and the two builds' images are byte-identical, so which one
 was uploaded does not change the content.
 
@@ -144,7 +144,7 @@ script:** 1620 keyons, 119 with `end <= start`, **119/119 in the same 1 MiB
 bank**, **0 followed within 60 ICS register writes by a rewrite of `$04/$05` for
 the same voice**. Both wave-0 hypotheses are refuted, exactly as reported.
 
-### 5. THE BUILD PROBLEM — `$18AD78` is BUILD A's code, on a VERSION-B run
+### 5. THE BUILD PROBLEM - `$18AD78` is BUILD A's code, on a VERSION-B run
 
 `rip/sound/mailbox.tsv`: 657 doorbells, **all 657 from CURPC `$18AD78`**. In the
 decrypted `:maincpu`:
@@ -175,7 +175,7 @@ Consequences:
   **build A's** driver code. The protocol itself is a RAM-level fact and is
   probably build-independent, but that is an inference, not a measurement.
 * `NOTES-assets.md`: "For VERSION-B the driver image lives at decrypted
-  `:maincpu` **$2C3510**" is an inference too — the doorbell evidence points the
+  `:maincpu` **$2C3510**" is an inference too - the doorbell evidence points the
   other way. It happens not to matter because the two blobs are byte-identical,
   but the sentence reads as measured and is not.
 * The worklog's §"Noted, not mine to fix" says the wave-2 BLOCKING OPEN
@@ -220,19 +220,19 @@ Consequences, none of which are in `NOTES-assets.md` §6:
   zoom word and bits 0..7 of every y zoom word are ever walked**; bits 16..31
   and the `& 0x1f` wraparound are untested for all 16 entries. A wid=2/hgt=32
   source would have covered all 32 bits and was available (`wid <= 2`,
-  `hgt <= 32` are the search bounds) — the code picks the smallest on purpose.
+  `hgt <= 32` are the search bounds) - the code picks the smallest on purpose.
 * The coverage criterion is `w != 0 and px > 0`, not "the zoom changed
   anything". Cells reporting `29px` are reporting the *unzoomed* pixel count:
   e.g. `z=1 grow=1` (eff `0x0f`, hard-coded word 1) and `z=3 grow=1 y`
   (eff `0x0d`) are 29px on both tables. Those combinations were still verified
   geometrically by the frame gate (positions shift), so this is an over-read of
-  the summary line rather than a hole — but "384 combinations ... COMPLETE"
+  the summary line rather than a hole - but "384 combinations ... COMPLETE"
   claims more than `px > 0` proves.
 
 ### 7b. The mailbox payload log double-counts and silently truncates
 
 Every write to the `$C10000-$C1FFFF` window is logged TWICE with identical data
-— the tap sees both byte sub-accesses of one 68k word write:
+- the tap sees both byte sub-accesses of one 68k word write:
 
 ```
 door 2 payload tokens: ['0006=00EB', '0006=00EB', '0008=1A00', '0008=1A00']
@@ -248,7 +248,7 @@ writes, and the "top 12 offsets" ranking is computed over those truncated lists.
 
 ### 8. Smaller things I checked and found sound
 
-* `pairs_in()` — tested directly on synthetic dumps: sparse
+* `pairs_in()` - tested directly on synthetic dumps: sparse
   `[215,216,415,416,822,823] -> [(215,216),(415,416),(822,823)]`, contiguous
   `[100..103] -> [(100,101),(102,103)]`, odd run `[100..104]` drops 104, gap
   `[100,101,103,104,105] -> [(100,101),(103,104)]`. No off-by-one. In zoomcov a
@@ -267,7 +267,7 @@ writes, and the "top 12 offsets" ranking is computed over those truncated lists.
   `sum(record bytes) = 6363024` = blob size.
 * `assets.py check` genuinely shares no decode code with `pgmgfx.py`: its own
   `REGIONS`, `_raw_region_byte` (seek/read), `_tx_tile_slow`, `_bg_tile_slow`.
-  The u19-at-0x180000 value is not merely transcribed twice — the
+  The u19-at-0x180000 value is not merely transcribed twice - the
   `u19-at-200000` mutation dropping the frame gate to 52.86 % is the
   measurement that the value is right.
 * No slowdown or timing-magnitude figure is introduced anywhere in wave 3, so
@@ -283,7 +283,7 @@ writes, and the "top 12 offsets" ranking is computed over those truncated lists.
   "bg_scale is unimplemented" claim is unverified here and is load-bearing for
   calling the BIOS writes an oracle hole rather than a port hole.
 * **Whether the VERSION-B run uploads the Z80 driver from `$1C1F56` or
-  `$2C3510`** — the two are byte-identical, so no experiment I ran can tell
+  `$2C3510`** - the two are byte-identical, so no experiment I ran can tell
   them apart. The doorbell evidence says build A's code is in charge.
 * **Whether the zoomcov poke perturbs the game itself** (as opposed to only the
   trace). The sprite list is rebuilt from scratch every frame per
@@ -304,4 +304,4 @@ all about what the wave SAYS, not what it computes:
 3. Add the zoom-word bit-range gap to `NOTES-assets.md` §6, and consider making
    `zc_pick_source` prefer the LARGEST candidate.
 4. Say that sprite pixel data is never independently re-decoded by
-   `assets.py check` — only TX and BG, and only ~25 tiles of each.
+   `assets.py check` - only TX and BG, and only ~25 tiles of each.

@@ -1,4 +1,4 @@
-# QA, adversarial lens — wave 3 (enemies: pool substrate, spawn engine, update loop, the fan)
+# QA, adversarial lens - wave 3 (enemies: pool substrate, spawn engine, update loop, the fan)
 status: DONE
 wave: 3   role: qa   started: 2026-07-31
 
@@ -14,9 +14,9 @@ varied, and for coverage that is not proportional to the content. I did not edit
 2. Disassembled every ROM routine wave 3 claims to port and diffed it
    instruction-by-instruction against `src/enemies.js` / `src/nmi.js`.
 3. Built a **scratch copy** of the port (src, tests, assets, oracle artifacts) at
-   `…/scratchpad/g` and ran 90 deliberate source-level breaks against it —
+   `…/scratchpad/g` and ran 90 deliberate source-level breaks against it -
    `node tools/oracle/compare.mjs` (all 18 scenarios) plus the enemy / frame-gate
-   / nmi / page-wiring / player unit files — recording for each break whether the
+   / nmi / page-wiring / player unit files - recording for each break whether the
    comparison went red, whether the unit suite went red, or neither.
    Runner: `…/scratchpad/w3mut.py` + `w3muts{,2,3}.json`.
 
@@ -44,7 +44,7 @@ python games/gradius/tools/verify_assets.py --self-test
 
 Every headline number in the impl worklog reproduces. `enemy-waves`'s oracle
 artifact is real cartridge data (1866 rows, `enemySlots` histogram
-`{10: 1556, 0: 310}` — 0 on the pre-mode-5 frames, 10 thereafter).
+`{10: 1556, 0: 310}` - 0 on the pre-mode-5 frames, 10 thereafter).
 
 ### 1. The transcription itself: NO functional divergence found
 
@@ -58,7 +58,7 @@ right arms), `$A527-$A591`, `$ADAB-$AF09`, `$B0AF-$B310`, `$BBB7-$BC63`,
 Ruled out, each checked against the bytes:
 
 * `$A36B`/`$A378` really are always-taken (`$A3AE 10 F8 BPL` ends with Y = $FF).
-* `$A3F5-$A3FD` really does `STA $49` — the port's store-back of the masked
+* `$A3F5-$A3FD` really does `STA $49` - the port's store-back of the masked
   `{2,3}` group id is right, not an invention. (Removing it → RED, `w_0049@506`.)
 * the 42-entry table at `$AE1C` decodes exactly as the port switches on:
   entry 7 = `$B6E1`, entries 32-36 = `$AF10`, 37 = `$B61E`, 38/39/41 = `$AEDD`,
@@ -67,7 +67,7 @@ Ruled out, each checked against the bytes:
   RTS that ends the capsule-promotion arm.
 * `$B205` ↔ `$B1B1`/`$B1DF`/`$B1F1`/`$B22E` interleave, including `$B23C BCC
   $B20A` re-entering the init block (and so wrapping bit 7 back off).
-* `$B2A5`/`$B2C8`'s inverted-branch zeroing — the "provably useless" reading is
+* `$B2A5`/`$B2C8`'s inverted-branch zeroing - the "provably useless" reading is
   what the bytes say.
 * `$BC00 SBC $98` is a plain subtract (the `$BBF9 CMP #$03` above it leaves C set).
 * `$BC44`'s stage-0/1 gate is `BCC` on `playerX < enemyX`, as ported.
@@ -75,7 +75,7 @@ Ruled out, each checked against the bytes:
 
 ### 2. Ninety deliberate breaks. The corpus caught most of them.
 
-RED (comparison) — a representative list, all with the first divergent frame:
+RED (comparison) - a representative list, all with the first divergent frame:
 
 ```
 style-nocarrier   w_03B0@1789   style-noattr      w_0190@1789
@@ -111,7 +111,7 @@ That is a strong corpus. The findings below are what SURVIVED it.
 
 ### 3. What survived BOTH the comparison and the unit suite
 
-(Scratch baseline is 5 unit failures — the touch-pad tests, which need assets I
+(Scratch baseline is 5 unit failures - the touch-pad tests, which need assets I
 did not copy. `unit=5` below therefore means "the unit suite did not react".)
 
 | break | ROM instruction | compare | unit |
@@ -173,17 +173,17 @@ Only `tests/enemies.test.js` test 1 catches them.
 Eight handler bodies are ported. Against the cartridge the corpus exercises
 **three**:
 
-* `$B0AF` (fan), `$B26C` (wavy), `$B205` (arc) — exercised, and their constants
+* `$B0AF` (fan), `$B26C` (wavy), `$B205` (arc) - exercised, and their constants
   are mostly pinned (see the RED list).
-* `$AEDD` (capsule `$5B` freeze) and `$AEE1` (generic drift) — **unit tests
+* `$AEDD` (capsule `$5B` freeze) and `$AEE1` (generic drift) - **unit tests
   only**; `aedd-drop-5b`, `aee1-sub-40` and `aee1-free-09` are all GREEN on all
   18 scenarios.
-* `$AE99` (explosion script + capsule promotion, ~25 lines) — **nothing**.
+* `$AE99` (explosion script + capsule promotion, ~25 lines) - **nothing**.
 * `$AE70` is an RTS; `$B198`'s entry is a throw.
 
 `$B0AF`'s `default:` arm (sub-state ≥ 4) is unreachable in the corpus.
 
-### 6. `$A8` / `$A9` / `$AE` / `$AF` — unmodelled and uncomparable
+### 6. `$A8` / `$A9` / `$AE` / `$AF` - unmodelled and uncomparable
 
 `$BC19` is `LDX #$13 / STX $A9 / LDX #$09 / STX $A8 / … / DEC $A9 / DEC $A8 /
 BPL`. `bulletUpdate()` reproduces neither `$A9` nor the `$A8` walk, so after
@@ -197,12 +197,12 @@ is ported (it is what runs every frame)" covers two of its four instructions.
 
 ## What I could not do, and why
 
-* I could not run `tools/test-all.mjs` against the mutated scratch tree — it
+* I could not run `tools/test-all.mjs` against the mutated scratch tree - it
   hardcodes `games/gradius` paths relative to the repo root. The two stages that
   can see a change to `src/enemies.js` (`unit tests`, `port vs cartridge`) were
   both run for every mutation; the other four (inputs, assets, port-trace shape,
   self-check) do not read enemy semantics.
-* I did not re-record the oracle (`scen.py`) — the recordings on disk are the
+* I did not re-record the oracle (`scen.py`) - the recordings on disk are the
   ones the gate uses and I verified they are cartridge data, not port data.
 * I did not find a functional divergence between `src/enemies.js` and the
   cartridge. If one exists it is outside the 1865-frame window and outside every
@@ -217,5 +217,5 @@ is ported (it is what runs every frame)" covers two of its four instructions.
   and `0496-049F` to `scenarios.json`'s watch list and re-record; (b) either turn
   `$AE99` into a throw like `$B198`'s entry, or give it unit tests driven from
   the measured explosion scripts already in `EXPECT_ENEMY_EXPL`; (c) add unit
-  tests for `enemyBullets()` — there are none, and three of its constants are
+  tests for `enemyBullets()` - there are none, and three of its constants are
   free.

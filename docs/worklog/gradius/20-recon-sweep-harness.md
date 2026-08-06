@@ -1,4 +1,4 @@
-# Wave 20 recon 4/5 — sweep the WHOLE stage with the seed-anywhere machinery
+# Wave 20 recon 4/5 - sweep the WHOLE stage with the seed-anywhere machinery
 
 status: DONE
 wave: 20   role: recon   started: 2026-08-01
@@ -20,7 +20,7 @@ plus `bossreach.py`.
 
 ---
 
-## PART 1 — THE INVENTORY, out of `assets/prg.bin` (no emulator)
+## PART 1 - THE INVENTORY, out of `assets/prg.bin` (no emulator)
 
 `games/gradius/tools/oracle/stagewaves.py` decodes stage 1's wave lists with the
 port's own arithmetic (src/enemies.js `runEngine`/`fireWave`/`singleSpawn`/
@@ -73,7 +73,7 @@ chunks 0-5 (pre-boss): 92 records, 18 unportable, first at $0440
 ```
 
 **The single most important number in this file: the FIRST wave record stage 1
-has that the port cannot dispatch fires at scroll `$0440`** — chunk 2, record 2,
+has that the port cannot dispatch fires at scroll `$0440`** - chunk 2, record 2,
 trigger `$20`, cmd `$03`, which is table A entry `$03 * 3` → type `$07` →
 `$AE1C` entry 7 → `$B6E1`. That is 4.25 pages into a 14-page stage, and
 everything after it is downstream of an enemy the port refuses.
@@ -85,16 +85,16 @@ denominator for each:
 |---|---|---|---|---|
 | enemy handler dispatch | `$AE1C` | **42** (34 distinct) | **13** (10 distinct) | 29 entries / 24 distinct routines |
 | play sub-states `jt_982F` (`$1B` low nibble) | `$982F` | **16** | **1** (`$80` → `$9A4D`) | `$81` → `$9A0E` is the BOSS/END sequence; `$9A45[stage]` is `$81` for all 7 stages |
-| stage-intro states `jt_96C5` | `$96C5` | **5** | **5** | — (wave 4 ported all five) |
-| game modes | `$80D4` | **7** | **1** (mode 5 → `$9650`) | `$80E2 $8116 $8121 $8137 $8165 $816C` — title, attract, etc. |
-| stage wave-list pointers | `$A7D0` | **7 stages** x 8 chunks | 1 stage targeted | — |
+| stage-intro states `jt_96C5` | `$96C5` | **5** | **5** | - (wave 4 ported all five) |
+| game modes | `$80D4` | **7** | **1** (mode 5 → `$9650`) | `$80E2 $8116 $8121 $8137 $8165 $816C` - title, attract, etc. |
+| stage wave-list pointers | `$A7D0` | **7 stages** x 8 chunks | 1 stage targeted | - |
 
 `src/nmi.js` is `if (state.mode === MODE_STAGE) stagePlay(state, res);` **with no
 else**, which the sweep below turns from a code reading into a measurement.
 
 ---
 
-## PART 2 — THE SWEEP HARNESS
+## PART 2 - THE SWEEP HARNESS
 
 ### Why it is one cartridge run and not N scenarios
 
@@ -104,7 +104,7 @@ sampled frame and `PROBE_VIDEO_AT` already accepts a LIST of frames, so ONE run
 gives every seed and the oracle side of every window:
 
 * the SEED at frame f = `ram[f]` + the video blob dumped at f (nametables,
-  palette RAM, hardware OAM) — exactly what wave 10's `seedFromCartridge` wants;
+  palette RAM, hardware OAM) - exactly what wave 10's `seedFromCartridge` wants;
 * the ORACLE ROWS for f+1..f+W = `ram[f+1..f+W]` read directly. **Every one of
   the corpus's 1022 watched addresses is at or below `$07EA`** (asserted by
   `sweep.py`, printed every run), so the RAM dump IS the watch vector. No 80 MB
@@ -141,9 +141,9 @@ The poke carries an ABSOLUTE frame window (`@400-8999`) because `probe.lua` and
 
 `sweep.mjs` starts the port at each seed and runs it for a window, with:
 
-* the LIVE WINDOW rule — stop when the cartridge's `$1B` leaves
+* the LIVE WINDOW rule - stop when the cartridge's `$1B` leaves
   `{0,1,2,3,4,$80,$A0}`, the set `src/nmi.js`'s `$96A5` ladder ports;
-* the DISPLAY LIST rule on page `$02` — the Y byte of all 64 slots always, all
+* the DISPLAY LIST rule on page `$02` - the Y byte of all 64 slots always, all
   four bytes of every slot the CARTRIDGE has live;
 * `$36` INFO (compare.mjs's one remaining INFO field);
 * `stopOnThrow`, so an unported path is DATA (its ROM address) and not a crash.
@@ -154,7 +154,7 @@ k+1 was taken at: the next seed's video blob IS this window's expected screen.
 So every window also compares the port's END-OF-WINDOW nametable (2048),
 palette (32), hardware OAM (256, by the display-list rule) and terrain collision
 map `$0500-$06FF` (512, out of the RAM dump). **The watch list has ZERO addresses
-in `$0500-$06FF`** — counted, not assumed — so without this the sweep would be
+in `$0500-$06FF`** - counted, not assumed - so without this the sweep would be
 blind to `$9F55`'s output.
 
 **And the screen check states its own coverage**, because a check that cannot say
@@ -174,7 +174,7 @@ hardware OAM byte for byte and reported `118/256 differing` on a window where al
 1022 watched addresses and the whole nametable were exact. That is `src/oam.js`'s
 declared behaviour (it fills hidden slots with `$F4` in all four bytes; `$8BAB`
 writes only the Y byte). Fixed to the display-list rule, which is what
-compare.mjs already does for the same reason — and the note is in the code.
+compare.mjs already does for the same reason - and the note is in the code.
 
 ### PROVING THE SWEEP BITES
 
@@ -191,9 +191,9 @@ so `--neuter` is passed straight to `tracePort`. One window, seed 1900
 | `seed-nt+1` | **SCREEN, nt 1/2048** |
 | `seed-pal+1` | **SCREEN, pal 1/32** |
 | `seed-coll0` | **SCREEN, coll 65/512** |
-| `seed-oam0` | CLEAN — *invisible, and expected*: `$8087`'s DMA rewrites all 256 bytes from the shadow before anything reads them (wave 10 measured and documented this) |
-| `lead1` | CLEAN **on this window only** — see below |
-| `bullet-nosub` | CLEAN — no live enemy-bullet slot in this window |
+| `seed-oam0` | CLEAN - *invisible, and expected*: `$8087`'s DMA rewrites all 256 bytes from the shadow before anything reads them (wave 10 measured and documented this) |
+| `lead1` | CLEAN **on this window only** - see below |
+| `bullet-nosub` | CLEAN - no live enemy-bullet slot in this window |
 
 `lead1` deserves the extra line because a CLEAN there would otherwise look like a
 hole. The input lead is invisible on a window where the buttons do not change,
@@ -216,18 +216,18 @@ neuters above are what I can honestly claim.
 
 ---
 
-## PART 3 — THE MAP OF THE STAGE
+## PART 3 - THE MAP OF THE STAGE
 
 ```
 node games/gradius/tools/oracle/sweep.mjs --window 60
 ```
 
-### POWERED — 143 windows, every one of them inside game mode 5
+### POWERED - 143 windows, every one of them inside game mode 5
 
 | scroll band | frames | windows | what the port does |
 |---|---|---|---|
-| **`$002B`-`$0427`** | f400-2440 | **34** | **CLEAN** — 1022 fields, the screen, the palette, the OAM and the collision map all exact on every frame |
-| `$0427`-`$058F` | f2440-3160 | 12 | THREW **`$B6E1`** (entry 7, type `$07`/`$87`) — first at f2490 |
+| **`$002B`-`$0427`** | f400-2440 | **34** | **CLEAN** - 1022 fields, the screen, the palette, the OAM and the collision map all exact on every frame |
+| `$0427`-`$058F` | f2440-3160 | 12 | THREW **`$B6E1`** (entry 7, type `$07`/`$87`) - first at f2490 |
 | `$058F`-`$05CB` | f3160-3280 | 2 | THREW **`$AF2E`** (entry 15, type `$8F`) |
 | `$05CB`-`$0607` | f3280-3400 | 2 | THREW `$B6E1` |
 | `$0607`-`$0625` | f3400-3460 | 1 | THREW **`$B747`** (entry 19, type `$93`) |
@@ -236,7 +236,7 @@ node games/gradius/tools/oracle/sweep.mjs --window 60
 | `$07C9`-`$0841` | f4300-4540 | 4 | THREW `$AF2E` |
 | `$0841`-`$089B` | f4540-4720 | 3 | CLEAN (the pool has just been cleared) |
 | `$089B`-`$0A03` | f4720-5440 | 12 | THREW `$B747` |
-| `$0A03`-`$0A64` | f5440-5680 | 4 | THREW `$AF2E` — and the CARTRIDGE dies at f5514, scroll `$0A28` |
+| `$0A03`-`$0A64` | f5440-5680 | 4 | THREW `$AF2E` - and the CARTRIDGE dies at f5514, scroll `$0A28` |
 | `$0807`-`$0861` | f5680-5860 | 3 | THREW **`$A19E`** (the missile CRAWL, `src/weapons.js`) |
 | … | f5860-8980 | 46 | the same three bands again, twice more: the checkpoint is `$0800` and the run loops `$0800`→`$0A60` |
 
@@ -257,14 +257,14 @@ node games/gradius/tools/oracle/sweep.mjs --window 60
         $B311   3 window(s), first seed 4120   entry  9, type $89
 ```
 
-### UNPOWERED — the same wall, then game over, then the attract demo
+### UNPOWERED - the same wall, then game over, then the attract demo
 
 | scroll band | frames | windows | verdict |
 |---|---|---|---|
 | `$002B`-`$0427` | f400-2440 | 34 | CLEAN |
 | `$0427`-`$04BD` | f2440-4000 | 19 + 6 | THREW `$B6E1`, interleaved with CLEAN windows right after each of THREE deaths (checkpoint `$0400`) |
-| `$04BD`-… | f4000-4420 | 7 | THREW **`$96FB`** — GAME OVER (`$1B = $C0`) |
-| — (modes 0,1,2) | f4420-8980 | **76** | **DIVERGED** — the title screen and the ATTRACT DEMO |
+| `$04BD`-… | f4000-4420 | 7 | THREW **`$96FB`** - GAME OVER (`$1B = $C0`) |
+| - (modes 0,1,2) | f4420-8980 | **76** | **DIVERGED** - the title screen and the ATTRACT DEMO |
 
 ```
   --- unpowered: 143 windows, 7090 graded frames
@@ -281,7 +281,7 @@ node games/gradius/tools/oracle/sweep.mjs --window 60
 60-frame windows re-seed five times a second, and a bug whose first symptom takes
 longer than that to reach a watched address would be re-seeded away. So the same
 sweep was run with windows FIVE TIMES longer (overlapping, since they no longer
-tile — the run says `windows whose END-OF-WINDOW SCREEN was compared: 0 of 143`
+tile - the run says `windows whose END-OF-WINDOW SCREEN was compared: 0 of 143`
 rather than pretending):
 
 ```
@@ -307,17 +307,17 @@ refusal, not drift, and that holds at 5x the window length.
    34 of 143 powered windows are clean and they are all before it.
 3. **Outside mode 5 the port is quietly wrong and says nothing.** 76 windows in
    the post-game-over title + attract demo diverge on 300-500 fields each, from
-   the first graded frame, with no throw — because `src/nmi.js`'s mode dispatch
+   the first graded frame, with no throw - because `src/nmi.js`'s mode dispatch
    has no `else`. Nothing in this repo had measured that; the gate's corpus is
    entirely inside mode 5.
 
 ---
 
-## PART 4 — THE BOSS
+## PART 4 - THE BOSS
 
 Stage 1's boss page is `$0C` (`$9A3D[0]`, read from the ROM) = scroll `$0C00`;
 the stage ends at page `$0E` (`$98FD[0]`). At the boss the cartridge sets
-`$1B := $9A45[$19] = $81`, which is `jt_982F` entry 1 → `$9A0E` — one of the
+`$1B := $9A45[$19] = $81`, which is `jt_982F` entry 1 → `$9A0E` - one of the
 **15 of 16** play sub-states the port does not implement.
 
 The `powered` run does NOT get there: it dies at frame 5514 / scroll `$0A28`
@@ -341,7 +341,7 @@ python games/gradius/tools/oracle/bossreach.py --frames 9000 --switch 5000
 
 **`RUA` and `UA` reach scroll `$0D00` with ZERO deaths and take `$1B` through
 `$81 $82 $83 $84 $85`.** The boss IS reachable, by a fixed hold, in 8300 frames.
-That became `sweep.py`'s third run, `boss` (measured, not guessed — the comment
+That became `sweep.py`'s third run, `boss` (measured, not guessed - the comment
 in the file says so):
 
 ```
@@ -367,9 +367,9 @@ f8252  $1B = $85  scroll $0D00     the end-of-stage chain
 | scroll band | frames | windows | what the port does |
 |---|---|---|---|
 | `$0B11`-`$0B6B` | f5980-6160 | 3 | THREW `$B6E1` |
-| **`$0B6B`-`$0BE3`** | f6160-6400 | **4** | **CLEAN** — the last unported enemy has died; the port runs the approach to the boss exactly |
+| **`$0B6B`-`$0BE3`** | f6160-6400 | **4** | **CLEAN** - the last unported enemy has died; the port runs the approach to the boss exactly |
 | `$0BE3`-`$0C00` | f6400-6460 | 1 | THREW **`$9A56`** at f6457 after 57 clean frames: *"`$3F` reached 12 (>= `$9A3D[0]` = 12), so the cartridge would set `$1B = $81` and start the end-of-stage chain. Not ported."* |
-| `$0C00`-`$0C14` | f6460-7780 | 22 | THREW **`$982A`**, `$1B = $82` — **the boss fight itself** |
+| `$0C00`-`$0C14` | f6460-7780 | 22 | THREW **`$982A`**, `$1B = $82` - **the boss fight itself** |
 | `$0C14`-`$0D00` | f7780-8260 | 8 | THREW `$982A`, `$1B = $84` |
 | `$0D00` | f8260-8980 | 12 | THREW `$982A`, `$1B = $85` |
 
@@ -384,7 +384,7 @@ f8252  $1B = $85  scroll $0D00     the end-of-stage chain
 ```
 
 **So the boss is not "unreachable" and it is not "unported deep down": it is
-42 of 143 windows — 29% of a full playthrough of stage 1 — and the port refuses
+42 of 143 windows - 29% of a full playthrough of stage 1 - and the port refuses
 every frame of it at two addresses, `$9A56` and `$982A`.** `jt_982F` has 16
 entries and the port implements 1; the boss uses `$81`, `$82`, `$83`, `$84`,
 `$85`.
@@ -402,7 +402,7 @@ entries and the port implements 1; the boss uses `$81`, `$82`, `$83`, `$84`,
 * **"The unported handlers are a deep-stage problem."** The first one fires at
   scroll `$0440`, which is 4.25 pages into a 14-page stage, roughly 35 seconds in.
 * **"`$B6E1` is the next wall" (wave 12).** True but incomplete: it is the FIRST
-  of five walls the sweep hits, and it is not the most frequent — `$B747` throws
+  of five walls the sweep hits, and it is not the most frequent - `$B747` throws
   in more windows than `$B6E1` does.
 
 ## The full command sequence
@@ -426,7 +426,7 @@ gitignored. I did not commit.
 
 * No source-level breaks (reader role).
 * The sweep does not compare `chrOffset`/`sprite0Hit`/scanline-level video state
-  per frame — it compares 1022 RAM addresses, the shadow OAM by the display-list
+  per frame - it compares 1022 RAM addresses, the shadow OAM by the display-list
   rule, and the end-of-window screen. `rendergate.py` remains the pixel check.
 * Windows are 60 frames. A bug whose first symptom takes longer than 60 frames to
   appear in a watched address would be missed, and re-seeding every 60 frames

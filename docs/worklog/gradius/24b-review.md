@@ -1,4 +1,4 @@
-# Wave 24b REVIEW — did the test-hardening fix actually harden?
+# Wave 24b REVIEW - did the test-hardening fix actually harden?
 
 status: DONE
 reviewer (READ-ONLY on src/ and on tests; ran everything), 2026-08-02

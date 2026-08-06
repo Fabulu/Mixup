@@ -1,4 +1,4 @@
-# W22b IMPL — the deferred-queue DRAIN field-copy fix (review F1)
+# W22b IMPL - the deferred-queue DRAIN field-copy fix (review F1)
 
 status: **DONE**
 wave: 22b   role: implementer (DAIOUJOU)   started/finished: 2026-08-02
@@ -8,8 +8,8 @@ target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER).  Every address is build B
 
 The spawn-walker review (commit `592667c`) APPROVED W22 with one MODERATE
 defect: the deferred-queue drain `processDeferred` copies only 7 of the 16
-fields the cartridge copies.  Latent today (the queue is unfed — 0 deferred
-spawns in the port — because the handlers that enqueue are W25/W29), but it
+fields the cartridge copies.  Latent today (the queue is unfed - 0 deferred
+spawns in the port - because the handlers that enqueue are W25/W29), but it
 will diverge the moment W25 ports a handler that enqueues a deferred spawn
 with real state in `+$2A..+$4A`.  This wave fixes the drain byte-exact and
 adds the field-fidelity test the review asked for.
@@ -18,7 +18,7 @@ Scope: `src/spawn.js` and `tests/spawn.test.js` only.
 
 ---
 
-## 1. THE FIELD LIST — re-derived from maincpu.bin (capstone 5.0.7, m68k 000)
+## 1. THE FIELD LIST - re-derived from maincpu.bin (capstone 5.0.7, m68k 000)
 
 Disassembly of the drain `$263446` (A4 = queue slot, A0 = enemy record):
 
@@ -45,7 +45,7 @@ $2634D2  33 C6 00 81 5E A8   move.w  d6, $815ea8.l         (the pop)
 Confirmed: **1 byte + 14 longwords + 1 word = 16 fields.**  This matches the
 reviewer's list exactly.  The prologue is unchanged (`$263446 move.w $815ea8,D6`
 ... `$263468 jsr $2636d6` allocEnemy ... `$26346E bcs $2634d2`).  The init call
-is `$2634E4 bsr $2635f6`, AFTER the copy — so the copy runs to completion
+is `$2634E4 bsr $2635f6`, AFTER the copy - so the copy runs to completion
 before any init body throws (W23), which is what makes the field-fidelity test
 possible.
 
@@ -75,11 +75,11 @@ throw), and asserts each field reached the enemy record at `bandCommon`.
 
 One faithful wrinkle: `+$3E` is a longword in the drain (`$2634BA`) but init's
 `$26364C clr.w ($3e,A5)` (which runs after the copy, before the body throws)
-zeros its top word, so only the low word at `+$40` survives — the test asserts
+zeros its top word, so only the low word at `+$40` survives - the test asserts
 both the cleared top word and the surviving low word, documenting the real
 hardware interaction rather than papering over it.
 
-**RULE 4 — SEEN RED, RESTORED, SHA-VERIFIED both ways.**
+**RULE 4 - SEEN RED, RESTORED, SHA-VERIFIED both ways.**
 
 | state of `processDeferred` drain | F1-gate test | `sha256 src/spawn.js` |
 |---|---|---|
@@ -87,7 +87,7 @@ hardware interaction rather than papering over it.
 | fixed (16 fields, this wave) | **GREEN** (all 16 fields) | `74b912dfd8e3ae7c86783b72570d623b03351f578b710df44a0db2bc809e34dc` |
 
 The broken version reddens at the FIRST missing tail field (`+$2A`), not at a
-field the old 7-field copy already covered — so the test specifically guards
+field the old 7-field copy already covered - so the test specifically guards
 the F1 truncation.  Restored to the fixed SHA above (byte-identical).
 
 ## 4. NO REGRESSION
@@ -95,7 +95,7 @@ the F1 truncation.  Restored to the fixed SHA above (byte-identical).
 - `node --test games/ddpdoj/tests/` = **335 pass, 0 fail, 0 skip** (was 334; +1
   the F1 gate).  The two real-tables tests ran (not skipped).
 - `node games/ddpdoj/tools/w22spawngate.mjs` = **cursor 0/10742 divergent,
-  spawn counter 339 = 339, terminus $231704** — unchanged from the review; the
+  spawn counter 339 = 339, terminus $231704** - unchanged from the review; the
   drain fix is on the field-copy path, not the cursor/spawn-counter path the
   gate measures (the queue is still unfed in the port).
 - No file outside `src/spawn.js` and `tests/spawn.test.js` is touched in

@@ -1,4 +1,4 @@
-# W27 — THE 31 REMAINING BULLET BEHAVIOUR BODIES (`$282104..$283BAF`)
+# W27 - THE 31 REMAINING BULLET BEHAVIOUR BODIES (`$282104..$283BAF`)
 
 status: **IN PROGRESS.**
 wave: 27. role: IMPLEMENTER (sole `src/` writer this wave).
@@ -107,11 +107,11 @@ the shared epilogue `$2822AE` (dir-faced sprite frame).  Each CONTINUATION ends
 
 ## FINDINGS (updated as they arrive)
 
-### 2026-08-04 — FAMILY A PORTED (7 bodies, kinds 0/1/8/9/10/11/20)
+### 2026-08-04 - FAMILY A PORTED (7 bodies, kinds 0/1/8/9/10/11/20)
 
 Resumed after the usage wall. Ported the seven sprite-ring bodies against a
 fresh capstone listing of each address (`w27disasm.py`), not against the family
-summary above — and the listing corrected that summary twice:
+summary above - and the listing corrected that summary twice:
 
 1. **KIND 20 IS SEMAPHORE-GATED, and the summary filed it as a plain ring.**
    Its continuation opens `tst.w $80390C / beq` (`$282C30`/`$282C36`), the same
@@ -127,7 +127,7 @@ summary above — and the listing corrected that summary twice:
    routes. Recorded because an unexplained difference reads as a transcription
    error to the next person.
 
-3. **KINDS 8 AND 11 WRITE THEIR SPRITE FIELDS TWICE** — `$28278E` sets
+3. **KINDS 8 AND 11 WRITE THEIR SPRITE FIELDS TWICE** - `$28278E` sets
    renderOffs `$FE00FE00`/graphic `$210`, then `$2827A4`/`$2827AC` overwrite
    with `$FC00FE00`/`$410`. The first write is dead. Transcribed anyway: the
    port's job is to be the same code, not the tidier code (kind 3 already
@@ -141,7 +141,7 @@ graphic `$208`; the other six are `$FE00FE00`/`$210`.
 
 ### THE GREEN THAT MEANT NOTHING, AND THE ONE THAT DOES
 
-When the seven bodies landed, the suite reported 381/381 — because the only
+When the seven bodies landed, the suite reported 381/381 - because the only
 test touching the maps was a LEDGER test asserting a fixed address set, and it
 had just been updated. **Wiring is not behaviour.** That is the same shape as
 this wave's own predecessor, where 381/381 was green over seven uncalled
@@ -152,10 +152,10 @@ fail, per rule 4:
 
 | mutation | result |
 |---|---|
-| remove kind 20's `$80390C` gate | RED — `not ok 202`, that test only |
-| kind 0 ring step `$C` -> `$D`   | RED — `not ok 201`, that test only |
+| remove kind 20's `$80390C` gate | RED - `not ok 202`, that test only |
+| kind 0 ring step `$C` -> `$D`   | RED - `not ok 201`, that test only |
 
-Each mutation reddened exactly ONE test, not the suite — a mutation that
+Each mutation reddened exactly ONE test, not the suite - a mutation that
 reddens everything proves nothing about the specific constant. `src/mover.js`
 restored and hash-verified byte-identical both ways (`41e01c6516e085b8`), suite
 back to 384/384/0 skipped.
@@ -169,17 +169,17 @@ back to 384/384/0 skipped.
   them either. Step 4 of the plan is untouched.
 - **No oracle comparison was run for family A.** These seven are sprite-only
   (descriptor/renderOffs/graphic), and the mover gate compares
-  posA/posB/speed/dir/velA/velB — so the gate is BLIND to every field these
+  posA/posB/speed/dir/velA/velB - so the gate is BLIND to every field these
   bodies write. The unit tests above are currently the only check on them.
   That blindness is structural, not an oversight, but it means "0 divergent"
   from the mover gate must never be quoted as evidence about family A.
 - Step 2 (the ROM windows for `$2821FA`/`$2822EC`/`$282C8E`/`$2830EA`/`$283704`
-  and `$1BF000..$1C2C00` in `export-tables.py`) is NOT done — family A reads no
+  and `$1BF000..$1C2C00` in `export-tables.py`) is NOT done - family A reads no
   table, so it was not needed yet. Families B, H and K will need it.
 
-### 2026-08-04 — FAMILY B PORTED (kinds 2, 21) + the tables they needed
+### 2026-08-04 - FAMILY B PORTED (kinds 2, 21) + the tables they needed
 
-**Both bodies END IN `bra.w $2822AE`** — a tail jump into the shared dir-faced
+**Both bodies END IN `bra.w $2822AE`** - a tail jump into the shared dir-faced
 epilogue, which is where bit 8 is cleared and the sprite fields written. The
 routine does not stop at its last `move.l`. Read as if it did, the entire
 epilogue is dropped. Eleventh incident of the fall-through shape.
@@ -197,13 +197,13 @@ them, and `epi2822AE` threw instantly and by address:
     UNPORTED $2822FC: word at $2822FC is outside every ROM window
 
 The `$2822EC` direction table had never been exported, because nothing had ever
-read it. **That throw is the system working exactly as designed** — the
+read it. **That throw is the system working exactly as designed** - the
 alternative to a missing window is invented data that looks fine. Three windows
 added to `export-tables.py` (`$2822EC`+$40, `$2821FA`+$B4, `$282C8E`+$B4);
 `player.tables.json` regenerated, 88 windows / 177,078 bytes.
 
 Note `$2822EC` is a DIFFERENT table from `$283C4C` with a different index
-expression — `$2822AE` masks `(dir+4)&$F8`, `$283C0E` does `((dir+4)>>2)&$3E`.
+expression - `$2822AE` masks `(dir+4)&$F8`, `$283C0E` does `((dir+4)>>2)&$3E`.
 Two epilogues, two tables, easy to conflate.
 
 **Inventory: 15 -> 17 initialisers, 16 continuations.** Not equal, and correct:
@@ -211,13 +211,13 @@ kinds 2 and 21 share `$283CE4`.
 
 ### TWO DEFECTIVE CHECKS, BOTH MINE, BOTH CAUGHT WITHIN THE HOUR
 
-1. **`assert.equal(INIT_BODIES.size, CONTINUATIONS.size)`** — written by me in
+1. **`assert.equal(INIT_BODIES.size, CONTINUATIONS.size)`** - written by me in
    the family A commit under a comment claiming it proved "no body is wired in
    with a dangling +$22 target". It proved nothing of the sort: two maps can
    have equal size with every target wrong. It went red the moment a legitimate
    shared continuation appeared, which is how it was caught. Replaced with a
    check that resolves every continuation key.
-2. **The kind 2 test asserted `+$16 == $C` AND `+$16 == $C-4`** — the epilogue
+2. **The kind 2 test asserted `+$16 == $C` AND `+$16 == $C-4`** - the epilogue
    steps the index by −4 during init, so the two assertions contradicted each
    other. It failed for that reason before it could ever fail for a real one.
    `+$18` is the half that survives init untouched.
@@ -231,12 +231,12 @@ it. Only mutation does.
 
 | mutation | result |
 |---|---|
-| drop kind 2's `bra.w $2822AE` tail jump | RED — `not ok 204`, that test alone |
-| give kind 21 kind 2's table (`$282C8E` -> `$2821FA`) | **GREEN — NOT CAUGHT** |
+| drop kind 2's `bra.w $2822AE` tail jump | RED - `not ok 204`, that test alone |
+| give kind 21 kind 2's table (`$282C8E` -> `$2821FA`) | **GREEN - NOT CAUGHT** |
 
 That second row is the useful one. Kinds 2 and 21 are instruction-identical
 apart from one `lea`, which makes swapping their tables the most plausible slip
-in the family — and nothing detected it, because kind 21 had no behavioural
+in the family - and nothing detected it, because kind 21 had no behavioural
 test at all. A test comparing the two resolved frame-table pointers was added;
 the swap now reddens `not ok 205`, that test alone. `src/mover.js` restored and
 hash-verified byte-identical (`a4f6545d2f6a7ecb`); **386 pass / 0 fail / 0
@@ -245,11 +245,11 @@ skipped**.
 Had the mutation not been run, family B would have shipped with a real hole in
 its coverage and a green suite saying otherwise.
 
-### 2026-08-04 — FAMILY C PORTED (kinds 16, 18) — the enemy spawner
+### 2026-08-04 - FAMILY C PORTED (kinds 16, 18) - the enemy spawner
 
 Both initialisers are family B's shape (muzzle, +$1D, `$2821FA` table, +$16 =
 `$C000C`, +$26 = `$101`, `bra.w $2822AE` tail jump) with extra counter fields.
-**They reuse KIND 2's table at `$2821FA`**, so no new ROM window was needed —
+**They reuse KIND 2's table at `$2821FA`**, so no new ROM window was needed -
 the windows added for family B already cover them.
 
 Their continuations do not animate: they **RE-STAMP** descriptor, renderOffs and
@@ -259,7 +259,7 @@ steps; it is rewritten.
 **KIND 18 IS THE ENEMY SPAWNER.** After the re-stamp it runs a WORD countdown at
 +$34 (`subq.w #1,$34(A6) / bcc`, `$282B0C`), and on underflow calls `$263684`
 with D0 = `$35`, copies the bullet's position into the new enemy's +$16, then
-`bra $281EC4` — the bullet kills itself and the enemy takes its place. `$263684`
+`bra $281EC4` - the bullet kills itself and the enemy takes its place. `$263684`
 is the enemy subsystem, unported, so that arm is a loud named throw.
 
 Two things worth knowing before trusting any test of it:
@@ -278,7 +278,7 @@ covered; 18 distinct bodies remain (families D–L).
 ### A TEST THAT WENT GREEN FOR THE WRONG REASON
 
 `an UNPORTED behaviour kind throws by address` used **kind 16** as its example.
-W27 ported kind 16 — so the test would have gone green because its subject
+W27 ported kind 16 - so the test would have gone green because its subject
 disappeared, not because the behaviour it guards still holds. Re-pointed at kind
 17 (`$282A1E`, the curver), which is genuinely unported.
 
@@ -290,14 +290,14 @@ GREEN. Every future wave that ports a kind must re-point it, not delete it.
 
 | mutation | result |
 |---|---|
-| kind 18 fires on reaching 0 instead of on underflow | RED — `not ok 207`, alone |
-| kind 16 steps its descriptor instead of re-stamping | RED — `not ok 206`, alone |
-| drop kind 18's `bra.w $2822AE` tail jump | RED — `not ok 207`, alone |
+| kind 18 fires on reaching 0 instead of on underflow | RED - `not ok 207`, alone |
+| kind 16 steps its descriptor instead of re-stamping | RED - `not ok 206`, alone |
+| drop kind 18's `bra.w $2822AE` tail jump | RED - `not ok 207`, alone |
 
 `src/mover.js` restored and hash-verified byte-identical (`f79f3c3284f94308`);
 **388 pass / 0 fail / 0 skipped**.
 
-### 2026-08-04 — FAMILY D PORTED (kind 17, the CURVER) — first gate-visible body
+### 2026-08-04 - FAMILY D PORTED (kind 17, the CURVER) - first gate-visible body
 
 Kind 17 (`$282A1E`) is the first W27 body the mover gate can actually see:
 families A–C write only descriptor/renderOffs/graphic, which the gate ignores.
@@ -311,31 +311,31 @@ Its initialiser is byte-identical to kind 18's; the continuation re-stamps the
 
 **THE COUNTER/RELOAD HALVES ARE NOT WHAT THEY LOOK LIKE.** `move.w #$1,$2a(A6)`
 is big-endian, so it seeds the COUNTER +$2A to `$00` and the RELOAD +$2B to
-`$01` — not counter=1. A counter at 0 underflows on its FIRST continuation
+`$01` - not counter=1. A counter at 0 underflows on its FIRST continuation
 frame, so a fresh kind-17 bullet turns and accelerates immediately rather than
 after a delay. Reading the word as counter=1/counter=4 would postpone the first
 turn by a frame and the first acceleration by four, for every curver in the
 game. Same shape in kinds 16 and 18, which use the identical writes.
 
-+$34 (the turn rate) is not written by the initialiser — it comes from the
++$34 (the turn rate) is not written by the initialiser - it comes from the
 spawn record, exactly like kind 18's countdown.
 
 ### A ROM WINDOW THAT WAS TOO NARROW, AND WHY IT PASSED ANYWAY
 
-Adding kind 17 threw `UNPORTED $28232C` on its first frame — **a defect in the
+Adding kind 17 threw `UNPORTED $28232C` on its first frame - **a defect in the
 window I added for family B this same session**, not in the port.
 
 `$2822AE` indexes `$2822EC` as `move.w ($2822EC,A1,D0),D1` with
 `D0 = (dir+4)&$F8`. D0 is a **BYTE OFFSET** running 0, 8, 16 … `$F8`, so the 32
 entries are spaced 8 bytes apart, not packed. I sized the window `$40` on
 "32 words = 64 bytes". The true extent is `$100`, ending exactly where kind 3's
-body begins at `$2823EC` — a clean abutting bound, the same kind of evidence
+body begins at `$2823EC` - a clean abutting bound, the same kind of evidence
 used elsewhere in this project to prove a table's length.
 
 **It passed for hours because every test written against that table used
 `dir: 0x10`** → D0 = `$10`, comfortably inside `$40`. The first test to use
 `dir: 0x40` walked straight off the end. A window validated only by inputs that
-all happen to be small is not validated — and nothing in the suite would have
+all happen to be small is not validated - and nothing in the suite would have
 caught it until a real scenario spawned a bullet aimed left.
 
 Widened to `$0100`; tables regenerated, 88 windows / 177,270 bytes.
@@ -344,9 +344,9 @@ Widened to `$0100`; tables regenerated, 88 windows / 177,270 bytes.
 
 | mutation | result |
 |---|---|
-| seed +$2A=1/+$2B=0 (the big-endian half-swap) | RED — `not ok 208` |
-| the turn writes SPEED instead of DIR | RED — `not ok 208` |
-| accel reloads from +$2B instead of +$2D | RED — `not ok 208` |
+| seed +$2A=1/+$2B=0 (the big-endian half-swap) | RED - `not ok 208` |
+| the turn writes SPEED instead of DIR | RED - `not ok 208` |
+| accel reloads from +$2B instead of +$2D | RED - `not ok 208` |
 
 All three reddened the curver test and nothing else. `src/mover.js` restored and
 hash-verified byte-identical (`66b41156f8cbe684`); **389 pass / 0 fail / 0
@@ -364,7 +364,7 @@ cannot decay green. If every kind is ever ported it calls `assert.fail` with
 **Inventory: 19 → 20 initialisers, 19 continuations. 23 of 39 kind indices
 covered; 17 distinct bodies remain (families E–L).**
 
-### 2026-08-04 — FAMILY E, KIND 22: not a homing tracker, an ATTACHED one
+### 2026-08-04 - FAMILY E, KIND 22: not a homing tracker, an ATTACHED one
 
 The recon called family E "the homing tracker". The listing says otherwise: the
 bullet does not steer toward a target, it is **PINNED TO** one and later
@@ -377,12 +377,12 @@ bullet does not steer toward a target, it is **PINNED TO** one and later
 - **track** (`$282DA4`): position (+$2, the posA:posB longword) = the target's
   own position + the fixed offset at +$28. Target pointer at +$2C.
 - **release** (`$282DD8`): `bset #3,$34` latches the mode and +$1E is restored
-  from +$30 — the bullet flies off on the velocity it was born with.
+  from +$30 - the bullet flies off on the velocity it was born with.
 - **animate** (`$282D7E`): once latched, an ordinary descriptor ring.
 
 **RELEASE HAPPENS TWO WAYS AND ONLY ONE IS OBVIOUS.** The target pointer being
 NULL (`$282DA8 beq`), or the descriptor animation reaching `$1C1EEC`
-(`$282DCE`) — and that second one is a FALL-THROUGH: `bne $282DE4` skips the
+(`$282DCE`) - and that second one is a FALL-THROUGH: `bne $282DE4` skips the
 release, so *reaching* the limit drops into `$282DD8`. Read as "the ring wraps
 here", the whole release path disappears. Twelfth incident.
 
@@ -397,16 +397,16 @@ initialiser writes (`$1C1E38`). The first wrap moves it into a different ring.
 ### THE MUTATION THAT SURVIVED, AND WHAT IT COST TO CATCH
 
 Kind 22's kill at `$282DEE` is a bare `clr.w (A6)` + `move.w #$ffff,$2(A6)` with
-**no jsr to the death-effect spawner** — so it is `freeSlotNoEffect`, not
+**no jsr to the death-effect spawner** - so it is `freeSlotNoEffect`, not
 `freeSlot`. I reasoned that out from the listing *before* writing the code, got
 it right, and then found the distinction was **completely untested**:
 
 | mutation | first result |
 |---|---|
-| `freeSlotNoEffect` → `freeSlot` (spurious death effect) | **GREEN — NOT CAUGHT** |
-| init drops the `clr.l $1E` | RED — `not ok 209` |
-| drop the `bmi` target-flag kill test | RED — `not ok 211` |
-| release drops the velocity restore | RED — `not ok 210` |
+| `freeSlotNoEffect` → `freeSlot` (spurious death effect) | **GREEN - NOT CAUGHT** |
+| init drops the `clr.l $1E` | RED - `not ok 209` |
+| drop the `bmi` target-flag kill test | RED - `not ok 211` |
+| release drops the velocity restore | RED - `not ok 210` |
 
 Getting a detail right is not the same as having a check that would notice if it
 were wrong. The only difference between the two helpers is a note emitted to the
@@ -419,17 +419,17 @@ test now asserts no `$27F8F8` note appears; the mutation reddens `not ok 211`.
 **Inventory: 20 → 21 initialisers, 20 continuations. 24 of 39 kind indices
 covered; 16 distinct bodies remain.**
 
-### 2026-08-04 — FAMILY E FINISHED (kind 24) + FAMILY F (kind 23)
+### 2026-08-04 - FAMILY E FINISHED (kind 24) + FAMILY F (kind 23)
 
 The recon's family split cuts through the middle of one template, and porting
 the two bodies together is what made that visible.
 
 **KIND 24 IS NOT A TRACKER.** Its INITIALISER (`$282EBC`) is byte-identical to
-kind 22's (`$282D42`) — same descriptor `$1C1E38`, same `$FC00FE00`/`$410`, same
+kind 22's (`$282D42`) - same descriptor `$1C1E38`, same `$FC00FE00`/`$410`, same
 `move.l $1e,$30` / `clr.l $1e`. Its CONTINUATION is not: kind 22's
 `btst #3,$34 / beq` goes to the TRACK code at `$282DA4`; kind 24's
 `beq $282F46` goes **straight to the release**. There is no target-pointer read
-anywhere in the body. So the attach lasts exactly one frame — the spawn frame
+anywhere in the body. So the attach lasts exactly one frame - the spawn frame
 stores a zero velocity, the next plain frame moves the bullet nowhere, and the
 continuation latches +$34 bit 3 and restores +$1E. It is a **one-frame launch
 delay built out of the tracker's machinery**, the same trick kinds 19 and 22
@@ -437,7 +437,7 @@ use for different durations.
 
 **AND THE SAME BYTES MEAN DIFFERENT THINGS IN THE TWO BODIES.** In kind 22 +$2C
 is the TARGET POINTER longword. In kinds 23/24 those bytes are a countdown
-(+$2C), its reload (+$2D) and a deceleration step (+$2E — the low half of what
+(+$2C), its reload (+$2D) and a deceleration step (+$2E - the low half of what
 kind 22 reads as a pointer). Nothing in the record layout says which; only the
 body does. A shared "field layout" table for the pool would be actively wrong
 here.
@@ -451,7 +451,7 @@ instruction) is family F's entire content, and its +$36 duration word has
     else  subq.w #1,$36                        (decelerate and count down)
 
 Then `subq.b #1,$2C / bcc`, reload from +$2D on underflow, and
-`move.w $2e(A6),D0 / sub.w D0,$1e(A6)` — velA loses the +$2E word. Position-
+`move.w $2e(A6),D0 / sub.w D0,$1e(A6)` - velA loses the +$2E word. Position-
 relevant: the plain path integrates +$1E. Reading the `beq` as "skip the
 subtraction" instead of "skip the block" would tick the countdown on frames the
 ROM does not, so every later underflow lands on the wrong frame.
@@ -476,17 +476,17 @@ release the cartridge cannot reach. **Control flow decides, in both directions.*
 
 | mutation | result |
 |---|---|
-| +$36 = 0 skips only the subtraction, not the block | RED — `not ok 212`, alone |
-| +$36 negative still decrements | RED — `not ok 212`, alone |
-| the decel subtracts from velB instead of velA | RED — `not ok 212` + `214` |
-| kind 24's release arm falls through into the decel block | RED — `not ok 214`, alone |
-| kind 24 tracks its +$2C target like kind 22 | RED — `not ok 213` + `214` |
+| +$36 = 0 skips only the subtraction, not the block | RED - `not ok 212`, alone |
+| +$36 negative still decrements | RED - `not ok 212`, alone |
+| the decel subtracts from velB instead of velA | RED - `not ok 212` + `214` |
+| kind 24's release arm falls through into the decel block | RED - `not ok 214`, alone |
+| kind 24 tracks its +$2C target like kind 22 | RED - `not ok 213` + `214` |
 
 No survivors. `src/mover.js` restored and hash-verified byte-identical
 (`f9893f046bb3f02a`); **395 pass / 0 fail / 0 skipped**.
 
 One test defect caught in the writing: the kind 23 decel test first used
-`dir: $40`, which is purely horizontal — velA is **0** there, so subtracting
+`dir: $40`, which is purely horizontal - velA is **0** there, so subtracting
 from it is invisible and the test could not have failed for the reason it
 existed. Moved to `dir: $20`. Same shape as the `dir: $10` window defect
 recorded above: a test whose inputs are all convenient is not a test.
@@ -494,7 +494,7 @@ recorded above: a test whose inputs are all convenient is not a test.
 **Inventory: 21 → 23 initialisers, 22 continuations. 26 of 39 kind indices
 covered; 14 distinct bodies remain (families G–L).**
 
-### 2026-08-04 — FAMILIES G + L PORTED (kinds 25, 29, 34) — the WALL BOUNCERS
+### 2026-08-04 - FAMILIES G + L PORTED (kinds 25, 29, 34) - the WALL BOUNCERS
 
 Three bodies, one initialiser and one animation tail between them. The recon
 put them in two families and got the variants the wrong way round. The measured
@@ -507,7 +507,7 @@ table, per wall, from the three listings:
 | 34 | `dir += $80` | `dir += $80` | `dir += $80` | `dir += $80` | full |
 
 The recon said "29 uses `addi.b #$80`; 34 uses neg+80". **It is kind 34 that
-adds $80** — on all four walls, a flat 180-degree flip. Kind 29 does not
+adds $80** - on all four walls, a flat 180-degree flip. Kind 29 does not
 reflect at all: it `move.w #$40/$C0/$00/$80,D1` and SNAPS to the axis, which is
 a different shape of motion, not a different constant. And only kind 29 halves
 the recomputed velocity on impact. Ported from the summary, two of three
@@ -517,8 +517,8 @@ bouncers would have flown wrong and the third would have kept its speed.
 
 `$282FEC bcc.w $28302A` sends posA >= $600 to the bottom test, and `$282FF0
 bra.w $283064` sends posA < $600 straight to the animation. So the block at
-`$282FF4` — a top bounce that scales the velocity to 3/4 via `asr.w #2` +
-`sub.w` — is never entered. Kinds 29 and 34 FALL THROUGH into their equivalent
+`$282FF4` - a top bounce that scales the velocity to 3/4 via `asr.w #2` +
+`sub.w` - is never entered. Kinds 29 and 34 FALL THROUGH into their equivalent
 block; kind 25 has an extra `bra` in the way.
 
 This is the fall-through trap **in reverse**, and it is just as expensive: the
@@ -544,30 +544,30 @@ flow can say which of the code between the ends is alive.**
 
 Independent evidence the descriptor numbers were read right, not just read: the
 initialiser sets +$0A = `$1C1B68`; the pre-bounce ring runs to limit `$1C1E38`
-and wraps to `$1C1BF8`; a bounce adds exactly `$2D0` — and `$1C1B68 + $2D0 =
+and wraps to `$1C1BF8`; a bounce adds exactly `$2D0` - and `$1C1B68 + $2D0 =
 $1C1E38`. The bounce lands the descriptor precisely on the boundary between the
 two rings, and the tail then switches to the post-bounce pair (limit `$1C2108`,
 wrap `$1C1EC8`) because +$2C has just reached 0. Four constants read
 separately, meeting exactly.
 
 Also: **the ring pair depends on the bounce budget**, which is easy to read as
-one ring with a wrap. And the bouncer initialiser does NOT call `$2820CC` —
+one ring with a wrap. And the bouncer initialiser does NOT call `$2820CC` -
 no muzzle offset for a bouncer, unlike most of families A–D.
 
 ### MUTATION TABLE (families G + L)
 
 | mutation | result |
 |---|---|
-| port kind 25's dead `$282FF4` top arm | RED — `not ok 215`, alone |
-| kind 29 drops the `asr.w #1` | RED — `not ok 216`, alone |
-| kind 34 negates instead of adding $80 | RED — `not ok 217` + `218` |
-| kind 29's left/right absolute dirs swapped | RED — `not ok 216`, alone |
-| the tail's two ring limit/wrap pairs swapped | RED — `not ok 219`, alone |
-| the `eori.b` lands on +$1D instead of +$1C | RED — `not ok 215/216/217` |
-| left wall test inclusive (`<=` not `<`) | RED — `not ok 218`, alone |
-| bottom wall test inclusive (`>=` not `>`) | RED — `not ok 218`, alone |
-| drop the `subq.w #1,$2C` budget decrement | RED — 4 tests |
-| +$19 no longer gates the tail | RED — `not ok 219`, alone |
+| port kind 25's dead `$282FF4` top arm | RED - `not ok 215`, alone |
+| kind 29 drops the `asr.w #1` | RED - `not ok 216`, alone |
+| kind 34 negates instead of adding $80 | RED - `not ok 217` + `218` |
+| kind 29's left/right absolute dirs swapped | RED - `not ok 216`, alone |
+| the tail's two ring limit/wrap pairs swapped | RED - `not ok 219`, alone |
+| the `eori.b` lands on +$1D instead of +$1C | RED - `not ok 215/216/217` |
+| left wall test inclusive (`<=` not `<`) | RED - `not ok 218`, alone |
+| bottom wall test inclusive (`>=` not `>`) | RED - `not ok 218`, alone |
+| drop the `subq.w #1,$2C` budget decrement | RED - 4 tests |
+| +$19 no longer gates the tail | RED - `not ok 219`, alone |
 
 Ten mutations, ten reds, **no survivors**. `src/mover.js` restored and
 hash-verified byte-identical (`2bcb1f79cdb23556`); **400 pass / 0 fail / 0
@@ -581,7 +581,7 @@ bullet well past the line.
 **Inventory: 23 → 26 initialisers, 25 continuations. 29 of 39 kind indices
 covered; 11 distinct bodies remain (families H, I, J, K + kinds 32/35).**
 
-### 2026-08-04 — FAMILY I PORTED (kinds 30, 31) — the LAUNCHERS
+### 2026-08-04 - FAMILY I PORTED (kinds 30, 31) - the LAUNCHERS
 
 **KINDS 30 AND 31 ARE THE SAME BODY, COMPILED TWICE.** A byte-for-byte compare
 of `$283430..$2834FE` against `$2834FE..$2835CC` finds **12 differing bytes in
@@ -600,8 +600,8 @@ precomputes an acceleration vector:
     $283490  +$30 = dA, +$32 = dB
 
 The recon recorded this as "precomputes a slowed (>>3) velocity into +$30/+32",
-which is the magnitude and not the direction. Ported that way — with +$37
-ignored — every kind-30/31 bullet would accelerate straight ahead instead of
+which is the magnitude and not the direction. Ported that way - with +$37
+ignored - every kind-30/31 bullet would accelerate straight ahead instead of
 curving, and only a player who never met one would not notice.
 
 **THE ACCEL BLOCK IS THE DECEL BLOCK'S MIRROR AND USES DIFFERENT FIELDS.** They
@@ -614,7 +614,7 @@ identical:
 | family I (30/31) | **+$34** | velA += +$30, velB += +$32 (both axes, add) |
 
 The kind-30 test seeds +$36 to zero deliberately, so a port that read family F's
-field would find a zero duration and skip — i.e. the test can fail for that
+field would find a zero duration and skip - i.e. the test can fail for that
 specific confusion.
 
 `$2834EC`/`$2835BA` are dead free-slot stubs (0 references, `w27targets.py`).
@@ -623,15 +623,15 @@ specific confusion.
 
 | mutation | first result |
 |---|---|
-| accel computed along the bullet's own heading, not `dir - +$37` | RED — `not ok 220` |
-| accel not shifted (`asr.w #3` dropped) | RED — `not ok 220` |
-| accel duration read from +$36 instead of +$34 | RED — `not ok 221` |
-| velB not accelerated (one axis only) | RED — `not ok 221` |
-| accel subtracts instead of adds | RED — `not ok 221` |
-| **kind 31's initialiser installs kind 30's continuation `$28349A`** | **GREEN — NOT CAUGHT** |
+| accel computed along the bullet's own heading, not `dir - +$37` | RED - `not ok 220` |
+| accel not shifted (`asr.w #3` dropped) | RED - `not ok 220` |
+| accel duration read from +$36 instead of +$34 | RED - `not ok 221` |
+| velB not accelerated (one axis only) | RED - `not ok 221` |
+| accel subtracts instead of adds | RED - `not ok 221` |
+| **kind 31's initialiser installs kind 30's continuation `$28349A`** | **GREEN - NOT CAUGHT** |
 
 Because the two continuations are functionally identical, cross-wiring them
-changes nothing observable — and that is exactly why it is dangerous: **+$22 is
+changes nothing observable - and that is exactly why it is dangerous: **+$22 is
 a real longword the board holds**, so the port would disagree with the cartridge
 on a field a gate can read, while every behavioural test agreed. This is the
 same shape as the family B kind-2/21 table swap, and it is now clear it is a
@@ -656,7 +656,7 @@ the same mistake as an invented denominator, at test scale.
 **Inventory: 26 → 28 initialisers, 27 continuations. 31 of 39 kind indices
 covered; 9 distinct bodies remain (families H, J, K + kinds 32/35).**
 
-### 2026-08-04 — FAMILY K PORTED (kind 33) — the SLOW CLOCK, and a ring that is not the table
+### 2026-08-04 - FAMILY K PORTED (kind 33) - the SLOW CLOCK, and a ring that is not the table
 
 Kind 33 (`$2836A8`) is the only body in this wave that indexes a ROM table with
 a value it keeps in the record, so it is the only one that needed a new window.
@@ -677,7 +677,7 @@ two word writes that look alike:
 The rule the earlier findings imply is "a word write to a counter field is a
 half-swap", and applied blindly it would have corrupted +$2C. **The read decides
 which it is, not the write.** Here both halves of +$2E happen to be 1, so the
-swap would have been invisible in that field anyway — recorded because the next
+swap would have been invisible in that field anyway - recorded because the next
 body with `move.w #$0104` will not be so forgiving.
 
 **THE RING IS NOT THE TABLE.** The continuation takes the longword at
@@ -686,19 +686,19 @@ BORROW resets +$2C to **`$C`, not `$14`**. So the indices run
 
     $14, $10, $C, $8, $4, $0,  then  $C, $8, $4, $0,  $C, $8, $4, $0, ...
 
-— the two entries at `$14` and `$10` are a **LEAD-IN that plays exactly once per
+- the two entries at `$14` and `$10` are a **LEAD-IN that plays exactly once per
 bullet**, and the steady state is a four-entry ring inside a six-entry table.
 Read as "wrap the ring" it becomes a six-entry loop and every kind-33 bullet
 holds a permanently wrong animation phase after its first pass.
 
 And because the counter is the underflow flavour, the table steps on **every
-other frame, starting with the second** — a fresh bullet holds `$1C01AC` for two
+other frame, starting with the second** - a fresh bullet holds `$1C01AC` for two
 frames before the table ever speaks.
 
 ### THE WINDOW, SIZED FROM THE INDEX EXPRESSION
 
 `$283704 + $18`, six longwords. The highest index the body can produce is `$14`
-and the read is a longword, so the extent is `$18` — and `$283704 + $18 =
+and the read is a longword, so the extent is `$18` - and `$283704 + $18 =
 $28371C`, exactly where kind 34's body begins. An abutting bound, the same
 evidence that settled `$2822EC`'s `$100`. Tables regenerated: **89 windows /
 177,294 bytes.**
@@ -707,15 +707,15 @@ evidence that settled `$2822EC`'s `$100`. Tables regenerated: **89 windows /
 
 | mutation | result |
 |---|---|
-| the wrap resets +$2C to $14 instead of $C | RED — `not ok 222`, alone |
-| the table steps every frame (drop the +$2E gate) | RED — `not ok 222`, alone |
-| the index steps by 2 instead of 4 | RED — `not ok 222`, alone |
-| the index is decremented BEFORE the read | RED — `not ok 222`, alone |
-| the table base is `$283708` | RED — `not ok 222`, alone |
-| +$2C seeded byte-swapped as `$1400` | RED — `not ok 222`, alone |
+| the wrap resets +$2C to $14 instead of $C | RED - `not ok 222`, alone |
+| the table steps every frame (drop the +$2E gate) | RED - `not ok 222`, alone |
+| the index steps by 2 instead of 4 | RED - `not ok 222`, alone |
+| the index is decremented BEFORE the read | RED - `not ok 222`, alone |
+| the table base is `$283708` | RED - `not ok 222`, alone |
+| +$2C seeded byte-swapped as `$1400` | RED - `not ok 222`, alone |
 
 **A SEVENTH "MUTATION" WAS NOT ONE, AND IT LOOKED LIKE A SURVIVOR.** Replacing
-`setU16(+$2C, 0x0014)` with `setU8(+$2C,0)` + `setU8(+$2D,$14)` went green — and
+`setU16(+$2C, 0x0014)` with `setU8(+$2C,0)` + `setU8(+$2D,$14)` went green - and
 it should have, because those are the same two bytes. It is an equivalent
 rewrite, not a mutation. Reported here because a *first* reading of that green
 row is "the half-swap is untested", and the honest reading is "the experiment
@@ -728,18 +728,18 @@ was invalid". `$1400` is the mutation that actually tests it, and it reddens.
 covered; 8 distinct bodies remain (family H kinds 26/27/32/36/37/38, family J
 kind 28, and kind 35).**
 
-### 2026-08-04 — FAMILY H (CORE) PORTED (kinds 26, 27, 32)
+### 2026-08-04 - FAMILY H (CORE) PORTED (kinds 26, 27, 32)
 
 The recon described family H as one shape: "optional trail emit, +$30 countdown
 gate, then pos += +$28/+2A pair, counter +$2C -> dir += +$2E, counter +$36 ->
 speed += +$38, recompute+store velocity". That is **kind 27 exactly**, **kind 32
-with two pieces removed** (no trail, no gate), and **kind 26 not at all** — kind
+with two pieces removed** (no trail, no gate), and **kind 26 not at all** - kind
 26 has no drift, no steering and no velocity recompute. It is a sprite ring
 whose bounds live in the record.
 
 **KIND 26 IS THE FIRST DISPATCH EVER TO REACH `$283C8C`.** `w27targets.py` finds
 exactly one reference to that epilogue in `$281000..$285000` and it is kind 26's
-`bra.w`. W26 transcribed it as `epi283C8C` and it has sat unexercised since —
+`bra.w`. W26 transcribed it as `epi283C8C` and it has sat unexercised since -
 the same situation `epi2822AE` was in before family B reached it. Re-read
 against the listing this session: `$283C8C` clears bit 8, writes renderOffs
 `$FE00FE00` and graphic `$210`, then `bra.b $283C20` into the MIDDLE of the
@@ -750,7 +750,7 @@ missing**, exactly as before.
 **AND THAT WINDOW IS NOT SPRITE-ONLY.** `$283C46` writes +$10 = frame + (+$14),
 and kind 26's continuation uses +$10 as its RING LIMIT. Kind 26's initialiser
 sets +$14 = `$3C`; the continuation steps the descriptor by `$14` and subtracts
-`$3C` when it reaches +$10 — a THREE-frame ring whose bounds are computed in one
+`$3C` when it reaches +$10 - a THREE-frame ring whose bounds are computed in one
 routine and consumed in another, with nothing in either naming the other. Window
 `$2830EA + $24`, sized from the measured `$283C4C` offsets (0,4,8…$20 and back
 down; max `$20`, longword read) and confirmed by the abutting bound: `$2830EA +
@@ -762,12 +762,12 @@ copies +$18 into +$19. It looks like a no-op. Read as one, kind 26 animates
 every frame instead of every other frame.
 
 **KIND 27 STARTS AT A GLOBAL-DEPENDENT ANIMATION PHASE.** `move.w $80390A,D0 /
-lsr.w #2 / andi.w #3` then a `dbra` adding `$24` — descriptor = `$1BFED0` +
+lsr.w #2 / andi.w #3` then a `dbra` adding `$24` - descriptor = `$1BFED0` +
 `$24`*(D0+1), one of four phases. Two kind-27 bullets spawned on different
 frames are in different phases, and nothing in the record records which.
 
 **KIND 27 DESTROYS ITS OWN SAVED VELOCITY.** `$28315A move.l $1e,$30` saves,
-`$283160 clr.l $1e` clears — and `$28318C move.w #$20,$30` then OVERWRITES the
+`$283160 clr.l $1e` clears - and `$28318C move.w #$20,$30` then OVERWRITES the
 saved velA half with a `$20` countdown. Nothing restores +$1E. So this is *not*
 the launch delay of kinds 19/22/24: the bullet has NO stored velocity at all
 until its first steer fires and recomputes one. +$30 is a 32-frame BUDGET for
@@ -777,26 +777,26 @@ the drift, not a delay before it.
 
 | mutation | first result |
 |---|---|
-| drift pair swapped (+$28 <-> +$2A) | RED — `not ok 223` + `226` |
-| kind 26's ring never wraps (limit not from +$10) | RED — `not ok 227` |
-| kind 26 drops the `+$19 = +$18` reload | RED — `not ok 227` |
-| kind 27's phase loop runs `phase` times, not `phase+1` | RED — `not ok 225` |
-| kind 27's phase uses `>>3` instead of `>>2` | RED — `not ok 225` |
-| kind 27's +$30 gate never expires | RED — `not ok 226` |
-| kind 27's +$30 not decremented | RED — `not ok 226` |
+| drift pair swapped (+$28 <-> +$2A) | RED - `not ok 223` + `226` |
+| kind 26's ring never wraps (limit not from +$10) | RED - `not ok 227` |
+| kind 26 drops the `+$19 = +$18` reload | RED - `not ok 227` |
+| kind 27's phase loop runs `phase` times, not `phase+1` | RED - `not ok 225` |
+| kind 27's phase uses `>>3` instead of `>>2` | RED - `not ok 225` |
+| kind 27's +$30 gate never expires | RED - `not ok 226` |
+| kind 27's +$30 not decremented | RED - `not ok 226` |
 | **recompute runs unconditionally (drop the D1 dirty flag)** | **GREEN** |
 | **kind 26's epilogue given kind 2's table `$2821FA`** | **GREEN** |
-| steer adds the whole word instead of its low byte | GREEN — *and correctly* |
+| steer adds the whole word instead of its low byte | GREEN - *and correctly* |
 
 **The third survivor is not one.** `add.b D0,$1b(A6)` and a word add truncated
 to the destination byte are the SAME value, because the destination is a byte.
 The mutation is an equivalent rewrite. The port's comment claimed a wrong turn
-would result; that claim was false and **has been corrected in the source** —
+would result; that claim was false and **has been corrected in the source** -
 an inaccurate comment in this port is a defect in its own right, since the
 comments are the deliverable.
 
 **The first survivor was a test that could not fail.** It wrote `$DEADBEEF` into
-+$1E as a sentinel — which the PLAIN path then integrates into the position, so
++$1E as a sentinel - which the PLAIN path then integrates into the position, so
 the bullet flew out of bounds and the mover freed the slot *before the
 continuation ran at all*. It passed for the wrong reason, over a branch it never
 executed. Now it uses a small sentinel, asserts the sentinel differs from what a
@@ -806,7 +806,7 @@ a mutation, not a reading, to find it.
 
 **The second survivor is the third instance of one class**: kind 2 vs 21's
 sprite tables, kind 30 vs 31's continuation address, and now kind 26's frame
-table — *a body wired to a sibling's data, invisible because the shapes match*.
+table - *a body wired to a sibling's data, invisible because the shapes match*.
 The fix pins the RESOLVED pointer against `$2830EA` walked the way the epilogue
 walks it.
 
@@ -818,12 +818,12 @@ walks it.
 covered; 4 distinct bodies remain: kind 28 (family J, the splitter), kind 35,
 and kinds 36/37/38.**
 
-### 2026-08-04 — FAMILY H COMPLETED (kinds 36, 37, 38) + KIND 35
+### 2026-08-04 - FAMILY H COMPLETED (kinds 36, 37, 38) + KIND 35
 
 **KINDS 27, 36, 37 AND 38 ARE ONE BODY, FOUR TIMES.** A byte-for-byte compare of
 the three $118-byte bodies against kind 27's finds 15, 16 and 17 differing
 bytes, and every one is either a PC-relative displacement or one of exactly FOUR
-constants — the descriptor BASE, the continuation address, the ring LIMIT and
+constants - the descriptor BASE, the continuation address, the ring LIMIT and
 the ring WRAP:
 
 | kind | init base | wrap | limit | ring |
@@ -834,7 +834,7 @@ the ring WRAP:
 | 38 | `$1C0080` | `$1C00A4` | `$1C0134` | `[$1C00A4, $1C0134)` |
 
 **Four consecutive $90-byte rings that tile `$1BFEF4..$1C0134`**, and in every
-row `init base + $24 == wrap` and `wrap + $90 == limit` — four frames each. That
+row `init base + $24 == wrap` and `wrap + $90 == limit` - four frames each. That
 is twelve constants read separately out of four listings all agreeing on one
 pattern, which is evidence a single transcription cannot produce. The
 initialiser's base sits one step BELOW its ring because the phase `dbra` always
@@ -842,8 +842,8 @@ runs at least once.
 
 **KIND 35 IS A SPEED RAMP, AND IT ONLY WORKS BECAUSE IT IS A BIT-7 BODY.** Its
 template sets type-word bit 7, so the mover recomputes velocity from speed/dir
-every frame and never reads +$1E. That is what makes `move.b #$0,$1a(A6)` —
-SPEED ZERO — meaningful: the bullet appears motionless and the continuation adds
+every frame and never reads +$1E. That is what makes `move.b #$0,$1a(A6)` -
+SPEED ZERO - meaningful: the bullet appears motionless and the continuation adds
 1 to its speed every fifth animating frame. Ported without knowing which mover
 path it takes, "speed 0" reads as a harmless field write.
 
@@ -856,7 +856,7 @@ two of them (19, 22) use it as a launch delay.** The idiom is not the meaning.
 
 The port's comment said kind 35's first acceleration is "ten frames in". It is
 **nine**. `bchg` reports the OLD bit and bit 11 is clear after the initialiser,
-so the FIRST continuation frame animates — animating frames are 1, 3, 5, 7, 9,
+so the FIRST continuation frame animates - animating frames are 1, 3, 5, 7, 9,
 and the underflow counter fires on the fifth of those. The test was written with
 10 and went red; both the test and the source comment are corrected.
 
@@ -868,13 +868,13 @@ check was written to be able to fail.
 
 | mutation | result |
 |---|---|
-| kind 37 given kind 36's ring | RED — `not ok 228`, alone |
-| kind 38's init base set equal to its wrap | RED — `not ok 228`, alone |
-| kind 35 does not zero its speed | RED — `not ok 229`, alone |
-| kind 35 drops the bit-11 flip-flop | RED — `not ok 229`, alone |
-| kind 35's counter fires on reaching 0, not on underflow | RED — `not ok 229` |
-| kind 35 steps speed by 2 | RED — `not ok 229`, alone |
-| the shared +$30 gate seeded `$10` instead of `$20` | RED — `not ok 225` + `226` |
+| kind 37 given kind 36's ring | RED - `not ok 228`, alone |
+| kind 38's init base set equal to its wrap | RED - `not ok 228`, alone |
+| kind 35 does not zero its speed | RED - `not ok 229`, alone |
+| kind 35 drops the bit-11 flip-flop | RED - `not ok 229`, alone |
+| kind 35's counter fires on reaching 0, not on underflow | RED - `not ok 229` |
+| kind 35 steps speed by 2 | RED - `not ok 229`, alone |
+| the shared +$30 gate seeded `$10` instead of `$20` | RED - `not ok 225` + `226` |
 
 Seven mutations, seven reds, no survivors. `src/mover.js` restored and
 hash-verified byte-identical (`2f19549b90eefd51`); **411 pass / 0 fail / 0
@@ -885,11 +885,11 @@ covered. ONE distinct body remains: kind 28 ($283260), family J -- the splitter,
 which re-aims at the player via `$242748`/`$242296` and spawns through
 `$2817C2`. It is the only kind still taking the loud named throw.**
 
-### 2026-08-04 — FAMILY J PORTED (kind 28) — ALL 39 KIND INDICES NOW DISPATCH
+### 2026-08-04 - FAMILY J PORTED (kind 28) - ALL 39 KIND INDICES NOW DISPATCH
 
 **KIND 28'S COUNTDOWN IS THE OPPOSITE OF EVERY OTHER ONE IN THIS WAVE.**
 Families C, D, F, H, I and K all use `subq.b #1,off / bcc`, which fires on
-UNDERFLOW — the borrow only happens when the byte was already 0. Kind 28 uses:
+UNDERFLOW - the borrow only happens when the byte was already 0. Kind 28 uses:
 
     $283290  tst.b $28(A6) / beq   -- already spent?  skip forever
     $283298  subq.b #1,$28(A6)
@@ -899,14 +899,14 @@ UNDERFLOW — the borrow only happens when the byte was already 0. Kind 28 uses:
 twentieth, and the `tst.b / beq` in front makes the arm a ONE-SHOT. Applying
 this wave's own hard-won rule here would fire a frame late **and then fire again
 every 256 frames forever**, because the byte would wrap through `$FF`. The rule
-that has been right six times in a row is still not the rule — **the instruction
+that has been right six times in a row is still not the rule - **the instruction
 is.** Six correct applications of a heuristic are not evidence about the
 seventh.
 
 `move.w #$1410,$28` seeds +$28 = `$14` and +$29 = `$10`; nothing in this body
 reads +$29. The animation tail is the WALL BOUNCERS' tail (`$2832D2` ==
-`$283064`) with the budget-dependent ring pair removed — always limit `$1C1E38`
-/ wrap `$1C1BF8` — and its descriptor base `$1C1B68` is the bouncers'. Three
+`$283064`) with the budget-dependent ring pair removed - always limit `$1C1E38`
+/ wrap `$1C1BF8` - and its descriptor base `$1C1B68` is the bouncers'. Three
 families share that one sprite ring.
 
 The FIRE arm is a loud named throw at `$242748`. Its full transcription is in
@@ -921,7 +921,7 @@ unported aim, so wiring it would invent every bullet it produced.
 `an UNPORTED behaviour kind throws by address` derives its subject from the
 `$282030` table and, with kind 28 ported, would have hit its own
 `assert.fail('retire this test')`. It was not retired. The property it guards is
-"an unported path is a LOUD NAMED THROW", and the mover still has such a path —
+"an unported path is a LOUD NAMED THROW", and the mover still has such a path -
 the CONTINUATION dispatch. It now seeds a record whose +$22 holds an address no
 body claims and asserts the throw carries it. Same guard, live subject.
 
@@ -929,14 +929,14 @@ body claims and asserts the throw carries it. Same guard, live subject.
 
 | mutation | first result |
 |---|---|
-| kind 28 fires on underflow instead of at zero | RED — `not ok 230` |
-| the one-shot `tst.b/beq` guard removed | RED — `not ok 230` |
-| +$28 seeded `$1014` (the halves swapped) | RED — `not ok 230` |
-| the ring frozen while the countdown runs | RED — `not ok 231` |
-| +$19 no longer gates the tail | RED — `not ok 231` |
-| **the throw carries `$263684` instead of `$242748`** | **GREEN — NOT CAUGHT** |
+| kind 28 fires on underflow instead of at zero | RED - `not ok 230` |
+| the one-shot `tst.b/beq` guard removed | RED - `not ok 230` |
+| +$28 seeded `$1014` (the halves swapped) | RED - `not ok 230` |
+| the ring frozen while the countdown runs | RED - `not ok 231` |
+| +$19 no longer gates the tail | RED - `not ok 231` |
+| **the throw carries `$263684` instead of `$242748`** | **GREEN - NOT CAUGHT** |
 
-The assertion was `/242748/i.test(e.message)` — and **the message quotes other
+The assertion was `/242748/i.test(e.message)` - and **the message quotes other
 ROM addresses in its own explanation**, so a regex over it matches a throw that
 carries entirely the wrong address. `Unreached` has carried `.romAddress` since
 wave 4 and only `handlers.test.js` was using it.
@@ -944,7 +944,7 @@ wave 4 and only `handlers.test.js` was using it.
 All four such assertions in `mover.test.js` now check `e.romAddress`. The
 mutation reddens `not ok 230` alone. **Every loud-named-throw test that matches
 on message text is this bug**, and there are more of them elsewhere in the
-suite — recorded here as a finding for a reviewer rather than fixed blind in
+suite - recorded here as a finding for a reviewer rather than fixed blind in
 files this wave is not the writer for.
 
 `src/mover.js` restored and hash-verified byte-identical (`7c594d82ad8f38c3`);
@@ -963,7 +963,7 @@ What is NOT done, and is not claimed:
 - **Step 4 of this wave's plan is untouched**: the bit-7 RECOMPUTE path
   (`$281F3E`) and the bit-14 TRANSFORM path (`$281FA2`/`$281FB4`) are still
   unexercised. Kind 35 is a bit-7 body and its test drives it through the mover,
-  so the bit-7 path now RUNS — but no test asserts anything about the path
+  so the bit-7 path now RUNS - but no test asserts anything about the path
   itself, and bit-14 has no kind at all in the table.
 - **No oracle comparison was run for any W27 family.** The mover gate compares
   posA/posB/speed/dir/velA/velB only, so it is structurally BLIND to every

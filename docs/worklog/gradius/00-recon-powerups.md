@@ -1,16 +1,16 @@
-# RECON — the NES Gradius power-up system, end to end
+# RECON - the NES Gradius power-up system, end to end
 status: DONE (with named BLOCKED items in "What I could not do")
 wave: 0   role: recon   started: 2026-07-31
 
 READER role. Nothing under `games/*/src/` or any test was touched. Nothing was
 committed. New files, all probes:
 
-* `games/gradius/tools/oracle/pow.lua` + `pow.py` — per-game-frame dump of any
+* `games/gradius/tools/oracle/pow.lua` + `pow.py` - per-game-frame dump of any
   set of the `$0x00+i` object arrays over any slot range, plus a configurable
   zero page, pokes, exec hooks with register + memory samples. `weapons.lua`
   only reaches objects 0-11; **the capsule lives at object 12-21**, the enemy
   half of the pool, which is why a new probe was needed.
-* `games/gradius/tools/oracle/reach.py` — 6502 call-graph reachability over the
+* `games/gradius/tools/oracle/reach.py` - 6502 call-graph reachability over the
   PRG. Walks opcodes from an entry point, follows every branch/JMP/JSR and every
   entry of this cartridge's inline `JSR $83E4` jump tables, and reports which
   reachable instruction names a given address. Written to answer one question
@@ -30,7 +30,7 @@ hypothesis.
 
 ---
 
-# CONTRADICTIONS AND NEW FINDINGS — read this section if you read nothing else
+# CONTRADICTIONS AND NEW FINDINGS - read this section if you read nothing else
 
 1. **`$C1C1` is not the only place the shield is spent.** There are **three**
    `DEC $46` sites: `$C1C1` (player vs enemy body), `$C24E` (player vs the
@@ -39,7 +39,7 @@ hypothesis.
 2. **The shield does NOT protect against terrain.** `$C2B5`-`$C2C1` calls the
    terrain probe `$C3A3` and, on a hit, `JMP $C1D6` (death) with **no `$46`
    test at all**. See §7.
-3. **Every 16th capsule is a different item.** `$AEC8: INC $47 / AND #$0F` —
+3. **Every 16th capsule is a different item.** `$AEC8: INC $47 / AND #$0F` -
    when the result is zero the promoted object gets type **7**, not 6. Type 7 is
    **not** a meter capsule: the collision arm falls past `$C18A CMP #$06 / BEQ
    $C1AF` into **`$C18C`, which destroys every enemy on screen** and never calls
@@ -47,7 +47,7 @@ hypothesis.
 4. **`$17` has 23 readers, not one.** `00-plan.md` names `$BBE5` as "its
    consumer". `reach.py` over the NMI finds 23 reads + 1 write. And **`$BBE5`
    is unreachable in stage 1 loop 1** (`$BBBD: LDA $19 / ORA $1A / BEQ $BBEC`
-   skips it when both are 0) — measured `$BBE5` n=0 in every stage-1 run. The
+   skips it when both are 0) - measured `$BBE5` n=0 in every stage-1 run. The
    rank effects that ARE live in stage 1 are `$BCB5` (aiming) and
    `$BD5F`/`$BDB3` (bullet speed). See §8.
 5. **SPEED UP's saturation is at `$40 = 14`, and the add is 8-bit and wraps.**
@@ -58,14 +58,14 @@ hypothesis.
    flags; `PROBE.md`'s 220 is stale. Y clamp `[$10, $C0]` = [16,192].
 7. **The capsule has no lifetime timer.** It drifts left at exactly 0.5 px/frame
    and is destroyed the frame its X drops below 8. Measured: born X=`$65` at
-   frame 1007, destroyed at frame 1194 with X=7 — 187 frames, = (101-7)·2. §1.
+   frame 1007, destroyed at frame 1194 with X=7 - 187 frames, = (101-7)·2. §1.
 8. **The HUD's OPTION owned-form needs `$45 >= 2`, not `$45 >= 1`.** With one
    Option the bar still reads OPTION. `$8A19: CPX #$02 / BCC` (§9).
 9. `$89E3` **returns without drawing anything when the player is dead**
    (`$0100 >= 2`). §9.
 10. **The bar is redrawn every 8 game frames, not once at stage init.**
     `00-recon-weapons.md` §5 says `$89E3` is "called once, from `$9C1E`, during
-    stage init". Measured `$89E3` **n = 96** in a 770-frame window — it is one
+    stage init". Measured `$89E3` **n = 96** in a 770-frame window - it is one
     of the four canned HUD packets rotated by `$8898`/`$88AD`. §9.
 11. **`$9E` is transient, not state.** It is set inside the sprite emitter and
     consumed in the same frame; it reads 0 at `$80B5` even when it was set on
@@ -107,7 +107,7 @@ A456: LDA $49 / STA $03AC,X                squadron id, 2 or 3
 
 `$49` alternates: `$A3F5: INC $49 / AND #$01 / ORA #$02` → 2,3,2,3. The squadron
 member count is stored at `$0048+$49` (`$A402: STA $0048,Y`), i.e. `$004A` and
-`$004B` — two squadrons can be in flight at once.
+`$004B` - two squadrons can be in flight at once.
 
 `$BE93` (destroy an enemy) does the bookkeeping:
 
@@ -141,7 +141,7 @@ counter restarts on every death and every stage.**
 
 ### How it moves, and how long it lives
 
-Class 1's arm is `$AEDD` — and it is a **fall-through chain**, the trap this
+Class 1's arm is `$AEDD` - and it is a **fall-through chain**, the trap this
 project has hit nine times. `$AEDD` and `$AEE1` are both jump-table targets and
 `$AEE1` falls into `$AEF8`:
 
@@ -177,19 +177,19 @@ python games/gradius/tools/oracle/pow.py --frames 1260 \
 ```
 
 * **Y never changes.** The poked `$0331` (capsule Y) read back `210` on every
-  one of 250 frames — nothing else writes it. Vertical velocity is exactly 0.
+  one of 250 frames - nothing else writes it. Vertical velocity is exactly 0.
 * **X decreases by 1 every 2 frames**, i.e. 0.5 px/frame, for its whole life.
 * **No timer.** Born at X = `$65` (101) on frame 1007, destroyed on frame 1194.
   187 frames = (101 − 7) × 2, exactly.
 * `$5B` read 0 on every frame of every run. I tried to force the freeze branch
-  with `--poke "5B=1@1020-1119"`: **the poke did not stick** — `$5B` read 0 at
+  with `--poke "5B=1@1020-1119"`: **the poke did not stick** - `$5B` read 0 at
   the next sample every time, so something rewrites it inside the frame. The
   `$AEDD` freeze branch is **UNVERIFIED**; see §12.
 
 ### What it looks like
 
 The capsule keeps running the generic object animator `$ADE5`, which is *not*
-part of the class dispatch — it runs first, then falls through to `$AE14`'s
+part of the class dispatch - it runs first, then falls through to `$AE14`'s
 dispatch. It is gated on the **type** byte:
 
 ```
@@ -214,7 +214,7 @@ AE0E: STA $012C,X                             sprite id
  1031..1036  $11     -> 6 game frames per sprite, cycle 10,11,12
 ```
 
-### The collision arm that picks it up — and the every-16th one that does not
+### The collision arm that picks it up - and the every-16th one that does not
 
 `$C101` is the player-body-vs-enemy loop (`$A8` = 9..0 → objects 12..21,
 hitbox `$A0 = playerX + 4`, `$A1 = playerY + 8`). On a hit:
@@ -254,7 +254,7 @@ wexec $894B n=0      wexec $C1AF n=0      wexec $C18C n=1
 
 Baseline (`$47` untouched) at the same frames gave type **6**, `$C1AF` n=1,
 `$894B` n=1, `$42` 0→1, and the other enemies untouched. Two values, two
-different outcomes — not vacuous (`docs/knowledge/03` trap 4.3).
+different outcomes - not vacuous (`docs/knowledge/03` trap 4.3).
 
 Natural pickups, no poke at all, 2700-frame play script
 (`"200:,10:S,190:,300:A,60:UA,300:A,60:DA,300:A,60:UA,1200:A"`):
@@ -272,7 +272,7 @@ wexec $AE99 n=1313   $AEBC n=59   $AEC1 n=2   $AEC8 n=2   $C1AF n=2   $894B n=2
 59 explosion scripts ended; only 2 promoted. The `$03AC` squadron gate is doing
 real work.
 
-## 2. The meter — `$894B`
+## 2. The meter - `$894B`
 
 ```
 894B  INC $42
@@ -311,7 +311,7 @@ poke                              $8953 $8958 $8960 $8965   result
 42=6, 07E5=5                         1     0     1     1    $42 6->1, $35 = 20
 ```
 
-* `$8953` (`JSR $CE89`) runs only on the 7th, never on the 1st-6th — the
+* `$8953` (`JSR $CE89`) runs only on the 7th, never on the 1st-6th - the
   `CMP #$07 / BCC` gate is real.
 * `$8965` runs on the 7th: **the meter wraps to 1, not to 0.** Confirmed.
 * `$07E5 = $00` and `$07E5 = $10` both trigger `$35 = 4`; `$07E5 = 7` does not.
@@ -323,7 +323,7 @@ Six pokes, four distinct outcomes, including a no-poke control that takes
 neither arm. This is the one in the plan flagged as "semantically surprising";
 it is surprising and it is exactly what the cartridge does.
 
-## 3. Applying it — `$8974` and the `$8989` table
+## 3. Applying it - `$8974` and the `$8989` table
 
 ```
 8974  LDA $0100 / CMP #$01 / BNE RTS      player must be EXACTLY status 1
@@ -336,8 +336,8 @@ Table bytes `$8989`: `83 89 A1 89 AF 89 BB 89 CF 89 D3 89 97 89`.
 
 | `$42` | arm | bar label | what it does | when already owned |
 |---|---|---|---|---|
-| 0 | `$8983` | — | RTS | — |
-| 1 | `$89A1` | SPEED UP | `INC $40`, `$42 = 0`, sfx `$0E`, `JMP $8A30` | **no test at all — always applies** |
+| 0 | `$8983` | - | RTS | - |
+| 1 | `$89A1` | SPEED UP | `INC $40`, `$42 = 0`, sfx `$0E`, `JMP $8A30` | **no test at all - always applies** |
 | 2 | `$89AF` | MISSILE | `INC $41`, `$42 = 0`, sfx `$0E` | `$41 != 0` → RTS, `$42` kept |
 | 3 | `$89BB` | DOUBLE | `$44 = 2`, `$42 = 0`, sfx `$0E` | `$44 == 2` → RTS, `$42` kept |
 | 4 | `$89CF` | LASER | `$44 = 1` (shares `$89BD`), `$42 = 0`, sfx | `$44 == 1` → RTS, `$42` kept |
@@ -382,11 +382,11 @@ wexec $8974 n=290  $8983 n=267  $8997 n=20  $89A1 n=22
 
 Every claim in the table above is a row in that dump:
 
-* **the refusals KEEP the capsule** — `$42` held its value for 16-20 consecutive
+* **the refusals KEEP the capsule** - `$42` held its value for 16-20 consecutive
   frames of held B in all five owned cases (arms 2,3,4,5,6). Confirmed.
-* **SPEED UP has no cap and no "already owned" test** — 22 increments in 21
+* **SPEED UP has no cap and no "already owned" test** - 22 increments in 21
   frames, `$40` reaching 22. Confirmed.
-* **B is HELD (level), not EDGE** — one poke of `$42` per frame with B
+* **B is HELD (level), not EDGE** - one poke of `$42` per frame with B
   continuously held produced one SPEED UP per frame. If B were edge-triggered,
   `$40` would have moved once. Confirmed.
 * the six arms fire the six different variables and only those; the five
@@ -405,7 +405,7 @@ The order is fixed by the caller and is **pickup first**:
 ```
 
 So on the frame you touch a capsule with B already held, `$42` is incremented at
-`$9A70` and consumed at `$9A73` — the power-up lands on the touch frame.
+`$9A70` and consumed at `$9A73` - the power-up lands on the touch frame.
 
 **Measured, as a controlled pair on the same capsule.** Identical script except
 that the second run also holds B from frame 900:
@@ -422,7 +422,7 @@ A+B     ("...,300:A,60:UA,100:A,200:AB")  $894B 1  $C1AF 1  $89A1 1  $8A30 98
   f 1048  $42=0 $40=1
 ```
 
-Same capsule, same frame (1040), `$894B` and `$C1AF` once in each — holding B
+Same capsule, same frame (1040), `$894B` and `$C1AF` once in each - holding B
 did not perturb the run at all, it only consumed. **`$42` is never observably
 non-zero at `$80B5`.** One extra `$8A30` (97→98) is SPEED UP's cursor redraw.
 
@@ -430,12 +430,12 @@ non-zero at `$80B5`.** One extra `$8A30` (97→98) is SPEED UP's cursor redraw.
 
 | meter | byte | effect |
 |---|---|---|
-| SPEED UP | `$40` | ship speed = `min(($40 + 2) & $FF, $10) / 2` px/frame — §6 |
+| SPEED UP | `$40` | ship speed = `min(($40 + 2) & $FF, $10) / 2` px/frame - §6 |
 | MISSILE | `$41` | `$A15C` gates the missile spawn on `$41 != 0`; A **HELD**, no timer |
 | DOUBLE | `$44 = 2` | slot A type `$06` + slot B type `$24` sub 2, fired the SAME frame |
 | LASER | `$44 = 1` | slot A/B type `$07` sub 1, `x += $0C`, killed at `x >= $F0` |
-| OPTION | `$45` | 0..2; `$A108: LDX $45 … DEX / BPL` — every Option fires each frame |
-| ? | `$46 = 5` | five absorbed hits — §7 |
+| OPTION | `$45` | 0..2; `$A108: LDX $45 … DEX / BPL` - every Option fires each frame |
+| ? | `$46 = 5` | five absorbed hits - §7 |
 
 `$44`: **0 = normal, 1 = LASER, 2 = DOUBLE.** This is the pair
 `NOTES-player.md` §9 has backwards. I re-derived it two independent ways here:
@@ -487,9 +487,9 @@ Measured with 6-frame RIGHT/LEFT alternations so the clamps are never reached,
 Sixteen values, sixteen agreements, including the two that only exist because
 the add is 8-bit. **The saturation point is `$40 = 14`**, not `$40 = $10`. A
 port that clamps `$40` itself, or that uses 16-bit arithmetic here, diverges at
-`$40 = 254` — and `$40` is unbounded because the SPEED UP arm has no cap.
+`$40 = 254` - and `$40` is unbounded because the SPEED UP arm has no cap.
 
-## 7. The shield `$46` — three consumers, and terrain is not one of them
+## 7. The shield `$46` - three consumers, and terrain is not one of them
 
 ```
 C1B8  LDA $030C,Y / BPL $C1CD          player vs enemy BODY
@@ -530,17 +530,17 @@ $8B6B  emitter reads $46 2016           2161
 $46: 5 (f401) -> 4 (f489) -> 3 (f505) -> 2 (f641) -> 1 (f868) -> 0 (f876)
 ```
 
-Five absorptions, sixth hit kills — `00-recon-weapons.md` §7 reproduced with a
+Five absorptions, sixth hit kills - `00-recon-weapons.md` §7 reproduced with a
 different script. **`$C24E`, `$C293` and `$C2C1` I could not reach**; they are
 read off the cartridge bytes and are unverified behaviourally (§12). A port
 implementing only `$C1C1` will under-consume the shield if the `$0136` array is
-ever populated, and will over-protect the player against terrain — but I am
+ever populated, and will over-protect the player against terrain - but I am
 naming those as risks from the listing, not as measured facts.
 
 Death itself, `$C1D6`: `$4C = $78`, `$0100 = 2`, `$0160 = 0`, `$0140 = 0`,
 `$1B = $A0`, sfx `$F7`; and if `$1B >= $81` on entry, `$60 = 0` first.
 
-### The `$9E` flash flag is transient — do not put it in a state vector
+### The `$9E` flash flag is transient - do not put it in a state vector
 
 ```
 8B67  LDA $9D / BNE $8B89
@@ -565,12 +565,12 @@ $9E as read at $80B5              [0]             [0]          [0]
 
 `$8B79` fired on **exactly the 8 frames** the natural run spent at `$46 == 1`
 (f868-f876). But **`$9E` reads 0 at the `$80B5` sample point in every run**,
-including the one where it was set 645 times — `$8B55` clears it earlier in the
+including the one where it was set 645 times - `$8B55` clears it earlier in the
 same frame and the emitter consumes it before end-of-frame. This is `PROBE.md`
 §2's `$9C` trap in a second place: a field that would look constant is the
 measurement, not the game. Compare `$9E` at the emitter, or not at all.
 
-## 8. `$17` — the RANK byte. Its own section, because it is the coupling
+## 8. `$17` - the RANK byte. Its own section, because it is the coupling
 
 ### The formula, confirmed
 
@@ -593,7 +593,7 @@ absolute maximum anywhere (1 + 2 + 1 + 1). The rank tables have 7-9 entries, so
 the design range is 0..6; `$AFFC` reads `LDY $17 / LDA $19 / BEQ / INY`, i.e.
 indexes at `$17 + ($19 != 0)`, which is where 6 comes from.
 
-**It is not monotonic — it goes DOWN.** Every input is destroyed by the death
+**It is not monotonic - it goes DOWN.** Every input is destroyed by the death
 wipe (§10), so dying drops the rank to 0 immediately. Nothing else lowers it;
 within a life it only rises.
 
@@ -619,21 +619,21 @@ What each one does, read from the cartridge bytes:
 | site | table | what rank changes |
 |---|---|---|
 | `$9A0E` | `$9A35` = `03 03 04 04 05 05 06 06` | `$4D:$4C`, a 16-bit stage-flow countdown, in the state that also does `INC $5B` / `INC $1B`. **Higher rank = a longer phase.** |
-| `$AFFC` | — | indexes at `$17 + ($19!=0)` for an enemy movement arm |
+| `$AFFC` | - | indexes at `$17 + ($19!=0)` for an enemy movement arm |
 | `$B48D`,`$B4BC` | `$B4E4` | `$04CC,X` for the arm at `$B480` |
 | `$B4D4` | `$B4EB` | `$04CC,X`, the other branch |
-| `$B6A2` | `$B6D2` | `$04EC,X` **and** `$040C,X` — an enemy's fire-timer reload |
-| `$B7BB` | — | `$B747` arm gate |
+| `$B6A2` | `$B6D2` | `$04EC,X` **and** `$040C,X` - an enemy's fire-timer reload |
+| `$B7BB` | - | `$B747` arm gate |
 | `$B82C` | `$B787`, `$B852` | thresholds on `$03BC,X` and `$046C,X` |
 | `$BA18`,`$BA6E` | `$B90A` | threshold on `$042C,X` |
 | `$BA34` | `$B8F8` | subtracted from `$034C,X` (a speed) |
-| `$BAE4` | `$BAFF`, `$BB07` | `$0436,X` / `$0456,X` — bullet parameters |
-| `$BBE5` | — | `$17 >= 3` → enemy fire timers count down by 2 instead of 1 |
-| `$BCB8` | — | `$17 >= 3` → **enemies aim at a randomised lead** instead of exactly at the player |
-| `$BD5F`,`$BDB3` | — | `$17 >= 2` → **enemy bullets +25% speed** |
+| `$BAE4` | `$BAFF`, `$BB07` | `$0436,X` / `$0456,X` - bullet parameters |
+| `$BBE5` | - | `$17 >= 3` → enemy fire timers count down by 2 instead of 1 |
+| `$BCB8` | - | `$17 >= 3` → **enemies aim at a randomised lead** instead of exactly at the player |
+| `$BD5F`,`$BDB3` | - | `$17 >= 2` → **enemy bullets +25% speed** |
 | `$BF42` | `$BEEA` = `02 02 03 04 05 06 07 08 09` | hit points of a `$0600`-array object |
 | `$C09F` | `$BFC5` = `05 05 05 05 06 07 08 09 0A` | **hit points of a class-`$9A` enemy** |
-| `$C948`,`$C9A6` | `$C936` | `$04AC,X` — boss hit points |
+| `$C948`,`$C9A6` | `$C936` | `$04AC,X` - boss hit points |
 | `$CA5E` | `$CA49`=`0A 0C 0E 10 12 14 16`, `$CA50`=`14 18 1C 20 24 28 2C` | two parameters of a class arm |
 | `$CADF` | `$CA57` = `40 48 50 60 70 80 90` | subtracted from `$034C,X` |
 | `$CBAB` | `$CBCA` | threshold on `$0604,X` |
@@ -651,14 +651,14 @@ BBEC  STY $98                          $98 = how fast fire timers count down
 
 Measured, every stage-1 run in this recon: `$BBE5` **n = 0**, `$BBEC`
 n = 585…3228. `$19` and `$1A` are both 0 in stage 1's first loop, so the rank
-never reaches the fire-rate decision there. It is not dead code — it is
+never reaches the fire-rate decision there. It is not dead code - it is
 stage-2-and-later code.
 
 ### The escalated question: does rank reach ENEMY SPAWNS?
 
-**Static.** `reach.py` from each of the five spawn entry points — the level
+**Static.** `reach.py` from each of the five spawn entry points - the level
 script decoder `$A335`, the two "find a free slot and fill it" routines `$A3B1`
-and `$A411`/`$A420`, and `$A466` — walks the complete reachable set with **zero
+and `$A411`/`$A420`, and `$A466` - walks the complete reachable set with **zero
 unresolved jumps** and finds **no instruction that names `$17`**:
 
 ```
@@ -684,7 +684,7 @@ addresses** (data walked as code), so treat the `$A2C0` number as indicative and
 the five narrow entries as the result.
 
 **Measured.** Two runs of the identical 3600-frame moving script, rank forced by
-poking the *inputs* (`$17` cannot be poked — `$9C45` rewrites it every frame),
+poking the *inputs* (`$17` cannot be poked - `$9C45` rewrites it every frame),
 both with `$46 = 5` so neither run dies:
 
 * run 1: `$44=0 $45=0 $46=5` → `$17` = 1
@@ -719,7 +719,7 @@ $C1D6  player death                 0        0     (neither run died)
 ```
 
 So: in a run where the cartridge demonstrably behaved differently because of
-rank — different aiming, faster bullets, more bullets — **the enemy spawn
+rank - different aiming, faster bullets, more bullets - **the enemy spawn
 sequence was byte-for-byte the same.**
 
 **Conclusion, stated at the strength the evidence supports.** In stage 1, over
@@ -727,8 +727,8 @@ sequence was byte-for-byte the same.**
 *where*, or *how many*; and no instruction reachable from any of the five spawn
 routines reads `$17`. What rank changes is **enemy bullets** (speed at `$17>=2`,
 aim at `$17>=3`, count via `$B6A2`'s timer reload), **enemy and boss hit
-points** (`$C09F`/`$BF42`/`$C948`), several **movement parameters**, and — the
-one that is not a per-enemy parameter — **the length of a stage-flow phase**
+points** (`$C09F`/`$BF42`/`$C948`), several **movement parameters**, and - the
+one that is not a per-enemy parameter - **the length of a stage-flow phase**
 (`$9A0E`, `$4D` = 3..6 by rank).
 
 What I have **not** ruled out, and what the next person must not read as ruled
@@ -746,7 +746,7 @@ out:
 
 ### The shape, for DoDonPachi and anything else with a rank system
 
-* **One byte, recomputed from scratch every frame** — `$9C45` is a pure function
+* **One byte, recomputed from scratch every frame** - `$9C45` is a pure function
   of `$44`, `$45`, `$46`, `$19`. There is no accumulator and no hysteresis, so
   it cannot drift; get the four inputs right and `$17` is right. That is the
   single best property of this design for a port.
@@ -754,7 +754,7 @@ out:
   Contrast the usual arcade rank, which integrates over play.
 * **It is not monotonic**: death zeroes the loadout and therefore the rank, in
   one frame.
-* **Small integer range, 0..6, used as a direct table index** — 19 of the 23
+* **Small integer range, 0..6, used as a direct table index** - 19 of the 23
   readers are `LDY $17 / LDA table,Y`. Only 4 are threshold comparisons, and
   there are exactly **three thresholds in the whole game: `>= 2`, `>= 3`**
   (twice at each). So the observable behaviour has few steps even though the
@@ -763,17 +763,17 @@ out:
   small byte tables. The tables must be extracted verbatim; interpolating or
   "smoothing" them changes the difficulty curve.
 * **It does not feed the spawn engine here.** That is what makes the power-up
-  system portable in isolation — a rank error degrades *how* enemies behave, not
+  system portable in isolation - a rank error degrades *how* enemies behave, not
   *which* enemies exist, so it produces a bounded divergence instead of a total
   one. Do not assume the same of the next game; the check is cheap
   (`reach.py --entry <spawner> --find <rank byte>`) and it is the difference
   between a small bug and an unusable oracle.
 * **Verification consequence for wave 7**: `$17` must be in the watch set, and
-  scenarios must deliberately visit `$17` = 0, 2 and 3 — the two thresholds.
+  scenarios must deliberately visit `$17` = 0, 2 and 3 - the two thresholds.
   Stage 1 reaches 0..4, but only 0..1 is reachable *without pokes* in any
   realistic window (a shield is the sixth capsule). Every scenario that does not
   force the inputs runs at rank 0 or 1 and leaves both thresholds untested while
-  looking covered — the same trap as the sub-pixel accumulator.
+  looking covered - the same trap as the sub-pixel accumulator.
 
 ## 9. The HUD bar
 
@@ -792,7 +792,7 @@ $8A39 n=5    f=1040 ($42=1, $0E=$0B), then 1042,1050,1058,1066 ($0E=$27)
 $8A48 n=5    same
 ```
 
-The extra `$8A30` is the pickup's own `JMP $8A30` from `$8971` on frame 1040 —
+The extra `$8A30` is the pickup's own `JMP $8A30` from `$8971` on frame 1040 -
 which is why `$0E` reads `$0B` there and `$27` on the periodic redraws.
 
 The 8-frame cadence comes from `$8898` (called from `$9AC7`), the HUD packet
@@ -826,8 +826,8 @@ Three things a port must not lose:
 
 * `$8A30` is **`$89E3`'s fall-through tail** and also the `JMP` target of
   `$8971` (after a pickup) and `$89AC` (after SPEED UP). It is a continuation,
-  not a separate routine. Arms 2-6 do **not** redraw the cursor — they end at
-  `$89DD` — so after MISSILE/DOUBLE/LASER/OPTION/SHIELD the bar keeps showing
+  not a separate routine. Arms 2-6 do **not** redraw the cursor - they end at
+  `$89DD` - so after MISSILE/DOUBLE/LASER/OPTION/SHIELD the bar keeps showing
   the old cursor until something else redraws it.
 * SPEED UP has no owned form (there is no `$40` test), so the leftmost label
   never changes.
@@ -836,10 +836,10 @@ Three things a port must not lose:
 `$0E` is the VRAM-queue write cursor at the moment `$8A30` runs, so the patched
 byte is `8 - $42` bytes back from the end of the string just queued. State that
 drives the bar: `$41`, `$44`, `$45`, `$46`, `$42`, `$0100`, `$0E`. I did **not**
-verify the on-screen result with a framebuffer diff — see §12.
+verify the on-screen result with a framebuffer diff - see §12.
 
 Also measured: `$8A39`/`$8A48` (the cursor patch) ran **only** on the 5 frames
-after `$42` became non-zero, and never before — the `LDA $42 / BEQ $8A4B` guard
+after `$42` became non-zero, and never before - the `LDA $42 / BEQ $8A4B` guard
 is real, so with an empty meter no cursor tile is written at all.
 
 ## 10. Death, and what survives
@@ -864,11 +864,11 @@ is real, so with an empty meter no cursor tile is written at all.
 The wipe covers `$3D-$97`, which destroys **`$40 $41 $42 $44 $45 $46`** and also
 **`$47`, the every-16th capsule counter** and **`$49`, the squadron alternator**.
 `$35` is explicitly restored to `$14` two instructions later, so **the `$35 = 4`
-rapid-fire bonus is LOST on death** — it is not "kept", it is overwritten by a
+rapid-fire bonus is LOST on death** - it is not "kept", it is overwritten by a
 constant. `$42` is then restored from `$22,X`.
 
 The per-player saves are written at `$97AB` (`$22,X`), `$97BB`/`$9732` (`$24,X`),
-`$97AF`/`$987D` (`$26,X`), `$97BF` (`$28,X`) and `$9889` (`INC $28,X`) — i.e.
+`$97AF`/`$987D` (`$26,X`), `$97BF` (`$28,X`) and `$9889` (`INC $28,X`) - i.e.
 `$22,X` = meter cursor, `$24,X` = stage script position, `$26,X` = `$19`,
 `$28,X` = `$1A`. In the natural-pickup run the meter survived a respawn
 (`$42` = 1 before and after frame 1808) while `$47` went 1 → 0 in the same
@@ -877,7 +877,7 @@ frame, which is the wipe and the restore in one row.
 `00-recon-weapons.md` §8 measured the single writer with a write hook
 (`$0040..$0046 <- pc $9B44`, chain `$80AD, $8068`). Consistent.
 
-## What I MEASURED — index of commands
+## What I MEASURED - index of commands
 
 | what | command / run tag | key output |
 |---|---|---|
@@ -897,7 +897,7 @@ frame, which is the wipe and the restore in one row.
 
 ## What I RULED OUT
 
-* **Rank does not reach the enemy spawn decisions** — not in stage 1, over 92
+* **Rank does not reach the enemy spawn decisions** - not in stage 1, over 92
   spawns in a run that demonstrably diverged elsewhere, and not statically from
   any of the five spawn entry points (0 unresolved jumps). §8.
 * **`$42` is not consumed on an "already owned" refusal.** Five separate arms,
@@ -920,7 +920,7 @@ Everything here is "I could not reach it and here is what I tried", **never**
 
 * **`$5B`, the capsule freeze gate (`$AEDD`).** `$5B` read 0 on every frame of
   every run. I tried `--poke "5B=1@1020-1119"`; the value **did not survive to
-  the next sample** — something rewrites `$5B` inside the frame, so the poke
+  the next sample** - something rewrites `$5B` inside the frame, so the poke
   channel at `$80B5` cannot force this branch. `INC $5B` appears at `$9A27` and
   `$99E9` (stage-flow states) and `$A335`; reaching it needs a scenario that
   enters one of those, or a poke at a different hook point. **BLOCKED.**
@@ -928,7 +928,7 @@ Everything here is "I could not reach it and here is what I tried", **never**
   `$0136,Y` array populated and `$C28C` needs `$19 == 4`; both were 0 in a
   2500-frame moving run with the shield up. Listing-only.
 * **Terrain vs the shield.** `$C3A3` was called 640-1746 times per run and
-  returned 0 every time — I held DOWN into the clamp at Y=`$C0` for 550 frames
+  returned 0 every time - I held DOWN into the clamp at Y=`$C0` for 550 frames
   and stage 1's opening simply has no floor there. `$C2C1` n=0. The claim that
   terrain ignores `$46` is read off `$C2B5`-`$C2C1` and is **UNVERIFIED**.
 * **A natural 16th capsule.** I forced `$47 = 15`. `$47` is wiped on every death
@@ -942,14 +942,14 @@ Everything here is "I could not reach it and here is what I tried", **never**
   `$B48D`, `$B4BC`, `$B4D4`, `$B6A2`, `$B7BB`, `$B82C`, `$BF42`, `$C09F` or
   `$BAE4`. Their rank tables are ROM bytes I read; the *effect* is unmeasured.
 * **`$17` = 5 and 6** are unreachable in stage 1 (they need `$19 != 0`).
-  `$17` = 4 needs a shield, i.e. the sixth capsule — forced here, never natural.
+  `$17` = 4 needs a shield, i.e. the sixth capsule - forced here, never natural.
 * **Stages 2-6, loop 2 (`$1A != 0`), the boss, two-player (`$18 = 1`).**
   Untouched. Note that `$1A != 0` alone changes bullet speed at `$BD42` and
   opens `$BBE5`, so loop 2 is a different game.
 * **Why `$CE89` reads the score.** Both arms now fire on demand, but the design
   intent is still unexplained. It reads like a routine meant to return something
   else. Port it literally with a citation.
-* **`$C13D`/`$C159`** — the class `$27` and `$29` collision arms, which are two
+* **`$C13D`/`$C159`** - the class `$27` and `$29` collision arms, which are two
   more pickup-like items (and `$C13D` has its own `$07E5` bit-0 gate and an
   `INC $20,X`). Out of scope here, never reached, flagged because they sit in
   the same dispatch as the capsule.

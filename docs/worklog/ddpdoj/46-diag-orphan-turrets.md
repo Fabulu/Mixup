@@ -1,8 +1,8 @@
-# 46 — DIAG: TURRETS WITHOUT TANK BODIES
+# 46 - DIAG: TURRETS WITHOUT TANK BODIES
 
 status: **DONE**
 started: 2026-08-04. role: DIAGNOSIS. **READ-ONLY on `games/ddpdoj/src/` and
-`tools/`** — the laser wave is the sole writer there. This file is the only
+`tools/`** - the laser wave is the sole writer there. This file is the only
 thing I write, and only it is committed.
 
 target: `ddpdojblk` VERSION-B. Every address is build B.
@@ -20,20 +20,20 @@ sometimes arrives late rather than never.
 
 ## 1. THE CAUSE, IN ONE TABLE
 
-**It is E2 — ART, BY ADDRESS. It is not E1's render path, not a latency
+**It is E2 - ART, BY ADDRESS. It is not E1's render path, not a latency
 difference, not bucket order, and not an unported producer.** The body producer
 is wired, running, and emitting a correctly positioned, correctly ordered record
 every frame. **The sheet simply does not contain the picture, and the guard is
 naming every one of them.**
 
-Enemy type `$11` — **104 of stage 1's 339 spawn records, the most common enemy in
-the stage** — draws itself from TWO ROM tables, both read by
+Enemy type `$11` - **104 of stage 1's 339 spawn records, the most common enemy in
+the stage** - draws itself from TWO ROM tables, both read by
 `src/handlers.js`'s `fire11`/`draw11`:
 
 | | ROM table | index | emitted at | entries | **in the shipped sheet** |
 |---|---|---|---|---:|---|
-| **HULL / BODY** | `$268B9E` | **HEADING** — `d1 = (($1A,A6) & $3E) << 2`, +4 on the mirror bit | `$2689BC` writes `($A,A6)`, drawn by the record-convention stub `($2A,A5)` at `$2689C6` | **64** | **[M] 2** |
-| **TURRET** | `$268C9E` | **FACING** — `((($33,A5)+1) & $3E) * 2`, the slewed aim | `$268A54` writes `($22,A5)`, drawn by the register-convention stub `($2E,A5)` in `draw11` at `$268A72`, size `#$620` = 3x32 | **32** | **[M] 32** |
+| **HULL / BODY** | `$268B9E` | **HEADING** - `d1 = (($1A,A6) & $3E) << 2`, +4 on the mirror bit | `$2689BC` writes `($A,A6)`, drawn by the record-convention stub `($2A,A5)` at `$2689C6` | **64** | **[M] 2** |
+| **TURRET** | `$268C9E` | **FACING** - `((($33,A5)+1) & $3E) * 2`, the slewed aim | `$268A54` writes `($22,A5)`, drawn by the register-convention stub `($2E,A5)` in `draw11` at `$268A72`, size `#$620` = 3x32 | **32** | **[M] 32** |
 
 ```
 [M] h11_fire  $268C9E, 32 entries: 32 IN THE SHEET, 0 NO ART
@@ -60,7 +60,7 @@ table begins. `src/handlers.js:181-184`'s comment calls both "16-direction"
 tables; **[M] they are 64 and 32 longwords.** A harvest that trusts "16" would
 ship a sixteenth of the body art and leave the same bug in place.
 
-## 2. WHY IT LOOKS LIKE LATENCY — "sometimes the bodies appear a bit after"
+## 2. WHY IT LOOKS LIKE LATENCY - "sometimes the bodies appear a bit after"
 
 **Because the two tables are indexed by DIFFERENT THINGS, and only one of them
 moved during the recording the sheet was harvested from.**
@@ -91,7 +91,7 @@ window, so at lf2000 every tank is on heading 45 and **every body draws**:
 ```
 
 Every pair is **hull at x, turret at x+8, same y**, hull in the LOWER list slot
-and the turret in the next one — and a higher list index draws IN FRONT
+and the turret in the next one - and a higher list index draws IN FRONT
 (`spritelist.js`), so the turret correctly sits on top of its hull. **The
 geometry and the z-order are right.** Only the picture is missing.
 
@@ -119,11 +119,11 @@ heading and are whole; after it they start turning and the hulls go.
 
 Over the 6,185-frame run in `44-impl-E1-render.md`: **[M] 39 distinct missing
 streams lie in `$165D00..$166FFF` and they account for 36,590 of the 154,831
-missed records — 23.6 % of every miss in the whole run is a tank hull.** The
+missed records - 23.6 % of every miss in the whole run is a tank hull.** The
 first is `$166840` at lf2458.
 
 
-## 4. THE PORT IS ASKING FOR THE RIGHT PICTURE — the alternative I had to kill
+## 4. THE PORT IS ASKING FOR THE RIGHT PICTURE - the alternative I had to kill
 
 The obvious rival explanation is that the port's heading arithmetic is wrong, so
 it asks for a hull image the recording never drew, and the whole thing is a
@@ -163,7 +163,7 @@ different places and the turrets are correctly pointing at different things
 (3 / 6 / 10 of 161 at lags 0 / 1 / 2). The hull is the tank's own heading and
 depends on no input, which is why it is comparable and the turret is not.
 
-## 5. AN OPEN FINDING FOR A LATER WAVE — E1's HOLD MAY BE ONE FRAME SHORT
+## 5. AN OPEN FINDING FOR A LATER WAVE - E1's HOLD MAY BE ONE FRAME SHORT
 
 **[M] the lag sweep above is the first time anything on this project has compared
 the PORT's own `$800000` list against the BOARD**, and it does not favour the lag
@@ -184,11 +184,11 @@ error cannot make a hull disappear. And the evidence is not yet decisive:
   question nobody has measured, and it is the one that decides this.
 
 **What settles it:** compare the SHIP's drawn position against the board at each
-lag — `pgm.py demogate` / `shipgate` already have the machinery. Until that is
+lag - `pgm.py demogate` / `shipgate` already have the machinery. Until that is
 done this is one measurement against one, and changing the page on the strength
 of the newer one would be exactly the mistake this project keeps writing down.
 
-## 6. THE OTHER BODY TABLES — E2's shopping list, priced
+## 6. THE OTHER BODY TABLES - E2's shopping list, priced
 
 Same measurement over every sprite-pointer table the ported handlers read.
 
@@ -203,23 +203,23 @@ Same measurement over every sprite-pointer table the ported handlers read.
 | | **all five together**, shared colour counted once | | | **145** | **105.7 KiB** |
 
 **[M]** gzip -9 over the coalesced word ranges, extents from the ROM chain via
-`src/render/spritedir.js streamExtent` — the same packing `tools/export-web.mjs`
+`src/render/spritedir.js streamExtent` - the same packing `tools/export-web.mjs`
 does. For scale: today's whole sprite sheet is **39.3 KiB gz** and boot is
 **472.1 KiB**.
 
 **The single highest-value 27 KiB in this project right now is `$268B9E`'s 62
 missing hulls.** Type `$11` is 104 of stage 1's 339 spawn records, and those
-streams are **36,590 of the 154,831 missed records — 23.6 % of every miss in the
+streams are **36,590 of the 154,831 missed records - 23.6 % of every miss in the
 whole 6,185-frame run** (`44-impl-E1-render.md` §3).
 
 **AND THE TABLE SIZES ARE A TRAP FOR E2.** `src/handlers.js:181-184` calls both
 `SPRITE_TAB` entries "16-direction sprite-pointer tables". **[M] they are 64 and
 32 longwords**: `$2689A0` builds `d1 = (($1A,A6) & $3E) << 2`, which reaches
-`$F8`; `$2689B4` adds 4 on the mirror bit; and `$268C9E` — the turret table —
+`$F8`; `$2689B4` adds 4 on the mirror bit; and `$268C9E` - the turret table -
 begins exactly where `$268B9E + $100` ends. A harvest sized off that comment
 would ship a quarter of the hull art and leave the owner's bug in place.
 
-## 7. THE PAGE, IN A REAL BROWSER — the report, seen
+## 7. THE PAGE, IN A REAL BROWSER - the report, seen
 
 Chrome + playwright over `python -m http.server`. Screenshots at five times.
 
@@ -234,7 +234,7 @@ Chrome + playwright over `python -m http.server`. Screenshots at five times.
 **The page names the tank hulls on its own status line.** `$166840`, `$1662C8`
 and `$166264` are entries 27, 13 and 12 of `$268B9E`.
 
-- **+5 s (lf2303): about twenty-eight COMPLETE tanks** — hull and turret — in
+- **+5 s (lf2303): about twenty-eight COMPLETE tanks** - hull and turret - in
   formation on the road. Nothing missing, because every tank is still on the
   recorded heading.
 - **+15 s (lf2880): lone gun barrels standing on the pavement**, five or six of
@@ -248,17 +248,17 @@ tracking. There is simply nothing beneath them.
 
 | # | candidate | verdict |
 |---|---|---|
-| 1 | different producers, different LATENCY | **RULED OUT.** [M] the hull and its turret are in the SAME frame's list at ADJACENT SLOTS — hull slot N at x, turret slot N+1 at x+8, same y. E1's one-frame hold applies to the whole list at once and cannot separate them |
+| 1 | different producers, different LATENCY | **RULED OUT.** [M] the hull and its turret are in the SAME frame's list at ADJACENT SLOTS - hull slot N at x, turret slot N+1 at x+8, same y. E1's one-frame hold applies to the whole list at once and cannot separate them |
 | 2 | the body's art is in the MISS SET | **THIS IS IT.** [M] 2 of 64 hull streams shipped; 4,002 hull records emitted in 1,000 frames, **0 drawn**; 21,147 turret records, **21,147 drawn** |
-| 3 | bucket ordering / z-order | **RULED OUT.** [M] both are bucket 0, adjacent slots, hull in the LOWER index — and a higher index draws in front, so the turret correctly sits on top of its hull. The order is right |
+| 3 | bucket ordering / z-order | **RULED OUT.** [M] both are bucket 0, adjacent slots, hull in the LOWER index - and a higher index draws in front, so the turret correctly sits on top of its hull. The order is right |
 | 4 | a body producer that is not wired | **RULED OUT.** [M] it is wired and running: `$2689C6` emits the hull through `($2A,A5)` every frame, 4,002 records, correctly positioned, and the guard names every one |
 
-## 9. VERDICT — WHICH WAVE FIXES IT
+## 9. VERDICT - WHICH WAVE FIXES IT
 
-**E2 — THE ART HARVEST, BY ADDRESS. Nothing else.**
+**E2 - THE ART HARVEST, BY ADDRESS. Nothing else.**
 
 `43-plan-enemy-layer.md` E2's scope is already exactly right ("harvest by ROM
-address — the mechanism `export-web.mjs` already uses for the ship's 16 tilts").
+address - the mechanism `export-web.mjs` already uses for the ship's 16 tilts").
 What this diagnosis adds is a **specific, priced, 27.1 KiB first item that
 removes the owner's complaint on its own**, and the warning that the tables are
 64 and 32 entries rather than the 16 the source comment claims.
@@ -272,13 +272,13 @@ I looked for one, and I am saying plainly that I did not find one:
   drawn facing the wrong way is the failure mode this project pays most for: a
   picture that looks nearly right and lies.
 - **It must not hide the orphaned turret either**, tempting as that is. A
-  hardware sprite record carries no grouping — nothing in it says "this turret
+  hardware sprite record carries no grouping - nothing in it says "this turret
   belongs to that hull". Suppressing a drawn record because some OTHER record was
   skipped would make the page invent that relationship, and it would hide exactly
   the evidence that produced this diagnosis.
 
 The one change that does belong in `src/handlers.js` is a COMMENT, and it is
-load-bearing for E2 rather than cosmetic. **NOT APPLIED — the laser wave owns
+load-bearing for E2 rather than cosmetic. **NOT APPLIED - the laser wave owns
 `src/` right now:**
 
 ```
@@ -321,12 +321,12 @@ load-bearing for E2 rather than cosmetic. **NOT APPLIED — the laser wave owns
 2. **The other handlers' tables beyond the five above.** `$26990E`'s 24 entries
    are my reading of a 6-byte-entry / stride-8 walk (`animStep31`); I did not
    find where it ends. Types `$80`, `$85`/`$86` and the midboss have their own
-   sprite pointers that I did not enumerate — the 326-address miss set in
+   sprite pointers that I did not enumerate - the 326-address miss set in
    `44-impl-E1-render.md` §3.3 is still the complete list, and this file
    explains 145 of them.
 3. **Whether the hulls will look RIGHT once shipped.** Same limit as E1: nothing
    here is compared against MAME pixels. What §4 proves is that the port asks for
-   the same stream ADDRESS the board asked for, 160 of 160 frames — which is a
+   the same stream ADDRESS the board asked for, 160 of 160 frames - which is a
    great deal more than E1 could say, and still not a pixel comparison.
 4. **The lag question in §5**, deliberately left open with the measurement that
    raises it and the measurement that would settle it.
@@ -339,9 +339,9 @@ load-bearing for E2 rather than cosmetic. **NOT APPLIED — the laser wave owns
   FACING (which swept the whole circle during the recording), the hull by
   HEADING (which did not). E2, art, by address.
 - §1 [M]: and the hull table is **64 entries, not the 32 (or the "16" in
-  `handlers.js`'s comment)** — `d1 = (d7 & $3E) << 2` reaches $F8 and the mirror
+  `handlers.js`'s comment)** - `d1 = (d7 & $3E) << 2` reaches $F8 and the mirror
   adds 4. E2 must harvest 64.
-- §2/§3 [M]: 1,000 frames — turret records **21,147 / 21,147 drawn**, hull
+- §2/§3 [M]: 1,000 frames - turret records **21,147 / 21,147 drawn**, hull
   records **4,002 / 0 drawn**. First orphan lf2458 (+7.75 s). Hull at x, turret
   at x+8, hull in the lower list slot: **geometry and z-order are correct.**
 - §4 [M]: **the rival explanation is dead.** The BOARD's own recording uses hull
@@ -349,14 +349,14 @@ load-bearing for E2 rather than cosmetic. **NOT APPLIED — the laser wave owns
   Port vs board on hull index AND live-tank count: **160/160 at lag 2**, 107/161
   at lag 1, 67/161 at lag 0, over 29 distinct keys that change on 54 of 160
   boundaries. The producer is right; the sheet is short.
-- §5 [M]: an OPEN finding, not this bug — that lag sweep is the first
+- §5 [M]: an OPEN finding, not this bug - that lag sweep is the first
   port-vs-board comparison of the `$800000` list ever made here and it favours
   lag 2 over the page's lag 1. **Not to be acted on alone**; §5 names what would
   settle it.
 - §6 [M]: priced. **62 missing type-$11 hulls = 27.1 KiB gz** and they are 23.6 %
   of every missed record in the 6,185-frame run. All five body tables = 145
   streams / 105.7 KiB. And the tables are **64 and 32 entries, not the 16**
-  `handlers.js` claims — a trap for E2's harvest.
+  `handlers.js` claims - a trap for E2's harvest.
 - §7 [M]: seen in the browser. At +5 s, twenty-eight whole tanks; at +15 s, lone
   gun barrels on the pavement and `NO ART 19: $1662C8x6 $166264x3` on the page's
   own status line.

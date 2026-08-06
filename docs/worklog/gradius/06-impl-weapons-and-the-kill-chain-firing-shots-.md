@@ -1,4 +1,4 @@
-# Wave 6 — Weapons and the kill chain: firing, shots, missiles, enemy death, score
+# Wave 6 - Weapons and the kill chain: firing, shots, missiles, enemy death, score
 status: DONE
 wave: 6   role: impl   started: 2026-07-31
 

@@ -1,4 +1,4 @@
-# Wave 18 — the stage-1 BACKGROUND ELEMENTS (op $10 + 13 handlers + 8-slot driver)
+# Wave 18 - the stage-1 BACKGROUND ELEMENTS (op $10 + 13 handlers + 8-slot driver)
 
 status: **COMPLETE**
 date: 2026-08-02
@@ -26,12 +26,12 @@ Capstone on `tools/oracle/out/maincpu.bin` (the decrypted :maincpu image).
 - **The spawner `$262366`**: scans 8 `$20`-byte slots at `$8131C8` for the first
   whose `+0` byte is 0, sets `+0=$80`, `+2=arg(long)`, reads the constructor
   address from `*(*($8132C8) + id*4)` (the per-stage handler table), and calls
-  it. If all 8 are busy the ROM falls through (silent drop) — W17 §5 measured
+  it. If all 8 are busy the ROM falls through (silent drop) - W17 §5 measured
   only slots 0..4 are ever used in stage 1, so this arm never fires.
 - **The driver `$26233A`**: for each of 8 slots, if `+0 != 0`:
   `+4 -= $813176` (scrollDelta, the per-frame cross-axis subtraction), then
   `jsr (+8)` (the slot's updater). Order is slot 0..7.
-- **The 13 stage-1 handlers** — `$8132C8` holds `$26224A` (stage 0,
+- **The 13 stage-1 handlers** - `$8132C8` holds `$26224A` (stage 0,
   `rom.u32($262302)`). `$26224A` is a 13-longword table (ids 0..12); stage 1's
   starts at `$26227E`. Each handler is a SHORT constructor (`+10=data ptr,
   +14=Y, +8=updater, +D=kind byte`) followed by its updater. The W17 §5
@@ -59,11 +59,11 @@ ONLY (`$2623C2: tst.w $8130DA / bne die`); W17 §3b's "every updater tests it"
 was a generalisation from the first handler reached. It is a no-op in the W18
 window regardless (`$8130DA` rises at lf4314, the midboss; the first three
 elements are lf2314/2330/2474). The despawn check reads `+2` (the HIGH word of
-the arg) — `move.w $2(a6),d0`; the `.l` variants `ext.l` it first. The `.w` and
+the arg) - `move.w $2(a6),d0`; the `.l` variants `ext.l` it first. The `.w` and
 `..l` readings differ only when `i16(+2)+thr >= $8000`, so both port exactly.
 
 - **`$24179E` scroll compensation**: if `$8130D2` (bgFreeze) == 0:
-  `+2 += (word at $80B03C)` — `move.l $80B03C,d0; swap; add.w d0,$2(a6)`. The
+  `+2 += (word at $80B03C)` - `move.l $80B03C,d0; swap; add.w d0,$2(a6)`. The
   swapped low word is the HIGH half of the longword = the word at `$80B03C`
   (`CAM.txNegL`, writer `$240C7C` inside `$240C22`, named by W17 §3a). Runs
   AFTER the despawn check, BEFORE the `+2` long is read back as the position.
@@ -101,7 +101,7 @@ entries (0..21), then `$FFFFFFFF`:
 ```
 
 21 of 22 ptrs are `$22xxxx` DATA; **entry 6 (the task's 1-based "entry 7") is
-`$246BB8`** — a `$24xxxx` (build-B CODE-segment) address. Disassembling
+`$246BB8`** - a `$24xxxx` (build-B CODE-segment) address. Disassembling
 `$246BB8` shows **64 bytes of `$00`**: it is a ZERO BLOCK used AS DATA (a
 zero prototype that, via `$24150A`, zeroes object slot `$18`). It is NOT an
 executable routine. **FLAGGED, not smoothed**: the create routine reads 64
@@ -110,14 +110,14 @@ stream and notes each create (the prototype copy itself is W21's object
 allocator, out of W18's scope). The cursor advance is ported; `$246BB8` is a
 named, classified anomaly the port does not paper over.
 
-## 2. THE `$26C20C` / `$26C24A` RIDER — OUT OF SCOPE (separate object)
+## 2. THE `$26C20C` / `$26C24A` RIDER - OUT OF SCOPE (separate object)
 
 `$26C20C` is object-type-`$1C`'s handler (the midboss's second-tilemap
 painter): `cmpi.w #$105,$8130CE / bne skip; lea $227AF8,a1; lea $9000BC,a0;
 ... addi.l #$32A90000,d4; move.l d4,(a2)` at `$26C24A`, 23 cols × 9 rows. It
 is **NOT among the 13 op-`$10` handlers** (byte-search of `$2623A4..$26277C`
 for `$26C20C`/`$26C24A`/`$32A90000`: all FALSE), it is a different object
-type, and its measured window is clock `$0105` (lf4315..4585, the midboss —
+type, and its measured window is clock `$0105` (lf4315..4585, the midboss -
 W17 §9), **far past W18's first-three-elements window** (clocks `$0090..$009E`,
 lf2314..2474). Its 205 tiles + `bg.smap.u16` are already shipped (shard 7,
 W15). **W18 does NOT port it; it stays a named, flagged unported arm** for a
@@ -161,7 +161,7 @@ either sufficient:
    Fixed: `$5CC8`. (The sample-point columns were never affected because they
    already used share offsets.)
 
-## 6. THE DONE-WHEN — measured, 0 divergent
+## 6. THE DONE-WHEN - measured, 0 divergent
 
 `tools/w18gate.mjs` runs `src/background.js` over `out/w18-elem.tsv` (3,500 lf,
 invulnerable, the W17 harness) and compares, frame for frame: the element-slot

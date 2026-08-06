@@ -1,6 +1,6 @@
-# WAVE 12 REVIEW — the ship becomes fully real
+# WAVE 12 REVIEW - the ship becomes fully real
 
-status: **DONE** — every headline measurement reproduces; two defects the gate
+status: **DONE** - every headline measurement reproduces; two defects the gate
 cannot see (one silent omission, one inverted branch) and one over-claim on the
 page and in the ledger.
 wave: 12   role: reviewer   started: 2026-08-01
@@ -72,7 +72,7 @@ a standing gate that no longer covers what it was built to cover.
 Every headline number in `12-impl-ship-fully-real.md` reproduces. `scroll` is
 pre-existing (11-review §4b) and W14's.
 
-The tilt claim checks out too — read off the fresh `fly-around.tsv`, lf>2000:
+The tilt claim checks out too - read off the fresh `fly-around.tsv`, lf>2000:
 
 ```
 ptilt distinct: -32 -28 -24 -20 -16 -12 -8 -4 0 4 8 12 16 20 24 28 32
@@ -146,15 +146,15 @@ pgm.py flyaround --reuse  DIVERGE oedge first at lf=2001: port=0 board=1
                           RESULT 2 of 66 columns diverged        RED
 ```
 
-so the two instruments are genuinely complementary, and `oedge` — one of the
-columns this wave added — is a check that can fail.
+so the two instruments are genuinely complementary, and `oedge` - one of the
+columns this wave added - is a check that can fail.
 
 Restored again; hashes identical both ways; 163/163 tests pass; `shipgate`
 re-run returns `DIGEST b800b1edb6670f7b`, the same digest as the fresh run, so
 nothing leaked.
 
 Plus the declared `hitx-frozen` separation, verified in both directions (green
-on `shipgate`, red on `flyaround`'s `animb0`/`animb1`) — that one is real and it
+on `shipgate`, red on `flyaround`'s `animb0`/`animb1`) - that one is real and it
 is the best thing in the wave.
 
 ## 4. FINDINGS
@@ -162,19 +162,19 @@ is the best thing in the wave.
 See the returned verdict. In short:
 
 * **F1 (blocking-adjacent, correctness): `$24A460`'s `bmi` is INVERTED in
-  `drawShipAlt`.** `24a460: 6b08  bmi $24a46a` — the RTS. The board takes the
+  `drawShipAlt`.** `24a460: 6b08  bmi $24a46a` - the RTS. The board takes the
   RTS when the player IS live (bit 15 set → N set) and only tests bit 8 when it
   is NOT. `src/shipsprite.js` returns when NOT live and tests bit 8 when live,
   and its own transcription comment mislabels the branch (`not live -> rts`).
   `tests/ship.test.js` seeds `$8100` (live + bit 8) and asserts the throw, so
-  the test locks the inversion in — 11-review F1's pattern again.
+  the test locks the inversion in - 11-review F1's pattern again.
 * **F2 (moderate): formation 2 does not end at `$24C470`.** All five paths out
   of `$24C390` converge on `$24C476`, which is `btst #4,($41,A6)` and a further
   ~30 instructions writing `($1,A6)` bits 3/4 and the player's `($34,A4)`/
   `($35,A4)`, one arm of which `bra`s to `$24D480`. The port returns instead,
   with no throw and no `note()`. MEASURED inert on `fly-around`
   (`$8103E6+$35 = 0`, `$8104AB = $03`, edge byte 0), which is why the gate is
-  green — but §8 of the worklog says "none is a quiet return" and this is one.
+  green - but §8 of the worklog says "none is a quiet return" and this is one.
 * **F3 (moderate): the page and the ledger overstate what stopped being
   replayed.** `capture.js splice()` writes words 0/1 for all eight records and
   words 2/3 for the ship only; words 4–7 (size, flip/colour) of all eight and
@@ -185,7 +185,7 @@ See the returned verdict. In short:
 * **F4 (minor): the corrected declaration was only half-corrected.**
   `tools/breakage.mjs` and `tests/ship.test.js` still say
   `pod-asr-toward-zero` is "declared EXPECTED-GREEN on `pgm.py shipgate`", and
-  breakage.mjs still says "NO PICTURE CAN EVER SEE IT" — both refuted by the
+  breakage.mjs still says "NO PICTURE CAN EVER SEE IT" - both refuted by the
   gate's own 10/2,200 list divergences.
 * **F5 (minor): `pgm.py check` never runs `shipgate`.** The wave's own gate is
   not a stage of the check runner (nor is wave 8's `shotgate`).
@@ -195,7 +195,7 @@ See the returned verdict. In short:
   "four hitbox columns" as four checks.
 * **F7 (informational): `type5.js`'s new comment says the four ship-draw entries
   come BEFORE the option object.** `$28B616` is `$24C096` and `$28B634..$28B646`
-  are the ship's — the option object is FIRST. The code iterates `TYPE5.calls`
+  are the ship's - the option object is FIRST. The code iterates `TYPE5.calls`
   in ROM order and is right; the comment is backwards. Same block says "the five
   of the 23" over a `Set` of six.
 * **F8 (informational, not this wave):** the shared default git index carries

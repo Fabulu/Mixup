@@ -1,4 +1,4 @@
-# 58 — IMPL E3: THE ART. THE LASER FIRST.
+# 58 - IMPL E3: THE ART. THE LASER FIRST.
 
 status: **DONE** -- gate ALL GREEN 51/0/0, 706 unit tests, webgate 13/13, bundlegate 100.0000 % unmoved, PUBLISH_VERBATIM still 5. [M] records drawn 84.0 % -> 100.0 %, the beam 5.0 % -> 100.0 %, boot 476.3 -> 477.7 KiB.
 
@@ -11,10 +11,10 @@ than fixed. `games/gradius/` NOT TOUCHED.
 target: `ddpdojblk` VERSION-B. Every address is build B unless the line says
 otherwise. `[M]` = measured by me, this session, on this tree.
 
-brief: the owner, playing the live build — *"something fires. It looks like
+brief: the owner, playing the live build - *"something fires. It looks like
 shit. Laser looks like shit also and flickers. After initial tanks shots come out
 of nowhere, tons of enemies completely invisible. We're missing something
-massive"* — and `55-diag-invisible-content.md` measured that it is **missing
+massive"* - and `55-diag-invisible-content.md` measured that it is **missing
 art**: 79.3 % of requested sprite pixels have no picture.
 
 inputs read in full: `55-diag-invisible-content.md`, `47-impl-E2-art.md`,
@@ -41,14 +41,14 @@ inputs read in full: `55-diag-invisible-content.md`, `47-impl-E2-art.md`,
 
 Scenario, stated once and used for every before/after number above: the shipped
 seed, 3,000 logic frames, **fly UP, tap fire every 4th frame, and two 120-frame
-fire-HOLDS inside every 600** — the beam only exists while Button 1 is held, so a
+fire-HOLDS inside every 600** - the beam only exists while Button 1 is held, so a
 tapped-only run measures almost nothing about it. Both runs used the page's own
 `portSpriteList`, the page's own `romToPackedMap`, and **all** sprite shards
 loaded (which is what `spr n/n` on the live status line means).
 
 ---
 
-## 1. THE BRIEF'S PREMISE, CHECKED — the shape is right, and the biggest number
+## 1. THE BRIEF'S PREMISE, CHECKED - the shape is right, and the biggest number
 ##    in it is a FLOOR that would have come straight back
 
 `55-diag`'s structure reproduces. Everything below is `[M]` on my own scenario,
@@ -63,7 +63,7 @@ was being checked.
 | drawn % collapses at f1000–1499 | **CONFIRMED.** [M] 93.9 → 86.1 → **64.6** → 85.0 → 91.7 → 86.0 |
 | "7.8 KiB gz of LASER art takes the beam from 8.2 % to 100 %" | **THE PRICE IS RIGHT AND THE CLAIM IS NOT.** [M] the 29 cost **7.7 KiB**, and they take the beam to 100 % **at power 0 of 5, on the default ship, in one formation** |
 | "all 220 missing streams resolve in the cartridge, 255.1 KiB gz" | **CONFIRMED in kind.** [M] my 145 all resolve; b2+b3+b7's 111 are **256.7 KiB** |
-| b19's glow is 29 streams / 2.9 KiB, `$001F48 $0021AC $002188 $0023EC` missing | **NOT REPRODUCED.** [M] bucket 19 is **99.9 %** on my scenario with **two** distinct misses, and neither is a `$002xxx` glow frame — they are `$014D8C`/`$014E54`, LASER streams. The four glow addresses were emitted **zero** times in 3,000 frames here. I did not chase why; my scenario holds UP throughout and the audit's did not. **Not fixed, not claimed fixed** — §7 |
+| b19's glow is 29 streams / 2.9 KiB, `$001F48 $0021AC $002188 $0023EC` missing | **NOT REPRODUCED.** [M] bucket 19 is **99.9 %** on my scenario with **two** distinct misses, and neither is a `$002xxx` glow frame - they are `$014D8C`/`$014E54`, LASER streams. The four glow addresses were emitted **zero** times in 3,000 frames here. I did not chase why; my scenario holds UP throughout and the audit's did not. **Not fixed, not claimed fixed** - §7 |
 
 ### 1.1 THE PREMISE THAT MATTERS: 29 IS ONE POWER LEVEL OF FIVE  `[M]`
 
@@ -91,7 +91,7 @@ $255086..$25509E  five words at BLOCK + cursor -> ($6,A6), ($a,A6), ($e,A6)
 [M] every one of the 20 entries carries start $1E and points INTO the array
 ```
 
-**[M] Entry 0 — power 0, default ship, default formation — is
+**[M] Entry 0 - power 0, default ship, default formation - is
 `$014D28 $014D8C $014DF0 $014E54`, and those are exactly the four "3x32" the
 audit's list carries.** That is the derivation and the measurement meeting:
 the audit measured one block of twenty.
@@ -114,12 +114,12 @@ into `$24A86A..$24B7EA`. Those are power-indexed too (`hOnPod`:
 
 ## 2. WHAT SHIPPED, AND HOW EACH SET IS PINNED
 
-### 2.1 shard 10 `laser` — 407 streams, 105.6 KiB gz, DEFERRED
+### 2.1 shard 10 `laser` - 407 streams, 105.6 KiB gz, DEFERRED
 
 Two mechanisms, because the cartridge lays the two families out two ways.
 
-**(a) THE BEAM, WALKED.** `$24BB0A` entries **0..4** — the five POWER steps of
-the default ship and formation — each walked to all four frames. **20 streams.**
+**(a) THE BEAM, WALKED.** `$24BB0A` entries **0..4** - the five POWER steps of
+the default ship and formation - each walked to all four frames. **20 streams.**
 The four assertions of §1.1 run on every export and any one of them stops the
 build.
 
@@ -130,7 +130,7 @@ is a **mask-ROM DIRECTORY entry**.
 **THIS IS AN UPPER BOUND, NOT A CENSUS, AND IT IS LABELLED AS ONE IN THE
 EXPORTER.** The justification is that a segment descriptor is only ever written
 by `laser.js` reading one of those two windows, so **the port cannot ask for a
-laser stream outside this set** — which is a completeness claim a table walk
+laser stream outside this set** - which is a completeness claim a table walk
 could not make here, because the five families interleave scripts, anim tables
 and $20-byte records with no single stride. The directory test is what keeps the
 over-inclusion bounded: [M] **80 of 362** hits in the segment block and **28 of
@@ -142,22 +142,22 @@ range, a wrong directory filter or a wrong beam walk drops some of them and the
 build stops naming them.
 
 **(c) bucket 0's last four**, `$22C59C..$22C6BC`, walked as a mask-ROM chain.
-[M] 8 streams, and the run **closes exactly on `$22C6BC`** — which is where W53's
+[M] 8 streams, and the run **closes exactly on `$22C6BC`** - which is where W53's
 own LASER impact-spark list begins. The far end is the claim, `BULLET_RANGES`-style.
 
 **WHAT IS DELIBERATELY NOT HARVESTED, named rather than omitted:**
 
-* **`$24BB0A` entries 5..19** — the `+$28`/`+$50`/`+$78` groups, 60 streams,
+* **`$24BB0A` entries 5..19** - the `+$28`/`+$50`/`+$78` groups, 60 streams,
   [M] 44 KiB. `+$28` needs `($58,A5)` (ship select) non-zero: `src/machine.js`
   records it as **[M] 0 for TYPE-A over the whole corpus** and nothing in the
   port writes it. `+$50` needs `($5a,A6) != 2` and `tools/export-tables.py`
-  records **[M] 2 on every frame**. This is the `$268594` precedent — art for a
+  records **[M] 2 on every frame**. This is the `$268594` precedent - art for a
   state no ported code can enter.
-* **and leaving them out is SAFE, which is a separate measurement** — §7.1.
+* **and leaving them out is SAFE, which is a separate measurement** - §7.1.
 * **the LASER's own impact spark** `$22C6BC..$22C860`, still behind the unported
   `$289F96`/`$289FC0`/`$289FDA` (W53 §6).
 
-### 2.1b THE POWER LADDER — the coordinator's mid-wave question, from the ROM
+### 2.1b THE POWER LADDER - the coordinator's mid-wave question, from the ROM
 
 Mid-wave the coordinator relayed the owner: *"laser and shots will likely also
 need new updated sprites for powerups"*, with the warning that **every art
@@ -165,7 +165,7 @@ measurement in the brief was taken at BASE POWER** because items do not drop in
 this build. **They are right, and §1.1 is the same finding arrived at from the
 listing.** Here is the shape, read out of the cartridge, not out of a run.
 
-**THE SHOTS — [M] FIVE power levels, 24 streams each, 71 distinct across all
+**THE SHOTS - [M] FIVE power levels, 24 streams each, 71 distinct across all
 five, and 47 of the 71 are reachable ONLY above power 0.**
 `$249C48`/`$24D4F8` index by `($20,A6)*2` over `{0,2,4,6,8}` into four template
 tables (`$2554EA` `$255502` `$24D2FC` `$24D35C`), and each power's template
@@ -184,7 +184,7 @@ whole ladder, and [M] all 47 of the above-base streams are already in the bundle
 **The shots need nothing.** W52 got this right and its worklog did not say so;
 this is the measurement that says it.
 
-**THE BEAM — [M] FIVE power levels, 4 frames each, 20 distinct, and 16 of the 20
+**THE BEAM - [M] FIVE power levels, 4 frames each, 20 distinct, and 16 of the 20
 are reachable ONLY above power 0.** And it is not a recolour: the beam GROWS.
 
 ```
@@ -198,7 +198,7 @@ are reachable ONLY above power 0.** And it is not a recolour: the beam GROWS.
 
 **W58 SHIPS ALL TWENTY.** The audit's 29 are power 0's four plus the segment
 side; shipping only those would have left **13.3 KiB and sixteen frames** absent
-the moment the player powered up — a beam that grows from 3x32 to 6x64 and has
+the moment the player powered up - a beam that grows from 3x32 to 6x64 and has
 art for one of the five sizes.
 
 **The SEGMENT side is power-indexed too** (`hOnPod` reads
@@ -206,20 +206,20 @@ art for one of the five sizes.
 every power **by construction** rather than by enumeration: it takes every
 directory-valid stream in the two blocks those scripts live in.
 
-**SO, PRECISELY, WHAT "100 % LASER COVERAGE" MEANS HERE** — and this is the
+**SO, PRECISELY, WHAT "100 % LASER COVERAGE" MEANS HERE** - and this is the
 sentence that must not be read as broader than it is:
 
-* **MEASURED 100 %** — bucket 16 draws 2,606 of 2,606 records — is over a run
+* **MEASURED 100 %** - bucket 16 draws 2,606 of 2,606 records - is over a run
   **at base power**, because nothing in this build powers the ship up.
-* **HARVESTED** — the bundle contains the art for **all five power steps** of
+* **HARVESTED** - the bundle contains the art for **all five power steps** of
   the beam and of the shots, and for the segment blocks at every power.
 * **NOT harvested, and named**: the `+$28`/`+$50`/`+$78` ship/formation groups
-  (60 beam streams, [M] 44 KiB) — §2.1 and §7.1.
+  (60 beam streams, [M] 44 KiB) - §2.1 and §7.1.
 * So the honest sentence is: **"the beam has art for every power level the
   cartridge's own table can index for the default ship and formation, and a
   base-power run draws 100 % of it."** Not "the laser art is complete."
 
-### 2.2 shard 11 `structures` — 146 streams, 262.3 KiB gz, DEFERRED
+### 2.2 shard 11 `structures` - 146 streams, 262.3 KiB gz, DEFERRED
 
 Buckets 2, 3 and 7: the big background structures, the midboss and the large
 emplacements. [M] **82.5 % of every missing sprite pixel** in my run and the
@@ -228,7 +228,7 @@ playfield.
 
 **IT STARTED AS A MEASURED FLOOR AND THE BROWSER CAUGHT IT GOING SHORT WITHIN
 THIRTY SECONDS.** With the 111 measured addresses shipped, [M] the live local
-page still named `$1567D4 $156ABC $156B38 $155C34` — four neighbours of the
+page still named `$1567D4 $156ABC $156B38 $155C34` - four neighbours of the
 twelve the run reached, in the same uniform run. That is `46-diag`'s tank hulls
 happening again, found by opening the page rather than by a gate.
 
@@ -241,8 +241,8 @@ happening again, found by opening the page rather than by a gate.
 | `$151E10..$152A90` | **32** | stride 100 (3x32) → stride 228 |
 | `$155C34..$156BB4` | **32** | stride 124 (3x40) → `$156BB4` is stride 484 |
 
-All four are **32-frame animations**, walked with `BULLET_RANGES`' mechanism —
-`endsAt` IS the claim and a chain that steps over it stops the build — and it
+All four are **32-frame animations**, walked with `BULLET_RANGES`' mechanism -
+`endsAt` IS the claim and a chain that steps over it stops the build - and it
 cost **6.7 KiB gz for 35 more streams**. **Eighteen one-off structures remain an
 explicit measured list**, because each is a large single picture reached from a
 background-element immediate with no uniform run around it to close on. That
@@ -250,20 +250,20 @@ half is still a floor and the exporter says so in those words.
 
 **TWO CORRECTIONS TO THE AUDIT, both from the chain itself:**
 * `55-diag` §2.2 calls `$12C7B0..$12D3CC` "a **38**-frame animation run".
-  [M] It is **32**, and it ends at `$12D430` — which the audit lists separately
+  [M] It is **32**, and it ends at `$12D430` - which the audit lists separately
   as the port's single worst-missing stream and is in fact the first frame of
   the *next* family.
 * `55-diag` §2.2 calls `$155D2C..$1569C4` "a **16**-frame 3x40 c12 run".
   [M] It is **32**, and it starts `$DC` lower, at `$155C34`. Shipping the 16
   would have left the page naming the other sixteen.
 
-### 2.3 DELIVERY — what it cost, and the alternative that was rejected
+### 2.3 DELIVERY - what it cost, and the alternative that was rejected
 
 | | streams | gz |
 |---|---|---|
 | the 29 the audit measured (the minimum that fixes the owner's screenshot) | 29 | **7.7 KiB** |
-| **shard 10 as shipped** — the 5-power ladder + both bounded blocks | 407 | **105.6 KiB** |
-| **shard 11 as shipped** — buckets 2/3/7, 4 closed chains + 18 one-offs | 146 | **262.3 KiB** |
+| **shard 10 as shipped** - the 5-power ladder + both bounded blocks | 407 | **105.6 KiB** |
+| **shard 11 as shipped** - buckets 2/3/7, 4 closed chains + 18 one-offs | 146 | **262.3 KiB** |
 
 **7.7 KiB was rejected and the reason is `docs/knowledge/09`.** A harvest sized
 off what one run reached is exactly the tank-hull mistake (`46-diag`): it fixes
@@ -273,8 +273,8 @@ nothing (§3), and `demand()` promotes it the instant a record asks.
 
 `SPR_ORDER` is now `[0, 7, 6, 10, 9, 8, 1, 2, 3, 4, 5, 11]`:
 
-* **shard 10 goes THIRD** among the deferred — behind the bullets (+0.7 s) and
-  the shots (the first fire frame), ahead of the 218 KiB explosion — because the
+* **shard 10 goes THIRD** among the deferred - behind the bullets (+0.7 s) and
+  the shots (the first fire frame), ahead of the 218 KiB explosion - because the
   player can hold fire on frame one and this is the owner's most-repeated
   complaint. [M] its first record in the gate's own window is frame 24.
 * **shard 11 goes LAST by index and it costs nothing**, because [M] its first
@@ -283,7 +283,7 @@ nothing (§3), and `demand()` promotes it the instant a record asks.
 
 ---
 
-## 3. BOOT, BEFORE AND AFTER — IT WENT UP, BY 1.4 KiB, AND HERE IS EVERY BYTE
+## 3. BOOT, BEFORE AND AFTER - IT WENT UP, BY 1.4 KiB, AND HERE IS EVERY BYTE
 
 ```
 [M] BOOT BEFORE   476.3 KiB   (export-web.mjs's own figure, HEAD = edaa6cd)
@@ -295,13 +295,13 @@ Four consecutive waves took boot DOWN while adding art (475.2 → 473.7 → 473.
 472.0) and W54/W57 took it to 476.3. **This wave puts 1.4 KiB back and it is
 structural, not slack:**
 
-* **+1.0 KiB `manifest.json`** — 8,182 → 9,208 B. The manifest is the one body
+* **+1.0 KiB `manifest.json`** - 8,182 → 9,208 B. The manifest is the one body
   served **UNCOMPRESSED** (W47 §2.4), so every byte of it is a boot byte. Two
   new shard entries carry their `why` prose, which is what the page prints in
-  "SPRITE SHARD n DID NOT LOAD — it holds N streams — …", and three new harvest
+  "SPRITE SHARD n DID NOT LOAD - it holds N streams - …", and three new harvest
   ledger rows. **I trimmed both after measuring**: the first draft of the two
   `why` strings cost 1,175 B and the shipped ones cost 1,026 B.
-* **+0.4 KiB `spr/streams.u32.gz`** — the stream table went 1,052 → 1,570
+* **+0.4 KiB `spr/streams.u32.gz`** - the stream table went 1,052 → 1,570
   entries. Planar and delta-coded since W52, so 518 more streams cost 0.4 KiB.
 
 **There is no version of this wave with a flat boot.** Adding a shard means
@@ -309,7 +309,7 @@ adding its metadata to the one uncompressed file, and adding art means adding
 its rows to the stream table. The claw-backs W47 and W53 used (moving the stream
 table out of the manifest; deleting the manifest's indentation) are both already
 taken. The next one available is gzipping `manifest.json` itself, and that is a
-`src/web/assets.js` change — **not mine this session**, named in §7.
+`src/web/assets.js` change - **not mine this session**, named in §7.
 
 ---
 
@@ -326,16 +326,16 @@ Every restore matched.
 | M1 | the beam pointer table claimed as 24 entries | `the beam's block array $24b7ea + 24 x $28 does not land on the pointer table` |
 | M2 | the block array based one block high | the same abut assertion |
 | M3 | the animation read as THREE frames (start `$14`) | `walks from $14 down in steps of $a, which does not fill a $28-byte block exactly` |
-| M4 | the segment block cut at family 3 — **`46-diag`'s own mistake** | `does NOT contain 21 of the 33 descriptors a 3,000-frame playing run measured bucket 16 asking for: $01447c $0144e0 …` |
+| M4 | the segment block cut at family 3 - **`46-diag`'s own mistake** | `does NOT contain 21 of the 33 descriptors a 3,000-frame playing run measured bucket 16 asking for: $01447c $0144e0 …` |
 | M5 | the mask-ROM DIRECTORY filter dropped | `SpriteDirError` out of `romExtent` on the first false positive |
 | M6 | the `$22C59C` run claimed to end one stream late | `the $22c59c run steps OVER $22c6c0` |
 | M7 | the structures list truncated by one | `STRUCTURE_STREAMS holds 17 addresses …; W58 measured 18 and 4` |
 | M8 | the laser folded into the BOOT shard | `SHARD 0 IS THE BOOT SHARD` |
 | M9 | the fetch order back to W54's | `SPR_ORDER … is not a permutation of the 12 sprite shards` |
-| M12 | the `SPR_ORDER` assertion loosened in the unit test | `not ok — the two weapon shards are DEFERRED and fetched FIRST among the deferred` |
+| M12 | the `SPR_ORDER` assertion loosened in the unit test | `not ok - the two weapon shards are DEFERRED and fetched FIRST among the deferred` |
 
 **AND ONE MUTANT WAS DEFECTIVE, recorded rather than quietly repaired.** M6's
-first form claimed the run ended at `$22C6E0` — which **is** a stream boundary,
+first form claimed the run ended at `$22C6E0` - which **is** a stream boundary,
 so the walk closed on it and the mutant `*** SURVIVED ***`. A wrong end address
 that happens to land on a boundary is not a wrong end address the check can see.
 Re-aimed at `$22C6C0`, which is not one, and it goes red. That is the survivor
@@ -343,12 +343,12 @@ doing its job.
 
 ### 4.2 The GATE STAGE, seen to fail against the REAL bundle
 
-`node games/ddpdoj/.scratch/gatemut58.mjs` — cut the harvest, re-export, run
+`node games/ddpdoj/.scratch/gatemut58.mjs` - cut the harvest, re-export, run
 `webgate`, restore, re-export, hash-check. `export-web.mjs` byte-identical after.
 
 | cut | what the stage printed |
 |---|---|
-| **the beam harvest cut to pointer entry 0 — the ONE block the audit measured** | `FAIL: W58 THE LASER BEAM … sprite shard 10 holds 391 streams (expect 407) …` |
+| **the beam harvest cut to pointer entry 0 - the ONE block the audit measured** | `FAIL: W58 THE LASER BEAM … sprite shard 10 holds 391 streams (expect 407) …` |
 | the structures harvest ten streams short of its own list | `FAIL: W58 THE BIG MID-SCREEN STRUCTURES … holds 101 streams (expect 146) and the port's own $800000 list carries 8103 records of them (expect 12681) over 95 distinct images (expect 101), first at frame 346 (expect 315)` |
 
 **Each cut left the OTHER stage green**, which is what says the two are
@@ -372,10 +372,10 @@ delta-coded** (`manifest.spr.streamsFormat === 'planes-delta-1'`, decoded in
 1,052-stream bundle**, and
 
 > **[M] every "0 ALREADY in the sheet" line in W52, W53 and W54's pricing is
-> vacuous — it would have printed 0 whatever the bundle contained.**
+> vacuous - it would have printed 0 whatever the bundle contained.**
 
 The prices those waves quote are therefore UPPER bounds, not wrong ones (the
-streams really were new — I re-checked W53's 36 and W54's 269 against a correct
+streams really were new - I re-checked W53's 36 and W54's 269 against a correct
 decode and both are 0-already for real). But nobody could have known that from
 the tool. Replaced by `.scratch/e3price.mjs`, which decodes the file **the way
 the page does**; on my own laser list it correctly finds **4 already present**
@@ -383,16 +383,16 @@ where the old tool said 0.
 
 ---
 
-## 5. THE PAGE, IN A REAL BROWSER — WHAT I SAW  `[M]`
+## 5. THE PAGE, IN A REAL BROWSER - WHAT I SAW  `[M]`
 
 Chrome + Python `playwright`, W42's recipe. Nothing downloaded. **BOTH the LIVE
 DEPLOYED BUILD and the local one**, the same script, the same key presses.
 **The server I started was killed and [M] `Get-CimInstance Win32_Process` finds
-zero `http.server` processes and port 8781 free** — checked by process and by
+zero `http.server` processes and port 8781 free** - checked by process and by
 listening port, not by "did I start it", because W53's sweep found an orphan the
 GATE had left.
 
-### 5.1 BEFORE — `https://gbtman.pages.dev/games/ddpdoj/`, build with `spr 10/10`
+### 5.1 BEFORE - `https://gbtman.pages.dev/games/ddpdoj/`, build with `spr 10/10`
 
 ```
 [M] BOOTED     [port] dl 61 drawn 55 ... NO ART 6:  $233F34x1 $22DA70x1 $22DED4x1
@@ -403,13 +403,13 @@ GATE had left.
 * **[M] HOLDING FIRE, EIGHT CONSECUTIVE SCREENSHOTS: NOT ONE OF THEM HAS A
   BEAM.** The gauge reads `MAX`, so the laser is charged; there is simply
   nothing drawn above the ship on any of the eight. That is the owner's
-  "flickers" at its limit — the art for its current animation step is absent on
+  "flickers" at its limit - the art for its current animation step is absent on
   29 of the beam's 33 steps.
 * **[M] A HUGE BLACK RECTANGLE fills most of the upper-middle playfield**, with
   the ship, the tanks and the enemy bullets floating in it. That is the owner's
   "tons of enemies completely invisible", and it is the b2/b3/b7 art.
 
-### 5.2 AFTER — the same script, the same keys, locally
+### 5.2 AFTER - the same script, the same keys, locally
 
 ```
 [M] BOOTED     [port] dl 63 drawn 63 ... spr 12/12   (no NO ART line at all)
@@ -439,7 +439,7 @@ GATE had left.
 * **[M] AND THE FIRST LOCAL RUN FOUND THE DEFECT §2.2 IS ABOUT.** With the
   measured 111-address list shipped, the page still printed
   `NO ART 1: $1567D4x1`, then `NO ART 2: $156ABCx1 $156B38x1`, then
-  `NO ART 4: $156B38x2 $155C34x2` — four streams no headless run of mine ever
+  `NO ART 4: $156B38x2 $155C34x2` - four streams no headless run of mine ever
   asked for. **Nothing but opening the page was going to find that**, and it is
   what turned four measured lists into four closed chains.
 
@@ -458,13 +458,13 @@ skipped, narrowed or loosened here**, and every stage line was read rather than
 only the verdict. The ones this wave could plausibly have broken, all green:
 
 - **`assets/integrity` and its four REDs, including `[rom-byte]`, THE ROM-LEAK
-  GUARD** — four new shard files went through it;
+  GUARD** - four new shard files went through it;
 - `pixel gate: the port's JS renderer vs MAME` (100.0000 %) and its 9 REDs;
-- `background shard gate: published tiles past px 160 (+ RED)` — the stage that
+- `background shard gate: published tiles past px 160 (+ RED)` - the stage that
   FRESH-EXPORTS, i.e. the one an exporter change has to survive;
 - `display list: the staged-bytes replay gate (1,901 frames)` and its 12 REDs;
 - `fly-around: port vs board, 0 divergent frames` and its 5 REDs;
-- `midboss DEATH` and `midboss DEATH RED [no-kill]` — W57's, and [M] I confirmed
+- `midboss DEATH` and `midboss DEATH RED [no-kill]` - W57's, and [M] I confirmed
   the stage is indifferent to this wave by running it against **both** bundles:
   0 failed assertions on the W58 bundle and 0 on the saved pre-W58 one.
 
@@ -494,7 +494,7 @@ about the tree.**
 
 ## 7. WHAT THIS WAVE DID NOT DO, AND ONE HANDOVER TO `src/`
 
-### 7.1 A LATENT CRASH IN THE EXPORTED ROM WINDOWS — found, measured, NOT fixed
+### 7.1 A LATENT CRASH IN THE EXPORTED ROM WINDOWS - found, measured, NOT fixed
 
 [M] `tools/export-tables.py`'s W45 windows are `$24A800+$1100` (which stops at
 **`$24B900`**) and `$24BB00+$A0`. **The beam's animation blocks for pointer
@@ -533,12 +533,12 @@ comment block says the same thing.
 
 ---
 
-## 7b. THE OWNER'S SHADOW FLICKER — **(A) AUTHENTIC. DO NOT "FIX" IT.**
+## 7b. THE OWNER'S SHADOW FLICKER - **(A) AUTHENTIC. DO NOT "FIX" IT.**
 
 Mid-wave the owner asked: *"some enemies' shadows flicker. Don't know if that's
 in the original but we have to check"*, and the coordinator set out the three
-answers — (A) the board's own alternate-frame transparency, (B) missing art,
-(C) an emission defect — with the instruction to settle it from the board and
+answers - (A) the board's own alternate-frame transparency, (B) missing art,
+(C) an emission defect - with the instruction to settle it from the board and
 not from the genre.
 
 **[M] IT IS (A), AND THE BOARD IS UNAMBIGUOUS.** `capture.bin` is 161 frames of
@@ -564,7 +564,7 @@ c2:80` in that window, and c24 is used by these four classes and nothing else):
 frames.** Every gap between consecutive appearances is exactly +2, 80 of 80 and
 26 of 26. **The enemy's shadow obeys the same rule as the ship's.** That is the
 alternate-frame 50 %-transparency trick on hardware with no alpha blending, and
-`src/render/capture.js` has documented it since W12 — this is the first time it
+`src/render/capture.js` has documented it since W12 - this is the first time it
 has been measured for an ENEMY's shadow specifically, which is what the owner
 asked about.
 
@@ -573,7 +573,7 @@ frame would REMOVE authentic behaviour and look like an improvement.** The
 precedent is Batman's water dither: a deliberate, documented, owner-owned
 fidelity decision. Nobody should "correct" this without the owner saying so.
 
-**AND THE SECOND HALF, WHICH IS THE ONE THAT COULD HAVE HIDDEN A REAL DEFECT —
+**AND THE SECOND HALF, WHICH IS THE ONE THAT COULD HAVE HIDDEN A REAL DEFECT -
 the port's cadence is right too.** [M] 1,200 frames, the port's own bucket 5:
 
 ```
@@ -583,31 +583,31 @@ the port's cadence is right too.** [M] 1,200 frames, the port's own bucket 5:
 ```
 
 **Three records on exactly every other frame, on the EVEN parity, never two in a
-row — the board's phase and the board's duty cycle, both exact.** Flickering at
+row - the board's phase and the board's duty cycle, both exact.** Flickering at
 the wrong cadence would have been a real defect wearing a correct-looking one,
 and it is not happening.
 
 **ONE THING WAS (B) AS WELL, AND THIS WAVE FIXED IT.** [M] Before W58, bucket 5
-drew **3,440 of 3,970** records — 86.6 % — because **`$065388`, the option pod's
+drew **3,440 of 3,970** records - 86.6 % - because **`$065388`, the option pod's
 own ground shadow, had no picture at all** (530 records over 3,000 frames). So on
 top of the authentic 50 % alternation, that shadow was additionally absent on
-every one of its own frames. It is `$24C906`'s twelve-byte template pair —
+every one of its own frames. It is `$24C906`'s twelve-byte template pair -
 `($a,A6)` is the pod muzzle `$065354`, which has shipped since W45, and
 `($5c,A6)` is the shadow beside it, which had not. Shard 10's option-block scan
 picks it up. [M] Bucket 5 is now **3,970 of 3,970**. **The authentic flicker
 stays; the missing picture is gone.**
 
-## 8. THE DONE-WHEN, EACH AS A MEASUREMENT — and exactly what each one CLAIMS
+## 8. THE DONE-WHEN, EACH AS A MEASUREMENT - and exactly what each one CLAIMS
 
 | the brief asks for | `[M]` |
 |---|---|
-| laser art coverage → 100 %, flicker gone | **bucket 16: 131 of 2,606 (5.0 %) → 2,606 of 2,606 (100.0 %)**, and in Chrome a **solid full-length beam on five of six consecutive held-fire frames where the deployed build had zero in eight**. §5. **This is 100 % AT BASE POWER** — see below |
+| laser art coverage → 100 %, flicker gone | **bucket 16: 131 of 2,606 (5.0 %) → 2,606 of 2,606 (100.0 %)**, and in Chrome a **solid full-length beam on five of six consecutive held-fire frames where the deployed build had zero in eight**. §5. **This is 100 % AT BASE POWER** - see below |
 | overall drawn %, before and after | **84.0 % → 100.0 %** of records; **63.1 % → 0.0 %** of sprite PIXELS; 145 → 0 distinct missing streams |
 | ... specifically at f1000–1499 | **64.6 % → 100.0 %** |
 | boot before and after | **476.3 → 477.7 KiB, +1.4 KiB**, every byte named. §3 |
 | gate ALL GREEN, unit tests | **ALL GREEN -- 51 passed, 0 failed, 0 SKIPPED** (51 and not 49 because W57 added two stages); **706 unit tests, 0 skipped**; **webgate 13 of 13** (was 12). §6 |
 | `bundlegate` 100.0000 % unmoved | **15955968/15955968 = 100.0000 %.** Shard 0 was not touched, so `capture.bin` is byte-identical and this number could not have moved |
-| ROM leak guard intact, `PUBLISH_VERBATIM` named if it grows | **STILL FIVE. It did not grow.** [M] neither shard 10 nor shard 11 is a verbatim ROM slice, because each packs several disjoint runs — the same accident of packing order W47 §3 explains, and it is luck rather than virtue, stated as such |
+| ROM leak guard intact, `PUBLISH_VERBATIM` named if it grows | **STILL FIVE. It did not grow.** [M] neither shard 10 nor shard 11 is a verbatim ROM slice, because each packs several disjoint runs - the same accident of packing order W47 §3 explains, and it is luck rather than virtue, stated as such |
 
 **AND THE SENTENCE THAT MUST NOT BE OVER-READ.** "100 % laser coverage" here
 means: **over a 3,000-frame playing run at BASE POWER, every record bucket 16
@@ -622,19 +622,19 @@ as "the laser art is complete."**
 ## LOG (appended as findings arrive)
 
 - opened.
-- §1 [M]: the audit's shape reproduces — b2 0.0 %, b16 5.0 %, b0 99.6 %, the
+- §1 [M]: the audit's shape reproduces - b2 0.0 %, b16 5.0 %, b0 99.6 %, the
   f1000–1499 collapse, and **the same 29 bucket-16 addresses**.
 - §1.1 [M]: **THE 29 ARE ONE POWER LEVEL OF FIVE.** The beam's art is
   `$24BB0A` x20 entries x4 frames, and three arithmetic facts pin it:
   `$24B7EA + 20*$28 == $24BB0A`, `$24BB0A + 20*8 == $24BBAA`, `$1E + $A == $28`.
   Entry 0 is exactly the four addresses the audit lists as "3x32".
-- §1.2 [M]: bucket 16 has TWO art families — 4 of the 29 are the beam's, 25 are
+- §1.2 [M]: bucket 16 has TWO art families - 4 of the 29 are the beam's, 25 are
   the SEGMENT handlers' out of `$24A86A..$24B7EA`.
 - §2.2 [M]: `55-diag` §2.2's "38-frame run `$12C7B0..$12D3CC`" is **32** frames.
-- §4.0 [M]: **`.scratch/e4price.mjs` has been wrong since W52** — it reads the
+- §4.0 [M]: **`.scratch/e4price.mjs` has been wrong since W52** - it reads the
   planar delta-coded stream table as interleaved triples, so every
   "0 ALREADY in the sheet" line in W52/W53/W54 was vacuous. Replaced.
-- §7.1 [M]: **a latent crash found and deliberately not fixed** — the beam's
+- §7.1 [M]: **a latent crash found and deliberately not fixed** - the beam's
   blocks for pointer entries 7..19 are in an unexported ROM window hole
   (`$24B900..$24BB0A`), so those states throw loudly rather than drawing wrong.
 - §0 [M]: **THE RESULT. 84.0 % -> 100.0 % of records drawn, 63.1 % -> 0.0 % of

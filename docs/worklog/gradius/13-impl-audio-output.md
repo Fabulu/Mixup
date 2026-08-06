@@ -1,4 +1,4 @@
-# Wave 13 — Give the driver an audio output
+# Wave 13 - Give the driver an audio output
 status: DONE
 wave: 13   role: impl   started: 2026-08-01 (date given in-session)
 
@@ -7,8 +7,8 @@ wave: 13   role: impl   started: 2026-08-01 (date given in-session)
 Wave 8 ported the `$ED02` sound driver STATE-EXACT: the port computes, per frame,
 the exact sequence of `$4000-$400F` writes the cartridge makes, and that sequence
 is a compared field (`apuWrites`, `apuDigest`) over the whole corpus. **Nothing
-listened.** This wave builds the thing that listens — an NES APU synthesiser plus
-a Web Audio path — so the owner can hear it.
+listened.** This wave builds the thing that listens - an NES APU synthesiser plus
+a Web Audio path - so the owner can hear it.
 
 Explicitly out of scope, per the brief and `games/ddpdoj/NOTES-sound.md`: a gate
 comparing emitted PCM against an emulator recording. That claim inherits the
@@ -34,7 +34,7 @@ node --test games/gradius/tests/    318 pass, 0 fail, 0 skipped
 | `games/gradius/src/audio/output.js` | **the only file that touches Web Audio.** One batch of register writes per LOGIC frame goes into a queue; `pump()` turns queued batches into samples and schedules them contiguously on the AudioContext's clock. Autoplay handling, mute, the backlog valve. |
 | `games/gradius/tools/audiohash.mjs` | boots the port headlessly, plays a fixed button script, hashes the samples. The cross-process determinism check, and it re-derives `work.apuDigest` from the write log on every frame. |
 | `games/gradius/tests/audio.test.js` | 27 checks (see below). |
-| `src/state.js` / `src/sound.js` / `src/nmi.js` | `state.apuLog` — the frame's writes kept in ORDER rather than only hashed. Three lines. |
+| `src/state.js` / `src/sound.js` / `src/nmi.js` | `state.apuLog` - the frame's writes kept in ORDER rather than only hashed. Three lines. |
 | `src/main.js` | one batch per logic frame **inside** the catch-up loop; `pump()` once per animation frame, after the picture. |
 | `index.html` | the mute button, the "sound starts on your first key or tap" note, audio numbers in the stats line. |
 | `games/gradius/README.md`, `game.json` | stale text, fixed in the same commit (rule 5). |
@@ -49,11 +49,11 @@ absolute,Y operands naming `$4000-$401F` gives 44 hits and this set of bases:
 $4000 $4001 $4002 $4003 $4007 $4008 $4009 $400C $400E $4014 $4015 $4016 $4017
 ```
 
-No `$4010`, `$4011`, `$4012` or `$4013` anywhere — and several of those 44 are
+No `$4010`, `$4011`, `$4012` or `$4013` anywhere - and several of those 44 are
 data bytes inside sequence streams, not instructions. The only indexed writes
 that could walk into the DMC's registers are the driver's `STA $4000,X` /
 `STA $4003,X` family, and X there is `$F9`, the APU offset, which `$ED3E` only
-ever advances 0, 4, 8, `$0C` — so `$400F` is the highest address reachable.
+ever advances 0, 4, 8, `$0C` - so `$400F` is the highest address reachable.
 
 So **the DMC is not used**, and `write()` THROWS on `$4010-$4013` rather than
 ignoring them. `$4015 = $1F` at `$81AD` does enable the channel; nothing ever
@@ -86,10 +86,10 @@ wave's output: the samples are computed from bytes that were measured against th
 cartridge, not from a second unverified copy of them.
 
 (The register SHADOW could not have been used: it loses the order and it loses
-repeated writes of the same value — and the whole point of `$EF85`'s retrigger
+repeated writes of the same value - and the whole point of `$EF85`'s retrigger
 guard is that writing `$4003` *again* restarts the length counter.)
 
-### Audio timing — the input-granularity problem, on the other side of the loop
+### Audio timing - the input-granularity problem, on the other side of the loop
 
 `13-FINDING-input-granularity-under-load.md` recorded that the frame loop runs up
 to 8 logic frames in one animation-frame callback. For the picture that is
@@ -101,7 +101,7 @@ invisible; for the sound driver it is 8 ticks of `$ED02` in a burst. So:
   contiguously. k frames of logic become k frames of audio played over k frames
   of time.
 * **Nothing runs the other way.** No game-visible value depends on the audio
-  clock or the sample rate — `games/ddpdoj/NOTES-replay.md` constraint 1.
+  clock or the sample rate - `games/ddpdoj/NOTES-replay.md` constraint 1.
 * Past a 15-frame (250 ms) backlog the valve opens: batches are still APPLIED to
   the chip (so envelopes, length counters and the LFSR stay correct) and their
   samples are discarded. The music skips forward rather than drifting further
@@ -109,8 +109,8 @@ invisible; for the sound driver it is 8 ticks of `$ED02` in a burst. So:
 
 **Note left for wave 14 at the same seam in `src/main.js`:** `currentButtons()`
 is still read k times per callback and all k reads return the same word. The fix
-has the same shape as the audio line — one input word per logic frame, from a
-queue — and belongs on the adjacent line. Audio neither depends on it nor blocks
+has the same shape as the audio line - one input word per logic frame, from a
+queue - and belongs on the adjacent line. Audio neither depends on it nor blocks
 it.
 
 ### Autoplay: what the page actually does
@@ -119,7 +119,7 @@ The AudioContext is **not constructed at all** until the first `pointerdown` or
 `keydown` (capture-phase listeners on `window`, so they run before the pad's own
 handlers). Until then the HUD reads *"Sound starts on your first key or tap"* and
 batches are dropped rather than queued, so nothing accumulates. If the browser
-has no Web Audio the note says so. **The game runs at full speed regardless** —
+has no Web Audio the note says so. **The game runs at full speed regardless** -
 audio never gates the simulation. A `♫ sound on` / `♫ muted` button sits beside
 the stats; muting sets the gain to 0 and **keeps the synthesiser running**, so
 unmuting resumes exactly where the music got to instead of restarting a note
@@ -157,8 +157,8 @@ pass 4  logic 0.031   cache-on 1.504   cache-off 2.082
 BEST    logic 0.031   cache-on 1.075   cache-off 1.807   (budget 16.64)
 ```
 
-against a **16.64 ms** budget. So `nmi()` — every subsystem the port has, waves 1
-to 12 — costs well under a millisecond a frame headlessly, and the synthesiser
+against a **16.64 ms** budget. So `nmi()` - every subsystem the port has, waves 1
+to 12 - costs well under a millisecond a frame headlessly, and the synthesiser
 costs one to two. That does not settle the owner's report (the browser also
 renders 61,440 pixels a frame and node is not Chrome), but it does say the
 suspect is not `nmi()`.
@@ -214,7 +214,7 @@ Baseline: 0 failures.
 | B11 the envelope divider period is V-1 | RED |
 | B11b the envelope start flag does not reload the decay to 15 | RED |
 | B12 a DMC write is silently ignored | RED (2 tests) |
-| B13 the frame counter's clocks do not dirty the mix cache | **SURVIVED — see below** |
+| B13 the frame counter's clocks do not dirty the mix cache | **SURVIVED - see below** |
 | B14 a nanovolt of `Math.random()` in the output | RED (3 determinism tests) |
 | B15 the write log misses one register (`$4002`) | RED (5 tests, incl. the digest bridge) |
 | B16 the write log is never filled | RED (5 tests; "this is silence, not audio") |
@@ -223,23 +223,23 @@ Baseline: 0 failures.
 | B19 the AudioContext is built at load, before any gesture | RED |
 | B20 the mute button does not blur itself | RED |
 
-**B13, THE ONE THAT SURVIVED, AND WHY — this is the finding.** Deleting
+**B13, THE ONE THAT SURVIVED, AND WHY - this is the finding.** Deleting
 `dirty = true` at the frame-counter clock leaves stale audio for up to one timer
 period and the test comparing the cached mixer against the uncached one **stayed
 green on the cartridge's own register stream**. The reason is a fact about this
 cartridge, and it is worth writing down:
 
-* `$EDD1` / `$EF2C` write `$4000` with bit 4 (constant volume) SET — **no
+* `$EDD1` / `$EF2C` write `$4000` with bit 4 (constant volume) SET - **no
   envelope in this game ever decays**, so a quarter frame changes nothing;
 * `$EF9B` writes `$4003` with the period's high bits ORed with `$08`
   (`$EF7B ORA #$08`), so the length index is always `1` = **254 half frames**
   ≈ 2.6 s, and no length counter expires inside a compared window;
-* `$EDF9`'s only sweep operand in this data is `$30` — **sweep disabled**.
+* `$EDF9`'s only sweep operand in this data is `$30` - **sweep disabled**.
 
 So on real cartridge data a half or quarter frame never alters a channel's level
 between two timer steps, and the break was genuinely inert. **Closed** by
-constructing the case the cartridge does not provide: `$4000 = $A5` — 50% duty,
-bit 4 CLEAR, i.e. a real envelope decaying 192 times a second — rendered with the
+constructing the case the cartridge does not provide: `$4000 = $A5` - 50% duty,
+bit 4 CLEAR, i.e. a real envelope decaying 192 times a second - rendered with the
 cache and without it and required to be bit-identical. Seen red against B13
 afterwards.
 
@@ -270,11 +270,11 @@ keeps being bitten by.
 Two runs in one process agree; two separate `node` processes agree; and the
 separate process agrees with the in-process computation (so "deterministic" does
 not quietly mean "deterministic inside a test runner"). A different sample rate
-is required to give a DIFFERENT hash — the rate is an input to the answer, not a
+is required to give a DIFFERENT hash - the rate is an input to the answer, not a
 constant, and a hash that ignored it would be a hash of nothing.
 
 No `Math.random`, no clock, no `Math.exp` (the filter coefficients use the RC
-one-pole form, which is `+ * /` and `Math.PI` only — `Math.exp` is not required
+one-pole form, which is `+ * /` and `Math.PI` only - `Math.exp` is not required
 by ECMA-262 to return the same bits on every engine, and this file's whole gate
 is that it does).
 
@@ -290,7 +290,7 @@ is that it does).
   page is under load (that is the backlog valve and the queue).
 * **The intra-frame position of the writes is not modelled.** All of a frame's
   writes are applied at the frame boundary. The justification is measured rather
-  than assumed — this cartridge has no main loop, `$806A`'s NMI handler is the
+  than assumed - this cartridge has no main loop, `$806A`'s NMI handler is the
   whole game, so every APU write in a frame happens inside one handler within a
   few thousand CPU cycles of the frame's start, which is well under one output
   sample at 48 kHz. The ORDER is preserved exactly; only the spacing is not.
@@ -334,7 +334,7 @@ node games/gradius/tools/test-all.mjs                  # the gate
 python -m http.server 8000                             # then /games/gradius/
 ```
 
-`src/audio/apu.js` is the chip and carries almost no ROM addresses on purpose —
+`src/audio/apu.js` is the chip and carries almost no ROM addresses on purpose -
 there is no cartridge code in it. The four cartridge facts it does depend on
 (`$4015 = $1F`, `$4017 = $C0`, no DMC anywhere, the driver's APU offset never
 exceeding `$0C`) are cited at the lines that use them.
@@ -345,14 +345,14 @@ exceeding `$0C`) are cited at the lines that use them.
    are computed in the same function two lines apart, and `audiohash.mjs` checks
    they agree per frame. If a future wave adds an APU write that bypasses
    `apu()`, the digest and the log go wrong TOGETHER and the bridge would not
-   notice — the corpus would, because `apuDigest` is compared against the
+   notice - the corpus would, because `apuDigest` is compared against the
    cartridge, but say out loud that the bridge alone is not enough.
 2. **B13, and what it says about the corpus.** The cartridge's own register
    stream cannot exercise an envelope, an expiring length counter or a sweep.
    That is not a gap in the synthesiser; it is a gap in what any test driven by
    THIS GAME'S data can ever reach, and it is why the constructed case exists.
    Anything else in `apu.js` that only real data would exercise is in the same
-   position — the sweep unit's negate arms are the obvious next candidate and
+   position - the sweep unit's negate arms are the obvious next candidate and
    they are currently covered only by the mute test.
 3. **The backlog valve's numbers.** `MAX_BACKLOG_FRAMES = 15`, `LOOKAHEAD_S =
    0.12`, `CHUNK = 1024`, `START_LATENCY_S = 0.05`. Those are reasoned, not

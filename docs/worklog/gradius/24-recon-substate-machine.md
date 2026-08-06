@@ -1,6 +1,6 @@
-# Wave 24 RECON — the play sub-state machine (jt_$982F) and the $1B ladder
+# Wave 24 RECON - the play sub-state machine (jt_$982F) and the $1B ladder
 
-status: DONE (recon, READ-ONLY — no src/ edits, no commit)
+status: DONE (recon, READ-ONLY - no src/ edits, no commit)
 recon, 2026-08-02
 
 Scope (from the W24 brief): enumerate ALL 16 arms of the play dispatch
@@ -19,8 +19,8 @@ and the recorded cartridge artifacts in `tools/oracle/out/throwaudit-*.json`.
 
 **16 play sub-states; 1 ported; 15 throw.**
 
-- Ported: `$80` → `st_$9A4D` (index 0). Its body — the scroll compare and the
-  "keep playing" path — is live (`src/nmi.js playArm`). Its EXIT, the `$9A56`
+- Ported: `$80` → `st_$9A4D` (index 0). Its body - the scroll compare and the
+  "keep playing" path - is live (`src/nmi.js playArm`). Its EXIT, the `$9A56`
   advance to `$81` (boss page reached), is still a loud throw. So `$80` runs
   for ~2676 frames and then throws on the frame the scroll hits the threshold.
 - Throw: `$81`-`$8F` (indices 1-15). The port's `playArm` refuses any
@@ -36,12 +36,12 @@ OFF the stage-1 clear path (0 hits in the 6000-frame endchain run).
 Of the 15 throwing arms, **4 (`$87`-`$8A` = `$9B3E`/`$9BED`/`$9C12`/`$9C1E`)
 are routines the port ALREADY runs via the intro dispatch** `jt_$96C5`
 (`src/flow.js introStep` → introReset/introPackets/introHud/introMeter). They
-are "ported as routines, throwing as jt_$982F arms" — when the cartridge
+are "ported as routines, throwing as jt_$982F arms" - when the cartridge
 reaches them through `$982A` instead of `$96BE`, the port throws.
 
 ---
 
-## 2. THE DISPATCH MECHANICS — `$83E4`, and why "low nibble" is exact
+## 2. THE DISPATCH MECHANICS - `$83E4`, and why "low nibble" is exact
 
 ```
 982A  A5 1B      LDA $1B          ; A = the whole $1B byte
@@ -54,7 +54,7 @@ and dropped: `$80`→`$00`, `$81`→`$02`, … `$8F`→`$1E`. The result is exac
 `$83E4` then pulls its own return address (the word after the `JSR`, = the
 table base `$982F`), reads the 2-byte target `($98),Y`, and `JMP ($0098)`.
 
-This is why jt_$982F is reached ONLY for `$1B & $F0 == $80` — the `$96A5`
+This is why jt_$982F is reached ONLY for `$1B & $F0 == $80` - the `$96A5`
 ladder (§3) has already peeled off bits 4/5/6 and the `BPL` peels bit-7-clear,
 so the table is only ever indexed 0-15. `$90`+ would read past the table, but
 the ladder sends `$90` to `$96CF` before `$982A` is ever seen.
@@ -74,7 +74,7 @@ in `stagePlay()` (src/nmi.js:316-350):
 |---|---|---|---|---|
 | `$1B & $10` | `$96A5`→`$96CF` | next stage (`INC $19`) | **THROW** |
 | `$1B & $20` | `$96AB`→`$96EF` | DYING (`$4C` countdown → respawn) | **PORTED** (`dyingArm`) |
-| `$1B & $40` | `$96B1`→`$96FB` | GAME OVER / continue | **THROW** (794 exec — §8) |
+| `$1B & $40` | `$96B1`→`$96FB` | GAME OVER / continue | **THROW** (794 exec - §8) |
 | `$1B & $80 == 0` (BPL) | `$96B7`→`$96BE` | stage INTRO (`jt_$96C5`, 5 entries) | **PORTED** (`introStep`) |
 | else (bit 7 set) | `$96BB`→`$982A` | PLAY (`jt_$982F`, 16 entries) | **1 of 16 ported** |
 
@@ -84,16 +84,16 @@ plan's `$96A5` row exactly.
 
 `$96EF` (dying) is live: `$C1D6` (src/collision.js) sets `$1B=$A0`, `$4C`
 counts 120→0, then `$979D` respawns via `$9B3E`. `$96CF` (next-stage) does
-`INC $19`, clears `$39/$3A/$3F` and `$50-$70`, then `$9C3C` sets `$1B=$80` —
+`INC $19`, clears `$39/$3A/$3F` and `$50-$70`, then `$9C3C` sets `$1B=$80` -
 the seamless stage transition (W27). `$96FB` is characterized in §8.
 
 ---
 
-## 4. THE 16-ARM INVENTORY — jt_$982F (`$982F`, line 2532)
+## 4. THE 16-ARM INVENTORY - jt_$982F (`$982F`, line 2532)
 
 Index = low nibble of `$1B`. "hits" = exec-hook count in the 6000-frame
 `throwaudit-endchain.json` run (a script that reached and killed the boss and
-advanced to stage 2 — but it **died and respawned at least once**: 118 frames in
+advanced to stage 2 - but it **died and respawned at least once**: 118 frames in
 the `$A0` dying state). 0 = not reached by that one run, NOT absent.
 
 | idx | `$1B` | target | role | hits (endchain) | status |
@@ -117,7 +117,7 @@ the `$A0` dying state). 0 = not reached by that one run, NOT absent.
 
 ---
 
-## 5. THE MEASURED `$1B` TIMELINE — confirmed to the frame
+## 5. THE MEASURED `$1B` TIMELINE - confirmed to the frame
 
 Read out of `tools/oracle/out/throwaudit-endchain.json` (6000-frame cartridge
 run, hooks on every arm + a `$1B` gate histogram). This is the W24 done-when
@@ -139,21 +139,21 @@ $90   ->96CF   1             4235                    next stage (leaves jt_$982F
 The `$1B` gate histogram (`001B`) from the same run has **14 keys** summing to
 exactly 6000 frames. The 8 *gameplay* keys are
 `{128:2676, 129:1, 130:768, 131:1, 132:512, 133:1101, 134:513, 144:1}`
-(128=`$80`, … 134=`$86`, 144=`$90`) — **5573 of 6000 frames**. The other 6 keys
+(128=`$80`, … 134=`$86`, 144=`$90`) - **5573 of 6000 frames**. The other 6 keys
 are NOT part of the clean playthrough: `$1B`=0,1,2,3,4 (boot/intro, **309 frames**
-total) and `$1B`=160 (`$A0`, the DYING state, **118 frames**) — i.e. the run died
+total) and `$1B`=160 (`$A0`, the DYING state, **118 frames**) - i.e. the run died
 and respawned at least once. The 8 keys above are the gameplay timeline only;
 they are **not** 14-of-14 agreement and must not be presented as such (this is
-the same species of overclaim as the "7 of 8" denominator — corrected here per
+the same species of overclaim as the "7 of 8" denominator - corrected here per
 supervisor review).
 
 - **The 768-frame `$82` countdown is EXACT.** `$82` = `$9A35[$17] × 256`. This
   run is unpowered: `$17` (rank) = 1 throughout the countdown, `$9A35[1]=$03`,
   3×256 = **768**. CONFIRMED. (A powered run at rank 4 would be `$9A35[4]=$05`
-  = 1280 frames — the countdown is rank-indexed, so W24's done-when is exact
+  = 1280 frames - the countdown is rank-indexed, so W24's done-when is exact
   only at the measured rank row, as the plan §6 warns.)
 - **The 512-frame `$84` is EXACT.** 512 frames at the 0.5 px/frame scroll rate
-  = 256 px = exactly one page — the boss-page approach scroll.
+  = 256 px = exactly one page - the boss-page approach scroll.
 - **`$85` is the boss fight** (1101 frames here). It exits via the boss-death
   `INC $1B` (`$85`→`$86`), NOT via the `$997E` handler itself (which has no
   `$1B` write). That INC belongs to the boss death chain (W26, `$B914`). This
@@ -165,7 +165,7 @@ end page `$0E` (`$98FD[0]`), which is what unblocks `$86`→`$90`.
 
 ---
 
-## 6. THE DEAD `$997E` FALL-THROUGH — structural, not just empirical
+## 6. THE DEAD `$997E` FALL-THROUGH - structural, not just empirical
 
 `st_$997E` ($85) is two instructions:
 ```
@@ -177,24 +177,24 @@ The brief records "firing 0 times in 1101 opportunities" and says do NOT
 implement the fall-through. The endchain run reproduces that (1101 `$85`
 frames, 0 fall-throughs). **The listing says why it is dead, not just that it
 is**: `$5B` is zeroed EVERY mode-5 frame at `$9658` (`STA $5B`, line 2221)
-BEFORE the `$96A5` ladder — and therefore before `$997E` runs. So at the `INC`,
+BEFORE the `$96A5` ladder - and therefore before `$997E` runs. So at the `INC`,
 `$5B` is always 0 → becomes 1 → `BNE` (test ≠ 0) is ALWAYS taken. The
 fall-through requires `$5B` to wrap `$FF`→`$00` on the `INC`, which is
 impossible when `$5B` was just cleared to 0 by `$9658`. Every entry to `$997E`
 passes through `$9658` (`$982A` is only reached from the bit-7 ladder arm,
 which is downstream of `$9650`-`$965A`), so this is an ABSENCE proof from the
 listing, not just a 0/1101 sample. **MUST-CONFIRM (implementer):** this proof
-rests on ONE line — `$9658 STA $5B` (line 2221) zeroing `$5B` every mode-5
+rests on ONE line - `$9658 STA $5B` (line 2221) zeroing `$5B` every mode-5
 frame. Confirm that instruction and that it sits on the mode-5 path
 unconditionally BEFORE relying on the dead-branch claim; until confirmed, treat
 the `$997E` fall-through as "not observed in 1101 frames", not "structurally
 dead". Recorded as a DEAD branch per the brief (conditional on the confirm).
 
 (If `$5B` were NOT per-frame-cleared, the fall-through would re-fire `$9982`
-every 256 frames and re-spawn the boss-page intro — the plan §6 "respawns the
+every 256 frames and re-spawn the boss-page intro - the plan §6 "respawns the
 boss every 256 frames" hazard. It does not, because of `$9658`.)
 
-## 7. THE DESPAWN SWEEP `$994A` — keep the `$3E >= $D0` guard
+## 7. THE DESPAWN SWEEP `$994A` - keep the `$3E >= $D0` guard
 
 `sub_$994A` (line 2709), called from `$9982`'s `BEQ $99BA` (when `$3F ==` the
 threshold page) and from `$9904`'s `$1C==$93` arm (`JSR $994A` at `$9923`):
@@ -210,28 +210,28 @@ threshold page) and from `$9904`'s `$1C==$93` arm (`JSR $994A` at `$9923`):
 - **KEEP the `$3E >= $D0` guard** (`$994C CPX #$D0 / BCC`): the despawn only
   runs in the last ~¼ of each scroll page. `$3E` is the scroll LOW byte; at
   0.5 px/frame the sweep is armed for the tail of `$84`.
-- **The immediate `$5E = $3F`** is set at `$99B3` (`A9 3F LDA #$3F` — the
+- **The immediate `$5E = $3F`** is set at `$99B3` (`A9 3F LDA #$3F` - the
   CONSTANT `$3F`, not the register) on the `$84`→`$85` transition, seeding the
-  despawn cursor. (`$5E` has two writers — `$99B5`, `$9C0F` — and zero readers
+  despawn cursor. (`$5E` has two writers - `$99B5`, `$9C0F` - and zero readers
   in the PRG; it is the sweep's own cursor, confirmed by `src/flow.js:155`.)
 
-## 8. THE GAME-OVER ARM `$96FB` — 794 executions, confirmed
+## 8. THE GAME-OVER ARM `$96FB` - 794 executions, confirmed
 
 Re-summed here from ALL 11 `throwaudit-*.json` recordings (50,100 frames
-total): **`$96FB` executes 794 times** — 397 in `deep-survivor` (first@3380) +
+total): **`$96FB` executes 794 times** - 397 in `deep-survivor` (first@3380) +
 397 in `deep-autofire` (first@3968). `$97F1` (lives went negative) executes 2
 times. This is the nmi.js comment's "794 executions, first at frame 3380",
 reproduced byte-for-byte from the artifacts. It is the highest-traffic
 unported arm in the whole port: two ordinary "lose three lives" runs each sit
 in `$96FB` for ~400 frames. `$96FD` gates both the timeout and START on `$B0`
-(pulse-1's duration counter, src/sound.js — "wait until the game-over jingle
+(pulse-1's duration counter, src/sound.js - "wait until the game-over jingle
 finishes"); neither the timeout arm nor the continue screen is ported.
 
 ---
 
 ## 9. FALL-THROUGHS FOUND IN THIS REGION (read past every one)
 
-1. **`$997E` → `$9982` (the `$85`→`$84` fall-through): STRUCTURALLY DEAD** —
+1. **`$997E` → `$9982` (the `$85`→`$84` fall-through): STRUCTURALLY DEAD** -
    §6. The famous one; not implemented, never will be.
 2. **`$9BED` → `$9BF0`: REAL.** `st_$9BED` is just `JSR $83AB` then control
    drops into `sub_$9BF0` (the stage-banner display: `LDA #$10 / JSR $85E8`,
@@ -244,7 +244,7 @@ finishes"); neither the timeout arm nor the continue screen is ported.
 Convergence points that are NOT fall-through traps (verified): `$99C0`→`$99D3`,
 `$9A0E`→`$9A25`, `$9982`'s two `JMP $9A5E` exits, `$9904`'s branches to
 `$9947 JMP $9A5E`. Every routine in the table ends in `JMP $9A5E`/`JMP $9A5B`
-or `RTS`/`JMP` — no other accidental drop-into-the-next-routine besides the
+or `RTS`/`JMP` - no other accidental drop-into-the-next-routine besides the
 two above.
 
 ---
@@ -269,27 +269,27 @@ stage end at `$0E`×256 = **3584 px** (the `$86`→`$90` advance fired at f4235,
 camera at `$0E00`).
 
 **EXPORT STATUS (checked against every `assets/**/*.json`):**
-- `$9A3D` (boss-page thresholds, **8 bytes** — proven by `$9A45` abutting at
+- `$9A3D` (boss-page thresholds, **8 bytes** - proven by `$9A45` abutting at
   `$9A35+16`; the byte column and `assets/manifest.json` both show
-  `[12,12,12,12,11,11,12,2]`, 8 entries) — EXPORTED as `stage.bossPage` in
+  `[12,12,12,12,11,11,12,2]`, 8 entries) - EXPORTED as `stage.bossPage` in
   `assets/manifest.json` (`values [12,12,12,12,11,11,12,2]`) and carried
   per-stage in `assets/terrain/stages.json`; the port already reads it as
   `res.stage.bossPage`.
-- `$98FD` (stage-end thresholds — **byte count UNCONFIRMED**: the read shows 7
+- `$98FD` (stage-end thresholds - **byte count UNCONFIRMED**: the read shows 7
   (`0E 0E 0E 0E 0D 0C 0D`) but `$9A3D`'s labeled "7" was really 8, so VERIFY what
   abuts `$98FD`; if it is 8, the last stage's end-threshold read shifts by an
-  entry) — EXPORTED as `stage.endPage` in `assets/manifest.json`. (Not yet read by
-  the port — `$86`/`$9904` is a throw
-  — but the data is in the tree.)
-- `$9A35` (the rank-countdown half, first 8 bytes) — **NOT EXPORTED.** W24
+  entry) - EXPORTED as `stage.endPage` in `assets/manifest.json`. (Not yet read by
+  the port - `$86`/`$9904` is a throw
+  - but the data is in the tree.)
+- `$9A35` (the rank-countdown half, first 8 bytes) - **NOT EXPORTED.** W24
   must add it; this is the load-bearing data for the `$82` countdown.
-- `$9A45` (next-state, 8 bytes all `$81`) — **NOT EXPORTED**, but trivially
+- `$9A45` (next-state, 8 bytes all `$81`) - **NOT EXPORTED**, but trivially
   the constant `$81` for every stage (verified from the ROM); a literal is
   honest, an export is cheaper to defend.
 
 So `$9A3D` is the one case where a single 16-byte ROM block is split across
 two names: its tail is exported (`stage.bossPage`), its head (`$9A35`, rank
-countdown) is not. This is not a defect in W21 — the head had no reader in the
+countdown) is not. This is not a defect in W21 - the head had no reader in the
 port until W24's `$82`.
 
 ---
@@ -313,7 +313,7 @@ port until W24's `$82`.
   boss death chain itself (out of W24 scope).
 - **`$8B`/`$8C`/`$8D`** (`$988C`/`$98DD`/`$98E5`): 0 hits in the endchain
   run; roles inferred from the listing only. `$8D` (`$98E5`) sets `$1B:=0` and
-  jumps to `$9B3E` — a reset-to-intro. They are off the stage-1 clear path.
+  jumps to `$9B3E` - a reset-to-intro. They are off the stage-1 clear path.
 
 ---
 
@@ -345,10 +345,10 @@ Tables: `$9A3D` and `$98FD` are already exported (`stage.bossPage` /
 `$81`. See §10 for the per-table export status.
 
 **MUST-CONFIRM before/while porting (carried from supervisor review):**
-(a) `$9658 STA $5B` zeroes `$5B` every mode-5 frame — the `$997E`-dead absence
+(a) `$9658 STA $5B` zeroes `$5B` every mode-5 frame - the `$997E`-dead absence
 proof (§6) rests on this one line; confirm the instruction and that it is on the
 mode-5 path unconditionally before relying on it.
-(b) `$98FD`'s byte count — confirm 7 vs 8 (§10); if 8, the stage-end threshold
+(b) `$98FD`'s byte count - confirm 7 vs 8 (§10); if 8, the stage-end threshold
 read shifts by an entry.
-(c) The `$1B` histogram is 14 keys, not 8 (§5) — the run died at least once;
+(c) The `$1B` histogram is 14 keys, not 8 (§5) - the run died at least once;
 quote all 14 or name the omitted 6, never present 8 of 14 as full agreement.

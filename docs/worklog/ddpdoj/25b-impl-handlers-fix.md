@@ -1,4 +1,4 @@
-# W25b — HANDLER FAITHFULNESS + HONESTY FIX-PASS (the W25 review findings)
+# W25b - HANDLER FAITHFULNESS + HONESTY FIX-PASS (the W25 review findings)
 
 status: **DONE.**
 wave: 25b (a focused fix-pass on W25; NOT the firing wave)

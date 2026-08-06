@@ -1,9 +1,9 @@
-# QA (adversarial) for gradius wave 5 — death, respawn, checkpoint; un-truncate the corpus
+# QA (adversarial) for gradius wave 5 - death, respawn, checkpoint; un-truncate the corpus
 status: DONE
 wave: 5   role: qa   started: 2026-07-29   commit under review: `0ac07d4`
 
 ## The task, as I understood it
-Adversarial review of `0ac07d4`. READER — no `src/` edits in the working tree, no
+Adversarial review of `0ac07d4`. READER - no `src/` edits in the working tree, no
 commits. NARROWED remit: the fast gate, plus only the oracle scenarios wave 5
 touches; read the diff against ROM bytes; break >= 2 of the wave's new checks and
 watch them go red; and enumerate explicitly WHAT I DID NOT RE-RUN.
@@ -15,7 +15,7 @@ source/commit-message claim that is measurably false.
 
 ## What I MEASURED
 
-### 1. The gate — I ran it, it is green, 0 stages skipped
+### 1. The gate - I ran it, it is green, 0 stages skipped
 
 ```
 $ node --test games/gradius/tests/
@@ -39,7 +39,7 @@ $ node tools/build-dist.mjs
 The implementer's headline numbers reproduce exactly on my run. The "6 fields
 SKIPPED" are the pre-existing emulator-only probe fields, not a wave-5 regression.
 
-### 2. I re-recorded the oracle side for the four wave-5 scenarios — byte-identical
+### 2. I re-recorded the oracle side for the four wave-5 scenarios - byte-identical
 
 ```
 $ python games/gradius/tools/oracle/scen.py --only terrain-death terrain-death-miss right-wall intro-respawn
@@ -64,11 +64,11 @@ $ python games/gradius/tools/oracle/kill.py --frames 640 --script "200:,10:S,190
 ```
 `idx=179` = `$B3`, `shift=4` -> mask `$30`, `$10 & $30 != 0`. Confirmed.
 
-### 4. ROM bytes vs the diff — `dis6502.py linear`, every routine the wave claims
+### 4. ROM bytes vs the diff - `dis6502.py linear`, every routine the wave claims
 
 `$BFDA-$BFE1 = 10 20 30 10 | 10 20 30 02` and `$C0FA-$C100 = 2D 2E 2F 30 30 00 00`
 read straight off `Gradius (USA).nes`, and `games/gradius/assets/collision/tables.json`
-carries exactly those 15 bytes (and is gitignored — `.gitignore:22 assets/`).
+carries exactly those 15 bytes (and is gitignored - `.gitignore:22 assets/`).
 
 Checked instruction by instruction and found FAITHFUL: `$BFE2/$C047/$C049/$C04B/$C052`
 (nine iterations, the `$5C >= 2` RTS, the JMP tail), `$C0C7/$C0CC` (the dying gate),
@@ -95,13 +95,13 @@ post-death intro frames ($1B in 1..4 after f500)         : 100 + 25 (intro-respa
 ```
 823 matches the commit message exactly. So does the "$3F is 0 at every death" claim.
 
-### 6. Deliberate breaks — 22 of them, run on a scratch copy of the port
+### 6. Deliberate breaks - 22 of them, run on a scratch copy of the port
 
 Method: `games/gradius` copied to the scratchpad (src/tests/assets/tools + the
 `out/scen` artifacts), one anchored single-occurrence edit at a time, then
 `compare.mjs --only right-wall,terrain-death,terrain-death-miss,intro-respawn,idle,lr-both,speed6-right,diag-ru-ld,enemy-waves`
 (9 scenarios, **3223 frames, baseline 0 failures**) plus the whole unit suite, then
-restore. **The tracked working tree was never edited** — `git diff --stat -- games/gradius`
+restore. **The tracked working tree was never edited** - `git diff --stat -- games/gradius`
 is empty and was checked after every batch.
 
 | break | corpus | units |
@@ -147,16 +147,16 @@ is empty and was checked after every batch.
 implementer correctly documented as dead-and-unfalsifiable. Measured: deleting
 `clearAhead(state)` from `respawn()` is green on 3223 corpus frames and green on
 the whole unit suite. The `$9C09` fall-through from `introPackets()` IS live and IS
-tested (`flow-unwitnessed.test.js` #75 goes red) — that half of the claim holds.
+tested (`flow-unwitnessed.test.js` #75 goes red) - that half of the claim holds.
 
 ### 8. Coverage, proportional to the content
 
 Counting what the wave ported: ~39 distinct ROM behaviours in `src/collision.js` +
 `respawn()`/`clearAhead()`. **Corpus-exercised: 12.** Unit-only: 19.
-**No check of any kind: 6** — `$97AF STA $26,X`, `$97BF STA $28,X`, `$97C5-$97DB`
+**No check of any kind: 6** - `$97AF STA $26,X`, `$97BF STA $28,X`, `$97C5-$97DB`
 (the two-player switch), `$97EB JSR $9C09`, `$C125 BCC $C136`, and the
 `$C2A5/$C2B0/$C2F8` per-stage arms (`$19 == 2` odd-frame gate, `$19 == 4` RTS,
-`$19 == 2` tail RTS — `$19` is 0 on every frame of every scenario and no unit test
+`$19 == 2` tail RTS - `$19` is 0 on every frame of every scenario and no unit test
 sets it).
 
 Of those six, `$C125` and the player switch are **provably no-ops** on this port
@@ -179,10 +179,10 @@ the cell but is not part of the gate.
 
 ### 10. Smaller things
 
-* `src/collision.js:348` — `*   C20A  A2 09 / 86 A8` and `:367 // $C20C STX $A8`.
+* `src/collision.js:348` - `*   C20A  A2 09 / 86 A8` and `:367 // $C20C STX $A8`.
   ROM is `C20A A9 09 LDA #$09 / C20C 85 A8 STA $A8`. Same at `:194` for `$C101`
   (`A9 09 / 85 A8`, the comment says "X ="). Comment-only.
-* `scenarios.json` `intro-respawn.why`: "Aligned at 614 because `$979D` is wave 5 —
+* `scenarios.json` `intro-respawn.why`: "Aligned at 614 because `$979D` is wave 5 -
   seeding one frame earlier would put the port on the arm that throws." `$979D` is
   ported now and that arm no longer throws; the sentence is stale (rule 6). Not
   load-bearing: `right-wall`, `terrain-death` and four others compare f614/f622 in
@@ -190,13 +190,13 @@ the cell but is not part of the gate.
 * `probeCollision()` returns the mask *normalised* (`(byte >> shift) & 3`) where
   `$C40B AND $C40F,Y` returns the byte *masked in place* (`$10`, not `1`). Equivalent
   for `$C2BF BEQ` (the only caller) and for `$C2CF`'s own shift loop, so this is a
-  modelling choice, not a defect — but it is undocumented at the function.
+  modelling choice, not a defect - but it is undocumented at the function.
 * `$C3D3`'s `CLC / ADC #$08 / ADC $3E` is a two-add chain; `probeCollision()` computes
   `u8(screenX + 8)` first and drops the carry out of the first add. Unreachable
-  (player X clamp is [16,240], so `screenX + 8 <= 248`), so not a defect — but it is
+  (player X clamp is [16,240], so `screenX + 8 <= 248`), so not a defect - but it is
   a boundary the port cannot be driven to and nothing says so.
 * `$A0-$A8` are written on every frame by `$C105`, `$C20E`, `$C3D3` and by every
-  loop in the wave, and **none of them is in `scenarios.json`'s watch list** — so
+  loop in the wave, and **none of them is in `scenarios.json`'s watch list** - so
   every `state.spawn.zA8 = ...` in `src/collision.js` is unfalsifiable by the corpus.
   The iteration counts themselves were measured by exec hook, which is the right
   evidence; the stores are not.
@@ -221,7 +221,7 @@ the cell but is not part of the gate.
    `terrain-death-miss`, `right-wall`, `intro-respawn` (byte-identical). The other
    19 artifacts are the implementer's 19:04-19:11 recordings. A regression there
    would look like: a stale artifact recorded before `$0A` joined the watch list
-   (would surface as a missing-field crash, not silence), or a Mesen/ROM mismatch —
+   (would surface as a missing-field crash, not silence), or a Mesen/ROM mismatch -
    both loud. Low risk, but unmeasured by me.
 2. **`compare.mjs` on 14 of the 23 scenarios for the BREAK runs.** My break subset was
    9 scenarios / 3223 frames: right-wall, terrain-death, terrain-death-miss,
@@ -263,4 +263,4 @@ The scratch harness is `<scratchpad>/brk.py` + `<scratchpad>/g5` (a copy of
 tree inherits from the repo root). `python brk.py <break-name>` applies one anchored
 edit, runs the 9-scenario compare and the unit suite, and restores. Baseline in that
 copy: corpus 9/3223/0 failures; units 179 pass / 5 fail (the 5 are touch-pad tests
-that need files outside `games/gradius` — ignore them, read the DELTA).
+that need files outside `games/gradius` - ignore them, read the DELTA).

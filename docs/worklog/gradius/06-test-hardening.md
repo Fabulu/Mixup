@@ -1,4 +1,4 @@
-# Wave 6 test hardening — closing the breaks that passed in the kill chain
+# Wave 6 test hardening - closing the breaks that passed in the kill chain
 status: DONE
 wave: 6   role: test   started: 2026-07-29
 
@@ -24,7 +24,7 @@ of which **22 passed**).
 1. Re-derived every ROM fact I was going to pin, out of `Gradius (USA).nes`
    directly (file offset `16 + addr - $8000`), not through `export_assets.py`.
 2. Built an isolated mutation harness in the scratchpad (`t6/`, a copy of
-   `src/`, `tests/`, `assets/`, `index.html`, `game.json`) — **I did not edit
+   `src/`, `tests/`, `assets/`, `index.html`, `game.json`) - **I did not edit
    `games/gradius/src/` at any point**.
 3. Wrote `games/gradius/tests/weapons-unwitnessed.test.js`, 17 tests.
 4. Corrected two false claims inside `games/gradius/tests/weapons.test.js`
@@ -69,10 +69,10 @@ Every one of these agrees with what wave 6 shipped. The two carry fall-throughs
 in `$C3AF` (+4 and +$0B) I re-derived a third time, independently of the
 reviewer.
 
-### The `$2A` defect, re-measured (reviewer's moderate finding — CONFIRMED)
+### The `$2A` defect, re-measured (reviewer's moderate finding - CONFIRMED)
 
 The cartridge's own initialiser sets `$2A = $2B = $01` (above), and all **28**
-recorded artifacts agree — decoded straight out of `tools/oracle/out/scen/*.json`
+recorded artifacts agree - decoded straight out of `tools/oracle/out/scen/*.json`
 by base64ing `seedRam`:
 
 ```
@@ -88,7 +88,7 @@ Side result, against the implementer's report and for QA: **`$17` is 0 in all 28
 seeds**, not 1. The implementer's "the autofire pokes make the cartridge's
 `$17` = 1" is not supported by any artifact.
 
-### The enemy box class `$0460,Y` (QA finding 4 — CONFIRMED, and it is worse)
+### The enemy box class `$0460,Y` (QA finding 4 - CONFIRMED, and it is worse)
 
 Decoded every artifact's every row:
 
@@ -97,7 +97,7 @@ Decoded every artifact's every row:
 w_0460 .. w_0469  ->  1 distinct value each: {0}
 ```
 
-(`w_046C`-`w_0475` DO vary, 0..64 — those are `$046C + j`, the damage counter,
+(`w_046C`-`w_0475` DO vary, 0..64 - those are `$046C + j`, the damage counter,
 a different index of the same array. That is what makes this easy to get wrong.)
 
 So `$C028 CMP $BFDE,X` has only ever read entry 0 in 9062 compared frames, and
@@ -114,14 +114,14 @@ $B927  A9 03 9D 60 04   class 3   (       : $010C,X = $90)
 $C6AE  A9 01 9D 60 04   class 1
 ```
 
-`$BFDE[3] = $02` — a two-pixel-tall box. The first wave that ports an armoured
+`$BFDE[3] = $02` - a two-pixel-tall box. The first wave that ports an armoured
 enemy will exercise this index for real, and until this commit nothing in the
 tree could tell `$BFDE` from `$BFDA` (they differ only at entry 3) or from the
 constant `$10`.
 
 ### Why the corpus cannot see the terrain arms
 
-Not "the map is empty" — stage 1's block library holds 33 blocks with non-zero
+Not "the map is empty" - stage 1's block library holds 33 blocks with non-zero
 collision (`assets/terrain/stages.json`). The measured reason is already in the
 repo and I re-read it rather than re-deriving it: `scenarios.json`'s own
 `terrain-death` entry records that **stage 1 pages 0-3 contain zero solid tile
@@ -138,13 +138,13 @@ proves poking works end to end. See "What I could not do".
 ### A measurement I threw away
 
 I built a port-side probe counter (`<scratchpad>/probecount.mjs`) to count
-non-zero terrain probes over the five autofire windows. It reported 0 — but it
+non-zero terrain probes over the five autofire windows. It reported 0 - but it
 also reported **0 live shot-slot samples over 600 frames of held A**, where the
 cartridge artifact `autofire-normal` shows `w_0123` occupied on **247 of 600**
 frames. So my harness was not reproducing the corpus's play state from
 `bootState()` and its numbers are worthless. Discarded rather than quoted.
 
-### The mutation table — 30 breaks, 30 RED
+### The mutation table - 30 breaks, 30 RED
 
 Driver: `python <scratchpad>/w6mut.py`. Each row: mutate one line of the scratch
 copy, run
@@ -213,28 +213,28 @@ $ node games/gradius/tools/test-all.mjs
 222 -> **239** unit tests, **0 skipped**. The "6 fields SKIPPED" line is
 FIELD-level and pre-existing (porttrace NOT_PRODUCED); stage skips are 0.
 
-## Findings against wave 6 (I may not fix these — they are src/)
+## Findings against wave 6 (I may not fix these - they are src/)
 
-1. **MODERATE — `$2A` is seeded `$02`, the cartridge says `$01`.** Reviewer's
+1. **MODERATE - `$2A` is seeded `$02`, the cartridge says `$01`.** Reviewer's
    finding, re-measured by me two ways above. `src/main.js` `bootState()` and
    `introEntryState()`. Pinned as a knownFail that retires itself.
-2. **MODERATE — `src/collision.js`'s `$C011` paragraph is wrong.** It says
+2. **MODERATE - `src/collision.js`'s `$C011` paragraph is wrong.** It says
    `$C055`'s own `BPL $C0B7` "consumes it", presenting it as a live alternative
    branch. It is unreachable: `$C055` has one caller (`$C02D`), reached only when
    `$C014 BPL` was NOT taken, Y is unchanged in between, and `$C055`'s first two
    instructions re-test the same byte with the same Y. QA found it; I re-read the
    ROM bytes and agree. The port's transcription is faithful, the comment is not.
    (I corrected the *test* that repeated the claim.)
-3. **MINOR — four `iters !== N` assertions are tautologies, and one comment lies
+3. **MINOR - four `iters !== N` assertions are tautologies, and one comment lies
    about it.** `src/weapons.js` `fireWeapons` says it "asserts the range rather
    than reading past slot 5 / 8 / 11 in silence". MEASURED: `$45 = 3` does not
-   throw and writes object slot 6 — the exact aliasing the comment claims to
+   throw and writes object slot 6 - the exact aliasing the comment claims to
    prevent. Same shape in `missileLoop` (`iters !== 3`), `shotLoop`
    (`iters !== 6`) and wave 5's `shotSweep` (`iters !== 9`). Only
    `shotVsEnemies`' is real, because `$A9` is written by `$C0BB`.
    docs/knowledge/03 shape 1. Pinned by a test that goes red if a real guard is
    ever added, so at least the behaviour cannot drift silently.
-4. **INFORMATIONAL — the implementer's `$17 = 1` claim is unsupported.** All 28
+4. **INFORMATIONAL - the implementer's `$17 = 1` claim is unsupported.** All 28
    seeds read `$17 = 0`. The conclusion (safe today) still holds; the reasoning
    given for it does not. `0017` still needs to join `watch` in wave 7.
 
@@ -250,7 +250,7 @@ FIELD-level and pre-existing (porttrace NOT_PRODUCED); stage skips are 0.
   purpose: a check that claimed to catch it would be decoration. Recorded in the
   new file's header so the next agent does not re-open it.
 * **`shotProbe`'s `x >= 6 ? 4 : 0` is unreachable in the port and that is
-  structural, not a gap.** `$C3AF` is one ROM subroutine with two callers —
+  structural, not a gap.** `$C3AF` is one ROM subroutine with two callers -
   `$C2CA` (X = 5..0, the shots) and `$A182` (X = 8..6, the missiles). The port
   gave the missile caller its own inline copy, so the shared function's missile
   arm is dead code. The observable case is the inline copy, and that is what
@@ -263,7 +263,7 @@ FIELD-level and pre-existing (porttrace NOT_PRODUCED); stage skips are 0.
   written; a test would have to invent a state the game cannot be in
   (docs/knowledge/02 trap 4 shape 2).
 
-### THE CORPUS FIX — recorded, and it works
+### THE CORPUS FIX - recorded, and it works
 
 Two scenarios added to `tools/oracle/scenarios.json` and recorded from the
 cartridge with `scen.py --only missile-wall missile-wall-miss`. **No existing
@@ -282,7 +282,7 @@ the floor clamp at (80, `$C0`), `$A26B` re-fires a born-dead missile at
 (`$50`, `$C6`) every frame, `$C3AF` probes it at `Y + 4` = `$CA` and `$A18B`
 probes again at (`$58`, `$C2`). `(Y + $14) >> 3` puts `$CA` in row 27 and both
 `$C2` and the ship's own `$C0` in row 26, and `tileRow >> 2` puts rows 24-27 in
-ONE byte — so the missile's first probe and the SHIP's probe read the same byte
+ONE byte - so the missile's first probe and the SHIP's probe read the same byte
 in different 2-bit fields. `$05EE = $40` is field 3 set, field 2 clear: the
 missile hits, the ship does not die. `$05F6 = $10` is field 2 eight columns on:
 the second probe hits too, so `$A199`'s BNE takes the WALL arm and not the
@@ -296,8 +296,8 @@ frames where the two differ: 611..617, and the only game field is
   w_0329:  200 -> 198       ($A1D6 frees the missile BEFORE $A1AF's fly step)
 ```
 
-Both scenarios then die by terrain at f618 — the camera carries the ship's own
-column onto `$05F6` — identically, so the pair stays exact. 82 dying frames each,
+Both scenarios then die by terrain at f618 - the camera carries the ship's own
+column onto `$05F6` - identically, so the pair stays exact. 82 dying frames each,
 declared as `expectDying`.
 
 **The port matches the cartridge on both, 598 of 598 frames, all TIER 1 fields
@@ -309,9 +309,9 @@ offsets are now corpus-verified rather than merely unit-tested.
 
 | mutation | old corpus (28 scen.) | new pair |
 |---|---|---|
-| M3 second probe offsets swapped | green | **RED** — the port throws `$A19E` |
-| M4 second probe drops the `-8` in Y | green | **RED** — throws `$A19E` |
-| M5 second probe drops the `+8` in X | green | **RED** — throws `$A19E` |
+| M3 second probe offsets swapped | green | **RED** - the port throws `$A19E` |
+| M4 second probe drops the `-8` in Y | green | **RED** - throws `$A19E` |
+| M5 second probe drops the `+8` in X | green | **RED** - throws `$A19E` |
 | M6 wall arm does not free the missile | green | **RED**, 5 divergent fields |
 | M25 `freeMissile` drops `$0163,X` | green | **RED**, 16 divergent fields |
 | M26 `freeMissile` drops `$0123,X` | green | **RED**, 16 divergent fields |
@@ -321,7 +321,7 @@ offsets are now corpus-verified rather than merely unit-tested.
 
 **M7/M8 are structurally invisible to this pair and no poke can fix it.** With
 the ship on the floor clamp the missile is always born at `$C6`, so the probe is
-at `$C9`/`$CA`/`$CB` — and `(Y + $14) >> 3` maps 196..203 to row **27** for every
+at `$C9`/`$CA`/`$CB` - and `(Y + $14) >> 3` maps 196..203 to row **27** for every
 one of them. To separate `+3` from `+4` the probe's Y must cross a row boundary,
 i.e. the ship must sit at `Yp ≡ 2 (mod 8)`, which the floor clamp (`$C0`, 0 mod
 8) forbids. A future scenario would have to park the ship one or two pixels above
@@ -349,7 +349,7 @@ offset is the unit test `$C3BB: ... pinned from BOTH sides` (M7/M8 red there).
 The corpus fix is DONE (see above). What is left, in the order I would do it:
 
 1. **Fix `$2A`** in `src/main.js` (both sites) and delete the `knownFail`
-   wrapper — it will tell you loudly when you have.
+   wrapper - it will tell you loudly when you have.
 2. **`0017` into `watch`**, as wave 6's implementer, reviewer and QA all say.
    All 28 seeds read 0; nothing can contradict a mid-window change today.
 3. **A scenario that parks the ship at `Yp ≡ 2 (mod 8)`** with `$41 = 1`, so the
@@ -361,7 +361,7 @@ The corpus fix is DONE (see above). What is left, in the order I would do it:
 
 ---
 
-## APPENDIX — the corpus fix as it was SPECIFIED before it was recorded
+## APPENDIX - the corpus fix as it was SPECIFIED before it was recorded
 
 Kept because the derivation is the reusable part, and because the numbers below
 were written down BEFORE the cartridge was asked, which is what makes the
@@ -384,7 +384,7 @@ The geometry, worked out from `probeCollision()` and confirmed against the ROM:
 
 So one byte with **field 3 set and field 2 clear** gives the missile a hit and
 the ship a miss (no `$C2C1` death), and a second byte 8 px to the right with
-**field 2 = 1** (1, not 2 — 2 is `$C2DC`, the unported wall break) turns the
+**field 2 = 1** (1, not 2 - 2 is `$C2DC`, the unported wall break) turns the
 crawl into the wall. Proposed:
 
 ```
@@ -394,7 +394,7 @@ poke  : "0041=1,<cellA>=<v>,<cellB>=<v>"
 ```
 
 with `<cellA>`/`<cellB>` derived from the ship's parked X the same way `kill.py`
-derived `$05B3` for `terrain-death` — **derive them by driving the cartridge,
+derived `$05B3` for `terrain-death` - **derive them by driving the cartridge,
 not from this note**, and record a `-miss` control one field lower exactly as
 `terrain-death-miss` does. Expected first divergence for a broken port:
 `w_0129`/`w_0169` (the missile slot) on the first frame the missile is at `$C6`.
@@ -406,7 +406,7 @@ part:
   wrong for an interesting reason: those two are already 0 at the sample point on
   every frame of this window, because the missile is born dead and freed by the
   `$C8` floor test anyway. The field that actually moves is **`w_0329`**, the
-  missile's Y — `$A1D6` frees it BEFORE `$A1AF`'s step, so it reads `$C6` instead
+  missile's Y - `$A1D6` frees it BEFORE `$A1AF`'s step, so it reads `$C6` instead
   of `$C8`. A scenario written to the prediction would have been recorded, would
   have passed, and would have tested nothing observable.
 * the poke lasts **7 frames** (611-617), not one: the value is written once and

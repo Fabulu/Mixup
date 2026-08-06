@@ -1,13 +1,13 @@
-# Wave 17 review — the invulnerable 9,500-frame stage-1 measurement run
+# Wave 17 review - the invulnerable 9,500-frame stage-1 measurement run
 
-status: **DONE — DEFECTS FOUND (none blocking).** Every headline number in
+status: **DONE - DEFECTS FOUND (none blocking).** Every headline number in
 `17-impl-invuln-stage-run.md` reproduced, including on a fresh MAME run I took
 myself. Three defects: one **wrong ROM address that produced a false absence
 claim**, one **broken reproduction recipe**, and one **under-stated absence**
 that a later wave could read as licence to drop a live path.
 
 date: 2026-08-02
-role: reviewer (READER — no `src/` edits, no commits)
+role: reviewer (READER - no `src/` edits, no commits)
 target: `ddpdojblk`, **VERSION-B**. Every address below is build B unless the
 line says otherwise (`games/ddpdoj/NOTES-build-split.md`).
 
@@ -32,7 +32,7 @@ $ python w17ledger.py out/w17-stage1-invuln-p2.log
 numbers the worklog tabulates** (scrollgate `clock-per-frame` 7031/9998/10133/
 10139; `loop-word-as-iterations` 7148/10138/6525/10147; `len-not-lenplus1`
 2385/7816/10151/10151; `cond-word-honoured` 10431/10372/10354/10431;
-`commit-the-fraction` 0/0/0/**3120** — only `$80B012`. Ledger 57/48/53/53/2).
+`commit-the-fraction` 0/0/0/**3120** - only `$80B012`. Ledger 57/48/53/53/2).
 
 **A FRESH RUN OF MY OWN.** `python w17run.py 5000 w17-REVIEW-repro`
 (~2 min) → `out/w17-REVIEW-repro.tsv`. Its 5,000 rows are **byte-identical to
@@ -57,7 +57,7 @@ non-zero pairs.
 
 **Regression, older corpora:** `bg-deep` 1,668/0 divergent; `bgrecon` 980/0;
 `bg-attract` (`0 2636 0x38`, the documented k) 1,364/0. Control TSV re-gated:
-2,202 frames, 814 skipped, reset lf4637 — the 4.7× is real.
+2,202 frames, 814 skipped, reset lf4637 - the 4.7× is real.
 
 **Pixel gates, unchanged at 100.0000 %:**
 ```
@@ -70,7 +70,7 @@ node --test games/ddpdoj/tests/   163 pass, 0 fail
 **Nothing ROM-derived was committed.** The two commits touch eight files, all
 `.md`/`.py`/`.lua`; `out/` and `rip/` are both `check-ignore`-confirmed.
 
-## 1. THE GATES CAN FAIL — BROKEN FROM THE BOARD SIDE, NOT JUST THE MODEL SIDE
+## 1. THE GATES CAN FAIL - BROKEN FROM THE BOARD SIDE, NOT JUST THE MODEL SIDE
 
 The built-in `--mutate` switches perturb the MODEL. They cannot catch a gate
 that reads the wrong TSV column or a constant. So I broke the **board** side,
@@ -88,7 +88,7 @@ on copies, and hashed the originals before and after (`sha256sum -c`: both
 Both gates fail safe on truncation too: a HUNTLOG cap hit shortens the board
 list, which trips the length check and reddens rather than silently agreeing.
 
-## 2. `w17ledger.predict()` vs `scrollmap.cmd_sim` — the check §12 item 5 asked for
+## 2. `w17ledger.predict()` vs `scrollmap.cmd_sim` - the check §12 item 5 asked for
 
 Ran both in one process and aligned them (dropping `cmd_sim`'s one non-dispatch
 event, `REPEAT DONE @279`):
@@ -99,11 +99,11 @@ sim 57  pred 57   mismatched pairs: 0
 
 The two independent copies of the VM agree on **all 57 dispatches and all 57
 frames**. `cmd_sim` tracks `speed_bg`/`speed_tx` separately and `predict()`
-tracks only script 0's — correct, because `$26213A` selects `($1C,A5)` on
+tracks only script 0's - correct, because `$26213A` selects `($1C,A5)` on
 `D6≠0` (script 0) and `($22,A5)` on `D6=0` (script 1), and only `($1C,A5)`
 drives the odometer.
 
-## 3. ROM SPOT-CHECKS — the cited bytes, read back
+## 3. ROM SPOT-CHECKS - the cited bytes, read back
 
 Verified against `out/maincpu.bin` via `xref.py dasm`:
 
@@ -112,25 +112,25 @@ Verified against `out/maincpu.bin` via `xref.py dasm`:
 | `240c7c: move.w D0,$80B03C` (90 B into `$240C22`) | `33c0 0080 b03c` at `$240C7C`; `$240C7C-$240C22 = $5A = 90` | ✔ |
 | `240c9c: move.w D1,$80B03E` | `33c1 0080 b03e` | ✔ |
 | `$262068 lea $813192,A6` / `$262092 move.l A1,(A6)` | `4df9 0081 3192` / `2c89` | ✔ |
-| `$262082` is an **unconditional** `addq.w #2,A1` | `5449` — no branch | ✔ (and `scrollmap script 0` prints `cond words seen: $FFFFx41`, so `cond-word-honoured` is a genuine misreading, not a strawman) |
+| `$262082` is an **unconditional** `addq.w #2,A1` | `5449` - no branch | ✔ (and `scrollmap script 0` prints `cond words seen: $FFFFx41`, so `cond-word-honoured` is a genuine misreading, not a strawman) |
 | `$25FD82 move.w #1,$8130D2` / `$25FD8C clr.w` | ✔ | ✔ |
 | `25fcfa: bsr $25FD82 / lea $813144,A0 / jmp $241238` | ✔ | ✔ |
 | `$28D5AC..$28D5BE clr.w $81B414..$81B41A`, `$28D5D6 jsr $25FCFA` | ✔ | ✔ |
 | `$28D5D6` is the ONLY abs-long caller of `$25FCFA` | `xref callers 25FCFA` → one hit | ✔ |
 | `$26C242..$26C250`, base `$32A90000`, D6=`$16`, D7=`$8`, A0=`$9000A4` | ✔ | ✔ |
 | `$2612AA..$2612CC` is the `$813180` consumer | ✔, and it runs **before** `$262062` | ✔ |
-| `$26115E` clears `$81316A..$81318D` (`moveq #$11,D0`, 18 words) | ✔ — accounts for `extfreeze` 2 writes and `extspeed` 6 | ✔ |
+| `$26115E` clears `$81316A..$81318D` (`moveq #$11,D0`, 18 words) | ✔ - accounts for `extfreeze` 2 writes and `extspeed` 6 | ✔ |
 | `$26224A` 13 entries, constructor = handler + `$E` | ✔, `$2623B2: move.l #$2623C2,($8,A6)`; `$2623C2: tst.w $8130DA / bne` | ✔ |
 | `$261186` → `($20,A5) = (clock&3)<<9` | `andi #3 / lsl #3 / lsl #6` | ✔ |
-| **`$2610FE: move.w #$1,$813180`** | **NO — see §4.1** | ✘ |
+| **`$2610FE: move.w #$1,$813180`** | **NO - see §4.1** | ✘ |
 
 `w17stage.lua` columns 1..25 are **byte-for-byte** `bgrecon.lua:181`'s format
-string and argument list — I diffed them literally, and `scrollgate.py` runs on
+string and argument list - I diffed them literally, and `scrollgate.py` runs on
 the new TSV unmodified, which proves it.
 
 ## 4. DEFECTS
 
-### 4.1 MODERATE — `$2610FE` is not an instruction, and the "no caller" absence is false
+### 4.1 MODERATE - `$2610FE` is not an instruction, and the "no caller" absence is false
 
 `17-impl-invuln-stage-run.md` §3d prints
 
@@ -151,7 +151,7 @@ code, and the PCs the run itself measured:
 261114: 4e75                 rts
 ```
 
-(MAME's write-tap `CURPC` is the instruction **start** here — confirmed on
+(MAME's write-tap `CURPC` is the instruction **start** here - confirmed on
 three independent taps: `$240C7C`, `$2623B2`, `$261100`.)
 
 The consequence is not cosmetic. §3d says *"`$2610FE` has **no absolute-long
@@ -170,7 +170,7 @@ $ python xref.py callers 261100
 26b73a: jsr     $261100.l
 ```
 
-`$26B73A` is inside the stage-1 midboss handler `$26B6FA` — the same routine
+`$26B73A` is inside the stage-1 midboss handler `$26B6FA` - the same routine
 whose `$26B7D8` the wave measured setting `$8130DA`. **The "hypothesis" was
 statically provable in one command**, and the project's own rule ("only the
 listing proves absence") was applied to an address that does not exist.
@@ -179,9 +179,9 @@ The wrong address is repeated in `20-plan-level-and-patterns.md` (the W17 DONE
 block and §7 item 6), in the `20-recon-scroll-engine.md` pointer, and in
 `7ab2066`'s commit message.
 
-**Not blocking:** the 0-divergent result is unaffected — see §5.
+**Not blocking:** the 0-divergent result is unaffected - see §5.
 
-### 4.2 MODERATE — `w17run.py` never writes the `.log` the readers require
+### 4.2 MODERATE - `w17run.py` never writes the `.log` the readers require
 
 `w17run.py` prints `pgm.run`'s `PROBE` lines to stdout and writes only the TSV.
 `w17ledger.py` and `w17report.py` both consume `out/<tag>.log`. §11's
@@ -198,12 +198,12 @@ $ python w17report.py out/w17-REVIEW-repro.tsv
 
 So on a clean reproduction the wave's **second gate does not run at all** and
 the **provenance-labelling machinery §0 rests on silently degrades to
-UNKNOWN** — the exact failure `docs/knowledge/09` names. The committed logs
+UNKNOWN** - the exact failure `docs/knowledge/09` names. The committed logs
 came from an undocumented stdout redirect (the trailing `TSV <path> (4230274
 B)` line, which is `w17run.py`'s own print, proves it). One-line fix in
 `w17run.py`, or a `>` in §11.
 
-### 4.3 MODERATE — `$81317E`'s absence is under-stated against the listing
+### 4.3 MODERATE - `$81317E`'s absence is under-stated against the listing
 
 §3c: *"Over 16,000 logic frames… **nothing sets `$81317E`**"*, correctly bounded
 as a per-run absence. But the listing was not consulted, and it has the path in
@@ -222,33 +222,33 @@ $ python xref.py callers 261142
 
 Two setters, a **two-valued** protocol, a consumer at `$2612D8..$2612FE` that
 writes the object's own freeze word, and the unfreeze setter has two
-absolute-long callers — one of them in `$26Cxxx`, the very family §9 flags as
+absolute-long callers - one of them in `$26Cxxx`, the very family §9 flags as
 unread. The worklog gave `$813180` the right instruction ("W18/W30 must still
 port `$2612AA..$2612CC`") and gave `$81317E` no equivalent, so a later wave can
 read "never written" as licence to drop `$2612D8..$2612FE`. It must not.
 
-### 4.4 MINOR — the ledger's BGELEM half never checks handler identity
+### 4.4 MINOR - the ledger's BGELEM half never checks handler identity
 
 `w17ledger.py:238-242` unpacks the model's `pid` and the board's `pc` and then
 compares **only** `pf + k != lf`. "13/13 background elements" therefore means
 *13 constructions on 13 correct frames*, not *13 correct handlers*; a
 handler-table mis-index that preserved the frames would pass. (I checked the
 identity by hand out of the log: all 13 board PCs are `$26224A`-table entry +
-`$E`, each exactly once, in script order — so the claim is TRUE, just not
+`$E`, each exactly once, in script order - so the claim is TRUE, just not
 gated.)
 
-### 4.5 MINOR — two boss-length-derived durations quoted without `[DIST]`
+### 4.5 MINOR - two boss-length-derived durations quoted without `[DIST]`
 
-§3b's *"stays 1 until… lf12360 — **8,046** consecutive frames"* and §5's
+§3b's *"stays 1 until… lf12360 - **8,046** consecutive frames"* and §5's
 *"stays at `$1F` for **6,734** frames"* both end at the boss death, which §8
 item 1 already declares distribution-sensitive. The endpoints are labelled; the
 two durations are not. Everything else in §8's six-item list checks out, and
 the element birth frames are correctly treated as coverage (they are
 clock-driven, not player-driven).
 
-### 4.6 MINOR — §9's "64 % of all BG map traffic **in the stage**"
+### 4.6 MINOR - §9's "64 % of all BG map traffic **in the stage**"
 
-The denominator, 174,862, is the whole **16,000-frame run** — it includes
+The denominator, 174,862, is the whole **16,000-frame run** - it includes
 stage 2 and the boot VRAM clears (`$23C642:24576`, `$13C9AE:16384`, the
 `$000Exx` family). 112,194/174,862 = 64.2 % is right for the run; "in the
 stage" overstates it. The finding itself is solid and reproduced exactly.
@@ -283,19 +283,19 @@ first instruction is `bsr $25FD82`. Co-frame + straight-line ⇒ `$28D5D6` fired
 16,000 frames, on that frame. The conclusion holds; the self-flagging in §12
 item 2 was honest and slightly too modest.
 
-**§5's "slots are never freed" is measured on `+8` only — and the tap can only
+**§5's "slots are never freed" is measured on `+8` only - and the tap can only
 see `+8..+B` by construction** (`w17stage.lua:228`). The claim is correctly
 scoped in the worklog. W18 must not widen it.
 
-**The 308-frame skip is never exercised with a resume** — it is one contiguous
+**The 308-frame skip is never exercised with a resume** - it is one contiguous
 block at the very end and the window closes immediately after. I checked the
 branch is right anyway, from both sides: `$2612A0: tst.w $8130D2 / bne $2613A0`
-and `$2613A0: jsr $26233A / jsr ($260EC8,PC) / rts` — no camera advance — and
+and `$2613A0: jsr $26233A / jsr ($260EC8,PC) / rts` - no camera advance - and
 `$80B012` is frozen at `$00147480` on all 308 rows. `scrollgate`'s "skip ⇒ do
 not advance" is correct, it is just untested for the resume case.
 
 **Build split.** Build-A addresses do appear in the census (`$15F73E`,
-`$149ED0`, `$13BEB2/$13BEBC/$13BE24`, `$13C9AE`) — every one inside the first
+`$149ED0`, `$13BEB2/$13BEBC/$13BE24`, `$13C9AE`) - every one inside the first
 ~700 logic frames or a boot clear, exactly as `NOTES-build-split.md` predicts,
 and §0 states the rule. **No build-A address is load-bearing in any
 conclusion.** `W17_REQUIRE_BUILD=B` printed `fails=0` on my fresh run too.
@@ -303,10 +303,10 @@ conclusion.** `W17_REQUIRE_BUILD=B` printed `fails=0` on my fresh run too.
 **Line endings / commit hygiene.** `ba4dce4`'s claim checks out: the plan file
 is 0 CR / 569 LF and `git diff 4c43af8 ba4dce4` on it is **three hunks, 46+/6-**.
 `scrollgate.py` is CRLF in the committed blob, but it was CRLF before W17
-(184 CR at `4c43af8`) — inherited, like `scrollmap.py`. Not this wave's.
+(184 CR at `4c43af8`) - inherited, like `scrollmap.py`. Not this wave's.
 
 **The shared `.git/index`** shows 67 staged deletions, but it is dated
-Aug 1 16:43 — *before* wave 17. `.git/dojA.index` is dated Aug 2 01:08 and the
+Aug 1 16:43 - *before* wave 17. `.git/dojA.index` is dated Aug 2 01:08 and the
 two commits touch only their eight files. Another workflow's stale index, not
 this one's.
 
@@ -319,12 +319,12 @@ this one's.
 * **The `--no-invuln` control as a MAME run.** I re-gated the existing TSV
   (2,202/814/reset lf4637) but did not re-drive it.
 * **Pass 1** (`w17-stage1-invuln.tsv`). Compared byte-wise to pass 2 across all
-  43 shared columns (0 differing rows) but not re-produced — its 8-fewer-taps
+  43 shared columns (0 differing rows) but not re-produced - its 8-fewer-taps
   configuration is not in the committed `.lua`.
 * **`out/maincpu.bin`.** Every listing check, including §4.1, trusts the
   existing decrypted image. If it were stale, all of them move together.
 * **`gfxgate` / `shipgate` / `pixgate` / `dlgate` / `determinism.mjs` /
   `portdiff` / `breakage` / `attachreport` / `build-dist.mjs`.** Wave 17 changed
   no `src/`, so a regression there belongs to another wave.
-* **`$26C1xx`** — flagged, unread, by design (§9).
-* **Gradius and Batman** — out of scope by instruction.
+* **`$26C1xx`** - flagged, unread, by design (§9).
+* **Gradius and Batman** - out of scope by instruction.

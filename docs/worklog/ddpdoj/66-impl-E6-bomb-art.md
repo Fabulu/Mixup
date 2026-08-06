@@ -1,6 +1,6 @@
-# 66 — IMPL E6: THE BOMB'S ART AND THE LASER BOMB'S
+# 66 - IMPL E6: THE BOMB'S ART AND THE LASER BOMB'S
 
-status: **DONE** — **THE OWNER CAN SEE THE BOMB AND THE LASER BOMB.** `[M]` in
+status: **DONE** - **THE OWNER CAN SEE THE BOMB AND THE LASER BOMB.** `[M]` in
 Chrome, the ordinary bomb is a screen-filling cream blast ring and the laser
 bomb is a twisted beam column from the ship's nose to the top of the playfield
 with fire billowing out of its head. **drawn% 100.0 % and ZERO missing streams
@@ -8,7 +8,7 @@ on all FIVE scenarios** (E3's own, held-fire, held-fire+3 laser bombs,
 tapped-fire+3 ordinary bombs, tapped-fire alone). Boot 489.5 → **490.0 KiB**,
 +517 B, every byte named. Gate ALL GREEN 67/0/0, `webgate` 14 → **17**, unit
 tests 921 → **922**, `bundlegate` 100.0000 % unmoved, `PUBLISH_VERBATIM` still
-5. 21 of 21 mutants RED, 0 survivors — **and one of my own checks could not
+5. 21 of 21 mutants RED, 0 survivors - **and one of my own checks could not
 fail.**
 
 **AND IT FOUND A DEFECT IN W65 THAT NO GATE IN THIS REPO COULD HAVE SEEN:** the
@@ -35,7 +35,7 @@ inputs read in full: `64-impl-B2-bomb.md`, `65-impl-B3-bomb-beam.md`,
 
 ---
 
-## 1. THE BRIEF'S PREMISE, CHECKED — it holds, and it is SMALLER THAN THE HOLE
+## 1. THE BRIEF'S PREMISE, CHECKED - it holds, and it is SMALLER THAN THE HOLE
 
 The brief says the bomb has **174 bucket-13 records and no sprite shard** and
 the laser bomb has **three named missing sprite streams**. Both reproduce, and
@@ -44,9 +44,9 @@ both are a floor.
 | the brief / W64 / W65 says | `[M]` this session |
 |---|---|
 | W64 §8.3: 174 bucket-13 records over three bombs, no shard | **CONFIRMED TO THE RECORD.** [M] 174, over **16** distinct streams |
-| W65 §7.3: "three named missing sprite streams" `$042924 $040CC8 $040EAC` | **THREE IS THE PAGE'S TOP-3 LINE, NOT THE COUNT.** [M] a laser bomb asks for **48** distinct bucket-13 streams and 27 more outside bucket 13 — **75 in all**, on the tree as W65 left it. On the FIXED tree (§4) it is **109** in bucket 13 and **152** out of this shard altogether |
+| W65 §7.3: "three named missing sprite streams" `$042924 $040CC8 $040EAC` | **THREE IS THE PAGE'S TOP-3 LINE, NOT THE COUNT.** [M] a laser bomb asks for **48** distinct bucket-13 streams and 27 more outside bucket 13 - **75 in all**, on the tree as W65 left it. On the FIXED tree (§4) it is **109** in bucket 13 and **152** out of this shard altogether |
 | W65 §1: the driver runs 1 + 41 + 3 = 45 records | HOLDS, and the art is not one set: [M] the ordinary bomb's 16 streams are all `$02xxxx`/`$03xxxx` and the laser bomb's are all `$04xxxx`. **They share a bucket and NOTHING else** |
-| E3 §7.1: the beam's blocks for `$24BB0A` entries 7..19 sit in the unexported hole `$24B900..$24BB0A` | **NOT MINE.** §9 — [M] every address this wave harvests is named by a table inside a window `tools/export-tables.py` ALREADY exports, so the window and the art never had to move together here. I moved neither and the throw stays |
+| E3 §7.1: the beam's blocks for `$24BB0A` entries 7..19 sit in the unexported hole `$24B900..$24BB0A` | **NOT MINE.** §9 - [M] every address this wave harvests is named by a table inside a window `tools/export-tables.py` ALREADY exports, so the window and the art never had to move together here. I moved neither and the throw stays |
 
 ### 1.1 THE CONTROL THAT MAKES THE COUNT MEAN SOMETHING
 
@@ -66,35 +66,35 @@ Every figure in this section is on the tree as W64 and W65 left it, i.e. BEFORE
 §4's fix; the AFTER figures are §5 and §8.
 
 **Held fire with no bomb is 100.0 % on every bucket, so every one of the 75 is
-the LASER BOMB's** — the control is the same input with Button 2 never pressed,
+the LASER BOMB's** - the control is the same input with Button 2 never pressed,
 which is the only way to separate "the bomb has no art" from "this input has no
 art". The tapped-no-bomb row is 7 and they are **not the bomb's** (§3.3).
 
-## 2. WHAT THE BOMB ACTUALLY ASKS FOR — six producers, not one
+## 2. WHAT THE BOMB ACTUALLY ASKS FOR - six producers, not one
 
 `[M]` every one derived from the cartridge (`.scratch/e6derive.mjs`) and then
 checked against the measurement, never the other way round:
 
 | | producer | how it is CLOSED | streams | gz |
 |---|---|---|---:|---:|
-| (a) | **THE ORDINARY BOMB** — the three scripts the three templates' own `($1E,A6)` longs name: `$256558` (4 x 12-byte entries to `$FFFF`), `$2565DE` (8 longs, `$1C`..0 step 4), `$25663A` (4 longs to `$FFFFFFFF`) | each script's own TERMINATOR | **16** | 119.9 KiB |
-| (b) | **THE LASER BOMB** — `$256662..$256986`, W65's own derived data block, scanned for mask-ROM DIRECTORY entries (E3 §2.1(b)'s mechanism) | the block's far end is `$256986`, the bit-1 twin's first script, i.e. the code this port throws on | **168** | 58.1 KiB |
-| (c) | **POOL E's OTHER TEMPLATES** `$28A464..$28A506` — W65's own window, the sparks `$289FF4` allocates | the window W65 derived and asserts on export | **24** | 1.2 KiB |
-| (d) | **THE SHIP'S BIT-7 AURA** `$2556BA..$2556E2` — two pointers x four frames | `$25567A + 16*4 == $2556BA` from below and `glowSprite $2556E2` from above | **8** | 5.7 KiB |
-| (e) | **ENEMY TYPE `$8A`** — `$1BCA34` (the sub-proto `$2766E6`'s `($A)` long) and `$1BCA80` (`$2767B2 eori.l #$B4`) | the `eori` immediate IS the second address | **2** | 0.5 KiB |
-| (f) | the family that begins where W58's `$12C7B0` chain ENDS — **not the bomb's**, §3.3 | stride 68 x 8, and `$12D650` is stride 1084 | **8** | 1.6 KiB |
+| (a) | **THE ORDINARY BOMB** - the three scripts the three templates' own `($1E,A6)` longs name: `$256558` (4 x 12-byte entries to `$FFFF`), `$2565DE` (8 longs, `$1C`..0 step 4), `$25663A` (4 longs to `$FFFFFFFF`) | each script's own TERMINATOR | **16** | 119.9 KiB |
+| (b) | **THE LASER BOMB** - `$256662..$256986`, W65's own derived data block, scanned for mask-ROM DIRECTORY entries (E3 §2.1(b)'s mechanism) | the block's far end is `$256986`, the bit-1 twin's first script, i.e. the code this port throws on | **168** | 58.1 KiB |
+| (c) | **POOL E's OTHER TEMPLATES** `$28A464..$28A506` - W65's own window, the sparks `$289FF4` allocates | the window W65 derived and asserts on export | **24** | 1.2 KiB |
+| (d) | **THE SHIP'S BIT-7 AURA** `$2556BA..$2556E2` - two pointers x four frames | `$25567A + 16*4 == $2556BA` from below and `glowSprite $2556E2` from above | **8** | 5.7 KiB |
+| (e) | **ENEMY TYPE `$8A`** - `$1BCA34` (the sub-proto `$2766E6`'s `($A)` long) and `$1BCA80` (`$2767B2 eori.l #$B4`) | the `eori` immediate IS the second address | **2** | 0.5 KiB |
+| (f) | the family that begins where W58's `$12C7B0` chain ENDS - **not the bomb's**, §3.3 | stride 68 x 8, and `$12D650` is stride 1084 | **8** | 1.6 KiB |
 | | | | **226** | **187.6 KiB** |
 
 **[M] ALL 91 DISTINCT MEASURED MISSING STREAMS ARE INSIDE THE DERIVED SET, and
 the set is 226.** The derivation is 2.5x the measurement, which is the whole
 point of `docs/knowledge/09`: a harvest sized off one run's misses is the
-tank-hull mistake — and §4 is what it bought, because the beam's segments were
+tank-hull mistake - and §4 is what it bought, because the beam's segments were
 not asking for their art at all when the 91 were counted, and the harvest had
 it anyway. (The shipped assertion is no longer those 91; §6.1.)
 
 ## 3. THREE THINGS NO DOCUMENT IN THIS REPO HAD
 
-### 3.1 **THE BOMB TURNS ON AN ENEMY'S ANIMATION** — `$276756 tst.w $811F72`
+### 3.1 **THE BOMB TURNS ON AN ENEMY'S ANIMATION** - `$276756 tst.w $811F72`
 
 `[M]` `$1BCA34` and `$1BCA80` appear in buckets 0 and 3 on the exact frame
 Button 2 is pressed, and their first frame MOVES when the press moves. They are
@@ -103,7 +103,7 @@ not bomb art: they are enemy type `$8A`, the scroll-locked ground gun
 
 **`$276756 tst.w $811F72 / bne $2767A6` skips the proximity test while the
 bomb's record is live**, so the gun falls straight into `$2767AA bchg #$6` and
-`$2767B2 eori.l #$B4,($A,A6)` — it BLINKS between two frames `$B4` apart and
+`$2767B2 eori.l #$B4,($A,A6)` - it BLINKS between two frames `$B4` apart and
 emits, on every other frame, for as long as the bomb is up. `[M]` with the
 identical input and no press the same gun spawns on the same two frames
 (logic 2,713 and 2,777), writes `$1BCA34` **twice**, and never draws; with a
@@ -123,13 +123,13 @@ small hole; it is the largest single art gap left in this port.
 
 `[M]` fire TAPPED and never held, no bomb: seven missing streams,
 `$12D474..$12D60C`. E3 §2.2 closed `$12C7B0..$12D430` and wrote that `$12D430`
-"is stride 68", i.e. the first frame of the next family — and stopped there.
+"is stride 68", i.e. the first frame of the next family - and stopped there.
 `[M]` that family is **eight frames of stride 68 ending at `$12D650`**, which is
 stride 1084. It is not the bomb's and it is shipped here anyway, because a
 "zero missing streams" claim that only holds when the player holds fire is not
 the claim this wave is asked for.
 
-## 4. **THE FORTY-ONE BEAM SEGMENTS NEVER EMITTED A RECORD** — W65's, found by the art
+## 4. **THE FORTY-ONE BEAM SEGMENTS NEVER EMITTED A RECORD** - W65's, found by the art
 
 The first browser run with the art shipped showed the laser bomb as a flame
 ring around the ship and **nothing above it**. `[M]` the cause is in
@@ -141,8 +141,8 @@ $25624C jsr $23FF42       the deref arm's draw
 $2562EA jsr $23FF42       the no-deref arm's
 ```
 
-All three were transcribed as a bare `drawn++`. **The state was right** — W65
-§7.1 measured 31 of 45 records live on the deployed page and it was true — but
+All three were transcribed as a bare `drawn++`. **The state was right** - W65
+§7.1 measured 31 of 45 records live on the deployed page and it was true - but
 no segment ever became a display-list entry, so the beam was four heads and
 nothing between them.
 
@@ -151,7 +151,7 @@ no sprite shard, so every record it *did* emit was skipped for want of a
 picture, and a record that is MISSING and a record that is SKIPPED look
 identical on a screen and in every count either gate takes. `[M]` 921 unit
 tests, 67 gate stages, 22/22 on `w65beamgate` and 59 of 59 mutants all passed
-over it. It was found by opening the page — `47-impl` §2.3 and W58 §5.2, for the
+over it. It was found by opening the page - `47-impl` §2.3 and W58 §5.2, for the
 third and fourth time in this project.
 
 `[M]` what the fix is worth, same input, same 2,600 frames:
@@ -169,7 +169,7 @@ both draw sites are mutants (§6).
 
 ## 5. WHAT SHIPPED, AND WHAT IT COSTS
 
-### 5.1 shard 13 `bomb` — 218 streams, 186.0 KiB gz, DEFERRED
+### 5.1 shard 13 `bomb` - 218 streams, 186.0 KiB gz, DEFERRED
 
 `SPR_ORDER` is now `[0, 7, 6, 10, 9, 13, 12, 8, 1, 2, 3, 4, 5, 11]`. Shard 13
 goes **fifth among the deferred**, behind the explosion and ahead of the item,
@@ -182,7 +182,7 @@ is pressed, exactly as it has since W47.
 The other 8 of the 226 derived streams go to shard 11 (§3.3), whose count moves
 146 → 153.
 
-### 5.2 BOOT — 489.5 → 490.0 KiB, +517 B, and every byte of it
+### 5.2 BOOT - 489.5 → 490.0 KiB, +517 B, and every byte of it
 
 ```
 [M] manifest.json          10,776 -> 11,197   +421   (served UNCOMPRESSED)
@@ -197,23 +197,23 @@ The other 8 of the 226 derived streams go to shard 11 (§3.3), whose count moves
 **+421 B of `manifest.json` is one new shard entry (its `why` prose, which is
 what the page prints when the shard fails to load) and one harvest ledger row.**
 `[M]` the first draft of that `why` cost 329 characters and the shipped one
-costs 174 — E3 §3's trim-after-measuring, for the same reason.
+costs 174 - E3 §3's trim-after-measuring, for the same reason.
 
 **`player.tables.json.gz` DID NOT MOVE, and that is the wave's cheapest fact:
 this harvest needed NO new ROM window.** Every table it reads is inside one
-`tools/export-tables.py` already exports — `$25653C+$112` (W64), `$256662+$324`
+`tools/export-tables.py` already exports - `$25653C+$112` (W64), `$256662+$324`
 (W65), `$28A464+$A2` (W65), `$255330+$900` (W12), `$2766E0+$30` (W23). W64 paid
 +408 B for its window and W65 +7,495 B; this wave pays 0.
 
 There is no version of this wave with a flat boot: a shard means a row in the
 one uncompressed file and 226 rows in the stream table. **The claw-back that is
-still available is gzipping `manifest.json`** — E3 §7.2 priced it at ~6 KiB and
+still available is gzipping `manifest.json`** - E3 §7.2 priced it at ~6 KiB and
 handed it over; it is a `src/web/assets.js` bootstrapping change (the manifest
 is what says how everything else is encoded, so its own name has to carry the
 answer) and it is deliberately not taken in a wave whose subject is the art.
 Handed on again, with the measurement: `manifest.json` is now 11,197 B raw.
 
-## 6. EVERY CHECK SEEN TO FAIL — 21 mutants, 21 RED, 0 survivors
+## 6. EVERY CHECK SEEN TO FAIL - 21 mutants, 21 RED, 0 survivors
 
 `.scratch/mutate66.mjs`: apply ONE edit with a single-occurrence anchor, run ONE
 check, require a NAMED assertion red, restore, **verify sha256 byte-identical**.
@@ -231,7 +231,7 @@ mutant that throws half-way cannot leave the real bundle short.
 | the fade table read as SEVEN longs | the 4/8/4 phase-count assertion |
 | the phase-0 script walked at stride 8 | `B13_MEASURED`, naming the addresses |
 | the phase-2 blink list cut at two frames | `B13_MEASURED` |
-| the laser bomb's block cut at `$256802` | `B13_MEASURED` — **see below** |
+| the laser bomb's block cut at `$256802` | `B13_MEASURED` - **see below** |
 | pool E's templates dropped | `B13_MEASURED` |
 | the bit-7 aura cut to its two POINTERS | `B13_MEASURED` |
 | the aura block cut at the SECOND pointer | the aura block's own 2x4 shape assertion |
@@ -251,14 +251,14 @@ mutant that throws half-way cannot leave the real bundle short.
 ### 6.1 **ONE OF MY OWN CHECKS COULD NOT FAIL**, and it is the sixth wave running
 
 `B13_MEASURED` began as **the 91 addresses a run measured MISSING**. `[M]` the
-mutant that cuts the laser bomb's data block at `$256802` — the `$FFFFFFFF`
+mutant that cuts the laser bomb's data block at `$256802` - the `$FFFFFFFF`
 terminator of `$256712`'s twelve entries, which *looks* like a far end and is
-not — **SURVIVED it**: all 91 were below that address, because §4's segments
+not - **SURVIVED it**: all 91 were below that address, because §4's segments
 were not emitting a record at all, so nothing in the corpus ever asked for the
 block's tail.
 
 It is now **the port's own DEMAND, 152 addresses**, collected from the two
-bombing windows on the FIXED tree — and 152 against a harvest of 218 is what
+bombing windows on the FIXED tree - and 152 against a harvest of 218 is what
 makes it a check rather than a restatement. The same mutant now goes red.
 `docs/knowledge/03`: *a fixture that sits where two readings agree is not a
 check*, for the sixth wave in a row.
@@ -267,13 +267,13 @@ check*, for the sixth wave in a row.
 
 The bit-7 aura's block holds **two** pointers and only ship selector 0's four
 frames are ever reached (`[M]` `($58,A6)` is 0 on the whole corpus), so a range
-that dropped the other four would sit exactly where two readings agree — the
+that dropped the other four would sit exactly where two readings agree - the
 first aimed mutant survived for that reason and is recorded rather than quietly
 repaired. The exporter now asserts the block's **shape**: two pointers, both
 inside the block, four frames each, from `$249A8C`'s `#$C` seed and `$24A526`'s
 `subq.w #$4`. The re-aimed mutant goes red on that.
 
-## 7. THE PAGE, IN A REAL BROWSER — WHAT I SAW `[M]`
+## 7. THE PAGE, IN A REAL BROWSER - WHAT I SAW `[M]`
 
 Chrome + Python `playwright`, W64/W65's recipe. Two inputs, because
 `$249A5C tst.b ($3f,A6)` forks the arm: **fire TAPPED** (the ordinary bomb) and
@@ -297,7 +297,7 @@ same code drew one locally, so the deployed run is the one that counts.
 fill with a jagged blue-white energy burst, the ship is wrapped in an orange
 flame aura, and huge yellow-orange fire chains bloom down the right side. A
 third of a second later it is **a single cream-and-tan blast ring, about 250 px
-across, centred over the emplacement the bomb killed** — a hard-edged expanding
+across, centred over the emplacement the bomb killed** - a hard-edged expanding
 shockwave with a bright core, drawn over everything. Before this wave those same
 174 records existed and drew nothing at all.
 
@@ -312,7 +312,7 @@ shockwave with a bright core, drawn over everything. Before this wave those same
 ```
 
 **WHAT IS ON THE SCREEN.** Hold Z until the beam is up, press X, and **a
-twisted rope of light runs from the ship's nose to the top of the playfield** —
+twisted rope of light runs from the ship's nose to the top of the playfield** -
 a braided cream-and-brown column about 60 px wide, with the ship sitting inside
 a glowing oval at the bottom of it and a mass of orange fire boiling out of its
 head two thirds of the way up the screen. That is the four heads and
@@ -337,7 +337,7 @@ every one of them.
 Screenshots: `.scratch/e6live-tap-*.png`, `.scratch/e6live-hold-*.png` (live)
 and `.scratch/e6local-tap-*.png`, `.scratch/e6local-hold2-*.png` (local).
 
-### 7.3 **E5a's CHECK, BUILT FOR THE BOMB SHARD** — and it can only pass for one reason
+### 7.3 **E5a's CHECK, BUILT FOR THE BOMB SHARD** - and it can only pass for one reason
 
 `games/ddpdoj/.scratch/serve404.py 8767 shard13`, the identical held-fire
 script:
@@ -362,7 +362,7 @@ PENDING and 0 as MISSING ART.
 
 **[M] BOTH SERVERS I STARTED WERE KILLED.** `Get-CimInstance Win32_Process`
 finds **zero** python processes and `netstat` shows **no listener** on 8766 or
-8767 — checked by PROCESS and by PORT, as W61 §6b, W63 and W65 did. Eight
+8767 - checked by PROCESS and by PORT, as W61 §6b, W63 and W65 did. Eight
 orphans accumulated on 4 Aug and one blocked a publish; this wave left none.
 
 ## 8. THE GATE, ON THE SETTLED TREE
@@ -382,13 +382,13 @@ than as luck: **shard 0 was not touched**, so `capture.bin` is byte-identical
 and the 159 compared frames read the same packed bases they always did.
 
 **`PUBLISH_VERBATIM` DID NOT GROW.** Shard 13's colour body is 218 streams from
-five disjoint ROM regions, so the packed file matches nothing contiguously —
+five disjoint ROM regions, so the packed file matches nothing contiguously -
 the same accident of packing order W47 §3 explains, and it is luck rather than
 virtue, stated as such.
 
 The three new `webgate` stages are this wave's: the ORDINARY bomb, the LASER
 bomb and the WITHHELD shard. Each asserts `streams` (the bundle's), and
-`records`/`distinct`/`first`/`stock` (the PORT's, which no bundle can supply) —
+`records`/`distinct`/`first`/`stock` (the PORT's, which no bundle can supply) -
 W47 §4.1's trap, avoided the way every stage since has avoided it.
 
 ## 9. WHAT THIS WAVE DID NOT DO
@@ -396,10 +396,10 @@ W47 §4.1's trap, avoided the way every stage since has avoided it.
 - **E3's HOLE IS NOT MINE.** `$24B900..$24BB0A` is still unexported and
   `$24BB0A` entries 7..19 still throw loudly. `[M]` every address this wave
   harvests is named by a table inside a window the exporter already ships, so
-  the window and the art did not have to move together here — and I moved
+  the window and the art did not have to move together here - and I moved
   neither, exactly as E3 instructed.
 - **THE HYPER.** Every arm of `$249868` still throws.
-- **`$249F8A`** — still unported, still declared, still hidden from the owner by
+- **`$249F8A`** - still unported, still declared, still hidden from the owner by
   the page's own `$FF` poke.
 - **Nothing is compared against MAME.** No gate in this repo has pressed Button
   2 against the board. What is proved is that the port asks for stream addresses

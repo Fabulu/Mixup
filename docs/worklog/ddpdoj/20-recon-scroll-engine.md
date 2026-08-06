@@ -1,8 +1,8 @@
-# Wave 20 recon 1/5 — THE WHOLE SCROLLING LEVEL: the scroll program end to end
+# Wave 20 recon 1/5 - THE WHOLE SCROLLING LEVEL: the scroll program end to end
 
 status: **DONE on the six questions asked**, with the blockers named in §9.
 date: 2026-08-01
-role: recon (READER — nothing under `games/ddpdoj/src/` was touched, nothing committed)
+role: recon (READER - nothing under `games/ddpdoj/src/` was touched, nothing committed)
 target: `ddpdojblk`, **VERSION-B** (2002.10.07 BLACK VER). Every address is build B
 (`$23xxxx–$29xxxx`) unless the line says otherwise (`NOTES-build-split.md`).
 
@@ -25,7 +25,7 @@ No emulator was run this wave. The validation in §7 reuses wave 10's existing
 
 ## 0. THE HEADLINE NUMBER THE OWNER ASKED FOR
 
-**Stage 1 is 7,317 logic frames — 122.0 s at 60 Hz — and 8,486 pixels of scroll,
+**Stage 1 is 7,317 logic frames - 122.0 s at 60 Hz - and 8,486 pixels of scroll,
 from stage start to the boss lock. The 161-frame capture covers 1.9 % of it.**
 
 | | stage 1, whole | the capture (`fly-around`, lf 2000..2160) | covered |
@@ -39,7 +39,7 @@ from stage start to the boss lock. The 161-frame capture covers 1.9 % of it.**
 The last row is the one to read twice. The capture window sits between record
 `t=$0068` (frame 375, speed → 1.0 px/f) and record `t=$0090` (frame 694, the
 first background element). **The recording contains no scroll-program event at
-all** — it is 161 frames of constant-speed scrolling taken from the quietest
+all** - it is 161 frames of constant-speed scrolling taken from the quietest
 stretch of the stage, and everything the scroll VM does is outside it.
 
 Measured, not asserted: capture frames lf2000→lf2160 move `$80B012` from
@@ -51,24 +51,24 @@ from `out/bg-deep.tsv` rows lf2000/lf2160.
 ## 1. THE SUBSYSTEM, CONFIRMED AND CORRECTED
 
 Wave 10 (`10-recon-background.md`) called it "a 7-opcode VM with four camera
-routines". **Verified — with two corrections and one closure:**
+routines". **Verified - with two corrections and one closure:**
 
 * the VM has exactly **7 opcodes**, table `$2620C2`, 7 longwords (§3);
-* the camera is **four routines** — `$240B0E` reset, `$240B94` BG accumulate,
+* the camera is **four routines** - `$240B0E` reset, `$240B94` BG accumulate,
   `$240C22` TX accumulate, `$240CC0` register upload;
 * **CORRECTION (wave 10 §6b):** the column streams and the palette blocks are
   **INTERLEAVED**, not two separate regions. Wave 10 happened to bound each
   stream by its own palette (right) and each palette by `$800` (right), so its
   numbers are right, but the layout sentence in that worklog reads as two
   blocks and it is one alternating block: `stream0 pal0 stream1 pal1 … pal4`;
-* **CLOSURE (wave 10 blocker 3, `$8130D2`'s writer): FOUND** — §6;
-* **NEW ABSENCE (listing-proven): `$261F84` — the repeat/rewind entry point for
-  SCRIPT 1 — has no caller of any kind in build B.** Scanned all of
+* **CLOSURE (wave 10 blocker 3, `$8130D2`'s writer): FOUND** - §6;
+* **NEW ABSENCE (listing-proven): `$261F84` - the repeat/rewind entry point for
+  SCRIPT 1 - has no caller of any kind in build B.** Scanned all of
   `$230000..$2A0000` for `jsr.l`, `jmp.l`, `bsr` (all three displacement widths)
   and `jsr (d16,PC)`: zero hits. Script 1 therefore can never rewind, which is
   exactly why all five stages' script 1 is nothing but speed records (§4).
 
-## 2. THE MAP OF THE SUBSYSTEM — every table, from the ROM
+## 2. THE MAP OF THE SUBSYSTEM - every table, from the ROM
 
 Five parallel per-stage tables, all indexed by `$813096` (= stage index × 4):
 
@@ -120,9 +120,9 @@ rows written per column by `$26135A`'s `dbra D6` loop with `D6 = 8`.
 
 Row 0..8, column 0..63 → the write is always below `$1000`, which is why MAME's
 4,096-byte `bg_videoram` share never truncates anything (wave 10 open item 5 is
-therefore harmless — still unexplained, still harmless).
+therefore harmless - still unexplained, still harmless).
 
-## 3. THE VM — record format and all seven opcodes, from the listing
+## 3. THE VM - record format and all seven opcodes, from the listing
 
 Interpreter `$262062`, called once per frame from `$2612D2`:
 
@@ -142,7 +142,7 @@ Interpreter `$262062`, called once per frame from `$2612D2`:
 
 **Record = `time:u16, unused:u16, op:u16, payload`.** `python scrollmap.py
 script 0` reports the second word is `$FFFF` on all 57 stage-1 records and the
-interpreter never reads it — it is padding, not a condition. (Wave 10 called it
+interpreter never reads it - it is padding, not a condition. (Wave 10 called it
 `cond`; the listing shows it is skipped unconditionally. Same bytes, honest
 name.)
 
@@ -160,7 +160,7 @@ name.)
 deferred callback `$28CB88` is `jsr ($28CAFC,PC)` with `D0 = $C, D7 = $FF`:
 **the cue stream is the SOUND/BGM channel of the stage script.**
 
-**The repeat/unfreeze partner, `$261F76`** — called once per new column, from
+**The repeat/unfreeze partner, `$261F76`** - called once per new column, from
 `$261348`, BEFORE the column is read:
 
 ```
@@ -178,7 +178,7 @@ Consequence, and it is the part nobody would guess: **the countdown is armed at
 rewind. `04 FFE4 001C 0002` = "back up 28 columns, play those 28 columns twice,
 carry on" = 56 columns of scrolling that consume zero net stream.
 
-## 4. THE COMPLETE SCRIPT INVENTORY — all ten scripts of the cartridge
+## 4. THE COMPLETE SCRIPT INVENTORY - all ten scripts of the cartridge
 
 `python scrollmap.py scripts`, ACTUAL output:
 
@@ -213,7 +213,7 @@ come from §7's validated simulation, not from the ROM.**
 | `$261618` | `$0000` | `08` | speed `$0200` = **8.000 px/f** | 0 | 0 | 0 |
 | `$261620` | `$0034` | `04` | rewind **−28** cols, len 28, **2 loops** | 52 | 416 | 28→0 |
 | `$26162C` | `$0034` | `0C` | **FREEZE**, resume at `$0038` | 52 | 416 | |
-| — | — | — | *(repeat runs 56 columns; unfreeze)* | **279** | 2240 | 28 |
+| - | - | - | *(repeat runs 56 columns; unfreeze)* | **279** | 2240 | 28 |
 | `$261632` | `$0038` | `00` | spawn 6 | 280 | 2240 | 28 |
 | `$26163A` | `$0039` | `00` | spawn 8 | 281 | 2248 | 28 |
 | `$261642` | `$003A` | `00` | spawn 4 | 282 | 2256 | 28 |
@@ -258,15 +258,15 @@ the clock at `$0344` and loop map columns **210..223** forever. `$261F76`'s
 `$FFFF` arm always takes the rewind branch, so nothing in the script can ever
 end it: **the stage-1 boss lock is permanent until something OUTSIDE the VM
 intervenes** (`$813180`/`$813182` push a new speed, or `$25FCFA` freezes and
-destroys the whole background object at stage end — §6).
+destroys the whole background object at stage end - §6).
 
 Script 1, `$26179A`, 16 records, **all op `$08`, identical times and identical
 speeds to script 0**. That is the listing's reason for wave 10's measured
 `$80B034 == $80B012` on 13,600 frames: the TX camera is literally given the same
-speed program. Header is `[0, 0]` — no object stream, no cue stream.
+speed program. Header is `[0, 0]` - no object stream, no cue stream.
 
 **Object stream `$26157A`, 22 entries of `(long, word)`, terminator `$FFFFFFFF`
-at `$2615FE`** — and the six SPAWN records consume `6+8+4+1+1+2 = 22`
+at `$2615FE`** - and the six SPAWN records consume `6+8+4+1+1+2 = 22`
 **exactly**. Entries (ptr, param):
 
 ```
@@ -282,7 +282,7 @@ Twenty-one of the twenty-two point into the `$22xxxx` data region; **one,
 
 **Cue stream `$261602..$26160F`, 14 bytes**, consumed exactly by the two CUE
 records: `0002 0000` (sub-op 2, `$28C186(D1=0)`) then `0000 0000 0028CB88`
-(sub-op 0, arm `$28CB88` with countdown 0). No `$FFFF` needed and none present —
+(sub-op 0, arm `$28CB88` with countdown 0). No `$FFFF` needed and none present -
 the boundary lands precisely on `$261610`, the script-0 header. Another
 consistency check that would have failed on a wrong payload size.
 
@@ -296,7 +296,7 @@ stage1 $26227E   8   stage2 $26229E  14   stage3 $2622D6   7   stage4 $2622F2   
 
 **Stage 1 uses ids 0..12, each exactly once, and the table has exactly 13
 entries.** Stage 1's script has 8 BGELEM records and its table has 8 entries;
-stage 4's has 4 and 4. (Stages 2 and 3 have 14/8 and 7/5 — unused entries there.)
+stage 4's has 4 and 4. (Stages 2 and 3 have 14/8 and 7/5 - unused entries there.)
 Each handler is a 4-line constructor of the shape seen at `$2623A4`:
 
 ```
@@ -308,7 +308,7 @@ Each handler is a 4-line constructor of the shape seen at `$2623A4`:
 2623dc:   jsr $24179E ; jmp $23DF2A          <- the sprite enqueue
 ```
 
-## 6. `$8130D2` — WAVE 10's OPEN BLOCKER, CLOSED
+## 6. `$8130D2` - WAVE 10's OPEN BLOCKER, CLOSED
 
 `$8130D2` gates the ENTIRE background handler (`$2612A0: tst.w $8130D2 / bne
 $2613A0`) and 60+ other read sites in build B. Wave 10 could not find its writer.
@@ -344,7 +344,7 @@ and `$25FDD2`/`$25FDE0` are both inside the alive-player counter `$25FD94`:
 **`$8130D2` = "every player is dead". It is the death pause.** Confirmed against
 wave 10's own data, which nobody read this way: in `out/bg-deep.tsv` the flag is
 1 on **exactly one contiguous run, lf 3289..4102 (814 frames)**, and at lf4103
-`$8130CE` and `$80B012` both go to 0 — the run died, sat out the pause, and the
+`$8130CE` and `$80B012` both go to 0 - the run died, sat out the pause, and the
 game reset to the title. The other writer, `jsr $25FD82` at `$288AD0`, is in the
 banner/message object and freezes the scroll for a message.
 
@@ -353,7 +353,7 @@ listing-only: `$813180` → load `($1C,A5)`/`($22,A5)` from `$813182`/`$813184`
 (an external speed override), and `$81317E` → set/clear `($8,A5)` (an external
 freeze). Neither was seen non-zero in any TSV on disk.
 
-## 7. THE VALIDATION — 0 DIVERGENT FRAMES over 1,668 measured logic frames
+## 7. THE VALIDATION - 0 DIVERGENT FRAMES over 1,668 measured logic frames
 
 Enumeration is the ROM's job; the verdict is the board's. `scrollgate.py` runs
 the §3/§5 model one logic frame at a time, **skipping every frame the board
@@ -382,18 +382,18 @@ across two entry clocks.**
 
 **And the third run found something.** The attract TSV does not align at ANY
 frame offset with an entry clock of 0 (`scrollgate.py sweep` over k=1000..2600:
-best is 279 clock divergences and 1,644 `b012` divergences — i.e. no alignment).
+best is 279 clock divergences and 1,644 `b012` divergences - i.e. no alignment).
 It aligns to **zero divergences at entry clock `$0038`**. That is the resume
 value the opening `0C` FREEZE stashes: **the attract demo creates the background
 object with `($6,A5) = $0038` and skips the entire opening rewind/repeat/freeze
 block, arriving at the first spawn.** Which in turn is a byte-exact confirmation
 of `$26200E`'s fast-forward path as modelled: replay the interpreter for clocks
 `0..$37`, **restore `($A,A5)`/`($10,A5)` from the stack** (`$262028` push /
-`$26203C` pop — so the replayed `04` rewind is undone), and clear the repeat
+`$26203C` pop - so the replayed `04` rewind is undone), and clear the repeat
 state at `$81319E`/`$8131B6`. Model any one of those three wrong and the attract
 run diverges immediately.
 
-Wave 10 wrote "attract and play share everything — do not build two paths".
+Wave 10 wrote "attract and play share everything - do not build two paths".
 Correct about the code; **the entry clock differs**, and a port that starts the
 attract page at clock 0 will show the wrong 2,240 pixels of stage 1.
 
@@ -445,7 +445,7 @@ BG tiles**. Stage 1's byte budget:
 | 1,820 BG tiles, packed in the igs023 ROM (5 bpp, 640 B/tile) | | **1,164,800** |
 | the same tiles decoded to 1 byte/pixel | | **1,863,680** |
 
-So the stage-1 *program and map* is **11.4 KB** — trivially portable — and the
+So the stage-1 *program and map* is **11.4 KB** - trivially portable - and the
 whole cost is the tile pixels, exactly as `PLAN-no-recordings.md` L7/W15 says.
 The bundle currently harvests **415** tiles from the capture; stage 1 needs
 **1,820**. Whole game: 32,616 B of streams + 10,240 B of palettes + 7,634 tiles
@@ -462,7 +462,7 @@ each raster line `y`, the BG layer samples the 2048×512 tilemap at
 `sx = (bg_xscroll + rowscroll[y]) & 0x7FF`. It is a **per-raster-line additive
 offset to bg_xscroll**, and since the cabinet is TATE and `bg_xscroll` is the
 game's VERTICAL scroll, a non-zero entry would push one game-*column* up or down
-independently — a vertical shear, not a horizontal one.
+independently - a vertical shear, not a horizontal one.
 
 **What drives it in DoJ: nothing.** Static, both builds, every absolute-long
 reference to `$907000` in the 6 MB image (`xref.py abs 907000`, `lea 907000`):
@@ -488,7 +488,7 @@ The hardware/driver sizes disagree and it is worth writing down: MAME's share is
 
 **The honest sentence:** *no absolute-long site in either build writes a non-zero
 rowscroll value, and no frame in a 13,600-frame corpus has ever held one.* Not
-"the game does not use rowscroll" — a write through an address register stays
+"the game does not use rowscroll" - a write through an address register stays
 invisible to both halves, and every stage past 1 is unmeasured.
 
 ### 8c. The other four stages, for scale
@@ -502,39 +502,39 @@ invisible to both halves, and every stage past 1 is unmeasured.
 | 1 | 8,473 | 141.2 | 4,898 | 153 | 168 | infinite loop + freeze |
 | 2 | 833 | 13.9 | 416 | 13 | 28 | infinite **28**-col loop at clock `$0034` |
 | 3 | 11,900 | 198.3 | 6,245 | 195 | 210 | infinite loop + freeze |
-| 4 | 17,338 | 289.0 | 6,704 | 209 | 252 | **speed `$0000`** — the scroll stops dead |
+| 4 | 17,338 | 289.0 | 6,704 | 209 | 252 | **speed `$0000`** - the scroll stops dead |
 
 Loop 1's scroll programs total **45,861 logic frames ≈ 12.7 minutes of
 scrolling**, excluding every boss fight (those happen *inside* the locks and are
 not counted). Stage index 2 is the outlier and it is not a bug: it has 28 columns
-of map and locks into them after 14 seconds — a short arena stage.
+of map and locks into them after 14 seconds - a short arena stage.
 
 ## 9. WHAT I COULD NOT DO, AND WHAT IS STILL WRONG TO GUESS
 
 > **SUPERSEDED IN PART BY WAVE 17** (`17-impl-invuln-stage-run.md`, 2026-08-02,
 > one invulnerable 16,000-lf run). Items **1, 2, 3, 6, 7 and 8 are CLOSED** and
 > item **6's absence claim was WRONG**:
-> * **1** — the corpus now covers the whole stage: 10,431 frames, 0 divergent,
+> * **1** - the corpus now covers the whole stage: 10,431 frames, 0 divergent,
 >   57/57 records, 13/13 background elements, both cues, the boss lock.
-> * **2 + 3** — the lock is never *exited*. `$28D5D6 → $25FCFA → $25FD82` sets
+> * **2 + 3** - the lock is never *exited*. `$28D5D6 → $25FCFA → $25FD82` sets
 >   `$8130D2` and `jmp $241238` **destroys the background object**; the next
 >   stage builds a new one. The 24 tail columns are measured-dead.
-> * **6** — `$80B03C` **is** written by `$240C22`, at `$240C7C` (and `$80B03E`
+> * **6** - `$80B03C` **is** written by `$240C22`, at `$240C7C` (and `$80B03E`
 >   at `$240C9C`), once per logic frame. §9's "not written by `$240C22`" is
 >   wrong; the write is 90 bytes into the routine.
-> * **7** — the screen shake is **not** cold: `$813186 = 1` for 43 frames
+> * **7** - the screen shake is **not** cold: `$813186 = 1` for 43 frames
 >   during the boss.
-> * **8** — `$8130DA` is written by the midboss: `$26B7D8` sets it, `$26B4C0`
+> * **8** - `$8130DA` is written by the midboss: `$26B7D8` sets it, `$26B4C0`
 >   clears it.
 >
-> Also corrected there: **`$8130D2` is not only "every player is dead"** (§6) —
-> the stage-clear path raises it with every player alive — and **`$813192` /
+> Also corrected there: **`$8130D2` is not only "every player is dead"** (§6) -
+> the stage-clear path raises it with every player alive - and **`$813192` /
 > `$8131AA` give a per-record execution ledger** via `$262092`, which is the
 > hook §3 needed and did not name.
 
 1. **The corpus stops at clock `$00D0`, frame 1,668 of 7,317 (22.8 %).** Every
    TSV on disk dies or resets there. §7's zero divergences cover the opening,
-   the first repeat/freeze, and the whole speed ramp — and **nothing after
+   the first repeat/freeze, and the whole speed ramp - and **nothing after
    `$00D0`**: not the 9 later background elements, not the two cues, not the
    final boss lock. A wave that ports this must produce a longer scenario
    (invulnerable, ≥9,000 lf) before claiming stage 1.
@@ -546,7 +546,7 @@ of map and locks into them after 14 seconds — a short arena stage.
 3. **24 of stage 1's 248 map columns (864 B, 768 px) are unreachable** by the
    script as decoded. Either the boss lock is exited by an external mechanism
    that resumes the stream (item 2), or they are unused data. **Do not delete
-   them from the export on my say-so** — this is arithmetic over a listing, not
+   them from the export on my say-so** - this is arithmetic over a listing, not
    a measurement.
 4. **Object stream entry 7 is `$246BB8`, a build-B CODE address** where the
    other 21 are `$22xxxx` data. `$24150A` (the create) has ~150 absolute-long
@@ -559,12 +559,12 @@ of map and locks into them after 14 seconds — a short arena stage.
    constructor shape (§5). The sprite tables they point at (`$22CBCC`,
    `$22DA70`, …) are unsized.
 6. **`$80B03C`** is read by `$24179E` to scroll-compensate every background
-   element and I did not find its writer — it is not written by `$240B94` or
+   element and I did not find its writer - it is not written by `$240B94` or
    `$240C22`. A ported element that ignores it will drift.
 7. **The screen shake `$260EC8` is still cold** (`$813186 == 0`, 7,000 frames)
    and its trigger is still unlocated. Unchanged from wave 10.
 8. **`$8130DA`** gates the element updaters (`$2623C2: tst.w $8130DA / bne ->
-   die`) — unidentified, unmeasured.
+   die`) - unidentified, unmeasured.
 9. **Nothing was measured this wave.** Every dynamic number here is wave 10's
    data re-read. That is deliberate (the validator needed no new runs) but it
    means the machine pin, build check and `fails=0` assertions in §7 are wave
@@ -592,7 +592,7 @@ Six things that will save the hours they cost me:
    passes. Off-by-one here moves the unfreeze by 4 frames and `scrollgate.py`
    catches it instantly.
 3. **The record's second word is padding, not a condition.** `$262082` is
-   `addq.w #2,A1` — it is never read.
+   `addq.w #2,A1` - it is never read.
 4. **`$8130D2` is "all players are dead"** (`$25FD94`), and the background
    handler does not run at all on those frames. Anything that models the scroll
    per-frame must be gated by it or it runs 814 frames ahead by the first death.
@@ -600,5 +600,5 @@ Six things that will save the hours they cost me:
    stages' script 1 is speed-only. Do not build a second repeat machine.
 6. **The background object has an ENTRY CLOCK, `($6,A5)`, and attract uses
    `$0038`.** The stage start uses 0 (`$25FD7A: move.w #$0,($6,A0)`). Everything
-   downstream of it — `($20,A5) = (clock&3)*512`, `colptr = base +
-   (clock>>2)*36`, the `$26200E` replay — is derived from that one word.
+   downstream of it - `($20,A5) = (clock&3)*512`, `colptr = base +
+   (clock>>2)*36`, the `$26200E` replay - is derived from that one word.

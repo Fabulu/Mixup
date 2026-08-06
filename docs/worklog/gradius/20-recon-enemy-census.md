@@ -1,10 +1,10 @@
-# RECON 1/5 — EVERY enemy: the complete $AE1C dispatch table and every handler
+# RECON 1/5 - EVERY enemy: the complete $AE1C dispatch table and every handler
 status: DONE
 wave: 20   role: recon (reader)   started: 2026-08-01
 
 ## Mandate
 
-Read the ENTIRE `$AE1C` dispatch table out of the ROM — all 42 entries — and
+Read the ENTIRE `$AE1C` dispatch table out of the ROM - all 42 entries - and
 every handler each one points at. Deliver a DENOMINATOR. Enumerate the tables
 the handlers index so that "handler indexes a table the port does not export"
 cannot bite again the way `$B086`/`$B088` did in wave 15.
@@ -16,7 +16,7 @@ No commits.
 ## Method
 
 Everything below is counted out of `games/gradius/assets/prg.bin` (32,768
-bytes, byte-identical to the PRG of `Gradius (USA).nes` — verified in-run).
+bytes, byte-identical to the PRG of `Gradius (USA).nes` - verified in-run).
 The emulator was NOT used. Per `docs/knowledge/09-enumerate-then-validate.md`
 the ROM is the source of the INVENTORY; wave 21+ owes the VERDICT.
 
@@ -32,7 +32,7 @@ from the source.
 
 ---
 
-## 1. THE DENOMINATOR — $AE1C, 42 entries
+## 1. THE DENOMINATOR - $AE1C, 42 entries
 
 ```
 === $AE1C dispatch table: 42 entries ===
@@ -51,7 +51,7 @@ The table is 84 bytes, `$AE1C-$AE6F`; `$AE70` is the `RTS` entries 0 and 31
 point at AND the byte immediately after the table. `$83E4` does `ASL A` in 8
 bits and has NO bounds check, so the handler index is `type AND $7F` and a type
 with `(type AND $7F) >= 42` would read code at `$AE70+` as a pointer. Measured
-against the inventory in §3: **no producer in the ROM makes such a type** — the
+against the inventory in §3: **no producer in the ROM makes such a type** - the
 largest is `$29` = 41.
 
 | # | target | types | ported | what it is (read out of the ROM) |
@@ -65,25 +65,25 @@ largest is `$29` = 41.
 | 6 | `$B198` | `$06/$86` | **yes** | arc with turn schedule `$B200` (`00 00 01 00 00`). 50 spawns. |
 | 7 | `$B6E1` | `$07/$87` | no | **terrain WALKER, floor-hugging.** Probes terrain with `$C3D3` at (x, y+8) and (x, y-3+8); rides the ground, animates via `$B628` record 0, docks to a target column set by `$B65C` (= player X + $30, clamped $20..$F0, `AND $F8`). Tables `$B6D2`/`$B6D9`/`$B6DD`. 35 spawns. |
 | 8 | `$B26C` | `$08/$88` | **yes** | vertical sine chaser (uses `$03BC/$03EC` as a 16-bit Y accumulator via `$B2EE`/`$B304`). 72 spawns. |
-| 9 | `$B311` | `$09/$89` | no | the enemy the FLOOR HATCH (`$AF2E`) launches. 8-frame flip animation `$B33B` (`5E 5F 60 61 62 61 60 5F`) with the palette bit flipped for frames 4-7; rises to player Y then goes ballistic (`$B2DB`). **Never spawned by wave data — only by `$AF98`.** |
-| 10 | `$B36F` | `$0A/$8A` | no | 5 bytes: if bit 7 clear `BPL $B3A7` (entry 11's init), else `JMP $B1E5` (entry 6's rightward mover). Produced ONLY by `$C4DC` — the stage-0/2 boss-approach spawner. |
+| 9 | `$B311` | `$09/$89` | no | the enemy the FLOOR HATCH (`$AF2E`) launches. 8-frame flip animation `$B33B` (`5E 5F 60 61 62 61 60 5F`) with the palette bit flipped for frames 4-7; rises to player Y then goes ballistic (`$B2DB`). **Never spawned by wave data - only by `$AF98`.** |
+| 10 | `$B36F` | `$0A/$8A` | no | 5 bytes: if bit 7 clear `BPL $B3A7` (entry 11's init), else `JMP $B1E5` (entry 6's rightward mover). Produced ONLY by `$C4DC` - the stage-0/2 boss-approach spawner. |
 | 11 | `$B37F` | `$0B/$8B` | no | 9-frame spin `$B3C2` (`64 64 64 65 65 65 66 66 66`), then metasprite `$67` and **it aims itself like a bullet**: `$B3B6 JSR $BCB5` + `$B3B9 JSR $BDFA`. 14 wave spawns, plus `$C564`. Exempt from the squadron capsule counter (`$A44C CMP #$0B`). |
 | 12 | `$B3CB` | `$0C/$8C` | no | the enemy the CEILING HATCH (`$AF88`) launches; mirror of entry 9. **Never spawned by wave data.** |
 | 13 | `$B402` | `$0D/$8D` | no | entry-4 variant with its own phase table `$B42F` (`00 00 00 01 01`). 5 spawns. |
 | 14 | `$B434` | `$0E/$8E` | no | entry-4/13 variant, phase table `$B45C` (`00 00 00 01 01`). 5 spawns. |
-| 15 | `$AF2E` | `$0F/$8F` | no | **FLOOR HATCH.** `$010C = $80` (armoured), `$0460 = 1`, `$048C = 1`. Every frame `JSR $AF98` with Y=$08, A=$09 → spawns type `$09`. Metasprite `$78` (`$63` on stage 5). Damage counter `$046C`: ≥3 → `$018C = 3` (palette), ≥5 → destroyed, and on stage 0 it checks `$07E5,Y`, bumps `$5F`, and at `$5F >= 4` does **`INC $39`** — the warp flag. 14 spawns. |
+| 15 | `$AF2E` | `$0F/$8F` | no | **FLOOR HATCH.** `$010C = $80` (armoured), `$0460 = 1`, `$048C = 1`. Every frame `JSR $AF98` with Y=$08, A=$09 → spawns type `$09`. Metasprite `$78` (`$63` on stage 5). Damage counter `$046C`: ≥3 → `$018C = 3` (palette), ≥5 → destroyed, and on stage 0 it checks `$07E5,Y`, bumps `$5F`, and at `$5F >= 4` does **`INC $39`** - the warp flag. 14 spawns. |
 | 16 | `$AF88` | `$10/$90` | no | **CEILING HATCH.** Same body entered at `$AF33`/`$AF54`; Y=$F6, A=$0C, metasprite `$79`. 8 spawns. |
-| 17 | `$B026` | `$11/$91` | **yes** | aiming turret, 6-octant metasprite `$B086` + muzzle rows `$B08C`/`$B092`. 102 spawns — the most-spawned type in the game. |
+| 17 | `$B026` | `$11/$91` | **yes** | aiming turret, 6-octant metasprite `$B086` + muzzle rows `$B08C`/`$B092`. 102 spawns - the most-spawned type in the game. |
 | 18 | `$B098` | `$12/$92` | **yes** | the armoured/flipped turret; sets `$018C |= $80`, then branches INTO `$B026`'s body. 74 spawns. |
 | 19 | `$B747` | `$13/$93` | no | **terrain WALKER, ceiling-hugging.** Mirror of entry 7 (probes y-8, y-8+3), shares `$B723` and `$B676`. Sets `$018C |= $80`. 44 spawns. |
 | 20 | `$CA5E` | `$14/$94` | no | **big multi-part `$0600`-page object** (the only consumer of the `$A4A6` allocator). Type `$94` is the one `$C05D` silences the armour ping for. Two damage thresholds by rank: `$CA49` (`0A 0C 0E 10 12 14 16`) and `$CA50` (`14 18 1C 20 24 28 2C`), Y speed `$CA57`. Metasprites `$81/$82`, +2 after the first threshold. Spawned by stage 4's inline records and by `$C653`. |
 | 21 | `$B377` | `$15/$95` | no | 3 instructions: bit-7 test then `JMP $B1FA` (entry 6's leftward-mover tail). Produced ONLY by `$C5F6` (stage-3 boss approach). |
 | 22 | `$C906` | `$16/$96` | no | the **stage-2-only** object spawned by `$A46F`. `$010C AND $0F` selects one of four sub-variants; `$046C >= 3` → `$C77C`. Indexes `$C87B` (four `$FF`-terminated streams), `$C893` (4 pointers: `$C89B $C8F1 $C8BD $C8E0`), `$C936` (period by rank), `$CA29`. |
 | 23 | `$B7A1` | `$17/$97` | no | **a mid-boss.** Forces type `$97`, `$010C = $80`, hitbox class 1. Charges in to X=$F0 then homes on the player Y with per-rank speeds (`$B78F` X-frac, `$B799` Y-frac), fires **three** bullets at once into slots 22-31 (`$B870-$B8E5`, offsets `$B8E6`/`$B8E9`/`$B8EC`), fire period `$B787`, dies after `$B852[$17]` hits (2..8 by rank). 1 wave spawn (stage 2 cmd `$2B`) + `$C6BC` when `$3A = 0`. |
-| 24 | `$B914` | `$18/$98` | no | **THE BOSS CORE.** A THREE-slot object: it writes `$030B,X`/`$030A,X` etc. — base slot plus the two below it, which it seeds as type `$99` (entry 25). Damage frames `$B8EF` (`6C 6D 6E 6F 70 71 00`), Y speed `$B8F8`/`$B901` by rank, fire period `$B90A`, 4-way spread `$BAF7`/`$BAFB`/`$BAFF`/`$BB07`. On death: `INC $3B,X` (per-player stage counter), `INC $1B` (game state), and on stage 1 with `$04CC == 1` and `$04AC < $78` **`INC $39`**. Spawned at a fixed address by `$999D-$99AF` (slot 21) when `$3F == $9A3D[$19]`. |
+| 24 | `$B914` | `$18/$98` | no | **THE BOSS CORE.** A THREE-slot object: it writes `$030B,X`/`$030A,X` etc. - base slot plus the two below it, which it seeds as type `$99` (entry 25). Damage frames `$B8EF` (`6C 6D 6E 6F 70 71 00`), Y speed `$B8F8`/`$B901` by rank, fire period `$B90A`, 4-way spread `$BAF7`/`$BAFB`/`$BAFF`/`$BB07`. On death: `INC $3B,X` (per-player stage counter), `INC $1B` (game state), and on stage 1 with `$04CC == 1` and `$04AC < $78` **`INC $39`**. Spawned at a fixed address by `$999D-$99AF` (slot 21) when `$3F == $9A3D[$19]`. |
 | 25 | `$B913` | `$19/$99` | no | a single `RTS` byte. The boss core's two extra slots are this type: they are drawn and collidable but have no update. Not the same address as entry 0/31. |
 | 26 | `$B480` | `$1A/$9A` | no | `$B628` animator record 6, and **it aims itself like a bullet** (`$B4A2 JSR $BCB5`, `$B4B3 JSR $BDFA`), alternating fire/drift with per-rank dwell `$B4E4` (`50 50 40 30 20 10 10`) and `$B4EB` (`60 60 50 40 30 20 20`). Also the multi-hit type: `$C090` counts hits in `$04AC` against `$BFC5[$17]` (`05 05 05 05 06 07 08 09 0A`). Explosion script 3 (`$BEC1`). 53 spawns. |
-| 27 | `$B4F2` | `$1B/$9B` | no | 3 instructions: bit-7 init or `JMP $BDFA` — a pure ballistic mover. **I found no writer of type `$1B` anywhere in the ROM** (see §3 caveat). |
+| 27 | `$B4F2` | `$1B/$9B` | no | 3 instructions: bit-7 init or `JMP $BDFA` - a pure ballistic mover. **I found no writer of type `$1B` anywhere in the ROM** (see §3 caveat). |
 | 28 | `$B4FD` | `$1C/$9C` | no | `$B628` record 3; a 4-phase pursuit driven by `$046C` (0 dwell → 1 pick side → 2/3 climb/dive to player Y → 4 accelerate). 2 spawns (stage 2 cmds `$8D`/`$8E`). |
 | 29 | `$B559` | `$1D/$9D` | no | `$B628` record 9 + `DEC $036C` + `$B251`; shares entry 28's init. 10 spawns. |
 | 30 | `$B569` | `$1E/$9E` | no | **the STAGE-END GATE / scripted set piece.** `JSR $AEDD` first, then once X < $B0 it does `INC $5B` (FREEZES the whole game), plays sound `$1F`, and over 7 steps writes canned packets (`$85E8`, `$864E`) plus direct nametable rows into `$06C2/$06CA/$06D2/$06DA` and `$06F1..` from `$B606`/`$B612`. 2 spawns (stage 5, cmd `$4B`). |
@@ -96,13 +96,13 @@ largest is `$29` = 41.
 
 **13 ported / 42. 29 throwing. 24 distinct throwing routines.**
 
-> **WAVE 22 — SIX OF THE 29 LANDED, and the table above is now stale in exactly
+> **WAVE 22 - SIX OF THE 29 LANDED, and the table above is now stale in exactly
 > six rows.** Entries **7 (`$B6E1`)**, **9 (`$B311`)**, **12 (`$B3CB`)**,
 > **15 (`$AF2E`)**, **16 (`$AF88`)** and **19 (`$B747`)** read **yes**.
 > `census.py dispatch` re-measured on 2026-08-02:
 > `entries ported 19 / 42 ; throwing 23` and
 > `distinct targets 34 ; distinct ported 16 ; distinct throwing 18`.
-> That is every entry stage 0's wave script names — `wavecensus.py` prints
+> That is every entry stage 0's wave script names - `wavecensus.py` prints
 > `stage 0: 92 distinct, 92 ported, 0 unported, 100.0%`. See
 > `22-impl-six-routines.md`.
 >
@@ -121,12 +121,12 @@ largest is `$29` = 41.
 
 ---
 
-## 2. FALL-THROUGH — read past the apparent end
+## 2. FALL-THROUGH - read past the apparent end
 
 `handlerflow.py` walks each target with a real decoder and reports where control
 actually arrives. Result:
 
-**TRUE fall-throughs (no jump — the bytes just run on):**
+**TRUE fall-throughs (no jump - the bytes just run on):**
 
 ```
 $AE99 (entry 2)  ends $AEDA DEC $014C,X  ->  $AEDD (entry 1)  ->  $AEE1 (entry 3)
@@ -174,7 +174,7 @@ $CAB8/$CB17 JSR $AEE1  entry 20 CALLS entry 3 TWICE
 
 **One near-miss worth recording.** `$B098` (entry 18) ends
 `$B0AB BCS $B033 / $B0AD BCC $B038`. Those two cover both carry states, so
-control never reaches `$B0AF` — but a linear fall-through reader (and my own
+control never reaches `$B0AF` - but a linear fall-through reader (and my own
 tool, before I read the pair) reports "entry 18 falls into entry 5". It does
 not. The `BCS`/`BCC` pair is an unconditional branch written as two.
 
@@ -183,14 +183,14 @@ before `$B914` (entry 24). `RTS` terminates; entry 25 does NOT run the boss.
 
 ---
 
-## 3. WHO CAN CREATE WHICH TYPE — the reachability inventory
+## 3. WHO CAN CREATE WHICH TYPE - the reachability inventory
 
 Every absolute store into the type page `$0300-$031F` in the whole 32 KB
 (scanned for opcodes `8D/9D/99/8E/8C`), plus `INC`/`DEC` (there are **none**):
 
 | site | type written | reaches entry |
 |---|---|---|
-| `$A3D2` | `$64-$A0`, or `$64-$D0` if ≥$30 | table A — see below |
+| `$A3D2` | `$64-$A0`, or `$64-$D0` if ≥$30 | table A - see below |
 | `$A462` | `$65` from table B | 4,5,8,11,13,14,28,29 |
 | `$A49D` | `#$96` | 22 (stage 2 inline only) |
 | `$A4DE` | `$66` from an inline record | 20 (`$66` is `$14` at every caller) |
@@ -224,7 +224,7 @@ $C486 (stage 0)  $C546 (1)  $C686 (2)  $C5AD (3)  $C653 (4)  $C6DE (5)  $C429 (6
 
 plus a 4-entry pointer table at `$C447` (`$C526 $C58D $C633 $C752`) of packed
 nibble streams that pick spawn X/Y. `$C6DE` (stage 5) does not spawn an enemy at
-all — it fills an **enemy-bullet** slot (`$0316`/`$0136`) directly.
+all - it fills an **enemy-bullet** slot (`$0316`/`$0136`) directly.
 
 **Types with NO producer anywhere in the 32 KB: `$00` (entry 0), `$03` (entry
 3), `$1B` (entry 27), `$1F` (entry 31).** Caveat, stated the way the method
@@ -253,7 +253,7 @@ is the stage pointer table. Two (`$32`, `$52`) are never referenced.
 
 **Table B** (`$A602`, stride 4) has exactly **24 entries**, `$A602-$A661`, cmds
 `$80-$97`, all 24 used. Note `$A36F ASL/ASL` makes the index `(4*cmd) AND $FF`,
-so a cmd in `$98-$EF` would read table A as a descriptor — no wave list contains
+so a cmd in `$98-$EF` would read table A as a descriptor - no wave list contains
 one.
 
 **`$A592` formation geometry has 21 entries, not 20** (`$A592-$A5BB`, indices
@@ -264,7 +264,7 @@ overstated it. `00-recon-enemies.md` is now fixed and both counts are pinned by
 `games/gradius/tests/tables.test.js`.)* **`$A5BC` pattern table has 22
 entries** (`$A5BC-$A5FD`, 3 bytes each, max index used `$15`).
 
-**Types the wave data can spawn: 26 distinct, hitting 26 distinct entries —
+**Types the wave data can spawn: 26 distinct, hitting 26 distinct entries -
 8 ported, 18 throwing.**
 
 ```
@@ -284,7 +284,7 @@ type $12 -> entry 18 $B098  x74   PORTED      type $25 -> entry 37 $AF10  x2    
                                               type $29 -> entry 41 $AEDD  x5    PORTED
 ```
 
-### STAGE 1 SPECIFICALLY — the owner's complaint, quantified
+### STAGE 1 SPECIFICALLY - the owner's complaint, quantified
 
 Stage 0's eight chunk slots (six distinct lists) reference these cmds:
 
@@ -325,7 +325,7 @@ chunk 5/6/7 $A8ED: 4 unported each; first = trigger $00, cmd $04, entry 19
 ```
 
 **That is the answer to "super unfinished as soon as you get a bit further along
-in stage one."** Chunks 0 and 1 — the first two 512-pixel chunks — contain zero
+in stage one."** Chunks 0 and 1 - the first two 512-pixel chunks - contain zero
 unported spawns, which is exactly why the opening plays. Chunk 2 is selected
 when `$61 = $3F AND $0E` = 4, and its first record fires at
 `($61 << 8) + trigger*2 = $0400 + $40 = $0440` with cmd `$03` → type `$07` →
@@ -402,7 +402,7 @@ at porting time, not a silent wrong value. That is the right shape. But it means
 throwing handlers can be written**, and that is a mechanical, enumerable job now
 rather than a discovery.
 
-> **DONE, WAVE 21 — every **NO** row above except `$CF2D`/`$CF2E` is now
+> **DONE, WAVE 21 - every **NO** row above except `$CF2D`/`$CF2E` is now
 > exported.** `assets/enemies/tables.json` went from 9 blocks / 2,073 bytes to
 > **34 blocks / 3,060 bytes**; the 49 addresses this section lists collapse
 > into **25 contiguous data runs**, each one pinned on the *instruction
@@ -413,8 +413,8 @@ rather than a discovery.
 > `LDA $68`. See `21-impl-tables-and-metasprite.md`.
 >
 > The only bases any of the 42 handlers still index and no exporter ships are
-> **`$CF2D`/`$CF2E`** — the ending chain's canned-packet pointers, reached only
-> through entry 40 (`$BB0F` → `$CE94`) — excluded by `20-plan-completeness.md`
+> **`$CF2D`/`$CF2E`** - the ending chain's canned-packet pointers, reached only
+> through entry 40 (`$BB0F` → `$CE94`) - excluded by `20-plan-completeness.md`
 > §5 and named in `tools/tablecoverage.py`'s `KNOWN_GAPS` so they print on
 > every run instead of being whitelisted silently.
 >
@@ -444,24 +444,24 @@ id $A2  tblptr $8EE2 -> $95FB  count=18
 ```
 
 `games/gradius/tools/export_metasprites.py:85` has
-`if n == 0 or n > 16: continue`. That bound is invented — `$8AC6`'s loop has no
+`if n == 0 or n > 16: continue`. That bound is invented - `$8AC6`'s loop has no
 upper limit on the record count. Metasprite `$A2` is a real 18-record entry
 whose data runs `$95FB..$9643`, ending exactly where `$A3`'s record begins at
 `$9644`. It is dropped from `assets/metasprites.json` (161 records, `$A2`
 missing), and `drawMetasprite` treats a missing record as
-`if (!rec || rec.length === 0) return cursor` — i.e. **it silently draws
+`if (!rec || rec.length === 0) return cursor` - i.e. **it silently draws
 nothing**, which is the one failure mode this project has agreed not to have.
 
 `$A2` is referenced by **explosion script 4** (`$AE8B`: `A2 6B 6A 69 68 6A 00`)
 and **explosion script 5** (`$AE92`: `A0 68 A2 69 6A 6B 00`). Script 4 is set by
 `$B988` (the boss core's death), script 5 by `$BB75` (`$BB0F`). Both handlers
-are unported today, so this is not yet a live bug — it is a live bug the moment
+are unported today, so this is not yet a live bug - it is a live bug the moment
 entry 24 or entry 40 is ported. The other eight ids the `n > 16` guard drops
 (`$A9 $AE $B9 $BA $C1 $CA $CB $F0`) point into sound/CHR data and are not
 metasprites; the high table `$8E9E` holds only four real entries (`$A0-$A3`).
 
 > **FIXED, WAVE 21, and the last sentence above is wrong.** The high table
-> holds **36** real entries, ids `$80-$A3` — `$80-$9F` were always being
+> holds **36** real entries, ids `$80-$A3` - `$80-$9F` were always being
 > exported. What is true is that **`$A3` is the last one**, and the ROM proves
 > it: `$8EE0` (id `$A1`'s slot) contains **`$8EE6`**, the byte *after* `$A3`'s
 > slot at `$8EE4`, because `$A1`'s own 9-byte record is stored there. Reading
@@ -481,7 +481,7 @@ metasprites; the high table `$8E9E` holds only four real entries (`$A0-$A3`).
 >
 > **And script 4 OVERLAPS script 2.** Script 2 is at `$AE8C` and script 4 at
 > `$AE8B`: script 4 *is* `$A2` prepended to script 2, sharing its terminator at
-> `$AE91`. That is why `$A2` was invisible — one byte in front of a script that
+> `$AE91`. That is why `$A2` was invisible - one byte in front of a script that
 > already worked.
 
 ---

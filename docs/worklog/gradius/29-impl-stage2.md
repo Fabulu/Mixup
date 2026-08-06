@@ -173,7 +173,7 @@ SKIP, and the site went live as build `20260804010834`.
 
 THE FRAME COUNT WAS ALREADY IN THIS FILE. The terrain-fallback section above
 records the endchain going GREEN "through all 5839 frames (TERRAIN MAP 0/512,
-all TIER 1 fields exact)" — measured by the wave itself before it died. Three
+all TIER 1 fields exact)" - measured by the wave itself before it died. Three
 attempts were spent re-deriving it from a fresh run, each truncating its own
 output (`tail -25`, `tail -50`, then a `head -8` inside a backgrounded pipe),
 before the existing measurement was noticed twenty lines up in the document

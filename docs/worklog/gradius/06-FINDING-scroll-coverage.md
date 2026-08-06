@@ -1,4 +1,4 @@
-# FINDING — the corpus's real coverage limit is SCROLL DISTANCE
+# FINDING - the corpus's real coverage limit is SCROLL DISTANCE
 
 status: DONE -- and the port work is done too, in wave 12.
         See `12-impl-spawn-and-throw-audit.md`: `$A3B1` is ported, and so are
@@ -24,7 +24,7 @@ Stage 1 chunks 0 and 1 are all cmd >= $80 up to scroll $0380
     at fireWave (enemies.js:338) ... at tick (main.js:167)
 ```
 
-Shown ON THE PAGE, not just the console — the `onError` channel added after the
+Shown ON THE PAGE, not just the console - the `onError` channel added after the
 first crash is working.
 
 ## Why this is the more useful of the two crashes
@@ -43,7 +43,7 @@ The implementer measured a boundary and wrote it into the message. Below scroll
 appears. So the gap is not random and it is not really about `$A3B1`.
 
 **THE CORPUS'S COVERAGE LIMIT IS SCROLL DISTANCE.** Scenarios run ~240 frames
-from align 400 at ~0.5 px/frame — roughly 120 px of scroll. Everything gated
+from align 400 at ~0.5 px/frame - roughly 120 px of scroll. Everything gated
 behind further scroll is unexercised, and *looks* covered because the scenarios
 that do run are green.
 
@@ -53,7 +53,7 @@ the ship to the left of an enemy; this one needed thirty seconds of scrolling.
 
 ## What this changes
 
-Nothing is being fixed now — the owner's call, and the right one: `$A3B1` is one
+Nothing is being fixed now - the owner's call, and the right one: `$A3B1` is one
 path and the class is what matters.
 
 **The systemic fix is already scheduled**: `09-DECIDED-seed-anywhere.md`. Seeding
@@ -84,7 +84,7 @@ falsified reasoning (`$C413` stage-advance arms, enemy type 6 `$B198`, the
 > frame 2234 and is now ported; `$C413` and the `>= $F0` path were NOT reached
 > by 27,400 frames of seven scripts, which is a smaller statement than
 > "unreachable" and is recorded as such. And the guess "some are probably
-> reachable too" was an understatement — **fifteen** are, including game over
+> reachable too" was an understatement - **fifteen** are, including game over
 > (`$96FB`, 794 executions from frame 3380, i.e. "lose three lives"), the
 > missile crawl path (`$A19E`, 203 executions, which the weapons recon had
 > called unexercised on 916 probe calls), and five more handlers of the `$AE1C`

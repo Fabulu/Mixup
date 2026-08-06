@@ -1,4 +1,4 @@
-# Wave 12 — port $A3B1 (the single-enemy spawn), then audit EVERY remaining throw
+# Wave 12 - port $A3B1 (the single-enemy spawn), then audit EVERY remaining throw
 
 status: DONE
 wave: 12   role: impl   started: 2026-08-01
@@ -13,7 +13,7 @@ Two jobs.
 2. The more valuable half: audit **every** remaining unported throw in
    `games/gradius/src/` for REACHABILITY IN PLAY, **mechanically**, and rank
    them. For anything I cannot reach: "I could not reach it, here is what I
-   tried" — never "the game does not do this".
+   tried" - never "the game does not do this".
 
 ---
 
@@ -21,7 +21,7 @@ Two jobs.
 
 ### 1. `$A3B1`, and the two handlers stage 1 reaches through it
 
-Porting `$A3B1` alone moves the crash rather than removing it — the enemy it
+Porting `$A3B1` alone moves the crash rather than removing it - the enemy it
 spawns is a type the dispatcher cannot handle. Wave 10 had already measured
 exactly that and written it into `deep-page4`'s annotation. So this wave is
 four routines, not one:
@@ -41,11 +41,11 @@ four routines, not one:
 (type `$07`, at scroll `$0440`).
 
 The turret is the more interesting routine. It does not move under its own
-power — both forms tail into `$AEDD`, i.e. 0.5 px/frame left, which is the
+power - both forms tail into `$AEDD`, i.e. 0.5 px/frame left, which is the
 camera's own scroll rate, so it sits still relative to the terrain. What it
 does is **aim**: `$B038-$B06C` turns its position relative to the ship into a
 direction code 0..5, and writes both the barrel metasprite (`$B086,Y`) and
-`$0496,X` — the muzzle index `$BC90 LDX $0496,Y` reads when this enemy fires.
+`$0496,X` - the muzzle index `$BC90 LDX $0496,Y` reads when this enemy fires.
 That is the array wave 11 measured as **0 for every stage-1 squadron**. The
 turret is what makes it non-zero, which is why the two waves belong together.
 
@@ -53,9 +53,9 @@ Two ROM tables were added to `export_assets.py`, both anchored on the
 instructions either side (`$B083 JMP $AEDD` / `$B098 LDA #$92`, and
 `$B1FD JMP $B1F4` / `$B205 LDA $030C,X`):
 
-* `turretFrames` `$B086-$B097` — three parallel 6-entry rows (metasprite, and
+* `turretFrames` `$B086-$B097` - three parallel 6-entry rows (metasprite, and
   the muzzle index for bit-7-clear and bit-7-set `$018C`);
-* `arcTurns` `$B200-$B204` — five bytes, `00 00 01 00 00`.
+* `arcTurns` `$B200-$B204` - five bytes, `00 00 01 00 00`.
 
 `arcTurns` is exported at FIVE, not six, deliberately: a sixth byte would be
 `$B205`'s `LDA $030C,X` opcode `$BD`, which reads as a perfectly plausible
@@ -64,9 +64,9 @@ rather than letting the reader's generic out-of-range message fire.
 
 ### 2. `tools/oracle/throwaudit.lua` + `throwaudit.py`
 
-The mechanical answer to "which throws does a player reach". 79 exec hooks —
+The mechanical answer to "which throws does a player reach". 79 exec hooks -
 one per ROM address named by a loud throw in `src/`, plus **all 42 entries** of
-the `$AE1C` handler table — driven by seven long, varied scripts. Plus 19
+the `$AE1C` handler table - driven by seven long, varied scripts. Plus 19
 per-frame RAM gates, because several throws are not a branch the cartridge
 takes but a VALUE the port refuses (`$18`, `$19`, `$1A`, `$3A`, `$5C`, `$17`,
 `$42`, `$0360`), and for those an address hook answers the wrong question.
@@ -78,11 +78,11 @@ that looks fine and is wrong:**
    and executes every frame; the stage-5 census starts at `$9669`. My first run
    reported **1613 hits for a path nothing reaches.** Same for `$982A` (the
    dispatch, not its arms) and `$A17C`/`$C3AD` (which have no arm address of
-   their own at all — both land on code the normal path also reaches, so they
+   their own at all - both land on code the normal path also reaches, so they
    are RAM gates now).
 2. **A script that never presses START runs the ATTRACT DEMO.** My first run
    used `400:,...` instead of the corpus's `200:,10:S,190:` and measured the
-   demo playing itself — `$09` set, `$9C5E` executed at f414, and `$45 = 2`,
+   demo playing itself - `$09` set, `$9C5E` executed at f414, and `$45 = 2`,
    `$46 = 5`, `$41 = 1`, `$17 = 3` for the whole run.
 
 ---
@@ -109,7 +109,7 @@ python games/gradius/tools/verify_assets.py --self-test
 49 of 49 mutations reddened their target; 14 of 14 families seen red
 ```
 
-— 39 before this wave, 49 after: `turret-frame`, `turret-muzzle-shift` and
+- 39 before this wave, 49 after: `turret-frame`, `turret-muzzle-shift` and
 `arc-turn` are new, and all three redden `enemies`.
 
 ```
@@ -119,7 +119,7 @@ python games/gradius/tools/oracle/scen.py      # the WHOLE corpus, re-recorded
 
 ### THE REACHABILITY TABLE
 
-`python games/gradius/tools/oracle/throwaudit.py` — **27,400 cartridge frames,
+`python games/gradius/tools/oracle/throwaudit.py` - **27,400 cartridge frames,
 7 scripts**, exec hooks. `first` is the game frame of the first execution.
 Ranked by how easily a player gets there.
 
@@ -138,19 +138,19 @@ Ranked by how easily a player gets there.
 | 11 | `$AF88` handler entry 16 | no | **YES** | 466 | 5018 | powered run, deep (scroll `$0A64`) |
 | 12 | `$B3CB` handler entry 12 | no | **YES** | 436 | 5023 | powered run, deep |
 | 13 | `$A19E` missile CRAWL | no | **YES** | 203 | 3324 | own missiles (`$41 = 1`) AND fly deep enough to meet real ground |
-| 14 | `$9C5E` pause-code cheat | no | **YES, but not from `$9B10`** | 4 | 4191 | executed only AFTER game over, i.e. by the continue screen — never from a live pause. See below. |
+| 14 | `$9C5E` pause-code cheat | no | **YES, but not from `$9B10`** | 4 | 4191 | executed only AFTER game over, i.e. by the continue screen - never from a live pause. See below. |
 | 15 | `$8473` `$09` scoring gate | n/a | **YES** | 105 | 4366 | after game over, when the attract demo resumes |
-| — | `$BC59` enemy bullets (w11) | YES | **YES, naturally** | 5 | 3563 | **no pokes.** The four `enemy-bullet*` scenarios poke `$040C`; a long deep run reaches it for free. |
-| — | `$C1D6` death (control) | YES | YES | 18 | 493 | — |
+| - | `$BC59` enemy bullets (w11) | YES | **YES, naturally** | 5 | 3563 | **no pokes.** The four `enemy-bullet*` scenarios poke `$040C`; a long deep run reaches it for free. |
+| - | `$C1D6` death (control) | YES | YES | 18 | 493 | - |
 
 **Not reached by 27,400 frames of these seven scripts.** I could not reach
 these; here is what I tried (below the table).
 
 | throw / ROM | hits | the strongest thing I can say |
 |---|---|---|
-| `$A37A`/`$A466`/`$A46F`/`$A4A6` (`cmd >= $F0`) | 0 | stage 1's four wave lists carry no cmd `>= $F0` at all — I read all four out of `assets/enemies/tables.json`. Reaching it needs another stage. |
+| `$A37A`/`$A466`/`$A46F`/`$A4A6` (`cmd >= $F0`) | 0 | stage 1's four wave lists carry no cmd `>= $F0` at all - I read all four out of `assets/enemies/tables.json`. Reaching it needs another stage. |
 | `$C413` stage advance | 0 | `$3A` is 0 on all 27,400 frames and `$1B` never leaves {0,1,2,3,4,`$80`,`$A0`,`$C0`} |
-| `$BBC3` / `$BBE5` rank ladder | 0 | `$BBC1`'s BEQ jumps the whole ladder while `$19 | $1A` is 0, and both are 0 on all 27,400 frames — **even on the run where `$17` reached 4 for 5690 frames.** This is the plan's risk 5, answered NO for stage 1 by measurement rather than by argument. |
+| `$BBC3` / `$BBE5` rank ladder | 0 | `$BBC1`'s BEQ jumps the whole ladder while `$19 | $1A` is 0, and both are 0 on all 27,400 frames - **even on the run where `$17` reached 4 for 5690 frames.** This is the plan's risk 5, answered NO for stage 1 by measurement rather than by argument. |
 | `$BC63` bullet alloc failure | 0 | needs ten live bullets; the natural run made five |
 | `$BC77` bullet kind 1 | 0 | needs a firing enemy with status `$80-$8F`; no stage-1 enemy has one |
 | `$C05F` armoured, `$C099` type-`$9A` | 0 | no stage-1 squadron sets the bit or the type |
@@ -166,12 +166,12 @@ these; here is what I tried (below the table).
 | two-player (`$18`), `$5C`, `$1A` | 0 | all three are 0 on all 27,400 frames |
 | `$8984` arms 2-6 (`$42`) | 0 | `$42` only ever read 0 or 1 |
 | `$88E5` with `$0E < 4` | 0 | `$0E` read {1,9,12,13,15,29,37,38,40,45,49,90,149} |
-| `$C3AD` (`$0360 == 0`) | — | **`$0360` DID read 0, on 16 of 27,400 frames.** The port's comment says the clamp `[16,240]` makes it unreachable; the clamp holds while the ship is ALIVE, and those 16 frames are respawn frames where `$0100 >= 2`, which is exactly the gate `$C2B5` uses before the probe. So the throw is still unreached — but the comment's reasoning is one step short and I have changed nothing about it except this note. |
+| `$C3AD` (`$0360 == 0`) | - | **`$0360` DID read 0, on 16 of 27,400 frames.** The port's comment says the clamp `[16,240]` makes it unreachable; the clamp holds while the ship is ALIVE, and those 16 frames are respawn frames where `$0100 >= 2`, which is exactly the gate `$C2B5` uses before the probe. So the throw is still unreached - but the comment's reasoning is one step short and I have changed nothing about it except this note. |
 
 **How I tried.** Seven scripts, listed in `throwaudit.py` with their rationale:
 `deep-survivor` (6000 frames on the only trajectory measured to survive stage
 1's opening), `deep-autofire` (the same with A held), `deep-powered` (the same
-again with `$44 = 2`, `$45 = 2`, `$46 = 5`, `$41 = 1` poked — the ONLY way past
+again with `$44 = 2`, `$45 = 2`, `$46 = 5`, `$41 = 1` poked - the ONLY way past
 rank 3, exactly as the brief says: an unforced run reaches 0-1 and this one
 reached 4 for 5690 frames), `left-hugger`, `floor-hugger`, `wander` (24
 direction changes), `die-thrice`. Max scroll reached: `$04BD`, `$04BD`,
@@ -183,10 +183,10 @@ stopped at `$04BD`. Power-ups are not a corner case; they are how the game is
 normally played, and they are what gets a player deep enough to meet the code
 nobody has ported.
 
-### The new code, seen red — and FOUR BREAKS THAT PASSED
+### The new code, seen red - and FOUR BREAKS THAT PASSED
 
 `deep-page3`'s tail was extended from `32:RD` to `80:RD,326:R`, so it now
-compares **579 frames, 1900 → 2479, camera `$0319` → `$043B`** — the first
+compares **579 frames, 1900 → 2479, camera `$0319` → `$043B`** - the first
 window in this project's history that runs THROUGH scroll `$0380` instead of
 stopping in front of it. Nineteen deliberate breaks, each applied to
 `src/enemies.js`, graded by `compare.mjs --only deep-page3`, restored, and
@@ -216,28 +216,28 @@ sha256'd both ways (`ecb6e8c9…` before and after every one):
 
 **The four that passed are the finding, and each has a different cause.**
 
-* **`$B033`** — the guard immediately above it (`$B0AB`) IS red, 10 fields, at
+* **`$B033`** - the guard immediately above it (`$B0AB`) IS red, 10 fields, at
   the very first turret frame. Both facts together say the guard is exercised
   and always answers NO: the compared window never has the ship above the
   ceiling turret, so the constant has no cartridge witness at all.
-* **`$B043` / `$B062`** — the turret in this window sits at dx ≈ `$A0` and its
+* **`$B043` / `$B062`** - the turret in this window sits at dx ≈ `$A0` and its
   dy never sits on a band edge, so a one-unit shift is invisible while the same
   routine's muzzle store and `$AEDD` tail both go red. Textbook
   docs/knowledge/03: reaches the code, interrogates none of its parameters.
-* **`$B184`** — and this one is **structural, not a sampling accident.** The
+* **`$B184`** - and this one is **structural, not a sampling accident.** The
   only caller reachable today is handler 6, whose `$B1B1` seed writes
   `$044C,X = 0` and nothing on its path ever changes it, so `$038C,X - 0` can
   never borrow. Flipping `$B1DA`'s BNE (which CHOOSES `$B184`) is red, so the
   routine runs; the borrow inside it cannot be driven from any input.
 
-All four are now pinned by unit tests — `$B033` in `tests/enemies.test.js`
+All four are now pinned by unit tests - `$B033` in `tests/enemies.test.js`
 (it needs a placement, not a boundary), the other three plus the `$B1C5`
 overrun guard and `$B026` in `tests/enemies-unwitnessed.test.js`, each carrying
 the break that produced it.
 
 **Sixteen more breaks, this time against the UNIT suite**, applied to
 `src/enemies.js`, graded with `node --test`, restored, hashed both ways
-(`ec025ebc…`): **15 of 16 RED**, each naming the test that caught it —
+(`ec025ebc…`): **15 of 16 RED**, each naming the test that caught it -
 `$A3C8`, `$A3D0`, `$A3BB`, `$B09A`, `$B043`, `$B050`, `$B062`, `$B068`,
 `$B033`, `$B031`, `$B026`'s type byte, `$B184`, the `$B1C5` guard, `$B19D`,
 `$B1D0`.
@@ -248,7 +248,7 @@ which re-loads from the OTHER row when the byte is zero) as a plain if/else is
 GREEN on every test in this repo. Measured why: index 5 is the only zero in
 `$B092`, and `$B08C[5]` is zero too, so both spellings store 0 and **no input
 separates them**. The test that used to claim to catch it has been rewritten to
-pin the tables' shape — "index 5 is the only zero in either row" — and to say
+pin the tables' shape - "index 5 is the only zero in either row" - and to say
 plainly that the branch itself is unpinnable while those bytes hold. A test that
 has never been red is decoration; so is one that cannot be.
 
@@ -256,7 +256,7 @@ has never been red is decoration; so is one that cannot be.
 
 Wave 10 pinned `deep-page4` with `expectThrow $B098 @ 2301`. That is now
 ported, so the annotation had to change or the DEEP REACH block would fail on a
-surprise success — which is the discipline working. It was **replaced, not
+surprise success - which is the discipline working. It was **replaced, not
 removed**: tail `326:R` → `366:R` (window 2301..2519, 40 frames longer) and
 `expectThrow $B6E1 @ 2490`, measured on the cartridge BEFORE it was written
 down. Verified:
@@ -279,9 +279,9 @@ falsifies with a number:
 | `src/enemies.js` dispatch throw | "No measured run has ever dispatched it" | names the five entries that ARE reached, with frames, and points at this file |
 | `src/enemies.js` header | "$A3B1 … past this corpus"; "34 of the 42 handlers" | ported; **29 of 42 entries** unported (13 ported = 10 distinct routines) |
 | `src/weapons.js` `$A19E` | "the crawl arm has never run" | **203 executions, first f3324** |
-| `src/nmi.js` `$96FB` | "nothing in this corpus reaches either" | **794 executions, first f3380** — the port's biggest known hole |
+| `src/nmi.js` `$96FB` | "nothing in this corpus reaches either" | **794 executions, first f3380** - the port's biggest known hole |
 | `src/flow.js` `$97F1` | (no number) | **twice, f3379 and f3967** |
-| `src/flow.js` `$9C5E` | "no measured run has reached it" | 4 executions, but **only after game over, never from `$9B10`** — the distinction is kept |
+| `src/flow.js` `$9C5E` | "no measured run has reached it" | 4 executions, but **only after game over, never from `$9B10`** - the distinction is kept |
 | `tests/enemies.test.js` | "34 of the 42 entries are unported" | 29, and entry 7 is annotated REACHABLE |
 | `src/enemies.js` `$B184` | "deliberately ABSENT … untested, unreachable code" | ported, with why `$B1FA` still is not |
 
@@ -338,20 +338,20 @@ Everything else in that run, for the record:
 
 The one `[STILL BROKEN]` line is the PRE-EXISTING `$8871` knownFail (the
 full-screen RLE loader, excluded by `00-plan.md`), matched on 9 of 12 windows
-with a stage load — hence `0 stale annotations`. Wave 12 neither introduced it
+with a stage load - hence `0 stale annotations`. Wave 12 neither introduced it
 nor touched it.
 
 `rendergate.py`, inside the gate: **0 of 61440 pixels differ** on all seven
 natural frames (f400, f1200, f1700, f2200, f2400, f2600, f3500) and on the
 three synthetic sprite frames; the synthetic boundary residual is inside its
-stated bound. The numbers did not move, which is expected — it imports no
+stated bound. The numbers did not move, which is expected - it imports no
 `src/`.
 
 ---
 
 ## What I could not do, and why
 
-* **I did not port `$B6E1`, `$B747`, `$B311`, `$AF2E`, `$AF88`, `$B3CB`** —
+* **I did not port `$B6E1`, `$B747`, `$B311`, `$AF2E`, `$AF88`, `$B3CB`** -
   the six handlers the audit proves a player reaches. `$B6E1` alone pulls in
   `$B65C`, `$B676`, `$B6B8` and a terrain probe; that is a wave, not a
   footnote, and guessing it from the listing is exactly what this repo forbids.
@@ -381,7 +381,7 @@ stated bound. The numbers did not move, which is expected — it imports no
   whatever the new wall is, and extend `deep-page4`'s tail to contain it. Do
   not delete the annotation.
 * **`throwaudit.py` is the tool for the "is this reachable" question.** Read
-  PROBE.md 5 first — the two traps (hook the arm not the test; press START or
+  PROBE.md 5 first - the two traps (hook the arm not the test; press START or
   you measure the attract demo) are both easy to fall into and both produce a
   table that looks right.
 * **`deep-page3` is now the deep comparison** (579 frames, 1900-2479) and
@@ -394,12 +394,12 @@ stated bound. The numbers did not move, which is expected — it imports no
   `$B1C5` hook reads the Y register: 2439 executions, Y = 0 (558), 1 (550),
   2 (550), 3 (550), 4 (231), **never 5**. The enemy walks the whole schedule and
   `$B251`'s box frees it one entry before the overrun. My first reading of the
-  routine reasoned it would be freed inside its first arc, i.e. Y = 0 only —
+  routine reasoned it would be freed inside its first arc, i.e. Y = 0 only -
   **that was wrong, and the measurement caught it before it went into a comment
   as a fact.** `h_B198` throws by name at Y >= 5 anyway, because the cartridge
   stops exactly one read short.
 * **`$B06D`, the turret's direction code, only ever takes 0, 1, 3 and 4.** Same
-  hook, 8363 executions: 0 (26), 1 (13), 3 (2740), 4 (5584) — **never 2, never
+  hook, 8363 executions: 0 (26), 1 (13), 3 (2740), 4 (5584) - **never 2, never
   5**, which are precisely the two codes the Y refinement produces. So
   `$B062`/`$B068`'s INY has no cartridge witness in either direction and the
   metasprites it selects (`$72`, `$77`) are drawn by no run made here. That is

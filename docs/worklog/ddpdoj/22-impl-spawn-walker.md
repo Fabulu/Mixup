@@ -1,4 +1,4 @@
-# W22 IMPL — THE SPAWN SIDE: the stage-1 spawn walker
+# W22 IMPL - THE SPAWN SIDE: the stage-1 spawn walker
 
 status: **DONE.** The port's spawn walker (`src/spawn.js`) drives stage 1's
 **339 script spawns to the script terminator at 0 divergent** over the
@@ -18,7 +18,7 @@ introduced anywhere in this wave.**
 
 ---
 
-## 0. PROVENANCE — read before quoting one number
+## 0. PROVENANCE - read before quoting one number
 
 Every dynamic number below comes from a 16,000-lf invulnerable+auto-shot run of
 stage 1 (`w22-spawn-stage1.tsv`) under the SAME two labelled interventions as
@@ -56,7 +56,7 @@ live frame, and adding one would be a claim I could not back.
   nothing reads enemy+$12 this wave.
 * **The enemy handlers** (the `($4C,A5)` dispatch the init stores) -- W25/W29.
 
-## 2. THE HEADLINE — 339 to the terminator, frame for frame
+## 2. THE HEADLINE - 339 to the terminator, frame for frame
 
 ```
 $ node tools/w22spawngate.mjs
@@ -81,7 +81,7 @@ three done-when columns (cursor, clock) compare at 0 divergent; the third
 (live-count) is board-measured and port-pending.** The spawn counter -- the core
 of the done-when -- is 339 = 339.
 
-## 3. THE CLOCK-PER-FRAME RED — and three more
+## 3. THE CLOCK-PER-FRAME RED - and three more
 
 ```
 $ node tools/w22spawngate.mjs --break all
@@ -97,7 +97,7 @@ counter; the first board spawn lands at lf1963/clk`$60` and a per-frame counter
 would fire it at lf96. It diverges at lf96 and never recovers -- the W13/W16 RED
 on the spawn side, exactly as the plan requires.
 
-### Source breaks — three constants, changed one at a time, SHA-verified
+### Source breaks - three constants, changed one at a time, SHA-verified
 
 ```
 sha256 BEFORE and AFTER all three, byte-identical:
@@ -110,7 +110,7 @@ sha256 BEFORE and AFTER all three, byte-identical:
 | B | `initBody = init + 8` -> `init + 7` (the +8 rule) | **1 of 26** (the +8 test) |
 | C | walker `cursor += 8` -> `+= 7` (record stride) | **4 of 26** (cursor + dispatch) |
 
-## 4. THE DEFERRED QUEUE — ported, and measured at 43
+## 4. THE DEFERRED QUEUE - ported, and measured at 43
 
 The deferred queue `$815EAA` is the ONLY door for the 47 script-less types
 (plan W21). It is fed by the enemy handlers (`$263678`/`$263684`/`$263690`,
@@ -145,7 +145,7 @@ frame by a later handler-driven allocation; the headline counts (339 script, 43
 deferred, 382 total) come from the cursor and the cumulative claim tap, which
 are not affected.
 
-## 5. THE +8 RULE — ported and unit-tested both ways
+## 5. THE +8 RULE - ported and unit-tested both ways
 
 Every one of the 256 type-table entries is an 8-byte stub `move.w #N,($4,A5) /
 rts` (`20-recon-enemy-census`, verified mechanically). `initDispatch` calls the
@@ -157,7 +157,7 @@ index at +$3, scroll-locked fixup at subrec+$4. Against the REAL tables, type
 `$11` resolves init `$268714`, init+8 `$26871C`, handler `$2688CC` (the census's
 §4 values), and the NULL type `$00` resolves the do-nothing stub `$267814`.
 
-## 6. THE SUB-RECORD ALLOCATOR — `$2635B2`, band + run
+## 6. THE SUB-RECORD ALLOCATOR - `$2635B2`, band + run
 
 Two pools, stride `$20`: common `$81459C` (100 slots, `$64`) and special
 `$81521C` (50 slots, `$32`). Band selection is the class byte (`+$0D`) bit 7 OR

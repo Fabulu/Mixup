@@ -1,4 +1,4 @@
-# QA (adversarial) — wave 2: the HUD, canned packets, $8898 rotation
+# QA (adversarial) - wave 2: the HUD, canned packets, $8898 rotation
 status: DONE
 wave: 2   role: qa   started: 2026-07-31   commit under test: 43bc718
 
@@ -121,7 +121,7 @@ every producer input is constant across the corpus is CONFIRMED.
 
 ## FINDINGS
 
-**F1 (moderate) — a deliberate break that PASSES. The bit-7 blanker is not tested.**
+**F1 (moderate) - a deliberate break that PASSES. The bit-7 blanker is not tested.**
 `tests/hud.test.js:401` "$8617-$8624: index bit 7 blanks everything after the
 first TWO bytes" drives index `$80|$11`. Packet `$11` is
 `23 A2 00 00 00 00 FE`: everything after the address is ALREADY zero, so the
@@ -140,7 +140,7 @@ does `zp9B = 3` and `zp9B = 9` -- while the test's own comment says
 are red, i.e. the check pins the countdown from below and nothing else.
 Fix: use `$80|$0F` (or `$12`/`$13`). One line.
 
-**F2 (moderate) — a measured-looking claim in a load-bearing test that is false.**
+**F2 (moderate) - a measured-looking claim in a load-bearing test that is false.**
 `tests/hud.test.js:88-94` quotes the cartridge histogram
 `{1:339, 9:86, 13:79, 15:173, 38:84, 40:87, 45:128, ...}` and glosses
 "45 = a block plus the 8-byte lives packet". Re-measured (section 4): **45 occurs
@@ -152,7 +152,7 @@ fixture (`s.build.gate = 1`, mode 5, 8 frames) can only produce {1,9,15,40}, so
 the numbers cited are not the numbers the assertion checks
 (docs/knowledge/03 "report what was skipped", and rule 6 on stale notes).
 
-**F3 (moderate) — the wave adds a ROM-derived asset that the rom-leak guard
+**F3 (moderate) - the wave adds a ROM-derived asset that the rom-leak guard
 cannot see, and it ships.** `games/gradius/assets/hud/packets.json` stores the
 literal PRG bytes of all 39 canned streams together with their ROM file offsets:
 `{"index":0,"rom":"$871B","fileOffset":1835,"bytes":[34,45,49,0,52,8,2,9,4,7,254]}`.
@@ -164,7 +164,7 @@ has the same shape) and that is fair -- but `tiles.u8` is a decoded bitplane
 expansion, whereas this is a 1:1 transcript of ~300 PRG bytes plus the offsets
 to find them. Flagging, not fixing: this is a repo-policy call, not a port bug.
 
-**F4 (minor) — "the whole 4 KB matches" is 2 KB.** `tests/terrain.test.js`
+**F4 (minor) - "the whole 4 KB matches" is 2 KB.** `tests/terrain.test.js`
 `diffByRow()` walks `nt < 2` x `i < 0x400`, i.e. offsets 0..0x7FF of a 4096-byte
 `nt.bin`. The header comment and the commit message both say "full 4 KB". I
 checked the captures: `cap.nt[0..0x7FF] == cap.nt[0x800..0xFFF]` on f400/f1200/
@@ -172,7 +172,7 @@ f3500 (0 differing bytes), so the uncompared half is genuinely redundant under
 vertical mirroring -- but the port's own mirror write is therefore unchecked
 (see F5).
 
-**F5 (minor) — four parameters in the rewritten `src/vram.js` that no check
+**F5 (minor) - four parameters in the rewritten `src/vram.js` that no check
 moves** (each mutation alone: 63 pass / 0 fail):
  - `scanQueue`'s escape threshold (`$8A96 CMP #$03`) -- no packet the port emits
    contains a data byte `$FF`, so the escape never fires;
@@ -185,7 +185,7 @@ That is not "the wave is wrong"; it is where the wave's coverage stops. The
 escape in particular is the one the file's own comment calls "precisely why the
 ROM has an escape at all".
 
-**F6 (minor) — two 8-bit wrap exits in the ROM that the port does not model.**
+**F6 (minor) - two 8-bit wrap exits in the ROM that the port does not model.**
 Disassembled from the cartridge:
 ```
 8626  E8        INX
@@ -205,19 +205,19 @@ which also explains the `builds per frame {4: 22}` bucket in section 2.
 `tests/frame-gates.test.js:157` already cites the 149, so this is a note for
 wave 4, not a defect now.
 
-**F7 (informational) — second call sites, correctly out of scope, worth naming.**
+**F7 (informational) - second call sites, correctly out of scope, worth naming.**
 ROM xrefs: `$88B6/$88F6/$892C` are also called from `$9C12/$9C15/$9C18`,
 `$89E3` from `$9C1E`, `$8A30` is jumped to from `$8971/$89AC`, and `$8A51` has a
 second caller at `$85B1`. `src/hud.js` names only the `jt_88AD` entry. `$9C24`'s
 four unguarded `$9D8E` calls are the one place where "the HUD throttles the
 streamer" does not hold, and they are inside mode 5.
 
-**F8 (informational) — `copyPacket` re-establishes `$9B = 2` on direct `$85F3`
+**F8 (informational) - `copyPacket` re-establishes `$9B = 2` on direct `$85F3`
 entry; the ROM does not** (`$85EB STA $9B` is prologue-only). Documented in
 `src/hudpackets.js` as deliberate and safe today. Mutating the `$FD` arm's
 `zp9B = 2` -> `0` is also green, for the same reason.
 
-**F9 (informational) — three of the strongest HUD checks skip silently on a tree
+**F9 (informational) - three of the strongest HUD checks skip silently on a tree
 without captures.** `tests/terrain.test.js`'s three nametable comparisons call
 `t.skip()` when `tools/oracle/out/video/<f>/dump.json` is missing, and they are
 the only checks that hold the lives suppression arms against cartridge data. On

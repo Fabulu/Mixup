@@ -1,4 +1,4 @@
-# 69 — TOOL: CHECKPOINTS THROUGH STAGE 1, AND SEEDING THE PORT FROM ANY OF THEM
+# 69 - TOOL: CHECKPOINTS THROUGH STAGE 1, AND SEEDING THE PORT FROM ANY OF THEM
 
 status: **DONE** -- a comparison can now start at any rung of a 250-frame ladder
 spanning the whole of stage 1, built from ONE 13-minute cartridge run and
@@ -6,7 +6,7 @@ consumed with no emulator (10.3 s for 71 segments). Reproduced wave 4's
 `fly-around` result through the new path to the byte and to the digest. Deep:
 **0 SEEDBAD at 72 board states from lf2,000 to lf19,500**, the port's reach ends
 at **lf8,250**, seven distinct unported boss addresses enumerated, and the first
-non-shot field to move at depth is `irq6` at **lf8,227** — the board's slowdown.
+non-shot field to move at depth is `irq6` at **lf8,227** - the board's slowdown.
 Found: four corpus scenarios hold a button the port cannot process; `$296DD6`
 is documented "unreachable" and is not; `stage1-shot`'s window disagrees with
 its own description by 731 frames; and **my own red check could not fail and was
@@ -34,11 +34,11 @@ wrong half is the expensive half.**
 
 Checked before writing any code:
 
-- `games/ddpdoj/src/ram.js` — the port **keeps the board's own RAM layout**.
+- `games/ddpdoj/src/ram.js` - the port **keeps the board's own RAM layout**.
   Its header says so: *"here, seeding is a memcpy and 'player Y' is `$8103E8`
   on both sides"*. Gradius had to build an installer (`seedFromCartridge`);
   this port needs none.
-- `frame.lua` has had `PROBE_RAMDUMP="lf:path"` since wave 4 — the whole
+- `frame.lua` has had `PROBE_RAMDUMP="lf:path"` since wave 4 - the whole
   128 KiB of main RAM at the sample point of one logic frame.
 - `tools/portdiff.mjs` already takes `--seed-lf N` and starts the port there.
   **Every port gate in this game already begins mid-stage**: `fly-around` seeds
@@ -53,8 +53,8 @@ cheapness and reach, and those are the owner's actual complaint:
 |---|---|
 | the port cannot start at frame N | it has only ever started at frame N |
 | we need savestates | we need **many seeds from ONE run**, which is not the same thing |
-| — | `PROBE_RAMDUMP` takes **exactly one** logic frame per run, so a seed at frame N costs a full MAME run to N |
-| — | no seed anywhere in this repo is later than **lf3716**; the stage is **19,217** frames long |
+| - | `PROBE_RAMDUMP` takes **exactly one** logic frame per run, so a seed at frame N costs a full MAME run to N |
+| - | no seed anywhere in this repo is later than **lf3716**; the stage is **19,217** frames long |
 
 **Restating the task in the terms that make it cheap:** the expensive thing is
 the MAME run, not the port. So take ONE long cartridge run over the whole stage
@@ -68,14 +68,14 @@ no wave has to boot MAME again to look at frame 12,000.
 
 | file | what |
 |---|---|
-| `games/ddpdoj/tools/oracle/frame.lua` | `PROBE_CKPT` + `PROBE_CKPT_AT` — **many** checkpoints per run, at the game's own sample point |
+| `games/ddpdoj/tools/oracle/frame.lua` | `PROBE_CKPT` + `PROBE_CKPT_AT` - **many** checkpoints per run, at the game's own sample point |
 | `games/ddpdoj/tools/oracle/pgm.py` | `ckpt` command + `expand_repeat` (a stage-length input script that fits in an environment block) |
 | `games/ddpdoj/tools/oracle/scenarios.json` | `stage1-sweep` and its control `stage1-sweep-natural` |
 | `games/ddpdoj/tools/portdiff.mjs` | `untilLf` and `bgSeed` options, both undefined for every pre-existing caller |
-| `games/ddpdoj/tools/seedcmp.mjs` | **THE SEGMENT SWEEP** — compares each segment independently, re-seeded from the board |
+| `games/ddpdoj/tools/seedcmp.mjs` | **THE SEGMENT SWEEP** - compares each segment independently, re-seeded from the board |
 
 A checkpoint is main RAM (131,072 B) + `$900000` (4,096 B) + the six IGS023
-registers. All of it lives under `tools/oracle/out/`, which is gitignored —
+registers. All of it lives under `tools/oracle/out/`, which is gitignored -
 `git check-ignore` confirmed before the first run.
 
 ### The cost inversion, which is the whole design
@@ -95,7 +95,7 @@ later comparison is `node seedcmp.mjs` over files that already exist.
 Space does not decide it (79 rungs = 10.2 MB against the 158 MB already in
 `out/`). **Bisection and attribution** decide it. Segments are compared
 INDEPENDENTLY, each re-seeded from the board at its lower rung, so a divergence
-in segment 7 does not paint segments 8..79 red — the report is *which parts of
+in segment 7 does not paint segments 8..79 red - the report is *which parts of
 the stage diverge* rather than *everything after the first bug*. 250 frames is
 ~4.2 s of game time and takes the port ~1.5 s. Coarser blurs attribution; finer
 re-seeds away the very drift being hunted.
@@ -158,12 +158,12 @@ seeded state agrees with the board on all 94 columns at every one of them.
 ```
 
 The mutation is applied from OUTSIDE the port through `breakage.mjs`'s named
-switch — no source file is edited, so "restore and verify byte-identical" is
+switch - no source file is edited, so "restore and verify byte-identical" is
 proved by the digests rather than by a hash of a file I put back. This also
 respects the wave's split: `games/ddpdoj/src/` belongs to T1 and I did not
 write to it.
 
-### THE SEED'S BG RING IS CAPTURED AND IS **NOT** LOAD-BEARING — measured, not assumed
+### THE SEED'S BG RING IS CAPTURED AND IS **NOT** LOAD-BEARING - measured, not assumed
 
 `seedcmp --no-bg` drops `$900000` from the seed entirely:
 
@@ -173,7 +173,7 @@ write to it.
 
 So the 4 KiB tilemap ring makes **no difference to any of the 94 compared
 columns**. It is the exact structural analogue of the PPU nametable that
-Gradius's wave 10 found missing from ITS seed, and it is now captured — but on
+Gradius's wave 10 found missing from ITS seed, and it is now captured - but on
 THIS column set it is dead weight, and saying so is the point. It matters to the
 PICTURE, and the picture is not in this comparison. `--no-bg` exists so that
 claim stays falsifiable when the compared set grows.
@@ -182,7 +182,7 @@ claim stays falsifiable when the compared set grows.
 
 ## 4. THE FINDING THAT CHANGED THE WAVE: FOUR CORPUS SCENARIOS HOLD A BUTTON THE PORT CANNOT PROCESS
 
-The first deep ladder, `stage1-sweep`, holds **Button 3** from lf1890 — because
+The first deep ladder, `stage1-sweep`, holds **Button 3** from lf1890 - because
 `stage1-open`, `stage1-deep` and `overrun` all do, so it looked like the
 corpus's own idiom for "the ship is firing". Seeding the port at its lf4000
 rung:
@@ -193,20 +193,20 @@ rung:
 ```
 
 `src/player.js` `bombAndShotGuards`: `$2497AA tst.b $80380F / beq $2497FE` then
-`$2497B2 btst #6,($18,A6)`. Mirror bit 6 **is** Button 3 — the AUTO-SHOT — and
+`$2497B2 btst #6,($18,A6)`. Mirror bit 6 **is** Button 3 - the AUTO-SHOT - and
 `$80380F` is `$01` on this cartridge (it is in the port's own FROZEN globals
 list as *"operator setting gating the `$2497AA` bomb/hyper block"*). So the
 unported `$2497BA` block is entered on the **first frame** Button 3 is held.
 
 **Four scenarios in `scenarios.json` hold Button 3 and the port cannot run a
 single frame of any of them.** Nobody had noticed, and the reason is exactly the
-kind of gap this project keeps finding: all four are BOARD-ONLY scenarios — the
-determinism gate, the load meter, the overrun injector — that had never been
+kind of gap this project keeps finding: all four are BOARD-ONLY scenarios - the
+determinism gate, the load meter, the overrun injector - that had never been
 handed to the port at all. The two scenarios the port IS driven from
 (`fly-around`, `stage1-shot`) press Button 3 never and Button 1 in taps.
 
 That is a tooling defect this wave caused and then found, and the fix is a
-scenario the port can follow: `stage1-play` — single-frame taps of **Button 1**
+scenario the port can follow: `stage1-play` - single-frame taps of **Button 1**
 on top of a sustained stick, every 40 logic frames, for the whole stage.
 
 ---
@@ -214,7 +214,7 @@ on top of a sustained stick, every 40 logic frames, for the whole stage.
 ## 5. PER-SEGMENT COVERAGE: WHAT HAS EVER BEEN COMPARED AGAINST THE BOARD
 
 Measured by reading every corpus file in `tools/oracle/out/` and every gate that
-consumes one — not from any document.
+consumes one - not from any document.
 
 ### The FULL state vector (all 94 CLAIMED columns, frame by frame)
 
@@ -222,7 +222,7 @@ consumes one — not from any document.
 |---|---|---|
 | lf2001..4200 | `fly-around` | `portdiff.mjs`, 2,200 frames, 0 divergent |
 | lf4448..4572 | `stage1-shot` | `shotgate`, 125 frames |
-| **everything else in stage 1** | — | **NEVER** |
+| **everything else in stage 1** | - | **NEVER** |
 
 Stage 1 is 19,217 logic frames. The full-state comparison covers **2,325 of
 them, 12.1 %**, and all of it is in the first quarter.
@@ -230,15 +230,15 @@ them, 12.1 %**, and all of it is in the first quarter.
 ### Narrower field sets against deeper board corpora
 
 These are real comparisons and it would be wrong to call the deep stage
-uncompared without them — but each compares a few fields, not the state vector:
+uncompared without them - but each compares a few fields, not the state vector:
 
 | corpus | deepest lf | what compares against it |
 |---|---|---|
 | `w17-stage1-invuln.tsv` | 16,133 | the W17 stage ledger |
-| `w23-stats-stage1.tsv` | 15,999 | `w23statsgate` — spawn-time fields **per record**, with the rank/stage globals re-seeded from the board's own line each time |
-| `w20map-whole.tsv` | 10,996 | `w20mapgate` — the scroll/column map |
-| `w20-turret-play.tsv` | 6,000 | `w20turretgate` — turret angle |
-| `w21-bullets-play.tsv` | 6,000 | `w21patterngate` — bullet kinds |
+| `w23-stats-stage1.tsv` | 15,999 | `w23statsgate` - spawn-time fields **per record**, with the rank/stage globals re-seeded from the board's own line each time |
+| `w20map-whole.tsv` | 10,996 | `w20mapgate` - the scroll/column map |
+| `w20-turret-play.tsv` | 6,000 | `w20turretgate` - turret angle |
+| `w21-bullets-play.tsv` | 6,000 | `w21patterngate` - bullet kinds |
 | `w26-premidboss.tsv` | 4,959 | `w26movergate` |
 | `w25-handler-stage1.tsv` | 5,199 | `w25handlergate` |
 | `w24-mover-stage1.tsv` | 2,327 | `w24movegate` |
@@ -246,11 +246,11 @@ uncompared without them — but each compares a few fields, not the state vector
 ### And the number that most needed checking
 
 The shipped web bundle (`rip/web/capture.json`) is `scenario fly-around,
-frames 161, seedLf 2000` — a **161-frame** board reference, lf2000..2160.
+frames 161, seedLf 2000` - a **161-frame** board reference, lf2000..2160.
 
 `midbossgate`, `w61itemgate`, `w62stageendgate`, `w63hudgate`, `w64bombgate`,
 `w65beamgate` and W47's **6,185-frame** run all construct their `Game` from
-`bundle.cap.frames[0]` — i.e. **they seed at lf2000 and run the PORT FORWARD
+`bundle.cap.frames[0]` - i.e. **they seed at lf2000 and run the PORT FORWARD
 ALONE.** They assert against the LISTING, not against the board. That is a
 legitimate and valuable kind of check; it is not an oracle comparison, and the
 figures those gates produce for the midboss, items, the stage end, the bomb and
@@ -259,11 +259,11 @@ the beam have **never been diffed against the cartridge frame by frame**.
 **So the brief's premise about the measurement window is right even though its
 premise about the mechanism was wrong.** Every full-state figure this project
 holds was measured over lf2001..4200, and the owner's reported degradation
-begins at ~lf3800-4200 — at the far edge of it.
+begins at ~lf3800-4200 - at the far edge of it.
 
 ---
 
-## 6. A SECOND THING THE MECHANISM FOUND ON ITS WAY PAST — `stage1-shot`'s WINDOW
+## 6. A SECOND THING THE MECHANISM FOUND ON ITS WAY PAST - `stage1-shot`'s WINDOW
 
 Before the deep ladder finished I re-seeded the port at the three seed files
 wave 8 left in `out/w8/`, against wave 8's own trace. This costs no emulator
@@ -302,7 +302,7 @@ as a measurement; `src/` belongs to T1 this wave and I have not touched it.
 Twenty minutes of emulator, once, for a ladder that spans the whole of stage 1.
 The ladder is 72 x 135,168 B = **9.3 MB**, all under gitignored `out/`.
 
-### WHAT A FAITHFUL SEED COSTS HERE — the answer, with its evidence
+### WHAT A FAITHFUL SEED COSTS HERE - the answer, with its evidence
 
 `seedcmp` over all 71 segments of that ladder:
 
@@ -314,20 +314,20 @@ The ladder is 72 x 135,168 B = **9.3 MB**, all under gitignored `out/`.
 builds the port from the checkpoint and compares its state vector against the
 board's row for that same logic frame BEFORE stepping anything; any compared
 column that already disagrees is `SEEDBAD` and the segment is not evidence about
-the port. Zero, at **72 distinct board states spanning lf2000 to lf19,500** — the
+the port. Zero, at **72 distinct board states spanning lf2000 to lf19,500** - the
 last of them deep inside the boss.
 
 So, concretely, on this game a faithful seed costs:
 
 | the brief asked about | answer |
 |---|---|
-| RNG state | **free** — `$2433AE` is not a generator, its entire state is the word at `$803916` (`src/rng.js`), which is main RAM |
-| deferred queues | **free** — `$240F08`'s deferred write list lives at `CAM.deferHead`/`deferCursor`, main RAM |
-| pool cursors | **free** — the object table is `$80E240`, main RAM |
-| the scheduler's channel records | **free** — main RAM |
-| `$80390C`-style semaphores | **free** — `$80390C` is main RAM and is printed on every `CKPT` line so that this is a number, not a claim |
+| RNG state | **free** - `$2433AE` is not a generator, its entire state is the word at `$803916` (`src/rng.js`), which is main RAM |
+| deferred queues | **free** - `$240F08`'s deferred write list lives at `CAM.deferHead`/`deferCursor`, main RAM |
+| pool cursors | **free** - the object table is `$80E240`, main RAM |
+| the scheduler's channel records | **free** - main RAM |
+| `$80390C`-style semaphores | **free** - `$80390C` is main RAM and is printed on every `CKPT` line so that this is a number, not a claim |
 | the `$803940` vblank ARM semaphore | **one line of code, already there.** It is the ONE byte a naive dump gets wrong: `frame.lua` reads RAM from inside the arm's own write tap, so the dump holds the PRE-arm `0` (`sem=00` on every CKPT line, measured). `src/main.js` restores it to 1 and says why. That is the whole of the "what is NOT captured" list for the compared set |
-| `$900000`, the BG tilemap ring | **4,096 B, now captured** — genuinely not main RAM. And **measured not to matter** to any compared column (`--no-bg` is green). It matters to the picture |
+| `$900000`, the BG tilemap ring | **4,096 B, now captured** - genuinely not main RAM. And **measured not to matter** to any compared column (`--no-bg` is green). It matters to the picture |
 | the IGS027A latch at `$500000` | **not captured, and named.** `src/protsim.js` is 32 write-then-read slots; nothing in this corpus carries a slot across a frame boundary. Only the listing can prove that, and this file does not claim it |
 | the ICS2115 / Z80 sound state | **not captured, and named.** No ported subsystem reads it |
 | MAME's own scheduler / DRC state | **not captured, and out of scope.** A checkpoint reseeds the PORT; it cannot resume the EMULATOR. `PROBE_SAVEAT`/`PROBE_LOAD` are the other thing, and they already existed (wave 1) |
@@ -345,14 +345,14 @@ comparison cheap here is a dump the PORT can start from, and because
      2 segments BLOCKED at $2943B0  (lf19,000 and lf19,250)
 ```
 
-Every segment blocks on its first frame — Button 3, §4. The two deepest blocks
+Every segment blocks on its first frame - Button 3, §4. The two deepest blocks
 on a DIFFERENT address are worth keeping: from lf19,000 the port reaches
 **`$2943B0`** before the Button-3 gate, which is the boss's own unported code,
 and no wave had put the port there.
 
 ---
 
-## 8. THE DEEP RUN — WHAT IS PAST FRAME 6,185
+## 8. THE DEEP RUN - WHAT IS PAST FRAME 6,185
 
 `stage1-play`: the whole stage, Button 1 tapped every 40 frames on a sustained
 stick, invulnerability poked on both sides. **LABEL: an intervention run. These
@@ -377,18 +377,18 @@ Seeding at successive rungs and running to the end of the trace:
 
 Three distinct unported addresses, all the stage-1 boss. Stage 1 is 7,317 logic
 frames to the boss lock, so this is the boss arriving and the port stopping at
-it — **loudly and by address, which is what this project's named throws are
+it - **loudly and by address, which is what this project's named throws are
 for.**
 
 ### `$296DD6` WAS DOCUMENTED AS UNREACHABLE, AND IT IS NOT
 
 `src/handlers.js` (W36):
 
-> *type `$1E` at `$2963C2`/`$2963F4`/`$29642C`/`$29645E`, inside the boss —
+> *type `$1E` at `$2963C2`/`$2963F4`/`$29642C`/`$29645E`, inside the boss -
 > handler **`$296DD6`, unreachable while `$292902` is unported.***
 
 The port reaches it, at lf9,001. **The comment is right about a port running
-from boot and wrong as an absolute** — and the distinction is exactly the one
+from boot and wrong as an absolute** - and the distinction is exactly the one
 `docs/knowledge/09` insists on. Seeding from the board hands the port a live
 type-`$1E` object it could never have spawned for itself, and the "unreachable"
 path runs immediately. This is the seeding caveat working in the useful
@@ -408,7 +408,7 @@ Seeded at lf7000, comparing 6,382+ frames (lf7001..13,382+):
 ```
 
 `irq6 port=1 board=2` at **lf8,227** is the board spending TWO video frames on
-one logic frame — **slowdown**, which `portdiff.mjs` already says the port's
+one logic frame - **slowdown**, which `portdiff.mjs` already says the port's
 budget cannot predict. It is the first non-shot field to move, and it is the
 deepest such measurement this project has: nothing before this wave compared
 `irq6` past lf4,200.
@@ -455,7 +455,7 @@ It is presence, not absence: only the listing can say these are all of them.
 ## 9. MY OWN RED CHECK COULD NOT FAIL, AND IT WAS CAUGHT BY RUNNING IT
 
 `seedcmp --break` originally passed when *"70 of 71 segments"* were non-green
-under the mutation — on a ladder where **70 of 71 were already non-green
+under the mutation - on a ladder where **70 of 71 were already non-green
 without it**. The mutation had changed the verdict of ZERO segments.
 
 ```
@@ -464,7 +464,7 @@ without it**. The mutation had changed the verdict of ZERO segments.
 ```
 
 The check compared against *"all green"* instead of against the baseline, so it
-was **incapable of failing on any ladder whose segments are mostly blocked —
+was **incapable of failing on any ladder whose segments are mostly blocked -
 i.e. on every deep ladder**, which is the only kind this wave builds. It is now
 DIFFERENTIAL: it runs the unmutated baseline and requires the mutation to move
 at least one segment (a changed verdict, an earlier first divergence, or more
@@ -489,7 +489,7 @@ are now printed rather than one of them being assumed.
 
 ## 10. THE CONTROL: WHERE A SCRIPTED PLAYER ACTUALLY GETS TO
 
-`stage1-sweep-natural` — the same tap script, **no poke**, 8,000 frames.
+`stage1-sweep-natural` - the same tap script, **no poke**, 8,000 frames.
 
 ```
 [M] objlive == 0 (the whole 20-slot object table gone) at lf3,722 and lf3,926
@@ -499,8 +499,8 @@ are now printed rather than one of them being assumed.
     is over
 ```
 
-**A scripted player on this input reaches lf3,722 of 19,217 — 19.4 % of stage 1
-— and then plays no more of it.** Everything past that in this project, in this
+**A scripted player on this input reaches lf3,722 of 19,217 - 19.4 % of stage 1
+- and then plays no more of it.** Everything past that in this project, in this
 wave and in every wave before it, is reachable only by intervention. That is the
 label the coverage table needed and it is now a measured frame number instead of
 an impression.
@@ -520,10 +520,10 @@ stage 1 (`stage1-play` ladder, 250-frame rungs):
 |---|---|---|---|
 | lf2,000..4,447 | 10 | **RED** | shot records diverge from the first tap (lf2016); `HITEX` fires, so wave 8's rule says the shot columns here are not evidence |
 | lf4,447..4,500 | 1 | **GREEN** | the only green segment; it is `stage1-shot`'s own seed frame, found independently |
-| lf4,500..8,250 | 14 | **RED** | 13 with divergent columns; `vf`/`irq6` join at **lf8,227** — the board's slowdown, which the port's budget cannot predict |
+| lf4,500..8,250 | 14 | **RED** | 13 with divergent columns; `vf`/`irq6` join at **lf8,227** - the board's slowdown, which the port's budget cannot predict |
 | lf8,250..19,500 | 45 | **BLOCKED** | the boss. 7 distinct unported addresses |
-| lf19,500..19,600 | — | **NEVER COMPARED** | past the last rung |
-| stages 2-5 | — | **NEVER COMPARED, NEVER TRACED** | |
+| lf19,500..19,600 | - | **NEVER COMPARED** | past the last rung |
+| stages 2-5 | - | **NEVER COMPARED, NEVER TRACED** | |
 
 Before this wave the same table read: lf2,001..4,200 compared, everything else
 never. **6,250 logic frames of stage 1 are now compared against the board where
@@ -542,15 +542,15 @@ What is still true and must not be rounded off:
 
 ## 12. WHAT DID NOT CHANGE
 
-* `games/ddpdoj/src/` — **not written to.** T1 owns it this wave.
-* `games/gradius/` — read only (`09-DECIDED-seed-anywhere.md`,
+* `games/ddpdoj/src/` - **not written to.** T1 owns it this wave.
+* `games/gradius/` - read only (`09-DECIDED-seed-anywhere.md`,
   `10-impl-seed-anywhere.md`, `stagepoke.py`, `stagecmp.mjs`).
-* `docs/worklog/ddpdoj/68-*` — not touched.
+* `docs/worklog/ddpdoj/68-*` - not touched.
 * The wave-4 gate: `pgm.py flyaround --reuse` still prints
   **`RESULT 0 DIVERGENT FRAMES on 88 columns over 2200 logic frames`**. (88, not
   94: the wave-4 trace requests fewer columns than the wave-69 ladder does. Both
   numbers are real and neither is the other.)
-* `node --test games/ddpdoj/tests/` — **934 pass, 0 fail, 0 skipped.**
+* `node --test games/ddpdoj/tests/` - **934 pass, 0 fail, 0 skipped.**
 * Nothing ROM-derived is committed: every ladder is under
   `games/ddpdoj/tools/oracle/out/`, which `git check-ignore` was asked about
   before the first run.
@@ -574,5 +574,5 @@ node games/ddpdoj/tools/seedcmp.mjs --manifest ... --no-bg            # falsify 
 `pgm.py check` runs the sweep over every ladder on disk and **skips, counted,
 with the command to fix it**, when there are none. Gradius's poke harness went
 unused for three waves because it was named after one stage; nothing here names
-a stage — `ckpt` takes any scenario, `seedcmp` takes any manifest, and the
+a stage - `ckpt` takes any scenario, `seedcmp` takes any manifest, and the
 cadence is a flag.

@@ -1,6 +1,6 @@
-# Wave 4 review — skeleton + the player: fly around
+# Wave 4 review - skeleton + the player: fly around
 
-status: DONE — verdict DEFECTS-FOUND (the headline reproduces; two defects and a
+status: DONE - verdict DEFECTS-FOUND (the headline reproduces; two defects and a
 list of unexercised paths behind it)
 wave: 4   role: review   started: 2026-08-01
 
@@ -27,14 +27,14 @@ image sha256 4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c
 ```
 
 Same as the implementer's. Framebuffer looked at (project trap 4):
-`out/snap/fly-around_lf004190.png` is real stage-1 gameplay — ship pinned at
+`out/snap/fly-around_lf004190.png` is real stage-1 gameplay - ship pinned at
 the bottom wall, ~20 enemy bullets, options drawn. Not `ROM ERROR !`, not the
 input test.
 
-### 1. IS IT VERSION-B? — the build-A ISR addresses are CORRECT, measured by me
+### 1. IS IT VERSION-B? - the build-A ISR addresses are CORRECT, measured by me
 
 `src/isr.js` and `src/input.js` are written against `$13BDBA / $13C7D4 /
-$13D464 / $13C7E6 / $13C806` — build A. I did not take the implementer's word
+$13D464 / $13C7E6 / $13C806` - build A. I did not take the implementer's word
 for it. I wrote my own Lua probe (scratchpad `revvec.lua`: a write tap on
 `$803970` with `CURPC` attribution plus periodic reads of the RAM vectors,
 handles in globals) and ran it through `pgm.py`'s pinned launcher with the
@@ -51,9 +51,9 @@ So on a VERSION-B run the interrupt handlers really are build A's, and build
 B's per-frame mirror store `$23D11C` never executes. **The `$13xxxx` addresses
 in this wave are justified and the code says why, in three places.**
 The main loop, frame sync, object driver and player are all `$23xxxx/$24xxxx`.
-`CENSUS armpc` on the compared window is `23C212:2200` — 100 % build B.
+`CENSUS armpc` on the compared window is `23C212:2200` - 100 % build B.
 
-### 2. The cited ROM addresses match the bytes — spot-checked with `xref.py dasm`
+### 2. The cited ROM addresses match the bytes - spot-checked with `xref.py dasm`
 
 Checked against the decrypted image, instruction for instruction: `$2494FA`
 (the whole player update), `$2417DE`, `$241812`, `$241850/$241870/$241890/
@@ -61,11 +61,11 @@ $2418B0`, `$249574..$24967C` (input, accumulator clear, the four clamps and
 their overshoot give-back), `$24A42A`, `$261126`, `$23BFDC`, `$23BE8C`,
 `$23C212..$23C398` (the whole governor), `$13BDBA`, `$13C7D4`, `$13D464`,
 `$249E4E`. Every operand, branch sense and constant in the comments is what
-the listing says — including the two that are easy to get backwards:
+the listing says - including the two that are easy to get backwards:
 `$24960C bhi` (unsigned, skips the clamp) and `$2495FA bcc` after `subq.w`
 (borrow, so the step happens on the frame the counter wraps past 0).
 
-### 3. THE HEADLINE REPRODUCES — fresh MAME run, not `--reuse`
+### 3. THE HEADLINE REPRODUCES - fresh MAME run, not `--reuse`
 
 ```
 $ python games/ddpdoj/tools/oracle/pgm.py flyaround
@@ -94,7 +94,7 @@ Also reproduced: `node --test games/ddpdoj/tests/` → 18 pass / 0 fail /
 **0 skipped**; `pgm.py check --quick` → **ALL GREEN, 10 passed, 0 failed, 0
 SKIPPED**; `export-tables.py --verify` → `VERIFY OK`; `determinism.mjs` → three
 runs one digest `cdb190c5…`; `pgm.py gate` → `635bb92f1a9dc81e968bab5e755f807e
-78c0c18538af5cfc8c29974520d84884` twice, IDENTICAL — wave 2's recorded hash, to
+78c0c18538af5cfc8c29974520d84884` twice, IDENTICAL - wave 2's recorded hash, to
 the character, so the `frame.lua` edits really are inert by default.
 
 The four mutations all go red, and I looked at the per-column detail rather than
@@ -107,7 +107,7 @@ no-tilt-decay     ptilt      lf2321
 lsr-not-asr       py/paccy   lf2001 (port=4720 board=4719)
 ```
 
-### 4. DEFECT — `$23BE8C` is ported only as far as `$23BEB2`
+### 4. DEFECT - `$23BE8C` is ported only as far as `$23BEB2`
 
 The routine does not end where `src/main.js` `#counters()` stops. The listing:
 
@@ -143,8 +143,8 @@ seed values. Two things make this worse than an omission:
   After 7 iterations the board leaves `7 & 3 = 3`. A test that would block the
   fix.
 
-Why the gate cannot see it: `CLAIMED` is 31 named columns. `d_ram` — the full
-main-RAM digest — is in the TSV and is **not** compared. Any unported write to
+Why the gate cannot see it: `CLAIMED` is 31 named columns. `d_ram` - the full
+main-RAM digest - is in the TSV and is **not** compared. Any unported write to
 unwatched RAM is invisible by construction.
 
 Why it matters beyond wave 4: build-B absolute-long readers, a LOWER BOUND
@@ -154,15 +154,15 @@ Why it matters beyond wave 4: build-B absolute-long readers, a LOWER BOUND
 $803910: 13 sites   $803912: 20 sites   $803914: 4 sites
 ```
 
-e.g. `$252A7C`, `$25E54C`, `$26A3DE`, `$27EE68`, `$28000C`, `$26FAC2` — mod-4 /
+e.g. `$252A7C`, `$25E54C`, `$26A3DE`, `$27EE68`, `$28000C`, `$26FAC2` - mod-4 /
 mod-8 / mod-16 phase counters, exactly what stage and enemy scripts key off.
 Wave 5 inherits it.
 
-### 5. DEFECT — `lsr-not-asr` cannot be the mutation it is named for
+### 5. DEFECT - `lsr-not-asr` cannot be the mutation it is named for
 
 `tools/breakage.mjs:46-53` implements `dy += Math.sign(dy)`, not a logical
 shift, and its comment says the difference is "invisible until a component is
-negative — i.e. on three quadrants out of four". Both halves are wrong, and
+negative - i.e. on three quadrants out of four". Both halves are wrong, and
 `src/vectors.js`'s own header already contains the argument:
 
 * the `$200D20` quadrant tables hold **0 negative values in 64 levels x 65
@@ -171,14 +171,14 @@ negative — i.e. on three quadrants out of four". Both halves are wrong, and
   $241890 / $2418B0` (confirmed in the listing),
 
 so a genuine `lsr.l #4` swap is a provable no-op on every value the table can
-supply. And the mutation as written fires at **lf2001 on quadrant 0** — the one
+supply. And the mutation as written fires at **lf2001 on quadrant 0** - the one
 quadrant its comment says it is invisible on. The check has teeth (it does pin
 `dy` to the unit) but it does not validate what it says it validates, and a
 reader will believe ASR-vs-LSR is load-bearing at `$24183A` when it is not.
 
-### 6. RED-VALIDATING THE NEW CHECKS — two broken, both red, both restored
+### 6. RED-VALIDATING THE NEW CHECKS - two broken, both red, both restored
 
-**Break 1 — `src/player.js`, `$24A42A` tilt step 4 -> 3.**
+**Break 1 - `src/player.js`, `$24A42A` tilt step 4 -> 3.**
 
 ```
 node --test games/ddpdoj/tests/   -> 18 pass, 0 fail    <-- did NOT catch it
@@ -186,10 +186,10 @@ pgm.py flyaround --reuse          -> EXIT 1
   Unreached: UNPORTED $249E62: tilt -29 is outside the [-$20,+$20] step-4 range
 ```
 
-Red, loudly, with the ROM address — but through the scenario, not the unit
+Red, loudly, with the ROM address - but through the scenario, not the unit
 suite. Worth knowing which check is actually the check.
 
-**Break 2 — `src/machine.js`, `P.posX` `0x04` -> `0x06`** (the "both sides of
+**Break 2 - `src/machine.js`, `P.posX` `0x04` -> `0x06`** (the "both sides of
 the comparison depend on `w4_watch()`" worry the implementer raised).
 
 ```
@@ -201,14 +201,14 @@ pgm.py flyaround --reuse    -> EXIT 1, DIVERGE px first at lf=2001
 
 Both guards work. Note `_w4_assert_syms()` only runs on the **fresh-trace**
 path (`w4_watch()` is not called under `--reuse`), and `check`'s four RED stages
-all use `--reuse` — so the assert is not on the path the runner exercises. The
+all use `--reuse` - so the assert is not on the path the runner exercises. The
 comparison caught it anyway.
 
 **Restored.** `sha256sum -c` against the pre-review manifest: all 19 files OK.
 `git hash-object` vs `git rev-parse HEAD:<path>`: identical for every one
 (the raw-hash differences are the CRLF checkout filter, not content).
 
-### 7. What the gate does NOT exercise — counted, not asserted
+### 7. What the gate does NOT exercise - counted, not asserted
 
 Measured off my own TSV over the 2,200 compared frames:
 
@@ -221,7 +221,7 @@ Measured off my own TSV over the 2,200 compared frames:
 | the `invuln == 0` else-branch (`$24953C`) | the `$810424=$FF` poke holds it non-zero for the whole window. |
 | P2, TYPE-B | `p2raw` constant `$7F80`, `p2edge` constant; `($58,A6)` 0 throughout. `p1edge` is non-zero on only **28** of 2200 frames. |
 
-The `$810424` poke and the `pst $1000` mask are both legitimate as used —
+The `$810424` poke and the `pst $1000` mask are both legitimate as used -
 verified: the port never sets bit 12 anywhere, and `$24952A bclr #4,(A6)` is
 reached unconditionally whenever `($3e,A6) != 0`, which the poke guarantees.
 But the poke's price is the `$24953C` branch, and that is not stated.
@@ -231,14 +231,14 @@ But the poke's price is the `$24953C` branch, and that is not stated.
 * `clamp-first` and `no-tilt-decay` are broader than their names: `clamp-first`
   routes through `finish(..., skipClamps=true)` and therefore also removes the
   tilt ramp/decay; `no-tilt-decay` pins tilt to 0 rather than removing the
-  decay. The clamp evidence survives — `py`/`paccy` diverge at lf2087, 234
-  frames before the tilt columns at lf2321 — but the mutation is not minimal.
+  decay. The clamp evidence survives - `py`/`paccy` diverge at lf2087, 234
+  frames before the tilt columns at lf2321 - but the mutation is not minimal.
 * `src/main.js:14/16` quote per-call cycle costs (`77,725 cyc`, `15,594 cyc`)
   with **no** "MAME-timed, uncalibrated" label. `budget.js` and
   `portdiff.mjs`'s `DILATED` line both carry it. `NOTES-oracle.md:136` still
-  reads "`armed_vblanks` — 2 or 3 is the deliberate divider" in the §4 legend
+  reads "`armed_vblanks` - 2 or 3 is the deliberate divider" in the §4 legend
   with no pointer to the §"CANNOT SEE THE DIVIDER" correction 280 lines below.
-* "Button 3 does NOT change speed — **corrects** the build-A recon" overstates
+* "Button 3 does NOT change speed - **corrects** the build-A recon" overstates
   it. `00-recon-memmap.md:248` measured B3 held = 313 on **build A** and nobody
   re-measured build A this wave, so what is established is a build DIFFERENCE,
   not an error in the recon.
@@ -251,10 +251,10 @@ But the poke's price is the `$24953C` branch, and that is not stated.
   is `*` and the root `.gitignore:29` has `rip/`; `git check-ignore -v` on
   `rip/port/player.tables.json` confirms.
 
-### 9. THE SHARED INDEX — still armed, and worse than "deletions"
+### 9. THE SHARED INDEX - still armed, and worse than "deletions"
 
 `git diff --cached --name-status HEAD`: **27 staged deletions** of ddpdoj files
-— all 12 `src/` modules, `tests/player.test.js`, `portdiff.mjs`,
+- all 12 `src/` modules, `tests/player.test.js`, `portdiff.mjs`,
 `breakage.mjs`, `determinism.mjs`, `export-tables.py`, `assets.py`,
 `zoomcov.py`, `xref.py`, `phase.lua`, `objhunt.lua`, four worklogs and
 `NOTES-assets.md`. AND stale pre-wave-4 blobs staged for the files it does not
@@ -267,7 +267,7 @@ tools/oracle/scenarios.json index=220597e8  HEAD=2f5356c0  disk=2f5356c0
 ```
 
 So a `git commit` without a private `GIT_INDEX_FILE` would not only delete wave
-4's port; it would also **revert the oracle's wave-4 additions** — `flyaround`,
+4's port; it would also **revert the oracle's wave-4 additions** - `flyaround`,
 `PROBE_WATCH`/`PROBE_PORTIN`/`PROBE_POKE`, and the `fly-around` and
 `speedmodes` scenarios. I did not touch the shared index.
 
@@ -281,24 +281,24 @@ one I imply I covered is a hole.
    change: I confirmed 22 -> (246,163) and 28 -> 313 out of the exported ROM
    table and that `$24C8BE/$24C8E4` disassemble as described, but I did not run
    the scenario. A regression looks like wave 5 building the laser ramp on the
-   wrong cadence — invisible until buttons enter a compared scenario.
+   wrong cadence - invisible until buttons enter a compared scenario.
 2. **The hitbox lead `$2458C0`, half-extents `($14,A6)`/`($16,A6)`, flag
-   `bset #4,(A6)` at `$2458D8`** — not disassembled by me. The `pst` mask's
+   `bset #4,(A6)` at `$2458D8`** - not disassembled by me. The `pst` mask's
    justification rests on `$2458D8` being the only setter of that bit; I
    verified the port never sets it, not that nothing else on the board does.
 3. **The option-object addresses** `$24D130`, `$24C33E/$24C342`, `$24C310`,
-   `$24C384` — not checked against the ROM.
+   `$24C384` - not checked against the ROM.
 4. **Wave 2's forced-overrun result** (slots processed == slots live on all 696
-   frames) — not re-run. It is the entire basis for `NEVER_TRIGGERS`.
-5. **`pgm.py check` in full** — I ran `--quick` (10 stages) plus `flyaround`,
+   frames) - not re-run. It is the entire basis for `NEVER_TRIGGERS`.
+5. **`pgm.py check` in full** - I ran `--quick` (10 stages) plus `flyaround`,
    the 4 mutations, `determinism`, `export-tables --verify` and `gate`
    separately. Not re-run: `zoomcov`, `sprites`, `sound`, `rtc`, `drc`,
    `inputlead`, `seedstate`, `objdriver`, `overrun`, `pixred`, and the
    `stage1-deep` / `overrun` / `chooser` scenarios.
-6. **Pixel comparison of the fly-around scenario** — the gfx gate ran inside
+6. **Pixel comparison of the fly-around scenario** - the gfx gate ran inside
    `check --quick` on its own corpus; I looked at one fly-around framebuffer by
    eye, not by diff. Wave 6's job.
-7. **`ddpdojp` protection cross-check and RTC-across-days determinism** —
+7. **`ddpdojp` protection cross-check and RTC-across-days determinism** -
    untouched, as in every wave so far.
 
 ## If someone picks this up cold
@@ -314,6 +314,6 @@ tools/breakage.mjs:46      rename/re-aim 'lsr-not-asr' -- a faithful lsr swap is
 ```
 
 And the standing repo hazard: `export GIT_INDEX_FILE=.git/ddpdoj.index;
-git read-tree HEAD; git add <paths>; git diff --cached --name-only` — read it —
+git read-tree HEAD; git add <paths>; git diff --cached --name-only` - read it -
 `git commit; unset GIT_INDEX_FILE`. The shared index is still carrying 27
 deletions and three stale oracle blobs.

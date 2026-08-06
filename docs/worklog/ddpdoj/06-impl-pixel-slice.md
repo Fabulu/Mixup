@@ -1,6 +1,6 @@
-# WAVE 6 — the pixel slice
+# WAVE 6 - the pixel slice
 
-status: **DONE on the pixel half, BLOCKED on half of the demo clause** — with
+status: **DONE on the pixel half, BLOCKED on half of the demo clause** - with
 the measured reason for the blocked half, and every number below produced by a
 command in this file.
 wave: 6   role: impl   started: 2026-08-01
@@ -12,14 +12,14 @@ unless a line says build A. Machine pin printed on every run:
 ## The task, as I understood it
 
 `PLAN-vertical-slice.md` §"Wave 6": wire the wave-3 decoder into the port's
-renderer — tilemaps, rowscroll, sprites with zoom, palette, priority, the two
+renderer - tilemaps, rowscroll, sprites with zoom, palette, priority, the two
 sample-point offsets honoured.
 
 **Done when (plan, verbatim):** for the wave-4 and wave-5 scenarios, sampled
 framebuffers (every N frames, plus every frame of one dense stretch) are
 pixel-identical to MAME's, including at least one palette-fade frame and one
-≥90-sprite frame; and the whole slice — seeded boot → flying → shooting all
-three weapons — runs interactively in the browser at 59.185606 Hz.
+≥90-sprite frame; and the whole slice - seeded boot → flying → shooting all
+three weapons - runs interactively in the browser at 59.185606 Hz.
 
 **The part of that exit condition that cannot exist, and why.** Wave 5 came back
 BLOCKED. `stage1-open-shot/-laser/-bomb` were never written, and none of the
@@ -51,8 +51,8 @@ python .../pgm.py gate              635bb92f1a9dc81e...  IDENTICAL          (unm
 
 ## What I did
 
-1. Translated the wave-3 decoder into the port's own JavaScript —
-   `games/ddpdoj/src/render/` — as a transcription of `igs023_video.cpp`
+1. Translated the wave-3 decoder into the port's own JavaScript -
+   `games/ddpdoj/src/render/` - as a transcription of `igs023_video.cpp`
    (mame0289), not of `tools/framerender.py`.
 2. Built a second pixel gate over it, `tools/pixgate.mjs`, with **nine**
    mutations (wave 3's six plus three new ones), and drove the corpus at the two
@@ -73,7 +73,7 @@ python .../pgm.py gate              635bb92f1a9dc81e...  IDENTICAL          (unm
 ### 1. The JS renderer is pixel-exact, first run, on wave 3's own corpus
 
 Before touching the corpus at all, the new JS gate was pointed at the existing
-`rip/gfx-gate` dumps — the same 16 pairs `pgm.py gfx` scores:
+`rip/gfx-gate` dumps - the same 16 pairs `pgm.py gfx` scores:
 
 ```
 $ node games/ddpdoj/tools/pixgate.mjs --rom rip/rom --dump rip/gfx-gate --min-pairs 12
@@ -99,7 +99,7 @@ a translation and not a parallel invention:
 ### 2. TWO RULES THAT NO FRAME IN THE PROJECT'S CORPUS HAS EVER TESTED
 
 Three of the nine mutations are new. Two of them **stayed green** on wave 3's
-corpus, and that is a fact about the corpus, not about either decoder — the
+corpus, and that is a fact about the corpus, not about either decoder - the
 Python gate has the same hole:
 
 ```
@@ -144,7 +144,7 @@ sprites 1397 with pri=1 0 {}
 ```
 
 So `pgm_draw_pix`'s `if (!pri || !(pri_bitmap & 2))` has never been exercised by
-anything this project has rendered. Driven by intervention instead — new
+anything this project has rendered. Driven by intervention instead - new
 `PROBE_PRICOV` in `frame.lua`, the same shape as wave 3's zoom poker and for the
 same reason (the sample point is the only instant a poked list survives): twelve
 records, two rows of six, **identical except for word 2's bit 7**, over gameplay
@@ -183,7 +183,7 @@ a rule that is verified and a rule that is merely not contradicted.
 | lf 2200 + 8 | 8 | the priority intervention |
 
 136 pairs, longest consecutive run 61, busiest pair 122 sprites, biggest palette
-delta 403 words. The gate FAILS — not warns — if any of those falls below
+delta 403 words. The gate FAILS - not warns - if any of those falls below
 `--min-pairs 60`, `--min-dense 40`, `--min-sprites 90`, `--min-paldelta 100`.
 Those thresholds exist because a gate that passes on an empty corpus is the
 subject of `docs/knowledge/03`.
@@ -205,7 +205,7 @@ BASELINE: PASS
 RED VALIDATION: every mutation was caught
 ```
 
-### 5. THE SHIP, IDENTIFIED BY CORRELATION — and the sweep could have refuted it
+### 5. THE SHIP, IDENTIFIED BY CORRELATION - and the sweep could have refuted it
 
 The demo draws the ship at the PORT's position, so something has to say which
 display-list records are the ship. Nothing in this repo had ever measured that.
@@ -232,12 +232,12 @@ Five of the six combinations accept NOTHING, so this is a comparison that could
 have come out empty. Three facts fall out of it, two of them independent
 confirmations of numbers measured by completely different routes:
 
-* **`:igs023:spritebuffer` really does lag main RAM by one frame** — inherited
+* **`:igs023:spritebuffer` really does lag main RAM by one frame** - inherited
   from PLAN §Assets, now confirmed by a sweep that would have shown lag 0 or 2
   if it were wrong.
 * **The fixed-point conversion is TRUNCATION (`>>6`), not rounding.**
 * **The two option pods sit at −41 and +24 from `px`**, i.e. centres at −33 and
-  +32 for a 16-px-wide record — the `±32.53 px` the memmap recon measured from
+  +32 for a 16-px-wide record - the `±32.53 px` the memmap recon measured from
   RAM. Two routes, same number.
 
 The ship itself is `(-24,-16)`, a `w3h32` record: 48×32 px.
@@ -257,11 +257,11 @@ $ node tools/pixpack.mjs ... --break no-lag       117 of 161 frames diverged
 (`no-lag` is 117 and not 161 because on frames where the ship did not move the
 lag makes no difference. That is the honest number.)
 
-### 6. THE DEMO PATH, GATED END TO END — the port's arithmetic becomes pixels
+### 6. THE DEMO PATH, GATED END TO END - the port's arithmetic becomes pixels
 
 `tools/demogate.mjs` runs exactly what `web/app.js` runs, minus the DOM and the
 host clock: the port's `Game` fed the board's own recorded input words (`portin`,
-one per logic frame, measured lead ZERO — never the board's positions, which
+one per logic frame, measured lead ZERO - never the board's positions, which
 would be feeding it the answer), the shared splice, the port's renderer, against
 MAME's framebuffers.
 
@@ -286,10 +286,10 @@ $ python .../pgm.py demogate --break no-input       98.2587 %  RED
 **WHAT THAT 100 % DOES NOT SAY, and I am putting it directly under the number
 because that is where a reader stops.** Because wave 4's port agrees with the
 board to the unit, the SPLICED display list is byte-identical to the board's
-own — so "the port drove the ship" and "nothing was spliced at all" produce the
+own - so "the port drove the ship" and "nothing was spliced at all" produce the
 same picture, and this gate cannot separate them. What it proves is the other
 direction: the pixels DO come from the number the port computed. `off-by-one`
-moves the port's `py` by one whole pixel and **109,885 pixels change — 691 per
+moves the port's `py` by one whole pixel and **109,885 pixels change - 691 per
 frame, 0.6887 % of a 100,352-pixel frame**, against a ship record of 48×32 =
 1,536 px plus two 16-px-wide pods; that is the part of the ship whose colour
 differs from its own neighbour one pixel over. `frozen-player` and `no-input`
@@ -362,7 +362,7 @@ board's three measured port words, and the splice's field preservation.
    `gate`. I did NOT re-run the wave-3 stages (`gfx`, `zoomcov`, `sprites`,
    `sound`, `assets.py check`) or `rtc`/`drc`/`seedstate`/`overrun`/`objdriver`.
    The two hashes above are the evidence that nothing they measure moved.
-6. **`04-review.md`'s and `05-review.md`'s leftover items are still leftover** —
+6. **`04-review.md`'s and `05-review.md`'s leftover items are still leftover** -
    the `memmoveDown`/`memmoveUp` zero-length case, the `$813176` hoist in
    `enemies.js`, the `$815E9C` attribution in `NOTES-machine.md`, the
    "type 5 is 15 subsystem calls" count (the review measured 23), the
@@ -388,7 +388,7 @@ python -m http.server 8000    # then open /games/ddpdoj/  -- NEVER YET RUN, see 
 
 1. **A 100 % gate can be 100 % because the corpus cannot see the rule.** Two of
    nine mutations passed on wave 3's corpus. Before trusting any percentage, ask
-   which frames could possibly have distinguished the two answers — and if the
+   which frames could possibly have distinguished the two answers - and if the
    answer is "none", say so in the output rather than printing the percentage.
 2. **`pri` on a sprite record means BEHIND the background, not in front.** The
    transcription is `if (!pri || !(pri_bitmap & 2))`: `pri==0` draws
@@ -397,7 +397,7 @@ python -m http.server 8000    # then open /games/ddpdoj/  -- NEVER YET RUN, see 
    zoom-table entry 0, which is a real zoom. This is in `NOTES-assets.md` §2 and
    it is still the easiest thing in the renderer to get wrong.
 4. **`cave_t04401w064.u19` loads at `0x180000`, over the top of
-   `pgm_t01s.rom`.** Getting it wrong scores 46.7 % — a picture, not noise.
+   `pgm_t01s.rom`.** Getting it wrong scores 46.7 % - a picture, not noise.
 5. **The sprite buffer lags main RAM by one frame, and it is load-bearing for
    anything that joins RAM state to a drawn frame.** The lag sweep in
    `pixpack.mjs` is the cheap way to re-confirm it for a new join.

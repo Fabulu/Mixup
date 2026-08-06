@@ -1,17 +1,17 @@
-# 73 — ROM RECON: THE BEE QUESTION, SETTLED AGAINST THE LISTING
+# 73 - ROM RECON: THE BEE QUESTION, SETTLED AGAINST THE LISTING
 
-status: **DONE** — see §0 THE HEADLINE, §9 THE VERDICT ON EACH WEB RECON, and
+status: **DONE** - see §0 THE HEADLINE, §9 THE VERDICT ON EACH WEB RECON, and
 §10 THE WAVE ESTIMATE.
 
 started / finished: 2026-08-05
 role: ROM RECON (read-only). This file is the only thing I write or commit.
 `games/ddpdoj/src/` belongs to T1 this round and `games/ddpdoj/tools/` to the
-seed-anywhere wave — **read freely, write nothing**. `games/gradius/` NOT
+seed-anywhere wave - **read freely, write nothing**. `games/gradius/` NOT
 TOUCHED.
 target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Build B =
 `$23xxxx..$2Axxxx`. **Every address below is build B.**
 
-instrument: `games/ddpdoj/tools/oracle/out/maincpu.bin` — the decrypted build-B
+instrument: `games/ddpdoj/tools/oracle/out/maincpu.bin` - the decrypted build-B
 image, **address == file offset**, 6,291,456 B (gitignored). Disassembly by
 capstone (`CS_MODE_M68K_030`) in the session scratchpad; cross-references by an
 absolute-long scan **plus** a `bsr.b/.w`, `bra.b/.w`, `jsr/jmp/lea (d16,PC)`
@@ -26,34 +26,34 @@ LOWER BOUND** and a clean result is "no site of the kinds I can see".
 
 ---
 
-## 0. THE HEADLINE — and the brief's premise is FALSE in its most important half
+## 0. THE HEADLINE - and the brief's premise is FALSE in its most important half
 
 **THE OWNER IS SEEING A REAL BEE SPRITE, DRAWN BY OUR PORT, FLICKERING ON
 ALTERNATE FRAMES, AND EVERY PART OF THAT IS THE CARTRIDGE'S OWN CODE,
 FAITHFULLY PORTED IN WAVE 30.**
 
 1. **THE BEE IS NOT AN ITEM-POOL KIND. It is kind index 1 of the pool at
-   `$8171BE`** — the pool `50-recon-effects` calls "impact pool A" — body
+   `$8171BE`** - the pool `50-recon-effects` calls "impact pool A" - body
    **`$27FACC`**, and it carries every bee mechanic the web describes: a
    per-stage counter compared against **`#$A` = 10** (`$27FBFA`), a ten-entry
    BCD base-value table `$27FD22` (**100, 200 … 900, 1000**), a `base × live
    HIT count` BCD digit-multiply through `$286128`, and the hyper-gauge step
    law. **Recon 71 §6.2's "the bee is a SEVENTH subsystem, outside both ranges
    recon 59 censused" is CORRECT.** §1.
-2. **THE HIDDEN BEE IS AN OBJECT WITH HP AND THE BEE'S OWN SPRITE — ENEMY TYPE
+2. **THE HIDDEN BEE IS AN OBJECT WITH HP AND THE BEE'S OWN SPRITE - ENEMY TYPE
    `$8A`.** Its sub-record prototype `$2766E6` holds **sprite `$1BCA34`, size
-   `$0618`, draw offsets `$FA00FD00` — byte for byte the pool-A bee template
-   `$280EB0`** — and **HP `$000A` = 10**. Its record prototype `$2766E0` sets
+   `$0618`, draw offsets `$FA00FD00` - byte for byte the pool-A bee template
+   `$280EB0`** - and **HP `$000A` = 10**. Its record prototype `$2766E0` sets
    `($1A,A5) = $0004`, and its death arm `$2767DE` passes that `$0004` to
    `$27F92A`, the **reserved-TEN-slot** allocator into the bee's pool. **[M]
    stage 1's spawn script has exactly TEN type-`$8A` records.** §2, §3.
-3. **SO THERE IS A "COVER", AND THE OWNER IS RIGHT ABOUT THIS GAME — but it is
+3. **SO THERE IS A "COVER", AND THE OWNER IS RIGHT ABOUT THIS GAME - but it is
    not a lid over a bee, it is a bee you have to shoot.** Web recon 70 §2.2's
    *"not one DaiOuJou source describes a bee as being inside, under, or released
    by a destructible object"* is **CONTRADICTED BY THE LISTING**. §3.
 4. **AND THE REVEAL GATE IS AN EMIT GATE, NOT A STATE FLAG.** `$276702`, type
    `$8A`'s handler, **does not emit at all** unless a bomb is live (`$811F72`)
-   or **a live player is within `$240` of it on the short axis** — and then
+   or **a live player is within `$240` of it on the short axis** - and then
    `$2767AA bchg #$6,($1,A6) / bne` emits **on every OTHER frame**, toggling
    the sprite `$2767B2 eori.l #$B4,($A,A6)` between `$1BCA34` and `$1BCA80`.
    **`$1BCA34 ^ $B4 == $1BCA80`, which is the second frame the REVEALED bee
@@ -64,23 +64,23 @@ FAITHFULLY PORTED IN WAVE 30.**
    `handler8A` ports the proximity test, the `bchg` and the `eori` line for
    line. **Nothing should be "fixed" here.** §5.
 6. **THE DEFECT IS AN OMISSION, NOT AN OVER-DRAW.** `$2767E6 jsr $27F92A` is a
-   counted NOTE in `deathSeq8A`, and pool A's driver `$27F95A` — **type-5 call
-   #4** — is unported (`src/type5.js:160`, index 3). [M] `$817F7E`, pool A's
+   counted NOTE in `deathSeq8A`, and pool A's driver `$27F95A` - **type-5 call
+   #4** - is unported (`src/type5.js:160`, index 3). [M] `$817F7E`, pool A's
    live count, is **0 on every frame of every run this port has made**
    (`src/damage.js:438`). **So the player can shoot the flickering bee, and no
    bee ever appears.** The port draws the carrier and never the pickup. §5.
 7. **RECON 71'S GAUGE PREDICTION IS CONFIRMED TO THE DIGIT.** `$27FBD0..$27FBDE`
    is `subi.w #$14 / addi.w #$48` in a loop over a **binary** hit count
    (`$242AF6` converts the BCD counter), with the count clamped to `#$200`
-   (BCD 200) first — **`$48` per 20 hits, ceiling `$2D0` = 720, zero below 20**,
+   (BCD 200) first - **`$48` per 20 hits, ceiling `$2D0` = 720, zero below 20**,
    gated on `$81B63E` (hyper active) at `$27FBA2`. §6.
-8. **THE `$81B64A`/`$81B64C` CENSUS IS DONE — nobody had ever run it.**
-   17 absolute-long sites each; **11 writers each**; and **`$27FBDE` — the bee —
+8. **THE `$81B64A`/`$81B64C` CENSUS IS DONE - nobody had ever run it.**
+   17 absolute-long sites each; **11 writers each**; and **`$27FBDE` - the bee -
    is one of them.** §6.
 9. **KIND `$08` IS NOT THE BEE, AND ITS TARGET IS 3, NOT 10.** [M] the shipped
    seed has `$81040A` = 3 and **`$81040B` = 3**. That is recon 70's C2 and recon
    72's item 2, both answered, and both against recon 70's identification. §7.
-   (Its ART is nonetheless an insect — see §7.2, which is the one thing in this
+   (Its ART is nonetheless an insect - see §7.2, which is the one thing in this
    file that could still confuse a reader of the picture.)
 10. **CORRECTION TO `59-recon-items` §2.1, and it has propagated.** The enemy
     type table's base is **`$27E412` with (init, handler) pairs**, not
@@ -157,14 +157,14 @@ shape `50-recon` §1.5 recorded. The twenty:
 ```
 
 **Kind 1 and kind 16 share `$27FACC`, and the body tells them apart at
-`$27FCC8 moveq #$4,D0 / and.w D0,D1 / eor.w D0,D1 / bne $27FCEA`** — kind 1
+`$27FCC8 moveq #$4,D0 / and.w D0,D1 / eor.w D0,D1 / bne $27FCEA`** - kind 1
 (bit 2 set) falls through to the scroll + emit; kind 16 (bit 2 clear) takes
 `$27FCEA`, which flies a waypoint script off `$27FD72`. So there are **two bee
 variants: the placed one and a moving one.**
 
-### 1.3 THE COLLECT ARM — `base × hits` and the hyper gauge, both `[M]`
+### 1.3 THE COLLECT ARM - `base × hits` and the hyper gauge, both `[M]`
 
-`$27FACC` dispatches on the status word exactly as the item pool does —
+`$27FACC` dispatches on the status word exactly as the item pool does -
 `btst #$0` = already collected, `btst #$C` = P1 touching (`$27FB6C`),
 `btst #$B` = P2 touching (`$27FAE6`), else `$27FC8C` = the idle step.
 
@@ -210,12 +210,12 @@ $27FC54  lsr.w #$4,D5 / lsl.l #$4,D0 / dbra D4,$27FC42
 
 `[M]` **`$27FD22` is TEN BCD LONGWORDS: `$100 $200 $300 $400 $500 $600 $700
 $800 $900 $1000`.** `$27FD4A` is ten more (`$00010004 … $00090004 $00010008`),
-written to `($10,A6)` — the collected-popup descriptor.
+written to `($10,A6)` - the collected-popup descriptor.
 
 Four things fall straight out and each is a web claim decided:
 
 * **`base × hits` EXISTS AND IT IS A BCD DIGIT-MULTIPLY**, not a `mulu`. Recon
-  71 §1.2's option (a)/(b) fork: **neither** — it is four passes of "add the
+  71 §1.2's option (a)/(b) fork: **neither** - it is four passes of "add the
   base `digit` times, then shift the base one BCD digit left". It calls
   `$286128` (the ITEM adder), **not** the kill/chain machine, so **collecting a
   bee does NOT tick the chain.**
@@ -223,12 +223,12 @@ Four things fall straight out and each is a web claim decided:
   overflow bug is **IN THE LISTING** (recon 70 §4.3, recon 72 §5). A base of BCD
   `$8000` doubles to `$10000`, which reads out as 10,000 and not 16,000. **The
   port must transcribe the bug.**
-* **THE ×2 GATE IS `count == 10 AND $81293C == 0`** — one word, not the two
+* **THE ×2 GATE IS `count == 10 AND $81293C == 0`** - one word, not the two
   player-state bits recon 70 §6.1 attributed to kind `$08`.
 * **THE BASE LADDER STARTS AT BCD 100, NOT 1,000.** §9 weighs that against the
   web.
 
-### 1.4 The idle step `$27FC8C` — and the REVEALED bee blinks too `[M]`
+### 1.4 The idle step `$27FC8C` - and the REVEALED bee blinks too `[M]`
 
 ```
 $27FC8C  move.l #$1BCA34,($A,A6)      <- bee frame A
@@ -247,7 +247,7 @@ source in either language records and which recon 72 §3 correctly refused to
 guess at.
 
 `[M]` `($28,A6)` is set by the fill at `$280B9E` from the six-entry table
-`$280BB6` = `$23D762 $23D762 $23D79E $23D7DA $23D816 $23D852` — six identical
+`$280BB6` = `$23D762 $23D762 $23D79E $23D7DA $23D816 $23D852` - six identical
 emitters into six different display-list buffers (`$80397C`, `$805104`,
 `$805CC8`, `$80688C`, `$807450`). **It is a PRIORITY LAYER, not a state.**
 
@@ -255,7 +255,7 @@ emitters into six different display-list buffers (`$80397C`, `$805104`,
 
 ## 2. THE CARRIER: ENEMY TYPE `$8A`
 
-### 2.1 A CORRECTION FIRST — the enemy type table `[M]`
+### 2.1 A CORRECTION FIRST - the enemy type table `[M]`
 
 `59-recon-items` §2.1 (and every document quoting it) uses
 `$27E016 + 8*type -> [step, init]`. **The real table is `$27E412 + 8*(type-$80)`
@@ -276,9 +276,9 @@ in fact type `$86`'s init. `src/initbody.js` has the right bodies and a
 **mislabel in its comments** (`$2766AE` is labelled type `$8A`, correctly;
 `$276824` is labelled `$8B`, correctly; but `src/handlers.js:1482` says
 "`$27681C` is type `$8B`'s init stub" when it is type `$8B`'s init and
-`$2766A6` is `$8A`'s). Naming only — no behaviour depends on it.
+`$2766A6` is `$8A`'s). Naming only - no behaviour depends on it.
 
-### 2.2 THE PROTOTYPES — the whole answer in twenty-eight bytes `[M]`
+### 2.2 THE PROTOTYPES - the whole answer in twenty-eight bytes `[M]`
 
 `$2766AE` (type `$8A`'s init body) calls `$2637A2` with `$2766E6` and `$26377A`
 with `$2766E0`, D0 = 2 (three words into `($16,A5)`):
@@ -317,7 +317,7 @@ For contrast, type `$8B`'s prototypes `[M]`:
         +$0A = $00000000  (NO SPRITE)   +$0E = $0000  (NO SIZE)   +$18 = 0 (HP 0)
 ```
 
-**Type `$8B` really is invisible and really is a one-hit object** — and its
+**Type `$8B` really is invisible and really is a one-hit object** - and its
 handler `$27687E` has **no emit at all**. It drops kind 2, not the bee.
 
 ---
@@ -345,7 +345,7 @@ allocator. **A bee can never fail to allocate because the pool is busy.**
 
 Parsed straight out of the cartridge: stage table `$263336`, stage-1 entry
 (script `$230C6C`, aux `$23170C`, res `$231852`), 8-byte records, terminator
-`$FFFF` at `$231704` after **339 records** — which is the 339 `src/spawn.js`'s
+`$FFFF` at `$231704` after **339 records** - which is the 339 `src/spawn.js`'s
 header already names, so the parse is corroborated from the port's side.
 
 ```
@@ -373,7 +373,7 @@ movement script (the spawn cross-axis coordinate `$263830` reads):
 | 10 | 452 | `$08A` | `$2323C4` | `$74C0` | 467.0 |
 
 `[M]` the stage-1 script's maximum trigger is **488**, so the ten run from
-**35 % to 93 %** of the stage — **none in the opening third**, which is recon
+**35 % to 93 %** of the stage - **none in the opening third**, which is recon
 72 §1's headline and it survives.
 
 **BUT THE R/L SEQUENCE TEST FAILS, AND I AM NOT SMOOTHING IT.** All ten spawn
@@ -382,10 +382,10 @@ spawn edge**, not a left/right position: nine of the ten spawn beyond the
 playfield edge and are carried in by the scroll, and the CROSS-axis position for
 a type `$8A` is set by `$263822`/`$263888`'s odometer arithmetic from the
 record's `param` at spawn time, which for all ten is `$0000`. **So this table
-cannot confirm or refute `R,L,R,L,L,L,L,R,L,L` — the sides are not in the data I
+cannot confirm or refute `R,L,R,L,L,L,L,R,L,L` - the sides are not in the data I
 read.** Recorded as **UNRESOLVED**, with the cheap follow-up in §11.
 
-### 3.3 IS IT THE LASER? — NO POINT TEST EXISTS `[M]`
+### 3.3 IS IT THE LASER? - NO POINT TEST EXISTS `[M]`
 
 `$276702..$276818` is 75 instructions and I read all of them. **There is no
 coordinate-equality test, no point-in-region test against a laser tip, and no
@@ -400,13 +400,13 @@ $27674E  tst.w ($18,A6) / bmi $2767D0                  <- HP < 0 -> the bee
 `[M]` the `$5C` bits are written from several damage paths, not one: an
 `ori.b #$44,(An)` / `bset #$4,(An)` census over `$230000..$2B0000` finds
 `$244EBC`, `$244EC4`, `$245016`, `$245024`, `$245050`, `$245132`, `$245172`,
-`$24545C`, `$24557E`, `$2458D8` among others — and **`$24545C` is inside
+`$24545C`, `$24557E`, `$2458D8` among others - and **`$24545C` is inside
 `$2453C2`, the LASER collision block**, while `$245016`/`$245132` are in the
 shot's. Both walk the same `$81459C` sub-record pool the carrier lives in.
 
 > **THEREFORE: the reveal in build B is HP, not a laser test.** The laser is the
-> practical instrument — 10 HP delivered to a fixed map point while the ship
-> holds still is what a laser is for, and it is what every guide describes —
+> practical instrument - 10 HP delivered to a fixed map point while the ship
+> holds still is what a laser is for, and it is what every guide describes -
 > but **`レーザーの先端` is a player-facing description of an HP kill, not a
 > mechanism in this ROM.** Recon 70 §2.1's "the trigger is plausibly a point
 > test against the laser's leading end" is **REFUTED**; its C11 is closed.
@@ -418,7 +418,7 @@ shot's. Both walk the same `$81459C` sub-record pool the carrier lives in.
 
 ---
 
-## 4. THE FLICKER — MEASURED, AND IT IS THE CARTRIDGE'S
+## 4. THE FLICKER - MEASURED, AND IT IS THE CARTRIDGE'S
 
 ```
 $276756  tst.w $811F72 / bne $2767A6      <- a BOMB is live: show it unconditionally
@@ -452,7 +452,7 @@ Three separate facts, each measured:
 
 **AND IT IS A DIFFERENT MECHANISM FROM THE ONE RECON 72 §8 ITEM 4 PREDICTED.**
 [M] `$80390A`/`$803914` appear **nowhere** in `$27E812..$27F801` or in
-`$27F87C..$281200`. What DOES exist is a **sprite-thinning** gate — twelve
+`$27F87C..$281200`. What DOES exist is a **sprite-thinning** gate - twelve
 `cmp.w $80390C,D0` sites in pool A, e.g. `$27FAA8` inside the STAR body:
 
 ```
@@ -462,7 +462,7 @@ $27FAA4  moveq #$1,D0 / and.w D7,D0 / cmp.w $80390C,D0 / beq -> RTS
 
 i.e. **once the pool holds 60 or more live records, half of them are skipped
 each frame, alternating on the slot index.** That is a second authentic flicker,
-it belongs to twelve of the twenty kinds, and **the BEE IS NOT ONE OF THEM** —
+it belongs to twelve of the twenty kinds, and **the BEE IS NOT ONE OF THEM** -
 `$27FACC..$27FD20` has no frame-counter reference. `[M]` the four ported item
 kinds (`$0`, `$4`, `$8`, `$10`) have none either; the three `$80390C` sites in
 the item subsystem (`$27EFB2`, `$27F024`, `$27F2B6`) are all inside the REFUSED
@@ -470,11 +470,11 @@ hyper kinds `$0C`/`$14`.
 
 ---
 
-## 5. WHY OUR PORT DRAWS THEM — AND IT IS NOT A MISSING GATE `[M]`
+## 5. WHY OUR PORT DRAWS THEM - AND IT IS NOT A MISSING GATE `[M]`
 
 **`src/handlers.js:1494 handler8A` PORTS ALL OF §4, LINE FOR LINE**, including
 `playersAlive242884`, both asymmetric `$240` proximity arms, the `bchg` ("so the
-blink+emit below runs on every OTHER frame" — its own comment), the
+blink+emit below runs on every OTHER frame" - its own comment), the
 `eori.l #$B4` and `enqueueThroughStub` through `$27829C[0] = $23D762` = bucket 0.
 W30 §4.3 records it as **bucket 0's first producer**.
 
@@ -483,10 +483,10 @@ So:
 | the owner's words | what the ROM does | our port |
 |---|---|---|
 | *"bee pickups showing up"* | a bee sprite, emitted only within `$240` | **correct, ported** |
-| *"disappeared and reappeared"* | `bchg #$6` — every other frame | **correct, ported** |
+| *"disappeared and reappeared"* | `bchg #$6` - every other frame | **correct, ported** |
 | *"something on top of them so they don't normally show"* | nothing on top: the handler simply does not emit when you are far | **correct, ported** |
-| *"fighting with a nonexistent sprite"* | no: `$1BCA34` and `$1BCA80` are both real | — |
-| *"you have to shoot the cover off them"* | **RIGHT — HP 10, and its death spawns the bee** | **THE HALF THAT IS MISSING** |
+| *"fighting with a nonexistent sprite"* | no: `$1BCA34` and `$1BCA80` are both real | - |
+| *"you have to shoot the cover off them"* | **RIGHT - HP 10, and its death spawns the bee** | **THE HALF THAT IS MISSING** |
 
 **THE MISSING HALF, with its three addresses `[M]`:**
 
@@ -495,8 +495,8 @@ So:
 * `src/type5.js:160` lists `0x27f95a` at index **3 (call #4)** and does not call
   it. Pool A has no driver.
 * `src/damage.js:438` states it from the other side: *"`$817F7E` is 0 on this
-  tree and stays 0"*, and `$244DFE..$244E5C` — `$244D62`'s **block 3**, the
-  collision that would OR the collect bit into a bee's status word — is a NOTE.
+  tree and stays 0"*, and `$244DFE..$244E5C` - `$244D62`'s **block 3**, the
+  collision that would OR the collect bit into a bee's status word - is a NOTE.
 
 > **SO THE ANSWER TO THE BRIEF'S QUESTION 2 IS: WE ARE NOT DRAWING A BEE THAT
 > SHOULD BE HIDDEN. WE ARE DRAWING THE HIDDEN OBJECT EXACTLY AS THE CARTRIDGE
@@ -512,7 +512,7 @@ port fails to honour. There is a routine we do not call.
 
 ---
 
-## 6. THE `$81B64A` / `$81B64C` CENSUS — recon 71's Tier 1, done `[M]`
+## 6. THE `$81B64A` / `$81B64C` CENSUS - recon 71's Tier 1, done `[M]`
 
 **17 absolute-long sites each. 11 WRITERS each. The bee is one of them.**
 
@@ -538,15 +538,15 @@ byte search, not references.)*
 
 | recon 71 §8 item 1 predicted | `[M]` the ROM |
 |---|---|
-| 3 % ≈ **`$48` (72)** per step | **`$27FBD8 addi.w #$48,D0` — EXACT** |
-| ceiling **`$2D0` (720)** at 30 % | `$27FBBA cmpi.w #$200,D5` clamps at BCD 200; 200/20 = 10 steps × `$48` = **`$2D0` — EXACT** |
-| floor at 20 hits | `$27FBD0 subi.w #$14,D2` borrows on the first pass below 20 → **D0 stays 0 — EXACT** |
+| 3 % ≈ **`$48` (72)** per step | **`$27FBD8 addi.w #$48,D0` - EXACT** |
+| ceiling **`$2D0` (720)** at 30 % | `$27FBBA cmpi.w #$200,D5` clamps at BCD 200; 200/20 = 10 steps × `$48` = **`$2D0` - EXACT** |
+| floor at 20 hits | `$27FBD0 subi.w #$14,D2` borrows on the first pass below 20 → **D0 stays 0 - EXACT** |
 | "a 10-entry word table `$48 $90 … $2D0`" **or** a multiply | **NEITHER: a subtract-and-add LOOP.** Same law, third shape |
-| gated `tst.w $81B63E / bne <skip>` | **`$27FBA2 tst.w $81B63E / bne $27FBEE` — EXACT, and it SKIPS rather than banking to `$81B6E0`** |
+| gated `tst.w $81B63E / bne <skip>` | **`$27FBA2 tst.w $81B63E / bne $27FBEE` - EXACT, and it SKIPS rather than banking to `$81B6E0`** |
 | BCD-vs-binary on the index: unresolved | **SETTLED: the counter `$81B5DA` is BCD, `$27FBC8 jsr $242AF6` converts it to BINARY (a 14-pass `sbcd` loop against the BCD power table at `$242B20`), and the /20 is done in BINARY.** A port that divides the BCD word by 20 is wrong above 99 hits |
 
 **Two further gates the web never mentioned and a port would omit `[M]`:**
-`$27FBAC tst.w D4 / beq` — **the CHAIN METER `$81B5C0` must be non-zero** — and
+`$27FBAC tst.w D4 / beq` - **the CHAIN METER `$81B5C0` must be non-zero** - and
 `$27FBB0 tst.w D5 / beq / bmi`. A bee taken with the chain expired gives no
 gauge at all even if the hit counter still reads high.
 
@@ -562,12 +562,12 @@ that section.
 
 ## 7. THE THREE RECONS' CONTESTED CLAIM: IS THE BEE ONE OF THE SIX ITEM KINDS?
 
-### 7.1 NO — and `$81040B` decides it `[M]`
+### 7.1 NO - and `$81040B` decides it `[M]`
 
 Recon 70 §6 said kind `$08` "probably yes", six structural matches. Recon 72 §6
 said probably not. Recon 71 §6.2 said definitely not, a seventh subsystem.
 **Recon 71 IS RIGHT**, and the single number both 70 (C2) and 72 (item 2) asked
-for is now measured — from `games/ddpdoj/assets/seed.bin.gz`, the port's own
+for is now measured - from `games/ddpdoj/assets/seed.bin.gz`, the port's own
 shipped board seed:
 
 ```
@@ -581,14 +581,14 @@ shipped board seed:
 
 **`$81040B` = 3 kills recon 70 §6.1 in one number.** Kind `$08` counts to three,
 and its completion adds `$4D` (77) to `$8128F4` with a cap of 99 on `$8128FE`,
-against a `-$9A` (154 = 2 × 77) at bomb use (`38-recon` §1.3 [CITED]) — recon 71
+against a `-$9A` (154 = 2 × 77) at bomb use (`38-recon` §1.3 [CITED]) - recon 71
 §6.2's parenthetical is the better reading: **kind `$08` is a two-halves BOMB
 item, three fragments to the half.** I did not walk `$8128F4`'s consumers to
 prove that and I am not asserting it; what is measured is the 3, the `$4D` and
 the absence of any 10.
 
 Everything else follows: **none of the six item kinds reads a chain word, writes
-the hyper gauge, counts to ten, or multiplies** — `59-recon` §5.3 measured the
+the hyper gauge, counts to ten, or multiplies** - `59-recon` §5.3 measured the
 first two, and this file adds that the third and fourth live at `$27FBF4` and
 `$27FC42`, outside both ranges recon 59 censused.
 
@@ -597,16 +597,16 @@ first two, and this file adds that the third and fourth live at `$27FBF4` and
 I decoded the art rather than reasoning about it. Using the project's own
 `pgmgfx.py` against `games/ddpdoj/rip/rom/`, with the sizes the templates give:
 
-* **kind `$00` (`$1B8318`+3, 3 × 24)** — a rounded capsule with a large letter
+* **kind `$00` (`$1B8318`+3, 3 × 24)** - a rounded capsule with a large letter
   on it, the letter changing across the four cells. That is `61-impl` §6b's
   *"red-and-white capsule with a large orange `P`"*, confirmed from the ROM.
-* **kind `$08` (`$1B8448`+3, 3 × 24)** — **an insect: a round eye, antennae,
+* **kind `$08` (`$1B8448`+3, 3 × 24)** - **an insect: a round eye, antennae,
   wings above, a segmented striped abdomen, legs below**, four cells that differ
   in body colour rather than in shape.
-* **kind `$10` (`$1B89C8`+3, 2 × 32)** — a rounded-square badge.
-* **the bee proper (`$1BCA34`, 3 × 24, and `$1BCA80`)** — a winged shape at an
+* **kind `$10` (`$1B89C8`+3, 2 × 32)** - a rounded-square badge.
+* **the bee proper (`$1BCA34`, 3 × 24, and `$1BCA80`)** - a winged shape at an
   angle, the pair the carrier and the pickup share.
-* **`$1BCACC` (2 × 16)** — a five-pointed STAR, which is kind 0 of pool A's own
+* **`$1BCACC` (2 × 16)** - a five-pointed STAR, which is kind 0 of pool A's own
   16-frame animation (`$27FA46 addi.l #$24` wrapping at `$1BCD0C` → 16 frames).
 
 **So there are TWO insect-looking pickups in this cartridge and they are
@@ -624,7 +624,7 @@ other side. In stage 1 the port can only ever drop kind `$00`, the P capsule.
 
 ## 8. WHAT I COULD NOT DETERMINE
 
-Stated the way `docs/knowledge` requires — what I looked for, and where.
+Stated the way `docs/knowledge` requires - what I looked for, and where.
 
 1. **The left/right sequence of stage 1's ten bees.** §3.2. The spawn script's
    first movement-script word is the along-scroll spawn edge and all ten are
@@ -643,7 +643,7 @@ Stated the way `docs/knowledge` requires — what I looked for, and where.
    allocates it. `[M]` none of the twelve pool-A allocation sites I found passes
    D0 = `$40`; `$27F8F8`'s four callers (`$281D2E`, `$281E3A`, `$282016`,
    `$29EC6A`) take D0 from a register I did not trace.
-4. **`$28112C` and `$280FDC`** — the bee's collected arm and its collected
+4. **`$28112C` and `$280FDC`** - the bee's collected arm and its collected
    animation. Named, not read. They are inside the wave's scope.
 5. **What `$81293C`/`$81293E` are** (the ×2's second gate, `$27FC04 tst.w D3`).
    Read as an operand, not chased to a writer. **A port cannot ship the ×2
@@ -658,8 +658,8 @@ Stated the way `docs/knowledge` requires — what I looked for, and where.
    and 2 (type `$8B`'s drop) and left fifteen unnamed.
 9. **VIDEO WOULD HELP AND I COULD NOT USE IT.** The coordinator's note about
    `74-REF-arcade-video-sources.md` is right that video would show what a hidden
-   bee looks like. **It is no longer needed for the mechanism** — §2.2 and §4
-   settle it from the listing — but **it would independently confirm the 50 %
+   bee looks like. **It is no longer needed for the mechanism** - §2.2 and §4
+   settle it from the listing - but **it would independently confirm the 50 %
    duty cycle and the `$240` radius**, which are exactly the two numbers a
    player would notice and no text source records. A follow-up wave sampling
    frames around a known bee position would close it.
@@ -679,7 +679,7 @@ says so.**
 | **revealed by the LASER, specifically its TIP (`レーザーの先端`)** | **REFUTED AS A MECHANISM.** No point test, no laser word, no coordinate compare exists in `$276702..$276818`. The reveal is **HP 10** through the generic `$5C` hit bits, which several damage paths write. C11 closed |
 | ordinary shot does not reveal | **NOT SUPPORTED BY THE LISTING** as a rule; unresolved as an outcome (§8.2) |
 | **"NOT ONE DAIOUJOU SOURCE SAYS A BEE IS INSIDE A DESTRUCTIBLE OBJECT"**, and destructible cover belongs to DonPachi | **THE LISTING CONTRADICTS THE WEB.** DaiOuJou build B has a destructible carrier with HP, and the owner's memory is right about **this** game. The web's silence was silence |
-| C1 *"is enemy type `$86` the hidden-bee carrier?"* | **NO — type `$8A` is**, and type `$86` does not occur in stage 1 at all |
+| C1 *"is enemy type `$86` the hidden-bee carrier?"* | **NO - type `$8A` is**, and type `$86` does not occur in stage 1 at all |
 | C2 `$81040B` == 10 | **REFUTED. It is 3** |
 | kind `$08` is the bee, six structural matches | **REFUTED** (§7.1) |
 | C6 the BCD ×2 bug | **CONFIRMED IN THE LISTING.** `$27FC22 add.l D0,D0` on a BCD base |
@@ -691,14 +691,14 @@ says so.**
 | its claim | verdict `[M]` |
 |---|---|
 | **§0.3 the bee is a SEVENTH subsystem, outside both ranges recon 59 censused** | **CONFIRMED.** `$27FACC`, pool `$8171BE` |
-| §6.2's seven tests ruling out the cap-20 counter | **CONFIRMED** — and `$8130BE` is not the bee counter; `$817F80` is |
+| §6.2's seven tests ruling out the cap-20 counter | **CONFIRMED** - and `$8130BE` is not the bee counter; `$817F80` is |
 | base × live HIT count | **CONFIRMED**, as a BCD digit-multiply at `$27FC42` |
-| **base = 1,000** (four sources) vs **100** (TASVideos) | **THE ROM SAYS THE LADDER STARTS AT BCD 100** (`$27FD22[0] = $00000100`) and reaches BCD 1000 at index 9. **The TASVideos figure matches the first entry.** Whether the wikis' "1,000" is `$286128`'s own ×10 or a different label is UNRESOLVED — I did not read `$286128`'s scaling |
+| **base = 1,000** (four sources) vs **100** (TASVideos) | **THE ROM SAYS THE LADDER STARTS AT BCD 100** (`$27FD22[0] = $00000100`) and reaches BCD 1000 at index 9. **The TASVideos figure matches the first entry.** Whether the wikis' "1,000" is `$286128`'s own ×10 or a different label is UNRESOLVED - I did not read `$286128`'s scaling |
 | +1,000 per perfected stage (single-source) | **CONFIRMED IN SHAPE**: `$27FC0C addq.w #$4,$817F82` walks the ten-entry table one step per perfected stage, and the table's steps are +100 BCD |
 | ×2 on the tenth, gated on no-miss | **CONFIRMED**, gated on `count == 10 && $81293C == 0` |
 | **3 % = `$48`, 30 % = `$2D0`, floor 20, ceiling 200, gated on `$81B63E`** | **CONFIRMED, EVERY NUMBER** (§6). This is the best-predicted result any recon in this project has produced |
 | the gate might BANK to `$81B6E0` rather than refuse | **REFUTED: it SKIPS** (`$27FBA2 bne $27FBEE`) |
-| collecting a bee does not tick the chain | **CONFIRMED** — the award goes through `$286128`, not `$28615E`/`$2862C6` |
+| collecting a bee does not tick the chain | **CONFIRMED** - the award goes through `$286128`, not `$28615E`/`$2862C6` |
 | §6.3 `$8130BE`'s `bmi` freezing the chain decrement | **NOT INVESTIGATED.** Still open, still uncensused |
 
 ### `72-webrecon-bees-stage1`
@@ -706,12 +706,12 @@ says so.**
 | its claim | verdict `[M]` |
 |---|---|
 | ten bees, fixed, none in the opening stretch | **CONFIRMED**: ten records, triggers 173–452 of a 488 span |
-| **the side sequence `R,L,R,L,L,L,L,R,L,L`** | **UNRESOLVED** (§3.2, §8.1). Not refuted — the datum I read is the wrong axis |
+| **the side sequence `R,L,R,L,L,L,L,R,L,L`** | **UNRESOLVED** (§3.2, §8.1). Not refuted - the datum I read is the wrong axis |
 | the bee is probably NOT one of the six pool kinds | **CONFIRMED** |
 | its `$04` ↔ Max Power and `$10` ↔ 1UP mappings | untested here |
-| **every flashing-bee claim traces to a later game; DaiOuJou's appearance is undocumented** | **CORRECT ABOUT THE WEB, AND THE ROM SUPPLIES THE ANSWER: DaiOuJou's bee DOES blink** — the pickup 1 frame in 3, the carrier 1 frame in 2. Recon 72's refusal to guess was right |
-| item 4: is any item record drawn on even frames only, off `$80390A`/`$803914` | **NO** — but pool A has a **`$80390C` sprite-thinning gate on twelve of twenty kinds above 60 live records**, and that is the even-frame mechanism the question was reaching for |
-| item 8: connect the reveal to `$2453C2` | **PARTLY.** `$2453C2` writes the `$5C` bits the carrier consumes, so it is *a* damage source — but it is not "where the reveal lives"; there is no laser-specific reveal |
+| **every flashing-bee claim traces to a later game; DaiOuJou's appearance is undocumented** | **CORRECT ABOUT THE WEB, AND THE ROM SUPPLIES THE ANSWER: DaiOuJou's bee DOES blink** - the pickup 1 frame in 3, the carrier 1 frame in 2. Recon 72's refusal to guess was right |
+| item 4: is any item record drawn on even frames only, off `$80390A`/`$803914` | **NO** - but pool A has a **`$80390C` sprite-thinning gate on twelve of twenty kinds above 60 live records**, and that is the even-frame mechanism the question was reaching for |
+| item 8: connect the reveal to `$2453C2` | **PARTLY.** `$2453C2` writes the `$5C` bits the carrier consumes, so it is *a* damage source - but it is not "where the reveal lives"; there is no laser-specific reveal |
 | the ledger has no row for bees, nothing measured | **STILL TRUE.** This file is a listing read |
 
 ---
@@ -722,10 +722,10 @@ says so.**
 
 | # | wave | scope | size `[M]` | why |
 |---|---|---|---|---|
-| **B1** | **THE BEE APPEARS** | `$27F8EE`/`$27F8F8`/`$27F92A` (the three pool-A entries, 60 B), `$280B3E` the fill (~120 B) with the `$280E4A` 20-template table (20 × 22 B) and the `$280BB6`/`$280BCE` tables, `$27F95A` the driver (~66 B, **type-5 call #4**), `$27F87C` the clear, `$27FACC..$27FD20` **the bee body only** (148 B) with `$27FD22`/`$27FD4A`/`$27FD72`, `$27F2F0`-equivalent frees, the six `$23D762` layer emitters (already ported as emit stubs), **and `$2767E6`'s call made**. **REFUSE the other 18 kinds** at the allocator, loudly and by name. Art: `$1BCA34`, `$1BCA80`, `$1BCACC` + whatever `$28112C` walks | ~600 B of code + a ~440 B ROM window + a small shard | The owner can already SEE the carrier. Making its death produce a bee that falls, draws and can be walked into is the whole visible fix, and it is bounded by refusing the nineteen other kinds. **`$244D62` block 3 must come with it** (`$244DFE..$244E5C`) — `$2459D0` already shipped in W60, so the prerequisite is met |
-| **B2** | **THE BEE SCORES** — and it touches RANK | `$27FB6C`/`$27FAE6` (the two collect arms, ~260 B), `$242AF6` (46 B), the ten-entry base table and the ×2 **transcribed with its BCD bug**, `$286128`'s two call shapes, `$817F80`/`$817F82` and their five resets, `$28112C`/`$280FDC` | ~400 B | **`$27FBDE add.w D0,$81B64A` is the first link of the accumulator chain in §6.** `$287682` and everything after it are unported and `61-impl` §5 measured a −24 offset on `$81B64A` already. **Ship the gauge add only with a decision about `$287682`, or REFUSE the gauge add and count it** the way W61 refused kinds `$0C`/`$14` |
+| **B1** | **THE BEE APPEARS** | `$27F8EE`/`$27F8F8`/`$27F92A` (the three pool-A entries, 60 B), `$280B3E` the fill (~120 B) with the `$280E4A` 20-template table (20 × 22 B) and the `$280BB6`/`$280BCE` tables, `$27F95A` the driver (~66 B, **type-5 call #4**), `$27F87C` the clear, `$27FACC..$27FD20` **the bee body only** (148 B) with `$27FD22`/`$27FD4A`/`$27FD72`, `$27F2F0`-equivalent frees, the six `$23D762` layer emitters (already ported as emit stubs), **and `$2767E6`'s call made**. **REFUSE the other 18 kinds** at the allocator, loudly and by name. Art: `$1BCA34`, `$1BCA80`, `$1BCACC` + whatever `$28112C` walks | ~600 B of code + a ~440 B ROM window + a small shard | The owner can already SEE the carrier. Making its death produce a bee that falls, draws and can be walked into is the whole visible fix, and it is bounded by refusing the nineteen other kinds. **`$244D62` block 3 must come with it** (`$244DFE..$244E5C`) - `$2459D0` already shipped in W60, so the prerequisite is met |
+| **B2** | **THE BEE SCORES** - and it touches RANK | `$27FB6C`/`$27FAE6` (the two collect arms, ~260 B), `$242AF6` (46 B), the ten-entry base table and the ×2 **transcribed with its BCD bug**, `$286128`'s two call shapes, `$817F80`/`$817F82` and their five resets, `$28112C`/`$280FDC` | ~400 B | **`$27FBDE add.w D0,$81B64A` is the first link of the accumulator chain in §6.** `$287682` and everything after it are unported and `61-impl` §5 measured a −24 offset on `$81B64A` already. **Ship the gauge add only with a decision about `$287682`, or REFUSE the gauge add and count it** the way W61 refused kinds `$0C`/`$14` |
 
-**Realistic range 2–3** — B1 may split its art shard, and `$27F99E`'s other
+**Realistic range 2–3** - B1 may split its art shard, and `$27F99E`'s other
 nineteen kinds are a separate (large) enumeration nobody has sized.
 
 **MUST BE TRUE BEFORE B2 SHIPS:** `$81293C` identified (§8.5); a decision on
@@ -740,8 +740,8 @@ naming rokulpg/trap15 and this file.
    cross-axis position (`($4,A6)`) of each of the ten type-`$8A` records at the
    frame it first emits. That settles §8.1's `R,L,R,L,L,L,L,R,L,L` and gives the
    wave a red switch. It is a read-only run of code already in `src/`.
-2. **RANGE-CHECK `$27F99E` TO 20 ENTRIES AND THROW.** The mask is `$7C` — 32
-   indices — against 20 longwords; index 20 lands on `moveq #$1,D0`.
+2. **RANGE-CHECK `$27F99E` TO 20 ENTRIES AND THROW.** The mask is `$7C` - 32
+   indices - against 20 longwords; index 20 lands on `moveq #$1,D0`.
 3. **THE `$280E4A` TEMPLATE TABLE IS 20 ENTRIES OF 22 BYTES** and the fill skips
    `+$1A`/`+$1B` (`$280B8C addq.w #$2,A0`). Do not merge the skip away.
 4. **`$27F92A` IS NOT `$27F8EE` WITH A DIFFERENT BASE.** It reserves the LAST
@@ -767,33 +767,33 @@ naming rokulpg/trap15 and this file.
 - opened. Read `70-webrecon-bees-mechanics`, `71-webrecon-bees-scoring`,
   `72-webrecon-bees-stage1`, `59-recon-items` (all 937 lines), `61-impl-I2-items`
   (all 800 lines), HANDOVER, `docs/knowledge/09` and `10`.
-- **[M] THE `$81B64A`/`$81B64C` CENSUS — recon 71's Tier 1, and nobody had run
+- **[M] THE `$81B64A`/`$81B64C` CENSUS - recon 71's Tier 1, and nobody had run
   it.** 17 sites each, 11 writers each. **`$27FBDE add.w D0,$81B64A` is in the
-  `$27Fxxx` range, OUTSIDE both ranges recon 59 censused** — which is how the
+  `$27Fxxx` range, OUTSIDE both ranges recon 59 censused** - which is how the
   bee was found. **Recon 71's `$48`-per-step and `$2D0`-ceiling predictions are
   EXACT**, the floor is 20 hits, the gate is `$81B63E` and it SKIPS, and the
   index comes from a BCD→BINARY conversion by `$242AF6`.
-- **[M] THE BEE IS `$27FACC`, KIND 1 OF POOL `$8171BE`** — `cmpi.w #$A` against
+- **[M] THE BEE IS `$27FACC`, KIND 1 OF POOL `$8171BE`** - `cmpi.w #$A` against
   `$817F80`, a ten-entry BCD base table `$27FD22` (100…1000), a `base × hits`
   BCD digit-multiply into `$286128`, and the ×2 as `add.l D0,D0` **on a BCD
-  value — the documented overflow bug, in the listing.**
+  value - the documented overflow bug, in the listing.**
 - **[M] THE POOL GEOMETRY CLOSES EXACTLY**: 70 + 10 = 80 slots of `$2C`,
   `$8171BE + 70*$2C == $817DC6`, `+ 10*$2C == $817F7E` the live count, and
   `$27F87C`'s clear covers the pool plus seven trailing words, three of which
   are the bee's counter, base cursor and the star accumulators.
 - **[M] THE CARRIER IS ENEMY TYPE `$8A`**, prototype `$2766E6`: **sprite
-  `$1BCA34`, size `$0618`, draw offsets `$FA00FD00` — byte for byte the pool-A
-  bee template `$280EB0` — and HP `$000A` = TEN.** Its record prototype sets
+  `$1BCA34`, size `$0618`, draw offsets `$FA00FD00` - byte for byte the pool-A
+  bee template `$280EB0` - and HP `$000A` = TEN.** Its record prototype sets
   `($1A,A5) = $0004` and its death passes it to `$27F92A`, **whose only caller
   in the whole image is that one site**, into a **RESERVED TEN-SLOT** arena.
 - **[M] STAGE 1 HAS EXACTLY TEN TYPE-`$8A` RECORDS** out of 339, triggers
-  173..452 of a 488 span — **none in the opening third**, corroborating recon
+  173..452 of a 488 span - **none in the opening third**, corroborating recon
   72 §1. **The R/L sequence is UNRESOLVED**: the datum I read is the
   along-scroll spawn edge, not the cross axis.
 - **[M] THE REVEAL IS AN EMIT GATE, NOT A FLAG, AND NOT A LASER TEST.**
   `$276702` emits nothing unless a bomb is live or a player is within `$240`;
   then `bchg #$6,($1,A6)` emits on **every OTHER frame** and
-  `eori.l #$B4,($A,A6)` toggles `$1BCA34` ↔ `$1BCA80` — **and `$1BCA80` is the
+  `eori.l #$B4,($A,A6)` toggles `$1BCA34` ↔ `$1BCA80` - **and `$1BCA80` is the
   same second frame the REVEALED bee uses at `$27FCA0`.**
 - **[M] THE OWNER'S OCCLUSION HYPOTHESIS IS WRONG AND THE OWNER'S "shoot the
   cover off" IS RIGHT.** We draw the hidden object exactly as the cartridge
@@ -802,23 +802,23 @@ naming rokulpg/trap15 and this file.
   `$817F7E` is 0 on every run this port has ever made.
 - **[M] WEB RECON 70 §2.2 IS CONTRADICTED BY THE LISTING**: DaiOuJou build B
   DOES have a destructible bee carrier. The six sources' silence was silence.
-- **[M] KIND `$08` IS NOT THE BEE — `$81040B` = 3**, read out of the port's own
+- **[M] KIND `$08` IS NOT THE BEE - `$81040B` = 3**, read out of the port's own
   shipped seed. Recon 70's C2 and recon 72's item 2 both answered, against
   recon 70's identification.
 - **[M] AND THE TRAP FOR THE NEXT READER: KIND `$08`'s ART IS AN INSECT TOO.**
   Decoded from the cartridge with `pgmgfx.py`. **Two bee-looking pickups, two
-  pools, two counters.** Kind `$08` nevertheless cannot be what the owner saw —
+  pools, two counters.** Kind `$08` nevertheless cannot be what the owner saw -
   its only drop is type `$86`'s death and **stage 1 has zero type-`$86`
   records.**
 - **[M] A SECOND, DIFFERENT AUTHENTIC FLICKER**: twelve of pool A's twenty kinds
-  gate their emit on `cmp.w $80390C,D0` **once the pool holds 60+ records** —
+  gate their emit on `cmp.w $80390C,D0` **once the pool holds 60+ records** -
   sprite thinning. The bee is not one of them, and neither is any ported item
   kind.
 - **[M] A CORRECTION THAT HAS PROPAGATED:** the enemy type table is
   `$27E412 + 8*(t-$80)`, `[init, handler]`. `59-recon-items` §2.1's
   `$27E016 + 8*t -> [step, init]` is 4 bytes high and reads **the next type's
   init** as this type's.
-- nine things I could not determine (§8); the first — the ten bees' left/right
-  order — is one read-only port run away (§11.1).
+- nine things I could not determine (§8); the first - the ten bees' left/right
+  order - is one read-only port run away (§11.1).
 
 status: **DONE**

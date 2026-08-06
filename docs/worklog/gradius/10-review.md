@@ -1,5 +1,5 @@
-# Review of wave 10 — seed the port at any cartridge frame
-status: DONE — wave 10 is SOUND; 4 real defects in the CHECKS, none blocking
+# Review of wave 10 - seed the port at any cartridge frame
+status: DONE - wave 10 is SOUND; 4 real defects in the CHECKS, none blocking
 wave: 10   role: review   started: 2026-08-01
 
 ## The task, as I understood it
@@ -83,7 +83,7 @@ ntHalvesDiffer/collChanged`). Nothing was hand-edited.
 `$A859`'s records are `00 81 20 80 30 82 40 82 50 82 60 83 70 84 80 83 90 82
 A0 82 B0 82 C0 00 ...`. The first record with `cmd < $80` is `C0 00`, at
 **`$A859+$16`**, and it is the **twelfth** record (eleven precede it). The wave's
-prose says "`$A859+$18`" and "the thirteenth" — off by one in both, twice
+prose says "`$A859+$18`" and "the thirteenth" - off by one in both, twice
 (worklog and commit message). The load-bearing numbers are right: trigger $C0
 with `$61=2` gives `hi = 2+1`, `lo = $80` -> **scroll $0380, cmd $00**, exactly
 what `src/enemies.js fireWave` computes and what wave 3 put in the throw.
@@ -92,7 +92,7 @@ Camera positions, read off the artifacts, all confirmed:
 `deep-ground` align $02B5 -> last $0332; `deep-page3` $0319 -> **$0380**;
 `deep-page4` $03E1 -> $043B; `enemy-waves` $002B -> $0308.
 
-### 4. IS THE SEED HIDING BUGS — my own breaks, all restored + sha256-verified
+### 4. IS THE SEED HIDING BUGS - my own breaks, all restored + sha256-verified
 
 Every run below: edit `src/`, run `compare.mjs --only ...`, restore from the
 original bytes, re-hash all 21 `src/**/*.js`. **RESTORED byte-identical: True
@@ -100,15 +100,15 @@ after every one.**
 
 | # | break | scenarios | result |
 |---|---|---|---|
-| R1 | `src/terrain.js` `$9F81` stride `c*8` -> `c*4` | **enemy-waves alone** | **RED** — TERRAIN MAP 39/512 (`first $508`), while TIER 1 stayed **exact** |
+| R1 | `src/terrain.js` `$9F81` stride `c*8` -> `c*4` | **enemy-waves alone** | **RED** - TERRAIN MAP 39/512 (`first $508`), while TIER 1 stayed **exact** |
 | R2 | `src/vram.js` palette value `b` -> `b ^ 1` | idle, intro-boot, deep-ground | **RED on intro-boot only** (palette 28/32). idle and deep-ground GREEN |
 | R3 | `src/vram.js` nametable addr `- 0x2000` -> `- 0x1FFF` | idle, terrain-death, right-wall, enemy-waves | **RED on idle (128) and enemy-waves (443)**; **terrain-death (386) and right-wall (397) graded `[KNOWN]` and counted 0** |
-| R4 | `src/vram.js` mirror mask `& 0x7FF` -> `& 0x3FF` | idle, enemy-waves, deep-ground, deep-page3 | **GREEN — SURVIVES** (impl's finding reproduced) |
+| R4 | `src/vram.js` mirror mask `& 0x7FF` -> `& 0x3FF` | idle, enemy-waves, deep-ground, deep-page3 | **GREEN - SURVIVES** (impl's finding reproduced) |
 | R5 | `src/oam.js` DMA `& 0xE3` dropped | idle, terrain-death, enemy-waves, deep-ground, intro-boot | **RED via TIER 1 `s0a`** (terrain-death@624, intro-boot@283). The new VIDEO hardware-OAM arm read **0/256 on all five** |
-| R6 | `src/enemies.js` add `case 0xB098: return;` | idle, deep-page4 | **RED** — DEEP REACH, message no longer names `$B098` |
-| R7 | `scenarios.json` `expectThrow.atFrame` 2301 -> 2302 | idle, deep-page4 | **RED** — DEEP REACH frame arm |
-| R8 | neuter `seed-oam0` (no src edit) | intro-boot, deep-ground, deep-page3, enemy-waves, terrain-death | **0 failures — INVISIBLE**, impl's claim reproduced |
-| R9 | `src/render/ppu.js` `chrBank` `sel` -> `sel ^ 1` | idle, deep-page3, intro-boot | **RED (crash)** — the new seed-time CHR assertion fires: `$2D = 0, split ran -> CHR offset 24576, but the cartridge reported 8192` |
+| R6 | `src/enemies.js` add `case 0xB098: return;` | idle, deep-page4 | **RED** - DEEP REACH, message no longer names `$B098` |
+| R7 | `scenarios.json` `expectThrow.atFrame` 2301 -> 2302 | idle, deep-page4 | **RED** - DEEP REACH frame arm |
+| R8 | neuter `seed-oam0` (no src edit) | intro-boot, deep-ground, deep-page3, enemy-waves, terrain-death | **0 failures - INVISIBLE**, impl's claim reproduced |
+| R9 | `src/render/ppu.js` `chrBank` `sel` -> `sel ^ 1` | idle, deep-page3, intro-boot | **RED (crash)** - the new seed-time CHR assertion fires: `$2D = 0, split ran -> CHR offset 24576, but the cartridge reported 8192` |
 
 ### 5. What those breaks establish, and what they falsify
 
@@ -117,7 +117,7 @@ after every one.**
   comes from a scenario this wave added**". Measured per scenario:
   `enemy-waves 44`, `deep-ground 37`, `deep-page3 4`, `missile-wall 2`,
   `missile-wall-miss 1`, `terrain-death-miss 1` = 89. **The largest single
-  contributor, 44 of 89, is `enemy-waves` — a pre-existing align-400 scenario**
+  contributor, 44 of 89, is `enemy-waves` - a pre-existing align-400 scenario**
   (the last three are the scenarios' own `$05xx` pokes, not `$9F55` output). R1
   shows `enemy-waves` catches the stride break **on its own**. The check is
   therefore stronger than claimed and does not depend on the new scenarios; the
@@ -132,14 +132,14 @@ after every one.**
   which nothing overwrites, so it goes red without any port palette write.
 * **R3: the `$8871` excuse is broader than its own diagnosis.** `compareVideo`
   excuses the WHOLE nametable of any window in which `$1B` re-enters {1,2,3,4}.
-  The diagnosis behind it is byte-level and is stated in the code itself — "the
+  The diagnosis behind it is byte-level and is stated in the code itself - "the
   differing bytes are cells the CARTRIDGE blanked and the PORT left at the
-  seed's star tiles — port == seed on 84/84, 69/69, 356/356, 179/179". That
+  seed's star tiles - port == seed on 84/84, 69/69, 356/356, 179/179". That
   predicate is encodable (`port.nt[i] === seed.vram[i]`, and `seed.vram` is
   already loaded), and it was not encoded. Consequence, measured: a genuine
   one-byte address error in `drainQueue` adds **520 wrong bytes across two
   excused scenarios** and contributes **0** to the verdict. 10 of 38 scenarios
-  are affected, and they are the interesting ones — every death/respawn window
+  are affected, and they are the interesting ones - every death/respawn window
   (`terrain-death`, `right-wall`, `diag-ru-ld`, `lr-both`, `speed6-right`,
   `autofire-die`, `capsule-die`) plus the two intros and `capsule-shield`.
 * **R5 falsifies "Nothing else tests that mask."** `compare.mjs` lines 216-219
@@ -175,7 +175,7 @@ after every one.**
 * **R6/R7 confirm both arms of DEEP REACH can fail.**
 * **R8 confirms `seed-oam0` is inert.** I also checked the stated reason
   end-to-end: `nmi()` returns before `oamDma()` on a lag frame, and `intro-boot`
-  is the one scenario with a drop recorded at `align+1` (f283) — so I ran it
+  is the one scenario with a drop recorded at `align+1` (f283) - so I ran it
   explicitly. Still invisible. The reason holds; seeding hwOam is harmless and
   correctly kept out of the gate's break list.
 
@@ -217,7 +217,7 @@ node --test games/gradius/tests/        292 pass, 0 fail, 0 skipped
   though the byte is generally visible.
 
 * `compare.mjs --only <subset>` exits **1** whenever the subset's cartridge
-  rewrote no nametable or collision bytes — the two vacuity guards are not
+  rewrote no nametable or collision bytes - the two vacuity guards are not
   `fullRun`-gated (DEEP REACH's is). `--only idle` prints `0 failures` and
   `2 video-coverage failures` and returns 1. The impl's own "see it bite in ten
   seconds" recipe (`--only idle --neuter seed-nt+1`) is in that class.
@@ -229,7 +229,7 @@ node --test games/gradius/tests/        292 pass, 0 fail, 0 skipped
   neuters this wave added.
 * The regex near-miss (`/(\d+) failures/` picking up `deep-ground`'s `why`)
   would have produced `base.n = 104` and a **loud stage FAILURE**, not a silent
-  pass — the fix is right, the danger is overstated.
+  pass - the fix is right, the danger is overstated.
 * `$B198` is described as "unported" throughout; `src/enemies.js` actually has
   `case 0xB198: return h_B198(j);` whose body is a throw saying the body is
   shared with `$B205` and ported but the entry is not. Effect is the same, the
@@ -247,9 +247,9 @@ node --test games/gradius/tests/        292 pass, 0 fail, 0 skipped
 * **A doctored artifact.** Not present: all 39 reproduce byte-for-byte from the
   cartridge under Mesen, including all 13 new fields.
 * **The seed silently overwriting a wrong port value.** Tested field by field:
-  collision map (R1 — visible on a pre-existing scenario), nametable (R3 —
-  visible on strict scenarios), palette (R2 — visible on one), CHR derivation
-  (R9 — asserted at seed time and the assertion fires), hardware OAM (R8 —
+  collision map (R1 - visible on a pre-existing scenario), nametable (R3 -
+  visible on strict scenarios), palette (R2 - visible on one), CHR derivation
+  (R9 - asserted at seed time and the assertion fires), hardware OAM (R8 -
   provably inert, documented as such). The one genuinely untestable seeded
   field is hardware OAM and it is correctly kept out of the gate's break list.
 * **A ROM address the wave got wrong.** Every cited address checks out against
@@ -267,7 +267,7 @@ node --test games/gradius/tests/        292 pass, 0 fail, 0 skipped
    f2105 at camera **`$0380` exactly**, and the record at `$A859+$16` fires on
    the next frame with `cmd $00`. `deep-page4` is graded only by DEEP REACH.
    That limit belongs to waves 11/12, not to this review.
-2. **I did not re-run `rendergate.py` separately** — it runs inside
+2. **I did not re-run `rendergate.py` separately** - it runs inside
    `test-all.mjs`, which I ran, and it imports no `src/`.
 3. **`games/ddpdoj/` and `games/batman/`: not touched, not measured.** I did
    not commit anything and did not stage anything, so the shared index is
@@ -281,7 +281,7 @@ node --test games/gradius/tests/        292 pass, 0 fail, 0 skipped
 ## If someone picks this up cold
 
 **The wave is sound. The port is right where it is checked, the artifacts are
-real, the new checks bite, and the gate is green with 0 skips — I ran it.**
+real, the new checks bite, and the gate is green with 0 skips - I ran it.**
 Nothing here needs reverting. What needs doing, in value order:
 
 1. **Narrow the `$8871` excuse in `compare.mjs compareVideo()`.** Replace the
@@ -289,13 +289,13 @@ Nothing here needs reverting. What needs doing, in value order:
    comment already states: excuse byte `i` only when
    `port.finalVideo.nt[i] === oracle.seed.vram[i] && oracle.final.nt[i] !== oracle.seed.vram[i]`.
    Measured: 0 residual today, 623 wrong bytes caught under a real one-byte
-   `drainQueue` error. Ten scenarios — including every death/respawn window —
+   `drainQueue` error. Ten scenarios - including every death/respawn window -
    currently have their whole nametable comparison switched off.
 2. **Give the palette a vacuity guard** like `ntChangedTotal` and
    `collChangedTotal` have. Measured coverage is ONE scenario (`intro-boot`,
    11/32 bytes). Compute `palChanged` in `scen.py` and fail the corpus at 0.
 3. **Fix or delete the hardware-OAM arm's justification.** "Nothing else tests
-   that mask" is false — `s0a` does, and it is what actually went red when I
+   that mask" is false - `s0a` does, and it is what actually went red when I
    dropped `& $E3`. Either keep the arm as belt-and-braces and say so, or state
    what it is measured to add (currently: nothing).
 4. **Correct three numbers in `10-impl-seed-anywhere.md`** (and the commit

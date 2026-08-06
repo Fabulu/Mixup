@@ -1,11 +1,11 @@
-# W49 RECON — WHAT ENDS STAGE 1?
+# W49 RECON - WHAT ENDS STAGE 1?
 
-status: **DONE** — see the WAVE ESTIMATE (§8) and WHAT I COULD NOT DETERMINE
+status: **DONE** - see the WAVE ESTIMATE (§8) and WHAT I COULD NOT DETERMINE
 (§9). Headline, and **the brief's premise is wrong in its first sentence**:
 **nothing freezes the camera for the boss.** The camera never stops. It keeps
 travelling at **4.000 px/frame forever** while a 14-column band of map repeats;
 what the scroll program freezes is the DISTANCE CLOCK, and the picture only
-*looks* parked. And the thing that ends stage 1 is not an unfreeze at all —
+*looks* parked. And the thing that ends stage 1 is not an unfreeze at all -
 **the background object is DESTROYED and a new one is built for stage 2**, by a
 machine the boss reaches in one instruction the boss recon read and did not
 follow: `$292922 jsr $242952`.
@@ -75,7 +75,7 @@ LOCK reached at frame 7317: clock=$0344 speed=$0100 (4.000 px/f) px=8486
   + 5000 frames: clock=$0344 frozen=1 speed=$0100 px=28486 cols=890
 ```
 
-**Frame 7,317 and 8,486 px** — the two numbers HANDOVER carries for the lock,
+**Frame 7,317 and 8,486 px** - the two numbers HANDOVER carries for the lock,
 reproduced here from the ROM by a model written this session that shares no code
 with `scrollgate.py` or with `src/background.js`. And then the camera keeps
 going: **20,000 more pixels and 625 more columns in the next 5,000 frames**, the
@@ -122,7 +122,7 @@ script $26179A  objstream=$000000 cuestream=$000000 records from $2617A2
 
 41 + 16 = **57 records**, the number HANDOVER carries, re-measured.
 
-### 1.1 Q4 — **IS THE BOSS THE END? YES, AND THE LISTING PROVES IT**
+### 1.1 Q4 - **IS THE BOSS THE END? YES, AND THE LISTING PROVES IT**
 
 This is one of the rare "absence" claims the listing itself can settle, so I am
 making it flatly:
@@ -137,14 +137,14 @@ making it flatly:
 
 And the boss's `$0344` freeze is **the second** freeze in the stage, not the
 first: `$26162C` at `t=$0034` is an identical op-`$0C` whose op-`$04` partner
-(`$261620`) armed `loops=$0002` — a finite repeat, which `$261FB8`/`$261FC0`/
+(`$261620`) armed `loops=$0002` - a finite repeat, which `$261FB8`/`$261FC0`/
 `$261FC4` releases after 56 columns. So the format has a working release and the
 boss record deliberately does not use it (`loops=$FFFF`). **1 of the stage's 2
 freezes is releasable from inside the VM.**
 
 ---
 
-## 2. Q2 — THE DOOR CENSUS. NOT FIVE. TEN, AND THE TWO THAT MATTER WERE MISSED
+## 2. Q2 - THE DOOR CENSUS. NOT FIVE. TEN, AND THE TWO THAT MATTER WERE MISSED
 
 The boss recon says "none of the five known unfreeze doors appears anywhere in
 the boss's 257-routine static closure". I re-measured every door it named and
@@ -152,16 +152,16 @@ found the ones it did not have. Every count below is from BOTH scanners.
 
 | # | door | what it writes | refs in `$230000..$2B0000` | who |
 |---|---|---|---|---|
-| 1 | `$261138` | `$81317E := 1` — external freeze **ON** | **0** (abs.l, all bsr widths, `(d16,PC)`, raw longword) | nobody |
-| 2 | `$261142` | `$81317E := 2` → `$2612F0 clr.w $8(a5)` — external freeze **OFF** | **2** | `$26C7F4`, `$26D254`, both enemy state machines, each `+ clr.w $8130F4` |
-| 3 | `$261100` | `$813180:=1`, `$813182:=D0`, `$813184:=D1` → `$2612BC` overwrites `($1C,A5)`/`($22,A5)` — external **SPEED PUSH** | **9** | `$26B73C`(the stage-1 midboss) `$26D804 $26D866 $26E04E $26E154 $26F616 $26F6C8 $2A5D2A $2A61E2` |
-| 4 | `$25FD82` | `$8130D2 := 1` — the whole handler is skipped (`$2612A0`) | **3** | `$25FCFA`, `$25FDE0`, `$288AD0` |
+| 1 | `$261138` | `$81317E := 1` - external freeze **ON** | **0** (abs.l, all bsr widths, `(d16,PC)`, raw longword) | nobody |
+| 2 | `$261142` | `$81317E := 2` → `$2612F0 clr.w $8(a5)` - external freeze **OFF** | **2** | `$26C7F4`, `$26D254`, both enemy state machines, each `+ clr.w $8130F4` |
+| 3 | `$261100` | `$813180:=1`, `$813182:=D0`, `$813184:=D1` → `$2612BC` overwrites `($1C,A5)`/`($22,A5)` - external **SPEED PUSH** | **9** | `$26B73C`(the stage-1 midboss) `$26D804 $26D866 $26E04E $26E154 $26F616 $26F6C8 $2A5D2A $2A61E2` |
+| 4 | `$25FD82` | `$8130D2 := 1` - the whole handler is skipped (`$2612A0`) | **3** | `$25FCFA`, `$25FDE0`, `$288AD0` |
 | 5 | `$25FD8C` | `$8130D2 := 0` | **1** | `$25FDD2` (inside the alive-player counter `$25FD94`) |
-| 6 | `$261FB8`/`$261FC0`/`$261FC4` | rewind:=0, `($8,A5)`:=0, clock:=resume — the VM's **own** release | in-VM | `$261F76`, and **only when `loops != $FFFF`** |
+| 6 | `$261FB8`/`$261FC0`/`$261FC4` | rewind:=0, `($8,A5)`:=0, clock:=resume - the VM's **own** release | in-VM | `$261F76`, and **only when `loops != $FFFF`** |
 | 7 | `$26204A` | `($8,A5) := 0` | in-VM | `$26200E`'s fast-forward, i.e. object creation only |
-| **8** | **`$25FCFA`** | `bsr $25FD82` **then `lea $813144,A0 / jmp $241238`** — pause the background **and DESTROY the background object** | **1** | **`$28D5D6`** |
-| **9** | **`$25FD24`** | `lea $8130CE,A0 / move.w #$15,D0 / move.w #0,(A0)+ / dbra` — **22 words = `$8130CE..$8130F9` wiped**, which includes the distance clock, `$8130D2` and both boss flag bytes | **3** | `$25FD38`, `$260596`, `$2605BA` |
-| **10** | **`$25FD38`** | `bsr $25FD24`, eight subsystem resets, then `move.w #$1,D0 / jsr $241182 / move.l D0,$813144 / move.w #$0,($6,A0)` — **build a NEW type-1 background object with entry clock 0** | **1** | **`$28D674`** |
+| **8** | **`$25FCFA`** | `bsr $25FD82` **then `lea $813144,A0 / jmp $241238`** - pause the background **and DESTROY the background object** | **1** | **`$28D5D6`** |
+| **9** | **`$25FD24`** | `lea $8130CE,A0 / move.w #$15,D0 / move.w #0,(A0)+ / dbra` - **22 words = `$8130CE..$8130F9` wiped**, which includes the distance clock, `$8130D2` and both boss flag bytes | **3** | `$25FD38`, `$260596`, `$2605BA` |
+| **10** | **`$25FD38`** | `bsr $25FD24`, eight subsystem resets, then `move.w #$1,D0 / jsr $241182 / move.l D0,$813144 / move.w #$0,($6,A0)` - **build a NEW type-1 background object with entry clock 0** | **1** | **`$28D674`** |
 
 **Doors 8, 9 and 10 are the real ones, and the boss recon did not have them.**
 Doors 1–7 are the ones it counted; door 1 has no caller anywhere in build B by
@@ -172,11 +172,11 @@ Note what doors 8/9/10 mean: **the stage-1 lock is never released.** The object
 holding it is queued for destruction (`$241238` pushes the handle at `(A0)` onto
 the deferred-kill list at `$80DBFE`, cursor `$80E23E`, drained by `$241262` into
 `$2411E2`), its RAM is wiped, and a fresh one is constructed. The camera does
-not stop at the boss and it does not resume after him — **it is replaced**.
+not stop at the boss and it does not resume after him - **it is replaced**.
 
 ---
 
-## 3. Q1 + Q3 — THE WHOLE CHAIN, BOSS DEATH TO STAGE 2, EVERY LINK MEASURED
+## 3. Q1 + Q3 - THE WHOLE CHAIN, BOSS DEATH TO STAGE 2, EVERY LINK MEASURED
 
 The boss recon printed `$292902` in full and stopped at its tenth instruction.
 The answer is inside it. Re-disassembled this session:
@@ -196,11 +196,11 @@ The answer is inside it. Re-disassembled this session:
 
 ### 3.1 The links, in order
 
-**LINK 1 — the boss dies.** `$294AD8` part 0's HP `$16(a5)` goes negative, or
+**LINK 1 - the boss dies.** `$294AD8` part 0's HP `$16(a5)` goes negative, or
 the timeout at `$294F32` expires (§5). Either way `$294DD4` runs, and among the
 things it does is **start table-D script id 6**.
 
-**LINK 2 — D script 6 suspends the scheduler.** `$293DC6` (INIT) loads
+**LINK 2 - D script 6 suspends the scheduler.** `$293DC6` (INIT) loads
 `move.w #$8,$4(a4)`, `#$1209,$6(a4)`, **`#$20,$A(a4)`**. `$293E04` (STEP):
 
 ```
@@ -210,10 +210,10 @@ things it does is **start table-D script id 6**.
 293E1C: clr.w (a4)                           <-- the channel retires itself
 ```
 
-`$2595E8` is `move.w #$1,$812E06 / rts`, and it has **six callers** — one per
+`$2595E8` is `move.w #$1,$812E06 / rts`, and it has **six callers** - one per
 boss (`$293E16 $298E14 $29CC72 $2A0646 $2A6466 $2A6B88`).
 
-**LINK 3 — the suspend turns the boss handler's `bcc` around.**
+**LINK 3 - the suspend turns the boss handler's `bcc` around.**
 
 ```
 25962E: tst.w $812E06 / beq $25963E
@@ -224,7 +224,7 @@ boss (`$293E16 $298E14 $29CC72 $2A0646 $2A6466 $2A6B88`).
 So on the frame after the suspend, `$29291E bcc` is NOT taken and
 `$292922 jsr $242952` fires. Exactly once, because `$292928` frees the enemy.
 
-**LINK 4 — `$242952` IS THE STAGE ADVANCE.** Read out this session, and the
+**LINK 4 - `$242952` IS THE STAGE ADVANCE.** Read out this session, and the
 `addq.w` is the write the brief asked for:
 
 ```
@@ -246,12 +246,12 @@ So on the frame after the suspend, `$29291E bcc` is NOT taken and
 (`xref.py callers 242952`): `$292922` (stage 1), `$2973A8`, `$29BE36`,
 `$29EF14`, `$2A4614`. Five callers, five stages. That closes the enumeration.
 
-Type 6 is `$240F92` in the object dispatch table `$240F62` — stride 8, so
+Type 6 is `$240F92` in the object dispatch table `$240F62` - stride 8, so
 **`(($240F92-$240F62)/8) = index 6`**, handler `$28D63C`. (The port's own table
 map in `src/main.js` uses the same stride: `$240F62[1] = $26127A` background,
 `[2]/[3]` the two players.)
 
-**LINK 5 — type 6's INIT destroys the background.** `$28D566`, reached from
+**LINK 5 - type 6's INIT destroys the background.** `$28D566`, reached from
 `$28D640 beq` on the first dispatch:
 
 ```
@@ -265,12 +265,12 @@ map in `src/main.js` uses the same stride: `$240F62[1] = $26127A` background,
 28D5DC: $812970 := 1 / rts
 ```
 
-`$813144` is written at exactly one place — `$25FD74 move.l D0,$813144`,
+`$813144` is written at exactly one place - `$25FD74 move.l D0,$813144`,
 immediately after `$25FD6E jsr $241182` with **D0 = 1, the background object**.
 So `$25FCFA` destroys the scroll VM, the camera, the column writer and the whole
 `($8,A5)` freeze in one call. The lock is not released; its owner is deleted.
 
-**LINK 6 — type 6's state machine, `$28D63C`.** `($6,A5)` is the state,
+**LINK 6 - type 6's state machine, `$28D63C`.** `($6,A5)` is the state,
 `($4,A5)` the stage number `$242952` handed it:
 
 | state | what runs | leaves on |
@@ -301,13 +301,13 @@ and the branch that chooses, inside `$28D9AA`'s tail:
 **`$8130F9` bit 1 is the handshake, and it is a CLOSED enumeration.** Every
 build-B reference to `$8130F9`, decoded (31 sites):
 
-* **bit 0** — `bset` at **6** sites, `$2927A4 $297A60 $29BCC4 $29ED42 $2A599C
+* **bit 0** - `bset` at **6** sites, `$2927A4 $297A60 $29BCC4 $29ED42 $2A599C
   $2A63BA`, i.e. once per boss init; `btst` at **15** sites, all in
   `$284xxx..$287xxx` (the HUD / effects). "A boss is on screen."
-* **bit 1** — `bset` at **EXACTLY ONE** site, `$285496`; `btst` at **exactly
+* **bit 1** - `bset` at **EXACTLY ONE** site, `$285496`; `btst` at **exactly
   two**, `$28540C` (the setter's own gate) and `$28DE1E` (the stage advance).
-* **bit 2** — `bset` at one site, `$28DE16`; `btst` at one, `$285400`.
-* **bit 3** — `bset` `$28DB52`; `btst` `$2853D2`. **bit 4** — `bset` `$2853DC`.
+* **bit 2** - `bset` at one site, `$28DE16`; `btst` at one, `$285400`.
+* **bit 3** - `bset` `$28DB52`; `btst` `$2853D2`. **bit 4** - `bset` `$2853DC`.
 
 So the advance is a two-flag handshake between type 6 and the HUD:
 `$28DE16` (bit 2, "start the tally") → `$285400..$285568` runs the
@@ -315,7 +315,7 @@ So the advance is a two-flag handshake between type 6 and the HUD:
 `$28614A` / `$286154`, with `$28556C` letting the player's buttons (`$23D16C` /
 `$23D17E`, mask `$70`) speed it up → `$285496` (bit 1, "done") → `$28DE1E`.
 
-**LINK 7 — `$25FD0C` IS THE STAGE COUNTER WRITE.** The brief asked to name the
+**LINK 7 - `$25FD0C` IS THE STAGE COUNTER WRITE.** The brief asked to name the
 write and its address:
 
 ```
@@ -328,11 +328,11 @@ write and its address:
 ```
 
 Two callers total: `$28D69C` (type 6, state 2) and `$2606CE` (a `bsr` from the
-`$260xxx` life machine — the fresh-game / continue path). `$813096` is the index
+`$260xxx` life machine - the fresh-game / continue path). `$813096` is the index
 every per-stage table uses (`BGTAB.scriptPair $26153E`, `palette $261252`,
 `colStream $261266`, `tileBase $240D62`, `elemTable $262302`).
 
-**LINK 8 — `$25FD38` REBUILDS THE WORLD.**
+**LINK 8 - `$25FD38` REBUILDS THE WORLD.**
 
 ```
 25FD38: 61ea           bsr $25FD24            clear $8130CE..$8130F9 (22 words):
@@ -387,17 +387,17 @@ $294AD8 HP<0 (or $294F32 timeout)
 ## 4. WHAT THE BOSS RECON'S OPEN ITEM WAS, AND WHY IT STAYED OPEN
 
 The recon (§4.2, §9) checked the boss's 257-routine closure for the five doors
-by exact address and found none — and that check was **correct**. The path out
+by exact address and found none - and that check was **correct**. The path out
 does not go through a door. It goes through `$242952`, which the recon printed
 in its own transcription of `$292902` and classified only as part of "the
 enemy-free/mark-dying tail". The instruction it needed was on the page.
 
 Two other of its statements I can now settle:
 
-* **`$811F8C`** — the recon could not say who reads what `$253564` clamps.
+* **`$811F8C`** - the recon could not say who reads what `$253564` clamps.
   I re-measured: exactly **two** absolute-long references in build B, `$253568`
   and `$253572`, both inside `$253564` itself. Still unresolved by absolute-long
-  search, and now known not to be on the stage-advance path — the advance runs
+  search, and now known not to be on the stage-advance path - the advance runs
   off `$813092`, not `$811F8C`.
 * **`$8130F8` bit 7** (`$294DD4 bset #7`): six setters, one per boss
   (`$294DE0 $29896E $29CAA2 $29FE96 $2A6DB8 $2A723A`), and **no `btst`/`bclr`
@@ -409,7 +409,7 @@ Two other of its statements I can now settle:
 
 ---
 
-## 5. Q5 — THE MINIMUM PORT, AND A FINDING THAT MAKES IT MUCH CHEAPER
+## 5. Q5 - THE MINIMUM PORT, AND A FINDING THAT MAKES IT MUCH CHEAPER
 
 ### 5.1 **THE BOSS HAS A 10,800-FRAME HARD TIMEOUT AND IT ENDS THE STAGE**
 
@@ -439,7 +439,7 @@ and `$294F32`, the fall-through the boss recon correctly flagged
 294F60: jmp $294DD4(pc)                  <-- THE BOSS DIES
 ```
 
-`$2428A6` returns `$10` if P1 is live, `+$8` if P2 is — i.e. non-zero iff at
+`$2428A6` returns `$10` if P1 is live, `+$8` if P2 is - i.e. non-zero iff at
 least one player is alive.
 
 > **STAGE 1 ENDS BY ITSELF.** 10,800 logic frames (`$2A30`) after the boss
@@ -463,9 +463,9 @@ Split into the three things a wave could buy separately:
 
 | tier | routines | insn | what |
 |---|---|---|---|
-| **CORE — the machinery** | 17 | **284** | `$242952 $28D63C $28D566 $28D5E6 $25FCFA $25FD0C $25FD24 $25FD38 $241238 $241262 $2411E2 $241292 $28ECCE $28E7E6 $28E7C0 $28E7DC $28E7A2` — the state machine, the destroy, the stage write and the rebuild |
+| **CORE - the machinery** | 17 | **284** | `$242952 $28D63C $28D566 $28D5E6 $25FCFA $25FD0C $25FD24 $25FD38 $241238 $241262 $2411E2 $241292 $28ECCE $28E7E6 $28E7C0 $28E7DC $28E7A2` - the state machine, the destroy, the stage write and the rebuild |
 | **BOSS-SIDE TRIGGER** | 4 | ~**40** | `$292902` (10) + `$294F32` (13) + `$294DD4`'s `D.start 6` arm + `$25962E`'s first four instructions (the `$812E06` C=1 arm) and `$2595E8` (2) |
-| **PRESENTATION — the result screen** | ~40 | **1,319** | `$28D9AA` (447) `$28DED8` (155) `$28E1AC` (351) `$28E7F8` (242) `$285400` (103) `$28556C` (21) — and `$8130F9` bit 1 comes **only** from `$285496`, inside it |
+| **PRESENTATION - the result screen** | ~40 | **1,319** | `$28D9AA` (447) `$28DED8` (155) `$28E1AC` (351) `$28E7F8` (242) `$285400` (103) `$28556C` (21) - and `$8130F9` bit 1 comes **only** from `$285496`, inside it |
 
 The subsystem resets `$25FD38` calls (`$26331E $288E0C $289084 $289AE0 $28AC3A
 $289F3A $27E98A $28131E`) are eight more routines; several are the same
@@ -474,7 +474,7 @@ $289F3A $27E98A $28131E`) are eight more routines; several are the same
 ### 5.3 The cheapest path that makes stage 1 END
 
 **CORE + BOSS-SIDE TRIGGER = ~324 instructions**, and it is enough to make the
-port's stage 1 finish and stage 2 start scrolling — *if* the `$8130F9` bit-1
+port's stage 1 finish and stage 2 start scrolling - *if* the `$8130F9` bit-1
 handshake is satisfied. It has exactly one producer, `$285496`, and reaching it
 faithfully costs the 1,319-instruction presentation tier.
 
@@ -489,7 +489,7 @@ So there are two honest options and they must be labelled differently:
    class as the Batman water dither: it must say in the source that it is one,
    name `$285496` as the instruction it is standing in for, and be pinned by a
    test that fails the moment `$285496` gets ported for real. **It must not be
-   described as "the stage ends" without that caveat** — what ends is the
+   described as "the stage ends" without that caveat** - what ends is the
    camera's stage, not the game's.
 
 Either way the boss body (the boss recon's waves A/B/C, 4,065 boss-local
@@ -502,7 +502,7 @@ completes long before it has a boss that fights.
 ## 6. WHAT THE PORT HAS TODAY (snapshot; the tree may be mid-edit)
 
 Of the 190 routines in the stage-end closure, 44 are named somewhere in
-`games/ddpdoj/src/**/*.js` — and that test **overstates** the ported side,
+`games/ddpdoj/src/**/*.js` - and that test **overstates** the ported side,
 because a `note()` or a `throw` counts. The 44:
 
 ```
@@ -514,7 +514,7 @@ $25FD82 $263386 $28131E $286128 $286626 $28BBAC $28C02A $28C186
 ```
 
 Notably: the object allocator/killer (`$241182`, `$2411E2`, `$241238`,
-`$241262`) is already there, and `$242952` appears — as a *comment* in
+`$241262`) is already there, and `$242952` appears - as a *comment* in
 `src/handlers.js:1516` listing it after `$243DD0` and `$25962E`, i.e. the port
 already knows the boss handler's shape and has not followed it either. **None of
 `$28D63C`, `$28D566`, `$25FCFA`, `$25FD0C`, `$25FD24`, `$25FD38` is cited
@@ -532,7 +532,7 @@ correctly says the port HOLDS there.
 2. **Model type 6 as a real object at `$240F62[6]`**, created through the port's
    existing `$241182`, with `($4,A5)` = the stage. Its states are bytes at
    `($2,A5)` and `($6,A5)` and `($7,A5)`; do not turn them into a JS enum that
-   loses the byte offsets — `$28D9AA` and `$28DE2A` read `($6,A5)` and
+   loses the byte offsets - `$28D9AA` and `$28DE2A` read `($6,A5)` and
    `($4,A5)` directly.
 3. **`$25FCFA` destroys the background through `$241238`, not `$2411E2`.** It is
    a *deferred* kill: the handle at `$813144` goes on the `$80DBFE` list and is
@@ -545,7 +545,7 @@ correctly says the port HOLDS there.
    models the entry clock (`src/background.js` `fastForward`); stage 2 must
    enter at clock 0, not at `$0038`.
 6. **The boss timeout is `$22(a5) = $2A30` from `$2927F6`**, decremented at
-   `$294F3C` and gated on `$8130D2`. Transcribe the `$2428A6` arm too — with no
+   `$294F3C` and gated on `$8130D2`. Transcribe the `$2428A6` arm too - with no
    live player the timer re-floors to `$78` and the boss cannot die, which is a
    behaviour and not an edge case.
 7. **`$8130F9` bit 1 has exactly one producer.** If a wave stubs the result
@@ -561,14 +561,14 @@ correctly says the port HOLDS there.
 
 ---
 
-## 8. WAVE ESTIMATE — making stage 1 END
+## 8. WAVE ESTIMATE - making stage 1 END
 
 **TWO waves, and neither of them is the boss.**
 
 | wave | scope | insn | why its own wave |
 |---|---|---|---|
-| **A — THE STAGE MACHINE** | `$242952`, object type 6 (`$28D63C` + `$28D566` + `$28D5E6`), `$25FCFA`, `$25FD0C`, `$25FD24`, `$25FD38` and its eight resets, the `$8130F9` bit-1/bit-2 handshake modelled as data, plus the boss-side trigger (`$292902`'s ten instructions, `$294F32`'s timeout arm, `$294DD4`'s `D.start 6` reduced to its `$2595E8` effect with a loud note, and `$25962E`'s `$812E06` arm) | **~324** | It is testable without one line of boss content: drive `$812E06 := 1` and assert that `$813092` increments, the old background object is on the kill list, and a new one exists at `$813144` with entry clock 0. It is also **shared by all five stages** — the same `$242952`, the same type 6, the same `$25FD0C`. |
-| **B — THE RESULT SCREEN** | `$28D9AA` (447), `$28DED8` (155), `$28E1AC` (351), `$28E7F8` (242), the HUD tally `$285400..$285568` (103) + `$28556C` (21), and the animation-object pair `$24652A`/`$246800`/`$24681A`/`$246410` | **~1,400** | It is presentation and score, it is where `$8130F9` bit 1 really comes from, and it is the only thing standing between wave A and a faithful ending. Until it lands, wave A carries a declared deviation. |
+| **A - THE STAGE MACHINE** | `$242952`, object type 6 (`$28D63C` + `$28D566` + `$28D5E6`), `$25FCFA`, `$25FD0C`, `$25FD24`, `$25FD38` and its eight resets, the `$8130F9` bit-1/bit-2 handshake modelled as data, plus the boss-side trigger (`$292902`'s ten instructions, `$294F32`'s timeout arm, `$294DD4`'s `D.start 6` reduced to its `$2595E8` effect with a loud note, and `$25962E`'s `$812E06` arm) | **~324** | It is testable without one line of boss content: drive `$812E06 := 1` and assert that `$813092` increments, the old background object is on the kill list, and a new one exists at `$813144` with entry clock 0. It is also **shared by all five stages** - the same `$242952`, the same type 6, the same `$25FD0C`. |
+| **B - THE RESULT SCREEN** | `$28D9AA` (447), `$28DED8` (155), `$28E1AC` (351), `$28E7F8` (242), the HUD tally `$285400..$285568` (103) + `$28556C` (21), and the animation-object pair `$24652A`/`$246800`/`$24681A`/`$246410` | **~1,400** | It is presentation and score, it is where `$8130F9` bit 1 really comes from, and it is the only thing standing between wave A and a faithful ending. Until it lands, wave A carries a declared deviation. |
 
 **Wave A alone makes stage 1 end.** Wave B makes it end *correctly*.
 
@@ -579,7 +579,7 @@ the boss at all.**
 
 What must NOT be attempted in the same wave: anything in the `$28E1AC`/`$28E7F8`
 text and banner machinery beyond what state 4's `$81DFF6` gate needs, and the
-`($4,A5) == 5` ending arm (`$28DE44`, `$28D8C4`, `$241182` type `$13`) — that is
+`($4,A5) == 5` ending arm (`$28DE44`, `$28D8C4`, `$241182` type `$13`) - that is
 the game's ending and belongs after stage 5 exists.
 
 ---
@@ -600,7 +600,7 @@ the game's ending and belongs after stage 5 exists.
   arithmetic but did **not** determine which arm a real zero-item clear takes,
   so I cannot say whether the tally is skippable.
 * **`$2853D2`.** It sets `$8130F9` bit 4 off bit 3, and it has **no reference of
-  any kind** — no absolute long, no `bsr` of any width, no `(d16,PC)`, no
+  any kind** - no absolute long, no `bsr` of any width, no `(d16,PC)`, no
   longword anywhere in the whole 6 MB image. It is reached through a register I
   cannot see. What I tried is exactly that list.
 * **`$811F8C`.** Two absolute-long references in build B, both inside `$253564`.

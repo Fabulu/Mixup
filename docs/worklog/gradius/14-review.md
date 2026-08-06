@@ -1,8 +1,8 @@
-# Wave 14 review — input granularity and frame cost
+# Wave 14 review - input granularity and frame cost
 status: DONE
 wave: 14   role: review   started: 2026-08-01
 
-Reviewed commit `25b8ce6` (13 files). READER only — no edit to `src/` survives
+Reviewed commit `25b8ce6` (13 files). READER only - no edit to `src/` survives
 this session; every deliberate break was restored and sha256-verified, and the
 gradius worktree was confirmed byte-identical to HEAD at the end
 (`git diff HEAD -- games/gradius` empty, through a PRIVATE index in the
@@ -15,10 +15,10 @@ cap=2 number was chosen for, and one deliberate break of mine PASSED the whole
 
 ## The task, as I understood it
 
-1. Is the cost measurement honest — headless timing of `nmi()` itself, not of a
+1. Is the cost measurement honest - headless timing of `nmi()` itself, not of a
    loop that includes rendering or I/O?
 2. Does the new cost check actually FAIL when the port gets slower? Make it.
-3. Did the 42 scenarios regress? The display list is watched now — look.
+3. Did the 42 scenarios regress? The display list is watched now - look.
 4. Break at least two new checks, watch red, restore, verify byte-identical.
 
 ## What I MEASURED
@@ -54,15 +54,15 @@ node games/gradius/tools/test-all.mjs
 08-01 12:56-12:57, newer than `objloop.lua` 01:56, `probe.lua` 06:33,
 `scenarios.json` 12:42. The implementer's claim holds.
 
-### 2. Is the cost measurement honest? YES — checked, not read
+### 2. Is the cost measurement honest? YES - checked, not read
 
 `onePass()` brackets `nmi(state, b, res, false)` with
 `process.hrtime.bigint()` and nothing else is inside those brackets; audio and
 video are separately bracketed; there is no file or console I/O in the loop.
 
 The harness state is not a fiction. `framecost.mjs` drives
-`introEntryState(res.manifest)` — **the same function `boot()` calls at
-`src/main.js:248`** — with `audiohash.mjs`'s fixed button script. I probed what
+`introEntryState(res.manifest)` - **the same function `boot()` calls at
+`src/main.js:248`** - with `audiohash.mjs`'s fixed button script. I probed what
 those 600 frames actually do:
 
 ```
@@ -91,7 +91,7 @@ within 2% of the implementer's table. The stated caveat (node, so no
 `putImageData`/compositor; a LOWER bound) is printed on every run and is
 correct.
 
-### 3. Does the cost check fail when the port gets slower? YES for video — and
+### 3. Does the cost check fail when the port gets slower? YES for video - and
      I made it fail. For logic it needs ~11x.
 
 Four breaks, each one exact substring substitution, each restored and
@@ -104,7 +104,7 @@ sha256-verified byte-identical.
 | **R3** the same, 30,000 (nmi **7.4x** slower, 0.048 → 0.356 ms) | logic 0.94 / 1.0 ref | **GREEN**, WARN only |
 | **R4** the same, 50,000 (nmi **11.5x** slower, 0.554 ms) | logic 1.51 / 1.0 ref | **RED, exit 1** |
 
-So the stage is a real gate, not a decoration — R1 is the exact regression it
+So the stage is a real gate, not a decoration - R1 is the exact regression it
 was written for and it goes red by 1.4x, under my machine's load as well as the
 implementer's. But the **logic** limit is 1.0 ref against a measured 0.11-0.12,
 and R2/R3 show that is not a "~7x margin" in the reassuring sense: `nmi()` can
@@ -113,7 +113,7 @@ measured 8.7-8.9) does not pick it up either. The stage that was added because
 "nobody has ever measured how long one logic frame takes" will not notice the
 logic tripling.
 
-### 4. The renderer fix is bit-identical — verified INDEPENDENTLY
+### 4. The renderer fix is bit-identical - verified INDEPENDENTLY
 
 Not by re-reading the implementer's claim: I hashed 200 consecutive rendered
 frames of the real port (12,288,000 px) with the committed renderer and again
@@ -133,7 +133,7 @@ ten captured frames". There are **nine**; `f1200` prints
 passes. `tests/ppu.test.js`'s own new comment says "seven captured frames". Two
 numbers, both wrong, in the same wave.
 
-### 5. THE BREAK THAT PASSED — `noteInput()`'s idempotence guard
+### 5. THE BREAK THAT PASSED - `noteInput()`'s idempotence guard
 
 ```
 src/input.js:
@@ -157,18 +157,18 @@ HELD KEY (60 auto-repeat keydowns)      depth 1  coalesced 0
 SAME DIR (2 pointermoves/frame, same direction)  depth 1  coalesced 59
 ```
 
-i.e. the queue never drains — and a permanently non-empty queue is exactly the
+i.e. the queue never drains - and a permanently non-empty queue is exactly the
 state that destroys taps (section 6). The pattern is the same one the
 implementer named for B4: a rule stated in a comment, with the test covering the
 path where the rule is not exercised. Every existing queue test hands
 `setTouchDirections`/`setTouchButton` a *different* mask each time.
 
-### 6. THE INPUT FIX DOES NOT HOLD WHERE IT MATTERS MOST — a sub-frame tap is
+### 6. THE INPUT FIX DOES NOT HOLD WHERE IT MATTERS MOST - a sub-frame tap is
      lost whenever the queue is at its cap, and the phone d-pad holds it there
 
 The rule at the cap is "the NEWEST state overwrites the tail". A press and its
-release both arriving while the queue is full therefore write the tail twice —
-`A` then `0` — and **the press never occupies a slot at all**.
+release both arriving while the queue is full therefore write the tail twice -
+`A` then `0` - and **the press never occupies a slot at all**.
 
 Minimal repro, k=1, the healthy host, no load, `resetInput()` first:
 
@@ -182,7 +182,7 @@ The first tap survives and leaves the queue one deep; from then on **every**
 sub-frame tap is destroyed. 60 taps, 1 A-edge. (One event-free callback drains
 it and the next tap works again: `[128, 0, 128]`.)
 
-And the condition that keeps the queue full is not exotic — it is the exact case
+And the condition that keeps the queue full is not exotic - it is the exact case
 the cap=2 trade was written for. A finger sliding on the d-pad emits two
 `pointermove`s per animation frame; `src/input.js` says so itself. Simulated,
 k=1, fire tapped 10 times a second:
@@ -196,9 +196,9 @@ slide + one-callback fire taps    taps 20   A-edges 20   depth 1  coalesced 40
 as "a press-release-press inside one 16 ms animation frame ... physically
 implausible". The actual loss is "any press+release inside one animation frame
 while ANY other control is producing at least one transition per frame", which
-on a touch pad is the steady state. The wave's headline — "a press and its
+on a touch pad is the steady state. The wave's headline - "a press and its
 release landing between two animation frames were never seen at all ... Fixed"
-— is true for an isolated tap from a drained queue and false while steering.
+- is true for an isolated tap from a drained queue and false while steering.
 
 To be fair to the change: the OLD code fired **0 of 60** in the first repro and
 0 of 20 in the second, so nothing regressed. But the claim in the commit
@@ -206,7 +206,7 @@ message, the worklog, the README and `src/input.js` is stronger than what was
 built, and `13-FINDING-...md` has been moved to SETTLED on the strength of it.
 
 Cheapest fix that keeps the cap: when the queue is full, only overwrite the tail
-if the tail is not itself an undelivered transition — or push the press and let
+if the tail is not itself an undelivered transition - or push the press and let
 the release coalesce, i.e. never let a *rising* edge be the thing that is
 dropped. Whatever is chosen, the test that fails today is "N sub-frame taps
 while the d-pad is sliding produce N edges".
@@ -224,7 +224,7 @@ node --test --test-name-pattern="same arithmetic" games/gradius/tests/ppu.test.j
   # tests 5  # pass 1  # fail 0     -> GREEN
 ```
 
-(The full file goes red — via the capture comparison, the thing that skips.) So
+(The full file goes red - via the capture comparison, the thing that skips.) So
 on a checkout without `tools/oracle/out/video/`, `tileBase` is unguarded, which
 is the situation the test was written to fix. It does catch a wrong *column*
 mask (B12) and a wrong tile; it does not catch the base address.
@@ -233,7 +233,7 @@ mask (B12) and a wrong tile; it does not catch the base address.
 
 * **The cost stage has no self-check.** `test-all.mjs` has a whole stage called
   "self-check: the comparison goes red when the port is broken" for
-  `compare.mjs`. Nothing anywhere imports `tools/framecost.mjs` — grep over
+  `compare.mjs`. Nothing anywhere imports `tools/framecost.mjs` - grep over
   `tests/` and `tools/` returns only the `test-all.mjs` invocation. `LIMITS`,
   `checkBudget`, `reference()` and the best-pass rule are all untested code that
   decides a gate. R1 and R4 above are the only evidence they can fail and they
@@ -242,12 +242,12 @@ mask (B12) and a wrong tile; it does not catch the base address.
   line 293) but then gates `audio`, `video` and the sum on that same pass. The
   video verdict therefore comes from a pass chosen on an unrelated criterion.
   Measured spread across passes 1-4 on a quiet run: video/ref 6.51-6.70 (3%), so
-  it does not flap today at a 1.4x margin — but it is noise the design did not
+  it does not flap today at a 1.4x margin - but it is noise the design did not
   intend, and `best = the pass with the lowest video/ref` costs nothing.
 * **`tileRow()` now calls `tileBase()` inside its 8-iteration loop** instead of
   computing the offset once. It is still used by the sprite path
   (`ppu.js:234`, ~1,900 calls/frame), so the effect is negligible and the total
-  is measured green — noting it only because the commit calls this change "cost
+  is measured green - noting it only because the commit calls this change "cost
   only" in one direction.
 
 ## What I RULED OUT
@@ -272,22 +272,22 @@ mask (B12) and a wrong tile; it does not catch the base address.
 | # | break | expected | got |
 |---|---|---|---|
 | R1 | pre-fix per-pixel `tileRow` | RED | **RED** video 13.50/9.5 |
-| R2 | `nmi()` 3.5x slower | RED? | GREEN — see §3 |
-| R3 | `nmi()` 7.4x slower | RED? | GREEN + WARN — see §3 |
+| R2 | `nmi()` 3.5x slower | RED? | GREEN - see §3 |
+| R3 | `nmi()` 7.4x slower | RED? | GREEN + WARN - see §3 |
 | R4 | `nmi()` 11.5x slower | RED | **RED** logic 1.51/1.0 |
-| R5 | `noteInput()` loses `if (w === live) return;` | RED | **GREEN — §5** |
+| R5 | `noteInput()` loses `if (w === live) return;` | RED | **GREEN - §5** |
 | R6 | `MAX_PENDING` 2 → 3 | RED | **RED**, `loop.test.js` #11 |
-| R7 | `tileBase` strides `row * 4`, new test alone | RED | **GREEN — §7** |
+| R7 | `tileBase` strides `row * 4`, new test alone | RED | **GREEN - §7** |
 
 ## If someone picks this up cold
 
 The three things to fix, in order:
 
-1. `src/input.js`'s cap rule — a rising edge must never be the thing the
+1. `src/input.js`'s cap rule - a rising edge must never be the thing the
    overwrite discards (§6). Add the failing test first: sub-frame taps while
    the d-pad slides.
 2. A keyboard/touch test that executes `noteInput()`'s idempotence, i.e. fires
    the SAME mask twice and asserts `depth === 0` (§5).
-3. A self-check stage for `framecost.mjs` (§8) — `checkBudget()` fed a synthetic
+3. A self-check stage for `framecost.mjs` (§8) - `checkBudget()` fed a synthetic
    `measure()` result must return failures; and tighten `LIMITS.logic` from 1.0
    to something near 0.3 (§3), which is still 2.5x the measured value.

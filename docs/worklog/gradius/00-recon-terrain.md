@@ -1,4 +1,4 @@
-# RECON 5/5 — terrain streaming, the $85F1 packet producer, the double-rate deviation
+# RECON 5/5 - terrain streaming, the $85F1 packet producer, the double-rate deviation
 status: DONE
 wave: 0   role: recon   started: 2026-07-31
 
@@ -38,7 +38,7 @@ builds per frame histogram (mode-5 played): {0: 196, 1: 195}
 ```
 
 So the gate `$9D87 LDA $0E / CMP #$04 / BCC` really is the throttle, the
-cartridge really sees 8 / 14 / 39 bytes, and the split is exactly 196 / 195 —
+cartridge really sees 8 / 14 / 39 bytes, and the split is exactly 196 / 195 -
 every other frame. **That part of the knownFail note is confirmed.**
 
 `$000E` write census (Mesen reports the PC AFTER the storing instruction):
@@ -110,7 +110,7 @@ f578 n=14  01 23 A8 31 66 00 30 30 30 30 30 30 30 FF
 f57{1,3,5,7} n=0   <- the frames the terrain streamer gets
 ```
 
-### 3. `$85F1` IS NOT A ROUTINE — it is a `JSR` operand byte
+### 3. `$85F1` IS NOT A ROUTINE - it is a `JSR` operand byte
 
 ```
 85E8  48        PHA
@@ -129,7 +129,7 @@ five-instruction prologue that appends the queue mode byte `$01` and then falls
 through into `$85F3`**, the canned-packet copier. This is trap #2's fall-through
 in its mildest form (docs/knowledge/02): the label is real, the boundary is not.
 
-### 4. The canned packet format — decoded from PRG, checked against the cartridge
+### 4. The canned packet format - decoded from PRG, checked against the cartridge
 
 `$85F3`: `STA $9A / ASL A / TAX`, pointer from the **39-entry word table at
 `$864E`**, then copy bytes into `$0700,X` until a control code:
@@ -138,19 +138,19 @@ in its mildest form (docs/knowledge/02): the label is real, the boundary is not.
 |---|---|
 | `$FF` | end, append nothing (`$860A -> $864B STX $0E / RTS`) |
 | `$FE` | append `$FF` (packet terminator) and end (`$8629`) |
-| `$FD` | append `$FF`, `$9B := 2`, append `$01` (a fresh mode byte), keep going (`$862D`) — this is how one index emits TWO packets |
+| `$FD` | append `$FF`, `$9B := 2`, append `$01` (a fresh mode byte), keep going (`$862D`) - this is how one index emits TWO packets |
 | else | copied verbatim |
 
 and, **when bit 7 of the index is set** (`$8617 LDA $9A / BPL`), everything after
 the first two copied bytes is replaced by `$00` (`$861B`-`$8622`, counted down in
-`$9B`) — the "erase this text" variant of the same packet. Note `$85F5 ASL A`
+`$9B`) - the "erase this text" variant of the same packet. Note `$85F5 ASL A`
 is 8-bit, so bit 7 is lost from the table lookup and survives only in `$9A`:
 index `$80|n` and index `n` share a pointer.
 
 The wire format in `$0700` is therefore `[mode][addrHi][addrLo][data…][$FF]`,
 which agrees with `src/vram.js`.
 
-Independent check — decode `$864E` in Python, compare against the `$0E` deltas
+Independent check - decode `$864E` in Python, compare against the `$0E` deltas
 the cartridge produced:
 
 ```
@@ -199,7 +199,7 @@ Two things fall out, and the second was a surprise:
   Once `$58 != 0` the streamer is inside a half-page and every gate pass emits;
   at `$58 == 0` the *other* throttle (`$9D96`, the 384 px lead, `INC $57`) holds
   it until the camera catches up. So the port emits the same blocks in the same
-  order — it emits them in **bursts of 28 at one per frame** where the cartridge
+  order - it emits them in **bursts of 28 at one per frame** where the cartridge
   emits them **at one per two frames**, and then idles longer. The deviation is
   a phase error in `$54/$55/$57/$58/$0E`, not a content error in VRAM.
 
@@ -224,19 +224,19 @@ never materialises `$57`, which is why `w_0057` is in the knownFail list.
 **A second, latent deviation in the same five lines, not previously recorded:**
 `src/terrain.js` computes `lead = (build - cam) & 0xFFFF` and returns false when
 `lead >= 0x0180`. The ROM's `BMI $9DB2` builds whenever the 16-bit difference is
-*negative* — i.e. `lead >= 0x8000` in unsigned terms — where the port refuses.
+*negative* - i.e. `lead >= 0x8000` in unsigned terms - where the port refuses.
 It is unreachable while the build cursor stays ahead of the camera, so it has
 never fired; it is still a wrong translation of `$9DA1`.
 
 ### 7. `$3A` characterised (it was "named but not characterised")
 
-Static: `$3A` is written in exactly three places — `$96D7` and `$97E1`
+Static: `$3A` is written in exactly three places - `$96D7` and `$97E1`
 (`STA $3A` with A = 0, both in stage init) and `$993D` (`INC $3A`, in the
 stage-end block that also does `INC $19` and `STA $3F` = 0). So **`$3A` is the
 stage-advance latch: raised when the camera reaches the end page, cleared by
 the next stage's init**, and while it is up the streamer, the enemy spawner
 (`$A2C0`) and `$C42D`/`$C68A`/`$C6B1` all stand down. Measured: `$3A == 0` on
-**700 of 700** frames of the boot-and-play run — it never rises during stage 1.
+**700 of 700** frames of the boot-and-play run - it never rises during stage 1.
 
 `$5B` is *not* characterised: eleven `INC $5B` sites scattered through the state
 machine, three readers (`$9A9C`, `$9ACA`, `$AEDD`). Left open.
@@ -278,7 +278,7 @@ mode=miss  poke $05E4 = $FF    $C2C1: []      $1B == $A0 first at: None
 [PASS] poking nothing does NOT
 ```
 
-`$C1BF`, `$C24B`, `$C290` — the other three routes into `$C1D6` — did not fire
+`$C1BF`, `$C24B`, `$C290` - the other three routes into `$C1D6` - did not fire
 on any of the three runs, so the death is attributable to the terrain route and
 not merely coincident with it. One 2-bit field set to 1 is enough. This is a
 strictly stronger statement than `terrain.py --neuter solid` (fill all 512
@@ -291,7 +291,7 @@ a wrong index would have poked a cell the ROM never reads.
 * Threshold `$9FB4[0] = $40`. Solid iff `tile >= $40`; the 2-bit field is then
   exactly 1, because every stage-1 tile below `$40` also has bits 6 and 7 clear.
   Confirmed by census: solid values are `$56…$FF` (dominated by `$DC`/`$DD`,
-  288 each — the RLE fill-code 3 pair — then `$B5-$C4`), non-solid values are
+  288 each - the RLE fill-code 3 pair - then `$B5-$C4`), non-solid values are
   only `$00 $20-$27 $30 $33-$36 $3A-$3F`, i.e. the starfield and the black.
 * **1378 solid tiles of 12544** across the stage.
 * Per page, the solid 8-px tile rows (0..27, screen Y = row*8 − 20):
@@ -319,13 +319,13 @@ scenery; there is no separate hazard table.
 
 | where | the ROM | the port |
 |---|---|---|
-| `src/nmi.js` `$80B0` | `JSR $8641` appends **one `$00` byte** — the queue's mode-0 terminator — on every non-lag frame | comment says "HUD packets -- not ported". It is **not** a HUD producer; it is a one-line append, and its absence is why `w_000E` is short by exactly 1 on every frame |
+| `src/nmi.js` `$80B0` | `JSR $8641` appends **one `$00` byte** - the queue's mode-0 terminator - on every non-lag frame | comment says "HUD packets -- not ported". It is **not** a HUD producer; it is a one-line append, and its absence is why `w_000E` is short by exactly 1 on every frame |
 | `src/nmi.js` `$9ACA` | `LDA $5B / BNE $9AD1` gates the streamer | absent; `streamBlock` is called unconditionally |
 | `src/nmi.js` `$9AC7` | `JSR $8898`, the HUD tick, runs **before** the streamer and is the whole cause of the knownFail | absent |
 | `src/terrain.js` gate | `$9D87 CMP #$04` on `$0E`, a BYTE cursor | `state.vram.queue.length >= 4`, a PACKET count. Same answer today only because both are 0 |
 | `src/terrain.js` `$9D8E` | `LDA #$00 / STA $57` then `INC $57` at `$9DAF` | `state.build.ahead` is seeded and never written |
 | `src/terrain.js` lead test | `$9DA1 BMI $9DB2` builds on a NEGATIVE 16-bit lead | `lead >= 0x0180` refuses; `lead` is unsigned so a negative lead reads as `>= $8000` and is refused |
-| `src/terrain.js` / `$C3D3` | `CLC / ADC #$08 / ADC $3E` — the second ADC carries the first | both the port and my Lua drop the inner carry; only differs for screen X >= 248, which the player's `[16,240]` clamp forbids but `$C3AF`'s `+$0A` for type 1 does not |
+| `src/terrain.js` / `$C3D3` | `CLC / ADC #$08 / ADC $3E` - the second ADC carries the first | both the port and my Lua drop the inner carry; only differs for screen X >= 248, which the player's `[16,240]` clamp forbids but `$C3AF`'s `+$0A` for type 1 does not |
 | whole port | `$C0C7`/`$C2A5`/`$C3A3`/`$C1D6` | `probeCollision()` exists in `src/terrain.js` and **is never called by game code**. Nothing in the port can be killed by terrain |
 
 ### 10. The gate, as found (baseline, nothing changed)
@@ -339,13 +339,13 @@ node games/gradius/tools/test-all.mjs  GREEN -- 5 passed, 0 failed, 0 SKIPPED
       long-idle:w_0057@571 long-idle:w_0058@572 idle:w_000E@401 (+41 more)
 ```
 
-`w_000E` first diverges at frame **401 — the first compared frame** (the missing
+`w_000E` first diverges at frame **401 - the first compared frame** (the missing
 `$8641` byte), while `w_0057`/`w_0058` first diverge at 571/572 (the first frame
 the lead test lets a real block through). Two different causes inside one
 annotation.
 
 `node --test` also prints, for the nametable checks:
-`f1200: differing rows [["nt0:row28",24],["nt0:row29",20]]` — rows 28 and 29
+`f1200: differing rows [["nt0:row28",24],["nt0:row29",20]]` - rows 28 and 29
 are the status bar, i.e. exactly the rows `$8898`'s four producers write. The
 same omission shows up in the RAM comparison and in the VRAM comparison.
 
@@ -356,7 +356,7 @@ same omission shows up in the RAM comparison and in the VRAM comparison.
 
 ## Not resolved
 
-* `$5B` (the `$9ACA` gate on the streamer) is still uncharacterised — eleven
+* `$5B` (the `$9ACA` gate on the streamer) is still uncharacterised - eleven
   `INC $5B` sites, three readers. Measured 0 throughout stage 1's opening, so
   the missing gate in `src/nmi.js` is currently harmless, but "currently
   harmless" is not "understood".

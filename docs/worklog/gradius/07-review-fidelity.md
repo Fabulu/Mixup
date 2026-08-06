@@ -1,4 +1,4 @@
-# Wave 7 review — the power-up loop (capsule pickup, meter, shield)
+# Wave 7 review - the power-up loop (capsule pickup, meter, shield)
 status: DONE
 wave: 7   role: review   started: 2026-08-01
 
@@ -12,7 +12,7 @@ checks and watch them go red, and LIST EXPLICITLY what I did not re-run.
 I am a READER. The only writes to `src/` were the four deliberate breaks below,
 each restored and each verified byte-identical by sha256 afterwards.
 
-## What I MEASURED — the gate (I ran it)
+## What I MEASURED - the gate (I ran it)
 
 ```
 $ node --test games/gradius/tests/
@@ -28,7 +28,7 @@ $ node games/gradius/tools/test-all.mjs
 The "6 fields SKIPPED" are the pre-existing per-FIELD exclusions, not skipped
 stages; the stage count is 0 SKIPPED. Both numbers match the implementer's.
 
-## What I MEASURED — the oracle side, re-recorded FROM THE CARTRIDGE by me
+## What I MEASURED - the oracle side, re-recorded FROM THE CARTRIDGE by me
 
 `scen.py` re-run so the comparison is not against the implementer's own
 recording. First the wave's own five plus the two controls:
@@ -40,7 +40,7 @@ $ python games/gradius/tools/oracle/scen.py --only capsule-consume capsule-sweep
 ```
 Then, because the wave DID change something every scenario passes through (the
 watch list grew by `$17` and `computeRank` runs on every mode-5 tail), the whole
-corpus — 35 scenarios, ~11 minutes, not the "nearly five hours" the brief feared.
+corpus - 35 scenarios, ~11 minutes, not the "nearly five hours" the brief feared.
 
 Transitions read straight out of MY artifacts (`out/scen/*.json`), which
 reproduce the scenario prose exactly:
@@ -59,21 +59,21 @@ capsule-die     w_0042 (626,0,6)(635,6,1)(690,1,2)(914,2,1)
 ```
 So the artifact numbers in `scenarios.json` are the artifacts' own numbers.
 
-## What I MEASURED — the ROM bytes
+## What I MEASURED - the ROM bytes
 
 `python games/gradius/tools/dis6502.py "Gradius (USA).nes" linear <a> <b>`, every
 address the wave cites. All of the following were read off the cartridge and
 match `src/`:
 
 * `$894B-$8971` INC/CMP #$07/JSR $CE89/BNE/LDA #$04 STA $35/CMP #$05/JSR $8455/
-  LDA #$01 STA $42/JSR $845B/LDA #$0D JSR $EC1E/JMP $8A30 — verbatim.
+  LDA #$01 STA $42/JSR $845B/LDA #$0D JSR $EC1E/JMP $8A30 - verbatim.
   The wrap really is `LDA #$01`. `$895C CMP #$05` compares the A left by
   `LDA #$04`, so the two arms are mutually exclusive; the port's two `if`s are
   equivalent.
 * `$8974-$8986` `LDA $0100 / CMP #$01 / BNE $8983`, `LDX $18 / LDA $07,X /
   AND #$40`. `$07`, not `$05`.
 * jt_8989 at `$8989`: `83 89 A1 89 AF 89 BB 89 CF 89 D3 89 97 89` = $8983 $89A1
-  $89AF $89BB $89CF $89D3 $8997 — seven entries, and the port's table matches
+  $89AF $89BB $89CF $89D3 $8997 - seven entries, and the port's table matches
   row for row. `$89CF LDA #$01 / BNE $89BD` really is LASER re-entering DOUBLE.
 * `$9C45-$9C5D` verbatim (`$44` tested, `$45` ADDed, `$46` tested, `$19` tested).
 * `$8A30-$8A4B` verbatim; `$85E8`/`$85F3`/`$8645` have NO queue-full gate, so
@@ -86,7 +86,7 @@ match `src/`:
   slot ten times). Checked because it is exactly a fall-through-class trap.
 * `$8B47-$8B89` verbatim; `$8AAC` reads `$99`/`$9A` and never writes them, so
   the second expansion legitimately reuses slot 0's position.
-* `$AEC1-$AED6` confirms status 7 on `($47 & $0F) == 0` — the every-16th claim.
+* `$AEC1-$AED6` confirms status 7 on `($47 & $0F) == 0` - the every-16th claim.
 * `$C2B5-$C2C1` has NO `$46` test. The implementer flagged this as "read off the
   bytes, unverified"; **I verified it. Terrain kills through a shield.** Closed.
 * xrefs: `$894B` <- `$C1B2` only; `$8974` <- `$9A73` only; `$8A30` <- `$8971`
@@ -94,25 +94,25 @@ match `src/`:
   Every "reached from X only" claim in the new code is true.
 
 Ruled out: `$98` (written at `$89BD` even on a refusal, and at `$8A3E`) is a
-whole-ROM scratch byte — `zpxref.py 98` shows 60+ sites, every reader preceded
-by its own writer — so the port not modelling those two stores is not a
+whole-ROM scratch byte - `zpxref.py 98` shows 60+ sites, every reader preceded
+by its own writer - so the port not modelling those two stores is not a
 divergence.
 
-## What I MEASURED — breaks I made myself (each seen RED, each restored)
+## What I MEASURED - breaks I made myself (each seen RED, each restored)
 
 sha256 before/after identical for all five touched files.
 
 | # | break | check that went RED |
 |---|---|---|
-| 1 | `src/oam.js` `const mask = y === 1 ? 3 : orMask` -> `orMask` | `oam.test.js` `$8B79: the LAST hit flashes` — not ok 5, 5/6 pass |
-| 2 | `src/collision.js` `everyEnemy` returns `NEXT_SLOT` not `TO_BULLETS` | `collision.test.js` `$C18C: the every-16th item ...` — not ok 20, 19/20 |
-| 3 | `src/score.js` `scoreDigit` drops `& 0x0F` | `powerup.test.js` `$8953/$8958/$8960 ... DIGIT OF THE SCORE` — not ok 3 |
-| 4 | `src/powerup.js` `zp.meter = 1` -> `= 0` (wrap to zero) | `powerup.test.js` `$8965: ... wraps $42 to ONE` — not ok 2 |
+| 1 | `src/oam.js` `const mask = y === 1 ? 3 : orMask` -> `orMask` | `oam.test.js` `$8B79: the LAST hit flashes` - not ok 5, 5/6 pass |
+| 2 | `src/collision.js` `everyEnemy` returns `NEXT_SLOT` not `TO_BULLETS` | `collision.test.js` `$C18C: the every-16th item ...` - not ok 20, 19/20 |
+| 3 | `src/score.js` `scoreDigit` drops `& 0x0F` | `powerup.test.js` `$8953/$8958/$8960 ... DIGIT OF THE SCORE` - not ok 3 |
+| 4 | `src/powerup.js` `zp.meter = 1` -> `= 0` (wrap to zero) | `powerup.test.js` `$8965: ... wraps $42 to ONE` - not ok 2 |
 
 Breaks 1 and 3 are two of the four "green breaks the corpus could not see"; both
 of the closing unit tests are genuinely capable of failing.
 
-## What I MEASURED — corpus breaks (the oracle side, my own recording)
+## What I MEASURED - corpus breaks (the oracle side, my own recording)
 
 ```
 BREAK A  src/collision.js: delete `$C1C1 DEC $46`
@@ -150,7 +150,7 @@ $ node games/gradius/tools/test-all.mjs         GREEN -- 6 passed, 0 failed, 0 S
 
 * `$98` is clobbered by `$89BD` (even on a refused DOUBLE/LASER) and by
   `$8A3E`, and the port models neither. `zpxref.py 98` shows 60+ sites across
-  the PRG and every reader is preceded by its own writer — pure scratch. Not a
+  the PRG and every reader is preceded by its own writer - pure scratch. Not a
   divergence.
 * `$897D LDA $07,X` with `$18 = 1` would read `$08` on the cartridge and `$07`
   in the port. Unreachable: `src/player.js:121` throws on `$18 != 0` earlier in
@@ -166,7 +166,7 @@ $ node games/gradius/tools/test-all.mjs         GREEN -- 6 passed, 0 failed, 0 S
 * `$C2B5-$C2C1`: `LDA $0100 / CMP #$02 / BCS $C2C4 / JSR $C3A3 / BEQ $C2C4 /
   JMP $C1D6`. **No `$46` test anywhere.** The implementer marked this "read off
   the bytes, unverified"; it is verified now. Terrain kills through a shield.
-* `scenarios.json` gained NO annotations and NO `knownLag` entries — the only
+* `scenarios.json` gained NO annotations and NO `knownLag` entries - the only
   changes are `0017` in `watch`, prose, and the five new scenarios. Nothing was
   papered over. `compare.mjs` and `test-all.mjs` are untouched by this commit,
   so GREEN is measured with wave 6's yardstick.
@@ -175,38 +175,38 @@ $ node games/gradius/tools/test-all.mjs         GREEN -- 6 passed, 0 failed, 0 S
 
 ## What I FOUND
 
-1. MINOR, rule 6 — three `src/` comments attribute frame **f626** to the named
+1. MINOR, rule 6 - three `src/` comments attribute frame **f626** to the named
    scenario `capsule-pickup`, whose own artifact says **f647**:
    `src/hud.js:65`, `src/hud.js:301`, `src/state.js:228`. The commit message
    claims this sweep was finished ("grep for any 626/778 I missed"); these are
    the misses. `src/nmi.js:400` cites f627 but names the recon's `"380:A"`
-   script, which is a real pow.py measurement — confusing next to the scenario
+   script, which is a real pow.py measurement - confusing next to the scenario
    numbers, but not false.
-2. MINOR, rule 6 — `src/enemies.js:131-133` still says `$BE93`'s "only caller
+2. MINOR, rule 6 - `src/enemies.js:131-133` still says `$BE93`'s "only caller
    in this port is `$C0A9`". This commit added two more (`$C1D0` and `$C18C`'s
    loop, both in `src/collision.js`), and the ROM address it gives for the
    second cartridge caller, `$C19E`, is `BPL $C1A9`; the `JSR $BE93` is at
    **`$C1A6`**.
-3. INFORMATIONAL — the commit message's "NOT PORTED" list opens with `$8960`'s
+3. INFORMATIONAL - the commit message's "NOT PORTED" list opens with `$8960`'s
    `($07E5 & $0F) == 5` bonus, which **is** ported (`src/powerup.js:99`
    `scoreCapsuleBonus`) and unit-tested. It is unwitnessed by the corpus, not
    unported. The other two entries on that list genuinely are unported.
-4. INFORMATIONAL — `state.zp17` is written by `computeRank` and read by nothing
+4. INFORMATIONAL - `state.zp17` is written by `computeRank` and read by nothing
    in `src/`. `$17` is a compared byte with no in-port consumer.
-5. INFORMATIONAL — `tests/powerup.test.js:250`'s middle assertion cannot fail:
+5. INFORMATIONAL - `tests/powerup.test.js:250`'s middle assertion cannot fail:
    nothing in the port recomputes the rank on assignment, so the "RED WHEN"
    it advertises is not reachable by any edit to `src/`.
 
 ## What I did NOT re-run  (handed to the final full-corpus pass)
 
 * The **pixel/renderer** gate for gradius (`tools/oracle/rendergate.py`,
-  `rendercheck.py`) — not run. A regression there is exactly the shape BREAK B
+  `rendercheck.py`) - not run. A regression there is exactly the shape BREAK B
   proved the corpus cannot see: the force field's second `$8AAC` landing in the
   wrong OAM slots, or `$9E = 3` colouring the wrong palette. `compare.mjs`
   reads sprite 0's four bytes and four work counters and nothing else.
 * `tools/build-dist.mjs` (ROM-leak guard) and any `dist/` publish. Wave 7 added
   no assets, so the risk is low, but I did not measure it.
-* `verify_assets.py --self-test` standalone — it ran inside test-all and
+* `verify_assets.py --self-test` standalone - it ran inside test-all and
   PASSed; I did not read its 35-mutation / 13-family breakdown.
 * Break-sensitivity of the wave's OTHER new checks. I broke four unit checks
   and three corpus behaviours. NOT seen red by me: `$C1AF`'s `freeSlot`,
@@ -214,15 +214,15 @@ $ node games/gradius/tools/test-all.mjs         GREEN -- 6 passed, 0 failed, 0 S
   `$897D`/`$8984`'s throws, each of `$9C45`'s four terms separately, and each of
   `$C18C`'s three skip conditions (`$C199 BMI`, `$C19E BPL`, `$C1A4 BCC`).
 * `$C1C8 INC $046C,X` (the armoured accumulator). `w_046C-w_0475` are watched,
-  but no stage-1 enemy sets `$010C` bit 7, so a wrong index there — e.g.
-  `s0460[j]` instead of `s0460[j + 12]` — is invisible to all 35 scenarios. I
+  but no stage-1 enemy sets `$010C` bit 7, so a wrong index there - e.g.
+  `s0460[j]` instead of `s0460[j + 12]` - is invisible to all 35 scenarios. I
   checked it against the bytes by hand; I did not break it.
 * `$8960`'s bonus in the ORACLE: no scenario reaches it. A wrong magnitude
   (+$0010 instead of +$001000) would be invisible to `compare.mjs`.
 * The three new sfx requests ($0D pickup, $0E apply, $0B every-16th): recorded
   into `state.sfx` and cleared each frame; no oracle field compares them.
 * Two-player (`$18 = 1`) anywhere, and the unported `DEC $46` sites `$C24E`
-  (enemy bullets) and `$C293` (stage 5) — both behind loud throws.
+  (enemy bullets) and `$C293` (stage 5) - both behind loud throws.
 * The **ddpdoj** side of the staged-deletion incident the implementer flagged.
   I confirmed the gradius index is empty and the four named files exist; I did
   not audit ddpdoj file contents for loss.

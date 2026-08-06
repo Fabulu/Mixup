@@ -1,4 +1,4 @@
-# W57 / M1 — IMPL: the midboss's DEATH (`$26C1C2`/`$26C1CA`/`$26C20C`)
+# W57 / M1 - IMPL: the midboss's DEATH (`$26C1C2`/`$26C1CA`/`$26C20C`)
 
 status: **DONE**
 
@@ -12,15 +12,15 @@ target: `ddpdojblk` VERSION-B (2002.10.07 BLACK VER). Every address is build B
 ## THE BRIEF
 
 W56 measured, on the LIVE deployed build, that killing the stage-1 midboss stops
-the port with `UNPORTED $26C1C4` — enemy type `$1C`'s init stub, whose only
+the port with `UNPORTED $26C1C4` - enemy type `$1C`'s init stub, whose only
 enqueuer in build B is the midboss's own death (`$26B7E0`/`$26B7E2`). L3/W51 gave
 the beam the ability to kill and thereby walked the port into a path nothing had
 executed in 25 waves. Because the throw is on an EARLIER frame than
 `$26B73A jsr $261100`, the scroll speed-restore is now unreachable, not merely
 unexercised.
 
-Fix: a ROM window at `$26C1C0`, port `$26C1CA` and `$26C20C`, and — the
-load-bearing part — **a scenario that actually kills the midboss**, in the gate.
+Fix: a ROM window at `$26C1C0`, port `$26C1CA` and `$26C20C`, and - the
+load-bearing part - **a scenario that actually kills the midboss**, in the gate.
 
 ## LOG (appended as findings arrive)
 

@@ -1,4 +1,4 @@
-# WAVE 7 — get it on the live site
+# WAVE 7 - get it on the live site
 
 status: **DONE**, with one thing I could not do and could not fake: **no part of
 this page has ever been run in a browser.** There is no browser on this machine
@@ -42,7 +42,7 @@ UNMOVED (wave 6's gates, re-run):
 ## 1. What I found when I started
 
 - `games/ddpdoj/index.html` + `web/app.js` existed and had **never been
-  executed**. They fetched `rip/` directly — **58 MiB of cartridge graphics**
+  executed**. They fetched `rip/` directly - **58 MiB of cartridge graphics**
   plus a **4.0 MiB** board capture. Nobody serves that to a phone.
 - **`web/` would never have been published at all.** `tools/build-dist.mjs`
   copies `games/<id>/src` and `games/<id>/index.html`; a module under `web/`
@@ -51,7 +51,7 @@ UNMOVED (wave 6's gates, re-run):
 - No touch controls of any kind. Keyboard bound to `KeyZ` only.
 - **No `onError` channel.** Every unported path in this port is a throw; the
   fire button reaches one. Thrown inside `requestAnimationFrame` it lands where
-  nothing is listening and the canvas freezes silently — the exact defect
+  nothing is listening and the canvas freezes silently - the exact defect
   reported from play on Gradius as "softlocks and screen freezes".
 - **And the leak guard was VACUOUS for this game.** It reads ROMs matching
   `\.(gb|gbc|nes|sfc|smc|gen)$` **in the repo root**. DaiOuJou's cartridge is
@@ -59,7 +59,7 @@ UNMOVED (wave 6's gates, re-run):
   It would have printed "clean" having never read a byte of the cartridge it
   was supposed to be checking against. §6.
 
-## 2. THE SMALLEST HONEST ASSET BUNDLE — the measurement, then the export
+## 2. THE SMALLEST HONEST ASSET BUNDLE - the measurement, then the export
 
 Wave 6 wrote the 58 MiB off as untrimmable: *"cannot be trimmed to what this
 capture uses without a second measurement, because a sprite stream on this board
@@ -67,7 +67,7 @@ cannot be random-accessed"* (`06-impl-pixel-slice.md` §"What I could not do" 4)
 
 **This is that second measurement, and the argument that makes it exact.** The
 page draws 161 captured frames on a loop with the ship spliced in, and
-`src/render/capture.js`'s `splice()` touches **only the position fields** — word
+`src/render/capture.js`'s `splice()` touches **only the position fields** - word
 0 bits 10..0 and word 1 bits 9..0. It never touches `offs`, `width`, `height` or
 a tile number. So the set of ROM bytes the page can *ever* read is fixed by the
 capture and enumerable:
@@ -79,15 +79,15 @@ coverage over 161 captured frames, 7671 records:
 ```
 
 415 of 16,384 possible BG tiles. 11,325 mask words of 8,388,608 and 21,784
-colour words of 16,777,216 — **0.13 % of each sprite region**.
+colour words of 16,777,216 - **0.13 % of each sprite region**.
 
 Tile coverage is every `bgram[ti*2]` for ti in 0..1023 and every `txram[ti*2]`
 for ti in 0..2047, over all 161 frames, because `buildBgMap`/`buildTxMap` decode
 **every** map entry whether it is on screen or not. Sprite coverage walks each
 record's mask stream exactly as `SpriteDrawer` does and counts: `2 + wide*high`
 mask words, one 5-bit pixel per CLEAR mask bit, three pixels to a colour word.
-Both drawing paths consume identically — a ygrow-doubled line REWINDS and
-replays the same words, a yzoom-dropped line is consumed without being drawn —
+Both drawing paths consume identically - a ygrow-doubled line REWINDS and
+replays the same words, a yzoom-dropped line is consumed without being drawn -
 and if that reading of `sprites.js` were wrong by one word the bundle gate in §3
 would stop being 100 %.
 
@@ -128,7 +128,7 @@ BUNDLE: 363.2 KiB served
 capture is 161 nearly identical frames of video state and compresses 61:1; that
 is the whole difference between a 4.0 MiB fetch and a 66 KiB one. `.gz` is not
 served with `Content-Encoding`, so the browser hands us the envelope and we open
-it — and if a CDN ever does set that header, the failure is a named message
+it - and if a CDN ever does set that header, the failure is a named message
 saying exactly that, not a stream `TypeError` (`webgate --break not-gzip`).
 
 In `dist/` the whole page comes to **549.2 KiB**: 360.4 KiB of assets (the
@@ -146,11 +146,11 @@ renders a perfectly plausible empty starfield. So:
    indexes with `& (len-1)`;
 4. `capture.json` must be marked `rebased`, or it is the raw oracle capture
    whose offsets point at cartridge addresses this bundle does not contain;
-5. **`verifyCoverage()` runs at boot over all 161 frames** — every tile number
-   in both tilemaps and every sprite record — and a miss is a message naming the
+5. **`verifyCoverage()` runs at boot over all 161 frames** - every tile number
+   in both tilemaps and every sprite record - and a miss is a message naming the
    frame, the map entry and the tile.
 
-## 3. THE BUNDLE GATE — `tools/bundlegate.mjs`
+## 3. THE BUNDLE GATE - `tools/bundlegate.mjs`
 
 `demogate.mjs` proves the demo path off the *cartridge*. This asks the only new
 question wave 7 raises: does the same path off the *363 KiB bundle* produce the
@@ -165,7 +165,7 @@ PASS: the PUBLISHED BUNDLE renders 15955968/15955968 = 100.0000% identical to
           + 21784 colour words packed into 16384 + 32768), 161 capture frames
 ```
 
-It runs `loadBundle()` — the page's own loader, not a second reader — so the
+It runs `loadBundle()` - the page's own loader, not a second reader - so the
 assembly, the length assertions and the coverage check are all under test.
 
 **Four breaks. Every one seen to fail.**
@@ -182,7 +182,7 @@ assembly, the length assertions and the coverage check are all under test.
 ### THE FOURTH ONE CAUGHT ME, exactly the way wave 6 said it would
 
 `blank-tile` first blanked "the middle slot of the sheet" and came back
-**15955968/15955968 STILL EXACT**. Not because the renderer is wrong — because
+**15955968/15955968 STILL EXACT**. Not because the renderer is wrong - because
 most of the 415 exported BG tiles are in the tilemap **without ever being on
 screen**: `buildBgMap` decodes all 1,024 map entries and the visible window is
 224 rows of 448 pixels out of a 512×2048 map.
@@ -201,7 +201,7 @@ EXPECTED-RED [--break blank-tile]: 15804494/15955968 = 99.0507%
 `mostVisibleBgTile()` **throws** rather than returning if no visible opaque tile
 exists, so this cannot silently degenerate again.
 
-## 4. THE PAGE — `games/ddpdoj/index.html` + `src/web/`
+## 4. THE PAGE - `games/ddpdoj/index.html` + `src/web/`
 
 `web/app.js` is **moved to `src/web/app.js`** and the old copy deleted, because
 `build-dist.mjs` publishes `games/<id>/src` and would have left it behind.
@@ -254,8 +254,8 @@ exotic one.
   keyup and a lost pointerup are different failures with different recoveries,
   and merged, the keyboard's blur reset would wipe a finger still on the screen.
 * **A 3×3 HIT-TESTED D-PAD, ONE capture target.** Four capture-holding buttons
-  can *never* report a diagonal — the capture that stops a stuck direction is
-  what stops a second button ever seeing the finger — and DaiOuJou is a vertical
+  can *never* report a diagonal - the capture that stops a stuck direction is
+  what stops a second button ever seeing the finger - and DaiOuJou is a vertical
   shooter where the diagonal is how you leave a bullet pattern. The corner
   thirds report **two bits**, which is what `$803970` carries anyway: one bit
   per direction, tested independently by the mover at `$141B2E`. Out-of-range
@@ -279,7 +279,7 @@ ok 65 - both KeyZ and KeyY are SHOT (Swiss QWERTZ)
 `fitCanvas()` floors `min(availW*dpr/224, availH*dpr/448)` and sets the CSS size
 to `scale*logical/dpr`, plus `image-rendering: pixelated` and
 `canvas.dataset.scale`. A fractional scale puts the canvas's 1:1 pixels on
-non-integer device pixels and the browser resamples them — the Batman port
+non-integer device pixels and the browser resamples them - the Batman port
 shipped a dithered circle that looked like tetris pieces because of exactly
 this. Re-fit on `resize`, `orientationchange` and `visualViewport` resize (the
 URL bar sliding away moves only the visual viewport).
@@ -292,14 +292,14 @@ pixel-exact (15,955,968/15,955,968); **everything else you see is a replayed
 board capture and the enemies are not simulated and cannot be hit**; there are
 **no weapons and no sound**, wave 5 came back BLOCKED, and pressing fire reaches
 a named throw. A collapsible section lists which command measured which number,
-and ends with what is *not* measured — including that no part of the page had
+and ends with what is *not* measured - including that no part of the page had
 been run in a browser before it was first published.
 
-## 5. THE BROWSER FETCH PATH, GATED — `tools/webgate.mjs`
+## 5. THE BROWSER FETCH PATH, GATED - `tools/webgate.mjs`
 
 Wave 6 listed four untested things and this closes the first. It starts a real
 `node:http` server over `assets/` and loads the bundle through the page's own
-`httpReader` — same `r.ok`, same `.gz` naming, same `DecompressionStream` — then
+`httpReader` - same `r.ok`, same `.gz` naming, same `DecompressionStream` - then
 renders a frame and requires a picture rather than a black rectangle.
 
 ```
@@ -340,7 +340,7 @@ not weak, it was **blind**, in two independent ways:
 Both fixed, both additive:
 
 * the corpus now also includes every file under `games/<id>/rip/rom/` when
-  present (best-effort by construction — `rip/` is gitignored scratch — so it
+  present (best-effort by construction - `rip/` is gitignored scratch - so it
   can only ever strengthen the check);
 * a shipped `.gz` is **inflated and the decompressed body checked too**, and a
   file named `.gz` that fails to inflate is a build failure, because the guard
@@ -349,7 +349,7 @@ Both fixed, both additive:
   **body**, not the file. That distinction cost a red-validation run: a `.gz` of
   64 KiB of mask ROM came to **96 bytes** on the wire, so the old early-out
   skipped it and the guard printed "clean" over a planted leak;
-* `rom.includes(body)` became `containsVerbatim()` — same answer, but it
+* `rom.includes(body)` became `containsVerbatim()` - same answer, but it
   searches for one 4 KB window from the MIDDLE of the body and memcmps at each
   candidate. With a 42 MiB corpus the naive search took the build from under a
   second to **over two minutes**, and a publish gate nobody will wait for is a
@@ -392,28 +392,28 @@ rather than asserted.
 
 ## 7. WIRED INTO THE SITE
 
-* `games/ddpdoj/game.json` — `code.page`, **not** `code.entry`/`mods`/`input`;
+* `games/ddpdoj/game.json` - `code.page`, **not** `code.entry`/`mods`/`input`;
   `display.frameHz` **15625/264 = 59.185606060606**, derived not rounded, and
   `src/web/app.js` **refuses to boot** if it disagrees with
   `MACHINE.refreshHz` by more than 1e-6. Tested.
-* `games/index.json` — `ddpdoj` added.
-* the root launcher — `PLATFORM.pgm = 'IGS PGM (arcade)'`; the `code.page`
+* `games/index.json` - `ddpdoj` added.
+* the root launcher - `PLATFORM.pgm = 'IGS PGM (arcade)'`; the `code.page`
   branch that already existed for Gradius handles the card.
-* `tools/build-dist.mjs` — `GAMES` and `PAGES`.
-* `tools/publish.mjs` — a DaiOuJou stage (unit tests, bundle gate, fetch gate)
+* `tools/build-dist.mjs` - `GAMES` and `PAGES`.
+* `tools/publish.mjs` - a DaiOuJou stage (unit tests, bundle gate, fetch gate)
   that refuses to publish if any is red; and the post-deploy poll now also
   requires `/games/ddpdoj/` to be 200, **`/games/ddpdoj/assets/manifest.json` to
   be 200** (the page is static HTML and 200s whether or not the bundle
-  deployed — a 404 asset is the silent-empty-starfield failure), and `ddpdoj` to
+  deployed - a 404 asset is the silent-empty-starfield failure), and `ddpdoj` to
   be in the live `games/index.json`. `--only ddpdoj` added; the `--only`
   conditions were rewritten as `only === null || only === '<id>'`, because the
   old `only !== 'batman'` form would have run Gradius on `--only ddpdoj`.
-* `games/ddpdoj/README.md` — the "it is **still not** in `games/index.json`,
+* `games/ddpdoj/README.md` - the "it is **still not** in `games/index.json`,
   and that is now a decision" paragraph is replaced with why that reversed.
 
 ## 8. THE UNIT SUITE: 61 → 77, still 0 skipped
 
-`tests/web-input.test.js`, and nothing in it touches the cartridge —
+`tests/web-input.test.js`, and nothing in it touches the cartridge -
 `node --test games/ddpdoj/tests/` is the cheap stage that must work on a tree
 with no ROMs extracted. It holds the control tables against **all four** places
 they are spelled: `index.html`'s markup, `src/web/input.js`, `game.json`, and
@@ -426,7 +426,7 @@ It caught its own first bug: scraping `data-cell` from the whole file found
 **ten** cells in a 3×3 grid, because the stylesheet contains `data-cell=""` too.
 Scoped to the pad's markup.
 
-## 9. WHAT I COULD NOT DO — READ THIS BEFORE CALLING IT DONE
+## 9. WHAT I COULD NOT DO - READ THIS BEFORE CALLING IT DONE
 
 **I COULD NOT TEST IN A BROWSER.** There is no browser on this machine, headless
 or otherwise, and the brief forbids downloading one. Every number in this file
@@ -448,7 +448,7 @@ is headless. What that leaves for a human, in the order I would check it:
    `$249xxx` address. If it freezes silently instead, the `onError` wiring is
    wrong and that is the single most important thing to report.
 6. **The pixels.** At an integer scale the art must be crisp. If it looks soft
-   or the dithering looks like blocks, `fitCanvas` picked a fractional scale —
+   or the dithering looks like blocks, `fitCanvas` picked a fractional scale -
    `canvas.dataset.scale` on the element says which.
 7. **Rotate the phone.** Landscape should put the pad beside the picture and
    the canvas should still be an integer scale.
@@ -472,7 +472,7 @@ Other things I did not do:
 * **`04-review.md` / `05-review.md` leftovers** are still leftover. Untouched
   again, deliberately.
 * **`games/gradius/` and `games/batman/` untouched.** The two shared files I did
-  change — `tools/build-dist.mjs` and `tools/publish.mjs` — I re-ran for
+  change - `tools/build-dist.mjs` and `tools/publish.mjs` - I re-ran for
   Gradius afterwards (`292 pass, 0 fail, 0 skipped`) and the guard output for
   Batman's `player.tiles.bin` exception is byte-for-byte what it was.
 
@@ -500,8 +500,8 @@ python -m http.server 8000                    then open /games/ddpdoj/
    compression.** Ours was blind to arcade ROM naming *and* to gzip. Both were
    found by planting a leak and watching it not be caught. Plant one.
 3. **The splice touching only position fields is what makes the bundle
-   enumerable.** If a future wave splices an ANIMATION FRAME — a different
-   `offs` — the coverage argument collapses and `export-web.mjs` must be
+   enumerable.** If a future wave splices an ANIMATION FRAME - a different
+   `offs` - the coverage argument collapses and `export-web.mjs` must be
    re-derived. The boot-time check will say so loudly rather than drawing a
    blank, but it will say it on the phone, not here.
 4. **Most exported BG tiles are never on screen.** 415 tiles are in the tilemap;

@@ -1,4 +1,4 @@
-# Wave 34 IMPLEMENTER — the six shipped crashes, and the detector in the gate
+# Wave 34 IMPLEMENTER - the six shipped crashes, and the detector in the gate
 
 status: DONE
 implementer, 2026-08-04
@@ -11,7 +11,7 @@ found them into `games/gradius/tools/test-all.mjs` as a named gate stage.
 
 ## HEADLINE, written early so an interrupted run still says something
 
-1. **ALL FIVE REVERTIBLE CRASHES ARE FIXED** — `$B415`, `$C2DC`, `$C13D`,
+1. **ALL FIVE REVERTIBLE CRASHES ARE FIXED** - `$B415`, `$C2DC`, `$C13D`,
    `$C159`, and `$BC44` was already W32c's. `$CC23`/`$CC2B` is §6 and it is
    NOT reachable on any stage this port ships -- settled statically, not by
    failing to reach it.
@@ -21,8 +21,8 @@ found them into `games/gradius/tools/test-all.mjs` as a named gate stage.
 3. **`stageledger.py`'s column says ADMITTED now**, with two lines under the
    table saying what it does not mean and naming the stage that answers the
    other question.
-4. **`$B415` IS A CARTRIDGE OVERRUN AND IT IS PROVEN FROM THE LISTING** — no
-   emulator — and the same arithmetic *reproduces W12's 27,400-frame cartridge
+4. **`$B415` IS A CARTRIDGE OVERRUN AND IT IS PROVEN FROM THE LISTING** - no
+   emulator - and the same arithmetic *reproduces W12's 27,400-frame cartridge
    measurement of `$B1C5`* stopping at Y = 4. §1 is the interesting part of
    this wave.
 5. **TWO FIXTURES FOR THE GATE STAGE EACH LOOKED CORRECT AND EACH MISSED ONE OF
@@ -55,12 +55,12 @@ PLAYING (alive, shield $FF, A held):
 
 ---
 
-## §1. `$B415` — THE OVERRUN IS THE CARTRIDGE'S, AND THE LISTING PROVES IT
+## §1. `$B415` - THE OVERRUN IS THE CARTRIDGE'S, AND THE LISTING PROVES IT
 
 W33 left this **UNRESOLVED**: *"either the port's transcription lets the enemy
 live one arc longer than the cartridge's (a movement bug), or the cartridge
 really does read `$B434`. The measurement that settles it is the one `$B1C5`
-already has — an exec hook on `$B415` reading Y."*
+already has - an exec hook on `$B415` reading Y."*
 
 **It is settled without the emulator, by arithmetic on bytes in `rip/prg.asm`.**
 
@@ -77,8 +77,8 @@ The schedule at `$B42F` is `00 00 00 01 01`, and `$B1DA` reads it as
 `LDA $046C,X / BNE $B1E5`: 0 → `$B154` addX16 (x += `$FE`, **LEFT**), non-zero →
 `$B184` subX16 (**RIGHT**). So **LEFT LEFT LEFT RIGHT RIGHT** and the net over
 the whole schedule is **one arc LEFT = 66 px**. An enemy spawning at the right
-edge (`$F0`) is at `$AE` when the fifth entry has been consumed — **on screen**,
-`$B251`'s box is `[4, $F4)` — and `$B426` makes `$04AC` = 5. **The sixth read is
+edge (`$F0`) is at `$AE` when the fifth entry has been consumed - **on screen**,
+`$B251`'s box is `[4, $F4)` - and `$B426` makes `$04AC` = 5. **The sixth read is
 unavoidable.**
 
 ### The check on that reasoning, and it is the good part
@@ -105,26 +105,26 @@ when the schedule ends; each further arc adds 66 against a free at 244.
 136 + 66 = 202 (survives, Y = 6); 136 + 132 = 268 (freed). **Y CANNOT EXCEED 6.**
 
 MEASURED in the port after the fix: `$04AC` reaches **5**, and `$046C` holds
-`$BD` — the byte at `$B434` — on 400-frame passive runs of stage 3 chunk 0.
+`$BD` - the byte at `$B434` - on 400-frame passive runs of stage 3 chunk 0.
 Inside the bound, and the read demonstrably happens.
 
 ### The fix, and why it is not "widening a range"
 
 `phaseB42F` → `$B42F-$B436`, `phaseB45C` → `$B45C-$B463` (seven entries plus one
 byte of anchor alignment each). **Both anchors are real instruction boundaries
-and `export_assets.py` checks the bytes at them** — `$B437` is `10 CE`
+and `export_assets.py` checks the bytes at them** - `$B437` is `10 CE`
 (`BPL $B407`) and `$B464` is `38 FD 8C 04` (`SEC / SBC $048C,X`). `arcTurn()`
 throws at Y ≥ 7 naming `$B415`/`$B43C` and the derivation, so a wrong index is
 still loud and no longer arrives as `assets.js`'s "not in any exported range",
-whose message told the reader to go and edit `export_assets.py` — the wrong file
+whose message told the reader to go and edit `export_assets.py` - the wrong file
 for a read the ROM makes on purpose.
 
 ---
 
-## §2. `$C2DC` — THE BREAKABLE WALL
+## §2. `$C2DC` - THE BREAKABLE WALL
 
 227 field-2 cells across 42 of stage 2's 83 placed blocks (W33's count) against
-**zero** on stage 1 — which is the whole reason "`$C2DC` ran 0 times in every
+**zero** on stage 1 - which is the whole reason "`$C2DC` ran 0 times in every
 measured run" was true and meaningless.
 
 Ported: `$C32F-$C39A` (the sfx fork, the five-byte `$0700` packet, the `$0500`
@@ -133,15 +133,15 @@ through its own hole**).
 
 **The address arithmetic reduces.** `$C353-$C36B` spells out
 `ntBase + (tileRow >> 2)*128 + $A3*32 + column`, and since `$A3` is `tileRow & 3`
-that is `ntBase + tileRow*32 + column` — ONE nametable tile, blanked to `$00`.
+that is `ntBase + tileRow*32 + column` - ONE nametable tile, blanked to `$00`.
 The check derives it the second way, so the two cannot agree through the same
 shifts.
 
 **`$A0`-`$A3` are real port state now.** `$C3D3` keeps a 16-bit map pointer,
 the byte it read and the sub-cell index in zero page ACROSS the `JSR`, and
 `$C396 STA ($A0,X)` with X = 0 writes back through that very pointer. `$A3` is
-written twice and the second write is CONDITIONAL — `$C400 BEQ $C40E` leaves
-before `$C406`'s mask — so after a probe that found nothing `$A3` holds the
+written twice and the second write is CONDITIONAL - `$C400 BEQ $C40E` leaves
+before `$C406`'s mask - so after a probe that found nothing `$A3` holds the
 unmasked row. Reproduced literally.
 
 **DEAD CODE, and it is a ROM bug.** `$C331 CMP #$04` compares the ACCUMULATOR.
@@ -149,11 +149,11 @@ unmasked row. Reproduced literally.
 so A is 2 on every entry and the `BNE` is always taken; `$C335 LDA #$00 / RTS`
 cannot run. Two instructions later the ROM writes `CPX #$05` for the same kind
 of test, so `$C331` is almost certainly a `CPX #$04` that was typed `CMP #$04`
-— stage 5 is the stage with no collision map, and `$C2AB CMP #$04 / RTS` already
+- stage 5 is the stage with no collision map, and `$C2AB CMP #$04 / RTS` already
 keeps it out one level up. Transcribed as a comment, not as behaviour.
 
 `$C39B`/`$C39F` exported (`collision/tables.json`, anchored on `$C3A3 LDA
-$0320`). Both are pure arithmetic on `$A3` — `~(3 << 2k)` and `k * $20` — and
+$0320`). Both are pure arithmetic on `$A3` - `~(3 << 2k)` and `k * $20` - and
 are exported as bytes anyway so the port cannot become its own source of truth.
 
 ### A test that got stronger by losing its throw
@@ -165,9 +165,9 @@ away between the two probes**: slot 8 breaks it and is consumed, slot 3 finds a
 
 ---
 
-## §3. `$C13D` / `$C159` — THE 1UP AND THE BONUS
+## §3. `$C13D` / `$C159` - THE 1UP AND THE BONUS
 
-Both throws said *"no measured run has spawned type `$27`/`$29`"* — true, and a
+Both throws said *"no measured run has spawned type `$27`/`$29`"* - true, and a
 fact about the corpus read back as a claim about the cartridge. The ROM listed
 both records on day one.
 
@@ -182,7 +182,7 @@ $C166  both fall into LDA #$36 / JSR $EC1E and JMP $C136.
 ```
 
 Neither arm frees the slot. The object stays where it is as type 1 with a new
-metasprite — which is what draws the legend — and since type 1 with bit 7 clear
+metasprite - which is what draws the legend - and since type 1 with bit 7 clear
 is "not initialised", `$AE1C` entry 1 runs its own init next frame and a SECOND
 touch falls into the capsule / every-enemy arms instead. All of that is the
 ROM's.
@@ -209,16 +209,16 @@ run `nmi()`. **Require zero throws.**
 
 ### 4a. Two modes, and one of them is an intervention
 
-* **PASSIVE** — no buttons, no forced state, nothing touched but the camera.
-* **PLAYING** — `$0100` forced alive, `$46` = `$FF`, `$41` = 1, A held one frame
+* **PASSIVE** - no buttons, no forced state, nothing touched but the camera.
+* **PLAYING** - `$0100` forced alive, `$46` = `$FF`, `$41` = 1, A held one frame
   in three, and the stick CHASING the nearest live enemy. Off-distribution by
   construction and labelled as a COVERAGE intervention at the function
   (`docs/knowledge/09`).
 
 ### 4b. Decided boundaries are counted, not swallowed
 
-`$9751`/`$970D`/`$9721`/`$9B10` — the mode-0 restart-to-title the owner has
-already decided is out of scope — are matched on the ROM address their message
+`$9751`/`$970D`/`$9721`/`$9B10` - the mode-0 restart-to-title the owner has
+already decided is out of scope - are matched on the ROM address their message
 leads with, **counted and printed on their own line**, and not failed on. At
 2000 frames per chunk, **32 of 80 runs reach `$9751`** (earliest f1477) and
 every frame before it is swept evidence. Anything whose message does not lead
@@ -256,12 +256,12 @@ AFTER   13b5d35f05fb4160357ea945dbbb034570f68ffa236c0152fdec57287d10dddb
 **AND THE PART WORTH READING.** Two PLAYING fixtures were run before the chase,
 and each one caught exactly one of the two pickups:
 
-* **left/right only** — the ship sits at the boot y of `$60` all run and never
+* **left/right only** - the ship sits at the boot y of `$60` all run and never
   meets a type `$29`, which spawns at y `$24`/`$A4`/`$BA`/`$BD`. This is exactly
   why W33 wrote "I could NOT reach `$C159`'s spawn": the type DOES spawn (464
   frames of it on stage 1 chunk 3, counted this session), the ship was never in
   the row. #3a red, **#3b green**.
-* **a lissajous sweep** (60-frame horizontal against 200-frame vertical) —
+* **a lissajous sweep** (60-frame horizontal against 200-frame vertical) -
   reaches those rows and then MISSES the type `$27` at y `$60`, because contact
   needs x AND y inside one 16×16 box on the same frame. #3b red, **#3a green**.
 
@@ -273,7 +273,7 @@ produced a green run that looked exactly like the right one.
 ### 4d. What the stage does NOT prove
 
 Nothing about correctness. A stage can sweep clean and be wrong on every pixel.
-It asserts one thing — no throw — so it cannot invent a denominator, and a throw
+It asserts one thing - no throw - so it cannot invent a denominator, and a throw
 in this port is a first divergence with a ROM address on it. `compare.mjs` is
 the correctness gate.
 
@@ -299,7 +299,7 @@ WHETHER A STAGE SURVIVES ITS OWN CHUNKS IS A DIFFERENT QUESTION:
 
 ---
 
-## §6. `$CC33`'s FOUR INDEXED READS — THREE UNBOUNDED, NONE REACHABLE HERE
+## §6. `$CC33`'s FOUR INDEXED READS - THREE UNBOUNDED, NONE REACHABLE HERE
 
 W33 §5b found two and could not settle reachability. There are **three**, and
 the third is worse because it is SILENT.
@@ -322,12 +322,12 @@ bits per arm). Every inline-5 record enumerated through
 
 | `$19` | inline-5 records | `$65` bytes | shapes |
 |---|---|---|---|
-| 2 | 45 | — | route to `$A46F` (the moai); `$0601` never written |
+| 2 | 45 | - | route to `$A46F` (the moai); `$0601` never written |
 | 4 | 4 | `$01 $02 $12 $21` | **0 or 1** |
 | 6 | 10 | `$06 $07 $20 $85 $9A $A2 $A9 $C9 $F0` | **up to 14** |
-| others | 0 | — | — |
+| others | 0 | - | - |
 
-Box class: every immediate write of `$0460` counted — 0 at `$A52E`/`$A569`/
+Box class: every immediate write of `$0460` counted - 0 at `$A52E`/`$A569`/
 `$CA8C`, 1 at `$A4FC`/`$AF35`/`$B7AA`/`$C6AE`, 3 at `$B927` (the boss).
 **Nothing writes 2**, so W33's captured `$9A` = 9 cannot be "class 2, shape 1";
 9 is class 1 with shape 5, i.e. a `$65` nibble of 6, which no shipped stage has.
@@ -335,19 +335,19 @@ Box class: every immediate write of `$0460` counted — 0 at `$A52E`/`$A569`/
 So on `$19` = 0..4 the index is 4 or 5 (or 0/1 once `$CA8C` deploys the owner)
 and the tables are **not** overrun. **What can overrun is stage 7**, behind the
 `$A2F0` guard. A TRIPWIRE for the wave that lands it, not a fix for a live
-crash — and a named throw carrying the derivation instead of `assets.js`'s "not
+crash - and a named throw carrying the derivation instead of `assets.js`'s "not
 in any exported range" for two of the reads and *nothing at all* for the other
 two. **Not a clamp:** what the cartridge does with a shape of 14 is unknown and
 this port does not guess.
 
 ---
 
-## §7. `tablecoverage.py` — EXTENTS, AND A FOURTH SITE
+## §7. `tablecoverage.py` - EXTENTS, AND A FOURTH SITE
 
 W33 §8b: it checks BASES, never EXTENTS. Bounding an index register needs
 dataflow the tool has not got. What it *can* do completely is enumerate the
-shape both overruns had — `LDY <ram>,X` immediately followed by
-`LDA <table>,Y` — and report the exported extent and the INCs that write that
+shape both overruns had - `LDY <ram>,X` immediately followed by
+`LDA <table>,Y` - and report the exported extent and the INCs that write that
 RAM byte. Each site must be accounted for by hand in `COUNTER_INDEXED`; an
 unaccounted site FAILS.
 
@@ -361,10 +361,10 @@ $B7B5 -> $B797               OPEN -- NEW THIS WAVE
 **`$B7B5` is a fourth site of the same class and nobody had looked at it.**
 `$B797` is **two** entries (`3F 40`, closed/open) inside a 26-byte export, so a
 Y of 2 reads `$B799`'s rank row and returns a plausible metasprite id with no
-throw from anywhere — the quiet form of the defect. What is measured: entry 23
+throw from anywhere - the quiet form of the defect. What is measured: entry 23
 (`$B7A1`) never writes `$048C` itself, `$A569`'s slot clear zeroes it, and the
 INCs the scan pairs it with (`$B0E2`/`$B0E5`) are `loc_B0BE`'s four-phase state
-machine on a different object. So Y is **probably** always 0 — and "probably"
+machine on a different object. So Y is **probably** always 0 - and "probably"
 is the word this project has been wrong with before. **Handed forward.**
 
 THE PAIRING IS BY RAM ADDRESS AND OVER-REPORTS, said in the code rather than
@@ -377,7 +377,7 @@ Seen to fail: removing `$B415` from `COUNTER_INDEXED` prints
 
 ---
 
-## §8. THE MUTATION TABLE — 22 MUTANTS, 21 RED, 1 SURVIVOR
+## §8. THE MUTATION TABLE - 22 MUTANTS, 21 RED, 1 SURVIVOR
 
 Harness `scratchpad/w34/mut.py`, on a COPY at `C:/tmp/w34mut`
 (`games/gradius/{src,tests,assets,tools,index.html,game.json}` plus the repo
@@ -420,16 +420,16 @@ worthless and looked identical to the green run after it.
 
 * **M2 survived.** No driven run reaches Y = 7, so every end-to-end check stays
   green with `arcTurn`'s upper guard removed entirely. A guard whose absence is
-  invisible is a guard a future tidy-up deletes — the same finding W32c made
+  invisible is a guard a future tidy-up deletes - the same finding W32c made
   about `$C037`'s gate.
 * **M3 survived, and it is the more interesting one.** `$B42F` and `$B45C` are
   **byte-identical for Y = 0..5** (both `$B434` and `$B461` are `$BD`), so
-  swapping which one entry 13 reads is invisible until **Y = 6** — and the
+  swapping which one entry 13 reads is invisible until **Y = 6** - and the
   driven run stops at 5. It looked like W31's M21 ("two byte-identical regions,
   provably uncatchable") and it is not: the two tables DIVERGE at entry 6
   (`$0C` against `$4C`), so a fixture that forces `$04AC` = 6 catches it.
 * **M22 survived, and it is `docs/knowledge/03`'s named shape.** Every
-  breakable-wall check used map page `$05`, where `($A1 - 5) << 8` is zero — so
+  breakable-wall check used map page `$05`, where `($A1 - 5) << 8` is zero - so
   the PAGE half of `$C396 STA ($A0,X)`'s pointer was completely unguarded while
   four checks agreed with each other about the offset.
 
@@ -441,7 +441,7 @@ through `updateEnemies()`, one on a page-`$06` fixture asserting both that the
 
 **M19: storing `$A3` already masked at `$C3F1` reddens nothing.** That is a
 fact about the ROM, settled by the listing rather than by trying harder.
-**Thirteen instructions in the whole PRG touch `$A3`** — counted out of
+**Thirteen instructions in the whole PRG touch `$A3`** - counted out of
 `rip/prg.asm` this session: writers `$9E7B`, `$B897`, `$C000`, `$C3F1`,
 `$C406`; readers `$B8B9`, `$BF1D`, `$BF8C`, `$C01C`, `$C2CF`, `$C366`, `$C38F`,
 `$C402`. On the path where `$C400 BEQ $C40E` leaves before `$C406`'s mask, the
@@ -453,7 +453,7 @@ category as W32c's M34.
 
 ---
 
-## §9. WHAT I COULD NOT REACH — attempts, not absences
+## §9. WHAT I COULD NOT REACH - attempts, not absences
 
 * **ANY CARTRIDGE COMPARISON OF ANYTHING IN THIS WAVE.** Unchanged from W32b,
   W32c and W33, and still the biggest gap. Every number here is port-vs-listing.
@@ -479,14 +479,14 @@ category as W32c's M34.
 
 ## §10. OPEN ITEMS HANDED FORWARD
 
-1. **`$B7B5 LDA $B797,Y`** — a two-entry table indexed by `$048C`, inside a
+1. **`$B7B5 LDA $B797,Y`** - a two-entry table indexed by `$048C`, inside a
    26-byte export, so an overrun is SILENT. §7. Printed by `tablecoverage.py`
    on every run until somebody settles it.
 2. **The stage-5 cartridge comparison** (W32c §11 item 1), unchanged and still
    the highest-value unclaimed work.
 3. **`$9751` is a crash a real player reaches on every stage.** The sweep counts
    32 of 80 runs ending there at 2000 frames. It is the `$80D4` game-modes item
-   (1 of 7) and it is decided, not defective — but it is the most likely thing
+   (1 of 7) and it is decided, not defective - but it is the most likely thing
    for a player to hit.
 4. **`stagewaves.py` is still broken on the inline-5 stride** (W32c item 4,
    untouched again). `wavecensus.py`'s `stream()` has the right stride and this

@@ -1,4 +1,4 @@
-# W20 IMPL — the aim pair, the prototype loaders, and the first turrets
+# W20 IMPL - the aim pair, the prototype loaders, and the first turrets
 
 status: **DONE**
 wave: 20   role: implementer (DAIOUJOU)   started: 2026-08-02
@@ -53,11 +53,11 @@ RESULT 0 DIVERGENT ... over 32788 one-step pairs and 32788 closed-loop steps
 | file | what |
 |---|---|
 | `games/ddpdoj/src/aim.js` | the player-tracking library's LIVE subset: `aim64` core `$24203E`, `aim256` core `$2422A2`, wrappers `$24200A $24202C $242178 $24226E $242290`, the three target selectors `$24270A $242730 $242748`, the slews `$24218C $242190 $2421AC`. The 23 unreferenced entries are LOUD NAMED THROWS carrying their measured reference count. |
-| `games/ddpdoj/src/enemyproto.js` | the two prototype loaders `$26377A` and `$2637A2` — **both forms of `$2637A2`**, see §3 |
-| `games/ddpdoj/src/turret.js` | the turret block `$268A0E..$268A5A` (type `$11`, handler `$2688CC`) and `$268376..$2683C2` (type `$10`, handler `$268232`) — one function, the sprite table as a parameter, because the two blocks are otherwise instruction-identical |
+| `games/ddpdoj/src/enemyproto.js` | the two prototype loaders `$26377A` and `$2637A2` - **both forms of `$2637A2`**, see §3 |
+| `games/ddpdoj/src/turret.js` | the turret block `$268A0E..$268A5A` (type `$11`, handler `$2688CC`) and `$268376..$2683C2` (type `$10`, handler `$268232`) - one function, the sprite table as a parameter, because the two blocks are otherwise instruction-identical |
 | `games/ddpdoj/tools/export-tables.py` | **+8 ROM windows** (96 → 29,520 B total): aim64's three tables, aim256's three, both halves of the enemy type table, both turret types' record and sub-record prototypes, and both 32-direction sprite tables |
 | `games/ddpdoj/tools/oracle/w20turret.lua` | THE TURRET LEDGER: every live enemy record's facing/cadence/graphic/position + the player position + the enemy-driver execution count, at the board's own sample point |
-| `games/ddpdoj/tools/oracle/w20run.py` | drives it through `pgm.run` (the ONE entry point) — default is the PLAYING run |
+| `games/ddpdoj/tools/oracle/w20run.py` | drives it through `pgm.run` (the ONE entry point) - default is the PLAYING run |
 | `games/ddpdoj/tools/w20turretgate.mjs` | THE GATE: one-step and closed-loop, two sample-point hypotheses, 8 mutations, `--break all` |
 | `games/ddpdoj/tests/aim.test.js` (15) `tests/turret.test.js` (13) | the suite goes 210 → **238 pass, 0 fail** |
 | `games/ddpdoj/tools/oracle/pgm.py` | `check` now runs the turret gate on both corpora + the 8 mutations |
@@ -68,12 +68,12 @@ port needs the spawn walker `$263336`/`$2633BE` (W21), the movement interpreter
 `$2638A6` (W24) and the enemy record allocation, none of which exist. So the
 turret is *validated against the board* frame by frame, and it is *not yet
 producing anything on the page*. `state.js`'s `WATCH_SPEC`/`CLAIMED` are
-therefore unchanged — there is no new ported write inside the live frame, and
+therefore unchanged - there is no new ported write inside the live frame, and
 adding one would have been a claim I could not back.
 
 ---
 
-## 2. THE SCENARIOS — which kind each one is, and what rank they ran at
+## 2. THE SCENARIOS - which kind each one is, and what rank they ran at
 
 Both runs press the VERSION-B chooser, coin, start, and then drive the owner's
 own routine: **sit bottom-centre, hold auto-shot (P1 Button 3, `$2497B2`), drift
@@ -81,21 +81,21 @@ left/right on 12-frame legs, throw a bomb (Button 2, `$2497FE`) periodically.**
 
 | run | kind | frames | turret rows | bombs | deaths | reach |
 |---|---|---|---|---|---|---|
-| `w20-turret-play` | **PLAYING — on-distribution. NO invulnerability poke.** | 6,000 | 27,415 | 4 | **2 (real)** | 11 enemy types, the midboss `$0D` |
-| `w20-turret-invuln` | INVULNERABLE (`$810424:=$FF` from lf1250) — coverage only | 9,500 | 36,151 | 6 | 0 | **23 types, 21 handlers, the boss `$0E` (1,561 dispatches)** |
+| `w20-turret-play` | **PLAYING - on-distribution. NO invulnerability poke.** | 6,000 | 27,415 | 4 | **2 (real)** | 11 enemy types, the midboss `$0D` |
+| `w20-turret-invuln` | INVULNERABLE (`$810424:=$FF` from lf1250) - coverage only | 9,500 | 36,151 | 6 | 0 | **23 types, 21 handlers, the boss `$0E` (1,561 dispatches)** |
 
 `20-OWNER-scenarios-must-play.md` §2 and `docs/knowledge/09` both prefer the
 playing run, and the verdict is taken on BOTH. The playing run is the primary:
 it fires, kills, bombs, and dies twice, so every number from it is
 on-distribution. The invulnerable run is carried because it reaches three times
-as much of the stage — it is labelled coverage-only on every line it appears.
+as much of the stage - it is labelled coverage-only on every line it appears.
 
 **RANK.** `$81309E` is the rank word and it is recomputed every frame by
 `$2608D2` (W19). Neither run pokes it. **`$813098` (the loop) read 0 on every
 frame of both runs, as it has on every frame this project has ever measured.**
 `$813092` (the stage index) was 0 throughout stage 1.
 
-**IS ANY AIM BEHAVIOUR RANK-GATED, AND THEREFORE UNTESTED? NO — and that is a
+**IS ANY AIM BEHAVIOUR RANK-GATED, AND THEREFORE UNTESTED? NO - and that is a
 listing fact, not an absence of measurement.** `$24203E..$2420C4` and
 `$2422A2..$242318` touch only D0–D4, A0, A7 and three PC-relative ROM tables:
 no global, no RNG, no stage, no rank (`20-recon-aiming.md` §6, re-read here).
@@ -134,7 +134,7 @@ from the wrong offset. The recon's worked example (type `$11`, flags `$A200`)
 is right precisely because bit 15 is set; its general statement is not.
 
 Both types this wave validates take the long form, so **the board corpus cannot
-see the short form at all** — which is why `tests/turret.test.js` asserts it
+see the short form at all** - which is why `tests/turret.test.js` asserts it
 from the listing, and why breaking it (`if (true)` in place of
 `if (flags & 0x8000)`) was one of the three source breaks.
 
@@ -142,13 +142,13 @@ from the listing, and why breaking it (`if (true)` in place of
 
 The first pass of the gate reported **9,888 cadence divergences** on the playing
 corpus. The port was right: on those frames the enemy records were
-BYTE-IDENTICAL from one sample point to the next — position, facing, cadence,
-everything — while `$8130D2` read 0. The enemy driver never executed. (It is
+BYTE-IDENTICAL from one sample point to the next - position, facing, cadence,
+everything - while `$8130D2` read 0. The enemy driver never executed. (It is
 the player-death / respawn window; the top-level object driver stops dispatching
 the enemy object.)
 
 "Nothing changed, so nothing ran" is the thing under test, so it is **measured**
-instead, with the only reliable 68000 execution hook there is — a WRITE tap:
+instead, with the only reliable 68000 execution hook there is - a WRITE tap:
 
 ```
 $263502 clr.w $815E9C     ONCE per enemy-driver pass (the first instruction)
@@ -158,7 +158,7 @@ CENSUS $815E9C writer PCs (3) 263546:67860 263502:7882 263328:1     [invuln run]
 ```
 
 So the driver ran on **2,533 of the playing run's 6,000 frames** and **7,882 of
-the invulnerable run's 9,500** — and the gate excludes the rest by measurement.
+the invulnerable run's 9,500** - and the gate excludes the rest by measurement.
 (`$263328` writes it once, in both runs: a third writer, unread, noted for W21.)
 
 **This changes a denominator, so it is stated loudly:** the playing corpus's
@@ -167,7 +167,7 @@ the invulnerable run's 9,500** — and the gate excludes the rest by measurement
 
 ---
 
-## 4. WHERE THE SAMPLE POINT SITS — MEASURED, AND PREDICTED BY THE LISTING
+## 4. WHERE THE SAMPLE POINT SITS - MEASURED, AND PREDICTED BY THE LISTING
 
 The board row is taken at the `$803940` arm write. Whether that instant precedes
 or follows the object driver decides whether the inputs to the N→N+1 transition
@@ -178,8 +178,8 @@ ONE-STEP(a) inputs from row N     facing_divergent = 338 / 14,732  and 1,027 / 3
 ONE-STEP(b) inputs from row N+1   facing_divergent =   0 / 14,732  and     0 / 32,788
 ```
 
-This is not a fitted parameter. `$2688CC` opens `jsr $2638A6` — the movement
-interpreter — and reaches the aim 260 bytes later at `$268A30`, so the position
+This is not a fitted parameter. `$2688CC` opens `jsr $2638A6` - the movement
+interpreter - and reaches the aim 260 bytes later at `$268A30`, so the position
 the aim sees is the POST-move position of the same frame, which is exactly the
 one the next sample point reports. The listing predicts (b); 47,520 rows with a
 6-bit output confirm it; (a) is left in the output so the difference stays
@@ -187,7 +187,7 @@ visible rather than being quietly absorbed.
 
 ---
 
-## 5. THE MUTATIONS AND THE BREAKS — every one SEEN RED
+## 5. THE MUTATIONS AND THE BREAKS - every one SEEN RED
 
 ### 5.1 Gate mutations (`--break`), on the PLAYING corpus
 
@@ -203,13 +203,13 @@ visible rather than being quietly absorbed.
 | `no-freeze-gate` | ignores `$8130D2` | 0 | 0 | **3,348** |
 
 **`no-freeze-gate` is the one to look at.** It leaves the FACING column
-untouched — during a freeze nothing moves, so the aim would return the same
-answer — and it is caught **only** by the cadence column. Without comparing
+untouched - during a freeze nothing moves, so the aim would return the same
+answer - and it is caught **only** by the cadence column. Without comparing
 `($18,A5)` this gate would have shipped a mutation it could not see, i.e. a
 check that cannot fail. It is the eighth-defective-check shape, caught by
 comparing three columns instead of one.
 
-### 5.2 Source breaks — the TESTS seen red, then restored byte-identical
+### 5.2 Source breaks - the TESTS seen red, then restored byte-identical
 
 ```
 sha256 BEFORE and AFTER all three (identical):
@@ -225,7 +225,7 @@ sha256 BEFORE and AFTER all three (identical):
 | C | `$2637A2` always takes the long form (the recon's reading) | turret tests 11 and 12 RED |
 
 Break B is the cleanest evidence in the wave: the facing column stays perfect
-while the sprite column goes to 2,441 — proving the sprite pointer is a genuinely
+while the sprite column goes to 2,441 - proving the sprite pointer is a genuinely
 independent compared column and not a function of the facing the gate already
 checks.
 
@@ -262,12 +262,12 @@ watched going red: these two went red without being pushed.
    references in the whole 6 MB image, and each throws by address if reached.
    Also not ported: the eleven distance functions (`$24249A`'s family, 24 call
    sites, an **octagonal** metric with 3/4 on the VERTICAL axis where the aim
-   uses 3/2 on the horizontal — the two must not be unified), and
+   uses 3/2 on the horizontal - the two must not be unified), and
    `$242A48`'s random-direction generator (7 sites).
 7. **The 91 CORE call sites are still unclassified** (recon gap 2). At least one
    (`$293224`) aims at a fixed world point, so "260 player-tracking sites" is an
    upper bound. Unchanged by this wave.
-8. **`$263328` writes `$815E9C` once per run** in both corpora — a third writer
+8. **`$263328` writes `$815E9C` once per run** in both corpora - a third writer
    of the live-enemy counter that nobody has read. One disassembly for W21.
 9. **The prototype export covers only types `$10` and `$11`.** The loaders are
    general; the *data* is not exported for the other 124 types, so a read of any
@@ -276,7 +276,7 @@ watched going red: these two went red without being pushed.
 
 ---
 
-## 7. FOR THE REVIEWER — where to look hardest
+## 7. FOR THE REVIEWER - where to look hardest
 
 1. **§4, the sample-point hypothesis.** I chose (b) because 47,520 rows say so
    AND because `$2688CC` moves before it aims. If you think that is a fit, the
@@ -287,7 +287,7 @@ watched going red: these two went red without being pushed.
    *sufficiency* of that tap is my inference: I claim that if the driver pass
    ran, every present record was dispatched (the walk at `$26351E..$26356C` is
    an unconditional `dbra` over all 58 slots). Check that claim.
-3. **`$2637A2`'s short form** — I am correcting a recon here, from the listing,
+3. **`$2637A2`'s short form** - I am correcting a recon here, from the listing,
    with no board evidence, because no stage-1 type reaches it. Re-read
    `$2637A2..$2637DE` and check the byte counts (28 vs 16) and the `bset
    #$7,(-$2,A1)` target (the word's HIGH byte, i.e. bit 15).
@@ -295,7 +295,7 @@ watched going red: these two went red without being pushed.
    `$2420C4` is the `rts` the `beq` at `$242070` targets and `$2420C6` is the
    OPS TABLE, not code; `$242318` is aim256's shared `rts` and `$24231A` is the
    next stub; `$2421A8..$2421AA` is the tail `$242196`'s `beq` jumps to (the
-   recon's transcript of `$242190` stops one instruction early, at `subq.b #2` —
+   recon's transcript of `$242190` stops one instruction early, at `subq.b #2` -
    the real tail is `and.w D2,D0 / move.w D0,D1 / rts` and the mask is NOT
    redundant); `$24272E` is the `rts` both `bmi` arms of `$24270A` reach;
    `$2637A0`/`$2637C0`/`$2637DE` are three separate `rts`s and `$2637E0` is a
@@ -304,7 +304,7 @@ watched going red: these two went red without being pushed.
 5. **The gate's `key()`** is `slot:subptr:handler`. If a slot were recycled
    within one frame to a record with the same sub-record pointer, the gate would
    compare two different enemies. That direction produces a false FAILURE, never
-   a false pass — but check the reasoning.
+   a false pass - but check the reasoning.
 6. **`AimTables`'s constructor checks** `$2420C6`'s eight longwords against the
    two dispatch targets and `$242312`'s eight stubs against `$9240`/`$D240`.
    That is the one place a stale export turns into a wrong quadrant instead of a

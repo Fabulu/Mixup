@@ -1,14 +1,14 @@
-# W65 IMPL — B3: THE LASER BOMB `$249A80`
+# W65 IMPL - B3: THE LASER BOMB `$249A80`
 
-status: **DONE** — **BOMBING WHILE HOLDING THE BEAM WORKS.** `[M]` on the LIVE
+status: **DONE** - **BOMBING WHILE HOLDING THE BEAM WORKS.** `[M]` on the LIVE
 build `20260805144407`: fire held, `($3f,A6)` = 1, press X three times, the
 stock falls 3 → 2 → 1 → 0, **thirty-one** of the forty-five records go live,
 `$2456A6` takes 32 pool-A hits and 55 pool-B hits and **erases 54 enemy
 bullets**, the ship's flags bit 7 goes on for the bomb and off at the teardown,
-`PAGE ERRORS []`, 60 Hz. **NO RANK WORD MOVED** — all five, on every one of
+`PAGE ERRORS []`, 60 Hz. **NO RANK WORD MOVED** - all five, on every one of
 2,200 headless frames and every one of 21 browser samples, against a
 `rank-poke` control that reddens all five and nothing else. Unit tests 878 →
-**921**, 0 skipped. 59 of 59 mutants RED, 0 survivors — **two of my own
+**921**, 0 skipped. 59 of 59 mutants RED, 0 survivors - **two of my own
 controls and eleven of my own fixtures could not fail, and one of the mutants
 found a MISSING RAM WRITE in the port.** Boot +7,495 B.
 
@@ -36,11 +36,11 @@ measurement:
 
 | what a document says | `[M]` this session |
 |---|---|
-| W64 §7: "`src/laser.js` sets it at `$24C282`" | The instruction is `$24C282 move.b #$1,($3f,**A4**)` and `$24C2D6 move.b D0,($3f,**A4**)`. In `$24C164`'s frame **A4 is the PLAYER record and A6 is the OPTION POD** — `$24C2B6 move.b #$A,($3f,A6)` is the pod's own nine-frame counter and is a DIFFERENT byte. The substance survives (it is the player's `+$3f`); the citation does not, and a port that copied it would have written the pod's byte |
+| W64 §7: "`src/laser.js` sets it at `$24C282`" | The instruction is `$24C282 move.b #$1,($3f,**A4**)` and `$24C2D6 move.b D0,($3f,**A4**)`. In `$24C164`'s frame **A4 is the PLAYER record and A6 is the OPTION POD** - `$24C2B6 move.b #$A,($3f,A6)` is the pod's own nine-frame counter and is a DIFFERENT byte. The substance survives (it is the player's `+$3f`); the citation does not, and a port that copied it would have written the pod's byte |
 | W64 §7 / HANDOVER: "~630 instructions" | **HOLDS. `[M]` 693**, over eleven entries: `$255FE2` 148, `$2456A6` **266**, `$2561AA` 107, `$2563B6` 56, `$289FF4` 34, `$28A1DA` 32, `$2562FC` 21, `$249A80`'s arm 17, `$256468` 16, `$24311A` 9, `$26085C` 3, `$256346` 1 |
 | **my own first count said 1,456** | **WRONG, and I nearly shipped it as "B2 under-sized this by 2x".** The recursive-descent tracer follows a `bcc` displacement out of `$2561E6`'s neighbourhood into address `$000006` and disassembles 150 words of the 68000 VECTOR TABLE as code. Recorded because it would have been the twenty-seventh brief resting on something false and it would have been mine |
-| W64 §1.3 and `src/bomb.js:144` `poolWipe: 0x252714` | `$252714` **IS ALREADY PORTED** — `src/laser.js` `wipeSegmentPool`, W45. So are `$243DA0` (W64), `$23FF42` (W64) and `$28A1DA` (`src/spark.js` `fillSlot`, W53). The arm's only unported callee was `$26085C`, which is a counted note |
-| recon 38 §1.3: "`($3F,A6)` — a DEATH bomb is a distinct path" | Stale by twenty waves. W45 settled that it is the LASER-HELD byte (`src/player.js:516`); "death" was the pre-W45 guess |
+| W64 §1.3 and `src/bomb.js:144` `poolWipe: 0x252714` | `$252714` **IS ALREADY PORTED** - `src/laser.js` `wipeSegmentPool`, W45. So are `$243DA0` (W64), `$23FF42` (W64) and `$28A1DA` (`src/spark.js` `fillSlot`, W53). The arm's only unported callee was `$26085C`, which is a counted note |
+| recon 38 §1.3: "`($3F,A6)` - a DEATH bomb is a distinct path" | Stale by twenty waves. W45 settled that it is the LASER-HELD byte (`src/player.js:516`); "death" was the pre-W45 guess |
 
 ---
 
@@ -49,7 +49,7 @@ measurement:
 `$255FE2`'s A6 is `$811F72`; `$25600C lea ($7B0,A1),A1` puts the second record
 at `+$7E0` and the next two follow at `+$30` each; `($7FE,A6)`, `($82E,A6)` and
 `($85E,A6)` are their script pointers. `$7E0 / $30 = 42`. And `$2561AA`/
-`$2563B6` open `lea $811FA2,A6` + `moveq #$28,D7` + `dbra` — records **1..41**.
+`$2563B6` open `lea $811FA2,A6` + `moveq #$28,D7` + `dbra` - records **1..41**.
 
 ```
 [M]  record  0        the HEAD          $255FE2's own
@@ -63,7 +63,7 @@ at `+$7E0` and the next two follow at `+$30` each; `($7FE,A6)`, `($82E,A6)` and
 only say that `$2564F0`'s `moveq #$2C,D7` frees forty-five where the ordinary
 bomb allocates one, and call it "the cartridge's own and not a tidy-up". It is
 this weapon's footprint exactly, and `[M]` a real bomb reaches **31 of 45** on
-the page — 4 heads and 27 live segments, the rest culled at `$7800`.
+the page - 4 heads and 27 live segments, the rest culled at `$7800`.
 
 ---
 
@@ -89,7 +89,7 @@ the page — 4 heads and 27 live segments, the rest culled at `$7800`.
 * **`$249A98 bset #$0,($1,A1)` AND `$249AD8 move.w #$26,($38,A1)` ARE
   DIFFERENT A1s.** `$249AB2 lea $8104AA,A1` reloads it between them, to the
   OPTION BLOCK. A port that kept one A1 would set bit 0 of `$8104AB` (so the
-  driver would never route to `$255FE2`) and write `$811FAA`/`$811FC8` — inside
+  driver would never route to `$255FE2`) and write `$811FAA`/`$811FC8` - inside
   SEGMENT 1. Two unit tests assert both halves.
 * **`$2561AA`'s two arms are not one loop with a flag.** With `($18,A6) == 0`
   it DEREFERENCES `($2C,A6)` (`$2561C8 movea.l (A0,D0.w),A0`), saves the
@@ -98,7 +98,7 @@ the page — 4 heads and 27 live segments, the rest culled at `$7800`.
   anim long), skips `+$18` (`$25629A addq.w #$4,A1`) and never re-reads.
 * **`$245788 move.b (A6),D4 / btst #$1,D4` READS THE HIGH BYTE**, so the "this
   record is parked" bit is word bit **9**, the same one `$256154` and `$8200`
-  use — not bit 1 of the low byte, which is the ship selector. A fixture that
+  use - not bit 1 of the low byte, which is the ship selector. A fixture that
   set the low byte's bit 1 finds both readings agreeing; §8 D.
 * **`$256346` IS A BARE `rts` TWO BYTES BEFORE `$256348`**, and `$256128
   bsr.w $256346` calls it on purpose, one instruction before `$25612C bsr.w
@@ -108,13 +108,13 @@ the page — 4 heads and 27 live segments, the rest culled at `$7800`.
 
 ---
 
-## 3. READ PAST THE APPARENT END — and this time it was FORWARD, not backward
+## 3. READ PAST THE APPARENT END - and this time it was FORWARD, not backward
 
 * **`$256346`** above, and it is the first case in this project of the trap in
   the OTHER direction: not a routine that continues past its `rts`, but a
   one-instruction routine sitting in front of one that a reader will merge.
 * **`$2456A4` is an `rts` in the MIDDLE of `$24560A`** (W64 §3 found it) and
-  `$2459CE` is another two bytes before `playerBox` — both are `$2456A6`'s
+  `$2459CE` is another two bytes before `playerBox` - both are `$2456A6`'s
   boundaries, and neither is visible reading forward from `$2456A6`.
 * **`$24D188` does not fall into `$24D200`.** `$24D18C beq` JUMPS to it, so the
   RAMP runs while `($38,A6)` lasts and the SETTLE runs for ever afterwards,
@@ -126,7 +126,7 @@ the page — 4 heads and 27 live segments, the rest culled at `$7800`.
 
 ---
 
-## 4. WHAT THIS WAVE MADE REACHABLE — THREE PATHS, ALL FROM ONE `bset`
+## 4. WHAT THIS WAVE MADE REACHABLE - THREE PATHS, ALL FROM ONE `bset`
 
 **`$249A92 bset #$7,($1,A6)` is the first instruction this port has ever run
 that sets the player's flags bit 7**, and `$2564AA bclr #$7,($1,A0)` inside
@@ -135,12 +135,12 @@ all three had been named throws since wave 4 or wave 12:
 
 | ROM | what | what it had said |
 |---|---|---|
-| `$2496A2` | the PLAYER's knockback: `($46,A6)` (seeded `$2E` by `$249AA4`) walks the 24-word ramp `$2552EC` and subtracts it from the knock field. **AND `$812954` COSTS SPEED** — while the beam holds a pool-B target the ship loses `$48` of velocity and `$48` of this frame's Y, every frame | `src/player.js`: "MEASURED 0 across the whole corpus" |
+| `$2496A2` | the PLAYER's knockback: `($46,A6)` (seeded `$2E` by `$249AA4`) walks the 24-word ramp `$2552EC` and subtracts it from the knock field. **AND `$812954` COSTS SPEED** - while the beam holds a pool-B target the ship loses `$48` of velocity and `$48` of this frame's Y, every frame | `src/player.js`: "MEASURED 0 across the whole corpus" |
 | `$24D188` | the OPTION PODS' knockback: `($38,A1)` (seeded `$26` by `$249AD8`) walks the same-shaped 20-word ramp `$24D28E`, then `($56,A1)` (seeded `$8` by `$249ADE`) settles them through `$2417D4` | `src/options.js`: "MEASURED: ($1,A4) bit 7 is 0 on every sampled frame" |
 | `$24A4E2` | the ship's BIT-7 AURA: a different sprite table (`$2556BA`, indirect through the ship selector), size `$830` not `$A28`, **two** counters not one, and **no invulnerability or `$80390C` gate at all** | `src/shipsprite.js`: "MEASURED 0 on every frame of fly-around and of stage1-open" |
 
 All three measurements were TRUE and all three were about the runs, not about
-the game — `docs/knowledge/08`'s rule arriving for the sixth time in this
+the game - `docs/knowledge/08`'s rule arriving for the sixth time in this
 project. **All three are ported rather than declared**, because each one stops
 the page on the first laser bomb, and each has a gate row of its own.
 
@@ -153,7 +153,7 @@ PAIR. `check_beam_bomb_extents` asserts both immediates.
 
 ---
 
-## 5. RANK — every address, digit-identical, to I2's standard
+## 5. RANK - every address, digit-identical, to I2's standard
 
 **Five rank addresses, four inputs, and a control that PROVES the rows move.**
 
@@ -166,8 +166,8 @@ PAIR. `check_beam_bomb_extents` asserts both immediates.
 | `[M]` deployed page, 21 samples, 3 laser bombs | 53 | 0 | 0 | 0 | 0 |
 | `[M]` local page, 21 samples, 3 laser bombs | 53 | 0 | 0 | 0 | 0 |
 
-The gate asserts each of the five **on every frame** — the first frame any of
-them differs from the seed is recorded with its value and its logic frame — and
+The gate asserts each of the five **on every frame** - the first frame any of
+them differs from the seed is recorded with its value and its logic frame - and
 `rank-poke` turns all five rows red and nothing else (15 pass / 5 fail).
 
 **WHY NOTHING MOVED, from the listing and not from the run:**
@@ -178,7 +178,7 @@ them differs from the seed is recorded with its value and its logic frame — an
   `$812952@2457DC` and `$812954@2457E2` and nothing else.
 * `$255FE2`'s closure writes `$8103E7`, `$810449`, `$81294C`, `$812968` and
   `$81296C`. No rank word.
-* `$249976 subq.w #$3,$81B646` — the bomb's −3 — is on the SHARED part of the
+* `$249976 subq.w #$3,$81B646` - the bomb's −3 - is on the SHARED part of the
   arm, in front of the `($3f,A6)` fork, so this wave does not change it: it is
   still behind `$249968 tst.w $81B63E / beq $2499D4`, `$81B63E` is still
   unreachable (W64 §0), and the port still **throws at `$285AF2` by address in
@@ -196,7 +196,7 @@ bomb, and the measured answer is the one above.
 
 ---
 
-## 6. CHAIN AND SCORE — **RECON 38 §1.5 AND W64 §6.1 ARE BOTH STALE**
+## 6. CHAIN AND SCORE - **RECON 38 §1.5 AND W64 §6.1 ARE BOTH STALE**
 
 Both say the `$400` hit bit "has exactly two setters and both are in the A2/A3
 weapon loops (`$245242`, `$2452F2`)". `[M]` a census of `ori.w #$400` /
@@ -233,7 +233,7 @@ differing only in whether Button 2 is pressed:
                             total $36363  chain  0  chainMax 121
 ```
 
-**THE SCORE IS HIGHER WITH LASER BOMBS — the opposite of W64's finding for the
+**THE SCORE IS HIGHER WITH LASER BOMBS - the opposite of W64's finding for the
 ordinary one.** W64 §6.2 measured 1,600 steps at `$39028` with no bomb and
 `$38790` with three, and reasoned that "a bomb kills enemies that would
 otherwise have been chained". `[M]` the laser bomb goes the other way, +23 %,
@@ -258,13 +258,13 @@ ordinary one. `[M]` on the page: chain 35 before BOMB1, **2** at +3.5 s.
 
 ---
 
-## 7. THE PAGE, IN A REAL BROWSER — WHAT I SAW `[M]`
+## 7. THE PAGE, IN A REAL BROWSER - WHAT I SAW `[M]`
 
 Chrome + Python `playwright`, W64's recipe with the one thing it deliberately
 did not do: **fire HELD, not tapped**, so `($3f,A6)` reaches 1 and the press
 takes `$249A80`. Button 2 is `x`. The page is READ, not only photographed.
 
-### 7.1 DEPLOYED — `https://gbtman.pages.dev/games/ddpdoj/`, build `20260805144407`
+### 7.1 DEPLOYED - `https://gbtman.pages.dev/games/ddpdoj/`, build `20260805144407`
 
 TWO deployed runs, because the first (`20260805133936`) predated §8's missing
 `$80FA74` store.  `[M]` the second, on the FINAL tree, is the one below and it
@@ -286,8 +286,8 @@ agrees with the first in every column: three laser bombs, `stock` 3 → 2 → 1 
 ```
 
 **That is the wave's whole result, on a screen: hold Z until the beam is up,
-press X, and thirty-one of the forty-five records go live — four heads and
-twenty-seven beam segments marching up the screen from the ship — while
+press X, and thirty-one of the forty-five records go live - four heads and
+twenty-seven beam segments marching up the screen from the ship - while
 `$2456A6` takes `$1E0` off every pool-A enemy inside the beam's own bounding
 box, `$208` off the nearest pool-B one, and ERASES every enemy bullet the beam
 touches. The ship is thrown backwards, the pods are thrown backwards, the ship
@@ -306,7 +306,7 @@ the page with `UNPORTED $249A80`.
 ### 7.3 **WHAT IS NOT THERE, and a reader should hear it from me**
 
 The beam has **no picture**. `[M]` the page's own stats line reads
-`$042924x1`, `$040CC8x1`, `$040EAC x1` during each bomb — those are MISSING
+`$042924x1`, `$040CC8x1`, `$040EAC x1` during each bomb - those are MISSING
 SPRITE STREAMS, and they are exactly the anim longs `$256686`, `$25666E` and
 `$25667A` (records 44 and 43's head tables) name. So the four heads' and the
 forty-one segments' STATE is this port's and their art is not in the harvested
@@ -316,19 +316,19 @@ vanishing, the ship being thrown backwards, and nothing else.**
 
 ### 7.4 **THE LIVE PAGE FOUND A DEFECT THE GATE COULD NOT**
 
-`[M]` the first local run stopped with `$28A47A IS NOT PORTED YET` — a pool-E
+`[M]` the first local run stopped with `$28A47A IS NOT PORTED YET` - a pool-E
 TEMPLATE outside every ROM window. `$255FE2` reaches `$289FF4` only on frames
 where record 44's bit 1 is clear, and `$256348` only clears it when `$812954`
 is non-zero, i.e. **only when the beam is holding a pool-B target**. The
 headless gate's 2,200 frames never had one. W54 §6.2's rule for the fourth
 time: *a short window is not caught at the export; it is caught by `src/rom.js`
-on a player's machine* — and this time it was caught by MY browser rather than
+on a player's machine* - and this time it was caught by MY browser rather than
 by the owner's, which is the only reason it is a paragraph and not an incident.
 `$28A464 + $A2` is now a window with six derived extents asserted on export.
 
 ---
 
-## 8. EVERY CHECK SEEN TO FAIL — and **TWO OF MY OWN CONTROLS WERE VACUOUS**
+## 8. EVERY CHECK SEEN TO FAIL - and **TWO OF MY OWN CONTROLS WERE VACUOUS**
 
 **THE WORST ONE FIRST.** The first draft of `tools/w65beamgate.mjs` wrote every
 row as `brk === 'no-press' ? <the null expectation> : <the real one>`, and:
@@ -362,37 +362,37 @@ ctx.bombEvent?.('beam-arm', armBombCancel243DA0(ram) ? 'armed' : 'busy');
 ```
 
 and **optional chaining does not evaluate its argument list when the callee is
-undefined** — so on any context without an event sink (every unit test, and any
+undefined** - so on any context without an event sink (every unit test, and any
 embedder that does not attach one) the SCREEN CLEAR silently did not happen.
 **No gate in this repo could have caught it**, because every gate attaches a
 sink. It is now on its own line, with the reason in the file. The other
 thirteen `bombEvent?.(...)` sites were audited: all pure values.
 
 **AND ONE MUTANT FOUND A SECOND REAL DEFECT.** `$2456AA lea $80FA74,A5` and
-the four `move.w D?,(-$2,A5)` stores put the bounding box **in RAM** — the
+the four `move.w D?,(-$2,A5)` stores put the bounding box **in RAM** - the
 same four words `src/damage.js` `BOX` uses and `$245760`/`$245866`/`$24595A`
 re-read through A6. The port built it in a JS array and never stored it:
 correct arithmetic, four missing stores, and invisible to every row that only
 counted hits. Found by the row that asserts all four words exactly.
 
 **ELEVEN MORE OF MY OWN CHECKS COULD NOT FAIL**, and the mutation sweep took
-three rounds to say so — **23 survivors, then 11, then 1**:
+three rounds to say so - **23 survivors, then 11, then 1**:
 
 | | what was wrong | the check that exists now |
 |---|---|---|
 | **A** | `beamRom()`'s accessor was `bytes[a - base]` with no bounds check, so `$255FE2` reading `$256CAA` (an entirely different window) got `undefined` and the "entry 1 does something else" row passed against NaN | the fixture THROWS on any address outside `$25653C+$112`, and the row asserts the throw NAMES `$256CAA` |
 | **B** | ...and the same hole was serving `$24301A`, `$242FDE`'s canned table, so `drawSigned242FDE` returned NaN and TWO of W64's own FADE rows were asserting arithmetic on NaN | the fixture serves that table explicitly, as a constant chosen so `$255F16 tst.w D0 / bne` takes a known arm |
-| **C** | the pool-B rows had only record 0 live, and pool B walks records **1..41** while pool A walks **0..44** (`$245780 lea ($30,A6),A6` is the whole difference) — so "pool B hits one enemy" passed with zero hits | the fixture puts the record at index 1 and the row asserts the HIT, its `$208`, and that a FARTHER enemy is untouched |
-| **D** | the "a parked record does no damage" row set bit 1 of the record's LOW byte; `$245788 move.b (A6),D4` reads the HIGH byte, so both readings agreed | the fixture sets `$8200` — word bit 9, the bit `$256154` and the install's own template use |
-| **E** | every bullet row ran against a fresh all-zero `Ram`, i.e. 211 bullets sitting live at (0,0) inside the box — `[M]` **70 erasures reported** where the row wanted 1, and a port that ignored the box entirely would have passed | `parkBullets()` writes `$FFFF` to all 210 `+$2` words first (`$24593E bmi` skips a negative one), so the row is about the box |
-| **F** | the three direct-call rows on `$2456A6` left `$812952` at 0, and `$245622 move.w #$7800,$812952` runs in `$24560A` BEFORE the fork — so `$2457C6 cmp/bcc` rejected every pool-B enemy | the fixture stands in for `$245622`/`$24562C`, with the reason in a comment |
+| **C** | the pool-B rows had only record 0 live, and pool B walks records **1..41** while pool A walks **0..44** (`$245780 lea ($30,A6),A6` is the whole difference) - so "pool B hits one enemy" passed with zero hits | the fixture puts the record at index 1 and the row asserts the HIT, its `$208`, and that a FARTHER enemy is untouched |
+| **D** | the "a parked record does no damage" row set bit 1 of the record's LOW byte; `$245788 move.b (A6),D4` reads the HIGH byte, so both readings agreed | the fixture sets `$8200` - word bit 9, the bit `$256154` and the install's own template use |
+| **E** | every bullet row ran against a fresh all-zero `Ram`, i.e. 211 bullets sitting live at (0,0) inside the box - `[M]` **70 erasures reported** where the row wanted 1, and a port that ignored the box entirely would have passed | `parkBullets()` writes `$FFFF` to all 210 `+$2` words first (`$24593E bmi` skips a negative one), so the row is about the box |
+| **F** | the three direct-call rows on `$2456A6` left `$812952` at 0, and `$245622 move.w #$7800,$812952` runs in `$24560A` BEFORE the fork - so `$2457C6 cmp/bcc` rejected every pool-B enemy | the fixture stands in for `$245622`/`$24562C`, with the reason in a comment |
 
-| **G** | the two gate rows for the pods' and the player's knockback read the CURSORS `($46,A6)` and `($38,A1)` — which are `$249AA4`'s and `$249AD8`'s writes, not the ramps' — so DELETING both ramps left them green | the player's row measures `($6,A6)`, which only `$2496B6` moves; the pods' is a UNIT row on `$24D188` itself, because `[M]` `$24C33A` puts the pods back on the ship every frame and one frame of ramp is `$200` against a `$24D146` step of `$800` — no aggregate over 2,200 frames separates them |
+| **G** | the two gate rows for the pods' and the player's knockback read the CURSORS `($46,A6)` and `($38,A1)` - which are `$249AA4`'s and `$249AD8`'s writes, not the ramps' - so DELETING both ramps left them green | the player's row measures `($6,A6)`, which only `$2496B6` moves; the pods' is a UNIT row on `$24D188` itself, because `[M]` `$24C33A` puts the pods back on the ship every frame and one frame of ramp is `$200` against a `$24D146` step of `$800` - no aggregate over 2,200 frames separates them |
 | **H** | `liveMax > 4` for the 41 segments: `[M]` a `dbra` one short still peaks at 29, because the `$7800` CULL is the binding constraint and not the loop | the loops' far end is proved by the **CLEAR**: a hand-placed live record in slot 41 must be zeroed by `$25623A` (phase 1) and by `$2563D4` (phase 2) |
 | **I** | the segment-step row used `$400 + velY` and `[M]` `($30,A5)` is 0 on every frame of a run with no vertical input, so the third term was never exercised | a unit row that SETS `($30,A5)` to `$123` |
 | **J** | `$25606C`'s `-$200` bias and `$2560C6`'s short-axis-only write are not observable from the gate at all: `$2563A4 move.w D0,($7E2,A0)` overwrites record 42's Y from record 44's in the SAME frame | unit rows after exactly one driver frame |
 | **K** | four bound constants (`$7800` twice, `$7E00`, `$256460`'s `$1C`) and `$2563F8`'s `+$400` all survived the gate: a `$100` change moves no count it measures | unit rows that place a record by hand ON each bound and one step under it |
-| **L** | ...and the LAST survivor of all three rounds was `$256224`'s arm of the cull — the one taken when `$812954` is SET. Every fixture reached the OTHER arm, because setting that word routes the same frame into `$289FF4` and pool E | `beamRom()` now serves pool E's three canned RNG tables and three templates, and the row walks both arms |
+| **L** | ...and the LAST survivor of all three rounds was `$256224`'s arm of the cull - the one taken when `$812954` is SET. Every fixture reached the OTHER arm, because setting that word routes the same frame into `$289FF4` and pool E | `beamRom()` now serves pool E's three canned RNG tables and three templates, and the row walks both arms |
 
 C, D, E, H and I are W61's M4/M33, W63's D/E and W64's F/G for the fifth time:
 **a fixture sitting where two readings agree is not a check**, and **a
@@ -411,7 +411,7 @@ verifies the file sha256 byte-identical; 180-second timeout per child.
 
 ---
 
-## 9. WHAT THIS WAVE DID **NOT** FIX — `$249F8A`, and the brief asked
+## 9. WHAT THIS WAVE DID **NOT** FIX - `$249F8A`, and the brief asked
 
 The brief: *"`$2564BA` makes `$249F8A` (player death, which quarters
 `$81B646`) reachable, and only the page's own `$FF` poke hides it from players.
@@ -434,23 +434,23 @@ than assured: the expiry is the same instruction, fired the same number of
 times per bomb, at the same `$28` delay. What IS new is that the laser bomb
 lasts 131 frames against 107, so the mortal window opens 24 frames later per
 bomb. That is the whole difference. **`$249F8A` remains unported, declared,
-named in the throw and asserted by address — it is not this wave's, and this
+named in the throw and asserted by address - it is not this wave's, and this
 wave did not make it worse.**
 
 ---
 
-## 10. COVERAGE — branches and table entries, never frames
+## 10. COVERAGE - branches and table entries, never frames
 
 * **`$249A80..$249AF4`: 17 transcribed, `[M]` 17 REACHED** (both P1 and P2 arms
   are transcribed; P2's is unit-tested and unexercised, `$8130C0` is `$FFFF`).
 * **`$255FE2`'s TWO phases: 2 transcribed, `[M]` 2 REACHED**, three times each
   on the page. Its `($1,A6)`-bit-1 twin (`$256986` and five more script
   pointers, plus the `$28C542` cue) is transcribed as a THROW and unit-tested.
-* **`$2561AA`'s TWO arms: 2 transcribed, `[M]` 2 REACHED** — the deref arm in
+* **`$2561AA`'s TWO arms: 2 transcribed, `[M]` 2 REACHED** - the deref arm in
   phase 1 and the no-deref arm in phase 2.
 * **`$256348`'s FOUR arms: 4 transcribed, `[M]` 3 REACHED**; `$256366 bset #$5`
   returning early needs `($28,A6)` non-zero AND bit 5 already set.
-* **`$2456A6`'s THREE pools: 3 transcribed, `[M]` 3 REACHED** — `[M]` 32 pool-A
+* **`$2456A6`'s THREE pools: 3 transcribed, `[M]` 3 REACHED** - `[M]` 32 pool-A
   hits, 55 pool-B hits and 54 bullet erasures on the deployed page.
 * **`$2456A6`'s pool-A guard has THREE arms** (`btst #$D` set → test `($18,A5)`;
   clear → require bit 0; else `$245844 bra`) and all three are transcribed;
@@ -458,7 +458,7 @@ wave did not make it worse.**
 * **`$245902`'s bullet LADDER: 5 rungs transcribed, `[M]` 1 REACHED** (`$81B414`
   is 0 in this corpus, so 70 slots). The second rung is unit-tested.
 * **`$289FF4`: transcribed, `[M]` REACHED**, and `$28A252`'s NON-NEGATIVE-D7
-  arm (`$28A28C`, a third speed domain out of `$28A2D6`) is a THROW — the only
+  arm (`$28A28C`, a third speed domain out of `$28A2D6`) is a THROW - the only
   producer of that tail in this port is `$289FF4`, whose `$28A00E` sets
   `$FFFF`. `$28A030`: 3 of 3 entries EXPORTED, `[M]` 3 REACHED.
 * **`$24D188`/`$24D200`: 2 arms transcribed, `[M]` 2 REACHED**; `$2417D4`'s
@@ -494,22 +494,22 @@ VERDICT: ALL GREEN -- 67 passed, 0 failed, 0 SKIPPED
 REDs.** Nothing was disabled, skipped, narrowed or loosened. The ones this wave
 could plausibly have broken, all green:
 
-- **`fly-around: port vs board, 0 divergent frames` and its 5 REDs** — the only
+- **`fly-around: port vs board, 0 divergent frames` and its 5 REDs** - the only
   port-vs-board window this project has. It presses no button and holds no
   fire, so `($3f,A6)` stays 0, `$249A92` never runs and none of §4's three
   newly reachable paths is on it.
-- **`THE BOMB` and its 4 REDs** (W64's) — the ORDINARY arm, and `[M]` 21 of 21
+- **`THE BOMB` and its 4 REDs** (W64's) - the ORDINARY arm, and `[M]` 21 of 21
   after this wave rewired `$249A5C`'s other side.
 - **`THE CHAIN EXPIRES` and its 3 REDs**; **`STAGE 1 ENDS`**; `display list`,
   `pixel gate` (100.0000 %), `demo gate`, `midboss DEATH`, `zoom coverage`,
   `replay determinism`, and `assets/integrity` with its `[rom-byte]` ROM-LEAK
-  GUARD — **six new ROM windows and twenty new speed levels went through it**.
-- **`background shard gate`** — the stage that FRESH-EXPORTS, i.e. where
+  GUARD - **six new ROM windows and twenty new speed levels went through it**.
+- **`background shard gate`** - the stage that FRESH-EXPORTS, i.e. where
   `check_beam_bomb_extents` actually runs against the cartridge.
 
 **[M] THE SERVER I STARTED WAS KILLED.** `Get-CimInstance Win32_Process` finds
 **zero** `python http.server` processes and `netstat` shows nothing listening
-on 8000/8763/8764/8765 — checked by PROCESS and by PORT, as W61 §6b and W63 did.
+on 8000/8763/8764/8765 - checked by PROCESS and by PORT, as W61 §6b and W63 did.
 The deployed run used no server of mine at all.
 
 ```
@@ -518,7 +518,7 @@ node games/ddpdoj/tools/webgate.mjs 14 of 14 PASS                 (unmoved)
 node tools/build-dist.mjs           clean, 5 deliberate exception(s)  <- UNMOVED
 ```
 
-### 11.1 THE BOOT COST — +7,495 B, and most of it is not a ROM window
+### 11.1 THE BOOT COST - +7,495 B, and most of it is not a ROM window
 
 ```
 [M] manifest.json            10,776 ->  10,776       +0   (no new shard)
@@ -534,9 +534,9 @@ six new ROM windows (1,634 raw bytes).** It is `$28A252`'s two `$241812` calls:
 `$28A272 addq.b #$4,D0` after `$242E24` gives a speed domain of `$242E42`'s
 whole 128-byte table plus 4, and `$28A284 move.w #$C0,D0` adds 192. **`[M]` the
 exported speed set goes 72 → 92 levels, and each level is a 65-entry quadrant
-of longword pairs (520 raw bytes).** The set is DERIVED — `beam_spark_speed_
+of longword pairs (520 raw bytes).** The set is DERIVED - `beam_spark_speed_
 indices()` reads the `addq`'s own immediate out of the opcode and the `move.w`'s
-out of its extension word, and enumerates the canned table — exactly as W12
+out of its extension word, and enumerates the canned table - exactly as W12
 listed the pods' 224 and W31 the midboss's 112. It is not guessed and it is not
 measured. **A reader who wants it smaller has to make `$28A252` unreachable,
 not narrow the set.**
@@ -546,10 +546,10 @@ not narrow the set.**
 ## 12. WHAT THIS WAVE DID NOT DO
 
 - **THE HYPER.** Recon 38's wave 2. Every arm of `$249868` still throws.
-- **`$249F8A`** (§9) — touched, measured, not widened, still unported.
+- **`$249F8A`** (§9) - touched, measured, not widened, still unported.
 - **THE BEAM IS NOT DRAWN** (§7.3). Three named missing sprite streams.
-- **`$2926E2`'s TAIL** — W63 §5.3's, still not fixed.
-- **`$28C528`/`$28C542`** — the laser bomb's two sound cues, counted notes;
+- **`$2926E2`'s TAIL** - W63 §5.3's, still not fixed.
+- **`$28C528`/`$28C542`** - the laser bomb's two sound cues, counted notes;
   sound is item 6.
 - **Nothing is compared against MAME.** No gate in this repo has ever held fire
   and pressed Button 2 against the board. What is proved is that the port runs
@@ -588,7 +588,7 @@ commits of HEAD and correct on disk. I had staged the file while
 `.scratch/mutate65.mjs` was running in the BACKGROUND, and the bytes on disk at
 that instant were mutant 21 of 59, mid-flight. The sweep restored the file and
 verified it sha256 byte-identical a second later, so **every measurement in
-this document ran against the correct line** — the 921 unit tests, the 22/22
+this document ran against the correct line** - the 921 unit tests, the 22/22
 gate, the 59-of-59 mutation round and `ALL GREEN 67/0/0` are all after the
 restore. Only the published commits were wrong, and only for as long as it
 took to notice.
@@ -605,26 +605,26 @@ this adds is **do not stage a file another process is editing**, and
 declared it rather than inventing it, and the reason it deserved its own wave
 is that it is not a bomb with a flag: one instruction, `$249A98 bset
 #$0,($1,A1)`, sets bit 0 of the bomb record's own type word, and that bit routes
-the driver to `$255FE2` — a FOUR-HEAD, 131-frame machine whose forty-one beam
+the driver to `$255FE2` - a FOUR-HEAD, 131-frame machine whose forty-one beam
 segments are seeded one per frame at the ship's own position and culled at
-`$7800` — and the damage to `$2456A6`, which builds a bounding box over all
+`$7800` - and the damage to `$2456A6`, which builds a bounding box over all
 forty-five records and asks pool B, pool A and the 210-slot bullet pool whether
 they are inside it. **1 head + 41 segments + 3 more heads = 45, which is what
 `$2564F0` has been wiping since W64 without anyone knowing why.** The wave also
 turned on three routines this port had called "measured 0 on every frame" for
-between one and sixty waves — the ship's knockback, the pods' knockback and the
-ship's bit-7 aura — all three behind `$249A92 bset #$7,($1,A6)`, the first
+between one and sixty waves - the ship's knockback, the pods' knockback and the
+ship's bit-7 aura - all three behind `$249A92 bset #$7,($1,A6)`, the first
 instruction this port has ever run that sets that bit, and all three ported
 rather than declared because each one stops the page. Recon 38 §1.5's "the
 `$400` bit has exactly two setters" is stale: `$24580E` and `$2458E2` are a
 third and fourth, so a laser-bomb kill runs `score.js`'s SECOND chain machine
 and the score goes UP 23 % where W64 measured the ordinary bomb taking it down.
-**No rank word moved** — five addresses, four inputs, 2,200 headless frames and
+**No rank word moved** - five addresses, four inputs, 2,200 headless frames and
 forty-two browser samples, against a poke that reddens all five. Two of my own
 controls were vacuous and are replaced; six of my own fixtures agreed with both
-readings and are replaced; and one real defect — an `armBombCancel243DA0` call
+readings and are replaced; and one real defect - an `armBombCancel243DA0` call
 inside an optional-chaining argument list, which no gate could ever have caught
-— was found by a unit test. **Hold Z on
+- was found by a unit test. **Hold Z on
 `https://gbtman.pages.dev/games/ddpdoj/` until the beam is up, press X, and
 watch thirty-one records go live and fifty-four enemy bullets disappear.**
 

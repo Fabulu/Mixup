@@ -1,6 +1,6 @@
-# WAVE 5 — enemies and the three weapons
+# WAVE 5 - enemies and the three weapons
 
-status: **BLOCKED** on the wave's own "done when" — with the measured reason,
+status: **BLOCKED** on the wave's own "done when" - with the measured reason,
 the exact remaining work item list, and the parts that ARE ported and verified.
 Nothing here is a guess dressed as a result.
 wave: 5   role: impl   started: 2026-08-01
@@ -61,7 +61,7 @@ POKE $80AFC0=$0900 (192/251)     high_water=$BC4 (251/251) queue_full_events=544
 
 ## What I MEASURED
 
-### 1. THE ENEMY SUB-DRIVER — `$263502`, 58 slots × `$50` at `$81332C`
+### 1. THE ENEMY SUB-DRIVER - `$263502`, 58 slots × `$50` at `$81332C`
 
 Wave 2 located the TOP-LEVEL driver and wrote, in its own "what I could not do":
 *"each of the 20 handlers walks its own sub-tables … and I did not disassemble
@@ -97,7 +97,7 @@ $ python xref.py dasm 2634F0 180
 263570: clr.w $815EA2 / $815EA4 / $815EA6
 ```
 
-**Geometry — one table, three BANDS**, from the allocator `$2636D6`:
+**Geometry - one table, three BANDS**, from the allocator `$2636D6`:
 
 | band | base | slots | chosen when |
 |---|---|---|---|
@@ -105,13 +105,13 @@ $ python xref.py dasm 2634F0 180
 | boss | `$8133CC` | 8 | `$20 <= D0 <= $23` |
 | common | `$81364C` | 48 | everything else |
 
-58 × `$50` = `$1220`, i.e. `$81332C..$81454B` — and **`$81454C`, the byte after
+58 × `$50` = `$1220`, i.e. `$81332C..$81454B` - and **`$81454C`, the byte after
 the table, is the DUMMY the allocator returns when a band is full.** The
 driver's `move.w #$39,D6` walks all 58 in one pass. The three bands and the
 58-slot walk are the same table; that is why `lea $81364C` and `move.w #$39`
 looked inconsistent until both were read.
 
-**ALLOCATION FAILURE — a THIRD convention, different from both of the ones
+**ALLOCATION FAILURE - a THIRD convention, different from both of the ones
 already recorded:**
 
 ```
@@ -128,13 +128,13 @@ of them. That is what the brief means by "allocation failure is gameplay".
 
 **A quirk that is not a disassembly slip:** `moveq #$0,D3` at `$263710` is only
 on the 48-slot band's fall-through path. The other two bands `bra $263712` past
-it and `$2636D6`'s `movem.l D0-D2,-(A7)` does not save D3 — so the type word
+it and `$2636D6`'s `movem.l D0-D2,-(A7)` does not save D3 - so the type word
 those bands store is `(the CALLER's D3 + band index) | $8000`. Ported as
 written (`src/enemies.js` `allocEnemy(ram, d0, d1, d3)`).
 
 **And the number that decides wave 5's cost.** `w5recon.lua` (new) hooks the
-driver's own `sub.w D0,($4,A6)` write at `$26352E` — a WRITE, so a real 68000
-execution hook — which runs exactly once per live enemy with A5 still the
+driver's own `sub.w D0,($4,A6)` write at `$26352E` - a WRITE, so a real 68000
+execution hook - which runs exactly once per live enemy with A5 still the
 record, and censuses `($4C,A5)`:
 
 ```
@@ -147,7 +147,7 @@ ENEMY live per logic frame max=24 hist 0:1962 19:103 17:90 16:70 20:54 ...
 ```
 
 **Five routines.** The 24 "type words" are `slotIndexInBand | $8000` and carry
-no type information — the enemy's identity IS the handler pointer. So "port
+no type information - the enemy's identity IS the handler pointer. So "port
 some enemies" is exactly: translate `$2688CC`, `$268232`, `$26A2E2`, `$269CEA`,
 `$275914`. **None of the five is translated in wave 5**; every dispatch is a
 loud named throw carrying the handler address and the census counts.
@@ -156,11 +156,11 @@ The `MISMATCH_vs_815E9C` line in that census fired on 44 of 2,600 frames and is
 not a bug in either side: the tap counts every enemy *dispatched*, `$815E9C`
 counts the ones still alive after their handler ran.
 
-### 2. THE PLAYER-SHOT SUB-DRIVER — `$253A70`, 36 slots × `$30`, TWICE
+### 2. THE PLAYER-SHOT SUB-DRIVER - `$253A70`, 36 slots × `$30`, TWICE
 
 Same method: `objhunt` gave `W pc=253AA6 n=10048 off=810576..810A26 stride=48`;
 `xref.py lea 810572` gave `$253A70`; `xref.py callers 253A70` gave **exactly one
-caller, `$28B610`** — inside top-level object type **5** (`$28B5E0`, dispatch
+caller, `$28B610`** - inside top-level object type **5** (`$28B5E0`, dispatch
 entry [5], priority `$18`).
 
 ```
@@ -179,12 +179,12 @@ entry [5], priority `$18`).
 ```
 
 36 slots × `$30` per player; A6 is simply left where the first pass ended, so
-P2's table is `$810572 + 36*$30 = $810C32` — independently confirmed by the
+P2's table is `$810572 + 36*$30 = $810C32` - independently confirmed by the
 spawn at `$249D3E`, which loads `$810C32` by name.
 
 **`$81295C` IS NOT BOOKKEEPING.** Wave 4's frame-sync governor `$23C272` sums
 `$81B40C + $81295C + 2*$81295E` against a threshold. The number of live player
-shots feeds the arm/hysteresis decision — a port that leaves it at 0 while
+shots feeds the arm/hysteresis decision - a port that leaves it at 0 while
 shots are on screen changes *when* the frame is armed, not just what is drawn.
 
 Dispatch table `$253ADE`, 16 longwords (`xref.py ptrtable 253ADE 4 16`):
@@ -205,18 +205,18 @@ SHOT kind words: 16 distinct
 SHOT live per logic frame max=20 hist 0:2025 20:267 19:108 10:44 15:39 ...
 ```
 
-16 distinct words but only **FOUR distinct low nibbles — 0, 2, 8, A** — so only
+16 distinct words but only **FOUR distinct low nibbles - 0, 2, 8, A** - so only
 `$253B1E`, `$253E34`, `$253BDA`, `$253EC6` are ever reached in the opening.
 **None is translated.** `$253B1E` ends in `jmp $23F3AE`, the sprite ENQUEUE, so
 translating one shot handler pulls in the sprite request pipeline (wave 6).
 
-### 3. THE SPRITE-LIST CAP — reached by intervention, and the guard is fragile
+### 3. THE SPRITE-LIST CAP - reached by intervention, and the guard is fragile
 
 The brief: *"find out what happens at the cap rather than assuming it never
 fills."* Wave 2 answered from the listing and said so. This wave measured it.
 
 **First, a listing result wave 2 explicitly left open.** Wave 2: *"whether any
-caller acts on [the carry] I did not establish"* — because the call sites are
+caller acts on [the carry] I did not establish"* - because the call sites are
 `bsr`, invisible to an absolute-long xref. A static scan of every `bsr` in
 `$200000-$2A0000` whose target is `$23D726` finds **29 sites, `$23D3EC` ..
 `$23D61A`, and ALL 29 are followed by `bcs $23D624`**:
@@ -230,7 +230,7 @@ caller acts on [the carry] I did not establish"* — because the call sites are
 
 So the cap does **not** merely drop the next request. `$23D75A` zeroes the
 CURRENT bucket's remaining count and every one of the 29 call sites then jumps
-straight to the emit — **the current bucket's remainder AND every later bucket
+straight to the emit - **the current bucket's remainder AND every later bucket
 are abandoned wholesale.** Because the buckets are appended in a fixed order,
 what is lost is a whole low-priority TAIL. (`bsr` is what this scan sees; a call
 through a register would not be.)
@@ -251,8 +251,8 @@ exactly 12, so it can never straddle `$BC4`. A port that writes `>=` there is
 not translating this instruction.
 
 **The measurement, `pgm.py spritecap` (new, permanent).** `$80AFC0` is poked at
-the sample point — a multiple of 12 below the cap, i.e. a value the board itself
-holds every frame — and a new standing census counts executions of `$23D75A`
+the sample point - a multiple of 12 below the cap, i.e. a value the board itself
+holds every frame - and a new standing census counts executions of `$23D75A`
 by hooking its `clr.w (A1)` write:
 
 ```
@@ -268,11 +268,11 @@ POKE $0BB8 (250/251)        high_water=$111C (365/251) queue_full_events=0
 Read that table twice, because both halves are results:
 
 1. **At `$0900` the cap is genuinely reached, 544 times, and the board takes it
-   in its stride** — `halt_loop_interrupts=0`, still build B, the object driver
+   in its stride** - `halt_loop_interrupts=0`, still build B, the object driver
    still processing its usual slot counts. The buckets cut were `$80AFC2`,
    `C4`, `C6`, `C8`, `D0`, `D6`, `DA`, `DC`, `DE`, `E2`, `E6`.
 2. **At `$0A80` and above the guard is STEPPED OVER ENTIRELY** and the pointer
-   runs to 339–365 records, well past the 251 cap — because the *unguarded*
+   runs to 339–365 records, well past the 251 cap - because the *unguarded*
    appender in call #2 carries it past `$BC4` before the guarded chain starts,
    and the equality test can then never match. Nothing is corrupted: the queue
    buffer `$80397C..$80AFBF` is 30,276 bytes ≈ 2,523 records, far larger than
@@ -285,13 +285,13 @@ entry every 52 records (`$23D676 moveq #$33,D4`, then `moveq #$32`), and
 251 + 5 = 256 = the IGS023 maximum.
 
 **Honest limit of the intervention:** the poke makes the emitter read the bytes
-already at those queue offsets — last frame's requests — so `sprites`, `d_spr`
+already at those queue offsets - last frame's requests - so `sprites`, `d_spr`
 and `pix` move for two reasons at once and are NOT a clean measure of *which*
 sprites are lost. That comes from the listing above. `d_ram` is likewise
 over-determined (the poke writes `$80AFC0`, which is inside the digest). The
 command says all of this in its own output and claims only what it can.
 
-### 4. THE WAVE-4 REVIEW DEFECT THAT BLOCKED THIS WAVE — fixed, red-validated
+### 4. THE WAVE-4 REVIEW DEFECT THAT BLOCKED THIS WAVE - fixed, red-validated
 
 `04-review.md` §4: `$23BE8C` was ported only as far as `$23BEB2`. Re-derived
 here rather than taken on trust:
@@ -308,7 +308,7 @@ $ python xref.py dasm 23BE8C 100
 
 The review's reason for caring is the wave-5 reason: `xref.py abs` finds 13 / 20
 / 4 absolute-long readers of `$803910` / `$803912` / `$803914` in build B (a
-LOWER BOUND — register-relative reads are invisible), at sites like `$252A7C`,
+LOWER BOUND - register-relative reads are invisible), at sites like `$252A7C`,
 `$25E54C`, `$26A3DE`, `$27EE68`, `$28000C`, `$26FAC2`. Mod-4 / mod-8 / mod-16
 phase is what stage and enemy scripts key off.
 
@@ -317,7 +317,7 @@ Fixed in `src/main.js` `#counters()`; `RAM.frameCounterCopy` renamed to
 *unmasked* value and cited the instruction whose next line masks it) corrected.
 
 **And it is now a compared column and permanently red.** The reason nothing
-caught it in wave 4 was structural — `CLAIMED` was 31 named columns and the
+caught it in wave 4 was structural - `CLAIMED` was 31 named columns and the
 full-RAM digest `d_ram` is in the oracle's TSV but is *not* compared, so an
 unported write to unwatched RAM was invisible by construction. `c3910`,
 `c3912`, `c3914` are now in `WATCH_SPEC` and `CLAIMED`, and the new mutation
@@ -329,7 +329,7 @@ DIVERGE c3912 first at lf=2001: port=1302 board=6
 DIVERGE c3914 first at lf=2001: port=1302 board=6
 ```
 
-### 5. THE OBJECT ALLOCATOR — ported, with all four failure paths
+### 5. THE OBJECT ALLOCATOR - ported, with all four failure paths
 
 Wave 4 threw here (`ctx.queueNotEmpty`). Every routine re-disassembled in this
 wave before translation: `$2410F2`, `$24110A`, `$24111E..$241180`,
@@ -349,21 +349,21 @@ Two quirks translated rather than tidied:
   every 65,536 spawns and a delete can match the wrong object. Pinned by a test.
 * **`$241254` steps the kill queue's write pointer by `$50` per LONGWORD
   entry**, so the queue occupies `$80DBFE + k*$50` and its `$640` cap is 20
-  entries, not 320 — and `$24126C` decrements *before* reading, so kills drain
+  entries, not 320 - and `$24126C` decrements *before* reading, so kills drain
   **LIFO**. Both pinned by tests.
 
 `ALLOC events` is printed by `portdiff.mjs` on every run, empty line included:
 on the fly-around window it is `none`, which is also the regression evidence
 that the translation is inert where wave 4 measured the queues empty.
 
-### 6. THE PLAYER'S WEAPON BLOCK — the cadence machine ported, the spawn not
+### 6. THE PLAYER'S WEAPON BLOCK - the cadence machine ported, the spawn not
 
 Wave 4 threw at `$249B50`, the first instruction of the shot branch. Wave 5
-carries `$249B2C..$249BE2` — the whole per-frame cadence machine:
+carries `$249B2C..$249BE2` - the whole per-frame cadence machine:
 
 * `$249B2C..$249B3C` the power byte `($54/$55,A6)` → `($56,A6)`;
 * `$249B48` the shot edge (mirror bit 4), `$249B56..$249B70` the reload of the
-  shot counter `($2b,A6)` = `((D0 >> 1) & 6) + ($2d,A6)` — a WORD shift then a
+  shot counter `($2b,A6)` = `((D0 >> 1) & 6) + ($2d,A6)` - a WORD shift then a
   BYTE mask, in that order, so bit 0 of the shifted value is discarded;
 * `$249B74`/`$249B86` the two `bclr` gates, `$249B96..$249BBC` the release path
   and its countdown, `$249BC2..$249BDE` the delay reload of `($2a,A6)`.
@@ -375,21 +375,21 @@ fills a record through `$24A222`/`$24A2D6` out of PC-relative pattern tables
 and formation `($5A,A6)`, and every record it creates is driven by the four
 UNPORTED shot handlers. It also feeds back: `$249CA8`/`$249CEA` clear `($2b,A6)`
 and bit 3 of `(A6)` when the 36-slot table has no free record, so **the shot
-table's occupancy is an input to the player record** — which is why the player
+table's occupancy is an input to the player record** - which is why the player
 block cannot be compared in a firing scenario without the shot subsystem.
 
 **THE BUTTON MAP**, which wave 2 item 5 left open and wave 4 measured:
 mirror **bit 4 = shot/laser** (`$249B48`), **bit 5 = bomb** (`$24980A`),
-**bit 6 = AUTO-SHOT** — `$2497B2` finds the operator byte `$80380F` set to `$01`
+**bit 6 = AUTO-SHOT** - `$2497B2` finds the operator byte `$80380F` set to `$01`
 and *synthesises* a shot edge into `($19,A6)` on alternate frames
 (`bchg #4,($1,A6)` / `bset #4,($19,A6)`). So Button 3 is not a third weapon; it
 is Button 1 on a 2-frame cadence. The three weapons are **shot** (tap B1),
-**laser** (hold B1 — the speed ramp 22→12 in the OPTION object, wave 4 §4) and
+**laser** (hold B1 - the speed ramp 22→12 in the OPTION object, wave 4 §4) and
 **bomb** (B2 with stock ≥ 4 at `$2497FE`).
 
 ---
 
-## Why the done-when is BLOCKED — the measurement, not an opinion
+## Why the done-when is BLOCKED - the measurement, not an opinion
 
 The exit condition needs `0 divergent frames` on the **full sprite-list digest**
 for three firing scenarios. Working outward from the player, here is everything
@@ -402,23 +402,23 @@ sizes it:
    36-slot driver AND its four reached handlers exist.
 2. **A shot handler ends in the sprite ENQUEUE** (`$253B1E: jmp $23F3AE`). So
    the first shot handler pulls in the request pipeline, which is main-loop call
-   #4 (`$23D2AE`) — explicitly wave 6's integration job in the plan.
+   #4 (`$23D2AE`) - explicitly wave 6's integration job in the plan.
 3. **The full sprite-list digest requires ALL of it.** `d_spr` hashes
    `$800000..$8009FF`, built by call #4 from 29 buckets fed by every live
    object. The port implements 2 of the 20 top-level dispatch entries; the
    `UNPORTED calls` census on the fly-around run shows `$240F62[0]`, `[1]`,
    `[4]` ×2, `[5]`, `[10]`, `[11]` running every frame, unported.
-4. **Top-level type 5 — the one that owns the weapons — is 15 subsystem calls.**
+4. **Top-level type 5 - the one that owns the weapons - is 15 subsystem calls.**
    `$28B5E0` is `jsr $289B80 / $2634F4 / $28AD54 / $27F95A / $288E4E / $2890F2 /
    $255DD8 / $253A70 / $24C096 / $254680 / $255042 / $28A098 / $2527CE /
    $24A458`. Porting "the shot" means porting the one of those fifteen, plus the
    enemy driver reached from `$2634F4` in the same handler.
 5. **Five enemy handlers, none translated**, and each is entered through a
-   record pointer, so there is no static call graph to bound them from — they
+   record pointer, so there is no static call graph to bound them from - they
    were enumerated by measurement (§1) and that enumeration is scenario-bounded:
    a longer scenario may find a sixth.
 6. **`score/chain words identified in wave 2` DO NOT EXIST.** The wave-5
-   done-when depends on a wave-2 output that wave 2 did not produce — wave 2's
+   done-when depends on a wave-2 output that wave 2 did not produce - wave 2's
    §7 is about the operator RANK byte `$80380C`, and its items 6 (hitbox) and 8
    (protection cross-check) came back BLOCKED. I did not locate the score or
    chain words either, and I am not going to name a plausible address.
@@ -446,10 +446,10 @@ and proves nothing**, and the corpus is where this project's credibility lives.
    here rather than quietly satisfied with a guess.
 4. **The hitbox is still not measured.** Third wave running. It is the entry
    point to the kill chain and it is one write tap on `($14,A6)`/`($16,A6)` away
-   — wave 4 wrote that down and so do I; neither of us ran it.
+   - wave 4 wrote that down and so do I; neither of us ran it.
 5. **The `stage1-open` object-table census is scenario-bounded.** The top-level
-   table holds exactly 8 live objects in steady state — types `10, 2, 1, 5, 11,
-   4, 4, 0` at priorities `1F 1C 1A 18 0A 09 09 09` — measured over
+   table holds exactly 8 live objects in steady state - types `10, 2, 1, 5, 11,
+   4, 4, 0` at priorities `1F 1C 1A 18 0A 09 09 09` - measured over
    lf1960..2600. A different point of the stage may hold a different set; this
    is presence, not coverage.
 6. **The enemy driver's `runEnemyDriver` and the shot driver's `runShotDriver`
@@ -460,8 +460,8 @@ and proves nothing**, and the corpus is where this project's credibility lives.
 7. **I did not re-run `pgm.py check` in full** (gfx gate, zoomcov, sound,
    sprites, rtc, drc, overrun, seedstate, pixred). I ran: the port unit suite,
    `flyaround` fresh and under three mutations, `determinism.mjs`, `gate`, and
-   the new `spritecap`. The `frame.lua` edit is a CENSUS line only — no TSV
-   column — and `pgm.py gate` reproducing `635bb92f1a9dc81e…` to the character
+   the new `spritecap`. The `frame.lua` edit is a CENSUS line only - no TSV
+   column - and `pgm.py gate` reproducing `635bb92f1a9dc81e…` to the character
    is the evidence that no digest in the corpus moved.
 8. **`04-review.md`'s remaining smaller items are untouched:** the
    `clamp-first` / `no-tilt-decay` mutations are still broader than their names,
@@ -502,8 +502,8 @@ enumeration; drive it with a five-line python wrapper (`W5_FRAMES`, `W5_INPUT`,
    sync's governor.** They are not statistics.
 4. **The sprite queue has TWO appenders and only one of them checks the cap.**
    `$23D726` guards with `beq #$BC4`; `$23D794` does not check at all. And the
-   guard is equality, so a pointer that is not on the 12-byte grid — or that is
-   already past `$BC4` — slips through it forever.
+   guard is equality, so a pointer that is not on the 12-byte grid - or that is
+   already past `$BC4` - slips through it forever.
 5. **A full sprite queue abandons whole BUCKETS, not the last few requests.**
    All 29 call sites `bcs $23D624`.
 6. **Three allocators, three failure conventions**: D0=0 + dummy `$80D51C`

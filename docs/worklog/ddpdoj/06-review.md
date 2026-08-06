@@ -1,4 +1,4 @@
-# Wave 6 review — the pixel slice
+# Wave 6 review - the pixel slice
 
 status: DONE
 wave: 6   role: review   started: 2026-08-01
@@ -15,7 +15,7 @@ tools except three deliberate, hashed-and-restored breaks; no commits.
 re-measured on this machine and matched to the digit, including a FRESH MAME run
 that re-dumped the whole corpus. Three findings, none of which touch the
 renderer's correctness; the largest is that the wave's own stated blocker
-("no headless browser is installed") is FALSE — I ran the demo page, it works,
+("no headless browser is installed") is FALSE - I ran the demo page, it works,
 and pressing the shot key **silently freezes it**.
 
 ## What I MEASURED
@@ -52,7 +52,7 @@ DIGEST c752ac4c2ed0d9733cefbd95908f5b5eabb32b6df7af1c36d140f9a3c3c73209
 RESULT 0 DIVERGENT FRAMES on 34 columns over 2200 logic frames   <- unmoved
 ```
 
-**Fresh, not reused** — `pgm.py pixslice` with no `--reuse`, i.e. a new MAME run
+**Fresh, not reused** - `pgm.py pixslice` with no `--reuse`, i.e. a new MAME run
 that deleted and re-dumped `rip/pix-slice` (115 dumps) and `rip/pix-pri` (9):
 
 ```
@@ -69,7 +69,7 @@ run asserts the LAST frame is in B.
 
 ### 2. Claims I checked independently, not just re-ran
 
-* **The JS is a translation, not a parallel invention** — I ran wave 3's Python
+* **The JS is a translation, not a parallel invention** - I ran wave 3's Python
   gate and wave 6's JS gate side by side on the same 16 pairs. Not "to four
   decimal places": **identical to the pixel**.
   `tx-msb 1536030 / bg-planes 1162525 / spr-mask 821491 / zoom-off 1561899 /
@@ -95,7 +95,7 @@ run asserts the LAST frame is in B.
 * **ROM provenance.** Every file in `rip/rom/` matches MAME's `ROM_START(
   ddpdojblk)` CRC32: `pgm_t01s.rom 1a7123a0, cave_t04401w064.u19 3a95f19c,
   cave_a04401w064.u7 ed229794, cave_a04402w064.u8 752167b0,
-  cave_b04401w064.u1 17731c9d, ddb10_10_8_434f.u45 d21561db` — the Black Label
+  cave_b04401w064.u1 17731c9d, ddb10_10_8_434f.u45 d21561db` - the Black Label
   program, not `ddb_1dot.u45`.
 * **`regions.js` against MAME's source**, `pgm.cpp:5359-5385` in the scratchpad
   copy: `igs023` region `0xa00000`, `pgm_t01s.rom @0`, `u19 @0x180000 len
@@ -108,7 +108,7 @@ run asserts the LAST frame is in B.
   `pgm_draw_pix`'s `if(!(destpri&1)){ if(!pri || !(destpri&2)) ... }`,
   first-drawn-wins, the backwards walk, ctrl bits 11/12/13, `bitmap.fill(0x3ff)`,
   the BG per-row scroll `(y+bg_yscroll)&0x1ff` / `bg_xscroll+rowscroll[y]`, the
-  transparent pens 31/15, colour bases 0x400/0x800 — all match. The two places
+  transparent pens 31/15, colour bases 0x400/0x800 - all match. The two places
   the JS deliberately differs (an early `return` for `wide==0||high==0`, and the
   dropped early-out `return`s in the zoomed path) cannot change output; I
   checked the reasoning line by line.
@@ -116,9 +116,9 @@ run asserts the LAST frame is in B.
   `rip/sound/maincpu.bin`, 0x600000):
   `$2410C4: 4B F9 00 80 E2 40 70 13 32 15 67 18 02 41 00 FF E7 49 2F 0D 3F 00` =
   `lea $80E240,A5 / moveq #$13,D0 / move.w (A5),D1 / beq / andi.w #$ff,D1 /
-  lsl.w #3,D1 / move.l A5,-(A7) / move.w D0,-(A7)` — exactly frame.lua's
+  lsl.w #3,D1 / move.l A5,-(A7) / move.w D0,-(A7)` - exactly frame.lua's
   documented driver. `$23BE8C: 52 79 00 80 39 0A ...` = `addq.w #1,$80390A`,
-  `bset #0,$80390D`, `addq.w #1,$80390E`, `cmpi.w #3` — exactly as documented.
+  `bset #0,$80390D`, `addq.w #1,$80390E`, `cmpi.w #3` - exactly as documented.
   `$249BE2: move.w ($58,A6),D0 / add.w D0,D0 / lea ($0A,PC),A0 / nop /
   adda.w D0,A0 / jmp (A0)`, table at `$249BF4`: entry 0 `bra.w -> $249BFC`,
   entry 2 `bra.w -> $249D2C`. The two throw addresses in `player.js` are the
@@ -139,17 +139,17 @@ sha256 before == after for all three (`tiles.js
 
 The third answers the implementer's question 5: the tile-map cache **is**
 exercised and a stale map is caught hard. Note the first: on a 12-pair subset the
-same break stayed 100.0000 % — the BG-transparency rule is worth only 0.05 % of
+same break stayed 100.0000 % - the BG-transparency rule is worth only 0.05 % of
 the corpus, so it is the dense/varied corpus that catches it, not the gate.
 
-The gate's corpus thresholds are also capable of failing — `pixgate.mjs` on
+The gate's corpus thresholds are also capable of failing - `pixgate.mjs` on
 `rip/gfx-gate` alone with wave 6's thresholds prints
 `FAIL TOO FEW PAIRS: 16 < 60`, `FAIL NO PALETTE-FADE FRAME: ... 3 words, 100
 required`, `FAIL NO DENSE STRETCH: ... 1, 40 required`. And the "densest run 61"
 is genuinely inside one dump dir (`gfx-gate densest 1, pix-slice densest 61,
 pix-pri densest 8`), not an artifact of concatenating dirs.
 
-### 4. THE BROWSER PAGE — the blocker is not real, and the page has a bug
+### 4. THE BROWSER PAGE - the blocker is not real, and the page has a bug
 
 The worklog says: *"THE BROWSER PAGE HAS NEVER BEEN EXECUTED. There is no
 headless browser on this machine and the brief forbids downloading one."*
@@ -166,7 +166,7 @@ headless browser on this machine and the brief forbids downloading one."*
 I served the repo (`python -m http.server`, then a small node static server) and
 drove Chrome headless over the DevTools protocol (Node 20's
 `--experimental-websocket` gives a global `WebSocket`; ~35 lines of CDP is
-enough — `--virtual-time-budget` is what does NOT work here, it advances the
+enough - `--virtual-time-budget` is what does NOT work here, it advances the
 page's clock through the 34 MiB of fetches and freezes JS mid-boot, which is
 probably what a first attempt would have looked like).
 
@@ -202,7 +202,7 @@ Unreached: UNPORTED $249BFC: THE SHOT SPAWN for ship type 0 ...
   at finish (src/player.js:265:3)
 ```
 
-The throw itself is correct and loud in the console — but `Demo.loop()` has no
+The throw itself is correct and loud in the console - but `Demo.loop()` has no
 `try/catch`, so the throw escapes before `requestAnimationFrame` is
 re-scheduled. The `boot()` catch does not cover the loop. The banner does warn
 that the fire keys reach a named throw; a user still gets a dead page with no
@@ -218,7 +218,7 @@ message, and pressing fire is the first thing anyone does in a shmup.
   `--break`s perturb the input position, not the identification, so they do not
   close it either; nor does `demogate`, for the same reason. What actually
   supports the identification is the correlation sweep (3 offsets at 161/161
-  while 5 of 6 lag/conversion combinations accept nothing) — which is good
+  while 5 of 6 lag/conversion combinations accept nothing) - which is good
   evidence. The round-trip proves only that the word masks preserve the other
   fields. `NOTES-render.md` §5 and the worklog oversell it as "or the page would
   draw a ship in the wrong place".
@@ -237,7 +237,7 @@ message, and pressing fire is the first thing anyone does in a shmup.
   `check()` skips the comparison when it is `"AUTO"`. `NOTES-versions.md` §4
   says the harness "stops a cross-session number loudly". It prints
   `D4C25CA9C91B9D47` on every run (I saw it) but would not stop anything unless
-  `PGM_PIN` is set. Pre-existing (wave 1), not wave 6's — recording it because
+  `PGM_PIN` is set. Pre-existing (wave 1), not wave 6's - recording it because
   wave 6's worklog opens by citing the pin.
 * **`Renderer._key` is an FNV-1a *hash*, not "the videoram bytes themselves"** as
   the code comment and worklog claim. A 32-bit collision would silently reuse a
@@ -265,7 +265,7 @@ $ git diff --cached --name-only | wc -l      -> 57 ddpdoj paths, all deletions
 port from HEAD. The private-index procedure in the brief (`GIT_INDEX_FILE`,
 `git read-tree HEAD`) is exactly what avoids it, and the wave-6 implementer did
 use `.git/ddpdoj.index`. Somebody should `git read-tree HEAD` the shared index.
-I did not touch it — reviewers do not commit.
+I did not touch it - reviewers do not commit.
 
 ## What I could not do, and why
 

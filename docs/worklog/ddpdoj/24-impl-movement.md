@@ -1,4 +1,4 @@
-# W24 IMPL — the movement interpreter: $2638A6, the 13 opcodes, the velocity cache
+# W24 IMPL - the movement interpreter: $2638A6, the 13 opcodes, the velocity cache
 
 status: **DONE.** All three done-whens met (unit tests; one mover's whole-life
 position at 0 divergent; the W23 spawn-stats gate re-closed 511 -> 0 on scripted
@@ -12,7 +12,7 @@ introduced anywhere in this wave.**
 ## THE SPEC (plan W24, verbatim)
 
 > `$2638A6`, the 13 opcodes (12 escapes + `>= $C0` set-speed; 8 of 12 escapes are
-> UNREAD — read them first, and one is a loop-back, so a partial interpreter runs
+> UNREAD - read them first, and one is a loop-back, so a partial interpreter runs
 > off the end of a stream), the velocity cache invalidation, `$241812`
 > direction+speed -> `$200920`. FIRST dump the byte-code streams ... *Done when:*
 > the streams are dumped and inventoried (count, sizes); interpreter passes
@@ -30,7 +30,7 @@ fewer divergent).
 
 A prior implementer session died to the usage limit mid-implementation. The
 SALVAGE commit (53eff89) preserved:
-- `games/ddpdoj/src/movement.js` (351 lines) — **an UNWired, UNVERIFIED draft.**
+- `games/ddpdoj/src/movement.js` (351 lines) - **an UNWired, UNVERIFIED draft.**
   Imported by nothing. The salvage message warns verbatim: *"Whoever picks it up
   should check every routine against the listing before wiring it in, because a
   plausible-looking draft that nobody verified is exactly the input the
@@ -60,7 +60,7 @@ every routine against the listing. Findings recorded below as they arrive.
 
 ## FINDINGS LOG (updated as they arrive)
 
-### F0 — the draft was plausible and partly wrong (the salvage warning earned)
+### F0 - the draft was plausible and partly wrong (the salvage warning earned)
 I re-disassembled `$263760..$263A0C` (free/init/interp/escapes), `$241790..`
 (scroll comp + velocity) and `$241812` from `maincpu.bin` and diffed the draft
 line by line. The draft parsed and read well; FIVE defects survived because
@@ -102,7 +102,7 @@ init Y-odometer `ror.w #7`, and `$2417DE`/`$241812` (D2->+$02, D3->+$04).
    a reminder that F0-F5 were found by listing-diff, but a 6th waited for the
    tests to exercise the path.) Hoisted to `let op;` outside the loop.
 
-### F1 — resource #$1F resolved; the movement cursor is live
+### F1 - resource #$1F resolved; the movement cursor is live
 `resolveMovementPtr` returned a placeholder offset (W22's "W24, noted" sentinel).
 Now reads `res = stageTableEntry(rom, stageIndex(ram)).res` and returns
 `(res + aux[idx]) >>> 0` -- the IGS027A latch is a transparent indirection for
@@ -112,7 +112,7 @@ THIS resource (the bytes are plain ROM, recon §2), so the value is identical to
 `$231852..$2325D0` (3454 B) resource window to `export-tables.py` (gitignored
 output); `player.tables.json` now carries 83 windows.
 
-### F2 — `readInitPosition` wired (the W23 gate's door)
+### F2 - `readInitPosition` wired (the W23 gate's door)
 `initbody.js`'s `readInitPosition` was a noted no-op; it now calls
 `readMovementInit(ram, rom, a5, ...)`. All 12 init-body call sites updated to
 pass `rom`. With F1, a scripted spawn now resolves its stream and runs the full
@@ -122,7 +122,7 @@ init reader -- so the W23-deferred speed/heading/anim/flags overrides compute.
 0 fail, 0 skip** (one spawn-test updated: `resolveMovementPtr` no longer notes
 `$246CAC` -- it resolves).
 
-### F3 — DONE-WHEN #3: the W23 spawn-stats gate re-closed (511 -> 0 on scripted)
+### F3 - DONE-WHEN #3: the W23 spawn-stats gate re-closed (511 -> 0 on scripted)
 `w23statsgate.mjs` now drives the spawn walker per frame to resolve each
 scripted spawn's movement stream, seeds the scratch record's cursor (+$12) and
 param (+$0A), and lets the init reader override speed/heading/anim/flags. Result
@@ -147,7 +147,7 @@ movement fields are STRICT for scripted spawns (closing W24) and a named
 `deferred` gap otherwise (never a silence). The two `$88` hb14/hb16 anim-driven
 hitbox residuals W23 accepted also closed (anim is now computed).
 
-### F4 — a latent W23 precedence bug the gate exposed (init88 hitbox target)
+### F4 - a latent W23 precedence bug the gate exposed (init88 hitbox target)
 Once the movement stream's flag escape cleared sub-record bit 5, the `$88`
 init's anim-driven hitbox branch was entered for the first time and THREW:
 `$14 is outside main RAM`. The line was `ram.setU16(a6 + an !== 0 ? S.hit14 :
@@ -158,7 +158,7 @@ were exactly this branch's absence). Fixed to `a6 + (an !== 0 ? S.hit14 :
 S.hit16)`. This is W23-review F1's predicted "downstream wave trusting a spawned
 enemy's fields" -- the movement anim made it live.
 
-### F5 — DONE-WHEN #2: one mover's whole-life position track at 0 divergent
+### F5 - DONE-WHEN #2: one mover's whole-life position track at 0 divergent
 `tools/w24movegate.mjs` replays ONE scripted type-$11 mover (the first after
 stage start) from spawn to death and compares its sub-record position
 `($2,A6)/($4,A6)` to the board every frame. The corpus is captured by a new lua
@@ -179,7 +179,7 @@ are constant for its whole life, and the port's position matches the board at
 (`D2->posX`, `D3->posY`) AND the per-frame `$24179E` scroll compensation (the
 mover is class-byte bit-0 set -- scroll-locked) all reproduce exactly.
 
-### F6 — the auto-shot hit-reaction is W28, not W24 (a measurement)
+### F6 - the auto-shot hit-reaction is W28, not W24 (a measurement)
 With auto-shot ENABLED (the labelled intervention every other wave uses), the
 SAME mover showed a +$40 `posY` swing for ~4 frames at lf 1969-1972.  Speed,
 heading AND cursor were constant across the swing, so `$2638A6` (constant inputs

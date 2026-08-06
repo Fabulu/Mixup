@@ -1,19 +1,19 @@
-# Wave 15 — the input queue lost the press it existed to keep
+# Wave 15 - the input queue lost the press it existed to keep
 status: DONE
 wave: 15   role: impl   started: 2026-08-01 (date given in-session)
 
 ## The task, as I understood it
 
 Wave 14's review (`14-review.md` §5, §6) found two BLOCKING defects in the
-wave-14 input queue. They are the same defect twice — **a queue that is never
-empty destroys taps** — approached from opposite ends.
+wave-14 input queue. They are the same defect twice - **a queue that is never
+empty destroys taps** - approached from opposite ends.
 
 1. **A sub-frame tap is destroyed whenever the queue is at its cap.** The rule at
    the cap was "the newest state overwrites the tail", so a press AND its release
    both arriving while full wrote the tail twice (`A`, then `0`) and the press
    never occupied a slot. A finger sliding on the touch d-pad holds the queue at
-   the cap permanently — `src/input.js`'s own comment says several pointermoves
-   per animation frame is the ordinary case — so on a phone this is "I press
+   the cap permanently - `src/input.js`'s own comment says several pointermoves
+   per animation frame is the ordinary case - so on a phone this is "I press
    fire and nothing happens".
 2. **Deleting `noteInput()`'s idempotence guard passed all 368 tests.** Every
    queue test handed the setters a DIFFERENT mask each time, so the guard whose
@@ -27,12 +27,12 @@ drained queue.
 
 ## What I MEASURED
 
-### 1. THE REPRODUCTION, FIRST, EXACTLY — before a line of `src/` was changed
+### 1. THE REPRODUCTION, FIRST, EXACTLY - before a line of `src/` was changed
 
 `node scratchpad/repro.mjs` (a throwaway that imports the real
 `src/input.js` and the real `readJoypad()`; not committed, and every rig in it is
-now a test in `tests/loop.test.js`). k = 1 — one logic frame per animation-frame
-callback — and **no host load at all**. The reviewer's numbers reproduce:
+now a test in `tests/loop.test.js`). k = 1 - one logic frame per animation-frame
+callback - and **no host load at all**. The reviewer's numbers reproduce:
 
 ```
 --- A. minimal repro, k=1, taps only ---
@@ -51,7 +51,7 @@ B2 (20 callbacks, 1 move + 1 tap) taps 20   A-edges  0   depth 1  coalesced 39
 
 **ZERO OF TWENTY SHOTS FIRED.** The first tap survives (it lands on a drained
 queue) and leaves the queue one deep; from then on every sub-frame tap is
-destroyed, and one event-free callback (A3) drains it so the next tap works —
+destroyed, and one event-free callback (A3) drains it so the next tap works -
 which is exactly why this never showed up on a keyboard in a quiet test.
 
 B2 is the variant whose `coalesced 39` matches the review's "coalesced 40" to
@@ -67,7 +67,7 @@ SAME DIR (2 pointermoves/frame, same direction)   depth 0  co 0   depth 1  co 29
 SAME BTN (60 identical setTouchButton presses)    depth 1  co 0   depth 2  co 58
 ```
 
-A queue that never drains — and §1 is what a never-draining queue does to taps.
+A queue that never drains - and §1 is what a never-draining queue does to taps.
 `node --test games/gradius/tests/` with the guard deleted, on wave-14's tree:
 **368 pass, 0 fail.** Nothing in the repo executed it.
 
@@ -86,7 +86,7 @@ A press that never occupies a delivered word can never produce an edge, whatever
 
 > **A BIT MAY NEVER LEAVE THE QUEUE WHILE IT IS STILL AN UNDELIVERED PRESS.**
 
-Everything else in a queued word is a LEVEL. A level may be merged away — the
+Everything else in a queued word is a LEVEL. A level may be merged away - the
 finger is still on the pad and will say what it means next frame, and the cost is
 at most one logic frame of steering fidelity. A press is not a level: it happens
 once and nothing repeats it.
@@ -108,17 +108,17 @@ tail := w | (tail & ~prev)
 `prev` is the word before the tail in the delivery order (the head of the queue,
 or the last word `nextInputWord()` handed out). `tail & ~prev` is exactly the set
 of rising edges the queue owes and has not delivered. OR-ing them into `w` means
-**a press survives its own release** — it is released one to two logic frames
+**a press survives its own release** - it is released one to two logic frames
 later instead of never.
 
 ### Why NOT the other options
 
-* **A deeper or growable queue** — the option that looks obvious and is wrong.
+* **A deeper or growable queue** - the option that looks obvious and is wrong.
   The queue drains at ONE word per LOGIC frame while a sliding finger fills it at
   several per ANIMATION frame, so *any* depth the queue is allowed to reach is
   steering LAG the player feels: the ship keeps turning `depth` logic frames
   after the finger did. At 2 that is 33 ms; at 8, 133 ms and unflyable; growable
-  is unbounded. Wave 14's cap argument was right — **the cap was never the
+  is unbounded. Wave 14's cap argument was right - **the cap was never the
   defect, the merge rule was.** Mutation M4 below makes the queue growable and
   goes red on six checks including the memory bound, so this is not an opinion.
 * **Coalescing only same-value or non-edge-bearing transitions** (i.e. push
@@ -128,7 +128,7 @@ later instead of never.
   the reviewer's rig before discarding it: a finger crossing thirds fast enough
   produces a fresh rising edge per callback, so the queue reaches whatever hard
   bound it is given and sits there.
-* **Protecting only the buttons the port currently reads edges from.** Fragile —
+* **Protecting only the buttons the port currently reads edges from.** Fragile -
   it encodes today's `src/` rather than the cartridge, and `$9775` already needs
   direction edges.
 
@@ -143,13 +143,13 @@ draining hold two words` drives 200,000 transitions (~28 minutes of a finger at
 two pointermoves per animation frame with the frame loop stopped dead) and
 asserts the depth never exceeds the cap.
 
-**What is hit when the bound bites** is intermediate LEVELS — counted as
-`coalesced`, and normal — plus one thing that is a real loss and is now counted
+**What is hit when the bound bites** is intermediate LEVELS - counted as
+`coalesced`, and normal - plus one thing that is a real loss and is now counted
 rather than left in a comment: **a bit pressed, released and pressed AGAIN before
 the first press has reached a logic frame cannot produce two edges**, because the
 first press is still set in the word ahead and `now & ~prev` cannot rise from a
 bit that never fell. That is a second tap of the same button within one or two
-frames, above 30 Hz on one finger — and it is the **frame quantum the cartridge
+frames, above 30 Hz on one finger - and it is the **frame quantum the cartridge
 itself has**: `$81BF` runs once per NMI, so real hardware cannot express it
 either.
 
@@ -165,7 +165,7 @@ the strongest claim this design can make and precisely the claim wave 14's rule
 broke SILENTLY: under `pending[last] = w` a press evaporated with no counter
 moving, so the page could show a healthy `inq 1` while every shot was destroyed.
 
-## The measurement AFTER the fix — same rig, same script
+## The measurement AFTER the fix - same rig, same script
 
 ```
 --- A. minimal repro, k=1, taps only ---
@@ -208,16 +208,16 @@ that last one and checks it produces its edge.
 | `docs/worklog/gradius/14-impl-input-granularity.md` | §4 marked SUPERSEDED, with the correction and the two wrong capture counts the review found |
 | `docs/worklog/gradius/13-FINDING-...md` | a dated LEDGER instead of a status that has meant three different things |
 
-## Deliberate breaks — TWELVE, every one RED, every one restored byte-identical
+## Deliberate breaks - TWELVE, every one RED, every one restored byte-identical
 
-Driver: a throwaway in the session scratchpad — read the file, apply one exact
+Driver: a throwaway in the session scratchpad - read the file, apply one exact
 substring substitution (asserting the anchor occurs exactly once), run
 `node --test` on the named test files, write the original back, compare sha256.
 Not committed; every substitution below is a one-line edit anyone can repeat.
 
 | # | break | files run | result |
 |---|---|---|---|
-| **M1** | `noteInput()` loses `if (w === live) return;` — **the review's R5, which passed the whole 368-test suite** | loop, page-wiring, input | **RED, 4** — all four IDEMPOTENCE checks |
+| **M1** | `noteInput()` loses `if (w === live) return;` - **the review's R5, which passed the whole 368-test suite** | loop, page-wiring, input | **RED, 4** - all four IDEMPOTENCE checks |
 | **M2** | wave 14's rule restored: the newest state overwrites the tail | loop, page-wiring, input | **RED, 4** |
 | **M3** | `prev` read as the tail itself, so nothing is ever undelivered | loop | **RED, 4** |
 | **M4** | the queue is growable again (the "just make it deeper" fix) | loop | **RED, 6** incl. the memory bound |
@@ -304,7 +304,7 @@ at the summary line:**
 
 **0 hardware-OAM bytes and 0 display-list coverage failures**, i.e. no sprite
 moved. That is the number this change could plausibly have disturbed and it did
-not — expected, because the oracle drives `nmi()` with scripted button words and
+not - expected, because the oracle drives `nmi()` with scripted button words and
 never goes through `src/input.js`'s queue at all. Which is worth saying out loud:
 **the corpus cannot see this defect and never could.** `tests/loop.test.js` is
 the only thing in the repo that can, which is why the two new PARTs are where
@@ -314,7 +314,7 @@ The only `[STILL BROKEN]` line is the pre-existing `$8871` `fullScreenLoad`
 knownFail, unchanged at 9 of 12 windows / 1165 bytes.
 
 `framecost.mjs` on this run: logic 0.13 / 1.0 ref, audio 2.22 / 8.0, video
-6.53 / 9.5, sum 8.88 / 15.0 — within 2% of wave 14's and its reviewer's numbers,
+6.53 / 9.5, sum 8.88 / 15.0 - within 2% of wave 14's and its reviewer's numbers,
 so nothing in the merge rule costs a measurable amount. It would not: it is two
 ANDs and an OR on the path that was already there, taken only at the cap.
 
@@ -337,19 +337,19 @@ existing recording and was green.
   should stay at 0** and a non-zero LOST is the one number worth reporting.
 * **`k` is still unmeasured** (wave 14's open item, unchanged). Nothing here
   needed it: the reproduction is at k=1, so the defect never depended on host
-  load at all — which is itself the finding, since `13-FINDING` framed the whole
+  load at all - which is itself the finding, since `13-FINDING` framed the whole
   thing as a load problem.
 * **A second edge of the same bit within one or two frames is still not
   representable**, and it cannot be: `$81BF` runs once per NMI, so the cartridge
   has the same quantum. It is counted (`lostEdges`) rather than described.
-* **I did not touch the review's third item** — a self-check stage for
+* **I did not touch the review's third item** - a self-check stage for
   `framecost.mjs` and tightening `LIMITS.logic` from 1.0 to ~0.3
   (`14-review.md` §8, §3). Out of this wave's mandate, still open, and it is the
   next thing a reviewer should ask for. Nor did I fix `tests/ppu.test.js`'s
   `tileBase` blind spot (`14-review.md` §7); the wrong capture counts in wave
   14's report ARE corrected, in that report.
 * **Wave 11's, 12's and 13's `NN-review.md` are sitting untracked in the
-  worktree** and I did not commit them — they are other agents' files. I DID
+  worktree** and I did not commit them - they are other agents' files. I DID
   stage `14-review.md`, because this commit exists because of it and a commit
   that cites a path the repo does not contain is the stale-doc failure with the
   arrow pointing the other way. The other three are still untracked; someone
@@ -357,8 +357,8 @@ existing recording and was green.
 
 ## A note on the tree, for whoever is next
 
-**HEAD moved under me while I worked** — from `25b8ce6` (Gradius wave 14) to
-`e2043f7` (DDPDOJ W12), because another workflow committed mid-session — and the
+**HEAD moved under me while I worked** - from `25b8ce6` (Gradius wave 14) to
+`e2043f7` (DDPDOJ W12), because another workflow committed mid-session - and the
 SHARED `.git/index` was, throughout, mid-flight for that workflow with dozens of
 staged deletions. `git status` and `git diff HEAD` were therefore both lying
 about `games/gradius`: they reported `src/audio/apu.js`, `tests/loop.test.js`
@@ -390,7 +390,7 @@ node games/gradius/tools/test-all.mjs          # the gate, ~7 min
    `prev` really is the word that will precede the tail in the delivery order.
    At `MAX_PENDING = 2` that is always `pending[0]`; the `delivered` fallback is
    reachable only if the cap ever becomes 1. Mutation M3 (read `prev` as the tail
-   itself) and M8 (stop tracking `delivered`) both go red, so it is guarded — but
+   itself) and M8 (stop tracking `delivered`) both go red, so it is guarded - but
    it is the line where a wrong answer is quiet.
 2. **`lostEdges`' definition, which is subtler than the other counters.** It is
    "presses whose bit is already set in the word ahead of them", counted on both

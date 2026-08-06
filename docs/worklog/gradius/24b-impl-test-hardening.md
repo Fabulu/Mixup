@@ -1,4 +1,4 @@
-# Wave 24b IMPLEMENTER (test hardening) — close W24 NEEDS-FIX so it ships
+# Wave 24b IMPLEMENTER (test hardening) - close W24 NEEDS-FIX so it ships
 
 status: IN PROGRESS
 implementer (sole writer this wave), 2026-08-02

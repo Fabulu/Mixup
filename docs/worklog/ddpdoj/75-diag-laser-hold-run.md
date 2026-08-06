@@ -1,6 +1,6 @@
-# 75 — DIAG: the owner's own run (park at the bottom, hold the laser), and what the invisible things ARE
+# 75 - DIAG: the owner's own run (park at the bottom, hold the laser), and what the invisible things ARE
 
-status: **DONE** — §3 names all five types with board evidence and a picture, §4
+status: **DONE** - §3 names all five types with board evidence and a picture, §4
 answers "does it grow after the midboss" (it does not; **one type arrives**),
 §5 is the divergence report, §6 is what the brief got wrong.
 
@@ -33,17 +33,17 @@ either side.**
 | **`$82`** | a **large blue-and-white forward-swept-wing fighter aircraft**, firing a blue beam | `$1735FC`, 6x88 = **96 x 88 px** | **7** |
 | **`$05` `$07` `$27`** | a **tan/olive helicopter with a turning four-blade rotor** | the `$171xxx` family, 3x40 = **48 x 40 px** | **7** |
 | **`$10`** | a **gold armoured walking mech / heavy tank** | the `$16Cxxx..$16Exxx` family, 4x48 = **64 x 48 px** | 0, 1 and **3** |
-| **`$8B`** | **NOTHING — it has no sprite record on the BOARD either.** It is a lattice of `40x16` hitboxes, HP 32, laid on a grid; the picture belongs to a **bucket 2/3 background element** | — | none |
+| **`$8B`** | **NOTHING - it has no sprite record on the BOARD either.** It is a lattice of `40x16` hitboxes, HP 32, laid on a grid; the picture belongs to a **bucket 2/3 background element** | - | none |
 
 `[M]` And the owner's "after killing the first boss, more and more shows up" is
-**one specific arrival, not a growing population**: type `$82` — the biggest of
-them, and the one W68 `[cited]` found *cannot die* in the port — **first appears
+**one specific arrival, not a growing population**: type `$82` - the biggest of
+them, and the one W68 `[cited]` found *cannot die* in the port - **first appears
 at lf3,825, the same 25-frame rung the midboss vanishes on, and is never seen
 before it or after lf7,400.**
 
 ---
 
-## 1. THE SCENARIO — `stage1-laser-hold`, and every number in it was measured first
+## 1. THE SCENARIO - `stage1-laser-hold`, and every number in it was measured first
 
 `games/ddpdoj/tools/oracle/scenarios.json`, additive:
 
@@ -61,18 +61,18 @@ Everything in that one line was measured on the board before it was written
 
 | `[M]` | value |
 |---|---|
-| the player record does not exist until | **lf1968** — a 150-frame `D` from lf1750 moved nothing at all |
+| the player record does not exist until | **lf1968** - a 150-frame `D` from lf1750 moved nothing at all |
 | the vertical wall pair | `$800` = **the BOTTOM** (confirmed on a framebuffer PNG) and `$6500` = the top |
 | the horizontal wall pair | `$300` left, `$3500` right, centre `$1C00` |
-| holding Button 1 drives the speed index | **22 → 12 by lf2052** — the laser ramp `$24C8BE`, i.e. the laser is UP |
+| holding Button 1 drives the speed index | **22 → 12 by lf2052** - the laser ramp `$24C8BE`, i.e. the laser is UP |
 | the horizontal step at index 12 | **exactly 63 units/frame** |
-| the parked position, verified in the run | `py = $800`, `px = $1C1A` at lf2503 — 26 units, ~half a pixel, right of centre |
+| the parked position, verified in the run | `py = $800`, `px = $1C1A` at lf2503 - 26 units, ~half a pixel, right of centre |
 
 `D` stays held for the whole run on purpose: it is what *sitting at the bottom*
 means, it pins the ship so nothing can drift it, and it keeps the input word
-constant for 17,000 frames. **NOT Button 3** — the corpus's own "firing" idiom
+constant for 17,000 frames. **NOT Button 3** - the corpus's own "firing" idiom
 is the auto-shot, and W69 `[cited]` measured that the port blocks on its first
-frame. **NOT a tap** — the owner asked for the LASER.
+frame. **NOT a tap** - the owner asked for the LASER.
 
 ### 1.1 The ladder
 
@@ -90,7 +90,7 @@ JavaScript over files that already existed after that.
 
 ### 1.2 THE CONTROL, AND IT REFUSES HALF THE BRIEF'S PREMISE
 
-`stage1-laser-hold-natural` — byte for byte the same script, **no poke**.
+`stage1-laser-hold-natural` - byte for byte the same script, **no poke**.
 
 ```
 [M] death at lf2237, respawn lf2310
@@ -100,7 +100,7 @@ JavaScript over files that already existed after that.
 ```
 
 **A ship that parks at the bottom of stage 1 and holds the laser is out of lives
-at lf3,067 — 758 logic frames BEFORE the midboss dies.** So the brief's *"that
+at lf3,067 - 758 logic frames BEFORE the midboss dies.** So the brief's *"that
 kills the midboss"* is true **only with the invulnerability intervention**. A
 human holding the laser dodges; a parked script does not, and this is exactly
 the kind of thing `docs/knowledge/09` means by a seeded or poked run giving
@@ -109,11 +109,11 @@ POKED ladder and is labelled as such.
 
 ---
 
-## 2. THE INSTRUMENT — `tools/boarddl.mjs`
+## 2. THE INSTRUMENT - `tools/boarddl.mjs`
 
 Diagnostic 68 `[cited]` measured which types the **PORT** never draws. It could
 not say what they ARE, because the port never draws them. **The cartridge draws
-them**, and a W69 checkpoint is the whole 128 KiB of main RAM — which is where
+them**, and a W69 checkpoint is the whole 128 KiB of main RAM - which is where
 the display list (`$800000..$8009FF`), the enemy table (`$81332C`, 58 x `$50`)
 and the sub-record pools (`$81459C`/`$81521C`) all live. So the answer was
 already on disk. Nothing in this tool launches an emulator.
@@ -133,7 +133,7 @@ head of each staging buffer in turn recovers the boundaries.
 [M] 210 checkpoints, 21,735 display-list records, 0 UNPLACED
 ```
 
-### 2.1 EVERY CHECK SEEN TO FAIL — and all three mutations are defects this tool actually shipped
+### 2.1 EVERY CHECK SEEN TO FAIL - and all three mutations are defects this tool actually shipped
 
 ```
 [M] --break type-from-word0        RED OK: moved 42 of 14 types  (35 types instead of 14)
@@ -141,19 +141,19 @@ head of each staging buffer in turn recovers the boundaries.
 [M] --break bucket-no-head-search  RED OK: moved 9 of 14 types (every bucket -> b0)
 ```
 
-* **`type-from-word0`** — read the enemy type from the WORD at `+$0` instead of
+* **`type-from-word0`** - read the enemy type from the WORD at `+$0` instead of
   the byte at `+$C`. That word is `(caller's D3 + band index) | $8000`, so the
   census comes out as a **tidy contiguous `$00..$29`** and looks entirely real.
   **This tool printed exactly that on its first run and I nearly believed it.**
-* **`desc-only`** — 68's instrument. It turns type `$82`'s 115 soft matches into
+* **`desc-only`** - 68's instrument. It turns type `$82`'s 115 soft matches into
   115 "exact" ones and moves 3 of type `$11`'s records between buckets, i.e. it
   cannot tell two objects carrying the same sprite apart.
-* **`bucket-no-head-search`** — start the greedy at queue index 0 instead of
+* **`bucket-no-head-search`** - start the greedy at queue index 0 instead of
   searching for bucket 0's own length. Every record on the screen is then
   attributed to bucket 0, which is plausible *because bucket 0 really is the
   biggest bucket*. The tool did this too, and the report looked fine.
 
-The check is DIFFERENTIAL — baseline first, then the mutation, and it requires
+The check is DIFFERENTIAL - baseline first, then the mutation, and it requires
 the ANSWER to move. That is W69 §9's lesson applied rather than quoted.
 
 ---
@@ -178,17 +178,17 @@ is alive.** `NOT-DRAWN` is zero for all five. The type→handler map came out of
 the ladder identical to 68's: `$82`→`$2747C6`, `$05`→`$269CEA`,
 `$07`/`$27`→`$26A2E2`, `$10`→`$268232`, `$8B`→`$27687E`.
 
-### 3.1 `$82` — A BIG BLUE FIGHTER AIRCRAFT, and it is the owner's "weird"
+### 3.1 `$82` - A BIG BLUE FIGHTER AIRCRAFT, and it is the owner's "weird"
 
 `[M]` One stream, `$1735FC`, `6x88` = **96 x 88 pixels**, palette 12 (and a
-palette-31 variant on 2 of 155 slot-frames — the damage flash), **bucket 7**.
+palette-31 variant on 2 of 155 slot-frames - the damage flash), **bucket 7**.
 
 Cropped straight out of the board's own framebuffer at lf4,000 (the record at
-long 184, short 12 — the mapping is `png_x = short`, `png_y = 447 - long`, and
+long 184, short 12 - the mapping is `png_x = short`, `png_y = 447 - long`, and
 the crop lands on the object with no fudging): **a large blue-and-white
 forward-swept-wing / twin-boom fighter with white nacelles and orange trim,
 firing a blue beam downward.** It is one of the biggest non-boss sprites in the
-stage — 96x88 against the tank's 48x32 — and there are up to six on screen at
+stage - 96x88 against the tank's 48x32 - and there are up to six on screen at
 once.
 
 `[M]` The 155 matches are DESCRIPTOR+SIZE, not 80-bit. That is a shortfall of my
@@ -205,11 +205,11 @@ enemy stays alive with negative HP instead of dying"*. `[M]` The thing that
 cannot die and cannot be seen is a 96x88 aircraft, and it is the single largest
 invisible object in the game.
 
-### 3.2 `$05`, `$07`, `$27` — HELICOPTERS
+### 3.2 `$05`, `$07`, `$27` - HELICOPTERS
 
-`[M]` All three share the `$171xxx` stream family — `$1718F4 $171970 $1719EC
+`[M]` All three share the `$171xxx` stream family - `$1718F4 $171970 $1719EC
 $1717FC $171878 $171A68 $171134 $171704 $171780 $171AE4 $171BDC $171CD4 $171EC4
-$171FBC` — all `3x40` = **48 x 40 px**, palette 11, **bucket 7 on every single
+$171FBC` - all `3x40` = **48 x 40 px**, palette 11, **bucket 7 on every single
 one of the 305 slot-frames**.
 
 Cropped at lf3,000: **a small tan/olive helicopter, seen from above, with a
@@ -220,10 +220,10 @@ frame IS the rotor animation.
 statistical.** 68 §2.4 `[cited]` measured `$1718F4` as ALREADY IN THE SHIPPED
 SHEET, and W69's wave list `[cited]` costs the wiring at thirty instructions
 inside `$269D84..$269E1C`. `[M]` The board puts every record of all three types
-in bucket 7 — the bucket the port already fills 100 % of the time — so nothing
+in bucket 7 - the bucket the port already fills 100 % of the time - so nothing
 but the enqueue is missing.
 
-### 3.3 `$10` — A GOLD ARMOURED WALKING MECH
+### 3.3 `$10` - A GOLD ARMOURED WALKING MECH
 
 `[M]` The `$16Cxxx..$16Exxx` family, `4x48` = **64 x 48 px**, palette 11.
 Cropped at lf6,000 and lf5,000: **a gold/tan armoured walker with a grey gun
@@ -233,13 +233,13 @@ barrel and green trim**, standing on the road.
 *"the SPRITE POINTER IS NEVER WRITTEN, so the slot is empty"*. That is true of
 the PORT and **false of the board**: on the cartridge all 265 of `$10`'s live
 slot-frames carry a descriptor and a size, and all 265 are emitted. So `$10` is
-the same defect as `$05`/`$07`/`$82` — an unported tail — one step earlier, not
+the same defect as `$05`/`$07`/`$82` - an unported tail - one step earlier, not
 a different one.
 
-`[M]` Its records land in **buckets 0 (226), 3 (27) and 1 (12)** — the first of
+`[M]` Its records land in **buckets 0 (226), 3 (27) and 1 (12)** - the first of
 the five to reach bucket 3, which matters for §4.
 
-### 3.4 `$8B` — NOT AN ENEMY SPRITE AT ALL
+### 3.4 `$8B` - NOT AN ENEMY SPRITE AT ALL
 
 `[M]` 508 slot-frames, 498 of them collidable, and **zero carry a descriptor or
 a size on the BOARD**. The cartridge does not draw them either. Their geometry:
@@ -250,7 +250,7 @@ a size on the BOARD**. The cartridge does not draw them either. Their geometry:
 ```
 
 `[M]` Annotating those boxes on the board's own framebuffer at lf3,000 puts them
-squarely on **a large gold crystalline structure set in a black pit** — and the
+squarely on **a large gold crystalline structure set in a black pit** - and the
 display-list record covering exactly that area is
 
 ```
@@ -279,7 +279,7 @@ index owns which lattice, and I did not do that.
 
 ---
 
-## 4. **DOES THE POPULATION GROW AFTER THE MIDBOSS? NO — ONE TYPE ARRIVES.**
+## 4. **DOES THE POPULATION GROW AFTER THE MIDBOSS? NO - ONE TYPE ARRIVES.**
 
 `[M]` The midboss is type `$0D` (`$26B6FA`). On the 25-frame rungs:
 
@@ -299,8 +299,8 @@ seen on, and grows 1 → 6 over the next 375 frames.** It is present on 155
 slot-frames between lf3,825 and lf7,400 and on **not one rung outside that
 window** in 210 checkpoints spanning the whole stage.
 
-`[M]` The other four were always there — `$27` from lf2,200, `$10` from lf2,200,
-`$05` from lf2,500, `$07` from lf2,600, `$8B` from before the ladder starts —
+`[M]` The other four were always there - `$27` from lf2,200, `$10` from lf2,200,
+`$05` from lf2,500, `$07` from lf2,600, `$8B` from before the ladder starts -
 and the *total* invisible-in-port population does **not** trend upward:
 
 ```
@@ -313,8 +313,8 @@ and the *total* invisible-in-port population does **not** trend upward:
 
 **So "more and more invisible stuff shows up after the first boss" is a real
 observation with a different cause than a growing population.** What changes at
-the midboss is that the **biggest** invisible object — 96x88 px, six at a time,
-firing beams, and unable to die because `$274AF0` is unported — starts arriving.
+the midboss is that the **biggest** invisible object - 96x88 px, six at a time,
+firing beams, and unable to die because `$274AF0` is unported - starts arriving.
 Before lf3,825 the invisible things are 48x40 helicopters; after it they are
 96x88 aircraft. That is what "more and more" looks like from the player's seat.
 
@@ -337,7 +337,7 @@ So **two fixes, not one**: the enqueue tails for `$82`/`$05`/`$07`/`$27`/`$10`
 
 ---
 
-## 5. THE PORT, PAST THE MIDBOSS — `seedcmp` over the same ladder
+## 5. THE PORT, PAST THE MIDBOSS - `seedcmp` over the same ladder
 
 ```
 [M] node tools/seedcmp.mjs --manifest .../stage1-laser-hold/manifest.json
@@ -355,10 +355,10 @@ every rung before a single frame is stepped.
 
 | blocked segments | family |
 |---:|---|
-| **67** | `$262xxx` — the BACKGROUND ELEMENT sites (`$2627CA` x15, `$26286E` x13, `$26281C` x12, `$26294E` x11, `$2629AE` x11, `$2628DE` x5) |
-| **66** | **`$28A5xx` — the LASER's own impact-spark descriptor list** (`$28A520`..`$28A5A0`, 26 distinct entries) |
-| 22 | `$29xxxx` — the stage-1 boss (`$295304`, `$2943B0`, `$2956F6`, `$295120`) |
-| 27 | `$233030` x6, `$228658`, `$232xxx`, `$229xxx` — stage 2's streams |
+| **67** | `$262xxx` - the BACKGROUND ELEMENT sites (`$2627CA` x15, `$26286E` x13, `$26281C` x12, `$26294E` x11, `$2629AE` x11, `$2628DE` x5) |
+| **66** | **`$28A5xx` - the LASER's own impact-spark descriptor list** (`$28A520`..`$28A5A0`, 26 distinct entries) |
+| 22 | `$29xxxx` - the stage-1 boss (`$295304`, `$2943B0`, `$2956F6`, `$295120`) |
+| 27 | `$233030` x6, `$228658`, `$232xxx`, `$229xxx` - stage 2's streams |
 
 `src/spark.js` names the `$28A5xx` family in its own words `[cited]`:
 
@@ -388,7 +388,7 @@ a held laser, so the cost of that deferral had never been priced.
 [M] b5      first at lf10303
 ```
 
-**The first non-shot field to move is `vf`/`irq6` at lf3,778 — SLOWDOWN — and
+**The first non-shot field to move is `vf`/`irq6` at lf3,778 - SLOWDOWN - and
 that is 4,449 logic frames EARLIER than W69's lf8,227.** `[M]` `irq6 port=1
 board=2` means the board spent two video frames on one logic frame, which
 `portdiff.mjs` already says the port's budget cannot predict.
@@ -397,15 +397,15 @@ board=2` means the board spent two video frames on one logic frame, which
 laser-hold run drags the board into slowdown 47 frames before the midboss dies
 and again at lf7,875, because a held laser plus the impact-spark pool is a
 heavier frame than a tapped shot. **The number to quote is now
-"lf3,778 on `stage1-laser-hold`, lf8,227 on `stage1-play`" — never one of them
+"lf3,778 on `stage1-laser-hold`, lf8,227 on `stage1-play`" - never one of them
 alone.**
 
 `[M]` The 14 GREEN segments are lf3825..3875, 3925..4000, 4100..4225,
-4525..4575, 7600..7800 — **and eight of the fourteen are the 25-frame rungs
+4525..4575, 7600..7800 - **and eight of the fourteen are the 25-frame rungs
 immediately AFTER the midboss dies.** The port reproduces the board exactly
 across the frames the owner is asking about; what it cannot do is DRAW them.
 
-`[M]` The 13 RED segments diverge on `oflg1` alone in 8 of 13 cases — the option
+`[M]` The 13 RED segments diverge on `oflg1` alone in 8 of 13 cases - the option
 block's fire handshake at `$8104AB`, first at lf2,028, which is a held-fire
 field the corpus's tapping scenarios never exercised.
 
@@ -415,11 +415,11 @@ field the corpus's tapping scenarios never exercised.
 
 | the brief says | `[M]` verdict |
 |---|---|
-| "sit at the bottom and hold the laser — that kills the midboss" | **TRUE, but only with the intervention.** The poked ladder kills it by lf3,850; the un-poked control is out of lives at lf3,067 (§1.2) |
+| "sit at the bottom and hold the laser - that kills the midboss" | **TRUE, but only with the intervention.** The poked ladder kills it by lf3,850; the un-poked control is out of lives at lf3,067 (§1.2) |
 | "those invisible things ... maybe debris or something" | **REFUSED, and this is the finding.** They are a 96x88 fighter aircraft, a 48x40 helicopter and a 64x48 gold mech. No debris (§3) |
 | W68's five types | **CONFIRMED as the types and as the handlers**, and **CORRECTED on `$10`**: 68's *"the sprite pointer is never written"* is a PORT fact; the board writes it on all 265 slot-frames (§3.3) |
 | "the population grows after the midboss" | **REFUSED as stated.** The total does not grow; ONE type (`$82`) arrives exactly at the midboss's death and is the biggest of them (§4) |
-| "do they cluster in buckets 2/3, which draw ~0 %" | **HALF.** The four with sprites are 100 % bucket 7 and 0/1/3. The fifth, `$8B`, has no sprite at all and its scenery IS a bucket-2/3 element — including `$232578`, one of 68's five named missing streams (§3.4, §4.1) |
+| "do they cluster in buckets 2/3, which draw ~0 %" | **HALF.** The four with sprites are 100 % bucket 7 and 0/1/3. The fifth, `$8B`, has no sprite at all and its scenery IS a bucket-2/3 element - including `$232578`, one of 68's five named missing streams (§3.4, §4.1) |
 | W69's "first non-shot divergence `irq6` at lf8,227" | **REFINED: that is a property of `stage1-play`.** On a held laser it is **lf3,778** (§5.2) |
 
 ---
@@ -442,17 +442,17 @@ field the corpus's tapping scenarios never exercised.
    the player invulnerable. Another route reaches types this one never spawned;
    every count here is a floor.
 6. **The bucket reconstruction is a reconstruction.** 0 unplaced of 21,735
-   records is strong and is not a proof — only the counters at drain time would
+   records is strong and is not a proof - only the counters at drain time would
    be, and they are cleared before the sample point.
 
 ---
 
 ## 8. WHAT DID NOT CHANGE
 
-* `games/ddpdoj/src/` — **not written to.** T1 owns it this wave.
-* `games/gradius/` — not touched. No web server was started.
-* `node --test games/ddpdoj/tests/` — **934 pass, 0 fail, 0 skipped.**
-* `scenarios.json` is **purely additive** — 22 inserted lines, 0 deleted.
+* `games/ddpdoj/src/` - **not written to.** T1 owns it this wave.
+* `games/gradius/` - not touched. No web server was started.
+* `node --test games/ddpdoj/tests/` - **934 pass, 0 fail, 0 skipped.**
+* `scenarios.json` is **purely additive** - 22 inserted lines, 0 deleted.
 * Nothing ROM-derived is committed: the ladder, the traces, the framebuffer PNGs
   and every crop live under `games/ddpdoj/tools/oracle/out/`, which is
   gitignored, or in the session scratchpad.
@@ -468,27 +468,27 @@ field the corpus's tapping scenarios never exercised.
 - `[M]` §1.2: **and half of it does not.** Un-poked, this exact input is out of
   lives at **lf3,067**, 758 frames before the midboss dies. The kill needs the
   intervention.
-- `[M]` §2.1: **three red checks, and all three are defects this tool shipped** —
+- `[M]` §2.1: **three red checks, and all three are defects this tool shipped** -
   including one that printed a tidy contiguous `$00..$29` type census I nearly
   believed.
 - `[M]` §3.1: **type `$82` is a 96x88 blue forward-swept-wing FIGHTER AIRCRAFT**,
-  stream `$1735FC`, palette 12, bucket 7 — cropped out of the board's own
+  stream `$1735FC`, palette 12, bucket 7 - cropped out of the board's own
   framebuffer. Not debris.
 - `[M]` §3.2: **`$05`/`$07`/`$27` are HELICOPTERS with turning rotors**, the
   `$171xxx` family, 48x40, palette 11, **bucket 7 on all 305 slot-frames**.
-- `[M]` §3.3: **`$10` is a gold armoured walking mech**, 64x48 — and 68's
+- `[M]` §3.3: **`$10` is a gold armoured walking mech**, 64x48 - and 68's
   *"sprite pointer never written"* is a PORT fact; the board writes it every
   frame.
 - `[M]` §3.4: **`$8B` has no sprite on the BOARD either.** It is a 40x16 hitbox
   lattice on the gold crystal structure, whose picture is bucket 3 `$172D18` and
-  bucket 2 **`$232578` — one of 68's five named missing streams.**
+  bucket 2 **`$232578` - one of 68's five named missing streams.**
 - `[M]` §4: **the population does not grow. `$82` ARRIVES**, on the same 25-frame
   rung the midboss vanishes, and on no rung outside lf3,825..7,400.
 - `[M]` §5.1: **the port blocks on 182 of 209 segments**, 66 of them on
-  `$28A520..$28A5A0` — the laser's own impact-spark descriptor list, a DECLARED
+  `$28A520..$28A5A0` - the laser's own impact-spark descriptor list, a DECLARED
   deferral in `src/spark.js` that had never been priced because nothing had ever
   handed the port a held laser.
-- `[M]` §5.2: **the first non-shot divergence is `vf`/`irq6` at lf3,778** —
+- `[M]` §5.2: **the first non-shot divergence is `vf`/`irq6` at lf3,778** -
   slowdown, 4,449 frames earlier than W69's lf8,227, which is therefore a
   property of `stage1-play` and not of the port.
 - `[M]` §5.2: **eight of the fourteen GREEN segments are the rungs immediately
