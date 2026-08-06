@@ -18,6 +18,7 @@ import { B2_MUTATE } from '../src/background.js';
 import { W94_MUTATE } from '../src/bossscripts.js';
 import { W95_MUTATE } from '../src/bossphase.js';
 import { W95G_MUTATE } from '../src/bossguns.js';
+import { W96_MUTATE } from '../src/bossarrival.js';
 
 export const MUTATIONS = {
   // THE ONE THE BRIEF ASKS FOR.  $2495CA moves first ($2417F4 adds the vector
@@ -272,6 +273,17 @@ export const MUTATIONS = {
   'e11-muzzle-order': () => { W95_MUTATE.value = 'e11-muzzle-order'; },
   'e4-init-own-step': () => { W95G_MUTATE.value = 'e4-init-own-step'; },
   'e13-word-scale': () => { W95G_MUTATE.value = 'e13-word-scale'; },
+  // ---- W96, THE ARRIVAL ------------------------------------------------
+  'd-init-fallthrough': () => { W96_MUTATE.value = 'd-init-fallthrough'; },
+  'main0-speed-byte': () => { W96_MUTATE.value = 'main0-speed-byte'; },
+  'main0-phase1-mask': () => { W96_MUTATE.value = 'main0-phase1-mask'; },
+  'main0-arm-obj6': () => { W96_MUTATE.value = 'main0-arm-obj6'; },
+  'main0-one-target': () => { W96_MUTATE.value = 'main0-one-target'; },
+  'd0-one-draw': () => { W96_MUTATE.value = 'd0-one-draw'; },
+  'd0-same-speed': () => { W96_MUTATE.value = 'd0-same-speed'; },
+  'd2-wrap-blt': () => { W96_MUTATE.value = 'd2-wrap-blt'; },
+  'emit-one-axis': () => { W96_MUTATE.value = 'emit-one-axis'; },
+  'obj6-no-bias': () => { W96_MUTATE.value = 'obj6-no-bias'; },
 };
 
 /** W94's one mutation that is EXPECTED to change nothing, and the proof.
@@ -421,6 +433,7 @@ export function breakage(name, game) {
   W94_MUTATE.value = null;       // ...and wave 94's
   W95_MUTATE.value = null;       // ...and wave 95's ten
   W95G_MUTATE.value = null;      // ...and wave 95's three guns
+  W96_MUTATE.value = null;       // ...and wave 96's arrival
   const m = MUTATIONS[name];
   if (!m) {
     throw new Error(`unknown mutation "${name}"; have: ${Object.keys(MUTATIONS).join(', ')}`);

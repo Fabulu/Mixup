@@ -434,7 +434,7 @@ function obj6_292F4A(ram, rom, a6) {
   const at = W96.obj6Frames + cur;
   const d2 = rom.u32(at);                                // $292F54 move.l (A2),D2
   let d1 = (ram.u32(a6 + BS.pos) + 0xf8000080) >>> 0;    // $292F56/$292F5A
-  if (i16(cur) <= 0xb0) {                                // $292F60 cmpi.w/bgt
+  if (W96_MUTATE.value !== 'obj6-no-bias' && i16(cur) <= 0xb0) {   // $292F60
     d1 = (d1 + 0xfe000100) >>> 0;                        // $292F6A addi.l
   }
   d1 = (d1 + rom.u32(at + 4)) >>> 0;                     // $292F70 add.l $4(A2)
@@ -567,7 +567,8 @@ export function main0Step29321C(ram, rom, ctx, a4, a5, a6) {
   for (let i = 0; i < 5; i++) {                          // $293254 moveq #$4 / dbra
     ram.setU32(0x81585c + i * 4, ram.u32(a6 + BS.pos));  // $293256 move.l D1,(A0)+
   }
-  const t2 = main0Target(ram);                           // $29325C..$293268 -- AGAIN
+  const t2 = W96_MUTATE.value === 'main0-one-target'
+    ? t1 : main0Target(ram);                             // $29325C..$293268 -- AGAIN
   const d = dist242494(ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
     t2.y, t2.x);                                         // $29326A jsr $242494
   if (i16(d) <= 0x1800) {                                // $293270 cmpi.w/bgt
@@ -607,7 +608,8 @@ export function main0Step29321C(ram, rom, ctx, a4, a5, a6) {
   orStatus294EFA(ram, a6);                               // $293304 jsr $294EFA
   for (const d0 of [0, 1, 2, 3, 7]) a3Start259962(ram, d0);   // $29330A..$29332C
   for (const d0 of [0, 1, 2, 3, 4, 5]) a2Run2598E6(ram, d0);  // $293332..$29335C
-  a2Stop25994A(ram, 6);                                  // $293362 -- STOP, not arm
+  if (W96_MUTATE.value === 'main0-arm-obj6') a2Run2598E6(ram, 6);
+  else a2Stop25994A(ram, 6);                             // $293362 -- STOP, not arm
   note(ctx, 0x246410, '$293370 jsr $246410 -- MAIN 0\'s five ANIMATION OBJECTS '
     + `($${W96.main0Cues.toString(16).toUpperCase()}, data; the presentation `
     + 'tier, deferred whole since W53)');
@@ -667,12 +669,17 @@ const D1F = { dead: AR.p2Dead, y: AR.wobY2, x: AR.wobX2 };
 //   29386C: cmpi.w #$C,$2A(A6) / ble.w $29387A
 //   293876: clr.w $2A(A6)
 //
-// **THE INIT ZEROES `$2(a4)` AND NOT `$3(a4)`.**  The period comes out of slot
-// RESIDUE -- whatever the previous occupant of this A3 slot left at `+$3` -- and
-// the first tick reloads from it.  That is the same "a slot is freed by
-// `clr.w (a4)`, which zeroes the STATUS WORD ONLY" rule W95 §2 item 6 recorded
-// for E 1, and here it decides how fast the parts animate.  A port that
-// initialised the whole slot would run both parts at period 0.
+// **THE INIT IS A `move.w` AND IT ZEROES BOTH THE TICK AND THE PERIOD.**
+// `397c 0000 0002` is `move.w #$0,($2,A4)`, so `$2(a4)` AND `$3(a4)` go to zero
+// -- and `$293862 move.b $3(a4),$2(a4)` then reloads a period of ZERO, which is
+// why `($2A,A6)` advances EVERY FRAME.  This is the THIRD word/byte trap in one
+// wave (MAIN 0's `$293204` and its two `move.w #$101`s are the others), and the
+// first draft of this comment had it as a `$3(a4)` SLOT RESIDUE read, by analogy
+// with W95 §2 item 6's E 1 -- `tests/w96boss.test.js` drove the init with a
+// residue planted and the word write flattened it. **A port that read this as a
+// byte would leave the period at whatever the last occupant left and animate
+// both parts at the wrong rate**, which is the same defect as the fall-through
+// one and equally invisible in every traced field.
 //
 // **AND THE CEILING IS `ble`, NOT `blt` OR `beq`.**  `$2A` runs 0, 4, 8, $C and
 // then wraps -- FOUR frames, because $C is `ble`-accepted and $10 is not.  One
@@ -683,7 +690,7 @@ function dAnimStep(ram, a4, a6, o) {
   const n = u8(ram.u8(a4 + 2) - 1);                      // $29385A subq.b #$1
   ram.setU8(a4 + 2, n);
   if (n !== 0xff) return;                                // $29385E bcc.w
-  ram.setU8(a4 + 2, ram.u8(a4 + 3));                     // $293862 -- slot residue
+  ram.setU8(a4 + 2, ram.u8(a4 + 3));                     // $293862 -- reload
   ram.setU16(a6 + o.anim, u16(ram.u16(a6 + o.anim) + 4));          // $293868
   const lim = W96_MUTATE.value === 'd2-wrap-blt' ? 0x0b : 0x0c;
   if (i16(ram.u16(a6 + o.anim)) <= lim) return;          // $29386C cmpi.w/ble
@@ -735,24 +742,31 @@ registerScript(0x29321c, (ram, rom, ctx, a4) =>
 // 94 traced columns still green.  Nothing else in this repo could have seen it:
 // the cursor is not a traced field and the sprite it picks is real, in range,
 // and changes every frame either way.
+/** The defect `stage1-sweep` caught in this wave's first version, KEPT as a
+ *  named wrong port so the thing that found it can be seen finding it again. */
+const dInitFellThrough = () => W96_MUTATE.value === 'd-init-fallthrough';
 registerScript(0x2937b6, (ram, rom, ctx, a4) => {       // D 0 INIT -- `rts`
-  void ctx; dWobbleInit(ram, rom, a4);
+  dWobbleInit(ram, rom, a4);
+  if (dInitFellThrough()) dWobbleStep(ram, ctx, a4, A6(ctx, 0x2937b6), D0F);
 });
 registerScript(0x2937cc, (ram, rom, ctx, a4) =>
   dWobbleStep(ram, ctx, a4, A6(ctx, 0x2937cc), D0F));
 registerScript(0x293800, (ram, rom, ctx, a4) => {       // D 1 INIT -- `rts`
-  void ctx; dWobbleInit(ram, rom, a4);
+  dWobbleInit(ram, rom, a4);
+  if (dInitFellThrough()) dWobbleStep(ram, ctx, a4, A6(ctx, 0x293800), D1F);
 });
 registerScript(0x293816, (ram, rom, ctx, a4) =>
   dWobbleStep(ram, ctx, a4, A6(ctx, 0x293816), D1F));
 
 registerScript(0x29384a, (ram, rom, ctx, a4) => {       // D 2 INIT -- `rts`
-  void ctx; ram.setU16(a4 + 2, 0);                      // $29384A move.w #$0
+  ram.setU16(a4 + 2, 0);                                // $29384A move.w #$0
+  if (dInitFellThrough()) dAnimStep(ram, a4, A6(ctx, 0x29384a), D2F);
 });
 registerScript(0x293852, (ram, rom, ctx, a4) =>
   dAnimStep(ram, a4, A6(ctx, 0x293852), D2F));
 registerScript(0x29387c, (ram, rom, ctx, a4) => {       // D 3 INIT -- `rts`
-  void ctx; ram.setU16(a4 + 2, 0);                      // $29387C move.w #$0
+  ram.setU16(a4 + 2, 0);                                // $29387C move.w #$0
+  if (dInitFellThrough()) dAnimStep(ram, a4, A6(ctx, 0x29387c), D3F);
 });
 registerScript(0x293884, (ram, rom, ctx, a4) =>
   dAnimStep(ram, a4, A6(ctx, 0x293884), D3F));
