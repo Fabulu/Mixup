@@ -183,7 +183,7 @@ import {
 } from '../render/index.js';
 import { mergePalette } from '../palette.js';
 import { loadBundle, httpReader, AssetError } from './assets.js';
-import { attachKeyboard, currentPortWord } from './input.js';
+import { attachInput, pollInput, currentPortWord } from './input.js';
 
 // --------------------------------------------------------------- PRESENTATION
 //
@@ -1069,6 +1069,11 @@ class Demo {
 
   loop(now) {
     if (!this.running) return;
+    // WAVE 109 -- poll the gamepad ONCE per ANIMATION frame (this callback is
+    // the rAF), not per logic frame. The Standard Gamepad API is polled, not
+    // event-driven; currentPortWord() reads the controller's state each logic
+    // frame inside step(), so this refresh happens before any step() runs.
+    pollInput();
     if (!this.last) this.last = now;
     let dt = now - this.last;
     this.last = now;
@@ -1240,7 +1245,7 @@ export async function boot(canvas, opts = {}) {
         opts.rung, opts.ladder, opts.ladderDir)
     : null;
   const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung);
-  attachKeyboard(opts.target);
+  attachInput(opts.target);
 
   const frame = (t) => {
     if (!demo.running) return;

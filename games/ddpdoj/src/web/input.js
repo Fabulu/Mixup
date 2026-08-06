@@ -39,6 +39,7 @@
 
 import { BIT } from '../machine.js';
 import { portWordFromBits } from '../input.js';
+import { createInput, attachFloatingStick } from '../../../../shared/input.js';
 
 /** Control name -> a bit POSITION in $803970's layout (machine.js BIT). */
 export const CONTROLS = Object.freeze({
@@ -64,15 +65,51 @@ export const KEYMAP = Object.freeze({
   Enter: 'START',
 });
 
-let keyHeld = 0;
-// Keys we have seen a real (non-repeat) keydown for.  A key already down when
-// the page loaded only ever reaches us as an auto-repeat; taking those at face
-// value turns the Enter that launched the page into a START press.
-let keySeen = 0;
+// DOJ control name -> normalized action name (shared/input.js's vocabulary).
+// The keyboard is now driven by the shared layer; this table is the bridge from
+// the DOJ names game.json and the tests carry to the neutral names the shared
+// controller speaks.
+const DOJ_TO_NORMAL = Object.freeze({
+  UP: 'UP', DOWN: 'DOWN', LEFT: 'LEFT', RIGHT: 'RIGHT',
+  SHOT: 'A1', BOMB: 'A2', AUTO: 'A3', START: 'START',
+});
+
+/** e.code -> normalized action, derived from KEYMAP.  Both KeyY and KeyZ map to
+ *  A1 (SHOT), preserving the Swiss QWERTZ binding the owner asked for twice. */
+const KEYMAP_BY_CODE = Object.freeze(
+  Object.fromEntries(Object.entries(KEYMAP)
+    .map(([code, control]) => [code, DOJ_TO_NORMAL[control]])));
+
+// Owner decision (04-INPUT-SYSTEM.md section 11): gamepad bomb = button B
+// (Standard button 1).  A -> a1 (SHOT), B -> a2 (BOMB), X -> a3 (AUTO),
+// start -> start.  DOJ has no select.  D-pad buttons and the left stick are
+// wired to directions automatically by the shared controller.
+const GAMEPAD_MAP = Object.freeze({ a: 'A1', b: 'A2', x: 'A3', start: 'START' });
+
+// The shared controller (keyboard + gamepad).  null in headless: the tests drive
+// the touch setters and read currentMask() directly, so there is no controller
+// to read and the keyboard contribution is zero.
+let controller = null;
 let touchHeld = 0;
 
-/** The live mask, keyboard OR pad, one bit per CONTROLS entry. */
-export function currentMask() { return (keyHeld | touchHeld) & 0xffff; }
+/** The live mask, controller (keyboard + gamepad) OR pad, one bit per CONTROLS
+ *  entry.  In headless the controller is null and this returns just touchHeld,
+ *  which is what the unit tests drive. */
+export function currentMask() {
+  let cm = 0;
+  if (controller) {
+    const s = controller.state();
+    if (s.up) cm |= M('UP');
+    if (s.down) cm |= M('DOWN');
+    if (s.left) cm |= M('LEFT');
+    if (s.right) cm |= M('RIGHT');
+    if (s.a1) cm |= M('SHOT');
+    if (s.a2) cm |= M('BOMB');
+    if (s.a3) cm |= M('AUTO');
+    if (s.start) cm |= M('START');
+  }
+  return (cm | touchHeld) & 0xffff;
+}
 
 /** Bit POSITIONS, for `portWordFromBits`. */
 export function currentBits(mask = currentMask()) {
@@ -84,38 +121,35 @@ export function currentBits(mask = currentMask()) {
 /** The 68000 port word this frame, via the inverse of $13D464. */
 export function currentPortWord() { return portWordFromBits(currentBits()); }
 
-// --------------------------------------------------------------- keyboard
+// ---------------------------------------------- shared controller (kb + pad)
 
-export function attachKeyboard(target = (typeof window !== 'undefined' ? window : null)) {
-  if (!target) return () => {};                   // headless: tests drive the mask
-  const down = (e) => {
-    const c = KEYMAP[e.code];
-    if (!c) return;
-    e.preventDefault();
-    const b = 1 << CONTROLS[c];
-    if (e.repeat && !(keySeen & b)) return;
-    keySeen |= b;
-    keyHeld |= b;
-  };
-  const up = (e) => {
-    const c = KEYMAP[e.code];
-    if (!c) return;
-    e.preventDefault();
-    const b = 1 << CONTROLS[c];
-    keyHeld &= ~b;
-    keySeen &= ~b;
-  };
-  const clear = () => { keyHeld = 0; keySeen = 0; };
-  target.addEventListener('keydown', down);
-  target.addEventListener('keyup', up);
-  target.addEventListener('blur', clear);
-  return () => {
-    target.removeEventListener('keydown', down);
-    target.removeEventListener('keyup', up);
-    target.removeEventListener('blur', clear);
-    clear();
-  };
+/**
+ * Create and attach the shared input controller (keyboard + gamepad).  Replaces
+ * the per-game keyboard handler: the launch-Enter / `e.repeat` / firstSample
+ * guard is now generalized inside `shared/input.js`'s `createInput`, and the
+ * gamepad (Standard mapping, radial deadzone + 8-way gate) is wired alongside.
+ *
+ * The controller's normalized state is read by `currentMask()` above each logic
+ * frame; the ROM-faithful `portWordFromBits` shuffle is UNCHANGED.
+ *
+ * @returns the controller (for hasPad queries, etc.).  In headless (no target)
+ *          the controller is still created but not attached, and currentMask()
+ *          reads zero from it -- which is what the tests expect.
+ */
+export function attachInput(target = (typeof window !== 'undefined' ? window : null)) {
+  controller = createInput({ keyboard: KEYMAP_BY_CODE, gamepad: GAMEPAD_MAP });
+  if (target) controller.attach(target);
+  return controller;
 }
+
+/** Refresh the gamepad state.  Call once per ANIMATION frame (rAF), not per
+ *  logic frame -- the Standard Gamepad API is polled, not event-driven. */
+export function pollInput() { controller?.pollGamepad(); }
+
+/** Whether a Standard gamepad was seen on the last poll.  UI hint only: the
+ *  browser user-gesture requirement means a pad often reports only after the
+ *  first button press. */
+export function hasGamepad() { return !!controller?.hasPad; }
 
 // ------------------------------------------------------------ on-screen pad
 
@@ -134,8 +168,10 @@ export function setTouchDirections(mask) {
 /** The backstop.  Any interruption the buttons never saw clears everything. */
 export function clearTouch() { touchHeld = 0; }
 
-/** Test seam: the keyboard half of the backstop. */
-export function clearKeyboard() { keyHeld = 0; keySeen = 0; }
+/** Test seam + page backstop: the keyboard half of the reset.  With the shared
+ *  controller, this clears its keyboard state; in headless (no controller) it is
+ *  a no-op, which is what the tests need -- they drive touchHeld directly. */
+export function clearKeyboard() { controller?.clearKeyboard(); }
 
 /**
  * Which directions a point on the d-pad surface means.  `u`,`v` are the pointer
@@ -238,4 +274,30 @@ export function attachPad(dpadEl, buttons, { onPaint } = {}) {
     paint(0);
     for (const b of buttons) delete b.dataset.on;
   };
+}
+
+/**
+ * Wire a floating touch stick on `zoneEl` (the left-half movement zone).  The
+ * stick origin appears on pointerdown; the drag delta runs through the shared
+ * `gate8way` deadzone + 8-way gate and the resulting four booleans are written
+ * into the SAME `setTouchDirections` the fixed D-pad uses.  So both touch
+ * schemes feed exactly the same path, and the picker can switch between them
+ * at runtime with no game-logic change.
+ *
+ * The face buttons (SHOT/BOMB/AUTO/START) stay the fixed cluster; the floating
+ * stick replaces ONLY the D-pad.
+ *
+ * @returns {() => void} the backstop, for blur / pagehide / visibilitychange.
+ */
+export function attachStick(zoneEl, { onPaint } = {}) {
+  const onDirections = ({ up, down, left, right }) => {
+    let m = 0;
+    if (up) m |= M('UP');
+    if (down) m |= M('DOWN');
+    if (left) m |= M('LEFT');
+    if (right) m |= M('RIGHT');
+    setTouchDirections(m);
+    onPaint?.(m, up || down || left || right);
+  };
+  return attachFloatingStick(zoneEl, { onDirections });
 }

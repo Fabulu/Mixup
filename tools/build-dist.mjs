@@ -58,7 +58,9 @@ const GAMES = ['batman', 'gradius', 'ddpdoj'];
 // `code.entry`, deliberately.
 const PAGES = ['gradius', 'ddpdoj'];
 
-const INCLUDE = ['index.html', 'games/index.json',
+// WAVE 109 -- 'shared' publishes dist/shared/ (the shared input layer). Without
+// it every page that imports shared/input.js 404s the module and black-screens.
+const INCLUDE = ['index.html', 'games/index.json', 'shared',
                  ...GAMES.flatMap((g) => [`games/${g}/game.json`,
                                           `games/${g}/src`, `games/${g}/assets`]),
                  ...PAGES.flatMap((g) => fs.readdirSync(path.join(ROOT, 'games', g))
@@ -76,7 +78,7 @@ const INCLUDE = ['index.html', 'games/index.json',
 // terrain/stages.json and metasprites.json, and never these -- so dropping them
 // costs the site nothing. The guard below is the part that matters: an
 // intermediate nobody remembers is exactly how this would come back.
-const NEVER_SHIP = new Set(['prg.bin', 'chr.bin', 'prg.asm']);
+const NEVER_SHIP = new Set(['prg.bin', 'chr.bin', 'prg.asm', 'input.test.js']);
 
 // THERE IS NO ALLOWLIST. There used to be one -- `SHIPPED_ANYWAY`, holding
 // exactly `player.tiles.bin`: 6974 B of the player's animation tile pool

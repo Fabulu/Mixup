@@ -109,8 +109,16 @@
      THE ROTATION IS DONE IN THE PIXEL BUFFER, NOT BY A CSS TRANSFORM, so the
      canvas box stays an exact whole multiple in both orientations. */
   #stage { display: flex; align-items: center; justify-content: center;
-           min-height: 0; min-width: 0; overflow: hidden; }
+           min-height: 0; min-width: 0; overflow: hidden; position: relative; }
   canvas { image-rendering: pixelated; display: block; background: #000; }
+
+  /* WAVE 109 -- the floating-stick movement zone (left half of the stage).
+     Invisible until the picker selects FLOAT; then a coarse pointer landing
+     anywhere in this box becomes the stick origin.  touch-action: none or the
+     browser steals the drag as a scroll, the same lesson the fixed D-pad carries. */
+  #stickzone { position: absolute; left: 0; top: 0; width: 50%; height: 100%;
+               touch-action: none; display: none; z-index: 5; }
+  body.stick #stickzone.on { display: block; }
 
   /* ---- row 3: the on-screen pad ------------------------------------------
      Shown only on a COARSE pointer. On a desktop it is display:none and the
@@ -223,10 +231,11 @@
   <span class="spacer"></span>
   <span id="stats"></span>
   <button id="rot" type="button" aria-pressed="true" title="TATE = the cabinet's own 224x448 portrait picture. WIDE = the raw 448x224 board buffer, unrotated.">TATE</button>
+  <button id="ctrl" type="button" aria-pressed="false" title="Touch control scheme: AUTO / FIXED 8-way D-pad / FLOATING stick. Cycles on click.">CTRL</button>
   <button id="infobtn" type="button" aria-pressed="false">INFO</button>
 </div>
 
-<div id="stage"><canvas id="screen" width="224" height="448"></canvas></div>
+<div id="stage"><canvas id="screen" width="224" height="448"></canvas><div id="stickzone"></div></div>
 
 <!--
   The pad's LAYOUT is here; the BITS are CONTROLS in src/web/input.js, looked up
@@ -494,7 +503,7 @@ useful.</p>
 
 <script type="module">
 import { boot, fitCanvas, MODES, DEFAULT_MODE } from './src/web/app.js';
-import { attachPad, clearKeyboard, CONTROLS } from './src/web/input.js';
+import { attachPad, attachStick, clearKeyboard, CONTROLS } from './src/web/input.js';
 
 const canvas = document.getElementById('screen');
 const stage = document.getElementById('stage');
@@ -514,19 +523,27 @@ const rungParam = Number.isFinite(rungRaw) ? rungRaw : null;
 const ladderParam = params.get('ladder') || undefined;
 const ladderDirParam = params.get('ladderDir') || undefined;
 const dpadEl = document.getElementById('dpad');
+const stickzone = document.getElementById('stickzone');
 const rotBtn = document.getElementById('rot');
+const ctrlBtn = document.getElementById('ctrl');
 const infoEl = document.getElementById('info');
 const infoBtn = document.getElementById('infobtn');
 
-// ---- on-screen controls ----------------------------------------------------
-// Turned on BEFORE the first fit(), so the pad is already taking its space when
-// fitCanvas() measures the stage. Otherwise the first integer scale is computed
-// against a height the canvas is about to lose and the picture jumps a frame
-// later.
-if (matchMedia('(pointer: coarse)').matches) {
-  pad.classList.add('on');
-  document.body.classList.add('touch');
-}
+// ---- on-screen controls + touch-scheme picker (WAVE 109) -------------------
+// The owner chose (04-INPUT-SYSTEM.md section 11): touch Auto default = floating
+// stick for DOJ; the fixed 8-way D-pad stays available via the picker. The CTRL
+// button in #bar cycles AUTO -> FIXED -> FLOAT -> AUTO. The face buttons
+// (SHOT/BOMB/AUTO/START) are always the fixed cluster; only the DIRECTION input
+// switches between the two schemes. Both schemes write setTouchDirections, so
+// the ROM model cannot tell them apart.
+const SCHEMES = ['auto', 'fixed', 'float'];
+const CTRL_STORE = 'ddpdoj.controls';
+let scheme = 'auto';
+try {
+  const saved = localStorage.getItem(CTRL_STORE);
+  if (SCHEMES.includes(saved)) scheme = saved;
+} catch { /* private mode */ }
+const coarse = matchMedia('(pointer: coarse)').matches;
 
 const cells = [...dpadEl.querySelectorAll('i')].map((el) => ({
   el,
@@ -540,8 +557,37 @@ const paintDpad = (mask) => {
   }
 };
 
-const backstop = attachPad(dpadEl, [...pad.querySelectorAll('.tbtn')],
+// Both touch sources are always wired; the picker controls VISIBILITY only.
+// A display:none element does not receive pointer events, so the inactive
+// source is inert. The face buttons are part of the pad's cluster and stay
+// visible whenever touch is on.
+const padBackstop = attachPad(dpadEl, [...pad.querySelectorAll('.tbtn')],
   { onPaint: paintDpad });
+const stickBackstop = attachStick(stickzone);
+
+function applyScheme() {
+  const useFloat = scheme === 'auto' || scheme === 'float';
+  pad.classList.toggle('on', coarse);
+  document.body.classList.toggle('touch', coarse);
+  document.body.classList.toggle('stick', coarse && useFloat);
+  if (coarse) {
+    dpadEl.style.display = useFloat ? 'none' : '';
+    stickzone.classList.toggle('on', useFloat);
+  } else {
+    stickzone.classList.remove('on');
+  }
+  ctrlBtn.textContent = scheme.toUpperCase();
+  ctrlBtn.setAttribute('aria-pressed', String(scheme !== 'auto'));
+}
+applyScheme();
+
+ctrlBtn.addEventListener('click', () => {
+  scheme = SCHEMES[(SCHEMES.indexOf(scheme) + 1) % SCHEMES.length];
+  try { localStorage.setItem(CTRL_STORE, scheme); } catch { /* private mode */ }
+  // Clear any held direction from the scheme being switched away from.
+  padBackstop(); stickBackstop();
+  applyScheme();
+});
 
 // THE BACKSTOP. Anything the controls never see -- a phone call, the app
 // switcher, the browser deciding the gesture was a scroll -- clears the WHOLE
@@ -552,7 +598,7 @@ const backstop = attachPad(dpadEl, [...pad.querySelectorAll('.tbtn')],
 // SINCE WAVE 9 IT ALSO MATTERS FOR THE LOOP, not just the ship: a held SHOT
 // reaches the laser ramp's named throw after four logic frames, so a fire
 // button left stuck by a lost pointerup would stop the port on purpose.
-const clearAll = () => { backstop(); clearKeyboard(); };
+const clearAll = () => { padBackstop(); stickBackstop(); clearKeyboard(); };
 addEventListener('blur', clearAll);
 addEventListener('pagehide', clearAll);
 document.addEventListener('visibilitychange', () => { if (document.hidden) clearAll(); });
