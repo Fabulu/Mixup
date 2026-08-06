@@ -1538,6 +1538,53 @@ SHOT_WINDOWS.extend([
                        "this window covers all three uniformly"),
 ])
 
+# ==================== W107: THE BOSS DEATH EXPLOSION TABLES ===================
+#
+# `src/boss.js` D-script 6 (`$293E04`) spawns its death explosion through the
+# already-shipped `src/effects.js spawnEffect`, reading four table shapes the
+# `$2938AE`/`$2938F2` burst helpers and the timer-C direct spawn walk.  Each
+# table's far end is pinned by the `$FFFF` terminator AND by code (the routines
+# that follow them in the boss bank), sized from the image this export.
+SHOT_WINDOWS.extend([
+    # D-script 6's state-0 burst table (`$29412E bsr $2938AE`, A1 = $294154).
+    # Eight 12-byte entries then $FFFF at $2941B4; entry 7's loopctl=$0001 arms
+    # timer A.  The window includes the $FFFF word (the helper reads it).
+    # Pinned at the far end by $2941B6 (the state-1-end table, below).
+    (0x294154, 0x0062, "W107: D-script 6 state-0 burst table $294154 -- eight "
+                       "12-byte [delay,kind,f1c,nudge.l,loopctl] entries for the "
+                       "$2938AE burst helper plus the $FFFF terminator at $2941B4"),
+    # D-script 6's state-1-end burst table (`$2940F0 bsr $2938AE`, A1 = $2941B6).
+    # Four 12-byte entries then $FFFF at $2941E6; pinned by $2941E8 (timer-C).
+    (0x2941B6, 0x0032, "W107: D-script 6 state-1-end burst table $2941B6 -- four "
+                       "12-byte entries plus $FFFF for the $2938AE burst helper"),
+    # The timer-C kind table (`$293F8C`/`$29403C lea $2941E8`).  16-byte entries
+    # [kind,f1c,nudge.l,speedangle.w,pad6], indexed by cursor $E(a4) stepping by
+    # $10.  State 2 wraps at $80 (8 entries), state 3 at $100 (16 entries); the
+    # table holds all 16 and repeats.  No terminator (cursor-walked, not scanned).
+    (0x2941E8, 0x0100, "W107: D-script 6 timer-C kind table $2941E8 -- sixteen "
+                       "16-byte entries [kind,f1c,nudge.l,speedangle.w,pad6], read "
+                       "by the $293F8C/$29403C direct spawns"),
+    # Part 1's burst tables: state-0 (`$293AE0 bsr $2938AE`, A1=$293AEE) and
+    # state-2 (`$293A5E bsr $2938F2`, A1=$293B50).  The state-0 table's eight
+    # entries end at $293B4E ($FFFF); $293B50 begins the state-2 table.
+    (0x293AEE, 0x0062, "W107: part 1 state-0 burst table $293AEE -- eight 12-byte "
+                       "entries plus $FFFF for the $2938AE helper; pinned by "
+                       "$293B50"),
+    (0x293B50, 0x0032, "W107: part 1 state-2 burst table $293B50 -- four 12-byte "
+                       "entries plus $FFFF for the $2938F2 helper; pinned by "
+                       "$293B82 (part-script-5 INIT, code)"),
+    # Part 2's burst tables: state-0 (`$293D24 bsr $2938AE`, A1=$293D32) and
+    # state-2 (`$293CA2 bsr $2938F2`, A1=$293D94).  State-0 ends at $293D92;
+    # state-2 ends at $293DC4, pinned by $293DC6 (D-script 6's INIT, CODE).
+    (0x293D32, 0x0062, "W107: part 2 state-0 burst table $293D32 -- eight 12-byte "
+                       "entries plus $FFFF for the $2938AE helper; pinned by "
+                       "$293D94"),
+    (0x293D94, 0x0032, "W107: part 2 state-2 burst table $293D94 -- four 12-byte "
+                       "entries plus $FFFF for the $2938F2 helper; pinned by "
+                       "$293DC6 (D-script 6 INIT, code)"),
+])
+
+
 
 def check_boss_arrival_tables(d: bytes) -> None:
     """W96: the six windows above, pinned from the image on every export."""

@@ -673,7 +673,11 @@ test('every emitter D-script 6 counts is keyed by the address it stands at',
       assert.ok(/^\$[0-9A-F]{6}/.test(v.trim()),
         `$${Number(k).toString(16)} must name its own call site`);
     }
-    assert.ok(Object.keys(BOSS_NOTED).length >= 14);
+    // W107 dropped this from 14 to 11: the death emitters ($289004, $2938AE,
+    // $28B4BE, $242EC2) became real spawnEffect calls, not notes.  What remains
+    // is SOUND ($28Cxxx), impact pool A ($2440E0), the anim-object loader
+    // ($246410) and the timer-D SOUND dispatch ($294134).
+    assert.equal(Object.keys(BOSS_NOTED).length, 11);
   });
 
 test('$292902 is in the handler registry -- 19 of 19 stage-1 script handlers',

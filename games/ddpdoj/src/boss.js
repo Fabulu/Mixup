@@ -74,6 +74,8 @@ import {
 } from './scheduler.js';
 import { runStageAdvance242952 } from './stageend.js';
 import { enqueueRegisters } from './spritequeue.js';
+import { spawnEffect, B } from './effects.js';
+import { drawByte242B3C, drawWord242EC2 } from './rng.js';
 
 /** The boss's record and sub-record fields, by the offset the ROM uses. */
 export const BOSS = {
@@ -97,24 +99,28 @@ export const BOSS = {
   bombFlash: 0x81b61a,                  // $294B9A move.l #$30000
 };
 
-/** Every emitter this wave COUNTS instead of running, with the instruction it
- *  stands at.  Exported so a test can assert the list rather than a number. */
+/** Every emitter this file COUNTS instead of running, with the instruction it
+ *  stands at.  Exported so a test can assert the list rather than a number.
+ *
+ *  W107 CORRECTION: the `$289004` allocator, the `$2938AE`/`$2938F2` table
+ *  bursts and the `$28B4BE` big burst are NO LONGER NOTES -- they are real
+ *  `spawnEffect` calls now (D-script 6's death explosion, ported this wave off
+ *  `src/effects.js` which W54 shipped).  The entries that remain are SOUND
+ *  (`$28Cxxx`), the impact-pool-A `$2440E0` (W52's refusal), the
+ *  animation-object loader `$246410` (the presentation tier) and the timer-D
+ *  dispatch (sound routines off `$294134`). */
 export const BOSS_NOTED = Object.freeze({
   0x243dd0: '$292912/$294C68/$294D4C jsr $243DD0 -- the hit-stop / screen-shake '
     + 'driver (170 instructions, no reader in the stage-end chain)',
-  0x289004: '$293E3A/$293E7E/$293F8C/$29403C jsr $289004 -- the D-script-6 '
-    + 'EXPLOSION allocator (the $28Axxx effect family, deferred whole since W53)',
   0x2440e0: '$293EEC jsr $2440E0 -- impact pool A, exactly where W52/W53/W54 '
     + 'left it',
-  0x246410: '$293F18 / $28D770 jsr $246410 -- the ANIMATION-OBJECT loader (286 '
-    + 'instructions), the presentation tier',
+  0x246410: '$293F18 / $29407C / $28D770 jsr $246410 -- the ANIMATION-OBJECT '
+    + 'loader (286 instructions), the presentation tier',
   0x28c392: '$293EE6 jsr $28C392 -- SOUND (the $28Cxxx family, deferred whole)',
   0x28c2c2: '$293FDC/$29411E jsr $28C2C2 -- SOUND',
-  0x28c2a8: '$2940A2 jsr $28C2A8 -- SOUND',
-  0x28b4be: '$29409C jsr $28B4BE -- the big-explosion emitter',
-  0x242ec2: '$294082 jsr $242EC2 -- a draw off the RNG family',
-  0x2938ae: '$2940F0/$29412E bsr $2938AE -- D-script 6\'s own table-driven '
-    + 'explosion burst (a boss-local emitter)',
+  0x28c2a8: '$2940A2/$293A4E/$293C92 jsr $28C2A8 -- SOUND',
+  0x294134: '$293F66/$294016 jsr (A0) off $294134 -- timer-D dispatch, SOUND '
+    + 'routines only ($28C25A/$28C274/$28C2A8/$28C2C2); no visuals',
   0x23c4d0: '$294DE4 jsr $23C4D0 -- the $8039xx pause/flag block',
   0x253564: '$294DEA jsr $253564 -- the $811F8C clamp (recon 49 4: two '
     + 'absolute-long references, both inside itself)',
@@ -405,6 +411,135 @@ function decByteBcc(ram, a) {
   return v !== 0;             // true == bcc taken == "not yet"
 }
 
+// ============================================================ W107: THE EMITTERS
+//
+// D-script 6's death animation COUNTED its explosions as notes since W62
+// because the allocator (`$289004`) was not yet ported.  W54 ported it as
+// `src/effects.js spawnEffect` and shipped it for enemy deaths; the
+// `BOSS_NOTED[0x289004]` "deferred whole since W53" line was STALE (recon 106).
+// The four routines below transcribe the four emitter shapes the death arm
+// reaches, each off the already-shipped allocator + driver + pool B.
+//
+// The position comes from the CALLER (D2 in the ROM): `$2(a6)` for the boss,
+// `$22(a6)`/`$62(a6)` for the two parts.  A0 may be the bit bucket on a full
+// pool or an out-of-range kind; `spawnEffect` counts that event, and the field
+// writes then land in a slot nothing drives -- faithfully (`src/effects.js`).
+
+/** `$2938AE` -- the table-driven burst, bucket `$0C`.  Walks 12-byte ROM
+ *  entries `[delay:2][kind:2][f1c:2][nudge:4][loopctl:2]` until a `$FFFF`
+ *  delay.  Per entry: allocate, set `+$1C=f1c(byte)`, `+$18=delay`,
+ *  `+$26=nudge(long)`, `+$02=pos`, `+$1E=$0C`, `+$12=0`, `+$14=0`; and if
+ *  `loopctl!=0`, `bset (loopctl-1),$3(a4)`.  The state-0 table's last entry
+ *  carries `loopctl=$0001`, which is the timer-A gate -- porting the burst
+ *  without loopctl would silence every state-1/2 kind-$10 spawn.
+ *  Used by D-script 6 (states 0 and 1-end) and the parts (state 0). */
+function burst2938AE(ram, rom, ctx, a4, pos, tableAddr, site) {
+  let a1 = tableAddr;
+  for (let guard = 0; ; guard++) {
+    const delay = rom.u16(a1); a1 += 2;                    // $2938AE move.w (A1)+,D1
+    if (delay === 0xffff) return;                           // $2938B0/$2938B4 beq -> rts
+    if (guard > 32) {
+      unreached(0x2938b0, `$2938AE's burst loop consumed 32 entries without a `
+        + `$FFFF terminator at table $${tableAddr.toString(16).toUpperCase()}; `
+        + `every measured table is at most 8 entries`);
+    }
+    const kind = rom.u16(a1); a1 += 2;                      // $2938B8 move.w (A1)+,D0
+    const a0 = spawnEffect(ram, ctx, kind, site);           // $2938BA jsr $289004
+    const f1c = rom.u16(a1); a1 += 2;                       // $2938C0 move.w (A1)+,D0
+    ram.setU8(a0 + B.f1c, f1c & 0xff);                      // $2938C2 move.b D0,$1C(A0)
+    ram.setU16(a0 + B.delay, delay);                        // $2938C6 move.w D1,$18(A0)
+    const nudge = rom.u32(a1); a1 += 4;                     // $2938CA move.l (A1)+,$26(A0)
+    ram.setU32(a0 + B.nudge, nudge);
+    ram.setU32(a0 + B.pos, pos);                            // $2938CE move.l D2,$2(A0)
+    ram.setU16(a0 + B.bucket, 0x000c);                      // $2938D2 move.w #$C,$1E(A0)
+    ram.setU16(a0 + B.sub12, 0);                            // $2938D8 move.w #$0,$12(A0)
+    ram.setU16(a0 + B.sub14, 0);                            // $2938DE move.w #$0,$14(A0)
+    const loopctl = rom.u16(a1); a1 += 2;                   // $2938E4 move.w (A1)+,D0
+    if (loopctl !== 0) {                                    // $2938E6 beq -> loop
+      const bit = (loopctl - 1) & 7;                        // $2938E8 subq.w #1,D0 ; bset.b is mod 8
+      ram.setU8(a4 + 0x03, ram.u8(a4 + 0x03) | (1 << bit)); // $2938EA bset.b D0,$3(A4)
+    }
+  }
+}
+
+/** `$2938F2` -- the OTHER table-driven burst, bucket `$04`.  Same 12-byte
+ *  entry shape as `$2938AE` but the last word is a SPEED/ANGLE pair (not
+ *  loopctl), it writes `+$14=$0400`, and it jitters the angle via `$242B3C`:
+ *  `+$1A=speedangle(word)`, then `add.b (rng>>2 signed),$1B`.  Used by the
+ *  two parts' state-2 bursts (tables `$293B50`/`$293D94`). */
+function burst2938F2(ram, rom, ctx, pos, tableAddr, site) {
+  let a1 = tableAddr;
+  for (let guard = 0; ; guard++) {
+    const delay = rom.u16(a1); a1 += 2;                    // $2938F2 move.w (A1)+,D1
+    if (delay === 0xffff) return;                           // $2938F4/$2938F8 beq -> rts
+    if (guard > 32) {
+      unreached(0x2938f4, `$2938F2's burst loop consumed 32 entries without a `
+        + `$FFFF terminator at table $${tableAddr.toString(16).toUpperCase()}`);
+    }
+    const kind = rom.u16(a1); a1 += 2;                      // $2938FC move.w (A1)+,D0
+    const a0 = spawnEffect(ram, ctx, kind, site);           // $2938FE jsr $289004
+    const f1c = rom.u16(a1); a1 += 2;                       // $293904 move.w (A1)+,D0
+    ram.setU8(a0 + B.f1c, f1c & 0xff);                      // $293906 move.b D0,$1C(A0)
+    ram.setU16(a0 + B.delay, delay);                        // $29390A move.w D1,$18(A0)
+    const nudge = rom.u32(a1); a1 += 4;                     // $29390E move.l (A1)+,$26(A0)
+    ram.setU32(a0 + B.nudge, nudge);
+    ram.setU32(a0 + B.pos, pos);                            // $293912 move.l D2,$2(A0)
+    ram.setU16(a0 + B.bucket, 0x0004);                      // $293916 move.w #$4,$1E(A0)
+    ram.setU16(a0 + B.sub12, 0);                            // $29391C move.w #$0,$12(A0)
+    ram.setU16(a0 + B.sub14, 0x0400);                       // $293922 move.w #$400,$14(A0)
+    const sa = rom.u16(a1); a1 += 2;                        // $293928 move.w (A1)+,$1A(A0)
+    ram.setU16(a0 + B.speed, sa);
+    const r = drawByte242B3C(ram, rom);                     // $29392C jsr $242B3C -> D0
+    const signed = r >= 0x80 ? r - 0x100 : r;               // $293932 add.b D0,$1B(A0):
+    ram.setU8(a0 + B.angle, (ram.u8(a0 + B.angle) + signed) & 0xff);  // ..(asr in caller;
+  }                                                         //  $2938F2 adds the raw byte)
+}
+
+/** `$293F8C`/`$29403C` -- the timer-C direct spawn.  Reads a 16-byte entry
+ *  from table `$2941E8` at the cursor `+$0E(a4)`: `[kind:2][f1c:2][nudge:4]
+ *  [speedangle:2]`.  One record: bucket `$0C`, `+$12=0`, `+$14=$0800`,
+ *  position and speed/angle from the table.  The cursor advance and wrap are
+ *  the CALLER's (they differ between state 2, wrap $80, and state 3, wrap
+ *  $100). */
+function timerCSpawn293F8C(ram, rom, ctx, a4, pos, site) {
+  const a1 = 0x2941e8 + ram.u16(a4 + D6.cursorE);          // $293F80 lea / $293F86 adda.w $E(A4)
+  const kind = rom.u16(a1);                                 // $293F8A move.w (A1)+,D0
+  const a0 = spawnEffect(ram, ctx, kind, site);             // $293F8C jsr $289004
+  const f1c = rom.u16(a1 + 2);                              // $293F92 move.w (A1)+,D0
+  ram.setU8(a0 + B.f1c, f1c & 0xff);                        // $293F94 move.b D0,$1C(A0)
+  const nudge = rom.u32(a1 + 4);                            // $293F98 move.l (A1)+,$26(A0)
+  ram.setU32(a0 + B.nudge, nudge);
+  ram.setU32(a0 + B.pos, pos);                              // $293F9C move.l $2(A6),$2(A0)
+  ram.setU16(a0 + B.bucket, 0x000c);                        // $293FA2 move.w #$C,$1E(A0)
+  ram.setU16(a0 + B.sub12, 0);                              // $293FA8 move.w #$0,$12(A0)
+  ram.setU16(a0 + B.sub14, 0x0800);                         // $293FAE move.w #$800,$14(A0)
+  const sa = rom.u16(a1 + 8);                               // $293FB4 move.w (A1)+,$1A(A0)
+  ram.setU16(a0 + B.speed, sa);
+}
+
+/** `$28B4BE` -- the BIG 5-particle burst, fired every second timer-C tick in
+ *  state 2 (`$29409C`).  D0 = a shift count (0 at the boss call site),
+ *  D1 = a base angle byte (from `$242EC2`), D2 = position, D3 = bucket `$0C`.
+ *  Each particle: speed = `const >> D0`, angle = D1 + (`$242B3C` asr.b #2),
+ *  with a per-particle spawn delay 0..6.  Kinds 4,7,4,5,5. */
+function bigBurst28B4BE(ram, rom, ctx, pos, rngByte, shift, bucket, site) {
+  const particles = [
+    [0x04, 0x05, 0], [0x07, 0x07, 1], [0x04, 0x0a, 2],
+    [0x05, 0x0e, 3], [0x05, 0x12, 6],
+  ];
+  for (const [kind, spdConst, delay] of particles) {
+    const a0 = spawnEffect(ram, ctx, kind, site);           // $28B4C2/+ jsr $289004
+    ram.setU16(a0 + B.bucket, bucket);                      // $28B4C8 move.w D3,$1E(A0)
+    ram.setU32(a0 + B.pos, pos);                            // $28B4CC move.l D2,$2(A0)
+    ram.setU8(a0 + B.speed, (spdConst >> shift) & 0xff);    // $28B4D0/+ lsr.w D6,D0 / move.b
+    ram.setU8(a0 + B.angle, rngByte & 0xff);                // $28B4D8 move.b D1,$1B(A0)
+    const r = drawByte242B3C(ram, rom);                     // $28B4DC jsr $242B3C
+    const adj = (r >= 0x80 ? r - 0x100 : r) >> 2;           // $28B4E2 asr.b #2,D0
+    ram.setU8(a0 + B.angle, (ram.u8(a0 + B.angle) + adj) & 0xff); // $28B4E4 add.b D0,$1B
+    ram.setU16(a0 + B.delay, delay);                        // $28B4E8 move.w #N,$18(A0)
+  }
+}
+
 /** `$293E04` -- D-script 6's STEP: the boss's death animation, and the last
  *  128 frames of it are the stage's. */
 function d6Step293E04(ram, rom, ctx, a4) {
@@ -421,17 +556,39 @@ function d6Step293E04(ram, rom, ctx, a4) {
     }
     return;                                            // $293E1E rts
   }
+  // D2 in the ROM is the boss sub-record position `$2(A6)`; every emitter
+  // below reads it.  `$292902` publishes A6 for the frame (`bossA6`).
+  const a6 = bossA6(ctx, 0x293e04);
+  const bossPos = ram.u32(a6 + 0x02);                   // $293E56/$293E9A move.l $2(A6)
   // ---- the two emitter timers ($293E20 / $293E64), both gated on $3(a4)'s bits
   if ((ram.u8(a4 + D6.flags) & 2) !== 0) {             // $293E20 btst #$1
     if (!decByteBcc(ram, a4 + D6.tB)) {                // $293E2A subq.b/bcc
       ram.setU8(a4 + D6.tB, ram.u8(a4 + D6.tBr));      // $293E32
-      note(ctx, 0x289004);                             // $293E3A + $293E4C $242B3C
+      // $293E38 moveq #$5,D0 -- kind $05, bucket $0C, speed $14, rng angle
+      const e = spawnEffect(ram, ctx, 0x05, 0x293e3a); // $293E3A jsr $289004
+      ram.setU16(e + B.bucket, 0x000c);                // $293E40
+      ram.setU8(e + B.speed, 0x14);                    // $293E46 move.b #$14,$1A
+      ram.setU8(e + B.angle, drawByte242B3C(ram, rom));// $293E4C/$293E52 jsr $242B3C
+      ram.setU32(e + B.pos, bossPos);                  // $293E56
+      ram.setU32(e + B.nudge, 0xf8000000);             // $293E5C
     }
   }
   if ((ram.u8(a4 + D6.flags) & 1) !== 0) {             // $293E64 btst #$0
     if (!decByteBcc(ram, a4 + D6.tA)) {                // $293E6E
       ram.setU8(a4 + D6.tA, ram.u8(a4 + D6.tAr));      // $293E76
-      note(ctx, 0x289004);                             // $293E7E and $293EAA -- TWO
+      // $293E7C/$293EAA: TWO kind-$10 spawns, speeds $18/$14 -- no sub12/14
+      const e1 = spawnEffect(ram, ctx, 0x10, 0x293e7e);  // $293E7E
+      ram.setU16(e1 + B.bucket, 0x000c);               // $293E84
+      ram.setU8(e1 + B.speed, 0x18);                   // $293E8A
+      ram.setU8(e1 + B.angle, drawByte242B3C(ram, rom));// $293E90/$293E96
+      ram.setU32(e1 + B.pos, bossPos);                 // $293E9A
+      ram.setU32(e1 + B.nudge, 0xe8000400);            // $293EA0
+      const e2 = spawnEffect(ram, ctx, 0x10, 0x293eaa);  // $293EAA
+      ram.setU16(e2 + B.bucket, 0x000c);               // $293EB0
+      ram.setU8(e2 + B.speed, 0x14);                   // $293EB6
+      ram.setU8(e2 + B.angle, drawByte242B3C(ram, rom));// $293EBC/$293EC2
+      ram.setU32(e2 + B.pos, bossPos);                 // $293EC6
+      ram.setU32(e2 + B.nudge, 0xf3fff800);            // $293ECC
     }
   }
   // ---- state 5 ($293ED4)
@@ -456,12 +613,12 @@ function d6Step293E04(ram, rom, ctx, a4) {
   if (st() === 3) {
     if (!decByteBcc(ram, a4 + D6.tD)) {                // $293F4C
       ram.setU8(a4 + D6.tD, ram.u8(a4 + D6.tDr));      // $293F54
-      note(ctx, 0x2938ae);                             // $293F66 jsr (a0) off $294134
+      note(ctx, 0x294134);                             // $293F66 jsr (A0) off $294134 -- timer-D SOUND
       ram.setU16(a4 + D6.cursor14, u16(ram.u16(a4 + D6.cursor14) + 4) & 0x1f);
     }
     if (!decByteBcc(ram, a4 + D6.tC)) {                // $293F72
       ram.setU8(a4 + D6.tC, ram.u8(a4 + D6.tCr));      // $293F7A
-      note(ctx, 0x289004);                             // $293F8C
+      timerCSpawn293F8C(ram, rom, ctx, a4, bossPos, 0x293f8c);  // $293F8C jsr $289004
       const e = u16(ram.u16(a4 + D6.cursorE) + 0x10);  // $293FB8 addi.w #$10
       ram.setU16(a4 + D6.cursorE, e);
       if (e === 0x100) {                               // $293FBE cmpi.w #$100
@@ -479,20 +636,21 @@ function d6Step293E04(ram, rom, ctx, a4) {
     } else {
       if (!decByteBcc(ram, a4 + D6.tD)) {              // $293FFC
         ram.setU8(a4 + D6.tD, ram.u8(a4 + D6.tDr));    // $294004
-        note(ctx, 0x2938ae);                           // $294016
+        note(ctx, 0x294134);                           // $294016 jsr (A0) off $294134 -- timer-D SOUND
         ram.setU16(a4 + D6.cursor14, u16(ram.u16(a4 + D6.cursor14) + 4) & 0x1f);
       }
       if (!decByteBcc(ram, a4 + D6.tC)) {              // $294022
         ram.setU8(a4 + D6.tC, ram.u8(a4 + D6.tCr));    // $29402A
-        note(ctx, 0x289004);                           // $29403C
+        timerCSpawn293F8C(ram, rom, ctx, a4, bossPos, 0x29403c);  // $29403C jsr $289004
         // $294068 -- EVERY SECOND emission also fires the big one.
         const t = u16(ram.u16(a4 + D6.toggle) + 1) & 1;
         ram.setU16(a4 + D6.toggle, t);
         if (t === 0) {
-          note(ctx, 0x246410);                         // $29407C
-          note(ctx, 0x242ec2);                         // $294082
-          note(ctx, 0x28b4be);                         // $29409C
-          note(ctx, 0x28c2a8);                         // $2940A2
+          note(ctx, 0x246410);                         // $29407C -- anim-object loader
+          // $294082 jsr $242EC2 -> D0; $294088 move.b D0,D1 -- the base angle
+          const rngByte = drawWord242EC2(ram, rom) & 0xff;   // $294082
+          bigBurst28B4BE(ram, rom, ctx, bossPos, rngByte, 0, 0x000c, 0x29409c); // $29409C
+          note(ctx, 0x28c2a8);                         // $2940A2 -- SOUND
         }
         const e = u16(ram.u16(a4 + D6.cursorE) + 0x10);   // $2940A8
         ram.setU16(a4 + D6.cursorE, e);
@@ -511,7 +669,8 @@ function d6Step293E04(ram, rom, ctx, a4) {
     const n = u16(ram.u16(a4 + D6.wait) - 1);          // $2940DE
     ram.setU16(a4 + D6.wait, n);
     if (n === 0) {
-      note(ctx, 0x2938ae);                             // $2940F0
+      // $2940E6 move.l $2(A6),D2 / lea $2941B6 / bsr $2938AE -- state-1-end burst
+      burst2938AE(ram, rom, ctx, a4, bossPos, 0x2941b6, 0x2940f0);  // $2940F0
       ram.setU8(a4 + D6.state, 2);                     // $2940F4
       ram.setU16(a4 + D6.wait, 0x80);                  // $2940FA -- **NOT 32**
       ram.setU8(a4 + D6.flags, ram.u8(a4 + D6.flags) | 2);   // $294100 bset #$1
@@ -521,10 +680,11 @@ function d6Step293E04(ram, rom, ctx, a4) {
   // ---- state 0 ($29410E)
   if (st() === 0) {
     ram.setU8(a4 + D6.state, 1);                       // $294118
-    note(ctx, 0x28c2c2);                               // $29411E
-    note(ctx, 0x2938ae);                               // $29412E
+    note(ctx, 0x28c2c2);                               // $29411E -- SOUND
+    // $294124 move.l $2(A6),D2 / lea $294154 / bsr $2938AE -- THE death burst.
+    // Its last entry carries loopctl=$0001, which arms timer A ($3(a4) bit 0).
+    burst2938AE(ram, rom, ctx, a4, bossPos, 0x294154, 0x29412e);  // $29412E
   }
-  void rom;
 }
 
 
@@ -535,25 +695,29 @@ function d6Step293E04(ram, rom, ctx, a4) {
 // D-script 6 stops on the very frame the boss dies.  They are the two side
 // parts falling off the bottom of the screen.
 //
-// **BOTH OF THEM CARRY A LARGE BLOCK OF EMITTER CODE THAT CANNOT RUN**, and for
-// two different reasons, which is worth writing down because they read as the
-// same routine:
+// **BOTH OF THEM CARRY A LARGE BLOCK OF EMITTER CODE THAT THE PORT DOES NOT
+// RUN**, for two different reasons on the board, and a third in the port:
 //
 //   * script 4's step BEGINS `$293970 bra.w $293A44`, jumping OVER
 //     `$293974..$293A42` -- three `$3(a4)`-gated spark bursts -- to the state
 //     machine.  Nothing branches back.  Sixty-nine instructions of dead code.
 //   * script 5's step has no such jump and reaches the same three blocks, but
-//     each is `btst.b #$n,$3(a4) / beq`, `$293B88 move.b #$0,$3(a4)` is the
-//     init, and NOTHING in either script sets a bit of `$3(a4)`.  So they are
-//     gated shut instead of jumped over.
+//     each is `btst.b #$n,$3(a4) / beq`.  W62 wrote "NOTHING sets a bit of
+//     `$3(a4)`" -- that was WRONG: the state-0 burst tables (`burst2938AE`'s
+//     `loopctl` field) set bits 0/1/2 of `$3(a4)`.  On the board those bits
+//     would arm script 5's three spark blocks; IN THE PORT those blocks are
+//     not translated (partScriptStep starts at the state machine), so the bits
+//     have no reader and no effect.  Stated rather than papered over.
 //
 // Their state machines are identical up to the field offsets: state 0 arms,
 // state 1 walks the part down by `$800` a tick until its Y goes negative, state
 // 2 emits once and `clr.w (a4)` RETIRES THE SLOT.
 
 const PART = {   // the two parts' sub-record fields
-  4: { pos: 0x22, scrollY: 0x24, fallX: 0x46, fallY: 0x48, stopId: 0 },
-  5: { pos: 0x62, scrollY: 0x64, fallX: 0x86, fallY: 0x88, stopId: 1 },
+  4: { pos: 0x22, scrollY: 0x24, fallX: 0x46, fallY: 0x48, stopId: 0,
+       tState0: 0x293aee, tState2: 0x293b50 },   // W107: the part's burst tables
+  5: { pos: 0x62, scrollY: 0x64, fallX: 0x86, fallY: 0x88, stopId: 1,
+       tState0: 0x293d32, tState2: 0x293d94 },
 };
 
 function partScriptInit(ram, a4) {                     // $29393A / $293B82
@@ -566,13 +730,15 @@ function partScriptInit(ram, a4) {                     // $29393A / $293B82
   ram.setU16(a4 + 0x0c, 0x0000);                       // $29395E
 }
 
-function partScriptStep(ram, ctx, a4, a6, id) {
+function partScriptStep(ram, rom, ctx, a4, a6, id) {
   const f = PART[id];
   ram.setU16(a6 + f.scrollY, u16(ram.u16(a6 + f.scrollY)
     - ram.u16(0x813176)));                             // $293966/$29396C
   if (ram.u8(a4 + 0x02) === 2) {                       // $293A44 / $293C88
-    note(ctx, 0x28c2a8);                               // $293A4E
-    note(ctx, 0x2938ae);                               // $293A5E bsr $2938F2
+    note(ctx, 0x28c2a8);                               // $293A4E -- SOUND
+    // $293A54 move.l $POS(A6),D2 / lea $tState2 / bsr $2938F2 -- the part's
+    // off-screen retire burst (bucket $04, rng angle).  Usually off-screen.
+    burst2938F2(ram, rom, ctx, ram.u32(a6 + f.pos), f.tState2, 0x293a5e);  // $293A5E
     ram.setU16(a4, 0);                                 // $293A62 clr.w (a4)
     return;
   }
@@ -597,8 +763,10 @@ function partScriptStep(ram, ctx, a4, a6, id) {
   }
   if (ram.u8(a4 + 0x02) === 0) {                       // $293AC0 / $293D04
     ram.setU8(a4 + 0x02, 1);                           // $293ACA
-    note(ctx, 0x28c2c2);                               // $293AD0
-    note(ctx, 0x2938ae);                               // $293AE0 bsr $2938AE
+    note(ctx, 0x28c2c2);                               // $293AD0 -- SOUND
+    // $293AD6 move.l $POS(A6),D2 / lea $tState0 / bsr $2938AE -- the part's
+    // DETACH burst (the visible pop when the side part breaks off).
+    burst2938AE(ram, rom, ctx, a4, ram.u32(a6 + f.pos), f.tState0, 0x293ae0);  // $293AE0
   }
   ram.setU16(a6 + f.pos, u16(ram.u16(a6 + f.pos)
     - ram.u16(a4 + 0x0c)));                            // $293AE4/$293AE8
@@ -627,10 +795,10 @@ export function bossA5(ctx, addr) {
 
 registerScript(0x29393a, (ram, rom, ctx, a4) => partScriptInit(ram, a4));
 registerScript(0x293966, (ram, rom, ctx, a4) =>
-  partScriptStep(ram, ctx, a4, bossA6(ctx, 0x293966), 4));
+  partScriptStep(ram, rom, ctx, a4, bossA6(ctx, 0x293966), 4));
 registerScript(0x293b82, (ram, rom, ctx, a4) => partScriptInit(ram, a4));
 registerScript(0x293bae, (ram, rom, ctx, a4) =>
-  partScriptStep(ram, ctx, a4, bossA6(ctx, 0x293bae), 5));
+  partScriptStep(ram, rom, ctx, a4, bossA6(ctx, 0x293bae), 5));
 
 
 // -------------------------------------------- A0 SCRIPT 1 -- THE DEATH DRIFT

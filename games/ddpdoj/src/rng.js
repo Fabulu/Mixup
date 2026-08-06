@@ -291,6 +291,40 @@ export function drawByte28AB86(ram, rom) {
   return rom.u8(RNG_28AB86.table + i);                        // $28AB9C
 }
 
+// =========================== W107: $242B3C, the boss death's angle ========
+//
+// D-script 6's death emitters (timer A/B/C spawns and the $28B4BE big burst)
+// draw their angle jitter through `$242B3C`, which the W31 family scan lists
+// but none of the W31/W53/W65 entries ported.  It is the same shape as
+// `$242FDE` / `$242EC2`: NO MASK (`move.w $803916,D0`), then
+// `move.b (A0,D0.w),D0` -- NO `ext.w` -- so D0 is the byte the table holds,
+// 0..255, in the low half of D0.  Its far end is pinned by `$242CAC`, the next
+// `addq.b #1,$803917` site in the W31 list, so the table is 256 bytes exactly.
+
+/** `$242B3C`'s table.  **NO MASK** -- `$242B42 move.w $803916,D0`.  256 bytes,
+ *  `$242BAC..$242CAB`, and `$242CAC` (the next `addq.b`) pins the far end. */
+export const RNG_242B3C = { table: 0x242bac, entries: 256 };
+
+/**
+ * `$242B3C` -- bump the shared counter, return `$242BAC[state]` (no `ext.w`).
+ *
+ *   242b3c: addq.b #1,$803917
+ *   242b42: move.w $803916,D0             <-- NO MASK, exactly like $242FDE
+ *   242b48: move.l A0,-(A7) / lea ($242BAC,PC),A0
+ *   242b50: move.b (A0,D0.w),D0 / movea.l (A7)+,A0 / rts
+ *
+ * The callers use only the low byte (`move.b D0,$1B(A0)` or `asr.b #2,D0`), so
+ * the upper bits `$803916` left in D0 never matter -- transcribed without an
+ * `ext.w`, exactly as the ROM has it.
+ * @returns {number} D0's low byte, 0..255 (the table byte).
+ */
+export function drawByte242B3C(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $242B3C
+  const i = u16(ram.u16(RNG.state));                          // $242B42, whole word
+  const idx = i >= 0x8000 ? i - 0x10000 : i;                  // (A0,D0.w) is signed
+  return rom.u8(RNG_242B3C.table + idx);                      // $242B50
+}
+
 /** `$24311A` -- `moveq #$7F,D0 / and.w $803916,D0 / lea ($243174,PC),A0 /
  *  move.b (A0,D0.w),D0`.  `[M]` the table holds only 0, 1 and 2.
  *  @returns {number} D0, 0..2 for every byte of the real table. */
