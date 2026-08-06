@@ -328,6 +328,55 @@ From a `C:\programmieren\GLMInst>` prompt:
 
     cd C:\programmieren\batman; & C:\programmieren\GLMInst\glm-temp.ps1 --dangerously-skip-permissions
 
+## 7b. UPDATE -- session 2026-08-06 late: boss explosion live, three recons, input plan
+
+**W107 boss death explosion. DONE + LIVE (build `20260806204157`).** Owner report:
+the killed boss froze-then-vanished, no explosion. Recon 106 traced it to the
+boss's OWN death burst (D-script 6 `$293E04`) calling `note()` placeholders
+instead of the already-shipped `spawnEffect`/`runEffectDriver` (pool B, W54).
+W107 ported every emitter (`$2938AE` table bursts, `$293F8C` timer-C, `$28B4BE`
+big burst, part scripts), fixed a stale `BOSS_NOTED` comment, added `$242B3C` to
+rng.js. Must-fail: pool-B live on the death frame 0 -> 8 (table `$294154`).
+Gates 1211/0/0, bosscoverage 103/0/8. SEEDED check (death at ~lf19533 is past
+the capture ladder); owner live-play is the real proof. Boss-specific art kinds
+`$03/$04/$07/$10/$87` unconfirmed at the death frame -- broken-and-declared if a
+stream is missing.
+
+**W105 whole-game static coverage recon. DONE.** PREMISE CORRECTED: "point
+bosscoverage at the HUD/medals" is a category error; stage 1 has THREE dispatch
+mechanisms (boss scheduler; top-level object driver `$240F62`; type-5 call
+list). The medal IS the bee (pool A, type-5 call #4 `$27F95A`, kind 1/16
+`$27FACC`, base ladder `$27FD22`, award `base x hits` via `$286128`, not the
+chain) -- ported 0. The HUD STATE is ported + frame-exact; its 28 DRAW routines
+from `$28444E` are not. Sweep: 6/20 object types ported (RANK type 10 unported,
+runs first every frame); 16/23 type-5 calls ported.
+
+**W106 boss-death + bomb-translucency recon. DONE.** Bomb: the port has NO
+translucency anywhere (PGM hardware has no blender; canvas alpha:false);
+"translucent" is the sparse artwork, plausibly right but UNVERIFIED vs board (no
+MAME laser-bomb capture). Needs a ~132-frame MAME run to confirm pixel-for-pixel.
+
+**W108 proximity-damage recon. DONE.** No per-hit point-blank multiplier in DOJ
+(absence-proof over 16 shot handlers, ~38 shot-table refs, 101 HP-debit sites).
+Point-blank kills faster by overlap-count + piercing, which the port already
+reproduces. Nothing to port.
+
+**04 INPUT-SYSTEM plan. DONE + owner-approved.** Shared `shared/input.js` across
+all three games; gamepad + touch + KEYBOARD UNIFIED IN ONE PASS (owner);
+feed-never-replace adapters; normalized 4-dir booleans + a1/a2/a3 + start/select;
+Standard gamepad mapping + 0.28 deadzone + octant gate; fixed 8-way D-pad kept +
+floating stick (Auto default for DOJ/Gradius, left-half zone); per-game picker.
+Owner decisions in the doc section 11. Headless gates cannot regress (DOM input
+isolated); risk is live play + the input unit suites (red-validate each).
+
+**Queue (next, in order):**
+1. Shared input layer Wave A (W109): DONE. shared/input.js + DaiOuJou keyboard/gamepad/touch/picker + the build line. Wave B (Gradius + Batman) is next but HELD for owner live-verify of the shared module before touching the complete games.
+2. Wave B: Gradius (queue invariant preserved) + Batman (launch-Enter guard preserved) + their input test suites.
+3. Yellow medals / bees (`$27F95A` driver, 20-kind table, base ladder, `$286128` award).
+4. Real HUD (the 28 draw routines from `$28444E`).
+5. Publish.
+6. Stage 1 feature-complete -> 5 parallel recons + 1 architect (own model, NOT Fable) plan the next phase -> carry on (owner forward directive).
+
 ## 8. WHAT THE STATIC INVENTORY FOUND (`99-recon-boss-static-inventory.md`)
 
 **Read this file before touching the boss.** It replaces every earlier size
