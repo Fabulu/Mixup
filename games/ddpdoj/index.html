@@ -203,6 +203,17 @@
   #err b { color: #ffd0a0; }
   #status { position: fixed; inset: auto 0 40% 0; text-align: center;
             color: #7f8f9d; pointer-events: none; }
+  /* WAVE 101 -- THE SEED PROVENANCE BANNER.  A rung booted from the ladder is
+     a claim about CODE, never about a ROUTE, and a screenshot with no label
+     is a claim nobody can audit later.  This stays hidden on the shipped seed
+     (no ?rung=) and is the same labelled intervention `seedcmp.mjs` prints. */
+  #rung-banner { position: fixed; inset: 8px auto auto 8px; z-index: 30;
+         display: none; max-width: 46vw; white-space: pre-wrap; font-size: 12px;
+         line-height: 1.35; color: #ffd0a0;
+         border: 1px solid #5a4a2b; border-left: 3px solid #efc88a;
+         padding: 8px 10px; background: #1a130b; border-radius: 4px; }
+  #rung-banner b { color: #ffe6b0; }
+  #rung-banner .rung { color: #ef8a8a; font-weight: bold; }
 </style>
 </head>
 <body>
@@ -245,6 +256,7 @@
 
 <div id="status">loading&hellip;</div>
 <div id="err"></div>
+<div id="rung-banner"></div>
 
 <div id="info">
 <div class="sheet">
@@ -489,7 +501,18 @@ const stage = document.getElementById('stage');
 const statsEl = document.getElementById('stats');
 const statusEl = document.getElementById('status');
 const errEl = document.getElementById('err');
+const rungBannerEl = document.getElementById('rung-banner');
 const pad = document.getElementById('pad');
+
+// WAVE 101 -- ?rung=<lf> boots from a ladder checkpoint (LOCAL DEV ONLY).
+//  Optional: ?ladder=<scenario> (default stage1-sweep) or ?ladderDir=<path>
+//  to point at a different ladder under the asset base.  Absent on the live
+//  site, so a normal visitor sees the shipped seed and no banner.
+const params = new URLSearchParams(location.search);
+const rungRaw = params.has('rung') ? parseInt(params.get('rung'), 10) : null;
+const rungParam = Number.isFinite(rungRaw) ? rungRaw : null;
+const ladderParam = params.get('ladder') || undefined;
+const ladderDirParam = params.get('ladderDir') || undefined;
 const dpadEl = document.getElementById('dpad');
 const rotBtn = document.getElementById('rot');
 const infoEl = document.getElementById('info');
@@ -635,6 +658,9 @@ try {
   statusEl.textContent = 'loading the asset bundle…';
   const app = await boot(canvas, {
     mode,
+    rung: rungParam,
+    ladder: ladderParam,
+    ladderDir: ladderDirParam,
     onProgress: (name, n, total) => {
       if (!booting) return;              // the deferred shards are not the
       statusEl.textContent = total       // loading screen's business
@@ -656,6 +682,22 @@ try {
   // the power word moved.  Exposing the app costs no behaviour and turns "I saw
   // a sprite" into a measurement.
   window.__mixup = app;
+
+  // WAVE 101 -- THE SEED BANNER, rendered once after boot.  A rung screenshot
+  //  with no label is unauditable; this carries the rung and the manifest's own
+  //  intervention text onto the screen.  It also folds into `#stats` every
+  //  frame via `stats().seeded`, so a cropped screenshot that loses this box
+  //  still carries the rung in its status line.
+  const seeded = app.stats().seeded;
+  if (seeded) {
+    const intro = seeded.intervention
+      || 'SEEDED from a ladder checkpoint -- validates CODE, never a ROUTE.';
+    rungBannerEl.innerHTML =
+      `<span class="rung">SEEDED rung lf${seeded.rung}</span>`
+      + (seeded.scenario ? ` (${seeded.scenario})` : '')
+      + `\n${intro}`;
+    rungBannerEl.style.display = 'block';
+  }
 
   // The toggle is wired only AFTER boot, so it cannot be pressed while the
   // canvas has no Demo behind it to resize the backing store.
@@ -790,7 +832,10 @@ try {
         + (s.palInstalls ? ` inst ${s.palInstalls}` : ''),
       `${s.logicHz.toFixed(1)}Hz`,
       `x${canvas.dataset.scale}`,
-    ].join(' &nbsp; ');
+      // WAVE 101: the rung, every frame, so a cropped screenshot still carries
+      // its own provenance.  Absent on the shipped seed.
+      s.seeded ? `<b>SEEDED lf${s.seeded.rung}</b>` : '',
+    ].filter(Boolean).join(' &nbsp; ');
   }, 250);
 } catch (e) {
   // Say what is missing and how to make it, rather than leaving a black canvas.

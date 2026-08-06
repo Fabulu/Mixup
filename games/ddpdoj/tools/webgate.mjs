@@ -87,8 +87,133 @@ function arg(name, dflt) {
   return i >= 0 ? process.argv[i + 1] : dflt;
 }
 
+/** big-endian u16 words out of a raw dump -- the layout `BgVram` stores, and
+ *  the same transform `seedcmp.mjs`'s `beWords` applies.  Kept local so this
+ *  gate can disagree with the page's own loader rather than importing it. */
+function beWords(bytes) {
+  const w = new Uint16Array(bytes.length >> 1);
+  for (let i = 0; i < w.length; i++) w[i] = (bytes[i * 2] << 8) | bytes[i * 2 + 1];
+  return w;
+}
+
+/** WAVE 101.  Boot the port from ladder rung `lf`, step `frames` logic frames
+ *  with nothing pressed, and return a verdict.  The manifest's `poke` is
+ *  reapplied every frame (default on) because `stage1-sweep` holds `$810424`
+ *  at `$FF` and a scripted run dies long before the deep rungs without it;
+ *  `--no-poke` exists so that claim can be falsified rather than asserted. */
+function runRungStage(bundle, lf, ladderName, frames, noPoke) {
+  const manDir = path.join(HERE, 'oracle', 'out', 'w69', ladderName);
+  const manPath = path.join(manDir, 'manifest.json');
+  if (!fs.existsSync(manPath)) {
+    console.error(`rung ${lf}: manifest not found at ${manPath}. Build the `
+      + `ladder with: python games/ddpdoj/tools/oracle/pgm.py ckpt`);
+    return 1;
+  }
+  const man = JSON.parse(fs.readFileSync(manPath, 'utf8'));
+  const rung = (man.rungs || []).find((r) => r.lf === lf);
+  if (!rung) {
+    console.error(`rung ${lf} is not in ${manPath}; rungs: `
+      + (man.rungs || []).map((r) => r.lf).join(', '));
+    return 1;
+  }
+  const ckDir = path.join(manDir, man.dir || 'ckpt');
+  const seedPath = path.join(ckDir, rung.ram);
+  const bgPath = path.join(ckDir, rung.bg);
+  const seed = new Uint8Array(fs.readFileSync(seedPath));
+  const bgSeed = beWords(new Uint8Array(fs.readFileSync(bgPath)));
+  // THE MANIFEST'S INTERVENTION, reprinted at the top every time, because a
+  // seeded result that does not label itself is the trap this project shipped
+  // six crashes behind.  Same sentence seedcmp.mjs prints.
+  console.log(`LADDER   ${manPath}`);
+  if (man.intervention) console.log(`INTERVENTION  ${man.intervention}`);
+  console.log(`SEEDED BOOT -- starts from the BOARD's own state at lf${lf}. `
+    + 'This validates the CODE from that state, never the route to it.');
+  const poke = noPoke ? null : (man.poke || null);
+  if (poke) console.log(`POKE     ${poke} every frame (--no-poke to drop it)`);
+  console.log('');
+
+  const g = new Game(seed, bundle.tables, {
+    logicFrame: rung.lf,
+    videoFrame: rung.vf,
+    bgSeed,
+  });
+  const map = romToPackedMap(bundle.manifest,
+    (b) => bundle.spr ? bundle.spr.shardOfBase(b) : null);
+  const shardReady = (i) => bundle.spr ? bundle.spr.state[i] === 'ready' : true;
+  const buf = new Uint16Array(PORT_LIST_WORDS);
+  // The page drives the boot shard set only; the deferred shards' words are
+  // still zero here, so a record whose art has not landed must be SKIPPED AND
+  // NAMED, exactly as it is on the page.  Reported rather than asserted: the
+  // missing-art addresses name the next art wave's shopping list, and a rung
+  // past the shipped sheet's coverage will name some by design.
+  const portWord = 0xffff;                     // nothing pressed
+  let thrown = null;
+  let stepped = 0;
+  let drawnMax = 0, drawnSum = 0, missingSum = 0;
+  const firstMissing = new Map();
+  try {
+    for (let i = 0; i < frames; i++) {
+      const list = portSpriteList(g.ram, map, {
+        out: buf,
+        shardReady,
+        demand: () => {},
+      });
+      drawnMax = Math.max(drawnMax, list.drawn);
+      drawnSum += list.drawn;
+      missingSum += list.skipped;
+      for (const [o, c] of list.missing) {
+        if (!firstMissing.has(o)) firstMissing.set(o, g.logicFrame);
+      }
+      if (poke) {
+        const [addr, val] = poke.split('=').map((s) => parseInt(s, 16));
+        g.ram.setU8(addr, val);
+      }
+      g.step(portWord);
+      stepped++;
+    }
+  } catch (e) {
+    thrown = e;
+  }
+  const reach = `lf${rung.lf} -> lf${g.logicFrame} over ${stepped} step(s)`;
+  if (thrown) {
+    const msg = String(thrown.message || thrown).split('\n')[0];
+    console.log(`FAIL: RUNG BOOT threw at lf${g.logicFrame} after ${stepped} `
+      + `step(s): ${thrown.name}: ${msg}`);
+    console.log(`  ${reach}; ${drawnMax} records drawn on the busiest frame `
+      + `before the throw, ${missingSum} skipped as missing art.`);
+    return 1;
+  }
+  // A BOOT THAT DRAWS NOTHING is not evidence the seed worked.  The deep rungs
+  // have a full picture, so `drawnMax > 0` is the floor that catches a seed
+  // whose RAM made every record invisible (a wrong layout, a byte-swapped
+  // ring).  Reported rather than asserted: the missing-art addresses name the
+  // next art wave's shopping list, and a rung past the shipped sheet's
+  // coverage will name some by design.
+  const ok = drawnMax > 0;
+  const missNamed = [...firstMissing.entries()].sort((a, b) => a[1] - b[1])
+    .slice(0, 8).map(([o, l]) => `$${o.toString(16).toUpperCase().padStart(6, '0')}@lf${l}`);
+  console.log(`${ok ? 'PASS' : 'FAIL'}: RUNG BOOT from lf${rung.lf} -- ${reach}, `
+    + `${drawnMax} records on the busiest frame, `
+    + `${(drawnSum / Math.max(1, stepped)).toFixed(1)} avg, `
+    + `${missingSum} records skipped as missing art `
+    + `(${firstMissing.size} distinct${missNamed.length ? '; first: ' + missNamed.join(' ') : ''}). `
+    + `objlive ${g.objlive()}, logicFrame ${g.logicFrame}, videoFrame ${g.videoFrame}.`);
+  if (!ok) console.log('  ZERO records drew on every frame -- the seed produced '
+    + 'no visible picture. Check the byte layout (worklog 101).');
+  return ok ? 0 : 1;
+}
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.resolve(arg('assets', path.join(HERE, '..', 'assets')));
+// WAVE 101 -- boot from a ladder rung instead of the shipped seed.  Local dev
+//  only; the ladder dir is gitignored and not in dist/.  The manifest's own
+//  intervention is reprinted at the top, exactly as `seedcmp.mjs` does, because
+//  a seeded run validates CODE never a ROUTE.
+const rungArg = arg('rung', null);
+const rungLf = rungArg !== null ? parseInt(rungArg, 10) : null;
+const ladderName = arg('ladder', 'stage1-sweep');
+const rungFrames = parseInt(arg('frames', '300'), 10);
+const rungNoPoke = process.argv.includes('--no-poke');
 const brk = arg('break', null);
 if (brk && !BREAKS.includes(brk) && !PORT_BREAKS.includes(brk)
     && !SPR_BREAKS.includes(brk)) {
@@ -157,6 +282,18 @@ try {
   const bundle = await loadBundle(httpReader(base, (name, n) => {
     if (n === 0) files.push(name);
   }));
+
+  // WAVE 101 -- RUNG MODE.  Boot the port from a ladder checkpoint, step N
+  //  frames, and report whether it threw and how many records drew.  This is
+  //  the headless half of "start at the boss without paying the 8,500-frame
+  //  reach cost": the photo scripts use ?rung= on the real page, and this
+  //  proves the seed mechanism without a browser.  It exits before the
+  //  regression stages, whose numbers are pinned to the SHIPPED seed.
+  if (rungLf !== null) {
+    code = runRungStage(bundle, rungLf, ladderName, rungFrames, rungNoPoke);
+    server.close();
+    process.exit(code);
+  }
 
   if (fetchBrk) {
     console.log(`EXPECTED-RED [--break ${fetchBrk}]: the bundle LOADED anyway -- `

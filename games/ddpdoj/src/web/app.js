@@ -659,13 +659,20 @@ export const SPRITE_SOURCES = Object.freeze(['port', 'capture']);
 export const DEFAULT_SPRITE_SOURCE = 'port';
 
 class Demo {
-  constructor(canvas, bundle, frameHz, mode = DEFAULT_MODE) {
+  // WAVE 101.  `rung` (optional) boots the port from a ladder checkpoint
+  //  instead of the shipped seed.  It carries the rung's own RAM, BG ring,
+  //  lf/vf and the manifest's intervention text; see `boot()` for how it is
+  //  fetched and `101-Plan-boot-the-page-at-any-rung.md` for why every field
+  //  is labelled on screen.  It is LOCAL DEVELOPMENT ONLY: the ladder files
+  //  are not in dist/, so on the published page `rung` is always null.
+  constructor(canvas, bundle, frameHz, mode = DEFAULT_MODE, rung = null) {
     this.bundle = bundle;
     this.cap = bundle.cap;
     // The tile functions come from the exported sheets; nothing else about the
     // renderer changes, and `tools/bundlegate.mjs` is what proves that.
     this.renderer = new Renderer(bundle.roms, bundle.tileFns);
-    this.seedLf = this.cap.frames[0].lf;
+    this.rung = rung;
+    this.seedLf = rung ? rung.lf : this.cap.frames[0].lf;
     // WAVE 13.  THE PORT NOW OWNS THE BACKGROUND'S MOTION.  Two things go in
     // and one comes out:
     //   IN  `bgSeed` -- the board's own $900000 ring at the capture's first
@@ -678,10 +685,10 @@ class Demo {
     //       the ported $240D76 writes.  `draw()` below hands the renderer BOTH
     //       in place of the capture's, which is what takes L5 and L6's program
     //       half off the CAPTURE LEDGER.
-    this.game = new Game(bundle.seed, bundle.tables, {
+    this.game = new Game(rung ? rung.seed : bundle.seed, bundle.tables, {
       logicFrame: this.seedLf,
-      videoFrame: this.cap.frames[0].vf,
-      bgSeed: this.cap.part(0, 'bg'),
+      videoFrame: rung ? rung.vf : this.cap.frames[0].vf,
+      bgSeed: rung ? rung.bgSeed : this.cap.part(0, 'bg'),
     });
     this.prevTilt = this.game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
     this.prevPos = [this.game.ram.u16(RAM.player1 + P.posY),
@@ -950,6 +957,17 @@ class Demo {
     return {
       logicFrame: g.logicFrame,
       videoFrame: g.videoFrame,
+      // WAVE 101.  If the port booted from a ladder rung, say so here in the
+      // same object the photo harness reads, so a screenshot's `#stats` line
+      // carries its own provenance.  Null on the shipped seed (the common
+      // case); the page renders `seeded.rung` into the visible banner too.
+      // PROJECTION ONLY: the full rung holds a 128 KiB Uint8Array, and the
+      // photo scripts sample `stats()` twice a second -- returning the bytes
+      // would ship 128 KiB across the playwright bridge on every tick.
+      seeded: this.rung ? {
+        rung: this.rung.rung, lf: this.rung.lf, scenario: this.rung.scenario,
+        intervention: this.rung.intervention, poke: this.rung.poke,
+      } : null,
       py, px,
       pyPx: py / 64, pxPx: px / 64,
       tilt: g.ram.u16(RAM.player1 + P.tilt) << 16 >> 16,
@@ -1080,6 +1098,86 @@ class Demo {
   }
 }
 
+/** big-endian u16 words out of a raw dump -- the layout `BgVram` stores.
+ *  Mirrors `tools/seedcmp.mjs`'s `beWords` so the rung's `.bg.bin` reaches
+ *  the Game through exactly the transformation the headless comparison uses. */
+function beWords(bytes) {
+  const w = new Uint16Array(bytes.length >> 1);
+  for (let i = 0; i < w.length; i++) w[i] = (bytes[i * 2] << 8) | bytes[i * 2 + 1];
+  return w;
+}
+
+/** WAVE 101.  Resolve a rung number to the port's three seed inputs by reading
+ *  the ladder manifest + the rung's `.ram.bin` and `.bg.bin` out of the ladder
+ *  dir.  Returns null if the ladder is unreachable (the published page), so the
+ *  caller falls back to the shipped seed.  `regs.txt` is deliberately NOT read:
+ *  `seedcmp.mjs` ignores it too, and `draw()` overrides every scroll register
+ *  from `game.video` each frame -- the regs file's `ctrl`/`bg_scale` are
+ *  stage-wide constants the capture already carries.
+ *
+ *  `ladderBase` is the URL of the `tools/oracle/out/` directory, resolved by
+ *  `boot()` relative to THIS MODULE (not the asset base -- the base can be
+ *  overridden, and `../../tools` from `assets/` is one level too high).  Under
+ *  it, `w69/<ladder>/` holds the manifest and `ckpt/`.  `ladderDir` overrides
+ *  the whole path for callers that already know it.  The manifest carries its
+ *  own intervention text, which the page must surface (plan rule 3: carry the
+ *  label, not just the bytes). */
+export async function loadRung(ladderBase, rungLf, ladder = 'stage1-sweep', ladderDir = null) {
+  const dir = ladderDir
+    ? new URL(ladderDir, ladderBase)
+    : new URL(`w69/${ladder}/`, ladderBase);
+  const manUrl = new URL('manifest.json', dir);
+  let manRes;
+  try {
+    manRes = await fetch(manUrl);
+  } catch (e) {
+    throw new AssetError(`rung ${rungLf}: the ladder manifest fetch failed `
+      + `(${e.message}). This is a LOCAL DEVELOPMENT path; the published page `
+      + 'has no ladder and should not pass ?rung=.');
+  }
+  if (!manRes.ok) {
+    throw new AssetError(`rung ${rungLf}: the ladder manifest at ${manUrl.href} `
+      + `returned HTTP ${manRes.status}. The ladder lives under `
+      + 'tools/oracle/out/ and is gitignored and not published; serve the repo '
+      + 'root (or games/ddpdoj/) over HTTP and run pgm.py ckpt to build it.');
+  }
+  const man = await manRes.json();
+  const rung = (man.rungs ?? []).find((x) => x.lf === rungLf);
+  if (!rung) {
+    const have = (man.rungs ?? []).map((x) => x.lf).join(', ');
+    throw new AssetError(`rung ${rungLf} is not in this ladder. Rungs present: `
+      + `${have ?? '(none)'}.`);
+  }
+  const ckDir = new URL(`${man.dir ?? 'ckpt'}/`, dir);
+  const read = async (rel) => {
+    const u = new URL(rel, ckDir);
+    const res = await fetch(u);
+    if (!res.ok) {
+      throw new AssetError(`rung ${rungLf}: ${u.href} returned HTTP ${res.status}. `
+        + 'The checkpoint files are ROM-derived and are not published; rebuild '
+        + 'the ladder with pgm.py ckpt.');
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  };
+  const seed = await read(rung.ram);
+  if (seed.length !== MACHINE.ramSize) {
+    throw new AssetError(`rung ${rungLf}: ${rung.ram} is ${seed.length} bytes, `
+      + `expected ${MACHINE.ramSize} (the board's 128 KiB main RAM). The seed `
+      + 'layout is RAM-only; see worklog 101.');
+  }
+  const bgSeed = beWords(await read(rung.bg));
+  return {
+    lf: rung.lf,
+    vf: rung.vf,
+    seed,
+    bgSeed,
+    scenario: man.scenario ?? null,
+    intervention: man.intervention ?? null,
+    poke: man.poke ?? null,
+    rung: rungLf,
+  };
+}
+
 /**
  * Boot the port onto `canvas`.
  *
@@ -1128,7 +1226,20 @@ export async function boot(canvas, opts = {}) {
   // of `41-recon-sprite-art.md` §7.7's contention question. The TAIL of it is
   // still unanalysed and this wave does not close it.
   bundle.spr?.prefetchAll();
-  const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE);
+  // WAVE 101 -- BOOT THE PAGE AT ANY LADDER RUNG.  `opts.rung` is the logic
+  //  frame the caller wants to start from; `boot()` resolves it to the
+  //  checkpoint's three files in the ladder dir and hands the result to `Demo`
+  //  in place of the shipped seed.  LOCAL DEVELOPMENT ONLY by construction:
+  //  the ladder lives under `tools/oracle/out/`, which `build-dist.mjs` does
+  //  not copy into dist/, so on the published page the manifest fetch 404s and
+  //  `loadRung` returns null -- the page then boots from the shipped seed and a
+  //  visitor with no `?rung=` sees nothing change.  See `101-Plan-...md` for
+  //  why a seeded page must label itself: it proves CODE, never a ROUTE.
+  const rung = opts.rung != null
+    ? await loadRung(opts.ladderBase ?? new URL('../../tools/oracle/out/', import.meta.url),
+        opts.rung, opts.ladder, opts.ladderDir)
+    : null;
+  const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung);
   attachKeyboard(opts.target);
 
   const frame = (t) => {
