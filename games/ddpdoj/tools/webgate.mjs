@@ -983,7 +983,18 @@ try {
         // W84: 12,681 -> 12,769. [M] W80 alone; W81 did not move it. Same
         // cause as the spark -- this window's structures live and die by what
         // the shots reach. `distinct` 101 and `first` 315 unmoved.
-        11: { streams: 153, records: 12769, distinct: 101, first: 315,
+        // W86: 153 -> 158, AND THE FACT THAT THE OTHER THREE DID NOT MOVE IS
+        // THE FINDING RATHER THAN THE EXCUSE.  The five new streams are the
+        // background elements of handlers 7..11 ($231520 $231C44 $232578
+        // $232EAC $233630) and [M] they first draw at steps 3,627 / 3,755 /
+        // 4,299 / 4,747 / 5,275 from this seed -- so `records` 12,769,
+        // `distinct` 101 and `first` 315 are all unchanged BECAUSE THIS WINDOW
+        // IS 1,500 FRAMES LONG AND CANNOT REACH THEM.  W68 §0.2 is exactly this
+        // shape ("100.00 % drawn" true at 2,600 frames and false at 4,000), and
+        // a stage that only re-pinned `streams` here would be re-pinning the
+        // number that moved and staying blind to the reason. The W86 stage
+        // below is the window that can see them.
+        11: { streams: 158, records: 12769, distinct: 101, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };
@@ -1037,6 +1048,123 @@ try {
           + `${a.pend} pending, ${a.named} with no art. Before W58 not one of `
           + 'them had a picture');
         if (!ok) code = 1;
+      }
+
+      // ============================== WAVE 86 -- THE BLACK TERRAIN ============
+      //
+      // THE OWNER, on the live build: *"some terrain starts being black after
+      // the golden terrain"*.  `[cited: W68 §5.2]` named the five bucket-2
+      // streams; `[cited: W75 §3.4]` tied `$232578` to the invisible `$8B`
+      // hitbox lattice on the gold crystal -- the invisible enemy and the black
+      // terrain are ONE object.  W86 harvested all thirteen background-element
+      // sprites out of `src/background.js BGELEM_HANDLERS`.
+      //
+      // **THIS STAGE EXISTS BECAUSE EVERY OTHER WINDOW IN THIS FILE IS TOO
+      // SHORT TO SEE IT.**  The longest is 2,700 steps (the W44 guard); the
+      // five elements first draw at [M] steps 3,627..5,275.  W68 §0.2 measured
+      // the identical sentence -- "drawn% 100.00 %, ZERO missing streams" --
+      // being TRUE at 2,600 frames and FALSE at 4,000 on the same input, and
+      // this gate has been reporting the true half ever since.  A 5,500-step
+      // window costs [M] ~25 s and closes it.
+      //
+      // WHAT IS ASSERTED, and none of it can be satisfied by a black screen:
+      //   * all FIVE late elements are reached (a window that reached four
+      //     would pass a bundle missing the fifth);
+      //   * the port emits `records` of the thirteen, [M] an absolute number
+      //     out of the port's own emitter that no bundle can supply;
+      //   * every one of them DRAWS, and NONE is named as missing art;
+      //   * with shard 11 IN FLIGHT the same records are PENDING and still not
+      //     named as missing art -- a shard in flight is not a missing picture.
+      // and the MUTATION that must move it: `--break drop-bgelem-art` takes the
+      // five late elements back out of the map, which is the bundle exactly as
+      // it stood before W86.  It must report 7,027 records with NO ART.
+      {
+        // The thirteen `data` immediates, spelled out rather than imported:
+        // this gate must be able to disagree with `src/background.js`, and a
+        // check that reads its subject through the subject is `docs/knowledge/03`.
+        const BGELEM_ART = [0x22cbcc, 0x22da70, 0x22ded4, 0x22e508, 0x22f184,
+          0x22fe98, 0x23061c, 0x231520, 0x231c44, 0x232578, 0x232eac, 0x233630,
+          0x233f34];
+        // [M] the five that had no picture until W86, i.e. handlers 7..11.
+        const LATE = [0x231520, 0x231c44, 0x232578, 0x232eac, 0x233630];
+        // [M] all five absolute, out of the port's own emitter over this
+        // window; no bundle can supply any of them.
+        const EXP86 = { frames: 5500, records: 17047, distinct: 13,
+          lateRecords: 5251, firstLate: 3627 };
+        const runW86 = (frames, drop) => {
+          const g = new Game(bundle.seed, bundle.tables, {
+            logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
+            bgSeed: bundle.cap.part(0, 'bg'),
+          });
+          const useMap = new Map(map);
+          if (drop) for (const o of LATE) useMap.delete(o);
+          const t = { rec: 0, drawn: 0, pend: 0, named: 0, lateRec: 0,
+            seen: new Set(), lateSeen: new Set(), firstLate: -1 };
+          const FIRE = portWordFromBits([BIT.b1]);
+          for (let i = 0; i < frames; i++) {
+            const res = portSpriteList(g.ram, useMap, { out: buf, ...shardOpts });
+            for (let k = 0; k < 256; k++) {
+              const b = k * RAM_STRIDE;
+              const w4 = g.ram.u16(0x800000 + (b + 4) * 2);
+              if ((w4 & 0x7fff) === 0) break;
+              const offs = ((g.ram.u16(0x800000 + (b + 2) * 2) & 0x7f) << 16)
+                | g.ram.u16(0x800000 + (b + 3) * 2);
+              if (!BGELEM_ART.includes(offs)) continue;
+              t.rec++; t.seen.add(offs);
+              if (LATE.includes(offs)) {
+                t.lateRec++; t.lateSeen.add(offs);
+                if (t.firstLate < 0) t.firstLate = i;
+              }
+              if (((w4 & 0x7e00) >> 9) === 0 || (w4 & 0x1ff) === 0) continue;
+              if (res.missing.has(offs)) t.named++;
+              else if (bundle.spr.state[11] === 'ready') t.drawn++; else t.pend++;
+            }
+            // The owner's own input: tap fire, sweep left and right. `$810424`
+            // is POKED so 5,500 steps of stage 1 are reached at all --
+            // docs/knowledge/09: this yields STATES, and the states are what a
+            // sprite census needs.
+            g.ram.setU8(0x810424, 0xff);
+            let word = 0xffff;
+            if (i % 4 < 2) word &= FIRE;
+            const ph = Math.floor(i / 90) % 4;
+            if (ph === 1) word &= portWordFromBits([BIT.left]);
+            if (ph === 3) word &= portWordFromBits([BIT.right]);
+            g.step(word);
+          }
+          return t;
+        };
+        const a86 = runW86(EXP86.frames, false);
+        const ok86 = a86.rec === EXP86.records && a86.seen.size === EXP86.distinct
+          && a86.lateSeen.size === LATE.length && a86.lateRec === EXP86.lateRecords
+          && a86.firstLate === EXP86.firstLate
+          && a86.drawn === a86.rec && a86.pend === 0 && a86.named === 0;
+        console.log(`${ok86 ? 'PASS' : 'FAIL'}: W86 THE BLACK TERRAIN (the 13 `
+          + 'stage-1 background elements, $2623A4..$26275E, one sprite each) -- '
+          + `over ${EXP86.frames} logic frames from the shipped seed with fire `
+          + "tapped and the ship sweeping, the port's own $800000 list carries "
+          + `${a86.rec} records of them (expect ${EXP86.records}) over `
+          + `${a86.seen.size} distinct images (expect ${EXP86.distinct}), of `
+          + `which ${a86.lateRec} (expect ${EXP86.lateRecords}) belong to the `
+          + `${a86.lateSeen.size} of 5 elements (expect 5) that had NO PICTURE `
+          + `until W86, first at step ${a86.firstLate} (expect `
+          + `${EXP86.firstLate} -- 927 steps past the longest window this file `
+          + `had). ${a86.drawn} DRAWN, ${a86.pend} pending, ${a86.named} with `
+          + 'NO ART. This is the owner\'s "terrain starts being black after the '
+          + 'golden terrain"');
+        if (!ok86) code = 1;
+
+        // THE MUTATION.  The bundle exactly as it stood before W86: the five
+        // late elements have no stream in the map, so the guard must name them.
+        const m86 = runW86(EXP86.frames, true);
+        const mutOk = m86.named === EXP86.lateRecords && m86.drawn === m86.rec - m86.named
+          && m86.rec === a86.rec;
+        console.log(`${mutOk ? 'PASS' : 'FAIL'}: W86 --break drop-bgelem-art -- `
+          + `with handlers 7..11's five streams taken back out of the map the `
+          + `SAME ${m86.rec} records are emitted (expect ${a86.rec} -- the port `
+          + `does not change) and ${m86.named} of them are named as MISSING ART `
+          + `(expect ${EXP86.lateRecords}), ${m86.drawn} drawn. That is the `
+          + 'black polygon W68 §6 photographed on the live page at 65 s');
+        if (!mutOk) code = 1;
       }
 
       // ================================================== WAVE 66 -- E6, THE BOMB

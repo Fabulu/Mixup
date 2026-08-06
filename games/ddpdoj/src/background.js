@@ -397,8 +397,20 @@ export const ESLOT = {
 /** The 13 stage-1 handlers (ids 0..12), one row each, cited from the listing.
  *  `v` is the despawn variant: `wbge`/`wbgt` = `move.w +2,d0; addi.w #thr;
  *  bge/bgt`; `lbgt` = the same with `ext.l` + `addi.l` + `bgt`. `gate` is the
- *  HANDLER-0-ONLY `$8130DA` kill check. */
-const BGELEM_HANDLERS = [
+ *  HANDLER-0-ONLY `$8130DA` kill check.
+ *
+ *  **EXPORTED SINCE W86, AND THE REASON IS THE OWNER'S BLACK TERRAIN.**  `data`
+ *  is the sprite stream every one of these elements draws with -- `$2623A4
+ *  move.l #$22CBCC,($10,A6)` and its twelve twins -- and it is written ONCE, at
+ *  construction, and never again (`elemConstruct` is its only writer;
+ *  `elemUpdate` only reads it).  So the art an element can ever ask for is
+ *  exactly this column, one stream per row, and `tools/export-web.mjs` harvests
+ *  it from HERE rather than off a run.  Before W86 the exporter carried eight of
+ *  these thirteen addresses as "measured one-offs" from a 3,000-frame run, and
+ *  the five it lacked -- rows 7..11 -- first draw at [M] steps 3,627..5,275,
+ *  which is why the stage went black after the golden terrain.  A list taken off
+ *  a run is a floor; this column is the enumeration. */
+export const BGELEM_HANDLERS = [
   { ctor: 0x2623A4, upd: 0x2623C2, data: 0x22CBCC, yPos: 0x24D0, kind: 0x14, thr: 0x4800, v: 'wbge', gate: true },
   { ctor: 0x2623FC, upd: 0x26241A, data: 0x22DA70, yPos: 0x1470, kind: 0x13, thr: 0x2800, v: 'wbge', gate: false },
   { ctor: 0x26244A, upd: 0x262468, data: 0x22DED4, yPos: 0x1690, kind: 0x13, thr: 0x2C00, v: 'lbgt', gate: false },

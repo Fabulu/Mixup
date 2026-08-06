@@ -108,6 +108,9 @@ import {
 } from '../src/render/regions.js';
 import { bgTile, txTile, BG_W, BG_H, TX_W, TX_H } from '../src/render/tiles.js';
 import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
+// W86: the art harvest for the background elements is derived from the PORT's
+// own handler table, not from a second copy of it. See (1g) below.
+import { BGELEM_HANDLERS } from '../src/background.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GAME = path.resolve(HERE, '..');
@@ -1335,21 +1338,44 @@ const STRUCTURE_RANGES = Object.freeze([
     + '$155D2C..$1569C4"; [M] it is 32, and it starts $DC lower'],
 ]);
 
-/** [M] the eighteen buckets-2/3/7 streams a 3,000-frame playing run asked for
- *  that are NOT inside one of the four families above. THESE ARE STILL A
- *  MEASURED FLOOR -- see the block header. Every one is a large one-off
- *  structure reached from a background-element immediate, with no uniform run
- *  around it for the chain walk to close on. */
+/** [M] the buckets-2/3/7 streams a 3,000-frame playing run asked for that are
+ *  NOT inside one of the five families above and NOT a background element.
+ *  THESE ARE STILL A MEASURED FLOOR -- see the block header. Every one is a
+ *  large one-off structure with no uniform run around it for the chain walk to
+ *  close on, and no index arithmetic to size it.
+ *
+ *  ================== WAVE 86 TOOK EIGHT ADDRESSES OUT OF THIS LIST ==========
+ *  and it was not a tidy-up: it is the owner's *"some terrain starts being
+ *  black after the golden terrain"*.
+ *
+ *  This list held `$22CBCC $22DA70 $22DED4 $22E508 $22F184 $22FE98 $23061C
+ *  $233F34` -- which are background-element handlers **0, 1, 2, 3, 4, 5, 6 and
+ *  12** of `src/background.js`'s THIRTEEN, and not one of 7..11.  The block
+ *  header above named the extent the whole time (*"they are reached from
+ *  BACKGROUND-ELEMENT IMMEDIATES ($2623A6..$262760)"*, which is constructor 0's
+ *  immediate field to constructor 12's) and the list was still taken off a
+ *  3,000-frame run.  [M] handlers 7..11 first draw at steps 3,627 / 3,755 /
+ *  4,299 / 4,747 / 5,275 from the shipped seed, so no 3,000-frame run can reach
+ *  them, and [M] their five streams were 7,027 of the 8,452 records the port
+ *  emitted with NO ART over 6,500 steps -- 83.1 %, and the largest records on
+ *  the screen.
+ *
+ *  All thirteen are now enumerated from `BGELEM_HANDLERS` below, which is the
+ *  port's own table, so the art and the code that asks for it cannot drift.
+ *  `46-diag`'s tank hulls and W81 §1.3's `$272D7A` are the same lesson; this is
+ *  the third time and the first where the correct extent was already written
+ *  down in the file that got it wrong. */
 const STRUCTURE_STREAMS = Object.freeze([
   0x127e7c, 0x128d20, 0x129bc4, 0x12aa68, 0x12b90c, 0x12d430,
-  0x1727c4, 0x172d18, 0x1928bc, 0x192a48, 0x22cbcc, 0x22da70,
-  0x22ded4, 0x22e508, 0x22f184, 0x22fe98, 0x23061c, 0x233f34,
+  0x1727c4, 0x172d18, 0x1928bc, 0x192a48,
 ]);
 {
-  if (STRUCTURE_STREAMS.length !== 18 || STRUCTURE_RANGES.length !== 5) {
+  if (STRUCTURE_STREAMS.length !== 10 || STRUCTURE_RANGES.length !== 5) {
     throw new Error(`STRUCTURE_STREAMS holds ${STRUCTURE_STREAMS.length} `
       + `addresses and there are ${STRUCTURE_RANGES.length} chain ranges; `
-      + 'W58 measured 18 and 4, and W66 added the fifth ($12D430, 8 frames).');
+      + 'W58 measured 18 and 4, W66 added the fifth ($12D430, 8 frames), and '
+      + 'W86 moved the EIGHT background-element immediates out of the list and '
+      + 'into BGELEM_ART below, which enumerates all thirteen.');
   }
   let added = 0, already = 0, chained = 0;
   for (const [base, endsAt, count, why] of STRUCTURE_RANGES) {
@@ -1380,12 +1406,101 @@ const STRUCTURE_STREAMS = Object.freeze([
   harvested += added; harvestAlready += already;
   harvestReport.push({ shard: STRUCT_SHARD, base: 0x11e1fc,
     entries: chained + STRUCTURE_STREAMS.length, stride: 0,
-    runsTo: chained + STRUCTURE_STREAMS.length, endsAt: 0x233f34,
+    runsTo: chained + STRUCTURE_STREAMS.length, endsAt: 0x1928bc,
     distinct: chained + STRUCTURE_STREAMS.length, added, already,
-    why: 'buckets 2/3/7: 4 x 32-frame chains + 18 measured one-offs (W58)' });
-  console.log(`  buckets 2/3/7: ${chained} streams over 4 closed chains + `
+    why: 'buckets 2/3/7: 5 x closed chains + 10 measured one-offs (W58/W66; '
+      + 'W86 moved the 8 background-element immediates to BGELEM_ART)' });
+  console.log(`  buckets 2/3/7: ${chained} streams over 5 closed chains + `
     + `${STRUCTURE_STREAMS.length} measured one-offs, ${added} new -- the `
     + '288x208 hole in the middle of the playfield');
+}
+
+// ------------------------------------------------------------------- WAVE 86
+// (1g) **THE BACKGROUND ELEMENTS' OWN SPRITES -- THE BLACK TERRAIN.**
+//
+// THE OWNER, on the live build: *"some terrain starts being black after the
+// golden terrain"*.  `[cited: W68 §5.2]` named the cause as bucket 2's five
+// missing streams and `[cited: W75 §3.4]` tied one of them, `$232578`, to the
+// invisible `$8B` hitbox lattice sitting on the gold crystal -- *"the invisible
+// enemy and the black terrain are the same object"*.
+//
+// A stage-1 background element is a `$20`-byte slot whose `($10,A6)` is a
+// SPRITE STREAM ADDRESS, written ONCE by its constructor's `move.l #imm,($10,A6)`
+// and read every frame by `$23DF2A` (`src/background.js elemStage`) as the
+// record's descriptor.  So the art an element can ever ask for is ONE stream,
+// and there are exactly as many as `src/background.js` has handlers.
+//
+// **THE LIST IS THE PORT'S OWN.**  `BGELEM_HANDLERS` is imported, not copied:
+// `src/background.js elemSpawn` throws a loud named `unreached` for any
+// constructor outside it, so "every element the port can construct has a
+// picture" is a property of one array rather than an agreement between two.
+// An element the port CANNOT construct is a named throw, which the block header
+// above already prefers to a quiet blank.
+//
+// AND IT IS CHECKED AGAINST THE CARTRIDGE FROM BOTH SIDES, because a typed-in
+// constant that nothing verifies is how eight of these came to be right and
+// five to be absent:
+//
+//   * the ROM's own stage-1 handler table `$26224A` must name handler `i`'s
+//     constructor at entry `i`, in order -- so a row inserted or reordered in
+//     `src/background.js` stops the build;
+//   * the constructor must BE `2D7C <data> 0010`, i.e. `move.l #data,($10,A6)`
+//     -- so `data` is read out of the instruction that writes it, and the port's
+//     thirteen constants are verified against the image for the first time;
+//   * `romExtent` must accept `data` as a real stream start in the mask ROM's
+//     own chain.
+//
+// [M] 13 rows, 8 of which were already in the sheet (they were STRUCTURE_STREAMS'
+// eight) and FIVE of which are new: handlers 7..11, `$231520 $231C44 $232578
+// $232EAC $233630`.
+const BGELEM_TABLE = 0x26224a;   // $262380 move.l $8132C8,A1 -- stage 1's
+{
+  let added = 0, already = 0;
+  const seen = new Set();
+  for (let i = 0; i < BGELEM_HANDLERS.length; i++) {
+    const h = BGELEM_HANDLERS[i];
+    const fromTable = romBe32(BGELEM_TABLE + i * 4);
+    if (fromTable !== h.ctor) {
+      throw new Error(`background element ${i}: the cartridge's own handler `
+        + `table $${BGELEM_TABLE.toString(16)} names $${fromTable.toString(16)} `
+        + `and src/background.js's row ${i} is $${h.ctor.toString(16)}. One of `
+        + 'the two has moved; the art below is indexed by this table.');
+    }
+    // $2623A4 `2D7C 0022CBCC 0010` -- move.l #imm,($10,A6), the ONLY writer of
+    // the element's descriptor.  Both the opcode word and the displacement are
+    // asserted: `2D7C <long> 0014` would be the Y constant, a different field.
+    if (romBe16(h.ctor) !== 0x2d7c || romBe16(h.ctor + 6) !== 0x0010) {
+      throw new Error(`background element ${i}: $${h.ctor.toString(16)} is not `
+        + `\`move.l #imm,($10,A6)\` -- it reads ${romBe16(h.ctor).toString(16)} `
+        + `... ${romBe16(h.ctor + 6).toString(16)}. The constructor shape is `
+        + 'what makes the immediate below the element\'s sprite.');
+    }
+    const fromRom = romBe32(h.ctor + 2);
+    if (fromRom !== h.data) {
+      throw new Error(`background element ${i} ($${h.ctor.toString(16)}): the `
+        + `cartridge writes $${fromRom.toString(16)} into ($10,A6) and `
+        + `src/background.js says $${h.data.toString(16)}. The port would draw `
+        + 'one picture and simulate another.');
+    }
+    seen.add(fromRom);
+    if (streams.has(fromRom)) { already++; continue; }
+    streams.set(fromRom, romExtent(fromRom));  // throws unless a stream start
+    shardOfStream.set(fromRom, STRUCT_SHARD);
+    added++;
+  }
+  harvested += added; harvestAlready += already;
+  harvestReport.push({ shard: STRUCT_SHARD, base: BGELEM_TABLE,
+    entries: BGELEM_HANDLERS.length, stride: 4,
+    runsTo: BGELEM_HANDLERS.length, endsAt: BGELEM_TABLE + BGELEM_HANDLERS.length * 4,
+    distinct: seen.size, added, already,
+    why: 'W86 THE BLACK TERRAIN: the 13 stage-1 background elements\' own '
+      + 'sprites, one per handler, taken from src/background.js BGELEM_HANDLERS '
+      + 'and checked three ways against $26224A and each constructor\'s own '
+      + '`move.l #imm,($10,A6)`. Five of them ($231520 $231C44 $232578 $232EAC '
+      + '$233630) had no picture and are [M] 83.1 % of every NO-ART record the '
+      + 'port emitted over 6,500 steps' });
+  console.log(`  background elements: ${BGELEM_HANDLERS.length} handlers, `
+    + `${seen.size} distinct streams, ${added} new -- the BLACK TERRAIN`);
 }
 
 // ------------------------------------------------------------------- WAVE 66
