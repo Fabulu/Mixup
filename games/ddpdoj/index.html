@@ -770,6 +770,14 @@ try {
         + (s.dlMissing
           ? ` <b>NO ART ${s.dlNoArt}: ${s.dlMissing}</b>`
           : ''),
+      // WAVE 91 -- THE PALETTE'S PROVENANCE, and it is on the page for the
+      // same reason NO ART is: "the bomb is grey" was a colour nobody could
+      // attribute.  `pal N/2560 cart` is how many palette words came out of
+      // the cartridge this frame and `banks` names which sprite banks; every
+      // word not counted here is still one frozen instant of `capture.bin`.
+      `pal ${s.palSourced}/${s.palTotal} cart`
+        + (s.palBanks?.length ? ` banks ${s.palBanks.join(',')}` : ' <b>NONE</b>')
+        + (s.palInstalls ? ` inst ${s.palInstalls}` : ''),
       `${s.logicHz.toFixed(1)}Hz`,
       `x${canvas.dataset.scale}`,
     ].join(' &nbsp; ');

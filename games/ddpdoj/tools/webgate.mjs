@@ -1306,6 +1306,144 @@ try {
         if (!mut90) code = 1;
       }
 
+      // ============================ WAVE 91 -- THE SPRITE PALETTE, AND THE
+      // ============================ ONE THING ON THIS PAGE THAT **CAN** BE
+      // ============================ COMPARED AGAINST THE BOARD DIRECTLY
+      //
+      // Nothing in this repo compares a SPRITE'S PIXELS against the board
+      // ([cited: W81 §6], [cited: W86 §6.1], [cited: W90 §3.2]).  The PALETTE
+      // is different and that is why this stage exists: palette RAM is in the
+      // capture, so a colour the port claims to have sourced from the cartridge
+      // can be checked against the board's own $A00000 entry for entry.
+      //
+      // WHAT IS ASSERTED, and each number is independent of `src/`:
+      //   * the catch-up replays [head, cursor) of the stage's object stream.
+      //     The head is read out of the CARTRIDGE through the per-stage pair
+      //     table and the cursor out of the SEED, so neither is a literal here;
+      //   * it writes bytes IDENTICAL to the staging area the seed carries --
+      //     576 of 576.  That equality is the model's own proof: the board put
+      //     those bytes there by running this same routine over this same data;
+      //   * **576 of 576 sourced sprite entries equal the BOARD's palette RAM,
+      //     on ALL 161 recorded frames.**  Not one frame: the sprite third is
+      //     constant across the recording ([M] 0 of 1,024 words ever change,
+      //     against BG bank 21's four), so a comparison on frame 0 alone would
+      //     sit where two readings agree (`docs/knowledge/03`);
+      //   * a bomb makes bank 6 CARTRIDGE-SOURCED and ORANGE.  [M] the board's
+      //     own bank 6 in this recording is $5EF3 (189,189,156), a khaki with
+      //     R = G, because the only users of bank 6 in 538 board dumps are the
+      //     STAGE-TITLE card -- so this one bank DISAGREEING with the capture
+      //     is the correct result and the gate says which way.
+      // and the MUTATION: `palCatchUp: false` is the port exactly as it stood
+      // before this wave -- zero sourced words, and every sprite on the page
+      // coloured by one frozen instant of `capture.bin`.
+      {
+        const SPR_WORDS = 0x400, BANK = 32;
+        const mkGame = (opts) => new Game(bundle.seed, bundle.tables, {
+          logicFrame: bundle.cap.frames[0].lf,
+          videoFrame: bundle.cap.frames[0].vf,
+          bgSeed: bundle.cap.part(0, 'bg'), ...opts,
+        });
+        // [M] all of these are read off the cartridge and the seed, not typed:
+        // 18 entries, and the eighteen banks in the stream's own order sorted.
+        const EXP91 = {
+          entries: 18, same: 576, total: 576, skipped: 0,
+          banks: [10, 11, 12, 13, 14, 15, 19, 20, 21, 22,
+            24, 25, 26, 27, 28, 29, 30, 31],
+          agree: 576,
+          // the ORDINARY bomb's block $222A78, first two words, straight out of
+          // the ROM window this gate does not share with src/palette.js
+          bombW0: 0xffff, bombW1: 0xffb6,
+          // ...and what the RECORDING has in bank 6 instead.
+          capW0: 0x5ef3,
+        };
+        const g91 = mkGame();
+        const cu = g91.palette.catchUp;
+        // THE BOARD COMPARISON, on every recorded frame rather than on one.
+        let worst = Infinity, worstFrame = -1, checked = 0;
+        for (let f = 0; f < bundle.cap.length; f++) {
+          const cp = bundle.cap.part(f, 'palette');
+          let ok = 0, n = 0;
+          for (let i = 0; i < SPR_WORDS; i++) {
+            if (!g91.palette.sourced[i]) continue;
+            n++;
+            if (g91.palette.words[i] === cp[i]) ok++;
+          }
+          checked = n;
+          if (ok < worst) { worst = ok; worstFrame = f; }
+        }
+        const okCatch = cu.entries === EXP91.entries && cu.same === EXP91.same
+          && cu.total === EXP91.total && cu.skipped === EXP91.skipped
+          && cu.banks.join(',') === EXP91.banks.join(',')
+          && checked === EXP91.agree && worst === EXP91.agree;
+        console.log(`${okCatch ? 'PASS' : 'FAIL'}: W91 THE SPRITE PALETTE -- `
+          + `the stage's object stream ($${cu.head.toString(16).toUpperCase()}, `
+          + `head read out of the CARTRIDGE) had ${cu.entries} entries `
+          + `consumed at the seed instant (expect ${EXP91.entries}, from the `
+          + `seed's own $813196 = $${cu.cursor.toString(16).toUpperCase()}), and `
+          + `replaying them through $24150A wrote ${cu.same} of ${cu.total} `
+          + `bytes-as-words IDENTICAL to the staging area the seed carries `
+          + `(expect ${EXP91.same}/${EXP91.total}), ${cu.skipped} skipped. That `
+          + `sources banks ${cu.banks.join(',')} = ${checked} palette entries, `
+          + `and they equal the BOARD'S OWN PALETTE RAM on ${worst} of `
+          + `${checked} entries on ALL ${bundle.cap.length} recorded frames `
+          + `(worst frame ${worstFrame}; expect ${EXP91.agree}). **THIS IS A `
+          + `DIRECT COMPARISON AGAINST THE BOARD**, which is not available for `
+          + `a sprite's pixels`);
+        if (!okCatch) code = 1;
+
+        // THE BOMB, and it is the owner's report.
+        const FIRE91 = portWordFromBits([BIT.b1]);
+        const BOMB91 = portWordFromBits([BIT.b1, BIT.b2]);
+        const runBomb = (opts) => {
+          const g = mkGame(opts);
+          for (let i = 0; i < 420; i++) {
+            g.ram.setU8(0x810424, 0xff);
+            g.step(i >= 400 && i < 403 ? BOMB91 : FIRE91);
+          }
+          return g;
+        };
+        const gb = runBomb();
+        const b6 = gb.palette.words[6 * BANK];
+        const b6a = gb.palette.words[6 * BANK + 1];
+        const cap6 = bundle.cap.part(0, 'palette')[6 * BANK];
+        const rgb = (w) => {
+          const r = (w >> 10) & 31, gg = (w >> 5) & 31, b = w & 31;
+          return `(${(r << 3) | (r >> 2)},${(gg << 3) | (gg >> 2)},`
+            + `${(b << 3) | (b >> 2)})`;
+        };
+        const okBomb = gb.palette.sourced[6 * BANK] === 1
+          && b6 === EXP91.bombW0 && b6a === EXP91.bombW1
+          && cap6 === EXP91.capW0;
+        console.log(`${okBomb ? 'PASS' : 'FAIL'}: W91 THE BOMB'S COLOUR -- with `
+          + `a bomb dropped, $260852/$26085C install bank 6 from the cartridge `
+          + `and its first two entries are $${b6.toString(16).toUpperCase()
+            .padStart(4, '0')} ${rgb(b6)} and $${b6a.toString(16).toUpperCase()
+            .padStart(4, '0')} ${rgb(b6a)} (expect $FFFF white and $FFB6 pale `
+          + `yellow -- the head of a white/gold/ORANGE ramp). The RECORDING has `
+          + `$${cap6.toString(16).toUpperCase().padStart(4, '0')} ${rgb(cap6)} `
+          + `there (expect $5EF3, R = G, the STAGE-TITLE card's khaki), which `
+          + `is the owner's "kinda grey" and is what this page drew until now. `
+          + `**BANK 6 IS DELIBERATELY THE ONE SOURCED BANK THAT DISAGREES WITH `
+          + `THE BOARD**: no bomb was dropped in the 161 recorded frames`);
+        if (!okBomb) code = 1;
+
+        // THE MUTATION -- the port exactly as it stood before this wave.
+        const gm = mkGame({ palCatchUp: false });
+        const mSourced = gm.palette.sourcedCount();
+        const gmb = runBomb({ palCatchUp: false });
+        const okMut = mSourced === 0 && gm.palette.installCount === 0
+          && gmb.palette.sourcedBanks().join(',') === '6';
+        console.log(`${okMut ? 'PASS' : 'FAIL'}: W91 --break palCatchUp:false `
+          + `-- with the catch-up refused the port sources ${mSourced} palette `
+          + `words at boot (expect 0) from ${gm.palette.installCount} installs `
+          + `(expect 0), which is the page before this wave: EVERY sprite `
+          + `colour one frozen instant of capture.bin. A bomb still sources `
+          + `bank ${gmb.palette.sourcedBanks().join(',')} (expect 6), because `
+          + `the two mechanisms are independent and the gate has to be able to `
+          + `tell them apart`);
+        if (!okMut) code = 1;
+      }
+
       // ================================================== WAVE 66 -- E6, THE BOMB
       //
       // W64 shipped the BOMB and W65 the LASER BOMB and NEITHER HAD A PICTURE.

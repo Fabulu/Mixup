@@ -706,10 +706,18 @@ export async function loadBundle(readRaw, opts = {}) {
   //
   // W90: AND NOTE WHAT THIS DOES NOT CHECK, because `src/web/app.js`'s version
   // of this paragraph was read for 76 waves as though it did.  `$400..$7FF` is
-  // the BACKGROUND third of palette RAM.  **The SPRITE palette `$000..$3FF` has
-  // no cartridge source in this bundle at all** -- it is `capture.bin`'s frozen
-  // instant and nothing else, because `$24150A` (the 64-byte bank upload into
-  // `$80E886`) is unported.  That is why the owner's bomb is grey: `90-impl` §2.
+  // the BACKGROUND third of palette RAM.  W90 ended: "**The SPRITE palette
+  // `$000..$3FF` has no cartridge source in this bundle at all** -- it is
+  // `capture.bin`'s frozen instant and nothing else, because `$24150A` (the
+  // 64-byte bank upload into `$80E886`) is unported."
+  //
+  // **W91 PORTED IT** (`src/palette.js`), so that is now half true: [M] 19 of
+  // the 32 sprite banks come out of the cartridge and thirteen are still the
+  // recording's.  This check is unchanged and still measures ONLY the
+  // background block; the sprite side's own agreement figure is computed by
+  // `agreeWithBoard` against this same capture and asserted by
+  // `tools/webgate.mjs`, because it depends on the PORT's install history and
+  // not on an asset.
   let palAgree = 0;
   {
     const p = cap.part(0, 'palette');

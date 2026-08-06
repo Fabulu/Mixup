@@ -67,16 +67,28 @@
 //     and $2415E8 uploads it into palette RAM **$400..$7FF, the BACKGROUND
 //     third**.  It contains no sprite entry at all.
 //
-//     **SO THE SPRITE PALETTE ($000..$3FF) HAS NO CARTRIDGE SOURCE IN THIS
-//     BUNDLE**, and it is the palette the ship, the pods, every enemy, every
-//     shot and THE BOMB are drawn through.  Every sprite colour on this page
-//     comes from one frozen instant of `capture.bin`, and the port models no
-//     palette RAM at all: $24150A -- the cartridge's 64-byte bank upload into
-//     the staging area $80E886, with its dirty flag $80FA66 -- is a COUNTED
-//     NOTE in seven files and has never executed.  A reader acting on the old
-//     sentence would have gone hunting four wrong entries and never found the
-//     cause of a wrong SPRITE colour.  W90 went looking for exactly that, for
-//     the owner's grey bomb, and that is what it found: `90-impl` §2.
+//     **AND W91 PORTED THE SPRITE PALETTE, WHICH IS WHAT THAT PARAGRAPH WAS
+//     FOR.**  W90 ended here: "the SPRITE palette ($000..$3FF) has no
+//     cartridge source in this bundle ... $24150A is a COUNTED NOTE in seven
+//     files and has never executed."  Both sentences were true and neither is
+//     any more.  `src/palette.js` models the three staging areas, the three
+//     dirty flags and `$24133C`, the once-a-frame upload that is the ONLY
+//     writer of palette RAM on this board; `$24150A` executes from the scroll
+//     VM's object stream and from both bomb heads.
+//
+//     WHAT THAT BUYS, [M] on the shipped seed: **19 of the 32 sprite banks,
+//     608 of the 1,024 sprite entries, come out of the cartridge** -- 18 of
+//     them replayed from the stage's own object stream at boot
+//     (`catchUpObjectStream`) and **bank 6, THE BOMB'S, installed by
+//     `$260852`/`$26085C` the moment a bomb is dropped**.  [M] the 18 agree
+//     with the board's own palette RAM on **576 of 576** entries.
+//
+//     **THE OTHER THIRTEEN BANKS ARE STILL THE RECORDING'S AND THE PAGE SAYS
+//     SO EVERY FRAME.**  `mergePalette` starts from the capture and overwrites
+//     only what a ported install sourced, so a bank nothing has sourced stays
+//     visibly on the recording instead of silently becoming zeroes; the status
+//     line prints `pal N/2560 cart banks ...` and the ones not in that list
+//     are named in `91-impl` §5 with the call site each needs.
 //
 //     A SHARD THAT HAS NOT LANDED IS NAMED, NEVER BLACK.  Tiles whose shard is
 //     still in flight are drawn as the transparent pen and the shard number
@@ -126,6 +138,7 @@ import {
   Renderer, paletteRgb, resolveRgb, rotateCCW, rgbToRgba, SCREEN_W, SCREEN_H,
   parseSpriteList, BUFFER_STRIDE, RAM_STRIDE, SPRITE_LIMIT,
 } from '../render/index.js';
+import { mergePalette, agreeWithBoard } from '../palette.js';
 import { loadBundle, httpReader, AssetError } from './assets.js';
 import { attachKeyboard, currentPortWord } from './input.js';
 
@@ -669,6 +682,10 @@ class Demo {
     this.rgb = new Uint8Array(SCREEN_W * SCREEN_H * 3);
     this.rot = new Uint8Array(SCREEN_W * SCREEN_H * 3);
     this.pal = new Uint8Array(0x1000 * 3);
+    // WAVE 91: the palette the page actually draws through -- the recording's,
+    // with every CARTRIDGE-SOURCED word replaced by the port's own.  Allocated
+    // once; `mergePalette` writes into it and hangs the count off it.
+    this.palMerged = null;
     this.mode = null;
     this.setMode(mode);
 
@@ -812,7 +829,20 @@ class Demo {
     // The palette that applies is the NEXT frame's -- the measured sample-point
     // offset (00-recon-assets.md §4).  On a looping capture the next frame is
     // the next captured one.
-    paletteRgb(this.cap.part((fi + 1) % n, 'palette'), this.pal);
+    //
+    // WAVE 91 -- AND IT IS NO LONGER ONLY THE RECORDING'S.  `mergePalette`
+    // starts from the capture and overwrites every word a ported `$24150A`
+    // sourced from the cartridge; `paletteSourced` is how many that is and the
+    // status line prints it beside the total, because a page that quietly
+    // became half-cartridge would be indistinguishable from one that did not.
+    const capPal = this.cap.part((fi + 1) % n, 'palette');
+    if (!this.palMerged || this.palMerged.length !== capPal.length) {
+      this.palMerged = new Uint16Array(capPal.length);
+    }
+    mergePalette(this.game.palette, capPal, this.palMerged);
+    this.paletteSourced = this.palMerged.fromCartridge;
+    this.paletteTotal = capPal.length;
+    paletteRgb(this.palMerged, this.pal);
     resolveRgb(idx, this.pal, this.rgb);
     // TATE rotates the BUFFER; yoko blits the board's own 448x224 buffer.
     // Either way the canvas backing store already matches (`setMode`).
@@ -895,6 +925,16 @@ class Demo {
       // showing black and saying nothing.
       mapColumn: this.streamColumn(),
       shards: this.bundle.bg?.status() ?? null,
+      // WAVE 91 -- HOW MUCH OF THE PALETTE IS THE CARTRIDGE'S, on the page,
+      // every frame.  Until this wave the answer was ZERO for the sprite third
+      // and nothing said so: the number that was on the page (1020 of 1024)
+      // was about the BACKGROUND and read for 76 waves as though it covered
+      // every colour.  `palBanks` is the sprite banks a ported $24150A has
+      // sourced; the ones NOT listed are still the recording's.
+      palSourced: this.paletteSourced ?? 0,
+      palTotal: this.paletteTotal ?? 0,
+      palBanks: g.palette?.sourcedBanks() ?? [],
+      palInstalls: g.palette?.installCount ?? 0,
     };
   }
 

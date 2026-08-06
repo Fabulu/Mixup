@@ -145,8 +145,29 @@ import { bcd242AC6, beamReset25270C } from './items.js';
 import { drawSigned242FDE } from './rng.js';
 import { wipeSegmentPool } from './laser.js';
 import { spawnBeamBombSpark289FF4 } from './spark.js';
+import { install24150A } from './palette.js';
 
 const note = (ctx, addr, what) => ctx.unportedLog.note(addr, what);
+
+/**
+ * WAVE 91 -- `$260862 move.w #$6,D0 / jmp $24150A`, the tail BOTH bomb heads
+ * fall into.  This is the routine the owner's report is about: bank 6 is what
+ * every bomb record draws through, and until this wave nothing in this port
+ * wrote it, so it kept whatever `capture.bin` had frozen there -- [M] a
+ * desaturated khaki ramp with R = G, which is the STAGE-TITLE card's palette.
+ *
+ * A caller without a `PaletteState` keeps the counted note it always had.  A
+ * silent skip here would be indistinguishable from a bomb that is the right
+ * colour, which is exactly the failure mode `src/unported.js` exists to stop.
+ */
+function installBombPalette(ctx, ram, src, why) {
+  if (!ctx.palette) {
+    note(ctx, 0x260862, `$260862 move.w #$6,D0 / jmp $24150A from ${why} -- no `
+      + `PaletteState on this ctx, so bank 6 stays whatever it was`);
+    return;
+  }
+  install24150A(ram, ctx.palette, 6, ctx.rom.bytes(src, 64), 0x260866, why);
+}
 
 /** ROM addresses this file cites in throws, notes and events. */
 export const BOMB = {
@@ -1520,9 +1541,11 @@ export function fireBomb2498E2(ram, ctx, rec, playerIdx) {
   // materially different bomb** and both arms are transcribed below.
   const laserArm = ram.u8(rec + P.dead) !== 0;         // $249A5C tst.b / bne
   if (!laserArm) {
-    note(ctx, BOMB.install260852, `$249A62 jsr $260852 -- lea $222A78,A0 / `
-      + `moveq #$6,D0 / jmp $24150A, i.e. a 64-byte RESOURCE INSTALL into `
-      + `$80E886+$180 (data). $24150A is a counted note in six other files`);
+    // WAVE 91 -- AND THIS IS THE OWNER'S BOMB.  `$249A62 jsr $260852` is
+    // `lea $222A78,A0` falling through into `$260862 move.w #$6,D0 / jmp
+    // $24150A`: a 64-byte RESOURCE INSTALL of the ORDINARY bomb's colour bank
+    // into `$80E886+$180`.  It was a counted note until this wave.
+    installBombPalette(ctx, ram, 0x222a78, '$249A62 -> $260852, the ORDINARY bomb');
     ram.setU16(rec + 0x26, 0);                         // $249A68 move.w #$0
     ram.setU16(rec + 0x28, 0x3c);                      // $249A6E move.w #$3C
     ram.setU8(rec + P.speedIdx, (ram.u8(rec + P.speedIdx) + 6) & 0xff);  // $249A74
@@ -1544,9 +1567,12 @@ export function fireBomb2498E2(ram, ctx, rec, playerIdx) {
     // **W65 (B3) PORTS ALL THREE.**  W64 left it throwing rather than guessing
     // and that was right; what follows is the cartridge's own seventeen
     // instructions, and the throw that used to be here is gone.
-    note(ctx, BOMB.install26085C, `$249A80 jsr $26085C -- lea $222AB8,A0 / `
-      + `move.w #$6,D0 / jmp $24150A, the SAME 64-byte RESOURCE INSTALL (data) `
-      + `$249A62 does from $222A78. $24150A is a counted note in six files`);
+    // WAVE 91.  `$249A80 jsr $26085C` -- `lea $222AB8,A0` into the SAME shared
+    // tail, so the LASER bomb installs bank 6 from its own block.  [M] the two
+    // blocks are byte-identical for all 64 bytes, which is a fact about this
+    // cartridge and not a reason to collapse them: `$260852` and `$26085C` are
+    // two `lea`s and a future build could differ.
+    installBombPalette(ctx, ram, 0x222ab8, '$249A80 -> $26085C, the LASER bomb');
     ram.setU16(rec + 0x26, 0x0101);                    // $249A86 move.w #$101
     ram.setU16(rec + 0x28, 0x000c);                    // $249A8C move.w #$C
     ram.bset8(rec + P.flags1, 7);                      // $249A92 bset #$7,($1,A6)

@@ -48,6 +48,7 @@
 // build-B one; this is that rule with a number attached.
 
 import { unreached } from './unported.js';
+import { install24150A } from './palette.js';
 
 // ---------------------------------------------------------------- addresses
 /** The background OBJECT RECORD, A5-relative.  Every offset is cited at the
@@ -720,21 +721,32 @@ function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut) {
         }
         const param = rom.u16(a2); a2 += 2;                // $2620F0 move.w (A2)+,D0
         // $24150A copies 64 bytes from `ptr` to `$80E886 + param*64`, treating
-        // every ptr as DATA. The 22-entry stage-1 stream ($26157A) holds 21
-        // $22xxxx data pointers and ONE code-segment address, $246BB8 (entry
-        // 6, 1-based "7"), which disassembles as 64 zero bytes -- a zero
-        // prototype, NOT an executable routine (18-impl §1). The prototype
-        // copy itself is W21's object allocator; op $00 walks the stream and
-        // advances the cursor, and flags a code-segment ptr rather than
-        // smoothing it.
+        // every ptr as DATA. The 22-entry stage-1 stream ($26157A) holds 20
+        // $22xxxx data pointers and TWO code-segment addresses...
+        //
+        // ...NO: **ONE**, and this comment has been wrong since wave 18.
+        // [M, W91] entry 6 is $246BB8 and it is the ONLY $24xxxx pointer in the
+        // stage-1 stream; the OTHER constant bank, $246BF8, is named by seven
+        // sites elsewhere (the boss's bank $12 among them) and never by this
+        // stream.  And the old text's "64 zero bytes" is half a pair: [M]
+        // $246BB8 is 32 x $0000 (BLACK) and $246BF8 is 32 x $7FFF (WHITE) --
+        // the two endpoints `$24636C`/`$2463A6` fade the whole 79-bank palette
+        // to.  Both are checked in `tools/export-tables.py
+        // PALETTE_CONST_BANKS`, so this correction cannot rot the way the
+        // sentence it replaces did (`docs/knowledge/02-traps.md`).
+        //
+        // WAVE 91 -- AND THIS IS NOW A CALL AND NOT A NOTE.  The prototype
+        // copy itself is W21's object allocator; op $00 walks the stream, and
+        // what it hands $24150A is a 64-byte SPRITE COLOUR BANK.
         const buildBit = (ptr >>> 20) & 0xf;
-        const flag = (buildBit === 2 && (ptr >>> 16) !== 0x0022 && ptr !== 0xffffffff)
-          ? ` -- FLAG: ptr is in the $24xxxx CODE segment, not $22xxxx data; `
-            + `$24150A reads 64 bytes from it regardless (classified 18-impl §1)`
-          : '';
-        note(0x24150a, `$24150A object create (ptr $${ptr.toString(16)
-          .toUpperCase()}, param $${param.toString(16).toUpperCase()
-          .padStart(4, '0')})${flag}`);
+        const inCode = buildBit === 2 && (ptr >>> 16) !== 0x0022;
+        ctx.palette
+          ? install24150A(ram, ctx.palette, param, rom.bytes(ptr, 64), 0x2620f2,
+            `$${ptr.toString(16).toUpperCase()} (object stream${
+              inCode ? ', a CONSTANT bank in the code segment' : ''})`)
+          : note(0x24150a, `$24150A object create (ptr $${ptr.toString(16)
+            .toUpperCase()}, param $${param.toString(16).toUpperCase()
+            .padStart(4, '0')}) -- no PaletteState on this ctx`);
         ctx.scrollEvent?.({ op, recTime, kind: 'spawn', ptr, param });
         if (--n === 0) break;                              // $2620F8 subq/bne
       }

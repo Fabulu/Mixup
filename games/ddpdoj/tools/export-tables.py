@@ -1185,6 +1185,38 @@ SHOT_WINDOWS.extend([
                        "They ABUT, and $24D2BE (`moveq #$0,D0`) is code"),
 ])
 
+# ================ W91: THE SPRITE PALETTE'S COLOUR BLOCKS, TWO WINDOWS ========
+#
+# Until wave 91 the SPRITE palette ($A00000..$A007FF) had no cartridge source in
+# this bundle at all: the block shipped since W14 ($227E58, checked at 1020 of
+# 1024) is the BACKGROUND third, and `$24150A` -- the 64-byte bank upload into
+# the staging area $80E886 -- was a counted note in six files.  So every sprite
+# on the page was coloured by one frozen instant of `capture.bin`, which is why
+# the owner's bomb was grey (`90-impl` §2, `91-impl` §2).
+#
+# EVERY BLOCK IS 64 BYTES = 32 xRGB555 ENTRIES = ONE BANK, and both extents
+# below are pinned by a block rather than rounded:
+#
+#   [M] low  $222A78 -- the ORDINARY BOMB's, `$249A62 jsr $260852`
+#   [M] high $2252B8 + 64 = $2252F8 -- entry 7 of the stage-1 object stream
+#            ($26157A), the last `$22xxxx` block any ported site names
+#
+# and the second window is exactly the two blocks in the $24xxxx CODE segment
+# that call sites name as data (`18-impl` §1 classified them: both disassemble
+# as 64 zero bytes, a BLANK bank, not an executable routine).
+SHOT_WINDOWS.extend([
+    (0x222A78, 0x2880, "W91: the SPRITE palette colour blocks. 64 bytes each; "
+                       "the ported $24150A sites name 35 of them and every one "
+                       "lies in [$222A78, $2252F8). Low end is the ordinary "
+                       "bomb's ($249A62 -> $260852), high end is the last "
+                       "block of the stage-1 object stream $26157A ($2252B8) "
+                       "plus its own 64 bytes"),
+    (0x246BB8, 0x0080, "W91: the two BLANK banks the $24xxxx code segment "
+                       "holds as data -- $246BB8 (object-stream entry 6, bank "
+                       "$18) and $246BF8 (the boss's bank $12 and six other "
+                       "sites). 64 zero bytes each; they ABUT"),
+])
+
 # WAVE 12.  The option pods move through the SAME $241812 the ship does, with a
 # speed index that comes out of the option template rather than out of the
 # player record.  MEASURED $E0 = 224 -- far outside the player's own 0..31 -- and
@@ -2368,6 +2400,291 @@ def check_beam_impact_extents(d: bytes) -> None:
                 f"$22C860..$22C6BC that the harvest row exports.")
 
 
+# ================== W91: THE PALETTE UPLOAD FAMILY AND ITS CALL SITES =========
+#
+# `src/palette.js`'s header carries a nine-row table of the upload routines and
+# a claim about which one this port implements.  Nine comments in this codebase
+# have now been caught lying (`docs/knowledge/02-traps.md`), two of them found
+# by W90 in files a brief sent it to read, so the table is CHECKED against the
+# cartridge on every export instead of being trusted.
+#
+#   addr, entry mask, staging base, shift, +$20 bias, inner moveq, move opcode,
+#   outer dbra, dirty flag, what
+PALETTE_UPLOADS = [
+    (0x24150A, 0x48E780C0, 0x80E886, 0xED48, False, 0x700F, 0x22D8, False,
+     0x80FA66, "ONE 32-entry SPRITE bank -- the one this port implements"),
+    (0x24152E, 0x48E7C0C0, 0x80E886, 0xED48, False, 0x700F, 0x22D8, True,
+     0x80FA66, "(D1+1) SPRITE banks"),
+    (0x241556, 0x48E780C0, 0x80E886, 0xED48, False, 0x7007, 0x22D8, False,
+     0x80FA66, "the LOW half of a SPRITE bank"),
+    (0x24157A, 0x48E780C0, 0x80E886, 0xED48, True, 0x7007, 0x22D8, False,
+     0x80FA66, "the HIGH half of a SPRITE bank (addi.w #$20,D0)"),
+    (0x2415C4, 0x48E780C0, 0x80F086, 0xED48, False, 0x700F, 0x22D8, False,
+     0x80FA68, "ONE 32-entry BACKGROUND bank"),
+    (0x2415E8, 0x48E7C0C0, 0x80F086, 0xED48, False, 0x700F, 0x22D8, True,
+     0x80FA68, "(D1+1) BACKGROUND banks -- what uploads W14's $227E58 block"),
+    (0x2414BE, 0x48E780C0, 0x80F886, 0xEB48, False, 0x7007, 0x22D8, False,
+     0x80FA6A, "ONE 16-entry TEXT bank (lsl #5, not #6)"),
+    (0x2414E2, 0x48E7C0C0, 0x80F886, 0xEB48, False, 0x7007, 0x22D8, True,
+     0x80FA6A, "(D1+1) TEXT banks"),
+]
+
+# `$24133C` -- the once-a-frame upload, and the ONLY writer of palette RAM.
+# (staging, palette RAM destination, outer dbra count, dirty flag, what)
+PALETTE_FLUSH = [
+    (0x80E886, 0xA00000, 0x1F, 0x80FA66, "the SPRITE third, 32 x 16 longs"),
+    (0x80F086, 0xA00800, 0x1F, 0x80FA68, "the BACKGROUND third"),
+    (0x80F886, 0xA01000, 0x0E, 0x80FA6A, "the TEXT strip, 15 x 8 longs"),
+]
+
+# Every `$24150A` call site W91 RESOLVED to a bank and a source block, checked
+# here so the worklog's table and `src/`'s comments cannot rot.  Two of these
+# families the port EXECUTES today -- the bomb's shared tail and the scroll VM's
+# object stream (which has no absolute-long site and is checked separately
+# below) -- and the rest are still COUNTED NOTES with the plumbing they need
+# named in `91-impl` §5.  A site whose bank comes out of a table has `None` for
+# it and is checked for the `lea` alone.
+PALETTE_SITES = [
+    # The two bomb heads FALL THROUGH into one shared `move.w #$6,D0 / jmp`,
+    # so this site carries the BANK and PALETTE_BOMB_HEADS carries the two
+    # blocks.  A backward scan from here finds only the nearer head's `lea`.
+    (0x260866, 6, None, "the bomb's shared tail $260862"),
+    (0x296FC6, 0x13, 0x222BF8, "enemy type $24's init body $296FB0"),
+    (0x269792, None, 0x2251B8, "type $31's first install, bank from $2697B0"),
+    (0x2697A8, None, 0x2250B8, "type $31's second install, bank from $2697BA"),
+    (0x26B4D2, 0x10, 0x223338, "the MIDBOSS, install 1 of 3"),
+    (0x26B4E2, 0x11, 0x223378, "the MIDBOSS, install 2 of 3"),
+    (0x26B4F2, 0x0F, 0x2233B8, "the MIDBOSS, install 3 of 3"),
+    (0x29274E, 0x15, 0x222B38, "the BOSS, install 1 of 5"),
+    (0x29275E, 0x16, 0x222B78, "the BOSS, install 2 of 5"),
+    (0x29276E, 0x17, 0x222BB8, "the BOSS, install 3 of 5"),
+    (0x29277E, 0x12, 0x246BF8, "the BOSS, install 4 of 5 -- a BLANK bank"),
+    (0x29278E, 0x11, 0x222C38, "the BOSS, install 5 of 5"),
+    (0x284878, 0x07, 0x2250B8, "the stage BANNER, $284862's first"),
+    (0x284888, 0x08, 0x2250F8, "the stage BANNER, $284862's second"),
+]
+
+# The two bomb heads are a FALL-THROUGH into one `jmp`, so the site above cannot
+# name both blocks.  `$260852` and `$26085C` differ only in their `lea`.
+PALETTE_BOMB_HEADS = [
+    (0x260852, 0x222A78, "$249A62, the ORDINARY bomb"),
+    (0x26085C, 0x222AB8, "$249A80, the LASER bomb"),
+]
+
+# The stage-1 scroll script's OBJECT STREAM -- the palette installer
+# `src/palette.js catchUpObjectStream` replays.  Its head is not typed in: it is
+# read through the per-stage pair table the cartridge publishes.
+# The two CONSTANT banks in the $24xxxx code segment that call sites name as
+# data.  `18-impl` §1 classified $246BB8 and read it as "64 zero bytes"; [M]
+# THAT IS ONLY HALF THE PAIR, and the other half is the more interesting one:
+#   [M] $246BB8  32 x $0000 -- BLACK.   $24636C blacks out all 79 banks with it
+#   [M] $246BF8  32 x $7FFF -- WHITE.   $2463A6 whites out all 79 banks with it
+# so the two are the stage fade's endpoints, not one zero prototype.
+PALETTE_CONST_BANKS = {0x246BB8: 0x0000, 0x246BF8: 0x7FFF}
+
+PALETTE_STREAM_TABLE = 0x26153E   # $26152C lea ($26153E,PC),A0
+PALETTE_STREAM_ENTRIES = 22       # [M] before the $FFFFFFFF terminator
+
+
+def check_palette_upload_family(d: bytes) -> None:
+    """W91.  The nine-row table in src/palette.js's header, the flush, and every
+    call site the port now executes -- all read back out of the cartridge."""
+    for (a, entry, stage, shift, bias, moveq, mv, outer, flag, what) in \
+            PALETTE_UPLOADS:
+        if u32(d, a) != entry:
+            raise SystemExit(
+                f"${a:06X} opens ${u32(d, a):08X}, not ${entry:08X}. "
+                f"src/palette.js's family table calls it \"{what}\" and the "
+                f"registers a routine saves are how its two forms are told "
+                f"apart (D0/A0-A1 for the single, D0-D1/A0-A1 for the counted).")
+        p = a + 4
+        if u16(d, p) != 0x43F9 or u32(d, p + 2) != stage:
+            raise SystemExit(
+                f"${p:06X} is not `lea ${stage:06X}.l,A1` (it is "
+                f"${u16(d, p):04X} ${u32(d, p + 2):08X}). ${a:06X} no longer "
+                f"stages into the area src/palette.js PALSTAGE names for it "
+                f"-- {what}.")
+        p += 6
+        if u16(d, p) != shift:
+            raise SystemExit(
+                f"${p:06X} is ${u16(d, p):04X}, not ${shift:04X}. That shift "
+                f"IS the bank size: lsl.w #$6 makes D0 a 64-byte (32-entry) "
+                f"bank and lsl.w #$5 a 32-byte (16-entry) TEXT bank.")
+        p += 2
+        if bias:
+            if u32(d, p) != 0x06400020:
+                raise SystemExit(
+                    f"${p:06X} is not `addi.w #$20,D0`; ${a:06X} is the HIGH-"
+                    f"half upload and that bias is the only thing that makes "
+                    f"it one.")
+            p += 4
+        if u16(d, p) != 0xD2C0:
+            raise SystemExit(f"${p:06X} is not `adda.w D0,A1`.")
+        p += 2
+        if u16(d, p) != moveq:
+            raise SystemExit(
+                f"${p:06X} is ${u16(d, p):04X}, not ${moveq:04X}. The inner "
+                f"count is the LENGTH: $700F copies 16 longs = 64 bytes = a "
+                f"whole bank, $7007 copies 8 = 32 bytes = half of one.")
+        p += 2
+        if u16(d, p) != mv:
+            raise SystemExit(
+                f"${p:06X} is ${u16(d, p):04X}, not the ${mv:04X} move -- "
+                f"{what} no longer copies longwords.")
+        p += 2
+        if u16(d, p) != 0x51C8 or u16(d, p + 2) != 0xFFFC:
+            raise SystemExit(
+                f"${p:06X} is not `dbra D0,${p - 2:06X}` -- {what}'s inner "
+                f"loop does not close on its own move.")
+        p += 4
+        if outer:
+            if u16(d, p) != 0x51C9:
+                raise SystemExit(
+                    f"${p:06X} is ${u16(d, p):04X}, not `dbra D1` -- ${a:06X} "
+                    f"is the COUNTED form and that second dbra is what makes "
+                    f"it upload (D1+1) banks instead of one.")
+            p += 4
+        if u16(d, p) != 0x33FC or u16(d, p + 2) != 1 or u32(d, p + 4) != flag:
+            raise SystemExit(
+                f"${p:06X} is not `move.w #$1,${flag:06X}`. Nothing writes "
+                f"palette RAM directly on this board: an upload sets a DIRTY "
+                f"FLAG and $24133C copies the region on the next frame. If the "
+                f"flag moved, src/palette.js PALSTAGE.dirty is wrong and the "
+                f"port would upload into a staging area nothing reads.")
+    # $24133C, the flush, and the three regions it copies.
+    p = 0x24133C
+    for stage, dst, cnt, flag, what in PALETTE_FLUSH:
+        if u16(d, p) != 0x4A79 or u32(d, p + 2) != flag:
+            raise SystemExit(
+                f"${p:06X} is not `tst.w ${flag:06X}` -- $24133C's region "
+                f"order is SPRITE, BACKGROUND, TEXT and {what} is not where "
+                f"src/palette.js flush24133C walks it. Its provenance array is "
+                f"indexed by that order.")
+        if u16(d, p + 6) != 0x6700:
+            raise SystemExit(
+                f"${p + 6:06X} is not the `beq.w` that skips {what} when its "
+                f"dirty flag is clear.")
+        skip = p + 6 + 2 + u16(d, p + 8)
+        p += 10
+        if u16(d, p) != 0x41F9 or u32(d, p + 2) != stage:
+            raise SystemExit(
+                f"${p:06X} is not `lea ${stage:06X}.l,A0` -- the flush no "
+                f"longer reads {what} out of the staging area src/palette.js "
+                f"PALSTAGE names.")
+        if u16(d, p + 6) != 0x43F9 or u32(d, p + 8) != dst:
+            raise SystemExit(
+                f"${p + 6:06X} is not `lea ${dst:06X}.l,A1`. **THIS IS THE "
+                f"ADDRESS THAT SAYS WHICH THIRD OF PALETTE RAM A REGION IS**, "
+                f"and getting it wrong is exactly the defect W90 found in "
+                f"src/web/app.js: $A00000 is the SPRITES, $A00800 is the "
+                f"BACKGROUND, $A01000 is the TEXT strip.")
+        if u16(d, p + 12) != (0x7000 | cnt):
+            raise SystemExit(
+                f"${p + 12:06X} is ${u16(d, p + 12):04X}, not `moveq "
+                f"#${cnt:X},D0`. That count times the move.l's below it IS "
+                f"{what}'s size, and src/palette.js PALSTAGE.words is written "
+                f"under it.")
+        nmoves = 16 if cnt == 0x1F else 8
+        for i in range(nmoves):
+            if u16(d, p + 14 + i * 2) != 0x22D8:
+                raise SystemExit(
+                    f"${p + 14 + i * 2:06X} is not move.l #{i} of {what}; the "
+                    f"region is not {cnt + 1} x {nmoves * 4} bytes.")
+        clr = p + 14 + nmoves * 2 + 4
+        if u16(d, clr) != 0x33FC or u16(d, clr + 2) != 0 \
+                or u32(d, clr + 4) != flag:
+            raise SystemExit(
+                f"${clr:06X} is not `move.w #$0,${flag:06X}` -- the flush does "
+                f"not clear {what}'s dirty flag, so it would copy every frame "
+                f"and src/palette.js's `did` would never read false.")
+        p = skip
+    # The two bomb heads: a `lea` each, falling through into one shared `jmp`.
+    for head, src, what in PALETTE_BOMB_HEADS:
+        if u16(d, head) != 0x41F9 or u32(d, head + 2) != src:
+            raise SystemExit(
+                f"${head:06X} is not `lea ${src:06X}.l,A0` -- {what}'s colour "
+                f"block moved. src/bomb.js installs bank 6 from it and the "
+                f"owner's report is about exactly that bank.")
+    # Every call site the port executes rather than notes.
+    for caller, bank, src, what in PALETTE_SITES:
+        op = u16(d, caller)
+        if op not in (0x4EB9, 0x4EF9) or u32(d, caller + 2) != 0x24150A:
+            raise SystemExit(
+                f"${caller:06X} is not `jsr/jmp $24150A.l` (it is ${op:04X} "
+                f"${u32(d, caller + 2):08X}) -- {what}. src/ calls "
+                f"install24150A from there.")
+        got_bank, got_src = None, None
+        for back in range(2, 26, 2):
+            q = caller - back
+            w = u16(d, q)
+            if w == 0x41F9 and got_src is None:
+                got_src = u32(d, q + 2)
+            if w == 0x303C and got_bank is None:
+                got_bank = u16(d, q + 2)
+            elif (w & 0xFF00) == 0x7000 and got_bank is None:
+                got_bank = w & 0xFF
+        shown = f"${got_src:06X}" if got_src else "a register"
+        if src is not None and got_src != src:
+            raise SystemExit(
+                f"${caller:06X} loads A0 from {shown}, not ${src:06X} -- "
+                f"{what}. That block is 64 bytes of xRGB555 and the W91 "
+                f"windows are declared to cover it.")
+        if bank is not None and got_bank != bank:
+            raise SystemExit(
+                f"${caller:06X} passes D0 = {got_bank} , not ${bank:X} -- "
+                f"{what}. D0 IS THE BANK NUMBER (`lsl.w #$6` in $24150A), so a "
+                f"wrong one recolours a different 32 sprites and nothing in "
+                f"this repo compares a sprite's pixels against the board.")
+        if src is None:
+            continue
+        blk = [u16(d, src + i * 2) for i in range(32)]
+        if src in PALETTE_CONST_BANKS:
+            want = PALETTE_CONST_BANKS[src]
+            if set(blk) != {want}:
+                raise SystemExit(
+                    f"${src:06X} is named by {what} as data, and it is one of "
+                    f"the two CONSTANT banks the $24xxxx code segment holds "
+                    f"(`18-impl` §1 classified them). It should be 32 x "
+                    f"${want:04X} and it is "
+                    f"{sorted(f'${w:04X}' for w in set(blk))}.")
+        elif not (0x222A78 <= src < 0x2252F8):
+            raise SystemExit(
+                f"{what} reads ${src:06X}, outside the declared window "
+                f"[$222A78, $2252F8).")
+    # The stage-1 object stream: the palette installer catchUpObjectStream
+    # replays.  Its HEAD comes out of the cartridge, never out of a literal.
+    pair = u32(d, PALETTE_STREAM_TABLE)
+    script0 = u32(d, pair)
+    head = u32(d, script0)
+    n = 0
+    while u32(d, head + n * 6) != 0xFFFFFFFF:
+        n += 1
+        if n > 64:
+            raise SystemExit(
+                f"the stage-1 object stream at ${head:06X} has no $FFFFFFFF "
+                f"terminator within 64 entries; $2620E6 is what ends the walk "
+                f"and catchUpObjectStream would run off the end.")
+    if n != PALETTE_STREAM_ENTRIES:
+        raise SystemExit(
+            f"the stage-1 object stream ${head:06X} has {n} entries, not "
+            f"{PALETTE_STREAM_ENTRIES}. src/palette.js replays [head, cursor) "
+            f"of it and tools/webgate.mjs asserts the 18 banks that produces.")
+    for i in range(n):
+        ptr = u32(d, head + i * 6)
+        param = u16(d, head + i * 6 + 4)
+        if not (0x222A78 <= ptr < 0x2252F8 or 0x246BB8 <= ptr < 0x246C38):
+            raise SystemExit(
+                f"object-stream entry {i} points at ${ptr:08X}, outside both "
+                f"W91 windows. $24150A reads 64 bytes from it regardless, so "
+                f"the window has to cover it or the port throws by address "
+                f"mid-stage.")
+        if not (0 <= param < 32):
+            raise SystemExit(
+                f"object-stream entry {i} carries bank ${param:04X}. "
+                f"`lsl.w #$6` makes that $80E886+${param * 64:X}, past the "
+                f"32-bank sprite staging area and into the BACKGROUND's.")
+
+
 def build(d: bytes) -> dict:
     check_pool_e_extents(d)                    # W53 -- see the function's docstring
     check_pool_b_extents(d)                    # W54 -- see the function's docstring
@@ -2379,6 +2696,7 @@ def build(d: bytes) -> dict:
     check_boss_object_tables(d)                # W82 -- the OBJECT sprite tables
     check_beam_bomb_extents(d)                 # W65 -- THE LASER BOMB's
     check_beam_impact_extents(d)               # W90 -- THE LASER's IMPACT
+    check_palette_upload_family(d)             # W91 -- THE SPRITE PALETTE
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
     levels = speed_index_set(d)

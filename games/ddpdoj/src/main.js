@@ -45,6 +45,7 @@ import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
 import { makeBackground, BgVram, VideoRegs } from './background.js';
 import { makeStageClear } from './stageend.js';
 import { makeHudObject } from './hud.js';
+import { PaletteState, flush24133C, catchUpObjectStream } from './palette.js';
 
 /** THE BUCKETS `pgm.py shipgate` SUBSTITUTES, in drain (= depth) order.
  *
@@ -198,6 +199,26 @@ export class Game {
     this.frozen = FROZEN_GLOBALS.map(([a, why]) => ({
       addr: a, value: this.ram.u16(a), why,
     }));
+    // WAVE 91 -- THE PALETTE, and it is PER GAME for the same reason `prot` and
+    // `vram` are (NOTES-replay.md §2).  Until this wave the port modelled none
+    // of it and every sprite on the page was coloured by one frozen instant of
+    // `capture.bin`; `src/palette.js`'s header is the whole subsystem.
+    this.palette = new PaletteState();
+    // ...and the catch-up.  The stage's OBJECT STREAM is the palette installer
+    // and the seed resumes mid-stage, so the entries the board already consumed
+    // are replayed OUT OF THE CARTRIDGE before the first frame.  It takes one
+    // integer from the recording (how far the cursor had advanced) and every
+    // byte of colour from the ROM -- see catchUpObjectStream's own header, and
+    // §2 of `docs/worklog/ddpdoj/91-impl-sprite-palette.md` for why that is a
+    // weaker bargain than the `bgSeed` this constructor already accepts.
+    if (opts.palCatchUp !== false) {
+      catchUpObjectStream(this.ram, this.rom, this.palette,
+        { note: (a, w) => this.unportedLog.note(a, w) });
+      // The first flush, so the port has a palette before frame 1 rather than
+      // one frame late.  $23C454 runs it once per loop iteration and the board
+      // had run it thousands of times before the seed was taken.
+      flush24133C(this.ram, this.palette);
+    }
   }
 
   /** The context every ported routine gets.  No clock is reachable from it. */
@@ -214,6 +235,13 @@ export class Game {
       // sprite producer, and a caller that omits `vram` reaches a loud named
       // throw at $26C226 rather than dropping 207 longwords.
       vram: this.vram,
+      // WAVE 91: the palette hardware, because FIVE ported subsystems install
+      // colour banks -- the scroll VM's object stream ($2620F2), the bomb
+      // ($260852/$26085C), three enemy init bodies, the boss and the stage
+      // banner.  A caller that omits it gets the counted note it always had
+      // rather than a silently missing install, which is the difference
+      // between "this bank is the recording's" and "this bank is wrong".
+      palette: this.palette,
       unportedLog: this.unportedLog,
       // WAVE 8: every record the shot spawn creates, and every frame it could
       // not.  Printed by the runner for the same reason `allocEvents` is: a
@@ -546,6 +574,14 @@ export class Game {
       // $23D6A6 is the `add.l $80B054,D1` whose behaviour changes if it moves.
       warn: (m) => this.unportedLog.note(0x23d6a6, `WATCH ${m}`),
     });
+    // WAVE 91 -- `$23C454 jsr $24133C`, THE PALETTE UPLOAD.  It sits in the
+    // block `$23C44C tst.b $803940 / beq $23C472` runs while the vblank
+    // semaphore is still armed, i.e. once per loop iteration that reached the
+    // spin -- which is once per `step()` in this port's model.  It reads the
+    // three staging areas out of main RAM, writes the port's own $A00000, and
+    // clears the three dirty flags; nothing else in the port reads or writes
+    // any of the six addresses, so this line cannot move a compared column.
+    this.paletteFlush = flush24133C(this.ram, this.palette);   // $24133C
     this.armedVblanks = this.#frameSync();            // 10: THE SAMPLE POINT
     this.logicFrame++;
     return this;
