@@ -432,15 +432,26 @@ test('a DESTROYED part still DRAWS -- the tst.b guards the REFRESH',
     assert.equal(recs(ram, 2).length, 1, 'and the wreck is still on screen');
   });
 
-test('an emitter the wave never transcribed is a LOUD NAMED THROW',
+test('W104: all three extent-scaled emitters dispatch to the right bucket',
   { skip: SKIP }, () => {
-    const { ram } = fresh();
-    ram.setU8(A6 + AR.p1Dead, 0);
-    ram.setU8(A6 + AR.p1Ang, 0x60);                // entry 3 of $2929E8
-    const t = ROM.u32(W96.partEmitters + 3 * 4) & 0xffffff;
-    if (t === W96.emitScaled) return;              // entry 3 IS $23E3E2
-    assert.throws(() => objPart(ram, ROM, A6, OBJ0),
-      (e) => e instanceof Unreached && e.romAddress === t);
+    // W96 tested that an unported emitter throws; W104 ported all three
+    // ($23E3E2 bucket 2, $23E36A bucket 1, $23E45A bucket 3).  The test
+    // now verifies the dispatch writes to the CORRECT bucket for each.
+    const facings = [
+      [0x40, 2],   // entry [2] -> $23E3E2 -> bucket 2
+      [0x60, 1],   // entry [3] -> $23E36A -> bucket 1
+      [0x00, 3],   // entry [0] -> $23E45A -> bucket 3
+    ];
+    for (const [ang, wantBucket] of facings) {
+      const { ram } = fresh();
+      ram.setU8(A6 + AR.p1Dead, 0);
+      ram.setU8(A6 + AR.p1Ang, ang);
+      const before = ram.u16(BUCKETS[wantBucket].counter);
+      objPart(ram, ROM, A6, OBJ0);
+      const after = ram.u16(BUCKETS[wantBucket].counter);
+      assert.equal(after, (before + 12) & 0xffff,
+        `facing $${ang.toString(16)} should write to bucket ${wantBucket}`);
+    }
   });
 
 test('OBJECT 1 reads OBJECT 0\'s OWN sprite and emitter tables', { skip: SKIP },

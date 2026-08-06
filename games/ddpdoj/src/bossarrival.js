@@ -381,37 +381,70 @@ function sizeScale23E78C(rom, byteOff, d7lo) {
 // (a0)`s use D4's LOW word as scratch (`move.w D7,D4`); the caller's attribute
 // word is parked in the HIGH half across both of them and swapped back down at
 // `$23E448`, one instruction before it is stored.
-function emit23E3E2(ram, rom, d1, d2, d3, d4, d6) {
-  let d7 = (d6 >>> 8) >>> 0;                            // $23E3EC/$23E3EE lsr.l #8
-  const axis = (v) => u16(u16(-v) + 0x80);              // $23E3F0/$23E3F2 neg/addi
+//
+// **W104: `$23E3E2` IS ONE OF THREE IDENTICAL SISTERS.**  `$23E36A` (bucket 1,
+// buffer `$805104`/`$80AFC2`) and `$23E45A` (bucket 3, buffer `$80688C`/
+// `$80AFC6`) are instruction-for-instruction the same routine with two
+// different `lea <buffer>,A0 / adda.w <counter>,A0 / addi.w #$C,<counter>`
+// triplets.  D 14's facing rotation drives `($4B,A6)` into ranges that select
+// these emitters via the table at `$2929E8`, and W96 ported only the bucket-2
+// sister.  The shared body is `emitScaled`; the three wrappers are the address
+// the ROM `jmp`s to.
+
+/** Emitter address -> sprite bucket index.  All three are the extent-scaled
+ *  emit; only the target buffer differs. */
+const EMITTER_BUCKET = new Map([
+  [0x23e3e2, 2],                  // $805CC8 / $80AFC4
+  [0x23e36a, 1],                  // $805104 / $80AFC2
+  [0x23e45a, 3],                  // $80688C / $80AFC6
+]);
+
+/** The shared extent-scaled emit body.  `$23E3E2` / `$23E36A` / `$23E45A` are
+ *  this routine with one difference: which sprite bucket they write to. */
+function emitScaled(ram, rom, bucket, d1, d2, d3, d4, d6) {
+  let d7 = (d6 >>> 8) >>> 0;                            // lsr.l #8
+  const axis = (v) => u16(u16(-v) + 0x80);              // neg.w / addi.w #$80
   // ---- axis A: D3's bits 8..0, halved -> a BYTE offset into $23E78C
   d7 = (d7 & 0xffff0000) | axis(d7 & 0xffff);
-  const offA = (d3 & 0x1ff) >>> 1;                      // $23E3FA/$23E3FE
+  const offA = (d3 & 0x1ff) >>> 1;
   d7 = (d7 & 0xffff0000) | sizeScale23E78C(rom, offA, d7 & 0xffff);
-  // ---- $23E40C swap D7: the scaled half goes up, the untouched half comes down
+  // ---- swap D7: the scaled half goes up, the untouched half comes down
   d7 = (((d7 << 16) | (d7 >>> 16)) >>> 0);
   d7 = (d7 & 0xffff0000) | axis(d7 & 0xffff);
   const offB = W96_MUTATE.value === 'emit-one-axis'
-    ? offA : (d3 & 0x3e00) >>> 6;                       // $23E416/$23E41A
+    ? offA : (d3 & 0x3e00) >>> 6;
   d7 = (d7 & 0xffff0000) | sizeScale23E78C(rom, offB, d7 & 0xffff);
-  // ---- $23E42E..$23E436: D1's halves added, one to each of D7's
-  d7 = (d7 & 0xffff0000) | u16((d7 & 0xffff) + (d1 >>> 16));   // swap D1/add/swap
-  d7 = (((d7 << 16) | (d7 >>> 16)) >>> 0);              // $23E434 swap D7
-  d7 = (d7 & 0xffff0000) | u16((d7 & 0xffff) + (d1 & 0xffff)); // $23E436 add.w
-  // ---- $23E438: the same pack every bucket emitter does, but OR'd with D6
-  const packed = (((d7 | 0) >> 6) & 0x07ff03ff) >>> 0;  // asr.l #6 / andi.l
-  const word = ((packed | d6) >>> 0);                   // $23E440 or.l D6,D7
-  const b = BUCKETS[2];
+  // ---- D1's halves added, one to each of D7's
+  d7 = (d7 & 0xffff0000) | u16((d7 & 0xffff) + (d1 >>> 16));
+  d7 = (((d7 << 16) | (d7 >>> 16)) >>> 0);
+  d7 = (d7 & 0xffff0000) | u16((d7 & 0xffff) + (d1 & 0xffff));
+  // ---- the same pack every bucket emitter does, but OR'd with D6
+  const packed = (((d7 | 0) >> 6) & 0x07ff03ff) >>> 0;
+  const word = ((packed | d6) >>> 0);
+  const b = BUCKETS[bucket];
   const off = u16(ram.u16(b.counter));
   const at = b.buffer + off;
-  ram.setU16(b.counter, u16(off + 12));                 // $23E44C addi.w #$C
+  ram.setU16(b.counter, u16(off + 12));
   ram.setU16(at + 0, (word >>> 16) & 0xffff);
   ram.setU16(at + 2, word & 0xffff);
-  ram.setU16(at + 4, (d2 >>> 16) & 0xffff);             // $23E444 move.l D2
+  ram.setU16(at + 4, (d2 >>> 16) & 0xffff);
   ram.setU16(at + 6, d2 & 0xffff);
-  ram.setU16(at + 8, d3 & 0xffff);                      // $23E446 move.w D3
-  ram.setU16(at + 10, d4 & 0xffff);                     // $23E448/$23E44A swap/move
+  ram.setU16(at + 8, d3 & 0xffff);
+  ram.setU16(at + 10, d4 & 0xffff);
   return off;
+}
+
+/** `$23E3E2` -- the extent-scaled emit, BUCKET 2 (`$805CC8`/`$80AFC4`). */
+function emit23E3E2(ram, rom, d1, d2, d3, d4, d6) {
+  return emitScaled(ram, rom, 2, d1, d2, d3, d4, d6);
+}
+/** `$23E36A` -- the extent-scaled emit, BUCKET 1 (`$805104`/`$80AFC2`). */
+function emit23E36A(ram, rom, d1, d2, d3, d4, d6) {
+  return emitScaled(ram, rom, 1, d1, d2, d3, d4, d6);
+}
+/** `$23E45A` -- the extent-scaled emit, BUCKET 3 (`$80688C`/`$80AFC6`). */
+function emit23E45A(ram, rom, d1, d2, d3, d4, d6) {
+  return emitScaled(ram, rom, 3, d1, d2, d3, d4, d6);
 }
 
 // ===========================================================================
@@ -487,13 +520,16 @@ function objPart(ram, rom, a6, o) {
   }
   const which = (ang >>> 5) & 0xff;                      // $2929C8 lsr.b #$5
   const target = rom.u32(W96.partEmitters + which * 4) & 0xffffff;  // $2929D8
-  if (target !== W96.emitScaled) {
+  // W104: the emitter table at $2929E8 names THREE extent-scaled emitters
+  // ($23E3E2 bucket 2, $23E36A bucket 1, $23E45A bucket 3).  D 14's facing
+  // rotation drives the facing byte into ranges that select each of them.
+  const bucket = EMITTER_BUCKET.get(target);
+  if (bucket === undefined) {
     unreached(target, `$2929E8[${which}] is $${target.toString(16).toUpperCase()
-      } and W96 ports only $23E3E2. The boss's parts reached a sprite emitter `
-      + 'this wave never transcribed -- the facing byte left the range the '
-      + 'arrival produces');
+      } and none of the three extent-scaled emitters ($23E3E2/$23E36A/$23E45A) `
+      + 'match. The facing byte left every range the boss produces');
   }
-  emit23E3E2(ram, rom, d1, d2, d3, d4, d6);              // $2929DC jmp (A0)
+  emitScaled(ram, rom, bucket, d1, d2, d3, d4, d6);     // $2929DC jmp (A0)
 }
 
 const OBJ0 = { anim: AR.p1Anim, frames: W96.obj0Frames, pos: AR.p1Pos,
@@ -778,5 +814,6 @@ registerScript(0x29387c, (ram, rom, ctx, a4) => {       // D 3 INIT -- `rts`
 registerScript(0x293884, (ram, rom, ctx, a4) =>
   dAnimStep(ram, a4, A6(ctx, 0x293884), D3F));
 
-export { emit23E08C, emit23E3E2, sizeScale23E78C, objPart, obj6_292F4A,
+export { emit23E08C, emit23E3E2, emit23E36A, emit23E45A, emitScaled,
+  sizeScale23E78C, objPart, obj6_292F4A,
   dWobbleInit, dWobbleStep, dAnimStep, OBJ0, OBJ1, D0F, D1F, D2F, D3F, AR };
