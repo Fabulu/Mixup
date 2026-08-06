@@ -252,6 +252,35 @@ export function drawWord242EC2(ram, rom) {
   return (i & 0xff00) | rom.u8(RNG_242EC2.table + idx);       // $242ED6 move.b
 }
 
+/**
+ * `$24328E` -- W95, and it is THE FIRST MEMBER OF THIS FAMILY THAT RETURNS A
+ * WORD OUT OF A WORD TABLE.  Every other one the port has read is a byte:
+ *
+ *   24328e: addq.b #1,$803917
+ *   243294: moveq #$7F,D0 / and.w $803916,D0
+ *   24329c: add.w D0,D0                  <-- **THE INDEX IS DOUBLED**
+ *   24329e: move.l A0,-(A7) / lea ($2432AE,PC),A0 / nop
+ *   2432a6: move.w (A0,D0.w),D0          <-- a WORD, not a byte
+ *   2432aa: movea.l (A7)+,A0 / rts
+ *
+ * so it is 128 WORDS at `$2432AE..$2433AD` and the far end is pinned by
+ * `$2433AE`, which is `52 39 00 80 39 17` -- the family's next `addq.b` site,
+ * the same pin `$242FDE` and `$2431F4` use.  A port that copied one of the byte
+ * members and forgot `add.w D0,D0` would read the HIGH BYTE of the word it
+ * wanted, every time, and the values would still look plausible.
+ *
+ * `[M]` the table's values are signed word offsets (`$0800 $1000 $0000 $0C00
+ * $1400 $F400 ...`); E script 13 uses it three times a volley as
+ * `asr.w #$3,D0` -- a jitter of +-$280 on the muzzle.
+ * @returns {number} D0's low word, 0..65535 (the raw table word).
+ */
+export const RNG_24328E = { table: 0x2432ae, entries: 128 };
+export function drawWord24328E(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $24328E
+  const i = u16(ram.u16(RNG.state)) & 0x7f;                   // $243294/$243296
+  return rom.u16(RNG_24328E.table + i * 2);                   // $24329C/$2432A6
+}
+
 /** `$28AB86` -- `$28ABE0`'s twin, one table earlier.  Identical shape:
  *  `moveq #$3F,D1 / and.w $803916,D1 / lea ($28ABA0,PC),A2 / adda.w D1,A2 /
  *  move.b (A2),D1`.

@@ -369,7 +369,18 @@ test('every registered script address is one of the boss\'s own table entries',
     // OBJECT list `$292932`, which is a third table this test did not know
     // about.  The CLAIM is unchanged and is the point of the test: a registered
     // address must be one the cartridge itself publishes as an entry point.
+    //
+    // W95: FOUR classes now.  W82 widened this from two to three; W95 is the
+    // first wave to register a TABLE-F script (`$295002`, F id 1's INIT), and
+    // A4 `$294F68` was the one pointer table the legal set never carried.
+    // SEVEN pairs, which is what `check_boss_a4_extent` asserts out of the
+    // image (W64 found W62's window was short at five).  The claim and the
+    // negative case at the foot are unchanged, so the widening cannot weaken
+    // it: `$2943EC`, D-script 7's `rts`, must still be rejected.
     const legal = [];
+    for (let i = 0; i < 7; i++) {                        // A4, $294F68
+      legal.push(ROM.u32(0x294f68 + i * 8), ROM.u32(0x294f68 + i * 8 + 4));
+    }
     for (let i = 0; i < 21; i++) {                       // A3, $29370A
       legal.push(ROM.u32(0x29370a + i * 8), ROM.u32(0x29370a + i * 8 + 4));
     }

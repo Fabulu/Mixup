@@ -471,15 +471,20 @@ test('all four MAIN 6/7 entry points are registered', { skip: SKIP }, () => {
   }
 });
 
-test('the OTHER ten of the steady-state twelve are STILL LOUD NAMED THROWS',
-  { skip: SKIP }, () => {
-    // The wave's own scope, asserted rather than described.  If one of these
-    // quietly acquires a body, this test says so.
+test('the steady state\'s CLOSED SET OF TWELVE is now COMPLETE (W95)', () => {
+    // W94 wrote this as "the OTHER ten are STILL LOUD NAMED THROWS", to say the
+    // wave's scope out loud rather than describe it.  **IT WENT RED THE MOMENT
+    // W95 REGISTERED THEM, which is the test working**, and the claim it makes
+    // is now the opposite one and worth keeping: the twelve are a CLOSED SET,
+    // so either all of them are registered or the set is not closed.  The set
+    // itself is unchanged -- it is W94 §3A's table, address for address.
     const reg = new Set(scriptAddresses());
     for (const a of [0x29556c, 0x295626, 0x2956f6, 0x295120, 0x293432,
-      0x29359e, 0x294ac0, 0x295948, 0x295ae0, 0x296614]) {
-      assert.ok(!reg.has(a),
-        `$${a.toString(16).toUpperCase()} is registered -- update W94's scope`);
+      0x29359e, 0x294ac0, 0x295948, 0x295ae0, 0x296614,
+      W94.main6Step, W94.main7Step]) {
+      assert.ok(reg.has(a),
+        `$${a.toString(16).toUpperCase()} is one of the twelve and is NOT `
+        + 'registered -- the steady state cannot be oracled as a subset');
     }
   });
 

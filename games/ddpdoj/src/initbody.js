@@ -32,7 +32,7 @@
 import { unreached } from './unported.js';
 import { initArms, stepArms } from './midboss.js';
 import { u16, i16 } from './ram.js';
-import { installScripts } from './scheduler.js';
+import { installScripts, a2Run2598E6, a4Start25980C } from './scheduler.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
@@ -736,14 +736,31 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported, tables, palette) => {
   // A2 pre-fill it performs leaves each slot's RUN bit (bit 0) CLEAR.  Without
   // `$812A70` the A3 walk is skipped and D-script 6 -- the boss's death
   // animation, which is what fires `$2595E8` and ends the stage -- could never
-  // step.  The two ACTIVATIONS below are still counted, so A2 slot 6 (the boss
-  // sprite, $292F4A) and A4 script 0 ($294FA0, which starts the boss's whole
-  // attack sequence 192 frames later) stay dormant.  That is the boss, and the
-  // boss is recon 48's three waves.
+  // step.
   installScripts(ram, rom, { a0: 0x293104, a1: 0x295856, a2: 0x292932,
     a3: 0x29370a, a4: 0x294f68 });                     // $29272E jsr $259554
-  unported?.note(0x2598e6, `boss bespoke $2598E6 -- W30`);
-  unported?.note(0x25980c, `boss bespoke $25980C -- W30`);
+  // ==================== W95: THE TWO ACTIVATIONS ARE NOW REAL ================
+  // W62 counted both and said so; W94 §7 then measured what that cost, in a
+  // BROWSER rather than in a harness: the tables install at lf~7,895, the
+  // `WARNING -- HUGE BATTLESHIP` banner appears, and **nothing else happens**.
+  // Every slot stays empty, `$2596C6` walks five tables and finds no armed
+  // channel, and the port flies through the boss with no boss and no throw.
+  //
+  // > **THAT IS WHY `playgate` WAS GREEN WHILE 43 LADDER RUNGS WERE BLOCKED.**
+  // > The ladder SEEDS from the board's RAM, in which the slots are already
+  // > occupied, so its walk dispatches real scripts; the page reached the same
+  // > logic frames with every slot empty.  The two harnesses disagreed about
+  // > whether the boss exists, and only one of them was being read.
+  //
+  // `$292734 moveq #$6,D0 / jsr $2598E6` arms A2 slot 6 -- OBJECT routine
+  // `$292F4A`, THE BOSS'S OWN SPRITE.  `$29273C moveq #$0,D0 / jsr $25980C`
+  // starts F script 0 (`$294FA0`), whose 192-frame timer then does
+  // `MAIN.start 0` -- the ARRIVAL, which is W94 §3B and NOT in this wave.  So
+  // making these real is what turns the boss from absent into a run that
+  // reaches unported code by address, which is the honest state and is what
+  // the worklog reports.  **Neither is clamped and nothing is stubbed.**
+  a2Run2598E6(ram, 6);                                 // $292734/$292738
+  a4Start25980C(ram, 0);                               // $29273C/$292740
   // W92: the BOSS's five.  Install 4 is $246BF8, the WHITE constant bank the
   // $24xxxx code segment holds as data -- comment ten's other half.
   installBank(ram, rom, palette, unported, 0x15, 0x222B38, 0x29274E,

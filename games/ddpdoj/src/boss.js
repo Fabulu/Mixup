@@ -956,3 +956,14 @@ export { SCHED as BOSS_SCHED };
 // module the loader reaches first.  Anything that needed a `const` from this
 // file would have to be passed in instead.
 import './bossscripts.js';
+// W95 -- THE STEADY STATE registers itself, the same way and for the same
+// reason: twenty more `registerScript` calls (the ten script ids of W94 §3A's
+// closed set, INIT and STEP).  It imports CONSTS out of `bossscripts.js`
+// (`BS`, `dist242494`, `bodyTail29314C`, ...), so it must come AFTER that
+// import -- ESM hoists both, and `bossscripts.js` is fully evaluated by the
+// time this one's body runs.
+import './bossphase.js';
+// W95 -- and the THREE GUNS the steady state starts (E 3, E 4 and E 13), six
+// more entry points, in their own file because E 13 is BULLET KIND 11 and the
+// first execution of any of W27's 39 transcribed bodies.
+import './bossguns.js';

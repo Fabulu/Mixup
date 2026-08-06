@@ -1293,6 +1293,162 @@ SHOT_WINDOWS.extend([
 ])
 
 
+# ============ W95: THE STEADY STATE'S NINE TABLES ============================
+#
+# `src/bossphase.js` ports the ten script ids of W94 §3A's closed set, and
+# every constant they use comes out of the CARTRIDGE at the address the
+# instruction computes (recon 48's work-list item 4) rather than out of a JS
+# literal, so a table that moves throws by address instead of firing a wrong
+# gun.  Each extent below is what an INSTRUCTION can reach, and each is pinned:
+# seven by a longword the cartridge itself publishes in one of the boss's five
+# pointer tables, two by the fixed displacements of the instructions that read
+# them.  `check_boss_phase_tables` asserts all nine on every export.
+SHOT_WINDOWS.extend([
+    # $293432 `lea $293482(pc),A0 / adda.w (A4),A0 / movem.w (A0),D2-D3` -- MAIN
+    # script 2's own waypoints, the exact shape of MAIN 7's $293694 (W94) with a
+    # different base: the index is `(A4)` = `($242E24 & $7) * 4`, so 0..$1C, and
+    # `movem.w` reads two words -- $1C + 4 = $20.  [M] the eight X values are
+    # BYTE-IDENTICAL to $293694's and only the Y column differs ($58..$60 here
+    # against $72..$76 there), which is the two arenas the boss has.
+    (0x293482, 0x0020, "W95: MAIN script 2's waypoint table $293482 -- EIGHT "
+                       "(Y,X) word pairs indexed by (A4) = ($242E24 & $7) * 4. "
+                       "Far end pinned by $2934A2, MAIN script 3's INIT, which "
+                       "$293104[3] publishes"),
+    # F 1's FIVE parameter tables, and they ABUT: $294FCA(8) $294FD2(8)
+    # $294FDA(8) $294FE2($10) $294FF2($10) = $294FCA..$295001 exactly.  Every
+    # one is indexed by `$2595F2`, WHICH ALWAYS RETURNS 4 -- so only entry [4]
+    # (and [8] in the two word tables) is ever read and the other seven of each
+    # are unreachable in build B.  They are declared whole because they are the
+    # tables; the port reads index 4 at the computed address.
+    (0x294FCA, 0x0038, "W95: F script 1's five parameter tables "
+                       "$294FCA/$294FD2/$294FDA (bytes) and $294FE2/$294FF2 "
+                       "(words), read at $29503E/$295022/$2950B0/$2950BE/"
+                       "$2950EE with an index $2595F2 pins at 4. They ABUT; the "
+                       "far end is $295002, F script 1's own INIT, which "
+                       "$294F68[1] publishes"),
+    # $29529E `lea $2952D2(pc),A0 / adda.w $106(A6),A0 / move.w (A0),D0` -- three
+    # words, `0003 0002 $FFFF`, walked two bytes at a time by a cursor in the
+    # boss's sub-record.  **THE VALUE IS DISCARDED** ($2952C6 `moveq #$3,D0`
+    # overwrites it on both arms); only the SIGN is read, to decide whether the
+    # cursor advances.  $2952D8 is F script 2's INIT and pins the far end.
+    (0x2952D2, 0x0006, "W95: F script 1's hand-over sequence $2952D2 -- three "
+                       "words 0003/0002/$FFFF walked by $106(A6). Only the SIGN "
+                       "is read; $2952C6 moveq #$3,D0 discards the value. Far "
+                       "end pinned by $2952D8, F script 2's INIT"),
+    # $2956BA `lea $295664(pc),A0 / adda.w D0,A0 / move.w (A0)+,$E(A4) / move.w
+    # (A0),D1` with D0 = $2595F2 * 4 = 16.  Eight (count, ladder) pairs, of
+    # which only [4] is reachable.  $295684 is F script 6's own INIT.
+    (0x295664, 0x0020, "W95: F script 6's ladder table $295664 -- EIGHT word "
+                       "pairs read at $2956C0/$2956C4 with an index $2595F2 "
+                       "pins at 16. Far end pinned by $295684, F script 6's "
+                       "INIT, which $294F68[6] publishes"),
+    # E 0's two word tables, ABUTTING: $2958D2($10) + $2958E2($10).  Same
+    # constant index (8, i.e. $2595F2 * 2).  $2958F2 is E 0's own INIT.
+    (0x2958D2, 0x0020, "W95: E script 0's two word tables $2958D2 and $2958E2, "
+                       "read at $295936/$295940 with an index $2595F2 pins at "
+                       "8. Far end pinned by $2958F2, E script 0's INIT, which "
+                       "$295856[0] publishes"),
+    # THE MUZZLE LONGWORDS E 0 AND E 1 SHARE, $2959C4..$2959E3.  Eight
+    # longwords named by EIGHT FIXED DISPLACEMENTS -- `move.l (d16,PC),D3` at
+    # $295978 $295984 $295990 $2959A0 $295C66 $295C76 $295C84 $295C92 -- plus
+    # the two WORDS at $2959D4/$2959D6 the turret aimer $2959E4 adds.  The far
+    # end is $2959E4 itself, which is CODE (`movem.w $2(A6),D0-D1`), and the
+    # check below asserts that.
+    (0x2959C4, 0x0020, "W95: the muzzle-offset longwords E scripts 0 and 1 "
+                       "share, $2959C4..$2959E3 -- eight longwords named by "
+                       "fixed displacements. Far end pinned by $2959E4 being "
+                       "CODE (movem.w $2(A6),D0-D1)"),
+    (0x295A6E, 0x0010, "W95: E script 1's word table $295A6E, read at $295A96 "
+                       "with an index $2595F2 pins at 8. The value is ADDED to "
+                       "$C(A4), which the init never clears. Far end pinned by "
+                       "$295A7E, E script 1's INIT, which $295856[1] publishes"),
+    (0x2965E8, 0x0010, "W95: E script 11's word table $2965E8, read at $29660E "
+                       "with an index $2595F2 pins at 8. Far end pinned by "
+                       "$2965F8, E script 11's INIT, which $295856[11] "
+                       "publishes"),
+    # E 11's four muzzles, named by four fixed displacements and read OUT OF
+    # ADDRESS ORDER -- $296680, $296688, $29667C, $296684, i.e. [1] [3] [0] [2].
+    # $10 is exactly what those four displacements span; the far end is another
+    # table ($29668C, E script 12's) and not code, so the bound is the
+    # instructions' own, which is the strongest bound available here.
+    (0x29667C, 0x0010, "W95: E script 11's FOUR muzzle longwords $29667C.."
+                       "$29668B, read at $296640/$29664C/$296658/$296664 in the "
+                       "order [1] [3] [0] [2]. The extent is exactly what those "
+                       "four fixed displacements span"),
+    # THE ARM MUZZLE TABLE, shared by E scripts 3, 4 and 13.  `lea $295DD2(pc),
+    # A0 / move.w $AC(A6),D2 / addq.w #$7,D2 / add.w D2,D2 / add.w D2,D2 /
+    # move.l (A0,D2.w),D2` -- **THE SAME `($AC + 7)` BIAS AND THE SAME SIGNED
+    # [-7,+7] ROW SELECTOR `$292C2A` USES** (W82), so fifteen longwords, and the
+    # far end is $295E0E, E script 3's own INIT.  One number therefore places
+    # both the bullet and the sprite; a wrong `$AC` puts the shots where the
+    # boss is not drawn, which is a defect no single field would name.
+    (0x295DD2, 0x003C, "W95: the boss ARM MUZZLE table $295DD2 -- FIFTEEN "
+                       "longwords indexed by ($AC(A6)+7)*4, read by E scripts "
+                       "3, 4 and 13 at $295DB0/$2967A8/$296828/$29687C/$2968C4. "
+                       "Far end pinned by $295E0E, E script 3's INIT, which "
+                       "$295856[3] publishes"),
+    # $24328E's WORD table -- the first word member of the $803917 RNG family
+    # the port has read.  `moveq #$7F,D0 / and.w $803916,D0 / add.w D0,D0 /
+    # move.w ($2432AE,PC,D0.w),D0`, so 128 WORDS, and the far end is $2433AE --
+    # the family's next `addq.b #1,$803917`, the same pin W31 used for $24324E
+    # and $24301A and W65 for $242EDE.  `check_rng_family` asserts it.
+    (0x2432AE, 0x0100, "W95: $24328E's 128-WORD draw table $2432AE, indexed by "
+                       "($803916 & $7F) * 2. The first WORD member of the "
+                       "$803917 family; E script 13 draws from it three times "
+                       "a volley. Far end pinned by $2433AE, the next addq.b"),
+])
+
+
+def check_boss_phase_tables(d: bytes) -> None:
+    """W95: the nine windows above, pinned from the image on every export.
+
+    A unit test cannot read the cartridge and so cannot catch a SHORT window
+    (`check_bomb_extents`'s docstring says why, and W64/W82 are the three times
+    this project has paid for one).  Seven of the nine are pinned by a pointer
+    the cartridge PUBLISHES in one of the boss's own five tables, so the pin
+    cannot drift away from the table it bounds; the eighth is pinned by code and
+    the ninth by the four displacements that read it.
+    """
+    # (window base, window length, the pointer that must equal base + length)
+    PINS = (
+        (0x293482, 0x0020, u32(d, 0x293104 + 3 * 8), "$293104[3].INIT, MAIN 3"),
+        (0x294FCA, 0x0038, u32(d, 0x294F68 + 1 * 8), "$294F68[1].INIT, F 1"),
+        (0x2952D2, 0x0006, u32(d, 0x294F68 + 2 * 8), "$294F68[2].INIT, F 2"),
+        (0x295664, 0x0020, u32(d, 0x294F68 + 6 * 8), "$294F68[6].INIT, F 6"),
+        (0x2958D2, 0x0020, u32(d, 0x295856 + 0 * 8), "$295856[0].INIT, E 0"),
+        (0x295A6E, 0x0010, u32(d, 0x295856 + 1 * 8), "$295856[1].INIT, E 1"),
+        (0x2965E8, 0x0010, u32(d, 0x295856 + 11 * 8), "$295856[11].INIT, E 11"),
+        (0x295DD2, 0x003C, u32(d, 0x295856 + 3 * 8), "$295856[3].INIT, E 3"),
+    )
+    for base, length, pin, who in PINS:
+        if pin != base + length:
+            raise SystemExit(
+                f"W95: ${base:06X} + ${length:X} must be ${base + length:06X}, "
+                f"which is where {who} begins -- but that pointer reads "
+                f"${pin:06X}. Either the table moved or the window is the wrong "
+                f"length; widen it HERE, with a new pin, never in src/rom.js")
+    # $2959C4 + $20 = $2959E4, and $2959E4 must be `movem.w $2(A6),D0-D1`
+    # (`4CAE 0003 0002`) -- the first instruction of the turret aimer, which is
+    # what makes the muzzle block exactly eight longwords long.
+    if u32(d, 0x2959E4) != 0x4CAE0003 or u16(d, 0x2959E8) != 0x0002:
+        raise SystemExit(
+            f"W95: $2959E4 must be `movem.w $2(A6),D0-D1` (4CAE 0003 0002), the "
+            f"CODE that pins the far end of the $2959C4 muzzle block at $20 "
+            f"bytes; it reads {u32(d, 0x2959E4):08X} {u16(d, 0x2959E8):04X}")
+    # E 11's four muzzles are read OUT OF ORDER and the port hard-codes that
+    # order, so assert the four displacements are still what the code reads.
+    for pc, want in ((0x296640, 0x296680), (0x29664C, 0x296688),
+                     (0x296658, 0x29667C), (0x296664, 0x296684)):
+        # `move.l (d16,PC),D3` is `26 3A dddd`, PC = the extension word.
+        disp = u16(d, pc + 2)
+        disp -= 0x10000 if disp & 0x8000 else 0
+        if u16(d, pc) != 0x263A or (pc + 2 + disp) != want:
+            raise SystemExit(
+                f"W95: ${pc:06X} must be `move.l ${want:06X}(pc),D3`; "
+                f"src/bossphase.js hard-codes E script 11's muzzle ORDER as "
+                f"[1] [3] [0] [2] because these four displacements say so")
+
+
 def check_boss_waypoint_extent(d: bytes) -> None:
     """W94: $293694 + $20 must stop exactly where MAIN 8's INIT begins.
 
@@ -2345,8 +2501,10 @@ def check_beam_bomb_extents(d: bytes) -> None:
     # 10. $242EC2's table is UNMASKED and $28AB86's is `moveq #$3F`; every far
     #     end is the next `addq.b #1,$803917` in the family, which is the same
     #     way W31 pinned $24324E and $24301A and W53 pinned $28ABFA.
+    #     W95 adds $2432AE, the family's first WORD table (128 entries, index
+    #     doubled), pinned by $2433AE the same way.
     for tbl, ln, nxt in ((0x242EDE, 0x100, 0x242FDE), (0x28ABA0, 0x40, 0x28ABE0),
-                         (0x243174, 0x80, 0x2431F4)):
+                         (0x243174, 0x80, 0x2431F4), (0x2432AE, 0x100, 0x2433AE)):
         if tbl + ln != nxt:
             raise SystemExit(f"${tbl:06X} + ${ln:X} is ${tbl + ln:06X}, not "
                              f"the ${nxt:06X} that pins it.")
@@ -3196,6 +3354,7 @@ def build(d: bytes) -> dict:
     check_boss_script_table_extents(d)         # W82 -- ...and so were A3 and A1
     check_boss_object_tables(d)                # W82 -- the OBJECT sprite tables
     check_boss_waypoint_extent(d)              # W94 -- MAIN 7's eight waypoints
+    check_boss_phase_tables(d)                 # W95 -- the steady state's nine
     check_beam_bomb_extents(d)                 # W65 -- THE LASER BOMB's
     check_beam_impact_extents(d)               # W90 -- THE LASER's IMPACT
     check_palette_upload_family(d)             # W91 -- THE SPRITE PALETTE
