@@ -60,7 +60,27 @@ classifying a red.**
 ## THE WAY OUT, WHEN SOMEBODY TAKES IT
 
 Port `$29540C`. The run then reaches the stage ending again and the gate returns
-to green on its own, with the boss still on screen. That was offered as a third
-option and the owner did not take it, so it is **queued, not mandated**. Do not
-let it be forgotten: a red carried on purpose stops being a decision and becomes
-rot the moment nobody remembers why it is there.
+to green on its own, with the boss still on screen.
+
+**UPDATE, same day: THE OWNER HAS NOW MANDATED IT.**
+
+> "Can we actually make sure we fix the thing that stops the boss too? Something
+> unported I guess? Before you stop that is"
+
+So this stops being a queued option and becomes the work. It was offered as a
+third choice when the decision above was put, and not taken then; the owner came
+back to it unprompted within the hour.
+
+**The debt was therefore never accepted as permanent, and this file should not
+be read as blessing a standing red.** The decision was "keep the boss now", not
+"the gate may stay red". Anyone citing 97 to justify carrying a red must cite
+this section with it.
+
+**How it must NOT be closed:** by clamping, stubbing, or special-casing the
+gate. If `$29540C` turns out to be large, or if porting it does not restore
+`STAGE 1 ENDS`, both are findings to report, and the red stays where it is. A
+red carried honestly beats a green bought with a fake, and this project has
+`docs/knowledge/03` because that trade has been made badly before.
+
+The original warning stands regardless: a red carried on purpose stops being a
+decision and becomes rot the moment nobody remembers why it is there.
