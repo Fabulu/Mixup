@@ -506,6 +506,29 @@ export class Game {
     // How many 12-byte sprite REQUESTS the shot handlers appended this frame,
     // read off $80AFD6 the instant before call #4's tail zeroes it.
     this.shotRequests = this.ram.u16(0x80afd6) / 12;
+    // WAVE 85 -- THE SAME READ, ON BUCKET 2 ($805CC8/$80AFC4), and it needs no
+    // per-producer instrumentation the way bucket 14 does.  Bucket 14's
+    // containment check has to EXCLUDE the option pods' shot records by name,
+    // because the port carries stale copies of slots it does not model, so
+    // `ctx.shotRequests` records offsets slot by slot.  Bucket 2 has no such
+    // problem: the port only ever writes it from code the port HAS ported, and
+    // call #4's tail ($23D70C) zeroes every counter, so at the top of a logic
+    // frame $80AFC4 is 0 and EVERY record the port wrote this frame lies in
+    // [0, $80AFC4) -- the counter read here IS the port's own record set.
+    //
+    // BEING PRODUCER-AGNOSTIC IS THE POINT, not a shortcut.  Two files name
+    // bucket 2 directly today --
+    //   * `src/background.js` `elemStage`, the 13 stage-1 background element
+    //     updaters through its own inline copy of `$23DF2A` (W40's census: 35
+    //     call sites in $2623F4..$2631CA, and the BULK of the bucket), and
+    //   * `src/boss.js` `emit23E020`, the stage-1 boss's A2 OBJECT routines
+    //     (W82), through `spritequeue.js enqueueRegisters` on bucket 2 --
+    // but `resolveEmitStub` reads a stub's bucket OUT OF THE CARTRIDGE, and the
+    // stubs the enemy tables point at resolve to buckets 0, 1, 2, 3 and 7.  So
+    // a handler this port already has can start feeding bucket 2 without any
+    // file naming it, and a counter read catches that where a hand-kept list of
+    // producers would not.
+    this.bucket2Bytes = this.ram.u16(0x80afc4);
     // WAVE 12: the four buckets this port has producers for, snapshotted at the
     // board's own $23D382 sample point -- after every producer, before the
     // counters are cleared.  `pgm.py shipgate` compares these against the

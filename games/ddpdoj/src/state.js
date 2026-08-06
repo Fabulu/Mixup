@@ -197,6 +197,39 @@ export const RAWDUMP_SPEC = [
   ['shot1', 0x810812, 5 * 0x30],
   ['shot2', 0x810962, 5 * 0x30],
   ['sprq', 0x808854, 0x120],           // 24 records; the bucket is $660 long
+  // ---------------------------------------------------------------- WAVE 85
+  // `sprq2` -- SPRITE BUCKET 2, $805CC8, counted at $80AFC4.
+  //
+  // WHY IT IS HERE.  W82 ported the stage-1 boss's four A2 OBJECT routines and
+  // could claim FEATURE COMPLETE but not ORACLES PERFECTLY for them, and its
+  // own §6.2 says exactly why: their only output is bucket 2, and this file
+  // traced bucket 14 ($808854, the shots) and nothing else that a producer
+  // appends to.  Every one of W82's twelve mutations left `seedcmp --segment
+  // 19000` reporting the identical first divergence, because the comparison was
+  // structurally blind to the bytes those routines write.  A green from a gate
+  // that cannot see the field is `78-diag`'s own lesson and it is not evidence.
+  //
+  // IT IS NOT "THE BOSS'S BUCKET" AND NAMING IT THAT WOULD BE WRONG.  Bucket 2
+  // is a DEPTH LAYER shared by every producer that wants to draw there, and the
+  // port has had a second producer in it since W13: `src/background.js`
+  // `elemStage`, the 13 stage-1 background element updaters, through its own
+  // inline copy of `$23DF2A`.  W40's census names three stub families feeding it
+  // -- `$23D7DA` (6 sites), `$23D916` (1) and `$23DF2A` (35) -- and
+  // `resolveEmitStub` can land an enemy handler there out of the cartridge too.
+  // So this column watches a LAYER that the boss happens to draw into, and the
+  // comparison is CONTAINMENT rather than equality for that reason (portdiff.mjs
+  // has the argument in full).
+  //
+  // THE LENGTH IS MEASURED, NOT PICKED.  [M] over all 71 checkpoint rungs of
+  // `stage1-sweep`, the last non-zero byte in the $BC4-byte buffer is at 192 --
+  // SIXTEEN records -- and the high-water mark is at lf12,000.  [M] the port's
+  // own per-frame maximum over the same ladder is SEVEN records (84 bytes), at
+  // lf19,000, and those seven are the boss: OBJECT 2, OBJECT 3, OBJECT 4 and
+  // OBJECT 5's four limbs.  $180 is 32 records: twice the buffer's whole-stage
+  // high-water mark and four and a half times the port's.  `portdiff.mjs` prints
+  // both numbers on every run, so a future stage that needs more says so instead
+  // of quietly comparing a truncated prefix.
+  ['sprq2', 0x805cc8, 0x180],          // 32 records; the bucket is $BC4 long
   // WAVE 11: all THIRTY bucket counters, $80AFC0..$80AFFB.  They are zero at
   // every sample point because call #4's tail clears them ($23D70C), and that
   // is exactly why they are here: a port that forgets the reset is caught on

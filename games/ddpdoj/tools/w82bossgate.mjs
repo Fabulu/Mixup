@@ -5,27 +5,32 @@
 //
 // WHY THIS EXISTS, AND WHAT IT ADMITS.
 //
-// `seedcmp.mjs` compares 94 columns and **not one of them can see this wave's
-// code.**  `src/state.js` traces sprite bucket `$808854` (the shots) under the
-// name `sprq`; the boss's OBJECT routines emit into bucket `$805CC8`, which
-// nothing in this repo traces.  D-script 7's three fields live in the boss's
-// SUB-RECORD, which is not a compared column either.  [M] all eleven of W82's
-// mutations leave `--segment 19000` reporting the identical first divergence
-// (`vf@lf19160`, the pre-existing slowdown), so the segment sweep is a gate for
-// "does it still throw" and is NOT a gate for "is it right".
+// AS OF W82: `seedcmp.mjs` compared 94 columns and **not one of them could see
+// that wave's code.**  `src/state.js` traced sprite bucket `$808854` (the shots)
+// under the name `sprq`; the boss's OBJECT routines emit into bucket `$805CC8`,
+// which nothing in this repo traced.  D-script 7's three fields live in the
+// boss's SUB-RECORD, which is not a compared column either.  [M] all eleven of
+// W82's mutations left `--segment 19000` reporting the identical first
+// divergence (`vf@lf19160`, the pre-existing slowdown), so the segment sweep was
+// a gate for "does it still throw" and was NOT a gate for "is it right".
 //
-// That is the honest position, and this file is the smallest thing that can be
-// a real oracle in spite of it.  The checkpoint ladder does not only hold the
+// That was the honest position, and this file is the smallest thing that could
+// be a real oracle in spite of it.  The checkpoint ladder does not only hold the
 // 94 columns -- **it holds the board's whole 128 KiB of RAM at every rung**, so
 // the boss's own animation state at lf19,250 is on disk and was measured by
 // MAME.  This gate seeds the port at lf19,000, runs 250 logic frames, and
 // compares D-script 7's four fields against that dump.
 //
-// WHAT IT DOES NOT DO.  It does not oracle the four OBJECT routines: their only
-// output is bucket 2, which is drained and rebuilt within a frame and which the
-// checkpoint captures at a point in the frame this gate cannot place.  They are
-// transcribed from the listing and unit-tested against it, and that is a WEAKER
-// claim than this one.  It is stated in the worklog rather than blurred.
+// **W85 CLOSED THE OTHER HALF, and this paragraph is corrected rather than
+// deleted so the sequence stays legible.**  `src/state.js` now carries `sprq2`
+// = `$805CC8`, and `portdiff.mjs` compares the port's bucket-2 records against
+// the board's own by containment on every frame of every segment.  So the four
+// OBJECT routines ARE oracled now, by the sweep, and the sentence that used to
+// stand here -- "the checkpoint captures bucket 2 at a point in the frame this
+// gate cannot place" -- was over-cautious: `frame.lua` takes the raw dumps and
+// the checkpoint at THE SAME sample point, so the bytes were always at a
+// definite instant.  What this gate still uniquely covers is D-script 7's
+// SUB-RECORD fields, which are not sprite records and are not in any bucket.
 //
 // A6 IS DERIVED, NOT HARDCODED.  `$2927B6 lea $16(a5),a0 / move.l a0,$81B62A`
 // is the boss init publishing its own record for the HP bar, so

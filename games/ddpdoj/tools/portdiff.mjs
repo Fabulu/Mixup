@@ -26,6 +26,7 @@ import { stateVector, CLAIMED, OPTION_COLUMNS, MASKED, RAWDUMP_SPEC,
 import { breakage } from './breakage.mjs';
 import { AUTOSHOT_MUTATE, CLAMP_ORDER } from '../src/player.js';
 import { W82_MUTATE } from '../src/boss.js';
+import { B2_MUTATE } from '../src/background.js';
 
 function readTsv(path) {
   const lines = readFileSync(path, 'utf8').trim().split(/\r?\n/);
@@ -45,6 +46,51 @@ function readTsv(path) {
 export function readTrace(tsvPath) {
   const rows = readTsv(tsvPath);
   return { rows, byLf: new Map(rows.map((r) => [Number(r.lf), r])) };
+}
+
+/**
+ * WAVE 85 -- ONE FRAME OF THE BUCKET-2 CONTAINMENT CHECK, as a pure function so
+ * `tests/w85bucket2.test.js` can drive it with records it wrote itself and see
+ * it REPORT A MISS.  A containment check that has only ever been run against a
+ * port that agrees is not a check (`docs/knowledge/03`).
+ *
+ * @param {string} boardHex  the board's dumped bucket-2 prefix, lower-case hex
+ * @param {string} portHex   the port's, same address, same length
+ * @param {number} portBytes $80AFC4 at the sample point: the port's own records
+ *                           are exactly [0, portBytes), because call #4's tail
+ *                           ($23D70C) zeroed the counter at the top of the frame
+ * @param {number} dumpLen   how many BYTES of the bucket the dump covers
+ * @returns {{records:number, past:number, missing:{off:number,rec:string}[],
+ *            ordered:boolean}}
+ */
+export function bucketContainment(boardHex, portHex, portBytes, dumpLen) {
+  // The board's dump split on the ROM's own 12-byte record boundary -- never as
+  // a substring.  Every bucket-2 producer appends exactly $C bytes from a
+  // counter that starts at 0, and bucket 2 has no BULK writer (those are 20, 22
+  // and 23), so the alignment is a property of the cartridge.
+  //
+  // EVERY offset each distinct record occupies is kept, not just the first: a
+  // sprite that legitimately appears twice in one frame (two identical body
+  // parts, two elements at the same place) would otherwise fail the ORDER
+  // report for a reason that is not a defect.
+  const board = new Map();
+  for (let o = 0; o * 2 + 24 <= boardHex.length; o += 12) {
+    const k = boardHex.slice(o * 2, o * 2 + 24);
+    const l = board.get(k);
+    if (l) l.push(o); else board.set(k, [o]);
+  }
+  const r = { records: 0, past: 0, missing: [], ordered: true };
+  let cursor = -1;
+  for (let o = 0; o < portBytes; o += 12) {
+    if (o + 12 > dumpLen) { r.past++; r.ordered = false; continue; }
+    const rec = portHex.slice(o * 2, o * 2 + 24);
+    r.records++;
+    const at = board.get(rec);
+    if (at === undefined) { r.missing.push({ off: o, rec }); r.ordered = false; continue; }
+    const next = at.find((x) => x >= cursor);
+    if (next === undefined) r.ordered = false; else cursor = next;
+  }
+  return r;
 }
 
 export function run(tsvPath, seedPath, tablesPath, opts = {}) {
@@ -87,6 +133,7 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
   CLAMP_ORDER.value = 'rom';
   AUTOSHOT_MUTATE.value = null;      // WAVE 79's seam, same rule
   W82_MUTATE.value = null;           // WAVE 82's seam, same rule
+  B2_MUTATE.value = null;            // WAVE 85's seam, same rule
   if (opts.break) breakage(opts.break, game);
 
   const pokes = (opts.poke ?? '').split(',').filter(Boolean).map((kv) => {
@@ -131,10 +178,58 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
   // falsifiable and worth something: EVERY 12-BYTE RECORD THE PORT EMITTED
   // APPEARS VERBATIM IN THE BOARD'S OWN BUCKET FOR THAT FRAME.
   const sprq = { frames: 0, records: 0, missing: [], other: 0, past: 0 };
+  // WAVE 85.  THE SAME INSTRUMENT ON BUCKET 2 ($805CC8/$80AFC4) -- the bucket
+  // the stage-1 boss's A2 OBJECT routines emit into, and the reason W82 could
+  // claim feature-complete and not oracle-clean for them.
+  //
+  // WHY THE PORT'S RECORD SET NEEDS NO PER-PRODUCER BOOKKEEPING (bucket 14
+  // does): call #4's tail zeroes all thirty counters ($23D70C), so at the top of
+  // a logic frame $80AFC4 is 0 and everything the port appended this frame lies
+  // in [0, $80AFC4).  `game.bucket2Bytes` is that word, read at the board's own
+  // $23D382 instant -- see src/main.js.  Bucket 14 needs the slot-by-slot list
+  // because the port carries STALE copies of records for slots it does not
+  // model; bucket 2 has no such records, because the port only ever writes it
+  // from code the port has ported.
+  //
+  // CONTAINMENT, NOT EQUALITY, AND FOR A BIGGER REASON THAN BUCKET 14's.  The
+  // board's bucket 2 also carries records from producers this port does not
+  // have -- W40's census names `$288E4E`/`$289B80` beside the 35 background-
+  // element sites -- so equality would be red for a reason that is not a bug.
+  // The claim made instead is falsifiable and is exactly the one W82 could not
+  // make: EVERY 12-BYTE RECORD THE PORT APPENDED TO BUCKET 2 APPEARS VERBATIM
+  // IN THE BOARD'S OWN BUCKET 2 FOR THAT FRAME.
+  //
+  // TWO WAYS THIS IS STRONGER THAN THE BUCKET-14 CHECK ABOVE, both deliberate:
+  //  1. The board's dump is split on 12-BYTE BOUNDARIES and matched as whole
+  //     records.  `sprq` uses `String.includes`, which can match a record
+  //     straddling two of the board's, i.e. at an offset no producer can write.
+  //     Every bucket-2 producer appends exactly $C bytes from a counter that
+  //     starts at 0, so alignment is the ROM's own property and not an
+  //     assumption (there is no BULK writer on bucket 2 -- those are 20, 22, 23).
+  //  2. `order` reports whether the port's records also appear IN ORDER at
+  //     non-decreasing offsets.  Both sides run the same producers in the same
+  //     object-driver slot order and the port merely SKIPS the ones it lacks, so
+  //     the port's records should be an ordered SUBSEQUENCE of the board's, not
+  //     merely a subset.  That is REPORTED and not gated, because promoting a
+  //     stronger claim to a gate before it has been measured over a whole stage
+  //     is how a gate goes red for a reason that is not a defect.
+  //
+  // THE ONE WEAKENING, NAMED: the board's buffer is not cleared between frames
+  // (only the counters are), so the dumped prefix is this frame's records
+  // followed by RESIDUE from earlier frames, and a port record could in
+  // principle match a stale one further down.  `order` is what would notice --
+  // a stale match sits at a higher offset than the live record after it, so the
+  // next record's search fails and the frame stops counting as ordered.  [M] on
+  // `stage1-sweep` it is clean on 6,750 of 6,750 frames.
+  const sprq2 = {
+    frames: 0, records: 0, missing: [], past: 0, maxBytes: 0,
+    order: 0, orderFrames: 0,
+  };
   let blocked = null;
   const reported = REPORTED_COLUMNS.filter((c) => start[c] !== undefined);
   const rep = new Map(reported.map((c) => [c, { n: 0, max: 0, first: null }]));
   const sprqLen = (RAWDUMP_SPEC.find((r) => r[0] === 'sprq') ?? [, , 0])[2];
+  const sprq2Len = (RAWDUMP_SPEC.find((r) => r[0] === 'sprq2') ?? [, , 0])[2];
   const hitEx = { frames: 0, total: 0, first: null, any: 0, anyFrames: 0 };
 
   const untilLf = opts.untilLf ?? Infinity;
@@ -215,6 +310,20 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
         if (!board.includes(rec)) sprq.missing.push({ lf, off: o, rec });
       }
     }
+    // WAVE 85 -- BUCKET 2, the layer the boss draws into.  `maxBytes` is tracked even when the
+    // trace has no `sprq2` column, because it is what SIZES the dump: a prefix
+    // shorter than the port's own high-water mark cannot check every record, and
+    // `past` counts the ones it could not.
+    sprq2.maxBytes = Math.max(sprq2.maxBytes, game.bucket2Bytes);
+    if (row.sprq2 !== undefined) {
+      sprq2.frames++;
+      const c2 = bucketContainment(row.sprq2, v.sprq2, game.bucket2Bytes, sprq2Len);
+      sprq2.records += c2.records;
+      sprq2.past += c2.past;
+      for (const m of c2.missing) sprq2.missing.push({ lf, ...m });
+      sprq2.orderFrames++;
+      if (c2.ordered) sprq2.order++;
+    }
     // REPORTED-not-claimed columns: traced, printed with their drift.
     for (const c of reported) {
       if (row[c] === undefined) continue;
@@ -231,7 +340,7 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
 
   return {
     seedLf, last, compared, seedBad, cols, optCols, first, dilated, vfSkew, game, pokes, maskHits, maskFirst, blocked,
-    sprq, hitEx, reported, rep,
+    sprq, sprq2, hitEx, reported, rep,
     digest: digest.digest('hex'),
     optionFirst: new Map(optCols.map((c) => {
       for (let lf = seedLf + 1; lf <= last; lf++) {
@@ -331,6 +440,35 @@ function main() {
       + `port cannot model and are excluded BY NAME; ${r.sprq.past} landed past `
       + `the ${sprqLenBytes}-byte dumped prefix and are not checked.)`);
   }
+  // WAVE 85 -- BUCKET 2.  Printed even when the trace has no `sprq2` column, and
+  // the line SAYS SO: a check that is silently skipped because the oracle was
+  // run before the column existed is indistinguishable from a check that passed,
+  // and that confusion is the whole reason this wave exists.
+  const sprq2LenBytes = (RAWDUMP_SPEC.find((x) => x[0] === 'sprq2') ?? [, , 0])[2];
+  if (r.sprq2.frames) {
+    console.log(`SPRQ2 CONTAINMENT ($23DF2A + $23E020 -> $805CC8): `
+      + `${r.sprq2.records} record(s) appended by the port over ${r.sprq2.frames} `
+      + `frames, ${r.sprq2.records - r.sprq2.missing.length} found verbatim in `
+      + `the board's own bucket 2, ${r.sprq2.missing.length} MISSING`
+      + (r.sprq2.missing.length
+        ? ` (first at lf${r.sprq2.missing[0].lf} offset ${r.sprq2.missing[0].off}: `
+          + `${r.sprq2.missing[0].rec})` : ''));
+    console.log(`  (CONTAINMENT, not equality: the board's bucket 2 also carries `
+      + `records from producers this port does not have. Matched on the ROM's own `
+      + `12-byte record boundary, never as a substring. High-water mark `
+      + `${r.sprq2.maxBytes} bytes = ${r.sprq2.maxBytes / 12} record(s) against a `
+      + `${sprq2LenBytes}-byte dumped prefix; ${r.sprq2.past} record(s) landed `
+      + `past it and were NOT checked.)`);
+    console.log(`  ORDER (reported, not gated): the port's records were an `
+      + `ordered subsequence of the board's on ${r.sprq2.order} of `
+      + `${r.sprq2.orderFrames} frames.`);
+  } else {
+    console.log(`SPRQ2 ($805CC8, the layer the stage-1 boss's A2 OBJECT `
+      + `routines emit into) NOT CHECKED: this trace has no \`sprq2\` column, so `
+      + `it was recorded before src/state.js RAWDUMP_SPEC carried one. Re-run the `
+      + `oracle. The port appended up to ${r.sprq2.maxBytes / 12} record(s) a `
+      + `frame into it in this window and NONE of them was compared.`);
+  }
   const hitAny = r.hitEx.any - r.hitEx.total;
   if (r.hitEx.first !== null) {
     console.log(`HITEX $245044 fired ${r.hitEx.total} time(s) on ${r.hitEx.frames} `
@@ -376,7 +514,7 @@ function main() {
       + `before it.\n  ${r.blocked.message}`);
   }
   const gateFail = r.hitEx.first !== null || r.sprq.missing.length > 0
-    || r.blocked !== null;
+    || r.sprq2.missing.length > 0 || r.blocked !== null;
   if (r.first.size === 0 && r.seedBad.length === 0 && !gateFail) {
     console.log(`RESULT 0 DIVERGENT FRAMES on ${r.cols.length} columns over `
       + `${r.compared} logic frames`);
@@ -393,8 +531,8 @@ function main() {
   console.log(`RESULT ${r.first.size} of ${r.cols.length} columns diverged`
     + (r.blocked ? `; and the run was BLOCKED at lf${r.blocked.lf} by `
       + `$${r.blocked.addr.toString(16).toUpperCase()}` : '')
-    + (r.hitEx.first !== null || r.sprq.missing.length
-      ? `; and a wave-8 gate above (HITEX / SPRQ containment) FAILED` : ''));
+    + (r.hitEx.first !== null || r.sprq.missing.length || r.sprq2.missing.length
+      ? `; and a containment gate above (HITEX / SPRQ / SPRQ2) FAILED` : ''));
   return 1;
 }
 

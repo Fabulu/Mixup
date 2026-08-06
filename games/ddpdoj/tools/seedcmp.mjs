@@ -149,6 +149,15 @@ export function sweep(a) {
       blocked: r?.blocked ?? null,
       hitex: r ? r.hitEx.total : 0,
       sprqMissing: r ? r.sprq.missing.length : 0,
+      // WAVE 85 -- bucket 2, the layer the boss draws into.  `sprq2Frames` is
+      // carried beside the miss count on purpose: 0 missing out of 0 frames
+      // means the trace has no `sprq2` column and NOTHING was checked, which is
+      // a different result from 0 missing out of 250 and must not print alike.
+      sprq2Missing: r ? r.sprq2.missing.length : 0,
+      sprq2Frames: r ? r.sprq2.frames : 0,
+      sprq2Records: r ? r.sprq2.records : 0,
+      sprq2Order: r ? r.sprq2.order : 0,
+      sprq2OrderFrames: r ? r.sprq2.orderFrames : 0,
       digest: r ? r.digest : null,
       error: err ? `${err.name}: ${err.message}` : null,
     };
@@ -159,7 +168,8 @@ export function sweep(a) {
     rec.verdict = rec.error ? 'ERROR'
       : rec.seedBad.length ? 'SEEDBAD'
         : rec.blocked ? 'BLOCKED'
-          : (rec.diverged.length || rec.hitex || rec.sprqMissing) ? 'RED'
+          : (rec.diverged.length || rec.hitex || rec.sprqMissing
+             || rec.sprq2Missing) ? 'RED'
             : 'GREEN';
     // WHY it is red, separately, because the three reasons are different
     // findings and a single colour hides that.  `hitex` in particular is the
@@ -171,6 +181,7 @@ export function sweep(a) {
       rec.diverged.length ? `${rec.diverged.length} column(s)` : null,
       rec.hitex ? `hitex ${rec.hitex}` : null,
       rec.sprqMissing ? `sprq ${rec.sprqMissing} missing` : null,
+      rec.sprq2Missing ? `sprq2 ${rec.sprq2Missing} missing` : null,
     ].filter(Boolean).join(' + ');
     results.push(rec);
     if (!a.quiet) {
@@ -226,7 +237,23 @@ function main() {
   const redOnlyHit = by('RED').filter((r) => !r.diverged.length);
   console.log(`  of the red: ${by('RED').length - redOnlyHit.length} have `
     + `DIVERGENT COLUMNS; ${redOnlyHit.length} are red ONLY because the board `
-    + `took an unported branch (hitex / sprq containment)`);
+    + `took an unported branch (hitex / sprq / sprq2 containment)`);
+  // WAVE 85 -- SAY WHETHER BUCKET 2 WAS LOOKED AT AT ALL.  W82's OBJECT
+  // routines emit into $805CC8 and nothing compared it; a sweep that is silent
+  // about a bucket it did not trace reads exactly like one that traced it and
+  // found nothing.  This line is the difference.
+  const s2f = results.reduce((s, r) => s + (r.sprq2Frames ?? 0), 0);
+  const s2r = results.reduce((s, r) => s + (r.sprq2Records ?? 0), 0);
+  const s2m = results.reduce((s, r) => s + (r.sprq2Missing ?? 0), 0);
+  const s2o = results.reduce((s, r) => s + (r.sprq2Order ?? 0), 0);
+  console.log(s2f
+    ? `  BUCKET 2 ($805CC8, the layer the stage-1 boss draws into): ${s2r} record(s) the port appended `
+      + `over ${s2f} frames were checked for containment in the board's, `
+      + `${s2m} MISSING; and they were an ordered SUBSEQUENCE of the board's on `
+      + `${s2o} of ${s2f} frames (reported, not gated)`
+    : `  BUCKET 2 ($805CC8, the layer the stage-1 boss draws into): NOT CHECKED -- this ladder's trace `
+      + `has no \`sprq2\` column. Re-run \`pgm.py ckpt\` (src/state.js `
+      + `RAWDUMP_SPEC carries it now).`);
 
   // THE FIRST DIVERGENT FIELD PER SEGMENT, with its logic frame.  This is the
   // deliverable: not "N frames differ" but which field went first, and where.
@@ -296,15 +323,29 @@ function main() {
       if (!b || b.from !== m.from) continue;
       const bl = b.diverged[0]?.lf ?? Infinity;
       const ml = m.diverged[0]?.lf ?? Infinity;
+      // WAVE 85 -- AND THE CONTAINMENT COUNTS, or this check has the SAME hole
+      // it was rewritten to close.  A mutation whose whole effect is on the
+      // sprite buckets moves no COLUMN and no VERDICT on a segment that was
+      // already red for something else -- which is exactly the case for every
+      // W82 mutation on `stage1-sweep`'s lf19,000 rung, red since the ladder was
+      // built for the pre-existing `vf`/`irq6` slowdown.  Judging only by
+      // verdict and column would have reported "changed NOTHING" for the very
+      // mutations this wave exists to make visible.
+      const moreMisses = (m.sprq2Missing ?? 0) > (b.sprq2Missing ?? 0)
+        || (m.sprqMissing ?? 0) > (b.sprqMissing ?? 0);
       if (b.verdict !== m.verdict || ml < bl
-          || m.diverged.length > b.diverged.length) {
+          || m.diverged.length > b.diverged.length || moreMisses) {
         moved++;
         if (detail.length < 6) {
           detail.push(`lf${m.from}: ${b.verdict}->${m.verdict}`
             + (ml < bl ? ` first divergence ${bl === Infinity ? 'none' : `lf${bl}`}`
               + ` -> lf${ml}` : '')
             + (m.diverged.length > b.diverged.length
-              ? ` cols ${b.diverged.length}->${m.diverged.length}` : ''));
+              ? ` cols ${b.diverged.length}->${m.diverged.length}` : '')
+            + ((m.sprq2Missing ?? 0) > (b.sprq2Missing ?? 0)
+              ? ` sprq2 missing ${b.sprq2Missing}->${m.sprq2Missing}` : '')
+            + ((m.sprqMissing ?? 0) > (b.sprqMissing ?? 0)
+              ? ` sprq missing ${b.sprqMissing}->${m.sprqMissing}` : ''));
         }
       }
     }

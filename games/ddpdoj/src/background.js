@@ -488,13 +488,30 @@ function elemScrollComp(ram, slot) {
  *  recorder (`w18elem.lua`) taps at `$805CC8 + $80AFC4`. */
 const B2_BASE = 0x805cc8;       // $23DF2A lea
 const B2_COUNT = 0x80afc4;      // $23DF2A adda / $23DF4E addi.w #$C
+
+/** WAVE 85's mutation seam, the W79/W82 `*_MUTATE` pattern.  `tools/breakage.mjs`
+ *  is the only writer; `null` is the shipped behaviour.
+ *
+ *  It exists because the bucket-2 trace this wave added has to be shown to go
+ *  RED somewhere the BACKGROUND ELEMENTS run, not only where the boss does.
+ *  W82's twelve mutations all live inside `src/boss.js` and can only bite on
+ *  `stage1-sweep`'s last two rungs; the 9 GREEN segments of that ladder are all
+ *  below lf8,250, where the elements are the bucket's only producer.  A trace
+ *  proven red at lf19,000 and never exercised at lf2,250 would be a trace nobody
+ *  had checked over 95% of the stage it claims to cover. */
+export const B2_MUTATE = { value: null };
+
 function elemStage(ram, d1, d2, d3, d4) {
   const off = ram.u16(B2_COUNT);
   const d0 = (((d1 >> 6) & 0x7ff03ff) | 0x80008000) >>> 0; // $23DF38..40
   ram.setU32(B2_BASE + off, d0);                           // $23DF46
   ram.setU32(B2_BASE + off + 4, d2 >>> 0);                 // $23DF48
   ram.setU16(B2_BASE + off + 8, d3);                       // $23DF4A
-  ram.setU16(B2_BASE + off + 10, d4);                      // $23DF4C
+  // `elem-no-kind` is the transcription that stopped at `$23DF4A` and never read
+  // `$23DF4C move.w D4,(A0)+` -- the element's flip/colour word, which the emit
+  // ORs into hardware word 2's high byte.  Every element's record differs.
+  ram.setU16(B2_BASE + off + 10,
+    B2_MUTATE.value === 'elem-no-kind' ? 0 : d4);          // $23DF4C
   ram.setU16(B2_COUNT, u16(off + 12));                     // $23DF4E
 }
 

@@ -14,6 +14,7 @@ import { RAM, P } from '../src/machine.js';
 import { AUTOSHOT_MUTATE, CLAMP_ORDER, updatePlayer } from '../src/player.js';
 import { SHIP_MUTATE } from '../src/shipsprite.js';
 import { W82_MUTATE } from '../src/boss.js';
+import { B2_MUTATE } from '../src/background.js';
 
 export const MUTATIONS = {
   // THE ONE THE BRIEF ASKS FOR.  $2495CA moves first ($2417F4 adds the vector
@@ -211,6 +212,15 @@ export const MUTATIONS = {
   'obj4-index-1': () => { W82_MUTATE.value = 'obj4-index-1'; },
   'obj5-d0-clobbered': () => { W82_MUTATE.value = 'obj5-d0-clobbered'; },
   'obj5-mask-3f': () => { W82_MUTATE.value = 'obj5-mask-3f'; },
+
+  // -------------------------------------------------------------- WAVE 85
+  // THE BACKGROUND ELEMENTS' OWN BUCKET-2 STAGE, `$23DF2A`.  W82's twelve above
+  // can only bite on `stage1-sweep`'s last two rungs, where the boss is; this
+  // one bites wherever an element stages, which is most of the stage and all
+  // nine of that ladder's GREEN segments.  It exists so the bucket-2 trace added
+  // this wave is red-validated over the part of the stage the boss never
+  // reaches, and not only at the one place it was built for.
+  'elem-no-kind': () => { B2_MUTATE.value = 'elem-no-kind'; },
 };
 
 /** Mutations that are EXPECTED to leave the RESULT line green, with the reason.
@@ -301,6 +311,7 @@ export function breakage(name, game) {
   SHIP_MUTATE.value = null;    // ...and the same for wave 12's seam
   AUTOSHOT_MUTATE.value = null;  // ...and wave 79's
   W82_MUTATE.value = null;       // ...and wave 82's
+  B2_MUTATE.value = null;        // ...and wave 85's
   const m = MUTATIONS[name];
   if (!m) {
     throw new Error(`unknown mutation "${name}"; have: ${Object.keys(MUTATIONS).join(', ')}`);
