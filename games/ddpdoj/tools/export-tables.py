@@ -846,10 +846,35 @@ SHOT_WINDOWS.extend([
     # TABLE, installed by `$29272E jsr $259554` with A3 = $29370A.  Ten
     # {init, step} pairs; entry [6] is ($293DC6, $293E04), the boss's DEATH
     # ANIMATION and the only script W62 registers.
-    (0x29370A, 0x0050, "W62: the stage-1 boss's A3 script table $29370A -- ten "
-                       "{init,step} pairs, read through $812A70 by $2597F8. "
-                       "Entry [6] = ($293DC6,$293E04) is D-script 6, the death "
-                       "animation that fires $2595E8"),
+    # **W82 WIDENED THIS FROM $50 TO $A8 AND THE OLD EXTENT WAS SHORT** -- the
+    # third time this exact defect has been found on this boss's tables (W64 on
+    # $294F68, W54 6.2 on the general rule).  W62 declared TEN pairs because ten
+    # is the number of SLOTS; the table is indexed by the script ID, which is a
+    # byte, and [M] the boss has TWENTY-ONE D-script ids.  Recon 48 2.4
+    # enumerated all 21 and the window did not follow.
+    # The far end is pinned the same way `$294F68`'s and `$28840E`'s are: [21] is
+    # `42 54 4E 75` = `clr.w (a4) / rts`, the shared "script done" tail that
+    # recon 48 1.4 already names as the landmark bounding tables D and E.
+    # WHAT THE SHORT WINDOW COST: nothing yet, and that is the point.  Ids
+    # 10,11,14,15,16,17,20 are all live in the checkpoint ladder, and every one
+    # of them would have thrown as a ROM-WINDOW read at $29375A+ instead of as
+    # the SCRIPT it is -- naming the table rather than the routine, which is the
+    # precise failure the comment on this window says it exists to prevent.
+    (0x29370A, 0x00A8, "W62/W82: the stage-1 boss's A3 script table $29370A -- "
+                       "TWENTY-ONE {init,step} pairs (W62 said ten, which is the "
+                       "SLOT count, not the ID count), read through $812A70 by "
+                       "$2597F8. Entry [6] = ($293DC6,$293E04) is D-script 6, the "
+                       "death animation that fires $2595E8; entry [7] is "
+                       "($2943B0,$2943B0), the body animator, the same longword "
+                       "twice. [21] is `clr.w (a4)/rts` -- CODE, and the pin"),
+    # $2597BE's A1 walk reads this the same way, and W62 DID NOT DECLARE IT AT
+    # ALL.  Fifteen pairs; [15] is the same `clr.w (a4) / rts` pin.  Every one of
+    # the boss's 49 bullet sites is behind one of these pointers.
+    (0x295856, 0x0078, "W82: the stage-1 boss's A1 script table $295856 -- "
+                       "FIFTEEN {init,step} pairs read through $812BD4 by "
+                       "$2597B8, undeclared until now. NONE is registered; the "
+                       "window makes the throw name the SCRIPT ($295948 etc) and "
+                       "not the table. [15] is `clr.w (a4)/rts`, the pin"),
     # $2595B8 `move.l (A2)+,D0 / cmpi.l #$FFFFFFFF` -- the A2 list $259554
     # PRE-FILLS $8129D0 from.  Seven longwords and the terminator; the walk at
     # $259682 dispatches through the copy, so the port must read the ROM list to
@@ -888,6 +913,51 @@ SHOT_WINDOWS.extend([
     (0x292932, 0x0020, "W62: the stage-1 boss's A2 routine list $292932 -- "
                        "SEVEN longwords then $FFFFFFFF, pre-filled into $8129D0 "
                        "by $2595B8. Every slot's RUN bit stays CLEAR"),
+])
+
+# ============ W82: THE A2 OBJECT ROUTINES' SPRITE TABLES, THREE WINDOWS =======
+#
+# `src/boss.js` registers OBJECT routines 2, 3, 4 and 5 (`$292952`, `$292BFA`,
+# `$292E0A`, `$292E3E`) -- the four still armed after the boss dies.  Three of
+# them index a table of sprite longwords; each window below is the extent an
+# INSTRUCTION can reach, and each far end is pinned by the first byte that is
+# CODE, which is the rule this file already applies to `$294F68` and `$28840E`.
+SHOT_WINDOWS.extend([
+    # $292BFA `lea $292C2A(pc),A2` / $292C00 `move.w $AC(A6),D2 / addq.w #$7,D2
+    # / lsl.w #$5,D2 / adda.w D2,A2 / adda.w $AA(A6),A2 / move.l (A2),D2`.
+    #
+    # FIFTEEN ROWS OF $20, AND BOTH BOUNDS COME OUT OF THE ARITHMETIC:
+    #  * the `addq.w #$7` is a BIAS, so row 0 is $AC = -7 and the `lea`'s own
+    #    address IS the bottom of the table, not its middle.  `adda.w`
+    #    sign-extends, so $AC is SIGNED -- and [M] it really does go negative:
+    #    `$29578C moveq #$19,D1` feeds `$242190` a target of $19-$20 = -7 through
+    #    the `+$20 / -$20` bias pair at `$295798`/`$2957A8`.  The other writer,
+    #    `$2948A6` (D-script 15), targets `$20`, i.e. $AC = 0.
+    #  * the top is $AC = +7: row 14 ends at $292C2A+$1E0, and $292E0A is
+    #    OBJECT 4's first instruction.  Code pins it exactly.
+    # Within a row, `$2943B0`'s cursor `$AA(A6)` takes the SEVEN values
+    # 0,4,8,$C,$10,$14,$18 -- the `blt` at $2943E2 wraps AT $1C, so the last
+    # longword of each 32-byte row is never read.
+    (0x292C2A, 0x01E0, "W82: OBJECT 3's sprite table $292C2A -- FIFTEEN $20 rows "
+                       "indexed by ($AC(A6)+7)<<5 with $AC SIGNED in [-7,+7], "
+                       "read by $292C0E. Far end pinned by $292E0A, OBJECT 4's "
+                       "first instruction"),
+    # $292E0A `lea $292E32(pc),A2` / $292E10 `move.l (A2),D2` -- NO INDEX AND NO
+    # DISPLACEMENT, so only longword [0] is reachable from this routine.  The
+    # other two are declared because they are the table, and named as unreachable
+    # so the next reader does not go looking for the selector.  $292E3E, OBJECT
+    # 5's first instruction, is the pin.
+    (0x292E32, 0x000C, "W82: OBJECT 4's sprite table $292E32 -- three longwords "
+                       "of which $292E10 can only ever read [0] (no index "
+                       "register, no displacement). Far end pinned by $292E3E"),
+    # $292E3E `move.b $C6..$C9(A6),D2 / andi.w #$3E,D2 / add.w D2,D2 / move.l
+    # $292ECA(pc,D2.w),D2` -- THIRTY-TWO longwords.  `$3E` masks the low bit off
+    # and then doubles, so the reachable offsets are 0,4,..,$7C and the extent is
+    # exactly $80.  $292F4A is OBJECT 6's first instruction and pins the far end.
+    (0x292ECA, 0x0080, "W82: OBJECT 5's sprite table $292ECA -- 32 longwords "
+                       "indexed by (byte & $3E)*2 from $C6..$C9(A6), read four "
+                       "times by $292E4A/$292E7A/$292E98/$292EB6. Far end pinned "
+                       "by $292F4A, OBJECT 6's first instruction"),
 ])
 
 SHOT_WINDOWS.append(
@@ -1815,6 +1885,75 @@ def check_boss_a4_extent(d: bytes) -> None:
             f"entry [5] at lf9153 of a run that bombs.")
 
 
+def check_boss_script_table_extents(d: bytes) -> None:
+    """W82.  THE A3 AND A1 SCRIPT TABLES, WHOSE WINDOWS WERE SHORT AND ABSENT.
+
+    Same lesson as `check_boss_a4_extent`, arriving for the third time on the
+    same boss: a table is indexed by the SCRIPT ID, which is a byte, and NOT by
+    the slot count.  W62 sized `$29370A` at ten because there are ten A3 slots.
+    Both far ends are pinned by the `clr.w (a4) / rts` tail that recon 48 1.4
+    names -- an INSTRUCTION, read here out of the image rather than trusted.
+    """
+    DONE_TAIL = 0x42544E75                 # `clr.w (a4)` + `rts`
+    for base, pairs, name in ((0x29370A, 21, "A3"), (0x295856, 15, "A1")):
+        for i in range(pairs):
+            for half, off in (("init", 0), ("step", 4)):
+                v = u32(d, base + i * 8 + off)
+                if not 0x292000 <= v < 0x297000:
+                    raise SystemExit(
+                        f"${base:06X}[{i}].{half} is ${v:08X} and must be a "
+                        f"boss-local pointer -- the {pairs}-pair extent of the "
+                        f"{name} table is derived from it.")
+        end = u32(d, base + pairs * 8)
+        if end != DONE_TAIL:
+            raise SystemExit(
+                f"${base:06X}[{pairs}] is ${end:08X}; it must be ${DONE_TAIL:08X} "
+                f"(`clr.w (a4) / rts`), the CODE that proves the {name} table is "
+                f"{pairs} pairs and not more.")
+        want = pairs * 8
+        declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == base]
+        if not declared or declared[0][1] < want:
+            raise SystemExit(
+                f"the ${base:06X} window is {declared} and must be at least "
+                f"${want:X} -- {pairs} {{init,step}} pairs. A SHORT window here "
+                f"makes an unported script throw naming the TABLE instead of "
+                f"naming itself.")
+
+
+def check_boss_object_tables(d: bytes) -> None:
+    """W82.  THE THREE OBJECT-ROUTINE SPRITE TABLES.
+
+    Every extent below is pinned by the first instruction PAST the table, and
+    that instruction is the next OBJECT routine's own entry point -- which the
+    A2 list at `$292932` names.  So the pins are not a reading of the data: they
+    are longwords the cartridge itself publishes as routine addresses.
+    """
+    # $292932's seven longwords are the pins.  Read them rather than assume.
+    objs = [u32(d, 0x292932 + i * 4) for i in range(7)]
+    if objs != [0x292972, 0x292B08, 0x292952, 0x292BFA,
+                0x292E0A, 0x292E3E, 0x292F4A]:
+        raise SystemExit(
+            f"the A2 OBJECT list $292932 reads {[f'${v:06X}' for v in objs]}; "
+            f"W82's three table extents are pinned by entries [4] $292E0A, "
+            f"[5] $292E3E and [6] $292F4A and cannot be derived if it moved.")
+    for base, end, why in ((0x292C2A, objs[4], "OBJECT 3's 15 rows of $20"),
+                           (0x292E32, objs[5], "OBJECT 4's three longwords"),
+                           (0x292ECA, objs[6], "OBJECT 5's 32 longwords")):
+        want = end - base
+        declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == base]
+        if not declared or declared[0][1] != want:
+            raise SystemExit(
+                f"the ${base:06X} window is {declared} and must be exactly "
+                f"${want:X} -- {why}, pinned from above by ${end:06X}.")
+    # $292BFA's bias: `addq.w #$7` before the `lsl.w #$5`, so row 0 is $AC = -7
+    # and the `lea` address is the BOTTOM of the table.  If that byte changed,
+    # every row index below is off by a multiple of $20.
+    if d[0x292C04:0x292C08] != bytes((0x5E, 0x42, 0xEB, 0x4A)):
+        raise SystemExit(
+            "$292C04 is no longer `addq.w #$7,D2 / lsl.w #$5,D2`; OBJECT 3's "
+            "table base and its SIGNED $AC range are derived from that bias.")
+
+
 def check_bomb_extents(d: bytes) -> None:
     """W64 (B2).  ASSERT THE BOMB'S SIX EXTENTS AGAINST THE CARTRIDGE.
 
@@ -2055,6 +2194,8 @@ def build(d: bytes) -> dict:
     check_hud_extents(d)                       # W63 -- see the function's docstring
     check_bomb_extents(d)                      # W64 -- ...and this one's
     check_boss_a4_extent(d)                    # W64 -- W62's window was SHORT
+    check_boss_script_table_extents(d)         # W82 -- ...and so were A3 and A1
+    check_boss_object_tables(d)                # W82 -- the OBJECT sprite tables
     check_beam_bomb_extents(d)                 # W65 -- THE LASER BOMB's
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)

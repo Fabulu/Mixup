@@ -13,6 +13,7 @@
 import { RAM, P } from '../src/machine.js';
 import { AUTOSHOT_MUTATE, CLAMP_ORDER, updatePlayer } from '../src/player.js';
 import { SHIP_MUTATE } from '../src/shipsprite.js';
+import { W82_MUTATE } from '../src/boss.js';
 
 export const MUTATIONS = {
   // THE ONE THE BRIEF ASKS FOR.  $2495CA moves first ($2417F4 adds the vector
@@ -187,6 +188,29 @@ export const MUTATIONS = {
   'autoshot-on-edge': () => { AUTOSHOT_MUTATE.value = 'autoshot-on-edge'; },
   'autoshot-no-3c-gate': () => { AUTOSHOT_MUTATE.value = 'autoshot-no-3c-gate'; },
   'autoshot-no-optbit': () => { AUTOSHOT_MUTATE.value = 'autoshot-no-optbit'; },
+
+  // ----------------------------------------------------------------- WAVE 82
+  // D-SCRIPT 7 (`$2943B0`) AND THE FOUR A2 OBJECT ROUTINES -- the stage-1
+  // boss's body animator and four of its seven sprite emitters.  Nine
+  // mutations, all declared in `boss.js` itself (`W82_MUTATE`).
+  //
+  // THEY ONLY BITE WHERE THE BOSS IS ALIVE, i.e. from lf7,870 on, which on the
+  // ladders this repo has means the LAST TWO RUNGS of `stage1-sweep` and
+  // nothing else.  `fly-around` never reaches the boss and `stage1-play` and
+  // `stage1-laser-hold` are still blocked ahead of it, so a green there is a
+  // statement about reach and not about this code.
+  'd7-bcc-inverted': () => { W82_MUTATE.value = 'd7-bcc-inverted'; },
+  'd7-no-ramp': () => { W82_MUTATE.value = 'd7-no-ramp'; },
+  'd7-unsigned-per': () => { W82_MUTATE.value = 'd7-unsigned-per'; },
+  'd7-step-one': () => { W82_MUTATE.value = 'd7-step-one'; },
+  'd7-wrap-ble': () => { W82_MUTATE.value = 'd7-wrap-ble'; },
+  'obj2-no-attr': () => { W82_MUTATE.value = 'obj2-no-attr'; },
+  'obj3-unsigned-ac': () => { W82_MUTATE.value = 'obj3-unsigned-ac'; },
+  'obj3-no-bias': () => { W82_MUTATE.value = 'obj3-no-bias'; },
+  'obj4-one-addi': () => { W82_MUTATE.value = 'obj4-one-addi'; },
+  'obj4-index-1': () => { W82_MUTATE.value = 'obj4-index-1'; },
+  'obj5-d0-clobbered': () => { W82_MUTATE.value = 'obj5-d0-clobbered'; },
+  'obj5-mask-3f': () => { W82_MUTATE.value = 'obj5-mask-3f'; },
 };
 
 /** Mutations that are EXPECTED to leave the RESULT line green, with the reason.
@@ -251,10 +275,32 @@ export const AUTOSHOT_EXPECTED_GREEN = {
     + 'tests/w79autoshot.test.js under the `after-real-edge` scenario',
 };
 
+/** W82.  Mutations expected to leave the ladder green, declared BEFORE the run.
+ *
+ *  `obj3-unsigned-ac` reads `$AC(A6)` as UNSIGNED instead of signed.  It is a
+ *  PROVABLE no-op, not a weak check: `i16(x) == x (mod 65536)`, `$292C06 lsl.w
+ *  #$5` is a WORD shift and `$292C08 adda.w` sign-extends only afterwards, so
+ *  the two readings are the same instruction.  [M] over all 65,536 word values
+ *  of `$AC` the row offset differs on ZERO.  This wave's first draft claimed the
+ *  opposite in a source comment and the comment was WITHDRAWN.
+ *
+ *  The rest of W82's mutations bite only where the boss is alive -- lf7,870 on
+ *  -- which on the ladders this repo has is the LAST TWO RUNGS of
+ *  `stage1-sweep`.  A green anywhere else is a statement about reach.
+ */
+export const W82_EXPECTED_GREEN = {
+  'obj3-unsigned-ac': 'PROVABLE no-op: the `lsl.w #$5` truncates to a word '
+    + 'before `adda.w` sign-extends, so signed and unsigned readings of $AC are '
+    + 'the same instruction. [M] 0 of 65,536 values differ. Seen green '
+    + 'deliberately by tests/w82stageend.test.js, which asserts BYTE-IDENTICAL '
+    + 'output under the mutation rather than merely "did not go red"',
+};
+
 export function breakage(name, game) {
   CLAMP_ORDER.value = 'rom';   // never leak a mutation between runs
   SHIP_MUTATE.value = null;    // ...and the same for wave 12's seam
   AUTOSHOT_MUTATE.value = null;  // ...and wave 79's
+  W82_MUTATE.value = null;       // ...and wave 82's
   const m = MUTATIONS[name];
   if (!m) {
     throw new Error(`unknown mutation "${name}"; have: ${Object.keys(MUTATIONS).join(', ')}`);

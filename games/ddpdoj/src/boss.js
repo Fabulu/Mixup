@@ -73,6 +73,7 @@ import {
   a2Stop25994A, fadeArm259B7E, fadeDone259B9E, suspend2595E8,
 } from './scheduler.js';
 import { runStageAdvance242952 } from './stageend.js';
+import { enqueueRegisters } from './spritequeue.js';
 
 /** The boss's record and sub-record fields, by the offset the ROM uses. */
 export const BOSS = {
@@ -638,6 +639,272 @@ registerScript(0x2933c2, (ram, rom, ctx, a4) => {
 
 registerScript(0x293dc6, (ram, rom, ctx, a4) => d6Init293DC6(ram, rom, ctx, a4));
 registerScript(0x293e04, (ram, rom, ctx, a4) => d6Step293E04(ram, rom, ctx, a4));
+
+
+// ================================================ A3 SCRIPT 7 -- THE ANIMATOR
+//
+// `$2943B0`, fourteen instructions, and `$29370A`'s entry 7 holds it TWICE --
+// INIT and STEP are the same longword, so it has no separate first frame.  It is
+// started at the boss's arrival (`$2932D6`'s `D.start 0,1,2,3,7`) and it runs
+// until `$294DD4`'s death chain stops it by name.
+//
+// **READ BOTH ENDS**, and here is what each end actually is.
+//
+// ABOVE: `$294360..$2943AF` is a table of 12-byte records
+// (`00 1F 00 02 / 7F FF 00 00 05 80 / 00 22 2B 38`), and `$00222B38` is one of
+// the five stream ids `$292744`'s `jsr $24150A` loads -- DATA, so nothing falls
+// INTO `$2943B0`.  [M] a scan of `$240000..$2A0000` for every control transfer
+// landing in `$294370..$2943B0` finds exactly ONE, `$292322 bsr.w $294377`, and
+// **`$292322` is inside the ASCII CREDITS**: the surrounding bytes read
+// `SPECIAL ASSIST`, `Toshiaki Tomizawa`, `SALE BY AMI`, `2002 DEVELOP`.  The
+// `bsr.w` is `61 00 20 53`, i.e. the letters `a`, NUL, space, `S` of
+// "...awa" + " SAL".  There is no caller and there is no fall-through.
+//
+// BELOW: the routine's own end is the `rts` at `$2943EC`; `$2943EE` is D-script
+// 8's INIT (`$29370A[8]` = `($2943EE, $2943FC)`), a different routine.
+//
+// WHAT IT IS: the boss's body-animation clock, and the ONLY writer of the cursor
+// `$AA(A6)` that OBJECT routine 3 (`$292BFA`) indexes its sprite table with.
+// Port one without the other and the boss animates wrong with nothing to blame.
+//
+//   $2943B0 subq.b #$1,$AE(A6) / bcc.w $2943EC    <- tick, and NOTE THE BCC
+//   $2943B8 move.b $AF(A6),$AE(A6)                   reload from the PERIOD
+//   $2943BE cmpi.b #$2,$AF(A6)                       ...and RAMP the period
+//   $2943C4 beq $2943D8 / blt $2943D4 / subq.b       >2 -> --   ($2943CC)
+//   $2943D4 addq.b #$1,$AF(A6)                       <2 -> ++
+//   $2943D8 addq.w #$4,$AA(A6)                       step the cursor by FOUR
+//   $2943DC cmpi.w #$1C,$AA(A6) / blt $2943EC        ...and wrap at $1C
+//   $2943E6 move.w #$0,$AA(A6)
+//
+// TWO THINGS THE ADDRESSES DO NOT TELL YOU:
+//
+//  1. **`$AF(A6)` CONVERGES ON 2 AND STAYS THERE.**  Above 2 it decrements,
+//     below 2 it increments, at 2 neither arm runs.  So the animation starts at
+//     whatever rate the caller loaded and settles to one frame every two.  A
+//     port that treated `$AF` as a constant period would be right forever after
+//     the ramp and wrong exactly while the boss is arriving.
+//  2. **THE CURSOR WRAPS TO 0 AT $1C, NOT AFTER IT.**  `blt` keeps values
+//     strictly below `$1C`, so `$1C` itself is replaced -- the cycle is the
+//     SEVEN values 0,4,8,$C,$10,$14,$18 and never $1C.  `ble` would give eight
+//     and read one longword past each 32-byte row of `$292BFA`'s table.
+function d7Anim2943B0(ram, a6) {
+  const M = W82_MUTATE.value;
+  const t = ram.u8(a6 + 0xae);                         // $2943B0 subq.b #$1
+  ram.setU8(a6 + 0xae, (t - 1) & 0xff);
+  // `subq.b` sets C on BORROW, so `bcc` is taken while the OLD value was
+  // non-zero.  `d7-bcc-inverted` is the reading that ticks on every frame BUT
+  // the one the ROM acts on.
+  if (M === 'd7-bcc-inverted' ? t === 0 : t !== 0) return;   // $2943B4 bcc.w
+  const per = ram.u8(a6 + 0xaf);
+  ram.setU8(a6 + 0xae, per);                           // $2943B8 move.b
+  // `$2943C8 blt.w` is SIGNED, so the compare is on the byte as a signed value.
+  // It only differs from the unsigned reading for `$AF >= $80`, which nothing
+  // in the ladder produces -- but `blt` is what the ROM wrote and an unsigned
+  // `<` would send exactly those values down the OTHER arm.  `d7-unsigned-per`
+  // is that reading, kept as a named wrong port.
+  const sper = M === 'd7-unsigned-per' ? per : (per << 24) >> 24;
+  if (M !== 'd7-no-ramp') {                            // $2943BE cmpi.b #$2
+    if (sper > 2) ram.setU8(a6 + 0xaf, (per - 1) & 0xff);      // $2943CC subq.b
+    else if (sper < 2) ram.setU8(a6 + 0xaf, (per + 1) & 0xff); // $2943D4 addq.b
+  }
+  const c = u16(ram.u16(a6 + 0xaa) + (M === 'd7-step-one' ? 1 : 4));  // $2943D8
+  ram.setU16(a6 + 0xaa, c);
+  // `blt` keeps values STRICTLY below $1C; `d7-wrap-ble` is the off-by-one that
+  // admits $1C and reads the eighth longword of every 32-byte row.
+  const past = M === 'd7-wrap-ble' ? i16(c) > 0x1c : i16(c) >= 0x1c;
+  if (past) ram.setU16(a6 + 0xaa, 0);                  // $2943DC cmpi + $2943E6
+}
+registerScript(0x2943b0, (ram, rom, ctx, a4) => {
+  void a4; d7Anim2943B0(ram, bossA6(ctx, 0x2943b0));
+});
+
+
+// ======================================= THE A2 OBJECT LIST -- THE BOSS'S ART
+//
+// `$292932`'s seven routines are the boss's SPRITE EMITTERS, one per body part,
+// and `$25962E`'s own walk at `$259682` runs the armed ones after every script
+// pass.  W62 installed the list (so the slots exist and carry their pointers)
+// and registered none of the bodies; this wave registers FOUR -- indices 2, 3, 4
+// and 5, which are the four still armed once the boss is dead and therefore the
+// four the stage's last two checkpoint rungs need.  Indices 0, 1 and 6 stay
+// loud named throws (`$292972`, `$292B08`, `$292F4A`).
+//
+// **THEY ARE ALL ONE ROUTINE WITH DIFFERENT CONSTANTS**, and that routine is
+// `$23E020`:
+//
+//   23E020: move.l A0,-(A7) / move.l D0,-(A7)
+//   23E024: lea $805CC8,A0 / adda.w $80AFC4,A0     <- SPRITE BUCKET 2
+//   23E030: move.l D1,D0 / asr.l #$6,D0
+//   23E034: andi.l #$07FF03FF,D0 / ori.l #$80008000,D0
+//   23E040: move.l D0,(A0)+ / move.l D2,(A0)+
+//   23E044: move.w D3,(A0)+ / move.w D4,(A0)+
+//   23E048: addi.w #$C,$80AFC4
+//   23E050: move.l (A7)+,D0 / movea.l (A7)+,A0     <- **D0 SURVIVES**
+//
+// which is `spritequeue.js enqueueRegisters` on bucket 2 verbatim -- the same
+// `asr.l #6` across BOTH axes, the same `$07FF03FF` mask and the same
+// `$80008000` no-zoom encoding the file's TRAP 1..3 comments describe.  Nothing
+// new is being modelled here; four callers are being wired to a mechanism the
+// port has had since W10.
+//
+// **THE `move.l (A7)+,D0` AT `$23E050` IS LOAD-BEARING** and it is the reason
+// `$292E3E` below works at all: that routine computes a base position ONCE into
+// D0 and then calls `$23E020` four times, adding a different offset each time.
+// A transcription that let the emitter clobber D0 would put all four sprites at
+// the same place.  Only reading the routine's LAST TWO INSTRUCTIONS tells you.
+//
+// A6 is the boss's SUB-RECORD, exactly as for the A3 scripts: `$259682`'s walk
+// touches A0/A3/A4/D7 and never A6, so what the object routines read is what
+// `$292902` left there.  `bossA6` throws by address if that is ever untrue.
+const OBJ_BUCKET = 2;                    // $805CC8 / $80AFC4 -- spritequeue.js
+
+/** W82's mutation seam, the W79 `AUTOSHOT_MUTATE` pattern.  Named WRONG PORTS,
+ *  written next to the right one so a reviewer reads both.  `tools/breakage.mjs`
+ *  is the only writer; `null` is the shipped behaviour. */
+export const W82_MUTATE = { value: null };
+
+/** `$23E020` -- the bucket-2 register-convention enqueue.  See above. */
+function emit23E020(ram, d1, d2, d3, d4) {
+  return enqueueRegisters(ram, OBJ_BUCKET, d1 >>> 0, d2 >>> 0, d3, d4);
+}
+
+/** `$292952` -- OBJECT 2.  Six instructions and every operand is a literal
+ *  except the position and the attribute word.  No table, no animation. */
+function obj2_292952(ram, a6) {
+  const d1 = (ram.u32(a6 + 0x02) + 0xe600f400) >>> 0;  // $292958/$29295C addi.l
+  emit23E020(ram, d1, 0x0006539c,                      // $292952 move.l #$6539C
+    0x1a60,                                            // $292962 move.w #$1A60
+    W82_MUTATE.value === 'obj2-no-attr' ? 0
+      : ram.u16(a6 + 0x1c));                           // $292966 move.w $1C(A6)
+}
+
+/**
+ * `$292BFA` -- OBJECT 3, and **THE ONE THAT CONSUMES D-SCRIPT 7's CURSOR.**
+ *
+ *   292BFA: lea $292C2A(pc),A2
+ *   292C00: move.w $AC(A6),D2 / addq.w #$7,D2 / lsl.w #$5,D2
+ *   292C08: adda.w D2,A2 / adda.w $AA(A6),A2
+ *   292C0E: move.l (A2),D2
+ *
+ * so the sprite longword is `$292C2A + ($AC(A6) + 7) * $20 + $AA(A6)`: a table
+ * of 32-byte ROWS selected by `$AC`, indexed within the row by `$2943B0`'s
+ * cursor.  **THE `addq.w #$7` IS A BIAS: ROW 0 IS `$AC` = -7**, so the `lea`'s
+ * own address is the BOTTOM of the table and not its middle, and `$AC` is a
+ * SIGNED offset running -7..+7 over fifteen rows.  [M] `$29578C moveq #$19,D1`
+ * feeds `$242190` a target of `$19 - $20` = -7 through the `+$20`/`-$20` bias
+ * pair, so it really does go negative; `$2948A6` (D-script 15) targets 0.
+ *
+ * **AND A CLAIM THIS WAVE HAD TO WITHDRAW.**  The first draft of this comment
+ * said a port that read `$AC` as UNSIGNED would index past every row.  It would
+ * not.  [M] over all 65,536 word values, `u16((u16($AC)+7)<<5)` and
+ * `u16((i16($AC)+7)<<5)` differ on **0**: `i16(x) == x (mod 65536)`, the `lsl.w`
+ * is a WORD shift, and `adda.w` sign-extends only afterwards -- so the two
+ * readings are the same instruction.  `obj3-unsigned-ac` is kept as a mutation
+ * and DECLARED EXPECTED-GREEN with that measurement (`W82_EXPECTED_GREEN`)
+ * rather than deleted, because an unexplained no-op is the thing
+ * `docs/knowledge/03` exists for.  The signedness still matters for the WINDOW
+ * -- it is what makes `$292C2A` the base and fifteen the row count.
+ *
+ * The row is read out of the CARTRIDGE at the computed address rather than
+ * transcribed as a JS literal, per W48's work-list item 4: a wrong extent then
+ * shows up as a wrong sprite code, not as a silently truncated table.
+ */
+function obj3_292BFA(ram, rom, a6) {
+  const M = W82_MUTATE.value;
+  const ac = M === 'obj3-unsigned-ac' ? ram.u16(a6 + 0xac)
+    : i16(ram.u16(a6 + 0xac));                         // $292C00 + $292C08 adda.w
+  const row = ((M === 'obj3-no-bias' ? ac : ac + 7) << 5);  // $292C04/$292C06
+  const at = (0x292c2a + i16(u16(row)) + i16(ram.u16(a6 + 0xaa))) & 0xffffff;
+  const d1 = (ram.u32(a6 + 0xa2) + 0xf600f800) >>> 0;  // $292C10/$292C14
+  emit23E020(ram, d1, rom.u32(at),                     // $292C0E move.l (A2),D2
+    0x0a40,                                            // $292C1A move.w #$A40
+    ram.u16(a6 + 0xbc));                               // $292C1E move.w $BC(A6)
+}
+
+/**
+ * `$292E0A` -- OBJECT 4.  **THE TABLE IT LOADS IS NEVER INDEXED.**
+ * `$292E10 move.l (A2),D2` has no displacement and no index register, so of the
+ * three longwords at `$292E32..$292E3D` only the FIRST can ever be read.  The
+ * other two are unreachable from this routine.  Transcribed as the constant it
+ * is, with the address, rather than as a lookup that would imply a variable.
+ *
+ * TWO `addi.l`s, not one -- `$292E16 #$FC00FC00` then `$292E1C #$F2000000` --
+ * and they do NOT collapse to one constant safely by hand: the sum wraps the
+ * long, so it is written as the ROM writes it.
+ */
+function obj4_292E0A(ram, rom, a6) {
+  let d1 = (ram.u32(a6 + 0x02) + 0xfc00fc00) >>> 0;    // $292E12/$292E16
+  // `obj4-one-addi` is the transcription that folded the two `addi.l`s into one
+  // by hand.  They do NOT collapse: the first sum carries out of the low word.
+  if (W82_MUTATE.value !== 'obj4-one-addi') d1 = (d1 + 0xf2000000) >>> 0;  // $292E1C
+  emit23E020(ram, d1, rom.u32(0x292e32 + (W82_MUTATE.value === 'obj4-index-1'
+    ? 4 : 0)),                                         // $292E0A lea / $292E10
+    0x0420,                                            // $292E22 move.w #$420
+    0x0015);                                           // $292E26 move.w #$15
+}
+
+/**
+ * `$292E3E` -- OBJECT 5.  FOUR sprites from ONE routine, and the four differ
+ * only in which animation byte they read and which offset they add.
+ *
+ *   D2 = long at $292ECA + ((byte & $3E) * 2)     byte = $C6/$C7/$C8/$C9(A6)
+ *   D3 = $418, D4 = $17                          set ONCE, at $292E4E/$292E52
+ *   D0 = $2(A6) + $FC00FD00                      the shared base, at $292E60
+ *   D1 = D0 + $09C00400 / $09BFFC40 / $0F400600 / $0F3FF9C0
+ *
+ * **`andi.w #$3E` MASKS THE LOW BIT OFF**, so the byte selects one of THIRTY-TWO
+ * rows in steps of two and an odd value picks the same row as the even below it.
+ * `add.w D2,D2` then turns that into a longword offset.  Written as the ROM
+ * writes it because `(b & $3E) * 2` and `(b >> 1) * 4` agree only while the
+ * byte stays under $40 and nothing here guarantees that.
+ *
+ * The first three calls are `jsr` and the fourth is `jmp` ($292EC2) -- a tail
+ * call, not a fifth thing.
+ */
+const OBJ5_LIMBS = [
+  // [the animation byte, the offset added to the shared base]
+  [0xc6, 0x09c00400],                                  // $292E40 / $292E62
+  [0xc7, 0x09bffc40],                                  // $292E70 / $292E80
+  [0xc8, 0x0f400600],                                  // $292E8E / $292E9E
+  [0xc9, 0x0f3ff9c0],                                  // $292EAC / $292EBC
+];
+
+function obj5_292E3E(ram, rom, a6) {
+  const M = W82_MUTATE.value;
+  const d0 = (ram.u32(a6 + 0x02) + 0xfc00fd00) >>> 0;  // $292E56/$292E5A/$292E60
+  let running = d0;
+  for (const [field, off] of OBJ5_LIMBS) {
+    const mask = M === 'obj5-mask-3f' ? 0x3f : 0x3e;   // $292E44 andi.w #$3E
+    const d2 = ((ram.u8(a6 + field) & mask) * 2) & 0xffff;   // $292E48 add.w
+    // `obj5-d0-clobbered` is the port that did not read `$23E050 move.l
+    // (A7)+,D0`: each limb offsets the PREVIOUS limb instead of the base.
+    const base = M === 'obj5-d0-clobbered' ? running : d0;   // $292E7E move.l D0,D1
+    running = (base + off) >>> 0;
+    emit23E020(ram, running,
+      rom.u32(0x292eca + d2),                          // $292E4A move.l $292ECA(pc,D2.w)
+      0x0418,                                          // $292E4E move.w #$418
+      0x0017);                                         // $292E52 move.w #$17
+  }
+}
+
+registerScript(0x292952, (ram, rom, ctx, a4) => {
+  void a4; obj2_292952(ram, bossA6(ctx, 0x292952));
+});
+registerScript(0x292bfa, (ram, rom, ctx, a4) => {
+  void a4; obj3_292BFA(ram, rom, bossA6(ctx, 0x292bfa));
+});
+registerScript(0x292e0a, (ram, rom, ctx, a4) => {
+  void a4; obj4_292E0A(ram, rom, bossA6(ctx, 0x292e0a));
+});
+registerScript(0x292e3e, (ram, rom, ctx, a4) => {
+  void a4; obj5_292E3E(ram, rom, bossA6(ctx, 0x292e3e));
+});
+
+/** Exported for `tests/w82stageend.test.js`, which drives them against the
+ *  listing above rather than against a run. */
+export const W82 = {
+  d7Anim2943B0, obj2_292952, obj3_292BFA, obj4_292E0A, obj5_292E3E, OBJ5_LIMBS,
+};
 
 // ============================================================== $292902
 /**

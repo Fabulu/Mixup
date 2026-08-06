@@ -360,19 +360,36 @@ test('$294DD4 starts THREE A3 scripts -- 4, 5 and 6', { skip: SKIP }, () => {
 
 test('every registered script address is one of the boss\'s own table entries',
   { skip: SKIP }, () => {
-    const a3 = [];
-    for (let i = 0; i < 10; i++) {
-      a3.push(ROM.u32(0x29370a + i * 8), ROM.u32(0x29370a + i * 8 + 4));
+    // W82: THREE classes, not two.  This test was written when the only
+    // registered scripts were A3's and A0's, and it read TEN A3 pairs because
+    // ten is the SLOT count -- the table is indexed by the script ID and holds
+    // TWENTY-ONE (see `check_boss_script_table_extents` in export-tables.py,
+    // which asserts the `clr.w (a4)/rts` pin out of the image).  W82 registers
+    // D-script 7 (id 7, inside the old ten) and four routines from the A2
+    // OBJECT list `$292932`, which is a third table this test did not know
+    // about.  The CLAIM is unchanged and is the point of the test: a registered
+    // address must be one the cartridge itself publishes as an entry point.
+    const legal = [];
+    for (let i = 0; i < 21; i++) {                       // A3, $29370A
+      legal.push(ROM.u32(0x29370a + i * 8), ROM.u32(0x29370a + i * 8 + 4));
     }
-    const a0 = [];
-    for (let i = 0; i < 9; i++) {
-      a0.push(ROM.u32(0x293104 + i * 8), ROM.u32(0x293104 + i * 8 + 4));
+    for (let i = 0; i < 9; i++) {                        // A0, $293104
+      legal.push(ROM.u32(0x293104 + i * 8), ROM.u32(0x293104 + i * 8 + 4));
     }
+    for (let i = 0; i < 15; i++) {                       // A1, $295856
+      legal.push(ROM.u32(0x295856 + i * 8), ROM.u32(0x295856 + i * 8 + 4));
+    }
+    for (let i = 0; i < 7; i++) legal.push(ROM.u32(0x292932 + i * 4));   // A2
+    assert.strictEqual(ROM.u32(0x292932 + 7 * 4) >>> 0, 0xffffffff,
+      'the A2 list is SEVEN longwords and a $FFFFFFFF terminator');
     for (const s of scriptAddresses()) {
       if (s === 0x111111 || s === 0x222222) continue;   // this file's own fake
-      assert.ok(a3.includes(s) || a0.includes(s),
+      assert.ok(legal.includes(s),
         `$${s.toString(16)} must come out of the cartridge's own table`);
     }
+    // ...and the check must be capable of failing: an address that is NOT an
+    // entry point must be rejected.  `$2943EC` is D-script 7's `rts`.
+    assert.ok(!legal.includes(0x2943ec), 'the rts is not an entry point');
   });
 
 // ===========================================================================

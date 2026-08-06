@@ -25,6 +25,7 @@ import { stateVector, CLAIMED, OPTION_COLUMNS, MASKED, RAWDUMP_SPEC,
   REPORTED_COLUMNS } from '../src/state.js';
 import { breakage } from './breakage.mjs';
 import { AUTOSHOT_MUTATE, CLAMP_ORDER } from '../src/player.js';
+import { W82_MUTATE } from '../src/boss.js';
 
 function readTsv(path) {
   const lines = readFileSync(path, 'utf8').trim().split(/\r?\n/);
@@ -85,6 +86,7 @@ export function run(tsvPath, seedPath, tablesPath, opts = {}) {
   // (`04-review.md` 8).  Reset it on EVERY run, not only inside breakage().
   CLAMP_ORDER.value = 'rom';
   AUTOSHOT_MUTATE.value = null;      // WAVE 79's seam, same rule
+  W82_MUTATE.value = null;           // WAVE 82's seam, same rule
   if (opts.break) breakage(opts.break, game);
 
   const pokes = (opts.poke ?? '').split(',').filter(Boolean).map((kv) => {
