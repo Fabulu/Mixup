@@ -68,8 +68,11 @@
 // **This module implements `$24150A` and `$24133C` and NOTHING ELSE of the
 // nine.** The table above is CHECKED against the cartridge on every export
 // (`tools/export-tables.py check_palette_upload_family`) so that it cannot rot
-// the way `docs/knowledge/02-traps.md`'s nine lying comments did; a routine
-// nothing calls is not ported here on the strength of a table.
+// the way the project's TEN lying comments did (`docs/knowledge/02-traps.md`;
+// the standing count was seven, W90 found two and **W91 found the tenth one
+// line above the note this file replaces** -- see `src/background.js` on
+// `$246BB8`/`$246BF8`); a routine nothing calls is not ported here on the
+// strength of a table.
 //
 // [M] 161 absolute-long call sites across the nine, 152 of them `jsr $24150A`.
 // The census with each site's bank and source block is

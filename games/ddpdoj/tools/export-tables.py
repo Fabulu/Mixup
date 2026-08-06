@@ -2489,6 +2489,22 @@ PALETTE_STREAM_ENTRIES = 22       # [M] before the $FFFFFFFF terminator
 def check_palette_upload_family(d: bytes) -> None:
     """W91.  The nine-row table in src/palette.js's header, the flush, and every
     call site the port now executes -- all read back out of the cartridge."""
+    # THE BOUND IS THE DECLARED WINDOW, NOT A SECOND LITERAL.  Red-validating
+    # this check found that shortening the $222A78 window to $2000 left it
+    # green, because the extent was typed here as well as in SHOT_WINDOWS.  A
+    # constant written twice is a check that cannot fail on one of them.
+    decl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x222A78]
+    if len(decl) != 1:
+        raise SystemExit(
+            f"the W91 colour-block window $222A78 is declared {decl} times in "
+            f"SHOT_WINDOWS; check_palette_upload_family derives its bound from "
+            f"that declaration and cannot with none or two.")
+    blk_lo, blk_hi = decl[0][0], decl[0][0] + decl[0][1]
+    cdecl = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x246BB8]
+    if cdecl != [(0x246BB8, 0x0080)]:
+        raise SystemExit(
+            f"the W91 constant-bank window is declared {cdecl} and must be "
+            f"($246BB8, $80) -- exactly the two 64-byte banks, which ABUT.")
     for (a, entry, stage, shift, bias, moveq, mv, outer, flag, what) in \
             PALETTE_UPLOADS:
         if u32(d, a) != entry:
@@ -2631,7 +2647,7 @@ def check_palette_upload_family(d: bytes) -> None:
                 f"windows are declared to cover it.")
         if bank is not None and got_bank != bank:
             raise SystemExit(
-                f"${caller:06X} passes D0 = {got_bank} , not ${bank:X} -- "
+                f"${caller:06X} passes D0 = {got_bank}, not ${bank:X} -- "
                 f"{what}. D0 IS THE BANK NUMBER (`lsl.w #$6` in $24150A), so a "
                 f"wrong one recolours a different 32 sprites and nothing in "
                 f"this repo compares a sprite's pixels against the board.")
@@ -2647,10 +2663,12 @@ def check_palette_upload_family(d: bytes) -> None:
                     f"(`18-impl` §1 classified them). It should be 32 x "
                     f"${want:04X} and it is "
                     f"{sorted(f'${w:04X}' for w in set(blk))}.")
-        elif not (0x222A78 <= src < 0x2252F8):
+        elif not (blk_lo <= src and src + 64 <= blk_hi):
             raise SystemExit(
-                f"{what} reads ${src:06X}, outside the declared window "
-                f"[$222A78, $2252F8).")
+                f"{what} reads the 64 bytes at ${src:06X}, which do not fit "
+                f"inside the DECLARED window [${blk_lo:06X}, ${blk_hi:06X}) -- "
+                f"so src/rom.js would throw by address the first time that "
+                f"site ran. Widen the SHOT_WINDOWS line, never this check.")
     # The stage-1 object stream: the palette installer catchUpObjectStream
     # replays.  Its HEAD comes out of the cartridge, never out of a literal.
     pair = u32(d, PALETTE_STREAM_TABLE)
@@ -2672,12 +2690,15 @@ def check_palette_upload_family(d: bytes) -> None:
     for i in range(n):
         ptr = u32(d, head + i * 6)
         param = u16(d, head + i * 6 + 4)
-        if not (0x222A78 <= ptr < 0x2252F8 or 0x246BB8 <= ptr < 0x246C38):
+        fits = ((blk_lo <= ptr and ptr + 64 <= blk_hi)
+                or (0x246BB8 <= ptr and ptr + 64 <= 0x246C38))
+        if not fits:
             raise SystemExit(
-                f"object-stream entry {i} points at ${ptr:08X}, outside both "
-                f"W91 windows. $24150A reads 64 bytes from it regardless, so "
-                f"the window has to cover it or the port throws by address "
-                f"mid-stage.")
+                f"object-stream entry {i} points at ${ptr:08X}, whose 64 bytes "
+                f"do not fit inside either DECLARED W91 window "
+                f"([${blk_lo:06X}, ${blk_hi:06X}) and [$246BB8, $246C38)). "
+                f"$24150A reads them regardless, so catchUpObjectStream would "
+                f"skip that bank and the page would keep the recording's.")
         if not (0 <= param < 32):
             raise SystemExit(
                 f"object-stream entry {i} carries bank ${param:04X}. "
