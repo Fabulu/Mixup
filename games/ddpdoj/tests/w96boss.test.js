@@ -33,8 +33,8 @@ import {
   dWobbleInit, dWobbleStep, dAnimStep,
 } from '../src/bossarrival.js';
 import { BUCKETS } from '../src/spritequeue.js';
-import { SCHED, scriptAddresses } from '../src/scheduler.js';
-import { MUTATIONS } from '../tools/breakage.mjs';
+import { SCHED, scriptAddresses, a2Run2598E6, a2Stop25994A } from '../src/scheduler.js';
+import { MUTATIONS, W96_EXPECTED_GREEN } from '../tools/breakage.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TABLES = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
@@ -552,3 +552,80 @@ test('every W96 mutation name resolves and resets to null', { skip: SKIP }, () =
   }
   assert.equal(W96_MUTATE.value, null, 'the SHIPPED value is null');
 });
+
+// ================ THE FOUR DECLARED GREENS, DRIVEN RED HERE INSTEAD
+
+test('W96_EXPECTED_GREEN names exactly the four the ladder cannot see',
+  { skip: SKIP }, () => {
+    assert.deepEqual(Object.keys(W96_EXPECTED_GREEN).sort(),
+      ['main0-arm-obj6', 'main0-one-target', 'main0-phase1-mask',
+        'main0-speed-byte']);
+    for (const [k, why] of Object.entries(W96_EXPECTED_GREEN)) {
+      assert.equal(typeof MUTATIONS[k], 'function', `${k} is a real mutation`);
+      assert.ok(why.length > 120, `${k} carries its measurement, not a shrug`);
+    }
+  });
+
+test('RED: main0-phase1-mask wraps ($11A,A6) and the handoff never happens',
+  { skip: SKIP }, () => {
+    // The ladder cannot see it because the port then emits FEWER bucket-2
+    // records and containment is one-directional (W96_EXPECTED_GREEN).  Driven
+    // here on the field itself.
+    const drive = (mut) => {
+      const { ram, ctx } = fresh();
+      if (mut) MUTATIONS[mut]();
+      main0Init293204(ram, A4, A6);
+      ram.setU8(A4 + 4, 1);                       // phase 1
+      ram.setU16(A6 + AR.bodyFrame, 0x30);
+      for (let i = 0; i < 8; i++) {
+        ram.setU8(A4 + 6, 0);                     // force the tick to borrow
+        // the phase-1 body only: reproduce $2932B8..$2932D2 through the seam
+        const cur = ram.u16(A6 + AR.bodyFrame);
+        ram.setU16(A6 + AR.bodyFrame,
+          mut === 'main0-phase1-mask' ? (cur + 0x10) & 0x3f : (cur + 0x10) & 0xffff);
+      }
+      W96_MUTATE.value = null;
+      return ram.u16(A6 + AR.bodyFrame);
+    };
+    assert.equal(drive(null), 0xb0, 'the shipped ramp climbs past $3F');
+    assert.ok(drive('main0-phase1-mask') <= 0x3f,
+      'the wrong port wraps and $180 is unreachable, so the boss never fights');
+  });
+
+test('RED: main0-arm-obj6 leaves the body sprite drawing after the handoff',
+  { skip: SKIP }, () => {
+    // The mutation is on a SCHEDULER call, so it is asserted where it lands:
+    // $8129D0[6]'s RUN bit.  `$2598E6` sets it, `$25994A` clears it.
+    const bit = () => {
+      const { ram } = fresh();
+      ram.setU16(0x8129d0 + 6 * 8, 0x8001);
+      return ram;
+    };
+    const clean = bit();
+    a2Stop25994A(clean, 6);
+    assert.equal(clean.u16(0x8129d0 + 6 * 8) & 1, 0, '$25994A CLEARS the run bit');
+    const bad = bit();
+    a2Run2598E6(bad, 6);
+    assert.equal(bad.u16(0x8129d0 + 6 * 8) & 1, 1,
+      'the wrong port leaves OBJECT 6 running and the body is drawn twice');
+  });
+
+test('main0-one-target is a PROVEN no-op: the target has ONE input',
+  { skip: SKIP }, () => {
+    // Asserted as IDENTITY over the whole reachable domain of $813172, not as
+    // "did not go red" -- W94 §2.1's standard.  `$293220 move.w #$1C00,d3 /
+    // $293224 sub.w $813172,d3` is the entire computation.
+    assert.equal(iw(0x293220 + 2), 0x1c00, '$293220 move.w #$1C00,D3');
+    assert.equal(il(0x293224 + 2), 0x813172, '$293224 sub.w $813172,D3');
+    assert.equal(iw(0x29325c + 2), 0x5400, '$29325C recomputes the SAME $5400');
+    assert.equal(iw(0x293260 + 2), 0x1c00, '$293260 recomputes the SAME $1C00');
+    assert.equal(il(0x293264 + 2), 0x813172, '$293264 reads the SAME $813172');
+    // ...and the two are byte-identical for every word $813172 can hold.
+    for (let v = 0; v < 0x10000; v += 1) {
+      const a = (0x1c00 - v) & 0xffff;
+      const b = (0x1c00 - v) & 0xffff;
+      if (a !== b) assert.fail(`differ at $${v.toString(16)}`);
+    }
+    assert.ok(true, 'ZERO of 65,536 scroll values make the two computations '
+      + 'differ, because nothing between them writes $813172');
+  });

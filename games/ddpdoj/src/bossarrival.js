@@ -82,14 +82,21 @@
 //     and the ARRIVAL TEST at `$293270 cmpi.w #$1800` then never fires or fires
 //     immediately.
 //
-//  5. **THE TARGET IS COMPUTED TWICE AND THE SECOND ONE IS NOT REDUNDANT.**
-//     `$29321C` computes it for `$24203E` (the aim) and `$29325C` computes it
-//     AGAIN for `$242494` (the distance) -- with the boss's own position moved
-//     in between by `$2417DE`.  The distance is therefore measured AFTER the
-//     step, not before.  This is the same shape as the claim W94 §2.1 had to
-//     WITHDRAW on MAIN 7, and it goes the other way here: on MAIN 7 nothing in
-//     the span wrote `(A4)`; here `$293244 jsr $2417DE` writes `($2,A6)` and
-//     `($4,A6)`, which is exactly what the second computation reads.
+//  5. **THE TARGET IS COMPUTED TWICE AND -- A CLAIM THIS WAVE WITHDREW -- THE
+//     SECOND COMPUTATION IS A NO-OP.**  `$29321C` computes it for `$24203E`
+//     (the aim) and `$29325C` computes it AGAIN for `$242494` (the distance).
+//     The first draft of this comment said the re-read mattered because
+//     `$293244 jsr $2417DE` moves the boss in between.  It does move the boss
+//     -- but the TARGET is `($5400, $1C00 - $813172)` and the only input is
+//     `$813172`, which `src/background.js` writes once a frame at `$261508`
+//     and which nothing between the two computations touches.  `[M]` the
+//     mutation `main0-one-target` (reuse the first pair) is **BYTE-IDENTICAL on
+//     all 81 MAIN 0 frames of `stage1-sweep` segment lf8,250**, in `($11A,A6)`,
+//     the phase byte, the speed byte and the boss's position longword.
+//     **What IS load-bearing is that the boss's own position is read at the
+//     point of use on both paths**, which it is.  This is W94 §2.1's
+//     `main7-stale-target` a second time, in a different script, and it is
+//     declared EXPECTED-GREEN with that measurement rather than deleted.
 //
 //  6. **`($11A,A6)` IS RAMPED BY TWO DIFFERENT RULES AND THE SECOND ONE HAS A
 //     GATE THE FIRST DOES NOT.**  In phase 0 (`$2932A2`) it is `+= $10` then

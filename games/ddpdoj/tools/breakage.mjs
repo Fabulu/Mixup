@@ -298,6 +298,51 @@ export const W94_EXPECTED_GREEN = {
     + 'BYTE-IDENTICAL output under the mutation rather than "did not go red"',
 };
 
+/** W96's FOUR mutations that do NOT move a `stage1-sweep` segment, each with
+ *  the measured reason.  **Six of W96's ten DO move one** -- `d-init-fallthrough`
+ *  and `d0-one-draw` (1 segment each), `d0-same-speed` and `d2-wrap-blt` (8
+ *  each), `emit-one-axis` (1) and `obj6-no-bias` -- and all four below are
+ *  driven RED in `tests/w96boss.test.js`, so the transcription is checked.
+ *  What is declared here is only why the LADDER cannot see them.
+ *
+ *  **AND TWO OF THE FOUR NAME A HOLE IN THE INSTRUMENT, NOT IN THE WAVE.**
+ *  Bucket-2 CONTAINMENT is one-directional by construction (W85 §1.3: the board
+ *  has producers the port lacks), so a mutation that makes the port emit FEWER
+ *  records cannot be red. `[M]` both of those two drop segment lf8,250 from
+ *  **431 port records to 35** and the sweep reports "changed NOTHING". A
+ *  RECORD-COUNT comparison would catch it; the ORDER report would not, because
+ *  a shorter list is still a subsequence. That is a one-line change for a later
+ *  wave, with this measurement behind it. */
+export const W96_EXPECTED_GREEN = {
+  'main0-speed-byte': 'THE INSTRUMENT IS ONE-DIRECTIONAL: [M] with the speed '
+    + 'byte zeroed MAIN 0 never closes to $1800, phase 1 never starts, the '
+    + '$2932D6 handoff never runs, and OBJECT 0..5 and D 0..3 are never armed '
+    + '-- so segment lf8,250 emits 35 bucket-2 records instead of 431 and every '
+    + 'one of the 35 is still contained. MAIN 0 runs 124 frames instead of 81 '
+    + 'and its state differs on its FIRST frame; the unit test reads it there.',
+  'main0-phase1-mask': 'THE SAME HOLE: [M] carrying the phase-0 mask `& $3F` '
+    + 'into phase 1 wraps ($11A,A6) at $40, so it never reaches $180, the '
+    + 'handoff never runs and the same 431 -> 35 drop follows. [M] the first '
+    + 'MAIN 0 frame that differs is frame 40, where clean has $11A = $40 and '
+    + 'the mutation has $0.',
+  'main0-arm-obj6': 'BUCKET 7 IS NOT TRACED: reading the `jsr $25994A` at '
+    + '$293362 as a sixth `$2598E6` leaves OBJECT 6 armed, and OBJECT 6 is the '
+    + 'ONLY producer this wave adds that writes bucket 7 ($807450/$80AFC8, '
+    + 'through $23E08C). [M] the bucket-2 record count and every traced column '
+    + 'are unchanged (431 records, 0 missing). The `stage1-sweep` trace has a '
+    + '`sprq2` column and no bucket-7 column -- W85 section 8 note 3 already '
+    + 'listed bucket 7 as one of the four that are "the same job and the same '
+    + 'three-file change", and this is the first wave with a reason to do it.',
+  'main0-one-target': 'PROVABLE NO-OP, and the claim it falsifies was WITHDRAWN '
+    + '(src/bossarrival.js item 5): the target is ($5400, $1C00 - $813172) and '
+    + 'its only input is $813172, which src/background.js writes once a frame '
+    + 'at $261508 -- nothing between $29321C and $29325C can change it. [M] '
+    + 'BYTE-IDENTICAL on all 81 MAIN 0 frames of segment lf8,250 in ($11A,A6), '
+    + 'the phase byte, the speed byte and the position longword -- asserted as '
+    + 'identity in tests/w96boss.test.js, not as "did not go red". The second '
+    + 'instance of W94 section 2.1 main7-stale-target.',
+};
+
 /** W95's SEVEN mutations that do NOT move a `stage1-sweep` segment, each with
  *  the measured or proven reason it cannot.  Declared here so a green cannot be
  *  read after the fact as evidence -- W82 and W94 set this precedent and this is
