@@ -867,8 +867,50 @@ class Demo {
     const port = this.portList;
     const usedPort = this.spriteSource === 'port';
     if (usedPort) st.spritebuffer = port.words;
+    // ----------------------------------------------------------- WAVE 98 (H1)
+    // AND NOW THE REPLAYED HUD COMES OFF, for W37's reason and by W37's method.
+    //
+    //   the owner: "I am pretty sure the HUD from the upper left is a recording
+    //   and should go till we have the real one"
+    //
+    // THEY ARE RIGHT AND THE SPLIT IS ALREADY IN THIS REPO'S OWN WORDS.
+    // `src/hud.js`: *"the HUD's STATE is this port's and the HUD's PICTURE is
+    // not. A player sees no score row, no chain meter and no bomb icons ... and
+    // every address above is counted in `unportedLog` on the frames it would
+    // have drawn."*  `41-recon` §3.1: the `tx` layer is *"the capture, whole --
+    // HUD, score digits, all on-screen text"*.  So what is in the upper left is
+    // a 161-frame recording of somebody else's score looping against a 7,317-
+    // frame stage, and `39-OWNER`'s "the recorded enemies became off and wrong
+    // at some point" is the same sentence about the same mechanism.
+    //
+    // **THE LAYER GOES EMPTY, NOT WRONG.**  Nothing is substituted and no
+    // placeholder is drawn; that is the intended outcome and not a regression.
+    // W37 emptied the enemy layer on exactly these terms and the owner asked
+    // for it in those words.
+    //
+    // WHY `wantTx: false` AND NOT A ZEROED `st.tx`.  Tile 0 is a tile, not an
+    // absence: zeroing the map would draw whatever tile 0 holds 64x32 times.
+    // `wantTx` is a STRUCTURAL parameter of `renderIndexed`'s own options bag,
+    // the same class as the `spriteStride` immediately beside it and NOT one of
+    // the four decoder mutations whose comment forbids the port a non-default
+    // value -- that comment is on the CONSTRUCTOR's bag
+    // (`render/igs023.js:36-41` vs :74-78).
+    //
+    // ONLY IN `port`.  In `capture` the page is DELIBERATELY showing the
+    // recording, and that is the one correctness check this repo has that does
+    // not need MAME (the paragraph above says so).  Taking the HUD out of that
+    // source would break the thing the source exists for.
+    //
+    // AND THIS IS NOT THE PALETTE.  W91-W93 moved 1,760 of 2,560 palette words
+    // to the cartridge and 160 of the 240 TEXT words are among them; the other
+    // 80 have no cartridge source yet.  `mergePalette` below reads
+    // `this.game.palette` and the capture's, and neither has anything to do
+    // with `st.tx`.  **Not one palette word is removed by this and none may
+    // be** -- the picture and the colours are two separate retirements and only
+    // the picture is retired here.
     const idx = this.renderer.renderIndexed(st,
-      usedPort ? { spriteStride: RAM_STRIDE } : undefined);
+      usedPort ? { spriteStride: RAM_STRIDE, wantTx: false } : undefined);
+    this.txDropped = usedPort;
     // The palette that applies is the NEXT frame's -- the measured sample-point
     // offset (00-recon-assets.md §4).  On a looping capture the next frame is
     // the next captured one.
@@ -922,6 +964,11 @@ class Demo {
       // explanation.
       stripped: this.stripped?.removed ?? 0,
       kept: this.stripped?.kept ?? 0,
+      // WAVE 98 (H1).  Same contract one layer up: the replayed HUD is GONE in
+      // the `port` source and the page says so, because an empty upper left
+      // with no explanation is the same defect class as an empty enemy layer
+      // with no explanation.
+      txDropped: this.txDropped ?? false,
       // WAVE 44.  The port's own list, and the honest part is `missed`: a
       // display-list record whose sprite stream is not in the shipped sheet is
       // NOT DRAWN, and its CARTRIDGE address is on the status line. That is
