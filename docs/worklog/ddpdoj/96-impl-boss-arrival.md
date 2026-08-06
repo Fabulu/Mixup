@@ -39,6 +39,14 @@ INVISIBLE TO EVERYTHING ELSE.** §3 is the whole story.
 
 **BAR CONDITIONS: BOTH.** §6.
 
+> **AND ONE DIVERGENCE, REPORTED AS THE BRIEF REQUIRES: `pgm.py check` is
+> 71 / 3, not 72 / 2.** The third is `STAGE 1 ENDS`, a board-carrying stage,
+> and it is the two ACTIVATIONS -- `[M]` off, `W62 STAGE END: ok`; on, 17 rows
+> fail and **not one of them is a wrong value**: the run stops at `UNPORTED
+> $29540C`, F script 3's INIT, in the half §1.1 split out and named in advance.
+> §6.3 has both measurements, the reason I shipped it anyway, and the two-line
+> revert if the owner would rather have the green than the boss.
+
 ---
 
 ## 1. THE PREMISE, RE-MEASURED -- the brief is wrong in BOTH directions
@@ -502,7 +510,9 @@ re-registering it with counting wrappers), so this is not "the code never runs".
 
 `main0-arm-obj6` and `obj6-no-bias` change only OBJECT 6, whose sole output is a
 **bucket-7** record. `[M]` neither moves a verdict, a first divergence or a
-bucket-2 count on any of the 71 segments. **`stage1-sweep`'s trace has no
+bucket-2 MISS count on any of the 71 segments, and `[M]` `main0-arm-obj6`'s
+port-side record COUNT was measured directly and is unchanged at 431 on segment
+lf8,250. **`stage1-sweep`'s trace has no
 bucket-7 column, and `[M]` OBJECT 6 is the ONLY producer running at all during
 MAIN 0** -- so the descent itself, the 81 frames the arrival is named for, is
 the part of this boss the instrument is blind to. W85 §8 note 3 already sized
@@ -525,12 +535,74 @@ blocked; the whole of the descent (bucket 7) is untraced; the boss's own body
 sprite is compared nowhere; F 2 and F 3 are unported; and the five declared
 mutations above are checked against the LISTING and not against the board.
 
-### 6.3 `pgm.py check`
+### 6.3 `pgm.py check` -- **71 / 3, AND THE THIRD IS A BOARD-CARRYING STAGE.
+    REPORTED AS A DIVERGENCE, AS THE BRIEF REQUIRES, WITH THE DIAGNOSIS AND THE
+    ONE-LINE REVERT.**
 
 `[M]` `python games/ddpdoj/tools/oracle/pgm.py check`, run **ALONE** on the
-shipped tree after every change above -- the brief's rule about never running
-two instances at once was followed and W94 §6.3.1's false regression did not
-recur. **See §6.3.1 below for the number.**
+shipped tree (the first pass had another agent's `pgm.py gate` alive beside it,
+which is W94 §6.3.1's hazard; the number below is from the clean re-run):
+
+```
+[M] VERDICT: FAILURES -- 71 passed, 3 failed, 0 SKIPPED
+[M]   [FAIL] segment sweep                       -- KNOWN, the row this wave improved
+[M]   [FAIL] THE LASER BOMB                      -- KNOWN since W79 §6.5
+[M]   [FAIL] STAGE 1 ENDS: the boss timeout,     -- **NEW. THIS WAVE'S.**
+[M]          $242952, and the rebuild
+```
+
+**IT IS THE TWO ACTIVATIONS, IT IS EXACTLY WHAT W95 §6.1 MEASURED, AND I HAVE
+BOTH SIDES OF IT:**
+
+```
+[M] node games/ddpdoj/tools/w62stageendgate.mjs
+[M]   activations ON  (SHIPPED):  W62 STAGE END: 17 FAILED
+[M]   activations OFF (probe):    W62 STAGE END: ok
+```
+
+`[M]` **and NOT ONE of the 17 is a wrong VALUE.** Every one is `got []`, `got
+null`, `got 0` or `got NaN` -- an event that never happened, because the gate's
+run stops at
+
+```
+[M] stopped: UNPORTED $29540C: boss SCRIPT at $29540C
+```
+
+which is **F script 3's INIT, in the half §1.1 SPLIT OUT AND NAMED IN ADVANCE**.
+The gate needs lf18,675 (the timeout), lf19,150 (`$242952`) and lf19,223 (the
+rebuild); it reaches none of them. `[M]` W95 saw the identical shape one step
+earlier -- it stopped on `$294FA0` and failed 24 of 27 rows; this wave's port
+gets past `$294FA0`, through the whole arrival, and stops 17 rows short instead
+of 24. **The port has not diverged from the board anywhere in this scenario. It
+stops earlier, and the gate cannot tell "stopped" from "wrong".**
+
+`[M]` **the four RANK rows -- the ones `20-OWNER-scoring-must-be-exact.md` makes
+safety-critical -- ALL PASS**, digit-identical across the stage end.
+
+> **WHY I SHIPPED IT ANYWAY, AND THE ORCHESTRATOR MAY REVERSE THIS IN ONE
+> LINE.** W95 measured the same cost and REVERTED, and it was right to: the
+> activations bought it nothing, because the ladder seeds the scheduler's slots
+> out of board RAM. `[M]` **that is still true of the LADDER here** -- the eight
+> rungs of §5.1 are won by the speed export and the scripts, not by the
+> activations. **What the activations buy THIS wave is bar condition 1**: they
+> are the only thing that puts a boss on the owner's screen, and §6.1 is the
+> first time in this project's history that has happened. Weighed against a gate
+> that is red only because the NEXT wave has not landed, and that goes green the
+> moment F 3's INIT exists, I judged the boss worth more than the green.
+>
+> **THE REVERT IS TWO LINES** in `src/initbody.js` -- replace
+> `a2Run2598E6(ram, 6)` / `a4Start25980C(ram, 0)` with the `unported?.note`
+> pair they displaced. `[M]` doing so restores `W62 STAGE END: ok` and costs
+> nothing on the ladder. **If the owner would rather have 72/2 than a visible
+> boss, that is their call and it is one commit.**
+
+#### 6.3.1 AND `THE CHAIN EXPIRES` DID NOT MOVE
+
+`[M]` W95 measured that turning the activations on cost **two** board-carrying
+stages -- `STAGE 1 ENDS` and `THE CHAIN EXPIRES` (70 passed, 4 failed). This
+tree is **71 / 3**: `THE CHAIN EXPIRES` passes now, because the arrival is
+ported and `$294FA0` no longer stops it. **So this wave recovered one of the two
+gates W95's probe lost, and left the other waiting on F 3.**
 
 ### 6.4 THE OTHER GATES
 
