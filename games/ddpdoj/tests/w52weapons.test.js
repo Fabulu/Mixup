@@ -289,11 +289,17 @@ test('the two weapon shards are DEFERRED and fetched FIRST among the deferred', 
   // lf2106 from the shipped seed, 1.8 s after boot, against shard 1's +7.7 s.
   // The shard whose deadline moved is not the shard whose code changed, which
   // is exactly why the ORDER-IS-A-CLAIM loop below exists.
-  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 10, 9, 13, 12, 8, 14, 16, 15, 3,\s*1, 2, 4, 5, 11\]\)/.test(s),
+  // W98 appended shard 17, THE BOSS, LAST -- and it is the first shard in this
+  // bundle whose deadline is measurably LATER than shard 1's rather than
+  // earlier. [M] its first record lands at lf8,144 = 137.6 s from the seed,
+  // where shard 1 wants art at +7.7 s. It is also the largest body here
+  // (367.0 KiB), so it must not sit in front of anything.
+  assert.ok(/SPR_ORDER = Object\.freeze\(\[0, 7, 6, 10, 9, 13, 12, 8, 14, 16, 15, 3,\s*1, 2, 4, 5, 11, 17\]\)/.test(s),
     'the bullets (+0.7 s), the shots (the first fire frame), the LASER (the '
     + 'first held frame), the death explosion, THE BOMB, THE ITEM, the impact '
     + 'spark, W81\'s three enemy-art shards and W84\'s shard 3 all come before '
-    + 'shard 1 (+7.7 s): index order is NOT need order any more');
+    + 'shard 1 (+7.7 s), and W98\'s boss (137.6 s) comes after everything: '
+    + 'index order is NOT need order any more');
   // and the ORDER IS A CLAIM ABOUT DEADLINES, not a literal: whatever the array
   // says, every shard whose first need is earlier than shard 1's must precede
   // it. This is the assertion the literal above cannot make on its own.

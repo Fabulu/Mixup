@@ -460,6 +460,74 @@ const HARVEST = Object.freeze([
     + '2 + wide*high + 2 that the record own ($e,A6) = $0208 (1 x 8) wants. '
     + '[M] 0 of the 36 are in the shipped sheet and it is 0.8 KiB gz for all '
     + 'of them -- the cheapest shard in this bundle by a factor of thirteen'],
+  // ================================================== WAVE 98: THE BOSS'S BODY
+  // W96 got the stage-1 boss ARRIVING, descending, handing off and fighting for
+  // 559 logic frames, and the owner could not see one pixel of it: the port
+  // emitted the right records at the right coordinates and the renderer had no
+  // tiles for any of them.  [M] W96's closing census, reproduced here to the
+  // record: 4,071 records lacking art over 75 streams, of which 58 are the boss.
+  //
+  // **THE TABLES BELOW ARE THE BOSS'S OWN AND EVERY ONE OF THEM IS ALREADY A
+  // DECLARED ROM WINDOW** -- W82 exported OBJECT 3/4/5's and W96 exported
+  // OBJECT 0/1/6's, each pinned by the instruction that indexes it and by the
+  // first byte of code past its far end (`tools/export-tables.py`,
+  // `check_boss_arrival_tables`).  This wave adds NO new reading of the
+  // cartridge; it ships the pictures the windows already name.
+  //
+  // AND THE COUNT IS THE PREMISE CHECK.  The brief said "the boss's art"; the
+  // census said 58 streams.  [M] THE TABLES HOLD 244, and the gap is W81 §1.1's
+  // lesson from the other side: 58 is what a 559-frame life happens to index,
+  // and the boss's animation cursors ($2A,A6), ($6A,A6), ($AC,A6), ($C6,A6) and
+  // ($11A,A6) each sweep their whole table over a fight that runs to the end.
+  // A harvest sized off W96's run would ship a quarter of the battleship.
+  //
+  // TWO TABLES IN THE BOSS'S OWN ROM WINDOWS ARE **NOT ART** AND ARE NOT HERE,
+  // and this is worth writing down because both are named "sprite table" in the
+  // exporter's own comments: [M] $292A08's 32 longwords are $40004000,
+  // $48004800 .. $C000C000 -- word pairs written to ($46,A6), not stream starts
+  // -- and [M] $292F84's SECOND longword per record is $E600EE00 / $E000E500,
+  // two distinct values over 24 records.  Only `(A2)` is the picture.
+  [17, 0x292a88, 32, 4, 32, 0x292b08,
+    'OBJECT 0, THE BOSS\'S LEFT PART -- 32 frames. $292972 `lea $292A88(pc),A2 '
+    + '/ move.w $2A(A6),D2 / move.l (A2,D2.w),D2`, a WORD used as a raw byte '
+    + 'offset, so $7C+4 = $80 = 32. The run of 32 stops EXACTLY at $292B08, '
+    + 'OBJECT 1\'s own routine, which $292932[1] publishes -- the index and the '
+    + 'cartridge agree entry for entry. [M] W96 drew 4 of these 32'],
+  [17, 0x292b7a, 32, 4, 32, 0x292bfa,
+    'OBJECT 1, THE BOSS\'S RIGHT PART -- 32 frames, indexed by ($6A,A6) the '
+    + 'same way. The run of 32 stops at $292BFA, OBJECT 3\'s routine, which '
+    + '$292932[3] publishes. [M] W96 drew 4 of these 32'],
+  [17, 0x292c2a, 120, 4, 120, 0x292e0a,
+    'OBJECT 3 -- FIFTEEN $20 ROWS. $292C00 `move.w $AC(A6),D2 / addq.w #$7 / '
+    + 'lsl.w #$5 / adda.w D2,A2 / adda.w $AA(A6),A2` with $AC SIGNED in '
+    + '[-7,+7] and the row cursor $AA taking 0,4,..,$18. THE RUN AND THE CODE '
+    + 'PIN AGREE AT 120: $292C2A+$1E0 == $292E0A, OBJECT 4\'s first '
+    + 'instruction, and the cartridge\'s run of consecutive stream starts is '
+    + '120 too. [M] the row cursor wraps at $1C so the EIGHTH longword of each '
+    + 'row is unreachable through this lea -- 15 of the 120. They ship anyway, '
+    + 'for W58 §2.1b\'s reason and W84\'s: "the index cannot reach them" is a '
+    + 'statement about ONE lea. [M] W96 drew 7, i.e. one row'],
+  [17, 0x292e32, 3, 4, 3, 0x292e3e,
+    'OBJECT 4 -- three longwords of which $292E10 `move.l (A2),D2` can only '
+    + 'ever read [0] (no index register, no displacement). All three ship; the '
+    + 'far end is $292E3E, OBJECT 5\'s first instruction. 0.3 KiB'],
+  [17, 0x292eca, 32, 4, 32, 0x292f4a,
+    'OBJECT 5 -- 32 longwords, $292E3E `move.b $C6..$C9(A6),D2 / andi.w #$3E / '
+    + 'add.w D2,D2 / move.l $292ECA(pc,D2.w),D2`, read FOUR times per frame '
+    + '($292E4A/$292E7A/$292E98/$292EB6). Far end pinned by $292F4A, OBJECT '
+    + '6\'s first instruction. [M] W96 drew 17 of the 32'],
+  [17, 0x292f84, 24, 16, 29, 0x293154,
+    'OBJECT 6, **THE BATTLESHIP\'S OWN HULL** -- 24 twelve-byte records at '
+    + 'stride $10, $292F4A `lea $292F84(pc),A2 / adda.w $11A(A6),A2`. MAIN 0 '
+    + 'drives ($11A,A6) 0,$10,$20..$180 and the handoff at $180 stops OBJECT 6 '
+    + 'in the same frame, so $170 is the last index drawn. THE RUN CANNOT SIZE '
+    + 'THIS TABLE AND SAYS SO: [M] at stride $10 the cartridge\'s run of '
+    + 'longwords that pass as stream starts is 29, because entries 24..28 land '
+    + 'inside $293104, the MAIN SCRIPT TABLE, whose {init,step} pointers '
+    + 'happen to decode as stream starts. $293104 is `$292710 lea $293104,A0` '
+    + '-- the cartridge publishes it -- and THAT is what pins 24, exactly as '
+    + '$272E7A\'s run of 160 is stopped by an index and not by a run. '
+    + '[M] all 24 were missing and this is 147.3 KiB of the wave\'s 367'],
 ]);
 
 /** W45's beam art: the pod muzzle `$24C906` forces onto `($a,A6)` and four of
@@ -506,6 +574,21 @@ const W81_IMMEDIATES = Object.freeze([
     + '$0C60 = 96x96 px, 578 mask words. [M] This is the stream the live page '
     + 'named at 55 s and 65 s and 80 s in W68 §6 -- `NO ART $17D480` -- for a '
     + 'type that has been emitting 12 of 12 records since W36'],
+  // ------------------------------------------------------------------ WAVE 98
+  // TWO MORE, AND THE SECOND ONE IS NOT THE BOSS'S.
+  [17, 0x06539c,
+    'OBJECT 2, THE BOSS. Not a table: $292952 `move.l #$6539C,D2` is the whole '
+    + 'of it (src/boss.js:788, emit23E020). [M] 357 records with no picture in '
+    + 'the W98 census, and OBJECT 2 has been PORTED SINCE W82 -- it was '
+    + 'invisible only because nothing had ever armed the OBJECT slots'],
+  [4, 0x07e8ac,
+    'TYPE $24\'s FIRST RECORD, and it belongs to shard 4 rather than to the '
+    + 'boss. $29709E `move.l #$7E8AC,D2` (handlers.js emit24) is a LITERAL; the '
+    + 'SECOND record of the same emitter reads $2970D8, which shard 4 has '
+    + 'harvested since W47, so the type shipped with half its art and nobody '
+    + 'noticed. [M] 523 records -- **the single largest missing stream in the '
+    + 'whole census, larger than any of the boss\'s** -- first needed lf7,521. '
+    + 'This is W81 §1.1\'s immediate-vs-table lesson a third time'],
 ]);
 
 /** Shard metadata.  `boot` is awaited by `loadBundle`; the rest are queued from
@@ -580,6 +663,10 @@ const SPR_SHARDS = Object.freeze([
   [16, 'type88', 'THE TWIN TURRET: type $88\'s body $17D480, its four-frame '
     + '$2763D8 and both barrels\' $272D7A. Already emitting 12 of 12 records '
     + 'with no picture for any (W80 §5, W81)'],
+  // The `why` below is what the page prints when the shard has not landed, and
+  // `manifest.json` is served UNCOMPRESSED, so every character is a boot byte.
+  [17, 'boss', 'THE STAGE-1 BATTLESHIP: its hull $292F84 and the six OBJECT '
+    + 'tables around it. 244 streams, the biggest thing in the stage (W98)'],
 ]);
 const SPR_BOOT = [0];
 /** the order the deferred shards are FETCHED in -- measured first need, not
@@ -631,8 +718,15 @@ const SPR_BOOT = [0];
 // first need at +7.7 s.  It is 4.3 KiB.  A shard whose deadline moved because a
 // handler was ported is exactly the case the ORDER-IS-A-CLAIM assertion in
 // `tests/w52weapons.test.js` exists to catch, and it is asserted there.
+// W98: SHARD 17 THE BOSS GOES LAST, and for once the clock is not close.  [M]
+// its first need is lf8,144 -- 137.6 s after the seed at 59.185606 Hz -- where
+// the latest deadline anything else in this bundle has is shard 11's +5.3 s.
+// It is also the LARGEST body in the bundle (367 KiB against shard 11's 322),
+// so putting it anywhere but last would delay a shard whose deadline is
+// twenty-five times nearer.  `demand()` still promotes it the moment a record
+// asks, exactly as it has since W47, and until it lands the page NAMES it.
 const SPR_ORDER = Object.freeze([0, 7, 6, 10, 9, 13, 12, 8, 14, 16, 15, 3,
-  1, 2, 4, 5, 11]);
+  1, 2, 4, 5, 11, 17]);
 
 // ---------------------------------------------------------------------------
 // 1. COVERAGE.  What can this capture possibly make the renderer read?
