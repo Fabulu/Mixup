@@ -38,7 +38,29 @@ this project turned out to be missing ART rather than wrong logic:
 "A sprite that should be on top is missing, so something behind it shows
 through" is the same shape as all three.
 
-## WHY IT IS CHEAP TO TEST NOW, WHERE IT WAS NOT BEFORE
+## OWNER CORRECTION, SAME DAY - HALF OF THIS WAS NEVER AN OPEN QUESTION
+
+> "Nothing covers the bees yet, we haven't implemented that yet."
+
+The owner is right and the framing above was sloppy. This note originally read
+as though it were uncertain whether OUR PORT draws a cover. It does not, and
+that is not in doubt: nothing in `games/ddpdoj/src/` implements one, and recon
+73 already recorded that the port draws the CARRIER and never the pickup.
+
+So there are two questions and only one of them is open:
+
+- **Does our port draw a cover? NO, and it never has.** Settled, by the owner
+  and by the source. Do not spend a wave establishing it.
+- **What IS the cover, where does its art live, and what spawns it?** Open.
+  This is the whole job.
+
+The measurement below is therefore not a test of whether something is missing.
+It is the fastest way to find out WHAT is missing, by asking the board what it
+draws at those coordinates on those frames. Frame it that way in the brief, or
+the wave will waste its first hours confirming something the owner already told
+us.
+
+## WHY IT IS CHEAP TO FIND IT NOW, WHERE IT WAS NOT BEFORE
 
 Two tools landed since the bee round:
 
