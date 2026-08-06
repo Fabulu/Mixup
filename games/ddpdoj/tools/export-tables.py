@@ -1070,6 +1070,41 @@ SHOT_WINDOWS.extend([
                        "$2883FE + $10 == $28840E pins the near end"),
 ])
 
+# ===== W113: THE HUD SPRITE-FRAME TABLES (Wave A of the HUD port) ============
+#
+# THREE windows, every extent pinned by an instruction or by the next table.
+# `check_hud_sprite_extents` (below) asserts all of them on every export.
+#
+#   $28809E  the chain-bar STAGE pointer table, read at $2859E6
+#            `lea $28809E,A0 / movea.l (A0,D2.w),A0` with D2 = $813098 * 4.
+#            Entry [0] = $2880A6 (loop 0 meter data), [1] = $28811A (loop 1).
+#            The meter data is words indexed by meter*2 ($2859F2 `add.w D6,D6 /
+#            move.w (A0,D6.w),D2`); the chain meter CAP table $287DF0 (W34) pins
+#            the extent: loop 0 cap = $38 = 56 words, loop 1 cap = $5A = 90.
+#            So loop 0 runs $2880A6..$288116 and loop 1 $28811A..$2881CE, and
+#            $2881CE..$2881F2 (the panel tile table below) pins the far end.
+#   $2881F2  the panel tile table, read at $285C86 `lea $2881F2,A0 /
+#            move.l (A0,D2.w),D2` with D2 = hyperlevel * 4 (max 7, from
+#            `divu.w #$4B0`). EIGHT longwords ($1CBF98..$1CBCDC), 32 bytes.
+#            The gap $288212..$2882A6 is covered because the rank-icon P1 table
+#            $2882A6 (read at $285D64 / $285DC4 `lea $2882A6,A0`) sits inside
+#            the same window -- same shape, 8 longwords, 32 bytes.
+#   $288326  the rank-icon P2 table, read at $285EDA / $285F3E `lea $288326,A0`.
+#            EIGHT longwords ($1CED18..$1CEC54), 32 bytes.
+#
+SHOT_WINDOWS.extend([
+    (0x28809E, 0x0130, "W113: chain-bar stage pointers $28809E (2 longs to "
+                       "$2880A6/$28811A) + per-stage meter data (loop 0: 56 "
+                       "words, loop 1: 90 words), far end $2881CE pinned by the "
+                       "panel tile table $2881F2"),
+    (0x2881F2, 0x0140, "W113: panel tile table $2881F2 (8 longwords, "
+                       "$285C86/$285E00) and rank-icon P1 table $2882A6 (8 "
+                       "longwords, $285D64/$285DC4); the gap between them is "
+                       "covered because both are read in the same routine"),
+    (0x288326, 0x0020, "W113: rank-icon P2 table $288326 (8 longwords, "
+                       "$285EDA/$285F3E)"),
+])
+
 # ============ W64 (B2): THE BOMB'S RECORD TEMPLATES AND SCRIPTS =============
 #
 # ONE window, $25653C..$25664D, and it is a UNION of six extents that are each
@@ -2600,6 +2635,57 @@ def check_hud_extents(d: bytes) -> None:
                          "the same DIP) no longer abuts $28840E.")
 
 
+def check_hud_sprite_extents(d: bytes) -> None:
+    """W113.  ASSERT THE HUD SPRITE-FRAME TABLES AGAINST THE CARTRIDGE.
+
+    The chain bar reads `$28809E[loop]` as a pointer, then indexes the pointed-to
+    table by meter*2.  The panel and rank tables are 8-longword arrays.  Every
+    extent is pinned by the cap table $287DF0 (chain meter caps) or by counting
+    the longwords the instruction reads -- never by "what a run reached".
+    """
+    # 1. the chain-bar stage pointers must point INSIDE the window.
+    p0 = u32(d, 0x28809E)
+    p1 = u32(d, 0x2880A2)
+    if p0 != 0x2880A6:
+        raise SystemExit(
+            f"$28809E[0] is ${p0:06X}, not $2880A6 (the loop-0 meter data).")
+    if p1 != 0x28811A:
+        raise SystemExit(
+            f"$28809E[1] is ${p1:06X}, not $28811A (the loop-1 meter data).")
+    # 2. the chain meter CAP table $287DF0 pins how many words each loop reads.
+    cap0 = u16(d, 0x287DF0)       # loop 0
+    cap1 = u16(d, 0x287DF0 + 2)   # loop 1
+    if cap0 == 0 or cap1 == 0:
+        raise SystemExit("$287DF0 chain meter cap table has a zero entry.")
+    # loop 0 data must end at or before loop 1's start; loop 1's end pins the window.
+    end0 = p0 + cap0 * 2
+    end1 = p1 + cap1 * 2
+    if end0 > p1:
+        raise SystemExit(
+            f"loop 0 meter data ${p0:06X}..${end0:06X} overruns loop 1 at "
+            f"${p1:06X}; the cap table $287DF0 and the pointers disagree.")
+    declared = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x28809E]
+    if not declared or 0x28809E + declared[0][1] < end1:
+        raise SystemExit(
+            f"the $28809E window is {declared} and must reach ${end1:06X} -- "
+            f"loop 1's meter data ($287DF0 cap = {cap1} words). A SHORT window "
+            f"is not caught here, it is caught by src/rom.js on a player's "
+            f"machine.")
+    # 3. the panel tile table $2881F2: hyperlevel max 7, so 8 longwords.
+    #    $285C7E divu.w #$4B0 then $285C82 add.w D2,D2 / add.w D2,D2 => index*4.
+    declared_p = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x2881F2]
+    if not declared_p or 0x2881F2 + declared_p[0][1] < 0x2882C6:
+        raise SystemExit(
+            f"the $2881F2 window is {declared_p} and must reach $2882C6 -- "
+            f"the rank-icon P1 table $2882A6 (8 longwords).")
+    # 4. the rank-icon P2 table $288326: same shape, 8 longwords.
+    declared_p2 = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x288326]
+    if not declared_p2 or 0x288326 + declared_p2[0][1] < 0x288346:
+        raise SystemExit(
+            f"the $288326 window is {declared_p2} and must reach $288346 -- "
+            f"the rank-icon P2 table (8 longwords).")
+
+
 def check_boss_a4_extent(d: bytes) -> None:
     """W64 (B2).  W62's `$294F68` window was FIVE pairs and the table is SEVEN.
 
@@ -3721,6 +3807,7 @@ def build(d: bytes) -> dict:
     check_pool_b_extents(d)                    # W54 -- see the function's docstring
     check_item_extents(d)                      # W61 -- see the function's docstring
     check_hud_extents(d)                       # W63 -- see the function's docstring
+    check_hud_sprite_extents(d)                # W113 -- HUD sprite-frame tables
     check_bomb_extents(d)                      # W64 -- ...and this one's
     check_boss_a4_extent(d)                    # W64 -- W62's window was SHORT
     check_boss_script_table_extents(d)         # W82 -- ...and so were A3 and A1

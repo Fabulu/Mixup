@@ -185,6 +185,7 @@ import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { queueKill } from './objalloc.js';
 import { OBJ } from './objdriver.js';
+import { enqueueRegisters } from './spritequeue.js';
 
 /** Every ROM address this file touches, as the operand of a named instruction. */
 export const HUD = {
@@ -213,6 +214,16 @@ export const HUD = {
   bossBar: 0x284a3e,
   cursorTableB: 0x287e8e,   // 15 longwords, $287E8E..$287EC9
   cursorTableA: 0x287eca,   // 64 longwords, $287ECA..$287FC9
+  // W113: the HUD SPRITE-FRAME tables (bucket 25), read by the draw bodies.
+  chainBarTable: 0x28809e,  // $2859E6 lea -- 2 stage pointers + per-stage meter data
+  chainBarTileBase: 0x1cc4a0, // $2859F8 addi.l -- the chain-bar tile base offset
+  panelTileTable: 0x2881f2, // $285C86 lea -- 8 longwords, indexed by hyperlevel*4
+  rankIconP1: 0x2882a6,     // $285D64/$285DC4 lea -- 8 longwords
+  rankIconP2: 0x288326,     // $285EDA/$285F3E lea -- 8 longwords
+  iconTileP1: 0x1ca008,     // $285D26 move.l -- the P1 hyper-stock icon tile
+  iconTileP2: 0x1ce9b4,     // $285EA0 move.l -- the P2 hyper-stock icon tile
+  bannerPanelP1: 0x1cf060,  // $284F86 move.l -- the banner panel tile P1
+  bannerPanelP2: 0x1cee58,  // $284FB6 move.l -- the banner panel tile P2
 };
 
 /** RAM, by the instruction that names it.
@@ -270,6 +281,16 @@ export const HUDRAM = {
   hyperActiveP1: 0x81b63e, hyperActiveP2: 0x81b640,
   hyperReqP1: 0x81b658, hyperReqP2: 0x81b65a,
   flashTimerP1: 0x81b6fa, flashTimerP2: 0x81b6fc,
+  // W113: the hyper GAUGE (distinct from $81B654 the hyper LEVEL), the
+  // hyper-stock counts, the stock display flag, and P1/P2 rank accumulators.
+  // All written by the unported hyper/tally tails; read here by the draws.
+  hyperGaugeP1: 0x81b642,  // $285C6E move.w -- picks one of 8 panel tiles
+  hyperGaugeP2: 0x81b644,  // $285DE8 move.w
+  hyperStockP1: 0x81b6e0,  // $285D34/$285D92 -- the hyper-stock icon loop count
+  hyperStockP2: 0x81b6e2,  // $285EAE/$285F0C -- P2
+  hyperStockFlag: 0x81b6e4, // $285D8A/$285F04 -- shared guard (non-hyper arm only)
+  rankAccumP1: 0x81b64a,   // $285D4E/$285DB2 -- picks one of 8 rank-icon tiles
+  rankAccumP2: 0x81b64c,   // $285EC8/$285F2C -- P2
   // ---- per player: everything `$2844C8`/`$284666`'s two blocks differ in
   p1: {
     who: 0,
@@ -596,6 +617,167 @@ function draw(ctx, addr) {
   note(ctx, addr, DRAWS[addr] ?? `a DRAW at $${addr.toString(16).toUpperCase()}`);
 }
 
+// ===========================================================================
+// W113 -- THE HUD SPRITE DRAWS (bucket 25), transcribed from the ROM.
+// Each replaces a former `draw(ctx, addr)` NOTE with the real body, read out
+// of `maincpu.bin`. The eight routines here are the ones W112 section 1.1
+// classified as SPRITE draws (they call ONLY `$23FA96`/`$23FAC4`). The chain
+// popup `$2855B6` and the item row `$2857B4` are DEFERRED (W113 section 2).
+// ===========================================================================
+
+/** DIVU.W puts the QUOTIENT in the LOW word and the REMAINDER in the HIGH
+ *  word. `add.w Dn,Dn / add.w Dn,Dn` then doubles the LOW word (quotient)
+ *  twice, giving `quotient*4` -- the byte offset into a longword table. */
+function divuQuotient4(dividend, divisor) {
+  return (Math.floor(dividend / divisor) * 4) & 0xffff;
+}
+
+/** `$2859DC` -- THE CHAIN-METER BAR.  A single sprite whose tile is
+ *  `$28809E[loop][meter] + $1CC4A0`.  Entry registers from the caller:
+ *  D1 (position), D4 (flip/colour), D6 (the meter word, pre-decrement). */
+export function chainBar2859DC(ram, rom, ctx, d1, d4, d6) {
+  if (!rom) { note(ctx, 0x2859dc, DRAWS[0x2859dc]); return; }
+  const loop = ram.u16(HUDRAM.loop);                        // $2859DC move.w
+  const ptr = rom.u32(HUD.chainBarTable + u16(loop * 4));   // $2859E6/$2859EC
+  const meterWord = rom.u16(ptr + u16(d6 * 2));             // $2859F2/$2859F4
+  const d2 = (meterWord + HUD.chainBarTileBase) >>> 0;      // $2859F8 addi.l
+  enqueueRegisters(ram, 25, d1, d2, 0x0810, d4);            // $2859FE/$285A02
+}
+
+/** `$285FA6` -- THE HYPER-LABEL FLASH (sprite half).  Three instructions: the
+ *  caller supplies D1 (position) and D2 (tile from the cursor table), the body
+ *  sets D3=$430, D4=$9 and jumps to `$23FA96`. */
+export function hyperFlash285FA6(ram, rom, ctx, d1, d2) {
+  if (!rom) { note(ctx, 0x285fa6, DRAWS[0x285fa6]); return; }
+  enqueueRegisters(ram, 25, d1, d2, 0x0430, 0x09);          // $285FA6..$285FAE
+}
+
+/** The panel-frame position for the score row's HYPER arm.  Five branches,
+ *  all on banner flags that are never set in this port (`$8130F9` bit 0's one
+ *  producer is `BOSS_TAIL`, unported).  Ported faithfully anyway. */
+function panelPosition(ram, who) {
+  const p1 = who === 0;
+  let long = 0x5ec0, short = p1 ? 0x0400 : 0x2800;          // $285C90/$285E0A
+  if (!(ram.u8(HUDRAM.flags9) & 0x01)) return ((long << 16) | short) >>> 0; // beq default
+  if (ram.u8(HUDRAM.bannerFlagsClear) & 0x80) return ((long << 16) | short) >>> 0; // bmi
+  const subA = ram.u16(HUDRAM.bannerSubA), subB = ram.u16(HUDRAM.bannerSubB);
+  if (!(ram.u8(HUDRAM.bannerFlagsBoss) & 0x10)) {           // boss NOT done
+    long = u16(0x60c0 - (subA << 6));                       // $285CB6/$285E30
+    short = p1 ? u16(subB << 7) : u16(0x2c00 - (subB << 7));// $285CC6/$285E40
+  } else if (!(ram.u8(HUDRAM.flags8) & 0x08)) {             // boss done, no clear
+    long = 0x60c0; short = p1 ? 0x0000 : 0x2c00;            // $285CE0/$285E5A
+  } else {                                                  // stage-clear active
+    long = u16(0x5ec0 + (subA << 6));                       // $285CEC/$285E66
+    short = p1 ? u16(0x0400 - (subB << 6)) : u16(0x2800 + (subB << 6)); // $285D00/$285E80
+  }
+  return ((u16(long) << 16) | u16(short)) >>> 0;
+}
+
+/** P1/P2 score-row parameters. The two rows are instruction-for-instruction
+ *  mirrors, differing only in addresses, base positions and icon direction. */
+function scoreRowCfg(who) {
+  return who === 0 ? {
+    hyper: HUDRAM.hyperActiveP1, gauge: HUDRAM.hyperGaugeP1,
+    stock: HUDRAM.hyperStockP1, rank: HUDRAM.rankAccumP1,
+    iconTile: HUD.iconTileP1, rankTable: HUD.rankIconP1,
+    iconShort: 0x1000, iconShortSign: 1, iconStep: 0x0200,
+    addr: 0x285c62,
+  } : {
+    hyper: HUDRAM.hyperActiveP2, gauge: HUDRAM.hyperGaugeP2,
+    stock: HUDRAM.hyperStockP2, rank: HUDRAM.rankAccumP2,
+    iconTile: HUD.iconTileP2, rankTable: HUD.rankIconP2,
+    iconShort: 0x2600, iconShortSign: -1, iconStep: 0xfe00,  // subi.w #$200 = -$200
+    addr: 0x285ddc,
+  };
+}
+
+/** `$285C62` (P1) / `$285DDC` (P2) -- THE SCORE ROW.  Two arms: HYPER draws the
+ *  panel frame + icons + rank; NON-HYPER draws icons (if the stock flag is set)
+ *  + rank.  In normal play (no hyper, stock flag 0) only the rank icon draws.
+ *
+ *  D6/D7 are slide offsets from the caller (0 in normal play via `$285C5E`;
+ *  the banner wrappers pass a slide value). */
+export function scoreRow285C62(ram, rom, ctx, who, d6, d7) {
+  const C = scoreRowCfg(who);
+  if (!rom) { note(ctx, C.addr, DRAWS[C.addr]); return; }
+  const p1 = who === 0;
+
+  if (ram.u16(C.hyper) !== 0) {                              // $285C62 tst.w / beq
+    // ---- HYPER ARM: panel frame + icons + rank ($285C6C..$285D72) ----
+    const gauge = ram.u16(C.gauge);                          // $285C6E
+    const prod = u16(gauge * 0x16);                          // $285C74 mulu / swap/clr/swap
+    const d2panel = rom.u32(HUD.panelTileTable               // $285C86 lea $2881F2
+      + divuQuotient4(prod, 0x4b0));                         // $285C7E/$285C82
+    const d1panel = panelPosition(ram, who);                 // $285C90..$285D08
+    enqueueRegisters(ram, 25, d1panel, d2panel, 0x0430, 0x09); // $285D0A jsr $23fa96
+    // icons (hyper arm: no stock-flag guard, just count)
+    drawIconsAndRank(ram, rom, ctx, C, p1, d6, d7, false);
+  } else {
+    // ---- NON-HYPER ARM: icons (guarded) + rank ($285D74..$285DD6) ----
+    drawIconsAndRank(ram, rom, ctx, C, p1, d6, d7, true);
+  }
+}
+
+/** The shared icon loop + rank icon, used by both arms of the score row.
+ *  `guardStockFlag` selects the non-hyper arm's extra `$81B6E4` test. */
+function drawIconsAndRank(ram, rom, ctx, C, p1, d6, d7, guardStockFlag) {
+  // Icon base position: long = $5FC0 - D7, short = $1000+D6 (P1) or $2600-D6 (P2)
+  let long = u16(0x5fc0 - d7);                               // $285D74/$285E92
+  let short = u16(C.iconShort + C.iconShortSign * d6);       // $285D80/$285E9E
+  let d1 = ((long << 16) | short) >>> 0;
+
+  if (!guardStockFlag ||                                     // hyper arm: always
+      (ram.u16(HUDRAM.hyperStockFlag) !== 0                  // $285D8A tst.w $81B6E4
+        && ram.u16(C.stock) !== 0)) {                        // $285D92/$285D98
+    let count = ram.u16(C.stock);                            // $285D34/$285D92
+    if (count !== 0) {                                       // beq skip
+      count = u16(count - 1);                                // $285D3A/$285D9A subq.w
+      const d2icon = C.iconTile;                             // $285D26/$285EA0
+      do {
+        enqueueRegisters(ram, 25, d1, d2icon, 0x0608, 0x09); // $285D2C/$285FA6 jsr $23fac4
+        short = u16(short + C.iconStep);                     // $285D44/$285EBE
+        d1 = ((long << 16) | short) >>> 0;
+      } while (count-- !== 0);                               // $285D48/$285EC2 dbra
+    }
+  }
+  // Rank icon (uses D1 from the icon loop -- its position follows the last icon)
+  const rank = ram.u16(C.rank);                              // $285D4E/$285DB2
+  if (rank === 0) return;                                    // $285D54/$285DB8 beq
+  const rankScaled = u16(rank << 4);                         // $285D56/$285DBA lsl.w
+  const d2rank = rom.u32(C.rankTable + divuQuotient4(rankScaled, 0x4b0)); // divu/add/add
+  enqueueRegisters(ram, 25, d1, d2rank, 0x0608, 0x09);      // $285D6A/$285DCE jmp $23fa96
+}
+
+/** `$285C5E` (P1) / `$285DD8` (P2) -- the panel ENTRY.  Clears D6/D7 and falls
+ *  into the score row.  Called from `playerBlock` (`$2844C8`/`$284666`). */
+export function panel285C5E(ram, rom, ctx, who) {
+  if (!rom) {
+    const addr = who === 0 ? 0x285c5e : 0x285dd8;          // the panel ENTRY note
+    note(ctx, addr, DRAWS[addr]);
+    return;
+  }
+  scoreRow285C62(ram, rom, ctx, who, 0, 0);                  // $285C5E moveq
+}
+
+/** `$284F72` -- the banner's P1 panel wrapper.  Draws a banner-panel sprite
+ *  (slide-offset by D6) then falls into the P1 score row with D7=0. */
+export function bannerPanel284F72(ram, rom, ctx, d6) {
+  if (!rom) { note(ctx, 0x284f72, DRAWS[0x284f72]); return; }
+  if (i16(ram.u16(HUDRAM.aliveP1)) < 0) return;              // $284F72 bmi -> rts
+  const d1 = ((0x5bc0 << 16) | u16(d6)) >>> 0;               // $284F7A/$284F84
+  enqueueRegisters(ram, 25, d1, HUD.bannerPanelP1, 0x0840, 0x09); // $284F86 jsr
+  scoreRow285C62(ram, rom, ctx, 0, d6, 0);                   // $284F9C bra $285C62
+}
+
+/** `$284FA2` -- the banner's P2 panel wrapper (mirror). */
+export function bannerPanel284FA2(ram, rom, ctx, d6) {
+  if (!rom) { note(ctx, 0x284fa2, DRAWS[0x284fa2]); return; }
+  if (i16(ram.u16(HUDRAM.aliveP2)) < 0) return;              // $284FA2 bmi -> rts
+  const d1 = ((0x5bc0 << 16) | u16(0x2800 - d6)) >>> 0;      // $284FAA/$284FB4
+  enqueueRegisters(ram, 25, d1, HUD.bannerPanelP2, 0x0840, 0x09); // $284FB6 jsr
+  scoreRow285C62(ram, rom, ctx, 1, d6, 0);                   // $284FCC bra $285DDC
+}
+
 /** `$284FD2` -- the BOSS banner's panels.  138 instructions and **exactly four
  *  absolute RAM writes**; the other 134 are `$23FA96`/`$23FAC4`/`$240DC2`/
  *  `$286ED6`/`$286F3E`.  Its mirror `$2851D2` has the two sub-counters SWAPPED
@@ -641,7 +823,7 @@ function subqFloor(ram, addr) {
  *  ITS ENTIRE EFFECT ON RAM IS TWO INSTRUCTIONS: the countdown and the clear.
  *  Returns true only on `$284D24`'s arm, which `$284D2A bra.w $284460` re-enters
  *  the skeleton with, IN THE SAME FRAME. */
-function slideIn284CF2(ram, ctx) {
+function slideIn284CF2(ram, rom, ctx) {
   if (ram.u8(HUDRAM.flags9) & 0x01) {                   // $284CF2 btst #$0,$8130F9
     if (i16(ram.u16(HUDRAM.aliveP1)) >= 0) { draw(ctx, 0x286ed6); draw(ctx, 0x2878cc); }
     if (i16(ram.u16(HUDRAM.aliveP2)) >= 0) { draw(ctx, 0x286f3e); draw(ctx, 0x28795c); }
@@ -651,15 +833,16 @@ function slideIn284CF2(ram, ctx) {
   if (ram.u16(HUDRAM.bannerTimer) !== 0) {              // $284D2E tst.w $81B620 / beq
     ram.setU16(HUDRAM.bannerTimer,                      // $284D38 subq.w #$1
       u16(ram.u16(HUDRAM.bannerTimer) - 1));
+    const d6 = ram.u16(HUDRAM.bannerTimer);             // $284D3E move.w $81B620,D6
     if (i16(ram.u16(HUDRAM.aliveP1)) >= 0) {            // $284D48 / $284D4E bmi
       draw(ctx, 0x23fac4);                              // $284D96, the lives dbra
       if (ram.u16(HUDRAM.hyperActiveP1) === 0) draw(ctx, 0x23fa96);   // $284DA6 / $284DD6
-      draw(ctx, 0x284f72);                              // $284DDE bsr
+      bannerPanel284F72(ram, rom, ctx, d6);             // $284DDE bsr
     }
     if (i16(ram.u16(HUDRAM.aliveP2)) >= 0) {            // $284DE2 / $284DE8 bmi
       draw(ctx, 0x23fac4);                              // $284E2E
       if (ram.u16(HUDRAM.hyperActiveP2) === 0) draw(ctx, 0x23fa96);   // $284E3E / $284E6E
-      draw(ctx, 0x284fa2);                              // $284E74 bsr
+      bannerPanel284FA2(ram, rom, ctx, d6);             // $284E74 bsr
     }
     return false;                                       // $284E78 rts
   }
@@ -682,8 +865,8 @@ function slideIn284CF2(ram, ctx) {
  *
  *  Note `$2844D6` and `$284674` BOTH read `$81B61F`, the STAGE-CLEAR banner's
  *  flags -- it is not a per-player word.  See `HUDRAM`'s own note. */
-function playerBlock(ram, ctx, P) {
-  draw(ctx, P.panel);                                   // $2844C8 / $284666 bsr
+function playerBlock(ram, rom, ctx, P) {
+  panel285C5E(ram, rom, ctx, P.who);                      // $2844C8 / $284666 bsr
   const bossUp = (ram.u8(HUDRAM.flags9) & 0x01)         // $2844CC / $28466A btst #$0
     && (ram.u8(HUDRAM.bannerFlagsClear) & 0x80) === 0;  // $2844D6 / $284674 tst.b / bpl
   if (bossUp) {
@@ -692,7 +875,8 @@ function playerBlock(ram, ctx, P) {
     const had = ram.u8(P.hyperShown) & 0x01;            // $2844E8 / $284686 bset.b #$0
     ram.setU8(P.hyperShown, ram.u8(P.hyperShown) | 0x01);
     if (!had) { draw(ctx, 0x240dc2); draw(ctx, 0x240dc2); }  // $284508/$284524
-    draw(ctx, 0x285fa6);                                // $284536 / $2846D4 bsr
+    hyperFlash285FA6(ram, rom, ctx, 0x64c00400,           // $28452A move.l / $284530 D2
+      ram.u32(HUDRAM.cursorValB));                        // $284536 / $2846D4 bsr
   } else {
     ram.setU8(P.hyperShown, ram.u8(P.hyperShown) & ~0x01);  // $28453E / $2846DC bclr.b
     if ((ram.u8(HUDRAM.altPhase) & 0x40)                // $284546 / $2846E4 btst #$6
@@ -700,7 +884,8 @@ function playerBlock(ram, ctx, P) {
       && ram.u16(P.creditRow) !== 0) {                  // $28455A / $2846F8 move.w / beq
       if ((ram.u16(HUDRAM.frameCounter) & 0x3f) < P.creditDuty) {   // $28456A / $284708
         draw(ctx, 0x240dc2);                            // $284586 / $284724
-        draw(ctx, 0x285fa6);                            // $284598 / $284736 bsr
+        hyperFlash285FA6(ram, rom, ctx, 0x64c00400,       // $28458C move.l / $284592 D2
+          ram.u32(HUDRAM.cursorValA));                    // $284598 / $284736 bsr
       } else {
         draw(ctx, 0x285fb6);                            // $2845AC / $28474A bsr
       }
@@ -747,7 +932,11 @@ function playerBlock(ram, ctx, P) {
       return;                                           // bra $28465C / $2847FA
     }
   }
-  draw(ctx, 0x2859dc);                                  // $284658 / $2847F6 bsr
+  // $2859DC: THE CHAIN-METER BAR. D1/D4 from the caller ($28464E/$2847EC),
+  // D6 = the pre-decrement meter (the value read at $284614/$2847B2).
+  const d1bar = P.who === 0 ? 0x5bc00000 : 0x5bc03400;     // $28464E / $2847EC
+  const d4bar = P.who === 0 ? 0x0009 : 0x4009;             // $284654 / $2847F2
+  chainBar2859DC(ram, rom, ctx, d1bar, d4bar, meter);      // $284658 / $2847F6 bsr
 }
 
 /** `$284A3E` -- **THE BOSS HP BAR**.  `movea.l $81B62A,A0 / move.l (A0),D7`
@@ -783,20 +972,20 @@ function bossBar284A3E(ram, ctx) {
 }
 
 /** The two players' score rows, drawn from six places in the banner. */
-function bothScoreRows(ram, ctx) {
-  if (i16(ram.u16(HUDRAM.aliveP1)) >= 0) draw(ctx, 0x285c62);   // $284C02 / bsr $285C62
-  if (i16(ram.u16(HUDRAM.aliveP2)) >= 0) draw(ctx, 0x285ddc);   // $284C16 / bsr $285DDC
+function bothScoreRows(ram, rom, ctx) {
+  if (i16(ram.u16(HUDRAM.aliveP1)) >= 0) scoreRow285C62(ram, rom, ctx, 0, 0, 0); // $284C02 bsr $285C62
+  if (i16(ram.u16(HUDRAM.aliveP2)) >= 0) scoreRow285C62(ram, rom, ctx, 1, 0, 0); // $284C16 bsr $285DDC
 }
 
 /** `$2847FE..$284A B4` -- **THE BOSS-WARNING BANNER**, on `$81B61E`'s eight
  *  state bits.  DEAD in this port: its only gate is `$8130F9` bit 0, whose one
  *  producer is inside `BOSS_TAIL`. */
-function bannerBoss28480A(ram, ctx) {
+function bannerBoss28480A(ram, rom, ctx) {
   const F = () => ram.u8(HUDRAM.bannerFlagsBoss);
   const setF = (v) => ram.setU8(HUDRAM.bannerFlagsBoss, v);
-  if (F() & 0x80) { bothScoreRows(ram, ctx); bossBar284A3E(ram, ctx); return; }  // $28480A bmi
+  if (F() & 0x80) { bothScoreRows(ram, rom, ctx); bossBar284A3E(ram, ctx); return; }  // $28480A bmi
   if (F() & 0x10) {                                     // $284814 btst #$4 / bne $2849A6
-    bothScoreRows(ram, ctx);                            // $2849AA / $2849BE
+    bothScoreRows(ram, rom, ctx);                       // $2849AA / $2849BE
     const t = u16(ram.u16(HUDRAM.bannerTimer) + 1);     // $2849D2 addq.w #$1
     ram.setU16(HUDRAM.bannerTimer, t);
     if (t & 0x8000) return;                             // $2849D8 bmi.w $284AB6
@@ -814,11 +1003,11 @@ function bannerBoss28480A(ram, ctx) {
       panel284FD2(ram, ctx);                            // $284952 bsr $284FD2
       ram.setU16(HUDRAM.bannerTimer, 0xffe2);           // $284956
       draw(ctx, 0x240dc2);                              // $284970
-      bothScoreRows(ram, ctx);                          // $28497A / $28498E
+      bothScoreRows(ram, rom, ctx);                     // $28497A / $28498E
       return;
     }
     draw(ctx, 0x23fa96);                                // $28490E
-    bothScoreRows(ram, ctx);                            // $28491A / $28492E
+    bothScoreRows(ram, rom, ctx);                       // $28491A / $28492E
     panel284FD2(ram, ctx);                              // $284942 bsr $284FD2
     return;
   }
@@ -840,7 +1029,11 @@ function bannerBoss28480A(ram, ctx) {
       setF(F() & ~0x01);                                // $284890 bclr #$0
     }
   }
-  draw(ctx, 0x284f72); draw(ctx, 0x284fa2);             // $2848B2 / $2848B6 bsr
+  { // $2848A6: D6 = (bannerTimer - $32) << 7, the slide offset
+    const d6 = u16(i16(ram.u16(HUDRAM.bannerTimer) - 0x32) << 7); // $2848A6/$2848AC
+    bannerPanel284F72(ram, rom, ctx, d6);               // $2848B2 bsr
+    bannerPanel284FA2(ram, rom, ctx, d6);               // $2848B6 bsr
+  }
   panel284FD2(ram, ctx);                                // $2848BA bsr $284FD2
   ram.setU16(HUDRAM.bannerTimer,                        // $2848BE subq.w #$1
     u16(ram.u16(HUDRAM.bannerTimer) - 1));
@@ -855,7 +1048,7 @@ function bannerBoss28480A(ram, ctx) {
  *  Returns 'rejoin' on `$284B72 bmi.w $2844BE`, which goes BACK to the P1
  *  block in the same frame; a port that returned instead would stop both chain
  *  meters for the rest of the stage. */
-function bannerClear284B6C(ram, ctx) {
+function bannerClear284B6C(ram, rom, ctx) {
   const F = () => ram.u8(HUDRAM.bannerFlagsClear);
   const setF = (v) => ram.setU8(HUDRAM.bannerFlagsClear, v);
   if (F() & 0x80) return 'rejoin';                      // $284B6C tst.b / bmi.w $2844BE
@@ -865,7 +1058,11 @@ function bannerClear284B6C(ram, ctx) {
         ram.setU16(HUDRAM.bannerTimer,                  // $284C5A subq.w #$1
           u16(ram.u16(HUDRAM.bannerTimer) - 1));
       }
-      draw(ctx, 0x284f72); draw(ctx, 0x284fa2);         // $284C6A / $284C6E bsr
+      { // $284C60: D6 = -(bannerTimer << 6), the slide offset
+        const d6 = u16(i16(-(ram.u16(HUDRAM.bannerTimer) << 6))); // $284C60/$284C68
+        bannerPanel284F72(ram, rom, ctx, d6);           // $284C6A bsr
+        bannerPanel284FA2(ram, rom, ctx, d6);           // $284C6E bsr
+      }
       panel2851D2(ram, ctx);                            // $284C72 bsr $2851D2
       return null;
     }
@@ -899,7 +1096,7 @@ function bannerClear284B6C(ram, ctx) {
   }
   panel2851D2(ram, ctx);                                // $284BD4 bsr $2851D2
   draw(ctx, 0x23fa96);                                  // $284BFA
-  bothScoreRows(ram, ctx);                              // $284C12 / $284C26
+  bothScoreRows(ram, rom, ctx);                         // $284C12 / $284C26
   const t = u16(ram.u16(HUDRAM.bannerTimer) - 1);       // $284C2A subq.w #$1
   ram.setU16(HUDRAM.bannerTimer, t);
   if (t !== 0) return null;                             // $284C30 bne.w $284AB6
@@ -911,9 +1108,9 @@ function bannerClear284B6C(ram, ctx) {
 /** `$2847FE` -- which banner.  `$8130F8` bit 3 is `$242958`'s, THE STAGE
  *  ADVANCE, so bit 3 SET means the stage-clear banner and bit 3 CLEAR the
  *  boss-warning one. */
-function banner2847FE(ram, ctx) {
-  if (ram.u8(HUDRAM.flags8) & 0x08) return bannerClear284B6C(ram, ctx);   // $2847FE btst #$3
-  bannerBoss28480A(ram, ctx);
+function banner2847FE(ram, rom, ctx) {
+  if (ram.u8(HUDRAM.flags8) & 0x08) return bannerClear284B6C(ram, rom, ctx);   // $2847FE btst #$3
+  bannerBoss28480A(ram, rom, ctx);
   return null;
 }
 
@@ -1033,13 +1230,13 @@ export function perFrame28444E(ram, rom, ctx) {
   cursorA285F8A(ram, rom);                              // $28444E bsr.w $285F8A
   cursorB285F52(ram, rom);                              // $284452 bsr.w $285F52
   if (ram.u16(HUDRAM.slideFlag) !== 0) {                // $284456 tst.w $81B6EE / bne
-    if (!slideIn284CF2(ram, ctx)) return;               // $28445C bra.w $284CF2
+    if (!slideIn284CF2(ram, rom, ctx)) return;           // $28445C bra.w $284CF2
     // $284D2A bra.w $284460 -- the settled arm RE-ENTERS here, same frame.
   }
   hyper285A12(ram, ctx, 0);                             // $284460 bsr.w $285A12
   hyper285A12(ram, ctx, 1);                             // $284464 bsr.w $285B3C
   drainItems284468(ram);                                // $284468..$2844A0
-  gates2844A6(ram, ctx);                                // $2844A6..$284B6A
+  gates2844A6(ram, ctx, rom);                            // $2844A6..$284B6A
 }
 
 /** `$284468..$2844A0` -- `$81B5B4` -> `$81B610`, **at most FOUR per frame**,
@@ -1058,20 +1255,20 @@ export function drainItems284468(ram) {
 }
 
 /** `$2844A6..$284B6A` -- the three gates and everything below them. */
-export function gates2844A6(ram, ctx) {
+export function gates2844A6(ram, ctx, rom = null) {
   if ((ram.u8(HUDRAM.flags9) & 0x01)                    // $2844A6 btst #$0,$8130F9 / bne
     || (ram.u8(HUDRAM.dfFlags) & 0x08)) {               // $2844B2 btst #$3,$81DF1E / bne
-    if (banner2847FE(ram, ctx) !== 'rejoin') {          // bne.w $2847FE
+    if (banner2847FE(ram, rom, ctx) !== 'rejoin') {       // bne.w $2847FE
       extendCounter284AB6(ram, ctx);                    // every arm ends bra.w $284AB6
       return;
     }
     // $284B72 bmi.w $2844BE -- REJOIN the skeleton at the P1 block.
   }
   if (i16(ram.u16(HUDRAM.aliveP1)) >= 0) {              // $2844BE tst.w $8130BE / bmi
-    playerBlock(ram, ctx, HUDRAM.p1);                   // $2844C8..$28465A
+    playerBlock(ram, rom, ctx, HUDRAM.p1);               // $2844C8..$28465A
   }
   if (i16(ram.u16(HUDRAM.aliveP2)) >= 0) {              // $28465C tst.w $8130C0 / bmi
-    playerBlock(ram, ctx, HUDRAM.p2);                   // $284666..$2847F8
+    playerBlock(ram, rom, ctx, HUDRAM.p2);               // $284666..$2847F8
   }
   extendCounter284AB6(ram, ctx);                        // $284AB6
 }

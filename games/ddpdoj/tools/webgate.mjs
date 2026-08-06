@@ -453,7 +453,7 @@ try {
     // `missing === 0` is asserted unchanged.  **The rule this stage enforces
     // did not move: zero records with no art anywhere.**
     const EXP = {
-      steps: 300, records: 20794, min: 20, max: 99, b0min: 14,
+      steps: 300, records: 20842, min: 21, max: 99, b0min: 14,
       b23: 3001, pending: 1214, pendingShards: [3, 7, 14], pendingFrom: 59,
     };
     // WAVE 47: SHARD-AWARE, and this is not optional. `loadBundle` awaited the

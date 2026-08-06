@@ -608,7 +608,7 @@ const TOOL = (n) => fs.readFileSync(new URL(`../tools/${n}`, import.meta.url), '
 test('the exporter DECLARES the bomb window and ASSERTS its six extents', () => {
   const s = TOOL('export-tables.py');
   assert.ok(/def check_bomb_extents/.test(s));
-  assert.ok(/check_hud_extents\(d\)[^\n]*\n\s*check_bomb_extents\(d\)/.test(s),
+  assert.ok(/check_hud_extents\(d\)[^\n]*\n(\s*check_\w+\(d\)[^\n]*\n)*\s*check_bomb_extents\(d\)/.test(s),
     'and it runs on EVERY export, not behind a flag');
   assert.ok(/\(0x25653C, 0x0112,/.test(s),
     'the window is the UNION of the six extents, $25653C..$25664D');

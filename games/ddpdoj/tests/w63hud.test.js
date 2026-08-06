@@ -95,7 +95,10 @@ test('W63 $28D520 state 1 is the ONLY state that runs $2842B0 and $28444E', () =
   makeHudObject(rom)(ram, a5, 0, ctx);
   assert.equal(ram.u32(HUDRAM.totalP1), 0x00001234, 'the drain ran');
   assert.equal(ram.u32(HUDRAM.pendingP1), 0, '...and emptied the pending');
-  assert.ok(counted(ctx, 0x285c5e) > 0, '$28444E reached P1s block');
+  // W113: $285C5E is now PORTED (emits to bucket 25 when rom is available, not
+  // a note). The drain's effect on totalP1 is the signal that $28444E ran.
+  // When rom is null (no export), the draw falls back to a note at $285C5E.
+  if (!rom) assert.ok(counted(ctx, 0x285c5e) > 0, '$28444E reached P1s block');
 });
 
 // ===========================================================================
